@@ -1,0 +1,90 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+
+type Status = "idle" | "loading" | "success" | "error";
+
+export default function ContactForm() {
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setStatus("loading");
+    setErrorMessage("");
+
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    const payload = {
+      name: String(formData.get("name") || ""),
+      shop: String(formData.get("shop") || ""),
+      email: String(formData.get("email") || ""),
+      message: String(formData.get("message") || ""),
+    };
+
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json.error || "送信に失敗しました。時間をおいて再度お試しください。");
+      }
+
+      setStatus("success");
+      form.reset();
+    } catch (err) {
+      setStatus("error");
+      setErrorMessage(
+        err instanceof Error ? err.message : "送信に失敗しました。時間をおいて再度お試しください。"
+      );
+    }
+  }
+
+  const disabled = status === "loading";
+
+  return (
+    <form className="contact-form" onSubmit={handleSubmit} noValidate={false}>
+      <div className="form-row">
+        <label htmlFor="cf-name">お名前</label>
+        <input id="cf-name" name="name" type="text" required disabled={disabled} />
+      </div>
+      <div className="form-row">
+        <label htmlFor="cf-shop">お店名</label>
+        <input id="cf-shop" name="shop" type="text" required disabled={disabled} />
+      </div>
+      <div className="form-row">
+        <label htmlFor="cf-email">メールアドレス</label>
+        <input id="cf-email" name="email" type="email" required disabled={disabled} />
+      </div>
+      <div className="form-row">
+        <label htmlFor="cf-message">ご相談内容</label>
+        <textarea
+          id="cf-message"
+          name="message"
+          placeholder="今、困っていることを教えてください(未定でも構いません)"
+          disabled={disabled}
+        />
+      </div>
+      <div>
+        <button type="submit" className="btn-primary form-submit" disabled={disabled}>
+          {status === "loading" ? "送信しています…" : "無料診断を申し込む"}
+          <span className="arrow">→</span>
+        </button>
+        {status === "success" && (
+          <p className="form-status is-success" role="status">
+            送信ありがとうございます。24時間以内にご連絡します。
+          </p>
+        )}
+        {status === "error" && (
+          <p className="form-status is-error" role="alert">
+            {errorMessage}
+          </p>
+        )}
+      </div>
+    </form>
+  );
+}
