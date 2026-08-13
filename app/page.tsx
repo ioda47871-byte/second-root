@@ -2,6 +2,9 @@
 
 import { useEffect } from "react";
 import ContactForm from "@/components/ContactForm";
+import MacBookFrame from "@/components/MacBookFrame";
+import BrowserFrame from "@/components/BrowserFrame";
+import PhoneFrame from "@/components/PhoneFrame";
 
 export default function Home() {
   useEffect(() => {
@@ -138,6 +141,33 @@ export default function Home() {
     }
     cleanups.push(revealCleanup);
 
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reducedMotion) {
+      const parallaxEls = Array.from(document.querySelectorAll<HTMLElement>(".parallax"));
+      if (parallaxEls.length > 0) {
+        let ticking = false;
+        const updateParallax = () => {
+          if (ticking) return;
+          ticking = true;
+          requestAnimationFrame(() => {
+            const viewportCenter = window.innerHeight / 2;
+            parallaxEls.forEach((el) => {
+              const factor = parseFloat(el.dataset.parallax || "0.06");
+              const rect = el.getBoundingClientRect();
+              const elCenter = rect.top + rect.height / 2;
+              const offset = Math.max(-32, Math.min(32, (viewportCenter - elCenter) * factor));
+              el.style.transform = `translateY(${offset}px)`;
+            });
+            ticking = false;
+          });
+        };
+        window.addEventListener("scroll", updateParallax, { passive: true });
+        window.addEventListener("resize", updateParallax);
+        updateParallax();
+        cleanups.push(() => window.removeEventListener("scroll", updateParallax));
+      }
+    }
+
     return () => cleanups.forEach((fn) => fn && fn());
   }, []);
 
@@ -145,6 +175,7 @@ export default function Home() {
     <>
       <header className="topbar">
         <a className="wordmark" href="#home">Second Root</a>
+        <a className="topbar-cta" href="#contact">無料で相談する</a>
       </header>
 
       <div className="spine-wrap" id="spineWrap">
@@ -165,12 +196,28 @@ export default function Home() {
         <main className="content">
 
           <section id="home" className="section hero">
-            <div className="hero-eyebrow eyebrow">Second Root</div>
-            <h1 className="hero-title">事業に、<br />もう一つの根を。</h1>
-            <p className="hero-service"><span className="tick" />地域のお店のホームページ制作</p>
-            <p className="hero-sub">ホームページは、公開した日がゴールではありません。<br />公開後の更新や見直しまで、一緒に考えていきます。</p>
-            <div className="hero-cta">
-              <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
+            <div className="hero-glow" aria-hidden="true" />
+            <div className="hero-grid">
+              <div className="hero-copy">
+                <div className="hero-eyebrow eyebrow">Second Root</div>
+                <h1 className="hero-title">事業に、<br />もう一つの根を。</h1>
+                <p className="hero-service"><span className="tick" />地域のお店のホームページ制作</p>
+                <p className="hero-sub">ホームページは、公開した日がゴールではありません。<br />公開後の更新や見直しまで、一緒に考えていきます。</p>
+                <div className="hero-cta">
+                  <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
+                </div>
+              </div>
+              <div className="hero-visual">
+                <div className="parallax" data-parallax="0.08">
+                  <div className="hero-float">
+                    <MacBookFrame
+                      src="/screenshots-source/home-desktop.png"
+                      alt="Brot Yanagi トップページ(PC版)"
+                      aspectRatio={1903 / 828}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="scroll-cue"><div className="line" /><span>Scroll</span></div>
           </section>
@@ -204,18 +251,18 @@ export default function Home() {
             <div className="eyebrow reveal">Services</div>
             <h2 className="section-heading reveal">できることを、3つに整理しました。</h2>
             <p className="section-sub reveal">サービス一覧というより、実際に対応できる範囲を、正直にお伝えします。</p>
-            <div className="pillar-list reveal">
-              <div className="pillar">
+            <div className="service-grid reveal">
+              <div className="service-card">
                 <h3 className="pillar-name">サイト制作</h3>
                 <p className="pillar-desc">お店の紹介や商品情報を、分かりやすく伝えるホームページをつくります。</p>
                 <ul className="pillar-items"><li>スマートフォン対応</li><li>基本的なSEO設計</li></ul>
               </div>
-              <div className="pillar">
+              <div className="service-card">
                 <h3 className="pillar-name">更新の仕組みづくり</h3>
                 <p className="pillar-desc">営業時間や商品情報を、ご自身で更新できる仕組みを整えます。</p>
                 <ul className="pillar-items"><li>CMS導入</li><li>Instagramなど外部連携</li></ul>
               </div>
-              <div className="pillar">
+              <div className="service-card">
                 <h3 className="pillar-name">公開後の伴走</h3>
                 <p className="pillar-desc">公開して終わりにせず、その後の相談や調整に対応します。</p>
                 <ul className="pillar-items"><li>無料診断</li><li>修正・更新対応</li></ul>
@@ -230,7 +277,7 @@ export default function Home() {
             </ul>
           </section>
 
-          <section id="works" className="section">
+          <section id="works" className="section section--roomy">
             <div className="eyebrow reveal">Works</div>
             <h2 className="section-heading reveal">テンプレートではなく、お店ごとに設計します。</h2>
             <p className="section-sub reveal">相談から公開後まで、一人で責任を持って対応します。<br />この線は、事例が増えるたびに長くなっていきます。</p>
@@ -248,15 +295,68 @@ export default function Home() {
                   <div className="eyebrow" style={{ marginBottom: 8 }}>パン屋</div>
                   <h3 className="case-name">Brot Yanagi</h3>
                   <div className="case-real">
-                    <div className="case-photo"><span>店舗写真 準備中</span></div>
+                    <div className="case-visual">
+                      <div className="works-devices reveal-group">
+                        <div className="reveal reveal-media">
+                          <BrowserFrame
+                            src="/screenshots-source/menu-desktop.png"
+                            alt="Brot Yanagi メニューページ(PC版)"
+                            aspectRatio={1119 / 843}
+                          />
+                        </div>
+                        <div className="reveal reveal-media">
+                          <PhoneFrame
+                            className="is-back"
+                            src="/screenshots-source/access-mobile-portrait.jpeg"
+                            alt="Brot Yanagi アクセスページ(スマホ版)"
+                            aspectRatio={710 / 1413}
+                          />
+                        </div>
+                        <div className="reveal reveal-media">
+                          <PhoneFrame
+                            className="is-front"
+                            src="/screenshots-source/home-mobile.jpeg"
+                            alt="Brot Yanagi トップページ(スマホ版)"
+                            aspectRatio={710 / 1413}
+                          />
+                        </div>
+                      </div>
+                      <p className="case-photo-caption">実際に公開しているBrot Yanagiの画面(PC・スマホ)</p>
+                    </div>
                     <div className="case-story">
+                      <p className="case-result">Instagramだけの運営から、<br />更新も集客も自分たちで回せるサイトへ。</p>
                       <dl>
-                        <div className="stage"><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div>
-                        <div className="stage"><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div>
-                        <div className="stage"><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div>
-                        <div className="stage"><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div>
+                        <div className="stage"><span className="stage-no">01</span><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div>
+                        <div className="stage"><span className="stage-no">02</span><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div>
+                        <div className="stage"><span className="stage-no">03</span><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div>
+                        <div className="stage"><span className="stage-no">04</span><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div>
                       </dl>
                     </div>
+                  </div>
+
+                  <div className="eyebrow" style={{ marginTop: 40 }}>Gallery</div>
+                  <h4 className="case-name" style={{ marginTop: 10, marginBottom: 8 }}>店舗の雰囲気</h4>
+                  <p className="case-photo-caption" style={{ marginBottom: 4 }}>パンの香りに包まれる、あたたかい空間です。</p>
+                  <div className="gallery-photos reveal-group">
+                    <figure className="gallery-photo reveal reveal-media">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/screenshots-source/exterior-photo.png" alt="Brot Yanagi 外観" style={{ objectPosition: "center 30%" }} />
+                      <figcaption>外観</figcaption>
+                    </figure>
+                    <figure className="gallery-photo reveal reveal-media">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/screenshots-source/entrance-photo.png" alt="Brot Yanagi エントランス" style={{ aspectRatio: 1025 / 827 }} />
+                      <figcaption>エントランス</figcaption>
+                    </figure>
+                    <figure className="gallery-photo reveal reveal-media">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/screenshots-source/interior-photo.jpeg"
+                        alt="Brot Yanagi 内観"
+                        style={{ aspectRatio: 0.84, objectPosition: "center 34%" }}
+                      />
+                      <figcaption>内観</figcaption>
+                    </figure>
                   </div>
                 </div>
 
@@ -273,7 +373,7 @@ export default function Home() {
             </div>
           </section>
 
-          <section id="process" className="section">
+          <section id="process" className="section section--tight">
             <div className="eyebrow reveal">Process</div>
             <h2 className="section-heading reveal">制作の流れ</h2>
             <p className="section-sub reveal">相談から公開まで、6つのステップで進みます。</p>
@@ -377,7 +477,7 @@ export default function Home() {
             </ul>
           </section>
 
-          <section id="faq" className="section">
+          <section id="faq" className="section section--tight">
             <div className="eyebrow reveal">FAQ</div>
             <h2 className="section-heading reveal">よくある質問</h2>
             <div className="faq-list reveal">
