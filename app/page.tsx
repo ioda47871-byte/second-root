@@ -86,7 +86,7 @@ export default function Home() {
     cleanups.push(
       bindActive(
         pageNodes,
-        ["home", "philosophy", "services", "works", "process", "pricing", "founder", "faq", "contact"],
+        ["home", "philosophy", "works", "services", "process", "pricing", "founder", "faq", "contact"],
         "-45% 0px -45% 0px"
       )
     );
@@ -184,8 +184,8 @@ export default function Home() {
           <div className="spine-fill" id="spineFill" />
           <div className="node" data-target="home"><span className="node-dot" /><span className="node-label">Home</span></div>
           <div className="node" data-target="philosophy"><span className="node-dot" /><span className="node-label">Philosophy</span></div>
-          <div className="node" data-target="services"><span className="node-dot" /><span className="node-label">Services</span></div>
           <div className="node" data-target="works"><span className="node-dot" /><span className="node-label">Works</span></div>
+          <div className="node" data-target="services"><span className="node-dot" /><span className="node-label">Services</span></div>
           <div className="node" data-target="process"><span className="node-dot" /><span className="node-label">Process</span></div>
           <div className="node" data-target="pricing"><span className="node-dot" /><span className="node-label">Pricing</span></div>
           <div className="node" data-target="founder"><span className="node-dot" /><span className="node-label">Founder</span></div>
@@ -232,7 +232,7 @@ export default function Home() {
             </ul>
           </div>
 
-          <section id="philosophy" className="section">
+          <section id="philosophy" className="section section--tight">
             <div className="eyebrow reveal">Philosophy</div>
             <h2 className="section-heading reveal">更新しやすく、相談しやすく。</h2>
             <div className="philosophy-body">
@@ -245,36 +245,6 @@ export default function Home() {
               <p className="reveal">すでにお店には、大切にしてきたものがあります。看板、常連さん、味、接客。</p>
               <p className="reveal">ホームページは、それに取って代わるものではなく、すでにあるものを、もう一つの形で支えるためのものだと考えています。</p>
             </div>
-          </section>
-
-          <section id="services" className="section">
-            <div className="eyebrow reveal">Services</div>
-            <h2 className="section-heading reveal">できることを、3つに整理しました。</h2>
-            <p className="section-sub reveal">サービス一覧というより、実際に対応できる範囲を、正直にお伝えします。</p>
-            <div className="service-grid reveal">
-              <div className="service-card">
-                <h3 className="pillar-name">サイト制作</h3>
-                <p className="pillar-desc">お店の紹介や商品情報を、分かりやすく伝えるホームページをつくります。</p>
-                <ul className="pillar-items"><li>スマートフォン対応</li><li>基本的なSEO設計</li></ul>
-              </div>
-              <div className="service-card">
-                <h3 className="pillar-name">更新の仕組みづくり</h3>
-                <p className="pillar-desc">営業時間や商品情報を、ご自身で更新できる仕組みを整えます。</p>
-                <ul className="pillar-items"><li>CMS導入</li><li>Instagramなど外部連携</li></ul>
-              </div>
-              <div className="service-card">
-                <h3 className="pillar-name">公開後の伴走</h3>
-                <p className="pillar-desc">公開して終わりにせず、その後の相談や調整に対応します。</p>
-                <ul className="pillar-items"><li>無料診断</li><li>修正・更新対応</li></ul>
-              </div>
-            </div>
-
-            <div className="eyebrow reveal reasons-label">Second Rootに任せる理由</div>
-            <ul className="reasons-list reveal">
-              <li><span className="tick" />公開して終わりにせず、その後の改善提案まで行います。</li>
-              <li><span className="tick" />デザインの前に、お店の魅力をどう伝えるかを一緒に考えます。</li>
-              <li><span className="tick" />パン屋の現場に立っているからこそ、日々の忙しさの中でも続けられる仕組みを考えます。</li>
-            </ul>
           </section>
 
           <section id="works" className="section section--roomy">
@@ -334,28 +304,38 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="eyebrow" style={{ marginTop: 40 }}>Gallery</div>
-                  <h4 className="case-name" style={{ marginTop: 10, marginBottom: 8 }}>店舗の雰囲気</h4>
-                  <p className="case-photo-caption" style={{ marginBottom: 4 }}>パンの香りに包まれる、あたたかい空間です。</p>
+                  <div className="gallery-heading">
+                    <div className="eyebrow">Gallery</div>
+                    <h4 className="case-name" style={{ marginTop: 10, marginBottom: 8 }}>店舗の雰囲気</h4>
+                    <p className="case-photo-caption">パンの香りに包まれる、あたたかい空間です。</p>
+                  </div>
                   <div className="gallery-photos reveal-group">
-                    <figure className="gallery-photo reveal reveal-media">
+                    <figure className="gallery-photo gallery-photo--lead reveal reveal-media">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/screenshots-source/exterior-photo.png" alt="Brot Yanagi 外観" style={{ objectPosition: "center 30%" }} />
-                      <figcaption>外観</figcaption>
+                      <img
+                        src="/screenshots-source/exterior-photo.png"
+                        alt="Brot Yanagi 外観"
+                        style={{ aspectRatio: 16 / 9, objectPosition: "center 42%" }}
+                      />
+                      <figcaption><span className="tick" />外観</figcaption>
                     </figure>
                     <figure className="gallery-photo reveal reveal-media">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/screenshots-source/entrance-photo.png" alt="Brot Yanagi エントランス" style={{ aspectRatio: 1025 / 827 }} />
-                      <figcaption>エントランス</figcaption>
+                      <img
+                        src="/screenshots-source/entrance-photo.png"
+                        alt="Brot Yanagi エントランス"
+                        style={{ aspectRatio: 1.6, objectPosition: "center 50%" }}
+                      />
+                      <figcaption><span className="tick" />エントランス</figcaption>
                     </figure>
                     <figure className="gallery-photo reveal reveal-media">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src="/screenshots-source/interior-photo.jpeg"
                         alt="Brot Yanagi 内観"
-                        style={{ aspectRatio: 0.84, objectPosition: "center 34%" }}
+                        style={{ aspectRatio: 1, objectPosition: "center 35%" }}
                       />
-                      <figcaption>内観</figcaption>
+                      <figcaption><span className="tick" />内観</figcaption>
                     </figure>
                   </div>
                 </div>
@@ -371,6 +351,36 @@ export default function Home() {
               <p>この事例のような形が、あなたのお店にも合うか。今なら実績制作価格(¥50,000)でご相談いただけます。</p>
               <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
             </div>
+          </section>
+
+          <section id="services" className="section">
+            <div className="eyebrow reveal">Services</div>
+            <h2 className="section-heading reveal">できることを、3つに整理しました。</h2>
+            <p className="section-sub reveal">サービス一覧というより、実際に対応できる範囲を、正直にお伝えします。</p>
+            <div className="service-grid reveal">
+              <div className="service-card">
+                <h3 className="pillar-name">サイト制作</h3>
+                <p className="pillar-desc">お店の紹介や商品情報を、分かりやすく伝えるホームページをつくります。</p>
+                <ul className="pillar-items"><li>スマートフォン対応</li><li>基本的なSEO設計</li></ul>
+              </div>
+              <div className="service-card">
+                <h3 className="pillar-name">更新の仕組みづくり</h3>
+                <p className="pillar-desc">営業時間や商品情報を、ご自身で更新できる仕組みを整えます。</p>
+                <ul className="pillar-items"><li>CMS導入</li><li>Instagramなど外部連携</li></ul>
+              </div>
+              <div className="service-card">
+                <h3 className="pillar-name">公開後の伴走</h3>
+                <p className="pillar-desc">公開して終わりにせず、その後の相談や調整に対応します。</p>
+                <ul className="pillar-items"><li>無料診断</li><li>修正・更新対応</li></ul>
+              </div>
+            </div>
+
+            <div className="eyebrow reveal reasons-label">Second Rootに任せる理由</div>
+            <ul className="reasons-list reveal">
+              <li><span className="tick" />公開して終わりにせず、その後の改善提案まで行います。</li>
+              <li><span className="tick" />デザインの前に、お店の魅力をどう伝えるかを一緒に考えます。</li>
+              <li><span className="tick" />パン屋の現場に立っているからこそ、日々の忙しさの中でも続けられる仕組みを考えます。</li>
+            </ul>
           </section>
 
           <section id="process" className="section section--tight">
@@ -455,7 +465,7 @@ export default function Home() {
             <p className="section-sub reveal" style={{ marginTop: 32, marginBottom: 0 }}>まずはお気軽にご相談ください。ご予算やご希望に合わせたご提案も可能です。</p>
           </section>
 
-          <section id="founder" className="section">
+          <section id="founder" className="section section--tight">
             <div className="eyebrow reveal">Founder</div>
             <h2 className="section-heading reveal">パン屋で働きながら、つくっています。</h2>
             <div className="founder-body">
