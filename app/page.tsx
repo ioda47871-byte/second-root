@@ -217,6 +217,7 @@ export default function Home() {
                     />
                   </div>
                 </div>
+                <p className="hero-visual-caption">制作実績 — Brot Yanagi</p>
               </div>
             </div>
             <div className="scroll-cue"><div className="line" /><span>Scroll</span></div>
@@ -262,8 +263,8 @@ export default function Home() {
 
               <div className="mini-list">
                 <div id="case-brot">
-                  <div className="eyebrow" style={{ marginBottom: 8 }}>パン屋</div>
-                  <h3 className="case-name">Brot Yanagi</h3>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>Case Study</div>
+                  <h3 className="case-name">Brot Yanagi<span className="case-type"> — パン屋</span></h3>
                   <div className="case-real">
                     <div className="case-visual">
                       <div className="works-devices reveal-group">

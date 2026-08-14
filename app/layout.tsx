@@ -1,5 +1,27 @@
 import type { Metadata } from "next";
+import { Zen_Old_Mincho, Noto_Sans_JP, Inter } from "next/font/google";
 import "./globals.css";
+
+const zenOldMincho = Zen_Old_Mincho({
+  weight: ["400", "600"],
+  subsets: ["latin"],
+  variable: "--font-serif-jp",
+  display: "swap",
+});
+
+const notoSansJP = Noto_Sans_JP({
+  weight: ["400", "500", "600"],
+  subsets: ["latin"],
+  variable: "--font-sans-jp",
+  display: "swap",
+});
+
+const inter = Inter({
+  weight: ["500", "600"],
+  subsets: ["latin"],
+  variable: "--font-label",
+  display: "swap",
+});
 
 const siteTitle = "Second Root — 事業に、もう一つの根を。";
 const siteDescription =
@@ -21,7 +43,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ja">
+    <html lang="ja" className={`${zenOldMincho.variable} ${notoSansJP.variable} ${inter.variable}`}>
       <body>{children}</body>
     </html>
   );
