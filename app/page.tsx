@@ -204,7 +204,7 @@ export default function Home() {
               <div className="hero-eyebrow eyebrow">Second Root</div>
               <h1 className="hero-title">事業に、<br />もう一つの根を。</h1>
               <p className="hero-service"><span className="tick" />地域のお店のホームページ制作</p>
-              <p className="hero-sub">ホームページは、公開した日がゴールではありません。<br />公開後の更新や見直しまで、一緒に考えていきます。</p>
+              <p className="hero-sub">公開した日がゴールではありません。<br />その先まで、一緒に考えていきます。</p>
               <div className="hero-cta">
                 <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
               </div>
@@ -216,7 +216,6 @@ export default function Home() {
             <p className="lead-target reveal">パン屋・カフェ・美容室・整体など、地域のお店を中心にホームページを制作しています。</p>
             <ul className="lead-strengths reveal">
               <li><span className="tick" />一人で、相談から公開後まで対応します。</li>
-              <li><span className="tick" />パン屋の現場で働きながら、地域のお店のホームページをつくっています。</li>
               <li><span className="tick" />ご連絡には、原則24時間以内に返信します。</li>
               <li><span className="tick" />料金は、買い切りが基本です。</li>
             </ul>
@@ -228,9 +227,7 @@ export default function Home() {
 
             <div className="philosophy-row">
               <div className="philosophy-body">
-                <p className="reveal">メニューが変わる。営業時間が変わる。新しい取り組みが始まる。</p>
-                <p className="reveal">そのたびに、ご自身で更新できて、気軽に相談できることを大事にしています。</p>
-                <p className="reveal">完成より、成長を大事にしています。</p>
+                <p className="reveal">完成がゴールではありません。<br />変わり続けるお店と一緒に、更新していく。</p>
               </div>
               <figure className="philosophy-photo reveal reveal-media">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -244,9 +241,7 @@ export default function Home() {
                 <img src="/brand-photos/table-shadow-empty.jpg" alt="" style={{ objectPosition: "center 60%" }} />
               </figure>
               <div className="philosophy-story">
-                <p className="reveal">Second Rootという名前には、意味があります。</p>
-                <p className="reveal">すでにお店には、大切にしてきたものがあります。看板、常連さん、味、接客。</p>
-                <p className="reveal">ホームページは、それに取って代わるものではなく、すでにあるものを、もう一つの形で支えるためのものだと考えています。</p>
+                <p className="reveal">看板、常連さん、味、接客。<br />すでにあるものを、もう一つの形で支える。<br />それが、Second Rootという名前の意味です。</p>
               </div>
             </div>
           </section>
@@ -254,12 +249,11 @@ export default function Home() {
           <section id="works" className="section section--roomy section--wide">
             <div className="eyebrow reveal">Works</div>
             <h2 className="section-heading reveal">テンプレートではなく、お店ごとに設計します。</h2>
-            <p className="section-sub reveal">相談から公開後まで、一人で責任を持って対応します。<br />この線は、事例が増えるたびに長くなっていきます。</p>
+            <p className="section-sub reveal">この線は、事例が増えるたびに長くなっていきます。</p>
 
             <figure className="works-process reveal reveal-media">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/brand-photos/notebook-wireframe-wide.jpg" alt="" />
-              <figcaption><span className="tick" />構成を紙に書き出すところから、一緒に進めます。</figcaption>
             </figure>
 
             <div className="mini-wrap reveal" id="worksMiniWrap">
@@ -411,7 +405,7 @@ export default function Home() {
             <ul className="reasons-list reveal">
               <li><span className="tick" />公開して終わりにせず、その後の改善提案まで行います。</li>
               <li><span className="tick" />デザインの前に、お店の魅力をどう伝えるかを一緒に考えます。</li>
-              <li><span className="tick" />パン屋の現場に立っているからこそ、日々の忙しさの中でも続けられる仕組みを考えます。</li>
+              <li><span className="tick" />一人だからこそ、密なやり取りができます。</li>
             </ul>
           </section>
 
@@ -497,27 +491,22 @@ export default function Home() {
             <p className="section-sub reveal" style={{ marginTop: 32, marginBottom: 0 }}>まずはお気軽にご相談ください。ご予算やご希望に合わせたご提案も可能です。</p>
           </section>
 
-          <section id="founder" className="section section--tight">
+          <section id="founder" className="section founder-section">
             <div className="eyebrow reveal">Founder</div>
-            <h2 className="section-heading reveal">パン屋で働きながら、つくっています。</h2>
+            <h2 className="section-heading reveal">一人で、最後まで担当します。</h2>
             <figure className="founder-photo reveal reveal-media">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/brand-photos/office-room-wide.jpg" alt="" style={{ objectPosition: "center 42%" }} />
             </figure>
             <div className="founder-body">
-              <p className="reveal">Second Rootは、一人で運営しています。</p>
-              <p className="reveal">普段はパン屋の現場に立ちながら、地域のお店のホームページを制作しています。</p>
-              <p className="reveal">「更新が面倒で、つい後回しになる」感覚も、「忙しい合間に、お店を続ける大変さ」も、実感として分かります。</p>
-              <p className="reveal">パン屋の仕事は主に早朝が中心のため、平日夜と休日を中心にご連絡・制作対応をしています。ご連絡には、原則24時間以内に返信します。</p>
-              <p className="reveal">制作には、AIを開発パートナーとして活用しています。コードの品質を確認し、表示の崩れや動作の不具合を減らすために使うもので、内容や仕上がりの責任は、すべて自分自身にあります。</p>
+              <p className="reveal">ご相談から公開後の運用まで、同じ人間が一貫して担当します。</p>
+              <p className="reveal">公開して終わりにせず、お店の変化に合わせて長く伴走します。</p>
+              <p className="reveal">ご連絡には、原則24時間以内に返信します。</p>
             </div>
             <div className="signature reveal">Second Root</div>
 
             <ul className="promise-list reveal">
-              <li className="promise-item"><span className="tick" />専門用語をできるだけ使わず、説明します。</li>
               <li className="promise-item"><span className="tick" />できないことを、できるとは言いません。</li>
-              <li className="promise-item"><span className="tick" />お店に必要な機能を、一緒に整理します。</li>
-              <li className="promise-item"><span className="tick" />更新しやすい仕組みを考えます。</li>
               <li className="promise-item"><span className="tick" />公開して終わりではなく、その後の使い方まで考えます。</li>
               <li className="promise-item"><span className="tick" />不要な機能や、余分な費用は提案しません。</li>
             </ul>
