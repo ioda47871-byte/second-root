@@ -208,13 +208,21 @@ export default function Home() {
                 </div>
               </div>
               <div className="hero-visual">
-                <div className="parallax" data-parallax="0.08">
-                  <div className="hero-float">
-                    <MacBookFrame
-                      src="/screenshots-source/home-desktop.png"
-                      alt="Brot Yanagi トップページ(PC版)"
-                      aspectRatio={1903 / 828}
-                    />
+                <div className="hero-scene">
+                  <div className="hero-scene-light" aria-hidden="true" />
+                  <div className="hero-scene-blob hero-scene-blob--a" aria-hidden="true" />
+                  <div className="hero-scene-blob hero-scene-blob--b" aria-hidden="true" />
+                  <div className="parallax" data-parallax="0.08">
+                    <div className="hero-stage">
+                      <div className="hero-float">
+                        <MacBookFrame
+                          src="/screenshots-source/home-desktop.png"
+                          alt="Brot Yanagi トップページ(PC版)"
+                          aspectRatio={1903 / 828}
+                        />
+                      </div>
+                      <div className="hero-shadow" aria-hidden="true" />
+                    </div>
                   </div>
                 </div>
                 <p className="hero-visual-caption">制作実績 — Brot Yanagi</p>
@@ -248,7 +256,7 @@ export default function Home() {
             </div>
           </section>
 
-          <section id="works" className="section section--roomy">
+          <section id="works" className="section section--roomy section--wide">
             <div className="eyebrow reveal">Works</div>
             <h2 className="section-heading reveal">テンプレートではなく、お店ごとに設計します。</h2>
             <p className="section-sub reveal">相談から公開後まで、一人で責任を持って対応します。<br />この線は、事例が増えるたびに長くなっていきます。</p>
@@ -263,7 +271,7 @@ export default function Home() {
 
               <div className="mini-list">
                 <div id="case-brot">
-                  <div className="eyebrow" style={{ marginBottom: 8 }}>Case Study</div>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>Case Study — 01</div>
                   <h3 className="case-name">Brot Yanagi<span className="case-type"> — パン屋</span></h3>
                   <div className="case-real">
                     <div className="case-visual">
@@ -295,12 +303,13 @@ export default function Home() {
                       <p className="case-photo-caption">実際に公開しているBrot Yanagiの画面(PC・スマホ)</p>
                     </div>
                     <div className="case-story">
-                      <p className="case-result">Instagramだけの運営から、<br />更新も集客も自分たちで回せるサイトへ。</p>
+                      <div className="case-story-kicker">Result</div>
+                      <p className="case-result">Instagramだけの運営から、<br />更新も集客も自分たちで回せる<br />サイトへ。</p>
                       <dl>
-                        <div className="stage"><span className="stage-no">01</span><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div>
-                        <div className="stage"><span className="stage-no">02</span><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div>
-                        <div className="stage"><span className="stage-no">03</span><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div>
-                        <div className="stage"><span className="stage-no">04</span><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div>
+                        <div className="stage"><span className="stage-no">01</span><div className="stage-body"><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div></div>
+                        <div className="stage"><span className="stage-no">02</span><div className="stage-body"><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div></div>
+                        <div className="stage"><span className="stage-no">03</span><div className="stage-body"><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div></div>
+                        <div className="stage"><span className="stage-no">04</span><div className="stage-body"><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div></div>
                       </dl>
                     </div>
                   </div>
@@ -311,32 +320,38 @@ export default function Home() {
                     <p className="case-photo-caption">パンの香りに包まれる、あたたかい空間です。</p>
                   </div>
                   <div className="gallery-photos reveal-group">
-                    <figure className="gallery-photo gallery-photo--lead reveal reveal-media">
+                    {/* these three use pre-cropped source files (see
+                        scripts/crop-gallery-sources.mjs) — a straight
+                        rectangular trim that removes the site chrome and a
+                        floating demo-tool badge baked into the original
+                        captures, done once so no CSS crop math has to fight
+                        it. Nothing inside the kept region is altered. */}
+                    <figure className="gallery-photo gallery-photo--primary reveal reveal-media">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src="/screenshots-source/exterior-photo.png"
+                        src="/screenshots-source/exterior-photo-crop.png"
                         alt="Brot Yanagi 外観"
-                        style={{ aspectRatio: 16 / 9, objectPosition: "center 42%" }}
+                        style={{ aspectRatio: 16 / 9, objectPosition: "center 45%" }}
                       />
                       <figcaption><span className="tick" />外観</figcaption>
                     </figure>
-                    <figure className="gallery-photo reveal reveal-media">
+                    <figure className="gallery-photo gallery-photo--portrait reveal reveal-media">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src="/screenshots-source/entrance-photo.png"
-                        alt="Brot Yanagi エントランス"
-                        style={{ aspectRatio: 1.6, objectPosition: "center 50%" }}
-                      />
-                      <figcaption><span className="tick" />エントランス</figcaption>
-                    </figure>
-                    <figure className="gallery-photo reveal reveal-media">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src="/screenshots-source/interior-photo.jpeg"
+                        src="/screenshots-source/interior-photo-crop.jpeg"
                         alt="Brot Yanagi 内観"
-                        style={{ aspectRatio: 1, objectPosition: "center 35%" }}
+                        style={{ aspectRatio: 0.8, objectPosition: "center 50%" }}
                       />
                       <figcaption><span className="tick" />内観</figcaption>
+                    </figure>
+                    <figure className="gallery-photo gallery-photo--secondary reveal reveal-media">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/screenshots-source/entrance-photo-crop.png"
+                        alt="Brot Yanagi エントランス"
+                        style={{ aspectRatio: 1.5, objectPosition: "center 50%" }}
+                      />
+                      <figcaption><span className="tick" />エントランス</figcaption>
                     </figure>
                   </div>
                 </div>
@@ -358,21 +373,30 @@ export default function Home() {
             <div className="eyebrow reveal">Services</div>
             <h2 className="section-heading reveal">できることを、3つに整理しました。</h2>
             <p className="section-sub reveal">サービス一覧というより、実際に対応できる範囲を、正直にお伝えします。</p>
-            <div className="service-grid reveal">
-              <div className="service-card">
-                <h3 className="pillar-name">サイト制作</h3>
-                <p className="pillar-desc">お店の紹介や商品情報を、分かりやすく伝えるホームページをつくります。</p>
-                <ul className="pillar-items"><li>スマートフォン対応</li><li>基本的なSEO設計</li></ul>
+            <div className="service-list reveal">
+              <div className="service-item">
+                <span className="service-no">01</span>
+                <div>
+                  <h3 className="pillar-name">サイト制作</h3>
+                  <p className="pillar-desc">お店の紹介や商品情報を、分かりやすく伝えるホームページをつくります。</p>
+                  <ul className="pillar-items"><li>スマートフォン対応</li><li>基本的なSEO設計</li></ul>
+                </div>
               </div>
-              <div className="service-card">
-                <h3 className="pillar-name">更新の仕組みづくり</h3>
-                <p className="pillar-desc">営業時間や商品情報を、ご自身で更新できる仕組みを整えます。</p>
-                <ul className="pillar-items"><li>CMS導入</li><li>Instagramなど外部連携</li></ul>
+              <div className="service-item">
+                <span className="service-no">02</span>
+                <div>
+                  <h3 className="pillar-name">更新の仕組みづくり</h3>
+                  <p className="pillar-desc">営業時間や商品情報を、ご自身で更新できる仕組みを整えます。</p>
+                  <ul className="pillar-items"><li>CMS導入</li><li>Instagramなど外部連携</li></ul>
+                </div>
               </div>
-              <div className="service-card">
-                <h3 className="pillar-name">公開後の伴走</h3>
-                <p className="pillar-desc">公開して終わりにせず、その後の相談や調整に対応します。</p>
-                <ul className="pillar-items"><li>無料診断</li><li>修正・更新対応</li></ul>
+              <div className="service-item">
+                <span className="service-no">03</span>
+                <div>
+                  <h3 className="pillar-name">公開後の伴走</h3>
+                  <p className="pillar-desc">公開して終わりにせず、その後の相談や調整に対応します。</p>
+                  <ul className="pillar-items"><li>無料診断</li><li>修正・更新対応</li></ul>
+                </div>
               </div>
             </div>
 
