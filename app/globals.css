@@ -14,12 +14,10 @@
   --gutter:132px;
   --measure:34em;
   --device-silver:#EDEBE5;
-  /* two-layer shadows (tight contact + soft ambient) read as real light,
-     not a flat drop-shadow default */
-  --shadow-soft:0 2px 5px rgba(31,26,22,.07), 0 30px 60px -28px rgba(31,26,22,.24);
-  --shadow-photo:0 2px 6px rgba(31,26,22,.07), 0 28px 52px -24px rgba(31,26,22,.22);
-  --shadow-drop:0 10px 16px rgba(31,26,22,.13);
-  --shadow-drop-ambient:0 22px 34px rgba(31,26,22,.1);
+  /* kept quiet and single-layer on purpose — no stacked/glowing shadows */
+  --shadow-soft:0 14px 28px -18px rgba(31,26,22,.16);
+  --shadow-photo:0 12px 24px -16px rgba(31,26,22,.14);
+  --shadow-drop:0 10px 18px -8px rgba(31,26,22,.14);
   --ease:cubic-bezier(.22,.61,.36,1);
   color-scheme: light;
 }
@@ -45,7 +43,7 @@ a{ color:inherit; }
 body::before{
   content:"";
   position:fixed; inset:0; z-index:60; pointer-events:none;
-  opacity:.025;
+  opacity:.035;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
 
@@ -59,11 +57,8 @@ body::before{
 .topbar{
   position:fixed; top:0; left:0; right:0; z-index:40;
   display:flex; align-items:center; justify-content:space-between;
-  padding:22px clamp(24px,5vw,56px) 40px;
+  padding:22px clamp(24px,5vw,56px);
   pointer-events:none;
-  background:linear-gradient(to bottom, rgba(251,250,246,.82) 0%, rgba(251,250,246,.5) 55%, rgba(251,250,246,0) 100%);
-  backdrop-filter:blur(6px);
-  -webkit-backdrop-filter:blur(6px);
 }
 .wordmark{
   font-family:var(--font-serif); font-size:1rem; letter-spacing:.06em;
@@ -141,57 +136,28 @@ body::before{
    column of text. */
 .section--wide{ max-width:1320px; }
 
-/* hero — allowed a wider ceiling than other sections so it can carry more
-   scale; this is the one place "堂々とした第一印象" matters most. */
+/* hero — a single full-bleed brand photo with the copy overlaid on a
+   light scrim, not a two-column split. The photo carries the "quiet
+   craft" impression; nothing else in the section competes with it. */
 .hero{
   min-height:100svh; max-width:1280px;
-  display:flex; flex-direction:column; justify-content:center;
-  padding-top:clamp(120px,16vw,160px);
-  position:relative;
+  margin:0 auto; padding:0;
+  display:flex; align-items:flex-end;
+  position:relative; overflow:hidden;
 }
-.hero-glow{
-  position:absolute; top:50%; right:0; width:720px; height:720px;
-  transform:translateY(-50%); pointer-events:none; z-index:0;
-  background:radial-gradient(circle, rgba(53,94,76,.1) 0%, rgba(53,94,76,0) 68%);
+.hero-photo{ position:absolute; inset:0; z-index:0; }
+.hero-photo img{ display:block; width:100%; height:100%; object-fit:cover; object-position:center 42%; }
+.hero-photo-scrim{
+  position:absolute; inset:0;
+  background:linear-gradient(100deg,
+    rgba(251,250,246,.95) 0%, rgba(251,250,246,.86) 30%,
+    rgba(251,250,246,.38) 55%, rgba(251,250,246,0) 74%);
 }
-.hero-grid{ position:relative; z-index:1; display:grid; grid-template-columns:1fr; gap:48px; align-items:center; }
-@media (min-width:960px){
-  .hero-grid{ grid-template-columns:1.1fr 1.15fr; gap:56px; }
+.hero-photo-content{
+  position:relative; z-index:1;
+  padding:clamp(120px,16vw,160px) clamp(24px,5vw,64px) clamp(72px,10vw,108px);
+  max-width:27em;
 }
-.hero-visual{ opacity:0; }
-
-/* the "desk scene": a warm directional light wash plus two heavily-blurred
-   soft shapes standing in for out-of-focus room depth (a plant, a wall) —
-   deliberately abstract, never pretending to be a photograph, just enough
-   to stop the laptop reading as a PNG pasted on flat paper. Kept very
-   subtle on purpose: this should read as air, not as visible decoration. */
-.hero-scene{ position:relative; padding:4% 3% 7%; }
-.hero-scene-light{
-  position:absolute; top:-10%; left:-8%; width:58%; height:58%;
-  background:radial-gradient(circle, rgba(255,250,232,.55) 0%, rgba(255,250,232,0) 72%);
-  pointer-events:none; z-index:0;
-}
-.hero-scene-blob{ position:absolute; border-radius:50%; filter:blur(60px); pointer-events:none; z-index:0; }
-.hero-scene-blob--a{ width:220px; height:220px; background:var(--accent-soft); opacity:.4; top:-4%; right:6%; }
-.hero-scene-blob--b{ width:180px; height:180px; background:#EFE3C6; opacity:.35; bottom:4%; left:4%; }
-.hero-stage{ position:relative; z-index:1; }
-.hero-float{ position:relative; z-index:2; }
-.hero-shadow{
-  position:absolute; left:14%; right:10%; bottom:1%; height:20px; z-index:1;
-  background:radial-gradient(ellipse at center, rgba(31,26,22,.3) 0%, rgba(31,26,22,0) 78%);
-  filter:blur(2px);
-}
-.hero-visual-caption{
-  font-family:var(--font-label),var(--font-sans);
-  font-size:.7rem; letter-spacing:.1em; text-transform:uppercase;
-  color:var(--gray); text-align:right; margin:18px 4px 0 0;
-}
-@media (prefers-reduced-motion:no-preference){
-  .hero-visual{ animation:settle-in 1.2s var(--ease) 1.6s forwards; }
-  .hero-float{ animation:hero-float 7s ease-in-out infinite; }
-}
-@media (prefers-reduced-motion:reduce){ .hero-visual{ opacity:1; } }
-@keyframes hero-float{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-10px); } }
 .hero-eyebrow{ opacity:0; }
 .hero-title{
   font-family:var(--font-serif); font-weight:500;
@@ -280,10 +246,27 @@ body::before{
 }
 .section-sub{ color:var(--gray); max-width:var(--measure); margin-bottom:52px; }
 
-/* philosophy */
+/* philosophy — text and photo alternate row by row instead of running
+   as one long column of paragraphs. */
+.philosophy{ padding-top:clamp(64px,10vw,120px); padding-bottom:clamp(64px,10vw,120px); }
+.philosophy-row{
+  display:flex; flex-direction:column; gap:32px;
+  align-items:center; margin-top:48px;
+}
+@media (min-width:860px){
+  /* both rows use plain row direction — the alternation comes from each
+     row's own DOM order (photo-first vs text-first), not from reversing */
+  .philosophy-row{ flex-direction:row; gap:64px; }
+  .philosophy-row > *{ flex:1 1 0; min-width:0; }
+}
 .philosophy-body p{ margin:0 0 1.15em; max-width:var(--measure); font-size:1.02rem; }
-.philosophy-story{ margin-top:36px; padding-top:32px; border-top:1px solid var(--hairline); }
+.philosophy-story{ width:100%; }
 .philosophy-story p{ margin:0 0 1.15em; max-width:var(--measure); font-size:1.02rem; }
+.philosophy-photo{ margin:0; width:100%; }
+.philosophy-photo img{
+  display:block; width:100%; height:auto; aspect-ratio:4/3; object-fit:cover;
+  border-radius:6px; box-shadow:var(--shadow-photo);
+}
 
 /* generic label/description list — used by Pricing */
 .info-list{ display:flex; flex-direction:column; max-width:720px; }
@@ -379,6 +362,19 @@ body::before{
 
 @media (max-width:640px){ .info-row{ grid-template-columns:1fr; gap:8px; } }
 
+/* a small process moment before the case study — establishes that the
+   work starts on paper, not that this one image is the main event */
+.works-process{ margin:40px 0 56px; max-width:620px; }
+.works-process img{
+  display:block; width:100%; height:auto; aspect-ratio:16/9; object-fit:cover;
+  border-radius:6px; box-shadow:var(--shadow-photo);
+}
+.works-process figcaption{
+  margin-top:14px; display:flex; align-items:center; gap:10px;
+  font-family:var(--font-label),var(--font-sans);
+  font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--gray);
+}
+
 /* generic mini-spine — used by Works (case list) and Process (steps) */
 .mini-wrap{ display:grid; grid-template-columns:24px 1fr; column-gap:22px; max-width:1180px; }
 .mini-spine{ position:relative; grid-column:1; }
@@ -433,9 +429,21 @@ body::before{
   .works-devices .phone-frame.is-back,
   .works-devices .phone-frame.is-front{ position:static; width:150px; transform:none; }
 }
+/* the result line is Second Root's own claim about what it delivered —
+   giving it a quiet pull-quote mark makes it read as the studio's
+   editorial voice, not a caption under someone else's screenshot. */
 .case-result{
+  position:relative;
   font-family:var(--font-serif); font-size:1.55rem; line-height:1.55; font-weight:500;
   color:var(--ink); margin:0 0 36px; text-wrap:balance;
+}
+.case-result::before{
+  content:"\201C"; position:absolute; left:-38px; top:-.3em;
+  font-family:var(--font-serif); font-size:3rem; line-height:1;
+  color:var(--gold); opacity:.5; pointer-events:none;
+}
+@media (max-width:960px){
+  .case-result::before{ position:static; display:block; margin-bottom:-.25em; }
 }
 .case-story dl{ margin:0; }
 /* the number carries the editorial weight — large, quiet (low-opacity
@@ -473,7 +481,7 @@ body::before{
    stays sharp-cornered. */
 .macbook-frame{
   width:100%; transform:rotate(-1deg);
-  filter:drop-shadow(var(--shadow-drop)) drop-shadow(var(--shadow-drop-ambient));
+  filter:drop-shadow(var(--shadow-drop));
 }
 .macbook-screen{
   background:linear-gradient(155deg,#28211d 0%,var(--ink) 55%);
@@ -500,7 +508,7 @@ body::before{
 }
 
 .browser-frame{
-  border-radius:16px; overflow:hidden; background:var(--bg);
+  border-radius:8px; overflow:hidden; background:var(--bg);
   box-shadow:var(--shadow-photo);
 }
 .browser-frame-bar{
@@ -519,7 +527,7 @@ body::before{
 
 .phone-frame{
   width:180px; position:relative;
-  filter:drop-shadow(var(--shadow-drop)) drop-shadow(var(--shadow-drop-ambient));
+  filter:drop-shadow(var(--shadow-drop));
 }
 .phone-bezel{
   background:linear-gradient(160deg,#28211d 0%,var(--ink) 55%);
@@ -543,6 +551,7 @@ body::before{
   gap:28px 24px; margin-top:64px; max-width:1180px;
 }
 .gallery-photo{ margin:0; }
+.gallery-photo-frame{ position:relative; }
 /* slots are named by shape/role, not by which photo fills them — each
    real photo is only safe to crop to the aspect ratio its own source
    composition allows without exposing the demo-tool chrome baked into
@@ -556,9 +565,14 @@ body::before{
   grid-column:3 / 8; grid-row:2; z-index:3;
   margin-top:clamp(-120px,-9vw,-64px);
 }
+/* the tilt lives on the inner frame, not the figure itself — the figure
+   already owns the reveal-on-scroll transform, and an element can only
+   have one transform source without one silently overwriting the other */
+.gallery-photo--portrait .gallery-photo-frame{ transform:rotate(1deg); }
+.gallery-photo--secondary .gallery-photo-frame{ transform:rotate(-.8deg); }
 .gallery-photo img{
   display:block; width:100%; height:auto; aspect-ratio:4/3; object-fit:cover; object-position:top;
-  border-radius:16px; box-shadow:var(--shadow-photo);
+  border-radius:6px; box-shadow:var(--shadow-photo);
   transition:transform .6s var(--ease);
 }
 .gallery-photo:hover img{ transform:scale(1.015); }
@@ -583,10 +597,21 @@ body::before{
 .cta-band p{ margin:0; color:var(--gray); font-size:.95rem; max-width:28em; }
 
 /* process steps */
+.step-item{ display:grid; grid-template-columns:2.1rem 1fr; gap:20px; align-items:start; }
+.step-no{
+  font-family:var(--font-serif); font-size:1.7rem; line-height:1.3; font-weight:500;
+  color:var(--gold); opacity:.55; font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+}
 .step-name{ font-family:var(--font-serif); font-weight:500; font-size:1.05rem; margin:0 0 6px; }
 .step-desc{ color:var(--gray); font-size:.94rem; line-height:1.85; margin:0; max-width:32em; }
+@media (max-width:480px){ .step-item{ grid-template-columns:1.6rem 1fr; gap:14px; } .step-no{ font-size:1.3rem; } }
 
 /* founder */
+.founder-photo{ margin:32px 0 44px; max-width:var(--measure); }
+.founder-photo img{
+  display:block; width:100%; height:auto; aspect-ratio:16/8; object-fit:cover;
+  border-radius:6px; box-shadow:var(--shadow-photo);
+}
 .founder-body p{ margin:0 0 1.1em; max-width:var(--measure); }
 .signature{ margin-top:32px; font-family:var(--font-serif); letter-spacing:.04em; color:var(--gray); font-size:.95rem; }
 .promise-list{ display:flex; flex-direction:column; gap:16px; margin-top:40px; max-width:32em; }
@@ -614,6 +639,21 @@ body::before{
 /* contact */
 .contact-echo{ font-family:var(--font-serif); color:var(--gray); font-size:1rem; margin-bottom:10px; }
 .contact-title{ font-family:var(--font-serif); font-size:clamp(1.6rem,3.4vw,2.3rem); line-height:1.65; margin:6px 0 20px; text-wrap:balance; }
+
+/* closing image — a warm, late-evening desk. Cropped to the window/
+   plant/coffee side of the frame only: the laptop screen in this
+   source photo carries mismatched placeholder copy that can't be
+   shown, so the crop keeps well clear of it entirely rather than
+   trying to obscure it. */
+.contact-photo{ margin:56px 0 8px; max-width:420px; }
+.contact-photo img{
+  display:block; width:100%; height:auto; object-fit:cover;
+  border-radius:6px; box-shadow:var(--shadow-photo);
+}
+.contact-photo figcaption{
+  margin-top:16px;
+  font-family:var(--font-serif); font-size:1rem; color:var(--gray);
+}
 
 .btn-primary{
   display:inline-flex; align-items:center; gap:10px;

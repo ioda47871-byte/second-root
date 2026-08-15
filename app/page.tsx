@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import ContactForm from "@/components/ContactForm";
-import MacBookFrame from "@/components/MacBookFrame";
 import BrowserFrame from "@/components/BrowserFrame";
 import PhoneFrame from "@/components/PhoneFrame";
 
@@ -195,37 +194,19 @@ export default function Home() {
 
         <main className="content">
 
-          <section id="home" className="section hero">
-            <div className="hero-glow" aria-hidden="true" />
-            <div className="hero-grid">
-              <div className="hero-copy">
-                <div className="hero-eyebrow eyebrow">Second Root</div>
-                <h1 className="hero-title">事業に、<br />もう一つの根を。</h1>
-                <p className="hero-service"><span className="tick" />地域のお店のホームページ制作</p>
-                <p className="hero-sub">ホームページは、公開した日がゴールではありません。<br />公開後の更新や見直しまで、一緒に考えていきます。</p>
-                <div className="hero-cta">
-                  <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
-                </div>
-              </div>
-              <div className="hero-visual">
-                <div className="hero-scene">
-                  <div className="hero-scene-light" aria-hidden="true" />
-                  <div className="hero-scene-blob hero-scene-blob--a" aria-hidden="true" />
-                  <div className="hero-scene-blob hero-scene-blob--b" aria-hidden="true" />
-                  <div className="parallax" data-parallax="0.08">
-                    <div className="hero-stage">
-                      <div className="hero-float">
-                        <MacBookFrame
-                          src="/screenshots-source/home-desktop.png"
-                          alt="Brot Yanagi トップページ(PC版)"
-                          aspectRatio={1903 / 828}
-                        />
-                      </div>
-                      <div className="hero-shadow" aria-hidden="true" />
-                    </div>
-                  </div>
-                </div>
-                <p className="hero-visual-caption">制作実績 — Brot Yanagi</p>
+          <section id="home" className="section hero hero--photo">
+            <div className="hero-photo">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand-photos/desk-laptop-back-daylight.jpg" alt="" />
+              <div className="hero-photo-scrim" aria-hidden="true" />
+            </div>
+            <div className="hero-photo-content">
+              <div className="hero-eyebrow eyebrow">Second Root</div>
+              <h1 className="hero-title">事業に、<br />もう一つの根を。</h1>
+              <p className="hero-service"><span className="tick" />地域のお店のホームページ制作</p>
+              <p className="hero-sub">ホームページは、公開した日がゴールではありません。<br />公開後の更新や見直しまで、一緒に考えていきます。</p>
+              <div className="hero-cta">
+                <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
               </div>
             </div>
             <div className="scroll-cue"><div className="line" /><span>Scroll</span></div>
@@ -241,18 +222,32 @@ export default function Home() {
             </ul>
           </div>
 
-          <section id="philosophy" className="section section--tight">
+          <section id="philosophy" className="section philosophy">
             <div className="eyebrow reveal">Philosophy</div>
             <h2 className="section-heading reveal">更新しやすく、相談しやすく。</h2>
-            <div className="philosophy-body">
-              <p className="reveal">メニューが変わる。営業時間が変わる。新しい取り組みが始まる。</p>
-              <p className="reveal">そのたびに、ご自身で更新できて、気軽に相談できることを大事にしています。</p>
-              <p className="reveal">完成より、成長を大事にしています。</p>
+
+            <div className="philosophy-row">
+              <div className="philosophy-body">
+                <p className="reveal">メニューが変わる。営業時間が変わる。新しい取り組みが始まる。</p>
+                <p className="reveal">そのたびに、ご自身で更新できて、気軽に相談できることを大事にしています。</p>
+                <p className="reveal">完成より、成長を大事にしています。</p>
+              </div>
+              <figure className="philosophy-photo reveal reveal-media">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand-photos/wall-shadow-plant-a.jpg" alt="" style={{ objectPosition: "center 55%" }} />
+              </figure>
             </div>
-            <div className="philosophy-story">
-              <p className="reveal">Second Rootという名前には、意味があります。</p>
-              <p className="reveal">すでにお店には、大切にしてきたものがあります。看板、常連さん、味、接客。</p>
-              <p className="reveal">ホームページは、それに取って代わるものではなく、すでにあるものを、もう一つの形で支えるためのものだと考えています。</p>
+
+            <div className="philosophy-row">
+              <figure className="philosophy-photo reveal reveal-media">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand-photos/table-shadow-empty.jpg" alt="" style={{ objectPosition: "center 60%" }} />
+              </figure>
+              <div className="philosophy-story">
+                <p className="reveal">Second Rootという名前には、意味があります。</p>
+                <p className="reveal">すでにお店には、大切にしてきたものがあります。看板、常連さん、味、接客。</p>
+                <p className="reveal">ホームページは、それに取って代わるものではなく、すでにあるものを、もう一つの形で支えるためのものだと考えています。</p>
+              </div>
             </div>
           </section>
 
@@ -260,6 +255,12 @@ export default function Home() {
             <div className="eyebrow reveal">Works</div>
             <h2 className="section-heading reveal">テンプレートではなく、お店ごとに設計します。</h2>
             <p className="section-sub reveal">相談から公開後まで、一人で責任を持って対応します。<br />この線は、事例が増えるたびに長くなっていきます。</p>
+
+            <figure className="works-process reveal reveal-media">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand-photos/notebook-wireframe-wide.jpg" alt="" />
+              <figcaption><span className="tick" />構成を紙に書き出すところから、一緒に進めます。</figcaption>
+            </figure>
 
             <div className="mini-wrap reveal" id="worksMiniWrap">
               <div className="mini-spine">
@@ -327,30 +328,36 @@ export default function Home() {
                         captures, done once so no CSS crop math has to fight
                         it. Nothing inside the kept region is altered. */}
                     <figure className="gallery-photo gallery-photo--primary reveal reveal-media">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src="/screenshots-source/exterior-photo-crop.png"
-                        alt="Brot Yanagi 外観"
-                        style={{ aspectRatio: 16 / 9, objectPosition: "center 45%" }}
-                      />
+                      <div className="gallery-photo-frame">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src="/screenshots-source/exterior-photo-crop.png"
+                          alt="Brot Yanagi 外観"
+                          style={{ aspectRatio: 16 / 9, objectPosition: "center 45%" }}
+                        />
+                      </div>
                       <figcaption><span className="tick" />外観</figcaption>
                     </figure>
                     <figure className="gallery-photo gallery-photo--portrait reveal reveal-media">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src="/screenshots-source/interior-photo-crop.jpeg"
-                        alt="Brot Yanagi 内観"
-                        style={{ aspectRatio: 0.8, objectPosition: "center 50%" }}
-                      />
+                      <div className="gallery-photo-frame">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src="/screenshots-source/interior-photo-crop.jpeg"
+                          alt="Brot Yanagi 内観"
+                          style={{ aspectRatio: 0.8, objectPosition: "center 50%" }}
+                        />
+                      </div>
                       <figcaption><span className="tick" />内観</figcaption>
                     </figure>
                     <figure className="gallery-photo gallery-photo--secondary reveal reveal-media">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src="/screenshots-source/entrance-photo-crop.png"
-                        alt="Brot Yanagi エントランス"
-                        style={{ aspectRatio: 1.5, objectPosition: "center 50%" }}
-                      />
+                      <div className="gallery-photo-frame">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src="/screenshots-source/entrance-photo-crop.png"
+                          alt="Brot Yanagi エントランス"
+                          style={{ aspectRatio: 1.5, objectPosition: "center 50%" }}
+                        />
+                      </div>
                       <figcaption><span className="tick" />エントランス</figcaption>
                     </figure>
                   </div>
@@ -426,12 +433,12 @@ export default function Home() {
               </div>
 
               <div className="mini-list" style={{ gap: 36 }}>
-                <div id="step-1"><h3 className="step-name">相談</h3><p className="step-desc">まずは、今困っていることをお聞きします。</p></div>
-                <div id="step-2"><h3 className="step-name">ヒアリング</h3><p className="step-desc">お店の状況、お客様層、伝えたいことを整理します。</p></div>
-                <div id="step-3"><h3 className="step-name">提案</h3><p className="step-desc">必要な機能と構成を、分かりやすい形でご提案します。</p></div>
-                <div id="step-4"><h3 className="step-name">制作</h3><p className="step-desc">デザインとコーディングを進め、途中経過もご確認いただきます。</p></div>
-                <div id="step-5"><h3 className="step-name">確認</h3><p className="step-desc">公開前に、内容と動作を一緒に確認します。</p></div>
-                <div id="step-6"><h3 className="step-name">公開</h3><p className="step-desc">ドメイン・サーバーの設定を行い、公開します。</p></div>
+                <div id="step-1" className="step-item"><span className="step-no">01</span><div><h3 className="step-name">相談</h3><p className="step-desc">まずは、今困っていることをお聞きします。</p></div></div>
+                <div id="step-2" className="step-item"><span className="step-no">02</span><div><h3 className="step-name">ヒアリング</h3><p className="step-desc">お店の状況、お客様層、伝えたいことを整理します。</p></div></div>
+                <div id="step-3" className="step-item"><span className="step-no">03</span><div><h3 className="step-name">提案</h3><p className="step-desc">必要な機能と構成を、分かりやすい形でご提案します。</p></div></div>
+                <div id="step-4" className="step-item"><span className="step-no">04</span><div><h3 className="step-name">制作</h3><p className="step-desc">デザインとコーディングを進め、途中経過もご確認いただきます。</p></div></div>
+                <div id="step-5" className="step-item"><span className="step-no">05</span><div><h3 className="step-name">確認</h3><p className="step-desc">公開前に、内容と動作を一緒に確認します。</p></div></div>
+                <div id="step-6" className="step-item"><span className="step-no">06</span><div><h3 className="step-name">公開</h3><p className="step-desc">ドメイン・サーバーの設定を行い、公開します。</p></div></div>
               </div>
             </div>
           </section>
@@ -493,6 +500,10 @@ export default function Home() {
           <section id="founder" className="section section--tight">
             <div className="eyebrow reveal">Founder</div>
             <h2 className="section-heading reveal">パン屋で働きながら、つくっています。</h2>
+            <figure className="founder-photo reveal reveal-media">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand-photos/office-room-wide.jpg" alt="" style={{ objectPosition: "center 42%" }} />
+            </figure>
             <div className="founder-body">
               <p className="reveal">Second Rootは、一人で運営しています。</p>
               <p className="reveal">普段はパン屋の現場に立ちながら、地域のお店のホームページを制作しています。</p>
@@ -579,6 +590,12 @@ export default function Home() {
             <div className="contact-channels reveal">
               <ContactForm />
             </div>
+
+            <figure className="contact-photo reveal reveal-media">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand-photos/desk-night-crop.jpg" alt="" />
+              <figcaption>まずは、お気軽にご相談ください。</figcaption>
+            </figure>
 
             <div className="footer">
               <span>© 2026 Second Root</span>
