@@ -339,10 +339,21 @@ body::before{
   font-family:var(--font-label),var(--font-sans); font-size:.72rem; letter-spacing:.14em;
   text-transform:uppercase; color:var(--accent); margin:0;
 }
-.price-plan-for{ font-size:.9rem; color:var(--gray); margin:0 0 10px; }
-.price-plan-desc{ font-size:.96rem; line-height:1.9; color:var(--ink); margin:0; max-width:32em; }
+/* "for" is the line that actually answers "is this plan for me?" — it
+   needs to outweigh the fuller description, not sit quietly under it */
+.price-plan-for{
+  font-family:var(--font-serif); font-size:1.1rem; font-weight:500; color:var(--ink);
+  line-height:1.6; margin:0 0 12px; max-width:24em; text-wrap:balance;
+}
+.price-plan-desc{ font-size:.9rem; line-height:1.85; color:var(--gray); margin:0; max-width:32em; }
+/* the middle plan is where most work actually lands — given no room for
+   a "recommended" badge, it gets a slightly larger price and a touch
+   more air around it, so the eye settles there without being told to */
+.price-plan--featured{ padding-top:52px; padding-bottom:52px; }
+.price-plan--featured .price-plan-price{ font-size:2.3rem; }
 @media (max-width:640px){
   .price-plan{ grid-template-columns:1fr; gap:16px; }
+  .price-plan--featured{ padding-top:36px; padding-bottom:36px; }
 }
 
 .info-sublist{ list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }

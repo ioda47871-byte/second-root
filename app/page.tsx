@@ -449,17 +449,17 @@ export default function Home() {
                   <p className="price-plan-name">シンプルホームページ</p>
                 </div>
                 <div className="price-plan-body">
-                  <p className="price-plan-for">ホームページを初めて作る方に</p>
+                  <p className="price-plan-for">店舗紹介・会社紹介など、まずホームページを持ちたい方向け。</p>
                   <p className="price-plan-desc">オリジナルデザインで制作し、スマートフォン対応・お問い合わせフォームなど、必要な機能を備えたホームページを制作します。</p>
                 </div>
               </div>
-              <div className="price-plan">
+              <div className="price-plan price-plan--featured">
                 <div className="price-plan-figure">
                   <p className="price-plan-price">¥198,000<span className="unit">〜(税別)</span></p>
                   <p className="price-plan-name">更新できるホームページ</p>
                 </div>
                 <div className="price-plan-body">
-                  <p className="price-plan-for">ご自身で更新していきたい方に</p>
+                  <p className="price-plan-for">商品・営業時間・お知らせなどをご自身で更新したい方向け。</p>
                   <p className="price-plan-desc">営業時間や商品情報を更新できるCMSを導入し、Instagramなど必要な外部サービスとの連携にも対応します。</p>
                 </div>
               </div>
@@ -469,7 +469,7 @@ export default function Home() {
                   <p className="price-plan-name">オーダーメイド</p>
                 </div>
                 <div className="price-plan-body">
-                  <p className="price-plan-for">内容に応じてお見積もり</p>
+                  <p className="price-plan-for">予約・会員機能など、独自の仕組みが必要な方向け。</p>
                   <p className="price-plan-desc">予約機能や会員機能など、お店に必要な機能を一緒に整理し、最適な形でご提案します。</p>
                 </div>
               </div>
