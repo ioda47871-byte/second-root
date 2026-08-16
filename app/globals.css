@@ -308,42 +308,46 @@ body::before{
   .service-no{ font-size:1.4rem; }
 }
 
-/* pricing: three future-price rows, kept as a quiet list (not cards) */
-.pillar-list{ display:flex; flex-direction:column; gap:44px; max-width:720px; }
-.pillar{ border-top:1px solid var(--hairline); padding-top:32px; }
-.pillar:first-child{ border-top:none; padding-top:0; }
+/* shared with Services' numbered list above */
 .pillar-name{ font-family:var(--font-serif); font-weight:500; font-size:1.2rem; margin:0 0 10px; }
 .pillar-desc{ color:var(--gray); font-size:.96rem; line-height:1.9; max-width:32em; margin:0 0 16px; }
 .pillar-items{ display:flex; flex-wrap:wrap; gap:10px 24px; padding:0; margin:0; list-style:none; }
 .pillar-items li{ font-size:.85rem; color:var(--ink); position:relative; padding-left:16px; }
 .pillar-items li::before{ content:""; position:absolute; left:0; top:.65em; width:8px; height:1px; background:var(--accent); }
-.pillar-price{ font-weight:600; font-size:1.02rem; margin:0 0 10px; }
-.pillar-for{ color:var(--gray); font-size:.85rem; margin:0 0 6px; }
 
 .reasons-list{ display:flex; flex-direction:column; gap:14px; margin:40px 0 0; max-width:32em; }
 .reasons-list li{ display:flex; align-items:flex-start; gap:14px; font-size:.94rem; color:var(--ink); line-height:1.8; }
 .reasons-list li .tick{ margin-top:.65em; }
 .reasons-label{ margin:40px 0 0; }
 
-/* pricing: limited-time portfolio-building offer — set apart by a thin
-   accent rule and generous space, not a filled/bordered box. The whole
-   site avoids color blocks; this should be no exception. */
-.campaign-box{
-  border-top:2px solid var(--accent);
-  padding:32px 0 8px; margin:8px 0 32px; max-width:620px;
+/* pricing: three real plans, price-first for easy comparison — a
+   quiet list divided by hairlines, not cards, with no "recommended"
+   badge. Hierarchy comes from type scale and space only. */
+.price-plan-list{ display:flex; flex-direction:column; max-width:900px; }
+.price-plan{
+  display:grid; grid-template-columns:minmax(200px,260px) 1fr; gap:40px;
+  padding:40px 0; border-top:1px solid var(--hairline); align-items:baseline;
 }
-.campaign-label{ font-family:var(--font-label),var(--font-sans); font-size:.72rem; letter-spacing:.24em; text-transform:uppercase; color:var(--accent); font-weight:600; margin-bottom:14px; }
-.campaign-price{ font-family:var(--font-serif); font-size:2.6rem; font-weight:500; margin:0 0 18px; }
-.campaign-price .unit{ font-size:1rem; color:var(--gray); font-family:var(--font-sans); margin-left:8px; }
-.campaign-desc{ margin:0 0 20px; font-size:.95rem; line-height:1.85; max-width:32em; }
-.campaign-conditions{ list-style:none; margin:0 0 20px; padding:0; display:flex; flex-direction:column; gap:8px; }
-.campaign-conditions li{ font-size:.9rem; position:relative; padding-left:18px; }
-.campaign-conditions li::before{ content:""; position:absolute; left:0; top:.65em; width:8px; height:1px; background:var(--accent); }
-.campaign-note{ font-size:.9rem; margin:0 0 16px; max-width:32em; }
-.campaign-scope{ font-size:.82rem; color:var(--gray); margin:0 0 24px; max-width:32em; }
+.price-plan:first-child{ border-top:none; padding-top:0; }
+.price-plan-price{
+  font-family:var(--font-serif); font-size:2rem; font-weight:500;
+  color:var(--ink); margin:0 0 8px; line-height:1.2;
+}
+.price-plan-price .unit{ font-size:.82rem; color:var(--gray); font-family:var(--font-sans); margin-left:6px; }
+.price-plan-price--quote{ font-size:1.3rem; }
+.price-plan-name{
+  font-family:var(--font-label),var(--font-sans); font-size:.72rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--accent); margin:0;
+}
+.price-plan-for{ font-size:.9rem; color:var(--gray); margin:0 0 10px; }
+.price-plan-desc{ font-size:.96rem; line-height:1.9; color:var(--ink); margin:0; max-width:32em; }
+@media (max-width:640px){
+  .price-plan{ grid-template-columns:1fr; gap:16px; }
+}
 
-.future-price-label{ color:var(--gray); font-size:.85rem; margin:0 0 20px; }
-.future-pricing .pillar-name, .future-pricing .pillar-price{ color:var(--gray); }
+.info-sublist{ list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.info-sublist li{ position:relative; padding-left:16px; font-size:.94rem; color:var(--ink); }
+.info-sublist li::before{ content:""; position:absolute; left:0; top:.65em; width:8px; height:1px; background:var(--accent); }
 
 /* contact form */
 .diagnosis-box{
@@ -355,7 +359,7 @@ body::before{
 .diagnosis-box li{ font-size:.92rem; color:var(--ink); position:relative; padding-left:18px; }
 .diagnosis-box li::before{ content:""; position:absolute; left:0; top:.65em; width:8px; height:1px; background:var(--accent); }
 
-.contact-form{ display:flex; flex-direction:column; gap:20px; max-width:480px; }
+.contact-form{ display:flex; flex-direction:column; gap:20px; max-width:640px; width:100%; }
 .form-row label{ display:block; font-size:.82rem; color:var(--gray); margin-bottom:8px; }
 .form-row input, .form-row textarea{
   width:100%; border:none; border-bottom:1px solid var(--hairline-strong);
@@ -374,7 +378,12 @@ body::before{
 .form-status.is-error{ color:#9C3B2E; }
 
 /* future contact-channel row — form today, room for LINE etc. later */
+/* wider + centered on desktop so the form doesn't hug the left edge
+   with a large empty gap beside it — still well short of full-bleed */
 .contact-channels{ display:flex; flex-wrap:wrap; gap:16px; margin-top:32px; }
+@media (min-width:760px){
+  .contact-channels{ justify-content:center; }
+}
 
 @media (max-width:640px){ .info-row{ grid-template-columns:1fr; gap:8px; } }
 
@@ -661,13 +670,10 @@ body::before{
    source photo carries mismatched placeholder copy that can't be
    shown, so the crop keeps well clear of it entirely rather than
    trying to obscure it. */
-.contact-photo{ margin:56px 0 8px; max-width:420px; }
-.contact-photo img{
-  display:block; width:100%; height:auto; object-fit:cover;
-  border-radius:6px; box-shadow:var(--shadow-photo);
-}
-.contact-photo figcaption{
-  margin-top:18px;
+/* the section now closes on the form itself — no photo after it — so
+   this note sits just above the form as a quiet lead-in line instead */
+.contact-closing-note{
+  margin:40px 0 0;
   font-family:var(--font-serif); font-size:1.05rem; line-height:1.7; color:var(--gray);
 }
 

@@ -365,7 +365,7 @@ export default function Home() {
             </div>
 
             <div className="cta-band reveal">
-              <p>この事例のような形が、あなたのお店にも合うか。今なら実績制作価格(¥50,000)でご相談いただけます。</p>
+              <p>この事例のような形が、あなたのお店にも合うか。まずは無料診断でご相談ください。</p>
               <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
             </div>
           </section>
@@ -439,53 +439,65 @@ export default function Home() {
 
           <section id="pricing" className="section">
             <div className="eyebrow reveal">Pricing</div>
-            <h2 className="section-heading reveal">実績制作について</h2>
-            <p className="section-sub reveal">将来的には¥250,000〜を通常価格として予定しています。まずは、実績とお客様の声を大切にしたいと考えています。</p>
+            <h2 className="section-heading reveal">料金について</h2>
+            <p className="section-sub reveal">3つのプランを目安にご案内しています。<br />内容に応じて、柔軟にご提案します。</p>
 
-            <div className="campaign-box reveal">
-              <div className="campaign-label">実績制作価格</div>
-              <p className="campaign-price">¥50,000<span className="unit">(税込)</span></p>
-              <p className="campaign-desc">現在、Second Rootでは実績づくりのため、この価格でご案内しています。</p>
-              <ul className="campaign-conditions">
-                <li>制作事例として掲載可能</li>
-                <li>お客様の声を掲載可能</li>
-                <li>完成サイトへのリンク掲載可能</li>
-              </ul>
-              <p className="campaign-note">対応内容や制作への姿勢は、通常と変わりません。</p>
-              <p className="campaign-scope">実績制作価格は、シンプルな店舗サイトを対象としています。ECサイト、予約システム、会員機能など、特殊な機能をご希望の場合は、内容に応じて別途お見積りとなります。</p>
-              <a className="btn-primary" href="#contact">実績制作価格で相談する<span className="arrow">→</span></a>
-            </div>
-
-            <p className="future-price-label reveal">将来の通常価格(参考・現在はご案内していません)</p>
-            <div className="pillar-list reveal future-pricing">
-              <div className="pillar">
-                <h3 className="pillar-name">シンプル店舗サイト</h3>
-                <p className="pillar-price">¥250,000〜(税別)</p>
-                <p className="pillar-for">まずはお店の存在を伝えたい方に</p>
-                <p className="pillar-desc">1〜3ページ程度の構成。スマートフォン対応・基本的なSEO設計を含みます。</p>
+            <div className="price-plan-list reveal">
+              <div className="price-plan">
+                <div className="price-plan-figure">
+                  <p className="price-plan-price">¥98,000<span className="unit">〜(税別)</span></p>
+                  <p className="price-plan-name">シンプルホームページ</p>
+                </div>
+                <div className="price-plan-body">
+                  <p className="price-plan-for">ホームページを初めて作る方に</p>
+                  <p className="price-plan-desc">オリジナルデザインで制作し、スマートフォン対応・お問い合わせフォームなど、必要な機能を備えたホームページを制作します。</p>
+                </div>
               </div>
-              <div className="pillar">
-                <h3 className="pillar-name">CMS付きサイト</h3>
-                <p className="pillar-price">¥400,000〜(税別)</p>
-                <p className="pillar-for">ご自身で更新していきたい方に</p>
-                <p className="pillar-desc">営業時間や商品情報を更新できるCMSと、Instagramなど外部連携を含みます。</p>
+              <div className="price-plan">
+                <div className="price-plan-figure">
+                  <p className="price-plan-price">¥198,000<span className="unit">〜(税別)</span></p>
+                  <p className="price-plan-name">更新できるホームページ</p>
+                </div>
+                <div className="price-plan-body">
+                  <p className="price-plan-for">ご自身で更新していきたい方に</p>
+                  <p className="price-plan-desc">営業時間や商品情報を更新できるCMSを導入し、Instagramなど必要な外部サービスとの連携にも対応します。</p>
+                </div>
               </div>
-              <div className="pillar">
-                <h3 className="pillar-name">オーダーメイド</h3>
-                <p className="pillar-price">¥600,000〜(税別)</p>
-                <p className="pillar-for">お店に合わせて、必要な機能を個別に</p>
-                <p className="pillar-desc">予約システムや会員機能など、内容に応じて個別に設計します。</p>
+              <div className="price-plan">
+                <div className="price-plan-figure">
+                  <p className="price-plan-price price-plan-price--quote">お見積もり</p>
+                  <p className="price-plan-name">オーダーメイド</p>
+                </div>
+                <div className="price-plan-body">
+                  <p className="price-plan-for">内容に応じてお見積もり</p>
+                  <p className="price-plan-desc">予約機能や会員機能など、お店に必要な機能を一緒に整理し、最適な形でご提案します。</p>
+                </div>
               </div>
             </div>
 
-            <dl className="info-list reveal" style={{ marginTop: 44 }}>
-              <div className="info-row"><dt>お支払い方法</dt><dd>買い切りを基本とし、分割のご相談も可能です。</dd></div>
-              <div className="info-row"><dt>公開後の対応</dt><dd>都度のご依頼(実費)、または月額¥5,000〜の保守プランからお選びいただけます。</dd></div>
-              <div className="info-row"><dt>ドメイン・サーバー</dt><dd>取得・設定を代行します。年間の実費(数千円〜1万円程度)のみお客様のご負担となります。</dd></div>
+            <dl className="info-list reveal" style={{ marginTop: 64 }}>
+              <div className="info-row"><dt>お支払い</dt><dd>買い切りを基本としています。分割をご希望の場合も、お気軽にご相談ください。</dd></div>
+              <div className="info-row">
+                <dt>公開後のサポート</dt>
+                <dd>公開後も必要に応じて対応しています。都度対応(内容に応じてお見積もり)、または保守プラン(月額¥3,000〜)からお選びいただけます。</dd>
+              </div>
+              <div className="info-row">
+                <dt>保守プラン内容</dt>
+                <dd>
+                  <ul className="info-sublist">
+                    <li>サーバー・ドメインの状態確認</li>
+                    <li>SSL証明書の確認</li>
+                    <li>定期バックアップ</li>
+                    <li>軽微な文章・画像修正</li>
+                    <li>ご相談対応</li>
+                  </ul>
+                </dd>
+              </div>
+              <div className="info-row"><dt>ドメイン・サーバー</dt><dd>取得・設定はこちらで代行します。年間の実費(数千円〜1万円程度)のみ、お客様にご負担いただきます。</dd></div>
             </dl>
 
             <div className="cta-band reveal">
-              <p>料金だけでは分からないことも、無料診断でお答えします。今なら実績制作価格(¥50,000)のご相談も可能です。</p>
+              <p>料金だけでは分からないことも、無料診断でお答えします。</p>
               <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
             </div>
             <p className="section-sub reveal" style={{ marginTop: 32, marginBottom: 0 }}>まずはお気軽にご相談ください。ご予算やご希望に合わせたご提案も可能です。</p>
@@ -522,19 +534,11 @@ export default function Home() {
               </details>
               <details className="faq-item">
                 <summary>買い切りの場合、公開後に毎月かかる費用はありますか?<span className="mark" /></summary>
-                <p>必ずかかるのは、ドメインとサーバーの実費(年間数千円〜1万円程度)のみです。制作費用として毎月お支払いいただくものはありません。修正・更新を都度ではなくお任せしたい場合のみ、月額¥5,000〜の保守プランをご案内しています。</p>
+                <p>必ずかかるのは、ドメインとサーバーの実費(年間数千円〜1万円程度)のみです。制作費用として毎月お支払いいただくものはありません。修正・更新を都度ではなくお任せしたい場合のみ、月額¥3,000〜の保守プランをご案内しています。</p>
               </details>
               <details className="faq-item">
                 <summary>修正は何回までですか?<span className="mark" /></summary>
                 <p>公開前の確認では、回数に明確な上限を設けていません。公開後の修正は都度のご依頼、または月額保守プランでの対応となります。</p>
-              </details>
-              <details className="faq-item">
-                <summary>実績制作価格は、なぜそんなに安いのですか?<span className="mark" /></summary>
-                <p>Second Rootはまだ実績とお客様の声が少ない、立ち上げ段階だからです。制作事例やお客様の声としての掲載にご協力いただくことを条件に、特別価格でご案内しています。対応内容や丁寧さが変わることはありません。</p>
-              </details>
-              <details className="faq-item">
-                <summary>実績制作価格でも、対応内容は変わりますか?<span className="mark" /></summary>
-                <p>いいえ。デザイン・制作への姿勢や品質は通常と変わりません。価格が異なるのは、実績づくりへのご協力をお願いしているためです。</p>
               </details>
               <details className="faq-item">
                 <summary>対応エリアはどこまでですか?<span className="mark" /></summary>
@@ -574,17 +578,15 @@ export default function Home() {
               </ul>
             </div>
 
+            <p className="contact-closing-note reveal">夜遅くのご相談でも、大丈夫です。<br />まずは、お気軽にご連絡ください。</p>
+
             {/* contact-channels: today this holds the form only. Adding LINE later
-                means dropping a second button into this same flex row. */}
+                means dropping a second button into this same flex row. This is
+                deliberately the last thing in the section — the submit button
+                is meant to read as the page's actual close. */}
             <div className="contact-channels reveal">
               <ContactForm />
             </div>
-
-            <figure className="contact-photo reveal reveal-media">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand-photos/desk-night-crop.jpg" alt="" />
-              <figcaption>夜遅くのご相談でも、大丈夫です。<br />まずは、お気軽にご連絡ください。</figcaption>
-            </figure>
 
             <div className="footer">
               <span>© 2026 Second Root</span>
