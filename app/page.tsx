@@ -215,7 +215,7 @@ export default function Home() {
           <div className="lead-band">
             <p className="lead-target reveal">パン屋・カフェ・美容室・整体など、地域のお店を中心にホームページを制作しています。</p>
             <ul className="lead-strengths reveal">
-              <li><span className="tick" />一人で、相談から公開後まで対応します。</li>
+              <li><span className="tick" />相談から公開後まで、同じ担当者が対応します。</li>
               <li><span className="tick" />ご連絡には、原則24時間以内に返信します。</li>
               <li><span className="tick" />料金は、買い切りが基本です。</li>
             </ul>
@@ -236,9 +236,9 @@ export default function Home() {
             </div>
 
             <div className="philosophy-row">
-              <figure className="philosophy-photo reveal reveal-media">
+              <figure className="philosophy-photo philosophy-photo--compact reveal reveal-media">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-photos/table-shadow-empty.jpg" alt="" style={{ objectPosition: "center 60%" }} />
+                <img src="/brand-photos/table-shadow-empty.jpg" alt="" style={{ aspectRatio: 3 / 4, objectPosition: "center 70%" }} />
               </figure>
               <div className="philosophy-story">
                 <p className="reveal">看板、常連さん、味、接客。<br />すでにあるものを、もう一つの形で支える。<br />それが、Second Rootという名前の意味です。</p>
@@ -249,7 +249,7 @@ export default function Home() {
           <section id="works" className="section section--roomy section--wide">
             <div className="eyebrow reveal">Works</div>
             <h2 className="section-heading reveal">テンプレートではなく、お店ごとに設計します。</h2>
-            <p className="section-sub reveal">この線は、事例が増えるたびに長くなっていきます。</p>
+            <p className="section-sub reveal">一つひとつのお店に合わせて、目的や雰囲気から一緒に考えます。</p>
 
             <figure className="works-process reveal reveal-media">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -405,7 +405,7 @@ export default function Home() {
             <ul className="reasons-list reveal">
               <li><span className="tick" />公開して終わりにせず、その後の改善提案まで行います。</li>
               <li><span className="tick" />デザインの前に、お店の魅力をどう伝えるかを一緒に考えます。</li>
-              <li><span className="tick" />一人だからこそ、密なやり取りができます。</li>
+              <li><span className="tick" />担当者が変わらないからこそ、密なやり取りができます。</li>
             </ul>
           </section>
 
@@ -493,13 +493,13 @@ export default function Home() {
 
           <section id="founder" className="section founder-section">
             <div className="eyebrow reveal">Founder</div>
-            <h2 className="section-heading reveal">一人で、最後まで担当します。</h2>
+            <h2 className="section-heading reveal">担当者が変わることなく、<br />ご相談から公開後まで一貫して対応します。</h2>
             <figure className="founder-photo reveal reveal-media">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/brand-photos/office-room-wide.jpg" alt="" style={{ objectPosition: "center 42%" }} />
             </figure>
             <div className="founder-body">
-              <p className="reveal">ご相談から公開後の運用まで、同じ人間が一貫して担当します。</p>
+              <p className="reveal">窓口が変わるたびに、伝えたはずのことが振り出しに戻る。<br />そんなことがないように、最初から最後まで同じ人間が向き合います。</p>
               <p className="reveal">公開して終わりにせず、お店の変化に合わせて長く伴走します。</p>
               <p className="reveal">ご連絡には、原則24時間以内に返信します。</p>
             </div>
@@ -583,7 +583,7 @@ export default function Home() {
             <figure className="contact-photo reveal reveal-media">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/brand-photos/desk-night-crop.jpg" alt="" />
-              <figcaption>まずは、お気軽にご相談ください。</figcaption>
+              <figcaption>夜遅くのご相談でも、大丈夫です。<br />まずは、お気軽にご連絡ください。</figcaption>
             </figure>
 
             <div className="footer">

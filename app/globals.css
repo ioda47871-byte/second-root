@@ -150,8 +150,15 @@ body::before{
 .hero-photo-scrim{
   position:absolute; inset:0;
   background:linear-gradient(100deg,
-    rgba(251,250,246,.95) 0%, rgba(251,250,246,.86) 30%,
-    rgba(251,250,246,.38) 55%, rgba(251,250,246,0) 74%);
+    rgba(251,250,246,.97) 0%, rgba(251,250,246,.92) 34%,
+    rgba(251,250,246,.5) 58%, rgba(251,250,246,.08) 78%, rgba(251,250,246,0) 90%);
+}
+@media (max-width:640px){
+  .hero-photo-scrim{
+    background:linear-gradient(180deg,
+      rgba(251,250,246,.97) 0%, rgba(251,250,246,.88) 55%,
+      rgba(251,250,246,.55) 82%, rgba(251,250,246,.18) 100%);
+  }
 }
 .hero-photo-content{
   position:relative; z-index:1;
@@ -262,6 +269,9 @@ body::before{
   .philosophy-row > *{ min-width:0; }
   .philosophy-body, .philosophy-story{ flex:1 1 0; }
   .philosophy-photo{ flex:1.4 1 0; }
+  /* the second row inverts the balance — a smaller, taller photo against
+     more text — so the two rows don't read as the same beat repeated */
+  .philosophy-photo--compact{ flex:.85 1 0; max-width:380px; margin-left:auto; }
 }
 .philosophy-body p{ margin:0; max-width:22em; font-size:1.2rem; line-height:1.85; }
 .philosophy-story{ width:100%; }
@@ -393,11 +403,11 @@ body::before{
 .mini-list{ grid-column:2; display:flex; flex-direction:column; gap:52px; }
 
 /* works case content */
-.case-name{ font-family:var(--font-serif); font-size:1.2rem; font-weight:500; margin:0 0 18px; }
+.case-name{ font-family:var(--font-serif); font-size:1.2rem; font-weight:500; margin:0 0 40px; }
 .case-type{ font-family:var(--font-sans); font-size:.85rem; font-weight:400; color:var(--gray); }
 /* No card border here on purpose — the devices should feel like they're
    floating on the page (a showcase), not filed away in a bordered box. */
-.case-real{ display:grid; grid-template-columns:minmax(340px,540px) 1fr; gap:40px; align-items:center; }
+.case-real{ display:grid; grid-template-columns:minmax(340px,540px) 1fr; gap:40px; align-items:center; margin-bottom:8px; }
 .case-visual{ display:flex; flex-direction:column; gap:10px; }
 .case-photo-caption{ font-size:.72rem; color:var(--gray); line-height:1.6; }
 .case-story{ max-width:30em; padding-left:40px; border-left:1px solid var(--hairline); }
@@ -435,8 +445,8 @@ body::before{
    editorial voice, not a caption under someone else's screenshot. */
 .case-result{
   position:relative;
-  font-family:var(--font-serif); font-size:1.55rem; line-height:1.55; font-weight:500;
-  color:var(--ink); margin:0 0 36px; text-wrap:balance;
+  font-family:var(--font-serif); font-size:1.65rem; line-height:1.55; font-weight:500;
+  color:var(--ink); margin:0 0 48px; text-wrap:balance;
 }
 .case-result::before{
   content:"\201C"; position:absolute; left:-38px; top:-.3em;
@@ -451,7 +461,7 @@ body::before{
    gold, not a UI badge), with the label/body stacked beside it like a
    magazine spread rather than a table row. */
 .case-story .stage{
-  padding:26px 0; border-top:1px solid var(--hairline);
+  padding:32px 0; border-top:1px solid var(--hairline);
   display:grid; grid-template-columns:2.4rem 1fr; gap:20px; align-items:start;
 }
 .case-story .stage:first-child{ border-top:none; padding-top:0; }
@@ -549,22 +559,25 @@ body::before{
 .gallery-photos{
   position:relative;
   display:grid; grid-template-columns:repeat(12,1fr);
-  gap:28px 24px; margin-top:64px; max-width:1180px;
+  gap:32px 28px; margin-top:72px; max-width:1180px;
 }
 .gallery-photo{ margin:0; }
 .gallery-photo-frame{ position:relative; }
 /* slots are named by shape/role, not by which photo fills them — each
    real photo is only safe to crop to the aspect ratio its own source
    composition allows without exposing the demo-tool chrome baked into
-   the capture, so photos are assigned to whichever slot fits them. */
-.gallery-photo--primary{ grid-column:1 / 8; grid-row:1; z-index:1; }
+   the capture, so photos are assigned to whichever slot fits them.
+   Sizes are pushed toward more contrast — one confident anchor, one
+   slim portrait, one narrower support — so the row reads as a spread,
+   not three same-weight tiles. */
+.gallery-photo--primary{ grid-column:1 / 9; grid-row:1; z-index:1; }
 .gallery-photo--portrait{
-  grid-column:8 / 13; grid-row:1; z-index:2;
-  margin-top:clamp(64px,9vw,140px);
+  grid-column:9 / 13; grid-row:1; z-index:2;
+  margin-top:clamp(72px,10vw,160px);
 }
 .gallery-photo--secondary{
-  grid-column:3 / 8; grid-row:2; z-index:3;
-  margin-top:clamp(-120px,-9vw,-64px);
+  grid-column:2 / 8; grid-row:2; z-index:3;
+  margin-top:clamp(-130px,-10vw,-72px);
 }
 /* the tilt lives on the inner frame, not the figure itself — the figure
    already owns the reveal-on-scroll transform, and an element can only
@@ -654,8 +667,8 @@ body::before{
   border-radius:6px; box-shadow:var(--shadow-photo);
 }
 .contact-photo figcaption{
-  margin-top:16px;
-  font-family:var(--font-serif); font-size:1rem; color:var(--gray);
+  margin-top:18px;
+  font-family:var(--font-serif); font-size:1.05rem; line-height:1.7; color:var(--gray);
 }
 
 .btn-primary{
@@ -663,8 +676,11 @@ body::before{
   border:1px solid var(--accent);
   padding:16px 30px; font-size:.95rem;
   text-decoration:none; color:var(--ink);
-  transition:background .4s var(--ease), border-color .4s var(--ease), color .4s var(--ease);
+  transition:background .4s var(--ease), border-color .4s var(--ease), color .4s var(--ease), box-shadow .4s var(--ease);
 }
+/* sitting on a photo instead of flat ivory, the Hero's CTA gets a
+   quiet fill + lift so it reads clearly without needing to shout */
+.hero-cta .btn-primary{ background:var(--bg); box-shadow:var(--shadow-soft); }
 .btn-primary:hover, .btn-primary:focus-visible{ background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
 .btn-primary .arrow{ color:var(--accent); transition:transform .4s var(--ease), color .4s var(--ease); }
 .btn-primary:hover .arrow{ transform:translateX(5px); color:var(--on-accent); }
