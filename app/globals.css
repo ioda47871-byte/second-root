@@ -360,6 +360,20 @@ body::before{
 .info-sublist li{ position:relative; padding-left:16px; font-size:.94rem; color:var(--ink); }
 .info-sublist li::before{ content:""; position:absolute; left:0; top:.65em; width:8px; height:1px; background:var(--accent); }
 
+/* a quiet footnote, not a second offer competing with the plans above —
+   no price display, no accent color, nothing bigger than the plans'
+   own supporting text. A hairline and space do the separating. */
+.portfolio-note{
+  margin-top:80px; padding-top:40px; border-top:1px solid var(--hairline);
+  max-width:30em;
+}
+.portfolio-note-label{
+  font-family:var(--font-serif); font-size:1.05rem; font-weight:500; color:var(--ink);
+  margin:0 0 14px;
+}
+.portfolio-note-desc{ font-size:.92rem; line-height:1.9; color:var(--gray); margin:0 0 14px; }
+.portfolio-note-note{ font-size:.78rem; line-height:1.7; color:var(--gray); margin:0; }
+
 /* contact form */
 .diagnosis-box{
   border:1px solid var(--hairline);

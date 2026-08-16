@@ -501,6 +501,12 @@ export default function Home() {
               <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
             </div>
             <p className="section-sub reveal" style={{ marginTop: 32, marginBottom: 0 }}>まずはお気軽にご相談ください。ご予算やご希望に合わせたご提案も可能です。</p>
+
+            <div className="portfolio-note reveal">
+              <p className="portfolio-note-label">実績制作について</p>
+              <p className="portfolio-note-desc">現在、Second Rootでは制作実績として掲載にご協力いただける店舗様を限定で募集しています。<br />通常料金とは別に、「実績制作価格:50,000円(税別)」での制作もご相談いただけます。</p>
+              <p className="portfolio-note-note">※掲載内容や制作条件については、事前にご相談のうえ決定いたします。</p>
+            </div>
           </section>
 
           <section id="founder" className="section founder-section">
