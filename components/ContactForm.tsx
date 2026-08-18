@@ -10,7 +10,6 @@ export default function ContactForm() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setStatus("loading");
     setErrorMessage("");
 
     const form = e.currentTarget;
@@ -21,6 +20,14 @@ export default function ContactForm() {
       email: String(formData.get("email") || ""),
       message: String(formData.get("message") || ""),
     };
+
+    if (!payload.message.trim()) {
+      setStatus("error");
+      setErrorMessage("ご相談内容をご記入ください。");
+      return;
+    }
+
+    setStatus("loading");
 
     try {
       const res = await fetch("/api/contact", {
@@ -65,7 +72,8 @@ export default function ContactForm() {
         <textarea
           id="cf-message"
           name="message"
-          placeholder="今、困っていることを教えてください(未定でも構いません)"
+          placeholder="今、困っていることを教えてください"
+          aria-required="true"
           disabled={disabled}
         />
       </div>

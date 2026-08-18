@@ -17,9 +17,9 @@ export async function POST(req: NextRequest) {
   const email = (body.email || "").trim();
   const message = (body.message || "").trim();
 
-  if (!name || !shop || !email) {
+  if (!name || !shop || !email || !message) {
     return NextResponse.json(
-      { error: "お名前・お店名・メールアドレスは必須です。" },
+      { error: "お名前・お店名・メールアドレス・ご相談内容は必須です。" },
       { status: 400 }
     );
   }
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
         `メールアドレス: ${email}`,
         "",
         "ご相談内容:",
-        message || "(未記入)",
+        message,
       ].join("\n"),
     });
 
