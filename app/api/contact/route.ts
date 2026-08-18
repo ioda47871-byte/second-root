@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   const apiKey = process.env.RESEND_API_KEY;
   const toEmail = process.env.CONTACT_TO_EMAIL;
-  const fromEmail = process.env.CONTACT_FROM_EMAIL || "Second Root <onboarding@resend.dev>";
+  const fromEmail = process.env.CONTACT_FROM_EMAIL || "Second Root <info@secondroot.jp>";
 
   if (!apiKey || !toEmail) {
     console.error(
