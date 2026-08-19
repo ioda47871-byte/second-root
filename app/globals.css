@@ -176,7 +176,7 @@ body::before{
    region is, and it matches how the brief's own example reads: photo,
    then gradient, then text, top to bottom. */
 .photo-band{
-  position:relative; min-height:78vh; max-width:1280px;
+  position:relative; width:100%; min-height:78vh; max-width:1280px;
   margin:56px auto; display:flex; align-items:flex-end;
   overflow:hidden;
 }
@@ -196,6 +196,12 @@ body::before{
 .photo-band-content p{
   font-family:var(--font-serif); font-weight:500; color:var(--ink);
   font-size:clamp(1.35rem,2.6vw,1.85rem); line-height:1.7; margin:0; text-wrap:balance;
+}
+/* an optional second, smaller line — for sections whose photo-band
+   opens with both a statement and a short supporting sentence */
+.photo-band-content p.photo-band-sub{
+  font-family:var(--font-sans); font-weight:400; color:var(--gray);
+  font-size:.95rem; line-height:1.85; margin-top:16px;
 }
 .photo-band--right{ justify-content:flex-end; }
 .photo-band--right .photo-band-content{ text-align:right; margin-left:auto; }
@@ -423,14 +429,6 @@ body::before{
 }
 
 @media (max-width:640px){ .info-row{ grid-template-columns:1fr; gap:8px; } }
-
-/* a proper editorial moment before the case study, not a small aside —
-   establishes that the work starts on paper */
-.works-process{ margin:56px 0 72px; max-width:960px; }
-.works-process img{
-  display:block; width:100%; height:auto; aspect-ratio:16/9; object-fit:cover;
-  border-radius:6px; box-shadow:var(--shadow-photo);
-}
 
 /* generic mini-spine — used by Works (case list) and Process (steps) */
 .mini-wrap{ display:grid; grid-template-columns:24px 1fr; column-gap:22px; max-width:1180px; }
@@ -696,7 +694,6 @@ body::before{
 
 /* contact */
 .contact-echo{ font-family:var(--font-serif); color:var(--gray); font-size:1rem; margin-bottom:10px; }
-.contact-title{ font-family:var(--font-serif); font-size:clamp(1.6rem,3.4vw,2.3rem); line-height:1.65; margin:6px 0 20px; text-wrap:balance; }
 
 /* closing image — a warm, late-evening desk. Cropped to the window/
    plant/coffee side of the frame only: the laptop screen in this

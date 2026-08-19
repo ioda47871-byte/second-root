@@ -249,13 +249,18 @@ export default function Home() {
 
           <section id="works" className="section section--roomy section--wide">
             <div className="eyebrow reveal">Works</div>
-            <h2 className="section-heading reveal">テンプレートではなく、お店ごとに設計します。</h2>
-            <p className="section-sub reveal">一つひとつのお店に合わせて、目的や雰囲気から一緒に考えます。</p>
 
-            <figure className="works-process reveal reveal-media">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand-photos/notebook-wireframe-wide.jpg" alt="" />
-            </figure>
+            <div className="photo-band reveal reveal-media">
+              <div className="photo-band-img">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand-photos/notebook-wireframe-wide.jpg" alt="" style={{ objectPosition: "center 35%" }} />
+              </div>
+              <div className="photo-band-scrim" aria-hidden="true" />
+              <div className="photo-band-content">
+                <p>テンプレートではなく、お店ごとに設計します。</p>
+                <p className="photo-band-sub">一つひとつのお店に合わせて、目的や雰囲気から一緒に考えます。</p>
+              </div>
+            </div>
 
             <div className="mini-wrap reveal" id="worksMiniWrap">
               <div className="mini-spine">
@@ -373,8 +378,19 @@ export default function Home() {
 
           <section id="services" className="section">
             <div className="eyebrow reveal">Services</div>
-            <h2 className="section-heading reveal">できることを、3つに整理しました。</h2>
-            <p className="section-sub reveal">サービス一覧というより、実際に対応できる範囲を、正直にお伝えします。</p>
+
+            <div className="photo-band photo-band--right reveal reveal-media">
+              <div className="photo-band-img">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand-photos/wall-shadow-plant-a.jpg" alt="" style={{ objectPosition: "center 68%" }} />
+              </div>
+              <div className="photo-band-scrim" aria-hidden="true" />
+              <div className="photo-band-content">
+                <p>できることを、3つに整理しました。</p>
+                <p className="photo-band-sub">サービス一覧というより、実際に対応できる範囲を、正直にお伝えします。</p>
+              </div>
+            </div>
+
             <div className="service-list reveal">
               <div className="service-item">
                 <span className="service-no">01</span>
@@ -579,8 +595,19 @@ export default function Home() {
 
           <section id="contact" className="section">
             <div className="eyebrow reveal">Contact</div>
-            <p className="contact-echo reveal">事業に、もう一つの根を。</p>
-            <h2 className="contact-title reveal">まずは、お店のお話を聞かせてください。</h2>
+
+            <div className="photo-band reveal reveal-media">
+              <div className="photo-band-img">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand-photos/office-room-wide.jpg" alt="" style={{ objectPosition: "center 62%" }} />
+              </div>
+              <div className="photo-band-scrim" aria-hidden="true" />
+              <div className="photo-band-content">
+                <p className="contact-echo">事業に、もう一つの根を。</p>
+                <p>まずは、お店のお話を聞かせてください。</p>
+              </div>
+            </div>
+
             <p className="section-sub reveal" style={{ marginBottom: 0 }}>ご相談だけでも歓迎しています。無理な営業はいたしません。</p>
 
             <div className="diagnosis-box reveal">
