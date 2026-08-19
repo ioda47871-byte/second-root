@@ -223,25 +223,26 @@ export default function Home() {
 
           <section id="philosophy" className="section philosophy">
             <div className="eyebrow reveal">Philosophy</div>
-            <h2 className="section-heading reveal">更新しやすく、相談しやすく。</h2>
 
-            <div className="philosophy-row">
-              <div className="philosophy-body">
-                <p className="reveal">完成がゴールではありません。<br />変わり続けるお店と一緒に、更新していく。</p>
-              </div>
-              <figure className="philosophy-photo reveal reveal-media">
+            <div className="photo-band reveal reveal-media">
+              <div className="photo-band-img">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-photos/wall-shadow-plant-a.jpg" alt="" style={{ objectPosition: "center 55%" }} />
-              </figure>
+                <img src="/brand-photos/wall-shadow-plant-a.jpg" alt="" style={{ objectPosition: "center 30%" }} />
+              </div>
+              <div className="photo-band-scrim" aria-hidden="true" />
+              <div className="photo-band-content">
+                <p>完成がゴールではありません。<br />変わり続けるお店と一緒に、更新していく。</p>
+              </div>
             </div>
 
-            <div className="philosophy-row">
-              <figure className="philosophy-photo philosophy-photo--compact reveal reveal-media">
+            <div className="photo-band photo-band--right reveal reveal-media">
+              <div className="photo-band-img">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-photos/table-shadow-empty.jpg" alt="" style={{ aspectRatio: 3 / 4, objectPosition: "center 70%" }} />
-              </figure>
-              <div className="philosophy-story">
-                <p className="reveal">看板、常連さん、味、接客。<br />すでにあるものを、もう一つの形で支える。<br />それが、Second Rootという名前の意味です。</p>
+                <img src="/brand-photos/table-shadow-empty.jpg" alt="" style={{ objectPosition: "center 20%" }} />
+              </div>
+              <div className="photo-band-scrim" aria-hidden="true" />
+              <div className="photo-band-content">
+                <p>看板、常連さん、味、接客。<br />すでにあるものを、もう一つの形で支える。<br />それが、Second Rootという名前の意味です。</p>
               </div>
             </div>
           </section>
@@ -511,11 +512,18 @@ export default function Home() {
 
           <section id="founder" className="section founder-section">
             <div className="eyebrow reveal">Founder</div>
-            <h2 className="section-heading reveal">担当者が変わることなく、<br />ご相談から公開後まで一貫して対応します。</h2>
-            <figure className="founder-photo reveal reveal-media">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand-photos/office-room-wide.jpg" alt="" style={{ objectPosition: "center 42%" }} />
-            </figure>
+
+            <div className="photo-band reveal reveal-media">
+              <div className="photo-band-img">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand-photos/office-room-wide.jpg" alt="" style={{ objectPosition: "center 30%" }} />
+              </div>
+              <div className="photo-band-scrim" aria-hidden="true" />
+              <div className="photo-band-content">
+                <p>担当者が変わることなく、<br />ご相談から公開後まで一貫して対応します。</p>
+              </div>
+            </div>
+
             <div className="founder-body">
               <p className="reveal">窓口が変わるたびに、伝えたはずのことが振り出しに戻る。<br />そんなことがないように、最初から最後まで同じ人間が向き合います。</p>
               <p className="reveal">公開して終わりにせず、お店の変化に合わせて長く伴走します。</p>
