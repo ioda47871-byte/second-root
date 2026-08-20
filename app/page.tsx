@@ -205,9 +205,23 @@ export default function Home() {
               <div className="hero-eyebrow eyebrow">Second Root</div>
               <h1 className="hero-title">事業に、<br />もう一つの根を。</h1>
               <p className="hero-service"><span className="tick" />地域のお店のホームページ制作</p>
+              <div className="hero-tags">
+                <span className="hero-tag">パン屋</span>
+                <span className="hero-tag">カフェ</span>
+                <span className="hero-tag">美容室</span>
+                <span className="hero-tag">整体</span>
+              </div>
               <p className="hero-sub">公開した日がゴールではありません。<br />その先まで、一緒に考えていきます。</p>
               <div className="hero-cta">
-                <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
+                <a className="btn-stamp" href="#contact">
+                  <span className="mark">
+                    <svg viewBox="0 0 24 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <line x1="12" y1="4" x2="12" y2="24" strokeWidth="2.5" strokeLinecap="round" />
+                      <circle cx="12" cy="31" r="4" />
+                    </svg>
+                  </span>
+                  <span className="label">無料診断を申し込む</span>
+                </a>
               </div>
             </div>
             <div className="scroll-cue"><div className="line" /><span>Scroll</span></div>
@@ -216,6 +230,7 @@ export default function Home() {
           <div className="lead-band">
             <p className="lead-target reveal">パン屋・カフェ・美容室・整体など、地域のお店を中心にホームページを制作しています。</p>
             <ul className="lead-strengths reveal">
+              <li><span className="tick" />今も店に立ちながら、この仕事をしています。</li>
               <li><span className="tick" />相談から公開後まで、同じ担当者が対応します。</li>
               <li><span className="tick" />ご連絡には、原則24時間以内に返信します。</li>
               <li><span className="tick" />料金は、買い切りが基本です。</li>
@@ -252,7 +267,7 @@ export default function Home() {
 
               <div className="mini-list">
                 <div id="case-brot">
-                  <div className="eyebrow" style={{ marginBottom: 8 }}>Case Study — 01</div>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>特集 — Brot Yanagi</div>
                   <h3 className="case-name">Brot Yanagi<span className="case-type"> — パン屋</span></h3>
                   <div className="case-real">
                     <div className="case-visual">
@@ -341,6 +356,7 @@ export default function Home() {
                       <figcaption><span className="tick" />エントランス</figcaption>
                     </figure>
                   </div>
+                  <p className="case-credit">PHOTO — Brot Yanagi / EDIT — Second Root</p>
                 </div>
 
                 <div className="case-soon" id="case-progress">
@@ -506,10 +522,23 @@ export default function Home() {
               <p>担当者が<br />変わることなく、<br />ご相談から公開後まで<br />一貫して対応します。</p>
             </PhotoBand>
 
-            <div className="founder-body">
-              <p className="reveal">窓口が変わるたびに、伝えたはずのことが振り出しに戻る。<br />そんなことがないように、最初から最後まで同じ人間が向き合います。</p>
-              <p className="reveal">公開して終わりにせず、お店の変化に合わせて長く伴走します。</p>
-              <p className="reveal">ご連絡には、原則24時間以内に返信します。</p>
+            <div className="interview reveal">
+              <div className="interview-kicker">インタビュー</div>
+              <h3 className="interview-title">「同じ疲れを、知っているから。」</h3>
+              <div className="interview-qa">
+                <div className="qa-item">
+                  <p className="qa-q">Q. なぜ、パン屋の現場に立ちながら、この仕事を?</p>
+                  <p className="qa-a">もともとは兼業でした。ただ、店に立っていると、閉店後にホームページのことを考える余力がどれだけ残っていないか、身体で分かるんです。だから、その感覚を知っている人間として、この仕事をしています。</p>
+                </div>
+                <div className="qa-item">
+                  <p className="qa-q">Q. 一人で対応することに、不安はありませんか?</p>
+                  <p className="qa-a">窓口が変わるたびに、伝えたことが振り出しに戻る。それが一番もったいないと思っています。最初から最後まで、同じ人間が向き合う方が、結局早いんです。公開して終わりにもせず、お店の変化に合わせて長く伴走します。</p>
+                </div>
+                <div className="qa-item">
+                  <p className="qa-q">Q. 連絡が取りづらくなったりは?</p>
+                  <p className="qa-a">ご連絡には、原則24時間以内に返信します。忙しさを理由に、約束を曖昧にはしません。</p>
+                </div>
+              </div>
             </div>
             <div className="signature reveal">Second Root</div>
 
@@ -555,6 +584,10 @@ export default function Home() {
               <details className="faq-item">
                 <summary>パソコンやITに詳しくなくても大丈夫ですか?<span className="mark" /></summary>
                 <p>専門用語をできるだけ使わずに進めます。分からないことは、その都度確認しながら進めます。</p>
+              </details>
+              <details className="faq-item">
+                <summary>なぜこの価格で対応できるのですか?<span className="mark" /></summary>
+                <p>効率化できる部分にはツールを活用し、お待たせする時間を減らしています。ただし、設計やデザイン、お店ごとのご提案は、必ず人が責任を持って行っています。</p>
               </details>
             </div>
           </section>

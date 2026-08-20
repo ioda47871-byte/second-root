@@ -81,9 +81,14 @@ export default function ContactForm() {
         />
       </div>
       <div>
-        <button type="submit" className="btn-primary form-submit" disabled={disabled}>
-          {status === "loading" ? "送信しています…" : "無料診断を申し込む"}
-          <span className="arrow">→</span>
+        <button type="submit" className="btn-stamp form-submit" disabled={disabled}>
+          <span className="mark">
+            <svg viewBox="0 0 24 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <line x1="12" y1="4" x2="12" y2="24" strokeWidth="2.5" strokeLinecap="round" />
+              <circle cx="12" cy="31" r="4" />
+            </svg>
+          </span>
+          <span className="label">{status === "loading" ? "送信しています…" : "無料診断を申し込む"}</span>
         </button>
         {status === "success" && (
           <p className="form-status is-success" role="status">

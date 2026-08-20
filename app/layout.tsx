@@ -1,24 +1,24 @@
 import type { Metadata } from "next";
-import { Zen_Old_Mincho, Noto_Sans_JP, Inter } from "next/font/google";
+import { Shippori_Mincho, Noto_Serif_JP, Zen_Maru_Gothic } from "next/font/google";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import "./globals.css";
 
-const zenOldMincho = Zen_Old_Mincho({
+const shipporiMincho = Shippori_Mincho({
   weight: ["400", "600"],
   subsets: ["latin"],
-  variable: "--font-serif-jp",
+  variable: "--font-display",
   display: "swap",
 });
 
-const notoSansJP = Noto_Sans_JP({
-  weight: ["400", "600"],
+const notoSerifJP = Noto_Serif_JP({
+  weight: ["400", "500", "600"],
   subsets: ["latin"],
-  variable: "--font-sans-jp",
+  variable: "--font-body",
   display: "swap",
 });
 
-const inter = Inter({
-  weight: ["500", "600"],
+const zenMaruGothic = Zen_Maru_Gothic({
+  weight: ["500", "700"],
   subsets: ["latin"],
   variable: "--font-label",
   display: "swap",
@@ -81,7 +81,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ja" className={`${zenOldMincho.variable} ${notoSansJP.variable} ${inter.variable}`}>
+    <html lang="ja" className={`${shipporiMincho.variable} ${notoSerifJP.variable} ${zenMaruGothic.variable}`}>
       <body>
         {children}
         <GoogleAnalytics />
