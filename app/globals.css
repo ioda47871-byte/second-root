@@ -137,34 +137,19 @@ body::before{
    column of text. */
 .section--wide{ max-width:1320px; }
 
-/* hero — a single full-bleed brand photo with the copy overlaid on a
-   light scrim, not a two-column split. The photo carries the "quiet
-   craft" impression; nothing else in the section competes with it. */
+/* hero — no photo. quiet paper, generous whitespace, and scale do the
+   work a full-bleed image used to do. content is vertically centered
+   in the viewport rather than anchored to a photo's bottom edge. */
 .hero{
   min-height:100svh; max-width:1280px;
   margin:0 auto; padding:0;
-  display:flex; align-items:flex-end;
-  position:relative; overflow:hidden;
+  display:flex; align-items:center;
+  position:relative;
 }
-.hero-photo{ position:absolute; inset:0; z-index:0; }
-.hero-photo img{ display:block; width:100%; height:100%; object-fit:cover; object-position:center 42%; }
-.hero-photo-scrim{
-  position:absolute; inset:0;
-  background:linear-gradient(100deg,
-    rgba(251,250,246,.97) 0%, rgba(251,250,246,.92) 34%,
-    rgba(251,250,246,.5) 58%, rgba(251,250,246,.08) 78%, rgba(251,250,246,0) 90%);
-}
-@media (max-width:640px){
-  .hero-photo-scrim{
-    background:linear-gradient(180deg,
-      rgba(251,250,246,.97) 0%, rgba(251,250,246,.88) 55%,
-      rgba(251,250,246,.55) 82%, rgba(251,250,246,.18) 100%);
-  }
-}
-.hero-photo-content{
-  position:relative; z-index:1;
-  padding:clamp(120px,16vw,160px) clamp(24px,5vw,64px) clamp(72px,10vw,108px);
-  max-width:27em;
+.hero-content{
+  position:relative; z-index:1; width:100%;
+  padding:clamp(24px,5vw,64px);
+  max-width:34rem;
 }
 .hero-eyebrow{ opacity:0; }
 
@@ -221,11 +206,9 @@ body::before{
   margin:2px 0 26px; opacity:0;
 }
 .tick{ width:20px; height:1px; background:var(--accent); flex:none; }
-.hero-tags{ display:flex; flex-wrap:wrap; gap:9px; margin:0 0 30px; opacity:0; }
-.hero-tag{
-  font-family:var(--font-label); font-size:.78rem; color:var(--ink);
-  background:rgba(251,250,246,.55); border:1px solid var(--hairline-strong);
-  border-radius:16px; padding:5px 15px;
+.hero-tags{
+  font-family:var(--font-label); font-size:.82rem; color:var(--gray);
+  margin:0 0 30px; opacity:0;
 }
 .hero-sub{
   color:var(--gray); font-size:clamp(.94rem,1.3vw,1.05rem); line-height:2;
@@ -306,7 +289,22 @@ body::before{
 
 /* philosophy — two photo-band moments now carry the section; the
    section itself just supplies the eyebrow and top/bottom padding. */
-.philosophy{ padding-top:clamp(56px,9vw,100px); padding-bottom:clamp(56px,9vw,100px); }
+/* no photo, no color inversion — a quiet pause made only of space and
+   one statement. this is the pattern PhotoBand's non-photo moments
+   resolve to for now; the other PhotoBand sections keep real photography
+   until each is deliberately revisited. */
+.philosophy-pause{
+  min-height:56vh; display:flex; flex-direction:column; justify-content:center;
+  padding:clamp(72px,10vw,120px) clamp(24px,6vw,72px); max-width:900px; margin:0 auto;
+}
+.pause-no{
+  font-family:var(--font-label); font-weight:600; font-size:.7rem; letter-spacing:.2em;
+  color:var(--gold); margin:0 0 28px;
+}
+.pause-text{
+  font-family:var(--font-serif); font-weight:500; color:var(--ink);
+  font-size:clamp(1.5rem,3.2vw,2.1rem); line-height:1.9; max-width:18em; text-wrap:balance; margin:0;
+}
 
 /* generic label/description list — used by Pricing */
 .info-list{ display:flex; flex-direction:column; max-width:720px; }
@@ -760,9 +758,6 @@ body::before{
 .btn-stamp:hover .mark, .btn-stamp:focus-visible .mark{ transform:translateY(-3px); box-shadow:0 10px 24px -8px rgba(54,37,25,.45); }
 .btn-stamp:active .mark{ transform:scale(.96) translateY(0); }
 @media (min-width:640px){ .btn-stamp .mark{ width:64px; height:64px; } .btn-stamp .mark svg{ width:18px; height:27px; } }
-/* sitting on a photo instead of flat ivory, the Hero's CTA gets a
-   quiet fill + lift so it reads clearly without needing to shout */
-.hero-cta .btn-primary{ background:var(--bg); box-shadow:var(--shadow-soft); }
 .btn-primary:hover, .btn-primary:focus-visible{ background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
 .btn-primary .arrow{ color:var(--accent); transition:transform .4s var(--ease), color .4s var(--ease); }
 .btn-primary:hover .arrow{ transform:translateX(5px); color:var(--on-accent); }

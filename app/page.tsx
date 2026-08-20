@@ -195,22 +195,12 @@ export default function Home() {
 
         <main className="content">
 
-          <section id="home" className="section hero hero--photo">
-            <div className="hero-photo">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand-photos/desk-laptop-back-daylight.jpg" alt="" fetchPriority="high" />
-              <div className="hero-photo-scrim" aria-hidden="true" />
-            </div>
-            <div className="hero-photo-content">
+          <section id="home" className="section hero">
+            <div className="hero-content">
               <div className="hero-eyebrow eyebrow">Second Root</div>
               <h1 className="hero-title">事業に、<br />もう一つの根を。</h1>
               <p className="hero-service"><span className="tick" />地域のお店のホームページ制作</p>
-              <div className="hero-tags">
-                <span className="hero-tag">パン屋</span>
-                <span className="hero-tag">カフェ</span>
-                <span className="hero-tag">美容室</span>
-                <span className="hero-tag">整体</span>
-              </div>
+              <p className="hero-tags">パン屋・カフェ・美容室・整体</p>
               <p className="hero-sub">公開した日がゴールではありません。<br />その先まで、一緒に考えていきます。</p>
               <div className="hero-cta">
                 <a className="btn-stamp" href="#contact">
@@ -575,13 +565,9 @@ export default function Home() {
             </div>
           </section>
 
-          <section id="philosophy" className="section philosophy">
-            <h2 className="eyebrow reveal">Philosophy</h2>
-
-            <PhotoBand src="/brand-photos/table-shadow-empty.jpg" objectPosition="center 20%">
-              <p>看板も、常連さんとの<br />間柄も、積み重ねてきた<br />時間も、もうそこにある。</p>
-              <p className="photo-band-sub">私たちが作るのは、真新しい何かではありません。<br />すでにあるものが、これからも続いていくための、<br />もう一つの根です。</p>
-            </PhotoBand>
+          <section id="philosophy" className="section philosophy-pause">
+            <p className="pause-no reveal">09 — PHILOSOPHY</p>
+            <p className="pause-text reveal">看板も、常連さんとの間柄も、積み重ねてきた時間も、もうそこにある。私たちが作るのは、真新しい何かではありません。すでにあるものが、これからも続いていくための、もう一つの根です。</p>
           </section>
 
           <section id="contact" className="section">
