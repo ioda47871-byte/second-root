@@ -2,9 +2,6 @@
 
 import { useEffect } from "react";
 import ContactForm from "@/components/ContactForm";
-import BrowserFrame from "@/components/BrowserFrame";
-import PhoneFrame from "@/components/PhoneFrame";
-import PhotoBand from "@/components/PhotoBand";
 
 export default function Home() {
   useEffect(() => {
@@ -230,10 +227,11 @@ export default function Home() {
           <section id="works" className="section section--roomy section--wide">
             <h2 className="eyebrow reveal">Works</h2>
 
-            <PhotoBand src="/brand-photos/notebook-wireframe-wide.jpg" objectPosition="center 35%">
-              <p>テンプレートではなく、<br />お店ごとに設計します。</p>
-              <p className="photo-band-sub">一つひとつのお店に合わせて、<br />目的や雰囲気から<br />一緒に考えます。</p>
-            </PhotoBand>
+            <div className="pause pause--compact reveal">
+              <p className="pause-no">03 — WORKS</p>
+              <p className="pause-text">テンプレートではなく、お店ごとに設計します。</p>
+              <p className="pause-sub">一つひとつのお店に合わせて、目的や雰囲気から一緒に考えます。</p>
+            </div>
 
             <div className="mini-wrap reveal" id="worksMiniWrap">
               <div className="mini-spine">
@@ -247,46 +245,16 @@ export default function Home() {
                 <div id="case-brot">
                   <div className="eyebrow" style={{ marginBottom: 8 }}>特集 — Brot Yanagi</div>
                   <h3 className="case-name">Brot Yanagi<span className="case-type"> — パン屋</span></h3>
-                  <div className="case-real">
-                    <div className="case-visual">
-                      <div className="works-devices reveal-group">
-                        <div className="reveal reveal-media">
-                          <BrowserFrame
-                            src="/screenshots-source/menu-desktop.jpg"
-                            alt="Brot Yanagi メニューページ(PC版)"
-                            aspectRatio={1119 / 843}
-                          />
-                        </div>
-                        <div className="reveal reveal-media">
-                          <PhoneFrame
-                            className="is-back"
-                            src="/screenshots-source/access-mobile-portrait.jpeg"
-                            alt="Brot Yanagi アクセスページ(スマホ版)"
-                            aspectRatio={710 / 1413}
-                          />
-                        </div>
-                        <div className="reveal reveal-media">
-                          <PhoneFrame
-                            className="is-front"
-                            src="/screenshots-source/home-mobile.jpeg"
-                            alt="Brot Yanagi トップページ(スマホ版)"
-                            aspectRatio={710 / 1413}
-                          />
-                        </div>
-                      </div>
-                      <p className="case-photo-caption">実際に公開しているBrot Yanagiの画面(PC・スマホ)</p>
-                    </div>
-                    <div className="case-story">
-                      <p className="case-story-lead">SNS(Instagram)だけで、なんとかお店を知ってもらっていた。</p>
-                      <div className="case-story-kicker">Result</div>
-                      <p className="case-result">Instagramだけの運営から、<br />更新も集客も自分たちで回せる<br />サイトへ。</p>
-                      <dl>
-                        <div className="stage" data-no="01"><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div>
-                        <div className="stage" data-no="02"><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div>
-                        <div className="stage" data-no="03"><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div>
-                        <div className="stage" data-no="04"><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div>
-                      </dl>
-                    </div>
+                  <div className="case-story case-story--full">
+                    <p className="case-story-lead">SNS(Instagram)だけで、なんとかお店を知ってもらっていた。</p>
+                    <div className="case-story-kicker">Result</div>
+                    <p className="case-result">Instagramだけの運営から、<br />更新も集客も自分たちで回せる<br />サイトへ。</p>
+                    <dl>
+                      <div className="stage" data-no="01"><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div>
+                      <div className="stage" data-no="02"><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div>
+                      <div className="stage" data-no="03"><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div>
+                      <div className="stage" data-no="04"><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div>
+                    </dl>
                   </div>
 
                   <div className="gallery-heading">
@@ -294,47 +262,11 @@ export default function Home() {
                     <h4 className="case-name" style={{ marginTop: 10, marginBottom: 8 }}>店舗の雰囲気</h4>
                     <p className="case-photo-caption">パンの香りに包まれる、あたたかい空間です。</p>
                   </div>
-                  <div className="gallery-photos reveal-group">
-                    {/* these three use pre-cropped source files (see
-                        scripts/crop-gallery-sources.mjs) — a straight
-                        rectangular trim that removes the site chrome and a
-                        floating demo-tool badge baked into the original
-                        captures, done once so no CSS crop math has to fight
-                        it. Nothing inside the kept region is altered. */}
-                    <figure className="gallery-photo gallery-photo--primary reveal reveal-media">
-                      <div className="gallery-photo-frame">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/screenshots-source/exterior-photo-crop.jpg"
-                          alt="Brot Yanagi 外観"
-                          style={{ aspectRatio: 16 / 9, objectPosition: "center 45%" }}
-                        />
-                      </div>
-                      <figcaption><span className="tick" />外観</figcaption>
-                    </figure>
-                    <figure className="gallery-photo gallery-photo--portrait reveal reveal-media">
-                      <div className="gallery-photo-frame">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/screenshots-source/interior-photo-crop.jpeg"
-                          alt="Brot Yanagi 内観"
-                          style={{ aspectRatio: 0.8, objectPosition: "center 50%" }}
-                        />
-                      </div>
-                      <figcaption><span className="tick" />内観</figcaption>
-                    </figure>
-                    <figure className="gallery-photo gallery-photo--secondary reveal reveal-media">
-                      <div className="gallery-photo-frame">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/screenshots-source/entrance-photo-crop.jpg"
-                          alt="Brot Yanagi エントランス"
-                          style={{ aspectRatio: 1.5, objectPosition: "center 50%" }}
-                        />
-                      </div>
-                      <figcaption><span className="tick" />エントランス</figcaption>
-                    </figure>
-                  </div>
+                  <ul className="gallery-list reveal">
+                    <li><span className="tick" />外観</li>
+                    <li><span className="tick" />内観</li>
+                    <li><span className="tick" />エントランス</li>
+                  </ul>
                   <p className="case-credit">PHOTO — Brot Yanagi / EDIT — Second Root</p>
                 </div>
 
@@ -354,10 +286,11 @@ export default function Home() {
           <section id="services" className="section">
             <h2 className="eyebrow reveal">Services</h2>
 
-            <PhotoBand src="/brand-photos/wall-shadow-plant-a.jpg" objectPosition="center 68%" align="right">
-              <p>できることを、<br />3つに整理しました。</p>
-              <p className="photo-band-sub">サービス一覧というより、<br />実際に対応できる範囲を、<br />正直にお伝えします。</p>
-            </PhotoBand>
+            <div className="pause pause--compact reveal">
+              <p className="pause-no">04 — SERVICES</p>
+              <p className="pause-text">できることを、3つに整理しました。</p>
+              <p className="pause-sub">サービス一覧というより、実際に対応できる範囲を、正直にお伝えします。</p>
+            </div>
 
             <div className="service-list reveal">
               <div className="service-item">
@@ -392,9 +325,10 @@ export default function Home() {
           <section id="founder" className="section founder-section">
             <h2 className="eyebrow reveal">Founder</h2>
 
-            <PhotoBand src="/brand-photos/office-room-wide.jpg" objectPosition="center 30%">
-              <p>話を、<br />聞いてみました。</p>
-            </PhotoBand>
+            <div className="pause pause--compact reveal">
+              <p className="pause-no">05 — FOUNDER</p>
+              <p className="pause-text">話を、聞いてみました。</p>
+            </div>
 
             <div className="interview reveal">
               <div className="interview-kicker">インタビュー</div>
@@ -565,7 +499,7 @@ export default function Home() {
             </div>
           </section>
 
-          <section id="philosophy" className="section philosophy-pause">
+          <section id="philosophy" className="section pause">
             <p className="pause-no reveal">09 — PHILOSOPHY</p>
             <p className="pause-text reveal">看板も、常連さんとの間柄も、積み重ねてきた時間も、もうそこにある。私たちが作るのは、真新しい何かではありません。すでにあるものが、これからも続いていくための、もう一つの根です。</p>
           </section>
@@ -573,10 +507,11 @@ export default function Home() {
           <section id="contact" className="section">
             <h2 className="eyebrow reveal">Contact</h2>
 
-            <PhotoBand src="/brand-photos/office-room-wide.jpg" objectPosition="center 62%">
-              <p className="contact-echo">事業に、<br />もう一つの根を。</p>
-              <p>まずは、<br />お店のお話を<br />聞かせてください。</p>
-            </PhotoBand>
+            <div className="pause pause--compact reveal">
+              <p className="pause-no">10 — CONTACT</p>
+              <p className="pause-echo">事業に、もう一つの根を。</p>
+              <p className="pause-text">まずは、お店のお話を聞かせてください。</p>
+            </div>
 
             <div className="diagnosis-box reveal">
               <p>無料診断では、次の3つを確認し、改善できそうなポイントを簡単にお伝えします。</p>

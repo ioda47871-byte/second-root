@@ -290,13 +290,15 @@ body::before{
 /* philosophy — two photo-band moments now carry the section; the
    section itself just supplies the eyebrow and top/bottom padding. */
 /* no photo, no color inversion — a quiet pause made only of space and
-   one statement. this is the pattern PhotoBand's non-photo moments
-   resolve to for now; the other PhotoBand sections keep real photography
-   until each is deliberately revisited. */
-.philosophy-pause{
+   one statement. this replaces every PhotoBand moment while the site
+   runs photo-free, so the layout/type/space can be judged on their own
+   before photography is reintroduced deliberately, section by section. */
+.pause{
   min-height:56vh; display:flex; flex-direction:column; justify-content:center;
   padding:clamp(72px,10vw,120px) clamp(24px,6vw,72px); max-width:900px; margin:0 auto;
 }
+.pause--right{ align-items:flex-end; text-align:right; }
+.pause--compact{ min-height:auto; padding-top:clamp(48px,7vw,80px); padding-bottom:clamp(48px,7vw,80px); }
 .pause-no{
   font-family:var(--font-label); font-weight:600; font-size:.7rem; letter-spacing:.2em;
   color:var(--gold); margin:0 0 28px;
@@ -305,6 +307,11 @@ body::before{
   font-family:var(--font-serif); font-weight:500; color:var(--ink);
   font-size:clamp(1.5rem,3.2vw,2.1rem); line-height:1.9; max-width:18em; text-wrap:balance; margin:0;
 }
+.pause-sub{
+  font-family:var(--font-sans); font-weight:400; color:var(--gray);
+  font-size:.95rem; line-height:1.85; max-width:26em; margin-top:20px;
+}
+.pause-echo{ font-family:var(--font-serif); color:var(--gray); font-size:1rem; margin:0 0 14px; }
 
 /* generic label/description list — used by Pricing */
 .info-list{ display:flex; flex-direction:column; max-width:720px; }
@@ -465,6 +472,10 @@ body::before{
   margin-top:28px; padding-top:20px; border-top:1px solid var(--hairline);
 }
 .case-story{ max-width:30em; padding-left:40px; border-left:1px solid var(--hairline); }
+/* no visual column to divide from while the site runs photo-free */
+.case-story--full{ max-width:34em; padding-left:0; border-left:none; margin-bottom:8px; }
+.gallery-list{ list-style:none; margin:0; padding:0; display:flex; gap:28px; flex-wrap:wrap; }
+.gallery-list li{ display:flex; align-items:baseline; gap:10px; font-size:.9rem; color:var(--ink); }
 /* below this, the fixed 340px visual column would squeeze the text
    column too narrow (tablet portrait) — stack instead of cramping it */
 @media (max-width:960px){
