@@ -341,10 +341,10 @@ body::before{
 .pillar-items li{ font-size:.85rem; color:var(--ink); position:relative; padding-left:16px; }
 .pillar-items li::before{ content:""; position:absolute; left:0; top:.65em; width:8px; height:1px; background:var(--accent); }
 
-.reasons-list{ display:flex; flex-direction:column; gap:14px; margin:40px 0 0; max-width:32em; }
-.reasons-list li{ display:flex; align-items:flex-start; gap:14px; font-size:.94rem; color:var(--ink); line-height:1.8; }
-.reasons-list li .tick{ margin-top:.65em; }
-.reasons-label{ margin:40px 0 0; }
+.services-closing{
+  font-family:var(--font-serif); font-weight:500; font-size:1.1rem; color:var(--ink);
+  margin:48px 0 0; max-width:28em; text-wrap:balance;
+}
 
 /* pricing: three real plans, price-first for easy comparison — a
    quiet list divided by hairlines, not cards, with no "recommended"
@@ -474,6 +474,7 @@ body::before{
   .case-visual{ max-width:540px; }
   .case-story{ padding-left:0; border-left:none; max-width:none; }
 }
+.case-story-lead{ font-size:.92rem; color:var(--gray); margin:0 0 24px; }
 .case-story-kicker{
   font-family:var(--font-label),var(--font-sans); font-size:.66rem; letter-spacing:.24em;
   text-transform:uppercase; color:var(--gray); margin:0 0 14px;
