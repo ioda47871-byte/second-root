@@ -50,7 +50,7 @@ body::before{
 .eyebrow{
   font-family:var(--font-label),var(--font-sans);
   font-size:.72rem; letter-spacing:.28em; text-transform:uppercase;
-  color:var(--gray); font-weight:500;
+  color:var(--gray); font-weight:500; margin:0;
 }
 
 /* top bar */
@@ -505,14 +505,16 @@ body::before{
    gold, not a UI badge), with the label/body stacked beside it like a
    magazine spread rather than a table row. */
 .case-story .stage{
-  padding:32px 0; border-top:1px solid var(--hairline);
-  display:grid; grid-template-columns:2.4rem 1fr; gap:20px; align-items:start;
+  position:relative;
+  padding:32px 0 32px calc(2.4rem + 20px); border-top:1px solid var(--hairline);
 }
 .case-story .stage:first-child{ border-top:none; padding-top:0; }
-.stage-no{
+.case-story .stage::before{
+  content:attr(data-no); position:absolute; left:0; top:32px;
   font-family:var(--font-serif); font-size:2.1rem; line-height:1; font-weight:500;
   color:var(--gold); opacity:.6; font-variant-numeric:tabular-nums; letter-spacing:-.02em;
 }
+.case-story .stage:first-child::before{ top:0; }
 .case-story dt{
   font-family:var(--font-label),var(--font-sans); font-size:.68rem; letter-spacing:.2em;
   text-transform:uppercase; color:var(--accent); font-weight:600; margin:.5em 0 8px;
@@ -522,8 +524,8 @@ body::before{
   .case-story{ padding-left:0; border-left:none; }
 }
 @media (max-width:480px){
-  .case-story .stage{ grid-template-columns:1.8rem 1fr; gap:14px; }
-  .stage-no{ font-size:1.5rem; }
+  .case-story .stage{ padding-left:calc(1.8rem + 14px); }
+  .case-story .stage::before{ font-size:1.5rem; }
 }
 .case-soon{ padding:4px 0; color:var(--gray); }
 .case-soon .case-name{ color:var(--gray); font-size:1.05rem; margin-bottom:6px; }
@@ -720,6 +722,19 @@ body::before{
 .btn-primary:hover, .btn-primary:focus-visible{ background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
 .btn-primary .arrow{ color:var(--accent); transition:transform .4s var(--ease), color .4s var(--ease); }
 .btn-primary:hover .arrow{ transform:translateX(5px); color:var(--on-accent); }
+
+/* shared minimal layout for utility pages that sit outside the main
+   page's spine-nav — 404, the post-contact thank-you page */
+.standalone-page{
+  min-height:100svh; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; text-align:center;
+  padding:24px; gap:22px; background:var(--bg); color:var(--ink);
+}
+.standalone-page-title{
+  font-family:var(--font-serif); font-weight:500;
+  font-size:clamp(1.6rem,3.4vw,2.3rem); margin:0; text-wrap:balance;
+}
+.standalone-page-desc{ color:var(--gray); font-size:.95rem; max-width:28em; margin:0; }
 
 .footer{
   margin-top:100px; padding-top:32px; border-top:1px solid var(--hairline);

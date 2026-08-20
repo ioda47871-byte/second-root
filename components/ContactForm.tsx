@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 
 type Status = "idle" | "loading" | "success" | "error";
 
 export default function ContactForm() {
+  const router = useRouter();
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -43,6 +45,7 @@ export default function ContactForm() {
 
       setStatus("success");
       form.reset();
+      router.push("/thanks");
     } catch (err) {
       setStatus("error");
       setErrorMessage(

@@ -198,7 +198,7 @@ export default function Home() {
           <section id="home" className="section hero hero--photo">
             <div className="hero-photo">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand-photos/desk-laptop-back-daylight.jpg" alt="" />
+              <img src="/brand-photos/desk-laptop-back-daylight.jpg" alt="" fetchPriority="high" />
               <div className="hero-photo-scrim" aria-hidden="true" />
             </div>
             <div className="hero-photo-content">
@@ -223,7 +223,7 @@ export default function Home() {
           </div>
 
           <section id="philosophy" className="section philosophy">
-            <div className="eyebrow reveal">Philosophy</div>
+            <h2 className="eyebrow reveal">Philosophy</h2>
 
             <PhotoBand src="/brand-photos/wall-shadow-plant-a.jpg" objectPosition="center 30%">
               <p>完成が<br />ゴールではありません。<br />変わり続けるお店と<br />一緒に、<br />更新していく。</p>
@@ -235,7 +235,7 @@ export default function Home() {
           </section>
 
           <section id="works" className="section section--roomy section--wide">
-            <div className="eyebrow reveal">Works</div>
+            <h2 className="eyebrow reveal">Works</h2>
 
             <PhotoBand src="/brand-photos/notebook-wireframe-wide.jpg" objectPosition="center 35%">
               <p>テンプレートではなく、<br />お店ごとに設計します。</p>
@@ -259,7 +259,7 @@ export default function Home() {
                       <div className="works-devices reveal-group">
                         <div className="reveal reveal-media">
                           <BrowserFrame
-                            src="/screenshots-source/menu-desktop.png"
+                            src="/screenshots-source/menu-desktop.jpg"
                             alt="Brot Yanagi メニューページ(PC版)"
                             aspectRatio={1119 / 843}
                           />
@@ -287,10 +287,10 @@ export default function Home() {
                       <div className="case-story-kicker">Result</div>
                       <p className="case-result">Instagramだけの運営から、<br />更新も集客も自分たちで回せる<br />サイトへ。</p>
                       <dl>
-                        <div className="stage"><span className="stage-no">01</span><div className="stage-body"><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div></div>
-                        <div className="stage"><span className="stage-no">02</span><div className="stage-body"><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div></div>
-                        <div className="stage"><span className="stage-no">03</span><div className="stage-body"><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div></div>
-                        <div className="stage"><span className="stage-no">04</span><div className="stage-body"><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div></div>
+                        <div className="stage" data-no="01"><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div>
+                        <div className="stage" data-no="02"><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div>
+                        <div className="stage" data-no="03"><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div>
+                        <div className="stage" data-no="04"><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div>
                       </dl>
                     </div>
                   </div>
@@ -311,7 +311,7 @@ export default function Home() {
                       <div className="gallery-photo-frame">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src="/screenshots-source/exterior-photo-crop.png"
+                          src="/screenshots-source/exterior-photo-crop.jpg"
                           alt="Brot Yanagi 外観"
                           style={{ aspectRatio: 16 / 9, objectPosition: "center 45%" }}
                         />
@@ -333,7 +333,7 @@ export default function Home() {
                       <div className="gallery-photo-frame">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src="/screenshots-source/entrance-photo-crop.png"
+                          src="/screenshots-source/entrance-photo-crop.jpg"
                           alt="Brot Yanagi エントランス"
                           style={{ aspectRatio: 1.5, objectPosition: "center 50%" }}
                         />
@@ -357,7 +357,7 @@ export default function Home() {
           </section>
 
           <section id="services" className="section">
-            <div className="eyebrow reveal">Services</div>
+            <h2 className="eyebrow reveal">Services</h2>
 
             <PhotoBand src="/brand-photos/wall-shadow-plant-a.jpg" objectPosition="center 68%" align="right">
               <p>できることを、<br />3つに整理しました。</p>
@@ -500,7 +500,7 @@ export default function Home() {
           </section>
 
           <section id="founder" className="section founder-section">
-            <div className="eyebrow reveal">Founder</div>
+            <h2 className="eyebrow reveal">Founder</h2>
 
             <PhotoBand src="/brand-photos/office-room-wide.jpg" objectPosition="center 30%">
               <p>担当者が<br />変わることなく、<br />ご相談から公開後まで<br />一貫して対応します。</p>
@@ -560,7 +560,7 @@ export default function Home() {
           </section>
 
           <section id="contact" className="section">
-            <div className="eyebrow reveal">Contact</div>
+            <h2 className="eyebrow reveal">Contact</h2>
 
             <PhotoBand src="/brand-photos/office-room-wide.jpg" objectPosition="center 62%">
               <p className="contact-echo">事業に、<br />もう一つの根を。</p>
