@@ -11,7 +11,7 @@ const zenOldMincho = Zen_Old_Mincho({
 });
 
 const notoSansJP = Noto_Sans_JP({
-  weight: ["400", "500", "600"],
+  weight: ["400", "600"],
   subsets: ["latin"],
   variable: "--font-sans-jp",
   display: "swap",
