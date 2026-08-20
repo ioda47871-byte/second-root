@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import ContactForm from "@/components/ContactForm";
 import BrowserFrame from "@/components/BrowserFrame";
 import PhoneFrame from "@/components/PhoneFrame";
+import PhotoBand from "@/components/PhotoBand";
 
 export default function Home() {
   useEffect(() => {
@@ -224,43 +225,22 @@ export default function Home() {
           <section id="philosophy" className="section philosophy">
             <div className="eyebrow reveal">Philosophy</div>
 
-            <div className="photo-band reveal reveal-media">
-              <div className="photo-band-img">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-photos/wall-shadow-plant-a.jpg" alt="" style={{ objectPosition: "center 30%" }} />
-              </div>
-              <div className="photo-band-scrim" aria-hidden="true" />
-              <div className="photo-band-content">
-                <p>完成がゴールではありません。<br />変わり続けるお店と一緒に、更新していく。</p>
-              </div>
-            </div>
+            <PhotoBand src="/brand-photos/wall-shadow-plant-a.jpg" objectPosition="center 30%">
+              <p>完成が<br />ゴールではありません。<br />変わり続けるお店と<br />一緒に、<br />更新していく。</p>
+            </PhotoBand>
 
-            <div className="photo-band photo-band--right reveal reveal-media">
-              <div className="photo-band-img">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-photos/table-shadow-empty.jpg" alt="" style={{ objectPosition: "center 20%" }} />
-              </div>
-              <div className="photo-band-scrim" aria-hidden="true" />
-              <div className="photo-band-content">
-                <p>看板、常連さん、味、接客。<br />すでにあるものを、もう一つの形で支える。<br />それが、Second Rootという名前の意味です。</p>
-              </div>
-            </div>
+            <PhotoBand src="/brand-photos/table-shadow-empty.jpg" objectPosition="center 20%" align="right">
+              <p>看板、常連さん、<br />味、接客。<br />すでにあるものを、<br />もう一つの形で支える。<br />それが、<br />Second Rootという<br />名前の意味です。</p>
+            </PhotoBand>
           </section>
 
           <section id="works" className="section section--roomy section--wide">
             <div className="eyebrow reveal">Works</div>
 
-            <div className="photo-band reveal reveal-media">
-              <div className="photo-band-img">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-photos/notebook-wireframe-wide.jpg" alt="" style={{ objectPosition: "center 35%" }} />
-              </div>
-              <div className="photo-band-scrim" aria-hidden="true" />
-              <div className="photo-band-content">
-                <p>テンプレートではなく、お店ごとに設計します。</p>
-                <p className="photo-band-sub">一つひとつのお店に合わせて、目的や雰囲気から一緒に考えます。</p>
-              </div>
-            </div>
+            <PhotoBand src="/brand-photos/notebook-wireframe-wide.jpg" objectPosition="center 35%">
+              <p>テンプレートではなく、<br />お店ごとに設計します。</p>
+              <p className="photo-band-sub">一つひとつのお店に合わせて、<br />目的や雰囲気から<br />一緒に考えます。</p>
+            </PhotoBand>
 
             <div className="mini-wrap reveal" id="worksMiniWrap">
               <div className="mini-spine">
@@ -379,17 +359,10 @@ export default function Home() {
           <section id="services" className="section">
             <div className="eyebrow reveal">Services</div>
 
-            <div className="photo-band photo-band--right reveal reveal-media">
-              <div className="photo-band-img">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-photos/wall-shadow-plant-a.jpg" alt="" style={{ objectPosition: "center 68%" }} />
-              </div>
-              <div className="photo-band-scrim" aria-hidden="true" />
-              <div className="photo-band-content">
-                <p>できることを、3つに整理しました。</p>
-                <p className="photo-band-sub">サービス一覧というより、実際に対応できる範囲を、正直にお伝えします。</p>
-              </div>
-            </div>
+            <PhotoBand src="/brand-photos/wall-shadow-plant-a.jpg" objectPosition="center 68%" align="right">
+              <p>できることを、<br />3つに整理しました。</p>
+              <p className="photo-band-sub">サービス一覧というより、<br />実際に対応できる範囲を、<br />正直にお伝えします。</p>
+            </PhotoBand>
 
             <div className="service-list reveal">
               <div className="service-item">
@@ -529,16 +502,9 @@ export default function Home() {
           <section id="founder" className="section founder-section">
             <div className="eyebrow reveal">Founder</div>
 
-            <div className="photo-band reveal reveal-media">
-              <div className="photo-band-img">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-photos/office-room-wide.jpg" alt="" style={{ objectPosition: "center 30%" }} />
-              </div>
-              <div className="photo-band-scrim" aria-hidden="true" />
-              <div className="photo-band-content">
-                <p>担当者が変わることなく、<br />ご相談から公開後まで一貫して対応します。</p>
-              </div>
-            </div>
+            <PhotoBand src="/brand-photos/office-room-wide.jpg" objectPosition="center 30%">
+              <p>担当者が<br />変わることなく、<br />ご相談から公開後まで<br />一貫して対応します。</p>
+            </PhotoBand>
 
             <div className="founder-body">
               <p className="reveal">窓口が変わるたびに、伝えたはずのことが振り出しに戻る。<br />そんなことがないように、最初から最後まで同じ人間が向き合います。</p>
@@ -596,17 +562,10 @@ export default function Home() {
           <section id="contact" className="section">
             <div className="eyebrow reveal">Contact</div>
 
-            <div className="photo-band reveal reveal-media">
-              <div className="photo-band-img">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-photos/office-room-wide.jpg" alt="" style={{ objectPosition: "center 62%" }} />
-              </div>
-              <div className="photo-band-scrim" aria-hidden="true" />
-              <div className="photo-band-content">
-                <p className="contact-echo">事業に、もう一つの根を。</p>
-                <p>まずは、お店のお話を聞かせてください。</p>
-              </div>
-            </div>
+            <PhotoBand src="/brand-photos/office-room-wide.jpg" objectPosition="center 62%">
+              <p className="contact-echo">事業に、<br />もう一つの根を。</p>
+              <p>まずは、<br />お店のお話を<br />聞かせてください。</p>
+            </PhotoBand>
 
             <p className="section-sub reveal" style={{ marginBottom: 0 }}>ご相談だけでも歓迎しています。無理な営業はいたしません。</p>
 

@@ -191,7 +191,7 @@ body::before{
 .photo-band-content{
   position:relative; z-index:1;
   padding:clamp(40px,7vw,72px) clamp(24px,6vw,72px);
-  max-width:24em;
+  max-width:42em;
 }
 .photo-band-content p{
   font-family:var(--font-serif); font-weight:500; color:var(--ink);
