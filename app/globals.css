@@ -496,11 +496,30 @@ body::before{
 .link-quiet .arrow{ transition:transform .3s var(--ease); }
 .link-quiet:hover .arrow{ transform:translateX(4px); }
 
-.case-live-link{ margin-top:32px; }
-.case-live-kicker{
-  display:block; font-family:var(--font-label); font-size:.64rem; letter-spacing:.18em;
-  text-transform:uppercase; color:var(--gray); margin-bottom:6px;
+/* the strongest moment in the case study — a real, working site is the
+   proof, not a mockup image. typography and a border carry the weight
+   a screenshot would normally carry. */
+.live-site{
+  margin-top:48px; padding:36px 32px; border:1px solid var(--hairline-strong);
 }
+.live-site-kicker{
+  font-family:var(--font-label); font-weight:600; font-size:.66rem; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--gold); margin:0 0 14px;
+}
+.live-site-heading{
+  font-family:var(--font-serif); font-weight:500; font-size:1.2rem; color:var(--ink);
+  margin:0 0 20px; text-wrap:balance;
+}
+.live-site-link{
+  display:inline-flex; align-items:center; gap:14px; text-decoration:none;
+  color:var(--ink); border-bottom:1.5px solid var(--accent); padding-bottom:4px;
+  transition:color .3s var(--ease), border-color .3s var(--ease);
+}
+.live-site-link:hover, .live-site-link:focus-visible{ color:var(--accent); }
+.live-site-link .live-site-url{ font-family:var(--font-label); font-size:1rem; font-weight:600; }
+.live-site-link .arrow{ transition:transform .3s var(--ease); }
+.live-site-link:hover .arrow{ transform:translateX(5px); }
+.live-site-note{ font-size:.86rem; color:var(--gray); line-height:1.8; margin:18px 0 0; max-width:32em; }
 
 .owner-voice{ margin-top:48px; padding-top:32px; border-top:1px solid var(--hairline); }
 .owner-voice-quote{

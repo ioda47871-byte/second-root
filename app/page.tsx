@@ -247,29 +247,36 @@ export default function Home() {
 
               <div className="mini-list">
                 <div id="case-brot">
-                  <div className="eyebrow" style={{ marginBottom: 8 }}>特集 — Brot Yanagi</div>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>制作例 — Selected Work</div>
                   <h3 className="case-name">Brot Yanagi<span className="case-type"> — パン屋</span></h3>
                   <div className="case-story case-story--full">
-                    <div className="case-story-kicker">Result</div>
-                    <p className="case-result">Instagramだけの運営から、<br />更新は自分たちでできる<br />サイトへ。</p>
                     <dl>
-                      <div className="stage" data-no="01"><dt>Situation</dt><dd>Instagramだけで情報発信しており、ホームページは持っていなかった。</dd></div>
+                      <div className="stage" data-no="01"><dt>Context</dt><dd>パン屋のBrot Yanagi。Instagramを中心に情報発信していたが、ホームページは持っていなかった。</dd></div>
                       <div className="stage" data-no="02"><dt>Problem</dt><dd>SNSでは投稿が流れていくため、店舗情報や商品情報をひとつの場所で確認できるWebサイトがなかった。</dd></div>
                       <div className="stage" data-no="03"><dt>Approach</dt><dd>営業時間・アクセス・商品情報など、初めて訪れた人が必要な情報を迷わず確認できる構成を設計。あわせて、商品情報を店舗側で更新できる仕組みを用意した。</dd></div>
-                      <div className="stage" data-no="04"><dt>Build</dt><dd>商品情報を店舗側で更新できるCMSを導入し、Instagramの投稿をサイト上でも確認できる仕組みを用意した。</dd></div>
-                      <div className="stage" data-no="05"><dt>After</dt><dd>商品ページの更新は、オーナー自身の手でできるようになった。Instagramの最新投稿も、サイト上に自動で反映されている。</dd></div>
+                      <div className="stage" data-no="04"><dt>Build</dt><dd>商品情報を店舗側で更新できるCMSを導入し、Instagramの投稿をサイト上でも確認できる仕組みを実装。スマートフォン表示にも対応した。</dd></div>
+                      <div className="stage" data-no="05"><dt>What You Can Do</dt><dd>商品ページの更新は、オーナー自身の手でできる。Instagramの最新投稿も、サイト上に自動で反映される。</dd></div>
                     </dl>
+
                     {process.env.NEXT_PUBLIC_BROT_YANAGI_URL && (
-                      <a
-                        className="link-quiet case-live-link"
-                        href={process.env.NEXT_PUBLIC_BROT_YANAGI_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <span className="case-live-kicker">Live Site</span>
-                        実際のサイトを見る<span className="arrow">→</span>
-                      </a>
+                      <div className="live-site">
+                        <p className="live-site-kicker">06 / Live Site</p>
+                        <p className="live-site-heading">実際に公開しているサイトを、ご覧いただけます。</p>
+                        <a
+                          className="live-site-link"
+                          href={process.env.NEXT_PUBLIC_BROT_YANAGI_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <span className="live-site-url">
+                            {process.env.NEXT_PUBLIC_BROT_YANAGI_URL.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                          </span>
+                          <span className="arrow">→</span>
+                        </a>
+                        <p className="live-site-note">PC表示・スマートフォン表示・商品ページ・お問い合わせ導線まで、実際の動きをご確認いただけます。</p>
+                      </div>
                     )}
+
                     {ownerVoice && (
                       <div className="owner-voice">
                         <div className="case-story-kicker">Owner&apos;s Voice — 店主の声</div>
@@ -282,14 +289,15 @@ export default function Home() {
                 </div>
 
                 <div className="case-soon" id="case-progress">
-                  <div className="case-name">制作中の事例</div>
-                  <p>現在、新しい実績を制作しています。完成次第、ここに公開します。</p>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>準備中</div>
+                  <div className="case-name">Concept Work(自主制作)</div>
+                  <p>カフェ・美容室・整体など、他の業種でも自主制作のConcept Workを準備しています。完成次第、ここに公開します。</p>
                 </div>
               </div>
             </div>
 
             <div className="cta-band reveal">
-              <p>この事例のような形が、あなたのお店にも合うか。まずは無料診断でご相談ください。</p>
+              <p>実際のサイトを見た上で、あなたのお店ならどうなるか——まずは無料診断でご相談ください。</p>
               <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
             </div>
           </section>
