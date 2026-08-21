@@ -410,19 +410,29 @@ body::before{
   border:1px solid var(--hairline);
   padding:24px 28px; margin:28px 0 36px; max-width:520px;
 }
-.diagnosis-box p{ margin:0 0 12px; font-size:.9rem; color:var(--gray); }
-.diagnosis-box ul{ margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px; }
-.diagnosis-box li{ font-size:.92rem; color:var(--ink); position:relative; padding-left:18px; }
-.diagnosis-box li::before{ content:""; position:absolute; left:0; top:.65em; width:8px; height:1px; background:var(--accent); }
+.diagnosis-box p{ margin:0; font-size:.9rem; color:var(--gray); }
+
+/* the LINE fallback — quiet, no brand green, no fixed positioning.
+   sits after the form so it reads as the secondary path, not an
+   alternative of equal weight. renders nothing when the env var is unset. */
+.line-note{
+  margin-top:56px; padding-top:32px; border-top:1px solid var(--hairline); max-width:480px;
+}
+.line-note-title{ font-family:var(--font-serif); font-weight:500; font-size:1.05rem; color:var(--ink); margin:0 0 10px; }
+.line-note-body{ font-size:.88rem; color:var(--gray); line-height:1.85; margin:0 0 18px; }
 
 .contact-form{ display:flex; flex-direction:column; gap:20px; max-width:640px; width:100%; }
 .form-row label{ display:block; font-size:.82rem; color:var(--gray); margin-bottom:8px; }
-.form-row input, .form-row textarea{
-  width:100%; border:none; border-bottom:1px solid var(--hairline-strong);
+.form-row input, .form-row textarea, .form-row select{
+  width:100%; border:none; border-bottom:1px solid var(--hairline-strong); border-radius:0;
   background:transparent; color:var(--ink); font-family:var(--font-sans);
   font-size:.98rem; padding:8px 2px; transition:border-color .3s var(--ease);
+  -webkit-appearance:none; appearance:none;
 }
-.form-row input:focus, .form-row textarea:focus{ outline:none; border-color:var(--accent); border-bottom-width:2px; }
+.form-row select{ cursor:pointer; }
+.form-row input:focus, .form-row textarea:focus, .form-row select:focus{
+  outline:none; border-color:var(--accent); border-bottom-width:2px;
+}
 .form-row textarea{ resize:vertical; min-height:90px; }
 .form-submit{
   align-self:flex-start; background:none; border:none; cursor:pointer; padding:0;
@@ -474,8 +484,30 @@ body::before{
 .case-story{ max-width:30em; padding-left:40px; border-left:1px solid var(--hairline); }
 /* no visual column to divide from while the site runs photo-free */
 .case-story--full{ max-width:34em; padding-left:0; border-left:none; margin-bottom:8px; }
-.gallery-list{ list-style:none; margin:0; padding:0; display:flex; gap:28px; flex-wrap:wrap; }
-.gallery-list li{ display:flex; align-items:baseline; gap:10px; font-size:.9rem; color:var(--ink); }
+
+/* quiet secondary link — underline + arrow only, always subordinate to
+   the stamp CTA. used for "see the live site" and the LINE fallback. */
+.link-quiet{
+  display:inline-flex; align-items:center; gap:8px; font-size:.88rem; color:var(--ink);
+  text-decoration:none; border-bottom:1px solid var(--hairline-strong); padding-bottom:3px;
+  transition:border-color .3s var(--ease), color .3s var(--ease);
+}
+.link-quiet:hover, .link-quiet:focus-visible{ color:var(--accent); border-color:var(--accent); }
+.link-quiet .arrow{ transition:transform .3s var(--ease); }
+.link-quiet:hover .arrow{ transform:translateX(4px); }
+
+.case-live-link{ margin-top:32px; }
+.case-live-kicker{
+  display:block; font-family:var(--font-label); font-size:.64rem; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--gray); margin-bottom:6px;
+}
+
+.owner-voice{ margin-top:48px; padding-top:32px; border-top:1px solid var(--hairline); }
+.owner-voice-quote{
+  font-family:var(--font-serif); font-weight:500; font-size:1.15rem; color:var(--ink);
+  line-height:1.85; margin:14px 0 12px; text-wrap:balance;
+}
+.owner-voice-attr{ font-size:.85rem; color:var(--gray); margin:0; }
 /* below this, the fixed 340px visual column would squeeze the text
    column too narrow (tablet portrait) — stack instead of cramping it */
 @media (max-width:960px){

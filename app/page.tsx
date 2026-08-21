@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import ContactForm from "@/components/ContactForm";
 
+// Real Brot Yanagi feedback, once it exists — never a placeholder or
+// AI-drafted quote. Set to { quote, name, role } to publish it.
+const ownerVoice: { quote: string; name: string; role: string } | null = null;
+
 export default function Home() {
   useEffect(() => {
     function bindSpine(
@@ -246,28 +250,35 @@ export default function Home() {
                   <div className="eyebrow" style={{ marginBottom: 8 }}>特集 — Brot Yanagi</div>
                   <h3 className="case-name">Brot Yanagi<span className="case-type"> — パン屋</span></h3>
                   <div className="case-story case-story--full">
-                    <p className="case-story-lead">SNS(Instagram)だけで、なんとかお店を知ってもらっていた。</p>
                     <div className="case-story-kicker">Result</div>
-                    <p className="case-result">Instagramだけの運営から、<br />更新も集客も自分たちで回せる<br />サイトへ。</p>
+                    <p className="case-result">Instagramだけの運営から、<br />更新は自分たちでできる<br />サイトへ。</p>
                     <dl>
-                      <div className="stage" data-no="01"><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div>
-                      <div className="stage" data-no="02"><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div>
-                      <div className="stage" data-no="03"><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div>
-                      <div className="stage" data-no="04"><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div>
+                      <div className="stage" data-no="01"><dt>Situation</dt><dd>Instagramだけで情報発信しており、ホームページは持っていなかった。</dd></div>
+                      <div className="stage" data-no="02"><dt>Problem</dt><dd>SNSでは投稿が流れていくため、店舗情報や商品情報をひとつの場所で確認できるWebサイトがなかった。</dd></div>
+                      <div className="stage" data-no="03"><dt>Approach</dt><dd>営業時間・アクセス・商品情報など、初めて訪れた人が必要な情報を迷わず確認できる構成を設計。あわせて、商品情報を店舗側で更新できる仕組みを用意した。</dd></div>
+                      <div className="stage" data-no="04"><dt>Build</dt><dd>商品情報を店舗側で更新できるCMSを導入し、Instagramの投稿をサイト上でも確認できる仕組みを用意した。</dd></div>
+                      <div className="stage" data-no="05"><dt>After</dt><dd>商品ページの更新は、オーナー自身の手でできるようになった。Instagramの最新投稿も、サイト上に自動で反映されている。</dd></div>
                     </dl>
+                    {process.env.NEXT_PUBLIC_BROT_YANAGI_URL && (
+                      <a
+                        className="link-quiet case-live-link"
+                        href={process.env.NEXT_PUBLIC_BROT_YANAGI_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <span className="case-live-kicker">Live Site</span>
+                        実際のサイトを見る<span className="arrow">→</span>
+                      </a>
+                    )}
+                    {ownerVoice && (
+                      <div className="owner-voice">
+                        <div className="case-story-kicker">Owner&apos;s Voice — 店主の声</div>
+                        <p className="owner-voice-quote">{ownerVoice.quote}</p>
+                        <p className="owner-voice-attr">{ownerVoice.name} — {ownerVoice.role}</p>
+                      </div>
+                    )}
                   </div>
-
-                  <div className="gallery-heading">
-                    <div className="eyebrow">Gallery</div>
-                    <h4 className="case-name" style={{ marginTop: 10, marginBottom: 8 }}>店舗の雰囲気</h4>
-                    <p className="case-photo-caption">パンの香りに包まれる、あたたかい空間です。</p>
-                  </div>
-                  <ul className="gallery-list reveal">
-                    <li><span className="tick" />外観</li>
-                    <li><span className="tick" />内観</li>
-                    <li><span className="tick" />エントランス</li>
-                  </ul>
-                  <p className="case-credit">PHOTO — Brot Yanagi / EDIT — Second Root</p>
+                  <p className="case-credit">EDIT — Second Root</p>
                 </div>
 
                 <div className="case-soon" id="case-progress">
@@ -514,23 +525,27 @@ export default function Home() {
             </div>
 
             <div className="diagnosis-box reveal">
-              <p>無料診断では、次の3つを確認し、改善できそうなポイントを簡単にお伝えします。</p>
-              <ul>
-                <li>ホームページ(まだない場合は、Instagramなど今の集客方法)</li>
-                <li>Googleビジネスプロフィール</li>
-                <li>Instagram</li>
-              </ul>
+              <p>ホームページ・Google・Instagramなど、現在の発信状況を確認し、改善できそうなポイントを簡単にお伝えします。</p>
             </div>
 
             <p className="contact-closing-note reveal">夜遅くのご相談でも、大丈夫です。<br />まずは、お気軽にご連絡ください。</p>
 
-            {/* contact-channels: today this holds the form only. Adding LINE later
-                means dropping a second button into this same flex row. This is
-                deliberately the last thing in the section — the submit button
-                is meant to read as the page's actual close. */}
             <div className="contact-channels reveal">
               <ContactForm />
             </div>
+
+            {process.env.NEXT_PUBLIC_LINE_URL && (
+              <div className="line-note reveal">
+                <p className="line-note-title">LINEでもご相談いただけます。</p>
+                <p className="line-note-body">
+                  フォームへの入力が面倒な方や、まずは簡単に相談してみたい方は、LINEからでもご連絡いただけます。<br />
+                  友だち追加後、「無料診断希望」と送っていただければ大丈夫です。
+                </p>
+                <a className="link-quiet" href={process.env.NEXT_PUBLIC_LINE_URL} target="_blank" rel="noopener noreferrer">
+                  LINEで相談する<span className="arrow">→</span>
+                </a>
+              </div>
+            )}
 
             <div className="footer">
               <span>© 2026 Second Root</span>
