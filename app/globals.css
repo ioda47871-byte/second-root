@@ -782,18 +782,6 @@ body::before{
 /* contact */
 .contact-echo{ font-family:var(--font-serif); color:var(--gray); font-size:1rem; margin-bottom:10px; }
 
-/* closing image — a warm, late-evening desk. Cropped to the window/
-   plant/coffee side of the frame only: the laptop screen in this
-   source photo carries mismatched placeholder copy that can't be
-   shown, so the crop keeps well clear of it entirely rather than
-   trying to obscure it. */
-/* the section now closes on the form itself — no photo after it — so
-   this note sits just above the form as a quiet lead-in line instead */
-.contact-closing-note{
-  margin:40px 0 0;
-  font-family:var(--font-serif); font-size:1.05rem; line-height:1.7; color:var(--gray);
-}
-
 .btn-primary{
   display:inline-flex; align-items:center; gap:10px;
   border:1px solid var(--accent);

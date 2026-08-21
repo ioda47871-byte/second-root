@@ -176,7 +176,7 @@ export default function Home() {
     <>
       <header className="topbar">
         <a className="wordmark" href="#home">Second Root</a>
-        <a className="topbar-cta" href="#contact">無料で相談する</a>
+        <a className="topbar-cta" href="#contact">無料診断を申し込む</a>
       </header>
 
       <div className="spine-wrap" id="spineWrap">
@@ -271,7 +271,7 @@ export default function Home() {
                           <span className="live-site-url">
                             {process.env.NEXT_PUBLIC_BROT_YANAGI_URL.replace(/^https?:\/\//, "").replace(/\/$/, "")}
                           </span>
-                          <span className="arrow">→</span>
+                          <span className="arrow">↗</span>
                         </a>
                         <p className="live-site-note">PC表示・スマートフォン表示・商品ページ・お問い合わせ導線まで、実際の動きをご確認いただけます。</p>
                       </div>
@@ -333,7 +333,7 @@ export default function Home() {
                 <div>
                   <h3 className="pillar-name">公開後の伴走</h3>
                   <p className="pillar-desc">公開して終わりにせず、その後の相談や調整に対応します。</p>
-                  <ul className="pillar-items"><li>無料診断</li><li>修正・更新対応</li></ul>
+                  <ul className="pillar-items"><li>修正・更新対応</li><li>公開後のご相談</li></ul>
                 </div>
               </div>
             </div>
@@ -355,7 +355,7 @@ export default function Home() {
               <div className="interview-qa">
                 <div className="qa-item">
                   <p className="qa-q">Q. なぜ、パン屋の現場に立ちながら、この仕事を?</p>
-                  <p className="qa-a">もともとは兼業でした。ただ、店に立っていると、閉店後にホームページのことを考える余力がどれだけ残っていないか、身体で分かるんです。だから、その感覚を知っている人間として、この仕事をしています。</p>
+                  <p className="qa-a">パン屋の現場に立ちながら、この仕事をしているのには理由があります。閉店後にホームページのことを考える余力がどれだけ残っていないか、身体で分かるんです。だから、その感覚を知っている人間として、この仕事をしています。</p>
                 </div>
                 <div className="qa-item">
                   <p className="qa-q">Q. 一人で対応することに、不安はありませんか?</p>
@@ -363,7 +363,7 @@ export default function Home() {
                 </div>
                 <div className="qa-item">
                   <p className="qa-q">Q. 連絡が取りづらくなったりは?</p>
-                  <p className="qa-a">その約束は、崩しません。忙しさを理由にはしない、というのが、最初に決めたことです。</p>
+                  <p className="qa-a">ご連絡には、原則24時間以内に返信します。忙しさを理由に、連絡を曖昧にはしません。</p>
                 </div>
               </div>
             </div>
@@ -489,11 +489,11 @@ export default function Home() {
               </details>
               <details className="faq-item">
                 <summary>修正は何回までですか?<span className="mark" /></summary>
-                <p>公開前の確認では、回数に明確な上限を設けていません。公開後の修正は都度のご依頼、または月額保守プランでの対応となります。</p>
+                <p>公開前に必要な確認・調整を行います。大幅な構成変更や、当初の制作範囲を超える追加については、事前にご相談します。公開後の修正は都度のご依頼、または月額保守プランでの対応となります。</p>
               </details>
               <details className="faq-item">
                 <summary>対応エリアはどこまでですか?<span className="mark" /></summary>
-                <p>オンラインで全国対応しています。打ち合わせもオンラインを中心に進めますので、遠方の方もご相談いただけます。</p>
+                <p>全国からご相談いただけます。基本的なやり取りはメールやLINEなどオンラインで進め、必要に応じてお電話やオンラインでお話しします。</p>
               </details>
               <details className="faq-item">
                 <summary>制作期間はどれくらいですか?<span className="mark" /></summary>
@@ -535,8 +535,6 @@ export default function Home() {
             <div className="diagnosis-box reveal">
               <p>ホームページ・Google・Instagramなど、現在の発信状況を確認し、改善できそうなポイントを簡単にお伝えします。</p>
             </div>
-
-            <p className="contact-closing-note reveal">夜遅くのご相談でも、大丈夫です。<br />まずは、お気軽にご連絡ください。</p>
 
             <div className="contact-channels reveal">
               <ContactForm />
