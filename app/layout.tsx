@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Shippori_Mincho, Noto_Serif_JP, Zen_Maru_Gothic } from "next/font/google";
+import { Shippori_Mincho, Noto_Sans_JP, Zen_Maru_Gothic } from "next/font/google";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import "./globals.css";
 
@@ -10,7 +10,7 @@ const shipporiMincho = Shippori_Mincho({
   display: "swap",
 });
 
-const notoSerifJP = Noto_Serif_JP({
+const notoSansJP = Noto_Sans_JP({
   weight: ["400", "500", "600"],
   subsets: ["latin"],
   variable: "--font-body",
@@ -81,7 +81,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ja" className={`${shipporiMincho.variable} ${notoSerifJP.variable} ${zenMaruGothic.variable}`}>
+    <html lang="ja" className={`${shipporiMincho.variable} ${notoSansJP.variable} ${zenMaruGothic.variable}`}>
       <body>
         {children}
         <GoogleAnalytics />

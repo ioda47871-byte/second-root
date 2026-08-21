@@ -85,19 +85,24 @@ export default function ContactForm() {
           <option value="その他">その他</option>
         </select>
       </div>
-      <div className="form-row">
-        <label htmlFor="cf-website">現在のホームページURL(任意)</label>
-        <input id="cf-website" name="websiteUrl" type="text" disabled={disabled} />
-      </div>
-      <div className="form-row">
-        <label htmlFor="cf-instagram">Instagram URLまたはアカウント名(任意)</label>
-        <input id="cf-instagram" name="instagram" type="text" disabled={disabled} />
-      </div>
-      <div className="form-row">
-        <label htmlFor="cf-gbp">GoogleビジネスプロフィールURL(任意・分からなければ空欄で大丈夫です)</label>
-        <input id="cf-gbp" name="gbp" type="text" disabled={disabled} />
-      </div>
-      <div className="form-row">
+      <details className="form-more form-row--full">
+        <summary>Web・SNS情報を入力する(任意)<span className="arrow">→</span></summary>
+        <div className="form-more-body">
+          <div className="form-row">
+            <label htmlFor="cf-website">現在のホームページURL(任意)</label>
+            <input id="cf-website" name="websiteUrl" type="text" disabled={disabled} />
+          </div>
+          <div className="form-row">
+            <label htmlFor="cf-instagram">Instagram URLまたはアカウント名(任意)</label>
+            <input id="cf-instagram" name="instagram" type="text" disabled={disabled} />
+          </div>
+          <div className="form-row">
+            <label htmlFor="cf-gbp">GoogleビジネスプロフィールURL(任意・分からなければ空欄で大丈夫です)</label>
+            <input id="cf-gbp" name="gbp" type="text" disabled={disabled} />
+          </div>
+        </div>
+      </details>
+      <div className="form-row form-row--full">
         <label htmlFor="cf-message">現在困っていること・ご相談内容</label>
         <textarea
           id="cf-message"
@@ -107,15 +112,9 @@ export default function ContactForm() {
           disabled={disabled}
         />
       </div>
-      <div>
-        <button type="submit" className="btn-stamp form-submit" disabled={disabled}>
-          <span className="mark">
-            <svg viewBox="0 0 24 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <line x1="12" y1="4" x2="12" y2="24" strokeWidth="2.5" strokeLinecap="round" />
-              <circle cx="12" cy="31" r="4" />
-            </svg>
-          </span>
-          <span className="label">{status === "loading" ? "送信しています…" : "無料診断を申し込む"}</span>
+      <div className="form-actions">
+        <button type="submit" className="btn-primary form-submit" disabled={disabled}>
+          {status === "loading" ? "送信しています…" : "無料診断を申し込む"}
         </button>
         {status === "success" && (
           <p className="form-status is-success" role="status">
