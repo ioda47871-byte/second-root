@@ -2,9 +2,10 @@
 
 import { useEffect } from "react";
 import ContactForm from "@/components/ContactForm";
-import BrowserFrame from "@/components/BrowserFrame";
-import PhoneFrame from "@/components/PhoneFrame";
-import PhotoBand from "@/components/PhotoBand";
+
+// Real Brot Yanagi feedback, once it exists — never a placeholder or
+// AI-drafted quote. Set to { quote, name, role } to publish it.
+const ownerVoice: { quote: string; name: string; role: string } | null = null;
 
 export default function Home() {
   useEffect(() => {
@@ -86,7 +87,7 @@ export default function Home() {
     cleanups.push(
       bindActive(
         pageNodes,
-        ["home", "philosophy", "works", "services", "process", "pricing", "founder", "faq", "contact"],
+        ["home", "works", "services", "founder", "pricing", "process", "faq", "philosophy", "contact"],
         "-45% 0px -45% 0px"
       )
     );
@@ -183,31 +184,35 @@ export default function Home() {
           <div className="spine-track" />
           <div className="spine-fill" id="spineFill" />
           <div className="node" data-target="home"><span className="node-dot" /><span className="node-label">Home</span></div>
-          <div className="node" data-target="philosophy"><span className="node-dot" /><span className="node-label">Philosophy</span></div>
           <div className="node" data-target="works"><span className="node-dot" /><span className="node-label">Works</span></div>
           <div className="node" data-target="services"><span className="node-dot" /><span className="node-label">Services</span></div>
-          <div className="node" data-target="process"><span className="node-dot" /><span className="node-label">Process</span></div>
-          <div className="node" data-target="pricing"><span className="node-dot" /><span className="node-label">Pricing</span></div>
           <div className="node" data-target="founder"><span className="node-dot" /><span className="node-label">Founder</span></div>
+          <div className="node" data-target="pricing"><span className="node-dot" /><span className="node-label">Pricing</span></div>
+          <div className="node" data-target="process"><span className="node-dot" /><span className="node-label">Process</span></div>
           <div className="node" data-target="faq"><span className="node-dot" /><span className="node-label">FAQ</span></div>
+          <div className="node" data-target="philosophy"><span className="node-dot" /><span className="node-label">Philosophy</span></div>
           <div className="node" data-target="contact"><span className="node-dot" /><span className="node-label">Contact</span></div>
         </div>
 
         <main className="content">
 
-          <section id="home" className="section hero hero--photo">
-            <div className="hero-photo">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand-photos/desk-laptop-back-daylight.jpg" alt="" fetchPriority="high" />
-              <div className="hero-photo-scrim" aria-hidden="true" />
-            </div>
-            <div className="hero-photo-content">
+          <section id="home" className="section hero">
+            <div className="hero-content">
               <div className="hero-eyebrow eyebrow">Second Root</div>
               <h1 className="hero-title">事業に、<br />もう一つの根を。</h1>
               <p className="hero-service"><span className="tick" />地域のお店のホームページ制作</p>
+              <p className="hero-tags">パン屋・カフェ・美容室・整体</p>
               <p className="hero-sub">公開した日がゴールではありません。<br />その先まで、一緒に考えていきます。</p>
               <div className="hero-cta">
-                <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
+                <a className="btn-stamp" href="#contact">
+                  <span className="mark">
+                    <svg viewBox="0 0 24 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <line x1="12" y1="4" x2="12" y2="24" strokeWidth="2.5" strokeLinecap="round" />
+                      <circle cx="12" cy="31" r="4" />
+                    </svg>
+                  </span>
+                  <span className="label">無料診断を申し込む</span>
+                </a>
               </div>
             </div>
             <div className="scroll-cue"><div className="line" /><span>Scroll</span></div>
@@ -216,31 +221,21 @@ export default function Home() {
           <div className="lead-band">
             <p className="lead-target reveal">パン屋・カフェ・美容室・整体など、地域のお店を中心にホームページを制作しています。</p>
             <ul className="lead-strengths reveal">
+              <li><span className="tick" />今も店に立ちながら、この仕事をしています。</li>
               <li><span className="tick" />相談から公開後まで、同じ担当者が対応します。</li>
               <li><span className="tick" />ご連絡には、原則24時間以内に返信します。</li>
               <li><span className="tick" />料金は、買い切りが基本です。</li>
             </ul>
           </div>
 
-          <section id="philosophy" className="section philosophy">
-            <h2 className="eyebrow reveal">Philosophy</h2>
-
-            <PhotoBand src="/brand-photos/wall-shadow-plant-a.jpg" objectPosition="center 30%">
-              <p>完成が<br />ゴールではありません。<br />変わり続けるお店と<br />一緒に、<br />更新していく。</p>
-            </PhotoBand>
-
-            <PhotoBand src="/brand-photos/table-shadow-empty.jpg" objectPosition="center 20%" align="right">
-              <p>看板、常連さん、<br />味、接客。<br />すでにあるものを、<br />もう一つの形で支える。<br />それが、<br />Second Rootという<br />名前の意味です。</p>
-            </PhotoBand>
-          </section>
-
           <section id="works" className="section section--roomy section--wide">
             <h2 className="eyebrow reveal">Works</h2>
 
-            <PhotoBand src="/brand-photos/notebook-wireframe-wide.jpg" objectPosition="center 35%">
-              <p>テンプレートではなく、<br />お店ごとに設計します。</p>
-              <p className="photo-band-sub">一つひとつのお店に合わせて、<br />目的や雰囲気から<br />一緒に考えます。</p>
-            </PhotoBand>
+            <div className="pause pause--compact reveal">
+              <p className="pause-no">03 — WORKS</p>
+              <p className="pause-text">テンプレートではなく、お店ごとに設計します。</p>
+              <p className="pause-sub">一つひとつのお店に合わせて、目的や雰囲気から一緒に考えます。</p>
+            </div>
 
             <div className="mini-wrap reveal" id="worksMiniWrap">
               <div className="mini-spine">
@@ -252,106 +247,57 @@ export default function Home() {
 
               <div className="mini-list">
                 <div id="case-brot">
-                  <div className="eyebrow" style={{ marginBottom: 8 }}>Case Study — 01</div>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>制作例 — Selected Work</div>
                   <h3 className="case-name">Brot Yanagi<span className="case-type"> — パン屋</span></h3>
-                  <div className="case-real">
-                    <div className="case-visual">
-                      <div className="works-devices reveal-group">
-                        <div className="reveal reveal-media">
-                          <BrowserFrame
-                            src="/screenshots-source/menu-desktop.jpg"
-                            alt="Brot Yanagi メニューページ(PC版)"
-                            aspectRatio={1119 / 843}
-                          />
-                        </div>
-                        <div className="reveal reveal-media">
-                          <PhoneFrame
-                            className="is-back"
-                            src="/screenshots-source/access-mobile-portrait.jpeg"
-                            alt="Brot Yanagi アクセスページ(スマホ版)"
-                            aspectRatio={710 / 1413}
-                          />
-                        </div>
-                        <div className="reveal reveal-media">
-                          <PhoneFrame
-                            className="is-front"
-                            src="/screenshots-source/home-mobile.jpeg"
-                            alt="Brot Yanagi トップページ(スマホ版)"
-                            aspectRatio={710 / 1413}
-                          />
-                        </div>
-                      </div>
-                      <p className="case-photo-caption">実際に公開しているBrot Yanagiの画面(PC・スマホ)</p>
-                    </div>
-                    <div className="case-story">
-                      <div className="case-story-kicker">Result</div>
-                      <p className="case-result">Instagramだけの運営から、<br />更新も集客も自分たちで回せる<br />サイトへ。</p>
-                      <dl>
-                        <div className="stage" data-no="01"><dt>課題</dt><dd>SNS(Instagram)だけで運営しており、お店の存在を伝える場所がなかった。</dd></div>
-                        <div className="stage" data-no="02"><dt>提案</dt><dd>売り込まない、シンプルなホームページの制作を提案。</dd></div>
-                        <div className="stage" data-no="03"><dt>制作</dt><dd>オーナー自身で商品情報を更新できるよう、CMSを導入。</dd></div>
-                        <div className="stage" data-no="04"><dt>公開後</dt><dd>商品ページの更新が自分たちだけでできるようになり、Instagramの最新投稿も自動で反映されるように。</dd></div>
-                      </dl>
-                    </div>
-                  </div>
+                  <div className="case-story case-story--full">
+                    <dl>
+                      <div className="stage" data-no="01"><dt>Context</dt><dd>パン屋のBrot Yanagi。Instagramを中心に情報発信していたが、ホームページは持っていなかった。</dd></div>
+                      <div className="stage" data-no="02"><dt>Problem</dt><dd>SNSでは投稿が流れていくため、店舗情報や商品情報をひとつの場所で確認できるWebサイトがなかった。</dd></div>
+                      <div className="stage" data-no="03"><dt>Approach</dt><dd>営業時間・アクセス・商品情報など、初めて訪れた人が必要な情報を迷わず確認できる構成を設計。あわせて、商品情報を店舗側で更新できる仕組みを用意した。</dd></div>
+                      <div className="stage" data-no="04"><dt>Build</dt><dd>商品情報を店舗側で更新できるCMSを導入し、Instagramの投稿をサイト上でも確認できる仕組みを実装。スマートフォン表示にも対応した。</dd></div>
+                      <div className="stage" data-no="05"><dt>What You Can Do</dt><dd>商品ページの更新は、オーナー自身の手でできる。Instagramの最新投稿も、サイト上に自動で反映される。</dd></div>
+                    </dl>
 
-                  <div className="gallery-heading">
-                    <div className="eyebrow">Gallery</div>
-                    <h4 className="case-name" style={{ marginTop: 10, marginBottom: 8 }}>店舗の雰囲気</h4>
-                    <p className="case-photo-caption">パンの香りに包まれる、あたたかい空間です。</p>
+                    {process.env.NEXT_PUBLIC_BROT_YANAGI_URL && (
+                      <div className="live-site">
+                        <p className="live-site-kicker">06 / Live Site</p>
+                        <p className="live-site-heading">実際に公開しているサイトを、ご覧いただけます。</p>
+                        <a
+                          className="live-site-link"
+                          href={process.env.NEXT_PUBLIC_BROT_YANAGI_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <span className="live-site-url">
+                            {process.env.NEXT_PUBLIC_BROT_YANAGI_URL.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                          </span>
+                          <span className="arrow">→</span>
+                        </a>
+                        <p className="live-site-note">PC表示・スマートフォン表示・商品ページ・お問い合わせ導線まで、実際の動きをご確認いただけます。</p>
+                      </div>
+                    )}
+
+                    {ownerVoice && (
+                      <div className="owner-voice">
+                        <div className="case-story-kicker">Owner&apos;s Voice — 店主の声</div>
+                        <p className="owner-voice-quote">{ownerVoice.quote}</p>
+                        <p className="owner-voice-attr">{ownerVoice.name} — {ownerVoice.role}</p>
+                      </div>
+                    )}
                   </div>
-                  <div className="gallery-photos reveal-group">
-                    {/* these three use pre-cropped source files (see
-                        scripts/crop-gallery-sources.mjs) — a straight
-                        rectangular trim that removes the site chrome and a
-                        floating demo-tool badge baked into the original
-                        captures, done once so no CSS crop math has to fight
-                        it. Nothing inside the kept region is altered. */}
-                    <figure className="gallery-photo gallery-photo--primary reveal reveal-media">
-                      <div className="gallery-photo-frame">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/screenshots-source/exterior-photo-crop.jpg"
-                          alt="Brot Yanagi 外観"
-                          style={{ aspectRatio: 16 / 9, objectPosition: "center 45%" }}
-                        />
-                      </div>
-                      <figcaption><span className="tick" />外観</figcaption>
-                    </figure>
-                    <figure className="gallery-photo gallery-photo--portrait reveal reveal-media">
-                      <div className="gallery-photo-frame">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/screenshots-source/interior-photo-crop.jpeg"
-                          alt="Brot Yanagi 内観"
-                          style={{ aspectRatio: 0.8, objectPosition: "center 50%" }}
-                        />
-                      </div>
-                      <figcaption><span className="tick" />内観</figcaption>
-                    </figure>
-                    <figure className="gallery-photo gallery-photo--secondary reveal reveal-media">
-                      <div className="gallery-photo-frame">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/screenshots-source/entrance-photo-crop.jpg"
-                          alt="Brot Yanagi エントランス"
-                          style={{ aspectRatio: 1.5, objectPosition: "center 50%" }}
-                        />
-                      </div>
-                      <figcaption><span className="tick" />エントランス</figcaption>
-                    </figure>
-                  </div>
+                  <p className="case-credit">EDIT — Second Root</p>
                 </div>
 
                 <div className="case-soon" id="case-progress">
-                  <div className="case-name">制作中の事例</div>
-                  <p>現在、新しい実績を制作しています。完成次第、ここに公開します。</p>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>準備中</div>
+                  <div className="case-name">Concept Work(自主制作)</div>
+                  <p>カフェ・美容室・整体など、他の業種でも自主制作のConcept Workを準備しています。完成次第、ここに公開します。</p>
                 </div>
               </div>
             </div>
 
             <div className="cta-band reveal">
-              <p>この事例のような形が、あなたのお店にも合うか。まずは無料診断でご相談ください。</p>
+              <p>実際のサイトを見た上で、あなたのお店ならどうなるか——まずは無料診断でご相談ください。</p>
               <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
             </div>
           </section>
@@ -359,17 +305,18 @@ export default function Home() {
           <section id="services" className="section">
             <h2 className="eyebrow reveal">Services</h2>
 
-            <PhotoBand src="/brand-photos/wall-shadow-plant-a.jpg" objectPosition="center 68%" align="right">
-              <p>できることを、<br />3つに整理しました。</p>
-              <p className="photo-band-sub">サービス一覧というより、<br />実際に対応できる範囲を、<br />正直にお伝えします。</p>
-            </PhotoBand>
+            <div className="pause pause--compact reveal">
+              <p className="pause-no">04 — SERVICES</p>
+              <p className="pause-text">できることを、3つに整理しました。</p>
+              <p className="pause-sub">サービス一覧というより、実際に対応できる範囲を、正直にお伝えします。</p>
+            </div>
 
             <div className="service-list reveal">
               <div className="service-item">
                 <span className="service-no">01</span>
                 <div>
                   <h3 className="pillar-name">サイト制作</h3>
-                  <p className="pillar-desc">お店の紹介や商品情報を、分かりやすく伝えるホームページをつくります。</p>
+                  <p className="pillar-desc">お店の紹介や商品情報を、初めて訪れた人にも迷わず伝わる形にします。</p>
                   <ul className="pillar-items"><li>スマートフォン対応</li><li>基本的なSEO設計</li></ul>
                 </div>
               </div>
@@ -377,7 +324,7 @@ export default function Home() {
                 <span className="service-no">02</span>
                 <div>
                   <h3 className="pillar-name">更新の仕組みづくり</h3>
-                  <p className="pillar-desc">営業時間や商品情報を、ご自身で更新できる仕組みを整えます。</p>
+                  <p className="pillar-desc">営業時間や商品情報を、専門知識がなくてもご自身で更新できるようにします。</p>
                   <ul className="pillar-items"><li>CMS導入</li><li>Instagramなど外部連携</li></ul>
                 </div>
               </div>
@@ -391,40 +338,41 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="eyebrow reveal reasons-label">Second Rootに任せる理由</div>
-            <ul className="reasons-list reveal">
-              <li><span className="tick" />公開して終わりにせず、その後の改善提案まで行います。</li>
-              <li><span className="tick" />デザインの前に、お店の魅力をどう伝えるかを一緒に考えます。</li>
-              <li><span className="tick" />担当者が変わらないからこそ、密なやり取りができます。</li>
-            </ul>
+            <p className="services-closing reveal">デザインの前に、お店の魅力をどう伝えるかを、一緒に考えます。</p>
           </section>
 
-          <section id="process" className="section section--tight">
-            <div className="eyebrow reveal">Process</div>
-            <h2 className="section-heading reveal">制作の流れ</h2>
-            <p className="section-sub reveal">相談から公開まで、6つのステップで進みます。</p>
+          <section id="founder" className="section founder-section">
+            <h2 className="eyebrow reveal">Founder</h2>
 
-            <div className="mini-wrap reveal" id="processMiniWrap">
-              <div className="mini-spine">
-                <div className="mini-spine-track" />
-                <div className="mini-spine-fill" id="processMiniFill" />
-                <div className="mini-node" data-target="step-1" />
-                <div className="mini-node" data-target="step-2" />
-                <div className="mini-node" data-target="step-3" />
-                <div className="mini-node" data-target="step-4" />
-                <div className="mini-node" data-target="step-5" />
-                <div className="mini-node" data-target="step-6" />
-              </div>
+            <div className="pause pause--compact reveal">
+              <p className="pause-no">05 — FOUNDER</p>
+              <p className="pause-text">話を、聞いてみました。</p>
+            </div>
 
-              <div className="mini-list" style={{ gap: 36 }}>
-                <div id="step-1" className="step-item"><span className="step-no">01</span><div><h3 className="step-name">相談</h3><p className="step-desc">まずは、今困っていることをお聞きします。</p></div></div>
-                <div id="step-2" className="step-item"><span className="step-no">02</span><div><h3 className="step-name">ヒアリング</h3><p className="step-desc">お店の状況、お客様層、伝えたいことを整理します。</p></div></div>
-                <div id="step-3" className="step-item"><span className="step-no">03</span><div><h3 className="step-name">提案</h3><p className="step-desc">必要な機能と構成を、分かりやすい形でご提案します。</p></div></div>
-                <div id="step-4" className="step-item"><span className="step-no">04</span><div><h3 className="step-name">制作</h3><p className="step-desc">デザインとコーディングを進め、途中経過もご確認いただきます。</p></div></div>
-                <div id="step-5" className="step-item"><span className="step-no">05</span><div><h3 className="step-name">確認</h3><p className="step-desc">公開前に、内容と動作を一緒に確認します。</p></div></div>
-                <div id="step-6" className="step-item"><span className="step-no">06</span><div><h3 className="step-name">公開</h3><p className="step-desc">ドメイン・サーバーの設定を行い、公開します。</p></div></div>
+            <div className="interview reveal">
+              <div className="interview-kicker">インタビュー</div>
+              <h3 className="interview-title">「同じ疲れを、知っているから。」</h3>
+              <div className="interview-qa">
+                <div className="qa-item">
+                  <p className="qa-q">Q. なぜ、パン屋の現場に立ちながら、この仕事を?</p>
+                  <p className="qa-a">もともとは兼業でした。ただ、店に立っていると、閉店後にホームページのことを考える余力がどれだけ残っていないか、身体で分かるんです。だから、その感覚を知っている人間として、この仕事をしています。</p>
+                </div>
+                <div className="qa-item">
+                  <p className="qa-q">Q. 一人で対応することに、不安はありませんか?</p>
+                  <p className="qa-a">窓口が変わるたびに、伝えたことが振り出しに戻る。それが一番もったいないと思っています。最初から最後まで、同じ人間が向き合う方が、結局早いんです。公開して終わりにもせず、お店の変化に合わせて長く伴走します。</p>
+                </div>
+                <div className="qa-item">
+                  <p className="qa-q">Q. 連絡が取りづらくなったりは?</p>
+                  <p className="qa-a">その約束は、崩しません。忙しさを理由にはしない、というのが、最初に決めたことです。</p>
+                </div>
               </div>
             </div>
+            <div className="signature reveal">Second Root</div>
+
+            <ul className="promise-list reveal">
+              <li className="promise-item"><span className="tick" />できないことを、できるとは言いません。</li>
+              <li className="promise-item"><span className="tick" />不要な機能や、余分な費用は提案しません。</li>
+            </ul>
           </section>
 
           <section id="pricing" className="section">
@@ -499,25 +447,32 @@ export default function Home() {
             </div>
           </section>
 
-          <section id="founder" className="section founder-section">
-            <h2 className="eyebrow reveal">Founder</h2>
+          <section id="process" className="section section--tight">
+            <div className="eyebrow reveal">Process</div>
+            <h2 className="section-heading reveal">制作の流れ</h2>
+            <p className="section-sub reveal">相談から公開まで、6つのステップで進みます。</p>
 
-            <PhotoBand src="/brand-photos/office-room-wide.jpg" objectPosition="center 30%">
-              <p>担当者が<br />変わることなく、<br />ご相談から公開後まで<br />一貫して対応します。</p>
-            </PhotoBand>
+            <div className="mini-wrap reveal" id="processMiniWrap">
+              <div className="mini-spine">
+                <div className="mini-spine-track" />
+                <div className="mini-spine-fill" id="processMiniFill" />
+                <div className="mini-node" data-target="step-1" />
+                <div className="mini-node" data-target="step-2" />
+                <div className="mini-node" data-target="step-3" />
+                <div className="mini-node" data-target="step-4" />
+                <div className="mini-node" data-target="step-5" />
+                <div className="mini-node" data-target="step-6" />
+              </div>
 
-            <div className="founder-body">
-              <p className="reveal">窓口が変わるたびに、伝えたはずのことが振り出しに戻る。<br />そんなことがないように、最初から最後まで同じ人間が向き合います。</p>
-              <p className="reveal">公開して終わりにせず、お店の変化に合わせて長く伴走します。</p>
-              <p className="reveal">ご連絡には、原則24時間以内に返信します。</p>
+              <div className="mini-list" style={{ gap: 36 }}>
+                <div id="step-1" className="step-item"><span className="step-no">01</span><div><h3 className="step-name">相談</h3><p className="step-desc">まずは、今困っていることをお聞きします。</p></div></div>
+                <div id="step-2" className="step-item"><span className="step-no">02</span><div><h3 className="step-name">ヒアリング</h3><p className="step-desc">お店の状況、お客様層、伝えたいことを整理します。</p></div></div>
+                <div id="step-3" className="step-item"><span className="step-no">03</span><div><h3 className="step-name">提案</h3><p className="step-desc">必要な機能と構成を、分かりやすい形でご提案します。</p></div></div>
+                <div id="step-4" className="step-item"><span className="step-no">04</span><div><h3 className="step-name">制作</h3><p className="step-desc">デザインとコーディングを進め、途中経過もご確認いただきます。</p></div></div>
+                <div id="step-5" className="step-item"><span className="step-no">05</span><div><h3 className="step-name">確認</h3><p className="step-desc">公開前に、内容と動作を一緒に確認します。</p></div></div>
+                <div id="step-6" className="step-item"><span className="step-no">06</span><div><h3 className="step-name">公開</h3><p className="step-desc">ドメイン・サーバーの設定を行い、公開します。</p></div></div>
+              </div>
             </div>
-            <div className="signature reveal">Second Root</div>
-
-            <ul className="promise-list reveal">
-              <li className="promise-item"><span className="tick" />できないことを、できるとは言いません。</li>
-              <li className="promise-item"><span className="tick" />公開して終わりではなく、その後の使い方まで考えます。</li>
-              <li className="promise-item"><span className="tick" />不要な機能や、余分な費用は提案しません。</li>
-            </ul>
           </section>
 
           <section id="faq" className="section section--tight">
@@ -556,37 +511,49 @@ export default function Home() {
                 <summary>パソコンやITに詳しくなくても大丈夫ですか?<span className="mark" /></summary>
                 <p>専門用語をできるだけ使わずに進めます。分からないことは、その都度確認しながら進めます。</p>
               </details>
+              <details className="faq-item">
+                <summary>なぜこの価格で対応できるのですか?<span className="mark" /></summary>
+                <p>効率化できる部分にはツールを活用し、お待たせする時間を減らしています。ただし、設計やデザイン、お店ごとのご提案は、必ず人が責任を持って行っています。</p>
+              </details>
             </div>
+          </section>
+
+          <section id="philosophy" className="section pause">
+            <p className="pause-no reveal">09 — PHILOSOPHY</p>
+            <p className="pause-text reveal">看板も、常連さんとの間柄も、積み重ねてきた時間も、もうそこにある。私たちが作るのは、真新しい何かではありません。すでにあるものが、これからも続いていくための、もう一つの根です。</p>
           </section>
 
           <section id="contact" className="section">
             <h2 className="eyebrow reveal">Contact</h2>
 
-            <PhotoBand src="/brand-photos/office-room-wide.jpg" objectPosition="center 62%">
-              <p className="contact-echo">事業に、<br />もう一つの根を。</p>
-              <p>まずは、<br />お店のお話を<br />聞かせてください。</p>
-            </PhotoBand>
-
-            <p className="section-sub reveal" style={{ marginBottom: 0 }}>ご相談だけでも歓迎しています。無理な営業はいたしません。</p>
+            <div className="pause pause--compact reveal">
+              <p className="pause-no">10 — CONTACT</p>
+              <p className="pause-echo">事業に、もう一つの根を。</p>
+              <p className="pause-text">まずは、お店のお話を聞かせてください。</p>
+            </div>
 
             <div className="diagnosis-box reveal">
-              <p>無料診断では、次の3つを確認し、改善できそうなポイントを簡単にお伝えします。</p>
-              <ul>
-                <li>ホームページ(まだない場合は、Instagramなど今の集客方法)</li>
-                <li>Googleビジネスプロフィール</li>
-                <li>Instagram</li>
-              </ul>
+              <p>ホームページ・Google・Instagramなど、現在の発信状況を確認し、改善できそうなポイントを簡単にお伝えします。</p>
             </div>
 
             <p className="contact-closing-note reveal">夜遅くのご相談でも、大丈夫です。<br />まずは、お気軽にご連絡ください。</p>
 
-            {/* contact-channels: today this holds the form only. Adding LINE later
-                means dropping a second button into this same flex row. This is
-                deliberately the last thing in the section — the submit button
-                is meant to read as the page's actual close. */}
             <div className="contact-channels reveal">
               <ContactForm />
             </div>
+
+            {process.env.NEXT_PUBLIC_LINE_URL && (
+              <div className="line-note reveal">
+                <p className="line-note-title">LINEでもご相談いただけます。</p>
+                <p className="line-note-body">
+                  フォームへの入力が面倒な方や、まずは簡単に相談してみたい方は、LINEからでもご連絡いただけます。<br />
+                  友だち追加後、「無料診断希望」と送っていただければ大丈夫です。
+                </p>
+                <a className="link-quiet" href={process.env.NEXT_PUBLIC_LINE_URL} target="_blank" rel="noopener noreferrer">
+                  LINEで相談する<span className="arrow">→</span>
+                </a>
+              </div>
+            )}
 
             <div className="footer">
               <span>© 2026 Second Root</span>

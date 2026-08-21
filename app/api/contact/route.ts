@@ -4,7 +4,16 @@ import { Resend } from "resend";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: NextRequest) {
-  let body: { name?: string; shop?: string; email?: string; message?: string };
+  let body: {
+    name?: string;
+    shop?: string;
+    email?: string;
+    category?: string;
+    websiteUrl?: string;
+    instagram?: string;
+    gbp?: string;
+    message?: string;
+  };
 
   try {
     body = await req.json();
@@ -15,11 +24,15 @@ export async function POST(req: NextRequest) {
   const name = (body.name || "").trim();
   const shop = (body.shop || "").trim();
   const email = (body.email || "").trim();
+  const category = (body.category || "").trim();
+  const websiteUrl = (body.websiteUrl || "").trim();
+  const instagram = (body.instagram || "").trim();
+  const gbp = (body.gbp || "").trim();
   const message = (body.message || "").trim();
 
-  if (!name || !shop || !email || !message) {
+  if (!name || !shop || !email || !category || !message) {
     return NextResponse.json(
-      { error: "お名前・お店名・メールアドレス・ご相談内容は必須です。" },
+      { error: "お名前・店舗名・メールアドレス・業種・ご相談内容は必須です。" },
       { status: 400 }
     );
   }
@@ -54,8 +67,12 @@ export async function POST(req: NextRequest) {
       subject: `【Second Root】無料診断のお申し込み(${shop}様)`,
       text: [
         `お名前: ${name}`,
-        `お店名: ${shop}`,
+        `店舗名・事業名: ${shop}`,
         `メールアドレス: ${email}`,
+        `業種: ${category}`,
+        `ホームページURL: ${websiteUrl || "(未記入)"}`,
+        `Instagram: ${instagram || "(未記入)"}`,
+        `Googleビジネスプロフィール: ${gbp || "(未記入)"}`,
         "",
         "ご相談内容:",
         message,

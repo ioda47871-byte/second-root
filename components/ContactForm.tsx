@@ -20,6 +20,10 @@ export default function ContactForm() {
       name: String(formData.get("name") || ""),
       shop: String(formData.get("shop") || ""),
       email: String(formData.get("email") || ""),
+      category: String(formData.get("category") || ""),
+      websiteUrl: String(formData.get("websiteUrl") || ""),
+      instagram: String(formData.get("instagram") || ""),
+      gbp: String(formData.get("gbp") || ""),
       message: String(formData.get("message") || ""),
     };
 
@@ -63,7 +67,7 @@ export default function ContactForm() {
         <input id="cf-name" name="name" type="text" required disabled={disabled} />
       </div>
       <div className="form-row">
-        <label htmlFor="cf-shop">お店名</label>
+        <label htmlFor="cf-shop">店舗名・事業名</label>
         <input id="cf-shop" name="shop" type="text" required disabled={disabled} />
       </div>
       <div className="form-row">
@@ -71,7 +75,30 @@ export default function ContactForm() {
         <input id="cf-email" name="email" type="email" required disabled={disabled} />
       </div>
       <div className="form-row">
-        <label htmlFor="cf-message">ご相談内容</label>
+        <label htmlFor="cf-category">業種</label>
+        <select id="cf-category" name="category" required disabled={disabled} defaultValue="">
+          <option value="" disabled>選択してください</option>
+          <option value="パン屋">パン屋</option>
+          <option value="カフェ">カフェ</option>
+          <option value="美容室">美容室</option>
+          <option value="整体">整体</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div className="form-row">
+        <label htmlFor="cf-website">現在のホームページURL(任意)</label>
+        <input id="cf-website" name="websiteUrl" type="text" disabled={disabled} />
+      </div>
+      <div className="form-row">
+        <label htmlFor="cf-instagram">Instagram URLまたはアカウント名(任意)</label>
+        <input id="cf-instagram" name="instagram" type="text" disabled={disabled} />
+      </div>
+      <div className="form-row">
+        <label htmlFor="cf-gbp">GoogleビジネスプロフィールURL(任意・分からなければ空欄で大丈夫です)</label>
+        <input id="cf-gbp" name="gbp" type="text" disabled={disabled} />
+      </div>
+      <div className="form-row">
+        <label htmlFor="cf-message">現在困っていること・ご相談内容</label>
         <textarea
           id="cf-message"
           name="message"
@@ -81,13 +108,18 @@ export default function ContactForm() {
         />
       </div>
       <div>
-        <button type="submit" className="btn-primary form-submit" disabled={disabled}>
-          {status === "loading" ? "送信しています…" : "無料診断を申し込む"}
-          <span className="arrow">→</span>
+        <button type="submit" className="btn-stamp form-submit" disabled={disabled}>
+          <span className="mark">
+            <svg viewBox="0 0 24 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <line x1="12" y1="4" x2="12" y2="24" strokeWidth="2.5" strokeLinecap="round" />
+              <circle cx="12" cy="31" r="4" />
+            </svg>
+          </span>
+          <span className="label">{status === "loading" ? "送信しています…" : "無料診断を申し込む"}</span>
         </button>
         {status === "success" && (
           <p className="form-status is-success" role="status">
-            送信ありがとうございます。24時間以内にご連絡します。
+            お問い合わせありがとうございます。内容を確認し、原則24時間以内にご連絡します。
           </p>
         )}
         {status === "error" && (

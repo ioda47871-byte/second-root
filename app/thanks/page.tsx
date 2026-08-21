@@ -10,9 +10,9 @@ export default function ThanksPage() {
   return (
     <main className="standalone-page">
       <p className="eyebrow">Thank You</p>
-      <h1 className="standalone-page-title">送信ありがとうございます。</h1>
+      <h1 className="standalone-page-title">お問い合わせありがとうございます。</h1>
       <p className="standalone-page-desc">
-        24時間以内を目安にご連絡いたします。
+        内容を確認し、原則24時間以内にご連絡します。
       </p>
       <Link className="btn-primary" href="/">
         トップページへ戻る<span className="arrow">→</span>
