@@ -181,25 +181,24 @@ a.header-cta{ display:none; padding:11px 22px; font-size:.84rem; }
   .works-label{ flex:0 0 17%; max-width:17%; }
   .works-content{ flex:1 1 auto; min-width:0; }
 }
-.works-label-no{ font-family:var(--font-label),var(--font-sans); font-size:.7rem; color:var(--gold); letter-spacing:.08em; margin-bottom:12px; }
 .works-label-name{ font-family:var(--font-serif); font-size:1.15rem; font-weight:600; margin:0 0 6px; }
 .works-label-en{ font-family:var(--font-label),var(--font-sans); font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; color:var(--gray); }
 
 .case-name{ font-family:var(--font-serif); font-size:1.3rem; font-weight:600; margin:0 0 20px; }
 .case-type{ font-family:var(--font-sans); font-size:.85rem; font-weight:400; color:var(--gray); }
 
-.works-visual{ position:relative; max-width:560px; margin-bottom:20px; }
+.works-visual{ position:relative; max-width:680px; margin-bottom:20px; }
 .works-visual-desktop{ display:block; border:1px solid var(--hairline-strong); overflow:hidden; background:var(--bg-warm); }
 .works-visual-desktop img{ display:block; width:100%; height:auto; }
 .works-visual-mobile{
-  position:absolute; right:-20px; bottom:-28px; width:104px;
+  position:absolute; right:-24px; bottom:-32px; width:126px;
   border:1px solid var(--hairline-strong); overflow:hidden; background:var(--bg);
   box-shadow:0 10px 22px -12px rgba(40,35,28,.4);
 }
 .works-visual-mobile img{ display:block; width:100%; height:auto; }
 @media (max-width:640px){
-  .works-visual{ max-width:280px; }
-  .works-visual-mobile{ width:74px; right:-10px; bottom:-16px; }
+  .works-visual{ max-width:340px; }
+  .works-visual-mobile{ width:112px; right:-14px; bottom:-20px; }
 }
 .works-desc{ font-size:.9rem; color:var(--gray); line-height:1.85; max-width:32em; margin:0 0 20px; }
 .works-links{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:8px 28px; }
@@ -471,11 +470,11 @@ a.header-cta{ display:none; padding:11px 22px; font-size:.84rem; }
   font-family:var(--font-serif); font-weight:600; font-size:clamp(1.5rem,2.8vw,2.1rem);
   line-height:1.6; margin:0 0 20px; text-wrap:balance; max-width:16em;
 }
+/* text on top, wide landscape photo below — never a tall photo beside
+   a narrow text column */
 .philosophy-body{ display:flex; flex-direction:column; gap:28px; }
-@media (min-width:640px){ .philosophy-body{ flex-direction:row; align-items:flex-start; gap:36px; } }
-.philosophy-text{ color:var(--gray); font-size:.95rem; line-height:1.95; max-width:26em; }
-.philosophy-photo{ flex:0 0 auto; width:100%; max-width:360px; border:1px solid var(--hairline-strong); }
-@media (min-width:640px){ .philosophy-photo{ width:44%; max-width:320px; } }
+.philosophy-text{ color:var(--gray); font-size:.95rem; line-height:1.95; max-width:30em; }
+.philosophy-photo{ width:100%; max-width:560px; border:1px solid var(--hairline-strong); }
 .philosophy-photo img{ display:block; width:100%; height:auto; }
 
 /* ---------------------------------------------------------------- */

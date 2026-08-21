@@ -93,10 +93,10 @@ export default function Home() {
           <div className="hero-media">
             <Image
               className="hero-photo"
-              src="/screenshots-source/exterior-photo-crop.jpg"
-              alt="地域のパン屋の外観"
-              width={825}
-              height={625}
+              src="/brand-photos/hero-shop-entrance.webp"
+              alt=""
+              width={1800}
+              height={1200}
               sizes="(max-width: 900px) 100vw, 54vw"
               priority
             />
@@ -124,7 +124,6 @@ export default function Home() {
 
           <div className="works-band reveal">
             <div className="works-label">
-              <p className="works-label-no">02</p>
               <p className="works-label-name">制作例</p>
               <p className="works-label-en">Selected Work</p>
             </div>
@@ -139,7 +138,7 @@ export default function Home() {
                     alt="Brot Yanagi 商品ページ(PC表示)のスクリーンショット"
                     width={1119}
                     height={897}
-                    sizes="(max-width: 640px) 300px, 560px"
+                    sizes="(max-width: 640px) 320px, 680px"
                   />
                 </div>
                 <div className="works-visual-mobile">
@@ -148,7 +147,7 @@ export default function Home() {
                     alt="Brot Yanagi トップページ(スマートフォン表示)のスクリーンショット"
                     width={710}
                     height={1536}
-                    sizes="104px"
+                    sizes="(max-width: 640px) 112px, 126px"
                   />
                 </div>
               </div>
@@ -446,11 +445,11 @@ export default function Home() {
                 </div>
                 <div className="philosophy-photo">
                   <Image
-                    src="/screenshots-source/entrance-photo-crop.jpg"
-                    alt="地域のパン屋の入口"
-                    width={830}
-                    height={640}
-                    sizes="(max-width: 640px) 100vw, 340px"
+                    src="/brand-photos/philosophy-still-life.webp"
+                    alt=""
+                    width={1800}
+                    height={1200}
+                    sizes="(max-width: 640px) 100vw, 640px"
                   />
                 </div>
               </div>
