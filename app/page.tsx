@@ -8,6 +8,23 @@ import ContactForm from "@/components/ContactForm";
 // AI-drafted quote. Set to { quote, name, role } to publish it.
 const ownerVoice: { quote: string; name: string; role: string } | null = null;
 
+// 自主制作(Concept Work)。実案件ではないので、Selected Work とは別枠で扱う。
+// 1件追加するだけで、1件=約半幅 / 2件=2列 / 3件以上=3列 に切り替わる。
+const conceptWorks = [
+  {
+    slug: "hoshi-no-cha",
+    title: "星の茶スタンド",
+    titleEn: "HOSHI NO CHA STAND",
+    industry: "日本茶スタンド",
+    description:
+      "夜と日本茶をテーマに、小さなティースタンドを想定して設計した自主制作サイト。",
+    image: "/concept-work/hoshi-no-cha.jpg",
+    imageAlt:
+      "星の茶スタンド(自主制作サイト)のPC表示とスマートフォン表示のスクリーンショット",
+    url: "https://hoshi-no-cha-stand.vercel.app",
+  },
+];
+
 const NAV_LINKS = [
   { href: "#home", label: "ホーム" },
   { href: "#works", label: "制作例" },
@@ -176,11 +193,6 @@ export default function Home() {
                   </div>
                   <p className="case-credit">EDIT — Second Root</p>
 
-                  <div className="case-soon">
-                    <div className="eyebrow" style={{ marginBottom: 8 }}>準備中</div>
-                    <div className="case-name">Concept Work(自主制作)</div>
-                    <p>カフェ・美容室・整体など、他の業種でも自主制作のConcept Workを準備しています。完成次第、ここに公開します。</p>
-                  </div>
                 </details>
 
                 {process.env.NEXT_PUBLIC_BROT_YANAGI_URL && (
@@ -199,6 +211,67 @@ export default function Home() {
                 <p>実際のサイトを見た上で、あなたのお店ならどうなるか——まずは無料診断でご相談ください。</p>
                 <a className="btn-primary" href="#contact">無料診断を申し込む<span className="arrow">→</span></a>
               </div>
+            </div>
+          </div>
+
+          {/* 自主制作。実案件のSelected Workとは別枠であることが分かるように置く。 */}
+          <div className="works-band concept-band reveal">
+            <div className="works-label">
+              <p className="works-label-name">自主制作</p>
+              <p className="works-label-en">Concept Work</p>
+            </div>
+
+            <div className="works-content">
+              <p className="concept-lede">
+                実際の業種を想定し、デザイン・情報設計を行った自主制作サイトです。実在する店舗ではありません。
+              </p>
+
+              <ul className="concept-grid" data-count={Math.min(conceptWorks.length, 3)}>
+                {conceptWorks.map((work) => (
+                  <li className="concept-item" key={work.slug}>
+                    <a
+                      className="concept-thumb"
+                      href={work.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                    >
+                      <Image
+                        src={work.image}
+                        alt={work.imageAlt}
+                        width={1560}
+                        height={860}
+                        sizes="(max-width: 860px) 92vw, 46vw"
+                      />
+                    </a>
+
+                    <p className="concept-kicker">
+                      Concept Work<span className="concept-sep">—</span>{work.industry}
+                    </p>
+
+                    <h3 className="concept-name">
+                      {work.title}
+                      <span className="concept-name-en">{work.titleEn}</span>
+                    </h3>
+
+                    <p className="concept-desc">{work.description}</p>
+
+                    <a
+                      className="link-quiet"
+                      href={work.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      サイトを見る<span className="arrow">↗</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+
+              <p className="concept-soon">
+                美容室・整体院などのConcept Workも準備しています。完成次第、ここに追加します。
+              </p>
             </div>
           </div>
         </section>
