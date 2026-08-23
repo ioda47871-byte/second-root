@@ -4,7 +4,7 @@ const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" })
 let bad = 0;
 const ok = (l, c, x = "") => { if (!c) bad++; console.log(`${c ? "✓" : "✗"} ${l}${x ? "  " + x : ""}`); };
 
-for (const w of [1440, 1280, 1024, 860, 834, 390, 360]) {
+for (const w of [1440, 1280, 1024, 1023, 860, 834, 768, 767, 390, 360]) {
   const ctx = await b.newContext({ viewport: { width: w, height: 900 }, isMobile: w < 700, hasTouch: w < 700 });
   const p = await ctx.newPage();
   const errs = [], failed = [];
@@ -25,6 +25,7 @@ for (const w of [1440, 1280, 1024, 860, 834, 390, 360]) {
     const thumbs = items.map(i => i.querySelector(".concept-thumb").getBoundingClientRect());
     const tops = thumbs.map(t => Math.round(t.top));
     const heights = thumbs.map(t => Math.round(t.height));
+    const widths = thumbs.map(t => Math.round(t.width));
     const cols = new Set(thumbs.map(t => Math.round(t.left))).size;
     const overflow = [...document.querySelectorAll("body *")].filter(el => {
       if (el.closest("svg")) return false;
@@ -36,7 +37,7 @@ for (const w of [1440, 1280, 1024, 860, 834, 390, 360]) {
     const broken = [...document.images].filter(i => !i.naturalWidth).map(i => i.currentSrc || i.src);
     return {
       scrollW: de.scrollWidth, clientW: de.clientWidth,
-      count: items.length, cols, tops, heights,
+      count: items.length, cols, tops, heights, widths,
       sameRow: new Set(tops).size === 1,
       equalH: new Set(heights).size === 1,
       overflow: overflow.slice(0, 3), broken,
@@ -44,9 +45,9 @@ for (const w of [1440, 1280, 1024, 860, 834, 390, 360]) {
     };
   });
 
-  const expectCols = w >= 860 ? 3 : 1;
+  const expectCols = w >= 1024 ? 3 : w >= 768 ? 2 : 1;
   ok(`${String(w).padStart(4)}px 3件表示`, r.count === 3, `${r.count}件`);
-  ok(`${String(w).padStart(4)}px ${expectCols}列レイアウト`, r.cols === expectCols, `列数${r.cols} / 高さ${r.heights.join(",")}`);
+  ok(`${String(w).padStart(4)}px ${expectCols}列レイアウト`, r.cols === expectCols, `列数${r.cols} / サムネイル ${r.widths[0]}x${r.heights[0]}px`);
   ok(`${String(w).padStart(4)}px サムネイル枠の高さ揃い`, r.equalH);
   ok(`${String(w).padStart(4)}px 横スクロールなし`, r.scrollW <= r.clientW + 1 && !r.overflow.length, r.overflow.join(" | "));
   ok(`${String(w).padStart(4)}px 画像404なし`, !r.broken.length && !failed.length, [...r.broken, ...failed].join(" | "));

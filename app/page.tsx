@@ -278,7 +278,7 @@ export default function Home() {
                         alt={work.imageAlt}
                         width={work.imageWidth}
                         height={work.imageHeight}
-                        sizes="(max-width: 860px) 92vw, 31vw"
+                        sizes="(max-width: 767px) 92vw, (max-width: 1023px) 44vw, 31vw"
                       />
                     </a>
 

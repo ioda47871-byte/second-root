@@ -301,10 +301,17 @@ a.header-cta{ display:none; padding:11px 22px; font-size:.84rem; }
   list-style:none; margin:0; padding:0;
   display:grid; grid-template-columns:1fr; gap:40px 32px;
 }
-/* 1件のうちは半幅程度。2件で2列、3件以上で3列に切り替わる。 */
+/* 1件のうちは半幅程度。2件で2列。
+   3件は1列のまま詰め込むと1枚あたりが細くなるので、768pxで2列、1024pxで3列と
+   段階的に切り替える。サイト全体のブレークポイントには手を入れていない。 */
+@media (min-width:768px){
+  .concept-grid[data-count="3"]{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 @media (min-width:860px){
   .concept-grid[data-count="1"]{ max-width:64%; }
   .concept-grid[data-count="2"]{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (min-width:1024px){
   .concept-grid[data-count="3"]{ grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
 .concept-item{ display:flex; flex-direction:column; min-width:0; }
