@@ -311,7 +311,7 @@ export default function Home() {
 
         <section className="section rule-top">
           <div className="trio reveal">
-            <div className="trio-col" id="services">
+            <div className="trio-col trio-col--services" id="services">
               <p className="trio-no">03</p>
               <h3 className="trio-heading">サービス</h3>
               <span className="trio-label">Service</span>
@@ -336,7 +336,7 @@ export default function Home() {
               <p className="services-closing">デザインの前に、お店の魅力をどう伝えるかを、一緒に考えます。</p>
             </div>
 
-            <div className="trio-col" id="founder">
+            <div className="trio-col trio-col--founder" id="founder">
               <p className="trio-no">04</p>
               <h3 className="trio-heading">担当者について</h3>
               <span className="trio-label">Founder</span>
@@ -375,7 +375,7 @@ export default function Home() {
               </ul>
             </div>
 
-            <div className="trio-col" id="pricing">
+            <div className="trio-col trio-col--price" id="pricing">
               <p className="trio-no">05</p>
               <h3 className="trio-heading">料金について</h3>
               <span className="trio-label">Price</span>
