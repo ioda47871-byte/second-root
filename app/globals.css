@@ -301,18 +301,27 @@ a.header-cta{ display:none; padding:11px 22px; font-size:.84rem; }
   list-style:none; margin:0; padding:0;
   display:grid; grid-template-columns:1fr; gap:40px 32px;
 }
-/* 1件のうちは半幅程度。2件で2列、3件以上で3列に切り替わる。 */
+/* 1件のうちは半幅程度。2件で2列。
+   3件は1列のまま詰め込むと1枚あたりが細くなるので、768pxで2列、1024pxで3列と
+   段階的に切り替える。サイト全体のブレークポイントには手を入れていない。 */
+@media (min-width:768px){
+  .concept-grid[data-count="3"]{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 @media (min-width:860px){
   .concept-grid[data-count="1"]{ max-width:64%; }
   .concept-grid[data-count="2"]{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (min-width:1024px){
   .concept-grid[data-count="3"]{ grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
 .concept-item{ display:flex; flex-direction:column; min-width:0; }
+/* 3件のサムネイルは業種ごとに比率が違う。枠を16:10で揃え、画像は切らずに
+   contain で収める。余白は各画像の地色を敷くので帯には見えない。 */
 .concept-thumb{
   display:block; border:1px solid var(--hairline-strong); overflow:hidden;
-  background:var(--ink); line-height:0;
+  background:var(--ink); line-height:0; aspect-ratio:16/10;
 }
-.concept-thumb img{ display:block; width:100%; height:auto; }
+.concept-thumb img{ display:block; width:100%; height:100%; object-fit:contain; }
 .concept-kicker{
   font-family:var(--font-label),var(--font-sans);
   font-size:.66rem; letter-spacing:.14em; text-transform:uppercase;
@@ -332,10 +341,6 @@ a.header-cta{ display:none; padding:11px 22px; font-size:.84rem; }
   margin:14px 0 18px; max-width:30em;
 }
 .concept-item .link-quiet{ align-self:flex-start; margin-top:auto; }
-.concept-soon{
-  margin:32px 0 0; padding-top:24px; border-top:1px solid var(--hairline);
-  font-size:.86rem; color:var(--gray); line-height:1.8; max-width:34em;
-}
 
 .cta-band{
   display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:20px;

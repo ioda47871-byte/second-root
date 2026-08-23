@@ -10,6 +10,8 @@ const ownerVoice: { quote: string; name: string; role: string } | null = null;
 
 // 自主制作(Concept Work)。実案件ではないので、Selected Work とは別枠で扱う。
 // 1件追加するだけで、1件=約半幅 / 2件=2列 / 3件以上=3列 に切り替わる。
+// 各サムネイルは業種ごとに作りが違う。thumbBg は枠の余白色で、比率の違いを
+// 揃えるときに帯が見えないよう、その画像自身の地色を指定している。
 const conceptWorks = [
   {
     slug: "hoshi-no-cha",
@@ -19,9 +21,42 @@ const conceptWorks = [
     description:
       "夜と日本茶をテーマに、小さなティースタンドを想定して設計した自主制作サイト。",
     image: "/concept-work/hoshi-no-cha.jpg",
+    imageWidth: 1560,
+    imageHeight: 860,
+    thumbBg: "#101113",
     imageAlt:
       "星の茶スタンド(自主制作サイト)のPC表示とスマートフォン表示のスクリーンショット",
     url: "https://hoshi-no-cha-stand.vercel.app",
+  },
+  {
+    slug: "yasashii-beauty-salon",
+    title: "やさしい美を彩るサロン",
+    titleEn: "YASASHII BEAUTY SALON",
+    industry: "美容サロン",
+    description:
+      "プライベート美容サロンを想定し、施術メニュー・料金・初めての方への案内まで、やわらかく安心感のある世界観で設計した自主制作サイト。淡いピンクとアイボリー、曲線、自然光の写真を中心に構成しています。",
+    image: "/concept-work/yasashii-beauty-salon.webp",
+    imageWidth: 1600,
+    imageHeight: 1000,
+    thumbBg: "#faf7f4",
+    imageAlt:
+      "やさしい美を彩るサロン(自主制作サイト)のPC表示とスマートフォン表示のスクリーンショット",
+    url: "https://yasashii-beauty-salon.vercel.app",
+  },
+  {
+    slug: "midori-seitai",
+    title: "みどり整体院",
+    titleEn: "MIDORI OSTEOPATHY",
+    industry: "整体院",
+    description:
+      "整体院を想定し、施術内容・料金・初めての方への案内など、情報量の多い内容を迷わず確認できるよう設計した自主制作サイト。白・ブルーグレー・グリーンと罫線を基調に、実務的で清潔感のある情報設計にまとめています。",
+    image: "/concept-work/midori-seitai.webp",
+    imageWidth: 1500,
+    imageHeight: 1000,
+    thumbBg: "#e4eaec",
+    imageAlt:
+      "みどり整体院(自主制作サイト)のPC表示とスマートフォン表示のスクリーンショット",
+    url: "https://midori-seitai.vercel.app",
   },
 ];
 
@@ -236,13 +271,14 @@ export default function Home() {
                       rel="noopener noreferrer"
                       tabIndex={-1}
                       aria-hidden="true"
+                      style={{ background: work.thumbBg }}
                     >
                       <Image
                         src={work.image}
                         alt={work.imageAlt}
-                        width={1560}
-                        height={860}
-                        sizes="(max-width: 860px) 92vw, 46vw"
+                        width={work.imageWidth}
+                        height={work.imageHeight}
+                        sizes="(max-width: 767px) 92vw, (max-width: 1023px) 44vw, 31vw"
                       />
                     </a>
 
@@ -269,9 +305,6 @@ export default function Home() {
                 ))}
               </ul>
 
-              <p className="concept-soon">
-                美容室・整体院などのConcept Workも準備しています。完成次第、ここに追加します。
-              </p>
             </div>
           </div>
         </section>
