@@ -16,7 +16,7 @@ const ITEMS = [
     mod: "b",
     Icon: IconRefresh,
     title: "更新の仕組みづくり",
-    body: "営業時間や商品情報を、｜専門知識がなくても｜自分で更新できる｜仕組みにします。",
+    body: "営業時間や｜商品情報を、｜専門知識がなくても｜自分で更新できる｜仕組みにします。",
     tags: ["CMS導入", "Instagramなど外部連携"],
     leaf: "var(--terra)",
   },

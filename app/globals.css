@@ -736,6 +736,18 @@ body::before{
 .pr-term dd b{font-size:.92rem;font-weight:700;line-height:1.5}
 .pr-term dd span{font-size:.76rem;color:var(--gray);line-height:1.7}
 
+/* 公開後にかかる費用 — 「お取引の条件」と同じカード表現を流用し、
+   新しい見た目を持ち込まずに4区分を並べる */
+.pr-running{margin-top:22px;padding-top:22px;border-top:1px solid var(--line-soft)}
+.pr-running-grid{display:grid;grid-template-columns:1fr;gap:10px;margin:0}
+.pr-term--run{background:var(--green-pale)}
+.pr-term--run dt{color:var(--green)}
+.pr-running-note{margin:12px 0 0;font-size:.79rem;color:var(--gray);line-height:1.9}
+/* 閾値を rem にして、ブラウザの文字サイズ拡大時は自動的に列を減らす。
+   768px + 特大フォントで4列にすると1列170px前後になりはみ出すため。 */
+@media (min-width:35rem){ .pr-running-grid{grid-template-columns:1fr 1fr;gap:10px} }
+@media (min-width:48rem){ .pr-running-grid{grid-template-columns:repeat(4,1fr);gap:12px} }
+
 .pr-notes{display:grid;grid-template-columns:1fr;gap:16px;margin-top:22px;padding-top:22px;border-top:1px solid var(--line-soft)}
 .pr-note{border-radius:var(--r-md);padding:20px 22px}
 .pr-note--cond{background:var(--gold-pale)}
