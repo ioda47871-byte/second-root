@@ -609,6 +609,10 @@ export default function Home() {
             {NAV_LINKS.map((link) => (
               <a key={link.href} href={link.href}>{link.label}</a>
             ))}
+            {/* legal links close the same row in the same quiet style —
+                present, but not competing with the section links */}
+            <a href="/privacy">プライバシーポリシー</a>
+            <a href="/terms">利用規約</a>
           </nav>
           <span className="site-footer-copy">© 2026 Second Root</span>
         </div>

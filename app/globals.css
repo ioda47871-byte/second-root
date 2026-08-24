@@ -758,3 +758,79 @@ a.header-cta{ display:none; padding:11px 22px; font-size:.84rem; }
 @media (max-width:640px){
   .cta-band{ flex-direction:column; align-items:flex-start; }
 }
+
+/* ---------------------------------------------------------------- */
+/* legal pages (/privacy, /terms)                                    */
+/* ---------------------------------------------------------------- */
+/* Same tokens and hairlines as the rest of the site, but arranged for
+   reading rather than for browsing: no section nav, no CTA competing
+   with the text, and a measure narrow enough that long clauses stay
+   legible on a wide screen. */
+.legal-header{ border-bottom:1px solid var(--hairline); }
+.legal-header-inner{
+  max-width:var(--content-max); margin:0 auto;
+  padding:18px var(--content-pad); min-height:80px;
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px 20px;
+}
+.legal-back{
+  font-size:.82rem; color:var(--gray); text-decoration:none;
+  transition:color .25s var(--ease);
+}
+.legal-back:hover, .legal-back:focus-visible{ color:var(--accent); }
+
+.legal-main{
+  max-width:720px; margin:0 auto;
+  padding:clamp(44px,7vw,76px) var(--content-pad) clamp(56px,8vw,88px);
+}
+.legal-title{
+  font-family:var(--font-serif); font-weight:600;
+  font-size:clamp(1.5rem,3vw,2rem); line-height:1.5;
+  margin:0 0 26px; text-wrap:balance;
+}
+.legal-lead{
+  color:var(--gray); font-size:.9rem; line-height:2;
+  padding-bottom:30px; border-bottom:1px solid var(--hairline);
+}
+.legal-lead p{ margin:0 0 14px; }
+.legal-lead p:last-child{ margin-bottom:0; }
+
+.legal-section{ padding-top:36px; }
+.legal-heading{
+  font-family:var(--font-serif); font-weight:600;
+  font-size:1.05rem; line-height:1.7; color:var(--ink);
+  margin:0 0 14px;
+}
+.legal-body p{ color:var(--ink); font-size:.9rem; line-height:2.05; margin:0 0 14px; }
+.legal-body p:last-child{ margin-bottom:0; }
+.legal-list{ list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:7px; }
+.legal-list li{
+  position:relative; padding-left:18px;
+  color:var(--ink); font-size:.9rem; line-height:1.95;
+}
+.legal-list li::before{
+  content:""; position:absolute; left:0; top:.9em;
+  width:8px; height:1px; background:var(--accent);
+}
+.legal-contact{ margin-top:4px; padding:20px 22px; border:1px solid var(--hairline); }
+.legal-contact p{ margin:0 0 6px; font-size:.9rem; line-height:1.9; }
+.legal-contact p:last-child{ margin-bottom:0; }
+.legal-contact a{ color:var(--accent); text-underline-offset:3px; }
+.legal-date{
+  margin:40px 0 0; padding-top:24px; border-top:1px solid var(--hairline);
+  color:var(--gray); font-size:.82rem;
+}
+
+.legal-footer{ border-top:1px solid var(--hairline); }
+.legal-footer-inner{
+  max-width:var(--content-max); margin:0 auto;
+  padding:26px var(--content-pad);
+  display:flex; flex-wrap:wrap; gap:14px 20px; align-items:center; justify-content:space-between;
+}
+
+/* the privacy line above the contact form's submit button */
+.form-privacy-note{
+  font-size:.8rem; color:var(--gray); line-height:1.85; margin:0 0 16px;
+}
+.form-privacy-note a{
+  color:var(--accent); text-decoration:underline; text-underline-offset:3px;
+}
