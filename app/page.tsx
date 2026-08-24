@@ -319,17 +319,17 @@ export default function Home() {
               <div className="service-list">
                 <div className="service-item">
                   <h4 className="pillar-name">サイト制作</h4>
-                  <p className="pillar-desc">お店の紹介や商品情報を、初めて訪れた人にも迷わず伝わる形にします。</p>
+                  <p className="pillar-desc">お店や商品の魅力を、初めて訪れた人にも分かりやすく届けます。</p>
                   <ul className="pillar-items"><li>スマートフォン対応</li><li>基本的なSEO設計</li></ul>
                 </div>
                 <div className="service-item">
                   <h4 className="pillar-name">更新の仕組みづくり</h4>
-                  <p className="pillar-desc">営業時間や商品情報を、専門知識がなくてもご自身で更新できるようにします。</p>
+                  <p className="pillar-desc">営業時間や商品情報を、専門知識がなくても自分で更新できる仕組みにします。</p>
                   <ul className="pillar-items"><li>CMS導入</li><li>Instagramなど外部連携</li></ul>
                 </div>
                 <div className="service-item">
                   <h4 className="pillar-name">公開後の伴走</h4>
-                  <p className="pillar-desc">公開して終わりにせず、その後の相談や調整に対応します。</p>
+                  <p className="pillar-desc">公開後も、修正や更新、ちょっとした相談まで継続して対応します。</p>
                   <ul className="pillar-items"><li>修正・更新対応</li><li>公開後のご相談</li></ul>
                 </div>
               </div>
@@ -485,7 +485,7 @@ export default function Home() {
           <div className="process-row reveal">
             <div className="process-step"><span className="step-no">01</span><h3 className="step-name">相談</h3><p className="step-desc">まずは、今困っていることをお聞きします。</p></div>
             <div className="process-step"><span className="step-no">02</span><h3 className="step-name">ヒアリング</h3><p className="step-desc">お店の状況、お客様層、伝えたいことを整理します。</p></div>
-            <div className="process-step"><span className="step-no">03</span><h3 className="step-name">提案</h3><p className="step-desc">必要な機能と構成を、分かりやすい形でご提案します。</p></div>
+            <div className="process-step"><span className="step-no">03</span><h3 className="step-name">提案</h3><p className="step-desc">必要な機能と構成を、分かりやすくご提案します。</p></div>
             <div className="process-step"><span className="step-no">04</span><h3 className="step-name">制作</h3><p className="step-desc">デザインとコーディングを進め、途中経過もご確認いただきます。</p></div>
             <div className="process-step"><span className="step-no">05</span><h3 className="step-name">確認</h3><p className="step-desc">公開前に、内容と動作を一緒に確認します。</p></div>
             <div className="process-step"><span className="step-no">06</span><h3 className="step-name">公開</h3><p className="step-desc">ドメイン・サーバーの設定を行い、公開します。</p></div>
