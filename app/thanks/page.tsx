@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import ThanksTracker from "@/components/ThanksTracker";
 
 export const metadata: Metadata = {
   title: "送信完了",
@@ -9,6 +10,7 @@ export const metadata: Metadata = {
 export default function ThanksPage() {
   return (
     <main className="standalone-page">
+      <ThanksTracker />
       <p className="eyebrow">Thank You</p>
       <h1 className="standalone-page-title">お問い合わせありがとうございます。</h1>
       <p className="standalone-page-desc">

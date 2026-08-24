@@ -15,7 +15,7 @@ export default function PrivacyPage() {
       effectiveDate="2026年8月24日"
       lead={
         <p>
-          Second Root(以下「当方」といいます。)は、当方が運営するウェブサイト(以下「本サイト」といいます。)において取得する個人情報について、以下のとおり取り扱います。
+          <span className="nb">Second Root</span>(以下「当方」といいます。)は、当方が運営するウェブサイト(以下「本サイト」といいます。)において取得する個人情報について、以下のとおり取り扱います。
         </p>
       }
     >
@@ -73,16 +73,16 @@ export default function PrivacyPage() {
 
       <LegalSection heading="5. Google Analyticsについて">
         <p>
-          本サイトでは、サイトの利用状況を把握し、サービスおよびウェブサイトを改善するため、Google LLCが提供するGoogle Analyticsを利用しています。
+          本サイトでは、サイトの利用状況を把握し、サービスおよびウェブサイトを改善するため、Google LLCが提供する<span className="nb">Google Analytics</span>を利用しています。
         </p>
         <p>
-          Google Analyticsでは、Cookie等を利用して、ページの閲覧状況、利用端末、ブラウザ、おおよその地域等の情報が収集される場合があります。
+          <span className="nb">Google Analytics</span>では、Cookie等を利用して、ページの閲覧状況、利用端末、ブラウザ、<span className="nb">おおよその</span>地域等の情報が収集される場合があります。
         </p>
         <p>
           これらの情報は、Googleのプライバシーポリシーおよび利用規約に基づいて取り扱われます。
         </p>
         <p>
-          なお、Google Analyticsにより取得する情報から、当方が直接個人を特定することを目的として利用することはありません。
+          なお、<span className="nb">Google Analytics</span>により取得する情報から、当方が直接個人を特定することを目的として利用することはありません。
         </p>
       </LegalSection>
 
@@ -117,7 +117,7 @@ export default function PrivacyPage() {
       <LegalSection heading="10. お問い合わせ">
         <p>本ポリシーに関するお問い合わせは、以下までお願いいたします。</p>
         <div className="legal-contact">
-          <p>Second Root</p>
+          <p><span className="nb">Second Root</span></p>
           <p>
             メール：
             <a href="mailto:info@secondroot.jp">info@secondroot.jp</a>

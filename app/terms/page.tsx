@@ -16,7 +16,7 @@ export default function TermsPage() {
       lead={
         <>
           <p>
-            本利用規約(以下「本規約」といいます。)は、Second Root(以下「当方」といいます。)が運営するウェブサイト(以下「本サイト」といいます。)の利用条件を定めるものです。
+            本利用規約(以下「本規約」といいます。)は、<span className="nb">Second Root</span>(以下「当方」といいます。)が運営するウェブサイト(以下「本サイト」といいます。)の利用条件を定めるものです。
           </p>
           <p>本サイトをご利用いただく場合、本規約の内容をご確認のうえご利用ください。</p>
         </>
@@ -24,7 +24,7 @@ export default function TermsPage() {
     >
       <LegalSection heading="1. 本サイトについて">
         <p>
-          本サイトでは、Second Rootが提供するホームページ制作その他のサービスに関する情報、制作事例、料金の目安等を掲載しています。
+          本サイトでは、<span className="nb">Second Root</span>が提供するホームページ制作その他のサービスに関する情報、制作事例、料金の目安等を掲載しています。
         </p>
         <p>本サイトに掲載されている内容は、予告なく変更または削除する場合があります。</p>
       </LegalSection>
@@ -52,7 +52,7 @@ export default function TermsPage() {
 
       <LegalSection heading="4. Concept Workについて">
         <p>
-          本サイトに掲載する「Concept Work」は、Second Rootの制作方針、デザインおよび設計能力を紹介することを目的として制作した自主制作物です。
+          本サイトに掲載する「Concept Work」は、<span className="nb">Second Root</span>の制作方針、デザインおよび設計能力を紹介することを目的として制作した自主制作物です。
         </p>
         <p>
           Concept Workに掲載されている店舗、サービス、料金、住所、人物、その他の情報は、実在する事業者の情報を示すものではない場合があります。
