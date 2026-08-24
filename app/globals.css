@@ -33,6 +33,19 @@ body{
   -webkit-font-smoothing:antialiased;
   overflow-x:hidden;
   min-height:100vh;
+
+  /* Japanese line breaking. Without these the browser breaks CJK text
+     after any character, which is what produced splits mid-compound
+     ("ご自 / 身で") and lines ending on a bare particle.
+     - auto-phrase: break at phrase (文節) boundaries instead of anywhere
+     - pretty: avoid a last line holding only one or two characters
+       (the "す。" / "ん。" orphans)
+     - strict: full kinsoku, so small kana and 長音符 never open a line
+     All three are progressive — browsers without support fall back to
+     the previous behaviour rather than breaking anything. */
+  word-break:auto-phrase;
+  text-wrap:pretty;
+  line-break:strict;
 }
 a{ color:inherit; }
 img{ max-width:100%; }
@@ -163,6 +176,13 @@ a.header-cta{ display:none; padding:11px 22px; font-size:.84rem; }
 .lead-strengths{
   list-style:none; margin:0; padding:0;
   display:grid; grid-template-columns:repeat(2,1fr); gap:20px 32px;
+}
+/* On phones the two columns leave each cell only ~150px — roughly ten
+   characters — which is too narrow for any line-breaker to find a decent
+   break, so every item fragmented into three stub lines. One column gives
+   each item the full measure and all four now fit on a single line. */
+@media (max-width:479px){
+  .lead-strengths{ grid-template-columns:1fr; gap:14px; }
 }
 @media (min-width:760px){
   .lead-strengths{ grid-template-columns:repeat(4,1fr); gap:0; }
