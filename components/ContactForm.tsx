@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -113,6 +114,10 @@ export default function ContactForm() {
         />
       </div>
       <div className="form-actions">
+        <p className="form-privacy-note">
+          <Link href="/privacy">プライバシーポリシー</Link>
+          をご確認のうえ、送信してください。
+        </p>
         <button type="submit" className="btn-primary form-submit" disabled={disabled}>
           {status === "loading" ? "送信しています…" : "無料診断を申し込む"}
         </button>
