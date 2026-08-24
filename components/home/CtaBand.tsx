@@ -1,4 +1,5 @@
 import { RootMark, LeafSpray, LeafBranch, Dots, IconArrow, IconCheck } from "./Decor";
+import Jp from "./Jp";
 
 const CHIPS = ["ご相談・お見積り無料", "オンライン対応OK", "しつこい営業はしません"];
 
@@ -19,7 +20,7 @@ export default function CtaBand() {
               <h2 className="ctaband-h">
                 あなたのお店に合った
                 <br />
-                ホームページの考え方をお伝えします。
+                <Jp t="ホームページの考え方を｜お伝えします。" />
               </h2>
               <ul className="ctaband-chips">
                 {CHIPS.map((c) => (

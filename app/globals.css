@@ -74,6 +74,9 @@ body{
 }
 a{color:inherit}
 img{max-width:100%;display:block}
+/* 意味のまとまり単位で折り返すための最小ユーティリティ(components/home/Jp.tsx)。
+   短いまとまりにだけ付ける。長文に付けると狭い画面ではみ出す。 */
+.nb{white-space:nowrap}
 :focus-visible{outline:2px solid var(--green);outline-offset:3px}
 
 /* very light paper grain */
@@ -256,7 +259,17 @@ body::before{
 .reason:nth-child(2) .reason-no,.reason:nth-child(2) .reason-ic{color:var(--terra)}
 .reason:nth-child(3) .reason-no,.reason:nth-child(3) .reason-ic{color:var(--gold)}
 .reason:nth-child(4) .reason-no,.reason:nth-child(4) .reason-ic{color:var(--blue)}
-@media (min-width:900px){
+/* 4列にすると1024px以下では1列200px前後になり、
+   「信頼感のある/サイトにしたい」のように意味が割れる。
+   タブレット幅は2列にして1行あたりの文字数を確保する。 */
+@media (min-width:700px) and (max-width:1099px){
+  .reason-grid{grid-template-columns:1fr 1fr;column-gap:0;row-gap:0}
+  .reason{padding:20px 26px;border-top:1px solid var(--line-soft)}
+  .reason:nth-child(-n+2){border-top:none;padding-top:4px}
+  .reason:nth-child(odd){padding-left:0;border-left:none}
+  .reason:nth-child(even){border-left:1px solid var(--line-soft);padding-right:0}
+}
+@media (min-width:1100px){
   .reason-grid{grid-template-columns:repeat(4,1fr);gap:0}
   .reason{padding:0 28px;border-top:none;border-left:1px solid var(--line-soft)}
   .reason:first-child{padding-left:0;border-left:none}
@@ -531,6 +544,9 @@ body::before{
 .faq-leaf{position:absolute;left:-30px;bottom:-34px;width:210px;color:var(--green-soft);opacity:.28;pointer-events:none;z-index:0}
 .faq-dots{left:7%;top:54%;color:var(--gold-soft);opacity:.5}
 .faq-grid{display:grid;grid-template-columns:1fr;gap:24px}
+/* grid item の min-content でトラックが広がり、overflow:hidden の
+   faq-wrap に切られるのを防ぐ */
+.faq-grid > *{min-width:0}
 .faq-side .h2{margin-top:8px}
 .faq-side-cta{margin:20px 0 0}
 .faq-list{display:flex;flex-direction:column;gap:9px}
@@ -542,6 +558,9 @@ body::before{
 .faq-item summary::-webkit-details-marker{display:none}
 .faq-q{flex:none;width:24px;height:24px;border-radius:50%;background:var(--green-pale);color:var(--green);
   display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700}
+/* summary は flex なので、意味単位の span をそのまま置くと1つずつが
+   flex item になり、狭い画面で折り返せずに横へはみ出す。1つにまとめる。 */
+.faq-qt{flex:1 1 auto;min-width:0}
 .faq-plus{margin-left:auto;flex:none;width:22px;height:22px;position:relative}
 .faq-plus::before,.faq-plus::after{content:"";position:absolute;background:var(--green);border-radius:2px}
 .faq-plus::before{top:50%;left:3px;right:3px;height:2px;transform:translateY(-50%)}
@@ -555,7 +574,8 @@ body::before{
 .ph{position:relative;overflow:hidden;padding-top:clamp(64px,7vw,104px);padding-bottom:clamp(64px,7vw,104px)}
 .ph-in{position:relative;z-index:2;max-width:780px}
 .ph-title{font-family:var(--serif);font-size:clamp(1.85rem,3.4vw,2.7rem);font-weight:600;line-height:1.5;margin:10px 0 26px;text-wrap:balance}
-.ph-text{font-size:1rem;line-height:2.3;color:var(--ink-soft);margin:0}
+/* 余韻が要るセクションなので、箱幅いっぱいまで詰めず 3〜4行に収める */
+.ph-text{font-size:1rem;line-height:2.3;color:var(--ink-soft);margin:0;max-width:30em}
 .ph-blob{position:absolute;right:-14%;top:-30%;width:68%;max-width:840px;z-index:0;opacity:1}
 .ph-blob-sand{position:absolute;left:-20%;bottom:-34%;width:48%;max-width:520px;z-index:0;opacity:.9}
 .ph-leaf{right:8%;bottom:6%;width:clamp(150px,17vw,270px);color:var(--gold);opacity:.6}
@@ -599,7 +619,9 @@ body::before{
 .ct-what-card--c .ct-what-ic{color:var(--blue)}
 .ct-what-card b{font-size:.94rem;font-family:var(--serif);font-weight:600}
 .ct-what-card span{font-size:.8rem;color:var(--ink-soft);line-height:1.85}
-@media (min-width:760px){ .ct-what{grid-template-columns:repeat(3,1fr);gap:16px} }
+/* 3列にできるのは900px以上。768pxで3列にすると1列215px前後になり、
+   1行4〜6文字の細切れになる。 */
+@media (min-width:900px){ .ct-what{grid-template-columns:repeat(3,1fr);gap:16px} }
 
 /* ---- contact form (existing markup) ---- */
 .contact-form{display:grid;grid-template-columns:1fr;gap:20px;width:100%}
@@ -727,8 +749,11 @@ body::before{
 .ct-flow-step b{font-size:.88rem}
 .ct-flow-d{font-size:.79rem;color:var(--gray);line-height:1.7}
 .ct-flow-note{margin:14px 0 0;font-size:.78rem;color:var(--gray);line-height:1.8}
-.ct-flow-row{grid-template-columns:1fr 1fr}
-@media (min-width:760px){ .ct-flow-row{grid-template-columns:repeat(4,1fr);gap:12px} }
+/* 360〜390pxでは2列にすると1セル100px前後になり、意味単位で折り返せない。
+   縦積みを既定にし、420px以上で2×2、900px以上で4列。 */
+.ct-flow-row{grid-template-columns:1fr}
+@media (min-width:420px){ .ct-flow-row{grid-template-columns:1fr 1fr} }
+@media (min-width:900px){ .ct-flow-row{grid-template-columns:repeat(4,1fr);gap:12px} }
 
 /* ---- founder profile ---- */
 .fd-profile{margin-top:22px;padding-top:20px;border-top:1px solid var(--line-soft)}
@@ -763,6 +788,9 @@ body::before{
   .hero-leaf-c{display:none}
   .hero-dots-b{display:none}
   .hero-title{margin-bottom:20px}
+  /* 360px では 2.5rem だと「もう一つの根を。」が2行に割れて、
+     意図した2行構成が崩れる。1〜2px 詰めて意図どおりに保つ。 */
+  @media (max-width:400px){ .hero-title{font-size:2.2rem} }
   /* the mock composition needs room for the overhanging phone/photo */
   .hero-visual{margin-bottom:64px}
   .mock-chip--l{left:-3%;bottom:-14%;width:42%}
@@ -813,7 +841,7 @@ body::before{
   .fd-point{padding:13px 15px}
   .faq-wrap{padding:24px 20px}
   .faq-item summary{padding:14px 16px}
-  .faq-item p{padding:0 16px 15px 50px}
+  .faq-item p{padding:0 16px 15px 18px}
   .ct-form-card{padding:24px 20px}
   /* icon beside the text rather than above it — three stacked cards are
      the single tallest block in this section on a phone */

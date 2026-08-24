@@ -1,4 +1,5 @@
 import { IconCheck, IconArrow, LeafBranch, Dots } from "./Decor";
+import Jp from "./Jp";
 
 /**
  * Cards carry price / who it's for / 4-6 headline items only.
@@ -10,7 +11,7 @@ const PLANS = [
     name: "実績制作",
     badge: "条件あり",
     badgeMod: "",
-    for: "制作事例として掲載にご協力いただける店舗様向け",
+    for: "制作事例として｜掲載にご協力いただける｜店舗様向け",
     amount: "50,000",
     unit: "円",
     tax: "税込 55,000円",
@@ -29,7 +30,7 @@ const PLANS = [
     name: "シンプルプラン",
     badge: "",
     badgeMod: "",
-    for: "まずホームページを持ちたい方向け",
+    for: "まずホームページを｜持ちたい方向け",
     amount: "98,000",
     unit: "円〜",
     tax: "税込 107,800円〜",
@@ -48,7 +49,7 @@ const PLANS = [
     name: "更新プラン",
     badge: "おすすめ",
     badgeMod: "pr-badge--terra",
-    for: "商品や営業時間をご自身で更新したい方向け",
+    for: "商品や営業時間を｜ご自身で更新したい｜方向け",
     amount: "198,000",
     unit: "円〜",
     tax: "税込 217,800円〜",
@@ -76,9 +77,9 @@ const TERMS = [
 ];
 
 const COND = [
-  "Second Rootサイトへの制作事例掲載にご同意いただけること",
-  "お客様の声・完成サイトへのリンク掲載にご協力いただけること",
-  "必要に応じて管理画面や制作過程の紹介をご許可いただけること",
+  "Second Rootサイトへの｜制作事例掲載に｜ご同意いただけること",
+  "お客様の声・｜完成サイトへの｜リンク掲載に｜ご協力いただけること",
+  "必要に応じて｜管理画面や制作過程の｜紹介をご許可｜いただけること",
 ];
 
 export default function Pricing() {
@@ -94,7 +95,7 @@ export default function Pricing() {
             料金プラン
           </h2>
           <p className="h2-sub">
-            買い切りが基本です。制作費として毎月お支払いいただくものはありません。
+            <Jp t="買い切りが基本です。｜制作費として毎月｜お支払いいただくものは｜ありません。" />
           </p>
           <span className="rule-mark" />
         </div>
@@ -108,7 +109,9 @@ export default function Pricing() {
               {p.badge && <span className={`pr-badge ${p.badgeMod}`}>{p.badge}</span>}
               <LeafBranch className="pr-leaf" style={{ color: p.terra ? "var(--terra)" : "var(--green-soft)" }} />
               <h3 className="pr-name">{p.name}</h3>
-              <p className="pr-for">{p.for}</p>
+              <p className="pr-for">
+                <Jp t={p.for} />
+              </p>
               <p className="pr-amt">
                 {p.amount}
                 <span className="u">{p.unit}</span>
@@ -162,27 +165,33 @@ export default function Pricing() {
                 {COND.map((c) => (
                   <li key={c}>
                     <IconCheck />
-                    {c}
+                    <span>
+                      <Jp t={c} />
+                    </span>
                   </li>
                 ))}
               </ul>
               <p className="pr-note-p">
-                掲載する項目(店舗名・画像・URL・お客様の声など)は、それぞれ事前に個別で確認します。内容・必要な機能・スケジュールによっては、実績制作価格でお受けできない場合があります。
+                <Jp t="掲載する項目｜(店舗名・画像・URL・｜お客様の声など)は、｜それぞれ事前に個別で｜確認します。｜内容・必要な機能・｜スケジュールによっては、｜実績制作価格でお受けできない｜場合があります。" />
               </p>
             </div>
 
             <div className="pr-note pr-note--custom">
               <h4 className="pr-note-h">カスタム / その他の費用</h4>
               <p className="pr-note-p">
-                <b>カスタムは要相談。</b>
-                予約・EC・複雑なCMS・その他の個別要件は、内容をうかがったうえで個別にお見積りします。追加ページは15,000円(税別)〜／1ページが目安です。
+                <b>
+                  <Jp t="カスタムは要相談。" />
+                </b>
+                <Jp t="予約・EC・｜複雑なCMS・｜その他の個別要件は、｜内容をうかがったうえで｜個別にお見積りします。｜追加ページは｜15,000円(税別)〜／｜1ページが目安です。" />
               </p>
               <p className="pr-note-p">
-                <b>月額保守契約への加入は必須ではありません。</b>
-                保守契約なしでも、サイトを継続して運用・改修いただけます。必要な場合のみ、保守・更新プランをご案内します。
+                <b>
+                  <Jp t="月額保守契約への加入は｜必須ではありません。" />
+                </b>
+                <Jp t="保守契約なしでも、｜サイトを継続して｜運用・改修いただけます。｜必要な場合のみ、｜保守・更新プランを｜ご案内します。" />
               </p>
               <p className="pr-note-p pr-note-p--muted">
-                ドメイン・サーバー・外部サービスの利用料は、制作費とは別にお客様のご負担となります(お客様名義での取得・設定を代行します)。
+                <Jp t="ドメイン・サーバー・｜外部サービスの利用料は、｜制作費とは別に｜お客様のご負担となります｜(お客様名義での｜取得・設定を代行します)。" />
               </p>
               <a className="tlink" href="#contact" data-ga="pricing_cta_click">
                 カスタムのご相談はこちら

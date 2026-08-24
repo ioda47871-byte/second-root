@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { IconArrow, LeafBranch, Dots } from "./Decor";
+import Jp from "./Jp";
 
 /** 自主制作。実在の店舗ではないため、Real Project とは明確に分けて扱う。 */
 const WORKS = [
@@ -54,7 +55,7 @@ export default function ConceptWorks() {
             自主制作
           </h2>
           <p className="h2-sub">
-            業種ごとの設計力をお見せするために制作した自主制作サイトです。実在する店舗ではありません。
+            <Jp t="業種ごとの設計力を｜お見せするために｜制作した｜自主制作サイトです。｜実在する店舗では｜ありません。" />
           </p>
           <span className="rule-mark" />
         </div>

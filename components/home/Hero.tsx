@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { BlobGreen, BlobSand, LeafSpray, LeafBranch, Dots, IconArrow, IconMail, IconGift } from "./Decor";
+import Jp from "./Jp";
 
 /**
  * Hero.
@@ -36,7 +37,7 @@ export default function Hero() {
           </h1>
 
           <p className="hero-lead">
-            パン屋・カフェなど地域のお店の魅力と情報を整理し、初めてのお客様にも伝わる、更新しやすいホームページを制作します。
+            <Jp t="パン屋・カフェなど｜地域のお店の｜魅力と情報を整理し、｜初めてのお客様にも｜伝わる、｜更新しやすい｜ホームページを｜制作します。" />
           </p>
 
           <ul className="hero-badges">

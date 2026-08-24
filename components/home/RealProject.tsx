@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { IconCheck, IconLayout, IconRefresh, IconExternal, Dots, LeafBranch } from "./Decor";
+import Jp from "./Jp";
 
 const BUILT = ["情報設計", "オリジナルデザイン", "スマートフォン対応", "CMS導入", "公開作業"];
 const EDITABLE = ["商品の追加", "商品の編集", "商品の削除", "人気商品の設定", "売り切れ表示", "季節限定表示"];
@@ -69,11 +70,14 @@ export default function RealProject() {
                 Brot Yanagi<span>パン屋</span>
               </h2>
               <p className="rp-sub">
-                Web制作実績 第1号 — 情報設計からデザイン・CMS導入・公開まで担当しました。
+                <Jp t="Web制作実績 第1号 — ｜情報設計から｜デザイン・｜CMS導入・公開まで｜担当しました。" />
               </p>
               <p className="rp-value">
-                公開後は、<b>専門知識がなくても店舗側で商品情報を変更できます。</b>
-                営業時間や商品を知りたいお客様に、Instagramの古い投稿をさかのぼって探してもらう必要が減りました。
+                <Jp t="公開後は、" />
+                <b>
+                  <Jp t="専門知識がなくても｜店舗側で商品情報を｜変更できます。" />
+                </b>
+                <Jp t="営業時間や商品を｜知りたいお客様に、｜Instagramの｜古い投稿を｜さかのぼって｜探してもらう｜必要が減りました。" />
               </p>
 
               <div className="rp-panels">
@@ -121,7 +125,9 @@ export default function RealProject() {
                     <IconExternal />
                   </a>
                 )}
-                <p className="rp-note">※ 掲載内容は店舗様の許可を得ています。</p>
+                <p className="rp-note">
+                  <Jp t="※ 掲載内容は｜店舗様の許可を｜得ています。" />
+                </p>
               </div>
             </div>
           </div>

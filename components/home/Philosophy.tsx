@@ -1,4 +1,5 @@
 import { BlobGreen, BlobSand, LeafSpray, LeafBranch, Dots } from "./Decor";
+import Jp from "./Jp";
 
 /**
  * Brand breathing room, not a sales block — so this is the one section
@@ -23,7 +24,7 @@ export default function Philosophy() {
             これからも続いていくために。
           </h2>
           <p className="ph-text">
-            看板も、常連さんとの間柄も、積み重ねてきた時間も、もうそこにある。私たちが作るのは、真新しい何かではありません。すでにあるものが、これからも続いていくための、もう一つの根です。
+            <Jp t="看板も、｜常連さんとの間柄も、｜積み重ねてきた時間も、｜もうそこにある。｜私たちが作るのは、｜真新しい何かでは｜ありません。｜すでにあるものが、｜これからも｜続いていくための、｜もう一つの根です。" />
           </p>
         </div>
       </div>
