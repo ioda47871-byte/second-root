@@ -352,29 +352,30 @@ a.header-cta{ display:none; padding:11px 22px; font-size:.84rem; }
 /* trio — Services / Founder / Pricing side by side                  */
 /* ---------------------------------------------------------------- */
 .trio{ display:flex; flex-direction:column; gap:48px; }
-/* PC only: Services leads the block at full width, then Founder and Price
-   share one two-column row beneath a hairline. Three parallel columns made
-   the reader choose between "what", "who" and "how much" all at once —
-   this asks one question at a time. Below 1024px the base column stack
-   (mobile) is used unchanged. */
+/* PC only: SERVICE, FOUNDER and PRICE each read as their own full-height
+   question — "what / who / how much" — stacked and separated by a
+   hairline, instead of Founder and Price competing for attention in one
+   shared row. SERVICE and PRICE use the block's full width (a 3-up
+   service list, a 3-up price comparison); FOUNDER stays a narrow column
+   of running text since it's read, not scanned. Below 1024px the base
+   column stack (mobile) is used unchanged. */
 @media (min-width:1024px){
-  .trio{ display:grid; grid-template-columns:1fr 1fr; gap:0; }
+  .trio{ display:flex; flex-direction:column; gap:0; }
   .trio-col{ padding:0; }
   .trio-col--services{
-    grid-column:1 / -1;
     padding-bottom:clamp(48px,4.5vw,64px);
   }
   .trio-col--founder{
-    grid-column:1; border-top:1px solid var(--hairline);
-    padding:clamp(48px,4.5vw,64px) clamp(40px,4vw,56px) 0 0;
+    max-width:640px;
+    border-top:1px solid var(--hairline);
+    padding-top:clamp(48px,4.5vw,64px); padding-bottom:clamp(48px,4.5vw,64px);
   }
   .trio-col--price{
-    grid-column:2; border-top:1px solid var(--hairline);
-    border-left:1px solid var(--hairline);
-    padding:clamp(48px,4.5vw,64px) 0 0 clamp(40px,4vw,56px);
+    border-top:1px solid var(--hairline);
+    padding-top:clamp(48px,4.5vw,64px);
   }
   /* Services is the lead of this block, so its heading sits one step up
-     the scale from the two supporting columns below it. */
+     the scale from the two supporting sections below it. */
   .trio-col--services .trio-heading{ font-size:1.4rem; }
 }
 .trio-no{ font-family:var(--font-label),var(--font-sans); font-size:.7rem; color:var(--gold); letter-spacing:.08em; margin-bottom:10px; }
@@ -441,12 +442,22 @@ a.header-cta{ display:none; padding:11px 22px; font-size:.84rem; }
 .price-row-mini-name{ font-size:.86rem; color:var(--ink); }
 .price-row-mini-price{ font-family:var(--font-serif); font-size:.98rem; font-weight:600; color:var(--ink); white-space:nowrap; }
 .pricing-note{ font-size:.78rem; color:var(--gray); line-height:1.7; margin:0 0 16px; }
-/* PC only: Price sits beside Founder's longer teaser + interview link +
-   promise list, so its own rows get a touch more air rather than reading
-   as a shorter, sparser column beside it. No content added or removed. */
+/* PC only: PRICE now has the full row to itself, so the three plans run
+   side by side — a single glance for "how much" — divided by vertical
+   hairlines instead of stacked rows. Still no cards, no fill color. */
 @media (min-width:1024px){
-  .trio-col--price .price-row-mini{ padding:22px 0; }
-  .trio-col--price .pricing-teaser{ margin-bottom:28px; }
+  .pricing-teaser{
+    flex-direction:row; gap:0; margin-bottom:32px;
+  }
+  .price-row-mini{
+    flex:1 1 0; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:10px;
+    padding:0 clamp(28px,2.6vw,40px);
+    border-top:none; border-left:1px solid var(--hairline);
+  }
+  .price-row-mini:first-child{ padding-left:0; border-left:none; }
+  .price-row-mini:last-child{ padding-right:0; }
+  .price-row-mini-name{ font-size:.88rem; }
+  .price-row-mini-price{ font-size:1.3rem; }
   .trio-col--price .pricing-note{ margin-bottom:28px; }
 }
 
