@@ -1,12 +1,27 @@
 import { IconChat, IconSearch, IconDoc, IconLayout, IconCheckCircle, IconRocket } from "./Decor";
 
 const STEPS = [
-  { n: "01", Icon: IconChat, t: "相談", d: "まずは、今困っていることをお聞きします。" },
+  { n: "01", Icon: IconChat, t: "相談", d: "まずは、今困っていることをお聞きします。無料診断もこの段階です。" },
   { n: "02", Icon: IconSearch, t: "ヒアリング", d: "お店の状況、お客様層、伝えたいことを整理します。" },
-  { n: "03", Icon: IconDoc, t: "提案", d: "必要な機能と構成を、分かりやすくご提案します。" },
+  {
+    n: "03",
+    Icon: IconDoc,
+    t: "提案・契約",
+    d: "構成と機能をご提案し、お見積り・契約書のうえ着手金50%をご入金いただきます。",
+  },
   { n: "04", Icon: IconLayout, t: "制作", d: "デザインと実装を進め、途中経過もご確認いただきます。" },
-  { n: "05", Icon: IconCheckCircle, t: "確認", d: "公開前に、内容と動作を一緒に確認します。" },
-  { n: "06", Icon: IconRocket, t: "公開", d: "ドメイン・サーバーの設定を行い、公開します。" },
+  {
+    n: "05",
+    Icon: IconCheckCircle,
+    t: "確認",
+    d: "テスト環境で内容と動作を確認し、修正のうえ公開の承認をいただきます。",
+  },
+  {
+    n: "06",
+    Icon: IconRocket,
+    t: "公開",
+    d: "残金のご入金を確認後に公開し、アカウントと完成データをお渡しします。",
+  },
 ];
 
 export default function Process() {

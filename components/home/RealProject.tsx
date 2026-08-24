@@ -1,8 +1,8 @@
 import Image from "next/image";
 import { IconCheck, IconLayout, IconRefresh, IconExternal, Dots } from "./Decor";
 
-const BUILT = ["情報設計", "デザイン", "実装", "スマホ対応", "CMS導入", "公開作業"];
-const EDITABLE = ["商品の追加", "内容の編集", "商品の削除", "人気商品の入替", "売り切れ表示", "季節限定の掲載"];
+const BUILT = ["情報設計", "オリジナルデザイン", "スマートフォン対応", "CMS導入", "公開作業"];
+const EDITABLE = ["商品の追加", "商品の編集", "商品の削除", "人気商品の設定", "売り切れ表示", "季節限定表示"];
 
 /**
  * The one real, commissioned project. Deliberately given more visual
@@ -21,7 +21,13 @@ export default function RealProject() {
           <h2 className="rp-title" id="rp-h">
             Brot Yanagi<span>パン屋</span>
           </h2>
-          <p className="rp-sub">Web制作実績 第1号 — 情報設計からデザイン・実装・CMS導入・公開まで担当しました。</p>
+          <p className="rp-sub">
+            Web制作実績 第1号 — 情報設計からデザイン・CMS導入・公開まで担当しました。
+          </p>
+          <p className="rp-value">
+            公開後は、<b>専門知識がなくても店舗側で商品情報を変更できます。</b>
+            営業時間や商品を知りたいお客様に、Instagramの古い投稿をさかのぼって探してもらう必要が減りました。
+          </p>
         </div>
 
         <div className="rp-visual">
@@ -96,7 +102,13 @@ export default function RealProject() {
 
         {live && (
           <p style={{ marginTop: 26 }}>
-            <a className="btn btn--outline btn--sm" href={live} target="_blank" rel="noopener noreferrer">
+            <a
+              className="btn btn--outline btn--sm"
+              href={live}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-ga="external_work_click"
+            >
               実際のサイトを見る
               <IconExternal />
             </a>

@@ -26,7 +26,7 @@ export default function SiteHeader() {
           ))}
         </nav>
 
-        <a className="btn btn--green btn--sm hdr-cta" href="#contact">
+        <a className="btn btn--green btn--sm hdr-cta" href="#contact" data-ga="header_cta_click">
           <IconMail className="" />
           無料診断を申し込む
         </a>

@@ -24,9 +24,9 @@ const zenMaruGothic = Zen_Maru_Gothic({
   display: "swap",
 });
 
-const siteTitle = "Second Root — 事業に、もう一つの根を。";
+const siteTitle = "Second Root — 名古屋・金山の地域店舗向けホームページ制作";
 const siteDescription =
-  "地域のお店のホームページ制作。パン屋・カフェ・美容室・整体など、地域のお店を中心に、公開後の更新や相談まで一人で対応します。";
+  "名古屋・金山を拠点に、パン屋・カフェなど地域のお店のホームページを制作します。買い切りが基本、通常3〜5週間。文章整理から公開後の対応まで一人で担当。全国オンライン対応・無料診断受付中。";
 const siteUrl = "https://secondroot.jp";
 // Temporary brand-photo composite (scripts/generate-ogp.mjs) — swap for
 // real photography by replacing public/og-image.jpg and re-running the
@@ -41,12 +41,12 @@ export const metadata: Metadata = {
   },
   description: siteDescription,
   keywords: [
-    "ホームページ制作",
-    "地域のお店 ホームページ",
+    "ホームページ制作 名古屋",
+    "金山 ホームページ制作",
     "パン屋 ホームページ制作",
     "カフェ ホームページ制作",
-    "美容室 ホームページ制作",
-    "整体 ホームページ制作",
+    "地域のお店 ホームページ",
+    "小規模店舗 ホームページ制作",
     "個人事業主 ホームページ",
     "Second Root",
   ],
@@ -85,6 +85,33 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body>
         {children}
         <GoogleAnalytics />
+        {/* ProfessionalService — area served and service type only. No
+            street address or phone number is published. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "ProfessionalService",
+              name: "Second Root",
+              url: siteUrl,
+              description: siteDescription,
+              image: `${siteUrl}${ogImagePath}`,
+              email: "info@secondroot.jp",
+              serviceType: "ホームページ制作",
+              areaServed: [
+                { "@type": "City", name: "名古屋市" },
+                { "@type": "Country", name: "日本" },
+              ],
+              address: {
+                "@type": "PostalAddress",
+                addressLocality: "名古屋市",
+                addressRegion: "愛知県",
+                addressCountry: "JP",
+              },
+            }),
+          }}
+        />
       </body>
     </html>
   );

@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { RootMark, LeafSpray } from "./Decor";
+import { RootMark, LeafSpray, IconInstagram } from "./Decor";
 import { NAV } from "./nav";
 
 export default function SiteFooter() {
+  // Rendered only once a real account URL is configured — no placeholder link.
+  const instagram = process.env.NEXT_PUBLIC_INSTAGRAM_URL;
   return (
     <footer className="ftr">
       <LeafSpray className="decor ftr-leaf" />
@@ -18,10 +20,24 @@ export default function SiteFooter() {
               </span>
             </span>
             <p className="ftr-tag">
-              パン屋・カフェ・美容室・整体院など、
+              名古屋・金山駅周辺を拠点に、パン屋・カフェなど
               <br />
               地域のお店のホームページを制作しています。
+              <br />
+              名古屋市内は対面相談可／全国オンライン対応。
             </p>
+            {instagram && (
+              <a
+                className="ftr-sns"
+                href={instagram}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-ga="instagram_click"
+              >
+                <IconInstagram className="" />
+                Instagram
+              </a>
+            )}
           </div>
 
           <nav className="ftr-nav" aria-label="フッターナビゲーション">

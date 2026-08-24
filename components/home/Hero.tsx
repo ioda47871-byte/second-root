@@ -35,15 +35,21 @@ export default function Hero() {
           </h1>
 
           <p className="hero-lead">
-            パン屋・カフェ・美容室・整体院など、地域のお店の魅力を整理し、初めてのお客様にも伝わるホームページをつくります。情報が見つかりやすく、更新しやすいサイトで、事業の魅力をWebにもう一つの根として育てます。
+            パン屋・カフェなど地域のお店の魅力と情報を整理し、初めてのお客様にも伝わる、更新しやすいホームページを制作します。
           </p>
 
+          <ul className="hero-badges">
+            <li>名古屋・金山拠点</li>
+            <li>全国オンライン対応</li>
+            <li>買い切りが基本</li>
+          </ul>
+
           <div className="hero-ctas">
-            <a className="btn btn--green" href="#contact">
+            <a className="btn btn--green" href="#contact" data-ga="hero_cta_click">
               <IconMail />
               無料診断を申し込む
             </a>
-            <a className="btn btn--outline" href="#works">
+            <a className="btn btn--outline" href="#works" data-ga="hero_works_click">
               制作事例を見る
               <IconArrow />
             </a>

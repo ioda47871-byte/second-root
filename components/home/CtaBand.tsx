@@ -28,7 +28,7 @@ export default function CtaBand() {
                 ))}
               </ul>
             </div>
-            <a className="btn btn--white" href="#contact">
+            <a className="btn btn--white" href="#contact" data-ga="diagnosis_cta_click">
               無料診断を申し込む
               <IconArrow />
             </a>

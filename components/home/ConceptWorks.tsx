@@ -58,7 +58,14 @@ export default function ConceptWorks() {
 
         <div className="cw-grid">
           {WORKS.map((w) => (
-            <a className="cw-card" key={w.slug} href={w.url} target="_blank" rel="noopener noreferrer">
+            <a
+              className="cw-card"
+              key={w.slug}
+              href={w.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-ga="external_work_click"
+            >
               <div className="cw-thumb">
                 <span className={`cw-tag ${w.tagClass}`}>{w.tag}</span>
                 <Image

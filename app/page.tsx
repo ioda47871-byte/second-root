@@ -12,10 +12,12 @@ import Faq from "@/components/home/Faq";
 import Philosophy from "@/components/home/Philosophy";
 import ContactSection from "@/components/home/ContactSection";
 import SiteFooter from "@/components/home/SiteFooter";
+import Analytics from "@/components/home/Analytics";
 
 export default function Home() {
   return (
     <>
+      <Analytics />
       <SiteHeader />
       <main>
         <Hero />
