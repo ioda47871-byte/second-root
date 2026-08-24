@@ -582,8 +582,13 @@ body::before{
 .ph{position:relative;overflow:hidden;padding-top:clamp(64px,7vw,104px);padding-bottom:clamp(64px,7vw,104px)}
 .ph-in{position:relative;z-index:2;max-width:780px}
 .ph-title{font-family:var(--serif);font-size:clamp(1.85rem,3.4vw,2.7rem);font-weight:600;line-height:1.5;margin:10px 0 26px;text-wrap:balance}
-/* 余韻が要るセクションなので、箱幅いっぱいまで詰めず 3〜4行に収める */
-.ph-text{font-size:1rem;line-height:2.3;color:var(--ink-soft);margin:0;max-width:30em}
+/* 1文=1行として読めるだけの幅を確保する。いちばん長い文が33文字なので
+   34em では足りず、右の有機形状にぶつからない範囲で 36em まで広げる。 */
+.ph-text{font-size:1rem;line-height:2.3;color:var(--ink-soft);margin:0;max-width:36em}
+/* 1文をひとつの意味単位として扱う。block にすることで PC では3文が
+   そのまま3行になり、文の区切りが視覚的に分かる。
+   nowrap はかけないので、狭い幅では文中で自然に折り返す。 */
+.ph-sentence{display:block}
 .ph-blob{position:absolute;right:-14%;top:-30%;width:68%;max-width:840px;z-index:0;opacity:1}
 .ph-blob-sand{position:absolute;left:-20%;bottom:-34%;width:48%;max-width:520px;z-index:0;opacity:.9}
 .ph-leaf{right:8%;bottom:6%;width:clamp(150px,17vw,270px);color:var(--gold);opacity:.6}
@@ -946,3 +951,13 @@ body::before{
   .pr-card{padding-top:calc(clamp(26px,2.8vw,34px) + 2.4em)}
 }
 
+
+/* Philosophy の文中まとまりは最長14文字。320px の既定文字サイズなら
+   まだ本文幅(280px)に収まるので、汎用の逃がし弁(21rem)より狭い閾値を使う。
+   17rem = 既定16pxで272px / 20pxで340px / 24pxで408px 相当。 */
+@media (max-width:21rem){
+  .ph-sentence .nb{white-space:nowrap}
+}
+@media (max-width:17rem){
+  .ph-sentence .nb{white-space:normal}
+}
