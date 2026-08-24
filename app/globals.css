@@ -77,6 +77,14 @@ img{max-width:100%;display:block}
 /* 意味のまとまり単位で折り返すための最小ユーティリティ(components/home/Jp.tsx)。
    短いまとまりにだけ付ける。長文に付けると狭い画面ではみ出す。 */
 .nb{white-space:nowrap}
+/* 逃がし弁。閾値を rem で書いているので、ビューポートが狭いときだけでなく、
+   ブラウザの文字サイズ拡大やページズームで実効的な文字が大きくなったときにも
+   発火し、まとまりが箱に入らなくなる前に通常の折り返しへ戻す。
+   21rem = 既定16pxなら336px / Large(20px)なら420px / Very Large(24px)なら504px。
+   読みやすい改行位置より「文字が切れない・横スクロールしない」を優先する。 */
+@media (max-width:21rem){
+  .nb{white-space:normal}
+}
 :focus-visible{outline:2px solid var(--green);outline-offset:3px}
 
 /* very light paper grain */
@@ -625,6 +633,11 @@ body::before{
 
 /* ---- contact form (existing markup) ---- */
 .contact-form{display:grid;grid-template-columns:1fr;gap:20px;width:100%}
+/* select の最長オプションが grid トラックを押し広げ、文字を大きくした
+   320px でカードからはみ出していた。トラックを縮められるようにする。
+   ContactForm のマークアップ・送信処理には触れていない。 */
+.contact-form > *,.form-more-body > *{min-width:0}
+.form-row select,.form-row input,.form-row textarea{max-width:100%}
 .form-row label{display:block;font-size:.8rem;font-weight:500;color:var(--gray);margin-bottom:8px}
 .form-row input,.form-row textarea,.form-row select{
   width:100%;border:1.5px solid var(--line-soft);border-radius:var(--r-sm);background:var(--bg);
@@ -915,3 +928,21 @@ body::before{
 .site-footer-nav a{text-decoration:none;color:var(--gray);font-size:.82rem;transition:color .25s var(--ease)}
 .site-footer-nav a:hover{color:var(--green)}
 .logo{display:flex;flex-direction:column;gap:2px;text-decoration:none;line-height:1.3}
+
+/* ================= 実効幅が狭いときの逃がし弁 =================
+   21rem は媒体クエリでは初期フォントサイズ基準なので、ブラウザの
+   文字サイズ拡大でも発火する。後方に置いてモバイル用の2列指定に勝たせる。 */
+@media (max-width:21rem){
+  .pr-terms-grid{grid-template-columns:1fr}
+  .ct-what{grid-template-columns:1fr}
+  .ct-flow-row{grid-template-columns:1fr}
+  .reason-grid{grid-template-columns:1fr}
+}
+/* 固定高・固定余白が文字の拡大に追従せず重なる箇所。
+   既定サイズの表示は変えたくないので、この閾値の中でだけ調整する。 */
+@media (max-width:21rem){
+  .hdr-in{height:auto;min-height:76px;padding-top:10px;padding-bottom:10px}
+  .pr-badge{line-height:1.25}
+  .pr-card{padding-top:calc(clamp(26px,2.8vw,34px) + 2.4em)}
+}
+
