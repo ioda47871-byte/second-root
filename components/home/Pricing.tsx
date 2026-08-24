@@ -1,9 +1,9 @@
-import { IconCheck, IconArrow, LeafBranch } from "./Decor";
+import { IconCheck, IconArrow, LeafBranch, Dots } from "./Decor";
 
 /**
  * Cards carry price / who it's for / 4-6 headline items only.
  * Everything conditional (納期・修正回数・支払い・公開後・実費) lives in
- * the terms strip below and in the FAQ, so the cards stay scannable.
+ * the one terms panel below, so the cards stay scannable.
  */
 const PLANS = [
   {
@@ -39,7 +39,7 @@ const PLANS = [
       "5ページ程度まで",
       "オリジナルデザイン",
       "文章整理・情報設計",
-      "問い合わせフォーム／Instagram・Googleマップ導線",
+      "問い合わせフォーム／各種導線",
       "GA4・Search Console 初期接続",
       "CMSなし",
     ],
@@ -65,20 +65,30 @@ const PLANS = [
   },
 ];
 
+/** 見出し語＋短い値＋補足、の3点だけ。長文の羅列にしない。 */
 const TERMS = [
-  { t: "納期", d: "素材の受領・仕様確定・着手金入金から通常3〜5週間程度" },
-  { t: "修正", d: "料金内で2回まで(当方のミス・不具合は回数に含みません)" },
-  { t: "お支払い", d: "銀行振込。着手金50% / 公開前に残金50%" },
-  { t: "公開後", d: "公開日から30日間、当方の不具合・表示崩れを無料修正" },
-  { t: "写真", d: "原則ご用意いただきます。選定・トリミング・調整は料金内" },
-  { t: "文章", d: "ヒアリングと既存情報の整理は基本料金に含みます" },
+  { t: "納期", v: "3〜5週間", d: "素材の受領・仕様確定・着手金入金から" },
+  { t: "修正", v: "2回まで", d: "当方のミス・不具合は回数に含みません" },
+  { t: "お支払い", v: "着手50%・公開前50%", d: "銀行振込" },
+  { t: "公開後", v: "30日間 無料対応", d: "当方の不具合・表示崩れ・誤字" },
+  { t: "写真", v: "原則お客様支給", d: "選定・トリミング・調整は料金内" },
+  { t: "文章", v: "整理は料金内", d: "ヒアリングから一緒に進めます" },
+];
+
+const COND = [
+  "Second Rootサイトへの制作事例掲載にご同意いただけること",
+  "お客様の声・完成サイトへのリンク掲載にご協力いただけること",
+  "必要に応じて管理画面や制作過程の紹介をご許可いただけること",
 ];
 
 export default function Pricing() {
   return (
     <section className="section section--alt" id="price" aria-labelledby="pr-h">
+      <LeafBranch className="decor pr-deco-leaf" />
+      <Dots className="decor pr-deco-dots" cols={5} rows={4} />
+
       <div className="container">
-        <div className="sec-head sec-head--center">
+        <div className="sec-head sec-head--center sec-body">
           <p className="label-en">Price</p>
           <h2 className="h2" id="pr-h">
             料金プラン
@@ -89,7 +99,7 @@ export default function Pricing() {
           <span className="rule-mark" />
         </div>
 
-        <div className="pr-grid">
+        <div className="pr-grid sec-body">
           {PLANS.map((p) => (
             <div
               className={`pr-card${p.feature ? " pr-card--feature" : ""}${p.terra ? " pr-card--terra" : ""}`}
@@ -104,7 +114,8 @@ export default function Pricing() {
                 <span className="u">{p.unit}</span>
               </p>
               <p className="pr-tax">
-                (税別) / {p.tax}
+                <span className="pr-tax-ex">税別</span>
+                {p.tax}
               </p>
               <ul className="pr-feats">
                 {p.feats.map((f) => (
@@ -127,61 +138,58 @@ export default function Pricing() {
           ))}
         </div>
 
-        {/* 実績制作の適用条件 — 「限定枠」ではなく交換条件であることを明示 */}
-        <div className="pr-cond">
-          <h3 className="pr-cond-h">実績制作プランの適用条件</h3>
-          <ul className="pr-cond-list">
-            <li>
-              <IconCheck />
-              Second Rootサイトへの制作事例掲載にご協力いただけること
-            </li>
-            <li>
-              <IconCheck />
-              お客様の声・完成サイトへのリンク掲載にご協力いただけること
-            </li>
-            <li>
-              <IconCheck />
-              必要に応じて管理画面や制作過程の紹介をご許可いただけること
-            </li>
-          </ul>
-          <p className="pr-cond-note">
-            掲載いただく項目(店舗名・画像・URL・お客様の声など)は、それぞれ事前に個別で確認いたします。内容・必要な機能・スケジュールによっては、実績制作価格でお受けできない場合があります。
-          </p>
-        </div>
+        {/* 条件はすべてこの一枚に集約する。カード側は金額と内容だけに保つ。 */}
+        <div className="pr-detail sec-body">
+          <div className="pr-terms">
+            <h3 className="pr-detail-h">お取引の条件</h3>
+            <dl className="pr-terms-grid">
+              {TERMS.map((t) => (
+                <div className="pr-term" key={t.t}>
+                  <dt>{t.t}</dt>
+                  <dd>
+                    <b>{t.v}</b>
+                    <span>{t.d}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
 
-        <div className="pr-custom">
-          <p>
-            <b>カスタム / 要相談</b>
-            <br />
-            予約・EC・複雑なCMS・その他の個別要件は、内容をうかがったうえで個別にお見積りします。
-            追加ページは15,000円(税別)〜／1ページが目安です。
-          </p>
-          <a className="tlink" href="#contact" data-ga="pricing_cta_click">
-            カスタムのご相談はこちら
-            <IconArrow />
-          </a>
-        </div>
+          <div className="pr-notes">
+            <div className="pr-note pr-note--cond">
+              <h4 className="pr-note-h">実績制作プランの適用条件</h4>
+              <ul className="pr-note-list">
+                {COND.map((c) => (
+                  <li key={c}>
+                    <IconCheck />
+                    {c}
+                  </li>
+                ))}
+              </ul>
+              <p className="pr-note-p">
+                掲載する項目(店舗名・画像・URL・お客様の声など)は、それぞれ事前に個別で確認します。内容・必要な機能・スケジュールによっては、実績制作価格でお受けできない場合があります。
+              </p>
+            </div>
 
-        <div className="pr-terms">
-          <h3 className="pr-terms-h">お取引の条件</h3>
-          <dl className="pr-terms-grid">
-            {TERMS.map((t) => (
-              <div className="pr-term" key={t.t}>
-                <dt>{t.t}</dt>
-                <dd>{t.d}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-
-        <div className="pr-monthly">
-          <p>
-            <b>月額保守契約への加入は必須ではありません。</b>
-            保守契約なしでもサイトはお客様のものとして運用いただけます。必要な場合のみ、保守・更新プランをご案内します。
-          </p>
-          <p className="pr-monthly-note">
-            ※ ドメイン・サーバー・外部サービスの利用料は制作費とは別に、お客様のご負担となります(お客様名義での取得・設定を代行します)。
-          </p>
+            <div className="pr-note pr-note--custom">
+              <h4 className="pr-note-h">カスタム / その他の費用</h4>
+              <p className="pr-note-p">
+                <b>カスタムは要相談。</b>
+                予約・EC・複雑なCMS・その他の個別要件は、内容をうかがったうえで個別にお見積りします。追加ページは15,000円(税別)〜／1ページが目安です。
+              </p>
+              <p className="pr-note-p">
+                <b>月額保守契約への加入は必須ではありません。</b>
+                保守契約なしでも、サイトを継続して運用・改修いただけます。必要な場合のみ、保守・更新プランをご案内します。
+              </p>
+              <p className="pr-note-p pr-note-p--muted">
+                ドメイン・サーバー・外部サービスの利用料は、制作費とは別にお客様のご負担となります(お客様名義での取得・設定を代行します)。
+              </p>
+              <a className="tlink" href="#contact" data-ga="pricing_cta_click">
+                カスタムのご相談はこちら
+                <IconArrow />
+              </a>
+            </div>
+          </div>
         </div>
       </div>
     </section>

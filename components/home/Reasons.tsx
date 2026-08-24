@@ -1,4 +1,4 @@
-import { IconInstagram, IconClock, IconPhone, IconPencil, LeafBranch } from "./Decor";
+import { IconInstagram, IconClock, IconPhone, IconPencil, LeafBranch, LeafSpray, Dots } from "./Decor";
 
 const ITEMS = [
   {
@@ -31,22 +31,23 @@ export default function Reasons() {
   return (
     <section className="section section--alt" aria-labelledby="reasons-h">
       <div className="container">
-        <div className="sec-head sec-head--center">
-          <p className="label-en">Problem</p>
-          <h2 className="h2" id="reasons-h">
-            こんなお悩みありませんか？
-          </h2>
-          <p className="h2-sub">
-            ひとつでも当てはまるなら、まずは今の状態を一緒に確認するところから始めます。
-          </p>
-          <span className="rule-mark" />
-        </div>
-
+        {/* 参考画像と同じく「見出しごと一枚のパネルに収める」構成。
+            項目を独立カードにせず、縦罫で区切って一群として見せる。 */}
         <div className="reasons-wrap">
-          <LeafBranch
-            className="decor"
-            style={{ right: -18, bottom: -18, width: 130, color: "var(--green-soft)", opacity: 0.22 }}
-          />
+          <LeafSpray className="decor reasons-leaf-a" />
+          <LeafBranch className="decor reasons-leaf-b" />
+          <Dots className="decor reasons-dots" cols={4} rows={3} />
+
+          <div className="reasons-head sec-body">
+            <p className="label-en">Problem</p>
+            <h2 className="h2" id="reasons-h">
+              こんなお悩みありませんか？
+            </h2>
+            <p className="h2-sub">
+              ひとつでも当てはまるなら、まずは今の状態を一緒に確認するところから始めます。
+            </p>
+          </div>
+
           <div className="reason-grid sec-body">
             {ITEMS.map(({ n, Icon, title, body }) => (
               <div className="reason" key={n}>

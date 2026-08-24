@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { IconArrow } from "./Decor";
+import { IconArrow, LeafBranch, Dots } from "./Decor";
 
 /** 自主制作。実在の店舗ではないため、Real Project とは明確に分けて扱う。 */
 const WORKS = [
@@ -44,8 +44,11 @@ const WORKS = [
 export default function ConceptWorks() {
   return (
     <section className="section section--alt" aria-labelledby="cw-h">
+      <LeafBranch className="decor cw-leaf" />
+      <Dots className="decor cw-dots" cols={4} rows={3} />
+
       <div className="container">
-        <div className="sec-head sec-head--center">
+        <div className="sec-head sec-head--center sec-body">
           <p className="label-en">Concept Work</p>
           <h2 className="h2" id="cw-h">
             自主制作
@@ -56,7 +59,7 @@ export default function ConceptWorks() {
           <span className="rule-mark" />
         </div>
 
-        <div className="cw-grid">
+        <div className="cw-grid sec-body">
           {WORKS.map((w) => (
             <a
               className="cw-card"
@@ -66,15 +69,26 @@ export default function ConceptWorks() {
               rel="noopener noreferrer"
               data-ga="external_work_click"
             >
+              {/* スクリーンショットはブラウザ枠に入れて「画面」として見せる。
+                  Mobile版の実素材がないため、合成スマホ画面は作らない。 */}
               <div className="cw-thumb">
                 <span className={`cw-tag ${w.tagClass}`}>{w.tag}</span>
-                <Image
-                  src={w.image}
-                  alt={`${w.name}(自主制作サイト)のスクリーンショット`}
-                  width={w.w}
-                  height={w.h}
-                  sizes="(max-width:900px) 92vw, 30vw"
-                />
+                <div className="cw-frame">
+                  <span className="cw-bar" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="cw-shot">
+                    <Image
+                      src={w.image}
+                      alt={`${w.name}(自主制作サイト)のスクリーンショット`}
+                      width={w.w}
+                      height={w.h}
+                      sizes="(max-width:900px) 92vw, 30vw"
+                    />
+                  </span>
+                </div>
               </div>
               <div className="cw-body">
                 <h3 className="cw-name">{w.name}</h3>

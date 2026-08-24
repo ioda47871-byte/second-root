@@ -1,5 +1,5 @@
 import ContactForm from "@/components/ContactForm";
-import { LeafSpray, LeafBranch, IconCheck, IconSearch, IconLayout, IconYen } from "./Decor";
+import { LeafSpray, LeafBranch, Dots, IconCheck, IconSearch, IconLayout, IconYen } from "./Decor";
 
 const CHIPS = ["原則24時間以内に返信", "オンライン対応OK", "しつこい営業はしません"];
 
@@ -7,17 +7,20 @@ const CHIPS = ["原則24時間以内に返信", "オンライン対応OK", "し�
 const WHAT = [
   {
     Icon: IconSearch,
-    t: "今の発信状況を確認",
+    mod: "a",
+    t: "今の発信状況",
     d: "現在のホームページ・Instagram・Google上の店舗情報を拝見し、営業時間・商品・アクセス・予約方法がどこまで伝わる状態か確認します。",
   },
   {
     Icon: IconLayout,
-    t: "情報の整理状態と導線を確認",
+    mod: "b",
+    t: "情報の整理と導線",
     d: "情報が探しやすいか、スマートフォンでの表示に問題がないか、問い合わせや来店までの導線が途切れていないかを見ます。",
   },
   {
     Icon: IconYen,
-    t: "改善点と予算感をご提案",
+    mod: "c",
+    t: "改善点と予算感",
     d: "改善できそうな点を2〜3点お伝えし、どのくらいの費用でどこまでできるかの目安をご案内します。",
   },
 ];
@@ -25,18 +28,18 @@ const WHAT = [
 const FLOW = [
   { n: "01", t: "フォーム送信", d: "下のフォームからお送りください。" },
   { n: "02", t: "受領のご返信", d: "原則24時間以内にご連絡します。" },
-  { n: "03", t: "簡易診断のご案内", d: "原則3営業日以内にお送りします。" },
-  { n: "04", t: "オンライン面談", d: "ご希望の方のみ、約20分。" },
+  { n: "03", t: "簡易診断のご案内", d: "原則3営業日以内を目安にお送りします。" },
+  { n: "04", t: "オンライン面談", d: "ご希望の方のみ、Google Meetで約20分。" },
 ];
 
 export default function ContactSection() {
-  const line = process.env.NEXT_PUBLIC_LINE_URL;
-
   return (
     <section id="contact" aria-labelledby="ct-h">
       <div className="ct-hero section">
         <LeafSpray className="decor ct-leaf-a" />
         <LeafBranch className="decor ct-leaf-b" />
+        <Dots className="decor ct-dots" cols={5} rows={4} />
+        <span className="ct-circle" aria-hidden="true" />
         <div className="container ct-hero-in">
           <p className="ct-kick">Contact</p>
           <h2 className="ct-h" id="ct-h">
@@ -58,21 +61,19 @@ export default function ContactSection() {
         </div>
       </div>
 
-      <div className="container" style={{ paddingBottom: "clamp(56px,6.4vw,86px)" }}>
+      <div className="container ct-body">
         <div className="ct-form-card">
           <div className="ct-form-head">
             <h3>無料診断で見ること</h3>
             <p>お預かりした内容をもとに、以下の3点をご案内します。</p>
           </div>
 
-          <ul className="fd-points" style={{ marginBottom: 28 }}>
-            {WHAT.map(({ Icon, t, d }) => (
-              <li className="fd-point" key={t}>
-                <Icon style={{ width: 22, height: 22 }} />
-                <span>
-                  <b>{t}</b>
-                  <span>{d}</span>
-                </span>
+          <ul className="ct-what">
+            {WHAT.map(({ Icon, mod, t, d }) => (
+              <li className={`ct-what-card ct-what-card--${mod}`} key={t}>
+                <Icon className="ct-what-ic" />
+                <b>{t}</b>
+                <span>{d}</span>
               </li>
             ))}
           </ul>
@@ -98,21 +99,6 @@ export default function ContactSection() {
           </div>
 
           <ContactForm />
-
-          {line && (
-            <p style={{ marginTop: 28, fontSize: ".88rem", color: "var(--gray)" }}>
-              フォームの入力が面倒な方は、
-              <a
-                href={line}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "var(--green)", fontWeight: 700 }}
-              >
-                LINEからのご相談
-              </a>
-              も承っています。
-            </p>
-          )}
         </div>
       </div>
     </section>

@@ -1,4 +1,14 @@
-import { IconChat, IconSearch, IconDoc, IconLayout, IconCheckCircle, IconRocket } from "./Decor";
+import {
+  IconChat,
+  IconSearch,
+  IconDoc,
+  IconLayout,
+  IconCheckCircle,
+  IconRocket,
+  LeafSpray,
+  LeafBranch,
+  Dots,
+} from "./Decor";
 
 const STEPS = [
   { n: "01", Icon: IconChat, t: "相談", d: "まずは、今困っていることをお聞きします。無料診断もこの段階です。" },
@@ -27,8 +37,12 @@ const STEPS = [
 export default function Process() {
   return (
     <section className="section section--warm" id="process" aria-labelledby="ps-h">
+      <LeafSpray className="decor ps-leaf-a" />
+      <LeafBranch className="decor ps-leaf-b" />
+      <Dots className="decor ps-dots" cols={5} rows={4} />
+
       <div className="container">
-        <div className="sec-head sec-head--center">
+        <div className="sec-head sec-head--center sec-body">
           <p className="label-en">Process</p>
           <h2 className="h2" id="ps-h">
             制作の流れ
@@ -37,7 +51,8 @@ export default function Process() {
           <span className="rule-mark" />
         </div>
 
-        <div className="ps-row">
+        {/* PCは3×2。横6列に押し込むより一工程を大きく見せることを優先する。 */}
+        <div className="ps-row sec-body">
           {STEPS.map(({ n, Icon, t, d }) => (
             <div className="ps-step" key={n}>
               <div className="ps-circle">

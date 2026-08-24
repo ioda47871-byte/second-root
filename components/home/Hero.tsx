@@ -18,6 +18,7 @@ export default function Hero() {
       <span className="hero-circle" aria-hidden="true" />
       <LeafSpray className="decor hero-leaf-a" />
       <LeafBranch className="decor hero-leaf-b" />
+      <LeafSpray className="decor hero-leaf-c" />
       <Dots className="decor hero-dots-a" cols={5} rows={4} />
       <Dots className="decor hero-dots-b" cols={4} rows={3} />
 
@@ -62,8 +63,9 @@ export default function Hero() {
         </div>
 
         <div className="hero-visual">
-          <div className="mock">
-            <span className="mock-tag">実際に公開中のサイト</span>
+          <div className="mock mock--lg">
+            {/* 公開URLを確認できていないため「公開中」とは書かない */}
+            <span className="mock-tag">実店舗の制作案件</span>
 
             <div className="mock-laptop">
               <div className="mock-laptop-screen">
@@ -97,7 +99,17 @@ export default function Hero() {
                 alt="Brot Yanagi の店舗入口"
                 width={830}
                 height={640}
-                sizes="210px"
+                sizes="220px"
+              />
+            </div>
+
+            <div className="mock-chip mock-chip--r">
+              <Image
+                src="/screenshots-source/interior-photo.jpeg"
+                alt="Brot Yanagi の店内"
+                width={1179}
+                height={1614}
+                sizes="180px"
               />
             </div>
           </div>

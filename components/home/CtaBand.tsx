@@ -1,4 +1,4 @@
-import { RootMark, LeafSpray, LeafBranch, IconArrow, IconCheck } from "./Decor";
+import { RootMark, LeafSpray, LeafBranch, Dots, IconArrow, IconCheck } from "./Decor";
 
 const CHIPS = ["ご相談・お見積り無料", "オンライン対応OK", "しつこい営業はしません"];
 
@@ -10,6 +10,8 @@ export default function CtaBand() {
         <div className="ctaband">
           <LeafSpray className="ctaband-leaf" />
           <LeafBranch className="ctaband-leaf2" />
+          <Dots className="ctaband-dots" cols={5} rows={4} />
+          <span className="ctaband-circle" aria-hidden="true" />
           <div className="ctaband-in">
             <RootMark className="ctaband-mark" style={{ color: "var(--gold-soft)" }} />
             <div>

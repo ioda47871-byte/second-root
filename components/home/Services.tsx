@@ -1,4 +1,4 @@
-import { IconMonitor, IconRefresh, IconHands, LeafBranch } from "./Decor";
+import { IconMonitor, IconRefresh, IconHands, LeafBranch, LeafSpray, Dots } from "./Decor";
 
 const ITEMS = [
   {
@@ -34,30 +34,39 @@ export default function Services() {
   return (
     <section className="section" id="service" aria-labelledby="sv-h">
       <div className="container">
-        <div className="sec-head sec-head--center">
-          <p className="label-en">Service</p>
-          <h2 className="h2" id="sv-h">
-            できることを、3つに整理しました。
-          </h2>
-          <p className="h2-sub">サービス一覧というより、実際に対応できる範囲を正直にお伝えします。</p>
-          <span className="rule-mark" />
-        </div>
+        {/* 3枚のカードを1枚の色面の上に載せ、セクション全体を一群として見せる */}
+        <div className="sv-stage">
+          <LeafSpray className="decor sv-stage-leaf" />
+          <Dots className="decor sv-stage-dots" cols={5} rows={4} />
+          <span className="sv-stage-circle" aria-hidden="true" />
 
-        <div className="sv-grid">
-          {ITEMS.map(({ n, mod, Icon, title, body, tags, leaf }) => (
-            <div className={`sv-card sv-card--${mod}`} key={n}>
-              <LeafBranch className="sv-leaf" style={{ color: leaf }} />
-              <p className="sv-no">{n}</p>
-              <Icon className="sv-ic" />
-              <h3 className="sv-t">{title}</h3>
-              <p className="sv-d">{body}</p>
-              <ul className="sv-tags">
-                {tags.map((t) => (
-                  <li key={t}>{t}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <div className="sec-head sec-head--center sec-body">
+            <p className="label-en">Service</p>
+            <h2 className="h2" id="sv-h">
+              できることを、3つに整理しました。
+            </h2>
+            <p className="h2-sub">サービス一覧というより、実際に対応できる範囲を正直にお伝えします。</p>
+            <span className="rule-mark" />
+          </div>
+
+          <div className="sv-grid sec-body">
+            {ITEMS.map(({ n, mod, Icon, title, body, tags, leaf }) => (
+              <div className={`sv-card sv-card--${mod}`} key={n}>
+                <LeafBranch className="sv-leaf" style={{ color: leaf }} />
+                <div className="sv-top">
+                  <p className="sv-no">{n}</p>
+                  <Icon className="sv-ic" />
+                </div>
+                <h3 className="sv-t">{title}</h3>
+                <p className="sv-d">{body}</p>
+                <ul className="sv-tags">
+                  {tags.map((t) => (
+                    <li key={t}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>
