@@ -60,9 +60,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # e2e reuses this build instead of building again: next/font/google
+      # downloads fonts at build time, so every extra build is another
+      # chance for a bad Google Fonts response to fail the run.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: next-build
+          path: |
+            .next/
+            !.next/cache/
+          include-hidden-files: true
+          retention-days: 1
 
   e2e:
     name: e2e
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -73,7 +85,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run build
+      - uses: actions/download-artifact@v4
+        with:
+          name: next-build
+          path: .next/
       - run: npm run test:e2e
       - if: failure()
         uses: actions/upload-artifact@v4

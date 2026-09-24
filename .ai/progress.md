@@ -31,3 +31,4 @@
 - 2026-09-24: BOOT-001 開始。docs / .ai を追加。
 - 2026-09-24: test foundation 追加（vitest ~4.0.18 ※4.1 系は npm 10 で `edgesOut` エラー、5 系は @types/node ^20 と peer 衝突のため / @playwright/test 1.62.1 は既存 playwright と同版）。
 - 2026-09-24: CI（.github/workflows/ci.yml）と PR template を追加。
+- 2026-09-24: CI run #1 で e2e job 内の2回目の build が next/font/google の Google Fonts 取得（外部）で失敗（同コミットの build job は成功）。build を1回にし e2e は `.next` artifact を再利用する構成に修正。
