@@ -106,7 +106,7 @@ unique(normalized_name, normalized_address) による重複防止。
 | public_token | 128bit 以上の乱数、unique |
 | template | `bakery_v1` / `baked_goods_v1` / `cafe_v1` |
 | content | 表示用の確認済みテキスト（jsonb、公開可能項目のみ） |
-| expires_at, disabled_at, keep_alive | 表示判定 |
+| expires_at, disabled_at, keep_alive | 表示判定。作成時 `created_at + 30日`、初回営業 sent 時に `sent_at + 30日` へ更新 |
 
 ### sales_outreaches（営業行為）
 | 列 | 備考 |
@@ -114,7 +114,7 @@ unique(normalized_name, normalized_address) による重複防止。
 | prospect_id, channel | 初回営業は prospect あたり1件（unique partial） |
 | kind | `initial` / `follow_up`（follow_up は email のみ・1回のみ） |
 | subject, body | 文面 |
-| status | `drafted` / `sent` / `replied` / `meeting` / `won` / `lost` |
+| status | `drafted` / `sent` / `replied` / `meeting` / `won` / `lost`（`followed_up` という状態は持たず、フォローは `kind=follow_up` の別行） |
 | sent_at, replied_at, reply_type | reply_type: `interested` / `question` / `meeting_request` / `decline` / `other` |
 | won_amount_jpy | status=`won` のとき必須（check） |
 

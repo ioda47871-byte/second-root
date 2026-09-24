@@ -13,7 +13,7 @@
     {
       "id": "BOOT-001",
       "title": "Bootstrap / docs / CI / test foundation",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "depends_on": [],
       "purpose": "Sales Agent 開発の土台（仕様・設計・永続 AI 状態・テスト基盤・CI）を整える",
@@ -125,7 +125,13 @@
         "outreach state machine と不正遷移拒否（won は金額必須）",
         "URL validation（危険 scheme 拒否、Instagram host 検証）",
         "mailto / DM 文面生成（署名・営業不要なら返信で伝えられる旨）",
-        "demo 表示判定（expires_at / disabled_at / keep_alive）"
+        "demo 表示判定（expires_at / disabled_at / keep_alive）",
+        "対象外判定: 名古屋市外・3業種（bakery/baked_goods/cafe）以外は候補にしない",
+        "初回営業は1店舗1チャネルのみ。一方で返信・拒否があれば別チャネルで追撃しない",
+        "公式サイトあり＋Instagram のみ（第一者メールなし）は対象外（MVP_SPEC §3.2）",
+        "website_status=not_found は再確認記録がある場合のみ受け付ける。検索失敗は unknown",
+        "email は第一者出典（source_url + source_type）必須、推測メール・出所不明は拒否",
+        "フォローは状態ではなく kind=follow_up の outreach として扱う"
       ],
       "required_tests": [
         "unit: dedupe",
@@ -176,7 +182,9 @@
         "batch 上限・日次上限",
         "DNC / duplicate / unknown website の Instagram 拒否",
         "source_url をサーバーから fetch しない",
-        "DNC・成約状態を変更できない"
+        "DNC・成約状態を変更できない",
+        "DEV-002 の Hard Rules（名古屋市のみ・3業種・1チャネル・not_found 再確認・email 第一者出典）をサーバー側で適用",
+        "拒否理由を候補ごとに返し sales_agent_runs に記録"
       ],
       "required_tests": [
         "integration: ingest API",
@@ -225,7 +233,8 @@
         "noindex,nofollow + X-Robots-Tag",
         "期限切れ/無効は 404",
         "提案用デモであり公式サイトではない旨の明記",
-        "公開禁止項目を props に渡さない"
+        "公開禁止項目を props に渡さない",
+        "expires_at: 作成時 created_at + 30日、初回営業 sent 時に sent_at + 30日 へ更新（MVP_SPEC §7）"
       ],
       "required_tests": [
         "unit: demo expiry",
@@ -453,7 +462,8 @@
       "purpose": "DMを送る → コピー + Instagram を開く → 送信済み1タップ",
       "acceptance_criteria": [
         "開いただけでは sent にしない",
-        "Instagram host 検証済み URL のみ開く"
+        "Instagram host 検証済み URL のみ開く",
+        "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新"
       ],
       "required_tests": [
         "e2e: DM UX",
@@ -491,7 +501,8 @@
       "purpose": "mailto で recipient/subject/body/demo URL/署名/営業不要文言を事前入力",
       "acceptance_criteria": [
         "Resend 不使用",
-        "送信済み1タップ"
+        "送信済み1タップ",
+        "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新"
       ],
       "required_tests": [
         "unit: mailto generation",

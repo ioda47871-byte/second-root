@@ -36,6 +36,7 @@ status: `backlog` / `ready` / `in_progress` / `review` / `done` / `blocked`
 
 - 着手時: `in_progress` にして commit + push（他 session が同じ Task を拾わないように）。
 - 失敗時: `attempts` を増やし `last_failure` に要約を書く。3回失敗したら `blocked` にし `.ai/blockers.md` に記録。
+- 人間の操作待ち（merge・secret 設定等）でも `blocked` を使う。その場合は `blocked_reason` に `.ai/blockers.md` の ID と解除条件を書く。
 - PR 作成後: `review`。merge 後: `done`。
 - `tasks.json` の構造は `tests/unit/ai-tasks.test.ts` が CI で検証する。
 

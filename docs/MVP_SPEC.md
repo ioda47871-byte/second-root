@@ -102,9 +102,10 @@ Instagram フォローは MVP ではなし。
 ```
 drafted → sent → replied(interested|question|meeting_request|decline|other)
                      → meeting → won | lost
-sent → followed_up → replied …
 任意の状態 → lost（人間判断）
 ```
+
+- 状態は prospect の初回営業（`kind=initial` の outreach）で管理する。フォローメールは状態ではなく、別の outreach 行（`kind=follow_up`）として記録する（§4.3）。フォロー後の返信も初回営業の状態を `replied` に進める。
 
 - `won` のみ成約金額（円・正の整数）必須。
 - `decline` または営業不要の意思表示 → `do_not_contact = true`。
@@ -125,7 +126,10 @@ sent → followed_up → replied …
 - `noindex,nofollow`（meta）＋ `X-Robots-Tag: noindex, nofollow`。
 - 表示できるのは**確認済みの公開情報のみ**。架空の営業時間・商品・価格・沿革・店主ストーリー・人気商品・受賞歴等は禁止。不明なら省略。
 - Instagram 画像等を無断転載しない。Second Root 側のテンプレート素材と確認済みテキストのみ。
-- 公開期間: 原則初回営業から30日。アクセス時に `expires_at` / `disabled_at` / `keep_alive` で判定（row 削除は不要）。
+- 公開期間: 原則初回営業から30日。
+  - デモ作成時（ingest 時・未送信）は仮の `expires_at = 作成日時 + 30日`（送信前に人間が内容確認できるように）。
+  - 初回営業を「送信済み」にした時点で `expires_at = sent_at + 30日` に更新する。
+  - アクセス時に `expires_at` / `disabled_at` / `keep_alive` で判定（row 削除は不要）。
 - 公開 demo に絶対出さない: 営業内部メモ / メールアドレス / Claude 内部評価 / 成約金額 / outcome / internal ID / secret。
 
 ## 8. 管理画面 `/admin/sales`

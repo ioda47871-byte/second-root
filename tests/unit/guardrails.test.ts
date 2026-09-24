@@ -16,7 +16,7 @@ const SALES_AGENT_DIRS = ["app/admin/", "app/demo/", "app/api/internal/", "lib/s
 
 describe("guardrails", () => {
   it("only imports Resend from the contact form route (no cold sales email via Resend)", () => {
-    const importers = sourceFiles.filter((f) => /from\s+["']resend["']|require\(\s*["']resend["']\s*\)/.test(readFileSync(f, "utf8")));
+    const importers = sourceFiles.filter((f) => /from\s+["']resend["']|(require|import)\(\s*["']resend["']\s*\)/.test(readFileSync(f, "utf8")));
     expect(importers).toEqual(["app/api/contact/route.ts"]);
   });
 
