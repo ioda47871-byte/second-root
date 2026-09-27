@@ -19,11 +19,11 @@ const SCHEME = /[a-z][a-z0-9+.-]*:\/\/|\b(?:mailto|tel|sms|javascript|data|line)
 const DOMAIN = /(?:[a-z0-9-]+\.)+(?:[a-z]{2,}|xn--[a-z0-9-]+)(?![a-z0-9-])/i;
 // Internationalized domains (ドメイン.jp, 例え.テスト). Only a real dot counts
 // here: 「です。次は」 is an ordinary sentence, not a domain.
-const IDN_DOMAIN = /[\p{L}\p{N}-]+\.(?:\p{L}{2,}|xn--[a-z0-9-]+)(?![\p{L}\p{N}-])/u;
+const IDN_DOMAIN = /[\p{L}\p{N}ー-]+\.(?:[\p{L}ー]{2,}|xn--[a-z0-9-]+)(?![\p{L}\p{N}ー-])/u;
 const IPV4 = /(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])/;
 // Instagram turns @handles into profile links; LINE IDs are contact details.
 const HANDLE = /(?<![\w.@])@[a-z0-9._]{1,30}/i;
-const LINE_ID = /LINE\s*(?:ID|@)/i;
+const LINE_ID = /(?:LINE|ライン)[^\n]{0,6}(?:ID|@|アカウント)/i;
 
 /** NFKC text without invisible format characters (for wording rules). */
 function visible(text: string): string {
@@ -44,10 +44,10 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Removes the demo URL only where it ends cleanly (no extra path, query or `/..`). */
+/** Removes the demo URL only where it ends cleanly: end of text, space or closing punctuation. */
 function withoutDemoUrl(text: string, demoUrl: string | null): string {
   if (!demoUrl) return text;
-  return text.replace(new RegExp(`${escapeRegExp(demoUrl)}(?![\\w\\-/?#%&=+~:@]|\\.[\\w\\-/%])`, "g"), " ");
+  return text.replace(new RegExp(`${escapeRegExp(demoUrl)}(?=$|\\s|[。、」』）！？]|[.!?)](?:$|\\s))`, "g"), " ");
 }
 
 const REVIEW_RULES: Array<[string, RegExp]> = [
@@ -67,9 +67,12 @@ const REFUSAL = [
   /(ブロック|通報)します/,
 ];
 
+// Polite phrases that contain refusal words but invite contact.
+const NOT_REFUSAL = /遠慮なく|遠慮せず|(迷惑|結構)(では|じゃ)(ない|ありません)|結構(嬉|うれ|楽|たの|良|よ|いい|助か|大事|気に)/g;
+
 export function detectExplicitRefusal(text: string | null | undefined): boolean {
   if (!text) return false;
-  const s = visible(text);
+  const s = visible(text).replace(NOT_REFUSAL, " ");
   // A plain 「結構です」 without contact words is a decline, not a refusal.
   return REFUSAL.some((r) => r.test(s));
 }
@@ -94,15 +97,16 @@ export function checkDraft(input: DraftInput, allowedDemoUrl: string | null, lat
   if (EMAIL.test(normalized) || PHONE.test(normalized) || LINE_ID.test(normalized)) return { ok: false, reason: "contact_details" };
   // The shop's own demo URL is the only link allowed; anything link-like left
   // after removing it is refused.
-  const rest = withoutDemoUrl(normalized, allowedDemoUrl);
-  const restStrict = withoutDemoUrl(canonical(body, true), allowedDemoUrl);
+  // The demo URL is removed before full stops are made ASCII, so 「…URL。次」 still ends it cleanly.
+  const restStrict = withoutDemoUrl(visible(body), allowedDemoUrl);
+  const rest = canonical(restStrict);
   if (
     SCHEME.test(rest) ||
     DOMAIN.test(rest) ||
     IDN_DOMAIN.test(restStrict) ||
     IPV4.test(rest) ||
     HANDLE.test(rest) ||
-    /\/demo\//i.test(rest)
+    /\/demo\/|\.\.|[\\/]\./.test(rest)
   ) {
     return { ok: false, reason: "link_not_allowed" };
   }
