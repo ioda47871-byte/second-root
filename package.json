@@ -6,7 +6,12 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "check:secrets": "node scripts/check-secrets.mjs"
   },
   "dependencies": {
     "next": "16.3.0",
@@ -15,12 +20,14 @@
     "resend": "^6.19.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "playwright": "^1.62.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "~4.0.18"
   }
 }

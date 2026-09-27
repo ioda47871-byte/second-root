@@ -1,0 +1,881 @@
+{
+  "schema_version": 1,
+  "statuses": [
+    "backlog",
+    "ready",
+    "in_progress",
+    "review",
+    "done",
+    "blocked"
+  ],
+  "note": "Task の正本。構造は tests/unit/ai-tasks.test.ts で検証される。更新手順は docs/AI_WORKFLOW.md。",
+  "tasks": [
+    {
+      "id": "BOOT-001",
+      "title": "Bootstrap / docs / CI / test foundation",
+      "status": "done",
+      "priority": "P0",
+      "depends_on": [],
+      "purpose": "Sales Agent 開発の土台（仕様・設計・永続 AI 状態・テスト基盤・CI）を整える",
+      "acceptance_criteria": [
+        "docs/{MVP_SPEC,ARCHITECTURE,AI_WORKFLOW,SECURITY,RELEASE}.md が存在",
+        ".ai/{tasks.json,progress.md,blockers.md,reviews/} が存在",
+        "Vitest による unit test 基盤と Playwright による既存サイト regression smoke",
+        "GitHub Actions CI（static / unit / build / e2e）が green",
+        "既存 Second Root の挙動変更なし",
+        "main 向け PR 作成（2026-09-27 の人間承認により、CI green + Fresh Review Critical/High 0 で Claude が merge 可）",
+        "Operational run の checkpoint / resume / idempotency / fail-closed 設計を docs と DEV-001/002/003/015/016 の受入条件に反映"
+      ],
+      "required_tests": [
+        "lint",
+        "typecheck",
+        "check:secrets",
+        "unit",
+        "build",
+        "e2e (existing site smoke)"
+      ],
+      "allowed_scope": [
+        "docs/",
+        ".ai/",
+        ".github/",
+        "tests/",
+        "vitest.config.mts",
+        "playwright.config.ts",
+        "package.json / package-lock.json（devDependencies と scripts のみ）",
+        "CLAUDE.md への最小追記",
+        "scripts/check-secrets.mjs"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化",
+        "DEV-001 以降の実装"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 1,
+      "last_failure": null,
+      "branch": "claude/sales-agent-bootstrap-6e2zge"
+    },
+    {
+      "id": "DEV-001",
+      "title": "Supabase migrations / RLS",
+      "status": "blocked",
+      "priority": "P0",
+      "depends_on": [
+        "BOOT-001"
+      ],
+      "purpose": "Second Root 専用 Supabase の schema（sales_prospects / sales_sources / sales_demos / sales_outreaches / sales_agent_runs）と RLS を migration で定義する",
+      "acceptance_criteria": [
+        "supabase/migrations/ に全テーブルと check / unique constraint",
+        "全テーブル RLS 有効、明示された管理者1名のみ許可（allowlist）",
+        "sales_agent_runs.run_id unique",
+        "DNC・website_status・category・won_amount の DB constraint",
+        "ローカル Supabase で migration 適用 → integration test green",
+        "CI に integration job 追加（ローカル Supabase、Production 接続なし）",
+        "[checkpoint] sales_agent_runs: run_id(PK) / status(running|completed|failed) / phase(started|discovered|verified|persisting|completed) / checkpoint jsonb(≤64KB check) / checkpoint_at / result / error_code / error_summary(≤500) / started_at / finished_at",
+        "[idempotency] 重複防止の DB 制約: prospect の dedupe キー unique、sales_demos unique(prospect_id)、sales_outreaches unique(prospect_id) where kind='initial'、各行に run_id",
+        "[fail-closed] 候補ごとの persist を1 transaction で行う Postgres 関数（dedupe → DNC → 当日上限を全 run 共通の advisory lock 下で確認。どれかが失敗したら rollback し outreach を作らない。候補の結果 stage も同じ transaction で checkpoint に書く）",
+        "[resume] phase は条件付き update で前進のみ（後退・飛び越しは DB 側でも失敗する）",
+        "[idempotency] persist は run_id ごとの advisory lock で直列化し、run 行を SELECT … FOR UPDATE してから checkpoint を更新する"
+      ],
+      "required_tests": [
+        "integration: DB/RLS（admin 可 / 非 admin 不可 / anon 不可）",
+        "integration: constraints",
+        "integration: 同一候補の二重 persist で prospect/demo/outreach が1件のまま",
+        "integration: persist 途中の失敗で部分行が残らない（rollback）",
+        "integration: checkpoint 64KB 超過が DB で拒否される",
+        "integration: 同一 run の persist 同時実行で checkpoint 更新が失われない（run_busy）"
+      ],
+      "allowed_scope": [
+        "supabase/",
+        "tests/integration/",
+        ".github/workflows/ci.yml（job 追加のみ）",
+        "package.json（supabase CLI devDependency, scripts）",
+        ".env.local.example（変数名のみ）"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更",
+        "Supabase project の新規作成・Production への migration 適用",
+        "RLS を緩める変更"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "blocked_reason": "BOOT-001 の PR #8 が main へ merge され、develop branch が作成されるまで開始しない（.ai/blockers.md HUMAN-001）"
+    },
+    {
+      "id": "DEV-002",
+      "title": "sales domain rules / state machine / dedupe / limits",
+      "status": "blocked",
+      "priority": "P0",
+      "depends_on": [
+        "BOOT-001"
+      ],
+      "purpose": "Hard Rules を DB 非依存の純粋関数として lib/sales/ に実装する",
+      "acceptance_criteria": [
+        "normalize（店名・住所・domain・Instagram handle・email）",
+        "dedupe 判定",
+        "channel eligibility（unknown の Instagram 除外、email provenance 必須）",
+        "DNC 除外",
+        "新規 actionable 日次上限5 / 作業キュー5（フォロー優先）/ verified batch 上限10",
+        "outreach state machine と不正遷移拒否（won は金額必須）",
+        "URL validation（危険 scheme 拒否、Instagram host 検証）",
+        "mailto / DM 文面生成（署名・営業不要なら返信で伝えられる旨）",
+        "demo 表示判定（expires_at / disabled_at / keep_alive）",
+        "対象外判定: 名古屋市外・3業種（bakery/baked_goods/cafe）以外は候補にしない",
+        "初回営業は1店舗1チャネルのみ。一方で返信・拒否があれば別チャネルで追撃しない",
+        "公式サイトあり＋Instagram のみ（第一者メールなし）は対象外（MVP_SPEC §3.2）",
+        "website_status=not_found は再確認記録がある場合のみ受け付ける。検索失敗は unknown",
+        "email は第一者出典（source_url + source_type）必須、推測メール・出所不明は拒否",
+        "フォローは状態ではなく kind=follow_up の outreach として扱う",
+        "[resume] run phase の遷移関数（前進のみ・飛び越し拒否・前 phase の再送は no-op）と nextAction 導出（discover / verify / persist / none / start_new_run、24h 超は start_new_run）",
+        "[fail-closed] 候補 stage 判定（pending→deduped→persisted→demo_ready→outreach_ready / rejected / duplicate / error）。確認不能（unknown・出典なし・照合失敗）は outreach_ready にしない",
+        "[checkpoint] checkpoint のサイズ上限・禁止内容（raw HTML 等）の検証関数",
+        "[resume] nextAction 導出で期限切れ running を start_new_run とし、persist 試行上限（3）到達時の確定判定を純粋関数で提供"
+      ],
+      "required_tests": [
+        "unit: dedupe",
+        "unit: channel eligibility",
+        "unit: DNC",
+        "unit: daily/work queue limit",
+        "unit: state machine",
+        "unit: demo expiry",
+        "unit: mailto generation",
+        "unit: DM generation",
+        "unit: URL validation",
+        "unit: run phase 遷移 / nextAction",
+        "unit: candidate stage と fail-closed 判定",
+        "unit: verified 10 件が checkpoint 64KB 以内に収まる"
+      ],
+      "allowed_scope": [
+        "lib/sales/",
+        "tests/unit/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "blocked_reason": "BOOT-001 の PR #8 が main へ merge され、develop branch が作成されるまで開始しない（.ai/blockers.md HUMAN-001）"
+    },
+    {
+      "id": "DEV-003",
+      "title": "Operational Claude ingest API",
+      "status": "backlog",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-001",
+        "DEV-002"
+      ],
+      "purpose": "POST /api/internal/sales-agent/runs を Bearer token 認証の狭い ingest endpoint として実装する",
+      "acceptance_criteria": [
+        "token 未設定時は fail closed",
+        "定数時間比較",
+        "schema validation",
+        "runId idempotency と checkpoint 更新",
+        "batch 上限・日次上限",
+        "DNC / duplicate / unknown website の Instagram 拒否",
+        "source_url をサーバーから fetch しない",
+        "DNC・成約状態を変更できない",
+        "DEV-002 の Hard Rules（名古屋市のみ・3業種・1チャネル・not_found 再確認・email 第一者出典）をサーバー側で適用",
+        "拒否理由を候補ごとに返し sales_agent_runs に記録",
+        "[idempotency] 1 endpoint・action（start / status / checkpoint / persist / abort）の discriminated union。completed run への再送は処理せず保存済み result を返す（replayed: true）",
+        "[resume] running run は checkpoint から続行。persist は verified checkpoint の候補だけを処理し、終端 stage の候補を再処理しない。24h 超の run は 409 run_expired",
+        "[fail-closed] phase 飛び越しは 409 phase_order_violation。dedupe/DNC/永続化の失敗は error stage とし outreach_ready にしない",
+        "[checkpoint] 意味のある工程境界（start / discovered / verified / 候補ごとの persist 結果 / completed）でのみ checkpoint を確定",
+        "[resume] 自 run が作った prospect（first_seen_run_id と候補 key が一致）は duplicate ではなく既存結果を返す。未知の候補 key は拒否",
+        "[fail-closed] persist 3 回後も error が残る run は completed（error_code partial_errors）で確定し、該当候補は営業準備しない。24h 超の running は参照時に failed（run_expired）へ確定",
+        "verified 候補は最大10件まで受け付け、新規 actionable は当日残り枠（最大5件）までに絞る。条件を緩めて枠を埋めない"
+      ],
+      "required_tests": [
+        "integration: ingest API",
+        "integration: token auth",
+        "integration: runId idempotency",
+        "integration: batch cap",
+        "integration: DNC rejection",
+        "integration: duplicate",
+        "integration: unknown website status rejection",
+        "integration: schema validation",
+        "integration: completed run の再送が replayed で同じ結果",
+        "integration: persist 途中で中断 → 再度 persist で重複なく完了",
+        "integration: phase 飛び越し拒否",
+        "integration: DB 照合失敗時に outreach が作られない",
+        "integration: 同一 run の persist 同時実行は 409 run_busy",
+        "integration: persist 3 回で partial_errors 確定"
+      ],
+      "allowed_scope": [
+        "app/api/internal/sales-agent/",
+        "lib/sales/",
+        "lib/supabase/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更",
+        "ingest token の Production 設定"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-004",
+      "title": "demo data model + /demo/[token]",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-001",
+        "DEV-002"
+      ],
+      "purpose": "共通ルート /demo/[publicToken] と表示判定・noindex を実装する",
+      "acceptance_criteria": [
+        "128bit 以上の publicToken",
+        "noindex,nofollow + X-Robots-Tag",
+        "期限切れ/無効は 404",
+        "提案用デモであり公式サイトではない旨の明記",
+        "公開禁止項目を props に渡さない",
+        "expires_at: 作成時 null（公開 URL では 404、ログイン管理者のプレビューのみ）、初回営業 sent 時に sent_at + 30日 を設定し公開（MVP_SPEC §7）"
+      ],
+      "required_tests": [
+        "unit: demo expiry",
+        "integration: demo 公開項目",
+        "e2e: demo 表示 / 期限切れ",
+        "e2e/integration: 未送信デモ（expires_at null）は公開 URL で 404"
+      ],
+      "allowed_scope": [
+        "app/demo/",
+        "lib/sales/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-005",
+      "title": "bakery template",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-004"
+      ],
+      "purpose": "bakery_v1 テンプレート",
+      "acceptance_criteria": [
+        "確認済み情報のみ表示・不明項目は省略",
+        "Second Root 素材のみ使用",
+        "モバイル表示確認"
+      ],
+      "required_tests": [
+        "unit/e2e: 未確認項目が表示されない"
+      ],
+      "allowed_scope": [
+        "app/demo/",
+        "public/demo-assets/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-006",
+      "title": "baked-goods template",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-004"
+      ],
+      "purpose": "baked_goods_v1 テンプレート",
+      "acceptance_criteria": [
+        "確認済み情報のみ表示・不明項目は省略",
+        "Second Root 素材のみ使用",
+        "モバイル表示確認"
+      ],
+      "required_tests": [
+        "unit/e2e: 未確認項目が表示されない"
+      ],
+      "allowed_scope": [
+        "app/demo/",
+        "public/demo-assets/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-007",
+      "title": "cafe template",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-004"
+      ],
+      "purpose": "cafe_v1 テンプレート",
+      "acceptance_criteria": [
+        "確認済み情報のみ表示・不明項目は省略",
+        "Second Root 素材のみ使用",
+        "モバイル表示確認"
+      ],
+      "required_tests": [
+        "unit/e2e: 未確認項目が表示されない"
+      ],
+      "allowed_scope": [
+        "app/demo/",
+        "public/demo-assets/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-008",
+      "title": "Supabase Auth + admin shell",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-001"
+      ],
+      "purpose": "/admin/sales を Supabase Auth で保護し、4ナビ（今日/返信/商談/履歴）の shell を作る",
+      "acceptance_criteria": [
+        "未ログインはログインへ",
+        "allowlist 外のユーザーは拒否",
+        "service role を browser に渡さない",
+        "モバイルファースト",
+        "認証方式は Supabase Auth の email + password に固定（magic link は実装しない）",
+        "未送信デモの管理者プレビュー（/admin/sales 配下、allowlist 管理者のみ。非管理者・未ログインは拒否）"
+      ],
+      "required_tests": [
+        "e2e: admin login",
+        "integration: 非 admin 拒否",
+        "e2e/integration: デモ プレビューは管理者のみ"
+      ],
+      "allowed_scope": [
+        "app/admin/",
+        "lib/supabase/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更",
+        "管理者アカウントの Production 作成"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-009",
+      "title": "今日やることUI",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-008",
+        "DEV-002"
+      ],
+      "purpose": "今日の作業キュー（最大5、フォロー優先）を表示",
+      "acceptance_criteria": [
+        "店名・チャネル・状態・大きな送信ボタン",
+        "詳細は折りたたみ"
+      ],
+      "required_tests": [
+        "e2e: 今日の一覧",
+        "e2e: mobile"
+      ],
+      "allowed_scope": [
+        "app/admin/",
+        "lib/sales/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-010",
+      "title": "Instagram send UX",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-009",
+        "DEV-004"
+      ],
+      "purpose": "DMを送る → コピー + Instagram を開く → 送信済み1タップ",
+      "acceptance_criteria": [
+        "開いただけでは sent にしない",
+        "Instagram host 検証済み URL のみ開く",
+        "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新"
+      ],
+      "required_tests": [
+        "e2e: DM UX",
+        "e2e: sent 確認"
+      ],
+      "allowed_scope": [
+        "app/admin/",
+        "lib/sales/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-011",
+      "title": "Email mailto UX",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-009",
+        "DEV-004"
+      ],
+      "purpose": "mailto で recipient/subject/body/demo URL/署名/営業不要文言を事前入力",
+      "acceptance_criteria": [
+        "Resend 不使用",
+        "送信済み1タップ",
+        "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新"
+      ],
+      "required_tests": [
+        "unit: mailto generation",
+        "e2e: Email mailto UX"
+      ],
+      "allowed_scope": [
+        "app/admin/",
+        "lib/sales/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-012",
+      "title": "reply / meeting / win / loss flow",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-010",
+        "DEV-011"
+      ],
+      "purpose": "返信あり → 分類 → meeting → won/lost",
+      "acceptance_criteria": [
+        "won は金額必須",
+        "decline だけでは DNC にしない。明示的な将来連絡拒否を管理者が選んだ場合のみ DNC",
+        "不正遷移はサーバーで拒否",
+        "返信記録で「今後の連絡を拒否された」を選ぶと do_not_contact=true・dnc_reason=explicit_refusal・デモ disabled_at を設定。decline 後は別チャネルの初回営業・フォローを表示しない"
+      ],
+      "required_tests": [
+        "unit: state machine",
+        "e2e: reply → meeting → won/lost",
+        "unit/e2e: decline では DNC にならず、管理者が明示的拒否を選んだ場合のみ DNC（デモも disabled）"
+      ],
+      "allowed_scope": [
+        "app/admin/",
+        "lib/sales/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-013",
+      "title": "history + lightweight metrics",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-012"
+      ],
+      "purpose": "履歴と営業条件別の成果集計",
+      "acceptance_criteria": [
+        "SQL/通常コードで集計（AI 不使用）"
+      ],
+      "required_tests": [
+        "unit/integration: 集計"
+      ],
+      "allowed_scope": [
+        "app/admin/",
+        "lib/sales/",
+        "supabase/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-014",
+      "title": "5-day email follow-up",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-011",
+        "DEV-012"
+      ],
+      "purpose": "Email 初回送信5日後・返信なし・未フォロー・非DNC でフォローを表示（1回のみ）",
+      "acceptance_criteria": [
+        "Instagram フォローなし",
+        "今日の5枠でフォロー優先"
+      ],
+      "required_tests": [
+        "unit: follow-up eligibility",
+        "e2e: follow-up mailto"
+      ],
+      "allowed_scope": [
+        "app/admin/",
+        "lib/sales/",
+        "tests/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-015",
+      "title": "Operational Claude run prompt / scheduled job definition",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-003"
+      ],
+      "purpose": "Operational Claude の run prompt と scheduled job 定義を文書化",
+      "acceptance_criteria": [
+        "ingest token 以外の secret を使わない",
+        "checkpoint 手順",
+        "失敗時は BLOCKED 報告",
+        "[resume] run prompt は毎回 action=status から始め、nextAction に従って再開する（会話記憶に依存しない）",
+        "[idempotency] 通信失敗時は同じ runId・同じ action で再送する。新しい runId は start_new_run のときだけ",
+        "[fail-closed] 検索失敗は website_status=unknown、第一者出典のない email は送らない。続行不能時は abort で error_code を記録",
+        "[checkpoint] raw HTML・画像・secret を checkpoint に入れない"
+      ],
+      "required_tests": [
+        "ingest API への dry-run（ローカル）",
+        "ローカル dry-run: discovered 後に中断 → 新 session が status から verify を再開"
+      ],
+      "allowed_scope": [
+        "docs/",
+        "ops/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更",
+        "Claude Cloud scheduled job の作成・有効化"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-016",
+      "title": "Claude Cloud staging/live validation",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-015"
+      ],
+      "purpose": "Staging で scheduled job → Web research → ingest → 候補登録を実走確認",
+      "acceptance_criteria": [
+        "実走ログを .ai/reviews/ に保存",
+        "失敗時は有料 API へ移行せず BLOCKED",
+        "[resume] staging で run を意図的に途中終了し、新しい scheduled session が status から続きを完了することを確認",
+        "[idempotency] 同じ runId での persist 再送・completed run 再送で重複が出ないことを staging DB で確認",
+        "[fail-closed] 実走ログで unknown / 出典なし候補が outreach_ready にならないことを確認"
+      ],
+      "required_tests": [
+        "staging 実走",
+        "staging: 中断→再開",
+        "staging: 再送で重複なし"
+      ],
+      "allowed_scope": [
+        ".ai/",
+        "docs/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更",
+        "staging Supabase project 作成",
+        "staging secret 設定",
+        "scheduled job 有効化"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-017",
+      "title": "Security hardening / regression",
+      "status": "backlog",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-003",
+        "DEV-004",
+        "DEV-008",
+        "DEV-010",
+        "DEV-011",
+        "DEV-012",
+        "DEV-014"
+      ],
+      "purpose": "SECURITY.md 準拠の総点検",
+      "acceptance_criteria": [
+        "Critical/High = 0",
+        "公開デモに禁止項目なし",
+        "RLS 確認"
+      ],
+      "required_tests": [
+        "全 unit/integration/e2e"
+      ],
+      "allowed_scope": [
+        "全体（修正のみ）"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-018",
+      "title": "Full E2E / mobile QA",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-017",
+        "DEV-005",
+        "DEV-006",
+        "DEV-007",
+        "DEV-013"
+      ],
+      "purpose": "E2E とモバイル QA の網羅",
+      "acceptance_criteria": [
+        "既存 Second Root regression green"
+      ],
+      "required_tests": [
+        "e2e 全件"
+      ],
+      "allowed_scope": [
+        "tests/e2e/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    },
+    {
+      "id": "DEV-019",
+      "title": "Release Readiness",
+      "status": "backlog",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-016",
+        "DEV-018"
+      ],
+      "purpose": "docs/RELEASE.md のチェックリストを満たし develop → main PR を準備",
+      "acceptance_criteria": [
+        "人間承認待ちの状態で停止"
+      ],
+      "required_tests": [
+        "全 CI"
+      ],
+      "allowed_scope": [
+        ".ai/",
+        "docs/"
+      ],
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更",
+        "develop → main merge",
+        "Production 設定"
+      ],
+      "attempts": 0,
+      "last_failure": null
+    }
+  ]
+}
