@@ -341,7 +341,7 @@
     {
       "id": "DEV-006",
       "title": "baked-goods template",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-004"
