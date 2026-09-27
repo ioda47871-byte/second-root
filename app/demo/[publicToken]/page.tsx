@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { renderDemo } from "@/components/demo/renderDemo";
@@ -11,20 +12,23 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 const noIndex: Metadata["robots"] = { index: false, follow: false, nocache: true, googleBot: { index: false, follow: false } };
 
-async function load(token: string) {
+// One database read per request, shared by generateMetadata and the page.
+const load = cache(async (token: string) => {
   await connection();
   try {
     return await loadPublicDemo(createServiceClient(), token);
   } catch {
     return null;
   }
-}
+});
 
 export async function generateMetadata({ params }: PageProps<"/demo/[publicToken]">): Promise<Metadata> {
   const { publicToken } = await params;
   const demo = await load(publicToken);
   return {
     title: demo ? { absolute: `${demo.name}（ご提案用デモ）` } : { absolute: "ページが見つかりません" },
+    description: null,
+    keywords: null,
     robots: noIndex,
     alternates: { canonical: null },
     openGraph: null,
