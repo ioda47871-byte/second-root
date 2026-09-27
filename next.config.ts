@@ -19,6 +19,7 @@ const nextConfig: NextConfig = {
       { source: "/demo/:path*", headers: privateRouteHeaders },
       { source: "/admin/:path*", headers: privateRouteHeaders },
       { source: "/api/internal/:path*", headers: privateRouteHeaders },
+      { source: "/api/webhooks/:path*", headers: privateRouteHeaders },
     ];
   },
 };
