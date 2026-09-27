@@ -581,7 +581,7 @@
     {
       "id": "DEV-012",
       "title": "reply / meeting / win / loss flow",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-010",
@@ -619,7 +619,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-012-reply-outcomes"
     },
     {
       "id": "DEV-013",
