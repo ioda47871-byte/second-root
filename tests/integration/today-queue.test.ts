@@ -29,6 +29,11 @@ async function markSent(prospectId: string, daysAgo: number) {
     `update public.sales_outreaches set status = 'sent', sent_at = now() - make_interval(days => $2) where prospect_id = $1 and kind = 'initial'`,
     [prospectId, daysAgo],
   );
+  // As sales_mark_sent does: the demo is public for 30 days from sending.
+  await db.query(
+    `update public.sales_demos set expires_at = now() - make_interval(days => $2) + interval '30 days' where prospect_id = $1`,
+    [prospectId, daysAgo],
+  );
 }
 
 let admin: Awaited<ReturnType<typeof signedInClient>>;
@@ -88,6 +93,7 @@ describe("today queue", () => {
   it("counts exactly 5 days as due and keeps offering follow-ups beyond many past ones", async () => {
     const exactly = await prepare(emailCandidate());
     await db.query(`update public.sales_outreaches set status = 'sent', sent_at = now() - interval '5 days' - interval '1 second' where prospect_id = $1`, [exactly]);
+    await db.query(`update public.sales_demos set expires_at = now() + interval '25 days' where prospect_id = $1`, [exactly]);
     // 60 older shops that already had their follow-up must not crowd it out.
     for (let i = 0; i < 60; i += 1) {
       const old = await prepare(emailCandidate());
@@ -100,6 +106,15 @@ describe("today queue", () => {
     }
     const items = await loadTodayQueue(admin);
     expect(items.map((i) => i.prospectId)).toEqual([exactly]);
+  });
+
+  it("drops a follow-up whose demo is no longer public", async () => {
+    const expired = await prepare(emailCandidate());
+    await markSent(expired, 31);
+    const disabled = await prepare(emailCandidate());
+    await markSent(disabled, 6);
+    await db.query("update public.sales_demos set disabled_at = now() where prospect_id = $1", [disabled]);
+    expect(await loadTodayQueue(admin)).toEqual([]);
   });
 
   it("still offers the follow-up while a follow-up row is only drafted", async () => {

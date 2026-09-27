@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore, useTransition } from "react";
-import { markSent } from "@/app/admin/sales/_actions/send";
+import { markFollowUpSent, markSent } from "@/app/admin/sales/_actions/send";
 import styles from "./admin.module.css";
 
 // メールを作成: opens the device's mail app with recipient, subject and body
@@ -12,7 +12,7 @@ type Draft = { to: string; subject: string; body: string };
 
 // "Opened" survives a reload (mobile browsers often reload the tab after
 // switching apps), so 送信済み is still offered when the admin comes back.
-const openedKey = (outreachId: string) => `sales-email-opened:${outreachId}`;
+const openedKey = (key: string) => `sales-email-opened:${key}`;
 
 function rememberOpened(outreachId: string) {
   try {
@@ -37,22 +37,24 @@ export default function EmailSend({
   mailto,
   draft,
   label = "メールを作成",
+  kind = "initial",
 }: {
   outreachId: string;
   mailto: string;
   draft: Draft;
   label?: string;
+  kind?: "initial" | "follow_up";
 }) {
   const [clicked, setClicked] = useState(false);
   // Read after hydration only (the server has no sessionStorage).
-  const stored = useSyncExternalStore(noSubscription, () => wasOpened(outreachId), () => false);
+  const stored = useSyncExternalStore(noSubscription, () => wasOpened(`${kind}:${outreachId}`), () => false);
   const opened = clicked || stored;
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   function open() {
-    rememberOpened(outreachId);
+    rememberOpened(`${kind}:${outreachId}`);
     setClicked(true);
   }
 
@@ -66,7 +68,7 @@ export default function EmailSend({
   function confirmSent() {
     setError(null);
     start(async () => {
-      const result = await markSent(outreachId);
+      const result = kind === "follow_up" ? await markFollowUpSent(outreachId) : await markSent(outreachId);
       if (!result.ok) setError(result.error);
     });
   }
