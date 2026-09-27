@@ -17,7 +17,18 @@ describe("detectExplicitRefusal", () => {
     expect(detectExplicitRefusal(text)).toBe(true);
   });
 
-  it.each(["今回は結構です", "検討しましたが見送ります", "興味あります！", "料金を教えてください", "", null])(
+  it.each([
+    "もう連絡してこないでください",
+    "営業のDMはご遠慮ください",
+    "迷惑なのでやめてください",
+    "二度と送ってこないで",
+    "こういう連絡は今後いりません",
+    "今後の営業連絡はお控えください",
+  ])("also flags other common phrasings: %s", (text) => {
+    expect(detectExplicitRefusal(text)).toBe(true);
+  });
+
+  it.each(["今回は結構です", "検討しましたが見送ります", "興味あります！", "料金を教えてください", "営業時間外は不要です", "営業日は火曜から土曜です", "", null])(
     "does not treat a plain decline or anything else as refusal: %s",
     (text) => {
       expect(detectExplicitRefusal(text)).toBe(false);
@@ -36,6 +47,29 @@ describe("checkDraft", () => {
     expect(draft("詳しくは https://example.com/ をご覧ください")).toEqual({ ok: false, reason: "link_not_allowed" });
     expect(draft("www.secondroot.jp もご覧ください")).toEqual({ ok: false, reason: "link_not_allowed" });
     expect(checkDraft({ replyType: "question", body: `デモ ${DEMO}`, futureContactRefused: false }, null, null)).toEqual({ ok: false, reason: "link_not_allowed" });
+  });
+
+  it.each([
+    "詳しくは evil.com へ",
+    "bit.ly/abc をご覧ください",
+    "xn--80ak6aa92e.com",
+    "ｅｖｉｌ．ｃｏｍ",
+    "evil。com",
+    "hxxps://evil.com",
+    "secondroot.jp/works もどうぞ",
+    `${DEMO} と example.org`,
+  ])("refuses any other link or domain, including disguised ones: %s", (body) => {
+    expect(draft(body)).toEqual({ ok: false, reason: "link_not_allowed" });
+  });
+
+  it.each(["０５２−１２３−４５６７", "090ー1234ー5678", "090.1234.5678", "+81 90 1234 5678"])("refuses phone numbers with any separator: %s", (body) => {
+    expect(draft(`お電話は ${body} まで`)).toEqual({ ok: false, reason: "contact_details" });
+  });
+
+  it("does not mistake amounts or ordinary Japanese for contact details or links", () => {
+    expect(draft("制作費は1000000円からです").ok).toBe(true);
+    expect(draft("ホームページのデザイン、メニュー、アクセス情報をまとめます。").ok).toBe(true);
+    expect(draft("Ver.2 のご提案もできます").ok).toBe(true);
   });
 
   it("refuses contact details (email, phone)", () => {

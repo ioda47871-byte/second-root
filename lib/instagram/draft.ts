@@ -9,9 +9,22 @@ import { REPLY_TYPES, type ReplyType } from "@/lib/sales/types";
 /** Instagram accepts at most 1000 UTF-8 bytes of text per message. */
 export const MAX_DRAFT_BYTES = 1000;
 
-const EMAIL = /[^\s@＠]+[@＠][^\s@＠]+\.[^\s@＠]+/;
-const PHONE = /(\+?81[-\s]?|0)\d{1,4}[-\s(（]?\d{1,4}[-\s)）]?\d{3,4}/;
-const URL_LIKE = /(https?:\/\/[^\s）)」』]+|www\.[^\s）)」』]+)/gi;
+const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+// Digits separated by hyphen-like characters, dots or spaces; never an
+// amount (followed by 円 / 万) or part of a longer number.
+const PHONE = /(?<!\d)(?:\+?81[-.\s]?|0)\d{1,4}[-.\s(]?\d{1,4}[-.\s)]?\d{3,4}(?![\d円万])/;
+// Any URL scheme (also defanged ones like hxxps://) or any domain-like token
+// (bare domains, punycode): Instagram turns bare domains into links.
+const SCHEME = /[a-z][a-z0-9+.-]*:\/\//i;
+const DOMAIN = /(?:[a-z0-9-]+\.)+(?:[a-z]{2,}|xn--[a-z0-9-]+)(?![a-z0-9-])/i;
+
+/** Unicode-normalized text with every dash / full stop variant made ASCII. */
+function canonical(text: string): string {
+  return text
+    .normalize("NFKC")
+    .replace(/[\u2010-\u2015\u2212\u30fc\uff70\u301c~]/g, "-")
+    .replace(/[。｡．]/g, ".");
+}
 
 const REVIEW_RULES: Array<[string, RegExp]> = [
   ["price", /(円|万|料金|価格|費用|見積|値引|割引|無料|タダ|キャンペーン)/],
@@ -21,16 +34,19 @@ const REVIEW_RULES: Array<[string, RegExp]> = [
 
 // Explicit refusal of future contact (MVP_SPEC §6). A plain 「今回は結構です」
 // is a decline, not this.
+const REFUSAL_ENDINGS = "(しないで|してこないで|こないで|送らないで|送ってこないで|不要|いりません|お断り|結構|控えて|お控え|ご遠慮|遠慮|やめて|迷惑)";
 const REFUSAL = [
-  /(今後|以後|二度と|もう)[^。！!？?\n]{0,12}(連絡|DM|ＤＭ|メッセージ|営業|案内|送信)[^。！!？?\n]{0,8}(しないで|しないでください|不要|いりません|お断り|結構|控えて|やめて|送らないで)/,
-  /(営業|勧誘|セールス)[^。！!？?\n]{0,6}(お断り|禁止|不要|迷惑)/,
-  /(連絡|DM|ＤＭ|メッセージ)[^。！!？?\n]{0,6}(送らないで|しないでください|迷惑です|やめてください)/,
+  new RegExp(`(今後|以後|二度と|もう|こういう|このような)[^。！!？?\\n]{0,14}(連絡|DM|メッセージ|営業|案内|送信|送って|して)[^。！!？?\\n]{0,10}${REFUSAL_ENDINGS}`),
+  /(?<!営業(?:時間|日)[^。！!？?\n]{0,6})(営業|勧誘|セールス)(?!時間|日)[^。！!？?\n]{0,8}(お断り|禁止|不要|迷惑|ご遠慮|遠慮|お控え)/,
+  new RegExp(`(連絡|DM|メッセージ)[^。！!？?\\n]{0,8}${REFUSAL_ENDINGS}`),
+  /迷惑[^。！!？?\n]{0,6}(やめて|です)/,
   /(ブロック|通報)します/,
 ];
 
 export function detectExplicitRefusal(text: string | null | undefined): boolean {
   if (!text) return false;
   const s = text.normalize("NFKC");
+  // A plain 「結構です」 without contact words is a decline, not a refusal.
   return REFUSAL.some((r) => r.test(s));
 }
 
@@ -50,11 +66,12 @@ export function checkDraft(input: DraftInput, allowedDemoUrl: string | null, lat
   const body = input.body.replace(/\r\n?/g, "\n").trim();
   if (body.length === 0) return { ok: false, reason: "empty" };
   if (new TextEncoder().encode(body).length > MAX_DRAFT_BYTES) return { ok: false, reason: "too_long" };
-  const normalized = body.normalize("NFKC");
+  const normalized = canonical(body);
   if (EMAIL.test(normalized) || PHONE.test(normalized)) return { ok: false, reason: "contact_details" };
-  for (const url of normalized.match(URL_LIKE) ?? []) {
-    if (!allowedDemoUrl || url.replace(/[.,、。]+$/, "") !== allowedDemoUrl) return { ok: false, reason: "link_not_allowed" };
-  }
+  // The shop's own demo URL is the only link allowed; anything link-like left
+  // after removing it is refused.
+  const withoutDemo = allowedDemoUrl ? normalized.split(allowedDemoUrl).join(" ") : normalized;
+  if (SCHEME.test(withoutDemo) || DOMAIN.test(withoutDemo)) return { ok: false, reason: "link_not_allowed" };
   const reviewReasons = REVIEW_RULES.filter(([, r]) => r.test(normalized)).map(([name]) => name);
   const dncCandidate = input.futureContactRefused || detectExplicitRefusal(latestInbound);
   if (dncCandidate) reviewReasons.push("dnc_candidate");

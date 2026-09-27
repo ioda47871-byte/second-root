@@ -26,6 +26,7 @@ export async function fetchUsername(igsid: string): Promise<string | null> {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5000),
       cache: "no-store",
+      redirect: "error",
     });
     if (!res.ok) return null;
     const json = (await res.json()) as { username?: unknown };

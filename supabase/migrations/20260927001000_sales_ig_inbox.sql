@@ -12,6 +12,12 @@
 --   * An explicit refusal of future contact only raises dnc_candidate; a
 --     human decides (the existing admin RPCs set DNC).
 
+-- Drafting attempts per conversation: a message the drafter keeps failing
+-- on is backed off, so it can never starve newer conversations.
+alter table public.sales_ig_threads
+  add column draft_attempt_message_id uuid,
+  add column draft_attempts integer not null default 0 check (draft_attempts between 0 and 100);
+
 create table public.sales_ig_drafts (
   id uuid primary key default gen_random_uuid(),
   thread_id uuid not null references public.sales_ig_threads (id) on delete cascade,
@@ -100,7 +106,9 @@ as $$
     select distinct on (m.thread_id) m.thread_id, m.id as message_id, m.sent_at
     from public.sales_ig_messages m
     where m.direction = 'inbound' and m.deleted_at is null
-    order by m.thread_id, m.sent_at desc
+    -- Same tie-break as sales_ig_save_draft: the newest message wins even
+    -- when timestamps are equal.
+    order by m.thread_id, m.sent_at desc, m.received_at desc, m.id desc
   ), pending as (
     select l.*, t.match_status, t.prospect_id, t.username
     from latest l
@@ -109,7 +117,11 @@ as $$
     where t.match_status <> 'ignored'
       and coalesce(p.do_not_contact, false) = false
       and not exists (select 1 from public.sales_ig_drafts d where d.message_id = l.message_id)
-    order by l.sent_at
+      -- Backed off after 3 failed drafting attempts on the same message
+      -- (still visible to the human in the inbox, just not drafted).
+      and not (t.draft_attempt_message_id = l.message_id and t.draft_attempts >= 3)
+    -- Conversations still inside Meta's 24-hour reply window first.
+    order by (l.sent_at > now() - interval '24 hours') desc, l.sent_at
     limit least(greatest(p_limit, 1), 20)
   )
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -134,7 +146,7 @@ as $$
                              from public.sales_outreaches o where o.prospect_id = p.id and o.kind = 'initial')
       ) from public.sales_prospects p where p.id = pe.prospect_id
     ) end
-  ) order by pe.sent_at), '[]'::jsonb)
+  ) order by (pe.sent_at > now() - interval '24 hours') desc, pe.sent_at), '[]'::jsonb)
   from pending pe
 $$;
 
@@ -168,7 +180,7 @@ begin
 
   select m.id into latest from public.sales_ig_messages m
     where m.thread_id = t.id and m.direction = 'inbound' and m.deleted_at is null
-    order by m.sent_at desc limit 1;
+    order by m.sent_at desc, m.received_at desc, m.id desc limit 1;
   if latest is distinct from p_message_id then
     raise exception 'stale_message' using errcode = 'P0001';
   end if;
@@ -179,9 +191,13 @@ begin
       -- Already approved / sending / sent / snoozed by the human: never overwrite.
       return jsonb_build_object('draft_id', existing.id, 'status', existing.status, 'replayed', true);
     end if;
+    -- A re-submission never changes text a human may be reviewing, and a
+    -- warning once raised (DNC candidate, needs review) is never cleared.
     update public.sales_ig_drafts
-      set reply_type = p_reply_type, body = p_body, dnc_candidate = p_dnc_candidate,
-          needs_human_review = p_needs_review, review_reasons = coalesce(p_review_reasons, '{}')
+      set dnc_candidate = dnc_candidate or coalesce(p_dnc_candidate, false),
+          needs_human_review = needs_human_review or coalesce(p_needs_review, false),
+          review_reasons = (select coalesce(array_agg(distinct r), '{}')
+                            from unnest(review_reasons || coalesce(p_review_reasons, '{}')) r)
       where id = existing.id
       returning * into saved;
     return jsonb_build_object('draft_id', saved.id, 'status', saved.status, 'replayed', true);
@@ -196,6 +212,20 @@ begin
 end;
 $$;
 
+-- Records a failed drafting attempt (invalid draft) for the back-off above.
+create or replace function public.sales_ig_note_draft_failure(p_thread_id uuid, p_message_id uuid)
+returns void
+language sql
+set search_path = ''
+as $$
+  update public.sales_ig_threads
+    set draft_attempts = case when draft_attempt_message_id = p_message_id then least(draft_attempts + 1, 100) else 1 end,
+        draft_attempt_message_id = p_message_id
+    where id = p_thread_id
+$$;
+
+revoke all on function public.sales_ig_note_draft_failure(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.sales_ig_note_draft_failure(uuid, uuid) to service_role;
 revoke all on function public.sales_ig_match_thread(uuid, text) from public, anon, authenticated;
 revoke all on function public.sales_ig_inbox_pending(integer) from public, anon, authenticated;
 revoke all on function public.sales_ig_save_draft(uuid, uuid, text, text, boolean, boolean, text[]) from public, anon, authenticated;
