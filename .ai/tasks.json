@@ -509,7 +509,7 @@
     {
       "id": "DEV-010",
       "title": "Instagram send UX",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-009",
