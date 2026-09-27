@@ -4,9 +4,15 @@ import { seedDemo } from "../support/seed-demo";
 
 // Public demo page against the local Supabase stack (seeded fictional shop).
 
-const db = new pg.Pool({ connectionString: process.env.SUPABASE_DB_URL, max: 2 });
 const day = 86_400_000;
+let db: pg.Pool;
 
+// One pool per worker for this file; tests in the file run serially so the
+// pool is never used after afterAll closes it.
+test.describe.configure({ mode: "serial" });
+test.beforeAll(() => {
+  db = new pg.Pool({ connectionString: process.env.SUPABASE_DB_URL, max: 2 });
+});
 test.afterAll(async () => {
   await db.query("delete from public.sales_prospects where name like 'E2Eテスト工房%'");
   await db.end();
