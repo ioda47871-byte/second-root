@@ -3,15 +3,24 @@ import InstagramSend from "@/components/admin/InstagramSend";
 import TodayCard from "@/components/admin/TodayCard";
 import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
+import { composeFollowUp, DEFAULT_SUBJECT } from "@/lib/admin/followup";
 import { demoUrl, loadTodayQueue, type TodayItem } from "@/lib/admin/today";
 import { buildMailto, composeDm, composeEmailBody, instagramOpenUrl } from "@/lib/sales/messages";
 import { LIMITS } from "@/lib/sales/types";
 import { createAuthClient } from "@/lib/supabase/server";
 
-const DEFAULT_SUBJECT = "ホームページのご提案（Second Root）";
-
-/** The one big action for a queue item (Instagram, email; follow-up in DEV-014). */
+/** The one big action for a queue item: Instagram DM, email, or the one email follow-up. */
 function actionFor(item: TodayItem) {
+  if (item.kind === "follow_up" && item.channel === "email" && item.publicEmail && item.demoToken) {
+    try {
+      const mailto = buildMailto(
+        composeFollowUp({ shopName: item.shopName, publicEmail: item.publicEmail, initialSubject: item.subject, demoToken: item.demoToken }),
+      );
+      return <EmailSend outreachId={item.outreachId} mailto={mailto} kind="follow_up" label="フォローメールを作成" />;
+    } catch {
+      return null;
+    }
+  }
   if (item.kind === "initial" && item.channel === "email" && item.publicEmail && item.demoToken) {
     try {
       const mailto = buildMailto({
