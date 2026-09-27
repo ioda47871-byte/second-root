@@ -5,15 +5,6 @@
 
 ## 未解除
 
-### HUMAN-001 — Bootstrap PR の merge と develop 作成
-- 対象 Task: DEV-001, DEV-002（以降すべて）
-- 状態: 人間が 2026-09-27 に承認済み（CI green + Fresh Review Critical/High 0 で Claude が merge し develop を作成してよい）
-- 必要な操作（1・2 は人間承認に基づき Claude が実施）:
-  1. BOOT-001 の PR #8 を main へ merge
-  2. merge 後の main から `develop` branch を作成し push
-  3. （推奨）`main` / `develop` に branch protection を設定し、CI の `static` / `unit` / `build` / `e2e` を required check にする
-- 解除条件: `origin/develop` が存在し、BOOT-001 の変更を含む
-
 ### HUMAN-002 — Second Root 専用 Supabase project（DEV-001 着手前に確認、DEV-016 までに必要）
 - 対象 Task: DEV-001（ローカル開発はローカル Supabase で進められるため必須ではない）, DEV-016, DEV-019
 - 状態: 未着手（人間判断）
@@ -22,4 +13,13 @@
 
 ## 解除済み
 
-（なし）
+### HUMAN-001 — Bootstrap PR の merge と develop 作成
+- 対象 Task: DEV-001, DEV-002（以降すべて）
+- 状態: **解除済み（2026-09-27）** — 人間承認に基づき Claude が PR #8 を main へ merge（32de89a）し、`develop` を作成。branch protection の設定は引き続き人間の推奨作業
+- 必要な操作（1・2 は人間承認に基づき Claude が実施）:
+  1. BOOT-001 の PR #8 を main へ merge
+  2. merge 後の main から `develop` branch を作成し push
+  3. （推奨）`main` / `develop` に branch protection を設定し、CI の `static` / `unit` / `build` / `e2e` を required check にする
+- 解除条件: `origin/develop` が存在し、BOOT-001 の変更を含む
+
+

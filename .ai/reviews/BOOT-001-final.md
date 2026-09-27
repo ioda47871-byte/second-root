@@ -23,3 +23,9 @@
 | Low | 明示的拒否の記録方法が未定義 | `dnc_reason = explicit_refusal`、DEV-012 に受入条件追加 |
 | Low | DNC 解除時のデモ `disabled_at` の扱い | 戻さないと明記 |
 | Low | decline 後に別チャネル不可の直接テストなし | DEV-012 受入条件に明記 |
+
+## CI 再試行の追加（ded35fe）— PASS（Critical 0 / High 0）
+
+- `next-font-loader` エラー時のみ build を1回再試行する変更を独立レビュー。`set -o pipefail` と終了コードの扱いは正しく、非フォントエラー・再試行失敗はいずれも step を失敗させる。品質低下・マスキングなし。
+- Low: 一致文字列が広い（誤設定も1回再試行されるが必ず再失敗するので隠れない）、再試行ログは build.log に残らない（step ログには出る）。現状維持。
+- 結果: 必須 CI（static / unit / build / e2e）green を確認し、PR #8 を main へ merge（32de89a）。
