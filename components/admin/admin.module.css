@@ -267,3 +267,35 @@
   font-size: 0.85rem;
   margin: 4px 0 12px;
 }
+
+.metrics {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  background: var(--card);
+}
+
+.metrics th,
+.metrics td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.metrics th:first-child,
+.metrics td:first-child {
+  text-align: left;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.h2 {
+  font-size: 1rem;
+  margin: 24px 0 10px;
+}
