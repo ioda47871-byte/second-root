@@ -60,7 +60,21 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # next/font/google downloads fonts at build time and Google occasionally
+      # returns a font URL next/font cannot parse ("next-font-loader" error).
+      # Retry exactly once for that specific external failure; any other
+      # build error fails immediately.
+      - name: npm run build
+        run: |
+          set -o pipefail
+          if ! npm run build 2>&1 | tee build.log; then
+            if grep -q "next-font-loader" build.log; then
+              echo "::warning::Google Fonts fetch failed during build; retrying once"
+              npm run build
+            else
+              exit 1
+            fi
+          fi
       # e2e reuses this build instead of building again: next/font/google
       # downloads fonts at build time, so every extra build is another
       # chance for a bad Google Fonts response to fail the run.
