@@ -63,7 +63,8 @@ const ALLOWED_COPY = [
   "Second Root（セカンドルート）｜名古屋の小さなお店のホームページ制作",
   // Section headings and labels
   "営業時間", "定休日", "住所", "アクセス", "電話",
-  "パンのご紹介", "お店の情報", "メニュー", "店舗情報",
+  // Neutral headings only: "メニュー" never claims what kind of item a fact is.
+  "お店の情報", "店舗のご案内", "メニュー", "店舗情報",
   "名古屋市の", "名古屋のパン屋", "パン屋", "名古屋の焼菓子店", "焼菓子店", "名古屋のカフェ", "カフェ",
 ];
 
@@ -106,7 +107,7 @@ describe("template CSS", () => {
   it("adds no text through CSS content", () => {
     const dir = join(process.cwd(), "components/demo");
     for (const file of readdirSync(dir).filter((f) => f.endsWith(".css"))) {
-      const values = [...readFileSync(join(dir, file), "utf8").matchAll(/content:\s*([^;]+);/g)].map((m) => m[1].trim());
+      const values = [...readFileSync(join(dir, file), "utf8").matchAll(/(?<![-\w])content\s*:\s*([^;}]+)/g)].map((m) => m[1].trim());
       expect(values.filter((v) => v !== '""' && v !== "''"), file).toEqual([]);
     }
   });
