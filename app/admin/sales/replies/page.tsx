@@ -16,9 +16,12 @@ export default async function RepliesPage() {
     items = await loadPipeline(await createAuthClient(), ["sent"]);
   } catch {
     return (
-      <p className={styles.error} role="alert">
-        読み込めませんでした。時間をおいて再読み込みしてください。
-      </p>
+      <>
+        <h1 className={styles.h1}>返信</h1>
+        <p className={styles.error} role="alert">
+          読み込めませんでした。時間をおいて再読み込みしてください。
+        </p>
+      </>
     );
   }
   return (
