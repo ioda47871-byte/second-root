@@ -83,7 +83,7 @@ tests/e2e/            Playwright
 | recommended_channel | `instagram` / `email` / null |
 | do_not_contact, dnc_reason, dnc_set_at | DNC 解除は admin のみ |
 | status | 営業状態（state machine） |
-| first_seen_run_id | |
+| first_seen_run_id | 最初にこの店舗を登録した run（追跡用） |
 
 unique(normalized_name, normalized_address) による重複防止。
 
@@ -104,6 +104,7 @@ unique(normalized_name, normalized_address) による重複防止。
 |---|---|
 | prospect_id | |
 | public_token | 128bit 以上の乱数、unique |
+| run_id | 生成した run（追跡用）。**unique(prospect_id)**: MVP はデモ1店舗1件。再送・resume で重複しない |
 | template | `bakery_v1` / `baked_goods_v1` / `cafe_v1` |
 | content | 表示用の確認済みテキスト（jsonb、公開可能項目のみ） |
 | expires_at, disabled_at, keep_alive | 表示判定。作成時 `created_at + 30日`、初回営業 sent 時に `sent_at + 30日` へ更新 |
@@ -111,39 +112,54 @@ unique(normalized_name, normalized_address) による重複防止。
 ### sales_outreaches（営業行為）
 | 列 | 備考 |
 |---|---|
-| prospect_id, channel | 初回営業は prospect あたり1件（unique partial） |
+| prospect_id, channel | 初回営業は prospect あたり1件（**unique(prospect_id) where kind='initial'**）。再送・resume・別 run でも重複しない |
+| run_id | 下書きを作った run（追跡用） |
 | kind | `initial` / `follow_up`（follow_up は email のみ・1回のみ） |
 | subject, body | 文面 |
 | status | `drafted` / `sent` / `replied` / `meeting` / `won` / `lost`（`followed_up` という状態は持たず、フォローは `kind=follow_up` の別行） |
 | sent_at, replied_at, reply_type | reply_type: `interested` / `question` / `meeting_request` / `decline` / `other` |
 | won_amount_jpy | status=`won` のとき必須（check） |
 
-### sales_agent_runs（Operational Job の実行状態・checkpoint）
+### sales_agent_runs（Operational run の実行状態・checkpoint）
+
+run の現在地を**このテーブルだけから**判断できるようにする（詳細は §5, §7）。
+
 | 列 | 備考 |
 |---|---|
-| run_id | Operational Claude が生成する UUID。**unique（idempotency key）** |
-| status | `started` / `discovered` / `verifying` / `persisted` / `completed` / `failed` |
-| checkpoint | jsonb（工程ごとの軽量な進捗） |
-| submitted_count, accepted_count, rejected | 受理/拒否の件数と理由 |
-| started_at, finished_at, error | |
+| run_id | Operational Claude が生成する UUID。**primary key / idempotency key** |
+| status | `running` / `completed` / `failed`（check） |
+| phase | `started` → `discovered` → `verified` → `persisting` → `completed`（check。後退しない） |
+| checkpoint | jsonb。最後の安全な checkpoint の内容（§7.2）。**上限 64KB**（check constraint） |
+| checkpoint_at | 最後に checkpoint を確定した時刻 |
+| result | jsonb。completed 時の最終結果（再送時にそのまま返す） |
+| error_code, error_summary | 直近のエラー（`error_summary` は 500 文字以内、secret・raw HTML を含めない） |
+| started_at, finished_at, updated_at | |
+
+`next_action`（次にどこから再開するか）は列に持たず、`status` と `phase` から純粋関数で導出する（§7.3）。
 
 ## 5. Ingest API
 
-`POST /api/internal/sales-agent/runs`
+`POST /api/internal/sales-agent/runs` の**1 endpoint のみ**。body の `action` で操作を区別する（endpoint を増やさない）。
 
-- 認証: `Authorization: Bearer <SALES_AGENT_INGEST_TOKEN>`（定数時間比較）。
-- body: `{ runId, stage, candidates[] }`（schema は DEV-003 で確定）。
-- 処理順:
-  1. token 検証 → schema validation（不正は 400、全体拒否）
-  2. `runId` idempotency（同一 runId・同一 stage の再送は前回結果を返す）
-  3. batch 上限（5件）と当日新規上限（5件/日, Asia/Tokyo）
-  4. URL validation（http/https のみ、Instagram は instagram.com host のみ）
-  5. DNC / 重複照合 → 既存 record 再利用
-  6. channel eligibility（unknown の Instagram 除外、email provenance 必須）
-  7. 保存（prospect / sources / demo / outreach draft）と run checkpoint 更新
-- 返り値: 候補ごとの `accepted` / `rejected(reason)` / `duplicate(existingId)`。
+- 認証: `Authorization: Bearer <SALES_AGENT_INGEST_TOKEN>`（定数時間比較。未設定なら 503 で全拒否）。
+- body は `action` による discriminated union として schema validation（不正は 400、何も書き込まない）。
+
+| action | body | サーバーの処理 | 冪等性 |
+|---|---|---|---|
+| `start` | `runId` | run を `running / started` で作成 | 既存 run があれば作成せず現在の状態を返す |
+| `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は再開可能な最新 run（なければ `null`） | 読み取りのみ |
+| `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める | 同じ phase の再送は上書き保存（`persisting` 以降は拒否） |
+| `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤5)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
+| `persist` | `runId` | `verified` checkpoint の候補を §7.4 の手順で処理し、候補ごとの stage を checkpoint に記録。全候補が終端に達したら `completed` にし `result` を保存 | 何度呼んでも同じ結果に収束（§7.3） |
+| `abort` | `runId, errorCode, errorSummary` | `failed` にする（Operational Claude が続行不能と判断した場合） | `failed` / `completed` への再送は no-op |
+
+- `persist` は Operational Claude から候補を**受け取らない**。処理するのは直前に検証・保存した `verified` checkpoint だけなので、resume しても対象がぶれない。
+- `completed` の run に `start` / `checkpoint` / `persist` を送った場合は処理せず、保存済みの `result` を返す（HTTP 200、`replayed: true`）。
+- phase を飛ばす要求（例: `discovered` 前の `verified`、`verified` 前の `persist`）は 409 `phase_order_violation`。
+- 返り値は常に `{ runId, status, phase, checkpointAt, nextAction, candidates: [{ key, stage, prospectId?, reason? }], replayed }`。
 - この endpoint は DNC 変更・成約状態変更・送信を**一切できない**。
-- `source_url` をサーバーから fetch しない（SSRF 経路を作らない）。
+- `source_url` 等をサーバーから fetch しない（SSRF 経路を作らない）。
+- 処理順の詳細・fail-closed 条件は §7。
 
 ## 6. 認証・認可
 
@@ -154,15 +170,97 @@ unique(normalized_name, normalized_address) による重複防止。
 
 ## 7. 耐障害性・再開性
 
+設計基準: **「今この Claude セッションが消えても、別セッションが GitHub + Supabase だけを見て続きを再開できるか？」**
+
 | 情報 | 正本 |
 |---|---|
 | コード・仕様・Task状態・進捗・blocker・review | GitHub（`docs/`, `.ai/`） |
-| 営業候補・営業ログ・run 実行状態 | Supabase |
+| 営業候補・営業ログ・run 実行状態と checkpoint | Supabase（`sales_*` テーブル） |
 | Secrets | Vercel / GitHub Actions secrets / Claude 環境変数（**GitHub に commit しない**） |
-| Claude container | 一時的な作業場所（正本にしない） |
+| Claude session / container | 一時的な作業場所（正本にしない） |
 
-- Operational run は `sales_agent_runs` に checkpoint（開始 → 候補探索完了 → 検証中 → 永続化 → 完了）を残し、同じ `runId` で再送しても重複しない。
-- 新規インフラ（Kafka, Redis, 別DB等）は追加しない。
+新規インフラ（Kafka, Redis, 新しい queue, 別DB等）は追加しない。GitHub + Supabase + Next.js + Claude Cloud だけで実現する。
+
+### 7.1 run の phase と候補の stage
+
+```
+run phase:   started ──► discovered ──► verified ──► persisting ──► completed
+                 (Operational Claude が調査)          (サーバーが処理)
+
+候補 stage:  pending ──► deduped ──► persisted ──► demo_ready ──► outreach_ready   (成功)
+                  └─► rejected(reason) / duplicate(prospectId)                    (終端・営業準備しない)
+                  └─► error(code)                                                  (再試行可能・営業準備しない)
+```
+
+- `discover` / `verify`（Web 調査）は Operational Claude 側で行い、結果を checkpoint として保存する。
+- `dedupe` / `persist` / `demo_ready` / `outreach_ready` はサーバー側で行う。
+- phase は前進のみ。後退・飛び越しはサーバーが拒否する（run phase の遷移は `lib/sales/` の純粋関数 + DB の check / 条件付き update で強制）。
+
+### 7.2 checkpoint（意味のある工程境界だけ）
+
+| checkpoint | 保存するもの | 誰が確定するか |
+|---|---|---|
+| run 開始 | run_id, started_at | `start` |
+| 候補探索完了 (`discovered`) | 候補 stub（key・店名・区・業種・公式サイト/Instagram URL）≤20 件 | `checkpoint` |
+| 検証完了 (`verified`) | 検証済み候補 ≤5 件（website_status と再確認記録、第一者 email と出典、出典付き事実、推奨チャネル、営業文案） | `checkpoint` |
+| dedupe/DNC 確認 → 永続化 → demo 準備 → outreach 準備 | 候補ごとの stage・prospectId・reason / error_code | `persist`（候補ごとに更新） |
+| run 完了 | 最終 result（件数と候補ごとの結果） | `persist` |
+
+- 1 検索ごと・1 ページごとの checkpoint は作らない。
+- checkpoint に保存しない: raw HTML、画像、ページ本文、巨大データ、secret、token、Claude の内部推論全文。
+- 1 run の checkpoint は 64KB 以下（超過は 413 で拒否し、状態は変えない）。
+
+### 7.3 idempotency と resume
+
+`run_id` を idempotency key とし、「同じ run_id は常に拒否」ではなく状態に応じて振る舞う。
+
+| run の状態 | 同じ run_id の要求 | サーバーの振る舞い |
+|---|---|---|
+| 存在しない | `start` | 作成 |
+| `running` | 同じ/次の phase | 続きから処理（resume） |
+| `running` | 前の phase | 何もせず現在の状態を返す（遅延した再送とみなす） |
+| `running`（最終 checkpoint から 24 時間超） | 任意 | 409 `run_expired`。新しい run_id で始める（`status` では `nextAction: "start_new_run"`） |
+| `completed` | 任意 | 処理せず保存済み `result` を返す（`replayed: true`） |
+| `failed` | 任意 | 処理しない。`nextAction: "start_new_run"` |
+
+`nextAction` の導出（純粋関数）:
+
+| status / phase | nextAction |
+|---|---|
+| running / started | `discover` |
+| running / discovered | `verify`（checkpoint の stub を使い探索を再実行しない） |
+| running / verified, persisting | `persist` |
+| completed | `none` |
+| failed, または期限切れ | `start_new_run` |
+
+重複を防ぐ仕組み（多重防御）:
+
+1. **run 単位**: `completed` の再送は保存済み結果を返すだけ。
+2. **候補単位**: `persist` は checkpoint 上で終端 stage（`outreach_ready` / `rejected` / `duplicate`）の候補を再処理しない。
+3. **DB 制約（最後の砦）**: prospect の dedupe キー unique、`sales_demos` unique(prospect_id)、`sales_outreaches` unique(prospect_id) where kind='initial'。通信断で checkpoint 更新前に落ちても、再処理は既存行を再利用する（insert … on conflict）。
+4. **別 run との重複**: dedupe で既存 prospect に一致した候補は `duplicate` とし、新しい demo / outreach を作らない。
+
+### 7.4 persist の処理と fail-closed
+
+候補ごとに**1 つの DB transaction**（Postgres 関数を service role から RPC で呼ぶ）で次を順に行う。途中のどこかが失敗・未確認なら transaction ごと rollback し、その候補は `error(code)` か `rejected(reason)` になる。`outreach_ready` に**確認が取れたものだけ**が到達する。
+
+| 工程 | 確認できない / 失敗したとき | 結果 |
+|---|---|---|
+| 当日上限（5件/日, JST） | advisory lock 下で数えた結果が上限 | `rejected(daily_cap)` |
+| dedupe（name+住所 / domain / Instagram / email） | 照合クエリ失敗 | `error(dedupe_unavailable)`。営業準備しない |
+| DNC | 照合クエリ失敗 | `error(dnc_unavailable)`。営業準備しない |
+| DNC 該当 | — | `rejected(do_not_contact)` |
+| website 確認 | 確認失敗は `unknown` として届く | `unknown` は Instagram 不可。第一者 email がなければ `rejected(no_eligible_channel)` |
+| `not_found` の再確認記録 | 記録なし | `rejected(website_not_rechecked)` |
+| 第一者 email 出典 | 出典なし / 第一者でない | Email 不可（Instagram 条件も満たさなければ `rejected(no_eligible_channel)`） |
+| 永続化（prospect / sources） | 失敗 | `error(persist_failed)`。demo / outreach を作らない |
+| demo 準備 | 失敗 | `error(demo_failed)`。outreach を作らない |
+| outreach 下書き | 失敗 | `error(outreach_failed)` |
+
+- 候補ごとの transaction なので「prospect はあるが demo だけない」等の中途半端な行は残らない。
+- `error` の候補は再度 `persist` を呼べば再試行される（stage は checkpoint にあり、DB 制約で重複しない）。
+- 管理画面の「今日」に出るのは `sales_outreaches`（kind=initial, status=drafted）が存在し、DNC でない店舗だけ。送信済みにする操作でも DNC をサーバー側で再確認する。
+- これらは LLM の prompt ではなく、`lib/sales/` の純粋関数・API validation・DB 制約で強制する。
 
 ## 8. 環境
 

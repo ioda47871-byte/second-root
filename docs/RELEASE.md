@@ -45,7 +45,14 @@ Release Readiness（DEV-019）でチェック:
 | DB | 前方修正（逆 migration）を原則。データ削除を伴う rollback は人間承認 |
 | Operational job | Claude Cloud の scheduled job を無効化。ingest token を rotate すれば即座に遮断可能 |
 
-## 6. 緊急停止
+## 6. 途中で止まった Operational run
+
+- 状態は `sales_agent_runs` を見れば分かる（status / phase / checkpoint_at / error_code）。
+- `running` のまま最終 checkpoint から 24 時間を超えた run は再開されず、次の run が新しい run_id で始める（`nextAction: start_new_run`）。手作業のデータ修正は不要。
+- 途中 run が作った prospect / demo / outreach は候補単位の transaction で作られているため、中途半端な行は残らない。
+- 同じ原因で連続して失敗する場合は scheduled job を一時停止し、`.ai/blockers.md` に記録して人間が判断する。
+
+## 7. 緊急停止
 
 - ingest を止める: Vercel の `SALES_AGENT_INGEST_TOKEN` を削除 / 変更（API は fail closed）。
 - 管理画面・デモを止める: 該当ルートを無効化する revert、またはデモを `disabled_at` で一括無効化。

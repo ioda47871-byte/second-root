@@ -73,6 +73,20 @@ Second Root の営業を、人間ができるだけ考えず、少ないクリ�
 - Instagram URL（正規化済み handle）
 - 公開メールアドレス（小文字化）
 
+### 3.6 fail-closed（確認できなければ営業準備しない）
+
+前工程の確認が取れない候補は、営業準備完了（outreach_ready）へ進めない。判断に迷う・確認に失敗した場合は「営業しない」側に倒す。
+
+| 確認できなかったもの | 扱い |
+|---|---|
+| 公式サイトの有無（検索失敗） | `website_status = unknown` → Instagram 営業不可 |
+| 第一者メールの出典 | Email 営業不可 |
+| DNC 照合（DB 確認失敗） | 営業準備不可（再試行待ち） |
+| 重複照合（DB 確認失敗） | 営業準備不可（再試行待ち） |
+| 永続化（保存失敗） | demo / outreach を ready にしない |
+
+これは Operational Claude の prompt だけに依存せず、サーバー側のコード・API validation・DB 制約で強制する（詳細: `docs/ARCHITECTURE.md` §7.4）。
+
 ## 4. 送信 UX
 
 ### 4.1 Instagram
@@ -147,6 +161,12 @@ drafted → sent → replied(interested|question|meeting_request|decline|other)
 ## 10. Operational Claude（日々の店舗探索）
 
 フロー: Web検索 → 候補発見 → 公式サイト再確認 → 第一者公開メール確認 → 出典付き情報整理 → 推奨チャネル → 営業文準備 → `POST /api/internal/sales-agent/runs` へ提出。
+
+run は `sales_agent_runs` に工程（phase）と checkpoint を残し、Claude のセッションが途中で消えても、次の run が Supabase の状態だけから続きを再開できる。
+
+- 工程: 開始 → 候補探索完了 → 検証完了 → 重複/DNC 確認・永続化・デモ準備・営業文準備（サーバー側）→ 完了
+- `run_id` を冪等キーとし、再送・再実行・resume で prospect / demo / 営業下書きを重複させない。完了済み run の再送は既存結果を返す。
+- 詳細: `docs/ARCHITECTURE.md` §5（ingest API）, §7（checkpoint / resume / idempotency / fail-closed）
 
 Operational Claude は次をしない: DM送信 / メール送信 / Supabase直接書き込み / GitHubコード変更 / DNC変更 / 成約状態変更。
 実行基盤は Claude Cloud の scheduled job（Routine）を第一候補とし、Staging で実走確認する（DEV-016）。

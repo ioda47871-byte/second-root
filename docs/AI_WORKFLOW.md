@@ -75,7 +75,7 @@ develop → main は人間承認必須。
 4. push のたびに `.ai/progress.md` の現在地を更新する。
 5. 設計/実装判断のたびに「**このセッションが今消えても、別環境から続きができるか？**」を確認する。
 6. Secrets を commit しない（`npm run check:secrets` が CI で検査）。
-7. 営業候補・営業ログ・run 状態の正本は Supabase。
+7. 営業候補・営業ログ・run 状態と checkpoint の正本は Supabase（`docs/ARCHITECTURE.md` §7）。
 8. 不要なインフラを増やさない（GitHub + Supabase で完結させる）。
 
 ## 6. Claude 障害時の復旧（Windows ローカル等）
@@ -113,9 +113,28 @@ Production data / Production secrets / main 直接 push / Production release / D
 - 自動テストから実店舗へ Email / Instagram を**絶対に送らない**（テストデータは `example.com` / 架空アカウントのみ）。
 - テスト失敗時に skip / 削除 / required check 解除 / 基準引き下げで green にしない。
 
-## 9. Operational Claude run の原則（DEV-015 で詳細化）
+## 9. Operational Claude run の原則（DEV-015 で prompt 化）
 
 - 実行基盤: Claude Cloud scheduled job を第一候補。
-- 持つ secret は `SALES_AGENT_INGEST_TOKEN` のみ。
-- 各 run は UUID の `runId` を生成し、同じ `runId` で工程ごとに checkpoint を送る。
-- 失敗時は有料 API へ切り替えず、`failed` として理由を記録し人間に報告する。
+- 持つ secret は `SALES_AGENT_INGEST_TOKEN` のみ。Supabase には直接触れない。
+- Claude のセッションは消える前提で動く。run の現在地は ingest API（Supabase）にだけ置き、会話記憶に頼らない。
+- 失敗時は有料 API へ切り替えず、`abort` で理由（error_code / error_summary）を記録し人間に報告する。
+
+### 9.1 run の手順（resume 前提）
+
+```
+1. action=status（runId なし）
+     → 再開可能な run があれば、その runId と nextAction から続ける
+     → なければ新しい UUID を runId にして action=start
+2. nextAction=discover : Web 検索で候補を探す → action=checkpoint phase=discovered（stub ≤20）
+3. nextAction=verify   : discovered の stub だけを対象に公式サイト再確認・第一者 email・出典を確認
+                         → action=checkpoint phase=verified（≤5）
+4. nextAction=persist  : action=persist（候補は送らない。サーバーが verified checkpoint を処理）
+                         → 候補に error があれば persist を再度呼ぶ（上限 3 回）
+5. nextAction=none     : 完了。結果を要約して終了
+   nextAction=start_new_run : 前の run は再開しない。1 から新しい run を始める
+```
+
+- 各 action の応答で返る `nextAction` に従う。自分で phase を飛ばさない。
+- 通信エラー時は同じ action を同じ runId で再送してよい（冪等）。
+- 検索に失敗したサイト有無は `unknown` として送る（`not_found` にしない）。

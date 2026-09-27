@@ -29,6 +29,13 @@
 - Instagram URL は `instagram.com` / `www.instagram.com` host のみ許可。
 - メールアドレスは第一者出典（`source_url` + `source_type`）必須。推測メール禁止。
 - 文字列長の上限を設ける（DoS / 表示崩れ対策）。
+- `action` ごとの discriminated union で検証し、phase の飛び越し・後退はサーバーが拒否する（Operational Claude の申告を信用しない）。
+
+## 3.1 run checkpoint の内容
+
+- `sales_agent_runs.checkpoint` / `result` / `error_summary` に保存しない: raw HTML、画像、ページ本文、secret、token、Cookie、Claude の内部推論全文。
+- checkpoint は 1 run 64KB 以下（DB の check constraint とAPI で二重に制限）。`error_summary` は 500 文字以内。
+- `sales_agent_runs` は RLS で管理者のみ read、書き込みは ingest API（service role, server only）のみ。
 
 ## 4. SSRF
 
