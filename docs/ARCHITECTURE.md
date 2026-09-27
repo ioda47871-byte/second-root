@@ -226,6 +226,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | `running` | 同じ/次の phase | 続きから処理（resume） |
 | `running` | 前の phase | 何もせず現在の状態を返す（遅延した再送とみなす） |
 | `running`（最終 checkpoint から 24 時間超） | 任意 | その場で `failed` / error_code `run_expired` に確定し 409。新しい run_id で始める。runId なしの `status` は期限切れ run を返さない |
+| 実行中の run なし | runId なしの `status` | 今日（Asia/Tokyo）開始の run があればその状態を返す（completed → `none`、failed → `start_new_run`）。Operational Claude はどちらでもその日は新しい run を始めない（1 日 1 run）。今日の run がなければ `null` |
 | `completed` | 任意 | 処理せず保存済み `result` を返す（`replayed: true`） |
 | `failed` | 任意 | 処理しない。`nextAction: "start_new_run"` |
 
