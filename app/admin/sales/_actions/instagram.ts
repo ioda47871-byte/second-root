@@ -24,6 +24,16 @@ const BEGIN_ERRORS: Record<string, string> = {
   do_not_contact: "この店舗は営業不要（DNC）のため返信できません。",
   not_sendable: "この返信案はすでに処理済みです。画面を再読み込みしてください。",
   not_found: NOT_FOUND,
+  stale_draft: "新しいメッセージが届いたため、この返信案は使えません。画面を再読み込みしてください。",
+  invalid_draft: "返信文に入れられない内容（連絡先やデモ以外のリンク）があります。編集してください。",
+};
+
+const DRAFT_ERRORS: Record<string, string> = {
+  empty: "返信文を入力してください。",
+  too_long: "長すぎます（Instagram は約300文字まで）。",
+  contact_details: "メールアドレスや電話番号は入れられません。",
+  link_not_allowed: "この店舗のデモ以外の URL は入れられません。",
+  invalid_reply_type: NOT_FOUND,
 };
 
 function done(message?: string): IgResult {
@@ -38,7 +48,12 @@ function codeOf(message: string | undefined): string {
 export async function sendIgReply(draftId: string): Promise<IgResult> {
   await requireAdmin();
   if (!id.safeParse(draftId).success) return { ok: false, error: NOT_FOUND };
-  const outcome = await sendApprovedReply(await createAuthClient(), draftId);
+  const supabase = await createAuthClient();
+  // The text is checked again right before sending, whoever last changed it.
+  const current = await loadDraft(supabase, draftId);
+  if (!current) return { ok: false, error: NOT_FOUND };
+  if (!recheck(current, current.body).ok) return { ok: false, error: BEGIN_ERRORS.invalid_draft };
+  const outcome = await sendApprovedReply(supabase, draftId);
   switch (outcome.kind) {
     case "sent":
       return done("送信しました。");
@@ -57,7 +72,9 @@ export async function sendIgReply(draftId: string): Promise<IgResult> {
         error:
           outcome.errorCode === "not_configured"
             ? "Instagram との連携がまだ設定されていません（送信していません）。"
-            : "送信できませんでした（Instagram 側で受け付けられませんでした）。内容や状況を確認して、もう一度お試しください。",
+            : outcome.errorCode.startsWith("meta_190")
+              ? "Instagram の接続が切れています（アクセストークンの期限切れ）。送信していません。Instagram 連携の設定を更新してください。"
+              : "送信できませんでした（Instagram 側で受け付けられませんでした）。内容や状況を確認して、もう一度お試しください。",
       };
     case "unknown":
       revalidatePath("/admin/sales/replies");
@@ -67,36 +84,37 @@ export async function sendIgReply(draftId: string): Promise<IgResult> {
 
 type DraftRow = {
   id: string;
+  body: string;
   reply_type: ReplyType;
   message: { text: string | null } | null;
   thread: { prospect: { demo: DemoRow | DemoRow[] | null } | null } | null;
 };
 type DemoRow = { public_token: string; disabled_at: string | null; expires_at: string | null; keep_alive: boolean };
 
+async function loadDraft(supabase: Awaited<ReturnType<typeof createAuthClient>>, draftId: string): Promise<DraftRow | null> {
+  const { data } = await supabase
+    .from("sales_ig_drafts")
+    .select("id, body, reply_type, message:sales_ig_messages(text), thread:sales_ig_threads(prospect:sales_prospects(demo:sales_demos(public_token, disabled_at, expires_at, keep_alive)))")
+    .eq("id", draftId)
+    .maybeSingle();
+  return data as unknown as DraftRow | null;
+}
+
+/** The same checks as for Operational Claude's drafts (lib/instagram/draft.ts). */
+function recheck(row: DraftRow, body: string) {
+  const demo = Array.isArray(row.thread?.prospect?.demo) ? row.thread?.prospect?.demo[0] : row.thread?.prospect?.demo;
+  const live = demo && !demo.disabled_at && demo.expires_at && (demo.keep_alive || Date.parse(demo.expires_at) > Date.now());
+  return checkDraft({ replyType: row.reply_type, body, futureContactRefused: false }, live ? demoUrl(demo.public_token) : null, row.message?.text ?? null);
+}
+
 export async function editIgDraft(draftId: string, body: string): Promise<IgResult> {
   await requireAdmin();
   if (!id.safeParse(draftId).success || typeof body !== "string" || body.length > 3000) return { ok: false, error: NOT_FOUND };
   const supabase = await createAuthClient();
-  const { data } = await supabase
-    .from("sales_ig_drafts")
-    .select("id, reply_type, message:sales_ig_messages(text), thread:sales_ig_threads(prospect:sales_prospects(demo:sales_demos(public_token, disabled_at, expires_at, keep_alive)))")
-    .eq("id", draftId)
-    .maybeSingle();
-  const row = data as unknown as DraftRow | null;
+  const row = await loadDraft(supabase, draftId);
   if (!row) return { ok: false, error: NOT_FOUND };
-  const demo = Array.isArray(row.thread?.prospect?.demo) ? row.thread?.prospect?.demo[0] : row.thread?.prospect?.demo;
-  const live = demo && !demo.disabled_at && demo.expires_at && (demo.keep_alive || Date.parse(demo.expires_at) > Date.now());
-  const checked = checkDraft({ replyType: row.reply_type, body, futureContactRefused: false }, live ? demoUrl(demo.public_token) : null, row.message?.text ?? null);
-  if (!checked.ok) {
-    const reasons: Record<string, string> = {
-      empty: "返信文を入力してください。",
-      too_long: "長すぎます（Instagram は約300文字まで）。",
-      contact_details: "メールアドレスや電話番号は入れられません。",
-      link_not_allowed: "この店舗のデモ以外の URL は入れられません。",
-      invalid_reply_type: NOT_FOUND,
-    };
-    return { ok: false, error: reasons[checked.reason] };
-  }
+  const checked = recheck(row, body);
+  if (!checked.ok) return { ok: false, error: DRAFT_ERRORS[checked.reason] };
   const { error } = await supabase.rpc("sales_ig_update_draft", {
     p_draft_id: draftId,
     p_body: checked.body,
@@ -122,7 +140,12 @@ export async function resolveIgThread(threadId: string, prospectId: string | nul
   const supabase = await createAuthClient();
   const { error } = await supabase.rpc("sales_ig_resolve_thread", { p_thread_id: threadId, p_prospect_id: prospectId });
   if (error) {
-    return { ok: false, error: codeOf(error.message) === "invalid_prospect" ? "Instagram で営業済みの店舗（営業不要以外）を選んでください。" : "変更できませんでした。" };
+    const messages: Record<string, string> = {
+      invalid_prospect: "Instagram で営業済みの店舗（営業不要以外）を選んでください。",
+      already_resolved: "この会話はすでに照合されています。画面を再読み込みしてください。",
+      send_open: "送信結果の確認が残っています。先に「送信されていた / されていなかった」を記録してください。",
+    };
+    return { ok: false, error: messages[codeOf(error.message)] ?? "変更できませんでした。" };
   }
   return done();
 }

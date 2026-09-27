@@ -28,6 +28,9 @@ export type IgCardProps = {
   threadId: string;
   draftId: string | null;
   draftStatus: string | null;
+  snoozed: boolean;
+  stale: boolean;
+  doNotContact: boolean;
   sendId: string | null;
   matched: boolean;
   username: string | null;
@@ -60,7 +63,12 @@ export default function IgReplyCard(props: IgCardProps) {
 
   const latest = [...props.messages].reverse().find((m) => m.direction === "inbound");
   const unknown = props.draftStatus === "unknown";
-  const canSend = props.matched && props.windowOpen && props.draftId !== null && ["pending", "snoozed", "failed"].includes(props.draftStatus ?? "");
+  const sending = props.draftStatus === "sending";
+  const editable = !props.stale && ["pending", "snoozed", "failed"].includes(props.draftStatus ?? "");
+  const canSnooze = !props.stale && ["pending", "snoozed"].includes(props.draftStatus ?? "");
+  // 「送信中」 left over (e.g. the server stopped mid-send) can be re-checked:
+  // the server then reports it as in flight or as unknown, never resends.
+  const canSend = props.matched && !props.doNotContact && props.windowOpen && props.draftId !== null && (editable || sending);
 
   return (
     <li className={styles.card} data-testid="ig-reply-item">
@@ -68,7 +76,10 @@ export default function IgReplyCard(props: IgCardProps) {
       <p className={styles.meta}>Instagram・{props.receivedAt} 受信</p>
       <div className={styles.badges}>
         {props.replyType && <span className={styles.badge}>AI 分類: {REPLY_LABEL[props.replyType]}</span>}
-        {props.draftStatus === "snoozed" && <span className={styles.badge}>後で対応</span>}
+        {props.snoozed && <span className={styles.badge}>後で対応</span>}
+        {sending && <span className={styles.badge}>送信中</span>}
+        {props.stale && <span className={`${styles.badge} ${styles.badgeWarn}`}>新しいメッセージあり（返信案を準備中）</span>}
+        {props.doNotContact && <span className={`${styles.badge} ${styles.badgeWarn}`}>営業不要（DNC）</span>}
         {!props.windowOpen && <span className={`${styles.badge} ${styles.badgeWarn}`}>24時間を過ぎました（手動で返信）</span>}
         {props.dncCandidate && <span className={`${styles.badge} ${styles.badgeWarn}`}>営業不要（DNC）の可能性</span>}
       </div>
@@ -145,18 +156,18 @@ export default function IgReplyCard(props: IgCardProps) {
             ) : (
               <>
                 <button type="button" className={styles.primary} disabled={pending || !canSend} onClick={() => run(() => sendIgReply(props.draftId!))}>
-                  {pending ? "送信中…" : "この内容で返信"}
+                  {pending ? "送信中…" : sending ? "送信状況を確認" : "この内容で返信"}
                 </button>
-                <button type="button" className={styles.secondary} disabled={pending} onClick={() => setEditing(true)}>
+                <button type="button" className={styles.secondary} disabled={pending || !editable} onClick={() => setEditing(true)}>
                   返信文を編集
                 </button>
                 <button
                   type="button"
                   className={styles.linkButton}
-                  disabled={pending}
-                  onClick={() => run(() => snoozeIgDraft(props.draftId!, props.draftStatus !== "snoozed"))}
+                  disabled={pending || !canSnooze}
+                  onClick={() => run(() => snoozeIgDraft(props.draftId!, !props.snoozed))}
                 >
-                  {props.draftStatus === "snoozed" ? "今すぐ対応に戻す" : "後で対応"}
+                  {props.snoozed ? "今すぐ対応に戻す" : "後で対応"}
                 </button>
               </>
             )}

@@ -90,6 +90,7 @@ export async function sendText(accountId: string, igsid: string, text: string): 
       body: JSON.stringify({ recipient: { id: igsid }, message: { text } }),
       signal: AbortSignal.timeout(10000),
       cache: "no-store",
+      redirect: "error",
     });
   } catch {
     // Timeout or connection loss: Meta may or may not have sent it.
@@ -109,6 +110,9 @@ export async function sendText(accountId: string, igsid: string, text: string): 
   const subcode = typeof json.error?.error_subcode === "number" ? json.error.error_subcode : null;
   if (subcode !== null && SENT_BUT_ERROR_SUBCODES.has(subcode)) return { outcome: "unknown", errorCode: `meta_${subcode}` };
   if (res.status >= 500) return { outcome: "unknown", errorCode: `http_${res.status}` };
+  // Meta's generic / temporary errors (code 1 "unknown", 2 "service", or
+  // is_transient) give no proof that nothing was sent.
+  if (json.error?.is_transient === true || code === 1 || code === 2) return { outcome: "unknown", errorCode: `meta_${code ?? "transient"}` };
   // 4xx with an error body: Meta refused the request (e.g. window closed,
   // permission, bad recipient). Nothing was sent.
   if (res.status >= 400 && code !== null) return { outcome: "failed", errorCode: `meta_${code}${subcode ? `_${subcode}` : ""}` };

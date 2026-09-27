@@ -1022,7 +1022,7 @@
         "Protected Scope に該当する変更",
         "MVP 仕様の重大変更"
       ],
-      "status": "in_progress",
+      "status": "done",
       "forbidden_scope": [
         "main への直接 push",
         "Production data / secrets の操作",
@@ -1067,7 +1067,7 @@
         "Protected Scope に該当する変更",
         "MVP 仕様の重大変更"
       ],
-      "status": "backlog",
+      "status": "in_progress",
       "forbidden_scope": [
         "main への直接 push",
         "Production data / secrets の操作",

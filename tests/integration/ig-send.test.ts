@@ -119,6 +119,8 @@ describe("sending an approved reply", () => {
     ["a server error", { status: 500, body: { error: { code: 2, is_transient: true } } }],
     ["Meta's 'sent but errored' case", { status: 400, body: { error: { code: 100, error_subcode: 1357046 } } }],
     ["an unreadable success", { status: 200, body: { recipient_id: "x" } }],
+    ["Meta's generic 4xx error", { status: 400, body: { error: { code: 1, message: "unknown error" } } }],
+    ["a transient 4xx error", { status: 400, body: { error: { code: 4, is_transient: true } } }],
   ])("[fail-closed] %s becomes 'unknown' and is never retried automatically", async (_label, reply) => {
     const c = await conversation("900000000000504");
     replies = [reply];
@@ -200,5 +202,58 @@ describe("what is never sent", () => {
     const other = await conversation("900000000000606", { matched: false });
     await admin.rpc("sales_ig_resolve_thread", { p_thread_id: other.threadId, p_prospect_id: null });
     expect(await state(other.draftId)).toMatchObject({ draft: "superseded" });
+  });
+});
+
+describe("review regressions", () => {
+  it("[R1-M1] a failed reply to an older message is never sent after a newer message arrived", async () => {
+    const c = await conversation("900000000000701");
+    replies = [{ status: 400, body: { error: { code: 100 } } }];
+    expect((await sendApprovedReply(admin, c.draftId)).kind).toBe("failed");
+    await receive("900000000000701", "mid-900000000000701-b", "もう一つ質問です");
+    expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "refused", code: "stale_draft" });
+    expect(sendCalls).toHaveLength(1);
+    expect((await state(c.draftId)).draft).toBe("superseded");
+  });
+
+  it("[R1-M2] a late or duplicate result never overwrites a newer send", async () => {
+    const c = await conversation("900000000000702");
+    replies = ["network"];
+    await sendApprovedReply(admin, c.draftId);
+    const { rows: [a] } = await db.query("select id from public.sales_ig_sends where draft_id = $1", [c.draftId]);
+    await admin.rpc("sales_ig_resolve_unknown", { p_send_id: a.id, p_was_sent: false });
+    await admin.rpc("sales_ig_update_draft", { p_draft_id: c.draftId, p_body: "別の返信です。", p_needs_review: false, p_review_reasons: [] });
+    const begun = (await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId })).data as { send_id: string; status: string };
+    expect(begun.status).toBe("sending");
+    // A late answer for the first text arrives now.
+    const late = await admin.rpc("sales_ig_finish_send", { p_send_id: a.id, p_outcome: "failed", p_meta_message_id: null, p_error_code: "meta_100" });
+    expect(late.data).toMatchObject({ replayed: true, status: "failed" });
+    expect((await state(c.draftId)).draft).toBe("sending");
+    // And a duplicate finish for the current send changes nothing either.
+    await admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_outcome: "sent", p_meta_message_id: "m_late", p_error_code: null });
+    const dup = await admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_outcome: "failed", p_meta_message_id: null, p_error_code: "meta_100" });
+    expect(dup.data).toMatchObject({ replayed: true, status: "sent" });
+    expect((await state(c.draftId)).draft).toBe("sent");
+  });
+
+  it("[R1-M2] a definite late answer settles an unknown send", async () => {
+    const c = await conversation("900000000000703");
+    await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId });
+    await db.query(`begin; set local session_replication_role = replica; update public.sales_ig_sends set updated_at = now() - interval '3 minutes' where draft_id = '${c.draftId}'; commit;`);
+    expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "unknown" });
+    const { rows: [s] } = await db.query("select id from public.sales_ig_sends where draft_id = $1", [c.draftId]);
+    await admin.rpc("sales_ig_finish_send", { p_send_id: s.id, p_outcome: "sent", p_meta_message_id: "m_settled", p_error_code: null });
+    expect(await state(c.draftId)).toMatchObject({ draft: "sent", sends: [{ status: "sent", meta_message_id: "m_settled" }] });
+    expect(sendCalls).toHaveLength(0);
+  });
+
+  it("[R1-L8] a matched conversation is not re-linked, and one with an open send is not dismissed", async () => {
+    const c = await conversation("900000000000704");
+    const relink = await admin.rpc("sales_ig_resolve_thread", { p_thread_id: c.threadId, p_prospect_id: c.prospectId });
+    expect(relink.error?.message).toMatch(/already_resolved/);
+    replies = ["network"];
+    await sendApprovedReply(admin, c.draftId);
+    const dismiss = await admin.rpc("sales_ig_resolve_thread", { p_thread_id: c.threadId, p_prospect_id: null });
+    expect(dismiss.error?.message).toMatch(/send_open/);
   });
 });
