@@ -53,3 +53,48 @@ export async function seedDraft(db: pg.Pool | pg.Client, body = "はじめまし
   );
   return { ...demo, outreachId: rows[0].id as string };
 }
+
+/** A fictional email shop (own site + first-party contact email) with an unsent draft. */
+export async function seedEmailDraft(pool: pg.Pool): Promise<{ token: string; prospectId: string; name: string; outreachId: string; email: string }> {
+  const n = randomUUID().slice(0, 8);
+  const name = `E2Eメール菓子店${n}`;
+  const domain = `e2e-${n}.example.com`;
+  const email = `info@${domain}`;
+  // The email provenance check runs at commit, so prospect and source must
+  // be inserted in one transaction on one connection.
+  const client = await pool.connect();
+  let prospectId: string;
+  try {
+    await client.query("begin");
+    const { rows } = await client.query(
+      `insert into public.sales_prospects
+         (name, normalized_name, address, normalized_address, ward, category, website_status,
+          website_url, website_domain, public_email, recommended_channel)
+       values ($1, $1, $2, $2, '東区', 'baked_goods', 'present', $3, $4, $5, 'email') returning id`,
+      [name, `愛知県名古屋市東区${n}`, `https://${domain}/`, domain, email],
+    );
+    prospectId = rows[0].id as string;
+    await client.query(
+      `insert into public.sales_sources (prospect_id, field, value, source_url, source_type, verified_at)
+       values ($1, 'email', $2, $3, 'official_contact', now())`,
+      [prospectId, email, `https://${domain}/contact`],
+    );
+    await client.query("commit");
+  } catch (err) {
+    await client.query("rollback");
+    throw err;
+  } finally {
+    client.release();
+  }
+  const token = randomBytes(32).toString("base64url");
+  await pool.query(`insert into public.sales_demos (prospect_id, public_token, template, content) values ($1, $2, 'baked_goods_v1', $3)`, [
+    prospectId,
+    token,
+    JSON.stringify({ name, category: "baked_goods", ward: "東区" }),
+  ]);
+  const o = await pool.query(
+    `insert into public.sales_outreaches (prospect_id, kind, channel, subject, body) values ($1, 'initial', 'email', 'ホームページのご提案', 'E2E メール本文です。') returning id`,
+    [prospectId],
+  );
+  return { token, prospectId, name, outreachId: o.rows[0].id as string, email };
+}
