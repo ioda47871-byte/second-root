@@ -21,6 +21,10 @@
 - ingest API は専用 Bearer token。比較は定数時間（`crypto.timingSafeEqual`）。token 未設定時は 503 で全拒否（fail closed）。
 - ingest API は DNC 変更・成約状態変更・送信の権限を持たない。
 - DNC 解除は管理者 UI からのみ。
+- DB: `sales_*` の全テーブルで RLS 有効、anon の権限なし、authenticated の直接書き込み権限なし。
+  `sales_*` / `is_sales_admin` の関数はすべて `search_path` 固定。authenticated が呼べる `sales_*` 関数は SECURITY DEFINER の管理者 RPC だけで、最初の文で管理者を確認する。
+  helper / trigger 関数の EXECUTE は service_role のみ。PUBLIC の EXECUTE はスキーマ単位の既定では外せないため、関数を作る migration は必ず `revoke all on function … from public, anon, authenticated` してから必要な role にだけ grant する。
+  これらは `tests/integration/db-security-audit.test.ts` が全関数・全テーブルに対して検査する。
 
 ## 3. 入力検証
 
@@ -28,6 +32,7 @@
 - URL は `http:` / `https:` のみ許可。`javascript:` / `data:` / `file:` / `vbscript:` 等は拒否。
 - Instagram URL は `instagram.com` / `www.instagram.com` host のみ許可。
 - メールアドレスは第一者出典（`source_url` + `source_type`）必須。推測メール禁止。
+  `official_site` / `official_contact` は検証済み公式サイトと同じサイト上、`official_profile` は候補自身の検証済み Instagram プロフィールだけを認める。
 - 文字列長の上限を設ける（DoS / 表示崩れ対策）。
 - `action` ごとの discriminated union で検証し、phase の飛び越し・後退はサーバーが拒否する（Operational Claude の申告を信用しない）。
 
@@ -48,6 +53,18 @@
   - 既存の `app/layout.tsx` の JSON-LD（固定値）は対象外。Sales Agent 関連ディレクトリでの使用は `tests/unit/guardrails.test.ts` で禁止を検査する。
 - `href` に入れる URL は必ず URL validation を通す。
 - `mailto:` は `encodeURIComponent` で各パラメータをエンコードする。
+
+## 5.1 HTTP ヘッダ（`/demo`・`/admin`・`/api/internal`）
+
+- `X-Robots-Tag: noindex, nofollow`、`Referrer-Policy: no-referrer`、`Cache-Control: private, no-store`
+- `X-Frame-Options: DENY` + `Content-Security-Policy: frame-ancestors 'none'`（管理画面の clickjacking 防止）
+- `X-Content-Type-Options: nosniff`、`Permissions-Policy`（camera / microphone / geolocation 無効）
+- 既存 Second Root のページのヘッダは変更しない。
+
+## 5.2 依存関係
+
+- `npm audit --omit=dev` で high / critical を 0 に保つ（DEV-017 で Next.js 16.3.0 → 16.3.6: Image Optimization の RCE 等の advisory、sharp の libheif advisory を解消）。
+- Release 前に再確認する（`docs/RELEASE.md`）。
 
 ## 6. 公開デモ
 
