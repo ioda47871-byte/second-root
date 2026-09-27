@@ -299,3 +299,14 @@
   font-size: 1rem;
   margin: 24px 0 10px;
 }
+
+.fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.confirm {
+  display: grid;
+  gap: 8px;
+}

@@ -8,6 +8,8 @@ import styles from "./admin.module.css";
 
 export default function OutcomeActions({ outreachId, status }: { outreachId: string; status: "replied" | "meeting" }) {
   const [amount, setAmount] = useState("");
+  const [confirmLost, setConfirmLost] = useState(false);
+  const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -37,9 +39,25 @@ export default function OutcomeActions({ outreachId, status }: { outreachId: str
           </button>
         </>
       )}
-      <button type="button" className={styles.secondary} disabled={pending} onClick={() => run(() => markLost(outreachId, ""))}>
-        失注
-      </button>
+      {!confirmLost ? (
+        <button type="button" className={styles.secondary} disabled={pending} onClick={() => setConfirmLost(true)}>
+          失注
+        </button>
+      ) : (
+        <div className={styles.confirm}>
+          <label className={styles.label}>
+            失注の理由（任意）
+            <input className={styles.input} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+          </label>
+          <p className={styles.muted}>失注にすると元に戻せません。</p>
+          <button type="button" className={styles.secondary} disabled={pending} onClick={() => run(() => markLost(outreachId, reason))}>
+            {pending ? "記録中…" : "失注にする"}
+          </button>
+          <button type="button" className={styles.linkButton} onClick={() => setConfirmLost(false)}>
+            やめる
+          </button>
+        </div>
+      )}
       {error && (
         <p className={styles.error} role="alert">
           {error}

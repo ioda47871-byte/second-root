@@ -381,7 +381,7 @@
     {
       "id": "DEV-007",
       "title": "cafe template",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-004"
@@ -557,7 +557,7 @@
     {
       "id": "DEV-011",
       "title": "Email mailto UX",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-009",
@@ -603,7 +603,7 @@
     {
       "id": "DEV-012",
       "title": "reply / meeting / win / loss flow",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-010",
@@ -736,7 +736,7 @@
     {
       "id": "DEV-015",
       "title": "Operational Claude run prompt / scheduled job definition",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-003"
@@ -772,8 +772,9 @@
         "MVP 仕様の重大変更",
         "Claude Cloud scheduled job の作成・有効化"
       ],
-      "attempts": 0,
-      "last_failure": null
+      "attempts": 1,
+      "last_failure": "review round 1 FAIL (High: prompt-injection guidance) → fixed, round 2 PASS",
+      "branch": "feature/dev-015-ops-run-prompt"
     },
     {
       "id": "DEV-016",
