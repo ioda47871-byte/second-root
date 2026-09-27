@@ -68,7 +68,7 @@ export default function IgReplyCard(props: IgCardProps) {
   const canSnooze = !props.stale && ["pending", "snoozed"].includes(props.draftStatus ?? "");
   // 「送信中」 left over (e.g. the server stopped mid-send) can be re-checked:
   // the server then reports it as in flight or as unknown, never resends.
-  const canSend = props.matched && !props.doNotContact && props.windowOpen && props.draftId !== null && (editable || sending);
+  const canSend = props.draftId !== null && (sending || (editable && props.matched && !props.doNotContact && props.windowOpen));
 
   return (
     <li className={styles.card} data-testid="ig-reply-item">

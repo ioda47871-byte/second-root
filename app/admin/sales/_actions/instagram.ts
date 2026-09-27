@@ -52,7 +52,8 @@ export async function sendIgReply(draftId: string): Promise<IgResult> {
   // The text is checked again right before sending, whoever last changed it.
   const current = await loadDraft(supabase, draftId);
   if (!current) return { ok: false, error: NOT_FOUND };
-  if (!recheck(current, current.body).ok) return { ok: false, error: BEGIN_ERRORS.invalid_draft };
+  // (A send already in progress is only looked up, never sent again.)
+  if (current.status !== "sending" && !recheck(current, current.body).ok) return { ok: false, error: BEGIN_ERRORS.invalid_draft };
   const outcome = await sendApprovedReply(supabase, draftId);
   switch (outcome.kind) {
     case "sent":
@@ -84,6 +85,7 @@ export async function sendIgReply(draftId: string): Promise<IgResult> {
 
 type DraftRow = {
   id: string;
+  status: string;
   body: string;
   reply_type: ReplyType;
   message: { text: string | null } | null;
@@ -94,7 +96,7 @@ type DemoRow = { public_token: string; disabled_at: string | null; expires_at: s
 async function loadDraft(supabase: Awaited<ReturnType<typeof createAuthClient>>, draftId: string): Promise<DraftRow | null> {
   const { data } = await supabase
     .from("sales_ig_drafts")
-    .select("id, body, reply_type, message:sales_ig_messages(text), thread:sales_ig_threads(prospect:sales_prospects(demo:sales_demos(public_token, disabled_at, expires_at, keep_alive)))")
+    .select("id, status, body, reply_type, message:sales_ig_messages(text), thread:sales_ig_threads(prospect:sales_prospects(demo:sales_demos(public_token, disabled_at, expires_at, keep_alive)))")
     .eq("id", draftId)
     .maybeSingle();
   return data as unknown as DraftRow | null;

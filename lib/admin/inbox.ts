@@ -42,10 +42,24 @@ type ThreadRow = {
     outreach: Array<{ id: string; kind: string; status: string }> | null;
   } | null;
   messages: Array<{ id: string; direction: "inbound" | "outbound"; text: string | null; attachment_types: string[]; sent_at: string; received_at: string; deleted_at: string | null }>;
-  drafts: Array<{ id: string; message_id: string; status: string; snoozed_until: string | null; reply_type: ReplyType; body: string; dnc_candidate: boolean; review_reasons: string[]; created_at: string; sends: Array<{ id: string; status: string; created_at: string }> }>;
+  drafts: Array<{ id: string; message_id: string; status: string; snoozed_until: string | null; reply_type: ReplyType; body: string; dnc_candidate: boolean; review_reasons: string[]; created_at: string; sends: Array<{ id: string; status: string; updated_at: string }> }>;
 };
 
 const OPEN = new Set(["pending", "snoozed", "failed", "unknown", "sending"]);
+// A send still waiting for its outcome comes first: it must be settled
+// before a newer draft is shown.
+const IN_FLIGHT = new Set(["unknown", "sending"]);
+
+/** Newest first by time (ISO strings compared as instants), then id. */
+function newestFirst<T extends { id: string }>(time: (x: T) => string, ...more: Array<(x: T) => string>) {
+  return (a: T, b: T) => {
+    for (const f of [time, ...more]) {
+      const d = Date.parse(f(b)) - Date.parse(f(a));
+      if (d !== 0) return d;
+    }
+    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+  };
+}
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export async function loadInbox(supabase: SupabaseClient, now: Date = new Date(), limit = 50): Promise<InboxItem[]> {
@@ -55,7 +69,7 @@ export async function loadInbox(supabase: SupabaseClient, now: Date = new Date()
       `id, username, match_status, prospect_id, last_inbound_at,
        prospect:sales_prospects(name, do_not_contact, outreach:sales_outreaches(id, kind, status)),
        messages:sales_ig_messages(id, direction, text, attachment_types, sent_at, received_at, deleted_at),
-       drafts:sales_ig_drafts(id, message_id, status, snoozed_until, reply_type, body, dnc_candidate, review_reasons, created_at, sends:sales_ig_sends(id, status, created_at))`,
+       drafts:sales_ig_drafts(id, message_id, status, snoozed_until, reply_type, body, dnc_candidate, review_reasons, created_at, sends:sales_ig_sends(id, status, updated_at))`,
     )
     .neq("match_status", "ignored")
     .not("last_inbound_at", "is", null)
@@ -64,16 +78,18 @@ export async function loadInbox(supabase: SupabaseClient, now: Date = new Date()
   if (error) throw new Error("inbox_unavailable");
 
   return ((data ?? []) as unknown as ThreadRow[]).map((t) => {
-    const draft = [...(t.drafts ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).find((d) => OPEN.has(d.status)) ?? null;
-    const send = draft ? [...(draft.sends ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null : null;
+    const drafts = [...(t.drafts ?? [])].sort(newestFirst((d) => d.created_at));
+    const draft = drafts.find((d) => IN_FLIGHT.has(d.status)) ?? drafts.find((d) => OPEN.has(d.status)) ?? null;
+    const sends = [...(draft?.sends ?? [])].sort(newestFirst((s) => s.updated_at));
+    const send = sends.find((s) => IN_FLIGHT.has(s.status)) ?? sends[0] ?? null;
     // Same order as the database uses for "the latest message".
     const latestInbound = (t.messages ?? [])
       .filter((m) => m.direction === "inbound" && !m.deleted_at)
-      .sort((a, b) => b.sent_at.localeCompare(a.sent_at) || b.received_at.localeCompare(a.received_at) || b.id.localeCompare(a.id))[0];
+      .sort(newestFirst((m) => m.sent_at, (m) => m.received_at))[0];
     const initial = t.prospect?.outreach?.find((o) => o.kind === "initial") ?? null;
     const messages = [...(t.messages ?? [])]
       .filter((m) => !m.deleted_at)
-      .sort((a, b) => a.sent_at.localeCompare(b.sent_at))
+      .sort((a, b) => Date.parse(a.sent_at) - Date.parse(b.sent_at))
       .slice(-10)
       .map((m) => ({ direction: m.direction, text: m.text, attachmentTypes: m.attachment_types, sentAt: m.sent_at }));
     return {
