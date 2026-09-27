@@ -83,7 +83,7 @@ for (const width of [320, 375]) {
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
       await expect(page.getByRole("navigation", { name: "営業管理" }).locator('[aria-current="page"]')).toHaveCount(1);
       // Open every folded section so hidden content is measured too.
-      for (const summary of await page.locator("details:not([open]) > summary").all()) await summary.click();
+      await page.evaluate(() => document.querySelectorAll("details").forEach((d) => (d.open = true)));
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(overflow, `${path} at ${width}px`).toBeLessThanOrEqual(0);
 
@@ -93,7 +93,10 @@ for (const width of [320, 375]) {
         const box = await button.boundingBox();
         expect(box!.height, `${path}: ${await button.textContent()}`).toBeGreaterThanOrEqual(32);
       }
-      for (const primary of await page.locator("main [class*='primary']").all()) {
+      const primaries = await page.locator("main [class*='primary']").all();
+      // Today has the send actions, so the selector must match something there.
+      if (path === "/admin/sales") expect(primaries.length, "primary actions found").toBeGreaterThan(0);
+      for (const primary of primaries) {
         if (!(await primary.isVisible())) continue;
         expect((await primary.boundingBox())!.height, `${path}: primary`).toBeGreaterThanOrEqual(44);
       }
