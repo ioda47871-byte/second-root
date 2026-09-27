@@ -1159,7 +1159,7 @@
         "Meta App Review 申請",
         "Production への有効化"
       ],
-      "status": "in_progress",
+      "status": "blocked",
       "forbidden_scope": [
         "main への直接 push",
         "Production data / secrets の操作",
@@ -1172,7 +1172,7 @@
         "Meta access token / App Secret を GitHub・ブラウザ・ログ・DB に出す"
       ],
       "attempts": 0,
-      "last_failure": null,
+      "last_failure": "HUMAN-006: 実 Meta アカウントでの確認（受信・返信案・1 タップ返信）は Meta App 作成・Webhook 登録・Vercel 環境変数・Live 化が必要（docs/INSTAGRAM_SETUP.md）。コード・保存期間・security review（PASS）・mock E2E は完了（PR #33）。",
       "branch": "feature/dev-024-ig-launch-prep"
     }
   ]
