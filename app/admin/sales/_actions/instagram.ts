@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/auth";
 import { demoUrl } from "@/lib/admin/today";
 import { checkDraft } from "@/lib/instagram/draft";
-import { sendText } from "@/lib/instagram/graph";
+import { sendApprovedReply } from "@/lib/instagram/reply";
 import type { ReplyType } from "@/lib/sales/types";
 import { createAuthClient } from "@/lib/supabase/server";
 
@@ -38,34 +38,31 @@ function codeOf(message: string | undefined): string {
 export async function sendIgReply(draftId: string): Promise<IgResult> {
   await requireAdmin();
   if (!id.safeParse(draftId).success) return { ok: false, error: NOT_FOUND };
-  const supabase = await createAuthClient();
-  const { data, error } = await supabase.rpc("sales_ig_begin_send", { p_draft_id: draftId });
-  if (error) return { ok: false, error: BEGIN_ERRORS[codeOf(error.message)] ?? "送信を開始できませんでした。画面を再読み込みしてください。" };
-  const begun = data as { send_id: string; status: string; replayed: boolean; account_id?: string; igsid?: string; body?: string };
-  if (begun.replayed) {
-    if (begun.status === "sent") return done("この返信は送信済みです。");
-    if (begun.status === "sending") return { ok: false, error: "送信中です。少し待ってから画面を再読み込みしてください。" };
-    return done("送信されたか確認できていない返信があります。Instagram で確認してください。");
+  const outcome = await sendApprovedReply(await createAuthClient(), draftId);
+  switch (outcome.kind) {
+    case "sent":
+      return done("送信しました。");
+    case "already_sent":
+      return done("この返信は送信済みです。");
+    case "in_flight":
+      return { ok: false, error: "送信中です。少し待ってから画面を再読み込みしてください。" };
+    case "refused":
+      return { ok: false, error: BEGIN_ERRORS[outcome.code] ?? "送信を開始できませんでした。画面を再読み込みしてください。" };
+    case "record_failed":
+      return { ok: false, error: "送信結果を記録できませんでした。Instagram で送信されたか確認してください。" };
+    case "failed":
+      revalidatePath("/admin/sales/replies");
+      return {
+        ok: false,
+        error:
+          outcome.errorCode === "not_configured"
+            ? "Instagram との連携がまだ設定されていません（送信していません）。"
+            : "送信できませんでした（Instagram 側で受け付けられませんでした）。内容や状況を確認して、もう一度お試しください。",
+      };
+    case "unknown":
+      revalidatePath("/admin/sales/replies");
+      return { ok: false, error: "送信されたか確認できませんでした。Instagram アプリで確認し、「送信されていた」か「送信されていなかった」を押してください。" };
   }
-
-  const result = await sendText(begun.account_id!, begun.igsid!, begun.body!);
-  const { error: finishError } = await supabase.rpc("sales_ig_finish_send", {
-    p_send_id: begun.send_id,
-    p_outcome: result.outcome,
-    p_meta_message_id: result.outcome === "sent" ? result.messageId : null,
-    p_error_code: result.outcome === "sent" ? null : result.errorCode,
-  });
-  if (finishError) {
-    // The outcome could not be recorded: the reservation turns into
-    // "unknown" after 2 minutes and is never resent automatically.
-    return { ok: false, error: "送信結果を記録できませんでした。Instagram で送信されたか確認してください。" };
-  }
-  if (result.outcome === "sent") return done("送信しました。");
-  revalidatePath("/admin/sales/replies");
-  if (result.outcome === "failed") {
-    return { ok: false, error: "送信できませんでした（Instagram 側で受け付けられませんでした）。内容や状況を確認して、もう一度お試しください。" };
-  }
-  return { ok: false, error: "送信されたか確認できませんでした。Instagram アプリで確認し、「送信されていた」か「送信されていなかった」を押してください。" };
 }
 
 type DraftRow = {
