@@ -32,6 +32,9 @@ test("shows a sent demo with the proposal notice and noindex", async ({ page }) 
   expect(res?.status()).toBe(200);
   expect(res?.headers()["x-robots-tag"]).toBe("noindex, nofollow");
   expect(res?.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(res?.headers()["x-frame-options"]).toBe("DENY");
+  expect(res?.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(res?.headers()["x-content-type-options"]).toBe("nosniff");
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
   await expect(page.getByRole("note")).toContainText("ご提案用のデモページ");
   await expect(page.getByRole("note")).toContainText("公式サイトではありません");
