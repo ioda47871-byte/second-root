@@ -12,13 +12,14 @@ import { createAuthClient } from "@/lib/supabase/server";
 
 const STATUS = { drafted: "未送信", sent: "返信待ち", replied: "返信あり", meeting: "商談中", won: "成約", lost: "失注" } as const;
 const CHANNEL = { instagram: "Instagram", email: "メール" } as const;
+const HISTORY_LIMIT = 200;
 
 export default async function HistoryPage() {
   await requireAdminPage();
   let history, metrics;
   try {
     const supabase = await createAuthClient();
-    [history, metrics] = await Promise.all([loadHistory(supabase), loadMetrics(supabase)]);
+    [history, metrics] = await Promise.all([loadHistory(supabase, HISTORY_LIMIT), loadMetrics(supabase)]);
   } catch {
     return (
       <p className={styles.error} role="alert">
@@ -35,16 +36,16 @@ export default async function HistoryPage() {
         <p className={styles.muted}>まだ送信済みの営業はありません。</p>
       ) : (
         groupMetrics(metrics).map((group) => (
-          <div key={group.dimension} className={styles.tableWrap}>
+          <div key={group.dimension} className={styles.tableWrap} tabIndex={0} role="region" aria-label={`成果: ${DIMENSION_LABEL[group.dimension]}`}>
             <table className={styles.metrics}>
-              <caption className={styles.muted} style={{ textAlign: "left", padding: "8px 6px" }}>
+              <caption className={`${styles.muted} ${styles.caption}`}>
                 {DIMENSION_LABEL[group.dimension]}
               </caption>
               <thead>
                 <tr>
                   <th scope="col">条件</th>
                   <th scope="col">送信</th>
-                  <th scope="col">返信率</th>
+                  <th scope="col">返信</th>
                   <th scope="col">商談</th>
                   <th scope="col">成約</th>
                   <th scope="col">成約額</th>
@@ -55,8 +56,12 @@ export default async function HistoryPage() {
                   <tr key={`${row.dimension}-${row.value}`}>
                     <th scope="row">{valueLabel(row.value)}</th>
                     <td>{row.sent}</td>
-                    <td>{rate(row.replied, row.sent)}</td>
-                    <td>{row.meetings}</td>
+                    <td>
+                      {row.replied}（{rate(row.replied, row.sent)}）
+                    </td>
+                    <td>
+                      {row.meetings}（{rate(row.meetings, row.sent)}）
+                    </td>
                     <td>
                       {row.won}（{rate(row.won, row.sent)}）
                     </td>
@@ -70,6 +75,7 @@ export default async function HistoryPage() {
       )}
 
       <h2 className={styles.h2}>店舗（新しい順）</h2>
+      {history.length >= HISTORY_LIMIT && <p className={styles.muted}>新しい {HISTORY_LIMIT} 件を表示しています。</p>}
       {history.length === 0 ? (
         <p className={styles.muted}>まだ営業候補はありません。</p>
       ) : (
