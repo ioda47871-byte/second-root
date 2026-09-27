@@ -77,9 +77,15 @@ const now = new Date().toISOString();
 
 // ---- session A -------------------------------------------------------------
 const runId = randomUUID();
-const first = await call({ action: "status" });
-console.log(`A status → ${first.run ? `${first.run.runId} ${first.run.nextAction}` : "no resumable run"}`);
-assert(!first.run, "a resumable run already exists locally; finish or abort it first");
+// 409 = today's run failed; a completed run today also closes the day.
+const first = await call({ action: "status" }, { expect: [200, 409] });
+console.log(`A status → ${first.run ? `${first.run.runId} ${first.run.nextAction}` : "no run today"}`);
+assert(
+  !first.run,
+  first.run && ["none", "start_new_run"].includes(first.run.nextAction)
+    ? "today's run already exists locally (one run per day); delete it from the local sales_agent_runs to run again"
+    : "a resumable run already exists locally; finish or abort it first",
+);
 
 const started = await call({ action: "start", runId });
 assert(started.run.nextAction === "discover", "start must lead to discover");
