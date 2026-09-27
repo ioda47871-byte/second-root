@@ -944,7 +944,7 @@
       "title": "Instagram Messaging data model / webhook",
       "priority": "P2",
       "depends_on": [
-        "DEV-019"
+        "DEV-018"
       ],
       "purpose": "Meta 公式 Webhook で Instagram の受信 DM を検証・保存する（docs/INSTAGRAM_MESSAGING.md §3・§7・§8）",
       "acceptance_criteria": [
@@ -972,7 +972,7 @@
         "MVP 仕様の重大変更",
         "Meta App 作成・Webhook 登録（HUMAN BLOCKER、コード・テストは先に進める）"
       ],
-      "status": "backlog",
+      "status": "in_progress",
       "forbidden_scope": [
         "main への直接 push",
         "Production data / secrets の操作",
@@ -986,7 +986,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null
+      "branch": "feature/dev-020-ig-webhook"
     },
     {
       "id": "DEV-021",
