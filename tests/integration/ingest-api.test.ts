@@ -130,9 +130,23 @@ describe("run lifecycle through the API", () => {
     const runId = randomUUID();
     await ok({ action: "start", runId });
     expect(await ok({ action: "status" })).toMatchObject({ nextAction: "discover" });
-    await ok({ action: "checkpoint", runId, phase: "discovered", candidates: [{ key: "c1", name: "店", category: "cafe" }] });
-    const status = await ok({ action: "status", runId });
-    expect(status).toMatchObject({ nextAction: "verify", discoveredKeys: ["c1"] });
+    await ok({
+      action: "checkpoint",
+      runId,
+      phase: "discovered",
+      candidates: [{ key: "c1", name: "店", category: "cafe", ward: "東区", instagramUrl: "https://www.instagram.com/resume_cafe/" }],
+    });
+    // A new session has no memory: status alone gives it the stubs to verify.
+    const status = await ok({ action: "status" });
+    expect(status).toMatchObject({
+      runId,
+      nextAction: "verify",
+      discoveredKeys: ["c1"],
+      discovered: [{ key: "c1", name: "店", category: "cafe", ward: "東区", websiteUrl: null, instagramUrl: "https://www.instagram.com/resume_cafe/" }],
+    });
+    // Once verified, the stubs are no longer returned.
+    const verified = await ok({ action: "checkpoint", runId, phase: "verified", candidates: [] });
+    expect(verified).toMatchObject({ nextAction: "persist", discovered: [] });
   });
 
   it("rejects ineligible shops at verify time and never persists them", async () => {
