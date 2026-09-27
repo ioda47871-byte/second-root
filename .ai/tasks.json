@@ -184,7 +184,7 @@
     {
       "id": "DEV-003",
       "title": "Operational Claude ingest API",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P0",
       "depends_on": [
         "DEV-001",
