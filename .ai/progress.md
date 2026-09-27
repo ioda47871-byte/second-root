@@ -57,3 +57,8 @@
 - 2026-09-27: DEV-006 merge（PR #16, c9c4a70）。
 - 2026-09-27: DEV-010 review PASS（Medium: iOS で await 後の window.open がブロックされうる → タップ内で同期実行 + フォールバックリンク）。merge（PR #17, a04c440）。
 - 2026-09-27: DEV-007 PR #18 review PASS（Medium 3: 長い説明文の横はみ出し・重複 key・全テンプレ e2e）→ 修正 push、CI 待ち。
+- 2026-09-27: DEV-007 merge（PR #18, 5b9c14c）。
+- 2026-09-27: DEV-011 review PASS（Medium: 長文で送信ボタンが黙って消える・メールアプリが開かない時の手段なし → 理由表示・コピー可能な宛先/件名/本文）。merge（PR #19, 70ba4a8）。
+- 2026-09-27: DEV-015 PR #20: review round 1 FAIL（High: 無人で Web を閲覧する agent に prompt injection 対策の指示がない）→ 修正、round 2 PASS。status が discovered の stub を返すよう変更（新しい session が記憶なしで verify を再開できる。ARCHITECTURE §7.3 との不整合を解消）。ローカル dry-run OK。
+- 2026-09-27: DEV-014 実装（feature/dev-014-followup、DEV-013 の上に stack）。integration 130 / e2e 60 green。
+- 運用メモ: e2e・dry-run で起動した next-server が残ることがある。作業後に確認して停止する。
