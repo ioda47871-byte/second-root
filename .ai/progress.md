@@ -85,3 +85,4 @@
 - 2026-09-27: DEV-020 着手。依存を DEV-019 → DEV-018 に変更（DEV-019 は人間の Release 承認待ちで blocked のため。後続機能のローカル実装・テストは MVP のコード完成（DEV-018）だけに依存し、本番 release とは独立。Meta 実アカウント操作は DEV-024 の HUMAN BLOCKER）。
 - 2026-09-27: DEV-020 review PASS（Medium 3: 取り消されたメッセージの本文が残る順序・保存できない文字で batch が永久失敗・account id 任意）→ 修正、merge（PR #30）。DEV-021 は review round 1 FAIL（High: 返信案のリンク検査が裸のドメイン等を見逃す）→ 修正、round 2 review 中。DEV-022/023（受信 inbox UI + 人間承認後の公式 API 送信）を同じ branch で実装中。
 - 2026-09-27: DEV-021 review round 2 FAIL（High: IDN・IPv4・不可視文字を含むリンク）→ 修正、round 3 PASS（Medium: デモ URL 境界の deny-list → allow-list に修正）。merge（PR #31, a2055b9）。DEV-022/023 は実装・テスト完了（send integration 13、e2e 8）、fresh review 中。
+- 2026-09-27: DEV-022/023（Instagram 返信 inbox + 人間承認後の公式 Send API 送信）review round 1 PASS（Medium 4）→ 修正、round 2 FAIL（High: 前の文面への再試行で draft が送信中のまま）→ 修正、round 3 PASS（Medium 2 も修正）。merge（PR #32, 620297b）。DEV-024（保存期間・連携確認・人間の設定手順）を実装、最終 security review 中。
