@@ -130,7 +130,8 @@ Production data / Production secrets / main 直接 push / Production release / D
 3. nextAction=verify   : discovered の stub だけを対象に公式サイト再確認・第一者 email・出典を確認
                          → action=checkpoint phase=verified（≤5）
 4. nextAction=persist  : action=persist（候補は送らない。サーバーが verified checkpoint を処理）
-                         → 候補に error があれば persist を再度呼ぶ（上限 3 回）
+                         → 候補に error があれば persist を再度呼ぶ（3 回目でサーバーが run を確定する）
+                         → 409 run_busy は別の persist が実行中。少し待って status から確認する
 5. nextAction=none     : 完了。結果を要約して終了
    nextAction=start_new_run : 前の run は再開しない。1 から新しい run を始める
 ```

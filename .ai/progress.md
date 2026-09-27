@@ -7,7 +7,7 @@
 
 - 現在の Task: **BOOT-001**（PR #8 open・未 merge）への耐障害性補強（checkpoint / resume / run_id 冪等性 / fail-closed の設計反映）
 - 作業 branch: `claude/sales-agent-bootstrap-6e2zge`（base: `main` @ a926acf）
-- 補強の進捗: docs 反映済み → tasks.json 受入条件・guard test 反映済み → 検証・Fresh Review・CI 確認
+- 補強の進捗: docs 反映 → tasks.json 受入条件・guard test → Fresh Review PASS（指摘反映済み, .ai/reviews/BOOT-001-resilience.md）→ CI 確認
 - 次の一手: 補強が CI green + Fresh Review PASS になったら停止し、人間が PR #8 を merge → `develop` 作成（HUMAN-001）
 - DEV-001 以降は HUMAN-001 解除まで開始しない
 
@@ -36,3 +36,4 @@
 - 2026-09-24: CI run #1 で e2e job 内の2回目の build が next/font/google の Google Fonts 取得（外部）で失敗（同コミットの build job は成功）。build を1回にし e2e は `.next` artifact を再利用する構成に修正。
 - 2026-09-24: Fresh Review PASS。Medium 3件・Low 3件を反映。BOOT-001 を done に更新。
 - 2026-09-27: 耐障害性補強を開始。ARCHITECTURE §5/§7（action 設計・phase/stage・nextAction・多重重複防止・候補単位 transaction）、MVP_SPEC §3.6/§10、AI_WORKFLOW §9、SECURITY §3.1、RELEASE §6 を更新。DEV-001/002/003/015/016 に [checkpoint]/[resume]/[idempotency]/[fail-closed] 受入条件を追加し、tests/unit/ai-tasks.test.ts で存在を検査。
+- 2026-09-27: 耐障害性補強の Fresh Review PASS（Critical/High 0）。Medium 3 / Low 3 を反映（checkpoint を同一 transaction で確定、persist の run 単位直列化、3 回で partial_errors 確定、dedupe→DNC→上限の順、期限切れ run の failed 確定、候補 key 定義）。

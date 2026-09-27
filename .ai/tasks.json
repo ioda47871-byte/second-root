@@ -80,15 +80,17 @@
         "CI に integration job 追加（ローカル Supabase、Production 接続なし）",
         "[checkpoint] sales_agent_runs: run_id(PK) / status(running|completed|failed) / phase(started|discovered|verified|persisting|completed) / checkpoint jsonb(≤64KB check) / checkpoint_at / result / error_code / error_summary(≤500) / started_at / finished_at",
         "[idempotency] 重複防止の DB 制約: prospect の dedupe キー unique、sales_demos unique(prospect_id)、sales_outreaches unique(prospect_id) where kind='initial'、各行に run_id",
-        "[fail-closed] 候補ごとの persist を1 transaction で行う Postgres 関数（dedupe・DNC・当日上限を advisory lock 下で確認。どれかが失敗したら rollback し outreach を作らない）",
-        "[resume] phase は条件付き update で前進のみ（後退・飛び越しは DB 側でも失敗する）"
+        "[fail-closed] 候補ごとの persist を1 transaction で行う Postgres 関数（dedupe → DNC → 当日上限を全 run 共通の advisory lock 下で確認。どれかが失敗したら rollback し outreach を作らない。候補の結果 stage も同じ transaction で checkpoint に書く）",
+        "[resume] phase は条件付き update で前進のみ（後退・飛び越しは DB 側でも失敗する）",
+        "[idempotency] persist は run_id ごとの advisory lock で直列化し、run 行を SELECT … FOR UPDATE してから checkpoint を更新する"
       ],
       "required_tests": [
         "integration: DB/RLS（admin 可 / 非 admin 不可 / anon 不可）",
         "integration: constraints",
         "integration: 同一候補の二重 persist で prospect/demo/outreach が1件のまま",
         "integration: persist 途中の失敗で部分行が残らない（rollback）",
-        "integration: checkpoint 64KB 超過が DB で拒否される"
+        "integration: checkpoint 64KB 超過が DB で拒否される",
+        "integration: 同一 run の persist 同時実行で checkpoint 更新が失われない（run_busy）"
       ],
       "allowed_scope": [
         "supabase/",
@@ -142,7 +144,8 @@
         "フォローは状態ではなく kind=follow_up の outreach として扱う",
         "[resume] run phase の遷移関数（前進のみ・飛び越し拒否・前 phase の再送は no-op）と nextAction 導出（discover / verify / persist / none / start_new_run、24h 超は start_new_run）",
         "[fail-closed] 候補 stage 判定（pending→deduped→persisted→demo_ready→outreach_ready / rejected / duplicate / error）。確認不能（unknown・出典なし・照合失敗）は outreach_ready にしない",
-        "[checkpoint] checkpoint のサイズ上限・禁止内容（raw HTML 等）の検証関数"
+        "[checkpoint] checkpoint のサイズ上限・禁止内容（raw HTML 等）の検証関数",
+        "[resume] nextAction 導出で期限切れ running を start_new_run とし、persist 試行上限（3）到達時の確定判定を純粋関数で提供"
       ],
       "required_tests": [
         "unit: dedupe",
@@ -201,7 +204,9 @@
         "[idempotency] 1 endpoint・action（start / status / checkpoint / persist / abort）の discriminated union。completed run への再送は処理せず保存済み result を返す（replayed: true）",
         "[resume] running run は checkpoint から続行。persist は verified checkpoint の候補だけを処理し、終端 stage の候補を再処理しない。24h 超の run は 409 run_expired",
         "[fail-closed] phase 飛び越しは 409 phase_order_violation。dedupe/DNC/永続化の失敗は error stage とし outreach_ready にしない",
-        "[checkpoint] 意味のある工程境界（start / discovered / verified / 候補ごとの persist 結果 / completed）でのみ checkpoint を確定"
+        "[checkpoint] 意味のある工程境界（start / discovered / verified / 候補ごとの persist 結果 / completed）でのみ checkpoint を確定",
+        "[resume] 自 run が作った prospect（first_seen_run_id と候補 key が一致）は duplicate ではなく既存結果を返す。未知の候補 key は拒否",
+        "[fail-closed] persist 3 回後も error が残る run は completed（error_code partial_errors）で確定し、該当候補は営業準備しない。24h 超の running は参照時に failed（run_expired）へ確定"
       ],
       "required_tests": [
         "integration: ingest API",
@@ -215,7 +220,9 @@
         "integration: completed run の再送が replayed で同じ結果",
         "integration: persist 途中で中断 → 再度 persist で重複なく完了",
         "integration: phase 飛び越し拒否",
-        "integration: DB 照合失敗時に outreach が作られない"
+        "integration: DB 照合失敗時に outreach が作られない",
+        "integration: 同一 run の persist 同時実行は 409 run_busy",
+        "integration: persist 3 回で partial_errors 確定"
       ],
       "allowed_scope": [
         "app/api/internal/sales-agent/",

@@ -150,7 +150,7 @@ run の現在地を**このテーブルだけから**判断できるようにす
 | `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は再開可能な最新 run（なければ `null`） | 読み取りのみ |
 | `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める | 同じ phase の再送は上書き保存（`persisting` 以降は拒否） |
 | `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤5)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
-| `persist` | `runId` | `verified` checkpoint の候補を §7.4 の手順で処理し、候補ごとの stage を checkpoint に記録。全候補が終端に達したら `completed` にし `result` を保存 | 何度呼んでも同じ結果に収束（§7.3） |
+| `persist` | `runId` | `verified` checkpoint の候補を §7.4 の手順で処理し、候補ごとの stage を checkpoint に記録。全候補が終端に達したら（または試行上限で）`completed` にし `result` を保存 | 何度呼んでも同じ結果に収束（§7.3）。同じ run の `persist` 同時実行は 409 `run_busy` |
 | `abort` | `runId, errorCode, errorSummary` | `failed` にする（Operational Claude が続行不能と判断した場合） | `failed` / `completed` への再送は no-op |
 
 - `persist` は Operational Claude から候補を**受け取らない**。処理するのは直前に検証・保存した `verified` checkpoint だけなので、resume しても対象がぶれない。
@@ -187,11 +187,13 @@ run の現在地を**このテーブルだけから**判断できるようにす
 run phase:   started ──► discovered ──► verified ──► persisting ──► completed
                  (Operational Claude が調査)          (サーバーが処理)
 
-候補 stage:  pending ──► deduped ──► persisted ──► demo_ready ──► outreach_ready   (成功)
+候補 stage:  pending ──► [deduped ──► persisted ──► demo_ready] ──► outreach_ready   (成功)
                   └─► rejected(reason) / duplicate(prospectId)                    (終端・営業準備しない)
                   └─► error(code)                                                  (再試行可能・営業準備しない)
 ```
 
+- `[ ]` 内の stage は1つの transaction 内の論理的な工程で、checkpoint に記録されるのは `pending` と結果（`outreach_ready` / `rejected` / `duplicate` / `error`）だけ。
+- 候補の `key` は Operational Claude が `discovered` で付ける run 内で一意の短い文字列（例: `c01`）。`verified` の候補は `discovered` にある `key` だけを使える（未知の key は拒否）。
 - `discover` / `verify`（Web 調査）は Operational Claude 側で行い、結果を checkpoint として保存する。
 - `dedupe` / `persist` / `demo_ready` / `outreach_ready` はサーバー側で行う。
 - phase は前進のみ。後退・飛び越しはサーバーが拒否する（run phase の遷移は `lib/sales/` の純粋関数 + DB の check / 条件付き update で強制）。
@@ -219,7 +221,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | 存在しない | `start` | 作成 |
 | `running` | 同じ/次の phase | 続きから処理（resume） |
 | `running` | 前の phase | 何もせず現在の状態を返す（遅延した再送とみなす） |
-| `running`（最終 checkpoint から 24 時間超） | 任意 | 409 `run_expired`。新しい run_id で始める（`status` では `nextAction: "start_new_run"`） |
+| `running`（最終 checkpoint から 24 時間超） | 任意 | その場で `failed` / error_code `run_expired` に確定し 409。新しい run_id で始める。runId なしの `status` は期限切れ run を返さない |
 | `completed` | 任意 | 処理せず保存済み `result` を返す（`replayed: true`） |
 | `failed` | 任意 | 処理しない。`nextAction: "start_new_run"` |
 
@@ -237,19 +239,21 @@ run phase:   started ──► discovered ──► verified ──► persistin
 
 1. **run 単位**: `completed` の再送は保存済み結果を返すだけ。
 2. **候補単位**: `persist` は checkpoint 上で終端 stage（`outreach_ready` / `rejected` / `duplicate`）の候補を再処理しない。
-3. **DB 制約（最後の砦）**: prospect の dedupe キー unique、`sales_demos` unique(prospect_id)、`sales_outreaches` unique(prospect_id) where kind='initial'。通信断で checkpoint 更新前に落ちても、再処理は既存行を再利用する（insert … on conflict）。
-4. **別 run との重複**: dedupe で既存 prospect に一致した候補は `duplicate` とし、新しい demo / outreach を作らない。
+3. **checkpoint と業務データを同じ transaction で確定**: 候補の結果 stage は、prospect / demo / outreach の書き込みと同じ transaction で `sales_agent_runs.checkpoint` に書く。「行は作ったが checkpoint 未更新」の状態が起きない。
+4. **DB 制約（最後の砦）**: prospect の dedupe キー unique、`sales_demos` unique(prospect_id)、`sales_outreaches` unique(prospect_id) where kind='initial'。万一再処理されても insert は失敗し、重複行はできない。
+5. **自 run の再処理と別 run の重複の区別**: dedupe で一致した prospect の `first_seen_run_id` が同じ run かつ同じ候補 key なら、自分の既存結果（`outreach_ready` 等）を返す。別 run の prospect に一致した場合は `duplicate` とし、新しい demo / outreach を作らない。
+6. **同時実行の直列化**: `persist` は run_id ごとの advisory lock（取れなければ 409 `run_busy`）で直列化し、各 transaction は run 行を `SELECT … FOR UPDATE` してから checkpoint を更新する。`checkpoint` action も run 行をロックして更新する。
 
 ### 7.4 persist の処理と fail-closed
 
-候補ごとに**1 つの DB transaction**（Postgres 関数を service role から RPC で呼ぶ）で次を順に行う。途中のどこかが失敗・未確認なら transaction ごと rollback し、その候補は `error(code)` か `rejected(reason)` になる。`outreach_ready` に**確認が取れたものだけ**が到達する。
+候補ごとに**1 つの DB transaction**（Postgres 関数を service role から RPC で呼ぶ）で次を表の順に行う。dedupe・DNC・当日上限の確認から書き込みまでを、全 run 共通の advisory lock（`pg_advisory_xact_lock`）の下で行い、同時に走る別 run と上限・重複判定が競合しないようにする。途中のどこかが失敗・未確認なら transaction ごと rollback し、その候補は `error(code)` か `rejected(reason)` になる。`outreach_ready` に**確認が取れたものだけ**が到達する。
 
 | 工程 | 確認できない / 失敗したとき | 結果 |
 |---|---|---|
-| 当日上限（5件/日, JST） | advisory lock 下で数えた結果が上限 | `rejected(daily_cap)` |
 | dedupe（name+住所 / domain / Instagram / email） | 照合クエリ失敗 | `error(dedupe_unavailable)`。営業準備しない |
 | DNC | 照合クエリ失敗 | `error(dnc_unavailable)`。営業準備しない |
 | DNC 該当 | — | `rejected(do_not_contact)` |
+| 当日上限（5件/日, JST） | 新規 prospect 数が上限 | `rejected(daily_cap)` |
 | website 確認 | 確認失敗は `unknown` として届く | `unknown` は Instagram 不可。第一者 email がなければ `rejected(no_eligible_channel)` |
 | `not_found` の再確認記録 | 記録なし | `rejected(website_not_rechecked)` |
 | 第一者 email 出典 | 出典なし / 第一者でない | Email 不可（Instagram 条件も満たさなければ `rejected(no_eligible_channel)`） |
@@ -259,6 +263,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 
 - 候補ごとの transaction なので「prospect はあるが demo だけない」等の中途半端な行は残らない。
 - `error` の候補は再度 `persist` を呼べば再試行される（stage は checkpoint にあり、DB 制約で重複しない）。
+- `persist` の試行回数は checkpoint に記録する。**3 回目の `persist` 後も `error` が残る場合、サーバーが run を `completed`（error_code `partial_errors`）で確定**し、残りの候補は `error` のまま営業準備しない。run が `persisting` に留まり続けて新しい探索を妨げることはない（該当店舗は後日の run で再発見されれば改めて処理される）。
 - 管理画面の「今日」に出るのは `sales_outreaches`（kind=initial, status=drafted）が存在し、DNC でない店舗だけ。送信済みにする操作でも DNC をサーバー側で再確認する。
 - これらは LLM の prompt ではなく、`lib/sales/` の純粋関数・API validation・DB 制約で強制する。
 

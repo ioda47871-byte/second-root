@@ -48,7 +48,8 @@ Release Readiness（DEV-019）でチェック:
 ## 6. 途中で止まった Operational run
 
 - 状態は `sales_agent_runs` を見れば分かる（status / phase / checkpoint_at / error_code）。
-- `running` のまま最終 checkpoint から 24 時間を超えた run は再開されず、次の run が新しい run_id で始める（`nextAction: start_new_run`）。手作業のデータ修正は不要。
+- `running` のまま最終 checkpoint から 24 時間を超えた run は、次に参照された時点でサーバーが `failed`（error_code `run_expired`）に確定し、次の run は新しい run_id で始める。手作業のデータ修正は不要。
+- `persist` を 3 回試しても解消しない候補エラーは、run を `completed`（error_code `partial_errors`）として確定し、その候補は営業準備しない。
 - 途中 run が作った prospect / demo / outreach は候補単位の transaction で作られているため、中途半端な行は残らない。
 - 同じ原因で連続して失敗する場合は scheduled job を一時停止し、`.ai/blockers.md` に記録して人間が判断する。
 
