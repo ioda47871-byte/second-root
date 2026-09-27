@@ -60,7 +60,7 @@ const ALLOWED_COPY = [
   "Second Root（セカンドルート）｜名古屋の小さなお店のホームページ制作",
   // Section headings and labels
   "営業時間", "定休日", "住所", "アクセス", "電話",
-  "パンのご紹介", "お店の情報", "お菓子のご紹介", "店舗のご案内", "メニュー", "店舗情報",
+  "パンのご紹介", "お店の情報", "お菓子のご紹介", "店舗のご案内", "メニュー", "お店について",
   "名古屋市の", "名古屋のパン屋", "パン屋", "名古屋の焼菓子店", "焼菓子店", "名古屋のカフェ", "カフェ",
 ];
 
@@ -74,7 +74,7 @@ describe.each(["bakery_v1", "baked_goods_v1", "cafe_v1"] as const)("%s", (templa
   it("omits sections without facts and never prints empty placeholders", () => {
     const html = renderToStaticMarkup(renderDemo({ ...minimal, template }));
     expect(html).not.toMatch(/undefined|null|NaN/);
-    for (const label of ["営業時間", "定休日", "電話"]) expect(html).not.toContain(label);
+    for (const label of ["営業時間", "定休日", "電話", "メニュー", "ご紹介"]) expect(html).not.toContain(label);
     expect(html).toContain("公式サイトではありません");
   });
 
