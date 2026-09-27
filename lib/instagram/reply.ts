@@ -15,7 +15,7 @@ export type ReplyOutcome =
   | { kind: "refused"; code: string }
   | { kind: "record_failed" };
 
-type Begun = { send_id: string; status: string; replayed: boolean; account_id?: string; igsid?: string; body?: string };
+type Begun = { send_id: string; attempt?: number; status: string; replayed: boolean; account_id?: string; igsid?: string; body?: string };
 
 export async function sendApprovedReply(supabase: SupabaseClient, draftId: string): Promise<ReplyOutcome> {
   const { data, error } = await supabase.rpc("sales_ig_begin_send", { p_draft_id: draftId });
@@ -30,6 +30,7 @@ export async function sendApprovedReply(supabase: SupabaseClient, draftId: strin
   const result: SendOutcome = await sendText(begun.account_id!, begun.igsid!, begun.body!);
   const { error: finishError } = await supabase.rpc("sales_ig_finish_send", {
     p_send_id: begun.send_id,
+    p_attempt: begun.attempt,
     p_outcome: result.outcome,
     p_meta_message_id: result.outcome === "sent" ? result.messageId : null,
     p_error_code: result.outcome === "sent" ? null : result.errorCode,

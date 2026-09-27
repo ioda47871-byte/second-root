@@ -174,7 +174,7 @@ begin
   if d.status not in ('pending', 'snoozed', 'failed') then
     raise exception 'not_sendable' using errcode = 'P0001';
   end if;
-  select * into t from public.sales_ig_threads where id = d.thread_id;
+  select * into t from public.sales_ig_threads where id = d.thread_id for update;
   if t.match_status <> 'matched' then
     raise exception 'unmatched' using errcode = 'P0001';
   end if;
@@ -205,16 +205,18 @@ begin
   end if;
   update public.sales_ig_drafts set status = 'sending', snoozed_until = null where id = d.id;
   return jsonb_build_object(
-    'send_id', s.id, 'status', 'sending', 'replayed', false,
+    'send_id', s.id, 'attempt', s.attempts, 'status', 'sending', 'replayed', false,
     'account_id', t.ig_account_id, 'igsid', t.igsid, 'body', s.body
   );
 end;
 $$;
 
 -- この内容で返信 (2): record the outcome of the Send API call.
+--   p_attempt: the attempt number begin_send returned; a result for an
+--              earlier attempt of the same send is ignored.
 --   p_outcome: 'sent' (with Meta's message id) | 'failed' (certainly not sent)
 --              | 'unknown' (may have been sent)
-create or replace function public.sales_ig_finish_send(p_send_id uuid, p_outcome text, p_meta_message_id text, p_error_code text)
+create or replace function public.sales_ig_finish_send(p_send_id uuid, p_attempt integer, p_outcome text, p_meta_message_id text, p_error_code text)
 returns jsonb
 language plpgsql
 security definer
@@ -233,16 +235,22 @@ begin
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  -- Only an open send takes a result: 'sending', or 'unknown' when a late
-  -- but definite answer arrives. Anything else (sent, failed, a duplicate
-  -- or late call) is a replay and changes nothing.
-  if not (s.status = 'sending' or (s.status = 'unknown' and p_outcome in ('sent', 'failed'))) then
+  -- Only the current attempt of an open send takes a result: 'sending', or
+  -- a definite answer for 'unknown' (or for one the human recorded as not
+  -- sent, if Meta says it was). Anything else (a duplicate, or a late answer
+  -- for an earlier attempt) is a replay and changes nothing.
+  if p_attempt is distinct from s.attempts or not (
+    s.status = 'sending'
+    or (s.status = 'unknown' and p_outcome in ('sent', 'failed'))
+    or (s.status = 'failed' and s.error_code = 'confirmed_not_sent' and p_outcome = 'sent')
+  ) then
     return jsonb_build_object('send_id', s.id, 'status', s.status, 'replayed', true);
   end if;
   select * into d from public.sales_ig_drafts where id = s.draft_id for update;
-  -- The draft follows only its newest send, and only while that send is open.
-  follow := d.status in ('sending', 'unknown') and not exists (
-    select 1 from public.sales_ig_sends x where x.draft_id = d.id and x.id <> s.id and x.created_at > s.created_at
+  -- The draft follows this send unless another send of it is open (a draft
+  -- has at most one open send: begin_send only starts one from an idle draft).
+  follow := d.status in ('sending', 'unknown', 'failed') and not exists (
+    select 1 from public.sales_ig_sends x where x.draft_id = d.id and x.id <> s.id and x.status in ('sending', 'unknown')
   );
 
   if p_outcome = 'sent' then
@@ -308,7 +316,7 @@ begin
     'public.sales_ig_snooze_draft(uuid, boolean)',
     'public.sales_ig_resolve_thread(uuid, uuid)',
     'public.sales_ig_begin_send(uuid)',
-    'public.sales_ig_finish_send(uuid, text, text, text)',
+    'public.sales_ig_finish_send(uuid, integer, text, text, text)',
     'public.sales_ig_resolve_unknown(uuid, boolean)'
   ] loop
     execute format('revoke all on function %s from public, anon, authenticated', fn);

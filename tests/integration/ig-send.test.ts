@@ -186,7 +186,7 @@ describe("what is never sent", () => {
         sales_ig_update_draft: { p_draft_id: c.draftId, p_body: "x", p_needs_review: false, p_review_reasons: [] },
         sales_ig_snooze_draft: { p_draft_id: c.draftId, p_snooze: true },
         sales_ig_resolve_thread: { p_thread_id: c.threadId, p_prospect_id: null },
-        sales_ig_finish_send: { p_send_id: randomUUID(), p_outcome: "sent", p_meta_message_id: "x", p_error_code: null },
+        sales_ig_finish_send: { p_send_id: randomUUID(), p_attempt: 1, p_outcome: "sent", p_meta_message_id: "x", p_error_code: null },
         sales_ig_resolve_unknown: { p_send_id: randomUUID(), p_was_sent: true },
       };
       expect((await outsider.rpc(fn, args[fn])).error?.code, fn).toBe("42501");
@@ -226,12 +226,12 @@ describe("review regressions", () => {
     const begun = (await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId })).data as { send_id: string; status: string };
     expect(begun.status).toBe("sending");
     // A late answer for the first text arrives now.
-    const late = await admin.rpc("sales_ig_finish_send", { p_send_id: a.id, p_outcome: "failed", p_meta_message_id: null, p_error_code: "meta_100" });
+    const late = await admin.rpc("sales_ig_finish_send", { p_send_id: a.id, p_attempt: 1, p_outcome: "failed", p_meta_message_id: null, p_error_code: "meta_100" });
     expect(late.data).toMatchObject({ replayed: true, status: "failed" });
     expect((await state(c.draftId)).draft).toBe("sending");
     // And a duplicate finish for the current send changes nothing either.
-    await admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_outcome: "sent", p_meta_message_id: "m_late", p_error_code: null });
-    const dup = await admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_outcome: "failed", p_meta_message_id: null, p_error_code: "meta_100" });
+    await admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_attempt: 1, p_outcome: "sent", p_meta_message_id: "m_late", p_error_code: null });
+    const dup = await admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_attempt: 1, p_outcome: "failed", p_meta_message_id: null, p_error_code: "meta_100" });
     expect(dup.data).toMatchObject({ replayed: true, status: "sent" });
     expect((await state(c.draftId)).draft).toBe("sent");
   });
@@ -242,7 +242,7 @@ describe("review regressions", () => {
     await db.query(`begin; set local session_replication_role = replica; update public.sales_ig_sends set updated_at = now() - interval '3 minutes' where draft_id = '${c.draftId}'; commit;`);
     expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "unknown" });
     const { rows: [s] } = await db.query("select id from public.sales_ig_sends where draft_id = $1", [c.draftId]);
-    await admin.rpc("sales_ig_finish_send", { p_send_id: s.id, p_outcome: "sent", p_meta_message_id: "m_settled", p_error_code: null });
+    await admin.rpc("sales_ig_finish_send", { p_send_id: s.id, p_attempt: 1, p_outcome: "sent", p_meta_message_id: "m_settled", p_error_code: null });
     expect(await state(c.draftId)).toMatchObject({ draft: "sent", sends: [{ status: "sent", meta_message_id: "m_settled" }] });
     expect(sendCalls).toHaveLength(0);
   });
@@ -255,5 +255,33 @@ describe("review regressions", () => {
     await sendApprovedReply(admin, c.draftId);
     const dismiss = await admin.rpc("sales_ig_resolve_thread", { p_thread_id: c.threadId, p_prospect_id: null });
     expect(dismiss.error?.message).toMatch(/send_open/);
+  });
+
+  it("[R2-H1] retrying an earlier text (A → B → A) settles the draft", async () => {
+    const c = await conversation("900000000000705");
+    const edit = (body: string) => admin.rpc("sales_ig_update_draft", { p_draft_id: c.draftId, p_body: body, p_needs_review: false, p_review_reasons: [] });
+    replies = [{ status: 400, body: { error: { code: 100 } } }, { status: 400, body: { error: { code: 100 } } }];
+    expect((await sendApprovedReply(admin, c.draftId)).kind).toBe("failed");
+    await edit("別の文面です。");
+    expect((await sendApprovedReply(admin, c.draftId)).kind).toBe("failed");
+    await edit("お問い合わせありがとうございます。");
+    expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "sent" });
+    expect((await state(c.draftId)).draft).toBe("sent");
+    expect(sendCalls).toHaveLength(3);
+  });
+
+  it("[R2-M1] a late answer for an earlier attempt never overrides the current attempt", async () => {
+    const c = await conversation("900000000000706");
+    const first = (await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId })).data as { send_id: string; attempt: number };
+    expect(first.attempt).toBe(1);
+    await db.query(`begin; set local session_replication_role = replica; update public.sales_ig_sends set updated_at = now() - interval '3 minutes' where id = '${first.send_id}'; commit;`);
+    expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "unknown" });
+    await admin.rpc("sales_ig_resolve_unknown", { p_send_id: first.send_id, p_was_sent: false });
+    const second = (await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId })).data as { send_id: string; attempt: number };
+    expect(second).toMatchObject({ send_id: first.send_id, attempt: 2 });
+    const late = await admin.rpc("sales_ig_finish_send", { p_send_id: first.send_id, p_attempt: 1, p_outcome: "failed", p_meta_message_id: null, p_error_code: "meta_100" });
+    expect(late.data).toMatchObject({ replayed: true, status: "sending" });
+    await admin.rpc("sales_ig_finish_send", { p_send_id: first.send_id, p_attempt: 2, p_outcome: "sent", p_meta_message_id: "m_attempt2", p_error_code: null });
+    expect(await state(c.draftId)).toMatchObject({ draft: "sent", sends: [{ status: "sent", attempts: 2, meta_message_id: "m_attempt2" }] });
   });
 });
