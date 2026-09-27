@@ -5,10 +5,10 @@ import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
 import { demoUrl, loadTodayQueue, type TodayItem } from "@/lib/admin/today";
 import { buildMailto, composeDm, composeEmailBody, instagramOpenUrl } from "@/lib/sales/messages";
-
-const DEFAULT_SUBJECT = "ホームページのご提案（Second Root）";
 import { LIMITS } from "@/lib/sales/types";
 import { createAuthClient } from "@/lib/supabase/server";
+
+const DEFAULT_SUBJECT = "ホームページのご提案（Second Root）";
 
 /** The one big action for a queue item (Instagram, email; follow-up in DEV-014). */
 function actionFor(item: TodayItem) {
