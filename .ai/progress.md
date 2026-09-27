@@ -76,3 +76,5 @@
 - 2026-09-27: DEV-016 代替 rehearsal 完了: session A（実 Web 調査・discovered 後に中断）→ session B（記憶なし）が status から再開し 2 件 outreach_ready、persist 再送は replayed で重複なし。発見: 完了後の status が null で同日 2 run 目を開始できた → PR #24（今日の run を返す migration 000800 + prompt 修正）、review PASS・指摘修正済み。
 - 2026-09-27: PR #25（DEV-017 security）・PR #26（DEV-018 mobile QA）作成、review 中。
 - 運用メモ: 共有ローカル DB で reviewer と同時に integration を走らせると users / rows が消えて失敗する（interference）。CI（毎回 fresh DB）を正とし、ローカルは reviewer 終了後に再実行する。
+- 2026-09-27: DEV-020〜024 事前調査（Meta 公式ドキュメントのみ、`.ai/research/meta-instagram-messaging-2026-09-27.md`）: Instagram API with Instagram Login（`instagram_business_basic` / `instagram_business_manage_messages`）、Webhook は `X-Hub-Signature-256`（raw body の HMAC-SHA256）、再送あり（mid で重複排除）、返信は相手の最後のメッセージから 24 時間以内、Send API に公式の idempotency key はない（結果不明の送信は自動再送しない設計が必要）。Standard Access で一般ユーザーとやり取りできるかは公式ドキュメント間で矛盾 → Live app での確認が必要（HUMAN BLOCKER 候補）。
+- 2026-09-27: PR #25（DEV-017）・#26（DEV-018）review PASS、指摘修正済み。DEV-018 の強化テストで返信フォームの radio が 20px（< 24px）と判明 → 24px に修正。

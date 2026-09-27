@@ -110,9 +110,24 @@ describe("prepareCandidate", () => {
     const noSite = verifiedInput({ email: { address: "info@pan.example.com", sourceUrl: "https://pan.example.com/contact", sourceType: "official_contact" } });
     const r = prepareCandidate(noSite);
     expect(r.stage === "pending" && r.candidate.channel).toBe("instagram");
-    const profile = verifiedInput({ email: { address: "info@pan.example.com", sourceUrl: "https://lit.link/pan", sourceType: "official_profile" } });
-    const p = prepareCandidate(profile);
+  });
+
+  it("uses an official_profile email only from the shop's own verified Instagram profile", () => {
+    const own = verifiedInput();
+    const ownProfile = verifiedInput({ email: { address: "info@pan.example.com", sourceUrl: own.instagramUrl!, sourceType: "official_profile" } });
+    // Same shop, same profile URL as its verified instagramUrl.
+    ownProfile.instagramUrl = own.instagramUrl;
+    const p = prepareCandidate(ownProfile);
     expect(p.stage === "pending" && p.candidate.channel).toBe("email");
+    expect(p.stage === "pending" && p.candidate.public_email).toBe("info@pan.example.com");
+
+    for (const sourceUrl of ["https://lit.link/pan", "https://www.instagram.com/someone_else/", "https://www.facebook.com/pan"]) {
+      const other = verifiedInput({ email: { address: "info@pan.example.com", sourceUrl, sourceType: "official_profile" } });
+      const r = prepareCandidate(other);
+      // The email is dropped; the shop stays an Instagram candidate.
+      expect(r.stage === "pending" && r.candidate.channel, sourceUrl).toBe("instagram");
+      expect(r.stage === "pending" && r.candidate.public_email, sourceUrl).toBeNull();
+    }
   });
 
   it("never guesses or keeps a third-party email", () => {

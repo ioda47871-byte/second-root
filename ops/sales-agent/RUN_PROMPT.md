@@ -60,8 +60,11 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
 応答の `run.nextAction` に従って進む。自分で phase を飛ばさない。
 
 1. `{"action":"status"}`（runId なし）
-   - `run` があれば、その `run.runId` と `run.nextAction` から続ける（前の session の続き）。
-   - `run` が `null`（`nextAction: "start_new_run"`）なら、新しい UUID v4 を作り `{"action":"start","runId":"<uuid>"}`。
+   - `run` があり `nextAction` が `discover` / `verify` / `persist` なら、その `run.runId` から続ける（前の session の続き）。
+   - `run` があり `nextAction` が `none`（今日の run は完了済み）または `start_new_run`（今日の run は失敗）なら、
+     **新しい run を始めずに**報告して終了する（1 日 1 run。サーバーは今日（日本時間）の run をこうして返し続ける）。
+   - `run` が `null`（今日まだ run がない）なら、新しい UUID v4 を作り（例: `cat /proc/sys/kernel/random/uuid`）
+     `{"action":"start","runId":"<uuid>"}`。
 2. `nextAction = "discover"`: Web 検索で候補を探し、`checkpoint`（`phase: "discovered"`）で候補の要約（stub）を保存する。
 3. `nextAction = "verify"`: **`status` 応答の `run.discovered`（discovered の stub）だけ**を対象に確認する。
    session が変わっても stub は `run.discovered` に入っているので、探索し直さない・新しい店舗や key を追加しない
@@ -71,15 +74,13 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
    - 応答の `run.candidates[].stage` に `error` が残っていれば、もう一度 `persist` を呼ぶ（3 回目でサーバーが run を確定する）。
    - `409 run_busy` は別の persist が実行中。1〜2 分待って `status` から確認する。
 5. `nextAction = "none"`: 完了。§6 の形式で結果を報告して終了。
-   `nextAction = "start_new_run"`:
-   - 手順 1 の `status`（runId なし）が `run: null` を返した → 再開する run がないので、新しい runId で `start` してよい。
-   - それ以外（run が `failed` / 期限切れで 409 と `start_new_run` が返った）→ 前の run は再開しない。
-     **この session では新しい run を始めずに**報告して終了する（1 日 1 run。次回の起動で新しい run が始まる）。
+   `nextAction = "start_new_run"`（run が `failed` / 期限切れ）: 前の run は再開しない。
+   **この session では新しい run を始めずに**報告して終了する（1 日 1 run。次回の起動で、今日（日本時間）まだ run がなければ新しい run が始まる）。
 
 ### 通信失敗・再送（冪等）
 
 - タイムアウト・5xx・接続失敗のときは、**同じ runId・同じ action・同じ内容**で再送してよい（最大 3 回、間隔を 30 秒・60 秒・120 秒と空ける）。
-- 新しい runId を作ってよいのは、`status` が `start_new_run` を返し、かつ今日まだ run を始めていないときだけ。
+- 新しい runId を作ってよいのは、runId なしの `status` が `run: null`（今日まだ run がない）を返したときだけ。
 - 同じ phase の `checkpoint` を再送すると上書き保存される。前の phase の再送は無視される（エラーではない）。
 
 ### HTTP ステータスと対応
@@ -100,6 +101,13 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
 | 503 `ingest_disabled` / `internal_error` | サーバー側が未設定・DB 不達 | 上の再送規則で 3 回まで。直らなければ BLOCKED 報告 |
 
 ## 3. discover（候補探索）
+
+- discover は「候補の店舗を特定する」段階。住所が名古屋市内であることは**住所が載っているページで**確認してから stub にする
+  （検索結果の要約・AI の要約だけで判断しない。要約は県名などを間違えることがある）。
+- §1 の対象外条件は、discover の時点で分かる範囲で当てはめる（メールの有無などの詳しい確認は verify で行う）。
+  discover で保存した候補を verify で外すのは問題ない。
+- stub の `websiteUrl` / `instagramUrl` は未確認でもよい。verify で正しい URL に直してよい（同じ店舗・同じ key のまま）。
+- 業種が迷う場合は主な業態で決める: 店内で飲み物と食事を出すのが中心なら `cafe`、持ち帰りの焼菓子が中心なら `baked_goods`、パンが中心なら `bakery`。
 
 - Web 検索（地図・グルメサイトは「店舗の存在を知る」ためにだけ使う）で名古屋市内の対象業種の店舗を探す。
 - 各候補に run 内で一意の短い `key` を付ける（`c01`, `c02` …。先頭は英小文字か数字、以降は英小文字・数字・`_`・`-`、32 文字以内）。
@@ -126,12 +134,21 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
 
 `website` は `{ "status", "url", "checks" }` の 3 つを**必ず**入れる。`checks` は実際に公式サイトを探した検索の回数（整数 0〜10）。
 
+- 公式サイトとして扱うもの: 店舗自身が運営するサイト（独自ドメイン、または BASE / STORES / Shopify / Jimdo / ペライチ等で**その店舗専用の URL**を持つページやネットショップ）。
+  公式サイトとして扱わないもの: SNS（Instagram / Facebook / X 等）、地図・グルメ・予約・口コミサイト、楽天・Amazon・Yahoo!ショッピング・minne・Creema 等のモール / マーケットプレイス内の店舗ページ。
 - `status: "present"` と `url`: 店舗自身の公式サイトが見つかった。`url` は公式サイトのトップ（http/https）。例: `{ "status": "present", "url": "https://…/", "checks": 1 }`
   SNS・地図・グルメサイト・予約サイト・ポータル・EC モールのページは公式サイトとして扱わない。
 - `status: "not_found"`: **2 回以上の独立した検索**（例: 店名＋区、店名＋業種＋名古屋）で公式サイトが見つからなかった。`checks` に検索回数を入れる（2 以上）。`url` は入れない。
 - `status: "unknown"`: 検索に失敗した・判断できなかった。**検索失敗を not_found にしない。** 例: `{ "status": "unknown", "url": null, "checks": 1 }`
 
 ### 4.2 Instagram（`instagramUrl`）
+
+- Instagram のページはログインなしでは読めないことが多い（429 / 空ページ）。その場合、handle は店舗の公式サイトなど
+  **Instagram へのリンクを載せているページ**で確認する（第三者の記事・地図サイトしかなければ、2 つ以上で同じ handle を確認）。
+  読めなかった Instagram プロフィールを事実の出典（`instagram_profile`）にしない。事実の `sourceType` は実際に読んだページのものにする。
+- 「DM 不可」「営業お断り」「問い合わせは電話のみ」等の記載を読んだページで見つけたら、その店舗は提出しない（又聞きでも除外する。fail-closed）。
+  プロフィールが読めず確認できなかったことだけでは除外しない（送信前に人間がプロフィールを確認する: MVP_SPEC §4.1）。
+  その場合は報告の notes に「プロフィール未確認: <key>」と書く。
 
 - 店舗自身のプロフィール URL（`https://www.instagram.com/<handle>/`）。投稿・リール・ハッシュタグ・他人のアカウントは不可。
 - Instagram で営業できるのは `website.status = "not_found"` かつ第一者の公開メールがない店舗だけ（サーバーが判定する）。
@@ -147,9 +164,12 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
 
 ### 4.4 出典付きの事実（`facts`、≤20 件）
 
-- `name` と `address` は**必須**。店名・住所はページに書かれている通りに書き写し、候補の `name` / `address` と一致させる。
+- `name` と `address` は**必須**。店名・住所はページに書かれている通りに書き写し、候補の `name` / `address` と一致させる
+  （discover の stub の店名と表記が違ってもよい。verified の `name` は出典の表記に合わせる）。
+- 出典どうしで内容が食い違う事実（営業時間・定休日など）は入れない。
 - 任意: `hours`（営業時間）/ `closed_days`（定休日）/ `access`（アクセス）/ `phone`（店舗の電話）/ `description`（店舗自身の紹介文の要約ではなく該当箇所）/ `menu_item`（1 品ずつ）。
 - 各事実に `sourceUrl`・`sourceType`（`official_site` / `official_contact` / `official_profile` / `instagram_profile` / `map_listing` / `other`）・`verifiedAt`（確認時刻 ISO 8601、タイムゾーン付き）。
+- 出典にするのは実際に開いて読んだページだけ。検索結果の要約・AI の要約は出典にしない。
 - 事実の値にメールアドレス・URL を入れない（デモページに出るため。入れた事実はサーバーが捨てる）。
 - 誇張・推測・口コミの評価・受賞歴などの未確認の主張は入れない。
 
@@ -177,14 +197,16 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
       "instagramUrl": "https://www.instagram.com/<handle>/",
       "email": null,
       "facts": [
-        { "field": "name", "value": "店名", "sourceUrl": "https://www.instagram.com/<handle>/", "sourceType": "instagram_profile", "verifiedAt": "2026-09-27T09:10:00+09:00" },
-        { "field": "address", "value": "愛知県名古屋市中区…", "sourceUrl": "https://www.instagram.com/<handle>/", "sourceType": "instagram_profile", "verifiedAt": "2026-09-27T09:10:00+09:00" }
+        { "field": "name", "value": "店名", "sourceUrl": "https://（実際に読んだ地図・紹介ページ等）", "sourceType": "map_listing", "verifiedAt": "2026-09-27T09:10:00+09:00" },
+        { "field": "address", "value": "愛知県名古屋市中区…", "sourceUrl": "https://（実際に読んだ地図・紹介ページ等）", "sourceType": "map_listing", "verifiedAt": "2026-09-27T09:10:00+09:00" }
       ],
       "message": { "subject": null, "body": "…" }
     }
   ]
 }
 ```
+
+（`sourceType: "instagram_profile"` は Instagram プロフィールを実際に読めた場合だけ使う。）
 
 - 未知のフィールドは 400 で拒否される（`strict`）。上の形以外のフィールドを足さない。
 - checkpoint に入れないもの: ページの HTML・本文の丸写し・画像・スクリーンショット・secret・token・あなたの推論過程。
@@ -201,10 +223,12 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
 
 ## 6. 完了報告（毎回の最後に出力する）
 
+`start` / 各 checkpoint の応答にある `candidates`（候補ごとの stage）と `replayed`（同じ要求の再送だったか）は参考情報。判断は `nextAction` で行う。
+
 ```
 SALES_AGENT_RUN_REPORT
 runId: <uuid>
-status: completed | failed | running（中断）
+status: completed | failed | running（途中で終了した場合。次回の起動で status から再開される）
 discovered: <件数>
 verified: <提出件数>
 outreach_ready: <件数> / rejected: <件数（reason 別）> / duplicate: <件数> / error: <件数（code 別）>

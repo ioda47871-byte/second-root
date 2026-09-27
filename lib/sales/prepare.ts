@@ -129,11 +129,14 @@ export function prepareCandidate(input: VerifiedCandidateInput): Preparation {
   const emailInput = input.email ?? null;
   const email = emailInput ? normalizeEmail(emailInput.address) : null;
   // "official_site" / "official_contact" must point at the shop's own site
-  // (the verified website), not just carry the label.
+  // (the verified website), and "official_profile" at the shop's own verified
+  // Instagram profile: the label alone proves nothing, and a link-in-bio page
+  // or another account cannot be tied to the shop (fail closed).
   const onOwnSite =
     emailInput !== null &&
-    (emailInput.sourceType === "official_profile" ||
-      (websiteDomain !== null && websiteKey(emailInput.sourceUrl) === websiteDomain));
+    (emailInput.sourceType === "official_profile"
+      ? instagram !== null && parseInstagramProfile(emailInput.sourceUrl)?.handle === instagram.handle
+      : websiteDomain !== null && websiteKey(emailInput.sourceUrl) === websiteDomain);
   const firstPartyEmail =
     emailInput !== null &&
     email !== null &&

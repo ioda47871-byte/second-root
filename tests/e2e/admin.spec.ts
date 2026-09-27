@@ -23,6 +23,8 @@ test("redirects to login when signed out, with noindex headers", async ({ page }
   const res = await page.goto("/admin/sales");
   await expect(page).toHaveURL(/\/admin\/login$/);
   expect(res?.headers()["x-robots-tag"]).toBe("noindex, nofollow");
+  expect(res?.headers()["x-frame-options"]).toBe("DENY");
+  expect(res?.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
 });
 

@@ -224,4 +224,15 @@ describe("run lifecycle through the API", () => {
       expect((await call({ action, runId: randomUUID() })).status).toBe(400);
     }
   });
+
+describe("one run per day", () => {
+  it("returns today's failed run on status with 409 and start_new_run", async () => {
+    const failed = randomUUID();
+    await ok({ action: "start", runId: failed });
+    await call({ action: "abort", runId: failed, errorCode: "search_unavailable", errorSummary: "x" });
+    const res = await call({ action: "status" });
+    expect(res.status).toBe(409);
+    expect((await res.json()).run).toMatchObject({ runId: failed, status: "failed", nextAction: "start_new_run" });
+  });
+});
 });
