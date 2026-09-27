@@ -89,3 +89,21 @@ test("a plain decline is not DNC; an explicit refusal is DNC and hides the demo"
   expect((await page.request.get(`/demo/${plain.token}`)).status()).toBe(200);
   expect((await page.request.get(`/demo/${refused.token}`)).status()).toBe(404);
 });
+
+test("失注 asks for confirmation and records the optional reason", async ({ page }) => {
+  const shop = await sentShop();
+  await db.query("update public.sales_outreaches set status = 'replied', reply_type = 'interested', replied_at = now() where id = $1", [shop.outreachId]);
+  await login(page);
+  await page.goto("/admin/sales/meetings");
+  const card = page.getByTestId("meeting-item").filter({ hasText: shop.name });
+  await card.getByRole("button", { name: "失注", exact: true }).click();
+  // One tap never closes the deal.
+  expect((await statusOf(shop.outreachId)).status).toBe("replied");
+  await card.getByRole("button", { name: "やめる" }).click();
+  await card.getByRole("button", { name: "失注", exact: true }).click();
+  await card.getByLabel("失注の理由（任意）").fill("予算が合わない");
+  await card.getByRole("button", { name: "失注にする" }).click();
+  await expect(page.getByTestId("meeting-item").filter({ hasText: shop.name })).toHaveCount(0);
+  const { rows } = await db.query("select status, lost_reason from public.sales_outreaches where id = $1", [shop.outreachId]);
+  expect(rows[0]).toEqual({ status: "lost", lost_reason: "予算が合わない" });
+});

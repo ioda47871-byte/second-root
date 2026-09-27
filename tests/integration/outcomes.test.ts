@@ -58,6 +58,28 @@ describe("reply → meeting → won", () => {
     expect((await admin.rpc("sales_mark_won", { p_outreach_id: outreachId, p_amount_jpy: 1 })).error?.message).toMatch(/invalid_transition/);
   });
 
+  it("records lost with an optional reason and never leaves won or lost", async () => {
+    const lost = await sentOutreach();
+    await admin.rpc("sales_record_reply", { p_outreach_id: lost.outreachId, p_reply_type: "interested", p_future_contact_refused: false });
+    expect((await admin.rpc("sales_mark_lost", { p_outreach_id: lost.outreachId, p_reason: "予算が合わない" })).error).toBeNull();
+    expect(await state(lost.outreachId)).toMatchObject({ status: "lost", lost_reason: "予算が合わない", do_not_contact: false });
+    expect((await admin.rpc("sales_mark_meeting", { p_outreach_id: lost.outreachId })).error?.message).toMatch(/invalid_transition/);
+
+    const won = await sentOutreach();
+    await admin.rpc("sales_record_reply", { p_outreach_id: won.outreachId, p_reply_type: "meeting_request", p_future_contact_refused: false });
+    await admin.rpc("sales_mark_meeting", { p_outreach_id: won.outreachId });
+    await admin.rpc("sales_mark_won", { p_outreach_id: won.outreachId, p_amount_jpy: 150000 });
+    expect((await admin.rpc("sales_mark_lost", { p_outreach_id: won.outreachId, p_reason: null })).error?.message).toMatch(/invalid_transition/);
+    expect((await state(won.outreachId)).status).toBe("won");
+  });
+
+  it("rejects an amount above the limit", async () => {
+    const { outreachId } = await sentOutreach();
+    await admin.rpc("sales_record_reply", { p_outreach_id: outreachId, p_reply_type: "interested", p_future_contact_refused: false });
+    await admin.rpc("sales_mark_meeting", { p_outreach_id: outreachId });
+    expect((await admin.rpc("sales_mark_won", { p_outreach_id: outreachId, p_amount_jpy: 100_000_001 })).error?.message).toMatch(/won_amount_required/);
+  });
+
   it("is idempotent for repeated taps", async () => {
     const { outreachId } = await sentOutreach();
     await admin.rpc("sales_record_reply", { p_outreach_id: outreachId, p_reply_type: "question", p_future_contact_refused: false });
@@ -78,6 +100,27 @@ describe("decline and DNC", () => {
     const { outreachId, token } = await sentOutreach();
     await admin.rpc("sales_record_reply", { p_outreach_id: outreachId, p_reply_type: "decline", p_future_contact_refused: true });
     expect(await state(outreachId)).toMatchObject({ status: "lost", do_not_contact: true, dnc_reason: "explicit_refusal", demo_disabled: true });
+    expect(await loadPublicDemo(serviceClient(), token)).toBeNull();
+  });
+
+  it("refuses a different classification from a stale tab, but honours a later refusal", async () => {
+    const { outreachId, token } = await sentOutreach();
+    await admin.rpc("sales_record_reply", { p_outreach_id: outreachId, p_reply_type: "decline", p_future_contact_refused: false });
+    const other = await admin.rpc("sales_record_reply", { p_outreach_id: outreachId, p_reply_type: "interested", p_future_contact_refused: false });
+    expect(other.error?.message).toMatch(/already_recorded/);
+    // The shop later says "do not contact us": DNC is set, the demo is hidden.
+    const refusal = await admin.rpc("sales_record_reply", { p_outreach_id: outreachId, p_reply_type: "decline", p_future_contact_refused: true });
+    expect(refusal.error).toBeNull();
+    expect(refusal.data).toMatchObject({ replayed: true });
+    expect(await state(outreachId)).toMatchObject({ status: "lost", do_not_contact: true, dnc_reason: "explicit_refusal", demo_disabled: true });
+    expect(await loadPublicDemo(serviceClient(), token)).toBeNull();
+  });
+
+  it("sets DNC manually (e.g. refusal by phone) and hides the demo", async () => {
+    const { outreachId, prospectId, token } = await sentOutreach();
+    expect((await outsider.rpc("sales_set_dnc", { p_prospect_id: prospectId })).error?.code).toBe("42501");
+    expect((await admin.rpc("sales_set_dnc", { p_prospect_id: prospectId })).error).toBeNull();
+    expect(await state(outreachId)).toMatchObject({ do_not_contact: true, demo_disabled: true });
     expect(await loadPublicDemo(serviceClient(), token)).toBeNull();
   });
 
@@ -113,6 +156,8 @@ describe("authorization", () => {
   it("internal helpers are not callable through the API", async () => {
     for (const client of [admin, outsider, anonClient()]) {
       expect((await client.rpc("sales_set_dnc_internal", { p_prospect_id: randomUUID(), p_reason: "x" })).error?.code).toBe("42501");
+      expect((await client.rpc("sales_assert_admin", {})).error?.code).toBe("42501");
+      expect((await client.rpc("sales_lock_initial", { p_outreach_id: randomUUID() })).error?.code).toBe("42501");
     }
   });
 });

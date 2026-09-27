@@ -62,7 +62,17 @@ begin
     raise exception 'refusal_requires_decline' using errcode = '22023';
   end if;
   o := public.sales_lock_initial(p_outreach_id);
-  if o.status = 'replied' or (o.status = 'lost' and o.reply_type is not null) then
+  if o.reply_type is not null then
+    -- Already classified. A different classification (e.g. from a stale
+    -- tab) is refused instead of being silently ignored; an explicit
+    -- refusal of future contact is always honoured, even when it arrives
+    -- after the reply was recorded (fail closed, MVP_SPEC §6).
+    if o.reply_type <> p_reply_type then
+      raise exception 'already_recorded' using errcode = 'P0001';
+    end if;
+    if coalesce(p_future_contact_refused, false) then
+      perform public.sales_set_dnc_internal(o.prospect_id, 'explicit_refusal');
+    end if;
     return jsonb_build_object('outreach_id', o.id, 'status', o.status, 'replayed', true);
   end if;
   if o.status <> 'sent' then
@@ -115,7 +125,7 @@ declare
   o public.sales_outreaches;
 begin
   perform public.sales_assert_admin();
-  if p_amount_jpy is null or p_amount_jpy <= 0 then
+  if p_amount_jpy is null or p_amount_jpy <= 0 or p_amount_jpy > 100000000 then
     raise exception 'won_amount_required' using errcode = '22023';
   end if;
   o := public.sales_lock_initial(p_outreach_id);

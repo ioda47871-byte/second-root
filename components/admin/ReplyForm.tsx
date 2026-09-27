@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { recordReply } from "@/app/admin/sales/_actions/outcomes";
 import type { ReplyType } from "@/lib/sales/types";
 import styles from "./admin.module.css";
@@ -22,10 +22,16 @@ export default function ReplyForm({ outreachId }: { outreachId: string }) {
   const [refused, setRefused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const fieldset = useRef<HTMLFieldSetElement>(null);
+
+  // Move focus into the form when it opens (the 返信あり button is gone).
+  useEffect(() => {
+    if (open) fieldset.current?.focus();
+  }, [open]);
 
   if (!open) {
     return (
-      <button type="button" className={styles.primary} onClick={() => setOpen(true)}>
+      <button type="button" className={styles.primary} aria-expanded={false} onClick={() => setOpen(true)}>
         返信あり
       </button>
     );
@@ -41,7 +47,7 @@ export default function ReplyForm({ outreachId }: { outreachId: string }) {
   }
 
   return (
-    <fieldset className={styles.form} style={{ border: 0, padding: 0, margin: 0 }}>
+    <fieldset ref={fieldset} tabIndex={-1} className={`${styles.form} ${styles.fieldset}`}>
       <legend className={styles.muted}>返信の種類</legend>
       {OPTIONS.map(([value, label]) => (
         <label key={value} className={styles.choice}>
