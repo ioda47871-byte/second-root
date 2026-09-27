@@ -1,9 +1,29 @@
+import InstagramSend from "@/components/admin/InstagramSend";
 import TodayCard from "@/components/admin/TodayCard";
 import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
-import { loadTodayQueue } from "@/lib/admin/today";
+import { demoUrl, loadTodayQueue, type TodayItem } from "@/lib/admin/today";
+import { composeDm, instagramOpenUrl } from "@/lib/sales/messages";
 import { LIMITS } from "@/lib/sales/types";
 import { createAuthClient } from "@/lib/supabase/server";
+
+/** The one big action for a queue item (DEV-010 Instagram; email in DEV-011, follow-up in DEV-014). */
+function actionFor(item: TodayItem) {
+  if (item.kind === "initial" && item.channel === "instagram" && item.instagramUrl && item.demoToken) {
+    try {
+      return (
+        <InstagramSend
+          outreachId={item.outreachId}
+          dmText={composeDm({ message: item.body, demoUrl: demoUrl(item.demoToken) })}
+          instagramUrl={instagramOpenUrl(item.instagramUrl)}
+        />
+      );
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 export default async function TodayPage() {
   await requireAdminPage();
@@ -33,7 +53,7 @@ export default async function TodayPage() {
       ) : (
         <ul className={styles.list}>
           {items.map((item) => (
-            <TodayCard key={`${item.kind}-${item.outreachId}`} item={item} now={now} action={null} />
+            <TodayCard key={`${item.kind}-${item.outreachId}`} item={item} now={now} action={actionFor(item)} />
           ))}
         </ul>
       )}
