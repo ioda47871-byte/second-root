@@ -5,8 +5,8 @@
 
 ## 現在地
 
-- 完了: BOOT-001（PR #8 → main）、DEV-001（PR #9）、DEV-002（PR #10）、DEV-003（PR #11）、DEV-004（PR #12, d2acecb）
-- 進行中: DEV-008（admin auth, `feature/dev-008-admin-auth`）
+- 完了: BOOT-001（PR #8 → main）、DEV-001（PR #9）、DEV-002（PR #10）、DEV-003（PR #11）、DEV-004（PR #12）、DEV-008（PR #13, e1ddf9a）
+- 進行中: DEV-005（PR #14）、DEV-006/007（stacked: `feature/dev-006-…`, `feature/dev-007-…`）、DEV-009（`feature/dev-009-today-queue`）
 - 次: DEV-005〜007（templates）、DEV-009 以降（`.ai/tasks.json` の依存順）
 - 自律実行ルール: feature → develop は CI green + Fresh Review Critical/High 0 で Claude が merge。develop → main（Production release）は人間承認。
 - ローカル再開: `npx supabase start` → `npm run test:integration`（Docker 必須。cloud container では `dockerd &` で起動）
@@ -48,3 +48,4 @@
 - 2026-09-27: DEV-003 merge（PR #11, 7e62223）。
 - 2026-09-27: DEV-004 merge（PR #12, d2acecb）。CI に e2e-sales job。
 - 2026-09-27: DEV-008 Fresh Review PASS。Medium（layout のみの認可 → RSC 部分描画で回避可能）を全ページ guard + 実遷移ヘッダ再送 e2e で修正。
+- 2026-09-27: DEV-008 merge（PR #13, e1ddf9a）。DEV-009 開始。

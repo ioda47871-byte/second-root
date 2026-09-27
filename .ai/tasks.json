@@ -412,7 +412,7 @@
     {
       "id": "DEV-008",
       "title": "Supabase Auth + admin shell",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-001"
@@ -457,7 +457,7 @@
     {
       "id": "DEV-009",
       "title": "今日やることUI",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-008",
@@ -491,7 +491,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-009-today-queue"
     },
     {
       "id": "DEV-010",
