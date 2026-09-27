@@ -10,7 +10,7 @@
 
 ## 2. feature → develop（Claude 自律 merge 条件）
 
-- [ ] 必須 CI（static / unit / build / e2e、導入後は integration）成功
+- [ ] 必須 CI（static / unit / integration / build / e2e / e2e-sales）成功
 - [ ] Fresh Reviewer PASS（`.ai/reviews/<task-id>.md`）
 - [ ] Critical / High = 0
 - [ ] Protected Scope 変更なし
@@ -44,6 +44,7 @@ Release Readiness（DEV-019）でチェック:
 | コード | `main` で revert PR を作成し人間が merge |
 | DB | 前方修正（逆 migration）を原則。データ削除を伴う rollback は人間承認 |
 | Operational job | Claude Cloud の scheduled job を無効化。ingest token を rotate すれば即座に遮断可能 |
+| 依存関係 | Next.js 16.3.6 への更新（DEV-017、security advisory 対応）を戻す場合は、advisory が再び有効になるため revert ではなく前方修正を優先 |
 
 ## 6. 途中で止まった Operational run
 
@@ -58,3 +59,35 @@ Release Readiness（DEV-019）でチェック:
 - ingest を止める: Vercel の `SALES_AGENT_INGEST_TOKEN` を削除 / 変更（API は fail closed）。
 - 管理画面・デモを止める: 該当ルートを無効化する revert、またはデモを `disabled_at` で一括無効化。
 - 既存 Second Root（トップ・問い合わせ）は Sales Agent と独立しているため影響を受けない設計とする。
+
+## 8. Production リリース手順（人間が実行。Claude は PR 作成まで）
+
+前提（必須）: §3 のチェックがすべて済み、DEV-016（Staging 実走）が完了していること。満たすまで develop → main を merge しない。
+
+1. **Supabase（Production 用 project）**
+   - Second Root 専用 project を作成（HUMAN-002）。Region は Tokyo 推奨、Free プラン。
+   - migrations を適用（人間の端末から）: `npx supabase login`（access token）→ `npx supabase link --project-ref <prod-ref>` → `npx supabase db push`（DB password を聞かれる。Claude には渡さない）。
+   - 適用後の確認（SQL Editor）:
+     - `select version from supabase_migrations.schema_migrations order by 1;` が `supabase/migrations/` のファイルと一致
+     - `select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and relkind = 'r' and relname like 'sales\_%' and not relrowsecurity;` が 0 行
+   - Authentication → Providers → Email: 「Allow new users to sign up」OFF、「Confirm email」ON、パスワード最小長 12 以上を推奨。
+   - 管理者作成: Authentication → Add user（email + password、Auto Confirm）→ SQL Editor で
+     `insert into public.sales_admins (user_id) values ('<uuid>');`
+2. **Vercel（Production 環境変数）**: Supabase Dashboard の API キー表示が新しい名称の場合、公開用（anon / Publishable）を `NEXT_PUBLIC_SUPABASE_ANON_KEY`、サーバー用（service_role / Secret）を `SUPABASE_SERVICE_ROLE_KEY` に入れる。**サーバー用のキーを `NEXT_PUBLIC_*` に入れない**（ブラウザに露出する）。
+   設定する値: `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `SALES_AGENT_INGEST_TOKEN`（Staging と別の値、`openssl rand -hex 32`）/ `SALES_DEMO_BASE_URL=https://secondroot.jp`。既存の `RESEND_API_KEY` 等はそのまま。
+3. **develop → main**: Claude が作成した Release PR（DEV-019）を人間がレビューし merge。Vercel が Production にデプロイ。
+4. **Smoke test（Production）**:
+   - 既存: `/`（トップ表示・問い合わせフォーム送信は実際に送ると通知が届くので必要な場合のみ）、`/privacy`・`/terms`（法務ページ）、`/thanks`、`/robots.txt`、`/sitemap.xml`
+   - `/admin/login` → 管理者でログイン → `/admin/sales` が空の一覧で表示される
+   - Authentication → Add user で一時的な非管理者を作成 → `/admin/sales` で「権限がありません」を確認 → そのユーザーを削除
+   - `curl -sS -X POST https://secondroot.jp/api/internal/sales-agent/runs -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' --data '{"action":"status"}'` が `{"run":null,...}`
+   - token なしで 401、未知のデモ URL で 404
+5. **Operational job（Production）**: `ops/sales-agent/SCHEDULE.md` §3 の手順で Production 用 environment と Routine を作成し、まず手動で 1 回実行 → 管理画面で候補を目視確認 → スケジュール有効化。
+6. 最初の 1 週間は毎日、営業準備された候補の事実・出典・営業文を人間が確認してから送信する。
+
+## 9. リリース前の追加確認
+
+- [ ] `npm audit --omit=dev` で high / critical が 0
+- [ ] GitHub branch protection（`main` / `develop`）に required checks: `static` / `unit` / `integration` / `build` / `e2e` / `e2e-sales`（HUMAN-003）
+- [ ] Supabase Auth の sign-up 無効・管理者 1 名のみ
+- [ ] Vercel の Production / Preview で `SALES_AGENT_INGEST_TOKEN` が別の値
