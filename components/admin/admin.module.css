@@ -157,3 +157,94 @@
   text-align: center;
   font-family: var(--font-body), system-ui, sans-serif;
 }
+
+.list {
+  display: grid;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.itemTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.badge {
+  font-size: 0.75rem;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #eef2ef;
+  color: #2f5d50;
+}
+
+.badgeWarn {
+  background: #fff1db;
+  color: #7a4b00;
+}
+
+.details {
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+
+.details summary {
+  cursor: pointer;
+  color: var(--muted);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.message {
+  white-space: pre-wrap;
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 12px;
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: grid;
+  gap: 10px;
+}
+
+.secondary {
+  font: inherit;
+  font-weight: 600;
+  min-height: 48px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.primaryLink {
+  composes: primary;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.count {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: -8px 0 16px;
+}
