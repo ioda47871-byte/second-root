@@ -15,6 +15,10 @@ export const maxDuration = 30;
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MIN_SECRET_LENGTH = 16;
+// Meta retries a delivery for at most 36 hours. Older events are ignored so
+// a replayed old (signed) body cannot re-create conversations that the
+// retention job already deleted (docs/INSTAGRAM_MESSAGING.md §8).
+const MAX_EVENT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" };
 
@@ -81,6 +85,9 @@ export async function POST(req: NextRequest) {
   }
   const extracted = extractEvents(payload, accountId);
   if (!extracted) return json(400, { error: "invalid_payload" });
+  const oldest = Date.now() - MAX_EVENT_AGE_MS;
+  const events = extracted.events.filter((e) => e.sent_at_ms >= oldest);
+  const ignored = extracted.ignored + (extracted.events.length - events.length);
 
   let db;
   try {
@@ -88,7 +95,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return json(503, { error: "webhook_disabled" });
   }
-  const { data, error } = await db.rpc("sales_ig_ingest", { p_body_sha256: sha256Hex(raw), p_events: extracted.events });
+  const { data, error } = await db.rpc("sales_ig_ingest", { p_body_sha256: sha256Hex(raw), p_events: events });
   if (error) return json(500, { error: "store_failed" });
-  return json(200, { ok: true, ...(data as Record<string, unknown>), ignored: extracted.ignored });
+  return json(200, { ok: true, ...(data as Record<string, unknown>), ignored });
 }
