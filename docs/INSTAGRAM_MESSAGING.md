@@ -74,6 +74,13 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 - 返信案のルール（prompt と検証の両方）: 短く丁寧、確認済みの事実と Second Root の公開情報だけ、価格・納期・契約条件を約束しない、架空情報を足さない。
 - Operational Claude の権限拡張: ingest token で未処理の受信メッセージ（本文・直近の会話・店舗の公開情報）を読めるようになる。送信・DNC 変更・成約変更は引き続き不可。
 
+### 5.1 既知の限界（DEV-021 review で受け入れ）
+
+- 返信案の連絡先検出は形式的なもの（例: 「info at example dot com」のような言い換えは通る）。最終的には人間が送信前に読む。
+- 検証で拒否するもの（DEV-021 review round 2 で拡充）: デモ URL 以外の URL・ドメイン（ASCII・全角・punycode・IDN（`ドメイン.jp`）・IPv4）、`mailto:` 等の scheme、`@handle`（Instagram でプロフィールリンクになる）、LINE ID、メール・電話番号。ゼロ幅文字などの不可視文字は除去してから判定する。デモ URL は末尾が区切れている場合だけ許可（`/../`・追加 path・query・fragment 付きは拒否）。
+- Instagram がリンクにしない書き方は検出しない: 漢数字の電話番号（〇九〇…）、1 桁ずつ空けた数字、`evil dot com` / `evil ドット com` / `evil・com` / 改行をはさんだドメイン、`h t t p s`。送信前に人間が読むことで扱う。
+- 相手の username は一度取得したら更新しない。店舗が改名し別人が同じ handle を取った場合の誤照合は、照合が「Instagram で営業済みの店舗」に限られることと人間の確認で抑える（DEV-024 で定期更新を検討）。
+
 ## 6. 送信（DEV-023）
 
 - 管理者の「この内容で返信」→ server action（`requireAdmin()`）→ `sales_ig_send` を idempotency key で作成（既にあれば既存の結果を返す）→ Meta Send API → 結果を記録。
@@ -120,7 +127,7 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | 購読確認用（16 文字以上のランダム値、Meta App の Webhook 設定と同じ値） |
 | `INSTAGRAM_APP_SECRET` | Webhook 署名の検証（未設定なら webhook は 503 で全拒否） |
 | `INSTAGRAM_ACCOUNT_ID` | Second Root の Instagram professional account ID（数字、**必須**。未設定・不正なら webhook は 503。同じ Meta App の他アカウント宛ての event を保存しない） |
-| （DEV-023）Instagram User access token | 返信送信用。60 日で失効、更新手順を DEV-024 で定める |
+| `INSTAGRAM_ACCESS_TOKEN` | Instagram User access token（server only）。DEV-021 で相手の username 取得（照合）、DEV-023 で返信送信に使う。未設定なら照合は行わず全件「未照合」（fail-closed）。60 日で失効、更新手順を DEV-024 で定める |
 
 ## 10. 人間の作業（HUMAN BLOCKER 候補、DEV-024 で具体化）
 

@@ -39,8 +39,14 @@ describe("guardrails", () => {
 
   it("never fetches URLs from ingest or webhook code (no SSRF path)", () => {
     const ingestFiles = sourceFiles.filter((f) => ["app/api/internal/", "app/api/webhooks/", "lib/sales/", "lib/instagram/"].some((d) => f.startsWith(d)));
-    const offenders = ingestFiles.filter((f) => /\bfetch\s*\(|axios|node:https?|from ["']https?["']|undici/.test(readFileSync(f, "utf8")));
+    // The one exception: lib/instagram/graph.ts calls the fixed official Graph API host.
+    const offenders = ingestFiles
+      .filter((f) => f !== "lib/instagram/graph.ts")
+      .filter((f) => /\bfetch\s*\(|axios|node:https?|from ["']https?["']|undici/.test(readFileSync(f, "utf8")));
     expect(offenders).toEqual([]);
+    const graph = readFileSync("lib/instagram/graph.ts", "utf8");
+    expect(graph).toMatch(/export const GRAPH_BASE = "https:\/\/graph\.instagram\.com\/v\d+\.0";/);
+    for (const call of graph.match(/fetch\s*\(([^,]+),/g) ?? []) expect(call).toMatch(/fetch\(`\$\{GRAPH_BASE\}\//);
   });
 
   it("does not track env files other than the example", () => {

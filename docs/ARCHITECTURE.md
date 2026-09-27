@@ -151,6 +151,8 @@ run の現在地を**このテーブルだけから**判断できるようにす
 | `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める | 同じ phase の再送は上書き保存（`persisting` 以降は拒否） |
 | `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤10。超過は 400 で全体拒否)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
 | `persist` | `runId` | `verified` checkpoint の候補を §7.4 の手順で処理し、候補ごとの stage を checkpoint に記録。全候補が終端に達したら（または試行上限で）`completed` にし `result` を保存 | 何度呼んでも同じ結果に収束（§7.3）。同じ run の `persist` 同時実行は 409 `run_busy` |
+| `inbox_pending` | `limit?`（≤20） | Instagram の未処理の返信（最新の受信に返信案がない会話）を古い順に返す。未照合の会話は公式 API の username で安全に照合を試みる（DEV-021、`docs/INSTAGRAM_MESSAGING.md`） | 読み取りのみ（照合は一意な場合だけ） |
+| `inbox_draft` | `threadId, messageId, replyType, body, futureContactRefused` | 返信案を検証して保存（連絡先・他の URL は拒否、価格・納期・契約の表現は人間確認の印、明示的な拒否は dnc_candidate）。**送信はしない** | 同じ messageId の再送は同じ案を更新、古い messageId は 409 |
 | `abort` | `runId, errorCode, errorSummary` | `failed` にする（Operational Claude が続行不能と判断した場合） | `failed` / `completed` への再送は no-op |
 
 - `persist` は Operational Claude から候補を**受け取らない**。処理するのは直前に検証・保存した `verified` checkpoint だけなので、resume しても対象がぶれない。

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CATEGORIES, LIMITS, SOURCE_TYPES, WEBSITE_STATUSES } from "./types";
+import { CATEGORIES, LIMITS, REPLY_TYPES, SOURCE_TYPES, WEBSITE_STATUSES } from "./types";
 import { isSafeHttpUrl } from "./url";
 
 // Request schema for POST /api/internal/sales-agent/runs (docs/ARCHITECTURE.md
@@ -81,6 +81,17 @@ export const ingestRequest = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("status"), runId: runId.optional() }),
   checkpointRequest,
   z.strictObject({ action: z.literal("persist"), runId }),
+  // Instagram inbox (DEV-021): read conversations that need a draft, and
+  // submit a classification + reply draft. Nothing here can send.
+  z.strictObject({ action: z.literal("inbox_pending"), limit: z.int().min(1).max(20).optional() }),
+  z.strictObject({
+    action: z.literal("inbox_draft"),
+    threadId: z.uuid(),
+    messageId: z.uuid(),
+    replyType: z.enum(REPLY_TYPES),
+    body: z.string().max(3000),
+    futureContactRefused: z.boolean(),
+  }),
   z.strictObject({
     action: z.literal("abort"),
     runId,

@@ -1,5 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { demoUrl } from "@/lib/admin/today";
+import { checkDraft } from "@/lib/instagram/draft";
+import { fetchUsername } from "@/lib/instagram/graph";
 import { checkpointProblem } from "./checkpoint";
 import type { IngestRequest } from "./ingest-schema";
 import { prepareCandidate, type PreparedCandidate } from "./prepare";
@@ -54,6 +57,9 @@ const CLIENT_ERRORS: Record<string, number> = {
   invalid_candidate_stage: 400,
   missing_candidate: 400,
   invalid_phase: 400,
+  not_found: 404,
+  stale_message: 409,
+  not_draftable: 409,
 };
 
 const CANDIDATE_ERROR_CODES = new Set(["dedupe_unavailable", "persist_failed", "demo_failed", "outreach_failed"]);
@@ -149,6 +155,136 @@ async function persist(db: SupabaseClient, runId: string): Promise<IngestResult>
   return respond(await call<DbRunState>(db, "sales_run_finalize", { p_run_id: runId }));
 }
 
+type PendingRow = {
+  thread_id: string;
+  message_id: string;
+  match_status: "matched" | "unmatched";
+  messages: Array<{ direction: "inbound" | "outbound"; text: string | null; attachment_types: string[]; sent_at: string }>;
+  shop: {
+    name: string;
+    category: string;
+    ward: string | null;
+    demo_token: string | null;
+    initial_outreach: { status: string; reply_type: string | null; body: string } | null;
+  } | null;
+};
+
+/**
+ * Tries to link unmatched conversations. Usernames are fetched from the
+ * official API only for conversations that have none yet (newest first, a
+ * few in parallel, bounded time); conversations that already have one are
+ * re-checked in SQL (the shop may have been contacted since). Returns the
+ * number of errors so a broken token is noticed.
+ */
+async function matchUnmatched(db: SupabaseClient): Promise<number> {
+  let errors = 0;
+  const { data: noName, error: e1 } = await db
+    .from("sales_ig_threads")
+    .select("id, igsid")
+    .eq("match_status", "unmatched")
+    .is("username", null)
+    .order("last_inbound_at", { ascending: false })
+    .limit(5);
+  if (e1) errors += 1;
+  await Promise.all(
+    ((noName ?? []) as Array<{ id: string; igsid: string }>).map(async (t) => {
+      const username = await fetchUsername(t.igsid);
+      if (!username) return;
+      const { error } = await db.rpc("sales_ig_match_thread", { p_thread_id: t.id, p_username: username });
+      if (error) errors += 1;
+    }),
+  );
+  const { data: named, error: e2 } = await db
+    .from("sales_ig_threads")
+    .select("id, username")
+    .eq("match_status", "unmatched")
+    .not("username", "is", null)
+    .order("last_inbound_at", { ascending: false })
+    .limit(20);
+  if (e2) errors += 1;
+  for (const t of (named ?? []) as Array<{ id: string; username: string }>) {
+    const { error } = await db.rpc("sales_ig_match_thread", { p_thread_id: t.id, p_username: t.username });
+    if (error) errors += 1;
+  }
+  return errors;
+}
+
+async function inboxPending(db: SupabaseClient, limit: number): Promise<IngestResult> {
+  const matchErrors = await matchUnmatched(db);
+  const rows = await call<PendingRow[]>(db, "sales_ig_inbox_pending", { p_limit: limit });
+  return {
+    status: 200,
+    body: {
+      matchErrors,
+      inbox: rows.map((r) => ({
+        threadId: r.thread_id,
+        messageId: r.message_id,
+        matched: r.match_status === "matched",
+        messages: r.messages.map((m) => ({ direction: m.direction, text: m.text, attachmentTypes: m.attachment_types, sentAt: m.sent_at })),
+        shop: r.shop && {
+          name: r.shop.name,
+          category: r.shop.category,
+          ward: r.shop.ward,
+          demoUrl: r.shop.demo_token ? demoUrl(r.shop.demo_token) : null,
+          initialOutreach: r.shop.initial_outreach
+            ? { status: r.shop.initial_outreach.status, replyType: r.shop.initial_outreach.reply_type, message: r.shop.initial_outreach.body }
+            : null,
+        },
+      })),
+    },
+  };
+}
+
+async function inboxDraft(db: SupabaseClient, request: Extract<IngestRequest, { action: "inbox_draft" }>): Promise<IngestResult> {
+  const { data: thread } = await db
+    .from("sales_ig_threads")
+    .select("id, prospect:sales_prospects(demo:sales_demos(public_token, disabled_at, expires_at, keep_alive))")
+    .eq("id", request.threadId)
+    .maybeSingle();
+  if (!thread) return { status: 404, body: { error: "not_found" } };
+  // Everything the person wrote since our last reply (a refusal may be
+  // followed by a polite closing line).
+  const { data: recent, error: recentError } = await db
+    .from("sales_ig_messages")
+    .select("direction, text")
+    .eq("thread_id", request.threadId)
+    .is("deleted_at", null)
+    .order("sent_at", { ascending: false })
+    .order("received_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(10);
+  // Refusal detection must never run on missing text: fail closed.
+  if (recentError) return { status: 503, body: { error: "internal_error" } };
+  const sinceOurReply: string[] = [];
+  for (const m of (recent ?? []) as Array<{ direction: string; text: string | null }>) {
+    if (m.direction === "outbound") break;
+    if (m.text) sinceOurReply.push(m.text);
+  }
+  type Demo = { public_token: string; disabled_at: string | null; expires_at: string | null; keep_alive: boolean };
+  const prospect = (thread as unknown as { prospect: { demo: Demo | Demo[] | null } | null }).prospect;
+  const demo = Array.isArray(prospect?.demo) ? prospect?.demo[0] : prospect?.demo;
+  const live = demo && !demo.disabled_at && demo.expires_at && (demo.keep_alive || Date.parse(demo.expires_at) > Date.now());
+  const checked = checkDraft(request, live ? demoUrl(demo.public_token) : null, sinceOurReply.reverse().join("\n"));
+  if (!checked.ok) {
+    // Counts toward the back-off so one conversation cannot block the queue.
+    await db.rpc("sales_ig_note_draft_failure", { p_thread_id: request.threadId, p_message_id: request.messageId });
+    return { status: 400, body: { error: "invalid_draft", reason: checked.reason } };
+  }
+  const saved = await call<{ draft_id: string; status: string; replayed: boolean }>(db, "sales_ig_save_draft", {
+    p_thread_id: request.threadId,
+    p_message_id: request.messageId,
+    p_reply_type: request.replyType,
+    p_body: checked.body,
+    p_dnc_candidate: checked.dncCandidate,
+    p_needs_review: checked.needsHumanReview,
+    p_review_reasons: checked.reviewReasons,
+  });
+  return {
+    status: 200,
+    body: { draft: { draftId: saved.draft_id, status: saved.status, replayed: saved.replayed, needsHumanReview: checked.needsHumanReview, dncCandidate: checked.dncCandidate } },
+  };
+}
+
 export async function handleIngest(db: SupabaseClient, request: IngestRequest): Promise<IngestResult> {
   try {
     switch (request.action) {
@@ -199,6 +335,12 @@ export async function handleIngest(db: SupabaseClient, request: IngestRequest): 
 
       case "persist":
         return await persist(db, request.runId);
+
+      case "inbox_pending":
+        return await inboxPending(db, request.limit ?? 10);
+
+      case "inbox_draft":
+        return await inboxDraft(db, request);
 
       case "abort":
         return respond(
