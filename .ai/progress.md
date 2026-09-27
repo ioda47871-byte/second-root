@@ -49,4 +49,5 @@
 - 2026-09-27: DEV-004 merge（PR #12, d2acecb）。CI に e2e-sales job。
 - 2026-09-27: DEV-008 Fresh Review PASS。Medium（layout のみの認可 → RSC 部分描画で回避可能）を全ページ guard + 実遷移ヘッダ再送 e2e で修正。
 - 2026-09-27: DEV-008 merge（PR #13, e1ddf9a）。DEV-009 開始。
+- 2026-09-27: DEV-005 merge（PR #14, b78bb14）。
 - 2026-09-27: DEV-009 review round 1 FAIL（フォロー取りこぼし）→ view sales_followup_due で修正。運用ルール: レビュー実行中は共有ローカル DB を reset しない。

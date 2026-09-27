@@ -32,8 +32,8 @@ export default function BaseTemplate({ demo }: { demo: DemoView }) {
               メニュー
             </h2>
             <ul className={styles.menu}>
-              {demo.menuItems.map((item) => (
-                <li key={item}>{item}</li>
+              {demo.menuItems.map((item, i) => (
+                <li key={`${i}-${item}`}>{item}</li>
               ))}
             </ul>
           </section>
