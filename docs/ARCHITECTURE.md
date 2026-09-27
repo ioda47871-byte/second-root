@@ -160,6 +160,8 @@ run の現在地を**このテーブルだけから**判断できるようにす
 - この endpoint は DNC 変更・成約状態変更・送信を**一切できない**。
 - `source_url` 等をサーバーから fetch しない（SSRF 経路を作らない）。
 - 処理順の詳細・fail-closed 条件は §7。
+- 実装: `app/api/internal/sales-agent/runs/route.ts`（認証・サイズ・schema）、`lib/sales/ingest-schema.ts`（request schema の正本）、`lib/sales/prepare.ts`（verified 候補の検証・正規化・チャネル決定・デモ内容）、`lib/sales/ingest.ts`（action 実行）。
+- HTTP: 200 正常 / 400 schema・内容不正（値は返さない）/ 401 token 不一致 / 404 run なし / 409 phase 違反・run_busy・failed run（`nextAction: start_new_run`）/ 413 本文 256KB 超・checkpoint 64KB 超 / 503 token 未設定・DB 不達。
 
 ## 6. 認証・認可
 

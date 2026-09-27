@@ -184,7 +184,7 @@
     {
       "id": "DEV-003",
       "title": "Operational Claude ingest API",
-      "status": "backlog",
+      "status": "review",
       "priority": "P0",
       "depends_on": [
         "DEV-001",
@@ -247,7 +247,8 @@
         "ingest token の Production 設定"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-003-ingest-api"
     },
     {
       "id": "DEV-004",
