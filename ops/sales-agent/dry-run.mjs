@@ -28,6 +28,8 @@ if (token.length < 32) {
   process.exit(2);
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function call(body, { expect = [200] } = {}) {
   for (let attempt = 1; ; attempt += 1) {
     let res;
@@ -39,11 +41,23 @@ async function call(body, { expect = [200] } = {}) {
       });
     } catch (err) {
       // Same runId, same action, same body: safe to resend (idempotent).
-      if (attempt < 3) continue;
+      if (attempt < 3) {
+        await sleep(attempt * 1000);
+        continue;
+      }
       throw err;
     }
-    const json = await res.json();
-    if (res.status >= 500 && attempt < 3) continue;
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { error: `non-JSON response (HTTP ${res.status})` };
+    }
+    if (res.status >= 500 && attempt < 3) {
+      await sleep(attempt * 1000);
+      continue;
+    }
     if (!expect.includes(res.status)) {
       throw new Error(`${body.action}: HTTP ${res.status} ${JSON.stringify(json)}`);
     }
