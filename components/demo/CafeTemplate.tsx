@@ -30,10 +30,10 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
         <Cup />
       </header>
       {demo.hours && (
-        <div className={styles.hoursCard}>
-          <p className={styles.hoursLabel}>営業時間</p>
-          <p className={styles.hoursValue}>{demo.hours}</p>
-        </div>
+        <dl className={styles.hoursCard}>
+          <dt className={styles.hoursLabel}>営業時間</dt>
+          <dd className={styles.hoursValue}>{demo.hours}</dd>
+        </dl>
       )}
       <main className={styles.body}>
         {demo.menuItems.length > 0 && (
@@ -42,8 +42,8 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
               メニュー
             </h2>
             <ul className={styles.menu}>
-              {demo.menuItems.map((item) => (
-                <li key={item} className={styles.menuItem}>
+              {demo.menuItems.map((item, i) => (
+                <li key={`${i}-${item}`} className={styles.menuItem}>
                   {item}
                 </li>
               ))}

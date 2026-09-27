@@ -51,6 +51,7 @@
   margin: 20px auto 0;
   max-width: 30em;
   color: #6d5846;
+  overflow-wrap: anywhere;
 }
 
 .body {
