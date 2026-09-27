@@ -70,3 +70,5 @@
 - 2026-09-27: DEV-013 review PASS（Medium: §9 のデモ有無の軸・各段階の件数と率）→ 修正。merge（PR #22, deccd72）。
 - 2026-09-27: DEV-014 review PASS（Medium: RPC が任意の件名・本文を記録できた・長い件名で失敗）→ 件名は SQL で導出、本文はデモ URL と opt-out を必須に。PR #23。
 - 2026-09-27: DEV-018 着手（feature/dev-018-e2e-qa、DEV-014 の上）: 320/375px で全管理画面・長い店名・全カード状態、キーボードでのログイン。管理画面の本文を main landmark に。
+- 2026-09-27: **scope extension（人間承認）**: Instagram 返信後の公式 Messaging API 連携を後続 Task DEV-020〜DEV-024 として追加（docs/INSTAGRAM_MESSAGING.md）。MVP（DEV-001〜019）を優先し、その後に着手。分類・返信案は有料 API を使わず Operational Claude（scheduled job）が ingest API 経由で作成する設計。
+- 2026-09-27: DEV-016 代替のローカル rehearsal: session A（実 Web 調査、4 店舗を discovered）→ 中断 → session B が status から再開中。

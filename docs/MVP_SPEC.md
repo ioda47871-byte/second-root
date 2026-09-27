@@ -112,7 +112,7 @@ Instagram フォローは MVP ではなし。
 
 ## 5. 返信・商談・成約
 
-返信の自動取得は行わない。人間が返信を見たら「返信あり」を1タップし分類する。
+MVP では返信の自動取得は行わない（Instagram は後続の DEV-020〜024 で公式 API による受信に対応）。人間が返信を見たら「返信あり」を1タップし分類する。
 
 ```
 drafted → sent → replied(interested|question|meeting_request|decline|other)
@@ -181,9 +181,13 @@ Operational Claude は次をしない: DM送信 / メール送信 / Supabase直�
 
 追加ランニングコスト 0円を目標。MVP では原則追加しない: OpenAI API / Anthropic metered API / Google Places 有料依存 / 有料 Email Finder / 有料 Staging。
 
+## 11.1 後続機能（MVP の後）
+
+- Instagram 返信後の公式 Messaging API 連携（DEV-020〜DEV-024、2026-09-27 人間承認の scope extension）: 相手から Second Root の Instagram Professional Account へ届いた返信を公式 Webhook で受信し、分類・返信案を自動で用意、**人間が1タップで承認した返信だけ**を公式 Send API で送る。初回 cold DM は引き続き人間の手動送信。詳細: `docs/INSTAGRAM_MESSAGING.md`。
+
 ## 12. 範囲外（MVPでは作らない）
 
-- 自動送信（DM・メールとも）、返信の自動取得、Instagram フォロー
+- 自動送信（DM・メールとも）、返信の自動取得（Instagram は後続 DEV-020〜024）、Instagram フォロー
 - 名古屋市外・対象3業種以外
 - 複数管理者・権限ロール
 - 有料データソース・有料 API
