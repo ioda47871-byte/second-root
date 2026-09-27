@@ -199,4 +199,68 @@ describe("drafts", () => {
     ]);
     expect(JSON.stringify(item)).not.toMatch(/igsid|900000000000207/);
   });
+
+describe("review regressions", () => {
+  it("[M3] agrees on the latest message when two arrive with the same timestamp", async () => {
+    const ts = Date.now();
+    await receive("900000000000301", "mid-t1", "テキスト", ts);
+    await receive("900000000000301", "mid-t2", "同時刻のもう一通", ts);
+    const [item] = await pending();
+    const res = await api({ action: "inbox_draft", threadId: item.threadId, messageId: item.messageId, replyType: "other", body: "ありがとうございます。", futureContactRefused: false });
+    expect(res.status).toBe(200);
+  });
+
+  it("[M4] a re-submitted draft keeps the text under review and never clears warnings", async () => {
+    await receive("900000000000302", "mid-u1", "今後は連絡しないでください。よろしくお願いします。");
+    const [item] = await pending();
+    const base = { action: "inbox_draft", threadId: item.threadId, messageId: item.messageId, replyType: "decline" };
+    await api({ ...base, body: "承知しました。", futureContactRefused: true });
+    await api({ ...base, body: "別の文面", futureContactRefused: false });
+    const { rows } = await db.query("select body, dnc_candidate, needs_human_review from public.sales_ig_drafts");
+    expect(rows).toEqual([{ body: "承知しました。", dnc_candidate: true, needs_human_review: true }]);
+  });
+
+  it("[L1] detects a refusal followed by a polite closing message", async () => {
+    await receive("900000000000303", "mid-v1", "営業の連絡は今後ご遠慮ください", Date.now() - 1000);
+    await receive("900000000000303", "mid-v2", "よろしくお願いします", Date.now());
+    const [item] = await pending();
+    const res = await (await api({ action: "inbox_draft", threadId: item.threadId, messageId: item.messageId, replyType: "decline", body: "承知いたしました。", futureContactRefused: false })).json();
+    expect(res.draft.dncCandidate).toBe(true);
+  });
+
+  it("[M5] backs off a conversation after 3 failed drafts so it cannot block newer ones", async () => {
+    await receive("900000000000304", "mid-w1", "スパム", Date.now() - 5000);
+    const [item] = await pending();
+    for (let i = 0; i < 3; i += 1) {
+      const res = await api({ action: "inbox_draft", threadId: item.threadId, messageId: item.messageId, replyType: "other", body: "evil.com", futureContactRefused: false });
+      expect(res.status).toBe(400);
+    }
+    expect(await pending()).toEqual([]);
+    await receive("900000000000304", "mid-w2", "新しいメッセージ");
+    expect((await pending()).length).toBe(1);
+  });
+
+  it("[M2] keeps matching new conversations even when many unmatched ones pile up", async () => {
+    for (let i = 0; i < 25; i += 1) {
+      const igsid = `9000000000010${String(i).padStart(2, "0")}`;
+      usernames[igsid] = `stranger_${i}`;
+      await receive(igsid, `mid-s${i}`, "こんにちは", Date.now() - 60_000 + i);
+    }
+    for (let i = 0; i < 5; i += 1) await pending(); // usernames get fetched over a few runs
+    const shop = await contactedShop();
+    usernames["900000000000399"] = shop.handle;
+    await receive("900000000000399", "mid-s-new", "デモ見ました");
+    await pending();
+    const { rows } = await db.query("select match_status from public.sales_ig_threads where igsid = '900000000000399'");
+    expect(rows[0].match_status).toBe("matched");
+  });
+
+  it("does not offer a message the sender unsent", async () => {
+    await receive("900000000000305", "mid-x1", "送信取り消し予定");
+    const raw = JSON.stringify({ object: "instagram", entry: [{ id: OURS, messaging: [{ sender: { id: "900000000000305" }, recipient: { id: OURS }, timestamp: Date.now(), message: { mid: "mid-x1", is_deleted: true } }] }] });
+    await webhook(new NextRequest("http://localhost/api/webhooks/instagram", { method: "POST", headers: { "X-Hub-Signature-256": `sha256=${createHmac("sha256", SECRET).update(raw).digest("hex")}` }, body: raw }));
+    expect(await pending()).toEqual([]);
+  });
+});
+
 });
