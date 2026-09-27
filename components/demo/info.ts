@@ -1,4 +1,4 @@
-import type { DemoView } from "@/lib/sales/demo-content";
+import { CATEGORY_LABEL, type DemoView } from "@/lib/sales/demo-content";
 
 // The shop-information rows a template may show. Only verified values;
 // rows without a value are left out (never filled with a placeholder).
@@ -16,6 +16,7 @@ export function infoRows(demo: DemoView): InfoRow[] {
   return rows.filter((r): r is [InfoRow["key"], string, string] => r[2] !== null).map(([key, label, value]) => ({ key, label, value }));
 }
 
-export function areaLabel(demo: DemoView, category: string): string {
-  return `${demo.ward ? `名古屋市${demo.ward}の` : "名古屋の"}${category}`;
+/** "名古屋市中区のパン屋" — built only from the verified ward and category. */
+export function areaLabel(demo: DemoView): string {
+  return `${demo.ward ? `名古屋市${demo.ward}の` : "名古屋の"}${CATEGORY_LABEL[demo.category]}`;
 }

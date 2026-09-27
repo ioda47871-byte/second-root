@@ -316,9 +316,11 @@
         "unit/e2e: 未確認項目が表示されない"
       ],
       "allowed_scope": [
+        "components/demo/",
+        "lib/sales/demo-content.ts",
         "app/demo/",
-        "public/demo-assets/",
-        "tests/"
+        "tests/",
+        "vitest.config.mts"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -354,9 +356,11 @@
         "unit/e2e: 未確認項目が表示されない"
       ],
       "allowed_scope": [
+        "components/demo/",
+        "lib/sales/demo-content.ts",
         "app/demo/",
-        "public/demo-assets/",
-        "tests/"
+        "tests/",
+        "vitest.config.mts"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -391,9 +395,11 @@
         "unit/e2e: 未確認項目が表示されない"
       ],
       "allowed_scope": [
+        "components/demo/",
+        "lib/sales/demo-content.ts",
         "app/demo/",
-        "public/demo-assets/",
-        "tests/"
+        "tests/",
+        "vitest.config.mts"
       ],
       "forbidden_scope": [
         "main への直接 push",
