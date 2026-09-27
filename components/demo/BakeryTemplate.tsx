@@ -47,7 +47,7 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
         {demo.menuItems.length > 0 && (
           <section aria-labelledby="bakery-menu">
             <h2 id="bakery-menu" className={styles.sectionTitle}>
-              パンのご紹介
+              メニュー
             </h2>
             <ul className={styles.menu}>
               {demo.menuItems.map((item, i) => (
