@@ -296,3 +296,4 @@ mugi-no-mi 等の別 project と混ぜない。CI に Production の Supabase / 
 | `SALES_AGENT_INGEST_TOKEN` | server + Operational Claude のみ | DEV-003 |
 | `SALES_ADMIN_EMAIL` 等 | server only | DEV-008 |
 | `SALES_DEMO_BASE_URL` | server | DEV-004 |
+| `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` / `INSTAGRAM_APP_SECRET` / `INSTAGRAM_ACCOUNT_ID` / `INSTAGRAM_ACCESS_TOKEN` | **server only**（Operational Claude にも渡さない。設定は人間: `docs/INSTAGRAM_SETUP.md`） | DEV-020〜024 |
