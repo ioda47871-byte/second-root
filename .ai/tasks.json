@@ -693,7 +693,7 @@
     {
       "id": "DEV-014",
       "title": "5-day email follow-up",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-011",
@@ -824,7 +824,7 @@
     {
       "id": "DEV-017",
       "title": "Security hardening / regression",
-      "status": "backlog",
+      "status": "review",
       "priority": "P0",
       "depends_on": [
         "DEV-003",
@@ -860,7 +860,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-017-security"
     },
     {
       "id": "DEV-018",
@@ -897,7 +898,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-018-e2e-qa"
     },
     {
       "id": "DEV-019",
