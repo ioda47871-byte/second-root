@@ -81,12 +81,28 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 - Instagram がリンクにしない書き方は検出しない: 漢数字の電話番号（〇九〇…）、1 桁ずつ空けた数字、`evil dot com` / `evil ドット com` / `evil・com` / 改行をはさんだドメイン、`h t t p s`。送信前に人間が読むことで扱う。
 - 相手の username は一度取得したら更新しない。店舗が改名し別人が同じ handle を取った場合の誤照合は、照合が「Instagram で営業済みの店舗」に限られることと人間の確認で抑える（DEV-024 で定期更新を検討）。
 
-## 6. 送信（DEV-023）
+## 6. 管理画面と送信（DEV-022 / DEV-023）
 
-- 管理者の「この内容で返信」→ server action（`requireAdmin()`）→ `sales_ig_send` を idempotency key で作成（既にあれば既存の結果を返す）→ Meta Send API → 結果を記録。
-- **API 失敗時に sent にしない。** タイムアウト等で結果不明の場合は `unknown` とし、自動再送しない（Meta 側に message id が記録されたかを確認できる手段が公式にあれば DEV-023 で使う。なければ人間に「送信されたか Instagram で確認」を促す）。
-- 明確な失敗（4xx 等で未送信が確実）の再試行は同じ idempotency key で行い、二重送信しない。
-- 送信可能期間外・thread 未照合・DNC の相手には送らない（サーバー側で拒否）。
+実装: `app/admin/sales/replies/page.tsx`（「Instagram の返信」）、`components/admin/IgReplyCard.tsx`、`app/admin/sales/_actions/instagram.ts`、`lib/instagram/reply.ts`、migration `20260927001100_sales_ig_admin_send.sql`。
+
+- 返信画面に、店舗名（未照合なら「未照合: @username」）、受信日時、相手のメッセージ、AI 分類、AI 返信案、確認ポイント（価格・日程・契約・DNC 候補）を plain text で表示する。これまでのやりとり（直近 10 件）は折りたたみで表示。
+- ボタン: **この内容で返信** / **返信文を編集**（サーバーで `checkDraft` を再実行。連絡先・デモ以外のリンクは保存できない）/ **後で対応**（24 時間 snooze。「後で対応」一覧から戻せる）。
+- 未照合の会話は、人間が「Instagram で営業済みの店舗（DNC 以外）」から選ぶか、「営業と関係ない」にする。照合するまで送信できない。
+- 送信の流れ（`sendApprovedReply`）:
+  1. `sales_ig_begin_send(draft)`（admin RPC、行ロック）が送信を予約する。idempotency key は `draft_id:sha256(本文)`。
+     - 送信済み・`unknown` は再生（再送しない）。
+     - 送信中（2 分以内）は `in_flight`。2 分を過ぎた送信中は、サーバーが途中で止まったものとして `unknown` にする（自動再送しない）。
+     - 未照合・DNC・24 時間の返信期間外は拒否する。明確な失敗の後の再試行だけ attempts+1 で再送できる。
+     - 最新の受信メッセージへの返信案でなければ拒否し、その案を superseded にする（古い失敗案を新着後に送らない）。
+     - 画面に「送信中」が残った場合（途中でサーバーが止まった等）は「送信状況を確認」で同じ予約を問い合わせる（再送しない）。
+  2. 公式 Send API `POST /<IG_ID>/messages`（token は server only、bearer header、timeout、redirect 拒否）。
+  3. `sales_ig_finish_send`（送信中の予約、または結果不明の予約への確定結果だけを受け付け、遅れて届いた・重複した結果は無視）: 成功時だけ `sent`・Meta message id・送信日時を記録し、会話履歴に outbound message（`mid` = Meta の message id）を追加する。Webhook の echo は同じ `mid` なので二重に保存されない。
+- **API 失敗時に sent にしない**:
+  - 4xx でエラーコードがある（未送信が確実）→ `failed`。人間が再度押せば再送する（同じ key、二重送信しない）。
+  - ネットワーク障害・5xx・読めない応答・subcode 1357046（送信されたがエラー）・一時的/汎用エラー（`is_transient`・code 1/2）→ `unknown`。画面に「送信されていた / 送信されていなかった」を表示し、人間が Instagram アプリで確認して記録する。「送信されていなかった」の後だけ再送できる。
+  - Meta の認証情報がない環境では Graph を呼ばず `failed(not_configured)`。
+- 本文を編集すると key が変わるので、新しい送信として扱う（以前の失敗記録は残る）。
+- 送信・編集・snooze・照合はすべて `requireAdmin()` と DB 側の admin 確認（SECURITY DEFINER + `sales_is_admin()`）の両方を通る。Operational Claude（ingest token）からは呼べない。
 
 ## 7. Security
 
