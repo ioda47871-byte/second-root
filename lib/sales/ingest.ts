@@ -19,6 +19,7 @@ type DbRunState = {
   error_code: string | null;
   error_summary: string | null;
   discovered_keys: string[];
+  discovered?: Array<{ key: string; name: string; category: string; ward: string | null; website_url: string | null; instagram_url: string | null }>;
   verified_order: string[];
   candidates: Record<string, { stage: CandidateStage; prospect_id?: string; reason?: string; error_code?: string }>;
   replayed: boolean;
@@ -34,6 +35,8 @@ export type RunView = {
   errorCode: string | null;
   errorSummary: string | null;
   discoveredKeys: string[];
+  /** The discovered stubs, only while nextAction is verify (resume without searching again). */
+  discovered: Array<{ key: string; name: string; category: string; ward: string | null; websiteUrl: string | null; instagramUrl: string | null }>;
   candidates: Array<{ key: string; stage: CandidateStage; prospectId?: string; reason?: string; errorCode?: string }>;
   replayed: boolean;
 };
@@ -90,6 +93,14 @@ export function toView(state: DbRunState, now: Date = new Date()): RunView {
     errorCode: state.error_code,
     errorSummary: state.error_summary,
     discoveredKeys: state.discovered_keys ?? [],
+    discovered: (state.discovered ?? []).map((c) => ({
+      key: c.key,
+      name: c.name,
+      category: c.category,
+      ward: c.ward ?? null,
+      websiteUrl: c.website_url ?? null,
+      instagramUrl: c.instagram_url ?? null,
+    })),
     candidates: (state.verified_order ?? []).map((key) => {
       const c = state.candidates?.[key] ?? { stage: "pending" as const };
       return {

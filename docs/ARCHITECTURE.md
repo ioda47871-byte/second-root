@@ -234,7 +234,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | status / phase | nextAction |
 |---|---|
 | running / started | `discover` |
-| running / discovered | `verify`（checkpoint の stub を使い探索を再実行しない） |
+| running / discovered | `verify`（checkpoint の stub を使い探索を再実行しない。この間は応答の `discovered` に stub が入るので、新しい session でも記憶なしで再開できる） |
 | running / verified, persisting | `persist` |
 | completed | `none` |
 | failed, または期限切れ | `start_new_run` |
