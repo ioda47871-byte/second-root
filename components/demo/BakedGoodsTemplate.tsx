@@ -21,7 +21,7 @@ export default function BakedGoodsTemplate({ demo }: { demo: DemoView }) {
     <DemoFrame shopName={demo.name} template={demo.template}>
       <header className={styles.hero}>
         <div className={styles.frame}>
-          <p className={styles.label}>{areaLabel(demo, "焼菓子店")}</p>
+          <p className={styles.label}>{areaLabel(demo)}</p>
           <h1 className={styles.name}>{demo.name}</h1>
           <Ornament />
           {demo.description && <p className={styles.description}>{demo.description}</p>}
@@ -31,11 +31,11 @@ export default function BakedGoodsTemplate({ demo }: { demo: DemoView }) {
         {demo.menuItems.length > 0 && (
           <section aria-labelledby="baked-menu">
             <h2 id="baked-menu" className={styles.sectionTitle}>
-              お菓子のご紹介
+              メニュー
             </h2>
             <ul className={styles.menu}>
-              {demo.menuItems.map((item) => (
-                <li key={item} className={styles.menuItem}>
+              {demo.menuItems.map((item, i) => (
+                <li key={`${i}-${item}`} className={styles.menuItem}>
                   {item}
                 </li>
               ))}

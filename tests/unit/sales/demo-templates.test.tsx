@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { renderDemo } from "@/components/demo/renderDemo";
@@ -20,6 +22,7 @@ const full: DemoView = {
   menuItems: ["食パン", "クロワッサン"],
 };
 
+// Fixtures are bakery; each case below swaps in the matching template/category.
 const minimal: DemoView = {
   ...full,
   ward: null,
@@ -60,26 +63,52 @@ const ALLOWED_COPY = [
   "Second Root（セカンドルート）｜名古屋の小さなお店のホームページ制作",
   // Section headings and labels
   "営業時間", "定休日", "住所", "アクセス", "電話",
-  "パンのご紹介", "お店の情報", "お菓子のご紹介", "店舗のご案内", "メニュー", "お店について",
+  // Neutral headings only: "メニュー" never claims what kind of item a fact is.
+  "お店の情報", "店舗のご案内", "お店について", "メニュー", "店舗情報",
   "名古屋市の", "名古屋のパン屋", "パン屋", "名古屋の焼菓子店", "焼菓子店", "名古屋のカフェ", "カフェ",
 ];
 
-describe.each(["bakery_v1", "baked_goods_v1", "cafe_v1"] as const)("%s", (template) => {
+const CASES = [
+  ["bakery_v1", "bakery"],
+  ["baked_goods_v1", "baked_goods"],
+  ["cafe_v1", "cafe"],
+] as const;
+
+describe.each(CASES)("%s", (template, category) => {
   it("shows only verified facts and fixed template copy", () => {
     for (const demo of [full, minimal]) {
-      expect(leftover({ ...demo, template }, ALLOWED_COPY)).toBe("");
+      expect(leftover({ ...demo, template, category }, ALLOWED_COPY)).toBe("");
     }
   });
 
   it("omits sections without facts and never prints empty placeholders", () => {
-    const html = renderToStaticMarkup(renderDemo({ ...minimal, template }));
+    const html = renderToStaticMarkup(renderDemo({ ...minimal, template, category }));
     expect(html).not.toMatch(/undefined|null|NaN/);
-    for (const label of ["営業時間", "定休日", "電話", "メニュー", "ご紹介"]) expect(html).not.toContain(label);
+    for (const label of ["営業時間", "定休日", "電話", "メニュー", "ご紹介", "お店の情報", "店舗のご案内", "お店について", "店舗情報"]) {
+      expect(html).not.toContain(label);
+    }
     expect(html).toContain("公式サイトではありません");
   });
 
+  it("hides no text in SVG, attributes or CSS content", () => {
+    const html = renderToStaticMarkup(renderDemo({ ...full, template, category }));
+    expect(html).not.toMatch(/<(text|title|desc)\b/);
+    const attrs = [...html.matchAll(/\s(alt|title|aria-label|placeholder)="([^"]*)"/g)].map((m) => m[2]);
+    expect(attrs).toEqual([]);
+  });
+
   it("escapes shop text", () => {
-    const html = renderToStaticMarkup(renderDemo({ ...full, template, name: "<script>alert(1)</script>" }));
+    const html = renderToStaticMarkup(renderDemo({ ...full, template, category, name: "<script>alert(1)</script>" }));
     expect(html).not.toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("template CSS", () => {
+  it("adds no text through CSS content", () => {
+    const dir = join(process.cwd(), "components/demo");
+    for (const file of readdirSync(dir).filter((f) => f.endsWith(".css"))) {
+      const values = [...readFileSync(join(dir, file), "utf8").matchAll(/(?<![-\w])content\s*:\s*([^;}]+)/g)].map((m) => m[1].trim());
+      expect(values.filter((v) => v !== '""' && v !== "''"), file).toEqual([]);
+    }
   });
 });

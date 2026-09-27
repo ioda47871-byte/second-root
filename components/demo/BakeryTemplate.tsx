@@ -12,12 +12,12 @@ function Loaves() {
     <svg className={styles.loaves} viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <g fill="#ecd3aa" opacity="0.55">
         <ellipse cx="40" cy="40" rx="46" ry="26" />
-        <ellipse cx="370" cy="200" rx="52" ry="30" />
+        <ellipse cx="360" cy="190" rx="44" ry="26" />
         <ellipse cx="350" cy="36" rx="22" ry="14" />
       </g>
       <g stroke="#dcb987" strokeWidth="3" strokeLinecap="round" opacity="0.6" fill="none">
         <path d="M18 34c10-6 16-6 26 0M38 30c10-6 16-6 26 0" />
-        <path d="M344 196c10-6 16-6 26 0M364 190c10-6 16-6 26 0" />
+        <path d="M336 186c10-6 16-6 26 0M356 180c10-6 16-6 26 0" />
       </g>
     </svg>
   );
@@ -38,7 +38,7 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
       <header className={styles.hero}>
         <Loaves />
         <div className={styles.heroInner}>
-          <p className={styles.label}>{areaLabel(demo, "パン屋")}</p>
+          <p className={styles.label}>{areaLabel(demo)}</p>
           <h1 className={styles.name}>{demo.name}</h1>
           {demo.description && <p className={styles.description}>{demo.description}</p>}
         </div>
@@ -47,11 +47,11 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
         {demo.menuItems.length > 0 && (
           <section aria-labelledby="bakery-menu">
             <h2 id="bakery-menu" className={styles.sectionTitle}>
-              パンのご紹介
+              メニュー
             </h2>
             <ul className={styles.menu}>
-              {demo.menuItems.map((item) => (
-                <li key={item} className={styles.menuItem}>
+              {demo.menuItems.map((item, i) => (
+                <li key={`${i}-${item}`} className={styles.menuItem}>
                   <Wheat />
                   {item}
                 </li>
@@ -67,8 +67,10 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
             <dl className={styles.info}>
               {rows.map((row) => (
                 <div key={row.key} className={styles.row}>
-                  <InfoIcon kind={row.key} className={styles.icon} />
-                  <dt>{row.label}</dt>
+                  <dt>
+                    <InfoIcon kind={row.key} className={styles.icon} />
+                    {row.label}
+                  </dt>
                   <dd>{row.value}</dd>
                 </div>
               ))}

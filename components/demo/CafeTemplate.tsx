@@ -23,7 +23,7 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
     <DemoFrame shopName={demo.name} template={demo.template}>
       <header className={styles.hero}>
         <div className={styles.heroText}>
-          <p className={styles.label}>{areaLabel(demo, "カフェ")}</p>
+          <p className={styles.label}>{areaLabel(demo)}</p>
           <h1 className={styles.name}>{demo.name}</h1>
           {demo.description && <p className={styles.description}>{demo.description}</p>}
         </div>
