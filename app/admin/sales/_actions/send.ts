@@ -62,17 +62,15 @@ export async function markFollowUpSent(outreachId: string): Promise<SendResult> 
     initialSubject: row.subject,
     demoToken: demo.public_token,
   });
-  const { error } = await supabase.rpc("sales_mark_follow_up_sent", {
-    p_outreach_id: outreachId,
-    p_subject: draft.subject,
-    p_body: draft.body,
-  });
+  const { error } = await supabase.rpc("sales_mark_follow_up_sent", { p_outreach_id: outreachId, p_body: draft.body });
   if (error) {
     const message = error.message.includes("do_not_contact")
       ? "この店舗は営業不要（DNC）のため送信済みにできません。"
       : error.message.includes("not_due")
         ? "フォローの条件（初回から5日・返信なし）を満たしていません。画面を再読み込みしてください。"
-        : "送信済みにできませんでした。画面を再読み込みしてください。";
+        : error.message.includes("demo_unavailable")
+          ? "デモが公開期間外または無効のため、フォローできません。"
+          : "送信済みにできませんでした。画面を再読み込みしてください。";
     return { ok: false, error: message };
   }
   revalidatePath("/admin/sales");

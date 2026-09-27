@@ -20,7 +20,8 @@ function cannotCompose(what: string) {
 
 /** The one big action for a queue item: Instagram DM, email, or the one email follow-up. */
 function actionFor(item: TodayItem) {
-  if (item.kind === "follow_up" && item.channel === "email" && item.publicEmail && item.demoToken) {
+  if (item.kind === "follow_up") {
+    if (item.channel !== "email" || !item.publicEmail || !item.demoToken) return cannotCompose("フォローメール");
     const draft = composeFollowUp({ shopName: item.shopName, publicEmail: item.publicEmail, initialSubject: item.subject, demoToken: item.demoToken });
     try {
       return <EmailSend outreachId={item.outreachId} mailto={buildMailto(draft)} draft={draft} kind="follow_up" label="フォローメールを作成" />;
