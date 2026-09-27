@@ -8,8 +8,8 @@
 ### HUMAN-001 — Bootstrap PR の merge と develop 作成
 - 対象 Task: DEV-001, DEV-002（以降すべて）
 - 状態: 人間が 2026-09-27 に承認済み（CI green + Fresh Review Critical/High 0 で Claude が merge し develop を作成してよい）
-- 必要な操作:
-  1. BOOT-001 の PR をレビューし main へ merge
+- 必要な操作（1・2 は人間承認に基づき Claude が実施）:
+  1. BOOT-001 の PR #8 を main へ merge
   2. merge 後の main から `develop` branch を作成し push
   3. （推奨）`main` / `develop` に branch protection を設定し、CI の `static` / `unit` / `build` / `e2e` を required check にする
 - 解除条件: `origin/develop` が存在し、BOOT-001 の変更を含む

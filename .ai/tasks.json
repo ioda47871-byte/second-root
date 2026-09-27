@@ -23,7 +23,7 @@
         "Vitest による unit test 基盤と Playwright による既存サイト regression smoke",
         "GitHub Actions CI（static / unit / build / e2e）が green",
         "既存 Second Root の挙動変更なし",
-        "main 向け PR 作成（人間が merge）",
+        "main 向け PR 作成（2026-09-27 の人間承認により、CI green + Fresh Review Critical/High 0 で Claude が merge 可）",
         "Operational run の checkpoint / resume / idempotency / fail-closed 設計を docs と DEV-001/002/003/015/016 の受入条件に反映"
       ],
       "required_tests": [
@@ -115,7 +115,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "blocked_reason": "BOOT-001 の PR が人間により main へ merge され、develop branch が作成されるまで開始しない（.ai/blockers.md HUMAN-001）"
+      "blocked_reason": "BOOT-001 の PR #8 が main へ merge され、develop branch が作成されるまで開始しない（.ai/blockers.md HUMAN-001）"
     },
     {
       "id": "DEV-002",
@@ -179,7 +179,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "blocked_reason": "BOOT-001 の PR が人間により main へ merge され、develop branch が作成されるまで開始しない（.ai/blockers.md HUMAN-001）"
+      "blocked_reason": "BOOT-001 の PR #8 が main へ merge され、develop branch が作成されるまで開始しない（.ai/blockers.md HUMAN-001）"
     },
     {
       "id": "DEV-003",
@@ -269,7 +269,8 @@
       "required_tests": [
         "unit: demo expiry",
         "integration: demo 公開項目",
-        "e2e: demo 表示 / 期限切れ"
+        "e2e: demo 表示 / 期限切れ",
+        "e2e/integration: 未送信デモ（expires_at null）は公開 URL で 404"
       ],
       "allowed_scope": [
         "app/demo/",
@@ -416,11 +417,13 @@
         "allowlist 外のユーザーは拒否",
         "service role を browser に渡さない",
         "モバイルファースト",
-        "認証方式は Supabase Auth の email + password に固定（magic link は実装しない）"
+        "認証方式は Supabase Auth の email + password に固定（magic link は実装しない）",
+        "未送信デモの管理者プレビュー（/admin/sales 配下、allowlist 管理者のみ。非管理者・未ログインは拒否）"
       ],
       "required_tests": [
         "e2e: admin login",
-        "integration: 非 admin 拒否"
+        "integration: 非 admin 拒否",
+        "e2e/integration: デモ プレビューは管理者のみ"
       ],
       "allowed_scope": [
         "app/admin/",
@@ -572,7 +575,8 @@
       "acceptance_criteria": [
         "won は金額必須",
         "decline だけでは DNC にしない。明示的な将来連絡拒否を管理者が選んだ場合のみ DNC",
-        "不正遷移はサーバーで拒否"
+        "不正遷移はサーバーで拒否",
+        "返信記録で「今後の連絡を拒否された」を選ぶと do_not_contact=true・dnc_reason=explicit_refusal・デモ disabled_at を設定。decline 後は別チャネルの初回営業・フォローを表示しない"
       ],
       "required_tests": [
         "unit: state machine",

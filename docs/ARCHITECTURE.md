@@ -81,7 +81,7 @@ tests/e2e/            Playwright
 | instagram_url, instagram_handle | handle は unique（partial） |
 | public_email | 小文字化、unique（partial）。出典必須 |
 | recommended_channel | `instagram` / `email` / null |
-| do_not_contact, dnc_reason, dnc_set_at | 明示的な将来連絡拒否のときだけ admin が設定（通常の decline では設定しない）。解除も admin のみ |
+| do_not_contact, dnc_reason, dnc_set_at | 明示的な将来連絡拒否のときだけ admin が設定（返信記録の「今後の連絡を拒否された」で `dnc_reason = explicit_refusal`。通常の decline では設定しない）。解除も admin のみ。解除してもデモの `disabled_at` は戻さない |
 | status | 営業状態（state machine） |
 | first_seen_run_id | 最初にこの店舗を登録した run（追跡用） |
 

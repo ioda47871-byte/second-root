@@ -13,3 +13,13 @@
 | Low | DEV-012 に decline≠DNC のテストがない | required_tests に追加 |
 | Low | 「新規 actionable」の定義・枠の割当順が未定義 | 当日（JST）に初回営業下書きが作られた prospect（全 run 合計）、枠は verified 提出順と定義 |
 | Low | 10 件の verified が 64KB に収まるか未検証 | DEV-002 の required_tests に追加 |
+
+## Round 2（59aca29）— PASS（Critical 0 / High 0）
+
+| Sev | 指摘 | 対応 |
+|---|---|---|
+| Medium | 未送信デモの管理者プレビューを担う Task・テストがない | DEV-008 に管理者限定プレビューの受入条件とテスト、DEV-004 に未送信 404 のテストを追加 |
+| Low | tasks.json / blockers.md に「人間が merge」の旧記述 | 承認済み例外に合わせて更新 |
+| Low | 明示的拒否の記録方法が未定義 | `dnc_reason = explicit_refusal`、DEV-012 に受入条件追加 |
+| Low | DNC 解除時のデモ `disabled_at` の扱い | 戻さないと明記 |
+| Low | decline 後に別チャネル不可の直接テストなし | DEV-012 受入条件に明記 |
