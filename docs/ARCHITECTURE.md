@@ -147,7 +147,7 @@ run の現在地を**このテーブルだけから**判断できるようにす
 | action | body | サーバーの処理 | 冪等性 |
 |---|---|---|---|
 | `start` | `runId` | run を `running / started` で作成 | 既存 run があれば作成せず現在の状態を返す |
-| `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は再開可能な最新 run（なければ `null`） | 読み取りのみ |
+| `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は実行中の run → なければ今日（Asia/Tokyo）開始の run（completed は 200、failed は 409 と `start_new_run`）→ なければ `null`（§7.3） | 読み取りのみ |
 | `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める | 同じ phase の再送は上書き保存（`persisting` 以降は拒否） |
 | `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤10。超過は 400 で全体拒否)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
 | `persist` | `runId` | `verified` checkpoint の候補を §7.4 の手順で処理し、候補ごとの stage を checkpoint に記録。全候補が終端に達したら（または試行上限で）`completed` にし `result` を保存 | 何度呼んでも同じ結果に収束（§7.3）。同じ run の `persist` 同時実行は 409 `run_busy` |
@@ -226,7 +226,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | `running` | 同じ/次の phase | 続きから処理（resume） |
 | `running` | 前の phase | 何もせず現在の状態を返す（遅延した再送とみなす） |
 | `running`（最終 checkpoint から 24 時間超） | 任意 | その場で `failed` / error_code `run_expired` に確定し 409。新しい run_id で始める。runId なしの `status` は期限切れ run を返さない |
-| 実行中の run なし | runId なしの `status` | 今日（Asia/Tokyo）開始の run があればその状態を返す（completed → `none`、failed → `start_new_run`）。Operational Claude はどちらでもその日は新しい run を始めない（1 日 1 run）。今日の run がなければ `null` |
+| 実行中の run なし | runId なしの `status` | 今日（Asia/Tokyo）開始の run があればその状態を返す（completed → `none`、failed → `start_new_run`）。Operational Claude はどちらでもその日は新しい run を始めない（1 日 1 run）。今日の run がなければ `null`。1 日 1 run は prompt で守り、サーバーは新しい runId の `start` を拒否しない（同時起動で 2 run になっても、当日の新規 actionable 上限 5 件は全 run 共通の lock 下で数えるため超えない） |
 | `completed` | 任意 | 処理せず保存済み `result` を返す（`replayed: true`） |
 | `failed` | 任意 | 処理しない。`nextAction: "start_new_run"` |
 

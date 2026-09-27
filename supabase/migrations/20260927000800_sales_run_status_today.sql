@@ -7,6 +7,8 @@
 -- one: completed → nextAction none, failed → start_new_run (which the run
 -- prompt treats as "stop for today"). Only with no run today is it null.
 -- The daily cap on new actionable shops still holds regardless.
+-- (Supersedes the "latest resumable run, or null" behaviour described in
+-- 20260927000100_sales_agent_run_functions.sql.)
 
 create or replace function public.sales_run_status(p_run_id uuid default null)
 returns jsonb

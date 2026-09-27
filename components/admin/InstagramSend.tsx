@@ -47,7 +47,7 @@ export default function InstagramSend({ outreachId, dmText, instagramUrl }: { ou
         <>
           <p className={styles.muted} role="status">
             {copied
-              ? "営業文をコピーしました。Instagram で貼り付けて送信したら、戻って「送信済み」を押してください。"
+              ? "営業文をコピーしました。プロフィールに「DM不可」「営業お断り」等がないか確認してから貼り付けて送信し、戻って「送信済み」を押してください。"
               : "コピーできませんでした。下の文面を選択してコピーし、Instagram で送信してください。"}
           </p>
           {copied === false && <textarea className={styles.input} readOnly rows={8} value={dmText} aria-label="DM の文面" />}

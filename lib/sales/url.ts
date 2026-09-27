@@ -38,8 +38,6 @@ const SHARED_HOST_PATH_SEGMENTS: Record<string, number> = {
   "blog.goo.ne.jp": 1,
   "blog.livedoor.jp": 1,
   "jimdofree.com": 1,
-  "minne.com": 1,
-  "creema.jp": 2, // /creator/<id>
 };
 
 // Social networks, portals and map/review sites are never a shop's
@@ -53,6 +51,8 @@ const NOT_OFFICIAL_SITE_HOSTS = [
   // Shorteners and delivery / review portals never identify one shop's own site.
   "bit.ly", "t.co", "g.page", "tinyurl.com", "ow.ly", "is.gd", "ubereats.com", "demae-can.com",
   "wolt.com", "ekiten.jp", "rakuten.co.jp", "amazon.co.jp", "mercari.com",
+  // Marketplaces: a shop page inside a mall is not the shop's own site.
+  "minne.com", "creema.jp", "shopping.yahoo.co.jp", "paypaymall.yahoo.co.jp",
 ];
 
 function bareHost(url: URL): string {

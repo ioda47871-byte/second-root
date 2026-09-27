@@ -75,7 +75,7 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
    - `409 run_busy` は別の persist が実行中。1〜2 分待って `status` から確認する。
 5. `nextAction = "none"`: 完了。§6 の形式で結果を報告して終了。
    `nextAction = "start_new_run"`（run が `failed` / 期限切れ）: 前の run は再開しない。
-   **この session では新しい run を始めずに**報告して終了する（1 日 1 run。翌日の起動で新しい run が始まる）。
+   **この session では新しい run を始めずに**報告して終了する（1 日 1 run。次回の起動で、今日（日本時間）まだ run がなければ新しい run が始まる）。
 
 ### 通信失敗・再送（冪等）
 
@@ -135,7 +135,7 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
 `website` は `{ "status", "url", "checks" }` の 3 つを**必ず**入れる。`checks` は実際に公式サイトを探した検索の回数（整数 0〜10）。
 
 - 公式サイトとして扱うもの: 店舗自身が運営するサイト（独自ドメイン、または BASE / STORES / Shopify / Jimdo / ペライチ等で**その店舗専用の URL**を持つページやネットショップ）。
-  公式サイトとして扱わないもの: SNS（Instagram / Facebook / X 等）、地図・グルメ・予約・口コミサイト、楽天・Amazon 等の大型モール内の店舗ページ。
+  公式サイトとして扱わないもの: SNS（Instagram / Facebook / X 等）、地図・グルメ・予約・口コミサイト、楽天・Amazon・Yahoo!ショッピング・minne・Creema 等のモール / マーケットプレイス内の店舗ページ。
 - `status: "present"` と `url`: 店舗自身の公式サイトが見つかった。`url` は公式サイトのトップ（http/https）。例: `{ "status": "present", "url": "https://…/", "checks": 1 }`
   SNS・地図・グルメサイト・予約サイト・ポータル・EC モールのページは公式サイトとして扱わない。
 - `status: "not_found"`: **2 回以上の独立した検索**（例: 店名＋区、店名＋業種＋名古屋）で公式サイトが見つからなかった。`checks` に検索回数を入れる（2 以上）。`url` は入れない。
@@ -147,7 +147,8 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
   **Instagram へのリンクを載せているページ**で確認する（第三者の記事・地図サイトしかなければ、2 つ以上で同じ handle を確認）。
   読めなかった Instagram プロフィールを事実の出典（`instagram_profile`）にしない。事実の `sourceType` は実際に読んだページのものにする。
 - 「DM 不可」「営業お断り」「問い合わせは電話のみ」等の記載を読んだページで見つけたら、その店舗は提出しない（又聞きでも除外する。fail-closed）。
-  プロフィールが読めず確認できなかったことだけでは除外しない。
+  プロフィールが読めず確認できなかったことだけでは除外しない（送信前に人間がプロフィールを確認する: MVP_SPEC §4.1）。
+  その場合は報告の notes に「プロフィール未確認: <key>」と書く。
 
 - 店舗自身のプロフィール URL（`https://www.instagram.com/<handle>/`）。投稿・リール・ハッシュタグ・他人のアカウントは不可。
 - Instagram で営業できるのは `website.status = "not_found"` かつ第一者の公開メールがない店舗だけ（サーバーが判定する）。
@@ -196,14 +197,16 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
       "instagramUrl": "https://www.instagram.com/<handle>/",
       "email": null,
       "facts": [
-        { "field": "name", "value": "店名", "sourceUrl": "https://www.instagram.com/<handle>/", "sourceType": "instagram_profile", "verifiedAt": "2026-09-27T09:10:00+09:00" },
-        { "field": "address", "value": "愛知県名古屋市中区…", "sourceUrl": "https://www.instagram.com/<handle>/", "sourceType": "instagram_profile", "verifiedAt": "2026-09-27T09:10:00+09:00" }
+        { "field": "name", "value": "店名", "sourceUrl": "https://（実際に読んだ地図・紹介ページ等）", "sourceType": "map_listing", "verifiedAt": "2026-09-27T09:10:00+09:00" },
+        { "field": "address", "value": "愛知県名古屋市中区…", "sourceUrl": "https://（実際に読んだ地図・紹介ページ等）", "sourceType": "map_listing", "verifiedAt": "2026-09-27T09:10:00+09:00" }
       ],
       "message": { "subject": null, "body": "…" }
     }
   ]
 }
 ```
+
+（`sourceType: "instagram_profile"` は Instagram プロフィールを実際に読めた場合だけ使う。）
 
 - 未知のフィールドは 400 で拒否される（`strict`）。上の形以外のフィールドを足さない。
 - checkpoint に入れないもの: ページの HTML・本文の丸写し・画像・スクリーンショット・secret・token・あなたの推論過程。
