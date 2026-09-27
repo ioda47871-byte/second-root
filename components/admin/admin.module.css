@@ -147,3 +147,13 @@
   width: 100%;
   max-width: 380px;
 }
+
+.previewBar {
+  margin: 0;
+  padding: 10px 16px;
+  background: #fff4cc;
+  color: #5a4600;
+  font-size: 0.85rem;
+  text-align: center;
+  font-family: var(--font-body), system-ui, sans-serif;
+}

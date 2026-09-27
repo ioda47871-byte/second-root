@@ -4,14 +4,20 @@ import pg from "pg";
 // Creates fictional admin / non-admin users in the local Supabase stack for
 // e2e tests. Keys come from `supabase status` via scripts/with-supabase-env.mjs.
 
-export const ADMIN = { email: "e2e-admin@test.example.com", password: "e2e-admin-password-123" };
-export const OUTSIDER = { email: "e2e-outsider@test.example.com", password: "e2e-outsider-password-123" };
+// One pair of users per Playwright project so parallel projects never race.
+export function usersFor(project: string) {
+  return {
+    admin: { email: `e2e-admin-${project}@test.example.com`, password: "e2e-admin-password-123" },
+    outsider: { email: `e2e-outsider-${project}@test.example.com`, password: "e2e-outsider-password-123" },
+  };
+}
 
 function service() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 }
 
-export async function ensureUsers(): Promise<void> {
+export async function ensureUsers(project: string): Promise<void> {
+  const { admin: ADMIN, outsider: OUTSIDER } = usersFor(project);
   const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL });
   await db.connect();
   try {
@@ -26,7 +32,8 @@ export async function ensureUsers(): Promise<void> {
   }
 }
 
-export async function removeUsers(): Promise<void> {
+export async function removeUsers(project: string): Promise<void> {
+  const { admin: ADMIN, outsider: OUTSIDER } = usersFor(project);
   const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL });
   await db.connect();
   try {
