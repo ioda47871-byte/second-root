@@ -37,7 +37,7 @@ status: `backlog` / `ready` / `in_progress` / `review` / `done` / `blocked`
 - 着手時: `in_progress` にして commit + push（他 session が同じ Task を拾わないように）。
 - 失敗時: `attempts` を増やし `last_failure` に要約を書く。3回失敗したら `blocked` にし `.ai/blockers.md` に記録。
 - 人間の操作待ち（merge・secret 設定等）でも `blocked` を使う。その場合は `blocked_reason` に `.ai/blockers.md` の ID と解除条件を書く。
-- PR 作成後: `review`。merge 後: `done`。
+- PR 作成後: `review`。merge 後: `done`（merge 直後の `.ai/` のみの状態更新は develop へ直接 commit してよい。コード・docs の変更は必ず PR 経由）。
 - `tasks.json` の構造は `tests/unit/ai-tasks.test.ts` が CI で検証する。
 
 ### 自分で追加 Task 化してよいもの
@@ -108,7 +108,7 @@ Production data / Production secrets / main 直接 push / Production release / D
 |---|---|---|
 | static | ESLint / TypeScript / secret scan | `npm run lint` / `npm run typecheck` / `npm run check:secrets` |
 | unit | dedupe, channel eligibility, DNC, limits, state machine, demo expiry, mailto, DM, URL validation | `npm test`（Vitest, `tests/unit/`） |
-| integration | ingest API, token auth, runId idempotency, batch cap, DNC, duplicate, unknown website, schema, DB/RLS | `npm run test:integration`（ローカル Supabase。DEV-001/003 で追加） |
+| integration | ingest API, token auth, runId idempotency, batch cap, DNC, duplicate, unknown website, schema, DB/RLS | `npx supabase start` の後 `npm run test:integration`（ローカル Supabase、`tests/integration/`。鍵は `supabase status` から実行時に取得し commit しない） |
 | e2e | 既存サイト regression, admin, 今日の一覧, DM/Email UX, 送信済み, reply→meeting→won/lost, mobile | `npm run test:e2e`（Playwright, `tests/e2e/`） |
 
 - 自動テストから実店舗へ Email / Instagram を**絶対に送らない**（テストデータは `example.com` / 架空アカウントのみ）。

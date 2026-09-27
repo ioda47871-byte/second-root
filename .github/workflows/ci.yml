@@ -1,7 +1,8 @@
 name: CI
 
-# Required checks (see docs/AI_WORKFLOW.md): static, unit, build, e2e.
-# An `integration` job (local Supabase) is added in DEV-001.
+# Required checks (see docs/AI_WORKFLOW.md): static, unit, integration, build, e2e.
+# integration runs against a throwaway local Supabase stack (Docker) with its
+# well-known local keys; no hosted Supabase project is ever used here.
 # No production Supabase or other production secret is ever used here.
 
 on:
@@ -48,6 +49,22 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,postgres-meta,mailpit
+      - run: npm run test:integration
+      - if: always()
+        run: npx supabase stop --no-backup
 
   build:
     name: build

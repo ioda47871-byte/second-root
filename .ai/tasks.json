@@ -65,7 +65,7 @@
     {
       "id": "DEV-001",
       "title": "Supabase migrations / RLS",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "BOOT-001"
@@ -208,7 +208,8 @@
         "[checkpoint] 意味のある工程境界（start / discovered / verified / 候補ごとの persist 結果 / completed）でのみ checkpoint を確定",
         "[resume] 自 run が作った prospect（first_seen_run_id と候補 key が一致）は duplicate ではなく既存結果を返す。未知の候補 key は拒否",
         "[fail-closed] persist 3 回後も error が残る run は completed（error_code partial_errors）で確定し、該当候補は営業準備しない。24h 超の running は参照時に failed（run_expired）へ確定",
-        "verified 候補は最大10件まで受け付け、新規 actionable は当日残り枠（最大5件）までに絞る。条件を緩めて枠を埋めない"
+        "verified 候補は最大10件まで受け付け、新規 actionable は当日残り枠（最大5件）までに絞る。条件を緩めて枠を埋めない",
+        "sales_persist_candidate / checkpoint / begin_persist が終了済み run の状態（run_status / status = failed・completed）を返した場合は候補結果ではなく run レベルの停止として扱い、failed は 409（nextAction start_new_run）にする"
       ],
       "required_tests": [
         "integration: ingest API",
@@ -497,7 +498,8 @@
       "acceptance_criteria": [
         "開いただけでは sent にしない",
         "Instagram host 検証済み URL のみ開く",
-        "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新"
+        "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新",
+        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）"
       ],
       "required_tests": [
         "e2e: DM UX",
@@ -536,7 +538,8 @@
       "acceptance_criteria": [
         "Resend 不使用",
         "送信済み1タップ",
-        "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新"
+        "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新",
+        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）"
       ],
       "required_tests": [
         "unit: mailto generation",
@@ -576,7 +579,8 @@
         "won は金額必須",
         "decline だけでは DNC にしない。明示的な将来連絡拒否を管理者が選んだ場合のみ DNC",
         "不正遷移はサーバーで拒否",
-        "返信記録で「今後の連絡を拒否された」を選ぶと do_not_contact=true・dnc_reason=explicit_refusal・デモ disabled_at を設定。decline 後は別チャネルの初回営業・フォローを表示しない"
+        "返信記録で「今後の連絡を拒否された」を選ぶと do_not_contact=true・dnc_reason=explicit_refusal・デモ disabled_at を設定。decline 後は別チャネルの初回営業・フォローを表示しない",
+        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）"
       ],
       "required_tests": [
         "unit: state machine",
@@ -651,7 +655,8 @@
       "purpose": "Email 初回送信5日後・返信なし・未フォロー・非DNC でフォローを表示（1回のみ）",
       "acceptance_criteria": [
         "Instagram フォローなし",
-        "今日の5枠でフォロー優先"
+        "今日の5枠でフォロー優先",
+        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）"
       ],
       "required_tests": [
         "unit: follow-up eligibility",
