@@ -39,6 +39,7 @@ describe("toDemoView", () => {
     ["missing name", "cafe_v1", { category: "cafe" }],
     ["unknown category", "cafe_v1", { name: "x", category: "salon" }],
     ["non-object content", "cafe_v1", "x"],
+    ["template that does not match the category", "bakery_v1", { name: "x", category: "cafe" }],
   ])("rejects %s", (_label, template, content) => {
     expect(toDemoView(template, content)).toBeNull();
   });

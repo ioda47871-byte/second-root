@@ -5,11 +5,13 @@
 
 ## 現在地
 
-- 完了: BOOT-001（PR #8 → main）、DEV-001（PR #9）、DEV-002（PR #10）、DEV-003（PR #11）、DEV-004（PR #12）、DEV-008（PR #13, e1ddf9a）
-- 進行中: DEV-005（PR #14）、DEV-006/007（stacked: `feature/dev-006-…`, `feature/dev-007-…`）、DEV-009（`feature/dev-009-today-queue`）
-- 次: DEV-005〜007（templates）、DEV-009 以降（`.ai/tasks.json` の依存順）
+- 完了（develop merge 済み）: BOOT-001（main）、DEV-001, 002, 003, 004, 005, 008, 009
+- レビュー / CI 中: DEV-006（PR #16）
+- 実装済み・PR 前（stacked）: DEV-007（`feature/dev-007-cafe-template`, DEV-006 上）、DEV-010 → DEV-011 → DEV-012（`feature/dev-010-instagram-send` → `…-011-email-mailto` → `…-012-reply-outcomes`）
+- 次: DEV-013（履歴・集計）、DEV-014（フォロー）、DEV-015（Operational Claude prompt）、DEV-016（staging 実走・人間の Supabase 必要）、DEV-017〜019
 - 自律実行ルール: feature → develop は CI green + Fresh Review Critical/High 0 で Claude が merge。develop → main（Production release）は人間承認。
-- ローカル再開: `npx supabase start` → `npm run test:integration`（Docker 必須。cloud container では `dockerd &` で起動）
+- ローカル再開: `dockerd &`（cloud container）→ `npx supabase start` → `npm run test:integration` / `npm run build && npm run test:e2e`
+- 注意: ローカル Supabase は全 worktree 共有。レビュー中は `supabase db reset` しない。feature ブランチでは progress.md を編集しない（develop の記録コミットのみ）。
 
 ## BOOT-001 チェックポイント
 
@@ -49,3 +51,6 @@
 - 2026-09-27: DEV-004 merge（PR #12, d2acecb）。CI に e2e-sales job。
 - 2026-09-27: DEV-008 Fresh Review PASS。Medium（layout のみの認可 → RSC 部分描画で回避可能）を全ページ guard + 実遷移ヘッダ再送 e2e で修正。
 - 2026-09-27: DEV-008 merge（PR #13, e1ddf9a）。DEV-009 開始。
+- 2026-09-27: DEV-005 merge（PR #14, b78bb14）。
+- 2026-09-27: DEV-009 review round 1 FAIL（フォロー取りこぼし）→ view sales_followup_due で修正。運用ルール: レビュー実行中は共有ローカル DB を reset しない。
+- 2026-09-27: DEV-009 merge（PR #15, 8d4f633）。
