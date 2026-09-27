@@ -81,3 +81,24 @@ describe(".ai/tasks.json", () => {
     }
   });
 });
+
+// Operational runs must survive a vanished Claude session (docs/ARCHITECTURE.md
+// §7). Keep the resilience requirements from silently dropping out of the
+// tasks that implement them.
+describe("resilience acceptance criteria", () => {
+  const byId = new Map(doc.tasks.map((t) => [t.id, t]));
+  const REQUIRED: Record<string, string[]> = {
+    "DEV-001": ["[checkpoint]", "[idempotency]", "[fail-closed]", "[resume]"],
+    "DEV-002": ["[checkpoint]", "[fail-closed]", "[resume]"],
+    "DEV-003": ["[checkpoint]", "[idempotency]", "[fail-closed]", "[resume]"],
+    "DEV-015": ["[checkpoint]", "[idempotency]", "[fail-closed]", "[resume]"],
+    "DEV-016": ["[idempotency]", "[fail-closed]", "[resume]"],
+  };
+
+  it.each(Object.entries(REQUIRED))("%s keeps its resilience criteria", (id, tags) => {
+    const criteria = (byId.get(id)?.acceptance_criteria ?? []) as string[];
+    for (const tag of tags) {
+      expect(criteria.some((c) => c.startsWith(tag)), `${id} missing ${tag}`).toBe(true);
+    }
+  });
+});

@@ -23,7 +23,8 @@
         "Vitest による unit test 基盤と Playwright による既存サイト regression smoke",
         "GitHub Actions CI（static / unit / build / e2e）が green",
         "既存 Second Root の挙動変更なし",
-        "main 向け PR 作成（人間が merge）"
+        "main 向け PR 作成（人間が merge）",
+        "Operational run の checkpoint / resume / idempotency / fail-closed 設計を docs と DEV-001/002/003/015/016 の受入条件に反映"
       ],
       "required_tests": [
         "lint",
@@ -76,11 +77,18 @@
         "sales_agent_runs.run_id unique",
         "DNC・website_status・category・won_amount の DB constraint",
         "ローカル Supabase で migration 適用 → integration test green",
-        "CI に integration job 追加（ローカル Supabase、Production 接続なし）"
+        "CI に integration job 追加（ローカル Supabase、Production 接続なし）",
+        "[checkpoint] sales_agent_runs: run_id(PK) / status(running|completed|failed) / phase(started|discovered|verified|persisting|completed) / checkpoint jsonb(≤64KB check) / checkpoint_at / result / error_code / error_summary(≤500) / started_at / finished_at",
+        "[idempotency] 重複防止の DB 制約: prospect の dedupe キー unique、sales_demos unique(prospect_id)、sales_outreaches unique(prospect_id) where kind='initial'、各行に run_id",
+        "[fail-closed] 候補ごとの persist を1 transaction で行う Postgres 関数（dedupe・DNC・当日上限を advisory lock 下で確認。どれかが失敗したら rollback し outreach を作らない）",
+        "[resume] phase は条件付き update で前進のみ（後退・飛び越しは DB 側でも失敗する）"
       ],
       "required_tests": [
         "integration: DB/RLS（admin 可 / 非 admin 不可 / anon 不可）",
-        "integration: constraints"
+        "integration: constraints",
+        "integration: 同一候補の二重 persist で prospect/demo/outreach が1件のまま",
+        "integration: persist 途中の失敗で部分行が残らない（rollback）",
+        "integration: checkpoint 64KB 超過が DB で拒否される"
       ],
       "allowed_scope": [
         "supabase/",
@@ -131,7 +139,10 @@
         "公式サイトあり＋Instagram のみ（第一者メールなし）は対象外（MVP_SPEC §3.2）",
         "website_status=not_found は再確認記録がある場合のみ受け付ける。検索失敗は unknown",
         "email は第一者出典（source_url + source_type）必須、推測メール・出所不明は拒否",
-        "フォローは状態ではなく kind=follow_up の outreach として扱う"
+        "フォローは状態ではなく kind=follow_up の outreach として扱う",
+        "[resume] run phase の遷移関数（前進のみ・飛び越し拒否・前 phase の再送は no-op）と nextAction 導出（discover / verify / persist / none / start_new_run、24h 超は start_new_run）",
+        "[fail-closed] 候補 stage 判定（pending→deduped→persisted→demo_ready→outreach_ready / rejected / duplicate / error）。確認不能（unknown・出典なし・照合失敗）は outreach_ready にしない",
+        "[checkpoint] checkpoint のサイズ上限・禁止内容（raw HTML 等）の検証関数"
       ],
       "required_tests": [
         "unit: dedupe",
@@ -142,7 +153,9 @@
         "unit: demo expiry",
         "unit: mailto generation",
         "unit: DM generation",
-        "unit: URL validation"
+        "unit: URL validation",
+        "unit: run phase 遷移 / nextAction",
+        "unit: candidate stage と fail-closed 判定"
       ],
       "allowed_scope": [
         "lib/sales/",
@@ -184,7 +197,11 @@
         "source_url をサーバーから fetch しない",
         "DNC・成約状態を変更できない",
         "DEV-002 の Hard Rules（名古屋市のみ・3業種・1チャネル・not_found 再確認・email 第一者出典）をサーバー側で適用",
-        "拒否理由を候補ごとに返し sales_agent_runs に記録"
+        "拒否理由を候補ごとに返し sales_agent_runs に記録",
+        "[idempotency] 1 endpoint・action（start / status / checkpoint / persist / abort）の discriminated union。completed run への再送は処理せず保存済み result を返す（replayed: true）",
+        "[resume] running run は checkpoint から続行。persist は verified checkpoint の候補だけを処理し、終端 stage の候補を再処理しない。24h 超の run は 409 run_expired",
+        "[fail-closed] phase 飛び越しは 409 phase_order_violation。dedupe/DNC/永続化の失敗は error stage とし outreach_ready にしない",
+        "[checkpoint] 意味のある工程境界（start / discovered / verified / 候補ごとの persist 結果 / completed）でのみ checkpoint を確定"
       ],
       "required_tests": [
         "integration: ingest API",
@@ -194,7 +211,11 @@
         "integration: DNC rejection",
         "integration: duplicate",
         "integration: unknown website status rejection",
-        "integration: schema validation"
+        "integration: schema validation",
+        "integration: completed run の再送が replayed で同じ結果",
+        "integration: persist 途中で中断 → 再度 persist で重複なく完了",
+        "integration: phase 飛び越し拒否",
+        "integration: DB 照合失敗時に outreach が作られない"
       ],
       "allowed_scope": [
         "app/api/internal/sales-agent/",
@@ -653,10 +674,15 @@
       "acceptance_criteria": [
         "ingest token 以外の secret を使わない",
         "checkpoint 手順",
-        "失敗時は BLOCKED 報告"
+        "失敗時は BLOCKED 報告",
+        "[resume] run prompt は毎回 action=status から始め、nextAction に従って再開する（会話記憶に依存しない）",
+        "[idempotency] 通信失敗時は同じ runId・同じ action で再送する。新しい runId は start_new_run のときだけ",
+        "[fail-closed] 検索失敗は website_status=unknown、第一者出典のない email は送らない。続行不能時は abort で error_code を記録",
+        "[checkpoint] raw HTML・画像・secret を checkpoint に入れない"
       ],
       "required_tests": [
-        "ingest API への dry-run（ローカル）"
+        "ingest API への dry-run（ローカル）",
+        "ローカル dry-run: discovered 後に中断 → 新 session が status から verify を再開"
       ],
       "allowed_scope": [
         "docs/",
@@ -689,10 +715,15 @@
       "purpose": "Staging で scheduled job → Web research → ingest → 候補登録を実走確認",
       "acceptance_criteria": [
         "実走ログを .ai/reviews/ に保存",
-        "失敗時は有料 API へ移行せず BLOCKED"
+        "失敗時は有料 API へ移行せず BLOCKED",
+        "[resume] staging で run を意図的に途中終了し、新しい scheduled session が status から続きを完了することを確認",
+        "[idempotency] 同じ runId での persist 再送・completed run 再送で重複が出ないことを staging DB で確認",
+        "[fail-closed] 実走ログで unknown / 出典なし候補が outreach_ready にならないことを確認"
       ],
       "required_tests": [
-        "staging 実走"
+        "staging 実走",
+        "staging: 中断→再開",
+        "staging: 再送で重複なし"
       ],
       "allowed_scope": [
         ".ai/",
