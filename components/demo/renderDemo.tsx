@@ -1,7 +1,7 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import BakedGoodsTemplate from "./BakedGoodsTemplate";
 import BakeryTemplate from "./BakeryTemplate";
-import BaseTemplate from "./BaseTemplate";
+import CafeTemplate from "./CafeTemplate";
 
 /** Picks the component for a demo's template. */
 export function renderDemo(demo: DemoView) {
@@ -11,6 +11,6 @@ export function renderDemo(demo: DemoView) {
     case "baked_goods_v1":
       return <BakedGoodsTemplate demo={demo} />;
     case "cafe_v1":
-      return <BaseTemplate demo={demo} />;
+      return <CafeTemplate demo={demo} />;
   }
 }

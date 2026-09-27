@@ -6,7 +6,7 @@ import type pg from "pg";
 
 export async function seedDemo(
   db: pg.Pool | pg.Client,
-  opts: { expiresAt: Date | null; disabledAt?: Date | null; keepAlive?: boolean; template?: string; category?: string },
+  opts: { expiresAt: Date | null; disabledAt?: Date | null; keepAlive?: boolean; template?: string; category?: string; description?: string; menuItems?: string[] },
 ): Promise<{ token: string; prospectId: string; name: string }> {
   const n = randomUUID().slice(0, 8);
   const name = `E2Eテスト工房${n}`;
@@ -33,7 +33,8 @@ export async function seedDemo(
         ward: "中区",
         address: `名古屋市中区栄${n}`,
         hours: "8:00〜17:00",
-        menu_items: ["食パン", "クロワッサン"],
+        menu_items: opts.menuItems ?? ["食パン", "クロワッサン"],
+        ...(opts.description ? { description: opts.description } : {}),
       }),
       opts.expiresAt,
       opts.disabledAt ?? null,
