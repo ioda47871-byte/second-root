@@ -10,18 +10,27 @@ import { createAuthClient } from "@/lib/supabase/server";
 
 const DEFAULT_SUBJECT = "ホームページのご提案（Second Root）";
 
+/** Never silently drop the action: say why nothing can be sent. */
+function cannotCompose(what: string) {
+  return (
+    <p className={styles.error} role="alert">
+      文面が長すぎるか宛先が正しくないため、{what}を作成できません。
+    </p>
+  );
+}
+
 /** The one big action for a queue item (Instagram, email; follow-up in DEV-014). */
 function actionFor(item: TodayItem) {
   if (item.kind === "initial" && item.channel === "email" && item.publicEmail && item.demoToken) {
+    const draft = {
+      to: item.publicEmail,
+      subject: item.subject ?? DEFAULT_SUBJECT,
+      body: composeEmailBody({ shopName: item.shopName, message: item.body, demoUrl: demoUrl(item.demoToken) }),
+    };
     try {
-      const mailto = buildMailto({
-        to: item.publicEmail,
-        subject: item.subject ?? DEFAULT_SUBJECT,
-        body: composeEmailBody({ shopName: item.shopName, message: item.body, demoUrl: demoUrl(item.demoToken) }),
-      });
-      return <EmailSend outreachId={item.outreachId} mailto={mailto} />;
+      return <EmailSend outreachId={item.outreachId} mailto={buildMailto(draft)} draft={draft} />;
     } catch {
-      return null;
+      return cannotCompose("メール");
     }
   }
   if (item.kind === "initial" && item.channel === "instagram" && item.instagramUrl && item.demoToken) {
@@ -34,7 +43,7 @@ function actionFor(item: TodayItem) {
         />
       );
     } catch {
-      return null;
+      return cannotCompose("DM");
     }
   }
   return null;
