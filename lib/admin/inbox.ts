@@ -13,6 +13,8 @@ export type InboxItem = {
   snoozed: boolean;
   /** The draft answers an older message: a newer one arrived since. */
   stale: boolean;
+  /** Something for the admin: a draft, an unmatched sender, or an unanswered message. */
+  needsAction: boolean;
   sendId: string | null;
   matched: boolean;
   username: string | null;
@@ -79,7 +81,10 @@ export async function loadInbox(supabase: SupabaseClient, now: Date = new Date()
 
   return ((data ?? []) as unknown as ThreadRow[]).map((t) => {
     const drafts = [...(t.drafts ?? [])].sort(newestFirst((d) => d.created_at));
-    const draft = drafts.find((d) => IN_FLIGHT.has(d.status)) ?? drafts.find((d) => OPEN.has(d.status)) ?? null;
+    // Only the newest draft counts (an older failed one is retired once a
+    // newer draft exists), unless an older send still awaits its outcome.
+    const newest = drafts.find((d) => d.status !== "superseded");
+    const draft = drafts.find((d) => IN_FLIGHT.has(d.status)) ?? (newest && OPEN.has(newest.status) ? newest : null);
     const sends = [...(draft?.sends ?? [])].sort(newestFirst((s) => s.updated_at));
     const send = sends.find((s) => IN_FLIGHT.has(s.status)) ?? sends[0] ?? null;
     // Same order as the database uses for "the latest message".
@@ -97,6 +102,7 @@ export async function loadInbox(supabase: SupabaseClient, now: Date = new Date()
       draftId: draft?.id ?? null,
       draftStatus: draft?.status ?? null,
       snoozed: draft?.status === "snoozed" && draft.snoozed_until !== null && Date.parse(draft.snoozed_until) > now.getTime(),
+      needsAction: draft !== null || t.match_status !== "matched" || messages.at(-1)?.direction === "inbound",
       stale: draft !== null && ["pending", "snoozed", "failed"].includes(draft.status) && draft.message_id !== latestInbound?.id,
       sendId: send?.id ?? null,
       matched: t.match_status === "matched",

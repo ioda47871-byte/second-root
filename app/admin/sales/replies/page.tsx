@@ -29,11 +29,11 @@ export default async function RepliesPage() {
       </>
     );
   }
-  const open = inbox.filter((i) => !i.snoozed);
-  const later = inbox.filter((i) => i.snoozed);
+  const open = inbox.filter((i) => i.needsAction && !i.snoozed);
+  const later = inbox.filter((i) => i.needsAction && i.snoozed);
   const card = (i: (typeof inbox)[number]) => (
     <IgReplyCard
-      key={i.threadId}
+      key={`${i.threadId}:${i.draftId ?? ""}`}
       threadId={i.threadId}
       draftId={i.draftId}
       draftStatus={i.draftStatus}
@@ -58,7 +58,7 @@ export default async function RepliesPage() {
     <>
       <h1 className={styles.h1}>返信</h1>
       <IgConnectionCheck />
-      {inbox.length > 0 && (
+      {open.length + later.length > 0 && (
         <>
           <h2 className={styles.h2}>Instagram の返信</h2>
           {open.length > 0 && <ul className={styles.list}>{open.map(card)}</ul>}

@@ -155,7 +155,7 @@ export default function IgReplyCard(props: IgCardProps) {
               </>
             ) : (
               <>
-                <button type="button" className={styles.primary} disabled={pending || !canSend} onClick={() => run(() => sendIgReply(props.draftId!))}>
+                <button type="button" className={styles.primary} disabled={pending || !canSend} onClick={() => run(() => sendIgReply(props.draftId!, props.body ?? ""))}>
                   {pending ? "送信中…" : sending ? "送信状況を確認" : "この内容で返信"}
                 </button>
                 <button type="button" className={styles.secondary} disabled={pending || !editable} onClick={() => setEditing(true)}>

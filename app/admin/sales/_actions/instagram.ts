@@ -26,6 +26,7 @@ const BEGIN_ERRORS: Record<string, string> = {
   not_sendable: "この返信案はすでに処理済みです。画面を再読み込みしてください。",
   not_found: NOT_FOUND,
   stale_draft: "新しいメッセージが届いたため、この返信案は使えません。画面を再読み込みしてください。",
+  too_many_attempts: "何度も失敗しているため送信を止めました。Instagram アプリから手動で返信してください。",
   invalid_draft: "返信文に入れられない内容（連絡先やデモ以外のリンク）があります。編集してください。",
 };
 
@@ -46,13 +47,15 @@ function codeOf(message: string | undefined): string {
   return (message ?? "").split(":")[0].trim();
 }
 
-export async function sendIgReply(draftId: string): Promise<IgResult> {
+/** @param shownBody the text the admin saw: a draft changed elsewhere (another tab) is not sent unseen. */
+export async function sendIgReply(draftId: string, shownBody: string): Promise<IgResult> {
   await requireAdmin();
-  if (!id.safeParse(draftId).success) return { ok: false, error: NOT_FOUND };
+  if (!id.safeParse(draftId).success || typeof shownBody !== "string") return { ok: false, error: NOT_FOUND };
   const supabase = await createAuthClient();
   // The text is checked again right before sending, whoever last changed it.
   const current = await loadDraft(supabase, draftId);
   if (!current) return { ok: false, error: NOT_FOUND };
+  if (current.body !== shownBody) return { ok: false, error: "返信文がほかの画面で変更されています。画面を再読み込みして内容を確認してください。" };
   // (A send already in progress is only looked up, never sent again.)
   if (current.status !== "sending" && !recheck(current, current.body).ok) return { ok: false, error: BEGIN_ERRORS.invalid_draft };
   const outcome = await sendApprovedReply(supabase, draftId);
