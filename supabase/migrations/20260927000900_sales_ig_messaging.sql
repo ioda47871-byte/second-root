@@ -110,17 +110,35 @@ begin
   end if;
 
   for e in select * from jsonb_array_elements(p_events) loop
-    insert into public.sales_ig_threads (ig_account_id, igsid)
-      values (e->>'account_id', e->>'igsid')
-      on conflict (ig_account_id, igsid) do update set igsid = excluded.igsid
-      returning id into t_id;
+    -- Find or create the thread without touching an existing row.
+    select id into t_id from public.sales_ig_threads
+      where ig_account_id = e->>'account_id' and igsid = e->>'igsid';
+    if t_id is null then
+      insert into public.sales_ig_threads (ig_account_id, igsid)
+        values (e->>'account_id', e->>'igsid')
+        on conflict (ig_account_id, igsid) do nothing
+        returning id into t_id;
+      if t_id is null then
+        select id into t_id from public.sales_ig_threads
+          where ig_account_id = e->>'account_id' and igsid = e->>'igsid';
+      end if;
+    end if;
 
     if coalesce((e->>'is_deleted')::boolean, false) then
-      -- The sender unsent the message: keep the record, drop the text.
+      -- The sender unsent the message: keep the record, drop its content.
       update public.sales_ig_messages
-        set text = null, deleted_at = coalesce(deleted_at, now())
+        set text = null, attachment_types = '{}', deleted_at = coalesce(deleted_at, now())
         where mid = e->>'mid';
-      if found then deleted := deleted + 1; end if;
+      if not found then
+        -- The deletion arrived before the message: leave a tombstone so the
+        -- original, if it is delivered later, is skipped (never stored).
+        insert into public.sales_ig_messages (thread_id, mid, direction, text, attachment_types, sent_at, deleted_at)
+          values (t_id, e->>'mid', e->>'direction', null, '{}',
+                  to_timestamp((e->>'sent_at_ms')::bigint / 1000.0), now())
+          on conflict (mid) do nothing;
+      end if;
+      deleted := deleted + 1;
+      t_id := null;
       continue;
     end if;
 
@@ -148,6 +166,7 @@ begin
       end if;
     end if;
     m_id := null;
+    t_id := null;
   end loop;
 
   return jsonb_build_object('replayed', false, 'inserted', inserted, 'duplicates', duplicates, 'deleted', deleted);

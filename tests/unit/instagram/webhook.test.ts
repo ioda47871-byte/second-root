@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractEvents } from "@/lib/instagram/webhook";
+import { extractEvents, safeText } from "@/lib/instagram/webhook";
 
 const OURS = "17841400000000001";
 const THEM = "900000000000002";
@@ -74,6 +74,24 @@ describe("extractEvents", () => {
     const r = extractEvents(payload([msg({ mid: "m10", text: long }), msg({ mid: "m10", text: long })]), OURS)!;
     expect(r.events).toHaveLength(1);
     expect([...r.events[0].text!].length).toBe(4000);
+  });
+
+  it("keeps a message and its deletion when both arrive in one delivery", () => {
+    const r = extractEvents(payload([msg({ mid: "m11", text: "secret" }), msg({ mid: "m11", is_deleted: true, text: "secret" })]), OURS)!;
+    expect(r.events.map((e) => [e.mid, e.is_deleted, e.text])).toEqual([["m11", false, "secret"], ["m11", true, null]]);
+  });
+
+  it("makes any text storable (no NUL, control characters or lone surrogates)", () => {
+    expect(safeText("a\u0000b\u0007c\td\ne")).toBe("abc\td\ne");
+    expect(safeText("x\ud800y")).toBe("x\ufffdy");
+    const r = extractEvents(payload([msg({ mid: "m12", text: "\u0000\ud800" })]), OURS)!;
+    expect(r.events[0].text).toBe("\ufffd");
+  });
+
+  it("ignores message ids and timestamps that could not be stored", () => {
+    const r = extractEvents(payload([msg({ mid: "m\u0000x", text: "x" }), msg({ mid: "m13", text: "x" }, THEM, OURS, 1e16)]), OURS)!;
+    expect(r.events).toEqual([]);
+    expect(r.ignored).toBe(2);
   });
 
   it("returns null for anything that is not an Instagram webhook", () => {

@@ -106,9 +106,50 @@ describe("POST message events", () => {
     expect(await count("sales_ig_messages")).toBe(0);
   });
 
-  it("[fail-closed] is disabled (503) when the app secret is not configured", async () => {
+  it("[fail-closed] is disabled (503) when the app secret or our account id is not configured", async () => {
     vi.stubEnv("INSTAGRAM_APP_SECRET", "");
     expect((await post(message("mid-8", "x"))).status).toBe(503);
+    vi.stubEnv("INSTAGRAM_APP_SECRET", SECRET);
+    for (const id of ["", "not-a-number"]) {
+      vi.stubEnv("INSTAGRAM_ACCOUNT_ID", id);
+      expect((await post(message("mid-8", "x"))).status).toBe(503);
+    }
+    expect(await count("sales_ig_webhook_events")).toBe(0);
+  });
+
+  it("drops the text when the message and its deletion arrive in one delivery", async () => {
+    await post({
+      object: "instagram",
+      entry: [{ id: OURS, messaging: [
+        { sender: { id: THEM }, recipient: { id: OURS }, timestamp: 1790000000000, message: { mid: "mid-11", text: "secret" } },
+        { sender: { id: THEM }, recipient: { id: OURS }, timestamp: 1790000001000, message: { mid: "mid-11", is_deleted: true } },
+      ] }],
+    });
+    const { rows } = await db.query("select text, deleted_at is not null as deleted from public.sales_ig_messages where mid = 'mid-11'");
+    expect(rows).toEqual([{ text: null, deleted: true }]);
+  });
+
+  it("never stores a message whose deletion arrived first", async () => {
+    await post(message("mid-12", "", { is_deleted: true }, 1790000002000));
+    await post(message("mid-12", "secret2"));
+    const { rows } = await db.query("select text, deleted_at is not null as deleted from public.sales_ig_messages where mid = 'mid-12'");
+    expect(rows).toEqual([{ text: null, deleted: true }]);
+  });
+
+  it("stores odd characters safely instead of failing the whole delivery", async () => {
+    const res = await post(message("mid-13", "a\u0000b\ud800c"));
+    expect(res.status).toBe(200);
+    const { rows } = await db.query("select text from public.sales_ig_messages where mid = 'mid-13'");
+    expect(rows).toEqual([{ text: "ab\ufffdc" }]);
+  });
+
+  it("rejects oversized bodies (declared or streamed) and malformed signature headers", async () => {
+    const big = "x".repeat(2 * 1024 * 1024 + 1);
+    expect((await post(big)).status).toBe(413);
+    const raw = JSON.stringify(message("mid-14", "x"));
+    const upper = `sha256=${createHmac("sha256", SECRET).update(raw).digest("hex").toUpperCase()}`;
+    const res = await POST(new NextRequest("http://localhost/api/webhooks/instagram", { method: "POST", headers: { "X-Hub-Signature-256": upper }, body: raw }));
+    expect(res.status).toBe(401);
     expect(await count("sales_ig_webhook_events")).toBe(0);
   });
 
