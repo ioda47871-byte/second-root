@@ -115,7 +115,7 @@ Production data / Production secrets / main 直接 push / Production release / D
 - ローカル Supabase は全 worktree で共有される。Fresh Reviewer 実行中に `supabase db reset` をしない（新規 migration は個別に適用）。
 - テスト失敗時に skip / 削除 / required check 解除 / 基準引き下げで green にしない。
 
-## 9. Operational Claude run の原則（DEV-015 で prompt 化）
+## 9. Operational Claude run の原則（prompt: `ops/sales-agent/RUN_PROMPT.md`、scheduled job: `ops/sales-agent/SCHEDULE.md`）
 
 - 実行基盤: Claude Cloud scheduled job を第一候補。
 - 持つ secret は `SALES_AGENT_INGEST_TOKEN` のみ。Supabase には直接触れない。
