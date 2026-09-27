@@ -13,7 +13,7 @@
   3. 確認結果を見て問題なければ、Claude が作る「develop → main」の Release PR を merge する（本番反映）。
   4. 本番の設定と動作確認（§13）。
 - **やってはいけないこと**: Staging の確認（DEV-016）より前に Release PR を merge しないこと。
-- **急ぎの推奨**: 今の本番サイトは Next.js 16.3.0 で重大な脆弱性の告知がある。Release を待たずに、Next.js の更新だけの小さな修正（hotfix）を先に本番へ出すことを検討してほしい（§5）。
+- **急ぎの推奨**: 今の本番サイトは Next.js 16.3.0 で重大な脆弱性の告知がある。Release を待たずに、Next.js の更新だけの小さな修正（hotfix）を先に本番へ出すことを勧める。Claude が **PR #27（main 向け、依存関係の更新のみ）** を用意済み。内容を確認して merge してほしい（§5）。
 
 ## 1. 完了 Task
 
@@ -78,7 +78,7 @@ GitHub Actions（`.github/workflows/ci.yml`）で、各 PR の CI が green で�
 
 - DEV-017 の全体 security review: **PASS（Critical 0 / High 0）**。指摘（Medium 1・Low 4）はすべて修正済み（`.ai/reviews/DEV-017.md`）。
 - **Next.js 16.3.0 → 16.3.6**: 16.3.0 に critical advisory（Image Optimization API の RCE 等）。`npm audit --omit=dev` 0 件。
-  - **注意: 現在の本番（main）は 16.3.0 のまま。** Release は Staging 待ちで日付が未定のため、`next` / `eslint-config-next` / `sharp` の更新だけを含む hotfix PR を main に先に出すことを推奨する（Claude が PR を用意できる。merge は人間）。
+  - **注意: 現在の本番（main）は 16.3.0 のまま。** Release は Staging 待ちで日付が未定のため、`next` / `eslint-config-next` / `sharp` の更新だけを含む hotfix PR を main に先に出すことを推奨する（**PR #27 として用意済み**。main 基準で lint・typecheck・unit・build・既存サイト e2e を確認済み。merge は人間）。
 - 管理画面: Supabase Auth email + password、`sales_admins` allowlist + RLS。全ページ `requireAdminPage()`、全 server action `requireAdmin()`（layout だけの認可は RSC 部分描画で回避できるため）。公開 sign-up 無効。
 - DB: 全 `sales_*` で RLS、anon 権限なし、authenticated は読み取りのみ。管理者 RPC は SECURITY DEFINER + `search_path=''` + 先頭で管理者確認。これらを `db-security-audit` test が全関数・全テーブルで検査。
 - Ingest API: 定数時間の token 比較、未設定なら 503、256KB 上限、strict schema、送信値を返さない、サーバーから URL を fetch しない（SSRF なし）、DNC・成約・送信の権限なし。
