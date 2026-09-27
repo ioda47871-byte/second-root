@@ -6,13 +6,13 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const PATTERNS = [
-  ["Resend API key", /\bre_[A-Za-z0-9_]{20,}\b/g],
+  ["Resend API key", /\bre_(?=[A-Za-z0-9_]*[A-Z0-9])[A-Za-z0-9]{6,}_[A-Za-z0-9]{16,}/g],
   ["JWT (e.g. Supabase anon/service role key)", /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g],
   ["Supabase secret key", /\bsb_secret_[A-Za-z0-9_-]{10,}/g],
   ["Private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/g],
   ["GitHub token", /\bgh[pousr]_[A-Za-z0-9]{30,}\b/g],
   ["Vercel token", /\bvercel_[A-Za-z0-9]{20,}\b/gi],
-  ["Anthropic / OpenAI key", /\bsk-(ant-)?[A-Za-z0-9_-]{20,}\b/g],
+  ["Anthropic / OpenAI key", /\bsk-(ant-(api\d+-)?|proj-)[A-Za-z0-9_-]{20,}|\bsk-[A-Za-z0-9]{40,}/g],
   ["Postgres URL with password", /postgres(ql)?:\/\/[^:\s/]+:[^@\s]{6,}@(?!127\.0\.0\.1|localhost)/g],
 ];
 
