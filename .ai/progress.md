@@ -62,3 +62,7 @@
 - 2026-09-27: DEV-015 PR #20: review round 1 FAIL（High: 無人で Web を閲覧する agent に prompt injection 対策の指示がない）→ 修正、round 2 PASS。status が discovered の stub を返すよう変更（新しい session が記憶なしで verify を再開できる。ARCHITECTURE §7.3 との不整合を解消）。ローカル dry-run OK。
 - 2026-09-27: DEV-014 実装（feature/dev-014-followup、DEV-013 の上に stack）。integration 130 / e2e 60 green。
 - 運用メモ: e2e・dry-run で起動した next-server が残ることがある。作業後に確認して停止する。
+- 2026-09-27: DEV-015 merge（PR #20, a106570）。
+- 2026-09-27: DEV-016 は HUMAN-004（Staging Supabase / Vercel Preview env / Claude Cloud Routine は人間の操作）で blocked。ローカルでの代替確認（dry-run・実 Web 調査をローカル ingest に提出する rehearsal）は Claude が実施する。
+- 2026-09-27: DEV-012 review PASS（Medium 3: stale tab の再分類が黙って成功・後から来た拒否の記録手段・失注の誤タップ）→ 修正、PR #21 CI 待ち。
+- 2026-09-27: DEV-017 着手（feature/dev-017-security）: Next 16.3.0 に critical advisory（Image Optimization の RCE 等）→ 16.3.6 へ更新、sharp 修正、official_profile は店舗自身の Instagram のみ、private route に anti-framing header、helper 関数の EXECUTE を最小化、DB security audit test。
