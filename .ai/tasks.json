@@ -253,7 +253,7 @@
     {
       "id": "DEV-004",
       "title": "demo data model + /demo/[token]",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-001",

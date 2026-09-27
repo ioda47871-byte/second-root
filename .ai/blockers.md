@@ -11,6 +11,12 @@
 - 内容: mugi-no-mi 等とは別の Second Root 専用 project を staging / production 用に作成する。無料プランの active project 数上限に注意。
 - Claude はプロジェクト作成・billing 変更を行わない（Protected Scope）。
 
+### HUMAN-003 — branch protection の required checks（推奨・非ブロッキング）
+- 状態: 人間待ち（開発は止めない）
+- 内容: GitHub → Settings → Branches で `main` と `develop` に branch protection を設定し、required status checks に `static` / `unit` / `integration` / `build` / `e2e` / `e2e-sales` を追加する。
+- 理由: 現状 Claude は CI green を確認してから merge しているが、GitHub 側でも強制されると安全。
+- DEV-004 で Claude が allowed_scope を拡張（GA を /demo・/admin で無効化、noindex / no-referrer ヘッダ、e2e 分割）。既存ページの挙動は不変とレビュー確認済み。異論があれば PR #12 を参照。
+
 ## 解除済み
 
 ### HUMAN-001 — Bootstrap PR の merge と develop 作成
