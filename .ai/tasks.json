@@ -339,7 +339,7 @@
     {
       "id": "DEV-006",
       "title": "baked-goods template",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P2",
       "depends_on": [
         "DEV-004"
@@ -371,7 +371,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-006-baked-goods-template"
     },
     {
       "id": "DEV-007",
