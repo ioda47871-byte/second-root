@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import { checkDraft, detectExplicitRefusal, MAX_DRAFT_BYTES } from "@/lib/instagram/draft";
+
+const DEMO = "https://secondroot.jp/demo/abcDEF123_-xyz";
+const draft = (body: string, extra: Partial<Parameters<typeof checkDraft>[0]> = {}) =>
+  checkDraft({ replyType: "question", body, futureContactRefused: false, ...extra }, DEMO, "料金はいくらですか？");
+
+describe("detectExplicitRefusal", () => {
+  it.each([
+    "今後このような連絡はしないでください",
+    "もうDMは送らないでください",
+    "営業はお断りしています",
+    "二度とメッセージしないで",
+    "連絡やめてください",
+    "今後一切ご連絡不要です",
+  ])("flags an explicit refusal of future contact: %s", (text) => {
+    expect(detectExplicitRefusal(text)).toBe(true);
+  });
+
+  it.each(["今回は結構です", "検討しましたが見送ります", "興味あります！", "料金を教えてください", "", null])(
+    "does not treat a plain decline or anything else as refusal: %s",
+    (text) => {
+      expect(detectExplicitRefusal(text)).toBe(false);
+    },
+  );
+});
+
+describe("checkDraft", () => {
+  it("accepts a short plain reply and trims it", () => {
+    const r = draft("  ご質問ありがとうございます。詳しくご説明します。 ");
+    expect(r).toEqual({ ok: true, body: "ご質問ありがとうございます。詳しくご説明します。", dncCandidate: false, needsHumanReview: false, reviewReasons: [] });
+  });
+
+  it("allows only the shop's own demo URL as a link", () => {
+    expect(draft(`デモはこちらです ${DEMO}`).ok).toBe(true);
+    expect(draft("詳しくは https://example.com/ をご覧ください")).toEqual({ ok: false, reason: "link_not_allowed" });
+    expect(draft("www.secondroot.jp もご覧ください")).toEqual({ ok: false, reason: "link_not_allowed" });
+    expect(checkDraft({ replyType: "question", body: `デモ ${DEMO}`, futureContactRefused: false }, null, null)).toEqual({ ok: false, reason: "link_not_allowed" });
+  });
+
+  it("refuses contact details (email, phone)", () => {
+    expect(draft("info@secondroot.jp までご連絡ください")).toEqual({ ok: false, reason: "contact_details" });
+    expect(draft("お電話は 052-123-4567 まで")).toEqual({ ok: false, reason: "contact_details" });
+    expect(draft("０９０－１２３４－５６７８")).toEqual({ ok: false, reason: "contact_details" });
+  });
+
+  it("enforces Instagram's 1000-byte limit and non-empty text", () => {
+    expect(draft("あ".repeat(Math.floor(MAX_DRAFT_BYTES / 3) + 1))).toEqual({ ok: false, reason: "too_long" });
+    expect(draft("   ")).toEqual({ ok: false, reason: "empty" });
+  });
+
+  it("flags price, schedule and contract wording for a closer human look", () => {
+    const r = draft("制作費用は5万円で、来週には公開できます。必ずご満足いただけます。");
+    expect(r).toMatchObject({ ok: true, needsHumanReview: true, reviewReasons: ["price", "schedule", "contract"] });
+  });
+
+  it("marks a DNC candidate from the shop's message or the drafter's flag, never sets DNC itself", () => {
+    const fromText = checkDraft({ replyType: "decline", body: "承知しました。失礼いたしました。", futureContactRefused: false }, DEMO, "今後は連絡しないでください");
+    expect(fromText).toMatchObject({ ok: true, dncCandidate: true, needsHumanReview: true, reviewReasons: ["dnc_candidate"] });
+    const fromFlag = checkDraft({ replyType: "decline", body: "承知しました。", futureContactRefused: true }, DEMO, "結構です");
+    expect(fromFlag).toMatchObject({ ok: true, dncCandidate: true });
+    const plain = checkDraft({ replyType: "decline", body: "承知しました。", futureContactRefused: false }, DEMO, "今回は結構です");
+    expect(plain).toMatchObject({ ok: true, dncCandidate: false });
+  });
+});

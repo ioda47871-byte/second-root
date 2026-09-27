@@ -61,3 +61,15 @@ npm run build
 SALES_AGENT_INGEST_TOKEN=<32文字以上> node scripts/with-supabase-env.mjs npx next start -p 3000 &
 SALES_AGENT_INGEST_TOKEN=<同じ値> node ops/sales-agent/dry-run.mjs http://localhost:3000
 ```
+
+## 5. Instagram inbox job（DEV-021〜）
+
+| 項目 | 値 |
+|---|---|
+| 名前 | `second-root-sales-inbox`（Staging は `…-staging`） |
+| スケジュール | 日中 2〜3 時間おき: `CRON_TZ=Asia/Tokyo 17 9-21/3 * * *`（返信は相手の最後のメッセージから 24 時間以内にしか送れないため） |
+| prompt | `ops/sales-agent/INBOX_PROMPT.md` の「prompt ここから」〜「ここまで」 |
+| 環境 | 店舗探索 job と同じ environment（`SALES_AGENT_INGEST_URL` / `SALES_AGENT_INGEST_TOKEN` のみ） |
+| 権限 | 未処理の受信メッセージ（本文・直近 10 件）と照合済み店舗の公開情報を読み、分類と返信案を保存できる。**送信・DNC・成約の変更はできない** |
+
+作成・有効化は人間が行う（DEV-024 で Meta 側の設定と合わせて確認）。

@@ -120,7 +120,7 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | 購読確認用（16 文字以上のランダム値、Meta App の Webhook 設定と同じ値） |
 | `INSTAGRAM_APP_SECRET` | Webhook 署名の検証（未設定なら webhook は 503 で全拒否） |
 | `INSTAGRAM_ACCOUNT_ID` | Second Root の Instagram professional account ID（数字、**必須**。未設定・不正なら webhook は 503。同じ Meta App の他アカウント宛ての event を保存しない） |
-| （DEV-023）Instagram User access token | 返信送信用。60 日で失効、更新手順を DEV-024 で定める |
+| `INSTAGRAM_ACCESS_TOKEN` | Instagram User access token（server only）。DEV-021 で相手の username 取得（照合）、DEV-023 で返信送信に使う。未設定なら照合は行わず全件「未照合」（fail-closed）。60 日で失効、更新手順を DEV-024 で定める |
 
 ## 10. 人間の作業（HUMAN BLOCKER 候補、DEV-024 で具体化）
 
