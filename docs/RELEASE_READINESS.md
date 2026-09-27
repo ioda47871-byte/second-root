@@ -2,15 +2,26 @@
 
 - 作成: 2026-09-27（Claude Code / 自律実行）
 - 対象: `develop` → `main`（Production = secondroot.jp）
-- 結論: **コード・テスト・レビューは Release 可能な状態。ただし Staging 実走（DEV-016）と Production 設定は人間の操作待ち。Production への release は人間の承認後に人間が行う。**
+- 結論: **コード・テスト・レビューは完了（develop の CI は §2 のとおり）。ただし Staging 実走（DEV-016）は未完了で、Release の必須条件。Production への release は Staging 確認と人間の承認の後に、人間が行う。**
+
+## 0. オーナー向けの要約
+
+- **今の状態**: 営業支援（Sales Agent）の MVP は、作成・テスト・点検がすべて終わり `develop` にまとまっている。本番（secondroot.jp）にはまだ何も出していない。
+- **オーナーがやること（順番）**:
+  1. Supabase で Second Root 専用の project を用意する（無料プランの project 数上限に注意: §9）。
+  2. Staging（試験環境）の設定をして、Claude に「DEV-016 を再開」と伝える → Claude が試験環境で実際に動かして確認する。
+  3. 確認結果を見て問題なければ、Claude が作る「develop → main」の Release PR を merge する（本番反映）。
+  4. 本番の設定と動作確認（§13）。
+- **やってはいけないこと**: Staging の確認（DEV-016）より前に Release PR を merge しないこと。
+- **急ぎの推奨**: 今の本番サイトは Next.js 16.3.0 で重大な脆弱性の告知がある。Release を待たずに、Next.js の更新だけの小さな修正（hotfix）を先に本番へ出すことを検討してほしい（§5）。
 
 ## 1. 完了 Task
 
 | Task | 内容 | PR | Review |
 |---|---|---|---|
-| BOOT-001 | 仕様・設計・CI・Task 管理の土台 | #8（main） | PASS |
+| BOOT-001 | 仕様・設計・CI・Task 管理の土台 | #8（main） | PASS（round 2） |
 | DEV-001 | Supabase schema / RLS / run 関数（checkpoint・冪等・fail-closed） | #9 | PASS |
-| DEV-002 | ドメインルール（チャネル決定・URL・重複排除・上限） | #10 | PASS |
+| DEV-002 | ドメインルール（チャネル決定・URL・重複排除・上限） | #10 | PASS（round 2） |
 | DEV-003 | Ingest API（start/status/checkpoint/persist/abort） | #11 | PASS |
 | DEV-004 | 公開デモ route（token・期限・noindex） | #12 | PASS |
 | DEV-005 | bakery_v1 テンプレート | #14 | PASS |
@@ -32,7 +43,7 @@
 
 ## 2. CI
 
-GitHub Actions（`.github/workflows/ci.yml`）の 6 job を全 PR で実行し、すべて green を確認してから develop へ merge した。
+GitHub Actions（`.github/workflows/ci.yml`）で、各 PR の CI が green であることを確認してから develop へ merge した（job は段階的に追加: DEV-001 で integration、DEV-004 以降は下の 6 job）。
 
 | job | 内容 |
 |---|---|
@@ -66,7 +77,8 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job を全 PR で実行し�
 ## 5. Security
 
 - DEV-017 の全体 security review: **PASS（Critical 0 / High 0）**。指摘（Medium 1・Low 4）はすべて修正済み（`.ai/reviews/DEV-017.md`）。
-- **Next.js 16.3.0 → 16.3.6**: 16.3.0 に critical advisory（Image Optimization API の RCE 等）。既存 Second Root 本番にも影響するため、今回の release で解消される。`npm audit --omit=dev` 0 件。
+- **Next.js 16.3.0 → 16.3.6**: 16.3.0 に critical advisory（Image Optimization API の RCE 等）。`npm audit --omit=dev` 0 件。
+  - **注意: 現在の本番（main）は 16.3.0 のまま。** Release は Staging 待ちで日付が未定のため、`next` / `eslint-config-next` / `sharp` の更新だけを含む hotfix PR を main に先に出すことを推奨する（Claude が PR を用意できる。merge は人間）。
 - 管理画面: Supabase Auth email + password、`sales_admins` allowlist + RLS。全ページ `requireAdminPage()`、全 server action `requireAdmin()`（layout だけの認可は RSC 部分描画で回避できるため）。公開 sign-up 無効。
 - DB: 全 `sales_*` で RLS、anon 権限なし、authenticated は読み取りのみ。管理者 RPC は SECURITY DEFINER + `search_path=''` + 先頭で管理者確認。これらを `db-security-audit` test が全関数・全テーブルで検査。
 - Ingest API: 定数時間の token 比較、未設定なら 503、256KB 上限、strict schema、送信値を返さない、サーバーから URL を fetch しない（SSRF なし）、DNC・成約・送信の権限なし。
@@ -116,7 +128,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job を全 PR で実行し�
 
 | ID | 内容 | 必要な操作 | 解除後に再開すること |
 |---|---|---|---|
-| HUMAN-002 | Second Root 専用 Supabase project（Staging / Production） | Supabase Dashboard で作成（Free、Tokyo 推奨） | migration 適用・管理者作成 |
+| HUMAN-002 | Second Root 専用 Supabase project（Staging / Production） | Supabase Dashboard で作成（Tokyo 推奨）。**無料プランは有効な project 数に上限があり、既存の project（mugi-no-mi 等）と合わせて超える可能性がある**。選択肢: 別の organization / アカウントで作る、使っていない project を一時停止する、有料プラン（billing のため人間判断） | migration 適用・管理者作成 |
 | HUMAN-004 | Staging 実走（DEV-016） | Staging project + Vercel Preview 環境変数 + Claude Cloud environment / Routine（手順: `.ai/blockers.md`・`ops/sales-agent/SCHEDULE.md`） | Claude が Staging で resume・冪等・fail-closed を確認し `.ai/reviews/DEV-016.md` に記録 |
 | HUMAN-003 | branch protection の required checks（推奨） | GitHub Settings → Branches で main / develop に 6 checks | — |
 | HUMAN-005 | Vercel preview build rate limit（非ブロッキング） | 24 時間待つ（推奨）/ 有料プランは人間判断 | — |
@@ -124,7 +136,14 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job を全 PR で実行し�
 ## 10. Critical / High
 
 - **未解決の Critical / High は 0 件**。
-- 途中で High と判定され修正済みのもの: DEV-015 round 1（無人で Web を閲覧する agent への prompt injection 対策の指示がない）→ 修正後 round 2 PASS。
+- 途中で High と判定され、修正後の再 review で PASS したもの:
+
+| Task | round 1 の High | 対応 |
+|---|---|---|
+| BOOT-001 | 1 件（Claude による PR #8 の main merge 許可が「main は人間のみ」と矛盾） | 2026-09-27 の人間承認に基づく「PR #8 のみの1回限りの例外」として日付付きで明記 → round 2 PASS |
+| DEV-002 | 3 件（住所正規化で別店舗を統合し得る／共有ホストで別店舗が同一 domain／第一者 email が出典なしで通る） | 修正・反例をテスト化 → round 2 PASS（残 Medium も解消） |
+| DEV-009 | 2 件（フォロー対象の取りこぼし／大きな送信ボタン未実装） | SQL view で算出・60 件のテスト追加／ボタンは DEV-010・011・014 で実装 → round 2 PASS |
+| DEV-015 | 1 件（無人で Web を閲覧する agent への prompt injection 対策の指示がない） | 修正 → round 2 PASS |
 - 各 Task の review は Critical / High = 0 を確認してから merge（`.ai/reviews/`）。
 
 ## 11. 仕様との差分（仕様変更・解釈）
@@ -138,16 +157,36 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job を全 PR で実行し�
 5. Instagram 送信前に人間がプロフィールの「DM不可・営業お断り」を確認する手順を追加（MVP_SPEC §4.1）。
 6. Operational run は 1 日 1 run（今日の run が完了/失敗なら新しい run を始めない）。
 7. 計測に「デモ有無」の軸を追加（MVP_SPEC §9 のとおり。現状は全件デモあり）。
-8. 手順上の逸脱の記録: scope extension の設計文書と tasks.json テストの追加を、bookkeeping として develop に直接 commit した（本来 `.ai/` のみ）。内容は docs と test の追加のみでコード変更なし。
+8. 返信を「断り（decline）」で記録すると、その営業は自動で「失注（lost、理由 declined）」になる（MVP_SPEC §5 の「営業はそこで終了」の実装。返信数には返信日時で計上）。DNC にはならない。
+9. 成約金額は 1 円〜1 億円（入力ミス防止の上限）。
+10. 一覧の表示上限（履歴 200 件・商談 100 件、上限時は表示で通知）と、長すぎて mailto で開けない文面の送信操作を出さない扱い。
+11. **手順上の逸脱の記録**（いずれも develop へ PR を通さず直接 commit）:
+    - `3fba06d`: scope extension（Instagram 公式 API 連携）の記録として `.ai/progress.md`・`.ai/tasks.json`・`docs/INSTAGRAM_MESSAGING.md`（新規）・`docs/MVP_SPEC.md`（§11.1 追加と 2 行の注記。MVP の挙動の変更なし）・`tests/unit/ai-tasks.test.ts`（DEV-020/021/023 の受入条件の検査追加）を変更。
+    - `e2d2b79`: DEV-001 完了の記録と同時に、`docs/AI_WORKFLOW.md` に「`.ai/` の更新は develop へ直接 commit してよい」旨を 1 行追加（ルール自体を直接 commit で追加した）。
+    - 仕様の正本（MVP_SPEC）への直接 commit は本来 PR を通すべきだった。内容の確認を人間にお願いしたい。
 
 ## 12. Rollback
 
-- アプリ: Vercel の直前 Production deployment を Promote（Instant Rollback）。
+- アプリ: Vercel の直前 Production deployment を Promote（Instant Rollback）。**その deployment が Next.js 16.3.0 の場合は脆弱性が戻るため、短時間の緊急措置に限り、前方修正を優先する。**
 - コード: `main` で revert PR を作成し人間が merge。ただし Next.js 16.3.6 への更新は security advisory 対応のため、戻す場合も Next のバージョンは維持する（前方修正を優先）。
-- DB: migration は追加のみで既存の既存サイト機能に依存しない。問題時は前方修正（逆 migration）。データ削除を伴う rollback は人間承認。
+- DB: migration は追加のみで、既存サイトの機能は DB に依存しない。問題時は前方修正（逆 migration）。データ削除を伴う rollback は人間承認。
 - Operational job: Routine を無効化、または Vercel の `SALES_AGENT_INGEST_TOKEN` を削除して再デプロイ（ingest API は 503 で全拒否）。
 - 既存 Second Root（トップ・法務・問い合わせ）は Sales Agent と独立（Sales Agent の環境変数が未設定でも既存ページは動く）。
 - 詳細: `docs/RELEASE.md` §5・§7。
+
+## 12.1 Release チェックリスト（`docs/RELEASE.md` §3）の状況
+
+| 項目 | 状況 |
+|---|---|
+| 全 MVP Task が done | 未（DEV-016 が HUMAN-004 待ち。他はすべて done） |
+| CI 全 green | 済（§2） |
+| 既存 Second Root regression | 済（e2e: トップ・法務ページ・問い合わせ・robots/sitemap） |
+| Supabase migration が staging で適用・検証済み | 未（HUMAN-002 / HUMAN-004） |
+| RLS: 管理者以外が営業データを読めない | ローカルで済（integration・security audit）、staging は未 |
+| Production env が Vercel に設定済み | 未（人間） |
+| Claude Cloud scheduled job の staging 実走 | 未（HUMAN-004。ローカル rehearsal のみ済） |
+| Secret 混入なし | 済（`check:secrets`） |
+| rollback 手順確認 | 済（§12） |
 
 ## 13. Production に必要な人間の操作
 
@@ -156,7 +195,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job を全 PR で実行し�
 1. Supabase Production project 作成（Free・Tokyo）→ 人間の端末から `npx supabase link` → `npx supabase db push`（DB password は Claude に渡さない）→ RLS 確認 SQL。
 2. Supabase Auth: sign-up OFF、Confirm email ON、管理者ユーザー作成 → `insert into public.sales_admins (user_id) values ('<uuid>');`
 3. Vercel Production 環境変数: `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `SALES_AGENT_INGEST_TOKEN`（Staging と別、`openssl rand -hex 32`）/ `SALES_DEMO_BASE_URL=https://secondroot.jp`。
-4. （推奨）先に Staging で DEV-016 を完了（HUMAN-004）。
+4. **必須: 先に Staging で DEV-016 を完了（HUMAN-004）。完了まで Release PR を merge しない。**
 5. Claude が作成する `develop → main` の Release PR を人間がレビューして merge（Claude は main へ merge しない）。
 6. Production smoke test（既存ページ・管理画面ログイン・非管理者の拒否・ingest `status`・token なし 401・不明デモ 404）。
 7. Claude Cloud の Production 用 environment（ingest token と URL のみ）と Routine を作成し、手動で 1 回実行 → 候補を目視確認 → スケジュール有効化。
