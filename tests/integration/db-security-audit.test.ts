@@ -31,9 +31,8 @@ describe("database security audit", () => {
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
       cross join lateral (values ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE')) as p(privilege_type)
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'sales\\_%'
-        and has_table_privilege('authenticated', c.oid, p.privilege_type)
-        -- RLS still blocks rows, but no write grant should exist at all.
-        and c.relname <> 'sales_admins'`);
+        -- RLS would still block rows, but no write grant should exist at all.
+        and has_table_privilege('authenticated', c.oid, p.privilege_type)`);
     expect(rows).toEqual([]);
   });
 
@@ -42,6 +41,22 @@ describe("database security audit", () => {
       select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and (p.proname like 'sales\\_%' or p.proname = 'is_sales_admin')
         and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')`);
+    expect(rows).toEqual([]);
+  });
+
+  it("leaves no sales function executable by PUBLIC (every migration must revoke it)", async () => {
+    const { rows } = await db.query(`
+      select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and (p.proname like 'sales\\_%' or p.proname = 'is_sales_admin')
+        and exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0)`);
+    expect(rows).toEqual([]);
+  });
+
+  it("gives the signed-in role EXECUTE only on SECURITY DEFINER admin functions (and is_sales_admin)", async () => {
+    const { rows } = await db.query(`
+      select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname like 'sales\\_%' and not p.prosecdef
+        and has_function_privilege('authenticated', p.oid, 'EXECUTE')`);
     expect(rows).toEqual([]);
   });
 
@@ -59,7 +74,9 @@ describe("database security audit", () => {
       select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'sales\\_%' and p.prosecdef
         and has_function_privilege('authenticated', p.oid, 'EXECUTE')
-        and p.prosrc !~ '(is_sales_admin|sales_assert_admin)\\(\\)'`);
+        -- The first statement after BEGIN must be the admin check.
+        and regexp_replace(p.prosrc, '--[^\\n]*', '', 'g')
+            !~* '^\\s*(declare\\s.*?)?begin\\s+(perform\\s+public\\.sales_assert_admin\\(\\)|if\\s+not\\s+public\\.is_sales_admin\\(\\))'`);
     expect(rows).toEqual([]);
   });
 });

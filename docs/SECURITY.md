@@ -22,8 +22,8 @@
 - ingest API は DNC 変更・成約状態変更・送信の権限を持たない。
 - DNC 解除は管理者 UI からのみ。
 - DB: `sales_*` の全テーブルで RLS 有効、anon の権限なし、authenticated の直接書き込み権限なし。
-  public schema の関数はすべて `search_path` 固定。authenticated が呼べる SECURITY DEFINER 関数は必ず先頭で管理者を確認する。
-  helper / trigger 関数の EXECUTE は service_role のみ。新しい関数は既定で EXECUTE なし（migration で明示的に grant する）。
+  `sales_*` / `is_sales_admin` の関数はすべて `search_path` 固定。authenticated が呼べる `sales_*` 関数は SECURITY DEFINER の管理者 RPC だけで、最初の文で管理者を確認する。
+  helper / trigger 関数の EXECUTE は service_role のみ。PUBLIC の EXECUTE はスキーマ単位の既定では外せないため、関数を作る migration は必ず `revoke all on function … from public, anon, authenticated` してから必要な role にだけ grant する。
   これらは `tests/integration/db-security-audit.test.ts` が全関数・全テーブルに対して検査する。
 
 ## 3. 入力検証

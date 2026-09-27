@@ -24,7 +24,8 @@ begin
 end;
 $$;
 
--- Functions created later in this schema start closed; each migration
--- grants EXECUTE explicitly to the roles that need it.
-alter default privileges for role postgres in schema public
-  revoke execute on functions from public, anon, authenticated;
+-- Postgres's default PUBLIC EXECUTE cannot be removed per schema, so every
+-- migration that creates a function must revoke it explicitly
+-- (`revoke all on function … from public, anon, authenticated`) and grant
+-- only what is needed. tests/integration/db-security-audit.test.ts fails
+-- if any sales function is left with a PUBLIC grant.
