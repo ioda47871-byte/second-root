@@ -78,15 +78,38 @@ describe("RLS", () => {
     expect(error).not.toBeNull();
   });
 
-  it.each([
+  const SERVER_ONLY_FUNCTIONS: Array<[string, Record<string, unknown>]> = [
     ["sales_run_start", { p_run_id: randomUUID() }],
     ["sales_run_status", { p_run_id: null }],
+    ["sales_run_checkpoint", { p_run_id: randomUUID(), p_phase: "discovered", p_payload: {} }],
+    ["sales_run_begin_persist", { p_run_id: randomUUID(), p_lease_seconds: 60 }],
     ["sales_persist_candidate", { p_run_id: randomUUID(), p_key: "c01" }],
+    ["sales_run_mark_candidate_error", { p_run_id: randomUUID(), p_key: "c01", p_error_code: "x" }],
+    ["sales_run_finalize", { p_run_id: randomUUID() }],
     ["sales_run_abort", { p_run_id: randomUUID(), p_error_code: "x", p_error_summary: "x" }],
-  ])("anon and admin users cannot call %s", async (fn, args) => {
+    ["sales_new_demo_token", {}],
+    ["sales_has_first_party_email", { p_prospect_id: randomUUID(), p_email: "a@example.com" }],
+    ["sales_assert_outreach_eligible", { p_prospect_id: randomUUID(), p_kind: "initial", p_channel: "email" }],
+  ];
+
+  it.each(SERVER_ONLY_FUNCTIONS)("anon and the admin get permission denied for %s", async (fn, args) => {
     for (const client of [anonClient(), await signedInClient("admin@test.example.com")]) {
       const { error } = await client.rpc(fn, args);
-      expect(error, fn).not.toBeNull();
+      expect(error?.code, fn).toBe("42501");
     }
+  });
+
+  it("grants EXECUTE on server-only functions to nobody but service_role", async () => {
+    const { rows } = await db.query(`
+      select p.proname, r.rolname
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace and n.nspname = 'public'
+      cross join (values ('anon'), ('authenticated'), ('public')) as r(rolname)
+      where (p.proname like 'sales\\_run\\_%' or p.proname in
+             ('sales_persist_candidate', 'sales_new_demo_token', 'sales_has_first_party_email', 'sales_assert_outreach_eligible'))
+        and case when r.rolname = 'public'
+                 then exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE')
+                 else has_function_privilege(r.rolname, p.oid, 'EXECUTE') end`);
+    expect(rows).toEqual([]);
   });
 });

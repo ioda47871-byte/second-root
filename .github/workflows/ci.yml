@@ -61,7 +61,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx supabase start
+      - run: npx supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,postgres-meta,mailpit
       - run: npm run test:integration
       - if: always()
         run: npx supabase stop --no-backup

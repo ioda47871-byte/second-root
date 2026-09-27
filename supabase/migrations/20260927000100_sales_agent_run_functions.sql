@@ -155,11 +155,10 @@ begin
   end if;
 
   r := public.sales_run_lock(p_run_id);
-  if r.status = 'completed' then
-    return public.sales_run_state(r, true);
-  end if;
-  if r.status = 'failed' then
-    raise exception '%', coalesce(r.error_code, 'run_failed') using errcode = 'P0001';
+  -- Terminal runs are returned, not raised, so an expiry applied by
+  -- sales_run_lock is committed; the API maps failed runs to an error.
+  if r.status <> 'running' then
+    return public.sales_run_state(r, r.status = 'completed');
   end if;
 
   current_rank := public.sales_phase_rank(r.phase);
@@ -202,7 +201,8 @@ begin
       stages := stages || jsonb_build_object(k, coalesce(
         p_payload->'stages'->k,
         jsonb_build_object('stage', 'pending')));
-      if not (stages->k->>'stage' in ('pending', 'rejected')) then
+      if jsonb_typeof(stages->k) <> 'object'
+         or coalesce(stages->k->>'stage', '') not in ('pending', 'rejected') then
         raise exception 'invalid_candidate_stage' using errcode = '22023';
       end if;
       if stages->k->>'stage' = 'pending' and p_payload->'candidates'->k is null then
@@ -277,11 +277,8 @@ declare
   r public.sales_agent_runs;
 begin
   r := public.sales_run_lock(p_run_id);
-  if r.status = 'completed' then
-    return public.sales_run_state(r, true);
-  end if;
-  if r.status = 'failed' then
-    raise exception '%', coalesce(r.error_code, 'run_failed') using errcode = 'P0001';
+  if r.status <> 'running' then
+    return public.sales_run_state(r, r.status = 'completed');
   end if;
   if r.phase not in ('verified', 'persisting') then
     raise exception 'phase_order_violation' using errcode = 'P0001';
@@ -333,7 +330,10 @@ declare
   result jsonb;
 begin
   r := public.sales_run_lock(p_run_id);
-  if r.status <> 'running' or r.phase <> 'persisting' then
+  if r.status <> 'running' then
+    return jsonb_build_object('key', p_key, 'run_status', r.status, 'error_code', r.error_code);
+  end if;
+  if r.phase <> 'persisting' then
     raise exception 'phase_order_violation' using errcode = 'P0001';
   end if;
   if r.persist_lease_until is null or r.persist_lease_until <= now() then
@@ -497,7 +497,8 @@ begin
     'public.sales_run_state(public.sales_agent_runs, boolean)',
     'public.sales_run_set_stage(public.sales_agent_runs, text, jsonb)',
     'public.sales_new_demo_token()',
-    'public.sales_has_first_party_email(uuid, text)'
+    'public.sales_has_first_party_email(uuid, text)',
+    'public.sales_assert_outreach_eligible(uuid, text, text)'
   ] loop
     execute format('revoke all on function %s from public, anon, authenticated', fn);
     execute format('grant execute on function %s to service_role', fn);

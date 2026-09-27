@@ -114,15 +114,20 @@ create table public.sales_prospects (
   first_seen_candidate_key text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  -- Nagoya only (MVP_SPEC §2).
-  constraint sales_prospects_nagoya check (normalized_address like '%名古屋市%'),
+  -- Nagoya only (MVP_SPEC §2), checked on both the raw and normalised address.
+  constraint sales_prospects_nagoya
+    check (normalized_address like '愛知県名古屋市%' and address like '%名古屋市%'),
   -- A site marked present has a URL; not_found / unknown never do.
   constraint sales_prospects_website_url
     check ((website_status = 'present') = (website_url is not null)),
+  -- Dedupe keys must be derived from the stored URL, not supplied freely.
   constraint sales_prospects_website_domain
-    check ((website_url is null) = (website_domain is null)),
+    check ((website_url is null) = (website_domain is null)
+           and (website_url is null or website_domain = regexp_replace(
+                  lower(substring(website_url from '^https?://([^/:?#]+)')), '^www\.', ''))),
   constraint sales_prospects_instagram_pair
-    check ((instagram_url is null) = (instagram_handle is null)),
+    check ((instagram_url is null) = (instagram_handle is null)
+           and (instagram_url is null or instagram_url = 'https://www.instagram.com/' || instagram_handle || '/')),
   -- Channel eligibility (MVP_SPEC §3.2). unknown never goes to Instagram.
   constraint sales_prospects_channel_instagram
     check (recommended_channel <> 'instagram'
@@ -264,8 +269,11 @@ create table public.sales_outreaches (
     check (kind = 'initial' or (channel = 'email' and status in ('drafted', 'sent'))),
   constraint sales_outreaches_email_subject
     check (channel <> 'email' or subject is not null),
+  -- An unsent draft can be closed as lost without pretending it was sent.
   constraint sales_outreaches_sent_at
-    check (status = 'drafted' or sent_at is not null),
+    check (status in ('drafted', 'lost') or sent_at is not null),
+  constraint sales_outreaches_reply_recorded
+    check (status not in ('replied', 'meeting') or reply_type is not null),
   constraint sales_outreaches_replied
     check ((reply_type is null) = (replied_at is null)),
   constraint sales_outreaches_closed
@@ -282,34 +290,45 @@ create trigger sales_outreaches_touch
   before update on public.sales_outreaches
   for each row execute function public.sales_touch_updated_at();
 
--- Eligibility and DNC are re-checked by the database on every insert, so an
--- outreach draft can never exist for an ineligible or DNC shop.
-create or replace function public.sales_check_outreach_insert()
-returns trigger
+-- Eligibility and DNC are re-checked by the database when a draft is created
+-- and again when it is marked sent, so an ineligible or DNC shop can never be
+-- contacted even if its data changed in between.
+create or replace function public.sales_assert_outreach_eligible(p_prospect_id uuid, p_kind text, p_channel text)
+returns void
 language plpgsql
 set search_path = ''
 as $$
 declare
   p public.sales_prospects%rowtype;
 begin
-  select * into p from public.sales_prospects where id = new.prospect_id;
+  select * into p from public.sales_prospects where id = p_prospect_id;
   if p.do_not_contact then
     raise exception 'do_not_contact' using errcode = 'check_violation';
   end if;
-  if new.status <> 'drafted' then
-    raise exception 'outreach_must_start_drafted' using errcode = 'check_violation';
-  end if;
-  if new.channel = 'instagram'
-     and not (p.website_status = 'not_found' and p.instagram_handle is not null) then
+  if p_channel = 'instagram'
+     and not (p.website_status = 'not_found' and p.instagram_handle is not null and p.public_email is null) then
     raise exception 'instagram_not_eligible' using errcode = 'check_violation';
   end if;
-  if new.channel = 'email'
+  if p_channel = 'email'
      and not (p.public_email is not null and public.sales_has_first_party_email(p.id, p.public_email)) then
     raise exception 'email_not_eligible' using errcode = 'check_violation';
   end if;
-  if new.kind = 'initial' and p.recommended_channel is distinct from new.channel then
+  if p_kind = 'initial' and p.recommended_channel is distinct from p_channel then
     raise exception 'channel_mismatch' using errcode = 'check_violation';
   end if;
+end;
+$$;
+
+create or replace function public.sales_check_outreach_insert()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.status <> 'drafted' then
+    raise exception 'outreach_must_start_drafted' using errcode = 'check_violation';
+  end if;
+  perform public.sales_assert_outreach_eligible(new.prospect_id, new.kind, new.channel);
   return new;
 end;
 $$;
@@ -326,7 +345,6 @@ set search_path = ''
 as $$
 declare
   allowed boolean;
-  dnc boolean;
 begin
   if new.prospect_id <> old.prospect_id or new.kind <> old.kind or new.channel <> old.channel
      or new.run_id is distinct from old.run_id or new.created_at <> old.created_at then
@@ -349,10 +367,7 @@ begin
   end if;
 
   if new.status = 'sent' then
-    select do_not_contact into dnc from public.sales_prospects where id = new.prospect_id;
-    if dnc then
-      raise exception 'do_not_contact' using errcode = 'check_violation';
-    end if;
+    perform public.sales_assert_outreach_eligible(new.prospect_id, new.kind, new.channel);
   end if;
   return new;
 end;

@@ -53,9 +53,12 @@ describe("run start / status", () => {
     expect(await rpc("sales_run_status", { p_run_id: null })).toBeNull();
     const state = await rpc<State>("sales_run_status", { p_run_id: runId });
     expect(state).toMatchObject({ status: "failed", error_code: "run_expired" });
-    await expect(
-      rpc("sales_run_checkpoint", { p_run_id: runId, p_phase: "discovered", p_payload: { candidates: [] } }),
-    ).rejects.toThrow(/run_expired/);
+    await db.query("update public.sales_agent_runs set status = 'running', finished_at = null, error_code = null, checkpoint_at = now() - interval '25 hours' where run_id = $1", [runId]);
+    // Expiry found by any action is committed, never rolled back.
+    const viaCheckpoint = await rpc<State>("sales_run_checkpoint", { p_run_id: runId, p_phase: "discovered", p_payload: { candidates: [] } });
+    expect(viaCheckpoint).toMatchObject({ status: "failed", error_code: "run_expired" });
+    const { rows } = await db.query("select status from public.sales_agent_runs where run_id = $1", [runId]);
+    expect(rows[0].status).toBe("failed");
   });
 });
 
@@ -209,6 +212,26 @@ describe("persist", () => {
     expect(state.candidates.c01).toMatchObject({ stage: "error", error_code: "persist_failed" });
   });
 
+  it("rolls back a candidate whose demo cannot be created", async () => {
+    const runId = randomUUID();
+    await verifiedRun(runId, { c01: candidate({ demo: { template: "not_a_template", content: {} } }) });
+    await rpc("sales_run_begin_persist", { p_run_id: runId });
+    await expect(rpc("sales_persist_candidate", { p_run_id: runId, p_key: "c01" })).rejects.toThrow(/demo_failed/);
+    expect(await count("sales_prospects")).toBe(0);
+    expect(await count("sales_sources")).toBe(0);
+  });
+
+  it("rejects malformed verify-time stages", async () => {
+    const runId = randomUUID();
+    await rpc("sales_run_start", { p_run_id: runId });
+    await rpc("sales_run_checkpoint", { p_run_id: runId, p_phase: "discovered", p_payload: { candidates: [{ key: "c01" }] } });
+    for (const stage of [{ stage: null }, "pending", { stage: "outreach_ready" }]) {
+      await expect(
+        rpc("sales_run_checkpoint", { p_run_id: runId, p_phase: "verified", p_payload: { order: ["c01"], candidates: {}, stages: { c01: stage } } }),
+      ).rejects.toThrow(/invalid_candidate_stage/);
+    }
+  });
+
   it("serialises persist per run (run_busy)", async () => {
     const runId = randomUUID();
     await verifiedRun(runId, { c01: candidate() });
@@ -252,8 +275,8 @@ describe("persist", () => {
     await rpc("sales_run_start", { p_run_id: runId });
     const state = await rpc<State>("sales_run_abort", { p_run_id: runId, p_error_code: "search_unavailable", p_error_summary: "web search down" });
     expect(state).toMatchObject({ status: "failed", error_code: "search_unavailable" });
-    await expect(
-      rpc("sales_run_checkpoint", { p_run_id: runId, p_phase: "discovered", p_payload: { candidates: [] } }),
-    ).rejects.toThrow(/search_unavailable/);
+    const later = await rpc<State>("sales_run_checkpoint", { p_run_id: runId, p_phase: "discovered", p_payload: { candidates: [] } });
+    expect(later).toMatchObject({ status: "failed", phase: "started", error_code: "search_unavailable" });
+    await expect(rpc("sales_run_begin_persist", { p_run_id: runId })).resolves.toMatchObject({ status: "failed" });
   });
 });

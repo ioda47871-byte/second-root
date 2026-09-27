@@ -34,8 +34,27 @@ beforeEach(resetSalesData);
 afterAll(resetSalesData);
 
 describe("prospect constraints", () => {
-  it("accepts Nagoya only", async () => {
+  it("accepts Nagoya only, checking the raw address too", async () => {
     await expect(insertProspect({ normalized_address: "愛知県豊田市1-1", address: "愛知県豊田市1-1" })).rejects.toThrow(/nagoya/);
+    await expect(insertProspect({ address: "東京都港区1-1", normalized_address: "愛知県名古屋市中区1-1" })).rejects.toThrow(/nagoya/);
+  });
+
+  it("derives dedupe keys from the stored URLs", async () => {
+    await expect(
+      insertProspect({ website_status: "present", website_url: "https://www.shop.example.com/", website_domain: "other.example.com" }),
+    ).rejects.toThrow(/website_domain/);
+    await expect(
+      insertProspect({ instagram_url: "https://www.instagram.com/aaa/", instagram_handle: "bbb" }),
+    ).rejects.toThrow(/instagram_pair/);
+    await insertProspect({ website_status: "present", website_url: "https://www.shop.example.com/about", website_domain: "shop.example.com" });
+  });
+
+  it.each([
+    ["domain", { website_status: "present", website_url: "https://same.example.com/", website_domain: "same.example.com" }],
+    ["instagram handle", { instagram_url: "https://www.instagram.com/same_handle/", instagram_handle: "same_handle" }],
+  ])("keeps one prospect per %s", async (_label, fields) => {
+    await insertProspect(fields);
+    await expect(insertProspect(fields)).rejects.toThrow(/duplicate key/);
   });
 
   it("rejects categories outside bakery / baked_goods / cafe", async () => {
@@ -108,6 +127,25 @@ describe("outreach constraints and state machine", () => {
     await expect(set("status = 'won', closed_at = now()")).rejects.toThrow(/won_amount/);
     await set("status = 'won', closed_at = now(), won_amount_jpy = 150000");
     await expect(set("status = 'lost'")).rejects.toThrow(/invalid_transition/);
+  });
+
+  it("lets an unsent draft be closed as lost without a sent_at", async () => {
+    const id = await persisted(candidate());
+    await db.query("update public.sales_outreaches set status = 'lost', closed_at = now() where prospect_id = $1", [id]);
+  });
+
+  it("requires a reply type for replied", async () => {
+    const id = await persisted(emailCandidate());
+    await db.query("update public.sales_outreaches set status = 'sent', sent_at = now() where prospect_id = $1", [id]);
+    await expect(db.query("update public.sales_outreaches set status = 'replied' where prospect_id = $1", [id])).rejects.toThrow(/reply/);
+  });
+
+  it("re-checks channel eligibility when marking sent", async () => {
+    const id = await persisted(emailCandidate());
+    await db.query("delete from public.sales_sources where prospect_id = $1 and field = 'email'", [id]);
+    await expect(
+      db.query("update public.sales_outreaches set status = 'sent', sent_at = now() where prospect_id = $1", [id]),
+    ).rejects.toThrow(/email_not_eligible/);
   });
 
   it("rejects a won amount on anything but won", async () => {
