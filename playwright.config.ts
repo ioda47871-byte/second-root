@@ -26,6 +26,8 @@ export default defineConfig({
   ],
   webServer: {
     command: `npm run start -- --port ${port}`,
+    // Demo links in admin messages point at this local server during tests.
+    env: { SALES_DEMO_BASE_URL: `http://127.0.0.1:${port}` },
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

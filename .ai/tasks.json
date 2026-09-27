@@ -457,7 +457,7 @@
     {
       "id": "DEV-009",
       "title": "今日やることUI",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-008",
