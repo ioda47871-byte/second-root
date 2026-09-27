@@ -22,6 +22,7 @@ export async function sendApprovedReply(supabase: SupabaseClient, draftId: strin
   if (error) return { kind: "refused", code: (error.message ?? "").split(":")[0].trim() };
   const begun = data as Begun;
   if (begun.replayed) {
+    if (begun.status === "stale_draft") return { kind: "refused", code: "stale_draft" };
     if (begun.status === "sent") return { kind: "already_sent" };
     if (begun.status === "sending") return { kind: "in_flight" };
     return { kind: "unknown" };

@@ -9,6 +9,10 @@ export type InboxItem = {
   threadId: string;
   draftId: string | null;
   draftStatus: string | null;
+  /** 後で対応 and not yet due again (a snooze lasts 24 hours). */
+  snoozed: boolean;
+  /** The draft answers an older message: a newer one arrived since. */
+  stale: boolean;
   sendId: string | null;
   matched: boolean;
   username: string | null;
@@ -37,8 +41,8 @@ type ThreadRow = {
     do_not_contact: boolean;
     outreach: Array<{ id: string; kind: string; status: string }> | null;
   } | null;
-  messages: Array<{ direction: "inbound" | "outbound"; text: string | null; attachment_types: string[]; sent_at: string; deleted_at: string | null }>;
-  drafts: Array<{ id: string; status: string; reply_type: ReplyType; body: string; dnc_candidate: boolean; review_reasons: string[]; created_at: string; sends: Array<{ id: string; status: string; created_at: string }> }>;
+  messages: Array<{ id: string; direction: "inbound" | "outbound"; text: string | null; attachment_types: string[]; sent_at: string; received_at: string; deleted_at: string | null }>;
+  drafts: Array<{ id: string; message_id: string; status: string; snoozed_until: string | null; reply_type: ReplyType; body: string; dnc_candidate: boolean; review_reasons: string[]; created_at: string; sends: Array<{ id: string; status: string; created_at: string }> }>;
 };
 
 const OPEN = new Set(["pending", "snoozed", "failed", "unknown", "sending"]);
@@ -50,8 +54,8 @@ export async function loadInbox(supabase: SupabaseClient, now: Date = new Date()
     .select(
       `id, username, match_status, prospect_id, last_inbound_at,
        prospect:sales_prospects(name, do_not_contact, outreach:sales_outreaches(id, kind, status)),
-       messages:sales_ig_messages(direction, text, attachment_types, sent_at, deleted_at),
-       drafts:sales_ig_drafts(id, status, reply_type, body, dnc_candidate, review_reasons, created_at, sends:sales_ig_sends(id, status, created_at))`,
+       messages:sales_ig_messages(id, direction, text, attachment_types, sent_at, received_at, deleted_at),
+       drafts:sales_ig_drafts(id, message_id, status, snoozed_until, reply_type, body, dnc_candidate, review_reasons, created_at, sends:sales_ig_sends(id, status, created_at))`,
     )
     .neq("match_status", "ignored")
     .not("last_inbound_at", "is", null)
@@ -62,6 +66,10 @@ export async function loadInbox(supabase: SupabaseClient, now: Date = new Date()
   return ((data ?? []) as unknown as ThreadRow[]).map((t) => {
     const draft = [...(t.drafts ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).find((d) => OPEN.has(d.status)) ?? null;
     const send = draft ? [...(draft.sends ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null : null;
+    // Same order as the database uses for "the latest message".
+    const latestInbound = (t.messages ?? [])
+      .filter((m) => m.direction === "inbound" && !m.deleted_at)
+      .sort((a, b) => b.sent_at.localeCompare(a.sent_at) || b.received_at.localeCompare(a.received_at) || b.id.localeCompare(a.id))[0];
     const initial = t.prospect?.outreach?.find((o) => o.kind === "initial") ?? null;
     const messages = [...(t.messages ?? [])]
       .filter((m) => !m.deleted_at)
@@ -72,6 +80,8 @@ export async function loadInbox(supabase: SupabaseClient, now: Date = new Date()
       threadId: t.id,
       draftId: draft?.id ?? null,
       draftStatus: draft?.status ?? null,
+      snoozed: draft?.status === "snoozed" && draft.snoozed_until !== null && Date.parse(draft.snoozed_until) > now.getTime(),
+      stale: draft !== null && ["pending", "snoozed", "failed"].includes(draft.status) && draft.message_id !== latestInbound?.id,
       sendId: send?.id ?? null,
       matched: t.match_status === "matched",
       username: t.username,

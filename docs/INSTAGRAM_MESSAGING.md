@@ -93,11 +93,13 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
      - 送信済み・`unknown` は再生（再送しない）。
      - 送信中（2 分以内）は `in_flight`。2 分を過ぎた送信中は、サーバーが途中で止まったものとして `unknown` にする（自動再送しない）。
      - 未照合・DNC・24 時間の返信期間外は拒否する。明確な失敗の後の再試行だけ attempts+1 で再送できる。
+     - 最新の受信メッセージへの返信案でなければ拒否し、その案を superseded にする（古い失敗案を新着後に送らない）。
+     - 画面に「送信中」が残った場合（途中でサーバーが止まった等）は「送信状況を確認」で同じ予約を問い合わせる（再送しない）。
   2. 公式 Send API `POST /<IG_ID>/messages`（token は server only、bearer header、timeout、redirect 拒否）。
-  3. `sales_ig_finish_send`: 成功時だけ `sent`・Meta message id・送信日時を記録し、会話履歴に outbound message（`mid` = Meta の message id）を追加する。Webhook の echo は同じ `mid` なので二重に保存されない。
+  3. `sales_ig_finish_send`（送信中の予約、または結果不明の予約への確定結果だけを受け付け、遅れて届いた・重複した結果は無視）: 成功時だけ `sent`・Meta message id・送信日時を記録し、会話履歴に outbound message（`mid` = Meta の message id）を追加する。Webhook の echo は同じ `mid` なので二重に保存されない。
 - **API 失敗時に sent にしない**:
   - 4xx でエラーコードがある（未送信が確実）→ `failed`。人間が再度押せば再送する（同じ key、二重送信しない）。
-  - ネットワーク障害・5xx・読めない応答・subcode 1357046（送信されたがエラー）→ `unknown`。画面に「送信されていた / 送信されていなかった」を表示し、人間が Instagram アプリで確認して記録する。「送信されていなかった」の後だけ再送できる。
+  - ネットワーク障害・5xx・読めない応答・subcode 1357046（送信されたがエラー）・一時的/汎用エラー（`is_transient`・code 1/2）→ `unknown`。画面に「送信されていた / 送信されていなかった」を表示し、人間が Instagram アプリで確認して記録する。「送信されていなかった」の後だけ再送できる。
   - Meta の認証情報がない環境では Graph を呼ばず `failed(not_configured)`。
 - 本文を編集すると key が変わるので、新しい送信として扱う（以前の失敗記録は残る）。
 - 送信・編集・snooze・照合はすべて `requireAdmin()` と DB 側の admin 確認（SECURITY DEFINER + `sales_is_admin()`）の両方を通る。Operational Claude（ingest token）からは呼べない。

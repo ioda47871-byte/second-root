@@ -107,8 +107,12 @@ begin
     raise exception 'not_found' using errcode = 'P0002';
   end if;
   if p_prospect_id is null then
+    -- A reply whose outcome is still open must be settled first.
+    if exists (select 1 from public.sales_ig_drafts d where d.thread_id = t.id and d.status in ('sending', 'unknown')) then
+      raise exception 'send_open' using errcode = 'P0001';
+    end if;
     update public.sales_ig_threads set match_status = 'ignored', prospect_id = null where id = t.id;
-    update public.sales_ig_drafts set status = 'superseded' where thread_id = t.id and status in ('pending', 'snoozed');
+    update public.sales_ig_drafts set status = 'superseded' where thread_id = t.id and status in ('pending', 'snoozed', 'failed');
     return jsonb_build_object('thread_id', t.id, 'match_status', 'ignored');
   end if;
   if not exists (
@@ -118,6 +122,11 @@ begin
                   where o.prospect_id = p.id and o.kind = 'initial' and o.channel = 'instagram' and o.sent_at is not null)
   ) then
     raise exception 'invalid_prospect' using errcode = 'P0001';
+  end if;
+  -- Only an unmatched conversation is linked here; a matched one is never
+  -- moved to another shop (its drafts may mention the first shop's demo).
+  if t.match_status <> 'unmatched' then
+    raise exception 'already_resolved' using errcode = 'P0001';
   end if;
   update public.sales_ig_threads set match_status = 'matched', prospect_id = p_prospect_id where id = t.id;
   return jsonb_build_object('thread_id', t.id, 'match_status', 'matched');
@@ -169,8 +178,18 @@ begin
   if t.match_status <> 'matched' then
     raise exception 'unmatched' using errcode = 'P0001';
   end if;
-  if exists (select 1 from public.sales_prospects p where p.id = t.prospect_id and p.do_not_contact) then
+  if not exists (select 1 from public.sales_prospects p where p.id = t.prospect_id and not p.do_not_contact) then
     raise exception 'do_not_contact' using errcode = 'P0001';
+  end if;
+  -- Only a reply to the latest message: a draft (e.g. an earlier failed
+  -- one) for an older message is retired once a newer message arrived.
+  if d.message_id is distinct from (
+    select m.id from public.sales_ig_messages m
+      where m.thread_id = t.id and m.direction = 'inbound' and m.deleted_at is null
+      order by m.sent_at desc, m.received_at desc, m.id desc limit 1
+  ) then
+    update public.sales_ig_drafts set status = 'superseded' where id = d.id;
+    return jsonb_build_object('status', 'stale_draft', 'replayed', true);
   end if;
   if t.last_inbound_at is null or t.last_inbound_at < now() - interval '24 hours' then
     raise exception 'window_closed' using errcode = 'P0001';
@@ -204,6 +223,7 @@ as $$
 declare
   s public.sales_ig_sends;
   d public.sales_ig_drafts;
+  follow boolean;
 begin
   perform public.sales_assert_admin();
   if p_outcome not in ('sent', 'failed', 'unknown') then
@@ -213,16 +233,25 @@ begin
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  if s.status = 'sent' then
-    return jsonb_build_object('send_id', s.id, 'status', 'sent', 'replayed', true);
+  -- Only an open send takes a result: 'sending', or 'unknown' when a late
+  -- but definite answer arrives. Anything else (sent, failed, a duplicate
+  -- or late call) is a replay and changes nothing.
+  if not (s.status = 'sending' or (s.status = 'unknown' and p_outcome in ('sent', 'failed'))) then
+    return jsonb_build_object('send_id', s.id, 'status', s.status, 'replayed', true);
   end if;
   select * into d from public.sales_ig_drafts where id = s.draft_id for update;
+  -- The draft follows only its newest send, and only while that send is open.
+  follow := d.status in ('sending', 'unknown') and not exists (
+    select 1 from public.sales_ig_sends x where x.draft_id = d.id and x.id <> s.id and x.created_at > s.created_at
+  );
 
   if p_outcome = 'sent' then
     update public.sales_ig_sends
       set status = 'sent', sent_at = now(), meta_message_id = p_meta_message_id, error_code = null
       where id = s.id;
-    update public.sales_ig_drafts set status = 'sent' where id = d.id;
+    if follow then
+      update public.sales_ig_drafts set status = 'sent' where id = d.id;
+    end if;
     -- Record our reply in the conversation (the echo webhook for the same
     -- message id is then skipped as a duplicate).
     if p_meta_message_id is not null then
@@ -232,7 +261,9 @@ begin
     end if;
   else
     update public.sales_ig_sends set status = p_outcome, error_code = p_error_code where id = s.id;
-    update public.sales_ig_drafts set status = p_outcome where id = d.id;
+    if follow then
+      update public.sales_ig_drafts set status = p_outcome where id = d.id;
+    end if;
   end if;
   return jsonb_build_object('send_id', s.id, 'status', p_outcome, 'replayed', false);
 end;

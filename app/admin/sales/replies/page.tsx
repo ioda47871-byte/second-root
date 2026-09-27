@@ -28,14 +28,17 @@ export default async function RepliesPage() {
       </>
     );
   }
-  const open = inbox.filter((i) => i.draftStatus !== "snoozed");
-  const later = inbox.filter((i) => i.draftStatus === "snoozed");
+  const open = inbox.filter((i) => !i.snoozed);
+  const later = inbox.filter((i) => i.snoozed);
   const card = (i: (typeof inbox)[number]) => (
     <IgReplyCard
       key={i.threadId}
       threadId={i.threadId}
       draftId={i.draftId}
       draftStatus={i.draftStatus}
+      snoozed={i.snoozed}
+      stale={i.stale}
+      doNotContact={i.doNotContact}
       sendId={i.sendId}
       matched={i.matched}
       username={i.username}
