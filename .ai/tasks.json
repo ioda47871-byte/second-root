@@ -866,7 +866,7 @@
     {
       "id": "DEV-018",
       "title": "Full E2E / mobile QA",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-017",
@@ -904,7 +904,7 @@
     {
       "id": "DEV-019",
       "title": "Release Readiness",
-      "status": "backlog",
+      "status": "blocked",
       "priority": "P0",
       "depends_on": [
         "DEV-016",
@@ -936,7 +936,8 @@
         "Production 設定"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": "Release Readiness Report 作成済み（docs/RELEASE_READINESS.md）。DEV-016 の Staging 実走（HUMAN-004）と人間の Release 承認待ち",
+      "branch": "feature/dev-019-release-readiness"
     },
     {
       "id": "DEV-020",
