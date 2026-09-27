@@ -106,7 +106,7 @@ describe("template CSS", () => {
   it("adds no text through CSS content", () => {
     const dir = join(process.cwd(), "components/demo");
     for (const file of readdirSync(dir).filter((f) => f.endsWith(".css"))) {
-      const values = [...readFileSync(join(dir, file), "utf8").matchAll(/content:\s*([^;]+);/g)].map((m) => m[1].trim());
+      const values = [...readFileSync(join(dir, file), "utf8").matchAll(/(?<![-\w])content:\s*([^;]+);/g)].map((m) => m[1].trim());
       expect(values.filter((v) => v !== '""' && v !== "''"), file).toEqual([]);
     }
   });
