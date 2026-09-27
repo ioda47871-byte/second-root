@@ -2,7 +2,7 @@
 // sales_metrics SQL view; this only derives rates and labels. No AI.
 
 export type MetricRow = {
-  dimension: "channel" | "category" | "website_status" | "follow_up" | "total";
+  dimension: "channel" | "category" | "website_status" | "follow_up" | "demo" | "total";
   value: string;
   sent: number;
   replied: number;
@@ -27,6 +27,8 @@ const VALUE_LABEL: Record<string, string> = {
   unknown: "サイト不明",
   yes: "フォローあり",
   no: "フォローなし",
+  with_demo: "デモあり",
+  without_demo: "デモなし",
   all: "合計",
 };
 
@@ -36,6 +38,7 @@ export const DIMENSION_LABEL: Record<MetricRow["dimension"], string> = {
   category: "業種",
   website_status: "公式サイト",
   follow_up: "5日後フォロー",
+  demo: "デモ",
 };
 
 export function valueLabel(value: string): string {
@@ -43,7 +46,7 @@ export function valueLabel(value: string): string {
 }
 
 export function groupMetrics(rows: MetricRow[]): Array<{ dimension: MetricRow["dimension"]; rows: MetricRow[] }> {
-  const order: MetricRow["dimension"][] = ["total", "channel", "category", "website_status", "follow_up"];
+  const order: MetricRow["dimension"][] = ["total", "channel", "category", "website_status", "follow_up", "demo"];
   return order
     .map((dimension) => ({ dimension, rows: rows.filter((r) => r.dimension === dimension).sort((a, b) => b.sent - a.sent) }))
     .filter((g) => g.rows.length > 0);

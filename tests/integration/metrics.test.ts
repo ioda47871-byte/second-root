@@ -52,6 +52,37 @@ describe("sales_metrics", () => {
     expect(find("category", "bakery")).toMatchObject({ sent: 3 });
   });
 
+  it("splits by follow-up and by demo, and meetings per condition", async () => {
+    const followed = await sent(emailCandidate());
+    await db.query(
+      `insert into public.sales_outreaches (prospect_id, kind, channel, subject, body)
+       select prospect_id, 'follow_up', 'email', 'Re: x', 'x' from public.sales_outreaches where id = $1`,
+      [followed],
+    );
+    await db.query(
+      `update public.sales_outreaches set status = 'sent', sent_at = now()
+       where kind = 'follow_up' and prospect_id = (select prospect_id from public.sales_outreaches where id = $1)`,
+      [followed],
+    );
+    const rows = await loadMetrics(admin);
+    const find = (d: string, v: string) => rows.find((r) => r.dimension === d && r.value === v);
+    expect(find("follow_up", "yes")).toMatchObject({ sent: 1, replied: 0 });
+    expect(find("follow_up", "no")).toMatchObject({ sent: 3, meetings: 1 });
+    // The follow-up is not a second send.
+    expect(find("total", "all")).toMatchObject({ sent: 4 });
+    expect(find("demo", "with_demo")).toMatchObject({ sent: 4 });
+    expect(find("channel", "instagram")).toMatchObject({ meetings: 1 });
+    expect(find("channel", "email")).toMatchObject({ meetings: 0 });
+  });
+
+  it("grants the admin read access only", async () => {
+    const { rows } = await db.query(
+      `select privilege_type from information_schema.role_table_grants
+       where table_schema = 'public' and table_name = 'sales_metrics' and grantee = 'authenticated'`,
+    );
+    expect(rows.map((r) => r.privilege_type)).toEqual(["SELECT"]);
+  });
+
   it("shows nothing to non-admins and is closed to anon", async () => {
     const rows = await loadMetrics(outsider);
     expect(rows.find((r) => r.dimension === "total")?.sent ?? 0).toBe(0);

@@ -17,6 +17,15 @@ describe("composeFollowUp", () => {
     expect(buildMailto(draft).startsWith("mailto:info@shop.example.com?subject=Re%3A%20")).toBe(true);
   });
 
+  it("keeps the subject within 200 characters, counting characters not UTF-16 units", () => {
+    const draft = composeFollowUp({ shopName: "店", publicEmail: "a@b.example.com", initialSubject: "件".repeat(200), demoToken: "t" });
+    expect([...draft.subject].length).toBe(200);
+    expect(draft.subject.startsWith("Re: 件")).toBe(true);
+    const emoji = composeFollowUp({ shopName: "店", publicEmail: "a@b.example.com", initialSubject: "🍞".repeat(200), demoToken: "t" });
+    expect([...emoji.subject].length).toBe(200);
+    expect(emoji.subject.endsWith("🍞")).toBe(true);
+  });
+
   it("falls back to the default subject", () => {
     const draft = composeFollowUp({ shopName: "店", publicEmail: "a@b.example.com", initialSubject: null, demoToken: "t" });
     expect(draft.subject).toBe("Re: ホームページのご提案（Second Root）");

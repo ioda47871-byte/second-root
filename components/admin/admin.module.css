@@ -310,3 +310,8 @@
   display: grid;
   gap: 8px;
 }
+
+.caption {
+  text-align: left;
+  padding: 8px 6px;
+}

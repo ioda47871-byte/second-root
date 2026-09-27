@@ -56,6 +56,10 @@ test("shows outcomes, metrics, and lets the admin set and clear DNC", async ({ p
   await again.getByRole("button", { name: "DNC を解除" }).click();
   await again.getByRole("button", { name: "はい、DNC を解除" }).click();
   await expect.poll(dnc).toBe(false);
+  // Clearing DNC never brings the demo back.
+  const demo = await db.query("select disabled_at from public.sales_demos where prospect_id = $1", [shop.prospectId]);
+  expect(demo.rows[0].disabled_at).not.toBeNull();
+  expect((await page.request.get(`/demo/${shop.token}`)).status()).toBe(404);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });

@@ -63,6 +63,10 @@ test("offers one follow-up mailto 5 days after the email and records it on 送�
   await card.getByRole("button", { name: "送信済み" }).click();
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
   expect(await followUps()).toEqual([{ status: "sent" }]);
+  // What is recorded is exactly what the mailto carried.
+  const stored = await db.query("select subject, body from public.sales_outreaches where prospect_id = $1 and kind = 'follow_up'", [draft.prospectId]);
+  expect(stored.rows[0].subject).toBe(params.get("subject"));
+  expect(stored.rows[0].body).toBe(body.replace(/\r\n/g, "\n"));
 
   // Only once: it does not come back.
   await page.reload();

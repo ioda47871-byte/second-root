@@ -20,21 +20,24 @@ where o.kind = 'initial'
   and not p.do_not_contact
   and o.sent_at <= now() - interval '5 days'
   and d.disabled_at is null
-  and d.expires_at > now()
+  and d.expires_at is not null
+  and (d.keep_alive or d.expires_at > now())
   and not exists (
     select 1 from public.sales_outreaches f
     where f.prospect_id = o.prospect_id and f.kind = 'follow_up' and f.status = 'sent'
   );
 
-revoke all on public.sales_followup_due from public, anon;
+revoke all on public.sales_followup_due from public, anon, authenticated;
 grant select on public.sales_followup_due to authenticated, service_role;
 
 -- 送信済み for a follow-up. p_outreach_id is the initial outreach. The
--- subject and body are composed by the server (never typed by the client)
--- and stored as the record of what was sent. Idempotent: a double tap
--- returns the first result. DNC and email eligibility are re-checked by the
--- outreach triggers; the unique index keeps it to one follow-up per shop.
-create or replace function public.sales_mark_follow_up_sent(p_outreach_id uuid, p_subject text, p_body text)
+-- subject is derived here from the initial subject; the body is composed by
+-- the server (lib/admin/followup.ts, never typed by the client) and must
+-- carry this shop's demo URL and the opt-out line. It is stored as the
+-- record of what was sent. Idempotent: a double tap returns the first
+-- result. DNC and email eligibility are re-checked by the outreach
+-- triggers; the unique index keeps it to one follow-up per shop.
+create or replace function public.sales_mark_follow_up_sent(p_outreach_id uuid, p_body text)
 returns jsonb
 language plpgsql
 security definer
@@ -45,6 +48,7 @@ declare
   f public.sales_outreaches;
   d public.sales_demos;
   sent timestamptz := now();
+  v_subject text;
 begin
   perform public.sales_assert_admin();
   o := public.sales_lock_initial(p_outreach_id);
@@ -58,16 +62,24 @@ begin
     raise exception 'not_due' using errcode = 'P0001';
   end if;
   select * into d from public.sales_demos where prospect_id = o.prospect_id;
-  if not found or d.disabled_at is not null or d.expires_at is null or d.expires_at <= sent then
+  if not found or d.disabled_at is not null or d.expires_at is null or not (d.keep_alive or d.expires_at > sent) then
     raise exception 'demo_unavailable' using errcode = 'P0001';
   end if;
+  if p_body is null or char_length(p_body) > 4000
+     or strpos(p_body, '/demo/' || d.public_token) = 0
+     or strpos(p_body, '以後ご連絡いたしません') = 0 then
+    raise exception 'invalid_body' using errcode = '22023';
+  end if;
+  -- Same rule as followUpSubject (lib/sales/messages.ts).
+  v_subject := coalesce(o.subject, 'ホームページのご提案（Second Root）');
+  v_subject := case when v_subject like 'Re:%' then left(v_subject, 200) else 'Re: ' || left(v_subject, 196) end;
 
   if f.id is null then
     insert into public.sales_outreaches (prospect_id, kind, channel, subject, body)
-      values (o.prospect_id, 'follow_up', 'email', p_subject, p_body)
+      values (o.prospect_id, 'follow_up', 'email', v_subject, p_body)
       returning * into f;
   else
-    update public.sales_outreaches set subject = p_subject, body = p_body where id = f.id;
+    update public.sales_outreaches set subject = v_subject, body = p_body where id = f.id;
   end if;
   update public.sales_outreaches set status = 'sent', sent_at = sent where id = f.id;
 
@@ -75,5 +87,5 @@ begin
 end;
 $$;
 
-revoke all on function public.sales_mark_follow_up_sent(uuid, text, text) from public, anon;
-grant execute on function public.sales_mark_follow_up_sent(uuid, text, text) to authenticated;
+revoke all on function public.sales_mark_follow_up_sent(uuid, text) from public, anon;
+grant execute on function public.sales_mark_follow_up_sent(uuid, text) to authenticated;
