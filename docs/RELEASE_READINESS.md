@@ -8,10 +8,12 @@
 
 - **今の状態**: 営業支援（Sales Agent）の MVP は、作成・テスト・点検がすべて終わり `develop` にまとまっている。本番（secondroot.jp）にはまだ何も出していない。
 - **オーナーがやること（順番）**:
-  1. Supabase で Second Root 専用の project を用意する（無料プランの project 数上限に注意: §9）。
+  0. （今すぐでよい）PR #27（Next.js の脆弱性修正だけの hotfix）を merge する。Release とは別で、先に merge して問題ない。
+  1. Supabase で Staging 用と本番用の 2 つの project を用意する（無料プランの project 数上限に注意: §9）。
   2. Staging（試験環境）の設定をして、Claude に「DEV-016 を再開」と伝える → Claude が試験環境で実際に動かして確認する。
-  3. 確認結果を見て問題なければ、Claude が作る「develop → main」の Release PR を merge する（本番反映）。
-  4. 本番の設定と動作確認（§13）。
+  3. 本番用の Supabase・Vercel を設定する（§13 の 1〜3）。
+  4. Claude が作る「develop → main」の Release PR を merge する（本番反映）。
+  5. 本番の動作確認と、営業候補の自動準備の開始（§13 の 6〜8）。
 - **やってはいけないこと**: Staging の確認（DEV-016）より前に Release PR を merge しないこと。
 - **急ぎの推奨**: 今の本番サイトは Next.js 16.3.0 で重大な脆弱性の告知がある。Release を待たずに、Next.js の更新だけの小さな修正（hotfix）を先に本番へ出すことを勧める。Claude が **PR #27（main 向け、依存関係の更新のみ）** を用意済み。内容を確認して merge してほしい（§5）。
 
@@ -54,7 +56,7 @@ GitHub Actions（`.github/workflows/ci.yml`）で、各 PR の CI が green で�
 | e2e | 既存 Second Root の regression（Supabase なし） |
 | e2e-sales | Sales Agent の E2E（ローカル Supabase、desktop + mobile） |
 
-- 最終 develop（DEV-018 merge 後）の CI: **全 6 job success**。DEV-018 merge（`3973770`）: https://github.com/ioda47871-byte/second-root/actions/runs/36297223732 （static / unit / integration / build / e2e / e2e-sales）、その後の develop 先頭（`f6cf412`）: run 97 も success
+- 最終 develop（DEV-018 merge 後）の CI: **全 6 job success**。develop CI run 96（DEV-018 merge `3973770`）: https://github.com/ioda47871-byte/second-root/actions/runs/36297223732 （static / unit / integration / build / e2e / e2e-sales）、その後の develop 先頭（`f6cf412`）: run 97 も success
 - `Vercel` の preview status は無料プランの build rate limit で一部失敗（HUMAN-005）。必須 CI とは独立で、merge 判断には使っていない。
 - branch protection の required checks 設定は未実施（人間の操作、HUMAN-003）。
 
