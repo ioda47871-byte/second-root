@@ -54,7 +54,7 @@ GitHub Actions（`.github/workflows/ci.yml`）で、各 PR の CI が green で�
 | e2e | 既存 Second Root の regression（Supabase なし） |
 | e2e-sales | Sales Agent の E2E（ローカル Supabase、desktop + mobile） |
 
-- 最終 develop（DEV-018 merge 後）の CI: <<FINALCI>>
+- 最終 develop（DEV-018 merge 後）の CI: **全 6 job success**。DEV-018 merge（`3973770`）: https://github.com/ioda47871-byte/second-root/actions/runs/36297223732 （static / unit / integration / build / e2e / e2e-sales）、その後の develop 先頭（`f6cf412`）: run 97 も success
 - `Vercel` の preview status は無料プランの build rate limit で一部失敗（HUMAN-005）。必須 CI とは独立で、merge 判断には使っていない。
 - branch protection の required checks 設定は未実施（人間の操作、HUMAN-003）。
 
