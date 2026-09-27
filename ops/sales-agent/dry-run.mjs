@@ -130,9 +130,16 @@ const afterVerify = await call({ action: "checkpoint", runId, phase: "verified",
 assert(afterVerify.run.nextAction === "persist", "verified must lead to persist");
 console.log(`B checkpoint(verified) → ${verified.length} candidates`);
 
-let run = (await call({ action: "persist", runId }, { expect: [200, 409] })).run;
-for (let i = 0; i < 2 && run.status === "running" && run.candidates.some((c) => c.stage === "error"); i += 1) {
-  run = (await call({ action: "persist", runId }, { expect: [200, 409] })).run;
+// 409 run_busy has no run in the body: wait, then read the state from status.
+async function persist() {
+  const res = await call({ action: "persist", runId }, { expect: [200, 409] });
+  if (res.run) return res.run;
+  await sleep(2000);
+  return (await call({ action: "status", runId })).run;
+}
+let run = await persist();
+for (let i = 0; i < 2 && run.nextAction === "persist"; i += 1) {
+  run = await persist();
 }
 console.log(`B persist → ${run.status} (${run.candidates.map((c) => `${c.key}:${c.stage}${c.reason ? `(${c.reason})` : ""}`).join(", ")})`);
 assert(run.status === "completed" && run.nextAction === "none", "persist must complete the run");

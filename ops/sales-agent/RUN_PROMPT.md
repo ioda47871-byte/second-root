@@ -45,14 +45,17 @@
 API 呼び出しの形（例）:
 
 ```bash
-curl -sS -X POST "$SALES_AGENT_INGEST_URL" \
+curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_INGEST_URL" \
   -H "Authorization: Bearer $SALES_AGENT_INGEST_TOKEN" \
   -H "Content-Type: application/json" \
   --data '{"action":"status"}'
 ```
 
 候補を含む要求は、JSON をファイル（例: `/tmp/req.json`）に書いてから `--data @/tmp/req.json` で送る
-（店名などページ由来の文字列をコマンドラインに直接書かない）。
+（店名などページ由来の文字列をコマンドラインに直接書かない）。ファイルはファイル書き込みツールで作る。
+シェルで書く場合は必ずクォート付き heredoc（`cat > /tmp/req.json <<'EOF'`）を使い、`echo` / `printf` や
+クォートなし heredoc で `$(...)`・`$変数` が展開されないようにする。
+応答の最後の行 `HTTP_STATUS:<code>` で HTTP ステータスを読み、下の表で対応を決める。
 
 応答の `run.nextAction` に従って進む。自分で phase を飛ばさない。
 
@@ -84,14 +87,14 @@ curl -sS -X POST "$SALES_AGENT_INGEST_URL" \
 | 応答 | 意味 | 対応 |
 |---|---|---|
 | 200 | 正常 | `run.nextAction` に従う |
-| 400 `invalid_request` | schema 違反（`issues` に path と code） | 該当候補を直すか外して、同じ action を再送。直せなければその候補を外す |
+| 400 `invalid_request` | schema 違反（`issues` に path と code） | 該当候補を直すか外して、同じ action を **1 回だけ**再送。直らなければその候補を外す（全部外れたら `candidates: []`） |
 | 400 `unsafe_checkpoint_content` | checkpoint に入れてはいけないもの（HTML・secret らしき文字列等） | 該当値を除いて再送 |
 | 400 `unknown_candidate_key` | verified の key が discovered にない | discovered の key だけにして再送 |
 | 400 `too_many_candidates` / `invalid_json` / その他の 400 | 件数超過・JSON 不正など | 内容を直して **1 回だけ**再送。直らなければ `abort` して BLOCKED 報告 |
 | 401 | token 不一致 | 再送しない。BLOCKED 報告（§7） |
 | 404 `run_not_found` | runId が存在しない | `status` からやり直す |
 | 409 `phase_order_violation` | phase の順序違反 | `status` を取り直し `nextAction` に従う |
-| 409 `run_busy`（persist / status） | 同じ run の persist が実行中 | 1〜2 分待って `status`（最大 3 回。続くなら報告して終了） |
+| 409 `run_busy`（persist） | 同じ run の persist が実行中 | 1〜2 分待って `status`（最大 3 回。続くなら報告して終了） |
 | 409（`nextAction: start_new_run`） | run が失敗・期限切れ（24 時間） | 報告して終了 |
 | 413 `payload_too_large` / `checkpoint_too_large` | 本文 256KB 超 / checkpoint 64KB 超 | 候補数・事実の数・文字数を減らして再送 |
 | 503 `ingest_disabled` / `internal_error` | サーバー側が未設定・DB 不達 | 上の再送規則で 3 回まで。直らなければ BLOCKED 報告 |
@@ -138,6 +141,8 @@ curl -sS -X POST "$SALES_AGENT_INGEST_URL" \
 - 店舗自身が公開しているメールアドレスだけ。`sourceUrl` はそのアドレスが書かれているページ、`sourceType` は:
   - `official_site` / `official_contact`: **その店舗の公式サイト（4.1 の url と同じサイト）上のページ**
   - `official_profile`: **その店舗自身の**公式プロフィール（4.2 と同じ Instagram アカウント等）。他人・まとめアカウントは不可
+- 公式サイト上でメールを見つけたなら、`website.status` は `present`（その公式サイトの `url` 付き）にする
+  （`unknown` のままだと第一者の出典と認められない）。
 - 見つからなければ `email` は `null`。形だけのアドレス（例: 推測した info@）は絶対に入れない。
 
 ### 4.4 出典付きの事実（`facts`、≤20 件）
@@ -192,7 +197,7 @@ curl -sS -X POST "$SALES_AGENT_INGEST_URL" \
 { "action": "abort", "runId": "<uuid>", "errorCode": "search_unavailable", "errorSummary": "何が起きたかを 1〜2 文で（secret・個人情報を書かない）" }
 ```
 
-`errorCode` は英小文字・数字・`_`（例: `search_unavailable`, `network_blocked`, `ingest_unreachable`）。その後 §7 の形式で報告する。
+`errorCode` は先頭が英小文字、以降は英小文字・数字・`_` で 64 文字以内（例: `search_unavailable`, `network_blocked`, `ingest_unreachable`）。その後 §7 の形式で報告する。
 
 ## 6. 完了報告（毎回の最後に出力する）
 
