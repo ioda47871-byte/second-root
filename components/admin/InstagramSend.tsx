@@ -13,13 +13,19 @@ export default function InstagramSend({ outreachId, dmText, instagramUrl }: { ou
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  async function openDm() {
+  // Both the copy and the new tab start synchronously inside the tap, so
+  // mobile browsers (iOS Safari) keep treating them as user-initiated.
+  function openDm() {
+    let copy: Promise<void>;
     try {
-      await navigator.clipboard.writeText(dmText);
-      setCopied(true);
+      copy = navigator.clipboard.writeText(dmText);
     } catch {
-      setCopied(false);
+      copy = Promise.reject(new Error("clipboard unavailable"));
     }
+    copy.then(
+      () => setCopied(true),
+      () => setCopied(false),
+    );
     window.open(instagramUrl, "_blank", "noopener,noreferrer");
     setOpened(true);
   }
@@ -45,6 +51,9 @@ export default function InstagramSend({ outreachId, dmText, instagramUrl }: { ou
               : "コピーできませんでした。下の文面を選択してコピーし、Instagram で送信してください。"}
           </p>
           {copied === false && <textarea className={styles.input} readOnly rows={8} value={dmText} aria-label="DM の文面" />}
+          <a className={styles.linkButton} href={instagramUrl} target="_blank" rel="noopener noreferrer">
+            Instagram が開かない場合はこちら
+          </a>
           <button type="button" className={styles.secondary} onClick={confirmSent} disabled={pending}>
             {pending ? "記録中…" : "送信済み"}
           </button>
