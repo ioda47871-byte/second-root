@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSafeHttpUrl, parseInstagramProfile, websiteDomain } from "@/lib/sales/url";
+import { isOfficialSiteCandidate, isSafeHttpUrl, parseInstagramProfile, websiteKey } from "@/lib/sales/url";
 
 describe("URL validation", () => {
   it.each(["https://shop.example.com/", "http://shop.example.com/menu?x=1"])("accepts %s", (u) => {
@@ -25,9 +25,29 @@ describe("URL validation", () => {
     expect(isSafeHttpUrl(u)).toBe(false);
   });
 
-  it("derives a lower-case domain without www", () => {
-    expect(websiteDomain("https://WWW.Shop.Example.com/about")).toBe("shop.example.com");
-    expect(websiteDomain("javascript:alert(1)")).toBeNull();
+  it("derives a lower-case site key without www", () => {
+    expect(websiteKey("https://WWW.Shop.Example.com/about")).toBe("shop.example.com");
+    expect(websiteKey("javascript:alert(1)")).toBeNull();
+  });
+
+  it("keeps shops on shared hosts apart", () => {
+    expect(websiteKey("https://sites.google.com/view/pan-a/home")).toBe("sites.google.com/view/pan-a");
+    expect(websiteKey("https://sites.google.com/view/pan-b")).toBe("sites.google.com/view/pan-b");
+    expect(websiteKey("https://ameblo.jp/shop-a/entry-1.html")).toBe("ameblo.jp/shop-a");
+    expect(websiteKey("https://ameblo.jp/shop-b/")).toBe("ameblo.jp/shop-b");
+    expect(websiteKey("https://sites.google.com/")).toBeNull();
+  });
+
+  it.each([
+    "https://www.instagram.com/pan/",
+    "https://tabelog.com/aichi/A2301/A230102/123/",
+    "https://maps.app.goo.gl/abc",
+    "https://www.google.com/maps/place/x",
+    "https://m.facebook.com/pan",
+    "https://www.hotpepper.jp/strJ000/",
+  ])("never treats %s as an official site", (u) => {
+    expect(isOfficialSiteCandidate(u)).toBe(false);
+    expect(websiteKey(u)).toBeNull();
   });
 });
 

@@ -24,11 +24,55 @@ export function isSafeHttpUrl(input: unknown): input is string {
   return parseSafeHttpUrl(input) !== null;
 }
 
-/** Lower-cased host without a leading "www.", used as a dedupe key. */
-export function websiteDomain(input: string): string | null {
-  const url = parseSafeHttpUrl(input);
-  if (!url) return null;
+// Hosts where many unrelated shops live under one domain: the site key is
+// host + the leading path segments that identify the shop's own page.
+const SHARED_HOST_PATH_SEGMENTS: Record<string, number> = {
+  "sites.google.com": 2, // /view/<site>
+  "ameblo.jp": 1,
+  "note.com": 1,
+  "linktr.ee": 1,
+  "lit.link": 1,
+  "peraichi.com": 3, // /landing_pages/view/<id>
+  "profile.ameba.jp": 2,
+};
+
+// Social networks, portals and map/review sites are never a shop's
+// official website (MVP_SPEC §3.3): a URL on these hosts must not make
+// website_status "present".
+const NOT_OFFICIAL_SITE_HOSTS = [
+  "instagram.com", "facebook.com", "fb.com", "twitter.com", "x.com", "threads.net", "tiktok.com",
+  "youtube.com", "line.me", "lin.ee", "tabelog.com", "hotpepper.jp", "retty.me", "gnavi.co.jp",
+  "google.com", "google.co.jp", "goo.gl", "maps.app.goo.gl", "yelp.com", "tripadvisor.com",
+  "tripadvisor.jp", "jalan.net", "ikyu.com", "hitosara.com", "favy.jp",
+];
+
+function bareHost(url: URL): string {
   return url.hostname.toLowerCase().replace(/^www\./, "");
+}
+
+export function isOfficialSiteCandidate(input: string): boolean {
+  const url = parseSafeHttpUrl(input);
+  if (!url) return false;
+  const host = bareHost(url);
+  if (host in SHARED_HOST_PATH_SEGMENTS) return true;
+  return !NOT_OFFICIAL_SITE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+}
+
+/**
+ * Dedupe key for a shop's official site: the host without "www.", or for
+ * shared hosts host + the path segments naming the shop. Null for unsafe
+ * URLs, social/portal pages, or shared-host URLs without the shop segment.
+ * The database checks the key is a prefix of the stored URL.
+ */
+export function websiteKey(input: string): string | null {
+  const url = parseSafeHttpUrl(input);
+  if (!url || !isOfficialSiteCandidate(input)) return null;
+  const host = bareHost(url);
+  const segments = SHARED_HOST_PATH_SEGMENTS[host];
+  if (!segments) return host;
+  const path = url.pathname.split("/").filter(Boolean).slice(0, segments).map((p) => p.toLowerCase());
+  if (path.length < segments) return null;
+  return `${host}/${path.join("/")}`;
 }
 
 const INSTAGRAM_HOSTS = new Set(["instagram.com", "www.instagram.com"]);

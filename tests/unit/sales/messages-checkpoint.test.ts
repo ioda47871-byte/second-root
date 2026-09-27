@@ -40,6 +40,13 @@ describe("email mailto", () => {
     expect(params.get("subject")).not.toMatch(/[\r\n]/);
   });
 
+  it("encodes every line break as CRLF and survives lone surrogates", () => {
+    const url = buildMailto({ to: "a@example.com", subject: "s\ud800", body: "本文\n二行目\r三行目\r\n四行目\udc00" });
+    expect(url).not.toMatch(/%0D(?!%0A)/);
+    const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+    expect(params.get("body")).toBe("本文\r\n二行目\r\n三行目\r\n四行目\ufffd");
+  });
+
   it("rejects an unsafe demo URL", () => {
     expect(() => composeEmailBody({ shopName: "x", message: "y", demoUrl: "javascript:alert(1)" })).toThrow();
   });
@@ -92,6 +99,10 @@ describe("checkpoint content", () => {
     outreach: { subject: "ホームページのご提案", body: "ご提案の本文です。".repeat(60) },
   });
 
+  it("does not flag ordinary text as a secret", () => {
+    expect(checkpointProblem({ list: "sk-nagoya-bakery-cafe-list-2026", note: "営業時間 8:00-18:00、税込 <おすすめ> あり" })).toBeNull();
+  });
+
   it("10 realistic verified candidates fit in 64KB", () => {
     const checkpoint = { verified: { order: [], candidates: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`c${i}`, verifiedCandidate(i)])) } };
     expect(checkpointBytes(checkpoint)).toBeLessThan(65_536);
@@ -103,6 +114,14 @@ describe("checkpoint content", () => {
     [{ image: "data:image/png;base64,iVBORw0KGgo=" }, "embedded_data"],
     [{ note: "Authorization: Bearer abcdefghijklmnopqrstuvwxyz" }, "secret"],
     [{ big: "x".repeat(70_000) }, "too_large"],
+    [{ note: "authorization: bearer abcdefghijklmnopqrstuvwxyz" }, "secret"],
+    [{ db: "postgres://user:pw@db.x.supabase.co:5432/postgres" }, "secret"],
+    [{ k: "re_AbCdEfGhIjKlMnOpQrStUvWx12" }, "secret"],
+    [{ k: "ghp_abcdefghijklmnopqrstuvwxyz0123456789" }, "secret"],
+    [{ env: "SUPABASE_SERVICE_ROLE_KEY=abc" }, "secret"],
+    [{ html: "<svg onload=alert(1)>" }, "raw_html"],
+    [{ html: '<a href="https://x.example.com">x</a>' }, "raw_html"],
+    [{ img: "data:image/svg+xml,<svg/>" }, "embedded_data"],
   ])("rejects %j", (value, problem) => {
     expect(checkpointProblem(value)).toBe(problem);
   });

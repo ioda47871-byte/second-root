@@ -1,4 +1,6 @@
+import { normalizeEmail } from "./normalize";
 import { FIRST_PARTY_SOURCE_TYPES, type Channel, type SourceType, type WebsiteStatus } from "./types";
+import { isSafeHttpUrl, parseInstagramProfile } from "./url";
 
 // Channel eligibility (MVP_SPEC §3.2, §3.6). Anything that cannot be
 // confirmed fails closed: no channel, no outreach.
@@ -7,9 +9,10 @@ export type ChannelInput = {
   websiteStatus: WebsiteStatus;
   /** Number of independent searches that found no official site (not_found needs ≥ 2). */
   websiteChecks: number;
-  instagramHandle: string | null;
+  instagramUrl: string | null;
   publicEmail: string | null;
-  /** Source type of the page where the email was published. */
+  /** Page where the email was published, and what kind of page it is. */
+  emailSourceUrl: string | null;
   emailSourceType: SourceType | null;
 };
 
@@ -21,9 +24,14 @@ export type ChannelRejection =
 
 export type ChannelDecision = { ok: true; channel: Channel } | { ok: false; reason: ChannelRejection };
 
-export function hasFirstPartyEmail(input: Pick<ChannelInput, "publicEmail" | "emailSourceType">): boolean {
+/** A valid address published by the shop itself, with a safe source URL (MVP_SPEC §3.4). */
+export function hasFirstPartyEmail(
+  input: Pick<ChannelInput, "publicEmail" | "emailSourceUrl" | "emailSourceType">,
+): boolean {
   return (
     input.publicEmail !== null &&
+    normalizeEmail(input.publicEmail) !== null &&
+    isSafeHttpUrl(input.emailSourceUrl) &&
     input.emailSourceType !== null &&
     FIRST_PARTY_SOURCE_TYPES.includes(input.emailSourceType)
   );
@@ -42,7 +50,7 @@ export function decideChannel(input: ChannelInput): ChannelDecision {
       return { ok: false, reason: "website_unknown_without_email" };
     case "not_found":
       if (input.websiteChecks < 2) return { ok: false, reason: "website_not_rechecked" };
-      if (input.instagramHandle) return { ok: true, channel: "instagram" };
+      if (parseInstagramProfile(input.instagramUrl)) return { ok: true, channel: "instagram" };
       return { ok: false, reason: "no_eligible_channel" };
   }
 }

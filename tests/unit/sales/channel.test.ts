@@ -4,10 +4,16 @@ import { decideChannel, type ChannelInput } from "@/lib/sales/channel";
 const base: ChannelInput = {
   websiteStatus: "not_found",
   websiteChecks: 2,
-  instagramHandle: "pan",
+  instagramUrl: "https://www.instagram.com/pan/",
   publicEmail: null,
+  emailSourceUrl: null,
   emailSourceType: null,
 };
+const email = (type: ChannelInput["emailSourceType"] = "official_contact") => ({
+  publicEmail: "info@shop.example.com",
+  emailSourceUrl: "https://shop.example.com/contact",
+  emailSourceType: type,
+});
 
 describe("channel eligibility (MVP_SPEC §3.2)", () => {
   it("no site (rechecked) + Instagram → Instagram", () => {
@@ -16,12 +22,12 @@ describe("channel eligibility (MVP_SPEC §3.2)", () => {
 
   it("site + first-party email → Email", () => {
     expect(
-      decideChannel({ ...base, websiteStatus: "present", publicEmail: "a@b.jp", emailSourceType: "official_contact" }),
+      decideChannel({ ...base, websiteStatus: "present", ...email() }),
     ).toEqual({ ok: true, channel: "email" });
   });
 
   it("no site + first-party email → Email (one channel only)", () => {
-    expect(decideChannel({ ...base, publicEmail: "a@b.jp", emailSourceType: "official_profile" })).toEqual({
+    expect(decideChannel({ ...base, ...email("official_profile") })).toEqual({
       ok: true,
       channel: "email",
     });
@@ -40,7 +46,7 @@ describe("channel eligibility (MVP_SPEC §3.2)", () => {
 
   it("unknown website with first-party email may use Email", () => {
     expect(
-      decideChannel({ ...base, websiteStatus: "unknown", publicEmail: "a@b.jp", emailSourceType: "official_site" }),
+      decideChannel({ ...base, websiteStatus: "unknown", ...email("official_site") }),
     ).toEqual({ ok: true, channel: "email" });
   });
 
@@ -51,7 +57,7 @@ describe("channel eligibility (MVP_SPEC §3.2)", () => {
   it.each(["instagram_profile", "map_listing", "other", null] as const)(
     "an email from %s is not first-party and is not used",
     (sourceType) => {
-      expect(decideChannel({ ...base, websiteStatus: "present", publicEmail: "a@b.jp", emailSourceType: sourceType })).toEqual({
+      expect(decideChannel({ ...base, websiteStatus: "present", ...email(sourceType) })).toEqual({
         ok: false,
         reason: "site_without_email",
       });
@@ -59,6 +65,19 @@ describe("channel eligibility (MVP_SPEC §3.2)", () => {
   );
 
   it("nothing usable → no channel", () => {
-    expect(decideChannel({ ...base, instagramHandle: null })).toEqual({ ok: false, reason: "no_eligible_channel" });
+    expect(decideChannel({ ...base, instagramUrl: null })).toEqual({ ok: false, reason: "no_eligible_channel" });
+  });
+
+  it("an invalid Instagram URL is not a channel", () => {
+    expect(decideChannel({ ...base, instagramUrl: "https://evil.com" })).toEqual({ ok: false, reason: "no_eligible_channel" });
+  });
+
+  it.each([
+    ["blank email", { publicEmail: "   " }],
+    ["malformed email", { publicEmail: "a@..jp" }],
+    ["no source URL", { emailSourceUrl: null }],
+    ["unsafe source URL", { emailSourceUrl: "javascript:alert(1)" }],
+  ])("%s is not first-party email", (_label, patch) => {
+    expect(decideChannel({ ...base, websiteStatus: "present", ...email(), ...patch })).toEqual({ ok: false, reason: "site_without_email" });
   });
 });

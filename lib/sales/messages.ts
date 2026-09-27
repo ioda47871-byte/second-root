@@ -65,9 +65,12 @@ export function followUpSubject(initialSubject: string): string {
 export function buildMailto(draft: EmailDraft): string {
   const to = normalizeEmail(draft.to);
   if (!to || to.includes("?") || to.includes("&") || to.includes(",")) throw new Error("invalid recipient");
-  const crlf = (s: string) => s.replace(/\r?\n/g, "\r\n");
+  // RFC 6068: every line break is CRLF; lone surrogates would make
+  // encodeURIComponent throw, so they are replaced first.
+  const wellFormed = (s: string) => s.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "\ufffd");
+  const crlf = (s: string) => wellFormed(s).replace(/\r\n|\r|\n/g, "\r\n");
   const url = `mailto:${encodeURIComponent(to).replace(/%40/g, "@")}?subject=${encodeURIComponent(
-    draft.subject.replace(/[\r\n]+/g, " "),
+    wellFormed(draft.subject).replace(/[\r\n]+/g, " "),
   )}&body=${encodeURIComponent(crlf(draft.body))}`;
   if (url.length > MAX_MAILTO_LENGTH) throw new Error("mailto too long");
   return url;
