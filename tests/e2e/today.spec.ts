@@ -52,5 +52,6 @@ test("does not show a DNC shop", async ({ page }) => {
   await db.query("update public.sales_prospects set do_not_contact = true, dnc_reason = 'explicit_refusal', dnc_set_at = now() where id = $1", [draft.prospectId]);
   await login(page);
   await expect(page.getByRole("heading", { level: 1, name: "今日やること" })).toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
 });
