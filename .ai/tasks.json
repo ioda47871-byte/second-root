@@ -972,7 +972,7 @@
         "MVP 仕様の重大変更",
         "Meta App 作成・Webhook 登録（HUMAN BLOCKER、コード・テストは先に進める）"
       ],
-      "status": "in_progress",
+      "status": "done",
       "forbidden_scope": [
         "main への直接 push",
         "Production data / secrets の操作",
@@ -1022,7 +1022,7 @@
         "Protected Scope に該当する変更",
         "MVP 仕様の重大変更"
       ],
-      "status": "backlog",
+      "status": "in_progress",
       "forbidden_scope": [
         "main への直接 push",
         "Production data / secrets の操作",
@@ -1036,7 +1036,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null
+      "branch": "feature/dev-021-ig-inbox"
     },
     {
       "id": "DEV-022",
