@@ -48,6 +48,7 @@
   margin: 16px auto 0;
   max-width: 28em;
   color: #6f5a5f;
+  overflow-wrap: anywhere;
 }
 
 .body {

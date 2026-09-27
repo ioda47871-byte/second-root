@@ -64,7 +64,7 @@ const ALLOWED_COPY = [
   // Section headings and labels
   "営業時間", "定休日", "住所", "アクセス", "電話",
   // Neutral headings only: "メニュー" never claims what kind of item a fact is.
-  "お店の情報", "店舗のご案内", "メニュー", "店舗情報",
+  "お店の情報", "店舗のご案内", "お店について", "メニュー", "店舗情報",
   "名古屋市の", "名古屋のパン屋", "パン屋", "名古屋の焼菓子店", "焼菓子店", "名古屋のカフェ", "カフェ",
 ];
 
