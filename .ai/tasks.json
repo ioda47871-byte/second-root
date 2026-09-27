@@ -253,7 +253,7 @@
     {
       "id": "DEV-004",
       "title": "demo data model + /demo/[token]",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-001",
@@ -277,7 +277,10 @@
       "allowed_scope": [
         "app/demo/",
         "lib/sales/",
-        "tests/"
+        "tests/",
+        "next.config.ts（/demo・/admin・/api/internal の noindex / no-referrer / no-store ヘッダ）",
+        "components/GoogleAnalytics.tsx（/demo・/admin で GA を読み込まない。既存ページの挙動は不変）",
+        ".github/workflows/ci.yml・package.json（e2e を site / sales に分割）"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -292,7 +295,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-004-demo-route"
     },
     {
       "id": "DEV-005",

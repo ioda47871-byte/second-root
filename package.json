@@ -10,9 +10,10 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/with-supabase-env.mjs playwright test",
     "check:secrets": "node scripts/check-secrets.mjs",
-    "test:integration": "node scripts/with-supabase-env.mjs vitest run -c vitest.integration.config.mts"
+    "test:integration": "node scripts/with-supabase-env.mjs vitest run -c vitest.integration.config.mts",
+    "test:e2e:site": "playwright test tests/e2e/existing-site.spec.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
