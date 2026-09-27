@@ -72,3 +72,7 @@
 - 2026-09-27: DEV-018 着手（feature/dev-018-e2e-qa、DEV-014 の上）: 320/375px で全管理画面・長い店名・全カード状態、キーボードでのログイン。管理画面の本文を main landmark に。
 - 2026-09-27: **scope extension（人間承認）**: Instagram 返信後の公式 Messaging API 連携を後続 Task DEV-020〜DEV-024 として追加（docs/INSTAGRAM_MESSAGING.md）。MVP（DEV-001〜019）を優先し、その後に着手。分類・返信案は有料 API を使わず Operational Claude（scheduled job）が ingest API 経由で作成する設計。
 - 2026-09-27: DEV-016 代替のローカル rehearsal: session A（実 Web 調査、4 店舗を discovered）→ 中断 → session B が status から再開中。
+- 2026-09-27: DEV-014 merge（PR #23, cb41080）。
+- 2026-09-27: DEV-016 代替 rehearsal 完了: session A（実 Web 調査・discovered 後に中断）→ session B（記憶なし）が status から再開し 2 件 outreach_ready、persist 再送は replayed で重複なし。発見: 完了後の status が null で同日 2 run 目を開始できた → PR #24（今日の run を返す migration 000800 + prompt 修正）、review PASS・指摘修正済み。
+- 2026-09-27: PR #25（DEV-017 security）・PR #26（DEV-018 mobile QA）作成、review 中。
+- 運用メモ: 共有ローカル DB で reviewer と同時に integration を走らせると users / rows が消えて失敗する（interference）。CI（毎回 fresh DB）を正とし、ローカルは reviewer 終了後に再実行する。
