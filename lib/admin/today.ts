@@ -39,13 +39,13 @@ type Row = {
     do_not_contact: boolean;
     instagram_url: string | null;
     public_email: string | null;
-    demo: { public_token: string } | Array<{ public_token: string }> | null;
+    demo: { public_token: string; disabled_at: string | null } | Array<{ public_token: string; disabled_at: string | null }> | null;
   } | null;
 };
 
 const SELECT = `id, prospect_id, kind, channel, status, subject, body, sent_at, created_at,
   prospect:sales_prospects!inner(name, category, ward, do_not_contact, instagram_url, public_email,
-    demo:sales_demos(public_token))`;
+    demo:sales_demos(public_token, disabled_at))`;
 
 export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new Date()): Promise<TodayItem[]> {
   const limit = LIMITS.workQueue;
@@ -83,7 +83,8 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
       body: row.body,
       instagramUrl: p.instagram_url,
       publicEmail: p.public_email,
-      demoToken: demo?.public_token ?? null,
+      // A disabled demo would be a dead link: no send action is offered.
+      demoToken: demo && !demo.disabled_at ? demo.public_token : null,
       sentAt: row.sent_at,
     };
   };
