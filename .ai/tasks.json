@@ -301,7 +301,7 @@
     {
       "id": "DEV-005",
       "title": "bakery template",
-      "status": "backlog",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-004"
@@ -316,9 +316,11 @@
         "unit/e2e: 未確認項目が表示されない"
       ],
       "allowed_scope": [
+        "components/demo/",
+        "lib/sales/demo-content.ts",
         "app/demo/",
-        "public/demo-assets/",
-        "tests/"
+        "tests/",
+        "vitest.config.mts"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -333,7 +335,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-005-bakery-template"
     },
     {
       "id": "DEV-006",
@@ -353,9 +356,11 @@
         "unit/e2e: 未確認項目が表示されない"
       ],
       "allowed_scope": [
+        "components/demo/",
+        "lib/sales/demo-content.ts",
         "app/demo/",
-        "public/demo-assets/",
-        "tests/"
+        "tests/",
+        "vitest.config.mts"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -390,9 +395,11 @@
         "unit/e2e: 未確認項目が表示されない"
       ],
       "allowed_scope": [
+        "components/demo/",
+        "lib/sales/demo-content.ts",
         "app/demo/",
-        "public/demo-assets/",
-        "tests/"
+        "tests/",
+        "vitest.config.mts"
       ],
       "forbidden_scope": [
         "main への直接 push",
