@@ -603,7 +603,7 @@
     {
       "id": "DEV-012",
       "title": "reply / meeting / win / loss flow",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-010",
@@ -651,7 +651,7 @@
     {
       "id": "DEV-013",
       "title": "history + lightweight metrics",
-      "status": "backlog",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-012"
@@ -687,12 +687,13 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-013-history-metrics"
     },
     {
       "id": "DEV-014",
       "title": "5-day email follow-up",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-011",
@@ -731,7 +732,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-014-followup"
     },
     {
       "id": "DEV-015",

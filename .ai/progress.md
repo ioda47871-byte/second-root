@@ -66,3 +66,7 @@
 - 2026-09-27: DEV-016 は HUMAN-004（Staging Supabase / Vercel Preview env / Claude Cloud Routine は人間の操作）で blocked。ローカルでの代替確認（dry-run・実 Web 調査をローカル ingest に提出する rehearsal）は Claude が実施する。
 - 2026-09-27: DEV-012 review PASS（Medium 3: stale tab の再分類が黙って成功・後から来た拒否の記録手段・失注の誤タップ）→ 修正、PR #21 CI 待ち。
 - 2026-09-27: DEV-017 着手（feature/dev-017-security）: Next 16.3.0 に critical advisory（Image Optimization の RCE 等）→ 16.3.6 へ更新、sharp 修正、official_profile は店舗自身の Instagram のみ、private route に anti-framing header、helper 関数の EXECUTE を最小化、DB security audit test。
+- 2026-09-27: DEV-012 merge（PR #21, 90d8500）。
+- 2026-09-27: DEV-013 review PASS（Medium: §9 のデモ有無の軸・各段階の件数と率）→ 修正。merge（PR #22, deccd72）。
+- 2026-09-27: DEV-014 review PASS（Medium: RPC が任意の件名・本文を記録できた・長い件名で失敗）→ 件名は SQL で導出、本文はデモ URL と opt-out を必須に。PR #23。
+- 2026-09-27: DEV-018 着手（feature/dev-018-e2e-qa、DEV-014 の上）: 320/375px で全管理画面・長い店名・全カード状態、キーボードでのログイン。管理画面の本文を main landmark に。
