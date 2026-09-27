@@ -9,9 +9,11 @@ import { anonClient, createUser, db, makeAdmin, resetSalesData, signedInClient }
 const SECRET = ["ig", "app", "secret", "for", "tests", "0123"].join("-");
 const VERIFY = ["ig", "verify", "token", "for", "tests"].join("-");
 const OURS = "17841400000000001";
+// Recent enough for the webhook's 7-day age limit.
+const T0 = Date.now() - 60_000;
 const THEM = "900000000000002";
 
-const message = (mid: string, text: string, extra: Record<string, unknown> = {}, timestamp = 1790000000000) => ({
+const message = (mid: string, text: string, extra: Record<string, unknown> = {}, timestamp = T0) => ({
   object: "instagram",
   entry: [{ id: OURS, time: timestamp, messaging: [{ sender: { id: THEM }, recipient: { id: OURS }, timestamp, message: { mid, text, ...extra } }] }],
 });
@@ -73,7 +75,7 @@ describe("POST message events", () => {
     const again = await post(body);
     expect(await again.json()).toMatchObject({ replayed: true });
     // Same message inside a different batch (different body bytes).
-    const batch = { ...body, entry: [{ ...body.entry[0], time: 1790000009999 }] };
+    const batch = { ...body, entry: [{ ...body.entry[0], time: T0 + 9999 }] };
     expect(await (await post(batch)).json()).toMatchObject({ replayed: false, inserted: 0, duplicates: 1 });
     expect(await count("sales_ig_messages")).toBe(1);
     expect(await count("sales_ig_threads")).toBe(1);
@@ -82,10 +84,10 @@ describe("POST message events", () => {
 
   it("keeps one thread per person across messages and records echoes as outbound", async () => {
     await post(message("mid-3", "一通目"));
-    await post(message("mid-4", "二通目", {}, 1790000100000));
+    await post(message("mid-4", "二通目", {}, T0 + 100000));
     await post({
       object: "instagram",
-      entry: [{ id: OURS, messaging: [{ sender: { id: OURS }, recipient: { id: THEM }, timestamp: 1790000200000, message: { mid: "mid-5", text: "ご連絡ありがとうございます", is_echo: true } }] }],
+      entry: [{ id: OURS, messaging: [{ sender: { id: OURS }, recipient: { id: THEM }, timestamp: T0 + 200000, message: { mid: "mid-5", text: "ご連絡ありがとうございます", is_echo: true } }] }],
     });
     const { rows } = await db.query("select direction, count(*)::int as n from public.sales_ig_messages group by direction order by direction");
     expect(rows).toEqual([{ direction: "inbound", n: 2 }, { direction: "outbound", n: 1 }]);
@@ -94,7 +96,7 @@ describe("POST message events", () => {
 
   it("drops the text of a message the sender unsent", async () => {
     await post(message("mid-6", "間違えて送りました"));
-    await post(message("mid-6", "", { is_deleted: true }, 1790000300000));
+    await post(message("mid-6", "", { is_deleted: true }, T0 + 300000));
     const { rows } = await db.query("select text, deleted_at is not null as deleted from public.sales_ig_messages where mid = 'mid-6'");
     expect(rows).toEqual([{ text: null, deleted: true }]);
   });
@@ -121,8 +123,8 @@ describe("POST message events", () => {
     await post({
       object: "instagram",
       entry: [{ id: OURS, messaging: [
-        { sender: { id: THEM }, recipient: { id: OURS }, timestamp: 1790000000000, message: { mid: "mid-11", text: "secret" } },
-        { sender: { id: THEM }, recipient: { id: OURS }, timestamp: 1790000001000, message: { mid: "mid-11", is_deleted: true } },
+        { sender: { id: THEM }, recipient: { id: OURS }, timestamp: T0, message: { mid: "mid-11", text: "secret" } },
+        { sender: { id: THEM }, recipient: { id: OURS }, timestamp: T0 + 1000, message: { mid: "mid-11", is_deleted: true } },
       ] }],
     });
     const { rows } = await db.query("select text, deleted_at is not null as deleted from public.sales_ig_messages where mid = 'mid-11'");
@@ -130,7 +132,7 @@ describe("POST message events", () => {
   });
 
   it("never stores a message whose deletion arrived first", async () => {
-    await post(message("mid-12", "", { is_deleted: true }, 1790000002000));
+    await post(message("mid-12", "", { is_deleted: true }, T0 + 2000));
     await post(message("mid-12", "secret2"));
     const { rows } = await db.query("select text, deleted_at is not null as deleted from public.sales_ig_messages where mid = 'mid-12'");
     expect(rows).toEqual([{ text: null, deleted: true }]);

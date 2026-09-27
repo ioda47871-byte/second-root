@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/auth";
 import { demoUrl } from "@/lib/admin/today";
 import { checkDraft } from "@/lib/instagram/draft";
+import { checkConnection } from "@/lib/instagram/graph";
 import { sendApprovedReply } from "@/lib/instagram/reply";
 import type { ReplyType } from "@/lib/sales/types";
 import { createAuthClient } from "@/lib/supabase/server";
@@ -157,4 +158,22 @@ export async function resolveIgUnknown(sendId: string, wasSent: boolean): Promis
   const { error } = await supabase.rpc("sales_ig_resolve_unknown", { p_send_id: sendId, p_was_sent: wasSent });
   if (error) return { ok: false, error: "記録できませんでした。画面を再読み込みしてください。" };
   return done(wasSent ? "送信済みとして記録しました。" : "未送信として記録しました。もう一度送信できます。");
+}
+
+const CONNECTION_PROBLEMS: Record<string, string> = {
+  not_configured: "Instagram 連携の設定（アクセストークン・アカウント ID）がまだありません。",
+  token_invalid: "アクセストークンが無効か期限切れです。新しいトークンを設定してください。",
+  account_mismatch: "アクセストークンのアカウントが設定のアカウント ID と一致しません。",
+  unreachable: "Instagram に接続できませんでした。時間をおいてもう一度お試しください。",
+};
+
+/** 連携を確認: read-only; shows only whether each setting exists, never a value. */
+export async function checkIgConnection(): Promise<IgResult> {
+  await requireAdmin();
+  const webhookReady =
+    (process.env.INSTAGRAM_APP_SECRET ?? "").length >= 16 && (process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN ?? "").length >= 16;
+  const result = await checkConnection(process.env.INSTAGRAM_ACCOUNT_ID ?? "");
+  const webhook = webhookReady ? "受信（Webhook）の設定: あり。" : "受信（Webhook）の設定: まだありません。";
+  if (!result.ok) return { ok: false, error: `${CONNECTION_PROBLEMS[result.problem]} ${webhook}` };
+  return { ok: true, message: `送信用の接続: OK${result.username ? `（@${result.username}）` : ""}。${webhook}` };
 }

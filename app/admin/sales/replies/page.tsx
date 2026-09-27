@@ -1,3 +1,4 @@
+import IgConnectionCheck from "@/components/admin/IgConnectionCheck";
 import IgReplyCard from "@/components/admin/IgReplyCard";
 import ReplyForm from "@/components/admin/ReplyForm";
 import styles from "@/components/admin/admin.module.css";
@@ -56,6 +57,7 @@ export default async function RepliesPage() {
   return (
     <>
       <h1 className={styles.h1}>返信</h1>
+      <IgConnectionCheck />
       {inbox.length > 0 && (
         <>
           <h2 className={styles.h2}>Instagram の返信</h2>

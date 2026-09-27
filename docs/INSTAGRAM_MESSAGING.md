@@ -118,6 +118,13 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 
 テストで確認する: webhook event idempotency / send idempotency / failed send の再試行安全性 / unmatched の保存 / 再起動後の継続。
 
+### 8.1 保存期間（DEV-024）
+
+- 会話（thread・メッセージ・返信案・送信記録）は**最後のメッセージから 180 日**で削除する（`sales_ig_purge()`、inbox job の `inbox_pending` のたびに実行。失敗しても inbox は止めず `purgeError` を返す）。
+  送信結果の確認待ち（`sending` / `unknown`）がある会話は人間が確定するまで削除しない。営業の結果（返信・商談・成約・DNC）は `sales_outreaches` / `sales_prospects` 側にあり、ここでは消えない。
+- Webhook の受信記録（body の sha256）は 30 日で削除する。Webhook は **7 日より古い event を無視する**（Meta の再送は最大 36 時間）ため、古い署名済み body を再送されても削除済みの会話は復活しない。
+- 180 日は「返信から商談・成約までの追跡に十分で、それ以上は不要」という判断。変更は migration で行う。
+
 ## 9. 公式仕様の確認記録
 
 出典と引用: `.ai/research/meta-instagram-messaging-2026-09-27.md`（Meta 公式ドキュメントのみ、確認日 2026-09-27）。「要 live 確認」は Live の Meta App で DEV-024 に確認する。
@@ -145,7 +152,6 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 | `INSTAGRAM_ACCOUNT_ID` | Second Root の Instagram professional account ID（数字、**必須**。未設定・不正なら webhook は 503。同じ Meta App の他アカウント宛ての event を保存しない） |
 | `INSTAGRAM_ACCESS_TOKEN` | Instagram User access token（server only）。DEV-021 で相手の username 取得（照合）、DEV-023 で返信送信に使う。未設定なら照合は行わず全件「未照合」（fail-closed）。60 日で失効、更新手順を DEV-024 で定める |
 
-## 10. 人間の作業（HUMAN BLOCKER 候補、DEV-024 で具体化）
+## 10. 人間の作業（HUMAN-006）
 
-Meta App 作成 / Instagram Professional Account 接続 / permission 申請と App Review / Webhook callback URL と verify token の登録 /
-Production Access Token と App Secret の Vercel 設定。これらはコード・ローカルテスト・UI・DB 設計を止める理由にしない。
+手順・値・設定後の確認は `docs/INSTAGRAM_SETUP.md`。コード・ローカルテスト・UI・DB はこれらを待たずに完成している。
