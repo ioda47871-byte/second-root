@@ -88,7 +88,7 @@ export function candidate(overrides: Record<string, unknown> = {}): Record<strin
         verified_at: new Date().toISOString(),
       },
     ],
-    demo: { template: "bakery_v1", content: { name: `テストベーカリー${n}` } },
+    demo: { template: "bakery_v1", content: { name: `テストベーカリー${n}`, category: "bakery" } },
     outreach: { subject: null, body: "テスト用の営業文です。" },
     ...overrides,
   };

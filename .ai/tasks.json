@@ -510,7 +510,7 @@
     {
       "id": "DEV-010",
       "title": "Instagram send UX",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-009",
@@ -550,7 +550,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-010-instagram-send"
     },
     {
       "id": "DEV-011",
