@@ -84,3 +84,4 @@
 - **状態: READY_FOR_HUMAN_RELEASE_APPROVAL**。人間待ち: HUMAN-002（Supabase project）、HUMAN-004（Staging → DEV-016）、PR #27 merge、Release PR merge、HUMAN-003（branch protection 推奨）、HUMAN-005（Vercel rate limit、非ブロッキング）。後続 DEV-020〜024（Instagram 公式 Messaging API）は MVP release 後に着手。
 - 2026-09-27: DEV-020 着手。依存を DEV-019 → DEV-018 に変更（DEV-019 は人間の Release 承認待ちで blocked のため。後続機能のローカル実装・テストは MVP のコード完成（DEV-018）だけに依存し、本番 release とは独立。Meta 実アカウント操作は DEV-024 の HUMAN BLOCKER）。
 - 2026-09-27: DEV-020 review PASS（Medium 3: 取り消されたメッセージの本文が残る順序・保存できない文字で batch が永久失敗・account id 任意）→ 修正、merge（PR #30）。DEV-021 は review round 1 FAIL（High: 返信案のリンク検査が裸のドメイン等を見逃す）→ 修正、round 2 review 中。DEV-022/023（受信 inbox UI + 人間承認後の公式 API 送信）を同じ branch で実装中。
+- 2026-09-27: DEV-021 review round 2 FAIL（High: IDN・IPv4・不可視文字を含むリンク）→ 修正、round 3 PASS（Medium: デモ URL 境界の deny-list → allow-list に修正）。merge（PR #31, a2055b9）。DEV-022/023 は実装・テスト完了（send integration 13、e2e 8）、fresh review 中。
