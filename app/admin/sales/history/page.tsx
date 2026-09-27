@@ -22,9 +22,12 @@ export default async function HistoryPage() {
     [history, metrics] = await Promise.all([loadHistory(supabase, HISTORY_LIMIT), loadMetrics(supabase)]);
   } catch {
     return (
-      <p className={styles.error} role="alert">
-        読み込めませんでした。時間をおいて再読み込みしてください。
-      </p>
+      <>
+        <h1 className={styles.h1}>履歴</h1>
+        <p className={styles.error} role="alert">
+          読み込めませんでした。時間をおいて再読み込みしてください。
+        </p>
+      </>
     );
   }
 

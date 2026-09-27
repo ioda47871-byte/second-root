@@ -315,3 +315,12 @@
   text-align: left;
   padding: 8px 6px;
 }
+
+/* Tap targets on phones: radios and checkboxes at least 24px (WCAG 2.5.8). */
+.form input[type="radio"],
+.form input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  margin: 0;
+}

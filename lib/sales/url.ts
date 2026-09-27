@@ -30,8 +30,6 @@ const SHARED_HOST_PATH_SEGMENTS: Record<string, number> = {
   "sites.google.com": 2, // /view/<site>
   "ameblo.jp": 1,
   "note.com": 1,
-  "linktr.ee": 1,
-  "lit.link": 1,
   "peraichi.com": 3, // /landing_pages/view/<id>
   "hp.peraichi.com": 1,
   "profile.ameba.jp": 2,
@@ -51,6 +49,8 @@ const NOT_OFFICIAL_SITE_HOSTS = [
   // Shorteners and delivery / review portals never identify one shop's own site.
   "bit.ly", "t.co", "g.page", "tinyurl.com", "ow.ly", "is.gd", "ubereats.com", "demae-can.com",
   "wolt.com", "ekiten.jp", "rakuten.co.jp", "amazon.co.jp", "mercari.com",
+  // Link-in-bio pages list links; they are not the shop's own site.
+  "linktr.ee", "lit.link",
   // Marketplaces: a shop page inside a mall is not the shop's own site.
   "minne.com", "creema.jp", "shopping.yahoo.co.jp", "paypaymall.yahoo.co.jp",
 ];

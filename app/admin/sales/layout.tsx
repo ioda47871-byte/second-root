@@ -36,7 +36,7 @@ export default async function SalesLayout({ children }: LayoutProps<"/admin/sale
         <span className={styles.brand}>Second Root 営業</span>
         {logout}
       </header>
-      <div className={styles.main}>{children}</div>
+      <main className={styles.main}>{children}</main>
       <AdminNav />
     </div>
   );
