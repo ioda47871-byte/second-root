@@ -114,13 +114,12 @@
         "RLS を緩める変更"
       ],
       "attempts": 0,
-      "last_failure": null,
-      "blocked_reason": "BOOT-001 の PR #8 が main へ merge され、develop branch が作成されるまで開始しない（.ai/blockers.md HUMAN-001）"
+      "last_failure": null
     },
     {
       "id": "DEV-002",
       "title": "sales domain rules / state machine / dedupe / limits",
-      "status": "blocked",
+      "status": "in_progress",
       "priority": "P0",
       "depends_on": [
         "BOOT-001"
@@ -179,7 +178,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "blocked_reason": "BOOT-001 の PR #8 が main へ merge され、develop branch が作成されるまで開始しない（.ai/blockers.md HUMAN-001）"
+      "branch": "feature/dev-002-domain-rules"
     },
     {
       "id": "DEV-003",
