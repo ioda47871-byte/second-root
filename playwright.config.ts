@@ -7,7 +7,10 @@ const port = Number(process.env.E2E_PORT ?? 3100);
 // future Sales Agent specs must use example.com / fictional accounts only.
 export default defineConfig({
   testDir: "tests/e2e",
-  fullyParallel: true,
+  // One worker: sales specs share one local database and today's queue
+  // (max 5 items), so parallel specs could push each other's rows out.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",

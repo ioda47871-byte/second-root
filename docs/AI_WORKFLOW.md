@@ -111,7 +111,8 @@ Production data / Production secrets / main 直接 push / Production release / D
 | integration | ingest API, token auth, runId idempotency, batch cap, DNC, duplicate, unknown website, schema, DB/RLS | `npx supabase start` の後 `npm run test:integration`（ローカル Supabase、`tests/integration/`。鍵は `supabase status` から実行時に取得し commit しない） |
 | e2e | 既存サイト regression（`npm run test:e2e:site`、Supabase 不要）/ demo・admin・今日の一覧・DM/Email UX・送信済み・reply→meeting→won/lost・mobile（`npm run test:e2e`、ローカル Supabase 必須） | Playwright, `tests/e2e/`。CI は `e2e` と `e2e-sales` の2 job |
 
-- 自動テストから実店舗へ Email / Instagram を**絶対に送らない**（テストデータは `example.com` / 架空アカウントのみ）。
+- 自動テストから実店舗へ Email / Instagram を**絶対に送らない**（テストデータは `example.com` / 架空アカウントのみ。e2e は instagram.com への通信を stub する）。
+- ローカル Supabase は全 worktree で共有される。Fresh Reviewer 実行中に `supabase db reset` をしない（新規 migration は個別に適用）。
 - テスト失敗時に skip / 削除 / required check 解除 / 基準引き下げで green にしない。
 
 ## 9. Operational Claude run の原則（DEV-015 で prompt 化）

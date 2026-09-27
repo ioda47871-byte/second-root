@@ -4,11 +4,14 @@ import pg from "pg";
 // Creates fictional admin / non-admin users in the local Supabase stack for
 // e2e tests. Keys come from `supabase status` via scripts/with-supabase-env.mjs.
 
-// One pair of users per Playwright project so parallel projects never race.
+// One pair of users per Playwright project and test run, so parallel
+// projects or concurrent runs against the same local stack never race.
+const RUN = process.env.E2E_RUN_ID ?? String(process.ppid);
+
 export function usersFor(project: string) {
   return {
-    admin: { email: `e2e-admin-${project}@test.example.com`, password: "e2e-admin-password-123" },
-    outsider: { email: `e2e-outsider-${project}@test.example.com`, password: "e2e-outsider-password-123" },
+    admin: { email: `e2e-admin-${project}-${RUN}@test.example.com`, password: "e2e-admin-password-123" },
+    outsider: { email: `e2e-outsider-${project}-${RUN}@test.example.com`, password: "e2e-outsider-password-123" },
   };
 }
 

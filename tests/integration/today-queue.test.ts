@@ -85,6 +85,31 @@ describe("today queue", () => {
     expect(await loadTodayQueue(admin)).toEqual([]);
   });
 
+  it("counts exactly 5 days as due and keeps offering follow-ups beyond many past ones", async () => {
+    const exactly = await prepare(emailCandidate());
+    await db.query(`update public.sales_outreaches set status = 'sent', sent_at = now() - interval '5 days' - interval '1 second' where prospect_id = $1`, [exactly]);
+    // 60 older shops that already had their follow-up must not crowd it out.
+    for (let i = 0; i < 60; i += 1) {
+      const old = await prepare(emailCandidate());
+      await markSent(old, 30);
+      await db.query(
+        `insert into public.sales_outreaches (prospect_id, kind, channel, subject, body) values ($1, 'follow_up', 'email', 'Re: x', 'x')`,
+        [old],
+      );
+      await db.query(`update public.sales_outreaches set status = 'sent', sent_at = now() - interval '20 days' where prospect_id = $1 and kind = 'follow_up'`, [old]);
+    }
+    const items = await loadTodayQueue(admin);
+    expect(items.map((i) => i.prospectId)).toEqual([exactly]);
+  });
+
+  it("still offers the follow-up while a follow-up row is only drafted", async () => {
+    const due = await prepare(emailCandidate());
+    await markSent(due, 7);
+    await db.query(`insert into public.sales_outreaches (prospect_id, kind, channel, subject, body) values ($1, 'follow_up', 'email', 'Re: x', 'x')`, [due]);
+    const items = await loadTodayQueue(admin);
+    expect(items.map((i) => [i.kind, i.prospectId])).toEqual([["follow_up", due]]);
+  });
+
   it("shows nothing to a non-admin session", async () => {
     await prepare(candidate());
     const outsider = await signedInClient("queue-outsider@test.example.com");
