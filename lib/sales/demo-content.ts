@@ -1,4 +1,4 @@
-import { CATEGORIES, type Category } from "./types";
+import { CATEGORIES, TEMPLATE_BY_CATEGORY, type Category } from "./types";
 
 // What a public demo may show (MVP_SPEC §7): verified public facts only.
 // Anything else stored in sales_demos.content — or added by mistake later —
@@ -37,6 +37,8 @@ export function toDemoView(template: unknown, content: unknown): DemoView | null
   const name = text(c.name, 200);
   const category = CATEGORIES.includes(c.category as Category) ? (c.category as Category) : null;
   if (!name || !category) return null;
+  // The template must match the verified category (no bakery page for a cafe).
+  if (TEMPLATE_BY_CATEGORY[category] !== template) return null;
   const menu = Array.isArray(c.menu_items) ? c.menu_items : [];
   return {
     template: template as DemoTemplate,
