@@ -65,7 +65,7 @@
     {
       "id": "DEV-001",
       "title": "Supabase migrations / RLS",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P0",
       "depends_on": [
         "BOOT-001"

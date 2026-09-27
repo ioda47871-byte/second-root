@@ -1,7 +1,7 @@
 # Second Root Sales Agent — Architecture
 
 > 仕様は `docs/MVP_SPEC.md`、セキュリティ要件は `docs/SECURITY.md` を正本とする。
-> 本書は「どこに何を置くか」の設計。詳細な列定義は DEV-001 の migration が正本になる。
+> 本書は「どこに何を置くか」の設計。詳細な列定義・制約・関数は `supabase/migrations/` が正本。
 
 ## 1. 既存構成（BOOT-001 時点の main）
 
@@ -162,6 +162,8 @@ run の現在地を**このテーブルだけから**判断できるようにす
 - 処理順の詳細・fail-closed 条件は §7。
 
 ## 6. 認証・認可
+
+- 管理者の追加は人間が行う: Supabase Dashboard の Authentication でユーザーを作成し、SQL Editor で `insert into public.sales_admins (user_id) values ('<uuid>');`。公開 sign-up は無効（`supabase/config.toml` と本番 Auth 設定の両方）。
 
 - 管理画面: Supabase Auth の **email + password**（MVP で固定。magic link は使わない）。
 - 管理者判定: DB 上の allowlist（例: `sales_admins(user_id)` に1行）と RLS policy で行う。**「認証済みユーザー全員 = admin」にしない**。

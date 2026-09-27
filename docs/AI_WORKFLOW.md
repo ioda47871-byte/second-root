@@ -108,7 +108,7 @@ Production data / Production secrets / main 直接 push / Production release / D
 |---|---|---|
 | static | ESLint / TypeScript / secret scan | `npm run lint` / `npm run typecheck` / `npm run check:secrets` |
 | unit | dedupe, channel eligibility, DNC, limits, state machine, demo expiry, mailto, DM, URL validation | `npm test`（Vitest, `tests/unit/`） |
-| integration | ingest API, token auth, runId idempotency, batch cap, DNC, duplicate, unknown website, schema, DB/RLS | `npm run test:integration`（ローカル Supabase。DEV-001/003 で追加） |
+| integration | ingest API, token auth, runId idempotency, batch cap, DNC, duplicate, unknown website, schema, DB/RLS | `npx supabase start` の後 `npm run test:integration`（ローカル Supabase、`tests/integration/`。鍵は `supabase status` から実行時に取得し commit しない） |
 | e2e | 既存サイト regression, admin, 今日の一覧, DM/Email UX, 送信済み, reply→meeting→won/lost, mobile | `npm run test:e2e`（Playwright, `tests/e2e/`） |
 
 - 自動テストから実店舗へ Email / Instagram を**絶対に送らない**（テストデータは `example.com` / 架空アカウントのみ）。

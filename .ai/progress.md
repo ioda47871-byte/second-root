@@ -39,3 +39,4 @@
 - 2026-09-27: PR #8 最終仕様整合（上記4点）を反映。
 - 2026-09-27: CI build が Google Fonts（next-font-loader）の外部要因で再発。CI の build を「next-font-loader エラー時のみ1回再試行」に変更（他のエラーは即失敗）。Vercel 側でも起こりうるため known issue として記録。
 - 2026-09-27: PR #8 merge（32de89a）、develop 作成。DEV-001 開始。
+- 2026-09-27: DEV-001 実装（migrations 2本、integration 55件 green、CI に integration job 追加）→ PR 作成・レビューへ。
