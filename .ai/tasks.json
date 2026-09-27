@@ -120,7 +120,7 @@
     {
       "id": "DEV-002",
       "title": "sales domain rules / state machine / dedupe / limits",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "BOOT-001"
