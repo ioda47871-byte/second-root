@@ -134,4 +134,24 @@ describe("checkDraft", () => {
     expect(detectExplicitRefusal("もうメッセージいらない")).toBe(true);
     expect(detectExplicitRefusal("今後は連\u200b絡しないでください")).toBe(true);
   });
+  it.each([`${"DEMO"};/../other`, `${"DEMO"})/../other`, `${"DEMO"}\\..\\other`, `${"DEMO"},/../other`, `${"DEMO"}!/../other`, "焼き菓子.クッキー"])(
+    "[fail-closed] round 3: refuses demo URL escapes and IDN with long vowels: %s",
+    (body) => {
+      expect(draft(body.replace("DEMO", DEMO))).toEqual({ ok: false, reason: "link_not_allowed" });
+    },
+  );
+
+  it("round 3: accepts the demo URL before closing punctuation, and catches LINE ID wording", () => {
+    for (const end of ["", "。", "、", ".", "」", ")", "！", "\nよろしく"]) expect(draft(`デモ「${DEMO}${end}`).ok, end).toBe(true);
+    expect(draft("ラインID: abc")).toEqual({ ok: false, reason: "contact_details" });
+    expect(draft("LINEのIDはabc")).toEqual({ ok: false, reason: "contact_details" });
+    expect(draft("LINEでもご連絡いただけます").ok).toBe(true);
+  });
+
+  it("round 3: polite phrases are not refusals", () => {
+    expect(detectExplicitRefusal("何かあればご連絡ご遠慮なくどうぞ")).toBe(false);
+    expect(detectExplicitRefusal("連絡もらえたら結構嬉しいです")).toBe(false);
+    expect(detectExplicitRefusal("DMは迷惑ではないです")).toBe(false);
+    expect(detectExplicitRefusal("今後は連絡しないでください")).toBe(true);
+  });
 });
