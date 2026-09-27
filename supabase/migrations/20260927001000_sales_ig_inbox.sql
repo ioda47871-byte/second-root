@@ -218,10 +218,17 @@ returns void
 language sql
 set search_path = ''
 as $$
-  update public.sales_ig_threads
-    set draft_attempts = case when draft_attempt_message_id = p_message_id then least(draft_attempts + 1, 100) else 1 end,
+  -- Counts only failures for the thread's latest inbound message, so a
+  -- draft for an old or foreign message cannot reset the back-off.
+  update public.sales_ig_threads t
+    set draft_attempts = case when t.draft_attempt_message_id = p_message_id then least(t.draft_attempts + 1, 100) else 1 end,
         draft_attempt_message_id = p_message_id
-    where id = p_thread_id
+    where t.id = p_thread_id
+      and p_message_id = (
+        select m.id from public.sales_ig_messages m
+          where m.thread_id = t.id and m.direction = 'inbound' and m.deleted_at is null
+          order by m.sent_at desc, m.received_at desc, m.id desc limit 1
+      )
 $$;
 
 revoke all on function public.sales_ig_note_draft_failure(uuid, uuid) from public, anon, authenticated;

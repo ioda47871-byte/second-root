@@ -244,13 +244,17 @@ async function inboxDraft(db: SupabaseClient, request: Extract<IngestRequest, { 
   if (!thread) return { status: 404, body: { error: "not_found" } };
   // Everything the person wrote since our last reply (a refusal may be
   // followed by a polite closing line).
-  const { data: recent } = await db
+  const { data: recent, error: recentError } = await db
     .from("sales_ig_messages")
     .select("direction, text")
     .eq("thread_id", request.threadId)
     .is("deleted_at", null)
     .order("sent_at", { ascending: false })
+    .order("received_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(10);
+  // Refusal detection must never run on missing text: fail closed.
+  if (recentError) return { status: 503, body: { error: "internal_error" } };
   const sinceOurReply: string[] = [];
   for (const m of (recent ?? []) as Array<{ direction: string; text: string | null }>) {
     if (m.direction === "outbound") break;

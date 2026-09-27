@@ -96,4 +96,42 @@ describe("checkDraft", () => {
     const plain = checkDraft({ replyType: "decline", body: "承知しました。", futureContactRefused: false }, DEMO, "今回は結構です");
     expect(plain).toMatchObject({ ok: true, dncCandidate: false });
   });
+  it.each([
+    "ドメイン.jp へどうぞ",
+    "例え.テスト",
+    "evil.みんな",
+    "192.168.0.1 にアクセス",
+    "93.184.216.34:8080",
+    "evil\u200b.com",
+    "evil\u2060.com",
+    "e\ufeffvil.com",
+    `${DEMO}/../otherToken`,
+    `${DEMO}/x`,
+    `${DEMO}?q=1`,
+    `${DEMO}#top`,
+    "https://secondroot.jp/demo/otherToken",
+    "@evil_shop までDMください",
+    "mailto:someone",
+    "javascript:alert(1)",
+  ])("[fail-closed] refuses other links: %s", (body) => {
+    expect(draft(body)).toEqual({ ok: false, reason: "link_not_allowed" });
+  });
+
+  it.each(["090\u200b1234\u200b5678", "LINE ID を追加してください", "LINE ID: shop", "LINE@abc"])("[fail-closed] refuses hidden contact details: %s", (body) => {
+    expect(draft(body)).toEqual({ ok: false, reason: "contact_details" });
+  });
+
+  it("keeps ordinary Japanese sentences, decimals and the demo URL at a sentence end", () => {
+    expect(draft("ありがとうございます。次回もよろしくお願いします。").ok).toBe(true);
+    expect(draft("評価は4.5点でした。").ok).toBe(true);
+    expect(draft(`デモはこちらです ${DEMO}。ぜひご覧ください`).ok).toBe(true);
+    expect(draft(`デモ: ${DEMO}.`).ok).toBe(true);
+  });
+
+  it("flags wording rules on the visible text (long vowel marks, hidden characters)", () => {
+    expect(draft("キャンペーン中です")).toMatchObject({ ok: true, reviewReasons: ["price"] });
+    expect(draft("契\u200b約について")).toMatchObject({ ok: true, reviewReasons: ["contract"] });
+    expect(detectExplicitRefusal("もうメッセージいらない")).toBe(true);
+    expect(detectExplicitRefusal("今後は連\u200b絡しないでください")).toBe(true);
+  });
 });
