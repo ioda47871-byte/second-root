@@ -49,6 +49,7 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 | `sales_ig_drafts` | 受信メッセージに対する分類・返信案・`dnc_candidate`・作成元（operational / rule）・状態（pending / approved / sending / sent / failed / snoozed / superseded） | 1 受信メッセージにつき有効な案は 1 件 |
 | `sales_ig_sends` | 送信要求。idempotency key（draft id + 本文ハッシュ）、状態（sending / sent / failed / unknown）、Meta の message id、試行回数、最終エラーコード | 一意: idempotency key |
 
+- 再送・replay 対策は `sales_ig_webhook_events.body_sha256` と `sales_ig_messages.mid` の一意制約に依存する。DEV-024 で保存期間を決めて古い行を削除する場合は、削除する範囲より古い `timestamp` の event を拒否する（署名済みの古い body の再送で再登録されないように）。既読・リアクション等も webhook event 行を作るため削除対象に含める。
 - 保存期間: メッセージ本文は営業判断に必要な期間（例: 最終メッセージから 180 日）で削除・要約可能にする（DEV-024 で運用値を決める）。
 - **access token・secret・署名・Cookie は会話データに保存しない。**
 - RLS: 全テーブル管理者のみ read。書き込みは Webhook（service role）・ingest API（service role）・管理者 RPC（SECURITY DEFINER）だけ。
@@ -118,7 +119,7 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 |---|---|
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | 購読確認用（16 文字以上のランダム値、Meta App の Webhook 設定と同じ値） |
 | `INSTAGRAM_APP_SECRET` | Webhook 署名の検証（未設定なら webhook は 503 で全拒否） |
-| `INSTAGRAM_ACCOUNT_ID` | Second Root の Instagram professional account ID（他アカウント宛ての event を無視） |
+| `INSTAGRAM_ACCOUNT_ID` | Second Root の Instagram professional account ID（数字、**必須**。未設定・不正なら webhook は 503。同じ Meta App の他アカウント宛ての event を保存しない） |
 | （DEV-023）Instagram User access token | 返信送信用。60 日で失効、更新手順を DEV-024 で定める |
 
 ## 10. 人間の作業（HUMAN BLOCKER 候補、DEV-024 で具体化）

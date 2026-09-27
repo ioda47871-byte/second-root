@@ -59,7 +59,10 @@ async function readLimited(req: NextRequest, limit: number): Promise<Uint8Array 
 
 export async function POST(req: NextRequest) {
   const appSecret = secret("INSTAGRAM_APP_SECRET");
-  if (!appSecret) return json(503, { error: "webhook_disabled" });
+  // Our own account id is required: events for any other account connected
+  // to the same Meta app must never be stored as ours (fail closed).
+  const accountId = process.env.INSTAGRAM_ACCOUNT_ID ?? "";
+  if (!appSecret || !/^[0-9]{1,32}$/.test(accountId)) return json(503, { error: "webhook_disabled" });
 
   const declared = Number(req.headers.get("content-length") ?? "0");
   if (declared > MAX_BODY_BYTES) return json(413, { error: "payload_too_large" });
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return json(400, { error: "invalid_json" });
   }
-  const extracted = extractEvents(payload, process.env.INSTAGRAM_ACCOUNT_ID || undefined);
+  const extracted = extractEvents(payload, accountId);
   if (!extracted) return json(400, { error: "invalid_payload" });
 
   let db;
