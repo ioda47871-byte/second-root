@@ -5,8 +5,8 @@
 
 ## 現在地
 
-- 完了: BOOT-001（PR #8 → main）、DEV-001（PR #9）、DEV-002（PR #10）、DEV-003（PR #11, 7e62223）
-- 進行中: DEV-004（demo route, `feature/dev-004-demo-route`）、DEV-008（admin auth, `feature/dev-008-admin-auth`）
+- 完了: BOOT-001（PR #8 → main）、DEV-001（PR #9）、DEV-002（PR #10）、DEV-003（PR #11）、DEV-004（PR #12, d2acecb）
+- 進行中: DEV-008（admin auth, `feature/dev-008-admin-auth`）
 - 次: DEV-005〜007（templates）、DEV-009 以降（`.ai/tasks.json` の依存順）
 - 自律実行ルール: feature → develop は CI green + Fresh Review Critical/High 0 で Claude が merge。develop → main（Production release）は人間承認。
 - ローカル再開: `npx supabase start` → `npm run test:integration`（Docker 必須。cloud container では `dockerd &` で起動）
@@ -46,3 +46,4 @@
 - 2026-09-27: DEV-002 merge（PR #10, 843699e）。DEV-003 実装中（integration 87件 green）。
 - 2026-09-27: DEV-003 Fresh Review PASS。Medium 3件（デモへの email 混入・店名/住所の出典一致・第一者 email の自サイト確認）ほか修正。unit 207 / integration 88 green。
 - 2026-09-27: DEV-003 merge（PR #11, 7e62223）。
+- 2026-09-27: DEV-004 merge（PR #12, d2acecb）。CI に e2e-sales job。
