@@ -41,6 +41,28 @@ test("shows a sent demo with the proposal notice and noindex", async ({ page }) 
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
+for (const [template, category] of [["bakery_v1", "bakery"], ["baked_goods_v1", "baked_goods"], ["cafe_v1", "cafe"]] as const) {
+  test(`${template} fits the screen with long unbroken text and repeated menu items`, async ({ page }) => {
+    const { token, name } = await seed({
+      expiresAt: new Date(Date.now() + 10 * day),
+      template,
+      category,
+      description: "a".repeat(300),
+      menuItems: ["ブレンド", "ブレンド", "b".repeat(120)],
+    });
+    const errors: string[] = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text());
+    });
+    expect((await page.goto(`/demo/${token}`))?.status()).toBe(200);
+    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    await expect(page.getByText("ブレンド")).toHaveCount(2);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    expect(errors.filter((e) => e.includes("same key"))).toEqual([]);
+  });
+}
+
 test("returns 404 for unsent, expired, disabled and unknown demos", async ({ page }) => {
   const unsent = await seed({ expiresAt: null });
   const expired = await seed({ expiresAt: new Date(Date.now() - day) });
