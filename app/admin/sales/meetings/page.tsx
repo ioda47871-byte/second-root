@@ -1,6 +1,8 @@
 import styles from "@/components/admin/admin.module.css";
+import { requireAdminPage } from "@/lib/admin/auth";
 
-export default function Page() {
+export default async function Page() {
+  await requireAdminPage();
   return (
     <>
       <h1 className={styles.h1}>商談</h1>

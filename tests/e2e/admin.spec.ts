@@ -60,16 +60,18 @@ test("the admin can preview an unsent demo that the public URL does not show", a
   const pg = (await import("pg")).default;
   const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL });
   await db.connect();
+  let prospectId: string | null = null;
   try {
     const demo = await seedDemo(db, { expiresAt: null });
+    prospectId = demo.prospectId;
     expect((await page.goto(`/demo/${demo.token}`))?.status()).toBe(404);
     await login(page, ADMIN.email, ADMIN.password);
     await expect(page).toHaveURL(/\/admin\/sales$/);
     await page.goto(`/admin/preview/${demo.prospectId}`);
     await expect(page.getByRole("status")).toContainText("未送信");
     await expect(page.getByRole("heading", { level: 1, name: demo.name })).toBeVisible();
-    await db.query("delete from public.sales_prospects where id = $1", [demo.prospectId]);
   } finally {
+    if (prospectId) await db.query("delete from public.sales_prospects where id = $1", [prospectId]);
     await db.end();
   }
 });
@@ -79,4 +81,36 @@ test("a non-admin cannot open a demo preview", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "権限がありません" })).toBeVisible();
   const res = await page.goto("/admin/preview/00000000-0000-0000-0000-000000000000");
   expect(res?.status()).toBe(404);
+});
+
+test("pages check the admin themselves: a page segment fetched without the layout reveals nothing", async ({ page, playwright, baseURL }) => {
+  // Capture a real client-side navigation request (renders only the page
+  // segment, not the layout) and replay its headers without any session.
+  await login(page, ADMIN.email, ADMIN.password);
+  await expect(page).toHaveURL(/\/admin\/sales$/);
+  const [rsc] = await Promise.all([
+    page.waitForRequest((r) => r.url().includes("/admin/sales/replies") && r.headers()["rsc"] === "1"),
+    page.getByRole("navigation", { name: "営業管理" }).getByRole("link", { name: "返信" }).click(),
+  ]);
+  const headers = await rsc.allHeaders();
+  delete headers.cookie;
+  const anonymous = await playwright.request.newContext({ baseURL });
+  try {
+    const res = await anonymous.get(new URL(rsc.url()).pathname + new URL(rsc.url()).search, { headers, maxRedirects: 0 });
+    expect(await res.text()).not.toMatch(/DEV-0\d\d で/);
+  } finally {
+    await anonymous.dispose();
+  }
+});
+
+test("anonymous visitors to a preview are sent to login", async ({ page }) => {
+  await page.goto("/admin/preview/00000000-0000-0000-0000-000000000000");
+  await expect(page).toHaveURL(/\/admin\/login$/);
+});
+
+test("a non-admin can sign out from the refusal screen", async ({ page }) => {
+  await login(page, OUTSIDER.email, OUTSIDER.password);
+  await expect(page.getByRole("heading", { name: "権限がありません" })).toBeVisible();
+  await page.getByRole("button", { name: "ログアウト" }).click();
+  await expect(page).toHaveURL(/\/admin\/login$/);
 });

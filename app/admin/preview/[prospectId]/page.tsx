@@ -1,7 +1,7 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { renderDemo } from "@/components/demo/renderDemo";
 import styles from "@/components/admin/admin.module.css";
-import { getAdminState } from "@/lib/admin/auth";
+import { requireAdminPage } from "@/lib/admin/auth";
 import { toDemoView } from "@/lib/sales/demo-content";
 import { createAuthClient } from "@/lib/supabase/server";
 
@@ -12,9 +12,7 @@ import { createAuthClient } from "@/lib/supabase/server";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function DemoPreviewPage({ params }: PageProps<"/admin/preview/[prospectId]">) {
-  const state = await getAdminState();
-  if (state.kind === "anonymous") redirect("/admin/login");
-  if (state.kind === "forbidden") notFound();
+  await requireAdminPage();
 
   const { prospectId } = await params;
   if (!UUID.test(prospectId)) notFound();

@@ -424,7 +424,8 @@
         "service role を browser に渡さない",
         "モバイルファースト",
         "認証方式は Supabase Auth の email + password に固定（magic link は実装しない）",
-        "未送信デモの管理者プレビュー（/admin/sales 配下、allowlist 管理者のみ。非管理者・未ログインは拒否）"
+        "未送信デモの管理者プレビュー（/admin/preview/[prospectId]、allowlist 管理者のみ。非管理者は 404、未ログインはログインへ）",
+        "全ての管理画面ページと server action が自身で管理者を確認する（layout だけに依存しない。requireAdminPage / requireAdmin）"
       ],
       "required_tests": [
         "e2e: admin login",
@@ -465,7 +466,8 @@
       "purpose": "今日の作業キュー（最大5、フォロー優先）を表示",
       "acceptance_criteria": [
         "店名・チャネル・状態・大きな送信ボタン",
-        "詳細は折りたたみ"
+        "詳細は折りたたみ",
+        "ページは requireAdminPage()、server action は requireAdmin() を必ず自分で呼ぶ（layout の確認に依存しない）"
       ],
       "required_tests": [
         "e2e: 今日の一覧",
@@ -505,7 +507,8 @@
         "開いただけでは sent にしない",
         "Instagram host 検証済み URL のみ開く",
         "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新",
-        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）"
+        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）",
+        "ページは requireAdminPage()、server action は requireAdmin() を必ず自分で呼ぶ（layout の確認に依存しない）"
       ],
       "required_tests": [
         "e2e: DM UX",
@@ -545,7 +548,8 @@
         "Resend 不使用",
         "送信済み1タップ",
         "送信済みにした時点でデモの expires_at を sent_at + 30日 に更新",
-        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）"
+        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）",
+        "ページは requireAdminPage()、server action は requireAdmin() を必ず自分で呼ぶ（layout の確認に依存しない）"
       ],
       "required_tests": [
         "unit: mailto generation",
@@ -586,7 +590,8 @@
         "decline だけでは DNC にしない。明示的な将来連絡拒否を管理者が選んだ場合のみ DNC",
         "不正遷移はサーバーで拒否",
         "返信記録で「今後の連絡を拒否された」を選ぶと do_not_contact=true・dnc_reason=explicit_refusal・デモ disabled_at を設定。decline 後は別チャネルの初回営業・フォローを表示しない",
-        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）"
+        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）",
+        "ページは requireAdminPage()、server action は requireAdmin() を必ず自分で呼ぶ（layout の確認に依存しない）"
       ],
       "required_tests": [
         "unit: state machine",
@@ -623,7 +628,8 @@
       ],
       "purpose": "履歴と営業条件別の成果集計",
       "acceptance_criteria": [
-        "SQL/通常コードで集計（AI 不使用）"
+        "SQL/通常コードで集計（AI 不使用）",
+        "ページは requireAdminPage()、server action は requireAdmin() を必ず自分で呼ぶ（layout の確認に依存しない）"
       ],
       "required_tests": [
         "unit/integration: 集計"
@@ -662,7 +668,8 @@
       "acceptance_criteria": [
         "Instagram フォローなし",
         "今日の5枠でフォロー優先",
-        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）"
+        "管理者操作は is_sales_admin() を検査する SECURITY DEFINER RPC（search_path 固定）で行う（outreach trigger が service_role 限定関数を呼ぶため）",
+        "ページは requireAdminPage()、server action は requireAdmin() を必ず自分で呼ぶ（layout の確認に依存しない）"
       ],
       "required_tests": [
         "unit: follow-up eligibility",

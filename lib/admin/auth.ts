@@ -1,5 +1,5 @@
 import "server-only";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createAuthClient } from "@/lib/supabase/server";
 
 // Admin gate for /admin/sales. Signed-in is not enough: the user must be on
@@ -22,10 +22,21 @@ export async function getAdminState(): Promise<{ kind: "anonymous" } | { kind: "
   return { kind: "admin", session: { userId: data.user.id, email: data.user.email ?? null } };
 }
 
-/** For admin pages and actions: redirects to login, or throws for non-admins. */
-export async function requireAdmin(): Promise<AdminSession> {
+/**
+ * Every admin page and server action must call one of these itself — a
+ * layout check alone does not stop a page segment from rendering (Next.js
+ * partial rendering; docs/01-app/02-guides/authentication.md).
+ */
+export async function requireAdminPage(): Promise<AdminSession> {
   const state = await getAdminState();
   if (state.kind === "anonymous") redirect("/admin/login");
-  if (state.kind === "forbidden") throw new Error("forbidden");
+  if (state.kind === "forbidden") notFound();
+  return state.session;
+}
+
+/** For server actions: never redirects, throws for anyone but the admin. */
+export async function requireAdmin(): Promise<AdminSession> {
+  const state = await getAdminState();
+  if (state.kind !== "admin") throw new Error("forbidden");
   return state.session;
 }
