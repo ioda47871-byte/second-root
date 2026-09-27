@@ -6,6 +6,7 @@ import { seedDemo } from "../support/seed-demo";
 
 const day = 86_400_000;
 let db: pg.Pool;
+const seeded: string[] = [];
 
 // One pool per worker for this file; tests in the file run serially so the
 // pool is never used after afterAll closes it.
@@ -14,12 +15,19 @@ test.beforeAll(() => {
   db = new pg.Pool({ connectionString: process.env.SUPABASE_DB_URL, max: 2 });
 });
 test.afterAll(async () => {
-  await db.query("delete from public.sales_prospects where name like 'E2Eテスト工房%'");
+  // Only this worker's rows: the other project may still be using its own.
+  if (seeded.length > 0) await db.query("delete from public.sales_prospects where id = any($1::uuid[])", [seeded]);
   await db.end();
 });
 
+async function seed(opts: Parameters<typeof seedDemo>[1]) {
+  const demo = await seedDemo(db, opts);
+  seeded.push(demo.prospectId);
+  return demo;
+}
+
 test("shows a sent demo with the proposal notice and noindex", async ({ page }) => {
-  const { token, name } = await seedDemo(db, { expiresAt: new Date(Date.now() + 10 * day) });
+  const { token, name } = await seed({ expiresAt: new Date(Date.now() + 10 * day) });
   const res = await page.goto(`/demo/${token}`);
   expect(res?.status()).toBe(200);
   expect(res?.headers()["x-robots-tag"]).toBe("noindex, nofollow");
@@ -34,9 +42,9 @@ test("shows a sent demo with the proposal notice and noindex", async ({ page }) 
 });
 
 test("returns 404 for unsent, expired, disabled and unknown demos", async ({ page }) => {
-  const unsent = await seedDemo(db, { expiresAt: null });
-  const expired = await seedDemo(db, { expiresAt: new Date(Date.now() - day) });
-  const disabled = await seedDemo(db, { expiresAt: new Date(Date.now() + day), disabledAt: new Date() });
+  const unsent = await seed({ expiresAt: null });
+  const expired = await seed({ expiresAt: new Date(Date.now() - day) });
+  const disabled = await seed({ expiresAt: new Date(Date.now() + day), disabledAt: new Date() });
   for (const token of [unsent.token, expired.token, disabled.token, "x".repeat(43)]) {
     const res = await page.goto(`/demo/${token}`);
     expect(res?.status(), token).toBe(404);

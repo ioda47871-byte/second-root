@@ -277,7 +277,10 @@
       "allowed_scope": [
         "app/demo/",
         "lib/sales/",
-        "tests/"
+        "tests/",
+        "next.config.ts（/demo・/admin・/api/internal の noindex / no-referrer / no-store ヘッダ）",
+        "components/GoogleAnalytics.tsx（/demo・/admin で GA を読み込まない。既存ページの挙動は不変）",
+        ".github/workflows/ci.yml・package.json（e2e を site / sales に分割）"
       ],
       "forbidden_scope": [
         "main への直接 push",

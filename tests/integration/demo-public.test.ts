@@ -21,7 +21,10 @@ describe("loadPublicDemo", () => {
     const { token } = await seedDemo(db, { expiresAt: new Date(now.getTime() + 5 * day) });
     const demo = await loadPublicDemo(serviceClient(), token, now);
     expect(demo).toMatchObject({ template: "bakery_v1", name: expect.stringContaining("E2Eテスト"), hours: "8:00〜17:00" });
-    expect(JSON.stringify(demo)).not.toMatch(/@|prospect|won|note/);
+    expect(Object.keys(demo!).sort()).toEqual(
+      ["access", "address", "category", "closedDays", "description", "hours", "menuItems", "name", "phone", "template", "ward"],
+    );
+    expect(JSON.stringify(demo)).not.toMatch(/@/);
   });
 
   it("hides expired and disabled demos; keep_alive extends only a sent demo", async () => {
