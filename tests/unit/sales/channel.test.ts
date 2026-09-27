@@ -73,6 +73,7 @@ describe("channel eligibility (MVP_SPEC §3.2)", () => {
   });
 
   it.each([
+    ["third-party page labelled official", { emailSourceUrl: "https://tabelog.com/x" }],
     ["blank email", { publicEmail: "   " }],
     ["malformed email", { publicEmail: "a@..jp" }],
     ["no source URL", { emailSourceUrl: null }],

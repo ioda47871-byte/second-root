@@ -23,6 +23,9 @@ describe("dedupe normalisation", () => {
     expect(normalizeAddress("名古屋市中村区名駅4-5-6 2F")).toBe("愛知県名古屋市中村区名駅4-5-6");
     expect(normalizeAddress("名古屋市中区栄3-4-51")).not.toBe(normalizeAddress("名古屋市中区栄3-4-5 1F"));
     expect(normalizeAddress("名古屋市中区栄二十三番地")).toBe("愛知県名古屋市中区栄23");
+    expect(normalizeAddress("名古屋市中区栄3 - 4 - 5")).toBe("愛知県名古屋市中区栄3-4-5");
+    expect(normalizeAddress("名古屋市中区栄3の4の5")).toBe("愛知県名古屋市中区栄3-4-5");
+    expect(normalizeAddress("名古屋市中区栄3 - 10 - 2")).toBe("愛知県名古屋市中区栄3-10-2");
   });
 
   it("converts kanji numerals", () => {
@@ -60,5 +63,6 @@ describe("dedupe normalisation", () => {
     expect(normalizeEmail("a@..jp")).toBeNull();
     expect(normalizeEmail("<a@b.jp>")).toBeNull();
     expect(normalizeEmail("a..b@example.com")).toBeNull();
+    expect(normalizeEmail("a.@b.jp")).toBeNull();
   });
 });

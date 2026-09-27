@@ -36,6 +36,8 @@ describe("URL validation", () => {
     expect(websiteKey("https://ameblo.jp/shop-a/entry-1.html")).toBe("ameblo.jp/shop-a");
     expect(websiteKey("https://ameblo.jp/shop-b/")).toBe("ameblo.jp/shop-b");
     expect(websiteKey("https://sites.google.com/")).toBeNull();
+    expect(websiteKey("https://hp.peraichi.com/pan-a")).toBe("hp.peraichi.com/pan-a");
+    expect(websiteKey("https://blog.livedoor.jp/pan-b/")).toBe("blog.livedoor.jp/pan-b");
   });
 
   it.each([
@@ -45,6 +47,11 @@ describe("URL validation", () => {
     "https://www.google.com/maps/place/x",
     "https://m.facebook.com/pan",
     "https://www.hotpepper.jp/strJ000/",
+    "https://bit.ly/abc",
+    "https://g.page/pan",
+    "https://instagr.am/pan",
+    "https://www.ubereats.com/jp/store/x",
+    "https://www.ekiten.jp/shop_1/",
   ])("never treats %s as an official site", (u) => {
     expect(isOfficialSiteCandidate(u)).toBe(false);
     expect(websiteKey(u)).toBeNull();
