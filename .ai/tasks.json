@@ -184,7 +184,7 @@
     {
       "id": "DEV-003",
       "title": "Operational Claude ingest API",
-      "status": "backlog",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-001",
@@ -247,12 +247,13 @@
         "ingest token の Production 設定"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-003-ingest-api"
     },
     {
       "id": "DEV-004",
       "title": "demo data model + /demo/[token]",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-001",
@@ -291,7 +292,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-004-demo-route"
     },
     {
       "id": "DEV-005",
