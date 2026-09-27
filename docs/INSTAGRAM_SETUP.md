@@ -12,6 +12,7 @@
 - 推奨の順番: **Staging（HUMAN-004 で作る Preview 環境。固定 URL が必要）で 1〜8 を通して確認 → Release 承認後に Production で 5・7 をやり直す。**
   Webhook の callback は公開 HTTPS の固定 URL が必要（Vercel の毎回変わる Preview URL や、Vercel の認証がかかった URL は使えない）。
 - Access Token・App Secret・Verify Token は **Vercel の環境変数にだけ**入れる。GitHub・チャット・Claude の session には貼らない。
+- 下の `curl` の例は、token をコマンドライン（shell の履歴）に残さないよう、先に `read -rs IG_TOKEN`（入力は表示されない）で token を変数に読み込んでから使い、終わったら `unset IG_TOKEN` する。
 
 ## 1. Meta App を作る（人間、約 10 分）
 
@@ -26,7 +27,7 @@
 3. Meta App の管理画面 → **Instagram** → **Instagram ログインによる API 設定** → **アカウントを追加** → Second Root の Instagram でログインし、権限を許可する。
 4. 同じ画面で **アクセストークンを生成**を押す。表示された token が `INSTAGRAM_ACCESS_TOKEN`（長期トークン、**60 日で失効**）。
 5. アカウント ID（数字）を控える → `INSTAGRAM_ACCOUNT_ID`。表示がなければ、手元の terminal で
-   `curl -s -H "Authorization: Bearer <token>" "https://graph.instagram.com/v26.0/me?fields=user_id,username"` の `user_id`。
+   `curl -s -H "Authorization: Bearer $IG_TOKEN" "https://graph.instagram.com/v26.0/me?fields=user_id,username"` の `user_id`。
 
 ## 3. 値を作って Vercel に入れる（人間）
 
@@ -50,7 +51,7 @@ Vercel → Project → Settings → Environment Variables。**Staging は Previe
    失敗する場合: 環境変数が未設定か再デプロイ前（サーバーは 503 を返す）、または値の不一致（403）。
 4. Webhook フィールドで **`messages`** を購読（Subscribe）する。
 5. 2-3 で追加したアカウントの行で **Webhook の受信（subscription）をオン**にする。画面にない場合は手元の terminal で
-   `curl -s -X POST -H "Authorization: Bearer <token>" "https://graph.instagram.com/v26.0/<INSTAGRAM_ACCOUNT_ID>/subscribed_apps?subscribed_fields=messages"` → `{"success":true}`。
+   `curl -s -X POST -H "Authorization: Bearer $IG_TOKEN" "https://graph.instagram.com/v26.0/<INSTAGRAM_ACCOUNT_ID>/subscribed_apps?subscribed_fields=messages"` → `{"success":true}`。
 
 ## 5. アプリをライブにする（人間）
 
@@ -66,7 +67,7 @@ Vercel → Project → Settings → Environment Variables。**Staging は Previe
 ## 7. トークンの更新（60 日ごと、人間）
 
 - 50 日目を目安にカレンダーへ登録する。手元の terminal で
-  `curl -s "https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=<今の token>"` を実行し、返った `access_token` で Vercel の `INSTAGRAM_ACCESS_TOKEN` を更新して再デプロイする。
+  `curl -s -G "https://graph.instagram.com/refresh_access_token" --data-urlencode grant_type=ig_refresh_token --data-urlencode "access_token=$IG_TOKEN"`（公式の更新 endpoint は token を query で受け取る仕様。履歴に残さないため変数で渡す） を実行し、返った `access_token` で Vercel の `INSTAGRAM_ACCESS_TOKEN` を更新して再デプロイする。
 - 期限が切れると、送信時に「アクセストークンの期限切れ」と表示される（送信はされず、sent にもならない）。受信（Webhook）は token がなくても続く。
 
 ## 8. 設定後の確認（ここから自動・半自動）

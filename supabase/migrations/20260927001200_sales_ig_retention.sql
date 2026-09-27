@@ -31,6 +31,10 @@ begin
       and t.created_at < now() - interval '180 days'
       and not exists (
         select 1 from public.sales_ig_drafts d where d.thread_id = t.id and d.status in ('sending', 'unknown')
+      )
+      and not exists (
+        select 1 from public.sales_ig_sends s join public.sales_ig_drafts d on d.id = s.draft_id
+          where d.thread_id = t.id and s.status in ('sending', 'unknown')
       );
   get diagnostics threads = row_count;
 
