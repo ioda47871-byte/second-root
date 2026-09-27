@@ -120,7 +120,7 @@
     {
       "id": "DEV-002",
       "title": "sales domain rules / state machine / dedupe / limits",
-      "status": "ready",
+      "status": "review",
       "priority": "P0",
       "depends_on": [
         "BOOT-001"
@@ -178,7 +178,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-002-domain-rules"
     },
     {
       "id": "DEV-003",
