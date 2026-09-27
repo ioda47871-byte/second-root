@@ -48,6 +48,8 @@ export function normalizeAddress(address: string): string {
   // 号 ends the block number (and 号室 is a room, dropped below).
   s = s.replace(/(\d)\s*号(?!室)/g, "$1 ");
   s = s.replace(/[‐‑‒–—―ー－−]/g, "-");
+  // "3 - 4 - 5" and "3の4の5" are the same block number as "3-4-5".
+  s = s.replace(/(\d)\s*[-の]\s*(?=\d)/g, "$1-");
   // Keep up to the block number. The prefix may contain spaces; the block
   // number is digits joined by "-" only, so a following " 1F" / "101号室" /
   // building name is never glued onto it.
@@ -81,6 +83,7 @@ const EMAIL_PATTERN =
 export function normalizeEmail(email: string): string | null {
   const s = email.normalize("NFKC").trim().toLowerCase();
   if (s.length > 254 || !EMAIL_PATTERN.test(s)) return null;
-  if (s.split("@")[0].length > 64 || s.includes("..")) return null;
+  const local = s.split("@")[0];
+  if (local.length > 64 || s.includes("..") || local.startsWith(".") || local.endsWith(".")) return null;
   return s;
 }

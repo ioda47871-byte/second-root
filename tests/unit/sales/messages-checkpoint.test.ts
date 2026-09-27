@@ -101,6 +101,8 @@ describe("checkpoint content", () => {
 
   it("does not flag ordinary text as a secret", () => {
     expect(checkpointProblem({ list: "sk-nagoya-bakery-cafe-list-2026", note: "営業時間 8:00-18:00、税込 <おすすめ> あり" })).toBeNull();
+    expect(checkpointProblem({ re_search_not_found_confirmed: true, note: "re_search_completed_for_not_found" })).toBeNull();
+    expect(checkpointProblem({ a: "a<b and c>d", b: "Cafe SECRET: 隠れ家", c: "TOKEN: 整理券" })).toBeNull();
   });
 
   it("10 realistic verified candidates fit in 64KB", () => {
@@ -116,12 +118,14 @@ describe("checkpoint content", () => {
     [{ big: "x".repeat(70_000) }, "too_large"],
     [{ note: "authorization: bearer abcdefghijklmnopqrstuvwxyz" }, "secret"],
     [{ db: "postgres://user:pw@db.x.supabase.co:5432/postgres" }, "secret"],
-    [{ k: "re_AbCdEfGhIjKlMnOpQrStUvWx12" }, "secret"],
+    [{ k: "re_Ab12CdEf_GhIjKlMnOpQrStUvWx345678" }, "secret"],
     [{ k: "ghp_abcdefghijklmnopqrstuvwxyz0123456789" }, "secret"],
     [{ env: "SUPABASE_SERVICE_ROLE_KEY=abc" }, "secret"],
     [{ html: "<svg onload=alert(1)>" }, "raw_html"],
     [{ html: '<a href="https://x.example.com">x</a>' }, "raw_html"],
     [{ img: "data:image/svg+xml,<svg/>" }, "embedded_data"],
+    [{ k: "sk-ant-api03-AbCd_EfGh-IjKlMnOpQrStUvWxYz0123456789" }, "secret"],
+    [{ k: "sk-proj-AbCdEfGh-IjKlMnOp_QrStUvWxYz0123" }, "secret"],
   ])("rejects %j", (value, problem) => {
     expect(checkpointProblem(value)).toBe(problem);
   });

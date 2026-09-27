@@ -1,6 +1,6 @@
 import { normalizeEmail } from "./normalize";
 import { FIRST_PARTY_SOURCE_TYPES, type Channel, type SourceType, type WebsiteStatus } from "./types";
-import { isSafeHttpUrl, parseInstagramProfile } from "./url";
+import { isOfficialSiteCandidate, isSafeHttpUrl, parseInstagramProfile } from "./url";
 
 // Channel eligibility (MVP_SPEC §3.2, §3.6). Anything that cannot be
 // confirmed fails closed: no channel, no outreach.
@@ -33,7 +33,9 @@ export function hasFirstPartyEmail(
     normalizeEmail(input.publicEmail) !== null &&
     isSafeHttpUrl(input.emailSourceUrl) &&
     input.emailSourceType !== null &&
-    FIRST_PARTY_SOURCE_TYPES.includes(input.emailSourceType)
+    FIRST_PARTY_SOURCE_TYPES.includes(input.emailSourceType) &&
+    // A page on a portal / social host cannot be the shop's own site or contact page.
+    (input.emailSourceType === "official_profile" || isOfficialSiteCandidate(input.emailSourceUrl as string))
   );
 }
 
