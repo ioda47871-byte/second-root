@@ -407,7 +407,7 @@
     {
       "id": "DEV-008",
       "title": "Supabase Auth + admin shell",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-001"
@@ -445,7 +445,8 @@
         "管理者アカウントの Production 作成"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-008-admin-auth"
     },
     {
       "id": "DEV-009",
