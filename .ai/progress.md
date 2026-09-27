@@ -5,10 +5,11 @@
 
 ## 現在地
 
-- BOOT-001 完了: PR #8 を main へ merge（32de89a、2026-09-27 人間承認）。`develop` を main から作成。
-- 現在の Task: **DEV-001**（Supabase migrations / RLS）— branch `feature/dev-001-supabase-schema`
-- 次: DEV-002（domain rules）→ DEV-003 …（`.ai/tasks.json` の依存順）
+- 完了: BOOT-001（PR #8 → main）、DEV-001（PR #9 → develop, b190518）
+- 進行中: DEV-002（PR #10, `feature/dev-002-domain-rules`）— Fresh Review round 2 待ち
+- 次: DEV-003（ingest API。DEV-001/002 に依存）→ DEV-004 …（`.ai/tasks.json` の依存順）
 - 自律実行ルール: feature → develop は CI green + Fresh Review Critical/High 0 で Claude が merge。develop → main（Production release）は人間承認。
+- ローカル再開: `npx supabase start` → `npm run test:integration`（Docker 必須。cloud container では `dockerd &` で起動）
 
 ## BOOT-001 チェックポイント
 
@@ -41,3 +42,4 @@
 - 2026-09-27: PR #8 merge（32de89a）、develop 作成。DEV-001 開始。
 - 2026-09-27: DEV-001 実装（migrations 2本、integration 55件 green、CI に integration job 追加）→ PR 作成・レビューへ。
 - 2026-09-27: DEV-001 Fresh Review PASS（Critical/High 0）。Medium 4件・Low を修正（integration 71件 green）。DEV-002 は PR #10 でレビュー中。
+- 2026-09-27: DEV-001 merge（PR #9, b190518）。
