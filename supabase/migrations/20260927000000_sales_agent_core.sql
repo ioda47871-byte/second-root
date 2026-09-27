@@ -102,7 +102,7 @@ create table public.sales_prospects (
   category text not null check (category in ('bakery', 'baked_goods', 'cafe')),
   website_status text not null check (website_status in ('present', 'not_found', 'unknown')),
   website_url text check (website_url ~ '^https?://' and char_length(website_url) <= 2048),
-  website_domain text check (website_domain = lower(website_domain) and char_length(website_domain) <= 253),
+  website_domain text check (website_domain = lower(website_domain) and char_length(website_domain) <= 512),
   instagram_url text check (instagram_url ~ '^https://(www\.)?instagram\.com/' and char_length(instagram_url) <= 2048),
   instagram_handle text check (instagram_handle ~ '^[a-z0-9._]{1,30}$'),
   public_email text check (public_email = lower(public_email) and public_email ~ '^[^\s@]+@[^\s@]+\.[^\s@]+$' and char_length(public_email) <= 254),
@@ -121,10 +121,19 @@ create table public.sales_prospects (
   constraint sales_prospects_website_url
     check ((website_status = 'present') = (website_url is not null)),
   -- Dedupe keys must be derived from the stored URL, not supplied freely.
+  -- website_domain is the site key: the host without "www.", or for shared
+  -- hosts (sites.google.com/view/<x>, ameblo.jp/<x> …) host + leading path,
+  -- which must be a prefix of the stored URL. URLs without a host or with
+  -- credentials are rejected.
   constraint sales_prospects_website_domain
     check ((website_url is null) = (website_domain is null)
-           and (website_url is null or website_domain = regexp_replace(
-                  lower(substring(website_url from '^https?://([^/:?#]+)')), '^www\.', ''))),
+           and (website_url is null or (
+             website_url !~ '^https?://[^/?#]*@'
+             and substring(website_url from '^https?://([^/:?#]+)') is not null
+             and (website_domain = regexp_replace(lower(substring(website_url from '^https?://([^/:?#]+)')), '^www\.', '')
+                  or (starts_with(website_domain,
+                        regexp_replace(lower(substring(website_url from '^https?://([^/:?#]+)')), '^www\.', '') || '/')
+                      and starts_with(regexp_replace(lower(website_url), '^https?://(www\.)?', ''), website_domain)))))),
   constraint sales_prospects_instagram_pair
     check ((instagram_url is null) = (instagram_handle is null)
            and (instagram_url is null or instagram_url = 'https://www.instagram.com/' || instagram_handle || '/')),

@@ -49,6 +49,20 @@ describe("prospect constraints", () => {
     await insertProspect({ website_status: "present", website_url: "https://www.shop.example.com/about", website_domain: "shop.example.com" });
   });
 
+  it("rejects host-less or credential URLs and allows path-aware keys for shared hosts only as URL prefixes", async () => {
+    await expect(
+      insertProspect({ website_status: "present", website_url: "https:///x", website_domain: "anything.example.com" }),
+    ).rejects.toThrow(/website_domain/);
+    await expect(
+      insertProspect({ website_status: "present", website_url: "https://u@evil.example.com/", website_domain: "u@evil.example.com" }),
+    ).rejects.toThrow(/website_domain/);
+    await insertProspect({ website_status: "present", website_url: "https://sites.google.com/view/pan-a/home", website_domain: "sites.google.com/view/pan-a" });
+    await insertProspect({ website_status: "present", website_url: "https://sites.google.com/view/pan-b", website_domain: "sites.google.com/view/pan-b" });
+    await expect(
+      insertProspect({ website_status: "present", website_url: "https://sites.google.com/view/pan-c", website_domain: "sites.google.com/view/other" }),
+    ).rejects.toThrow(/website_domain/);
+  });
+
   it.each([
     ["domain", { website_status: "present", website_url: "https://same.example.com/", website_domain: "same.example.com" }],
     ["instagram handle", { instagram_url: "https://www.instagram.com/same_handle/", instagram_handle: "same_handle" }],
