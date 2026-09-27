@@ -57,6 +57,8 @@ lib/supabase/         server client（service role, server only）/ SSR auth cli
 app/api/internal/sales-agent/runs/route.ts
 app/demo/[publicToken]/page.tsx  + templates/{bakery_v1,baked_goods_v1,cafe_v1}
 app/admin/sales/{page.tsx, replies/, meetings/, history/}
+app/api/webhooks/instagram/route.ts  Meta 公式 webhook（署名検証・冪等保存）
+lib/instagram/        署名検証・webhook 解析・返信案検証・Graph API（server only）・承認済み返信の送信
 supabase/migrations/  SQL（RLS・constraint を含む）
 supabase/seed.sql     テスト用のダミーデータのみ（実店舗データ禁止）
 tests/unit/           Vitest（DB不要）
