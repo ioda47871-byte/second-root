@@ -603,7 +603,7 @@
     {
       "id": "DEV-012",
       "title": "reply / meeting / win / loss flow",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-010",
@@ -651,7 +651,7 @@
     {
       "id": "DEV-013",
       "title": "history + lightweight metrics",
-      "status": "backlog",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-012"
@@ -687,12 +687,13 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-013-history-metrics"
     },
     {
       "id": "DEV-014",
       "title": "5-day email follow-up",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-011",
@@ -731,12 +732,13 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-014-followup"
     },
     {
       "id": "DEV-015",
       "title": "Operational Claude run prompt / scheduled job definition",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-003"
@@ -779,7 +781,7 @@
     {
       "id": "DEV-016",
       "title": "Claude Cloud staging/live validation",
-      "status": "backlog",
+      "status": "blocked",
       "priority": "P1",
       "depends_on": [
         "DEV-015"
@@ -817,7 +819,7 @@
         "scheduled job 有効化"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": "HUMAN-004: staging Supabase project / Vercel staging env / Claude Cloud environment + Routine are human operations"
     },
     {
       "id": "DEV-017",
@@ -933,6 +935,242 @@
       ],
       "attempts": 0,
       "last_failure": null
+    },
+    {
+      "id": "DEV-020",
+      "title": "Instagram Messaging data model / webhook",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-019"
+      ],
+      "purpose": "Meta 公式 Webhook で Instagram の受信 DM を検証・保存する（docs/INSTAGRAM_MESSAGING.md §3・§7・§8）",
+      "acceptance_criteria": [
+        "実装前に Meta 公式ドキュメントで webhook の購読確認・署名検証・payload 形式を確認し §9 に URL と確認日を記録",
+        "migration: sales_ig_webhook_events / sales_ig_threads / sales_ig_messages（RLS 管理者のみ read、書き込みは service role のみ）",
+        "POST/GET /api/webhooks/instagram: 購読確認（verify token）と署名検証（定数時間比較）に失敗したら何も保存しない。本文サイズ上限",
+        "[idempotency] 同じ webhook event / message id の再送で二重登録しない",
+        "[fail-closed] App Secret 未設定なら 503 で全拒否",
+        "token・secret・署名を DB・ログに保存しない。raw body は保存しないか短期削除"
+      ],
+      "required_tests": [
+        "unit: 署名検証（正・誤・欠落・長さ違い）",
+        "integration: 同一 event 再送で 1 件、未照合でも保存",
+        "e2e/integration: 検証失敗時に何も保存しない"
+      ],
+      "allowed_scope": [
+        "app/api/webhooks/instagram/",
+        "lib/instagram/",
+        "supabase/migrations/（追加のみ）",
+        "tests/",
+        "docs/"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更",
+        "Meta App 作成・Webhook 登録（HUMAN BLOCKER、コード・テストは先に進める）"
+      ],
+      "status": "backlog",
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化",
+        "初回 cold DM の自動送信（ブラウザ自動操作・非公式 bot・Messaging API）",
+        "AI による返信の完全自動送信",
+        "Meta access token / App Secret を GitHub・ブラウザ・ログ・DB に出す"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null
+    },
+    {
+      "id": "DEV-021",
+      "title": "Inbound matching / classification / reply draft",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-020"
+      ],
+      "purpose": "受信 DM を prospect / outreach に安全に紐付け、Operational Claude が分類と返信案を作る（docs/INSTAGRAM_MESSAGING.md §4・§5）",
+      "acceptance_criteria": [
+        "一意に判定できる場合だけ紐付け、それ以外は unmatched として保存",
+        "ingest API に inbox_pending / inbox_draft を追加（ingest token は送信・DNC・成約変更不可のまま）",
+        "分類: interested / question / meeting_request / decline / other。decline ≠ DNC。明示的な将来連絡拒否は dnc_candidate（DNC にはしない）",
+        "返信案の検証: 長さ、Second Root のデモ URL 以外の URL・メール・電話を追加しない、価格・納期・値引き表現は needs_human_review",
+        "有料 API をサーバーから呼ばない（分類・返信案は Operational Claude の scheduled job）",
+        "ops/sales-agent の prompt に inbox 手順を追加",
+        "[resume] session 消失後も inbox_pending から続きを処理できる"
+      ],
+      "required_tests": [
+        "unit: 照合ルール・dnc_candidate ルール・返信案の検証",
+        "integration: 曖昧な相手は unmatched、inbox_draft の再送で重複なし"
+      ],
+      "allowed_scope": [
+        "lib/instagram/",
+        "lib/sales/",
+        "app/api/internal/sales-agent/",
+        "supabase/migrations/（追加のみ）",
+        "ops/",
+        "tests/",
+        "docs/"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "status": "backlog",
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化",
+        "初回 cold DM の自動送信（ブラウザ自動操作・非公式 bot・Messaging API）",
+        "AI による返信の完全自動送信",
+        "Meta access token / App Secret を GitHub・ブラウザ・ログ・DB に出す"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null
+    },
+    {
+      "id": "DEV-022",
+      "title": "Admin reply inbox / human approval UX",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-021"
+      ],
+      "purpose": "/admin/sales「返信」に受信 DM・AI 分類・AI 返信案を出し、[この内容で返信][返信文を編集][後で対応] で人間が判断する（スマホ優先）",
+      "acceptance_criteria": [
+        "店舗名・受信日時・相手のメッセージ・AI 分類・AI 返信案を表示（すべて plain text、dangerouslySetInnerHTML 禁止）",
+        "未照合返信を人間が prospect に紐付け / 無関係にできる",
+        "dnc_candidate は強調し、人間が押したときだけ DNC（AI は DNC を設定・解除しない）",
+        "needs_human_review の案は確認点を表示",
+        "ページは requireAdminPage()、server action は requireAdmin()"
+      ],
+      "required_tests": [
+        "e2e: 受信→表示→編集→後で対応、未照合の紐付け、320/375px"
+      ],
+      "allowed_scope": [
+        "app/admin/",
+        "components/admin/",
+        "lib/admin/",
+        "supabase/migrations/（追加のみ）",
+        "tests/"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "status": "backlog",
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化",
+        "初回 cold DM の自動送信（ブラウザ自動操作・非公式 bot・Messaging API）",
+        "AI による返信の完全自動送信",
+        "Meta access token / App Secret を GitHub・ブラウザ・ログ・DB に出す"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null
+    },
+    {
+      "id": "DEV-023",
+      "title": "Official Send API reply / idempotency",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-022"
+      ],
+      "purpose": "人間が確定した返信だけを Meta 公式 Send API で送り、結果を記録する（docs/INSTAGRAM_MESSAGING.md §6）",
+      "acceptance_criteria": [
+        "実装前に Meta 公式ドキュメントで Send API と送信可能期間を確認し §9 に記録",
+        "[idempotency] draft id + 本文ハッシュの idempotency key で二重送信しない",
+        "[fail-closed] API 失敗時に sent にしない。結果不明は unknown として自動再送しない",
+        "明確な失敗の再試行は同じ key で安全に行える",
+        "送信可能期間外・未照合・DNC の相手には送らない（サーバーで拒否）",
+        "access token は server only。ログ・DB・ブラウザに出さない"
+      ],
+      "required_tests": [
+        "integration（Meta API は mock）: 成功で sent + message id + 時刻、失敗で sent にならない、再試行・二重タップで 1 回だけ送信、再起動後の継続"
+      ],
+      "allowed_scope": [
+        "lib/instagram/",
+        "app/admin/",
+        "supabase/migrations/（追加のみ）",
+        "tests/",
+        "docs/"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更",
+        "Production Access Token 設定（HUMAN BLOCKER）"
+      ],
+      "status": "backlog",
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化",
+        "初回 cold DM の自動送信（ブラウザ自動操作・非公式 bot・Messaging API）",
+        "AI による返信の完全自動送信",
+        "Meta access token / App Secret を GitHub・ブラウザ・ログ・DB に出す"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null
+    },
+    {
+      "id": "DEV-024",
+      "title": "Instagram integration live validation / security / E2E",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-023"
+      ],
+      "purpose": "Meta 側の人間設定後に実アカウントで受信→返信案→1タップ返信を確認し、security と E2E を総点検する",
+      "acceptance_criteria": [
+        "Meta 側の必要設定（App・permission・App Review・Webhook 登録・token）を HUMAN BLOCKER として具体的に記録",
+        "設定後の自動検証手順（購読確認・署名付きテスト event・テスト用アカウントからの受信・返信）を用意",
+        "security review Critical/High = 0",
+        "会話データの保存期間を決めて実装"
+      ],
+      "required_tests": [
+        "E2E（mock）全経路",
+        "live: テスト用アカウントでの受信・返信（人間設定後）"
+      ],
+      "allowed_scope": [
+        "全体（修正のみ）",
+        ".ai/",
+        "docs/"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更",
+        "Meta App Review 申請",
+        "Production への有効化"
+      ],
+      "status": "backlog",
+      "forbidden_scope": [
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "既存 Second Root（トップ・法務ページ・/api/contact）の挙動変更",
+        "Resend をコールド営業メールに使用",
+        "有料 API・有料サービスの追加",
+        "test の skip / 削除による green 化",
+        "初回 cold DM の自動送信（ブラウザ自動操作・非公式 bot・Messaging API）",
+        "AI による返信の完全自動送信",
+        "Meta access token / App Secret を GitHub・ブラウザ・ログ・DB に出す"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null
     }
   ]
 }

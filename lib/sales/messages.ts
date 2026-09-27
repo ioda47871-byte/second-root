@@ -53,8 +53,13 @@ export function composeFollowUpBody(input: { shopName: string; demoUrl: string }
   ].join("\n");
 }
 
+/**
+ * "Re: <initial subject>", kept within the 200-character subject limit.
+ * Mirrors the SQL in sales_mark_follow_up_sent (characters, not UTF-16 units).
+ */
 export function followUpSubject(initialSubject: string): string {
-  return initialSubject.startsWith("Re:") ? initialSubject : `Re: ${initialSubject}`;
+  if (initialSubject.startsWith("Re:")) return Array.from(initialSubject).slice(0, 200).join("");
+  return `Re: ${Array.from(initialSubject).slice(0, 196).join("")}`;
 }
 
 /**

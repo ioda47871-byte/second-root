@@ -93,6 +93,9 @@ describe("resilience acceptance criteria", () => {
     "DEV-003": ["[checkpoint]", "[idempotency]", "[fail-closed]", "[resume]"],
     "DEV-015": ["[checkpoint]", "[idempotency]", "[fail-closed]", "[resume]"],
     "DEV-016": ["[idempotency]", "[fail-closed]", "[resume]"],
+    "DEV-020": ["[idempotency]", "[fail-closed]"],
+    "DEV-021": ["[resume]"],
+    "DEV-023": ["[idempotency]", "[fail-closed]"],
   };
 
   it.each(Object.entries(REQUIRED))("%s keeps its resilience criteria", (id, tags) => {
