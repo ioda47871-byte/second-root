@@ -15,15 +15,39 @@ const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const PHONE = /(?<!\d)(?:\+?81[-.\s]?|0)\d{1,4}[-.\s(]?\d{1,4}[-.\s)]?\d{3,4}(?![\d円万])/;
 // Any URL scheme (also defanged ones like hxxps://) or any domain-like token
 // (bare domains, punycode): Instagram turns bare domains into links.
-const SCHEME = /[a-z][a-z0-9+.-]*:\/\//i;
+const SCHEME = /[a-z][a-z0-9+.-]*:\/\/|\b(?:mailto|tel|sms|javascript|data|line):/i;
 const DOMAIN = /(?:[a-z0-9-]+\.)+(?:[a-z]{2,}|xn--[a-z0-9-]+)(?![a-z0-9-])/i;
+// Internationalized domains (ドメイン.jp, 例え.テスト). Only a real dot counts
+// here: 「です。次は」 is an ordinary sentence, not a domain.
+const IDN_DOMAIN = /[\p{L}\p{N}-]+\.(?:\p{L}{2,}|xn--[a-z0-9-]+)(?![\p{L}\p{N}-])/u;
+const IPV4 = /(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])/;
+// Instagram turns @handles into profile links; LINE IDs are contact details.
+const HANDLE = /(?<![\w.@])@[a-z0-9._]{1,30}/i;
+const LINE_ID = /LINE\s*(?:ID|@)/i;
 
-/** Unicode-normalized text with every dash / full stop variant made ASCII. */
-function canonical(text: string): string {
-  return text
-    .normalize("NFKC")
-    .replace(/[\u2010-\u2015\u2212\u30fc\uff70\u301c~]/g, "-")
-    .replace(/[。｡．]/g, ".");
+/** NFKC text without invisible format characters (for wording rules). */
+function visible(text: string): string {
+  return text.replace(/[\p{Cf}\u2028\u2029]/gu, "").normalize("NFKC");
+}
+
+/**
+ * Unicode-normalized text without invisible format characters (zero-width
+ * spaces and joiners would otherwise hide `evil\u200b.com`), every dash made
+ * ASCII and, unless `keepIdeographicStop`, every full stop made ".".
+ */
+function canonical(text: string, keepIdeographicStop = false): string {
+  const s = visible(text).replace(/[\u2010-\u2015\u2212\u30fc\uff70\u301c~]/g, "-");
+  return keepIdeographicStop ? s : s.replace(/[。｡．]/g, ".");
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Removes the demo URL only where it ends cleanly (no extra path, query or `/..`). */
+function withoutDemoUrl(text: string, demoUrl: string | null): string {
+  if (!demoUrl) return text;
+  return text.replace(new RegExp(`${escapeRegExp(demoUrl)}(?![\\w\\-/?#%&=+~:@]|\\.[\\w\\-/%])`, "g"), " ");
 }
 
 const REVIEW_RULES: Array<[string, RegExp]> = [
@@ -34,7 +58,7 @@ const REVIEW_RULES: Array<[string, RegExp]> = [
 
 // Explicit refusal of future contact (MVP_SPEC §6). A plain 「今回は結構です」
 // is a decline, not this.
-const REFUSAL_ENDINGS = "(しないで|してこないで|こないで|送らないで|送ってこないで|不要|いりません|お断り|結構|控えて|お控え|ご遠慮|遠慮|やめて|迷惑)";
+const REFUSAL_ENDINGS = "(しないで|してこないで|こないで|送らないで|送ってこないで|不要|いりません|いらない|要らない|お断り|結構|控えて|お控え|ご遠慮|遠慮|やめて|迷惑)";
 const REFUSAL = [
   new RegExp(`(今後|以後|二度と|もう|こういう|このような)[^。！!？?\\n]{0,14}(連絡|DM|メッセージ|営業|案内|送信|送って|して)[^。！!？?\\n]{0,10}${REFUSAL_ENDINGS}`),
   /(?<!営業(?:時間|日)[^。！!？?\n]{0,6})(営業|勧誘|セールス)(?!時間|日)[^。！!？?\n]{0,8}(お断り|禁止|不要|迷惑|ご遠慮|遠慮|お控え)/,
@@ -45,7 +69,7 @@ const REFUSAL = [
 
 export function detectExplicitRefusal(text: string | null | undefined): boolean {
   if (!text) return false;
-  const s = text.normalize("NFKC");
+  const s = visible(text);
   // A plain 「結構です」 without contact words is a decline, not a refusal.
   return REFUSAL.some((r) => r.test(s));
 }
@@ -67,12 +91,22 @@ export function checkDraft(input: DraftInput, allowedDemoUrl: string | null, lat
   if (body.length === 0) return { ok: false, reason: "empty" };
   if (new TextEncoder().encode(body).length > MAX_DRAFT_BYTES) return { ok: false, reason: "too_long" };
   const normalized = canonical(body);
-  if (EMAIL.test(normalized) || PHONE.test(normalized)) return { ok: false, reason: "contact_details" };
+  if (EMAIL.test(normalized) || PHONE.test(normalized) || LINE_ID.test(normalized)) return { ok: false, reason: "contact_details" };
   // The shop's own demo URL is the only link allowed; anything link-like left
   // after removing it is refused.
-  const withoutDemo = allowedDemoUrl ? normalized.split(allowedDemoUrl).join(" ") : normalized;
-  if (SCHEME.test(withoutDemo) || DOMAIN.test(withoutDemo)) return { ok: false, reason: "link_not_allowed" };
-  const reviewReasons = REVIEW_RULES.filter(([, r]) => r.test(normalized)).map(([name]) => name);
+  const rest = withoutDemoUrl(normalized, allowedDemoUrl);
+  const restStrict = withoutDemoUrl(canonical(body, true), allowedDemoUrl);
+  if (
+    SCHEME.test(rest) ||
+    DOMAIN.test(rest) ||
+    IDN_DOMAIN.test(restStrict) ||
+    IPV4.test(rest) ||
+    HANDLE.test(rest) ||
+    /\/demo\//i.test(rest)
+  ) {
+    return { ok: false, reason: "link_not_allowed" };
+  }
+  const reviewReasons = REVIEW_RULES.filter(([, r]) => r.test(visible(body))).map(([name]) => name);
   const dncCandidate = input.futureContactRefused || detectExplicitRefusal(latestInbound);
   if (dncCandidate) reviewReasons.push("dnc_candidate");
   return { ok: true, body, dncCandidate, needsHumanReview: reviewReasons.length > 0, reviewReasons };

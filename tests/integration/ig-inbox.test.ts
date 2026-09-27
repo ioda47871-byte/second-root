@@ -240,6 +240,19 @@ describe("review regressions", () => {
     expect((await pending()).length).toBe(1);
   });
 
+  it("[R2-L4] a failed draft for an older message cannot reset the back-off", async () => {
+    await receive("900000000000305", "mid-x1", "スパム1", Date.now() - 10000);
+    await receive("900000000000305", "mid-x2", "スパム2", Date.now() - 5000);
+    const [item] = await pending();
+    const { rows: [old] } = await db.query("select id from public.sales_ig_messages where mid = 'mid-x1'");
+    const bad = (messageId: string) => api({ action: "inbox_draft", threadId: item.threadId, messageId, replyType: "other", body: "evil.com", futureContactRefused: false });
+    await bad(item.messageId);
+    await bad(item.messageId);
+    await bad(old.id);
+    await bad(item.messageId);
+    expect(await pending()).toEqual([]);
+  });
+
   it("[M2] keeps matching new conversations even when many unmatched ones pile up", async () => {
     for (let i = 0; i < 25; i += 1) {
       const igsid = `9000000000010${String(i).padStart(2, "0")}`;
