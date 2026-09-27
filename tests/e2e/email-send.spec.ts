@@ -59,9 +59,31 @@ test("pre-fills recipient, subject, demo URL, signature and opt-out; only 送信
   let { rows } = await db.query("select status from public.sales_outreaches where id = $1", [draft.outreachId]);
   expect(rows[0].status).toBe("drafted");
 
+  // Fallback when no mail app opens: the same text, copyable.
+  await card.getByText("メールアプリが開かない場合").click();
+  await expect(card.getByLabel("宛先")).toHaveValue(draft.email);
+  await expect(card.getByLabel("件名")).toHaveValue("ホームページのご提案");
+  await expect(card.getByLabel("本文")).toHaveValue(/E2E メール本文です。/);
+
+  // 送信済み is still offered after the tab reloads.
+  await page.reload();
+  await expect(card.getByRole("button", { name: "送信済み" })).toBeVisible();
+
   await card.getByRole("button", { name: "送信済み" }).click();
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
   ({ rows } = await db.query("select status from public.sales_outreaches where id = $1", [draft.outreachId]));
   expect(rows[0].status).toBe("sent");
   expect((await page.request.get(`/demo/${draft.token}`)).status()).toBe(200);
+});
+
+test("says why when the email cannot be composed, and offers nothing to send", async ({ page }) => {
+  const draft = await seedEmailDraft(db);
+  seeded.push(draft.prospectId);
+  // Longer than a mailto: link can safely carry once encoded.
+  await db.query("update public.sales_outreaches set body = $2 where id = $1", [draft.outreachId, "長".repeat(1500)]);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await expect(card.getByRole("alert")).toContainText("メールを作成できません");
+  await expect(card.getByRole("link", { name: "メールを作成" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "送信済み" })).toHaveCount(0);
 });
