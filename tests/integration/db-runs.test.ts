@@ -46,10 +46,27 @@ describe("run start / status", () => {
     expect(await rpc<State>("sales_run_status", { p_run_id: null })).toMatchObject({ run_id: runId });
   });
 
+  it("after today's run ends, status keeps returning it so no second run starts today", async () => {
+    const runId = randomUUID();
+    await verifiedRun(runId, { c01: candidate() });
+    await persistAll(runId, ["c01"]);
+    expect(await rpc<State>("sales_run_status", { p_run_id: null })).toMatchObject({ run_id: runId, status: "completed" });
+    // A run from yesterday (JST) no longer counts: a new run may start.
+    await db.query("update public.sales_agent_runs set started_at = now() - interval '2 days' where run_id = $1", [runId]);
+    expect(await rpc("sales_run_status", { p_run_id: null })).toBeNull();
+  });
+
+  it("a failed run today also keeps the day closed", async () => {
+    const runId = randomUUID();
+    await rpc("sales_run_start", { p_run_id: runId });
+    await rpc("sales_run_abort", { p_run_id: runId, p_error_code: "search_unavailable", p_error_summary: "x" });
+    expect(await rpc<State>("sales_run_status", { p_run_id: null })).toMatchObject({ run_id: runId, status: "failed" });
+  });
+
   it("expires a run with no checkpoint for 24h and never resumes it", async () => {
     const runId = randomUUID();
     await rpc("sales_run_start", { p_run_id: runId });
-    await db.query("update public.sales_agent_runs set checkpoint_at = now() - interval '25 hours' where run_id = $1", [runId]);
+    await db.query("update public.sales_agent_runs set started_at = now() - interval '2 days', checkpoint_at = now() - interval '25 hours' where run_id = $1", [runId]);
     expect(await rpc("sales_run_status", { p_run_id: null })).toBeNull();
     const state = await rpc<State>("sales_run_status", { p_run_id: runId });
     expect(state).toMatchObject({ status: "failed", error_code: "run_expired" });
