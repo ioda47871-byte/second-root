@@ -15,9 +15,12 @@ export default async function MeetingsPage() {
     items = await loadPipeline(await createAuthClient(), ["replied", "meeting"]);
   } catch {
     return (
-      <p className={styles.error} role="alert">
-        読み込めませんでした。時間をおいて再読み込みしてください。
-      </p>
+      <>
+        <h1 className={styles.h1}>商談</h1>
+        <p className={styles.error} role="alert">
+          読み込めませんでした。時間をおいて再読み込みしてください。
+        </p>
+      </>
     );
   }
   return (
