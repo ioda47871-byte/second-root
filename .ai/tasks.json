@@ -1067,7 +1067,7 @@
         "Protected Scope に該当する変更",
         "MVP 仕様の重大変更"
       ],
-      "status": "in_progress",
+      "status": "done",
       "forbidden_scope": [
         "main への直接 push",
         "Production data / secrets の操作",
@@ -1114,7 +1114,7 @@
         "MVP 仕様の重大変更",
         "Production Access Token 設定（HUMAN BLOCKER）"
       ],
-      "status": "backlog",
+      "status": "done",
       "forbidden_scope": [
         "main への直接 push",
         "Production data / secrets の操作",
@@ -1159,7 +1159,7 @@
         "Meta App Review 申請",
         "Production への有効化"
       ],
-      "status": "backlog",
+      "status": "in_progress",
       "forbidden_scope": [
         "main への直接 push",
         "Production data / secrets の操作",
@@ -1173,7 +1173,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null
+      "branch": "feature/dev-024-ig-launch-prep"
     }
   ]
 }
