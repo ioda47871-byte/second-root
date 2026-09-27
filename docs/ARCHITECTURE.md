@@ -81,7 +81,7 @@ tests/e2e/            Playwright
 | instagram_url, instagram_handle | handle は unique（partial） |
 | public_email | 小文字化、unique（partial）。出典必須 |
 | recommended_channel | `instagram` / `email` / null |
-| do_not_contact, dnc_reason, dnc_set_at | DNC 解除は admin のみ |
+| do_not_contact, dnc_reason, dnc_set_at | 明示的な将来連絡拒否のときだけ admin が設定（通常の decline では設定しない）。解除も admin のみ |
 | status | 営業状態（state machine） |
 | first_seen_run_id | 最初にこの店舗を登録した run（追跡用） |
 
@@ -107,7 +107,7 @@ unique(normalized_name, normalized_address) による重複防止。
 | run_id | 生成した run（追跡用）。**unique(prospect_id)**: MVP はデモ1店舗1件。再送・resume で重複しない |
 | template | `bakery_v1` / `baked_goods_v1` / `cafe_v1` |
 | content | 表示用の確認済みテキスト（jsonb、公開可能項目のみ） |
-| expires_at, disabled_at, keep_alive | 表示判定。作成時 `created_at + 30日`、初回営業 sent 時に `sent_at + 30日` へ更新 |
+| expires_at, disabled_at, keep_alive | 表示判定。作成時は `expires_at = null`（未送信）、初回営業を送信済みにした時点で `sent_at + 30日` を設定 |
 
 ### sales_outreaches（営業行為）
 | 列 | 備考 |
@@ -149,7 +149,7 @@ run の現在地を**このテーブルだけから**判断できるようにす
 | `start` | `runId` | run を `running / started` で作成 | 既存 run があれば作成せず現在の状態を返す |
 | `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は再開可能な最新 run（なければ `null`） | 読み取りのみ |
 | `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める | 同じ phase の再送は上書き保存（`persisting` 以降は拒否） |
-| `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤5)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
+| `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤10)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
 | `persist` | `runId` | `verified` checkpoint の候補を §7.4 の手順で処理し、候補ごとの stage を checkpoint に記録。全候補が終端に達したら（または試行上限で）`completed` にし `result` を保存 | 何度呼んでも同じ結果に収束（§7.3）。同じ run の `persist` 同時実行は 409 `run_busy` |
 | `abort` | `runId, errorCode, errorSummary` | `failed` にする（Operational Claude が続行不能と判断した場合） | `failed` / `completed` への再送は no-op |
 
@@ -163,7 +163,7 @@ run の現在地を**このテーブルだけから**判断できるようにす
 
 ## 6. 認証・認可
 
-- 管理画面: Supabase Auth（email + password または magic link、DEV-008 で決定）。
+- 管理画面: Supabase Auth の **email + password**（MVP で固定。magic link は使わない）。
 - 管理者判定: DB 上の allowlist（例: `sales_admins(user_id)` に1行）と RLS policy で行う。**「認証済みユーザー全員 = admin」にしない**。
 - service role key は server only（`import "server-only"`）。ブラウザ・Operational Claude に渡さない。
 - 公開デモは service role で必要列のみ select し、公開可能な値だけ props に渡す。
@@ -204,7 +204,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 |---|---|---|
 | run 開始 | run_id, started_at | `start` |
 | 候補探索完了 (`discovered`) | 候補 stub（key・店名・区・業種・公式サイト/Instagram URL）≤20 件 | `checkpoint` |
-| 検証完了 (`verified`) | 検証済み候補 ≤5 件（website_status と再確認記録、第一者 email と出典、出典付き事実、推奨チャネル、営業文案） | `checkpoint` |
+| 検証完了 (`verified`) | 検証済み候補 ≤10 件（website_status と再確認記録、第一者 email と出典、出典付き事実、推奨チャネル、営業文案） | `checkpoint` |
 | dedupe/DNC 確認 → 永続化 → demo 準備 → outreach 準備 | 候補ごとの stage・prospectId・reason / error_code | `persist`（候補ごとに更新） |
 | run 完了 | 最終 result（件数と候補ごとの結果） | `persist` |
 
@@ -253,7 +253,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | dedupe（name+住所 / domain / Instagram / email） | 照合クエリ失敗 | `error(dedupe_unavailable)`。営業準備しない |
 | DNC | 照合クエリ失敗 | `error(dnc_unavailable)`。営業準備しない |
 | DNC 該当 | — | `rejected(do_not_contact)` |
-| 当日上限（5件/日, JST） | 新規 prospect 数が上限 | `rejected(daily_cap)` |
+| 当日上限（5件/日, JST） | 当日すでに新規 actionable になった prospect 数が上限 | `rejected(daily_cap)`。verified 候補が最大10件でも、新規 actionable は当日の残り枠（最大5件）まで |
 | website 確認 | 確認失敗は `unknown` として届く | `unknown` は Instagram 不可。第一者 email がなければ `rejected(no_eligible_channel)` |
 | `not_found` の再確認記録 | 記録なし | `rejected(website_not_rechecked)` |
 | 第一者 email 出典 | 出典なし / 第一者でない | Email 不可（Instagram 条件も満たさなければ `rejected(no_eligible_channel)`） |

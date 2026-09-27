@@ -5,11 +5,9 @@
 
 ## 現在地
 
-- 現在の Task: **BOOT-001**（PR #8 open・未 merge）への耐障害性補強（checkpoint / resume / run_id 冪等性 / fail-closed の設計反映）
-- 作業 branch: `claude/sales-agent-bootstrap-6e2zge`（base: `main` @ a926acf）
-- 補強の進捗: docs 反映 → tasks.json 受入条件・guard test → Fresh Review PASS（指摘反映済み, .ai/reviews/BOOT-001-resilience.md）→ CI 確認
-- 次の一手: 補強が CI green + Fresh Review PASS になったら停止し、人間が PR #8 を merge → `develop` 作成（HUMAN-001）
-- DEV-001 以降は HUMAN-001 解除まで開始しない
+- 人間が 2026-09-27 に「PR #8 最終修正 → CI/レビュー PASS なら Claude が main へ merge → develop 作成 → DEV-001〜DEV-019 を自律継続（Production release のみ人間承認）」を承認。
+- 現在: PR #8 最終仕様整合（decline と DNC の分離 / Admin Auth = email+password 固定 / verified ≤10・新規 actionable ≤5 / デモ expires_at は送信済み時に設定）
+- 次の一手: CI + Fresh Review → PR #8 merge → develop 作成 → DEV-001
 
 ## BOOT-001 チェックポイント
 
@@ -37,3 +35,4 @@
 - 2026-09-24: Fresh Review PASS。Medium 3件・Low 3件を反映。BOOT-001 を done に更新。
 - 2026-09-27: 耐障害性補強を開始。ARCHITECTURE §5/§7（action 設計・phase/stage・nextAction・多重重複防止・候補単位 transaction）、MVP_SPEC §3.6/§10、AI_WORKFLOW §9、SECURITY §3.1、RELEASE §6 を更新。DEV-001/002/003/015/016 に [checkpoint]/[resume]/[idempotency]/[fail-closed] 受入条件を追加し、tests/unit/ai-tasks.test.ts で存在を検査。
 - 2026-09-27: 耐障害性補強の Fresh Review PASS（Critical/High 0）。Medium 3 / Low 3 を反映（checkpoint を同一 transaction で確定、persist の run 単位直列化、3 回で partial_errors 確定、dedupe→DNC→上限の順、期限切れ run の failed 確定、候補 key 定義）。
+- 2026-09-27: PR #8 最終仕様整合（上記4点）を反映。

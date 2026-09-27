@@ -128,7 +128,7 @@ Production data / Production secrets / main 直接 push / Production release / D
      → なければ新しい UUID を runId にして action=start
 2. nextAction=discover : Web 検索で候補を探す → action=checkpoint phase=discovered（stub ≤20）
 3. nextAction=verify   : discovered の stub だけを対象に公式サイト再確認・第一者 email・出典を確認
-                         → action=checkpoint phase=verified（≤5）
+                         → action=checkpoint phase=verified（≤10。新規営業準備はサーバーが最大5件に絞る）
 4. nextAction=persist  : action=persist（候補は送らない。サーバーが verified checkpoint を処理）
                          → 候補に error があれば persist を再度呼ぶ（3 回目でサーバーが run を確定する）
                          → 409 run_busy は別の persist が実行中。少し待って status から確認する

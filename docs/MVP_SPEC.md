@@ -35,7 +35,8 @@ Second Root の営業を、人間ができるだけ考えず、少ないクリ�
 |---|---|---|
 | 新規営業候補 | **最大5件/日**（Asia/Tokyo 基準の日付） | 条件を満たす候補が5件未満なら増やさない |
 | 今日の作業キュー | **原則最大5アクション** | 5日後フォローメールは新規より優先して5枠に含める |
-| ingest 1 run あたりの候補数（batch上限） | **5件** | 超過分は保存せず拒否 |
+| ingest 1 run あたりの検証済み候補数（batch上限） | **10件** | Operational Claude が提出できる `verified` 候補の上限。超過した要求は全体を拒否 |
+| 1 run で新規に営業準備完了（actionable）になる店舗 | **当日の残り枠まで（最大5件）** | サーバーが duplicate / DNC / eligibility / 当日上限を判定した結果。条件を緩めて5件を埋めない |
 
 ### 3.2 チャネル決定（初回営業は1店舗につき1チャネルのみ）
 
@@ -122,12 +123,13 @@ drafted → sent → replied(interested|question|meeting_request|decline|other)
 - 状態は prospect の初回営業（`kind=initial` の outreach）で管理する。フォローメールは状態ではなく、別の outreach 行（`kind=follow_up`）として記録する（§4.3）。フォロー後の返信も初回営業の状態を `replied` に進める。
 
 - `won` のみ成約金額（円・正の整数）必須。
-- `decline` または営業不要の意思表示 → `do_not_contact = true`。
+- `decline`（「今回は不要」「興味なし」等）だけでは `do_not_contact` にしない。この店舗への営業はそこで終了し（別チャネルで追撃しない・フォローしない）、将来の再営業の可能性は残す。
+- 「今後連絡不要」「もう営業連絡しないでほしい」等、**将来の連絡を明示的に拒否**された場合だけ、管理者が返信記録時に「今後の連絡を拒否された（DNC）」を選び `do_not_contact = true` にする（§6）。
 - 状態遷移はサーバー側の state machine で検証し、不正遷移は拒否する。
 
 ## 6. Do Not Contact (DNC)
 
-- 営業不要の意思表示があれば `do_not_contact = true`。
+- 将来の営業連絡を**明示的に拒否**された場合だけ `do_not_contact = true`（通常の decline では設定しない。§5）。設定は管理者のみ。
 - 以後 Email / Follow-up / Instagram 候補すべてから除外。ingest で同一店舗が来ても候補化しない。
 - **DNC 解除は人間管理者のみ。** Operational Claude の ingest API には DNC を変更する手段を持たせない。
 
@@ -141,9 +143,10 @@ drafted → sent → replied(interested|question|meeting_request|decline|other)
 - 表示できるのは**確認済みの公開情報のみ**。架空の営業時間・商品・価格・沿革・店主ストーリー・人気商品・受賞歴等は禁止。不明なら省略。
 - Instagram 画像等を無断転載しない。Second Root 側のテンプレート素材と確認済みテキストのみ。
 - 公開期間: 原則初回営業から30日。
-  - デモ作成時（ingest 時・未送信）は仮の `expires_at = 作成日時 + 30日`（送信前に人間が内容確認できるように）。
-  - 初回営業を「送信済み」にした時点で `expires_at = sent_at + 30日` に更新する。
-  - アクセス時に `expires_at` / `disabled_at` / `keep_alive` で判定（row 削除は不要）。
+  - デモ作成時（ingest 時・未送信）は `expires_at = null`。未送信デモは token を知る管理者が確認できる（token は推測不能で、送信前は店舗側に渡っていない）。
+  - 初回営業を人間が「送信済み」にした時点で `expires_at = sent_at + 30日` を設定する。
+  - 表示条件: `disabled_at` が null かつ（`expires_at` が null ／ `keep_alive` ／ 現在 < `expires_at`）。それ以外は 404。
+  - row 削除は不要。
 - 公開 demo に絶対出さない: 営業内部メモ / メールアドレス / Claude 内部評価 / 成約金額 / outcome / internal ID / secret。
 
 ## 8. 管理画面 `/admin/sales`

@@ -131,7 +131,7 @@
         "dedupe 判定",
         "channel eligibility（unknown の Instagram 除外、email provenance 必須）",
         "DNC 除外",
-        "日次上限5 / 作業キュー5（フォロー優先）/ batch 上限5",
+        "新規 actionable 日次上限5 / 作業キュー5（フォロー優先）/ verified batch 上限10",
         "outreach state machine と不正遷移拒否（won は金額必須）",
         "URL validation（危険 scheme 拒否、Instagram host 検証）",
         "mailto / DM 文面生成（署名・営業不要なら返信で伝えられる旨）",
@@ -206,7 +206,8 @@
         "[fail-closed] phase 飛び越しは 409 phase_order_violation。dedupe/DNC/永続化の失敗は error stage とし outreach_ready にしない",
         "[checkpoint] 意味のある工程境界（start / discovered / verified / 候補ごとの persist 結果 / completed）でのみ checkpoint を確定",
         "[resume] 自 run が作った prospect（first_seen_run_id と候補 key が一致）は duplicate ではなく既存結果を返す。未知の候補 key は拒否",
-        "[fail-closed] persist 3 回後も error が残る run は completed（error_code partial_errors）で確定し、該当候補は営業準備しない。24h 超の running は参照時に failed（run_expired）へ確定"
+        "[fail-closed] persist 3 回後も error が残る run は completed（error_code partial_errors）で確定し、該当候補は営業準備しない。24h 超の running は参照時に failed（run_expired）へ確定",
+        "verified 候補は最大10件まで受け付け、新規 actionable は当日残り枠（最大5件）までに絞る。条件を緩めて枠を埋めない"
       ],
       "required_tests": [
         "integration: ingest API",
@@ -262,7 +263,7 @@
         "期限切れ/無効は 404",
         "提案用デモであり公式サイトではない旨の明記",
         "公開禁止項目を props に渡さない",
-        "expires_at: 作成時 created_at + 30日、初回営業 sent 時に sent_at + 30日 へ更新（MVP_SPEC §7）"
+        "expires_at: 作成時 null（未送信・token 保持者のみ閲覧可）、初回営業 sent 時に sent_at + 30日 を設定（MVP_SPEC §7）"
       ],
       "required_tests": [
         "unit: demo expiry",
@@ -413,7 +414,8 @@
         "未ログインはログインへ",
         "allowlist 外のユーザーは拒否",
         "service role を browser に渡さない",
-        "モバイルファースト"
+        "モバイルファースト",
+        "認証方式は Supabase Auth の email + password に固定（magic link は実装しない）"
       ],
       "required_tests": [
         "e2e: admin login",
@@ -568,7 +570,7 @@
       "purpose": "返信あり → 分類 → meeting → won/lost",
       "acceptance_criteria": [
         "won は金額必須",
-        "decline で DNC",
+        "decline だけでは DNC にしない。明示的な将来連絡拒否を管理者が選んだ場合のみ DNC",
         "不正遷移はサーバーで拒否"
       ],
       "required_tests": [
