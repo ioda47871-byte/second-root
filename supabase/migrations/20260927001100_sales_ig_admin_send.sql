@@ -200,6 +200,9 @@ begin
       values (d.id, key, d.body, 'sending') returning * into s;
   else
     -- A clear failure before: retry with the same key.
+    if s.attempts >= 10 then
+      raise exception 'too_many_attempts' using errcode = 'P0001';
+    end if;
     update public.sales_ig_sends set status = 'sending', attempts = attempts + 1, error_code = null
       where id = s.id returning * into s;
   end if;
@@ -249,7 +252,10 @@ begin
   select * into d from public.sales_ig_drafts where id = s.draft_id for update;
   -- The draft follows this send unless another send of it is open (a draft
   -- has at most one open send: begin_send only starts one from an idle draft).
-  follow := d.status in ('sending', 'unknown', 'failed') and not exists (
+  -- Meta contradicting the human's "not sent": the draft is answered even if
+  -- it was edited since (pending / snoozed), so it is not offered again.
+  follow := (d.status in ('sending', 'unknown', 'failed')
+             or (s.status = 'failed' and d.status in ('pending', 'snoozed'))) and not exists (
     select 1 from public.sales_ig_sends x where x.draft_id = d.id and x.id <> s.id and x.status in ('sending', 'unknown')
   );
 

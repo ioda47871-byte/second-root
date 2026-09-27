@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as webhook } from "@/app/api/webhooks/instagram/route";
+import { loadInbox } from "@/lib/admin/inbox";
 import { sendApprovedReply } from "@/lib/instagram/reply";
 import { candidate, createUser, db, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
 
@@ -283,5 +284,43 @@ describe("review regressions", () => {
     expect(late.data).toMatchObject({ replayed: true, status: "sending" });
     await admin.rpc("sales_ig_finish_send", { p_send_id: first.send_id, p_attempt: 2, p_outcome: "sent", p_meta_message_id: "m_attempt2", p_error_code: null });
     expect(await state(c.draftId)).toMatchObject({ draft: "sent", sends: [{ status: "sent", attempts: 2, meta_message_id: "m_attempt2" }] });
+  });
+
+  it("[R3-M1] an older failed draft does not linger once the conversation was answered", async () => {
+    const c = await conversation("900000000000707");
+    replies = [{ status: 400, body: { error: { code: 100 } } }];
+    await sendApprovedReply(admin, c.draftId);
+    await receive("900000000000707", "mid-900000000000707-b", "もう一つ");
+    const { rows: [m2] } = await db.query("select id from public.sales_ig_messages where mid = 'mid-900000000000707-b'");
+    const d2 = await rpc<{ draft_id: string }>("sales_ig_save_draft", {
+      p_thread_id: c.threadId, p_message_id: m2.id, p_reply_type: "question", p_body: "承知しました。", p_dnc_candidate: false, p_needs_review: false, p_review_reasons: [],
+    });
+    let [item] = (await loadInbox(admin)).filter((i) => i.threadId === c.threadId);
+    expect(item).toMatchObject({ draftId: d2.draft_id, stale: false, needsAction: true });
+    expect(await sendApprovedReply(admin, d2.draft_id)).toEqual({ kind: "sent" });
+    [item] = (await loadInbox(admin)).filter((i) => i.threadId === c.threadId);
+    expect(item).toMatchObject({ draftId: null, needsAction: false });
+  });
+
+  it("[R3-M2] Meta's late 'sent' overrides the human's 'not sent' and retires the edited draft", async () => {
+    const c = await conversation("900000000000708");
+    const begun = (await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId })).data as { send_id: string; attempt: number };
+    await db.query(`begin; set local session_replication_role = replica; update public.sales_ig_sends set updated_at = now() - interval '3 minutes' where id = '${begun.send_id}'; commit;`);
+    await sendApprovedReply(admin, c.draftId);
+    await admin.rpc("sales_ig_resolve_unknown", { p_send_id: begun.send_id, p_was_sent: false });
+    await admin.rpc("sales_ig_update_draft", { p_draft_id: c.draftId, p_body: "別の文面です。", p_needs_review: false, p_review_reasons: [] });
+    await admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_attempt: 1, p_outcome: "sent", p_meta_message_id: "m_really", p_error_code: null });
+    expect((await state(c.draftId)).draft).toBe("sent");
+    expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "refused", code: "not_sendable" });
+    expect(sendCalls).toHaveLength(0);
+  });
+
+  it("[R3-L] stops after 10 attempts of the same text with a clear reason", async () => {
+    const c = await conversation("900000000000709");
+    await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId });
+    await db.query("update public.sales_ig_sends set status = 'failed', attempts = 10, error_code = 'meta_100' where draft_id = $1", [c.draftId]);
+    await db.query("update public.sales_ig_drafts set status = 'failed' where id = $1", [c.draftId]);
+    expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "refused", code: "too_many_attempts" });
+    expect(sendCalls).toHaveLength(0);
   });
 });
