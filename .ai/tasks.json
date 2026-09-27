@@ -539,7 +539,7 @@
     {
       "id": "DEV-011",
       "title": "Email mailto UX",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-009",
@@ -575,7 +575,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-011-email-mailto"
     },
     {
       "id": "DEV-012",
