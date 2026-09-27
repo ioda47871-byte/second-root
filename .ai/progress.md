@@ -5,9 +5,10 @@
 
 ## 現在地
 
-- 人間が 2026-09-27 に「PR #8 最終修正 → CI/レビュー PASS なら Claude が main へ merge → develop 作成 → DEV-001〜DEV-019 を自律継続（Production release のみ人間承認）」を承認。
-- 現在: PR #8 最終仕様整合（decline と DNC の分離 / Admin Auth = email+password 固定 / verified ≤10・新規 actionable ≤5 / デモ expires_at は送信済み時に設定）
-- 次の一手: CI + Fresh Review → PR #8 merge → develop 作成 → DEV-001
+- BOOT-001 完了: PR #8 を main へ merge（32de89a、2026-09-27 人間承認）。`develop` を main から作成。
+- 現在の Task: **DEV-001**（Supabase migrations / RLS）— branch `feature/dev-001-supabase-schema`
+- 次: DEV-002（domain rules）→ DEV-003 …（`.ai/tasks.json` の依存順）
+- 自律実行ルール: feature → develop は CI green + Fresh Review Critical/High 0 で Claude が merge。develop → main（Production release）は人間承認。
 
 ## BOOT-001 チェックポイント
 
@@ -37,3 +38,4 @@
 - 2026-09-27: 耐障害性補強の Fresh Review PASS（Critical/High 0）。Medium 3 / Low 3 を反映（checkpoint を同一 transaction で確定、persist の run 単位直列化、3 回で partial_errors 確定、dedupe→DNC→上限の順、期限切れ run の failed 確定、候補 key 定義）。
 - 2026-09-27: PR #8 最終仕様整合（上記4点）を反映。
 - 2026-09-27: CI build が Google Fonts（next-font-loader）の外部要因で再発。CI の build を「next-font-loader エラー時のみ1回再試行」に変更（他のエラーは即失敗）。Vercel 側でも起こりうるため known issue として記録。
+- 2026-09-27: PR #8 merge（32de89a）、develop 作成。DEV-001 開始。
