@@ -23,7 +23,7 @@ test("redirects to login when signed out, with noindex headers", async ({ page }
 
 test("rejects a wrong password without saying which part was wrong", async ({ page }) => {
   await login(page, ADMIN.email, "wrong-password-000000");
-  await expect(page.getByRole("alert")).toHaveText("メールアドレスまたはパスワードが正しくありません。");
+  await expect(page.locator("form").getByRole("alert")).toHaveText("メールアドレスまたはパスワードが正しくありません。");
   await expect(page).toHaveURL(/\/admin\/login$/);
 });
 
