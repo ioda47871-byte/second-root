@@ -54,3 +54,6 @@
 - 2026-09-27: DEV-005 merge（PR #14, b78bb14）。
 - 2026-09-27: DEV-009 review round 1 FAIL（フォロー取りこぼし）→ view sales_followup_due で修正。運用ルール: レビュー実行中は共有ローカル DB を reset しない。
 - 2026-09-27: DEV-009 merge（PR #15, 8d4f633）。
+- 2026-09-27: DEV-006 merge（PR #16, c9c4a70）。
+- 2026-09-27: DEV-010 review PASS（Medium: iOS で await 後の window.open がブロックされうる → タップ内で同期実行 + フォールバックリンク）。merge（PR #17, a04c440）。
+- 2026-09-27: DEV-007 PR #18 review PASS（Medium 3: 長い説明文の横はみ出し・重複 key・全テンプレ e2e）→ 修正 push、CI 待ち。

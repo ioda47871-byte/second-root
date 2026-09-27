@@ -341,7 +341,7 @@
     {
       "id": "DEV-006",
       "title": "baked-goods template",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-004"
@@ -381,7 +381,7 @@
     {
       "id": "DEV-007",
       "title": "cafe template",
-      "status": "backlog",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-004"
@@ -415,7 +415,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-007-cafe-template"
     },
     {
       "id": "DEV-008",
@@ -510,7 +511,7 @@
     {
       "id": "DEV-010",
       "title": "Instagram send UX",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-009",
@@ -556,7 +557,7 @@
     {
       "id": "DEV-011",
       "title": "Email mailto UX",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-009",
@@ -596,7 +597,8 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null
+      "last_failure": null,
+      "branch": "feature/dev-011-email-mailto"
     },
     {
       "id": "DEV-012",
