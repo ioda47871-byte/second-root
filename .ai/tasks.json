@@ -158,7 +158,8 @@
         "unit: DM generation",
         "unit: URL validation",
         "unit: run phase 遷移 / nextAction",
-        "unit: candidate stage と fail-closed 判定"
+        "unit: candidate stage と fail-closed 判定",
+        "unit: verified 10 件が checkpoint 64KB 以内に収まる"
       ],
       "allowed_scope": [
         "lib/sales/",
@@ -263,7 +264,7 @@
         "期限切れ/無効は 404",
         "提案用デモであり公式サイトではない旨の明記",
         "公開禁止項目を props に渡さない",
-        "expires_at: 作成時 null（未送信・token 保持者のみ閲覧可）、初回営業 sent 時に sent_at + 30日 を設定（MVP_SPEC §7）"
+        "expires_at: 作成時 null（公開 URL では 404、ログイン管理者のプレビューのみ）、初回営業 sent 時に sent_at + 30日 を設定し公開（MVP_SPEC §7）"
       ],
       "required_tests": [
         "unit: demo expiry",
@@ -575,7 +576,8 @@
       ],
       "required_tests": [
         "unit: state machine",
-        "e2e: reply → meeting → won/lost"
+        "e2e: reply → meeting → won/lost",
+        "unit/e2e: decline では DNC にならず、管理者が明示的拒否を選んだ場合のみ DNC（デモも disabled）"
       ],
       "allowed_scope": [
         "app/admin/",

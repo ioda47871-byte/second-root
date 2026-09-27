@@ -107,7 +107,7 @@ unique(normalized_name, normalized_address) による重複防止。
 | run_id | 生成した run（追跡用）。**unique(prospect_id)**: MVP はデモ1店舗1件。再送・resume で重複しない |
 | template | `bakery_v1` / `baked_goods_v1` / `cafe_v1` |
 | content | 表示用の確認済みテキスト（jsonb、公開可能項目のみ） |
-| expires_at, disabled_at, keep_alive | 表示判定。作成時は `expires_at = null`（未送信）、初回営業を送信済みにした時点で `sent_at + 30日` を設定 |
+| expires_at, disabled_at, keep_alive | 表示判定。作成時は `expires_at = null`（未送信: 公開 URL では 404、管理者プレビューのみ）、初回営業を送信済みにした時点で `sent_at + 30日` を設定。DNC 設定時は `disabled_at` を設定 |
 
 ### sales_outreaches（営業行為）
 | 列 | 備考 |
@@ -149,7 +149,7 @@ run の現在地を**このテーブルだけから**判断できるようにす
 | `start` | `runId` | run を `running / started` で作成 | 既存 run があれば作成せず現在の状態を返す |
 | `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は再開可能な最新 run（なければ `null`） | 読み取りのみ |
 | `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める | 同じ phase の再送は上書き保存（`persisting` 以降は拒否） |
-| `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤10)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
+| `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤10。超過は 400 で全体拒否)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
 | `persist` | `runId` | `verified` checkpoint の候補を §7.4 の手順で処理し、候補ごとの stage を checkpoint に記録。全候補が終端に達したら（または試行上限で）`completed` にし `result` を保存 | 何度呼んでも同じ結果に収束（§7.3）。同じ run の `persist` 同時実行は 409 `run_busy` |
 | `abort` | `runId, errorCode, errorSummary` | `failed` にする（Operational Claude が続行不能と判断した場合） | `failed` / `completed` への再送は no-op |
 
@@ -253,7 +253,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | dedupe（name+住所 / domain / Instagram / email） | 照合クエリ失敗 | `error(dedupe_unavailable)`。営業準備しない |
 | DNC | 照合クエリ失敗 | `error(dnc_unavailable)`。営業準備しない |
 | DNC 該当 | — | `rejected(do_not_contact)` |
-| 当日上限（5件/日, JST） | 当日すでに新規 actionable になった prospect 数が上限 | `rejected(daily_cap)`。verified 候補が最大10件でも、新規 actionable は当日の残り枠（最大5件）まで |
+| 当日上限（5件/日, JST） | 当日すでに新規 actionable になった prospect 数が上限 | `rejected(daily_cap)`。「新規 actionable」= 当日（JST）に初回営業の下書き（outreach_ready）が作られた prospect（全 run 合計）。verified 候補が最大10件でも当日の残り枠（最大5件）までで、枠は verified の提出順に割り当てる |
 | website 確認 | 確認失敗は `unknown` として届く | `unknown` は Instagram 不可。第一者 email がなければ `rejected(no_eligible_channel)` |
 | `not_found` の再確認記録 | 記録なし | `rejected(website_not_rechecked)` |
 | 第一者 email 出典 | 出典なし / 第一者でない | Email 不可（Instagram 条件も満たさなければ `rejected(no_eligible_channel)`） |

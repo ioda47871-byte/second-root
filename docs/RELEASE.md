@@ -4,7 +4,7 @@
 
 | Branch | デプロイ先 | merge 権限 |
 |---|---|---|
-| `main` | Vercel Production（secondroot.jp） | 人間のみ |
+| `main` | Vercel Production（secondroot.jp） | 人間のみ（例外: BOOT-001 の PR #8 のみ、2026-09-27 の人間承認に基づき Claude が merge 可。AI_WORKFLOW §4） |
 | `develop` | Vercel Preview（staging 用 env） | Claude（条件付き自律 merge） |
 | `feature/*` | Vercel Preview | — |
 

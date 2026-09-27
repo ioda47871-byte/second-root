@@ -65,7 +65,8 @@ feature → develop の自律 merge 条件（すべて満たすこと）:
 
 develop → main は人間承認必須。
 
-> BOOT-001 は例外として main 向け PR（人間が merge）。merge 後に人間が `develop` を作成する。
+> BOOT-001 は例外として main 向け PR。**2026-09-27 に人間が明示承認**: PR #8 は「必須 CI green + Fresh Review Critical/High = 0」を満たせば Claude が main へ merge し、merge 後の main から Claude が `develop` を作成してよい（この1回限りの例外）。
+> 以後の develop → main（Production release）は従来どおり人間承認必須。
 
 ## 5. 耐障害性ルール（Claude container は作業場所であり正本ではない）
 
