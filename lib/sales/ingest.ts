@@ -120,11 +120,16 @@ async function persist(db: SupabaseClient, runId: string): Promise<IngestResult>
     if (error) {
       const code = errorCode(error.message);
       if (code === "lease_lost" || code === "phase_order_violation") break;
-      await call(db, "sales_run_mark_candidate_error", {
-        p_run_id: runId,
-        p_key: key,
-        p_error_code: CANDIDATE_ERROR_CODES.has(code) ? code : "persist_failed",
-      });
+      try {
+        await call(db, "sales_run_mark_candidate_error", {
+          p_run_id: runId,
+          p_key: key,
+          p_error_code: CANDIDATE_ERROR_CODES.has(code) ? code : "persist_failed",
+        });
+      } catch {
+        // Could not record the error: stop and let finalize release the lease.
+        break;
+      }
       continue;
     }
     // The run stopped (expired / aborted) while persisting: stop the loop.

@@ -34,6 +34,17 @@ describe("ingest request schema", () => {
   });
 });
 
+function withFact(extra: { field: "description" | "access" | "hours"; value: string; verifiedAt?: string }) {
+  const base = verifiedInput();
+  return {
+    ...base,
+    facts: [
+      ...base.facts,
+      { field: extra.field, value: extra.value, sourceUrl: "https://www.instagram.com/x/", sourceType: "instagram_profile" as const, verifiedAt: extra.verifiedAt ?? "2026-09-27T00:00:00Z" },
+    ],
+  };
+}
+
 describe("prepareCandidate", () => {
   it("prepares an Instagram candidate for a shop without a site", () => {
     const result = prepareCandidate(verifiedInput());
@@ -69,9 +80,39 @@ describe("prepareCandidate", () => {
     ["invalid Instagram", verifiedInput({ instagramUrl: "https://www.instagram.com/p/abc/" }), "invalid_instagram"],
     ["missing name source", verifiedInput({ facts: [] }), "missing_source"],
     ["link in the message", verifiedInput({ message: { subject: null, body: "こちら https://evil.example.com をご覧ください" } }), "message_contains_url"],
-    ["raw HTML in a fact", verifiedInput({ facts: [...verifiedInput().facts, { field: "description", value: "<img src=x onerror=alert(1)>", sourceUrl: "https://pan.example.com/", sourceType: "official_site", verifiedAt: "2026-09-27T00:00:00Z" }] }), "unsafe_content"],
+    ["raw HTML in a fact", withFact({ field: "description", value: "<img src=x onerror=alert(1)>" }), "unsafe_content"],
+    ["a shown name that differs from its source", { ...verifiedInput(), name: "世界一受賞の名店" }, "unsourced_name_or_address"],
+    ["a shown address that differs from its source", { ...verifiedInput(), address: "愛知県名古屋市中区栄99丁目9番9号" }, "unsourced_name_or_address"],
+    ["a bare domain in the message", verifiedInput({ message: { subject: null, body: "evil.example.com/x をご覧ください" } }), "message_contains_url"],
+    ["a full-width URL in the message", verifiedInput({ message: { subject: null, body: "ｈｔｔｐｓ：／／evil.example.com" } }), "message_contains_url"],
   ])("rejects %s", (_label, input, reason) => {
     expect(prepareCandidate(input)).toEqual({ stage: "rejected", reason });
+  });
+
+  it("drops facts containing an email address or a link so they never reach the demo", () => {
+    const result = prepareCandidate(withFact({ field: "description", value: "ご予約は owner.private@gmail.com まで" }));
+    expect(result.stage).toBe("pending");
+    if (result.stage !== "pending") return;
+    expect(JSON.stringify(result.candidate.demo)).not.toMatch(/@|gmail/);
+    expect(result.candidate.sources.some((s) => s.value.includes("gmail"))).toBe(false);
+    const link = prepareCandidate(withFact({ field: "access", value: "地図は maps.example.com/abc" }));
+    expect(link.stage === "pending" && JSON.stringify(link.candidate.demo).includes("maps.example.com")).toBe(false);
+  });
+
+  it("drops facts dated in the future", () => {
+    const result = prepareCandidate(withFact({ field: "hours", value: "9:00〜18:00", verifiedAt: "2099-01-01T00:00:00Z" }));
+    expect(result.stage === "pending" && result.candidate.demo.content.hours).toBe("8:00〜17:00");
+  });
+
+  it("uses the email only when an official page is on the shop's own site", () => {
+    const blog = verifiedEmailInput({ email: { address: "info@pan.example.com", sourceUrl: "https://random-blog.example.org/post", sourceType: "official_site" } });
+    expect(prepareCandidate(blog)).toEqual({ stage: "rejected", reason: "site_without_email" });
+    const noSite = verifiedInput({ email: { address: "info@pan.example.com", sourceUrl: "https://pan.example.com/contact", sourceType: "official_contact" } });
+    const r = prepareCandidate(noSite);
+    expect(r.stage === "pending" && r.candidate.channel).toBe("instagram");
+    const profile = verifiedInput({ email: { address: "info@pan.example.com", sourceUrl: "https://lit.link/pan", sourceType: "official_profile" } });
+    const p = prepareCandidate(profile);
+    expect(p.stage === "pending" && p.candidate.channel).toBe("email");
   });
 
   it("never guesses or keeps a third-party email", () => {

@@ -151,10 +151,10 @@ describe("run lifecycle through the API", () => {
   it("marks duplicates and DNC shops without new outreach", async () => {
     const shop = verifiedEmailInput();
     await fullRun([shop]);
-    const { run: dup } = await fullRun([{ ...verifiedEmailInput(), email: shop.email }]);
+    const { run: dup } = await fullRun([{ ...verifiedEmailInput(), website: shop.website, email: shop.email }]);
     expect(dup.candidates[0].stage).toBe("duplicate");
     await db.query("update public.sales_prospects set do_not_contact = true, dnc_reason = 'explicit_refusal', dnc_set_at = now()");
-    const { run: dnc } = await fullRun([{ ...verifiedEmailInput(), email: shop.email }]);
+    const { run: dnc } = await fullRun([{ ...verifiedEmailInput(), website: shop.website, email: shop.email }]);
     expect(dnc.candidates[0]).toMatchObject({ stage: "rejected", reason: "do_not_contact" });
     expect(await count("sales_outreaches")).toBe(1);
   });
@@ -165,6 +165,10 @@ describe("run lifecycle through the API", () => {
     const stages = run.candidates.map((c: { stage: string }) => c.stage);
     expect(stages.filter((s: string) => s === "outreach_ready")).toHaveLength(5);
     expect(stages.slice(5)).toEqual(Array(5).fill("rejected"));
+    expect(run.candidates.slice(5).map((c: { reason: string }) => c.reason)).toEqual(Array(5).fill("daily_cap"));
+    // A later run the same day gets no new slots.
+    const { run: later } = await fullRun([verifiedInput()]);
+    expect(later.candidates[0]).toMatchObject({ stage: "rejected", reason: "daily_cap" });
     expect(await count("sales_outreaches")).toBe(5);
   });
 
@@ -178,6 +182,18 @@ describe("run lifecycle through the API", () => {
     const expired = await call({ action: "checkpoint", runId, phase: "discovered", candidates: [] });
     expect(expired.status).toBe(409);
     expect((await expired.json()).run).toMatchObject({ status: "failed", errorCode: "run_expired", nextAction: "start_new_run" });
+  });
+
+  it("serialises concurrent persist calls (run_busy)", async () => {
+    const shop = verifiedInput();
+    const runId = randomUUID();
+    await ok({ action: "start", runId });
+    await ok({ action: "checkpoint", runId, phase: "discovered", candidates: [{ key: shop.key, name: shop.name, category: "bakery" }] });
+    await ok({ action: "checkpoint", runId, phase: "verified", candidates: [shop] });
+    await db.query("update public.sales_agent_runs set phase = 'persisting', persist_attempts = 1, persist_lease_until = now() + interval '60 seconds' where run_id = $1", [runId]);
+    const busy = await call({ action: "persist", runId });
+    expect(busy.status).toBe(409);
+    expect(await busy.json()).toEqual({ error: "run_busy" });
   });
 
   it("returns 404 for an unknown run and 409 for a failed run", async () => {

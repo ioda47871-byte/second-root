@@ -34,6 +34,25 @@ function authorize(req: NextRequest): "ok" | "unconfigured" | "denied" {
   return timingSafeEqual(digest(match[1]), digest(expected)) ? "ok" : "denied";
 }
 
+/** Reads the body but stops as soon as it exceeds the limit. */
+async function readLimited(req: NextRequest, limit: number): Promise<string | null> {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 export async function POST(req: NextRequest) {
   const auth = authorize(req);
   if (auth === "unconfigured") return json(503, { error: "ingest_disabled" });
@@ -41,8 +60,8 @@ export async function POST(req: NextRequest) {
 
   const declared = Number(req.headers.get("content-length") ?? "0");
   if (declared > MAX_BODY_BYTES) return json(413, { error: "payload_too_large" });
-  const raw = await req.text();
-  if (Buffer.byteLength(raw) > MAX_BODY_BYTES) return json(413, { error: "payload_too_large" });
+  const raw = await readLimited(req, MAX_BODY_BYTES);
+  if (raw === null) return json(413, { error: "payload_too_large" });
 
   let body: unknown;
   try {
@@ -54,7 +73,8 @@ export async function POST(req: NextRequest) {
   const parsed = ingestRequest.safeParse(body);
   if (!parsed.success) {
     // Paths and messages only — never echo submitted values back.
-    const issues = parsed.error.issues.slice(0, 20).map((i) => ({ path: i.path.join("."), message: i.message }));
+    // Keys the caller sent are not echoed either (only schema paths and codes).
+    const issues = parsed.error.issues.slice(0, 20).map((i) => ({ path: i.path.filter((p) => typeof p === "number" || /^[A-Za-z]+$/.test(String(p))).join("."), code: i.code }));
     return json(400, { error: "invalid_request", issues });
   }
 

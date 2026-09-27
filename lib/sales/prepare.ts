@@ -63,6 +63,7 @@ export type RejectionReason =
   | "website_unknown_without_email"
   | "site_without_email"
   | "no_eligible_channel"
+  | "unsourced_name_or_address"
   | "message_contains_url"
   | "unsafe_content";
 
@@ -72,15 +73,38 @@ export type Preparation =
 
 const DEFAULT_EMAIL_SUBJECT = "ホームページのご提案（Second Root）";
 
+// Contact details and links never go into facts shown on a demo.
+const EMAIL_LIKE = /[^\s@＠]+[@＠][^\s@＠]+\.[^\s@＠]+/;
+const LINK_LIKE = /(https?:|www\.|\b[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|net|org|jp|co|me|io|info|biz|shop|link|site)\b)/i;
+const MAX_FACT_FUTURE_MS = 24 * 60 * 60 * 1000;
+
+function containsContactOrLink(value: string): boolean {
+  const s = value.normalize("NFKC");
+  return EMAIL_LIKE.test(s) || LINK_LIKE.test(s);
+}
+
 const reject = (reason: RejectionReason): Preparation => ({ stage: "rejected", reason });
 
 export function prepareCandidate(input: VerifiedCandidateInput): Preparation {
   const target = checkTarget({ address: input.address, category: input.category });
   if (!target.ok) return reject(target.reason);
 
-  const nameFact = input.facts.find((f) => f.field === "name");
-  const addressFact = input.facts.find((f) => f.field === "address");
+  // Facts with contact details, links or impossible dates are dropped, never shown.
+  const now = Date.now();
+  const facts = input.facts.filter(
+    (f) => !containsContactOrLink(f.value) && Date.parse(f.verifiedAt) <= now + MAX_FACT_FUTURE_MS,
+  );
+
+  // The name and address shown are exactly the sourced ones (no invented titles or claims).
+  const nameFact = facts.find((f) => f.field === "name");
+  const addressFact = facts.find((f) => f.field === "address");
   if (!nameFact || !addressFact) return reject("missing_source");
+  if (
+    normalizeName(nameFact.value) !== normalizeName(input.name) ||
+    normalizeAddress(addressFact.value) !== normalizeAddress(input.address)
+  ) {
+    return reject("unsourced_name_or_address");
+  }
 
   // Website: a URL only for "present", and it must be the shop's own site.
   let websiteUrl: string | null = null;
@@ -104,9 +128,16 @@ export function prepareCandidate(input: VerifiedCandidateInput): Preparation {
   // Only a first-party email is kept; anything else is dropped, never guessed.
   const emailInput = input.email ?? null;
   const email = emailInput ? normalizeEmail(emailInput.address) : null;
+  // "official_site" / "official_contact" must point at the shop's own site
+  // (the verified website), not just carry the label.
+  const onOwnSite =
+    emailInput !== null &&
+    (emailInput.sourceType === "official_profile" ||
+      (websiteDomain !== null && websiteKey(emailInput.sourceUrl) === websiteDomain));
   const firstPartyEmail =
     emailInput !== null &&
     email !== null &&
+    onOwnSite &&
     hasFirstPartyEmail({ publicEmail: email, emailSourceUrl: emailInput.sourceUrl, emailSourceType: emailInput.sourceType });
 
   const decision = decideChannel({
@@ -120,41 +151,41 @@ export function prepareCandidate(input: VerifiedCandidateInput): Preparation {
   if (!decision.ok) return reject(decision.reason);
 
   // The demo URL, signature and opt-out line are added at send time.
-  if (/https?:\/\/|www\./i.test(input.message.body) || /https?:\/\//i.test(input.message.subject ?? "")) {
+  if (containsContactOrLink(input.message.body) || containsContactOrLink(input.message.subject ?? "")) {
     return reject("message_contains_url");
   }
 
-  const sources: PreparedSource[] = input.facts.map((f) => ({
+  const sources: PreparedSource[] = facts.map((f) => ({
     field: f.field,
     value: f.value,
     source_url: f.sourceUrl,
     source_type: f.sourceType,
     verified_at: f.verifiedAt,
   }));
-  const now = new Date().toISOString();
+  const at = new Date(now).toISOString();
   if (websiteUrl) {
-    sources.push({ field: "website_url", value: websiteUrl, source_url: websiteUrl, source_type: "official_site", verified_at: now });
+    sources.push({ field: "website_url", value: websiteUrl, source_url: websiteUrl, source_type: "official_site", verified_at: at });
   }
   if (instagram) {
-    sources.push({ field: "instagram_url", value: instagram.url, source_url: instagram.url, source_type: "instagram_profile", verified_at: now });
+    sources.push({ field: "instagram_url", value: instagram.url, source_url: instagram.url, source_type: "instagram_profile", verified_at: at });
   }
   if (firstPartyEmail) {
-    sources.push({ field: "email", value: email!, source_url: emailInput!.sourceUrl, source_type: emailInput!.sourceType, verified_at: now });
+    sources.push({ field: "email", value: email!, source_url: emailInput!.sourceUrl, source_type: emailInput!.sourceType, verified_at: at });
   }
 
-  const factValue = (field: SourceField) => input.facts.find((f) => f.field === field)?.value;
+  const factValue = (field: SourceField) => facts.find((f) => f.field === field)?.value;
   const ward = nagoyaWard(input.address);
   const content: DemoContent = {
-    name: input.name,
+    name: nameFact.value,
     category: target.category,
     ward,
-    address: input.address,
+    address: addressFact.value,
   };
   for (const field of ["hours", "closed_days", "access", "phone", "description"] as const) {
     const value = factValue(field);
     if (value) content[field] = value;
   }
-  const menu = input.facts.filter((f) => f.field === "menu_item").map((f) => f.value);
+  const menu = facts.filter((f) => f.field === "menu_item").map((f) => f.value);
   if (menu.length > 0) content.menu_items = menu;
 
   const candidate: PreparedCandidate = {
