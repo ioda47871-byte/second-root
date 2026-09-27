@@ -12,7 +12,7 @@ const trackedFiles = execFileSync("git", ["ls-files"], { encoding: "utf8" })
 const sourceFiles = trackedFiles.filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f) && !f.startsWith("tests/"));
 
 // Directories where Claude-collected text will be rendered or handled.
-const SALES_AGENT_DIRS = ["app/admin/", "app/demo/", "app/api/internal/", "lib/sales/", "lib/supabase/"];
+const SALES_AGENT_DIRS = ["app/admin/", "app/demo/", "app/api/internal/", "app/api/webhooks/", "lib/sales/", "lib/supabase/", "lib/instagram/"];
 
 describe("guardrails", () => {
   it("only imports Resend from the contact form route (no cold sales email via Resend)", () => {
@@ -30,15 +30,15 @@ describe("guardrails", () => {
   it("keeps the service-role client and ingest logic out of client components", () => {
     const offenders = sourceFiles
       .filter((f) => /^\s*["']use client["']/m.test(readFileSync(f, "utf8")))
-      .filter((f) => /lib\/supabase\/service|lib\/sales\/ingest|SUPABASE_SERVICE_ROLE_KEY|SALES_AGENT_INGEST_TOKEN/.test(readFileSync(f, "utf8")));
+      .filter((f) => /lib\/supabase\/service|lib\/sales\/ingest|lib\/instagram\/signature|SUPABASE_SERVICE_ROLE_KEY|SALES_AGENT_INGEST_TOKEN|INSTAGRAM_APP_SECRET|INSTAGRAM_WEBHOOK_VERIFY_TOKEN/.test(readFileSync(f, "utf8")));
     expect(offenders).toEqual([]);
-    for (const f of ["lib/supabase/service.ts", "lib/sales/ingest.ts"]) {
+    for (const f of ["lib/supabase/service.ts", "lib/sales/ingest.ts", "lib/instagram/signature.ts"]) {
       if (trackedFiles.includes(f)) expect(readFileSync(f, "utf8")).toMatch(/^import "server-only";/m);
     }
   });
 
-  it("never fetches URLs from ingest code (no SSRF path)", () => {
-    const ingestFiles = sourceFiles.filter((f) => f.startsWith("app/api/internal/") || f.startsWith("lib/sales/"));
+  it("never fetches URLs from ingest or webhook code (no SSRF path)", () => {
+    const ingestFiles = sourceFiles.filter((f) => ["app/api/internal/", "app/api/webhooks/", "lib/sales/", "lib/instagram/"].some((d) => f.startsWith(d)));
     const offenders = ingestFiles.filter((f) => /\bfetch\s*\(|axios|node:https?|from ["']https?["']|undici/.test(readFileSync(f, "utf8")));
     expect(offenders).toEqual([]);
   });

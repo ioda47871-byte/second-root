@@ -29,6 +29,9 @@ export function anonClient(): SupabaseClient {
 }
 
 const SALES_TABLES = [
+  "sales_ig_messages",
+  "sales_ig_threads",
+  "sales_ig_webhook_events",
   "sales_outreaches",
   "sales_demos",
   "sales_sources",

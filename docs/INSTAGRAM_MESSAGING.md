@@ -94,17 +94,32 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 
 テストで確認する: webhook event idempotency / send idempotency / failed send の再試行安全性 / unmatched の保存 / 再起動後の継続。
 
-## 9. 公式仕様の確認記録（実装時に記入）
+## 9. 公式仕様の確認記録
 
-| 項目 | 確認した公式ドキュメント | 確認日 | 採用した値 |
-|---|---|---|---|
-| 必要な permission | | | |
-| Graph API version | | | |
-| Webhook の購読 field / event 形式 | | | |
-| 署名ヘッダと検証方式 | | | |
-| Send API endpoint と payload | | | |
-| 送信可能期間（messaging window）と例外 | | | |
-| 相手 username の取得方法 | | | |
+出典と引用: `.ai/research/meta-instagram-messaging-2026-09-27.md`（Meta 公式ドキュメントのみ、確認日 2026-09-27）。「要 live 確認」は Live の Meta App で DEV-024 に確認する。
+
+| 項目 | 採用した値 | 状態 |
+|---|---|---|
+| API | Instagram API with Instagram Login（host `graph.instagram.com`、Instagram User token、Facebook Page 不要） | 採用 |
+| permission | `instagram_business_basic`・`instagram_business_manage_messages` | 採用。自社アカウントのみなら Standard Access / App Review 不要と読めるが、一般ユーザーとのやり取りが Standard Access で可能かはドキュメント間で矛盾 → **要 live 確認** |
+| Graph API version | v26.0（2026-07-29 公開）。v25.0 は 2028-07-29 まで | DEV-023 で固定値として設定 |
+| Webhook 購読確認 | GET `hub.mode=subscribe`・`hub.verify_token`・`hub.challenge` → challenge を返す | **実装済み（DEV-020）** |
+| 購読 field / payload | `messages`。`{object:"instagram", entry:[{id, time, messaging:[{sender:{id}, recipient:{id}, timestamp, message:{mid, text, attachments, is_echo, is_deleted}}]}]}` | **実装済み**。echo が `messages` で届くか `message_echoes` かは **要 live 確認**（両方の形に対応できる実装） |
+| 再送 | 失敗時に最大 36 時間再送、重複排除はサーバー側の責任、batch・順不同あり | **実装済み**（body hash と `mid` で冪等、`timestamp` で並べる） |
+| 署名 | `X-Hub-Signature-256: sha256=<hex>`、raw body の HMAC-SHA256（App Secret） | **実装済み**。Meta App Secret と Instagram App Secret のどちらで署名されるかは **要 live 確認**（`INSTAGRAM_APP_SECRET` に設定する値を DEV-024 で確定） |
+| Send API | `POST https://graph.instagram.com/v26.0/<IG_ID>/messages`、`{recipient:{id:IGSID}, message:{text}}`、text は 1000 UTF-8 bytes まで、応答 `{recipient_id, message_id}` | DEV-023 |
+| 送信可能期間 | 相手の最後のメッセージから 24 時間。`human_agent` tag（7 日）は App Review 等が必要 → MVP では使わない | DEV-023 で 24 時間外は送らない |
+| 相手の username | `GET /<IGSID>?fields=username,name`（相手がメッセージした後のみ） | DEV-021 |
+| 送信の冪等性 | 公式の idempotency key なし。送信成功なのにエラーが返る場合あり（subcode 1357046） → 結果不明は自動再送しない、echo webhook で確認 | DEV-023 |
+
+## 9.1 環境変数（server only、値は人間が Vercel に設定。GitHub に commit しない）
+
+| 名前 | 用途 |
+|---|---|
+| `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | 購読確認用（16 文字以上のランダム値、Meta App の Webhook 設定と同じ値） |
+| `INSTAGRAM_APP_SECRET` | Webhook 署名の検証（未設定なら webhook は 503 で全拒否） |
+| `INSTAGRAM_ACCOUNT_ID` | Second Root の Instagram professional account ID（他アカウント宛ての event を無視） |
+| （DEV-023）Instagram User access token | 返信送信用。60 日で失効、更新手順を DEV-024 で定める |
 
 ## 10. 人間の作業（HUMAN BLOCKER 候補、DEV-024 で具体化）
 
