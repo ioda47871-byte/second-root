@@ -42,3 +42,13 @@ export async function seedDemo(
   );
   return { token, prospectId, name };
 }
+
+/** A fictional Instagram shop with a demo and an unsent initial draft. */
+export async function seedDraft(db: pg.Pool | pg.Client, body = "はじめまして。E2E テスト用の営業文です。"): Promise<{ token: string; prospectId: string; name: string; outreachId: string }> {
+  const demo = await seedDemo(db, { expiresAt: null });
+  const { rows } = await db.query(
+    `insert into public.sales_outreaches (prospect_id, kind, channel, body) values ($1, 'initial', 'instagram', $2) returning id`,
+    [demo.prospectId, body],
+  );
+  return { ...demo, outreachId: rows[0].id as string };
+}

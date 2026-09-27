@@ -465,7 +465,7 @@
     {
       "id": "DEV-009",
       "title": "今日やることUI",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-008",
@@ -473,9 +473,10 @@
       ],
       "purpose": "今日の作業キュー（最大5、フォロー優先）を表示",
       "acceptance_criteria": [
-        "店名・チャネル・状態・大きな送信ボタン",
+        "店名・チャネル・状態を大きく表示し、各カードに1つの大きな操作枠を持つ（ボタンの実体は Instagram=DEV-010 / Email=DEV-011 / フォロー=DEV-014 で実装）",
         "詳細は折りたたみ",
-        "ページは requireAdminPage()、server action は requireAdmin() を必ず自分で呼ぶ（layout の確認に依存しない）"
+        "ページは requireAdminPage()、server action は requireAdmin() を必ず自分で呼ぶ（layout の確認に依存しない）",
+        "フォロー対象は SQL（view sales_followup_due, security_invoker）で算出し、件数上限で取りこぼさない"
       ],
       "required_tests": [
         "e2e: 今日の一覧",
@@ -484,7 +485,11 @@
       "allowed_scope": [
         "app/admin/",
         "lib/sales/",
-        "tests/"
+        "tests/",
+        "components/admin/",
+        "lib/admin/",
+        "supabase/migrations/（追加のみ）",
+        "playwright.config.ts"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -526,7 +531,11 @@
       "allowed_scope": [
         "app/admin/",
         "lib/sales/",
-        "tests/"
+        "tests/",
+        "components/admin/",
+        "lib/admin/",
+        "supabase/migrations/（追加のみ）",
+        "playwright.config.ts"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -567,7 +576,11 @@
       "allowed_scope": [
         "app/admin/",
         "lib/sales/",
-        "tests/"
+        "tests/",
+        "components/admin/",
+        "lib/admin/",
+        "supabase/migrations/（追加のみ）",
+        "playwright.config.ts"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -610,7 +623,11 @@
       "allowed_scope": [
         "app/admin/",
         "lib/sales/",
-        "tests/"
+        "tests/",
+        "components/admin/",
+        "lib/admin/",
+        "supabase/migrations/（追加のみ）",
+        "playwright.config.ts"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -647,7 +664,11 @@
         "app/admin/",
         "lib/sales/",
         "supabase/",
-        "tests/"
+        "tests/",
+        "components/admin/",
+        "lib/admin/",
+        "supabase/migrations/（追加のみ）",
+        "playwright.config.ts"
       ],
       "forbidden_scope": [
         "main への直接 push",
@@ -687,7 +708,11 @@
       "allowed_scope": [
         "app/admin/",
         "lib/sales/",
-        "tests/"
+        "tests/",
+        "components/admin/",
+        "lib/admin/",
+        "supabase/migrations/（追加のみ）",
+        "playwright.config.ts"
       ],
       "forbidden_scope": [
         "main への直接 push",
