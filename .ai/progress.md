@@ -80,3 +80,5 @@
 - 2026-09-27: PR #25（DEV-017）・#26（DEV-018）review PASS、指摘修正済み。DEV-018 の強化テストで返信フォームの radio が 20px（< 24px）と判明 → 24px に修正。
 - 2026-09-27: PR #24（rehearsal fixes）merge（424a089）。PR #25（DEV-017）review PASS（Medium: スキーマ単位の default privileges では PUBLIC EXECUTE を外せない → migration ごとの明示 revoke + audit で PUBLIC grant を検出）→ 修正、merge（78976b6）。Vercel preview は build rate limit（HUMAN-005）で失敗するが必須 CI とは独立。
 - 2026-09-27: DEV-018 merge（PR #26, 3973770）。MVP の実装 Task（DEV-001〜015, 017, 018）はすべて develop に merge 済み。DEV-016 は HUMAN-004 待ち、DEV-019 は Release Readiness Report を作成し人間の承認待ち。
+- 2026-09-27: DEV-019 Release Readiness Report（docs/RELEASE_READINESS.md）review round 1 FAIL（High 2）→ 修正、round 2 PASS。merge（PR #28, ea8a726）。develop → main の Release PR を作成（**merge は人間。DEV-016 Staging 完了まで merge しない**）。本番の Next.js 脆弱性対応 hotfix PR #27（main 向け）も人間の merge 待ち。
+- **状態: READY_FOR_HUMAN_RELEASE_APPROVAL**。人間待ち: HUMAN-002（Supabase project）、HUMAN-004（Staging → DEV-016）、PR #27 merge、Release PR merge、HUMAN-003（branch protection 推奨）、HUMAN-005（Vercel rate limit、非ブロッキング）。後続 DEV-020〜024（Instagram 公式 Messaging API）は MVP release 後に着手。
