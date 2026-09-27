@@ -27,6 +27,22 @@ describe("guardrails", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("keeps the service-role client and ingest logic out of client components", () => {
+    const offenders = sourceFiles
+      .filter((f) => /^\s*["']use client["']/m.test(readFileSync(f, "utf8")))
+      .filter((f) => /lib\/supabase\/service|lib\/sales\/ingest|SUPABASE_SERVICE_ROLE_KEY|SALES_AGENT_INGEST_TOKEN/.test(readFileSync(f, "utf8")));
+    expect(offenders).toEqual([]);
+    for (const f of ["lib/supabase/service.ts", "lib/sales/ingest.ts"]) {
+      if (trackedFiles.includes(f)) expect(readFileSync(f, "utf8")).toMatch(/^import "server-only";/m);
+    }
+  });
+
+  it("never fetches URLs from ingest code (no SSRF path)", () => {
+    const ingestFiles = sourceFiles.filter((f) => f.startsWith("app/api/internal/") || f.startsWith("lib/sales/"));
+    const offenders = ingestFiles.filter((f) => /\bfetch\s*\(|axios|node:https?|from ["']https?["']|undici/.test(readFileSync(f, "utf8")));
+    expect(offenders).toEqual([]);
+  });
+
   it("does not track env files other than the example", () => {
     const envFiles = trackedFiles.filter((f) => /(^|\/)\.env/.test(f));
     expect(envFiles).toEqual([".env.local.example"]);
