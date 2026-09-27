@@ -7,6 +7,8 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
+      // Sales Agent pages are private (they also send noindex headers).
+      disallow: ["/demo/", "/admin/", "/api/"],
     },
     sitemap: `${baseUrl}/sitemap.xml`,
   };

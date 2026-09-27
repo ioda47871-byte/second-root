@@ -33,7 +33,7 @@ const validBody = {
 describe("robots / sitemap", () => {
   it("allows crawling of the public site and points at the sitemap", () => {
     const r = robots();
-    expect(r.rules).toMatchObject({ userAgent: "*", allow: "/" });
+    expect(r.rules).toMatchObject({ userAgent: "*", allow: "/", disallow: ["/demo/", "/admin/", "/api/"] });
     expect(r.sitemap).toBe("https://secondroot.jp/sitemap.xml");
   });
 
