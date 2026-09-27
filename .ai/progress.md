@@ -47,3 +47,4 @@
 - 2026-09-27: DEV-003 Fresh Review PASS。Medium 3件（デモへの email 混入・店名/住所の出典一致・第一者 email の自サイト確認）ほか修正。unit 207 / integration 88 green。
 - 2026-09-27: DEV-003 merge（PR #11, 7e62223）。
 - 2026-09-27: DEV-004 merge（PR #12, d2acecb）。CI に e2e-sales job。
+- 2026-09-27: DEV-008 Fresh Review PASS。Medium（layout のみの認可 → RSC 部分描画で回避可能）を全ページ guard + 実遷移ヘッダ再送 e2e で修正。
