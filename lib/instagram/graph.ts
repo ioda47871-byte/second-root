@@ -36,6 +36,34 @@ export async function fetchUsername(igsid: string): Promise<string | null> {
   }
 }
 
+export type ConnectionCheck =
+  | { ok: true; username: string }
+  | { ok: false; problem: "not_configured" | "token_invalid" | "account_mismatch" | "unreachable" };
+
+/**
+ * Read-only check that the access token works and belongs to our account
+ * (`GET /me?fields=user_id,username`). Sends nothing to anyone.
+ */
+export async function checkConnection(accountId: string): Promise<ConnectionCheck> {
+  const token = accessToken();
+  if (!token || !IGSID.test(accountId)) return { ok: false, problem: "not_configured" };
+  try {
+    const res = await fetch(`${GRAPH_BASE}/me?fields=user_id,username`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+      redirect: "error",
+    });
+    const json = (await res.json().catch(() => ({}))) as { user_id?: unknown; username?: unknown };
+    if (res.status === 400 || res.status === 401 || res.status === 403) return { ok: false, problem: "token_invalid" };
+    if (!res.ok) return { ok: false, problem: "unreachable" };
+    if (String(json.user_id ?? "") !== accountId) return { ok: false, problem: "account_mismatch" };
+    return { ok: true, username: typeof json.username === "string" && USERNAME.test(json.username) ? json.username : "" };
+  } catch {
+    return { ok: false, problem: "unreachable" };
+  }
+}
+
 export type SendOutcome =
   | { outcome: "sent"; messageId: string }
   | { outcome: "failed"; errorCode: string }

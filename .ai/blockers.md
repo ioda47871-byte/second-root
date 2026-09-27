@@ -25,6 +25,29 @@
 - 推奨: 1〜3 を済ませたら Claude に「DEV-016 を再開」と伝える。Claude は Staging の ingest API に対して resume（中断→再開）・再送で重複なし・fail-closed を確認し、実走ログを `.ai/reviews/DEV-016.md` に保存する（token は Claude のこの session には渡さず、Routine の実行結果と管理画面を人間が共有する形でもよい）。
 - 解除後に再開すること: DEV-016 の staging 実走 → DEV-019 の Release Readiness を更新。
 
+### HUMAN-006 — Instagram 公式 Messaging API の Meta 側設定（DEV-024）
+- 対象 Task: DEV-024（DEV-020〜023 のコード・DB・管理画面・テストは完成済み。実アカウントでの確認だけが残る）
+- 状態: 人間待ち（MVP の Release とは独立。HUMAN-004 の Staging があると先に安全に確認できる）
+- 必要な操作と値（手順・画面の場所は `docs/INSTAGRAM_SETUP.md`）:
+  1. Meta App を作成（ユースケース: Instagram のメッセージとコンテンツを管理）
+  2. Second Root の Instagram プロアカウントを接続し、Instagram アプリで「メッセージへのアクセスを許可」をオン。権限は `instagram_business_basic` と `instagram_business_manage_messages`
+  3. Vercel（Staging は Preview、本番は Production）に設定して再デプロイ:
+     - `INSTAGRAM_WEBHOOK_VERIFY_TOKEN`（`openssl rand -hex 32`）
+     - `INSTAGRAM_APP_SECRET`
+     - `INSTAGRAM_ACCOUNT_ID`
+     - `INSTAGRAM_ACCESS_TOKEN`（60 日で失効。更新手順は §7）
+  4. Webhook を登録: callback `https://<ドメイン>/api/webhooks/instagram`、verify token は 3 と同じ値、field は `messages`。アカウントの subscription もオンにする
+  5. アプリを Live にする。自社アカウント用なので Standard Access（App Review 不要）の想定。一般ユーザーとのやりとりで失敗した場合だけ、Advanced Access（ビジネス認証 + App Review）を人間が判断する
+  6. inbox Routine `second-root-sales-inbox` を作成（`ops/sales-agent/SCHEDULE.md` §5）
+- 推奨: Staging で 1〜6 → `docs/INSTAGRAM_SETUP.md` §8 の確認表 → Release 承認後に Production で 3〜5。
+- 解除後に確認すること（§8）:
+  - Meta の Verify が成功する
+  - 管理画面の「Instagram 連携を確認」が OK
+  - 個人アカウントからの DM が「未照合」として表示される
+  - Routine が返信案を作る
+  - 「この内容で返信」で 1 回だけ届き、2 回目は「送信済み」になる
+- Claude は Meta の画面操作・App Review 申請・token の扱いを行わない。
+
 ### HUMAN-005 — Vercel preview の build rate limit（非ブロッキング）
 - 状態: 人間判断（開発は止めない）
 - 内容: 2026-09-27 に PR の `Vercel` status が "Deployment rate limited — retry in 24 hours" で失敗（無料プランの preview build 回数上限）。GitHub Actions の必須 CI（static / unit / integration / build / e2e / e2e-sales）は独立に判定しており、merge 判断には使っていない。

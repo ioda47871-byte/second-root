@@ -137,3 +137,12 @@ test("fits a phone screen", async ({ page }) => {
     await page.context().clearCookies();
   }
 });
+
+test("the connection check is read-only and shows no secret", async ({ page }) => {
+  await login(page);
+  await page.goto("/admin/sales/replies");
+  await page.getByRole("button", { name: "Instagram 連携を確認" }).click();
+  const status = page.getByRole("status").first();
+  await expect(status).toContainText("Instagram 連携の設定（アクセストークン・アカウント ID）がまだありません。");
+  await expect(status).toContainText("受信（Webhook）の設定: まだありません。");
+});

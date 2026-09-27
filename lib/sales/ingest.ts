@@ -210,12 +210,15 @@ async function matchUnmatched(db: SupabaseClient): Promise<number> {
 }
 
 async function inboxPending(db: SupabaseClient, limit: number): Promise<IngestResult> {
+  // Retention runs with the regular inbox job; a failure never blocks the inbox.
+  const { error: purgeError } = await db.rpc("sales_ig_purge");
   const matchErrors = await matchUnmatched(db);
   const rows = await call<PendingRow[]>(db, "sales_ig_inbox_pending", { p_limit: limit });
   return {
     status: 200,
     body: {
       matchErrors,
+      ...(purgeError ? { purgeError: true } : {}),
       inbox: rows.map((r) => ({
         threadId: r.thread_id,
         messageId: r.message_id,
