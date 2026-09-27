@@ -824,7 +824,7 @@
     {
       "id": "DEV-017",
       "title": "Security hardening / regression",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-003",
@@ -866,7 +866,7 @@
     {
       "id": "DEV-018",
       "title": "Full E2E / mobile QA",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-017",

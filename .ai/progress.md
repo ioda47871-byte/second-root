@@ -78,3 +78,4 @@
 - 運用メモ: 共有ローカル DB で reviewer と同時に integration を走らせると users / rows が消えて失敗する（interference）。CI（毎回 fresh DB）を正とし、ローカルは reviewer 終了後に再実行する。
 - 2026-09-27: DEV-020〜024 事前調査（Meta 公式ドキュメントのみ、`.ai/research/meta-instagram-messaging-2026-09-27.md`）: Instagram API with Instagram Login（`instagram_business_basic` / `instagram_business_manage_messages`）、Webhook は `X-Hub-Signature-256`（raw body の HMAC-SHA256）、再送あり（mid で重複排除）、返信は相手の最後のメッセージから 24 時間以内、Send API に公式の idempotency key はない（結果不明の送信は自動再送しない設計が必要）。Standard Access で一般ユーザーとやり取りできるかは公式ドキュメント間で矛盾 → Live app での確認が必要（HUMAN BLOCKER 候補）。
 - 2026-09-27: PR #25（DEV-017）・#26（DEV-018）review PASS、指摘修正済み。DEV-018 の強化テストで返信フォームの radio が 20px（< 24px）と判明 → 24px に修正。
+- 2026-09-27: PR #24（rehearsal fixes）merge（424a089）。PR #25（DEV-017）review PASS（Medium: スキーマ単位の default privileges では PUBLIC EXECUTE を外せない → migration ごとの明示 revoke + audit で PUBLIC grant を検出）→ 修正、merge（78976b6）。Vercel preview は build rate limit（HUMAN-005）で失敗するが必須 CI とは独立。
