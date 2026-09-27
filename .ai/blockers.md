@@ -25,6 +25,12 @@
 - 推奨: 1〜3 を済ませたら Claude に「DEV-016 を再開」と伝える。Claude は Staging の ingest API に対して resume（中断→再開）・再送で重複なし・fail-closed を確認し、実走ログを `.ai/reviews/DEV-016.md` に保存する（token は Claude のこの session には渡さず、Routine の実行結果と管理画面を人間が共有する形でもよい）。
 - 解除後に再開すること: DEV-016 の staging 実走 → DEV-019 の Release Readiness を更新。
 
+### HUMAN-005 — Vercel preview の build rate limit（非ブロッキング）
+- 状態: 人間判断（開発は止めない）
+- 内容: 2026-09-27 に PR の `Vercel` status が "Deployment rate limited — retry in 24 hours" で失敗（無料プランの preview build 回数上限）。GitHub Actions の必須 CI（static / unit / integration / build / e2e / e2e-sales）は独立に判定しており、merge 判断には使っていない。
+- 影響: その日の Preview URL が作られない。Staging 実走（DEV-016 / HUMAN-004）を Preview で行う場合、上限にかからない日に行う必要がある。
+- 選択肢: (a) 24 時間待つ（推奨。追加費用なし）、(b) Vercel の有料プラン（billing のため人間判断）。Claude は plan を変更しない。
+
 ### HUMAN-003 — branch protection の required checks（推奨・非ブロッキング）
 - 状態: 人間待ち（開発は止めない）
 - 内容: GitHub → Settings → Branches で `main` と `develop` に branch protection を設定し、required status checks に `static` / `unit` / `integration` / `build` / `e2e` / `e2e-sales` を追加する。
