@@ -18,6 +18,7 @@
   - Supabase `second-root-production`（ref `sagjzgcpqcbrqbokawiz`、Tokyo）に migration 16 本を適用し、`staging:verify` で 14/14 PASS。
   - Auth は sign-up OFF・Confirm email ON・パスワード最小長 12。管理者 1 名。確認用の token は Revoke 済み。
   - Vercel Production に 5 変数を設定した。既存の変数は変更なし、`INSTAGRAM_*` は未設定。Standard Protection。
+  - 古い main は再デプロイしていない（Production への反映は PR #29 の merge によるデプロイで行う）。
 - **残りのオーナー作業**: PR #29 の merge 後に、本番の動作確認 → 本番の Routine（§13 の 10〜12）。
 - **Instagram の返信機能（DEV-020〜024）**:
   - コードは実装・テスト・security review 済みで、この Release に含まれる。
@@ -131,7 +132,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
 - **Staging（`znbqgvawublgyjwfpmei`）には 16 本すべて適用済み**。
   - Supabase Management API 経由の `staging:apply`。1 migration = 1 transaction。
   - `staging:verify` の 14 項目がすべて PASS: migration 一致・RLS・権限の過不足・sign-up OFF・管理者 1 名。16 本の適用後、2026-09-28 15:19 UTC に再確認した。
-- **Production の Supabase project は未作成**（HUMAN-002）。
+- **Production（`second-root-production`、ref `sagjzgcpqcbrqbokawiz`）にも 16 本すべて適用済み**。人間が `staging:verify` を実行し、14/14 PASS（2026-09-28）。
 - 無料プランのまま。
 
 ## 7. Cloud Job 実走（DEV-016、Staging）
@@ -229,7 +230,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
 | Secret 混入なし | 済（`check:secrets`） |
 | rollback 手順確認 | 済（§12） |
 | Production の Supabase・Auth・管理者 | **済**（人間、2026-09-28。`sagjzgcpqcbrqbokawiz`、verify 14/14 PASS） |
-| Production env が Vercel に設定済み | **済**（人間、2026-09-28。5 変数、Production のみ） |
+| Production env が Vercel に設定済み | **済**（人間、2026-09-28。Vercel Production に 5 変数） |
 
 ## 13. Production 準備（人間。**PR #29 を merge する前に**、この順番で）
 
@@ -281,7 +282,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
    - PR #29 の CI が全 6 job green で、衝突がないこと。
    - （推奨）HUMAN-003 の branch protection。
    - Staging の token の後片付け（`docs/STAGING.md` §8。merge 後でもよい）。
-9. **PR #29 を Ready for review にして、人間が merge する**。Vercel が Production にデプロイする。
+9. **PR #29 を Ready for review にして merge する**。人間が merge するか、人間の明示承認に基づき Claude が merge する。Vercel が Production にデプロイする。
 
 merge 後（人間）:
 
