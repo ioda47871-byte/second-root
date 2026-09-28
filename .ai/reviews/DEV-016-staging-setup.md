@@ -25,3 +25,21 @@ Verified:
 | Low | `NODE_USE_ENV_PROXY` inline / older Node | Fixed: `assertProxySupport` refuses to run behind the proxy without it (Node ≥ 22.21). The doc says to run these in the container via `npm run staging:*`. |
 
 Still to verify live on the first run (the scripts check these themselves): the SQL role, request atomicity, and the scoped-PAT permission names (`docs/STAGING.md` §2).
+
+## Round 2 (PR #35: explicit API grants + proxy-injected credential): PASS (Critical 0 / High 0 / Medium 0 / Low 4)
+
+The reviewer simulated a project with no default privileges on the local DB, inside a transaction that was rolled back. Everything not granted explicitly by a migration was revoked from the API roles, then only the migrations' own grants and `20260928000000` were re-applied. Results:
+- The full ingest run as service_role worked: start → status → discovered → verified → begin_persist → persist_candidate (`outreach_ready`) → finalize.
+- The Instagram service functions worked.
+- The admin screens' reads and admin RPCs worked for the signed-in admin.
+- anon had no access at all.
+- Without the new migration, the same run fails with `permission denied for table sales_agent_runs`. This negative control matches what was seen on Staging.
+
+Nothing the app needs is still missing on a project without default privileges. Function EXECUTE, the views (`security_invoker`) and the absence of sequences were all confirmed.
+
+| Sev | Finding | Resolution |
+|---|---|---|
+| Low | service_role gets DELETE on the 6 core tables, and INSERT/UPDATE on `sales_admins`, which the app does not use | Accepted. This matches the local stack the app has always been tested on. service_role is the server-only role and bypasses RLS anyway. Narrowing it is a separate hardening task. |
+| Low | `REQUIRED_CHECKS` covers table privileges, not function EXECUTE | Accepted for now. Every function the app calls has an explicit grant (verified in the simulation). DEV-016 exercises the functions end to end on Staging. |
+| Low | `explicitGrantGaps` can miss a gap (later revoke, column grants, block comments, views) | Accepted as a best-effort lint. The database check (`REQUIRED_CHECKS`, `has_table_privilege`) is the real guard and has a fail-closed test. |
+| Low | The error message does not mention the proxy path | Accepted (it fails closed). |
