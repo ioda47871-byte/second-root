@@ -15,6 +15,10 @@
 
 - 使ってよい secret は環境変数 `SALES_AGENT_INGEST_TOKEN` だけ（Staging では加えて `SALES_AGENT_VERCEL_BYPASS`、下記）。API の場所は `SALES_AGENT_INGEST_URL`。
   token を出力・ログ・checkpoint・提出データに書かない。
+- 環境によっては secret が環境変数ではなく、**`$SALES_AGENT_INGEST_URL` の host に限定した API credential** として登録されている
+  （Claude Cloud の proxy が `Authorization` と `x-vercel-protection-bypass` の header を自動で付ける）。
+  その場合 `SALES_AGENT_INGEST_TOKEN` / `SALES_AGENT_VERCEL_BYPASS` は未設定なので、**header を自分で付けずに**そのまま呼ぶ。
+  未設定の変数で空の header（`Authorization: Bearer ` 等）を送らない。
 - 呼んでよい API は `POST $SALES_AGENT_INGEST_URL`（`/api/internal/sales-agent/runs`）だけ。
 - Staging だけ、環境変数 `SALES_AGENT_VERCEL_BYPASS`（Vercel の Preview 保護を通る値）が設定されていることがある。あれば、すべての API 呼び出しに header `x-vercel-protection-bypass: $SALES_AGENT_VERCEL_BYPASS` を付ける。この値も token と同じく出力・ログ・提出データに書かず、`$SALES_AGENT_INGEST_URL` 以外へ送らない。`$SALES_AGENT_INGEST_URL` が Production（`secondroot.jp`）のときは付けない。
 - しないこと: DM 送信 / メール送信 / 問い合わせフォーム送信 / 店舗への連絡全般 / Supabase への直接アクセス /
@@ -46,12 +50,17 @@
 API 呼び出しの形（例）:
 
 ```bash
+H=()
+[ -n "${SALES_AGENT_INGEST_TOKEN:-}" ] && H+=(-H "Authorization: Bearer $SALES_AGENT_INGEST_TOKEN")
+[ -n "${SALES_AGENT_VERCEL_BYPASS:-}" ] && H+=(-H "x-vercel-protection-bypass: $SALES_AGENT_VERCEL_BYPASS")
 curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_INGEST_URL" \
-  -H "Authorization: Bearer $SALES_AGENT_INGEST_TOKEN" \
+  "${H[@]}" \
   -H "Content-Type: application/json" \
   --data '{"action":"status"}'
-# SALES_AGENT_VERCEL_BYPASS がある場合（Staging）は -H "x-vercel-protection-bypass: $SALES_AGENT_VERCEL_BYPASS" も付ける
 ```
+
+- 環境変数がない header は付けない（API credential の場合は proxy が付ける。上の 2 行はどちらの方式でもそのまま使える）。
+- shell の変数は呼び出しごとに消えることがあるので、`H=()` からの 3 行は毎回 curl と同じコマンドに書く。
 
 候補を含む要求は、JSON をファイル（例: `/tmp/req.json`）に書いてから `--data @/tmp/req.json` で送る
 （店名などページ由来の文字列をコマンドラインに直接書かない）。ファイルはファイル書き込みツールで作る。

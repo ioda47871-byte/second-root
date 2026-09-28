@@ -42,7 +42,7 @@ claude.ai の Claude Code → このセッションの cloud environment メニ�
   | `api_gateway_keys_read`・`api_gateway_keys_secret_read` | `VERCEL_TOKEN` を使って Claude が Preview に key を設定する場合だけ（`/api-keys?reveal=true`） |
 
   画面で名前が違う、または `auth_config_write` に `project_admin_write` も必要と出る場合は、それに従う。**Staging の作業が終わったら token を削除（Revoke）する。**
-- Operational Claude（Routine）の environment には従来どおり `SALES_AGENT_INGEST_URL` と `SALES_AGENT_INGEST_TOKEN` だけを入れる（§5 で (a) を選んだ場合は `SALES_AGENT_VERCEL_BYPASS` も。§6）。上の 3 つは入れない。
+- Operational Claude（Routine）の environment には `SALES_AGENT_INGEST_URL` だけを環境変数で入れ、ingest token と bypass は host 限定の API credential にする（§2.1・§6）。上の 3 つは入れない。
 
 ### 2.1 人間が作る secret の置き場所（2026-09-28 決定）
 
@@ -51,8 +51,11 @@ Supabase と Vercel の token は、Claude Code environment の **API credential
 
 | secret | 作り方 | 保存先 |
 |---|---|---|
-| Staging の ingest token | 手元で `openssl rand -hex 32`（Production とは別の値） | ① Vercel → second-root → Settings → Environment Variables: `SALES_AGENT_INGEST_TOKEN`、Environment は **Preview だけ**、Branch `develop`、**Sensitive**<br>② Staging Routine の environment: 環境変数 `SALES_AGENT_INGEST_TOKEN`<br>③ この開発 session の environment: **API credential**（Bearer）で、host を `second-root-git-develop-brot-yanagi.vercel.app` に限定する。Claude は DEV-016 の再送・fail-closed 確認で ingest API を直接呼ぶが、token の値は見ない |
-| Protection Bypass for Automation（「Second Root Staging Claude」） | Vercel → Settings → Deployment Protection で作成済み | Staging Routine の environment: 環境変数 `SALES_AGENT_VERCEL_BYPASS`。Claude の直接確認では、Vercel API credential で同じ値を process 内で読み、header にだけ使う（表示しない） |
+| Staging の ingest token | 手元で `openssl rand -hex 32`（Production とは別の値） | ① Vercel → second-root → Settings → Environment Variables: `SALES_AGENT_INGEST_TOKEN`、Environment は **Preview だけ**、Branch `develop`、**Sensitive**<br>② Claude Cloud environment の **API credential「Second Root Staging API」**（host `second-root-git-develop-brot-yanagi.vercel.app` 限定）の header `Authorization: Bearer <token>` |
+| Protection Bypass for Automation（「Second Root Staging Claude」） | Vercel → Settings → Deployment Protection で作成済み | 同じ API credential「Second Root Staging API」の header `x-vercel-protection-bypass: <値>` |
+
+- 2026-09-28 の最終形: Staging Routine と開発 session は同じ Claude Cloud environment を使い、環境変数は `SALES_AGENT_INGEST_URL` だけ。`SALES_AGENT_INGEST_TOKEN` / `SALES_AGENT_VERCEL_BYPASS` の環境変数は置かない。proxy が上の 2 header を ingest の host にだけ付けるので、値は Claude の process・shell・ログに入らない（RUN_PROMPT §0・§2 は両方式に対応）。
+- 注意: credential は host 単位なので、Claude がこの host（develop の固定 URL）に送る request にはすべて 2 header が付く。token なしの fail-closed 確認は、credential の付かない deployment 固有 URL で行う（§7 #1）。
 
 `SALES_AGENT_INGEST_TOKEN` 以外の Preview 変数 4 つ（Supabase URL / anon key / service_role key / demo base URL）は、Claude が `staging:vercel` で設定する。
 
@@ -116,11 +119,10 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
 
 `ops/sales-agent/SCHEDULE.md` §2・§3 のとおり。
 
-- environment の環境変数は 2 つ（§5 で (a) を選んだ場合は 3 つ）だけ:
-  - `SALES_AGENT_INGEST_URL=https://second-root-git-develop-brot-yanagi.vercel.app/api/internal/sales-agent/runs`
-  - `SALES_AGENT_INGEST_TOKEN=<Staging の値>`
-  - （§5 で (a) を選んだ場合）`SALES_AGENT_VERCEL_BYPASS=<Protection Bypass for Automation の値>`
-- Routine 名は `second-root-sales-agent-daily-staging`。**スケジュールは無効のまま**で作り、手動実行（Run now）だけで使う。
+- environment の環境変数は `SALES_AGENT_INGEST_URL=https://second-root-git-develop-brot-yanagi.vercel.app/api/internal/sales-agent/runs` だけ。
+- ingest token と bypass は API credential「Second Root Staging API」（host 限定、§2.1）。proxy が `Authorization` と `x-vercel-protection-bypass` を付ける。
+  （環境変数 `SALES_AGENT_INGEST_TOKEN` / `SALES_AGENT_VERCEL_BYPASS` で渡す方式にも prompt は対応しているが、Staging では使わない。）
+- Routine 名は `second-root-sales-agent-daily-staging`。Routine の UI では trigger なしで保存できなかったため、**十分先の日付の schedule** を設定してあり、DEV-016 では手動実行（Run now）だけを使う。
 - 作成したら Routine の名前を Claude に伝える。Claude は Routine を起動・中断できる（DEV-016）。
 
 ## 7. DEV-016 実走確認（Claude。§3〜§6 の後）
