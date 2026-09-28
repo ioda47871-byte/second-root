@@ -27,6 +27,7 @@
 - 2026-09-28 進捗: Supabase の認証は API credential（api.supabase.com 限定）として登録済み。Staging に 15 migration を適用し、DB の security と必要な権限 12 項目はすべて PASS（`.ai/reviews/DEV-016.md`）。**残り**:
   - ~~(i) sign-up OFF・パスワード 12 文字~~、~~(ii) 管理者ユーザー~~: 2026-09-28 完了。Claude が管理者を登録し、`staging:verify` の 14 項目すべて PASS。
   - (iii) 3（Deployment Protection）・4（Vercel Preview の環境変数）・5（Staging Routine）。この session には Vercel の認証情報がない（api.vercel.com は 403）。Protection Bypass（(a)）を使う場合の prompt 対応は済み（`SALES_AGENT_VERCEL_BYPASS`）。
+- 2026-09-28 (2): 人間が Vercel の API credential「Vercel Staging」（api.vercel.com 限定）と、Protection Bypass for Automation「Second Root Staging Claude」を作成した。**この session の proxy は Vercel の credential をまだ付けていない**（api.vercel.com は 403 `missingToken`。Supabase のものは付いている）。API credential は新しい session から有効になるため、次の session で `staging:vercel` から再開する。人間が作る secret（Staging の ingest token と bypass 値）の保存先は `docs/STAGING.md` §2.1。
 - 1 の後に Claude がやること:
   - migration の適用と security 確認（`staging:apply --apply --auth` → `staging:verify`）
   - 2 の後: 管理者の登録（`staging:admin`）
