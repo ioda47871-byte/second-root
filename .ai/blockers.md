@@ -25,9 +25,8 @@
   4. （`VERCEL_TOKEN` なしの場合）Vercel Preview（branch `develop` のみ）に環境変数を 5 つ設定し、develop を再デプロイする（`docs/STAGING.md` §5）。
   5. **Staging の Routine** を作成する（スケジュールは無効、手動実行のみ。`docs/STAGING.md` §6）。
 - 2026-09-28 進捗: Supabase の認証は API credential（api.supabase.com 限定）として登録済み。Staging に 15 migration を適用し、DB の security と必要な権限 12 項目はすべて PASS（`.ai/reviews/DEV-016.md`）。**残り**:
-  - (i) Authentication → Sign In / Providers →「Allow new users to sign up」を OFF、Email の「Minimum password length」を 12 以上（token に `project_admin_write` がないため人間が行う）
-  - (ii) 管理者ユーザーの作成と、email を Claude に伝えること
-  - (iii) 3（Deployment Protection）・4（Vercel Preview の環境変数）・5（Staging Routine）
+  - ~~(i) sign-up OFF・パスワード 12 文字~~、~~(ii) 管理者ユーザー~~: 2026-09-28 完了。Claude が管理者を登録し、`staging:verify` の 14 項目すべて PASS。
+  - (iii) 3（Deployment Protection）・4（Vercel Preview の環境変数）・5（Staging Routine）。この session には Vercel の認証情報がない（api.vercel.com は 403）。Protection Bypass（(a)）を使う場合の prompt 対応は済み（`SALES_AGENT_VERCEL_BYPASS`）。
 - 1 の後に Claude がやること:
   - migration の適用と security 確認（`staging:apply --apply --auth` → `staging:verify`）
   - 2 の後: 管理者の登録（`staging:admin`）

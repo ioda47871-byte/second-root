@@ -118,7 +118,7 @@ Production data / Production secrets / main 直接 push / Production release / D
 ## 9. Operational Claude run の原則（prompt: `ops/sales-agent/RUN_PROMPT.md`、scheduled job: `ops/sales-agent/SCHEDULE.md`）
 
 - 実行基盤: Claude Cloud scheduled job を第一候補。
-- 持つ secret は `SALES_AGENT_INGEST_TOKEN` のみ。Supabase には直接触れない。
+- 持つ secret は `SALES_AGENT_INGEST_TOKEN` のみ（Staging で Vercel Preview の保護がある場合だけ `SALES_AGENT_VERCEL_BYPASS` も。docs/SECURITY.md）。Supabase には直接触れない。
 - Claude のセッションは消える前提で動く。run の現在地は ingest API（Supabase）にだけ置き、会話記憶に頼らない。
 - 失敗時は有料 API へ切り替えず、`abort` で理由（error_code / error_summary）を記録し人間に報告する。
 

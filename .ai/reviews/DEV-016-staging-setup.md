@@ -43,3 +43,18 @@ Nothing the app needs is still missing on a project without default privileges. 
 | Low | `REQUIRED_CHECKS` covers table privileges, not function EXECUTE | Accepted for now. Every function the app calls has an explicit grant (verified in the simulation). DEV-016 exercises the functions end to end on Staging. |
 | Low | `explicitGrantGaps` can miss a gap (later revoke, column grants, block comments, views) | Accepted as a best-effort lint. The database check (`REQUIRED_CHECKS`, `has_table_privilege`) is the real guard and has a fail-closed test. |
 | Low | The error message does not mention the proxy path | Accepted (it fails closed). |
+
+## Round 3 (PR #36: optional Vercel protection bypass for the Staging Routine): PASS (Critical 0 / High 0 / Medium 0 / Low 4)
+
+Verified:
+- `x-vercel-protection-bypass` is Vercel's documented header. No bypass cookie is set.
+- The header is sent only to `$SALES_AGENT_INGEST_URL`.
+- The value is never printed, and the existing prompt-injection rule covers it.
+- The curl example passes the value through a variable.
+- A leaked value opens only Vercel's gate; the ingest API still needs its token.
+
+All 4 Lows are fixed:
+- The secret list now says that on Staging the bypass value is allowed in addition to the token.
+- The count of environment variables in STAGING.md is corrected.
+- SECURITY.md, AI_WORKFLOW.md and STAGING.md now record the bypass value as a Staging-only exception, including that it covers the whole Vercel project and must be rotated if exposed.
+- The prompts never send the header when the ingest URL is the Production host.
