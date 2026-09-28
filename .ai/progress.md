@@ -108,3 +108,8 @@
   - Staging の verify を 16 本の migration で再確認し、14/14 PASS。
   - PR #29 は main との衝突が解消した（mergeable、Draft のまま）。
   - **状態: READY_FOR_HUMAN_RELEASE_APPROVAL**。人間待ちは HUMAN-007（Production 準備 → PR #29 の merge）。任意の残りは HUMAN-006・HUMAN-003・Staging token の Revoke。
+- 2026-09-28: **人間が Production 準備を完了**（HUMAN-002 解除）。
+  - Supabase `second-root-production`（sagjzgcpqcbrqbokawiz、Tokyo）に migration 16 本を適用し、verify 14/14 PASS。
+  - Auth は sign-up OFF・Confirm email ON・パスワード最小長 12。管理者 1 名。確認用の token は Revoke 済み。
+  - Vercel Production に 5 変数を設定した。既存の変数は変更なし、INSTAGRAM_* は未設定。Standard Protection。
+  - 人間の明示承認に基づき、PR #29 の最終確認と merge に進む。

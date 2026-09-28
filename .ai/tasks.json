@@ -937,9 +937,9 @@
         "Production 設定"
       ],
       "attempts": 0,
-      "last_failure": "2026-09-28: Release Readiness を更新し PR #39 を merge（82f2236）。fresh review PASS（Medium 3・Low 5 はすべて修正: Production は新しい project のみ、Production の操作は確認も含め人間のみ）。main（PR #27）との衝突を解消し、PR #29 は衝突なし（Draft のまま）。技術的な Release 条件は充足。Production 準備と merge は人間待ち（docs/RELEASE_READINESS.md §13）",
+      "last_failure": "2026-09-28: 人間が Production 準備を完了。project second-root-production（sagjzgcpqcbrqbokawiz）に migration 16 本を適用、verify 14/14 PASS、Auth 設定、管理者 1 名、Vercel Production の 5 変数。INSTAGRAM_* は未設定。PR #29 の merge へ進む",
       "branch": "feature/dev-019-release-readiness",
-      "blocked_reason": "HUMAN-007（.ai/blockers.md）: Production 準備（HUMAN-002 の Production project・migration・Auth・管理者・Vercel Production env）と、人間による Release PR #29 の merge。解除条件: PR #29 merge と Production smoke test の通過"
+      "blocked_reason": "HUMAN-007: Production 準備は人間が完了（2026-09-28）。PR #29 の merge（人間の明示承認のもと Claude が実行）と、Production smoke test が残り"
     },
     {
       "id": "DEV-020",

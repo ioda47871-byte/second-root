@@ -5,13 +5,8 @@
 
 ## 未解除
 
-### HUMAN-002 — Second Root 専用 Supabase project
-- 状態: **Staging 用は作成済み（2026-09-28、人間）**。project `second-root`、ref `znbqgvawublgyjwfpmei`、Region ap-northeast-1。まず Staging / DEV-016 に使う。
-- Production 用を別に作るか、この project を使うかは Release 承認時に人間が判断する（`docs/STAGING.md` §8）。Claude は project 作成・billing 変更を行わない。
-- 2026-09-28: **残りは Production 用**。**新しい project を作る**（Staging の project は Preview・Staging の ingest token・Routine・Claude 用の token がつながっているため流用しない）。migration 16 本を人間が適用する。手順は `docs/RELEASE_READINESS.md` §13 の 1〜5、`docs/RELEASE.md` §8。
-
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
-- 状態: 人間待ち（2026-09-28）。Release の技術的な条件（CI・review・Staging 実走・DEV-025）はすべて満たした。
+- 状態: **Production 準備は人間が完了（2026-09-28）**。残りは PR #29 の merge（人間の明示承認のもと Claude が実行）と、merge 後の確認。Release の技術的な条件（CI・review・Staging 実走・DEV-025）はすべて満たした。
 - PR #29（develop → main）は **Draft のまま**。Claude は merge しない。Production の DB・環境変数も変更しない。
 - main（PR #27）との衝突は PR #39 で解消した（両方 Next.js 16.3.6、develop 側を採用）。
 - 人間にお願いすること（この順番。詳細は `docs/RELEASE_READINESS.md` §13）:
@@ -32,6 +27,14 @@
   9. Draft を外して人間が merge する
 - merge 後: smoke test、Production の Routine（host `secondroot.jp` 限定の API credential）、最初の 1 週間は送信前に人間が確認する。
 - 解除条件: PR #29 が merge され、Production の smoke test が通ること。
+- 2026-09-28 人間が完了・確認したこと（secret の値は書かない）:
+  - Production project `second-root-production`（ref `sagjzgcpqcbrqbokawiz`、Tokyo）に migration 16 本を適用し、`staging:verify` で **14/14 PASS** を確認した。
+  - Auth: public sign-up OFF・Confirm email ON・パスワード最小長 12。
+  - 管理者 1 名を作成し、`sales_admins` に登録した。
+  - 確認に使った token は Revoke した。
+  - Vercel Production に 5 変数を設定した（Supabase の 3 つ・`SALES_AGENT_INGEST_TOKEN`・`SALES_DEMO_BASE_URL=https://secondroot.jp`）。既存の Production の変数は変更していない。`INSTAGRAM_*` は未設定。
+  - Vercel Authentication は Standard Protection のまま。`secondroot.jp` は Production の custom domain として公開する構成。
+  - 古い main の再デプロイはしていない。
 
 ### HUMAN-006 — Instagram 公式 Messaging API の Meta 側設定（DEV-024）
 - 対象 Task: DEV-024（DEV-020〜023 のコード・DB・管理画面・テストは完成済み。実アカウントでの確認だけが残る）
@@ -63,6 +66,12 @@
 - DEV-004 で Claude が allowed_scope を拡張（GA を /demo・/admin で無効化、noindex / no-referrer ヘッダ、e2e 分割）。既存ページの挙動は不変とレビュー確認済み。異論があれば PR #12 を参照。
 
 ## 解除済み
+
+### HUMAN-002 — Second Root 専用 Supabase project
+- 状態: **Staging 用は作成済み（2026-09-28、人間）**。project `second-root`、ref `znbqgvawublgyjwfpmei`、Region ap-northeast-1。まず Staging / DEV-016 に使う。
+- Production 用を別に作るか、この project を使うかは Release 承認時に人間が判断する（`docs/STAGING.md` §8）。Claude は project 作成・billing 変更を行わない。
+- 2026-09-28: **残りは Production 用**。**新しい project を作る**（Staging の project は Preview・Staging の ingest token・Routine・Claude 用の token がつながっているため流用しない）。migration 16 本を人間が適用する。手順は `docs/RELEASE_READINESS.md` §13 の 1〜5、`docs/RELEASE.md` §8。
+- 2026-09-28: **解除**。人間が Production 用の新しい project `second-root-production`（ref `sagjzgcpqcbrqbokawiz`、Tokyo）を作成した。
 
 ### HUMAN-004 — Staging セットアップに必要な人間の操作（DEV-016）
 - 対象 Task: DEV-016（DEV-019 の Release 判断にも必要）
