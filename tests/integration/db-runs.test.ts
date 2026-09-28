@@ -79,6 +79,121 @@ describe("run start / status", () => {
   });
 });
 
+describe("at most one running run (DEV-025)", () => {
+  const running = async () => (await db.query("select run_id from public.sales_agent_runs where status = 'running'")).rows.map((r) => r.run_id as string);
+
+  it("refuses a different run_id while a run is running, and still replays the same run_id", async () => {
+    const first = randomUUID();
+    await rpc("sales_run_start", { p_run_id: first });
+    await expect(rpc("sales_run_start", { p_run_id: randomUUID() })).rejects.toThrow(/run_in_progress/);
+    expect(await rpc<State>("sales_run_start", { p_run_id: first })).toMatchObject({ run_id: first, status: "running", replayed: true });
+    expect(await count("sales_agent_runs")).toBe(1);
+  });
+
+  it("refuses while the running run is in any phase before completion", async () => {
+    const runId = randomUUID();
+    await verifiedRun(runId, { c01: candidate() });
+    await expect(rpc("sales_run_start", { p_run_id: randomUUID() })).rejects.toThrow(/run_in_progress/);
+    await rpc("sales_run_begin_persist", { p_run_id: runId });
+    await expect(rpc("sales_run_start", { p_run_id: randomUUID() })).rejects.toThrow(/run_in_progress/);
+    expect(await running()).toEqual([runId]);
+  });
+
+  it("lets a new run start after the running one completes or fails, and still replays those", async () => {
+    const done = randomUUID();
+    await verifiedRun(done, { c01: candidate() });
+    await persistAll(done, ["c01"]);
+    const failed = randomUUID();
+    expect(await rpc<State>("sales_run_start", { p_run_id: failed })).toMatchObject({ status: "running", replayed: false });
+    await rpc("sales_run_abort", { p_run_id: failed, p_error_code: "search_unavailable", p_error_summary: "x" });
+    const third = randomUUID();
+    expect(await rpc<State>("sales_run_start", { p_run_id: third })).toMatchObject({ status: "running", replayed: false });
+    expect(await rpc<State>("sales_run_start", { p_run_id: done })).toMatchObject({ status: "completed", replayed: true });
+    expect(await rpc<State>("sales_run_start", { p_run_id: failed })).toMatchObject({ status: "failed", replayed: true });
+    expect(await running()).toEqual([third]);
+  });
+
+  it("expires a stale running run instead of letting it block a new one", async () => {
+    const stale = randomUUID();
+    await rpc("sales_run_start", { p_run_id: stale });
+    await db.query("update public.sales_agent_runs set checkpoint_at = now() - interval '25 hours' where run_id = $1", [stale]);
+    const fresh = randomUUID();
+    expect(await rpc<State>("sales_run_start", { p_run_id: fresh })).toMatchObject({ status: "running", replayed: false });
+    const { rows } = await db.query("select status, error_code from public.sales_agent_runs where run_id = $1", [stale]);
+    expect(rows[0]).toEqual({ status: "failed", error_code: "run_expired" });
+    // Replaying the stale run_id reports it as failed, never resumes it.
+    expect(await rpc<State>("sales_run_start", { p_run_id: stale })).toMatchObject({ status: "failed", error_code: "run_expired", replayed: true });
+    expect(await running()).toEqual([fresh]);
+  });
+
+  it("the database itself refuses a second running row", async () => {
+    await rpc("sales_run_start", { p_run_id: randomUUID() });
+    await expect(db.query("insert into public.sales_agent_runs (run_id) values ($1)", [randomUUID()])).rejects.toMatchObject({ code: "23505" });
+  });
+
+  // Two sessions whose `start` calls overlap: B checks for a running run
+  // before A commits, so only the unique index can stop it.
+  async function race(aId: string, bId: string, finishA: "commit" | "rollback") {
+    const a = await db.connect();
+    const b = await db.connect();
+    try {
+      const bPid = (await b.query("select pg_backend_pid() as pid")).rows[0].pid as number;
+      await a.query("begin");
+      await a.query("select public.sales_run_start($1)", [aId]);
+      const bCall = b.query("select public.sales_run_start($1) as state", [bId]).then(
+        (r) => ({ ok: true as const, state: r.rows[0].state as State }),
+        (e: Error & { code?: string }) => ({ ok: false as const, message: e.message }),
+      );
+      // Wait until B is blocked on A's uncommitted row (it passed its own
+      // "is a run running?" check), then finish A.
+      let blocked = false;
+      for (let i = 0; i < 100 && !blocked; i++) {
+        const { rows } = await db.query("select wait_event_type from pg_stat_activity where pid = $1", [bPid]);
+        blocked = rows[0]?.wait_event_type === "Lock";
+        if (!blocked) await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(blocked, "B must be waiting on A's row").toBe(true);
+      await a.query(finishA);
+      return await bCall;
+    } finally {
+      a.release();
+      b.release();
+    }
+  }
+
+  it("race: a different run_id that overlaps the first start gets run_in_progress", async () => {
+    const first = randomUUID();
+    const result = await race(first, randomUUID(), "commit");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/run_in_progress/) });
+    expect(await running()).toEqual([first]);
+  });
+
+  it("race: the same run_id started twice at once is a replay, not an error", async () => {
+    const runId = randomUUID();
+    const result = await race(runId, runId, "commit");
+    expect(result).toMatchObject({ ok: true, state: { run_id: runId, status: "running", replayed: true } });
+    expect(await count("sales_agent_runs")).toBe(1);
+  });
+
+  it("race: if the first start rolls back, the overlapping one becomes the running run", async () => {
+    const second = randomUUID();
+    const result = await race(randomUUID(), second, "rollback");
+    expect(result).toMatchObject({ ok: true, state: { run_id: second, status: "running", replayed: false } });
+    expect(await running()).toEqual([second]);
+  });
+
+  it("race: many concurrent starts leave exactly one running run", async () => {
+    const ids = Array.from({ length: 8 }, () => randomUUID());
+    const results = await Promise.allSettled(ids.map((id) => rpc("sales_run_start", { p_run_id: id })));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    for (const r of results.filter((r): r is PromiseRejectedResult => r.status === "rejected")) {
+      expect(String(r.reason)).toMatch(/run_in_progress/);
+    }
+    expect(await running()).toHaveLength(1);
+    expect(await count("sales_agent_runs")).toBe(1);
+  });
+});
+
 describe("checkpoint phase order", () => {
   it("refuses to skip a phase", async () => {
     const runId = randomUUID();

@@ -34,6 +34,8 @@ async function conversation(igsid: string, { matched = true, receivedAgoMs = 0 }
   await verifiedRun(runId, { c01: c });
   await rpc("sales_run_begin_persist", { p_run_id: runId });
   const { prospect_id } = await rpc<{ prospect_id: string }>("sales_persist_candidate", { p_run_id: runId, p_key: "c01" });
+  // Finish the run as the API does, so the next fixture can start one.
+  await rpc("sales_run_finalize", { p_run_id: runId });
   await db.query("update public.sales_outreaches set status = 'sent', sent_at = now() where prospect_id = $1", [prospect_id]);
   await receive(igsid, `mid-${igsid}`, "詳しく教えてください", Date.now() - receivedAgoMs);
   const { rows: [t] } = await db.query("select id from public.sales_ig_threads where igsid = $1", [igsid]);

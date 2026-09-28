@@ -148,7 +148,7 @@ run の現在地を**このテーブルだけから**判断できるようにす
 
 | action | body | サーバーの処理 | 冪等性 |
 |---|---|---|---|
-| `start` | `runId` | run を `running / started` で作成 | 既存 run があれば作成せず現在の状態を返す |
+| `start` | `runId` | run を `running / started` で作成 | 既存 run があれば作成せず現在の状態を返す（`replayed: true`）。**別の run が running の間は作成せず 409 `run_in_progress`**（24 時間 checkpoint がない run は先に `failed / run_expired` にするので妨げない。DEV-025） |
 | `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は実行中の run → なければ今日（Asia/Tokyo）開始の run（completed は 200、failed は 409 と `start_new_run`）→ なければ `null`（§7.3） | 読み取りのみ |
 | `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める | 同じ phase の再送は上書き保存（`persisting` 以降は拒否） |
 | `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤10。超過は 400 で全体拒否)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
@@ -165,7 +165,7 @@ run の現在地を**このテーブルだけから**判断できるようにす
 - `source_url` 等をサーバーから fetch しない（SSRF 経路を作らない）。
 - 処理順の詳細・fail-closed 条件は §7。
 - 実装: `app/api/internal/sales-agent/runs/route.ts`（認証・サイズ・schema）、`lib/sales/ingest-schema.ts`（request schema の正本）、`lib/sales/prepare.ts`（verified 候補の検証・正規化・チャネル決定・デモ内容）、`lib/sales/ingest.ts`（action 実行）。
-- HTTP: 200 正常 / 400 schema・内容不正（値は返さない）/ 401 token 不一致 / 404 run なし / 409 phase 違反・run_busy・failed run（`nextAction: start_new_run`）/ 413 本文 256KB 超・checkpoint 64KB 超 / 503 token 未設定・DB 不達。
+- HTTP: 200 正常 / 400 schema・内容不正（値は返さない）/ 401 token 不一致 / 404 run なし / 409 phase 違反・run_busy・run_in_progress・failed run（`nextAction: start_new_run`）/ 413 本文 256KB 超・checkpoint 64KB 超 / 503 token 未設定・DB 不達。
 
 ## 6. 認証・認可
 
@@ -252,6 +252,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 4. **DB 制約（最後の砦）**: prospect の dedupe キー unique、`sales_demos` unique(prospect_id)、`sales_outreaches` unique(prospect_id) where kind='initial'。万一再処理されても insert は失敗し、重複行はできない。
 5. **自 run の再処理と別 run の重複の区別**: dedupe で一致した prospect の `first_seen_run_id` が同じ run かつ同じ候補 key なら、自分の既存結果（`outreach_ready` 等）を返す。別 run の prospect に一致した場合は `duplicate` とし、新しい demo / outreach を作らない。
 6. **同時実行の直列化**: `persist` は run_id ごとの advisory lock（取れなければ 409 `run_busy`）で直列化し、各 transaction は run 行を `SELECT … FOR UPDATE` してから checkpoint を更新する。`checkpoint` action も run 行をロックして更新する。
+7. **running の run は常に 1 本**: `sales_agent_runs` の partial unique index（`where status = 'running'`）で、同時に 2 本の run が running になれない。`start` が重なっても後から commit する方は unique violation になり、409 `run_in_progress`（同じ runId なら `replayed`）を返す（migration `20260928000100`、DEV-025）。
 
 ### 7.4 persist の処理と fail-closed
 

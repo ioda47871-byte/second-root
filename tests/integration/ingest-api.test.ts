@@ -225,6 +225,35 @@ describe("run lifecycle through the API", () => {
     }
   });
 
+describe("one running run at a time (DEV-025)", () => {
+  it("answers 409 run_in_progress to a second start, 200 replayed to the same runId", async () => {
+    const first = randomUUID();
+    expect(await ok({ action: "start", runId: first })).toMatchObject({ runId: first, replayed: false, nextAction: "discover" });
+    const second = await call({ action: "start", runId: randomUUID() });
+    expect(second.status).toBe(409);
+    expect(await second.json()).toEqual({ error: "run_in_progress" });
+    expect(await ok({ action: "start", runId: first })).toMatchObject({ runId: first, status: "running", replayed: true });
+    expect(await count("sales_agent_runs")).toBe(1);
+    // The refused session finds the running run through status.
+    expect(await ok({ action: "status" })).toMatchObject({ runId: first, nextAction: "discover" });
+  });
+
+  it("concurrent starts through the API: exactly one 200, the rest 409", async () => {
+    const responses = await Promise.all(Array.from({ length: 6 }, () => call({ action: "start", runId: randomUUID() })));
+    const statuses = responses.map((r) => r.status).sort();
+    expect(statuses).toEqual([200, 409, 409, 409, 409, 409]);
+    expect(await count("sales_agent_runs")).toBe(1);
+  });
+
+  it("does not block a new run after the previous one completed", async () => {
+    const { runId } = await fullRun([verifiedInput()]);
+    expect(await ok({ action: "persist", runId })).toMatchObject({ status: "completed", replayed: true });
+    const next = await fullRun([verifiedInput()]);
+    expect(next.run).toMatchObject({ status: "completed" });
+    expect(await count("sales_agent_runs")).toBe(2);
+  });
+});
+
 describe("one run per day", () => {
   it("returns today's failed run on status with 409 and start_new_run", async () => {
     const failed = randomUUID();

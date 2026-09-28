@@ -13,6 +13,8 @@ async function sentOutreach() {
   await verifiedRun(runId, { c01: emailCandidate() });
   await rpc("sales_run_begin_persist", { p_run_id: runId });
   const { prospect_id } = await rpc<{ prospect_id: string }>("sales_persist_candidate", { p_run_id: runId, p_key: "c01" });
+  // Finish the run as the API does, so the next fixture can start one.
+  await rpc("sales_run_finalize", { p_run_id: runId });
   const { rows } = await db.query("select id from public.sales_outreaches where prospect_id = $1", [prospect_id]);
   const outreachId = rows[0].id as string;
   expect((await admin.rpc("sales_mark_sent", { p_outreach_id: outreachId })).error).toBeNull();
