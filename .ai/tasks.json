@@ -1175,6 +1175,51 @@
       "attempts": 0,
       "last_failure": "HUMAN-006: 実 Meta アカウントでの確認（受信・返信案・1 タップ返信）は Meta App 作成・Webhook 登録・Vercel 環境変数・Live 化が必要（docs/INSTAGRAM_SETUP.md）。コード・保存期間・security review（PASS）・mock E2E は完了（PR #33）。",
       "branch": "feature/dev-024-ig-launch-prep"
+    },
+    {
+      "id": "DEV-025",
+      "title": "Refuse a second concurrent sales agent run",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-016"
+      ],
+      "purpose": "DEV-016 の Staging 実走で、実行中の run があっても別 runId の start が 2 本目の running run を作れると判明。server/DB 側で 1 本に限定する（STAGING §7 #7）",
+      "acceptance_criteria": [
+        "running run があるとき、別 runId の action=start は 409 run_in_progress",
+        "同じ runId の start 再送は 200 replayed:true のまま",
+        "同時 start の race でも running run が 2 本にならないことを DB（partial unique index）で保証",
+        "completed / failed / 期限切れ run の既存挙動、daily cap / dedupe / persist idempotency / run_busy を壊さない",
+        "既存 migration は変更せず forward migration",
+        "Staging に適用し、1 本目 200・別 runId 409 run_in_progress・同一 runId replay 200 を実測"
+      ],
+      "required_tests": [
+        "integration: run_in_progress / replay / expired・completed・failed 後の start",
+        "integration: concurrent start race",
+        "全 CI"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/",
+        "lib/sales/",
+        "tests/",
+        "docs/",
+        "ops/sales-agent/",
+        ".ai/",
+        "scripts/staging/"
+      ],
+      "forbidden_scope": [
+        "既存 migration の変更",
+        "main への直接 push",
+        "Production data / secrets の操作",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-025-single-running-run"
     }
   ]
 }
