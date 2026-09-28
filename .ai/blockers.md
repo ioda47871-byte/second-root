@@ -7,7 +7,7 @@
 
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: **Production 準備は人間が完了（2026-09-28）**。残りは PR #29 の merge（人間の明示承認のもと Claude が実行）と、merge 後の確認。Release の技術的な条件（CI・review・Staging 実走・DEV-025）はすべて満たした。
-- PR #29（develop → main）は **Draft のまま**。Claude は merge しない。Production の DB・環境変数も変更しない。
+- PR #29（develop → main）は、人間の明示承認（2026-09-28）があるまで Draft のままにしていた。merge は、その承認に基づき Claude が行う。Claude は Production の DB・環境変数を変更しない。
 - main（PR #27）との衝突は PR #39 で解消した（両方 Next.js 16.3.6、develop 側を採用）。
 - 人間にお願いすること（この順番。詳細は `docs/RELEASE_READINESS.md` §13）:
   1. Production 用の Supabase project（HUMAN-002）
