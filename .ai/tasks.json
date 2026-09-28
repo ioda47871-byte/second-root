@@ -937,8 +937,9 @@
         "Production 設定"
       ],
       "attempts": 0,
-      "last_failure": "Release Readiness Report 作成済み（docs/RELEASE_READINESS.md）。DEV-016 の Staging 実走（HUMAN-004）と人間の Release 承認待ち",
-      "branch": "feature/dev-019-release-readiness"
+      "last_failure": "2026-09-28 Release Readiness を更新（PR #39）: DEV-016 Staging 実走完了、DEV-025 完了、DEV-020〜024 実装済み（HUMAN-006 のみ残り）、main との衝突を解消。技術的な Release 条件は充足。Production 準備と merge は人間待ち（docs/RELEASE_READINESS.md §13）",
+      "branch": "feature/dev-019-release-readiness",
+      "blocked_reason": "HUMAN-007（.ai/blockers.md）: Production 準備（HUMAN-002 の Production project・migration・Auth・管理者・Vercel Production env）と、人間による Release PR #29 の merge。解除条件: PR #29 merge と Production smoke test の通過"
     },
     {
       "id": "DEV-020",

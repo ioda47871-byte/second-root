@@ -98,3 +98,8 @@
 - 2026-09-28: HUMAN-004 完了 → DEV-016 Staging 実走 done（`.ai/reviews/DEV-016.md`）。ingest token と bypass は host 限定の API credential「Second Root Staging API」で proxy が付与し、RUN_PROMPT / INBOX_PROMPT / STAGING / SCHEDULE を両方式に対応させた（58d550d）。再デプロイ後に status 200。Routine 実走: discovered（2 stub）で session A を中断 → session B が同じ runId を status から verify → persist → completed（outreach_ready 1、Instagram、drafted・未送信）。同じ runId の persist / start / checkpoint 再送は replayed で重複なし、不正 payload は 400。**発見**: 別 runId の 2 本目 `start` を拒否する server 側 guard がない（STAGING §7 #7 の想定と不一致）→ follow-up 提案。Release PR #29 は未 merge（人間の承認待ち）。
 - 2026-09-28: DEV-016 の「token なし → 401」を人間が自分の端末で実測（PASS）。
 - 2026-09-28: DEV-025（running run は常に 1 本）merge（PR #38, 1e53ef0）。partial unique index と `sales_run_start` の `run_in_progress`（409）を追加。同時 start の race test も追加。fresh review PASS、CI 6 check green。Staging に migration 20260928000100 を適用（12 項目 PASS）。実測: start 200 / 別 runId 409 run_in_progress / 同一 runId 200 replayed。確認用 run は abort 済みで、running は 0。Release PR #29 は未 merge（人間の承認待ち）。
+- 2026-09-28: DEV-019 Release 準備を更新（PR #39）。
+  - RELEASE_READINESS / RELEASE §8 に、Staging 実走完了・DEV-025・Instagram 実装済み（HUMAN-006 のみ残り）を反映し、Production 準備の順番を書いた。
+  - main（PR #27）との衝突を解消した。
+  - HUMAN-004 は解除済みに移し、HUMAN-007（Production 準備と PR #29 の merge）を追加した。
+  - PR #29 は Draft のまま。Production は未変更。
