@@ -14,6 +14,14 @@
 - スクリプト: `scripts/staging/`（`apply.mjs` / `verify.mjs` / `admin.mjs` / `vercel-preview.mjs`）。secret は環境変数からだけ読み、表示しない。Claude Code の container（Node 22.21 以上、POSIX shell）で `npm run staging:*` として実行する。
 - 人間の端末から CLI で行う場合（同じ結果）: `npx supabase login` → `npx supabase link --project-ref znbqgvawublgyjwfpmei` → `npx supabase db push`（DB password は Claude に渡さない）→ Claude が §2 の verify を実行。
 
+## 1.1 2026-09-28 の実施結果（Staging）
+
+- Supabase の認証は、Claude Code environment の **API credential（`api.supabase.com` 限定の Bearer）** として登録された。session の proxy が header を付けるので、token は Claude の process・shell・ログに入らない。スクリプトは `SUPABASE_ACCESS_TOKEN` がなく proxy がある場合、Authorization header を付けずに送る（`authHeaders`）。
+- 14 migration を適用した。security の 8 項目はすべて PASS。
+- ただし、この新しい project は既定の権限が古い project と違い、`postgres` が作った table について API role（anon / authenticated / service_role）に SELECT / INSERT / UPDATE を自動で付けない。core の 6 table はこの既定に頼っていたため、Staging では管理画面が読めず、ingest API も書けない状態だった（「多すぎる権限」を見る audit では見つからない）。
+  → 既存 migration は変えずに、`20260928000000_sales_explicit_api_grants.sql` で必要な権限を明示した。あわせて「必要な権限」の確認（`REQUIRED_CHECKS`）と、migration が全 table を明示的に grant しているかの静的テストを追加した。
+- Auth 設定の変更（`--auth`）には `project_admin_write` 権限が必要（token にない）。範囲の広い権限なので、人間が Dashboard で設定する（§4）。
+
 ## 2. Claude Code 環境に入れる secret（人間）
 
 claude.ai の Claude Code → このセッションの cloud environment メニュー → Edit → 環境変数。新しい session から有効になる。**値をチャットに貼らない。**
@@ -65,7 +73,7 @@ MVP は email + password の管理者 1 人。**パスワードは Claude に渡
 1. 人間: Supabase Dashboard → Authentication → Users → **Add user** → **Create new user**。email とパスワードを入れ、**Auto Confirm User** をオンにする。
 2. 人間: 管理者の email アドレス（secret ではない）を Claude に伝える。
 3. Claude: `npm run staging:admin -- --project-ref znbqgvawublgyjwfpmei --confirm-ref znbqgvawublgyjwfpmei --email <email>` を実行する。削除済み・停止中・匿名の user は対象外。確認済みの Auth user を `sales_admins` に登録するだけで、パスワードは扱わない。2 人目の管理者は登録しない。
-4. public sign-up の OFF は §3 の `--auth` で Claude が設定する。Dashboard の Authentication → Sign In / Providers → 「Allow new users to sign up」が OFF になっていることを人間も目で確認できる。
+4. public sign-up の OFF とパスワード最小長は、token に `project_admin_write` がなければ人間が設定する: Authentication → Sign In / Providers →「Allow new users to sign up」を OFF、Email の「Minimum password length」を 12 以上。その後 Claude が `staging:verify` で確認する。
 
 ## 5. Vercel Preview（Staging）
 
