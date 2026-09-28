@@ -4,7 +4,9 @@
 // Supabase Management API / the environment to the Vercel API and are
 // never printed. Production variables are never touched.
 //
-//   SUPABASE_ACCESS_TOKEN=… VERCEL_TOKEN=… STAGING_SALES_AGENT_INGEST_TOKEN=… \
+//   [SUPABASE_ACCESS_TOKEN=…] [VERCEL_TOKEN=…] [STAGING_SALES_AGENT_INGEST_TOKEN=…] \
+//   (tokens may instead be API credentials the session proxy adds; without the
+//   ingest token the script leaves SALES_AGENT_INGEST_TOKEN to the human)
 //   npm run staging:vercel -- --project-ref <ref> --vercel-project <id or name> [--team <teamId>] \
 //     --confirm-ref <ref> --git-branch develop --demo-base-url https://<develop preview host>   # plan only
 //   … --apply
@@ -32,8 +34,13 @@ async function main() {
   if (!/^https:\/\/[a-z0-9.-]+(:\d+)?$/.test(demoBase)) throw new Error("--demo-base-url must be an https origin without a path");
   const vercelToken = process.env.VERCEL_TOKEN;
   const ingestToken = process.env.STAGING_SALES_AGENT_INGEST_TOKEN;
-  if (!vercelToken || vercelToken.length < 20) throw new Error("VERCEL_TOKEN is not set");
-  if (!ingestToken || ingestToken.length < 32) throw new Error("STAGING_SALES_AGENT_INGEST_TOKEN is not set (32+ characters, Staging only)");
+  // The Vercel token may instead be an API credential for api.vercel.com
+  // that the session proxy adds (it then never enters this process).
+  if (vercelToken !== undefined && vercelToken.length < 20) throw new Error("VERCEL_TOKEN looks invalid");
+  if (!vercelToken && !process.env.HTTPS_PROXY) throw new Error("no Vercel credential: set VERCEL_TOKEN or register an API credential for api.vercel.com");
+  // The ingest token is optional here: when the human keeps it out of
+  // Claude's reach, it is set by hand in Vercel and this script skips it.
+  if (ingestToken !== undefined && ingestToken.length < 32) throw new Error("STAGING_SALES_AGENT_INGEST_TOKEN must be 32+ characters (Staging only)");
 
   const supabase = managementRequest(ref, process.env.SUPABASE_ACCESS_TOKEN);
   // Key values are only fetched when they are about to be written.
@@ -45,7 +52,7 @@ async function main() {
     const sep = path.includes("?") ? "&" : "?";
     const res = await fetch(`${VERCEL_API}${path}${team ? `${sep}teamId=${team}` : ""}`, {
       method,
-      headers: { Authorization: `Bearer ${vercelToken}`, "Content-Type": "application/json" },
+      headers: vercelToken ? { Authorization: `Bearer ${vercelToken}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       redirect: "error",
     });
@@ -63,9 +70,10 @@ async function main() {
     { key: "NEXT_PUBLIC_SUPABASE_URL", type: "plain" },
     { key: "NEXT_PUBLIC_SUPABASE_ANON_KEY", type: "encrypted" },
     { key: "SUPABASE_SERVICE_ROLE_KEY", type: "sensitive" },
-    { key: "SALES_AGENT_INGEST_TOKEN", type: "sensitive" },
+    ...(ingestToken ? [{ key: "SALES_AGENT_INGEST_TOKEN", type: "sensitive" }] : []),
     { key: "SALES_DEMO_BASE_URL", type: "plain" },
   ];
+  if (!ingestToken) console.log("  SALES_AGENT_INGEST_TOKEN: not set by this script (the human sets it in Vercel: Preview, this branch, Sensitive)");
   // Never change a variable that also serves Production / Development or
   // another branch: only a Preview variable for exactly this branch may be
   // updated in place.

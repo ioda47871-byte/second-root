@@ -44,6 +44,18 @@ claude.ai の Claude Code → このセッションの cloud environment メニ�
   画面で名前が違う、または `auth_config_write` に `project_admin_write` も必要と出る場合は、それに従う。**Staging の作業が終わったら token を削除（Revoke）する。**
 - Operational Claude（Routine）の environment には従来どおり `SALES_AGENT_INGEST_URL` と `SALES_AGENT_INGEST_TOKEN` だけを入れる（§5 で (a) を選んだ場合は `SALES_AGENT_VERCEL_BYPASS` も。§6）。上の 3 つは入れない。
 
+### 2.1 人間が作る secret の置き場所（2026-09-28 決定）
+
+Supabase と Vercel の token は、Claude Code environment の **API credential**（host 限定の Bearer）として登録済み。session の proxy が header を付けるので、token は Claude の process・shell・ログに入らない。API credential は**新しい session から有効**になる。
+人間にしか作れない secret が 2 つあり、それぞれ次の場所にだけ保存する（チャット・GitHub には貼らない）。
+
+| secret | 作り方 | 保存先 |
+|---|---|---|
+| Staging の ingest token | 手元で `openssl rand -hex 32`（Production とは別の値） | ① Vercel → second-root → Settings → Environment Variables: `SALES_AGENT_INGEST_TOKEN`、Environment は **Preview だけ**、Branch `develop`、**Sensitive**<br>② Staging Routine の environment: 環境変数 `SALES_AGENT_INGEST_TOKEN`<br>③ この開発 session の environment: **API credential**（Bearer）で、host を `second-root-git-develop-brot-yanagi.vercel.app` に限定する。Claude は DEV-016 の再送・fail-closed 確認で ingest API を直接呼ぶが、token の値は見ない |
+| Protection Bypass for Automation（「Second Root Staging Claude」） | Vercel → Settings → Deployment Protection で作成済み | Staging Routine の environment: 環境変数 `SALES_AGENT_VERCEL_BYPASS`。Claude の直接確認では、Vercel API credential で同じ値を process 内で読み、header にだけ使う（表示しない） |
+
+`SALES_AGENT_INGEST_TOKEN` 以外の Preview 変数 4 つ（Supabase URL / anon key / service_role key / demo base URL）は、Claude が `staging:vercel` で設定する。
+
 ## 3. migration と security 確認（Claude）
 
 ```bash
