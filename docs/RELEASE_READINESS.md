@@ -42,7 +42,7 @@
 | DEV-013 | 履歴・計測・手動 DNC | #22 | PASS |
 | DEV-014 | 5日後フォロー（Email・1回のみ） | #23 | PASS |
 | DEV-015 | Operational Claude run prompt / scheduled job 定義 | #20 | PASS（round 2） |
-| DEV-016 | **Staging 実走**（resume・冪等・fail-closed） | #24（rehearsal fixes）・#34・#35・#37（Staging 用スクリプト・権限修正） | **done（2026-09-28）**。`.ai/reviews/DEV-016.md` |
+| DEV-016 | **Staging 実走**（resume・冪等・fail-closed） | #24（rehearsal fixes）・#34・#35・#36・#37（Staging 用スクリプト・権限修正・Vercel bypass 対応） | **done（2026-09-28）**。`.ai/reviews/DEV-016.md` |
 | DEV-017 | Security hardening | #25 | PASS |
 | DEV-018 | Full E2E / mobile QA | #26 | PASS |
 | DEV-020 | Instagram Webhook 受信（署名検証・重複排除） | #30 | PASS |
@@ -128,7 +128,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
 
 - **Staging（`znbqgvawublgyjwfpmei`）には 16 本すべて適用済み**。
   - Supabase Management API 経由の `staging:apply`。1 migration = 1 transaction。
-  - `staging:verify` の 14 項目がすべて PASS: migration 一致・RLS・権限の過不足・sign-up OFF・管理者 1 名。
+  - `staging:verify` の 14 項目がすべて PASS: migration 一致・RLS・権限の過不足・sign-up OFF・管理者 1 名。16 本の適用後、2026-09-28 15:19 UTC に再確認した。
 - **Production の Supabase project は未作成**（HUMAN-002）。
 - 無料プランのまま。
 
@@ -231,28 +231,36 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
 
 ## 13. Production 準備（人間。**PR #29 を merge する前に**、この順番で）
 
-手順の詳細は `docs/RELEASE.md` §8。Claude は Production の DB・環境変数を変更しない。Claude が行うのは、人間の承認がある読み取り確認だけ。
+手順の詳細は `docs/RELEASE.md` §8。
 
-0. **（Claude、済）PR #29 の衝突解消**。main（PR #27）を develop に merge した。両方 Next.js 16.3.6 のため、develop の lockfile を採用した。
-1. **Production 用の Supabase project を決める・作る**（HUMAN-002）。
-   - 推奨は新しい project（Tokyo、Free）。無料プランは有効な project 数に上限がある。
-   - Staging の project を流用する場合は、試験データ（run・店舗・デモ・営業記録）を消してから使う（`docs/STAGING.md` §8）。
+**Production の DB・Auth・環境変数への操作は、読み取りの確認も含めてすべて人間が行う。** Claude は Production 用の token を持たない。Supabase の Management API の token は任意の SQL を実行できるため、読み取りだけの確認でも書き込みの権限を渡すことになる。Claude は人間が貼った結果（PASS / FAIL の一覧。secret は含まない）を確認できる。
+
+0. **（Claude）PR #29 の衝突解消**。main（PR #27）を develop に取り込む merge を、PR #39 で行った。両方 Next.js 16.3.6 のため、develop の lockfile を採用した。PR #39 が develop に merge されると、PR #29 の衝突が消える。
+1. **Production 用に新しい Supabase project を作る**（HUMAN-002）。Tokyo、Free。
+   - Staging の project（`znbqgvawublgyjwfpmei`）は Production に**流用しない**。Staging には次のものが今もつながっているため:
+     - develop の Preview の service_role key
+     - Staging の ingest token と bypass、Staging の Routine
+     - Claude 用の Supabase token
+   - 無料プランの有効な project 数の上限に当たる場合は、使っていない project を一時停止する。有料化は人間が判断する。
 2. **migration を適用する**（人間の端末）。
    - `npx supabase login` → `npx supabase link --project-ref <prod-ref>` → `npx supabase db push`
-   - 16 本すべてを適用する。DB password は Claude に渡さない。
+   - 16 本すべてを適用する。DB password は誰にも渡さない。
    - 新しい project では `20260928000000`（権限の明示）が必須。途中の migration だけを適用しない。
-3. **確認する**（読み取りのみ）。次のどちらか:
-   - (a) 人間が、Production だけに範囲を絞った短期の Supabase token で `npm run staging:verify -- --project-ref <prod-ref>` を実行する。名前は staging だが、どの project でも使える。
-   - (b) Claude にその token を API credential（`api.supabase.com`）として渡し、Claude が同じコマンドを実行する。**Production への接続になるので、人間の明示承認が必要。**
+3. **確認する**（人間の端末）。
+   - Production だけに範囲を絞った短期の Supabase access token（`database_read`・`database_write`・`auth_config_read`）を作る。
+   - `SUPABASE_ACCESS_TOKEN=<token> npm run staging:verify -- --project-ref <prod-ref>` を実行する。名前は staging だが、どの project でも使える。
    - この時点では「public sign-up is off」「exactly one admin」の 2 項目は FAIL になる（4・5 の後に PASS）。ほかの 12 項目はすべて PASS であること。
    - `RELEASE.md` §8 の SQL だけでは、権限の不足（Staging で見つかった問題）は分からない。
+   - 結果の一覧を Claude に貼れば、Claude が確認する。
 4. **Auth を設定する**（Dashboard）。
    - Sign In / Providers →「Allow new users to sign up」を OFF。
    - Email の「Minimum password length」を 12 以上。
-5. **管理者を作る**。
+   - 「Confirm email」は ON のまま。
+5. **管理者を作る**（人間）。
    - Authentication → Add user（email + password、Auto Confirm）。
-   - `sales_admins` に登録する: SQL Editor で `insert into public.sales_admins (user_id) values ('<uuid>');`、または 3 と同じ方法で `staging:admin -- --project-ref <prod-ref> --confirm-ref <prod-ref> --email <email>`。
+   - SQL Editor で `insert into public.sales_admins (user_id) values ('<uuid>');`。または人間の端末で `staging:admin -- --project-ref <prod-ref> --confirm-ref <prod-ref> --email <email>`。
    - 3 をもう一度実行して、**14 項目すべて PASS** を確認する。
+   - 終わったら 3 の token を削除（Revoke）する。
 6. **Vercel の Production 環境変数を設定する**。Environment は **Production だけ**。Preview の Staging 用の値とは別。
    - `NEXT_PUBLIC_SUPABASE_URL`: `https://<prod-ref>.supabase.co`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: 公開用（anon / Publishable）

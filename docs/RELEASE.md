@@ -60,21 +60,21 @@ Release Readiness（DEV-019）でチェック:
 - 管理画面・デモを止める: 該当ルートを無効化する revert、またはデモを `disabled_at` で一括無効化。
 - 既存 Second Root（トップ・問い合わせ）は Sales Agent と独立しているため影響を受けない設計とする。
 
-## 8. Production リリース手順（人間が実行。Claude は PR 作成と、人間の承認がある読み取り確認まで）
+## 8. Production リリース手順（人間が実行。Claude は PR 作成と、人間が貼った確認結果の確認まで）
 
-前提: §3 のチェックが済んでいること。DEV-016（Staging 実走）は 2026-09-28 に完了している（`.ai/reviews/DEV-016.md`）。手順 1〜5 は **Release PR を merge する前に**行う。状況の一覧は `docs/RELEASE_READINESS.md` §13。
+前提: §3 のチェックが済んでいること。DEV-016（Staging 実走）は 2026-09-28 に完了している（`.ai/reviews/DEV-016.md`）。手順 1〜3 は **Release PR を merge する前に**行う（4 が merge、5 以降は merge 後）。**Production の DB・Auth・環境変数への操作は、確認も含めて人間が行う**（Claude に Production 用の token を渡さない。Supabase の Management API の token は任意の SQL を実行できるため）。状況の一覧は `docs/RELEASE_READINESS.md` §13。
 
 1. **Supabase（Production 用 project）**
-   - Second Root 専用 project を作成する（HUMAN-002）。Region は Tokyo 推奨、Free プラン。
-   - Staging の project（`znbqgvawublgyjwfpmei`）を流用する場合は、試験データを消してから使う（`docs/STAGING.md` §8）。
+   - Second Root 専用の**新しい** project を作成する（HUMAN-002）。Region は Tokyo 推奨、Free プラン。
+   - Staging の project（`znbqgvawublgyjwfpmei`）は流用しない。develop の Preview・Staging の ingest token と Routine・Claude 用の token が、今もつながっているため。
    - migrations を適用する（人間の端末から）:
      - `npx supabase login` → `npx supabase link --project-ref <prod-ref>` → `npx supabase db push`
      - DB password を聞かれるが、Claude には渡さない。
      - `supabase/migrations/` の 16 本すべてを適用する。
      - 新しい project は API role に table 権限を自動で付けないので、`20260928000000_sales_explicit_api_grants.sql` が必須。
-   - 適用後の確認（読み取りのみ）: `npm run staging:verify -- --project-ref <prod-ref>`。名前は staging だが、どの project でも使える。
-     - Production だけに範囲を絞った短期の Supabase token で、人間が実行する。
-     - または、その token を API credential として渡し、人間の明示承認のもとで Claude が実行する。
+   - 適用後の確認: 人間の端末で `SUPABASE_ACCESS_TOKEN=<token> npm run staging:verify -- --project-ref <prod-ref>`。名前は staging だが、どの project でも使える。
+     - token は Production だけに範囲を絞り、有効期限を短くする（`database_read`・`database_write`・`auth_config_read`）。
+     - 結果の一覧（secret は含まない）は Claude に貼って確認してもらえる。
      - 確認内容: migration の一致・RLS・権限の過不足（多すぎ・足りない）・sign-up OFF・管理者 1 名。
      - 次の SQL だけでは、権限の不足は分からない:
        - `select version from supabase_migrations.schema_migrations order by 1;` が `supabase/migrations/` と一致する
@@ -86,8 +86,8 @@ Release Readiness（DEV-019）でチェック:
    - 管理者作成:
      - Authentication → Add user（email + password、Auto Confirm）。
      - SQL Editor で `insert into public.sales_admins (user_id) values ('<uuid>');`
-     - または `npm run staging:admin -- --project-ref <prod-ref> --confirm-ref <prod-ref> --email <email>`（パスワードは扱わない）。
-     - その後 `staging:verify` の **14 項目すべて PASS** を確認する。
+     - または人間の端末で `npm run staging:admin -- --project-ref <prod-ref> --confirm-ref <prod-ref> --email <email>`（パスワードは扱わない）。
+     - その後 `staging:verify` の **14 項目すべて PASS** を確認し、token を削除（Revoke）する。
 2. **Vercel（Production 環境変数）**。Environment は **Production だけ**に設定する。Preview（develop）の Staging 用の値はそのまま。
    - Supabase Dashboard の API キー表示が新しい名称の場合: 公開用（anon / Publishable）を `NEXT_PUBLIC_SUPABASE_ANON_KEY`、サーバー用（service_role / Secret）を `SUPABASE_SERVICE_ROLE_KEY` に入れる。**サーバー用のキーを `NEXT_PUBLIC_*` に入れない**（ブラウザに露出する）。
    - 設定する値:
