@@ -77,7 +77,7 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase の anon（公開用）key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase の service_role key（Sensitive。`NEXT_PUBLIC_` を付けない） |
 | `SALES_AGENT_INGEST_TOKEN` | `STAGING_SALES_AGENT_INGEST_TOKEN` と同じ値（Sensitive） |
-| `SALES_DEMO_BASE_URL` | develop の Preview の固定 URL（例: `https://<project>-git-develop-<team>.vercel.app`） |
+| `SALES_DEMO_BASE_URL` | `https://second-root-git-develop-brot-yanagi.vercel.app`（develop の Preview の固定 URL） |
 
 - `VERCEL_TOKEN` がある場合は Claude が実行する（値は Supabase / 環境変数から Vercel へ直接渡し、表示しない）:
   `npm run staging:vercel -- --project-ref znbqgvawublgyjwfpmei --confirm-ref znbqgvawublgyjwfpmei --vercel-project <name> [--team <teamId>] --git-branch develop --demo-base-url https://<develop の Preview URL> --apply`
@@ -85,6 +85,8 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
   - 同じ名前の変数が Production・Development・別 branch 向けにすでにある場合は、何も変えずに止まる。更新するのは「Preview かつ develop だけ」の変数に限る。
   - key の値は `--apply` のときだけ取得する。
 - ない場合は人間が Vercel → Project → Settings → Environment Variables で、Environment を **Preview** だけ、Branch を `develop` にして上の 5 つを追加する。その後 develop を再デプロイする。
+- Vercel project: `second-root`（team `brot-yanagi`）。develop の Preview の固定 URL: `https://second-root-git-develop-brot-yanagi.vercel.app`。
+- **2026-09-28 確認: Preview には Vercel Authentication が掛かっている**。ingest API（`/api/internal/sales-agent/runs`）も含め、未ログインのアクセスは `vercel.com/sso-api` へ 302 で転送される。
 - **Deployment Protection**: Preview に「Vercel Authentication」が掛かっていると、Operational Claude（Routine）の ingest 呼び出しが Vercel に 401 で止められる（Meta の Webhook も同じ）。どちらかを人間が選ぶ:
   - (a) 推奨: Settings → Deployment Protection → **Protection Bypass for Automation** を作成する。これを使う場合は Routine の prompt に header の追加が必要なので、Claude が対応する。
   - (b) Preview の Vercel Authentication を OFF にする（管理画面はログイン必須、ingest は token 必須、デモは推測できない URL なので、データは守られる）。
@@ -95,7 +97,7 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
 `ops/sales-agent/SCHEDULE.md` §2・§3 のとおり。
 
 - environment の環境変数は 2 つだけ:
-  - `SALES_AGENT_INGEST_URL=https://<develop の Preview URL>/api/internal/sales-agent/runs`
+  - `SALES_AGENT_INGEST_URL=https://second-root-git-develop-brot-yanagi.vercel.app/api/internal/sales-agent/runs`
   - `SALES_AGENT_INGEST_TOKEN=<Staging の値>`
 - Routine 名は `second-root-sales-agent-daily-staging`。**スケジュールは無効のまま**で作り、手動実行（Run now）だけで使う。
 - 作成したら Routine の名前を Claude に伝える。Claude は Routine を起動・中断できる（DEV-016）。

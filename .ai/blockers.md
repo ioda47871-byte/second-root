@@ -19,7 +19,9 @@
      - `STAGING_SALES_AGENT_INGEST_TOKEN`（必須）: `openssl rand -hex 32`。Staging 専用
      - `VERCEL_TOKEN`（任意）: 入れない場合は 4 を人間が画面で行う
   2. **管理者ユーザー作成**: Supabase → Authentication → Add user → Create new user（email + password、Auto Confirm User オン）。パスワードは Claude に渡さず、email だけを伝える。
-  3. **Vercel Preview の Deployment Protection の方針**を決める（`docs/STAGING.md` §5。推奨は Protection Bypass for Automation）。
+  3. **Vercel Preview の Deployment Protection の方針**を決める（`docs/STAGING.md` §5）。2026-09-28 に確認したところ、Preview（`https://second-root-git-develop-brot-yanagi.vercel.app`）は Vercel Authentication で保護されていて、ingest API も SSO へ転送される。このままでは Staging の Routine が ingest API に届かない。
+     - (a) 推奨: Protection Bypass for Automation を作成する（Preview は非公開のまま）。この場合、Claude が Routine prompt に bypass header の対応を追加する。
+     - (b) Preview の Vercel Authentication を OFF にする（管理画面はログイン必須、ingest は token 必須のまま。security 設定の緩和なので人間の判断）。
   4. （`VERCEL_TOKEN` なしの場合）Vercel Preview（branch `develop` のみ）に環境変数を 5 つ設定し、develop を再デプロイする（`docs/STAGING.md` §5）。
   5. **Staging の Routine** を作成する（スケジュールは無効、手動実行のみ。`docs/STAGING.md` §6）。
 - 1 の後に Claude がやること:
@@ -52,12 +54,6 @@
   - 「この内容で返信」で 1 回だけ届き、2 回目は「送信済み」になる
 - Claude は Meta の画面操作・App Review 申請・token の扱いを行わない。
 
-### HUMAN-005 — Vercel preview の build rate limit（非ブロッキング）
-- 状態: 人間判断（開発は止めない）
-- 内容: 2026-09-27 に PR の `Vercel` status が "Deployment rate limited — retry in 24 hours" で失敗（無料プランの preview build 回数上限）。GitHub Actions の必須 CI（static / unit / integration / build / e2e / e2e-sales）は独立に判定しており、merge 判断には使っていない。
-- 影響: その日の Preview URL が作られない。Staging 実走（DEV-016 / HUMAN-004）を Preview で行う場合、上限にかからない日に行う必要がある。
-- 選択肢: (a) 24 時間待つ（推奨。追加費用なし）、(b) Vercel の有料プラン（billing のため人間判断）。Claude は plan を変更しない。
-
 ### HUMAN-003 — branch protection の required checks（推奨・非ブロッキング）
 - 状態: 人間待ち（開発は止めない）
 - 内容: GitHub → Settings → Branches で `main` と `develop` に branch protection を設定し、required status checks に `static` / `unit` / `integration` / `build` / `e2e` / `e2e-sales` を追加する。
@@ -65,6 +61,9 @@
 - DEV-004 で Claude が allowed_scope を拡張（GA を /demo・/admin で無効化、noindex / no-referrer ヘッダ、e2e 分割）。既存ページの挙動は不変とレビュー確認済み。異論があれば PR #12 を参照。
 
 ## 解除済み
+
+### HUMAN-005 — Vercel preview の build rate limit
+- 状態: **解除（2026-09-28）**: PR #34 の Preview が Ready になった（rate limit 解除）。再発した場合も GitHub Actions の必須 CI で merge 判断を続ける。
 
 ### HUMAN-001 — Bootstrap PR の merge と develop 作成
 - 対象 Task: DEV-001, DEV-002（以降すべて）
