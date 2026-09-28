@@ -8,7 +8,7 @@
 ### HUMAN-002 — Second Root 専用 Supabase project
 - 状態: **Staging 用は作成済み（2026-09-28、人間）**。project `second-root`、ref `znbqgvawublgyjwfpmei`、Region ap-northeast-1。まず Staging / DEV-016 に使う。
 - Production 用を別に作るか、この project を使うかは Release 承認時に人間が判断する（`docs/STAGING.md` §8）。Claude は project 作成・billing 変更を行わない。
-- 2026-09-28: **残りは Production 用**。新規作成（推奨）か Staging の流用（試験データを消してから）かを人間が決め、migration 16 本を適用する。手順は `docs/RELEASE_READINESS.md` §13 の 1〜5、`docs/RELEASE.md` §8。
+- 2026-09-28: **残りは Production 用**。**新しい project を作る**（Staging の project は Preview・Staging の ingest token・Routine・Claude 用の token がつながっているため流用しない）。migration 16 本を人間が適用する。手順は `docs/RELEASE_READINESS.md` §13 の 1〜5、`docs/RELEASE.md` §8。
 
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: 人間待ち（2026-09-28）。Release の技術的な条件（CI・review・Staging 実走・DEV-025）はすべて満たした。
@@ -18,10 +18,12 @@
   1. Production 用の Supabase project（HUMAN-002）
   2. migration 16 本の適用（`supabase db push`）
   3. `staging:verify --project-ref <prod-ref>` で確認
-     - 人間が実行する。Claude が実行する場合は、Production 用の token と人間の明示承認が必要。
+     - 人間が自分の端末で、Production に絞った短期の token を使って実行する。
+     - Claude には Production 用の token を渡さない（Management API の token は任意の SQL を実行できる）。
+     - 結果の PASS / FAIL 一覧を Claude に貼れば確認する。
   4. Auth の設定（sign-up OFF・パスワード 12 文字以上）
-  5. 管理者の作成と `sales_admins` への登録
-     - この後 verify の 14 項目すべて PASS を確認する。
+  5. 管理者の作成と `sales_admins` への登録（人間）
+     - この後 verify の 14 項目すべて PASS を確認し、token を Revoke する。
   6. Vercel の **Production だけ**に 5 つの変数を設定する
      - Supabase の 3 つ・新しい ingest token・`SALES_DEMO_BASE_URL=https://secondroot.jp`
      - `INSTAGRAM_*` はまだ入れない。
