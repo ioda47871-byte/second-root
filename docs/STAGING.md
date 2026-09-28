@@ -11,7 +11,7 @@
   - 1 migration = 1 request = 1 transaction。失敗した migration は丸ごと戻り、そこで止まる。
   - 適用記録は CLI と同じ `supabase_migrations.schema_migrations`（version / name）に残す。後から人間の端末で `npx supabase migration list` / `db push` を使っても食い違わない。
   - 既存 migration は書き換えない。remote に repo にない version がある、同じ version の名前が違う、古い未適用 migration がある場合は、何も適用せずに止まる（drift）。
-- スクリプト: `scripts/staging/`（`apply.mjs` / `verify.mjs` / `admin.mjs` / `vercel-preview.mjs`）。secret は環境変数からだけ読み、表示しない。
+- スクリプト: `scripts/staging/`（`apply.mjs` / `verify.mjs` / `admin.mjs` / `vercel-preview.mjs`）。secret は環境変数からだけ読み、表示しない。Claude Code の container（Node 22.21 以上、POSIX shell）で `npm run staging:*` として実行する。
 - 人間の端末から CLI で行う場合（同じ結果）: `npx supabase login` → `npx supabase link --project-ref znbqgvawublgyjwfpmei` → `npx supabase db push`（DB password は Claude に渡さない）→ Claude が §2 の verify を実行。
 
 ## 2. Claude Code 環境に入れる secret（人間）
@@ -40,11 +40,14 @@ claude.ai の Claude Code → このセッションの cloud environment メニ�
 
 ```bash
 npm run staging:apply  -- --project-ref znbqgvawublgyjwfpmei            # 計画だけ表示
-npm run staging:apply  -- --project-ref znbqgvawublgyjwfpmei --apply --auth
+npm run staging:apply  -- --project-ref znbqgvawublgyjwfpmei --confirm-ref znbqgvawublgyjwfpmei --apply --auth
 npm run staging:verify -- --project-ref znbqgvawublgyjwfpmei            # 読み取りのみ。管理者登録後にも実行
 ```
 
-- `--apply`: 未適用の migration を順に適用し、続けて security 確認を行う。
+- `--apply`: 未適用の migration を順に適用し、続けて security 確認を行う。`--confirm-ref` に同じ ref を書かないと実行しない。
+  - 最初の変更の前に、実際の project で次を確かめ、違えば何も変えずに止まる:
+    - SQL が CLI と同じ `postgres` として実行されること
+    - 途中で失敗した複数文の request が何も残さない（1 transaction）こと（公式ドキュメントに明記がないため、毎回その場で確認する）
 - `--auth`: public sign-up を OFF にし、パスワードの最小長を 12 以上にする。
 - 確認項目（`scripts/staging/lib.mjs` の `runChecks`。CI の `tests/integration/db-security-audit.test.ts` と同じ規則）:
   - `schema_migrations` が `supabase/migrations/` と完全一致（Instagram 連携の 000900〜001200 を含む）
@@ -61,7 +64,7 @@ MVP は email + password の管理者 1 人。**パスワードは Claude に渡
 
 1. 人間: Supabase Dashboard → Authentication → Users → **Add user** → **Create new user**。email とパスワードを入れ、**Auto Confirm User** をオンにする。
 2. 人間: 管理者の email アドレス（secret ではない）を Claude に伝える。
-3. Claude: `npm run staging:admin -- --project-ref znbqgvawublgyjwfpmei --email <email>` を実行する。確認済みの Auth user を `sales_admins` に登録するだけで、パスワードは扱わない。2 人目の管理者は登録しない。
+3. Claude: `npm run staging:admin -- --project-ref znbqgvawublgyjwfpmei --confirm-ref znbqgvawublgyjwfpmei --email <email>` を実行する。削除済み・停止中・匿名の user は対象外。確認済みの Auth user を `sales_admins` に登録するだけで、パスワードは扱わない。2 人目の管理者は登録しない。
 4. public sign-up の OFF は §3 の `--auth` で Claude が設定する。Dashboard の Authentication → Sign In / Providers → 「Allow new users to sign up」が OFF になっていることを人間も目で確認できる。
 
 ## 5. Vercel Preview（Staging）
@@ -77,8 +80,10 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
 | `SALES_DEMO_BASE_URL` | develop の Preview の固定 URL（例: `https://<project>-git-develop-<team>.vercel.app`） |
 
 - `VERCEL_TOKEN` がある場合は Claude が実行する（値は Supabase / 環境変数から Vercel へ直接渡し、表示しない）:
-  `npm run staging:vercel -- --project-ref znbqgvawublgyjwfpmei --vercel-project <name> [--team <teamId>] --git-branch develop --demo-base-url https://<develop の Preview URL> --apply`
-  このスクリプトは Preview の Deployment Protection の状態も表示する。
+  `npm run staging:vercel -- --project-ref znbqgvawublgyjwfpmei --confirm-ref znbqgvawublgyjwfpmei --vercel-project <name> [--team <teamId>] --git-branch develop --demo-base-url https://<develop の Preview URL> --apply`
+  - このスクリプトは Preview の Deployment Protection の状態も表示する。
+  - 同じ名前の変数が Production・Development・別 branch 向けにすでにある場合は、何も変えずに止まる。更新するのは「Preview かつ develop だけ」の変数に限る。
+  - key の値は `--apply` のときだけ取得する。
 - ない場合は人間が Vercel → Project → Settings → Environment Variables で、Environment を **Preview** だけ、Branch を `develop` にして上の 5 つを追加する。その後 develop を再デプロイする。
 - **Deployment Protection**: Preview に「Vercel Authentication」が掛かっていると、Operational Claude（Routine）の ingest 呼び出しが Vercel に 401 で止められる（Meta の Webhook も同じ）。どちらかを人間が選ぶ:
   - (a) 推奨: Settings → Deployment Protection → **Protection Bypass for Automation** を作成する。これを使う場合は Routine の prompt に header の追加が必要なので、Claude が対応する。

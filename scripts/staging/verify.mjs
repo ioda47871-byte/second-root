@@ -9,13 +9,14 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { assertRef, formatResults, listMigrations, managementQuery, managementRequest, parseArgs, runChecks } from "./lib.mjs";
+import { assertProxySupport, assertRef, formatResults, listMigrations, managementQuery, managementRequest, parseArgs, runChecks } from "./lib.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const ref = assertRef(args["project-ref"]);
+  assertProxySupport();
   const token = process.env.SUPABASE_ACCESS_TOKEN;
   const query = managementQuery(ref, token);
   const local = listMigrations(join(root, "supabase", "migrations"));

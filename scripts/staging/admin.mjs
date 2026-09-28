@@ -5,19 +5,23 @@
 //
 //   SUPABASE_ACCESS_TOKEN=… npm run staging:admin -- --project-ref <ref> --email <admin email>
 
-import { assertRef, managementQuery, parseArgs } from "./lib.mjs";
+import { assertProxySupport, assertRef, managementQuery, parseArgs } from "./lib.mjs";
 
 const EMAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const ref = assertRef(args["project-ref"]);
+  if (args["confirm-ref"] !== ref) throw new Error("--confirm-ref must repeat the project ref");
+  assertProxySupport();
   const email = String(args.email ?? "");
   if (!EMAIL.test(email) || email.length > 254) throw new Error("--email must be the admin's email address");
   const query = managementQuery(ref, process.env.SUPABASE_ACCESS_TOKEN);
   const literal = `'${email.toLowerCase().replaceAll("'", "''")}'`;
 
-  const users = await query(`select id, email_confirmed_at is not null as confirmed from auth.users where lower(email) = ${literal}`);
+  const users = await query(`select id, email_confirmed_at is not null as confirmed from auth.users
+    where lower(email) = ${literal} and deleted_at is null and not coalesce(is_anonymous, false)
+      and (banned_until is null or banned_until < now())`);
   if (users.length !== 1) throw new Error(`expected exactly one Auth user with that email, found ${users.length} (create it in Authentication → Add user)`);
   if (!/^[0-9a-f-]{36}$/.test(users[0].id)) throw new Error("unexpected user id");
   if (!users[0].confirmed) throw new Error("the Auth user is not confirmed (use Auto Confirm User when creating it)");

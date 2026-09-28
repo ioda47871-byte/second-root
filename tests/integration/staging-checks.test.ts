@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { listMigrations, migrationRequest, runChecks } from "../../scripts/staging/lib.mjs";
+import { assertQuerySemantics, listMigrations, migrationRequest, runChecks } from "../../scripts/staging/lib.mjs";
 import { db } from "./helpers";
 
 // The Staging verification (scripts/staging/verify.mjs) run against the
@@ -59,5 +59,21 @@ describe("staging verification", () => {
     await expect(db.query(migrationRequest(broken))).rejects.toThrow(/division by zero/);
     expect((await db.query("select to_regclass('public.staging_probe') as t")).rows[0].t).toBeNull();
     expect((await db.query("select count(*)::int as n from supabase_migrations.schema_migrations where version = '20991231000000'")).rows[0].n).toBe(0);
+  });
+
+  it("the pre-apply probe accepts a database that runs SQL as postgres, one transaction per request", async () => {
+    await expect(assertQuerySemantics(async (sql: string) => (await db.query(sql)).rows)).resolves.toBeUndefined();
+    expect((await db.query("select to_regclass('public._staging_atomicity_probe') as t")).rows[0].t).toBeNull();
+  });
+
+  it("[fail-closed] the probe refuses an API that splits requests, and cleans up", async () => {
+    // Simulate an API that runs statements one by one (no transaction).
+    const split = async (sql: string) => {
+      let rows: unknown[] = [];
+      for (const s of sql.split(";").map((x) => x.trim()).filter(Boolean)) rows = (await db.query(s)).rows;
+      return rows;
+    };
+    await expect(assertQuerySemantics(split)).rejects.toThrow(/not one transaction/);
+    expect((await db.query("select to_regclass('public._staging_atomicity_probe') as t")).rows[0].t).toBeNull();
   });
 });

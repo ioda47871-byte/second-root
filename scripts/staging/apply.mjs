@@ -3,7 +3,7 @@
 // API, then runs the security checks (docs/STAGING.md §2).
 //
 //   SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref <ref>            # plan only
-//   SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref <ref> --apply    # apply + verify
+//   SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref <ref> --confirm-ref <ref> --apply   # apply + verify
 //   … --apply --auth   also turns public sign-up off and requires 12+ character passwords
 //
 // Never prints the token. Stops at the first failing migration (that
@@ -12,13 +12,15 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { assertRef, formatResults, HISTORY_DDL, listMigrations, managementQuery, managementRequest, migrationRequest, parseArgs, planMigrations, runChecks } from "./lib.mjs";
+import { assertProxySupport, assertQuerySemantics, assertRef, formatResults, HISTORY_DDL, listMigrations, managementQuery, managementRequest, migrationRequest, parseArgs, planMigrations, runChecks } from "./lib.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const ref = assertRef(args["project-ref"]);
+  if (args.apply && args["confirm-ref"] !== ref) throw new Error("--apply needs --confirm-ref with the same project ref");
+  assertProxySupport();
   const token = process.env.SUPABASE_ACCESS_TOKEN;
   const query = managementQuery(ref, token);
   const local = listMigrations(join(root, "supabase", "migrations"));
@@ -37,6 +39,9 @@ async function main() {
     return;
   }
 
+  // Checked on the real project before the first change.
+  await assertQuerySemantics(query);
+  console.log("checked: SQL runs as postgres, and a failed request changes nothing");
   if (!history) await query(HISTORY_DDL);
   for (const m of pending) {
     process.stdout.write(`applying ${m.file} … `);

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { assertRef, expectedTables, listMigrations, managementQuery, migrationRequest, parseArgs, planMigrations } from "../../../scripts/staging/lib.mjs";
+import { assertRef, expectedTables, listMigrations, managementQuery, migrationRequest, parseArgs, parseJson, planMigrations } from "../../../scripts/staging/lib.mjs";
 
 // Staging setup through the Supabase Management API (DEV-016): the plan,
 // the requests and token handling. No network: fetch is mocked.
@@ -65,7 +65,12 @@ describe("Management API client", () => {
     expect(() => managementQuery("znbqgvawublgyjwfpmei", "", vi.fn())).toThrow(/SUPABASE_ACCESS_TOKEN/);
   });
 
-  it("parses flags", () => {
+  it("parses flags; --apply and --auth take no value", () => {
     expect(parseArgs(["--project-ref", "abc", "--apply"])).toEqual({ "project-ref": "abc", apply: true });
+    expect(() => parseArgs(["--apply", "no"])).toThrow(/takes no value/);
+  });
+
+  it("[fail-closed] a non-JSON response never quotes the body (it may hold a key)", () => {
+    expect(() => parseJson("eyJhbGciOiJIUzI1NiIs-not-json", 200, null)).toThrow("non-JSON response (200)");
   });
 });

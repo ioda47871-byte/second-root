@@ -82,7 +82,7 @@ export function managementQuery(ref, token, fetchImpl = fetch) {
     });
     const text = await res.text();
     if (!res.ok) throw new Error(`Management API ${res.status}: ${redact(text, token).slice(0, 500)}`);
-    return text ? JSON.parse(text) : [];
+    return parseJson(text, res.status, []);
   };
 }
 
@@ -99,9 +99,53 @@ export function managementRequest(ref, token, fetchImpl = fetch) {
     });
     const text = await res.text();
     if (!res.ok) throw new Error(`Management API ${method} ${path} ${res.status}: ${redact(text, token).slice(0, 300)}`);
-    return text ? JSON.parse(text) : null;
+    return parseJson(text, res.status, null);
   };
 }
+
+/** JSON.parse without quoting the body in the error (it may hold a key). */
+export function parseJson(text, status, empty) {
+  if (!text) return empty;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`non-JSON response (${status})`);
+  }
+}
+
+/**
+ * Checks the Management API behaves as these scripts assume, before
+ * anything is changed: SQL runs as `postgres` (the owner the CLI uses), and
+ * a multi-statement request is one transaction (a failing request leaves
+ * nothing behind). Throws otherwise.
+ */
+export async function assertQuerySemantics(query) {
+  const [{ user }] = await query("select current_user::text as user");
+  if (user !== "postgres") throw new Error(`the Management API runs SQL as "${user}", not "postgres"; stop and apply with the CLI instead`);
+  let failed = false;
+  try {
+    await query("create table public._staging_atomicity_probe (id int); select 1/0;");
+  } catch {
+    failed = true;
+  }
+  const [{ t }] = await query("select to_regclass('public._staging_atomicity_probe')::text as t");
+  if (t) {
+    await query("drop table public._staging_atomicity_probe");
+    throw new Error("a failed multi-statement request left changes behind (not one transaction); stop and apply with the CLI instead");
+  }
+  if (!failed) throw new Error("the atomicity probe did not fail as expected; stop");
+}
+
+/** The proxy in Claude Code cloud needs Node's env-proxy support. */
+export function assertProxySupport() {
+  if (!process.env.HTTPS_PROXY) return;
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (process.env.NODE_USE_ENV_PROXY !== "1" || major < 22 || (major === 22 && minor < 21)) {
+    throw new Error("run through npm run staging:* (needs Node >= 22.21 with NODE_USE_ENV_PROXY=1 behind HTTPS_PROXY)");
+  }
+}
+
+const BOOLEAN_FLAGS = new Set(["apply", "auth"]);
 
 export function redact(text, ...secrets) {
   let out = String(text);
@@ -219,7 +263,10 @@ export function parseArgs(argv) {
     if (!a.startsWith("--")) throw new Error(`unexpected argument: ${a}`);
     const key = a.slice(2);
     const next = argv[i + 1];
-    if (next !== undefined && !next.startsWith("--")) {
+    if (BOOLEAN_FLAGS.has(key)) {
+      if (next !== undefined && !next.startsWith("--")) throw new Error(`--${key} takes no value`);
+      args[key] = true;
+    } else if (next !== undefined && !next.startsWith("--")) {
       args[key] = next;
       i += 1;
     } else args[key] = true;
