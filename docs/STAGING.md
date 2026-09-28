@@ -1,0 +1,108 @@
+# Staging セットアップ手順（DEV-016 / HUMAN-002・004）
+
+> Staging は DEV-016（Operational Claude の実走確認）用。**Production への release はしない。Release PR #29 は merge しない。**
+> Staging の Supabase project: `second-root`（ref `znbqgvawublgyjwfpmei`、Region ap-northeast-1）。2026-09-28 に人間が作成。
+> Secret の値は GitHub・チャット・ログ・commit に出さない。この文書にも書かない。
+
+## 1. 方式
+
+- Claude Code（cloud）の container からは HTTPS しか外へ出られず、Postgres（5432 / 6543）へ直接つなげない。そのため `supabase db push` は使えない。
+- 代わりに **Supabase 公式の Management API**（`POST /v1/projects/{ref}/database/query`、HTTPS）で同じ migration を順番に適用する。
+  - 1 migration = 1 request = 1 transaction。失敗した migration は丸ごと戻り、そこで止まる。
+  - 適用記録は CLI と同じ `supabase_migrations.schema_migrations`（version / name）に残す。後から人間の端末で `npx supabase migration list` / `db push` を使っても食い違わない。
+  - 既存 migration は書き換えない。remote に repo にない version がある、同じ version の名前が違う、古い未適用 migration がある場合は、何も適用せずに止まる（drift）。
+- スクリプト: `scripts/staging/`（`apply.mjs` / `verify.mjs` / `admin.mjs` / `vercel-preview.mjs`）。secret は環境変数からだけ読み、表示しない。
+- 人間の端末から CLI で行う場合（同じ結果）: `npx supabase login` → `npx supabase link --project-ref znbqgvawublgyjwfpmei` → `npx supabase db push`（DB password は Claude に渡さない）→ Claude が §2 の verify を実行。
+
+## 2. Claude Code 環境に入れる secret（人間）
+
+claude.ai の Claude Code → このセッションの cloud environment メニュー → Edit → 環境変数。新しい session から有効になる。**値をチャットに貼らない。**
+
+| 変数名 | 何か / どこで作るか | 必須 | 用途 |
+|---|---|---|---|
+| `SUPABASE_ACCESS_TOKEN` | Supabase Dashboard → Account → Access Tokens → Generate new token（有効期限を短く、例: 7 日） | 必須 | migration 適用・検証・Auth 設定・管理者登録・API キーの受け渡し |
+| `STAGING_SALES_AGENT_INGEST_TOKEN` | 手元で `openssl rand -hex 32`（**Staging 専用**。Production とは別の値） | 必須 | Vercel Preview に設定する ingest token。DEV-016 の再送・fail-closed 確認にも使う |
+| `VERCEL_TOKEN` | Vercel → Account Settings → Tokens → Create（Scope は Second Root のあるチーム、有効期限を短く） | 任意 | Preview の環境変数を Claude が設定する場合だけ。入れない場合は §5 を人間が画面で行う |
+
+- Supabase の Access Token はアカウント内のすべての project に効く。Claude は `znbqgvawublgyjwfpmei` 以外を操作しない（スクリプトは `--project-ref` を必須にしている）が、**Staging の作業が終わったら token を削除（Revoke）する。**
+- Operational Claude（Routine）の environment には従来どおり `SALES_AGENT_INGEST_URL` と `SALES_AGENT_INGEST_TOKEN` だけを入れる（§6）。上の 3 つは入れない。
+
+## 3. migration と security 確認（Claude）
+
+```bash
+npm run staging:apply  -- --project-ref znbqgvawublgyjwfpmei            # 計画だけ表示
+npm run staging:apply  -- --project-ref znbqgvawublgyjwfpmei --apply --auth
+npm run staging:verify -- --project-ref znbqgvawublgyjwfpmei            # 読み取りのみ。管理者登録後にも実行
+```
+
+- `--apply`: 未適用の migration を順に適用し、続けて security 確認を行う。
+- `--auth`: public sign-up を OFF にし、パスワードの最小長を 12 以上にする。
+- 確認項目（`scripts/staging/lib.mjs` の `runChecks`。CI の `tests/integration/db-security-audit.test.ts` と同じ規則）:
+  - `schema_migrations` が `supabase/migrations/` と完全一致（Instagram 連携の 000900〜001200 を含む）
+  - すべての `sales_*` table が存在し、RLS が有効
+  - anon: `sales_*` の table・view に権限なし、sales 関数を実行できない
+  - authenticated（一般ユーザー）: `sales_*` table へ直接 INSERT / UPDATE / DELETE / TRUNCATE できない。実行できるのは admin を最初に確認する SECURITY DEFINER 関数だけ
+  - すべての sales 関数で `search_path` が固定され、PUBLIC に実行権限がない
+  - `verify` はさらに、public sign-up が OFF で、管理者がちょうど 1 人であることを確認する
+- この確認は CI でもローカル DB に対して毎回実行している（`tests/integration/staging-checks.test.ts`）。
+
+## 4. 管理者（人間 → Claude）
+
+MVP は email + password の管理者 1 人。**パスワードは Claude に渡さない。**
+
+1. 人間: Supabase Dashboard → Authentication → Users → **Add user** → **Create new user**。email とパスワードを入れ、**Auto Confirm User** をオンにする。
+2. 人間: 管理者の email アドレス（secret ではない）を Claude に伝える。
+3. Claude: `npm run staging:admin -- --project-ref znbqgvawublgyjwfpmei --email <email>` を実行する。確認済みの Auth user を `sales_admins` に登録するだけで、パスワードは扱わない。2 人目の管理者は登録しない。
+4. public sign-up の OFF は §3 の `--auth` で Claude が設定する。Dashboard の Authentication → Sign In / Providers → 「Allow new users to sign up」が OFF になっていることを人間も目で確認できる。
+
+## 5. Vercel Preview（Staging）
+
+Preview のうち **`develop` branch の deployment だけ**に設定する。Production には設定しない。
+
+| 変数 | 値 |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://znbqgvawublgyjwfpmei.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase の anon（公開用）key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase の service_role key（Sensitive。`NEXT_PUBLIC_` を付けない） |
+| `SALES_AGENT_INGEST_TOKEN` | `STAGING_SALES_AGENT_INGEST_TOKEN` と同じ値（Sensitive） |
+| `SALES_DEMO_BASE_URL` | develop の Preview の固定 URL（例: `https://<project>-git-develop-<team>.vercel.app`） |
+
+- `VERCEL_TOKEN` がある場合は Claude が実行する（値は Supabase / 環境変数から Vercel へ直接渡し、表示しない）:
+  `npm run staging:vercel -- --project-ref znbqgvawublgyjwfpmei --vercel-project <name> [--team <teamId>] --git-branch develop --demo-base-url https://<develop の Preview URL> --apply`
+  このスクリプトは Preview の Deployment Protection の状態も表示する。
+- ない場合は人間が Vercel → Project → Settings → Environment Variables で、Environment を **Preview** だけ、Branch を `develop` にして上の 5 つを追加する。その後 develop を再デプロイする。
+- **Deployment Protection**: Preview に「Vercel Authentication」が掛かっていると、Operational Claude（Routine）の ingest 呼び出しが Vercel に 401 で止められる（Meta の Webhook も同じ）。どちらかを人間が選ぶ:
+  - (a) 推奨: Settings → Deployment Protection → **Protection Bypass for Automation** を作成する。これを使う場合は Routine の prompt に header の追加が必要なので、Claude が対応する。
+  - (b) Preview の Vercel Authentication を OFF にする（管理画面はログイン必須、ingest は token 必須、デモは推測できない URL なので、データは守られる）。
+- Vercel の Preview build が rate limit 中（HUMAN-005）なら、解除後に再デプロイする。
+
+## 6. Operational Claude（Staging の Routine、人間）
+
+`ops/sales-agent/SCHEDULE.md` §2・§3 のとおり。
+
+- environment の環境変数は 2 つだけ:
+  - `SALES_AGENT_INGEST_URL=https://<develop の Preview URL>/api/internal/sales-agent/runs`
+  - `SALES_AGENT_INGEST_TOKEN=<Staging の値>`
+- Routine 名は `second-root-sales-agent-daily-staging`。**スケジュールは無効のまま**で作り、手動実行（Run now）だけで使う。
+- 作成したら Routine の名前を Claude に伝える。Claude は Routine を起動・中断できる（DEV-016）。
+
+## 7. DEV-016 実走確認（Claude。§3〜§6 の後）
+
+実店舗へメール・Instagram DM は送らない。送信は常に人間の操作で、今回は誰も押さない。
+
+| # | 確認 | 方法 |
+|---|---|---|
+| 1 | ingest API が Staging で動く | token なしで 401、`status` が `{"run":null}` |
+| 2 | Operational Claude が `status` から開始し、Web 検索で候補を探して `discovered` checkpoint を保存する | Routine を手動実行し、`status` で phase を確認 |
+| 3 | 意図的に中断 → 新しい session が `status` から resume する | `discovered` を確認したら Routine の session を中断し、Routine をもう一度実行する（別 session） |
+| 4 | `verified` → `persist` → `completed` | `status` と管理画面の「今日やること」 |
+| 5 | 重複なし・同じ runId の再送は `replayed` | Staging の ingest token で、同じ checkpoint と persist を再送する |
+| 6 | unknown / DNC / 不正な email が `outreach_ready` にならない | 管理画面と DB（Management API の読み取り）で確認。不正な payload を送ると 400 で何も保存されない |
+| 7 | 最大 5 件の actionable、二重 run が起きない | 1 日の上限と、実行中に 2 本目の `start` が 409 になること |
+
+実走ログは `.ai/reviews/DEV-016.md` に残す。
+
+## 8. 片付け
+
+- Staging 確認が終わったら、Supabase Access Token と Vercel Token を削除（Revoke）し、Claude Code 環境変数からも削除する。
+- この project を Staging のまま残すか、Production 用に別 project を作るかは Release 承認時に人間が判断する（`docs/RELEASE.md` §8。Free プランの active project 数の上限に注意）。Production に流用する場合も、Staging の試験データを消してから使う。

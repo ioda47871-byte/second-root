@@ -819,7 +819,8 @@
         "scheduled job 有効化"
       ],
       "attempts": 0,
-      "last_failure": "HUMAN-004: staging Supabase project / Vercel staging env / Claude Cloud environment + Routine are human operations"
+      "last_failure": "HUMAN-004（2026-09-28 更新）: Staging project（znbqgvawublgyjwfpmei）は作成済み。Claude の container は Postgres に直接つなげないため Management API 用スクリプト（scripts/staging/）を用意。SUPABASE_ACCESS_TOKEN / STAGING_SALES_AGENT_INGEST_TOKEN（必要なら VERCEL_TOKEN）の環境変数、管理者ユーザー作成、Deployment Protection 方針、Staging Routine 作成を待つ（docs/STAGING.md）。",
+      "branch": "feature/dev-016-staging-setup"
     },
     {
       "id": "DEV-017",
