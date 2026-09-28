@@ -1,21 +1,26 @@
 # Release Readiness Report — Second Root Sales Agent MVP（DEV-019）
 
-- 作成: 2026-09-27（Claude Code / 自律実行）
-- 対象: `develop` → `main`（Production = secondroot.jp）
-- 結論: **コード・テスト・レビューは完了（develop の CI は §2 のとおり）。ただし Staging 実走（DEV-016）は未完了で、Release の必須条件。Production への release は Staging 確認と人間の承認の後に、人間が行う。**
+- 作成: 2026-09-27。**最終更新: 2026-09-28**（Staging 実走・DEV-025・Instagram 実装を反映）
+- 対象: `develop` → `main`（Production = secondroot.jp）。Release PR: #29（Draft）
+- 結論: **コード・テスト・レビュー・Staging 実走（DEV-016）は完了。Production にはまだ何も変更していない。** 残りは §13 の Production 準備（人間）と、人間による Release PR #29 の merge。
 
 ## 0. オーナー向けの要約
 
-- **今の状態**: 営業支援（Sales Agent）の MVP は、作成・テスト・点検がすべて終わり `develop` にまとまっている。本番（secondroot.jp）にはまだ何も出していない。
-- **オーナーがやること（順番）**:
-  0. （今すぐでよい）PR #27（Next.js の脆弱性修正だけの hotfix）を merge する。Release とは別で、先に merge して問題ない。
-  1. Supabase で Staging 用と本番用の 2 つの project を用意する（無料プランの project 数上限に注意: §9）。
-  2. Staging（試験環境）の設定をして、Claude に「DEV-016 を再開」と伝える → Claude が試験環境で実際に動かして確認する。
-  3. 本番用の Supabase・Vercel を設定する（§13 の 1〜3）。
-  4. Claude が作る「develop → main」の Release PR を merge する（本番反映）。
-  5. 本番の動作確認と、営業候補の自動準備の開始（§13 の 6〜8）。
-- **やってはいけないこと**: Staging の確認（DEV-016）より前に Release PR を merge しないこと。
-- **急ぎの推奨**: 今の本番サイトは Next.js 16.3.0 で重大な脆弱性の告知がある。Release を待たずに、Next.js の更新だけの小さな修正（hotfix）を先に本番へ出すことを勧める。Claude が **PR #27（main 向け、依存関係の更新のみ）** を用意済み。内容を確認して merge してほしい（§5）。
+- **今の状態**:
+  - 営業支援（Sales Agent）の MVP は `develop` にまとまっている。Staging（試験環境）で、Operational Claude の実走まで確認済み。
+  - 本番（secondroot.jp）には、Next.js の脆弱性修正（PR #27、merge 済み）以外は何も出していない。
+- **Staging で確認できたこと（2026-09-28、`.ai/reviews/DEV-016.md`）**:
+  - Routine の実走で、途中の中断 → 別 session からの再開 → 完了まで動いた。営業準備 1 件、送信なし。
+  - 再送しても重複しない。不正なデータは拒否される（400）。
+  - token なしでは 401（オーナーが自分の端末で実測）。
+  - 2 本目の run は 409 で拒否される（DEV-025）。
+- **オーナーがやること**: §13 の順番どおり。
+  - Production の Supabase を用意 → migration → 確認 → Auth・管理者 → Vercel の Production 環境変数
+  - → PR #29 を Ready にして merge → 本番の動作確認 → 本番の Routine
+- **Instagram の返信機能（DEV-020〜024）**:
+  - コードは実装・テスト・security review 済みで、この Release に含まれる。
+  - 実際の Meta アカウントでの確認（HUMAN-006）だけが残っている。
+  - Meta の値を設定しなければ機能は無効のまま（Webhook は 503）で、他の機能には影響しない。
 
 ## 1. 完了 Task
 
@@ -37,176 +42,257 @@
 | DEV-013 | 履歴・計測・手動 DNC | #22 | PASS |
 | DEV-014 | 5日後フォロー（Email・1回のみ） | #23 | PASS |
 | DEV-015 | Operational Claude run prompt / scheduled job 定義 | #20 | PASS（round 2） |
-| DEV-016 | Staging 実走 | —（ローカル代替 #24） | **BLOCKED（HUMAN-004）** |
+| DEV-016 | **Staging 実走**（resume・冪等・fail-closed） | #24（rehearsal fixes）・#34・#35・#36・#37（Staging 用スクリプト・権限修正・Vercel bypass 対応） | **done（2026-09-28）**。`.ai/reviews/DEV-016.md` |
 | DEV-017 | Security hardening | #25 | PASS |
 | DEV-018 | Full E2E / mobile QA | #26 | PASS |
+| DEV-020 | Instagram Webhook 受信（署名検証・重複排除） | #30 | PASS |
+| DEV-021 | 返信案の保存（Operational Claude・リンク検査） | #31 | PASS（round 3） |
+| DEV-022 / 023 | 受信 inbox UI・人間承認後の公式 Send API 送信 | #32 | PASS（round 3） |
+| DEV-024 | 保存期間・連携確認・設定手順 | #33 | PASS（コード）。**実アカウント確認は HUMAN-006 待ち（blocked）** |
+| DEV-025 | running の run を常に 1 本に（別 runId の start → 409 `run_in_progress`） | #38 | PASS。Staging で実測済み |
 
 （各 review の詳細は `.ai/reviews/`）
 
 ## 2. CI
 
-GitHub Actions（`.github/workflows/ci.yml`）で、各 PR の CI が green であることを確認してから develop へ merge した（job は段階的に追加: DEV-001 で integration、DEV-004 以降は下の 6 job）。
+GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・lint・secret 検査）/ `unit` / `integration`（ローカル Supabase、毎回 fresh）/ `build` / `e2e`（既存サイト）/ `e2e-sales`（desktop + mobile）。
 
-| job | 内容 |
-|---|---|
-| static | typecheck（`next typegen` + tsc）・lint・secret 検査（`check:secrets`） |
-| unit | vitest（ドメインルール・schema・テンプレート・ガードレール・tasks.json 整合） |
-| integration | ローカル Supabase（毎回 fresh）で migration・RLS・RPC・ingest API |
-| build | `next build`（Google Fonts 取得失敗時のみ 1 回再試行） |
-| e2e | 既存 Second Root の regression（Supabase なし） |
-| e2e-sales | Sales Agent の E2E（ローカル Supabase、desktop + mobile） |
-
-- 最終 develop（DEV-018 merge 後）の CI: **全 6 job success**。develop CI run 96（DEV-018 merge `3973770`）: https://github.com/ioda47871-byte/second-root/actions/runs/36297223732 （static / unit / integration / build / e2e / e2e-sales）、その後の develop 先頭（`f6cf412`）: run 97 も success
-- `Vercel` の preview status は無料プランの build rate limit で一部失敗（HUMAN-005）。必須 CI とは独立で、merge 判断には使っていない。
-- branch protection の required checks 設定は未実施（人間の操作、HUMAN-003）。
+- 各 PR は CI green と fresh review（Critical / High = 0）を確認してから develop へ merge した。
+- develop 先頭 `ddaa622` の CI（run 161）: **全 6 job success**。https://github.com/ioda47871-byte/second-root/actions/runs/36438873755
+- branch protection の required checks は未設定（HUMAN-003、推奨）。
 
 ## 3. テスト
 
-| 種類 | 件数（最終 develop 相当のローカル実行） | 主な対象 |
+| 種類 | 件数（2026-09-28、develop） | 主な対象 |
 |---|---|---|
-| unit | 242 | チャネル決定・website_status・第一者 email・重複キー・上限・checkpoint 内容・営業文/mailto・デモ内容・テンプレート（全3種）・tasks.json |
-| integration | 152 | DB 制約・RLS・security audit（全 sales 関数/テーブル）・run の checkpoint/resume/冪等/期限/partial_errors・ingest API・デモ公開期間・送信済み・返信/DNC・計測・フォロー |
-| e2e | 68（desktop 34 + mobile 34） | 既存サイト regression・デモ・ログイン/認可（RSC 部分描画の回避不可を含む）・今日やること・Instagram/Email 送信・返信→商談→成約/失注・DNC・履歴/計測・5日後フォロー・320/375px QA |
+| unit | 362 | ドメインルール・schema・テンプレート・ガードレール・Instagram の署名/返信案検査・tasks.json |
+| integration | 232 | DB 制約・RLS・security audit・run の checkpoint/resume/冪等/期限/partial_errors・**running run は 1 本（同時 start の race を含む）**・ingest API・Instagram 受信/返信案/送信/保存期間 |
+| e2e | 78（Playwright、desktop + mobile） | 既存サイト regression・デモ・ログイン/認可・今日やること・送信・返信→商談→成約/失注・DNC・フォロー・Instagram inbox（API は stub）・320/375px |
 
-- テストの skip / 削除はしていない。自動テストから実店舗へメール・Instagram を送らない（`example.com`・架空アカウントのみ、mailto はクリックを止めて検証）。
+- テストの skip / 削除はしていない。
+- 自動テストから実店舗へメール・Instagram を送らない（`example.com`・架空アカウントのみ。instagram.com への通信は stub）。
 
 ## 4. E2E
 
-- desktop（Chrome）と mobile（Pixel 7）の 2 project、`workers: 1`（共有 DB の今日の5枠を奪い合わないため）。
-- DEV-018 で全管理画面を 320px / 375px・長い店名・全カード状態・操作展開後の状態で検査（横スクロールなし、h1 1つ、現在地ナビ、タップ領域 24px 以上・主要操作 44px 以上、console error なし、キーボードのみでログイン）。この検査で返信フォームの radio が 20px と判明し 24px に修正済み。
-- 既存 Second Root: トップ表示・問い合わせフォーム送信/エラー（API は mock）・`/privacy`・`/terms`・robots.txt・sitemap.xml。
+- desktop（Chrome）と mobile（Pixel 7）の 2 project で実行。`workers: 1`（今日の 5 枠を奪い合わないため）。
+- 全管理画面を 320px / 375px で検査した。項目は、横スクロールなし・タップ領域・キーボード操作・console error なし。
+- 既存 Second Root: トップ・問い合わせ（API は mock）・`/privacy`・`/terms`・robots.txt・sitemap.xml。
 
 ## 5. Security
 
-- DEV-017 の全体 security review: **PASS（Critical 0 / High 0）**。指摘（Medium 1・Low 4）はすべて修正済み（`.ai/reviews/DEV-017.md`）。
-- **Next.js 16.3.0 → 16.3.6**: 16.3.0 に critical advisory（Image Optimization API の RCE 等）。`npm audit --omit=dev` 0 件。
-  - **注意: 現在の本番（main）は 16.3.0 のまま。** Release は Staging 待ちで日付が未定のため、`next` / `eslint-config-next` / `sharp` の更新だけを含む hotfix PR を main に先に出すことを推奨する（**PR #27 として用意済み**。main 基準で lint・typecheck・unit・build・既存サイト e2e を確認済み。merge は人間）。
-- 管理画面: Supabase Auth email + password、`sales_admins` allowlist + RLS。全ページ `requireAdminPage()`、全 server action `requireAdmin()`（layout だけの認可は RSC 部分描画で回避できるため）。公開 sign-up 無効。
-- DB: 全 `sales_*` で RLS、anon 権限なし、authenticated は読み取りのみ。管理者 RPC は SECURITY DEFINER + `search_path=''` + 先頭で管理者確認。これらを `db-security-audit` test が全関数・全テーブルで検査。
-- Ingest API: 定数時間の token 比較、未設定なら 503、256KB 上限、strict schema、送信値を返さない、サーバーから URL を fetch しない（SSRF なし）、DNC・成約・送信の権限なし。
-- 公開デモ: 256bit token、期限切れ/無効/未送信/不明は同じ 404、noindex（meta + header）、email・内部情報・金額を出さない。
-- `/demo`・`/admin`・`/api/internal` に noindex・no-referrer・no-store・anti-framing・nosniff。既存ページのヘッダは不変。
-- Resend は `/api/contact` のみ（営業には使わない、guardrail test）。secret は repo にない（`check:secrets`）。
+- DEV-017 の全体 security review と、Instagram 機能全体の最終 security review は、どちらも **Critical 0 / High 0**。指摘はすべて修正済み。
+- **Next.js 16.3.6**:
+  - 本番（main）は PR #27（2026-09-27 merge）で 16.3.6 になった。
+  - develop も 16.3.6 で、`npm audit --omit=dev` は 0 件。
+  - PR #29 の `package.json` / lockfile の衝突は、両方 16.3.6 のため develop 側を採用して解消した（§13 の 0）。
+- 管理画面:
+  - Supabase Auth（email + password）と、`sales_admins` allowlist + RLS。
+  - 全ページ・全 server action で管理者を確認する。公開 sign-up は無効。
+- DB:
+  - 全 `sales_*` table で RLS が有効。anon は権限なし、authenticated は読み取りのみ。
+  - 管理者用 RPC は SECURITY DEFINER + `search_path=''` + 先頭で管理者確認。
+  - 新しい Supabase project は API role に table 権限を自動で付けないため、必要な権限を migration `20260928000000` で明示した（Staging で発見）。
+- Ingest API:
+  - 定数時間で token を比較する。未設定なら 503、不一致・なしは 401（Staging で人間が実測）。
+  - 256KB 上限、strict schema。サーバーから URL を fetch しない。
+  - DNC・成約・送信の権限はない。
+- Instagram:
+  - Webhook は `X-Hub-Signature-256` を raw body で検証する。自分のアカウント ID 以外のイベントは保存しない。
+  - 送信は人間の承認後だけ。結果が不明な送信は自動で再送しない。
+  - Meta の値が未設定なら無効（503）。
+- 公開デモ: 256bit token。期限切れ・不明は 404。noindex。
+- Resend は `/api/contact` のみで、営業には使わない。secret は repo にない（`check:secrets`）。
 
 ## 6. Supabase / migrations
 
-`supabase/migrations/`（追加のみ・既存の書き換えなし）:
+`supabase/migrations/` の 16 本（追加のみ・既存の書き換えなし）:
 
 | migration | 内容 |
 |---|---|
-| 000000 sales_agent_core | テーブル・制約・trigger（適格性・DNC・状態遷移・email 出典）・RLS |
-| 000100 sales_agent_run_functions | run の start/status/checkpoint/persist/abort（service role のみ） |
-| 000150 sales_followup_due_view | フォロー対象 view（security_invoker） |
-| 000200 sales_admin_mark_sent | 送信済み RPC（デモ公開 30 日開始） |
-| 000300 sales_admin_outcomes | 返信・商談・成約・失注・DNC RPC |
-| 000400 sales_metrics_view | 計測 view |
-| 000500 sales_follow_up | フォロー RPC・view 更新 |
-| 000600 sales_run_state_discovered | status が discovered の stub を返す（resume） |
-| 000700 sales_revoke_helper_execute | helper 関数の EXECUTE 最小化 |
-| 000800 sales_run_status_today | 1 日 1 run（今日の run を返す） |
+| 20260927000000 sales_agent_core | テーブル・制約・trigger・RLS |
+| 20260927000100 sales_agent_run_functions | run の start/status/checkpoint/persist/abort |
+| 20260927000150 sales_followup_due_view | フォロー対象 view |
+| 20260927000200 sales_admin_mark_sent | 送信済み RPC |
+| 20260927000300 sales_admin_outcomes | 返信・商談・成約・失注・DNC RPC |
+| 20260927000400 sales_metrics_view | 計測 view |
+| 20260927000500 sales_follow_up | フォロー RPC |
+| 20260927000600 sales_run_state_discovered | status が discovered の stub を返す（resume） |
+| 20260927000700 sales_revoke_helper_execute | helper 関数の EXECUTE 最小化 |
+| 20260927000800 sales_run_status_today | 1 日 1 run（今日の run を返す） |
+| 20260927000900 sales_ig_messaging | Instagram 受信（thread・message・event） |
+| 20260927001000 sales_ig_inbox | 返信案・inbox |
+| 20260927001100 sales_ig_admin_send | 人間承認後の送信 |
+| 20260927001200 sales_ig_retention | 保存期間（会話 180 日・受信記録 30 日） |
+| 20260928000000 sales_explicit_api_grants | API role の table 権限を明示（新しい project 用） |
+| 20260928000100 sales_single_running_run | running の run は 1 本（partial unique index） |
 
-- ローカル Supabase（CI では毎回 fresh）で全 migration の適用とテストを確認済み。
-- **Staging / Production の Supabase project は未作成（HUMAN-002 / HUMAN-004）**。適用は人間が `supabase db push` で行う（`docs/RELEASE.md` §8）。
-- 無料プランのまま（有料プランへの変更なし）。
+- **Staging（`znbqgvawublgyjwfpmei`）には 16 本すべて適用済み**。
+  - Supabase Management API 経由の `staging:apply`。1 migration = 1 transaction。
+  - `staging:verify` の 14 項目がすべて PASS: migration 一致・RLS・権限の過不足・sign-up OFF・管理者 1 名。16 本の適用後、2026-09-28 15:19 UTC に再確認した。
+- **Production の Supabase project は未作成**（HUMAN-002）。
+- 無料プランのまま。
 
-## 7. Cloud Job 実走
+## 7. Cloud Job 実走（DEV-016、Staging）
 
-- **Claude Cloud scheduled job としての実走は未実施（BLOCKED: HUMAN-004）**。Staging の Supabase / Vercel 環境変数 / Claude Cloud environment + Routine の作成・有効化は人間の操作。
-- 代替として **ローカル live rehearsal** を実施（`.ai/reviews/DEV-016-local-rehearsal.md`）: run prompt どおりに実際の公開 Web を調査し、ローカルの ingest API にだけ提出（店舗への連絡なし）。
-  - session A: 4 店舗を discovered で保存し意図的に中断 → session B（記憶なし）が `status` だけから再開し 2 件 outreach_ready、`persist` 再送は `replayed` で重複なし、出典が不確かな候補は提出されなかった（fail-closed）。
-  - rehearsal で見つかった「完了後に同日 2 回目の run を始められる」問題はサーバー側（000800）と prompt で修正済み。
-- ローカル dry-run（架空店舗、`ops/sales-agent/dry-run.mjs`）: resume・再送・完了後の replay を確認。
+- Staging の Routine `second-root-sales-agent-daily-staging` を人間が Run now し、Claude が ingest API と DB を読み取りで確認した。
+  - ingest の token と Vercel bypass は、host 限定の API credential で proxy が付ける。
+- 結果（`.ai/reviews/DEV-016.md`）:
+  - **resume**:
+    - session A が `discovered`（2 件）まで進んだところで Claude が中断した。
+    - 記憶のない session B が `status` から同じ runId を取り、discover をやり直さずに `verify` → `persist` → `completed` まで進めた。
+  - **結果**: `outreach_ready` 1 件（Instagram、下書きのまま・送信なし）。確認できなかった 1 件は提出されなかった。
+  - **idempotency**: 同じ runId の `persist`・`start`・`checkpoint` を再送すると `replayed: true` になり、DB に重複はない。
+  - **fail-closed**:
+    - 不正な payload（未知の項目・`javascript:` URL・対象外の業種・runId の形式違い）は 400 で、何も保存されない。
+    - token なしは 401（人間が実測）。
+  - **1 日 1 run**: 完了後にもう一度 Run now すると、新しい run を作らずに止まる。
+  - **二重 run**: 実行中に別 runId で `start` すると 409 `run_in_progress`、同じ runId は 200 `replayed`（DEV-025 適用後に実測）。確認用の run は abort 済みで、running は 0。
 
 ## 8. Known issues
 
-1. Operational Claude はログインなしで Instagram プロフィールを読めないことが多い（429）。handle は公式サイト等のリンク元で確認し、「DM不可・営業お断り」の最終確認は送信前に人間が行う（管理画面に表示）。
-2. 1 日 1 run は prompt で守る。同時起動で 2 run になり得るが、新規営業準備の上限（5件/日）は全 run 共通の lock 下で数えるため超えない。
-3. mailto は長すぎる本文を開けないことがあるため、上限超過時は理由を表示し送信操作を出さない（営業文は prompt で短く保つ）。
-4. 管理画面の一覧は履歴 200 件・商談 100 件まで表示（上限到達時は表示で通知）。
-5. Vercel 無料プランの preview build rate limit（HUMAN-005）。
-6. ローカル共有 DB で複数の検証を同時に走らせると互いのテストデータを消して失敗する（CI は毎回 fresh DB のため影響なし）。
+1. Operational Claude は、ログインなしで Instagram プロフィールを読めないことが多い。handle は公式サイト等のリンク元で確認する。「DM不可・営業お断り」の最終確認は、送信前に人間が行う。
+2. 中断されて再開されない run は、最大 24 時間、新しい run の `start` を止める（409 `run_in_progress`）。24 時間で自動的に `failed` になる。すぐ止めたい場合は、その runId で `abort` する（RUN_PROMPT §2）。
+3. mailto は長すぎる本文を開けないことがある。上限を超えたら理由を表示し、送信操作を出さない。
+4. 管理画面の一覧は、履歴 200 件・商談 100 件まで表示する。
+5. Instagram の実アカウントでの確認は未実施（HUMAN-006）。
+   - Standard Access で一般ユーザーとやり取りできるかは、Meta の公式ドキュメント間で記述が矛盾している。
+   - Live app で確認する。
 
 ## 9. Blockers（人間の操作が必要）
 
-| ID | 内容 | 必要な操作 | 解除後に再開すること |
-|---|---|---|---|
-| HUMAN-002 | Second Root 専用 Supabase project（Staging / Production） | Supabase Dashboard で作成（Tokyo 推奨）。**無料プランは有効な project 数に上限があり、既存の project（mugi-no-mi 等）と合わせて超える可能性がある**。選択肢: 別の organization / アカウントで作る、使っていない project を一時停止する、有料プラン（billing のため人間判断） | migration 適用・管理者作成 |
-| HUMAN-004 | Staging 実走（DEV-016） | Staging project + Vercel Preview 環境変数 + Claude Cloud environment / Routine（手順: `.ai/blockers.md`・`ops/sales-agent/SCHEDULE.md`） | Claude が Staging で resume・冪等・fail-closed を確認し `.ai/reviews/DEV-016.md` に記録 |
-| HUMAN-003 | branch protection の required checks（推奨） | GitHub Settings → Branches で main / develop に 6 checks | — |
-| HUMAN-005 | Vercel preview build rate limit（非ブロッキング） | 24 時間待つ（推奨）/ 有料プランは人間判断 | — |
+| ID | 内容 | 状態 |
+|---|---|---|
+| HUMAN-002 | Production 用の Supabase project | **未**（Staging 用は作成済み）。§13 の 1 |
+| HUMAN-006 | Instagram の Meta 側設定と実アカウント確認 | 未。**Release の必須条件ではない**（未設定なら機能は無効） |
+| HUMAN-003 | branch protection の required checks | 未（推奨） |
+| HUMAN-004 | Staging セットアップ | **解除**（2026-09-28。DEV-016 完了） |
 
 ## 10. Critical / High
 
 - **未解決の Critical / High は 0 件**。
-- 途中で High と判定され、修正後の再 review で PASS したもの:
-
-| Task | round 1 の High | 対応 |
-|---|---|---|
-| BOOT-001 | 1 件（Claude による PR #8 の main merge 許可が「main は人間のみ」と矛盾） | 2026-09-27 の人間承認に基づく「PR #8 のみの1回限りの例外」として日付付きで明記 → round 2 PASS |
-| DEV-002 | 3 件（住所正規化で別店舗を統合し得る／共有ホストで別店舗が同一 domain／第一者 email が出典なしで通る） | 修正・反例をテスト化 → round 2 PASS（残 Medium も解消） |
-| DEV-009 | 2 件（フォロー対象の取りこぼし／大きな送信ボタン未実装） | SQL view で算出・60 件のテスト追加／ボタンは DEV-010・011・014 で実装 → round 2 PASS |
-| DEV-015 | 1 件（無人で Web を閲覧する agent への prompt injection 対策の指示がない） | 修正 → round 2 PASS |
-- 各 Task の review は Critical / High = 0 を確認してから merge（`.ai/reviews/`）。
+- round 1 で High と判定され、修正後の再 review で PASS したもの:
+  - BOOT-001
+  - DEV-002
+  - DEV-009
+  - DEV-015
+  - DEV-021: round 1・2（返信案のリンク検査）
+  - DEV-022/023: round 2（前の文面への再試行で draft が送信中のまま残る）
+- 詳細は `.ai/reviews/`。
 
 ## 11. 仕様との差分（仕様変更・解釈）
 
 実装中に仕様を明確化・安全側に狭めた点（MVP の意図は変えていない）:
 
-1. `official_profile` のメール出典は **候補自身の検証済み Instagram プロフィールのみ**（リンク集・他の SNS は店舗との結び付きを確認できないため不可）。MVP_SPEC §3.4。
-2. link-in-bio（lit.link・linktr.ee）とモール内店舗ページ（楽天・Amazon・Yahoo!ショッピング・minne・Creema）は公式サイトとして扱わない。店舗専用 URL のネットショップ（BASE 等）は公式サイト扱い。
-3. 5日後フォローは **デモが公開中** であることも条件（フォロー文にデモ URL を含むため）。件名は初回件名から自動（「Re: 」、200 文字以内）。MVP_SPEC §4.3。
-4. 返信の分類をやり直す操作は拒否（古い画面からの誤操作防止）。ただし後から来た「今後の連絡を拒否」は常に DNC に反映。
-5. Instagram 送信前に人間がプロフィールの「DM不可・営業お断り」を確認する手順を追加（MVP_SPEC §4.1）。
-6. Operational run は 1 日 1 run（今日の run が完了/失敗なら新しい run を始めない）。
-7. 計測に「デモ有無」の軸を追加（MVP_SPEC §9 のとおり。現状は全件デモあり）。
-8. 返信を「断り（decline）」で記録すると、その営業は自動で「失注（lost、理由 declined）」になる（MVP_SPEC §5 の「営業はそこで終了」の実装。返信数には返信日時で計上）。DNC にはならない。
-9. 成約金額は 1 円〜1 億円（入力ミス防止の上限）。
-10. 一覧の表示上限（履歴 200 件・商談 100 件、上限時は表示で通知）と、長すぎて mailto で開けない文面の送信操作を出さない扱い。
-11. **手順上の逸脱の記録**（いずれも develop へ PR を通さず直接 commit）:
-    - `3fba06d`: scope extension（Instagram 公式 API 連携）の記録として `.ai/progress.md`・`.ai/tasks.json`・`docs/INSTAGRAM_MESSAGING.md`（新規）・`docs/MVP_SPEC.md`（§11.1 追加と 2 行の注記。MVP の挙動の変更なし）・`tests/unit/ai-tasks.test.ts`（DEV-020/021/023 の受入条件の検査追加）を変更。
-    - `e2d2b79`: DEV-001 完了の記録と同時に、`docs/AI_WORKFLOW.md` に「`.ai/` の更新は develop へ直接 commit してよい」旨を 1 行追加（ルール自体を直接 commit で追加した）。
-    - 仕様の正本（MVP_SPEC）への直接 commit は本来 PR を通すべきだった。内容の確認を人間にお願いしたい。
+1. `official_profile` のメール出典は、候補自身の検証済み Instagram プロフィールだけ。
+2. link-in-bio とモール内店舗ページは公式サイトとして扱わない。店舗専用 URL のネットショップは公式サイト扱い。
+3. 5 日後フォローは、デモが公開中であることも条件。件名は初回から自動。
+4. 返信の分類をやり直す操作は拒否する。後から来た「今後の連絡を拒否」は常に DNC に反映する。
+5. Instagram 送信前に、人間が「DM不可・営業お断り」を確認する。
+6. Operational run は 1 日 1 run（今日の run が完了 / 失敗なら新しい run を始めない）。**加えて running の run は同時に 1 本だけ（DEV-025、DB で保証）。**
+7. 計測に「デモ有無」の軸を追加した。
+8. 「断り」を記録すると、その営業は自動で失注（declined）になる。DNC にはならない。
+9. 成約金額は 1 円〜1 億円。
+10. 一覧の表示上限と、mailto で開けない長さの文面の扱い。
+11. **スコープ拡張**: Instagram 公式 Messaging API 連携（DEV-020〜024）。2026-09-27 に人間が承認し、この Release に含めた。
+12. **手順上の逸脱の記録**（develop へ PR を通さず直接 commit したもの）:
+    - `3fba06d`: scope extension の記録（`docs/MVP_SPEC.md` §11.1 と注記、`docs/INSTAGRAM_MESSAGING.md` の新規作成を含む）。
+    - `e2d2b79`: `docs/AI_WORKFLOW.md` に「`.ai/` の更新は develop へ直接 commit してよい」を追加。
+    - 内容の確認を人間にお願いしたい。
 
 ## 12. Rollback
 
-- アプリ: Vercel の直前 Production deployment を Promote（Instant Rollback）。**その deployment が Next.js 16.3.0 の場合は脆弱性が戻るため、短時間の緊急措置に限り、前方修正を優先する。**
-- コード: `main` で revert PR を作成し人間が merge。ただし Next.js 16.3.6 への更新は security advisory 対応のため、戻す場合も Next のバージョンは維持する（前方修正を優先）。
-- DB: migration は追加のみで、既存サイトの機能は DB に依存しない。問題時は前方修正（逆 migration）。データ削除を伴う rollback は人間承認。
-- Operational job: Routine を無効化、または Vercel の `SALES_AGENT_INGEST_TOKEN` を削除して再デプロイ（ingest API は 503 で全拒否）。
-- 既存 Second Root（トップ・法務・問い合わせ）は Sales Agent と独立（Sales Agent の環境変数が未設定でも既存ページは動く）。
+- **アプリ**: Vercel の直前の Production deployment を Promote（Instant Rollback）する。直前は PR #27 の deployment（Next.js 16.3.6）なので、脆弱性は戻らない。
+- **コード**: `main` で revert PR を作り、人間が merge する。
+- **DB**:
+  - migration は追加のみ。既存サイトは DB に依存しない。
+  - 問題があれば前方修正（逆 migration）で直す。データ削除を伴う rollback は人間の承認が必要。
+- **Operational job**: 次のどれかで止める。
+  - Routine を無効化する。
+  - Vercel の `SALES_AGENT_INGEST_TOKEN` を削除して再デプロイする（ingest API は 503 で全拒否）。
+  - Claude Cloud の API credential を削除する。
+- **Instagram**: Vercel の `INSTAGRAM_*` を削除して再デプロイする（Webhook は 503、送信は不可）。
+- 既存 Second Root（トップ・法務・問い合わせ）は Sales Agent と独立している。
 - 詳細: `docs/RELEASE.md` §5・§7。
 
 ## 12.1 Release チェックリスト（`docs/RELEASE.md` §3）の状況
 
 | 項目 | 状況 |
 |---|---|
-| 全 MVP Task が done | 未（DEV-016 が HUMAN-004 待ち。他はすべて done） |
+| 全 MVP Task が done | **済**（DEV-001〜018 と DEV-025。DEV-019 はこの Release 自体。DEV-024 の実アカウント確認は MVP 外） |
 | CI 全 green | 済（§2） |
-| 既存 Second Root regression | 済（e2e: トップ・法務ページ・問い合わせ・robots/sitemap） |
-| Supabase migration が staging で適用・検証済み | 未（HUMAN-002 / HUMAN-004） |
-| RLS: 管理者以外が営業データを読めない | ローカルで済（integration・security audit）、staging は未 |
-| Production env が Vercel に設定済み | 未（人間） |
-| Claude Cloud scheduled job の staging 実走 | 未（HUMAN-004。ローカル rehearsal のみ済） |
+| 既存 Second Root regression | 済（e2e） |
+| Supabase migration が staging で適用・検証済み | **済**（16 本、`staging:verify` 14 項目 PASS） |
+| RLS: 管理者以外が営業データを読めない | **済**（ローカル integration・security audit と、Staging の実 role で確認） |
+| Claude Cloud scheduled job の staging 実走 | **済**（§7） |
 | Secret 混入なし | 済（`check:secrets`） |
 | rollback 手順確認 | 済（§12） |
+| Production の Supabase・Auth・管理者 | **未（人間、§13 の 1〜5）** |
+| Production env が Vercel に設定済み | **未（人間、§13 の 6）** |
 
-## 13. Production に必要な人間の操作
+## 13. Production 準備（人間。**PR #29 を merge する前に**、この順番で）
 
-`docs/RELEASE.md` §8・§9 に手順あり。要点:
+手順の詳細は `docs/RELEASE.md` §8。
 
-1. Supabase Production project 作成（Free・Tokyo）→ 人間の端末から `npx supabase link` → `npx supabase db push`（DB password は Claude に渡さない）→ RLS 確認 SQL。
-2. Supabase Auth: sign-up OFF、Confirm email ON、管理者ユーザー作成 → `insert into public.sales_admins (user_id) values ('<uuid>');`
-3. Vercel Production 環境変数: `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `SALES_AGENT_INGEST_TOKEN`（Staging と別、`openssl rand -hex 32`）/ `SALES_DEMO_BASE_URL=https://secondroot.jp`。
-4. **必須: 先に Staging で DEV-016 を完了（HUMAN-004）。完了まで Release PR を merge しない。**
-5. Claude が作成する `develop → main` の Release PR を人間がレビューして merge（Claude は main へ merge しない）。
-6. Production smoke test（既存ページ・管理画面ログイン・非管理者の拒否・ingest `status`・token なし 401・不明デモ 404）。
-7. Claude Cloud の Production 用 environment（ingest token と URL のみ）と Routine を作成し、手動で 1 回実行 → 候補を目視確認 → スケジュール有効化。
-8. 最初の 1 週間は、送信前に候補の事実・出典・営業文を人間が確認。
+**Production の DB・Auth・環境変数への操作は、読み取りの確認も含めてすべて人間が行う。** Claude は Production 用の token を持たない。Supabase の Management API の token は任意の SQL を実行できるため、読み取りだけの確認でも書き込みの権限を渡すことになる。Claude は人間が貼った結果（PASS / FAIL の一覧。secret は含まない）を確認できる。
 
-## 14. 後続（承認済み scope extension）
+0. **（Claude）PR #29 の衝突解消**。main（PR #27）を develop に取り込む merge を、PR #39 で行った。両方 Next.js 16.3.6 のため、develop の lockfile を採用した。PR #39 が develop に merge されると、PR #29 の衝突が消える。
+1. **Production 用に新しい Supabase project を作る**（HUMAN-002）。Tokyo、Free。
+   - Staging の project（`znbqgvawublgyjwfpmei`）は Production に**流用しない**。Staging には次のものが今もつながっているため:
+     - develop の Preview の service_role key
+     - Staging の ingest token と bypass、Staging の Routine
+     - Claude 用の Supabase token
+   - 無料プランの有効な project 数の上限に当たる場合は、使っていない project を一時停止する。有料化は人間が判断する。
+2. **migration を適用する**（人間の端末）。
+   - `npx supabase login` → `npx supabase link --project-ref <prod-ref>` → `npx supabase db push`
+   - 16 本すべてを適用する。DB password は誰にも渡さない。
+   - 新しい project では `20260928000000`（権限の明示）が必須。途中の migration だけを適用しない。
+3. **確認する**（人間の端末）。
+   - Production だけに範囲を絞った短期の Supabase access token（`database_read`・`database_write`・`auth_config_read`）を作る。
+   - `SUPABASE_ACCESS_TOKEN=<token> npm run staging:verify -- --project-ref <prod-ref>` を実行する。名前は staging だが、どの project でも使える。
+   - この時点では「public sign-up is off」「exactly one admin」の 2 項目は FAIL になる（4・5 の後に PASS）。ほかの 12 項目はすべて PASS であること。
+   - `RELEASE.md` §8 の SQL だけでは、権限の不足（Staging で見つかった問題）は分からない。
+   - 結果の一覧を Claude に貼れば、Claude が確認する。
+4. **Auth を設定する**（Dashboard）。
+   - Sign In / Providers →「Allow new users to sign up」を OFF。
+   - Email の「Minimum password length」を 12 以上。
+   - 「Confirm email」は ON のまま。
+5. **管理者を作る**（人間）。
+   - Authentication → Add user（email + password、Auto Confirm）。
+   - SQL Editor で `insert into public.sales_admins (user_id) values ('<uuid>');`。または人間の端末で `staging:admin -- --project-ref <prod-ref> --confirm-ref <prod-ref> --email <email>`。
+   - 3 をもう一度実行して、**14 項目すべて PASS** を確認する。
+   - 終わったら 3 の token を削除（Revoke）する。
+6. **Vercel の Production 環境変数を設定する**。Environment は **Production だけ**。Preview の Staging 用の値とは別。
+   - `NEXT_PUBLIC_SUPABASE_URL`: `https://<prod-ref>.supabase.co`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: 公開用（anon / Publishable）
+   - `SUPABASE_SERVICE_ROLE_KEY`: サーバー用（service_role / Secret）。**Sensitive**。`NEXT_PUBLIC_` を付けない。
+   - `SALES_AGENT_INGEST_TOKEN`: 新しく `openssl rand -hex 32`。**Staging と別の値**。Sensitive。
+   - `SALES_DEMO_BASE_URL`: `https://secondroot.jp`
+   - 既存の `RESEND_API_KEY` / `CONTACT_TO_EMAIL` / `NEXT_PUBLIC_GA_MEASUREMENT_ID` は変えない。
+   - `INSTAGRAM_*` はまだ設定しない（HUMAN-006 の後）。
+   - 今の本番のコードはこれらの変数を読まないので、merge 前に設定しても既存サイトに影響はない。反映は merge 後のデプロイから。
+7. **Deployment Protection を確認する**。
+   - 今の設定（`all_except_custom_domains`）では、`secondroot.jp` は保護されない。そのため Production の ingest は bypass なしで届く。
+   - `*.vercel.app` の Production URL は保護されたままなので、Routine は必ず `https://secondroot.jp/...` を使う。
+8. **merge 前の最終確認**。
+   - PR #29 の CI が全 6 job green で、衝突がないこと。
+   - （推奨）HUMAN-003 の branch protection。
+   - Staging の token の後片付け（`docs/STAGING.md` §8。merge 後でもよい）。
+9. **PR #29 を Ready for review にして、人間が merge する**。Vercel が Production にデプロイする。
 
-- **Instagram 返信後の公式 Messaging API 連携（DEV-020〜DEV-024）**: 2026-09-27 に人間が承認した scope extension。この MVP release とは独立に、release 後に着手する（設計: `docs/INSTAGRAM_MESSAGING.md`、公式ドキュメント調査: `.ai/research/meta-instagram-messaging-2026-09-27.md`）。
-- 調査結果の要点: Instagram API with Instagram Login、Webhook 署名 `X-Hub-Signature-256`、返信は相手の最後のメッセージから 24 時間以内、Send API に公式の idempotency key はない（結果不明の送信は自動再送しない設計にする）。
-- Meta 側の人間設定（Meta App・Professional Account 接続・permission・App Review の要否確認・Webhook 登録・token）が必要。Standard Access で一般ユーザーとやり取りできるかは公式ドキュメント間で矛盾があり、Live app で確認する。
+merge 後（人間）:
+
+10. **Smoke test**（`docs/RELEASE.md` §8 の 4）。
+    - 既存ページを確認する。
+    - 管理者でログインできることを確認する。
+    - 一時的な非管理者で拒否されることを確認し、確認後にそのユーザーを削除する。
+    - ingest `status` が `{"run":null,...}` を返すことを確認する。
+    - token なしで 401、不明なデモで 404 になることを確認する。
+11. **Production の Routine**。
+    - Staging とは別の Claude Cloud environment を作る。
+      - 環境変数は `SALES_AGENT_INGEST_URL=https://secondroot.jp/api/internal/sales-agent/runs` だけ。
+      - API credential は host `secondroot.jp` に限定し、`Authorization: Bearer <Production の ingest token>` だけを登録する（bypass は付けない）。
+    - Routine を作り、手動で 1 回実行する → 管理画面で候補を目視確認する → スケジュールを有効化する。
+12. 最初の 1 週間は、送信前に候補の事実・出典・営業文を人間が確認する。
+13. （任意・後日）Instagram（HUMAN-006）: `docs/INSTAGRAM_SETUP.md`。推奨は Staging で確認してから Production。
 
 READY_FOR_HUMAN_RELEASE_APPROVAL
