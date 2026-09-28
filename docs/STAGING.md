@@ -137,7 +137,7 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
 | 4 | `verified` → `persist` → `completed` | `status` と管理画面の「今日やること」 |
 | 5 | 重複なし・同じ runId の再送は `replayed` | Staging の ingest token で、同じ checkpoint と persist を再送する |
 | 6 | unknown / DNC / 不正な email が `outreach_ready` にならない | 管理画面と DB（Management API の読み取り）で確認。不正な payload を送ると 400 で何も保存されない |
-| 7 | 最大 5 件の actionable、二重 run が起きない | 1 日の上限と、完了後の `status` が今日の run（`none`）を返すこと。※ 実行中に**別の runId** で `start` しても現状は 409 にならない（server 側 guard なし。2026-09-28 の実走で判明、follow-up） |
+| 7 | 最大 5 件の actionable、二重 run が起きない | 1 日の上限と、完了後の `status` が今日の run（`none`）を返すこと。実行中に**別の runId** で `start` すると 409 `run_in_progress`、同じ runId は 200 `replayed`（DEV-025 の migration `20260928000100` 以降） |
 
 実走ログは `.ai/reviews/DEV-016.md` に残す。
 

@@ -10,6 +10,8 @@ async function prepare(c: Record<string, unknown>): Promise<string> {
   await verifiedRun(runId, { c01: c });
   await rpc("sales_run_begin_persist", { p_run_id: runId });
   const r = await rpc<{ prospect_id: string }>("sales_persist_candidate", { p_run_id: runId, p_key: "c01" });
+  // Finish the run as the API does, so the next fixture can start one.
+  await rpc("sales_run_finalize", { p_run_id: runId });
   // Move the draft to an earlier day so tests can prepare more than the daily
   // cap of 5. Test-only: the identity trigger normally forbids this.
   const client = await db.connect();

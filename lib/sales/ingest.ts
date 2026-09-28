@@ -51,6 +51,7 @@ const CLIENT_ERRORS: Record<string, number> = {
   run_not_found: 404,
   phase_order_violation: 409,
   run_busy: 409,
+  run_in_progress: 409,
   too_many_candidates: 400,
   invalid_candidate_keys: 400,
   unknown_candidate_key: 400,
