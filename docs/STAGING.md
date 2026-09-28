@@ -144,4 +144,4 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
 ## 8. 片付け
 
 - Staging 確認が終わったら、Supabase Access Token と Vercel Token を削除（Revoke）し、Claude Code 環境変数からも削除する。
-- この project を Staging のまま残すか、Production 用に別 project を作るかは Release 承認時に人間が判断する（`docs/RELEASE.md` §8。Free プランの active project 数の上限に注意）。Production に流用する場合も、Staging の試験データを消してから使う。
+- Production には**新しい project を作る**（`docs/RELEASE.md` §8）。この project は Staging として残すか、不要になったら人間が一時停止・削除する。この project には develop の Preview・Staging の ingest token と Routine・Claude 用の token がつながっているので、Production に流用しない。Free プランの active project 数の上限に注意。
