@@ -107,7 +107,7 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
 | 404 `run_not_found` | runId が存在しない | `status` からやり直す |
 | 409 `phase_order_violation` | phase の順序違反 | `status` を取り直し `nextAction` に従う |
 | 409 `run_busy`（persist） | 同じ run の persist が実行中 | 1〜2 分待って `status`（最大 3 回。続くなら報告して終了） |
-| 409 `run_in_progress`（start） | 別の run が実行中（別の session が動いている） | 新しい run を作らない。`status`（runId なし）を 1 回取り直し、その run の `nextAction` に従う。まだ `start` が必要と出るなら報告して終了 |
+| 409 `run_in_progress`（start） | 別の run が実行中（別の session が動いている） | 新しい run を作らない。`status`（runId なし）を 1 回取り直し、その run の `nextAction` に従う。まだ `start` が必要と出るなら報告して終了（中断された run は 24 時間 checkpoint がなければ自動で `failed` になる。すぐ止めたいときは人間が判断してその runId で `abort` する） |
 | 409（`nextAction: start_new_run`） | run が失敗・期限切れ（24 時間） | 報告して終了 |
 | 413 `payload_too_large` / `checkpoint_too_large` | 本文 256KB 超 / checkpoint 64KB 超 | 候補数・事実の数・文字数を減らして再送 |
 | 503 `ingest_disabled` / `internal_error` | サーバー側が未設定・DB 不達 | 上の再送規則で 3 回まで。直らなければ BLOCKED 報告 |
