@@ -7,7 +7,8 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | Vercel env（server only） | Second Root サーバーのみ |
 | DB password | Supabase / 人間のパスワード管理 | 人間のみ |
 | `RESEND_API_KEY` | Vercel env | 問い合わせフォーム（`/api/contact`）のみ |
-| `SALES_AGENT_INGEST_TOKEN` | Vercel env + Claude Cloud 環境 | Operational Claude（**これだけ**） |
+| `SALES_AGENT_INGEST_TOKEN` | Vercel env + Claude Cloud 環境 | Operational Claude（**これだけ**。例外は下の Staging 用 bypass 値のみ） |
+| `SALES_AGENT_VERCEL_BYPASS`（Staging のみ・任意） | Staging の Routine environment だけ | Operational Claude（Vercel Preview の保護を通るためだけ。ingest には token が別に必要）。Vercel の Protection Bypass for Automation の値で **project 全体の保護付き deployment に効く**ため、露出が疑われたら人間が Vercel で再生成する。Production には置かない |
 | Vercel token / GitHub write token / admin password | 人間 | 人間のみ |
 
 - Secret を GitHub に commit しない。`.env*` は `.gitignore` 済み（`.env.local.example` のみ例外、値はダミー）。
