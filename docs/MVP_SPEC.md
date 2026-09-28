@@ -64,6 +64,9 @@ Second Root の営業を、人間ができるだけ考えず、少ないクリ�
 - **推測禁止。** 店舗自身が公開している第一者情報のみ（公式サイト、公式Contact、公式プロフィール等）。
 - 禁止: 推測メール / 購入リスト / 出所不明データ / 第三者スクレイピングデータ / 営業拒否が明記された連絡先。
 - メールには出典（`source_url` と `source_type`）が必須。出典がなければ Email 候補にしない。
+- 第一者と認める出典: `official_site` / `official_contact` はその店舗の公式サイト（検証済み website と同じサイト）上のページ、
+  `official_profile` はその店舗自身の検証済み Instagram プロフィール（候補の Instagram URL と同じアカウント）だけ。
+  リンク集サービス・他の SNS・他人のアカウントは店舗との結び付きをサーバーが確認できないため使わない（fail-closed）。
 
 ### 3.5 重複排除
 
@@ -93,7 +96,7 @@ Second Root の営業を、人間ができるだけ考えず、少ないクリ�
 ### 4.1 Instagram
 
 1. 管理画面「DMを送る」→ 営業文を clipboard へコピー ＋ 対象 Instagram を開く。
-2. 人間が貼り付けて送信。
+2. 人間がプロフィールに「DM不可」「営業お断り」等の記載がないことを確認し、貼り付けて送信（Operational Claude はログインなしで Instagram を読めないことが多いため、この確認は人間が行う。記載があれば送らず「営業不要（DNC）」にする）。
 3. 戻って「送信済み」を1タップ。**開いただけでは sent にしない。**
 
 Instagram DM の自動送信は行わない。
@@ -108,11 +111,12 @@ Instagram DM の自動送信は行わない。
 ### 4.3 フォロー（Email のみ・1回のみ）
 
 条件: 初回送信から5日以上 ＋ 返信なし ＋ follow-up 未実施 ＋ DNC でない → 「フォローメールを送る」を表示（mailto による人間送信）。
+フォロー文面にはデモ URL を含むため、デモが公開中（無効化されておらず期限内）であることも条件とする。送信済みはフォロー用の outreach 行（`kind=follow_up`）として1回だけ記録する（DB の一意制約と管理者 RPC `sales_mark_follow_up_sent` で保証）。
 Instagram フォローは MVP ではなし。
 
 ## 5. 返信・商談・成約
 
-返信の自動取得は行わない。人間が返信を見たら「返信あり」を1タップし分類する。
+MVP では返信の自動取得は行わない（Instagram は後続の DEV-020〜024 で公式 API による受信に対応）。人間が返信を見たら「返信あり」を1タップし分類する。
 
 ```
 drafted → sent → replied(interested|question|meeting_request|decline|other)
@@ -181,9 +185,13 @@ Operational Claude は次をしない: DM送信 / メール送信 / Supabase直�
 
 追加ランニングコスト 0円を目標。MVP では原則追加しない: OpenAI API / Anthropic metered API / Google Places 有料依存 / 有料 Email Finder / 有料 Staging。
 
+## 11.1 後続機能（MVP の後）
+
+- Instagram 返信後の公式 Messaging API 連携（DEV-020〜DEV-024、2026-09-27 人間承認の scope extension）: 相手から Second Root の Instagram Professional Account へ届いた返信を公式 Webhook で受信し、分類・返信案を自動で用意、**人間が1タップで承認した返信だけ**を公式 Send API で送る。初回 cold DM は引き続き人間の手動送信。詳細: `docs/INSTAGRAM_MESSAGING.md`。
+
 ## 12. 範囲外（MVPでは作らない）
 
-- 自動送信（DM・メールとも）、返信の自動取得、Instagram フォロー
+- 自動送信（DM・メールとも）、返信の自動取得（Instagram は後続 DEV-020〜024）、Instagram フォロー
 - 名古屋市外・対象3業種以外
 - 複数管理者・権限ロール
 - 有料データソース・有料 API

@@ -1,7 +1,7 @@
 # Second Root Sales Agent — Architecture
 
 > 仕様は `docs/MVP_SPEC.md`、セキュリティ要件は `docs/SECURITY.md` を正本とする。
-> 本書は「どこに何を置くか」の設計。詳細な列定義は DEV-001 の migration が正本になる。
+> 本書は「どこに何を置くか」の設計。詳細な列定義・制約・関数は `supabase/migrations/` が正本。
 
 ## 1. 既存構成（BOOT-001 時点の main）
 
@@ -57,6 +57,8 @@ lib/supabase/         server client（service role, server only）/ SSR auth cli
 app/api/internal/sales-agent/runs/route.ts
 app/demo/[publicToken]/page.tsx  + templates/{bakery_v1,baked_goods_v1,cafe_v1}
 app/admin/sales/{page.tsx, replies/, meetings/, history/}
+app/api/webhooks/instagram/route.ts  Meta 公式 webhook（署名検証・冪等保存）
+lib/instagram/        署名検証・webhook 解析・返信案検証・Graph API（server only）・承認済み返信の送信
 supabase/migrations/  SQL（RLS・constraint を含む）
 supabase/seed.sql     テスト用のダミーデータのみ（実店舗データ禁止）
 tests/unit/           Vitest（DB不要）
@@ -146,11 +148,13 @@ run の現在地を**このテーブルだけから**判断できるようにす
 
 | action | body | サーバーの処理 | 冪等性 |
 |---|---|---|---|
-| `start` | `runId` | run を `running / started` で作成 | 既存 run があれば作成せず現在の状態を返す |
-| `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は再開可能な最新 run（なければ `null`） | 読み取りのみ |
+| `start` | `runId` | run を `running / started` で作成 | 既存 run があれば作成せず現在の状態を返す（`replayed: true`）。**別の run が running の間は作成せず 409 `run_in_progress`**（24 時間 checkpoint がない run は先に `failed / run_expired` にするので妨げない。DEV-025） |
+| `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は実行中の run → なければ今日（Asia/Tokyo）開始の run（completed は 200、failed は 409 と `start_new_run`）→ なければ `null`（§7.3） | 読み取りのみ |
 | `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める | 同じ phase の再送は上書き保存（`persisting` 以降は拒否） |
 | `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤10。超過は 400 で全体拒否)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
 | `persist` | `runId` | `verified` checkpoint の候補を §7.4 の手順で処理し、候補ごとの stage を checkpoint に記録。全候補が終端に達したら（または試行上限で）`completed` にし `result` を保存 | 何度呼んでも同じ結果に収束（§7.3）。同じ run の `persist` 同時実行は 409 `run_busy` |
+| `inbox_pending` | `limit?`（≤20） | Instagram の未処理の返信（最新の受信に返信案がない会話）を古い順に返す。未照合の会話は公式 API の username で安全に照合を試みる（DEV-021、`docs/INSTAGRAM_MESSAGING.md`） | 読み取りのみ（照合は一意な場合だけ） |
+| `inbox_draft` | `threadId, messageId, replyType, body, futureContactRefused` | 返信案を検証して保存（連絡先・他の URL は拒否、価格・納期・契約の表現は人間確認の印、明示的な拒否は dnc_candidate）。**送信はしない** | 同じ messageId の再送は同じ案を更新、古い messageId は 409 |
 | `abort` | `runId, errorCode, errorSummary` | `failed` にする（Operational Claude が続行不能と判断した場合） | `failed` / `completed` への再送は no-op |
 
 - `persist` は Operational Claude から候補を**受け取らない**。処理するのは直前に検証・保存した `verified` checkpoint だけなので、resume しても対象がぶれない。
@@ -160,8 +164,12 @@ run の現在地を**このテーブルだけから**判断できるようにす
 - この endpoint は DNC 変更・成約状態変更・送信を**一切できない**。
 - `source_url` 等をサーバーから fetch しない（SSRF 経路を作らない）。
 - 処理順の詳細・fail-closed 条件は §7。
+- 実装: `app/api/internal/sales-agent/runs/route.ts`（認証・サイズ・schema）、`lib/sales/ingest-schema.ts`（request schema の正本）、`lib/sales/prepare.ts`（verified 候補の検証・正規化・チャネル決定・デモ内容）、`lib/sales/ingest.ts`（action 実行）。
+- HTTP: 200 正常 / 400 schema・内容不正（値は返さない）/ 401 token 不一致 / 404 run なし / 409 phase 違反・run_busy・run_in_progress・failed run（`nextAction: start_new_run`）/ 413 本文 256KB 超・checkpoint 64KB 超 / 503 token 未設定・DB 不達。
 
 ## 6. 認証・認可
+
+- 管理者の追加は人間が行う: Supabase Dashboard の Authentication でユーザーを作成し、SQL Editor で `insert into public.sales_admins (user_id) values ('<uuid>');`。公開 sign-up は無効（`supabase/config.toml` と本番 Auth 設定の両方）。
 
 - 管理画面: Supabase Auth の **email + password**（MVP で固定。magic link は使わない）。
 - 管理者判定: DB 上の allowlist（例: `sales_admins(user_id)` に1行）と RLS policy で行う。**「認証済みユーザー全員 = admin」にしない**。
@@ -222,6 +230,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | `running` | 同じ/次の phase | 続きから処理（resume） |
 | `running` | 前の phase | 何もせず現在の状態を返す（遅延した再送とみなす） |
 | `running`（最終 checkpoint から 24 時間超） | 任意 | その場で `failed` / error_code `run_expired` に確定し 409。新しい run_id で始める。runId なしの `status` は期限切れ run を返さない |
+| 実行中の run なし | runId なしの `status` | 今日（Asia/Tokyo）開始の run があればその状態を返す（completed → `none`、failed → `start_new_run`）。Operational Claude はどちらでもその日は新しい run を始めない（1 日 1 run）。今日の run がなければ `null`。1 日 1 run は prompt で守り、サーバーは新しい runId の `start` を拒否しない（同時起動で 2 run になっても、当日の新規 actionable 上限 5 件は全 run 共通の lock 下で数えるため超えない） |
 | `completed` | 任意 | 処理せず保存済み `result` を返す（`replayed: true`） |
 | `failed` | 任意 | 処理しない。`nextAction: "start_new_run"` |
 
@@ -230,7 +239,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | status / phase | nextAction |
 |---|---|
 | running / started | `discover` |
-| running / discovered | `verify`（checkpoint の stub を使い探索を再実行しない） |
+| running / discovered | `verify`（checkpoint の stub を使い探索を再実行しない。この間は応答の `discovered` に stub が入るので、新しい session でも記憶なしで再開できる） |
 | running / verified, persisting | `persist` |
 | completed | `none` |
 | failed, または期限切れ | `start_new_run` |
@@ -243,6 +252,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 4. **DB 制約（最後の砦）**: prospect の dedupe キー unique、`sales_demos` unique(prospect_id)、`sales_outreaches` unique(prospect_id) where kind='initial'。万一再処理されても insert は失敗し、重複行はできない。
 5. **自 run の再処理と別 run の重複の区別**: dedupe で一致した prospect の `first_seen_run_id` が同じ run かつ同じ候補 key なら、自分の既存結果（`outreach_ready` 等）を返す。別 run の prospect に一致した場合は `duplicate` とし、新しい demo / outreach を作らない。
 6. **同時実行の直列化**: `persist` は run_id ごとの advisory lock（取れなければ 409 `run_busy`）で直列化し、各 transaction は run 行を `SELECT … FOR UPDATE` してから checkpoint を更新する。`checkpoint` action も run 行をロックして更新する。
+7. **running の run は常に 1 本**: `sales_agent_runs` の partial unique index（`where status = 'running'`）で、同時に 2 本の run が running になれない。`start` が重なっても後から commit する方は unique violation になり、409 `run_in_progress`（同じ runId なら `replayed`）を返す（migration `20260928000100`、DEV-025）。
 
 ### 7.4 persist の処理と fail-closed
 
@@ -287,3 +297,4 @@ mugi-no-mi 等の別 project と混ぜない。CI に Production の Supabase / 
 | `SALES_AGENT_INGEST_TOKEN` | server + Operational Claude のみ | DEV-003 |
 | `SALES_ADMIN_EMAIL` 等 | server only | DEV-008 |
 | `SALES_DEMO_BASE_URL` | server | DEV-004 |
+| `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` / `INSTAGRAM_APP_SECRET` / `INSTAGRAM_ACCOUNT_ID` / `INSTAGRAM_ACCESS_TOKEN` | **server only**（Operational Claude にも渡さない。設定は人間: `docs/INSTAGRAM_SETUP.md`） | DEV-020〜024 |

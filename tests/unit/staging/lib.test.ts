@@ -1,0 +1,101 @@
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { assertRef, authHeaders, expectedTables, explicitGrantGaps, listMigrations, managementQuery, migrationRequest, parseArgs, parseJson, planMigrations } from "../../../scripts/staging/lib.mjs";
+
+// Staging setup through the Supabase Management API (DEV-016): the plan,
+// the requests and token handling. No network: fetch is mocked.
+
+const local = listMigrations(join(process.cwd(), "supabase", "migrations"));
+const TOKEN = ["sbp", "test", "token", "0123456789abcdef"].join("_");
+
+describe("migration plan", () => {
+  it("reads every migration in apply order", () => {
+    expect(local.length).toBeGreaterThanOrEqual(14);
+    expect(local.map((m: { version: string }) => m.version)).toEqual([...local.map((m: { version: string }) => m.version)].sort());
+    expect(local[0]).toMatchObject({ version: "20260927000000", name: "sales_agent_core" });
+  });
+
+  it("applies everything on an empty project and nothing once all are recorded", () => {
+    expect(planMigrations(local, []).pending).toHaveLength(local.length);
+    const all = local.map((m: { version: string; name: string }) => ({ version: m.version, name: m.name }));
+    expect(planMigrations(local, all)).toEqual({ pending: [], drift: [] });
+    expect(planMigrations(local, all.slice(0, 3)).pending.map((m: { file: string }) => m.file)).toEqual(local.slice(3).map((m: { file: string }) => m.file));
+  });
+
+  it("[fail-closed] refuses drift: unknown remote versions, renamed versions, out-of-order pending ones", () => {
+    const all = local.map((m: { version: string; name: string }) => ({ version: m.version, name: m.name }));
+    expect(planMigrations(local, [...all, { version: "20990101000000", name: "someone_elses" }]).drift).toHaveLength(1);
+    expect(planMigrations(local, [{ version: local[0].version, name: "renamed" }]).drift).toHaveLength(1);
+    expect(planMigrations(local, [all[0], all[2]]).drift.join()).toMatch(/older than the newest applied/);
+  });
+
+  it("records each migration in the same request (one transaction) as the CLI would", () => {
+    const sql = migrationRequest(local[0]);
+    expect(sql.startsWith(local[0].sql)).toBe(true);
+    expect(sql.trimEnd().endsWith(`insert into supabase_migrations.schema_migrations (version, name) values ('${local[0].version}', '${local[0].name}');`)).toBe(true);
+  });
+
+  it("[fail-closed] every sales_* table is granted to the API roles explicitly (never relies on project defaults)", () => {
+    for (const [role, privilege] of [["authenticated", "select"], ["service_role", "select"], ["service_role", "insert"], ["service_role", "update"], ["service_role", "delete"]]) {
+      expect(explicitGrantGaps(local, role, privilege), `${role} ${privilege}`).toEqual([]);
+    }
+    // Before 20260928000000 the core tables relied on the defaults.
+    const before = local.filter((m: { version: string }) => m.version < "20260928000000");
+    expect(explicitGrantGaps(before, "authenticated", "select")).toEqual(["sales_admins", "sales_agent_runs", "sales_demos", "sales_outreaches", "sales_prospects", "sales_sources"]);
+  });
+
+  it("knows every sales_* table the migrations create", () => {
+    expect(expectedTables(local)).toEqual(expect.arrayContaining(["sales_admins", "sales_agent_runs", "sales_prospects", "sales_outreaches", "sales_ig_threads", "sales_ig_messages", "sales_ig_drafts", "sales_ig_sends", "sales_ig_webhook_events"]));
+  });
+});
+
+describe("Management API client", () => {
+  it("posts SQL to the project's query endpoint with the token only in the header", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify([{ ok: 1 }]), { status: 201 }));
+    const query = managementQuery("znbqgvawublgyjwfpmei", TOKEN, fetchImpl);
+    expect(await query("select 1 as ok")).toEqual([{ ok: 1 }]);
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.supabase.com/v1/projects/znbqgvawublgyjwfpmei/database/query");
+    expect(new Headers(init.headers).get("Authorization")).toBe(`Bearer ${TOKEN}`);
+    expect(JSON.parse(String(init.body))).toEqual({ query: "select 1 as ok" });
+    expect(url).not.toContain(TOKEN);
+  });
+
+  it("[fail-closed] never shows the token in an error, even if the API echoes it", async () => {
+    const fetchImpl = vi.fn(async () => new Response(`bad token ${TOKEN}`, { status: 401 }));
+    const query = managementQuery("znbqgvawublgyjwfpmei", TOKEN, fetchImpl);
+    const err = await query("select 1").catch((e: Error) => e);
+    expect(err.message).toMatch(/401/);
+    expect(err.message).not.toContain(TOKEN);
+  });
+
+  it("refuses a malformed project ref or a missing token before any request", () => {
+    expect(() => assertRef("../../v1/projects")).toThrow();
+    expect(() => authHeaders(undefined, {})).toThrow(/no Supabase credential/);
+  });
+
+  it("uses a credential the session proxy injects, without ever holding the token", async () => {
+    expect(authHeaders(undefined, { HTTPS_PROXY: "http://127.0.0.1:1" })).toEqual({ "Content-Type": "application/json" });
+    expect(authHeaders(TOKEN, {})).toEqual({ Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" });
+    const fetchImpl = vi.fn(async () => new Response("[]", { status: 201 }));
+    const saved = process.env.HTTPS_PROXY;
+    process.env.HTTPS_PROXY = "http://127.0.0.1:1";
+    try {
+      await managementQuery("znbqgvawublgyjwfpmei", undefined, fetchImpl)("select 1");
+    } finally {
+      if (saved === undefined) delete process.env.HTTPS_PROXY;
+      else process.env.HTTPS_PROXY = saved;
+    }
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new Headers(init.headers).has("Authorization")).toBe(false);
+  });
+
+  it("parses flags; --apply and --auth take no value", () => {
+    expect(parseArgs(["--project-ref", "abc", "--apply"])).toEqual({ "project-ref": "abc", apply: true });
+    expect(() => parseArgs(["--apply", "no"])).toThrow(/takes no value/);
+  });
+
+  it("[fail-closed] a non-JSON response never quotes the body (it may hold a key)", () => {
+    expect(() => parseJson("eyJhbGciOiJIUzI1NiIs-not-json", 200, null)).toThrow("non-JSON response (200)");
+  });
+});

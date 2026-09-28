@@ -1,0 +1,58 @@
+/* Public proposal demos (/demo/[publicToken]). Scoped to this module so the
+   Second Root site styles are untouched. Mobile first. */
+
+.page {
+  --ink: #2b2622;
+  --muted: #6d645c;
+  --paper: #fbf8f3;
+  --card: #ffffff;
+  --line: #e7dfd4;
+  --accent: #b5652f;
+  --accent-soft: #f4e6d9;
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+  line-height: 1.8;
+}
+
+.page[data-template="baked_goods_v1"] {
+  --accent: #a4506b;
+  --accent-soft: #f6e3ea;
+  --paper: #fcf7f8;
+}
+
+.page[data-template="cafe_v1"] {
+  --accent: #3f6b57;
+  --accent-soft: #e2eee7;
+  --paper: #f6f7f3;
+}
+
+.notice {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #2b2622;
+  color: #fff;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  padding: 10px 16px;
+  text-align: center;
+}
+
+.notice strong {
+  font-weight: 600;
+}
+
+.footer {
+  border-top: 1px solid var(--line);
+  padding: 28px 16px 40px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.footer a {
+  color: inherit;
+}
+

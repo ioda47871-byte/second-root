@@ -37,7 +37,7 @@ status: `backlog` / `ready` / `in_progress` / `review` / `done` / `blocked`
 - 着手時: `in_progress` にして commit + push（他 session が同じ Task を拾わないように）。
 - 失敗時: `attempts` を増やし `last_failure` に要約を書く。3回失敗したら `blocked` にし `.ai/blockers.md` に記録。
 - 人間の操作待ち（merge・secret 設定等）でも `blocked` を使う。その場合は `blocked_reason` に `.ai/blockers.md` の ID と解除条件を書く。
-- PR 作成後: `review`。merge 後: `done`。
+- PR 作成後: `review`。merge 後: `done`（merge 直後の `.ai/` のみの状態更新は develop へ直接 commit してよい。コード・docs の変更は必ず PR 経由）。
 - `tasks.json` の構造は `tests/unit/ai-tasks.test.ts` が CI で検証する。
 
 ### 自分で追加 Task 化してよいもの
@@ -108,16 +108,17 @@ Production data / Production secrets / main 直接 push / Production release / D
 |---|---|---|
 | static | ESLint / TypeScript / secret scan | `npm run lint` / `npm run typecheck` / `npm run check:secrets` |
 | unit | dedupe, channel eligibility, DNC, limits, state machine, demo expiry, mailto, DM, URL validation | `npm test`（Vitest, `tests/unit/`） |
-| integration | ingest API, token auth, runId idempotency, batch cap, DNC, duplicate, unknown website, schema, DB/RLS | `npm run test:integration`（ローカル Supabase。DEV-001/003 で追加） |
-| e2e | 既存サイト regression, admin, 今日の一覧, DM/Email UX, 送信済み, reply→meeting→won/lost, mobile | `npm run test:e2e`（Playwright, `tests/e2e/`） |
+| integration | ingest API, token auth, runId idempotency, batch cap, DNC, duplicate, unknown website, schema, DB/RLS | `npx supabase start` の後 `npm run test:integration`（ローカル Supabase、`tests/integration/`。鍵は `supabase status` から実行時に取得し commit しない） |
+| e2e | 既存サイト regression（`npm run test:e2e:site`、Supabase 不要）/ demo・admin・今日の一覧・DM/Email UX・送信済み・reply→meeting→won/lost・mobile（`npm run test:e2e`、ローカル Supabase 必須） | Playwright, `tests/e2e/`。CI は `e2e` と `e2e-sales` の2 job |
 
-- 自動テストから実店舗へ Email / Instagram を**絶対に送らない**（テストデータは `example.com` / 架空アカウントのみ）。
+- 自動テストから実店舗へ Email / Instagram を**絶対に送らない**（テストデータは `example.com` / 架空アカウントのみ。e2e は instagram.com への通信を stub する）。
+- ローカル Supabase は全 worktree で共有される。Fresh Reviewer 実行中に `supabase db reset` をしない（新規 migration は個別に適用）。
 - テスト失敗時に skip / 削除 / required check 解除 / 基準引き下げで green にしない。
 
-## 9. Operational Claude run の原則（DEV-015 で prompt 化）
+## 9. Operational Claude run の原則（prompt: `ops/sales-agent/RUN_PROMPT.md`、scheduled job: `ops/sales-agent/SCHEDULE.md`）
 
 - 実行基盤: Claude Cloud scheduled job を第一候補。
-- 持つ secret は `SALES_AGENT_INGEST_TOKEN` のみ。Supabase には直接触れない。
+- 持つ secret は `SALES_AGENT_INGEST_TOKEN` のみ（Staging で Vercel Preview の保護がある場合だけ `SALES_AGENT_VERCEL_BYPASS` も。docs/SECURITY.md）。Supabase には直接触れない。
 - Claude のセッションは消える前提で動く。run の現在地は ingest API（Supabase）にだけ置き、会話記憶に頼らない。
 - 失敗時は有料 API へ切り替えず、`abort` で理由（error_code / error_summary）を記録し人間に報告する。
 
@@ -127,6 +128,7 @@ Production data / Production secrets / main 直接 push / Production release / D
 1. action=status（runId なし）
      → 再開可能な run があれば、その runId と nextAction から続ける
      → なければ新しい UUID を runId にして action=start
+       （409 run_in_progress = 別の run が実行中。新しい run は作らず status から続ける）
 2. nextAction=discover : Web 検索で候補を探す → action=checkpoint phase=discovered（stub ≤20）
 3. nextAction=verify   : discovered の stub だけを対象に公式サイト再確認・第一者 email・出典を確認
                          → action=checkpoint phase=verified（≤10。新規営業準備はサーバーが最大5件に絞る）

@@ -1,7 +1,8 @@
 name: CI
 
-# Required checks (see docs/AI_WORKFLOW.md): static, unit, build, e2e.
-# An `integration` job (local Supabase) is added in DEV-001.
+# Required checks (see docs/AI_WORKFLOW.md): static, unit, integration, build, e2e, e2e-sales.
+# integration runs against a throwaway local Supabase stack (Docker) with its
+# well-known local keys; no hosted Supabase project is ever used here.
 # No production Supabase or other production secret is ever used here.
 
 on:
@@ -49,6 +50,22 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,postgres-meta,mailpit
+      - run: npm run test:integration
+      - if: always()
+        run: npx supabase stop --no-backup
+
   build:
     name: build
     runs-on: ubuntu-latest
@@ -87,6 +104,8 @@ jobs:
           include-hidden-files: true
           retention-days: 1
 
+  # Existing Second Root regression: no Supabase, so it cannot be broken by
+  # anything the Sales Agent depends on.
   e2e:
     name: e2e
     needs: build
@@ -104,12 +123,43 @@ jobs:
         with:
           name: next-build
           path: .next/
-      - run: npm run test:e2e
+      - run: npm run test:e2e:site
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-site
           path: |
             playwright-report/
             test-results/
           retention-days: 7
+
+  # Sales Agent pages (demo, admin) against a throwaway local Supabase stack.
+  e2e-sales:
+    name: e2e-sales
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,postgres-meta,mailpit
+      - uses: actions/download-artifact@v4
+        with:
+          name: next-build
+          path: .next/
+      - run: npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-sales
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+      - if: always()
+        run: npx supabase stop --no-backup

@@ -10,23 +10,36 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "check:secrets": "node scripts/check-secrets.mjs"
+    "test:e2e": "node scripts/with-supabase-env.mjs playwright test",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "test:integration": "node scripts/with-supabase-env.mjs vitest run -c vitest.integration.config.mts",
+    "test:e2e:site": "playwright test tests/e2e/existing-site.spec.ts",
+    "staging:apply": "NODE_USE_ENV_PROXY=1 node scripts/staging/apply.mjs",
+    "staging:verify": "NODE_USE_ENV_PROXY=1 node scripts/staging/verify.mjs",
+    "staging:admin": "NODE_USE_ENV_PROXY=1 node scripts/staging/admin.mjs",
+    "staging:vercel": "NODE_USE_ENV_PROXY=1 node scripts/staging/vercel-preview.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.117.2",
     "next": "16.3.6",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "resend": "^6.19.0"
+    "resend": "^6.19.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "20.19.43",
+    "@types/pg": "^8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
+    "pg": "^8.23.0",
     "playwright": "^1.62.1",
+    "supabase": "^2.118.0",
     "typescript": "5.9.3",
     "vitest": "~4.0.18"
   }
