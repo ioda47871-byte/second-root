@@ -103,3 +103,8 @@
   - main（PR #27）との衝突を解消した。
   - HUMAN-004 は解除済みに移し、HUMAN-007（Production 準備と PR #29 の merge）を追加した。
   - PR #29 は Draft のまま。Production は未変更。
+- 2026-09-28: PR #39 merge（82f2236）。fresh review PASS（Medium 3・Low 5 は修正済み）。
+  - Production は新しい project だけを使う。Production の DB・Auth・環境変数の操作は、確認も含めて人間が行う。
+  - Staging の verify を 16 本の migration で再確認し、14/14 PASS。
+  - PR #29 は main との衝突が解消した（mergeable、Draft のまま）。
+  - **状態: READY_FOR_HUMAN_RELEASE_APPROVAL**。人間待ちは HUMAN-007（Production 準備 → PR #29 の merge）。任意の残りは HUMAN-006・HUMAN-003・Staging token の Revoke。
