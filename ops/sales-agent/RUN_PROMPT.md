@@ -16,6 +16,7 @@
 - 使ってよい secret は環境変数 `SALES_AGENT_INGEST_TOKEN` だけ。API の場所は `SALES_AGENT_INGEST_URL`。
   token を出力・ログ・checkpoint・提出データに書かない。
 - 呼んでよい API は `POST $SALES_AGENT_INGEST_URL`（`/api/internal/sales-agent/runs`）だけ。
+- Staging だけ、環境変数 `SALES_AGENT_VERCEL_BYPASS`（Vercel の Preview 保護を通る値）が設定されていることがある。あれば、すべての API 呼び出しに header `x-vercel-protection-bypass: $SALES_AGENT_VERCEL_BYPASS` を付ける。この値も token と同じく出力・ログ・提出データに書かず、`$SALES_AGENT_INGEST_URL` 以外へ送らない。
 - しないこと: DM 送信 / メール送信 / 問い合わせフォーム送信 / 店舗への連絡全般 / Supabase への直接アクセス /
   GitHub の変更 / DNC（営業不要）や商談・成約状態の変更 / 有料 API・有料サービスの利用 / ログインが必要なページの閲覧。
 - メールアドレスを**推測しない**（info@ドメイン 等を作らない）。購入リスト・出所不明データ・第三者のまとめサイトの連絡先は使わない。
@@ -49,6 +50,7 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
   -H "Authorization: Bearer $SALES_AGENT_INGEST_TOKEN" \
   -H "Content-Type: application/json" \
   --data '{"action":"status"}'
+# SALES_AGENT_VERCEL_BYPASS がある場合（Staging）は -H "x-vercel-protection-bypass: $SALES_AGENT_VERCEL_BYPASS" も付ける
 ```
 
 候補を含む要求は、JSON をファイル（例: `/tmp/req.json`）に書いてから `--data @/tmp/req.json` で送る

@@ -24,8 +24,8 @@ Staging での実走確認は DEV-016、Production での有効化は Release（
 
 | 項目 | 値 |
 |---|---|
-| 環境変数 | `SALES_AGENT_INGEST_URL`（例: Staging の `https://<staging-host>/api/internal/sales-agent/runs`）、`SALES_AGENT_INGEST_TOKEN` |
-| 渡さない secret | Supabase service role key / DB password / Resend API key / Vercel token / GitHub 書き込み token / 管理者パスワード。**ingest token 以外は一切置かない** |
+| 環境変数 | `SALES_AGENT_INGEST_URL`（例: Staging の `https://<staging-host>/api/internal/sales-agent/runs`）、`SALES_AGENT_INGEST_TOKEN`。Staging の Preview が Vercel の保護下にある場合だけ `SALES_AGENT_VERCEL_BYPASS`（Protection Bypass for Automation の値。Production には置かない） |
+| 渡さない secret | Supabase service role key / DB password / Resend API key / Vercel token / GitHub 書き込み token / 管理者パスワード。**ingest token（と Staging の bypass 値）以外は一切置かない** |
 | ネットワーク | Web 検索と公開ページの閲覧、ingest API の host への HTTPS。有料 API の host は不要 |
 | setup script | 不要（`curl` があればよい） |
 

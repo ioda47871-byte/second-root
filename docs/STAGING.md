@@ -96,7 +96,7 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
 - Vercel project: `second-root`（team `brot-yanagi`）。develop の Preview の固定 URL: `https://second-root-git-develop-brot-yanagi.vercel.app`。
 - **2026-09-28 確認: Preview には Vercel Authentication が掛かっている**。ingest API（`/api/internal/sales-agent/runs`）も含め、未ログインのアクセスは `vercel.com/sso-api` へ 302 で転送される。
 - **Deployment Protection**: Preview に「Vercel Authentication」が掛かっていると、Operational Claude（Routine）の ingest 呼び出しが Vercel に 401 で止められる（Meta の Webhook も同じ）。どちらかを人間が選ぶ:
-  - (a) 推奨: Settings → Deployment Protection → **Protection Bypass for Automation** を作成する。これを使う場合は Routine の prompt に header の追加が必要なので、Claude が対応する。
+  - (a) 推奨: Settings → Deployment Protection → **Protection Bypass for Automation** を作成する。prompt は対応済みで、Staging の Routine environment に `SALES_AGENT_VERCEL_BYPASS` として入れると header `x-vercel-protection-bypass` を付けて呼ぶ（RUN_PROMPT / INBOX_PROMPT §0）。この値で通れるのは Preview の保護だけで、ingest API には token が別に必要。
   - (b) Preview の Vercel Authentication を OFF にする（管理画面はログイン必須、ingest は token 必須、デモは推測できない URL なので、データは守られる）。
 - Vercel の Preview build が rate limit 中（HUMAN-005）なら、解除後に再デプロイする。
 
@@ -107,6 +107,7 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
 - environment の環境変数は 2 つだけ:
   - `SALES_AGENT_INGEST_URL=https://second-root-git-develop-brot-yanagi.vercel.app/api/internal/sales-agent/runs`
   - `SALES_AGENT_INGEST_TOKEN=<Staging の値>`
+  - （§5 で (a) を選んだ場合）`SALES_AGENT_VERCEL_BYPASS=<Protection Bypass for Automation の値>`
 - Routine 名は `second-root-sales-agent-daily-staging`。**スケジュールは無効のまま**で作り、手動実行（Run now）だけで使う。
 - 作成したら Routine の名前を Claude に伝える。Claude は Routine を起動・中断できる（DEV-016）。
 
