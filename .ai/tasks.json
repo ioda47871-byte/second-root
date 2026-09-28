@@ -1179,7 +1179,7 @@
     {
       "id": "DEV-025",
       "title": "Refuse a second concurrent sales agent run",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-016"
@@ -1218,7 +1218,7 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null,
+      "last_failure": "Fresh review PASS (Low 3: 1 件を docs で対応)。PR #38 merge（1e53ef0）。Staging に 20260928000100 を適用し、start 200 / 別 runId 409 run_in_progress / 同一 runId 200 replayed を実測。確認用 run は abort 済み（.ai/reviews/DEV-025.md）。",
       "branch": "feature/dev-025-single-running-run"
     }
   ]
