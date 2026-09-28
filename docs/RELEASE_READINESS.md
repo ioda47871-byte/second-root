@@ -1,8 +1,8 @@
 # Release Readiness Report — Second Root Sales Agent MVP（DEV-019）
 
-- 作成: 2026-09-27。**最終更新: 2026-09-28**（Staging 実走・DEV-025・Instagram 実装を反映）
+- 作成: 2026-09-27。**最終更新: 2026-09-28**（Staging 実走・DEV-025・Instagram 実装・Production 準備の完了を反映）
 - 対象: `develop` → `main`（Production = secondroot.jp）。Release PR: #29（Draft）
-- 結論: **コード・テスト・レビュー・Staging 実走（DEV-016）は完了。Production にはまだ何も変更していない。** 残りは §13 の Production 準備（人間）と、人間による Release PR #29 の merge。
+- 結論: **コード・テスト・レビュー・Staging 実走（DEV-016）・Production 準備（人間、§13 の 1〜7）は完了。** 残りは Release PR #29 の merge（人間の明示承認）と、merge 後の確認（§13 の 10 以降）。
 
 ## 0. オーナー向けの要約
 
@@ -14,9 +14,12 @@
   - 再送しても重複しない。不正なデータは拒否される（400）。
   - token なしでは 401（オーナーが自分の端末で実測）。
   - 2 本目の run は 409 で拒否される（DEV-025）。
-- **オーナーがやること**: §13 の順番どおり。
-  - Production の Supabase を用意 → migration → 確認 → Auth・管理者 → Vercel の Production 環境変数
-  - → PR #29 を Ready にして merge → 本番の動作確認 → 本番の Routine
+- **Production 準備（2026-09-28、オーナーが完了）**:
+  - Supabase `second-root-production`（ref `sagjzgcpqcbrqbokawiz`、Tokyo）に migration 16 本を適用し、`staging:verify` で 14/14 PASS。
+  - Auth は sign-up OFF・Confirm email ON・パスワード最小長 12。管理者 1 名。確認用の token は Revoke 済み。
+  - Vercel Production に 5 変数を設定した。既存の変数は変更なし、`INSTAGRAM_*` は未設定。Standard Protection。
+  - 古い main は再デプロイしていない（Production への反映は PR #29 の merge によるデプロイで行う）。
+- **残りのオーナー作業**: PR #29 の merge 後に、本番の動作確認 → 本番の Routine（§13 の 10〜12）。
 - **Instagram の返信機能（DEV-020〜024）**:
   - コードは実装・テスト・security review 済みで、この Release に含まれる。
   - 実際の Meta アカウントでの確認（HUMAN-006）だけが残っている。
@@ -129,7 +132,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
 - **Staging（`znbqgvawublgyjwfpmei`）には 16 本すべて適用済み**。
   - Supabase Management API 経由の `staging:apply`。1 migration = 1 transaction。
   - `staging:verify` の 14 項目がすべて PASS: migration 一致・RLS・権限の過不足・sign-up OFF・管理者 1 名。16 本の適用後、2026-09-28 15:19 UTC に再確認した。
-- **Production の Supabase project は未作成**（HUMAN-002）。
+- **Production（`second-root-production`、ref `sagjzgcpqcbrqbokawiz`）にも 16 本すべて適用済み**。人間が `staging:verify` を実行し、14/14 PASS（2026-09-28）。
 - 無料プランのまま。
 
 ## 7. Cloud Job 実走（DEV-016、Staging）
@@ -162,7 +165,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
 
 | ID | 内容 | 状態 |
 |---|---|---|
-| HUMAN-002 | Production 用の Supabase project | **未**（Staging 用は作成済み）。§13 の 1 |
+| HUMAN-002 | Production 用の Supabase project | **解除**（2026-09-28。`second-root-production`、16 本適用・verify 14/14 PASS） |
 | HUMAN-006 | Instagram の Meta 側設定と実アカウント確認 | 未。**Release の必須条件ではない**（未設定なら機能は無効） |
 | HUMAN-003 | branch protection の required checks | 未（推奨） |
 | HUMAN-004 | Staging セットアップ | **解除**（2026-09-28。DEV-016 完了） |
@@ -226,12 +229,14 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
 | Claude Cloud scheduled job の staging 実走 | **済**（§7） |
 | Secret 混入なし | 済（`check:secrets`） |
 | rollback 手順確認 | 済（§12） |
-| Production の Supabase・Auth・管理者 | **未（人間、§13 の 1〜5）** |
-| Production env が Vercel に設定済み | **未（人間、§13 の 6）** |
+| Production の Supabase・Auth・管理者 | **済**（人間、2026-09-28。`sagjzgcpqcbrqbokawiz`、verify 14/14 PASS） |
+| Production env が Vercel に設定済み | **済**（人間、2026-09-28。Vercel Production に 5 変数） |
 
 ## 13. Production 準備（人間。**PR #29 を merge する前に**、この順番で）
 
 手順の詳細は `docs/RELEASE.md` §8。
+
+**状況（2026-09-28）: 1〜7 はオーナーが完了した**（§0）。0 は PR #39 で完了した。8〜9 は、オーナーの明示承認に基づき Claude が行う。
 
 **Production の DB・Auth・環境変数への操作は、読み取りの確認も含めてすべて人間が行う。** Claude は Production 用の token を持たない。Supabase の Management API の token は任意の SQL を実行できるため、読み取りだけの確認でも書き込みの権限を渡すことになる。Claude は人間が貼った結果（PASS / FAIL の一覧。secret は含まない）を確認できる。
 
@@ -277,7 +282,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
    - PR #29 の CI が全 6 job green で、衝突がないこと。
    - （推奨）HUMAN-003 の branch protection。
    - Staging の token の後片付け（`docs/STAGING.md` §8。merge 後でもよい）。
-9. **PR #29 を Ready for review にして、人間が merge する**。Vercel が Production にデプロイする。
+9. **PR #29 を Ready for review にして merge する**。人間が merge するか、人間の明示承認に基づき Claude が merge する。Vercel が Production にデプロイする。
 
 merge 後（人間）:
 

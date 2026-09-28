@@ -104,7 +104,7 @@ Release Readiness（DEV-019）でチェック:
    - `*.vercel.app` の Production URL は保護されるので、Routine は `https://secondroot.jp` を使う。
 4. **develop → main**:
    - Release PR（#29、DEV-019）の CI が green で、衝突がないことを確認する。
-   - 人間がレビューし、Draft を外して merge する。
+   - 人間がレビューし、Draft を外して merge する（または、人間の明示承認に基づき Claude が merge する）。
    - Vercel が Production にデプロイする。
 5. **Smoke test（Production）**:
    - 既存ページ:
