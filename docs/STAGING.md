@@ -73,7 +73,7 @@ MVP は email + password の管理者 1 人。**パスワードは Claude に渡
 1. 人間: Supabase Dashboard → Authentication → Users → **Add user** → **Create new user**。email とパスワードを入れ、**Auto Confirm User** をオンにする。
 2. 人間: 管理者の email アドレス（secret ではない）を Claude に伝える。
 3. Claude: `npm run staging:admin -- --project-ref znbqgvawublgyjwfpmei --confirm-ref znbqgvawublgyjwfpmei --email <email>` を実行する。削除済み・停止中・匿名の user は対象外。確認済みの Auth user を `sales_admins` に登録するだけで、パスワードは扱わない。2 人目の管理者は登録しない。
-4. public sign-up の OFF とパスワード最小長は、token に `project_admin_write` がなければ人間が設定する: Authentication → Sign In / Providers →「Allow new users to sign up」を OFF、Email の「Minimum password length」を 12 以上。その後 Claude が `staging:verify` で確認する。以前の記述: Dashboard の Authentication → Sign In / Providers → 「Allow new users to sign up」が OFF になっていることを人間も目で確認できる。
+4. public sign-up の OFF とパスワード最小長は、token に `project_admin_write` がなければ人間が設定する: Authentication → Sign In / Providers →「Allow new users to sign up」を OFF、Email の「Minimum password length」を 12 以上。その後 Claude が `staging:verify` で確認する。
 
 ## 5. Vercel Preview（Staging）
 
