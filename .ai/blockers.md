@@ -15,7 +15,7 @@
 - 分かったこと: Claude Code（cloud）の container は HTTPS しか通らず、Postgres に直接つなげない（proxy が `db.<ref>.supabase.co` を拒否）。そのため `supabase db push` の代わりに、Supabase 公式 Management API で migration の適用と確認を行うスクリプト（`scripts/staging/`）を用意した。
 - 人間にお願いすること:
   1. **Claude Code の environment に環境変数を追加**（cloud environment メニュー → Edit。値はチャットに貼らない。新しい session から有効）:
-     - `SUPABASE_ACCESS_TOKEN`（必須）: Supabase → Account → Access Tokens、有効期限は短く
+     - `SUPABASE_ACCESS_TOKEN`（必須）: Supabase → Account → Access Tokens。**scoped token（project `second-root` のみ、必要な権限だけ）**、有効期限は短く（権限の一覧は `docs/STAGING.md` §2）
      - `STAGING_SALES_AGENT_INGEST_TOKEN`（必須）: `openssl rand -hex 32`。Staging 専用
      - `VERCEL_TOKEN`（任意）: 入れない場合は 4 を人間が画面で行う
   2. **管理者ユーザー作成**: Supabase → Authentication → Add user → Create new user（email + password、Auto Confirm User オン）。パスワードは Claude に渡さず、email だけを伝える。

@@ -20,11 +20,20 @@ claude.ai の Claude Code → このセッションの cloud environment メニ�
 
 | 変数名 | 何か / どこで作るか | 必須 | 用途 |
 |---|---|---|---|
-| `SUPABASE_ACCESS_TOKEN` | Supabase Dashboard → Account → Access Tokens → Generate new token（有効期限を短く、例: 7 日） | 必須 | migration 適用・検証・Auth 設定・管理者登録・API キーの受け渡し |
+| `SUPABASE_ACCESS_TOKEN` | Supabase Dashboard → Account → Access Tokens で **scoped（範囲を限定した）token** を作る。対象は project `second-root` だけ、有効期限は短く（例: 7 日）。権限は下の表 | 必須 | migration 適用・検証・Auth 設定・管理者登録・API キーの受け渡し |
 | `STAGING_SALES_AGENT_INGEST_TOKEN` | 手元で `openssl rand -hex 32`（**Staging 専用**。Production とは別の値） | 必須 | Vercel Preview に設定する ingest token。DEV-016 の再送・fail-closed 確認にも使う |
 | `VERCEL_TOKEN` | Vercel → Account Settings → Tokens → Create（Scope は Second Root のあるチーム、有効期限を短く） | 任意 | Preview の環境変数を Claude が設定する場合だけ。入れない場合は §5 を人間が画面で行う |
 
-- Supabase の Access Token はアカウント内のすべての project に効く。Claude は `znbqgvawublgyjwfpmei` 以外を操作しない（スクリプトは `--project-ref` を必須にしている）が、**Staging の作業が終わったら token を削除（Revoke）する。**
+- Supabase の token は **scoped PAT** にする（公式: "A scoped PAT can only reach the organizations, projects, and permissions you choose"）。Legacy の token はアカウントのすべての project に効くので使わない。
+  必要な権限（Management API の各 endpoint に書かれている名前）:
+
+  | 権限 | 使う場面 |
+  |---|---|
+  | `database_write`（と `database_read`） | migration 適用・確認・管理者登録（`/database/query`） |
+  | `auth_config_read`・`auth_config_write` | sign-up OFF・パスワード最小長（`/config/auth`） |
+  | `api_gateway_keys_read`・`api_gateway_keys_secret_read` | `VERCEL_TOKEN` を使って Claude が Preview に key を設定する場合だけ（`/api-keys?reveal=true`） |
+
+  画面で名前が違う、または `auth_config_write` に `project_admin_write` も必要と出る場合は、それに従う。**Staging の作業が終わったら token を削除（Revoke）する。**
 - Operational Claude（Routine）の environment には従来どおり `SALES_AGENT_INGEST_URL` と `SALES_AGENT_INGEST_TOKEN` だけを入れる（§6）。上の 3 つは入れない。
 
 ## 3. migration と security 確認（Claude）
