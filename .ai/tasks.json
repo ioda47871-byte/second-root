@@ -905,7 +905,7 @@
     {
       "id": "DEV-019",
       "title": "Release Readiness",
-      "status": "blocked",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-016",
@@ -937,9 +937,8 @@
         "Production 設定"
       ],
       "attempts": 0,
-      "last_failure": "2026-09-28: 人間が Production 準備を完了。project second-root-production（sagjzgcpqcbrqbokawiz）に migration 16 本を適用、verify 14/14 PASS、Auth 設定、管理者 1 名、Vercel Production の 5 変数。INSTAGRAM_* は未設定。PR #29 の merge へ進む",
-      "branch": "feature/dev-019-release-readiness",
-      "blocked_reason": "HUMAN-007: Production 準備は人間が完了（2026-09-28）。PR #29 の merge（人間の明示承認のもと Claude が実行）と、Production smoke test が残り"
+      "last_failure": "2026-09-28: 人間の明示承認に基づき PR #29 を main へ merge（b14aab7）。main CI run 178 は 6 job すべて success。Production で新しいコードの応答を確認した（/admin/login 200・ingest の token なし 401・不明なデモ 404・private route の header）。Vercel の deployment API は credential がなく未確認。smoke test（ログイン等）と Production Routine は人間（HUMAN-007）",
+      "branch": "feature/dev-019-release-readiness"
     },
     {
       "id": "DEV-020",

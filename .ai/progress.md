@@ -113,3 +113,9 @@
   - Auth は sign-up OFF・Confirm email ON・パスワード最小長 12。管理者 1 名。確認用の token は Revoke 済み。
   - Vercel Production に 5 変数を設定した。既存の変数は変更なし、INSTAGRAM_* は未設定。Standard Protection。
   - 人間の明示承認に基づき、PR #29 の最終確認と merge に進む。
+- 2026-09-28: **Release: PR #29 を main へ merge**（b14aab7。人間の明示承認に基づく）。
+  - 直前の確認: head 32b5440 = develop、main と衝突なし、PR と push の CI それぞれで 6 job すべて success。前回の確認以降の差分は docs/.ai だけ。
+  - main の CI（run 178）: success。
+  - Production（secondroot.jp）で新しいコードが応答していることを確認した: `/admin/login` 200、ingest の token なし 401、不明なデモ 404、private route の header。既存ページは 200。
+  - Vercel の deployment API はこの session の credential がなく（403 missingToken）、deployment ID は見ていない。
+  - 残り（人間）: smoke test（ログイン・非管理者・token ありの status）、Production Routine、HUMAN-006・HUMAN-003・Staging token の Revoke。

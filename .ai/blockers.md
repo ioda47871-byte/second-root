@@ -6,7 +6,11 @@
 ## 未解除
 
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
-- 状態: **Production 準備は人間が完了（2026-09-28）**。残りは PR #29 の merge（人間の明示承認のもと Claude が実行）と、merge 後の確認。Release の技術的な条件（CI・review・Staging 実走・DEV-025）はすべて満たした。
+- 状態: **PR #29 を main へ merge 済み（2026-09-28、b14aab7。人間の明示承認に基づき Claude が実行）**。残りは merge 後の人間の作業。
+  - **smoke test**（`docs/RELEASE.md` §8 の 5）: 管理者ログイン・非管理者の拒否・token ありの ingest `status`。
+    - Claude が credential なしで確認済み: `/`・`/privacy`・`/terms`・`/robots.txt` は 200、`/admin/login` は 200、ingest の token なしは 401、不明なデモは 404、private route の header あり。
+  - **Production Routine**（§8 の 6）: 別の environment を作る。API credential は `secondroot.jp` 限定で、bypass なし。まず手動で 1 回実行し、その後スケジュールを有効化する。
+  - 最初の 1 週間は、送信前に人間が候補を確認する。Release の技術的な条件（CI・review・Staging 実走・DEV-025）はすべて満たした。
 - PR #29（develop → main）は、人間の明示承認（2026-09-28）があるまで Draft のままにしていた。merge は、その承認に基づき Claude が行う。Claude は Production の DB・環境変数を変更しない。
 - main（PR #27）との衝突は PR #39 で解消した（両方 Next.js 16.3.6、develop 側を採用）。
 - 人間にお願いすること（この順番。詳細は `docs/RELEASE_READINESS.md` §13）:
