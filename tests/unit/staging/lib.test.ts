@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { assertRef, expectedTables, listMigrations, managementQuery, migrationRequest, parseArgs, parseJson, planMigrations } from "../../../scripts/staging/lib.mjs";
+import { assertRef, authHeaders, expectedTables, explicitGrantGaps, listMigrations, managementQuery, migrationRequest, parseArgs, parseJson, planMigrations } from "../../../scripts/staging/lib.mjs";
 
 // Staging setup through the Supabase Management API (DEV-016): the plan,
 // the requests and token handling. No network: fetch is mocked.
@@ -35,6 +35,15 @@ describe("migration plan", () => {
     expect(sql.trimEnd().endsWith(`insert into supabase_migrations.schema_migrations (version, name) values ('${local[0].version}', '${local[0].name}');`)).toBe(true);
   });
 
+  it("[fail-closed] every sales_* table is granted to the API roles explicitly (never relies on project defaults)", () => {
+    for (const [role, privilege] of [["authenticated", "select"], ["service_role", "select"], ["service_role", "insert"], ["service_role", "update"], ["service_role", "delete"]]) {
+      expect(explicitGrantGaps(local, role, privilege), `${role} ${privilege}`).toEqual([]);
+    }
+    // Before 20260928000000 the core tables relied on the defaults.
+    const before = local.filter((m: { version: string }) => m.version < "20260928000000");
+    expect(explicitGrantGaps(before, "authenticated", "select")).toEqual(["sales_admins", "sales_agent_runs", "sales_demos", "sales_outreaches", "sales_prospects", "sales_sources"]);
+  });
+
   it("knows every sales_* table the migrations create", () => {
     expect(expectedTables(local)).toEqual(expect.arrayContaining(["sales_admins", "sales_agent_runs", "sales_prospects", "sales_outreaches", "sales_ig_threads", "sales_ig_messages", "sales_ig_drafts", "sales_ig_sends", "sales_ig_webhook_events"]));
   });
@@ -62,7 +71,23 @@ describe("Management API client", () => {
 
   it("refuses a malformed project ref or a missing token before any request", () => {
     expect(() => assertRef("../../v1/projects")).toThrow();
-    expect(() => managementQuery("znbqgvawublgyjwfpmei", "", vi.fn())).toThrow(/SUPABASE_ACCESS_TOKEN/);
+    expect(() => authHeaders(undefined, {})).toThrow(/no Supabase credential/);
+  });
+
+  it("uses a credential the session proxy injects, without ever holding the token", async () => {
+    expect(authHeaders(undefined, { HTTPS_PROXY: "http://127.0.0.1:1" })).toEqual({ "Content-Type": "application/json" });
+    expect(authHeaders(TOKEN, {})).toEqual({ Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" });
+    const fetchImpl = vi.fn(async () => new Response("[]", { status: 201 }));
+    const saved = process.env.HTTPS_PROXY;
+    process.env.HTTPS_PROXY = "http://127.0.0.1:1";
+    try {
+      await managementQuery("znbqgvawublgyjwfpmei", undefined, fetchImpl)("select 1");
+    } finally {
+      if (saved === undefined) delete process.env.HTTPS_PROXY;
+      else process.env.HTTPS_PROXY = saved;
+    }
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new Headers(init.headers).has("Authorization")).toBe(false);
   });
 
   it("parses flags; --apply and --auth take no value", () => {

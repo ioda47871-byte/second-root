@@ -41,6 +41,16 @@ describe("staging verification", () => {
     expect(failed).toEqual({ rls_enabled: ["sales_prospects"], authenticated_no_direct_write: ["sales_outreaches:INSERT"] });
   });
 
+  it("[fail-closed] catches a missing privilege the app needs (a project without permissive defaults)", async () => {
+    const { results } = await withRollback(async (query) => {
+      await query("revoke select on public.sales_prospects from authenticated");
+      await query("revoke insert on public.sales_outreaches from service_role");
+      return runChecks(query, local);
+    });
+    const failed = Object.fromEntries(results.filter((r: { ok: boolean }) => !r.ok).map((r: { id: string; items: string[] }) => [r.id, r.items]));
+    expect(failed).toEqual({ authenticated_can_read: ["sales_prospects"], service_role_can_write: ["sales_outreaches:INSERT"] });
+  });
+
   it("[fail-closed] catches a migration missing from the history", async () => {
     const { results } = await withRollback(async (query) => {
       await query(`delete from supabase_migrations.schema_migrations where version = '${last.version}'`);

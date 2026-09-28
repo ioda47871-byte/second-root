@@ -72,11 +72,11 @@ export function migrationRequest(m) {
 /** A query function for the Management API. Errors never include the token. */
 export function managementQuery(ref, token, fetchImpl = fetch) {
   assertRef(ref);
-  if (!token || token.length < 20) throw new Error("SUPABASE_ACCESS_TOKEN is not set");
+  const headers = authHeaders(token);
   return async (sql) => {
     const res = await fetchImpl(`${MANAGEMENT_API}/v1/projects/${ref}/database/query`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ query: sql }),
       redirect: "error",
     });
@@ -89,11 +89,11 @@ export function managementQuery(ref, token, fetchImpl = fetch) {
 /** GET / PATCH other Management API endpoints (auth config, API keys). */
 export function managementRequest(ref, token, fetchImpl = fetch) {
   assertRef(ref);
-  if (!token || token.length < 20) throw new Error("SUPABASE_ACCESS_TOKEN is not set");
+  const headers = authHeaders(token);
   return async (method, path, body) => {
     const res = await fetchImpl(`${MANAGEMENT_API}/v1/projects/${ref}${path}`, {
       method,
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       redirect: "error",
     });
@@ -146,6 +146,22 @@ export function assertProxySupport() {
 }
 
 const BOOLEAN_FLAGS = new Set(["apply", "auth"]);
+
+/**
+ * The Authorization header, or none when the credential is registered as an
+ * API credential for api.supabase.com in the Claude Code environment: the
+ * session's proxy then adds it, and the token never enters this process.
+ * @param {string | undefined} token
+ * @param {Record<string, string | undefined>} [env]
+ */
+export function authHeaders(token, env = process.env) {
+  if (token) {
+    if (token.length < 20) throw new Error("SUPABASE_ACCESS_TOKEN looks invalid");
+    return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  }
+  if (env.HTTPS_PROXY) return { "Content-Type": "application/json" };
+  throw new Error("no Supabase credential: set SUPABASE_ACCESS_TOKEN or register an API credential for api.supabase.com");
+}
 
 export function redact(text, ...secrets) {
   let out = String(text);
@@ -222,6 +238,52 @@ export const SECURITY_CHECKS = [
   },
 ];
 
+/**
+ * Privileges the app needs (not only the ones it must not have): newer
+ * Supabase projects grant nothing to the API roles by default, so a missing
+ * explicit grant breaks the admin screens or the ingest API there even
+ * though the local stack works (docs/STAGING.md, migration 20260928000000).
+ */
+export const REQUIRED_CHECKS = [
+  {
+    id: "authenticated_can_read",
+    title: "signed-in users can SELECT every sales_* table and view (RLS limits rows to the admin)",
+    sql: `select c.relname as item from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          where n.nspname = 'public' and c.relkind in ('r', 'v') and c.relname like 'sales\\_%'
+            and not has_table_privilege('authenticated', c.oid, 'SELECT')`,
+  },
+  {
+    id: "service_role_can_write",
+    title: "service_role can SELECT / INSERT / UPDATE / DELETE every sales_* table",
+    sql: `select c.relname || ':' || p.privilege_type as item
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          cross join lateral (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE')) as p(privilege_type)
+          where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'sales\\_%'
+            and not has_table_privilege('service_role', c.oid, p.privilege_type)`,
+  },
+];
+
+/**
+ * Tables whose privileges for `role` are not granted explicitly by any
+ * migration (a `grant … <privilege> … on … <table> … to … <role>`
+ * statement, or `grant all`). Statements are compared case-insensitively.
+ */
+export function explicitGrantGaps(local, role, privilege) {
+  const statements = local
+    .flatMap((m) => m.sql.replace(/--[^\n]*/g, "").split(";"))
+    .map((s) => s.replace(/\s+/g, " ").trim().toLowerCase())
+    .filter((s) => s.startsWith("grant ") && !s.startsWith("grant execute") && !s.startsWith("grant usage"));
+  const re = new RegExp(`\\b(${privilege.toLowerCase()}|all)\\b`);
+  return expectedTables(local).filter(
+    (t) => !statements.some((s) => {
+      const [privs, rest] = s.slice(6).split(" on ");
+      if (!rest || !re.test(privs)) return false;
+      const [objects, grantees] = rest.split(" to ");
+      return new RegExp(`public\\.${t}\\b`).test(objects) && new RegExp(`\\b${role}\\b`).test(grantees ?? "");
+    }),
+  );
+}
+
 /** Tables the migrations create (checked for existence remotely). */
 export function expectedTables(local) {
   const names = new Set();
@@ -245,7 +307,7 @@ export async function runChecks(query, local) {
     where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'sales\\_%'`);
   const have = new Set(present.map((r) => r.relname));
   results.push({ id: "tables_exist", title: `all ${tables.length} sales_* tables exist`, ok: tables.every((t) => have.has(t)), items: tables.filter((t) => !have.has(t)) });
-  for (const c of SECURITY_CHECKS) {
+  for (const c of [...SECURITY_CHECKS, ...REQUIRED_CHECKS]) {
     const rows = await query(c.sql);
     results.push({ id: c.id, title: c.title, ok: rows.length === 0, items: rows.map((r) => r.item) });
   }
