@@ -781,7 +781,7 @@
     {
       "id": "DEV-016",
       "title": "Claude Cloud staging/live validation",
-      "status": "blocked",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-015"
@@ -819,7 +819,7 @@
         "scheduled job 有効化"
       ],
       "attempts": 0,
-      "last_failure": "HUMAN-004（2026-09-28 更新）: Staging project（znbqgvawublgyjwfpmei）は作成済み。Claude の container は Postgres に直接つなげないため Management API 用スクリプト（scripts/staging/）を用意。SUPABASE_ACCESS_TOKEN / STAGING_SALES_AGENT_INGEST_TOKEN（必要なら VERCEL_TOKEN）の環境変数、管理者ユーザー作成、Deployment Protection 方針、Staging Routine 作成を待つ（docs/STAGING.md）。",
+      "last_failure": "2026-09-28 Staging 実走完了（.ai/reviews/DEV-016.md）: discovered で中断 → 別 session が status から resume → completed（outreach_ready 1、送信なし）。再送は replayed で重複なし、不正 payload は 400。残課題: 別 runId の 2 本目 start を拒否する server 側 guard がない（STAGING §7 #7 と不一致、follow-up）。",
       "branch": "feature/dev-016-staging-setup"
     },
     {

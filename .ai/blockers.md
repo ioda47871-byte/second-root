@@ -33,6 +33,7 @@
   - (A) Staging の ingest token（`openssl rand -hex 32`）を作り、`docs/STAGING.md` §2.1 の 3 か所に保存する: ① Vercel → second-root → Settings → Environment Variables に `SALES_AGENT_INGEST_TOKEN`（**Preview だけ・Branch `develop`・Sensitive**）② Staging Routine の environment ③ この開発 session の environment の API credential（host `second-root-git-develop-brot-yanagi.vercel.app`）。①の後、develop の Preview を再デプロイ（Claude が develop へ push しても再ビルドされる）。
   - (B) Staging Routine `second-root-sales-agent-daily-staging` を作成（スケジュール無効、手動実行のみ、環境変数は §6 の 3 つ）し、名前を Claude に伝える。
   - (A)(B) の後、Claude が DEV-016 の実走（§7）を行う。
+- 2026-09-28 (5): **人間の作業はすべて完了**。Vercel Preview（develop）に `SALES_AGENT_INGEST_TOKEN` を設定。ingest token と bypass を 1 つの API credential「Second Root Staging API」にまとめた。Routine `second-root-sales-agent-daily-staging` を作成（遠い日付の schedule、Run now のみ）。Claude が再デプロイ後に認証を確認し、DEV-016 の実走（§7）を完了（`.ai/reviews/DEV-016.md`）。→ HUMAN-004 は解除扱い。残りは任意の確認 2 つ（人間の端末から bypass だけを付けた curl で ingest が 401 になること、管理画面で今日の 1 件を確認すること）と、Staging 終了後の token の revoke（§8）。
 - 1 の後に Claude がやること:
   - migration の適用と security 確認（`staging:apply --apply --auth` → `staging:verify`）
   - 2 の後: 管理者の登録（`staging:admin`）
