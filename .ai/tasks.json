@@ -1240,14 +1240,19 @@
         "偽の Codex CLI による CI テスト",
         "WSL runbook（専用利用者 sr-designgen、codex login --device-auth）",
         "DB migration なし・Production / Staging / Routine / 営業 Agent に触らない",
-        "人間の WSL で PoC 対象の 1 店舗を本物の Codex で 1 件通し、PC / mobile の before / after を比較する"
+        "人間の WSL で PoC 対象の 1 店舗を本物の Codex で 1 件通し、PC / mobile の before / after を比較する",
+        "local design worker（2026-09-29 人間承認）: run.sh を正規の入口とし、job queue（inbox / processing / done / failed、atomic rename、stale 回収、job_id の冪等）・公開 Instagram の未ログイン取得（許可 URL のみ、redirect 検査、blur、PUBLIC_SOURCE_UNAVAILABLE は想定結果）・Codex pipeline・Linux の run directory を正本・Windows コピーは best effort・一時ファイルの起動時片付け",
+        "worker は commit / push / PR / DB / renderer 変更をしない。子 process に API キー・token を渡さない。report.json に worker の commit SHA",
+        "人間の WSL で run.sh を 1 回起動し、Instagram 取得 → Codex → デモ → review → final まで人の操作なしで通す"
       ],
       "required_tests": [
         "unit: tests/unit/design-agent（fake Codex、schema、loop、renderer の fact-only）",
         "unit: guardrails（Codex を web app から import しない・OpenAI キーを使わない）",
         "build",
         "e2e（既存）",
-        "人間の WSL での実走"
+        "人間の WSL での実走",
+        "unit: tests/unit/design-agent/worker*.ts（mock Instagram、login wall、Instagram 外への redirect、不正 URL、stale processing、lock、stale temp、Codex 失敗、BLOCKED、fallback、Windows コピー不可、一時画像の削除、AI 出力の漏れなし）と run.sh の実ファイル検証",
+        "unit: guardrails（実在店舗データを repo に置かない・worker は注入なしでは Instagram 以外を開かない）"
       ],
       "allowed_scope": [
         "lib/design-agent/",
@@ -1260,7 +1265,9 @@
         "next.config.ts",
         "package.json",
         "package-lock.json",
-        "vitest.config.mts"
+        "vitest.config.mts",
+        "scripts/sales-design-worker/",
+        ".github/workflows/ci.yml"
       ],
       "forbidden_scope": [
         "supabase/migrations/",
@@ -1268,7 +1275,9 @@
         "OpenAI API キー",
         "店舗の facts・スクリーンショット・profile を repo に commit",
         "main への直接 push",
-        "test の skip / 削除による green 化"
+        "test の skip / 削除による green 化",
+        "systemd timer の enable（営業 Agent と繋ぐ段階まで）",
+        "worker からの commit / push / PR 作成"
       ],
       "human_approval_triggers": [
         "DB schema の設計（PoC の結果を見てから）",
@@ -1276,7 +1285,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "Fresh review PASS (Medium 4 / Low 6 をすべて修正、.ai/reviews/DEV-028.md)。偽の Codex で CLI を端から端まで通した。本物の Codex での実走は人間の WSL 待ち。",
+      "last_failure": "local design worker を実装（run.sh・queue・capture・Codex pipeline・Windows コピー）。unit 全件 PASS、本番の build → next start → 撮影の経路も container で確認。fresh review を実施中。本物の Instagram / Codex での実走は人間の WSL 待ち。",
       "branch": "feature/dev-028-ai-art-direction"
     }
   ]

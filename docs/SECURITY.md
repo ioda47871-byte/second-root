@@ -98,3 +98,20 @@
 - 店舗の facts・スクリーンショット・profile はリポジトリ（public）の外、WSL の専用利用者 `sr-designgen` のホームにだけ置く。
 - `/design-preview` は `SR_DESIGN_PREVIEW_ROOT` を設定したローカルの `next start` でしか開かない（Vercel では常に 404、noindex）。
 - 手順: `docs/operations/design-agent-wsl.md`
+
+### 10.1 design worker（DEV-028 worker）
+
+WSL の専用利用者で動く無人の local worker（`scripts/sales-design-worker/run.sh`）。Claude Cloud から PC には触らない。
+
+- 公開 Instagram の取得
+  - 開いてよいのは `https://(www.)instagram.com/<profile>/` だけ（`lib/design-agent/worker/source-url.ts`）
+  - redirect は 1 段ずつ検査し、script による遷移も含めて Instagram の外なら取得をやめる（`PUBLIC_SOURCE_UNAVAILABLE`）
+  - 未ログインの使い捨て context で動く。ログイン・cookie の再利用・CAPTCHA の回避・クリックはしない
+  - ページ内の画像と動画は blur して撮る
+  - 撮った画像は Codex の判断にだけ使い、job の後に消す。デモや公開 asset には使わない
+- run.sh は許可した環境変数だけで動く。worker の子 process（git・npm・next・Playwright・Codex）にも許可した変数だけを渡す（`lib/design-agent/worker/env.ts`）。API キー・token・DB の鍵は渡らない
+- worker は commit・push・PR 作成・DB 接続をしない。checkout に `.env` があれば止まる
+- ログ・ledger・job の記録・report には符号と定型文だけを書く。Codex の文章・stderr・source URL は書かない
+- job・facts・結果はリポジトリの外（`~/sr-design-jobs`、`~/.local/share/second-root-design`、0700）に置く
+- 一時ディレクトリは worker の prefix・所有者・古さを確かめて片付ける。それ以外の `/tmp` には触らない
+- 手順: `docs/operations/design-worker-wsl.md`

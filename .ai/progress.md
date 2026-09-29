@@ -119,3 +119,9 @@
   - Production（secondroot.jp）で新しいコードが応答していることを確認した: `/admin/login` 200、ingest の token なし 401、不明なデモ 404、private route の header。既存ページは 200。
   - Vercel の deployment API はこの session の credential がなく（403 missingToken）、deployment ID は見ていない。
   - 残り（人間）: smoke test（ログイン・非管理者・token ありの status）、Production Routine、HUMAN-006・HUMAN-003・Staging token の Revoke。
+- 2026-09-29: DEV-028 local design worker を実装（feature/dev-028-ai-art-direction、PR #43 は Draft のまま）。
+  - 怪異読本の入口画像 worker と同じ形にした: run.sh（許可した環境変数・flock・origin の ref に固定・時間の上限）→ lock → 一時ファイルの片付け → processing の回収 → job ごとに Instagram 取得 → Codex → 記録。
+  - job queue は inbox / processing / done / failed。取得は atomic rename。持ち主の pid・boot id・開始時刻で生死を判定し、生きている worker の job には触らない。job_id ごとに結果は 1 つ。
+  - Instagram は `https://(www.)instagram.com/<profile>/` だけを開く。redirect は 1 段ずつ検査し、`PUBLIC_SOURCE_UNAVAILABLE` は想定された結果として扱う。
+  - Linux の run directory が正本。Windows へのコピーは best effort で、`windows_copy` を report に記録する。
+  - unit 462 件 PASS。本番の build → next start → 撮影の経路も container で確認。systemd timer は enable していない。
