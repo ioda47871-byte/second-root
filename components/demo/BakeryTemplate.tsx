@@ -45,7 +45,7 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
         <p className={styles.vertical}>{areaLabel(demo)}</p>
         <div className={styles.heroText}>
           <p className={styles.kicker}>
-            <span className={styles.kickerEn}>{CATEGORY_EN[demo.category]}</span>
+            <span lang="en" className={styles.kickerEn}>{CATEGORY_EN[demo.category]}</span>
             <span className={styles.kickerRule} aria-hidden="true" />
             <span>{areaName(demo)}</span>
           </p>
@@ -67,7 +67,7 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
       <main className={styles.main}>
         {demo.description && (
           <section className={styles.about} aria-labelledby="bakery-about">
-            <h2 id="bakery-about" className={styles.aboutTitle}>
+            <h2 id="bakery-about" lang="en" className={styles.aboutTitle}>
               About
             </h2>
             <p className={styles.lead}>{demo.description}</p>
@@ -77,7 +77,7 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
         {demo.menuItems.length > 0 && (
           <section className={styles.section} aria-labelledby="bakery-menu">
             <h2 id="bakery-menu" className={styles.sectionTitle}>
-              <span className={styles.titleEn}>Menu</span>
+              <span lang="en" className={styles.titleEn}>Menu</span>
               <span className={styles.titleJa}>メニュー</span>
             </h2>
             <ol className={styles.menu}>
@@ -94,7 +94,7 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
         {rows.length > 0 && (
           <section className={styles.section} aria-labelledby="bakery-info">
             <h2 id="bakery-info" className={styles.sectionTitle}>
-              <span className={styles.titleEn}>Information</span>
+              <span lang="en" className={styles.titleEn}>Information</span>
               <span className={styles.titleJa}>お店の情報</span>
             </h2>
             <div className={styles.paper}>
@@ -103,7 +103,7 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
                   <p className={styles.rowLabel}>
                     <InfoIcon kind="address" className={styles.icon} />
                     {address.label}
-                    <span className={styles.rowEn}>{address.en}</span>
+                    <span lang="en" className={styles.rowEn}>{address.en}</span>
                   </p>
                   <p className={styles.addressValue}>{address.value}</p>
                 </div>
@@ -115,7 +115,7 @@ export default function BakeryTemplate({ demo }: { demo: DemoView }) {
                       <dt className={styles.rowLabel}>
                         <InfoIcon kind={row.key} className={styles.icon} />
                         {row.label}
-                        <span className={styles.rowEn}>{row.en}</span>
+                        <span lang="en" className={styles.rowEn}>{row.en}</span>
                       </dt>
                       <dd className={styles.rowValue}>{row.value}</dd>
                     </div>

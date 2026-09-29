@@ -448,7 +448,6 @@
     align-content: center;
   }
   .name {
-    --measure: min(50vw, 640px);
     font-size: clamp(2.6rem, calc(100cqi / var(--units, 8)), 8rem);
   }
   .vertical {

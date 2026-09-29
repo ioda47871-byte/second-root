@@ -425,7 +425,6 @@
     padding-bottom: 56px;
   }
   .name {
-    --measure: min(56vw, 720px);
     font-size: clamp(2.6rem, calc(100cqi / var(--units, 8)), 8.5rem);
   }
   .heroArt {

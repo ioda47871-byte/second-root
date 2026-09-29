@@ -45,14 +45,21 @@ function visibleText(html: string): string[] {
     .filter(Boolean);
 }
 
-/** Visible text left after removing every fact value and every allowed phrase. */
-function leftover(demo: DemoView, allowed: string[]): string {
+/**
+ * Visible text left after removing every fact value and every allowed
+ * phrase. Short tokens (English labels, list numbers) count only when they
+ * are a whole text node, so they cannot be combined into a claim such as
+ * "12 Hours".
+ */
+function leftover(demo: DemoView, allowed: string[], wholeNodes: string[] = WHOLE_NODE_COPY): string {
   const facts = [demo.name, demo.ward, demo.address, demo.hours, demo.closedDays, demo.access, demo.phone, demo.description, ...demo.menuItems]
     .filter((v): v is string => Boolean(v));
   const byLength = (a: string, b: string) => b.length - a.length;
   const strip = (text: string, phrases: string[]) => [...phrases].sort(byLength).reduce((s, p) => s.split(p).join(""), text);
   // Facts first (they can sit inside template phrases), then template copy.
-  const text = visibleText(renderToStaticMarkup(renderDemo(demo))).join("\n");
+  const text = visibleText(renderToStaticMarkup(renderDemo(demo)))
+    .filter((node) => !wholeNodes.includes(node))
+    .join("\n");
   return strip(strip(text, facts), allowed).replace(/\s+/g, "");
 }
 
@@ -68,12 +75,17 @@ const ALLOWED_COPY = [
   "お店の情報", "店舗のご案内", "お店について", "メニュー", "店舗情報",
   "名古屋市の", "名古屋のパン屋", "パン屋", "名古屋の焼菓子店", "焼菓子店", "名古屋のカフェ", "カフェ",
   "名古屋市", "名古屋",
+];
+
+// Allowed only as a complete text node (see leftover).
+const ORDINALS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
+const WHOLE_NODE_COPY = [
   // Decorative English labels: translations of the category, the city and
   // the generic headings above, never claims about the shop.
   "Bakery", "Baked Goods", "Cafe", "Nagoya",
   "About", "Menu", "Information", "Hours", "Closed", "Address", "Access", "Tel",
-  // List numbering.
-  ...Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")),
+  // Menu numbering.
+  ...ORDINALS,
 ];
 
 const CASES = [
@@ -87,6 +99,16 @@ describe.each(CASES)("%s", (template, category) => {
     for (const demo of [full, minimal]) {
       expect(leftover({ ...demo, template, category }, ALLOWED_COPY)).toBe("");
     }
+  });
+
+  it("uses English labels and list numbers only as standalone text", () => {
+    const nodes = visibleText(renderToStaticMarkup(renderDemo({ ...full, template, category })));
+    const words = WHOLE_NODE_COPY.filter((t) => !ORDINALS.includes(t));
+    for (const node of nodes.filter((n) => !words.includes(n))) {
+      for (const word of words) expect(node, node).not.toContain(word);
+    }
+    // Numbers appear once per verified menu item, in order, and nowhere else.
+    expect(nodes.filter((n) => /\d/.test(n) && ORDINALS.includes(n))).toEqual(ORDINALS.slice(0, full.menuItems.length));
   });
 
   it("omits sections without facts and never prints empty placeholders", () => {
@@ -155,6 +177,21 @@ function closingBrace(css: string): number {
   }
   return css.length;
 }
+
+describe("cafe_v1 hours card", () => {
+  it("shows closed days in the information section when hours are unknown", () => {
+    const html = renderToStaticMarkup(renderDemo({ ...minimal, template: "cafe_v1", category: "cafe", closedDays: "月曜" }));
+    expect(html).toContain("定休日");
+    expect(html.match(/月曜/g)).toHaveLength(1);
+    expect(html).not.toContain("営業時間");
+  });
+
+  it("puts closed days on the hours card, once, when hours are known", () => {
+    const html = renderToStaticMarkup(renderDemo({ ...full, template: "cafe_v1", category: "cafe" }));
+    expect(html.match(/月曜/g)).toHaveLength(1);
+    expect(html.match(/8:00〜17:00/g)).toHaveLength(1);
+  });
+});
 
 describe("template helpers", () => {
   it("builds the area label only from the verified ward", () => {

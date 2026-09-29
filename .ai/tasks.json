@@ -1224,7 +1224,7 @@
     {
       "id": "DEV-026",
       "title": "Redesign the three demo templates to proposal quality (v2)",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-007"
@@ -1262,7 +1262,7 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null,
+      "last_failure": "Fresh review PASS (Medium 1 / Low 7; Medium と Low 4 件を修正、残りは .ai/reviews/DEV-026.md に理由付きで記録)。unit / build / e2e green、PC・mobile のスクリーンショット確認済み。",
       "branch": "feature/dev-026-demo-redesign"
     }
   ]

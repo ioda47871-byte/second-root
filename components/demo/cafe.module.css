@@ -135,7 +135,7 @@
   font-size: 0.72rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: var(--brass);
+  color: #d9c79f;
 }
 
 .hoursValue {
@@ -423,7 +423,6 @@
     background: transparent;
   }
   .name {
-    --measure: min(52vw, 660px);
     font-size: clamp(2.6rem, calc(100cqi / var(--units, 8)), 8.4rem);
   }
   .heroArt {

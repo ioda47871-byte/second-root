@@ -55,7 +55,7 @@ export default function BakedGoodsTemplate({ demo }: { demo: DemoView }) {
           <h1 className={styles.name} style={nameStyle(demo.name)}>
             {demo.name}
           </h1>
-          <p className={styles.ribbon}>{CATEGORY_EN[demo.category]}</p>
+          <p lang="en" className={styles.ribbon}>{CATEGORY_EN[demo.category]}</p>
         </div>
         <div className={styles.heroArt} aria-hidden="true">
           <HeroArt />
@@ -88,7 +88,7 @@ export default function BakedGoodsTemplate({ demo }: { demo: DemoView }) {
       <main className={styles.main}>
         {demo.description && (
           <section className={styles.about} aria-labelledby="baked-about">
-            <h2 id="baked-about" className={styles.eyebrow}>
+            <h2 id="baked-about" lang="en" className={styles.eyebrow}>
               About
             </h2>
             <p className={styles.lead}>{demo.description}</p>
@@ -98,7 +98,7 @@ export default function BakedGoodsTemplate({ demo }: { demo: DemoView }) {
         {demo.menuItems.length > 0 && (
           <section className={styles.section} aria-labelledby="baked-menu">
             <h2 id="baked-menu" className={styles.sectionTitle}>
-              <span className={styles.titleEn}>Menu</span>
+              <span lang="en" className={styles.titleEn}>Menu</span>
               <span className={styles.titleJa}>メニュー</span>
             </h2>
             <ol className={styles.menu}>
@@ -115,7 +115,7 @@ export default function BakedGoodsTemplate({ demo }: { demo: DemoView }) {
         {rows.length > 0 && (
           <section className={styles.section} aria-labelledby="baked-info">
             <h2 id="baked-info" className={styles.sectionTitle}>
-              <span className={styles.titleEn}>Information</span>
+              <span lang="en" className={styles.titleEn}>Information</span>
               <span className={styles.titleJa}>店舗のご案内</span>
             </h2>
             <div className={styles.infoGrid} data-single={address && others.length === 0 ? "" : undefined}>
@@ -123,7 +123,7 @@ export default function BakedGoodsTemplate({ demo }: { demo: DemoView }) {
                 <div className={styles.addressCard}>
                   <AddressArt />
                   <p className={styles.rowLabel}>
-                    <span className={styles.rowEn}>{address.en}</span>
+                    <span lang="en" className={styles.rowEn}>{address.en}</span>
                     {address.label}
                   </p>
                   <p className={styles.addressValue}>{address.value}</p>
@@ -134,7 +134,7 @@ export default function BakedGoodsTemplate({ demo }: { demo: DemoView }) {
                   {others.map((row) => (
                     <div key={row.key} className={styles.row}>
                       <dt className={styles.rowLabel}>
-                        <span className={styles.rowEn}>{row.en}</span>
+                        <span lang="en" className={styles.rowEn}>{row.en}</span>
                         {row.label}
                       </dt>
                       <dd className={styles.rowValue}>{row.value}</dd>

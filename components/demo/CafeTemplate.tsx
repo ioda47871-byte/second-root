@@ -36,9 +36,9 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
     <DemoFrame shopName={demo.name} template={demo.template}>
       <header className={styles.hero} data-hours={hours ? "" : undefined}>
         <p className={styles.masthead}>
-          <span className={styles.mastEn}>{CATEGORY_EN[demo.category]}</span>
+          <span lang="en" className={styles.mastEn}>{CATEGORY_EN[demo.category]}</span>
           <span>{areaLabel(demo)}</span>
-          <span className={styles.mastEn}>Nagoya</span>
+          <span lang="en" className={styles.mastEn}>Nagoya</span>
         </p>
         <div className={styles.heroText}>
           <h1 className={styles.name} style={nameStyle(demo.name)}>
@@ -52,7 +52,7 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
           <dl className={styles.hoursCard}>
             <div className={styles.hoursMain}>
               <dt className={styles.hoursLabel}>
-                <span className={styles.hoursEn}>{hours.en}</span>
+                <span lang="en" className={styles.hoursEn}>{hours.en}</span>
                 {hours.label}
               </dt>
               <dd className={styles.hoursValue}>{hours.value}</dd>
@@ -60,7 +60,7 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
             {closed && (
               <div className={styles.hoursSub}>
                 <dt className={styles.hoursLabel}>
-                  <span className={styles.hoursEn}>{closed.en}</span>
+                  <span lang="en" className={styles.hoursEn}>{closed.en}</span>
                   {closed.label}
                 </dt>
                 <dd className={styles.hoursSubValue}>{closed.value}</dd>
@@ -73,7 +73,7 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
       <main className={styles.main}>
         {demo.description && (
           <section className={styles.split} aria-labelledby="cafe-about">
-            <h2 id="cafe-about" className={styles.splitTitle}>
+            <h2 id="cafe-about" lang="en" className={styles.splitTitle}>
               About
             </h2>
             <p className={styles.lead}>{demo.description}</p>
@@ -82,9 +82,9 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
 
         {demo.menuItems.length > 0 && (
           <section className={styles.split} aria-labelledby="cafe-menu">
-            <h2 id="cafe-menu" className={styles.splitTitle}>
+            <h2 id="cafe-menu" lang="en" className={styles.splitTitle}>
               <span>Menu</span>
-              <span className={styles.titleJa}>メニュー</span>
+              <span lang="ja" className={styles.titleJa}>メニュー</span>
             </h2>
             <ol className={styles.menu}>
               {demo.menuItems.map((item, i) => (
@@ -99,9 +99,9 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
 
         {(address || others.length > 0) && (
           <section className={styles.split} aria-labelledby="cafe-info">
-            <h2 id="cafe-info" className={styles.splitTitle}>
+            <h2 id="cafe-info" lang="en" className={styles.splitTitle}>
               <span>Information</span>
-              <span className={styles.titleJa}>お店について</span>
+              <span lang="ja" className={styles.titleJa}>お店について</span>
             </h2>
             <div className={styles.infoGrid}>
               {address && (
@@ -112,7 +112,7 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
                     <circle cx="60" cy="60" r="8" />
                   </svg>
                   <p className={styles.cellLabel}>
-                    <span className={styles.cellEn}>{address.en}</span>
+                    <span lang="en" className={styles.cellEn}>{address.en}</span>
                     {address.label}
                   </p>
                   <p className={styles.addressValue}>{address.value}</p>
@@ -123,7 +123,7 @@ export default function CafeTemplate({ demo }: { demo: DemoView }) {
                   {others.map((row) => (
                     <div key={row.key} className={styles.cell}>
                       <dt className={styles.cellLabel}>
-                        <span className={styles.cellEn}>{row.en}</span>
+                        <span lang="en" className={styles.cellEn}>{row.en}</span>
                         {row.label}
                       </dt>
                       <dd className={styles.cellValue}>{row.value}</dd>
