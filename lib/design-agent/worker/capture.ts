@@ -89,8 +89,11 @@ async function guardNavigation(context: BrowserContext, target: CaptureTarget, s
   await context.route("**/*", async (route) => {
     const request = route.request();
     if (!request.isNavigationRequest()) return route.continue();
+    // Frames inside the page (Instagram embeds other hosts) are blocked
+    // quietly; only where the page itself goes decides the capture.
+    const mainFrame = request.frame().parentFrame() === null;
     if (!target.allowNavigation(request.url())) {
-      state.offSite = true;
+      if (mainFrame) state.offSite = true;
       return route.abort("blockedbyclient");
     }
     // Redirects are not seen by route handlers once the browser follows them,
@@ -107,11 +110,12 @@ async function guardNavigation(context: BrowserContext, target: CaptureTarget, s
       try {
         next = new URL(location, request.url()).toString();
       } catch {
-        state.offSite = true;
+        if (mainFrame) state.offSite = true;
         return route.abort("blockedbyclient");
       }
+      if (!mainFrame) return route.abort("blockedbyclient");
       if (!target.allowNavigation(next)) state.offSite = true;
-      else if (request.frame().parentFrame() === null) state.redirect = next;
+      else state.redirect = next;
       return route.abort("blockedbyclient");
     }
     return route.fulfill({ response });

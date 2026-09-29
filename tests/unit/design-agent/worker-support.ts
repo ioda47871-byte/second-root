@@ -46,6 +46,8 @@ export async function startMockSite(): Promise<MockSite> {
     switch (req.url) {
       case "/example_shop/":
         return send(200, profile(12));
+      case "/iframe_shop/":
+        return send(200, profile(3).replace("<main>", `<iframe src="http://localhost:${port}/elsewhere/" width="10" height="10"></iframe><main>`));
       case "/few_posts/":
         return send(200, profile(3));
       case "/hop_shop/":

@@ -83,6 +83,15 @@ describe("a normal run", () => {
     expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
   });
 
+  it("blocks an off-site frame inside the page without ending the capture", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-iframe", "https://www.instagram.com/iframe_shop/");
+    const before = site.requests.length;
+    const { report } = await runWorker(l, site);
+    expect(report).toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
+    expect(site.requests.slice(before).some((r) => r.includes("/elsewhere/"))).toBe(false);
+  });
+
   it("uses a profile header with few posts (no second grid screen)", async () => {
     const l = makeLayout();
     writeJob(l, "job-few", "https://www.instagram.com/few_posts/");
