@@ -1,0 +1,370 @@
+/* baked_goods_v1 / pop — American bake-shop. Cream, tomato red, navy;
+   Archivo at a condensed width and heavy weight for Latin, Noto Sans JP
+   bold for Japanese. A monogram stamp and a ticket are the only props. */
+
+.root[data-variant] {
+  --ink: #1b2a55;
+  --muted: #4f5a78;
+  --paper: #fbf1df;
+  --card: #fffaf0;
+  --line: #e8d6b8;
+  --red: #d8342b;
+  --grotesk: var(--font-grotesk), var(--font-body), sans-serif;
+  --notice-bg: #1b2a55;
+  --notice-ink: #fbf1df;
+  --notice-line: #1b2a55;
+  --footer-font: var(--grotesk);
+  --footer-bg: #1b2a55;
+  --footer-ink: #fbf1df;
+  --footer-accent: #ff7a6e;
+}
+
+/* ---------- hero ---------- */
+
+.hero {
+  position: relative;
+  display: grid;
+  gap: 32px;
+  padding: 48px 20px 56px;
+  border-bottom: 10px solid var(--red);
+  box-shadow: 0 6px 0 var(--paper), 0 10px 0 var(--ink);
+  margin-bottom: 10px;
+  overflow: clip;
+}
+
+.heroText {
+  container-type: inline-size;
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--grotesk);
+  font-variation-settings: "wdth" 80;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.name {
+  margin: 0;
+  font-family: var(--grotesk);
+  font-variation-settings: "wdth" 70;
+  font-weight: 900;
+  font-size: clamp(3rem, min(calc(190cqi / (var(--units, 8) * 0.78)), calc(100cqi / (var(--word-units, 8) * 0.78))), 7.5rem);
+  line-height: 0.9;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: var(--ink);
+  word-break: auto-phrase;
+  overflow-wrap: anywhere;
+}
+
+.tagline {
+  justify-self: start;
+  margin: 4px 0 0;
+  padding: 4px 12px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+}
+
+.stamp {
+  justify-self: end;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  border: 3px solid var(--red);
+  box-shadow: inset 0 0 0 5px var(--paper), inset 0 0 0 6px var(--red);
+  color: var(--red);
+  transform: rotate(-10deg);
+  font-family: var(--grotesk);
+  font-variation-settings: "wdth" 75;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.stampTop,
+.stampBottom {
+  font-weight: 700;
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+}
+
+.stampMark {
+  font-weight: 900;
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+/* ---------- body ---------- */
+
+.main {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 56px 20px 96px;
+  display: grid;
+  gap: 72px;
+}
+
+.about {
+  display: grid;
+  gap: 14px;
+}
+
+.tag {
+  justify-self: start;
+  margin: 0;
+  padding: 2px 10px;
+  background: var(--red);
+  color: var(--paper);
+  font-family: var(--grotesk);
+  font-variation-settings: "wdth" 80;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.lead {
+  margin: 0;
+  max-width: 32em;
+  font-weight: 600;
+  font-size: clamp(1.1rem, 3.4vw, 1.6rem);
+  line-height: 1.8;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.section {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  font-family: var(--grotesk);
+  font-variation-settings: "wdth" 70;
+  font-weight: 900;
+  font-size: clamp(2.6rem, 10vw, 5rem);
+  line-height: 0.95;
+  text-transform: uppercase;
+}
+
+.titleJa {
+  font-family: var(--font-body), sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--red);
+}
+
+.menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.menuItem {
+  display: grid;
+  grid-template-columns: 2.6em minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: var(--card);
+  border: 2px solid var(--ink);
+}
+
+.menuNo {
+  display: grid;
+  place-items: center;
+  width: 2.4em;
+  height: 2.4em;
+  border-radius: 50%;
+  background: var(--red);
+  color: var(--paper);
+  font-family: var(--grotesk);
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.menuName {
+  font-weight: 600;
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+
+.info {
+  display: grid;
+  gap: 24px;
+}
+
+.ticket {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 28px 24px;
+  background: var(--card);
+  border: 3px solid var(--ink);
+  box-shadow: 8px 8px 0 var(--red);
+}
+
+.label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.labelEn {
+  font-family: var(--grotesk);
+  font-variation-settings: "wdth" 80;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.addressValue {
+  margin: 0;
+  font-weight: 600;
+  font-size: clamp(1.4rem, 5vw, 2.2rem);
+  line-height: 1.45;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.rows {
+  margin: 0;
+  display: grid;
+  border-top: 3px solid var(--ink);
+}
+
+.row {
+  display: grid;
+  gap: 4px;
+  padding: 14px 0;
+  border-bottom: 2px dashed var(--line);
+}
+
+.rowValue {
+  margin: 0;
+  font-size: 1.05rem;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* Address only: one big ticket with punched ends, centred. */
+.info[data-address-only] .ticket {
+  justify-items: center;
+  text-align: center;
+  padding: 48px 28px;
+  -webkit-mask: radial-gradient(circle 14px at 0 50%, transparent 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle 14px at 100% 50%, transparent 98%, #000) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle 14px at 0 50%, transparent 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle 14px at 100% 50%, transparent 98%, #000) right / 51% 100% no-repeat;
+  box-shadow: none;
+  border-style: dashed;
+}
+
+/* ---------- motion (first view only) ---------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .name {
+    animation: punch 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  }
+  .stamp {
+    animation: stamp 0.6s 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+  }
+}
+
+@keyframes punch {
+  from { opacity: 0; transform: translateY(18px); }
+}
+
+@keyframes stamp {
+  from { opacity: 0; transform: rotate(-10deg) scale(1.6); }
+}
+
+/* ---------- wide screens ---------- */
+
+@media (min-width: 720px) {
+  .name {
+    font-size: clamp(3rem, calc(100cqi / (var(--units, 8) * 0.78)), 11rem);
+  }
+  .hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    padding: 72px 40px 72px;
+  }
+  .stamp {
+    width: 168px;
+    height: 168px;
+    align-self: start;
+  }
+  .stampMark {
+    font-size: 3.2rem;
+  }
+  .main {
+    padding: 88px 40px 128px;
+    gap: 96px;
+  }
+  .menu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .info {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 40px;
+    align-items: start;
+  }
+  .info[data-address-only] {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 760px;
+    width: 100%;
+    justify-self: center;
+  }
+  .row {
+    grid-template-columns: 10em minmax(0, 1fr);
+    align-items: baseline;
+  }
+}
+
+@media (min-width: 1100px) {
+  .hero {
+    min-height: min(72svh, 720px);
+    padding: 88px max(56px, calc((100% - 1240px) / 2));
+  }
+}

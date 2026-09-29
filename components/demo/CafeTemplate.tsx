@@ -1,68 +1,137 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "./DemoFrame";
-import { areaLabel, infoRows } from "./info";
+import { areaLabel, CATEGORY_EN, infoRows, nameStyle, ordinal } from "./info";
 import styles from "./cafe.module.css";
 
-// cafe_v1. Generic headings only; everything shop-specific is a verified
-// fact. Hours are shown prominently only when they were confirmed.
+// cafe_v1 — contemporary cafe on an editorial grid. Generic headings and
+// fixed English labels only; everything shop-specific is a verified fact.
+// Hours get a large card only when they were confirmed.
 
-function Cup() {
+function CupArt() {
   return (
-    <svg className={styles.cup} viewBox="0 0 120 120" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
-      <path d="M28 52h56v18a28 28 0 0 1-56 0V52Z" />
-      <path d="M84 58h6a10 10 0 0 1 0 20h-8" />
-      <path d="M22 104h76" />
-      <path d="M46 24c-4 6 4 10 0 16M58 20c-4 6 4 10 0 16M70 24c-4 6 4 10 0 16" />
+    <svg className={styles.cup} viewBox="0 0 400 400" aria-hidden="true">
+      <circle className={styles.cupSaucer} cx="200" cy="220" r="170" />
+      <circle className={styles.cupRing} cx="200" cy="220" r="150" />
+      <circle className={styles.cupRim} cx="200" cy="220" r="104" />
+      <circle className={styles.cupCoffee} cx="200" cy="220" r="86" />
+      <circle className={styles.cupCrema} cx="200" cy="220" r="52" />
+      <path className={styles.cupHandle} d="M304 196h26a24 24 0 0 1 0 48h-26" />
+      <g className={styles.steam}>
+        <path d="M168 110c-14-18 14-30 0-50s14-32 0-52" />
+        <path d="M204 104c-14-18 14-30 0-50s14-32 0-52" />
+        <path d="M240 110c-14-18 14-30 0-50s14-32 0-52" />
+      </g>
     </svg>
   );
 }
 
 export default function CafeTemplate({ demo }: { demo: DemoView }) {
-  const rows = infoRows(demo).filter((r) => r.key !== "hours");
+  const rows = infoRows(demo);
+  const hours = rows.find((r) => r.key === "hours");
+  // Closed days sit on the hours card when there is one.
+  const closed = hours ? rows.find((r) => r.key === "closedDays") : undefined;
+  const address = rows.find((r) => r.key === "address");
+  const others = rows.filter((r) => r !== hours && r !== closed && r !== address);
   return (
     <DemoFrame shopName={demo.name} template={demo.template}>
-      <header className={styles.hero}>
+      <header className={styles.hero} data-hours={hours ? "" : undefined}>
+        <p className={styles.masthead}>
+          <span lang="en" className={styles.mastEn}>{CATEGORY_EN[demo.category]}</span>
+          <span>{areaLabel(demo)}</span>
+          <span lang="en" className={styles.mastEn}>Nagoya</span>
+        </p>
         <div className={styles.heroText}>
-          <p className={styles.label}>{areaLabel(demo)}</p>
-          <h1 className={styles.name}>{demo.name}</h1>
-          {demo.description && <p className={styles.description}>{demo.description}</p>}
+          <h1 className={styles.name} style={nameStyle(demo.name)}>
+            {demo.name}
+          </h1>
         </div>
-        <Cup />
+        <div className={styles.heroArt} aria-hidden="true">
+          <CupArt />
+        </div>
+        {hours && (
+          <dl className={styles.hoursCard}>
+            <div className={styles.hoursMain}>
+              <dt className={styles.hoursLabel}>
+                <span lang="en" className={styles.hoursEn}>{hours.en}</span>
+                {hours.label}
+              </dt>
+              <dd className={styles.hoursValue}>{hours.value}</dd>
+            </div>
+            {closed && (
+              <div className={styles.hoursSub}>
+                <dt className={styles.hoursLabel}>
+                  <span lang="en" className={styles.hoursEn}>{closed.en}</span>
+                  {closed.label}
+                </dt>
+                <dd className={styles.hoursSubValue}>{closed.value}</dd>
+              </div>
+            )}
+          </dl>
+        )}
       </header>
-      {demo.hours && (
-        <dl className={styles.hoursCard}>
-          <dt className={styles.hoursLabel}>営業時間</dt>
-          <dd className={styles.hoursValue}>{demo.hours}</dd>
-        </dl>
-      )}
-      <main className={styles.body}>
-        {demo.menuItems.length > 0 && (
-          <section aria-labelledby="cafe-menu">
-            <h2 id="cafe-menu" className={styles.sectionTitle}>
-              メニュー
+
+      <main className={styles.main}>
+        {demo.description && (
+          <section className={styles.split} aria-labelledby="cafe-about">
+            <h2 id="cafe-about" lang="en" className={styles.splitTitle}>
+              About
             </h2>
-            <ul className={styles.menu}>
-              {demo.menuItems.map((item, i) => (
-                <li key={`${i}-${item}`} className={styles.menuItem}>
-                  {item}
-                </li>
-              ))}
-            </ul>
+            <p className={styles.lead}>{demo.description}</p>
           </section>
         )}
-        {rows.length > 0 && (
-          <section aria-labelledby="cafe-info">
-            <h2 id="cafe-info" className={styles.sectionTitle}>
-              お店について
+
+        {demo.menuItems.length > 0 && (
+          <section className={styles.split} aria-labelledby="cafe-menu">
+            <h2 id="cafe-menu" lang="en" className={styles.splitTitle}>
+              <span>Menu</span>
+              <span lang="ja" className={styles.titleJa}>メニュー</span>
             </h2>
-            <dl className={styles.info}>
-              {rows.map((row) => (
-                <div key={row.key} className={styles.row}>
-                  <dt>{row.label}</dt>
-                  <dd>{row.value}</dd>
-                </div>
+            <ol className={styles.menu}>
+              {demo.menuItems.map((item, i) => (
+                <li key={`${i}-${item}`} className={styles.menuItem}>
+                  <span className={styles.menuNo}>{ordinal(i)}</span>
+                  <span className={styles.menuName}>{item}</span>
+                </li>
               ))}
-            </dl>
+            </ol>
+          </section>
+        )}
+
+        {(address || others.length > 0) && (
+          <section className={styles.split} aria-labelledby="cafe-info">
+            <h2 id="cafe-info" lang="en" className={styles.splitTitle}>
+              <span>Information</span>
+              <span lang="ja" className={styles.titleJa}>お店について</span>
+            </h2>
+            <div className={styles.infoGrid}>
+              {address && (
+                <div className={styles.addressCell}>
+                  <svg className={styles.addressArt} viewBox="0 0 120 120" aria-hidden="true">
+                    <circle cx="60" cy="60" r="56" />
+                    <circle cx="60" cy="60" r="36" />
+                    <circle cx="60" cy="60" r="8" />
+                  </svg>
+                  <p className={styles.cellLabel}>
+                    <span lang="en" className={styles.cellEn}>{address.en}</span>
+                    {address.label}
+                  </p>
+                  <p className={styles.addressValue}>{address.value}</p>
+                </div>
+              )}
+              {others.length > 0 && (
+                <dl className={styles.cells}>
+                  {others.map((row) => (
+                    <div key={row.key} className={styles.cell}>
+                      <dt className={styles.cellLabel}>
+                        <span lang="en" className={styles.cellEn}>{row.en}</span>
+                        {row.label}
+                      </dt>
+                      <dd className={styles.cellValue}>{row.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </div>
           </section>
         )}
       </main>

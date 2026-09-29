@@ -1220,6 +1220,58 @@
       "attempts": 0,
       "last_failure": "Fresh review PASS (Low 3: 1 件を docs で対応)。PR #38 merge（1e53ef0）。Staging に 20260928000100 を適用し、start 200 / 別 runId 409 run_in_progress / 同一 runId 200 replayed を実測。確認用 run は abort 済み（.ai/reviews/DEV-025.md）。",
       "branch": "feature/dev-025-single-running-run"
+    },
+    {
+      "id": "DEV-026",
+      "title": "Redesign the three demo templates to proposal quality (v2)",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-007"
+      ],
+      "purpose": "営業で見せたときに欲しくなる品質へ。情報カード型の簡素なデモを、実店舗に提案しても恥ずかしくないブランドサイト風の1ページにする（fact-only・画像転載なしのまま）",
+      "acceptance_criteria": [
+        "bakery_v1 / baked_goods_v1 / cafe_v1 を Hero → verified highlights → information → footer の流れで再設計",
+        "店舗固有の文言は DemoView の検証済み事実のみ。追加の固定文言は業種・都市・見出しの英訳と連番だけ（unit test の許可リストで検査）",
+        "外部画像なし。CSS・タイポグラフィ・SVG・抽象図形のみ。SVG に text/title/desc を入れない",
+        "name + category + ward + address だけでも Hero とレイアウトで完成して見える。データのない section は出さない",
+        "「Second Root の提案用デモ・公式サイトではない」表示を上下に残す（配色をテンプレートに合わせる）",
+        "PC / mobile で横はみ出しなし。prefers-reduced-motion ではアニメーションしない",
+        "DemoView の型と toDemoView の fact-only 設計は変更しない",
+        "[v3] baked_goods_v1 に 3 つの art direction（editorial luxury / american pop / minimal boutique）。店名+カテゴリから決定的に選び、同じ店舗は常に同じ見た目",
+        "[v3] Hero は文字が主役。大きな抽象図形とループアニメーションは使わない（初回表示の短い motion のみ）",
+        "[v3] address-only でも余白を意図した構成に見える（EXAMPLE TEST を 3 variant × PC/mobile で比較）",
+        "[v3] 管理者プレビューで ?variant= により比較できる（公開ページは常に既定の variant）",
+        "[v3] bakery / cafe への展開は人間が方向性を選んでから"
+      ],
+      "required_tests": [
+        "unit: demo-templates（許可文言・空 section・SVG/属性/CSS content）",
+        "e2e: demo.spec（全テンプレの長文・重複・はみ出し）/ mobile-qa",
+        "build",
+        "PC/mobile のスクリーンショット確認（最小データ・全データ）"
+      ],
+      "allowed_scope": [
+        ".ai/",
+        "app/admin/preview/",
+        "components/admin/admin.module.css",
+        "components/demo/",
+        "docs/",
+        "tests/",
+        "vitest.config.mts"
+      ],
+      "forbidden_scope": [
+        "lib/sales/demo-content.ts の fact-only 制約の緩和",
+        "main への直接 push",
+        "実店舗の画像・文言の転載",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "Protected Scope に該当する変更",
+        "MVP 仕様の重大変更"
+      ],
+      "attempts": 0,
+      "last_failure": "v2 は PR #41 で review PASS。人間のフィードバック（業種別テンプレートに見える）を受け v3（baked_goods の 3 variant）を実装中。bakery / cafe は方向性の選択待ち。",
+      "branch": "feature/dev-026-demo-redesign"
     }
   ]
 }
