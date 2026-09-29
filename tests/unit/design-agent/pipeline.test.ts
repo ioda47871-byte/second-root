@@ -80,6 +80,19 @@ describe("runDesignPipeline", () => {
     }
   });
 
+  it("never ships a design that no review scored: a failed first review keeps the template", async () => {
+    for (const failure of [new CodexError("CODEX_TIMEOUT", "x"), { verdict: "maybe" }]) {
+      const h = harness([AMERICAN_EDITORIAL, failure]);
+      const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+      expect(report.status).toBe("fallback_template");
+      expect(report.notes).toContain("NO_REVIEWED_CANDIDATE");
+      expect(report.after).toBeNull();
+      expect(h.profiles.has("final")).toBe(false);
+    }
+    const quota = harness([AMERICAN_EDITORIAL, new CodexError("CODEX_QUOTA", "x")]);
+    expect((await runDesignPipeline({ demo: SHOP, references: refs }, quota.deps)).status).toBe("environment_failure");
+  });
+
   it("stops without a design on environment failures (sign-in, quota)", async () => {
     const h = harness([new CodexError("CODEX_NOT_SIGNED_IN", "x")]);
     expect((await runDesignPipeline({ demo: SHOP, references: refs }, h.deps)).status).toBe("environment_failure");

@@ -174,8 +174,13 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     current = { name: `candidate-${revisions}`, profile: check.profile };
   }
 
-  // ---- final: the best-scored candidate (later wins a tie); unreviewed ones rank last
+  // ---- final: the best-scored candidate (later wins a tie). A design no
+  // review has scored is not shipped: the demo keeps the existing template.
   const best = candidates.reduce((a, b) => (b.score >= a.score ? b : a));
+  if (best.score < 0) {
+    notes.push("NO_REVIEWED_CANDIDATE");
+    return report(status === "environment_failure" ? "environment_failure" : "fallback_template", { profileSource, rounds });
+  }
   await deps.writeProfile("final", best.profile);
   const after = await deps.render("final");
   return { status, notes, profileSource, rounds, finalCandidate: best.name, before, after };

@@ -38,7 +38,7 @@ export function nameLines(name: string): string[] {
   return words.length > 1 && words.length <= 4 ? words : [name.trim()];
 }
 
-/** Up to two letters taken from the name: "EXAMPLE BAKE" → "CB", "焼菓子店" → "焼". */
+/** Up to two letters taken from the name: "EXAMPLE BAKE" → "EB", "焼菓子店" → "焼". */
 export function monogram(name: string): string {
   const words = name.split(/[\s・･·.\-_/&+]+/).filter(Boolean);
   const latin = words.filter((w) => /^[A-Za-z0-9]/.test(w));

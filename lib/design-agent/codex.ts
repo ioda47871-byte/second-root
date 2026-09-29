@@ -149,6 +149,9 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
       "--sandbox",
       "read-only",
       "--json",
+      // The built-in provider only (a config.toml provider could use an API key).
+      "-c",
+      'model_provider="openai"',
       "--cd",
       cwd,
       "--output-schema",

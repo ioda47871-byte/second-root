@@ -19,7 +19,7 @@ import { chmod, copyFile, mkdir, readdir, readFile, stat, writeFile } from "node
 import { homedir } from "node:os";
 import { extname, join, relative, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
-import { killAllBoundedChildren, runBounded, RunDeadline } from "../../lib/design-agent/bounded-process";
+import { DeadlineError, killAllBoundedChildren, runBounded, RunDeadline } from "../../lib/design-agent/bounded-process";
 import { codexEnvironment, CodexError, runCodexJson } from "../../lib/design-agent/codex";
 import { runDesignPipeline, type PipelineReport, type Shots } from "../../lib/design-agent/pipeline";
 import { factsToDemoView, RUN_ID } from "../../lib/design-agent/preview";
@@ -91,6 +91,7 @@ async function loadReferences(dir: string): Promise<string[]> {
   const images = names.filter((n) => IMAGE_TYPES.has(extname(n).toLowerCase()));
   if (images.length !== names.length) throw new UsageError("--screens may contain only .png / .jpg / .webp files.");
   if (images.length === 0 || images.length > MAX_REFERENCES) throw new UsageError(`--screens needs 1–${MAX_REFERENCES} images.`);
+  if (images.some((n) => n.includes(","))) throw new UsageError("Screenshot file names may not contain commas.");
   const paths = images.map((n) => join(dir, n));
   for (const p of paths) if ((await stat(p)).size > MAX_IMAGE_BYTES) throw new UsageError(`${p}: larger than 8 MB.`);
   return paths;
@@ -101,12 +102,23 @@ async function loadReferences(dir: string): Promise<string[]> {
 function startServer(port: number, previewRoot: string): ChildProcess {
   const env = codexEnvironment({ ...process.env, SR_DESIGN_PREVIEW_ROOT: previewRoot, PORT: String(port) });
   const child = spawn("npx", ["next", "start", "--port", String(port), "--hostname", "127.0.0.1"], { cwd: REPO, env, stdio: "ignore", detached: true });
+  child.on("error", () => undefined); // judged by waitForServer (exitCode / pid)
   return child;
 }
 
-async function waitForServer(port: number, timeoutMs: number): Promise<void> {
+async function portInUse(port: number): Promise<boolean> {
+  try {
+    await fetch(`http://127.0.0.1:${port}/`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForServer(child: ChildProcess, port: number, timeoutMs: number): Promise<void> {
   const until = Date.now() + timeoutMs;
   while (Date.now() < until) {
+    if (child.pid === undefined || child.exitCode !== null) throw new Error("The local preview server exited.");
     try {
       const res = await fetch(`http://127.0.0.1:${port}/design-preview/not-a-run-id`);
       if (res.status === 404) return;
@@ -118,16 +130,25 @@ async function waitForServer(port: number, timeoutMs: number): Promise<void> {
   throw new Error("The local preview server did not start.");
 }
 
-function stopServer(child: ChildProcess | undefined): void {
+function signalServer(child: ChildProcess | undefined, signal: NodeJS.Signals): void {
   if (child?.pid === undefined) return;
   try {
-    process.kill(-child.pid, "SIGTERM");
+    process.kill(-child.pid, signal);
   } catch {
     /* already gone */
   }
 }
 
-async function screenshot(browser: Browser, url: string, path: string, mobile: boolean): Promise<void> {
+/** SIGTERM the server's group, wait up to 5 s, then SIGKILL whatever is left. */
+async function stopServer(child: ChildProcess | undefined): Promise<void> {
+  if (child?.pid === undefined || child.exitCode !== null) return;
+  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  signalServer(child, "SIGTERM");
+  await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))]);
+  signalServer(child, "SIGKILL");
+}
+
+async function screenshot(browser: Browser, url: string, path: string, mobile: boolean): Promise<number> {
   const context = await browser.newContext(
     mobile ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: "reduce" } : { viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" },
   );
@@ -139,6 +160,7 @@ async function screenshot(browser: Browser, url: string, path: string, mobile: b
     if (overflow > 0) console.log(`  warning: ${mobile ? "mobile" : "desktop"} overflows by ${overflow}px`);
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
     await page.screenshot({ path, fullPage: true, clip: { x: 0, y: 0, width: mobile ? 390 : 1440, height: Math.min(height, mobile ? 3200 : 2800) } });
+    return Math.max(0, overflow);
   } finally {
     await context.close();
   }
@@ -148,7 +170,9 @@ async function screenshot(browser: Browser, url: string, path: string, mobile: b
 
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
-  if (insideRepo(args.facts) || insideRepo(args.screens)) throw new UsageError("Keep --facts and --screens outside the repository (it is public).");
+  if (insideRepo(args.facts) || insideRepo(args.screens) || insideRepo(args.outRoot)) {
+    throw new UsageError("Keep --facts, --screens and --out-root outside the repository (it is public).");
+  }
   if (!args.screensReviewed) {
     throw new UsageError(
       "Confirm with --screens-reviewed that the screenshots show only the public profile header and post grid: no comments, DMs, or other people's faces or personal data.",
@@ -166,47 +190,61 @@ async function main(): Promise<number> {
   console.log(`run ${args.runId} → ${runDir}`);
 
   const deadline = new RunDeadline(Date.now() + 75 * 60_000);
-  if (!args.skipBuild) {
-    console.log("building (next build)…");
-    const build = await runBounded("npm", ["run", "build"], { cwd: REPO, env: process.env, timeoutMs: deadline.timeoutFor(20 * 60_000) });
-    if (build.code !== 0) throw new Error("npm run build failed; run it by hand to see why.");
-  }
   let server: ChildProcess | undefined;
   let browser: Browser | undefined;
-  const stop = () => {
-    stopServer(server);
+  const overflows: string[] = [];
+  const stopNow = () => {
+    signalServer(server, "SIGKILL");
     killAllBoundedChildren();
   };
+  // Installed before the build, so Ctrl-C never leaves a detached child behind.
   process.once("SIGINT", () => {
-    stop();
+    stopNow();
     process.exit(130);
   });
   process.once("SIGTERM", () => {
-    stop();
+    stopNow();
     process.exit(143);
   });
   try {
+    if (!args.skipBuild) {
+      console.log("building (next build)…");
+      const build = await runBounded("npm", ["run", "build"], { cwd: REPO, env: codexEnvironment(process.env), timeoutMs: deadline.timeoutFor(20 * 60_000) });
+      if (build.code !== 0) throw new Error("npm run build failed; run it by hand to see why.");
+    }
+    if (await portInUse(args.port)) throw new UsageError(`Port ${args.port} is already in use; stop that server or pass --port.`);
     server = startServer(args.port, args.outRoot);
-    await waitForServer(args.port, 90_000);
+    await waitForServer(server, args.port, 90_000);
     browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {});
     const b = browser;
     const report: PipelineReport = await runDesignPipeline(
       { demo, references, hint: args.hint, maxRevisions: args.maxRevisions, schemaMode: args.schemaMode },
       {
-        askCodex: ({ kind, prompt, images, schema }) =>
-          runCodexJson({ prompt, images, schema, codexBin: args.codexBin, timeoutMs: deadline.timeoutFor(kind === "brief" ? 15 * 60_000 : 10 * 60_000, 60_000) }),
+        askCodex: async ({ kind, prompt, images, schema }) => {
+          let timeoutMs: number;
+          try {
+            timeoutMs = deadline.timeoutFor(kind === "brief" ? 15 * 60_000 : 10 * 60_000, 60_000);
+          } catch {
+            // Out of run time: treat like a Codex timeout (the loop falls back).
+            throw new CodexError("CODEX_TIMEOUT", "No time left in this run for Codex.");
+          }
+          return runCodexJson({ prompt, images, schema, codexBin: args.codexBin, timeoutMs });
+        },
         writeProfile: (name, profile) => writeFile(join(runDir, `${name}.json`), JSON.stringify(profile, null, 2)),
         writeRecord: (name, value) => writeFile(join(runDir, name), JSON.stringify(value, null, 2)),
         render: async (candidate): Promise<Shots> => {
           const url = `http://127.0.0.1:${args.port}/design-preview/${args.runId}?profile=${candidate}`;
           const shots = { desktop: join(runDir, "shots", `${candidate}-desktop.png`), mobile: join(runDir, "shots", `${candidate}-mobile.png`) };
-          await screenshot(b, url, shots.desktop, false);
-          await screenshot(b, url, shots.mobile, true);
+          const desktopOverflow = await screenshot(b, url, shots.desktop, false);
+          const mobileOverflow = await screenshot(b, url, shots.mobile, true);
+          if (desktopOverflow > 0) overflows.push(`OVERFLOW_${candidate}_DESKTOP`);
+          if (mobileOverflow > 0) overflows.push(`OVERFLOW_${candidate}_MOBILE`);
           return shots;
         },
         log: (line) => console.log(`  ${line}`),
       },
     );
+    report.notes.push(...overflows);
     await writeFile(join(runDir, "report.json"), JSON.stringify(report, null, 2));
     if (report.after) {
       await copyFile(report.before.desktop, join(runDir, "before-desktop.png"));
@@ -220,9 +258,15 @@ async function main(): Promise<number> {
     console.log(`compare: ${join(runDir, "before-desktop.png")} / after-desktop.png (and -mobile)`);
     if (report.status === "blocked") console.log("BLOCKED: the reviewer asked for a renderer change. Read review-*.json and decide by hand.");
     return report.status === "environment_failure" ? 3 : report.status === "blocked" ? 2 : 0;
+  } catch (error) {
+    // Rendering or system failure: leave a code-only record, keep the template.
+    const code = error instanceof UsageError ? "USAGE" : error instanceof DeadlineError ? error.code : "RENDER_OR_SYSTEM";
+    await writeFile(join(runDir, "failure.json"), JSON.stringify({ status: "fallback_template", code, at: new Date().toISOString() }, null, 2)).catch(() => undefined);
+    throw error;
   } finally {
-    await browser?.close();
-    stop();
+    await browser?.close().catch(() => undefined);
+    await stopServer(server);
+    killAllBoundedChildren();
   }
 }
 

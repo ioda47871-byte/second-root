@@ -145,7 +145,8 @@ export function paletteProblems(p: Palette): string[] {
   need("text on surface", p.text, p.surface, 4.5);
   need("primary on background", p.primary, p.background, 3);
   need("background on primary", p.background, p.primary, 4.5);
-  need("secondary on background", p.secondary, p.background, 3);
+  // Secondary sets small text, including the "not official" notice bar.
+  need("secondary on background", p.secondary, p.background, 4.5);
   return problems;
 }
 

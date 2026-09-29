@@ -1229,7 +1229,7 @@
       "depends_on": [
         "DEV-007"
       ],
-      "purpose": "「テンプレートを当てはめた」ではなく「この店のためにデザインした」デモにするため、怪異読本の Codex CLI 連携（ChatGPT サインイン・API キーなし）を移植し、Codex をアートディレクターとして design profile を選ばせる。まず EXAMPLE BAKE 1 店舗で有効性を確かめる（2026-09-29 人間承認）",
+      "purpose": "「テンプレートを当てはめた」ではなく「この店のためにデザインした」デモにするため、怪異読本の Codex CLI 連携（ChatGPT サインイン・API キーなし）を移植し、Codex をアートディレクターとして design profile を選ばせる。まず PoC 対象の 1 店舗で有効性を確かめる（2026-09-29 人間承認）",
       "acceptance_criteria": [
         "怪異読本から bounded process / Codex の sign-in 確認 / JSONL parser / 失敗の符号を移植（API キーの変数を子へ渡さない・read-only sandbox・Codex の出力をログに写さない）",
         "DesignProfile と VisualReview を zod で定義し、同じ定義から codex exec --output-schema 用の JSON Schema を作る（列挙値・hex・コントラスト検査）",
@@ -1240,7 +1240,7 @@
         "偽の Codex CLI による CI テスト",
         "WSL runbook（専用利用者 sr-designgen、codex login --device-auth）",
         "DB migration なし・Production / Staging / Routine / 営業 Agent に触らない",
-        "人間の WSL で EXAMPLE BAKE を本物の Codex で 1 件通し、PC / mobile の before / after を比較する"
+        "人間の WSL で PoC 対象の 1 店舗を本物の Codex で 1 件通し、PC / mobile の before / after を比較する"
       ],
       "required_tests": [
         "unit: tests/unit/design-agent（fake Codex、schema、loop、renderer の fact-only）",
@@ -1276,7 +1276,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": null,
+      "last_failure": "Fresh review PASS (Medium 4 / Low 6 をすべて修正、.ai/reviews/DEV-028.md)。偽の Codex で CLI を端から端まで通した。本物の Codex での実走は人間の WSL 待ち。",
       "branch": "feature/dev-028-ai-art-direction"
     }
   ]

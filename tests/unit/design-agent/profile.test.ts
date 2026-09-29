@@ -40,6 +40,8 @@ describe("DesignProfile", () => {
   it("refuses unreadable colour pairs", () => {
     const low = checkProfile({ ...AMERICAN_EDITORIAL, palette: { ...AMERICAN_EDITORIAL.palette, text: "#E8DCC6" } });
     expect(low).toEqual({ ok: false, problems: expect.arrayContaining(["text on background contrast below 4.5:1"]) });
+    // Secondary sets the "not official" notice text: AA for small text.
+    expect(checkProfile({ ...AMERICAN_EDITORIAL, palette: { ...AMERICAN_EDITORIAL.palette, secondary: "#9C7F62" } })).toEqual({ ok: false, problems: expect.arrayContaining(["secondary on background contrast below 4.5:1"]) });
     expect(contrastRatio("#000000", "#FFFFFF")).toBeCloseTo(21, 0);
   });
 

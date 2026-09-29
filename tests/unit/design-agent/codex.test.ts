@@ -46,6 +46,7 @@ describe("runCodexJson", () => {
     expect(login.args).toEqual(["login", "status"]);
     expect(exec.args.slice(0, 5)).toEqual(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json"]);
     expect(exec.args).toContain("--output-schema");
+    expect(exec.args.join(" ")).toContain('-c model_provider="openai"');
     expect(exec.args.filter((a) => a.startsWith("--image="))).toEqual(["--image=/tmp/a.png", "--image=/tmp/b.png"]);
     expect(exec.args.at(-1)).toBe("-");
     expect(exec.args.join(" ")).not.toContain("Verified facts");

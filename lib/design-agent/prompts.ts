@@ -10,7 +10,7 @@ Renderer vocabulary (the only things you can choose; every value is already impl
 - direction: a label for the overall art direction (american_editorial, editorial_luxury, french_classic, nordic_minimal, japanese_modern, kissaten_retro, gallery_mono, craft_paper, boutique_minimal, pop_bakeshop).
 - palette: six hex colours. background = page; surface = panels; text = body text (≥4.5:1 on background and surface);
   primary = shop name and strong rules (≥3:1 on background; background on primary ≥4.5:1, used for the footer);
-  secondary = small labels (≥3:1 on background); accent = monogram / motif details.
+  secondary = small labels and the notice bar text (≥4.5:1 on background); accent = monogram / motif details.
 - typography.display: editorial_serif (high-contrast Latin serif, Japanese in Mincho), condensed_grotesk (tall, narrow, heavy sans),
   light_grotesk (wide light sans), mincho (Japanese Mincho for everything). body: sans | serif.
   displayCase: as_is | uppercase (Latin only). displayWeight: light | regular | bold | black. tracking: tight | normal | wide.

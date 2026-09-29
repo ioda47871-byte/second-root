@@ -75,6 +75,9 @@ codex login --device-auth  # 表示された URL を開き、コードを入れ�
 codex login status         # 「Logged in using ChatGPT」であること（API key なら CLI は止まる）
 ```
 
+`~/.codex/config.toml` に別の `model_provider`（Azure など、API キーを使うもの）を書かない。
+CLI は念のため `-c model_provider="openai"` を付けて呼ぶ。
+
 サインイン情報は `~/.codex/` にだけ置かれる。
 **コピーしない。リポジトリ・Actions secrets・Vercel・Claude のクラウド環境に入れない。**
 
@@ -145,7 +148,8 @@ npm run sales:design-demo -- \
 | `--max-revisions 0..2` | 自動修正の回数（既定 2、上限 2） |
 | `--skip-build` | 直前に `npm run build` 済みなら省く |
 | `--schema-mode loose` | Codex が JSON Schema の長さ・範囲の指定を受け付けない場合だけ使う（zod の検査はそのまま） |
-| `--port <n>` | ローカルの preview の port（既定 3210） |
+| `--port <n>` | ローカルの preview の port（既定 3210。使用中なら止まる） |
+| `--out-root <dir>` | 結果の置き場所（既定 `~/.local/share/second-root-design`。リポジトリの中は拒否） |
 
 全体は 75 分まで。
 
@@ -179,7 +183,7 @@ Windows から見るには、エクスプローラーで
 | 0 | 完了。または `fallback_template`（既存テンプレートのまま） |
 | 2 | BLOCKED（renderer の機能追加が要る。`review-*.json` を読み、人が判断する） |
 | 3 | 環境の都合（サインイン・利用枠） |
-| 1 | 入力の誤りほか |
+| 1 | 入力の誤り、描画やシステムの失敗（`failure.json` に符号だけを残す） |
 
 ## 8. 失敗の符号
 
@@ -193,6 +197,8 @@ Windows から見るには、エクスプローラーで
 | `BRIEF_PROFILE_INVALID` | Codex の答えが列挙値やコントラストの検査を通らなかった。`brief-rejected.json` を見る |
 | `LOW_CONFIDENCE_CATEGORY_DEFAULT` | 材料が弱かった。スクリーンショットを見直す |
 | `RENDERER_CHANGE_NEEDED` | BLOCKED。renderer の拡張は人が判断し、PR で行う |
+| `NO_REVIEWED_CANDIDATE` | review が 1 回も成功しなかった。未評価の design は出さず、既存テンプレートのまま |
+| `OVERFLOW_<candidate>_DESKTOP / _MOBILE` | その candidate が横にはみ出した。スクリーンショットで確認する |
 
 Codex の出力と stderr は画面にもログにも写さない。
 問題点の文面などは、結果のディレクトリの JSON にだけ残る。

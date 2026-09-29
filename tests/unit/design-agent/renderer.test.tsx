@@ -77,7 +77,7 @@ describe("ProfileRenderer", () => {
     const html = renderToStaticMarkup(<ProfileRenderer demo={SHOP} profile={AMERICAN_EDITORIAL} />);
     expect(html).toContain('role="note"');
     expect(html.match(/<h1\b/g)).toHaveLength(1);
-    expect(html).toMatch(/<h1[^>]*>.*EXAMPLE.*BAKE|<h1[^>]*>.*EXAMPLE.* .*TEST/);
+    expect(html).toMatch(/<h1[^>]*>.*EXAMPLE.* .*TEST/);
     expect(html).not.toMatch(/<(text|title|desc|img|image)\b/);
     expect([...html.matchAll(/\s(alt|title|aria-label|placeholder)="/g)]).toEqual([]);
   });
@@ -92,7 +92,7 @@ describe("ProfileRenderer", () => {
     expect(locationLabels({ ward: null })).toEqual(["NAGOYA"]);
     expect(locationLabels({ ward: "不明区" })).toEqual(["NAGOYA"]);
     expect(Object.keys(WARD_ROMAJI)).toHaveLength(16);
-    expect(monogram("EXAMPLE BAKE")).toBe("CB");
+    expect(monogram("EXAMPLE BAKE")).toBe("EB");
     expect(nameLines("EXAMPLE BAKE")).toEqual(["EXAMPLE", "BAKE"]);
     expect(nameLines("焼菓子テスト")).toEqual(["焼菓子テスト"]);
   });
