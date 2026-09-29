@@ -17,7 +17,8 @@
     "staging:apply": "NODE_USE_ENV_PROXY=1 node scripts/staging/apply.mjs",
     "staging:verify": "NODE_USE_ENV_PROXY=1 node scripts/staging/verify.mjs",
     "staging:admin": "NODE_USE_ENV_PROXY=1 node scripts/staging/admin.mjs",
-    "staging:vercel": "NODE_USE_ENV_PROXY=1 node scripts/staging/vercel-preview.mjs"
+    "staging:vercel": "NODE_USE_ENV_PROXY=1 node scripts/staging/vercel-preview.mjs",
+    "sales:design-demo": "tsx scripts/sales-design/design-demo.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -40,6 +41,7 @@
     "pg": "^8.23.0",
     "playwright": "^1.62.1",
     "supabase": "^2.118.0",
+    "tsx": "^4.23.15",
     "typescript": "5.9.3",
     "vitest": "~4.0.18"
   }
