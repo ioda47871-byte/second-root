@@ -66,7 +66,7 @@ async function enqueue(): Promise<number> {
   if (!JOB_ID.test(jobId)) usage("--job-id: lowercase letters, digits and - (3–63). Do not use the shop's name.");
   const factsPath = expand(flag("facts") ?? usage("--facts <file.json> is required."));
   if (insideRepo(factsPath)) usage("--facts must be outside the repository.");
-  if (!parseInstagramProfileUrl(flag("instagram"))) usage("--instagram must be https://www.instagram.com/<profile>/ (a public profile page).");
+  const source = parseInstagramProfileUrl(flag("instagram")) ?? usage("--instagram must be https://www.instagram.com/<profile>/ (a public profile page).");
   const facts = pickFacts(JSON.parse(await readFile(factsPath, "utf8")) as Record<string, unknown>);
   if (!factsToDemoView(facts)) usage("the facts do not pass the demo fact filter (name and a valid category are required).");
   const dirs = queueDirs(paths.queue);
@@ -75,7 +75,7 @@ async function enqueue(): Promise<number> {
     if ((await readdir(dir)).includes(`${jobId}.json`)) usage(`a job with id ${jobId} is already queued or done; use a new id.`);
   }
   const temp = join(dirs.inbox, `.tmp-${jobId}-${process.pid}`);
-  await writeFile(temp, `${JSON.stringify({ version: 1, job_id: jobId, facts, source: { instagram_url: flag("instagram") } }, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(temp, `${JSON.stringify({ version: 1, job_id: jobId, facts, source: { instagram_url: source.url } }, null, 2)}\n`, { mode: 0o600 });
   await rename(temp, join(dirs.inbox, `${jobId}.json`));
   say(`queued job ${jobId}`);
   return 0;
