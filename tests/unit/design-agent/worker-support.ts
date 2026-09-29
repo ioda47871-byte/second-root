@@ -159,12 +159,12 @@ export function fakeCodex(l: Layout, steps: Step[], login: "chatgpt" | "apikey" 
   return path;
 }
 
-export function codexCalls(l: Layout): Array<{ args: string[]; secretVars: string[]; apiKeyVars: string[]; tmpdir: string | null }> {
+export function codexCalls(l: Layout): Array<{ args: string[]; secretVars: string[]; apiKeyVars: string[]; tmpdir: string | null; strictSchema?: boolean }> {
   if (!existsSync(l.record)) return [];
   return readFileSync(l.record, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as { args: string[]; secretVars: string[]; apiKeyVars: string[]; tmpdir: string | null });
+    .map((line) => JSON.parse(line) as { args: string[]; secretVars: string[]; apiKeyVars: string[]; tmpdir: string | null; strictSchema?: boolean });
 }
 
 // ------------------------------------------------------------------ fake preview

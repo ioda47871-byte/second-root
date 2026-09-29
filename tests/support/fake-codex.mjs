@@ -48,7 +48,10 @@ process.stdin.on("end", async () => {
   const index = existsSync(statePath) ? Number(readFileSync(statePath, "utf8")) : 0;
   writeFileSync(statePath, String(index + 1));
   const step = steps[Math.min(index, steps.length - 1)];
-  record({ stdinLength: stdin.length, stdinHasFacts: stdin.includes("Verified facts"), step: index });
+  // Which schema was sent: the strict one carries length limits, the loose one does not.
+  const schemaPath = args[args.indexOf("--output-schema") + 1];
+  const schemaText = schemaPath && existsSync(schemaPath) ? readFileSync(schemaPath, "utf8") : "";
+  record({ stdinLength: stdin.length, stdinHasFacts: stdin.includes("Verified facts"), step: index, strictSchema: schemaText.includes("maxLength") });
   // Like the real CLI: a session log that holds the request (and its images).
   const THREAD = "00000000-0000-4000-8000-000000000000";
   if (process.env.CODEX_HOME) {

@@ -43,3 +43,18 @@
 - 確認して問題なし: tsx での取得（通常のページ・popup・iframe）、他の page callback、signal・crash の扱い、inbox の上書き防止
 - Low 1 件を修正した: session log の片付けが 1 行目全体に正規表現を当てていたため、指示文に worker のパスが書かれた無関係な session まで消しうる。1 行目を JSON として読み、`cwd` のパスの要素だけを見るようにした（テストあり）
 - 最終判定: **PASS**。Critical・High・Medium は 0 件。残りは記録だけの Low 3 件（superseded、遅れた遷移の理由表示、flock で直列化される lock の race）
+
+## schema の fallback（実走前 preflight の指摘）
+
+- preflight で見つけたこと: strict schema は `maxLength` などを含む。loose への fallback は brief にしか無かった。API が strict を拒むと review が毎回失敗し、run は必ず fallback_template で終わる
+- 修正: 各 job は strict から始める。CODEX_EXEC_FAILED / CODEX_NO_JSON のときだけ、その呼び出しを loose で 1 回だけ送り直し、その job の残り（brief / review）は最初から loose を使う
+  - その他の失敗（timeout・quota・サインイン）では送り直さない
+  - 答えは完全な zod schema と palette の検査で従来どおり検証する
+  - report には `codex.schema_mode` と `SCHEMA_LOOSE_AFTER_<BRIEF|REVIEW>_<code>` だけを残す
+- テスト（偽の Codex が、受け取った schema が strict か loose かを記録する）
+  - strict の brief が失敗 → loose の brief → loose の review
+  - strict の review が失敗 → loose の review → 2 回目の review は最初から loose
+  - loose でも失敗 → 従来どおり fallback（brief / review それぞれ）
+  - loose の答えも palette と余分な項目で弾く
+  - quota では送り直さない
+  - strict が通れば最後まで strict

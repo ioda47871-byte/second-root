@@ -266,15 +266,76 @@ describe("design outcomes", () => {
     expect(ls(join(l.exportDir, "job-fallback"))).toEqual(["before-desktop.png", "before-mobile.png", "report.json"]);
   });
 
-  it("retries the brief once with the loose schema after a Codex failure, then falls back", async () => {
+  it("strict brief refused → loose brief → loose review: done, the fallback is recorded as a code", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-loose-brief");
+    const { report, logs } = await runWorker(l, site, { steps: [{ exit: 1, stderr: LEAK.stderr }, { answer: AMERICAN_EDITORIAL }, { answer: review() }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
+    const rep = json(join(l.out, "job-loose-brief", "report.json"));
+    expect(rep.codex).toMatchObject({ status: "done", schema_mode: "loose", notes: ["SCHEMA_LOOSE_AFTER_BRIEF_CODEX_EXEC_FAILED"] });
+    expect(execCalls(l).map((c) => c.strictSchema)).toEqual([true, false, false]);
+    expect(logs.join("\n")).not.toContain(LEAK.stderr);
+    expect(JSON.stringify(rep)).not.toContain(LEAK.stderr);
+  });
+
+  it("strict brief → strict review refused → loose review, and every later review starts loose", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-loose-review");
+    const revise = review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: AMERICAN_EDITORIAL } });
+    const { report } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { text: "no json here" }, { answer: revise }, { answer: review() }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
+    const rep = json(join(l.out, "job-loose-review", "report.json"));
+    expect(rep.codex).toMatchObject({ schema_mode: "loose", reviews: 2, revisions: 1, notes: ["SCHEMA_LOOSE_AFTER_REVIEW_CODEX_NO_JSON"] });
+    expect(execCalls(l).map((c) => c.strictSchema)).toEqual([true, true, false, false]);
+  });
+
+  it("keeps strict all the way when Codex accepts it", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-strict");
+    await runWorker(l, site);
+    expect(json(join(l.out, "job-strict", "report.json")).codex).toMatchObject({ schema_mode: "strict", notes: [] });
+    expect(execCalls(l).map((c) => c.strictSchema)).toEqual([true, true]);
+  });
+
+  it("falls back to the template as before when the loose brief also fails (one retry, no more)", async () => {
     const l = makeLayout();
     writeJob(l, "job-codex-fail");
-    const { report, logs } = await runWorker(l, site, { steps: [{ exit: 1, stderr: LEAK.stderr }, { exit: 1, stderr: LEAK.stderr }] });
+    const { report, logs } = await runWorker(l, site, { steps: [{ exit: 1, stderr: LEAK.stderr }, { exit: 1, stderr: LEAK.stderr }, { answer: AMERICAN_EDITORIAL }] });
     expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "fallback_template" }] });
     const rep = json(join(l.out, "job-codex-fail", "report.json"));
-    expect(rep.codex.notes).toEqual(["BRIEF_LOOSE_RETRY_AFTER_CODEX_EXEC_FAILED", "CODEX_EXEC_FAILED"]);
+    expect(rep.codex.notes).toEqual(["SCHEMA_LOOSE_AFTER_BRIEF_CODEX_EXEC_FAILED", "CODEX_EXEC_FAILED"]);
     expect(execCalls(l)).toHaveLength(2);
     expect(logs.join("\n")).not.toContain(LEAK.stderr);
+  });
+
+  it("falls back to the template when the loose review also fails", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-review-fail");
+    const { report } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { exit: 1 }, { exit: 1 }, { answer: review() }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "fallback_template" }] });
+    const rep = json(join(l.out, "job-review-fail", "report.json"));
+    expect(rep.codex.notes).toEqual(["SCHEMA_LOOSE_AFTER_REVIEW_CODEX_EXEC_FAILED", "REVIEW_CODEX_EXEC_FAILED", "NO_REVIEWED_CANDIDATE"]);
+    expect(execCalls(l)).toHaveLength(3);
+  });
+
+  it("still checks a loose answer against the full schema and the palette contrast", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-loose-invalid");
+    const lowContrast = { ...AMERICAN_EDITORIAL, palette: { ...AMERICAN_EDITORIAL.palette, text: "#EEE4D0" } };
+    const { report } = await runWorker(l, site, { steps: [{ exit: 1 }, { answer: lowContrast }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "fallback_template" }] });
+    expect(json(join(l.out, "job-loose-invalid", "report.json")).codex.notes).toEqual(["SCHEMA_LOOSE_AFTER_BRIEF_CODEX_EXEC_FAILED", "BRIEF_PROFILE_INVALID"]);
+    const l2 = makeLayout();
+    writeJob(l2, "job-loose-extra");
+    await runWorker(l2, site, { steps: [{ exit: 1 }, { answer: { ...AMERICAN_EDITORIAL, html: "<div>" } }] });
+    expect(json(join(l2.out, "job-loose-extra", "report.json")).codex.notes).toContain("BRIEF_PROFILE_INVALID");
+  });
+
+  it("does not retry with the loose schema for other Codex failures", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-no-loose");
+    await runWorker(l, site, { steps: [{ exit: 1, stderr: "usage limit reached" }, { answer: AMERICAN_EDITORIAL }] });
+    expect(execCalls(l)).toHaveLength(1);
   });
 
   it("stops the run without counting the job when Codex is not signed in with ChatGPT", async () => {

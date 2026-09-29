@@ -372,6 +372,12 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     // ---- design pipeline
     const notes: string[] = [];
     const overflow: string[] = [];
+    // Every job starts with the strict schema. If the CLI refuses it (it
+    // fails, or answers without JSON), that one call is retried once with the
+    // loose schema and the rest of the job (brief and reviews) uses the loose
+    // schema from the start. Answers are always checked against the full zod
+    // schemas (and the palette checks) by the pipeline, whichever was sent.
+    let schemaMode: "strict" | "loose" = "strict";
     const pipeline: PipelineReport = await runDesignPipeline(
       { demo, references: capture.files },
       {
@@ -380,14 +386,16 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
           // The time left is read again for each call, so a retry never overruns the run.
           const ask = (s: object) =>
             runCodexJson({ prompt, images, schema: s, codexBin: ctx.codexBin, env: ctx.childEnv(), timeoutMs: options.deadline.timeoutFor(limit, MIN_LONG_CALL_MS) });
+          if (schemaMode === "loose") return ask(looseJsonSchema(schema));
           try {
             return await ask(schema);
           } catch (error) {
-            // One retry of the brief with the loose schema when the CLI
-            // refused the strict one or answered without JSON.
-            if (kind !== "brief" || !(error instanceof CodexError) || (error.code !== "CODEX_EXEC_FAILED" && error.code !== "CODEX_NO_JSON")) throw error;
-            notes.push(`BRIEF_LOOSE_RETRY_AFTER_${error.code}`);
-            log(`job ${jobId}: brief ${error.code}; one retry with the loose schema`);
+            // Only a refused schema falls back; any other failure (timeout,
+            // quota, sign-in) is reported as it is. One retry, never more.
+            if (!(error instanceof CodexError) || (error.code !== "CODEX_EXEC_FAILED" && error.code !== "CODEX_NO_JSON")) throw error;
+            schemaMode = "loose";
+            notes.push(`SCHEMA_LOOSE_AFTER_${kind.toUpperCase()}_${error.code}`);
+            log(`job ${jobId}: ${kind} ${error.code} with the strict schema; loose schema from here on`);
             return ask(looseJsonSchema(schema));
           }
         },
@@ -439,6 +447,7 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         fallback: pipeline.status === "fallback_template",
         blocked: pipeline.status === "blocked",
         renderer_change_needed: pipeline.notes.includes("RENDERER_CHANGE_NEEDED"),
+        schema_mode: schemaMode,
         notes: [...notes, ...pipeline.notes],
       },
       overflow,
