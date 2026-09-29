@@ -53,6 +53,9 @@ const state = async (draftId: string) => {
   return { draft: d.status as string, sends };
 };
 
+const clearConversations = () =>
+  db.query("truncate public.sales_ig_messages, public.sales_ig_threads, public.sales_ig_webhook_events, public.sales_outreaches, public.sales_demos, public.sales_sources, public.sales_prospects, public.sales_agent_runs cascade");
+
 beforeAll(async () => {
   await resetSalesData();
   await makeAdmin(await createUser("igsend-admin@test.example.com"));
@@ -61,7 +64,7 @@ beforeAll(async () => {
   outsider = await signedInClient("igsend-outsider@test.example.com");
 });
 beforeEach(async () => {
-  await db.query("truncate public.sales_ig_messages, public.sales_ig_threads, public.sales_ig_webhook_events, public.sales_outreaches, public.sales_demos, public.sales_sources, public.sales_prospects, public.sales_agent_runs cascade");
+  await clearConversations();
   replies = [];
   sendCalls = [];
   vi.stubEnv("INSTAGRAM_APP_SECRET", SECRET);
@@ -325,4 +328,84 @@ describe("review regressions", () => {
     expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "refused", code: "too_many_attempts" });
     expect(sendCalls).toHaveLength(0);
   });
+});
+
+describe("[DEV-027] one lock order (draft, then send)", () => {
+  // A second tap's begin_send locks the draft and then waits for the send.
+  // finish_send / resolve_unknown used to hold the send and wait for the
+  // draft, so Postgres aborted one of them as a deadlock (40P01) and a reply
+  // Meta had delivered ended up 'unknown'. Here another transaction holds
+  // the draft exactly like that begin_send, waits until the RPC is blocked
+  // behind it, and then takes the send lock: with one lock order this never
+  // deadlocks and the RPC's result is recorded.
+  async function whileDraftIsLocked<T extends { error: unknown }>(draftId: string, call: () => PromiseLike<T>): Promise<T> {
+    const other = await db.connect();
+    try {
+      await other.query("begin");
+      const { rows: [{ pid }] } = await other.query("select pg_backend_pid() as pid");
+      await other.query("select 1 from public.sales_ig_drafts where id = $1 for update", [draftId]);
+      const pending = Promise.resolve(call());
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const { rows: [{ n }] } = await db.query("select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))", [pid]);
+        if (n > 0) break;
+        if (Date.now() > deadline) throw new Error("the RPC never waited for the draft lock");
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      await other.query("select 1 from public.sales_ig_sends where draft_id = $1 for update", [draftId]);
+      await other.query("commit");
+      return await pending;
+    } catch (e) {
+      await other.query("rollback").catch(() => {});
+      throw e;
+    } finally {
+      other.release();
+    }
+  }
+
+  it("finish_send waits for a locked draft instead of deadlocking, and records 'sent'", async () => {
+    const c = await conversation("900000000000801");
+    const begun = (await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId })).data as { send_id: string; attempt: number };
+    const result = await whileDraftIsLocked(c.draftId, () =>
+      admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_attempt: begun.attempt, p_outcome: "sent", p_meta_message_id: "m_locked", p_error_code: null }),
+    );
+    expect(result.error).toBeNull();
+    expect(result.data).toMatchObject({ status: "sent", replayed: false });
+    expect(await state(c.draftId)).toMatchObject({ draft: "sent", sends: [{ status: "sent", meta_message_id: "m_locked" }] });
+  });
+
+  it("resolve_unknown waits for a locked draft instead of deadlocking", async () => {
+    const c = await conversation("900000000000802");
+    replies = ["network"];
+    expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "unknown" });
+    const { rows: [s] } = await db.query("select id from public.sales_ig_sends where draft_id = $1", [c.draftId]);
+    const result = await whileDraftIsLocked(c.draftId, () => admin.rpc("sales_ig_resolve_unknown", { p_send_id: s.id, p_was_sent: true }));
+    expect(result.error).toBeNull();
+    expect(result.data).toMatchObject({ status: "sent", replayed: false });
+    expect(await state(c.draftId)).toMatchObject({ draft: "sent", sends: [{ status: "sent" }] });
+  });
+
+  it("finish_send and resolve_unknown still refuse an unknown send or outcome", async () => {
+    const finish = await admin.rpc("sales_ig_finish_send", { p_send_id: randomUUID(), p_attempt: 1, p_outcome: "sent", p_meta_message_id: "x", p_error_code: null });
+    expect(finish.error?.message).toMatch(/not_found/);
+    const resolve = await admin.rpc("sales_ig_resolve_unknown", { p_send_id: randomUUID(), p_was_sent: true });
+    expect(resolve.error?.message).toMatch(/not_found/);
+    const invalid = await admin.rpc("sales_ig_finish_send", { p_send_id: randomUUID(), p_attempt: 1, p_outcome: "maybe", p_meta_message_id: null, p_error_code: null });
+    expect(invalid.error?.message).toMatch(/invalid_outcome/);
+  });
+
+  it("[idempotency] a double tap, repeated 20 times, always sends once and records 'sent'", async () => {
+    for (let i = 0; i < 20; i++) {
+      // A fresh day's worth of shops each round (the daily cap limits new outreaches).
+      await clearConversations();
+      const c = await conversation(`9000000000009${String(i).padStart(2, "0")}`);
+      const before = sendCalls.length;
+      const [a, b] = await Promise.all([sendApprovedReply(admin, c.draftId), sendApprovedReply(admin, c.draftId)]);
+      const kinds = [a.kind, b.kind];
+      expect(kinds, `round ${i}: ${JSON.stringify([a, b])}`).toContain("sent");
+      expect(kinds, `round ${i}: ${JSON.stringify([a, b])}`).not.toContain("record_failed");
+      expect(sendCalls.length - before, `round ${i}`).toBe(1);
+      expect(await state(c.draftId), `round ${i}`).toMatchObject({ draft: "sent", sends: [{ status: "sent", attempts: 1 }] });
+    }
+  }, 120_000);
 });
