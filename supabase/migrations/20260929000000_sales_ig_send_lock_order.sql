@@ -12,11 +12,13 @@
 -- and later shown as 'unknown'. The same kind of deadlock was possible
 -- between begin_send and save_draft / resolve_thread on the thread.
 --
--- Every function now locks in one order: thread, then draft, then send
--- (skipping what it does not need). A draft's thread_id and a send's
--- draft_id never change, so they are read without a lock to find what to
--- lock first; the row is then re-read under its lock. Otherwise the three
--- functions behave as in 001100; replays now also wait for those locks.
+-- The send RPCs now lock in the order the thread-level functions already
+-- use: thread, then draft, then send (skipping what they do not need).
+-- New functions touching these rows must keep this order. A draft's
+-- thread_id and a send's draft_id never change, so they are read first
+-- without a lock to know what to lock; every row used afterwards is read
+-- under its lock. Otherwise the three functions behave as in 001100;
+-- replays and refusals now also wait for those locks.
 
 -- この内容で返信 (1): reserve the send. Returns what the server needs to call
 -- the Send API, or the earlier outcome for a replay.
@@ -31,14 +33,15 @@ declare
   t public.sales_ig_threads;
   s public.sales_ig_sends;
   key text;
+  thread_id_ uuid;
 begin
   perform public.sales_assert_admin();
   -- Lock order: thread, draft, send (see the header).
-  select * into d from public.sales_ig_drafts where id = p_draft_id;
+  select x.thread_id into thread_id_ from public.sales_ig_drafts x where x.id = p_draft_id;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  select * into t from public.sales_ig_threads where id = d.thread_id for update;
+  select * into t from public.sales_ig_threads where id = thread_id_ for update;
   select * into d from public.sales_ig_drafts where id = p_draft_id and thread_id = t.id for update;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
@@ -119,6 +122,8 @@ declare
   s public.sales_ig_sends;
   d public.sales_ig_drafts;
   follow boolean;
+  draft_id_ uuid;
+  thread_id_ uuid;
 begin
   perform public.sales_assert_admin();
   if p_outcome not in ('sent', 'failed', 'unknown') then
@@ -126,13 +131,14 @@ begin
   end if;
   -- Lock order: thread, draft, send (see the header). The thread is only
   -- key-share locked: the lock the outbound message insert takes anyway.
-  select * into s from public.sales_ig_sends where id = p_send_id;
+  select x.draft_id, y.thread_id into draft_id_, thread_id_
+    from public.sales_ig_sends x join public.sales_ig_drafts y on y.id = x.draft_id
+    where x.id = p_send_id;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  select * into d from public.sales_ig_drafts where id = s.draft_id;
-  perform 1 from public.sales_ig_threads where id = d.thread_id for key share;
-  select * into d from public.sales_ig_drafts where id = s.draft_id for update;
+  perform 1 from public.sales_ig_threads where id = thread_id_ for key share;
+  select * into d from public.sales_ig_drafts where id = draft_id_ for update;
   select * into s from public.sales_ig_sends where id = p_send_id and draft_id = d.id for update;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
@@ -191,16 +197,16 @@ set search_path = ''
 as $$
 declare
   s public.sales_ig_sends;
-  d public.sales_ig_drafts;
+  draft_id_ uuid;
 begin
   perform public.sales_assert_admin();
   -- Lock order: draft, then send (see the header; the thread is not touched).
-  select * into s from public.sales_ig_sends where id = p_send_id;
+  select x.draft_id into draft_id_ from public.sales_ig_sends x where x.id = p_send_id;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  select * into d from public.sales_ig_drafts where id = s.draft_id for update;
-  select * into s from public.sales_ig_sends where id = p_send_id and draft_id = d.id for update;
+  perform 1 from public.sales_ig_drafts where id = draft_id_ for update;
+  select * into s from public.sales_ig_sends where id = p_send_id and draft_id = draft_id_ for update;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;

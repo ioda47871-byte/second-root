@@ -83,7 +83,9 @@ Operational Claude（scheduled job）── ingest API: action=inbox_pending ─
 
 ## 6. 管理画面と送信（DEV-022 / DEV-023）
 
-実装: `app/admin/sales/replies/page.tsx`（「Instagram の返信」）、`components/admin/IgReplyCard.tsx`、`app/admin/sales/_actions/instagram.ts`、`lib/instagram/reply.ts`、migration `20260927001100_sales_ig_admin_send.sql`。
+実装: `app/admin/sales/replies/page.tsx`（「Instagram の返信」）、`components/admin/IgReplyCard.tsx`、`app/admin/sales/_actions/instagram.ts`、`lib/instagram/reply.ts`、migration `20260927001100_sales_ig_admin_send.sql`（`sales_ig_begin_send` / `sales_ig_finish_send` / `sales_ig_resolve_unknown` の現行定義は `20260929000000_sales_ig_send_lock_order.sql`）。
+
+- **行ロックの順番は thread → draft → send**（DEV-027）。順番が関数ごとに違うとダブルタップ等で deadlock（40P01）になり、Meta に届いた返信が `unknown` になる。これらの行をロックする関数を追加・変更するときはこの順を守る。
 
 - 返信画面に、店舗名（未照合なら「未照合: @username」）、受信日時、相手のメッセージ、AI 分類、AI 返信案、確認ポイント（価格・日程・契約・DNC 候補）を plain text で表示する。これまでのやりとり（直近 10 件）は折りたたみで表示。
 - ボタン: **この内容で返信** / **返信文を編集**（サーバーで `checkDraft` を再実行。連絡先・デモ以外のリンクは保存できない）/ **後で対応**（24 時間 snooze。「後で対応」一覧から戻せる）。

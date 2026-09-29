@@ -342,27 +342,30 @@ describe("[DEV-027] one lock order (thread, draft, send)", () => {
   type Step = [sql: string, params: unknown[]];
   async function whileHolding<T extends { error: unknown }>(first: Step, second: Step, call: () => PromiseLike<T>): Promise<T> {
     const other = await db.connect();
+    let pending: Promise<T> | undefined;
     try {
       await other.query("begin");
       const { rows: [{ pid }] } = await other.query("select pg_backend_pid() as pid");
       await other.query(...first);
       let settled = false;
-      const pending = Promise.resolve(call()).finally(() => {
+      pending = Promise.resolve(call()).finally(() => {
         settled = true;
       });
       const deadline = Date.now() + 10_000;
       for (;;) {
         const { rows: [{ n }] } = await db.query("select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))", [pid]);
         if (n > 0) break;
-        if (settled) throw new Error(`the RPC did not wait for the first lock: ${JSON.stringify(await pending)}`);
+        if (settled) throw new Error(`the RPC did not wait for the first lock: ${JSON.stringify(await pending!)}`);
         if (Date.now() > deadline) throw new Error("the RPC never waited for the first lock");
         await new Promise((r) => setTimeout(r, 20));
       }
       await other.query(...second);
       await other.query("commit");
-      return await pending;
+      return await pending!;
     } catch (e) {
       await other.query("rollback").catch(() => {});
+      // Let the RPC finish before the next test truncates the tables.
+      await pending?.catch(() => {});
       throw e;
     } finally {
       other.release();
