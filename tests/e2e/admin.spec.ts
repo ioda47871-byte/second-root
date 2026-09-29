@@ -78,6 +78,42 @@ test("the admin can preview an unsent demo that the public URL does not show", a
   }
 });
 
+test("the admin can compare every art direction of a demo; the public page keeps the shop's own", async ({ page }) => {
+  const { seedDemo } = await import("../support/seed-demo");
+  const pg = (await import("pg")).default;
+  const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL });
+  await db.connect();
+  let prospectId: string | null = null;
+  try {
+    const demo = await seedDemo(db, { expiresAt: new Date(Date.now() + 86_400_000), template: "baked_goods_v1", category: "baked_goods" });
+    prospectId = demo.prospectId;
+    // Public: the same direction on every visit.
+    await page.goto(`/demo/${demo.token}`);
+    const own = await page.locator("[data-variant]").getAttribute("data-variant");
+    expect(["luxury", "pop", "minimal"]).toContain(own);
+    await page.goto(`/demo/${demo.token}?variant=${own === "pop" ? "minimal" : "pop"}`);
+    await expect(page.locator("[data-variant]")).toHaveAttribute("data-variant", own!);
+
+    await login(page, ADMIN.email, ADMIN.password);
+    await expect(page).toHaveURL(/\/admin\/sales$/);
+    for (const variant of ["luxury", "pop", "minimal"]) {
+      await page.goto(`/admin/preview/${demo.prospectId}?variant=${variant}`);
+      await expect(page.locator("[data-variant]")).toHaveAttribute("data-variant", variant);
+      await expect(page.getByRole("heading", { level: 1, name: demo.name })).toBeVisible();
+      await expect(page.getByRole("note")).toContainText("公式サイトではありません");
+      await expect(page.getByRole("link", { name: /この店舗の既定/ })).toHaveCount(1);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow, variant).toBeLessThanOrEqual(0);
+    }
+    // Unknown values fall back to the shop's own direction.
+    await page.goto(`/admin/preview/${demo.prospectId}?variant=%3Cscript%3E`);
+    await expect(page.locator("[data-variant]")).toHaveAttribute("data-variant", own!);
+  } finally {
+    if (prospectId) await db.query("delete from public.sales_prospects where id = $1", [prospectId]);
+    await db.end();
+  }
+});
+
 test("a non-admin cannot open a demo preview", async ({ page }) => {
   await login(page, OUTSIDER.email, OUTSIDER.password);
   await expect(page.getByRole("heading", { name: "権限がありません" })).toBeVisible();

@@ -2,8 +2,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { areaLabel, nameUnits } from "@/components/demo/info";
-import { renderDemo } from "@/components/demo/renderDemo";
+import { areaLabel, monogram, nameUnits } from "@/components/demo/info";
+import { renderDemo, renderDemo as renderDemoWith } from "@/components/demo/renderDemo";
+import { pickVariant, resolveVariant, VARIANTS } from "@/components/demo/variant";
 import type { DemoView } from "@/lib/sales/demo-content";
 
 // Templates may only show verified facts plus fixed, generic template copy.
@@ -51,13 +52,13 @@ function visibleText(html: string): string[] {
  * are a whole text node, so they cannot be combined into a claim such as
  * "12 Hours".
  */
-function leftover(demo: DemoView, allowed: string[], wholeNodes: string[] = WHOLE_NODE_COPY): string {
+function leftover(demo: DemoView, allowed: string[], variant?: string, wholeNodes: string[] = [...WHOLE_NODE_COPY, monogram(demo.name)]): string {
   const facts = [demo.name, demo.ward, demo.address, demo.hours, demo.closedDays, demo.access, demo.phone, demo.description, ...demo.menuItems]
     .filter((v): v is string => Boolean(v));
   const byLength = (a: string, b: string) => b.length - a.length;
   const strip = (text: string, phrases: string[]) => [...phrases].sort(byLength).reduce((s, p) => s.split(p).join(""), text);
   // Facts first (they can sit inside template phrases), then template copy.
-  const text = visibleText(renderToStaticMarkup(renderDemo(demo)))
+  const text = visibleText(renderToStaticMarkup(renderDemo(demo, variant)))
     .filter((node) => !wholeNodes.includes(node))
     .join("\n");
   return strip(strip(text, facts), allowed).replace(/\s+/g, "");
@@ -94,10 +95,14 @@ const CASES = [
   ["cafe_v1", "cafe"],
 ] as const;
 
-describe.each(CASES)("%s", (template, category) => {
+// Every art direction of every template gets the same checks.
+const VARIANT_CASES = CASES.flatMap(([template, category]) => VARIANTS[template].map((variant) => [`${template} / ${variant}`, template, category, variant] as const));
+
+describe.each(VARIANT_CASES)("%s", (_label, template, category, variant) => {
+  const renderDemo = (demo: DemoView) => renderDemoWith(demo, variant);
   it("shows only verified facts and fixed template copy", () => {
     for (const demo of [full, minimal]) {
-      expect(leftover({ ...demo, template, category }, ALLOWED_COPY)).toBe("");
+      expect(leftover({ ...demo, template, category }, ALLOWED_COPY, variant)).toBe("");
     }
   });
 
@@ -151,8 +156,8 @@ describe("template visuals", () => {
       const urls = [...readFileSync(join(cssDir, file), "utf8").matchAll(/url\(([^)]*)\)/g)].map((m) => m[1].trim());
       expect(urls.filter((u) => !u.startsWith("#")), file).toEqual([]);
     }
-    for (const [template, category] of CASES) {
-      const html = renderToStaticMarkup(renderDemo({ ...full, template, category }));
+    for (const [, template, category, variant] of VARIANT_CASES) {
+      const html = renderToStaticMarkup(renderDemo({ ...full, template, category }, variant));
       expect(html).not.toMatch(/<img\b|<image\b|href="(?!https:\/\/secondroot\.jp)/);
     }
   });
@@ -190,6 +195,41 @@ describe("cafe_v1 hours card", () => {
     const html = renderToStaticMarkup(renderDemo({ ...full, template: "cafe_v1", category: "cafe" }));
     expect(html.match(/月曜/g)).toHaveLength(1);
     expect(html.match(/8:00〜17:00/g)).toHaveLength(1);
+  });
+});
+
+describe("art direction (variant)", () => {
+  const baked = (name: string) => ({ ...full, template: "baked_goods_v1" as const, category: "baked_goods" as const, name });
+
+  it("is the same for the same shop every time", () => {
+    for (const name of ["EXAMPLE TEST", "焼菓子テスト", "a"]) {
+      expect(new Set(Array.from({ length: 5 }, () => pickVariant(baked(name)))).size).toBe(1);
+    }
+  });
+
+  it("depends on the name, so different shops get every direction", () => {
+    const seen = new Set(Array.from({ length: 60 }, (_, i) => pickVariant(baked(`テスト菓子店${i}`))));
+    expect([...seen].sort()).toEqual([...VARIANTS.baked_goods_v1].sort());
+  });
+
+  it("accepts only known variants of the demo's own template", () => {
+    const demo = baked("EXAMPLE TEST");
+    expect(resolveVariant(demo, "pop")).toBe("pop");
+    expect(resolveVariant(demo, "nope")).toBe(pickVariant(demo));
+    expect(resolveVariant(demo, "classic")).toBe(pickVariant(demo));
+    expect(resolveVariant(demo, null)).toBe(pickVariant(demo));
+  });
+
+  it("renders the shop's own direction when none is requested", () => {
+    const demo = baked("EXAMPLE TEST");
+    expect(renderToStaticMarkup(renderDemo(demo))).toContain(`data-variant="${pickVariant(demo)}"`);
+  });
+
+  it("builds the monogram only from letters of the name", () => {
+    expect(monogram("EXAMPLE TEST")).toBe("ET");
+    expect(monogram("example")).toBe("E");
+    expect(monogram("焼菓子テスト")).toBe("焼");
+    expect(monogram("喫茶 Blue")).toBe("喫");
   });
 });
 

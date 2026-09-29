@@ -37,28 +37,55 @@ export const CATEGORY_EN: Record<Category, string> = {
   cafe: "Cafe",
 };
 
-/**
- * Approximate width of a shop name in em, so the hero can set it as large
- * as the column allows (CSS divides the column width by this). Full-width
- * characters are 1em; Latin letters, digits and spaces are narrower.
- */
-export function nameUnits(name: string): number {
-  const em = [...name].reduce((sum, ch) => {
+/** Approximate width of a text in em (full-width 1em, Latin narrower). */
+function emWidth(text: string): number {
+  return [...text].reduce((sum, ch) => {
     if (ch === " ") return sum + 0.3;
     if (/[A-Z0-9]/.test(ch)) return sum + 0.7;
     if (/[a-z]/.test(ch)) return sum + 0.56;
     if (/[\u0021-\u024f]/.test(ch)) return sum + 0.5;
     return sum + 1;
   }, 0);
-  return Math.min(40, Math.max(3, Math.round(em * 1.06 * 10) / 10));
 }
 
-/** Inline custom property the hero headings size themselves from. */
+const clampUnits = (em: number) => Math.min(40, Math.max(3, Math.round(em * 1.06 * 10) / 10));
+
+/**
+ * Approximate width of a shop name in em, so the hero can set it as large
+ * as the column allows (CSS divides the column width by this).
+ */
+export function nameUnits(name: string): number {
+  return clampUnits(emWidth(name));
+}
+
+/**
+ * Inline custom properties the hero headings size themselves from:
+ * --units (whole name on one line) and --word-units (its longest word,
+ * which must never be split when the name wraps onto two lines).
+ */
 export function nameStyle(name: string): CSSProperties {
-  return { "--units": nameUnits(name) } as CSSProperties;
+  const words = name.trim().split(/\s+/);
+  // Unspaced Japanese names break at phrase boundaries (word-break:
+  // auto-phrase), so allow a line of about 60% of the name.
+  const longestWord = words.length === 1 && /[^\u0000-\u024f]/.test(name) ? emWidth(name) * 0.6 : Math.max(...words.map(emWidth));
+  return { "--units": nameUnits(name), "--word-units": clampUnits(longestWord) } as CSSProperties;
 }
 
 /** "01", "02", … for numbered lists (template ornament, not shop data). */
 export function ordinal(index: number): string {
   return String(index + 1).padStart(2, "0");
+}
+
+/**
+ * Up to two letters drawn from the shop name itself, for a typographic
+ * monogram: the initials of the first two Latin words ("EXAMPLE TEST" → "ET"),
+ * the initial of a single Latin word, or the first character of a Japanese
+ * name. Never anything that is not already in the name.
+ */
+export function monogram(name: string): string {
+  const words = name.split(/[\s・･·.\-_/&+]+/).filter(Boolean);
+  const latin = words.filter((w) => /^[A-Za-z0-9]/.test(w));
+  if (latin.length >= 2 && latin[0] === words[0]) return (latin[0][0] + latin[1][0]).toUpperCase();
+  const first = [...name.trim()][0] ?? "";
+  return /[a-z]/.test(first) ? first.toUpperCase() : first;
 }

@@ -1224,7 +1224,7 @@
     {
       "id": "DEV-026",
       "title": "Redesign the three demo templates to proposal quality (v2)",
-      "status": "review",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-007"
@@ -1237,7 +1237,12 @@
         "name + category + ward + address だけでも Hero とレイアウトで完成して見える。データのない section は出さない",
         "「Second Root の提案用デモ・公式サイトではない」表示を上下に残す（配色をテンプレートに合わせる）",
         "PC / mobile で横はみ出しなし。prefers-reduced-motion ではアニメーションしない",
-        "DemoView の型と toDemoView の fact-only 設計は変更しない"
+        "DemoView の型と toDemoView の fact-only 設計は変更しない",
+        "[v3] baked_goods_v1 に 3 つの art direction（editorial luxury / american pop / minimal boutique）。店名+カテゴリから決定的に選び、同じ店舗は常に同じ見た目",
+        "[v3] Hero は文字が主役。大きな抽象図形とループアニメーションは使わない（初回表示の短い motion のみ）",
+        "[v3] address-only でも余白を意図した構成に見える（EXAMPLE TEST を 3 variant × PC/mobile で比較）",
+        "[v3] 管理者プレビューで ?variant= により比較できる（公開ページは常に既定の variant）",
+        "[v3] bakery / cafe への展開は人間が方向性を選んでから"
       ],
       "required_tests": [
         "unit: demo-templates（許可文言・空 section・SVG/属性/CSS content）",
@@ -1246,10 +1251,13 @@
         "PC/mobile のスクリーンショット確認（最小データ・全データ）"
       ],
       "allowed_scope": [
+        ".ai/",
+        "app/admin/preview/",
+        "components/admin/admin.module.css",
         "components/demo/",
-        "tests/",
         "docs/",
-        ".ai/"
+        "tests/",
+        "vitest.config.mts"
       ],
       "forbidden_scope": [
         "lib/sales/demo-content.ts の fact-only 制約の緩和",
@@ -1262,7 +1270,7 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": "Fresh review PASS (Medium 1 / Low 7; Medium と Low 4 件を修正、残りは .ai/reviews/DEV-026.md に理由付きで記録)。unit / build / e2e green、PC・mobile のスクリーンショット確認済み。",
+      "last_failure": "v2 は PR #41 で review PASS。人間のフィードバック（業種別テンプレートに見える）を受け v3（baked_goods の 3 variant）を実装中。bakery / cafe は方向性の選択待ち。",
       "branch": "feature/dev-026-demo-redesign"
     }
   ]

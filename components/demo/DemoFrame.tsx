@@ -4,12 +4,24 @@ import styles from "./demo.module.css";
 
 // Every demo says, up front and at the end, that it is Second Root's
 // proposal and not the shop's official site (MVP_SPEC §7). The notice stays
-// pinned while scrolling; colours follow the template so it reads as part
-// of the page rather than a warning banner.
+// pinned like a site's utility bar and takes the page's own colours; the
+// art direction (className) sets the tokens it reads.
 
-export default function DemoFrame({ shopName, template, children }: { shopName: string; template: DemoTemplate; children: ReactNode }) {
+export default function DemoFrame({
+  shopName,
+  template,
+  variant,
+  className,
+  children,
+}: {
+  shopName: string;
+  template: DemoTemplate;
+  variant?: string;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <div className={styles.page} data-template={template}>
+    <div className={className ? `${styles.page} ${className}` : styles.page} data-template={template} data-variant={variant}>
       <p className={styles.notice} role="note">
         <svg className={styles.noticeMark} viewBox="0 0 16 16" aria-hidden="true">
           <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
@@ -24,10 +36,7 @@ export default function DemoFrame({ shopName, template, children }: { shopName: 
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
           <p className={styles.footerName}>{shopName}</p>
-          <svg className={styles.footerRule} viewBox="0 0 240 10" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M0 5h108M132 5h108" stroke="currentColor" strokeWidth="1" />
-            <path d="M120 1l4 4-4 4-4-4 4-4Z" fill="currentColor" />
-          </svg>
+          <span className={styles.footerRule} aria-hidden="true" />
           <p className={styles.footerNote}>
             このページは、{shopName}様に向けて Second Root が公開情報をもとに作成したデモです。
             <br />

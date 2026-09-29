@@ -12,6 +12,8 @@
   --accent-soft: #f4e6d9;
   --notice-bg: rgba(43, 38, 34, 0.94);
   --notice-ink: #fbf8f3;
+  --notice-line: transparent;
+  --footer-font: var(--font-display), serif;
   --footer-bg: #2b2622;
   --footer-ink: #f4ede4;
   --footer-accent: #d9b48f;
@@ -39,23 +41,6 @@
   --footer-bg: #2e2117;
   --footer-ink: #efe4d1;
   --footer-accent: #b7bf98;
-}
-
-/* editorial patisserie — ivory, dusty pink, dark brown */
-.page[data-template="baked_goods_v1"] {
-  --ink: #36231f;
-  --muted: #7a625d;
-  --paper: #f8f2ea;
-  --card: #fffaf4;
-  --line: #e2cbc4;
-  --accent: #b9777d;
-  --accent-deep: #8f4f58;
-  --accent-soft: #efd9d6;
-  --notice-bg: rgba(54, 35, 31, 0.94);
-  --notice-ink: #f8f2ea;
-  --footer-bg: #36231f;
-  --footer-ink: #f5e9e2;
-  --footer-accent: #e2b3b5;
 }
 
 /* contemporary cafe — cream, charcoal, deep green */
@@ -86,12 +71,13 @@
   gap: 8px;
   background: var(--notice-bg);
   color: var(--notice-ink);
-  font-size: 0.72rem;
+  border-bottom: 1px solid var(--notice-line);
+  font-size: 0.7rem;
   line-height: 1.55;
-  letter-spacing: 0.02em;
-  padding: 7px 14px;
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  letter-spacing: 0.03em;
+  padding: 6px 16px;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 .notice strong {
@@ -120,7 +106,7 @@
 
 .footerName {
   margin: 0;
-  font-family: var(--font-display), serif;
+  font-family: var(--footer-font);
   font-weight: 600;
   font-size: clamp(1.5rem, 6vw, 2.4rem);
   line-height: 1.3;
@@ -130,10 +116,10 @@
 
 .footerRule {
   display: block;
-  width: 180px;
-  height: 10px;
-  margin: 18px auto 20px;
-  color: var(--footer-accent);
+  width: 48px;
+  height: 1px;
+  margin: 22px auto;
+  background: var(--footer-accent);
 }
 
 .footerNote {
@@ -156,7 +142,7 @@
 
 @media (min-width: 720px) {
   .notice {
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     align-items: center;
   }
   .noticeMark {
