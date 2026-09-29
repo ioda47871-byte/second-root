@@ -150,6 +150,43 @@ export async function removeCodexSession(threadId: string, env: Record<string, s
   return removed;
 }
 
+/** Temp directory names the design agent runs Codex in (codex.ts and the worker's temp root). */
+const DESIGN_CWD = /\/sr-design-(codex|worker)-[A-Za-z0-9]{6}(?=["/\\])/;
+
+/**
+ * Deletes session logs of design-agent Codex calls that were cut off before
+ * removeCodexSession ran (a signal, a crash). A log belongs to the design
+ * agent when its first line (the session's metadata) names a working
+ * directory under one of the design agent's temp directories. Other Codex
+ * sessions of the user are not touched.
+ */
+export async function removeStaleCodexSessions(env: Record<string, string | undefined>): Promise<number> {
+  const home = env.CODEX_HOME || join(env.HOME || homedir(), ".codex");
+  let removed = 0;
+  for (const dir of ["sessions", "archived_sessions"]) {
+    const root = join(home, dir);
+    let names: string[];
+    try {
+      names = await readdir(root, { recursive: true });
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const base = name.split("/").pop() ?? "";
+      if (!base.startsWith("rollout-") || !base.endsWith(".jsonl")) continue;
+      const path = join(root, name);
+      const info = await lstat(path).catch(() => null);
+      if (!info?.isFile()) continue;
+      const head = await readFile(path, "utf8").then((t) => t.slice(0, 8192), () => "");
+      const firstLine = head.split("\n")[0] ?? "";
+      if (!/"cwd"/.test(firstLine) || !DESIGN_CWD.test(firstLine.replace(/\\\//g, "/"))) continue;
+      await rm(path, { force: true });
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 export interface CodexJsonOptions {
   /** The whole request. Sent on stdin, never as an argument (so it stays out of `ps`). */
   prompt: string;

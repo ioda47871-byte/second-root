@@ -23,3 +23,17 @@
 レビュー中に見つけた flaky: 負荷の高いときに mock への `route.fetch` がすぐ失敗した（keep-alive の接続を相手が閉じた直後）。fetch を 1 回だけやり直すようにし、design-agent のテストを 4 回続けて全件 PASS にした。
 
 検証: unit 472 件 PASS、lint・typecheck PASS、run.sh の実ファイルのテスト PASS。本番の build → next start → 撮影の経路は container で確認した。
+
+## 修正の再確認（58cac66）
+
+- H1〜M5 と Low の修正は reviewer が実際に試して確認した
+- **新しい High**: `mediaRects` の page callback の中の名前付き関数を、tsx（keepNames）が `__name()` で包む。その helper はページに無いので、本番（run.sh → tsx）では取得が毎回 CAPTURE_ERROR になっていた
+  - vitest の変換では起きないため、テストでは見えなかった
+  - 対応: page callback の中に名前付き関数を置かない（stack を使うループにした）
+  - 回帰テストを追加した: worker 1 件を tsx の子 process で端から端まで動かす
+  - 修正前のコードでは、このテストが落ちることを確かめた
+- Low の追加対応
+  - 予期しない crash と watchdog: job を processing に残し、recovery が回数に数える。いつも run を壊す job も failed/ に行く。人や systemd の signal だけは数えずに inbox へ戻す
+  - `abandonActiveJobSync` は、inbox に同じ id の新しい job があれば上書きしない
+  - signal で途中止めになった Codex の session log: 起動時に消す。対象は、1 行目の cwd が design agent の一時ディレクトリを指すものだけ。他の Codex session には触らない（テストあり）
+  - lock の引き取りの race（rm → wx）は run.sh の flock で直列化されるので、記録だけにした

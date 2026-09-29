@@ -157,8 +157,10 @@ async function run(): Promise<number> {
 function stopNow(code: string): never {
   killPreviewServers();
   killAllBoundedChildren();
-  // The job goes back to the inbox without counting as an attempt.
-  abandonActiveJobSync();
+  // Stopped by a person or systemd: the job goes back to the inbox without
+  // counting as an attempt. A crash or the watchdog leaves it to recovery,
+  // which counts it (a job that always breaks the run ends in failed/).
+  if (code === "WORKER_STOPPED_BY_SIGNAL") abandonActiveJobSync();
   removeActiveTempRootsSync();
   process.stdout.write(`${JSON.stringify({ status: "stopped", code, message: publicMessage(code) })}\n`);
   process.exit(3);

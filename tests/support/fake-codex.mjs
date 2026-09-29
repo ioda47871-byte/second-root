@@ -55,7 +55,7 @@ process.stdin.on("end", async () => {
     const dir = join(process.env.CODEX_HOME, "sessions", "2026", "09", "29");
     mkdirSync(dir, { recursive: true });
     const images = args.filter((a) => a.startsWith("--image=")).length;
-    writeFileSync(join(dir, `rollout-2026-09-29T10-00-00-${THREAD}.jsonl`), JSON.stringify({ images }) + "\n");
+    writeFileSync(join(dir, `rollout-2026-09-29T10-00-00-${THREAD}.jsonl`), JSON.stringify({ type: "session_meta", payload: { cwd: process.cwd() } }) + "\n" + JSON.stringify({ images }) + "\n");
     writeFileSync(join(dir, "rollout-2026-09-29T09-00-00-11111111-1111-4111-8111-111111111111.jsonl"), "{}\n");
   }
   if (step.sleepMs) await new Promise((r) => setTimeout(r, step.sleepMs));

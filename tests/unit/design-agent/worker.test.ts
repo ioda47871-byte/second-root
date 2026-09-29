@@ -80,6 +80,18 @@ describe("a normal run", () => {
     expect(statSync(join(runDir, "report.json")).mode & 0o077).toBe(0);
   });
 
+  it("removes leftover design-agent Codex session logs from a stopped run, and no other sessions", async () => {
+    const l = makeLayout();
+    const day = join(l.root, "codex-home", "sessions", "2026", "09", "28");
+    mkdirSync(day, { recursive: true });
+    const meta = (cwd: string) => JSON.stringify({ type: "session_meta", payload: { cwd } }) + "\n{}\n";
+    writeFileSync(join(day, "rollout-2026-09-28T01-00-00-22222222-2222-4222-8222-222222222222.jsonl"), meta("/tmp/sr-design-worker-abc123/sr-design-codex-def456"));
+    writeFileSync(join(day, "rollout-2026-09-28T02-00-00-33333333-3333-4333-8333-333333333333.jsonl"), meta("/home/someone/project"));
+    const { logs } = await runWorker(l, site);
+    expect(ls(day)).toEqual(["rollout-2026-09-28T02-00-00-33333333-3333-4333-8333-333333333333.jsonl"]);
+    expect(logs.join("\n")).toContain("removed 1 leftover Codex session log");
+  });
+
   it("follows a redirect that stays on the allowed site", async () => {
     const l = makeLayout();
     writeJob(l, "job-hop", "https://www.instagram.com/hop_shop/");

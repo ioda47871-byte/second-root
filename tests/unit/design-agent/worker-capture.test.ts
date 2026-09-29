@@ -63,3 +63,21 @@ describe("capture privacy", () => {
     expect((readFileSync(grid)[0])).toBe(0x89);
   });
 });
+
+describe("under tsx (as run.sh starts the worker)", () => {
+  it("captures and designs with the same code path production uses", async () => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { resolve } = await import("node:path");
+    const repo = resolve(__dirname, "../../..");
+    const { stdout } = await promisify(execFile)(join(repo, "node_modules/.bin/tsx"), [join(repo, "tests/support/worker-under-tsx.ts")], {
+      cwd: repo,
+      env: process.env,
+      timeout: 90_000,
+    });
+    const { report, run } = JSON.parse(stdout.trim().split("\n").pop()!) as { report: { status: string; jobs: Array<{ status: string; outcome?: string }> }; run: { instagram: { status: string; media_softened: number } } | null };
+    expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
+    expect(run?.instagram.status).toBe("captured");
+    expect(run?.instagram.media_softened).toBeGreaterThanOrEqual(3);
+  });
+});

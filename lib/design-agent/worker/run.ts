@@ -24,7 +24,7 @@ import { copyFile, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promise
 import { join } from "node:path";
 import type { Browser } from "playwright";
 import { DeadlineError, killAllBoundedChildren, type RunDeadline } from "../bounded-process";
-import { assertChatGptSignIn, CodexError, runCodexJson } from "../codex";
+import { assertChatGptSignIn, CodexError, removeStaleCodexSessions, runCodexJson } from "../codex";
 import { runDesignPipeline, type PipelineReport, type Shots } from "../pipeline";
 import { factsToDemoView } from "../preview";
 import { looseJsonSchema } from "../profile";
@@ -99,14 +99,24 @@ export type WorkerReport =
 let active: { dirs: QueueDirs; jobId: string; runDir: string } | null = null;
 
 /**
- * For signal handlers and the watchdog: puts the job being worked on back in
- * the inbox (not counted as an attempt) and removes its unfinished run
- * directory. A job whose report.json exists is left for recovery to finish.
+ * For a stop by signal (a person or systemd stopping the run): puts the job
+ * being worked on back in the inbox, not counted as an attempt, and removes
+ * its unfinished run directory. A job whose report.json exists, or whose id
+ * already waits in the inbox again, is left in processing for recovery.
+ * (An unexpected crash or the watchdog does not call this: the job stays in
+ * processing and recovery counts it, so a job that always breaks the run
+ * ends in failed/.)
  */
 export function abandonActiveJobSync(): void {
   const job = active;
   active = null;
   if (!job) return;
+  try {
+    lstatSync(join(job.dirs.inbox, `${job.jobId}.json`));
+    return;
+  } catch {
+    /* no newer copy waiting */
+  }
   try {
     lstatSync(join(job.runDir, "report.json"));
     return;
@@ -161,6 +171,9 @@ export async function runDesignWorker(options: WorkerOptions): Promise<WorkerRep
   try {
     const removed = await cleanStaleTemp(options.tmpBase, now());
     if (removed.length > 0) log(`removed ${removed.length} stale temporary director${removed.length === 1 ? "y" : "ies"}`);
+    // Session logs of Codex calls a stopped run could not clean up (they can hold the screenshots).
+    const sessions = await removeStaleCodexSessions(options.env).catch(() => 0);
+    if (sessions > 0) log(`removed ${sessions} leftover Codex session log${sessions === 1 ? "" : "s"}`);
     tempRoot = await createTempRoot(options.tmpBase, lock.holder);
     // Browser profiles, screenshots and Codex scratch dirs all go inside.
     process.env.TMPDIR = tempRoot;

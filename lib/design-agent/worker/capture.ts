@@ -86,10 +86,14 @@ type Rect = { x: number; y: number; w: number; h: number };
 
 /** Every media element's page rectangle, shadow roots included; also blurs them in place. */
 async function mediaRects(page: Page, filter: string): Promise<Rect[]> {
+  // No named functions inside page callbacks: tsx (keepNames) would wrap them
+  // in a __name() helper that does not exist in the page.
   return page.evaluate((f) => {
     const out: Array<{ x: number; y: number; w: number; h: number }> = [];
     const MEDIA = new Set(["img", "video", "canvas", "picture", "image", "iframe", "object", "embed"]);
-    const visit = (root: Document | ShadowRoot) => {
+    const roots: Array<Document | ShadowRoot> = [document];
+    while (roots.length > 0) {
+      const root = roots.pop()!;
       for (const el of Array.from(root.querySelectorAll("*"))) {
         const style = getComputedStyle(el);
         const tag = el.tagName.toLowerCase();
@@ -98,10 +102,9 @@ async function mediaRects(page: Page, filter: string): Promise<Rect[]> {
           const r = el.getBoundingClientRect();
           if (r.width >= 8 && r.height >= 8) out.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height });
         }
-        if (el.shadowRoot) visit(el.shadowRoot);
+        if (el.shadowRoot) roots.push(el.shadowRoot);
       }
-    };
-    visit(document);
+    }
     return out;
   }, filter);
 }
