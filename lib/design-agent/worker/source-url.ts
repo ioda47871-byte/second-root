@@ -5,7 +5,7 @@
 // refused before a browser is started. Query and fragment are dropped.
 
 const HOSTS = new Set(["instagram.com", "www.instagram.com"]);
-const USERNAME = /^(?!.*\.\.)(?!\.)[A-Za-z0-9._]{1,30}(?<!\.)$/;
+export const USERNAME = /^(?!.*\.\.)(?!\.)[A-Za-z0-9._]{1,30}(?<!\.)$/;
 /** First path segments that are Instagram pages, not accounts. */
 const RESERVED = new Set([
   "p", "reel", "reels", "tv", "stories", "explore", "accounts", "direct", "about", "legal", "developer",

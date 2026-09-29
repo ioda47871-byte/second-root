@@ -6,6 +6,9 @@
  *
  *   tsx scripts/sales-design-worker/worker.ts [--max=1] [--budget-seconds=<n>]
  *   tsx scripts/sales-design-worker/worker.ts enqueue --job-id <id> --facts <file.json> --instagram <profile url>
+ *   tsx scripts/sales-design-worker/worker.ts meta-check --ig-user-id <our IG user id> --username <target>
+ *     (Business Discovery PoC: read-only, prints codes and field names only; see
+ *      docs/operations/design-worker-meta-check.md)
  *
  * Paths (all outside the repository; the repository is public):
  *   queue    $SR_DESIGN_JOBS or ~/sr-design-jobs
@@ -17,7 +20,7 @@
  * child stderr. Exit: 0 = every job reached a recorded outcome (or nothing to
  * do), 1 = a job failed or will be retried, 3 = stopped (environment).
  */
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { chromium } from "playwright";
@@ -25,11 +28,12 @@ import { killAllBoundedChildren, runBounded, RunDeadline } from "../../lib/desig
 import { factsToDemoView } from "../../lib/design-agent/preview";
 import { killPreviewServers } from "../../lib/design-agent/preview-server";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
+import { API_VERSION, formatMetaCheck, IG_USER_ID, MetaSetupError, readSecretFile, runMetaCheck } from "../../lib/design-agent/worker/meta";
 import { publicMessage } from "../../lib/design-agent/worker/messages";
 import { productionPreview } from "../../lib/design-agent/worker/preview";
 import { ensureQueue, JOB_ID, pickFacts, queueDirs } from "../../lib/design-agent/worker/queue";
 import { abandonActiveJobSync, DEFAULT_MAX_JOBS, RUN_TIME_BUDGET_MS, runDesignWorker, type WorkerReport } from "../../lib/design-agent/worker/run";
-import { parseInstagramProfileUrl } from "../../lib/design-agent/worker/source-url";
+import { parseInstagramProfileUrl, USERNAME } from "../../lib/design-agent/worker/source-url";
 import { removeActiveTempRootsSync } from "../../lib/design-agent/worker/temp";
 
 const REPO = resolve(__dirname, "../..");
@@ -79,6 +83,45 @@ async function enqueue(): Promise<number> {
   await rename(temp, join(dirs.inbox, `${jobId}.json`));
   say(`queued job ${jobId}`);
   return 0;
+}
+
+// ------------------------------------------------------------------ meta-check
+
+/**
+ * Business Discovery PoC. Exit: 0 TARGET_FOUND, 4 TARGET_UNSUPPORTED,
+ * 3 token / permission / rate limit / Meta error, 2 setup or usage.
+ */
+async function metaCheck(): Promise<number> {
+  const configDir = join(expand(process.env.XDG_CONFIG_HOME ?? "~/.config"), "sr-design-worker");
+  const tokenFile = expand(flag("token-file") ?? join(configDir, "meta-token"));
+  const secretFile = join(configDir, "meta-app-secret");
+  if (insideRepo(tokenFile)) usage("--token-file must be outside the repository.");
+  const igUserId = flag("ig-user-id") ?? (await readFile(join(configDir, "meta-ig-user-id"), "utf8").then((t) => t.trim(), () => ""));
+  if (!IG_USER_ID.test(igUserId)) usage("--ig-user-id <our Instagram professional account id> (digits), or put it in ~/.config/sr-design-worker/meta-ig-user-id.");
+  const username = flag("username") ?? "";
+  if (!USERNAME.test(username)) usage("--username <target Instagram username> (letters, digits, . and _).");
+  const apiVersion = flag("api-version");
+  if (apiVersion !== undefined && !API_VERSION.test(apiVersion)) usage("--api-version like v26.0.");
+  // The directory holding the token must be private too.
+  const dir = await lstat(join(tokenFile, "..")).catch(() => null);
+  if (!dir || dir.isSymbolicLink() || (dir.mode & 0o077) !== 0) {
+    say("TOKEN_FILE_UNSAFE (the token's directory must be 0700 and owned by this user)");
+    return 2;
+  }
+  let token: string;
+  let appSecret: string | undefined;
+  try {
+    token = await readSecretFile(tokenFile, "token");
+    appSecret = (await lstat(secretFile).catch(() => null)) ? await readSecretFile(secretFile, "secret") : undefined;
+  } catch (error) {
+    say(error instanceof MetaSetupError ? `${error.code} (see docs/operations/design-worker-meta-check.md)` : "TOKEN_FILE_INVALID");
+    return 2;
+  }
+  const result = await runMetaCheck({ token, appSecret, igUserId, username, apiVersion });
+  for (const line of formatMetaCheck(result)) process.stdout.write(`${line}\n`);
+  if (result.final === "TARGET_FOUND") return 0;
+  if (result.final === "TARGET_UNSUPPORTED") return 4;
+  return 3;
 }
 
 // ------------------------------------------------------------------ run
@@ -170,7 +213,7 @@ for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal
 // A stray rejection must not print a stack with someone else's words in it.
 process.on("unhandledRejection", () => stopNow("WORKER_UNEXPECTED"));
 
-(argv[0] === "enqueue" ? enqueue() : run()).then(
+(argv[0] === "enqueue" ? enqueue() : argv[0] === "meta-check" ? metaCheck() : run()).then(
   (code) => process.exit(code),
   () => stopNow("WORKER_UNEXPECTED"),
 );

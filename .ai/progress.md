@@ -125,3 +125,4 @@
   - Instagram は `https://(www.)instagram.com/<profile>/` だけを開く。redirect は 1 段ずつ検査し、`PUBLIC_SOURCE_UNAVAILABLE` は想定された結果として扱う。
   - Linux の run directory が正本。Windows へのコピーは best effort で、`windows_copy` を report に記録する。
   - unit 462 件 PASS。本番の build → next start → 撮影の経路も container で確認。systemd timer は enable していない。
+- 2026-09-29: DEV-028 Business Discovery PoC（`sales:design-worker -- meta-check`）を追加した。Facebook Login 系の別 App で読むだけ。符号と項目名だけを表示し、画像は取らない。token は WSL だけに置く。Platform Terms 上のデータ利用は BLOCKED（人間の判断待ち）。worker にはまだ組み込まない（`.ai/research/meta-business-discovery-2026-09-29.md`、`docs/operations/design-worker-meta-check.md`）。
