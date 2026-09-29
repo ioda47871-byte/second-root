@@ -20,7 +20,7 @@ import { homedir } from "node:os";
 import { extname, join, relative, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { killAllBoundedChildren, runBounded, RunDeadline } from "../../lib/design-agent/bounded-process";
-import { CodexError, runCodexJson } from "../../lib/design-agent/codex";
+import { codexEnvironment, CodexError, runCodexJson } from "../../lib/design-agent/codex";
 import { runDesignPipeline, type PipelineReport, type Shots } from "../../lib/design-agent/pipeline";
 import { factsToDemoView, RUN_ID } from "../../lib/design-agent/preview";
 
@@ -99,8 +99,7 @@ async function loadReferences(dir: string): Promise<string[]> {
 // ---------------------------------------------------------------- local server
 
 function startServer(port: number, previewRoot: string): ChildProcess {
-  const env: NodeJS.ProcessEnv = { ...process.env, SR_DESIGN_PREVIEW_ROOT: previewRoot, PORT: String(port) };
-  for (const name of ["OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL"]) delete env[name];
+  const env = codexEnvironment({ ...process.env, SR_DESIGN_PREVIEW_ROOT: previewRoot, PORT: String(port) });
   const child = spawn("npx", ["next", "start", "--port", String(port), "--hostname", "127.0.0.1"], { cwd: REPO, env, stdio: "ignore", detached: true });
   return child;
 }

@@ -48,8 +48,8 @@ export function isEnvironmentFailure(code: CodexFailureCode): boolean {
 }
 
 /** The environment without any API-key route. */
-export function codexEnvironment(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...base };
+export function codexEnvironment(base: Record<string, string | undefined>): NodeJS.ProcessEnv {
+  const env = { ...base } as NodeJS.ProcessEnv;
   for (const name of CODEX_BLOCKED_ENV) delete env[name];
   return env;
 }

@@ -11,7 +11,7 @@ import { checkProfile, type DesignProfile } from "./profile";
 export const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{5,79}$/;
 const CANDIDATE = /^(none|default|final|candidate-[0-9]{1,2})$/;
 
-export function previewRoot(env: NodeJS.ProcessEnv): string | null {
+export function previewRoot(env: Record<string, string | undefined>): string | null {
   const root = env.SR_DESIGN_PREVIEW_ROOT;
   return root && isAbsolute(root) ? root : null;
 }

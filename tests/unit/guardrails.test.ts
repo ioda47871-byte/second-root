@@ -49,6 +49,22 @@ describe("guardrails", () => {
     for (const call of graph.match(/fetch\s*\(([^,]+),/g) ?? []) expect(call).toMatch(/fetch\(`\$\{GRAPH_BASE\}\//);
   });
 
+  it("keeps the Codex CLI out of the web app and never uses an OpenAI API key (DEV-028)", () => {
+    // The design agent runs only as a local CLI on the WSL design user.
+    const webFiles = sourceFiles.filter((f) => f.startsWith("app/") || f.startsWith("components/") || f.startsWith("lib/sales/") || f.startsWith("lib/admin/"));
+    const importers = webFiles.filter((f) => /lib\/design-agent\/(codex|pipeline|bounded-process)/.test(readFileSync(f, "utf8")));
+    expect(importers).toEqual([]);
+    // OpenAI key variables appear only in the lists that strip them from Codex's environment.
+    const KEY = /\b(OPENAI_API_KEY|CODEX_API_KEY)\b/;
+    const mentions = sourceFiles.filter((f) => KEY.test(readFileSync(f, "utf8")));
+    expect(mentions).toEqual(["lib/design-agent/codex.ts"]);
+    for (const f of mentions) {
+      for (const line of readFileSync(f, "utf8").split("\n").filter((l) => KEY.test(l))) {
+        expect(line, f).toMatch(/CODEX_BLOCKED_ENV = \[|^\s*\*/);
+      }
+    }
+  });
+
   it("does not track env files other than the example", () => {
     const envFiles = trackedFiles.filter((f) => /(^|\/)\.env/.test(f));
     expect(envFiles).toEqual([".env.local.example"]);
