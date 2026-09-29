@@ -84,7 +84,9 @@ cd ~/work/second-root && npm run -s sales:design-worker -- meta-check --username
 | `PERMISSION_ERROR` | C-4 の権限が足りない。または Standard Access では許されない呼び出し | 3 |
 | `RATE_LIMITED` | 時間をおく | 3 |
 | `META_TRANSIENT_ERROR` | Meta 側の障害かネットワーク。時間をおく | 3 |
-| `TOKEN_FILE_MISSING` / `TOKEN_FILE_UNSAFE` / `TOKEN_FILE_INVALID` | D をやり直す（ファイル 0600・ディレクトリ 0700・自分の所有・link でない） | 2 |
+| `TOKEN_FILE_MISSING` / `TOKEN_FILE_UNSAFE` / `TOKEN_FILE_INVALID` | D をやり直す（ファイル 0600・ディレクトリ 0700・どちらも自分の所有・link でない） | 2 |
+| `SECRET_FILE_UNSAFE` | `meta-app-secret` を置いた場合だけ。token と同じ条件で置き直す | 2 |
+| `META_UNKNOWN_ERROR` | 想定外の応答。時間をおいて 1 回だけやり直し、同じならそこで止める | 3 |
 
 エラーのときは `(graph code N, subcode M)` の数字だけが出る。Meta のエラー文は出さない（相手の情報や token が混ざりうるため）。
 

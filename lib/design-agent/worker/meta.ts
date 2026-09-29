@@ -19,7 +19,8 @@
  * - Nothing is downloaded or stored: no media, no profile data.
  */
 import { createHmac } from "node:crypto";
-import { lstat, readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
 import { USERNAME } from "./source-url";
 
 export const GRAPH_HOST = "https://graph.facebook.com";
@@ -62,15 +63,48 @@ export class MetaSetupError extends Error {
   }
 }
 
-/** Reads a secret file only if it is a private regular file of this user. */
+/**
+ * Reads a secret file only if it is a private regular file of this user.
+ * Opened with O_NOFOLLOW and checked on the open handle, so a link or a swap
+ * between the check and the read is refused.
+ */
 export async function readSecretFile(path: string, kind: "token" | "secret", uid: number | undefined = process.getuid?.()): Promise<string> {
-  const info = await lstat(path).catch(() => null);
-  if (!info) throw new MetaSetupError(kind === "token" ? "TOKEN_FILE_MISSING" : "SECRET_FILE_UNSAFE");
-  const unsafe = info.isSymbolicLink() || !info.isFile() || (info.mode & 0o077) !== 0 || (uid !== undefined && info.uid !== uid) || info.size > 4096;
-  if (unsafe) throw new MetaSetupError(kind === "token" ? "TOKEN_FILE_UNSAFE" : "SECRET_FILE_UNSAFE");
-  const value = (await readFile(path, "utf8")).trim();
-  if (!TOKEN.test(value)) throw new MetaSetupError(kind === "token" ? "TOKEN_FILE_INVALID" : "SECRET_FILE_UNSAFE");
-  return value;
+  const unsafe = () => new MetaSetupError(kind === "token" ? "TOKEN_FILE_UNSAFE" : "SECRET_FILE_UNSAFE");
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch (error) {
+    if ((error as { code?: string }).code === "ENOENT") throw new MetaSetupError(kind === "token" ? "TOKEN_FILE_MISSING" : "SECRET_FILE_UNSAFE");
+    throw unsafe(); // ELOOP: a symbolic link
+  }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || (info.mode & 0o077) !== 0 || (uid !== undefined && info.uid !== uid) || info.size > 4096) throw unsafe();
+    const value = (await handle.readFile("utf8")).trim();
+    if (!TOKEN.test(value)) throw new MetaSetupError(kind === "token" ? "TOKEN_FILE_INVALID" : "SECRET_FILE_UNSAFE");
+    return value;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Reads at most `max` bytes of a response body, then stops reading. */
+async function readCapped(res: Response, max: number): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    size += value.byteLength;
+    if (size >= max) {
+      await reader.cancel().catch(() => undefined);
+      break;
+    }
+  }
+  return Buffer.concat(chunks).subarray(0, max).toString("utf8");
 }
 
 type GraphError = { code?: unknown; error_subcode?: unknown; is_transient?: unknown };
@@ -129,7 +163,7 @@ async function graphGet(options: MetaCheckOptions, path: string, fields: string)
       redirect: "error",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    const text = (await res.text()).slice(0, MAX_BODY);
+    const text = await readCapped(res, MAX_BODY);
     let body: Record<string, unknown> | null = null;
     try {
       body = JSON.parse(text) as Record<string, unknown>;
@@ -167,11 +201,13 @@ export async function runMetaCheck(options: MetaCheckOptions): Promise<MetaCheck
   // 3. Business Discovery for the target (metadata only)
   const fields = `business_discovery.username(${options.username}){${TARGET_FIELDS.join(",")},media.limit(${MEDIA_LIMIT}){${MEDIA_FIELDS.join(",")}}}`;
   const target = await graphGet(options, options.igUserId, fields);
-  if (target === "NETWORK" || target.status !== 200) return fail("target", target);
-  const discovered = target.body?.business_discovery as Record<string, unknown> | undefined;
+  // An error body (even with HTTP 200) or a body that is not JSON is classified by
+  // its numbers; it is never taken as "the target is unsupported" by default.
+  if (target === "NETWORK" || target.status !== 200 || target.body === null || target.body.error !== undefined) return fail("target", target);
+  const discovered = target.body.business_discovery as Record<string, unknown> | undefined;
   if (!discovered || typeof discovered !== "object") {
-    steps.push({ code: "TARGET_UNSUPPORTED" });
-    return { steps, final: "TARGET_UNSUPPORTED" };
+    steps.push({ code: "META_UNKNOWN_ERROR" });
+    return { steps, final: "META_UNKNOWN_ERROR" };
   }
   const media = ((discovered.media as { data?: unknown } | undefined)?.data ?? []) as Array<Record<string, unknown>>;
   const items = Array.isArray(media) ? media.filter((m) => m && typeof m === "object") : [];

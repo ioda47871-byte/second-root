@@ -20,7 +20,7 @@
  * child stderr. Exit: 0 = every job reached a recorded outcome (or nothing to
  * do), 1 = a job failed or will be retried, 3 = stopped (environment).
  */
-import { lstat, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { chromium } from "playwright";
@@ -95,7 +95,9 @@ async function metaCheck(): Promise<number> {
   const configDir = join(expand(process.env.XDG_CONFIG_HOME ?? "~/.config"), "sr-design-worker");
   const tokenFile = expand(flag("token-file") ?? join(configDir, "meta-token"));
   const secretFile = join(configDir, "meta-app-secret");
-  if (insideRepo(tokenFile)) usage("--token-file must be outside the repository.");
+  // Compared after resolving links, so a linked directory cannot point into the repository.
+  const realTokenDir = await realpath(join(tokenFile, "..")).catch(() => join(tokenFile, ".."));
+  if (insideRepo(tokenFile) || !relative(await realpath(REPO), realTokenDir).startsWith("..")) usage("--token-file must be outside the repository.");
   const igUserId = flag("ig-user-id") ?? (await readFile(join(configDir, "meta-ig-user-id"), "utf8").then((t) => t.trim(), () => ""));
   if (!IG_USER_ID.test(igUserId)) usage("--ig-user-id <our Instagram professional account id> (digits), or put it in ~/.config/sr-design-worker/meta-ig-user-id.");
   const username = flag("username") ?? "";
@@ -104,7 +106,7 @@ async function metaCheck(): Promise<number> {
   if (apiVersion !== undefined && !API_VERSION.test(apiVersion)) usage("--api-version like v26.0.");
   // The directory holding the token must be private too.
   const dir = await lstat(join(tokenFile, "..")).catch(() => null);
-  if (!dir || dir.isSymbolicLink() || (dir.mode & 0o077) !== 0) {
+  if (!dir || dir.isSymbolicLink() || !dir.isDirectory() || (dir.mode & 0o077) !== 0 || dir.uid !== process.getuid?.()) {
     say("TOKEN_FILE_UNSAFE (the token's directory must be 0700 and owned by this user)");
     return 2;
   }

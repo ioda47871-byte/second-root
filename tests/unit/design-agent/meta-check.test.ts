@@ -124,6 +124,24 @@ describe("meta-check (Business Discovery PoC)", () => {
     expect(printed).not.toContain(SECRET_TEXT);
   });
 
+  it.each([
+    ["an expired token", { error: { code: 190, error_subcode: 463 } }, "TOKEN_EXPIRED"],
+    ["a rate limit", { error: { code: 4 } }, "RATE_LIMITED"],
+    ["a transient error", { error: { code: 2 } }, "META_TRANSIENT_ERROR"],
+    ["a body without business_discovery", { id: OUR_ID }, "META_UNKNOWN_ERROR"],
+  ] as const)("classifies HTTP 200 with %s by its numbers, never as TARGET_UNSUPPORTED", async (_label, body, code) => {
+    routes = (url) => ((url.searchParams.get("fields") ?? "").startsWith("business_discovery") ? { status: 200, body } : ok(url));
+    expect((await check()).final).toBe(code);
+  });
+
+  it("does not take a non-JSON 200 page (for example a proxy page) as an unsupported target", async () => {
+    const fetchImpl = (async (input: string | URL | Request) =>
+      String(input).includes("business_discovery")
+        ? new Response("<html>proxy</html>", { status: 200 })
+        : new Response(JSON.stringify(String(input).includes("/me?") ? { id: "1" } : { id: OUR_ID }), { status: 200 })) as typeof fetch;
+    expect((await check({ fetchImpl })).final).toBe("META_UNKNOWN_ERROR");
+  });
+
   it("does not treat a token, permission or Meta failure as an unsupported target", () => {
     for (const code of [190, 10, 200, 4, 17, 32, 613, 1, 2]) {
       expect(classifyGraphError(400, { code, error_subcode: 2207013 }, "target").code).not.toBe("TARGET_UNSUPPORTED");
@@ -168,6 +186,9 @@ describe("meta token file", () => {
     const link = join(d, "link");
     symlinkSync(f, link);
     await expect(readSecretFile(link, "token")).rejects.toMatchObject({ code: "TOKEN_FILE_UNSAFE" });
+    const sub = join(d, "sub");
+    mkdirSync(sub);
+    await expect(readSecretFile(sub, "token")).rejects.toMatchObject({ code: "TOKEN_FILE_UNSAFE" });
     writeFileSync(f, "not a token; rm -rf", { mode: 0o600 });
     await expect(readSecretFile(f, "token")).rejects.toMatchObject({ code: "TOKEN_FILE_INVALID" });
     await expect(readSecretFile(join(d, "missing"), "token")).rejects.toMatchObject({ code: "TOKEN_FILE_MISSING" });
@@ -191,5 +212,12 @@ describe("meta token file", () => {
     const second = await run(join(repo, "node_modules/.bin/tsx"), args, { cwd: repo, env }).catch((e: { code: number; stdout: string }) => e);
     expect((second as { code: number }).code).toBe(2);
     expect((second as { stdout: string }).stdout).toContain("TOKEN_FILE_UNSAFE");
+    // a token directory that is a link into the repository is refused
+    chmodSync(workerDir, 0o700);
+    const linkBase = dir();
+    symlinkSync(join(repo, "docs"), join(linkBase, "into-repo"));
+    const third = await run(join(repo, "node_modules/.bin/tsx"), [...args, "--token-file", join(linkBase, "into-repo", "meta-token")], { cwd: repo, env }).catch((e: { code: number; stderr: string }) => e);
+    expect((third as { code: number }).code).toBe(2);
+    expect((third as { stderr: string }).stderr).toContain("outside the repository");
   });
 });

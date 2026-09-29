@@ -58,3 +58,18 @@
   - loose の答えも palette と余分な項目で弾く
   - quota では送り直さない
   - strict が通れば最後まで strict
+
+## Business Discovery PoC（meta-check）の fresh review
+
+- 対象: b7b0642。独立した agent が注入した `fetchImpl` で実際に試した
+- Medium 1 件（修正済み）
+  - HTTP 200 で本文が error（期限切れの token・rate limit）や proxy の HTML だった場合に、TARGET_UNSUPPORTED と判定していた
+  - 対応: error 本文と JSON でない本文は数値で分類する。`business_discovery` が無い 200 は META_UNKNOWN_ERROR にする（テストあり）
+- Low 3 件（修正済み）
+  - token のディレクトリの所有者・種類を検査していなかった → 検査する
+  - link を辿ると token の置き場所が repo の中を指せた → realpath で比べる
+  - `lstat` から読むまでの間に差し替えられうる → O_NOFOLLOW で開き、開いた handle の stat で検査する
+  - 応答の大きさの上限が読み終えた後にかかっていた → 読む途中で打ち切る
+  - 文書に SECRET_FILE_UNSAFE / META_UNKNOWN_ERROR が無かった → 追加
+- 確認済みで問題なし
+  - token は Authorization header だけ・redirect で失敗・timeout・appsecret_proof・出力の許可リスト・username の注入不可・テスト用の注入口を CLI から使えないこと・Messaging のコードに触れていないこと・文書の保存手順
