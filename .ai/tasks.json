@@ -1224,7 +1224,7 @@
     {
       "id": "DEV-027",
       "title": "Instagram reply send RPCs: fix lock-order deadlock on a double tap",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-023"
@@ -1263,7 +1263,7 @@
         "MVP 仕様の重大変更"
       ],
       "attempts": 0,
-      "last_failure": null,
+      "last_failure": "PR #42 作成（develop 向け）。Fresh review round 1 FAIL（High 1: begin_send と save_draft の thread/draft 逆順）→ 修正、round 2 PASS（Critical/High 0）。旧定義では決定的 lock test 4 本がすべて 40P01、修正後 integration 238/238。Staging / Production への migration 適用は人間（.ai/reviews/DEV-027.md）。",
       "branch": "feature/dev-027-ig-send-lock-order"
     }
   ]
