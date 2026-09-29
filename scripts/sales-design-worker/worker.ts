@@ -33,6 +33,8 @@ import { parseInstagramProfileUrl } from "../../lib/design-agent/worker/source-u
 import { removeActiveTempRootsSync } from "../../lib/design-agent/worker/temp";
 
 const REPO = resolve(__dirname, "../..");
+// Everything the worker writes (results, queue, screenshots) is private to the worker user.
+process.umask(0o077);
 const WATCHDOG_GRACE_MS = 60 * 1000;
 
 const argv = process.argv.slice(2);
