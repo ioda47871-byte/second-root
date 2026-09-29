@@ -53,6 +53,9 @@ const state = async (draftId: string) => {
   return { draft: d.status as string, sends };
 };
 
+const clearConversations = () =>
+  db.query("truncate public.sales_ig_messages, public.sales_ig_threads, public.sales_ig_webhook_events, public.sales_outreaches, public.sales_demos, public.sales_sources, public.sales_prospects, public.sales_agent_runs cascade");
+
 beforeAll(async () => {
   await resetSalesData();
   await makeAdmin(await createUser("igsend-admin@test.example.com"));
@@ -61,7 +64,7 @@ beforeAll(async () => {
   outsider = await signedInClient("igsend-outsider@test.example.com");
 });
 beforeEach(async () => {
-  await db.query("truncate public.sales_ig_messages, public.sales_ig_threads, public.sales_ig_webhook_events, public.sales_outreaches, public.sales_demos, public.sales_sources, public.sales_prospects, public.sales_agent_runs cascade");
+  await clearConversations();
   replies = [];
   sendCalls = [];
   vi.stubEnv("INSTAGRAM_APP_SECRET", SECRET);
@@ -325,4 +328,119 @@ describe("review regressions", () => {
     expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "refused", code: "too_many_attempts" });
     expect(sendCalls).toHaveLength(0);
   });
+});
+
+describe("[DEV-027] one lock order (thread, draft, send)", () => {
+  // The send RPCs used to lock rows in different orders, so two of them (or
+  // one and the drafting job) could each hold a lock the other needed and
+  // Postgres aborted one as a deadlock (40P01). On a double tap that was the
+  // first call's finish_send, and a reply Meta had delivered ended up
+  // 'unknown'. Each test here plays the other side in its own transaction:
+  // it takes the first lock, waits until the RPC is blocked behind it, then
+  // takes the second lock. With one lock order this never deadlocks and the
+  // RPC's result is recorded.
+  type Step = [sql: string, params: unknown[]];
+  async function whileHolding<T extends { error: unknown }>(first: Step, second: Step, call: () => PromiseLike<T>): Promise<T> {
+    const other = await db.connect();
+    let pending: Promise<T> | undefined;
+    try {
+      await other.query("begin");
+      const { rows: [{ pid }] } = await other.query("select pg_backend_pid() as pid");
+      await other.query(...first);
+      let settled = false;
+      pending = Promise.resolve(call()).finally(() => {
+        settled = true;
+      });
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const { rows: [{ n }] } = await db.query("select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))", [pid]);
+        if (n > 0) break;
+        if (settled) throw new Error(`the RPC did not wait for the first lock: ${JSON.stringify(await pending!)}`);
+        if (Date.now() > deadline) throw new Error("the RPC never waited for the first lock");
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      await other.query(...second);
+      await other.query("commit");
+      return await pending!;
+    } catch (e) {
+      await other.query("rollback").catch(() => {});
+      // Let the RPC finish before the next test truncates the tables.
+      await pending?.catch(() => {});
+      throw e;
+    } finally {
+      other.release();
+    }
+  }
+  const lockDraft = (draftId: string): Step => ["select 1 from public.sales_ig_drafts where id = $1 for update", [draftId]];
+  const lockSends = (draftId: string): Step => ["select 1 from public.sales_ig_sends where draft_id = $1 for update", [draftId]];
+  const lockThread = (threadId: string): Step => ["select 1 from public.sales_ig_threads where id = $1 for update", [threadId]];
+  // What sales_ig_save_draft / sales_ig_resolve_thread do after locking the thread.
+  const touchDrafts = (threadId: string): Step => ["update public.sales_ig_drafts set status = status where thread_id = $1", [threadId]];
+
+  it("finish_send behind a second tap's begin_send (draft → send): records 'sent'", async () => {
+    const c = await conversation("900000000000801");
+    const begun = (await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId })).data as { send_id: string; attempt: number };
+    const result = await whileHolding(lockDraft(c.draftId), lockSends(c.draftId), () =>
+      admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_attempt: begun.attempt, p_outcome: "sent", p_meta_message_id: "m_locked", p_error_code: null }),
+    );
+    expect(result.error).toBeNull();
+    expect(result.data).toMatchObject({ status: "sent", replayed: false });
+    expect(await state(c.draftId)).toMatchObject({ draft: "sent", sends: [{ status: "sent", meta_message_id: "m_locked" }] });
+  });
+
+  it("finish_send behind the drafting job (thread → drafts): records 'sent'", async () => {
+    const c = await conversation("900000000000802");
+    const begun = (await admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId })).data as { send_id: string; attempt: number };
+    const result = await whileHolding(lockThread(c.threadId), touchDrafts(c.threadId), () =>
+      admin.rpc("sales_ig_finish_send", { p_send_id: begun.send_id, p_attempt: begun.attempt, p_outcome: "sent", p_meta_message_id: "m_thread", p_error_code: null }),
+    );
+    expect(result.error).toBeNull();
+    expect(await state(c.draftId)).toMatchObject({ draft: "sent", sends: [{ status: "sent", meta_message_id: "m_thread" }] });
+  });
+
+  it("resolve_unknown behind a second tap's begin_send (draft → send)", async () => {
+    const c = await conversation("900000000000803");
+    replies = ["network"];
+    expect(await sendApprovedReply(admin, c.draftId)).toEqual({ kind: "unknown" });
+    const { rows: [s] } = await db.query("select id from public.sales_ig_sends where draft_id = $1", [c.draftId]);
+    const result = await whileHolding(lockDraft(c.draftId), lockSends(c.draftId), () => admin.rpc("sales_ig_resolve_unknown", { p_send_id: s.id, p_was_sent: true }));
+    expect(result.error).toBeNull();
+    expect(result.data).toMatchObject({ status: "sent", replayed: false });
+    expect(await state(c.draftId)).toMatchObject({ draft: "sent", sends: [{ status: "sent" }] });
+  });
+
+  it("begin_send behind the drafting job (thread → drafts): reserves the send", async () => {
+    const c = await conversation("900000000000804");
+    const result = await whileHolding(lockThread(c.threadId), touchDrafts(c.threadId), () => admin.rpc("sales_ig_begin_send", { p_draft_id: c.draftId }));
+    expect(result.error).toBeNull();
+    expect(result.data).toMatchObject({ status: "sending", replayed: false });
+    expect(await state(c.draftId)).toMatchObject({ draft: "sending", sends: [{ status: "sending", attempts: 1 }] });
+  });
+
+  it("finish_send and resolve_unknown still refuse an unknown send or outcome", async () => {
+    const finish = await admin.rpc("sales_ig_finish_send", { p_send_id: randomUUID(), p_attempt: 1, p_outcome: "sent", p_meta_message_id: "x", p_error_code: null });
+    expect(finish.error?.message).toMatch(/not_found/);
+    const resolve = await admin.rpc("sales_ig_resolve_unknown", { p_send_id: randomUUID(), p_was_sent: true });
+    expect(resolve.error?.message).toMatch(/not_found/);
+    const invalid = await admin.rpc("sales_ig_finish_send", { p_send_id: randomUUID(), p_attempt: 1, p_outcome: "maybe", p_meta_message_id: null, p_error_code: null });
+    expect(invalid.error?.message).toMatch(/invalid_outcome/);
+    const begin = await admin.rpc("sales_ig_begin_send", { p_draft_id: randomUUID() });
+    expect(begin.error?.message).toMatch(/not_found/);
+  });
+
+  it("[idempotency] a double tap, repeated 20 times, always sends once and records 'sent'", async () => {
+    for (let i = 0; i < 20; i++) {
+      // A fresh day's worth of shops each round (the daily cap limits new outreaches).
+      await clearConversations();
+      const c = await conversation(`9000000000009${String(i).padStart(2, "0")}`);
+      const before = sendCalls.length;
+      const [a, b] = await Promise.all([sendApprovedReply(admin, c.draftId), sendApprovedReply(admin, c.draftId)]);
+      const kinds = [a.kind, b.kind].sort();
+      // One tap sends; the other either saw it in flight or already sent.
+      // Anything else (refused, record_failed, unknown) is a lost race.
+      expect([["already_sent", "sent"], ["in_flight", "sent"]], `round ${i}: ${JSON.stringify([a, b])}`).toContainEqual(kinds);
+      expect(sendCalls.length - before, `round ${i}`).toBe(1);
+      expect(await state(c.draftId), `round ${i}`).toMatchObject({ draft: "sent", sends: [{ status: "sent", attempts: 1 }] });
+    }
+  }, 120_000);
 });

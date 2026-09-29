@@ -108,7 +108,7 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
 
 ## 6. Supabase / migrations
 
-`supabase/migrations/` の 16 本（追加のみ・既存の書き換えなし）:
+`supabase/migrations/` の 17 本（追加のみ・既存の書き換えなし）:
 
 | migration | 内容 |
 |---|---|
@@ -128,11 +128,13 @@ GitHub Actions（`.github/workflows/ci.yml`）の 6 job: `static`（typecheck・
 | 20260927001200 sales_ig_retention | 保存期間（会話 180 日・受信記録 30 日） |
 | 20260928000000 sales_explicit_api_grants | API role の table 権限を明示（新しい project 用） |
 | 20260928000100 sales_single_running_run | running の run は 1 本（partial unique index） |
+| 20260929000000 sales_ig_send_lock_order | Instagram 送信 RPC のロック順を thread → draft → send に統一（ダブルタップ時などの deadlock 修正、DEV-027） |
 
 - **Staging（`znbqgvawublgyjwfpmei`）には 16 本すべて適用済み**。
   - Supabase Management API 経由の `staging:apply`。1 migration = 1 transaction。
   - `staging:verify` の 14 項目がすべて PASS: migration 一致・RLS・権限の過不足・sign-up OFF・管理者 1 名。16 本の適用後、2026-09-28 15:19 UTC に再確認した。
 - **Production（`second-root-production`、ref `sagjzgcpqcbrqbokawiz`）にも 16 本すべて適用済み**。人間が `staging:verify` を実行し、14/14 PASS（2026-09-28）。
+- **`20260929000000`（DEV-027）は Staging・Production とも未適用**。merge 後に人間が適用する（`docs/RELEASE.md` §8 と同じ `npx supabase db push`、Staging は `staging:apply`）。関数 3 つの `create or replace` だけで、データ・テーブルは変更しない。適用までは `staging:verify` の「migration 一致」が FAIL になる。
 - 無料プランのまま。
 
 ## 7. Cloud Job 実走（DEV-016、Staging）
