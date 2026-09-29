@@ -37,3 +37,9 @@
   - `abandonActiveJobSync` は、inbox に同じ id の新しい job があれば上書きしない
   - signal で途中止めになった Codex の session log: 起動時に消す。対象は、1 行目の cwd が design agent の一時ディレクトリを指すものだけ。他の Codex session には触らない（テストあり）
   - lock の引き取りの race（rm → wx）は run.sh の flock で直列化されるので、記録だけにした
+
+## 最終確認（11f75bd）
+
+- 確認して問題なし: tsx での取得（通常のページ・popup・iframe）、他の page callback、signal・crash の扱い、inbox の上書き防止
+- Low 1 件を修正した: session log の片付けが 1 行目全体に正規表現を当てていたため、指示文に worker のパスが書かれた無関係な session まで消しうる。1 行目を JSON として読み、`cwd` のパスの要素だけを見るようにした（テストあり）
+- 最終判定: **PASS**。Critical・High・Medium は 0 件。残りは記録だけの Low 3 件（superseded、遅れた遷移の理由表示、flock で直列化される lock の race）

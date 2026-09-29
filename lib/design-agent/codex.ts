@@ -150,15 +150,21 @@ export async function removeCodexSession(threadId: string, env: Record<string, s
   return removed;
 }
 
-/** Temp directory names the design agent runs Codex in (codex.ts and the worker's temp root). */
-const DESIGN_CWD = /\/sr-design-(codex|worker)-[A-Za-z0-9]{6}(?=["/\\])/;
+/** A path segment naming one of the design agent's temp directories (codex.ts and the worker's temp root). */
+const DESIGN_DIR = /^sr-design-(codex|worker)-[A-Za-z0-9]{6}$/;
+
+/** Whether a session's working directory was a design-agent temp directory. */
+export function isDesignAgentCwd(cwd: unknown): boolean {
+  return typeof cwd === "string" && cwd.startsWith("/") && cwd.split("/").some((segment) => DESIGN_DIR.test(segment));
+}
 
 /**
  * Deletes session logs of design-agent Codex calls that were cut off before
  * removeCodexSession ran (a signal, a crash). A log belongs to the design
- * agent when its first line (the session's metadata) names a working
- * directory under one of the design agent's temp directories. Other Codex
- * sessions of the user are not touched.
+ * agent when the working directory in its first line (the session metadata,
+ * parsed as JSON; only `cwd` / `payload.cwd` is looked at) lies in one of the
+ * design agent's temp directories. Other Codex sessions of the user are not
+ * touched.
  */
 export async function removeStaleCodexSessions(env: Record<string, string | undefined>): Promise<number> {
   const home = env.CODEX_HOME || join(env.HOME || homedir(), ".codex");
@@ -177,9 +183,15 @@ export async function removeStaleCodexSessions(env: Record<string, string | unde
       const path = join(root, name);
       const info = await lstat(path).catch(() => null);
       if (!info?.isFile()) continue;
-      const head = await readFile(path, "utf8").then((t) => t.slice(0, 8192), () => "");
-      const firstLine = head.split("\n")[0] ?? "";
-      if (!/"cwd"/.test(firstLine) || !DESIGN_CWD.test(firstLine.replace(/\\\//g, "/"))) continue;
+      const head = await readFile(path, "utf8").then((t) => t.slice(0, 256 * 1024), () => "");
+      type Meta = { cwd?: unknown; payload?: { cwd?: unknown } } | null;
+      let meta: Meta;
+      try {
+        meta = JSON.parse(head.split("\n")[0] ?? "") as Meta;
+      } catch {
+        continue;
+      }
+      if (!isDesignAgentCwd(meta?.payload?.cwd ?? meta?.cwd)) continue;
       await rm(path, { force: true });
       removed += 1;
     }

@@ -87,8 +87,16 @@ describe("a normal run", () => {
     const meta = (cwd: string) => JSON.stringify({ type: "session_meta", payload: { cwd } }) + "\n{}\n";
     writeFileSync(join(day, "rollout-2026-09-28T01-00-00-22222222-2222-4222-8222-222222222222.jsonl"), meta("/tmp/sr-design-worker-abc123/sr-design-codex-def456"));
     writeFileSync(join(day, "rollout-2026-09-28T02-00-00-33333333-3333-4333-8333-333333333333.jsonl"), meta("/home/someone/project"));
+    // a session elsewhere whose instructions merely mention a worker path stays
+    writeFileSync(
+      join(day, "rollout-2026-09-28T03-00-00-44444444-4444-4444-8444-444444444444.jsonl"),
+      JSON.stringify({ type: "session_meta", payload: { cwd: "/home/someone/project", instructions: "see /tmp/sr-design-worker-abc123/ for notes" } }) + "\n",
+    );
     const { logs } = await runWorker(l, site);
-    expect(ls(day)).toEqual(["rollout-2026-09-28T02-00-00-33333333-3333-4333-8333-333333333333.jsonl"]);
+    expect(ls(day)).toEqual([
+      "rollout-2026-09-28T02-00-00-33333333-3333-4333-8333-333333333333.jsonl",
+      "rollout-2026-09-28T03-00-00-44444444-4444-4444-8444-444444444444.jsonl",
+    ]);
     expect(logs.join("\n")).toContain("removed 1 leftover Codex session log");
   });
 
