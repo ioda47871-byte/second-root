@@ -10,6 +10,8 @@ import { join } from "node:path";
 /** A lock (or a job claim) older than this is taken over even if its holder seems alive. */
 export const LOCK_STALE_MS = 3 * 60 * 60 * 1000;
 
+export const UNREADABLE_LOCK_STALE_MS = 60 * 1000;
+
 export type Holder = { pid: number; token: string; at: string; bootId: string | null; startTime: string | null };
 
 async function readProc(path: string): Promise<string | null> {
@@ -101,12 +103,14 @@ export async function acquireLock(stateDir: string, now: Date): Promise<{ holder
       };
     } catch (error) {
       if ((error as { code?: string }).code !== "EEXIST") throw new WorkerStepError("WORKER_LOCK_FAILED", "cannot create the lock");
-      const existing = parseHolder(await readFile(lockPath, "utf8").then((t) => JSON.parse(t) as unknown, () => null));
+      const existing = parseHolder(await readFile(lockPath, "utf8").then((t) => JSON.parse(t) as unknown).catch(() => null));
       const age = await stat(lockPath).then(
         (info) => now.getTime() - info.mtimeMs,
         () => 0,
       );
-      const gone = existing !== null && !(await holderAlive(existing));
+      // An unreadable lock (a worker killed between creating and writing it)
+      // is stale after a minute; a readable one when its holder is gone.
+      const gone = existing === null ? age > UNREADABLE_LOCK_STALE_MS : !(await holderAlive(existing));
       if (age < LOCK_STALE_MS && !gone) return undefined;
       await rm(lockPath, { force: true });
     }

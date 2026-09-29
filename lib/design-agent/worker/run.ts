@@ -19,6 +19,7 @@
  * The worker never commits, pushes, opens PRs, touches a database or
  * changes renderer code.
  */
+import { lstatSync, renameSync, rmSync } from "node:fs";
 import { copyFile, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser } from "playwright";
@@ -93,6 +94,33 @@ export type WorkerReport =
   | { status: "idle"; recovered: string[] }
   | { status: "finished"; workerSha: string; jobs: JobOutcome[]; recovered: string[] }
   | { status: "stopped"; code: string; message: string; jobs: JobOutcome[] };
+
+/** The job this process is working on, for signal handlers (abandonActiveJobSync). */
+let active: { dirs: QueueDirs; jobId: string; runDir: string } | null = null;
+
+/**
+ * For signal handlers and the watchdog: puts the job being worked on back in
+ * the inbox (not counted as an attempt) and removes its unfinished run
+ * directory. A job whose report.json exists is left for recovery to finish.
+ */
+export function abandonActiveJobSync(): void {
+  const job = active;
+  active = null;
+  if (!job) return;
+  try {
+    lstatSync(join(job.runDir, "report.json"));
+    return;
+  } catch {
+    /* unfinished */
+  }
+  try {
+    rmSync(job.runDir, { recursive: true, force: true });
+    renameSync(join(job.dirs.processing, `${job.jobId}.json`), join(job.dirs.inbox, `${job.jobId}.json`));
+    rmSync(join(job.dirs.processing, `${job.jobId}.claim.json`), { force: true });
+  } catch {
+    /* recovery on the next run handles it */
+  }
+}
 
 class StopRun extends Error {
   constructor(readonly code: string) {
@@ -216,7 +244,10 @@ async function runLocked(options: WorkerOptions, holder: Holder, tempRoot: strin
       if (!claimed) break;
       attempted.add(claimed.jobId);
       log(`job ${claimed.jobId}: claimed`);
-      const outcome = await runJob({ options, dirs, jobId: claimed.jobId, path: claimed.path, session, tempRoot, childEnv, codexBin, ledger, now, log });
+      active = { dirs, jobId: claimed.jobId, runDir: join(options.outRoot, claimed.jobId) };
+      const outcome = await runJob({ options, dirs, jobId: claimed.jobId, path: claimed.path, session, tempRoot, childEnv, codexBin, ledger, now, log }).finally(() => {
+        active = null;
+      });
       await saveLedger();
       if ("stop" in outcome) {
         jobs.push({ jobId: claimed.jobId, status: "retry", code: outcome.stop, message: publicMessage(outcome.stop) });
@@ -304,6 +335,11 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       launch: () => options.launchBrowser(ctx.childEnv()),
       settleMs: options.captureSettleMs,
     });
+    if (capture.status === "retry") {
+      // A network error or a browser failure says nothing about the profile.
+      log(`job ${jobId}: capture failed (${capture.reason}); tried again later`);
+      throw Object.assign(new Error(capture.reason), { code: "SOURCE_CAPTURE_FAILED" });
+    }
     if (capture.status === "PUBLIC_SOURCE_UNAVAILABLE") {
       log(`job ${jobId}: PUBLIC_SOURCE_UNAVAILABLE (${capture.reason})`);
       await rm(jobTemp, { recursive: true, force: true });
@@ -327,8 +363,10 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       { demo, references: capture.files },
       {
         askCodex: async ({ kind, prompt, images, schema }) => {
-          const timeoutMs = options.deadline.timeoutFor(kind === "brief" ? BRIEF_TIMEOUT_MS : REVIEW_TIMEOUT_MS, MIN_LONG_CALL_MS);
-          const ask = (s: object) => runCodexJson({ prompt, images, schema: s, codexBin: ctx.codexBin, env: ctx.childEnv(), timeoutMs });
+          const limit = kind === "brief" ? BRIEF_TIMEOUT_MS : REVIEW_TIMEOUT_MS;
+          // The time left is read again for each call, so a retry never overruns the run.
+          const ask = (s: object) =>
+            runCodexJson({ prompt, images, schema: s, codexBin: ctx.codexBin, env: ctx.childEnv(), timeoutMs: options.deadline.timeoutFor(limit, MIN_LONG_CALL_MS) });
           try {
             return await ask(schema);
           } catch (error) {
@@ -337,7 +375,6 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
             if (kind !== "brief" || !(error instanceof CodexError) || (error.code !== "CODEX_EXEC_FAILED" && error.code !== "CODEX_NO_JSON")) throw error;
             notes.push(`BRIEF_LOOSE_RETRY_AFTER_${error.code}`);
             log(`job ${jobId}: brief ${error.code}; one retry with the loose schema`);
-            options.deadline.timeoutFor(BRIEF_TIMEOUT_MS, MIN_LONG_CALL_MS);
             return ask(looseJsonSchema(schema));
           }
         },
@@ -371,18 +408,19 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       await copyFile(pipeline.before.desktop, join(runDir, "before-desktop.png"));
       await copyFile(pipeline.before.mobile, join(runDir, "before-mobile.png"));
     }
-    const final = pipeline.finalCandidate ? await readFile(join(runDir, "final.json"), "utf8").then((t) => JSON.parse(t) as Record<string, unknown>, () => null) : null;
+    const final = pipeline.finalCandidate ? await readFile(join(runDir, "final.json"), "utf8").then((t) => JSON.parse(t) as Record<string, unknown>).catch(() => null) : null;
     const report = {
       ...baseReport(options, jobId, startedAt, now),
       outcome: pipeline.status,
-      instagram: { status: "captured", images: capture.files.length, temp_deleted: tempDeleted },
+      instagram: { status: "captured", images: capture.files.length, media_softened: capture.softened, temp_deleted: tempDeleted },
       codex: {
         status: pipeline.status,
         profile_source: pipeline.profileSource,
         direction: final?.direction ?? null,
         confidence: final?.confidence ?? null,
+        brief_confidence: pipeline.briefConfidence,
         reviews: pipeline.rounds.length,
-        revisions: Math.max(0, pipeline.rounds.length - 1),
+        revisions: pipeline.revisions,
         rounds: pipeline.rounds,
         final_candidate: pipeline.finalCandidate,
         fallback: pipeline.status === "fallback_template",
@@ -395,6 +433,13 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     return await complete(ctx, runDir, report);
   } catch (error) {
     const code = error instanceof DeadlineError ? "WORKER_RUN_TIME_BUDGET" : codeOf(error);
+    // Once report.json exists the run directory is the record: never delete
+    // it. Only the move to done/ is left, which recovery can also do.
+    if (await exists(join(runDir, "report.json"))) {
+      log(`job ${jobId}: recorded, but finishing failed (${code})`);
+      await finishJob(dirs, jobId, "done", { outcome: "recorded", recovered: true, at: now().toISOString() }).catch(() => undefined);
+      return { stop: ENVIRONMENT_CODES.has(code) ? code : "WORKER_SYSTEM_ERROR" };
+    }
     await rm(runDir, { recursive: true, force: true }).catch(() => undefined);
     if (ENVIRONMENT_CODES.has(code)) {
       await requeueJob(dirs, jobId).catch(() => undefined);

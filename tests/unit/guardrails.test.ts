@@ -86,7 +86,7 @@ describe("guardrails", () => {
       // In the design agent / worker: Instagram profile URLs are placeholders or fictional test accounts only.
       if (!/^(lib\/design-agent|scripts\/sales-design|tests\/unit\/design-agent|docs\/operations\/design-)/.test(f)) continue;
       for (const m of text.matchAll(/(?<![\w.-])(?:www\.)?instagram\.com\/([A-Za-z0-9._]+)/g)) {
-        if (!/^(example|example_shop|example\.shop|few_posts|iframe_shop|hop_shop|wall_shop|login_redirect|redirect_shop|jsnav_shop|private_shop|rate_shop|empty_shop|x|exa|\.example|p|reel|explore|accounts)$/.test(m[1]!)) hits.push(`${f}: instagram.com/${m[1]}`);
+        if (!/^(example|example_shop|example\.shop|few_posts|iframe_shop|popup_shop|error_shop|short_grid|stripes_shop|hop_shop|wall_shop|login_redirect|redirect_shop|jsnav_shop|private_shop|rate_shop|empty_shop|x|exa|\.example|p|reel|explore|accounts)$/.test(m[1]!)) hits.push(`${f}: instagram.com/${m[1]}`);
       }
     }
     expect(hits).toEqual([]);

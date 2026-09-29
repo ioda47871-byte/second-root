@@ -19,15 +19,19 @@
 {
 set -euo pipefail
 
-if [ -z "${SR_DESIGN_WORKER_CLEAN_ENV:-}" ]; then
-  keep=(SR_DESIGN_WORKER_CLEAN_ENV=1)
+# The restart is marked by an argument, not a variable, so a variable set
+# in the caller's environment cannot skip it.
+if [ "${1:-}" = "--sr-clean-env" ]; then
+  shift
+else
+  keep=()
   for name in HOME PATH USER LOGNAME SHELL LANG LANGUAGE TZ TERM XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_CACHE_HOME \
     XDG_DATA_HOME XDG_STATE_HOME CODEX_HOME PLAYWRIGHT_BROWSERS_PATH PLAYWRIGHT_CHROMIUM_EXECUTABLE \
     HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE \
     SR_DESIGN_WORKER_REF SR_DESIGN_WORKER_NO_UPDATE SR_DESIGN_WORKER_BUDGET_SECONDS SR_DESIGN_JOBS SR_DESIGN_EXPORT_DIR; do
     if [ -n "${!name+x}" ]; then keep+=("$name=${!name}"); fi
   done
-  exec env -i "${keep[@]}" bash "$0" "$@"
+  exec env -i "${keep[@]}" bash "$0" --sr-clean-env "$@"
 fi
 
 umask 077

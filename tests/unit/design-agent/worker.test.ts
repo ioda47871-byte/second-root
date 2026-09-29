@@ -31,7 +31,7 @@ describe("a normal run", () => {
     writeJob(l, "job-001");
     const { report, logs, preview } = await runWorker(l, site);
 
-    expect(report).toMatchObject({ status: "finished", workerSha: WORKER_SHA, jobs: [{ jobId: "job-001", status: "done", outcome: "done", windowsCopy: "success" }] });
+    expect(report, JSON.stringify({ report, logs })).toMatchObject({ status: "finished", workerSha: WORKER_SHA, jobs: [{ jobId: "job-001", status: "done", outcome: "done", windowsCopy: "success" }] });
     expect(ls(join(l.queue, "done"))).toEqual(["job-001.json", "job-001.result.json"]);
     expect(ls(join(l.queue, "processing"))).toEqual([]);
     expect(ls(join(l.queue, "inbox"))).toEqual([]);
@@ -71,6 +71,10 @@ describe("a normal run", () => {
     }
     // the source URL never appears in the log
     expect(logs.join("\n")).not.toMatch(/instagram\.com|example_shop|127\.0\.0\.1/);
+    // the CLI's session log of these calls (it can hold the images) is gone; others stay
+    const sessions = join(l.root, "codex-home", "sessions", "2026", "09", "29");
+    expect(ls(sessions)).toEqual(["rollout-2026-09-29T09-00-00-11111111-1111-4111-8111-111111111111.jsonl"]);
+    expect(rep.instagram.media_softened).toBeGreaterThan(0);
     // run directories are private
     expect(statSync(runDir).mode & 0o077).toBe(0);
     expect(statSync(join(runDir, "report.json")).mode & 0o077).toBe(0);
@@ -80,7 +84,7 @@ describe("a normal run", () => {
     const l = makeLayout();
     writeJob(l, "job-hop", "https://www.instagram.com/hop_shop/");
     const { report } = await runWorker(l, site);
-    expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
+    expect(report, "report").toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
   });
 
   it("blocks an off-site frame inside the page without ending the capture", async () => {
@@ -88,8 +92,25 @@ describe("a normal run", () => {
     writeJob(l, "job-iframe", "https://www.instagram.com/iframe_shop/");
     const before = site.requests.length;
     const { report } = await runWorker(l, site);
-    expect(report).toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
     expect(site.requests.slice(before).some((r) => r.includes("/elsewhere/"))).toBe(false);
+  });
+
+  it("blocks a popup without ending the capture or crashing", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-popup", "https://www.instagram.com/popup_shop/");
+    const before = site.requests.length;
+    const { report } = await runWorker(l, site);
+    expect(report, "report").toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
+    expect(site.requests.slice(before).some((r) => r.includes("/elsewhere/"))).toBe(false);
+  });
+
+  it("keeps the first screens of a short grid", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-short", "https://www.instagram.com/short_grid/");
+    const { report } = await runWorker(l, site);
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
+    expect(json(join(l.out, "job-short", "report.json")).instagram.images).toBeGreaterThanOrEqual(1);
   });
 
   it("uses a profile header with few posts (no second grid screen)", async () => {
@@ -115,7 +136,7 @@ describe("PUBLIC_SOURCE_UNAVAILABLE is an expected outcome", () => {
     const before = site.requests.length;
     const { report, preview } = await runWorker(l, site);
     const jobId = `job-${username.replace(/_/g, "-")}`;
-    expect(report).toMatchObject({ status: "finished", jobs: [{ jobId, status: "done", outcome: "PUBLIC_SOURCE_UNAVAILABLE" }] });
+    expect(report, "report").toMatchObject({ status: "finished", jobs: [{ jobId, status: "done", outcome: "PUBLIC_SOURCE_UNAVAILABLE" }] });
     const rep = json(join(l.out, jobId, "report.json"));
     expect(rep).toMatchObject({ outcome: "PUBLIC_SOURCE_UNAVAILABLE", instagram: { status: "unavailable", reason, images: 0, temp_deleted: true }, codex: null });
     // Codex was never asked and nothing was rendered
@@ -125,6 +146,25 @@ describe("PUBLIC_SOURCE_UNAVAILABLE is an expected outcome", () => {
     // an off-site page is never fetched
     expect(site.requests.slice(before).some((r) => r.includes("/elsewhere/"))).toBe(false);
     expect(ls(join(l.exportDir, jobId))).toEqual(["report.json"]);
+  });
+});
+
+describe("transient capture failures are retried, not recorded as unavailable", () => {
+  it.each([
+    ["a 5xx page", "https://www.instagram.com/error_shop/", undefined],
+    ["a network error", "https://www.instagram.com/example_shop/", "http://127.0.0.1:1"],
+  ])("%s", async (_label, url, origin) => {
+    const l = makeLayout();
+    writeJob(l, "job-transient", url);
+    const target = origin ? { captureTargetFor: () => ({ url: `${origin}/x/`, allowNavigation: (u: string) => u.startsWith(`${origin}/`) }) } : {};
+    const first = await runWorker(l, site, target);
+    expect(first.report, "report").toMatchObject({ jobs: [{ status: "retry", code: "SOURCE_CAPTURE_FAILED" }] });
+    expect(ls(join(l.queue, "inbox"))).toEqual(["job-transient.json"]);
+    expect(existsSync(join(l.out, "job-transient"))).toBe(false);
+    expect(execCalls(l)).toEqual([]);
+    const second = await runWorker(l, site, target);
+    expect(second.report, "report").toMatchObject({ jobs: [{ status: "failed", code: "WORKER_JOB_FAILED" }] });
+    expect(ls(l.tmp)).toEqual([]);
   });
 });
 
@@ -141,7 +181,7 @@ describe("invalid jobs", () => {
     writeJob(l, "job-bad-url", url);
     const before = site.requests.length;
     const { report } = await runWorker(l, site);
-    expect(report).toMatchObject({ status: "finished", jobs: [{ status: "failed", code: "SOURCE_URL_INVALID" }] });
+    expect(report, "report").toMatchObject({ status: "finished", jobs: [{ status: "failed", code: "SOURCE_URL_INVALID" }] });
     expect(site.requests.length).toBe(before);
     expect(ls(join(l.queue, "failed"))).toEqual(["job-bad-url.json", "job-bad-url.result.json"]);
     expect(existsSync(join(l.out, "job-bad-url"))).toBe(false);
@@ -152,7 +192,7 @@ describe("invalid jobs", () => {
     writeFileSync(join(l.queue, "inbox", "job-broken.json"), "{not json", { mode: 0o600 });
     writeFileSync(join(l.queue, "inbox", "Weird Name.json"), "{}", { mode: 0o600 });
     const { report } = await runWorker(l, site, { maxJobs: 3 });
-    expect(report).toMatchObject({ status: "finished", jobs: [{ jobId: "job-broken", status: "failed", code: "JOB_INVALID" }] });
+    expect(report, "report").toMatchObject({ status: "finished", jobs: [{ jobId: "job-broken", status: "failed", code: "JOB_INVALID" }] });
     expect(ls(join(l.queue, "failed")).some((n) => n.startsWith("invalid-"))).toBe(true);
   });
 
@@ -160,7 +200,7 @@ describe("invalid jobs", () => {
     const l = makeLayout();
     writeJob(l, "job-facts", undefined, { name: "EXAMPLE TEST", category: "not_a_category" });
     const { report } = await runWorker(l, site);
-    expect(report).toMatchObject({ jobs: [{ status: "failed", code: "FACTS_INVALID" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "failed", code: "FACTS_INVALID" }] });
   });
 });
 
@@ -169,10 +209,18 @@ describe("design outcomes", () => {
     const l = makeLayout();
     writeJob(l, "job-blocked");
     const { report } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { answer: review({ verdict: "revise", needs_renderer_change: true, renderer_change_note: LEAK.note }) }] });
-    expect(report).toMatchObject({ jobs: [{ status: "done", outcome: "blocked" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "blocked" }] });
     const rep = json(join(l.out, "job-blocked", "report.json"));
     expect(rep.codex).toMatchObject({ blocked: true, renderer_change_needed: true });
     expect(JSON.stringify(rep)).not.toContain(LEAK.note);
+  });
+
+  it("reports Codex's own low confidence when the category default is used", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-low");
+    const { report } = await runWorker(l, site, { steps: [{ answer: { ...AMERICAN_EDITORIAL, confidence: 0.3 } }, { answer: review() }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
+    expect(json(join(l.out, "job-low", "report.json")).codex).toMatchObject({ profile_source: "category_default", brief_confidence: 0.3, revisions: 0 });
   });
 
   it("revises the profile at most twice", async () => {
@@ -180,7 +228,7 @@ describe("design outcomes", () => {
     writeJob(l, "job-revise");
     const revise = review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: AMERICAN_EDITORIAL } });
     const { report, preview } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { answer: revise }, { answer: revise }, { answer: revise }, { answer: revise }] });
-    expect(report).toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
     const rep = json(join(l.out, "job-revise", "report.json"));
     expect(rep.codex).toMatchObject({ reviews: 3, revisions: 2 });
     expect(preview.renders).toEqual(["none", "candidate-0", "candidate-1", "candidate-2", "final"]);
@@ -191,7 +239,7 @@ describe("design outcomes", () => {
     const l = makeLayout();
     writeJob(l, "job-fallback");
     const { report } = await runWorker(l, site, { steps: [{ answer: { direction: "free_html", html: "<div>" } }] });
-    expect(report).toMatchObject({ jobs: [{ status: "done", outcome: "fallback_template" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "fallback_template" }] });
     const rep = json(join(l.out, "job-fallback", "report.json"));
     expect(rep.codex).toMatchObject({ fallback: true, final_candidate: null });
     expect(ls(join(l.out, "job-fallback"))).not.toContain("final.json");
@@ -202,7 +250,7 @@ describe("design outcomes", () => {
     const l = makeLayout();
     writeJob(l, "job-codex-fail");
     const { report, logs } = await runWorker(l, site, { steps: [{ exit: 1, stderr: LEAK.stderr }, { exit: 1, stderr: LEAK.stderr }] });
-    expect(report).toMatchObject({ jobs: [{ status: "done", outcome: "fallback_template" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "fallback_template" }] });
     const rep = json(join(l.out, "job-codex-fail", "report.json"));
     expect(rep.codex.notes).toEqual(["BRIEF_LOOSE_RETRY_AFTER_CODEX_EXEC_FAILED", "CODEX_EXEC_FAILED"]);
     expect(execCalls(l)).toHaveLength(2);
@@ -214,7 +262,7 @@ describe("design outcomes", () => {
       const l = makeLayout();
       writeJob(l, "job-env");
       const { report } = await runWorker(l, site, { login });
-      expect(report).toMatchObject({ status: "stopped", code: login === "none" ? "CODEX_NOT_SIGNED_IN" : "CODEX_API_KEY_AUTH" });
+      expect(report, "report").toMatchObject({ status: "stopped", code: login === "none" ? "CODEX_NOT_SIGNED_IN" : "CODEX_API_KEY_AUTH" });
       expect(ls(join(l.queue, "inbox"))).toEqual(["job-env.json"]);
       expect(existsSync(join(l.state, "ledger.json")) ? json(join(l.state, "ledger.json")).jobs : {}).toEqual({});
       expect(ls(l.tmp)).toEqual([]);
@@ -225,7 +273,7 @@ describe("design outcomes", () => {
     const l = makeLayout();
     writeJob(l, "job-quota");
     const { report } = await runWorker(l, site, { steps: [{ exit: 1, stderr: "usage limit reached" }] });
-    expect(report).toMatchObject({ status: "stopped", code: "CODEX_QUOTA" });
+    expect(report, "report").toMatchObject({ status: "stopped", code: "CODEX_QUOTA" });
     expect(ls(join(l.queue, "inbox"))).toEqual(["job-quota.json"]);
     expect(existsSync(join(l.out, "job-quota"))).toBe(false);
     expect(ls(l.tmp)).toEqual([]);
@@ -235,11 +283,11 @@ describe("design outcomes", () => {
     const l = makeLayout();
     writeJob(l, "job-render");
     const first = await runWorker(l, site, { failRender: true });
-    expect(first.report).toMatchObject({ jobs: [{ status: "retry", code: "PREVIEW_RENDER_FAILED" }] });
+    expect(first.report, "report").toMatchObject({ jobs: [{ status: "retry", code: "PREVIEW_RENDER_FAILED" }] });
     expect(ls(join(l.queue, "inbox"))).toEqual(["job-render.json"]);
     expect(existsSync(join(l.out, "job-render"))).toBe(false);
     const second = await runWorker(l, site, { failRender: true });
-    expect(second.report).toMatchObject({ jobs: [{ status: "failed", code: "WORKER_JOB_FAILED" }] });
+    expect(second.report, "report").toMatchObject({ jobs: [{ status: "failed", code: "WORKER_JOB_FAILED" }] });
     expect(ls(join(l.queue, "failed"))).toContain("job-render.json");
   });
 });
@@ -270,10 +318,19 @@ describe("queue safety", () => {
     writeJob(l, "job-live", undefined, undefined, "processing");
     writeFileSync(join(l.queue, "processing", "job-live.claim.json"), JSON.stringify(await currentHolder("live-token")));
     const { report, logs } = await runWorker(l, site);
-    expect(report).toMatchObject({ status: "finished", recovered: ["job-dead"], jobs: [{ jobId: "job-dead", status: "done", outcome: "done" }] });
+    expect(report, "report").toMatchObject({ status: "finished", recovered: ["job-dead"], jobs: [{ jobId: "job-dead", status: "done", outcome: "done" }] });
     expect(ls(join(l.queue, "processing"))).toEqual(["job-live.claim.json", "job-live.json"]);
     expect(logs.join("\n")).toContain("job job-live: held by a live worker");
     expect(json(join(l.out, "job-dead", "report.json")).outcome).toBe("done");
+  });
+
+  it("does not crash on a corrupt claim file, and leaves a fresh unclaimed job alone", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-corrupt", undefined, undefined, "processing");
+    writeFileSync(join(l.queue, "processing", "job-corrupt.claim.json"), "{broken");
+    const { report } = await runWorker(l, site);
+    expect(report, "report").toMatchObject({ status: "idle", recovered: [] });
+    expect(ls(join(l.queue, "processing"))).toEqual(["job-corrupt.claim.json", "job-corrupt.json"]);
   });
 
   it("treats a live claim older than the stale limit as stale", async () => {
@@ -282,7 +339,7 @@ describe("queue safety", () => {
     const old = { ...(await currentHolder("old")), at: new Date(Date.now() - LOCK_STALE_MS - 60_000).toISOString() };
     writeFileSync(join(l.queue, "processing", "job-old.claim.json"), JSON.stringify(old));
     const { report } = await runWorker(l, site);
-    expect(report).toMatchObject({ recovered: ["job-old"], jobs: [{ jobId: "job-old", status: "done" }] });
+    expect(report, "report").toMatchObject({ recovered: ["job-old"], jobs: [{ jobId: "job-old", status: "done" }] });
   });
 
   it("gives up on a job that went stale twice", async () => {
@@ -292,7 +349,7 @@ describe("queue safety", () => {
     writeJob(l, "job-twice", undefined, undefined, "processing");
     writeFileSync(join(l.queue, "processing", "job-twice.claim.json"), JSON.stringify({ pid: 2 ** 22 - 3, token: "t", at: new Date().toISOString(), bootId: "another-boot", startTime: "1" }));
     const { report } = await runWorker(l, site);
-    expect(report).toMatchObject({ status: "idle" });
+    expect(report, "report").toMatchObject({ status: "idle" });
     expect(ls(join(l.queue, "failed"))).toEqual(["job-twice.json", "job-twice.result.json"]);
     expect(json(join(l.queue, "failed", "job-twice.result.json")).code).toBe("WORKER_JOB_STALE");
   });
@@ -305,7 +362,7 @@ describe("queue safety", () => {
     // the same id again
     writeJob(l, "job-once");
     const again = await runWorker(l, site);
-    expect(again.report).toMatchObject({ jobs: [{ jobId: "job-once", status: "failed", code: "DUPLICATE_JOB_ID" }] });
+    expect(again.report, "report").toMatchObject({ jobs: [{ jobId: "job-once", status: "failed", code: "DUPLICATE_JOB_ID" }] });
     expect(readFileSync(join(l.out, "job-once", "report.json"), "utf8")).toBe(first);
     // a crash after the result was written but before the job moved to done
     const l2 = makeLayout();
@@ -321,7 +378,7 @@ describe("queue safety", () => {
     rmSync(join(doneDir, "job-crash.json"));
     const before = execCalls(l2).length;
     const recovered = await runWorker(l2, site);
-    expect(recovered.report).toMatchObject({ status: "idle", recovered: ["job-crash"] });
+    expect(recovered.report, "report").toMatchObject({ status: "idle", recovered: ["job-crash"] });
     expect(execCalls(l2).length).toBe(before);
     expect(readFileSync(join(l2.out, "job-crash", "report.json"), "utf8")).toBe(report);
     expect(ls(doneDir)).toContain("job-crash.json");
@@ -333,6 +390,19 @@ describe("queue safety", () => {
     const [a, b] = await Promise.all([runWorker(l, site), runWorker(l, site)]);
     const statuses = [a.report.status, b.report.status].sort();
     expect(statuses).toEqual(["finished", "locked"]);
+  });
+
+  it("takes over an unreadable lock after a minute", async () => {
+    const l = makeLayout();
+    mkdirSync(l.state, { recursive: true });
+    const lock = join(l.state, "worker.lock");
+    writeFileSync(lock, "");
+    expect(await acquireLock(l.state, new Date())).toBeUndefined();
+    const old = new Date(Date.now() - 2 * 60 * 1000);
+    utimesSync(lock, old, old);
+    const taken = await acquireLock(l.state, new Date());
+    expect(taken).toBeDefined();
+    await taken!.release();
   });
 
   it("takes over a lock whose holder is gone, never a live one", async () => {
@@ -354,9 +424,21 @@ describe("Windows copy is best effort", () => {
     const l = makeLayout();
     writeJob(l, "job-nowin");
     const { report } = await runWorker(l, site, { exportDir: join(l.root, "no-such-mount", "Desktop", "result") });
-    expect(report).toMatchObject({ jobs: [{ status: "done", outcome: "done", windowsCopy: "unavailable" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done", windowsCopy: "unavailable" }] });
     expect(json(join(l.out, "job-nowin", "report.json")).windows_copy).toBe("unavailable");
     expect(ls(join(l.queue, "done"))).toContain("job-nowin.json");
+  });
+
+  it("refuses to write through a link on the Windows side", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-winlink");
+    const elsewhere = join(l.root, "elsewhere");
+    mkdirSync(elsewhere);
+    mkdirSync(l.exportDir);
+    symlinkSync(elsewhere, join(l.exportDir, "job-winlink"));
+    const { report } = await runWorker(l, site);
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", windowsCopy: "failed" }] });
+    expect(ls(elsewhere)).toEqual([]);
   });
 
   it("records a failed copy and still keeps the job done", async () => {
@@ -365,7 +447,7 @@ describe("Windows copy is best effort", () => {
     // the target folder is a file, so the copy fails
     writeFileSync(l.exportDir, "x");
     const { report } = await runWorker(l, site);
-    expect(report).toMatchObject({ jobs: [{ status: "done", windowsCopy: "failed" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", windowsCopy: "failed" }] });
     expect(json(join(l.out, "job-winfail", "report.json")).windows_copy).toBe("failed");
   });
 
@@ -373,7 +455,7 @@ describe("Windows copy is best effort", () => {
     const l = makeLayout();
     writeJob(l, "job-nocfg");
     const { report } = await runWorker(l, site, { exportDir: undefined });
-    expect(report).toMatchObject({ jobs: [{ status: "done", windowsCopy: "unavailable" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", windowsCopy: "unavailable" }] });
   });
 });
 
@@ -394,6 +476,8 @@ describe("stale temporary directories", () => {
     mk("sr-design-other-abc123", old);
     mk("unrelated", old);
     mk("sr-design-worker-longername", old);
+    const deadDir = mk("sr-design-worker-dead12", null);
+    writeFileSync(join(deadDir, ".sr-design-worker.json"), JSON.stringify({ pid: 2 ** 22 - 3, token: "t", at: new Date().toISOString(), bootId: "another-boot", startTime: "1" }));
     const heldDir = mk("sr-design-worker-held12", null);
     writeFileSync(join(heldDir, ".sr-design-worker.json"), JSON.stringify(await currentHolder("held")));
     utimesSync(heldDir, old, old);
@@ -402,7 +486,8 @@ describe("stale temporary directories", () => {
     utimesSync(outside, old, old);
     symlinkSync(outside, join(l.tmp, "sr-design-worker-link12"));
     const removed = await cleanStaleTemp(l.tmp, new Date());
-    expect(removed.sort()).toEqual(["sr-design-codex-def456", "sr-design-worker-abc123"]);
+    // a dead worker's root goes at once, whatever its age
+    expect(removed.sort()).toEqual(["sr-design-codex-def456", "sr-design-worker-abc123", "sr-design-worker-dead12"]);
     expect(ls(l.tmp)).toEqual(["sr-design-other-abc123", "sr-design-worker-held12", "sr-design-worker-link12", "sr-design-worker-longername", "sr-design-worker-young1", "unrelated"]);
     expect(existsSync(outside)).toBe(true);
   });

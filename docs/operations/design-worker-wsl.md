@@ -45,6 +45,8 @@ worker は同じ pipeline（brief → render → review → 最大 2 回の prof
 ```
 
 `PUBLIC_SOURCE_UNAVAILABLE` は失敗ではなく、想定された job の結果である。
+ネットワークの失敗、5xx、browser の予期しない失敗は店の状態を示さないので、この結果にはしない。
+`SOURCE_CAPTURE_FAILED` として次の run でもう 1 回だけ試す。
 次のどれかで出る。
 
 - ログイン壁・challenge・CAPTCHA
@@ -78,9 +80,13 @@ worker は同じ pipeline（brief → render → review → 最大 2 回の prof
   - `profile.png`（ヘッダー：公開 bio・店名）
   - `grid-top.png`
   - 必要なときだけ `grid-lower.png`
-- ページ内の画像と動画はすべて `blur(6px)` で撮る。配色・密度・構図は残し、人物や細部は識別しにくくする
+- ページ内の画像・動画・背景画像は 2 段で処理する。配色・密度・構図は残し、人物や細部は識別しにくくする
+  1. 撮る前に CSS で blur する（CSP を越えて必ず当たる）
+  2. 撮った PNG の中で、ページ上のすべての media の矩形（shadow DOM の中も含む）を 1/10 に縮めて blur をかけて戻す。ページの DOM や CSS に頼らない
+- 公開 bio・店名などヘッダーの文字はそのまま残す
 - 参考画像の扱い
   - Codex のデザイン判断にだけ使う
+  - Codex CLI は呼び出しごとに session log（`~/.codex/sessions/.../rollout-*.jsonl`）を残し、そこに画像が入りうる。worker は各呼び出しの後に、その thread の log を消す
   - run directory にも Windows にも置かない
   - デモや公開 asset には絶対に使わない
 
@@ -204,8 +210,7 @@ Codex が選んだ profile の値は、成果物として `final.json` などに
     - `/tmp` 直下で、名前が `sr-design-worker-XXXXXX` / `sr-design-codex-XXXXXX`
     - 本物のディレクトリ（symlink でない）
     - 所有者が自分
-    - 6 時間より古い
-    - 生きている worker の印が無い
+    - 持ち主の worker が死んでいる（すぐ消す）。印が無いものは 6 時間より古いこと
 
 ## 6. 後で: systemd timer（まだ enable しない）
 
@@ -256,7 +261,7 @@ run.sh の時間は 3300 秒が上限で、`TimeoutStartSec=3600` より先に�
 - 手動の run: Ctrl-C
   - worker は子 process の group をすべて止める
   - 一時ディレクトリを消す
-  - job は次の run で inbox に戻る
+  - 作業中の job はその場で inbox に戻る。やり直しの回数には数えない
 - timer（enable した後）: `systemctl --user disable --now sr-design-worker.timer`
 - 結果・job・状態を捨てる:
   `rm -rf ~/.local/share/second-root-design/<job_id> ~/sr-design-jobs/*/<job_id>.* ~/.local/state/sr-design-worker/ledger.json`

@@ -50,6 +50,8 @@ const envFor = (f: ReturnType<typeof fakeRepo>, extra: Record<string, string> = 
   GITHUB_TOKEN: "ghp_test",
   SUPABASE_SERVICE_ROLE_KEY: "x",
   SOME_OTHER_VAR: "y",
+  // a caller cannot skip the clean restart with a variable
+  SR_DESIGN_WORKER_CLEAN_ENV: "1",
   ...extra,
 }) as unknown as NodeJS.ProcessEnv;
 

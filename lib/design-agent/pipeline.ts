@@ -43,6 +43,10 @@ export type PipelineReport = {
   profileSource: "codex" | "category_default" | null;
   rounds: RoundRecord[];
   finalCandidate: string | null;
+  /** Revised profiles that were rendered (0–2). */
+  revisions: number;
+  /** Codex's own confidence in its brief (null when there was no valid brief). */
+  briefConfidence: number | null;
   before: Shots;
   after: Shots | null;
 };
@@ -66,6 +70,8 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     profileSource: null,
     rounds: [],
     finalCandidate: null,
+    revisions: 0,
+    briefConfidence: null,
     before,
     after: null,
     ...extra,
@@ -97,6 +103,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     }
     throw error;
   }
+  const briefConfidence = profile.confidence;
   if (profile.confidence < LOW_CONFIDENCE) {
     notes.push("LOW_CONFIDENCE_CATEGORY_DEFAULT");
     deps.log(`brief: confidence ${profile.confidence} < ${LOW_CONFIDENCE} → category default profile`);
@@ -179,9 +186,9 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   const best = candidates.reduce((a, b) => (b.score >= a.score ? b : a));
   if (best.score < 0) {
     notes.push("NO_REVIEWED_CANDIDATE");
-    return report(status === "environment_failure" ? "environment_failure" : "fallback_template", { profileSource, rounds });
+    return report(status === "environment_failure" ? "environment_failure" : "fallback_template", { profileSource, rounds, revisions, briefConfidence });
   }
   await deps.writeProfile("final", best.profile);
   const after = await deps.render("final");
-  return { status, notes, profileSource, rounds, finalCandidate: best.name, before, after };
+  return { status, notes, profileSource, rounds, finalCandidate: best.name, revisions, briefConfidence, before, after };
 }

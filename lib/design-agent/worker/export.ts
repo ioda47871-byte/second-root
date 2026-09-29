@@ -25,12 +25,17 @@ export async function copyToWindows(runDir: string, exportDir: string | undefine
   try {
     const target = join(exportDir, jobId);
     await mkdir(target, { recursive: true });
+    // Never write through a link someone placed on the Windows side.
+    for (const dir of [exportDir, target]) if ((await lstat(dir)).isSymbolicLink()) return "failed";
     for (const name of names) {
       if (!(FIXED.includes(name) || REVIEW.test(name) || name === "report.json")) continue;
       const from = join(runDir, name);
       const info = await lstat(from);
       if (!info.isFile()) continue;
-      await copyFile(from, join(target, name));
+      const to = join(target, name);
+      const existing = await lstat(to).catch(() => null);
+      if (existing && !existing.isFile()) return "failed";
+      await copyFile(from, to);
     }
     return "success";
   } catch {

@@ -16,9 +16,13 @@
  *   otherwise leak what it read.
  * - Quota / rate limits are detected from stderr and the CLI's own error
  *   events only, never from the model's answer.
+ * - The CLI keeps a session log per call ($CODEX_HOME/sessions/.../
+ *   rollout-*-<thread id>.jsonl) that can hold the attached images. After
+ *   each call that log is deleted, so reference screenshots do not outlive
+ *   the run.
  */
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { lstat, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { runBounded, type BoundedResult } from "./bounded-process";
 
@@ -118,6 +122,34 @@ export function extractJsonObject(text: string): unknown {
   }
 }
 
+const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Deletes the CLI's session log(s) of one thread. Returns how many files were removed. */
+export async function removeCodexSession(threadId: string, env: Record<string, string | undefined>): Promise<number> {
+  if (!THREAD_ID.test(threadId)) return 0;
+  const home = env.CODEX_HOME || join(env.HOME || homedir(), ".codex");
+  let removed = 0;
+  for (const dir of ["sessions", "archived_sessions"]) {
+    const root = join(home, dir);
+    let names: string[];
+    try {
+      names = await readdir(root, { recursive: true });
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const base = name.split("/").pop() ?? "";
+      if (!base.startsWith("rollout-") || !base.endsWith(`${threadId}.jsonl`)) continue;
+      const path = join(root, name);
+      const info = await lstat(path).catch(() => null);
+      if (!info?.isFile()) continue;
+      await rm(path, { force: true });
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 export interface CodexJsonOptions {
   /** The whole request. Sent on stdin, never as an argument (so it stays out of `ps`). */
   prompt: string;
@@ -167,6 +199,8 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
     } catch {
       throw new CodexError("CODEX_NOT_INSTALLED", "Codex CLI could not be started.");
     }
+    const threadId = readCodexEvents(result.stdout).threadId;
+    if (threadId !== undefined) await removeCodexSession(threadId, env).catch(() => 0);
     if (result.timedOut) throw new CodexError("CODEX_TIMEOUT", "Codex did not finish in time.");
     if (result.code !== 0 && codexLooksRateLimited(result.stdout, result.stderr)) {
       throw new CodexError("CODEX_QUOTA", "Codex usage limit reached or the service is busy.");

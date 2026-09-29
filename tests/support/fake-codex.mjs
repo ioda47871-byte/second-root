@@ -9,7 +9,8 @@
 //                        { "answer": {...} } | { "text": "..." } | { "exit": 1, "stderr": "..." } | { "sleepMs": 5000 }
 //   FAKE_CODEX_STATE   file holding the index of the next step
 //   FAKE_CODEX_RECORD  JSONL file: one line per call (args, stdin size, which API-key variables were visible)
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const args = process.argv.slice(2);
 const record = (extra) => {
@@ -48,6 +49,15 @@ process.stdin.on("end", async () => {
   writeFileSync(statePath, String(index + 1));
   const step = steps[Math.min(index, steps.length - 1)];
   record({ stdinLength: stdin.length, stdinHasFacts: stdin.includes("Verified facts"), step: index });
+  // Like the real CLI: a session log that holds the request (and its images).
+  const THREAD = "00000000-0000-4000-8000-000000000000";
+  if (process.env.CODEX_HOME) {
+    const dir = join(process.env.CODEX_HOME, "sessions", "2026", "09", "29");
+    mkdirSync(dir, { recursive: true });
+    const images = args.filter((a) => a.startsWith("--image=")).length;
+    writeFileSync(join(dir, `rollout-2026-09-29T10-00-00-${THREAD}.jsonl`), JSON.stringify({ images }) + "\n");
+    writeFileSync(join(dir, "rollout-2026-09-29T09-00-00-11111111-1111-4111-8111-111111111111.jsonl"), "{}\n");
+  }
   if (step.sleepMs) await new Promise((r) => setTimeout(r, step.sleepMs));
   if (step.exit) {
     process.stderr.write(step.stderr ?? "");
@@ -57,7 +67,7 @@ process.stdin.on("end", async () => {
   const text = step.text ?? JSON.stringify(step.answer);
   const out = args[args.indexOf("--output-last-message") + 1];
   if (!step.noFile && out) writeFileSync(out, text);
-  process.stdout.write(JSON.stringify({ type: "thread.started", thread_id: "00000000-0000-4000-8000-000000000000" }) + "\n");
+  process.stdout.write(JSON.stringify({ type: "thread.started", thread_id: THREAD }) + "\n");
   process.stdout.write(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text } }) + "\n");
   process.exit(0);
 });

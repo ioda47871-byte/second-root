@@ -46,6 +46,26 @@ export async function startMockSite(): Promise<MockSite> {
     switch (req.url) {
       case "/example_shop/":
         return send(200, profile(12));
+      case "/popup_shop/":
+        return send(200, profile(3).replace("<main>", `<script>window.open("http://localhost:${port}/elsewhere/");</script><main>`));
+      case "/error_shop/":
+        return send(503, page("unavailable"));
+      case "/short_grid/":
+        return send(200, profile(12).replace(/width="300" height="300"/g, 'width="40" height="40"').replace("repeat(3,300px)", "repeat(12,40px)"));
+      case "/stripes_shop/": {
+        const stripes = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><defs><pattern id="p" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="4" fill="#000"/><rect x="2" width="2" height="4" fill="#fff"/></pattern></defs><rect width="300" height="300" fill="url(#p)"/></svg>')}`;
+        return send(
+          200,
+          page(
+            `<style>.bg{background-image:url("${stripes}");width:300px;height:300px}</style><header style="height:200px"><h2>stripes</h2></header>` +
+              `<main><div style="display:grid;grid-template-columns:repeat(3,300px);gap:4px">` +
+              `<a href="/p/1/"><img width="300" height="300" src="${stripes}"></a>` +
+              `<a href="/p/2/"><div class="bg"></div></a>` +
+              `<a href="/p/3/"><span id="host"></span></a></div></main>` +
+              `<script>const r=document.getElementById("host").attachShadow({mode:"open"});r.innerHTML='<img width="300" height="300" src="${stripes}">';</script>`,
+          ),
+        );
+      }
       case "/iframe_shop/":
         return send(200, profile(3).replace("<main>", `<iframe src="http://localhost:${port}/elsewhere/" width="10" height="10"></iframe><main>`));
       case "/few_posts/":
@@ -200,7 +220,7 @@ export async function runWorker(l: Layout, site: MockSite, over: Partial<WorkerO
     workerSha: WORKER_SHA,
     maxJobs: 1,
     deadline: new RunDeadline(Date.now() + 30 * 60_000),
-    env: { PATH: process.env.PATH, HOME: l.root, LANG: "C.UTF-8", ...SECRET_ENV },
+    env: { PATH: process.env.PATH, HOME: l.root, LANG: "C.UTF-8", CODEX_HOME: join(l.root, "codex-home"), ...SECRET_ENV },
     codexBin,
     log: (line) => logs.push(line),
     launchBrowser: (env) =>

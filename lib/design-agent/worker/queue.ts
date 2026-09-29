@@ -142,7 +142,7 @@ export async function inspectProcessing(dirs: QueueDirs, now: Date, staleMs: num
     const match = JOB_FILE.exec(name);
     if (!match || name.endsWith(".claim.json")) continue;
     const jobId = match[1]!;
-    const claim = parseHolder(await readFile(join(dirs.processing, `${jobId}.claim.json`), "utf8").then((t) => JSON.parse(t) as unknown, () => null));
+    const claim = parseHolder(await readFile(join(dirs.processing, `${jobId}.claim.json`), "utf8").then((t) => JSON.parse(t) as unknown).catch(() => null));
     if (claim === null) {
       const changed = await stat(join(dirs.processing, name)).then(
         (info) => info.ctimeMs,

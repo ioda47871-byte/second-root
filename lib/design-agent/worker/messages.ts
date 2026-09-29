@@ -19,6 +19,7 @@ export const PUBLIC_MESSAGES: Readonly<Record<string, string>> = {
   SOURCE_URL_INVALID: "The job's source is not a public Instagram profile URL.",
   FACTS_INVALID: "The job's facts do not pass the demo fact filter.",
   DUPLICATE_JOB_ID: "A job with this id already has a result; nothing new was made.",
+  SOURCE_CAPTURE_FAILED: "The profile page could not be loaded (network or browser error); the job is tried again.",
   REFERENCE_CHECK_FAILED: "A captured screenshot failed the file checks.",
   WORKER_JOB_STALE: "The job was left in processing by a stopped worker too many times.",
   WORKER_JOB_FAILED: "The job failed twice and is not retried automatically.",

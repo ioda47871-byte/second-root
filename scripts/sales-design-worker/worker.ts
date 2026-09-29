@@ -28,7 +28,7 @@ import { childEnvironment } from "../../lib/design-agent/worker/env";
 import { publicMessage } from "../../lib/design-agent/worker/messages";
 import { productionPreview } from "../../lib/design-agent/worker/preview";
 import { ensureQueue, JOB_ID, pickFacts, queueDirs } from "../../lib/design-agent/worker/queue";
-import { DEFAULT_MAX_JOBS, RUN_TIME_BUDGET_MS, runDesignWorker, type WorkerReport } from "../../lib/design-agent/worker/run";
+import { abandonActiveJobSync, DEFAULT_MAX_JOBS, RUN_TIME_BUDGET_MS, runDesignWorker, type WorkerReport } from "../../lib/design-agent/worker/run";
 import { parseInstagramProfileUrl } from "../../lib/design-agent/worker/source-url";
 import { removeActiveTempRootsSync } from "../../lib/design-agent/worker/temp";
 
@@ -157,6 +157,8 @@ async function run(): Promise<number> {
 function stopNow(code: string): never {
   killPreviewServers();
   killAllBoundedChildren();
+  // The job goes back to the inbox without counting as an attempt.
+  abandonActiveJobSync();
   removeActiveTempRootsSync();
   process.stdout.write(`${JSON.stringify({ status: "stopped", code, message: publicMessage(code) })}\n`);
   process.exit(3);

@@ -7,9 +7,11 @@
 // can leave it behind, so every run first removes stale ones.
 //
 // Cleanup touches only direct children of the tmp directory whose name has
-// the worker's own prefix, that are real directories (not symlinks), owned by
-// this user, older than TEMP_STALE_MS and not held by a live process. Nothing
-// else in /tmp is looked at.
+// the worker's own prefix, that are real directories (not symlinks) and owned
+// by this user; of those, a worker root whose holder process is gone is
+// removed at once (it may still hold browser caches of the page), anything
+// else only when older than TEMP_STALE_MS and not held by a live process.
+// Nothing else in /tmp is looked at.
 import { rmSync } from "node:fs";
 import { lstat, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -65,9 +67,9 @@ export async function cleanStaleTemp(base: string, now: Date, uid: number | unde
     const info = await lstat(path).catch(() => null);
     if (!info || info.isSymbolicLink() || !info.isDirectory()) continue;
     if (uid !== undefined && info.uid !== uid) continue;
-    if (now.getTime() - info.mtimeMs < TEMP_STALE_MS) continue;
-    const holder = parseHolder(await readFile(join(path, MARKER), "utf8").then((t) => JSON.parse(t) as unknown, () => null));
+    const holder = parseHolder(await readFile(join(path, MARKER), "utf8").then((t) => JSON.parse(t) as unknown).catch(() => null));
     if (holder && (await holderAlive(holder))) continue;
+    if (!holder && now.getTime() - info.mtimeMs < TEMP_STALE_MS) continue;
     await rm(path, { recursive: true, force: true }).catch(() => undefined);
     removed.push(name);
   }
