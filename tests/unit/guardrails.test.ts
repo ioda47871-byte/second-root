@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -63,6 +64,47 @@ describe("guardrails", () => {
         expect(line, f).toMatch(/CODEX_BLOCKED_ENV = \[|^\s*\*/);
       }
     }
+  });
+
+  it("keeps real shop data out of the repository (DEV-028 worker)", () => {
+    // Known prospect names and addresses, as sha256 of the lowercased token
+    // (so this test does not itself carry them). Jobs, facts and Instagram
+    // URLs live only in ~/sr-design-jobs on the worker user.
+    const DENY = new Set([
+      "8e4002280dafe2856db1267e2cee2035abe3b0c961c0157982c7d4a7b69d3722",
+      "7e25d772e6f67ed911aea9ce447c868709988ef2e68a3030306957649339f561",
+      "06e09e58fb3e7372dc0dd89fbab5b12143c02bb55d16e074951f842d027561e3",
+      "a6e7ab4d6c0a10b1f8f6f0a4fab77a8cb0c5e7a3c3565957af55cb73f32ae4ea",
+    ]);
+    const sha = (t: string) => createHash("sha256").update(t).digest("hex");
+    const textFiles = trackedFiles.filter((f) => /\.(ts|tsx|js|mjs|cjs|json|md|css|sh|yml|yaml|sql|html|txt)$/.test(f));
+    const hits: string[] = [];
+    for (const f of textFiles) {
+      const text = readFileSync(f, "utf8");
+      const tokens = [...(text.toLowerCase().match(/[a-z0-9_]+/g) ?? []), ...(text.match(/[\u3040-\u9fff]+[0-9]+(?:-[0-9]+){1,2}/g) ?? [])];
+      if (tokens.some((t) => DENY.has(sha(t)))) hits.push(f);
+      // In the design agent / worker: Instagram profile URLs are placeholders or fictional test accounts only.
+      if (!/^(lib\/design-agent|scripts\/sales-design|tests\/unit\/design-agent|docs\/operations\/design-)/.test(f)) continue;
+      for (const m of text.matchAll(/(?<![\w.-])(?:www\.)?instagram\.com\/([A-Za-z0-9._]+)/g)) {
+        if (!/^(example|example_shop|example\.shop|few_posts|hop_shop|wall_shop|login_redirect|redirect_shop|jsnav_shop|private_shop|rate_shop|empty_shop|x|exa|\.example|p|reel|explore|accounts)$/.test(m[1]!)) hits.push(`${f}: instagram.com/${m[1]}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it("lets the design worker open only public Instagram profile URLs (DEV-028 worker)", () => {
+    // The production entry never injects a capture target; only tests do.
+    const entry = readFileSync("scripts/sales-design-worker/worker.ts", "utf8");
+    expect(entry).not.toMatch(/captureTargetFor|allowNavigation/);
+    const run = readFileSync("lib/design-agent/worker/run.ts", "utf8");
+    expect(run).toContain("options.captureTargetFor ? options.captureTargetFor(source) : instagramTarget(source)");
+    expect(run).toMatch(/const source = parseInstagramProfileUrl\(job\.source\.instagram_url\);\n\s*if \(!source\) return fail\("SOURCE_URL_INVALID"\);/);
+    // The web app never imports the worker.
+    const webFiles = sourceFiles.filter((f) => f.startsWith("app/") || f.startsWith("components/") || f.startsWith("lib/sales/") || f.startsWith("lib/admin/"));
+    expect(webFiles.filter((f) => /lib\/design-agent\/worker\//.test(readFileSync(f, "utf8")))).toEqual([]);
+    // No git push / PR / commit from the worker.
+    const workerCode = [entry, run, ...trackedFiles.filter((f) => f.startsWith("lib/design-agent/worker/")).map((f) => readFileSync(f, "utf8"))].join("\n");
+    expect(workerCode).not.toMatch(/["']push["']|["']commit["']|api\.github\.com|createPull/);
   });
 
   it("does not track env files other than the example", () => {

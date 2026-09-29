@@ -40,7 +40,7 @@ jobs:
   unit:
     name: unit
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,6 +48,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The design worker tests capture a local mock page with headless Chromium.
+      - run: npx playwright install --with-deps chromium
       - run: npm test
 
   integration:

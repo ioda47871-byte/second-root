@@ -13,7 +13,6 @@
  * Nothing is written to a database, nothing is sent to a shop, nothing is
  * committed. See docs/operations/design-agent-wsl.md.
  */
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { chmod, copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -23,6 +22,7 @@ import { DeadlineError, killAllBoundedChildren, runBounded, RunDeadline } from "
 import { codexEnvironment, CodexError, runCodexJson } from "../../lib/design-agent/codex";
 import { runDesignPipeline, type PipelineReport, type Shots } from "../../lib/design-agent/pipeline";
 import { factsToDemoView, RUN_ID } from "../../lib/design-agent/preview";
+import { killPreviewServers, portInUse, screenshotPage, startPreviewServer, stopPreviewServer, type PreviewServer } from "../../lib/design-agent/preview-server";
 
 const REPO = resolve(__dirname, "../..");
 const IMAGE_TYPES = new Set([".png", ".jpg", ".jpeg", ".webp"]);
@@ -97,75 +97,6 @@ async function loadReferences(dir: string): Promise<string[]> {
   return paths;
 }
 
-// ---------------------------------------------------------------- local server
-
-function startServer(port: number, previewRoot: string): ChildProcess {
-  const env = codexEnvironment({ ...process.env, SR_DESIGN_PREVIEW_ROOT: previewRoot, PORT: String(port) });
-  const child = spawn("npx", ["next", "start", "--port", String(port), "--hostname", "127.0.0.1"], { cwd: REPO, env, stdio: "ignore", detached: true });
-  child.on("error", () => undefined); // judged by waitForServer (exitCode / pid)
-  return child;
-}
-
-async function portInUse(port: number): Promise<boolean> {
-  try {
-    await fetch(`http://127.0.0.1:${port}/`);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForServer(child: ChildProcess, port: number, timeoutMs: number): Promise<void> {
-  const until = Date.now() + timeoutMs;
-  while (Date.now() < until) {
-    if (child.pid === undefined || child.exitCode !== null) throw new Error("The local preview server exited.");
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/design-preview/not-a-run-id`);
-      if (res.status === 404) return;
-    } catch {
-      /* not yet */
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error("The local preview server did not start.");
-}
-
-function signalServer(child: ChildProcess | undefined, signal: NodeJS.Signals): void {
-  if (child?.pid === undefined) return;
-  try {
-    process.kill(-child.pid, signal);
-  } catch {
-    /* already gone */
-  }
-}
-
-/** SIGTERM the server's group, wait up to 5 s, then SIGKILL whatever is left. */
-async function stopServer(child: ChildProcess | undefined): Promise<void> {
-  if (child?.pid === undefined || child.exitCode !== null) return;
-  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  signalServer(child, "SIGTERM");
-  await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))]);
-  signalServer(child, "SIGKILL");
-}
-
-async function screenshot(browser: Browser, url: string, path: string, mobile: boolean): Promise<number> {
-  const context = await browser.newContext(
-    mobile ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: "reduce" } : { viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" },
-  );
-  try {
-    const page = await context.newPage();
-    const res = await page.goto(url, { waitUntil: "networkidle" });
-    if (res?.status() !== 200) throw new Error(`preview returned ${String(res?.status())}`);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    if (overflow > 0) console.log(`  warning: ${mobile ? "mobile" : "desktop"} overflows by ${overflow}px`);
-    const height = await page.evaluate(() => document.documentElement.scrollHeight);
-    await page.screenshot({ path, fullPage: true, clip: { x: 0, y: 0, width: mobile ? 390 : 1440, height: Math.min(height, mobile ? 3200 : 2800) } });
-    return Math.max(0, overflow);
-  } finally {
-    await context.close();
-  }
-}
-
 // ---------------------------------------------------------------- main
 
 async function main(): Promise<number> {
@@ -190,11 +121,11 @@ async function main(): Promise<number> {
   console.log(`run ${args.runId} → ${runDir}`);
 
   const deadline = new RunDeadline(Date.now() + 75 * 60_000);
-  let server: ChildProcess | undefined;
+  let server: PreviewServer | undefined;
   let browser: Browser | undefined;
   const overflows: string[] = [];
   const stopNow = () => {
-    signalServer(server, "SIGKILL");
+    killPreviewServers();
     killAllBoundedChildren();
   };
   // Installed before the build, so Ctrl-C never leaves a detached child behind.
@@ -213,8 +144,12 @@ async function main(): Promise<number> {
       if (build.code !== 0) throw new Error("npm run build failed; run it by hand to see why.");
     }
     if (await portInUse(args.port)) throw new UsageError(`Port ${args.port} is already in use; stop that server or pass --port.`);
-    server = startServer(args.port, args.outRoot);
-    await waitForServer(server, args.port, 90_000);
+    server = await startPreviewServer({
+      repoDir: REPO,
+      port: args.port,
+      env: codexEnvironment({ ...process.env, SR_DESIGN_PREVIEW_ROOT: args.outRoot }),
+      timeoutMs: 90_000,
+    });
     browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {});
     const b = browser;
     const report: PipelineReport = await runDesignPipeline(
@@ -235,8 +170,9 @@ async function main(): Promise<number> {
         render: async (candidate): Promise<Shots> => {
           const url = `http://127.0.0.1:${args.port}/design-preview/${args.runId}?profile=${candidate}`;
           const shots = { desktop: join(runDir, "shots", `${candidate}-desktop.png`), mobile: join(runDir, "shots", `${candidate}-mobile.png`) };
-          const desktopOverflow = await screenshot(b, url, shots.desktop, false);
-          const mobileOverflow = await screenshot(b, url, shots.mobile, true);
+          const desktopOverflow = await screenshotPage(b, url, shots.desktop, false);
+          const mobileOverflow = await screenshotPage(b, url, shots.mobile, true);
+          if (desktopOverflow > 0 || mobileOverflow > 0) console.log(`  warning: ${candidate} overflows horizontally`);
           if (desktopOverflow > 0) overflows.push(`OVERFLOW_${candidate}_DESKTOP`);
           if (mobileOverflow > 0) overflows.push(`OVERFLOW_${candidate}_MOBILE`);
           return shots;
@@ -265,7 +201,7 @@ async function main(): Promise<number> {
     throw error;
   } finally {
     await browser?.close().catch(() => undefined);
-    await stopServer(server);
+    await stopPreviewServer(server);
     killAllBoundedChildren();
   }
 }

@@ -15,7 +15,8 @@ const args = process.argv.slice(2);
 const record = (extra) => {
   if (!process.env.FAKE_CODEX_RECORD) return;
   const keys = ["OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL"].filter((k) => process.env[k] !== undefined);
-  appendFileSync(process.env.FAKE_CODEX_RECORD, JSON.stringify({ args, cwd: process.cwd(), apiKeyVars: keys, ...extra }) + "\n");
+  const secretVars = Object.keys(process.env).filter((k) => /KEY|TOKEN|SECRET|PASSWORD|SUPABASE/i.test(k));
+  appendFileSync(process.env.FAKE_CODEX_RECORD, JSON.stringify({ args, cwd: process.cwd(), apiKeyVars: keys, secretVars, tmpdir: process.env.TMPDIR ?? null, ...extra }) + "\n");
 };
 
 if (args[0] === "login" && args[1] === "status") {

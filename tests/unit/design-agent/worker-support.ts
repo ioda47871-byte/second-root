@@ -1,0 +1,224 @@
+// Test support for the design worker: a local mock of a public profile page,
+// a fake Codex wrapper, a fake preview renderer and a throwaway layout.
+// Fictional data only.
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { chromium } from "playwright";
+import { RunDeadline } from "@/lib/design-agent/bounded-process";
+import type { CaptureTarget } from "@/lib/design-agent/worker/capture";
+import { runDesignWorker, type PreviewSession, type WorkerOptions } from "@/lib/design-agent/worker/run";
+import { AMERICAN_EDITORIAL, review } from "./fixtures";
+
+export const FAKE_CODEX = resolve(__dirname, "../../support/fake-codex.mjs");
+export const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+export const WORKER_SHA = "0123456789abcdef0123456789abcdef01234567";
+export const LEAK = { stderr: "LEAK-STDERR-7f3a", rationale: "LEAK-RATIONALE-91c2", note: "LEAK-NOTE-5d10" };
+
+export const FACTS = { name: "EXAMPLE TEST", category: "baked_goods", ward: "北区", address: "名古屋市北区テスト町1-2-3", description: "テスト用の架空の紹介文です。" };
+
+// ------------------------------------------------------------------ mock profile site
+
+const tile = (i: number) =>
+  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="300" height="300" fill="hsl(${(i * 37) % 360},55%,70%)"/><circle cx="150" cy="150" r="60" fill="#fff"/></svg>`)}`;
+
+const page = (body: string) => `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;font-family:sans-serif">${body}</body></html>`;
+
+const profile = (posts: number) =>
+  page(
+    `<header style="height:260px;background:#f4e8d2;padding:40px"><h2>example_shop</h2><p>Fictional bakery bio for tests.</p></header>` +
+      `<main><div style="display:grid;grid-template-columns:repeat(3,300px);gap:4px;padding:20px">${Array.from({ length: posts }, (_, i) => `<a href="/p/${i}/"><img width="300" height="300" src="${tile(i)}"></a>`).join("")}</div></main>`,
+  );
+
+export type MockSite = { origin: string; requests: string[]; server: Server; target(username: string): CaptureTarget };
+
+export async function startMockSite(): Promise<MockSite> {
+  const requests: string[] = [];
+  let origin = "";
+  const server = createServer((req, res) => {
+    requests.push(`${req.headers.host ?? ""}${req.url ?? ""}`);
+    const port = new URL(origin).port;
+    const send = (status: number, html: string) => {
+      res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
+      res.end(html);
+    };
+    switch (req.url) {
+      case "/example_shop/":
+        return send(200, profile(12));
+      case "/few_posts/":
+        return send(200, profile(3));
+      case "/hop_shop/":
+        res.writeHead(302, { location: "/example_shop/" });
+        return res.end();
+      case "/wall_shop/":
+        return send(200, page(`<form><input name="username"><input name="password" type="password"><button>Log in</button></form>`));
+      case "/login_redirect/":
+        res.writeHead(302, { location: "/accounts/login/?next=%2Flogin_redirect%2F" });
+        return res.end();
+      case "/redirect_shop/":
+        res.writeHead(302, { location: `http://localhost:${port}/elsewhere/` });
+        return res.end();
+      case "/jsnav_shop/":
+        return send(200, page(`<header style="height:200px">x</header><script>location.href = "http://localhost:${port}/elsewhere/";</script>`));
+      case "/private_shop/":
+        return send(200, page(`<header style="height:200px"><h2>private</h2></header><h2>This account is private</h2>`));
+      case "/rate_shop/":
+        return send(429, page("Please wait a few minutes before you try again."));
+      case "/empty_shop/":
+        return send(200, page(""));
+      default:
+        return send(404, page("not found"));
+    }
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+  const address = server.address();
+  origin = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+  return {
+    origin,
+    requests,
+    server,
+    target: (username) => ({ url: `${origin}/${username}/`, allowNavigation: (u) => u.startsWith(`${origin}/`) }),
+  };
+}
+
+// ------------------------------------------------------------------ layout
+
+export type Layout = {
+  root: string;
+  state: string;
+  queue: string;
+  out: string;
+  tmp: string;
+  exportParent: string;
+  exportDir: string;
+  bin: string;
+  record: string;
+};
+
+export function makeLayout(): Layout {
+  const root = mkdtempSync(join(tmpdir(), "srdw-test-"));
+  const l: Layout = {
+    root,
+    state: join(root, "state"),
+    queue: join(root, "jobs"),
+    out: join(root, "results"),
+    tmp: join(root, "tmp"),
+    exportParent: join(root, "Desktop"),
+    exportDir: join(root, "Desktop", "second-root-codex-result"),
+    bin: join(root, "bin"),
+    record: join(root, "codex-record.jsonl"),
+  };
+  for (const d of [l.tmp, l.exportParent, l.bin, join(l.queue, "inbox")]) mkdirSync(d, { recursive: true, mode: 0o700 });
+  return l;
+}
+
+export function writeJob(l: Layout, jobId: string, instagramUrl = "https://www.instagram.com/example_shop/", facts: Record<string, unknown> = FACTS, dir = "inbox"): string {
+  mkdirSync(join(l.queue, dir), { recursive: true, mode: 0o700 });
+  const path = join(l.queue, dir, `${jobId}.json`);
+  writeFileSync(path, JSON.stringify({ version: 1, job_id: jobId, facts, source: { instagram_url: instagramUrl } }), { mode: 0o600 });
+  return path;
+}
+
+export type Step = { answer?: unknown; text?: string; exit?: number; stderr?: string; sleepMs?: number };
+
+export const OK_STEPS: Step[] = [{ answer: { ...AMERICAN_EDITORIAL, rationale: [LEAK.rationale] } }, { answer: review() }];
+
+/** A codex wrapper with the fake's settings baked in (the worker passes children an allowlisted environment). */
+export function fakeCodex(l: Layout, steps: Step[], login: "chatgpt" | "apikey" | "none" = "chatgpt"): string {
+  const stepsFile = join(l.root, `steps-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  writeFileSync(stepsFile, JSON.stringify(steps));
+  const path = join(l.bin, "codex");
+  writeFileSync(
+    path,
+    `#!/bin/sh\nexport FAKE_CODEX_STEPS='${stepsFile}' FAKE_CODEX_STATE='${stepsFile}.state' FAKE_CODEX_RECORD='${l.record}' FAKE_CODEX_LOGIN='${login}'\nexec node '${FAKE_CODEX}' "$@"\n`,
+  );
+  chmodSync(path, 0o755);
+  return path;
+}
+
+export function codexCalls(l: Layout): Array<{ args: string[]; secretVars: string[]; apiKeyVars: string[]; tmpdir: string | null }> {
+  if (!existsSync(l.record)) return [];
+  return readFileSync(l.record, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { args: string[]; secretVars: string[]; apiKeyVars: string[]; tmpdir: string | null });
+}
+
+// ------------------------------------------------------------------ fake preview
+
+export type PreviewLog = { renders: string[]; refsSeen: number[]; started: number };
+
+export function fakePreview(l: Layout, log: PreviewLog, opts: { failRender?: boolean } = {}): WorkerOptions["startPreview"] {
+  return async ({ previewRoot }) => {
+    log.started += 1;
+    const session: PreviewSession = {
+      renderer: {
+        async render(runId, candidate, shotsDir) {
+          if (opts.failRender) throw Object.assign(new Error("boom"), { code: "PREVIEW_RENDER_FAILED" });
+          if (!existsSync(join(previewRoot, runId, "facts.json"))) throw new Error("facts.json missing");
+          if (candidate !== "none" && !existsSync(join(previewRoot, runId, `${candidate}.json`))) throw new Error("profile missing");
+          log.renders.push(candidate);
+          // the screenshots of the shop exist while the job runs
+          const tmp = process.env.TMPDIR ?? "";
+          const jobDir = readdirSync(tmp).find((n) => n.startsWith("job-"));
+          log.refsSeen.push(jobDir ? readdirSync(join(tmp, jobDir, "refs")).length : -1);
+          const shots = { desktop: join(shotsDir, `${candidate}-desktop.png`), mobile: join(shotsDir, `${candidate}-mobile.png`) };
+          writeFileSync(shots.desktop, PNG);
+          writeFileSync(shots.mobile, PNG);
+          return { shots, overflow: [] };
+        },
+      },
+      stop: async () => undefined,
+    };
+    return session;
+  };
+}
+
+// ------------------------------------------------------------------ run
+
+export const SECRET_ENV = {
+  OPENAI_API_KEY: "sk-test-openai",
+  CODEX_API_KEY: "sk-test-codex",
+  ANTHROPIC_API_KEY: "sk-ant-test",
+  GITHUB_TOKEN: "ghp_test",
+  SUPABASE_SERVICE_ROLE_KEY: "service-role-test",
+};
+
+export async function runWorker(l: Layout, site: MockSite, over: Partial<WorkerOptions> & { steps?: Step[]; login?: "chatgpt" | "apikey" | "none"; preview?: PreviewLog; failRender?: boolean } = {}) {
+  const logs: string[] = [];
+  const preview = over.preview ?? { renders: [], refsSeen: [], started: 0 };
+  const codexBin = fakeCodex(l, over.steps ?? OK_STEPS, over.login);
+  const report = await runDesignWorker({
+    stateDir: l.state,
+    queueRoot: l.queue,
+    outRoot: l.out,
+    tmpBase: l.tmp,
+    exportDir: l.exportDir,
+    workerSha: WORKER_SHA,
+    maxJobs: 1,
+    deadline: new RunDeadline(Date.now() + 30 * 60_000),
+    env: { PATH: process.env.PATH, HOME: l.root, LANG: "C.UTF-8", ...SECRET_ENV },
+    codexBin,
+    log: (line) => logs.push(line),
+    launchBrowser: (env) =>
+      chromium.launch({ headless: true, env, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }),
+    startPreview: fakePreview(l, preview, { failRender: over.failRender }),
+    captureTargetFor: (source) => site.target(source.username),
+    captureSettleMs: 300,
+    ...over,
+  });
+  return { report, logs, preview };
+}
+
+/** Every file under a directory, as text (for leak checks). */
+export function allText(dir: string): string {
+  if (!existsSync(dir)) return "";
+  let out = "";
+  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (!entry.isFile()) continue;
+    const path = join(entry.parentPath, entry.name);
+    if (/\.(json|txt|log)$/.test(entry.name)) out += readFileSync(path, "utf8");
+  }
+  return out;
+}
