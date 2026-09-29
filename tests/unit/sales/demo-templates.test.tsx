@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { areaLabel, nameUnits } from "@/components/demo/info";
 import { renderDemo } from "@/components/demo/renderDemo";
 import type { DemoView } from "@/lib/sales/demo-content";
 
@@ -66,6 +67,13 @@ const ALLOWED_COPY = [
   // Neutral headings only: "メニュー" never claims what kind of item a fact is.
   "お店の情報", "店舗のご案内", "お店について", "メニュー", "店舗情報",
   "名古屋市の", "名古屋のパン屋", "パン屋", "名古屋の焼菓子店", "焼菓子店", "名古屋のカフェ", "カフェ",
+  "名古屋市", "名古屋",
+  // Decorative English labels: translations of the category, the city and
+  // the generic headings above, never claims about the shop.
+  "Bakery", "Baked Goods", "Cafe", "Nagoya",
+  "About", "Menu", "Information", "Hours", "Closed", "Address", "Access", "Tel",
+  // List numbering.
+  ...Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")),
 ];
 
 const CASES = [
@@ -84,7 +92,7 @@ describe.each(CASES)("%s", (template, category) => {
   it("omits sections without facts and never prints empty placeholders", () => {
     const html = renderToStaticMarkup(renderDemo({ ...minimal, template, category }));
     expect(html).not.toMatch(/undefined|null|NaN/);
-    for (const label of ["営業時間", "定休日", "電話", "メニュー", "ご紹介", "お店の情報", "店舗のご案内", "お店について", "店舗情報"]) {
+    for (const label of ["営業時間", "定休日", "電話", "メニュー", "ご紹介", "お店の情報", "店舗のご案内", "お店について", "店舗情報", "About", "Menu", "Information", "Hours", "Closed", "Address", "Access", "Tel"]) {
       expect(html).not.toContain(label);
     }
     expect(html).toContain("公式サイトではありません");
@@ -103,12 +111,61 @@ describe.each(CASES)("%s", (template, category) => {
   });
 });
 
+const cssDir = join(process.cwd(), "components/demo");
+const cssFiles = readdirSync(cssDir).filter((f) => f.endsWith(".css"));
+
 describe("template CSS", () => {
   it("adds no text through CSS content", () => {
-    const dir = join(process.cwd(), "components/demo");
-    for (const file of readdirSync(dir).filter((f) => f.endsWith(".css"))) {
-      const values = [...readFileSync(join(dir, file), "utf8").matchAll(/(?<![-\w])content\s*:\s*([^;}]+)/g)].map((m) => m[1].trim());
+    for (const file of cssFiles) {
+      const values = [...readFileSync(join(cssDir, file), "utf8").matchAll(/(?<![-\w])content\s*:\s*([^;}]+)/g)].map((m) => m[1].trim());
       expect(values.filter((v) => v !== '""' && v !== "''"), file).toEqual([]);
     }
+  });
+});
+
+describe("template visuals", () => {
+  it("load no images or fonts from anywhere (no url() except in-page SVG references)", () => {
+    for (const file of cssFiles) {
+      const urls = [...readFileSync(join(cssDir, file), "utf8").matchAll(/url\(([^)]*)\)/g)].map((m) => m[1].trim());
+      expect(urls.filter((u) => !u.startsWith("#")), file).toEqual([]);
+    }
+    for (const [template, category] of CASES) {
+      const html = renderToStaticMarkup(renderDemo({ ...full, template, category }));
+      expect(html).not.toMatch(/<img\b|<image\b|href="(?!https:\/\/secondroot\.jp)/);
+    }
+  });
+
+  it("animate only when the visitor has not asked for reduced motion", () => {
+    for (const file of cssFiles) {
+      const css = readFileSync(join(cssDir, file), "utf8");
+      const allowed = css.split("@media (prefers-reduced-motion: no-preference)");
+      // Everything before the first no-preference block, and after its end, must not animate.
+      const outside = [allowed[0], ...allowed.slice(1).map((part) => part.slice(closingBrace(part)))].join("\n");
+      expect(outside, file).not.toMatch(/(?<![-\w])animation(-name)?\s*:/);
+    }
+  });
+});
+
+/** Index just past the brace that closes the block starting at the first "{". */
+function closingBrace(css: string): number {
+  let depth = 0;
+  for (let i = css.indexOf("{"); i < css.length; i++) {
+    if (css[i] === "{") depth++;
+    if (css[i] === "}" && --depth === 0) return i + 1;
+  }
+  return css.length;
+}
+
+describe("template helpers", () => {
+  it("builds the area label only from the verified ward", () => {
+    expect(areaLabel({ ...full, ward: "中区" })).toBe("名古屋市中区のパン屋");
+    expect(areaLabel({ ...full, ward: null, category: "cafe", template: "cafe_v1" })).toBe("名古屋のカフェ");
+  });
+
+  it("measures names so short names are set larger than long ones", () => {
+    expect(nameUnits("喫茶テスト")).toBeLessThan(nameUnits("EXAMPLE BAKE STUDIO NAGOYA"));
+    expect(nameUnits("EXAMPLE BAKE")).toBeLessThan(12);
+    expect(nameUnits("x".repeat(500))).toBe(40);
+    expect(nameUnits("")).toBe(3);
   });
 });

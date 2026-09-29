@@ -1,80 +1,128 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "./DemoFrame";
 import { InfoIcon } from "./icons";
-import { areaLabel, infoRows } from "./info";
+import { areaLabel, areaName, CATEGORY_EN, infoRows, nameStyle, ordinal } from "./info";
 import styles from "./bakery.module.css";
 
-// bakery_v1. Headings are generic; every shop-specific word comes from a
-// verified fact. Sections without facts are omitted.
+// bakery_v1 — artisan bakery / craft editorial. Headings are generic and
+// the English words are fixed template ornaments; every shop-specific word
+// comes from a verified fact. Sections without facts are omitted.
 
-function Loaves() {
+function WheatArt() {
+  const grain = "c-7-3-10-10-8-18 7 2 10 9 8 18Zm0 0c7-3 10-10 8-18-7 2-10 9-8 18Z";
   return (
-    <svg className={styles.loaves} viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      <g fill="#ecd3aa" opacity="0.55">
-        <ellipse cx="40" cy="40" rx="46" ry="26" />
-        <ellipse cx="360" cy="190" rx="44" ry="26" />
-        <ellipse cx="350" cy="36" rx="22" ry="14" />
-      </g>
-      <g stroke="#dcb987" strokeWidth="3" strokeLinecap="round" opacity="0.6" fill="none">
-        <path d="M18 34c10-6 16-6 26 0M38 30c10-6 16-6 26 0" />
-        <path d="M336 186c10-6 16-6 26 0M356 180c10-6 16-6 26 0" />
+    <svg className={styles.wheat} viewBox="0 0 360 520" aria-hidden="true">
+      <g className={styles.wheatStroke}>
+        <path d="M180 520C180 380 176 250 188 120" />
+        <path d={`M184 170${grain}M183 205${grain}M182 240${grain}M181 275${grain}M181 310${grain}M186 135${grain}`} />
+        <path d="M188 120c2-22 6-40 14-58" />
+        <path d="M120 520c8-120 2-210-26-300" />
+        <path d={`M100 260${grain}M106 292${grain}M111 324${grain}M114 356${grain}`} transform="rotate(-14 100 260)" />
+        <path d="M250 520c-4-100 10-190 44-262" />
+        <path d={`M292 268${grain}M285 300${grain}M278 332${grain}M272 364${grain}`} transform="rotate(16 292 268)" />
       </g>
     </svg>
   );
 }
 
-function Wheat() {
+function LoafArt() {
   return (
-    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#c07a3e" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-      <path d="M12 21V9M12 13c-3 0-4-2-4-4 2 0 4 1 4 4Zm0 0c3 0 4-2 4-4-2 0-4 1-4 4Zm0-4c-3 0-4-2-4-4 2 0 4 1 4 4Zm0 0c3 0 4-2 4-4-2 0-4 1-4 4Z" />
+    <svg className={styles.loaf} viewBox="0 0 320 200" aria-hidden="true">
+      <ellipse className={styles.loafShadow} cx="166" cy="176" rx="140" ry="14" />
+      <path className={styles.loafBody} d="M30 150c-6-60 50-112 130-112s140 48 132 112c-2 16-16 24-40 24H70c-24 0-38-8-40-24Z" />
+      <path className={styles.loafScore} d="M96 70c18 14 30 36 34 64M146 56c18 16 30 40 32 74M198 58c16 16 26 38 28 66" />
     </svg>
   );
 }
 
 export default function BakeryTemplate({ demo }: { demo: DemoView }) {
   const rows = infoRows(demo);
+  const address = rows.find((r) => r.key === "address");
+  const others = rows.filter((r) => r.key !== "address");
   return (
     <DemoFrame shopName={demo.name} template={demo.template}>
       <header className={styles.hero}>
-        <Loaves />
-        <div className={styles.heroInner}>
-          <p className={styles.label}>{areaLabel(demo)}</p>
-          <h1 className={styles.name}>{demo.name}</h1>
-          {demo.description && <p className={styles.description}>{demo.description}</p>}
+        <p className={styles.vertical}>{areaLabel(demo)}</p>
+        <div className={styles.heroText}>
+          <p className={styles.kicker}>
+            <span className={styles.kickerEn}>{CATEGORY_EN[demo.category]}</span>
+            <span className={styles.kickerRule} aria-hidden="true" />
+            <span>{areaName(demo)}</span>
+          </p>
+          <h1 className={styles.name} style={nameStyle(demo.name)}>
+            {demo.name}
+          </h1>
         </div>
+        <div className={styles.heroArt} aria-hidden="true">
+          <WheatArt />
+          <div className={styles.sheet}>
+            <LoafArt />
+          </div>
+        </div>
+        <p className={styles.giant} aria-hidden="true">
+          {CATEGORY_EN[demo.category]}
+        </p>
       </header>
-      <main className={styles.body}>
-        {demo.menuItems.length > 0 && (
-          <section aria-labelledby="bakery-menu">
-            <h2 id="bakery-menu" className={styles.sectionTitle}>
-              メニュー
+
+      <main className={styles.main}>
+        {demo.description && (
+          <section className={styles.about} aria-labelledby="bakery-about">
+            <h2 id="bakery-about" className={styles.aboutTitle}>
+              About
             </h2>
-            <ul className={styles.menu}>
-              {demo.menuItems.map((item, i) => (
-                <li key={`${i}-${item}`} className={styles.menuItem}>
-                  <Wheat />
-                  {item}
-                </li>
-              ))}
-            </ul>
+            <p className={styles.lead}>{demo.description}</p>
           </section>
         )}
-        {rows.length > 0 && (
-          <section aria-labelledby="bakery-info">
-            <h2 id="bakery-info" className={styles.sectionTitle}>
-              お店の情報
+
+        {demo.menuItems.length > 0 && (
+          <section className={styles.section} aria-labelledby="bakery-menu">
+            <h2 id="bakery-menu" className={styles.sectionTitle}>
+              <span className={styles.titleEn}>Menu</span>
+              <span className={styles.titleJa}>メニュー</span>
             </h2>
-            <dl className={styles.info}>
-              {rows.map((row) => (
-                <div key={row.key} className={styles.row}>
-                  <dt>
-                    <InfoIcon kind={row.key} className={styles.icon} />
-                    {row.label}
-                  </dt>
-                  <dd>{row.value}</dd>
-                </div>
+            <ol className={styles.menu}>
+              {demo.menuItems.map((item, i) => (
+                <li key={`${i}-${item}`} className={styles.menuItem}>
+                  <span className={styles.menuNo}>{ordinal(i)}</span>
+                  <span className={styles.menuName}>{item}</span>
+                </li>
               ))}
-            </dl>
+            </ol>
+          </section>
+        )}
+
+        {rows.length > 0 && (
+          <section className={styles.section} aria-labelledby="bakery-info">
+            <h2 id="bakery-info" className={styles.sectionTitle}>
+              <span className={styles.titleEn}>Information</span>
+              <span className={styles.titleJa}>お店の情報</span>
+            </h2>
+            <div className={styles.paper}>
+              {address && (
+                <div className={styles.address}>
+                  <p className={styles.rowLabel}>
+                    <InfoIcon kind="address" className={styles.icon} />
+                    {address.label}
+                    <span className={styles.rowEn}>{address.en}</span>
+                  </p>
+                  <p className={styles.addressValue}>{address.value}</p>
+                </div>
+              )}
+              {others.length > 0 && (
+                <dl className={styles.rows}>
+                  {others.map((row) => (
+                    <div key={row.key} className={styles.row}>
+                      <dt className={styles.rowLabel}>
+                        <InfoIcon kind={row.key} className={styles.icon} />
+                        {row.label}
+                        <span className={styles.rowEn}>{row.en}</span>
+                      </dt>
+                      <dd className={styles.rowValue}>{row.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </div>
           </section>
         )}
       </main>
