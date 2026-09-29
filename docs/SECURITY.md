@@ -89,3 +89,12 @@
 ## 9. 報告
 
 脆弱性や secret 混入を見つけたら、`.ai/blockers.md` に記録し（secret の値は書かない）、人間に報告する。漏洩した secret の rotate は人間が行う。
+
+## 10. デモの AI アートディレクション PoC（DEV-028）
+
+- Codex CLI は ChatGPT のサインインだけで使う。`OPENAI_API_KEY` / `CODEX_API_KEY` / `OPENAI_BASE_URL` は子プロセスへ渡さない（`lib/design-agent/codex.ts`、guardrails テストで検査）。
+- Codex は `--sandbox read-only` で、空の一時ディレクトリで動く。出力と stderr はログに写さず、符号だけを返す。
+- Codex の答えは JSON Schema と zod の列挙値で縛る。ページの文字は fact-only の DemoView と固定の見出しからしか出ない。
+- 店舗の facts・スクリーンショット・profile はリポジトリ（public）の外、WSL の専用利用者 `sr-designgen` のホームにだけ置く。
+- `/design-preview` は `SR_DESIGN_PREVIEW_ROOT` を設定したローカルの `next start` でしか開かない（Vercel では常に 404、noindex）。
+- 手順: `docs/operations/design-agent-wsl.md`

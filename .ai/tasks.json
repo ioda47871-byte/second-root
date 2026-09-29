@@ -1220,6 +1220,64 @@
       "attempts": 0,
       "last_failure": "Fresh review PASS (Low 3: 1 件を docs で対応)。PR #38 merge（1e53ef0）。Staging に 20260928000100 を適用し、start 200 / 別 runId 409 run_in_progress / 同一 runId 200 replayed を実測。確認用 run は abort 済み（.ai/reviews/DEV-025.md）。",
       "branch": "feature/dev-025-single-running-run"
+    },
+    {
+      "id": "DEV-028",
+      "title": "AI art direction PoC for demos (Codex CLI via ChatGPT sign-in, design profile + shared renderer)",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-007"
+      ],
+      "purpose": "「テンプレートを当てはめた」ではなく「この店のためにデザインした」デモにするため、怪異読本の Codex CLI 連携（ChatGPT サインイン・API キーなし）を移植し、Codex をアートディレクターとして design profile を選ばせる。まず EXAMPLE BAKE 1 店舗で有効性を確かめる（2026-09-29 人間承認）",
+      "acceptance_criteria": [
+        "怪異読本から bounded process / Codex の sign-in 確認 / JSONL parser / 失敗の符号を移植（API キーの変数を子へ渡さない・read-only sandbox・Codex の出力をログに写さない）",
+        "DesignProfile と VisualReview を zod で定義し、同じ定義から codex exec --output-schema 用の JSON Schema を作る（列挙値・hex・コントラスト検査）",
+        "ProfileRenderer は fact-only の DemoView だけを文言の出どころにする。profile からは文字を出さない",
+        "review 後の自動修正は profile だけ、最大 2 回。renderer の機能が要るなら BLOCKED。brief の失敗は既存テンプレートへ fallback、confidence < 0.5 は業種の既定 profile",
+        "ローカル CLI（npm run sales:design-demo）。入力はリポジトリの外、スクリーンショットは人が用意し --screens-reviewed で確認、結果は ~/.local/share/second-root-design/<run-id>/",
+        "/design-preview は SR_DESIGN_PREVIEW_ROOT が無ければ 404（Vercel には設定しない）",
+        "偽の Codex CLI による CI テスト",
+        "WSL runbook（専用利用者 sr-designgen、codex login --device-auth）",
+        "DB migration なし・Production / Staging / Routine / 営業 Agent に触らない",
+        "人間の WSL で EXAMPLE BAKE を本物の Codex で 1 件通し、PC / mobile の before / after を比較する"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent（fake Codex、schema、loop、renderer の fact-only）",
+        "unit: guardrails（Codex を web app から import しない・OpenAI キーを使わない）",
+        "build",
+        "e2e（既存）",
+        "人間の WSL での実走"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "components/demo/",
+        "app/design-preview/",
+        "scripts/sales-design/",
+        "tests/",
+        "docs/",
+        ".ai/",
+        "next.config.ts",
+        "package.json",
+        "package-lock.json",
+        "vitest.config.mts"
+      ],
+      "forbidden_scope": [
+        "supabase/migrations/",
+        "Production / Staging / Routine / 営業 Agent",
+        "OpenAI API キー",
+        "店舗の facts・スクリーンショット・profile を repo に commit",
+        "main への直接 push",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "DB schema の設計（PoC の結果を見てから）",
+        "営業 Routine への接続",
+        "renderer の機能追加（BLOCKED の判断）"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-028-ai-art-direction"
     }
   ]
 }
