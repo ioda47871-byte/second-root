@@ -1229,17 +1229,17 @@
       "depends_on": [
         "DEV-023"
       ],
-      "purpose": "sales_ig_begin_send は draft → send の順に行ロックを取るが、sales_ig_finish_send（と sales_ig_resolve_unknown）は send → draft の順。ダブルタップで 2 本目の begin_send が 1 本目の finish_send と重なると deadlock（40P01）で finish_send が中断し、Meta に実際に届いた返信が 'unknown' になる（PR #41 integration job 109266706032 で ig-send の double tap test が断続的に失敗）。ロック順を draft → send に統一する",
+      "purpose": "sales_ig_begin_send は draft → send の順に行ロックを取るが、sales_ig_finish_send（と sales_ig_resolve_unknown）は send → draft の順。ダブルタップで 2 本目の begin_send が 1 本目の finish_send と重なると deadlock（40P01）で finish_send が中断し、Meta に実際に届いた返信が 'unknown' になる（PR #41 integration job 109266706032 で ig-send の double tap test が断続的に失敗）。ロック順を thread → draft → send に統一する（begin_send と save_draft / resolve_thread の thread・draft の逆順も同じ種類の deadlock になるため合わせて直す）",
       "acceptance_criteria": [
-        "sales_ig_finish_send / sales_ig_resolve_unknown は draft を先に、send を後にロックする（begin_send と同じ順）",
+        "sales_ig_begin_send / sales_ig_finish_send / sales_ig_resolve_unknown は thread → draft → send の順にロックする（save_draft・resolve_thread の thread → draft とも一致）",
         "それ以外の挙動（security definer・search_path・sales_assert_admin・invalid_outcome / not_found・replay 規則・follow・outbound message の記録・戻り値・grant/revoke）は変えない",
-        "draft のロックを保持した別 transaction と finish_send / resolve_unknown が重なっても deadlock せず、結果が記録される（integration test で決定的に再現）",
+        "別 transaction が draft → send、または thread → draft の順にロックしている間に begin_send / finish_send / resolve_unknown が重なっても deadlock せず、結果が記録される（integration test で決定的に再現）",
         "ダブルタップを 20 回繰り返しても毎回 1 回だけ送信され 'sent' が記録される",
         "既存 migration は変更せず forward migration",
         "Staging / Production への migration 適用は人間（docs/RELEASE.md）"
       ],
       "required_tests": [
-        "integration: draft ロックを保持した別 transaction と finish_send / resolve_unknown が重なっても deadlock しない",
+        "integration: 別 transaction の draft → send / thread → draft と begin_send / finish_send / resolve_unknown が重なっても deadlock しない",
         "integration: double tap × 20",
         "integration: ig-send を複数回実行",
         "全 CI"

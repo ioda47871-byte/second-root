@@ -1,17 +1,108 @@
 -- Second Root Sales Agent — Instagram reply sending: one lock order (DEV-027)
 --
--- sales_ig_begin_send locks the draft and then its send, but
--- sales_ig_finish_send and sales_ig_resolve_unknown (migration 001100) lock
--- the send and then the draft. On a double tap, the second begin_send
--- (holding the draft, waiting for the send) could overlap the first call's
--- finish_send (holding the send, waiting for the draft): Postgres aborted one
--- of them as a deadlock (40P01). When that was finish_send, a reply Meta had
--- really delivered was left 'sending' and later shown as 'unknown'.
+-- The send RPCs of migration 001100 took row locks in different orders:
+--   * sales_ig_begin_send: draft, then thread, then send,
+--   * sales_ig_finish_send / sales_ig_resolve_unknown: send, then draft,
+--   * sales_ig_save_draft / sales_ig_resolve_thread (001000 / 001100): thread,
+--     then the thread's drafts.
+-- On a double tap, the second begin_send (holding the draft, waiting for the
+-- send) could overlap the first call's finish_send (holding the send, waiting
+-- for the draft): Postgres aborted one of them as a deadlock (40P01). When
+-- that was finish_send, a reply Meta had really delivered was left 'sending'
+-- and later shown as 'unknown'. The same kind of deadlock was possible
+-- between begin_send and save_draft / resolve_thread on the thread.
 --
--- Both functions now take the draft lock first and the send lock second,
--- the same order as begin_send. A send's draft_id never changes, so it is
--- read without a lock to find the draft, and the send is then re-read under
--- its lock. Everything else is unchanged from 001100.
+-- Every function now locks in one order: thread, then draft, then send
+-- (skipping what it does not need). A draft's thread_id and a send's
+-- draft_id never change, so they are read without a lock to find what to
+-- lock first; the row is then re-read under its lock. Otherwise the three
+-- functions behave as in 001100; replays now also wait for those locks.
+
+-- この内容で返信 (1): reserve the send. Returns what the server needs to call
+-- the Send API, or the earlier outcome for a replay.
+create or replace function public.sales_ig_begin_send(p_draft_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  d public.sales_ig_drafts;
+  t public.sales_ig_threads;
+  s public.sales_ig_sends;
+  key text;
+begin
+  perform public.sales_assert_admin();
+  -- Lock order: thread, draft, send (see the header).
+  select * into d from public.sales_ig_drafts where id = p_draft_id;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  select * into t from public.sales_ig_threads where id = d.thread_id for update;
+  select * into d from public.sales_ig_drafts where id = p_draft_id and thread_id = t.id for update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  key := d.id::text || ':' || encode(extensions.digest(d.body, 'sha256'), 'hex');
+
+  select * into s from public.sales_ig_sends where idempotency_key = key for update;
+  if found then
+    if s.status = 'sent' or s.status = 'unknown' then
+      return jsonb_build_object('send_id', s.id, 'status', s.status, 'replayed', true);
+    end if;
+    if s.status = 'sending' then
+      -- Another tap is in flight, or the server died mid-call: never resend
+      -- on our own. After 2 minutes it becomes unknown for the human.
+      if s.updated_at < now() - interval '2 minutes' then
+        update public.sales_ig_sends set status = 'unknown', error_code = 'interrupted' where id = s.id;
+        update public.sales_ig_drafts set status = 'unknown' where id = d.id;
+        return jsonb_build_object('send_id', s.id, 'status', 'unknown', 'replayed', true);
+      end if;
+      return jsonb_build_object('send_id', s.id, 'status', 'sending', 'replayed', true);
+    end if;
+  end if;
+
+  if d.status not in ('pending', 'snoozed', 'failed') then
+    raise exception 'not_sendable' using errcode = 'P0001';
+  end if;
+  if t.match_status <> 'matched' then
+    raise exception 'unmatched' using errcode = 'P0001';
+  end if;
+  if not exists (select 1 from public.sales_prospects p where p.id = t.prospect_id and not p.do_not_contact) then
+    raise exception 'do_not_contact' using errcode = 'P0001';
+  end if;
+  -- Only a reply to the latest message: a draft (e.g. an earlier failed
+  -- one) for an older message is retired once a newer message arrived.
+  if d.message_id is distinct from (
+    select m.id from public.sales_ig_messages m
+      where m.thread_id = t.id and m.direction = 'inbound' and m.deleted_at is null
+      order by m.sent_at desc, m.received_at desc, m.id desc limit 1
+  ) then
+    update public.sales_ig_drafts set status = 'superseded' where id = d.id;
+    return jsonb_build_object('status', 'stale_draft', 'replayed', true);
+  end if;
+  if t.last_inbound_at is null or t.last_inbound_at < now() - interval '24 hours' then
+    raise exception 'window_closed' using errcode = 'P0001';
+  end if;
+
+  if s.id is null then
+    insert into public.sales_ig_sends (draft_id, idempotency_key, body, status)
+      values (d.id, key, d.body, 'sending') returning * into s;
+  else
+    -- A clear failure before: retry with the same key.
+    if s.attempts >= 10 then
+      raise exception 'too_many_attempts' using errcode = 'P0001';
+    end if;
+    update public.sales_ig_sends set status = 'sending', attempts = attempts + 1, error_code = null
+      where id = s.id returning * into s;
+  end if;
+  update public.sales_ig_drafts set status = 'sending', snoozed_until = null where id = d.id;
+  return jsonb_build_object(
+    'send_id', s.id, 'attempt', s.attempts, 'status', 'sending', 'replayed', false,
+    'account_id', t.ig_account_id, 'igsid', t.igsid, 'body', s.body
+  );
+end;
+$$;
 
 -- この内容で返信 (2): record the outcome of the Send API call.
 --   p_attempt: the attempt number begin_send returned; a result for an
@@ -33,13 +124,16 @@ begin
   if p_outcome not in ('sent', 'failed', 'unknown') then
     raise exception 'invalid_outcome' using errcode = '22023';
   end if;
-  -- Lock order: draft, then send (as in begin_send).
+  -- Lock order: thread, draft, send (see the header). The thread is only
+  -- key-share locked: the lock the outbound message insert takes anyway.
   select * into s from public.sales_ig_sends where id = p_send_id;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
+  select * into d from public.sales_ig_drafts where id = s.draft_id;
+  perform 1 from public.sales_ig_threads where id = d.thread_id for key share;
   select * into d from public.sales_ig_drafts where id = s.draft_id for update;
-  select * into s from public.sales_ig_sends where id = p_send_id for update;
+  select * into s from public.sales_ig_sends where id = p_send_id and draft_id = d.id for update;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
@@ -97,15 +191,16 @@ set search_path = ''
 as $$
 declare
   s public.sales_ig_sends;
+  d public.sales_ig_drafts;
 begin
   perform public.sales_assert_admin();
-  -- Lock order: draft, then send (as in begin_send).
+  -- Lock order: draft, then send (see the header; the thread is not touched).
   select * into s from public.sales_ig_sends where id = p_send_id;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  perform 1 from public.sales_ig_drafts where id = s.draft_id for update;
-  select * into s from public.sales_ig_sends where id = p_send_id for update;
+  select * into d from public.sales_ig_drafts where id = s.draft_id for update;
+  select * into s from public.sales_ig_sends where id = p_send_id and draft_id = d.id for update;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
@@ -130,6 +225,7 @@ declare
   fn text;
 begin
   foreach fn in array array[
+    'public.sales_ig_begin_send(uuid)',
     'public.sales_ig_finish_send(uuid, integer, text, text, text)',
     'public.sales_ig_resolve_unknown(uuid, boolean)'
   ] loop
