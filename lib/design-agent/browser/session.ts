@@ -163,7 +163,7 @@ export async function runSignedInCapture(options: SignedInCaptureOptions): Promi
       CHALLENGE: "INSTAGRAM_CHALLENGE",
       CAPTCHA: "INSTAGRAM_CAPTCHA",
     };
-    return { code: byReason[result.reason] ?? "PUBLIC_SOURCE_UNAVAILABLE", reason: result.reason, files: [], softened: 0 };
+    return { code: byReason[result.reason] ?? "PUBLIC_SOURCE_UNAVAILABLE", reason: result.detail ?? result.reason, files: [], softened: 0 };
   } catch {
     return { code: "CAPTURE_FAILED", reason: "CAPTURE_ERROR", files: [], softened: 0 };
   } finally {

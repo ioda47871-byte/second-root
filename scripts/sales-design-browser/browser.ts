@@ -5,10 +5,13 @@
  *   npm run -s sales:design-browser -- login
  *   npm run -s sales:design-browser -- capture --source-file ~/sr-design-input/<shop>/source.json
  *   npm run -s sales:design-browser -- check
+ *   npm run -s sales:design-browser -- diagnose --source-file ~/sr-design-input/<shop>/source.json
  *
  * login opens a visible Chromium on the dedicated profile; a person signs in
  * by hand. capture takes at most three privacy-processed screenshots of one
- * public profile with that session. Output is codes, counts and the capture
+ * public profile with that session. diagnose opens the same page headless
+ * with and without the navigation guard, and headed, and prints fixed codes
+ * only (lib/design-agent/browser/diagnose.ts). Output is codes, counts and the capture
  * directory only: never a cookie, a session value, the profile path's
  * contents or the source URL.
  */
@@ -17,9 +20,10 @@ import { homedir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { chromium } from "playwright";
 import { checkProfileLocation, checkProfileTree, currentProfileEnv, DEFAULT_PROFILE_DIR, ProfileError, purgeOldCaptures } from "../../lib/design-agent/browser/profile";
+import { runDiagnose } from "../../lib/design-agent/browser/diagnose";
 import { runLogin, runSignedInCapture, type LaunchPersistent } from "../../lib/design-agent/browser/session";
 import { instagramTarget } from "../../lib/design-agent/worker/capture";
-import { parseInstagramProfileUrl } from "../../lib/design-agent/worker/source-url";
+import { parseInstagramProfileUrl, type ProfileSource } from "../../lib/design-agent/worker/source-url";
 
 const REPO = resolve(__dirname, "../..");
 process.umask(0o077);
@@ -57,10 +61,11 @@ async function login(): Promise<number> {
   return code === "LOGIN_OK" ? 0 : code === "BROWSER_BUSY" ? 3 : 5;
 }
 
-async function capture(): Promise<number> {
+/** The profile URL from --source-file, or an exit code after saying why not. */
+async function readSource(command: string): Promise<ProfileSource | number> {
   const sourceFile = flag("source-file");
   if (!sourceFile) {
-    say("usage: capture --source-file <file.json with instagram_url>");
+    say(`usage: ${command} --source-file <file.json with instagram_url>`);
     return 2;
   }
   const sourcePath = expand(sourceFile);
@@ -80,6 +85,29 @@ async function capture(): Promise<number> {
     say("SOURCE_URL_INVALID (https://www.instagram.com/<profile>/ only)");
     return 2;
   }
+  return source;
+}
+
+async function diagnose(): Promise<number> {
+  const source = await readSource("diagnose");
+  if (typeof source === "number") return source;
+  say("Opens the page up to 3 times (A headless+guard, C headless without interception, B headed+guard), ~1 minute. Nothing is clicked or typed.");
+  const outcome = await runDiagnose({
+    profileDir,
+    stateDir,
+    env: currentProfileEnv(REPO),
+    target: instagramTarget(source),
+    launchPersistent,
+    hasDisplay: Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY),
+    say,
+  });
+  if (outcome === "BROWSER_BUSY") say("BROWSER_BUSY");
+  return outcome === "DIAGNOSED" ? 0 : outcome === "BROWSER_BUSY" ? 3 : 5;
+}
+
+async function capture(): Promise<number> {
+  const source = await readSource("capture");
+  if (typeof source === "number") return source;
   await purgeOldCaptures(capturesRoot);
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
   const outDir = join(capturesRoot, stamp);
@@ -114,9 +142,9 @@ async function check(): Promise<number> {
 }
 
 const command = argv[0];
-const main = command === "login" ? login : command === "capture" ? capture : command === "check" ? check : null;
+const main = command === "login" ? login : command === "capture" ? capture : command === "check" ? check : command === "diagnose" ? diagnose : null;
 if (!main) {
-  say("usage: login | capture --source-file <file> | check");
+  say("usage: login | capture --source-file <file> | diagnose --source-file <file> | check");
   process.exit(2);
 }
 main().then(

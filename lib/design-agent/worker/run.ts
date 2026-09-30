@@ -354,13 +354,13 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       throw Object.assign(new Error(capture.reason), { code: "SOURCE_CAPTURE_FAILED" });
     }
     if (capture.status === "PUBLIC_SOURCE_UNAVAILABLE") {
-      log(`job ${jobId}: PUBLIC_SOURCE_UNAVAILABLE (${capture.reason})`);
+      log(`job ${jobId}: PUBLIC_SOURCE_UNAVAILABLE (${capture.detail ?? capture.reason})`);
       await rm(jobTemp, { recursive: true, force: true });
       tempDeleted = !(await exists(jobTemp));
       const report = {
         ...baseReport(options, jobId, startedAt, now),
         outcome: "PUBLIC_SOURCE_UNAVAILABLE",
-        instagram: { status: "unavailable", reason: capture.reason, images: 0, temp_deleted: tempDeleted },
+        instagram: { status: "unavailable", reason: capture.reason, ...(capture.detail ? { detail: capture.detail } : {}), images: 0, temp_deleted: tempDeleted },
         codex: null,
       };
       return await complete(ctx, runDir, report);

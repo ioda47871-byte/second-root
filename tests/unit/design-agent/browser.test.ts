@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkProfileLocation, checkProfileTree, prepareProfileDir, purgeOldCaptures, type ProfileEnv } from "@/lib/design-agent/browser/profile";
+import { DIAGNOSE_CODES, runDiagnose, type DiagnoseMode } from "@/lib/design-agent/browser/diagnose";
 import { displayEnvironment, runLogin, runSignedInCapture, type LaunchPersistent } from "@/lib/design-agent/browser/session";
 import { childEnvironment } from "@/lib/design-agent/worker/env";
 import { hideAccountChrome } from "@/lib/design-agent/worker/capture";
@@ -150,7 +151,7 @@ describe("login (a person signs in; the tool only watches)", () => {
   });
 
   it("never types, clicks or fills anything, and never reads cookies (source check)", () => {
-    const files = ["lib/design-agent/browser/session.ts", "lib/design-agent/browser/profile.ts", "lib/design-agent/worker/capture.ts", "scripts/sales-design-browser/browser.ts"];
+    const files = ["lib/design-agent/browser/session.ts", "lib/design-agent/browser/profile.ts", "lib/design-agent/browser/diagnose.ts", "lib/design-agent/worker/capture.ts", "scripts/sales-design-browser/browser.ts"];
     for (const f of files) {
       const text = readFileSync(join(REPO, f), "utf8");
       expect(text, f).not.toMatch(/\.(click|dblclick|fill|type|press|check|uncheck|selectOption|setInputFiles|tap|pressSequentially)\(|keyboard\.|\.cookies\(|storageState|addCookies/);
@@ -218,6 +219,110 @@ describe("signed-in capture", () => {
     const held = await acquireLock(s.state, new Date(), "browser.lock");
     expect((await capture(s, "li_shop")).code).toBe("BROWSER_BUSY");
     await held!.release();
+  });
+
+  it.each([
+    ["a 404", "li_no_such_page", "HTTP_404"],
+    ["a 410", "li_gone", "HTTP_410"],
+    ["a private-account text", "li_private", "BODY_PRIVATE"],
+    ["a page-unavailable text", "li_fetch_sensitive", "BODY_PAGE_UNAVAILABLE"],
+  ] as const)("says which signal made %s unavailable", async (_label, username, detail) => {
+    const s = await signedInProfile();
+    expect(await capture(s, username)).toMatchObject({ code: "PUBLIC_SOURCE_UNAVAILABLE", reason: detail });
+  });
+});
+
+describe("diagnose", () => {
+  const signedInProfile = async () => {
+    const s = sandbox();
+    await runLogin({ profileDir: s.profile, stateDir: s.state, env: s.env, launchPersistent, startUrl: `${site.origin}/home_signed_in/`, pollMs: 200 });
+    return s;
+  };
+  const diagnose = async (s: ReturnType<typeof sandbox>, username: string, over: { modes?: DiagnoseMode[]; home?: string; hasDisplay?: boolean; samples?: number[] } = {}) => {
+    const lines: string[] = [];
+    const outcome = await runDiagnose({
+      profileDir: s.profile,
+      stateDir: s.state,
+      env: s.env,
+      target: site.target(username),
+      launchPersistent,
+      modes: over.modes ?? ["A", "C"],
+      sampleAtMs: over.samples ?? [200, 2_500],
+      pauseMs: 0,
+      homeUrl: `${site.origin}/${over.home ?? "home_signed_in"}/`,
+      hasDisplay: over.hasDisplay ?? false,
+      say: (l) => lines.push(l),
+    });
+    return { outcome, lines };
+  };
+  const STRUCTURE = /^(A|B|C)$|^t=\d+s$|^headless\+guard$|^headless\+no-interception$|^headed\+guard$|^STOPPED_OFF_SITE$|^SKIPPED_NO_DISPLAY$|^BROWSER_ERROR$/;
+  const onlyCodes = (lines: string[]) => {
+    for (const word of lines.join(" ").split(/\s+/)) expect(DIAGNOSE_CODES.includes(word as never) || STRUCTURE.test(word), word).toBe(true);
+  };
+
+  it("shows a page that differs only without the browser's own request headers (guard vs no interception)", async () => {
+    const s = await signedInProfile();
+    const { outcome, lines } = await diagnose(s, "li_fetch_sensitive");
+    expect(outcome).toBe("DIAGNOSED");
+    expect(lines).toEqual([
+      "A headless+guard HTTP_200",
+      "A t=0s MAIN_PRESENT HEADER_MISSING POSTS_MISSING BODY_UNAVAILABLE_MARKER SIGNED_IN_NAV_PRESENT",
+      "A t=3s MAIN_PRESENT HEADER_MISSING POSTS_MISSING BODY_UNAVAILABLE_MARKER SIGNED_IN_NAV_PRESENT",
+      "A SESSION_OK",
+      "C headless+no-interception HTTP_200",
+      "C t=0s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT",
+      "C t=3s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT",
+      "C SESSION_OK",
+    ]);
+    onlyCodes(lines);
+  });
+
+  it("shows text that disappears while the page renders (hydration)", async () => {
+    const s = await signedInProfile();
+    const { lines } = await diagnose(s, "li_hydrate", { modes: ["A"] });
+    expect(lines[1]).toContain("BODY_UNAVAILABLE_MARKER");
+    expect(lines[1]).toContain("POSTS_MISSING");
+    expect(lines[2]).not.toContain("BODY_UNAVAILABLE_MARKER");
+    expect(lines[2]).toContain("POSTS_PRESENT");
+  });
+
+  it("reports HTTP, private, CAPTCHA, challenge and a lost session as codes only", async () => {
+    const s = await signedInProfile();
+    const samples = [200];
+    expect((await diagnose(s, "li_no_such_page", { modes: ["A"], samples })).lines[0]).toBe("A headless+guard HTTP_404");
+    expect((await diagnose(s, "li_gone", { modes: ["C"], samples })).lines[0]).toBe("C headless+no-interception HTTP_OTHER");
+    expect((await diagnose(s, "li_private", { modes: ["A"], samples })).lines[1]).toContain("BODY_PRIVATE_MARKER");
+    expect((await diagnose(s, "li_captcha", { modes: ["A"], samples })).lines[1]).toContain("CAPTCHA_PRESENT");
+    // the guard stops the redirect to a challenge; without interception the browser shows it
+    expect((await diagnose(s, "li_challenge", { modes: ["A"], samples })).lines[0]).toBe("A headless+guard HTTP_OTHER");
+    expect((await diagnose(s, "li_challenge", { modes: ["C"], samples })).lines[1]).toContain("CHALLENGE_PRESENT");
+    const lost = await diagnose(s, "li_shop", { modes: ["A"], samples, home: "login_page" });
+    expect(lost.lines.at(-1)).toBe("A SESSION_MISSING");
+    onlyCodes(lost.lines);
+  });
+
+  it("stops without interception when the page leaves the site, and never prints a URL, username or page text", async () => {
+    const s = await signedInProfile();
+    const before = site.requests.length;
+    const { lines } = await diagnose(s, "li_offsite", { modes: ["C"], samples: [200] });
+    expect(lines).toEqual(["C STOPPED_OFF_SITE"]);
+    // the session check does not run after leaving the site
+    expect(site.requests.slice(before).some((r) => r.includes("home_signed_in"))).toBe(false);
+    const all = (await diagnose(s, "li_shop", { modes: ["A", "C"], samples: [200] })).lines.join("\n");
+    expect(all).not.toMatch(/li_shop|example_shop|Fictional|LEAK|localhost|127\.0\.0\.1|http|sr-instagram-browser|fake_session/);
+  });
+
+  it("runs the headed check only with a display, and refuses to run without a profile or while it is in use", async () => {
+    const s = await signedInProfile();
+    expect((await diagnose(s, "li_shop", { modes: ["B"], samples: [200] })).lines).toEqual(["B SKIPPED_NO_DISPLAY"]);
+    expect((await diagnose(s, "li_shop", { modes: ["B"], samples: [200], hasDisplay: true })).lines[0]).toBe("B headed+guard HTTP_200");
+    const held = await acquireLock(s.state, new Date(), "browser.lock");
+    expect((await diagnose(s, "li_shop")).outcome).toBe("BROWSER_BUSY");
+    await held!.release();
+    const empty = sandbox();
+    expect(await diagnose(empty, "li_shop")).toEqual({ outcome: "SESSION_MISSING", lines: ["SESSION_MISSING"] });
+    expect(existsSync(empty.profile)).toBe(false);
+    await checkProfileTree(s.profile, s.env, { tighten: false });
   });
 });
 

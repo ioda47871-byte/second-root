@@ -83,6 +83,27 @@ export async function startMockSite(): Promise<MockSite> {
               `</main></div>`,
           ),
         );
+      case "/li_fetch_sensitive/":
+        // Like a site that answers a request without the browser's sec-fetch-* headers differently.
+        return req.headers["sec-fetch-mode"] === "navigate"
+          ? send(200, signedIn(profileBody(12)))
+          : send(200, signedIn(`<h2>Sorry, this page isn't available.</h2>`));
+      case "/li_hydrate/":
+        // The shell says "unavailable" until the script has rendered the profile.
+        return send(
+          200,
+          signedIn(`<div id="app"><h2>Sorry, this page isn't available.</h2></div>`).replace(
+            "</body>",
+            `<script>setTimeout(()=>{document.getElementById("app").innerHTML=${JSON.stringify(profileBody(12))};},1500);</script></body>`,
+          ),
+        );
+      case "/li_gone/":
+        return send(410, page("gone"));
+      case "/li_private/":
+        return send(200, signedIn(`<header style="height:200px"><h2>x</h2></header><h2>This account is private</h2>`));
+      case "/li_offsite/":
+        res.writeHead(302, { location: `http://localhost:${port}/elsewhere/` });
+        return res.end();
       case "/li_nomain/":
         return send(200, page(`<nav><a href="/direct/inbox/">Messages</a></nav><header style="height:200px"><h2>x</h2></header>${Array.from({ length: 3 }, (_, i) => `<a href="/p/${i}/"><img width="300" height="300" src="${tile(i)}"></a>`).join("")}`));
       case "/set_session/":

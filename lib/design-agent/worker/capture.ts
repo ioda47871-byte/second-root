@@ -58,7 +58,7 @@ export type RetryReason = "LOAD_FAILED" | "HTTP_ERROR" | "CAPTURE_ERROR";
 
 export type CaptureResult =
   | { status: "captured"; files: string[]; posts: number; softened: number }
-  | { status: "PUBLIC_SOURCE_UNAVAILABLE"; reason: UnavailableReason }
+  | { status: "PUBLIC_SOURCE_UNAVAILABLE"; reason: UnavailableReason; detail?: UnavailableDetail }
   | { status: "retry"; reason: RetryReason };
 
 export const CAPTURE_VIEWPORT = { width: 1280, height: 1000 };
@@ -67,15 +67,28 @@ export const MEDIA_FILTER = "blur(6px) saturate(0.9)";
 const MEDIA_CSS = `img, video, picture, canvas, svg image, [style*="background-image"] { filter: ${MEDIA_FILTER} !important; }`;
 /** Media rectangles are shrunk by this factor, then scaled back with a blur. */
 export const PIXELATE_FACTOR = 10;
-const POSTS = 'a[href*="/p/"], a[href*="/reel/"]';
-const LOGIN_PATH = /^\/(accounts\/(login|signup|emailsignup)|challenge|checkpoint|suspended)/;
+export const POSTS = 'a[href*="/p/"], a[href*="/reel/"]';
+export const LOGIN_PATH = /^\/(accounts\/(login|signup|emailsignup)|challenge|checkpoint|suspended)/;
 const MAX_HOPS = 4;
 
+/** Which signal made PRIVATE_OR_MISSING (diagnosis only; the reason stays the same). */
+export type UnavailableDetail = "HTTP_404" | "HTTP_410" | "BODY_PRIVATE" | "BODY_PAGE_UNAVAILABLE";
+
 class Unavailable extends Error {
-  constructor(readonly reason: UnavailableReason) {
+  constructor(
+    readonly reason: UnavailableReason,
+    readonly detail?: UnavailableDetail,
+  ) {
     super(reason);
   }
 }
+
+/** Page texts shared by the capture and the diagnosis (matched, never printed). */
+export const PRIVATE_MARKER = /This account is private|このアカウントは非公開です/i;
+export const PAGE_UNAVAILABLE_MARKER = /Sorry, this page isn't available|このページはご利用いただけません/i;
+export const RATE_LIMIT_MARKER = /Please wait a few minutes|しばらくしてから|Rate limit|too many requests/i;
+export const CAPTCHA_SELECTOR = 'iframe[src*="captcha"], iframe[title*="captcha" i], #captcha, [id*="recaptcha"], [id*="hcaptcha"]';
+export const LOGIN_FORM_SELECTOR = 'input[name="password"], input[type="password"]';
 
 class Retry extends Error {
   constructor(readonly reason: RetryReason) {
@@ -164,19 +177,18 @@ async function assertPublicPage(page: Page, target: CaptureTarget): Promise<void
   const current = page.url();
   if (!target.allowNavigation(current)) throw new Unavailable("OFF_SITE_REDIRECT");
   if (LOGIN_PATH.test(new URL(current).pathname)) throw new Unavailable(/challenge|checkpoint|suspended/.test(current) ? "CHALLENGE" : "LOGIN_WALL");
-  if (await page.locator('input[name="password"], input[type="password"]').first().isVisible().catch(() => false)) throw new Unavailable("LOGIN_WALL");
-  if (await page.locator('iframe[src*="captcha"], iframe[title*="captcha" i], #captcha, [id*="recaptcha"], [id*="hcaptcha"]').count().catch(() => 0)) throw new Unavailable("CAPTCHA");
+  if (await page.locator(LOGIN_FORM_SELECTOR).first().isVisible().catch(() => false)) throw new Unavailable("LOGIN_WALL");
+  if (await page.locator(CAPTCHA_SELECTOR).count().catch(() => 0)) throw new Unavailable("CAPTCHA");
   const dialog = await visibleText(page, '[role="dialog"]', 600);
   if (/captcha|robot|ロボット/i.test(dialog)) throw new Unavailable("CAPTCHA");
   if (/ログイン|Log in|Sign up|登録する/i.test(dialog)) throw new Unavailable("LOGIN_WALL");
   const body = await visibleText(page, "body", 4_000);
-  if (/Please wait a few minutes|しばらくしてから|Rate limit|too many requests/i.test(body)) throw new Unavailable("RATE_LIMITED");
-  if (/This account is private|このアカウントは非公開です|Sorry, this page isn't available|このページはご利用いただけません/i.test(body)) {
-    throw new Unavailable("PRIVATE_OR_MISSING");
-  }
+  if (RATE_LIMIT_MARKER.test(body)) throw new Unavailable("RATE_LIMITED");
+  if (PRIVATE_MARKER.test(body)) throw new Unavailable("PRIVATE_OR_MISSING", "BODY_PRIVATE");
+  if (PAGE_UNAVAILABLE_MARKER.test(body)) throw new Unavailable("PRIVATE_OR_MISSING", "BODY_PAGE_UNAVAILABLE");
 }
 
-async function guardNavigation(context: BrowserContext, target: CaptureTarget, state: { offSite: boolean; redirect?: string }): Promise<void> {
+export async function guardNavigation(context: BrowserContext, target: CaptureTarget, state: { offSite: boolean; redirect?: string }): Promise<void> {
   await context.route("**/*", (route) =>
     handle(route).catch(() => route.abort("failed").catch(() => undefined)),
   );
@@ -251,7 +263,7 @@ async function open(context: BrowserContext, target: CaptureTarget, state: { off
     }
     if (failed || status === undefined) throw new Retry("LOAD_FAILED");
     if (status === 429) throw new Unavailable("RATE_LIMITED");
-    if (status === 404 || status === 410) throw new Unavailable("PRIVATE_OR_MISSING");
+    if (status === 404 || status === 410) throw new Unavailable("PRIVATE_OR_MISSING", status === 404 ? "HTTP_404" : "HTTP_410");
     if (status >= 400) throw new Retry("HTTP_ERROR");
     return page;
   }
@@ -415,7 +427,7 @@ export async function captureInContext(context: BrowserContext, options: Context
     if (files.length === 0) throw new Unavailable("EMPTY_PAGE");
     return { status: "captured", files, posts: postCount, softened };
   } catch (error) {
-    if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason };
+    if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) };
     return { status: "retry", reason: error instanceof Retry ? error.reason : "CAPTURE_ERROR" };
   }
 }

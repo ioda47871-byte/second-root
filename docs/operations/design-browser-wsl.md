@@ -94,12 +94,37 @@ cd ~/work/second-root && npm run -s sales:design-browser -- capture --source-fil
 | `CAPTURED n image(s)` | 撮れた。フォルダは 24 時間後に自動で消える | 0 |
 | `LOGIN_REQUIRED` | ログインが切れた、またはまだしていない。1 をやり直す | 5 |
 | `INSTAGRAM_CHALLENGE` / `INSTAGRAM_CAPTCHA` | Instagram が確認を求めた。回避しない。止めて様子を見る | 6 |
-| `PUBLIC_SOURCE_UNAVAILABLE (理由)` | 非公開・存在しない・Instagram の外など | 4 |
+| `PUBLIC_SOURCE_UNAVAILABLE (理由)` | 非公開・存在しない・Instagram の外など。存在しない・非公開は `HTTP_404` / `HTTP_410` / `BODY_PRIVATE` / `BODY_PAGE_UNAVAILABLE` のどれで判断したかを出す | 4 |
 | `CAPTURE_FAILED` | ネットワークや browser の失敗 | 4 |
 | `BROWSER_BUSY` | 別の login / capture が profile を使っている | 3 |
 | `WRONG_USER` / `PROFILE_*` / `DISPLAY_UNAVAILABLE` | 実行する利用者・置き場所・画面表示の問題 | 2 |
 
 撮った画像はデザイン分析専用で、デモや公開 asset には使わない。repo や Windows にはコピーしない。
+
+## 2b. 撮れない原因を調べる（diagnose）
+
+人が見えるのに `PUBLIC_SOURCE_UNAVAILABLE` になるときに使う。撮影はせず、同じページを次の 3 通りで 1 回ずつ開いて、1・3・8・15 秒後の様子を符号で出す（全部で約 1 分）。
+
+```bash
+cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-file ~/sr-design-input/shop-001/source.json
+```
+
+| 行の頭 | 開き方 |
+|---|---|
+| `A` | headless、capture と同じ navigation guard（`route.fetch` → `route.fulfill`） |
+| `C` | headless、route interception なし（診断専用。Instagram の外へ出たら `STOPPED_OFF_SITE` で止める） |
+| `B` | 画面あり（WSLg）、guard あり。入力・クリック・スクロールはしない。画面が無ければ `SKIPPED_NO_DISPLAY` |
+
+- 各 run の最後に、新しいタブで Instagram のホームを開き、`SESSION_OK` / `SESSION_MISSING` を出す
+- 出る符号は `HTTP_200` / `HTTP_404` / `HTTP_OTHER`、`MAIN_*` / `HEADER_*` / `POSTS_*`（`PRESENT` / `MISSING`）、`BODY_PRIVATE_MARKER`、`BODY_UNAVAILABLE_MARKER`、`SIGNED_IN_NAV_PRESENT`、`CHALLENGE_PRESENT`、`CAPTCHA_PRESENT` だけ
+- username・bio・キャプション・cookie・token・ページの文・URL は出さない。画像も保存しない
+- capture の安全ガードは変えていない（C は diagnose の中だけ）
+
+読み方:
+- A だけ unavailable、C は posts あり → guard の `route.fetch` が原因（browser 自身の `sec-fetch-*` / `accept-language` header が付かない）
+- A と C が unavailable、B は posts あり → headless の違い
+- 全部 unavailable で `SESSION_MISSING` → ログインが切れている
+- 最初だけ `BODY_UNAVAILABLE_MARKER` で後から `POSTS_PRESENT` → 表示途中の文を拾っている
 
 ## 3. 状態の確認・後片付け
 
