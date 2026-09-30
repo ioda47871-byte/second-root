@@ -141,6 +141,17 @@ export async function startMockSite(): Promise<MockSite> {
         return send(200, signedIn(profileBody(3)).replace("</body>", `<form id="f" method="post" action="http://localhost:${port}/form_escape/"></form><script>document.getElementById("f").submit();</script></body>`));
       case "/li_popup_opener/":
         return send(200, signedIn(profileBody(3)).replace("</body>", `<script>window.open("http://localhost:${port}/popup_opener/");</script></body>`));
+      case "/li_worker/":
+        // A dedicated worker (also held at start) must still run, inside a sandboxed frame too.
+        return send(
+          200,
+          signedIn(profileBody(3).replace("<header", `<iframe sandbox="allow-scripts" src="/sb_worker/" width="10" height="10"></iframe><header`)).replace(
+            "</body>",
+            `<script>const w=new Worker(URL.createObjectURL(new Blob(["postMessage(1)"])));w.onmessage=()=>fetch("/worker_ok/");</script></body>`,
+          ),
+        );
+      case "/sb_worker/":
+        return send(200, page(`<script>const w=new Worker(URL.createObjectURL(new Blob(["postMessage(1)"])));w.onmessage=()=>fetch("/sb_worker_ok/");</script>`));
       case "/li_loop/":
         res.writeHead(302, { location: "/li_loop/" });
         return res.end();

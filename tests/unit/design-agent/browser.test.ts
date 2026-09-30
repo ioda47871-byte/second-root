@@ -293,6 +293,15 @@ describe("navigation guard (browser-native requests, every hop checked before it
     expect(result.code).toBe("CAPTURED");
   });
 
+  it("does not hold a dedicated worker forever (page and sandboxed frame)", async () => {
+    const s = await signedInProfile();
+    const before = site.requests.length;
+    expect((await capture(s, "li_worker")).code).toBe("CAPTURED");
+    const after = site.requests.slice(before);
+    expect(after.some((r) => r.endsWith("/worker_ok/"))).toBe(true);
+    expect(after.some((r) => r.endsWith("/sb_worker_ok/"))).toBe(true);
+  });
+
   it("stops a redirect loop", async () => {
     const s = await signedInProfile();
     expect(await capture(s, "li_loop")).toMatchObject({ code: "PUBLIC_SOURCE_UNAVAILABLE", reason: "TOO_MANY_REDIRECTS" });

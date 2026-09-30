@@ -255,6 +255,8 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
       type Paused = { requestId: string; frameId: string; networkId?: string; redirectedRequestId?: string; request: { url: string } };
       const DOCUMENTS = { patterns: [{ urlPattern: "*", resourceType: "Document", requestStage: "Request" }] };
       let nextId = 1;
+      /** Replies of frame targets, by message id (ids are unique across all levels). */
+      const replies = new Map<number, { resolve: () => void; reject: (error: Error) => void }>();
 
       /** Decides one paused document request; only the page's own session can see its main frame. */
       const decide = async (send: Send, event: Paused, top: boolean): Promise<void> => {
@@ -285,8 +287,9 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
        * One CDP session level: the page itself, or a frame Chromium runs in
        * another process (an out-of-process iframe, e.g. a sandboxed one) and
        * frames nested in it. Each such frame target is held at start
-       * (waitForDebuggerOnStart) until its document requests are paused here
-       * too; a failure leaves it held, so nothing it would load goes out.
+       * (waitForDebuggerOnStart) until the target has confirmed that its
+       * document requests are paused here too; if it refuses, the frame stays
+       * held, so nothing it would load goes out.
        */
       const level = (send: Send, top: boolean) => {
         const children = new Map<string, (method: string, params: Record<string, unknown>) => void>();
@@ -294,24 +297,39 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
           if (method === "Fetch.requestPaused") return void decide(send, params as unknown as Paused, top).catch(() => undefined);
           if (method === "Target.attachedToTarget") {
             const sessionId = String(params.sessionId);
-            const childSend: Send = (m, p) => send("Target.sendMessageToTarget", { sessionId, message: JSON.stringify({ id: nextId++, method: m, params: p }) });
+            // Resolves when the target has answered (not merely when the message was handed over).
+            const childSend: Send = (m, p) => {
+              const id = nextId++;
+              const answered = new Promise<void>((resolve, reject) => replies.set(id, { resolve, reject }));
+              return send("Target.sendMessageToTarget", { sessionId, message: JSON.stringify({ id, method: m, params: p }) }).then(() => answered);
+            };
             children.set(sessionId, level(childSend, false));
-            // Sent in order: the frame starts only after its document requests are guarded.
+            const isFrame = (params.targetInfo as { type?: string } | undefined)?.type === "iframe";
             void (async () => {
-              await childSend("Fetch.enable", DOCUMENTS);
-              await childSend("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: false });
+              if (isFrame) {
+                // A frame starts only once its document requests are guarded; if that fails it stays held.
+                await childSend("Fetch.enable", DOCUMENTS);
+                await childSend("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: false });
+              }
+              // Anything else held at start (a dedicated worker) loads no document: let it run.
               await childSend("Runtime.runIfWaitingForDebugger", {});
             })().catch(() => undefined);
             return;
           }
           if (method === "Target.receivedMessageFromTarget") {
-            let message: { method?: string; params?: Record<string, unknown> };
+            let message: { id?: number; method?: string; params?: Record<string, unknown>; error?: { message?: string } };
             try {
               message = JSON.parse(String(params.message)) as typeof message;
             } catch {
               return;
             }
-            if (message.method) children.get(String(params.sessionId))?.(message.method, message.params ?? {});
+            if (message.method) return void children.get(String(params.sessionId))?.(message.method, message.params ?? {});
+            const reply = message.id !== undefined ? replies.get(message.id) : undefined;
+            if (reply) {
+              replies.delete(message.id!);
+              if (message.error) reply.reject(new Error("frame target refused"));
+              else reply.resolve();
+            }
           }
         };
         return on;

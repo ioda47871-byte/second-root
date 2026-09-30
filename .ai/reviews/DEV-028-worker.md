@@ -123,3 +123,7 @@ Review of 331006e (no Critical):
 - L3 (unchanged by design): subresources are not guarded.
 - L4 (fixed): tests added for meta refresh, form submit, `top.location` from a frame, popup with an opener, the redirect-hop limit, and sandboxed frames.
 - L5 (mitigated): if the main frame id ever changed, off-site hops still fail in every frame, the commit backstop catches an off-site main frame, and `assertPublicPage` still catches a login/challenge page by its URL.
+
+Re-review of 2e910c3: no Critical/High/Medium. Nothing reached the off-site host in any case tried (sandboxed and cross-site frames, three levels of nesting, frames that navigate at once, popups from frames, top navigation from a sandboxed frame). Chromium holds a new frame target until our session also releases it.
+- L1 (fixed): a frame target now starts only after it has *answered* that its document requests are paused (before, the message being handed over was enough); if it refuses, it stays held. Dedicated workers, which load no document, are released at once (test added).
+- L2 (documented): preloading and subresources are outside the guard.
