@@ -44,6 +44,7 @@ export function instagramTarget(source: ProfileSource): CaptureTarget {
 /** Definite answers: the page cannot be read without logging in (or at all). */
 export const UNAVAILABLE_REASONS = [
   "RATE_LIMITED",
+  "CAPTCHA",
   "OFF_SITE_REDIRECT",
   "TOO_MANY_REDIRECTS",
   "LOGIN_WALL",
@@ -109,11 +110,13 @@ async function mediaRects(page: Page, filter: string): Promise<Rect[]> {
   }, filter);
 }
 
-/** Pixelates and blurs the given rectangles of a PNG, in a separate blank context. */
-async function soften(browser: Browser, png: Buffer, rects: Rect[]): Promise<Buffer> {
-  const context = await browser.newContext({ javaScriptEnabled: true, serviceWorkers: "block" });
+/** A blank page to process images in, and how to close it. */
+export type ScratchPage = () => Promise<{ page: Page; close: () => Promise<void> }>;
+
+/** Pixelates and blurs the given rectangles of a PNG, on a blank page. */
+async function soften(scratch: ScratchPage, png: Buffer, rects: Rect[]): Promise<Buffer> {
+  const { page, close } = await scratch();
   try {
-    const page = await context.newPage();
     const out = await page.evaluate(
       async ({ src, rects, factor }) => {
         const img = new Image();
@@ -148,7 +151,7 @@ async function soften(browser: Browser, png: Buffer, rects: Rect[]): Promise<Buf
     );
     return Buffer.from(out.slice(out.indexOf(",") + 1), "base64");
   } finally {
-    await context.close().catch(() => undefined);
+    await close().catch(() => undefined);
   }
 }
 
@@ -162,9 +165,10 @@ async function assertPublicPage(page: Page, target: CaptureTarget): Promise<void
   if (!target.allowNavigation(current)) throw new Unavailable("OFF_SITE_REDIRECT");
   if (LOGIN_PATH.test(new URL(current).pathname)) throw new Unavailable(/challenge|checkpoint|suspended/.test(current) ? "CHALLENGE" : "LOGIN_WALL");
   if (await page.locator('input[name="password"], input[type="password"]').first().isVisible().catch(() => false)) throw new Unavailable("LOGIN_WALL");
-  if (await page.locator('iframe[src*="captcha"], iframe[title*="captcha" i], #captcha, [id*="recaptcha"]').count().catch(() => 0)) throw new Unavailable("CHALLENGE");
+  if (await page.locator('iframe[src*="captcha"], iframe[title*="captcha" i], #captcha, [id*="recaptcha"], [id*="hcaptcha"]').count().catch(() => 0)) throw new Unavailable("CAPTCHA");
   const dialog = await visibleText(page, '[role="dialog"]', 600);
-  if (/ログイン|Log in|Sign up|登録する|captcha|robot|ロボット/i.test(dialog)) throw new Unavailable("LOGIN_WALL");
+  if (/captcha|robot|ロボット/i.test(dialog)) throw new Unavailable("CAPTCHA");
+  if (/ログイン|Log in|Sign up|登録する/i.test(dialog)) throw new Unavailable("LOGIN_WALL");
   const body = await visibleText(page, "body", 4_000);
   if (/Please wait a few minutes|しばらくしてから|Rate limit|too many requests/i.test(body)) throw new Unavailable("RATE_LIMITED");
   if (/This account is private|このアカウントは非公開です|Sorry, this page isn't available|このページはご利用いただけません/i.test(body)) {
@@ -263,51 +267,114 @@ export interface CaptureOptions {
   settleMs?: number;
 }
 
+export const CONTEXT_OPTIONS = {
+  viewport: CAPTURE_VIEWPORT,
+  deviceScaleFactor: 1,
+  locale: "ja-JP",
+  serviceWorkers: "block",
+  acceptDownloads: false,
+  bypassCSP: true,
+} as const;
+
+/** Signs of a signed-in Instagram page (navigation links only; nothing is opened or read). */
+const SIGNED_IN = 'a[href^="/direct/inbox"], a[href="/explore/"], svg[aria-label="Home"], svg[aria-label="ホーム"], svg[aria-label="New post"], svg[aria-label="新規投稿"]';
+
 /**
- * profile.png (header), grid-top.png (first rows) and, when the grid goes on
- * and no wall appears after one scroll, grid-lower.png. At least one image or
- * PUBLIC_SOURCE_UNAVAILABLE.
+ * Hides everything of the signed-in account on the page before screenshots:
+ * the navigation (own avatar, notifications, messages), any fixed or sticky
+ * element outside the main content (the messages dock, banners), dialogs,
+ * "followed by" lines and suggested-account sections (other people's names
+ * and faces). Only styles are changed; nothing is clicked.
+ * No named functions inside: tsx (keepNames) would add a helper the page lacks.
  */
-export async function capturePublicProfile(options: CaptureOptions): Promise<CaptureResult> {
+export async function hideAccountChrome(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const targets: Element[] = [];
+    const main = document.querySelector("main");
+    for (const el of Array.from(document.querySelectorAll('a[href*="mutualOnly"], a[href*="/followers/mutual"]'))) targets.push(el);
+    for (const el of Array.from(document.querySelectorAll('nav, [role="navigation"], [role="dialog"], [role="banner"]:not(header), aside'))) {
+      if (!main || !main.contains(el) || el.getAttribute("role") === "dialog") targets.push(el);
+    }
+    for (const el of Array.from(document.querySelectorAll("body *"))) {
+      const position = getComputedStyle(el).position;
+      if ((position === "fixed" || position === "sticky") && !(main && main.contains(el))) targets.push(el);
+    }
+    for (const el of Array.from(document.querySelectorAll("body *"))) {
+      if (el.children.length > 0) continue;
+      const text = el.textContent ?? "";
+      if (/Followed by|がフォローしています|フォロワー:/.test(text)) {
+        // The line itself, and its parent when that holds little else (the
+        // names are often sibling links); never the header or main.
+        targets.push(el);
+        const parent = el.parentElement;
+        if (parent && !["HEADER", "MAIN", "SECTION", "BODY"].includes(parent.tagName) && (parent.textContent ?? "").length <= text.length + 120) targets.push(parent);
+      } else if (/Suggested for you|おすすめ|Similar accounts|似ているアカウント/.test(text)) {
+        let box: Element = el;
+        for (let i = 0; i < 6 && box.parentElement && box.parentElement.tagName !== "MAIN" && box.parentElement.tagName !== "HEADER"; i += 1) box = box.parentElement;
+        targets.push(box);
+      }
+    }
+    let hidden = 0;
+    for (const el of targets) {
+      if (!(el instanceof HTMLElement) || el.tagName === "MAIN" || el.tagName === "BODY" || el.tagName === "HTML") continue;
+      el.style.setProperty("visibility", "hidden", "important");
+      hidden += 1;
+    }
+    return hidden;
+  });
+}
+
+export interface ContextCaptureOptions {
+  target: CaptureTarget;
+  outDir: string;
+  settleMs?: number;
+  /** "signed-in": require a signed-in page (else LOGIN_WALL) and hide the account's own parts. */
+  session: "signed-out" | "signed-in";
+  scratch: ScratchPage;
+}
+
+/**
+ * The capture itself on a prepared context: guarded navigation, wall checks,
+ * blur, screenshots of the main content, PNG-level pixelation. Shared by the
+ * signed-out worker capture and the signed-in dedicated-profile capture.
+ */
+export async function captureInContext(context: BrowserContext, options: ContextCaptureOptions): Promise<CaptureResult> {
   const settleMs = options.settleMs ?? 5_000;
   const files: string[] = [];
-  let browser: Browser | undefined;
   try {
-    browser = await options.launch();
-    const context = await browser.newContext({
-      viewport: CAPTURE_VIEWPORT,
-      deviceScaleFactor: 1,
-      locale: "ja-JP",
-      serviceWorkers: "block",
-      acceptDownloads: false,
-      bypassCSP: true,
-    });
     const state: { offSite: boolean; redirect?: string } = { offSite: false };
     await guardNavigation(context, options.target, state);
     const page = await open(context, options.target, state);
     await page.waitForTimeout(settleMs);
     if (state.offSite) throw new Unavailable("OFF_SITE_REDIRECT");
     await assertPublicPage(page, options.target);
+    if (options.session === "signed-in") {
+      if ((await page.locator(SIGNED_IN).count().catch(() => 0)) === 0) throw new Unavailable("LOGIN_WALL");
+      await hideAccountChrome(page);
+    }
     await page.addStyleTag({ content: MEDIA_CSS });
 
     const header = (await page.locator("header").count()) > 0 ? await page.locator("header").first().boundingBox({ timeout: 2_000 }).catch(() => null) : null;
     const posts = page.locator(POSTS);
     const postCount = await posts.count();
     if ((!header || header.height < 60) && postCount === 0) throw new Unavailable("EMPTY_PAGE");
+    // Screenshots cover the main content only (never the side navigation).
+    const main = options.session === "signed-in" ? await page.locator("main").first().boundingBox({ timeout: 2_000 }).catch(() => null) : null;
+    const clipX = main ? Math.max(0, Math.floor(main.x)) : 0;
+    const clipW = main ? Math.min(CAPTURE_VIEWPORT.width - clipX, Math.ceil(main.width)) : CAPTURE_VIEWPORT.width;
 
     let softened = 0;
-    const b = browser;
     const shot = async (name: string, y: number, height: number) => {
       const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
       const top = Math.max(0, Math.min(y, pageHeight - 1));
       const h = Math.min(height, pageHeight - top);
-      if (h < 60) return;
+      if (h < 60 || clipW < 200) return;
       const rects = (await mediaRects(page, MEDIA_FILTER))
-        .map((r) => ({ ...r, y: r.y - top }))
-        .filter((r) => r.y + r.h > 0 && r.y < h);
-      const raw = await page.screenshot({ clip: { x: 0, y: top, width: CAPTURE_VIEWPORT.width, height: h }, fullPage: true, animations: "disabled" });
+        .map((r) => ({ ...r, x: r.x - clipX, y: r.y - top }))
+        .filter((r) => r.y + r.h > 0 && r.y < h && r.x + r.w > 0 && r.x < clipW);
+      const raw = await page.screenshot({ clip: { x: clipX, y: top, width: clipW, height: h }, fullPage: true, animations: "disabled" });
       const file = join(options.outDir, name);
-      await writeFile(file, await soften(b, raw, rects), { mode: 0o600 });
+      await writeFile(file, await soften(options.scratch, raw, rects), { mode: 0o600 });
       await chmod(file, 0o600);
       softened += rects.length;
       files.push(file);
@@ -325,6 +392,7 @@ export async function capturePublicProfile(options: CaptureOptions): Promise<Cap
       );
       if (state.offSite) throw new Unavailable("OFF_SITE_REDIRECT");
       if (!wall) {
+        if (options.session === "signed-in") await hideAccountChrome(page).catch(() => 0);
         await page.addStyleTag({ content: MEDIA_CSS }).catch(() => undefined);
         // The first two images are enough; a failure here does not lose them.
         await shot("grid-lower.png", first.y - 10 + 900, 900).catch(() => undefined);
@@ -335,6 +403,32 @@ export async function capturePublicProfile(options: CaptureOptions): Promise<Cap
   } catch (error) {
     if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason };
     return { status: "retry", reason: error instanceof Retry ? error.reason : "CAPTURE_ERROR" };
+  }
+}
+
+/**
+ * profile.png (header), grid-top.png (first rows) and, when the grid goes on
+ * and no wall appears after one scroll, grid-lower.png. At least one image or
+ * PUBLIC_SOURCE_UNAVAILABLE.
+ */
+export async function capturePublicProfile(options: CaptureOptions): Promise<CaptureResult> {
+  let browser: Browser | undefined;
+  try {
+    browser = await options.launch();
+    const b = browser;
+    const context = await browser.newContext(CONTEXT_OPTIONS);
+    return await captureInContext(context, {
+      target: options.target,
+      outDir: options.outDir,
+      settleMs: options.settleMs,
+      session: "signed-out",
+      scratch: async () => {
+        const scratch = await b.newContext({ javaScriptEnabled: true, serviceWorkers: "block" });
+        return { page: await scratch.newPage(), close: () => scratch.close() };
+      },
+    });
+  } catch {
+    return { status: "retry", reason: "CAPTURE_ERROR" };
   } finally {
     await browser?.close().catch(() => undefined);
   }

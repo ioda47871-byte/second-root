@@ -78,8 +78,8 @@ export class WorkerStepError extends Error {
  * undefined when another live worker holds it. A lock whose holder is gone is
  * taken over at once; a live holder's lock only after LOCK_STALE_MS.
  */
-export async function acquireLock(stateDir: string, now: Date): Promise<{ holder: Holder; release: () => Promise<void> } | undefined> {
-  const lockPath = join(stateDir, "worker.lock");
+export async function acquireLock(stateDir: string, now: Date, name = "worker.lock"): Promise<{ holder: Holder; release: () => Promise<void> } | undefined> {
+  const lockPath = join(stateDir, name);
   try {
     await mkdir(stateDir, { recursive: true, mode: 0o700 });
   } catch {

@@ -126,3 +126,4 @@
   - Linux の run directory が正本。Windows へのコピーは best effort で、`windows_copy` を report に記録する。
   - unit 462 件 PASS。本番の build → next start → 撮影の経路も container で確認。systemd timer は enable していない。
 - 2026-09-29: DEV-028 Business Discovery PoC（`sales:design-worker -- meta-check`）を追加した。Facebook Login 系の別 App で読むだけ。符号と項目名だけを表示し、画像は取らない。token は WSL だけに置く。Platform Terms 上のデータ利用は BLOCKED（人間の判断待ち）。worker にはまだ組み込まない（`.ai/research/meta-business-discovery-2026-09-29.md`、`docs/operations/design-worker-meta-check.md`）。
+- 2026-09-30: DEV-028 Business Discovery は保留。ログイン済みの専用 Chromium profile で撮る PoC（`sales:design-browser -- login / capture / check`）を追加した。ログインは人が手で行う（入力・クリックなし）。profile は sr-designgen のホームに 0700 で置き、repo・/mnt・link を拒否する。撮影は既存の privacy 処理に加え、自分のアカウントの部分を隠してメイン部分だけを切り出す。LOGIN_REQUIRED / INSTAGRAM_CHALLENGE / INSTAGRAM_CAPTCHA では止まる。worker への組み込み（Phase 3）は、実走で撮影できることを確かめ、Codex から profile を隠す方法を決めてから行う（`docs/operations/design-browser-wsl.md`）。

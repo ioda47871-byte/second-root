@@ -25,6 +25,20 @@ const tile = (i: number) =>
 
 const page = (body: string) => `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;font-family:sans-serif">${body}</body></html>`;
 
+const profileBody = (posts: number) =>
+  `<header style="height:260px;background:#f4e8d2;padding:40px"><h2>example_shop</h2><p>Fictional bakery bio for tests.</p><p class="followed"><span>Followed by</span> <a href="/example_shop/followers/mutualOnly">LEAK-FRIEND-NAME</a> + 3 more</p></header>` +
+  `<div class="suggested"><div><span>Suggested for you</span><img width="60" height="60" src="${tile(99)}"><span>LEAK-SUGGESTED-NAME</span></div></div>` +
+  `<div style="display:grid;grid-template-columns:repeat(3,300px);gap:4px;padding:20px">${Array.from({ length: posts }, (_, i) => `<a href="/p/${i}/"><img width="300" height="300" src="${tile(i)}"></a>`).join("")}</div>`;
+
+/** A page as a signed-in account sees it: own navigation, a messages dock, a notification dialog. */
+const signedIn = (mainBody: string) =>
+  page(
+    `<nav style="position:fixed;left:0;top:0;width:240px;height:100%;background:#fff"><a href="/">Instagram</a><a href="/explore/">Explore</a><a href="/direct/inbox/">Messages</a><span>LEAK-OWN-ACCOUNT</span><span>Notifications 3</span></nav>` +
+      `<div class="dock" style="position:fixed;right:10px;bottom:10px;width:200px;height:60px;background:#eee">LEAK-DM-PEER</div>` +
+      `<div role="dialog" style="position:absolute;top:100px;left:400px;background:#fff">Turn on notifications LEAK-DIALOG</div>` +
+      `<main style="margin-left:260px;width:1000px">${mainBody}</main>`,
+  );
+
 const profile = (posts: number) =>
   page(
     `<header style="height:260px;background:#f4e8d2;padding:40px"><h2>example_shop</h2><p>Fictional bakery bio for tests.</p></header>` +
@@ -46,6 +60,17 @@ export async function startMockSite(): Promise<MockSite> {
     switch (req.url) {
       case "/example_shop/":
         return send(200, profile(12));
+      case "/home_signed_in/":
+        return send(200, signedIn(`<h1>home</h1>`));
+      case "/li_shop/":
+        return send(200, signedIn(profileBody(12)));
+      case "/li_captcha/":
+        return send(200, signedIn(`<header style="height:200px">x</header><iframe title="captcha" src="about:blank"></iframe>`));
+      case "/li_challenge/":
+        res.writeHead(302, { location: "/challenge/abc/" });
+        return res.end();
+      case "/login_page/":
+        return send(200, page(`<form><input name="username"><input name="password" type="password"><button>Log in</button></form>`));
       case "/popup_shop/":
         return send(200, profile(3).replace("<main>", `<script>window.open("http://localhost:${port}/elsewhere/");</script><main>`));
       case "/error_shop/":

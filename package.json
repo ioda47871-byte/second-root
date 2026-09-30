@@ -19,7 +19,8 @@
     "staging:admin": "NODE_USE_ENV_PROXY=1 node scripts/staging/admin.mjs",
     "staging:vercel": "NODE_USE_ENV_PROXY=1 node scripts/staging/vercel-preview.mjs",
     "sales:design-demo": "tsx scripts/sales-design/design-demo.ts",
-    "sales:design-worker": "tsx scripts/sales-design-worker/worker.ts"
+    "sales:design-worker": "tsx scripts/sales-design-worker/worker.ts",
+    "sales:design-browser": "tsx scripts/sales-design-browser/browser.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
