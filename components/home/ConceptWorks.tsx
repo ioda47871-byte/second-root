@@ -38,7 +38,7 @@ const WORKS = [
     image: "/concept-work/midori-seitai.webp",
     w: 1500,
     h: 1000,
-    url: "https://midori-seitai.vercel.app",
+    url: "/works/midori-seitai",
   },
 ];
 

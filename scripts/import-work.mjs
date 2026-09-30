@@ -2,16 +2,24 @@
 // The Concept Work is built in its own repository with
 // basePath /works/<slug> (docs/WORKS.md); this only checks and copies.
 //
-//   node scripts/import-work.mjs <slug> <path-to-out>
+//   node scripts/import-work.mjs --slug <slug> --source <path-to-out>
+//   node scripts/import-work.mjs <slug> <path-to-out>        (same, positional)
 //
 // The previous copy is replaced as a whole, so files the new build no longer
 // produces do not linger.
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
-const [slug, outArg] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const flag = (name) => {
+  const i = args.indexOf(name);
+  return i === -1 ? undefined : args[i + 1];
+};
+const positional = args.some((a) => a.startsWith("--")) ? [] : args;
+const slug = flag("--slug") ?? positional[0];
+const outArg = flag("--source") ?? positional[1];
 if (!slug || !outArg || !/^[a-z0-9-]+$/.test(slug)) {
-  console.error("usage: node scripts/import-work.mjs <slug> <path-to-out>");
+  console.error("usage: node scripts/import-work.mjs --slug <slug> --source <path-to-out>");
   process.exit(1);
 }
 
@@ -39,8 +47,16 @@ walk(out);
 const problems = [];
 for (const file of files.filter((f) => /\.(html|txt)$/.test(f))) {
   const text = readFileSync(file, "utf8");
-  for (const match of text.matchAll(/(?:src|href|srcSet|content)=\\?"(\/[^"\\]*)/g)) {
-    if (!match[1].startsWith(`${basePath}/`) && match[1] !== basePath) {
+  for (const match of text.matchAll(/(?:src|href|srcset|content)=\\?"(\/[^"\\]*)/gi)) {
+    // Allowed: the basePath itself, or followed by "/", "#" (a link to "/#") or "?".
+    const rest = match[1].startsWith(basePath) ? match[1].slice(basePath.length) : null;
+    if (rest === null || (rest !== "" && !/^[/#?]/.test(rest))) {
+      problems.push(`${relative(out, file)}: ${match[1]}`);
+    }
+  }
+  // Absolute canonical / og:url, when a page has them, must name its /works URL.
+  for (const match of text.matchAll(/(?:rel="canonical" href|property="og:url" content)="([^"]+)"/g)) {
+    if (/^https?:/.test(match[1]) && !match[1].startsWith(`https://secondroot.jp${basePath}`)) {
       problems.push(`${relative(out, file)}: ${match[1]}`);
     }
   }

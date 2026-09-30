@@ -19,6 +19,7 @@ const privateRouteHeaders = [
 // extension-less URLs are rewritten to those files.
 const staticWorks = [
   { slug: "yasashii-beauty-salon", pages: ["about", "access", "first", "menu", "staff"] },
+  { slug: "midori-seitai", pages: ["about", "access", "approach", "faq", "first", "menu", "staff"] },
 ];
 
 const nextConfig: NextConfig = {
@@ -38,6 +39,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return staticWorks.flatMap(({ slug, pages }) => [
       { source: `/works/${slug}`, destination: `/works/${slug}/index.html` },
+      // Next 15's router fetches the home page's RSC payload as `<basePath>.txt`
+      // (without a basePath that is /index.txt, which the export writes).
+      { source: `/works/${slug}.txt`, destination: `/works/${slug}/index.txt` },
       { source: `/works/${slug}/:page(${pages.join("|")})`, destination: `/works/${slug}/:page.html` },
     ]);
   },
