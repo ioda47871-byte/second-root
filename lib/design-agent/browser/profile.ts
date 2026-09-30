@@ -51,12 +51,28 @@ const within = (parent: string, child: string) => {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
 
-/** Where the profile may live. Checked on the real path (links resolved) of its parent. */
+/**
+ * The real path the profile would have: the nearest existing ancestor with
+ * its links resolved, plus the parts that do not exist yet.
+ */
+async function realTarget(dir: string): Promise<string> {
+  const parts: string[] = [];
+  let current = resolve(dir, "..");
+  for (;;) {
+    const real = await realpath(current).catch(() => null);
+    if (real !== null) return join(real, ...parts.reverse(), resolve(dir).split(sep).pop() ?? "");
+    const up = resolve(current, "..");
+    if (up === current) return resolve(dir);
+    parts.push(current.split(sep).pop() ?? "");
+    current = up;
+  }
+}
+
+/** Where the profile may live. Checked on the real path (links resolved) of its ancestors. */
 export async function checkProfileLocation(dir: string, env: ProfileEnv): Promise<void> {
   if (env.user !== env.expectedUser) throw new ProfileError("WRONG_USER");
   if (!dir.startsWith("/")) throw new ProfileError("PROFILE_NOT_ABSOLUTE");
-  const parentReal = await realpath(resolve(dir, "..")).catch(() => resolve(dir, ".."));
-  const target = join(parentReal, resolve(dir).split(sep).pop() ?? "");
+  const target = await realTarget(dir);
   const repoReal = await realpath(env.repoDir).catch(() => env.repoDir);
   const homeReal = await realpath(env.home).catch(() => env.home);
   if (within(repoReal, target) || within(env.repoDir, resolve(dir))) throw new ProfileError("PROFILE_IN_REPO");
@@ -68,7 +84,11 @@ export async function checkProfileLocation(dir: string, env: ProfileEnv): Promis
 export async function prepareProfileDir(dir: string, env: ProfileEnv): Promise<void> {
   await checkProfileLocation(dir, env);
   const existing = await lstat(dir).catch(() => null);
-  if (!existing) await mkdir(dir, { recursive: true, mode: 0o700 });
+  if (!existing) {
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    // Again now that every ancestor exists (a linked ancestor cannot slip through).
+    await checkProfileLocation(dir, env);
+  }
   await checkProfileTree(dir, env, { tighten: true });
 }
 
@@ -87,20 +107,28 @@ export async function checkProfileTree(dir: string, env: ProfileEnv, options: { 
     if (!options.tighten) throw new ProfileError("PROFILE_UNSAFE_ENTRY");
     await chmod(dir, top.mode & 0o700);
   }
-  const names = await readdir(dir, { recursive: true });
-  if (names.length > MAX_ENTRIES) throw new ProfileError("PROFILE_UNSAFE_ENTRY");
-  for (const name of names) {
-    const path = join(dir, name);
-    const info = await lstat(path).catch(() => null);
-    if (!info) continue; // Chromium removed it meanwhile
-    if (env.uid !== undefined && info.uid !== env.uid) throw new ProfileError("PROFILE_WRONG_OWNER");
-    if (info.isSymbolicLink()) {
-      if (!CHROMIUM_LINKS.has(name)) throw new ProfileError("PROFILE_UNSAFE_ENTRY");
-      continue;
-    }
-    if ((info.mode & 0o077) !== 0) {
-      if (!options.tighten) throw new ProfileError("PROFILE_UNSAFE_ENTRY");
-      await chmod(path, info.mode & 0o700);
+  // Walked by hand: links are never followed, and the count is checked as we go.
+  const pending: string[] = [dir];
+  let seen = 0;
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    const entries = await readdir(current, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      seen += 1;
+      if (seen > MAX_ENTRIES) throw new ProfileError("PROFILE_UNSAFE_ENTRY");
+      const path = join(current, entry.name);
+      const info = await lstat(path).catch(() => null);
+      if (!info) continue; // Chromium removed it meanwhile
+      if (env.uid !== undefined && info.uid !== env.uid) throw new ProfileError("PROFILE_WRONG_OWNER");
+      if (info.isSymbolicLink()) {
+        if (current !== dir || !CHROMIUM_LINKS.has(entry.name)) throw new ProfileError("PROFILE_UNSAFE_ENTRY");
+        continue;
+      }
+      if ((info.mode & 0o077) !== 0) {
+        if (!options.tighten) throw new ProfileError("PROFILE_UNSAFE_ENTRY");
+        await chmod(path, info.mode & 0o700);
+      }
+      if (info.isDirectory()) pending.push(path);
     }
   }
 }

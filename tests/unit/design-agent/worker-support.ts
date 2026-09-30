@@ -71,6 +71,25 @@ export async function startMockSite(): Promise<MockSite> {
         return res.end();
       case "/login_page/":
         return send(200, page(`<form><input name="username"><input name="password" type="password"><button>Log in</button></form>`));
+      case "/li_jp/":
+        return send(
+          200,
+          page(
+            `<nav style="position:fixed;left:0;top:0;width:240px"><a href="/direct/inbox/">Messages</a></nav>` +
+              `<div style="position:sticky;top:0"><main style="margin-left:260px;width:1000px">` +
+              `<header style="height:260px"><h2>example_shop</h2><p>季節のおすすめマフィンを焼いています</p></header>` +
+              `<div><div><span>おすすめ</span><span>LEAK-JP-SUGGESTED</span></div></div>` +
+              `<div style="display:grid;grid-template-columns:repeat(3,300px)">${Array.from({ length: 3 }, (_, i) => `<a href="/p/${i}/"><img width="300" height="300" src="${tile(i)}"></a>`).join("")}</div>` +
+              `</main></div>`,
+          ),
+        );
+      case "/li_nomain/":
+        return send(200, page(`<nav><a href="/direct/inbox/">Messages</a></nav><header style="height:200px"><h2>x</h2></header>${Array.from({ length: 3 }, (_, i) => `<a href="/p/${i}/"><img width="300" height="300" src="${tile(i)}"></a>`).join("")}`));
+      case "/set_session/":
+        res.writeHead(200, { "content-type": "text/html", "set-cookie": "fake_session=FICTIONAL; Path=/; Max-Age=3600; HttpOnly" });
+        return res.end(page("set"));
+      case "/echo_session/":
+        return send(200, page(`<p id="has">${(req.headers.cookie ?? "").includes("fake_session=FICTIONAL") ? "yes" : "no"}</p>`));
       case "/popup_shop/":
         return send(200, profile(3).replace("<main>", `<script>window.open("http://localhost:${port}/elsewhere/");</script><main>`));
       case "/error_shop/":

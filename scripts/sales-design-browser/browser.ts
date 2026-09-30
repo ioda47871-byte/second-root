@@ -84,7 +84,13 @@ async function capture(): Promise<number> {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
   const outDir = join(capturesRoot, stamp);
   await mkdir(outDir, { recursive: true, mode: 0o700 });
-  const result = await runSignedInCapture({ profileDir, stateDir, env: currentProfileEnv(REPO), target: instagramTarget(source), outDir, launchPersistent });
+  let result: Awaited<ReturnType<typeof runSignedInCapture>>;
+  try {
+    result = await runSignedInCapture({ profileDir, stateDir, env: currentProfileEnv(REPO), target: instagramTarget(source), outDir, launchPersistent });
+  } catch (error) {
+    await rm(outDir, { recursive: true, force: true });
+    throw error;
+  }
   if (result.code !== "CAPTURED") {
     await rm(outDir, { recursive: true, force: true });
     say(result.reason ? `${result.code} (${result.reason})` : result.code);

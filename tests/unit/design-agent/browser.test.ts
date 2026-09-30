@@ -4,7 +4,8 @@ import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkProfileLocation, checkProfileTree, prepareProfileDir, purgeOldCaptures, type ProfileEnv } from "@/lib/design-agent/browser/profile";
-import { runLogin, runSignedInCapture, type LaunchPersistent } from "@/lib/design-agent/browser/session";
+import { displayEnvironment, runLogin, runSignedInCapture, type LaunchPersistent } from "@/lib/design-agent/browser/session";
+import { childEnvironment } from "@/lib/design-agent/worker/env";
 import { hideAccountChrome } from "@/lib/design-agent/worker/capture";
 import { acquireLock } from "@/lib/design-agent/worker/state";
 import { startMockSite, type MockSite } from "./worker-support";
@@ -73,6 +74,24 @@ describe("profile location and permissions", () => {
     await expect(prepareProfileDir(other.profile, other.env)).rejects.toMatchObject({ code: "PROFILE_IS_LINK" });
   });
 
+  it("never follows a link while walking the profile (a loop to / is refused at once)", async () => {
+    const s = sandbox();
+    await prepareProfileDir(s.profile, s.env);
+    mkdirSync(join(s.profile, "Default"), { mode: 0o700 });
+    symlinkSync("/", join(s.profile, "Default", "loop"));
+    const started = Date.now();
+    await expect(checkProfileTree(s.profile, s.env, { tighten: true })).rejects.toMatchObject({ code: "PROFILE_UNSAFE_ENTRY" });
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it("resolves a linked ancestor that exists before creating anything", async () => {
+    const s = sandbox();
+    const elsewhere = mkdtempSync(join(tmpdir(), "srdw-elsewhere-"));
+    symlinkSync(elsewhere, join(s.home, ".local"));
+    await expect(prepareProfileDir(s.profile, s.env)).rejects.toMatchObject({ code: "PROFILE_OUTSIDE_HOME" });
+    expect(readdirSync(elsewhere)).toEqual([]);
+  });
+
   it("removes only capture folders older than a day", async () => {
     const s = sandbox();
     mkdirSync(s.out, { recursive: true });
@@ -114,6 +133,20 @@ describe("login (a person signs in; the tool only watches)", () => {
       await runLogin({ profileDir: s.profile, stateDir: s.state, env: s.env, launchPersistent, startUrl: `${site.origin}/login_page/`, pollMs: 200, onPage: async (page) => void (await page.context().close()) }),
     ).toBe("LOGIN_NOT_COMPLETED");
     expect(await runLogin({ profileDir: s.profile, stateDir: s.state, env: s.env, launchPersistent, startUrl: `${site.origin}/login_page/`, pollMs: 200, timeoutMs: 1_500 })).toBe("LOGIN_TIMEOUT");
+  });
+
+  it("keeps a session written in one run of the profile for the next run (same Chromium options)", async () => {
+    const s = sandbox();
+    await prepareProfileDir(s.profile, s.env);
+    const opts = { args: ["--password-store=basic", "--disable-sync", "--no-first-run"], headless: true, ...exe };
+    const first = await chromium.launchPersistentContext(s.profile, opts);
+    await (await first.newPage()).goto(`${site.origin}/set_session/`);
+    await first.close();
+    const second = await chromium.launchPersistentContext(s.profile, opts);
+    const page = await second.newPage();
+    await page.goto(`${site.origin}/echo_session/`);
+    expect(await page.locator("#has").innerText()).toBe("yes");
+    await second.close();
   });
 
   it("never types, clicks or fills anything, and never reads cookies (source check)", () => {
@@ -168,6 +201,11 @@ describe("signed-in capture", () => {
     expect(result.files).toEqual([]);
   });
 
+  it("stops when a signed-in page has no main content to crop to", async () => {
+    const s = await signedInProfile();
+    expect(await capture(s, "li_nomain")).toMatchObject({ code: "PUBLIC_SOURCE_UNAVAILABLE", reason: "EMPTY_PAGE" });
+  });
+
   it("stops with LOGIN_REQUIRED and creates nothing when nobody has signed in yet", async () => {
     const s = sandbox();
     const result = await capture(s, "li_shop");
@@ -203,9 +241,34 @@ describe("the signed-in account's own parts are hidden before screenshots", () =
     expect(await visible("Fictional bakery bio for tests.")).toBe(true);
     expect(await visible("example_shop")).toBe(true);
   });
+
+  it("keeps a Japanese bio that mentions おすすめ, and never hides a sticky box around the profile", async () => {
+    const page = await browser.newPage();
+    await page.goto(`${site.origin}/li_jp/`);
+    await hideAccountChrome(page);
+    const visible = (text: string) =>
+      page.evaluate((t) => {
+        const hits = Array.from(document.querySelectorAll("body *")).filter((el) => el.children.length === 0 && (el.textContent ?? "").includes(t));
+        return hits.some((el) => getComputedStyle(el).visibility !== "hidden");
+      }, text);
+    expect(await visible("季節のおすすめマフィン")).toBe(true);
+    expect(await visible("example_shop")).toBe(true);
+    expect(await visible("LEAK-JP-SUGGESTED")).toBe(false);
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector('a[href*="/p/"]')!).visibility)).toBe("visible");
+  });
 });
 
 describe("the session never reaches Codex", () => {
+  it("gives the display only to the sign-in window, never to the shared child environment", () => {
+    const base = { PATH: "/usr/bin", HOME: "/home/x", DISPLAY: ":0", WAYLAND_DISPLAY: "wayland-0", XAUTHORITY: "/home/x/.Xauthority" };
+    const shared = childEnvironment(base);
+    expect(shared.DISPLAY).toBeUndefined();
+    expect(shared.WAYLAND_DISPLAY).toBeUndefined();
+    expect(shared.XAUTHORITY).toBeUndefined();
+    expect(displayEnvironment(base)).toEqual({ DISPLAY: ":0", WAYLAND_DISPLAY: "wayland-0", XAUTHORITY: "/home/x/.Xauthority" });
+    expect(childEnvironment(base, displayEnvironment(base)).DISPLAY).toBe(":0");
+  });
+
   it("keeps the browser profile out of the worker, Codex and child environments", () => {
     for (const f of ["lib/design-agent/codex.ts", "lib/design-agent/worker/run.ts", "lib/design-agent/worker/env.ts", "scripts/sales-design-worker/worker.ts"]) {
       const text = readFileSync(join(REPO, f), "utf8");

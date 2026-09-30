@@ -20,12 +20,21 @@
 import type { BrowserContext, LaunchOptions, Page } from "playwright";
 import { childEnvironment } from "../worker/env";
 import { acquireLock } from "../worker/state";
-import { captureInContext, CONTEXT_OPTIONS, type CaptureTarget, type UnavailableReason } from "../worker/capture";
+import { captureInContext, CONTEXT_OPTIONS, SIGNED_IN, type CaptureTarget, type UnavailableReason } from "../worker/capture";
+
+/** WSLg display variables, for the visible sign-in window only. */
+export function displayEnvironment(base: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"]) {
+    const value = base[name];
+    if (value !== undefined) out[name] = value;
+  }
+  return out;
+}
 import { lstat } from "node:fs/promises";
 import { checkProfileLocation, checkProfileTree, PERSISTENT_ARGS, prepareProfileDir, type ProfileEnv } from "./profile";
 
 export const INSTAGRAM_HOME = "https://www.instagram.com/";
-const SIGNED_IN = 'a[href^="/direct/inbox"], a[href="/explore/"], svg[aria-label="Home"], svg[aria-label="ホーム"], svg[aria-label="New post"], svg[aria-label="新規投稿"]';
 const LOGIN_PATH = /^\/(accounts\/(login|signup|emailsignup)|challenge|checkpoint|suspended)/;
 export const LOGIN_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -70,7 +79,8 @@ export async function runLogin(options: LoginOptions): Promise<LoginCode> {
     context = await options.launchPersistent(options.profileDir, {
       headless: false,
       args: PERSISTENT_ARGS,
-      env: childEnvironment(process.env),
+      // The display reaches only this visible sign-in window (never Codex or the worker's children).
+      env: childEnvironment(process.env, displayEnvironment(process.env)),
       viewport: null,
       acceptDownloads: false,
     });

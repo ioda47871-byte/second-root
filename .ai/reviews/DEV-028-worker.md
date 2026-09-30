@@ -73,3 +73,26 @@
   - 文書に SECRET_FILE_UNSAFE / META_UNKNOWN_ERROR が無かった → 追加
 - 確認済みで問題なし
   - token は Authorization header だけ・redirect で失敗・timeout・appsecret_proof・出力の許可リスト・username の注入不可・テスト用の注入口を CLI から使えないこと・Messaging のコードに触れていないこと・文書の保存手順
+
+## 専用ブラウザ profile の PoC（login / capture）の fresh review
+
+- 対象: ba2fd1d。独立 agent が実際に動かして確かめた
+- Medium 3 件（修正済み）
+  1. profile の検査が link を辿っていた（Node 22 の `readdir` recursive は link 先のディレクトリにも入る。`/` への link で木の外を歩き、止まらない）
+     - 対応: 自前で歩く。link には入らず、数えながら上限で止まる
+     - テスト: `/` への link で 5 秒以内に拒否する
+  2. アカウント部分を隠す処理が、bio や profile 全体を隠しうる
+     - 「おすすめ」を含む bio にも反応していた
+     - main を包む sticky の要素まで隠していた
+     - 対応: 「おすすめ」はセクションの題名と完全一致したときだけ扱う。header や投稿を含む要素は決して隠さない。main を包む要素は除く
+     - テスト: 和文の bio、sticky で包まれた main
+  3. 画面表示の変数（DISPLAY など）が、共有の子 process 環境を通じて Codex にも渡っていた
+     - 対応: ログインの窓にだけ渡す
+     - テスト: 共有環境には入らないこと
+- Low（修正済み）
+  - 親ディレクトリがまだ無いとき、リンクを解決しない path で検査していた → 存在する最も近い祖先を解決して検査し、作成後にもう一度検査する（テストあり）
+  - サインイン済みの判定が弱かった（未ログインでも出る `/explore/` を含んでいた）→ サインイン済みにしか無い要素だけにし、定義を 1 か所にまとめた
+  - main が無いと切り出しができない → EMPTY_PAGE で止める（テストあり）
+  - 例外が出たときに空の撮影フォルダが残った → 消す
+  - テストの穴: profile の session が次の起動に残ることを確かめるテストを追加した
+- **残る未検証**: 表示ありのログインで書いた session を、表示なし（`channel: "chromium"`）の撮影で読めるか。この環境には画面が無いため試せない。人の WSL での初回実走で確かめる

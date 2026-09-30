@@ -277,7 +277,8 @@ export const CONTEXT_OPTIONS = {
 } as const;
 
 /** Signs of a signed-in Instagram page (navigation links only; nothing is opened or read). */
-const SIGNED_IN = 'a[href^="/direct/inbox"], a[href="/explore/"], svg[aria-label="Home"], svg[aria-label="ホーム"], svg[aria-label="New post"], svg[aria-label="新規投稿"]';
+/** Only a signed-in account has these: its inbox link and the create / notifications buttons. */
+export const SIGNED_IN = 'a[href^="/direct/inbox"], svg[aria-label="New post"], svg[aria-label="新規投稿"], svg[aria-label="Notifications"], svg[aria-label="お知らせ"]';
 
 /**
  * Hides everything of the signed-in account on the page before screenshots:
@@ -297,21 +298,31 @@ export async function hideAccountChrome(page: Page): Promise<number> {
     }
     for (const el of Array.from(document.querySelectorAll("body *"))) {
       const position = getComputedStyle(el).position;
-      if ((position === "fixed" || position === "sticky") && !(main && main.contains(el))) targets.push(el);
+      if ((position === "fixed" || position === "sticky") && !(main && (main.contains(el) || el.contains(main)))) targets.push(el);
     }
+    // Never hide anything that holds the profile header or a post.
+    const header = main ? main.querySelector("header") : document.querySelector("header");
+    const firstPost = document.querySelector('a[href*="/p/"], a[href*="/reel/"]');
     for (const el of Array.from(document.querySelectorAll("body *"))) {
       if (el.children.length > 0) continue;
-      const text = el.textContent ?? "";
+      const text = (el.textContent ?? "").trim();
       if (/Followed by|がフォローしています|フォロワー:/.test(text)) {
         // The line itself, and its parent when that holds little else (the
         // names are often sibling links); never the header or main.
         targets.push(el);
         const parent = el.parentElement;
-        if (parent && !["HEADER", "MAIN", "SECTION", "BODY"].includes(parent.tagName) && (parent.textContent ?? "").length <= text.length + 120) targets.push(parent);
-      } else if (/Suggested for you|おすすめ|Similar accounts|似ているアカウント/.test(text)) {
+        if (parent && !["HEADER", "MAIN", "SECTION", "BODY"].includes(parent.tagName) && !(header && parent.contains(header)) && (parent.textContent ?? "").length <= text.length + 120) targets.push(parent);
+      } else if (/^(Suggested for you|Similar accounts|おすすめ(のアカウント)?|似ているアカウント)$/.test(text)) {
+        // Only the exact section titles (a bio or caption that merely mentions
+        // "おすすめ" never matches). Climb to the section, but never to a box
+        // that holds the profile header or a post.
         let box: Element = el;
-        for (let i = 0; i < 6 && box.parentElement && box.parentElement.tagName !== "MAIN" && box.parentElement.tagName !== "HEADER"; i += 1) box = box.parentElement;
-        targets.push(box);
+        for (let i = 0; i < 6; i += 1) {
+          const up: Element | null = box.parentElement;
+          if (!up || up.tagName === "MAIN" || up.tagName === "HEADER" || up.tagName === "BODY" || (header && up.contains(header)) || (firstPost && up.contains(firstPost))) break;
+          box = up;
+        }
+        if (!(header && box.contains(header)) && !(firstPost && box.contains(firstPost))) targets.push(box);
       }
     }
     let hidden = 0;
@@ -360,6 +371,8 @@ export async function captureInContext(context: BrowserContext, options: Context
     if ((!header || header.height < 60) && postCount === 0) throw new Unavailable("EMPTY_PAGE");
     // Screenshots cover the main content only (never the side navigation).
     const main = options.session === "signed-in" ? await page.locator("main").first().boundingBox({ timeout: 2_000 }).catch(() => null) : null;
+    // Signed in, the screenshots must be cropped to the main content; without it, stop.
+    if (options.session === "signed-in" && (!main || main.width < 200)) throw new Unavailable("EMPTY_PAGE");
     const clipX = main ? Math.max(0, Math.floor(main.x)) : 0;
     const clipW = main ? Math.min(CAPTURE_VIEWPORT.width - clipX, Math.ceil(main.width)) : CAPTURE_VIEWPORT.width;
 
