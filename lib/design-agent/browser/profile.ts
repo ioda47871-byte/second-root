@@ -112,7 +112,10 @@ export async function checkProfileTree(dir: string, env: ProfileEnv, options: { 
   let seen = 0;
   while (pending.length > 0) {
     const current = pending.pop()!;
-    const entries = await readdir(current, { withFileTypes: true }).catch(() => []);
+    // A folder that cannot be read cannot be checked: refuse rather than skip it.
+    const entries = await readdir(current, { withFileTypes: true }).catch(() => {
+      throw new ProfileError("PROFILE_UNSAFE_ENTRY");
+    });
     for (const entry of entries) {
       seen += 1;
       if (seen > MAX_ENTRIES) throw new ProfileError("PROFILE_UNSAFE_ENTRY");

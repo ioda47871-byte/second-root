@@ -77,7 +77,7 @@ export async function startMockSite(): Promise<MockSite> {
           page(
             `<nav style="position:fixed;left:0;top:0;width:240px"><a href="/direct/inbox/">Messages</a></nav>` +
               `<div style="position:sticky;top:0"><main style="margin-left:260px;width:1000px">` +
-              `<header style="height:260px"><h2>example_shop</h2><p>季節のおすすめマフィンを焼いています</p></header>` +
+              `<header style="height:260px"><h2>example_shop</h2><p>季節のおすすめマフィンを焼いています</p><p>今日の<b>おすすめ</b>はブルーベリー</p></header>` +
               `<div><div><span>おすすめ</span><span>LEAK-JP-SUGGESTED</span></div></div>` +
               `<div style="display:grid;grid-template-columns:repeat(3,300px)">${Array.from({ length: 3 }, (_, i) => `<a href="/p/${i}/"><img width="300" height="300" src="${tile(i)}"></a>`).join("")}</div>` +
               `</main></div>`,

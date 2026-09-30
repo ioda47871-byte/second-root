@@ -252,6 +252,7 @@ describe("the signed-in account's own parts are hidden before screenshots", () =
         return hits.some((el) => getComputedStyle(el).visibility !== "hidden");
       }, text);
     expect(await visible("季節のおすすめマフィン")).toBe(true);
+    expect(await visible("はブルーベリー")).toBe(true);
     expect(await visible("example_shop")).toBe(true);
     expect(await visible("LEAK-JP-SUGGESTED")).toBe(false);
     expect(await page.evaluate(() => getComputedStyle(document.querySelector('a[href*="/p/"]')!).visibility)).toBe("visible");

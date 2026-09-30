@@ -314,8 +314,9 @@ export async function hideAccountChrome(page: Page): Promise<number> {
         if (parent && !["HEADER", "MAIN", "SECTION", "BODY"].includes(parent.tagName) && !(header && parent.contains(header)) && (parent.textContent ?? "").length <= text.length + 120) targets.push(parent);
       } else if (/^(Suggested for you|Similar accounts|おすすめ(のアカウント)?|似ているアカウント)$/.test(text)) {
         // Only the exact section titles (a bio or caption that merely mentions
-        // "おすすめ" never matches). Climb to the section, but never to a box
-        // that holds the profile header or a post.
+        // "おすすめ" never matches), never inside the profile header. Climb to
+        // the section, but never to a box that holds the header or a post.
+        if (header && header.contains(el)) continue;
         let box: Element = el;
         for (let i = 0; i < 6; i += 1) {
           const up: Element | null = box.parentElement;
