@@ -101,8 +101,8 @@ async function diagnose(): Promise<number> {
     hasDisplay: Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY),
     say,
   });
-  if (outcome === "BROWSER_BUSY") say("BROWSER_BUSY");
-  return outcome === "DIAGNOSED" ? 0 : outcome === "BROWSER_BUSY" ? 3 : 5;
+  if (outcome === "BROWSER_BUSY" || outcome === "FAILED") say(outcome === "FAILED" ? "DIAGNOSE_FAILED" : outcome);
+  return outcome === "DIAGNOSED" ? 0 : outcome === "BROWSER_BUSY" ? 3 : outcome === "FAILED" ? 4 : 5;
 }
 
 async function capture(): Promise<number> {
@@ -147,6 +147,13 @@ if (!main) {
   say("usage: login | capture --source-file <file> | diagnose --source-file <file> | check");
   process.exit(2);
 }
+// A stray error must never print its message (it can carry the target URL): codes only.
+const fail = () => {
+  say("BROWSER_TOOL_FAILED");
+  process.exit(2);
+};
+process.on("unhandledRejection", fail);
+process.on("uncaughtException", fail);
 main().then(
   (code) => process.exit(code),
   (error: unknown) => {

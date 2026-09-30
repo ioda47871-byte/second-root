@@ -112,10 +112,12 @@ cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-fi
 | 行の頭 | 開き方 |
 |---|---|
 | `A` | headless、capture と同じ navigation guard（`route.fetch` → `route.fulfill`） |
-| `C` | headless、route interception なし（診断専用。Instagram の外へ出たら `STOPPED_OFF_SITE` で止める） |
+| `C` | headless、route interception なし（診断専用。Instagram の外への移動が見えたら `STOPPED_OFF_SITE` で止める。ただし interception が無いので、外への最初の 1 リクエストは止められない。popup はすぐ閉じる） |
 | `B` | 画面あり（WSLg）、guard あり。入力・クリック・スクロールはしない。画面が無ければ `SKIPPED_NO_DISPLAY` |
 
-- 各 run の最後に、新しいタブで Instagram のホームを開き、`SESSION_OK` / `SESSION_MISSING` を出す
+- A と B は capture と同じく、Instagram 内の redirect を 1 hop ずつ手で辿る
+- 各 run の最後に、新しいタブで Instagram のホームを開き、最大 15 秒待って `SESSION_OK` / `SESSION_MISSING` を出す
+- どの run も browser が起動できなかったときは `DIAGNOSE_FAILED`（終了コード 4）
 - 出る符号は `HTTP_200` / `HTTP_404` / `HTTP_OTHER`、`MAIN_*` / `HEADER_*` / `POSTS_*`（`PRESENT` / `MISSING`）、`BODY_PRIVATE_MARKER`、`BODY_UNAVAILABLE_MARKER`、`SIGNED_IN_NAV_PRESENT`、`CHALLENGE_PRESENT`、`CAPTCHA_PRESENT` だけ
 - username・bio・キャプション・cookie・token・ページの文・URL は出さない。画像も保存しない
 - capture の安全ガードは変えていない（C は diagnose の中だけ）
@@ -124,7 +126,8 @@ cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-fi
 - A だけ unavailable、C は posts あり → guard の `route.fetch` が原因（browser 自身の `sec-fetch-*` / `accept-language` header が付かない）
 - A と C が unavailable、B は posts あり → headless の違い
 - 全部 unavailable で `SESSION_MISSING` → ログインが切れている
-- 最初だけ `BODY_UNAVAILABLE_MARKER` で後から `POSTS_PRESENT` → 表示途中の文を拾っている
+- 最初だけ `BODY_UNAVAILABLE_MARKER` で後から `POSTS_PRESENT` → 表示途中の文を拾っている（capture は 5 秒後に判断する）
+- 全部 unavailable で `SESSION_OK` → 残る違いは capture 共通の設定（service worker を止める・CSP 無視・画面サイズ固定・`ja-JP`）
 
 ## 3. 状態の確認・後片付け
 

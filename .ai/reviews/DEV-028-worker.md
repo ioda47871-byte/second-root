@@ -99,3 +99,16 @@
 - 再確認（f02ac38）: **PASS**（Critical / High / Medium は 0 件）。残っていた Low 2 件も直した
   - 「おすすめ」だけの語が bio の中にあると bio の塊を隠しうる → header の中の要素は対象にしない（テストあり）
   - profile の中に読めないフォルダがあると、中を検査せずに飛ばしていた → PROFILE_UNSAFE_ENTRY で止める
+
+## Browser diagnose (PRIVATE_OR_MISSING split) — independent review 2026-09-30
+
+No Critical findings. Output of every path is fixed codes only; no click / input / scroll / cookie read / screenshot; the capture guard is unchanged apart from the added `detail`.
+
+- H1 (fixed): A/B did not follow same-site redirects like capture's `open()`, so a redirect looked like a broken page. Now followed hop by hop in a fresh tab (max 4).
+- H2 (fixed): the session check waited once for ≤3 s and did not follow redirects. Now follows them and polls for the signed-in navigation for up to 15 s.
+- M1 (fixed): C now also stops at the first off-site main-frame request (redirect hops included), not only after the page has committed.
+- M2 (fixed): C closes every page it did not open itself (noopener popups included). Without interception, a popup's first request cannot be held back (documented).
+- M3 (fixed): the `report.json` key list documents `instagram.detail`.
+- L2/L3/L4/L6/L7 (fixed): `about:*` is ignored; codes read while the page is leaving are not printed; a 5 s sample was added (capture's judge time); DIAGNOSE_FAILED when every run fails; the CLI prints only BROWSER_TOOL_FAILED on a stray error.
+- L1 (kept): logs print the detail in place of the reason, as the requested format `PUBLIC_SOURCE_UNAVAILABLE (HTTP_404)` asks; `report.json` keeps both.
+- L8 (documented): the settings shared with capture (service workers, CSP, viewport, locale) remain suspects when every mode fails.

@@ -65,7 +65,10 @@ export const MODES: Record<DiagnoseMode, { label: string; headless: boolean; gua
 };
 
 /** When the target page is looked at, after it has loaded (hydration shows over time). */
-export const SAMPLE_AT_MS = [1_000, 3_000, 8_000, 15_000];
+export const SAMPLE_AT_MS = [1_000, 3_000, 5_000, 8_000, 15_000]; // 5 s: when capture judges the page
+
+/** How long the home page is watched for the signed-in navigation. */
+export const SESSION_WAIT_MS = 15_000;
 
 export interface DiagnoseOptions {
   profileDir: string;
@@ -77,6 +80,7 @@ export interface DiagnoseOptions {
   sampleAtMs?: number[];
   /** Pause between two runs, so the pages are not opened back to back. */
   pauseMs?: number;
+  sessionWaitMs?: number;
   /** Tests only: the signed-in check page (production: INSTAGRAM_HOME). */
   homeUrl?: string;
   /** Whether a display exists for B (production: DISPLAY / WAYLAND_DISPLAY). */
@@ -84,7 +88,8 @@ export interface DiagnoseOptions {
   say: (line: string) => void;
 }
 
-export type DiagnoseOutcome = "DIAGNOSED" | "SESSION_MISSING" | "BROWSER_BUSY";
+/** FAILED: no run got as far as the page (every run was a browser error). */
+export type DiagnoseOutcome = "DIAGNOSED" | "FAILED" | "SESSION_MISSING" | "BROWSER_BUSY";
 
 const CHALLENGE_PATH = /^\/(challenge|checkpoint|suspended)/;
 
@@ -125,42 +130,74 @@ async function signedIn(page: Page): Promise<boolean> {
   return (await page.locator(SIGNED_IN).count().catch(() => 0)) > 0;
 }
 
+/** Same-site redirects followed by hand in the guarded runs, as capture does. */
+const MAX_HOPS = 4;
+
 /** One run: open the target, sample it, then check the session on the home page. */
 async function runMode(context: BrowserContext, mode: DiagnoseMode, options: DiagnoseOptions): Promise<void> {
   const { target, say } = options;
   const guard = MODES[mode].guard;
   const state: { offSite: boolean; redirect?: string } = { offSite: false };
   if (guard) await guardNavigation(context, target, state);
-  // Popups are never needed; close any at once.
+  // Only pages this code opens are kept; any other (a popup, with or without an opener) is closed at once.
+  let opening = 0;
   context.on("page", (p) => {
-    void p.opener().then((opener) => (opener ? p.close() : undefined)).catch(() => undefined);
+    if (opening > 0) {
+      opening -= 1;
+      return;
+    }
+    void p.close().catch(() => undefined);
   });
+  const leave = (p: Page) => {
+    state.offSite = true;
+    void p.close().catch(() => undefined);
+  };
   const newPage = async () => {
+    opening += 1;
     const p = await context.newPage();
     p.on("dialog", (d) => void d.dismiss().catch(() => undefined));
     if (!guard) {
-      // Without interception nothing stops a redirect off the site; stop the run when the main frame leaves it.
+      // Without interception nothing can hold a request back. Stop the run at the first main-frame
+      // request (redirect hops included) or page that is off the site.
+      p.on("request", (request) => {
+        try {
+          if (request.isNavigationRequest() && request.frame() === p.mainFrame() && !target.allowNavigation(request.url())) leave(p);
+        } catch {
+          // a request without a frame yet (a popup's); popups are closed above
+        }
+      });
       p.on("framenavigated", (frame) => {
         const url = frame.url();
-        // about:blank and a failed load's error page are not a place the page went.
-        if (url === "about:blank" || url.startsWith("chrome-error:")) return;
-        if (frame === p.mainFrame() && !target.allowNavigation(url)) {
-          state.offSite = true;
-          void p.close().catch(() => undefined);
-        }
+        // about:blank(#blocked) and a failed load's error page are not a place the page went.
+        if (url.startsWith("about:") || url.startsWith("chrome-error:")) return;
+        if (frame === p.mainFrame() && !target.allowNavigation(url)) leave(p);
       });
     }
     return p;
   };
+  /** Loads a URL; with the guard, allowed redirects are followed hop by hop in a fresh tab (as capture's open()). */
+  const load = async (first: string): Promise<{ page: Page; status?: number }> => {
+    let url = first;
+    let page: Page | undefined;
+    for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
+      await page?.close().catch(() => undefined);
+      page = await newPage();
+      state.redirect = undefined;
+      let status: number | undefined;
+      try {
+        status = (await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 }))?.status();
+      } catch {
+        status = undefined; // a failed load, or a redirect the guard stopped (followed below)
+      }
+      if (!guard || state.offSite || state.redirect === undefined) return { page, status };
+      url = state.redirect;
+    }
+    return { page: page!, status: undefined };
+  };
+  const stopped = (p: Page) => state.offSite || p.isClosed();
 
-  const page = await newPage();
-  let status: number | undefined;
-  try {
-    status = (await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 45_000 }))?.status();
-  } catch {
-    status = undefined; // a failed load or a redirect the guard stopped
-  }
-  if (state.offSite) {
+  const { page, status } = await load(target.url);
+  if (stopped(page)) {
     say(`${mode} STOPPED_OFF_SITE`);
     return;
   }
@@ -169,22 +206,30 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   for (const at of options.sampleAtMs ?? SAMPLE_AT_MS) {
     const wait = start + at - Date.now();
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    if (state.offSite || page.isClosed()) {
+    const codes = stopped(page) ? [] : await pageCodes(page);
+    // Codes read while the page was leaving the site are not printed.
+    if (stopped(page)) {
       say(`${mode} STOPPED_OFF_SITE`);
       return;
     }
-    say(`${mode} t=${Math.round(at / 1000)}s ${(await pageCodes(page)).join(" ")}`);
+    say(`${mode} t=${Math.round(at / 1000)}s ${codes.join(" ")}`);
   }
   await page.close().catch(() => undefined);
 
-  const home = await newPage();
-  await home.goto(options.homeUrl ?? INSTAGRAM_HOME, { waitUntil: "domcontentloaded", timeout: 45_000 }).catch(() => undefined);
-  await new Promise((r) => setTimeout(r, Math.min(3_000, (options.sampleAtMs ?? SAMPLE_AT_MS)[0]! * 3)));
-  if (state.offSite || home.isClosed()) {
+  // The signed-in navigation is drawn by script: look for it for a while before calling the session missing.
+  const { page: home } = await load(options.homeUrl ?? INSTAGRAM_HOME);
+  const until = Date.now() + (options.sessionWaitMs ?? SESSION_WAIT_MS);
+  let ok = false;
+  while (!stopped(home)) {
+    ok = await signedIn(home);
+    if (ok || Date.now() >= until) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  if (stopped(home)) {
     say(`${mode} STOPPED_OFF_SITE`);
     return;
   }
-  say(`${mode} ${(await signedIn(home)) ? "SESSION_OK" : "SESSION_MISSING"}`);
+  say(`${mode} ${ok ? "SESSION_OK" : "SESSION_MISSING"}`);
   await home.close().catch(() => undefined);
 }
 
@@ -200,6 +245,8 @@ export async function runDiagnose(options: DiagnoseOptions): Promise<DiagnoseOut
   if (!lock) return "BROWSER_BUSY";
   try {
     const modes = options.modes ?? ["A", "C", "B"];
+    let ran = 0;
+    let failed = 0;
     for (const [i, mode] of modes.entries()) {
       if (i > 0) await new Promise((r) => setTimeout(r, options.pauseMs ?? 5_000));
       const { headless } = MODES[mode];
@@ -208,6 +255,7 @@ export async function runDiagnose(options: DiagnoseOptions): Promise<DiagnoseOut
         continue;
       }
       let context: BrowserContext | undefined;
+      ran += 1;
       try {
         context = await options.launchPersistent(options.profileDir, {
           headless,
@@ -218,12 +266,13 @@ export async function runDiagnose(options: DiagnoseOptions): Promise<DiagnoseOut
         });
         await runMode(context, mode, options);
       } catch {
+        failed += 1;
         options.say(`${mode} BROWSER_ERROR`);
       } finally {
         await context?.close().catch(() => undefined);
       }
     }
-    return "DIAGNOSED";
+    return ran > 0 && failed === ran ? "FAILED" : "DIAGNOSED";
   } finally {
     await checkProfileTree(options.profileDir, options.env, { tighten: true }).catch(() => undefined);
     await lock.release().catch(() => undefined);

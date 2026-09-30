@@ -104,6 +104,18 @@ export async function startMockSite(): Promise<MockSite> {
       case "/li_offsite/":
         res.writeHead(302, { location: `http://localhost:${port}/elsewhere/` });
         return res.end();
+      case "/hop_li_shop/":
+        res.writeHead(302, { location: "/li_shop/" });
+        return res.end();
+      case "/li_offsite_hop/":
+        // off the site and straight back: only the middle hop leaves
+        res.writeHead(302, { location: `http://localhost:${port}/bounce/` });
+        return res.end();
+      case "/bounce/":
+        res.writeHead(302, { location: `http://127.0.0.1:${port}/li_shop/` });
+        return res.end();
+      case "/li_popup/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>window.open("http://localhost:${port}/popup_target/", "_blank", "noopener");</script></body>`));
       case "/li_nomain/":
         return send(200, page(`<nav><a href="/direct/inbox/">Messages</a></nav><header style="height:200px"><h2>x</h2></header>${Array.from({ length: 3 }, (_, i) => `<a href="/p/${i}/"><img width="300" height="300" src="${tile(i)}"></a>`).join("")}`));
       case "/set_session/":

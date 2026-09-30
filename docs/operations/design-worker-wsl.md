@@ -173,6 +173,7 @@ SR_DESIGN_EXPORT_DIR=/mnt/c/Users/<windows-user>/Desktop/second-root-codex-resul
   - `status`
   - `images`
   - 撮れなかったときの `reason`
+  - `PRIVATE_OR_MISSING` のときは判断に使った `detail`（`HTTP_404` / `HTTP_410` / `BODY_PRIVATE` / `BODY_PAGE_UNAVAILABLE`）
   - `temp_deleted`
 - `codex`
   - `direction`

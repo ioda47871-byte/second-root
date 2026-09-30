@@ -249,6 +249,7 @@ describe("diagnose", () => {
       modes: over.modes ?? ["A", "C"],
       sampleAtMs: over.samples ?? [200, 2_500],
       pauseMs: 0,
+      sessionWaitMs: 1_500,
       homeUrl: `${site.origin}/${over.home ?? "home_signed_in"}/`,
       hasDisplay: over.hasDisplay ?? false,
       say: (l) => lines.push(l),
@@ -293,9 +294,13 @@ describe("diagnose", () => {
     expect((await diagnose(s, "li_gone", { modes: ["C"], samples })).lines[0]).toBe("C headless+no-interception HTTP_OTHER");
     expect((await diagnose(s, "li_private", { modes: ["A"], samples })).lines[1]).toContain("BODY_PRIVATE_MARKER");
     expect((await diagnose(s, "li_captcha", { modes: ["A"], samples })).lines[1]).toContain("CAPTCHA_PRESENT");
-    // the guard stops the redirect to a challenge; without interception the browser shows it
-    expect((await diagnose(s, "li_challenge", { modes: ["A"], samples })).lines[0]).toBe("A headless+guard HTTP_OTHER");
+    // a same-site redirect is followed as capture follows it, with and without the guard
+    expect((await diagnose(s, "li_challenge", { modes: ["A"], samples })).lines[1]).toContain("CHALLENGE_PRESENT");
     expect((await diagnose(s, "li_challenge", { modes: ["C"], samples })).lines[1]).toContain("CHALLENGE_PRESENT");
+    expect((await diagnose(s, "hop_li_shop", { modes: ["A"], samples })).lines.slice(0, 2)).toEqual([
+      "A headless+guard HTTP_200",
+      "A t=0s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT",
+    ]);
     const lost = await diagnose(s, "li_shop", { modes: ["A"], samples, home: "login_page" });
     expect(lost.lines.at(-1)).toBe("A SESSION_MISSING");
     onlyCodes(lost.lines);
@@ -306,8 +311,14 @@ describe("diagnose", () => {
     const before = site.requests.length;
     const { lines } = await diagnose(s, "li_offsite", { modes: ["C"], samples: [200] });
     expect(lines).toEqual(["C STOPPED_OFF_SITE"]);
+    // an off-site hop in the middle of a redirect chain also stops the run
+    expect((await diagnose(s, "li_offsite_hop", { modes: ["C"], samples: [200] })).lines).toEqual(["C STOPPED_OFF_SITE"]);
     // the session check does not run after leaving the site
     expect(site.requests.slice(before).some((r) => r.includes("home_signed_in"))).toBe(false);
+    // a popup the page opens by itself (no opener) is closed at once without the guard
+    // (its first request may already be out: nothing can hold it back without interception)
+    const popup = await diagnose(s, "li_popup", { modes: ["C"], samples: [200, 1_500] });
+    expect(popup.lines).toEqual(["C headless+no-interception HTTP_200", "C t=0s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT", "C t=2s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT", "C SESSION_OK"]);
     const all = (await diagnose(s, "li_shop", { modes: ["A", "C"], samples: [200] })).lines.join("\n");
     expect(all).not.toMatch(/li_shop|example_shop|Fictional|LEAK|localhost|127\.0\.0\.1|http|sr-instagram-browser|fake_session/);
   });
