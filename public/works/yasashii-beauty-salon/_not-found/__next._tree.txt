@@ -1,0 +1,4 @@
+:HL["/works/yasashii-beauty-salon/_next/static/chunks/0ac9kcwflrdt3.css","style"]
+:HL["/works/yasashii-beauty-salon/_next/static/chunks/3eliwenuxhnlj.css","style"]
+:HL["/works/yasashii-beauty-salon/_next/static/chunks/19jb0u9lntd01.css","style"]
+0:{"tree":{"name":"","param":null,"prefetchHints":4112,"slots":{"children":{"name":"/_not-found","param":null,"prefetchHints":4160,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}},"staleTime":300,"buildId":"T2c-aL5tPA4XzdZf3uFva"}

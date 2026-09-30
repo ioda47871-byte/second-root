@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "test-results/**",
     "blob-report/**",
+    // Concept Works: static exports built in their own repositories (docs/WORKS.md).
+    "public/works/**",
   ]),
 ]);
 

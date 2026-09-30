@@ -26,7 +26,7 @@ const WORKS = [
     image: "/concept-work/yasashii-beauty-salon.webp",
     w: 1600,
     h: 1000,
-    url: "https://yasashii-beauty-salon.vercel.app",
+    url: "/works/yasashii-beauty-salon",
   },
   {
     slug: "midori-seitai",

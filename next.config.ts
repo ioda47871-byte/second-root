@@ -13,6 +13,14 @@ const privateRouteHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+// Concept Works are separate static-export builds copied into
+// public/works/<slug>/ (docs/WORKS.md). Their pages are exported as
+// <page>.html, which public/ only serves with the extension, so the
+// extension-less URLs are rewritten to those files.
+const staticWorks = [
+  { slug: "yasashii-beauty-salon", pages: ["about", "access", "first", "menu", "staff"] },
+];
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
@@ -20,7 +28,18 @@ const nextConfig: NextConfig = {
       { source: "/admin/:path*", headers: privateRouteHeaders },
       { source: "/api/internal/:path*", headers: privateRouteHeaders },
       { source: "/api/webhooks/:path*", headers: privateRouteHeaders },
+      // Content-hashed build files of the Concept Works.
+      ...staticWorks.map(({ slug }) => ({
+        source: `/works/${slug}/_next/static/:path*`,
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      })),
     ];
+  },
+  async rewrites() {
+    return staticWorks.flatMap(({ slug, pages }) => [
+      { source: `/works/${slug}`, destination: `/works/${slug}/index.html` },
+      { source: `/works/${slug}/:page(${pages.join("|")})`, destination: `/works/${slug}/:page.html` },
+    ]);
   },
 };
 
