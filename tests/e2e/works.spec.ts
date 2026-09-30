@@ -56,9 +56,22 @@ test.beforeEach(async ({ context }) => {
   );
 });
 
-/** Collects console errors and failed or 4xx/5xx requests while a page is open. */
-function watch(page: Page) {
+/**
+ * Collects console errors and failed or 4xx/5xx requests while a page is
+ * open. With `base`, also any same-origin request outside it: a URL that lost
+ * its basePath would otherwise load one of Second Root's own files with 200.
+ */
+function watch(page: Page, base?: string) {
   const problems: string[] = [];
+  if (base) {
+    const origin = new URL(test.info().project.use.baseURL!).origin;
+    page.on("request", (r) => {
+      const url = new URL(r.url());
+      if (url.origin === origin && url.pathname !== base && !url.pathname.startsWith(`${base}/`) && url.pathname !== `${base}.txt`) {
+        problems.push(`outside ${base}: ${url.pathname}`);
+      }
+    });
+  }
   page.on("console", (m) => {
     if (m.type() === "error") problems.push(`console: ${m.text()}`);
   });
@@ -90,9 +103,10 @@ async function loadAll(page: Page) {
 for (const { base: BASE, title, pages: PAGES, overflowPages, canonical, nav, jsonLd, knownOverflow } of WORKS) {
   for (const path of PAGES) {
     test(`${BASE}${path} opens directly and on reload`, async ({ page }) => {
-      const problems = watch(page);
+      const problems = watch(page, BASE);
       const res = await page.goto(`${BASE}${path}`);
       expect(res?.status()).toBe(200);
+      expect(res?.headers()["x-robots-tag"]).toBe("noindex, nofollow");
       await expect(page).toHaveTitle(title);
       await loadAll(page);
 
@@ -151,7 +165,7 @@ for (const { base: BASE, title, pages: PAGES, overflowPages, canonical, nav, jso
   });
 
   test(`${BASE}: client-side navigation, back and forward`, async ({ page }) => {
-    const problems = watch(page);
+    const problems = watch(page, BASE);
     await page.goto(BASE);
     await page.setViewportSize({ width: 1280, height: 900 });
     for (const target of ["/about", "/menu", "/access"]) {
@@ -175,7 +189,13 @@ for (const { base: BASE, title, pages: PAGES, overflowPages, canonical, nav, jso
     const html = await (await request.get(BASE)).text();
     const icon = html.match(/<link rel="icon" href="([^"]+)"/)?.[1];
     expect(icon, "favicon link").toMatch(new RegExp(`^${BASE}/`));
-    expect((await request.get(icon!)).status()).toBe(200);
+    const iconRes = await request.get(icon!);
+    expect(iconRes.status()).toBe(200);
+    // Every file under /works carries X-Robots-Tag, not only the pages.
+    expect(iconRes.headers()["x-robots-tag"]).toBe("noindex, nofollow");
+    const payload = await request.get(`${BASE}/index.txt`);
+    expect(payload.status()).toBe(200);
+    expect(payload.headers()["x-robots-tag"]).toBe("noindex, nofollow");
     expect((await request.get(`${BASE}/no-such-page`)).status()).toBe(404);
   });
 
@@ -212,6 +232,19 @@ test("星の茶スタンド's menu shows all 13 drinks and sweets with photos", 
     });
   await expect.poll(photos, { timeout: 15_000 }).toEqual({ count: 13, loaded: 13 });
   expect(problems).toEqual([]);
+});
+
+test("X-Robots-Tag stays off Second Root's own pages", async ({ request }) => {
+  for (const path of ["/", "/privacy", "/terms", "/thanks", "/robots.txt", "/sitemap.xml"]) {
+    const res = await request.get(path);
+    expect(res.status(), path).toBe(200);
+    expect(res.headers()["x-robots-tag"], path).toBeUndefined();
+  }
+  // The private routes keep their own header set.
+  const admin = await request.get("/admin/login");
+  expect(admin.headers()["x-robots-tag"]).toBe("noindex, nofollow");
+  expect(admin.headers()["x-frame-options"]).toBe("DENY");
+  expect(admin.headers()["cache-control"]).toContain("no-store");
 });
 
 test("Second Root's cards open the Concept Works under /works", async ({ page }) => {

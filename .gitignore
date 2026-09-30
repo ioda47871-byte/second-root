@@ -47,3 +47,6 @@ next-env.d.ts
 /blob-report/
 /playwright/.cache/
 build.log
+
+# scripts/import-work.mjs staging (removed after each run)
+/.works-import-*

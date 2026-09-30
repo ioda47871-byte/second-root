@@ -40,11 +40,31 @@ Second Root には React component として混ぜず、各リポジトリで **
 2. next/image は文字列 `src` に basePath を付けないため、Concept Work 側の
    `src/lib/asset.ts` の `asset()` で付ける（yasashii は各 `<Image>`、midori は
    `src/lib/photos.ts` の写真パス）。
-3. export の `out/` を `scripts/import-work.mjs` で `public/works/<slug>/` へコピーする。
-   スクリプトは、HTML / RSC payload（`.txt`）の中のルート相対 URL（`/_next`・`/images`
-   など）がすべて `/works/<slug>` 配下か、絶対 URL の canonical / og:url があれば
-   `https://secondroot.jp/works/<slug>` を指しているかを検査し、外れていれば何も
-   コピーせずに止まる。
+3. export の `out/` を `scripts/import-work.mjs` で `public/works/<slug>/` へコピーする
+   （`tests/unit/import-work.test.ts`）。
+   - 引数: `--slug` / `--source` は値が必須（`-` で始まる値は不可）。slug は
+     `^[a-z0-9]+(-[a-z0-9]+)*$`（64 文字まで）。位置引数 `<slug> <out>` も可。
+   - コピー先はスクリプト自身の場所から決まる `<repo>/public/works/<slug>`（cwd に依存しない）。
+     source が symlink・public/works の中・public/works を含む・コピー先と重なる場合は拒否。
+   - ファイル: symlink を辿らずに（lstat）全ファイルを列挙し、symlink・dotfile（`.env*` を含む）・
+     `*.map`・通常ファイル以外が 1 つでもあれば拒否。
+   - URL（`/works/<slug>` の外を指すルート相対 URL を拒否）:
+     - HTML / SVG: 全属性（引用符なし・`'`・`"`、`srcset` は全候補）、`style` 属性・`<style>` の
+       `url()`。`<script>` 内の RSC payload（JS 文字列）は JSON として展開して下記で検査。
+     - CSS: `url()` と `@import`。
+     - RSC payload（`.txt`）・JSON: basePath 配下か、この export の route（`/about`、`/#concept`
+       など。router が basePath を付ける）であること。それ以外は asset ファイル
+       （画像・フォント・CSS・JS・`.txt` など）と、`src` / `srcSet` / `href` / `poster` /
+       `action` などの値を拒否。
+     - JS: asset ファイル（画像・フォント・CSS など）を指すルート相対の文字列。フレームワーク自身の
+       文字列（`/_next/`、`/index.txt`、route 名）は実行時に basePath と結合されるため対象外。
+       実行時のリクエストが basePath の外に出ないことは e2e（`works.spec.ts` の `watch`）で確認する。
+     - 絶対 URL の canonical / og:url / og:image / twitter:image は
+       `https://secondroot.jp/works/<slug>` の直後が終端・`/`・`?`・`#` のいずれかであること
+       （`/works/<slug>evil` などの前方一致は拒否）。
+   - 手順: 検査 → リポジトリ直下の一時ディレクトリ（`.works-import-*`、gitignore 済み）へコピー →
+     コピーを再検査（ファイル一覧・サイズ・内容）→ 旧コピーと入れ替え（失敗時は旧コピーを戻す）→
+     旧コピーと一時ディレクトリを削除。どこで失敗しても `public/works/<slug>` はそのまま残る。
 4. export は各ページを `<page>.html` で出力し、Next の `public/` は拡張子なしの URL を
    返さない。そのため `next.config.ts` の `staticWorks` に slug とページ名を登録し、
    rewrite で `/works/<slug>` → `index.html`、`/works/<slug>/<page>` → `<page>.html`
@@ -53,6 +73,9 @@ Second Root には React component として混ぜず、各リポジトリで **
    （export が書くのは `index.txt`）ため、これも rewrite で `index.txt` に対応付ける。
 5. `public/works/**` は minify 済みの build 成果物なので ESLint の対象外
    （`eslint.config.mjs`）。
+6. `/works/**` の全レスポンス（HTML・`.txt`・画像・JS など）に `X-Robots-Tag: noindex, nofollow`
+   を付ける（`next.config.ts`）。各ページの robots meta（noindex）もそのまま。Second Root 自身の
+   ページには付けない。
 
 ## 更新手順
 

@@ -30,6 +30,9 @@ const nextConfig: NextConfig = {
       { source: "/admin/:path*", headers: privateRouteHeaders },
       { source: "/api/internal/:path*", headers: privateRouteHeaders },
       { source: "/api/webhooks/:path*", headers: privateRouteHeaders },
+      // Concept Works are fictional shops: keep every file under /works out
+      // of search results (their pages also carry a robots meta tag).
+      { source: "/works/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       // Content-hashed build files of the Concept Works.
       ...staticWorks.map(({ slug }) => ({
         source: `/works/${slug}/_next/static/:path*`,
