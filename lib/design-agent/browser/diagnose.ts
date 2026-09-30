@@ -32,6 +32,7 @@ import {
   PRIVATE_MARKER,
   SIGNED_IN,
   type CaptureTarget,
+  type NavigationState,
 } from "../worker/capture";
 import { checkProfileLocation, checkProfileTree, PERSISTENT_ARGS, prepareProfileDir, type ProfileEnv } from "./profile";
 import { displayEnvironment, INSTAGRAM_HOME, type LaunchPersistent } from "./session";
@@ -130,15 +131,12 @@ async function signedIn(page: Page): Promise<boolean> {
   return (await page.locator(SIGNED_IN).count().catch(() => 0)) > 0;
 }
 
-/** Same-site redirects followed by hand in the guarded runs, as capture does. */
-const MAX_HOPS = 4;
-
 /** One run: open the target, sample it, then check the session on the home page. */
 async function runMode(context: BrowserContext, mode: DiagnoseMode, options: DiagnoseOptions): Promise<void> {
   const { target, say } = options;
-  const guard = MODES[mode].guard;
-  const state: { offSite: boolean; redirect?: string } = { offSite: false };
-  if (guard) await guardNavigation(context, target, state);
+  const guarded = MODES[mode].guard;
+  const state: NavigationState = { offSite: false };
+  const guard = guarded ? await guardNavigation(context, target, state) : null;
   // Only pages this code opens are kept; any other (a popup, with or without an opener) is closed at once.
   let opening = 0;
   context.on("page", (p) => {
@@ -154,7 +152,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   };
   const newPage = async () => {
     opening += 1;
-    const p = await context.newPage();
+    const p = guard ? await guard.newPage() : await context.newPage();
     p.on("dialog", (d) => void d.dismiss().catch(() => undefined));
     if (!guard) {
       // Without interception nothing can hold a request back. Stop the run at the first main-frame
@@ -175,46 +173,48 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
     }
     return p;
   };
-  /** Loads a URL; with the guard, allowed redirects are followed hop by hop in a fresh tab (as capture's open()). */
-  const load = async (first: string): Promise<{ page: Page; status?: number }> => {
-    let url = first;
-    let page: Page | undefined;
-    for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
-      await page?.close().catch(() => undefined);
-      page = await newPage();
-      state.redirect = undefined;
-      let status: number | undefined;
-      try {
-        status = (await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 }))?.status();
-      } catch {
-        status = undefined; // a failed load, or a redirect the guard stopped (followed below)
-      }
-      if (!guard || state.offSite || state.redirect === undefined) return { page, status };
-      url = state.redirect;
+  /** Loads a URL; the browser follows allowed redirects itself (the guard checks each hop). */
+  const load = async (url: string): Promise<{ page: Page; status?: number }> => {
+    const page = await newPage();
+    state.wall = undefined;
+    try {
+      return { page, status: (await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 }))?.status() };
+    } catch {
+      return { page }; // a failed load, or a hop the guard stopped
     }
-    return { page: page!, status: undefined };
   };
   const stopped = (p: Page) => state.offSite || p.isClosed();
+  /** Samples the page over time; false when it left the site on the way. */
+  const sample = async (page: Page): Promise<boolean> => {
+    const start = Date.now();
+    for (const at of options.sampleAtMs ?? SAMPLE_AT_MS) {
+      const wait = start + at - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      const codes = stopped(page) ? [] : await pageCodes(page);
+      // Codes read while the page was leaving the site are not printed.
+      if (stopped(page)) {
+        say(`${mode} STOPPED_OFF_SITE`);
+        return false;
+      }
+      say(`${mode} t=${Math.round(at / 1000)}s ${codes.join(" ")}`);
+    }
+    await page.close().catch(() => undefined);
+    return true;
+  };
 
   const { page, status } = await load(target.url);
   if (stopped(page)) {
     say(`${mode} STOPPED_OFF_SITE`);
     return;
   }
-  say(`${mode} ${MODES[mode].label} ${httpCode(status)}`);
-  const start = Date.now();
-  for (const at of options.sampleAtMs ?? SAMPLE_AT_MS) {
-    const wait = start + at - Date.now();
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    const codes = stopped(page) ? [] : await pageCodes(page);
-    // Codes read while the page was leaving the site are not printed.
-    if (stopped(page)) {
-      say(`${mode} STOPPED_OFF_SITE`);
-      return;
-    }
-    say(`${mode} t=${Math.round(at / 1000)}s ${codes.join(" ")}`);
+  // The guard stopped a redirect to a sign-in / challenge page (never loaded): nothing to sample.
+  if (state.wall !== undefined) {
+    say(`${mode} ${MODES[mode].label} HTTP_OTHER${/challenge|checkpoint|suspended/.test(state.wall) ? " CHALLENGE_PRESENT" : ""}`);
+    await page.close().catch(() => undefined);
+  } else {
+    say(`${mode} ${MODES[mode].label} ${httpCode(status)}`);
+    if (!(await sample(page))) return;
   }
-  await page.close().catch(() => undefined);
 
   // The signed-in navigation is drawn by script: look for it for a while before calling the session missing.
   const { page: home } = await load(options.homeUrl ?? INSTAGRAM_HOME);

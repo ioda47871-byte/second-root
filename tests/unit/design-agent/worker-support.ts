@@ -45,10 +45,18 @@ const profile = (posts: number) =>
       `<main><div style="display:grid;grid-template-columns:repeat(3,300px);gap:4px;padding:20px">${Array.from({ length: posts }, (_, i) => `<a href="/p/${i}/"><img width="300" height="300" src="${tile(i)}"></a>`).join("")}</div></main>`,
   );
 
-export type MockSite = { origin: string; requests: string[]; server: Server; target(username: string): CaptureTarget };
+export type MockSite = {
+  origin: string;
+  requests: string[];
+  /** Request headers of the last /li_headers/ visit. */
+  lastHeaders: Record<string, string | string[] | undefined>;
+  server: Server;
+  target(username: string): CaptureTarget;
+};
 
 export async function startMockSite(): Promise<MockSite> {
   const requests: string[] = [];
+  const site = { lastHeaders: {} as MockSite["lastHeaders"] };
   let origin = "";
   const server = createServer((req, res) => {
     requests.push(`${req.headers.host ?? ""}${req.url ?? ""}`);
@@ -97,6 +105,15 @@ export async function startMockSite(): Promise<MockSite> {
             `<script>setTimeout(()=>{document.getElementById("app").innerHTML=${JSON.stringify(profileBody(12))};},1500);</script></body>`,
           ),
         );
+      case "/li_headers/":
+        site.lastHeaders = { ...req.headers };
+        return send(200, signedIn(profileBody(3)));
+      case "/li_unavailable/":
+        return send(200, signedIn(`<h2>Sorry, this page isn't available.</h2>`));
+      case "/li_iframe/":
+        return send(200, signedIn(profileBody(3).replace("<header", `<iframe src="http://localhost:${port}/frame_target/" width="10" height="10"></iframe><header`)));
+      case "/li_js_offsite/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{location.href="http://localhost:${port}/js_target/";},100);</script></body>`));
       case "/li_gone/":
         return send(410, page("gone"));
       case "/li_private/":
@@ -176,6 +193,9 @@ export async function startMockSite(): Promise<MockSite> {
   return {
     origin,
     requests,
+    get lastHeaders() {
+      return site.lastHeaders;
+    },
     server,
     target: (username) => ({ url: `${origin}/${username}/`, allowNavigation: (u) => u.startsWith(`${origin}/`) }),
   };

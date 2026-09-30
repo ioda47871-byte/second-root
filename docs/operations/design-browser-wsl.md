@@ -87,6 +87,13 @@ cd ~/work/second-root && npm run -s sales:design-browser -- capture --source-fil
 - メッセージのドック、ダイアログ
 - 「〇〇さんがフォローしています」の行と、おすすめのアカウント
 
+**移動の見張り（guard）**
+- capture のタブの document request（本体・frame・redirect の各 hop）は、送る前に Chromium の中（CDP Fetch）で止めて確かめる
+- Instagram 内なら、browser が作ったままの request を送る（`sec-fetch-*`・言語・cookie・user agent を変えない）
+- Instagram の外は送らずに止める。本体が外へ行こうとしたら `PUBLIC_SOURCE_UNAVAILABLE (OFF_SITE_REDIRECT)`
+- ログイン・確認画面への redirect も、読み込まずに止める
+- popup は一切移動させない。外の frame は止めるが、本体の移動とは数えない
+
 画像はメイン部分だけを切り出す。投稿の画像はぼかしと画素化で、人や細部が分からないようにする。公開 bio と店名は残す。
 
 | 表示 | 意味 | 終了コード |
@@ -111,7 +118,7 @@ cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-fi
 
 | 行の頭 | 開き方 |
 |---|---|
-| `A` | headless、capture と同じ navigation guard（`route.fetch` → `route.fulfill`） |
+| `A` | headless、capture と同じ navigation guard（Chromium の中で document request を 1 hop ずつ確かめ、許すものはそのまま送る） |
 | `C` | headless、route interception なし（診断専用。Instagram の外への移動が見えたら `STOPPED_OFF_SITE` で止める。ただし interception が無いので、外への最初の 1 リクエストは止められない。popup はすぐ閉じる） |
 | `B` | 画面あり（WSLg）、guard あり。入力・クリック・スクロールはしない。画面が無ければ `SKIPPED_NO_DISPLAY` |
 
@@ -123,7 +130,7 @@ cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-fi
 - capture の安全ガードは変えていない（C は diagnose の中だけ）
 
 読み方:
-- A だけ unavailable、C は posts あり → guard の `route.fetch` が原因（browser 自身の `sec-fetch-*` / `accept-language` header が付かない）
+- A だけ unavailable、C は posts あり → guard が原因（2026-09-30 に見つけた旧 guard の問題: 送り直した request に browser 自身の `sec-fetch-*` / `accept-language` が付かなかった。修正済み）
 - A と C が unavailable、B は posts あり → headless の違い
 - 全部 unavailable で `SESSION_MISSING` → ログインが切れている
 - 最初だけ `BODY_UNAVAILABLE_MARKER` で後から `POSTS_PRESENT` → 表示途中の文を拾っている（capture は 5 秒後に判断する）

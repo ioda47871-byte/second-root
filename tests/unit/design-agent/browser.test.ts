@@ -225,10 +225,82 @@ describe("signed-in capture", () => {
     ["a 404", "li_no_such_page", "HTTP_404"],
     ["a 410", "li_gone", "HTTP_410"],
     ["a private-account text", "li_private", "BODY_PRIVATE"],
-    ["a page-unavailable text", "li_fetch_sensitive", "BODY_PAGE_UNAVAILABLE"],
+    ["a page-unavailable text", "li_unavailable", "BODY_PAGE_UNAVAILABLE"],
   ] as const)("says which signal made %s unavailable", async (_label, username, detail) => {
     const s = await signedInProfile();
     expect(await capture(s, username)).toMatchObject({ code: "PUBLIC_SOURCE_UNAVAILABLE", reason: detail });
+  });
+});
+
+describe("navigation guard (browser-native requests, every hop checked before it is sent)", () => {
+  const signedInProfile = async () => {
+    const s = sandbox();
+    await runLogin({ profileDir: s.profile, stateDir: s.state, env: s.env, launchPersistent, startUrl: `${site.origin}/set_session/`, pollMs: 200, onPage: async (page) => void (await page.goto(`${site.origin}/home_signed_in/`)) });
+    mkdirSync(s.out, { recursive: true, mode: 0o700 });
+    return s;
+  };
+  const capture = (s: ReturnType<typeof sandbox>, username: string) =>
+    runSignedInCapture({ profileDir: s.profile, stateDir: s.state, env: s.env, target: site.target(username), outDir: s.out, launchPersistent, settleMs: 300 });
+  const offSiteHits = (from: number) => site.requests.slice(from).filter((r) => r.startsWith("localhost:"));
+
+  it("keeps the browser's own request headers on an allowed navigation (sec-fetch-*, accept-language, cookie, user agent)", async () => {
+    const s = await signedInProfile();
+    await capture(s, "li_headers");
+    const h = site.lastHeaders;
+    expect(h["sec-fetch-mode"]).toBe("navigate");
+    expect(h["sec-fetch-dest"]).toBe("document");
+    expect(h["sec-fetch-site"]).toBeDefined();
+    expect(h["accept-language"]).toMatch(/^ja/);
+    expect(String(h["cookie"])).toContain("fake_session=FICTIONAL");
+    expect(h["user-agent"]).toMatch(/Chrome\//);
+  });
+
+  it("reaches the header and posts of a signed-in page that is 'unavailable' to a request without the browser's headers", async () => {
+    const s = await signedInProfile();
+    expect((await capture(s, "li_fetch_sensitive")).code).toBe("CAPTURED");
+  });
+
+  it("follows a same-site redirect", async () => {
+    const s = await signedInProfile();
+    expect((await capture(s, "hop_li_shop")).code).toBe("CAPTURED");
+  });
+
+  it.each([
+    ["an off-site redirect", "li_offsite"],
+    ["an off-site hop in the middle of a redirect chain", "li_offsite_hop"],
+    ["a script navigation off the site", "li_js_offsite"],
+  ] as const)("stops %s before the destination receives any request", async (_label, username) => {
+    const s = await signedInProfile();
+    const before = site.requests.length;
+    expect(await capture(s, username)).toMatchObject({ code: "PUBLIC_SOURCE_UNAVAILABLE", reason: "OFF_SITE_REDIRECT" });
+    expect(offSiteHits(before)).toEqual([]);
+  });
+
+  it("stops a redirect to a challenge before loading it", async () => {
+    const s = await signedInProfile();
+    const before = site.requests.length;
+    expect((await capture(s, "li_challenge")).code).toBe("INSTAGRAM_CHALLENGE");
+    expect(site.requests.slice(before).some((r) => r.includes("/challenge/"))).toBe(false);
+  });
+
+  it("never lets a popup leave, and does not count an off-site frame as the page's navigation", async () => {
+    const s = await signedInProfile();
+    const before = site.requests.length;
+    expect((await capture(s, "li_popup")).code).toBe("CAPTURED");
+    expect((await capture(s, "li_iframe")).code).toBe("CAPTURED");
+    expect(offSiteHits(before)).toEqual([]);
+  });
+
+  it("never logs a cookie or session value, and uses no fetch/fulfill, clicks, input or extra scrolling", async () => {
+    const s = await signedInProfile();
+    const out = JSON.stringify(await capture(s, "li_shop")) + JSON.stringify(await capture(s, "li_unavailable"));
+    expect(out).not.toMatch(/FICTIONAL|fake_session|cookie/i);
+    const capture_ts = readFileSync(join(REPO, "lib/design-agent/worker/capture.ts"), "utf8");
+    expect(capture_ts).not.toMatch(/route\.fetch\(|route\.fulfill\(|\.fulfill\(\{/);
+    expect(capture_ts.match(/mouse\.wheel\(/g)).toHaveLength(1);
+    for (const f of ["lib/design-agent/browser/diagnose.ts", "lib/design-agent/browser/session.ts"]) {
+      expect(readFileSync(join(REPO, f), "utf8"), f).not.toMatch(/mouse\.|route\.fetch|route\.fulfill|keyboard\./);
+    }
   });
 });
 
@@ -261,14 +333,14 @@ describe("diagnose", () => {
     for (const word of lines.join(" ").split(/\s+/)) expect(DIAGNOSE_CODES.includes(word as never) || STRUCTURE.test(word), word).toBe(true);
   };
 
-  it("shows a page that differs only without the browser's own request headers (guard vs no interception)", async () => {
+  it("sees the same page with the guard as without interception (the guard keeps the browser's own headers)", async () => {
     const s = await signedInProfile();
     const { outcome, lines } = await diagnose(s, "li_fetch_sensitive");
     expect(outcome).toBe("DIAGNOSED");
     expect(lines).toEqual([
       "A headless+guard HTTP_200",
-      "A t=0s MAIN_PRESENT HEADER_MISSING POSTS_MISSING BODY_UNAVAILABLE_MARKER SIGNED_IN_NAV_PRESENT",
-      "A t=3s MAIN_PRESENT HEADER_MISSING POSTS_MISSING BODY_UNAVAILABLE_MARKER SIGNED_IN_NAV_PRESENT",
+      "A t=0s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT",
+      "A t=3s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT",
       "A SESSION_OK",
       "C headless+no-interception HTTP_200",
       "C t=0s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT",
@@ -295,7 +367,8 @@ describe("diagnose", () => {
     expect((await diagnose(s, "li_private", { modes: ["A"], samples })).lines[1]).toContain("BODY_PRIVATE_MARKER");
     expect((await diagnose(s, "li_captcha", { modes: ["A"], samples })).lines[1]).toContain("CAPTCHA_PRESENT");
     // a same-site redirect is followed as capture follows it, with and without the guard
-    expect((await diagnose(s, "li_challenge", { modes: ["A"], samples })).lines[1]).toContain("CHALLENGE_PRESENT");
+    // the guard stops a redirect to a challenge before loading it; without interception the browser shows it
+    expect((await diagnose(s, "li_challenge", { modes: ["A"], samples })).lines[0]).toBe("A headless+guard HTTP_OTHER CHALLENGE_PRESENT");
     expect((await diagnose(s, "li_challenge", { modes: ["C"], samples })).lines[1]).toContain("CHALLENGE_PRESENT");
     expect((await diagnose(s, "hop_li_shop", { modes: ["A"], samples })).lines.slice(0, 2)).toEqual([
       "A headless+guard HTTP_200",

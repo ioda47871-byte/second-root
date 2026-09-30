@@ -5,7 +5,7 @@
  *   stored cookies, no user profile. The browser's temporary profile lives in
  *   the worker's temp root (TMPDIR), which is deleted after the job.
  * - Only the target page is opened. Every page navigation (including each
- *   redirect hop, followed by hand) must pass `target.allowNavigation`; the
+ *   redirect hop, checked in Chromium before it is sent) must pass `target.allowNavigation`; the
  *   production target allows only instagram.com (source-url.ts). Leaving it
  *   ends the capture as PUBLIC_SOURCE_UNAVAILABLE.
  * - Nothing is clicked, typed or dismissed. One short scroll at most.
@@ -188,86 +188,116 @@ async function assertPublicPage(page: Page, target: CaptureTarget): Promise<void
   if (PAGE_UNAVAILABLE_MARKER.test(body)) throw new Unavailable("PRIVATE_OR_MISSING", "BODY_PAGE_UNAVAILABLE");
 }
 
-export async function guardNavigation(context: BrowserContext, target: CaptureTarget, state: { offSite: boolean; redirect?: string }): Promise<void> {
-  await context.route("**/*", (route) =>
-    handle(route).catch(() => route.abort("failed").catch(() => undefined)),
-  );
+/** What the navigation guard saw on the capture page's own navigations. */
+export type NavigationState = {
+  /** The page tried to go off the allowed site (the request was never sent). */
+  offSite: boolean;
+  /** The page was sent to a sign-in / challenge path (the request was never sent). */
+  wall?: string;
+  /** More than MAX_HOPS redirects in one navigation. */
+  tooManyRedirects?: boolean;
+};
+
+export interface NavigationGuard {
+  /** A new tab whose every document request (main frame and frames, each redirect hop) is checked before it goes out. */
+  newPage(): Promise<Page>;
+}
+
+/**
+ * Guards where the browser may go, without touching the requests it sends.
+ *
+ * - The capture's own tabs (guard.newPage()): every document request, each
+ *   redirect hop included, is paused in Chromium (CDP Fetch, request stage)
+ *   and checked before it is sent. Allowed: continued unchanged, so the
+ *   browser's own headers (sec-fetch-*, accept-language, cookies, user agent)
+ *   go out as in a normal visit. Off the site: failed, and in the main frame
+ *   the capture ends. A sign-in / challenge path in the main frame is failed
+ *   too (the wall is recorded, never loaded).
+ * - Any other tab (a popup the page opens): no navigation at all.
+ * - Playwright's fetch-and-fulfill routing is not used: it re-sends the page
+ *   request from outside the browser without the browser's own headers, and
+ *   Instagram answers that with "this page isn't available". Playwright's
+ *   continue alone cannot guard: route handlers never see redirect hops.
+ */
+export async function guardNavigation(context: BrowserContext, target: CaptureTarget, state: NavigationState): Promise<NavigationGuard> {
+  const guarded = new WeakSet<Page>();
+  await context.route("**/*", (route) => handle(route).catch(() => route.abort("failed").catch(() => undefined)));
   async function handle(route: Route): Promise<void> {
     const request = route.request();
     if (!request.isNavigationRequest()) return route.continue().catch(() => undefined);
-    // Frames inside the page (Instagram embeds other hosts) and popups are
-    // blocked quietly; only where the page itself goes decides the capture.
-    let mainFrame: boolean;
+    let page: Page;
     try {
-      mainFrame = request.frame().parentFrame() === null;
+      page = request.frame().page();
     } catch {
       return route.abort("blockedbyclient").catch(() => undefined); // a popup (no frame yet)
     }
-    if (!target.allowNavigation(request.url())) {
-      if (mainFrame) state.offSite = true;
-      return route.abort("blockedbyclient");
-    }
-    // Redirects are not seen by route handlers once the browser follows them,
-    // so each hop is fetched here without following and checked first.
-    let response;
-    try {
-      response = await route.fetch({ maxRedirects: 0, timeout: 30_000 });
-    } catch {
-      // One more try: a kept-alive connection the server has just closed fails at once.
-      await new Promise((r) => setTimeout(r, 500));
-      try {
-        response = await route.fetch({ maxRedirects: 0, timeout: 30_000 });
-      } catch {
-        return route.abort("failed");
-      }
-    }
-    const location = response.headers()["location"];
-    if (response.status() >= 300 && response.status() < 400 && location) {
-      let next: string;
-      try {
-        next = new URL(location, request.url()).toString();
-      } catch {
-        if (mainFrame) state.offSite = true;
-        return route.abort("blockedbyclient");
-      }
-      if (!mainFrame) return route.abort("blockedbyclient");
-      if (!target.allowNavigation(next)) state.offSite = true;
-      else state.redirect = next;
-      return route.abort("blockedbyclient");
-    }
-    return route.fulfill({ response });
+    // A guarded tab's document requests were already checked (and allowed) in Chromium.
+    if (guarded.has(page)) return route.continue().catch(() => undefined);
+    return route.abort("blockedbyclient").catch(() => undefined);
   }
+  return {
+    async newPage() {
+      const page = await context.newPage();
+      guarded.add(page);
+      const cdp = await context.newCDPSession(page);
+      const { frameTree } = (await cdp.send("Page.getFrameTree")) as { frameTree: { frame: { id: string } } };
+      const mainFrame = frameTree.frame.id;
+      const hops = new Map<string, number>();
+      type Paused = { requestId: string; frameId: string; networkId?: string; redirectedRequestId?: string; request: { url: string } };
+      const decide = async (event: Paused): Promise<void> => {
+        const main = event.frameId === mainFrame;
+        const fail = () => cdp.send("Fetch.failRequest", { requestId: event.requestId, errorReason: "BlockedByClient" });
+        const url = event.request.url;
+        if (!target.allowNavigation(url)) {
+          if (main) state.offSite = true;
+          return void (await fail());
+        }
+        if (main) {
+          const key = event.networkId ?? event.requestId;
+          const hop = event.redirectedRequestId ? (hops.get(key) ?? 0) + 1 : 0;
+          hops.set(key, hop);
+          if (hop > MAX_HOPS) {
+            state.tooManyRedirects = true;
+            return void (await fail());
+          }
+          if (LOGIN_PATH.test(new URL(url).pathname)) {
+            state.wall = url;
+            return void (await fail());
+          }
+        }
+        await cdp.send("Fetch.continueRequest", { requestId: event.requestId });
+      };
+      cdp.on("Fetch.requestPaused", (event) => void decide(event as Paused).catch(() => undefined));
+      await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document", requestStage: "Request" }] });
+      return page;
+    },
+  };
 }
 
-/** Opens the target, following allowed redirects by hand (a fresh tab per hop). */
-async function open(context: BrowserContext, target: CaptureTarget, state: { offSite: boolean; redirect?: string }): Promise<Page> {
-  let url = target.url;
-  let page: Page | undefined;
-  for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
-    await page?.close().catch(() => undefined);
-    page = await context.newPage();
-    page.on("dialog", (dialog) => void dialog.dismiss().catch(() => undefined));
-    state.redirect = undefined;
-    let status: number | undefined;
-    let failed = false;
-    try {
-      status = (await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 }))?.status();
-    } catch {
-      failed = true;
-    }
-    if (state.offSite) throw new Unavailable("OFF_SITE_REDIRECT");
-    if (state.redirect !== undefined) {
-      if (LOGIN_PATH.test(new URL(state.redirect).pathname)) throw new Unavailable(/challenge|checkpoint|suspended/.test(state.redirect) ? "CHALLENGE" : "LOGIN_WALL");
-      url = state.redirect;
-      continue;
-    }
-    if (failed || status === undefined) throw new Retry("LOAD_FAILED");
-    if (status === 429) throw new Unavailable("RATE_LIMITED");
-    if (status === 404 || status === 410) throw new Unavailable("PRIVATE_OR_MISSING", status === 404 ? "HTTP_404" : "HTTP_410");
-    if (status >= 400) throw new Retry("HTTP_ERROR");
-    return page;
+/** Ends the capture when the guard stopped the page's own navigation. */
+function assertNavigation(state: NavigationState): void {
+  if (state.offSite) throw new Unavailable("OFF_SITE_REDIRECT");
+  if (state.tooManyRedirects) throw new Unavailable("TOO_MANY_REDIRECTS");
+  if (state.wall !== undefined) throw new Unavailable(/challenge|checkpoint|suspended/.test(state.wall) ? "CHALLENGE" : "LOGIN_WALL");
+}
+
+/** Opens the target in a guarded tab; the browser follows allowed redirects itself. */
+async function open(guard: NavigationGuard, target: CaptureTarget, state: NavigationState): Promise<Page> {
+  const page = await guard.newPage();
+  page.on("dialog", (dialog) => void dialog.dismiss().catch(() => undefined));
+  let status: number | undefined;
+  let failed = false;
+  try {
+    status = (await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 45_000 }))?.status();
+  } catch {
+    failed = true;
   }
-  throw new Unavailable("TOO_MANY_REDIRECTS");
+  assertNavigation(state);
+  if (failed || status === undefined) throw new Retry("LOAD_FAILED");
+  if (status === 429) throw new Unavailable("RATE_LIMITED");
+  if (status === 404 || status === 410) throw new Unavailable("PRIVATE_OR_MISSING", status === 404 ? "HTTP_404" : "HTTP_410");
+  if (status >= 400) throw new Retry("HTTP_ERROR");
+  return page;
 }
 
 export interface CaptureOptions {
@@ -366,11 +396,11 @@ export async function captureInContext(context: BrowserContext, options: Context
   const settleMs = options.settleMs ?? 5_000;
   const files: string[] = [];
   try {
-    const state: { offSite: boolean; redirect?: string } = { offSite: false };
-    await guardNavigation(context, options.target, state);
-    const page = await open(context, options.target, state);
+    const state: NavigationState = { offSite: false };
+    const guard = await guardNavigation(context, options.target, state);
+    const page = await open(guard, options.target, state);
     await page.waitForTimeout(settleMs);
-    if (state.offSite) throw new Unavailable("OFF_SITE_REDIRECT");
+    assertNavigation(state);
     await assertPublicPage(page, options.target);
     if (options.session === "signed-in") {
       if ((await page.locator(SIGNED_IN).count().catch(() => 0)) === 0) throw new Unavailable("LOGIN_WALL");
@@ -416,7 +446,7 @@ export async function captureInContext(context: BrowserContext, options: Context
         () => false,
         () => true,
       );
-      if (state.offSite) throw new Unavailable("OFF_SITE_REDIRECT");
+      assertNavigation(state);
       if (!wall) {
         if (options.session === "signed-in") await hideAccountChrome(page).catch(() => 0);
         await page.addStyleTag({ content: MEDIA_CSS }).catch(() => undefined);
