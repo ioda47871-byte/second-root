@@ -252,7 +252,9 @@ describe("the signed-in account's own parts are hidden before screenshots", () =
         return hits.some((el) => getComputedStyle(el).visibility !== "hidden");
       }, text);
     expect(await visible("季節のおすすめマフィン")).toBe(true);
-    expect(await visible("はブルーベリー")).toBe(true);
+    // a bio word that is exactly "おすすめ" in its own element stays visible, and so does its line
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector("header b")!).visibility)).toBe("visible");
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector("header b")!.parentElement!).visibility)).toBe("visible");
     expect(await visible("example_shop")).toBe(true);
     expect(await visible("LEAK-JP-SUGGESTED")).toBe(false);
     expect(await page.evaluate(() => getComputedStyle(document.querySelector('a[href*="/p/"]')!).visibility)).toBe("visible");
