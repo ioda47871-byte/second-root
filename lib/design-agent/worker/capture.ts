@@ -539,9 +539,11 @@ export async function captureInContext(context: BrowserContext, options: Context
     if (files.length === 0) throw new Unavailable("EMPTY_PAGE");
     return { status: "captured", files, posts: postCount, softened };
   } catch (error) {
-    if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) };
-    // The guard closed the page because it left the site.
+    // The page tried to leave the site (stopped before any request went out). That decides, whatever
+    // the page shows afterwards: the blocked navigation can leave an error page behind that looks
+    // like a signed-out or empty page.
     if (state.offSite) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "OFF_SITE_REDIRECT" };
+    if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) };
     return { status: "retry", reason: error instanceof Retry ? error.reason : "CAPTURE_ERROR" };
   }
 }
