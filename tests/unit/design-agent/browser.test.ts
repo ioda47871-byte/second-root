@@ -269,11 +269,33 @@ describe("navigation guard (browser-native requests, every hop checked before it
     ["an off-site redirect", "li_offsite"],
     ["an off-site hop in the middle of a redirect chain", "li_offsite_hop"],
     ["a script navigation off the site", "li_js_offsite"],
+    ["a meta refresh off the site", "li_meta"],
+    ["a form submitted off the site", "li_form"],
+    ["a frame navigating the top page off the site", "li_frame_top"],
   ] as const)("stops %s before the destination receives any request", async (_label, username) => {
     const s = await signedInProfile();
     const before = site.requests.length;
     expect(await capture(s, username)).toMatchObject({ code: "PUBLIC_SOURCE_UNAVAILABLE", reason: "OFF_SITE_REDIRECT" });
     expect(offSiteHits(before)).toEqual([]);
+  });
+
+  it.each([
+    ["navigating itself off the site", "li_sandbox_nav"],
+    ["following a same-site redirect that leaves the site", "li_sandbox_redirect"],
+    ["loading an off-site frame of its own, and a nested sandboxed frame", "li_sandbox_nested"],
+    ["submitting a form off the site", "li_sandbox_form"],
+  ] as const)("guards a frame in its own process (sandboxed) %s: nothing reaches the other site", async (_label, username) => {
+    const s = await signedInProfile();
+    const before = site.requests.length;
+    const result = await capture(s, username);
+    expect(offSiteHits(before)).toEqual([]);
+    // a frame's navigation is not the page's: the capture still goes on
+    expect(result.code).toBe("CAPTURED");
+  });
+
+  it("stops a redirect loop", async () => {
+    const s = await signedInProfile();
+    expect(await capture(s, "li_loop")).toMatchObject({ code: "PUBLIC_SOURCE_UNAVAILABLE", reason: "TOO_MANY_REDIRECTS" });
   });
 
   it("stops a redirect to a challenge before loading it", async () => {
@@ -287,6 +309,7 @@ describe("navigation guard (browser-native requests, every hop checked before it
     const s = await signedInProfile();
     const before = site.requests.length;
     expect((await capture(s, "li_popup")).code).toBe("CAPTURED");
+    expect((await capture(s, "li_popup_opener")).code).toBe("CAPTURED");
     expect((await capture(s, "li_iframe")).code).toBe("CAPTURED");
     expect(offSiteHits(before)).toEqual([]);
   });

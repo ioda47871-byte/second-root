@@ -92,7 +92,10 @@ cd ~/work/second-root && npm run -s sales:design-browser -- capture --source-fil
 - Instagram 内なら、browser が作ったままの request を送る（`sec-fetch-*`・言語・cookie・user agent を変えない）
 - Instagram の外は送らずに止める。本体が外へ行こうとしたら `PUBLIC_SOURCE_UNAVAILABLE (OFF_SITE_REDIRECT)`
 - ログイン・確認画面への redirect も、読み込まずに止める
+- 別 process で動く frame（sandbox 付きの iframe など）も、始まる前に止めて同じ確認を付けてから動かす
+- prerender は止める。それでも本体が Instagram の外に出たら、その時点で撮影をやめる
 - popup は一切移動させない。外の frame は止めるが、本体の移動とは数えない
+- 見張りの外（従来どおり）: 画像・script などの読み込みと、Chromium 自身の先読み（speculation rules の prefetch など）。どれも撮る画面にはならない
 
 画像はメイン部分だけを切り出す。投稿の画像はぼかしと画素化で、人や細部が分からないようにする。公開 bio と店名は残す。
 

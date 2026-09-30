@@ -114,6 +114,36 @@ export async function startMockSite(): Promise<MockSite> {
         return send(200, signedIn(profileBody(3).replace("<header", `<iframe src="http://localhost:${port}/frame_target/" width="10" height="10"></iframe><header`)));
       case "/li_js_offsite/":
         return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{location.href="http://localhost:${port}/js_target/";},100);</script></body>`));
+      // A sandboxed same-site frame runs in its own renderer process (out-of-process iframe).
+      case "/li_sandbox_nav/":
+        return send(200, signedIn(profileBody(3).replace("<header", `<iframe sandbox="allow-scripts" src="/sb_self/" width="10" height="10"></iframe><header`)));
+      case "/sb_self/":
+        return send(200, page(`<script>setTimeout(()=>{location.href="http://localhost:${port}/sb_escape/";},100);</script>`));
+      case "/li_sandbox_redirect/":
+        return send(200, signedIn(profileBody(3).replace("<header", `<iframe sandbox="allow-scripts" src="/sb_redir/" width="10" height="10"></iframe><header`)));
+      case "/sb_redir/":
+        return send(200, page(`<script>setTimeout(()=>{location.href="/li_offsite/";},100);</script>`));
+      case "/li_sandbox_nested/":
+        return send(200, signedIn(profileBody(3).replace("<header", `<iframe sandbox="allow-scripts" src="/sb_nested/" width="10" height="10"></iframe><header`)));
+      case "/sb_nested/":
+        return send(200, page(`<iframe src="http://localhost:${port}/sb_nested_escape/"></iframe><iframe sandbox="allow-scripts" src="/sb_self/"></iframe>`));
+      case "/li_sandbox_form/":
+        return send(200, signedIn(profileBody(3).replace("<header", `<iframe sandbox="allow-scripts allow-forms" src="/sb_form/" width="10" height="10"></iframe><header`)));
+      case "/sb_form/":
+        return send(200, page(`<form id="f" method="post" action="http://localhost:${port}/sb_form_escape/"><input name="a" value="1"></form><script>document.getElementById("f").submit();</script>`));
+      case "/li_frame_top/":
+        return send(200, signedIn(profileBody(3).replace("<header", `<iframe src="/frame_top/" width="10" height="10"></iframe><header`)));
+      case "/frame_top/":
+        return send(200, page(`<script>setTimeout(()=>{top.location.href="http://localhost:${port}/top_escape/";},100);</script>`));
+      case "/li_meta/":
+        return send(200, signedIn(profileBody(3)).replace("<head>", `<head><meta http-equiv="refresh" content="0;url=http://localhost:${port}/meta_escape/">`));
+      case "/li_form/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<form id="f" method="post" action="http://localhost:${port}/form_escape/"></form><script>document.getElementById("f").submit();</script></body>`));
+      case "/li_popup_opener/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>window.open("http://localhost:${port}/popup_opener/");</script></body>`));
+      case "/li_loop/":
+        res.writeHead(302, { location: "/li_loop/" });
+        return res.end();
       case "/li_gone/":
         return send(410, page("gone"));
       case "/li_private/":

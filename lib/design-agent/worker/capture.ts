@@ -213,7 +213,15 @@ export interface NavigationGuard {
  *   go out as in a normal visit. Off the site: failed, and in the main frame
  *   the capture ends. A sign-in / challenge path in the main frame is failed
  *   too (the wall is recorded, never loaded).
+ *   Frames Chromium runs in another process (out-of-process iframes, e.g.
+ *   sandboxed ones) are attached and held at start until the same check is on.
+ *   Prerendering is switched off, and a main frame that still ends up off the
+ *   site ends the capture.
  * - Any other tab (a popup the page opens): no navigation at all.
+ * - Not navigations and not guarded here, as before: subresources (images,
+ *   scripts, XHR) and the browser's own preloading requests (speculation-rules
+ *   prefetch, link prefetch). Chromium sends those outside any page's request
+ *   interception; they never become the page that is captured.
  * - Playwright's fetch-and-fulfill routing is not used: it re-sends the page
  *   request from outside the browser without the browser's own headers, and
  *   Instagram answers that with "this page isn't available". Playwright's
@@ -231,8 +239,8 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
     } catch {
       return route.abort("blockedbyclient").catch(() => undefined); // a popup (no frame yet)
     }
-    // A guarded tab's document requests were already checked (and allowed) in Chromium.
-    if (guarded.has(page)) return route.continue().catch(() => undefined);
+    // A guarded tab's document requests are checked in Chromium (every hop); this is a second check of the first one.
+    if (guarded.has(page) && target.allowNavigation(request.url())) return route.continue().catch(() => undefined);
     return route.abort("blockedbyclient").catch(() => undefined);
   }
   return {
@@ -243,10 +251,15 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
       const { frameTree } = (await cdp.send("Page.getFrameTree")) as { frameTree: { frame: { id: string } } };
       const mainFrame = frameTree.frame.id;
       const hops = new Map<string, number>();
+      type Send = (method: string, params: Record<string, unknown>) => Promise<unknown>;
       type Paused = { requestId: string; frameId: string; networkId?: string; redirectedRequestId?: string; request: { url: string } };
-      const decide = async (event: Paused): Promise<void> => {
-        const main = event.frameId === mainFrame;
-        const fail = () => cdp.send("Fetch.failRequest", { requestId: event.requestId, errorReason: "BlockedByClient" });
+      const DOCUMENTS = { patterns: [{ urlPattern: "*", resourceType: "Document", requestStage: "Request" }] };
+      let nextId = 1;
+
+      /** Decides one paused document request; only the page's own session can see its main frame. */
+      const decide = async (send: Send, event: Paused, top: boolean): Promise<void> => {
+        const main = top && event.frameId === mainFrame;
+        const fail = () => send("Fetch.failRequest", { requestId: event.requestId, errorReason: "BlockedByClient" });
         const url = event.request.url;
         if (!target.allowNavigation(url)) {
           if (main) state.offSite = true;
@@ -265,10 +278,61 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
             return void (await fail());
           }
         }
-        await cdp.send("Fetch.continueRequest", { requestId: event.requestId });
+        await send("Fetch.continueRequest", { requestId: event.requestId });
       };
-      cdp.on("Fetch.requestPaused", (event) => void decide(event as Paused).catch(() => undefined));
-      await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document", requestStage: "Request" }] });
+
+      /**
+       * One CDP session level: the page itself, or a frame Chromium runs in
+       * another process (an out-of-process iframe, e.g. a sandboxed one) and
+       * frames nested in it. Each such frame target is held at start
+       * (waitForDebuggerOnStart) until its document requests are paused here
+       * too; a failure leaves it held, so nothing it would load goes out.
+       */
+      const level = (send: Send, top: boolean) => {
+        const children = new Map<string, (method: string, params: Record<string, unknown>) => void>();
+        const on = (method: string, params: Record<string, unknown>): void => {
+          if (method === "Fetch.requestPaused") return void decide(send, params as unknown as Paused, top).catch(() => undefined);
+          if (method === "Target.attachedToTarget") {
+            const sessionId = String(params.sessionId);
+            const childSend: Send = (m, p) => send("Target.sendMessageToTarget", { sessionId, message: JSON.stringify({ id: nextId++, method: m, params: p }) });
+            children.set(sessionId, level(childSend, false));
+            // Sent in order: the frame starts only after its document requests are guarded.
+            void (async () => {
+              await childSend("Fetch.enable", DOCUMENTS);
+              await childSend("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: false });
+              await childSend("Runtime.runIfWaitingForDebugger", {});
+            })().catch(() => undefined);
+            return;
+          }
+          if (method === "Target.receivedMessageFromTarget") {
+            let message: { method?: string; params?: Record<string, unknown> };
+            try {
+              message = JSON.parse(String(params.message)) as typeof message;
+            } catch {
+              return;
+            }
+            if (message.method) children.get(String(params.sessionId))?.(message.method, message.params ?? {});
+          }
+        };
+        return on;
+      };
+      const topLevel = level((m, p) => cdp.send(m as "Fetch.continueRequest", p as never), true);
+      for (const method of ["Fetch.requestPaused", "Target.attachedToTarget", "Target.receivedMessageFromTarget"] as const) {
+        cdp.on(method, (params) => topLevel(method, params as unknown as Record<string, unknown>));
+      }
+      await cdp.send("Fetch.enable", DOCUMENTS as never);
+      await cdp.send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: false });
+      // A prerendered page would become the main page without a request to check; do not prerender.
+      await cdp.send("Page.setPrerenderingAllowed" as never, { isAllowed: false } as never).catch(() => undefined);
+      // Last line: whatever the way, a main frame that ends up off the site ends the capture.
+      page.on("framenavigated", (frame) => {
+        const url = frame.url();
+        if (frame !== page.mainFrame() || url.startsWith("about:") || url.startsWith("chrome-error:")) return;
+        if (!target.allowNavigation(url)) {
+          state.offSite = true;
+          void page.close().catch(() => undefined);
+        }
+      });
       return page;
     },
   };
@@ -395,8 +459,8 @@ export interface ContextCaptureOptions {
 export async function captureInContext(context: BrowserContext, options: ContextCaptureOptions): Promise<CaptureResult> {
   const settleMs = options.settleMs ?? 5_000;
   const files: string[] = [];
+  const state: NavigationState = { offSite: false };
   try {
-    const state: NavigationState = { offSite: false };
     const guard = await guardNavigation(context, options.target, state);
     const page = await open(guard, options.target, state);
     await page.waitForTimeout(settleMs);
@@ -458,6 +522,8 @@ export async function captureInContext(context: BrowserContext, options: Context
     return { status: "captured", files, posts: postCount, softened };
   } catch (error) {
     if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) };
+    // The guard closed the page because it left the site.
+    if (state.offSite) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "OFF_SITE_REDIRECT" };
     return { status: "retry", reason: error instanceof Retry ? error.reason : "CAPTURE_ERROR" };
   }
 }

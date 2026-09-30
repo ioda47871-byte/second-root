@@ -112,3 +112,14 @@ No Critical findings. Output of every path is fixed codes only; no click / input
 - L2/L3/L4/L6/L7 (fixed): `about:*` is ignored; codes read while the page is leaving are not printed; a 5 s sample was added (capture's judge time); DIAGNOSE_FAILED when every run fails; the CLI prints only BROWSER_TOOL_FAILED on a stray error.
 - L1 (kept): logs print the detail in place of the reason, as the requested format `PUBLIC_SOURCE_UNAVAILABLE (HTTP_404)` asks; `report.json` keeps both.
 - L8 (documented): the settings shared with capture (service workers, CSP, viewport, locale) remain suspects when every mode fails.
+
+## Navigation guard without fetch/fulfill — independent review 2026-09-30
+
+Real diagnose run: A (headless+guard) and B (headed+guard) saw "page unavailable", C (no interception) saw the profile, session OK. Cause: `route.fetch()` re-sent the page request without the browser's own `sec-fetch-*` / `accept-language`. Fixture check: `route.continue()` alone never sees redirect hops (an off-site redirect reached its destination), so the guard now pauses document requests in Chromium (CDP Fetch, request stage) and continues them unchanged.
+
+Review of 331006e (no Critical):
+- H1 (fixed): frames Chromium runs in another process (a sandboxed same-site iframe) were not guarded; their navigations, redirect hops, nested frames and form posts reached off-site hosts. Now every such frame target (nested ones too) is auto-attached and held at start until the same document check is on (tests: 4 sandboxed-frame cases, which fail on 331006e).
+- M2 (partly fixed / documented): Chromium's own preloading (speculation-rules prefetch, link prefetch/prerender) is not visible to page-level interception, and the feature flags tried did not turn it off. Prerendering is disallowed per page, and a main frame that commits off the site ends the capture (fail closed). The preloading requests themselves are documented as outside the guard, like subresources.
+- L3 (unchanged by design): subresources are not guarded.
+- L4 (fixed): tests added for meta refresh, form submit, `top.location` from a frame, popup with an opener, the redirect-hop limit, and sandboxed frames.
+- L5 (mitigated): if the main frame id ever changed, off-site hops still fail in every frame, the commit backstop catches an off-site main frame, and `assertPublicPage` still catches a login/challenge page by its URL.
