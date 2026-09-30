@@ -14,7 +14,7 @@ const WORKS = [
     image: "/concept-work/hoshi-no-cha.jpg",
     w: 1560,
     h: 860,
-    url: "https://hoshi-no-cha-stand.vercel.app",
+    url: "/works/hoshi-no-cha",
   },
   {
     slug: "yasashii-beauty-salon",

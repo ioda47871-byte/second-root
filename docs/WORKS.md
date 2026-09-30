@@ -17,13 +17,20 @@ Second Root には React component として混ぜず、各リポジトリで **
 |---|---|---|---|---|
 | `yasashii-beauty-salon` | `ioda47871-byte/yasashii-beauty-salon` | `c7fdde64a43390398ccf5e5467db7ceb0dc5cf18`（main） | `216669c4aa0c2fd3a6d27eb53e36f004ddc3de20`（branch `feat/static-export-secondroot`） | `/works/yasashii-beauty-salon` |
 | `midori-seitai` | `ioda47871-byte/-midori-seitai` | `6d79c0d97be7b46b5c26d4298fcf64bbc423ce0e`（main） | `538ad5f40a550ddebb6b2f0783020e3afdec49f5`（branch `feat/static-export-secondroot`） | `/works/midori-seitai` |
+| `hoshi-no-cha` | `ioda47871-byte/hoshi-no-cha-stand` | `1e9cb0d3c3d7b63123118e71cf80770d5c0b4c4e`（main。2026-08-22 に `vercel deploy --prod` した作業ディレクトリから救出したソース） | `defc063e176f0d11742404c6fc63099a46d282bc`（branch `feat/static-export-secondroot`） | `/works/hoshi-no-cha` |
 
 | slug | Next.js | export コマンド（Concept 側） | import コマンド（Second Root 側） |
 |---|---|---|---|
 | `yasashii-beauty-salon` | 16.3.2 | `npm run export:secondroot`（`SECOND_ROOT_EXPORT=1 NEXT_PUBLIC_SITE_URL=https://secondroot.jp/works/yasashii-beauty-salon next build`） | `node scripts/import-work.mjs --slug yasashii-beauty-salon --source ../yasashii-beauty-salon/out` |
 | `midori-seitai` | 15.5.23 | `npm run export:secondroot`（`SECOND_ROOT_EXPORT=1 next build`） | `node scripts/import-work.mjs --slug midori-seitai --source ../-midori-seitai/out` |
+| `hoshi-no-cha` | 16.3.2 | `npm run export:secondroot`（`SECOND_ROOT_EXPORT=1 next build`） | `node scripts/import-work.mjs --slug hoshi-no-cha --source ../hoshi-no-cha-stand/out` |
 
-星の茶スタンドは未移行（トップのカードは vercel.app を指したまま）。
+3件とも Second Root 配下で配信している（トップのカードはすべて `/works/<slug>`）。
+各 Concept Work の元の Vercel project（`*.vercel.app`）はそのまま残している。
+
+同じ export 用 commit から export すれば、ページの内容・asset・パスは同じになる。
+ただし Next の build ID（`_next/static/<buildId>/` と HTML 内の参照）は build ごとに変わるため、
+バイト単位では一致しない。
 
 ## 仕組み
 
@@ -52,7 +59,7 @@ Second Root には React component として混ぜず、各リポジトリで **
 Concept Work を直したら、export して取り込み直すだけで更新できます。
 
 ```bash
-# 1. Concept Work 側（例: yasashii-beauty-salon。midori は ../-midori-seitai）
+# 1. Concept Work 側（例: yasashii-beauty-salon。midori は ../-midori-seitai、星の茶は ../hoshi-no-cha-stand）
 cd yasashii-beauty-salon
 git checkout <更新したい commit / branch>   # export 設定（next.config.ts・asset()）を含むこと
 npm ci
@@ -62,6 +69,7 @@ npm run export:secondroot                    # out/ に出力。全ページが 
 cd second-root
 node scripts/import-work.mjs --slug yasashii-beauty-salon --source ../yasashii-beauty-salon/out
 node scripts/import-work.mjs --slug midori-seitai --source ../-midori-seitai/out
+node scripts/import-work.mjs --slug hoshi-no-cha --source ../hoshi-no-cha-stand/out
 ```
 
 （`node scripts/import-work.mjs <slug> <out>` の位置引数でも同じ。）
@@ -99,3 +107,14 @@ npx playwright test tests/e2e/works.spec.ts tests/e2e/existing-site.spec.ts
 - `/works/<slug>/<存在しないパス>` は Second Root の 404 ページになる。
 - `/works`（slug なし）はページがなく 404。
 - midori は元サイトにも canonical がない（metadataBase 未設定）ため、静的版にも付けていない。
+- 星の茶
+  - 元サイト（vercel.app）は `robots: index, follow`。Second Root 配下の静的版だけ
+    `SECOND_ROOT_EXPORT=1` で `noindex, nofollow` にしている（元の Vercel production は変更なし）。
+  - フォント（Shippori Mincho / Noto Sans JP / Cormorant Garamond）は元サイトどおり
+    Google Fonts から実行時に読み込む（`fonts.googleapis.com` / `fonts.gstatic.com`）。
+    `/works/**` には CSP を付けていないので Second Root 側ではブロックされない。
+    取得できない環境では `app/globals.css` の游明朝・ヒラギノ明朝などのローカルフォントに
+    フォールバックする（e2e は Google Fonts を空の CSS で置き換えて、この状態で検査している）。
+  - 元サイトから、320px の `/menu` で 1 行分（「ゆっくり引き出した甘み。」）が 15〜20px
+    はみ出す。Concept Work のデザインは変えない方針のため、そのままにしている。
+  - canonical はない（元サイトも同じ）。独自の JSON-LD（CreativeWork）は元サイトどおり残している。

@@ -20,6 +20,7 @@ const privateRouteHeaders = [
 const staticWorks = [
   { slug: "yasashii-beauty-salon", pages: ["about", "access", "first", "menu", "staff"] },
   { slug: "midori-seitai", pages: ["about", "access", "approach", "faq", "first", "menu", "staff"] },
+  { slug: "hoshi-no-cha", pages: ["about", "access", "menu"] },
 ];
 
 const nextConfig: NextConfig = {

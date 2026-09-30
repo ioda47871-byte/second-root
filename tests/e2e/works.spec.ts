@@ -13,6 +13,9 @@ const WORKS = [
     overflowPages: ["", "/about", "/menu", "/access"],
     // Built with NEXT_PUBLIC_SITE_URL, so its canonical names the /works URL.
     canonical: /^https:\/\/secondroot\.jp\/works\/yasashii-beauty-salon/,
+    nav: "header",
+    jsonLd: 0,
+    knownOverflow: [] as string[],
   },
   {
     base: "/works/midori-seitai",
@@ -21,9 +24,37 @@ const WORKS = [
     overflowPages: ["", "/about", "/menu", "/access", "/faq"],
     // The original site has no canonical (no metadataBase); none is added.
     canonical: null,
+    nav: "header",
+    jsonLd: 0,
+    knownOverflow: [] as string[],
+  },
+  {
+    base: "/works/hoshi-no-cha",
+    title: /星の茶スタンド/,
+    pages: ["", "/menu", "/about", "/access"],
+    overflowPages: ["", "/menu", "/about", "/access"],
+    // The original site has no canonical either.
+    canonical: null,
+    // From 1280px the navigation lives in the left brand rail.
+    nav: "aside",
+    // Its own CreativeWork JSON-LD (marks it as a Concept Work).
+    jsonLd: 1,
+    // Already in the original source (1e9cb0d, the production deployment): at
+    // 320px one unbreakable line of the menu copy is 15-20px too wide. Left
+    // as is, since the Concept Work's design is not changed here.
+    knownOverflow: ["320 /menu"],
   },
 ];
-const WIDTHS = [320, 375, 390, 430, 768, 1280];
+const WIDTHS = [320, 360, 375, 390, 430, 768, 1024, 1280, 1440];
+
+// 星の茶スタンド loads Google Fonts at runtime. Answer those requests with an
+// empty stylesheet so the suite never depends on the network, and so it also
+// shows the pages hold up on the fallback fonts.
+test.beforeEach(async ({ context }) => {
+  await context.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) =>
+    route.fulfill({ status: 200, contentType: "text/css", body: "" }),
+  );
+});
 
 /** Collects console errors and failed or 4xx/5xx requests while a page is open. */
 function watch(page: Page) {
@@ -56,7 +87,7 @@ async function loadAll(page: Page) {
   await page.waitForLoadState("networkidle");
 }
 
-for (const { base: BASE, title, pages: PAGES, overflowPages, canonical } of WORKS) {
+for (const { base: BASE, title, pages: PAGES, overflowPages, canonical, nav, jsonLd, knownOverflow } of WORKS) {
   for (const path of PAGES) {
     test(`${BASE}${path} opens directly and on reload`, async ({ page }) => {
       const problems = watch(page);
@@ -82,8 +113,11 @@ for (const { base: BASE, title, pages: PAGES, overflowPages, canonical } of WORK
     await page.goto(BASE);
     // Second Root's header / footer / section classes.
     await expect(page.locator(".hdr, .ftr, .cw-card, .section")).toHaveCount(0);
-    // No JSON-LD, no GA loader, no Second Root stylesheet rules.
-    await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(0);
+    // No Second Root JSON-LD (only the Concept Work's own, if any), no GA
+    // loader, no Second Root stylesheet rules.
+    const ld = page.locator('script[type="application/ld+json"]');
+    await expect(ld).toHaveCount(jsonLd);
+    expect((await ld.allTextContents()).join("")).not.toContain("ProfessionalService");
     expect(await page.locator("script").evaluateAll((s) => s.some((x) => x.textContent?.includes("googletagmanager")))).toBe(false);
     const leak = await page.evaluate(() => ({
       grain: getComputedStyle(document.body, "::before").content,
@@ -116,25 +150,42 @@ for (const { base: BASE, title, pages: PAGES, overflowPages, canonical } of WORK
     }
   });
 
-  test(`${BASE}: client-side navigation`, async ({ page }) => {
+  test(`${BASE}: client-side navigation, back and forward`, async ({ page }) => {
     const problems = watch(page);
     await page.goto(BASE);
     await page.setViewportSize({ width: 1280, height: 900 });
     for (const target of ["/about", "/menu", "/access"]) {
-      await page.locator(`header a[href="${BASE}${target}"]`).first().click();
+      await page.locator(`${nav} a[href="${BASE}${target}"]`).first().click();
       await expect(page).toHaveURL(`${BASE}${target}`);
     }
-    await page.locator(`header a[href="${BASE}"]`).first().click();
+    await page.locator(`${nav} a[href="${BASE}"]`).first().click();
     await expect(page).toHaveURL(BASE);
+    await page.goBack();
+    await expect(page).toHaveURL(`${BASE}/access`);
+    await page.goBack();
+    await expect(page).toHaveURL(`${BASE}/menu`);
+    await page.goForward();
+    await expect(page).toHaveURL(`${BASE}/access`);
+    await expect(page).toHaveTitle(title);
     await page.waitForLoadState("networkidle");
     expect(problems).toEqual([]);
   });
 
+  test(`${BASE}: favicon and 404`, async ({ request }) => {
+    const html = await (await request.get(BASE)).text();
+    const icon = html.match(/<link rel="icon" href="([^"]+)"/)?.[1];
+    expect(icon, "favicon link").toMatch(new RegExp(`^${BASE}/`));
+    expect((await request.get(icon!)).status()).toBe(200);
+    expect((await request.get(`${BASE}/no-such-page`)).status()).toBe(404);
+  });
+
   test(`${BASE}: no horizontal overflow at any width`, async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "widths are set explicitly");
+    test.setTimeout(180_000);
     for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: 900 });
       for (const path of overflowPages) {
+        if (knownOverflow.includes(`${width} ${path}`)) continue;
         await page.goto(`${BASE}${path}`);
         const overflow = await page.evaluate(
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -146,11 +197,28 @@ for (const { base: BASE, title, pages: PAGES, overflowPages, canonical } of WORK
 
 }
 
+test("星の茶スタンド's menu shows all 13 drinks and sweets with photos", async ({ page }) => {
+  const problems = watch(page);
+  await page.goto("/works/hoshi-no-cha/menu");
+  await loadAll(page);
+  // The photos are lazy: bring each into view, then wait until all have loaded.
+  const photos = () =>
+    page.evaluate(() => {
+      const imgs = [...document.images].filter((i) =>
+        /\/works\/hoshi-no-cha\/images\/(menu\/|tea-)/.test(i.getAttribute("src") ?? ""),
+      );
+      imgs.forEach((i) => i.scrollIntoView());
+      return { count: imgs.length, loaded: imgs.filter((i) => i.naturalWidth > 0).length };
+    });
+  await expect.poll(photos, { timeout: 15_000 }).toEqual({ count: 13, loaded: 13 });
+  expect(problems).toEqual([]);
+});
+
 test("Second Root's cards open the Concept Works under /works", async ({ page }) => {
   await page.goto("/");
   for (const { base } of WORKS) await expect(page.locator(`a.cw-card[href="${base}"]`)).toHaveCount(1);
-  // 星の茶スタンド still points at its own deployment.
-  await expect(page.locator('a.cw-card[href^="https://"]')).toHaveCount(1);
+  // No Concept Work card points at an outside deployment any more.
+  await expect(page.locator('a.cw-card[href^="https://"]')).toHaveCount(0);
   // Second Root keeps its own base styles (no Tailwind preflight from a Concept Work).
   const body = await page.evaluate(() => getComputedStyle(document.body).lineHeight);
   expect(body).toBe("29.6px");
