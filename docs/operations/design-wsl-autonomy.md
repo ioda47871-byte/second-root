@@ -43,6 +43,10 @@ Codex は `sr-designgen` のファイル（Meta token・git の鍵・Claude の�
 
 ## 1. 用意（人が 1 回）
 
+0. **WSL の Windows 連携（interop）を切る（必須）。**有効だと WSL の誰でも `wsl.exe -u root` で root になれ、
+   この表の「できない」が全部崩れる。`/etc/wsl.conf` に `[interop]` `enabled=false` / `appendWindowsPath=false` を書き、
+   Windows で `wsl --shutdown`（`design-capture-helper.md` §1）。`sr-designgen` は Windows が開く既定の利用者にしない
+   （uid 1000 以外の、新しく作った利用者にする）。helper の install / login と毎回の撮影がこれを確かめ、満たさなければ止まる
 1. bubblewrap（Codex の sandbox）:
    ```bash
    sudo apt install -y bubblewrap
@@ -64,7 +68,8 @@ Codex は `sr-designgen` のファイル（Meta token・git の鍵・Claude の�
    ```
    Claude アプリの Claude Code にこの session が出る。以降はアプリから頼めば、WSL 上で Claude が直接動く。
 
-**`sudo` を `sr-designgen` に与えない。**sudo があれば Unix の境界は意味を失う。
+**`sudo` を `sr-designgen` に与えない**（`sudo` / `docker` / `lxd` などの group にも入れない）。sudo があれば Unix の境界は意味を失う。
+helper の install / login はこれも確かめて断る。`admin.sh` は `sr-designgen` の checkout からは動かない（root が Claude の書いたものを動かさないため）。
 人が sudo を使う作業（helper の install / approve、bubblewrap）は、Claude に頼まず人が行う。
 
 ## 2. 人が行う操作（自動化しない）

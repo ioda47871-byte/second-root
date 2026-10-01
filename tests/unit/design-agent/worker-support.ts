@@ -66,7 +66,7 @@ export async function startMockSite(): Promise<MockSite> {
       res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
       res.end(html);
     };
-    switch (req.url) {
+    switch (req.url?.startsWith("/site_ws_worker/?") ? "/site_ws_worker/" : req.url) {
       case "/example_shop/":
         return send(200, profile(12));
       case "/home_signed_in/":
@@ -167,6 +167,15 @@ export async function startMockSite(): Promise<MockSite> {
         );
       case "/site_ws/":
         return send(200, page(`<h1>x</h1><script>try { new WebSocket("ws://localhost:${port}/ws-escape"); new WebSocket("ws://127.0.0.1:${port}/ws-local"); } catch (e) {}</script>`));
+      case "/site_ws_worker/":
+        // A Web Worker's WebSocket / fetch never meets Playwright's routing; WebRTC STUN is UDP: only the proxy and the flags stop them.
+        return send(
+          200,
+          page(
+            `<h1>x</h1><script>const w=new Worker(URL.createObjectURL(new Blob(["try{new WebSocket('ws://localhost:${port}/ws-worker')}catch(e){}; fetch('http://localhost:${port}/worker-fetch/').catch(()=>{}); fetch('http://127.0.0.1:1/').catch(()=>{})"])));` +
+              `const q=new URLSearchParams(location.search).get("stun"); if(q){const pc=new RTCPeerConnection({iceServers:[{urls:"stun:127.0.0.1:"+q}]}); pc.createDataChannel("x"); pc.createOffer().then(o=>pc.setLocalDescription(o)).then(()=>fetch("/site_ws_worker/stun/"));}</script>`,
+          ),
+        );
       case "/site_home/about/":
       case "/site_home/menu/":
         return send(200, page(`<h2>${req.url}</h2><img width="400" height="300" src="${tile(5)}">`));
@@ -395,8 +404,8 @@ export async function runWorker(l: Layout, site: MockSite, over: Partial<WorkerO
     // the real sandbox is tested on its own (sandbox.test.ts) and in one worker run below.
     prepareSandbox: async (env) => passthroughSandbox(codexBin, env),
     log: (line) => logs.push(line),
-    launchBrowser: (env) =>
-      chromium.launch({ headless: true, env, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }),
+    launchBrowser: (env, args = []) =>
+      chromium.launch({ headless: true, env, args: [...args], ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }),
     startPreview: fakePreview(l, preview, { failRender: over.failRender }),
     captureTargetFor: (source) => site.target(source.username),
     captureSettleMs: 300,

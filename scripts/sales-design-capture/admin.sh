@@ -20,6 +20,14 @@
 # login: opens the headed sign-in window as sr-igcapture. It refuses while
 # any process of the requester user runs (Claude, the worker): they share
 # the X display and could read the window.
+#
+# install and login refuse on a machine where the requester could become
+# root or the helper user (host-check.sh: WSL interop on, an admin group, a
+# sudo rule, the WSL default user, writable Windows Startup folders).
+#
+# This script runs as root: it refuses to run from a copy the requester could
+# have changed (e.g. its ~/work checkout). Install from a root-owned clone,
+# later use the helper's own checkout (design-capture-helper.md).
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run with sudo"; exit 2; }
 CMD="${1:-}"
@@ -29,6 +37,7 @@ HOME_DIR="/home/$HELPER"
 REPO_URL="https://github.com/ioda47871-byte/second-root.git"
 SPOOL=/srv/sr-capture
 CONF="$HOME_DIR/.config/sr-capture"
+SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd -P)"
 
 # Every directory from / down to the file, and the file, owned by root and
 # writable by nobody else (a node the requester could rewrite would run as
@@ -42,6 +51,35 @@ root_owned() {
     [ "$p" = / ] && return 0
     p="$(dirname "$p")"
   done
+}
+
+# The file and every directory above it owned by root or the helper user, and
+# writable by nobody else: the requester cannot have changed what root runs.
+trusted_path() {
+  local p owner helper_uid
+  helper_uid="$(id -u "$HELPER" 2>/dev/null || echo -1)"
+  p="$(readlink -f "$1")" || return 1
+  while :; do
+    owner="$(stat -c %u "$p")" || return 1
+    [ "$owner" = 0 ] || [ "$owner" = "$helper_uid" ] || return 1
+    [ $(( 0$(stat -c %a "$p") & 022 )) -eq 0 ] || return 1
+    [ "$p" = / ] && return 0
+    p="$(dirname "$p")"
+  done
+}
+for f in "$SELF_DIR/admin.sh" "$SELF_DIR/host-check.sh"; do
+  trusted_path "$f" || { echo "ADMIN_SCRIPT_UNTRUSTED: $f can be changed by a user other than root / $HELPER. Run admin.sh from a root-owned clone (design-capture-helper.md §1) or from $HOME_DIR/second-root."; exit 2; }
+done
+# shellcheck source=host-check.sh
+. "$SELF_DIR/host-check.sh"
+
+# Every check that keeps the requester from becoming root or the helper; all are printed.
+host_safe() {
+  local req="$1" ok=0
+  sr_check_wsl_interop || ok=1
+  sr_check_requester "$req" || ok=1
+  sr_check_requester_root "$req" || ok=1
+  return $ok
 }
 
 # A system node >= 20 the helper user can run (an nvm node in another user's home is not readable),
@@ -70,7 +108,12 @@ approve() {
   local sha="$1" confirm="${2:-ask}"
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "give the full 40-character commit sha"; exit 2; }
   local node_dir
-  node_dir="$(find_node)" || { echo "NODE_MISSING: install Node 22 system-wide first (e.g. NodeSource: https://github.com/nodesource/distributions), then run again"; exit 2; }
+  node_dir="$(find_node)" || {
+    echo "NODE_MISSING: no root-owned Node >= 20 with npm in /usr/local/bin, /usr/bin or /opt/node/bin."
+    echo "  Install Node 22 system-wide (e.g. NodeSource: https://github.com/nodesource/distributions). A tarball unpacked with"
+    echo "  sudo tar keeps the archive's owner: sudo chown -R root:root <node dir>, then run again."
+    exit 2
+  }
   as_helper "$node_dir" "set -e; cd ~; [ -d second-root/.git ] || git clone --quiet --no-checkout '$REPO_URL' second-root
     cd second-root; git fetch --quiet origin; git cat-file -e '$sha^{commit}'"
   local old
@@ -106,6 +149,7 @@ case "$CMD" in
     SHA="${2:-}"
     REQUESTER="${3:-sr-designgen}"
     id "$REQUESTER" >/dev/null 2>&1 || { echo "no such user: $REQUESTER"; exit 2; }
+    host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above, then run install again"; exit 3; }
     getent group "$GROUP" >/dev/null || groupadd --system "$GROUP"
     id "$HELPER" >/dev/null 2>&1 || adduser --disabled-password --comment "" "$HELPER" >/dev/null 2>&1 || adduser --disabled-password --gecos "" "$HELPER" >/dev/null
     chmod 700 "$HOME_DIR"
@@ -128,10 +172,7 @@ case "$CMD" in
     ;;
   login)
     REQUESTER="${2:-sr-designgen}"
-    if id -nG "$REQUESTER" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
-      echo "REQUESTER_IN_DOCKER_GROUP: $REQUESTER could reach the display through a container. Remove it from the docker group first."
-      exit 3
-    fi
+    host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above, then run login again"; exit 3; }
     if pgrep -u "$REQUESTER" >/dev/null 2>&1; then
       echo "REQUESTER_RUNNING: stop every process of $REQUESTER first (Claude, the worker): they share the display."
       echo "  sudo pkill -u $REQUESTER   # then run this again"
@@ -139,22 +180,33 @@ case "$CMD" in
     fi
     NODE_DIR="$(cat "$CONF/node-dir" 2>/dev/null || true)"
     [ -x "$NODE_DIR/node" ] && root_owned "$NODE_DIR/node" || { echo "HELPER_NOT_INSTALLED"; exit 2; }
-    # The helper does not capture while a person signs in.
-    systemctl stop sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
+    # The helper does not capture while a person signs in (a run in progress is stopped too).
+    systemctl stop sr-capture.path sr-capture.timer sr-capture.service >/dev/null 2>&1 || true
+    # Whatever happens (Ctrl-C, a closed terminal, an error): the window goes and the helper comes back.
+    restore() {
+      pkill -KILL -u "$HELPER" >/dev/null 2>&1 || true
+      systemctl start sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
+    }
+    trap restore EXIT
+    trap 'exit 130' INT TERM HUP
     sudo -u "$HELPER" -H env -i HOME="$HOME_DIR" PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 DISPLAY="${DISPLAY:-:0}" \
       bash -c 'cd ~/second-root && npm run -s sales:design-browser -- login' &
     LOGIN_PID=$!
+    RC=0
     # Watch the whole time: if anything of the requester starts, the window goes away at once.
     while kill -0 "$LOGIN_PID" 2>/dev/null; do
       if pgrep -u "$REQUESTER" >/dev/null 2>&1; then
         pkill -KILL -u "$HELPER" || true
         echo "LOGIN_ABORTED: a process of $REQUESTER started during the sign-in"
+        RC=3
         break
       fi
       sleep 0.5
     done
-    wait "$LOGIN_PID" 2>/dev/null || true
-    systemctl start sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
+    LOGIN_RC=0
+    wait "$LOGIN_PID" 2>/dev/null || LOGIN_RC=$?
+    [ "$RC" != 0 ] || RC=$LOGIN_RC
+    exit "$RC"
     ;;
   status)
     stat -c '%A %U:%G %n' "$HOME_DIR" "$SPOOL" "$SPOOL/requests" "$SPOOL/results"

@@ -58,6 +58,13 @@ export interface HelperOptions {
   settleMs?: number;
   /** Tests only: the capture target for a source (a local mock). Production uses instagramTarget. */
   targetFor?: (source: ProfileSource) => CaptureTarget;
+  /**
+   * Set by run.sh when this machine lets the requester become root or
+   * another user (WSL interop on, an admin group, ...; host-check.sh): every
+   * request is answered HELPER_ERROR with this code and the browser profile
+   * is never opened.
+   */
+  hostUnsafe?: string;
 }
 
 /**
@@ -259,6 +266,10 @@ export async function runCaptureHelper(options: HelperOptions): Promise<HelperRu
       };
       if (!source) {
         await answer("REQUEST_INVALID");
+        return "next";
+      }
+      if (options.hostUnsafe) {
+        await answer("HELPER_ERROR", /^[A-Z][A-Z0-9_]{0,63}$/.test(options.hostUnsafe) ? options.hostUnsafe : "HOST_UNSAFE");
         return "next";
       }
       // A wall seen recently: answer at once, without opening the browser again, until a person signs in.

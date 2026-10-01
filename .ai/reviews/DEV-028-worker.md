@@ -165,3 +165,26 @@ Container end to end on real users:
 - `admin.sh install` created the users, groups and spool with the right modes, cloned the repo and ran `npm ci --ignore-scripts`. The Chromium download is blocked by this container's network policy.
 - `run.sh` answered a request from the requester user, and the requester read the result.
 - `admin.sh login` refused while a requester process ran.
+
+Round 3 (on 2bc6452), fixed next:
+- Security C1: with WSL interop on (the WSL default), any WSL user can run `wsl.exe -u root`. Fixed with a new `scripts/sales-design-capture/host-check.sh`.
+  - `admin.sh install` and `login` refuse unless `/etc/wsl.conf` has `[interop] enabled=false` and `appendWindowsPath=false`, and interop is off at runtime (`binfmt_misc/WSLInterop`).
+  - They also refuse when the requester is the WSL default user (uid 1000, or `[user] default`), or when it can write a Windows drive root or a Startup folder. `/mnt/sr-export` is allowed as a single export folder.
+  - `run.sh` re-checks interop and the requester's groups on every run. If either fails, every request gets `HELPER_ERROR` and the profile is never opened.
+  - Tests: `host-check.test.ts`, plus a `hostUnsafe` case in the helper tests.
+- Security H1: the requester was not checked for root, admin-equivalent groups (sudo, admin, wheel, adm, lxd, disk, docker, libvirt, kvm, shadow, systemd-journal, the helper's group) or sudo rules (`sudo -l -U`). It now is, and is refused.
+- Security H2: a WebSocket or fetch from a Web Worker got past `routeWebSocket` and the route host check, and WebRTC STUN reached loopback over UDP. Fixed with an in-process egress proxy (`worker/egress-proxy.ts`).
+  - Website capture now sends every request through it: page, frames and workers, with `<-loopback>`.
+  - The proxy resolves each host itself, accepts only ports 80 and 443 where every address is public, and connects to the address it checked. This also closes the DNS-rebinding residual.
+  - The browser starts with `--webrtc-ip-handling-policy=disable_non_proxied_udp --force-webrtc-ip-handling-policy --disable-quic`.
+  - Test: a Web Worker WebSocket/fetch to localhost plus STUN to a local UDP socket. Without the fix it reached localhost and sent 3 packets; with it, nothing.
+- Self-found High: the install docs ran `sudo bash scripts/…/admin.sh` from `~/work/second-root`, which the requester can write, so root would run code Claude can change. `admin.sh` now refuses unless it and `host-check.sh` are owned by root or the helper, with no group or other write anywhere up the path. Install is now done from a root-only clone (`/root/sr-capture-admin`).
+- Security M1 / Architecture M: `admin.sh login` on Ctrl-C left the window open and the units stopped. Fixed with an EXIT trap: kill the helper's processes, restart the units; INT/TERM/HUP exit 130.
+  - The exit code is now the login's own, or 3 when aborted, and login also stops a running `sr-capture.service`.
+  - Checked in the container: SIGINT killed the helper's processes, the units restarted, rc=130.
+  - The linger conflict is documented: the worker timer runs as a system unit and is stopped during login.
+  - Polling (up to 0.5 s) remains a documented residual; a private display is not done yet.
+- Lows:
+  - `leaksTokens` now compares in lowercase and ignores timestamp strings (`last_refresh`).
+  - The `NODE_MISSING` message now explains the tarball owner case.
+  - The 198.18/15 fake-IP DNS case is documented.

@@ -37,6 +37,8 @@ async function main(): Promise<number> {
     env,
     launchPersistent,
     log: say,
+    // run.sh: the host lets the requester become another user (host-check.sh); the profile stays closed
+    ...(process.env.SR_CAPTURE_HOST_UNSAFE ? { hostUnsafe: process.env.SR_CAPTURE_HOST_UNSAFE } : {}),
   });
   say(`done: ${run.processed.length} answered, ${run.deferred} deferred, ${run.removedResults} old result(s) removed`);
   return 0;

@@ -37,16 +37,43 @@ capture helper                                     ← 利用者 sr-igcapture（
 
 ## 1. 入れる（人が 1 回、sudo で）
 
-前提:
+前提（**全部必須**。満たさないと `install` も `login` も `HOST_UNSAFE` で止まり、helper も毎回 profile を開かずに `HELPER_ERROR` を返す）:
 - WSL で systemd が有効（`/etc/wsl.conf` に `[boot]` `systemd=true`）
+- **WSL の Windows 連携（interop）を切る。**連携が有効だと、WSL の誰でも `wsl.exe -u root` で root になれ、
+  `sr-igcapture` の profile を読めてしまう（Unix の権限による隔離が全部無意味になる）。`/etc/wsl.conf`:
+
+  ```ini
+  [boot]
+  systemd=true
+
+  [interop]
+  enabled=false
+  appendWindowsPath=false
+  ```
+
+  書いたら Windows 側で `wsl --shutdown` してから WSL を開き直す（動いている間の設定も確かめる）
+- requester（`sr-designgen`）は **Windows が WSL を開くときの既定の利用者ではない**（uid 1000 か `[user] default` の利用者は断る）、
+  `sudo` / `admin` / `wheel` / `adm` / `lxd` / `disk` / `docker` / `libvirt` / `kvm` / `systemd-journal` の group に入っていない、
+  sudo の規則が無い（`sudo -l -U sr-designgen` が空）
+- requester は Windows の drive（`/mnt/c` など）に書けない。既定の自動 mount（uid 1000 の所有）なら別の利用者は書けない。
+  Windows の Startup folder に置いたものは Windows の人の権限で動き、そこから `wsl.exe -u root` に届くため。
+  worker の Windows へのコピー（`SR_DESIGN_EXPORT_DIR`）が要るなら、**その folder だけ**を `/mnt/sr-export` に mount する
+  （`/etc/fstab`: `C:\Users\<you>\SecondRootDemos /mnt/sr-export drvfs uid=<sr-designgen の uid>,gid=<同 gid>,umask=077 0 0`）。
+  ここだけは書けてよい（Startup などではない、ただの folder にする）
 - **system 全体の Node 22**（`/usr/local/bin` か `/usr/bin`、実体まで root の所有で他人が書けないこと）。`sr-designgen` の nvm の node は `sr-igcapture` から読めないので使えない
-  （例: NodeSource の手順 https://github.com/nodesource/distributions ）
+  （例: NodeSource の手順 https://github.com/nodesource/distributions 。tarball を `sudo tar` で展開したなら `sudo chown -R root:root <dir>`）
+
+`admin.sh` は root で動くので、**requester が書き換えられる checkout（`~sr-designgen/work/second-root` など）からは動かない**
+（`ADMIN_SCRIPT_UNTRUSTED`）。最初の install は root だけの clone から行う（その後は `sr-igcapture` 側の checkout を使う）:
 
 ```bash
-cd ~/work/second-root && git fetch -q origin feature/dev-028-ai-art-direction
-sudo bash scripts/sales-design-capture/admin.sh install "$(git rev-parse origin/feature/dev-028-ai-art-direction)"
+SHA=<承認する commit の 40 文字>
+sudo git clone -q https://github.com/ioda47871-byte/second-root.git /root/sr-capture-admin
+sudo git -C /root/sr-capture-admin checkout -q "$SHA"
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh install "$SHA"
 ```
 
+- 上の前提を確かめる（どれか欠ければ理由を全部表示して止まる）
 - 利用者 `sr-igcapture`（パスワードなし、ホーム 0700）と group `sr-capture` を作る
 - `sr-designgen` を `sr-capture` に入れる（`sr-igcapture` の group には入れない）
 - `/srv/sr-capture/{requests,results}` を正しい権限で作る
@@ -57,8 +84,8 @@ sudo bash scripts/sales-design-capture/admin.sh install "$(git rev-parse origin/
 
 `sr-designgen` は group の変更を反映するため、一度ログインし直す（WSL なら `wsl --shutdown` 後に開き直すのが確実）。
 
-推奨（人の判断）: WSL の Windows 連携を切る（`/etc/wsl.conf` に `[interop]` `enabled=false`）。Codex の sandbox は `/run` を隠すので
-連携の口は見えないが、二重に塞いでおく。
+helper（`run.sh`）は起動のたびに interop と requester の group を確かめ直す。後で interop を戻したり requester を admin の group に
+入れたりすると、その間の依頼には profile を開かずに `HELPER_ERROR`（`WSL_INTEROP_ON` / `REQUESTER_PRIVILEGED`）を返す。
 
 ## 2. ログイン（人が、headed で）
 
@@ -125,10 +152,17 @@ journalctl -u sr-capture.service -n 50     # 符号だけが出る
 
 ## 残るリスク（承知の上）
 
-- headed login の窓は共有の X display に出る。`admin.sh login` は requester の process が無いことを確かめ、ログイン中も見張り、
-  現れたら窓を即座に閉じる。install は requester の cron / at / lingering を止める。docker group の requester は断る。
-  それでも root で動くもの（例: requester が起動させた別の仕組み）は防げない。専用の display（Xephyr など）にはしていない
+- headed login の窓は共有の X display（WSLg）に出る。`admin.sh login` は requester の process が無いことを確かめ、ログイン中も
+  0.5 秒ごとに見張り、現れたら窓を即座に閉じる（Ctrl-C や端末を閉じても窓は消え、helper は再開する）。install は requester の
+  cron / at / lingering を止める。見張りは polling なので、requester の process が現れてから最大 0.5 秒は窓が残る。
+  その間に画面を 1 枚読まれる可能性は残る（専用の display（Xephyr など）にすれば無くなるが、まだしていない）。
+  ログインの間は requester の worker の timer も止めておく（`design-worker-wsl.md` §6）
+- 守っているのは WSL の中の Unix 権限まで。requester が LAN や WSL host の Windows のサービス（SMB・RDP など）に
+  Windows の資格情報で入れる状況は扱っていない。Windows drive は mount の根元と Startup folder だけを確かめる
+  （drvfs の `metadata` で個別の所有者を付けている場合、深い場所に requester の書ける folder があっても見つけない）
+- 公式サイトの撮影は 198.18.0.0/15 を内部の宛先として断る。fake-IP 型の proxy DNS（Clash など）や一部の VPN はここを使うので、
+  その環境では全サイトが `unavailable` になる（そのときは proxy を外して撮る）
 
 - Instagram の利用規約は自動的な収集を制限している。1 件ずつ・少数・最小の操作にしてあるが、アカウント制限のリスクは無くならない（`design-browser-wsl.md`）
-- root を持つ人（sudo）は何でも読める。sudo を Claude に渡さない
+- root を持つ人（sudo）は何でも読める。sudo を Claude に渡さない（requester に sudo の規則や admin の group があれば install / login は断る）
 - `sr-capture` の group に入った別の利用者は、results の PNG を読める（今は `sr-designgen` だけ）

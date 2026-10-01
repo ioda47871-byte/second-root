@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { createSocket } from "node:dgram";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -592,6 +594,8 @@ describe("stale temporary directories", () => {
 describe("visual sources: website → signed-in helper → public Instagram → unavailable", () => {
   const siteTarget = (path: string) => () => ({ url: `${site.origin}${path}`, allowNavigation: (u: string) => u.startsWith(`${site.origin}/`) });
   const WEBSITE = "https://www.example-bakery.jp/";
+  // Tests only: the egress proxy may reach exactly the mock (127.0.0.1:<its port>), nothing else.
+  const mockEgress = async (host: string, port: number) => (host === "127.0.0.1" && String(port) === new URL(site.origin).port ? "127.0.0.1" : null);
 
   it("uses the verified official website first: home + about/menu pages, privacy-processed, nothing else opened", async () => {
     const l = makeLayout();
@@ -600,7 +604,7 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     const helperCalls: string[] = [];
     const { report, logs, preview } = await runWorker(l, site, {
       websiteTargetFor: siteTarget("/site_home/"),
-      websiteHostCheck: async () => true,
+      websiteEgress: mockEgress,
       captureHelper: async (i) => (helperCalls.push(i.requestId), { code: "CAPTURED", files: [], softened: 0 }),
     });
     expect(report, JSON.stringify({ report, logs })).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
@@ -649,7 +653,7 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     const l = makeLayout();
     writeJob(l, "job-leaves", null, undefined, "inbox", WEBSITE);
     const before = site.requests.length;
-    const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/site_leaves/"), websiteHostCheck: async () => true });
+    const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/site_leaves/"), websiteEgress: mockEgress });
     expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "PUBLIC_SOURCE_UNAVAILABLE" }] });
     expect(json(join(l.out, "job-leaves", "report.json"))).toMatchObject({ visual_source: null, sources: { website: { status: "unavailable", reason: "OFF_SITE_REDIRECT" } }, instagram: null, codex: null });
     expect(site.requests.slice(before).some((r) => r.startsWith("localhost:"))).toBe(false);
@@ -678,7 +682,7 @@ describe("visual sources: website → signed-in helper → public Instagram → 
   it("a website-only job is tried again after a passing failure (5xx), not closed as unavailable", async () => {
     const l = makeLayout();
     writeJob(l, "job-503", null, undefined, "inbox", WEBSITE);
-    const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/error_shop/"), websiteHostCheck: async () => true });
+    const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/error_shop/"), websiteEgress: mockEgress });
     expect(report).toMatchObject({ status: "finished", jobs: [{ jobId: "job-503", status: "retry", code: "SOURCE_CAPTURE_FAILED" }] });
     expect(ls(join(l.queue, "inbox"))).toEqual(["job-503.json"]);
   });
@@ -687,9 +691,57 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     const l = makeLayout();
     writeJob(l, "job-ws", null, undefined, "inbox", WEBSITE);
     const before = site.requests.length;
-    await runWorker(l, site, { websiteTargetFor: siteTarget("/site_ws/"), websiteHostCheck: async () => true });
+    await runWorker(l, site, { websiteTargetFor: siteTarget("/site_ws/"), websiteEgress: mockEgress });
     expect(site.requests.slice(before).filter((r) => r.includes("[websocket]"))).toEqual([]);
     expect(site.requests.slice(before).some((r) => r.includes("/site_ws/"))).toBe(true);
+  });
+
+  it("a Web Worker's WebSocket / fetch and WebRTC STUN cannot reach local services either (all traffic goes through the egress proxy)", async () => {
+    const udp = createSocket("udp4");
+    const packets: string[] = [];
+    udp.on("message", (_m, r) => packets.push(`${r.address}:${r.port}`));
+    await new Promise<void>((r) => udp.bind(0, "127.0.0.1", () => r()));
+    try {
+      const l = makeLayout();
+      writeJob(l, "job-wsw", null, undefined, "inbox", WEBSITE);
+      const before = site.requests.length;
+      const { report } = await runWorker(l, site, { websiteTargetFor: () => ({ url: `${site.origin}/site_ws_worker/?stun=${udp.address().port}`, allowNavigation: (u: string) => u.startsWith(`${site.origin}/`) }), websiteEgress: mockEgress, captureSettleMs: 1500 });
+      expect(report).toMatchObject({ status: "finished" });
+      const seen = site.requests.slice(before);
+      expect(seen.some((r) => r.includes("/site_ws_worker/stun/"))).toBe(true); // the page ran its WebRTC code
+      // without the proxy and the flags this page reaches localhost:<mock>/ws-worker and sends STUN packets (checked by hand)
+      expect(seen.filter((r) => r.startsWith("localhost:") || r.includes("ws-worker") || r.includes("worker-fetch"))).toEqual([]);
+      expect(packets).toEqual([]);
+    } finally {
+      udp.close();
+    }
+  });
+
+  it("the egress proxy refuses private addresses, other ports and odd names; it connects to the address it checked", async () => {
+    const { publicWebsiteEgress } = await import("@/lib/design-agent/worker/website");
+    const egress = publicWebsiteEgress();
+    for (const [h, p] of [["127.0.0.1", 443], ["[::1]", 443], ["10.0.0.1", 80], ["169.254.169.254", 80], ["localhost", 443], ["8.8.8.8", 22], ["8.8.8.8", 8080], ["bad_name!", 443], ["x", 443]] as const) expect(await egress(h, p), `${h}:${p}`).toBeNull();
+    expect(await egress("8.8.8.8", 443)).toBe("8.8.8.8");
+    const { startEgressProxy } = await import("@/lib/design-agent/worker/egress-proxy");
+    // the proxy dials the policy's answer, not what the client named
+    const proxy = await startEgressProxy(async (host) => (host === "rebind.example" ? "127.0.0.1" : null));
+    try {
+      const port = Number(new URL(site.origin).port);
+      const viaProxy = (path: string, host: string) =>
+        new Promise<number>((resolve) => {
+          const req = httpRequest({ host: "127.0.0.1", port: Number(new URL(proxy.proxy.server).port), method: "GET", path: `http://${host}:${port}${path}` }, (res) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          });
+          req.on("error", () => resolve(-1));
+          req.end();
+        });
+      expect(await viaProxy("/site_home/about/", "rebind.example")).toBe(200);
+      expect(await viaProxy("/site_home/about/", "other.example")).toBe(403);
+      expect(proxy.refused()).toBe(1);
+    } finally {
+      await proxy.close();
+    }
   });
 
   it("on a shared hosting platform, other tenants' subdomains are not the shop's site", async () => {

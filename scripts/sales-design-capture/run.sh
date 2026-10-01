@@ -59,6 +59,21 @@ for f in .env .env.*; do
 done
 [ -x node_modules/.bin/tsx ] || { echo "HELPER_NOT_INSTALLED (npm ci as sr-igcapture)"; exit 2; }
 
+# Every run: if the machine now lets a requester become root or this user (WSL interop turned back
+# on, an admin group added), requests are answered HELPER_ERROR and the browser profile stays closed.
+# shellcheck source=host-check.sh
+. "$REPO/scripts/sales-design-capture/host-check.sh"
+UNSAFE=""
+sr_check_wsl_interop >/dev/null || UNSAFE=WSL_INTEROP_ON
+for req in $(getent group sr-capture | cut -d: -f4 | tr ',' ' '); do
+  [ "$req" = sr-igcapture ] && continue
+  sr_check_requester "$req" >/dev/null || UNSAFE=REQUESTER_PRIVILEGED
+done
+if [ -n "$UNSAFE" ]; then
+  echo "HOST_UNSAFE ($UNSAFE): answering requests without opening the profile"
+  export SR_CAPTURE_HOST_UNSAFE="$UNSAFE"
+fi
+
 timeout --kill-after=30 1700 "$REPO/node_modules/.bin/tsx" "$REPO/scripts/sales-design-capture/helper.ts" "$@"
 exit $?
 }

@@ -181,8 +181,8 @@ async function run(): Promise<number> {
   const exportDir = process.env.SR_DESIGN_EXPORT_DIR ? expand(process.env.SR_DESIGN_EXPORT_DIR) : undefined;
   if (exportDir && insideRepo(exportDir)) usage("SR_DESIGN_EXPORT_DIR must be outside the repository.");
   await mkdir(paths.state, { recursive: true, mode: 0o700 });
-  const launch = (env: NodeJS.ProcessEnv) =>
-    chromium.launch({ headless: true, env, ...(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
+  const launch = (env: NodeJS.ProcessEnv, args: readonly string[] = []) =>
+    chromium.launch({ headless: true, env, args: [...args], ...(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
   say(`design worker ${checkout.slice(0, 12)} (max ${max}, budget ${Math.round(runBudgetMs / 60000)} min)`);
   const report = await runDesignWorker({
     stateDir: paths.state,

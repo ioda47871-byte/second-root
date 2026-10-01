@@ -38,6 +38,7 @@ import { codeOf, ENVIRONMENT_CODES, publicMessage } from "./messages";
 import { claimNext, ensureQueue, finishJob, hasFinished, inboxCount, inspectProcessing, pickFacts, queueDirs, readJob, requeueJob, type QueueDirs } from "./queue";
 import type { ClientResult } from "../capture-helper/client";
 import { parseInstagramProfileUrl, type ProfileSource } from "./source-url";
+import type { EgressPolicy } from "./egress-proxy";
 import { captureWebsite, parseWebsiteUrl, websiteTarget, type WebsiteSource } from "./website";
 import { acquireLock, readLedger, writeJsonAtomic, writeLedger, type Holder, type Ledger } from "./state";
 import { cleanStaleTemp, createTempRoot, removeTempRoot } from "./temp";
@@ -86,8 +87,8 @@ export interface WorkerOptions {
   prepareSandbox?: (env: NodeJS.ProcessEnv) => Promise<CodexSandbox>;
   now?: () => Date;
   log?: (line: string) => void;
-  /** A fresh, non-persistent browser for the Instagram capture. */
-  launchBrowser: (env: NodeJS.ProcessEnv) => Promise<Browser>;
+  /** A fresh, non-persistent browser for a capture, started with the given extra Chromium flags. */
+  launchBrowser: (env: NodeJS.ProcessEnv, args?: readonly string[]) => Promise<Browser>;
   /** Builds the app and starts the local preview (only when there is work). */
   startPreview: (options: { previewRoot: string; env: NodeJS.ProcessEnv; deadline: RunDeadline }) => Promise<PreviewSession>;
   /**
@@ -97,8 +98,8 @@ export interface WorkerOptions {
   captureTargetFor?: (source: ProfileSource) => CaptureTarget;
   /** Tests only: capture target for a job's website (a local mock). Production uses websiteTarget. */
   websiteTargetFor?: (source: WebsiteSource) => CaptureTarget;
-  /** Tests only: lets the website capture reach the local mock (production: public addresses only). */
-  websiteHostCheck?: (url: string) => Promise<boolean>;
+  /** Tests only: lets the website capture reach the local mock (production: public addresses, ports 80 / 443). */
+  websiteEgress?: EgressPolicy;
   /**
    * The signed-in capture, asked of the capture helper (another Linux user;
    * capture-helper/client.ts). Null / unset: the helper is not installed,
@@ -386,9 +387,9 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       await mkdir(dir, { mode: 0o700 });
       const result = await captureWebsite({
         target: options.websiteTargetFor ? options.websiteTargetFor(website) : websiteTarget(website),
-        ...(options.websiteHostCheck ? { hostCheck: options.websiteHostCheck } : {}),
+        ...(options.websiteEgress ? { egress: options.websiteEgress } : {}),
         outDir: dir,
-        launch: () => options.launchBrowser(ctx.childEnv()),
+        launch: (args) => options.launchBrowser(ctx.childEnv(), args),
         settleMs: options.captureSettleMs,
       });
       sources.website = result.status === "captured" ? { status: "captured", images: result.files.length } : { status: result.status === "retry" ? "failed" : "unavailable", reason: result.reason };

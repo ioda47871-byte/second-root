@@ -187,6 +187,17 @@ describe("capture helper: what a requester cannot do", () => {
     expect((await ask(l, "job-w3", "https://www.instagram.com/li_shop/", { launchPersistent: counting })).result.code).toBe("CAPTURED");
   });
 
+  it("on a host where a requester could become root or the helper (run.sh: host-check.sh), it never opens the profile", async () => {
+    const l = layout();
+    let launches = 0;
+    const counting: typeof launchPersistent = (dir, o) => ((launches += 1), launchPersistent(dir, o));
+    await signIn(l);
+    const before = launches;
+    const r = await ask(l, "job-unsafe", "https://www.instagram.com/li_shop/", { launchPersistent: counting, hostUnsafe: "WSL_INTEROP_ON" });
+    expect(r.result).toMatchObject({ code: "HELPER_ERROR", reason: "WSL_INTEROP_ON", files: [] });
+    expect(launches).toBe(before);
+  });
+
   it("result files carry the spool's group (setgid kept), so the requester can read them", async () => {
     const l = layout();
     await signIn(l);

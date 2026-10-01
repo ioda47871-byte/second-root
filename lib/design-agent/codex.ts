@@ -272,8 +272,9 @@ async function signInTokens(codexHome: string): Promise<string[]> {
   if (!text) return [];
   const out: string[] = [];
   const walk = (v: unknown): void => {
-    if (typeof v === "string") {
-      const t = v.replace(/[^A-Za-z0-9]/g, "");
+    // timestamps (last_refresh) are not secret, and their digits would match by chance
+    if (typeof v === "string" && !/^\d{4}-\d{2}-\d{2}[T ]/.test(v)) {
+      const t = v.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
       if (t.length >= 20) out.push(t);
     } else if (v && typeof v === "object") Object.values(v).forEach(walk);
   };
@@ -286,11 +287,12 @@ async function signInTokens(codexHome: string): Promise<string[]> {
 }
 
 const WINDOW = 12;
-/** Whether the answer holds any 12-character piece of a token (ignoring separators), forwards or reversed. */
+/** Whether the answer holds any 12-character piece of a token (ignoring separators and case), forwards or reversed. */
 export function leaksTokens(answer: string, tokens: readonly string[]): boolean {
-  const flat = answer.replace(/[^A-Za-z0-9]/g, "");
+  const flat = answer.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
   const reversed = [...flat].reverse().join("");
-  for (const token of tokens) {
+  for (const raw of tokens) {
+    const token = raw.toLowerCase();
     for (let i = 0; i + WINDOW <= token.length; i += 4) {
       const piece = token.slice(i, i + WINDOW);
       if (flat.includes(piece) || reversed.includes(piece)) return true;

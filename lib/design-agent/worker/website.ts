@@ -17,7 +17,6 @@
  *   are art-direction references for Codex only: no image, logo or text of
  *   the site is ever copied into the demo (the demo shows verified facts).
  */
-import { lookup } from "node:dns/promises";
 import { chmod, writeFile } from "node:fs/promises";
 import { BlockList, isIP } from "node:net";
 import { join } from "node:path";
@@ -39,6 +38,7 @@ import {
   type NavigationState,
   type ScratchPage,
 } from "./capture";
+import { publicEgress, startEgressProxy, WEBSITE_BROWSER_ARGS, type EgressPolicy, type EgressProxy } from "./egress-proxy";
 
 export type WebsiteSource = { url: string; host: string };
 
@@ -106,43 +106,38 @@ export function isPrivateAddress(address: string): boolean {
   return true; // not an address at all: never treated as public
 }
 
+/** Production egress: ports 80 / 443 of names whose every address is public (egress-proxy.ts). */
+export const publicWebsiteEgress = (): EgressPolicy => publicEgress(isPrivateAddress);
+
 /**
- * The host of every request must resolve to public addresses only (cached per
- * host for one capture). A page cannot make the browser read 127.0.0.1, the
- * LAN, the WSL host or a cloud metadata service. Non-http(s) URLs (data:,
- * blob:) carry no host and pass.
+ * The navigation guard's view of the same policy: a document request whose
+ * host the proxy would refuse is stopped before it is sent (and counted as
+ * leaving the site). Non-http(s) URLs (data:, blob:) carry no host and pass.
  */
-export function publicHostCheck(): (url: string) => Promise<boolean> {
-  const cache = new Map<string, Promise<boolean>>();
-  return (raw: string) => {
+export function egressHostCheck(egress: EgressPolicy): (url: string) => Promise<boolean> {
+  return async (raw: string) => {
     let u: URL;
     try {
       u = new URL(raw);
     } catch {
-      return Promise.resolve(false);
+      return false;
     }
-    if (u.protocol !== "http:" && u.protocol !== "https:") return Promise.resolve(true);
-    const host = u.hostname.replace(/^\[|\]$/g, "");
-    let hit = cache.get(host);
-    if (!hit) {
-      hit = isIP(host)
-        ? Promise.resolve(!isPrivateAddress(host))
-        : lookup(host, { all: true }).then(
-            (list) => list.length > 0 && list.every((a) => !isPrivateAddress(a.address)),
-            () => false,
-          );
-      cache.set(host, hit);
-    }
-    return hit;
+    if (u.protocol !== "http:" && u.protocol !== "https:") return true;
+    const port = u.port === "" ? (u.protocol === "https:" ? 443 : 80) : Number(u.port);
+    return (await egress(u.hostname, port).catch(() => null)) !== null;
   };
 }
 
+/** The production host check (public addresses, ports 80 / 443). */
+export const publicHostCheck = () => egressHostCheck(publicWebsiteEgress());
+
 export interface WebsiteCaptureOptions {
   target: CaptureTarget;
-  /** Production: publicHostCheck(). Tests only: a check that allows the local mock. */
-  hostCheck?: (url: string) => Promise<boolean>;
+  /** Production: publicWebsiteEgress(). Tests only: a policy that allows the local mock. */
+  egress?: EgressPolicy;
   outDir: string;
-  launch: () => Promise<Browser>;
+  /** Must start Chromium with WEBSITE_BROWSER_ARGS (no WebRTC UDP, no QUIC: they cannot use the proxy). */
+  launch: (args: readonly string[]) => Promise<Browser>;
   settleMs?: number;
 }
 
@@ -190,17 +185,22 @@ async function shoot(page: Page, scratch: ScratchPage, file: string): Promise<nu
 export async function captureWebsite(options: WebsiteCaptureOptions): Promise<CaptureResult> {
   const settleMs = options.settleMs ?? 4_000;
   let browser: Browser | undefined;
+  let egressProxy: EgressProxy | undefined;
   const state: NavigationState = { offSite: false };
   try {
-    browser = await options.launch();
+    const egress = options.egress ?? publicWebsiteEgress();
+    // Every connection of the shop's page, its frames and its workers goes through the proxy.
+    egressProxy = await startEgressProxy(egress);
+    const proxy = egressProxy.proxy;
+    browser = await options.launch(WEBSITE_BROWSER_ARGS);
     const b = browser;
-    const context: BrowserContext = await browser.newContext(CONTEXT_OPTIONS);
+    const context: BrowserContext = await browser.newContext({ ...CONTEXT_OPTIONS, proxy });
     const scratch: ScratchPage = async () => {
-      const own = await b.newContext({ javaScriptEnabled: true, serviceWorkers: "block" });
+      const own = await b.newContext({ javaScriptEnabled: true, serviceWorkers: "block", proxy });
       return { page: await own.newPage(), close: () => own.close() };
     };
-    const guard = await guardNavigation(context, options.target, state, { walls: false, hostCheck: options.hostCheck ?? publicHostCheck() });
-    // WebSockets never pass through request routing (so not through the host check): a shop page needs none for a screenshot.
+    const guard = await guardNavigation(context, options.target, state, { walls: false, hostCheck: egressHostCheck(egress) });
+    // WebSockets never pass through request routing: a shop page needs none for a screenshot (workers' ones meet the proxy).
     await context.routeWebSocket(/.*/, (ws) => ws.close());
     const home = await open(guard, options.target, state);
     await home.waitForTimeout(settleMs);
@@ -236,5 +236,6 @@ export async function captureWebsite(options: WebsiteCaptureOptions): Promise<Ca
     return { status: "retry", reason: error instanceof Retry ? error.reason : "CAPTURE_ERROR" };
   } finally {
     await browser?.close().catch(() => undefined);
+    await egressProxy?.close().catch(() => undefined);
   }
 }

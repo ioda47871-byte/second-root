@@ -321,6 +321,19 @@ systemctl --user daemon-reload
 systemctl --user enable --now sr-design-worker.timer
 ```
 
+**capture helper（`design-capture-helper.md`）を入れた machine では linger を使わない。**helper の install は requester の
+linger を切る（Instagram の headed login の間に requester のものが勝手に動かないように）。代わりに system の unit
+（`/etc/systemd/system/sr-design-worker.{service,timer}`、`[Service]` に `User=sr-designgen`、`%h` は `/home/sr-designgen` に書き換え）
+にして、ログインの前に止める:
+
+```bash
+sudo systemctl stop sr-design-worker.timer      # ログインの前
+sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh login
+sudo systemctl start sr-design-worker.timer     # ログインの後
+```
+
+止め忘れて worker がログイン中に動き出すと、`admin.sh login` は窓を閉じる（`LOGIN_ABORTED`）。
+
 run.sh の時間は 3300 秒が上限で、`TimeoutStartSec=3600` より先に終わる
 （`tests/unit/design-agent/worker-run-sh.test.ts` が run.sh とこの節を突き合わせる）。
 
