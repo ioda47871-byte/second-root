@@ -118,7 +118,10 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
     if (f.rel.endsWith(".html") && f.rel !== "index.html") routes.add(`/${f.rel.slice(0, -5).split(sep).join("/")}`);
   }
 
-  const underBase = (value) => value === basePath || /^[/?#]/.test(value.slice(basePath.length)) && value.startsWith(basePath);
+  // Under the basePath, with no "." / ".." segment that could climb out of it.
+  const underBase = (value) =>
+    (value === basePath || (/^[/?#]/.test(value.slice(basePath.length)) && value.startsWith(basePath))) &&
+    !pathOf(value).split("/").some((seg) => /^(?:\.|%2e){1,2}$/i.test(seg));
   const isRoute = (value) => routes.has(pathOf(value) || "/");
 
   for (const f of files) {
@@ -128,8 +131,12 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
     const report = (kind, value) => problems.push(`${f.rel}: ${kind} ${value}`);
 
     // Markup and CSS: every root-relative URL must carry the basePath.
-    const strict = (kind, value) => {
+    // Browsers ignore surrounding whitespace in URL values.
+    const strict = (kind, raw) => {
+      const value = raw.trim();
       if (rootRelative(value) && !underBase(value)) report(kind, value);
+      // A protocol-relative URL to Second Root itself is a root-relative one in disguise.
+      if (value.startsWith("//") && sameSite(value) && !underBase(new URL(`https:${value}`).pathname)) report(kind, value);
     };
     const checkSrcset = (kind, value) => {
       for (const candidate of value.split(",")) strict(kind, candidate.trim().split(/\s+/)[0] ?? "");
@@ -141,7 +148,8 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
     // RSC payloads, JSON and scripts: root-relative values must carry the
     // basePath or name a route of this export; asset files and values of
     // resource keys (src, href, …) outside the basePath are rejected.
-    const checkValue = (kind, key, value) => {
+    const checkValue = (kind, key, raw) => {
+      const value = raw.trim();
       if (key === "srcset" || key === "imagesrcset") return checkSrcset(kind, value);
       if (!rootRelative(value) || underBase(value) || isRoute(value)) return;
       if (ASSET.test(pathOf(value)) || RESOURCE_KEYS.has(key)) report(kind, value);
@@ -180,25 +188,34 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
         checkCss(body);
         return "";
       });
-      for (const m of markup.matchAll(/<[a-z][^\s/>]*((?:\s+[^\s"'=<>`/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*\/?>/gi)) {
-        for (const a of m[1].matchAll(/([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g)) {
+      // Tag bodies as a browser splits them: attributes need no whitespace
+      // between them (`alt="x"src=…`, `<img/src=…>`), and unquoted values may
+      // contain "=".
+      for (const m of markup.matchAll(/<[a-zA-Z][^\s/>]*((?:"[^"]*"|'[^']*'|[^'">])*)>/g)) {
+        for (const a of m[1].matchAll(/([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+)))?/g)) {
           const name = a[1].toLowerCase();
           const value = decodeEntities(a[2] ?? a[3] ?? a[4] ?? "");
           if (name === "srcset" || name === "imagesrcset") checkSrcset(`${name}=`, value);
           else if (name === "style") checkCss(value);
           else strict(`${name}=`, value);
+          // <meta http-equiv="refresh" content="0;url=/…">
+          const refresh = name === "content" && value.match(/^\s*\d*(?:\.\d*)?\s*[;,]\s*url\s*=\s*['"]?([^'"]+)/i);
+          if (refresh) strict("refresh url", refresh[1]);
         }
       }
       // Canonical and og:url, when absolute, must name this Concept Work.
       const absolute = [
-        ...[...text.matchAll(/<link\b[^>]*\brel=["']?canonical["']?[^>]*>/gi)].map((t) => ["canonical", t[0].match(/\bhref=["']?([^"'\s>]+)/i)?.[1]]),
-        ...[...text.matchAll(/<meta\b[^>]*\bproperty=["']?(og:url|og:image|twitter:image)["']?[^>]*>/gi)].map((t) => [t[1], t[0].match(/\bcontent=["']?([^"'\s>]+)/i)?.[1]]),
-        ...[...text.matchAll(/<meta\b[^>]*\bname=["']?(twitter:image)["']?[^>]*>/gi)].map((t) => [t[1], t[0].match(/\bcontent=["']?([^"'\s>]+)/i)?.[1]]),
+        ...[...text.matchAll(/<link\b[^>]*[\s"']rel=["']?canonical["']?[^>]*>/gi)].map((t) => ["canonical", attr(t[0], "href")]),
+        ...[...text.matchAll(/<meta\b[^>]*[\s"']property=["']?(og:url|og:image|twitter:image)["']?[^>]*>/gi)].map((t) => [t[1], attr(t[0], "content")]),
+        ...[...text.matchAll(/<meta\b[^>]*[\s"']name=["']?(twitter:image)["']?[^>]*>/gi)].map((t) => [t[1], attr(t[0], "content")]),
       ];
       for (const [kind, value] of absolute) {
-        if (!value || !/^https?:/i.test(value)) continue;
-        const v = decodeEntities(value);
-        if (!(v === origin || /^[/?#]/.test(v.slice(origin.length)) && v.startsWith(origin))) report(kind, v);
+        if (!value) continue;
+        let v = decodeEntities(value).trim();
+        if (v.startsWith("//")) v = `https:${v}`;
+        if (!/^https?:/i.test(v)) continue;
+        const ok = (v === origin || (/^[/?#]/.test(v.slice(origin.length)) && v.startsWith(origin))) && underBase(new URL(v).pathname);
+        if (!ok) report(kind, v);
       }
     } else if (STYLE.has(ext)) {
       checkCss(text);
@@ -213,12 +230,32 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
   return [...new Set(problems)];
 }
 
+// The value of attribute `name` in a tag (not `data-name`).
+function attr(tag, name) {
+  const m = tag.match(new RegExp(`[\\s"'/]${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i"));
+  return m ? (m[1] ?? m[2] ?? m[3]) : undefined;
+}
+
+function sameSite(protocolRelative) {
+  try {
+    return new URL(`https:${protocolRelative}`).hostname.toLowerCase() === new URL(SITE_ORIGIN).hostname;
+  } catch {
+    return false;
+  }
+}
+
 function unescape(s) {
   return s.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/\\(["\\/])/g, "$1");
 }
 
+// Decodes character references once, as a browser does for attribute values.
+const NAMED = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", sol: "/", period: ".", colon: ":", num: "#", quest: "?" };
 function decodeEntities(s) {
-  return s.replace(/&(?:amp|#38|#x26);/gi, "&").replace(/&(?:quot|#34|#x22);/gi, '"').replace(/&(?:#39|#x27|apos);/gi, "'");
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, ref) => {
+    if (ref[0] !== "#") return NAMED[ref.toLowerCase()] ?? whole;
+    const code = ref[1] === "x" || ref[1] === "X" ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
 }
 
 const inside = (child, parent) => child === parent || child.startsWith(parent + sep);
@@ -227,11 +264,18 @@ const inside = (child, parent) => child === parent || child.startsWith(parent + 
  * Imports `source` as public/works/<slug> under `repoRoot`. Throws, leaving
  * public/works untouched, if any check fails.
  */
-export function importWork({ slug, source, repoRoot = REPO_ROOT, log = () => {} }) {
+export function importWork({ slug, source, repoRoot = REPO_ROOT, log = () => {}, rename = renameSync }) {
   if (!SLUG.test(slug)) throw new Error(`invalid slug ${JSON.stringify(slug)}`);
-  const worksRoot = join(realpathSync(repoRoot), "public", "works");
-  mkdirSync(worksRoot, { recursive: true });
+  const root = realpathSync(repoRoot);
+  // public/, public/works/ and the destination must be real directories, so the
+  // containment checks below compare real paths.
+  for (const p of [join(root, "public"), join(root, "public", "works")]) {
+    if (isSymlink(p)) throw new Error(`${p} is a symlink`);
+  }
+  mkdirSync(join(root, "public", "works"), { recursive: true });
+  const worksRoot = realpathSync(join(root, "public", "works"));
   const dest = join(worksRoot, slug);
+  if (isSymlink(dest)) throw new Error(`${dest} is a symlink`);
 
   if (!existsSync(source)) throw new Error(`${source} does not exist`);
   if (lstatSync(source).isSymbolicLink()) throw new Error(`${source} is a symlink`);
@@ -247,9 +291,10 @@ export function importWork({ slug, source, repoRoot = REPO_ROOT, log = () => {} 
   if (problems.length > 0) throw new ExportError(problems, slug);
 
   // Copy to a temporary directory next to public/ (same filesystem, not served).
-  const tmp = mkdtempSync(join(realpathSync(repoRoot), ".works-import-"));
+  const tmp = mkdtempSync(join(root, ".works-import-"));
   const staged = join(tmp, slug);
   const backup = join(tmp, `${slug}.previous`);
+  let keepTmp = false;
   try {
     for (const f of listed.files) {
       mkdirSync(dirname(join(staged, f.rel)), { recursive: true });
@@ -265,17 +310,35 @@ export function importWork({ slug, source, repoRoot = REPO_ROOT, log = () => {} 
     if (recheck.length > 0) throw new ExportError(recheck, slug);
 
     const hadPrevious = existsSync(dest);
-    if (hadPrevious) renameSync(dest, backup);
+    if (hadPrevious) rename(dest, backup);
     try {
-      renameSync(staged, dest);
+      rename(staged, dest);
     } catch (error) {
-      if (hadPrevious) renameSync(backup, dest);
+      if (hadPrevious) {
+        try {
+          rename(backup, dest);
+        } catch (restoreError) {
+          // Never delete the only remaining copy.
+          keepTmp = true;
+          throw new Error(
+            `could not move the new copy into place (${error.message}) nor restore the previous one (${restoreError.message}); the previous copy is kept at ${backup}`,
+          );
+        }
+      }
       throw error;
     }
-    log(`Imported ${listed.files.length} files into ${relative(realpathSync(repoRoot), dest)}.`);
+    log(`Imported ${listed.files.length} files into ${relative(root, dest)}.`);
     return { files: listed.files.length, dest, pages: [...new Set(listed.files.filter((f) => f.rel.endsWith(".html") && !f.rel.includes(sep)).map((f) => f.rel.slice(0, -5)))].filter((p) => !["index", "404", "_not-found"].includes(p)) };
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    if (!keepTmp) rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function isSymlink(path) {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
   }
 }
 
