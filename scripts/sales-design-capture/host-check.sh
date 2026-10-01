@@ -24,7 +24,7 @@ sr_is_wsl() {
 sr_wsl_conf() {
   awk -v sec="$1" -v key="$2" '
     /^[[:space:]]*[#;]/ { next }
-    /^[[:space:]]*\[/ { s = $0; gsub(/[][[:space:]]/, "", s); cur = tolower(s); next }
+    /^[[:space:]]*\[/ { s = $0; sub(/[#;].*$/, "", s); gsub(/[][[:space:]]/, "", s); cur = tolower(s); next }
     cur == tolower(sec) {
       i = index($0, "="); if (i == 0) next
       k = substr($0, 1, i - 1); v = substr($0, i + 1)
@@ -40,7 +40,7 @@ sr_wsl_conf() {
 sr_wsl_conf_all_false() {
   awk -v key="$1" '
     /^[[:space:]]*[#;]/ { next }
-    /^[[:space:]]*\[/ { s = $0; gsub(/[][[:space:]]/, "", s); exact = (s == "interop"); loose = (tolower(s) == "interop"); next }
+    /^[[:space:]]*\[/ { s = $0; sub(/[#;].*$/, "", s); gsub(/[][[:space:]]/, "", s); exact = (s == "interop"); loose = (tolower(s) == "interop"); next }
     loose {
       i = index($0, "="); if (i == 0) next
       k = substr($0, 1, i - 1); v = substr($0, i + 1)
@@ -138,8 +138,9 @@ sr_check_requester_root() {
     src="$(printf '%b' "$dev")"
     if [ "$mnt" = /mnt/sr-export ]; then
       # The one export folder a person may give the requester (design-capture-helper.md): it must be a plain
-      # folder at least three levels down (C:\Users\<you>\<folder>), not a drive, a profile or a system tree.
-      if ! printf '%s' "$src" | grep -Eq '^[A-Za-z]:\\[^\\]+\\[^\\]+\\[^\\]+' || printf '%s' "$src" | grep -Eqi '\\(AppData|ProgramData|Windows|Start Menu)(\\|$)'; then
+      # folder under a user's folder (C:\\Users\\<you>\\<folder>), no '..' or 8.3 short names ('~'), no system tree.
+      if ! printf '%s' "$src" | grep -Eqi '^[A-Za-z]:\\Users\\[^\\]+\\[^\\]+' || printf '%s' "$src" | grep -Eq '\.\.|~' \
+        || printf '%s' "$src" | grep -Eqi '\\(AppData|ProgramData|Windows|Start Menu|Startup)(\\|$)'; then
         echo "EXPORT_MOUNT_UNSAFE: /mnt/sr-export must be one plain folder such as C:\\Users\\<you>\\SecondRootDemos"
         return 1
       fi

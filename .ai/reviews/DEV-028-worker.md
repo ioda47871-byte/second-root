@@ -215,3 +215,16 @@ Documented residuals:
 - `hidepid`;
 - SIGKILL of `admin.sh`;
 - the local open proxy (public 80/443 only).
+
+CI on eab553d caught a real gap: Playwright's default headless shell ignores `--webrtc-ip-handling-policy`, so STUN UDP went out. Fix, in 73cd096 (whose `RetryReason` type error is fixed in the next commit):
+- The website capture now launches the full Chromium (`channel: "chromium"`).
+- `webrtcSealed()` runs before any shop page opens: a STUN probe against a UDP socket of the worker's own. One packet stops the capture (`BROWSER_WEBRTC_OPEN`), whatever the build.
+- Test: a launcher that drops the flags makes the capture stop before the site is opened.
+
+Round 5 (on dcb6aa2): the security reviewer found no Critical or High issues and confirmed every round-4 Medium fixed. They tested with real users the process-group scan, user namespaces, a non-root scanner, `dial()` reaching only checked IPs, and UNC/`\\?\` export sources.
+- Medium, "once privileged, always privileged": documented as a requirement. The requester must be a fresh user that never held an admin group or sudo; otherwise create a new requester (ideally a new distro).
+- Lows fixed:
+  - `[interop] # comment` headers now count;
+  - the export source must be `X:\Users\<name>\<folder>…` with no `..` or `~` (8.3 names);
+  - `hidepid` on `/proc` makes `run.sh` refuse (`PROC_HIDDEN`);
+  - the WSL2 vsock reachability is listed as unverified.

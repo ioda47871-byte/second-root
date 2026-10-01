@@ -61,7 +61,11 @@ capture helper                                     ← 利用者 sr-igcapture（
   sudo -u sr-designgen bash -c 'for s in /run/WSL/*_interop; do [ -w "$s" ] && echo "OPEN $s"; done; true'   # 何も出ない
   ```
 
-  helper も、誰でも開ける `/run/WSL/*_interop` の socket があれば interop が残っているとみなして断る
+  helper も、誰でも開ける `/run/WSL/*_interop` の socket があれば interop が残っているとみなして断る。
+  （未確認: WSL2 の vsock 経由で一般の利用者が Windows 側の interop に届くか。`/init` は root の process から使う前提で、まだ実機で確かめていない）
+- requester は**一度も** admin の group（`sudo` / `docker` / `lxd` / `incus` / `disk` / `libvirt` など）や sudo を持ったことのない、新しく作った利用者にする。
+  一度でも持っていたなら、その間に root で残せたもの（setuid の file、root の cron・SSH 鍵、常駐の container）は、group から外しても
+  ここの確認では見つからない。その場合は新しい requester 利用者を作り直す（できれば distro も新しく）
 - requester の動いている process が admin の group を持っていない（group から外しても、その前に起動した shell や Claude は
   group を持ち続ける。`REQUESTER_PROCESS_PRIVILEGED` が出たら `sudo pkill -u sr-designgen` してからやり直す）
 - requester（`sr-designgen`）は **Windows が WSL を開くときの既定の利用者ではない**（uid 1000 か `[user] default` の利用者は断る）、
@@ -183,7 +187,7 @@ journalctl -u sr-capture.service -n 50     # 符号だけが出る
   Windows の資格情報で入れる状況は扱っていない。Windows drive は mount の根元と Startup folder だけを確かめる
   （drvfs の `metadata` で個別の所有者を付けている場合、深い場所に requester の書ける folder があっても見つけない）
 - helper の確認は起動ごと（1 回の起動は最長 1700 秒）。その途中で interop を戻したり group を足したりした分は、次の起動まで見えない。
-  `/proc` を `hidepid` で mount している machine では、requester の process の group を helper から確かめられない（install / login は root で確かめる）
+  `/proc` を `hidepid` で mount している machine では、helper から requester の process が見えないので、helper は断る（`PROC_HIDDEN`）
 - `admin.sh login` 自体が SIGKILL（root か OOM による）で止まると、後始末（窓を閉じる・helper の再開）は動かない。
   requester は root の process を止められないので、requester からは起こせない。起きたら `sudo pkill -u sr-igcapture` と
   `sudo systemctl start sr-capture.path sr-capture.timer`

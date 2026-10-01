@@ -64,7 +64,7 @@ export const UNAVAILABLE_REASONS = [
 ] as const;
 export type UnavailableReason = (typeof UNAVAILABLE_REASONS)[number];
 /** Transient: says nothing about the profile. */
-export type RetryReason = "LOAD_FAILED" | "HTTP_ERROR" | "CAPTURE_ERROR";
+export type RetryReason = "LOAD_FAILED" | "HTTP_ERROR" | "CAPTURE_ERROR" | "BROWSER_WEBRTC_OPEN";
 
 export type CaptureResult =
   | { status: "captured"; files: string[]; posts: number; softened: number }

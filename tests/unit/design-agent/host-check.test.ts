@@ -80,6 +80,7 @@ describe("host-check.sh: the requester must not be able to become root or the he
     expect(run({ conf: "[interop]\nenabled=false\n" }, "sr_check_wsl_interop").code).toBe(1); // Windows PATH still appended
     expect(run({ conf: "[interop]\nenabled=false\nappendWindowsPath=false\nenabled=true\n" }, "sr_check_wsl_interop").code).toBe(1); // the last one wins
     expect(run({ conf: "[boot]\nenabled=false\nappendWindowsPath=false\n" }, "sr_check_wsl_interop").code).toBe(1); // wrong section
+    expect(run({ conf: `${SAFE_CONF}[interop] # again\nenabled=true\n` }, "sr_check_wsl_interop").code).toBe(1); // a commented section header still counts
     const live = run({ conf: SAFE_CONF, interop: "enabled" }, "sr_check_wsl_interop");
     expect(live.code).toBe(1);
     expect(live.out).toMatch(/^WSL_INTEROP_ACTIVE/); // the file changed but WSL was not restarted
@@ -132,7 +133,7 @@ describe("host-check.sh: the requester must not be able to become root or the he
     // the one export mount a person may give the requester: a plain folder, judged by what is mounted
     const exp = (src: string) => run({ mounts: `${src} /mnt/sr-export 9p rw 0 0\n`, writable: ["/mnt/sr-export"] }, "sr_check_requester_root sr-designgen");
     expect(exp("C:\\134Users\\134me\\134SecondRootDemos").code).toBe(0);
-    for (const bad of ["C:\\134", "C:\\134Users", "C:\\134Users\\134me", "C:\\134Users\\134me\\134AppData\\134Roaming", "C:\\134ProgramData\\134x\\134y", "none"]) {
+    for (const bad of ["C:\\134", "C:\\134Users", "C:\\134Users\\134me", "C:\\134Users\\134me\\134AppData\\134Roaming", "C:\\134ProgramData\\134x\\134y", "none", "C:\\134Users\\134me\\134x\\134..\\134..\\134..\\134PROGRA~3\\134MICROS~1", "C:\\134Users\\134me\\134..\\134..\\134x", "\\134\\134server\\134share\\134a\\134b"]) {
       const r = exp(bad);
       expect(r.code, bad).toBe(1);
       expect(r.out).toMatch(/^EXPORT_MOUNT_UNSAFE/);
