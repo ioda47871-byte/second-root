@@ -5,7 +5,10 @@
  * person once (`sales:design-browser login`). It is treated as the most
  * sensitive local credential on the worker user:
  *
- * - only inside the worker user's home, never in the repository, never under
+ * - only inside the home of its own Linux user, `sr-igcapture` (not the
+ *   worker / Codex / Claude user: they cannot read it at all, by Unix
+ *   permissions; they ask the capture helper for privacy-processed PNGs,
+ *   see capture-helper/), never in the repository, never under
  *   /mnt (Windows drives), never a link, directory 0700 and every entry owned
  *   by this user without group / other permissions (tightened after each use);
  * - never exported, copied, archived or read as cookies by this code: only
@@ -17,7 +20,8 @@ import { chmod, lstat, mkdir, readdir, realpath, rm } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
-export const WORKER_USER = "sr-designgen";
+/** The only Linux user that may hold and use the signed-in browser profile. */
+export const BROWSER_USER = "sr-igcapture";
 export const DEFAULT_PROFILE_DIR = join(homedir(), ".local", "share", "sr-instagram-browser");
 /** Chromium's own lock links at the top of a profile (created while it runs). */
 const CHROMIUM_LINKS = new Set(["SingletonLock", "SingletonSocket", "SingletonCookie", "RunningChromeVersion"]);
@@ -43,7 +47,7 @@ export class ProfileError extends Error {
 export type ProfileEnv = { repoDir: string; home: string; uid: number | undefined; user: string; expectedUser: string };
 
 export function currentProfileEnv(repoDir: string): ProfileEnv {
-  return { repoDir, home: homedir(), uid: process.getuid?.(), user: userInfo().username, expectedUser: WORKER_USER };
+  return { repoDir, home: homedir(), uid: process.getuid?.(), user: userInfo().username, expectedUser: BROWSER_USER };
 }
 
 const within = (parent: string, child: string) => {

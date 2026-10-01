@@ -1,0 +1,18 @@
+# Second Root Instagram capture helper (DEV-028 Phase 3). Installed by
+# scripts/sales-design-capture/install.sh. Runs as sr-igcapture only.
+[Unit]
+Description=Second Root Instagram capture helper
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=sr-igcapture
+Group=sr-igcapture
+UMask=0027
+WorkingDirectory=/home/sr-igcapture/second-root
+ExecStart=/home/sr-igcapture/second-root/scripts/sales-design-capture/run.sh
+TimeoutStartSec=1800
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=/srv/sr-capture /home/sr-igcapture

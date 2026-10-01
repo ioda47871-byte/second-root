@@ -1,0 +1,11 @@
+# Picks up requests left over by the per-run limit (and deletes old results).
+[Unit]
+Description=Second Root Instagram capture helper (leftovers)
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=15min
+Unit=sr-capture.service
+
+[Install]
+WantedBy=timers.target
