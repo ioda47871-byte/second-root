@@ -271,7 +271,10 @@ export async function prepareCodexSandbox(options: SandboxOptions): Promise<Code
     ].join("\n");
     let result: BoundedResult;
     try {
-      result = await runBounded(bwrap, [...argsFor(workDir), "--", "/bin/sh", "-c", script, "probe", home, [...homeEntries].join(" "), ...protectedReal, ...options.protectedPaths], {
+      // (a work dir under the home, e.g. a TMPDIR there, shows its first segment too)
+      const allowed = new Set(homeEntries);
+      if (inside(workDir, home) && workDir !== home) allowed.add(relative(home, workDir).split(sep)[0]!);
+      result = await runBounded(bwrap, [...argsFor(workDir), "--", "/bin/sh", "-c", script, "probe", home, [...allowed].join(" "), ...protectedReal, ...options.protectedPaths], {
         env: BWRAP_ENV,
         timeoutMs: 30_000,
       });

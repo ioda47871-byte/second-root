@@ -1,4 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { acquireLock, currentHolder, LOCK_STALE_MS } from "@/lib/design-agent/worker/state";
@@ -661,3 +663,59 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     expect(parseWebsiteUrl("https://www.example-bakery.jp/about#x")).toEqual({ url: "https://www.example-bakery.jp/about", host: "www.example-bakery.jp" });
   });
 });
+
+describe.skipIf(spawnSync("bwrap", ["--ro-bind", "/", "/", "--proc", "/proc", "--dev", "/dev", "--unshare-pid", "/bin/true"]).status !== 0)(
+  "a whole run with Codex inside the REAL sandbox (no passthrough)",
+  () => {
+    it("brief → DesignProfile → render → review → final, with Codex seeing only the copied references", async () => {
+      const l = makeLayout();
+      // the worker's temp root outside the (fake) home, as /tmp is in production
+      const tmpBase = mkdtempSync(join(tmpdir(), "srdw-real-tmp-"));
+      writeJob(l, "job-real");
+      const install = join(l.root, "codex-install", "bin");
+      mkdirSync(install, { recursive: true });
+      const codexBin = join(install, "codex");
+      const profileAnswer = JSON.stringify(AMERICAN_EDITORIAL);
+      const reviewAnswer = JSON.stringify(review());
+      writeFileSync(
+        codexBin,
+        `#!/usr/bin/env node
+const fs = require("fs"), path = require("path");
+const a = process.argv.slice(2);
+if (a[0] === "login") { console.log("Logged in using ChatGPT"); process.exit(0); }
+const schema = fs.readFileSync(a[a.indexOf("--output-schema") + 1], "utf8");
+const images = a.filter((x) => x.startsWith("--image=")).map((x) => x.slice(8));
+const probe = {
+  images: images.length,
+  imagesReadable: images.every((p) => { try { return fs.readFileSync(p).subarray(1, 4).toString() === "PNG"; } catch { return false; } }),
+  imagesInWorkDir: images.every((p) => p.startsWith(path.join(process.cwd(), "inputs") + "/")),
+  queueVisible: fs.existsSync(${JSON.stringify(l.queue)}),
+  resultsVisible: fs.existsSync(${JSON.stringify(l.out)}),
+  stateVisible: fs.existsSync(${JSON.stringify(l.state)}),
+};
+const out = path.join(process.env.CODEX_HOME, "probes.jsonl");
+fs.appendFileSync(out, JSON.stringify(probe) + "\\n");
+fs.writeFileSync(a[a.indexOf("--output-last-message") + 1], schema.includes("verdict") ? ${JSON.stringify(reviewAnswer)} : ${JSON.stringify(profileAnswer)});
+console.log(JSON.stringify({ type: "thread.started", thread_id: "11111111-1111-4111-8111-111111111111" }));
+`,
+        { mode: 0o755 },
+      );
+      const { report, logs } = await runWorker(l, site, {
+        tmpBase,
+        codexBin,
+        prepareSandbox: undefined, // the production path: prepareCodexSandbox with workerProtectedPaths
+        env: { PATH: `${process.execPath.replace(/\/node$/, "")}:/usr/local/bin:/usr/bin:/bin`, HOME: l.root, LANG: "C.UTF-8", CODEX_HOME: join(l.root, "codex-home") },
+      });
+      expect(report, JSON.stringify({ report, logs })).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
+      const rep = json(join(l.out, "job-real", "report.json"));
+      expect(rep).toMatchObject({ visual_source: "instagram_public", codex: { status: "done", direction: "american_editorial", reviews: 1 } });
+      const probes = readFileSync(join(l.root, "codex-home", "probes.jsonl"), "utf8").trim().split("\n").map((x) => JSON.parse(x));
+      expect(probes.length).toBe(2); // brief and review
+      for (const p of probes) {
+        expect(p).toMatchObject({ imagesReadable: true, imagesInWorkDir: true, queueVisible: false, resultsVisible: false, stateVisible: false });
+        expect(p.images).toBeGreaterThanOrEqual(4);
+      }
+      expect(existsSync(join(l.out, "job-real", "final.json"))).toBe(true);
+    });
+  },
+);
