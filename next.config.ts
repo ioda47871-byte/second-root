@@ -13,6 +13,16 @@ const privateRouteHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+// Concept Works are separate static-export builds copied into
+// public/works/<slug>/ (docs/WORKS.md). Their pages are exported as
+// <page>.html, which public/ only serves with the extension, so the
+// extension-less URLs are rewritten to those files.
+const staticWorks = [
+  { slug: "yasashii-beauty-salon", pages: ["about", "access", "first", "menu", "staff"] },
+  { slug: "midori-seitai", pages: ["about", "access", "approach", "faq", "first", "menu", "staff"] },
+  { slug: "hoshi-no-cha", pages: ["about", "access", "menu"] },
+];
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
@@ -20,7 +30,24 @@ const nextConfig: NextConfig = {
       { source: "/admin/:path*", headers: privateRouteHeaders },
       { source: "/api/internal/:path*", headers: privateRouteHeaders },
       { source: "/api/webhooks/:path*", headers: privateRouteHeaders },
+      // Concept Works are fictional shops: keep every file under /works out
+      // of search results (their pages also carry a robots meta tag).
+      { source: "/works/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      // Content-hashed build files of the Concept Works.
+      ...staticWorks.map(({ slug }) => ({
+        source: `/works/${slug}/_next/static/:path*`,
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      })),
     ];
+  },
+  async rewrites() {
+    return staticWorks.flatMap(({ slug, pages }) => [
+      { source: `/works/${slug}`, destination: `/works/${slug}/index.html` },
+      // Next 15's router fetches the home page's RSC payload as `<basePath>.txt`
+      // (without a basePath that is /index.txt, which the export writes).
+      { source: `/works/${slug}.txt`, destination: `/works/${slug}/index.txt` },
+      { source: `/works/${slug}/:page(${pages.join("|")})`, destination: `/works/${slug}/:page.html` },
+    ]);
   },
 };
 

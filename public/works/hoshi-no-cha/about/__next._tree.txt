@@ -1,0 +1,3 @@
+:HL["/works/hoshi-no-cha/_next/static/chunks/1qo9-822ghq2c.css","style"]
+:HL["https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500&family=Noto+Sans+JP:wght@300;400&family=Cormorant+Garamond:wght@300;400&display=swap","style"]
+0:{"tree":{"name":"","param":null,"prefetchHints":4112,"slots":{"children":{"name":"about","param":null,"prefetchHints":4160,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}},"staleTime":300,"buildId":"hYQz7r1IU30rSXNUHwMou"}

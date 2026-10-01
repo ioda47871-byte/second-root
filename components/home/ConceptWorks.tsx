@@ -14,7 +14,7 @@ const WORKS = [
     image: "/concept-work/hoshi-no-cha.jpg",
     w: 1560,
     h: 860,
-    url: "https://hoshi-no-cha-stand.vercel.app",
+    url: "/works/hoshi-no-cha",
   },
   {
     slug: "yasashii-beauty-salon",
@@ -26,7 +26,7 @@ const WORKS = [
     image: "/concept-work/yasashii-beauty-salon.webp",
     w: 1600,
     h: 1000,
-    url: "https://yasashii-beauty-salon.vercel.app",
+    url: "/works/yasashii-beauty-salon",
   },
   {
     slug: "midori-seitai",
@@ -38,7 +38,7 @@ const WORKS = [
     image: "/concept-work/midori-seitai.webp",
     w: 1500,
     h: 1000,
-    url: "https://midori-seitai.vercel.app",
+    url: "/works/midori-seitai",
   },
 ];
 
