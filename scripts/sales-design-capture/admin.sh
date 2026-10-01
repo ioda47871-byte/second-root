@@ -30,12 +30,28 @@ REPO_URL="https://github.com/ioda47871-byte/second-root.git"
 SPOOL=/srv/sr-capture
 CONF="$HOME_DIR/.config/sr-capture"
 
-# A system node >= 20 the helper user can run (an nvm node in another user's home is not readable).
+# Every directory from / down to the file, and the file, owned by root and
+# writable by nobody else (a node the requester could rewrite would run as
+# the helper, with the profile).
+root_owned() {
+  local p
+  p="$(readlink -f "$1")" || return 1
+  while :; do
+    [ "$(stat -c %u "$p")" = 0 ] || return 1
+    [ $(( 0$(stat -c %a "$p") & 022 )) -eq 0 ] || return 1
+    [ "$p" = / ] && return 0
+    p="$(dirname "$p")"
+  done
+}
+
+# A system node >= 20 the helper user can run (an nvm node in another user's home is not readable),
+# resolved to its real directory and owned by root all the way up.
 find_node() {
   for d in /usr/local/bin /usr/bin /opt/node/bin; do
-    if [ -x "$d/node" ] && [ -x "$d/npm" ]; then
-      major="$("$d/node" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
-      if [ "$major" -ge 20 ]; then echo "$d"; return 0; fi
+    if [ -x "$d/node" ] && [ -x "$d/npm" ] && root_owned "$d/node" && root_owned "$d/npm"; then
+      real="$(dirname "$(readlink -f "$d/node")")"
+      major="$("$real/node" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+      if [ "$major" -ge 20 ] && [ -x "$real/npm" ] && root_owned "$real/npm"; then echo "$real"; return 0; fi
     fi
   done
   return 1
@@ -97,6 +113,9 @@ case "$CMD" in
     # The helper reads requests through the spool group too (requests are 0640 requester:sr-capture).
     usermod -aG "$GROUP" "$REQUESTER"
     usermod -aG "$GROUP" "$HELPER"
+    # Nothing of the requester may start on its own later (e.g. during a login): no cron, no at, no lingering user services.
+    for f in /etc/cron.deny /etc/at.deny; do grep -qx "$REQUESTER" "$f" 2>/dev/null || echo "$REQUESTER" >> "$f"; done
+    loginctl disable-linger "$REQUESTER" >/dev/null 2>&1 || true
     install -d -o root -g root -m 0755 "$SPOOL"
     install -d -o "$HELPER" -g "$GROUP" -m 3730 "$SPOOL/requests"
     install -d -o "$HELPER" -g "$GROUP" -m 2750 "$SPOOL/results"
@@ -109,15 +128,33 @@ case "$CMD" in
     ;;
   login)
     REQUESTER="${2:-sr-designgen}"
+    if id -nG "$REQUESTER" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+      echo "REQUESTER_IN_DOCKER_GROUP: $REQUESTER could reach the display through a container. Remove it from the docker group first."
+      exit 3
+    fi
     if pgrep -u "$REQUESTER" >/dev/null 2>&1; then
       echo "REQUESTER_RUNNING: stop every process of $REQUESTER first (Claude, the worker): they share the display."
       echo "  sudo pkill -u $REQUESTER   # then run this again"
       exit 3
     fi
     NODE_DIR="$(cat "$CONF/node-dir" 2>/dev/null || true)"
-    [ -x "$NODE_DIR/node" ] || { echo "HELPER_NOT_INSTALLED"; exit 2; }
+    [ -x "$NODE_DIR/node" ] && root_owned "$NODE_DIR/node" || { echo "HELPER_NOT_INSTALLED"; exit 2; }
+    # The helper does not capture while a person signs in.
+    systemctl stop sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
     sudo -u "$HELPER" -H env -i HOME="$HOME_DIR" PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 DISPLAY="${DISPLAY:-:0}" \
-      bash -c 'cd ~/second-root && npm run -s sales:design-browser -- login'
+      bash -c 'cd ~/second-root && npm run -s sales:design-browser -- login' &
+    LOGIN_PID=$!
+    # Watch the whole time: if anything of the requester starts, the window goes away at once.
+    while kill -0 "$LOGIN_PID" 2>/dev/null; do
+      if pgrep -u "$REQUESTER" >/dev/null 2>&1; then
+        pkill -KILL -u "$HELPER" || true
+        echo "LOGIN_ABORTED: a process of $REQUESTER started during the sign-in"
+        break
+      fi
+      sleep 0.5
+    done
+    wait "$LOGIN_PID" 2>/dev/null || true
+    systemctl start sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
     ;;
   status)
     stat -c '%A %U:%G %n' "$HOME_DIR" "$SPOOL" "$SPOOL/requests" "$SPOOL/results"

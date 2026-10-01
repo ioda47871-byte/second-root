@@ -165,6 +165,8 @@ export async function startMockSite(): Promise<MockSite> {
               `<main><img width="600" height="400" src="${tile(3)}"><p>Fictional site for tests.</p></main>`,
           ),
         );
+      case "/site_ws/":
+        return send(200, page(`<h1>x</h1><script>try { new WebSocket("ws://localhost:${port}/ws-escape"); new WebSocket("ws://127.0.0.1:${port}/ws-local"); } catch (e) {}</script>`));
       case "/site_home/about/":
       case "/site_home/menu/":
         return send(200, page(`<h2>${req.url}</h2><img width="400" height="300" src="${tile(5)}">`));
@@ -242,6 +244,11 @@ export async function startMockSite(): Promise<MockSite> {
       default:
         return send(404, page("not found"));
     }
+  });
+  // WebSocket upgrades never reach the request handler: record them too
+  server.on("upgrade", (req, socket) => {
+    requests.push(`${req.headers.host ?? ""}${req.url ?? ""} [websocket]`);
+    socket.destroy();
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
   const address = server.address();

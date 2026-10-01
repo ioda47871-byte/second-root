@@ -41,7 +41,8 @@ const insideRepo = (p: string) => !relative(REPO, p).startsWith("..");
 const say = (line: string) => process.stdout.write(`${line}\n`);
 
 const profileDir = DEFAULT_PROFILE_DIR;
-const stateDir = join(expand(process.env.XDG_STATE_HOME ?? "~/.local/state"), "sr-design-worker");
+// The same state directory as the capture helper (sr-igcapture): one browser.lock for the profile.
+const stateDir = expand("~/.local/state/sr-capture");
 const capturesRoot = expand("~/.local/share/second-root-design/browser-captures");
 
 const launchPersistent: LaunchPersistent = (dir, options) =>
@@ -59,7 +60,7 @@ async function login(): Promise<number> {
   say("When the signed-in home appears, the window closes by itself (or close it to cancel).");
   const code = await runLogin({ profileDir, stateDir, env: currentProfileEnv(REPO), launchPersistent });
   // A person has signed in: the capture helper may try again (it waits after a wall).
-  if (code === "LOGIN_OK") await rm(join(expand("~/.local/state/sr-capture"), WALL_FILE), { force: true });
+  if (code === "LOGIN_OK") await rm(join(stateDir, WALL_FILE), { force: true });
   say(code);
   return code === "LOGIN_OK" ? 0 : code === "BROWSER_BUSY" ? 3 : 5;
 }

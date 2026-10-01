@@ -39,7 +39,7 @@ capture helper                                     ← 利用者 sr-igcapture（
 
 前提:
 - WSL で systemd が有効（`/etc/wsl.conf` に `[boot]` `systemd=true`）
-- **system 全体の Node 22**（`/usr/local/bin` か `/usr/bin`）。`sr-designgen` の nvm の node は `sr-igcapture` から読めないので使えない
+- **system 全体の Node 22**（`/usr/local/bin` か `/usr/bin`、実体まで root の所有で他人が書けないこと）。`sr-designgen` の nvm の node は `sr-igcapture` から読めないので使えない
   （例: NodeSource の手順 https://github.com/nodesource/distributions ）
 
 ```bash
@@ -50,6 +50,7 @@ sudo bash scripts/sales-design-capture/admin.sh install "$(git rev-parse origin/
 - 利用者 `sr-igcapture`（パスワードなし、ホーム 0700）と group `sr-capture` を作る
 - `sr-designgen` を `sr-capture` に入れる（`sr-igcapture` の group には入れない）
 - `/srv/sr-capture/{requests,results}` を正しい権限で作る
+- requester の cron / at と lingering の user service を止める（ログイン中に勝手に動かないように）
 - 承認の確認（commit の先頭 12 文字を打つ）の後、`sr-igcapture` のホームに repo を clone し、指定した commit を checkout、
   `npm ci --ignore-scripts`（依存の install script は動かさない）、Chromium を入れる。使う node の場所も記録する
 - systemd の `sr-capture.path` / `sr-capture.timer` を有効にする
@@ -123,6 +124,10 @@ journalctl -u sr-capture.service -n 50     # 符号だけが出る
 2. `sudo rm -rf /home/sr-igcapture/.local/share/sr-instagram-browser`
 
 ## 残るリスク（承知の上）
+
+- headed login の窓は共有の X display に出る。`admin.sh login` は requester の process が無いことを確かめ、ログイン中も見張り、
+  現れたら窓を即座に閉じる。install は requester の cron / at / lingering を止める。docker group の requester は断る。
+  それでも root で動くもの（例: requester が起動させた別の仕組み）は防げない。専用の display（Xephyr など）にはしていない
 
 - Instagram の利用規約は自動的な収集を制限している。1 件ずつ・少数・最小の操作にしてあるが、アカウント制限のリスクは無くならない（`design-browser-wsl.md`）
 - root を持つ人（sudo）は何でも読める。sudo を Claude に渡さない

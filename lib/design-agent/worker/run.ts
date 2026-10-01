@@ -392,12 +392,13 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         settleMs: options.captureSettleMs,
       });
       sources.website = result.status === "captured" ? { status: "captured", images: result.files.length } : { status: result.status === "retry" ? "failed" : "unavailable", reason: result.reason };
-      // A website that fails (bot protection, an error page) is not retried: the next source is tried.
+      // A website that fails is not retried while another source can still answer; with no
+      // Instagram source a passing failure (network, 5xx) tries the job again later.
       if (result.status === "captured") {
         refs = result.files;
         softened = result.softened;
         visualSource = "website";
-      }
+      } else if (result.status === "retry" && !source) retryReason = result.reason;
       log(`job ${jobId}: website ${result.status === "captured" ? `captured (${result.files.length})` : `${result.status} (${result.reason})`}`);
     }
     // The wait for the helper leaves the run enough time for Codex (brief + reviews).
@@ -456,7 +457,8 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         outcome: "PUBLIC_SOURCE_UNAVAILABLE",
         visual_source: null,
         sources,
-        instagram: { ...(instagramReport ?? { status: "unavailable" }), images: 0, temp_deleted: tempDeleted },
+        instagram: source ? { ...(instagramReport ?? { status: "unavailable" }), images: 0, temp_deleted: tempDeleted } : null,
+        references: { images: 0, temp_deleted: tempDeleted },
         codex: null,
       };
       return await complete(ctx, runDir, report);

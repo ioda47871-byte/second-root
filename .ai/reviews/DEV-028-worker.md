@@ -127,3 +127,41 @@ Review of 331006e (no Critical):
 Re-review of 2e910c3: no Critical/High/Medium. Nothing reached the off-site host in any case tried (sandboxed and cross-site frames, three levels of nesting, frames that navigate at once, popups from frames, top navigation from a sandboxed frame). Chromium holds a new frame target until our session also releases it.
 - L1 (fixed): a frame target now starts only after it has *answered* that its document requests are paused (before, the message being handed over was enough); if it refuses, it stays held. Dedicated workers, which load no document, are released at once (test added).
 - L2 (documented): preloading and subresources are outside the guard.
+
+## Phase 3 — Codex isolation, capture helper, visual sources (2026-10-01)
+
+Two independent reviews (security; architecture / reliability) of 8d28f10..bb58b7a, both re-reviewed on 22deca0, then the remaining Mediums fixed.
+
+Round 1, fixed in 22deca0:
+- Architecture C1: run.sh's .env check matched the tracked `.env.local.example`, so the helper never ran. C2: result dirs lost setgid, so the requester could not read results. A real-user round-trip test now covers C2 and fails on the old code.
+- Architecture H1–H4: WSL `resolv.conf` link inside the sandbox; a pinned system node for the helper; the helper wait capped by the run deadline; a new request id per attempt.
+- Architecture M1–M5: the helper loops until the spool is empty, with a 2-minute timer; wall backoff; 8 MB cap; website robustness; retry semantics.
+- Security H1: recursive `rm` in `requests/` let a symlink race delete the helper's files. Removal is now non-recursive (unlink / rmdir). Re-tested: 37,570 runs under a continuous swap race, 0 deletions.
+- Security M1: one odd entry stopped the helper. Each entry is now handled separately.
+- Security M2: approval now shows the whole-tree diff and needs the commit typed; `npm ci --ignore-scripts`.
+- Security M3: login refuses while requester processes run.
+- Security M4: SSRF host check on every request.
+- Security M5: `/run` hidden in the sandbox.
+- Lows: redaction, narrower binds, `O_NOFOLLOW` on `answer.json`, Instagram path allowlist.
+
+Round 2, fixed after 22deca0:
+- Security M1: WebSockets bypassed the host check. They are now blocked in website capture (test added).
+- Security M2: IPv4-mapped / NAT64 IPv6 passed as public. Now checked with `net.BlockList` per address family (tests added).
+- Security M3: login checked the requester only once. It now watches for the whole login and kills the window if a requester process appears. Install denies cron / at / linger for the requester; a requester in the docker group is refused.
+- Security M4: the node pin did not check ownership. node and npm must now be root-owned and not writable by others up to `/`.
+- Security L: answers containing any 12-character window of Codex's own auth tokens (split, separated or reversed) are rejected (test added). Shared-platform subdomains are not allowed.
+- Architecture M1: a website-only job now retries a transient failure, and `instagram` is null when there is no Instagram source (test added).
+- Architecture M2: login and helper now share one `browser.lock` state directory, and login pauses the helper units.
+
+Documented residuals:
+- network shared with Codex (Codex's inner sandbox blocks local sockets);
+- DNS rebinding window on website capture;
+- headed login on the shared X display (no private display);
+- cert files in the home are not passed to Codex;
+- npm-global Codex only;
+- a dedicated `CODEX_HOME` is recommended.
+
+Container end to end on real users:
+- `admin.sh install` created the users, groups and spool with the right modes, cloned the repo and ran `npm ci --ignore-scripts`. The Chromium download is blocked by this container's network policy.
+- `run.sh` answered a request from the requester user, and the requester read the result.
+- `admin.sh login` refused while a requester process ran.

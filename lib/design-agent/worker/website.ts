@@ -19,7 +19,7 @@
  */
 import { lookup } from "node:dns/promises";
 import { chmod, writeFile } from "node:fs/promises";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 import { join } from "node:path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import {
@@ -65,16 +65,21 @@ export function parseWebsiteUrl(raw: unknown): WebsiteSource | null {
   return { url: url.toString(), host };
 }
 
-/** The site's own host, its www. twin and its subdomains (m., shop. ...), over http or https. */
+/** Hosting platforms whose subdomains belong to other shops: there only the site's own host (and www.) is allowed. */
+const SHARED_PLATFORMS =
+  /(^|\.)(wixsite\.com|wix\.com|jimdofree\.com|jimdo\.com|jimdosite\.com|base\.shop|thebase\.in|stores\.jp|square\.site|studio\.site|peraichi\.com|wordpress\.com|blogspot\.com|ameblo\.jp|fc2\.com|github\.io|netlify\.app|vercel\.app|pages\.dev|webnode\.jp|goope\.jp|crayonsite\.com|weebly\.com|squarespace\.com|shopify\.com|myshopify\.com|hotpepper\.jp|tabelog\.com|note\.com|canva\.site)$/i;
+
+/** The site's own host, its www. twin and (not on a shared platform) its subdomains (m., shop. ...), over http or https. */
 export function websiteTarget(source: WebsiteSource): CaptureTarget {
   const bare = source.host.replace(/^www\./, "");
+  const subdomains = !SHARED_PLATFORMS.test(bare);
   return {
     url: source.url,
     allowNavigation(raw: string): boolean {
       try {
         const u = new URL(raw);
         const host = u.hostname.toLowerCase();
-        return (u.protocol === "https:" || u.protocol === "http:") && u.username === "" && u.password === "" && u.port === "" && (host === bare || host.endsWith(`.${bare}`));
+        return (u.protocol === "https:" || u.protocol === "http:") && u.username === "" && u.password === "" && u.port === "" && (host === bare || host === `www.${bare}` || (subdomains && host.endsWith(`.${bare}`)));
       } catch {
         return false;
       }
@@ -82,15 +87,23 @@ export function websiteTarget(source: WebsiteSource): CaptureTarget {
   };
 }
 
-/** Loopback, private, link-local (cloud metadata), CGNAT, multicast, unspecified: never a shop's public site. */
+/** Loopback, private, link-local (cloud metadata), CGNAT, multicast, unspecified, and their IPv6 / mapped / NAT64 forms. */
+// Two lists: Node matches an IPv4 address against IPv6 rules too (::ffff:0:0/96 would cover every IPv4 address).
+const PRIVATE_V4 = new BlockList();
+for (const [net, prefix] of [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12],
+  ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 3],
+] as const) PRIVATE_V4.addSubnet(net, prefix, "ipv4");
+const PRIVATE_V6 = new BlockList();
+for (const [net, prefix] of [
+  ["::", 96], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["100::", 64], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8],
+] as const) PRIVATE_V6.addSubnet(net, prefix, "ipv6");
+
 export function isPrivateAddress(address: string): boolean {
-  if (isIP(address) === 4) {
-    const [a, b] = address.split(".").map(Number) as [number, number];
-    return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-  }
-  const v6 = address.toLowerCase();
-  if (v6.startsWith("::ffff:")) return isPrivateAddress(v6.slice(7));
-  return v6 === "::" || v6 === "::1" || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || v6.startsWith("ff");
+  const family = isIP(address);
+  if (family === 4) return PRIVATE_V4.check(address, "ipv4");
+  if (family === 6) return PRIVATE_V6.check(address, "ipv6");
+  return true; // not an address at all: never treated as public
 }
 
 /**
@@ -187,6 +200,8 @@ export async function captureWebsite(options: WebsiteCaptureOptions): Promise<Ca
       return { page: await own.newPage(), close: () => own.close() };
     };
     const guard = await guardNavigation(context, options.target, state, { walls: false, hostCheck: options.hostCheck ?? publicHostCheck() });
+    // WebSockets never pass through request routing (so not through the host check): a shop page needs none for a screenshot.
+    await context.routeWebSocket(/.*/, (ws) => ws.close());
     const home = await open(guard, options.target, state);
     await home.waitForTimeout(settleMs);
     assertNavigation(state);

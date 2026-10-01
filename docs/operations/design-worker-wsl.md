@@ -88,6 +88,15 @@ Codex 自身の `--sandbox read-only` は、worker 利用者のファイルを**
 sudo apt install -y bubblewrap
 ```
 
+推奨（人の判断）: worker の Codex 専用に `CODEX_HOME` を分ける（`CODEX_HOME=~/.codex-design codex login --device-auth`、
+worker の環境に `CODEX_HOME=~/.codex-design`）。既定の `~/.codex` を対話の Codex と共有すると、sandbox の中の Codex から
+その履歴（`history.jsonl`・他の session log）が読める。
+
+残るリスク（承知の上）:
+- network は共有。Codex 自身の read-only sandbox が localhost / unix socket を止めることに頼っている
+- 社内 CA などの証明書ファイルがホームにあると、Codex には渡さない（TLS で失敗する）。ホームの外に置く
+- Codex の install は npm global を前提にしている（bun / pnpm の global は package の外に本体があり、動かない）
+
 | 符号 | 意味 |
 |---|---|
 | `CODEX_SANDBOX_UNAVAILABLE` | bubblewrap が無い、または起動できない。`sudo apt install bubblewrap` |
@@ -101,7 +110,10 @@ sudo apt install -y bubblewrap
 - http(s)、credentials・port・IP・localhost・SNS・link-in-bio のホストは断る
 - すべての request（ページ・frame・画像・script）の host を名前解決し、loopback・private・link-local（cloud の metadata）
   などに向くものは送らない。店のサイトが WSL の中や LAN の service を読ませることはできない
-- 移動は、その店のドメインとその subdomain（www.・m.・shop. など）の中だけ
+- 移動は、その店のドメインとその subdomain（www.・m.・shop. など）の中だけ。wixsite.com などの共有サービスでは、その店の host
+  （と www.）だけ。別のドメインへの redirect（example.com → example.jp）は「外への移動」として使わない
+- WebSocket は開かせない（request の検査を通らないため）
+- 残るリスク: 名前解決の検査と Chromium 自身の名前解決は別に行う（DNS rebinding の短い窓が残る）
 - 毎回新しい非永続 context（Instagram の profile は使わない）。Instagram と同じ navigation guard で、
   その店のホスト（と www 付き / 無し）から出る移動は送る前に止める
 - ホームと、about / concept / menu / products / access らしいリンク先を最大 2 ページ、URL で開く（クリックしない）

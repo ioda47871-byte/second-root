@@ -46,7 +46,8 @@ export type CodexFailureCode =
   | "CODEX_SANDBOX_UNAVAILABLE"
   | "CODEX_SANDBOX_LEAK"
   | "CODEX_SANDBOX_CONFIG"
-  | "CODEX_INPUT_REJECTED";
+  | "CODEX_INPUT_REJECTED"
+  | "CODEX_ANSWER_REJECTED";
 
 export class CodexError extends Error {
   readonly code: CodexFailureCode;
@@ -265,6 +266,39 @@ export function redactSecrets(value: unknown): unknown {
   return value;
 }
 
+/** The long secret strings of Codex's sign-in (auth.json), letters and digits only. Read on the host, never sent anywhere. */
+async function signInTokens(codexHome: string): Promise<string[]> {
+  const text = await readAnswerFile(join(codexHome, "auth.json")).catch(() => undefined);
+  if (!text) return [];
+  const out: string[] = [];
+  const walk = (v: unknown): void => {
+    if (typeof v === "string") {
+      const t = v.replace(/[^A-Za-z0-9]/g, "");
+      if (t.length >= 20) out.push(t);
+    } else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  };
+  try {
+    walk(JSON.parse(text));
+  } catch {
+    /* not JSON: nothing to compare */
+  }
+  return out;
+}
+
+const WINDOW = 12;
+/** Whether the answer holds any 12-character piece of a token (ignoring separators), forwards or reversed. */
+export function leaksTokens(answer: string, tokens: readonly string[]): boolean {
+  const flat = answer.replace(/[^A-Za-z0-9]/g, "");
+  const reversed = [...flat].reverse().join("");
+  for (const token of tokens) {
+    for (let i = 0; i + WINDOW <= token.length; i += 4) {
+      const piece = token.slice(i, i + WINDOW);
+      if (flat.includes(piece) || reversed.includes(piece)) return true;
+    }
+  }
+  return false;
+}
+
 export interface CodexJsonOptions {
   /** The OS sandbox every Codex process runs in (prepareCodexSandbox). */
   sandbox: CodexSandbox;
@@ -326,6 +360,10 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
     if (result.code !== 0) throw new CodexError("CODEX_EXEC_FAILED", `Codex failed (exit ${String(result.code)}).`);
     const answer = (await readAnswerFile(answerPath)) ?? readCodexEvents(result.stdout).lastMessage;
     if (answer === undefined || answer.trim() === "") throw new CodexError("CODEX_NO_JSON", "Codex returned no answer.");
+    // An answer that carries any piece of Codex's own sign-in tokens (forwards or backwards, split or not) is thrown away.
+    if (leaksTokens(answer, await signInTokens(sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? homedir(), ".codex")))) {
+      throw new CodexError("CODEX_ANSWER_REJECTED", "Codex's answer was rejected.");
+    }
     return redactSecrets(extractJsonObject(answer));
   } finally {
     await rm(cwd, { recursive: true, force: true });

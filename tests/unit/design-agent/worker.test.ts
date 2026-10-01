@@ -651,18 +651,19 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     const before = site.requests.length;
     const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/site_leaves/"), websiteHostCheck: async () => true });
     expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "PUBLIC_SOURCE_UNAVAILABLE" }] });
-    expect(json(join(l.out, "job-leaves", "report.json"))).toMatchObject({ visual_source: null, sources: { website: { status: "unavailable", reason: "OFF_SITE_REDIRECT" } }, codex: null });
+    expect(json(join(l.out, "job-leaves", "report.json"))).toMatchObject({ visual_source: null, sources: { website: { status: "unavailable", reason: "OFF_SITE_REDIRECT" } }, instagram: null, codex: null });
     expect(site.requests.slice(before).some((r) => r.startsWith("localhost:"))).toBe(false);
     expect(execCalls(l)).toEqual([]);
   });
 
   it("never lets a shop's site reach local or internal addresses (SSRF), whatever its name", async () => {
     const { publicHostCheck, isPrivateAddress } = await import("@/lib/design-agent/worker/website");
-    for (const ip of ["127.0.0.1", "10.1.2.3", "172.20.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1"]) expect(isPrivateAddress(ip), ip).toBe(true);
+    for (const ip of ["127.0.0.1", "10.1.2.3", "172.20.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:7f00:1", "64:ff9b::7f00:1", "::7f00:1", "not-an-ip"]) expect(isPrivateAddress(ip), ip).toBe(true);
     for (const ip of ["8.8.8.8", "203.0.113.5", "2001:db8::1"]) expect(isPrivateAddress(ip), ip).toBe(false);
     const check = publicHostCheck();
     expect(await check("http://127.0.0.1/")).toBe(false);
     expect(await check("http://[::1]/")).toBe(false);
+    expect(await check("http://[::ffff:127.0.0.1]:8766/x")).toBe(false);
     expect(await check("http://localhost/")).toBe(false);
     expect(await check("data:image/png;base64,xx")).toBe(true);
     // the real default: the production capture refuses the local mock outright
@@ -672,6 +673,32 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/site_home/") });
     expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "PUBLIC_SOURCE_UNAVAILABLE" }] });
     expect(site.requests.length).toBe(before); // not one request reached the local service
+  });
+
+  it("a website-only job is tried again after a passing failure (5xx), not closed as unavailable", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-503", null, undefined, "inbox", WEBSITE);
+    const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/error_shop/"), websiteHostCheck: async () => true });
+    expect(report).toMatchObject({ status: "finished", jobs: [{ jobId: "job-503", status: "retry", code: "SOURCE_CAPTURE_FAILED" }] });
+    expect(ls(join(l.queue, "inbox"))).toEqual(["job-503.json"]);
+  });
+
+  it("a shop page cannot open WebSockets (they bypass request routing and the host check)", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-ws", null, undefined, "inbox", WEBSITE);
+    const before = site.requests.length;
+    await runWorker(l, site, { websiteTargetFor: siteTarget("/site_ws/"), websiteHostCheck: async () => true });
+    expect(site.requests.slice(before).filter((r) => r.includes("[websocket]"))).toEqual([]);
+    expect(site.requests.slice(before).some((r) => r.includes("/site_ws/"))).toBe(true);
+  });
+
+  it("on a shared hosting platform, other tenants' subdomains are not the shop's site", async () => {
+    const { websiteTarget } = await import("@/lib/design-agent/worker/website");
+    const own = websiteTarget({ url: "https://www.example-bakery.jp/", host: "www.example-bakery.jp" });
+    expect(own.allowNavigation("https://shop.example-bakery.jp/x")).toBe(true);
+    const tenant = websiteTarget({ url: "https://example-bakery.wixsite.com/home", host: "example-bakery.wixsite.com" });
+    expect(tenant.allowNavigation("https://example-bakery.wixsite.com/menu")).toBe(true);
+    expect(tenant.allowNavigation("https://other-shop.wixsite.com/")).toBe(false);
   });
 
   it("refuses website URLs that are not a shop's own site", async () => {

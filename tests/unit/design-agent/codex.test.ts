@@ -95,3 +95,24 @@ describe("runCodexJson", () => {
     expect(await readdir(exec!.cwd).catch(() => "gone")).toBe("gone");
   }, 20_000);
 });
+
+describe("Codex's own sign-in token never comes back in an answer", () => {
+  const TOKEN = "eyJhbGciOiJSUzI1NiJ9.QWxhZGRpbjpvcGVuIHNlc2FtZQ9xK3mZpQ7vR2sT8uW1yB4cD6eF0gH";
+  it("rejects answers that carry a piece of it (plain, split, with separators, reversed); keeps normal answers", async () => {
+    const home = await mkdtemp(join(tmpdir(), "codex-home-"));
+    await writeFile(join(home, "auth.json"), JSON.stringify({ tokens: { access_token: TOKEN, refresh_token: "rt_9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c" } }));
+    const flat = TOKEN.replace(/[^A-Za-z0-9]/g, "");
+    const leaks = [
+      { rationale: [TOKEN] },
+      { rationale: [flat.slice(10, 40), flat.slice(40, 70)] },
+      { rationale: [flat.slice(20, 50).split("").join("-")] },
+      { rationale: [[...flat.slice(30, 60)].reverse().join("")] },
+    ];
+    for (const answer of leaks) {
+      const env = { ...(await setup([{ answer }])), CODEX_HOME: home };
+      expect(await codeOf(runCodexJson({ prompt: "p", schema: {}, sandbox: passthroughSandbox(FAKE, env) })), JSON.stringify(answer)).toBe("CODEX_ANSWER_REJECTED");
+    }
+    const env = { ...(await setup([{ answer: AMERICAN_EDITORIAL }])), CODEX_HOME: home };
+    expect(await runCodexJson({ prompt: "p", schema: {}, sandbox: passthroughSandbox(FAKE, env) })).toEqual(AMERICAN_EDITORIAL);
+  });
+});
