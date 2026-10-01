@@ -182,7 +182,13 @@ async function run(): Promise<number> {
   if (exportDir && insideRepo(exportDir)) usage("SR_DESIGN_EXPORT_DIR must be outside the repository.");
   await mkdir(paths.state, { recursive: true, mode: 0o700 });
   const launch = (env: NodeJS.ProcessEnv, args: readonly string[] = []) =>
-    chromium.launch({ headless: true, env, args: [...args], ...(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
+    chromium.launch({
+      headless: true,
+      env,
+      args: [...args],
+      // the website capture's flags (WEBSITE_BROWSER_ARGS) need the full Chromium; the headless shell ignores the WebRTC one
+      ...(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : args.length > 0 ? { channel: "chromium" } : {}),
+    });
   say(`design worker ${checkout.slice(0, 12)} (max ${max}, budget ${Math.round(runBudgetMs / 60000)} min)`);
   const report = await runDesignWorker({
     stateDir: paths.state,

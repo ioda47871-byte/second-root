@@ -718,6 +718,23 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     }
   });
 
+  it("a browser that does not honour the WebRTC flag is caught before any shop page opens", async () => {
+    const { chromium } = await import("playwright");
+    const l = makeLayout();
+    writeJob(l, "job-rtc", null, undefined, "inbox", WEBSITE);
+    const before = site.requests.length;
+    const { report } = await runWorker(l, site, {
+      websiteTargetFor: siteTarget("/site_home/"),
+      websiteEgress: mockEgress,
+      // a launcher that drops the flags, as a build that ignores them would
+      launchBrowser: (env) =>
+        chromium.launch({ headless: true, env, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }),
+    });
+    expect(report).toMatchObject({ status: "finished", jobs: [{ jobId: "job-rtc", status: "retry", code: "SOURCE_CAPTURE_FAILED" }] });
+    expect(site.requests.length).toBe(before); // the shop's site was never opened
+    expect(execCalls(l)).toEqual([]);
+  });
+
   it("the egress proxy refuses private addresses, other ports and odd names; it connects to the address it checked", async () => {
     const { publicWebsiteEgress } = await import("@/lib/design-agent/worker/website");
     const egress = publicWebsiteEgress();

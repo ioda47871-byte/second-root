@@ -17,6 +17,7 @@
  *   are art-direction references for Codex only: no image, logo or text of
  *   the site is ever copied into the demo (the demo shows verified facts).
  */
+import { createSocket } from "node:dgram";
 import { chmod, writeFile } from "node:fs/promises";
 import { BlockList, isIP } from "node:net";
 import { join } from "node:path";
@@ -132,12 +133,52 @@ export function egressHostCheck(egress: EgressPolicy): (url: string) => Promise<
 /** The production host check (public addresses, ports 80 / 443). */
 export const publicHostCheck = () => egressHostCheck(publicWebsiteEgress());
 
+/**
+ * WebRTC cannot use the proxy: the browser must have it limited to proxied
+ * traffic (WEBSITE_BROWSER_ARGS), and not every Chromium build honours that
+ * flag (Playwright's headless shell does not). Before any shop page is
+ * opened, a page of our own tries STUN to a UDP socket of ours on 127.0.0.1:
+ * one packet and the capture does not happen.
+ */
+async function webrtcSealed(browser: Browser, proxy: { server: string; bypass: string }): Promise<boolean> {
+  const udp = createSocket("udp4");
+  let packets = 0;
+  udp.on("message", () => {
+    packets += 1;
+  });
+  const context = await browser.newContext({ proxy, serviceWorkers: "block" });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      udp.once("error", reject);
+      udp.bind(0, "127.0.0.1", () => resolve());
+    });
+    const page = await context.newPage();
+    await page.setContent("<p>check</p>");
+    await page.evaluate(async (port) => {
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: `stun:127.0.0.1:${port}` }] });
+      pc.createDataChannel("x");
+      await pc.setLocalDescription(await pc.createOffer());
+      await new Promise((r) => setTimeout(r, 1500));
+      pc.close();
+    }, udp.address().port);
+    return packets === 0;
+  } catch {
+    return false;
+  } finally {
+    await context.close().catch(() => undefined);
+    udp.close();
+  }
+}
+
 export interface WebsiteCaptureOptions {
   target: CaptureTarget;
   /** Production: publicWebsiteEgress(). Tests only: a policy that allows the local mock. */
   egress?: EgressPolicy;
   outDir: string;
-  /** Must start Chromium with WEBSITE_BROWSER_ARGS (no WebRTC UDP, no QUIC: they cannot use the proxy). */
+  /**
+   * Must start Chromium with WEBSITE_BROWSER_ARGS (no WebRTC UDP, no QUIC: they cannot use the proxy),
+   * from a build that honours them (the full Chromium, channel "chromium"; checked before every capture).
+   */
   launch: (args: readonly string[]) => Promise<Browser>;
   settleMs?: number;
 }
@@ -194,6 +235,7 @@ export async function captureWebsite(options: WebsiteCaptureOptions): Promise<Ca
     egressProxy = await startEgressProxy(egress);
     const proxy = egressProxy.proxy;
     browser = await options.launch(WEBSITE_BROWSER_ARGS);
+    if (!(await webrtcSealed(browser, proxy))) return { status: "retry", reason: "BROWSER_WEBRTC_OPEN" };
     const b = browser;
     const context: BrowserContext = await browser.newContext({ ...CONTEXT_OPTIONS, proxy });
     const scratch: ScratchPage = async () => {

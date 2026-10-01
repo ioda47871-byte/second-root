@@ -405,7 +405,12 @@ export async function runWorker(l: Layout, site: MockSite, over: Partial<WorkerO
     prepareSandbox: async (env) => passthroughSandbox(codexBin, env),
     log: (line) => logs.push(line),
     launchBrowser: (env, args = []) =>
-      chromium.launch({ headless: true, env, args: [...args], ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }),
+      chromium.launch({
+        headless: true,
+        env,
+        args: [...args],
+        ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : args.length > 0 ? { channel: "chromium" } : {}),
+      }),
     startPreview: fakePreview(l, preview, { failRender: over.failRender }),
     captureTargetFor: (source) => site.target(source.username),
     captureSettleMs: 300,
