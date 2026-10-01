@@ -99,6 +99,9 @@ const SCRIPT_ASSET = /\.(?:avif|bmp|css|eot|gif|ico|jpe?g|m4a|mp3|mp4|otf|pdf|pn
 // JSON keys whose root-relative values are fetched or navigated to as-is.
 const RESOURCE_KEYS = new Set(["src", "srcset", "href", "poster", "action", "formaction", "content", "url", "image", "icon", "data", "background"]);
 
+// Attributes whose value is a URL the browser resolves (srcset/style handled separately).
+const URL_ATTRS = new Set(["src", "href", "xlink:href", "poster", "action", "formaction", "data", "background", "cite", "longdesc", "manifest", "icon", "ping", "codebase", "archive", "usemap", "lowsrc", "dynsrc"]);
+
 const rootRelative = (value) => value.startsWith("/") && !value.startsWith("//");
 const pathOf = (value) => value.split(/[?#]/)[0];
 
@@ -129,6 +132,8 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
     if (!MARKUP.has(ext) && !STYLE.has(ext) && !DATA.has(ext) && !SCRIPT.has(ext)) continue;
     const text = readFileSync(join(dir, f.rel), "utf8");
     const report = (kind, value) => problems.push(`${f.rel}: ${kind} ${value}`);
+    // The URL this file is served at, for resolving relative URLs as a browser does.
+    const fileUrl = `${origin}/${f.rel.split(sep).join("/")}`;
 
     // Markup and CSS: every root-relative URL must carry the basePath.
     // Browsers ignore surrounding whitespace in URL values.
@@ -138,12 +143,26 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
       // A protocol-relative URL to Second Root itself is a root-relative one in disguise.
       if (value.startsWith("//") && sameSite(value) && !underBase(new URL(`https:${value}`).pathname)) report(kind, value);
     };
+    // URL-valued attributes and CSS: also resolve the value with the WHATWG
+    // URL parser (as the browser will: "\" as "/", tabs and newlines dropped,
+    // "." / ".." applied) and require anything on Second Root to stay under
+    // the basePath.
+    const resolved = (kind, raw) => {
+      strict(kind, raw);
+      let url;
+      try {
+        url = new URL(raw.trim(), fileUrl);
+      } catch {
+        return;
+      }
+      if (url.origin === SITE_ORIGIN && !underBase(url.pathname)) report(kind, raw.trim());
+    };
     const checkSrcset = (kind, value) => {
-      for (const candidate of value.split(",")) strict(kind, candidate.trim().split(/\s+/)[0] ?? "");
+      for (const candidate of value.split(",")) resolved(kind, candidate.trim().split(/\s+/)[0] ?? "");
     };
     const checkCss = (css) => {
-      for (const m of css.matchAll(/url\(\s*(["']?)([^"')]*)\1\s*\)/gi)) strict("css url()", m[2].trim());
-      for (const m of css.matchAll(/@import\s+(["'])([^"']*)\1/gi)) strict("css @import", m[2]);
+      for (const m of css.matchAll(/url\(\s*(["']?)([^"')]*)\1\s*\)/gi)) resolved("css url()", m[2].trim());
+      for (const m of css.matchAll(/@import\s+(["'])([^"']*)\1/gi)) resolved("css @import", m[2]);
     };
     // RSC payloads, JSON and scripts: root-relative values must carry the
     // basePath or name a route of this export; asset files and values of
@@ -191,27 +210,34 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
       // Tag bodies as a browser splits them: attributes need no whitespace
       // between them (`alt="x"src=…`, `<img/src=…>`), and unquoted values may
       // contain "=".
-      for (const m of markup.matchAll(/<[a-zA-Z][^\s/>]*((?:"[^"]*"|'[^']*'|[^'">])*)>/g)) {
-        for (const a of m[1].matchAll(/([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+)))?/g)) {
+      const absolute = [];
+      for (const m of markup.matchAll(/<([a-zA-Z][^\s/>]*)((?:"[^"]*"|'[^']*'|[^'">])*)>/g)) {
+        const tag = m[1].toLowerCase();
+        const attrs = new Map();
+        for (const a of m[2].matchAll(/([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+)))?/g)) {
           const name = a[1].toLowerCase();
           const value = decodeEntities(a[2] ?? a[3] ?? a[4] ?? "");
+          if (!attrs.has(name)) attrs.set(name, value);
           if (name === "srcset" || name === "imagesrcset") checkSrcset(`${name}=`, value);
           else if (name === "style") checkCss(value);
+          else if (URL_ATTRS.has(name)) resolved(`${name}=`, value);
           else strict(`${name}=`, value);
-          // <meta http-equiv="refresh" content="0;url=/…">
-          const refresh = name === "content" && value.match(/^\s*\d*(?:\.\d*)?\s*[;,]\s*url\s*=\s*['"]?([^'"]+)/i);
-          if (refresh) strict("refresh url", refresh[1]);
         }
+        // <meta http-equiv="refresh" content="0;url=/…"> ("url=" is optional).
+        if (tag === "meta" && attrs.get("http-equiv")?.trim().toLowerCase() === "refresh") {
+          const target = (attrs.get("content") ?? "").match(/^\s*[\d.]*(?:\s*[;,]\s*|\s+)(?:url\s*=\s*)?(['"]?)(.+?)\1\s*$/i);
+          if (target) resolved("refresh url", target[2]);
+        }
+        // Canonical and og/twitter URLs, read from the parsed attributes.
+        const rel = (attrs.get("rel") ?? "").toLowerCase().split(/\s+/);
+        if (tag === "link" && rel.includes("canonical")) absolute.push(["canonical", attrs.get("href")]);
+        const prop = (attrs.get("property") ?? attrs.get("name") ?? "").trim().toLowerCase();
+        if (tag === "meta" && ["og:url", "og:image", "twitter:image"].includes(prop)) absolute.push([prop, attrs.get("content")]);
       }
       // Canonical and og:url, when absolute, must name this Concept Work.
-      const absolute = [
-        ...[...text.matchAll(/<link\b[^>]*[\s"']rel=["']?canonical["']?[^>]*>/gi)].map((t) => ["canonical", attr(t[0], "href")]),
-        ...[...text.matchAll(/<meta\b[^>]*[\s"']property=["']?(og:url|og:image|twitter:image)["']?[^>]*>/gi)].map((t) => [t[1], attr(t[0], "content")]),
-        ...[...text.matchAll(/<meta\b[^>]*[\s"']name=["']?(twitter:image)["']?[^>]*>/gi)].map((t) => [t[1], attr(t[0], "content")]),
-      ];
       for (const [kind, value] of absolute) {
         if (!value) continue;
-        let v = decodeEntities(value).trim();
+        let v = value.trim();
         if (v.startsWith("//")) v = `https:${v}`;
         if (!/^https?:/i.test(v)) continue;
         const ok = (v === origin || (/^[/?#]/.test(v.slice(origin.length)) && v.startsWith(origin))) && underBase(new URL(v).pathname);
@@ -230,15 +256,9 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
   return [...new Set(problems)];
 }
 
-// The value of attribute `name` in a tag (not `data-name`).
-function attr(tag, name) {
-  const m = tag.match(new RegExp(`[\\s"'/]${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i"));
-  return m ? (m[1] ?? m[2] ?? m[3]) : undefined;
-}
-
 function sameSite(protocolRelative) {
   try {
-    return new URL(`https:${protocolRelative}`).hostname.toLowerCase() === new URL(SITE_ORIGIN).hostname;
+    return new URL(`https:${protocolRelative}`).hostname.toLowerCase().replace(/\.$/, "") === new URL(SITE_ORIGIN).hostname;
   } catch {
     return false;
   }
@@ -251,7 +271,9 @@ function unescape(s) {
 // Decodes character references once, as a browser does for attribute values.
 const NAMED = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", sol: "/", period: ".", colon: ":", num: "#", quest: "?" };
 function decodeEntities(s) {
-  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, ref) => {
+  // Numeric references decode even without ";" (as browsers do); named ones need it.
+  return s.replace(/&(#x[0-9a-f]+;?|#\d+;?|[a-z]+;)/gi, (whole, raw) => {
+    const ref = raw.replace(/;$/, "");
     if (ref[0] !== "#") return NAMED[ref.toLowerCase()] ?? whole;
     const code = ref[1] === "x" || ref[1] === "X" ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
     return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;

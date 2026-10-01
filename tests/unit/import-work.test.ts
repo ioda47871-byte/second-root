@@ -170,6 +170,15 @@ describe("import-work: URLs outside the basePath are rejected", () => {
     ["an encoded dot-segment escape", "x.html", `<img src="/works/demo/%2e%2e/admin">`],
     ["a protocol-relative URL to Second Root", "x.html", `<img src="//secondroot.jp/images/leak.png">`],
     ["a meta refresh to a root-relative URL", "x.html", `<meta http-equiv="refresh" content="0;url=/admin">`],
+    ["a meta refresh without url=", "x.html", `<meta http-equiv="refresh" content="0;/admin">`],
+    ["a meta refresh separated by a space", "x.html", `<meta http-equiv="refresh" content="0 /admin">`],
+    ["a backslash dot-segment escape", "x.html", `<img src="/works/demo/..\\..\\images/leak.png">`],
+    ["a dot-segment split by a tab reference", "x.html", `<img src="/works/demo/.&#9;./.&#9;./images/leak.png">`],
+    ["a numeric reference without a semicolon", "x.html", `<img src="&#47images/leak.png">`],
+    ["a hex reference without a semicolon", "x.html", `<img src="&#x2Fimages/leak.png">`],
+    ["a relative URL climbing out of the basePath", "x.html", `<img src="../../images/leak.png">`],
+    ["a relative CSS url() climbing out of the basePath", "_next/static/b.css", `.x{background:url(../../../../images/bg.png)}`],
+    ["a protocol-relative URL with a trailing-dot host", "x.html", `<img src="//secondroot.jp./images/leak.png">`],
   ];
 
   for (const [label, rel, content] of cases) {
@@ -201,6 +210,28 @@ describe("import-work: URLs outside the basePath are rejected", () => {
       expect(r.status, href).toBe(1);
       expect(r.out, href).toContain("x.html: canonical");
     }
+  });
+
+  it("reads canonical and og values from the parsed attributes", () => {
+    for (const tag of [
+      `<link data-x=' href="https://secondroot.jp/works/demo"' rel="canonical" href="https://evil.example/">`,
+      `<link rel="alternate canonical" href="https://evil.example/">`,
+      `<meta property = "og:url" content="https://evil.example/">`,
+      `<meta/property="og:url"/content="https://evil.example/">`,
+    ]) {
+      const out = makeExport("demo", `parsed-${tag.length}`);
+      write(out, "x.html", tag);
+      const r = run(["--slug", "demo", "--source", out]);
+      expect(r.status, tag).toBe(1);
+      expect(r.out, tag).toContain("https://evil.example/");
+    }
+  });
+
+  it("only treats content as a refresh URL on a refresh meta", () => {
+    const out = makeExport();
+    write(out, "x.html", `<meta name="description" content="5, url=/x">`);
+    const r = run(["--slug", "demo", "--source", out]);
+    expect(r.status, r.out).toBe(0);
   });
 
   it("does not read data-href as the canonical", () => {

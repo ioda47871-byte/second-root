@@ -64,6 +64,9 @@ Second Root には React component として混ぜず、各リポジトリで **
        basePath の後ろの `.` / `..` セグメント（`%2e` を含む）は basePath の外とみなす。
        `//secondroot.jp/...`（プロトコル相対）も同じ規則で検査し、`<meta http-equiv="refresh">` の URL も対象。
        属性の間に空白がない記法（`alt="x"src=…`・`<img/src=…>`）も、ブラウザと同じように属性として読む。
+       URL を取る属性・srcset・CSS `url()` は WHATWG URL パーサ（ブラウザと同じ規則: `\` を `/` とみなす、
+       タブ・改行を除く、`.` / `..` を解決）でも解決し、secondroot.jp 上なら basePath 配下であることを確認する。
+       refresh の URL は `http-equiv="refresh"` の meta だけで（`url=` は省略可）、canonical / og も同じ属性解析から読む。
      - 絶対 URL の canonical / og:url / og:image / twitter:image は
        `https://secondroot.jp/works/<slug>` の直後が終端・`/`・`?`・`#` のいずれかであること
        （`/works/<slug>evil` などの前方一致は拒否。`//` で始まる値は https として扱う）。
