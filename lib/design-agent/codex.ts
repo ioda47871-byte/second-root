@@ -6,7 +6,12 @@
  * - **No API key.** Only a Codex CLI signed in with a ChatGPT account.
  *   `codex login status` is checked first; an API-key sign-in is refused.
  *   `OPENAI_API_KEY` / `CODEX_API_KEY` / `OPENAI_BASE_URL` never reach the child.
- * - Codex runs with `--sandbox read-only` in an empty temporary directory
+ * - Codex never runs directly: every process (the sign-in check too) runs
+ *   inside the OS sandbox of sandbox.ts (bubblewrap: the user's files, the
+ *   Instagram browser profile and the results are not visible at all; a probe
+ *   checks that before each call, fail closed). Reference images reach it only
+ *   as copies in <work dir>/inputs.
+ * - Inside, Codex runs with `--sandbox read-only` in an empty temporary directory
  *   that is deleted afterwards. It is asked for a JSON answer only; the answer
  *   shape is fixed with `--output-schema` and checked again with zod by the
  *   caller.
@@ -24,7 +29,8 @@
 import { lstat, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { runBounded, type BoundedResult } from "./bounded-process";
+import type { BoundedResult } from "./bounded-process";
+import { SandboxError, stageInputs, type CodexSandbox } from "./sandbox";
 
 export const CODEX_BLOCKED_ENV = ["OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL"] as const;
 
@@ -35,7 +41,11 @@ export type CodexFailureCode =
   | "CODEX_EXEC_FAILED"
   | "CODEX_TIMEOUT"
   | "CODEX_QUOTA"
-  | "CODEX_NO_JSON";
+  | "CODEX_NO_JSON"
+  | "CODEX_SANDBOX_UNAVAILABLE"
+  | "CODEX_SANDBOX_LEAK"
+  | "CODEX_SANDBOX_CONFIG"
+  | "CODEX_INPUT_REJECTED";
 
 export class CodexError extends Error {
   readonly code: CodexFailureCode;
@@ -48,7 +58,28 @@ export class CodexError extends Error {
 
 /** Failures that mean "fix the machine" rather than "this answer was bad". */
 export function isEnvironmentFailure(code: CodexFailureCode): boolean {
-  return code === "CODEX_NOT_INSTALLED" || code === "CODEX_NOT_SIGNED_IN" || code === "CODEX_API_KEY_AUTH" || code === "CODEX_QUOTA";
+  return (
+    code === "CODEX_NOT_INSTALLED" ||
+    code === "CODEX_NOT_SIGNED_IN" ||
+    code === "CODEX_API_KEY_AUTH" ||
+    code === "CODEX_QUOTA" ||
+    code === "CODEX_SANDBOX_UNAVAILABLE" ||
+    code === "CODEX_SANDBOX_LEAK" ||
+    code === "CODEX_SANDBOX_CONFIG"
+  );
+}
+
+const SANDBOX_MESSAGES: Record<SandboxError["code"], string> = {
+  CODEX_NOT_INSTALLED: "Codex CLI could not be started.",
+  CODEX_SANDBOX_UNAVAILABLE: "The Codex sandbox (bubblewrap) is not available; Codex was not started.",
+  CODEX_SANDBOX_LEAK: "The Codex sandbox would show protected files; Codex was not started.",
+  CODEX_SANDBOX_CONFIG: "The Codex sandbox could not be set up safely; Codex was not started.",
+  CODEX_INPUT_REJECTED: "A reference image was not a regular PNG file; Codex was not started.",
+};
+
+/** A sandbox failure as a CodexError (fixed message). */
+export function fromSandboxError(error: unknown): unknown {
+  return error instanceof SandboxError ? new CodexError(error.code, SANDBOX_MESSAGES[error.code]) : error;
 }
 
 /** The environment without any API-key route. */
@@ -58,12 +89,16 @@ export function codexEnvironment(base: Record<string, string | undefined>): Node
   return env;
 }
 
-export async function assertChatGptSignIn(options: { codexBin: string; env: NodeJS.ProcessEnv; cwd: string }): Promise<void> {
+export async function assertChatGptSignIn(options: { sandbox: CodexSandbox }): Promise<void> {
+  const workDir = await mkdtemp(join(tmpdir(), "sr-design-codex-"));
   let result: BoundedResult;
   try {
-    result = await runBounded(options.codexBin, ["login", "status"], { cwd: options.cwd, env: options.env, timeoutMs: 30_000 });
-  } catch {
-    throw new CodexError("CODEX_NOT_INSTALLED", "Codex CLI could not be started.");
+    result = await options.sandbox.run(["login", "status"], { workDir, timeoutMs: 30_000 });
+  } catch (error) {
+    if (error instanceof SandboxError) throw fromSandboxError(error);
+    throw new CodexError("CODEX_SANDBOX_UNAVAILABLE", SANDBOX_MESSAGES.CODEX_SANDBOX_UNAVAILABLE);
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
   }
   const status = `${result.stdout}\n${result.stderr}`;
   if (/api key/i.test(status)) {
@@ -200,14 +235,14 @@ export async function removeStaleCodexSessions(env: Record<string, string | unde
 }
 
 export interface CodexJsonOptions {
+  /** The OS sandbox every Codex process runs in (prepareCodexSandbox). */
+  sandbox: CodexSandbox;
   /** The whole request. Sent on stdin, never as an argument (so it stays out of `ps`). */
   prompt: string;
   /** JSON Schema for the final answer (`--output-schema`). */
   schema: object;
-  /** Absolute paths of reference images (`--image`). */
+  /** Absolute paths of privacy-processed reference PNGs; Codex sees copies only. */
   images?: readonly string[];
-  codexBin?: string;
-  env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
 }
 
@@ -216,11 +251,13 @@ export interface CodexJsonOptions {
  * the caller checks it against its zod schema).
  */
 export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> {
-  const codexBin = options.codexBin ?? "codex";
-  const env = codexEnvironment(options.env ?? process.env);
+  const { sandbox } = options;
   const cwd = await mkdtemp(join(tmpdir(), "sr-design-codex-"));
   try {
-    await assertChatGptSignIn({ codexBin, env, cwd });
+    await assertChatGptSignIn({ sandbox });
+    const images = await stageInputs(cwd, options.images ?? []).catch((error: unknown) => {
+      throw fromSandboxError(error);
+    });
     const schemaPath = join(cwd, "schema.json");
     const answerPath = join(cwd, "answer.json");
     await writeFile(schemaPath, JSON.stringify(options.schema));
@@ -239,17 +276,18 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
       schemaPath,
       "--output-last-message",
       answerPath,
-      ...(options.images ?? []).map((path) => `--image=${path}`),
+      ...images.map((path) => `--image=${path}`),
       "-",
     ];
     let result: BoundedResult;
     try {
-      result = await runBounded(codexBin, args, { cwd, env, input: options.prompt, timeoutMs: options.timeoutMs ?? 900_000 });
-    } catch {
-      throw new CodexError("CODEX_NOT_INSTALLED", "Codex CLI could not be started.");
+      result = await sandbox.run(args, { workDir: cwd, input: options.prompt, timeoutMs: options.timeoutMs ?? 900_000 });
+    } catch (error) {
+      if (error instanceof SandboxError) throw fromSandboxError(error);
+      throw new CodexError("CODEX_SANDBOX_UNAVAILABLE", SANDBOX_MESSAGES.CODEX_SANDBOX_UNAVAILABLE);
     }
     const threadId = readCodexEvents(result.stdout).threadId;
-    if (threadId !== undefined) await removeCodexSession(threadId, env).catch(() => 0);
+    if (threadId !== undefined) await removeCodexSession(threadId, sandbox.env).catch(() => 0);
     if (result.timedOut) throw new CodexError("CODEX_TIMEOUT", "Codex did not finish in time.");
     if (result.code !== 0 && codexLooksRateLimited(result.stdout, result.stderr)) {
       throw new CodexError("CODEX_QUOTA", "Codex usage limit reached or the service is busy.");

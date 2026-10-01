@@ -24,7 +24,9 @@ import { copyFile, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promise
 import { join } from "node:path";
 import type { Browser } from "playwright";
 import { DeadlineError, killAllBoundedChildren, type RunDeadline } from "../bounded-process";
-import { assertChatGptSignIn, CodexError, removeStaleCodexSessions, runCodexJson } from "../codex";
+import { assertChatGptSignIn, CodexError, fromSandboxError, removeStaleCodexSessions, runCodexJson } from "../codex";
+import { workerProtectedPaths } from "../protected-paths";
+import { prepareCodexSandbox, type CodexSandbox } from "../sandbox";
 import { runDesignPipeline, type PipelineReport, type Shots } from "../pipeline";
 import { factsToDemoView } from "../preview";
 import { looseJsonSchema } from "../profile";
@@ -70,6 +72,12 @@ export interface WorkerOptions {
   /** The worker's own environment; children get childEnvironment(env). */
   env: Record<string, string | undefined>;
   codexBin?: string;
+  /**
+   * The OS sandbox for Codex. Production: prepareCodexSandbox (bubblewrap)
+   * with workerProtectedPaths(); a run whose sandbox cannot be prepared stops
+   * before any Codex process starts.
+   */
+  prepareSandbox?: (env: NodeJS.ProcessEnv) => Promise<CodexSandbox>;
   now?: () => Date;
   log?: (line: string) => void;
   /** A fresh, non-persistent browser for the Instagram capture. */
@@ -231,8 +239,14 @@ async function runLocked(options: WorkerOptions, holder: Holder, tempRoot: strin
   // ---- environment: Codex signed in with ChatGPT, no API key anywhere
   const childEnv = () => childEnvironment({ ...options.env, TMPDIR: tempRoot });
   const codexBin = options.codexBin ?? "codex";
+  let sandbox: CodexSandbox;
   try {
-    await assertChatGptSignIn({ codexBin, env: childEnv(), cwd: tempRoot });
+    const prepare =
+      options.prepareSandbox ?? ((env: NodeJS.ProcessEnv) => prepareCodexSandbox({ env, codexBin, protectedPaths: workerProtectedPaths(options) }));
+    sandbox = await prepare(childEnv()).catch((error: unknown) => {
+      throw fromSandboxError(error);
+    });
+    await assertChatGptSignIn({ sandbox });
   } catch (error) {
     throw new StopRun(codeOf(error));
   }
@@ -258,7 +272,7 @@ async function runLocked(options: WorkerOptions, holder: Holder, tempRoot: strin
       attempted.add(claimed.jobId);
       log(`job ${claimed.jobId}: claimed`);
       active = { dirs, jobId: claimed.jobId, runDir: join(options.outRoot, claimed.jobId) };
-      const outcome = await runJob({ options, dirs, jobId: claimed.jobId, path: claimed.path, session, tempRoot, childEnv, codexBin, ledger, now, log }).finally(() => {
+      const outcome = await runJob({ options, dirs, jobId: claimed.jobId, path: claimed.path, session, tempRoot, childEnv, sandbox, ledger, now, log }).finally(() => {
         active = null;
       });
       await saveLedger();
@@ -292,7 +306,7 @@ type JobContext = {
   session: PreviewSession;
   tempRoot: string;
   childEnv: () => NodeJS.ProcessEnv;
-  codexBin: string;
+  sandbox: CodexSandbox;
   ledger: Ledger;
   now: () => Date;
   log: (line: string) => void;
@@ -385,7 +399,7 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
           const limit = kind === "brief" ? BRIEF_TIMEOUT_MS : REVIEW_TIMEOUT_MS;
           // The time left is read again for each call, so a retry never overruns the run.
           const ask = (s: object) =>
-            runCodexJson({ prompt, images, schema: s, codexBin: ctx.codexBin, env: ctx.childEnv(), timeoutMs: options.deadline.timeoutFor(limit, MIN_LONG_CALL_MS) });
+            runCodexJson({ sandbox: ctx.sandbox, prompt, images, schema: s, timeoutMs: options.deadline.timeoutFor(limit, MIN_LONG_CALL_MS) });
           if (schemaMode === "loose") return ask(looseJsonSchema(schema));
           try {
             return await ask(schema);

@@ -19,7 +19,9 @@ import { homedir } from "node:os";
 import { extname, join, relative, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { DeadlineError, killAllBoundedChildren, runBounded, RunDeadline } from "../../lib/design-agent/bounded-process";
-import { codexEnvironment, CodexError, runCodexJson } from "../../lib/design-agent/codex";
+import { codexEnvironment, CodexError, fromSandboxError, runCodexJson } from "../../lib/design-agent/codex";
+import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
+import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
 import { runDesignPipeline, type PipelineReport, type Shots } from "../../lib/design-agent/pipeline";
 import { factsToDemoView, RUN_ID } from "../../lib/design-agent/preview";
 import { killPreviewServers, portInUse, screenshotPage, startPreviewServer, stopPreviewServer, type PreviewServer } from "../../lib/design-agent/preview-server";
@@ -120,6 +122,23 @@ async function main(): Promise<number> {
   await writeFile(join(runDir, "inputs.json"), JSON.stringify({ references: references.length, hint: args.hint ?? null, startedAt: new Date().toISOString() }, null, 2));
   console.log(`run ${args.runId} → ${runDir}`);
 
+  // Codex runs only inside the OS sandbox (lib/design-agent/sandbox.ts); none of these is visible to it.
+  const home = homedir();
+  const sandbox = await prepareCodexSandbox({
+    env: codexEnvironment(process.env),
+    codexBin: args.codexBin,
+    protectedPaths: [
+      ...workerProtectedPaths({
+        env: process.env,
+        stateDir: join(home, ".local", "state", "sr-design-worker"),
+        queueRoot: join(home, "sr-design-jobs"),
+        outRoot: args.outRoot,
+      }),
+      REPO,
+    ],
+  }).catch((error: unknown) => {
+    throw fromSandboxError(error);
+  });
   const deadline = new RunDeadline(Date.now() + 75 * 60_000);
   let server: PreviewServer | undefined;
   let browser: Browser | undefined;
@@ -163,7 +182,7 @@ async function main(): Promise<number> {
             // Out of run time: treat like a Codex timeout (the loop falls back).
             throw new CodexError("CODEX_TIMEOUT", "No time left in this run for Codex.");
           }
-          return runCodexJson({ prompt, images, schema, codexBin: args.codexBin, timeoutMs });
+          return runCodexJson({ sandbox, prompt, images, schema, timeoutMs });
         },
         writeProfile: (name, profile) => writeFile(join(runDir, `${name}.json`), JSON.stringify(profile, null, 2)),
         writeRecord: (name, value) => writeFile(join(runDir, name), JSON.stringify(value, null, 2)),

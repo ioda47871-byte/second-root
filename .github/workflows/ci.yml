@@ -50,7 +50,12 @@ jobs:
       - run: npm ci
       # The design worker tests capture a local mock page with headless Chromium.
       - run: npx playwright install --with-deps chromium
+      # The Codex sandbox tests run against real bubblewrap, unprivileged (as on the WSL worker).
+      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor; WSL does not.
+      - run: sudo apt-get install -y bubblewrap && sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: npm test
+        env:
+          SR_REQUIRE_BWRAP: "1"
 
   integration:
     name: integration

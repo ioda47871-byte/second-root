@@ -9,6 +9,7 @@ import { chromium } from "playwright";
 import { RunDeadline } from "@/lib/design-agent/bounded-process";
 import type { CaptureTarget } from "@/lib/design-agent/worker/capture";
 import { runDesignWorker, type PreviewSession, type WorkerOptions } from "@/lib/design-agent/worker/run";
+import { passthroughSandbox } from "../../support/passthrough-sandbox";
 import { AMERICAN_EDITORIAL, review } from "./fixtures";
 
 export const FAKE_CODEX = resolve(__dirname, "../../support/fake-codex.mjs");
@@ -360,6 +361,9 @@ export async function runWorker(l: Layout, site: MockSite, over: Partial<WorkerO
     deadline: new RunDeadline(Date.now() + 30 * 60_000),
     env: { PATH: process.env.PATH, HOME: l.root, LANG: "C.UTF-8", CODEX_HOME: join(l.root, "codex-home"), ...SECRET_ENV },
     codexBin,
+    // The fake CLI reads its step files from the test layout, so it runs unconfined here;
+    // the real sandbox is tested on its own (sandbox.test.ts) and in one worker run below.
+    prepareSandbox: async (env) => passthroughSandbox(codexBin, env),
     log: (line) => logs.push(line),
     launchBrowser: (env) =>
       chromium.launch({ headless: true, env, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }),
