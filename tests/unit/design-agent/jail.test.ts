@@ -63,7 +63,8 @@ describe("the requester jail", () => {
     const plain = probe({});
     expect(plain.status).toBe(1);
     expect(plain.stdout).toMatch(/JAIL_UNSAFE NEW_PRIVILEGES_POSSIBLE|JAIL_UNSAFE NO_SECCOMP_FILTER|JAIL_UNSAFE WRONG_USER/);
-    for (const line of plain.stdout.trim().split("\n")) expect(line).toMatch(/^JAIL_UNSAFE [A-Z0-9_]+$/);
+    // codes, then (only for reachable abstract sockets) their names: nothing read from a file
+    for (const line of plain.stdout.trim().split("\n")) expect(line).toMatch(/^(JAIL_UNSAFE [A-Z0-9_]+|JAIL_NOTE abstract=@[\x21-\x7e]{0,80})$/);
     expect(probe({ DISPLAY: ":0" }).stdout).toContain("JAIL_UNSAFE ENV_DISPLAY");
     expect(probe({}).stdout).not.toContain("BROWSER_PROFILE_IN_HOME");
     mkdirSync(join(home, ".local", "share", "sr-instagram-browser", "Default"), { recursive: true });
