@@ -310,3 +310,30 @@ Round 1 of the jail review (on 24a1788). Both reviews found no Critical. They ag
   - The jail test now accepts `JAIL_NOTE` and `JAIL_WARN` lines.
 - **Documented — security M2:** user namespaces stay allowed in the jail, because Codex's bubblewrap needs them. A userns kernel privilege escalation defeats the boundary, and that is the main argument for option C.
 - **Documented — security Lows:** `AF_NETLINK`, the exact-match cgroup regex, and the IPv6 filter not being exercised on IPv6-less hosts.
+
+Round 2 of the jail review (26ae59b).
+- **Architecture:** nothing Critical or High; three Mediums, below.
+- **Security:** stopped after a static pass (a safety check kept cutting its output), so I ran its live questions myself, on systemd 255 as PID 1.
+
+Fixed, verified live:
+- **Hole found from security's static question: the WSL DNS tunnel address `10.255.255.254` was allowed on every port.** On WSL that address sits on the VM's loopback, so a host service listening on `0.0.0.0` answers there too.
+  - Reproduced: from the jail, `10.255.255.254:9935` CONNECTED to a host `0.0.0.0:9935` listener.
+  - Fix:
+    - The jail's only DNS server is now `198.51.100.53`, a documentation address. pasta `--dns-forward` answers it on port 53 only, using the host's resolver.
+    - `/etc/resolv.conf` in the jail is a root-written file.
+    - The jail no longer allows `10.255.255.254`.
+    - pasta's own unit refuses the private ranges except the DNS tunnel.
+  - Re-test:
+    - `10.255.255.254:9935` is refused (it times out).
+    - With a fake DNS on `10.255.255.254:53`, `getent hosts example.org` inside the jail resolves through pasta.
+- **Architecture M1/M2 — Claude stayed down after a pasta crash, or after a boot race.** `BindsTo` stops Claude, and neither the auto-restart nor a "dependency failed" start job brings it back.
+  - Fix: the net unit's `ExecStartPost` starts Claude when it is enabled. Absolute `systemctl` path; `claude-stop` disables it.
+  - Re-test:
+    - `kill -9` of pasta: the net unit restarts, Claude comes back in the new namespace, and the namespace id matches.
+    - After `claude-stop`: Claude stays inactive.
+- **Architecture M3 — DNS.** The DNS path above is verified. The docs now say a systemd-resolved stub, or dnsTunneling off, is unsupported.
+- **Netns rejoin.** From the jail, only the jail's own namespace is visible under `/proc/*/ns/net`, `/run/netns` is gone, and `setns` returns EPERM.
+- **Lows:**
+  - `jail_install` restarts the net unit, so a re-install or `approve` takes effect.
+  - `run` sets `RuntimeMaxSec=3500` and gives each run a unique unit name.
+  - Docs: the start-limit reset, `wsl --shutdown` after editing `.wslconfig`, and a checklist for the real machine.

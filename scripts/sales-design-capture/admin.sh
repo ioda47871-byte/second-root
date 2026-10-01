@@ -95,6 +95,8 @@ host_safe() {
 JAIL_LIB=/usr/local/lib/sr-jail
 JAIL_CLAUDE=sr-jail-claude.service
 JAIL_NET=sr-jail-net.service
+# The only DNS server the jail knows: pasta answers it (port 53 only) with the host's resolver.
+JAIL_DNS=198.51.100.53
 # Every jail unit needs the jail's network namespace and goes away with it.
 JAIL_UNIT_DEPS=("Requires=$JAIL_NET" "BindsTo=$JAIL_NET" "After=$JAIL_NET")
 
@@ -135,12 +137,13 @@ jail_args() {
 }
 
 jail_install() {
-  local req="$1" home tmux_bin pasta_bin ip_bin dep net_unit claude_unit props
+  local req="$1" home tmux_bin pasta_bin ip_bin systemctl_bin dep net_unit claude_unit props
   home="$(getent passwd "$req" | cut -d: -f6)"
   jail_python >/dev/null || { echo "PYTHON_MISSING: a root-owned python3 is needed for the jail probe (sudo apt install -y python3)"; exit 2; }
   tmux_bin="$(command -v tmux)" && root_owned "$tmux_bin" || { echo "TMUX_MISSING: sudo apt install -y tmux"; exit 2; }
   pasta_bin="$(command -v pasta)" && root_owned "$pasta_bin" || { echo "PASTA_MISSING: sudo apt install -y passt"; exit 2; }
   ip_bin="$(command -v ip)" && root_owned "$ip_bin" || { echo "IPROUTE_MISSING: sudo apt install -y iproute2"; exit 2; }
+  systemctl_bin="$(command -v systemctl)" && root_owned "$systemctl_bin" || { echo "SYSTEMD_MISSING"; exit 2; }
   command -v systemd-run >/dev/null || { echo "SYSTEMD_MISSING: WSL needs [boot] systemd=true"; exit 2; }
   install -d -o root -g root -m 0755 "$JAIL_LIB"
   install -o root -g root -m 0644 "$SELF_DIR/jail/jail.properties" "$SELF_DIR/jail/probe.py" "$JAIL_LIB/"
@@ -164,8 +167,14 @@ jail_install() {
     echo "RuntimeDirectoryMode=0755"
     echo "ExecStartPre=-$ip_bin netns delete srjail"
     echo "ExecStartPre=$ip_bin netns add srjail"
-    echo "ExecStartPre=/bin/sh -c 'stat -L -c %%i /run/netns/srjail > /run/sr-jail/netns-id && chmod 0644 /run/sr-jail/netns-id'"
-    echo "ExecStart=$pasta_bin -f -q --runas 0 --config-net --no-map-gw -t none -u none -T none -U none --netns /run/netns/srjail"
+    echo "ExecStartPre=/bin/sh -c 'stat -L -c %%i /run/netns/srjail > /run/sr-jail/netns-id && printf \"nameserver $JAIL_DNS\\\\n\" > /run/sr-jail/resolv.conf && chmod 0644 /run/sr-jail/netns-id /run/sr-jail/resolv.conf'"
+    echo "ExecStart=$pasta_bin -f -q --runas 0 --config-net --no-map-gw -t none -u none -T none -U none --dns-forward $JAIL_DNS --netns /run/netns/srjail"
+    # pasta's own sockets: the same private ranges refused (only the WSL DNS tunnel, for the forwarded queries)
+    echo "IPAddressAllow=10.255.255.254/32"
+    echo "IPAddressDeny=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10 127.0.0.0/8 ::1/128 fc00::/7 fe80::/10"
+    # After pasta crashed or the boot raced it (the bound Claude unit stopped or its start failed),
+    # bring Claude back when it is enabled (claude-stop disables it, so a stopped Claude stays stopped).
+    echo "ExecStartPost=-/bin/sh -c '$systemctl_bin -q is-enabled $JAIL_CLAUDE && $systemctl_bin --no-block start $JAIL_CLAUDE || true'"
     echo "ExecStopPost=-$ip_bin netns delete srjail"
     echo "Restart=always"
     echo "RestartSec=5"
@@ -196,7 +205,9 @@ jail_install() {
   mv -f "/etc/systemd/system/$JAIL_NET.tmp" "/etc/systemd/system/$JAIL_NET"
   mv -f "/etc/systemd/system/$JAIL_CLAUDE.tmp" "/etc/systemd/system/$JAIL_CLAUDE"
   systemctl daemon-reload
-  systemctl enable --now "$JAIL_NET" >/dev/null
+  systemctl enable "$JAIL_NET" >/dev/null 2>&1
+  # a (re-)install takes effect now: a new namespace, and the jail units bound to it start again in it
+  systemctl restart "$JAIL_NET"
 }
 
 # The probe, run in a throw-away unit with exactly the jail's settings.
@@ -379,7 +390,7 @@ case "$CMD" in
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above first"; exit 3; }
     jail_args "$REQUESTER" || { echo "JAIL_NOT_INSTALLED: run install first"; exit 2; }
     shift 3
-    systemd-run --quiet --wait --collect --pipe --unit="sr-jail-run-$$" "${JAIL_ARGS[@]}" "$@"
+    systemd-run --quiet --wait --collect --pipe --unit="sr-jail-run-$$-$RANDOM" -p RuntimeMaxSec=3500 "${JAIL_ARGS[@]}" "$@"
     ;;
   claude-start)
     REQUESTER="${2:-sr-designgen}"

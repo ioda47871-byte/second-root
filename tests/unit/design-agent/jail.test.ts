@@ -40,10 +40,9 @@ describe("the requester jail", () => {
     expect(families.split("=")[1]!.split(" ").sort()).toEqual(["AF_INET", "AF_INET6", "AF_NETLINK", "AF_UNIX"]);
     // io_uring could open sockets without socket(); the kernel log reader is gone too
     expect(settings.find((l) => l.startsWith("SystemCallFilter=~"))).toMatch(/io_uring_setup.*io_uring_enter.*io_uring_register.*syslog/);
-    // the Windows host, the LAN and cloud metadata are refused by address (the DNS tunnel only is allowed)
+    // the Windows host, the LAN, cloud metadata and the WSL DNS tunnel address are refused by address
     const deny = settings.find((l) => l.startsWith("IPAddressDeny="))!;
     for (const net of ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10", "fc00::/7", "fe80::/10"]) expect(deny).toContain(net);
-    expect(settings.find((l) => l.startsWith("IPAddressAllow="))).toBe("IPAddressAllow=127.0.0.0/8 ::1/128 10.255.255.254/32");
     // the spool: requests writable, results read-only; nothing else of /srv
     expect(settings).toContain("BindPaths=-/srv/sr-capture/requests");
     expect(settings).toContain("BindReadOnlyPaths=-/srv/sr-capture/results");
@@ -86,14 +85,19 @@ describe("the requester jail", () => {
     expect(ADMIN).toMatch(/grep -Ev '\^\[\[:space:\]\]\*\(#\|\$\)' "\$JAIL_LIB\/jail\.properties"/);
     expect(ADMIN).toMatch(/echo "ExecStartPre=\$py -I \$JAIL_LIB\/probe\.py \$req"/);
     expect(ADMIN).toMatch(/IPAddressDeny=%d\.%d\.%d\.%d\/32/); // the default gateway (the Windows host in WSL's NAT)
-    for (const unit of ['--unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}"', '--unit="sr-jail-run-$$" "${JAIL_ARGS[@]}"', '--unit="sr-jail-check-$$" "${JAIL_ARGS[@]}"']) expect(ADMIN).toContain(unit);
+    for (const unit of ['--unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}"', '--unit="sr-jail-run-$$-$RANDOM" -p RuntimeMaxSec=3500 "${JAIL_ARGS[@]}"', '--unit="sr-jail-check-$$" "${JAIL_ARGS[@]}"']) expect(ADMIN).toContain(unit);
     // the Claude unit carries the settings, fetched on their own first: never a unit without them
     expect(ADMIN).toContain('props="$(jail_props "$req")" || {');
     expect(ADMIN).toMatch(/grep -qx "NoNewPrivileges=yes" <<<"\$props" && grep -q "\^ExecStartPre=\.\*probe\.py" <<<"\$props"/);
     expect(ADMIN).toMatch(/echo "Type=forking"\n\s+printf '%s\\n' "\$props"/);
     // the jail's own network namespace: pasta with no port forwarding either way, the gateway not mapped,
     // its id recorded for the probe; every jail unit needs it and goes with it
-    expect(ADMIN).toContain("--config-net --no-map-gw -t none -u none -T none -U none --netns /run/netns/srjail");
+    expect(ADMIN).toContain("--config-net --no-map-gw -t none -u none -T none -U none --dns-forward $JAIL_DNS --netns /run/netns/srjail");
+    // the jail never reaches the WSL DNS tunnel address (on the VM's loopback, where every 0.0.0.0 service answers):
+    // its only DNS server is a documentation address that pasta alone answers on port 53
+    expect(settings).toContain("IPAddressAllow=127.0.0.0/8 ::1/128 198.51.100.53/32");
+    expect(settings).toContain("BindReadOnlyPaths=/run/sr-jail/resolv.conf:/etc/resolv.conf");
+    expect(ADMIN).toContain("JAIL_DNS=198.51.100.53");
     expect(ADMIN).toContain("stat -L -c %%i /run/netns/srjail > /run/sr-jail/netns-id");
     expect(ADMIN).toContain('JAIL_UNIT_DEPS=("Requires=$JAIL_NET" "BindsTo=$JAIL_NET" "After=$JAIL_NET")');
     expect(settings).toContain("NetworkNamespacePath=/run/netns/srjail");

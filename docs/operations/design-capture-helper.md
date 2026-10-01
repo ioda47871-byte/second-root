@@ -94,7 +94,8 @@ capture helper                                     ← 利用者 sr-igcapture（
   jail の中でも `sr-designgen` 自身の home は見えるので、残っていれば Claude が読める。残っていると probe（`BROWSER_PROFILE_IN_HOME`）で install が止まる
 - requester jail の前提: `sudo apt install -y tmux passt iproute2 python3`、WSL の cgroup が v2 だけ
   （`stat -fc %T /sys/fs/cgroup` が `cgroup2fs`。違えば Windows の `.wslconfig` に `kernelCommandLine = cgroup_no_v1=all`）、
-  DNS は dnsTunneling（`/etc/resolv.conf` が `nameserver 10.255.255.254`）、networkingMode は NAT（既定）
+  DNS は dnsTunneling（`/etc/resolv.conf` が `nameserver 10.255.255.254`。systemd-resolved の stub や dnsTunneling を切った構成は使えない）、
+  networkingMode は NAT（既定）。`.wslconfig` を変えたら Windows で `wsl --shutdown`
 
 `admin.sh` は root で動くので、**requester が書き換えられる checkout（`~sr-designgen/work/second-root` など）からは動かない**
 （`ADMIN_SCRIPT_UNTRUSTED`）。最初の install は root だけの clone から行う（その後は `sr-igcapture` 側の checkout を使う）:

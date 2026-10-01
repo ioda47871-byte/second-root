@@ -42,7 +42,8 @@ Windows へ届く経路と、それぞれの塞ぎ方:
 | Windows の drive（`/mnt/c` の Startup folder など） | `/mnt` を空の tmpfs にする（DNS の `resolv.conf` だけ戻す） |
 | WSLg の display（`/mnt/wslg`・`/tmp/.X11-unix`） | `/mnt` は空、`/tmp` は private |
 | WSL の VM の abstract Unix socket（WSLg の X server、systemd の bus など）と localhost（他の利用者・他の distro の service） | jail **専用の network namespace**（`sr-jail-net.service`）。abstract socket と loopback は network namespace ごとに別なので、jail からは見えない。外への通信は root が動かす pasta（user-space の NAT）だけを通り、port の転送は双方向とも無し、gateway を host に写さない |
-| Windows host への network（NAT の gateway）、LAN、cloud metadata | `IPAddressDeny`（cgroup BPF）。私設・link-local の範囲すべてと、その時点の default gateway。WSL の DNS tunnel（10.255.255.254）だけ許す |
+| Windows host への network（NAT の gateway）、LAN、cloud metadata | `IPAddressDeny`（cgroup BPF）。私設・link-local の範囲すべてと、その時点の default gateway |
+| WSL の DNS tunnel の address（10.255.255.254。VM の loopback にあり、`0.0.0.0` で待ち受ける service はすべてここでも応える） | jail からは拒否する。jail の DNS は文書用の address `198.51.100.53` だけで、pasta がその port 53 だけを host の resolver へ転送する（`--dns-forward`）。pasta 自身の socket にも同じ私設の範囲の拒否を掛ける（DNS tunnel への転送だけ許す） |
 | 他の利用者の process（`/proc/<pid>/root` など） | `ProtectProc=invisible`、別 uid |
 | 新しい権限（setuid・sudo） | `NoNewPrivileges`、`RestrictSUIDSGID` |
 | jail の外で動く `sr-designgen` の process（`su`・`wsl.exe -u`・ssh・cron など） | login shell を nologin にし、cron / at / linger を拒否。`run.sh`（毎回）と `admin.sh` が、`sr-designgen` の**すべての process** が `sr-jail-*.service` の cgroup の中にあることを確かめる（cgroup に process を入れられるのは root だけ） |
@@ -86,7 +87,12 @@ Windows（人）── WSL2 VM ── Ubuntu distro
 - Claude（tmux の中）が終わると unit は正常終了扱いになるので、`Restart=always` で戻す（1 時間に 10 回まで）
 - **前提**: WSL の cgroup が v2 だけであること（`stat -fc %T /sys/fs/cgroup` が `cgroup2fs`。違えば `.wslconfig` の
   `kernelCommandLine = cgroup_no_v1=all`）。address の拒否（cgroup BPF）が効かなければ probe が止める。
-  DNS は WSL の dnsTunneling（10.255.255.254、Windows 11 の WSL 2.x の既定）を前提にする。引けなければ probe が `JAIL_WARN DNS_NOT_WORKING` を出す
+  `.wslconfig` を変えたら Windows で `wsl --shutdown`。
+  DNS は WSL の dnsTunneling（10.255.255.254、Windows 11 の WSL 2.x の既定）を前提にする。dnsTunneling を切った構成（nameserver が
+  gateway）と systemd-resolved の stub（127.0.0.53）は使えない。引けなければ probe が `JAIL_WARN DNS_NOT_WORKING` を出す
+- **復旧**: pasta が落ちたり、起動直後に順序が競合したりして jail の Claude が止まっても、network の unit が起動し直すときに
+  Claude の unit が有効なら起動し直す（`claude-stop` で止めたものは止まったまま）。Claude が 1 時間に 10 回落ちると
+  systemd が諦める。直したら `sudo systemctl reset-failed sr-jail-claude` の後に `admin.sh claude-start`
 
 ## 5. この設計を確かめた方法（container の中で systemd 255 を PID 1 として起動）
 
@@ -107,7 +113,16 @@ WSL の状況は fixture で再現した（`/run/WSL/2_interop` を `root:root 0
 | jail の中で `sandbox.test.ts`（本物の bubblewrap の攻撃テスト）と `worker.test.ts`（Chromium を含む） | — | 73 件すべて pass |
 | `admin.sh jail-install` → `claude-start` → process の cgroup が `sr-jail-claude.service`、jail の外に process を起こすと `REQUESTER_OUTSIDE_JAIL` → `claude-stop` | — | 期待どおり |
 | 外の localhost の listener（127.0.0.1:9931）と abstract socket（`@outside-abstract`、systemd の bus） | 届く / 見える | jail 専用の network では、拒否される / 1 つも見えない |
-| Claude が終わったとき / network の unit を作り直したとき | — | 自動で再起動し、新しい namespace に入る（namespace の ID が一致） |
+| Claude が終わったとき / network の unit を作り直したとき / pasta を `kill -9` したとき | — | 自動で再起動し、新しい namespace に入る（namespace の ID が一致）。`claude-stop` の後は止まったまま |
+| VM の loopback に 10.255.255.254 を付け、`0.0.0.0:9935` で待ち受け、jail から 10.255.255.254:9935 へ | 最初の版では**届いた**（穴） | 直した版では拒否される |
+| jail の DNS（198.51.100.53 → pasta → host の 10.255.255.254:53 の DNS） | — | 名前が引ける |
+| jail から他の network namespace へ（`/proc/*/ns/net`・`/run/netns` を開いて `setns`） | — | 見えるのは自分の jail の namespace だけ。`setns` も `EPERM` |
+
+実機で一度確かめること（container では再現できない、または実機の WSL に依存する）:
+- `sudo bash …/admin.sh jail-check` が `JAIL_OK` を出す（`JAIL_UNSAFE` の符号が出たらそれを Claude に伝える）
+- `sudo bash …/admin.sh run sr-designgen -- getent hosts github.com` で名前が引ける（pasta 経由の DNS）
+- `wsl --shutdown` → 開き直す を 2〜3 回して、`systemctl status sr-jail-claude` が active（起動直後の順序の競合からの復旧）
+- `stat -fc %T /sys/fs/cgroup` が `cgroup2fs`
 
 わかったこと:
 - `ProtectKernelTunables`・`ProtectKernelLogs`・`ProtectHostname` は `/proc` の一部を上書き mount するので、jail の中で
