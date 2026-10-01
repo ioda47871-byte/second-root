@@ -10,6 +10,10 @@ worker にはまだ組み込まない。Meta Business Discovery は保留中。
 - 以降の撮影は、同じ profile を使ってローカルで行う
 - 普段使いの Windows Chrome profile は使わない
 
+> **2026-10-01 から profile は専用の利用者 `sr-igcapture` が持つ。**worker・Codex・Claude（`sr-designgen`）からは読めない。
+> 撮影は capture helper に頼む（`design-capture-helper.md`）。この文書のコマンドは `sr-igcapture` として打つ
+> （例: `sudo -u sr-igcapture -H env DISPLAY=:0 bash -lc 'cd ~/second-root && npm run -s sales:design-browser -- login'`）。
+
 ## 使う前に知っておくこと（人間の判断）
 
 - **Instagram の利用規約**: 自動的な手段での情報収集を制限している
@@ -19,20 +23,18 @@ worker にはまだ組み込まない。Meta Business Discovery は保留中。
 - **どのアカウントでログインするか**
   - Messaging API（`docs/INSTAGRAM_SETUP.md`）で DM を受ける Second Root の業務アカウントでは**ログインしない**
   - 制限がかかると、DM の窓口まで止まる
-- **Codex との関係（worker に組み込む前の課題）**
-  - Codex の read-only sandbox は、同じ Linux 利用者のファイルを読める
-  - 参考画像の中の文字（bio など）に紛れた指示で、Codex が profile の中身を読みにいく可能性はゼロではない
-  - worker に組み込む前に、次のどちらかを決める
-    - Codex からこの profile を隠す（例: bubblewrap で profile のディレクトリを空にして見せる）
-    - profile を別の Linux 利用者に分ける
-  - 今の PoC では Codex を呼ばない
+- **Codex との関係（2026-10-01 に解決）**
+  - Codex の read-only sandbox は、同じ Linux 利用者のファイルを読める。そこで 2 重に分けた
+    - profile は別の Linux 利用者 `sr-igcapture` のホーム（0700）に置く（`design-capture-helper.md`）
+    - Codex は bubblewrap の中でだけ動き、どの利用者のホームも見えない（`design-worker-wsl.md`「Codex の sandbox」）
+  - どちらも本物の利用者・本物の bubblewrap で試験している（`cross-user.test.ts`・`sandbox.test.ts`）
 
 ## profile の置き場所と扱い
 
-`~/.local/share/sr-instagram-browser/`（`sr-designgen` のホーム、0700）
+`~/.local/share/sr-instagram-browser/`（`sr-igcapture` のホーム、0700）
 
 - **置き場所の検査**
-  - 実行する利用者が `sr-designgen` であること
+  - 実行する利用者が `sr-igcapture` であること
   - ホームの中にあること
   - repo の中・`/mnt/`（Windows のドライブ）・link を辿った先ではないこと
 - **中身の検査**
@@ -149,13 +151,9 @@ npm run -s sales:design-browser -- check    # PROFILE_OK / PROFILE_MISSING / PRO
 1. Instagram の「ログインアクティビティ」でこの端末をログアウトさせる
 2. `rm -rf ~/.local/share/sr-instagram-browser` を実行する
 
-## 次の段階（まだしない）
-
-撮影の成功を確かめた後、worker の取得順に組み込む。
+## worker の取得順（組み込み済み）
 
 1. 確認済みの公式サイト（fresh context、Instagram の session は使わない）
-2. ログイン済みの専用 profile
-3. 今の未ログインの撮影
+2. ログイン済みの専用 profile（capture helper 経由）
+3. 未ログインの撮影
 4. `PUBLIC_SOURCE_UNAVAILABLE`
-
-組み込む前に、上の「Codex との関係」を解決する。

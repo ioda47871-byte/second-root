@@ -30,12 +30,17 @@ worker は同じ pipeline（brief → render → review → 最大 2 回の prof
        - 持ち主が死んでいる / claim が 3 時間を超えた → inbox へ戻す（2 回目は failed へ）
        - 結果が既にある → done へ移すだけ
     4. inbox が空なら終わる
-    5. Codex が ChatGPT でサインインしているか確かめる（API キーのサインインは断る）
+    5. Codex の sandbox（bubblewrap）を用意し、その中で Codex が ChatGPT でサインインしているか確かめる
+       （API キーのサインインは断る。sandbox が用意できなければ Codex は起動せず、run は止まる）
     6. next build → next start（127.0.0.1 の空き port、SR_DESIGN_PREVIEW_ROOT 付き）
     7. job を 1 つ取る: inbox/<id>.json → processing/<id>.json（atomic rename）
-    8. job を検査する（形・facts・Instagram URL）。結果のある job id は二度と作らない
-    9. 公開 Instagram プロフィールを未ログインの使い捨て browser で撮る
-       → 撮れなければ PUBLIC_SOURCE_UNAVAILABLE（想定された結果として done へ）
+    8. job を検査する（形・facts・公式サイト URL / Instagram URL）。結果のある job id は二度と作らない
+    9. 参考画像を、次の順で最初に撮れたものから取る（どれも privacy 処理済みの PNG だけ）
+       1. 確認済みの公式サイト（使い捨て browser、同じサイトの中だけ、最大 3 画面）
+       2. ログイン済み Instagram（capture helper に頼む。別の Linux 利用者 sr-igcapture が撮る。
+          design-capture-helper.md。LOGIN_REQUIRED などは記録して次へ）
+       3. 未ログインの公開 Instagram（使い捨て browser）
+       → どれも撮れなければ PUBLIC_SOURCE_UNAVAILABLE（想定された結果として done へ）
     10. スクリーンショットを検査する（枚数・形式・8 MB・symlink でない・所有者・600）
     11. Codex brief → DesignProfile → ProfileRenderer → PC / mobile を撮る → Codex VisualReview
         → 最大 2 回 profile を直す → final。renderer の機能が要れば BLOCKED
@@ -60,6 +65,42 @@ worker は同じ pipeline（brief → render → review → 最大 2 回の prof
 - Instagram の外への redirect
 
 回避はしない。ログインの自動化、cookie の再利用、別サービスでの取得はしない。
+
+## Codex の sandbox（必須）
+
+Codex 自身の `--sandbox read-only` は、worker 利用者のファイルを**読める**。
+そこで Codex の process は、どれも bubblewrap の中でだけ動く（`lib/design-agent/sandbox.ts`）。
+
+- 見えるもの: system の読み取り専用の `/`、Codex と node の install（読み取り専用）、`CODEX_HOME`（サインインと session log）、
+  呼び出しごとの作業ディレクトリと、その `inputs/` に**コピーした** privacy 処理済み PNG だけ
+- 見えないもの: `/home` と自分のホーム全体（repo・job・結果・Meta token・SSH / git の鍵）、`/root`、`/mnt`（Windows）、
+  `/srv`（capture の spool）、`/run/user`。`/tmp` などは空の新しいもの
+- 別の pid / ipc / uts namespace、新しい `/proc`、capability なし、環境変数は許可したものだけ
+- 毎回 Codex を起動する前に、同じ sandbox の中で probe が「守る path が 1 つも見えない」ことを確かめる。
+  見えたら・bubblewrap が無い・起動できないときは Codex を起動しない（fail closed）
+
+一度だけ入れる（人が行う）:
+
+```bash
+sudo apt install -y bubblewrap
+```
+
+| 符号 | 意味 |
+|---|---|
+| `CODEX_SANDBOX_UNAVAILABLE` | bubblewrap が無い、または起動できない。`sudo apt install bubblewrap` |
+| `CODEX_SANDBOX_LEAK` | sandbox の中から守る path が見えた。Codex は起動していない。止めて調べる |
+| `CODEX_SANDBOX_CONFIG` | 安全に組めない（例: `CODEX_HOME` が link・ホームそのもの、Codex の install が守る場所の中） |
+| `CODEX_INPUT_REJECTED` | 参考画像が通常の PNG / JPEG / WebP ファイルでない（link など） |
+
+## 公式サイトの取得
+
+- job の `--website` は、営業 Agent か人が**店の公式サイトだと確認した** URL だけを入れる
+- http(s)、credentials・port・IP・localhost・SNS のホストは断る
+- 毎回新しい非永続 context（Instagram の profile は使わない）。Instagram と同じ navigation guard で、
+  その店のホスト（と www 付き / 無し）から出る移動は送る前に止める
+- ホームと、about / concept / menu / products / access らしいリンク先を最大 2 ページ、URL で開く（クリックしない）
+- 各ページの最初の 1 画面だけを撮り、Instagram と同じく画像を blur → PNG の中で画素化する
+- 画像・ロゴ・文章をデモへ転載しない。デモの文言は verified facts だけ
 
 ## Instagram の取得
 
@@ -125,12 +166,13 @@ job id に店舗名を使わない（例: `shop-001`）。
 cd ~/work/second-root
 npm run -s sales:design-worker -- enqueue --job-id shop-001 \
   --facts ~/sr-design-input/shop-001/facts.json \
+  --website https://<確認済みの公式サイト>/ \
   --instagram https://www.instagram.com/<profile>/
 ```
 
 - `~/sr-design-jobs/inbox/shop-001.json` ができる（0600、ディレクトリは 0700）
 - facts は `sales_demos.content` の形で、fact-only filter を通ること
-- URL は上の許可形だけ
+- `--website` と `--instagram` のどちらか 1 つ以上。URL は上の許可形だけ
 - 同じ id が inbox・processing・done にあれば断る
 
 ## 3. 1 回動かす（正規の入口）
@@ -169,7 +211,10 @@ SR_DESIGN_EXPORT_DIR=/mnt/c/Users/<windows-user>/Desktop/second-root-codex-resul
 
 - `worker.commit`（worker の commit SHA）
 - `outcome`
-- `instagram`
+- `visual_source`（`website` / `instagram_signed_in` / `instagram_public` / null）
+- `sources`（試した取得元ごとの符号。例: `instagram_signed_in: { status: "LOGIN_REQUIRED" }`）
+- `references`（`images`・`media_softened`・`temp_deleted`）
+- `instagram`（Instagram から取ったとき。公式サイトから取ったときは null）
   - `status`
   - `images`
   - 撮れなかったときの `reason`
