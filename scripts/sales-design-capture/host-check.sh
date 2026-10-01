@@ -153,6 +153,12 @@ sr_check_requester() {
   return 0
 }
 
+# /proc/mounts writes a space as \040: decode exactly three octal digits per escape (printf %b alone
+# reads "\0" plus up to three more digits, so "My\040Drive\0402" would come out wrong).
+sr_unoctal() {
+  printf '%b' "$(printf '%s' "$1" | sed 's/\\\([0-7][0-7][0-7]\)/\\0\1/g')"
+}
+
 # sr_check_requester_root <user> — what only root can see: sudo rules, writable Windows Startup folders.
 sr_check_requester_root() {
   local req="$1"
@@ -163,8 +169,8 @@ sr_check_requester_root() {
   local dev mnt type rest d src
   while read -r dev mnt type rest; do
     case "$type" in 9p | drvfs | virtiofs) ;; *) continue ;; esac
-    mnt="$(printf '%b' "$mnt")"
-    src="$(printf '%b' "$dev")"
+    mnt="$(sr_unoctal "$mnt")"
+    src="$(sr_unoctal "$dev")"
     if [ "$mnt" = /mnt/sr-export ]; then
       # The one export folder a person may give the requester (design-capture-helper.md): it must be a plain
       # folder under a user's folder (C:\\Users\\<you>\\<folder>), no '..' or 8.3 short names ('~'), no system tree.

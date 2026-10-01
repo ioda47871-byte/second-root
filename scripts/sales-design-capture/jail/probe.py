@@ -111,7 +111,8 @@ def main():
             fail("VISIBLE_" + path.strip("/").replace("/", "_").replace(".", "").replace("-", "_").upper())
     try:
         for name in os.listdir("/run"):
-            if name not in ("systemd", "user", "sr-jail"):
+            # systemd/ and resolvconf/ appear only as the place of a bound resolv.conf
+            if name not in ("systemd", "user", "sr-jail", "resolvconf"):
                 fail("RUN_NOT_EMPTY")
                 break
     except OSError:

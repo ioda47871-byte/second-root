@@ -90,6 +90,8 @@ capture helper                                     ← 利用者 sr-igcapture（
 - **system 全体の Node 22**（`/usr/local/bin` か `/usr/bin`、実体まで root の所有で他人が書けないこと）。`sr-designgen` の nvm の node は `sr-igcapture` から読めないので使えない
   （例: NodeSource の手順 https://github.com/nodesource/distributions 。tarball を `sudo tar` で展開したなら `sudo chown -R root:root <dir>`）
 
+- **`sr-designgen` の process をすべて止める**（Phase 2 の Remote Control・worker: `sudo pkill -u sr-designgen`）。動いていると install は
+  `REQUESTER_RUNNING` で止まる。install は `sr-designgen` の login shell を nologin にし、以降は jail の中でだけ動かす
 - **Phase 2 の古い profile を先に消す**（`sudo rm -rf /home/sr-designgen/.local/share/sr-instagram-browser`）。
   jail の中でも `sr-designgen` 自身の home は見えるので、残っていれば Claude が読める。残っていると probe（`BROWSER_PROFILE_IN_HOME`）で install が止まる
 - requester jail の前提: `sudo apt install -y tmux passt iproute2 python3`、WSL の cgroup が v2 だけ

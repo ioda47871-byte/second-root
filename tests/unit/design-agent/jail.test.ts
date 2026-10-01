@@ -110,10 +110,18 @@ describe("the requester jail", () => {
     expect(ADMIN).toMatch(/for f in "\$SELF_DIR\/admin\.sh" "\$SELF_DIR\/host-check\.sh" "\$SELF_DIR\/jail\/jail\.properties" "\$SELF_DIR\/jail\/probe\.py"; do/);
     // install stops when the probe does not hold on this machine
     expect(ADMIN).toMatch(/jail_check "\$REQUESTER" \|\| \{ echo "JAIL_UNSAFE/);
+    // install: an old requester process (Phase 2) is refused, the shell becomes nologin, and only then the checks
+    const install = ADMIN.slice(ADMIN.indexOf("  install)"), ADMIN.indexOf("  approve)"));
+    expect(install.indexOf('pgrep -u "$REQUESTER"')).toBeGreaterThan(0);
+    expect(install.indexOf('pgrep -u "$REQUESTER"')).toBeLessThan(install.indexOf('usermod -s /usr/sbin/nologin "$REQUESTER"'));
+    expect(install.indexOf('usermod -s /usr/sbin/nologin "$REQUESTER"')).toBeLessThan(install.indexOf("host_safe"));
     // the sign-in stops the jail first, then checks; Claude comes back whatever happens after the stop
     const login = ADMIN.slice(ADMIN.indexOf("  login)"), ADMIN.indexOf("  jail-check)"));
     expect(login.indexOf("stop_jail_units")).toBeGreaterThan(0);
     expect(login.indexOf("stop_jail_units")).toBeLessThan(login.indexOf("host_safe"));
     expect(login.indexOf("trap restore EXIT")).toBeLessThan(login.indexOf("stop_jail_units"));
+    // and nothing starts Claude during the sign-in
+    expect(login.indexOf('systemctl mask --runtime "$JAIL_CLAUDE"')).toBeLessThan(login.indexOf("stop_jail_units"));
+    expect(login).toContain('systemctl unmask --runtime "$JAIL_CLAUDE"');
   });
 });

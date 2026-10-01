@@ -337,3 +337,22 @@ Fixed, verified live:
   - `jail_install` restarts the net unit, so a re-install or `approve` takes effect.
   - `run` sets `RuntimeMaxSec=3500` and gives each run a unique unit name.
   - Docs: the start-limit reset, `wsl --shutdown` after editing `.wslconfig`, and a checklist for the real machine.
+
+Round 3 of the jail review (1616829).
+- **Architecture — H1, fixed: the first install refused itself.** `host_safe` requires a nologin shell, but `jail_install` set it only later. Any Phase 2 requester process also made install fail.
+  - Install now refuses with `REQUESTER_RUNNING` (and how to stop it) while a requester process exists, then sets nologin, then runs `host_safe`.
+  - A test pins that order. The docs add `pkill -u sr-designgen` before install.
+- **Architecture — Lows, fixed:**
+  - `login` masks the Claude unit (runtime) for the sign-in, so a pasta crash cannot start Claude mid-login.
+  - The probe allows `/run/resolvconf` (the place of a bound `resolv.conf`).
+  - The docs cover: `approve` and `jail-install` restart the jail; `restart sr-jail-net` after a host DNS change; the DNS-over-TCP check on the real machine.
+- **Verified by architecture:** `/etc/resolv.conf` as a link into a `TemporaryFileSystem` works on systemd 255; the DNS variants match the docs; the restart logic.
+- **Found while chasing the flaky host-check test: a real decoding bug.** `printf %b` on `/proc/mounts` reads `\0` followed by up to three more digits, so `\040` followed by a digit (e.g. "My Drive 2") decoded wrong, and the Windows-drive check looked at the wrong path.
+  - Fix: `sr_unoctal` decodes exactly three octal digits per escape. The test now uses a "space + digit" name.
+- **Security, round 3:** an independent reviewer started; the platform's safeguards stopped it (as one did in round 2). Its live questions were run by hand in rounds 2–3 instead, as recorded above:
+  - host-namespace listeners;
+  - `10.255.255.254` on any port;
+  - abstract sockets;
+  - `setns`;
+  - pasta crash recovery;
+  - fail-open unit writing.

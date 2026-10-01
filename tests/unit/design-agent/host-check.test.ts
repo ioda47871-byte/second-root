@@ -136,7 +136,8 @@ describe("host-check.sh: the requester must not be able to become root or the he
     expect(run({ mounts, sudoRules: true }, "sr_check_requester_root sr-designgen").out).toMatch(/^REQUESTER_HAS_SUDO/);
     expect(run({ mounts, writable: ["/tmp"] }, "sr_check_requester_root sr-designgen").code).toBe(0); // tmpfs is not a Windows drive
     // a Windows mount the requester can write (a path with a space, as /proc/mounts encodes it)
-    const dir = mkdtempSync(join(tmpdir(), "sr-hc-mnt "));
+    // a space followed by a digit ("\0402..."): each escape is exactly three octal digits
+    const dir = mkdtempSync(join(tmpdir(), "sr-hc-mnt 2"));
     roots.push(dir);
     const enc = dir.replaceAll(" ", "\\040");
     const writable = run({ mounts: `C:\\134 ${enc} 9p rw 0 0\n`, writable: [dir] }, "sr_check_requester_root sr-designgen");

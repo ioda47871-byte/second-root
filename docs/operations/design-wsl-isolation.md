@@ -92,7 +92,9 @@ Windows（人）── WSL2 VM ── Ubuntu distro
   gateway）と systemd-resolved の stub（127.0.0.53）は使えない。引けなければ probe が `JAIL_WARN DNS_NOT_WORKING` を出す
 - **復旧**: pasta が落ちたり、起動直後に順序が競合したりして jail の Claude が止まっても、network の unit が起動し直すときに
   Claude の unit が有効なら起動し直す（`claude-stop` で止めたものは止まったまま）。Claude が 1 時間に 10 回落ちると
-  systemd が諦める。直したら `sudo systemctl reset-failed sr-jail-claude` の後に `admin.sh claude-start`
+  systemd が諦める。直したら `sudo systemctl reset-failed sr-jail-claude` の後に `admin.sh claude-start`。
+  host の DNS の設定を変えたら `sudo systemctl restart sr-jail-net`（pasta は起動時に host の resolver を読む。Claude も入れ直される）。
+  `admin.sh approve` / `jail-install` も network の unit を作り直すので、jail の Claude・`run`・`shell` はその時に起動し直される
 
 ## 5. この設計を確かめた方法（container の中で systemd 255 を PID 1 として起動）
 
@@ -123,6 +125,7 @@ WSL の状況は fixture で再現した（`/run/WSL/2_interop` を `root:root 0
 - `sudo bash …/admin.sh run sr-designgen -- getent hosts github.com` で名前が引ける（pasta 経由の DNS）
 - `wsl --shutdown` → 開き直す を 2〜3 回して、`systemctl status sr-jail-claude` が active（起動直後の順序の競合からの復旧）
 - `stat -fc %T /sys/fs/cgroup` が `cgroup2fs`
+- 大きな DNS の答え（TCP に切り替わるもの）も引ける: `sudo bash …/admin.sh run sr-designgen -- getent ahosts github.com`
 
 わかったこと:
 - `ProtectKernelTunables`・`ProtectKernelLogs`・`ProtectHostname` は `/proc` の一部を上書き mount するので、jail の中で

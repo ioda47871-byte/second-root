@@ -299,6 +299,14 @@ case "$CMD" in
     SHA="${2:-}"
     REQUESTER="${3:-sr-designgen}"
     id "$REQUESTER" >/dev/null 2>&1 || { echo "no such user: $REQUESTER"; exit 2; }
+    # From now on the requester runs only inside the jail: nothing of it may run outside (an old
+    # Claude / worker of Phase 2), and it gets no login shell. Then the same checks as every run.
+    if pgrep -u "$REQUESTER" >/dev/null 2>&1; then
+      echo "REQUESTER_RUNNING: stop every process of $REQUESTER first (an old Claude Remote Control, the worker):"
+      echo "  sudo pkill -u $REQUESTER   # then run install again"
+      exit 3
+    fi
+    usermod -s /usr/sbin/nologin "$REQUESTER"
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above, then run install again"; exit 3; }
     getent group "$GROUP" >/dev/null || groupadd --system "$GROUP"
     id "$HELPER" >/dev/null 2>&1 || adduser --disabled-password --comment "" "$HELPER" >/dev/null 2>&1 || adduser --disabled-password --gecos "" "$HELPER" >/dev/null
@@ -331,11 +339,14 @@ case "$CMD" in
     # the helper and Claude come back.
     restore() {
       pkill -KILL -u "$HELPER" >/dev/null 2>&1 || true
+      systemctl unmask --runtime "$JAIL_CLAUDE" >/dev/null 2>&1 || true
       systemctl start sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
       [ "$CLAUDE_WAS_ACTIVE" = 1 ] && systemctl start "$JAIL_CLAUDE" >/dev/null 2>&1 || true
     }
     trap restore EXIT
     trap 'exit 130' INT TERM HUP
+    # nothing may start Claude during the sign-in (e.g. the net unit after a pasta crash)
+    systemctl mask --runtime "$JAIL_CLAUDE" >/dev/null 2>&1 || true
     stop_jail_units
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above, then run login again"; exit 3; }
     if pgrep -u "$REQUESTER" >/dev/null 2>&1; then
