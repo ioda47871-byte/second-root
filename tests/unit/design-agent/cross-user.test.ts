@@ -1,7 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // The Unix boundary between the worker / Claude / Codex user and the user
 // that owns the signed-in Instagram browser profile (DEV-028 Phase 3), with
@@ -9,6 +9,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // installs them. Needs root to create the users: it runs in CI in its own
 // step (sudo, SR_CROSS_USER_TEST=1) and in a root container; elsewhere it
 // is skipped.
+
+// Creating users (useradd -m) takes a while on a CI runner.
+vi.setConfig({ hookTimeout: 180_000, testTimeout: 60_000 });
 
 const enabled = process.getuid?.() === 0 && process.env.SR_CROSS_USER_TEST === "1";
 if (process.env.SR_CROSS_USER_TEST === "1" && !enabled) throw new Error("SR_CROSS_USER_TEST=1 needs root (the step would skip silently)");
