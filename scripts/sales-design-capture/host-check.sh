@@ -5,15 +5,18 @@
 # worker, Claude, Codex) become root or the helper user, i.e. read the
 # signed-in browser profile:
 #
-# - WSL Windows interop on: any WSL user can start `wsl.exe -u root`.
-#   /etc/wsl.conf must say [interop] enabled=false and appendWindowsPath=false,
-#   and interop must be off NOW (after `wsl --shutdown`).
+# - Any process of the requester outside the requester jail: in WSL2 every Linux
+#   process can reach Windows (the /run/WSL interop sockets stay root:root 0777
+#   even with [interop] enabled=false; vsock), and Windows can start
+#   `wsl.exe -u root`. The jail (jail/jail.properties, proven by jail/probe.py)
+#   is the boundary; interop off in /etc/wsl.conf is kept as hygiene.
 # - The requester is the WSL default user (Windows opens a shell as it and
 #   people type sudo there), or can write the Windows drive's Startup folders
 #   (a file there runs as the Windows user, who can start wsl.exe -u root).
 # - The requester is root, in an admin-equivalent group, or (root only can
 #   see this) has any sudo rule.
 
+SR_PROC=/proc
 SR_PRIVILEGED_GROUPS="root sudo admin wheel adm lxd incus incus-admin disk docker libvirt kvm shadow systemd-journal sr-igcapture"
 
 sr_is_wsl() {
@@ -65,11 +68,35 @@ sr_check_wsl_interop() {
       return 1
     fi
   done
-  # Without the binfmt entry, /init can still talk to Windows through an interop socket anyone may open.
-  for f in /run/WSL/*_interop; do
-    [ -S "$f" ] || continue
-    if [ $(( 0$(stat -L -c %a "$f" 2>/dev/null || echo 0) & 002 )) -ne 0 ]; then
-      echo "WSL_INTEROP_SOCKET_OPEN: $f can be opened by any user; interop is not off"
+  # WSL 2.7 keeps /run/WSL/*_interop (root:root 0777) even with interop off, and Microsoft does
+  # not treat enabled=false as a security boundary: these checks are hygiene only. What keeps the
+  # requester from Windows is the jail (sr_check_requester_jailed; jail/probe.py).
+  return 0
+}
+
+# Every process of the requester must run inside a requester jail unit
+# (/system.slice/sr-jail-*.service: Claude Remote Control, a person's jailed shell). Only root
+# can put a process into that cgroup; a process outside could open the WSL interop socket.
+# The login shell must be nologin, so `su`, `wsl.exe -u` and ssh give no shell outside.
+sr_check_requester_jailed() {
+  local req="$1" uid shell d line jailed owner
+  uid="$(id -u "$req" 2>/dev/null)" || return 0
+  shell="$(getent passwd "$req" | cut -d: -f7)"
+  case "$shell" in
+    /usr/sbin/nologin | /sbin/nologin | /bin/false | /usr/bin/false) ;;
+    *) echo "REQUESTER_HAS_LOGIN_SHELL: $req has $shell (admin.sh install sets nologin)"; return 1 ;;
+  esac
+  for d in "$SR_PROC"/[0-9]*; do
+    owner="$(awk '/^Uid:/ { print $2 " " $3 " " $4 " " $5; exit }' "$d/status" 2>/dev/null)" || continue
+    case " $owner " in *" $uid "*) ;; *) continue ;; esac
+    jailed=0
+    while IFS= read -r line; do
+      [[ "$line" =~ ^0::/system\.slice/sr-jail-[a-z0-9-]+\.service$ ]] && jailed=1
+    done 2>/dev/null <"$d/cgroup"
+    # a process that ended between the two reads is not a problem
+    [ -e "$d" ] || continue
+    if [ "$jailed" != 1 ]; then
+      echo "REQUESTER_OUTSIDE_JAIL: a process of $req runs outside the requester jail; stop it (sudo pkill -u $req) and use admin.sh shell / claude-start"
       return 1
     fi
   done
@@ -85,7 +112,7 @@ sr_check_requester_processes() {
     gid="$(getent group "$g" 2>/dev/null | cut -d: -f3)"
     [ -n "$gid" ] && gids="$gids$gid "
   done
-  for f in /proc/[0-9]*/status; do
+  for f in "$SR_PROC"/[0-9]*/status; do
     mine=0
     hit=0
     while read -r key a b c d rest; do
@@ -113,6 +140,7 @@ sr_check_requester() {
     esac
   done
   sr_check_requester_processes "$req" || return 1
+  sr_check_requester_jailed "$req" || return 1
   if sr_is_wsl; then
     local def
     def="$(sr_wsl_conf user default)"
@@ -155,13 +183,5 @@ sr_check_requester_root() {
       fi
     done
   done </proc/mounts
-  # The interop sockets: the requester must not be able to open one.
-  for d in /run/WSL/*_interop; do
-    [ -S "$d" ] || continue
-    if runuser -u "$req" -- test -w "$d" 2>/dev/null; then
-      echo "WSL_INTEROP_SOCKET_OPEN: $req can open $d; interop is not off"
-      return 1
-    fi
-  done
   return 0
 }

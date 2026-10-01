@@ -19,10 +19,10 @@ type Machine = {
   sudoRules?: boolean;
   mounts?: string;
   writable?: string[];
-  /** /proc/<pid>/status contents of running processes */
-  procs?: string[];
-  /** /run/WSL/<name> sockets: mode */
-  sockets?: Record<string, number>;
+  /** running processes: /proc/<pid>/status and the cgroup v2 line of /proc/<pid>/cgroup */
+  procs?: Array<string | { status: string; cgroup: string }>;
+  /** the requester's login shell (getent passwd) */
+  shell?: string;
 };
 
 function run(machine: Machine, call: string): { code: number; out: string } {
@@ -34,26 +34,22 @@ function run(machine: Machine, call: string): { code: number; out: string } {
   if (machine.interop) writeFileSync(join(root, "binfmt", "WSLInterop"), `${machine.interop}\ninterpreter /init\n`);
   writeFileSync(join(root, "mounts"), machine.mounts ?? "");
   mkdirSync(join(root, "proc"));
-  (machine.procs ?? []).forEach((status, i) => {
+  (machine.procs ?? []).forEach((p, i) => {
+    const proc = typeof p === "string" ? { status: p, cgroup: "0::/user.slice/user-1001.slice/session-1.scope" } : p;
     mkdirSync(join(root, "proc", String(100 + i)));
-    writeFileSync(join(root, "proc", String(100 + i), "status"), status);
+    writeFileSync(join(root, "proc", String(100 + i), "status"), proc.status);
+    writeFileSync(join(root, "proc", String(100 + i), "cgroup"), `1:name=systemd:/\n${proc.cgroup}\n`);
   });
-  mkdirSync(join(root, "runwsl"));
-  for (const [name, mode] of Object.entries(machine.sockets ?? {})) {
-    const path = join(root, "runwsl", name);
-    spawnSync("python3", ["-c", `import socket,os; s=socket.socket(socket.AF_UNIX); s.bind(${JSON.stringify(path)}); os.chmod(${JSON.stringify(path)}, ${mode})`]);
-  }
   const script = SCRIPT.replaceAll("/etc/wsl.conf", join(root, "wsl.conf"))
     .replaceAll("/proc/sys/kernel/osrelease", join(root, "osrelease"))
     .replaceAll("/proc/sys/fs/binfmt_misc", join(root, "binfmt"))
     .replaceAll("/proc/mounts", join(root, "mounts"))
-    .replaceAll("/proc/[0-9]*/status", `${join(root, "proc")}/[0-9]*/status`)
-    .replaceAll("/run/WSL/", `${join(root, "runwsl")}/`)
+    .replace("SR_PROC=/proc", `SR_PROC=${join(root, "proc")}`)
     .replaceAll("[ -d /run/WSL ]", "false");
   const user = machine.user ?? { name: "sr-designgen", uid: 1001, groups: ["sr-designgen", "sr-capture"] };
   const stubs = `
 id() { case "$1" in -u) [ "$2" = "${user.name}" ] && echo ${user.uid} || return 1 ;; -nG) echo "${user.groups.join(" ")}" ;; esac; }
-getent() { case "$2" in sudo) echo "sudo:x:27:" ;; docker) echo "docker:x:998:" ;; *) return 2 ;; esac; }
+getent() { case "$1 $2" in "group sudo") echo "sudo:x:27:" ;; "group docker") echo "docker:x:998:" ;; "passwd ${user.name}") echo "${user.name}:x:${user.uid}:${user.uid}::/home/${user.name}:${machine.shell ?? "/usr/sbin/nologin"}" ;; *) return 2 ;; esac; }
 sudo() { ${machine.sudoRules ? `echo "User ${user.name} may run the following commands on host:"; echo "    (ALL) ALL"` : `echo "User ${user.name} is not allowed to run sudo on host."`}; }
 runuser() { shift 3; case " ${(machine.writable ?? []).join(" ")} " in *" $3 "*) return 0 ;; *) return 1 ;; esac; }
 stat() { if [ "$1" = -L ]; then command stat -c %a "$4"; else command stat "$@"; fi; }
@@ -85,9 +81,6 @@ describe("host-check.sh: the requester must not be able to become root or the he
     expect(live.code).toBe(1);
     expect(live.out).toMatch(/^WSL_INTEROP_ACTIVE/); // the file changed but WSL was not restarted
     expect(run({ conf: SAFE_CONF, interop: "disabled" }, "sr_check_wsl_interop").code).toBe(0);
-    // an interop socket anyone may open: /init can still reach Windows without the binfmt entry
-    expect(run({ conf: SAFE_CONF, sockets: { "1_interop": 0o777 } }, "sr_check_wsl_interop").out).toMatch(/^WSL_INTEROP_SOCKET_OPEN/);
-    expect(run({ conf: SAFE_CONF, sockets: { "1_interop": 0o700 } }, "sr_check_wsl_interop").code).toBe(0);
     expect(run({ wsl: false }, "sr_check_wsl_interop").code).toBe(0); // not WSL: nothing to check
   });
 
@@ -107,8 +100,28 @@ describe("host-check.sh: the requester must not be able to become root or the he
     expect(run({ wsl: false, user: { name: "sr-designgen", uid: 1000, groups: [] } }, "sr_check_requester sr-designgen").code).toBe(0); // not WSL
   });
 
+  it("WSL 2.7 keeps /run/WSL/*_interop root:root 0777 even with interop off: every process of the requester must be in the jail", () => {
+    const status = (uid: number) => `Name:\tx\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nGid:\t${uid}\t${uid}\t${uid}\t${uid}\nGroups:\t994\n`;
+    const jailed = (unit: string) => ({ status: status(1001), cgroup: `0::/system.slice/${unit}` });
+    // nothing running, or only inside the jail units: fine
+    expect(run({ conf: SAFE_CONF }, "sr_check_requester_jailed sr-designgen").code).toBe(0);
+    expect(run({ conf: SAFE_CONF, procs: [jailed("sr-jail-claude.service"), jailed("sr-jail-shell-4242.service"), { status: status(1000), cgroup: "0::/user.slice" }] }, "sr_check_requester_jailed sr-designgen").code).toBe(0);
+    // a process of the requester anywhere else (a login session, su, wsl.exe -u, another unit) is refused
+    for (const cgroup of ["0::/user.slice/user-1001.slice/session-3.scope", "0::/system.slice/cron.service", "0::/system.slice/sr-jail-claude.service/evil", "0::/system.slice/xsr-jail-claude.service", "0::/", "0::/system.slice/sr-jail-.service"]) {
+      const r = run({ conf: SAFE_CONF, procs: [jailed("sr-jail-claude.service"), { status: status(1001), cgroup }] }, "sr_check_requester_jailed sr-designgen");
+      expect(r.code, cgroup).toBe(1);
+      expect(r.out).toMatch(/^REQUESTER_OUTSIDE_JAIL/);
+    }
+    // a login shell would let su / wsl.exe -u / ssh start one outside
+    const shell = run({ conf: SAFE_CONF, shell: "/bin/bash" }, "sr_check_requester_jailed sr-designgen");
+    expect(shell.code).toBe(1);
+    expect(shell.out).toMatch(/^REQUESTER_HAS_LOGIN_SHELL/);
+    // sr_check_requester (admin.sh install / login, run.sh) includes it
+    expect(run({ conf: SAFE_CONF, procs: [{ status: status(1001), cgroup: "0::/user.slice" }] }, "sr_check_requester sr-designgen").out).toMatch(/REQUESTER_OUTSIDE_JAIL/);
+  });
+
   it("a running process of the requester that still holds an admin group (removed from /etc/group later) is refused", () => {
-    const proc = (uid: number, groups: string) => `Name:\tclaude\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nGid:\t${uid}\t${uid}\t${uid}\t${uid}\nGroups:\t${groups}\n`;
+    const proc = (uid: number, groups: string) => ({ cgroup: "0::/system.slice/sr-jail-claude.service", status: `Name:\tclaude\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nGid:\t${uid}\t${uid}\t${uid}\t${uid}\nGroups:\t${groups}\n`});
     expect(run({ conf: SAFE_CONF, procs: [proc(1001, "994 1001"), proc(0, "0 27")] }, "sr_check_requester sr-designgen").code).toBe(0); // root's own sudo is not the requester's
     const held = run({ conf: SAFE_CONF, procs: [proc(1001, "994 27 1001")] }, "sr_check_requester sr-designgen");
     expect(held.code).toBe(1);
@@ -138,7 +151,5 @@ describe("host-check.sh: the requester must not be able to become root or the he
       expect(r.code, bad).toBe(1);
       expect(r.out).toMatch(/^EXPORT_MOUNT_UNSAFE/);
     }
-    // the requester may not open an interop socket
-    expect(run({ sockets: { "7_interop": 0o770 }, writable: [] }, "sr_check_requester_root sr-designgen").code).toBe(0);
   });
 });

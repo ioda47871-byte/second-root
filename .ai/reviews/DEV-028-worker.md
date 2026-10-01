@@ -228,3 +228,56 @@ Round 5 (on dcb6aa2): the security reviewer found no Critical or High issues and
   - the export source must be `X:\Users\<name>\<folder>…` with no `..` or `~` (8.3 names);
   - `hidepid` on `/proc` makes `run.sh` refuse (`PROC_HIDDEN`);
   - the WSL2 vsock reachability is listed as unverified.
+
+## WSL isolation redesign (2026-10-01, after the real-machine check)
+
+What the human found on the real machine (WSL 2.7.14.0, kernel 6.18.33.2-2, Ubuntu 24.04):
+- With `[interop] enabled=false`, no binfmt entry, and `cmd.exe` denied to the requester, `/run/WSL/1_interop -> 2_interop` still survives `wsl --shutdown`.
+- `2_interop` is `srwxrwxrwx root:root`, so the requester can connect to it. Through it, any Linux process reaches Windows as the Windows user, and from there `wsl.exe -u root`.
+- Microsoft does not treat `enabled=false` as a security boundary. **A separate Linux user is therefore no boundary in WSL2.**
+
+New design: the requester jail (`docs/operations/design-wsl-isolation.md`). Every process of `sr-designgen` runs only in `sr-jail-*.service` units.
+- **Settings:** `scripts/sales-design-capture/jail/jail.properties` holds one shared list.
+  - What it hides: `/run` and `/mnt` (empty tmpfs), `/srv` except the spool, `/usr/lib/wsl`, `/init`, `PrivateDevices`.
+  - What the kernel refuses: `AF_VSOCK` (`RestrictAddressFamilies`); io_uring and syslog (EPERM); private, link-local and gateway addresses (`IPAddressDeny`, cgroup BPF).
+  - Other: `ProtectProc=invisible`, `NoNewPrivileges`.
+- **Fail-closed probe:** `jail/probe.py` runs as `ExecStartPre` inside the same sandbox and stops the unit on any doubt. It checks:
+  - the WSL paths, the display, `/proc`, other homes, vsock, io_uring;
+  - private/gateway addresses via UDP sends, which must return EPERM;
+  - every listening abstract Unix socket, by connecting to it;
+  - that no browser profile is left in the requester's own home.
+- **admin.sh:**
+  - New commands: `jail-install`, `jail-check`, `shell` (a jailed interactive shell), `run`, `claude-start` and `claude-stop`.
+  - The requester's login shell becomes nologin. The default gateway is added to the deny list.
+  - `login` stops the jail units first.
+- **host-check.sh:**
+  - New check: every requester process's cgroup must be `/system.slice/sr-jail-*.service`, and the login shell must be nologin. Only root can put a process into those cgroups.
+  - The interop-socket mode check is dropped: on WSL 2.7.14 the socket is always 0777, and the jail is the boundary.
+
+Evidence: systemd 255 (the version Ubuntu 24.04 ships) ran as PID 1 inside the container, with the WSL state recreated as fixtures (a 0777 `/run/WSL` socket, `/mnt/c`, `/mnt/wslg`, `/usr/lib/wsl`).
+
+| Check | Outside the jail (same user) | Inside the jail |
+|---|---|---|
+| Interop socket | reachable | absent |
+| `AF_VSOCK` socket | allowed | `EAFNOSUPPORT` |
+| io_uring | allowed | `EPERM` |
+| UDP to private / gateway addresses | sent | `EPERM` |
+| Probe result | 13 `JAIL_UNSAFE` codes | `JAIL_OK` |
+
+- A whole-filesystem walk inside the jail found no connectable socket, no `/proc` path out and no extra socket family.
+- An abstract socket left listening outside the jail made `jail-check` fail with `ABSTRACT_SOCKET_REACHABLE`.
+- Inside the jail, `sandbox.test.ts` (the real bubblewrap attacker) and `worker.test.ts` (Chromium) passed: 73/73.
+- `jail-install` → `claude-start`: the processes run in the `sr-jail-claude.service` cgroup. A process started outside the jail gives `REQUESTER_OUTSIDE_JAIL`. `claude-stop` worked.
+
+Found along the way:
+- `ProtectKernelTunables`, `ProtectKernelLogs` and `ProtectHostname` overmount `/proc`, and then bubblewrap cannot mount a fresh `/proc`. They are dropped (what they guard needs root anyway), and syslog is denied by the system-call filter instead.
+- A TCP SYN dropped by `IPAddressDeny` only times out, so the probe uses UDP.
+- tmux needs `SHELL=/bin/bash` once the login shell is nologin.
+- In the container, the default gateway (192.0.2.1) is outside the private ranges. `admin.sh` therefore always adds the current gateway to the deny list.
+
+Options compared, in the design doc:
+- A. Separate Linux user only: does not hold.
+- B. Jail: adopted.
+- C. Claude in a separate Hyper-V VM: the next step if the probe fails on the real machine.
+- D. Profile on another machine.
+- E. No signed-in profile at all.

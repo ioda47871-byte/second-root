@@ -5,6 +5,9 @@
 #   sudo bash admin.sh install <commit-sha> [requester-user]   # once
 #   sudo bash admin.sh approve <commit-sha>                     # each new helper version
 #   sudo bash admin.sh login                                    # headed Instagram sign-in (a person types)
+#   sudo bash admin.sh jail-check                               # prove the requester jail on this machine
+#   sudo bash admin.sh shell                                    # a jailed shell as the requester
+#   sudo bash admin.sh claude-start | claude-stop               # Claude Remote Control, jailed
 #   sudo bash admin.sh status
 #
 # install: creates the user sr-igcapture (owns the Instagram browser profile;
@@ -67,7 +70,7 @@ trusted_path() {
     p="$(dirname "$p")"
   done
 }
-for f in "$SELF_DIR/admin.sh" "$SELF_DIR/host-check.sh"; do
+for f in "$SELF_DIR/admin.sh" "$SELF_DIR/host-check.sh" "$SELF_DIR/jail/jail.properties" "$SELF_DIR/jail/probe.py"; do
   trusted_path "$f" || { echo "ADMIN_SCRIPT_UNTRUSTED: $f can be changed by a user other than root / $HELPER. Run admin.sh from a root-owned clone (design-capture-helper.md §1) or from $HOME_DIR/second-root."; exit 2; }
 done
 # shellcheck source=host-check.sh
@@ -80,6 +83,91 @@ host_safe() {
   sr_check_requester "$req" || ok=1
   sr_check_requester_root "$req" || ok=1
   return $ok
+}
+
+# ---- the requester jail (docs/operations/design-wsl-isolation.md)
+# In WSL2 every Linux process can reach Windows (the /run/WSL interop sockets
+# are root:root 0777 even with interop off; vsock), and Windows is root of every
+# distro. So no process of the requester may run outside the jail: its login
+# shell is nologin, and it runs only as sr-jail-*.service units (Claude Remote
+# Control, a person's jailed shell), whose settings hide those ways and whose
+# probe proves it before each start.
+JAIL_LIB=/usr/local/lib/sr-jail
+JAIL_CLAUDE=sr-jail-claude.service
+
+jail_python() {
+  local py
+  py="$(readlink -f "$(command -v python3 2>/dev/null)" 2>/dev/null)" || return 1
+  [ -x "$py" ] && root_owned "$py" && echo "$py"
+}
+
+# The jail settings for one requester: the shared list, then who / where, the
+# default gateway (the Windows host in WSL's NAT) refused by address, and the probe.
+jail_props() {
+  local req="$1" home py gw
+  home="$(getent passwd "$req" | cut -d: -f6)"
+  [ -n "$home" ] && [ -d "$home" ] || return 1
+  py="$(jail_python)" || return 1
+  grep -Ev '^[[:space:]]*(#|$)' "$JAIL_LIB/jail.properties"
+  echo "User=$req"
+  echo "BindPaths=$home"
+  echo "WorkingDirectory=$home"
+  echo "Environment=PATH=$home/.npm-global/bin:$home/.local/bin:/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 SHELL=/bin/bash"
+  for gw in $(awk 'NR > 1 && $2 == "00000000" { print $3 }' /proc/net/route); do
+    [[ "$gw" =~ ^[0-9A-Fa-f]{8}$ ]] || continue
+    printf 'IPAddressDeny=%d.%d.%d.%d/32\n' "0x${gw:6:2}" "0x${gw:4:2}" "0x${gw:2:2}" "0x${gw:0:2}"
+  done
+  echo "ExecStartPre=$py -I $JAIL_LIB/probe.py $req"
+}
+
+jail_args() {
+  local line
+  JAIL_ARGS=()
+  while IFS= read -r line; do JAIL_ARGS+=(-p "$line"); done < <(jail_props "$1")
+  [ "${#JAIL_ARGS[@]}" -gt 0 ]
+}
+
+jail_install() {
+  local req="$1" home tmux_bin
+  home="$(getent passwd "$req" | cut -d: -f6)"
+  jail_python >/dev/null || { echo "PYTHON_MISSING: a root-owned python3 is needed for the jail probe (sudo apt install -y python3)"; exit 2; }
+  tmux_bin="$(command -v tmux)" && root_owned "$tmux_bin" || { echo "TMUX_MISSING: sudo apt install -y tmux"; exit 2; }
+  command -v systemd-run >/dev/null || { echo "SYSTEMD_MISSING: WSL needs [boot] systemd=true"; exit 2; }
+  install -d -o root -g root -m 0755 "$JAIL_LIB"
+  install -o root -g root -m 0644 "$SELF_DIR/jail/jail.properties" "$SELF_DIR/jail/probe.py" "$JAIL_LIB/"
+  # Nothing of the requester outside the jail: no login shell (su, wsl.exe -u, ssh), no cron / at / linger.
+  usermod -s /usr/sbin/nologin "$req"
+  {
+    echo "# Written by admin.sh (DEV-028). Claude Code Remote Control as $req, in the requester jail."
+    echo "[Unit]"
+    echo "Description=Claude Code Remote Control ($req, jailed)"
+    echo "Wants=network-online.target"
+    echo "After=network-online.target"
+    echo "[Service]"
+    echo "Type=forking"
+    jail_props "$req"
+    echo "ExecStart=$tmux_bin -S $home/.sr-claude.tmux new-session -d -s claude \"cd ~/work/second-root && exec claude remote-control\""
+    echo "ExecStop=$tmux_bin -S $home/.sr-claude.tmux kill-server"
+    echo "Restart=on-failure"
+    echo "RestartSec=60"
+    echo "[Install]"
+    echo "WantedBy=multi-user.target"
+  } > "/etc/systemd/system/$JAIL_CLAUDE.tmp"
+  chmod 0644 "/etc/systemd/system/$JAIL_CLAUDE.tmp"
+  mv -f "/etc/systemd/system/$JAIL_CLAUDE.tmp" "/etc/systemd/system/$JAIL_CLAUDE"
+  systemctl daemon-reload
+}
+
+# The probe, run in a throw-away unit with exactly the jail's settings.
+jail_check() {
+  local req="$1" py
+  py="$(jail_python)" || { echo "PYTHON_MISSING"; return 1; }
+  jail_args "$req" || { echo "JAIL_NOT_INSTALLED"; return 1; }
+  systemd-run --quiet --wait --collect --pipe --unit="sr-jail-check-$$" "${JAIL_ARGS[@]}" "$py" -I "$JAIL_LIB/probe.py" "$req"
+}
+
+stop_jail_units() {
+  systemctl stop 'sr-jail-*.service' >/dev/null 2>&1 || true
 }
 
 # A system node >= 20 the helper user can run (an nvm node in another user's home is not readable),
@@ -165,13 +253,19 @@ case "$CMD" in
     install -d -o "$HELPER" -g "$GROUP" -m 2750 "$SPOOL/results"
     chmod 3730 "$SPOOL/requests"; chmod 2750 "$SPOOL/results"
     approve "$SHA" "${SR_CAPTURE_CONFIRM:-ask}"
-    echo "INSTALLED. $REQUESTER must start a new login for the group (WSL: wsl --shutdown, then open again)."
+    jail_install "$REQUESTER"
+    jail_check "$REQUESTER" || { echo "JAIL_UNSAFE: the jail does not hold on this machine (lines above). Claude is not started."; exit 3; }
+    echo "INSTALLED. Next: sudo bash $HOME_DIR/second-root/scripts/sales-design-capture/admin.sh shell   (a jailed shell for $REQUESTER: install / sign in Claude Code)"
     ;;
   approve)
     approve "${2:-}"
     ;;
   login)
     REQUESTER="${2:-sr-designgen}"
+    # The requester's jail (Claude) is stopped while a person signs in, and started again after.
+    CLAUDE_WAS_ACTIVE=0
+    systemctl is-active --quiet "$JAIL_CLAUDE" 2>/dev/null && CLAUDE_WAS_ACTIVE=1
+    stop_jail_units
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above, then run login again"; exit 3; }
     if pgrep -u "$REQUESTER" >/dev/null 2>&1; then
       echo "REQUESTER_RUNNING: stop every process of $REQUESTER first (Claude, the worker): they share the display."
@@ -186,6 +280,7 @@ case "$CMD" in
     restore() {
       pkill -KILL -u "$HELPER" >/dev/null 2>&1 || true
       systemctl start sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
+      [ "$CLAUDE_WAS_ACTIVE" = 1 ] && systemctl start "$JAIL_CLAUDE" >/dev/null 2>&1 || true
     }
     trap restore EXIT
     trap 'exit 130' INT TERM HUP
@@ -208,12 +303,50 @@ case "$CMD" in
     [ "$RC" != 0 ] || RC=$LOGIN_RC
     exit "$RC"
     ;;
+  jail-check)
+    REQUESTER="${2:-sr-designgen}"
+    jail_check "$REQUESTER"
+    ;;
+  jail-install)
+    # Re-writes the jail unit from this (approved) checkout, e.g. after the default gateway changed.
+    REQUESTER="${2:-sr-designgen}"
+    jail_install "$REQUESTER"
+    jail_check "$REQUESTER" || { echo "JAIL_UNSAFE: the jail does not hold on this machine (lines above)"; exit 3; }
+    ;;
+  shell)
+    # A person's shell AS the requester, inside the jail (install Claude Code, claude /login, look around).
+    REQUESTER="${2:-sr-designgen}"
+    host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above first"; exit 3; }
+    jail_args "$REQUESTER" || { echo "JAIL_NOT_INSTALLED: run install first"; exit 2; }
+    systemd-run --quiet --pty --wait --collect --unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}" /bin/bash -l
+    ;;
+  run)
+    # One command as the requester, inside the jail, without a terminal: admin.sh run sr-designgen -- npm test
+    REQUESTER="${2:-}"
+    [ "${3:-}" = "--" ] && [ $# -ge 4 ] || { echo "usage: admin.sh run <requester> -- <command...>"; exit 2; }
+    host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above first"; exit 3; }
+    jail_args "$REQUESTER" || { echo "JAIL_NOT_INSTALLED: run install first"; exit 2; }
+    shift 3
+    systemd-run --quiet --wait --collect --pipe --unit="sr-jail-run-$$" "${JAIL_ARGS[@]}" "$@"
+    ;;
+  claude-start)
+    REQUESTER="${2:-sr-designgen}"
+    host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above first"; exit 3; }
+    systemctl enable --now "$JAIL_CLAUDE"
+    systemctl is-active --quiet "$JAIL_CLAUDE" && echo "CLAUDE_STARTED (jailed)" || { echo "CLAUDE_NOT_STARTED: journalctl -u $JAIL_CLAUDE"; exit 3; }
+    ;;
+  claude-stop)
+    systemctl disable --now "$JAIL_CLAUDE" >/dev/null 2>&1 || true
+    stop_jail_units
+    echo "CLAUDE_STOPPED"
+    ;;
   status)
     stat -c '%A %U:%G %n' "$HOME_DIR" "$SPOOL" "$SPOOL/requests" "$SPOOL/results"
     echo "approved: $(cat "$CONF/approved-sha" 2>/dev/null || echo none)"
     echo "node: $(cat "$CONF/node-dir" 2>/dev/null || echo none)"
     systemctl is-enabled sr-capture.path sr-capture.timer || true
+    echo "jail: $(systemctl is-enabled "$JAIL_CLAUDE" 2>/dev/null || echo none) / $(systemctl is-active "$JAIL_CLAUDE" 2>/dev/null || echo inactive)"
     ;;
   *)
-    echo "usage: sudo bash admin.sh install <sha> [requester] | approve <sha> | login | status"; exit 2 ;;
+    echo "usage: sudo bash admin.sh install <sha> [requester] | approve <sha> | login | jail-check | jail-install | shell | run <requester> -- <cmd> | claude-start | claude-stop | status"; exit 2 ;;
 esac

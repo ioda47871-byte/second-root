@@ -58,11 +58,12 @@ capture helper                                     ← 利用者 sr-igcapture（
   ```bash
   sudo /mnt/c/Windows/System32/cmd.exe /c ver        # 失敗する（Exec format error など）こと
   cat /proc/sys/fs/binfmt_misc/WSLInterop* 2>&1       # 無い、または disabled
-  sudo -u sr-designgen bash -c 'for s in /run/WSL/*_interop; do [ -w "$s" ] && echo "OPEN $s"; done; true'   # 何も出ない
   ```
 
-  helper も、誰でも開ける `/run/WSL/*_interop` の socket があれば interop が残っているとみなして断る。
-  （未確認: WSL2 の vsock 経由で一般の利用者が Windows 側の interop に届くか。`/init` は root の process から使う前提で、まだ実機で確かめていない）
+  **これだけでは境界にならない。**WSL 2.7.14 では interop を切っても `/run/WSL/*_interop` が `root:root 0777` で残り、
+  どの利用者も Windows に届く（Microsoft も `enabled=false` を security boundary とは扱っていない）。
+  境界は **requester jail**（`design-wsl-isolation.md`）: `sr-designgen` の process は `sr-jail-*.service` の中でしか動かず、
+  そこからは socket・vsock・Windows の drive・display・Windows host が見えない。install が jail を入れ、probe が実機で確かめる
 - requester は**一度も** admin の group（`sudo` / `docker` / `lxd` / `incus` / `disk` / `libvirt` など）や sudo を持ったことのない、新しく作った利用者にする。
   一度でも持っていたなら、その間に root で残せたもの（setuid の file、root の cron・SSH 鍵、常駐の container）は、group から外しても
   ここの確認では見つからない。その場合は新しい requester 利用者を作り直す（できれば distro も新しく）
@@ -110,8 +111,12 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh install "
 
 `sr-designgen` は group の変更を反映するため、一度ログインし直す（WSL なら `wsl --shutdown` 後に開き直すのが確実）。
 
-helper（`run.sh`）は起動のたびに interop と requester の group を確かめ直す。後で interop を戻したり requester を admin の group に
-入れたりすると、その間の依頼には profile を開かずに `HELPER_ERROR`（`WSL_INTEROP_ON` / `REQUESTER_PRIVILEGED`）を返す。
+install は最後に requester jail を入れる（`sr-designgen` の login shell を nologin にし、`sr-jail-claude.service` を書き、
+`admin.sh jail-check` で probe を通す）。probe が通らなければ install は `JAIL_UNSAFE` で止まる。
+**`sr-designgen` の home に Phase 2 の profile（`~/.local/share/sr-instagram-browser`）が残っていると probe は止まる。先に消す。**
+
+helper（`run.sh`）は起動のたびに、interop の設定と requester の group、**requester のすべての process が jail の中にあること**を確かめ直す。
+満たさない間の依頼には、profile を開かずに `HELPER_ERROR`（`WSL_INTEROP_ON` / `REQUESTER_PRIVILEGED`）を返す。
 
 ## 2. ログイン（人が、headed で）
 

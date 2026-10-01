@@ -56,7 +56,7 @@ r.foreignFds = fs.readdirSync("/proc/self/fd").map((fd) => { try { return fs.rea
 let found = false, files = 0;
 const walk = (d, depth) => { if (depth > 12 || found || files > 20000 || d === process.cwd()) return; let es; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
   for (const e of es) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p, depth + 1); else if (e.isFile()) { files++; if (canRead(p)) { found = true; return; } } } };
-for (const top of T.light ? [T.home, T.extraRoot] : ["/home", "/root", "/tmp", "/var/tmp", "/mnt", "/media", "/srv", "/run", T.home, T.extraRoot]) walk(top, 0);
+for (const top of (T.light ? [T.home, T.extraRoot] : ["/home", "/root", "/tmp", "/var/tmp", "/mnt", "/media", "/srv", "/run", T.home, T.extraRoot]).filter(Boolean)) walk(top, 0);
 r.canaryAnywhere = found;
 r.inputReadable = (() => { try { return fs.readFileSync(path.join(process.cwd(), "inputs", "ref-1.png")).subarray(1, 4).toString() === "PNG"; } catch { return false; } })();
 const tryWrite = (p) => { try { fs.writeFileSync(p, "x"); return true; } catch { return false; } };
@@ -82,7 +82,7 @@ describe.skipIf(!bwrapWorks)("the Codex sandbox (real bubblewrap)", () => {
   let extraRoot: string;
   let codexBin: string;
   let holder: ChildProcess | undefined;
-  const protectedPaths = () => [profile, join(home, ".config", "sr-design-worker"), join(home, ".local", "share", "second-root-design"), extraRoot];
+  const protectedPaths = () => [profile, join(home, ".config", "sr-design-worker"), join(home, ".local", "share", "second-root-design"), extraRoot].filter(Boolean);
   const env = () => ({ PATH: `/usr/local/bin:/usr/bin:/bin:${process.execPath.replace(/\/node$/, "")}`, HOME: home, LANG: "C.UTF-8", OPENAI_API_KEY: "sk-never", GITHUB_TOKEN: "ghp_never", SECRET_CANARY: CANARY });
 
   beforeAll(() => {
@@ -109,9 +109,10 @@ describe.skipIf(!bwrapWorks)("the Codex sandbox (real bubblewrap)", () => {
           /* next */
         }
       }
-      throw new Error("no writable directory outside the hidden areas");
+      // inside the requester jail (ProtectSystem=strict) there is none: that case is then not exercised
+      return "";
     })();
-    writeFileSync(join(extraRoot, "spool.json"), CANARY);
+    if (extraRoot) writeFileSync(join(extraRoot, "spool.json"), CANARY);
     const install = join(root, "codex-install", "bin");
     mkdirSync(install, { recursive: true });
     codexBin = join(install, "codex");
@@ -125,7 +126,7 @@ describe.skipIf(!bwrapWorks)("the Codex sandbox (real bubblewrap)", () => {
   });
   afterAll(() => {
     holder?.kill("SIGKILL");
-    spawnSync("rm", ["-rf", root, extraRoot]);
+    spawnSync("rm", ["-rf", root, ...(extraRoot ? [extraRoot] : [])]);
   });
 
   async function attack(unconfined = false): Promise<Attack> {

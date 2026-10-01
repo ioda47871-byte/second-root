@@ -56,6 +56,9 @@ sudo chmod 700 /home/sr-designgen
 
 ## 2. 道具を入れる（sr-designgen で）
 
+> **capture helper（requester jail）を入れた machine では** `sudo -iu sr-designgen` は使えない（login shell は nologin）。
+> 代わりに `sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh shell` で jail の中の shell を開く（`design-wsl-isolation.md`）。
+
 ```bash
 sudo -iu sr-designgen
 # Node 22 以上（nvm などで利用者のホームに入れる）

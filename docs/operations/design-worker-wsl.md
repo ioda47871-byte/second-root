@@ -168,6 +168,9 @@ worker の環境に `CODEX_HOME=~/.codex-design`）。既定の `~/.codex` を�
 
 worker 専用の clone を使う（run.sh は checkout を `--force` で origin に揃え、追跡外のファイルを消す）。
 
+> **capture helper（requester jail）を入れた machine では** `sudo -iu sr-designgen` は使えない（login shell は nologin）。
+> 代わりに `sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh shell` で jail の中の shell を開く（`design-wsl-isolation.md`）。
+
 ```bash
 sudo -iu sr-designgen
 git clone https://github.com/ioda47871-byte/second-root.git ~/work/second-root
