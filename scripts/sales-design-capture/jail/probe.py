@@ -30,6 +30,7 @@ import sys
 
 problems = []
 notes = []
+warnings = []
 
 
 def fail(code):
@@ -110,7 +111,7 @@ def main():
             fail("VISIBLE_" + path.strip("/").replace("/", "_").replace(".", "").replace("-", "_").upper())
     try:
         for name in os.listdir("/run"):
-            if name not in ("systemd", "user"):
+            if name not in ("systemd", "user", "sr-jail"):
                 fail("RUN_NOT_EMPTY")
                 break
     except OSError:
@@ -122,7 +123,7 @@ def main():
     except OSError:
         pass
     try:
-        mnt = [n for n in os.listdir("/mnt") if n != "wsl"]
+        mnt = [n for n in os.listdir("/mnt") if n not in ("wsl", "sr-export")]
         if mnt:
             fail("MNT_NOT_EMPTY")
         if os.path.isdir("/mnt/wsl") and [n for n in os.listdir("/mnt/wsl") if n != "resolv.conf"]:
@@ -139,6 +140,17 @@ def main():
     for rel in (".local/share/sr-instagram-browser", ".config/chromium", ".config/google-chrome", "snap/chromium"):
         if os.path.lexists(os.path.join(home, rel)):
             fail("BROWSER_PROFILE_IN_HOME")
+
+    # The jail's own network namespace (sr-jail-net.service): the id root recorded when it
+    # made the namespace must be ours. Then abstract sockets and loopback of the WSL VM
+    # (the WSLg X server, systemd's buses, other users' localhost services) are not here.
+    try:
+        with open("/run/sr-jail/netns-id") as f:
+            want = int(f.read().strip())
+        if os.stat("/proc/self/ns/net").st_ino != want:
+            fail("NETWORK_NOT_PRIVATE")
+    except (OSError, ValueError):
+        fail("NETWORK_NOT_PRIVATE")
 
     # The kernel ways out: vsock (WSL's own channel to Windows) and io_uring.
     if hasattr(socket, "AF_VSOCK"):
@@ -244,6 +256,14 @@ def main():
     except OSError:
         pass
 
+    # Not a boundary, but without it nothing works: say so instead of failing later.
+    try:
+        socket.getaddrinfo("github.com", 443, proto=socket.IPPROTO_TCP)
+    except OSError:
+        warnings.append("DNS_NOT_WORKING")
+
+    for code in warnings:
+        print("JAIL_WARN " + code)
     if problems:
         for code in sorted(set(problems)):
             print("JAIL_UNSAFE " + code)

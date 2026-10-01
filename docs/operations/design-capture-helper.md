@@ -90,6 +90,12 @@ capture helper                                     ← 利用者 sr-igcapture（
 - **system 全体の Node 22**（`/usr/local/bin` か `/usr/bin`、実体まで root の所有で他人が書けないこと）。`sr-designgen` の nvm の node は `sr-igcapture` から読めないので使えない
   （例: NodeSource の手順 https://github.com/nodesource/distributions 。tarball を `sudo tar` で展開したなら `sudo chown -R root:root <dir>`）
 
+- **Phase 2 の古い profile を先に消す**（`sudo rm -rf /home/sr-designgen/.local/share/sr-instagram-browser`）。
+  jail の中でも `sr-designgen` 自身の home は見えるので、残っていれば Claude が読める。残っていると probe（`BROWSER_PROFILE_IN_HOME`）で install が止まる
+- requester jail の前提: `sudo apt install -y tmux passt iproute2 python3`、WSL の cgroup が v2 だけ
+  （`stat -fc %T /sys/fs/cgroup` が `cgroup2fs`。違えば Windows の `.wslconfig` に `kernelCommandLine = cgroup_no_v1=all`）、
+  DNS は dnsTunneling（`/etc/resolv.conf` が `nameserver 10.255.255.254`）、networkingMode は NAT（既定）
+
 `admin.sh` は root で動くので、**requester が書き換えられる checkout（`~sr-designgen/work/second-root` など）からは動かない**
 （`ADMIN_SCRIPT_UNTRUSTED`）。最初の install は root だけの clone から行う（その後は `sr-igcapture` 側の checkout を使う）:
 
@@ -113,7 +119,6 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh install "
 
 install は最後に requester jail を入れる（`sr-designgen` の login shell を nologin にし、`sr-jail-claude.service` を書き、
 `admin.sh jail-check` で probe を通す）。probe が通らなければ install は `JAIL_UNSAFE` で止まる。
-**`sr-designgen` の home に Phase 2 の profile（`~/.local/share/sr-instagram-browser`）が残っていると probe は止まる。先に消す。**
 
 helper（`run.sh`）は起動のたびに、interop の設定と requester の group、**requester のすべての process が jail の中にあること**を確かめ直す。
 満たさない間の依頼には、profile を開かずに `HELPER_ERROR`（`WSL_INTEROP_ON` / `REQUESTER_PRIVILEGED`）を返す。

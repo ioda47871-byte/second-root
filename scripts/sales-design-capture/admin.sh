@@ -94,6 +94,9 @@ host_safe() {
 # probe proves it before each start.
 JAIL_LIB=/usr/local/lib/sr-jail
 JAIL_CLAUDE=sr-jail-claude.service
+JAIL_NET=sr-jail-net.service
+# Every jail unit needs the jail's network namespace and goes away with it.
+JAIL_UNIT_DEPS=("Requires=$JAIL_NET" "BindsTo=$JAIL_NET" "After=$JAIL_NET")
 
 jail_python() {
   local py
@@ -108,7 +111,8 @@ jail_props() {
   home="$(getent passwd "$req" | cut -d: -f6)"
   [ -n "$home" ] && [ -d "$home" ] || return 1
   py="$(jail_python)" || return 1
-  grep -Ev '^[[:space:]]*(#|$)' "$JAIL_LIB/jail.properties"
+  [ -f "$JAIL_LIB/jail.properties" ] || return 1
+  grep -Ev '^[[:space:]]*(#|$)' "$JAIL_LIB/jail.properties" || return 1
   echo "User=$req"
   echo "BindPaths=$home"
   echo "WorkingDirectory=$home"
@@ -121,41 +125,78 @@ jail_props() {
 }
 
 jail_args() {
-  local line
+  local line props
   JAIL_ARGS=()
-  while IFS= read -r line; do JAIL_ARGS+=(-p "$line"); done < <(jail_props "$1")
-  [ "${#JAIL_ARGS[@]}" -gt 0 ]
+  props="$(jail_props "$1")" || return 1
+  grep -qx "NoNewPrivileges=yes" <<<"$props" && grep -q "^ExecStartPre=.*probe.py" <<<"$props" || return 1
+  while IFS= read -r line; do JAIL_ARGS+=(-p "$line"); done <<<"$props"
+  for line in "${JAIL_UNIT_DEPS[@]}"; do JAIL_ARGS+=(-p "$line"); done
+  systemctl start "$JAIL_NET"
 }
 
 jail_install() {
-  local req="$1" home tmux_bin
+  local req="$1" home tmux_bin pasta_bin ip_bin dep net_unit claude_unit props
   home="$(getent passwd "$req" | cut -d: -f6)"
   jail_python >/dev/null || { echo "PYTHON_MISSING: a root-owned python3 is needed for the jail probe (sudo apt install -y python3)"; exit 2; }
   tmux_bin="$(command -v tmux)" && root_owned "$tmux_bin" || { echo "TMUX_MISSING: sudo apt install -y tmux"; exit 2; }
+  pasta_bin="$(command -v pasta)" && root_owned "$pasta_bin" || { echo "PASTA_MISSING: sudo apt install -y passt"; exit 2; }
+  ip_bin="$(command -v ip)" && root_owned "$ip_bin" || { echo "IPROUTE_MISSING: sudo apt install -y iproute2"; exit 2; }
   command -v systemd-run >/dev/null || { echo "SYSTEMD_MISSING: WSL needs [boot] systemd=true"; exit 2; }
   install -d -o root -g root -m 0755 "$JAIL_LIB"
   install -o root -g root -m 0644 "$SELF_DIR/jail/jail.properties" "$SELF_DIR/jail/probe.py" "$JAIL_LIB/"
+  # The jail settings first, on their own: a unit without them must never be written.
+  props="$(jail_props "$req")" || { echo "JAIL_PROPS_FAILED: no home or no python3 for $req"; exit 2; }
+  grep -qx "NoNewPrivileges=yes" <<<"$props" && grep -q "^ExecStartPre=.*probe.py" <<<"$props" || { echo "JAIL_PROPS_FAILED"; exit 2; }
   # Nothing of the requester outside the jail: no login shell (su, wsl.exe -u, ssh), no cron / at / linger.
   usermod -s /usr/sbin/nologin "$req"
-  {
-    echo "# Written by admin.sh (DEV-028). Claude Code Remote Control as $req, in the requester jail."
+  # The jail's own network namespace, and pasta (root, a user-space NAT) as its only way out:
+  # no port forwarding in either direction, the gateway not mapped to the host.
+  # Both units are put together first and written only when that worked (no half-written unit).
+  net_unit="$(
+    echo "# Written by admin.sh (DEV-028). The requester jail's own network namespace."
     echo "[Unit]"
-    echo "Description=Claude Code Remote Control ($req, jailed)"
+    echo "Description=Requester jail network (pasta)"
     echo "Wants=network-online.target"
     echo "After=network-online.target"
     echo "[Service]"
+    echo "Type=simple"
+    echo "RuntimeDirectory=sr-jail"
+    echo "RuntimeDirectoryMode=0755"
+    echo "ExecStartPre=-$ip_bin netns delete srjail"
+    echo "ExecStartPre=$ip_bin netns add srjail"
+    echo "ExecStartPre=/bin/sh -c 'stat -L -c %%i /run/netns/srjail > /run/sr-jail/netns-id && chmod 0644 /run/sr-jail/netns-id'"
+    echo "ExecStart=$pasta_bin -f -q --runas 0 --config-net --no-map-gw -t none -u none -T none -U none --netns /run/netns/srjail"
+    echo "ExecStopPost=-$ip_bin netns delete srjail"
+    echo "Restart=always"
+    echo "RestartSec=5"
+    echo "[Install]"
+    echo "WantedBy=multi-user.target"
+  )"
+  claude_unit="$(
+    echo "# Written by admin.sh (DEV-028). Claude Code Remote Control as $req, in the requester jail."
+    echo "[Unit]"
+    echo "Description=Claude Code Remote Control ($req, jailed)"
+    for dep in "${JAIL_UNIT_DEPS[@]}"; do echo "$dep"; done
+    echo "StartLimitIntervalSec=1h"
+    echo "StartLimitBurst=10"
+    echo "[Service]"
     echo "Type=forking"
-    jail_props "$req"
+    printf '%s\n' "$props"
     echo "ExecStart=$tmux_bin -S $home/.sr-claude.tmux new-session -d -s claude \"cd ~/work/second-root && exec claude remote-control\""
     echo "ExecStop=$tmux_bin -S $home/.sr-claude.tmux kill-server"
-    echo "Restart=on-failure"
+    # Claude exiting ends the tmux server cleanly: start it again either way.
+    echo "Restart=always"
     echo "RestartSec=60"
     echo "[Install]"
     echo "WantedBy=multi-user.target"
-  } > "/etc/systemd/system/$JAIL_CLAUDE.tmp"
-  chmod 0644 "/etc/systemd/system/$JAIL_CLAUDE.tmp"
+  )"
+  printf '%s\n' "$net_unit" > "/etc/systemd/system/$JAIL_NET.tmp"
+  printf '%s\n' "$claude_unit" > "/etc/systemd/system/$JAIL_CLAUDE.tmp"
+  chmod 0644 "/etc/systemd/system/$JAIL_NET.tmp" "/etc/systemd/system/$JAIL_CLAUDE.tmp"
+  mv -f "/etc/systemd/system/$JAIL_NET.tmp" "/etc/systemd/system/$JAIL_NET"
   mv -f "/etc/systemd/system/$JAIL_CLAUDE.tmp" "/etc/systemd/system/$JAIL_CLAUDE"
   systemctl daemon-reload
+  systemctl enable --now "$JAIL_NET" >/dev/null
 }
 
 # The probe, run in a throw-away unit with exactly the jail's settings.
@@ -166,8 +207,12 @@ jail_check() {
   systemd-run --quiet --wait --collect --pipe --unit="sr-jail-check-$$" "${JAIL_ARGS[@]}" "$py" -I "$JAIL_LIB/probe.py" "$req"
 }
 
+# Every requester process (the network namespace stays: it holds no process of the requester).
 stop_jail_units() {
-  systemctl stop 'sr-jail-*.service' >/dev/null 2>&1 || true
+  local u
+  for u in $(systemctl list-units --plain --no-legend 'sr-jail-*.service' 2>/dev/null | awk '{ print $1 }'); do
+    [ "$u" = "$JAIL_NET" ] || systemctl stop "$u" >/dev/null 2>&1 || true
+  done
 }
 
 # A system node >= 20 the helper user can run (an nvm node in another user's home is not readable),
@@ -229,6 +274,12 @@ approve() {
   install -m 0644 "$HOME_DIR/second-root/scripts/sales-design-capture/systemd/sr-capture.timer" /etc/systemd/system/sr-capture.timer
   systemctl daemon-reload
   systemctl enable --now sr-capture.path sr-capture.timer >/dev/null
+  # the jail settings and probe come from the approved checkout too
+  if [ -f "/etc/systemd/system/$JAIL_CLAUDE" ]; then
+    local req
+    req="$(awk -F= '/^User=/ { print $2; exit }' "/etc/systemd/system/$JAIL_CLAUDE")"
+    [ -n "$req" ] && SELF_DIR="$HOME_DIR/second-root/scripts/sales-design-capture" jail_install "$req"
+  fi
   echo "APPROVED $sha"
 }
 
@@ -265,6 +316,15 @@ case "$CMD" in
     # The requester's jail (Claude) is stopped while a person signs in, and started again after.
     CLAUDE_WAS_ACTIVE=0
     systemctl is-active --quiet "$JAIL_CLAUDE" 2>/dev/null && CLAUDE_WAS_ACTIVE=1
+    # Whatever happens from here (a refusal, Ctrl-C, a closed terminal, an error): the window goes,
+    # the helper and Claude come back.
+    restore() {
+      pkill -KILL -u "$HELPER" >/dev/null 2>&1 || true
+      systemctl start sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
+      [ "$CLAUDE_WAS_ACTIVE" = 1 ] && systemctl start "$JAIL_CLAUDE" >/dev/null 2>&1 || true
+    }
+    trap restore EXIT
+    trap 'exit 130' INT TERM HUP
     stop_jail_units
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above, then run login again"; exit 3; }
     if pgrep -u "$REQUESTER" >/dev/null 2>&1; then
@@ -276,14 +336,6 @@ case "$CMD" in
     [ -x "$NODE_DIR/node" ] && root_owned "$NODE_DIR/node" || { echo "HELPER_NOT_INSTALLED"; exit 2; }
     # The helper does not capture while a person signs in (a run in progress is stopped too).
     systemctl stop sr-capture.path sr-capture.timer sr-capture.service >/dev/null 2>&1 || true
-    # Whatever happens (Ctrl-C, a closed terminal, an error): the window goes and the helper comes back.
-    restore() {
-      pkill -KILL -u "$HELPER" >/dev/null 2>&1 || true
-      systemctl start sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
-      [ "$CLAUDE_WAS_ACTIVE" = 1 ] && systemctl start "$JAIL_CLAUDE" >/dev/null 2>&1 || true
-    }
-    trap restore EXIT
-    trap 'exit 130' INT TERM HUP
     sudo -u "$HELPER" -H env -i HOME="$HOME_DIR" PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 DISPLAY="${DISPLAY:-:0}" \
       bash -c 'cd ~/second-root && npm run -s sales:design-browser -- login' &
     LOGIN_PID=$!
@@ -332,7 +384,8 @@ case "$CMD" in
   claude-start)
     REQUESTER="${2:-sr-designgen}"
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above first"; exit 3; }
-    systemctl enable --now "$JAIL_CLAUDE"
+    systemctl enable --now "$JAIL_CLAUDE" >/dev/null 2>&1 || true
+    sleep 5
     systemctl is-active --quiet "$JAIL_CLAUDE" && echo "CLAUDE_STARTED (jailed)" || { echo "CLAUDE_NOT_STARTED: journalctl -u $JAIL_CLAUDE"; exit 3; }
     ;;
   claude-stop)

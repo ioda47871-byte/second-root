@@ -41,6 +41,7 @@ Windows へ届く経路と、それぞれの塞ぎ方:
 | `/init`・`/usr/lib/wsl` | 読めない（`InaccessiblePaths`） |
 | Windows の drive（`/mnt/c` の Startup folder など） | `/mnt` を空の tmpfs にする（DNS の `resolv.conf` だけ戻す） |
 | WSLg の display（`/mnt/wslg`・`/tmp/.X11-unix`） | `/mnt` は空、`/tmp` は private |
+| WSL の VM の abstract Unix socket（WSLg の X server、systemd の bus など）と localhost（他の利用者・他の distro の service） | jail **専用の network namespace**（`sr-jail-net.service`）。abstract socket と loopback は network namespace ごとに別なので、jail からは見えない。外への通信は root が動かす pasta（user-space の NAT）だけを通り、port の転送は双方向とも無し、gateway を host に写さない |
 | Windows host への network（NAT の gateway）、LAN、cloud metadata | `IPAddressDeny`（cgroup BPF）。私設・link-local の範囲すべてと、その時点の default gateway。WSL の DNS tunnel（10.255.255.254）だけ許す |
 | 他の利用者の process（`/proc/<pid>/root` など） | `ProtectProc=invisible`、別 uid |
 | 新しい権限（setuid・sudo） | `NoNewPrivileges`、`RestrictSUIDSGID` |
@@ -70,6 +71,7 @@ Windows（人）── WSL2 VM ── Ubuntu distro
                             ├─ sr-igcapture（Instagram profile。home 0700。helper は systemd の sr-capture.service）
                             └─ sr-designgen（login shell は nologin）
                                  └─ sr-jail-claude.service ← jail（jail/jail.properties + 起動前の probe）
+                                       │    network: sr-jail-net.service の namespace（pasta、root）
                                        └─ tmux → claude remote-control → git / npm / worker → Codex（bubblewrap）・Chromium
 ```
 
@@ -79,6 +81,12 @@ Windows（人）── WSL2 VM ── Ubuntu distro
 - jail の file（list と probe）は、root だけの clone か helper の checkout から、root の所有で `/usr/local/lib/sr-jail/` に入る。`sr-designgen` は変えられない
 - spool は jail の中に `requests`（書き込み）と `results`（読み取り）だけが見える
 - 人が Instagram にログインする間（`admin.sh login`）は、jail の unit をすべて止めてから始め、終わったら戻す
+- jail の unit はすべて `sr-jail-net.service` に結び付く（Requires / BindsTo / After）。network の unit が作り直されると、jail も新しい
+  namespace で起動し直す。probe は root が記録した namespace の ID（`/run/sr-jail/netns-id`）と自分の namespace を比べる
+- Claude（tmux の中）が終わると unit は正常終了扱いになるので、`Restart=always` で戻す（1 時間に 10 回まで）
+- **前提**: WSL の cgroup が v2 だけであること（`stat -fc %T /sys/fs/cgroup` が `cgroup2fs`。違えば `.wslconfig` の
+  `kernelCommandLine = cgroup_no_v1=all`）。address の拒否（cgroup BPF）が効かなければ probe が止める。
+  DNS は WSL の dnsTunneling（10.255.255.254、Windows 11 の WSL 2.x の既定）を前提にする。引けなければ probe が `JAIL_WARN DNS_NOT_WORKING` を出す
 
 ## 5. この設計を確かめた方法（container の中で systemd 255 を PID 1 として起動）
 
@@ -98,6 +106,8 @@ WSL の状況は fixture で再現した（`/run/WSL/2_interop` を `root:root 0
 | jail の外で abstract socket（`@/tmp/.X11-unix/X9`）を待ち受けさせる | — | probe が `ABSTRACT_SOCKET_REACHABLE` で止める |
 | jail の中で `sandbox.test.ts`（本物の bubblewrap の攻撃テスト）と `worker.test.ts`（Chromium を含む） | — | 73 件すべて pass |
 | `admin.sh jail-install` → `claude-start` → process の cgroup が `sr-jail-claude.service`、jail の外に process を起こすと `REQUESTER_OUTSIDE_JAIL` → `claude-stop` | — | 期待どおり |
+| 外の localhost の listener（127.0.0.1:9931）と abstract socket（`@outside-abstract`、systemd の bus） | 届く / 見える | jail 専用の network では、拒否される / 1 つも見えない |
+| Claude が終わったとき / network の unit を作り直したとき | — | 自動で再起動し、新しい namespace に入る（namespace の ID が一致） |
 
 わかったこと:
 - `ProtectKernelTunables`・`ProtectKernelLogs`・`ProtectHostname` は `/proc` の一部を上書き mount するので、jail の中で
@@ -109,13 +119,12 @@ WSL の状況は fixture で再現した（`/run/WSL/2_interop` を `root:root 0
 ## 6. 残るリスク
 
 - **kernel・WSL の不具合**: namespace / seccomp / BPF を越える kernel の脆弱性、または WSL の未知の経路。
-  probe は既知の経路しか確かめない。より強い境界が要るなら §3 の C（別の VM）
-- **abstract Unix socket**: network namespace は共有しているので、同じ VM の中で abstract socket を待ち受けている process には届きうる。
-  probe は見えている abstract socket すべてに接続を試し、一つでも応じれば `ABSTRACT_SOCKET_REACHABLE` で止める（名前を `JAIL_NOTE` で表示）。
-  WSLg の X server がこれに当たる場合は、§3 の C か、jail に専用の network namespace（pasta など）を与える案を検討する
-- **localhost**: worker の preview と egress proxy のために loopback は許している。同じ VM の他の distro・人の利用者が
-  localhost で認証なしの service（Chrome の remote debugging、Jupyter など）を動かしていれば届く。動かさないこと
-- **networkingMode=mirrored は対象外**: loopback が Windows と共有になる。NAT（既定）で使う
+  特に jail の中では user namespace を許している（Codex の bubblewrap に必要）。user namespace を使う kernel の権限昇格の脆弱性があれば
+  本物の root になり、境界は崩れる。probe は既知の経路しか確かめない。これを避けるのが §3 の C（別の VM）
+- **pasta は root で動く**: jail からの packet を処理するので、pasta の脆弱性は root への道になる（pasta 自身は起動後に権限と見える範囲を絞る）
+- **probe は起動時の確認**: 設定は unit の間ずっと同じだが、起動後に変わった状態（新しい listener など）は見ない。
+  jail は専用の network namespace にいるので、VM の abstract socket や localhost の service は後から出てきても届かない
+- **networkingMode=mirrored は対象外**: NAT（既定）で使う
 - 人が root で `sudo -u sr-designgen <command>` を打つと jail の外で動く。helper はその間 `HELPER_ERROR` を返す（profile は開かない）
 - Claude Code 自身の資格情報（`~/.claude`）、GitHub の token、Meta token は、jail の中の Claude からは読める（Claude 自身のもの）。
   Codex からは読めない（Codex の sandbox）

@@ -61,7 +61,7 @@ Codex は `sr-designgen` のファイル（Meta token・git の鍵・Claude の�
    claude    # /login → /exit
    exit
    ```
-4. `sr-designgen` から GitHub へ push できるようにする（feature branch だけに使う）
+4. `sr-designgen` から GitHub へ push できるようにする（feature branch だけに使う。`admin.sh shell` の中で設定する）
    - 推奨: second-root だけに限った fine-grained token（Contents: read and write）を git の credential helper に預ける
    - `main` / `develop` は GitHub の branch protection で直接 push を禁止しておく
 5. Remote Control を jail の中で起動したままにする（systemd の `sr-jail-claude.service`。起動のたびに probe が通ったときだけ動く）:
@@ -86,8 +86,11 @@ helper の install / login はこれも確かめて断る。`admin.sh` は `sr-d
 ## 3. 確かめ方
 
 ```bash
-# sr-designgen から profile が見えないこと（Permission denied になる）
-ls /home/sr-igcapture
-# Codex の sandbox が組めること（fake ではなく本物の bubblewrap）
-cd ~/work/second-root && npx vitest run tests/unit/design-agent/sandbox.test.ts
+A=/home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh
+# jail が実機で成り立つこと（JAIL_OK。JAIL_UNSAFE ならその符号を Claude に伝える）
+sudo bash $A jail-check
+# jail の中から profile・Windows の口が見えないこと（どれも No such file / Permission denied）
+sudo bash $A run sr-designgen -- /bin/bash -c 'ls /home/sr-igcapture /run/WSL /mnt/c 2>&1'
+# jail の中で Codex の sandbox が組めること（fake ではなく本物の bubblewrap）
+sudo bash $A run sr-designgen -- /bin/bash -lc 'cd ~/work/second-root && npx vitest run tests/unit/design-agent/sandbox.test.ts'
 ```

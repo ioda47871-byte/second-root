@@ -55,6 +55,14 @@ describe("the requester jail", () => {
     }
   });
 
+  it("the probe refuses to run outside the jail's own network namespace", () => {
+    const probe = readFileSync(join(DIR, "jail", "probe.py"), "utf8");
+    expect(probe).toContain('open("/run/sr-jail/netns-id")');
+    expect(probe).toContain('os.stat("/proc/self/ns/net").st_ino != want');
+    const r = spawnSync("python3", ["-I", join(DIR, "jail", "probe.py"), userInfo().username], { encoding: "utf8" });
+    expect(r.stdout).toContain("JAIL_UNSAFE NETWORK_NOT_PRIVATE");
+  });
+
   it("the probe fails closed outside a jail, prints codes only, and refuses a browser profile left in the home", () => {
     const home = mkdtempSync(join(tmpdir(), "sr-jail-home-"));
     roots.push(home);
@@ -64,7 +72,7 @@ describe("the requester jail", () => {
     expect(plain.status).toBe(1);
     expect(plain.stdout).toMatch(/JAIL_UNSAFE NEW_PRIVILEGES_POSSIBLE|JAIL_UNSAFE NO_SECCOMP_FILTER|JAIL_UNSAFE WRONG_USER/);
     // codes, then (only for reachable abstract sockets) their names: nothing read from a file
-    for (const line of plain.stdout.trim().split("\n")) expect(line).toMatch(/^(JAIL_UNSAFE [A-Z0-9_]+|JAIL_NOTE abstract=@[\x21-\x7e]{0,80})$/);
+    for (const line of plain.stdout.trim().split("\n")) expect(line).toMatch(/^(JAIL_UNSAFE [A-Z0-9_]+|JAIL_WARN [A-Z0-9_]+|JAIL_NOTE abstract=@[\x21-\x7e]{0,80})$/);
     expect(probe({ DISPLAY: ":0" }).stdout).toContain("JAIL_UNSAFE ENV_DISPLAY");
     expect(probe({}).stdout).not.toContain("BROWSER_PROFILE_IN_HOME");
     mkdirSync(join(home, ".local", "share", "sr-instagram-browser", "Default"), { recursive: true });
@@ -79,16 +87,29 @@ describe("the requester jail", () => {
     expect(ADMIN).toMatch(/echo "ExecStartPre=\$py -I \$JAIL_LIB\/probe\.py \$req"/);
     expect(ADMIN).toMatch(/IPAddressDeny=%d\.%d\.%d\.%d\/32/); // the default gateway (the Windows host in WSL's NAT)
     for (const unit of ['--unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}"', '--unit="sr-jail-run-$$" "${JAIL_ARGS[@]}"', '--unit="sr-jail-check-$$" "${JAIL_ARGS[@]}"']) expect(ADMIN).toContain(unit);
-    expect(ADMIN).toMatch(/\{\n\s+echo "# Written by admin\.sh[\s\S]*?jail_props "\$req"[\s\S]*?> "\/etc\/systemd\/system\/\$JAIL_CLAUDE\.tmp"/);
+    // the Claude unit carries the settings, fetched on their own first: never a unit without them
+    expect(ADMIN).toContain('props="$(jail_props "$req")" || {');
+    expect(ADMIN).toMatch(/grep -qx "NoNewPrivileges=yes" <<<"\$props" && grep -q "\^ExecStartPre=\.\*probe\.py" <<<"\$props"/);
+    expect(ADMIN).toMatch(/echo "Type=forking"\n\s+printf '%s\\n' "\$props"/);
+    // the jail's own network namespace: pasta with no port forwarding either way, the gateway not mapped,
+    // its id recorded for the probe; every jail unit needs it and goes with it
+    expect(ADMIN).toContain("--config-net --no-map-gw -t none -u none -T none -U none --netns /run/netns/srjail");
+    expect(ADMIN).toContain("stat -L -c %%i /run/netns/srjail > /run/sr-jail/netns-id");
+    expect(ADMIN).toContain('JAIL_UNIT_DEPS=("Requires=$JAIL_NET" "BindsTo=$JAIL_NET" "After=$JAIL_NET")');
+    expect(settings).toContain("NetworkNamespacePath=/run/netns/srjail");
+    expect(settings).toContain("BindReadOnlyPaths=/run/sr-jail/netns-id");
+    // Claude exiting ends tmux cleanly, so it restarts either way
+    expect(ADMIN).toMatch(/echo "Type=forking"[\s\S]*?echo "Restart=always"/);
     // no login shell outside the jail
     expect(ADMIN).toContain('usermod -s /usr/sbin/nologin "$req"');
     // the jail files themselves come from a checkout the requester cannot change
     expect(ADMIN).toMatch(/for f in "\$SELF_DIR\/admin\.sh" "\$SELF_DIR\/host-check\.sh" "\$SELF_DIR\/jail\/jail\.properties" "\$SELF_DIR\/jail\/probe\.py"; do/);
     // install stops when the probe does not hold on this machine
     expect(ADMIN).toMatch(/jail_check "\$REQUESTER" \|\| \{ echo "JAIL_UNSAFE/);
-    // the sign-in stops the jail first, then checks
+    // the sign-in stops the jail first, then checks; Claude comes back whatever happens after the stop
     const login = ADMIN.slice(ADMIN.indexOf("  login)"), ADMIN.indexOf("  jail-check)"));
     expect(login.indexOf("stop_jail_units")).toBeGreaterThan(0);
     expect(login.indexOf("stop_jail_units")).toBeLessThan(login.indexOf("host_safe"));
+    expect(login.indexOf("trap restore EXIT")).toBeLessThan(login.indexOf("stop_jail_units"));
   });
 });

@@ -281,3 +281,32 @@ Options compared, in the design doc:
 - C. Claude in a separate Hyper-V VM: the next step if the probe fails on the real machine.
 - D. Profile on another machine.
 - E. No signed-in profile at all.
+
+Round 1 of the jail review (on 24a1788). Both reviews found no Critical. They agreed on one point: architecture rated it H1 and security M1.
+
+- **Fixed — the jail shared the WSL VM's network namespace.**
+  - Problem: abstract Unix sockets (WSLg's X server, systemd's buses, multipathd on CI) and localhost services of other users or distros were reachable from the jail. The probe would likely stop on WSLg, and the probe only checks at start.
+  - Fix: the jail now has its own network namespace (`sr-jail-net.service`). It is created by root, and pasta runs as root as the only way out, with no port forwarding in either direction and `--no-map-gw`.
+  - Every jail unit has Requires, BindsTo and After on that unit. The probe compares `/proc/self/ns/net` with the namespace id root records in `/run/sr-jail/netns-id`.
+  - Checked on systemd 255 as PID 1:
+    - From inside the jail, a host loopback listener refused the connection and no abstract socket was visible at all.
+    - Claude restarted into the new namespace after the network unit was re-created.
+    - `sandbox.test.ts` and `worker.test.ts` passed 73/73 inside it.
+- **Fixed — a fail-open hole found during this work.** `$(…)` does not inherit `set -e`, so a failing `jail_props` would have written a unit without the jail settings.
+  - The settings are now fetched on their own first.
+  - Unit and transient arguments are refused unless they contain `NoNewPrivileges` and the probe.
+  - Both units are written only when they were fully put together.
+- **Fixed — architecture Mediums:**
+  - Claude restarts with `Restart=always`: tmux exits 0 when Claude ends. `claude-start` waits before it checks.
+  - The probe warns with `JAIL_WARN DNS_NOT_WORKING`. dnsTunneling and cgroup v2 are documented as required.
+  - The `login` restore trap is now set before the jail units are stopped.
+  - The worker timer docs now run it through `admin.sh run`, inside the jail.
+  - `/mnt/sr-export` is bound into the jail.
+- **Fixed — Lows:**
+  - `approve` re-runs `jail_install` from the approved checkout.
+  - The doc order is fixed: the old profile is removed before install.
+  - The verification commands use `admin.sh jail-check` and `admin.sh run`.
+  - git credentials are set up inside `admin.sh shell`.
+  - The jail test now accepts `JAIL_NOTE` and `JAIL_WARN` lines.
+- **Documented — security M2:** user namespaces stay allowed in the jail, because Codex's bubblewrap needs them. A userns kernel privilege escalation defeats the boundary, and that is the main argument for option C.
+- **Documented — security Lows:** `AF_NETLINK`, the exact-match cgroup regex, and the IPv6 filter not being exercised on IPv6-less hosts.

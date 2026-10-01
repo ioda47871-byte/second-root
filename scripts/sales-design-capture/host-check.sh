@@ -90,6 +90,7 @@ sr_check_requester_jailed() {
     owner="$(awk '/^Uid:/ { print $2 " " $3 " " $4 " " $5; exit }' "$d/status" 2>/dev/null)" || continue
     case " $owner " in *" $uid "*) ;; *) continue ;; esac
     jailed=0
+    # exact match: the jail units have no Delegate=, so no sub-cgroup exists (one would read as outside: fail-safe)
     while IFS= read -r line; do
       [[ "$line" =~ ^0::/system\.slice/sr-jail-[a-z0-9-]+\.service$ ]] && jailed=1
     done 2>/dev/null <"$d/cgroup"
