@@ -17,7 +17,9 @@
  *   are art-direction references for Codex only: no image, logo or text of
  *   the site is ever copied into the demo (the demo shows verified facts).
  */
+import { lookup } from "node:dns/promises";
 import { chmod, writeFile } from "node:fs/promises";
+import { isIP } from "node:net";
 import { join } from "node:path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import {
@@ -40,7 +42,9 @@ import {
 
 export type WebsiteSource = { url: string; host: string };
 
-const BLOCKED_HOSTS = /(^|\.)(instagram\.com|facebook\.com|fb\.com|threads\.net|x\.com|twitter\.com|tiktok\.com|line\.me|localhost)$/i;
+// Social media and link-in-bio pages are not a shop's own site; local names never are.
+const BLOCKED_HOSTS =
+  /(^|\.)(instagram\.com|facebook\.com|fb\.com|threads\.net|x\.com|twitter\.com|tiktok\.com|line\.me|lin\.ee|linktr\.ee|lit\.link|linkin\.bio|bio\.link|potofu\.me|instabio\.cc|campsite\.bio|localhost|nip\.io|sslip\.io|xip\.io|localtest\.me|lvh\.me)$/i;
 const SECTION_HINT = /about|concept|story|philosophy|menu|product|item|goods|shop|store|access|map|location|info|コンセプト|について|私たち|こだわり|メニュー|商品|お品書き|アクセス|店舗|お店/i;
 export const MAX_WEBSITE_PAGES = 3;
 
@@ -61,16 +65,16 @@ export function parseWebsiteUrl(raw: unknown): WebsiteSource | null {
   return { url: url.toString(), host };
 }
 
-/** The site's own host and its www. twin, over http or https. */
+/** The site's own host, its www. twin and its subdomains (m., shop. ...), over http or https. */
 export function websiteTarget(source: WebsiteSource): CaptureTarget {
   const bare = source.host.replace(/^www\./, "");
-  const hosts = new Set([bare, `www.${bare}`]);
   return {
     url: source.url,
     allowNavigation(raw: string): boolean {
       try {
         const u = new URL(raw);
-        return (u.protocol === "https:" || u.protocol === "http:") && u.username === "" && u.password === "" && u.port === "" && hosts.has(u.hostname.toLowerCase());
+        const host = u.hostname.toLowerCase();
+        return (u.protocol === "https:" || u.protocol === "http:") && u.username === "" && u.password === "" && u.port === "" && (host === bare || host.endsWith(`.${bare}`));
       } catch {
         return false;
       }
@@ -78,8 +82,52 @@ export function websiteTarget(source: WebsiteSource): CaptureTarget {
   };
 }
 
+/** Loopback, private, link-local (cloud metadata), CGNAT, multicast, unspecified: never a shop's public site. */
+export function isPrivateAddress(address: string): boolean {
+  if (isIP(address) === 4) {
+    const [a, b] = address.split(".").map(Number) as [number, number];
+    return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+  }
+  const v6 = address.toLowerCase();
+  if (v6.startsWith("::ffff:")) return isPrivateAddress(v6.slice(7));
+  return v6 === "::" || v6 === "::1" || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || v6.startsWith("ff");
+}
+
+/**
+ * The host of every request must resolve to public addresses only (cached per
+ * host for one capture). A page cannot make the browser read 127.0.0.1, the
+ * LAN, the WSL host or a cloud metadata service. Non-http(s) URLs (data:,
+ * blob:) carry no host and pass.
+ */
+export function publicHostCheck(): (url: string) => Promise<boolean> {
+  const cache = new Map<string, Promise<boolean>>();
+  return (raw: string) => {
+    let u: URL;
+    try {
+      u = new URL(raw);
+    } catch {
+      return Promise.resolve(false);
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return Promise.resolve(true);
+    const host = u.hostname.replace(/^\[|\]$/g, "");
+    let hit = cache.get(host);
+    if (!hit) {
+      hit = isIP(host)
+        ? Promise.resolve(!isPrivateAddress(host))
+        : lookup(host, { all: true }).then(
+            (list) => list.length > 0 && list.every((a) => !isPrivateAddress(a.address)),
+            () => false,
+          );
+      cache.set(host, hit);
+    }
+    return hit;
+  };
+}
+
 export interface WebsiteCaptureOptions {
   target: CaptureTarget;
+  /** Production: publicHostCheck(). Tests only: a check that allows the local mock. */
+  hostCheck?: (url: string) => Promise<boolean>;
   outDir: string;
   launch: () => Promise<Browser>;
   settleMs?: number;
@@ -103,7 +151,13 @@ async function sectionLinks(page: Page, target: CaptureTarget): Promise<string[]
     }
     if (!target.allowNavigation(u.toString()) || /\.(pdf|jpe?g|png|gif|webp|zip|mp4)$/i.test(u.pathname)) continue;
     const key = u.pathname.replace(/\/$/, "") || "/";
-    if (seen.has(key) || !(SECTION_HINT.test(decodeURIComponent(u.pathname)) || SECTION_HINT.test(link.text))) continue;
+    let path = u.pathname;
+    try {
+      path = decodeURIComponent(u.pathname);
+    } catch {
+      /* a malformed %-sequence: match on the raw path */
+    }
+    if (seen.has(key) || !(SECTION_HINT.test(path) || SECTION_HINT.test(link.text))) continue;
     seen.add(key);
     u.hash = "";
     picked.push(u.toString());
@@ -132,7 +186,7 @@ export async function captureWebsite(options: WebsiteCaptureOptions): Promise<Ca
       const own = await b.newContext({ javaScriptEnabled: true, serviceWorkers: "block" });
       return { page: await own.newPage(), close: () => own.close() };
     };
-    const guard = await guardNavigation(context, options.target, state);
+    const guard = await guardNavigation(context, options.target, state, { walls: false, hostCheck: options.hostCheck ?? publicHostCheck() });
     const home = await open(guard, options.target, state);
     await home.waitForTimeout(settleMs);
     assertNavigation(state);
@@ -149,7 +203,10 @@ export async function captureWebsite(options: WebsiteCaptureOptions): Promise<Ca
         .then((r) => r?.status())
         .catch(() => undefined);
       if (state.offSite) break; // the site tried to leave: what we have is enough, the rest is not opened
-      if (status === undefined || status >= 400) continue;
+      if (status === undefined || status >= 400) {
+        await page.close().catch(() => undefined);
+        continue;
+      }
       await page.waitForTimeout(Math.min(settleMs, 3_000));
       if (state.offSite) break;
       const file = join(options.outDir, `site-${files.length + 1}.png`);

@@ -1,5 +1,5 @@
 # Second Root Instagram capture helper (DEV-028 Phase 3). Installed by
-# scripts/sales-design-capture/install.sh. Runs as sr-igcapture only.
+# scripts/sales-design-capture/admin.sh. Runs as sr-igcapture only.
 [Unit]
 Description=Second Root Instagram capture helper
 After=network-online.target

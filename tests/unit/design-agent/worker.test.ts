@@ -600,6 +600,7 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     const helperCalls: string[] = [];
     const { report, logs, preview } = await runWorker(l, site, {
       websiteTargetFor: siteTarget("/site_home/"),
+      websiteHostCheck: async () => true,
       captureHelper: async (i) => (helperCalls.push(i.requestId), { code: "CAPTURED", files: [], softened: 0 }),
     });
     expect(report, JSON.stringify({ report, logs })).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
@@ -648,16 +649,34 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     const l = makeLayout();
     writeJob(l, "job-leaves", null, undefined, "inbox", WEBSITE);
     const before = site.requests.length;
-    const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/site_leaves/") });
+    const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/site_leaves/"), websiteHostCheck: async () => true });
     expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "PUBLIC_SOURCE_UNAVAILABLE" }] });
     expect(json(join(l.out, "job-leaves", "report.json"))).toMatchObject({ visual_source: null, sources: { website: { status: "unavailable", reason: "OFF_SITE_REDIRECT" } }, codex: null });
     expect(site.requests.slice(before).some((r) => r.startsWith("localhost:"))).toBe(false);
     expect(execCalls(l)).toEqual([]);
   });
 
+  it("never lets a shop's site reach local or internal addresses (SSRF), whatever its name", async () => {
+    const { publicHostCheck, isPrivateAddress } = await import("@/lib/design-agent/worker/website");
+    for (const ip of ["127.0.0.1", "10.1.2.3", "172.20.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1"]) expect(isPrivateAddress(ip), ip).toBe(true);
+    for (const ip of ["8.8.8.8", "203.0.113.5", "2001:db8::1"]) expect(isPrivateAddress(ip), ip).toBe(false);
+    const check = publicHostCheck();
+    expect(await check("http://127.0.0.1/")).toBe(false);
+    expect(await check("http://[::1]/")).toBe(false);
+    expect(await check("http://localhost/")).toBe(false);
+    expect(await check("data:image/png;base64,xx")).toBe(true);
+    // the real default: the production capture refuses the local mock outright
+    const l = makeLayout();
+    writeJob(l, "job-ssrf", null, undefined, "inbox", WEBSITE);
+    const before = site.requests.length;
+    const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/site_home/") });
+    expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "PUBLIC_SOURCE_UNAVAILABLE" }] });
+    expect(site.requests.length).toBe(before); // not one request reached the local service
+  });
+
   it("refuses website URLs that are not a shop's own site", async () => {
     const { parseWebsiteUrl } = await import("@/lib/design-agent/worker/website");
-    for (const bad of ["http://127.0.0.1/", "https://localhost/", "https://user:pw@shop.jp/", "https://shop.jp:8443/", "https://www.instagram.com/x/", "https://facebook.com/x", "file:///etc/passwd", "javascript:alert(1)", "https://shop.local/", "ftp://shop.jp/"]) {
+    for (const bad of ["http://127.0.0.1/", "https://localhost/", "http://127.0.0.1.nip.io/", "http://localtest.me/", "https://linktr.ee/x", "https://lit.link/x", "https://user:pw@shop.jp/", "https://shop.jp:8443/", "https://www.instagram.com/x/", "https://facebook.com/x", "file:///etc/passwd", "javascript:alert(1)", "https://shop.local/", "ftp://shop.jp/"]) {
       expect(parseWebsiteUrl(bad), bad).toBeNull();
     }
     expect(parseWebsiteUrl("https://www.example-bakery.jp/about#x")).toEqual({ url: "https://www.example-bakery.jp/about", host: "www.example-bakery.jp" });

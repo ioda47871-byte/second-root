@@ -21,6 +21,7 @@ import { join, relative, resolve } from "node:path";
 import { chromium } from "playwright";
 import { checkProfileLocation, checkProfileTree, currentProfileEnv, DEFAULT_PROFILE_DIR, ProfileError, purgeOldCaptures } from "../../lib/design-agent/browser/profile";
 import { runDiagnose } from "../../lib/design-agent/browser/diagnose";
+import { WALL_FILE } from "../../lib/design-agent/capture-helper/helper";
 import { runLogin, runSignedInCapture, type LaunchPersistent } from "../../lib/design-agent/browser/session";
 import { instagramTarget } from "../../lib/design-agent/worker/capture";
 import { parseInstagramProfileUrl, type ProfileSource } from "../../lib/design-agent/worker/source-url";
@@ -57,6 +58,8 @@ async function login(): Promise<number> {
   say("A Chromium window opens on instagram.com. Sign in there by hand; this tool never types or clicks.");
   say("When the signed-in home appears, the window closes by itself (or close it to cancel).");
   const code = await runLogin({ profileDir, stateDir, env: currentProfileEnv(REPO), launchPersistent });
+  // A person has signed in: the capture helper may try again (it waits after a wall).
+  if (code === "LOGIN_OK") await rm(join(expand("~/.local/state/sr-capture"), WALL_FILE), { force: true });
   say(code);
   return code === "LOGIN_OK" ? 0 : code === "BROWSER_BUSY" ? 3 : 5;
 }

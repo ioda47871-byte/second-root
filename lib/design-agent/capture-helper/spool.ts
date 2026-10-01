@@ -7,7 +7,7 @@
  *     requests/   sr-igcapture:sr-capture  3730  (group: create only; cannot
  *                 list, read or delete anything; sticky + setgid)
  *     results/    sr-igcapture:sr-capture  2750  (group: read only)
- *       <request_id>/  0750: status.json + at most 3 privacy-processed PNGs (0640)
+ *       <request_id>/  2750: status.json + at most 3 privacy-processed PNGs (0640, group sr-capture)
  *
  * Both users are members of sr-capture: the requester writes requests 0640
  * (requester:sr-capture, setgid), the helper reads them through the group.
@@ -28,7 +28,8 @@ export const REQUEST_FILE = /^([a-z0-9][a-z0-9-]{2,62})\.json$/;
 export const MAX_REQUEST_BYTES = 4096;
 /** The only file names a result may hold. */
 export const RESULT_FILES = ["profile.png", "grid-top.png", "grid-lower.png"] as const;
-export const MAX_RESULT_PNG_BYTES = 20 * 1024 * 1024;
+/** The worker's reference check allows 8 MB (worker/images.ts): never hand back more. */
+export const MAX_RESULT_PNG_BYTES = 8 * 1024 * 1024;
 export const MAX_STATUS_BYTES = 16 * 1024;
 
 export const RequestSchema = z.strictObject({

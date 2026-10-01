@@ -38,7 +38,17 @@ export type CaptureTarget = {
 
 /** The only target the worker builds for a job. */
 export function instagramTarget(source: ProfileSource): CaptureTarget {
-  return { url: source.url, allowNavigation: isInstagramUrl };
+  // Only this profile's own page, or a sign-in / challenge page (the guard stops those as a wall):
+  // never the signed-in account's other pages (activity, settings, messages ...).
+  const own = new RegExp(`^/${source.username.replace(/\./g, "\\.")}/?$`, "i");
+  return {
+    url: source.url,
+    allowNavigation: (raw: string) => {
+      if (!isInstagramUrl(raw)) return false;
+      const path = new URL(raw).pathname;
+      return own.test(path) || LOGIN_PATH.test(path);
+    },
+  };
 }
 
 /** Definite answers: the page cannot be read without logging in (or at all). */
@@ -227,11 +237,24 @@ export interface NavigationGuard {
  *   Instagram answers that with "this page isn't available". Playwright's
  *   continue alone cannot guard: route handlers never see redirect hops.
  */
-export async function guardNavigation(context: BrowserContext, target: CaptureTarget, state: NavigationState): Promise<NavigationGuard> {
+export interface GuardOptions {
+  /** Treat Instagram's sign-in / challenge paths as a wall (default true; a shop's own site: false). */
+  walls?: boolean;
+  /**
+   * Every request (documents, frames, images, scripts, XHR) must also pass
+   * this, e.g. "the host resolves to public addresses only" for a shop's site,
+   * so a page cannot make the browser read a local or internal service.
+   */
+  hostCheck?: (url: string) => Promise<boolean>;
+}
+
+export async function guardNavigation(context: BrowserContext, target: CaptureTarget, state: NavigationState, guardOptions: GuardOptions = {}): Promise<NavigationGuard> {
   const guarded = new WeakSet<Page>();
+  const hostOk = async (url: string) => !guardOptions.hostCheck || (await guardOptions.hostCheck(url).catch(() => false));
   await context.route("**/*", (route) => handle(route).catch(() => route.abort("failed").catch(() => undefined)));
   async function handle(route: Route): Promise<void> {
     const request = route.request();
+    if (!(await hostOk(request.url()))) return route.abort("blockedbyclient").catch(() => undefined);
     if (!request.isNavigationRequest()) return route.continue().catch(() => undefined);
     let page: Page;
     try {
@@ -263,7 +286,7 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
         const main = top && event.frameId === mainFrame;
         const fail = () => send("Fetch.failRequest", { requestId: event.requestId, errorReason: "BlockedByClient" });
         const url = event.request.url;
-        if (!target.allowNavigation(url)) {
+        if (!target.allowNavigation(url) || !(await hostOk(url))) {
           if (main) state.offSite = true;
           return void (await fail());
         }
@@ -275,7 +298,7 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
             state.tooManyRedirects = true;
             return void (await fail());
           }
-          if (LOGIN_PATH.test(new URL(url).pathname)) {
+          if (guardOptions.walls !== false && LOGIN_PATH.test(new URL(url).pathname)) {
             state.wall = url;
             return void (await fail());
           }

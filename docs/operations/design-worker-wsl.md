@@ -74,7 +74,10 @@ Codex 自身の `--sandbox read-only` は、worker 利用者のファイルを**
 - 見えるもの: system の読み取り専用の `/`、Codex と node の install（読み取り専用）、`CODEX_HOME`（サインインと session log）、
   呼び出しごとの作業ディレクトリと、その `inputs/` に**コピーした** privacy 処理済み PNG だけ
 - 見えないもの: `/home` と自分のホーム全体（repo・job・結果・Meta token・SSH / git の鍵）、`/root`、`/mnt`（Windows）、
-  `/srv`（capture の spool）、`/run/user`。`/tmp` などは空の新しいもの
+  `/srv`（capture の spool）、`/run`（docker・dbus・WSL の Windows 連携などの socket）。`/tmp` などは空の新しいもの
+- `/etc/resolv.conf` が隠れた場所への link のとき（WSL: `/mnt/wsl/resolv.conf`）は、その中身だけを読み取り専用で戻す
+- Codex の答えの文字列からは、token に見える文字列を消してから保存する
+- network は共有（Codex が ChatGPT に繋ぐため）。localhost の service には、Codex 自身の read-only sandbox が繋がせない
 - 別の pid / ipc / uts namespace、新しい `/proc`、capability なし、環境変数は許可したものだけ
 - 毎回 Codex を起動する前に、同じ sandbox の中で probe が「守る path が 1 つも見えない」ことを確かめる。
   見えたら・bubblewrap が無い・起動できないときは Codex を起動しない（fail closed）
@@ -95,7 +98,10 @@ sudo apt install -y bubblewrap
 ## 公式サイトの取得
 
 - job の `--website` は、営業 Agent か人が**店の公式サイトだと確認した** URL だけを入れる
-- http(s)、credentials・port・IP・localhost・SNS のホストは断る
+- http(s)、credentials・port・IP・localhost・SNS・link-in-bio のホストは断る
+- すべての request（ページ・frame・画像・script）の host を名前解決し、loopback・private・link-local（cloud の metadata）
+  などに向くものは送らない。店のサイトが WSL の中や LAN の service を読ませることはできない
+- 移動は、その店のドメインとその subdomain（www.・m.・shop. など）の中だけ
 - 毎回新しい非永続 context（Instagram の profile は使わない）。Instagram と同じ navigation guard で、
   その店のホスト（と www 付き / 無し）から出る移動は送る前に止める
 - ホームと、about / concept / menu / products / access らしいリンク先を最大 2 ページ、URL で開く（クリックしない）

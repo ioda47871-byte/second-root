@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -110,5 +110,62 @@ describe.skipIf(!enabled)("the capture user's files are out of the requester's r
     await expect(checkSpool(spool, uid)).resolves.toBeUndefined();
     await expect(checkSpool(spool, Number(sh(`id -u ${REQUESTER}`).stdout.trim()))).rejects.toMatchObject({ code: "SPOOL_UNSAFE" });
     expect(join(spool, "requests")).toMatch(/requests$/);
+  });
+});
+
+describe.skipIf(!enabled)("a real round trip between the two users (requester client ↔ helper)", () => {
+  it("the requester reads the helper's status and PNGs through the spool group", async () => {
+    const { build } = await import("esbuild");
+    // (the users exist from the suite above; a fresh spool laid out as admin.sh does)
+    const spool = mkdtempSync("/srv/sr-capture-rt-");
+    sh(`chmod 755 ${spool} && install -d -o ${HELPER} -g ${GROUP} -m 3730 ${spool}/requests && install -d -o ${HELPER} -g ${GROUP} -m 2750 ${spool}/results && chmod 3730 ${spool}/requests && chmod 2750 ${spool}/results`);
+    const work = mkdtempSync("/tmp/sr-xu-");
+    sh(`chmod 755 ${work}`);
+    const repo = process.cwd();
+    writeFileSync(
+      join(work, "helper-entry.ts"),
+      `import { runCaptureHelper, writeResult } from ${JSON.stringify(join(repo, "lib/design-agent/capture-helper/helper"))};
+import { userInfo } from "node:os";
+import { writeFileSync, mkdirSync } from "node:fs";
+const [spool] = process.argv.slice(2);
+const home = userInfo().homedir;
+const env = { repoDir: "/nonexistent-repo", home, uid: process.getuid(), user: userInfo().username, expectedUser: userInfo().username };
+(async () => {
+  const run = await runCaptureHelper({ spoolRoot: spool, profileDir: home + "/.local/share/no-profile-yet", stateDir: home + "/state", workRoot: home + "/work", env,
+    launchPersistent: async () => { throw new Error("never"); }, sleep: async () => {}, limits: { perRun: 3, minIntervalMs: 0, perDay: 30 } });
+  mkdirSync(home + "/png", { recursive: true });
+  const png = home + "/png/profile.png";
+  writeFileSync(png, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"));
+  await writeResult(spool + "/results", "job-png", { code: "CAPTURED", files: [], softened: 2 }, [png], new Date());
+  console.log(JSON.stringify(run.processed));
+})();`,
+    );
+    writeFileSync(
+      join(work, "client-entry.ts"),
+      `import { requestCapture } from ${JSON.stringify(join(repo, "lib/design-agent/capture-helper/client"))};
+import { userInfo } from "node:os";
+const [spool, id, timeout] = process.argv.slice(2);
+requestCapture({ requestId: id, url: "https://www.instagram.com/li_shop/", destDir: userInfo().homedir + "/got-" + id, spoolRoot: spool, timeoutMs: Number(timeout), pollMs: 200 })
+  .then((r) => console.log(JSON.stringify({ code: r.code, reason: r.reason, files: r.files.map((f) => f.split("/").pop()) })));`,
+    );
+    for (const name of ["helper", "client"]) {
+      await build({ entryPoints: [join(work, `${name}-entry.ts`)], bundle: true, platform: "node", format: "cjs", outfile: join(work, `${name}.cjs`), external: ["playwright"], logLevel: "silent" });
+    }
+    sh(`chmod 644 ${work}/*.cjs`);
+    const node = process.execPath;
+    sh(`rm -rf /home/${HELPER}/state /home/${HELPER}/work`); // (users persist between local runs)
+    // 1. the requester asks (and waits); 2. the helper answers as its own user; 3. the requester reads the answer
+    const asking = spawn("runuser", ["-u", REQUESTER, "--", node, join(work, "client.cjs"), spool, "job-rt", "20000"], { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    asking.stdout.on("data", (d) => (out += d));
+    await new Promise((r) => setTimeout(r, 1500));
+    const helper = spawnSync("runuser", ["-u", HELPER, "--", node, join(work, "helper.cjs"), spool], { encoding: "utf8" });
+    expect(helper.status, helper.stderr).toBe(0);
+    expect(JSON.parse(helper.stdout.trim())).toEqual([{ requestId: "job-rt", code: "LOGIN_REQUIRED" }]);
+    await new Promise((r) => asking.on("close", r));
+    expect(JSON.parse(out.trim())).toEqual({ code: "LOGIN_REQUIRED", reason: "NO_PROFILE", files: [] });
+    const got = spawnSync("runuser", ["-u", REQUESTER, "--", node, join(work, "client.cjs"), spool, "job-png", "2000"], { encoding: "utf8" });
+    expect(JSON.parse(got.stdout.trim())).toEqual({ code: "CAPTURED", files: ["profile.png"] });
+    sh(`rm -rf ${work} ${spool}`);
   });
 });

@@ -198,7 +198,7 @@ async function run(): Promise<number> {
     startPreview: productionPreview(REPO, launch),
     // The signed-in capture is asked of the capture helper (user sr-igcapture), only when it is installed.
     captureHelper: (await lstat(join(SPOOL_ROOT, "requests")).catch(() => null))
-      ? (input) => requestCapture({ ...input, timeoutMs: 8 * 60_000 })
+      ? (input) => requestCapture(input)
       : null,
     log: say,
   });

@@ -10,11 +10,14 @@
  *   /                      read-only (system files, no user data)
  *   /home, the real home,  empty, read-only tmpfs: every user's files are
  *   /root, /mnt, /media,   gone (the Instagram profile, the repository, the
- *   /srv, /run/user        capture spool, /mnt/c of Windows ...)
+ *   /srv, /run             capture spool, /mnt/c of Windows, host sockets
+ *                          under /run (docker, dbus, WSL interop) ...)
  *   /tmp, /var/tmp,        empty, writable tmpfs (thrown away)
  *   /dev/shm
  *   then, put back on top:
- *     the Codex install    read-only (its install root and node's)
+ *     the Codex install    read-only (its npm package dir; the node binary)
+ *     system links         read-only targets of /etc/resolv.conf etc. when
+ *                          they point into a hidden area (WSL: /mnt/wsl)
  *     CODEX_HOME           read-write (its ChatGPT sign-in and session logs)
  *     the call's work dir  read-write, at the same path (schema, answer)
  *     <work dir>/inputs    read-only: COPIES of the privacy-processed PNGs
@@ -48,7 +51,10 @@ export class SandboxError extends Error {
 }
 
 /** Hidden behind an empty tmpfs whenever they exist. */
-const HIDDEN_RO = ["/home", "/root", "/mnt", "/media", "/srv", "/run/user"];
+// /run too: host sockets (docker, dbus, WSL interop /run/WSL), user runtime dirs.
+const HIDDEN_RO = ["/home", "/root", "/mnt", "/media", "/srv", "/run"];
+/** System files that may be links into a hidden area (WSL: /etc/resolv.conf → /mnt/wsl/resolv.conf); their targets are put back read-only. */
+const SYSTEM_LINKS = ["/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"];
 const HIDDEN_RW = ["/tmp", "/var/tmp"];
 
 /** Variables Codex may see (all others are cleared). */
@@ -108,11 +114,18 @@ async function which(name: string, path: string | undefined): Promise<string | n
   return null;
 }
 
-/** Where a binary is installed: the npm prefix for an npm package, else its directory. */
+/**
+ * What to bind for an installed binary: its npm package directory (e.g.
+ * …/node_modules/@openai/codex, which holds its platform binary) — never the
+ * whole npm prefix (other global packages, npmrc tokens) — else its directory.
+ */
 export function installRoot(realBin: string): string {
-  const marker = `${sep}lib${sep}node_modules${sep}`;
-  const at = realBin.indexOf(marker);
-  return at > 0 ? realBin.slice(0, at) : dirname(realBin);
+  const marker = `${sep}node_modules${sep}`;
+  const at = realBin.lastIndexOf(marker);
+  if (at < 0) return dirname(realBin);
+  const rest = realBin.slice(at + marker.length).split(sep);
+  const depth = rest[0]?.startsWith("@") ? 2 : 1;
+  return join(realBin.slice(0, at + marker.length), ...rest.slice(0, depth));
 }
 
 /** The bwrap arguments for one call (pure; exported for tests). */
@@ -207,10 +220,11 @@ export async function prepareCodexSandbox(options: SandboxOptions): Promise<Code
   const realNode = whichNode ? await realpath(whichNode).catch(() => null) : null;
   if (realNode) {
     for (const p of protectedReal) if (inside(realNode, p)) throw new SandboxError("CODEX_SANDBOX_CONFIG");
-    if (hiddenArea(realNode)) readOnly.add(await safeSource(dirname(dirname(realNode)), home, protectedReal, "dir"));
   }
 
   const codexHomeRaw = options.env.CODEX_HOME || join(home, ".codex");
+  // Its own directory only (a CODEX_HOME of ~/.config would expose everything in it).
+  if (!/^\.?codex/.test(basename(codexHomeRaw))) throw new SandboxError("CODEX_SANDBOX_CONFIG");
   await mkdir(codexHomeRaw, { recursive: true, mode: 0o700 }).catch(() => undefined);
   const codexHomeInfo = await lstat(codexHomeRaw).catch(() => null);
   if (!codexHomeInfo || codexHomeInfo.isSymbolicLink() || !codexHomeInfo.isDirectory()) throw new SandboxError("CODEX_SANDBOX_CONFIG");
@@ -221,11 +235,18 @@ export async function prepareCodexSandbox(options: SandboxOptions): Promise<Code
   for (const name of ENV_ALLOW) if (options.env[name] !== undefined) env[name] = options.env[name]!;
   for (const [name, value] of Object.entries(options.env)) if (name.startsWith("LC_") && value !== undefined) env[name] = value;
   const readOnlyFiles: string[] = [];
+  // node itself (nvm puts it in the home): the binary only, not its install tree.
+  if (realNode && hiddenArea(realNode)) readOnlyFiles.push(await safeSource(realNode, home, protectedReal, "file"));
+  for (const link of SYSTEM_LINKS) {
+    const real = await realpath(link).catch(() => null);
+    if (real && real !== link && hiddenArea(real) && !inside(real, home)) readOnlyFiles.push(await safeSource(real, home, protectedReal, "file"));
+  }
   for (const name of ENV_FILES) {
     const value = options.env[name];
     if (!value || !isAbsolute(value)) continue;
     const real = await safeSource(value, home, protectedReal, "file").catch(() => null);
-    if (!real) continue; // not passed on at all
+    // never a file of the home (it could be any secret the user points at); not passed on at all
+    if (!real || inside(real, home)) continue;
     env[name] = real;
     readOnlyFiles.push(real);
   }

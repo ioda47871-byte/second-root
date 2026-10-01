@@ -95,7 +95,7 @@ describe("guardrails", () => {
   it("lets the design worker open only public Instagram profile URLs (DEV-028 worker)", () => {
     // The production entry never injects a capture target; only tests do.
     const entry = readFileSync("scripts/sales-design-worker/worker.ts", "utf8");
-    expect(entry).not.toMatch(/captureTargetFor|websiteTargetFor|allowNavigation/);
+    expect(entry).not.toMatch(/captureTargetFor|websiteTargetFor|websiteHostCheck|allowNavigation/);
     const run = readFileSync("lib/design-agent/worker/run.ts", "utf8");
     expect(run).toContain("options.captureTargetFor ? options.captureTargetFor(source) : instagramTarget(source)");
     // (and its verified official website: websiteTarget, the site's own host only)

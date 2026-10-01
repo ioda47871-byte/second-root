@@ -10,6 +10,7 @@ export const USERNAME = /^(?!.*\.\.)(?!\.)[A-Za-z0-9._]{1,30}(?<!\.)$/;
 const RESERVED = new Set([
   "p", "reel", "reels", "tv", "stories", "explore", "accounts", "direct", "about", "legal", "developer",
   "web", "challenge", "api", "graphql", "emails", "session", "privacy", "terms", "help", "static", "oauth",
+  "notifications", "settings", "saved", "activity", "your_activity", "nametag", "invites", "archive", "create", "lite",
 ]);
 
 export type ProfileSource = { url: string; username: string };

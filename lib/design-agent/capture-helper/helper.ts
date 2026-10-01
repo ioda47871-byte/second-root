@@ -22,7 +22,7 @@
  * a session value or page text.
  */
 import { constants } from "node:fs";
-import { chmod, lstat, mkdir, open, readdir, readFile, rename, rm } from "node:fs/promises";
+import { chmod, chown, lstat, mkdir, open, readdir, readFile, rename, rm, rmdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { checkProfileTree, type ProfileEnv, ProfileError } from "../browser/profile";
 import { runSignedInCapture, type LaunchPersistent, type SignedInCaptureCode } from "../browser/session";
@@ -121,11 +121,39 @@ const STATUS_BY_CODE: Record<SignedInCaptureCode, StatusCode> = {
   BROWSER_BUSY: "BROWSER_BUSY",
 };
 
+/** Set when the helper met a sign-in wall / challenge; `sales:design-browser login` (LOGIN_OK) removes it. */
+export const WALL_FILE = "wall.json";
+const WALL_KEEP_MS = 12 * 60 * 60 * 1000;
+
+async function readWall(stateDir: string, now: Date): Promise<{ code: StatusCode } | null> {
+  try {
+    const wall = JSON.parse(await readFile(join(stateDir, WALL_FILE), "utf8")) as { code?: unknown; at?: unknown };
+    const at = Date.parse(String(wall.at));
+    if ((wall.code === "LOGIN_REQUIRED" || wall.code === "INSTAGRAM_CHALLENGE" || wall.code === "INSTAGRAM_CAPTCHA") && now.getTime() - at < WALL_KEEP_MS) {
+      return { code: wall.code };
+    }
+  } catch {
+    /* none */
+  }
+  return null;
+}
+
+/** Removes one spool entry WITHOUT walking into it: unlink (a file, link, FIFO) or rmdir (an empty directory). */
+async function removeEntry(path: string): Promise<void> {
+  const info = await lstat(path).catch(() => null);
+  if (!info) return;
+  if (info.isDirectory()) await rmdir(path).catch(() => undefined);
+  else await unlink(path).catch(() => undefined);
+}
+
 /** Writes one result directory: the PNGs first, status.json last (atomically). */
-async function writeResult(resultsDir: string, id: string, status: Omit<CaptureStatus, "version" | "request_id" | "finished_at">, sources: string[], now: Date): Promise<void> {
+export async function writeResult(resultsDir: string, id: string, status: Omit<CaptureStatus, "version" | "request_id" | "finished_at">, sources: string[], now: Date): Promise<void> {
   const dir = join(resultsDir, id);
-  await mkdir(dir, { mode: 0o750 });
-  await chmod(dir, 0o750);
+  // The spool group must own everything in it (the requester reads through it): setgid kept, group set explicitly.
+  const gid = (await lstat(resultsDir)).gid;
+  await mkdir(dir, { mode: 0o2750 });
+  await chown(dir, -1, gid);
+  await chmod(dir, 0o2750);
   const files: string[] = [];
   for (const [i, source] of sources.entries()) {
     const name = RESULT_FILES.find((n) => source.endsWith(`/${n}`));
@@ -135,6 +163,7 @@ async function writeResult(resultsDir: string, id: string, status: Omit<CaptureS
     const handle = await open(join(dir, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o640);
     try {
       await handle.writeFile(data);
+      await handle.chown(-1, gid);
       await handle.chmod(0o640);
     } finally {
       await handle.close();
@@ -147,6 +176,7 @@ async function writeResult(resultsDir: string, id: string, status: Omit<CaptureS
   const handle = await open(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o640);
   try {
     await handle.writeFile(`${JSON.stringify(full)}\n`);
+    await handle.chown(-1, gid);
     await handle.chmod(0o640);
   } finally {
     await handle.close();
@@ -179,40 +209,69 @@ export async function runCaptureHelper(options: HelperOptions): Promise<HelperRu
     }
 
     const ledger = await readLedger(options.stateDir);
-    const entries = await readdir(dirs.requests);
-    for (const name of entries.sort()) {
+    const seen = new Set<string>();
+    // Requests that arrive while this run works are picked up too (until the per-run limit).
+    for (;;) {
+      const names = (await readdir(dirs.requests)).filter((n) => !seen.has(n)).sort();
+      if (names.length === 0) break;
+      let stop = false;
+      for (const name of names) {
+        seen.add(name);
+        // Each entry on its own: one odd entry never stops the others.
+        try {
+          const outcome = await handleEntry(name);
+          if (outcome === "stop") {
+            stop = true;
+            break;
+          }
+        } catch {
+          log(`${REQUEST_FILE.test(name) ? name.replace(/\.json$/, "") : "(entry)"}: HELPER_ERROR`);
+        }
+      }
+      if (stop || run.processed.length >= limits.perRun) {
+        run.deferred = (await readdir(dirs.requests).catch(() => [] as string[])).filter((n) => REQUEST_FILE.test(n)).length;
+        break;
+      }
+    }
+
+    /** Handles one name in requests/. Never recursive: the requester can create directories and links there. */
+    async function handleEntry(name: string): Promise<"stop" | "next"> {
       const path = join(dirs.requests, name);
       const match = REQUEST_FILE.exec(name);
       if (!match) {
-        // half-written temp files get an hour; anything else that is not a request goes
+        // half-written temp files get an hour; anything else that is not a request goes (unlinked or rmdir'd, never walked)
         const info = await lstat(path).catch(() => null);
-        if (info && (!name.startsWith(".tmp-") || now().getTime() - info.mtimeMs > STRAY_KEEP_MS)) await rm(path, { recursive: true, force: true });
-        continue;
+        if (info && (!name.startsWith(".tmp-") || now().getTime() - info.mtimeMs > STRAY_KEEP_MS)) await removeEntry(path);
+        return "next";
       }
       const id = match[1]!;
       if (await lstat(join(dirs.results, id)).catch(() => null)) {
-        await rm(path, { recursive: true, force: true }); // an id is answered once
-        continue;
+        await removeEntry(path); // an id is answered once
+        return "next";
       }
-      if (run.processed.length >= limits.perRun) {
-        run.deferred += 1;
-        continue;
-      }
+      if (run.processed.length >= limits.perRun) return "next";
       const source = await readRequest(path, id);
-      await rm(path, { recursive: true, force: true });
+      await removeEntry(path);
+      const answer = async (code: StatusCode, reason?: string) => {
+        await writeResult(dirs.results, id, { code, ...(reason ? { reason } : {}), files: [], softened: 0 }, [], now());
+        run.processed.push({ requestId: id, code });
+        log(`${id}: ${code}${reason ? ` (${reason})` : ""}`);
+      };
       if (!source) {
-        await writeResult(dirs.results, id, { code: "REQUEST_INVALID", files: [], softened: 0 }, [], now());
-        run.processed.push({ requestId: id, code: "REQUEST_INVALID" });
-        log(`${id}: REQUEST_INVALID`);
-        continue;
+        await answer("REQUEST_INVALID");
+        return "next";
+      }
+      // A wall seen recently: answer at once, without opening the browser again, until a person signs in.
+      const wall = await readWall(options.stateDir, now());
+      if (wall) {
+        await answer(wall.code, "WAITING_FOR_PERSON");
+        return "next";
       }
       const day = now().toISOString().slice(0, 10);
       if (ledger.day !== day) Object.assign(ledger, { day, count: 0 });
       if (ledger.count >= limits.perDay) {
-        await writeResult(dirs.results, id, { code: "RATE_CAPPED", files: [], softened: 0 }, [], now());
-        run.processed.push({ requestId: id, code: "RATE_CAPPED" });
-        log(`${id}: RATE_CAPPED`);
-        continue;
+        await answer("RATE_CAPPED");
+        return "next";
       }
       const wait = ledger.lastAt + limits.minIntervalMs - now().getTime();
       if (wait > 0) await sleep(wait);
@@ -252,8 +311,12 @@ export async function runCaptureHelper(options: HelperOptions): Promise<HelperRu
       }
       run.processed.push({ requestId: id, code });
       log(`${id}: ${code}${reason ? ` (${reason})` : ""}`);
-      // A wall or an expired session: stop here; the rest waits for a person.
-      if (code === "LOGIN_REQUIRED" || code === "INSTAGRAM_CHALLENGE" || code === "INSTAGRAM_CAPTCHA") break;
+      // A wall or an expired session: remember it and stop; the rest waits for a person.
+      if (code === "LOGIN_REQUIRED" || code === "INSTAGRAM_CHALLENGE" || code === "INSTAGRAM_CAPTCHA") {
+        await writeJsonAtomic(join(options.stateDir, WALL_FILE), { code, at: now().toISOString() });
+        return "stop";
+      }
+      return "next";
     }
     return run;
   } finally {

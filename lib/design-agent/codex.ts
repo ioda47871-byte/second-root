@@ -26,7 +26,8 @@
  *   each call that log is deleted, so reference screenshots do not outlive
  *   the run.
  */
-import { lstat, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdtemp, open, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BoundedResult } from "./bounded-process";
@@ -234,6 +235,36 @@ export async function removeStaleCodexSessions(env: Record<string, string | unde
   return removed;
 }
 
+/** The answer file Codex wrote in its work dir: not a link, a regular file of ours, at most 1 MiB. */
+async function readAnswerFile(path: string): Promise<string | undefined> {
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch {
+    return undefined;
+  }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > 1024 * 1024 || info.uid !== process.getuid?.()) return undefined;
+    return (await handle.readFile()).toString("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Token-like strings are removed from every string in an answer before it is
+ * stored (rationale, review notes ...): words in a screenshot could steer the
+ * model to copy its own sign-in token (readable in CODEX_HOME) into the JSON.
+ */
+const TOKEN_LIKE = /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_.-]*|\b(?:sk|rt|ghp|gho|github_pat|xox[abp])[-_][A-Za-z0-9_-]{8,}|[A-Za-z0-9+/_-]{40,}={0,2}/g;
+export function redactSecrets(value: unknown): unknown {
+  if (typeof value === "string") return value.replace(TOKEN_LIKE, "[removed]");
+  if (Array.isArray(value)) return value.map(redactSecrets);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactSecrets(v)]));
+  return value;
+}
+
 export interface CodexJsonOptions {
   /** The OS sandbox every Codex process runs in (prepareCodexSandbox). */
   sandbox: CodexSandbox;
@@ -293,9 +324,9 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
       throw new CodexError("CODEX_QUOTA", "Codex usage limit reached or the service is busy.");
     }
     if (result.code !== 0) throw new CodexError("CODEX_EXEC_FAILED", `Codex failed (exit ${String(result.code)}).`);
-    const answer = await readFile(answerPath, "utf8").catch(() => readCodexEvents(result.stdout).lastMessage);
+    const answer = (await readAnswerFile(answerPath)) ?? readCodexEvents(result.stdout).lastMessage;
     if (answer === undefined || answer.trim() === "") throw new CodexError("CODEX_NO_JSON", "Codex returned no answer.");
-    return extractJsonObject(answer);
+    return redactSecrets(extractJsonObject(answer));
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

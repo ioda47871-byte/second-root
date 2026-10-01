@@ -69,7 +69,8 @@ Codex は `sr-designgen` のファイル（Meta token・git の鍵・Claude の�
 
 ## 2. 人が行う操作（自動化しない）
 
-- Instagram へのログイン・password・2FA・CAPTCHA / challenge（`LOGIN_REQUIRED` が出たときだけ。表示される 1 行を打つ）
+- Instagram へのログイン・password・2FA・CAPTCHA / challenge（`LOGIN_REQUIRED` が出たときだけ。
+  Claude の session と worker を止めてから、表示される 1 行 `sudo bash …/admin.sh login` を打つ）
 - helper の install と、新しい版の承認（`admin.sh approve <sha>`、差分を確かめてから）
 - Meta / Facebook / Instagram アカウントの設定、Instagram の DM
 - Production / Staging / Supabase / Routine、PR の merge

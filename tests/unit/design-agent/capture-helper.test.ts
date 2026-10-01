@@ -151,6 +151,53 @@ describe("capture helper: what a requester cannot do", () => {
     expect(readFileSync(secret, "utf8")).toContain(CANARY); // the link's target is untouched
   });
 
+  it("never walks into what a requester put in requests/ (no deletion outside the spool through links), and odd entries never stop a valid request", async () => {
+    const l = layout();
+    await signIn(l);
+    const victim = join(l.home, "victim");
+    mkdirSync(victim);
+    for (let i = 0; i < 5; i += 1) writeFileSync(join(victim, `f${i}`), CANARY);
+    const req = join(l.spool, "requests");
+    mkdirSync(join(req, "zz"));
+    symlinkSync(victim, join(req, "zz", "sub")); // a directory holding a link to the helper's own files
+    symlinkSync(victim, join(req, "zz2")); // a link straight to them
+    mkdirSync(join(req, "job-full.json"));
+    writeFileSync(join(req, "job-full.json", "x"), "x"); // a non-empty directory named like a request
+    write(l, "job-good.json", ok("job-good"));
+    const run = await runCaptureHelper(l.options);
+    expect(readdirSync(victim).sort()).toEqual(["f0", "f1", "f2", "f3", "f4"]);
+    expect(run.processed).toContainEqual({ requestId: "job-good", code: "CAPTURED" });
+    expect(run.processed).toContainEqual({ requestId: "job-full", code: "REQUEST_INVALID" });
+  });
+
+  it("after a sign-in wall it does not open the browser again until a person signs in", async () => {
+    const l = layout();
+    let launches = 0;
+    const counting: typeof launchPersistent = (dir, o) => ((launches += 1), launchPersistent(dir, o));
+    await signIn(l);
+    // the session "expires": a signed-out page is a login wall
+    const first = await ask(l, "job-w1", "https://www.instagram.com/few_posts/", { launchPersistent: counting });
+    expect(first.result.code).toBe("LOGIN_REQUIRED");
+    const before = launches;
+    const second = await ask(l, "job-w2", "https://www.instagram.com/li_shop/", { launchPersistent: counting });
+    expect(second.result).toMatchObject({ code: "LOGIN_REQUIRED", reason: "WAITING_FOR_PERSON" });
+    expect(launches).toBe(before);
+    // a person signs in (sales:design-browser login removes the wall)
+    spawnSync("rm", ["-f", join(l.options.stateDir, "wall.json")]);
+    expect((await ask(l, "job-w3", "https://www.instagram.com/li_shop/", { launchPersistent: counting })).result.code).toBe("CAPTURED");
+  });
+
+  it("result files carry the spool's group (setgid kept), so the requester can read them", async () => {
+    const l = layout();
+    await signIn(l);
+    await ask(l, "job-grp", "https://www.instagram.com/li_shop/");
+    const results = statSync(join(l.spool, "results"));
+    const dir = statSync(join(l.spool, "results", "job-grp"));
+    expect(dir.mode & 0o2000).toBe(0o2000);
+    expect(dir.gid).toBe(results.gid);
+    for (const name of readdirSync(join(l.spool, "results", "job-grp"))) expect(statSync(join(l.spool, "results", "job-grp", name)).gid).toBe(results.gid);
+  });
+
   it("does nothing at all when the spool is not exactly as installed", async () => {
     const l = layout();
     chmodSync(join(l.spool, "requests"), 0o0777);

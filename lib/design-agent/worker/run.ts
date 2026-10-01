@@ -48,6 +48,10 @@ export const DEFAULT_MAX_JOBS = 1;
 const BRIEF_TIMEOUT_MS = 15 * 60 * 1000;
 const REVIEW_TIMEOUT_MS = 10 * 60 * 1000;
 const MIN_LONG_CALL_MS = 60 * 1000;
+/** The longest wait for the capture helper's answer, and the run time kept for Codex after it. */
+const HELPER_WAIT_MS = 8 * 60 * 1000;
+const CODEX_RESERVE_MS = 25 * 60 * 1000;
+const MIN_HELPER_WAIT_MS = 60 * 1000;
 
 export interface Renderer {
   /** Screenshots of /design-preview/<runId>?profile=<candidate> into shotsDir. */
@@ -93,12 +97,14 @@ export interface WorkerOptions {
   captureTargetFor?: (source: ProfileSource) => CaptureTarget;
   /** Tests only: capture target for a job's website (a local mock). Production uses websiteTarget. */
   websiteTargetFor?: (source: WebsiteSource) => CaptureTarget;
+  /** Tests only: lets the website capture reach the local mock (production: public addresses only). */
+  websiteHostCheck?: (url: string) => Promise<boolean>;
   /**
    * The signed-in capture, asked of the capture helper (another Linux user;
    * capture-helper/client.ts). Null / unset: the helper is not installed,
    * the public capture is used.
    */
-  captureHelper?: ((input: { requestId: string; url: string; destDir: string }) => Promise<ClientResult>) | null;
+  captureHelper?: ((input: { requestId: string; url: string; destDir: string; timeoutMs: number }) => Promise<ClientResult>) | null;
   captureSettleMs?: number;
 }
 
@@ -380,21 +386,28 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       await mkdir(dir, { mode: 0o700 });
       const result = await captureWebsite({
         target: options.websiteTargetFor ? options.websiteTargetFor(website) : websiteTarget(website),
+        ...(options.websiteHostCheck ? { hostCheck: options.websiteHostCheck } : {}),
         outDir: dir,
         launch: () => options.launchBrowser(ctx.childEnv()),
         settleMs: options.captureSettleMs,
       });
       sources.website = result.status === "captured" ? { status: "captured", images: result.files.length } : { status: result.status === "retry" ? "failed" : "unavailable", reason: result.reason };
+      // A website that fails (bot protection, an error page) is not retried: the next source is tried.
       if (result.status === "captured") {
         refs = result.files;
         softened = result.softened;
         visualSource = "website";
-      } else if (result.status === "retry") retryReason = result.reason;
+      }
       log(`job ${jobId}: website ${result.status === "captured" ? `captured (${result.files.length})` : `${result.status} (${result.reason})`}`);
     }
-    if (!visualSource && source && options.captureHelper) {
+    // The wait for the helper leaves the run enough time for Codex (brief + reviews).
+    const helperWaitMs = Math.min(HELPER_WAIT_MS, options.deadline.remainingMs() - CODEX_RESERVE_MS);
+    if (!visualSource && source && options.captureHelper && helperWaitMs < MIN_HELPER_WAIT_MS) sources.instagram_signed_in = { status: "SKIPPED_NO_TIME" };
+    else if (!visualSource && source && options.captureHelper) {
       const dir = join(refsDir, "helper");
-      const result = await options.captureHelper({ requestId: jobId, url: source.url, destDir: dir });
+      // A new id per attempt: an earlier answer (a busy browser, an expired session) is never replayed.
+      const requestId = `${jobId.slice(0, 50)}-${now().getTime().toString(36)}`;
+      const result = await options.captureHelper({ requestId, url: source.url, destDir: dir, timeoutMs: helperWaitMs });
       sources.instagram_signed_in = { status: result.code, ...(result.reason ? { reason: result.reason } : {}) };
       if (result.code === "CAPTURED") {
         refs = result.files;

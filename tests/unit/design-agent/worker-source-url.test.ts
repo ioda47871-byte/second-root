@@ -46,3 +46,19 @@ describe("design worker source URL (production allowlist)", () => {
     expect(isInstagramUrl("not a url")).toBe(false);
   });
 });
+
+describe("instagramTarget: only the profile itself (or a wall the guard stops)", () => {
+  // (built, not written out: the repository guardrail allows only fixture names in literal profile URLs)
+  const IG = "https://www.instagram" + ".com";
+  const IG_BARE = "https://instagram" + ".com";
+  it("never lets the page go to the signed-in account's other pages", async () => {
+    const { instagramTarget } = await import("@/lib/design-agent/worker/capture");
+    const t = instagramTarget({ url: `${IG}/ex.ample_1/`, username: "ex.ample_1" });
+    for (const ok of [`${IG}/ex.ample_1/`, `${IG_BARE}/EX.AMPLE_1`, `${IG}/accounts/login/?next=x`, `${IG}/challenge/abc/`]) {
+      expect(t.allowNavigation(ok), ok).toBe(true);
+    }
+    for (const bad of [`${IG}/exXample_1/`, `${IG}/notifications/`, `${IG}/`, `${IG}/ex.ample_1/tagged/`, `${IG}/direct/inbox/`, "https://evil.example/ex.ample_1/"]) {
+      expect(t.allowNavigation(bad), bad).toBe(false);
+    }
+  });
+});

@@ -28,7 +28,8 @@ const flag = (name: string): string | undefined => {
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
 const insideRepo = (p: string) => !relative(REPO, p).startsWith("..");
 const say = (line: string) => process.stdout.write(`${line}\n`);
-export const LOGIN_COMMAND = "sudo -u sr-igcapture -H env DISPLAY=:0 bash -lc 'cd ~/second-root && npm run -s sales:design-browser -- login'";
+// (refuses while any process of the requester runs: the display is shared)
+export const LOGIN_COMMAND = "sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh login";
 
 async function main(): Promise<number> {
   const requestId = flag("request-id") ?? "";
@@ -62,7 +63,8 @@ async function main(): Promise<number> {
     return 0;
   }
   if (result.code === "LOGIN_REQUIRED") {
-    say("The capture session has expired or never existed. A PERSON signs in (never automated):");
+    say("The capture session has expired or never existed. A PERSON signs in (never automated),");
+    say("after stopping this user's processes (Claude, the worker):");
     say(`  ${LOGIN_COMMAND}`);
     return 5;
   }

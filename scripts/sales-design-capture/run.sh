@@ -10,7 +10,7 @@
 #      written by hand), unchanged, without a .env file. It never fetches or
 #      updates itself: the worker / Claude user cannot change the code that
 #      holds the session. A new version is approved with
-#      scripts/sales-design-capture/approve.sh, by a person, as root.
+#      `sudo bash scripts/sales-design-capture/admin.sh approve <sha>`, by a person.
 #   4. runs the helper (scripts/sales-design-capture/helper.ts).
 {
 set -euo pipefail
@@ -28,6 +28,10 @@ fi
 
 umask 027
 [ "$(id -un)" = "sr-igcapture" ] || { echo "WRONG_USER (run as sr-igcapture)"; exit 2; }
+# The node admin.sh pinned (the worker user's nvm is not readable here).
+NODE_DIR="$(cat "$HOME/.config/sr-capture/node-dir" 2>/dev/null || true)"
+[ -n "$NODE_DIR" ] && [ -x "$NODE_DIR/node" ] || { echo "HELPER_NOT_INSTALLED (no node; sudo bash admin.sh approve <sha>)"; exit 2; }
+export PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 STATE="$HOME/.local/state/sr-capture"
 mkdir -p "$STATE"
@@ -38,12 +42,21 @@ if ! flock -n 9; then
   exit 0
 fi
 
+# Nothing to do: no request waiting and no result older than a day (the timer calls this often).
+if [ -z "$(find /srv/sr-capture/requests -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ] \
+  && [ -z "$(find /srv/sr-capture/results -mindepth 1 -maxdepth 1 -mmin +1440 -print -quit 2>/dev/null)" ]; then
+  exit 0
+fi
+
 cd "$REPO"
 APPROVED="$(cat "$HOME/.config/sr-capture/approved-sha" 2>/dev/null || true)"
 [[ "$APPROVED" =~ ^[0-9a-f]{40}$ ]] || { echo "HELPER_NOT_APPROVED (no approved commit)"; exit 2; }
 [ "$(git rev-parse HEAD)" = "$APPROVED" ] || { echo "HELPER_NOT_APPROVED (checkout is not the approved commit)"; exit 2; }
 [ -z "$(git status --porcelain --untracked-files=normal)" ] || { echo "HELPER_TREE_DIRTY"; exit 2; }
-if ls -A | grep -q '^\.env' ; then echo "HELPER_ENV_FILE_PRESENT"; exit 2; fi
+# A real env file (secrets) — not the tracked .env.local.example.
+for f in .env .env.*; do
+  case "$f" in *.example|'.env.*') ;; *) if [ -e "$f" ]; then echo "HELPER_ENV_FILE_PRESENT"; exit 2; fi ;; esac
+done
 [ -x node_modules/.bin/tsx ] || { echo "HELPER_NOT_INSTALLED (npm ci as sr-igcapture)"; exit 2; }
 
 timeout --kill-after=30 1700 "$REPO/node_modules/.bin/tsx" "$REPO/scripts/sales-design-capture/helper.ts" "$@"

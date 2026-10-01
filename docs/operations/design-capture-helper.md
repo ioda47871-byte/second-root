@@ -37,7 +37,10 @@ capture helper                                     ← 利用者 sr-igcapture（
 
 ## 1. 入れる（人が 1 回、sudo で）
 
-前提: WSL で systemd が有効（`/etc/wsl.conf` に `[boot]` `systemd=true`）。
+前提:
+- WSL で systemd が有効（`/etc/wsl.conf` に `[boot]` `systemd=true`）
+- **system 全体の Node 22**（`/usr/local/bin` か `/usr/bin`）。`sr-designgen` の nvm の node は `sr-igcapture` から読めないので使えない
+  （例: NodeSource の手順 https://github.com/nodesource/distributions ）
 
 ```bash
 cd ~/work/second-root && git fetch -q origin feature/dev-028-ai-art-direction
@@ -47,16 +50,24 @@ sudo bash scripts/sales-design-capture/admin.sh install "$(git rev-parse origin/
 - 利用者 `sr-igcapture`（パスワードなし、ホーム 0700）と group `sr-capture` を作る
 - `sr-designgen` を `sr-capture` に入れる（`sr-igcapture` の group には入れない）
 - `/srv/sr-capture/{requests,results}` を正しい権限で作る
-- `sr-igcapture` のホームに repo を clone し、指定した commit を checkout、`npm ci`、Chromium を入れる
+- 承認の確認（commit の先頭 12 文字を打つ）の後、`sr-igcapture` のホームに repo を clone し、指定した commit を checkout、
+  `npm ci --ignore-scripts`（依存の install script は動かさない）、Chromium を入れる。使う node の場所も記録する
 - systemd の `sr-capture.path` / `sr-capture.timer` を有効にする
 
 `sr-designgen` は group の変更を反映するため、一度ログインし直す（WSL なら `wsl --shutdown` 後に開き直すのが確実）。
 
+推奨（人の判断）: WSL の Windows 連携を切る（`/etc/wsl.conf` に `[interop]` `enabled=false`）。Codex の sandbox は `/run` を隠すので
+連携の口は見えないが、二重に塞いでおく。
+
 ## 2. ログイン（人が、headed で）
 
 ```bash
-sudo -u sr-igcapture -H env DISPLAY=:0 bash -lc 'cd ~/second-root && npm run -s sales:design-browser -- login'
+sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh login
 ```
+
+- **先に `sr-designgen` の process（Claude の Remote Control・worker）を全部止める。**画面（X の display）は共有なので、
+  動いていれば窓の中身や入力を読めてしまう。動いている間は `REQUESTER_RUNNING` で止まる（`sudo pkill -u sr-designgen`）
+- ログインが済んだら（`LOGIN_OK`）、helper の「待ち」の印も消える。Claude の session は起動し直す
 
 窓の中で自分でログインする（password・2FA・確認画面も自分で）。この道具は入力もクリックもしない。
 
@@ -77,7 +88,7 @@ npm run -s sales:design-capture -- --request-id shop-001 --source-file ~/sr-desi
 | 表示 | 意味 | 終了コード |
 |---|---|---|
 | `CAPTURED` | 撮れた。PNG は `~/.local/share/second-root-design/helper-captures/<id>/`（24 時間で消える） | 0 |
-| `LOGIN_REQUIRED (NO_PROFILE など)` | session が無い・切れた。表示された login コマンドを**人が**打つ | 5 |
+| `LOGIN_REQUIRED (NO_PROFILE など)` | session が無い・切れた。表示された login コマンドを**人が**打つ。`(WAITING_FOR_PERSON)` は「前に壁に当たったので、人がログインするまで browser を開かない」 | 5 |
 | `INSTAGRAM_CHALLENGE` / `INSTAGRAM_CAPTCHA` | 確認を求められた。回避しない。人が様子を見る | 6 |
 | `PUBLIC_SOURCE_UNAVAILABLE (理由)` | 非公開・存在しない・外への移動など | 4 |
 | `RATE_CAPPED` | 1 日の上限 | 4 |
@@ -89,15 +100,16 @@ worker は helper が入っていれば自動で使う（公式サイトが無�
 
 ## 4. helper を新しい版にする（人が、sudo で）
 
-helper のコードは自動では変わらない。新しい commit を使うときは、差分を確かめてから承認する。
+helper のコードは自動では変わらない。新しい commit を使うときは、差分を**全部**確かめてから承認する。
+`lib/` や `scripts/` だけでなく、`package.json`・`package-lock.json`・`tsconfig.json`・`.npmrc` の変更も helper の動きを変えうる。
 
 ```bash
-sudo -u sr-igcapture git -C /home/sr-igcapture/second-root fetch -q origin
-sudo -u sr-igcapture git -C /home/sr-igcapture/second-root diff "$(sudo cat /home/sr-igcapture/.config/sr-capture/approved-sha)" <新しい sha> -- lib/design-agent scripts/sales-design-capture
 sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh approve <新しい sha>
 ```
 
-`approve` は、`sr-designgen` の repo ではなく `sr-igcapture` 側の checkout から systemd unit を入れ直す。
+- 承認済みの commit からの変更（`git diff --stat`）を表示し、全文の見方を示す
+- commit の先頭 12 文字を打つと承認される（打たなければ何も変わらない）
+- `sr-designgen` の repo ではなく `sr-igcapture` 側の checkout から、systemd unit を入れ直す
 
 ## 5. 状態と後片付け
 
