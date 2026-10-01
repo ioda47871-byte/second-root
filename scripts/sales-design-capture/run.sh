@@ -66,7 +66,7 @@ done
 UNSAFE=""
 sr_check_wsl_interop >/dev/null || UNSAFE=WSL_INTEROP_ON
 # with hidepid this user cannot see the requester's processes (sr_check_requester_processes): unknown is unsafe
-awk '$2 == "/proc" && $4 ~ /hidepid=([12]|invisible|noaccess)/ { found = 1 } END { exit !found }' /proc/mounts && UNSAFE=PROC_HIDDEN
+awk '$2 == "/proc" && $4 ~ /hidepid=/ && $4 !~ /hidepid=(0|off)(,|$)/ { found = 1 } END { exit !found }' /proc/mounts && UNSAFE=PROC_HIDDEN
 # members by the group list and by primary group
 SPOOL_GID="$(getent group sr-capture | cut -d: -f3)"
 for req in $(getent group sr-capture | cut -d: -f4 | tr ',' ' ') $(getent passwd | awk -F: -v g="$SPOOL_GID" '$4 == g { print $1 }'); do

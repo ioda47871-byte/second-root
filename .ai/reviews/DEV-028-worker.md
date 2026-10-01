@@ -356,3 +356,25 @@ Round 3 of the jail review (1616829).
   - `setns`;
   - pasta crash recovery;
   - fail-open unit writing.
+
+Static fail-open review (afb6722; read only). The main path fails closed: no unit is written without its settings, and the probe cannot print JAIL_OK after an exception. Findings, all fixed:
+
+- **H1: `host_safe` ran `runuser -u <requester> -- test -w` outside the jail.** The jail shares the PID namespace, so with Yama `ptrace_scope` 0 a jailed process could ptrace that short-lived process and leave the jail.
+  - The writability check is now done as root from owner and mode (`sr_may_write`); nothing runs as the requester outside the jail. A test proves `runuser` is never called.
+  - The jail also refuses `ptrace` and `process_vm_readv`/`writev`. The probe checks this with `PTRACE_SEIZE` on its own child. Chromium and bwrap still pass 73/73 in the jail.
+- **M1: `admin.sh run/shell/check` passed the command to systemd-run without `--`.** A command starting with `-p` could override jail settings. Every such call now has `--`.
+- **M2: the sudo-rule check grepped a translated answer, and could hit SIGPIPE.** It now captures the answer under `LC_ALL=C`; anything but the exact "is not allowed to run sudo" counts as rules.
+- **M3: a runtime mask loses to the unit file in /etc.** `login` now writes a runtime drop-in with `ConditionPathExists=/nonexistent/...`. Verified on systemd 255: the unit does not start while the drop-in is in place, and starts after it is removed.
+- **M4: a unit file silently drops settings it cannot parse.** `jail_install` now runs `systemd-analyze verify` and checks the loaded unit's key properties one by one; on any mismatch it removes the unit and stops. The probe also checks that /usr, /etc and /var are not writable, and checks `/init`.
+- **M5: `run.sh` missed `hidepid=4` and `ptraceable`.** Any hidepid other than 0/off is now PROC_HIDDEN.
+- **M6: old crontab and queued at jobs, and ssh forwarding, could run requester code outside the jail.** Install now runs `crontab -r` and `atrm` on the requester's jobs and writes `DenyUsers` into sshd_config.d.
+- **M7: root installed units and jail files from the helper's checkout.** The helper renders Instagram pages, so that checkout is not root-trusted.
+  - `admin.sh` now runs only from the root-only clone `/root/sr-capture-admin`, at the approved commit and clean (`ROOT_CLONE_NOT_AT_SHA` otherwise). `trusted_path` accepts root-owned paths only.
+  - Units and jail files are installed from that clone. `LOGIN_COMMAND` and the docs now point to it.
+- **Lows:**
+  - `stop_jail_units` handles the `●` marker on failed units.
+  - Probe "unknown means fine" cases now fail: `/run`, `/home`, `/mnt`, the route table, vsock as constant 40.
+  - Unknown users are refused in the sub-checks.
+  - `restore` restarts the helper units only if they were active before.
+
+Independent security review status: rounds 2 and 3 of the live-attack security review were cut short by the platform's safeguards. Their live questions were run by hand and are recorded above. This read-only fail-open review completed.

@@ -54,7 +54,7 @@ Codex は `sr-designgen` のファイル（Meta token・git の鍵・Claude の�
 3. `sr-designgen` に Claude Code を入れてサインインする（サブスクリプション。API キーは使わない）。
    `sudo -iu sr-designgen` は使わない（login shell は nologin。jail の外の shell になるため）。jail の中の shell を開く:
    ```bash
-   sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh shell
+   sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh shell
    # ここから jail の中（sr-designgen）
    npm config set prefix ~/.npm-global
    npm install -g @anthropic-ai/claude-code@latest
@@ -66,7 +66,7 @@ Codex は `sr-designgen` のファイル（Meta token・git の鍵・Claude の�
    - `main` / `develop` は GitHub の branch protection で直接 push を禁止しておく
 5. Remote Control を jail の中で起動したままにする（systemd の `sr-jail-claude.service`。起動のたびに probe が通ったときだけ動く）:
    ```bash
-   sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh claude-start
+   sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-start
    ```
    Claude アプリの Claude Code にこの session が出る。以降はアプリから頼めば、WSL 上の jail の中で Claude が直接動く。
    止めるときは `admin.sh claude-stop`。
@@ -86,7 +86,7 @@ helper の install / login はこれも確かめて断る。`admin.sh` は `sr-d
 ## 3. 確かめ方
 
 ```bash
-A=/home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh
+A=/root/sr-capture-admin/scripts/sales-design-capture/admin.sh
 # jail が実機で成り立つこと（JAIL_OK。JAIL_UNSAFE ならその符号を Claude に伝える）
 sudo bash $A jail-check
 # jail の中から profile・Windows の口が見えないこと（どれも No such file / Permission denied）

@@ -85,7 +85,7 @@ describe("the requester jail", () => {
     expect(ADMIN).toMatch(/grep -Ev '\^\[\[:space:\]\]\*\(#\|\$\)' "\$JAIL_LIB\/jail\.properties"/);
     expect(ADMIN).toMatch(/echo "ExecStartPre=\$py -I \$JAIL_LIB\/probe\.py \$req"/);
     expect(ADMIN).toMatch(/IPAddressDeny=%d\.%d\.%d\.%d\/32/); // the default gateway (the Windows host in WSL's NAT)
-    for (const unit of ['--unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}"', '--unit="sr-jail-run-$$-$RANDOM" -p RuntimeMaxSec=3500 "${JAIL_ARGS[@]}"', '--unit="sr-jail-check-$$" "${JAIL_ARGS[@]}"']) expect(ADMIN).toContain(unit);
+    for (const unit of ['--unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}" -- /bin/bash -l', '--unit="sr-jail-run-$$-$RANDOM" -p RuntimeMaxSec=3500 "${JAIL_ARGS[@]}" -- "$@"', '--unit="sr-jail-check-$$" "${JAIL_ARGS[@]}" -- "$py"']) expect(ADMIN).toContain(unit);
     // the Claude unit carries the settings, fetched on their own first: never a unit without them
     expect(ADMIN).toContain('props="$(jail_props "$req")" || {');
     expect(ADMIN).toMatch(/grep -qx "NoNewPrivileges=yes" <<<"\$props" && grep -q "\^ExecStartPre=\.\*probe\.py" <<<"\$props"/);
@@ -104,6 +104,16 @@ describe("the requester jail", () => {
     expect(settings).toContain("BindReadOnlyPaths=/run/sr-jail/netns-id");
     // Claude exiting ends tmux cleanly, so it restarts either way
     expect(ADMIN).toMatch(/echo "Type=forking"[\s\S]*?echo "Restart=always"/);
+    // a loaded unit that dropped a setting (older systemd, a typo) is refused
+    expect(ADMIN).toContain('systemd-analyze verify "/etc/systemd/system/$JAIL_CLAUDE"');
+    expect(ADMIN).toMatch(/for want in NoNewPrivileges=yes ProtectSystem=strict ProtectHome=tmpfs PrivateDevices=yes ProtectProc=invisible NetworkNamespacePath=\/run\/netns\/srjail RestrictSUIDSGID=yes; do/);
+    // root runs and installs only from the root-only clone, at the approved commit
+    expect(ADMIN).toContain("ROOT_CLONE=/root/sr-capture-admin");
+    expect(ADMIN).toContain('[ "$(git -C "$SELF_DIR" rev-parse HEAD 2>/dev/null)" = "$sha" ]');
+    expect(ADMIN).toContain('install -m 0644 "$SELF_DIR/systemd/sr-capture.service"');
+    expect(ADMIN).not.toContain("$HOME_DIR/second-root/scripts/sales-design-capture/systemd");
+    // ptrace is refused inside the jail
+    expect(settings.find((l) => l.startsWith("SystemCallFilter=~"))).toMatch(/ptrace process_vm_readv process_vm_writev/);
     // no login shell outside the jail
     expect(ADMIN).toContain('usermod -s /usr/sbin/nologin "$req"');
     // the jail files themselves come from a checkout the requester cannot change
@@ -120,8 +130,10 @@ describe("the requester jail", () => {
     expect(login.indexOf("stop_jail_units")).toBeGreaterThan(0);
     expect(login.indexOf("stop_jail_units")).toBeLessThan(login.indexOf("host_safe"));
     expect(login.indexOf("trap restore EXIT")).toBeLessThan(login.indexOf("stop_jail_units"));
-    // and nothing starts Claude during the sign-in
-    expect(login.indexOf('systemctl mask --runtime "$JAIL_CLAUDE"')).toBeLessThan(login.indexOf("stop_jail_units"));
-    expect(login).toContain('systemctl unmask --runtime "$JAIL_CLAUDE"');
+    // and nothing starts Claude during the sign-in: a runtime drop-in whose condition never holds
+    // (a runtime mask would lose to the unit file in /etc), removed again by restore
+    expect(login.indexOf("ConditionPathExists=/nonexistent/sr-login-in-progress")).toBeGreaterThan(0);
+    expect(login.indexOf("ConditionPathExists=/nonexistent/sr-login-in-progress")).toBeLessThan(login.indexOf("stop_jail_units"));
+    expect(login).toContain('rm -f "$LOGIN_DROPIN"');
   });
 });

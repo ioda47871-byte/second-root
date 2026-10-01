@@ -46,6 +46,7 @@ Windows へ届く経路と、それぞれの塞ぎ方:
 | WSL の DNS tunnel の address（10.255.255.254。VM の loopback にあり、`0.0.0.0` で待ち受ける service はすべてここでも応える） | jail からは拒否する。jail の DNS は文書用の address `198.51.100.53` だけで、pasta がその port 53 だけを host の resolver へ転送する（`--dns-forward`）。pasta 自身の socket にも同じ私設の範囲の拒否を掛ける（DNS tunnel への転送だけ許す） |
 | 他の利用者の process（`/proc/<pid>/root` など） | `ProtectProc=invisible`、別 uid |
 | 新しい権限（setuid・sudo） | `NoNewPrivileges`、`RestrictSUIDSGID` |
+| jail の外の process の乗っ取り（ptrace・`process_vm_*`） | system call の filter で拒否（kernel の `ptrace_scope` によらない）。root の確認は requester として何も動かさない（書けるかは所有者と mode から root が判定） |
 | jail の外で動く `sr-designgen` の process（`su`・`wsl.exe -u`・ssh・cron など） | login shell を nologin にし、cron / at / linger を拒否。`run.sh`（毎回）と `admin.sh` が、`sr-designgen` の**すべての process** が `sr-jail-*.service` の cgroup の中にあることを確かめる（cgroup に process を入れられるのは root だけ） |
 
 ## 3. 選択肢の比較
@@ -79,7 +80,12 @@ Windows（人）── WSL2 VM ── Ubuntu distro
 - jail の設定は `scripts/sales-design-capture/jail/jail.properties` の一つの list にまとめた
   - `admin.sh` はこれを unit file（`sr-jail-claude.service`）と、人の jailed shell（`admin.sh shell`）・`admin.sh run`・`admin.sh jail-check` の `systemd-run -p` の両方に使う
   - list には `User=`・home の bind・default gateway の拒否・起動前の probe を加えて渡す
-- jail の file（list と probe）は、root だけの clone か helper の checkout から、root の所有で `/usr/local/lib/sr-jail/` に入る。`sr-designgen` は変えられない
+- `admin.sh` は root だけの clone（`/root/sr-capture-admin`、承認する commit に checkout）からだけ動き、systemd の unit と jail の file も
+  そこから `/usr/local/lib/sr-jail/`・`/etc/systemd/system/` に入れる。`sr-designgen` の repo も、Instagram の画面を描く `sr-igcapture` の
+  checkout も使わない（どちらも root 以外が書き換えられる）。`admin.sh` の所有者の確認は手違いを防ぐためのもので、改変への防御ではない
+- unit file は読めない設定を黙って捨てて起動するので、`jail-install` は `systemd-analyze verify` と、読み込まれた unit の主な設定
+  （NoNewPrivileges・ProtectSystem・ProtectHome・PrivateDevices・ProtectProc・NetworkNamespacePath・RestrictSUIDSGID）を確かめ、違えば unit を消して止まる
+- install は requester の crontab・at の job を消し、ssh の `DenyUsers` を置く（jail の外で後から動くものを残さない）
 - spool は jail の中に `requests`（書き込み）と `results`（読み取り）だけが見える
 - 人が Instagram にログインする間（`admin.sh login`）は、jail の unit をすべて止めてから始め、終わったら戻す
 - jail の unit はすべて `sr-jail-net.service` に結び付く（Requires / BindsTo / After）。network の unit が作り直されると、jail も新しい

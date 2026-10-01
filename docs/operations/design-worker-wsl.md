@@ -169,7 +169,7 @@ worker の環境に `CODEX_HOME=~/.codex-design`）。既定の `~/.codex` を�
 worker 専用の clone を使う（run.sh は checkout を `--force` で origin に揃え、追跡外のファイルを消す）。
 
 > **capture helper（requester jail）を入れた machine では** `sudo -iu sr-designgen` は使えない（login shell は nologin）。
-> 代わりに `sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh shell` で jail の中の shell を開く（`design-wsl-isolation.md`）。
+> 代わりに `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh shell` で jail の中の shell を開く（`design-wsl-isolation.md`）。
 
 ```bash
 sudo -iu sr-designgen
@@ -331,7 +331,7 @@ system の timer から `admin.sh run` で jail の中に起動する（`/etc/sy
 ```ini
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh run sr-designgen -- /usr/bin/env SR_DESIGN_WORKER_REF=develop SR_DESIGN_EXPORT_DIR=/mnt/sr-export /home/sr-designgen/work/second-root/scripts/sales-design-worker/run.sh --max=1
+ExecStart=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /usr/bin/env SR_DESIGN_WORKER_REF=develop SR_DESIGN_EXPORT_DIR=/mnt/sr-export /home/sr-designgen/work/second-root/scripts/sales-design-worker/run.sh --max=1
 TimeoutStartSec=3600
 ```
 
@@ -340,7 +340,7 @@ Windows へのコピー先は jail の中に見える `/mnt/sr-export`（`design
 
 ```bash
 sudo systemctl stop sr-design-worker.timer      # ログインの前
-sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh login
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh login
 sudo systemctl start sr-design-worker.timer     # ログインの後
 ```
 

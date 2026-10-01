@@ -129,7 +129,7 @@ helper（`run.sh`）は起動のたびに、interop の設定と requester の g
 ## 2. ログイン（人が、headed で）
 
 ```bash
-sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh login
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh login
 ```
 
 - **先に `sr-designgen` の process（Claude の Remote Control・worker）を全部止める。**画面（X の display）は共有なので、
@@ -171,17 +171,21 @@ helper のコードは自動では変わらない。新しい commit を使う�
 `lib/` や `scripts/` だけでなく、`package.json`・`package-lock.json`・`tsconfig.json`・`.npmrc` の変更も helper の動きを変えうる。
 
 ```bash
-sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh approve <新しい sha>
+sudo git -C /root/sr-capture-admin fetch -q origin
+sudo git -C /root/sr-capture-admin checkout -q --detach <新しい sha>
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh approve <新しい sha>
 ```
 
 - 承認済みの commit からの変更（`git diff --stat`）を表示し、全文の見方を示す
 - commit の先頭 12 文字を打つと承認される（打たなければ何も変わらない）
-- `sr-designgen` の repo ではなく `sr-igcapture` 側の checkout から、systemd unit を入れ直す
+- systemd の unit と jail の設定は、root だけの clone（`/root/sr-capture-admin`。その commit に合わせておく）から入れる。
+  `sr-designgen` の repo からも、Instagram の画面を描く `sr-igcapture` の checkout からも入れない（どちらも root 以外が書き換えられる）。
+  root の clone がその commit でなければ `ROOT_CLONE_NOT_AT_SHA` で止まる
 
 ## 5. 状態と後片付け
 
 ```bash
-sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh status
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh status
 journalctl -u sr-capture.service -n 50     # 符号だけが出る
 ```
 

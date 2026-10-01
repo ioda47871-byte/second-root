@@ -29,7 +29,7 @@ const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
 const insideRepo = (p: string) => !relative(REPO, p).startsWith("..");
 const say = (line: string) => process.stdout.write(`${line}\n`);
 // (refuses while any process of the requester runs: the display is shared)
-export const LOGIN_COMMAND = "sudo bash /home/sr-igcapture/second-root/scripts/sales-design-capture/admin.sh login";
+export const LOGIN_COMMAND = "sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh login";
 
 async function main(): Promise<number> {
   const requestId = flag("request-id") ?? "";

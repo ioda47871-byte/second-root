@@ -80,7 +80,7 @@ sr_check_wsl_interop() {
 # The login shell must be nologin, so `su`, `wsl.exe -u` and ssh give no shell outside.
 sr_check_requester_jailed() {
   local req="$1" uid shell d line jailed owner
-  uid="$(id -u "$req" 2>/dev/null)" || return 0
+  uid="$(id -u "$req" 2>/dev/null)" || { echo "REQUESTER_UNKNOWN: $req"; return 1; }
   shell="$(getent passwd "$req" | cut -d: -f7)"
   case "$shell" in
     /usr/sbin/nologin | /sbin/nologin | /bin/false | /usr/bin/false) ;;
@@ -108,7 +108,7 @@ sr_check_requester_jailed() {
 # from sudo / docker in /etc/group does not take them from a shell or Claude started before.
 sr_check_requester_processes() {
   local req="$1" uid gids=" 0 " g gid f key a b c d rest x mine hit
-  uid="$(id -u "$req" 2>/dev/null)" || return 0
+  uid="$(id -u "$req" 2>/dev/null)" || { echo "REQUESTER_UNKNOWN: $req"; return 1; }
   for g in $SR_PRIVILEGED_GROUPS; do
     gid="$(getent group "$g" 2>/dev/null | cut -d: -f3)"
     [ -n "$gid" ] && gids="$gids$gid "
@@ -159,13 +159,37 @@ sr_unoctal() {
   printf '%b' "$(printf '%s' "$1" | sed 's/\\\([0-7][0-7][0-7]\)/\\0\1/g')"
 }
 
+# Whether a user could write a directory, decided by root from its owner and mode, never by running
+# anything as that user (a requester process outside the jail could be taken over from inside it).
+# drvfs shows synthetic owner / mode from its mount options and enforces them. Unknown: writable.
+sr_may_write() {
+  local req="$1" path="$2" uid gids owner group mode
+  uid="$(id -u "$req" 2>/dev/null)" || return 0
+  gids=" $(id -G "$req" 2>/dev/null) "
+  read -r owner group mode < <(stat -L -c '%u %g %a' "$path" 2>/dev/null) || return 0
+  [[ "$mode" =~ ^[0-7]+$ ]] || return 0
+  mode=$((8#$mode))
+  [ "$uid" = 0 ] && return 0
+  if [ "$owner" = "$uid" ]; then
+    ((mode & 0200)) && return 0
+    return 1
+  fi
+  case "$gids" in *" $group "*) ((mode & 0020)) && return 0; return 1 ;; esac
+  ((mode & 0002)) && return 0
+  return 1
+}
+
 # sr_check_requester_root <user> — what only root can see: sudo rules, writable Windows Startup folders.
 sr_check_requester_root() {
   local req="$1"
-  if sudo -n -l -U "$req" 2>/dev/null | grep -q "may run the following"; then
-    echo "REQUESTER_HAS_SUDO: $req has sudo rules (sudo -l -U $req); remove them"
-    return 1
-  fi
+  # captured first (no SIGPIPE), in English (a translated answer must not read as "no rules"):
+  # anything but the exact refusal counts as rules
+  local out
+  out="$(LC_ALL=C LANG=C LANGUAGE= sudo -n -l -U "$req" 2>&1)" || true
+  case "$out" in
+    *"is not allowed to run sudo"*) ;;
+    *) echo "REQUESTER_HAS_SUDO: $req may have sudo rules (sudo -l -U $req); remove them"; return 1 ;;
+  esac
   local dev mnt type rest d src
   while read -r dev mnt type rest; do
     case "$type" in 9p | drvfs | virtiofs) ;; *) continue ;; esac
@@ -184,7 +208,7 @@ sr_check_requester_root() {
       "$mnt"/*/AppData/Roaming/Microsoft/Windows/"Start Menu"/Programs/Startup "$mnt/ProgramData/Microsoft/Windows/Start Menu/Programs/StartUp"; do
       [ -d "$d" ] || continue
       [ "$d" = /mnt/sr-export ] && continue
-      if runuser -u "$req" -- test -w "$d" 2>/dev/null; then
+      if sr_may_write "$req" "$d"; then
         echo "REQUESTER_WRITES_WINDOWS: $req can write $d (a Windows drive mounted writable for it)"
         return 1
       fi

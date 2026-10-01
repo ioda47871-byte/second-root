@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -17,8 +17,9 @@ type Machine = {
   interop?: "enabled" | "disabled" | null;
   user?: { name: string; uid: number; groups: string[] };
   sudoRules?: boolean;
+  /** what `sudo -l -U` prints instead (e.g. a translated answer) */
+  sudoOut?: string;
   mounts?: string;
-  writable?: string[];
   /** running processes: /proc/<pid>/status and the cgroup v2 line of /proc/<pid>/cgroup */
   procs?: Array<string | { status: string; cgroup: string }>;
   /** the requester's login shell (getent passwd) */
@@ -48,11 +49,10 @@ function run(machine: Machine, call: string): { code: number; out: string } {
     .replaceAll("[ -d /run/WSL ]", "false");
   const user = machine.user ?? { name: "sr-designgen", uid: 1001, groups: ["sr-designgen", "sr-capture"] };
   const stubs = `
-id() { case "$1" in -u) [ "$2" = "${user.name}" ] && echo ${user.uid} || return 1 ;; -nG) echo "${user.groups.join(" ")}" ;; esac; }
+id() { case "$1" in -u) [ "$2" = "${user.name}" ] && echo ${user.uid} || return 1 ;; -nG) echo "${user.groups.join(" ")}" ;; -G) echo "${user.uid}" ;; esac; }
 getent() { case "$1 $2" in "group sudo") echo "sudo:x:27:" ;; "group docker") echo "docker:x:998:" ;; "passwd ${user.name}") echo "${user.name}:x:${user.uid}:${user.uid}::/home/${user.name}:${machine.shell ?? "/usr/sbin/nologin"}" ;; *) return 2 ;; esac; }
-sudo() { ${machine.sudoRules ? `echo "User ${user.name} may run the following commands on host:"; echo "    (ALL) ALL"` : `echo "User ${user.name} is not allowed to run sudo on host."`}; }
-runuser() { shift 3; case " ${(machine.writable ?? []).join(" ")} " in *" $3 "*) return 0 ;; *) return 1 ;; esac; }
-stat() { if [ "$1" = -L ]; then command stat -c %a "$4"; else command stat "$@"; fi; }
+sudo() { ${machine.sudoOut !== undefined ? `echo ${JSON.stringify(machine.sudoOut)}` : machine.sudoRules ? `echo "User ${user.name} may run the following commands on host:"; echo "    (ALL) ALL"` : `echo "User ${user.name} is not allowed to run sudo on host."`}; }
+runuser() { echo "RUNUSER_CALLED"; return 1; }
 `;
   const file = join(root, "check.sh");
   writeFileSync(file, `${script}\n${stubs}\n${call}\n`);
@@ -131,21 +131,28 @@ describe("host-check.sh: the requester must not be able to become root or the he
   });
 
   it("root-only checks: any sudo rule, or a writable Windows drive / Startup folder, is refused", () => {
+    // a requester uid no real file here belongs to; writability is read from owner and mode, never by running as it
+    const req = { name: "sr-designgen", uid: 54321, groups: ["sr-designgen"] };
     const mounts = "C:\\134 /mnt/c 9p rw,relatime 0 0\nD:\\134 /mnt/my\\040drive drvfs rw 0 0\nC:\\134Users\\134me\\134SecondRootDemos /mnt/sr-export 9p rw 0 0\ntmpfs /tmp tmpfs rw 0 0\n";
-    expect(run({ mounts }, "sr_check_requester_root sr-designgen").code).toBe(0);
-    expect(run({ mounts, sudoRules: true }, "sr_check_requester_root sr-designgen").out).toMatch(/^REQUESTER_HAS_SUDO/);
-    expect(run({ mounts, writable: ["/tmp"] }, "sr_check_requester_root sr-designgen").code).toBe(0); // tmpfs is not a Windows drive
-    // a Windows mount the requester can write (a path with a space, as /proc/mounts encodes it)
-    // a space followed by a digit ("\0402..."): each escape is exactly three octal digits
+    expect(run({ mounts, user: req }, "sr_check_requester_root sr-designgen").code).toBe(0);
+    expect(run({ mounts, user: req, sudoRules: true }, "sr_check_requester_root sr-designgen").out).toMatch(/^REQUESTER_HAS_SUDO/);
+    // a translated or unexpected answer is not "no rules"
+    expect(run({ mounts, user: req, sudoOut: "ユーザー sr-designgen は次のコマンドを実行できます:" }, "sr_check_requester_root sr-designgen").out).toMatch(/^REQUESTER_HAS_SUDO/);
+    expect(run({ mounts, user: req, sudoOut: "" }, "sr_check_requester_root sr-designgen").out).toMatch(/^REQUESTER_HAS_SUDO/);
+    // a Windows mount the requester can write (a path with a space, as /proc/mounts encodes it;
+    // a space followed by a digit ("\0402..."): each escape is exactly three octal digits)
     const dir = mkdtempSync(join(tmpdir(), "sr-hc-mnt 2"));
     roots.push(dir);
     const enc = dir.replaceAll(" ", "\\040");
-    const writable = run({ mounts: `C:\\134 ${enc} 9p rw 0 0\n`, writable: [dir] }, "sr_check_requester_root sr-designgen");
+    chmodSync(dir, 0o777);
+    const writable = run({ mounts: `C:\\134 ${enc} 9p rw 0 0\n`, user: req }, "sr_check_requester_root sr-designgen");
     expect(writable.code).toBe(1);
     expect(writable.out).toContain(`REQUESTER_WRITES_WINDOWS: sr-designgen can write ${dir}`);
-    expect(run({ mounts: `C:\\134 ${enc} 9p rw 0 0\n`, writable: [] }, "sr_check_requester_root sr-designgen").code).toBe(0);
+    expect(writable.out).not.toContain("RUNUSER_CALLED");
+    chmodSync(dir, 0o755);
+    { const r = run({ mounts: `C:\\134 ${enc} 9p rw 0 0\n`, user: req }, "sr_check_requester_root sr-designgen"); expect(r.code, r.out).toBe(0); }
     // the one export mount a person may give the requester: a plain folder, judged by what is mounted
-    const exp = (src: string) => run({ mounts: `${src} /mnt/sr-export 9p rw 0 0\n`, writable: ["/mnt/sr-export"] }, "sr_check_requester_root sr-designgen");
+    const exp = (src: string) => run({ mounts: `${src} /mnt/sr-export 9p rw 0 0\n`, user: req }, "sr_check_requester_root sr-designgen");
     expect(exp("C:\\134Users\\134me\\134SecondRootDemos").code).toBe(0);
     for (const bad of ["C:\\134", "C:\\134Users", "C:\\134Users\\134me", "C:\\134Users\\134me\\134AppData\\134Roaming", "C:\\134ProgramData\\134x\\134y", "none", "C:\\134Users\\134me\\134x\\134..\\134..\\134..\\134PROGRA~3\\134MICROS~1", "C:\\134Users\\134me\\134..\\134..\\134x", "\\134\\134server\\134share\\134a\\134b"]) {
       const r = exp(bad);

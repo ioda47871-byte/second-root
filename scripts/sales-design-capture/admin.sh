@@ -40,6 +40,8 @@ HOME_DIR="/home/$HELPER"
 REPO_URL="https://github.com/ioda47871-byte/second-root.git"
 SPOOL=/srv/sr-capture
 CONF="$HOME_DIR/.config/sr-capture"
+# The only checkout root runs admin.sh from and installs units / jail files from (root:root, /root 0700).
+ROOT_CLONE=/root/sr-capture-admin
 SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd -P)"
 
 # Every directory from / down to the file, and the file, owned by root and
@@ -56,22 +58,22 @@ root_owned() {
   done
 }
 
-# The file and every directory above it owned by root or the helper user, and
-# writable by nobody else: the requester cannot have changed what root runs.
+# The file and every directory above it owned by root and writable by nobody else: neither the
+# requester nor the helper (it renders Instagram pages) can have changed what root runs or installs.
+# A guard against mistakes (a copy that was changed would not keep this check), not a security check.
 trusted_path() {
-  local p owner helper_uid
-  helper_uid="$(id -u "$HELPER" 2>/dev/null || echo -1)"
+  local p owner
   p="$(readlink -f "$1")" || return 1
   while :; do
     owner="$(stat -c %u "$p")" || return 1
-    [ "$owner" = 0 ] || [ "$owner" = "$helper_uid" ] || return 1
+    [ "$owner" = 0 ] || return 1
     [ $(( 0$(stat -c %a "$p") & 022 )) -eq 0 ] || return 1
     [ "$p" = / ] && return 0
     p="$(dirname "$p")"
   done
 }
 for f in "$SELF_DIR/admin.sh" "$SELF_DIR/host-check.sh" "$SELF_DIR/jail/jail.properties" "$SELF_DIR/jail/probe.py"; do
-  trusted_path "$f" || { echo "ADMIN_SCRIPT_UNTRUSTED: $f can be changed by a user other than root / $HELPER. Run admin.sh from a root-owned clone (design-capture-helper.md §1) or from $HOME_DIR/second-root."; exit 2; }
+  trusted_path "$f" || { echo "ADMIN_SCRIPT_UNTRUSTED: $f can be changed by a user other than root. Run admin.sh from the root-only clone $ROOT_CLONE (design-capture-helper.md §1)."; exit 2; }
 done
 # shellcheck source=host-check.sh
 . "$SELF_DIR/host-check.sh"
@@ -205,6 +207,16 @@ jail_install() {
   mv -f "/etc/systemd/system/$JAIL_NET.tmp" "/etc/systemd/system/$JAIL_NET"
   mv -f "/etc/systemd/system/$JAIL_CLAUDE.tmp" "/etc/systemd/system/$JAIL_CLAUDE"
   systemctl daemon-reload
+  # A unit file ignores a setting it cannot parse (an older systemd, a typo) and starts anyway:
+  # every jail setting must be accepted, and the loaded unit must carry the key ones.
+  local verify
+  verify="$(systemd-analyze verify "/etc/systemd/system/$JAIL_CLAUDE" 2>&1 | grep -E "sr-jail-claude.*(Unknown|Failed to parse|ignoring|Invalid)" || true)"
+  [ -z "$verify" ] || { printf '%s\n' "$verify"; echo "JAIL_UNIT_REJECTED: this systemd does not take every jail setting"; rm -f "/etc/systemd/system/$JAIL_CLAUDE"; systemctl daemon-reload; exit 3; }
+  local loaded want
+  loaded="$(systemctl show "$JAIL_CLAUDE" -p NoNewPrivileges -p ProtectSystem -p ProtectHome -p PrivateDevices -p ProtectProc -p NetworkNamespacePath -p RestrictSUIDSGID)"
+  for want in NoNewPrivileges=yes ProtectSystem=strict ProtectHome=tmpfs PrivateDevices=yes ProtectProc=invisible NetworkNamespacePath=/run/netns/srjail RestrictSUIDSGID=yes; do
+    grep -qx "$want" <<<"$loaded" || { echo "JAIL_UNIT_REJECTED: the loaded unit lacks $want"; rm -f "/etc/systemd/system/$JAIL_CLAUDE"; systemctl daemon-reload; exit 3; }
+  done
   systemctl enable "$JAIL_NET" >/dev/null 2>&1
   # a (re-)install takes effect now: a new namespace, and the jail units bound to it start again in it
   systemctl restart "$JAIL_NET"
@@ -215,13 +227,13 @@ jail_check() {
   local req="$1" py
   py="$(jail_python)" || { echo "PYTHON_MISSING"; return 1; }
   jail_args "$req" || { echo "JAIL_NOT_INSTALLED"; return 1; }
-  systemd-run --quiet --wait --collect --pipe --unit="sr-jail-check-$$" "${JAIL_ARGS[@]}" "$py" -I "$JAIL_LIB/probe.py" "$req"
+  systemd-run --quiet --wait --collect --pipe --unit="sr-jail-check-$$" "${JAIL_ARGS[@]}" -- "$py" -I "$JAIL_LIB/probe.py" "$req"
 }
 
 # Every requester process (the network namespace stays: it holds no process of the requester).
 stop_jail_units() {
   local u
-  for u in $(systemctl list-units --plain --no-legend 'sr-jail-*.service' 2>/dev/null | awk '{ print $1 }'); do
+  for u in $(systemctl list-units --all --plain --no-legend 'sr-jail-*.service' 2>/dev/null | awk '{ print ($1 == "●" ? $2 : $1) }'); do
     [ "$u" = "$JAIL_NET" ] || systemctl stop "$u" >/dev/null 2>&1 || true
   done
 }
@@ -258,6 +270,11 @@ approve() {
     echo "  sudo tar keeps the archive's owner: sudo chown -R root:root <node dir>, then run again."
     exit 2
   }
+  # admin.sh, the units and the jail files come from this root-only clone, at exactly this commit
+  [ "$(git -C "$SELF_DIR" rev-parse HEAD 2>/dev/null)" = "$sha" ] && [ -z "$(git -C "$SELF_DIR" status --porcelain --untracked-files=normal 2>/dev/null)" ] || {
+    echo "ROOT_CLONE_NOT_AT_SHA: first: sudo git -C $ROOT_CLONE fetch -q origin && sudo git -C $ROOT_CLONE checkout -q --detach $sha"
+    exit 2
+  }
   as_helper "$node_dir" "set -e; cd ~; [ -d second-root/.git ] || git clone --quiet --no-checkout '$REPO_URL' second-root
     cd second-root; git fetch --quiet origin; git cat-file -e '$sha^{commit}'"
   local old
@@ -280,16 +297,16 @@ approve() {
     mkdir -p -m 700 ~/.config/sr-capture
     printf '%s\n' '$sha' > ~/.config/sr-capture/approved-sha; chmod 600 ~/.config/sr-capture/approved-sha
     printf '%s\n' '$node_dir' > ~/.config/sr-capture/node-dir; chmod 600 ~/.config/sr-capture/node-dir"
-  install -m 0644 "$HOME_DIR/second-root/scripts/sales-design-capture/systemd/sr-capture.service" /etc/systemd/system/sr-capture.service
-  install -m 0644 "$HOME_DIR/second-root/scripts/sales-design-capture/systemd/sr-capture.path" /etc/systemd/system/sr-capture.path
-  install -m 0644 "$HOME_DIR/second-root/scripts/sales-design-capture/systemd/sr-capture.timer" /etc/systemd/system/sr-capture.timer
+  install -m 0644 "$SELF_DIR/systemd/sr-capture.service" /etc/systemd/system/sr-capture.service
+  install -m 0644 "$SELF_DIR/systemd/sr-capture.path" /etc/systemd/system/sr-capture.path
+  install -m 0644 "$SELF_DIR/systemd/sr-capture.timer" /etc/systemd/system/sr-capture.timer
   systemctl daemon-reload
   systemctl enable --now sr-capture.path sr-capture.timer >/dev/null
-  # the jail settings and probe come from the approved checkout too
+  # the jail settings and probe come from the same root-only clone
   if [ -f "/etc/systemd/system/$JAIL_CLAUDE" ]; then
     local req
     req="$(awk -F= '/^User=/ { print $2; exit }' "/etc/systemd/system/$JAIL_CLAUDE")"
-    [ -n "$req" ] && SELF_DIR="$HOME_DIR/second-root/scripts/sales-design-capture" jail_install "$req"
+    [ -n "$req" ] && jail_install "$req"
   fi
   echo "APPROVED $sha"
 }
@@ -307,6 +324,15 @@ case "$CMD" in
       exit 3
     fi
     usermod -s /usr/sbin/nologin "$REQUESTER"
+    # Anything the requester left to run later outside the jail: crontab, queued at jobs, ssh forwarding.
+    crontab -r -u "$REQUESTER" >/dev/null 2>&1 || true
+    if command -v atq >/dev/null 2>&1; then
+      for job in $(atq 2>/dev/null | awk -v u="$REQUESTER" '$NF == u { print $1 }'); do atrm "$job" 2>/dev/null || true; done
+    fi
+    if [ -d /etc/ssh/sshd_config.d ]; then
+      printf '# DEV-028: the requester runs only inside its jail\nDenyUsers %s\n' "$REQUESTER" > /etc/ssh/sshd_config.d/sr-requester.conf
+      systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd >/dev/null 2>&1 || true
+    fi
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above, then run install again"; exit 3; }
     getent group "$GROUP" >/dev/null || groupadd --system "$GROUP"
     id "$HELPER" >/dev/null 2>&1 || adduser --disabled-password --comment "" "$HELPER" >/dev/null 2>&1 || adduser --disabled-password --gecos "" "$HELPER" >/dev/null
@@ -335,18 +361,26 @@ case "$CMD" in
     # The requester's jail (Claude) is stopped while a person signs in, and started again after.
     CLAUDE_WAS_ACTIVE=0
     systemctl is-active --quiet "$JAIL_CLAUDE" 2>/dev/null && CLAUDE_WAS_ACTIVE=1
+    systemctl is-enabled --quiet "$JAIL_CLAUDE" 2>/dev/null && CLAUDE_WAS_ACTIVE=1
+    HELPER_WAS_ACTIVE=0
+    systemctl is-active --quiet sr-capture.path 2>/dev/null && HELPER_WAS_ACTIVE=1
+    LOGIN_DROPIN="/run/systemd/system/$JAIL_CLAUDE.d/sr-login.conf"
     # Whatever happens from here (a refusal, Ctrl-C, a closed terminal, an error): the window goes,
     # the helper and Claude come back.
     restore() {
       pkill -KILL -u "$HELPER" >/dev/null 2>&1 || true
-      systemctl unmask --runtime "$JAIL_CLAUDE" >/dev/null 2>&1 || true
-      systemctl start sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
+      rm -f "$LOGIN_DROPIN"
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      [ "$HELPER_WAS_ACTIVE" = 1 ] && systemctl start sr-capture.path sr-capture.timer >/dev/null 2>&1 || true
       [ "$CLAUDE_WAS_ACTIVE" = 1 ] && systemctl start "$JAIL_CLAUDE" >/dev/null 2>&1 || true
     }
     trap restore EXIT
     trap 'exit 130' INT TERM HUP
-    # nothing may start Claude during the sign-in (e.g. the net unit after a pasta crash)
-    systemctl mask --runtime "$JAIL_CLAUDE" >/dev/null 2>&1 || true
+    # Nothing may start Claude during the sign-in (e.g. the net unit after a pasta crash). A runtime mask
+    # would lose to the unit file in /etc; a runtime drop-in is merged, and its condition never holds.
+    mkdir -p "$(dirname "$LOGIN_DROPIN")"
+    printf '[Unit]\nConditionPathExists=/nonexistent/sr-login-in-progress\n' > "$LOGIN_DROPIN"
+    systemctl daemon-reload
     stop_jail_units
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above, then run login again"; exit 3; }
     if pgrep -u "$REQUESTER" >/dev/null 2>&1; then
@@ -392,7 +426,7 @@ case "$CMD" in
     REQUESTER="${2:-sr-designgen}"
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above first"; exit 3; }
     jail_args "$REQUESTER" || { echo "JAIL_NOT_INSTALLED: run install first"; exit 2; }
-    systemd-run --quiet --pty --wait --collect --unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}" /bin/bash -l
+    systemd-run --quiet --pty --wait --collect --unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}" -- /bin/bash -l
     ;;
   run)
     # One command as the requester, inside the jail, without a terminal: admin.sh run sr-designgen -- npm test
@@ -401,7 +435,7 @@ case "$CMD" in
     host_safe "$REQUESTER" || { echo "HOST_UNSAFE: fix the lines above first"; exit 3; }
     jail_args "$REQUESTER" || { echo "JAIL_NOT_INSTALLED: run install first"; exit 2; }
     shift 3
-    systemd-run --quiet --wait --collect --pipe --unit="sr-jail-run-$$-$RANDOM" -p RuntimeMaxSec=3500 "${JAIL_ARGS[@]}" "$@"
+    systemd-run --quiet --wait --collect --pipe --unit="sr-jail-run-$$-$RANDOM" -p RuntimeMaxSec=3500 "${JAIL_ARGS[@]}" -- "$@"
     ;;
   claude-start)
     REQUESTER="${2:-sr-designgen}"

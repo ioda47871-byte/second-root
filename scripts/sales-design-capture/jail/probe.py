@@ -106,9 +106,12 @@ def main():
         "/dev/dxg",
         "/home/sr-igcapture",
         "/srv/sr-capture-admin",
+        "/init",
+        "/root/sr-capture-admin",
     ):
         if not gone(path):
             fail("VISIBLE_" + path.strip("/").replace("/", "_").replace(".", "").replace("-", "_").upper())
+    # what cannot be listed counts as a failure too (unknown is not fine)
     try:
         for name in os.listdir("/run"):
             # systemd/ and resolvconf/ appear only as the place of a bound resolv.conf
@@ -116,13 +119,13 @@ def main():
                 fail("RUN_NOT_EMPTY")
                 break
     except OSError:
-        pass
+        fail("RUN_UNCHECKED")
     try:
         others = [n for n in os.listdir("/home") if n != want_user]
         if others:
             fail("OTHER_HOMES_VISIBLE")
     except OSError:
-        pass
+        fail("HOME_UNCHECKED")
     try:
         mnt = [n for n in os.listdir("/mnt") if n not in ("wsl", "sr-export")]
         if mnt:
@@ -130,7 +133,16 @@ def main():
         if os.path.isdir("/mnt/wsl") and [n for n in os.listdir("/mnt/wsl") if n != "resolv.conf"]:
             fail("MNT_WSL_NOT_EMPTY")
     except OSError:
-        pass
+        fail("MNT_UNCHECKED")
+    # the system is read-only (ProtectSystem=strict): a unit file that dropped the setting shows here
+    for path in ("/usr/sr-jail-probe-write", "/etc/sr-jail-probe-write", "/var/sr-jail-probe-write"):
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(fd)
+            os.unlink(path)
+            fail("SYSTEM_WRITABLE")
+        except OSError:
+            pass
     for var in ("WSL_INTEROP", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "PULSE_SERVER"):
         if os.environ.get(var):
             fail("ENV_" + var)
@@ -154,13 +166,12 @@ def main():
         fail("NETWORK_NOT_PRIVATE")
 
     # The kernel ways out: vsock (WSL's own channel to Windows) and io_uring.
-    if hasattr(socket, "AF_VSOCK"):
-        try:
-            s = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
-            s.close()
-            fail("VSOCK_ALLOWED")
-        except OSError:
-            pass
+    try:
+        s = socket.socket(getattr(socket, "AF_VSOCK", 40), socket.SOCK_STREAM)
+        s.close()
+        fail("VSOCK_ALLOWED")
+    except OSError:
+        pass
     try:
         libc = ctypes.CDLL(None, use_errno=True)
         params = ctypes.create_string_buffer(120)
@@ -190,7 +201,7 @@ def main():
                     gw = int(cols[2], 16)
                     targets.append(socket.inet_ntoa(gw.to_bytes(4, "little")))
     except (OSError, StopIteration, ValueError):
-        pass
+        fail("ROUTE_UNCHECKED")
     for ip in targets:
         if ip in ("0.0.0.0", "10.255.255.254"):
             continue
@@ -241,6 +252,25 @@ def main():
             pass
         finally:
             s.close()
+
+    # ptrace is refused (a jailed process must take over nothing, whatever ptrace_scope is).
+    # Checked on a child of our own with PTRACE_SEIZE (does not stop it), then the child goes.
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        child = os.fork()
+        if child == 0:
+            import time
+
+            time.sleep(10)
+            os._exit(0)
+        try:
+            if libc.ptrace(0x4206, child, 0, 0) == 0:  # PTRACE_SEIZE
+                fail("PTRACE_ALLOWED")
+        finally:
+            os.kill(child, 9)
+            os.waitpid(child, 0)
+    except OSError:
+        fail("PTRACE_UNCHECKED")
 
     # Other processes: invisible (ProtectProc=invisible) and the helper's work out of reach.
     for pid in os.listdir("/proc"):
