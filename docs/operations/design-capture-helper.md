@@ -4,6 +4,13 @@
 worker・Codex・Claude（`sr-designgen`）は profile を一切読めない。
 頼めるのは「この公開プロフィールを 1 件撮って」だけで、返ってくるのは符号と privacy 処理済みの PNG だけになる。
 
+境界は 2 層（詳しくは `design-wsl-isolation.md`）:
+1. **requester jail**: `sr-designgen` の process はすべて systemd の `sr-jail-*.service` の中でだけ動く。そこからは
+   WSL の interop socket・vsock・Windows の drive・display・Windows host / LAN が見えない・届かない。
+   WSL2 では Linux の利用者を分けただけでは境界にならない（どの process も interop socket から Windows に届き、
+   Windows からは `wsl.exe -u root` で root になれる）ので、この層が前提になる
+2. **Linux 利用者の分離**: その上で、profile は別の利用者 `sr-igcapture` のホーム（0700）にあり、頼める内容も spool で絞る
+
 ```
 Claude（Remote Control）/ worker / Codex          ← 利用者 sr-designgen
    │  request: { id, 公開プロフィールの URL } だけ
@@ -23,24 +30,29 @@ capture helper                                     ← 利用者 sr-igcapture（
 
 | 何を | どう守るか |
 |---|---|
+| `sr-designgen` の process から Windows（→ root → profile）への経路 | requester jail（`jail/jail.properties`）。`/run`（interop socket）・`/mnt`（Windows の drive・WSLg）・`/usr/lib/wsl` を隠し、vsock・io_uring・ptrace と私設 address・gateway を kernel が拒否し、専用の network namespace（pasta）で VM の localhost・abstract socket から切り離す。起動のたびに probe が実機で確かめ、満たさなければ起動しない |
+| jail の外で動く `sr-designgen` | login shell は nologin、crontab / at / ssh も止める。helper は撮影のたびに、`sr-designgen` のすべての process が `sr-jail-*.service` の cgroup にいることを確かめる（cgroup に入れられるのは root だけ） |
 | profile・cookie・session | `sr-igcapture` のホーム 0700。`sr-designgen` は別の利用者で、その group にも入らない |
 | `sr-igcapture` の process（Chromium） | 別の uid。`/proc/<pid>/environ`・`cwd`・`fd`・`root`・`mem` は読めない |
 | helper のコード | `sr-igcapture` のホームの checkout。人が `admin.sh approve <sha>` で承認した commit だけを `run.sh` が実行する。helper は fetch も更新もしない |
+| root が動かす・入れるもの | `admin.sh`・systemd の unit・jail の設定は、root だけの clone（`/root/sr-capture-admin`、承認する commit）からだけ。requester の repo や helper の checkout からは動かさない |
 | 頼める内容 | request は id と公開 Instagram プロフィール URL だけ（strict schema）。path・command・option・出力先は書けない |
 | request の読み方 | link を辿らない・通常ファイル・link 数 1・4 KiB 以下。それ以外は `REQUEST_INVALID` |
 | 返すもの | 固定の符号と、固定名の PNG（最大 3 枚）だけ。PNG は撮った時点で画像を blur → 画素化済み（生の画像は disk に書かない） |
 | 濫用 | 1 回の起動で 3 件、撮影の間は 60 秒、1 日 30 件まで。結果は 24 時間で消す |
 | ログイン | helper は**ログインしない**。session が切れていれば `LOGIN_REQUIRED` で止まり、人が headed login をする |
 
-`sr-designgen` が自由な shell を持っていても（Claude の Remote Control session など）、これらは Unix の権限で守られる。
-`tests/unit/design-agent/cross-user.test.ts` が本物の利用者 2 人で確かめている（CI では root の段で実行）。
+`sr-designgen` が自由な shell を持っていても（jail の中の Claude の Remote Control session など）、これらは jail と Unix の権限の両方で守られる。
+利用者の分離は `tests/unit/design-agent/cross-user.test.ts`（本物の利用者 2 人、CI では root の段）、jail の設定と probe は
+`tests/unit/design-agent/jail.test.ts`・`host-check.test.ts` が確かめる。jail が実際の systemd で効くことは、container の中の
+systemd 255 と実機の `admin.sh jail-check`（`JAIL_OK`）で確かめた（`design-wsl-isolation.md` §5）。
 
 ## 1. 入れる（人が 1 回、sudo で）
 
 前提（**全部必須**。満たさないと `install` も `login` も `HOST_UNSAFE` で止まり、helper も毎回 profile を開かずに `HELPER_ERROR` を返す）:
 - WSL で systemd が有効（`/etc/wsl.conf` に `[boot]` `systemd=true`）
-- **WSL の Windows 連携（interop）を切る。**連携が有効だと、WSL の誰でも `wsl.exe -u root` で root になれ、
-  `sr-igcapture` の profile を読めてしまう（Unix の権限による隔離が全部無意味になる）。`/etc/wsl.conf`:
+- **WSL の Windows 連携（interop）を切る（衛生。境界ではない）。**連携が有効だと、jail の外の WSL の誰でも `wsl.exe -u root` で
+  root になれる。切っても境界にはならない（下記）が、jail の外の口を減らすために続ける。`/etc/wsl.conf`:
 
   ```ini
   [boot]
@@ -60,7 +72,7 @@ capture helper                                     ← 利用者 sr-igcapture（
   cat /proc/sys/fs/binfmt_misc/WSLInterop* 2>&1       # 無い、または disabled
   ```
 
-  **これだけでは境界にならない。**WSL 2.7.14 では interop を切っても `/run/WSL/*_interop` が `root:root 0777` で残り、
+  **これは境界ではない。**WSL 2.7.14 では interop を切っても `/run/WSL/*_interop` が `root:root 0777` で残り、
   どの利用者も Windows に届く（Microsoft も `enabled=false` を security boundary とは扱っていない）。
   境界は **requester jail**（`design-wsl-isolation.md`）: `sr-designgen` の process は `sr-jail-*.service` の中でしか動かず、
   そこからは socket・vsock・Windows の drive・display・Windows host が見えない。install が jail を入れ、probe が実機で確かめる
@@ -100,7 +112,7 @@ capture helper                                     ← 利用者 sr-igcapture（
   networkingMode は NAT（既定）。`.wslconfig` を変えたら Windows で `wsl --shutdown`
 
 `admin.sh` は root で動くので、**requester が書き換えられる checkout（`~sr-designgen/work/second-root` など）からは動かない**
-（`ADMIN_SCRIPT_UNTRUSTED`）。最初の install は root だけの clone から行う（その後は `sr-igcapture` 側の checkout を使う）:
+（`ADMIN_SCRIPT_UNTRUSTED`）。install も、その後の login・approve・jail-check なども、root だけの clone から行う:
 
 ```bash
 SHA=<承認する commit の 40 文字>
@@ -113,18 +125,22 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh install "
 - 利用者 `sr-igcapture`（パスワードなし、ホーム 0700）と group `sr-capture` を作る
 - `sr-designgen` を `sr-capture` に入れる（`sr-igcapture` の group には入れない）
 - `/srv/sr-capture/{requests,results}` を正しい権限で作る
-- requester の cron / at と lingering の user service を止める（ログイン中に勝手に動かないように）
+- requester の login shell を nologin にし、crontab・at の job を消し、ssh の `DenyUsers` を置き、lingering の user service を止める
+  （jail の外で `sr-designgen` が動く道を残さない）
 - 承認の確認（commit の先頭 12 文字を打つ）の後、`sr-igcapture` のホームに repo を clone し、指定した commit を checkout、
   `npm ci --ignore-scripts`（依存の install script は動かさない）、Chromium を入れる。使う node の場所も記録する
 - systemd の `sr-capture.path` / `sr-capture.timer` を有効にする
 
-`sr-designgen` は group の変更を反映するため、一度ログインし直す（WSL なら `wsl --shutdown` 後に開き直すのが確実）。
+`sr-designgen` は以後 jail の unit としてだけ起動する（group の変更も、その起動時に反映される）。
 
-install は最後に requester jail を入れる（`sr-designgen` の login shell を nologin にし、`sr-jail-claude.service` を書き、
-`admin.sh jail-check` で probe を通す）。probe が通らなければ install は `JAIL_UNSAFE` で止まる。
+install は最後に requester jail を入れる（`sr-jail-net.service`（jail 専用の network）と `sr-jail-claude.service` を書き、
+読み込まれた unit の設定を確かめ、`admin.sh jail-check` で probe を通す）。probe が通らなければ install は `JAIL_UNSAFE` で止まる。
+その後、人が `admin.sh shell`（jail の中の shell）で Claude Code を入れて sign-in し、`admin.sh claude-start` で Remote Control を起動する
+（`design-wsl-autonomy.md` §1）。
 
 helper（`run.sh`）は起動のたびに、interop の設定と requester の group、**requester のすべての process が jail の中にあること**を確かめ直す。
-満たさない間の依頼には、profile を開かずに `HELPER_ERROR`（`WSL_INTEROP_ON` / `REQUESTER_PRIVILEGED`）を返す。
+満たさない間の依頼には、profile を開かずに `HELPER_ERROR`（`WSL_INTEROP_ON` / `REQUESTER_PRIVILEGED` / `PROC_HIDDEN`）を返す。
+jail の外に `sr-designgen` の process が 1 つでもあれば（人が `sudo -u sr-designgen …` を打った間など）`REQUESTER_PRIVILEGED` になる。
 
 ## 2. ログイン（人が、headed で）
 
@@ -132,9 +148,10 @@ helper（`run.sh`）は起動のたびに、interop の設定と requester の g
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh login
 ```
 
-- **先に `sr-designgen` の process（Claude の Remote Control・worker）を全部止める。**画面（X の display）は共有なので、
-  動いていれば窓の中身や入力を読めてしまう。動いている間は `REQUESTER_RUNNING` で止まる（`sudo pkill -u sr-designgen`）
-- ログインが済んだら（`LOGIN_OK`）、helper の「待ち」の印も消える。Claude の session は起動し直す
+- `admin.sh login` は、まず jail の unit（Claude の Remote Control・`run`・`shell`）を止め、ログインの間は Claude が起動しないようにする
+  （jail は display を見られないが、念のため）。jail の外に `sr-designgen` の process が残っていれば
+  `HOST_UNSAFE`（`REQUESTER_OUTSIDE_JAIL`）か `REQUESTER_RUNNING` で止まる（`sudo pkill -u sr-designgen` の後にやり直す）
+- ログインが済んだら（`LOGIN_OK`）、helper の「待ち」の印も消え、止める前に動いていた Claude と helper は起動し直される
 
 窓の中で自分でログインする（password・2FA・確認画面も自分で）。この道具は入力もクリックもしない。
 
@@ -145,7 +162,7 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh login
 rm -rf /home/sr-designgen/.local/share/sr-instagram-browser
 ```
 
-## 3. 頼む（Claude・worker・人、`sr-designgen` で）
+## 3. 頼む（Claude・worker、jail の中の `sr-designgen` で。人は `admin.sh shell` / `admin.sh run sr-designgen -- …`）
 
 ```bash
 cd ~/work/second-root
@@ -195,14 +212,13 @@ journalctl -u sr-capture.service -n 50     # 符号だけが出る
 
 ## 残るリスク（承知の上）
 
-- headed login の窓は共有の X display（WSLg）に出る。`admin.sh login` は requester の process が無いことを確かめ、ログイン中も
-  0.5 秒ごとに見張り、現れたら窓を即座に閉じる（Ctrl-C や端末を閉じても窓は消え、helper は再開する）。install は requester の
-  cron / at / lingering を止める。見張りは polling なので、requester の process が現れてから最大 0.5 秒は窓が残る。
-  その間に画面を 1 枚読まれる可能性は残る（専用の display（Xephyr など）にすれば無くなるが、まだしていない）。
-  ログインの間は requester の worker の timer も止めておく（`design-worker-wsl.md` §6）
-- 守っているのは WSL の中の Unix 権限まで。requester が LAN や WSL host の Windows のサービス（SMB・RDP など）に
-  Windows の資格情報で入れる状況は扱っていない。Windows drive は mount の根元と Startup folder だけを確かめる
-  （drvfs の `metadata` で個別の所有者を付けている場合、深い場所に requester の書ける folder があっても見つけない）
+- headed login の窓は WSLg の display に出る。jail の中からは display（`/mnt/wslg`・`/tmp/.X11-unix`・VM の abstract socket）は
+  見えない。加えて `admin.sh login` は jail の unit を止めてから始め、ログイン中も 0.5 秒ごとに見張り、jail の外に requester の process が
+  現れたら窓を閉じる（Ctrl-C や端末を閉じても窓は消え、helper と Claude は戻る）。ログインの間は worker の timer も止めておく（`design-worker-wsl.md` §6）
+- jail の境界そのものの残るリスク（kernel の脆弱性、jail の中で許している user namespace、root で動く pasta など）は
+  `design-wsl-isolation.md` §6。より強い境界が要るなら、Claude を別の VM に置く（同 §3 の C）
+- jail は LAN・Windows host の私設 address を拒否する。Windows drive の確認（mount の根元と Startup folder）は jail の外の口を減らすための
+  もので、drvfs の `metadata` で個別の所有者を付けている場合、深い場所の folder までは見ない（jail の中からは `/mnt` 自体が見えない）
 - helper の確認は起動ごと（1 回の起動は最長 1700 秒）。その途中で interop を戻したり group を足したりした分は、次の起動まで見えない。
   `/proc` を `hidepid` で mount している machine では、helper から requester の process が見えないので、helper は断る（`PROC_HIDDEN`）
 - `admin.sh login` 自体が SIGKILL（root か OOM による）で止まると、後始末（窓を閉じる・helper の再開）は動かない。
