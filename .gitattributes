@@ -1,0 +1,4 @@
+# Concept Works: static exports built in their own repositories and copied in
+# by scripts/import-work.mjs (docs/WORKS.md). Collapsed in GitHub diffs and
+# excluded from language stats; review the source repositories instead.
+public/works/** linguist-generated=true -diff

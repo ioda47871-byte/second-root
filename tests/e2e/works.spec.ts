@@ -10,7 +10,7 @@ const WORKS = [
     base: "/works/yasashii-beauty-salon",
     title: /やさしい美を彩るサロン/,
     pages: ["", "/about", "/menu", "/staff", "/first", "/access"],
-    overflowPages: ["", "/about", "/menu", "/access"],
+    overflowPages: ["", "/about", "/menu", "/staff", "/first", "/access"],
     // Built with NEXT_PUBLIC_SITE_URL, so its canonical names the /works URL.
     canonical: /^https:\/\/secondroot\.jp\/works\/yasashii-beauty-salon/,
     nav: "header",
@@ -21,7 +21,7 @@ const WORKS = [
     base: "/works/midori-seitai",
     title: /みどり整体院/,
     pages: ["", "/about", "/approach", "/menu", "/first", "/staff", "/access", "/faq"],
-    overflowPages: ["", "/about", "/menu", "/access", "/faq"],
+    overflowPages: ["", "/about", "/approach", "/menu", "/first", "/staff", "/access", "/faq"],
     // The original site has no canonical (no metadataBase); none is added.
     canonical: null,
     nav: "header",

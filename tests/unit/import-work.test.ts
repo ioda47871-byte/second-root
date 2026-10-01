@@ -6,14 +6,16 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import type { PathLike } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { listFiles, parseArgs, scanExport } from "../../scripts/import-work.mjs";
+import { importWork, listFiles, parseArgs, scanExport } from "../../scripts/import-work.mjs";
 
 // scripts/import-work.mjs copies a Concept Work's static export into
 // public/works/<slug>/. These tests run a copy of the script inside a
@@ -155,7 +157,40 @@ describe("import-work: URLs outside the basePath are rejected", () => {
     ["a root-relative image in JSON", "data.json", `{"image":"/og.png"}`],
     ["an unkeyed asset path in JSON", "data.json", `["/images/a.webp"]`],
     ["an SVG href", "icon.svg", `<svg xmlns="http://www.w3.org/2000/svg"><image href="/images/a.png"/></svg>`],
+    ["an attribute right after a quoted one", "x.html", `<img alt="x"src="/images/leak.png">`],
+    ["an attribute after a slash", "x.html", `<img/src="/images/leak.png">`],
+    ["an unquoted value containing =", "x.html", `<img src=/images/a.png?v=1>`],
+    ["a value with leading whitespace", "x.html", `<img src=" /images/leak.png">`],
+    ["a value with a leading newline", "x.html", `<a href="\n/admin">x</a>`],
+    ["a payload value with leading whitespace", "index.txt", `1:{"src":" /images/x.png"}\n`],
+    ["an entity-encoded slash", "x.html", `<img src="&#47;images/leak.png">`],
+    ["a hex entity-encoded slash", "x.html", `<img src="&#x2F;images/leak.png">`],
+    ["a named entity slash", "x.html", `<img src="&sol;images/leak.png">`],
+    ["a dot-segment escape from the basePath", "x.html", `<img src="/works/demo/../../images/leak.png">`],
+    ["an encoded dot-segment escape", "x.html", `<img src="/works/demo/%2e%2e/admin">`],
+    ["a protocol-relative URL to Second Root", "x.html", `<img src="//secondroot.jp/images/leak.png">`],
+    ["a meta refresh to a root-relative URL", "x.html", `<meta http-equiv="refresh" content="0;url=/admin">`],
+    ["a meta refresh without url=", "x.html", `<meta http-equiv="refresh" content="0;/admin">`],
+    ["a meta refresh separated by a space", "x.html", `<meta http-equiv="refresh" content="0 /admin">`],
+    ["a backslash dot-segment escape", "x.html", `<img src="/works/demo/..\\..\\images/leak.png">`],
+    ["a dot-segment split by a tab reference", "x.html", `<img src="/works/demo/.&#9;./.&#9;./images/leak.png">`],
+    ["a numeric reference without a semicolon", "x.html", `<img src="&#47images/leak.png">`],
+    ["a hex reference without a semicolon", "x.html", `<img src="&#x2Fimages/leak.png">`],
+    ["a relative URL climbing out of the basePath", "x.html", `<img src="../../images/leak.png">`],
+    ["a relative CSS url() climbing out of the basePath", "_next/static/b.css", `.x{background:url(../../../../images/bg.png)}`],
+    ["a protocol-relative URL with a trailing-dot host", "x.html", `<img src="//secondroot.jp./images/leak.png">`],
+    // The home page is served at /works/demo, so "images/x.png" there is /works/images/x.png.
+    ["a relative image on the home page", "index.html", `<img src="images/leak.png">`],
+    ["a dot-relative script on the home page", "index.html", `<script src="./evil/a.js"></script>`],
+    ["a relative CSS url() on the home page", "index.html", `<div style="background:url(x.png)"></div>`],
   ];
+
+  it("accepts fragment, query and empty URLs on the home page", () => {
+    const out = makeExport();
+    write(out, "index.html", `<a href="#main"></a><a href="?a=1"></a><a href=""></a><img src="/works/demo/images/a.png">`);
+    const r = run(["--slug", "demo", "--source", out]);
+    expect(r.status, r.out).toBe(0);
+  });
 
   for (const [label, rel, content] of cases) {
     it(`rejects ${label}`, () => {
@@ -164,6 +199,8 @@ describe("import-work: URLs outside the basePath are rejected", () => {
       const r = run(["--slug", "demo", "--source", out]);
       expect(r.status, r.out).toBe(1);
       expect(r.out).toContain("rejected");
+      // The problem is reported against the planted file, not some other one.
+      expect(r.out).toContain(`${rel}: `);
       expect(existsSync(join(works, "demo"))).toBe(false);
     });
   }
@@ -171,7 +208,48 @@ describe("import-work: URLs outside the basePath are rejected", () => {
   it("rejects a canonical that only shares a prefix with the basePath", () => {
     const out = makeExport();
     write(out, "x.html", `<link rel="canonical" href="https://secondroot.jp/works/demoevil/">`);
-    expect(run(["--slug", "demo", "--source", out]).status).toBe(1);
+    const r = run(["--slug", "demo", "--source", out]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("x.html: canonical https://secondroot.jp/works/demoevil/");
+  });
+
+  it("rejects a protocol-relative, padded or dot-segment canonical", () => {
+    for (const href of ["//evil.example/works/demo", " https://secondroot.jp/works/demo-x", "https://secondroot.jp/works/demo/../other"]) {
+      const out = makeExport("demo", `canon-${href.length}-${href.charCodeAt(1)}`);
+      write(out, "x.html", `<link rel="canonical" href="${href}">`);
+      const r = run(["--slug", "demo", "--source", out]);
+      expect(r.status, href).toBe(1);
+      expect(r.out, href).toContain("x.html: canonical");
+    }
+  });
+
+  it("reads canonical and og values from the parsed attributes", () => {
+    for (const tag of [
+      `<link data-x=' href="https://secondroot.jp/works/demo"' rel="canonical" href="https://evil.example/">`,
+      `<link rel="alternate canonical" href="https://evil.example/">`,
+      `<meta property = "og:url" content="https://evil.example/">`,
+      `<meta/property="og:url"/content="https://evil.example/">`,
+    ]) {
+      const out = makeExport("demo", `parsed-${tag.length}`);
+      write(out, "x.html", tag);
+      const r = run(["--slug", "demo", "--source", out]);
+      expect(r.status, tag).toBe(1);
+      expect(r.out, tag).toContain("https://evil.example/");
+    }
+  });
+
+  it("only treats content as a refresh URL on a refresh meta", () => {
+    const out = makeExport();
+    write(out, "x.html", `<meta name="description" content="5, url=/x">`);
+    const r = run(["--slug", "demo", "--source", out]);
+    expect(r.status, r.out).toBe(0);
+  });
+
+  it("does not read data-href as the canonical", () => {
+    const out = makeExport();
+    write(out, "x.html", `<link rel="canonical" data-href="https://evil.example/" href="https://secondroot.jp/works/demo/x">`);
+    const r = run(["--slug", "demo", "--source", out]);
+    expect(r.status, r.out).toBe(0);
   });
 
   it("rejects an og:url on another site or another work", () => {
@@ -219,21 +297,24 @@ describe("import-work: unsafe files are rejected before anything is copied", () 
   it("rejects a symlinked source directory", () => {
     const out = makeExport();
     symlinkSync(out, join(root, "out-link"));
-    expect(run(["--slug", "demo", "--source", join(root, "out-link")]).status).toBe(1);
+    const r = run(["--slug", "demo", "--source", join(root, "out-link")]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("is a symlink");
   });
 
-  for (const [label, rel] of [
-    [".env", ".env"],
-    [".env.local", ".env.local"],
-    ["a hidden file", "_next/.hidden"],
-    ["a hidden directory", ".cache/x.txt"],
-    ["a source map", "_next/static/app.js.map"],
+  for (const [label, rel, reason] of [
+    [".env", ".env", ".env: dotfile"],
+    [".env.local", ".env.local", ".env.local: dotfile"],
+    ["a hidden file", "_next/.hidden", ".hidden: dotfile"],
+    ["a hidden directory", ".cache/x.txt", ".cache: dotfile"],
+    ["a source map", "_next/static/app.js.map", "app.js.map: source map"],
   ]) {
     it(`rejects ${label}`, () => {
       const out = makeExport();
       write(out, rel, "x");
       const r = run(["--slug", "demo", "--source", out]);
       expect(r.status).toBe(1);
+      expect(r.out).toContain(reason);
       expect(existsSync(join(works, "demo"))).toBe(false);
     });
   }
@@ -241,7 +322,9 @@ describe("import-work: unsafe files are rejected before anything is copied", () 
   it("rejects an export without index.html or _next/", () => {
     const out = makeExport();
     rmSync(join(out, "_next"), { recursive: true });
-    expect(run(["--slug", "demo", "--source", out]).status).toBe(1);
+    const r = run(["--slug", "demo", "--source", out]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("_next/ is missing");
   });
 });
 
@@ -260,12 +343,40 @@ describe("import-work: the existing copy survives a failed import", () => {
   });
 });
 
+describe("import-work: a failed swap never loses the previous copy", () => {
+  it("restores the previous copy when the new one cannot be moved in", () => {
+    expect(run(["--slug", "demo", "--source", makeExport("demo", "first")]).status).toBe(0);
+    let calls = 0;
+    const rename = (from: PathLike, to: PathLike) => {
+      if (++calls === 2) throw new Error("EIO (simulated)");
+      renameSync(from, to);
+    };
+    expect(() => importWork({ slug: "demo", source: makeExport("demo", "second"), repoRoot: repo, rename })).toThrow("EIO");
+    expect(existsSync(join(works, "demo/index.html"))).toBe(true);
+    expect(leftovers()).toEqual([]);
+  });
+
+  it("keeps the previous copy on disk when the restore fails too", () => {
+    expect(run(["--slug", "demo", "--source", makeExport("demo", "first")]).status).toBe(0);
+    let calls = 0;
+    const rename = (from: PathLike, to: PathLike) => {
+      if (++calls >= 2) throw new Error("EIO (simulated)");
+      renameSync(from, to);
+    };
+    expect(() => importWork({ slug: "demo", source: makeExport("demo", "second"), repoRoot: repo, rename })).toThrow(/previous copy is kept at/);
+    expect(existsSync(join(works, "demo"))).toBe(false);
+    const [staging] = leftovers();
+    expect(existsSync(join(repo, staging, "demo.previous/index.html"))).toBe(true);
+  });
+});
+
 describe("import-work: source and destination", () => {
   it("rejects the destination itself as the source", () => {
     const good = makeExport();
     expect(run(["--slug", "demo", "--source", good]).status).toBe(0);
     const r = run(["--slug", "demo", "--source", join(works, "demo")]);
     expect(r.status).toBe(1);
+    expect(r.out).toContain("must be outside public/works");
     expect(existsSync(join(works, "demo/index.html"))).toBe(true);
   });
 
@@ -276,15 +387,42 @@ describe("import-work: source and destination", () => {
       mkdirSync(source, { recursive: true });
       const r = run(["--slug", "demo", "--source", source]);
       expect(r.status, source).toBe(1);
+      expect(r.out, source).toContain("must be outside public/works");
     }
     expect(existsSync(join(works, "demo/index.html"))).toBe(true);
   });
 
+  it("rejects a public/works that is a symlink", () => {
+    const real = join(root, "elsewhere-works");
+    mkdirSync(real);
+    rmSync(works, { recursive: true });
+    symlinkSync(real, works);
+    const out = makeExport();
+    const r = run(["--slug", "demo", "--source", out]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("public/works is a symlink");
+    expect(readdirSync(real)).toEqual([]);
+  });
+
+  it("rejects a destination that is a symlink", () => {
+    const target = join(root, "target");
+    mkdirSync(target);
+    symlinkSync(target, join(works, "demo"));
+    const r = run(["--slug", "demo", "--source", makeExport()]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("public/works/demo is a symlink");
+    expect(readdirSync(target)).toEqual([]);
+  });
+
   it("rejects a source that does not exist or is a file", () => {
-    expect(run(["--slug", "demo", "--source", join(root, "missing")]).status).toBe(1);
+    const missing = run(["--slug", "demo", "--source", join(root, "missing")]);
+    expect(missing.status).toBe(1);
+    expect(missing.out).toContain("does not exist");
     const file = join(root, "file.txt");
     writeFileSync(file, "x");
-    expect(run(["--slug", "demo", "--source", file]).status).toBe(1);
+    const notDir = run(["--slug", "demo", "--source", file]);
+    expect(notDir.status).toBe(1);
+    expect(notDir.out).toContain("is not a directory");
   });
 });
 

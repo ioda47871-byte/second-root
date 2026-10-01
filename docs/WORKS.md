@@ -46,6 +46,7 @@ Second Root には React component として混ぜず、各リポジトリで **
      `^[a-z0-9]+(-[a-z0-9]+)*$`（64 文字まで）。位置引数 `<slug> <out>` も可。
    - コピー先はスクリプト自身の場所から決まる `<repo>/public/works/<slug>`（cwd に依存しない）。
      source が symlink・public/works の中・public/works を含む・コピー先と重なる場合は拒否。
+     `public/`・`public/works/`・コピー先が symlink の場合も拒否（実パスで比較する）。
    - ファイル: symlink を辿らずに（lstat）全ファイルを列挙し、symlink・dotfile（`.env*` を含む）・
      `*.map`・通常ファイル以外が 1 つでもあれば拒否。
    - URL（`/works/<slug>` の外を指すルート相対 URL を拒否）:
@@ -59,12 +60,20 @@ Second Root には React component として混ぜず、各リポジトリで **
      - JS: asset ファイル（画像・フォント・CSS など）を指すルート相対の文字列。フレームワーク自身の
        文字列（`/_next/`、`/index.txt`、route 名）は実行時に basePath と結合されるため対象外。
        実行時のリクエストが basePath の外に出ないことは e2e（`works.spec.ts` の `watch`）で確認する。
+     - 値は前後の空白を除き、文字参照（`&#47;`・`&#x2f;`・`&sol;` など）を 1 回デコードしてから検査する。
+       basePath の後ろの `.` / `..` セグメント（`%2e` を含む）は basePath の外とみなす。
+       `//secondroot.jp/...`（プロトコル相対）も同じ規則で検査し、`<meta http-equiv="refresh">` の URL も対象。
+       属性の間に空白がない記法（`alt="x"src=…`・`<img/src=…>`）も、ブラウザと同じように属性として読む。
+       URL を取る属性・srcset・CSS `url()` は WHATWG URL パーサ（ブラウザと同じ規則: `\` を `/` とみなす、
+       タブ・改行を除く、`.` / `..` を解決）でも解決し、secondroot.jp 上なら basePath 配下であることを確認する。
+       refresh の URL は `http-equiv="refresh"` の meta だけで（`url=` は省略可）、canonical / og も同じ属性解析から読む。
      - 絶対 URL の canonical / og:url / og:image / twitter:image は
        `https://secondroot.jp/works/<slug>` の直後が終端・`/`・`?`・`#` のいずれかであること
-       （`/works/<slug>evil` などの前方一致は拒否）。
+       （`/works/<slug>evil` などの前方一致は拒否。`//` で始まる値は https として扱う）。
    - 手順: 検査 → リポジトリ直下の一時ディレクトリ（`.works-import-*`、gitignore 済み）へコピー →
      コピーを再検査（ファイル一覧・サイズ・内容）→ 旧コピーと入れ替え（失敗時は旧コピーを戻す）→
-     旧コピーと一時ディレクトリを削除。どこで失敗しても `public/works/<slug>` はそのまま残る。
+     旧コピーと一時ディレクトリを削除。どこで失敗しても `public/works/<slug>` はそのまま残る
+     （入れ替えと復元の両方に失敗した場合は、旧コピーを一時ディレクトリに残してそのパスを表示する）。
 4. export は各ページを `<page>.html` で出力し、Next の `public/` は拡張子なしの URL を
    返さない。そのため `next.config.ts` の `staticWorks` に slug とページ名を登録し、
    rewrite で `/works/<slug>` → `index.html`、`/works/<slug>/<page>` → `<page>.html`
