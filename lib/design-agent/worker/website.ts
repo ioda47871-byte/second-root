@@ -124,7 +124,8 @@ export function egressHostCheck(egress: EgressPolicy): (url: string) => Promise<
     }
     if (u.protocol !== "http:" && u.protocol !== "https:") return true;
     const port = u.port === "" ? (u.protocol === "https:" ? 443 : 80) : Number(u.port);
-    return (await egress(u.hostname, port).catch(() => null)) !== null;
+    const addresses = await egress(u.hostname, port).catch(() => null);
+    return addresses !== null && addresses.length > 0;
   };
 }
 

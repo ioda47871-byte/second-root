@@ -11,7 +11,9 @@
  * and connects to the address it checked. Chromium never resolves names of
  * its own, so a DNS answer that changes between check and use (rebinding)
  * cannot point the browser at 127.0.0.1, the LAN, the WSL host or a cloud
- * metadata service. WebRTC (UDP) and QUIC cannot use an HTTP proxy: the
+ * metadata service. It dials directly: the worker's own HTTPS_PROXY is not
+ * used (an upstream proxy would resolve names itself), so a network where only
+ * an upstream proxy reaches the internet has no website source. WebRTC (UDP) and QUIC cannot use an HTTP proxy: the
  * website browser is started with WEBSITE_BROWSER_ARGS, which turn them off.
  */
 import { lookup } from "node:dns/promises";
@@ -19,31 +21,35 @@ import { createServer, request as httpRequest, type IncomingHttpHeaders } from "
 import { connect, isIP, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
 
-/** Returns the address to connect to, or null to refuse. */
-export type EgressPolicy = (host: string, port: number) => Promise<string | null>;
+/** Returns the checked addresses to connect to (tried in order), or null to refuse. */
+export type EgressPolicy = (host: string, port: number) => Promise<string[] | null>;
 
 /** Chromium flags for a browser whose traffic must all go through the proxy. */
 export const WEBSITE_BROWSER_ARGS = ["--webrtc-ip-handling-policy=disable_non_proxied_udp", "--force-webrtc-ip-handling-policy", "--disable-quic"] as const;
 
 const ALLOWED_PORTS = new Set([80, 443]);
 const IDLE_MS = 60_000;
-const MAX_SOCKETS = 64;
+// Chromium opens a tunnel per host (plus HTTP/1 sockets): shop pages with many CDN / analytics hosts need room.
+const MAX_SOCKETS = 256;
 
 /** Production: ports 80 / 443, every address of the name public; the first one is used. */
 export function publicEgress(isPrivateAddress: (address: string) => boolean): EgressPolicy {
-  const cache = new Map<string, Promise<string | null>>();
+  const cache = new Map<string, Promise<string[] | null>>();
   return (host, port) => {
     if (!ALLOWED_PORTS.has(port)) return Promise.resolve(null);
     const name = host.replace(/^\[|\]$/g, "").toLowerCase();
     let hit = cache.get(name);
     if (!hit) {
       hit = isIP(name)
-        ? Promise.resolve(isPrivateAddress(name) ? null : name)
+        ? Promise.resolve(isPrivateAddress(name) ? null : [name])
         : !/^[a-z0-9-]+(\.[a-z0-9-]+)+\.?$/.test(name)
           ? Promise.resolve(null)
-          : lookup(name, { all: true, verbatim: true }).then(
-              (list) => (list.length > 0 && list.every((a) => !isPrivateAddress(a.address)) ? list[0]!.address : null),
-              () => null,
+          : lookup(name, { all: true }).then(
+              (list) => (list.length > 0 && list.every((a) => !isPrivateAddress(a.address)) ? list.map((a) => a.address) : null),
+              () => {
+                cache.delete(name); // a passing DNS failure is asked again next time
+                return null;
+              },
             );
       cache.set(name, hit);
     }
@@ -61,11 +67,33 @@ function splitAuthority(raw: string): { host: string; port: number } | null {
 
 const HOP_HEADERS = new Set(["proxy-connection", "proxy-authorization", "connection", "keep-alive", "upgrade", "te", "trailer", "transfer-encoding"]);
 
-function forwardHeaders(headers: IncomingHttpHeaders, host: string): Record<string, string | string[]> {
+function endToEnd(headers: IncomingHttpHeaders): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const [k, v] of Object.entries(headers)) if (v !== undefined && !HOP_HEADERS.has(k)) out[k] = v;
-  out.host = host;
   return out;
+}
+
+/** Connects to the first of the checked addresses that answers. */
+function dial(addresses: readonly string[], port: number): Promise<Socket | null> {
+  return new Promise((resolve) => {
+    const next = (i: number) => {
+      if (i >= addresses.length) return resolve(null);
+      const socket = connect({ host: addresses[i]!, port, timeout: 15_000 });
+      const fail = () => {
+        socket.destroy();
+        next(i + 1);
+      };
+      socket.once("error", fail);
+      socket.once("timeout", fail);
+      socket.once("connect", () => {
+        socket.removeListener("error", fail);
+        socket.removeListener("timeout", fail);
+        socket.setTimeout(0);
+        resolve(socket);
+      });
+    };
+    next(0);
+  });
 }
 
 export interface EgressProxy {
@@ -86,9 +114,12 @@ export async function startEgressProxy(policy: EgressPolicy): Promise<EgressProx
     if ("setTimeout" in s) (s as Socket).setTimeout(IDLE_MS, () => s.destroy());
   };
   const allowed = async (host: string, port: number) => {
-    const address = await policy(host, port).catch(() => null);
-    if (address === null) refused += 1;
-    return address;
+    const addresses = await policy(host, port).catch(() => null);
+    if (addresses === null || addresses.length === 0) {
+      refused += 1;
+      return null;
+    }
+    return addresses;
   };
 
   const server = createServer((req, res) => {
@@ -102,15 +133,21 @@ export async function startEgressProxy(policy: EgressPolicy): Promise<EgressProx
         return;
       }
       const port = url.port === "" ? 80 : Number(url.port);
-      const address = url.protocol === "http:" && url.username === "" && url.password === "" ? await allowed(url.hostname, port) : null;
-      if (address === null) {
+      const addresses = url.protocol === "http:" && url.username === "" && url.password === "" ? await allowed(url.hostname, port) : null;
+      if (addresses === null) {
         res.writeHead(403).end();
         return;
       }
+      const socket = await dial(addresses, port);
+      if (socket === null) {
+        res.writeHead(502).end();
+        return;
+      }
+      track(socket);
       const upstream = httpRequest(
-        { host: address, port, method: req.method, path: `${url.pathname}${url.search}`, headers: forwardHeaders(req.headers, url.host), setHost: false, timeout: IDLE_MS },
+        { createConnection: () => socket, method: req.method, path: `${url.pathname}${url.search}`, headers: { ...endToEnd(req.headers), host: url.host, connection: "close" }, setHost: false, timeout: IDLE_MS },
         (up) => {
-          res.writeHead(up.statusCode ?? 502, up.headers);
+          res.writeHead(up.statusCode ?? 502, endToEnd(up.headers));
           up.pipe(res);
         },
       );
@@ -127,19 +164,22 @@ export async function startEgressProxy(policy: EgressPolicy): Promise<EgressProx
   server.on("connect", (req, client: Duplex, head: Buffer) => {
     void (async () => {
       const target = splitAuthority(req.url ?? "");
-      const address = target ? await allowed(target.host, target.port) : null;
-      if (target === null || address === null) {
+      const addresses = target ? await allowed(target.host, target.port) : null;
+      if (target === null || addresses === null) {
         client.end("HTTP/1.1 403 Forbidden\r\n\r\n");
         return;
       }
-      const upstream = connect({ host: address, port: target.port });
+      const upstream = await dial(addresses, target.port);
+      if (upstream === null || client.destroyed) {
+        upstream?.destroy();
+        client.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+        return;
+      }
       track(upstream);
-      upstream.once("connect", () => {
-        client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
-        if (head.length > 0) upstream.write(head);
-        upstream.pipe(client);
-        client.pipe(upstream);
-      });
+      client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+      if (head.length > 0) upstream.write(head);
+      upstream.pipe(client);
+      client.pipe(upstream);
       upstream.on("close", () => client.destroy());
       client.on("close", () => upstream.destroy());
     })();

@@ -65,7 +65,9 @@ done
 . "$REPO/scripts/sales-design-capture/host-check.sh"
 UNSAFE=""
 sr_check_wsl_interop >/dev/null || UNSAFE=WSL_INTEROP_ON
-for req in $(getent group sr-capture | cut -d: -f4 | tr ',' ' '); do
+# members by the group list and by primary group
+SPOOL_GID="$(getent group sr-capture | cut -d: -f3)"
+for req in $(getent group sr-capture | cut -d: -f4 | tr ',' ' ') $(getent passwd | awk -F: -v g="$SPOOL_GID" '$4 == g { print $1 }'); do
   [ "$req" = sr-igcapture ] && continue
   sr_check_requester "$req" >/dev/null || UNSAFE=REQUESTER_PRIVILEGED
 done

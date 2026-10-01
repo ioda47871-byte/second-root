@@ -14,7 +14,7 @@
 # - The requester is root, in an admin-equivalent group, or (root only can
 #   see this) has any sudo rule.
 
-SR_PRIVILEGED_GROUPS="root sudo admin wheel adm lxd disk docker libvirt kvm shadow systemd-journal sr-igcapture"
+SR_PRIVILEGED_GROUPS="root sudo admin wheel adm lxd incus incus-admin disk docker libvirt kvm shadow systemd-journal sr-igcapture"
 
 sr_is_wsl() {
   grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null || [ -d /run/WSL ]
@@ -34,9 +34,27 @@ sr_wsl_conf() {
     END { print val }' /etc/wsl.conf 2>/dev/null
 }
 
+# WSL's own ini reading may differ from ours (case, duplicates): accept only the documented
+# spelling ([interop], the exact key) and require EVERY spelling of the key in any interop-like
+# section to say false.
+sr_wsl_conf_all_false() {
+  awk -v key="$1" '
+    /^[[:space:]]*[#;]/ { next }
+    /^[[:space:]]*\[/ { s = $0; gsub(/[][[:space:]]/, "", s); exact = (s == "interop"); loose = (tolower(s) == "interop"); next }
+    loose {
+      i = index($0, "="); if (i == 0) next
+      k = substr($0, 1, i - 1); v = substr($0, i + 1)
+      gsub(/[[:space:]]/, "", k); sub(/[[:space:]]*[#;].*$/, "", v); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); gsub(/"/, "", v)
+      if (tolower(k) != tolower(key)) next
+      if (tolower(v) != "false") bad = 1
+      if (exact && k == key) ok = 1
+    }
+    END { exit !(ok && !bad) }' /etc/wsl.conf 2>/dev/null
+}
+
 sr_check_wsl_interop() {
   sr_is_wsl || return 0
-  if [ "$(sr_wsl_conf interop enabled)" != false ] || [ "$(sr_wsl_conf interop appendWindowsPath)" != false ]; then
+  if ! sr_wsl_conf_all_false enabled || ! sr_wsl_conf_all_false appendWindowsPath; then
     echo "WSL_INTEROP_NOT_DISABLED: /etc/wsl.conf needs [interop] enabled=false and appendWindowsPath=false, then 'wsl --shutdown' from Windows"
     return 1
   fi
@@ -47,10 +65,44 @@ sr_check_wsl_interop() {
       return 1
     fi
   done
+  # Without the binfmt entry, /init can still talk to Windows through an interop socket anyone may open.
+  for f in /run/WSL/*_interop; do
+    [ -S "$f" ] || continue
+    if [ $(( 0$(stat -L -c %a "$f" 2>/dev/null || echo 0) & 002 )) -ne 0 ]; then
+      echo "WSL_INTEROP_SOCKET_OPEN: $f can be opened by any user; interop is not off"
+      return 1
+    fi
+  done
   return 0
 }
 
-# sr_check_requester <user> — what any user can see (groups, uid, the WSL default user).
+# The supplementary groups a RUNNING process holds stay until it ends: removing the requester
+# from sudo / docker in /etc/group does not take them from a shell or Claude started before.
+sr_check_requester_processes() {
+  local req="$1" uid gids=" 0 " g gid f key a b c d rest x mine hit
+  uid="$(id -u "$req" 2>/dev/null)" || return 0
+  for g in $SR_PRIVILEGED_GROUPS; do
+    gid="$(getent group "$g" 2>/dev/null | cut -d: -f3)"
+    [ -n "$gid" ] && gids="$gids$gid "
+  done
+  for f in /proc/[0-9]*/status; do
+    mine=0
+    hit=0
+    while read -r key a b c d rest; do
+      case "$key" in
+        Uid:) for x in $a $b $c $d; do [ "$x" = "$uid" ] && mine=1; done ;;
+        Gid: | Groups:) for x in $a $b $c $d $rest; do case "$gids" in *" $x "*) hit=1 ;; esac; done ;;
+      esac
+    done 2>/dev/null <"$f"
+    if [ "$mine" = 1 ] && [ "$hit" = 1 ]; then
+      echo "REQUESTER_PROCESS_PRIVILEGED: a running process of $req still holds an admin group; stop it (sudo pkill -u $req) and run again"
+      return 1
+    fi
+  done
+  return 0
+}
+
+# sr_check_requester <user> — what any user can see (groups, its running processes, uid, the WSL default user).
 sr_check_requester() {
   local req="$1" uid g
   uid="$(id -u "$req" 2>/dev/null)" || { echo "REQUESTER_UNKNOWN: $req"; return 1; }
@@ -60,6 +112,7 @@ sr_check_requester() {
       *" $g "*) echo "REQUESTER_PRIVILEGED_GROUP: $req is in $g (remove it: sudo gpasswd -d $req $g)"; return 1 ;;
     esac
   done
+  sr_check_requester_processes "$req" || return 1
   if sr_is_wsl; then
     local def
     def="$(sr_wsl_conf user default)"
@@ -78,19 +131,36 @@ sr_check_requester_root() {
     echo "REQUESTER_HAS_SUDO: $req has sudo rules (sudo -l -U $req); remove them"
     return 1
   fi
-  local dev mnt type rest d
+  local dev mnt type rest d src
   while read -r dev mnt type rest; do
     case "$type" in 9p | drvfs | virtiofs) ;; *) continue ;; esac
     mnt="$(printf '%b' "$mnt")"
-    # A person may mount one plain Windows folder for the demo export here (design-capture-helper.md).
-    [ "$mnt" = /mnt/sr-export ] && continue
-    for d in "$mnt" "$mnt"/Users/*/AppData/Roaming/Microsoft/Windows/"Start Menu"/Programs/Startup "$mnt/ProgramData/Microsoft/Windows/Start Menu/Programs/StartUp"; do
+    src="$(printf '%b' "$dev")"
+    if [ "$mnt" = /mnt/sr-export ]; then
+      # The one export folder a person may give the requester (design-capture-helper.md): it must be a plain
+      # folder at least three levels down (C:\Users\<you>\<folder>), not a drive, a profile or a system tree.
+      if ! printf '%s' "$src" | grep -Eq '^[A-Za-z]:\\[^\\]+\\[^\\]+\\[^\\]+' || printf '%s' "$src" | grep -Eqi '\\(AppData|ProgramData|Windows|Start Menu)(\\|$)'; then
+        echo "EXPORT_MOUNT_UNSAFE: /mnt/sr-export must be one plain folder such as C:\\Users\\<you>\\SecondRootDemos"
+        return 1
+      fi
+    fi
+    for d in "$mnt" "$mnt"/Users/*/AppData/Roaming/Microsoft/Windows/"Start Menu"/Programs/Startup "$mnt"/AppData/Roaming/Microsoft/Windows/"Start Menu"/Programs/Startup \
+      "$mnt"/*/AppData/Roaming/Microsoft/Windows/"Start Menu"/Programs/Startup "$mnt/ProgramData/Microsoft/Windows/Start Menu/Programs/StartUp"; do
       [ -d "$d" ] || continue
+      [ "$d" = /mnt/sr-export ] && continue
       if runuser -u "$req" -- test -w "$d" 2>/dev/null; then
         echo "REQUESTER_WRITES_WINDOWS: $req can write $d (a Windows drive mounted writable for it)"
         return 1
       fi
     done
   done </proc/mounts
+  # The interop sockets: the requester must not be able to open one.
+  for d in /run/WSL/*_interop; do
+    [ -S "$d" ] || continue
+    if runuser -u "$req" -- test -w "$d" 2>/dev/null; then
+      echo "WSL_INTEROP_SOCKET_OPEN: $req can open $d; interop is not off"
+      return 1
+    fi
+  done
   return 0
 }

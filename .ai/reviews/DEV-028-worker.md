@@ -188,3 +188,30 @@ Round 3 (on 2bc6452), fixed next:
   - `leaksTokens` now compares in lowercase and ignores timestamp strings (`last_refresh`).
   - The `NODE_MISSING` message now explains the tarball owner case.
   - The 198.18/15 fake-IP DNS case is documented.
+
+Round 4 (on eab553d): no Critical or High from either reviewer. The security reviewer re-attacked the egress proxy and nothing got through:
+- raw `CONNECT` to `0x7f.1`, `127.1`, `[::ffff:7f00:1]`, `localtest.me`, and octal or decimal hosts;
+- `Host`-header mismatch, `sendBeacon`, prefetch, WebTransport, and a WebSocket or `fetch` from a Web Worker;
+- mixed public/private DNS answers.
+
+The Mediums were fixed next:
+- Security M-a: a running requester process keeps its old supplementary groups after `gpasswd -d`. `host-check.sh` now scans `/proc/*/status` and refuses with `REQUESTER_PROCESS_PRIVILEGED`. In the container, a process started while in `adm` was still caught after the removal, and the check passed again once it ended.
+- Security M-b: `wsl.conf` parsing is stricter. Only the exact `[interop]` / key spelling counts, and every spelling must say `false`. A world-writable `/run/WSL/*_interop` socket also refuses (as root, so does one the requester can write). The docs add a real-machine check.
+- Security M-c: the `/mnt/sr-export` exemption now depends on the mounted source. It must be a plain folder at least three levels deep, not a drive, a user profile, `AppData`, `ProgramData` or `Windows`.
+- Architecture M1: stock WSL shows `/mnt/c` as 777. The check is correct, so the docs now require `[automount] options="uid=1000,gid=1000,umask=077"`.
+- Architecture M2: the egress proxy dials directly and ignores the worker's `HTTPS_PROXY`. Kept that way to preserve the checked-address guarantee, and documented.
+- Architecture M3: the proxy's connection cap went from 64 to 256.
+
+Lows fixed:
+- next-address fallback;
+- failed DNS lookups no longer cached;
+- hop-by-hop headers removed from responses;
+- `incus` groups added;
+- primary-group members of `sr-capture` checked in `run.sh`;
+- a `CONNECT` tunnel test added.
+
+Documented residuals:
+- the per-run check window;
+- `hidepid`;
+- SIGKILL of `admin.sh`;
+- the local open proxy (public 80/443 only).

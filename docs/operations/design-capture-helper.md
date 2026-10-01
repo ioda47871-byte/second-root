@@ -51,15 +51,37 @@ capture helper                                     ← 利用者 sr-igcapture（
   appendWindowsPath=false
   ```
 
-  書いたら Windows 側で `wsl --shutdown` してから WSL を開き直す（動いている間の設定も確かめる）
+  書いたら Windows 側で `wsl --shutdown` してから WSL を開き直す（動いている間の設定も確かめる）。
+  `[interop]` の綴りはこのとおり（小文字）に。別の綴りの節や同じ key が 2 回あって片方でも `false` でなければ断る。
+  開き直した後、一度確かめる（どちらかが違えば interop は切れていない。止めて知らせる）:
+
+  ```bash
+  sudo /mnt/c/Windows/System32/cmd.exe /c ver        # 失敗する（Exec format error など）こと
+  cat /proc/sys/fs/binfmt_misc/WSLInterop* 2>&1       # 無い、または disabled
+  sudo -u sr-designgen bash -c 'for s in /run/WSL/*_interop; do [ -w "$s" ] && echo "OPEN $s"; done; true'   # 何も出ない
+  ```
+
+  helper も、誰でも開ける `/run/WSL/*_interop` の socket があれば interop が残っているとみなして断る
+- requester の動いている process が admin の group を持っていない（group から外しても、その前に起動した shell や Claude は
+  group を持ち続ける。`REQUESTER_PROCESS_PRIVILEGED` が出たら `sudo pkill -u sr-designgen` してからやり直す）
 - requester（`sr-designgen`）は **Windows が WSL を開くときの既定の利用者ではない**（uid 1000 か `[user] default` の利用者は断る）、
   `sudo` / `admin` / `wheel` / `adm` / `lxd` / `disk` / `docker` / `libvirt` / `kvm` / `systemd-journal` の group に入っていない、
   sudo の規則が無い（`sudo -l -U sr-designgen` が空）
-- requester は Windows の drive（`/mnt/c` など）に書けない。既定の自動 mount（uid 1000 の所有）なら別の利用者は書けない。
-  Windows の Startup folder に置いたものは Windows の人の権限で動き、そこから `wsl.exe -u root` に届くため。
+- requester は Windows の drive（`/mnt/c` など）に書けない。**既定の WSL では `/mnt/c` は誰でも書ける（777 に見える）ので、
+  必ず自動 mount を人だけのものにする。**Windows の Startup folder に置いたものは Windows の人の権限で動き、そこから
+  `wsl.exe -u root` に届くため。`/etc/wsl.conf` に追加（`wsl --shutdown` の後に効く）:
+
+  ```ini
+  [automount]
+  options="uid=1000,gid=1000,umask=077"
+  ```
+
+  （uid / gid は人の WSL 利用者のもの。人は今までどおり `/mnt/c` を使え、requester は読むことも書くこともできない。
+  Windows の文書を Claude / Codex から隠す効果もある。確かめ方: `sudo -u sr-designgen ls /mnt/c` が Permission denied になる）
   worker の Windows へのコピー（`SR_DESIGN_EXPORT_DIR`）が要るなら、**その folder だけ**を `/mnt/sr-export` に mount する
   （`/etc/fstab`: `C:\Users\<you>\SecondRootDemos /mnt/sr-export drvfs uid=<sr-designgen の uid>,gid=<同 gid>,umask=077 0 0`）。
-  ここだけは書けてよい（Startup などではない、ただの folder にする）
+  ここだけは書けてよい。mount するのは 3 段目以下の、ただの folder（`C:\Users\<you>\<folder>`）。drive や利用者の folder、
+  `AppData` / `ProgramData` / `Windows` を mount していれば `EXPORT_MOUNT_UNSAFE` で断る
 - **system 全体の Node 22**（`/usr/local/bin` か `/usr/bin`、実体まで root の所有で他人が書けないこと）。`sr-designgen` の nvm の node は `sr-igcapture` から読めないので使えない
   （例: NodeSource の手順 https://github.com/nodesource/distributions 。tarball を `sudo tar` で展開したなら `sudo chown -R root:root <dir>`）
 
@@ -160,6 +182,14 @@ journalctl -u sr-capture.service -n 50     # 符号だけが出る
 - 守っているのは WSL の中の Unix 権限まで。requester が LAN や WSL host の Windows のサービス（SMB・RDP など）に
   Windows の資格情報で入れる状況は扱っていない。Windows drive は mount の根元と Startup folder だけを確かめる
   （drvfs の `metadata` で個別の所有者を付けている場合、深い場所に requester の書ける folder があっても見つけない）
+- helper の確認は起動ごと（1 回の起動は最長 1700 秒）。その途中で interop を戻したり group を足したりした分は、次の起動まで見えない。
+  `/proc` を `hidepid` で mount している machine では、requester の process の group を helper から確かめられない（install / login は root で確かめる）
+- `admin.sh login` 自体が SIGKILL（root か OOM による）で止まると、後始末（窓を閉じる・helper の再開）は動かない。
+  requester は root の process を止められないので、requester からは起こせない。起きたら `sudo pkill -u sr-igcapture` と
+  `sudo systemctl start sr-capture.path sr-capture.timer`
+- 公式サイトの撮影の間、worker の中の proxy（127.0.0.1）は同じ machine の誰でも使えるが、行けるのは公開の宛先の 80 / 443 だけ（新しい到達先は増えない）
+- 公式サイトの撮影は worker の中の proxy が直接つなぐ（名前の確かめと接続先を一致させるため、`HTTPS_PROXY` の上位 proxy は使わない）。
+  上位 proxy を通さないとインターネットに出られない network では公式サイトは使えない（家庭の WSL では問題にならない）
 - 公式サイトの撮影は 198.18.0.0/15 を内部の宛先として断る。fake-IP 型の proxy DNS（Clash など）や一部の VPN はここを使うので、
   その環境では全サイトが `unavailable` になる（そのときは proxy を外して撮る）
 

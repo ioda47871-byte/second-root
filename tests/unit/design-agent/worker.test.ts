@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createSocket } from "node:dgram";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -595,7 +596,7 @@ describe("visual sources: website → signed-in helper → public Instagram → 
   const siteTarget = (path: string) => () => ({ url: `${site.origin}${path}`, allowNavigation: (u: string) => u.startsWith(`${site.origin}/`) });
   const WEBSITE = "https://www.example-bakery.jp/";
   // Tests only: the egress proxy may reach exactly the mock (127.0.0.1:<its port>), nothing else.
-  const mockEgress = async (host: string, port: number) => (host === "127.0.0.1" && String(port) === new URL(site.origin).port ? "127.0.0.1" : null);
+  const mockEgress = async (host: string, port: number) => (host === "127.0.0.1" && String(port) === new URL(site.origin).port ? ["127.0.0.1"] : null);
 
   it("uses the verified official website first: home + about/menu pages, privacy-processed, nothing else opened", async () => {
     const l = makeLayout();
@@ -721,10 +722,11 @@ describe("visual sources: website → signed-in helper → public Instagram → 
     const { publicWebsiteEgress } = await import("@/lib/design-agent/worker/website");
     const egress = publicWebsiteEgress();
     for (const [h, p] of [["127.0.0.1", 443], ["[::1]", 443], ["10.0.0.1", 80], ["169.254.169.254", 80], ["localhost", 443], ["8.8.8.8", 22], ["8.8.8.8", 8080], ["bad_name!", 443], ["x", 443]] as const) expect(await egress(h, p), `${h}:${p}`).toBeNull();
-    expect(await egress("8.8.8.8", 443)).toBe("8.8.8.8");
+    expect(await egress("8.8.8.8", 443)).toEqual(["8.8.8.8"]);
     const { startEgressProxy } = await import("@/lib/design-agent/worker/egress-proxy");
     // the proxy dials the policy's answer, not what the client named
-    const proxy = await startEgressProxy(async (host) => (host === "rebind.example" ? "127.0.0.1" : null));
+    // (the first checked address does not answer: the next one is used)
+    const proxy = await startEgressProxy(async (host) => (host === "rebind.example" ? ["127.0.0.2", "127.0.0.1"] : null));
     try {
       const port = Number(new URL(site.origin).port);
       const viaProxy = (path: string, host: string) =>
@@ -738,7 +740,24 @@ describe("visual sources: website → signed-in helper → public Instagram → 
         });
       expect(await viaProxy("/site_home/about/", "rebind.example")).toBe(200);
       expect(await viaProxy("/site_home/about/", "other.example")).toBe(403);
-      expect(proxy.refused()).toBe(1);
+      // a CONNECT tunnel (https / wss) goes to the checked address too
+      const tunnel = (host: string) =>
+        new Promise<string>((resolve) => {
+          const sock = connect(Number(new URL(proxy.proxy.server).port), "127.0.0.1", () => sock.write(`CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n\r\n`));
+          let buf = "";
+          sock.on("data", (d) => {
+            buf += d.toString();
+            if (buf.startsWith("HTTP/1.1 200") && !buf.includes("GET-SENT")) {
+              buf += "GET-SENT";
+              sock.write(`GET /site_home/menu/ HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\n\r\n`);
+            }
+          });
+          sock.on("close", () => resolve(buf));
+          sock.on("error", () => resolve(buf));
+        });
+      expect(await tunnel("rebind.example")).toMatch(/GET-SENTHTTP\/1\.1 200[\s\S]*\/site_home\/menu\//);
+      expect(await tunnel("other.example")).toMatch(/^HTTP\/1\.1 403/);
+      expect(proxy.refused()).toBe(2);
     } finally {
       await proxy.close();
     }
