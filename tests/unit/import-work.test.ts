@@ -179,7 +179,18 @@ describe("import-work: URLs outside the basePath are rejected", () => {
     ["a relative URL climbing out of the basePath", "x.html", `<img src="../../images/leak.png">`],
     ["a relative CSS url() climbing out of the basePath", "_next/static/b.css", `.x{background:url(../../../../images/bg.png)}`],
     ["a protocol-relative URL with a trailing-dot host", "x.html", `<img src="//secondroot.jp./images/leak.png">`],
+    // The home page is served at /works/demo, so "images/x.png" there is /works/images/x.png.
+    ["a relative image on the home page", "index.html", `<img src="images/leak.png">`],
+    ["a dot-relative script on the home page", "index.html", `<script src="./evil/a.js"></script>`],
+    ["a relative CSS url() on the home page", "index.html", `<div style="background:url(x.png)"></div>`],
   ];
+
+  it("accepts fragment, query and empty URLs on the home page", () => {
+    const out = makeExport();
+    write(out, "index.html", `<a href="#main"></a><a href="?a=1"></a><a href=""></a><img src="/works/demo/images/a.png">`);
+    const r = run(["--slug", "demo", "--source", out]);
+    expect(r.status, r.out).toBe(0);
+  });
 
   for (const [label, rel, content] of cases) {
     it(`rejects ${label}`, () => {

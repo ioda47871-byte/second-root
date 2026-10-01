@@ -132,8 +132,10 @@ export function scanExport(dir, slug, files = listFiles(dir).files) {
     if (!MARKUP.has(ext) && !STYLE.has(ext) && !DATA.has(ext) && !SCRIPT.has(ext)) continue;
     const text = readFileSync(join(dir, f.rel), "utf8");
     const report = (kind, value) => problems.push(`${f.rel}: ${kind} ${value}`);
-    // The URL this file is served at, for resolving relative URLs as a browser does.
-    const fileUrl = `${origin}/${f.rel.split(sep).join("/")}`;
+    // The URL this file is served at, for resolving relative URLs as a browser
+    // does. The home page is served at the basePath itself (no trailing
+    // slash), so its relative URLs resolve one directory up.
+    const fileUrl = f.rel === "index.html" ? origin : `${origin}/${f.rel.split(sep).join("/")}`;
 
     // Markup and CSS: every root-relative URL must carry the basePath.
     // Browsers ignore surrounding whitespace in URL values.
