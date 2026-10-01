@@ -64,7 +64,7 @@ export type CaptureResult =
 export const CAPTURE_VIEWPORT = { width: 1280, height: 1000 };
 /** Softens people and small detail; keeps colour and layout. */
 export const MEDIA_FILTER = "blur(6px) saturate(0.9)";
-const MEDIA_CSS = `img, video, picture, canvas, svg image, [style*="background-image"] { filter: ${MEDIA_FILTER} !important; }`;
+export const MEDIA_CSS = `img, video, picture, canvas, svg image, [style*="background-image"] { filter: ${MEDIA_FILTER} !important; }`;
 /** Media rectangles are shrunk by this factor, then scaled back with a blur. */
 export const PIXELATE_FACTOR = 10;
 export const POSTS = 'a[href*="/p/"], a[href*="/reel/"]';
@@ -74,7 +74,7 @@ const MAX_HOPS = 4;
 /** Which signal made PRIVATE_OR_MISSING (diagnosis only; the reason stays the same). */
 export type UnavailableDetail = "HTTP_404" | "HTTP_410" | "BODY_PRIVATE" | "BODY_PAGE_UNAVAILABLE";
 
-class Unavailable extends Error {
+export class Unavailable extends Error {
   constructor(
     readonly reason: UnavailableReason,
     readonly detail?: UnavailableDetail,
@@ -90,7 +90,7 @@ export const RATE_LIMIT_MARKER = /Please wait a few minutes|しばらくして�
 export const CAPTCHA_SELECTOR = 'iframe[src*="captcha"], iframe[title*="captcha" i], #captcha, [id*="recaptcha"], [id*="hcaptcha"]';
 export const LOGIN_FORM_SELECTOR = 'input[name="password"], input[type="password"]';
 
-class Retry extends Error {
+export class Retry extends Error {
   constructor(readonly reason: RetryReason) {
     super(reason);
   }
@@ -99,7 +99,7 @@ class Retry extends Error {
 type Rect = { x: number; y: number; w: number; h: number };
 
 /** Every media element's page rectangle, shadow roots included; also blurs them in place. */
-async function mediaRects(page: Page, filter: string): Promise<Rect[]> {
+export async function mediaRects(page: Page, filter: string): Promise<Rect[]> {
   // No named functions inside page callbacks: tsx (keepNames) would wrap them
   // in a __name() helper that does not exist in the page.
   return page.evaluate((f) => {
@@ -127,7 +127,7 @@ async function mediaRects(page: Page, filter: string): Promise<Rect[]> {
 export type ScratchPage = () => Promise<{ page: Page; close: () => Promise<void> }>;
 
 /** Pixelates and blurs the given rectangles of a PNG, on a blank page. */
-async function soften(scratch: ScratchPage, png: Buffer, rects: Rect[]): Promise<Buffer> {
+export async function soften(scratch: ScratchPage, png: Buffer, rects: Rect[]): Promise<Buffer> {
   const { page, close } = await scratch();
   try {
     const out = await page.evaluate(
@@ -357,14 +357,14 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
 }
 
 /** Ends the capture when the guard stopped the page's own navigation. */
-function assertNavigation(state: NavigationState): void {
+export function assertNavigation(state: NavigationState): void {
   if (state.offSite) throw new Unavailable("OFF_SITE_REDIRECT");
   if (state.tooManyRedirects) throw new Unavailable("TOO_MANY_REDIRECTS");
   if (state.wall !== undefined) throw new Unavailable(/challenge|checkpoint|suspended/.test(state.wall) ? "CHALLENGE" : "LOGIN_WALL");
 }
 
 /** Opens the target in a guarded tab; the browser follows allowed redirects itself. */
-async function open(guard: NavigationGuard, target: CaptureTarget, state: NavigationState): Promise<Page> {
+export async function open(guard: NavigationGuard, target: CaptureTarget, state: NavigationState): Promise<Page> {
   const page = await guard.newPage();
   page.on("dialog", (dialog) => void dialog.dismiss().catch(() => undefined));
   let status: number | undefined;

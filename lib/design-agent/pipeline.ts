@@ -54,6 +54,8 @@ export type PipelineReport = {
 export interface PipelineInput {
   demo: DemoView;
   references: string[];
+  /** What the references show (the prompt says so). */
+  referenceKind?: "website" | "instagram";
   hint?: string;
   maxRevisions?: number;
   schemaMode?: "strict" | "loose";
@@ -83,7 +85,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   try {
     const answer = await deps.askCodex({
       kind: "brief",
-      prompt: buildBriefPrompt({ demo: input.demo, referenceCount: input.references.length, currentDemoCount: 2, hint: input.hint }),
+      prompt: buildBriefPrompt({ demo: input.demo, referenceCount: input.references.length, referenceKind: input.referenceKind, currentDemoCount: 2, hint: input.hint }),
       images: [...input.references, before.desktop, before.mobile],
       schema: schema(designProfileJsonSchema()),
     });
@@ -125,7 +127,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     try {
       const answer = await deps.askCodex({
         kind: "review",
-        prompt: buildReviewPrompt({ demo: input.demo, profile: current.profile, referenceCount: input.references.length, round: revisions, maxRevisions }),
+        prompt: buildReviewPrompt({ demo: input.demo, profile: current.profile, referenceCount: input.references.length, referenceKind: input.referenceKind, round: revisions, maxRevisions }),
         images: [...input.references, shots.desktop, shots.mobile],
         schema: schema(visualReviewJsonSchema()),
       });

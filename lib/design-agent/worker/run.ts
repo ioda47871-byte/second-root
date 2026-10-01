@@ -36,7 +36,9 @@ import { copyToWindows, exportFiles, type WindowsCopy } from "./export";
 import { checkReferenceImages } from "./images";
 import { codeOf, ENVIRONMENT_CODES, publicMessage } from "./messages";
 import { claimNext, ensureQueue, finishJob, hasFinished, inboxCount, inspectProcessing, pickFacts, queueDirs, readJob, requeueJob, type QueueDirs } from "./queue";
+import type { ClientResult } from "../capture-helper/client";
 import { parseInstagramProfileUrl, type ProfileSource } from "./source-url";
+import { captureWebsite, parseWebsiteUrl, websiteTarget, type WebsiteSource } from "./website";
 import { acquireLock, readLedger, writeJsonAtomic, writeLedger, type Holder, type Ledger } from "./state";
 import { cleanStaleTemp, createTempRoot, removeTempRoot } from "./temp";
 
@@ -89,6 +91,14 @@ export interface WorkerOptions {
    * code never passes it, so the capture opens only instagramTarget(source).
    */
   captureTargetFor?: (source: ProfileSource) => CaptureTarget;
+  /** Tests only: capture target for a job's website (a local mock). Production uses websiteTarget. */
+  websiteTargetFor?: (source: WebsiteSource) => CaptureTarget;
+  /**
+   * The signed-in capture, asked of the capture helper (another Linux user;
+   * capture-helper/client.ts). Null / unset: the helper is not installed,
+   * the public capture is used.
+   */
+  captureHelper?: ((input: { requestId: string; url: string; destDir: string }) => Promise<ClientResult>) | null;
   captureSettleMs?: number;
 }
 
@@ -324,8 +334,10 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
   // ---- validate (never retried: the file itself is wrong)
   const job = await readJob(ctx.path);
   if (!job || job.job_id !== jobId) return fail("JOB_INVALID");
-  const source = parseInstagramProfileUrl(job.source.instagram_url);
-  if (!source) return fail("SOURCE_URL_INVALID");
+  const source = job.source.instagram_url === undefined ? null : parseInstagramProfileUrl(job.source.instagram_url);
+  if (job.source.instagram_url !== undefined && !source) return fail("SOURCE_URL_INVALID");
+  const website = job.source.website_url === undefined ? null : parseWebsiteUrl(job.source.website_url);
+  if (job.source.website_url !== undefined && !website) return fail("SOURCE_URL_INVALID");
   const facts = pickFacts(job.facts);
   const demo = factsToDemoView(facts);
   if (!demo) return fail("FACTS_INVALID");
@@ -354,33 +366,89 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     await writeFile(join(runDir, "facts.json"), JSON.stringify(facts, null, 2), { mode: 0o600 });
     await mkdir(refsDir, { recursive: true, mode: 0o700 });
 
-    // ---- capture
-    const target = options.captureTargetFor ? options.captureTargetFor(source) : instagramTarget(source);
-    const capture = await capturePublicProfile({
-      target,
-      outDir: refsDir,
-      launch: () => options.launchBrowser(ctx.childEnv()),
-      settleMs: options.captureSettleMs,
-    });
-    if (capture.status === "retry") {
-      // A network error or a browser failure says nothing about the profile.
-      log(`job ${jobId}: capture failed (${capture.reason}); tried again later`);
-      throw Object.assign(new Error(capture.reason), { code: "SOURCE_CAPTURE_FAILED" });
+    // ---- visual sources, in order: the verified official website, the
+    // signed-in Instagram capture (capture helper, another Linux user), the
+    // public Instagram capture. The first that yields screenshots is used.
+    const sources: Record<string, unknown> = {};
+    let refs: string[] = [];
+    let softened = 0;
+    let visualSource: "website" | "instagram_signed_in" | "instagram_public" | null = null;
+    let retryReason: string | null = null;
+    let publicCapture: Awaited<ReturnType<typeof capturePublicProfile>> | null = null;
+    if (website) {
+      const dir = join(refsDir, "website");
+      await mkdir(dir, { mode: 0o700 });
+      const result = await captureWebsite({
+        target: options.websiteTargetFor ? options.websiteTargetFor(website) : websiteTarget(website),
+        outDir: dir,
+        launch: () => options.launchBrowser(ctx.childEnv()),
+        settleMs: options.captureSettleMs,
+      });
+      sources.website = result.status === "captured" ? { status: "captured", images: result.files.length } : { status: result.status === "retry" ? "failed" : "unavailable", reason: result.reason };
+      if (result.status === "captured") {
+        refs = result.files;
+        softened = result.softened;
+        visualSource = "website";
+      } else if (result.status === "retry") retryReason = result.reason;
+      log(`job ${jobId}: website ${result.status === "captured" ? `captured (${result.files.length})` : `${result.status} (${result.reason})`}`);
     }
-    if (capture.status === "PUBLIC_SOURCE_UNAVAILABLE") {
-      log(`job ${jobId}: PUBLIC_SOURCE_UNAVAILABLE (${capture.detail ?? capture.reason})`);
+    if (!visualSource && source && options.captureHelper) {
+      const dir = join(refsDir, "helper");
+      const result = await options.captureHelper({ requestId: jobId, url: source.url, destDir: dir });
+      sources.instagram_signed_in = { status: result.code, ...(result.reason ? { reason: result.reason } : {}) };
+      if (result.code === "CAPTURED") {
+        refs = result.files;
+        softened = result.softened;
+        visualSource = "instagram_signed_in";
+      }
+      log(`job ${jobId}: signed-in capture ${result.code}${result.reason ? ` (${result.reason})` : ""}`);
+    }
+    if (!visualSource && source) {
+      const dir = join(refsDir, "instagram");
+      await mkdir(dir, { mode: 0o700 });
+      const target = options.captureTargetFor ? options.captureTargetFor(source) : instagramTarget(source);
+      publicCapture = await capturePublicProfile({
+        target,
+        outDir: dir,
+        launch: () => options.launchBrowser(ctx.childEnv()),
+        settleMs: options.captureSettleMs,
+      });
+      if (publicCapture.status === "captured") {
+        refs = publicCapture.files;
+        softened = publicCapture.softened;
+        visualSource = "instagram_public";
+        log(`job ${jobId}: instagram captured (${publicCapture.files.length} image${publicCapture.files.length === 1 ? "" : "s"})`);
+      } else if (publicCapture.status === "retry") {
+        retryReason = publicCapture.reason;
+      } else {
+        log(`job ${jobId}: PUBLIC_SOURCE_UNAVAILABLE (${publicCapture.detail ?? publicCapture.reason})`);
+      }
+    }
+    if (!visualSource && retryReason) {
+      // A network error or a browser failure says nothing about the shop: try the job again later.
+      log(`job ${jobId}: capture failed (${retryReason}); tried again later`);
+      throw Object.assign(new Error(retryReason), { code: "SOURCE_CAPTURE_FAILED" });
+    }
+    const instagramReport =
+      publicCapture === null
+        ? null
+        : publicCapture.status === "captured"
+          ? null
+          : { status: "unavailable", reason: publicCapture.status === "PUBLIC_SOURCE_UNAVAILABLE" ? publicCapture.reason : "LOAD_FAILED", ...(publicCapture.status === "PUBLIC_SOURCE_UNAVAILABLE" && publicCapture.detail ? { detail: publicCapture.detail } : {}) };
+    if (!visualSource) {
       await rm(jobTemp, { recursive: true, force: true });
       tempDeleted = !(await exists(jobTemp));
       const report = {
         ...baseReport(options, jobId, startedAt, now),
         outcome: "PUBLIC_SOURCE_UNAVAILABLE",
-        instagram: { status: "unavailable", reason: capture.reason, ...(capture.detail ? { detail: capture.detail } : {}), images: 0, temp_deleted: tempDeleted },
+        visual_source: null,
+        sources,
+        instagram: { ...(instagramReport ?? { status: "unavailable" }), images: 0, temp_deleted: tempDeleted },
         codex: null,
       };
       return await complete(ctx, runDir, report);
     }
-    log(`job ${jobId}: instagram captured (${capture.files.length} image${capture.files.length === 1 ? "" : "s"})`);
-    const problem = await checkReferenceImages(capture.files);
+    const problem = await checkReferenceImages(refs);
     if (problem) throw Object.assign(new Error(problem), { code: "REFERENCE_CHECK_FAILED" });
 
     // ---- design pipeline
@@ -393,7 +461,7 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     // schemas (and the palette checks) by the pipeline, whichever was sent.
     let schemaMode: "strict" | "loose" = "strict";
     const pipeline: PipelineReport = await runDesignPipeline(
-      { demo, references: capture.files },
+      { demo, references: refs, referenceKind: visualSource === "website" ? "website" : "instagram" },
       {
         askCodex: async ({ kind, prompt, images, schema }) => {
           const limit = kind === "brief" ? BRIEF_TIMEOUT_MS : REVIEW_TIMEOUT_MS;
@@ -447,7 +515,10 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     const report = {
       ...baseReport(options, jobId, startedAt, now),
       outcome: pipeline.status,
-      instagram: { status: "captured", images: capture.files.length, media_softened: capture.softened, temp_deleted: tempDeleted },
+      visual_source: visualSource,
+      sources,
+      references: { images: refs.length, media_softened: softened, temp_deleted: tempDeleted },
+      instagram: visualSource === "website" ? null : { status: "captured", images: refs.length, media_softened: softened, temp_deleted: tempDeleted },
       codex: {
         status: pipeline.status,
         profile_source: pipeline.profileSource,

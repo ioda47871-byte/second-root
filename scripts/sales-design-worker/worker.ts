@@ -5,7 +5,7 @@
  * a time budget. See docs/operations/design-worker-wsl.md.
  *
  *   tsx scripts/sales-design-worker/worker.ts [--max=1] [--budget-seconds=<n>]
- *   tsx scripts/sales-design-worker/worker.ts enqueue --job-id <id> --facts <file.json> --instagram <profile url>
+ *   tsx scripts/sales-design-worker/worker.ts enqueue --job-id <id> --facts <file.json> [--website <verified official site>] [--instagram <profile url>]
  *   tsx scripts/sales-design-worker/worker.ts meta-check --ig-user-id <our IG user id> --username <target>
  *     (Business Discovery PoC: read-only, prints codes and field names only; see
  *      docs/operations/design-worker-meta-check.md)
@@ -27,6 +27,8 @@ import { chromium } from "playwright";
 import { killAllBoundedChildren, runBounded, RunDeadline } from "../../lib/design-agent/bounded-process";
 import { factsToDemoView } from "../../lib/design-agent/preview";
 import { killPreviewServers } from "../../lib/design-agent/preview-server";
+import { requestCapture } from "../../lib/design-agent/capture-helper/client";
+import { SPOOL_ROOT } from "../../lib/design-agent/capture-helper/spool";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 import { API_VERSION, formatMetaCheck, IG_USER_ID, MetaSetupError, readSecretFile, runMetaCheck } from "../../lib/design-agent/worker/meta";
 import { publicMessage } from "../../lib/design-agent/worker/messages";
@@ -34,6 +36,7 @@ import { productionPreview } from "../../lib/design-agent/worker/preview";
 import { ensureQueue, JOB_ID, pickFacts, queueDirs } from "../../lib/design-agent/worker/queue";
 import { abandonActiveJobSync, DEFAULT_MAX_JOBS, RUN_TIME_BUDGET_MS, runDesignWorker, type WorkerReport } from "../../lib/design-agent/worker/run";
 import { parseInstagramProfileUrl, USERNAME } from "../../lib/design-agent/worker/source-url";
+import { parseWebsiteUrl } from "../../lib/design-agent/worker/website";
 import { removeActiveTempRootsSync } from "../../lib/design-agent/worker/temp";
 
 const REPO = resolve(__dirname, "../..");
@@ -70,7 +73,12 @@ async function enqueue(): Promise<number> {
   if (!JOB_ID.test(jobId)) usage("--job-id: lowercase letters, digits and - (3–63). Do not use the shop's name.");
   const factsPath = expand(flag("facts") ?? usage("--facts <file.json> is required."));
   if (insideRepo(factsPath)) usage("--facts must be outside the repository.");
-  const source = parseInstagramProfileUrl(flag("instagram")) ?? usage("--instagram must be https://www.instagram.com/<profile>/ (a public profile page).");
+  const instagram = flag("instagram");
+  const websiteRaw = flag("website");
+  if (instagram === undefined && websiteRaw === undefined) usage("give --instagram <public profile url> and / or --website <verified official site>.");
+  const source = instagram === undefined ? null : (parseInstagramProfileUrl(instagram) ?? usage("--instagram must be https://www.instagram.com/<profile>/ (a public profile page)."));
+  // Only a site the sales agent or a person has VERIFIED as the shop's own official site.
+  const website = websiteRaw === undefined ? null : (parseWebsiteUrl(websiteRaw) ?? usage("--website must be the shop's official http(s) site (no IP, port, login or social-media host)."));
   const facts = pickFacts(JSON.parse(await readFile(factsPath, "utf8")) as Record<string, unknown>);
   if (!factsToDemoView(facts)) usage("the facts do not pass the demo fact filter (name and a valid category are required).");
   const dirs = queueDirs(paths.queue);
@@ -79,7 +87,7 @@ async function enqueue(): Promise<number> {
     if ((await readdir(dir)).includes(`${jobId}.json`)) usage(`a job with id ${jobId} is already queued or done; use a new id.`);
   }
   const temp = join(dirs.inbox, `.tmp-${jobId}-${process.pid}`);
-  await writeFile(temp, `${JSON.stringify({ version: 1, job_id: jobId, facts, source: { instagram_url: source.url } }, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(temp, `${JSON.stringify({ version: 1, job_id: jobId, facts, source: { ...(source ? { instagram_url: source.url } : {}), ...(website ? { website_url: website.url } : {}) } }, null, 2)}\n`, { mode: 0o600 });
   await rename(temp, join(dirs.inbox, `${jobId}.json`));
   say(`queued job ${jobId}`);
   return 0;
@@ -188,6 +196,10 @@ async function run(): Promise<number> {
     env: process.env,
     launchBrowser: launch,
     startPreview: productionPreview(REPO, launch),
+    // The signed-in capture is asked of the capture helper (user sr-igcapture), only when it is installed.
+    captureHelper: (await lstat(join(SPOOL_ROOT, "requests")).catch(() => null))
+      ? (input) => requestCapture({ ...input, timeoutMs: 8 * 60_000 })
+      : null,
     log: say,
   });
   const summary =

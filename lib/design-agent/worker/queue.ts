@@ -7,7 +7,8 @@
 //   done/<job_id>.json         reached an expected outcome (+ <job_id>.result.json)
 //   failed/<job_id>.json       could not be processed (+ <job_id>.result.json)
 //
-// A job holds verified facts and one public Instagram profile URL. Nothing
+// A job holds verified facts, the shop's verified official website and / or
+// its public Instagram profile URL. Nothing
 // in the queue is ever read by the web app or committed.
 import { lstat, mkdir, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -21,7 +22,10 @@ export const JobSchema = z.strictObject({
   version: z.literal(1),
   job_id: z.string().regex(JOB_ID),
   facts: z.record(z.string(), z.unknown()),
-  source: z.strictObject({ instagram_url: z.string().max(200) }),
+  // At least one: the verified official website and / or the public Instagram profile.
+  source: z
+    .strictObject({ instagram_url: z.string().max(200).optional(), website_url: z.string().max(300).optional() })
+    .refine((s) => s.instagram_url !== undefined || s.website_url !== undefined),
 });
 export type Job = z.infer<typeof JobSchema>;
 

@@ -156,6 +156,20 @@ export async function startMockSite(): Promise<MockSite> {
       case "/li_loop/":
         res.writeHead(302, { location: "/li_loop/" });
         return res.end();
+      case "/site_home/":
+        return send(
+          200,
+          page(
+            `<header style="height:120px;background:#2b2b2b;color:#f4efe6;padding:30px"><h1>EXAMPLE BAKE</h1></header>` +
+              `<nav><a href="/site_home/about/">About</a> <a href="/site_home/menu/">メニュー</a> <a href="/site_home/contact/">Contact</a> <a href="http://localhost:${port}/site_offsite/">Shop online</a></nav>` +
+              `<main><img width="600" height="400" src="${tile(3)}"><p>Fictional site for tests.</p></main>`,
+          ),
+        );
+      case "/site_home/about/":
+      case "/site_home/menu/":
+        return send(200, page(`<h2>${req.url}</h2><img width="400" height="300" src="${tile(5)}">`));
+      case "/site_leaves/":
+        return send(200, page(`<h1>x</h1><script>setTimeout(()=>{location.href="http://localhost:${port}/site_offsite/";},50);</script>`));
       case "/li_gone/":
         return send(410, page("gone"));
       case "/li_private/":
@@ -274,10 +288,18 @@ export function makeLayout(): Layout {
   return l;
 }
 
-export function writeJob(l: Layout, jobId: string, instagramUrl = "https://www.instagram.com/example_shop/", facts: Record<string, unknown> = FACTS, dir = "inbox"): string {
+export function writeJob(
+  l: Layout,
+  jobId: string,
+  instagramUrl: string | null = "https://www.instagram.com/example_shop/",
+  facts: Record<string, unknown> = FACTS,
+  dir = "inbox",
+  websiteUrl?: string,
+): string {
   mkdirSync(join(l.queue, dir), { recursive: true, mode: 0o700 });
   const path = join(l.queue, dir, `${jobId}.json`);
-  writeFileSync(path, JSON.stringify({ version: 1, job_id: jobId, facts, source: { instagram_url: instagramUrl } }), { mode: 0o600 });
+  const source = { ...(instagramUrl === null ? {} : { instagram_url: instagramUrl }), ...(websiteUrl ? { website_url: websiteUrl } : {}) };
+  writeFileSync(path, JSON.stringify({ version: 1, job_id: jobId, facts, source }), { mode: 0o600 });
   return path;
 }
 
@@ -323,7 +345,8 @@ export function fakePreview(l: Layout, log: PreviewLog, opts: { failRender?: boo
           // the screenshots of the shop exist while the job runs
           const tmp = process.env.TMPDIR ?? "";
           const jobDir = readdirSync(tmp).find((n) => n.startsWith("job-"));
-          log.refsSeen.push(jobDir ? readdirSync(join(tmp, jobDir, "refs")).length : -1);
+          // (refs/<source>/<file>: count the files of every source)
+          log.refsSeen.push(jobDir ? readdirSync(join(tmp, jobDir, "refs"), { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).length : -1);
           const shots = { desktop: join(shotsDir, `${candidate}-desktop.png`), mobile: join(shotsDir, `${candidate}-mobile.png`) };
           writeFileSync(shots.desktop, PNG);
           writeFileSync(shots.mobile, PNG);

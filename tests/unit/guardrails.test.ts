@@ -86,7 +86,7 @@ describe("guardrails", () => {
       // In the design agent / worker: Instagram profile URLs are placeholders or fictional test accounts only.
       if (!/^(lib\/design-agent|scripts\/sales-design|tests\/unit\/design-agent|docs\/operations\/design-)/.test(f)) continue;
       for (const m of text.matchAll(/(?<![\w.-])(?:www\.)?instagram\.com\/([A-Za-z0-9._]+)/g)) {
-        if (!/^(example|example_shop|example\.shop|few_posts|iframe_shop|popup_shop|error_shop|short_grid|stripes_shop|hop_shop|wall_shop|login_redirect|redirect_shop|jsnav_shop|private_shop|rate_shop|empty_shop|x|exa|\.example|p|reel|explore|accounts)$/.test(m[1]!)) hits.push(`${f}: instagram.com/${m[1]}`);
+        if (!/^(example|example_shop|example\.shop|few_posts|iframe_shop|popup_shop|error_shop|short_grid|stripes_shop|hop_shop|wall_shop|login_redirect|redirect_shop|jsnav_shop|private_shop|rate_shop|empty_shop|li_shop|x|exa|\.example|p|reel|explore|accounts)$/.test(m[1]!)) hits.push(`${f}: instagram.com/${m[1]}`);
       }
     }
     expect(hits).toEqual([]);
@@ -95,10 +95,13 @@ describe("guardrails", () => {
   it("lets the design worker open only public Instagram profile URLs (DEV-028 worker)", () => {
     // The production entry never injects a capture target; only tests do.
     const entry = readFileSync("scripts/sales-design-worker/worker.ts", "utf8");
-    expect(entry).not.toMatch(/captureTargetFor|allowNavigation/);
+    expect(entry).not.toMatch(/captureTargetFor|websiteTargetFor|allowNavigation/);
     const run = readFileSync("lib/design-agent/worker/run.ts", "utf8");
     expect(run).toContain("options.captureTargetFor ? options.captureTargetFor(source) : instagramTarget(source)");
-    expect(run).toMatch(/const source = parseInstagramProfileUrl\(job\.source\.instagram_url\);\n\s*if \(!source\) return fail\("SOURCE_URL_INVALID"\);/);
+    // (and its verified official website: websiteTarget, the site's own host only)
+    expect(run).toContain("options.websiteTargetFor ? options.websiteTargetFor(website) : websiteTarget(website)");
+    expect(run).toMatch(/const source = job\.source\.instagram_url === undefined \? null : parseInstagramProfileUrl\(job\.source\.instagram_url\);\n\s*if \(job\.source\.instagram_url !== undefined && !source\) return fail\("SOURCE_URL_INVALID"\);/);
+    expect(run).toMatch(/const website = job\.source\.website_url === undefined \? null : parseWebsiteUrl\(job\.source\.website_url\);\n\s*if \(job\.source\.website_url !== undefined && !website\) return fail\("SOURCE_URL_INVALID"\);/);
     // The web app never imports the worker.
     const webFiles = sourceFiles.filter((f) => f.startsWith("app/") || f.startsWith("components/") || f.startsWith("lib/sales/") || f.startsWith("lib/admin/"));
     expect(webFiles.filter((f) => /lib\/design-agent\/worker\//.test(readFileSync(f, "utf8")))).toEqual([]);

@@ -56,13 +56,24 @@ function factsBlock(demo: DemoView): string {
   return JSON.stringify(facts, null, 2);
 }
 
-export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number; currentDemoCount: number; hint?: string }): string {
+/** What the reference screenshots are (all were privacy-processed: photos blurred and pixelated). */
+function referencesLine(count: number, kind: "website" | "instagram" | undefined): string {
+  const what =
+    kind === "website"
+      ? "the top screen of a few pages of the shop's own official website"
+      : kind === "instagram"
+        ? "the shop's public Instagram profile (header and post grid)"
+        : "the shop's public pages (Instagram profile header and post grid, or its site)";
+  return `the first ${count} are ${what}; photos in them are deliberately blurred and pixelated — read colour, density, spacing, type and layout, not details`;
+}
+
+export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number; referenceKind?: "website" | "instagram"; currentDemoCount: number; hint?: string }): string {
   return [
     "You are the art director for a one-page proposal demo website for a small shop in Nagoya.",
     "Choose visual settings so the page feels designed for this particular shop, not a template. The shop name is the hero's main visual.",
     VOCABULARY,
     RULES,
-    `Attached images: the first ${input.referenceCount} are the shop's public pages (Instagram profile header and post grid, or its site), prepared by a person.`,
+    `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)}.`,
     `The last ${input.currentDemoCount} show the current generic demo (desktop, then mobile) — the look to move away from.`,
     input.hint ? `A starting idea from the team (you may choose something better if the material supports it): ${input.hint}` : "",
     "Verified facts (the only shop information the page will show):",
@@ -72,12 +83,12 @@ export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number
     .join("\n\n");
 }
 
-export function buildReviewPrompt(input: { demo: DemoView; profile: DesignProfile; referenceCount: number; round: number; maxRevisions: number }): string {
+export function buildReviewPrompt(input: { demo: DemoView; profile: DesignProfile; referenceCount: number; referenceKind?: "website" | "instagram"; round: number; maxRevisions: number }): string {
   return [
     "You are reviewing a rendered proposal demo against the shop's own public presence.",
     VOCABULARY,
     RULES,
-    `Attached images: the first ${input.referenceCount} are the shop's public pages (reference). The last two are the rendered demo: desktop (1440px wide), then mobile (390px wide).`,
+    `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)} (reference). The last two are the rendered demo: desktop (1440px wide), then mobile (390px wide).`,
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise and give a complete revised_profile using only the vocabulary above.",

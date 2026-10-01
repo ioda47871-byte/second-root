@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { acquireLock, currentHolder, LOCK_STALE_MS } from "@/lib/design-agent/worker/state";
 import { cleanStaleTemp } from "@/lib/design-agent/worker/temp";
 import { AMERICAN_EDITORIAL, review } from "./fixtures";
-import { allText, codexCalls, LEAK, makeLayout, runWorker, startMockSite, WORKER_SHA, writeJob, type Layout, type MockSite } from "./worker-support";
+import { allText, codexCalls, LEAK, makeLayout, PNG, runWorker, startMockSite, WORKER_SHA, writeJob, type Layout, type MockSite } from "./worker-support";
 
 // The design worker end to end with a real headless Chromium against a local
 // mock of a public profile page, the fake Codex CLI and a fake preview
@@ -584,5 +584,80 @@ describe("stale temporary directories", () => {
     expect(report.status).toBe("idle");
     expect(existsSync(stale)).toBe(false);
     expect(logs.join("\n")).toContain("removed 1 stale temporary directory");
+  });
+});
+
+describe("visual sources: website → signed-in helper → public Instagram → unavailable", () => {
+  const siteTarget = (path: string) => () => ({ url: `${site.origin}${path}`, allowNavigation: (u: string) => u.startsWith(`${site.origin}/`) });
+  const WEBSITE = "https://www.example-bakery.jp/";
+
+  it("uses the verified official website first: home + about/menu pages, privacy-processed, nothing else opened", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-site", "https://www.instagram.com/example_shop/", undefined, "inbox", WEBSITE);
+    const before = site.requests.length;
+    const helperCalls: string[] = [];
+    const { report, logs, preview } = await runWorker(l, site, {
+      websiteTargetFor: siteTarget("/site_home/"),
+      captureHelper: async (i) => (helperCalls.push(i.requestId), { code: "CAPTURED", files: [], softened: 0 }),
+    });
+    expect(report, JSON.stringify({ report, logs })).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
+    const rep = json(join(l.out, "job-site", "report.json"));
+    expect(rep).toMatchObject({ visual_source: "website", sources: { website: { status: "captured", images: 3 } }, instagram: null, references: { images: 3, temp_deleted: true } });
+    expect(rep.references.media_softened).toBeGreaterThan(0);
+    expect(preview.refsSeen.every((n) => n === 3)).toBe(true);
+    // the helper and Instagram were not needed
+    expect(helperCalls).toEqual([]);
+    const opened = site.requests.slice(before).filter((r) => !r.includes("/p/"));
+    expect(opened.some((r) => r.includes("example_shop"))).toBe(false);
+    expect(opened.some((r) => r.includes("/site_home/contact/"))).toBe(false); // not an about/menu/access page
+    expect(opened.some((r) => r.startsWith("localhost:"))).toBe(false); // the off-site link was never followed
+    // the prompt says what the references are, and Codex got them
+    const brief = execCalls(l)[0]!;
+    expect(brief.args.filter((a: string) => a.startsWith("--image=")).length).toBe(5);
+    expect(ls(l.tmp)).toEqual([]);
+  });
+
+  it("falls to the signed-in capture (helper) when there is no website, then to the public capture when the helper cannot", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-helper");
+    const { report } = await runWorker(l, site, {
+      captureHelper: async (i) => {
+        mkdirSync(i.destDir, { recursive: true, mode: 0o700 });
+        const files = ["profile.png", "grid-top.png"].map((n) => join(i.destDir, n));
+        for (const f of files) writeFileSync(f, PNG, { mode: 0o600 });
+        return { code: "CAPTURED", files, softened: 7 };
+      },
+    });
+    expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
+    expect(json(join(l.out, "job-helper", "report.json"))).toMatchObject({ visual_source: "instagram_signed_in", sources: { instagram_signed_in: { status: "CAPTURED" } }, references: { images: 2, media_softened: 7 } });
+
+    const l2 = makeLayout();
+    writeJob(l2, "job-expired");
+    const second = await runWorker(l2, site, { captureHelper: async () => ({ code: "LOGIN_REQUIRED", reason: "NO_PROFILE", files: [], softened: 0 }) });
+    expect(second.report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "done" }] });
+    expect(json(join(l2.out, "job-expired", "report.json"))).toMatchObject({
+      visual_source: "instagram_public",
+      sources: { instagram_signed_in: { status: "LOGIN_REQUIRED", reason: "NO_PROFILE" } },
+      instagram: { status: "captured" },
+    });
+  });
+
+  it("a website that tries to leave is not used; with nothing else it is PUBLIC_SOURCE_UNAVAILABLE", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-leaves", null, undefined, "inbox", WEBSITE);
+    const before = site.requests.length;
+    const { report } = await runWorker(l, site, { websiteTargetFor: siteTarget("/site_leaves/") });
+    expect(report).toMatchObject({ status: "finished", jobs: [{ status: "done", outcome: "PUBLIC_SOURCE_UNAVAILABLE" }] });
+    expect(json(join(l.out, "job-leaves", "report.json"))).toMatchObject({ visual_source: null, sources: { website: { status: "unavailable", reason: "OFF_SITE_REDIRECT" } }, codex: null });
+    expect(site.requests.slice(before).some((r) => r.startsWith("localhost:"))).toBe(false);
+    expect(execCalls(l)).toEqual([]);
+  });
+
+  it("refuses website URLs that are not a shop's own site", async () => {
+    const { parseWebsiteUrl } = await import("@/lib/design-agent/worker/website");
+    for (const bad of ["http://127.0.0.1/", "https://localhost/", "https://user:pw@shop.jp/", "https://shop.jp:8443/", "https://www.instagram.com/x/", "https://facebook.com/x", "file:///etc/passwd", "javascript:alert(1)", "https://shop.local/", "ftp://shop.jp/"]) {
+      expect(parseWebsiteUrl(bad), bad).toBeNull();
+    }
+    expect(parseWebsiteUrl("https://www.example-bakery.jp/about#x")).toEqual({ url: "https://www.example-bakery.jp/about", host: "www.example-bakery.jp" });
   });
 });
