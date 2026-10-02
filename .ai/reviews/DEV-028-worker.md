@@ -481,3 +481,17 @@ Not from a real-shop review: found with fictional shops while fixing the liner, 
 **Browser check (next start, local preview, fictional facts, 3 names × 3 profiles × 390 / 1440):** stamp and liner side by side above the name in every case; no horizontal overflow; phone hero 365–533 px (grows for the long split name), desktop 504 px floor or more.
 
 **Still not changed:** `dot_grid` is a faint absolutely positioned texture at the top right; not reported by a review, not changed here.
+
+## Phase 3 end-to-end PoC done (2026-10-02, phase3-003)
+
+**Real-machine run (human, WSL, worker at 2af0465):** job `phase3-003`, signed-in capture `CAPTURED`.
+- candidate-0: `revise`, 19/25
+- candidate-1: `revise`, 19/25 (revision 1)
+- candidate-2: `accept`, 20/25 (revision 2, the limit)
+- outcome `done`; `windows_copy: unavailable` (no export directory reachable for that run; the run directory is the source of truth).
+
+The three real-shop runs, in order: phase3-001 blocked on the address typography (fixed in d0441cf), phase3-002 blocked after one revision on the phone hero height and the liner overlap (fixed in 7c86885), the stamp ring overlap was fixed before the next run (2af0465), and phase3-003 reached `accept` within the two-revision limit. Every block was the designed `RENDERER_CHANGE_NEEDED` stop; each fix was a generic renderer change with fictional-data tests, never a shop-specific branch, and the profile schema, prompts, revision limit and BLOCKED boundary stayed the same.
+
+The run's files (report, candidates, reviews, screenshots) stay in the requester's run directory on that machine. No shop name, URL or image is in this repository or the PR.
+
+**Left to people:** look at the final before / after images and decide whether the demo can be shown; decide what happens with PR #43 (Draft; merge is a human decision); DB schema and any connection to the sales Routine remain behind human approval.
