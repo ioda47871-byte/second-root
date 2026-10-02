@@ -373,3 +373,27 @@ export async function stageInputs(workDir: string, images: readonly string[]): P
   }
   return out;
 }
+
+/**
+ * Writes already-checked PNG bytes (DEV-029: design assets read and verified by
+ * the caller) into <workDir>/inputs as photo-N.png. Codex gets these copies
+ * only; the store they came from is never named. Throws CODEX_INPUT_REJECTED
+ * for anything that is not a PNG of a sane size.
+ */
+export async function stageInputBytes(workDir: string, pngs: readonly Buffer[]): Promise<string[]> {
+  const dir = join(workDir, "inputs");
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const out: string[] = [];
+  for (const [i, data] of pngs.entries()) {
+    if (data.length < 24 || data.length > MAX_INPUT_BYTES || imageType(data) !== "png") throw new SandboxError("CODEX_INPUT_REJECTED");
+    const target = join(dir, `photo-${i + 1}.png`);
+    const copy = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    try {
+      await copy.writeFile(data);
+    } finally {
+      await copy.close();
+    }
+    out.push(target);
+  }
+  return out;
+}

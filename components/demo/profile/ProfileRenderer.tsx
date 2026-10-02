@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { RenderFeature, RenderPhoto, RenderPhotos } from "@/lib/design-agent/assets/resolve";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
@@ -64,7 +65,38 @@ function FactText({ text }: { text: string }) {
   );
 }
 
-export default function ProfileRenderer({ demo, profile }: { demo: DemoView; profile: DesignProfile }) {
+const ratio = (aspect: string) => aspect.replace(":", " / ");
+const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
+
+/**
+ * One photo (DEV-029). Its area is a grid cell of its own: no page text is ever
+ * drawn over it. A generated image always carries the fixed "イメージ画像"
+ * label, drawn here and not switchable by the profile or the direction.
+ */
+function PhotoFigure({ photo, className, role, side }: { photo: RenderPhoto; className: string; role: "hero" | RenderFeature["slot"]; side?: RenderFeature["side"] }) {
+  const style = {
+    "--ar": ratio(photo.aspect.mobile),
+    "--ar-d": ratio(photo.aspect.desktop),
+    "--fx": pct(photo.mobileFocal.x),
+    "--fy": pct(photo.mobileFocal.y),
+    "--fx-d": pct(photo.focal.x),
+    "--fy-d": pct(photo.focal.y),
+  } as CSSProperties;
+  return (
+    <figure className={`${styles.photo} ${className}`} data-asset={photo.assetId} data-role={role} data-fit={photo.fit} data-treatment={photo.treatment} data-source={photo.sourceKind} data-side={side} style={style}>
+      {/* A local preview route: no image optimisation, no remote loader. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className={styles.photoImg} src={photo.src} alt="" width={photo.width} height={photo.height} loading="eager" decoding="async" />
+      {photo.sourceKind === "generated_concept" && (
+        <span className={styles.imageLabel} data-image-label="">
+          イメージ画像
+        </span>
+      )}
+    </figure>
+  );
+}
+
+export default function ProfileRenderer({ demo, profile, photos = null }: { demo: DemoView; profile: DesignProfile; photos?: RenderPhotos | null }) {
   const rows = infoRows(demo);
   const address = rows.find((r) => r.key === "address");
   const others = rows.filter((r) => r !== address);
@@ -73,6 +105,80 @@ export default function ProfileRenderer({ demo, profile }: { demo: DemoView; pro
   const lines = profile.heroLayout.layout === "split_crop" ? nameLines(demo.name) : [demo.name];
   const labels = motifs.has("location_labels") ? locationLabels(demo) : [];
   const t = profile.typography;
+  const heroPhoto = photos?.hero ?? null;
+  const split = photos?.layout === "split_hero" && heroPhoto !== null;
+  const framed = photos?.layout === "framed_hero" && heroPhoto !== null;
+  const feature = (slot: RenderFeature["slot"]) => photos?.features.find((f) => f.slot === slot) ?? null;
+  const aboutPhoto = feature("about");
+  const visitPhoto = feature("visit");
+
+  const hero = (
+    <header
+      className={styles.hero}
+      data-layout={profile.heroLayout.layout}
+      data-height={profile.heroLayout.height}
+      data-photo={split ? "split" : framed ? "framed" : undefined}
+      data-photo-section={framed ? "hero" : undefined}
+    >
+      {motifs.has("ruled_frame") && <span className={styles.frame} aria-hidden="true" />}
+      {motifs.has("corner_marks") && (
+        <span className={styles.corners} aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <span />
+        </span>
+      )}
+      {motifs.has("dot_grid") && <span className={styles.dots} aria-hidden="true" />}
+
+      <div className={styles.folio}>
+        <span lang="en">{CATEGORY_EN[demo.category]}</span>
+        {motifs.has("monogram") && !motifs.has("stamp_ring") && (
+          <span className={styles.monogram} aria-hidden="true">
+            {mark}
+          </span>
+        )}
+        <span className={styles.labels} lang="en">
+          {labels.length > 0
+            ? labels.map((label) => (
+                <span key={label} className={styles.label}>
+                  {label}
+                </span>
+              ))
+            : null}
+        </span>
+      </div>
+
+      {(motifs.has("stamp_ring") || motifs.has("muffin_paper_svg")) && (
+        <div className={styles.motifRow} aria-hidden="true">
+          {motifs.has("stamp_ring") && (
+            <span className={styles.stamp}>
+              <span className={styles.stampMark}>{mark}</span>
+            </span>
+          )}
+          {motifs.has("muffin_paper_svg") && <PleatsArt />}
+        </div>
+      )}
+
+      {framed && <PhotoFigure photo={heroPhoto} className={styles.framePhoto} role="hero" />}
+
+      <div className={styles.title}>
+        <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length}>
+          {lines.map((line, i) => (
+            <span key={`${i}-${line}`} className={styles.line}>
+              {i > 0 ? " " : null}
+              <span className={styles.lineText}>{line}</span>
+            </span>
+          ))}
+        </h1>
+      </div>
+
+      <p className={styles.dek}>
+        <span className={styles.rule} aria-hidden="true" />
+        <span>{areaLabel(demo)}</span>
+      </p>
+    </header>
+  );
 
   return (
     <DemoFrame
@@ -97,72 +203,23 @@ export default function ProfileRenderer({ demo, profile }: { demo: DemoView; pro
         data-intro={profile.motion.intro}
         data-fade={profile.motion.sectionFade ? "" : undefined}
       >
-        <header className={styles.hero} data-layout={profile.heroLayout.layout} data-height={profile.heroLayout.height}>
-          {motifs.has("ruled_frame") && <span className={styles.frame} aria-hidden="true" />}
-          {motifs.has("corner_marks") && (
-            <span className={styles.corners} aria-hidden="true">
-              <span />
-              <span />
-              <span />
-              <span />
-            </span>
-          )}
-          {motifs.has("dot_grid") && <span className={styles.dots} aria-hidden="true" />}
-
-          <div className={styles.folio}>
-            <span lang="en">{CATEGORY_EN[demo.category]}</span>
-            {motifs.has("monogram") && !motifs.has("stamp_ring") && (
-              <span className={styles.monogram} aria-hidden="true">
-                {mark}
-              </span>
-            )}
-            <span className={styles.labels} lang="en">
-              {labels.length > 0
-                ? labels.map((label) => (
-                    <span key={label} className={styles.label}>
-                      {label}
-                    </span>
-                  ))
-                : null}
-            </span>
+        {split ? (
+          <div className={styles.heroSplit} data-photo-section="hero">
+            <PhotoFigure photo={heroPhoto} className={styles.splitPhoto} role="hero" />
+            {hero}
           </div>
-
-          {(motifs.has("stamp_ring") || motifs.has("muffin_paper_svg")) && (
-            <div className={styles.motifRow} aria-hidden="true">
-              {motifs.has("stamp_ring") && (
-                <span className={styles.stamp}>
-                  <span className={styles.stampMark}>{mark}</span>
-                </span>
-              )}
-              {motifs.has("muffin_paper_svg") && <PleatsArt />}
-            </div>
-          )}
-
-          <div className={styles.title}>
-            <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length}>
-              {lines.map((line, i) => (
-                <span key={`${i}-${line}`} className={styles.line}>
-                  {i > 0 ? " " : null}
-                  <span className={styles.lineText}>{line}</span>
-                </span>
-              ))}
-            </h1>
-          </div>
-
-          <p className={styles.dek}>
-            <span className={styles.rule} aria-hidden="true" />
-            <span>{areaLabel(demo)}</span>
-          </p>
-
-        </header>
+        ) : (
+          hero
+        )}
 
         <main className={styles.main}>
           {demo.description && (
-            <section className={styles.section} aria-labelledby="pr-about">
+            <section className={styles.section} aria-labelledby="pr-about" data-photo-section={aboutPhoto ? "about" : undefined}>
               <h2 id="pr-about" className={styles.heading}>
                 <span lang="en">About</span>
               </h2>
               <p className={styles.lead}>{demo.description}</p>
+              {aboutPhoto && <PhotoFigure photo={aboutPhoto} className={styles.band} role="about" side={aboutPhoto.side} />}
             </section>
           )}
 
@@ -184,7 +241,7 @@ export default function ProfileRenderer({ demo, profile }: { demo: DemoView; pro
           )}
 
           {rows.length > 0 && (
-            <section className={styles.section} aria-labelledby="pr-visit" data-single={rows.length === 1 ? "" : undefined}>
+            <section className={styles.section} aria-labelledby="pr-visit" data-single={rows.length === 1 ? "" : undefined} data-photo-section={visitPhoto ? "visit" : undefined}>
               <h2 id="pr-visit" className={styles.heading}>
                 <span lang="en">Visit</span>
                 <span className={styles.headingJa}>店舗のご案内</span>
@@ -228,6 +285,7 @@ export default function ProfileRenderer({ demo, profile }: { demo: DemoView; pro
                   </dl>
                 )}
               </div>
+              {visitPhoto && <PhotoFigure photo={visitPhoto} className={styles.band} role="visit" side={visitPhoto.side} />}
             </section>
           )}
         </main>

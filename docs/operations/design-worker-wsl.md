@@ -251,6 +251,8 @@ SR_DESIGN_EXPORT_DIR=/mnt/c/Users/<windows-user>/Desktop/second-root-codex-resul
   - `blocked`
   - `renderer_change_needed`
   - `notes`（符号のみ）
+- `timing`（DEV-029）: Codex の exec ごとの `stage`（`profile_brief` / `photo_analysis` / `image_direction(_revision)` / `visual_review(_revision)`）・`duration_ms`・`schema`・`result`（`ok` か符号）、`capture_ms`、`pipeline_ms`、合計と最も遅い call。ログにも `codex <stage> <ms> ms <schema> <result>` の 1 行が出る
+- `photos`（DEV-029。写真のない job は null）: 写真数、analysis の結果、final の layout、種類ごとの Codex call 数
 - `windows_copy`
 
 report・ログ・ledger・job の記録に載るのは符号と定型文だけである

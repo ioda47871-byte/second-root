@@ -27,6 +27,10 @@ import { DeadlineError, killAllBoundedChildren, type RunDeadline } from "../boun
 import { assertChatGptSignIn, CodexError, fromSandboxError, removeStaleCodexSessions, runCodexJson } from "../codex";
 import { workerProtectedPaths } from "../protected-paths";
 import { prepareCodexSandbox, type CodexSandbox } from "../sandbox";
+import { assetStoreRoot, checkStoreRoot, loadManifest } from "../assets/intake";
+import type { AssetManifest } from "../assets/manifest";
+import { loadPhotoInputs, type PhotoInput } from "../assets/photo-codex";
+import type { PlacedPhoto } from "../assets/render-check";
 import { runDesignPipeline, type PipelineReport, type Shots } from "../pipeline";
 import { factsToDemoView } from "../preview";
 import { looseJsonSchema } from "../profile";
@@ -42,12 +46,15 @@ import type { EgressPolicy } from "./egress-proxy";
 import { captureWebsite, parseWebsiteUrl, websiteTarget, type WebsiteSource } from "./website";
 import { acquireLock, readLedger, writeJsonAtomic, writeLedger, type Holder, type Ledger } from "./state";
 import { cleanStaleTemp, createTempRoot, removeTempRoot } from "./temp";
+import { CallTimer, type PipelineCallKind } from "./timing";
 
 export const RUN_TIME_BUDGET_MS = 50 * 60 * 1000;
 export const MAX_JOB_ATTEMPTS = 2;
 export const DEFAULT_MAX_JOBS = 1;
 const BRIEF_TIMEOUT_MS = 15 * 60 * 1000;
 const REVIEW_TIMEOUT_MS = 10 * 60 * 1000;
+/** PhotoAnalysis / ImageDirection (DEV-029): one call each, photos attached as work-dir copies. */
+const PHOTO_TIMEOUT_MS = 10 * 60 * 1000;
 const MIN_LONG_CALL_MS = 60 * 1000;
 /** The longest wait for the capture helper's answer, and the run time kept for Codex after it. */
 const HELPER_WAIT_MS = 8 * 60 * 1000;
@@ -56,7 +63,11 @@ const MIN_HELPER_WAIT_MS = 60 * 1000;
 
 export interface Renderer {
   /** Screenshots of /design-preview/<runId>?profile=<candidate> into shotsDir. */
-  render(runId: string, candidate: string, shotsDir: string): Promise<{ shots: Shots; overflow: string[] }>;
+  render(
+    runId: string,
+    candidate: string,
+    shotsDir: string,
+  ): Promise<{ shots: Shots; overflow: string[]; /** DEV-029: photo-section crops below the full-page cap */ sections?: string[]; /** DEV-029: the page's photos, for the render check */ placed?: PlacedPhoto[] }>;
 }
 
 export interface PreviewSession {
@@ -373,6 +384,7 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     await writeFile(join(runDir, "facts.json"), JSON.stringify(facts, null, 2), { mode: 0o600 });
     await mkdir(refsDir, { recursive: true, mode: 0o700 });
 
+    const captureStart = performance.now();
     // ---- visual sources, in order: the verified official website, the
     // signed-in Instagram capture (capture helper, another Linux user), the
     // public Instagram capture. The first that yields screenshots is used.
@@ -464,11 +476,18 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       };
       return await complete(ctx, runDir, report);
     }
+    const captureMs = Math.round(performance.now() - captureStart);
     const problem = await checkReferenceImages(refs);
     if (problem) throw Object.assign(new Error(problem), { code: "REFERENCE_CHECK_FAILED" });
 
-    // ---- design pipeline
+    // ---- the job's photos (DEV-029): the asset store job with this job's id,
+    // nothing else. Its manifest and every photo are checked (local preview
+    // allowed, PNG, size, hash, no link); any problem means a page without photos.
     const notes: string[] = [];
+    const photos = await jobPhotos(ctx, jobId);
+    if (photos.note) notes.push(photos.note);
+
+    // ---- design pipeline
     const overflow: string[] = [];
     // Every job starts with the strict schema. If the CLI refuses it (it
     // fails, or answers without JSON), that one call is retried once with the
@@ -476,26 +495,50 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     // schema from the start. Answers are always checked against the full zod
     // schemas (and the palette checks) by the pipeline, whichever was sent.
     let schemaMode: "strict" | "loose" = "strict";
+    const timer = new CallTimer(undefined, (line) => log(`job ${jobId}: ${line}`));
+    const withSchemaFallback = async (kind: PipelineCallKind, schema: object, run: (s: object) => Promise<unknown>) => {
+      const stage = timer.next(kind);
+      const ask = (s: object) => timer.time(stage, s === schema ? "strict" : "loose", () => run(s));
+      if (schemaMode === "loose") return ask(looseJsonSchema(schema));
+      try {
+        return await ask(schema);
+      } catch (error) {
+        // Only a refused schema falls back; any other failure (timeout,
+        // quota, sign-in) is reported as it is. One retry, never more.
+        if (!(error instanceof CodexError) || (error.code !== "CODEX_EXEC_FAILED" && error.code !== "CODEX_NO_JSON")) throw error;
+        schemaMode = "loose";
+        notes.push(`SCHEMA_LOOSE_AFTER_${kind.toUpperCase()}_${error.code}`);
+        log(`job ${jobId}: ${kind} ${error.code} with the strict schema; loose schema from here on`);
+        return ask(looseJsonSchema(schema));
+      }
+    };
+    const pipelineStart = performance.now();
     const pipeline: PipelineReport = await runDesignPipeline(
-      { demo, references: refs, referenceKind: visualSource === "website" ? "website" : "instagram" },
       {
-        askCodex: async ({ kind, prompt, images, schema }) => {
+        demo,
+        references: refs,
+        referenceKind: visualSource === "website" ? "website" : "instagram",
+        ...(photos.input ? { photos: photos.input } : {}),
+      },
+      {
+        askCodex: ({ kind, prompt, images, schema }) => {
           const limit = kind === "brief" ? BRIEF_TIMEOUT_MS : REVIEW_TIMEOUT_MS;
           // The time left is read again for each call, so a retry never overruns the run.
-          const ask = (s: object) =>
-            runCodexJson({ sandbox: ctx.sandbox, prompt, images, schema: s, timeoutMs: options.deadline.timeoutFor(limit, MIN_LONG_CALL_MS) });
-          if (schemaMode === "loose") return ask(looseJsonSchema(schema));
-          try {
-            return await ask(schema);
-          } catch (error) {
-            // Only a refused schema falls back; any other failure (timeout,
-            // quota, sign-in) is reported as it is. One retry, never more.
-            if (!(error instanceof CodexError) || (error.code !== "CODEX_EXEC_FAILED" && error.code !== "CODEX_NO_JSON")) throw error;
-            schemaMode = "loose";
-            notes.push(`SCHEMA_LOOSE_AFTER_${kind.toUpperCase()}_${error.code}`);
-            log(`job ${jobId}: ${kind} ${error.code} with the strict schema; loose schema from here on`);
-            return ask(looseJsonSchema(schema));
-          }
+          return withSchemaFallback(kind, schema, (s) =>
+            runCodexJson({ sandbox: ctx.sandbox, prompt, images, schema: s, timeoutMs: options.deadline.timeoutFor(limit, MIN_LONG_CALL_MS) }),
+          );
+        },
+        // The photos reach Codex only as copies in the call's own work dir,
+        // removed with it whatever the call's outcome (runCodexJson).
+        askPhotoCodex: ({ kind, prompt, schema, imageBytes }) =>
+          withSchemaFallback(kind, schema, (s) =>
+            runCodexJson({ sandbox: ctx.sandbox, prompt, imageBytes, schema: s, timeoutMs: options.deadline.timeoutFor(PHOTO_TIMEOUT_MS, MIN_LONG_CALL_MS) }),
+          ),
+        readRecord: (name) => readFile(join(runDir, name), "utf8").then((t) => JSON.parse(t) as unknown),
+        renderPhotos: async (candidate) => {
+          const result = await ctx.session.renderer.render(jobId, candidate, join(runDir, "shots"));
+          overflow.push(...result.overflow);
+          return { shots: result.shots, sections: result.sections ?? [], placed: result.placed ?? [] };
         },
         writeProfile: (name, profile) => writeFile(join(runDir, `${name}.json`), JSON.stringify(profile, null, 2), { mode: 0o600 }),
         writeRecord: (name, value) => writeFile(join(runDir, name), JSON.stringify(value, null, 2), { mode: 0o600 }),
@@ -552,6 +595,21 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         notes: [...notes, ...pipeline.notes],
       },
       overflow,
+      // Codex time per call (fixed values only: worker/timing.ts).
+      timing: {
+        capture_ms: captureMs,
+        pipeline_ms: Math.round(performance.now() - pipelineStart),
+        ...timer.summary(),
+        call_list: timer.calls,
+      },
+      photos: pipeline.photos
+        ? {
+            assets: pipeline.photos.assets,
+            analysis: pipeline.photos.analysis,
+            final_layout: pipeline.photos.finalLayout,
+            codex_calls: pipeline.photos.calls,
+          }
+        : null,
     };
     return await complete(ctx, runDir, report);
   } catch (error) {
@@ -576,6 +634,26 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
   } finally {
     await rm(jobTemp, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+/**
+ * The job's photos: the asset store job with the worker job's own id. No
+ * manifest, an unsafe store or any photo that fails its checks: no photos
+ * (with a note), never another job's.
+ */
+async function jobPhotos(ctx: JobContext, jobId: string): Promise<{ input?: { runId: string; manifest: AssetManifest; inputs: PhotoInput[] }; note?: string }> {
+  const env = { ...ctx.options.env, TMPDIR: ctx.tempRoot };
+  const store = assetStoreRoot(env);
+  if (!checkStoreRoot(store, { repoDir: process.cwd(), env })) return {};
+  const manifest = await loadManifest(store, jobId);
+  if (!manifest || manifest.jobId !== jobId || manifest.assets.length === 0) return {};
+  const loaded = await loadPhotoInputs({ store, jobId, manifest });
+  if (!loaded.ok) {
+    ctx.log(`job ${jobId}: photos ${loaded.code} → page without photos`);
+    return { note: loaded.code };
+  }
+  ctx.log(`job ${jobId}: ${loaded.value.length} photo${loaded.value.length === 1 ? "" : "s"} for the design`);
+  return { input: { runId: jobId, manifest, inputs: loaded.value } };
 }
 
 function baseReport(options: WorkerOptions, jobId: string, startedAt: string, now: () => Date) {
