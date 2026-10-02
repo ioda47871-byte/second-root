@@ -20,18 +20,21 @@
 - PNG / JPEG / WebP、各辺 320〜2400 px、15 MB 以下
 - 1 枚目は縦長（hero 向け）。3 枚のときは 2 枚目を横長、3 枚目を正方形にし、互いに違う構図にする（似すぎると near duplicate で使われない）
 
-### 2. worker の timer を止めて、画像を worker の場所に置き、1 コマンドで流す
+### 2. 1 コマンドで流す（timer が動いていれば止めて戻す、画像を worker の場所に置く、jail の中で PoC）
 
 ```bash
-A=/root/sr-capture-admin/scripts/sales-design-capture/admin.sh
-J=poc-photo-001
-# develop の worker が先にこの job を取らないように（timer を入れていなければ不要）
-sudo systemctl stop sr-design-worker.timer 2>/dev/null || true
-# 画像を worker 利用者の入力場所へ（repo・reference の置き場所の外）
-sudo install -D -o sr-designgen -g sr-designgen -m 600 <画像のパス> /home/sr-designgen/sr-design-input/$J/concept-1.png
+sudo bash -c '
+A=/root/sr-capture-admin/scripts/sales-design-capture/admin.sh; J=poc-photo-001
+F=<画像のパス 例 /mnt/c/Users/<you>/Desktop/poc-photo-001.png>
+T=$(date -r "$F" --iso-8601=seconds) || exit 1     # 画像を作った日時（ファイルの更新時刻）
+# develop の worker が先にこの job を取らないように。動いていたときだけ止めて、最後に戻す
+W=$(systemctl is-active sr-design-worker.timer 2>/dev/null); [ "$W" = active ] && systemctl stop sr-design-worker.timer
+# 画像を worker 利用者の入力場所へ（ディレクトリも sr-designgen のもの。facts.json もここに書かれる）
+install -d -o sr-designgen -g sr-designgen -m 700 /home/sr-designgen/sr-design-input /home/sr-designgen/sr-design-input/$J &&
+install -o sr-designgen -g sr-designgen -m 600 "$F" /home/sr-designgen/sr-design-input/$J/concept-1.png &&
 # jail の中で: checkout → facts → intake → preflight → enqueue → run.sh → report
-sudo bash $A run sr-designgen -- /bin/bash -lc "cd ~/work/second-root && git fetch -q origin feature/dev-029-photo-art-direction && git checkout -q --force --detach origin/feature/dev-029-photo-art-direction && ./scripts/sales-design-worker/photo-poc.sh --job-id $J --created-by <あなたの handle> --created-at <画像を作った日時 例 2026-10-02T09:00:00+09:00> --image ~/sr-design-input/$J/concept-1.png"
-sudo systemctl start sr-design-worker.timer 2>/dev/null || true
+bash $A run sr-designgen -- /bin/bash -lc "cd ~/work/second-root && git fetch -q origin feature/dev-029-photo-art-direction && git checkout -q --force --detach origin/feature/dev-029-photo-art-direction && ./scripts/sales-design-worker/photo-poc.sh --job-id $J --created-by <あなたの handle> --created-at $T --image ~/sr-design-input/$J/concept-1.png"
+[ "$W" = active ] && systemctl start sr-design-worker.timer; true'
 ```
 
 最後に出る JSON（`~/sr-design-poc/poc-photo-001.json`、`sr-designgen` の home）を Claude に渡す。
