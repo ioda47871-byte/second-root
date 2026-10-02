@@ -520,6 +520,75 @@
   from { opacity: 0; }
 }
 
+/* ---------- photos (DEV-029) ----------
+   A photo always has a grid cell of its own: page text is never drawn over it.
+   The only text on a photo is the fixed "イメージ画像" label of a generated
+   image, on a solid ground. Phones first; the desktop crop is set below. */
+
+.photo {
+  position: relative;
+  margin: 0;
+  min-width: 0;
+  aspect-ratio: var(--ar);
+  overflow: hidden;
+  background: var(--p-surface);
+}
+
+.photoImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: var(--fx) var(--fy);
+}
+
+.photo[data-fit="contain"] .photoImg { object-fit: contain; }
+.photo[data-treatment="warm"] .photoImg { filter: sepia(0.16) saturate(1.06); }
+.photo[data-treatment="mono"] .photoImg { filter: grayscale(1) contrast(1.04); }
+
+.imageLabel {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  padding: 3px 8px;
+  border: 1px solid var(--p-primary);
+  background: var(--p-bg);
+  color: var(--p-text);
+  font-family: var(--font-body), sans-serif;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* split_hero: the photo, then the type hero (phones); side by side from 720px. */
+.heroSplit { border-bottom: 1px solid var(--p-primary); }
+.heroSplit .hero { border-bottom: 0; min-height: 0; }
+.splitPhoto { width: 100%; }
+
+/* framed_hero: a framed photo in a row of its own between the motifs and the name
+   (phones); a column of its own beside the name from 720px. */
+.hero[data-photo="framed"] { grid-template-rows: auto auto auto 1fr auto; }
+.hero[data-photo="framed"] .title { grid-row: 4; }
+.hero[data-photo="framed"] .dek { grid-row: 5; }
+.framePhoto {
+  grid-row: 3;
+  z-index: 1;
+  margin: 22px 8px 4px;
+  outline: 1px solid var(--p-primary);
+  outline-offset: 6px;
+}
+
+/* Feature bands: a photo row of its own in the About or Visit section, in the content column. */
+.band {
+  grid-column: -2 / -1;
+  width: 100%;
+  max-width: 760px;
+  justify-self: start;
+}
+.band[data-side="right"] { justify-self: end; }
+
 /* ---------- wide screens ---------- */
 
 @media (min-width: 720px) {
@@ -534,6 +603,18 @@
   .stamp { width: 104px; height: 104px; }
   .stampMark { font-size: 2rem; }
   .hero[data-layout="split_crop"] .line:nth-child(even) { padding-left: 22%; text-align: left; }
+
+  .photo { aspect-ratio: var(--ar-d); }
+  .photoImg { object-position: var(--fx-d) var(--fy-d); }
+  .heroSplit { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: center; }
+  .splitPhoto { width: auto; margin: 24px 0 36px var(--pad); }
+  .hero[data-photo="framed"] { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-rows: auto auto 1fr auto; column-gap: 56px; }
+  .hero[data-photo="framed"] .folio,
+  .hero[data-photo="framed"] .dek { grid-column: 1 / -1; }
+  .hero[data-photo="framed"] .motifRow { grid-column: 1; }
+  .hero[data-photo="framed"] .title { grid-row: 3; grid-column: 1; }
+  .hero[data-photo="framed"] .dek { grid-row: 4; }
+  .framePhoto { grid-column: 2; grid-row: 2 / 4; align-self: center; margin: 28px 8px; }
 
   .canvas[data-grid="editorial_12"] .section { grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: 40px; }
   .canvas[data-grid="asymmetric_7_5"] .section { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; }
