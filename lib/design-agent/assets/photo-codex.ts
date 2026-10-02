@@ -14,6 +14,7 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import { CodexError, runCodexJson } from "../codex";
 import { buildImageDirectionPrompt, buildPhotoAnalysisPrompt } from "../photo-prompts";
+import type { PhotoIssue } from "../photo-review";
 import type { DesignProfile } from "../profile";
 import type { CodexSandbox } from "../sandbox";
 import { photoAnalysesJsonSchema, PhotoAnalysesSchema, type PhotoAnalysis } from "./analysis";
@@ -109,10 +110,12 @@ export async function directImages(o: {
   manifest: AssetManifest;
   profile: DesignProfile;
   demo: DemoView;
+  /** Photo issues of the previous direction (a revision with target images / both). */
+  feedback?: readonly PhotoIssue[];
 }): Promise<PhotoStep<ImageDirection>> {
   if (o.inputs.length === 0) return { ok: true, value: NO_IMAGES };
   const sections = sectionsPresent(o.demo);
-  const prompt = buildImageDirectionPrompt({ photos: o.inputs.map(({ assetId, width, height }) => ({ assetId, width, height })), analyses: o.analyses, profile: o.profile, sections });
+  const prompt = buildImageDirectionPrompt({ photos: o.inputs.map(({ assetId, width, height }) => ({ assetId, width, height })), analyses: o.analyses, profile: o.profile, sections, feedback: o.feedback });
   const result = await ask(o.call, { prompt, schema: imageDirectionJsonSchema(), imageBytes: o.inputs.map((p) => p.png) });
   if (!result.ok) return fail(result.code);
   const check = checkImageDirection(result.answer, o.manifest, o.analyses, "local_preview");

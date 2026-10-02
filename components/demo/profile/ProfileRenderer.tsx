@@ -73,7 +73,7 @@ const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
  * drawn over it. A generated image always carries the fixed "イメージ画像"
  * label, drawn here and not switchable by the profile or the direction.
  */
-function PhotoFigure({ photo, className, side }: { photo: RenderPhoto; className: string; side?: RenderFeature["side"] }) {
+function PhotoFigure({ photo, className, role, side }: { photo: RenderPhoto; className: string; role: "hero" | RenderFeature["slot"]; side?: RenderFeature["side"] }) {
   const style = {
     "--ar": ratio(photo.aspect.mobile),
     "--ar-d": ratio(photo.aspect.desktop),
@@ -83,11 +83,15 @@ function PhotoFigure({ photo, className, side }: { photo: RenderPhoto; className
     "--fy-d": pct(photo.focal.y),
   } as CSSProperties;
   return (
-    <figure className={`${styles.photo} ${className}`} data-fit={photo.fit} data-treatment={photo.treatment} data-source={photo.sourceKind} data-side={side} style={style}>
+    <figure className={`${styles.photo} ${className}`} data-asset={photo.assetId} data-role={role} data-fit={photo.fit} data-treatment={photo.treatment} data-source={photo.sourceKind} data-side={side} style={style}>
       {/* A local preview route: no image optimisation, no remote loader. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img className={styles.photoImg} src={photo.src} alt="" width={photo.width} height={photo.height} loading="eager" decoding="async" />
-      {photo.sourceKind === "generated_concept" && <span className={styles.imageLabel}>イメージ画像</span>}
+      {photo.sourceKind === "generated_concept" && (
+        <span className={styles.imageLabel} data-image-label="">
+          イメージ画像
+        </span>
+      )}
     </figure>
   );
 }
@@ -109,7 +113,13 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
   const visitPhoto = feature("visit");
 
   const hero = (
-    <header className={styles.hero} data-layout={profile.heroLayout.layout} data-height={profile.heroLayout.height} data-photo={split ? "split" : framed ? "framed" : undefined}>
+    <header
+      className={styles.hero}
+      data-layout={profile.heroLayout.layout}
+      data-height={profile.heroLayout.height}
+      data-photo={split ? "split" : framed ? "framed" : undefined}
+      data-photo-section={framed ? "hero" : undefined}
+    >
       {motifs.has("ruled_frame") && <span className={styles.frame} aria-hidden="true" />}
       {motifs.has("corner_marks") && (
         <span className={styles.corners} aria-hidden="true">
@@ -150,7 +160,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
         </div>
       )}
 
-      {framed && <PhotoFigure photo={heroPhoto} className={styles.framePhoto} />}
+      {framed && <PhotoFigure photo={heroPhoto} className={styles.framePhoto} role="hero" />}
 
       <div className={styles.title}>
         <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length}>
@@ -194,8 +204,8 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
         data-fade={profile.motion.sectionFade ? "" : undefined}
       >
         {split ? (
-          <div className={styles.heroSplit}>
-            <PhotoFigure photo={heroPhoto} className={styles.splitPhoto} />
+          <div className={styles.heroSplit} data-photo-section="hero">
+            <PhotoFigure photo={heroPhoto} className={styles.splitPhoto} role="hero" />
             {hero}
           </div>
         ) : (
@@ -204,12 +214,12 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
 
         <main className={styles.main}>
           {demo.description && (
-            <section className={styles.section} aria-labelledby="pr-about">
+            <section className={styles.section} aria-labelledby="pr-about" data-photo-section={aboutPhoto ? "about" : undefined}>
               <h2 id="pr-about" className={styles.heading}>
                 <span lang="en">About</span>
               </h2>
               <p className={styles.lead}>{demo.description}</p>
-              {aboutPhoto && <PhotoFigure photo={aboutPhoto} className={styles.band} side={aboutPhoto.side} />}
+              {aboutPhoto && <PhotoFigure photo={aboutPhoto} className={styles.band} role="about" side={aboutPhoto.side} />}
             </section>
           )}
 
@@ -231,7 +241,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
           )}
 
           {rows.length > 0 && (
-            <section className={styles.section} aria-labelledby="pr-visit" data-single={rows.length === 1 ? "" : undefined}>
+            <section className={styles.section} aria-labelledby="pr-visit" data-single={rows.length === 1 ? "" : undefined} data-photo-section={visitPhoto ? "visit" : undefined}>
               <h2 id="pr-visit" className={styles.heading}>
                 <span lang="en">Visit</span>
                 <span className={styles.headingJa}>店舗のご案内</span>
@@ -275,7 +285,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
                   </dl>
                 )}
               </div>
-              {visitPhoto && <PhotoFigure photo={visitPhoto} className={styles.band} side={visitPhoto.side} />}
+              {visitPhoto && <PhotoFigure photo={visitPhoto} className={styles.band} role="visit" side={visitPhoto.side} />}
             </section>
           )}
         </main>

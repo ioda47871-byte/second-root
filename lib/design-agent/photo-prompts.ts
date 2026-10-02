@@ -1,7 +1,11 @@
+import type { DemoView } from "@/lib/sales/demo-content";
 import type { PhotoAnalysis } from "./assets/analysis";
-import { ASPECTS, FITS, IMAGE_LAYOUTS, TREATMENTS } from "./assets/direction";
-import type { DesignProfile } from "./profile";
+import { ASPECTS, FITS, IMAGE_LAYOUTS, TREATMENTS, type ImageDirection } from "./assets/direction";
 import type { PublicAssetId } from "./assets/types";
+import type { PhotoIssue } from "./photo-review";
+import { PHOTO_ISSUES, REVISION_TARGETS } from "./photo-review";
+import type { DesignProfile } from "./profile";
+import { factsBlock, RULES, VOCABULARY } from "./prompts";
 
 // Requests to Codex for the photos of a demo (DEV-029). Separate from the
 // DEV-028 brief and review prompts (prompts.ts), which stay as they are for
@@ -52,9 +56,12 @@ export function buildImageDirectionPrompt(input: {
   analyses: readonly PhotoAnalysis[];
   profile: DesignProfile;
   sections: { about: boolean; visit: boolean };
+  /** Photo issues the review found in the previous direction (enum values only). */
+  feedback?: readonly PhotoIssue[];
 }): string {
   const { rationale: _rationale, ...profile } = input.profile;
   void _rationale;
+  const feedback = input.feedback ?? [];
   return [
     "You are the art director of a one-page proposal demo website. The design profile below is fixed. Decide how the attached photos are used, so the photos and the type work as one design.",
     PHOTO_RULES,
@@ -74,9 +81,56 @@ Every attached photo appears exactly once: as the hero, as a feature, or in reje
 (low_quality, near_duplicate, off_brand, people, text_heavy, not_needed). Never use a photo with people. Never use two near duplicates.
 split_hero and framed_hero need a hero photo; type_hero_feature_band has none and needs at least one feature photo.
 paletteFit: 1 to 5, how well the fixed palette below sits with the photos you use.`,
+    feedback.length > 0 ? `A review of the previous direction found these photo issues: ${feedback.map((f) => `${f.issue} (${f.severity})`).join(", ")}. Choose a direction that fixes them.` : "",
     "Photo analyses:",
     JSON.stringify(input.analyses, null, 2),
     "Design profile (fixed):",
     JSON.stringify(profile, null, 2),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** The DEV-028 renderer vocabulary, with its "no photographs" line replaced for a page with photos. */
+function photoVocabulary(): string {
+  return VOCABULARY.replace(/There are no photographs[^\n]*/, "Photographs appear only where the image direction below places them; nothing else on the page is a photo.");
+}
+
+export function buildPhotoReviewPrompt(input: {
+  demo: DemoView;
+  profile: DesignProfile;
+  direction: ImageDirection;
+  analyses: readonly PhotoAnalysis[];
+  referenceCount: number;
+  referenceKind?: "website" | "instagram";
+  sectionCount: number;
+  round: number;
+  maxRevisions: number;
+}): string {
+  const refs = input.referenceKind === "website" ? "the shop's own website" : "the shop's public Instagram profile";
+  return [
+    "You are reviewing a rendered proposal demo that uses photos, against the shop's own public presence.",
+    photoVocabulary(),
+    RULES,
+    PHOTO_RULES,
+    `Attached images: the first ${input.referenceCount} are ${refs} (reference; photos in them are blurred and pixelated). Then the rendered demo: desktop (1440px wide), mobile (390px wide)` +
+      (input.sectionCount > 0 ? `, then ${input.sectionCount} crop(s) of photo sections below the end of the full screenshots.` : "."),
+    "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
+    `photo_scores: image_selection (the right photos for this shop), crop, focal_visibility (the subject stays visible), text_image_collision (5 = no photo gets in the way of the name, headings or facts),
+image_repetition (5 = nothing repeated), image_quality, mobile_crop, photo_brand_fit. photo_issues: up to 6 from ${PHOTO_ISSUES.join(", ")}.`,
+    `Check that the photos shown are those the image direction below uses, in its places, on desktop and mobile; that none shows people; that the layout suits the number of photos.`,
+    `revision_target (${REVISION_TARGETS.join(" | ")}): none = no change; images = keep the profile, the photos need a new direction; profile = the profile needs changes (give a complete revised_profile; a new photo direction follows); both = both.
+You cannot place photos yourself; a new direction is made separately from your photo_issues.`,
+    `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
+    "verdict = accept when the page is ready to show the shop owner; otherwise revise.",
+    "If the fix needs something the renderer cannot do (a new layout, a new motif, a photo place that does not exist), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
+    "Image direction that produced these screenshots:",
+    JSON.stringify(input.direction, null, 2),
+    "Photo analyses:",
+    JSON.stringify(input.analyses, null, 2),
+    "Profile that produced these screenshots:",
+    JSON.stringify(input.profile, null, 2),
+    "Verified facts:",
+    factsBlock(input.demo),
   ].join("\n\n");
 }

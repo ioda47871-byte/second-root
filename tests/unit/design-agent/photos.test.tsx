@@ -7,6 +7,7 @@ import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import { monogram, nameLines, WARD_ROMAJI } from "@/components/demo/profile/text";
 import type { ImageDirection } from "@/lib/design-agent/assets/direction";
 import { resolvePhotos, type RenderPhotos } from "@/lib/design-agent/assets/resolve";
+import { analysesArtifact, assetsArtifact, imagesArtifact } from "@/lib/design-agent/assets/lineage";
 import { previewAssetUrl, readPreviewAsset } from "@/lib/design-agent/assets/serve";
 import { loadPreviewRun } from "@/lib/design-agent/preview";
 import type { DemoView } from "@/lib/sales/demo-content";
@@ -152,11 +153,17 @@ describe("local preview photos and the asset route", () => {
     await mkdir(run, { recursive: true });
     await writeFile(join(run, "facts.json"), JSON.stringify({ name: "EXAMPLE TEST", category: "baked_goods", ward: "北区", address: "名古屋市北区テスト町1-2-3", description: "テスト用の架空の紹介文です。" }));
     await writeFile(join(run, "candidate-0.json"), JSON.stringify(AMERICAN_EDITORIAL));
-    await writeFile(join(run, "candidate-0.images.json"), JSON.stringify(direction()));
+    // the run's artifacts with their lineage (DEV-029 stage 4)
+    const analyses = analysesArtifact("run-photos-1", MANIFEST, ANALYSES);
+    const sections = { about: true, visit: true };
+    await writeFile(join(run, "candidate-0.images.json"), JSON.stringify(imagesArtifact("run-photos-1", "candidate-0", MANIFEST, analyses, AMERICAN_EDITORIAL, sections, direction())));
     await writeFile(join(run, "candidate-1.json"), JSON.stringify(AMERICAN_EDITORIAL));
-    await writeFile(join(run, "candidate-1.images.json"), JSON.stringify(direction({ hero: place("asset-dddddddddddddddddddddddd") })));
-    await writeFile(join(run, "photo-analyses.json"), JSON.stringify(ANALYSES));
-    await writeFile(join(run, "assets.json"), JSON.stringify({ jobId: "job-001" }));
+    await writeFile(join(run, "candidate-1.images.json"), JSON.stringify(imagesArtifact("run-photos-1", "candidate-1", MANIFEST, analyses, AMERICAN_EDITORIAL, sections, direction({ hero: place("asset-dddddddddddddddddddddddd") }))));
+    // a direction written for another candidate is not taken for this one
+    await writeFile(join(run, "candidate-2.json"), JSON.stringify(AMERICAN_EDITORIAL));
+    await writeFile(join(run, "candidate-2.images.json"), JSON.stringify(imagesArtifact("run-photos-1", "candidate-0", MANIFEST, analyses, AMERICAN_EDITORIAL, sections, direction())));
+    await writeFile(join(run, "photo-analyses.json"), JSON.stringify(analyses));
+    await writeFile(join(run, "assets.json"), JSON.stringify(assetsArtifact("run-photos-1", MANIFEST)));
   });
   afterAll(async () => {
     await rm(base, { recursive: true, force: true });
@@ -170,6 +177,7 @@ describe("local preview photos and the asset route", () => {
     expect(run?.photos?.hero?.src).toBe(previewAssetUrl("run-photos-1", A as never));
     expect(run?.photos?.features[0]?.src).toBe(`/design-preview/run-photos-1/asset/${B}`);
     expect((await loadPreviewRun(previewRoot, "run-photos-1", "candidate-1", { env, repoDir: process.cwd() }))?.photos).toBeNull();
+    expect((await loadPreviewRun(previewRoot, "run-photos-1", "candidate-2", { env, repoDir: process.cwd() }))?.photos).toBeNull();
     expect((await loadPreviewRun(previewRoot, "run-photos-1", "none", { env, repoDir: process.cwd() }))?.photos).toBeNull();
     expect((await loadPreviewRun(previewRoot, "run-photos-1", "candidate-0", { env: { ...env, SR_DESIGN_ASSETS_ROOT: join(process.cwd(), "assets") }, repoDir: process.cwd() }))?.photos).toBeNull();
   });
@@ -189,7 +197,12 @@ describe("local preview photos and the asset route", () => {
     await writeStore(store, "job-public", ASSETS, fakeManifest("job-public", [ASSETS[0], { ...ASSETS[1], scopes: ["public_demo"] }, ASSETS[2]]));
     const run2 = join(previewRoot, "run-photos-2");
     await mkdir(run2, { recursive: true });
-    await writeFile(join(run2, "assets.json"), JSON.stringify({ jobId: "job-public" }));
+    await writeFile(join(run2, "assets.json"), JSON.stringify(assetsArtifact("run-photos-2", fakeManifest("job-public", [ASSETS[0], { ...ASSETS[1], scopes: ["public_demo"] }, ASSETS[2]]))));
+    // another run's assets.json copied in is refused
+    const run3 = join(previewRoot, "run-photos-3");
+    await mkdir(run3, { recursive: true });
+    await writeFile(join(run3, "assets.json"), JSON.stringify(assetsArtifact("run-photos-1", MANIFEST)));
+    expect(await serve(A, { runId: "run-photos-3" })).toBeNull();
     expect(await serve(B, { runId: "run-photos-2" })).toBeNull();
     expect((await serve(A, { runId: "run-photos-2" }))?.length).toBeGreaterThan(0);
 

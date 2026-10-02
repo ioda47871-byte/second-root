@@ -2,16 +2,17 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { toDemoView, type DemoView } from "@/lib/sales/demo-content";
 import { CATEGORIES, TEMPLATE_BY_CATEGORY, type Category } from "@/lib/sales/types";
+import { verifyAnalyses, verifyImages } from "./assets/lineage";
 import { resolvePhotos, type RenderPhotos } from "./assets/resolve";
 import { previewAssetUrl, runAssets } from "./assets/serve";
 import { checkProfile, type DesignProfile } from "./profile";
+import { CANDIDATE, RUN_ID } from "./run-id";
 
 // Reads a design run for the local preview route. Paths are built only from
 // validated parts: the root comes from the machine's environment, the run id
 // and the candidate name must match fixed patterns.
 
-export const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{5,79}$/;
-const CANDIDATE = /^(none|default|final|candidate-[0-9]{1,2})$/;
+export { RUN_ID } from "./run-id";
 
 export function previewRoot(env: Record<string, string | undefined>): string | null {
   const root = env.SR_DESIGN_PREVIEW_ROOT;
@@ -49,21 +50,27 @@ export async function loadPreviewRun(
   const check = checkProfile(await readJson(join(dir, `${candidate}.json`)));
   // An unusable profile renders the existing template (fail-safe).
   if (!check.ok) return { demo, profile: null, photos: null };
-  return { demo, profile: check.profile, photos: await loadPhotos(dir, runId, candidate, demo, options) };
+  return { demo, profile: check.profile, photos: await loadPhotos(dir, runId, candidate, demo, check.profile, options) };
 }
 
 /**
  * The candidate's photos (DEV-029): its image direction (`<candidate>.images.json`),
- * the run's photo analyses (`photo-analyses.json`) and the asset job's manifest.
- * Anything missing or wrong means no photos; nothing here can break the page.
+ * the run's photo analyses (`photo-analyses.json`) and the asset job's manifest,
+ * each accepted only with a matching lineage (this run, the job, its current
+ * asset set, these analyses, this profile; see assets/lineage.ts). Anything
+ * missing or wrong means no photos; nothing here can break the page.
  */
-async function loadPhotos(dir: string, runId: string, candidate: string, demo: DemoView, options: { env?: Record<string, string | undefined>; repoDir?: string }): Promise<RenderPhotos | null> {
+async function loadPhotos(dir: string, runId: string, candidate: string, demo: DemoView, profile: DesignProfile, options: { env?: Record<string, string | undefined>; repoDir?: string }): Promise<RenderPhotos | null> {
   try {
-    const direction = await readJson(join(dir, `${candidate}.images.json`));
-    if (direction === undefined) return null;
+    const images = await readJson(join(dir, `${candidate}.images.json`));
+    if (images === undefined) return null;
     const run = await runAssets(dir, { env: options.env ?? process.env, repoDir: options.repoDir ?? process.cwd() });
-    const analyses = await readJson(join(dir, "photo-analyses.json"));
-    return resolvePhotos({ demo, manifest: run?.manifest ?? null, analyses, direction, src: (id) => previewAssetUrl(runId, id) }).photos;
+    if (!run) return null;
+    const analysesArtifact = await readJson(join(dir, "photo-analyses.json"));
+    const analyses = verifyAnalyses(analysesArtifact, runId, run.manifest);
+    const direction = verifyImages(images, runId, candidate, run.manifest, analysesArtifact, profile);
+    if (!analyses || !direction) return null;
+    return resolvePhotos({ demo, manifest: run.manifest, analyses, direction, src: (id) => previewAssetUrl(runId, id) }).photos;
   } catch {
     return null;
   }

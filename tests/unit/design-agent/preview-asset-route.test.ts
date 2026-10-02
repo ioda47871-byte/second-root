@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/design-preview/[runId]/asset/[assetId]/route";
-import { fakePng, writeStore, type FakeAsset } from "./photo-fixtures";
+import { assetsArtifact } from "@/lib/design-agent/assets/lineage";
+import { fakeManifest, fakePng, writeStore, type FakeAsset } from "./photo-fixtures";
 
 // The asset route of the local design preview (DEV-029): 404 unless the
 // preview is switched on and the asset is allowed; a PNG that is never cached.
@@ -19,7 +20,7 @@ beforeAll(async () => {
   base = await mkdtemp(join(tmpdir(), "asset-route-"));
   await writeStore(join(base, "store"), "job-001", ASSETS);
   await mkdir(join(base, "preview", "run-route-1"), { recursive: true });
-  await writeFile(join(base, "preview", "run-route-1", "assets.json"), JSON.stringify({ jobId: "job-001" }));
+  await writeFile(join(base, "preview", "run-route-1", "assets.json"), JSON.stringify(assetsArtifact("run-route-1", fakeManifest("job-001", ASSETS))));
 });
 afterAll(async () => {
   process.env = saved;
