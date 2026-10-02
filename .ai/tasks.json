@@ -1251,11 +1251,12 @@
         "Phase 3 root-only install: admin.sh・systemd の unit・jail の設定は root だけの clone（/root/sr-capture-admin、承認した commit・clean）からだけ動かし・入れる。requester の repo や helper の checkout からは入れない。読み込まれた unit の設定を確かめ、違えば止まる",
         "Phase 3 実機検証（2026-10-01 人間が完了）: cgroup v2・DNS tunnel・interop off・/mnt/c を requester から読み書き不可、root-only clone を e2e6e8c に固定して install、jail-check が JAIL_OK、jail 内の DNS、Instagram の headed login（LOGIN_OK）、jail 内の Claude Code の sign-in・gh（second-root 限定の fine-grained PAT）・git push --dry-run、claude-start で Remote Control が jail 内で接続。2026-10-02: a7818a8 を反映し jail-check が JAIL_OK、jail 内の 198.51.100.53:53/TCP は EACCES で即時拒否（0.0 秒）、UDP の DNS で github.com / api.anthropic.com を解決、WSL の完全 shutdown 後に jail が自動で戻ることを確認",
         "Phase 3 jail の DNS は UDP-only（明示的な制約）: Ubuntu 24.04 標準の passt（0.0~git20240220）の --dns-forward は UDP/53 だけを転送する。jail の namespace の中だけで 198.51.100.53 宛ての TCP を ip rule の prohibit で即座に拒否し（TC の答えで名前解決が約 2 分止まらないように）、jail の resolv.conf に options edns0。probe は TCP の拒否（EACCES、1 秒以内）と 10.255.255.254 の拒否を確かめ、満たさなければ jail を起動しない。他の release の passt・自前 build・TCP の DNS の proxy / DNAT は入れない。getent ahosts の成功は TCP の切り替えの証明として扱わない",
-        "Phase 3 の残り: 下記の renderer 改善（住所の文字組み）を反映したうえで、実店舗 1 件の Phase 3 end-to-end PoC を再試験する（2026-10-02 の phase3-001 は signed-in capture → brief → visual review まで成功し、review が renderer の制約を指摘して設計どおり RENDERER_CHANGE_NEEDED で BLOCKED、revisions=0）",
-        "renderer の住所の文字組み（phase3-001 の review の指摘を、店舗に依存しない形で人が承認して直した）: Visit の住所は display の字面を保ちつつ、hero / 見出しの display scale とは別の上限を持つ（font-size の最大 1.9rem・単独 2.4rem で section 見出しより小さい、weight は最大 600、display の幅・tracking・大文字化を受けない）。「1-2-3」のような数字とハイフンの並び（ASCII・全角、20 文字まで）は途中で改行せず、それ以外の住所は通常どおり折り返す。表示用に分けた部分をつなぐと事実の文字列と完全に一致する（fact-only）。profile の schema・語彙・最大 2 回の revision・BLOCKED の境界は変えない"
+        "Phase 3 の残り: 下記の renderer 改善（住所の文字組み・hero / liner）を反映したうえで、実店舗 1 件の Phase 3 end-to-end PoC を再試験する。phase3-001（2026-10-02）は visual review で住所の文字組みを指摘されて BLOCKED（revisions=0）。phase3-002（d0441cf）は住所の問題を越え、profile の revision 1 回（candidate-1）まで進んだ後、mobile の hero 高さと liner の重なりを renderer の制約として指摘され、設計どおり BLOCKED（revisions=1）",
+        "renderer の住所の文字組み（phase3-001 の review の指摘を、店舗に依存しない形で人が承認して直した）: Visit の住所は display の字面を保ちつつ、hero / 見出しの display scale とは別の上限を持つ（font-size の最大 1.9rem・単独 2.4rem で section 見出しより小さい、weight は最大 600、display の幅・tracking・大文字化を受けない）。「1-2-3」のような数字とハイフンの並び（ASCII・全角、20 文字まで）は途中で改行せず、それ以外の住所は通常どおり折り返す。表示用に分けた部分をつなぐと事実の文字列と完全に一致する（fact-only）。profile の schema・語彙・最大 2 回の revision・BLOCKED の境界は変えない",
+        "renderer の hero と liner motif（phase3-002 の review の指摘のうち、店舗に依存しない layout の制約だけを人が承認して直した）: hero は folio・liner・name・dek の行に分かれ、muffin_paper_svg はどの幅・どの layout・どの長さの店名でも name・folio・dek に重ならない。mobile の medium hero の最低高は 40svh（desktop は 56svh のまま）で、内容が多ければ伸びる。footer・notice（DemoFrame）は変えない（余白の指摘は好みと判断）。profile の schema・語彙・最大 2 回の revision・BLOCKED の境界は変えない"
       ],
       "required_tests": [
-        "unit: tests/unit/design-agent（fake Codex、schema、loop、renderer の fact-only、住所の数字の並びを分けない・住所の size / weight の上限）",
+        "unit: tests/unit/design-agent（fake Codex、schema、loop、renderer の fact-only、住所の数字の並びを分けない・住所の size / weight の上限）、tests/unit/design-agent/renderer-layout.test.tsx（Chromium、390 / 1440 px で liner が name に重ならない・hero の高さ・横 overflow なし・notice / footer 不変）",
         "unit: guardrails（Codex を web app から import しない・OpenAI キーを使わない）",
         "build",
         "e2e（既存）",
@@ -1302,7 +1303,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control まで完了。jail の DNS を UDP-only にした a7818a8 を実機に反映し JAIL_OK、TCP は即時拒否、WSL shutdown 後の自動復帰も確認。実店舗 job phase3-001 は signed-in capture（CAPTURED）→ brief → visual review（18/25、revise）まで進み、review が住所の文字組み（display の大きさのまま・番地の途中改行）を renderer の制約として指摘し、設計どおり RENDERER_CHANGE_NEEDED で BLOCKED（revisions=0）。renderer で住所の size / weight を display から独立させ、数字の並びを改行しないようにした。残り: その commit の実機反映と phase3-001 相当の再試験。",
+      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。phase3-001 は住所の文字組みで BLOCKED（d0441cf で修正）。phase3-002（d0441cf）は signed-in capture → review（candidate-0: 19/25）→ revision 1 回 → candidate-1（19/25）まで進み、mobile の medium hero の高さと liner motif の重なりを renderer の制約として指摘されて設計どおり BLOCKED（revisions=1）。liner を hero の自分の行に置き、mobile の medium hero の最低高を下げた。footer の余白の指摘は好みとして採らない。残り: その commit の実機反映と phase3-003 の再試験。",
       "branch": "feature/dev-028-ai-art-direction"
     }
   ]

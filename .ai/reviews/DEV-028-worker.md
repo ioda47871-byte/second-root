@@ -439,3 +439,27 @@ Independent security review status: rounds 2 and 3 of the live-attack security r
 - Both new checks fail on the previous renderer and CSS, and pass now.
 
 **Browser check (Chromium, `next start` with a local preview of fictional facts, 4 profiles incl. condensed black uppercase and mincho, 390 and 1440 px):** the number run is one line box in every case; the address wraps to 2 lines at 390 px; no horizontal overflow; the address (19.2–38.4 px) stays below the Visit heading (35.2–57.6 px); weight 600 for `black`, 300 for `light`.
+
+## Renderer: medium hero on phones and the liner motif (2026-10-02, after phase3-002)
+
+**Real-machine run (human, worker at d0441cf):** job `phase3-002`, `visual_source=instagram_signed_in`, capture `CAPTURED`. candidate-0: 19/25, `revise`, `needs_renderer_change=false` → one profile revision → candidate-1: 19/25, `revise`, `needs_renderer_change=true` → `blocked`, revisions=1, final candidate-1. The address problem of phase3-001 did not come back. The review's note asked for three things: a lower mobile minimum height for the medium hero, the liner motif clear of the title, and less mobile footer padding while keeping the notice readable. The run's files stay on the WSL machine; this analysis reproduced each point with fictional shops in Chromium (390 × 844 as the worker's mobile shot, and 1440 × 900).
+
+**Assessment:**
+- Liner over the title: a layout defect. `muffin_paper_svg` was absolutely positioned (top-right on phones, bottom-right on desktop) with no room reserved, so it covered the name in most layouts and name lengths on phones, and the dek on every desktop render. A profile cannot avoid it except by dropping the motif. **Fixed.**
+- Medium hero on phones: a structural limit. `medium` is the lowest height in the vocabulary, yet its floor was 56svh (473 px on the worker's phone shot), leaving empty space under a short name. **Fixed for phones only.**
+- Footer padding: taste. The footer (DemoFrame, shared by every demo) is 28 / 40 px vertical padding around the fixed not-official notice; the text is 12.8 px, readable, no overflow. **Not changed**, and a test now pins the notice size and footer padding.
+
+**Change:**
+- The hero grid has four rows: folio, liner, title, dek (`grid-template-rows: auto auto 1fr auto`, explicit `grid-row` on each). The liner sits in its own row at the right edge (`min(32%, 112px)` on phones, `min(18%, 168px)` from 720 px). Rows do not overlap, so it cannot cover the name, the folio or the dek, whatever the name or layout. Without the motif the row is empty.
+- `.hero[data-height="medium"]`: `min-height: 40svh` on phones, `56svh` from 720 px as before. It is a floor; content grows the hero.
+- Not changed: profile schema and vocabulary, prompts, DemoFrame / demo.module.css, the 2-revision limit, `RENDERER_CHANGE_NEEDED` → BLOCKED.
+
+**Tests:** `tests/unit/design-agent/renderer-layout.test.tsx` renders the real ProfileRenderer with the module CSS in Chromium:
+- 3 fictional names (short, long Latin, long Japanese) × 5 medium profiles with the liner (split_crop, stacked, centered, condensed black, framed mincho) × phone / desktop: liner overlaps no name line, the folio or the dek; liner and name stay inside the hero; no sideways scroll.
+- Phone medium hero: below the old floor for a short name; exactly 40svh without motifs; grows past 56svh for a long split name without clipping; desktop keeps 56svh.
+- Notice 12.8 px and footer padding `28px 16px 40px` unchanged.
+- With the previous CSS, the liner and hero tests fail; with the new CSS all pass.
+
+**Browser check (next start, local preview, fictional facts, 7 profiles × 3 names × 390 / 1440):** liner-over-name and liner-over-dek area 0 everywhere (before: up to 30 733 px² over the name on desktop, 4 699 px² on phones); phone medium hero 355–428 px for short / Japanese names (before 473 px), 524 px for a long split name (grows); no horizontal overflow.
+
+**Seen, not changed (outside this note):** `stamp_ring` is still absolutely positioned at the hero's bottom-right and can touch a long name (fictional long names, phone and desktop). Same kind of defect; left for a separate decision.
