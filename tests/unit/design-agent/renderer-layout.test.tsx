@@ -54,6 +54,23 @@ const PROFILES: Record<string, DesignProfile> = {
     motifs: ["muffin_paper_svg", "ruled_frame", "corner_marks", "location_labels"],
   }),
 };
+// The stamp ring, alone and together with the liner (both decorative motifs in the hero).
+const STAMP_PROFILES: Record<string, DesignProfile> = {
+  stamp_split: medium({ motifs: ["stamp_ring", "location_labels"] }),
+  stamp_stacked: medium({ heroLayout: { layout: "stacked_oversized", height: "medium", alignment: "left" }, motifs: ["stamp_ring"] }),
+  stamp_centered: medium({ heroLayout: { layout: "centered_cover", height: "medium", alignment: "center" }, motifs: ["stamp_ring", "ruled_frame", "corner_marks"] }),
+  stamp_liner_split: medium({ motifs: ["stamp_ring", "muffin_paper_svg", "location_labels"] }),
+  stamp_liner_centered_mincho: medium({
+    typography: { ...AMERICAN_EDITORIAL.typography, display: "mincho", displayCase: "as_is" },
+    heroLayout: { layout: "centered_cover", height: "medium", alignment: "center" },
+    motifs: ["muffin_paper_svg", "stamp_ring", "ruled_frame", "corner_marks"],
+  }),
+  stamp_liner_condensed_black: medium({
+    typography: { ...AMERICAN_EDITORIAL.typography, display: "condensed_grotesk", displayWeight: "black" },
+    heroLayout: { layout: "stacked_oversized", height: "full", alignment: "left" },
+    motifs: ["stamp_ring", "muffin_paper_svg"],
+  }),
+};
 
 const VIEWPORTS = {
   phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
@@ -65,6 +82,7 @@ type Measure = {
   hero: Box;
   name: Box[];
   pleats: Box | null;
+  stamp: Box | null;
   folio: Box;
   dek: Box;
   overflowX: boolean;
@@ -87,7 +105,7 @@ async function measure(demo: DemoView, profile: DesignProfile, device: keyof typ
     const body = renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} />);
     await page.setContent(`<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS}</style></head><body>${body}</body></html>`);
     return await page.evaluate(
-      ({ hero, pleats, folio, dek, lineText, notice, footer }) => {
+      ({ hero, pleats, stamp, folio, dek, lineText, notice, footer }) => {
         const box = (e: Element): Box => {
           const r = e.getBoundingClientRect();
           return { left: r.left, top: r.top + scrollY, right: r.right, bottom: r.bottom + scrollY };
@@ -98,10 +116,12 @@ async function measure(demo: DemoView, profile: DesignProfile, device: keyof typ
           [...e.getClientRects()].map((r) => ({ left: r.left, top: r.top + scrollY, right: r.right, bottom: r.bottom + scrollY })),
         );
         const svg = document.querySelector(`.${pleats}`);
+        const ring = document.querySelector(`.${stamp}`);
         return {
           hero: box(document.querySelector(`.${hero}`)!),
           name,
           pleats: svg ? box(svg) : null,
+          stamp: ring ? box(ring) : null,
           folio: box(document.querySelector(`.${folio}`)!),
           dek: box(document.querySelector(`.${dek}`)!),
           overflowX: document.documentElement.scrollWidth > innerWidth,
@@ -112,6 +132,7 @@ async function measure(demo: DemoView, profile: DesignProfile, device: keyof typ
       {
         hero: profileStyles.hero,
         pleats: profileStyles.pleats,
+        stamp: profileStyles.stamp,
         folio: profileStyles.folio,
         dek: profileStyles.dek,
         lineText: profileStyles.lineText,
@@ -139,6 +160,30 @@ describe("profile renderer layout (Chromium)", () => {
           expect(overlaps(m.pleats!, m.folio), `${label}: liner over the folio`).toBe(false);
           expect(overlaps(m.pleats!, m.dek), `${label}: liner over the dek`).toBe(false);
           expect(inside(m.pleats!, m.hero), `${label}: liner outside the hero`).toBe(true);
+          for (const line of m.name) expect(inside(line, m.hero), `${label}: name clipped by the hero`).toBe(true);
+          expect(m.overflowX, `${label}: sideways scroll`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("keeps the stamp ring clear of the name, the folio, the dek and the liner, inside the hero", async () => {
+    for (const [shopKey, demo] of Object.entries(SHOPS)) {
+      for (const [profileKey, profile] of Object.entries(STAMP_PROFILES)) {
+        for (const device of ["phone", "desktop"] as const) {
+          const label = `${shopKey}/${profileKey}/${device}`;
+          const m = await measure(demo, profile, device);
+          expect(m.stamp, label).not.toBeNull();
+          for (const line of m.name) expect(overlaps(m.stamp!, line), `${label}: stamp over the name`).toBe(false);
+          expect(overlaps(m.stamp!, m.folio), `${label}: stamp over the folio`).toBe(false);
+          expect(overlaps(m.stamp!, m.dek), `${label}: stamp over the dek`).toBe(false);
+          expect(inside(m.stamp!, m.hero), `${label}: stamp outside the hero`).toBe(true);
+          if (profile.motifs.includes("muffin_paper_svg")) {
+            expect(m.pleats, label).not.toBeNull();
+            expect(overlaps(m.stamp!, m.pleats!), `${label}: stamp over the liner`).toBe(false);
+            for (const line of m.name) expect(overlaps(m.pleats!, line), `${label}: liner over the name`).toBe(false);
+            expect(inside(m.pleats!, m.hero), `${label}: liner outside the hero`).toBe(true);
+          }
           for (const line of m.name) expect(inside(line, m.hero), `${label}: name clipped by the hero`).toBe(true);
           expect(m.overflowX, `${label}: sideways scroll`).toBe(false);
         }

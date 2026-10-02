@@ -463,3 +463,21 @@ Independent security review status: rounds 2 and 3 of the live-attack security r
 **Browser check (next start, local preview, fictional facts, 7 profiles × 3 names × 390 / 1440):** liner-over-name and liner-over-dek area 0 everywhere (before: up to 30 733 px² over the name on desktop, 4 699 px² on phones); phone medium hero 355–428 px for short / Japanese names (before 473 px), 524 px for a long split name (grows); no horizontal overflow.
 
 **Seen, not changed (outside this note):** `stamp_ring` is still absolutely positioned at the hero's bottom-right and can touch a long name (fictional long names, phone and desktop). Same kind of defect; left for a separate decision.
+
+## Renderer: stamp ring (2026-10-02, before phase3-003)
+
+Not from a real-shop review: found with fictional shops while fixing the liner, and fixed before the next real run, so the run is not blocked on a known defect.
+
+**Defect:** `stamp_ring` was absolutely positioned at the hero's bottom-right (104 px, rotated). It covered the name on phones even for a short name, and long names on desktop. With `muffin_paper_svg` in the same profile, nothing kept the two apart.
+
+**Change (follows the liner fix):**
+- One decorative row (`.motifRow`, hero grid row 2, between the folio and the title, right edge) holds the stamp ring and the liner side by side (flex, 20 px / 28 px gap). Rows do not overlap, so neither motif can cover the name, the folio or the dek, and the gap keeps them apart. Padding and margins leave room for the stamp's −8° tilt.
+- Stamp: `min(80px, 22vw)` on phones, 104 px from 720 px (as before). Liner: `min(112px, 30vw)` on phones, 168 px from 720 px.
+- The row exists only when one of the two motifs is in the profile; without them the hero is as before (the 40svh / 56svh medium floor is unchanged and still tested).
+- Not changed: profile schema and vocabulary, prompts, 2-revision limit, `RENDERER_CHANGE_NEEDED` → BLOCKED, DemoFrame (notice / footer), fact-only (the stamp still shows only the name's own initials).
+
+**Tests:** `renderer-layout.test.tsx`, a new case over 3 fictional names (short Latin, long Latin, long Japanese) × 6 profiles with the stamp (alone in split / stacked / centered; with the liner in split, centered mincho and condensed black full) × 390 × 844 / 1440 × 900: stamp overlaps no name line, the folio, the dek or the liner; stamp, liner and name inside the hero; no sideways scroll. On the previous commit (7c86885) it fails (`short/stamp_split/phone: stamp over the name`); with this change all 4 layout tests pass. Full unit suite 602 passed.
+
+**Browser check (next start, local preview, fictional facts, 3 names × 3 profiles × 390 / 1440):** stamp and liner side by side above the name in every case; no horizontal overflow; phone hero 365–533 px (grows for the long split name), desktop 504 px floor or more.
+
+**Still not changed:** `dot_grid` is a faint absolutely positioned texture at the top right; not reported by a review, not changed here.

@@ -1253,10 +1253,11 @@
         "Phase 3 jail の DNS は UDP-only（明示的な制約）: Ubuntu 24.04 標準の passt（0.0~git20240220）の --dns-forward は UDP/53 だけを転送する。jail の namespace の中だけで 198.51.100.53 宛ての TCP を ip rule の prohibit で即座に拒否し（TC の答えで名前解決が約 2 分止まらないように）、jail の resolv.conf に options edns0。probe は TCP の拒否（EACCES、1 秒以内）と 10.255.255.254 の拒否を確かめ、満たさなければ jail を起動しない。他の release の passt・自前 build・TCP の DNS の proxy / DNAT は入れない。getent ahosts の成功は TCP の切り替えの証明として扱わない",
         "Phase 3 の残り: 下記の renderer 改善（住所の文字組み・hero / liner）を反映したうえで、実店舗 1 件の Phase 3 end-to-end PoC を再試験する。phase3-001（2026-10-02）は visual review で住所の文字組みを指摘されて BLOCKED（revisions=0）。phase3-002（d0441cf）は住所の問題を越え、profile の revision 1 回（candidate-1）まで進んだ後、mobile の hero 高さと liner の重なりを renderer の制約として指摘され、設計どおり BLOCKED（revisions=1）",
         "renderer の住所の文字組み（phase3-001 の review の指摘を、店舗に依存しない形で人が承認して直した）: Visit の住所は display の字面を保ちつつ、hero / 見出しの display scale とは別の上限を持つ（font-size の最大 1.9rem・単独 2.4rem で section 見出しより小さい、weight は最大 600、display の幅・tracking・大文字化を受けない）。「1-2-3」のような数字とハイフンの並び（ASCII・全角、20 文字まで）は途中で改行せず、それ以外の住所は通常どおり折り返す。表示用に分けた部分をつなぐと事実の文字列と完全に一致する（fact-only）。profile の schema・語彙・最大 2 回の revision・BLOCKED の境界は変えない",
-        "renderer の hero と liner motif（phase3-002 の review の指摘のうち、店舗に依存しない layout の制約だけを人が承認して直した）: hero は folio・liner・name・dek の行に分かれ、muffin_paper_svg はどの幅・どの layout・どの長さの店名でも name・folio・dek に重ならない。mobile の medium hero の最低高は 40svh（desktop は 56svh のまま）で、内容が多ければ伸びる。footer・notice（DemoFrame）は変えない（余白の指摘は好みと判断）。profile の schema・語彙・最大 2 回の revision・BLOCKED の境界は変えない"
+        "renderer の hero と liner motif（phase3-002 の review の指摘のうち、店舗に依存しない layout の制約だけを人が承認して直した）: hero は folio・liner・name・dek の行に分かれ、muffin_paper_svg はどの幅・どの layout・どの長さの店名でも name・folio・dek に重ならない。mobile の medium hero の最低高は 40svh（desktop は 56svh のまま）で、内容が多ければ伸びる。footer・notice（DemoFrame）は変えない（余白の指摘は好みと判断）。profile の schema・語彙・最大 2 回の revision・BLOCKED の境界は変えない",
+        "renderer の stamp_ring（phase3-003 の前に、架空データで再現できた汎用の重なりを予防的に直した）: stamp_ring と muffin_paper_svg は hero の同じ motif 行（folio と name の間、右端）に横並びで置き、どの幅・どの layout・どの長さの店名でも name・folio・dek・互いに重ならず、hero の外に出ない。schema・語彙・prompt・最大 2 回の revision・BLOCKED の境界・footer / notice は変えない"
       ],
       "required_tests": [
-        "unit: tests/unit/design-agent（fake Codex、schema、loop、renderer の fact-only、住所の数字の並びを分けない・住所の size / weight の上限）、tests/unit/design-agent/renderer-layout.test.tsx（Chromium、390 / 1440 px で liner が name に重ならない・hero の高さ・横 overflow なし・notice / footer 不変）",
+        "unit: tests/unit/design-agent（fake Codex、schema、loop、renderer の fact-only、住所の数字の並びを分けない・住所の size / weight の上限）、tests/unit/design-agent/renderer-layout.test.tsx（Chromium、390 / 1440 px で liner と stamp が name・folio・dek・互いに重ならない・hero の高さ・横 overflow なし・notice / footer 不変）",
         "unit: guardrails（Codex を web app から import しない・OpenAI キーを使わない）",
         "build",
         "e2e（既存）",
@@ -1303,7 +1304,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。phase3-001 は住所の文字組みで BLOCKED（d0441cf で修正）。phase3-002（d0441cf）は signed-in capture → review（candidate-0: 19/25）→ revision 1 回 → candidate-1（19/25）まで進み、mobile の medium hero の高さと liner motif の重なりを renderer の制約として指摘されて設計どおり BLOCKED（revisions=1）。liner を hero の自分の行に置き、mobile の medium hero の最低高を下げた。footer の余白の指摘は好みとして採らない。残り: その commit の実機反映と phase3-003 の再試験。",
+      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。phase3-001 は住所の文字組みで BLOCKED（d0441cf で修正）。phase3-002（d0441cf）は signed-in capture → review（candidate-0: 19/25）→ revision 1 回 → candidate-1（19/25）まで進み、mobile の medium hero の高さと liner motif の重なりを renderer の制約として指摘されて設計どおり BLOCKED（revisions=1）。liner を hero の自分の行に置き、mobile の medium hero の最低高を下げた。footer の余白の指摘は好みとして採らない。phase3-003 の前に、架空データで再現できた stamp_ring の重なりも同じ motif 行で直した。残り: その commit の実機反映と phase3-003 の再試験。",
       "branch": "feature/dev-028-ai-art-direction"
     }
   ]

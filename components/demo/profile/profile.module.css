@@ -43,8 +43,8 @@
 
 /* ---------- hero ---------- */
 
-/* Rows: folio, the liner motif (empty without it), title, dek. Rows never overlap, so the
-   liner cannot sit on the name; the title row takes the spare height. */
+/* Rows: folio, the decorative motifs (empty without them), title, dek. Rows never overlap,
+   so no motif in that row can sit on the name; the title row takes the spare height. */
 .hero {
   position: relative;
   display: grid;
@@ -231,15 +231,25 @@
   z-index: 0;
 }
 
+/* The stamp ring and the liner share one row between the folio and the name, at the right
+   edge, side by side: they never cover the name, the folio, the dek or each other, whatever
+   the name's length. The margins leave room for the stamp's tilt. */
+.motifRow {
+  grid-row: 2;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 18px;
+  padding: 0 8px;
+}
+
 .stamp {
-  position: absolute;
-  right: var(--pad);
-  bottom: 72px;
-  z-index: 0;
+  flex: none;
   display: grid;
   place-items: center;
-  width: 104px;
-  height: 104px;
+  width: min(80px, 22vw);
+  height: min(80px, 22vw);
   border-radius: 50%;
   border: 1px solid var(--p-primary);
   box-shadow: inset 0 0 0 5px var(--p-bg), inset 0 0 0 6px var(--p-accent);
@@ -249,19 +259,15 @@
 .stampMark {
   font-family: var(--font-editorial), var(--font-display), serif;
   font-style: italic;
-  font-size: 2rem;
+  font-size: 1.6rem;
   color: var(--p-primary);
 }
 
-/* The liner motif has its own row between the folio and the name, at the right edge:
-   it never covers the name, the folio or the dek, whatever the name's length. */
 .pleats {
-  grid-row: 2;
-  justify-self: end;
+  flex: none;
   display: block;
-  width: min(32%, 112px);
+  width: min(112px, 30vw);
   height: auto;
-  margin-top: 16px;
   opacity: 0.9;
 }
 
@@ -523,7 +529,10 @@
   .name { font-size: clamp(2.6rem, calc(100cqi / var(--units, 8)), 13rem); }
   .hero[data-layout="split_crop"] .name { font-size: clamp(3rem, calc(90cqi / var(--line-units, 6)), 17rem); }
   .hero[data-height="medium"] { min-height: 56svh; }
-  .pleats { width: min(18%, 168px); margin-top: 20px; }
+  .motifRow { gap: 28px; margin-top: 22px; }
+  .pleats { width: 168px; }
+  .stamp { width: 104px; height: 104px; }
+  .stampMark { font-size: 2rem; }
   .hero[data-layout="split_crop"] .line:nth-child(even) { padding-left: 22%; text-align: left; }
 
   .canvas[data-grid="editorial_12"] .section { grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: 40px; }

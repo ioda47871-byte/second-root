@@ -127,6 +127,17 @@ export default function ProfileRenderer({ demo, profile }: { demo: DemoView; pro
             </span>
           </div>
 
+          {(motifs.has("stamp_ring") || motifs.has("muffin_paper_svg")) && (
+            <div className={styles.motifRow} aria-hidden="true">
+              {motifs.has("stamp_ring") && (
+                <span className={styles.stamp}>
+                  <span className={styles.stampMark}>{mark}</span>
+                </span>
+              )}
+              {motifs.has("muffin_paper_svg") && <PleatsArt />}
+            </div>
+          )}
+
           <div className={styles.title}>
             <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length}>
               {lines.map((line, i) => (
@@ -143,12 +154,6 @@ export default function ProfileRenderer({ demo, profile }: { demo: DemoView; pro
             <span>{areaLabel(demo)}</span>
           </p>
 
-          {motifs.has("stamp_ring") && (
-            <span className={styles.stamp} aria-hidden="true">
-              <span className={styles.stampMark}>{mark}</span>
-            </span>
-          )}
-          {motifs.has("muffin_paper_svg") && <PleatsArt />}
         </header>
 
         <main className={styles.main}>
