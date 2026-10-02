@@ -1336,7 +1336,8 @@
         "段階 2 以降: 0 / 1 / 3 枚 × portrait / landscape / square × quiet / busy × 390×844 / 1440×900 の Chromium レイアウト検査、イメージ画像ラベル、fact-only、preview から reference が読めないこと、fallback、BLOCKED、revision 上限",
         "unit: photos.test.tsx・preview-asset-route.test.ts・renderer-photos-layout.test.tsx（Chromium、0〜3 枚 × 3 layout × portrait / landscape / square × 390 / 1440: 写真と文字・motif の重なりなし、イメージ画像ラベル、fit / focal / aspect、section 外への逸脱なし、横 overflow なし、fallback、asset 配信の境界）",
         "unit: photo-codex.test.ts（PhotoAnalysis の突き合わせ、ImageDirection の検査と写真なし fallback、自由記述のない schema、prompt に store path・consent 等が入らないこと、work-dir の copy だけ、本物の bubblewrap で custom / 既定の asset store が見えないこと、DEV-028 の prompt / schema の snapshot）",
-        "unit: photo-pipeline.test.ts・photo-worker.test.ts・photo-shots.test.tsx（artifact lineage と他 job の混入拒否、PhotoAnalysis の再利用と無効化、revision state machine（none / profile / images / both、job 全体で 2 回まで）、render check、photo-aware review の入力、写真なしへの fallback、環境障害で停止、worker の 0〜3 枚・revision 1 / 2 の Codex call 数、成功・schema invalid・nonzero・timeout・revision 失敗の後に画像 copy が残らないこと、segmented screenshot）"
+        "unit: photo-pipeline.test.ts・photo-worker.test.ts・photo-shots.test.tsx（artifact lineage と他 job の混入拒否、PhotoAnalysis の再利用と無効化、revision state machine（none / profile / images / both、job 全体で 2 回まで）、render check、photo-aware review の入力、写真なしへの fallback、環境障害で停止、worker の 0〜3 枚・revision 1 / 2 の Codex call 数、成功・schema invalid・nonzero・timeout・revision 失敗の後に画像 copy が残らないこと、segmented screenshot）",
+        "unit: worker-timing.test.ts・photo-poc.test.ts（call ごとの timing に固定値しか載らないこと、preflight の各 check、runtime 見積り）。E2E: photo-e2e.test.ts（SR_PHOTO_E2E=1。本物の build・preview・asset route・Chromium・render check・bubblewrap、fake Codex の回答）"
       ],
       "allowed_scope": [
         "lib/design-agent/",
@@ -1370,7 +1371,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "段階 1〜4（schema / intake、renderer・asset route、Codex の photo analysis / image direction、worker の pipeline・artifact lineage・revision state machine・photo-aware review）を実装。段階 5（fake asset の E2E・実機 PoC）は人の確認後に始める。",
+      "last_failure": "段階 1〜5 の自動化できる部分を実装（段階 5: Codex call ごとの timing、PoC の preflight / report / photo-poc.sh、fake asset の E2E）。実 Codex の写真 PoC は、人が作った generated_concept 画像（human_upload）を人が入れて、実機の jail で photo-poc.sh を流すのを待つ（docs/operations/design-photo-poc.md）。",
       "branch": "feature/dev-029-photo-art-direction"
     }
   ]
