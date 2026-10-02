@@ -204,8 +204,18 @@ export function isDesignAgentCwd(cwd: unknown): boolean {
  * touched.
  */
 export async function removeStaleCodexSessions(env: Record<string, string | undefined>): Promise<number> {
-  const home = env.CODEX_HOME || join(env.HOME || homedir(), ".codex");
   let removed = 0;
+  for (const path of await listDesignAgentSessions(env)) {
+    await rm(path, { force: true });
+    removed += 1;
+  }
+  return removed;
+}
+
+/** The session logs left by design-agent Codex calls (see removeStaleCodexSessions); read-only. */
+export async function listDesignAgentSessions(env: Record<string, string | undefined>): Promise<string[]> {
+  const home = env.CODEX_HOME || join(env.HOME || homedir(), ".codex");
+  const found: string[] = [];
   for (const dir of ["sessions", "archived_sessions"]) {
     const root = join(home, dir);
     let names: string[];
@@ -228,12 +238,10 @@ export async function removeStaleCodexSessions(env: Record<string, string | unde
       } catch {
         continue;
       }
-      if (!isDesignAgentCwd(meta?.payload?.cwd ?? meta?.cwd)) continue;
-      await rm(path, { force: true });
-      removed += 1;
+      if (isDesignAgentCwd(meta?.payload?.cwd ?? meta?.cwd)) found.push(path);
     }
   }
-  return removed;
+  return found;
 }
 
 /** The answer file Codex wrote in its work dir: not a link, a regular file of ours, at most 1 MiB. */

@@ -6,6 +6,9 @@
  *
  *   tsx scripts/sales-design-worker/worker.ts [--max=1] [--budget-seconds=<n>]
  *   tsx scripts/sales-design-worker/worker.ts enqueue --job-id <id> --facts <file.json> [--website <verified official site>] [--instagram <profile url>]
+ *   tsx scripts/sales-design-worker/worker.ts poc-preflight --job-id <id>   (DEV-029 photo PoC: before enqueue)
+ *   tsx scripts/sales-design-worker/worker.ts poc-report --job-id <id>      (DEV-029 photo PoC: after the run)
+ *     (codes, counts and milliseconds only; see docs/operations/design-photo-poc.md)
  *   tsx scripts/sales-design-worker/worker.ts meta-check --ig-user-id <our IG user id> --username <target>
  *     (Business Discovery PoC: read-only, prints codes and field names only; see
  *      docs/operations/design-worker-meta-check.md)
@@ -37,6 +40,10 @@ import { ensureQueue, JOB_ID, pickFacts, queueDirs } from "../../lib/design-agen
 import { abandonActiveJobSync, DEFAULT_MAX_JOBS, RUN_TIME_BUDGET_MS, runDesignWorker, type WorkerReport } from "../../lib/design-agent/worker/run";
 import { parseInstagramProfileUrl, USERNAME } from "../../lib/design-agent/worker/source-url";
 import { parseWebsiteUrl } from "../../lib/design-agent/worker/website";
+import { pocPreflight, pocReport } from "../../lib/design-agent/worker/poc";
+import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
+import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
+import { fromSandboxError } from "../../lib/design-agent/codex";
 import { removeActiveTempRootsSync } from "../../lib/design-agent/worker/temp";
 
 const REPO = resolve(__dirname, "../..");
@@ -91,6 +98,35 @@ async function enqueue(): Promise<number> {
   await rename(temp, join(dirs.inbox, `${jobId}.json`));
   say(`queued job ${jobId}`);
   return 0;
+}
+
+// ------------------------------------------------------------------ photo PoC (DEV-029)
+
+async function poc(kind: "preflight" | "report"): Promise<number> {
+  const jobId = flag("job-id") ?? "";
+  if (!JOB_ID.test(jobId)) usage("--job-id: lowercase letters, digits and - (3–63).");
+  const env = childEnvironment(process.env);
+  if (kind === "preflight") {
+    const result = await pocPreflight({
+      jobId,
+      queueRoot: paths.queue,
+      outRoot: paths.out,
+      env: process.env,
+      repoDir: REPO,
+      prepareSandbox: () =>
+        prepareCodexSandbox({ env, codexBin: "codex", protectedPaths: workerProtectedPaths({ stateDir: paths.state, queueRoot: paths.queue, outRoot: paths.out, env: process.env }) }).catch(
+          (error: unknown) => {
+            throw fromSandboxError(error);
+          },
+        ),
+    });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    say(result.ready ? `POC_READY (${result.photos} photo${result.photos === 1 ? "" : "s"})` : "POC_NOT_READY");
+    return result.ready ? 0 : 2;
+  }
+  const result = await pocReport({ jobId, outRoot: paths.out, queueRoot: paths.queue, tmpBase: tmpdir(), env: process.env, repoDir: REPO, budgetMs: RUN_TIME_BUDGET_MS });
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  return result.status === "REPORT" ? 0 : 2;
 }
 
 // ------------------------------------------------------------------ meta-check
@@ -233,7 +269,16 @@ for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal
 // A stray rejection must not print a stack with someone else's words in it.
 process.on("unhandledRejection", () => stopNow("WORKER_UNEXPECTED"));
 
-(argv[0] === "enqueue" ? enqueue() : argv[0] === "meta-check" ? metaCheck() : run()).then(
+(argv[0] === "enqueue"
+  ? enqueue()
+  : argv[0] === "meta-check"
+    ? metaCheck()
+    : argv[0] === "poc-preflight"
+      ? poc("preflight")
+      : argv[0] === "poc-report"
+        ? poc("report")
+        : run()
+).then(
   (code) => process.exit(code),
   () => stopNow("WORKER_UNEXPECTED"),
 );

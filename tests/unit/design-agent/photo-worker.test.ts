@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ImageDirection } from "@/lib/design-agent/assets/direction";
 import { CodexError, runCodexJson } from "@/lib/design-agent/codex";
-import type { PreviewSession, WorkerOptions, WorkerReport } from "@/lib/design-agent/worker/run";
+import { pocReport } from "@/lib/design-agent/worker/poc";
+import { RUN_TIME_BUDGET_MS, type PreviewSession, type WorkerOptions, type WorkerReport } from "@/lib/design-agent/worker/run";
 import { passthroughSandbox } from "../../support/passthrough-sandbox";
 import { AMERICAN_EDITORIAL, review } from "./fixtures";
 import { fakeAnalysis, fakePng, writeStore, type FakeAsset } from "./photo-fixtures";
@@ -188,6 +189,39 @@ describe("the worker with photos", () => {
     expect(execs(two)).toHaveLength(8);
     expect(json(join(two.out, "job-rev-2", "report.json")).photos).toMatchObject({ codex_calls: { photo_analysis: 1, image_direction: 3, photo_review: 3 } });
     budget.push({ scenario: "3 photos, revision 2 (worst case)", calls: execs(two).length, elapsedMs: r2.elapsedMs });
+    // the per-call timing: fixed stages in order, one entry per exec
+    const timing = json(join(two.out, "job-rev-2", "report.json")).timing as { calls: number; call_list: Array<{ stage: string; result: string; schema: string; duration_ms: number }> };
+    expect(timing.calls).toBe(8);
+    expect(timing.call_list.map((c) => c.stage)).toEqual([
+      "profile_brief",
+      "photo_analysis",
+      "image_direction",
+      "visual_review",
+      "image_direction_revision",
+      "visual_review_revision",
+      "image_direction_revision",
+      "visual_review_revision",
+    ]);
+    expect(timing.call_list.every((c) => c.result === "ok" && c.schema === "strict" && Number.isInteger(c.duration_ms))).toBe(true);
+    // the PoC report over the same run: lineage from the store, cleanup, timing and the estimate; codes and numbers only
+    const poc = await pocReport({
+      jobId: "job-rev-2",
+      outRoot: two.out,
+      queueRoot: two.queue,
+      tmpBase: two.tmp,
+      env: { HOME: two.root, TMPDIR: two.tmp, CODEX_HOME: join(two.root, "codex-home") },
+      repoDir: process.cwd(),
+      budgetMs: RUN_TIME_BUDGET_MS,
+    });
+    expect(poc).toMatchObject({ status: "REPORT", outcome: "done", lineage_ok: true, cleanup_ok: true, codex: { revisions: 2 }, photos: { assets: 3 }, timing: { calls: 8 }, estimate: { verdict: "OK" } });
+    expect((poc as { lineage: Array<{ check: string }> }).lineage.map((c) => c.check)).toEqual(["assets", "photo_analyses", "images_candidate-0", "images_candidate-1", "images_candidate-2", "images_final"]);
+    expect(JSON.stringify(poc)).not.toContain(two.root);
+    // an edited direction breaks the lineage
+    const finalPath = join(two.out, "job-rev-2", "final.images.json");
+    const edited = json(finalPath);
+    writeFileSync(finalPath, JSON.stringify({ ...edited, value: { ...(edited.value as object), paletteFit: 1 } }));
+    const broken = await pocReport({ jobId: "job-rev-2", outRoot: two.out, queueRoot: two.queue, tmpBase: two.tmp, env: { HOME: two.root, TMPDIR: two.tmp, CODEX_HOME: join(two.root, "codex-home") }, repoDir: process.cwd(), budgetMs: RUN_TIME_BUDGET_MS });
+    expect(broken).toMatchObject({ lineage_ok: false });
     assertClean(two);
   });
 
@@ -208,6 +242,15 @@ describe("the worker with photos", () => {
       { answer: review() },
     ]);
     expect(b.report.jobs[0]).toMatchObject({ status: "done" });
+    // the refused strict schema and its loose retry are two timed execs of one direction call
+    const calls = (json(join(nonzero.out, "job-bad-codex", "report.json")).timing as { call_list: Array<{ stage: string; schema: string; result: string }> }).call_list;
+    expect(calls.map((c) => [c.stage, c.schema, c.result])).toEqual([
+      ["profile_brief", "strict", "ok"],
+      ["photo_analysis", "strict", "ok"],
+      ["image_direction", "strict", "CODEX_EXEC_FAILED"],
+      ["image_direction", "loose", "CODEX_EXEC_FAILED"],
+      ["visual_review", "loose", "ok"],
+    ]);
     assertClean(nonzero);
 
     const revision = makeLayout();

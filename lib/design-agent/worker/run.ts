@@ -46,6 +46,7 @@ import type { EgressPolicy } from "./egress-proxy";
 import { captureWebsite, parseWebsiteUrl, websiteTarget, type WebsiteSource } from "./website";
 import { acquireLock, readLedger, writeJsonAtomic, writeLedger, type Holder, type Ledger } from "./state";
 import { cleanStaleTemp, createTempRoot, removeTempRoot } from "./temp";
+import { CallTimer, type PipelineCallKind } from "./timing";
 
 export const RUN_TIME_BUDGET_MS = 50 * 60 * 1000;
 export const MAX_JOB_ATTEMPTS = 2;
@@ -383,6 +384,7 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     await writeFile(join(runDir, "facts.json"), JSON.stringify(facts, null, 2), { mode: 0o600 });
     await mkdir(refsDir, { recursive: true, mode: 0o700 });
 
+    const captureStart = performance.now();
     // ---- visual sources, in order: the verified official website, the
     // signed-in Instagram capture (capture helper, another Linux user), the
     // public Instagram capture. The first that yields screenshots is used.
@@ -474,6 +476,7 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       };
       return await complete(ctx, runDir, report);
     }
+    const captureMs = Math.round(performance.now() - captureStart);
     const problem = await checkReferenceImages(refs);
     if (problem) throw Object.assign(new Error(problem), { code: "REFERENCE_CHECK_FAILED" });
 
@@ -492,7 +495,10 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     // schema from the start. Answers are always checked against the full zod
     // schemas (and the palette checks) by the pipeline, whichever was sent.
     let schemaMode: "strict" | "loose" = "strict";
-    const withSchemaFallback = async (kind: string, schema: object, ask: (s: object) => Promise<unknown>) => {
+    const timer = new CallTimer(undefined, (line) => log(`job ${jobId}: ${line}`));
+    const withSchemaFallback = async (kind: PipelineCallKind, schema: object, run: (s: object) => Promise<unknown>) => {
+      const stage = timer.next(kind);
+      const ask = (s: object) => timer.time(stage, s === schema ? "strict" : "loose", () => run(s));
       if (schemaMode === "loose") return ask(looseJsonSchema(schema));
       try {
         return await ask(schema);
@@ -506,6 +512,7 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         return ask(looseJsonSchema(schema));
       }
     };
+    const pipelineStart = performance.now();
     const pipeline: PipelineReport = await runDesignPipeline(
       {
         demo,
@@ -588,6 +595,13 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         notes: [...notes, ...pipeline.notes],
       },
       overflow,
+      // Codex time per call (fixed values only: worker/timing.ts).
+      timing: {
+        capture_ms: captureMs,
+        pipeline_ms: Math.round(performance.now() - pipelineStart),
+        ...timer.summary(),
+        call_list: timer.calls,
+      },
       photos: pipeline.photos
         ? {
             assets: pipeline.photos.assets,
