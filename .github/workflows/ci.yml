@@ -40,7 +40,7 @@ jobs:
   unit:
     name: unit
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,7 +48,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The design worker tests capture a local mock page with headless Chromium.
+      - run: npx playwright install --with-deps chromium
+      # The Codex sandbox tests run against real bubblewrap, unprivileged (as on the WSL worker).
+      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor; WSL does not.
+      - run: sudo apt-get install -y bubblewrap && sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: npm test
+        env:
+          SR_REQUIRE_BWRAP: "1"
+      # The capture helper's Unix boundary with real users (needs root to create them).
+      - run: sudo env "PATH=$PATH" SR_CROSS_USER_TEST=1 npx vitest run tests/unit/design-agent/cross-user.test.ts
 
   integration:
     name: integration

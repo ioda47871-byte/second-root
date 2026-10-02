@@ -1,0 +1,13 @@
+# Picks up requests left over by the per-run limit or a missed path event (and
+# deletes old results). Shorter than the worker's wait for an answer; run.sh
+# exits at once when there is nothing to do.
+[Unit]
+Description=Second Root Instagram capture helper (leftovers)
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=2min
+Unit=sr-capture.service
+
+[Install]
+WantedBy=timers.target

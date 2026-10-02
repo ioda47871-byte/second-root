@@ -1,0 +1,170 @@
+# WSL での隔離の設計（DEV-028 Phase 3、2026-10-01 再設計）
+
+Claude（Remote Control）・worker・Codex が `sr-designgen` で任意の shell を持ったままでも、
+Instagram のログイン済み browser profile（`sr-igcapture`）に届かないようにする。その境界を、
+WSL 2.7.14 の実機の挙動を前提に作り直した記録。
+
+## 1. 何が起きたか（実機の事実）
+
+WSL 2.7.14.0 / kernel 6.18.33.2-2 / Ubuntu 24.04。`/etc/wsl.conf` は `[interop] enabled=false`・`appendWindowsPath=false`。
+
+- `WSLInterop` の binfmt は無い。`sr-designgen` から `cmd.exe` を実行しても Permission denied
+- `/mnt/c` は metadata・uid/gid・umask=077 で、`sr-designgen` からは書けない。sudo の規則も無い
+- **しかし `wsl --shutdown` の後も `/run/WSL/1_interop -> 2_interop` が残り、`2_interop` は `srwxrwxrwx root:root`。
+  `sr-designgen` から書ける（＝接続できる）**
+
+WSL の interop socket に接続できれば、`/init` を interop の client として使って Windows の process を
+Windows の利用者として起動できる。Windows 側からは `wsl.exe -u root` で、どの distro でも root になれる。
+Microsoft は `[interop] enabled=false` を security boundary として扱っていない。
+WSL2 の VM には、ほかにも vsock という Windows への経路がある。
+
+**結論: WSL2 の中では「別の Linux 利用者」は、Windows（と root）に対する境界にならない。**
+前の設計（Linux 利用者の分離 + interop off の確認）は、ここで成り立たなくなった。
+
+## 2. 脅威モデル
+
+| 項目 | 内容 |
+|---|---|
+| 守るもの | `sr-igcapture` の Instagram profile（cookie・session）。次に、人の Windows 利用者の権限（そこから root・profile へ届くため） |
+| 攻撃者 | `sr-designgen` で動くものすべて: Claude（Remote Control の任意 shell。prompt injection を受けうる）、worker、Codex、Chromium、npm の依存 |
+| 攻撃者ができること | `sr-designgen` として任意の code を実行する。network に出る。spool に依頼を書く |
+| 信頼するもの | Windows の人と、人の WSL 利用者（uid 1000）。root。`sr-igcapture`（承認した commit だけを動かす helper） |
+| 境界 | `sr-designgen` の process から Windows へ届く経路を、OS（mount namespace・seccomp・cgroup BPF）でなくす。そのうえで Linux 利用者を分ける（profile の Unix 権限） |
+
+Windows へ届く経路と、それぞれの塞ぎ方:
+
+| 経路 | 塞ぎ方 |
+|---|---|
+| `/run/WSL/*_interop`（0777 の Unix socket） | `/run` を空の tmpfs にする（mount namespace）。jail の中には socket が存在しない |
+| vsock（WSL2 の VM と Windows の間の socket） | `RestrictAddressFamilies`（seccomp）で `AF_VSOCK` を拒否。`/dev/vsock` も無い（`PrivateDevices`） |
+| io_uring（`socket()` を通らずに socket を作れる） | `SystemCallFilter=~io_uring_*`（EPERM） |
+| `/init`・`/usr/lib/wsl` | 読めない（`InaccessiblePaths`） |
+| Windows の drive（`/mnt/c` の Startup folder など） | `/mnt` を空の tmpfs にする（DNS の `resolv.conf` だけ戻す） |
+| WSLg の display（`/mnt/wslg`・`/tmp/.X11-unix`） | `/mnt` は空、`/tmp` は private |
+| WSL の VM の abstract Unix socket（WSLg の X server、systemd の bus など）と localhost（他の利用者・他の distro の service） | jail **専用の network namespace**（`sr-jail-net.service`）。abstract socket と loopback は network namespace ごとに別なので、jail からは見えない。外への通信は root が動かす pasta（user-space の NAT）だけを通り、port の転送は双方向とも無し、gateway を host に写さない |
+| Windows host への network（NAT の gateway）、LAN、cloud metadata | `IPAddressDeny`（cgroup BPF）。私設・link-local の範囲すべてと、その時点の default gateway |
+| WSL の DNS tunnel の address（10.255.255.254。VM の loopback にあり、`0.0.0.0` で待ち受ける service はすべてここでも応える） | jail からは拒否する（probe が UDP・TCP の両方で確かめる）。jail の DNS は文書用の address `198.51.100.53` だけで、pasta がその **UDP/53 だけ**を host の resolver へ転送する（`--dns-forward`）。pasta 自身の socket にも同じ私設の範囲の拒否を掛ける（DNS tunnel への UDP の転送だけ許す） |
+| DNS の TCP（大きな答えで TC が立ったときの切り替え） | **jail の DNS は UDP だけ（明示的な制約）。**Ubuntu 24.04 の passt（`0.0~git20240220`）の `--dns-forward` は UDP/53 しか転送しない。そこで jail の namespace の中だけに `ip rule … to 198.51.100.53/32 ipproto tcp prohibit` を置き、TCP は即座に `EACCES` で断る（無いと TCP の接続が誰にも答えられず、名前解決が約 2 分止まる）。UDP の答えを大きくできるよう jail の `resolv.conf` に `options edns0`。それでも UDP に収まらない答えの名前は、即座に解決に失敗する |
+| 他の利用者の process（`/proc/<pid>/root` など） | `ProtectProc=invisible`、別 uid |
+| 新しい権限（setuid・sudo） | `NoNewPrivileges`、`RestrictSUIDSGID` |
+| jail の外の process の乗っ取り（ptrace・`process_vm_*`） | system call の filter で拒否（kernel の `ptrace_scope` によらない）。root の確認は requester として何も動かさない（書けるかは所有者と mode から root が判定） |
+| jail の外で動く `sr-designgen` の process（`su`・`wsl.exe -u`・ssh・cron など） | login shell を nologin にし、cron / at / linger を拒否。`run.sh`（毎回）と `admin.sh` が、`sr-designgen` の**すべての process** が `sr-jail-*.service` の cgroup の中にあることを確かめる（cgroup に process を入れられるのは root だけ） |
+
+## 3. 選択肢の比較
+
+| 案 | 境界の強さ | 自律性 | 手間・費用 | 判定 |
+|---|---|---|---|---|
+| A. Linux 利用者の分離 + interop off（前の設計） | **成り立たない**（0777 の socket、vsock） | 高い | 低い | 不可 |
+| **B. requester jail（systemd の sandbox）+ Linux 利用者の分離** | OS の境界（mount ns・seccomp・cgroup BPF・cgroup の所属）。起動ごとに probe が実機で確かめ、満たさなければ起動しない | 高い（Claude は jail の中で repo・test・worker・Codex・push を行える） | 低い（追加の machine なし。WSL のまま） | **採用** |
+| C. Claude を別の VM（Hyper-V など、Windows 連携なし）へ | hypervisor の境界で最も強い | 高い | 中〜高（Hyper-V は Pro 以上、VM の管理、VM と helper の間の通信路が新しく要る） | B が実機の probe を通らないときの次の候補 |
+| D. Instagram profile を別の machine（別端末・cloud VM）へ | 強い（この PC の Windows から届かない） | 中（headed login は遠隔の画面になる） | 中〜高（機材・費用） | 今は採らない |
+| E. ログイン済み profile を使わない（公式サイト + 未ログインの公開 Instagram だけ） | 守るものが無くなる | 高い | なし | B が使えない間の安全な既定（helper を入れなければこうなる） |
+
+B を選んだ理由:
+- 塞ぐべき経路は「Windows へ届く経路」で、§2 の表のとおり有限であり、それぞれ OS の仕組みで塞げる
+- 「設定したつもり」で終わらせない。jail の中で `jail/probe.py` が一つずつ確かめ、満たさなければ systemd が unit を起動しない（fail closed）
+  - 確かめる項目: interop socket が無い、`AF_VSOCK` が拒否される、io_uring が拒否される、私設 address が `EPERM`、他の process・他の home が見えない、など
+- Codex の sandbox（bubblewrap）・Chromium・Node はそのまま jail の中で動く（下の §5 で確認）
+
+## 4. 構成
+
+```
+Windows（人）── WSL2 VM ── Ubuntu distro
+                            ├─ uid 1000（人。信頼する。sudo を持つ）
+                            ├─ sr-igcapture（Instagram profile。home 0700。helper は systemd の sr-capture.service）
+                            └─ sr-designgen（login shell は nologin）
+                                 └─ sr-jail-claude.service ← jail（jail/jail.properties + 起動前の probe）
+                                       │    network: sr-jail-net.service の namespace（pasta、root）
+                                       └─ tmux → claude remote-control → git / npm / worker → Codex（bubblewrap）・Chromium
+```
+
+- jail の設定は `scripts/sales-design-capture/jail/jail.properties` の一つの list にまとめた
+  - `admin.sh` はこれを unit file（`sr-jail-claude.service`）と、人の jailed shell（`admin.sh shell`）・`admin.sh run`・`admin.sh jail-check` の `systemd-run -p` の両方に使う
+  - list には `User=`・home の bind・default gateway の拒否・起動前の probe を加えて渡す
+- `admin.sh` は root だけの clone（`/root/sr-capture-admin`、承認する commit に checkout）からだけ動き、systemd の unit と jail の file も
+  そこから `/usr/local/lib/sr-jail/`・`/etc/systemd/system/` に入れる。`sr-designgen` の repo も、Instagram の画面を描く `sr-igcapture` の
+  checkout も使わない（どちらも root 以外が書き換えられる）。`admin.sh` の所有者の確認は手違いを防ぐためのもので、改変への防御ではない
+- unit file は読めない設定を黙って捨てて起動するので、`jail-install` は `systemd-analyze verify` と、読み込まれた unit の主な設定
+  （NoNewPrivileges・ProtectSystem・ProtectHome・PrivateDevices・ProtectProc・NetworkNamespacePath・RestrictSUIDSGID）を確かめ、違えば unit を消して止まる
+- install は requester の crontab・at の job を消し、ssh の `DenyUsers` を置く（jail の外で後から動くものを残さない）
+- spool は jail の中に `requests`（書き込み）と `results`（読み取り）だけが見える
+- 人が Instagram にログインする間（`admin.sh login`）は、jail の unit をすべて止めてから始め、終わったら戻す
+- jail の unit はすべて `sr-jail-net.service` に結び付く（Requires / BindsTo / After）。network の unit が作り直されると、jail も新しい
+  namespace で起動し直す。probe は root が記録した namespace の ID（`/run/sr-jail/netns-id`）と自分の namespace を比べる
+- Claude（tmux の中）が終わると unit は正常終了扱いになるので、`Restart=always` で戻す（1 時間に 10 回まで）
+- **前提**: WSL の cgroup が v2 だけであること（`stat -fc %T /sys/fs/cgroup` が `cgroup2fs`。違えば `.wslconfig` の
+  `kernelCommandLine = cgroup_no_v1=all`）。address の拒否（cgroup BPF）が効かなければ probe が止める。
+  `.wslconfig` を変えたら Windows で `wsl --shutdown`。
+  DNS は WSL の dnsTunneling（10.255.255.254、Windows 11 の WSL 2.x の既定）を前提にする。dnsTunneling を切った構成（nameserver が
+  gateway）と systemd-resolved の stub（127.0.0.53）は使えない。引けなければ probe が `JAIL_WARN DNS_NOT_WORKING` を出す
+- **復旧**: pasta が落ちたり、起動直後に順序が競合したりして jail の Claude が止まっても、network の unit が起動し直すときに
+  Claude の unit が有効なら起動し直す（`claude-stop` で止めたものは止まったまま）。Claude が 1 時間に 10 回落ちると
+  systemd が諦める。直したら `sudo systemctl reset-failed sr-jail-claude` の後に `admin.sh claude-start`。
+  host の DNS の設定を変えたら `sudo systemctl restart sr-jail-net`（pasta は起動時に host の resolver を読む。Claude も入れ直される）。
+  `admin.sh approve` / `jail-install` も network の unit を作り直すので、jail の Claude・`run`・`shell` はその時に起動し直される
+
+## 5. この設計を確かめた方法（container の中で systemd 255 を PID 1 として起動）
+
+Ubuntu 24.04 と同じ systemd 255 を、container の中で PID 1 として起動して確かめた。
+WSL の状況は fixture で再現した（`/run/WSL/2_interop` を `root:root 0777` の待ち受け socket にする、`/mnt/c`・`/mnt/wslg`・`/usr/lib/wsl` も用意する）。
+
+| 確かめたこと | jail の外（同じ利用者） | jail の中 |
+|---|---|---|
+| `/run/WSL/1_interop` への接続 | 届く | socket が存在しない |
+| `socket(AF_VSOCK)` | 作れる | `EAFNOSUPPORT` |
+| io_uring | 作れる | `EPERM` |
+| 私設・link-local・gateway への UDP 送信 | 送れる | `EPERM`（cgroup BPF） |
+| `/mnt/c`・`/mnt/wslg`・`/tmp/.X11-unix`・`/usr/lib/wsl` | 見える | 無い / 読めない |
+| 他の home、`/home/sr-igcapture`、他の利用者の process | `/home/sr-igcapture` 以外は見える | 見えない |
+| file system 全体を歩いて、接続できる Unix socket・abstract socket を探す | 対照は時間の都合で interop socket だけ確認 | なし |
+| probe（`jail/probe.py`） | 13 項目で `JAIL_UNSAFE` | `JAIL_OK` |
+| jail の外で abstract socket（`@/tmp/.X11-unix/X9`）を待ち受けさせる | — | probe が `ABSTRACT_SOCKET_REACHABLE` で止める |
+| jail の中で `sandbox.test.ts`（本物の bubblewrap の攻撃テスト）と `worker.test.ts`（Chromium を含む） | — | 73 件すべて pass |
+| `admin.sh jail-install` → `claude-start` → process の cgroup が `sr-jail-claude.service`、jail の外に process を起こすと `REQUESTER_OUTSIDE_JAIL` → `claude-stop` | — | 期待どおり |
+| 外の localhost の listener（127.0.0.1:9931）と abstract socket（`@outside-abstract`、systemd の bus） | 届く / 見える | jail 専用の network では、拒否される / 1 つも見えない |
+| Claude が終わったとき / network の unit を作り直したとき / pasta を `kill -9` したとき | — | 自動で再起動し、新しい namespace に入る（namespace の ID が一致）。`claude-stop` の後は止まったまま |
+| VM の loopback に 10.255.255.254 を付け、`0.0.0.0:9935` で待ち受け、jail から 10.255.255.254:9935 へ | 最初の版では**届いた**（穴） | 直した版では拒否される |
+| jail の DNS（198.51.100.53 → pasta → host の 10.255.255.254:53 の DNS、UDP） | — | 名前が引ける（0.003 秒）。jail の `resolv.conf` は `nameserver 198.51.100.53` と `options edns0` |
+| jail から TCP で 198.51.100.53:53 へ（Ubuntu 24.04 の passt） | rule が無いと timeout（4 秒で打ち切り）、TC の答えで `getaddrinfo` が **134 秒**止まる | `EACCES` で即座に拒否（0.000 秒、3 回とも）。TC の答えでも `getaddrinfo` は即座に失敗（0.004 秒）。host 側の TCP の resolver には 1 件も届かない |
+| jail から 10.255.255.254:53 へ直接 | — | UDP は `EPERM`（0.000 秒）、TCP は届かない（SYN が落とされ timeout）。host 側の TCP の resolver には 1 件も届かない |
+| 実際の unit が作る jail の namespace の `ip rule show`（host 側 `ip -n srjail rule show` と jail の中の `ip rule show` が同じ） | — | `100: from all to 198.51.100.53 ipproto tcp prohibit` |
+| その rule を手で消して `admin.sh jail-check` | — | `JAIL_UNSAFE DNS_TCP_NOT_REFUSED` で止まる（2.8 秒）。`systemctl restart sr-jail-net` で rule が戻り `JAIL_OK` |
+| jail から他の network namespace へ（`/proc/*/ns/net`・`/run/netns` を開いて `setns`） | — | 見えるのは自分の jail の namespace だけ。`setns` も `EPERM` |
+
+実機で一度確かめること（container では再現できない、または実機の WSL に依存する）:
+- `sudo bash …/admin.sh jail-check` が `JAIL_OK` を出す（`JAIL_UNSAFE` の符号が出たらそれを Claude に伝える）
+- `sudo bash …/admin.sh run sr-designgen -- getent hosts github.com` で名前が引ける（pasta 経由の UDP の DNS）
+- `sudo ip -n srjail rule show` に `from all to 198.51.100.53 ipproto tcp prohibit` がある（`admin.sh status` にも出る）
+- `wsl --shutdown` → 開き直す を 2〜3 回して、`systemctl status sr-jail-claude` が active（起動直後の順序の競合からの復旧）
+- `stat -fc %T /sys/fs/cgroup` が `cgroup2fs`
+- 実際に使う名前（github.com・registry.npmjs.org・api.anthropic.com・OpenAI・instagram.com とその CDN・Playwright の CDN）が
+  UDP（EDNS0）の答えに収まり、jail の中で引ける。`getent hosts` / `getent ahosts` が成功しても、それは UDP で収まったという意味で、
+  TCP の切り替えの証明にはならない（jail に TCP の DNS は無い）
+
+わかったこと:
+- `ProtectKernelTunables`・`ProtectKernelLogs`・`ProtectHostname` は `/proc` の一部を上書き mount するので、jail の中で
+  bubblewrap が新しい `/proc` を mount できなくなる。Codex の sandbox が動かなくなるため外した（守っているものは root でしかできない操作）
+- `IPAddressDeny` で落とされた TCP の SYN は timeout になるだけなので、probe は UDP で確かめる（拒否されれば即座に `EPERM`）
+- Ubuntu 24.04 の passt は DNS を UDP でしか転送しない。glibc の TCP の接続には短い timeout が無いので、TC の答えが来ると
+  名前解決が約 2 分止まる。jail の namespace の中の `prohibit` の rule で即座の失敗にした。probe はこれを `EACCES` と 1 秒以内で確かめ、
+  DNS の確認（`getaddrinfo`）は他の確認がすべて通ったときだけ行う（rule が無いときに probe 自身が止まらないように）
+- `systemd-run --pipe` は `ExecStartPre` の出力を渡さないので、`admin.sh jail-check` は probe を unit の本体として、同じ設定で動かす
+- requester 自身の home は jail の中から見える。Phase 2 の profile（`~/.local/share/sr-instagram-browser`）が残っていれば
+  Claude が読めるため、probe は `BROWSER_PROFILE_IN_HOME` で止める（**古い profile の削除は必須**）
+
+## 6. 残るリスク
+
+- **DNS は UDP だけ**: UDP（EDNS0）に収まらない答えの名前は、jail の中では解決できない（即座に失敗する）。TCP の DNS を
+  可能にする案（jail の namespace の TCP を host 側の proxy や nftables の DNAT で resolver へつなぐ）は、host 側に新しい
+  攻撃面を足すので採らない。Ubuntu 24.04 が TCP の DNS を転送する passt を出したら見直す。他の release の deb や自前の build は入れない
+
+- **kernel・WSL の不具合**: namespace / seccomp / BPF を越える kernel の脆弱性、または WSL の未知の経路。
+  特に jail の中では user namespace を許している（Codex の bubblewrap に必要）。user namespace を使う kernel の権限昇格の脆弱性があれば
+  本物の root になり、境界は崩れる。probe は既知の経路しか確かめない。これを避けるのが §3 の C（別の VM）
+- **pasta は root で動く**: jail からの packet を処理するので、pasta の脆弱性は root への道になる（pasta 自身は起動後に権限と見える範囲を絞る）
+- **probe は起動時の確認**: 設定は unit の間ずっと同じだが、起動後に変わった状態（新しい listener など）は見ない。
+  jail は専用の network namespace にいるので、VM の abstract socket や localhost の service は後から出てきても届かない
+- **networkingMode=mirrored は対象外**: NAT（既定）で使う
+- 人が root で `sudo -u sr-designgen <command>` を打つと jail の外で動く。helper はその間 `HELPER_ERROR` を返す（profile は開かない）
+- Claude Code 自身の資格情報（`~/.claude`）、GitHub の token、Meta token は、jail の中の Claude からは読める（Claude 自身のもの）。
+  Codex からは読めない（Codex の sandbox）

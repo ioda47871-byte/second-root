@@ -1220,6 +1220,92 @@
       "attempts": 0,
       "last_failure": "Fresh review PASS (Low 3: 1 件を docs で対応)。PR #38 merge（1e53ef0）。Staging に 20260928000100 を適用し、start 200 / 別 runId 409 run_in_progress / 同一 runId 200 replayed を実測。確認用 run は abort 済み（.ai/reviews/DEV-025.md）。",
       "branch": "feature/dev-025-single-running-run"
+    },
+    {
+      "id": "DEV-028",
+      "title": "AI art direction PoC for demos (Codex CLI via ChatGPT sign-in, design profile + shared renderer)",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-007"
+      ],
+      "purpose": "「テンプレートを当てはめた」ではなく「この店のためにデザインした」デモにするため、怪異読本の Codex CLI 連携（ChatGPT サインイン・API キーなし）を移植し、Codex をアートディレクターとして design profile を選ばせる。まず PoC 対象の 1 店舗で有効性を確かめる（2026-09-29 人間承認）",
+      "acceptance_criteria": [
+        "怪異読本から bounded process / Codex の sign-in 確認 / JSONL parser / 失敗の符号を移植（API キーの変数を子へ渡さない・read-only sandbox・Codex の出力をログに写さない）",
+        "DesignProfile と VisualReview を zod で定義し、同じ定義から codex exec --output-schema 用の JSON Schema を作る（列挙値・hex・コントラスト検査）",
+        "ProfileRenderer は fact-only の DemoView だけを文言の出どころにする。profile からは文字を出さない",
+        "review 後の自動修正は profile だけ、最大 2 回。renderer の機能が要るなら BLOCKED。brief の失敗は既存テンプレートへ fallback、confidence < 0.5 は業種の既定 profile",
+        "ローカル CLI（npm run sales:design-demo）。入力はリポジトリの外、スクリーンショットは人が用意し --screens-reviewed で確認、結果は ~/.local/share/second-root-design/<run-id>/",
+        "/design-preview は SR_DESIGN_PREVIEW_ROOT が無ければ 404（Vercel には設定しない）",
+        "偽の Codex CLI による CI テスト",
+        "WSL runbook（専用利用者 sr-designgen、codex login --device-auth）",
+        "DB migration なし・Production / Staging / Routine / 営業 Agent に触らない",
+        "人間の WSL で PoC 対象の 1 店舗を本物の Codex で 1 件通し、PC / mobile の before / after を比較する",
+        "local design worker（2026-09-29 人間承認）: run.sh を正規の入口とし、job queue（inbox / processing / done / failed、atomic rename、stale 回収、job_id の冪等）・公開 Instagram の未ログイン取得（許可 URL のみ、redirect 検査、blur、PUBLIC_SOURCE_UNAVAILABLE は想定結果）・Codex pipeline・Linux の run directory を正本・Windows コピーは best effort・一時ファイルの起動時片付け",
+        "worker は commit / push / PR / DB / renderer 変更をしない。子 process に API キー・token を渡さない。report.json に worker の commit SHA",
+        "人間の WSL で run.sh を 1 回起動し、Instagram 取得 → Codex → デモ → review → final まで人の操作なしで通す",
+        "Phase 3（2026-10-01）Codex の隔離: Codex の process はすべて bubblewrap の中だけ（読み取り専用の / 、home・/root・/mnt・/srv・/run は見えない、privacy 処理済み画像はコピーだけ渡す）。毎回 probe で確かめ、満たさなければ Codex を起動しない（fail closed）",
+        "Phase 3 capture helper: ログイン済み Instagram profile は別の Linux 利用者 sr-igcapture（home 0700）だけが持つ。requester（sr-designgen）は /srv/sr-capture に id と公開プロフィール URL の request を置くだけで、返るのは符号と privacy 処理済み PNG（最大 3 枚）だけ。helper は自動ログインしない（LOGIN_REQUIRED で止まる）、人が承認した commit だけを動かす",
+        "Phase 3 visual source の順: 確認済みの公式サイト → helper（ログイン済み Instagram）→ 未ログインの公開 Instagram → PUBLIC_SOURCE_UNAVAILABLE。公式サイトの通信は worker 内の egress proxy（公開 address の 80 / 443 だけ、確かめた address へ接続）と WebRTC / QUIC の停止（撮影前に確認、fail closed）",
+        "Phase 3 requester jail（WSL2 では別利用者だけでは境界にならないため）: sr-designgen の process は systemd の sr-jail-*.service の中だけで動く。/run・/mnt・/usr/lib/wsl を隠し、vsock・io_uring・ptrace・私設 address・gateway を kernel が拒否し、専用の network namespace（pasta、DNS は jail 専用の address だけ）で VM の localhost・abstract socket から切り離す。起動のたびに probe が確かめ、満たさなければ起動しない。login shell は nologin、helper は撮影のたびに requester の全 process が jail の cgroup にいることを確かめる",
+        "Phase 3 root-only install: admin.sh・systemd の unit・jail の設定は root だけの clone（/root/sr-capture-admin、承認した commit・clean）からだけ動かし・入れる。requester の repo や helper の checkout からは入れない。読み込まれた unit の設定を確かめ、違えば止まる",
+        "Phase 3 実機検証（2026-10-01 人間が完了）: cgroup v2・DNS tunnel・interop off・/mnt/c を requester から読み書き不可、root-only clone を e2e6e8c に固定して install、jail-check が JAIL_OK、jail 内の DNS、Instagram の headed login（LOGIN_OK）、jail 内の Claude Code の sign-in・gh（second-root 限定の fine-grained PAT）・git push --dry-run、claude-start で Remote Control が jail 内で接続。2026-10-02: a7818a8 を反映し jail-check が JAIL_OK、jail 内の 198.51.100.53:53/TCP は EACCES で即時拒否（0.0 秒）、UDP の DNS で github.com / api.anthropic.com を解決、WSL の完全 shutdown 後に jail が自動で戻ることを確認",
+        "Phase 3 jail の DNS は UDP-only（明示的な制約）: Ubuntu 24.04 標準の passt（0.0~git20240220）の --dns-forward は UDP/53 だけを転送する。jail の namespace の中だけで 198.51.100.53 宛ての TCP を ip rule の prohibit で即座に拒否し（TC の答えで名前解決が約 2 分止まらないように）、jail の resolv.conf に options edns0。probe は TCP の拒否（EACCES、1 秒以内）と 10.255.255.254 の拒否を確かめ、満たさなければ jail を起動しない。他の release の passt・自前 build・TCP の DNS の proxy / DNAT は入れない。getent ahosts の成功は TCP の切り替えの証明として扱わない",
+        "Phase 3 end-to-end PoC（2026-10-02 実店舗 1 件で完了）: phase3-001（a7818a8）は住所の文字組みで BLOCKED（revisions=0）、phase3-002（d0441cf）は revision 1 回の後に mobile の hero / liner で BLOCKED（revisions=1）。renderer を汎用に直した後、phase3-003（worker 2af0465）で signed-in capture CAPTURED → candidate-0（revise、19/25）→ candidate-1（revise、19/25）→ candidate-2（accept、20/25）、outcome=done（最大 2 回の revision の範囲内、windows_copy は unavailable）。結果は人の machine の run directory だけにあり、repo / PR には置かない。デモとして見せてよいかの最終判断は人が after の画像を見て行う",
+        "renderer の住所の文字組み（phase3-001 の review の指摘を、店舗に依存しない形で人が承認して直した）: Visit の住所は display の字面を保ちつつ、hero / 見出しの display scale とは別の上限を持つ（font-size の最大 1.9rem・単独 2.4rem で section 見出しより小さい、weight は最大 600、display の幅・tracking・大文字化を受けない）。「1-2-3」のような数字とハイフンの並び（ASCII・全角、20 文字まで）は途中で改行せず、それ以外の住所は通常どおり折り返す。表示用に分けた部分をつなぐと事実の文字列と完全に一致する（fact-only）。profile の schema・語彙・最大 2 回の revision・BLOCKED の境界は変えない",
+        "renderer の hero と liner motif（phase3-002 の review の指摘のうち、店舗に依存しない layout の制約だけを人が承認して直した）: hero は folio・liner・name・dek の行に分かれ、muffin_paper_svg はどの幅・どの layout・どの長さの店名でも name・folio・dek に重ならない。mobile の medium hero の最低高は 40svh（desktop は 56svh のまま）で、内容が多ければ伸びる。footer・notice（DemoFrame）は変えない（余白の指摘は好みと判断）。profile の schema・語彙・最大 2 回の revision・BLOCKED の境界は変えない",
+        "renderer の stamp_ring（phase3-003 の前に、架空データで再現できた汎用の重なりを予防的に直した）: stamp_ring と muffin_paper_svg は hero の同じ motif 行（folio と name の間、右端）に横並びで置き、どの幅・どの layout・どの長さの店名でも name・folio・dek・互いに重ならず、hero の外に出ない。schema・語彙・prompt・最大 2 回の revision・BLOCKED の境界・footer / notice は変えない"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent（fake Codex、schema、loop、renderer の fact-only、住所の数字の並びを分けない・住所の size / weight の上限）、tests/unit/design-agent/renderer-layout.test.tsx（Chromium、390 / 1440 px で liner と stamp が name・folio・dek・互いに重ならない・hero の高さ・横 overflow なし・notice / footer 不変）",
+        "unit: guardrails（Codex を web app から import しない・OpenAI キーを使わない）",
+        "build",
+        "e2e（既存）",
+        "人間の WSL での実走",
+        "unit: tests/unit/design-agent/worker*.ts（mock Instagram、login wall、Instagram 外への redirect、不正 URL、stale processing、lock、stale temp、Codex 失敗、BLOCKED、fallback、Windows コピー不可、一時画像の削除、AI 出力の漏れなし）と run.sh の実ファイル検証",
+        "unit: guardrails（実在店舗データを repo に置かない・worker は注入なしでは Instagram 以外を開かない）",
+        "unit: tests/unit/design-agent/sandbox.test.ts（本物の bubblewrap での攻撃テスト・fail closed・対照）",
+        "unit: tests/unit/design-agent/capture-helper.test.ts と cross-user.test.ts（本物の Linux 利用者 2 人、CI では root の段）",
+        "unit: tests/unit/design-agent/jail.test.ts と host-check.test.ts（jail の設定・probe・admin.sh の配線・host の確認）",
+        "人間の WSL での jail-check（JAIL_OK）と Phase 3 end-to-end PoC"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "components/demo/",
+        "app/design-preview/",
+        "scripts/sales-design/",
+        "tests/",
+        "docs/",
+        ".ai/",
+        "next.config.ts",
+        "package.json",
+        "package-lock.json",
+        "vitest.config.mts",
+        "scripts/sales-design-worker/",
+        ".github/workflows/ci.yml",
+        "scripts/sales-design-capture/",
+        "scripts/sales-design-browser/"
+      ],
+      "forbidden_scope": [
+        "supabase/migrations/",
+        "Production / Staging / Routine / 営業 Agent",
+        "OpenAI API キー",
+        "店舗の facts・スクリーンショット・profile を repo に commit",
+        "main への直接 push",
+        "test の skip / 削除による green 化",
+        "systemd timer / Routine で営業 Agent・prospecting・outreach・worker を自動実行すること（営業 Agent と繋ぐ段階まで）。capture helper と隔離境界のためだけのローカル基盤 unit（sr-capture.path / sr-capture.timer / sr-jail-net.service / sr-jail-claude.service と jail の transient unit）は対象外。ただしそれらの install / enable は、人が root-only clone の admin.sh を明示的に実行したときだけ",
+        "worker からの commit / push / PR 作成",
+        "Instagram の DM の自動送信",
+        "Production / Staging / Supabase / Meta の設定変更"
+      ],
+      "human_approval_triggers": [
+        "DB schema の設計（PoC の結果を見てから）",
+        "営業 Routine への接続",
+        "renderer の機能追加（BLOCKED の判断）"
+      ],
+      "attempts": 0,
+      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。実店舗 PoC は phase3-001 / phase3-002 が renderer の制約で設計どおり BLOCKED、renderer を汎用に直して phase3-003（2af0465）で accept（20/25、revision 2 回）、outcome=done。残り: 人による final の目視判断、PR #43 の扱い（Draft のまま。merge は人の判断）、DB schema・営業 Routine への接続は人の承認待ち。",
+      "branch": "feature/dev-028-ai-art-direction"
     }
   ]
 }

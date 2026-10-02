@@ -32,8 +32,10 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  background: #2b2622;
-  color: #fff;
+  margin: 0;
+  background: var(--notice-bg, #2b2622);
+  color: var(--notice-ink, #fff);
+  border-bottom: 1px solid var(--notice-line, transparent);
   font-size: 0.8rem;
   line-height: 1.6;
   padding: 10px 16px;
@@ -45,11 +47,12 @@
 }
 
 .footer {
+  background: var(--footer-bg, transparent);
   border-top: 1px solid var(--line);
   padding: 28px 16px 40px;
   text-align: center;
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--footer-ink, var(--muted));
 }
 
 .footer a {

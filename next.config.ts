@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/demo/:path*", headers: privateRouteHeaders },
+      { source: "/design-preview/:path*", headers: privateRouteHeaders },
       { source: "/admin/:path*", headers: privateRouteHeaders },
       { source: "/api/internal/:path*", headers: privateRouteHeaders },
       { source: "/api/webhooks/:path*", headers: privateRouteHeaders },
