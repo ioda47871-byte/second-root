@@ -376,15 +376,24 @@
   color: var(--p-primary);
 }
 
+/* The address is read, not a headline: it keeps the profile's face but has its own
+   size and weight caps, whatever the profile's display weight, width and tracking. */
 .addressValue {
   margin: 0;
   font-family: var(--display);
-  font-weight: var(--display-weight);
-  font-size: clamp(1.6rem, 5.4vw, 3rem);
-  line-height: 1.35;
+  font-weight: min(var(--display-weight), 600);
+  font-variation-settings: normal;
+  letter-spacing: 0;
+  font-size: clamp(1.2rem, 4.4vw, 1.9rem);
+  line-height: 1.5;
   color: var(--p-text);
   white-space: pre-line;
   overflow-wrap: anywhere;
+}
+
+/* A number run ("1-2-3", a phone number) never breaks inside; the text around it wraps as usual. */
+.keep {
+  white-space: nowrap;
 }
 
 .canvas[data-display="condensed_grotesk"] .addressValue,
@@ -519,7 +528,7 @@
   .canvas[data-info="ruled_list"] .row { grid-template-columns: 10em minmax(0, 1fr); align-items: baseline; }
 
   /* A single fact (usually the address) is set as a composition of its own. */
-  .section[data-single] .addressValue { font-size: clamp(2.2rem, 4.6vw, 4.2rem); }
+  .section[data-single] .addressValue { font-size: clamp(1.4rem, 3vw, 2.4rem); }
   .canvas[data-info="colophon"] .section[data-single] { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; }
   .canvas[data-info="colophon"] .section[data-single] .heading { align-items: center; flex-direction: row; justify-content: center; }
   .canvas[data-info="colophon"] .visit { grid-template-columns: minmax(0, 1fr); }

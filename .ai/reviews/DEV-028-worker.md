@@ -421,3 +421,21 @@ Independent security review status: rounds 2 and 3 of the live-attack security r
   - UDP `getaddrinfo` succeeds in 0.006 s.
   - Truncated answer: `getaddrinfo` fails after 0.006 s.
   - Rule deleted: `JAIL_UNSAFE DNS_TCP_NOT_REFUSED` (rc=1, 2.8 s). After a restart: rule back, `JAIL_OK`.
+
+## Renderer: visit address typography (2026-10-02, after the first real-shop run)
+
+**Real-machine run (human, WSL, worker at a7818a8):** `jail-check` JAIL_OK; TCP to the jail resolver refused at once (EACCES, 0.0 s); UDP DNS resolves; the jail came back by itself after a full WSL shutdown. Job `phase3-001`: `visual_source=instagram_signed_in`, capture `CAPTURED`, brief, render, visual review of candidate-0: 18/25, `revise`, `needs_renderer_change=true`. The pipeline stopped as designed with `RENDERER_CHANGE_NEEDED` (`blocked`, revisions=0); the revised profile was not used. The review's note: the visit address is set on the display scale, and the street number breaks across lines. No shop data from that run is in this repository.
+
+**Change (renderer only; approved by the human as the renderer extension the BLOCKED stop asks for):**
+- `.addressValue` keeps the display face but has its own caps: `clamp(1.2rem, 4.4vw, 1.9rem)`, a single fact `clamp(1.4rem, 3vw, 2.4rem)` (both below the section heading), `font-weight: min(var(--display-weight), 600)`, no display width / tracking / uppercase. Before: up to 3rem / 4.2rem at the display weight (900 for `black`).
+- `keepTogether()` (`components/demo/profile/text.ts`) splits a visit fact into segments; a run of digits joined by hyphens (ASCII or full-width, at most 20 characters: a street number, a phone number) is wrapped in `<span class="keep" data-keep>` with `white-space: nowrap`. The rest wraps as before (`overflow-wrap: anywhere` stays). The segments join back to the exact fact.
+- Not changed: the profile schema and vocabulary (no new field: the cap is safe for every profile, so stored and default profiles stay valid and Codex's output schema is the same), the prompts, the 2-revision limit, `RENDERER_CHANGE_NEEDED` → BLOCKED.
+
+**Tests:** `renderer.test.tsx`
+- `keepTogether` joins back to the exact text; keeps `9-99-99`, full-width `１－２－３`, phone numbers, two runs in one address; keeps nothing in plain text, letter-hyphen text or a run over 20 characters.
+- Every profile in the matrix renders a long fictional address as one paragraph with only the number run in a `data-keep` span.
+- The fact-only check runs on that address and on a full-width one with a line break as well.
+- CSS: every `.addressValue` size is a clamp at most 2.4rem; weight cap, no display width / tracking / case, no `nowrap` on the whole address, `.keep` is `nowrap`.
+- Both new checks fail on the previous renderer and CSS, and pass now.
+
+**Browser check (Chromium, `next start` with a local preview of fictional facts, 4 profiles incl. condensed black uppercase and mincho, 390 and 1440 px):** the number run is one line box in every case; the address wraps to 2 lines at 390 px; no horizontal overflow; the address (19.2–38.4 px) stays below the Visit heading (35.2–57.6 px); weight 600 for `black`, 300 for `light`.

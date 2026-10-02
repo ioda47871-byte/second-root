@@ -69,6 +69,30 @@ export function nameSizing(name: string): CSSProperties {
   return { "--units": units(emWidth(name)), "--line-units": units(Math.max(...lines.map(emWidth))) } as CSSProperties;
 }
 
+/**
+ * A run of digits joined by hyphens, as in a street number or a phone number
+ * ("1-2-3", "052-000-0000"; ASCII or full-width). Longer runs are left to wrap.
+ */
+const NUMBER_RUN = /[0-9０-９]+(?:[-‐‑–−－][0-9０-９]+)+/g;
+export const KEEP_TOGETHER_MAX = 20;
+
+/**
+ * Splits a fact into segments for display: number runs are marked to stay on
+ * one line, the rest wraps as usual. The segments join back to the exact text.
+ */
+export function keepTogether(text: string): { text: string; keep: boolean }[] {
+  const parts: { text: string; keep: boolean }[] = [];
+  let at = 0;
+  for (const match of text.matchAll(NUMBER_RUN)) {
+    if (match[0].length > KEEP_TOGETHER_MAX) continue;
+    if (match.index > at) parts.push({ text: text.slice(at, match.index), keep: false });
+    parts.push({ text: match[0], keep: true });
+    at = match.index + match[0].length;
+  }
+  if (at < text.length) parts.push({ text: text.slice(at), keep: false });
+  return parts;
+}
+
 export function ordinal(index: number): string {
   return String(index + 1).padStart(2, "0");
 }

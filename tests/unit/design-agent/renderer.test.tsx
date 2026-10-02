@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
-import { locationLabels, monogram, nameLines, WARD_ROMAJI } from "@/components/demo/profile/text";
+import { KEEP_TOGETHER_MAX, keepTogether, locationLabels, monogram, nameLines, WARD_ROMAJI } from "@/components/demo/profile/text";
 import { CATEGORY_DEFAULT_PROFILES } from "@/lib/design-agent/defaults";
 import { loadPreviewRun, previewRoot } from "@/lib/design-agent/preview";
 import { DIVIDERS, HERO_LAYOUTS, INFO_STYLES, MOTIFS, type DesignProfile } from "@/lib/design-agent/profile";
@@ -17,6 +17,8 @@ import { ADDRESS_ONLY_SHOP, AMERICAN_EDITORIAL, MINIMAL_SHOP, SHOP } from "./fix
 function visibleText(html: string): string[] {
   return html
     .replace(/<(svg)[\s\S]*?<\/\1>/g, " ")
+    // a kept-together number run is part of its fact's text node, not a node of its own
+    .replace(/<span[^>]*data-keep=""[^>]*>([^<]*)<\/span>/g, "$1")
     .replace(/<[^>]+>/g, "\n")
     .split("\n")
     .map((t) => t.replace(/&amp;/g, "&").trim())
@@ -55,7 +57,16 @@ const PROFILES: DesignProfile[] = [
     })),
   ),
 ];
-const SHOPS: DemoView[] = [SHOP, MINIMAL_SHOP, ADDRESS_ONLY_SHOP, { ...SHOP, name: "焼菓子テスト", ward: "千種区" }];
+// Fictional long address with a street number and a building: the case a review found hard to read.
+const LONG_ADDRESS = "名古屋市北区架空町九丁目テスト通り9-99-99 テストビルディング2F";
+const SHOPS: DemoView[] = [
+  SHOP,
+  MINIMAL_SHOP,
+  ADDRESS_ONLY_SHOP,
+  { ...SHOP, name: "焼菓子テスト", ward: "千種区" },
+  { ...ADDRESS_ONLY_SHOP, address: LONG_ADDRESS },
+  { ...SHOP, address: "名古屋市北区テスト町１－２－３\nテスト2F", phone: "052-000-0000" },
+];
 
 describe("ProfileRenderer", () => {
   it("shows only verified facts and fixed template copy, for every layout, style and motif", () => {
@@ -98,6 +109,37 @@ describe("ProfileRenderer", () => {
   });
 });
 
+describe("visit facts", () => {
+  it("keeps number runs together and joins back to the exact fact", () => {
+    const cases: [string, string[]][] = [
+      [LONG_ADDRESS, ["9-99-99"]],
+      ["名古屋市北区テスト町１－２－３", ["１－２－３"]],
+      ["052-000-0000", ["052-000-0000"]],
+      ["テスト町1丁目2-3 ビル10-1", ["2-3", "10-1"]],
+      ["テスト駅から徒歩5分", []],
+      ["テスト-町 A-B", []],
+      ["1-2-3-4-5-6-7-8-9-10-11", []],
+    ];
+    for (const [text, kept] of cases) {
+      const parts = keepTogether(text);
+      expect(parts.map((p) => p.text).join(""), text).toBe(text);
+      expect(parts.filter((p) => p.keep).map((p) => p.text), text).toEqual(kept);
+      expect(parts.every((p) => !p.keep || p.text.length <= KEEP_TOGETHER_MAX)).toBe(true);
+    }
+    expect(keepTogether("")).toEqual([]);
+  });
+
+  it("renders the address as one fact that wraps, with only its number run held together", () => {
+    for (const profile of PROFILES) {
+      const html = renderToStaticMarkup(<ProfileRenderer demo={{ ...ADDRESS_ONLY_SHOP, address: LONG_ADDRESS }} profile={profile} />);
+      const value = html.match(/<p class="[^"]*addressValue[^"]*">([\s\S]*?)<\/p>/)?.[1] ?? "";
+      expect(value).toMatch(/^名古屋市北区架空町九丁目テスト通り<span class="[^"]*keep[^"]*" data-keep="">9-99-99<\/span> テストビルディング2F$/);
+    }
+    const phone = renderToStaticMarkup(<ProfileRenderer demo={SHOP} profile={AMERICAN_EDITORIAL} />);
+    expect(phone).toMatch(/<dd[^>]*><span[^>]*data-keep="">052-000-0000<\/span><\/dd>/);
+  });
+});
+
 describe("profile CSS", () => {
   const css = () => readFile(join(process.cwd(), "components/demo/profile/profile.module.css"), "utf8");
 
@@ -111,6 +153,33 @@ describe("profile CSS", () => {
     expect(blocks).toHaveLength(1);
     expect(outside).not.toMatch(/(?<![-\w])animation(-name)?\s*:/);
     expect(blocks[0].slice(blocks[0].indexOf("@keyframes"))).not.toMatch(/(?<![-\w])animation(-name)?\s*:/);
+  });
+
+  it("sizes the address on its own capped scale, not the display scale, and wraps it", async () => {
+    const text = (await css()).replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...text.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .map((m) => ({ selector: m[1].trim(), body: m[2] }))
+      .filter((r) => /\.addressValue\b/.test(r.selector));
+    const decl = (body: string, prop: string) => body.match(new RegExp(`(?:^|[;\\s])${prop}\\s*:\\s*([^;]+)`))?.[1].trim();
+    const base = rules.find((r) => r.selector === ".addressValue");
+    expect(base).toBeDefined();
+    expect(decl(base!.body, "font-weight")).toBe("min(var(--display-weight), 600)");
+    expect(decl(base!.body, "font-variation-settings")).toBe("normal");
+    expect(decl(base!.body, "letter-spacing")).toBe("0");
+    expect(decl(base!.body, "overflow-wrap")).toBe("anywhere");
+    // Every size the address can take, in any rule: a clamp whose maximum stays below the section heading's.
+    const sizes = rules.map((r) => decl(r.body, "font-size")).filter((v): v is string => Boolean(v));
+    expect(sizes.length).toBeGreaterThanOrEqual(2);
+    for (const size of sizes) {
+      const max = size.match(/^clamp\([\d.]+rem, [\d.]+vw, ([\d.]+)rem\)$/)?.[1];
+      expect(max, size).toBeDefined();
+      expect(Number(max), size).toBeLessThanOrEqual(2.4);
+    }
+    for (const r of rules) {
+      expect(r.body, r.selector).not.toMatch(/var\(--(units|line-units)\)|cqi|white-space\s*:\s*nowrap|text-transform/);
+      if (r !== base) expect(r.body, r.selector).not.toMatch(/font-weight|font-variation-settings|letter-spacing/);
+    }
+    expect(text).toMatch(/\.keep\s*\{\s*white-space:\s*nowrap;\s*\}/);
   });
 });
 

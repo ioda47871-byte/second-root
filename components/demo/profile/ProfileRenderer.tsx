@@ -4,7 +4,7 @@ import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
 import { areaLabel, infoRows } from "../info";
 import { editorial, grotesk } from "./fonts";
-import { locationLabels, monogram, nameLines, nameSizing, ordinal } from "./text";
+import { keepTogether, locationLabels, monogram, nameLines, nameSizing, ordinal } from "./text";
 import styles from "./profile.module.css";
 
 // Shared renderer for design profiles (DEV-028). Every word on the page comes
@@ -48,6 +48,19 @@ function PleatsArt() {
       ))}
       <path className={styles.pleatBase} d="M44 150 H226" />
     </svg>
+  );
+}
+
+/** A fact as text, with number runs ("1-2-3") kept on one line when it wraps. */
+function FactText({ text }: { text: string }) {
+  return keepTogether(text).map((part, i) =>
+    part.keep ? (
+      <span key={i} className={styles.keep} data-keep="">
+        {part.text}
+      </span>
+    ) : (
+      part.text
+    ),
   );
 }
 
@@ -180,7 +193,9 @@ export default function ProfileRenderer({ demo, profile }: { demo: DemoView; pro
                       </span>
                       <span>{address.label}</span>
                     </p>
-                    <p className={styles.addressValue}>{address.value}</p>
+                    <p className={styles.addressValue}>
+                      <FactText text={address.value} />
+                    </p>
                     {labels.length > 0 && (
                       <p className={styles.addressTags} lang="en" aria-hidden="true">
                         {labels.map((label) => (
@@ -200,7 +215,9 @@ export default function ProfileRenderer({ demo, profile }: { demo: DemoView; pro
                           </span>
                           <span>{row.label}</span>
                         </dt>
-                        <dd className={styles.rowValue}>{row.value}</dd>
+                        <dd className={styles.rowValue}>
+                          <FactText text={row.value} />
+                        </dd>
                       </div>
                     ))}
                   </dl>
