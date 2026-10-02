@@ -54,13 +54,40 @@ describe("the requester jail", () => {
     }
   });
 
+  it("DNS is UDP-only: TCP to the jail's DNS address is refused in the jail's namespace before pasta starts; edns0; the WSL DNS tunnel stays unreachable", () => {
+    // the rule: inside the jail's namespace only (ip -n srjail), right after the namespace is made, before pasta
+    const rule = 'echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto tcp prohibit priority 100"';
+    expect(ADMIN).toContain(rule);
+    const netns = ADMIN.indexOf('echo "ExecStartPre=$ip_bin netns add srjail"');
+    expect(netns).toBeGreaterThan(0);
+    expect(ADMIN.indexOf(rule)).toBeGreaterThan(netns);
+    expect(ADMIN.indexOf(rule)).toBeLessThan(ADMIN.indexOf('echo "ExecStart=$pasta_bin'));
+    // UDP/53 still forwarded by pasta; the jail's resolv.conf asks for EDNS0 (fewer truncated answers)
+    expect(ADMIN).toContain("--dns-forward $JAIL_DNS --netns /run/netns/srjail");
+    expect(ADMIN).toMatch(/printf \\"nameserver \$JAIL_DNS\\\\\\\\noptions edns0\\\\\\\\n\\" > \/run\/sr-jail\/resolv\.conf/);
+    // the jail never reaches the WSL DNS tunnel (10.0.0.0/8 denied; only pasta's own unit may)
+    expect(settings.find((l) => l.startsWith("IPAddressAllow="))).not.toContain("10.255.255.254");
+    expect(settings.find((l) => l.startsWith("IPAddressDeny="))).toContain("10.0.0.0/8");
+    // the probe checks both, with the same address admin.sh uses, and fails closed
+    const probe = readFileSync(join(DIR, "jail", "probe.py"), "utf8");
+    expect(probe).toContain('JAIL_DNS = "198.51.100.53"');
+    expect(probe).toContain('WSL_DNS_TUNNEL = "10.255.255.254"');
+    for (const code of ["DNS_TCP_NOT_REFUSED", "DNS_TCP_REFUSED_SLOWLY", "DNS_TUNNEL_REACHABLE", "DNS_TUNNEL_NOT_FILTERED"]) expect(probe).toContain(`fail("${code}")`);
+    expect(probe).toMatch(/if e\.errno != errno\.EACCES:\n\s+fail\("DNS_TCP_NOT_REFUSED"\)/);
+    expect(probe).not.toMatch(/ip in \("0\.0\.0\.0", "10\.255\.255\.254"\)/); // no longer skipped
+    // outside a jail (no rule): TCP to the DNS address is not refused, so the probe fails
+    const r = spawnSync("python3", ["-I", join(DIR, "jail", "probe.py"), userInfo().username], { encoding: "utf8" });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/JAIL_UNSAFE DNS_TCP_(NOT_REFUSED|REFUSED_SLOWLY)/);
+  }, 30_000);
+
   it("the probe refuses to run outside the jail's own network namespace", () => {
     const probe = readFileSync(join(DIR, "jail", "probe.py"), "utf8");
     expect(probe).toContain('open("/run/sr-jail/netns-id")');
     expect(probe).toContain('os.stat("/proc/self/ns/net").st_ino != want');
     const r = spawnSync("python3", ["-I", join(DIR, "jail", "probe.py"), userInfo().username], { encoding: "utf8" });
     expect(r.stdout).toContain("JAIL_UNSAFE NETWORK_NOT_PRIVATE");
-  });
+  }, 30_000);
 
   it("the probe fails closed outside a jail, prints codes only, and refuses a browser profile left in the home", () => {
     const home = mkdtempSync(join(tmpdir(), "sr-jail-home-"));
@@ -78,14 +105,14 @@ describe("the requester jail", () => {
     expect(probe({}).stdout).toContain("JAIL_UNSAFE BROWSER_PROFILE_IN_HOME");
     // a wrong user name is never JAIL_OK
     expect(spawnSync("python3", ["-I", join(DIR, "jail", "probe.py"), "someone-else"], { encoding: "utf8" }).stdout).toContain("JAIL_UNSAFE WRONG_USER");
-  });
+  }, 60_000);
 
   it("admin.sh: every way the requester runs goes through the same jail settings and the probe", () => {
     // one list: the unit file, the person's shell, `run`, the check
     expect(ADMIN).toMatch(/grep -Ev '\^\[\[:space:\]\]\*\(#\|\$\)' "\$JAIL_LIB\/jail\.properties"/);
     expect(ADMIN).toMatch(/echo "ExecStartPre=\$py -I \$JAIL_LIB\/probe\.py \$req"/);
     expect(ADMIN).toMatch(/IPAddressDeny=%d\.%d\.%d\.%d\/32/); // the default gateway (the Windows host in WSL's NAT)
-    for (const unit of ['--unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}" -- /bin/bash -l', '--unit="sr-jail-run-$$-$RANDOM" -p RuntimeMaxSec=3500 "${JAIL_ARGS[@]}" -- "$@"', '--unit="sr-jail-check-$$" "${JAIL_ARGS[@]}" -- "$py"']) expect(ADMIN).toContain(unit);
+    for (const unit of ['--unit="sr-jail-shell-$$" "${JAIL_ARGS[@]}" -- /bin/bash -l', '--unit="sr-jail-run-$$-$RANDOM" -p RuntimeMaxSec=3500 "${JAIL_ARGS[@]}" -- "$@"', '--unit="sr-jail-check-$$" "${args[@]}" -- "$py"']) expect(ADMIN).toContain(unit);
     // the Claude unit carries the settings, fetched on their own first: never a unit without them
     expect(ADMIN).toContain('props="$(jail_props "$req")" || {');
     expect(ADMIN).toMatch(/grep -qx "NoNewPrivileges=yes" <<<"\$props" && grep -q "\^ExecStartPre=\.\*probe\.py" <<<"\$props"/);
@@ -104,6 +131,11 @@ describe("the requester jail", () => {
     expect(settings).toContain("BindReadOnlyPaths=/run/sr-jail/netns-id");
     // Claude exiting ends tmux cleanly, so it restarts either way
     expect(ADMIN).toMatch(/echo "Type=forking"[\s\S]*?echo "Restart=always"/);
+    // jail-check runs the probe as the unit's own command (systemd-run --pipe drops ExecStartPre output),
+    // with every other jail setting kept
+    const check = ADMIN.slice(ADMIN.indexOf("jail_check() {"), ADMIN.indexOf("stop_jail_units() {"));
+    expect(check).toMatch(/\[ "\$\{JAIL_ARGS\[\$i\]\}" = -p \] && \[\[ "\$\{JAIL_ARGS\[\$\(\(i \+ 1\)\)\]\}" == ExecStartPre=\* \]\]/);
+    expect(check).toContain('-- "$py" -I "$JAIL_LIB/probe.py" "$req"');
     // a loaded unit that dropped a setting (older systemd, a typo) is refused
     expect(ADMIN).toContain('systemd-analyze verify "/etc/systemd/system/$JAIL_CLAUDE"');
     expect(ADMIN).toMatch(/for want in NoNewPrivileges=yes ProtectSystem=strict ProtectHome=tmpfs PrivateDevices=yes ProtectProc=invisible NetworkNamespacePath=\/run\/netns\/srjail RestrictSUIDSGID=yes; do/);

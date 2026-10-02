@@ -1250,7 +1250,8 @@
         "Phase 3 requester jail（WSL2 では別利用者だけでは境界にならないため）: sr-designgen の process は systemd の sr-jail-*.service の中だけで動く。/run・/mnt・/usr/lib/wsl を隠し、vsock・io_uring・ptrace・私設 address・gateway を kernel が拒否し、専用の network namespace（pasta、DNS は jail 専用の address だけ）で VM の localhost・abstract socket から切り離す。起動のたびに probe が確かめ、満たさなければ起動しない。login shell は nologin、helper は撮影のたびに requester の全 process が jail の cgroup にいることを確かめる",
         "Phase 3 root-only install: admin.sh・systemd の unit・jail の設定は root だけの clone（/root/sr-capture-admin、承認した commit・clean）からだけ動かし・入れる。requester の repo や helper の checkout からは入れない。読み込まれた unit の設定を確かめ、違えば止まる",
         "Phase 3 実機検証（2026-10-01 人間が完了）: cgroup v2・DNS tunnel・interop off・/mnt/c を requester から読み書き不可、root-only clone を e2e6e8c に固定して install、jail-check が JAIL_OK、jail 内の DNS、Instagram の headed login（LOGIN_OK）、jail 内の Claude Code の sign-in・gh（second-root 限定の fine-grained PAT）・git push --dry-run、claude-start で Remote Control が jail 内で接続",
-        "Phase 3 の残り: WSL の完全 shutdown 後の自動復帰（sr-jail-net / sr-jail-claude）、jail 内の TCP の DNS、実店舗 1 件での Phase 3 end-to-end PoC（公式サイト or helper → Codex → デモ → review → final）"
+        "Phase 3 jail の DNS は UDP-only（明示的な制約）: Ubuntu 24.04 標準の passt（0.0~git20240220）の --dns-forward は UDP/53 だけを転送する。jail の namespace の中だけで 198.51.100.53 宛ての TCP を ip rule の prohibit で即座に拒否し（TC の答えで名前解決が約 2 分止まらないように）、jail の resolv.conf に options edns0。probe は TCP の拒否（EACCES、1 秒以内）と 10.255.255.254 の拒否を確かめ、満たさなければ jail を起動しない。他の release の passt・自前 build・TCP の DNS の proxy / DNAT は入れない。getent ahosts の成功は TCP の切り替えの証明として扱わない",
+        "Phase 3 の残り: WSL の完全 shutdown 後の自動復帰（sr-jail-net / sr-jail-claude）、jail の DNS の UDP-only 化（下記）の実機反映と、実際に使う名前が UDP（EDNS0）に収まることの実機確認、実店舗 1 件での Phase 3 end-to-end PoC（公式サイト or helper → Codex → デモ → review → final）"
       ],
       "required_tests": [
         "unit: tests/unit/design-agent（fake Codex、schema、loop、renderer の fact-only）",
@@ -1300,7 +1301,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "Phase 3（Codex の隔離・capture helper・visual source・requester jail・root-only install）を実装し、人間の WSL で install → jail-check（JAIL_OK）→ Instagram の headed login（LOGIN_OK）→ jail 内の Claude Code / gh の準備 → claude-start（Remote Control 接続）まで完了（PR #43 HEAD e2e6e8c、CI 全 job green）。残り: WSL の完全 shutdown 後の自動復帰、jail 内の TCP の DNS、実店舗 1 件での Phase 3 end-to-end PoC。",
+      "last_failure": "Phase 3（Codex の隔離・capture helper・visual source・requester jail・root-only install）を実装し、人間の WSL で install → jail-check（JAIL_OK）→ Instagram の headed login（LOGIN_OK）→ jail 内の Claude Code / gh の準備 → claude-start（Remote Control 接続）まで完了。実機で Ubuntu 24.04 の passt が DNS を UDP でしか転送しないことが分かり、jail の DNS を UDP-only の明示的な制約にした（TCP は即座に拒否、edns0、probe で検証）。残り: その変更の実機反映、WSL の完全 shutdown 後の自動復帰、実店舗 1 件での Phase 3 end-to-end PoC。",
       "branch": "feature/dev-028-ai-art-direction"
     }
   ]

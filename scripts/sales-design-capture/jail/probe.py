@@ -14,7 +14,10 @@ requester's processes to Windows (and so to root and the Instagram profile):
 - socket(AF_VSOCK) is refused (seccomp: RestrictAddressFamilies), and so is
   io_uring (which could open sockets without the socket() system call);
 - the Windows host and every private / link-local address are refused at
-  once (cgroup BPF: IPAddressDeny), except the WSL DNS tunnel;
+  once (cgroup BPF: IPAddressDeny), the WSL DNS tunnel address
+  (10.255.255.254) included: the jail's DNS goes only through pasta;
+- DNS is UDP-only (Ubuntu 24.04's pasta forwards UDP/53 only): TCP to the
+  jail's DNS address must be refused at once, never left to hang;
 - no new privileges, a seccomp filter, no other user's process visible, no
   other home, the helper's profile out of reach.
 
@@ -27,6 +30,12 @@ import errno
 import os
 import socket
 import sys
+import time
+
+# The jail's only DNS server (admin.sh JAIL_DNS; /run/sr-jail/resolv.conf). pasta answers it on UDP/53.
+JAIL_DNS = "198.51.100.53"
+# The WSL DNS tunnel: on the VM's loopback, where every 0.0.0.0 service answers too. Never reachable.
+WSL_DNS_TUNNEL = "10.255.255.254"
 
 problems = []
 notes = []
@@ -191,7 +200,7 @@ def main():
     # The network: the Windows host (the default gateway) and private / link-local
     # addresses must be refused by the cgroup filter (IPAddressDeny). A dropped TCP
     # SYN only times out, so UDP is used: a refused send fails at once with EPERM.
-    targets = ["192.168.255.254", "172.16.255.254", "10.0.0.1", "169.254.169.254", "100.64.0.1"]
+    targets = ["192.168.255.254", "172.16.255.254", "10.0.0.1", "169.254.169.254", "100.64.0.1", WSL_DNS_TUNNEL]
     try:
         with open("/proc/net/route") as f:
             next(f)
@@ -203,7 +212,7 @@ def main():
     except (OSError, StopIteration, ValueError):
         fail("ROUTE_UNCHECKED")
     for ip in targets:
-        if ip in ("0.0.0.0", "10.255.255.254"):
+        if ip == "0.0.0.0":
             continue
         u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
@@ -215,6 +224,48 @@ def main():
             fail("PRIVATE_NETWORK_NOT_FILTERED")
         finally:
             u.close()
+    # The WSL DNS tunnel on its own DNS port too, over both protocols. A dropped TCP SYN would only
+    # time out, so TCP passes when it times out or the kernel refuses to send (EPERM / EACCES).
+    # A connection, or a refusal from the far end (the packet got out), fails.
+    u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        u.sendto(b"x", (WSL_DNS_TUNNEL, 53))
+        fail("DNS_TUNNEL_REACHABLE")
+    except PermissionError:
+        pass
+    except OSError:
+        fail("DNS_TUNNEL_NOT_FILTERED")
+    finally:
+        u.close()
+    t = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    t.settimeout(1)
+    try:
+        t.connect((WSL_DNS_TUNNEL, 53))
+        fail("DNS_TUNNEL_REACHABLE")
+    except (TimeoutError, socket.timeout):
+        pass
+    except OSError as e:
+        if e.errno not in (errno.EPERM, errno.EACCES):
+            fail("DNS_TUNNEL_NOT_FILTERED")
+    finally:
+        t.close()
+
+    # DNS is UDP-only: TCP to the jail's DNS address is refused inside the jail's namespace (ip rule
+    # "prohibit", EACCES) at once. Without it a truncated answer would hang a lookup ~2 minutes.
+    t = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    t.settimeout(1.5)
+    started = time.monotonic()
+    try:
+        t.connect((JAIL_DNS, 53))
+        fail("DNS_TCP_NOT_REFUSED")
+    except OSError as e:
+        if e.errno != errno.EACCES:
+            fail("DNS_TCP_NOT_REFUSED")
+        elif time.monotonic() - started > 1.0:
+            fail("DNS_TCP_REFUSED_SLOWLY")
+    finally:
+        t.close()
+
     for ip in ("fd00::1", "fe80::1%1"):
         try:
             u = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
@@ -259,8 +310,6 @@ def main():
         libc = ctypes.CDLL(None, use_errno=True)
         child = os.fork()
         if child == 0:
-            import time
-
             time.sleep(10)
             os._exit(0)
         try:
@@ -287,11 +336,14 @@ def main():
     except OSError:
         pass
 
-    # Not a boundary, but without it nothing works: say so instead of failing later.
-    try:
-        socket.getaddrinfo("github.com", 443, proto=socket.IPPROTO_TCP)
-    except OSError:
-        warnings.append("DNS_NOT_WORKING")
+    # Not a boundary, but without it nothing works: say so instead of failing later. Only once every
+    # check passed: then TCP to the DNS address is proven refused at once, so a truncated answer
+    # cannot make this lookup hang (without the rule it would wait ~2 minutes).
+    if not problems:
+        try:
+            socket.getaddrinfo("github.com", 443, proto=socket.IPPROTO_TCP)
+        except OSError:
+            warnings.append("DNS_NOT_WORKING")
 
     for code in warnings:
         print("JAIL_WARN " + code)

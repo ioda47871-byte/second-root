@@ -97,7 +97,10 @@ host_safe() {
 JAIL_LIB=/usr/local/lib/sr-jail
 JAIL_CLAUDE=sr-jail-claude.service
 JAIL_NET=sr-jail-net.service
-# The only DNS server the jail knows: pasta answers it (port 53 only) with the host's resolver.
+# The only DNS server the jail knows: pasta answers it on UDP/53 only (Ubuntu 24.04's passt
+# forwards DNS over UDP, not TCP) with the host's resolver. DNS in the jail is UDP-only, by design:
+# TCP to this address is refused at once inside the jail's namespace (an ip rule in sr-jail-net), so a
+# truncated answer fails the lookup instead of hanging ~2 minutes on a TCP connect nobody answers.
 JAIL_DNS=198.51.100.53
 # Every jail unit needs the jail's network namespace and goes away with it.
 JAIL_UNIT_DEPS=("Requires=$JAIL_NET" "BindsTo=$JAIL_NET" "After=$JAIL_NET")
@@ -169,9 +172,11 @@ jail_install() {
     echo "RuntimeDirectoryMode=0755"
     echo "ExecStartPre=-$ip_bin netns delete srjail"
     echo "ExecStartPre=$ip_bin netns add srjail"
-    echo "ExecStartPre=/bin/sh -c 'stat -L -c %%i /run/netns/srjail > /run/sr-jail/netns-id && printf \"nameserver $JAIL_DNS\\\\n\" > /run/sr-jail/resolv.conf && chmod 0644 /run/sr-jail/netns-id /run/sr-jail/resolv.conf'"
+    # inside the jail's namespace only, before pasta and any jail unit: TCP to the DNS address is refused (EACCES)
+    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto tcp prohibit priority 100"
+    echo "ExecStartPre=/bin/sh -c 'stat -L -c %%i /run/netns/srjail > /run/sr-jail/netns-id && printf \"nameserver $JAIL_DNS\\\\noptions edns0\\\\n\" > /run/sr-jail/resolv.conf && chmod 0644 /run/sr-jail/netns-id /run/sr-jail/resolv.conf'"
     echo "ExecStart=$pasta_bin -f -q --runas 0 --config-net --no-map-gw -t none -u none -T none -U none --dns-forward $JAIL_DNS --netns /run/netns/srjail"
-    # pasta's own sockets: the same private ranges refused (only the WSL DNS tunnel, for the forwarded queries)
+    # pasta's own sockets: the same private ranges refused (only the WSL DNS tunnel, for the forwarded UDP queries)
     echo "IPAddressAllow=10.255.255.254/32"
     echo "IPAddressDeny=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10 127.0.0.0/8 ::1/128 fc00::/7 fe80::/10"
     # After pasta crashed or the boot raced it (the bound Claude unit stopped or its start failed),
@@ -227,7 +232,17 @@ jail_check() {
   local req="$1" py
   py="$(jail_python)" || { echo "PYTHON_MISSING"; return 1; }
   jail_args "$req" || { echo "JAIL_NOT_INSTALLED"; return 1; }
-  systemd-run --quiet --wait --collect --pipe --unit="sr-jail-check-$$" "${JAIL_ARGS[@]}" -- "$py" -I "$JAIL_LIB/probe.py" "$req"
+  # The probe as the unit's own command, with the same settings: systemd-run --pipe does not pass on
+  # an ExecStartPre's output, and the person must see which JAIL_UNSAFE code failed.
+  local args=() i
+  for ((i = 0; i < ${#JAIL_ARGS[@]}; i++)); do
+    if [ "${JAIL_ARGS[$i]}" = -p ] && [[ "${JAIL_ARGS[$((i + 1))]}" == ExecStartPre=* ]]; then
+      i=$((i + 1))
+      continue
+    fi
+    args+=("${JAIL_ARGS[$i]}")
+  done
+  systemd-run --quiet --wait --collect --pipe --unit="sr-jail-check-$$" "${args[@]}" -- "$py" -I "$JAIL_LIB/probe.py" "$req"
 }
 
 # Every requester process (the network namespace stays: it holds no process of the requester).
@@ -455,6 +470,7 @@ case "$CMD" in
     echo "node: $(cat "$CONF/node-dir" 2>/dev/null || echo none)"
     systemctl is-enabled sr-capture.path sr-capture.timer || true
     echo "jail: $(systemctl is-enabled "$JAIL_CLAUDE" 2>/dev/null || echo none) / $(systemctl is-active "$JAIL_CLAUDE" 2>/dev/null || echo inactive)"
+    echo "jail network rules:"; ip -n srjail rule show 2>/dev/null || echo "  (no jail network namespace)"
     ;;
   *)
     echo "usage: sudo bash admin.sh install <sha> [requester] | approve <sha> | login | jail-check | jail-install | shell | run <requester> -- <cmd> | claude-start | claude-stop | status"; exit 2 ;;

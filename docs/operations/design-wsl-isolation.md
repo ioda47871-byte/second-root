@@ -43,7 +43,8 @@ Windows へ届く経路と、それぞれの塞ぎ方:
 | WSLg の display（`/mnt/wslg`・`/tmp/.X11-unix`） | `/mnt` は空、`/tmp` は private |
 | WSL の VM の abstract Unix socket（WSLg の X server、systemd の bus など）と localhost（他の利用者・他の distro の service） | jail **専用の network namespace**（`sr-jail-net.service`）。abstract socket と loopback は network namespace ごとに別なので、jail からは見えない。外への通信は root が動かす pasta（user-space の NAT）だけを通り、port の転送は双方向とも無し、gateway を host に写さない |
 | Windows host への network（NAT の gateway）、LAN、cloud metadata | `IPAddressDeny`（cgroup BPF）。私設・link-local の範囲すべてと、その時点の default gateway |
-| WSL の DNS tunnel の address（10.255.255.254。VM の loopback にあり、`0.0.0.0` で待ち受ける service はすべてここでも応える） | jail からは拒否する。jail の DNS は文書用の address `198.51.100.53` だけで、pasta がその port 53 だけを host の resolver へ転送する（`--dns-forward`）。pasta 自身の socket にも同じ私設の範囲の拒否を掛ける（DNS tunnel への転送だけ許す） |
+| WSL の DNS tunnel の address（10.255.255.254。VM の loopback にあり、`0.0.0.0` で待ち受ける service はすべてここでも応える） | jail からは拒否する（probe が UDP・TCP の両方で確かめる）。jail の DNS は文書用の address `198.51.100.53` だけで、pasta がその **UDP/53 だけ**を host の resolver へ転送する（`--dns-forward`）。pasta 自身の socket にも同じ私設の範囲の拒否を掛ける（DNS tunnel への UDP の転送だけ許す） |
+| DNS の TCP（大きな答えで TC が立ったときの切り替え） | **jail の DNS は UDP だけ（明示的な制約）。**Ubuntu 24.04 の passt（`0.0~git20240220`）の `--dns-forward` は UDP/53 しか転送しない。そこで jail の namespace の中だけに `ip rule … to 198.51.100.53/32 ipproto tcp prohibit` を置き、TCP は即座に `EACCES` で断る（無いと TCP の接続が誰にも答えられず、名前解決が約 2 分止まる）。UDP の答えを大きくできるよう jail の `resolv.conf` に `options edns0`。それでも UDP に収まらない答えの名前は、即座に解決に失敗する |
 | 他の利用者の process（`/proc/<pid>/root` など） | `ProtectProc=invisible`、別 uid |
 | 新しい権限（setuid・sudo） | `NoNewPrivileges`、`RestrictSUIDSGID` |
 | jail の外の process の乗っ取り（ptrace・`process_vm_*`） | system call の filter で拒否（kernel の `ptrace_scope` によらない）。root の確認は requester として何も動かさない（書けるかは所有者と mode から root が判定） |
@@ -123,24 +124,39 @@ WSL の状況は fixture で再現した（`/run/WSL/2_interop` を `root:root 0
 | 外の localhost の listener（127.0.0.1:9931）と abstract socket（`@outside-abstract`、systemd の bus） | 届く / 見える | jail 専用の network では、拒否される / 1 つも見えない |
 | Claude が終わったとき / network の unit を作り直したとき / pasta を `kill -9` したとき | — | 自動で再起動し、新しい namespace に入る（namespace の ID が一致）。`claude-stop` の後は止まったまま |
 | VM の loopback に 10.255.255.254 を付け、`0.0.0.0:9935` で待ち受け、jail から 10.255.255.254:9935 へ | 最初の版では**届いた**（穴） | 直した版では拒否される |
-| jail の DNS（198.51.100.53 → pasta → host の 10.255.255.254:53 の DNS） | — | 名前が引ける |
+| jail の DNS（198.51.100.53 → pasta → host の 10.255.255.254:53 の DNS、UDP） | — | 名前が引ける（0.003 秒）。jail の `resolv.conf` は `nameserver 198.51.100.53` と `options edns0` |
+| jail から TCP で 198.51.100.53:53 へ（Ubuntu 24.04 の passt） | rule が無いと timeout（4 秒で打ち切り）、TC の答えで `getaddrinfo` が **134 秒**止まる | `EACCES` で即座に拒否（0.000 秒、3 回とも）。TC の答えでも `getaddrinfo` は即座に失敗（0.004 秒）。host 側の TCP の resolver には 1 件も届かない |
+| jail から 10.255.255.254:53 へ直接 | — | UDP は `EPERM`（0.000 秒）、TCP は届かない（SYN が落とされ timeout）。host 側の TCP の resolver には 1 件も届かない |
+| 実際の unit が作る jail の namespace の `ip rule show`（host 側 `ip -n srjail rule show` と jail の中の `ip rule show` が同じ） | — | `100: from all to 198.51.100.53 ipproto tcp prohibit` |
+| その rule を手で消して `admin.sh jail-check` | — | `JAIL_UNSAFE DNS_TCP_NOT_REFUSED` で止まる（2.8 秒）。`systemctl restart sr-jail-net` で rule が戻り `JAIL_OK` |
 | jail から他の network namespace へ（`/proc/*/ns/net`・`/run/netns` を開いて `setns`） | — | 見えるのは自分の jail の namespace だけ。`setns` も `EPERM` |
 
 実機で一度確かめること（container では再現できない、または実機の WSL に依存する）:
 - `sudo bash …/admin.sh jail-check` が `JAIL_OK` を出す（`JAIL_UNSAFE` の符号が出たらそれを Claude に伝える）
-- `sudo bash …/admin.sh run sr-designgen -- getent hosts github.com` で名前が引ける（pasta 経由の DNS）
+- `sudo bash …/admin.sh run sr-designgen -- getent hosts github.com` で名前が引ける（pasta 経由の UDP の DNS）
+- `sudo ip -n srjail rule show` に `from all to 198.51.100.53 ipproto tcp prohibit` がある（`admin.sh status` にも出る）
 - `wsl --shutdown` → 開き直す を 2〜3 回して、`systemctl status sr-jail-claude` が active（起動直後の順序の競合からの復旧）
 - `stat -fc %T /sys/fs/cgroup` が `cgroup2fs`
-- 大きな DNS の答え（TCP に切り替わるもの）も引ける: `sudo bash …/admin.sh run sr-designgen -- getent ahosts github.com`
+- 実際に使う名前（github.com・registry.npmjs.org・api.anthropic.com・OpenAI・instagram.com とその CDN・Playwright の CDN）が
+  UDP（EDNS0）の答えに収まり、jail の中で引ける。`getent hosts` / `getent ahosts` が成功しても、それは UDP で収まったという意味で、
+  TCP の切り替えの証明にはならない（jail に TCP の DNS は無い）
 
 わかったこと:
 - `ProtectKernelTunables`・`ProtectKernelLogs`・`ProtectHostname` は `/proc` の一部を上書き mount するので、jail の中で
   bubblewrap が新しい `/proc` を mount できなくなる。Codex の sandbox が動かなくなるため外した（守っているものは root でしかできない操作）
 - `IPAddressDeny` で落とされた TCP の SYN は timeout になるだけなので、probe は UDP で確かめる（拒否されれば即座に `EPERM`）
+- Ubuntu 24.04 の passt は DNS を UDP でしか転送しない。glibc の TCP の接続には短い timeout が無いので、TC の答えが来ると
+  名前解決が約 2 分止まる。jail の namespace の中の `prohibit` の rule で即座の失敗にした。probe はこれを `EACCES` と 1 秒以内で確かめ、
+  DNS の確認（`getaddrinfo`）は他の確認がすべて通ったときだけ行う（rule が無いときに probe 自身が止まらないように）
+- `systemd-run --pipe` は `ExecStartPre` の出力を渡さないので、`admin.sh jail-check` は probe を unit の本体として、同じ設定で動かす
 - requester 自身の home は jail の中から見える。Phase 2 の profile（`~/.local/share/sr-instagram-browser`）が残っていれば
   Claude が読めるため、probe は `BROWSER_PROFILE_IN_HOME` で止める（**古い profile の削除は必須**）
 
 ## 6. 残るリスク
+
+- **DNS は UDP だけ**: UDP（EDNS0）に収まらない答えの名前は、jail の中では解決できない（即座に失敗する）。TCP の DNS を
+  可能にする案（jail の namespace の TCP を host 側の proxy や nftables の DNAT で resolver へつなぐ）は、host 側に新しい
+  攻撃面を足すので採らない。Ubuntu 24.04 が TCP の DNS を転送する passt を出したら見直す。他の release の deb や自前の build は入れない
 
 - **kernel・WSL の不具合**: namespace / seccomp / BPF を越える kernel の脆弱性、または WSL の未知の経路。
   特に jail の中では user namespace を許している（Codex の bubblewrap に必要）。user namespace を使う kernel の権限昇格の脆弱性があれば

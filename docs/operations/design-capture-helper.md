@@ -108,7 +108,8 @@ systemd 255 と実機の `admin.sh jail-check`（`JAIL_OK`）で確かめた（`
   jail の中でも `sr-designgen` 自身の home は見えるので、残っていれば Claude が読める。残っていると probe（`BROWSER_PROFILE_IN_HOME`）で install が止まる
 - requester jail の前提: `sudo apt install -y tmux passt iproute2 python3`、WSL の cgroup が v2 だけ
   （`stat -fc %T /sys/fs/cgroup` が `cgroup2fs`。違えば Windows の `.wslconfig` に `kernelCommandLine = cgroup_no_v1=all`）、
-  DNS は dnsTunneling（`/etc/resolv.conf` が `nameserver 10.255.255.254`。systemd-resolved の stub や dnsTunneling を切った構成は使えない）、
+  DNS は dnsTunneling（`/etc/resolv.conf` が `nameserver 10.255.255.254`。systemd-resolved の stub や dnsTunneling を切った構成は使えない）。
+  jail の中の DNS は UDP だけ（Ubuntu 24.04 の passt の制約。TCP は即座に断る。`design-wsl-isolation.md` §2）、
   networkingMode は NAT（既定）。`.wslconfig` を変えたら Windows で `wsl --shutdown`
 
 `admin.sh` は root で動くので、**requester が書き換えられる checkout（`~sr-designgen/work/second-root` など）からは動かない**

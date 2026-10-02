@@ -378,3 +378,46 @@ Static fail-open review (afb6722; read only). The main path fails closed: no uni
   - `restore` restarts the helper units only if they were active before.
 
 Independent security review status: rounds 2 and 3 of the live-attack security review were cut short by the platform's safeguards. Their live questions were run by hand and are recorded above. This read-only fail-open review completed.
+
+## Jail DNS is UDP-only (2026-10-02, real-machine finding)
+
+**Real machine** (Ubuntu 24.04, `passt 0.0~git20240220.1e6f92b-1`, the only version in noble / noble-updates / noble-backports):
+- Normal names resolve inside the jail.
+- An explicit TCP connection to `198.51.100.53:53` times out.
+- Cause: Noble's `--dns-forward` remaps UDP/53 only. TCP to that address is ordinary outbound traffic to the unroutable documentation address.
+- The earlier docs were wrong: `getent ahosts github.com` was cited as proof of TCP fallback, but github.com's answer fits in UDP.
+
+**Reproduced with the same passt**, using a fake resolver on 10.255.255.254 that answers both UDP and TCP:
+- UDP is answered; TCP times out; the resolver's TCP side receives nothing.
+- With a truncated (TC=1) UDP answer, `getaddrinfo` failed only after **134.3 s**: glibc's TCP connect has no short timeout.
+
+**Security:** no new path. TCP to the documentation address never reaches the host. 10.255.255.254 was already denied by the jail, although the probe skipped checking it.
+
+**Fix (A1, approved):**
+- `sr-jail-net` adds, inside the jail's namespace only, right after the namespace is created and before pasta starts:
+  `ip -n srjail rule add to 198.51.100.53/32 ipproto tcp prohibit priority 100`
+- The jail's `resolv.conf` gets `options edns0`.
+- The probe now fails closed on:
+  - TCP to `198.51.100.53:53` not refused with `EACCES` within 1 s (`DNS_TCP_NOT_REFUSED` / `DNS_TCP_REFUSED_SLOWLY`);
+  - 10.255.255.254 reachable over UDP or TCP (`DNS_TUNNEL_REACHABLE`; no longer skipped).
+- The probe runs its `getaddrinfo` check only when every other check passed, so it cannot hang itself.
+- `admin.sh jail-check` runs the probe as the unit's main command, because `systemd-run --pipe` drops `ExecStartPre` output and the person could not see the failing code.
+- `admin.sh status` prints the namespace's rules.
+- Not done, on purpose: no newer passt (other releases or self-built), no TCP DNS proxy or DNAT.
+
+**Verified on systemd 255 as PID 1, with the real generated unit and `admin.sh jail-install` / `jail-check` / `run`:**
+- `ip -n srjail rule show` and `ip rule show` inside the jail both show `100: from all to 198.51.100.53 ipproto tcp prohibit`.
+- TCP to `198.51.100.53:53`: EACCES after 0.000 s (3 out of 3).
+- Truncated answer: `getaddrinfo` fails after 0.004 s.
+- UDP DNS query answered in 0.001 s; `getaddrinfo` in 0.003 s; the jail's `resolv.conf` reads `nameserver 198.51.100.53 | options edns0`.
+- 10.255.255.254:53: UDP EPERM in 0.000 s; TCP SYN dropped (timeout); the resolver's TCP side saw 0 queries.
+- Rule deleted by hand: `jail-check` → `JAIL_UNSAFE DNS_TCP_NOT_REFUSED` (2.8 s). `systemctl restart sr-jail-net` restores the rule and gives `JAIL_OK`.
+- A self-introduced regression was caught by the unit tests before commit: a function-local `import time` shadowed the module import, so the probe would have answered `PROBE_ERROR` (fail-closed).
+- Self-review tightening: the probe's TCP check on 10.255.255.254 now passes only on a timeout (SYN dropped) or EPERM/EACCES. A refusal from the far end means the packet got out, so it fails with `DNS_TUNNEL_NOT_FILTERED`.
+- Final run with the final code (systemd 255 as PID 1, real generated units):
+  - `jail-install` → `JAIL_OK`.
+  - TCP to `198.51.100.53:53`: EACCES after 0.000 s (3 out of 3).
+  - TCP to 10.255.255.254:53 times out; UDP to it gets EPERM.
+  - UDP `getaddrinfo` succeeds in 0.006 s.
+  - Truncated answer: `getaddrinfo` fails after 0.006 s.
+  - Rule deleted: `JAIL_UNSAFE DNS_TCP_NOT_REFUSED` (rc=1, 2.8 s). After a restart: rule back, `JAIL_OK`.
