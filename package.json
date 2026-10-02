@@ -21,7 +21,8 @@
     "sales:design-demo": "tsx scripts/sales-design/design-demo.ts",
     "sales:design-worker": "tsx scripts/sales-design-worker/worker.ts",
     "sales:design-browser": "tsx scripts/sales-design-browser/browser.ts",
-    "sales:design-capture": "tsx scripts/sales-design-capture/request.ts"
+    "sales:design-capture": "tsx scripts/sales-design-capture/request.ts",
+    "sales:design-assets": "tsx scripts/sales-design-assets/assets.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
