@@ -54,12 +54,7 @@ export type IntakeSource =
 /** Decodes an image and draws it again as a PNG no larger than MAX_SIDE. */
 export type Normalizer = (bytes: Buffer, mime: string) => Promise<{ png: Buffer; width: number; height: number }>;
 
-/** The store root: SR_DESIGN_ASSETS_ROOT when absolute, else a fixed place in the user's home. */
-export function assetStoreRoot(env: Record<string, string | undefined>): string {
-  const root = env.SR_DESIGN_ASSETS_ROOT;
-  if (root && isAbsolute(root)) return root;
-  return join(env.HOME ?? "/nonexistent", ".local", "share", "second-root-design-assets");
-}
+export { assetStoreRoot } from "./store-root";
 
 const inside = (child: string, parent: string) => {
   const rel = relative(parent, child);

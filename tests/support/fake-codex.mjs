@@ -9,6 +9,8 @@
 //                        { "answer": {...} } | { "text": "..." } | { "exit": 1, "stderr": "..." } | { "sleepMs": 5000 }
 //   FAKE_CODEX_STATE   file holding the index of the next step
 //   FAKE_CODEX_RECORD  JSONL file: one line per call (args, stdin size, which API-key variables were visible)
+//   FAKE_CODEX_PROMPTS JSONL file (optional): the full stdin of each exec, and the attached images (path, sha256)
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -52,6 +54,10 @@ process.stdin.on("end", async () => {
   const schemaPath = args[args.indexOf("--output-schema") + 1];
   const schemaText = schemaPath && existsSync(schemaPath) ? readFileSync(schemaPath, "utf8") : "";
   record({ stdinLength: stdin.length, stdinHasFacts: stdin.includes("Verified facts"), step: index, strictSchema: schemaText.includes("maxLength") });
+  if (process.env.FAKE_CODEX_PROMPTS) {
+    const images = args.filter((a) => a.startsWith("--image=")).map((a) => a.slice(8)).map((path) => ({ path, sha256: existsSync(path) ? createHash("sha256").update(readFileSync(path)).digest("hex") : null }));
+    appendFileSync(process.env.FAKE_CODEX_PROMPTS, JSON.stringify({ cwd: process.cwd(), stdin, images, schema: schemaText }) + "\n");
+  }
   // Like the real CLI: a session log that holds the request (and its images).
   const THREAD = "00000000-0000-4000-8000-000000000000";
   if (process.env.CODEX_HOME) {

@@ -1334,7 +1334,8 @@
         "unit: tests/unit/design-agent/assets.test.ts（型の分離、manifest、consent の scope、PhotoAnalysis / ImageDirection の整合ルール、intake: PNG / JPEG / WebP、HEIC 拒否、metadata 除去、縮小・最小寸法、3 枚上限、重複、symlink、reference の場所からの拒否、store の場所）",
         "テスト用の写真はテスト中に描いた架空の画像だけ（repo に写真を置かない）",
         "段階 2 以降: 0 / 1 / 3 枚 × portrait / landscape / square × quiet / busy × 390×844 / 1440×900 の Chromium レイアウト検査、イメージ画像ラベル、fact-only、preview から reference が読めないこと、fallback、BLOCKED、revision 上限",
-        "unit: photos.test.tsx・preview-asset-route.test.ts・renderer-photos-layout.test.tsx（Chromium、0〜3 枚 × 3 layout × portrait / landscape / square × 390 / 1440: 写真と文字・motif の重なりなし、イメージ画像ラベル、fit / focal / aspect、section 外への逸脱なし、横 overflow なし、fallback、asset 配信の境界）"
+        "unit: photos.test.tsx・preview-asset-route.test.ts・renderer-photos-layout.test.tsx（Chromium、0〜3 枚 × 3 layout × portrait / landscape / square × 390 / 1440: 写真と文字・motif の重なりなし、イメージ画像ラベル、fit / focal / aspect、section 外への逸脱なし、横 overflow なし、fallback、asset 配信の境界）",
+        "unit: photo-codex.test.ts（PhotoAnalysis の突き合わせ、ImageDirection の検査と写真なし fallback、自由記述のない schema、prompt に store path・consent 等が入らないこと、work-dir の copy だけ、本物の bubblewrap で custom / 既定の asset store が見えないこと、DEV-028 の prompt / schema の snapshot）"
       ],
       "allowed_scope": [
         "lib/design-agent/",
@@ -1368,7 +1369,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "段階 1（schema / types / intake）と段階 2（renderer・local preview の asset route）を実装。段階 3（Codex の analysis / direction）は人の確認後に始める。",
+      "last_failure": "段階 1〜3（schema / intake、renderer・asset route、Codex の photo analysis / image direction）を実装。段階 4（worker pipeline / review loop）は人の確認後に始める。",
       "branch": "feature/dev-029-photo-art-direction"
     }
   ]

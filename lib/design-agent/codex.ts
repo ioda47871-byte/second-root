@@ -31,7 +31,7 @@ import { lstat, mkdtemp, open, readdir, readFile, rm, writeFile } from "node:fs/
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BoundedResult } from "./bounded-process";
-import { SandboxError, stageInputs, type CodexSandbox } from "./sandbox";
+import { SandboxError, stageInputBytes, stageInputs, type CodexSandbox } from "./sandbox";
 
 export const CODEX_BLOCKED_ENV = ["OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL"] as const;
 
@@ -310,6 +310,8 @@ export interface CodexJsonOptions {
   schema: object;
   /** Absolute paths of privacy-processed reference PNGs; Codex sees copies only. */
   images?: readonly string[];
+  /** DEV-029: checked PNG bytes of design assets, staged after `images` as copies (no path is passed on). */
+  imageBytes?: readonly Buffer[];
   timeoutMs?: number;
 }
 
@@ -322,9 +324,14 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
   const cwd = await mkdtemp(join(tmpdir(), "sr-design-codex-"));
   try {
     await assertChatGptSignIn({ sandbox });
-    const images = await stageInputs(cwd, options.images ?? []).catch((error: unknown) => {
-      throw fromSandboxError(error);
-    });
+    const images = [
+      ...(await stageInputs(cwd, options.images ?? []).catch((error: unknown) => {
+        throw fromSandboxError(error);
+      })),
+      ...(await stageInputBytes(cwd, options.imageBytes ?? []).catch((error: unknown) => {
+        throw fromSandboxError(error);
+      })),
+    ];
     const schemaPath = join(cwd, "schema.json");
     const answerPath = join(cwd, "answer.json");
     await writeFile(schemaPath, JSON.stringify(options.schema));

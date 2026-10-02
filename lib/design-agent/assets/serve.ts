@@ -3,21 +3,17 @@
 // The only way a photo reaches a page: GET /design-preview/<runId>/asset/<assetId>.
 // Nothing from the URL becomes a path. The run directory names its asset job
 // (assets.json); the asset id must be a well-formed PublicAssetId listed in
-// that job's manifest, allowed for the local preview; the file path is built
-// from the store root, the job id and the manifest's own file name. The file
-// must be a plain file (no link), a PNG, and match the manifest's hash.
+// that job's manifest; readVerifiedAsset (read.ts) does the rest: allowed for
+// the local preview, path from the manifest's own file name, no link, same
+// inode, a PNG of the manifest's size and hash.
 // Reference screenshots live elsewhere and have no route at all.
-import { createHash } from "node:crypto";
-import { constants } from "node:fs";
-import { lstat, open, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { RUN_ID } from "../preview";
 import { assetStoreRoot, checkStoreRoot, loadManifest } from "./intake";
-import { assetUsableIn, findAsset, JOB_ID, type AssetManifest } from "./manifest";
+import { findAsset, JOB_ID, type AssetManifest } from "./manifest";
+import { readVerifiedAsset } from "./read";
 import { toPublicAssetId, type PublicAssetId } from "./types";
-
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-export const MAX_ASSET_BYTES = 20 * 1024 * 1024;
 
 /** The asset job a run uses: `{ "jobId": "..." }` in the run directory, or null. */
 export async function runAssetJob(runDir: string): Promise<string | null> {
@@ -51,26 +47,5 @@ export async function readPreviewAsset(o: { previewRoot: string; runId: string; 
   const run = await runAssets(join(o.previewRoot, o.runId), { env: o.env, repoDir: o.repoDir });
   if (!run) return null;
   const asset = findAsset(run.manifest, id);
-  if (!asset || !assetUsableIn(asset, "local_preview")) return null;
-
-  const jobDir = join(run.store, run.jobId);
-  const path = join(jobDir, asset.file);
-  try {
-    const dirInfo = await lstat(jobDir);
-    const info = await lstat(path);
-    if (dirInfo.isSymbolicLink() || !dirInfo.isDirectory() || info.isSymbolicLink() || !info.isFile() || info.size > MAX_ASSET_BYTES) return null;
-    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      const opened = await handle.stat();
-      if (opened.ino !== info.ino || opened.dev !== info.dev || !opened.isFile()) return null;
-      const bytes = await handle.readFile();
-      if (!bytes.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
-      if (createHash("sha256").update(bytes).digest("hex") !== asset.sha256) return null;
-      return bytes;
-    } finally {
-      await handle.close();
-    }
-  } catch {
-    return null;
-  }
+  return asset ? readVerifiedAsset(run.store, run.jobId, asset, "local_preview") : null;
 }
