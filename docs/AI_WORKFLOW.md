@@ -114,6 +114,7 @@ Production data / Production secrets / main 直接 push / Production release / D
 - 自動テストから実店舗へ Email / Instagram を**絶対に送らない**（テストデータは `example.com` / 架空アカウントのみ。e2e は instagram.com への通信を stub する）。
 - ローカル Supabase は全 worktree で共有される。Fresh Reviewer 実行中に `supabase db reset` をしない（新規 migration は個別に適用）。
 - テスト失敗時に skip / 削除 / required check 解除 / 基準引き下げで green にしない。
+- 実機（WSL）で重い処理（full unit suite・Chromium・design worker・Codex）を始める前は実機 resource preflight を行い、並列度を判定に合わせる（`docs/operations/wsl-resource-preflight.md`）。突然 `Killed` された失敗は、OOM-kill を確認してからでないとコードの不具合として扱わない。
 
 ## 9. Operational Claude run の原則（prompt: `ops/sales-agent/RUN_PROMPT.md`、scheduled job: `ops/sales-agent/SCHEDULE.md`）
 

@@ -5,3 +5,8 @@
 Sales Agent（営業支援 MVP）の開発では、session 開始時に `docs/AI_WORKFLOW.md` §2 の手順で
 `docs/MVP_SPEC.md` → `docs/ARCHITECTURE.md` → `.ai/tasks.json` → `.ai/progress.md` → `.ai/blockers.md` を確認してから作業する。
 重要な成果は小さな単位で commit + push し、Claude の container を正本にしない。
+
+実機（WSL）で full unit suite・Chromium・design worker・Codex などの重い処理を始める前は、
+`docs/operations/wsl-resource-preflight.md` の実機 resource preflight（`scripts/ops/wsl-resource-preflight.sh`）を行う。
+突然 `Killed` されたら修正ループに入る前に OOM-kill を確認し、OOM なら resource failure として止まる。
+`%USERPROFILE%\.wslconfig` は人の承認なしに変えない。

@@ -198,6 +198,9 @@ npm run -s sales:design-worker -- enqueue --job-id shop-001 \
 
 ## 3. 1 回動かす（正規の入口）
 
+動かす前に実機 resource preflight（`docs/operations/wsl-resource-preflight.md`）を行う。`STOP` なら動かさない。
+worker の run を同時に 2 つ動かさない。full unit suite とも同時に流さない。
+
 ```bash
 cd ~/work/second-root
 SR_DESIGN_WORKER_REF=<branch> \

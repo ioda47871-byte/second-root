@@ -8,6 +8,9 @@
 - 写真は `generated_concept`（人が作って入れた画像、`generation.method: human_upload`）だけ。worker・Codex は画像を作らない。外部の画像生成 API は使わない。
 - job id は `poc-photo-<n>`。同じ id は 2 回走らない（intake が既存の写真で、preflight が queue・結果の存在で止める）。
 
+実行前に実機 resource preflight（`docs/operations/wsl-resource-preflight.md`）を行う。`photo-poc.sh` も最初に同じ確認をし、`STOP` なら何も始めない。
+PoC は `next build` と Chromium と Codex を含むので、full unit suite など他の重い処理と同時に流さない。
+
 ## 人がやること（これだけ）
 
 ### 1. 画像を用意する（1 枚。stress PoC では 3 枚）

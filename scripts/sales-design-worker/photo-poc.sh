@@ -10,6 +10,7 @@
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- \
 #     /home/sr-designgen/work/second-root/scripts/sales-design-worker/photo-poc.sh …
 # See docs/operations/design-photo-poc.md. Steps, each stopping on failure:
+#   0. resource preflight (STOP: nothing is started)
 #   1. pin this checkout to origin/$SR_DESIGN_WORKER_REF (default: the DEV-029 branch) and install
 #   2. write the fictional facts (no real shop) outside the repository
 #   3. intake the images as generated_concept, people none (refused if the job already has photos)
@@ -48,6 +49,16 @@ STATE="${XDG_STATE_HOME:-$HOME/.local/state}/sr-design-worker"
 INPUT="$HOME/sr-design-input/$JOB"
 OUT="$HOME/sr-design-poc"
 cd "$REPO"
+
+echo "== 0. resource preflight (docs/operations/wsl-resource-preflight.md)"
+set +e
+bash "$REPO/scripts/ops/wsl-resource-preflight.sh"
+PRE=$?
+set -e
+if [ "$PRE" -eq 20 ]; then
+  echo "STOP: not enough memory for build + Chromium + Codex. Nothing was started (no intake, no job)."
+  exit 20
+fi
 
 echo "== 1. checkout origin/$REF"
 timeout 180 git fetch --quiet --no-tags origin "+refs/heads/$REF:refs/remotes/origin/$REF"
@@ -99,6 +110,10 @@ SR_DESIGN_WORKER_REF="$REF" ./scripts/sales-design-worker/run.sh --max=1
 RUN=$?
 set -e
 echo "run.sh exit $RUN"
+if [ "$RUN" -eq 137 ] || [ "$RUN" -eq 124 ]; then
+  echo "run.sh was killed or timed out: check for an OOM kill before treating it as a bug:"
+  bash "$REPO/scripts/ops/wsl-resource-preflight.sh" --oom-check --since "2 hours ago" || true
+fi
 
 echo "== 7. report"
 npm run -s sales:design-worker -- poc-report --job-id "$JOB" > "$OUT/$JOB.json" || true
