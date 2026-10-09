@@ -9,6 +9,7 @@
 | `RESEND_API_KEY` | Vercel env | 問い合わせフォーム（`/api/contact`）のみ |
 | `SALES_AGENT_INGEST_TOKEN` | Vercel env + Claude Cloud 環境 | Operational Claude（**これだけ**。例外は下の Staging 用 bypass 値のみ） |
 | `SALES_AGENT_VERCEL_BYPASS`（Staging のみ・任意） | Staging の Routine environment だけ | Operational Claude（Vercel Preview の保護を通るためだけ。ingest には token が別に必要）。Vercel の Protection Bypass for Automation の値で **project 全体の保護付き deployment に効く**ため、露出が疑われたら人間が Vercel で再生成する。Production には置かない |
+| `SALES_DESIGN_BRIDGE_TOKEN`（DEV-030） | Vercel env（server only）+ local bridge の利用者 `sr-designbridge` の file（`~/.config/second-root/design-bridge.token`、0600） | local design bridge だけ。ingest token とは別の値（同じなら bridge API は 503）。design worker（`sr-designgen`）・Codex・Operational Claude には渡さない。生成・設定は人間 |
 | Vercel token / GitHub write token / admin password | 人間 | 人間のみ |
 
 - Secret を GitHub に commit しない。`.env*` は `.gitignore` 済み（`.env.local.example` のみ例外、値はダミー）。
@@ -146,3 +147,37 @@ WSL の専用利用者で動く無人の local worker（`scripts/sales-design-wo
   - jail の namespace の中だけで、jail の resolver 宛ての TCP を即座に拒否する。
   - probe は、TCP の拒否（1 秒以内）と `10.255.255.254` の拒否を確かめる。
   - 他の release の passt・自前 build・TCP の DNS の proxy / DNAT は入れない。
+
+## 11. Sales Design Bridge（DEV-030）
+
+Sales Agent の demo と AI design worker をつなぐ。**既定は無効**（`SALES_AI_DESIGN_ENABLED="true"` のときだけ）。設計: `docs/ARCHITECTURE.md` §10。
+
+- **token を持つのは 1 か所だけ**
+  - local では bridge の利用者 `sr-designbridge` だけが `SALES_DESIGN_BRIDGE_TOKEN` を持つ（0600 の file。環境変数にしない）。bridge は子 process を起動しない。
+  - worker（`sr-designgen`）・Codex・capture helper には token も Supabase の鍵も Sales Agent の token も渡らない。worker の環境は allowlist（`lib/design-agent/worker/env.ts`、`run.sh`）で、bridge 関係は spool の path（`SR_DESIGN_BRIDGE_SPOOL`）だけ。
+  - bridge の `run.sh` は root・`sr-designgen`・`sr-igcapture` では動かない。
+- **API は狭い**
+  - `claim` と `submit` だけ。prospect・outreach・DNC・run・送信には触れない。
+  - 503: flag 無効・token 未設定・32 文字未満・ingest token と同じ値。401: 不一致。定数時間比較。
+  - ingest token では通らず、bridge token で ingest API も通らない。
+- **出すもの・受け取るもの**
+  - server が出すのは、fact-only の DemoView に通る確認済み facts と、検証済みの source URL（公式サイト・Instagram profile）だけ。
+  - server が受け取るのは、job id・outcome・DesignProfile（enum だけの schema、rationale は空）・固定の符号・worker commit・lineage だけ。strict schema なので、screenshot・raw HTML・Cookie・Instagram session・prompt・Codex の出力・stderr・secret・推論は表現できない（400、何も書かない）。
+  - 保存する profile は 8KB 以下（DB の check）。server は読むたびに `DesignProfileSchema` と contrast で再検証し、通らなければ既存 template にする。
+- **lineage と冪等性**
+  - job id は claim ごとの新しい uuid（unique）。結果は job id で demo を特定するので、別の prospect / demo に入らない。
+  - 古い job の結果は `job_superseded`。同じ job の再送は `replayed` で何も変えない。`ready` は再生成しない。
+  - 試行は最大 3 回、lease は 2 時間。
+- **公開しないもの**
+  - 写真（DEV-029）、Instagram・公式サイトの screenshot、capture helper の PNG、reference 画像は公開 demo に出さない。public demo の `ProfileRenderer` には写真を渡さない。
+  - 写真の公開は後続の DEV で、同意（approved_real の `public_demo` scope）とともに設計する。
+- **spool**
+  - `/srv/sr-design-bridge/to-worker`（bridge が書き、worker は読むだけ）と `from-worker`（worker が書き、bridge は読むだけ）。
+  - どちらの側も link を辿らない・通常ファイル・link 数 1・サイズ上限・strict schema で読む。worker は自分の job id と一致しない job を取り込まない。
+- **jail の変更が要る（人の承認）**
+  - worker の jail は `/srv` を隠しているため、使う前に `jail.properties` へ `BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker` と `BindPaths=-/srv/sr-design-bridge/from-worker` を足し、root だけの clone から入れ直す必要がある。
+  - この PR では jail の設定を変えていない。手順と承認点: `docs/operations/design-bridge.md`。
+- **自動化しないもの**
+  - 初回の DM / Email は人が送る。flag 有効で `pending` / `processing` の demo は「送信済み」にできない（server action で拒否）。
+  - systemd の unit は repo に置くだけで、install・enable は人が行う。
+

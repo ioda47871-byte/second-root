@@ -110,6 +110,10 @@ unique(normalized_name, normalized_address) による重複防止。
 | template | `bakery_v1` / `baked_goods_v1` / `cafe_v1` |
 | content | 表示用の確認済みテキスト（jsonb、公開可能項目のみ） |
 | expires_at, disabled_at, keep_alive | 表示判定。作成時は `expires_at = null`（未送信: 公開 URL では 404、管理者プレビューのみ）、初回営業を送信済みにした時点で `sent_at + 30日` を設定。DNC 設定時は `disabled_at` を設定 |
+| design_status | AI デザインの状態（DEV-030）。`null` = legacy（AI デザインなし。flag 無効のとき・migration 前のすべての demo）/ `pending` / `processing` / `ready` / `blocked` / `failed`（check）。§10 |
+| design_profile | `ready` のときだけ（check で同値）。検証済みの DesignProfile（rationale は空）。8KB 以下・`version = 1`。読むたびに server が DesignProfileSchema で再検証する |
+| design_job_id, design_attempts, design_claimed_at | job の lineage（claim ごとに新しい uuid、unique）・試行回数（≤ 3）・lease の開始。`processing` には job id と lease が必須（check） |
+| design_worker_commit, design_error_code, design_updated_at | worker の commit（sha）・固定の符号（`^[A-Z][A-Z0-9_]{2,47}$`。自由文は入らない）・最終更新 |
 
 ### sales_outreaches（営業行為）
 | 列 | 備考 |
@@ -298,3 +302,68 @@ mugi-no-mi 等の別 project と混ぜない。CI に Production の Supabase / 
 | `SALES_ADMIN_EMAIL` 等 | server only | DEV-008 |
 | `SALES_DEMO_BASE_URL` | server | DEV-004 |
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` / `INSTAGRAM_APP_SECRET` / `INSTAGRAM_ACCOUNT_ID` / `INSTAGRAM_ACCESS_TOKEN` | **server only**（Operational Claude にも渡さない。設定は人間: `docs/INSTAGRAM_SETUP.md`） | DEV-020〜024 |
+| `SALES_AI_DESIGN_ENABLED` | server。`"true"` のときだけ AI デザイン step が有効（unset・他の値は無効）。migration `20261009000000` の適用後にだけ有効にする | DEV-030 |
+| `SALES_DESIGN_BRIDGE_TOKEN` | **server + local bridge（Linux 利用者 `sr-designbridge` の 0600 file）のみ**。32 文字以上、ingest token とは別の値。design worker（`sr-designgen`）・Operational Claude には渡さない | DEV-030 |
+
+## 10. Sales Design Bridge（DEV-030）
+
+既存の Sales Agent（§5・§7。5 件/日・DNC・重複排除・初回は人間送信）は変えずに、`sales_demos` と人間の送信の間に AI デザインの step を足す。
+**既定は無効**（`SALES_AI_DESIGN_ENABLED` が `"true"` のときだけ有効）。無効のときは、ingest の RPC 呼び出し・公開 demo・管理画面の query と表示・送信済み操作がすべて既存と同じで、DB の新しい列にも触れない（migration 前に deploy しても安全）。
+
+```
+Operational Claude ─► ingest API ─► persist（同じ transaction で demo を design_status=pending）
+                                            │
+Second Root server                          ▼
+  POST /api/internal/sales-design/jobs   sales_demos（pending → processing → ready / blocked / failed）
+      ▲  Bearer SALES_DESIGN_BRIDGE_TOKEN（claim / submit だけ）
+      │  https
+local bridge（Linux 利用者 sr-designbridge。token を持つ唯一の local process）
+      │  /srv/sr-design-bridge/to-worker   （job: 確認済みの facts と source URL だけ）
+      ▼  /srv/sr-design-bridge/from-worker （result: outcome・DesignProfile・符号・commit だけ）
+design worker（sr-designgen、jail の中。token・DB・server を知らない）
+      → 公式サイト / Instagram の reference 撮影 → Codex art direction → DesignProfile
+```
+
+### 10.1 状態（`sales_demos.design_status`）
+
+| 状態 | 意味 | 次 |
+|---|---|---|
+| `null` | legacy demo（flag 無効で作られた・migration 前の demo） | 変わらない |
+| `pending` | デザイン待ち | `sales_design_claim` で `processing` |
+| `processing` | job を bridge に渡した（`design_job_id`・`design_claimed_at`） | submit で `ready` / `blocked` / `failed`（試行が残れば `pending`）。lease（2 時間）を過ぎたら次の claim が回収して `pending`（3 回目なら `failed` / `DESIGN_STALE`） |
+| `ready` | 検証済みの profile がある | 終端。**再生成しない** |
+| `blocked` | AI デザインを使えない（`PUBLIC_SOURCE_UNAVAILABLE`・`FALLBACK_TEMPLATE`・`DESIGN_BLOCKED`・`RENDERER_CHANGE_NEEDED`・`DO_NOT_CONTACT`・`DEMO_DISABLED`・`ALREADY_SENT`・`NO_VISUAL_SOURCE`・`DEMO_CONTENT_INVALID`） | 終端。既存 template で表示 |
+| `failed` | 3 回試しても結果が出ない | 終端。既存 template で表示 |
+
+- claim は全体の advisory lock の下で `for update skip locked` で 1 件ずつ取る。同じ demo を二重に渡さない。
+- submit は job id で demo を特定する（lineage）。今の job でない id（lease 切れで回収された古い job）は `job_superseded`（409）で捨てる。同じ job の再送は何も変えず `replayed`。
+- 初回営業がもう送信済みなら、demo を後から変えない（claim でも submit でも `blocked` / `ALREADY_SENT`）。DNC・無効化済みの demo もデザインしない。
+- 関数は service role だけが実行できる（`sales_design_claim` / `sales_design_submit`、migration `20261009000000`）。
+
+### 10.2 bridge API（`POST /api/internal/sales-design/jobs`）
+
+| action | body | 返すもの |
+|---|---|---|
+| `claim` | なし | `{ job: { jobId, workerJobId: "b-<jobId>", attempt, facts, source } \| null }`。facts は fact-only の DemoView に通るものだけ（email・未知の key は落ちる）、source は検証済みの公式サイト（`website_status = present`、SNS・portal は除く）と canonical な Instagram profile URL だけ |
+| `submit` | `jobId, outcome (ready / blocked / failed), profile (ready のときだけ、rationale は空), errorCode (ready 以外、固定の符号), workerCommit, lineage.workerJobId` | `{ result: { jobId, status, errorCode, attempts, replayed } }` |
+
+- 認証: `Authorization: Bearer <SALES_DESIGN_BRIDGE_TOKEN>`（定数時間比較）。flag 無効・token 未設定・32 文字未満・ingest token と同じ値なら **503**、不一致は 401。ingest token では通らず、bridge token で ingest API も通らない。
+- strict schema: 未知の key（screenshot・HTML・Cookie・prompt・Codex の出力・stderr・推論など）があれば 400 で何も書かない。値は返さない。本文は 32KB まで。
+- profile は server でも `checkProfile`（schema・contrast・motif の重複）を通らなければ 400。
+- server は source URL を fetch しない。
+- 実装: `app/api/internal/sales-design/jobs/route.ts`、`lib/sales/design-bridge-schema.ts`（両側共通の schema）、`lib/sales/design-bridge.ts`、`lib/sales/design-bridge-auth.ts`、`lib/sales/design.ts`（flag と規則）。
+
+### 10.3 公開 demo と管理画面
+
+- `/demo/[publicToken]`: flag 有効・`ready`・profile が再検証を通る → `ProfileRenderer`（写真なし）。それ以外 → 既存の bakery / baked_goods / cafe template。表示の可否（送信済み・30 日・無効化・DNC）と notice・footer・noindex は既存のまま。表示文は fact-only の DemoView と固定の見出しだけ。
+- 公開しないもの: DEV-029 の写真、Instagram・公式サイトの screenshot、capture helper の PNG、reference 画像。保存するのは validated DesignProfile と最小の metadata（状態・job id・試行回数・commit・符号）だけ。
+- `/admin/sales`（今日）: 初回の項目に「AIデザイン待ち / AIデザイン生成中 / デモ確認可能 / デザインBLOCKED / AIデザイン失敗」を出す。flag 有効で `pending` / `processing` の項目は送信ボタンを出さず、「送信済み」もサーバー（server action）で拒否する。`ready` はプレビューへのリンクを出す。`blocked` / `failed` は既存 template のデモで送れる。
+- `/admin/preview/[prospectId]`: 公開ページと同じ描き方と、デザインの状態。
+
+### 10.4 local bridge と worker
+
+- `scripts/sales-design-bridge/run.sh --once`（`bridge.ts`）: 利用者 `sr-designbridge` だけで動く（root・`sr-designgen`・`sr-igcapture` では止まる）。token は 0600 の file から読み、環境変数にしない。子 process を起動しない。1 回で「結果の提出 → 期限切れの job の破棄 → 1 件の claim」。
+- worker は `SR_DESIGN_BRIDGE_SPOOL` があるときだけ、run の前に `to-worker/` の job を自分の inbox に取り込み、run の後に終わった bridge job の結果を `from-worker/` に書く（`lib/design-agent/bridge/worker-side.ts`）。書くのは outcome・final profile（rationale を落として `checkProfile` を通したもの）・固定の符号・commit だけ。
+- spool の file は link を辿らず、通常ファイル・link 数 1・サイズ上限・strict schema で読む（`lib/design-agent/bridge/spool.ts`）。
+- systemd の unit（`scripts/sales-design-bridge/systemd/`）は repo に置くだけで、install・enable は人が行う。手順: `docs/operations/design-bridge.md`。
+

@@ -154,6 +154,7 @@ drafted → sent → replied(interested|question|meeting_request|decline|other)
   - 送信前に店舗がリンクを開くと 404 になりうるため、管理画面では送信後すぐ「送信済み」を押す導線にする。
   - row 削除は不要。
 - 公開 demo に絶対出さない: 営業内部メモ / メールアドレス / Claude 内部評価 / 成約金額 / outcome / internal ID / secret。
+- AI デザイン（DEV-030。既定は無効）: 有効にしたとき、デザインが `ready` で検証済みの DesignProfile がある demo だけを共通の profile renderer で描く。それ以外は上のテンプレートのまま。表示する文・公開条件・注記は上と同じで、写真や reference 画像は出さない（§11.1）。
 
 ## 8. 管理画面 `/admin/sales`
 
@@ -203,6 +204,12 @@ Operational Claude は次をしない: DM送信 / メール送信 / Supabase直�
     - Codex は bubblewrap の sandbox の中だけ、worker は systemd の jail の中だけで動く。どちらも毎回 probe で確かめ、満たさなければ動かない。jail の DNS は UDP だけ
     - 基盤の install は root だけの clone から人が行う
     - 詳細: `docs/SECURITY.md` §10.2、`docs/operations/design-capture-helper.md`、`docs/operations/design-wsl-isolation.md`
+
+- Sales Design Bridge（DEV-030、2026-10-09 人間承認: 開始と forward DB schema の repo 上の設計・実装。Staging / Production への適用は未承認）: 候補発見 → 検証・永続化 → ローカル AI デザイン → 公開デモ → 人間が DM、を一本につなぐ。**既定は無効**（`SALES_AI_DESIGN_ENABLED`）で、無効なら Sales Agent は既存のまま。
+  - 営業ルール（5 件/日・DNC・重複排除・チャネル決定・30 日・初回は人間送信）は変えない。
+  - 有効なとき、persist で作る demo は「AIデザイン待ち」になり、local bridge → design worker → 検証済み DesignProfile → 「デモ確認可能」と進む。待ち・生成中の候補は管理画面から送れない。BLOCKED / 失敗は既存テンプレートで送れる。
+  - 公開 demo に保存・表示するのは検証済みの DesignProfile と最小の metadata だけ。写真・screenshot・reference 画像は公開しない（写真の公開は後続 DEV）。
+  - 詳細: `docs/ARCHITECTURE.md` §10、`docs/SECURITY.md` §11、`docs/operations/design-bridge.md`
 
 ## 12. 範囲外（MVPでは作らない）
 

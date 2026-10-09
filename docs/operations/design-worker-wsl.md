@@ -213,6 +213,7 @@ SR_DESIGN_EXPORT_DIR=/mnt/c/Users/<windows-user>/Desktop/second-root-codex-resul
 | `SR_DESIGN_WORKER_REF` | `develop` | run.sh が checkout を揃える origin の branch |
 | `SR_DESIGN_EXPORT_DIR` | なし | Windows から見るコピー先。無い・書けないときは `windows_copy: unavailable / failed` になるだけ |
 | `SR_DESIGN_JOBS` | `~/sr-design-jobs` | job queue |
+| `SR_DESIGN_BRIDGE_SPOOL` | なし | DEV-030 の design bridge の spool（例 `/srv/sr-design-bridge`）。あるときだけ、run の前に bridge の job を取り込み、run の後に結果を書き出す。token や API の URL は worker に置かない（`design-bridge.md`） |
 | `SR_DESIGN_WORKER_NO_UPDATE` | なし | `1` で fetch / checkout / npm ci をしない（開発用。作業木はきれいであること） |
 | `SR_DESIGN_WORKER_BUDGET_SECONDS` | `3300` | run.sh 全体の時間（3300 秒が上限） |
 
