@@ -86,8 +86,9 @@ describe("bridge auth (the server holds only the token's SHA-256)", () => {
     expect(authorizeBridge(`Bearer ${TOKEN}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: sha(TOKEN).toUpperCase() })).toBe("ok");
     expect(authorizeBridge(`Bearer ${INGEST}`, env)).toBe("denied");
     expect(authorizeBridge(`Bearer ${TOKEN}x`, env)).toBe("denied");
-    // the digest itself is not a credential
-    expect(authorizeBridge(`Bearer ${sha(TOKEN)}`, env)).toBe("denied");
+    // the digest itself is not a credential (refused as a configuration problem: it cannot be told
+    // apart from a 64-hex raw token pasted as its own digest)
+    expect(authorizeBridge(`Bearer ${sha(TOKEN)}`, env)).toBe("unconfigured");
     expect(authorizeBridge(TOKEN, env)).toBe("denied");
     expect(authorizeBridge(null, env)).toBe("denied");
     // too short or with non-visible characters: refused before hashing
