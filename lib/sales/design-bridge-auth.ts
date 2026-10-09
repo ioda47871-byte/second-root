@@ -33,5 +33,8 @@ export function authorizeBridge(header: string | null, env: Record<string, strin
   if (env.SALES_AGENT_INGEST_TOKEN && timingSafeEqual(digest(env.SALES_AGENT_INGEST_TOKEN), expected)) return "unconfigured";
   const match = /^Bearer ([^\s]+)$/.exec(header ?? "");
   if (!match || !BRIDGE_TOKEN.test(match[1]!)) return "denied";
+  // The configured value is the token itself (a 64-hex token pasted as its own digest):
+  // the raw token is on the server, which is a configuration error, not a wrong token.
+  if (BRIDGE_TOKEN_SHA256.test(match[1]!.toLowerCase()) && timingSafeEqual(Buffer.from(match[1]!.toLowerCase(), "hex"), expected)) return "unconfigured";
   return timingSafeEqual(digest(match[1]!), expected) ? "ok" : "denied";
 }

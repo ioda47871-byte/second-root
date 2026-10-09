@@ -38,15 +38,21 @@ Second Root server ──https── local bridge（sr-designbridge, token あ�
 ## 2. token（B）
 
 token そのものは **bridge の 0600 file にだけ**ある（DEV-032）。server（Vercel）に置くのはその SHA-256 だけで、token は画面にも log にも出さない。
+**§3 で利用者 `sr-designbridge` を作った後に行う。**
 
 ```bash
 # WSL で 1 回。token を bridge の利用者の 0600 file に作り（既にあれば何もしない）、SHA-256 だけを表示する
-sudo -u sr-designbridge -H sh -c 'umask 077 && mkdir -p "$HOME/.config/second-root" && f="$HOME/.config/second-root/design-bridge.token" && test ! -e "$f" && head -c 48 /dev/urandom | base64 | tr -d "\n" > "$f" && printf "SALES_DESIGN_BRIDGE_TOKEN_SHA256=%s\n" "$(sha256sum < "$f" | cut -d" " -f1)"'
+sudo -u sr-designbridge -H sh -c 'umask 077 && mkdir -p "$HOME/.config/second-root" && f="$HOME/.config/second-root/design-bridge.token" && { test ! -e "$f" || { echo "token file exists; not overwritten" >&2; exit 1; }; } && head -c 48 /dev/urandom | base64 | tr -d "\n" > "$f" && printf "SALES_DESIGN_BRIDGE_TOKEN_SHA256=%s\n" "$(sha256sum < "$f" | cut -d" " -f1)"'
+
+# hash をもう一度見るとき（token は表示しない）
+sudo -u sr-designbridge -H sh -c 'sha256sum < "$HOME/.config/second-root/design-bridge.token" | cut -d" " -f1'
 ```
+
+- 途中で失敗して空の file が残ったときは、`sudo -u sr-designbridge -H sh -c 'rm "$HOME/.config/second-root/design-bridge.token"'` で消してからやり直す。
 
 - token: 48 byte の乱数（384 bit）を base64 にした 64 文字。`/home/sr-designbridge/.config/second-root/design-bridge.token`（`sr-designbridge` の所有、0600、改行なし）。
 - Vercel: 表示された 64 桁の hex を `SALES_DESIGN_BRIDGE_TOKEN_SHA256`（server only）に設定する。hash は秘密ではないが、token の代わりにはならない（server は Bearer の token を SHA-256 して定数時間で比べる）。
-- server に token そのもの（`SALES_DESIGN_BRIDGE_TOKEN`）を置くと、bridge API は 503 で止まる。hash が無い・64 桁の hex でない・ingest token の hash と同じ、のときも 503。
+- server に token そのもの（`SALES_DESIGN_BRIDGE_TOKEN`、または hash の欄に token の値）を置くと、bridge API は 503 で止まる。hash が無い・64 桁の hex でない・ingest token の hash と同じ、のときも 503。
 - **worker（`sr-designgen`）・Codex・Claude の session・Operational Claude には token を渡さない。**
 
 ## 3. 利用者と spool（C）

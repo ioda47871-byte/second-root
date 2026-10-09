@@ -104,6 +104,10 @@ describe("bridge auth (the server holds only the token's SHA-256)", () => {
     // the raw token must never be configured on the server, even together with a valid digest
     expect(authorizeBridge(`Bearer ${TOKEN}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN: TOKEN })).toBe("unconfigured");
     expect(authorizeBridge(`Bearer ${INGEST}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: sha(INGEST) })).toBe("unconfigured");
+    // a 64-hex token configured as if it were its own digest: the raw token is on the server
+    const hexToken = sha("some seed");
+    expect(authorizeBridge(`Bearer ${hexToken}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: hexToken })).toBe("unconfigured");
+    expect(authorizeBridge(`Bearer ${hexToken.toUpperCase()}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: hexToken })).toBe("unconfigured");
   });
 });
 
