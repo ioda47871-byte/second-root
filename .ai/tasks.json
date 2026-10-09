@@ -1445,7 +1445,7 @@
         "公開デモへの写真掲載（後続 DEV）"
       ],
       "attempts": 0,
-      "last_failure": null,
+      "last_failure": "2026-10-09: 実装・テスト・docs まで完了（migration 20261009000000、bridge API、公開 demo / 管理画面、local bridge と worker の spool、systemd unit は repo のみ）。ローカルの Supabase で integration 全件 PASS。人の操作待ち: migration の Staging / Production 適用、SALES_DESIGN_BRIDGE_TOKEN の生成と設定、sr-designbridge 利用者と spool の作成、worker の jail への spool の bind 2 行（root だけの clone から入れ直し）、SALES_AI_DESIGN_ENABLED の有効化、timer の enable（docs/operations/design-bridge.md）。",
       "branch": "feature/dev-030-sales-design-bridge"
     }
   ]
