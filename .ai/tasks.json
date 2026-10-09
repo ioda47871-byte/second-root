@@ -1490,7 +1490,7 @@
     {
       "id": "DEV-032",
       "title": "Bridge API: the server holds only the SHA-256 of the bridge token",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-030"
@@ -1524,7 +1524,7 @@
         "Staging / Production への hash の設定"
       ],
       "attempts": 0,
-      "last_failure": null,
+      "last_failure": "2026-10-09: PR #49 を develop へ merge（head 12a02f2、merge 7a03f7a）。fresh review Critical / High / Medium 0（.ai/reviews/DEV-032.md）。Staging への hash の設定は Staging bring-up で行う。",
       "branch": "feature/dev-032-bridge-token-hash"
     }
   ]
