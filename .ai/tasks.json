@@ -1304,13 +1304,13 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。実店舗 PoC は phase3-001 / phase3-002 が renderer の制約で設計どおり BLOCKED、renderer を汎用に直して phase3-003（2af0465）で accept（20/25、revision 2 回）、outcome=done。2026-10-09 merge prep（docs 正本の同期、公開 /demo を develop と同一に戻す regression test）を経て、人が phase3-003 の final を PC / mobile で目視し「営業先へ提案用デモとして見せてよい品質」として final visual gate を承認。PR #43 を develop へ merge。DB schema・営業 Routine への接続は引き続き人の承認待ち（別タスク）。",
+      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。実店舗 PoC は phase3-001 / phase3-002 が renderer の制約で設計どおり BLOCKED、renderer を汎用に直して phase3-003（2af0465）で accept（20/25、revision 2 回）、outcome=done。2026-10-09 merge prep（docs 正本の同期、公開 /demo を develop と同一に戻す regression test）を経て、人が phase3-003 の final を PC / mobile で目視し「営業先へ提案用デモとして見せてよい品質」として final visual gate を承認。PR #43 を develop へ merge（head 59d8f59、merge 640c9e7）。DB schema・営業 Routine への接続は引き続き人の承認待ち（別タスク）。",
       "branch": "feature/dev-028-ai-art-direction"
     },
     {
       "id": "DEV-029",
       "title": "Photo art direction for demos (photos chosen and laid out with the type, local preview only)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-007"
@@ -1371,7 +1371,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "段階 1〜5 と実機 PoC を完了し、受入条件を満たした（2026-10-09 completion review: .ai/reviews/DEV-029.md）。実機 PoC は poc-photo-001 / 003 / 004（mobile の About 写真が未描画で BLOCKED → decode を修正）/ 005（同じ 3 枚の AI 生成概念画像で accept・done）。PR #46 は Draft のまま。develop へは DEV-028（PR #43）の merge 後、人の判断で入れる。未検証: approved_real の実機確認。",
+      "last_failure": "段階 1〜5 と実機 PoC を完了し、受入条件を満たした（2026-10-09 completion review: .ai/reviews/DEV-029.md）。実機 PoC は poc-photo-001 / 003 / 004（mobile の About 写真が未描画で BLOCKED → decode を修正）/ 005（同じ 3 枚の AI 生成概念画像で accept・done）。2026-10-09 人の指示で、DEV-028（PR #43、640c9e7）の merge 後に develop を取り込み（conflict なし。公開 /demo の CSS・DemoFrame は develop と同一）、base を develop に変えて PR #46 を merge。未検証: approved_real の実機確認。",
       "branch": "feature/dev-029-photo-art-direction"
     }
   ]
