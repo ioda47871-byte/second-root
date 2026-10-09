@@ -189,6 +189,21 @@ Operational Claude は次をしない: DM送信 / メール送信 / Supabase直�
 
 - Instagram 返信後の公式 Messaging API 連携（DEV-020〜DEV-024、2026-09-27 人間承認の scope extension）: 相手から Second Root の Instagram Professional Account へ届いた返信を公式 Webhook で受信し、分類・返信案を自動で用意、**人間が1タップで承認した返信だけ**を公式 Send API で送る。初回 cold DM は引き続き人間の手動送信。詳細: `docs/INSTAGRAM_MESSAGING.md`。
 
+- デモの AI アートディレクション PoC（DEV-028、2026-09-29 人間承認）: 1 店舗ずつ人が手で起動するローカル CLI。ChatGPT でサインインした Codex CLI（API キーは使わない。従量課金の OpenAI API ではない）に、**確認済みの公開 fact** と**人が用意した公開ページのスクリーンショット**（Instagram はプロフィール上部と投稿グリッドだけ。コメント・DM・第三者の個人情報や顔を含めない）を渡し、見た目だけの design profile を JSON Schema の範囲で選ばせる。店舗の文言は fact-only の DemoView からしか出ない。PoC では DB に保存せず、Production・Staging・Routine・営業 Agent に接続しない。詳細: `docs/operations/design-agent-wsl.md`。
+  - 2026-09-29 追加（人間承認）: 同じ pipeline を、WSL の専用利用者で動く local worker（`scripts/sales-design-worker/run.sh`）が人の操作なしで 1 件ずつ処理する。
+    - job はリポジトリの外の file queue から取る
+    - 公開 Instagram プロフィールを未ログインで撮る。撮れなければ `PUBLIC_SOURCE_UNAVAILABLE` とし、回避しない
+    - Codex で brief → review を行い、final を Linux 側に記録する。Windows へのコピーは best effort
+    - systemd timer はまだ enable せず、営業 Agent にも繋がない
+    - 詳細: `docs/operations/design-worker-wsl.md`
+  - 2026-10-01 追加（Phase 3、人間承認・実機検証済み）: 取得と隔離の境界。新しい自動化や営業 Agent・DB・Routine への接続はない。
+    - visual source の順: 確認済みの公式サイト → ログイン済み Instagram（capture helper）→ 未ログインの公開 Instagram → `PUBLIC_SOURCE_UNAVAILABLE`
+    - ログイン済みの Instagram profile は別の Linux 利用者 `sr-igcapture` だけが持つ。worker（`sr-designgen`）は request を置き、符号と privacy 処理済みの画像（最大 3 枚）だけを受け取る。ログインは人が行う（自動ログインしない）
+    - 公式サイトは egress proxy（公開 address の 80 / 443 だけ）を通して撮り、WebRTC / QUIC は止める（fail closed）
+    - Codex は bubblewrap の sandbox の中だけ、worker は systemd の jail の中だけで動く。どちらも毎回 probe で確かめ、満たさなければ動かない。jail の DNS は UDP だけ
+    - 基盤の install は root だけの clone から人が行う
+    - 詳細: `docs/SECURITY.md` §10.2、`docs/operations/design-capture-helper.md`、`docs/operations/design-wsl-isolation.md`
+
 ## 12. 範囲外（MVPでは作らない）
 
 - 自動送信（DM・メールとも）、返信の自動取得（Instagram は後続 DEV-020〜024）、Instagram フォロー

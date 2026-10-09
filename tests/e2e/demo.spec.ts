@@ -76,3 +76,12 @@ test("returns 404 for unsent, expired, disabled and unknown demos", async ({ pag
     expect(res?.headers()["x-robots-tag"]).toBe("noindex, nofollow");
   }
 });
+
+test("the design agent's local preview does not exist on a normal server (DEV-028)", async ({ page }) => {
+  // The e2e server, like Vercel, has no SR_DESIGN_PREVIEW_ROOT.
+  for (const path of ["/design-preview/run-abc123?profile=none", "/design-preview/run-abc123?profile=final", "/design-preview/..%2F..%2Fetc?profile=none"]) {
+    const res = await page.goto(path);
+    expect(res?.status(), path).toBe(404);
+    expect(res?.headers()["x-robots-tag"]).toBe("noindex, nofollow");
+  }
+});

@@ -1,0 +1,10 @@
+# Starts the capture helper when a request is dropped into the spool.
+[Unit]
+Description=Second Root Instagram capture requests
+
+[Path]
+PathChanged=/srv/sr-capture/requests
+Unit=sr-capture.service
+
+[Install]
+WantedBy=multi-user.target
