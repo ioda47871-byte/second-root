@@ -23,7 +23,7 @@ Second Root server ──https── local bridge（sr-designbridge, token あ�
 | # | 何を | 理由 |
 |---|---|---|
 | A | migration `20261009000000_sales_design_bridge.sql` を Staging に適用（次に Production） | DB schema の変更 |
-| B | `SALES_DESIGN_BRIDGE_TOKEN` の生成と、Vercel（Staging の Preview → Production）・bridge の file への保存 | secret |
+| B | bridge token の生成（bridge の 0600 file にだけ）と、その SHA-256（`SALES_DESIGN_BRIDGE_TOKEN_SHA256`）の Vercel への設定（Staging の Preview → Production） | secret |
 | C | Linux 利用者 `sr-designbridge` と `/srv/sr-design-bridge` の作成 | 実機の権限 |
 | D | worker の jail に spool の bind を 2 行足し、root だけの clone から入れ直す | security boundary の設定（root） |
 | E | `SALES_AI_DESIGN_ENABLED=true`（Staging → Production） | 機能を有効にする |
@@ -37,14 +37,23 @@ Second Root server ──https── local bridge（sr-designbridge, token あ�
 
 ## 2. token（B）
 
+token そのものは **bridge の 0600 file にだけ**ある（DEV-032）。server（Vercel）に置くのはその SHA-256 だけで、token は画面にも log にも出さない。
+**§3 で利用者 `sr-designbridge` を作った後に行う。**
+
 ```bash
-# 人の端末で。値はどこにも貼り付けず、2 か所に保存するだけ
-openssl rand -base64 48 | tr -d '\n'
+# WSL で 1 回。token を bridge の利用者の 0600 file に作り（既にあれば何もしない）、SHA-256 だけを表示する
+sudo -u sr-designbridge -H sh -c 'umask 077 && mkdir -p "$HOME/.config/second-root" && f="$HOME/.config/second-root/design-bridge.token" && { test ! -e "$f" || { echo "token file exists; not overwritten" >&2; exit 1; }; } && head -c 48 /dev/urandom | base64 | tr -d "\n" > "$f" && printf "SALES_DESIGN_BRIDGE_TOKEN_SHA256=%s\n" "$(sha256sum < "$f" | cut -d" " -f1)"'
+
+# hash をもう一度見るとき（token は表示しない）
+sudo -u sr-designbridge -H sh -c 'sha256sum < "$HOME/.config/second-root/design-bridge.token" | cut -d" " -f1'
 ```
 
-- Vercel: `SALES_DESIGN_BRIDGE_TOKEN`（server only。`SALES_AGENT_INGEST_TOKEN` と**別の値**。同じだと API は 503）。
-- bridge: `/home/sr-designbridge/.config/second-root/design-bridge.token`（`sr-designbridge` の所有、0600）。
-- **worker（`sr-designgen`）・Codex・Claude の session・Operational Claude には渡さない。**
+- 途中で失敗して空の file が残ったときは、`sudo -u sr-designbridge -H sh -c 'rm "$HOME/.config/second-root/design-bridge.token"'` で消してからやり直す。
+
+- token: 48 byte の乱数（384 bit）を base64 にした 64 文字。`/home/sr-designbridge/.config/second-root/design-bridge.token`（`sr-designbridge` の所有、0600、改行なし）。
+- Vercel: 表示された 64 桁の hex を `SALES_DESIGN_BRIDGE_TOKEN_SHA256`（server only）に設定する。hash は秘密ではないが、token の代わりにはならない（server は Bearer の token を SHA-256 して定数時間で比べる）。
+- server に token そのもの（`SALES_DESIGN_BRIDGE_TOKEN`、または hash の欄に token の値）を置くと、bridge API は 503 で止まる。hash が無い・64 桁の hex でない・ingest token の hash と同じ、のときも 503。
+- **worker（`sr-designgen`）・Codex・Claude の session・Operational Claude には token を渡さない。**
 
 ## 3. 利用者と spool（C）
 
@@ -123,7 +132,7 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 | `BRIDGE_NOT_CONFIGURED` | URL か token file がない | §5 |
 | `BRIDGE_TOKEN_UNSAFE` | token file が自分の 0600 の通常ファイルでない、短い | §2 |
 | `BRIDGE_API_UNSAFE` | URL が https でない、credential や query がある | §5 |
-| `BRIDGE_DISABLED` | server が 503（flag 無効・token 未設定・ingest token と同じ） | Vercel の設定 |
+| `BRIDGE_DISABLED` | server が 503（flag 無効・hash 未設定 / 不正・token そのものが server にある・ingest token と同じ） | Vercel の設定 |
 | `BRIDGE_UNAUTHORIZED` | token 不一致 | §2 |
 | `BRIDGE_API_UNAVAILABLE` / `BRIDGE_RESPONSE_INVALID` | 通信・応答の問題 | 次の回に自動で再試行 |
 | `BRIDGE_SPOOL_INVALID` | spool に書けない | §3 |

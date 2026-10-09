@@ -1486,6 +1486,46 @@
       "attempts": 0,
       "last_failure": "2026-10-09: PR #48 を develop へ merge（head 5dd06ad、merge 56db4b5）。fresh review Critical 0 / High 0（.ai/reviews/DEV-031.md）。実機への反映（root だけの clone を 56db4b5 に合わせ clean を確かめて admin.sh jail-install → JAIL_OK）は人が行う。",
       "branch": "feature/dev-031-jail-bridge-spool"
+    },
+    {
+      "id": "DEV-032",
+      "title": "Bridge API: the server holds only the SHA-256 of the bridge token",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-030"
+      ],
+      "purpose": "raw の bridge token を Vercel に置かず、server には SHA-256 だけを置く（2026-10-09 人間承認）。token は WSL の sr-designbridge の 0600 file にだけ存在させ、表示・log・Claude session・GitHub・Vercel に出さない",
+      "acceptance_criteria": [
+        "server は SALES_DESIGN_BRIDGE_TOKEN_SHA256（64 桁の hex）だけを使い、Bearer を SHA-256 して定数時間で比べる",
+        "hash 未設定・不正、raw の SALES_DESIGN_BRIDGE_TOKEN が server にある、ingest token の hash と同じ、flag 無効は 503",
+        "token の生成手順は値を表示せず SHA-256 だけを表示する（runbook）",
+        "SECURITY / ARCHITECTURE / runbook / env example を更新"
+      ],
+      "required_tests": [
+        "unit: authorizeBridge（hash 一致・大文字、digest 自体は通らない、短い token、未設定・不正・raw 併存・ingest 同値）",
+        "integration: route の 503 / 401",
+        "既存の unit / integration / e2e / build"
+      ],
+      "allowed_scope": [
+        "lib/sales/design-bridge-auth.ts",
+        "app/api/internal/sales-design/",
+        "tests/",
+        "docs/",
+        ".ai/",
+        ".env.local.example"
+      ],
+      "forbidden_scope": [
+        "Production の env・migration・flag",
+        "timer の enable",
+        "token の値を表示・commit すること"
+      ],
+      "human_approval_triggers": [
+        "Staging / Production への hash の設定"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-032-bridge-token-hash"
     }
   ]
 }

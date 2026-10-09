@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +26,7 @@ import { anonClient, candidate, createUser, db, emailCandidate, makeAdmin, reset
 const PROFILE: DesignProfile = { ...AMERICAN_EDITORIAL, rationale: [] };
 const BRIDGE_TOKEN = "bridge-token-0123456789abcdef-0123456789";
 const INGEST_TOKEN = "test-ingest-token-0123456789abcdef-0123456789";
+const sha = (t: string) => createHash("sha256").update(t).digest("hex");
 
 type Claim = { job_id: string; attempt: number; template: string; content: Record<string, unknown>; website_url: string | null; instagram_url: string | null };
 type State = { job_id: string; status: string; error_code: string | null; attempts: number; replayed: boolean };
@@ -273,7 +274,7 @@ describe("bridge API", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
-    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN", BRIDGE_TOKEN);
+    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN_SHA256", sha(BRIDGE_TOKEN));
     vi.stubEnv("SALES_AGENT_INGEST_TOKEN", INGEST_TOKEN);
     const realFetch = globalThis.fetch;
     // The server may only talk to Supabase; source URLs are never fetched.
@@ -288,16 +289,23 @@ describe("bridge API", () => {
     vi.unstubAllEnvs();
   });
 
-  it("fails closed: flag off / token unset / ingest token reused → 503, wrong token → 401, nothing claimed", async () => {
+  it("fails closed: flag off / digest unset / ingest token reused → 503, wrong token → 401, nothing claimed", async () => {
     await prepare(candidate(), true);
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "false");
     expect((await bridgeCall({ action: "claim" })).status).toBe(503);
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
-    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN", "");
+    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN_SHA256", "");
     expect((await bridgeCall({ action: "claim" })).status).toBe(503);
-    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN", INGEST_TOKEN);
+    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN_SHA256", "not-a-sha256");
+    expect((await bridgeCall({ action: "claim" })).status).toBe(503);
+    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN_SHA256", sha(INGEST_TOKEN));
     expect((await bridgeCall({ action: "claim" }, INGEST_TOKEN)).status).toBe(503);
+    // the raw token never belongs on the server: configured anyway → 503
+    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN_SHA256", sha(BRIDGE_TOKEN));
     vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN", BRIDGE_TOKEN);
+    expect((await bridgeCall({ action: "claim" })).status).toBe(503);
+    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN", "");
+    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN_SHA256", sha(BRIDGE_TOKEN));
     expect((await bridgeCall({ action: "claim" }, INGEST_TOKEN)).status).toBe(401);
     expect((await bridgeCall({ action: "claim" }, null)).status).toBe(401);
     expect((await db.query("select count(*)::int as n from public.sales_demos where design_status = 'processing'")).rows[0].n).toBe(0);
@@ -370,7 +378,7 @@ describe("bridge API", () => {
 describe("end to end: bridge → spool → worker → bridge → public demo", () => {
   beforeEach(() => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
-    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN", BRIDGE_TOKEN);
+    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN_SHA256", sha(BRIDGE_TOKEN));
     vi.stubEnv("SALES_AGENT_INGEST_TOKEN", INGEST_TOKEN);
   });
   afterEach(() => vi.unstubAllEnvs());

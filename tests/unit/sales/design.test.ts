@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { renderDemo, renderDesignedDemo } from "@/components/demo/renderDemo";
@@ -76,23 +77,38 @@ describe("initialSendAllowed", () => {
   });
 });
 
-describe("bridge auth", () => {
-  const env = { SALES_AI_DESIGN_ENABLED: "true", SALES_DESIGN_BRIDGE_TOKEN: TOKEN, SALES_AGENT_INGEST_TOKEN: INGEST };
+describe("bridge auth (the server holds only the token's SHA-256)", () => {
+  const sha = (t: string) => createHash("sha256").update(t).digest("hex");
+  const env = { SALES_AI_DESIGN_ENABLED: "true", SALES_DESIGN_BRIDGE_TOKEN_SHA256: sha(TOKEN), SALES_AGENT_INGEST_TOKEN: INGEST };
 
-  it("accepts only the bridge token", () => {
+  it("accepts only the token whose SHA-256 is configured", () => {
     expect(authorizeBridge(`Bearer ${TOKEN}`, env)).toBe("ok");
+    expect(authorizeBridge(`Bearer ${TOKEN}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: sha(TOKEN).toUpperCase() })).toBe("ok");
     expect(authorizeBridge(`Bearer ${INGEST}`, env)).toBe("denied");
     expect(authorizeBridge(`Bearer ${TOKEN}x`, env)).toBe("denied");
+    // the digest itself is not a credential (refused as a configuration problem: it cannot be told
+    // apart from a 64-hex raw token pasted as its own digest)
+    expect(authorizeBridge(`Bearer ${sha(TOKEN)}`, env)).toBe("unconfigured");
     expect(authorizeBridge(TOKEN, env)).toBe("denied");
     expect(authorizeBridge(null, env)).toBe("denied");
+    // too short or with non-visible characters: refused before hashing
+    const short = "s".repeat(31);
+    expect(authorizeBridge(`Bearer ${short}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: sha(short) })).toBe("denied");
   });
 
-  it("fails closed: flag off, token unset or short, token equal to the ingest token", () => {
+  it("fails closed: flag off, digest unset or malformed, a raw token on the server, the ingest token's digest", () => {
     expect(authorizeBridge(`Bearer ${TOKEN}`, { ...env, SALES_AI_DESIGN_ENABLED: undefined })).toBe("disabled");
     expect(authorizeBridge(`Bearer ${TOKEN}`, { ...env, SALES_AI_DESIGN_ENABLED: "false" })).toBe("disabled");
-    expect(authorizeBridge(`Bearer ${TOKEN}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN: undefined })).toBe("unconfigured");
-    expect(authorizeBridge("Bearer short", { ...env, SALES_DESIGN_BRIDGE_TOKEN: "short" })).toBe("unconfigured");
-    expect(authorizeBridge(`Bearer ${INGEST}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN: INGEST })).toBe("unconfigured");
+    for (const bad of [undefined, "", "abc", sha(TOKEN).slice(1), `${sha(TOKEN)}0`, sha(TOKEN).replace(/^./, "g"), `sha256:${sha(TOKEN)}`]) {
+      expect(authorizeBridge(`Bearer ${TOKEN}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: bad }), String(bad)).toBe("unconfigured");
+    }
+    // the raw token must never be configured on the server, even together with a valid digest
+    expect(authorizeBridge(`Bearer ${TOKEN}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN: TOKEN })).toBe("unconfigured");
+    expect(authorizeBridge(`Bearer ${INGEST}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: sha(INGEST) })).toBe("unconfigured");
+    // a 64-hex token configured as if it were its own digest: the raw token is on the server
+    const hexToken = sha("some seed");
+    expect(authorizeBridge(`Bearer ${hexToken}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: hexToken })).toBe("unconfigured");
+    expect(authorizeBridge(`Bearer ${hexToken.toUpperCase()}`, { ...env, SALES_DESIGN_BRIDGE_TOKEN_SHA256: hexToken })).toBe("unconfigured");
   });
 });
 

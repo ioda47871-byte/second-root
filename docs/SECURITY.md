@@ -9,7 +9,7 @@
 | `RESEND_API_KEY` | Vercel env | 問い合わせフォーム（`/api/contact`）のみ |
 | `SALES_AGENT_INGEST_TOKEN` | Vercel env + Claude Cloud 環境 | Operational Claude（**これだけ**。例外は下の Staging 用 bypass 値のみ） |
 | `SALES_AGENT_VERCEL_BYPASS`（Staging のみ・任意） | Staging の Routine environment だけ | Operational Claude（Vercel Preview の保護を通るためだけ。ingest には token が別に必要）。Vercel の Protection Bypass for Automation の値で **project 全体の保護付き deployment に効く**ため、露出が疑われたら人間が Vercel で再生成する。Production には置かない |
-| `SALES_DESIGN_BRIDGE_TOKEN`（DEV-030） | Vercel env（server only）+ local bridge の利用者 `sr-designbridge` の file（`~/.config/second-root/design-bridge.token`、0600） | local design bridge だけ。ingest token とは別の値（同じなら bridge API は 503）。design worker（`sr-designgen`）・Codex・Operational Claude には渡さない。生成・設定は人間 |
+| bridge token（DEV-030 / DEV-032） | **local bridge の利用者 `sr-designbridge` の file（`~/.config/second-root/design-bridge.token`、0600）だけ**。server（Vercel）には SHA-256（`SALES_DESIGN_BRIDGE_TOKEN_SHA256`）だけを置く | local design bridge だけ。ingest token とは別の値（同じ hash なら bridge API は 503）。token は表示・log・GitHub・Vercel・Claude の session に出さない。design worker（`sr-designgen`）・Codex・Operational Claude には渡さない |
 | Vercel token / GitHub write token / admin password | 人間 | 人間のみ |
 
 - Secret を GitHub に commit しない。`.env*` は `.gitignore` 済み（`.env.local.example` のみ例外、値はダミー）。
@@ -153,12 +153,13 @@ WSL の専用利用者で動く無人の local worker（`scripts/sales-design-wo
 Sales Agent の demo と AI design worker をつなぐ。**既定は無効**（`SALES_AI_DESIGN_ENABLED="true"` のときだけ）。設計: `docs/ARCHITECTURE.md` §10。
 
 - **token を持つのは 1 か所だけ**
-  - local では bridge の利用者 `sr-designbridge` だけが `SALES_DESIGN_BRIDGE_TOKEN` を持つ（0600 の file。環境変数にしない）。bridge は子 process を起動しない。
+  - token そのものは bridge の利用者 `sr-designbridge` の 0600 の file にだけある（環境変数にしない）。bridge は子 process を起動しない。
+  - server は token を持たず、SHA-256（`SALES_DESIGN_BRIDGE_TOKEN_SHA256`、64 桁の hex）だけを持つ。Bearer の token（32〜512 文字の可視 ASCII）を SHA-256 して定数時間で比べる（DEV-032）。
   - worker（`sr-designgen`）・Codex・capture helper には token も Supabase の鍵も Sales Agent の token も渡らない。worker の環境は allowlist（`lib/design-agent/worker/env.ts`、`run.sh`）で、bridge 関係は spool の path（`SR_DESIGN_BRIDGE_SPOOL`）だけ。
   - bridge の `run.sh` は root・`sr-designgen`・`sr-igcapture` では動かない。
 - **API は狭い**
   - `claim` と `submit` だけ。prospect・outreach・DNC・run・送信には触れない。
-  - 503: flag 無効・token 未設定・32 文字未満・ingest token と同じ値。401: 不一致。定数時間比較。
+  - 503: flag 無効・hash 未設定・hash が 64 桁の hex でない・token そのもの（`SALES_DESIGN_BRIDGE_TOKEN`）が server に設定されている・ingest token の hash と同じ。401: 不一致。
   - ingest token では通らず、bridge token で ingest API も通らない。
 - **出すもの・受け取るもの**
   - server が出すのは、fact-only の DemoView に通る確認済み facts と、検証済みの source URL（公式サイト・Instagram profile）だけ。
