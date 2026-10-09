@@ -114,6 +114,7 @@ def main():
         "/dev/vsock",
         "/dev/dxg",
         "/home/sr-igcapture",
+        "/home/sr-designbridge",
         "/srv/sr-capture-admin",
         "/init",
         "/root/sr-capture-admin",

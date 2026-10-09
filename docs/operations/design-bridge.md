@@ -63,15 +63,24 @@ sudo install -d -o sr-designgen -g sr-designbridge -m 2750 /srv/sr-design-bridge
 
 ## 4. worker の jail（D、root）
 
-worker の jail は `/srv` を空の read-only にしている（`scripts/sales-design-capture/jail/jail.properties`）。spool を見せるには、承認したうえで次の 2 行を足し、**root だけの clone**（`/root/sr-capture-admin`）から入れ直す（`docs/operations/design-wsl-isolation.md`）。
+worker の jail は `/srv` を空の read-only にしている（`scripts/sales-design-capture/jail/jail.properties`）。spool の 2 つの directory だけを見せる次の 2 行は、**DEV-031 で repo に入れた**（2026-10-09 人間承認: Sales Design Bridge の spool だけを jail に公開する security boundary の拡張）。
 
 ```
 BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker
 BindPaths=-/srv/sr-design-bridge/from-worker
 ```
 
-- 入れ直した後に `admin.sh jail-check` が `JAIL_OK` を返すことを確かめる。
-- **DEV-030 の PR は `jail.properties` を変えていない。** この 2 行は、別の承認済み commit で入れる。
+入れ直しは、これまでと同じく **root だけの clone を承認した commit に合わせ、clean を確かめてから**行う。`/root/sr-capture-admin` を手で編集しない。
+
+```bash
+sudo git -C /root/sr-capture-admin fetch -q origin \
+  && sudo git -C /root/sr-capture-admin checkout -q --detach <承認した commit（40 文字）> \
+  && test -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" && echo CLEAN
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-install   # 最後に jail-check を実行する。JAIL_OK を確かめる
+```
+
+- `jail-install` は network の unit も作り直すので、jail の Claude・`run`・`shell` は起動し直される。
+- probe は、bridge の利用者の home（`/home/sr-designbridge`）が jail から見えれば `JAIL_UNSAFE` で止まる。
 - これで jail から見えるのは spool の 2 つの directory だけになる。token・Supabase・server への経路は増えない（token は jail の外の `sr-designbridge` だけが持つ）。
 
 ## 5. bridge の checkout と設定

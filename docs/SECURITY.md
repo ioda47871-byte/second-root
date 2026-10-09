@@ -177,9 +177,10 @@ Sales Agent の demo と AI design worker をつなぐ。**既定は無効**（`
   - **worker（と jail の中の process）は結果を偽れる**（残るリスク）。できるのは、bridge が渡した自分の job について `ready`（`checkProfile` を通る enum だけの profile）・`blocked`・`failed` を選ぶことだけ。別の demo には届かない（bridge の ledger が worker の job id と server の job id を対応させ、server が job id で demo を特定する）。文字・画像・URL は送れない。符号は既知のものだけ（他は `WORKER_FAILED`）。
 - **送信の抑止**
   - flag 有効で `pending` / `processing` の demo は、管理画面に送信ボタンを出さず、「送信済み」の server action でも拒否する。DB の `sales_mark_sent` は変えていない（flag が DB から見えないため。管理者本人が RPC を直接呼ぶ場合だけ通る）。
-- **jail の変更が要る（人の承認）**
-  - worker の jail は `/srv` を隠しているため、使う前に `jail.properties` へ `BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker` と `BindPaths=-/srv/sr-design-bridge/from-worker` を足し、root だけの clone から入れ直す必要がある。
-  - この PR では jail の設定を変えていない。手順と承認点: `docs/operations/design-bridge.md`。
+- **jail に見せるのは spool の 2 つの directory だけ**（DEV-031、2026-10-09 人間承認の boundary 拡張）
+  - `jail.properties` に `BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker` と `BindPaths=-/srv/sr-design-bridge/from-worker` の 2 行だけを足した。
+  - それ以外の `/srv`・bridge の利用者の home（token・state）・Supabase・host の filesystem・network の境界は変えていない。`jail.test.ts` が `/srv` の設定の全体と bind の全体を固定し、probe は `/home/sr-designbridge` が見えれば止まる。
+  - 入れ直しは root だけの clone を承認した commit・clean にして `admin.sh jail-install` から（`docs/operations/design-bridge.md` §4）。
 - **自動化しないもの**
   - 初回の DM / Email は人が送る。flag 有効で `pending` / `processing` の demo は「送信済み」にできない（server action で拒否）。
   - systemd の unit は repo に置くだけで、install・enable は人が行う。

@@ -48,6 +48,44 @@ describe("the requester jail", () => {
     expect(settings).toContain("BindReadOnlyPaths=-/srv/sr-capture/results");
   });
 
+  it("shows exactly the capture spool and the design bridge spool of /srv, nothing more (DEV-031)", () => {
+    // Every setting that names a path under /srv, with its direction. The bridge's jobs are read-only
+    // in the jail and its results writable; /srv/sr-design-bridge itself, the bridge user's home
+    // (token, state) and any other /srv path stay out.
+    const srv = settings.filter((l) => /(^|[=:\s-])\/srv(\/|$|:|\s)/.test(l)).sort();
+    expect(srv).toEqual(
+      [
+        "BindPaths=-/srv/sr-capture/requests",
+        "BindPaths=-/srv/sr-design-bridge/from-worker",
+        "BindReadOnlyPaths=-/srv/sr-capture/results",
+        "BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker",
+        "TemporaryFileSystem=/srv:ro",
+      ].sort(),
+    );
+    // the bridge spool comes after the empty /srv, so it is laid over it, never replaced by it
+    const at = (line: string) => settings.indexOf(line);
+    expect(at("TemporaryFileSystem=/srv:ro")).toBeLessThan(at("BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker"));
+    expect(at("TemporaryFileSystem=/srv:ro")).toBeLessThan(at("BindPaths=-/srv/sr-design-bridge/from-worker"));
+    // no other kind of mount or path setting reaches the bridge user's home or token
+    expect(settings.filter((l) => /sr-designbridge|design-bridge\.token|\.config\/second-root/.test(l))).toEqual([]);
+    // the probe fails the jail when the bridge user's home is visible
+    const probe = readFileSync(join(DIR, "jail", "probe.py"), "utf8");
+    expect(probe).toContain('"/home/sr-designbridge",');
+    // the network and the rest of the boundary are unchanged by this: same families, no new allow
+    expect(settings.find((l) => l.startsWith("IPAddressAllow="))).toBe("IPAddressAllow=127.0.0.0/8 ::1/128 198.51.100.53/32");
+    expect(settings.filter((l) => /^(BindPaths|BindReadOnlyPaths)=/.test(l)).sort()).toEqual(
+      [
+        "BindPaths=-/mnt/sr-export",
+        "BindPaths=-/srv/sr-capture/requests",
+        "BindPaths=-/srv/sr-design-bridge/from-worker",
+        "BindReadOnlyPaths=-/srv/sr-capture/results",
+        "BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker",
+        "BindReadOnlyPaths=/run/sr-jail/netns-id",
+        "BindReadOnlyPaths=/run/sr-jail/resolv.conf:/etc/resolv.conf",
+      ].sort(),
+    );
+  });
+
   it("leaves out the settings that would break the Codex sandbox inside it (bubblewrap needs a fresh /proc)", () => {
     for (const key of ["ProtectKernelTunables", "ProtectKernelLogs", "ProtectHostname", "RestrictNamespaces", "PrivateUsers"]) {
       expect(settings.some((l) => l.startsWith(`${key}=`)), key).toBe(false);

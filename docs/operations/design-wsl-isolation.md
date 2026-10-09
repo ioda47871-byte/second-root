@@ -88,6 +88,7 @@ Windows（人）── WSL2 VM ── Ubuntu distro
   （NoNewPrivileges・ProtectSystem・ProtectHome・PrivateDevices・ProtectProc・NetworkNamespacePath・RestrictSUIDSGID）を確かめ、違えば unit を消して止まる
 - install は requester の crontab・at の job を消し、ssh の `DenyUsers` を置く（jail の外で後から動くものを残さない）
 - spool は jail の中に `requests`（書き込み）と `results`（読み取り）だけが見える
+- Sales Design Bridge の spool（DEV-031）は `to-worker`（読み取り）と `from-worker`（書き込み）だけが見える。bridge の利用者（`sr-designbridge`）の home と token は見えない（probe が確かめる）
 - 人が Instagram にログインする間（`admin.sh login`）は、jail の unit をすべて止めてから始め、終わったら戻す
 - jail の unit はすべて `sr-jail-net.service` に結び付く（Requires / BindsTo / After）。network の unit が作り直されると、jail も新しい
   namespace で起動し直す。probe は root が記録した namespace の ID（`/run/sr-jail/netns-id`）と自分の namespace を比べる
