@@ -174,6 +174,9 @@ Sales Agent の demo と AI design worker をつなぐ。**既定は無効**（`
 - **spool**
   - `/srv/sr-design-bridge/to-worker`（bridge が書き、worker は読むだけ）と `from-worker`（worker が書き、bridge は読むだけ）。
   - どちらの側も link を辿らない・通常ファイル・link 数 1・サイズ上限・strict schema で読む。worker は自分の job id と一致しない job を取り込まない。
+  - **worker（と jail の中の process）は結果を偽れる**（残るリスク）。できるのは、bridge が渡した自分の job について `ready`（`checkProfile` を通る enum だけの profile）・`blocked`・`failed` を選ぶことだけ。別の demo には届かない（bridge の ledger が worker の job id と server の job id を対応させ、server が job id で demo を特定する）。文字・画像・URL は送れない。符号は既知のものだけ（他は `WORKER_FAILED`）。
+- **送信の抑止**
+  - flag 有効で `pending` / `processing` の demo は、管理画面に送信ボタンを出さず、「送信済み」の server action でも拒否する。DB の `sales_mark_sent` は変えていない（flag が DB から見えないため。管理者本人が RPC を直接呼ぶ場合だけ通る）。
 - **jail の変更が要る（人の承認）**
   - worker の jail は `/srv` を隠しているため、使う前に `jail.properties` へ `BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker` と `BindPaths=-/srv/sr-design-bridge/from-worker` を足し、root だけの clone から入れ直す必要がある。
   - この PR では jail の設定を変えていない。手順と承認点: `docs/operations/design-bridge.md`。

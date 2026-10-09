@@ -296,10 +296,10 @@ async function bridgeSync(direction: "import" | "export", spool: BridgeSpool): P
     await ensureQueue(dirs);
     if (direction === "import") {
       const r = await importBridgeJobs(spool, dirs, paths.out);
-      say(`bridge: imported ${r.imported.length}${r.invalid.length ? `, invalid ${r.invalid.length}` : ""}`);
+      say(`bridge: imported ${r.imported.length}${r.invalid.length ? `, invalid ${r.invalid.length}` : ""}${r.withdrawn.length ? `, withdrawn ${r.withdrawn.length}` : ""}`);
     } else {
       const r = await exportBridgeResults(spool, dirs, paths.out);
-      say(`bridge: exported ${r.exported.length}`);
+      say(`bridge: exported ${r.exported.length}${r.removed.length ? `, removed ${r.removed.length}` : ""}`);
     }
   } catch {
     say(`bridge: ${direction} skipped (BRIDGE_SPOOL_UNAVAILABLE)`);

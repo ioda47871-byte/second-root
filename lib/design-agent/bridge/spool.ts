@@ -26,6 +26,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { DesignProfileSchema } from "../profile";
 import { DESIGN_ERROR_CODE, WORKER_COMMIT } from "../../sales/design";
+import { PUBLIC_MESSAGES } from "../worker/messages";
 import { DESIGN_OUTCOMES, WORKER_JOB_ID } from "../../sales/design-bridge-schema";
 
 export const BRIDGE_SPOOL_ROOT = "/srv/sr-design-bridge";
@@ -89,13 +90,55 @@ export async function readSpoolJson(path: string, maxBytes: number = MAX_SPOOL_F
 }
 
 /**
+ * The codes a worker result may carry: the bridge's own mapping codes and
+ * the worker's fixed public codes. Anything else becomes WORKER_FAILED, so a
+ * worker cannot put a made-up word into the database.
+ */
+export const BRIDGE_RESULT_CODES: ReadonlySet<string> = new Set([
+  "DESIGN_BLOCKED",
+  "RENDERER_CHANGE_NEEDED",
+  "FALLBACK_TEMPLATE",
+  "PUBLIC_SOURCE_UNAVAILABLE",
+  "PROFILE_INVALID",
+  "RESULT_MISSING",
+  "WORKER_FAILED",
+  ...Object.keys(PUBLIC_MESSAGES),
+]);
+
+export function resultCode(value: unknown): string {
+  return typeof value === "string" && BRIDGE_RESULT_CODES.has(value) ? value : "WORKER_FAILED";
+}
+
+/**
+ * The worker's heartbeat (from-worker/worker-heartbeat.json): written at the
+ * start of every worker run that has the bridge set up. The bridge claims a
+ * new job only while the worker is running regularly, so a job never waits
+ * out its lease (and uses up an attempt) on a worker that is not running.
+ */
+export const HEARTBEAT_FILE = "worker-heartbeat.json";
+export const HeartbeatSchema = z.strictObject({ version: z.literal(1), at: z.iso.datetime() });
+
+export async function writeHeartbeat(dir: string, at: Date): Promise<void> {
+  await writeFileAtomic(dir, HEARTBEAT_FILE, { version: 1, at: at.toISOString() }, 0o640);
+}
+
+export async function readHeartbeat(dir: string): Promise<Date | null> {
+  const parsed = HeartbeatSchema.safeParse(await readSpoolJson(join(dir, HEARTBEAT_FILE), 1024));
+  return parsed.success ? new Date(parsed.data.at) : null;
+}
+
+/**
  * Writes a spool file atomically (temp file in the same directory, then
  * rename) with an explicit mode, so the other user can read it whatever the
  * writer's umask (the worker runs with 077).
  */
 export async function writeSpoolJson(dir: string, id: string, value: unknown, mode: number = 0o640): Promise<void> {
   if (!SPOOL_FILE.test(`${id}.json`)) throw Object.assign(new Error("spool id"), { code: "BRIDGE_SPOOL_INVALID" });
-  const temp = join(dir, `.tmp-${id}-${process.pid}-${Date.now()}`);
+  await writeFileAtomic(dir, `${id}.json`, value, mode);
+}
+
+async function writeFileAtomic(dir: string, name: string, value: unknown, mode: number): Promise<void> {
+  const temp = join(dir, `.tmp-${name}-${process.pid}-${Date.now()}`);
   const handle = await open(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, mode);
   try {
     await handle.writeFile(`${JSON.stringify(value)}\n`);
@@ -105,7 +148,7 @@ export async function writeSpoolJson(dir: string, id: string, value: unknown, mo
     await handle.close();
   }
   try {
-    await rename(temp, join(dir, `${id}.json`));
+    await rename(temp, join(dir, name));
   } catch (error) {
     await rm(temp, { force: true });
     throw error;

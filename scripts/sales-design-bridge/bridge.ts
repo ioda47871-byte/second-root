@@ -58,7 +58,7 @@ async function main(): Promise<number> {
     return 3;
   }
   say(
-    `bridge: delivered ${report.delivered.length}, superseded ${report.superseded.length}, refused ${report.refused.length}, expired ${report.expired.length}, claimed ${report.claimed ?? "none"}`,
+    `bridge: delivered ${report.delivered.length}, superseded ${report.superseded.length}, refused ${report.refused.length}, expired ${report.expired.length}, claimed ${report.claimed ?? (report.workerIdle ? "none (BRIDGE_WORKER_IDLE)" : "none")}`,
   );
   return report.stopped ? 3 : 0;
 }

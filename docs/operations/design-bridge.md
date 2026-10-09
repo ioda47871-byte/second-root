@@ -101,6 +101,7 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 1. Staging で `SALES_AI_DESIGN_ENABLED=true` にする（E）。Operational Claude の run が作る demo は「AIデザイン待ち」になる。
 2. bridge: `sudo -u sr-designbridge env $(cat ~sr-designbridge/.config/second-root/design-bridge.env) ~sr-designbridge/second-root/scripts/sales-design-bridge/run.sh --once` → `claimed b-…`
 3. worker: 通常どおり 1 run（`run.sh`）→ `bridge: imported 1` … `bridge: exported 1`
+   （bridge は worker の heartbeat が新しいときだけ claim する。最初は worker を 1 回動かしてから 2. を行う）
 4. bridge をもう一度 `--once` → `delivered 1`
 5. `/admin/sales` で「デモ確認可能」→ プレビューで確認 → 人が DM を送る → 「送信済み」
 
@@ -119,10 +120,13 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 
 demo の `design_error_code`（管理画面では「デザインBLOCKED」「AIデザイン失敗」と既存テンプレートの案内）:
 - `PUBLIC_SOURCE_UNAVAILABLE`、`FALLBACK_TEMPLATE`、`DESIGN_BLOCKED`、`RENDERER_CHANGE_NEEDED`
-- `DO_NOT_CONTACT`、`DEMO_DISABLED`、`ALREADY_SENT`、`NO_VISUAL_SOURCE`、`DEMO_CONTENT_INVALID`
+- `DO_NOT_CONTACT`、`DEMO_DISABLED`、`ALREADY_SENT`、`OUTREACH_CLOSED`、`NO_VISUAL_SOURCE`、`DEMO_CONTENT_INVALID`
 - `PROFILE_INVALID`、`WORKER_FAILED`（ほか worker の固定の符号）、`DESIGN_STALE`
 
 ## 8. 自動実行（F、任意）
+
+- bridge は worker の heartbeat（`from-worker/worker-heartbeat.json`、run のたびに更新）が 90 分以内のときだけ claim する（出力 `claimed none (BRIDGE_WORKER_IDLE)`）。
+- **bridge の timer を enable するなら、worker も少なくとも 1 時間に 1 回動かす**（worker の timer は別の判断）。そうしないと何も claim されないだけで、demo は「AIデザイン待ち」のまま残る。
 
 `scripts/sales-design-bridge/systemd/sr-design-bridge.service` / `.timer`（10 分ごと）を、root だけの clone から `/etc/systemd/system/` に入れて enable する。
 **repo のどの script も enable しない。** worker の timer も別の判断で、この文書は enable しない。
@@ -133,5 +137,6 @@ demo の `design_error_code`（管理画面では「デザインBLOCKED」「AI�
   - bridge API は 503 になり、bridge は `BRIDGE_DISABLED` で止まる。
   - 公開 demo と管理画面は legacy の表示・操作に戻る。`ready` の profile は使われず、待ち・生成中の候補も送れるようになる。
   - DB の行はそのまま残る。
+  - 無効の間に、待ち・生成中だった demo を人が送った後で再び有効にすると、その demo は `ALREADY_SENT` で閉じる（送った後でページを変えない）。
 - bridge だけ止める: timer を disable するか、token file を消す。
 - migration は forward only。flag が無効なら列は使われないので、戻す必要はない。

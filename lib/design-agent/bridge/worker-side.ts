@@ -4,20 +4,24 @@
  * network: it only moves files between the spool and the worker's own queue.
  *
  *   import: to-worker/<id>.json → the worker inbox, once per job id (a job the
- *           worker already holds, ran or recorded is never imported again)
- *   export: a finished bridge job (done/ or failed/) → from-worker/<id>.json,
- *           once, as a WorkerResult: outcome, the checked final profile
- *           without its rationale, a fixed code, the worker commit
+ *           worker already holds, ran or recorded is never imported again);
+ *           a waiting bridge job whose spool file is gone (the bridge gave it
+ *           up) is withdrawn from the inbox; the heartbeat is refreshed
+ *   export: a finished bridge job (done/ or failed/) that the bridge still
+ *           holds → from-worker/<id>.json, once, as a WorkerResult: outcome,
+ *           the checked final profile without its rationale, a fixed code,
+ *           the worker commit; results of jobs the bridge has closed are
+ *           removed
  *
  * Nothing else of the run directory leaves the worker user: no report text,
  * screenshots, timing, Codex notes or rounds.
  */
-import { lstat, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { lstat, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkProfile } from "../profile";
-import { DESIGN_ERROR_CODE, uploadableProfile, WORKER_COMMIT } from "../../sales/design";
+import { uploadableProfile, WORKER_COMMIT } from "../../sales/design";
 import { JobSchema, type QueueDirs } from "../worker/queue";
-import { readSpoolJson, spoolIds, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
+import { readSpoolJson, resultCode, spoolIds, writeHeartbeat, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
 
 const exists = (path: string) =>
   lstat(path).then(
@@ -32,12 +36,25 @@ async function workerKnows(dirs: QueueDirs, outRoot: string, id: string): Promis
   return exists(join(outRoot, id));
 }
 
-export type ImportReport = { imported: string[]; invalid: string[] };
+export type ImportReport = { imported: string[]; invalid: string[]; withdrawn: string[] };
+
+const BRIDGE_JOB_FILE = /^(b-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.json$/;
 
 /** Copies new bridge jobs into the worker inbox (strict job schema, file name = job id). */
-export async function importBridgeJobs(spool: BridgeSpool, dirs: QueueDirs, outRoot: string): Promise<ImportReport> {
-  const report: ImportReport = { imported: [], invalid: [] };
-  for (const id of await spoolIds(spool.toWorker)) {
+export async function importBridgeJobs(spool: BridgeSpool, dirs: QueueDirs, outRoot: string, now: Date = new Date()): Promise<ImportReport> {
+  const report: ImportReport = { imported: [], invalid: [], withdrawn: [] };
+  await writeHeartbeat(spool.fromWorker, now);
+  const live = new Set(await spoolIds(spool.toWorker));
+  // A bridge job still waiting in the inbox whose spool file is gone: the
+  // bridge (or the server) gave it up. Do not spend a Codex run on it.
+  for (const name of await readdir(dirs.inbox).catch(() => [] as string[])) {
+    const id = BRIDGE_JOB_FILE.exec(name)?.[1];
+    if (id && !live.has(id)) {
+      await rm(join(dirs.inbox, name), { force: true });
+      report.withdrawn.push(id);
+    }
+  }
+  for (const id of live) {
     if (await workerKnows(dirs, outRoot, id)) continue;
     const parsed = JobSchema.safeParse(await readSpoolJson(join(spool.toWorker, `${id}.json`)));
     if (!parsed.success || parsed.data.job_id !== id) {
@@ -60,10 +77,6 @@ const readJson = (path: string) =>
     .then((t) => JSON.parse(t) as unknown)
     .catch(() => null);
 
-function fixedCode(value: unknown, fallback: string): string {
-  return typeof value === "string" && DESIGN_ERROR_CODE.test(value) ? value : fallback;
-}
-
 /**
  * The result the bridge may upload for a finished job, from the worker's own
  * records. Pure: the mapping is the whole policy.
@@ -81,7 +94,7 @@ export function resultFromRecords(input: {
   const commitRaw = (input.report?.worker as { commit?: unknown } | undefined)?.commit ?? input.record?.worker_commit;
   const worker_commit = typeof commitRaw === "string" && WORKER_COMMIT.test(commitRaw) ? commitRaw : null;
   const base = { version: 1 as const, job_id: input.id, worker_commit };
-  if (input.bucket === "failed") return { ...base, outcome: "failed", profile: null, error_code: fixedCode(input.record?.code, "WORKER_FAILED") };
+  if (input.bucket === "failed") return { ...base, outcome: "failed", profile: null, error_code: resultCode(input.record?.code) };
   const outcome = input.report?.outcome;
   if (outcome === "done") {
     const checked = checkProfile(input.final);
@@ -111,14 +124,25 @@ async function finishedRecords(dirs: QueueDirs): Promise<Map<string, Record_>> {
   return out;
 }
 
-export type ExportReport = { exported: string[] };
+export type ExportReport = { exported: string[]; removed: string[] };
 
-/** Writes a WorkerResult for every finished bridge job that has none yet. */
+/**
+ * Writes a WorkerResult for every finished bridge job the bridge still holds
+ * (its job file is in to-worker/) and that has none yet. A result whose job
+ * the bridge has closed (delivered, superseded, refused or expired) is
+ * removed, so the spool does not grow.
+ */
 export async function exportBridgeResults(spool: BridgeSpool, dirs: QueueDirs, outRoot: string): Promise<ExportReport> {
-  const report: ExportReport = { exported: [] };
+  const report: ExportReport = { exported: [], removed: [] };
+  const live = new Set(await spoolIds(spool.toWorker));
   const already = new Set(await spoolIds(spool.fromWorker));
+  for (const id of already) {
+    if (live.has(id)) continue;
+    await rm(join(spool.fromWorker, `${id}.json`), { force: true });
+    report.removed.push(id);
+  }
   for (const [id, { bucket, record }] of await finishedRecords(dirs)) {
-    if (already.has(id)) continue;
+    if (!live.has(id) || already.has(id)) continue;
     const runDir = join(outRoot, id);
     const reportJson = bucket === "done" ? await readJson(join(runDir, "report.json")) : null;
     const final = bucket === "done" ? await readJson(join(runDir, "final.json")) : null;

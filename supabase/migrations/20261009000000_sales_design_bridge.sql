@@ -196,6 +196,20 @@ as $$
     'replayed', p_replayed)
 $$;
 
+-- Why a demo's first outreach is no longer a draft: lost (closed by the
+-- admin without sending) or anything else (sent).
+create function public.sales_design_closed_code(p_prospect_id uuid)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select case when exists (
+    select 1 from public.sales_outreaches o
+    where o.prospect_id = p_prospect_id and o.kind = 'initial' and o.status = 'lost' and o.sent_at is null)
+  then 'OUTREACH_CLOSED' else 'ALREADY_SENT' end
+$$;
+
 -- Hands out the oldest waiting design job, one at a time. First returns
 -- stale jobs (lease over: the bridge or the worker vanished) to pending, or
 -- to failed after the last attempt. A waiting demo that must not be designed
@@ -224,6 +238,8 @@ begin
   update public.sales_demos
     set design_status = case when design_attempts >= p_max_attempts then 'failed' else 'pending' end,
         design_error_code = 'DESIGN_STALE',
+        -- The stale job is gone: its late result is refused (job_superseded), never replayed.
+        design_job_id = null,
         design_claimed_at = null,
         design_updated_at = now()
     where design_status = 'processing'
@@ -247,7 +263,7 @@ begin
       when d.disabled_at is not null then 'DEMO_DISABLED'
       when not exists (
         select 1 from public.sales_outreaches o
-        where o.prospect_id = d.prospect_id and o.kind = 'initial' and o.status = 'drafted') then 'ALREADY_SENT'
+        where o.prospect_id = d.prospect_id and o.kind = 'initial' and o.status = 'drafted') then public.sales_design_closed_code(d.prospect_id)
       when p.instagram_url is null and not (p.website_status = 'present' and p.website_url is not null) then 'NO_VISUAL_SOURCE'
     end;
     if blocked_code is not null then
@@ -282,7 +298,8 @@ $$;
 -- stale lease) is refused with job_superseded; a result re-sent for a job
 -- that already finished changes nothing and returns replayed. A failed job
 -- goes back to pending while attempts remain. If the first outreach was sent
--- in the meantime, the demo is not changed after the fact (ALREADY_SENT).
+-- in the meantime, the demo is not changed after the fact (ALREADY_SENT, or
+-- OUTREACH_CLOSED when it was closed as lost without sending).
 create function public.sales_design_submit(
   p_job_id uuid, p_outcome text, p_profile jsonb, p_error_code text, p_worker_commit text,
   p_max_attempts integer default 3)
@@ -317,7 +334,7 @@ begin
     where o.prospect_id = d.prospect_id and o.kind = 'initial' and o.status = 'drafted') then
     outcome := 'blocked';
     profile := null;
-    code := 'ALREADY_SENT';
+    code := public.sales_design_closed_code(d.prospect_id);
   end if;
 
   next_status := case
@@ -346,6 +363,7 @@ begin
   foreach fn in array array[
     'public.sales_persist_candidate(uuid, text, boolean)',
     'public.sales_design_state(public.sales_demos, boolean)',
+    'public.sales_design_closed_code(uuid)',
     'public.sales_design_claim(integer, integer)',
     'public.sales_design_submit(uuid, text, jsonb, text, text, integer)'
   ] loop

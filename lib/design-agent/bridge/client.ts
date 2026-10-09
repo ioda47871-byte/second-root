@@ -9,8 +9,10 @@
  *      refused results are not sent again (ledger).
  *   2. expire: a job the worker has not answered within the lease is dropped
  *      here too (its job file removed); the server hands it out again.
- *   3. claim: when no job is outstanding, ask for one and write it to
- *      to-worker/ as the worker's job file.
+ *   3. claim: when no job is outstanding and the worker is running
+ *      regularly (its heartbeat is recent), ask for one and write it to
+ *      to-worker/ as the worker's job file. With the worker stopped, nothing
+ *      is claimed, so no job uses up its lease and attempts while waiting.
  *
  * Output is fixed codes only. The token is read from a file owned by this
  * user (0600), never from the environment, and nothing is started as a child
@@ -21,7 +23,7 @@ import { join } from "node:path";
 import { checkProfile } from "../profile";
 import { DESIGN_LEASE_SECONDS } from "../../sales/design";
 import { ClaimResponseSchema, SubmitResponseSchema, workerJobIdFor, type DesignJob } from "../../sales/design-bridge-schema";
-import { MAX_RESULT_BYTES, readSpoolJson, spoolIds, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
+import { MAX_RESULT_BYTES, readHeartbeat, readSpoolJson, resultCode, spoolIds, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
 
 export const MIN_TOKEN_LENGTH = 32;
 /** Kept a little longer than the server's lease, so the server always gives up first. */
@@ -29,6 +31,8 @@ export const LOCAL_EXPIRY_MS = (DESIGN_LEASE_SECONDS + 15 * 60) * 1000;
 /** Finished ledger entries are kept this long, so a late duplicate result is still recognised. */
 const LEDGER_KEEP_MS = 14 * 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 30 * 1000;
+/** A worker heartbeat older than this means the worker is not running often enough to take a job within its lease. */
+export const WORKER_HEARTBEAT_MAX_MS = 90 * 60 * 1000;
 
 export type BridgeCode =
   | "BRIDGE_NOT_CONFIGURED"
@@ -72,6 +76,8 @@ export type BridgeReport = {
   refused: string[];
   expired: string[];
   claimed: string | null;
+  /** No claim because the worker has not run recently (BRIDGE_WORKER_IDLE). */
+  workerIdle: boolean;
   stopped: BridgeCode | null;
 };
 
@@ -153,6 +159,8 @@ function stopFor(status: number): BridgeCode | null {
 /** The submit body for a result: the result's own fields, checked again; a profile that cannot be drawn becomes a failure. */
 export function submitBody(jobId: string, result: WorkerResult): Record<string, unknown> {
   let { outcome, profile, error_code } = result;
+  // Only known fixed codes reach the server (a worker cannot invent a word).
+  if (error_code !== null) error_code = resultCode(error_code);
   if (profile && !checkProfile(profile).ok) {
     outcome = "failed";
     profile = null;
@@ -168,7 +176,7 @@ function workerJobFile(job: DesignJob) {
 export async function runBridgeOnce(options: BridgeOptions): Promise<BridgeReport> {
   const now = options.now ?? (() => new Date());
   const log = options.log ?? (() => undefined);
-  const report: BridgeReport = { delivered: [], superseded: [], refused: [], expired: [], claimed: null, stopped: null };
+  const report: BridgeReport = { delivered: [], superseded: [], refused: [], expired: [], claimed: null, workerIdle: false, stopped: null };
   const client = api(options);
   await mkdir(options.stateDir, { recursive: true, mode: 0o700 });
   const ledger = await loadLedger(options.stateDir);
@@ -222,8 +230,15 @@ export async function runBridgeOnce(options: BridgeOptions): Promise<BridgeRepor
       }
     }
 
-    // 3. claim, one job at a time
-    if (!Object.values(ledger.jobs).some((e) => !e.closed)) {
+    // 3. claim, one job at a time, only while the worker is running
+    const heartbeat = await readHeartbeat(options.spool.fromWorker);
+    const age = heartbeat ? now().getTime() - heartbeat.getTime() : Infinity;
+    const workerRunning = age >= -5 * 60 * 1000 && age <= WORKER_HEARTBEAT_MAX_MS;
+    if (!workerRunning && !Object.values(ledger.jobs).some((e) => !e.closed)) {
+      report.workerIdle = true;
+      log("not claiming: the worker has not run recently (BRIDGE_WORKER_IDLE)");
+    }
+    if (workerRunning && !Object.values(ledger.jobs).some((e) => !e.closed)) {
       const answer = await client.post({ action: "claim" });
       const stop = stopFor(answer.status);
       if (stop) throw new BridgeError(stop);

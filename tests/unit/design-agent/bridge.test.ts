@@ -2,8 +2,8 @@ import { chmod, link, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { bridgeEndpoint, LOCAL_EXPIRY_MS, readTokenFile, runBridgeOnce, submitBody, type BridgeOptions } from "@/lib/design-agent/bridge/client";
-import { bridgeSpool, readSpoolJson, spoolIds, writeSpoolJson, WorkerResultSchema, type BridgeSpool } from "@/lib/design-agent/bridge/spool";
+import { bridgeEndpoint, LOCAL_EXPIRY_MS, readTokenFile, runBridgeOnce, submitBody, WORKER_HEARTBEAT_MAX_MS, type BridgeOptions } from "@/lib/design-agent/bridge/client";
+import { bridgeSpool, readHeartbeat, readSpoolJson, resultCode, spoolIds, writeHeartbeat, writeSpoolJson, WorkerResultSchema, type BridgeSpool } from "@/lib/design-agent/bridge/spool";
 import { exportBridgeResults, importBridgeJobs, resultFromRecords } from "@/lib/design-agent/bridge/worker-side";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import { childEnvironment } from "@/lib/design-agent/worker/env";
@@ -40,7 +40,7 @@ beforeEach(async () => {
   stateDir = join(base, "state");
 });
 
-const job = (id = WJOB) => ({ version: 1, job_id: id, facts: { name: "テスト工房", category: "bakery" }, source: { instagram_url: "https://www.instagram.com/test_shop/" } });
+const job = (id = WJOB) => ({ version: 1, job_id: id, facts: { name: "テスト工房", category: "bakery" }, source: { instagram_url: "https://www.instagram.com/example_shop/" } });
 
 /** A finished worker run, as run.ts leaves it. */
 async function finished(id: string, outcome: string, final: unknown = null, extra: Record<string, unknown> = {}) {
@@ -88,11 +88,13 @@ describe("spool files", () => {
 });
 
 describe("worker side: import", () => {
-  it("imports a new job once, into the inbox, under its own id", async () => {
+  it("imports a new job once, into the inbox, under its own id, and refreshes the heartbeat", async () => {
     await writeSpoolJson(spool.toWorker, WJOB, job());
-    expect(await importBridgeJobs(spool, dirs, outRoot)).toEqual({ imported: [WJOB], invalid: [] });
+    const at = new Date("2026-10-10T01:02:03.000Z");
+    expect(await importBridgeJobs(spool, dirs, outRoot, at)).toEqual({ imported: [WJOB], invalid: [], withdrawn: [] });
+    expect(await readHeartbeat(spool.fromWorker)).toEqual(at);
     expect(JSON.parse(await readFile(join(dirs.inbox, `${WJOB}.json`), "utf8"))).toEqual(job());
-    expect(await importBridgeJobs(spool, dirs, outRoot)).toEqual({ imported: [], invalid: [] });
+    expect(await importBridgeJobs(spool, dirs, outRoot)).toEqual({ imported: [], invalid: [], withdrawn: [] });
     // claimed, finished or recorded: never again
     for (const where of [dirs.processing, dirs.done, dirs.failed]) {
       await writeFile(join(where, `${WJOB2}.json`), "{}");
@@ -107,8 +109,20 @@ describe("worker side: import", () => {
   it("refuses a job whose content does not match the worker's job schema or its file name", async () => {
     await writeSpoolJson(spool.toWorker, WJOB, { ...job(), job_id: WJOB2 });
     await writeSpoolJson(spool.toWorker, WJOB2, { ...job(WJOB2), command: "rm -rf ~" });
-    expect(await importBridgeJobs(spool, dirs, outRoot)).toEqual({ imported: [], invalid: [WJOB, WJOB2] });
+    expect(await importBridgeJobs(spool, dirs, outRoot)).toEqual({ imported: [], invalid: [WJOB, WJOB2], withdrawn: [] });
     expect((await readdir(dirs.inbox)).filter((n) => !n.startsWith("."))).toEqual([]);
+  });
+});
+
+describe("worker side: jobs the bridge gave up", () => {
+  it("withdraws a waiting bridge job whose spool file is gone, and leaves local jobs alone", async () => {
+    await writeSpoolJson(spool.toWorker, WJOB, job());
+    await importBridgeJobs(spool, dirs, outRoot);
+    await writeFile(join(dirs.inbox, "local-poc-job.json"), JSON.stringify(job("local-poc-job")));
+    const { rm } = await import("node:fs/promises");
+    await rm(join(spool.toWorker, `${WJOB}.json`));
+    expect((await importBridgeJobs(spool, dirs, outRoot)).withdrawn).toEqual([WJOB]);
+    expect((await readdir(dirs.inbox)).sort()).toEqual(["local-poc-job.json"]);
   });
 });
 
@@ -133,21 +147,37 @@ describe("worker side: export", () => {
       version: 1, job_id: WJOB, worker_commit: null, outcome: "failed", profile: null, error_code: "WORKER_JOB_STALE",
     });
     expect(resultFromRecords({ id: WJOB, bucket: "failed", record: { code: "see stderr: boom" }, report: null, final: null }).error_code).toBe("WORKER_FAILED");
+    // a well-formed but unknown code is not passed on either (no made-up words in the database)
+    expect(resultFromRecords({ id: WJOB, bucket: "failed", record: { code: "CALL_ME_AT_0123" }, report: null, final: null }).error_code).toBe("WORKER_FAILED");
+    expect(resultCode("CODEX_TIMEOUT")).toBe("CODEX_TIMEOUT");
     const blocked = resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: { renderer_change_needed: true } }, final: null });
     expect(blocked.error_code).toBe("RENDERER_CHANGE_NEEDED");
   });
 
   it("writes one result per finished bridge job, with only the result fields", async () => {
+    await writeSpoolJson(spool.toWorker, WJOB, job());
     await finished(WJOB, "done", AMERICAN_EDITORIAL);
     await finished("local-poc-job", "done", AMERICAN_EDITORIAL); // not a bridge job
-    expect(await exportBridgeResults(spool, dirs, outRoot)).toEqual({ exported: [WJOB] });
+    expect(await exportBridgeResults(spool, dirs, outRoot)).toEqual({ exported: [WJOB], removed: [] });
     const written = JSON.parse(await readFile(join(spool.fromWorker, `${WJOB}.json`), "utf8")) as Record<string, unknown>;
     expect(Object.keys(written).sort()).toEqual(["error_code", "job_id", "outcome", "profile", "version", "worker_commit"]);
     expect(written).toMatchObject({ outcome: "ready", profile: PROFILE });
     const text = JSON.stringify(written);
     for (const leak of ["fixture", "CODEX_SAID_SOMETHING", "rounds", "timing", "instagram.com", "テスト工房"]) expect(text).not.toContain(leak);
-    expect(await exportBridgeResults(spool, dirs, outRoot)).toEqual({ exported: [] });
+    expect(await exportBridgeResults(spool, dirs, outRoot)).toEqual({ exported: [], removed: [] });
     expect((await stat(join(spool.fromWorker, `${WJOB}.json`))).mode & 0o777).toBe(0o640);
+  });
+
+  it("exports nothing for a job the bridge has closed, and removes its old result", async () => {
+    await writeSpoolJson(spool.toWorker, WJOB, job());
+    await finished(WJOB, "done", AMERICAN_EDITORIAL);
+    await finished(WJOB2, "done", AMERICAN_EDITORIAL); // its job file was never (or no longer) in to-worker
+    expect(await exportBridgeResults(spool, dirs, outRoot)).toEqual({ exported: [WJOB], removed: [] });
+    const { rm } = await import("node:fs/promises");
+    await rm(join(spool.toWorker, `${WJOB}.json`)); // the bridge delivered it
+    expect(await exportBridgeResults(spool, dirs, outRoot)).toEqual({ exported: [], removed: [WJOB] });
+    expect(await spoolIds(spool.fromWorker)).toEqual([]);
+    expect(await exportBridgeResults(spool, dirs, outRoot)).toEqual({ exported: [], removed: [] });
   });
 });
 
@@ -158,11 +188,12 @@ describe("bridge client", () => {
   let lines: string[];
   let clock: Date;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     calls = [];
     answers = [];
     lines = [];
     clock = new Date("2026-10-10T00:00:00Z");
+    await writeHeartbeat(spool.fromWorker, clock); // the worker is running
   });
 
   const fakeFetch: typeof fetch = async (input, init) => {
@@ -173,7 +204,7 @@ describe("bridge client", () => {
   const options = (): BridgeOptions => ({ spool, stateDir, apiUrl: "https://secondroot.example.com", token: TOKEN, fetch: fakeFetch, now: () => clock, log: (l) => lines.push(l) });
   const claimed = (jobId = JOB) => ({
     status: 200,
-    body: { job: { jobId, workerJobId: workerJobIdFor(jobId), attempt: 1, facts: { name: "テスト工房", category: "bakery" }, source: { instagram_url: "https://www.instagram.com/test_shop/" } } },
+    body: { job: { jobId, workerJobId: workerJobIdFor(jobId), attempt: 1, facts: { name: "テスト工房", category: "bakery" }, source: { instagram_url: "https://www.instagram.com/example_shop/" } } },
   });
   const submitted = (jobId = JOB, replayed = false) => ({ status: 200, body: { result: { jobId, status: "ready", errorCode: null, attempts: 1, replayed } } });
   const resultFile = (id = WJOB, extra: Record<string, unknown> = {}) =>
@@ -252,9 +283,30 @@ describe("bridge client", () => {
     answers.push(claimed());
     await runBridgeOnce(options());
     clock = new Date(clock.getTime() + LOCAL_EXPIRY_MS + 1000);
+    await writeHeartbeat(spool.fromWorker, clock);
     answers.push(claimed(JOB2));
     expect(await runBridgeOnce(options())).toMatchObject({ expired: [WJOB], claimed: WJOB2 });
     expect(await spoolIds(spool.toWorker)).toEqual([WJOB2]);
+  });
+
+  it("claims nothing while the worker is not running (no heartbeat, or an old one)", async () => {
+    const { rm } = await import("node:fs/promises");
+    await rm(join(spool.fromWorker, "worker-heartbeat.json"));
+    expect(await runBridgeOnce(options())).toMatchObject({ claimed: null, workerIdle: true, stopped: null });
+    await writeHeartbeat(spool.fromWorker, new Date(clock.getTime() - WORKER_HEARTBEAT_MAX_MS - 1000));
+    expect(await runBridgeOnce(options())).toMatchObject({ claimed: null, workerIdle: true });
+    await writeHeartbeat(spool.fromWorker, new Date(clock.getTime() + 60 * 60 * 1000)); // from the future
+    expect(await runBridgeOnce(options())).toMatchObject({ claimed: null, workerIdle: true });
+    expect(calls).toEqual([]);
+    await writeHeartbeat(spool.fromWorker, new Date(clock.getTime() - 30 * 60 * 1000));
+    answers.push(claimed());
+    expect(await runBridgeOnce(options())).toMatchObject({ claimed: WJOB, workerIdle: false });
+  });
+
+  it("passes only known fixed codes to the server", () => {
+    const failed = { version: 1 as const, job_id: WJOB, outcome: "failed" as const, profile: null, error_code: "CALL_ME_AT_0123", worker_commit: null };
+    expect(submitBody(JOB, failed)).toMatchObject({ errorCode: "WORKER_FAILED" });
+    expect(submitBody(JOB, { ...failed, error_code: "CODEX_QUOTA" })).toMatchObject({ errorCode: "CODEX_QUOTA" });
   });
 
   it("only talks https (no credentials, query or redirect target in the URL)", () => {

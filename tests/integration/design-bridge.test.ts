@@ -174,7 +174,27 @@ describe("claim / submit", () => {
     expect((await claim())!).toMatchObject({ attempt: 3 });
     await db.query("update public.sales_demos set design_claimed_at = now() - interval '3 hours' where prospect_id = $1", [p]);
     expect(await claim()).toBeNull();
-    expect(await demoOf(p)).toMatchObject({ design_status: "failed", design_error_code: "DESIGN_STALE" });
+    expect(await demoOf(p)).toMatchObject({ design_status: "failed", design_error_code: "DESIGN_STALE", design_job_id: null });
+  });
+
+  it("a late result for a job swept back to pending is superseded, not replayed", async () => {
+    const p = await prepare(candidate(), true);
+    await prepare(candidate(), true);
+    const first = (await claim())!;
+    const other = (await claim())!; // the other demo: keeps the queue busy
+    await db.query("update public.sales_demos set design_claimed_at = now() - interval '3 hours' where prospect_id = $1", [p]);
+    await submit(other.job_id, "blocked", null, "DESIGN_BLOCKED");
+    // The sweep runs inside the next claim, which then hands the demo out again with a new job id.
+    const again = (await claim())!;
+    expect(again.job_id).not.toBe(first.job_id);
+    await expect(submit(first.job_id, "ready", PROFILE, null)).rejects.toThrow(/job_superseded/);
+  });
+
+  it("a demo whose outreach was closed as lost is OUTREACH_CLOSED, not ALREADY_SENT", async () => {
+    const p = await prepare(candidate(), true);
+    await db.query("update public.sales_outreaches set status = 'lost', closed_at = now() where prospect_id = $1 and kind = 'initial'", [p]);
+    expect(await claim()).toBeNull();
+    expect(await demoOf(p)).toMatchObject({ design_status: "blocked", design_error_code: "OUTREACH_CLOSED" });
   });
 
   it("a live job is not taken over before its lease ends", async () => {
@@ -370,6 +390,11 @@ describe("end to end: bridge → spool → worker → bridge → public demo", (
       designPost(new NextRequest(String(input), { method: "POST", headers: init?.headers as Record<string, string>, body: String(init?.body) }));
     const bridge = () => runBridgeOnce({ spool, stateDir: join(base, "state"), apiUrl: "https://secondroot.example.com", token: BRIDGE_TOKEN, fetch: viaRoute });
 
+    // Without a worker run, the bridge claims nothing.
+    expect(await bridge()).toMatchObject({ claimed: null, workerIdle: true });
+    expect((await demoOf(prospectId)).design_status).toBe("pending");
+    // A worker run (nothing to import yet) leaves its heartbeat; now the bridge claims.
+    await importBridgeJobs(spool, dirs, outRoot);
     const first = await bridge();
     expect(first).toMatchObject({ claimed: expect.stringMatching(/^b-/), stopped: null });
     const workerJobId = first.claimed!;

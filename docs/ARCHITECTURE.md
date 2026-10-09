@@ -330,9 +330,9 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
 |---|---|---|
 | `null` | legacy demo（flag 無効で作られた・migration 前の demo） | 変わらない |
 | `pending` | デザイン待ち | `sales_design_claim` で `processing` |
-| `processing` | job を bridge に渡した（`design_job_id`・`design_claimed_at`） | submit で `ready` / `blocked` / `failed`（試行が残れば `pending`）。lease（2 時間）を過ぎたら次の claim が回収して `pending`（3 回目なら `failed` / `DESIGN_STALE`） |
+| `processing` | job を bridge に渡した（`design_job_id`・`design_claimed_at`） | submit で `ready` / `blocked` / `failed`（試行が残れば `pending`）。lease（2 時間）を過ぎたら次の claim が回収して `pending`（job id は消すので、その job の遅れた結果は `job_superseded`。3 回目なら `failed` / `DESIGN_STALE`） |
 | `ready` | 検証済みの profile がある | 終端。**再生成しない** |
-| `blocked` | AI デザインを使えない（`PUBLIC_SOURCE_UNAVAILABLE`・`FALLBACK_TEMPLATE`・`DESIGN_BLOCKED`・`RENDERER_CHANGE_NEEDED`・`DO_NOT_CONTACT`・`DEMO_DISABLED`・`ALREADY_SENT`・`NO_VISUAL_SOURCE`・`DEMO_CONTENT_INVALID`） | 終端。既存 template で表示 |
+| `blocked` | AI デザインを使えない（`PUBLIC_SOURCE_UNAVAILABLE`・`FALLBACK_TEMPLATE`・`DESIGN_BLOCKED`・`RENDERER_CHANGE_NEEDED`・`DO_NOT_CONTACT`・`DEMO_DISABLED`・`ALREADY_SENT`・`OUTREACH_CLOSED`（送らずに失注にした）・`NO_VISUAL_SOURCE`・`DEMO_CONTENT_INVALID`） | 終端。既存 template で表示 |
 | `failed` | 3 回試しても結果が出ない | 終端。既存 template で表示 |
 
 - claim は全体の advisory lock の下で `for update skip locked` で 1 件ずつ取る。同じ demo を二重に渡さない。
@@ -358,12 +358,17 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
 - `/demo/[publicToken]`: flag 有効・`ready`・profile が再検証を通る → `ProfileRenderer`（写真なし）。それ以外 → 既存の bakery / baked_goods / cafe template。表示の可否（送信済み・30 日・無効化・DNC）と notice・footer・noindex は既存のまま。表示文は fact-only の DemoView と固定の見出しだけ。
 - 公開しないもの: DEV-029 の写真、Instagram・公式サイトの screenshot、capture helper の PNG、reference 画像。保存するのは validated DesignProfile と最小の metadata（状態・job id・試行回数・commit・符号）だけ。
 - `/admin/sales`（今日）: 初回の項目に「AIデザイン待ち / AIデザイン生成中 / デモ確認可能 / デザインBLOCKED / AIデザイン失敗」を出す。flag 有効で `pending` / `processing` の項目は送信ボタンを出さず、「送信済み」もサーバー（server action）で拒否する。`ready` はプレビューへのリンクを出す。`blocked` / `failed` は既存 template のデモで送れる。
+  - この拒否は server action で行い、DB の `sales_mark_sent`（管理者だけが呼べる RPC）は変えていない。flag は env にあり DB からは見えないため、flag 無効時の legacy の挙動を DB で崩さないための選択。管理者が RPC を直接呼べば送信済みにできるが、それは管理者本人の操作に限られる。
+  - flag を一度無効にして、その間に待ち・生成中の demo を送った後で再び有効にすると、その demo は `ALREADY_SENT` で閉じる（送った後でページを変えない）。
 - `/admin/preview/[prospectId]`: 公開ページと同じ描き方と、デザインの状態。
 
 ### 10.4 local bridge と worker
 
 - `scripts/sales-design-bridge/run.sh --once`（`bridge.ts`）: 利用者 `sr-designbridge` だけで動く（root・`sr-designgen`・`sr-igcapture` では止まる）。token は 0600 の file から読み、環境変数にしない。子 process を起動しない。1 回で「結果の提出 → 期限切れの job の破棄 → 1 件の claim」。
-- worker は `SR_DESIGN_BRIDGE_SPOOL` があるときだけ、run の前に `to-worker/` の job を自分の inbox に取り込み、run の後に終わった bridge job の結果を `from-worker/` に書く（`lib/design-agent/bridge/worker-side.ts`）。書くのは outcome・final profile（rationale を落として `checkProfile` を通したもの）・固定の符号・commit だけ。
+- worker は `SR_DESIGN_BRIDGE_SPOOL` があるときだけ、run の前に `to-worker/` の job を自分の inbox に取り込み、run の後に終わった bridge job の結果を `from-worker/` に書く（`lib/design-agent/bridge/worker-side.ts`）。書くのは outcome・final profile（rationale を落として `checkProfile` を通したもの）・固定の符号（既知の符号だけ。他は `WORKER_FAILED`）・commit だけ。
+  - run の初めに heartbeat（`from-worker/worker-heartbeat.json`）を書く。bridge は heartbeat が 90 分以内のときだけ claim する。worker が止まっている間に job が lease を待ち切って試行を使い切ることはない。**bridge を動かす間は、worker を少なくとも 1 時間に 1 回動かす。**
+  - bridge が手放した job（spool の job file が消えた）は、inbox で待っていれば取り下げ、結果も書かない。閉じた job の結果 file は worker が消す。
+  - worker の profile は写真つきで選ばれることがある（DEV-029 の写真 job）が、公開 demo は写真なしで描く。bridge の job には写真を付けない運用にする（写真の公開は後続 DEV）。
 - spool の file は link を辿らず、通常ファイル・link 数 1・サイズ上限・strict schema で読む（`lib/design-agent/bridge/spool.ts`）。
 - systemd の unit（`scripts/sales-design-bridge/systemd/`）は repo に置くだけで、install・enable は人が行う。手順: `docs/operations/design-bridge.md`。
 
