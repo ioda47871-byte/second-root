@@ -1224,7 +1224,7 @@
     {
       "id": "DEV-028",
       "title": "AI art direction PoC for demos (Codex CLI via ChatGPT sign-in, design profile + shared renderer)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-007"
@@ -1304,7 +1304,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。実店舗 PoC は phase3-001 / phase3-002 が renderer の制約で設計どおり BLOCKED、renderer を汎用に直して phase3-003（2af0465）で accept（20/25、revision 2 回）、outcome=done。残り: 人による final の目視判断、PR #43 の扱い（Draft のまま。merge は人の判断）、DB schema・営業 Routine への接続は人の承認待ち。",
+      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。実店舗 PoC は phase3-001 / phase3-002 が renderer の制約で設計どおり BLOCKED、renderer を汎用に直して phase3-003（2af0465）で accept（20/25、revision 2 回）、outcome=done。2026-10-09 merge prep（docs 正本の同期、公開 /demo を develop と同一に戻す regression test）を経て、人が phase3-003 の final を PC / mobile で目視し「営業先へ提案用デモとして見せてよい品質」として final visual gate を承認。PR #43 を develop へ merge。DB schema・営業 Routine への接続は引き続き人の承認待ち（別タスク）。",
       "branch": "feature/dev-028-ai-art-direction"
     }
   ]
