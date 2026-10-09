@@ -526,3 +526,7 @@ The final review before merging PR #43 found three items. Items 1 and 2 are fixe
 **3. Still open (human gate):** the person's final visual judgement of phase3-003 is not yet recorded as given.
 
 **Tests.** `npm run typecheck`, eslint, check:secrets and `git diff --check` are clean. Full unit suite: 605 passed, 6 skipped (`--maxWorkers=2` after the resource preflight).
+
+## Final visual gate (2026-10-09)
+
+The person viewed the phase3-003 final on PC and mobile and approved it: it is good enough to show to a prospect as a proposal demo. Item 3 above is closed, and DEV-028 is marked `done` in `.ai/tasks.json`. PR #43 then goes Ready and is merged into develop. DB schema and the connection to the sales Routine still need separate human approval.
