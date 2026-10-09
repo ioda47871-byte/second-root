@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -122,7 +123,7 @@ describe("bridge route input handling", () => {
   };
   beforeEach(() => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
-    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN", TOKEN);
+    vi.stubEnv("SALES_DESIGN_BRIDGE_TOKEN_SHA256", createHash("sha256").update(TOKEN).digest("hex"));
   });
 
   it("refuses bodies over 32 KB, invalid JSON and invalid requests without echoing values", async () => {

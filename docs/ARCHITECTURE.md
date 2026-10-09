@@ -303,7 +303,7 @@ mugi-no-mi 等の別 project と混ぜない。CI に Production の Supabase / 
 | `SALES_DEMO_BASE_URL` | server | DEV-004 |
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` / `INSTAGRAM_APP_SECRET` / `INSTAGRAM_ACCOUNT_ID` / `INSTAGRAM_ACCESS_TOKEN` | **server only**（Operational Claude にも渡さない。設定は人間: `docs/INSTAGRAM_SETUP.md`） | DEV-020〜024 |
 | `SALES_AI_DESIGN_ENABLED` | server。`"true"` のときだけ AI デザイン step が有効（unset・他の値は無効）。migration `20261009000000` の適用後にだけ有効にする | DEV-030 |
-| `SALES_DESIGN_BRIDGE_TOKEN` | **server + local bridge（Linux 利用者 `sr-designbridge` の 0600 file）のみ**。32 文字以上、ingest token とは別の値。design worker（`sr-designgen`）・Operational Claude には渡さない | DEV-030 |
+| `SALES_DESIGN_BRIDGE_TOKEN_SHA256` | server only。bridge token の SHA-256（64 桁の hex）。token そのものは local bridge（Linux 利用者 `sr-designbridge` の 0600 file）にだけあり、server には置かない（置くと 503）。ingest token とは別の token。design worker（`sr-designgen`）・Operational Claude には渡さない | DEV-030 / DEV-032 |
 
 ## 10. Sales Design Bridge（DEV-030）
 
@@ -315,7 +315,7 @@ Operational Claude ─► ingest API ─► persist（同じ transaction で dem
                                             │
 Second Root server                          ▼
   POST /api/internal/sales-design/jobs   sales_demos（pending → processing → ready / blocked / failed）
-      ▲  Bearer SALES_DESIGN_BRIDGE_TOKEN（claim / submit だけ）
+      ▲  Bearer <bridge token>（server は SHA-256 だけを持つ。claim / submit だけ）
       │  https
 local bridge（Linux 利用者 sr-designbridge。token を持つ唯一の local process）
       │  /srv/sr-design-bridge/to-worker   （job: 確認済みの facts と source URL だけ）
@@ -347,7 +347,7 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
 | `claim` | なし | `{ job: { jobId, workerJobId: "b-<jobId>", attempt, facts, source } \| null }`。facts は fact-only の DemoView に通るものだけ（email・未知の key は落ちる）、source は検証済みの公式サイト（`website_status = present`、SNS・portal は除く）と canonical な Instagram profile URL だけ |
 | `submit` | `jobId, outcome (ready / blocked / failed), profile (ready のときだけ、rationale は空), errorCode (ready 以外、固定の符号), workerCommit, lineage.workerJobId` | `{ result: { jobId, status, errorCode, attempts, replayed } }` |
 
-- 認証: `Authorization: Bearer <SALES_DESIGN_BRIDGE_TOKEN>`（定数時間比較）。flag 無効・token 未設定・32 文字未満・ingest token と同じ値なら **503**、不一致は 401。ingest token では通らず、bridge token で ingest API も通らない。
+- 認証: `Authorization: Bearer <bridge token>`。server は `SALES_DESIGN_BRIDGE_TOKEN_SHA256`（64 桁の hex）だけを持ち、受け取った token を SHA-256 して定数時間で比べる（DEV-032）。flag 無効・hash 未設定 / 不正・token そのものが server に設定されている・ingest token の hash と同じ、なら **503**、不一致は 401。ingest token では通らず、bridge token で ingest API も通らない。
 - strict schema: 未知の key（screenshot・HTML・Cookie・prompt・Codex の出力・stderr・推論など）があれば 400 で何も書かない。値は返さない。本文は 32KB まで。
 - profile は server でも `checkProfile`（schema・contrast・motif の重複）を通らなければ 400。
 - server は source URL を fetch しない。

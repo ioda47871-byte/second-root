@@ -9,8 +9,9 @@ import { createServiceClient } from "@/lib/supabase/service";
 // result; nothing else (no prospect, outreach, DNC, run or send access).
 //
 // Fails closed: 503 unless SALES_AI_DESIGN_ENABLED is "true" and
-// SALES_DESIGN_BRIDGE_TOKEN is set (≥ 32 characters) and differs from the
-// Operational Claude ingest token. The ingest token never works here.
+// SALES_DESIGN_BRIDGE_TOKEN_SHA256 holds the SHA-256 of the bridge token (the
+// server never holds the token itself), differing from the Operational
+// Claude ingest token's. The ingest token never works here.
 
 export const maxDuration = 30;
 
