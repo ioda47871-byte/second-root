@@ -114,6 +114,7 @@ def main():
         "/dev/vsock",
         "/dev/dxg",
         "/home/sr-igcapture",
+        "/home/sr-designbridge",
         "/srv/sr-capture-admin",
         "/init",
         "/root/sr-capture-admin",
@@ -143,6 +144,18 @@ def main():
             fail("MNT_WSL_NOT_EMPTY")
     except OSError:
         fail("MNT_UNCHECKED")
+    # /srv: only the two spools, and of the design bridge spool only its two directories,
+    # with the bridge's jobs read-only (DEV-031). Missing is fine (not installed yet).
+    try:
+        if [n for n in os.listdir("/srv") if n not in ("sr-capture", "sr-design-bridge")]:
+            fail("SRV_NOT_EMPTY")
+        if os.path.isdir("/srv/sr-design-bridge"):
+            if [n for n in os.listdir("/srv/sr-design-bridge") if n not in ("to-worker", "from-worker")]:
+                fail("BRIDGE_SPOOL_NOT_EMPTY")
+            if os.path.isdir("/srv/sr-design-bridge/to-worker") and os.access("/srv/sr-design-bridge/to-worker", os.W_OK):
+                fail("BRIDGE_JOBS_WRITABLE")
+    except OSError:
+        fail("SRV_UNCHECKED")
     # the system is read-only (ProtectSystem=strict): a unit file that dropped the setting shows here
     for path in ("/usr/sr-jail-probe-write", "/etc/sr-jail-probe-write", "/var/sr-jail-probe-write"):
         try:
