@@ -29,6 +29,8 @@ describe("preview check", () => {
     const previewRoot = join(home, "preview");
     const { manifest, direction } = await writeFixture(previewRoot, store, "preview-check-test1");
     expect(manifest.assets.every((a) => a.sourceKind === "generated_concept" && a.people === "none")).toBe(true);
+    expect(manifest.assets).toHaveLength(3);
+    expect(direction.features.map((f) => f.slot)).toEqual(["about", "visit"]);
     expect(readdirSync(join(store, "preview-check-test1")).sort()).toEqual([...manifest.assets.map((a) => a.file), "manifest.json"].sort());
     const runDir = join(previewRoot, "preview-check-test1");
     const run = await runAssets(runDir, { env: { SR_DESIGN_ASSETS_ROOT: store, TMPDIR: join(home, "tmp") }, repoDir: process.cwd() });

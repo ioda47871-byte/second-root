@@ -86,7 +86,7 @@ function PhotoFigure({ photo, className, role, side }: { photo: RenderPhoto; cla
     <figure className={`${styles.photo} ${className}`} data-asset={photo.assetId} data-role={role} data-fit={photo.fit} data-treatment={photo.treatment} data-source={photo.sourceKind} data-side={side} style={style}>
       {/* A local preview route: no image optimisation, no remote loader. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className={styles.photoImg} src={photo.src} alt="" width={photo.width} height={photo.height} loading="eager" decoding="async" />
+      <img className={styles.photoImg} src={photo.src} alt="" width={photo.width} height={photo.height} loading="eager" decoding="sync" />
       {photo.sourceKind === "generated_concept" && (
         <span className={styles.imageLabel} data-image-label="">
           イメージ画像

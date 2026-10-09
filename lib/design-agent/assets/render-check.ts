@@ -8,7 +8,16 @@ import { assetUsableIn, findAsset, type AssetManifest } from "./manifest";
 // never has to be trusted for any of this.
 
 export type PhotoRole = "hero" | "about" | "visit";
-export type PlacedPhoto = { assetId: string; role: PhotoRole; device: "desktop" | "mobile"; visible: boolean; labelled: boolean; overlapsText: boolean };
+export type PlacedPhoto = {
+  assetId: string;
+  role: PhotoRole;
+  device: "desktop" | "mobile";
+  visible: boolean;
+  labelled: boolean;
+  overlapsText: boolean;
+  /** The figure's page box in CSS pixels (from capturePage; used to check the screenshot itself). */
+  box?: { top: number; bottom: number; left: number; right: number };
+};
 
 export function checkRenderedPhotos(direction: ImageDirection, manifest: AssetManifest, placed: readonly PlacedPhoto[]): string[] {
   const expected = [...(direction.hero ? [{ assetId: direction.hero.assetId, role: "hero" as PhotoRole }] : []), ...direction.features.map((f) => ({ assetId: f.assetId, role: f.slot as PhotoRole }))];

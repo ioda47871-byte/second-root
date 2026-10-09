@@ -114,6 +114,9 @@ describe("profile renderer with photos", () => {
     expect(figures.map((f) => f[1]).sort()).toEqual(["approved_real", "generated_concept", "generated_concept"]);
     for (const [, source, inner] of figures) expect(inner.includes(">イメージ画像</span>"), source).toBe(source === "generated_concept");
     expect([...html.matchAll(/<img [^>]*>/g)].every((m) => /alt=""/.test(m[0]))).toBe(true);
+    // decoded before paint, wherever the photo sits (poc-photo-004: an About photo below the fold
+    // was painted as an empty frame on the mobile screenshot)
+    expect([...html.matchAll(/<img [^>]*>/g)].every((m) => /decoding="sync"/.test(m[0]) && /loading="eager"/.test(m[0]))).toBe(true);
   });
 
   it("shows only verified facts, fixed copy and the image label (fact-only holds with photos)", () => {

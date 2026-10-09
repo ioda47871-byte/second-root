@@ -37,6 +37,7 @@ export const PAGE_INFO_SCRIPT = String.raw`(() => {
     return {
       assetId: f.getAttribute("data-asset") || "",
       role: f.getAttribute("data-role") || "",
+      box: b,
       visible: Boolean(img && img.complete && img.naturalWidth > 0 && b.right - b.left > 0 && b.bottom - b.top > 0 && getComputedStyle(f).visibility === "visible"),
       labelled: Boolean(label && ls && ls.display !== "none" && ls.visibility === "visible" && Number(ls.opacity) > 0.99 && label.textContent === "イメージ画像"),
       overlapsText: textBoxes.some((t) => hit(b, t)),
@@ -50,6 +51,29 @@ export const PAGE_INFO_SCRIPT = String.raw`(() => {
   };
 })()`;
 
+/**
+ * Decodes every photo of the page before a screenshot (DEV-029, poc-photo-004).
+ * An <img> can be loaded (complete, naturalWidth) but not yet decoded: Chromium
+ * then paints an empty frame for a photo far below the viewport, which is what
+ * the review saw on mobile. Each decode is bounded (5 s); then two animation
+ * frames so the decoded image is painted. Returns, in document order, which
+ * figure's image decoded.
+ */
+export const DECODE_PHOTOS_SCRIPT = String.raw`(async () => {
+  const figures = Array.from(document.querySelectorAll("figure[data-asset]"));
+  const decoded = await Promise.all(
+    figures.map((f) => {
+      const img = f.querySelector("img");
+      if (!img) return Promise.resolve(false);
+      return Promise.race([img.decode().then(() => img.naturalWidth > 0, () => false), new Promise((r) => setTimeout(() => r(false), 5000))]);
+    }),
+  );
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+  return figures.map((f, i) => ({ assetId: f.getAttribute("data-asset") || "", decoded: decoded[i] === true }));
+})()`;
+
+export const DecodedPhotosSchema = z.array(z.strictObject({ assetId: z.string().max(80), decoded: z.boolean() })).max(50);
+
 const Box = z.strictObject({ top: z.number(), bottom: z.number(), left: z.number(), right: z.number() });
 
 /** What PAGE_INFO_SCRIPT returns; checked, since the page's answer is not typed. */
@@ -58,7 +82,7 @@ export const PageInfoSchema = z.strictObject({
   height: z.number().nonnegative(),
   sections: z.array(Box).max(50),
   placed: z
-    .array(z.strictObject({ assetId: z.string().max(80), role: z.string().max(20), visible: z.boolean(), labelled: z.boolean(), overlapsText: z.boolean() }))
+    .array(z.strictObject({ assetId: z.string().max(80), role: z.string().max(20), box: Box, visible: z.boolean(), labelled: z.boolean(), overlapsText: z.boolean() }))
     .max(50),
 });
 export type PageInfo = z.infer<typeof PageInfoSchema>;

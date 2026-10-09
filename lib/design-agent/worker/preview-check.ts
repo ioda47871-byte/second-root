@@ -4,16 +4,17 @@
 //
 //   next build → preview server → /design-preview/<run>?profile=… and the
 //   asset route → Chromium screenshots and section crops (capturePage, the
-//   page-side script) → the mechanical render check
+//   page-side scripts) → the mechanical render check → every photo painted in
+//   the screenshots (not an empty frame)
 //
 // The run is a temporary fixture: fictional facts, the bakery default
-// profile, two photos drawn here (no image file, no real shop), a temporary
+// profile, three photos drawn here (framed hero, About, Visit) (no image file, no real shop), a temporary
 // asset store outside the repository and the temp dir, removed afterwards. It
 // never touches the worker's queue, results, ledger or real asset store.
 // Output: codes and counts only.
 import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
@@ -27,9 +28,13 @@ import { checkRenderedPhotos } from "../assets/render-check";
 import { sectionsPresent } from "../assets/resolve";
 import { CATEGORY_DEFAULT_PROFILES } from "../defaults";
 import { factsToDemoView } from "../preview";
+import { SHOT_CAP } from "../preview-server";
+import { colourVariety, decodePng } from "./png-paint";
 import { productionPreview } from "./preview";
 
 export const MIN_AVAILABLE_MIB = 3072;
+/** A drawn fixture photo shows dozens of colours; an empty frame one or two. */
+export const MIN_PAINTED_COLOURS = 8;
 
 export type PreviewCheckResult =
   | { code: "RENDER_OK"; desktop: { photos: number; sections: number }; mobile: { photos: number; sections: number } }
@@ -89,9 +94,11 @@ const FACTS = {
 
 /** Writes the temporary run (facts, profile, lineage artifacts) and its asset store. */
 export async function writeFixture(previewRoot: string, storeRoot: string, runId: string): Promise<{ manifest: AssetManifest; direction: ImageDirection }> {
+  // Like poc-photo-004: a framed hero, and photos in About and in Visit (far below the fold on phones).
   const photos = [
     { id: `asset-${randomBytes(12).toString("hex")}`, png: drawPng(720, 900, 1), orientation: "portrait" as const },
     { id: `asset-${randomBytes(12).toString("hex")}`, png: drawPng(960, 640, 2), orientation: "landscape" as const },
+    { id: `asset-${randomBytes(12).toString("hex")}`, png: drawPng(800, 800, 3), orientation: "square" as const },
   ];
   const at = new Date().toISOString();
   const manifest = AssetManifestSchema.parse({
@@ -129,12 +136,15 @@ export async function writeFixture(previewRoot: string, storeRoot: string, runId
     brandFit: 4,
     nearDuplicateOf: null,
   }));
-  const place = (assetId: string, aspect: "4:5" | "3:2") => ({ assetId, fit: "cover" as const, focal: { x: 0.5, y: 0.45 }, mobileFocal: { x: 0.5, y: 0.45 }, aspect: { desktop: aspect, mobile: aspect }, treatment: "natural" as const });
+  const place = (assetId: string, aspect: "4:5" | "3:2" | "1:1") => ({ assetId, fit: "cover" as const, focal: { x: 0.5, y: 0.45 }, mobileFocal: { x: 0.5, y: 0.45 }, aspect: { desktop: aspect, mobile: aspect }, treatment: "natural" as const });
   const direction: ImageDirection = {
     version: 1,
-    layout: "split_hero",
+    layout: "framed_hero",
     hero: place(photos[0]!.id, "4:5"),
-    features: [{ ...place(photos[1]!.id, "3:2"), slot: "visit", side: "right" }],
+    features: [
+      { ...place(photos[1]!.id, "3:2"), slot: "about", side: "left" },
+      { ...place(photos[2]!.id, "1:1"), slot: "visit", side: "right" },
+    ],
     rejected: [],
     paletteFit: 4,
   };
@@ -182,6 +192,14 @@ export async function runPreviewCheck(o: {
     const placed = rendered.placed ?? [];
     const problems = [...checkRenderedPhotos(direction, manifest, placed), ...rendered.overflow];
     if (placed.length === 0) problems.push("no photo on the page");
+    // The screenshots themselves: every photo inside the full-page shot must be painted, not an empty frame.
+    for (const device of ["desktop", "mobile"] as const) {
+      const pixels = decodePng(await readFile(rendered.shots[device]));
+      const scale = device === "mobile" ? 2 : 1;
+      for (const p of placed.filter((q) => q.device === device && q.box && q.box.bottom <= (device === "mobile" ? SHOT_CAP.mobile : SHOT_CAP.desktop))) {
+        if (colourVariety(pixels, p.box!, scale) < MIN_PAINTED_COLOURS) problems.push(`${device}: ${p.role} photo not painted`);
+      }
+    }
     if (problems.length > 0) return { code: "RENDER_MISMATCH", problems };
     const count = (device: "desktop" | "mobile") => ({
       photos: placed.filter((p) => p.device === device).length,

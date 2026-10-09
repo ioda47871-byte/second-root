@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import type { Browser, Page } from "playwright";
 import type { PlacedPhoto } from "./assets/render-check";
-import { PAGE_INFO_SCRIPT, PageInfoSchema } from "./page-scripts";
+import { DECODE_PHOTOS_SCRIPT, DecodedPhotosSchema, PAGE_INFO_SCRIPT, PageInfoSchema } from "./page-scripts";
 
 const servers = new Set<ChildProcess>();
 
@@ -103,9 +103,13 @@ export async function capturePage(page: Page, o: { path: string; mobile: boolean
   const cap = o.mobile ? SHOT_CAP.mobile : SHOT_CAP.desktop;
   // The page side is source text (page-scripts.ts): tsx / esbuild never rewrites it, so no
   // __name helper (keepNames) can reach the page. Its answer is checked before use.
+  // Every photo decoded and painted before any screenshot: a loaded but undecoded image below the
+  // viewport is painted as an empty frame. A photo that does not decode counts as not visible.
+  const decoded = DecodedPhotosSchema.safeParse(await page.evaluate(DECODE_PHOTOS_SCRIPT));
   const parsed = PageInfoSchema.safeParse(await page.evaluate(PAGE_INFO_SCRIPT));
-  if (!parsed.success) throw Object.assign(new Error("preview page info"), { code: "PREVIEW_RENDER_FAILED" });
+  if (!decoded.success || !parsed.success) throw Object.assign(new Error("preview page info"), { code: "PREVIEW_RENDER_FAILED" });
   const info = parsed.data;
+  const decodedAt = (i: number, assetId: string) => decoded.data[i]?.assetId === assetId && decoded.data[i]?.decoded === true;
   await page.screenshot({ path: o.path, fullPage: true, clip: { x: 0, y: 0, width, height: Math.min(info.height, cap) } });
   const sections: string[] = [];
   for (const s of info.sections) {
@@ -118,7 +122,10 @@ export async function capturePage(page: Page, o: { path: string; mobile: boolean
   return {
     overflow: Math.max(0, info.overflow),
     sections,
-    placed: info.placed.filter((p) => p.role === "hero" || p.role === "about" || p.role === "visit").map((p) => ({ ...p, role: p.role as PlacedPhoto["role"], device })),
+    placed: info.placed
+      .map((p, i) => ({ ...p, visible: p.visible && decodedAt(i, p.assetId) }))
+      .filter((p) => p.role === "hero" || p.role === "about" || p.role === "visit")
+      .map((p) => ({ ...p, role: p.role as PlacedPhoto["role"], device })),
   };
 }
 
