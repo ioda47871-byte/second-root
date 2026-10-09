@@ -7,6 +7,20 @@
   color: var(--p-text);
 }
 
+/* DemoFrame's notice bar and footer in the profile's palette. Scoped to .root
+   (the profile renderer's frame only), so the public /demo keeps its own
+   notice and footer exactly as they were (demo.module.css is not changed). */
+.root > [role="note"] {
+  margin: 0;
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+  border-bottom: 1px solid var(--notice-line);
+}
+.root > footer {
+  background: var(--footer-bg);
+  color: var(--footer-ink);
+}
+
 .canvas {
   --pad: 20px;
   --gap: 72px;

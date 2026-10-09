@@ -103,7 +103,7 @@
 
 WSL の専用利用者で動く無人の local worker（`scripts/sales-design-worker/run.sh`）。Claude Cloud から PC には触らない。
 
-- 公開 Instagram の取得
+- 公開 Instagram の取得（未ログインの経路。ログイン済みの経路は 10.2 の capture helper だけ）
   - 開いてよいのは `https://(www.)instagram.com/<profile>/` だけ（`lib/design-agent/worker/source-url.ts`）
   - redirect は 1 段ずつ検査し、script による遷移も含めて Instagram の外なら取得をやめる（`PUBLIC_SOURCE_UNAVAILABLE`）
   - 未ログインの使い捨て context で動く。ログイン・cookie の再利用・CAPTCHA の回避・クリックはしない
@@ -115,3 +115,34 @@ WSL の専用利用者で動く無人の local worker（`scripts/sales-design-wo
 - job・facts・結果はリポジトリの外（`~/sr-design-jobs`、`~/.local/share/second-root-design`、0700）に置く
 - 一時ディレクトリは worker の prefix・所有者・古さを確かめて片付ける。それ以外の `/tmp` には触らない
 - 手順: `docs/operations/design-worker-wsl.md`
+
+### 10.2 Phase 3 の境界（2026-10-01〜02 人間承認・実装・実機検証済み。`.ai/tasks.json` DEV-028）
+
+新しい権限や自動化は足さない。承認済みの境界をここに記録する。
+
+- **Codex の sandbox**
+  - Codex の process は、すべて bubblewrap の中でだけ動く。
+  - `/` は読み取り専用で、home・`/root`・`/mnt`・`/srv`・`/run` は見えない。privacy 処理済みの画像はコピーだけを渡す。
+  - 毎回 probe で確かめ、満たさなければ Codex を起動しない（fail closed）。手順: `docs/operations/design-worker-wsl.md`
+- **capture helper（ログイン済み Instagram）と requester の分離**
+  - ログイン済みの Instagram profile は、別の Linux 利用者 `sr-igcapture`（home 0700）だけが持つ。
+  - requester（`sr-designgen`）にできるのは、`/srv/sr-capture` に id と公開プロフィール URL の request を置くことだけ。返るのは符号と privacy 処理済み PNG（最大 3 枚）だけ。
+  - helper は自動ログインしない（`LOGIN_REQUIRED` で止まり、ログインは人が行う）。人が承認した commit だけを動かす。
+  - 撮影のたびに、requester の全 process が jail の cgroup にいることを確かめる。手順: `docs/operations/design-capture-helper.md`
+- **visual source の順**
+  - 確認済みの公式サイト → helper（ログイン済み Instagram）→ 未ログインの公開 Instagram → `PUBLIC_SOURCE_UNAVAILABLE`。
+  - 公式サイトの通信は、worker 内の egress proxy を通す。許すのは公開 address の 80 / 443 だけで、確かめた address へ接続する。
+  - WebRTC / QUIC は止める。撮影前に確かめ、止まっていなければ撮らない（fail closed）。
+- **requester jail**（WSL2 では、別の利用者に分けるだけでは境界にならないため）
+  - `sr-designgen` の process は、systemd の `sr-jail-*.service` の中でだけ動く。login shell は nologin。
+  - `/run`・`/mnt`・`/usr/lib/wsl` を隠す。vsock・io_uring・ptrace・私設 address・gateway は kernel が拒否する。
+  - 専用の network namespace（pasta）で、VM の localhost と abstract socket から切り離す。DNS は jail 専用の address だけ。
+  - 起動のたびに probe が確かめ、満たさなければ起動しない。手順: `docs/operations/design-wsl-isolation.md`
+- **root だけの install**
+  - `admin.sh`・systemd の unit・jail の設定は、root だけの clone（`/root/sr-capture-admin`、承認した commit・clean）からだけ動かし、入れる。
+  - requester の repo や helper の checkout からは入れない。読み込まれた unit の設定を確かめ、違えば止まる。
+- **jail の DNS は UDP だけ**（明示的な制約）
+  - Ubuntu 24.04 標準の passt の `--dns-forward` は UDP/53 だけを転送する。
+  - jail の namespace の中だけで、jail の resolver 宛ての TCP を即座に拒否する。
+  - probe は、TCP の拒否（1 秒以内）と `10.255.255.254` の拒否を確かめる。
+  - 他の release の passt・自前 build・TCP の DNS の proxy / DNAT は入れない。

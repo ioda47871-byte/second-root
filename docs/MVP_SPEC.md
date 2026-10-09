@@ -196,6 +196,13 @@ Operational Claude は次をしない: DM送信 / メール送信 / Supabase直�
     - Codex で brief → review を行い、final を Linux 側に記録する。Windows へのコピーは best effort
     - systemd timer はまだ enable せず、営業 Agent にも繋がない
     - 詳細: `docs/operations/design-worker-wsl.md`
+  - 2026-10-01 追加（Phase 3、人間承認・実機検証済み）: 取得と隔離の境界。新しい自動化や営業 Agent・DB・Routine への接続はない。
+    - visual source の順: 確認済みの公式サイト → ログイン済み Instagram（capture helper）→ 未ログインの公開 Instagram → `PUBLIC_SOURCE_UNAVAILABLE`
+    - ログイン済みの Instagram profile は別の Linux 利用者 `sr-igcapture` だけが持つ。worker（`sr-designgen`）は request を置き、符号と privacy 処理済みの画像（最大 3 枚）だけを受け取る。ログインは人が行う（自動ログインしない）
+    - 公式サイトは egress proxy（公開 address の 80 / 443 だけ）を通して撮り、WebRTC / QUIC は止める（fail closed）
+    - Codex は bubblewrap の sandbox の中だけ、worker は systemd の jail の中だけで動く。どちらも毎回 probe で確かめ、満たさなければ動かない。jail の DNS は UDP だけ
+    - 基盤の install は root だけの clone から人が行う
+    - 詳細: `docs/SECURITY.md` §10.2、`docs/operations/design-capture-helper.md`、`docs/operations/design-wsl-isolation.md`
 
 ## 12. 範囲外（MVPでは作らない）
 
