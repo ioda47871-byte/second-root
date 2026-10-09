@@ -5,6 +5,7 @@ import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
 import { composeFollowUp, DEFAULT_SUBJECT } from "@/lib/admin/followup";
 import { demoUrl, loadTodayQueue, type TodayItem } from "@/lib/admin/today";
+import { aiDesignEnabled, initialSendAllowed } from "@/lib/sales/design";
 import { buildMailto, composeDm, composeEmailBody, instagramOpenUrl } from "@/lib/sales/messages";
 import { LIMITS } from "@/lib/sales/types";
 import { createAuthClient } from "@/lib/supabase/server";
@@ -28,6 +29,15 @@ function actionFor(item: TodayItem) {
     } catch {
       return cannotCompose("フォローメール");
     }
+  }
+  // DEV-030: a demo still waiting for or getting its AI design is not sent
+  // yet (the link would show a page that is about to change).
+  if (item.kind === "initial" && !initialSendAllowed(aiDesignEnabled(), item.designStatus)) {
+    return (
+      <p className={styles.muted} role="status" data-testid="design-wait">
+        AIデザインの完成を待っています。完成するまで送信できません。
+      </p>
+    );
   }
   if (item.kind === "initial" && item.channel === "email" && item.publicEmail && item.demoToken) {
     const draft = {

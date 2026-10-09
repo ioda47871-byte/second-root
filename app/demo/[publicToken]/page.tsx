@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { renderDemo } from "@/components/demo/renderDemo";
+import { renderDesignedDemo } from "@/components/demo/renderDemo";
 import { loadPublicDemo } from "@/lib/sales/demo-data";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: PageProps<"/demo/[publicToken
   const { publicToken } = await params;
   const demo = await load(publicToken);
   return {
-    title: demo ? { absolute: `${demo.name}（ご提案用デモ）` } : { absolute: "ページが見つかりません" },
+    title: demo ? { absolute: `${demo.view.name}（ご提案用デモ）` } : { absolute: "ページが見つかりません" },
     description: null,
     keywords: null,
     robots: noIndex,
@@ -40,5 +40,5 @@ export default async function DemoPage({ params }: PageProps<"/demo/[publicToken
   const { publicToken } = await params;
   const demo = await load(publicToken);
   if (!demo) notFound();
-  return renderDemo(demo);
+  return renderDesignedDemo(demo.view, demo.profile);
 }

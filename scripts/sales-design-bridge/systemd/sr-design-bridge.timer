@@ -1,0 +1,13 @@
+# Second Root design bridge (DEV-030). NOT enabled by anything in this
+# repository; enabling it is a separate human decision.
+[Unit]
+Description=Second Root design bridge (every 10 minutes)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+RandomizedDelaySec=60
+Persistent=false
+
+[Install]
+WantedBy=timers.target

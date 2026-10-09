@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { TodayItem } from "@/lib/admin/today";
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
+import { DESIGN_FALLBACK_NOTE, DESIGN_STATUS_LABEL } from "@/lib/sales/design";
 import styles from "./admin.module.css";
 
 // One item of today's queue: shop, channel, minimal state and one big
@@ -25,7 +26,24 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
         ) : (
           <span className={styles.badge}>未送信</span>
         )}
+        {item.kind === "initial" && item.designStatus && (
+          <span
+            className={`${styles.badge} ${item.designStatus === "blocked" || item.designStatus === "failed" ? styles.badgeWarn : ""}`}
+            data-testid="design-status"
+            data-design={item.designStatus}
+          >
+            {DESIGN_STATUS_LABEL[item.designStatus]}
+          </span>
+        )}
       </div>
+      {item.kind === "initial" && item.designStatus === "ready" && (
+        <a className={styles.secondary} href={`/admin/preview/${item.prospectId}`} data-testid="design-preview">
+          AIデザインのデモを確認
+        </a>
+      )}
+      {item.kind === "initial" && (item.designStatus === "blocked" || item.designStatus === "failed") && (
+        <p className={styles.muted}>{DESIGN_FALLBACK_NOTE}</p>
+      )}
       <div className={styles.actions}>{action}</div>
       <details className={styles.details}>
         <summary>詳細</summary>
