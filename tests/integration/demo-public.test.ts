@@ -19,7 +19,10 @@ describe("loadPublicDemo", () => {
 
   it("shows a sent demo until 30 days after sending, with verified content only", async () => {
     const { token } = await seedDemo(db, { expiresAt: new Date(now.getTime() + 5 * day) });
-    const demo = await loadPublicDemo(serviceClient(), token, now);
+    const loaded = await loadPublicDemo(serviceClient(), token, now);
+    // DEV-030: the AI design step is off by default, so there is never a profile.
+    expect(loaded?.profile).toBeNull();
+    const demo = loaded?.view;
     expect(demo).toMatchObject({ template: "bakery_v1", name: expect.stringContaining("E2Eテスト"), hours: "8:00〜17:00" });
     expect(Object.keys(demo!).sort()).toEqual(
       ["access", "address", "category", "closedDays", "description", "hours", "menuItems", "name", "phone", "template", "ward"],

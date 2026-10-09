@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { aiDesignEnabled, isDesignStatus, type DesignStatus } from "@/lib/sales/design";
 import { isFollowUpDue } from "@/lib/sales/followup";
 import { selectWorkQueue, type QueueItem } from "@/lib/sales/queue";
 import { LIMITS, type Category, type Channel } from "@/lib/sales/types";
@@ -20,7 +21,11 @@ export type TodayItem = QueueItem & {
   publicEmail: string | null;
   demoToken: string | null;
   sentAt: string | null;
+  /** DEV-030: the demo's AI design state; null for a legacy demo or with the step off. */
+  designStatus: DesignStatus | null;
 };
+
+type DemoRow = { public_token: string; disabled_at: string | null; design_status?: unknown };
 
 type Row = {
   id: string;
@@ -39,16 +44,21 @@ type Row = {
     do_not_contact: boolean;
     instagram_url: string | null;
     public_email: string | null;
-    demo: { public_token: string; disabled_at: string | null } | Array<{ public_token: string; disabled_at: string | null }> | null;
+    demo: DemoRow | DemoRow[] | null;
   } | null;
 };
 
-const SELECT = `id, prospect_id, kind, channel, status, subject, body, sent_at, created_at,
+// With the AI design step off (DEV-030) the query is exactly the legacy one.
+function select(design: boolean): string {
+  return `id, prospect_id, kind, channel, status, subject, body, sent_at, created_at,
   prospect:sales_prospects!inner(name, category, ward, do_not_contact, instagram_url, public_email,
-    demo:sales_demos(public_token, disabled_at))`;
+    demo:sales_demos(public_token, disabled_at${design ? ", design_status" : ""}))`;
+}
 
 export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new Date()): Promise<TodayItem[]> {
   const limit = LIMITS.workQueue;
+  const design = aiDesignEnabled();
+  const SELECT = select(design);
   // Due follow-ups are computed in SQL (view sales_followup_due), so nothing
   // is truncated before filtering; at most `limit` of each kind is needed.
   const [due, drafts] = await Promise.all([
@@ -86,6 +96,7 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
       // A disabled demo would be a dead link: no send action is offered.
       demoToken: demo && !demo.disabled_at ? demo.public_token : null,
       sentAt: row.sent_at,
+      designStatus: design && demo && isDesignStatus(demo.design_status) ? demo.design_status : null,
     };
   };
 

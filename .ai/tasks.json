@@ -1373,6 +1373,81 @@
       "attempts": 0,
       "last_failure": "段階 1〜5 と実機 PoC を完了し、受入条件を満たした（2026-10-09 completion review: .ai/reviews/DEV-029.md）。実機 PoC は poc-photo-001 / 003 / 004（mobile の About 写真が未描画で BLOCKED → decode を修正）/ 005（同じ 3 枚の AI 生成概念画像で accept・done）。2026-10-09 人の指示で、DEV-028（PR #43、640c9e7）の merge 後に develop を取り込み（conflict なし。公開 /demo の CSS・DemoFrame は develop と同一）、base を develop に変えて PR #46 を merge。未検証: approved_real の実機確認。",
       "branch": "feature/dev-029-photo-art-direction"
+    },
+    {
+      "id": "DEV-030",
+      "title": "Sales Design Bridge (AI design step between sales_demos and the human DM; default OFF, fail closed)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-028",
+        "DEV-029"
+      ],
+      "purpose": "候補発見 → 検証・永続化 → ローカル AI デザイン生成 → 公開デモ完成 → 人間が Instagram DM を送る、を一本のワークフローに接続する。既存の Sales Agent（最大 5 件/日・DNC・重複排除・初回は人間送信）は変えず、sales_demos と人間送信の間に AI design step を足す（2026-10-09 人間承認: DEV-030 の開始と、必要な forward DB schema を repo 上で設計・実装すること。Staging / Production への適用は未承認）",
+      "acceptance_criteria": [
+        "feature flag SALES_AI_DESIGN_ENABLED は 'true' のときだけ有効（unset・その他の値は無効）。無効のときは ingest・管理画面・公開 /demo・送信済み操作が既存と完全に同じ",
+        "sales_demos に AI design state の forward migration（design_status: pending / processing / ready / blocked / failed、design_profile、design_job_id、design_attempts、design_claimed_at、design_worker_commit、design_error_code、design_updated_at）。状態と列の整合を DB の check constraint で強制する。repo に追加するだけで Staging / Production には適用しない",
+        "有効なとき、persist で作る demo は design_status=pending（同じ transaction）。無効なときは null（legacy）",
+        "狭い bridge API（POST /api/internal/sales-design/jobs、action: claim / submit）。SALES_DESIGN_BRIDGE_TOKEN（定数時間比較）。token 未設定・短すぎる・ingest token と同じ・flag 無効なら 503。ingest token では通らない",
+        "claim は確認済みの公開 facts（fact-only の DemoView に通るものだけ）と検証済みの source URL だけを返す。submit が受け取るのは job id・outcome・validated DesignProfile（rationale は空）・bounded error code・worker commit・lineage だけ（strict schema。screenshot・HTML・Cookie・prompt・Codex の出力・stderr・推論は受け取れない）",
+        "concurrency / idempotency: claim は 1 件ずつ排他（skip locked）、submit は job id の lineage を確かめ、再送は replayed、古い job の結果は job_superseded で捨てる。stale processing は lease 後に回収し、最大 3 回まで再試行。ready の demo は再生成しない",
+        "DesignProfile は DB から読むたびに DesignProfileSchema（checkProfile）で再検証し、通らなければ既存 template に fallback",
+        "公開 /demo/[publicToken]: flag 有効・ready・valid profile → ProfileRenderer（写真なし）。それ以外 → 既存 template。visibility・notice・footer・noindex・30 日・DNC は不変。表示文は fact-only の DemoView だけ",
+        "写真・reference screenshot・capture の PNG を公開しない（DEV-029 の asset は対象外）",
+        "local bridge（design-bridge --once）は sr-designgen とは別の Linux 利用者で動き、token を持つ。worker とは /srv/sr-design-bridge の spool（to-worker / from-worker）だけでやりとりする。worker（sr-designgen）の環境・子 process に bridge token は入らない",
+        "管理画面: AIデザイン待ち / AIデザイン生成中 / デモ確認可能 / デザインBLOCKED（と失敗）を表示。flag 有効で pending / processing の候補は送信ボタンを出さず、送信済み操作もサーバーで拒否。ready はプレビューへ行ける。送信は引き続き人間",
+        "systemd の unit は repo に置いてテストするだけ。実機への install / enable、secret の生成・Vercel 設定はしない"
+      ],
+      "required_tests": [
+        "integration: migration の constraint、claim / submit の state machine、二重 claim、再送、stale 回収、再試行の上限、lineage 不一致、DNC / 送信済みの扱い、persist の design_status（flag 有効 / 無効）",
+        "unit: bridge API の認証（token 未設定・短い・ingest token と同じ・flag 無効で 503、不一致 401）、strict schema（screenshot・prompt 等の key を拒否）、invalid profile の拒否",
+        "unit: 公開 demo の ProfileRenderer / legacy fallback、DB の profile の再検証、flag 無効で legacy、notice / footer の regression",
+        "unit: local bridge（spool の読み書き・lineage・再送・token の読み方）、worker 側の import / export、worker の環境に bridge token が入らないこと、systemd unit の設定",
+        "unit / e2e: 管理画面の状態表示と送信の抑止",
+        "build、lint、typecheck、check:secrets、既存の unit / integration / e2e"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/（新しい forward migration のみ）",
+        "lib/sales/",
+        "lib/admin/",
+        "lib/design-agent/",
+        "app/api/internal/sales-design/",
+        "app/demo/",
+        "app/admin/",
+        "components/demo/",
+        "components/admin/",
+        "scripts/sales-design-bridge/",
+        "scripts/sales-design-worker/",
+        "tests/",
+        "docs/",
+        ".ai/",
+        ".env.local.example",
+        "package.json"
+      ],
+      "forbidden_scope": [
+        "Staging / Production への migration 適用",
+        "Vercel env・secret の生成と設定（SALES_AI_DESIGN_ENABLED・SALES_DESIGN_BRIDGE_TOKEN を含む）",
+        "systemd unit の実機 install / enable、worker timer の enable",
+        "Supabase Storage の導入",
+        "写真・reference 画像・screenshot の公開",
+        "Meta / Instagram 実アカウント設定",
+        "初回 cold DM・Email の自動送信",
+        "MVP の営業ルール（5 件/日・DNC・重複排除・チャネル決定・30 日）の変更",
+        "security boundary（jail・sandbox・capture helper・worker の環境）の弱体化",
+        "PR #41 / #42 / DEV-024",
+        "test の skip / 削除による green 化",
+        "main への直接 push"
+      ],
+      "human_approval_triggers": [
+        "migration の Staging / Production 適用",
+        "SALES_AI_DESIGN_ENABLED / SALES_DESIGN_BRIDGE_TOKEN の設定",
+        "bridge 利用者・spool・systemd unit の実機 install / enable",
+        "公開デモへの写真掲載（後続 DEV）"
+      ],
+      "attempts": 0,
+      "last_failure": "2026-10-09: Draft PR #47。fresh review は Critical 0 / High 0（.ai/reviews/DEV-030.md）。実装・テスト・docs まで完了（migration 20261009000000、bridge API、公開 demo / 管理画面、local bridge と worker の spool、systemd unit は repo のみ）。ローカルの Supabase で integration 全件 PASS。人の操作待ち: migration の Staging / Production 適用、SALES_DESIGN_BRIDGE_TOKEN の生成と設定、sr-designbridge 利用者と spool の作成、worker の jail への spool の bind 2 行（root だけの clone から入れ直し）、SALES_AI_DESIGN_ENABLED の有効化、timer の enable（docs/operations/design-bridge.md）。",
+      "branch": "feature/dev-030-sales-design-bridge",
+      "pr": 47
     }
   ]
 }

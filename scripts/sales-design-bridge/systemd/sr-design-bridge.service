@@ -1,0 +1,31 @@
+# Second Root design bridge (DEV-030). NOT installed or enabled by anything
+# in this repository: a person installs it from the root-only admin clone
+# after approval (docs/operations/design-bridge.md). One pass per start.
+[Unit]
+Description=Second Root design bridge (one pass)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sr-designbridge
+Group=sr-designbridge
+WorkingDirectory=/home/sr-designbridge/second-root
+ExecStart=/home/sr-designbridge/second-root/scripts/sales-design-bridge/run.sh --once
+Environment=SR_DESIGN_BRIDGE_SPOOL=/srv/sr-design-bridge
+EnvironmentFile=/home/sr-designbridge/.config/second-root/design-bridge.env
+TimeoutStartSec=300
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/sr-designbridge/.local/state/sr-design-bridge /srv/sr-design-bridge/to-worker
+ReadOnlyPaths=/srv/sr-design-bridge/from-worker
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077

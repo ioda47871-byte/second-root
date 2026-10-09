@@ -1,7 +1,9 @@
+import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
 import BakedGoodsTemplate from "./BakedGoodsTemplate";
 import BakeryTemplate from "./BakeryTemplate";
 import CafeTemplate from "./CafeTemplate";
+import ProfileRenderer from "./profile/ProfileRenderer";
 
 /** Picks the component for a demo's template. */
 export function renderDemo(demo: DemoView) {
@@ -13,4 +15,13 @@ export function renderDemo(demo: DemoView) {
     case "cafe_v1":
       return <CafeTemplate demo={demo} />;
   }
+}
+
+/**
+ * A sales demo (DEV-030): the shared profile renderer when a checked design
+ * profile is given, otherwise the existing template. Never with photos: the
+ * public demo shows no photo, screenshot or reference image.
+ */
+export function renderDesignedDemo(demo: DemoView, profile: DesignProfile | null) {
+  return profile ? <ProfileRenderer demo={demo} profile={profile} /> : renderDemo(demo);
 }

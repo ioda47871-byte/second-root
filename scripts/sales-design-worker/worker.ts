@@ -5,6 +5,8 @@
  * a time budget. See docs/operations/design-worker-wsl.md.
  *
  *   tsx scripts/sales-design-worker/worker.ts [--max=1] [--budget-seconds=<n>]
+ *     (with SR_DESIGN_BRIDGE_SPOOL set: imports design-bridge jobs before the run and
+ *      exports their results after it; DEV-030, docs/operations/design-bridge.md)
  *   tsx scripts/sales-design-worker/worker.ts enqueue --job-id <id> --facts <file.json> [--website <verified official site>] [--instagram <profile url>]
  *   tsx scripts/sales-design-worker/worker.ts poc-preflight --job-id <id>   (DEV-029 photo PoC: before enqueue)
  *   tsx scripts/sales-design-worker/worker.ts poc-report --job-id <id>      (DEV-029 photo PoC: after the run)
@@ -29,6 +31,8 @@ import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { chromium } from "playwright";
 import { killAllBoundedChildren, runBounded, RunDeadline } from "../../lib/design-agent/bounded-process";
+import { bridgeSpool, type BridgeSpool } from "../../lib/design-agent/bridge/spool";
+import { exportBridgeResults, importBridgeJobs } from "../../lib/design-agent/bridge/worker-side";
 import { factsToDemoView } from "../../lib/design-agent/preview";
 import { killPreviewServers } from "../../lib/design-agent/preview-server";
 import { requestCapture } from "../../lib/design-agent/capture-helper/client";
@@ -243,6 +247,10 @@ async function run(): Promise<number> {
       ...(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : args.length > 0 ? { channel: "chromium" } : {}),
     });
   say(`design worker ${checkout.slice(0, 12)} (max ${max}, budget ${Math.round(runBudgetMs / 60000)} min)`);
+  // DEV-030: with the design bridge set up, take its new jobs into the inbox
+  // first. Only files move; the worker never holds the bridge token.
+  const spool = bridgeSpoolFromEnv();
+  if (spool) await bridgeSync("import", spool);
   const report = await runDesignWorker({
     stateDir: paths.state,
     queueRoot: paths.queue,
@@ -267,7 +275,35 @@ async function run(): Promise<number> {
       : report;
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   if (report.status === "finished") for (const j of report.jobs) if (j.status === "done") say(`result: ${join(paths.out, j.jobId)}`);
+  if (spool) await bridgeSync("export", spool);
   return exitCodeFor(report);
+}
+
+// ------------------------------------------------------------------ design bridge (DEV-030)
+
+/** SR_DESIGN_BRIDGE_SPOOL (the bridge spool root, e.g. /srv/sr-design-bridge); unset = no bridge. */
+function bridgeSpoolFromEnv(): BridgeSpool | null {
+  const root = process.env.SR_DESIGN_BRIDGE_SPOOL;
+  if (!root) return null;
+  if (!root.startsWith("/") || insideRepo(root)) usage("SR_DESIGN_BRIDGE_SPOOL must be an absolute path outside the repository.");
+  return bridgeSpool(root);
+}
+
+/** A spool problem never stops the worker's own queue: it is reported as a code and tried again next run. */
+async function bridgeSync(direction: "import" | "export", spool: BridgeSpool): Promise<void> {
+  try {
+    const dirs = queueDirs(paths.queue);
+    await ensureQueue(dirs);
+    if (direction === "import") {
+      const r = await importBridgeJobs(spool, dirs, paths.out);
+      say(`bridge: imported ${r.imported.length}${r.invalid.length ? `, invalid ${r.invalid.length}` : ""}${r.withdrawn.length ? `, withdrawn ${r.withdrawn.length}` : ""}`);
+    } else {
+      const r = await exportBridgeResults(spool, dirs, paths.out);
+      say(`bridge: exported ${r.exported.length}${r.removed.length ? `, removed ${r.removed.length}` : ""}`);
+    }
+  } catch {
+    say(`bridge: ${direction} skipped (BRIDGE_SPOOL_UNAVAILABLE)`);
+  }
 }
 
 function stopNow(code: string): never {

@@ -4,6 +4,7 @@ import { demoUrl } from "@/lib/admin/today";
 import { checkDraft } from "@/lib/instagram/draft";
 import { fetchUsername } from "@/lib/instagram/graph";
 import { checkpointProblem } from "./checkpoint";
+import { aiDesignEnabled } from "./design";
 import type { IngestRequest } from "./ingest-schema";
 import { prepareCandidate, type PreparedCandidate } from "./prepare";
 import { isTerminalStage, nextAction, type CandidateStage, type NextAction, type RunPhase, type RunStatus } from "./run";
@@ -134,7 +135,9 @@ async function persist(db: SupabaseClient, runId: string): Promise<IngestResult>
 
   for (const key of begun.verified_order) {
     if (isTerminalStage(begun.candidates[key]?.stage ?? "pending")) continue;
-    const { data, error } = await db.rpc("sales_persist_candidate", { p_run_id: runId, p_key: key });
+    // DEV-030: with the AI design step on, the demo is created waiting for
+    // its design (same transaction). Off, the call is exactly the legacy one.
+    const { data, error } = await db.rpc("sales_persist_candidate", { p_run_id: runId, p_key: key, ...(aiDesignEnabled() ? { p_design: true } : {}) });
     if (error) {
       const code = errorCode(error.message);
       if (code === "lease_lost" || code === "phase_order_violation") break;
