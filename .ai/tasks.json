@@ -1452,7 +1452,7 @@
     {
       "id": "DEV-031",
       "title": "Requester jail: bind only the Sales Design Bridge spool (to-worker read-only, from-worker writable)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-030"
@@ -1484,7 +1484,7 @@
         "実機の root だけの clone の更新と jail-install"
       ],
       "attempts": 0,
-      "last_failure": null,
+      "last_failure": "2026-10-09: PR #48 を develop へ merge（head 5dd06ad、merge 56db4b5）。fresh review Critical 0 / High 0（.ai/reviews/DEV-031.md）。実機への反映（root だけの clone を 56db4b5 に合わせ clean を確かめて admin.sh jail-install → JAIL_OK）は人が行う。",
       "branch": "feature/dev-031-jail-bridge-spool"
     }
   ]
