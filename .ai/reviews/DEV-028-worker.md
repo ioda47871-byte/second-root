@@ -495,3 +495,38 @@ The three real-shop runs, in order: phase3-001 blocked on the address typography
 The run's files (report, candidates, reviews, screenshots) stay in the requester's run directory on that machine. No shop name, URL or image is in this repository or the PR.
 
 **Left to people:** look at the final before / after images and decide whether the demo can be shown; decide what happens with PR #43 (Draft; merge is a human decision); DB schema and any connection to the sales Routine remain behind human approval.
+
+## Merge-prep review (2026-10-09)
+
+The final review before merging PR #43 found three items. Items 1 and 2 are fixed here; item 3 stays open as a human gate.
+
+**1. Canonical docs synced to Phase 3 (docs only; approved by the person).**
+- `docs/SECURITY.md` §10.2 and the DEV-028 entry of `docs/MVP_SPEC.md` now record the Phase 3 boundaries, which were already approved, implemented and verified on the real machine (`.ai/tasks.json` DEV-028 criteria 14–20):
+  - the Codex bubblewrap sandbox;
+  - the `sr-igcapture` capture helper and the requester separation;
+  - the visual-source order;
+  - the website egress proxy, with WebRTC / QUIC fail-closed;
+  - the requester systemd jail;
+  - root-only install;
+  - the UDP-only jail DNS.
+- §10.1 now says that its "no login" rules are for the logged-out public capture path; the logged-in path is the helper of §10.2.
+- No new feature, permission or automation.
+
+**2. Public `/demo` restored to its pre-DEV-028 look.**
+- DEV-028 had changed the shared `demo.module.css`: the notice got `margin: 0` (dropping the `<p>` margins) and a 1px transparent bottom border (1px taller), and the notice and footer got the profile palette variables.
+- `demo.module.css` is now byte-identical to develop.
+- The design preview's notice and footer styling (margin, hairline, palette) moved to `profile.module.css` under the profile renderer's own frame class (`.root > [role="note"]`, `.root > footer`), so the design preview looks the same as before.
+- `DemoFrame` keeps its optional `className` / `style`; the public templates pass neither, so their markup is unchanged.
+- Regression: `tests/unit/design-agent/demo-frame-public.test.tsx` loads all module CSS together, as the app bundles it. It checks in Chromium, for every template at 390 and 1440:
+  - notice margins 12.8px, no border, the dark bar and white text, sticky, 10px padding;
+  - the footer transparent with the muted colour and 28 / 40px padding;
+  - the markup has no profile class or style.
+- It fails on the previous DEV-028 CSS (`marginTop: '0px'`), and also checks that the preview keeps its scoped styling.
+
+**3. Still open (human gate):** the person's final visual judgement of phase3-003 is not yet recorded as given.
+
+**Tests.** `npm run typecheck`, eslint, check:secrets and `git diff --check` are clean. Full unit suite: 605 passed, 6 skipped (`--maxWorkers=2` after the resource preflight).
+
+## Final visual gate (2026-10-09)
+
+The person viewed the phase3-003 final on PC and mobile and approved it: it is good enough to show to a prospect as a proposal demo. Item 3 above is closed, and DEV-028 is marked `done` in `.ai/tasks.json`. PR #43 then goes Ready and is merged into develop. DB schema and the connection to the sales Routine still need separate human approval.
