@@ -8,6 +8,7 @@
  *   tsx scripts/sales-design-worker/worker.ts enqueue --job-id <id> --facts <file.json> [--website <verified official site>] [--instagram <profile url>]
  *   tsx scripts/sales-design-worker/worker.ts poc-preflight --job-id <id>   (DEV-029 photo PoC: before enqueue)
  *   tsx scripts/sales-design-worker/worker.ts poc-report --job-id <id>      (DEV-029 photo PoC: after the run)
+ *   tsx scripts/sales-design-worker/worker.ts preview-check                 (DEV-029: the production preview with photos, no Codex, no job; RENDER_OK = go)
  *     (codes, counts and milliseconds only; see docs/operations/design-photo-poc.md)
  *   tsx scripts/sales-design-worker/worker.ts meta-check --ig-user-id <our IG user id> --username <target>
  *     (Business Discovery PoC: read-only, prints codes and field names only; see
@@ -41,6 +42,7 @@ import { abandonActiveJobSync, DEFAULT_MAX_JOBS, RUN_TIME_BUDGET_MS, runDesignWo
 import { parseInstagramProfileUrl, USERNAME } from "../../lib/design-agent/worker/source-url";
 import { parseWebsiteUrl } from "../../lib/design-agent/worker/website";
 import { pocPreflight, pocReport } from "../../lib/design-agent/worker/poc";
+import { runPreviewCheck } from "../../lib/design-agent/worker/preview-check";
 import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
 import { fromSandboxError } from "../../lib/design-agent/codex";
@@ -127,6 +129,21 @@ async function poc(kind: "preflight" | "report"): Promise<number> {
   const result = await pocReport({ jobId, outRoot: paths.out, queueRoot: paths.queue, tmpBase: tmpdir(), env: process.env, repoDir: REPO, budgetMs: RUN_TIME_BUDGET_MS });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   return result.status === "REPORT" ? 0 : 2;
+}
+
+// ------------------------------------------------------------------ production preview check (DEV-029)
+
+async function previewCheck(): Promise<number> {
+  const result = await runPreviewCheck({
+    repoDir: REPO,
+    env: childEnvironment(process.env),
+    launch: (env) =>
+      chromium.launch({ headless: true, env, ...(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }),
+    log: say,
+  });
+  process.stdout.write(`${JSON.stringify(result)}\n`);
+  say(result.code);
+  return result.code === "RENDER_OK" ? 0 : result.code === "RESOURCE_STOP" ? 20 : 1;
 }
 
 // ------------------------------------------------------------------ meta-check
@@ -273,7 +290,9 @@ process.on("unhandledRejection", () => stopNow("WORKER_UNEXPECTED"));
   ? enqueue()
   : argv[0] === "meta-check"
     ? metaCheck()
-    : argv[0] === "poc-preflight"
+    : argv[0] === "preview-check"
+      ? previewCheck()
+      : argv[0] === "poc-preflight"
       ? poc("preflight")
       : argv[0] === "poc-report"
         ? poc("report")

@@ -219,5 +219,6 @@ describe("meta token file", () => {
     const third = await run(join(repo, "node_modules/.bin/tsx"), [...args, "--token-file", join(linkBase, "into-repo", "meta-token")], { cwd: repo, env }).catch((e: { code: number; stderr: string }) => e);
     expect((third as { code: number }).code).toBe(2);
     expect((third as { stderr: string }).stderr).toContain("outside the repository");
-  });
+    // Three tsx CLI starts (~1.3 s each): the 5 s default is too tight next to Chromium tests in a full run.
+  }, 30_000);
 });

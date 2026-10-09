@@ -11,6 +11,19 @@
 実行前に実機 resource preflight（`docs/operations/wsl-resource-preflight.md`）を行う。`photo-poc.sh` も最初に同じ確認をし、`STOP` なら何も始めない。
 PoC は `next build` と Chromium と Codex を含むので、full unit suite など他の重い処理と同時に流さない。
 
+## PoC の前に: production preview の確認（`RENDER_OK` になるまで PoC を流さない）
+
+worker と同じ経路（tsx・`next build`・preview server・asset route・Chromium・render check）で、写真付きの候補を 1 つ描く。
+Codex は使わず、job も作らない。架空の一時 fixture だけを使い、終われば消す。
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc "cd ~/work/second-root && git fetch -q origin feature/dev-029-photo-art-direction && git checkout -q --force --detach origin/feature/dev-029-photo-art-direction && scripts/ops/wsl-resource-preflight.sh; npm run -s sales:design-worker -- preview-check"
+```
+
+- `RENDER_OK`（exit 0）: PoC に進んでよい
+- `PREVIEW_CHECK_FAILED` / `RENDER_MISMATCH`（exit 1）: 表示された符号を Claude に渡す。PoC は流さない
+- `RESOURCE_STOP`（exit 20）: 使えるメモリが 3 GiB 未満。`docs/operations/wsl-resource-preflight.md` に従う
+
 ## 人がやること（これだけ）
 
 ### 1. 画像を用意する（1 枚。stress PoC では 3 枚）
@@ -67,3 +80,17 @@ bash $A run sr-designgen -- /bin/bash -lc "cd ~/work/second-root && git fetch -q
 | `cleanup` | worker の temp root、Codex の work dir、`photo-N.png` のコピー、design agent の Codex session log が残っていないこと（すべて 0） |
 
 `timeout` / 50 分の予算は、実測を見るまで変えない。`estimate.verdict` が `AT_RISK` / `OVER` なら、変更せずに Claude が数字から案を出し、人が決める。
+
+## 失敗して inbox に戻った PoC job の再開（人の承認の後だけ）
+
+worker は job の途中の失敗を 1 回目は「やり直し」として inbox に戻す（ledger の attempts が 1 になる）。2 回目も失敗すると failed へ進む。
+inbox に戻った job は、次に動いた `run.sh` が自動で拾う。そのため、承認前は `run.sh` を動かさない。
+
+`photo-poc.sh` は使用済みの job id を止めるので、再開には使えない（intake も enqueue もやり直さない）。再開の手順は次のとおり。
+
+1. 上の production preview の確認で `RENDER_OK` を確かめる
+2. job がどこにあるかを確かめる（読むだけ）:
+   `ls ~/sr-design-jobs/inbox ~/sr-design-jobs/processing ~/sr-design-jobs/done ~/sr-design-jobs/failed`
+3. 承認されたら、jail の中で `scripts/ops/wsl-resource-preflight.sh` を実行し、次を流す:
+   `SR_DESIGN_WORKER_REF=feature/dev-029-photo-art-direction ./scripts/sales-design-worker/run.sh --max=1`
+   その後 `npm run -s sales:design-worker -- poc-report --job-id <id>` を実行する
