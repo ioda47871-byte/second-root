@@ -1371,7 +1371,7 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "段階 1〜5 の自動化できる部分を実装（段階 5: Codex call ごとの timing、PoC の preflight / report / photo-poc.sh、fake asset の E2E）。実 Codex の写真 PoC は、人が作った generated_concept 画像（human_upload）を人が入れて、実機の jail で photo-poc.sh を流すのを待つ（docs/operations/design-photo-poc.md）。",
+      "last_failure": "段階 1〜5 と実機 PoC を完了し、受入条件を満たした（2026-10-09 completion review: .ai/reviews/DEV-029.md）。実機 PoC は poc-photo-001 / 003 / 004（mobile の About 写真が未描画で BLOCKED → decode を修正）/ 005（同じ 3 枚の AI 生成概念画像で accept・done）。PR #46 は Draft のまま。develop へは DEV-028（PR #43）の merge 後、人の判断で入れる。未検証: approved_real の実機確認。",
       "branch": "feature/dev-029-photo-art-direction"
     }
   ]
