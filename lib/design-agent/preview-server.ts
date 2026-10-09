@@ -4,7 +4,9 @@
 // SR_DESIGN_PREVIEW_ROOT pointing at the run directories outside the repo.
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
-import type { Browser } from "playwright";
+import type { Browser, Page } from "playwright";
+import type { PlacedPhoto } from "./assets/render-check";
+import { DECODE_PHOTOS_SCRIPT, DecodedPhotosSchema, PAGE_INFO_SCRIPT, PageInfoSchema } from "./page-scripts";
 
 const servers = new Set<ChildProcess>();
 
@@ -84,8 +86,51 @@ export async function stopPreviewServer(server: PreviewServer | undefined): Prom
   servers.delete(child);
 }
 
-/** Full-page screenshot (capped height). Returns the horizontal overflow in px. */
-export async function screenshotPage(browser: Browser, url: string, path: string, mobile: boolean): Promise<number> {
+/** Height caps: the full-page screenshot (unchanged since DEV-028) and each section crop. */
+export const SHOT_CAP = { mobile: 3200, desktop: 2800, section: 1600 } as const;
+
+export type CapturedPage = { overflow: number; sections: string[]; placed: PlacedPhoto[] };
+
+/**
+ * Screenshots of an open preview page (DEV-029 stage 4): the full page up to
+ * its cap, plus one crop for each photo section (data-photo-section) the cap
+ * cuts off, so no photo drops out of the review. Also collects the page's
+ * photos for the mechanical check: which asset, where, visible, labelled, and
+ * whether any text of the page lies under it.
+ */
+export async function capturePage(page: Page, o: { path: string; mobile: boolean; sectionPrefix: string }): Promise<CapturedPage> {
+  const width = o.mobile ? 390 : 1440;
+  const cap = o.mobile ? SHOT_CAP.mobile : SHOT_CAP.desktop;
+  // The page side is source text (page-scripts.ts): tsx / esbuild never rewrites it, so no
+  // __name helper (keepNames) can reach the page. Its answer is checked before use.
+  // Every photo decoded and painted before any screenshot: a loaded but undecoded image below the
+  // viewport is painted as an empty frame. A photo that does not decode counts as not visible.
+  const decoded = DecodedPhotosSchema.safeParse(await page.evaluate(DECODE_PHOTOS_SCRIPT));
+  const parsed = PageInfoSchema.safeParse(await page.evaluate(PAGE_INFO_SCRIPT));
+  if (!decoded.success || !parsed.success) throw Object.assign(new Error("preview page info"), { code: "PREVIEW_RENDER_FAILED" });
+  const info = parsed.data;
+  const decodedAt = (i: number, assetId: string) => decoded.data[i]?.assetId === assetId && decoded.data[i]?.decoded === true;
+  await page.screenshot({ path: o.path, fullPage: true, clip: { x: 0, y: 0, width, height: Math.min(info.height, cap) } });
+  const sections: string[] = [];
+  for (const s of info.sections) {
+    if (s.bottom <= cap) continue;
+    const path = `${o.sectionPrefix}-${sections.length + 1}.png`;
+    await page.screenshot({ path, fullPage: true, clip: { x: 0, y: Math.max(0, s.top), width, height: Math.min(Math.max(1, s.bottom - s.top), SHOT_CAP.section) } });
+    sections.push(path);
+  }
+  const device = o.mobile ? "mobile" : "desktop";
+  return {
+    overflow: Math.max(0, info.overflow),
+    sections,
+    placed: info.placed
+      .map((p, i) => ({ ...p, visible: p.visible && decodedAt(i, p.assetId) }))
+      .filter((p) => p.role === "hero" || p.role === "about" || p.role === "visit")
+      .map((p) => ({ ...p, role: p.role as PlacedPhoto["role"], device })),
+  };
+}
+
+/** Full-page screenshot (capped height) and photo-section crops of one preview URL. */
+export async function screenshotPage(browser: Browser, url: string, path: string, mobile: boolean): Promise<CapturedPage> {
   const context = await browser.newContext(
     mobile ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: "reduce" } : { viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" },
   );
@@ -93,10 +138,7 @@ export async function screenshotPage(browser: Browser, url: string, path: string
     const page = await context.newPage();
     const res = await page.goto(url, { waitUntil: "networkidle" });
     if (res?.status() !== 200) throw Object.assign(new Error(`preview returned ${String(res?.status())}`), { code: "PREVIEW_RENDER_FAILED" });
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    const height = await page.evaluate(() => document.documentElement.scrollHeight);
-    await page.screenshot({ path, fullPage: true, clip: { x: 0, y: 0, width: mobile ? 390 : 1440, height: Math.min(height, mobile ? 3200 : 2800) } });
-    return Math.max(0, overflow);
+    return await capturePage(page, { path, mobile, sectionPrefix: path.replace(/\.png$/, "-section") });
   } finally {
     await context.close();
   }

@@ -189,8 +189,8 @@ async function main(): Promise<number> {
         render: async (candidate): Promise<Shots> => {
           const url = `http://127.0.0.1:${args.port}/design-preview/${args.runId}?profile=${candidate}`;
           const shots = { desktop: join(runDir, "shots", `${candidate}-desktop.png`), mobile: join(runDir, "shots", `${candidate}-mobile.png`) };
-          const desktopOverflow = await screenshotPage(b, url, shots.desktop, false);
-          const mobileOverflow = await screenshotPage(b, url, shots.mobile, true);
+          const desktopOverflow = (await screenshotPage(b, url, shots.desktop, false)).overflow;
+          const mobileOverflow = (await screenshotPage(b, url, shots.mobile, true)).overflow;
           if (desktopOverflow > 0 || mobileOverflow > 0) console.log(`  warning: ${candidate} overflows horizontally`);
           if (desktopOverflow > 0) overflows.push(`OVERFLOW_${candidate}_DESKTOP`);
           if (mobileOverflow > 0) overflows.push(`OVERFLOW_${candidate}_MOBILE`);

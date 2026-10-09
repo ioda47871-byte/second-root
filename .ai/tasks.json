@@ -1304,8 +1304,75 @@
         "renderer の機能追加（BLOCKED の判断）"
       ],
       "attempts": 0,
-      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。実店舗 PoC は phase3-001 / phase3-002 が renderer の制約で設計どおり BLOCKED、renderer を汎用に直して phase3-003（2af0465）で accept（20/25、revision 2 回）、outcome=done。2026-10-09 merge prep（docs 正本の同期、公開 /demo を develop と同一に戻す regression test）を経て、人が phase3-003 の final を PC / mobile で目視し「営業先へ提案用デモとして見せてよい品質」として final visual gate を承認。PR #43 を develop へ merge。DB schema・営業 Routine への接続は引き続き人の承認待ち（別タスク）。",
+      "last_failure": "Phase 3 を実装し、人間の WSL で install・jail-check・LOGIN_OK・Remote Control、jail の DNS（UDP-only）、WSL shutdown 後の自動復帰まで確認。実店舗 PoC は phase3-001 / phase3-002 が renderer の制約で設計どおり BLOCKED、renderer を汎用に直して phase3-003（2af0465）で accept（20/25、revision 2 回）、outcome=done。2026-10-09 merge prep（docs 正本の同期、公開 /demo を develop と同一に戻す regression test）を経て、人が phase3-003 の final を PC / mobile で目視し「営業先へ提案用デモとして見せてよい品質」として final visual gate を承認。PR #43 を develop へ merge（head 59d8f59、merge 640c9e7）。DB schema・営業 Routine への接続は引き続き人の承認待ち（別タスク）。",
       "branch": "feature/dev-028-ai-art-direction"
+    },
+    {
+      "id": "DEV-029",
+      "title": "Photo art direction for demos (photos chosen and laid out with the type, local preview only)",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-007"
+      ],
+      "purpose": "写真を差し込むのではなく、写真の性質（縦横・被写体・余白・品質）に応じてページのレイアウトそのものを変える art direction を、asset intake → normalize → PhotoAnalysis → DesignProfile + ImageDirection → render → 機械検査 → visual review → 最大 2 回の revision まで自動化する。local /design-preview 限定（2026-10-02 人間承認）",
+      "acceptance_criteria": [
+        "範囲: local /design-preview だけ。公開 /demo・DB・Storage・Routine は対象外。MVP_SPEC §7 は変更しない（公開デモには写真を出さない）",
+        "写真の source は approved_real / generated_concept / none だけ。Instagram・公式サイトの reference screenshot を asset に昇格する経路は作らない（型 PublicAssetId / ReferenceImagePath を交差させない。intake は capture spool・capture 利用者の home・worker / Codex の temp root・preview の出力からの取り込みを拒否する）",
+        "approved_real は consent 記録（consentId・approvedBy・approvedAt・scope）が必須。scope は local_preview / public_demo を分ける",
+        "MVP では人物の写った写真を使わない（intake で人が「人物なし」を確認し、PhotoAnalysis で people / subject=people の写真は ImageDirection が使えない）",
+        "generated_concept は renderer が必ず「イメージ画像」と表示し、profile / Codex からは消せない。menu の商品写真として使わない（ImageDirection に menu の slot がない）。footer / notice には新しい注記を足さない",
+        "画像処理: PNG / JPEG / WebP だけ受け付け、HEIC 等は拒否。新しい native 画像処理 dependency は足さず、Chromium の canvas で PNG に描き直す。元ファイルの EXIF 等の metadata が残らない。repo に実画像 asset を置かない",
+        "1 job あたり 0〜3 枚。4 枚以上・gallery は次段階",
+        "MVP の layout: none / split_hero / framed_hero / type_hero_feature_band。写真と文字は別の領域に置き、構造的に重ならない。写真の有無・縦横比・被写体でページのレイアウトそのものが変わる。full-bleed の写真上の文字・gallery_grid・editorial_stack は作らない",
+        "DesignProfile v1 は変えない。PhotoAnalysis / ImageDirection / AssetManifest を別に持つ。Codex が判断するもの: 採用 / 不採用、hero / feature、layout、focal point、desktop / mobile の crop、cover / contain、palette との整合、near duplicate、品質・brand fit。コードが保証するもの: asset id の存在、重複禁止、source の制約、consent、イメージ画像ラベル、人物禁止、fact-only、横 overflow なし、文字と写真の衝突なし、0 枚の fallback、最大 2 回の revision、RENDERER_CHANGE_NEEDED → BLOCKED",
+        "段階: 1 schema / types / intake（2026-10-02 実装）→ 2 renderer（2026-10-02 実装: split_hero / framed_hero / type_hero_feature_band、local preview の asset route）→ 3 Codex analysis / direction → 4 pipeline / review → 5 fake asset の E2E。各段階で test と self-review。最初の実機 PoC は generated_concept だけ",
+        "branch は DEV-028 の最新 head（192fd1a）から切った feature/dev-029-photo-art-direction で、DEV-028 のコード（design profile・renderer・Codex sandbox・worker）の上に積む。DEV-028（PR #43）が merge されるまで develop には入れない（2026-10-02 人間決定。DEV-028 は未 merge のため depends_on には書かず、ここに記す）",
+        "local preview の写真配信は /design-preview/<runId>/asset/<assetId> だけ。URL から path を受け取らず、run の assets.json → manifest → toPublicAssetId → local_preview の許可 → manifest の file 名 → symlink なし・PNG・sha256 一致のときだけ image/png（no-store）。reference screenshot を読む route はない。feature の slot が実際に描かれる section（about は description、visit は visit の行）を指さないときは写真なしに戻る"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent/assets.test.ts（型の分離、manifest、consent の scope、PhotoAnalysis / ImageDirection の整合ルール、intake: PNG / JPEG / WebP、HEIC 拒否、metadata 除去、縮小・最小寸法、3 枚上限、重複、symlink、reference の場所からの拒否、store の場所）",
+        "テスト用の写真はテスト中に描いた架空の画像だけ（repo に写真を置かない）",
+        "段階 2 以降: 0 / 1 / 3 枚 × portrait / landscape / square × quiet / busy × 390×844 / 1440×900 の Chromium レイアウト検査、イメージ画像ラベル、fact-only、preview から reference が読めないこと、fallback、BLOCKED、revision 上限",
+        "unit: photos.test.tsx・preview-asset-route.test.ts・renderer-photos-layout.test.tsx（Chromium、0〜3 枚 × 3 layout × portrait / landscape / square × 390 / 1440: 写真と文字・motif の重なりなし、イメージ画像ラベル、fit / focal / aspect、section 外への逸脱なし、横 overflow なし、fallback、asset 配信の境界）",
+        "unit: photo-codex.test.ts（PhotoAnalysis の突き合わせ、ImageDirection の検査と写真なし fallback、自由記述のない schema、prompt に store path・consent 等が入らないこと、work-dir の copy だけ、本物の bubblewrap で custom / 既定の asset store が見えないこと、DEV-028 の prompt / schema の snapshot）",
+        "unit: photo-pipeline.test.ts・photo-worker.test.ts・photo-shots.test.tsx（artifact lineage と他 job の混入拒否、PhotoAnalysis の再利用と無効化、revision state machine（none / profile / images / both、job 全体で 2 回まで）、render check、photo-aware review の入力、写真なしへの fallback、環境障害で停止、worker の 0〜3 枚・revision 1 / 2 の Codex call 数、成功・schema invalid・nonzero・timeout・revision 失敗の後に画像 copy が残らないこと、segmented screenshot）",
+        "unit: worker-timing.test.ts・photo-poc.test.ts（call ごとの timing に固定値しか載らないこと、preflight の各 check、runtime 見積り）。E2E: photo-e2e.test.ts（SR_PHOTO_E2E=1。本物の build・preview・asset route・Chromium・render check・bubblewrap、fake Codex の回答）"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "components/demo/",
+        "app/design-preview/",
+        "scripts/sales-design-assets/",
+        "scripts/sales-design/",
+        "scripts/sales-design-worker/",
+        "tests/",
+        "docs/",
+        ".ai/",
+        "package.json",
+        "package-lock.json"
+      ],
+      "forbidden_scope": [
+        "公開 /demo への写真表示・MVP_SPEC §7 の変更",
+        "supabase/migrations/・DB・Storage",
+        "Production / Staging / Supabase / Routine / Meta の設定変更",
+        "reference screenshot を asset にする経路",
+        "外部の画像生成 API の追加・契約・API キー",
+        "新しい native 画像処理 dependency",
+        "実店舗の写真・名称・URL を repo / commit / PR に置くこと",
+        "DEV-028 の branch / PR #43 への commit",
+        "main / develop への直接 push",
+        "test の skip / 削除による green 化"
+      ],
+      "human_approval_triggers": [
+        "公開 /demo に写真を出すこと（MVP_SPEC §7 の変更）",
+        "画像生成 worker / API の導入",
+        "人物写真の解禁",
+        "renderer の機能追加（BLOCKED の判断）"
+      ],
+      "attempts": 0,
+      "last_failure": "段階 1〜5 と実機 PoC を完了し、受入条件を満たした（2026-10-09 completion review: .ai/reviews/DEV-029.md）。実機 PoC は poc-photo-001 / 003 / 004（mobile の About 写真が未描画で BLOCKED → decode を修正）/ 005（同じ 3 枚の AI 生成概念画像で accept・done）。2026-10-09 人の指示で、DEV-028（PR #43、640c9e7）の merge 後に develop を取り込み（conflict なし。公開 /demo の CSS・DemoFrame は develop と同一）、base を develop に変えて PR #46 を merge。未検証: approved_real の実機確認。",
+      "branch": "feature/dev-029-photo-art-direction"
     }
   ]
 }

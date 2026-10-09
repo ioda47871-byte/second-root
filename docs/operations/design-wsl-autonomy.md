@@ -34,6 +34,14 @@ Second Root では**後者の考え方（利用者を分ける・pull 型）を�
 second-root は public repository なので、fork からの PR が workflow を書き換えて self-hosted runner の上で
 任意のコードを動かせてしまう。怪異読本は private なのでこの問題が小さい。
 
+## 重い処理の前に（実機 resource preflight）
+
+jail の中の Claude も、full unit suite・Chromium・worker・Codex を始める前に `scripts/ops/wsl-resource-preflight.sh` を実行し、判定に従う。
+- `STOP` なら始めない。`SERIAL` ならテストを `--maxWorkers=1 --no-file-parallelism` にする
+- 突然 `Killed` されたら `--oom-check` で確かめ、OOM なら resource failure として止まる
+- jail の中では kernel log が読めないことがある（`OOM_UNKNOWN`）。その場合は人に確認を頼む
+- `.wslconfig` は変えない（`docs/operations/wsl-resource-preflight.md` §4）
+
 ## Claude（sr-designgen）にできること・できないこと
 
 | できる（jail の中で） | できない（OS が止める） |

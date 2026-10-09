@@ -1,7 +1,9 @@
 import type { DemoView } from "@/lib/sales/demo-content";
+import type { PlacedPhoto } from "./assets/render-check";
 import { CodexError, isEnvironmentFailure } from "./codex";
 import { CATEGORY_DEFAULT_PROFILES, LOW_CONFIDENCE } from "./defaults";
 import { checkProfile, designProfileJsonSchema, looseJsonSchema, type DesignProfile } from "./profile";
+import { runPhotoLoop, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
 import { buildBriefPrompt, buildReviewPrompt } from "./prompts";
 import { reviewScore, visualReviewJsonSchema, VisualReviewSchema, type VisualReview } from "./review";
 
@@ -19,13 +21,19 @@ export type Shots = { desktop: string; mobile: string };
 
 export interface PipelineDeps {
   /** One Codex JSON call (runCodexJson with the run's options). */
-  askCodex(request: { kind: "brief" | "review"; prompt: string; images: string[]; schema: object }): Promise<unknown>;
+  askCodex(request: { kind: "brief" | "review" | "photo_review"; prompt: string; images: string[]; schema: object }): Promise<unknown>;
+  /** One Codex call with photo copies attached (PhotoAnalysis / ImageDirection, DEV-029). */
+  askPhotoCodex?(request: { kind: "photo_analysis" | "image_direction"; prompt: string; schema: object; imageBytes: readonly Buffer[] }): Promise<unknown>;
   /** Writes a candidate profile (or the final one) where the preview route reads it. */
   writeProfile(name: string, profile: DesignProfile): Promise<void>;
   /** Writes a run record (review, report) into the run directory. */
   writeRecord(name: string, value: unknown): Promise<void>;
   /** Renders the preview for a candidate ("none" = existing template) and returns screenshot paths. */
   render(candidate: string): Promise<Shots>;
+  /** Renders a candidate with photos: screenshots, crops of photo sections the full shots cut off, and the photos the page shows. */
+  renderPhotos?(candidate: string): Promise<{ shots: Shots; sections: string[]; placed: PlacedPhoto[] }>;
+  /** Reads a run record back (a stored PhotoAnalysis is reused when it matches the asset set). */
+  readRecord?(name: string): Promise<unknown>;
   log(line: string): void;
 }
 
@@ -49,6 +57,8 @@ export type PipelineReport = {
   briefConfidence: number | null;
   before: Shots;
   after: Shots | null;
+  /** Only for a job with photos (DEV-029). */
+  photos?: PhotoStats;
 };
 
 export interface PipelineInput {
@@ -59,6 +69,8 @@ export interface PipelineInput {
   hint?: string;
   maxRevisions?: number;
   schemaMode?: "strict" | "loose";
+  /** The job's verified photos (DEV-029). None or empty: the DEV-028 loop alone. */
+  photos?: PhotoPipelineInput;
 }
 
 export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps): Promise<PipelineReport> {
@@ -113,6 +125,30 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     profile = CATEGORY_DEFAULT_PROFILES[input.demo.category];
     profileSource = "category_default";
   }
+
+  // ---- with photos (DEV-029): its own loop; unusable photos mean the page without them
+  let photoStats: PhotoStats | undefined;
+  if (input.photos && input.photos.inputs.length > 0 && deps.askPhotoCodex && deps.renderPhotos) {
+    const { askPhotoCodex, renderPhotos } = deps;
+    const result = await runPhotoLoop({
+      demo: input.demo,
+      references: input.references,
+      referenceKind: input.referenceKind,
+      photos: input.photos,
+      profile,
+      maxRevisions,
+      schema,
+      notes,
+      deps: { askCodex: (r) => deps.askCodex(r), askPhotoCodex, writeProfile: deps.writeProfile, writeRecord: deps.writeRecord, readRecord: deps.readRecord, renderPhotos, log: deps.log },
+    });
+    photoStats = result.stats;
+    if (result.kind === "environment") return report("environment_failure", { profileSource, briefConfidence, photos: photoStats });
+    if (result.kind === "done") {
+      const { status, rounds, finalCandidate, revisions, after } = result;
+      return { status, notes, profileSource, rounds, finalCandidate, revisions, briefConfidence, before, after, photos: photoStats };
+    }
+  }
+  const withPhotos = photoStats ? { photos: photoStats } : {};
 
   // ---- review / revise
   const rounds: RoundRecord[] = [];
@@ -188,9 +224,9 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   const best = candidates.reduce((a, b) => (b.score >= a.score ? b : a));
   if (best.score < 0) {
     notes.push("NO_REVIEWED_CANDIDATE");
-    return report(status === "environment_failure" ? "environment_failure" : "fallback_template", { profileSource, rounds, revisions, briefConfidence });
+    return report(status === "environment_failure" ? "environment_failure" : "fallback_template", { profileSource, rounds, revisions, briefConfidence, ...withPhotos });
   }
   await deps.writeProfile("final", best.profile);
   const after = await deps.render("final");
-  return { status, notes, profileSource, rounds, finalCandidate: best.name, revisions, briefConfidence, before, after };
+  return { status, notes, profileSource, rounds, finalCandidate: best.name, revisions, briefConfidence, before, after, ...withPhotos };
 }

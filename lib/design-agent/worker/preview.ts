@@ -31,9 +31,12 @@ export function productionPreview(repoDir: string, launch: (env: NodeJS.ProcessE
           const url = `http://127.0.0.1:${port}/design-preview/${runId}?profile=${candidate}`;
           const shots = { desktop: join(shotsDir, `${candidate}-desktop.png`), mobile: join(shotsDir, `${candidate}-mobile.png`) };
           const overflow: string[] = [];
-          if ((await screenshotPage(b, url, shots.desktop, false)) > 0) overflow.push(`OVERFLOW_${candidate}_DESKTOP`);
-          if ((await screenshotPage(b, url, shots.mobile, true)) > 0) overflow.push(`OVERFLOW_${candidate}_MOBILE`);
-          return { shots, overflow };
+          const desktop = await screenshotPage(b, url, shots.desktop, false);
+          const mobile = await screenshotPage(b, url, shots.mobile, true);
+          if (desktop.overflow > 0) overflow.push(`OVERFLOW_${candidate}_DESKTOP`);
+          if (mobile.overflow > 0) overflow.push(`OVERFLOW_${candidate}_MOBILE`);
+          // photo-section crops the full-page cap cut off, and the page's photos for the render check (DEV-029)
+          return { shots, overflow, sections: [...desktop.sections, ...mobile.sections], placed: [...desktop.placed, ...mobile.placed] };
         },
       },
       async stop() {
