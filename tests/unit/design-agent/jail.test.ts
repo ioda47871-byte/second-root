@@ -62,15 +62,13 @@ describe("the requester jail", () => {
         "TemporaryFileSystem=/srv:ro",
       ].sort(),
     );
-    // the bridge spool comes after the empty /srv, so it is laid over it, never replaced by it
-    const at = (line: string) => settings.indexOf(line);
-    expect(at("TemporaryFileSystem=/srv:ro")).toBeLessThan(at("BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker"));
-    expect(at("TemporaryFileSystem=/srv:ro")).toBeLessThan(at("BindPaths=-/srv/sr-design-bridge/from-worker"));
     // no other kind of mount or path setting reaches the bridge user's home or token
     expect(settings.filter((l) => /sr-designbridge|design-bridge\.token|\.config\/second-root/.test(l))).toEqual([]);
-    // the probe fails the jail when the bridge user's home is visible
+    // the probe fails the jail when the bridge user's home is visible, when /srv shows anything
+    // but the two spools, or when the bridge's jobs are writable from inside
     const probe = readFileSync(join(DIR, "jail", "probe.py"), "utf8");
     expect(probe).toContain('"/home/sr-designbridge",');
+    for (const code of ["SRV_NOT_EMPTY", "BRIDGE_SPOOL_NOT_EMPTY", "BRIDGE_JOBS_WRITABLE", "SRV_UNCHECKED"]) expect(probe).toContain(`fail("${code}")`);
     // the network and the rest of the boundary are unchanged by this: same families, no new allow
     expect(settings.find((l) => l.startsWith("IPAddressAllow="))).toBe("IPAddressAllow=127.0.0.0/8 ::1/128 198.51.100.53/32");
     expect(settings.filter((l) => /^(BindPaths|BindReadOnlyPaths)=/.test(l)).sort()).toEqual(
@@ -84,6 +82,47 @@ describe("the requester jail", () => {
         "BindReadOnlyPaths=/run/sr-jail/resolv.conf:/etc/resolv.conf",
       ].sort(),
     );
+  });
+
+  it("is exactly this list of settings: nothing added, dropped or widened anywhere (DEV-031)", () => {
+    // systemd adds up repeated IPAddressAllow= / Bind*= / ReadWritePaths= lines, so one extra line
+    // anywhere could widen the jail: the whole list is pinned. Change it only with a reviewed reason.
+    expect(settings).toEqual([
+      "NoNewPrivileges=yes",
+      "ProtectSystem=strict",
+      "ProtectHome=tmpfs",
+      "PrivateTmp=yes",
+      "PrivateDevices=yes",
+      "PrivateIPC=yes",
+      "ProtectProc=invisible",
+      "ProtectKernelModules=yes",
+      "ProtectControlGroups=yes",
+      "ProtectClock=yes",
+      "LockPersonality=yes",
+      "RestrictSUIDSGID=yes",
+      "RestrictRealtime=yes",
+      "KeyringMode=private",
+      "UMask=0077",
+      "TemporaryFileSystem=/mnt:ro",
+      "TemporaryFileSystem=/run:ro",
+      "TemporaryFileSystem=/srv:ro",
+      "InaccessiblePaths=-/usr/lib/wsl",
+      "InaccessiblePaths=-/init",
+      "BindReadOnlyPaths=-/srv/sr-capture/results",
+      "BindPaths=-/srv/sr-capture/requests",
+      "BindReadOnlyPaths=-/srv/sr-design-bridge/to-worker",
+      "BindPaths=-/srv/sr-design-bridge/from-worker",
+      "BindPaths=-/mnt/sr-export",
+      "NetworkNamespacePath=/run/netns/srjail",
+      "BindReadOnlyPaths=/run/sr-jail/netns-id",
+      "BindReadOnlyPaths=/run/sr-jail/resolv.conf:/etc/resolv.conf",
+      "SystemCallArchitectures=native",
+      "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
+      "SystemCallFilter=~io_uring_setup io_uring_enter io_uring_register syslog ptrace process_vm_readv process_vm_writev",
+      "SystemCallErrorNumber=EPERM",
+      "IPAddressAllow=127.0.0.0/8 ::1/128 198.51.100.53/32",
+      "IPAddressDeny=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10 fc00::/7 fe80::/10",
+    ]);
   });
 
   it("leaves out the settings that would break the Codex sandbox inside it (bubblewrap needs a fresh /proc)", () => {

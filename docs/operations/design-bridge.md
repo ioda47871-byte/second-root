@@ -73,14 +73,16 @@ BindPaths=-/srv/sr-design-bridge/from-worker
 入れ直しは、これまでと同じく **root だけの clone を承認した commit に合わせ、clean を確かめてから**行う。`/root/sr-capture-admin` を手で編集しない。
 
 ```bash
+# 1 行で: 承認した commit に合わせ、clean のときだけ jail-install（最後に jail-check。JAIL_OK を確かめる）
 sudo git -C /root/sr-capture-admin fetch -q origin \
   && sudo git -C /root/sr-capture-admin checkout -q --detach <承認した commit（40 文字）> \
-  && test -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" && echo CLEAN
-sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-install   # 最後に jail-check を実行する。JAIL_OK を確かめる
+  && test -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" \
+  && sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-install
 ```
 
 - `jail-install` は network の unit も作り直すので、jail の Claude・`run`・`shell` は起動し直される。
-- probe は、bridge の利用者の home（`/home/sr-designbridge`）が jail から見えれば `JAIL_UNSAFE` で止まる。
+- probe は、bridge の利用者の home（`/home/sr-designbridge`）が見える、`/srv` に 2 つの spool 以外がある、`/srv/sr-design-bridge` に 2 つの directory 以外がある、`to-worker` に jail から書ける、のどれでも `JAIL_UNSAFE` で止まる。
+- `jail-install` 自体は commit と clean を確かめないので、上の `&&` を切らずに 1 行で実行する。
 - これで jail から見えるのは spool の 2 つの directory だけになる。token・Supabase・server への経路は増えない（token は jail の外の `sr-designbridge` だけが持つ）。
 
 ## 5. bridge の checkout と設定
