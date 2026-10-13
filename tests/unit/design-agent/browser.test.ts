@@ -335,6 +335,8 @@ describe("navigation guard (browser-native requests, every hop checked before it
     it.each([
       ["the newer verification flow", "li_auth_platform", "/auth_platform/"],
       ["the save-your-login page", "li_onetap", "/accounts/onetap/"],
+      ["a move the page's own script makes after it has loaded", "li_late_wall", "/auth_platform/"],
+      ["a history move to an account page", "li_pushstate_wall", "/accounts/onetap/"],
     ] as const)("stops a redirect to an account page (%s) as a challenge, before loading it", async (_label, username, path) => {
       const s = await signedInProfile();
       const before = site.requests.length;
@@ -403,7 +405,7 @@ describe("diagnose", () => {
     });
     return { outcome, lines };
   };
-  const STRUCTURE = /^(A|B|C)$|^t=\d+s$|^headless\+guard$|^headless\+no-interception$|^headed\+guard$|^STOPPED_OFF_SITE$|^OFF_SITE_(OTHER_HOST|SAME_SITE_PATH|IN_PAGE)$|^SKIPPED_NO_DISPLAY$|^BROWSER_ERROR$/;
+  const STRUCTURE = /^(A|B|C)$|^t=\d+s$|^headless\+guard$|^headless\+no-interception$|^headed\+guard$|^STOPPED_OFF_SITE$|^STOPPED_WALL$|^OFF_SITE_(OTHER_HOST|SAME_SITE_PATH|IN_PAGE)$|^SKIPPED_NO_DISPLAY$|^BROWSER_ERROR$/;
   const onlyCodes = (lines: string[]) => {
     for (const word of lines.join(" ").split(/\s+/)) expect(DIAGNOSE_CODES.includes(word as never) || STRUCTURE.test(word), word).toBe(true);
   };
@@ -480,6 +482,7 @@ describe("diagnose", () => {
       onlyCodes(lines);
       return lines;
     };
+    const lateLines: string[] = [];
     const before = site.requests.length;
     // the profile itself; the home page is not the target, so the session is not checked (and not loaded)
     expect(await run("li_shop", ["A", "C"])).toEqual([
@@ -496,6 +499,13 @@ describe("diagnose", () => {
     expect(await run("li_offsite", ["A"])).toEqual(["A STOPPED_OFF_SITE OFF_SITE_OTHER_HOST"]);
     expect(await run("li_offsite", ["C"])).toEqual(["C STOPPED_OFF_SITE OFF_SITE_OTHER_HOST"]);
     expect((await run("li_pushstate", ["A"])).at(-1)).toBe("A STOPPED_OFF_SITE OFF_SITE_IN_PAGE");
+    // without interception an account page is named as the guard names it (its first request may be out)
+    expect((await run("li_auth_platform", ["C"]))[0]).toBe("C headless+no-interception HTTP_OTHER CHALLENGE_PRESENT");
+    // a wall the page is sent to while it is being sampled stops the sampling
+    const late = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as("li_late_wall"), launchPersistent, modes: ["A"], sampleAtMs: [100, 1_500], pauseMs: 0, sessionWaitMs: 1_000, hasDisplay: false, say: (l) => lateLines.push(l) });
+    expect(late).toBe("DIAGNOSED");
+    expect(lateLines.at(-1)).toBe("A STOPPED_WALL CHALLENGE_PRESENT");
+    onlyCodes(lateLines);
   });
 
   it("runs the headed check only with a display, and refuses to run without a profile or while it is in use", async () => {

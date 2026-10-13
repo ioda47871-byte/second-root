@@ -90,6 +90,11 @@ export async function startMockSite(): Promise<MockSite> {
         res.writeHead(302, { location: "/explore/" });
         return res.end();
       // The page changes its own address without a document request (history API).
+      // The page's own script sends it to an account page after it has loaded (after capture's settle wait).
+      case "/li_late_wall/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{location.href="/auth_platform/codeentry/";},380);</script></body>`));
+      case "/li_pushstate_wall/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{history.pushState({}, "", "/accounts/onetap/");},100);</script></body>`));
       case "/li_pushstate/":
         return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{history.pushState({}, "", "/explore/");},100);</script></body>`));
       case "/login_page/":

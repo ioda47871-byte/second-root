@@ -132,6 +132,7 @@ cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-fi
 
 - A と B は capture と同じく、Instagram 内の redirect を 1 hop ずつ手で辿る
 - 各 run の最後に、新しいタブで Instagram のホームを開き、最大 15 秒待って `SESSION_OK` / `SESSION_MISSING` を出す。ただし capture と同じ target（対象の profile だけを許可）ではホームを開かず `SESSION_NOT_CHECKED` を出す（2026-10-01 以降の本番。ログインが生きているかは、対象ページの `SIGNED_IN_NAV_PRESENT` で見る）
+- 読み込んだ後でアカウント用のページへ移ろうとしたときは `STOPPED_WALL`。C（interception なし）でも、アカウント用のページは A と同じく `HTTP_OTHER CHALLENGE_PRESENT` と出す（ただし C は最初の 1 リクエストを止められない）
 - 外へ出て止めたときは `STOPPED_OFF_SITE` の後に、分かれば行き先の種類（`OFF_SITE_OTHER_HOST` / `OFF_SITE_SAME_SITE_PATH` / `OFF_SITE_IN_PAGE`）を出す
 - どの run も browser が起動できなかったときは `DIAGNOSE_FAILED`（終了コード 4）
 - 出る符号は `HTTP_200` / `HTTP_404` / `HTTP_OTHER`、`MAIN_*` / `HEADER_*` / `POSTS_*`（`PRESENT` / `MISSING`）、`BODY_PRIVATE_MARKER`、`BODY_UNAVAILABLE_MARKER`、`SIGNED_IN_NAV_PRESENT`、`CHALLENGE_PRESENT`、`CAPTCHA_PRESENT` だけ
@@ -141,7 +142,8 @@ cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-fi
 読み方:
 - A だけ unavailable、C は posts あり → guard が原因（2026-09-30 に見つけた旧 guard の問題: 送り直した request に browser 自身の `sec-fetch-*` / `accept-language` が付かなかった。修正済み）
 - A と C が unavailable、B は posts あり → headless の違い
-- 全部 unavailable で `SESSION_MISSING` → ログインが切れている
+- 全部 unavailable で `SESSION_MISSING` → ログインが切れている（本番の target では `SESSION_NOT_CHECKED` になるので、対象ページで `SIGNED_IN_NAV_PRESENT` が出るかで見る。出なければログインが切れている）
+- `STOPPED_WALL`（`CHALLENGE_PRESENT` 付きのことがある）→ 読み込んだ後で、ページがログイン・確認・アカウント用のページへ移ろうとした（読み込まずに止めた）
 - A が `HTTP_OTHER CHALLENGE_PRESENT` → Instagram がログイン・確認・アカウント用のページへ送っている。回避しない。人が headed login で様子を見る
 - A が `STOPPED_OFF_SITE OFF_SITE_SAME_SITE_PATH` → 対象以外の Instagram のページへ送られている（未知のアカウント用ページの可能性。許可は広げずに報告する）
 - 最初だけ `BODY_UNAVAILABLE_MARKER` で後から `POSTS_PRESENT` → 表示途中の文を拾っている（capture は 5 秒後に判断する）

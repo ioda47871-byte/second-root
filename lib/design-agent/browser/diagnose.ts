@@ -165,7 +165,11 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
         try {
           if (request.isNavigationRequest() && request.frame() === p.mainFrame() && !target.allowNavigation(request.url())) {
             const kind = target.refusal?.(request.url());
-            leave(p, kind === "same_site" || kind === "wall" ? "OFF_SITE_SAME_SITE_PATH" : kind === "other_host" ? "OFF_SITE_OTHER_HOST" : undefined);
+            if (kind === "wall") {
+              // As the guard names it (A / B): an account page is a wall, not a place off the site.
+              state.wall ??= request.url();
+              void p.close().catch(() => undefined);
+            } else leave(p, kind === "same_site" ? "OFF_SITE_SAME_SITE_PATH" : kind === "other_host" ? "OFF_SITE_OTHER_HOST" : undefined);
           }
         } catch {
           // a request without a frame yet (a popup's); popups are closed above
@@ -190,9 +194,11 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
       return { page }; // a failed load, or a hop the guard stopped
     }
   };
-  const stopped = (p: Page) => state.offSite || p.isClosed();
-  /** STOPPED_OFF_SITE and, when known, where the main frame was going (a fixed code, never the URL). */
-  const offSiteLine = () => `${mode} STOPPED_OFF_SITE${state.offSiteDetail ? ` ${state.offSiteDetail}` : ""}`;
+  const stopped = (p: Page) => state.offSite || state.wall !== undefined || p.isClosed();
+  const challenge = () => (state.wall !== undefined && wallReason(state.wall) === "CHALLENGE" ? " CHALLENGE_PRESENT" : "");
+  /** Why sampling stopped: a wall the page was sent to, or STOPPED_OFF_SITE with where it was going (fixed codes, never the URL). */
+  const stopLine = () =>
+    state.wall !== undefined && !state.offSite ? `${mode} STOPPED_WALL${challenge()}` : `${mode} STOPPED_OFF_SITE${state.offSiteDetail ? ` ${state.offSiteDetail}` : ""}`;
   /** Samples the page over time; false when it left the site on the way. */
   const sample = async (page: Page): Promise<boolean> => {
     const start = Date.now();
@@ -202,7 +208,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
       const codes = stopped(page) ? [] : await pageCodes(page);
       // Codes read while the page was leaving the site are not printed.
       if (stopped(page)) {
-        say(offSiteLine());
+        say(stopLine());
         return false;
       }
       say(`${mode} t=${Math.round(at / 1000)}s ${codes.join(" ")}`);
@@ -212,13 +218,13 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   };
 
   const { page, status } = await load(target.url);
-  if (stopped(page)) {
-    say(offSiteLine());
+  if (state.offSite || (state.wall === undefined && page.isClosed())) {
+    say(stopLine());
     return;
   }
   // The guard stopped a redirect to a sign-in / challenge page (never loaded): nothing to sample.
   if (state.wall !== undefined) {
-    say(`${mode} ${MODES[mode].label} HTTP_OTHER${wallReason(state.wall) === "CHALLENGE" ? " CHALLENGE_PRESENT" : ""}`);
+    say(`${mode} ${MODES[mode].label} HTTP_OTHER${challenge()}`);
     await page.close().catch(() => undefined);
   } else {
     say(`${mode} ${MODES[mode].label} ${httpCode(status)}`);
@@ -243,7 +249,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
     await new Promise((r) => setTimeout(r, 500));
   }
   if (stopped(home)) {
-    say(offSiteLine());
+    say(stopLine());
     return;
   }
   say(`${mode} ${ok ? "SESSION_OK" : "SESSION_MISSING"}`);

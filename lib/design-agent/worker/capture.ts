@@ -96,7 +96,7 @@ export const PIXELATE_FACTOR = 10;
 export const POSTS = 'a[href*="/p/"], a[href*="/reel/"]';
 export const LOGIN_PATH = /^\/(accounts\/(login|signup|emailsignup)|challenge|checkpoint|suspended)/;
 /** The sign-in pages proper: a wall there is LOGIN_WALL; any other wall is CHALLENGE. */
-const SIGN_IN_PATH = /^\/accounts\/(login|signup|emailsignup)/;
+const SIGN_IN_PATH = /^\/accounts\/(login|signup|emailsignup)/i;
 /**
  * Instagram's own account pages that a session can be sent to instead of a
  * profile: sign-in, challenge / checkpoint, the newer verification flow
@@ -105,7 +105,7 @@ const SIGN_IN_PATH = /^\/accounts\/(login|signup|emailsignup)/;
  * the capture stops for a person instead of reporting OFF_SITE_REDIRECT.
  */
 export const ACCOUNT_WALL_PATH =
-  /^\/(accounts\/(login|signup|emailsignup|suspended|disabled|onetap|consent|confirm_email|two_factor)|auth_platform|challenge|checkpoint|suspended|consent|privacy\/checks|terms\/unblock)(\/|$)/;
+  /^\/(accounts\/(login|signup|emailsignup|suspended|disabled|onetap|consent|confirm_email|two_factor)|auth_platform|challenge|checkpoint|suspended|consent|privacy\/checks|terms\/unblock)(\/|$)/i;
 const MAX_HOPS = 4;
 
 /** The wall a sign-in / challenge URL stands for. */
@@ -365,7 +365,7 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
             return void (await fail());
           }
           if (guardOptions.walls !== false && LOGIN_PATH.test(new URL(url).pathname)) {
-            state.wall = url;
+            state.wall ??= url;
             return void (await fail());
           }
         }
@@ -626,14 +626,17 @@ export async function captureInContext(context: BrowserContext, options: Context
       }
     }
     if (files.length === 0) throw new Unavailable("EMPTY_PAGE");
+    // A move the guard stopped while the screenshots were taken: they may show what was left behind.
+    assertNavigation(state);
     return { status: "captured", files, posts: postCount, softened };
   } catch (error) {
     // The page tried to leave the site (stopped before any request went out). That decides, whatever
     // the page shows afterwards: the blocked navigation can leave an error page behind that looks
     // like a signed-out or empty page.
     if (state.offSite) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "OFF_SITE_REDIRECT", ...(state.offSiteDetail ? { detail: state.offSiteDetail } : {}) };
-    // Likewise a move to a wall the guard stopped (the page may have been closed on the way).
-    if (state.wall !== undefined && !(error instanceof Unavailable)) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: wallReason(state.wall) };
+    // Likewise a move to a wall the guard stopped: whatever the error page left behind looks like
+    // (off the site, signed out, empty), the wall is the answer.
+    if (state.wall !== undefined) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: wallReason(state.wall) };
     if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) };
     return { status: "retry", reason: error instanceof Retry ? error.reason : "CAPTURE_ERROR" };
   }
