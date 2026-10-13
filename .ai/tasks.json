@@ -1530,7 +1530,7 @@
     {
       "id": "DEV-033",
       "title": "Capture: name Instagram account-page redirects as a wall, and say where a refused move was going",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-028",
@@ -1564,7 +1564,7 @@
         "approving the new commit for the capture helper (root, admin.sh approve)"
       ],
       "attempts": 0,
-      "last_failure": "",
+      "last_failure": "Three fresh reviews (Critical/High/Medium 0 after fixes; .ai/reviews/DEV-033.md), CI green. Helper reflects it only after a person approves the merged commit (admin.sh approve). The real destination of the Staging PoC redirect is known only after the next run.",
       "branch": "feature/dev-033-capture-wall-classification"
     }
   ]

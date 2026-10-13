@@ -638,9 +638,9 @@ export async function captureInContext(context: BrowserContext, options: Context
     // the page shows afterwards: the blocked navigation can leave an error page behind that looks
     // like a signed-out or empty page.
     if (state.offSite) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "OFF_SITE_REDIRECT", ...(state.offSiteDetail ? { detail: state.offSiteDetail } : {}) };
+    if (state.tooManyRedirects) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "TOO_MANY_REDIRECTS" };
     // Likewise a move to a wall the guard stopped: whatever the error page left behind looks like
     // (off the site, signed out, empty), the wall is the answer.
-    if (state.tooManyRedirects) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "TOO_MANY_REDIRECTS" };
     if (state.wall !== undefined) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: wallReason(state.wall) };
     if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) };
     return { status: "retry", reason: error instanceof Retry ? error.reason : "CAPTURE_ERROR" };

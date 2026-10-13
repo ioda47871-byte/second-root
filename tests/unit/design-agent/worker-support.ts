@@ -104,7 +104,14 @@ export async function startMockSite(): Promise<MockSite> {
       case "/li_timer_wall/":
         return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{location.href="/auth_platform/codeentry/";},400);</script></body>`));
       case "/li_pushstate_login/":
-        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{history.pushState({}, "", "/challenge/x/");},100);</script></body>`));
+        // After capture's checks (when its blur style lands), so only the guard's history watch can see it.
+        return send(
+          200,
+          signedIn(profileBody(3)).replace(
+            "</body>",
+            `<script>const o=new MutationObserver(()=>{if(Array.from(document.querySelectorAll("style")).some((s)=>(s.textContent||"").includes("blur(6px)"))){o.disconnect();history.pushState({}, "", "/challenge/x/");}});o.observe(document.documentElement,{childList:true,subtree:true});</script></body>`,
+          ),
+        );
       case "/li_pushstate_wall/":
         return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{history.pushState({}, "", "/accounts/onetap/");},100);</script></body>`));
       case "/li_pushstate/":
