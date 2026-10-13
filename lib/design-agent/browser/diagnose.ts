@@ -149,9 +149,23 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
     }
     void p.close().catch(() => undefined);
   });
-  const leave = (p: Page, detail?: NavigationState["offSiteDetail"]) => {
-    state.offSite = true;
-    state.offSiteDetail ??= detail;
+  /**
+   * Without interception (C): stops the run at a main-frame move the target refuses. The move may
+   * already have happened (nothing holds it back), so it is named by where it went, whichever event
+   * saw it first: an account page as the guard names it (a wall), else the kind of place off the site.
+   */
+  const refuse = (p: Page, url: string) => {
+    let kind: ReturnType<NonNullable<CaptureTarget["refusal"]>> | undefined;
+    try {
+      kind = target.refusal?.(url);
+    } catch {
+      kind = undefined;
+    }
+    if (kind === "wall") state.wall ??= url;
+    else {
+      state.offSite = true;
+      state.offSiteDetail ??= kind === "same_site" ? "OFF_SITE_SAME_SITE_PATH" : kind === "other_host" ? "OFF_SITE_OTHER_HOST" : undefined;
+    }
     void p.close().catch(() => undefined);
   };
   const newPage = async () => {
@@ -163,14 +177,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
       // request (redirect hops included) or page that is off the site.
       p.on("request", (request) => {
         try {
-          if (request.isNavigationRequest() && request.frame() === p.mainFrame() && !target.allowNavigation(request.url())) {
-            const kind = target.refusal?.(request.url());
-            if (kind === "wall") {
-              // As the guard names it (A / B): an account page is a wall, not a place off the site.
-              state.wall ??= request.url();
-              void p.close().catch(() => undefined);
-            } else leave(p, kind === "same_site" ? "OFF_SITE_SAME_SITE_PATH" : kind === "other_host" ? "OFF_SITE_OTHER_HOST" : undefined);
-          }
+          if (request.isNavigationRequest() && request.frame() === p.mainFrame() && !target.allowNavigation(request.url())) refuse(p, request.url());
         } catch {
           // a request without a frame yet (a popup's); popups are closed above
         }
@@ -179,7 +186,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
         const url = frame.url();
         // about:blank(#blocked) and a failed load's error page are not a place the page went.
         if (url.startsWith("about:") || url.startsWith("chrome-error:")) return;
-        if (frame === p.mainFrame() && !target.allowNavigation(url)) leave(p, "OFF_SITE_IN_PAGE");
+        if (frame === p.mainFrame() && !target.allowNavigation(url)) refuse(p, url);
       });
     }
     return p;

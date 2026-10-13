@@ -438,6 +438,10 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
         if (!target.allowNavigation(url)) {
           refused(url, "in_page");
           void page.close().catch(() => undefined);
+        } else if (guardOptions.walls !== false && LOGIN_PATH.test(new URL(url).pathname)) {
+          // A history move to a sign-in / challenge path (allowed only so the guard can stop it as a wall).
+          state.wall ??= url;
+          void page.close().catch(() => undefined);
         }
       });
       return page;
@@ -636,6 +640,7 @@ export async function captureInContext(context: BrowserContext, options: Context
     if (state.offSite) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "OFF_SITE_REDIRECT", ...(state.offSiteDetail ? { detail: state.offSiteDetail } : {}) };
     // Likewise a move to a wall the guard stopped: whatever the error page left behind looks like
     // (off the site, signed out, empty), the wall is the answer.
+    if (state.tooManyRedirects) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "TOO_MANY_REDIRECTS" };
     if (state.wall !== undefined) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: wallReason(state.wall) };
     if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) };
     return { status: "retry", reason: error instanceof Retry ? error.reason : "CAPTURE_ERROR" };

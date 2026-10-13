@@ -90,9 +90,21 @@ export async function startMockSite(): Promise<MockSite> {
         res.writeHead(302, { location: "/explore/" });
         return res.end();
       // The page changes its own address without a document request (history API).
-      // The page's own script sends it to an account page after it has loaded (after capture's settle wait).
+      // The page's own script sends it to an account page after capture's settle wait and checks: at the
+      // moment capture adds its blur style (right before the screenshots), not on a timer.
       case "/li_late_wall/":
-        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{location.href="/auth_platform/codeentry/";},380);</script></body>`));
+        return send(
+          200,
+          signedIn(profileBody(3)).replace(
+            "</body>",
+            `<script>const o=new MutationObserver(()=>{if(Array.from(document.querySelectorAll("style")).some((s)=>(s.textContent||"").includes("blur(6px)"))){o.disconnect();location.href="/auth_platform/codeentry/";}});o.observe(document.documentElement,{childList:true,subtree:true});</script></body>`,
+          ),
+        );
+      // Diagnose has no capture style to wait for: the page moves on a timer, well inside the sampling window.
+      case "/li_timer_wall/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{location.href="/auth_platform/codeentry/";},400);</script></body>`));
+      case "/li_pushstate_login/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{history.pushState({}, "", "/challenge/x/");},100);</script></body>`));
       case "/li_pushstate_wall/":
         return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{history.pushState({}, "", "/accounts/onetap/");},100);</script></body>`));
       case "/li_pushstate/":
