@@ -7,7 +7,7 @@ import { checkProfileLocation, checkProfileTree, prepareProfileDir, purgeOldCapt
 import { DIAGNOSE_CODES, runDiagnose, type DiagnoseMode } from "@/lib/design-agent/browser/diagnose";
 import { displayEnvironment, runLogin, runSignedInCapture, type LaunchPersistent } from "@/lib/design-agent/browser/session";
 import { childEnvironment } from "@/lib/design-agent/worker/env";
-import { hideAccountChrome } from "@/lib/design-agent/worker/capture";
+import { hideAccountChrome, profileTarget } from "@/lib/design-agent/worker/capture";
 import { acquireLock } from "@/lib/design-agent/worker/state";
 import { startMockSite, type MockSite } from "./worker-support";
 
@@ -314,6 +314,52 @@ describe("navigation guard (browser-native requests, every hop checked before it
     expect(site.requests.slice(before).some((r) => r.includes("/challenge/"))).toBe(false);
   });
 
+  describe("with the production target (only the profile itself), on the mock origin", () => {
+    // profileTarget is what instagramTarget builds; only the site check is the mock origin's.
+    const profileCapture = (s: ReturnType<typeof sandbox>, username: string) =>
+      runSignedInCapture({
+        profileDir: s.profile,
+        stateDir: s.state,
+        env: s.env,
+        target: profileTarget({ url: `${site.origin}/${username}/`, username }, (u) => u.startsWith(`${site.origin}/`)),
+        outDir: s.out,
+        launchPersistent,
+        settleMs: 300,
+      });
+
+    it("captures the profile itself", async () => {
+      const s = await signedInProfile();
+      expect((await profileCapture(s, "li_shop")).code).toBe("CAPTURED");
+    });
+
+    it.each([
+      ["the newer verification flow", "li_auth_platform", "/auth_platform/"],
+      ["the save-your-login page", "li_onetap", "/accounts/onetap/"],
+      ["a move the page's own script makes after it has loaded", "li_late_wall", "/auth_platform/"],
+      ["a history move to an account page", "li_pushstate_wall", "/accounts/onetap/"],
+      ["a history move to a challenge path", "li_pushstate_login", "/challenge/"],
+    ] as const)("stops a redirect to an account page (%s) as a challenge, before loading it", async (_label, username, path) => {
+      const s = await signedInProfile();
+      const before = site.requests.length;
+      expect(await profileCapture(s, username)).toMatchObject({ code: "INSTAGRAM_CHALLENGE", files: [] });
+      expect(site.requests.slice(before).some((r) => r.includes(path))).toBe(false);
+    });
+
+    it.each([
+      ["another host", "li_offsite", "OFF_SITE_OTHER_HOST"],
+      ["another page of the same site", "li_other_path", "OFF_SITE_SAME_SITE_PATH"],
+      ["a history move to another page", "li_pushstate", "OFF_SITE_IN_PAGE"],
+    ] as const)("says where a refused move was going (%s), as a fixed code", async (_label, username, detail) => {
+      const s = await signedInProfile();
+      const before = site.requests.length;
+      const result = await profileCapture(s, username);
+      expect(result).toMatchObject({ code: "PUBLIC_SOURCE_UNAVAILABLE", reason: detail, files: [] });
+      expect(offSiteHits(before)).toEqual([]);
+      expect(site.requests.slice(before).some((r) => r.endsWith("/explore/"))).toBe(false);
+      expect(JSON.stringify(result)).not.toMatch(/localhost|127\.0\.0\.1|explore|li_/);
+    });
+  });
+
   it("never lets a popup leave, and does not count an off-site frame as the page's navigation", async () => {
     const s = await signedInProfile();
     const before = site.requests.length;
@@ -360,7 +406,7 @@ describe("diagnose", () => {
     });
     return { outcome, lines };
   };
-  const STRUCTURE = /^(A|B|C)$|^t=\d+s$|^headless\+guard$|^headless\+no-interception$|^headed\+guard$|^STOPPED_OFF_SITE$|^SKIPPED_NO_DISPLAY$|^BROWSER_ERROR$/;
+  const STRUCTURE = /^(A|B|C)$|^t=\d+s$|^headless\+guard$|^headless\+no-interception$|^headed\+guard$|^STOPPED_OFF_SITE$|^STOPPED_WALL$|^OFF_SITE_(OTHER_HOST|SAME_SITE_PATH|IN_PAGE)$|^SKIPPED_NO_DISPLAY$|^BROWSER_ERROR$/;
   const onlyCodes = (lines: string[]) => {
     for (const word of lines.join(" ").split(/\s+/)) expect(DIAGNOSE_CODES.includes(word as never) || STRUCTURE.test(word), word).toBe(true);
   };
@@ -426,6 +472,43 @@ describe("diagnose", () => {
     expect(popup.lines).toEqual(["C headless+no-interception HTTP_200", "C t=0s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT", "C t=2s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT", "C SESSION_OK"]);
     const all = (await diagnose(s, "li_shop", { modes: ["A", "C"], samples: [200] })).lines.join("\n");
     expect(all).not.toMatch(/li_shop|example_shop|Fictional|LEAK|localhost|127\.0\.0\.1|http|sr-instagram-browser|fake_session/);
+  });
+
+  it("with the production target: names a refused move and an account-page wall, and does not open the home page", async () => {
+    const s = await signedInProfile();
+    const as = (username: string) => profileTarget({ url: `${site.origin}/${username}/`, username }, (u) => u.startsWith(`${site.origin}/`));
+    const run = async (username: string, modes: DiagnoseMode[]) => {
+      const lines: string[] = [];
+      await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent, modes, sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, homeUrl: `${site.origin}/home_signed_in/`, hasDisplay: false, say: (l) => lines.push(l) });
+      onlyCodes(lines);
+      return lines;
+    };
+    const lateLines: string[] = [];
+    const before = site.requests.length;
+    // the profile itself; the home page is not the target, so the session is not checked (and not loaded)
+    expect(await run("li_shop", ["A", "C"])).toEqual([
+      "A headless+guard HTTP_200",
+      "A t=0s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT",
+      "A SESSION_NOT_CHECKED",
+      "C headless+no-interception HTTP_200",
+      "C t=0s MAIN_PRESENT HEADER_PRESENT POSTS_PRESENT SIGNED_IN_NAV_PRESENT",
+      "C SESSION_NOT_CHECKED",
+    ]);
+    expect(site.requests.slice(before).some((r) => r.includes("home_signed_in"))).toBe(false);
+    expect((await run("li_auth_platform", ["A"]))[0]).toBe("A headless+guard HTTP_OTHER CHALLENGE_PRESENT");
+    expect(await run("li_other_path", ["A"])).toEqual(["A STOPPED_OFF_SITE OFF_SITE_SAME_SITE_PATH"]);
+    expect(await run("li_offsite", ["A"])).toEqual(["A STOPPED_OFF_SITE OFF_SITE_OTHER_HOST"]);
+    expect(await run("li_offsite", ["C"])).toEqual(["C STOPPED_OFF_SITE OFF_SITE_OTHER_HOST"]);
+    expect((await run("li_pushstate", ["A"])).at(-1)).toBe("A STOPPED_OFF_SITE OFF_SITE_IN_PAGE");
+    // without interception a move is named by where it went (whichever event saw it first)
+    expect((await run("li_pushstate", ["C"])).at(-1)).toBe("C STOPPED_OFF_SITE OFF_SITE_SAME_SITE_PATH");
+    // without interception an account page is named as the guard names it (its first request may be out)
+    expect((await run("li_auth_platform", ["C"]))[0]).toBe("C headless+no-interception HTTP_OTHER CHALLENGE_PRESENT");
+    // a wall the page is sent to while it is being sampled stops the sampling
+    const late = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as("li_timer_wall"), launchPersistent, modes: ["A"], sampleAtMs: [100, 1_500], pauseMs: 0, sessionWaitMs: 1_000, hasDisplay: false, say: (l) => lateLines.push(l) });
+    expect(late).toBe("DIAGNOSED");
+    expect(lateLines.at(-1)).toBe("A STOPPED_WALL CHALLENGE_PRESENT");
+    onlyCodes(lateLines);
   });
 
   it("runs the headed check only with a display, and refuses to run without a profile or while it is in use", async () => {

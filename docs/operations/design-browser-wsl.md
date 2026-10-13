@@ -92,8 +92,11 @@ cd ~/work/second-root && npm run -s sales:design-browser -- capture --source-fil
 **移動の見張り（guard）**
 - capture のタブの document request（本体・frame・redirect の各 hop）は、送る前に Chromium の中（CDP Fetch）で止めて確かめる
 - Instagram 内なら、browser が作ったままの request を送る（`sec-fetch-*`・言語・cookie・user agent を変えない）
-- Instagram の外は送らずに止める。本体が外へ行こうとしたら `PUBLIC_SOURCE_UNAVAILABLE (OFF_SITE_REDIRECT)`
-- ログイン・確認画面への redirect も、読み込まずに止める
+- 許可は対象の profile のページと、ログイン・確認画面（止めるため）だけ。それ以外は送らずに止める。本体がそこへ行こうとしたら `PUBLIC_SOURCE_UNAVAILABLE`。理由は行き先の種類の固定 code（URL は出さない）:
+  - `OFF_SITE_OTHER_HOST`: Instagram 以外の host
+  - `OFF_SITE_SAME_SITE_PATH`: Instagram の別のページ（ホーム・explore など）
+  - `OFF_SITE_IN_PAGE`: request を伴わないページ内の移動（history API）など
+- ログイン・確認画面への redirect も、読み込まずに止める。Instagram のアカウント用ページ（`/auth_platform/`・`/accounts/suspended|disabled|onetap|consent/`・`/consent/`・`/privacy/checks/`・`/terms/unblock/` など）も同じく確認画面として `INSTAGRAM_CHALLENGE` で止める（2026-10-13 まではこれらが `OFF_SITE_REDIRECT` になり、helper が止まらなかった）。許可の範囲は変えていない
 - 別 process で動く frame（sandbox 付きの iframe など）も、始まる前に止めて同じ確認を付けてから動かす
 - prerender は止める。それでも本体が Instagram の外に出たら、その時点で撮影をやめる
 - popup は一切移動させない。外の frame は止めるが、本体の移動とは数えない
@@ -128,7 +131,9 @@ cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-fi
 | `B` | 画面あり（WSLg）、guard あり。入力・クリック・スクロールはしない。画面が無ければ `SKIPPED_NO_DISPLAY` |
 
 - A と B は capture と同じく、Instagram 内の redirect を 1 hop ずつ手で辿る
-- 各 run の最後に、新しいタブで Instagram のホームを開き、最大 15 秒待って `SESSION_OK` / `SESSION_MISSING` を出す
+- 各 run の最後に、新しいタブで Instagram のホームを開き、最大 15 秒待って `SESSION_OK` / `SESSION_MISSING` を出す。ただし capture と同じ target（対象の profile だけを許可）ではホームを開かず `SESSION_NOT_CHECKED` を出す（2026-10-01 以降の本番。ログインが生きているかは、対象ページの `SIGNED_IN_NAV_PRESENT` で見る）
+- 読み込んだ後でアカウント用のページへ移ろうとしたときは `STOPPED_WALL`。C（interception なし）でも、アカウント用のページは A と同じく `HTTP_OTHER CHALLENGE_PRESENT` と出す（ただし C は最初の 1 リクエストを止められない）
+- 外へ出て止めたときは `STOPPED_OFF_SITE` の後に、分かれば行き先の種類（`OFF_SITE_OTHER_HOST` / `OFF_SITE_SAME_SITE_PATH` / `OFF_SITE_IN_PAGE`）を出す。C は移動を止められず、request と移動のどちらが先に見えるかも決まらないので、行き先の種類（`OTHER_HOST` / `SAME_SITE_PATH`）だけで名付ける（ページ内の移動も `SAME_SITE_PATH`）
 - どの run も browser が起動できなかったときは `DIAGNOSE_FAILED`（終了コード 4）
 - 出る符号は `HTTP_200` / `HTTP_404` / `HTTP_OTHER`、`MAIN_*` / `HEADER_*` / `POSTS_*`（`PRESENT` / `MISSING`）、`BODY_PRIVATE_MARKER`、`BODY_UNAVAILABLE_MARKER`、`SIGNED_IN_NAV_PRESENT`、`CHALLENGE_PRESENT`、`CAPTCHA_PRESENT` だけ
 - username・bio・キャプション・cookie・token・ページの文・URL は出さない。画像も保存しない
@@ -137,7 +142,10 @@ cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-fi
 読み方:
 - A だけ unavailable、C は posts あり → guard が原因（2026-09-30 に見つけた旧 guard の問題: 送り直した request に browser 自身の `sec-fetch-*` / `accept-language` が付かなかった。修正済み）
 - A と C が unavailable、B は posts あり → headless の違い
-- 全部 unavailable で `SESSION_MISSING` → ログインが切れている
+- 全部 unavailable で `SESSION_MISSING` → ログインが切れている（本番の target では `SESSION_NOT_CHECKED` になるので、対象ページで `SIGNED_IN_NAV_PRESENT` が出るかで見る。出なければログインが切れている）
+- `STOPPED_WALL`（`CHALLENGE_PRESENT` 付きのことがある）→ 読み込んだ後で、ページがログイン・確認・アカウント用のページへ移ろうとした（読み込まずに止めた）
+- A が `HTTP_OTHER CHALLENGE_PRESENT` → Instagram がログイン・確認・アカウント用のページへ送っている。回避しない。人が headed login で様子を見る
+- A が `STOPPED_OFF_SITE OFF_SITE_SAME_SITE_PATH` → 対象以外の Instagram のページへ送られている（未知のアカウント用ページの可能性。許可は広げずに報告する）
 - 最初だけ `BODY_UNAVAILABLE_MARKER` で後から `POSTS_PRESENT` → 表示途中の文を拾っている（capture は 5 秒後に判断する）
 - 全部 unavailable で `SESSION_OK` → 残る違いは capture 共通の設定（service worker を止める・CSP 無視・画面サイズ固定・`ja-JP`）
 

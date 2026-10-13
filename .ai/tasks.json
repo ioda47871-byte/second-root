@@ -1526,6 +1526,46 @@
       "attempts": 0,
       "last_failure": "2026-10-09: PR #49 を develop へ merge（head 12a02f2、merge 7a03f7a）。fresh review Critical / High / Medium 0（.ai/reviews/DEV-032.md）。Staging への hash の設定は Staging bring-up で行う。",
       "branch": "feature/dev-032-bridge-token-hash"
+    },
+    {
+      "id": "DEV-033",
+      "title": "Capture: name Instagram account-page redirects as a wall, and say where a refused move was going",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-028",
+        "DEV-030"
+      ],
+      "purpose": "Staging PoC (2026-10-13, demo b2048c61…, worker bfd9558): the signed-in helper answered PUBLIC_SOURCE_UNAVAILABLE (OFF_SITE_REDIRECT) and the public fallback LOGIN_WALL, so the demo closed as blocked. Since 22deca0 (2026-10-01) the target allows only the profile itself and the sign-in / challenge paths; a redirect to any other Instagram account page (auth_platform, accounts/suspended, onetap, consent ...) was reported as off-site, the helper did not stop for a person, and nothing said where the page was going. diagnose's session check also opened the home page, which the same target refuses, so it printed STOPPED_OFF_SITE instead of a session state.",
+      "acceptance_criteria": [
+        "allowNavigation unchanged (no wider guard): every refused request is still failed before it is sent",
+        "a refused main-frame move to an Instagram account page is a wall (CHALLENGE → INSTAGRAM_CHALLENGE; sign-in pages stay LOGIN_WALL), so the helper records the wall and stops",
+        "OFF_SITE_REDIRECT carries a fixed detail code: OFF_SITE_OTHER_HOST / OFF_SITE_SAME_SITE_PATH / OFF_SITE_IN_PAGE; never a URL, username or page text",
+        "diagnose: STOPPED_OFF_SITE with the same detail; the home page is not opened when the target refuses it (SESSION_NOT_CHECKED)",
+        "tests run the production predicate (profileTarget) against the mock origin"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent/browser.test.ts, worker-source-url.test.ts, guardrails, full npm test"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "tests/",
+        "docs/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "widening allowNavigation or adding hosts",
+        "Production",
+        "login automation, cookie copying, working around a wall",
+        "supabase/migrations/"
+      ],
+      "human_approval_triggers": [
+        "any change to what the guard lets through",
+        "approving the new commit for the capture helper (root, admin.sh approve)"
+      ],
+      "attempts": 0,
+      "last_failure": "Three fresh reviews (Critical/High/Medium 0 after fixes; .ai/reviews/DEV-033.md), CI green. Helper reflects it only after a person approves the merged commit (admin.sh approve). The real destination of the Staging PoC redirect is known only after the next run.",
+      "branch": "feature/dev-033-capture-wall-classification"
     }
   ]
 }

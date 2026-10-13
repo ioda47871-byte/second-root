@@ -34,20 +34,36 @@ export type CaptureTarget = {
   url: string;
   /** Whether the browser may navigate to this URL (every hop and the final page). */
   allowNavigation(url: string): boolean;
+  /**
+   * What a refused main-frame navigation was (diagnosis and the wall only; it
+   * never lets anything through): one of the site's own account pages that
+   * stand between a session and the profile (a wall), another page of the
+   * same site, or another host. Without it a refusal is OFF_SITE_REDIRECT.
+   */
+  refusal?(url: string): "wall" | "same_site" | "other_host";
 };
 
 /** The only target the worker builds for a job. */
 export function instagramTarget(source: ProfileSource): CaptureTarget {
-  // Only this profile's own page, or a sign-in / challenge page (the guard stops those as a wall):
-  // never the signed-in account's other pages (activity, settings, messages ...).
+  return profileTarget(source, isInstagramUrl);
+}
+
+/**
+ * Only this profile's own page, or a sign-in / challenge page (the guard
+ * stops those as a wall): never the signed-in account's other pages
+ * (activity, settings, messages ...). `isSite` is isInstagramUrl in
+ * production (tests: a local mock origin).
+ */
+export function profileTarget(source: ProfileSource, isSite: (url: string) => boolean): CaptureTarget {
   const own = new RegExp(`^/${source.username.replace(/\./g, "\\.")}/?$`, "i");
   return {
     url: source.url,
     allowNavigation: (raw: string) => {
-      if (!isInstagramUrl(raw)) return false;
+      if (!isSite(raw)) return false;
       const path = new URL(raw).pathname;
       return own.test(path) || LOGIN_PATH.test(path);
     },
+    refusal: (raw: string) => (!isSite(raw) ? "other_host" : ACCOUNT_WALL_PATH.test(new URL(raw).pathname) ? "wall" : "same_site"),
   };
 }
 
@@ -79,10 +95,42 @@ export const MEDIA_CSS = `img, video, picture, canvas, svg image, [style*="backg
 export const PIXELATE_FACTOR = 10;
 export const POSTS = 'a[href*="/p/"], a[href*="/reel/"]';
 export const LOGIN_PATH = /^\/(accounts\/(login|signup|emailsignup)|challenge|checkpoint|suspended)/;
+/** The sign-in pages proper: a wall there is LOGIN_WALL; any other wall is CHALLENGE. */
+const SIGN_IN_PATH = /^\/accounts\/(login|signup|emailsignup)/i;
+/**
+ * Instagram's own account pages that a session can be sent to instead of a
+ * profile: sign-in, challenge / checkpoint, the newer verification flow
+ * (auth_platform), suspension, consent, privacy checks, "save your login".
+ * Never navigated to (the guard fails the request); only named as a wall, so
+ * the capture stops for a person instead of reporting OFF_SITE_REDIRECT.
+ */
+export const ACCOUNT_WALL_PATH =
+  /^\/(accounts\/(login|signup|emailsignup|suspended|disabled|onetap|consent|confirm_email|two_factor)|auth_platform|challenge|checkpoint|suspended|consent|privacy\/checks|terms\/unblock)(\/|$)/i;
 const MAX_HOPS = 4;
 
-/** Which signal made PRIVATE_OR_MISSING (diagnosis only; the reason stays the same). */
-export type UnavailableDetail = "HTTP_404" | "HTTP_410" | "BODY_PRIVATE" | "BODY_PAGE_UNAVAILABLE";
+/** The wall a sign-in / challenge URL stands for. */
+export function wallReason(url: string): "LOGIN_WALL" | "CHALLENGE" {
+  try {
+    return SIGN_IN_PATH.test(new URL(url).pathname) ? "LOGIN_WALL" : "CHALLENGE";
+  } catch {
+    return "CHALLENGE";
+  }
+}
+
+/**
+ * Which signal made PRIVATE_OR_MISSING, or where a refused main-frame
+ * navigation was going for OFF_SITE_REDIRECT (diagnosis only, fixed codes, never the URL):
+ * another host, another page of the same site, or a move the page made without
+ * a document request (history API) or that the guard saw only after it happened.
+ */
+export type UnavailableDetail =
+  | "HTTP_404"
+  | "HTTP_410"
+  | "BODY_PRIVATE"
+  | "BODY_PAGE_UNAVAILABLE"
+  | "OFF_SITE_OTHER_HOST"
+  | "OFF_SITE_SAME_SITE_PATH"
+  | "OFF_SITE_IN_PAGE";
 
 export class Unavailable extends Error {
   constructor(
@@ -186,7 +234,7 @@ async function visibleText(page: Page, selector: string, max: number): Promise<s
 async function assertPublicPage(page: Page, target: CaptureTarget): Promise<void> {
   const current = page.url();
   if (!target.allowNavigation(current)) throw new Unavailable("OFF_SITE_REDIRECT");
-  if (LOGIN_PATH.test(new URL(current).pathname)) throw new Unavailable(/challenge|checkpoint|suspended/.test(current) ? "CHALLENGE" : "LOGIN_WALL");
+  if (LOGIN_PATH.test(new URL(current).pathname)) throw new Unavailable(wallReason(current));
   if (await page.locator(LOGIN_FORM_SELECTOR).first().isVisible().catch(() => false)) throw new Unavailable("LOGIN_WALL");
   if (await page.locator(CAPTCHA_SELECTOR).count().catch(() => 0)) throw new Unavailable("CAPTCHA");
   const dialog = await visibleText(page, '[role="dialog"]', 600);
@@ -202,6 +250,8 @@ async function assertPublicPage(page: Page, target: CaptureTarget): Promise<void
 export type NavigationState = {
   /** The page tried to go off the allowed site (the request was never sent). */
   offSite: boolean;
+  /** Where the first such main-frame move was going (a fixed code). */
+  offSiteDetail?: UnavailableDetail;
   /** The page was sent to a sign-in / challenge path (the request was never sent). */
   wall?: string;
   /** More than MAX_HOPS redirects in one navigation. */
@@ -251,6 +301,21 @@ export interface GuardOptions {
 export async function guardNavigation(context: BrowserContext, target: CaptureTarget, state: NavigationState, guardOptions: GuardOptions = {}): Promise<NavigationGuard> {
   const guarded = new WeakSet<Page>();
   const hostOk = async (url: string) => !guardOptions.hostCheck || (await guardOptions.hostCheck(url).catch(() => false));
+  /** Records a refused main-frame move (the move itself is stopped by the caller). */
+  const refused = (url: string, how: "request" | "in_page") => {
+    let kind: ReturnType<NonNullable<CaptureTarget["refusal"]>> | undefined;
+    try {
+      kind = target.refusal?.(url);
+    } catch {
+      kind = undefined;
+    }
+    if (kind === "wall" && guardOptions.walls !== false) {
+      state.wall ??= url;
+      return;
+    }
+    state.offSite = true;
+    state.offSiteDetail ??= how === "in_page" ? "OFF_SITE_IN_PAGE" : kind === "same_site" ? "OFF_SITE_SAME_SITE_PATH" : kind === "other_host" ? "OFF_SITE_OTHER_HOST" : undefined;
+  };
   await context.route("**/*", (route) => handle(route).catch(() => route.abort("failed").catch(() => undefined)));
   async function handle(route: Route): Promise<void> {
     const request = route.request();
@@ -287,7 +352,8 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
         const fail = () => send("Fetch.failRequest", { requestId: event.requestId, errorReason: "BlockedByClient" });
         const url = event.request.url;
         if (!target.allowNavigation(url) || !(await hostOk(url))) {
-          if (main) state.offSite = true;
+          // Refused either way; in the main frame, an account page of the site is a wall, anything else off-site.
+          if (main) refused(url, "request");
           return void (await fail());
         }
         if (main) {
@@ -299,7 +365,7 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
             return void (await fail());
           }
           if (guardOptions.walls !== false && LOGIN_PATH.test(new URL(url).pathname)) {
-            state.wall = url;
+            state.wall ??= url;
             return void (await fail());
           }
         }
@@ -370,7 +436,11 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
         const url = frame.url();
         if (frame !== page.mainFrame() || url.startsWith("about:") || url.startsWith("chrome-error:")) return;
         if (!target.allowNavigation(url)) {
-          state.offSite = true;
+          refused(url, "in_page");
+          void page.close().catch(() => undefined);
+        } else if (guardOptions.walls !== false && LOGIN_PATH.test(new URL(url).pathname)) {
+          // A history move to a sign-in / challenge path (allowed only so the guard can stop it as a wall).
+          state.wall ??= url;
           void page.close().catch(() => undefined);
         }
       });
@@ -381,9 +451,9 @@ export async function guardNavigation(context: BrowserContext, target: CaptureTa
 
 /** Ends the capture when the guard stopped the page's own navigation. */
 export function assertNavigation(state: NavigationState): void {
-  if (state.offSite) throw new Unavailable("OFF_SITE_REDIRECT");
+  if (state.offSite) throw new Unavailable("OFF_SITE_REDIRECT", state.offSiteDetail);
   if (state.tooManyRedirects) throw new Unavailable("TOO_MANY_REDIRECTS");
-  if (state.wall !== undefined) throw new Unavailable(/challenge|checkpoint|suspended/.test(state.wall) ? "CHALLENGE" : "LOGIN_WALL");
+  if (state.wall !== undefined) throw new Unavailable(wallReason(state.wall));
 }
 
 /** Opens the target in a guarded tab; the browser follows allowed redirects itself. */
@@ -560,12 +630,18 @@ export async function captureInContext(context: BrowserContext, options: Context
       }
     }
     if (files.length === 0) throw new Unavailable("EMPTY_PAGE");
+    // A move the guard stopped while the screenshots were taken: they may show what was left behind.
+    assertNavigation(state);
     return { status: "captured", files, posts: postCount, softened };
   } catch (error) {
     // The page tried to leave the site (stopped before any request went out). That decides, whatever
     // the page shows afterwards: the blocked navigation can leave an error page behind that looks
     // like a signed-out or empty page.
-    if (state.offSite) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "OFF_SITE_REDIRECT" };
+    if (state.offSite) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "OFF_SITE_REDIRECT", ...(state.offSiteDetail ? { detail: state.offSiteDetail } : {}) };
+    if (state.tooManyRedirects) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: "TOO_MANY_REDIRECTS" };
+    // Likewise a move to a wall the guard stopped: whatever the error page left behind looks like
+    // (off the site, signed out, empty), the wall is the answer.
+    if (state.wall !== undefined) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: wallReason(state.wall) };
     if (error instanceof Unavailable) return { status: "PUBLIC_SOURCE_UNAVAILABLE", reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) };
     return { status: "retry", reason: error instanceof Retry ? error.reason : "CAPTURE_ERROR" };
   }

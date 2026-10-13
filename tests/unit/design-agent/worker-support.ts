@@ -78,6 +78,44 @@ export async function startMockSite(): Promise<MockSite> {
       case "/li_challenge/":
         res.writeHead(302, { location: "/challenge/abc/" });
         return res.end();
+      // An account page a session can be sent to instead of a profile (the newer verification flow).
+      case "/li_auth_platform/":
+        res.writeHead(302, { location: "/auth_platform/codeentry/?apc=x" });
+        return res.end();
+      case "/li_onetap/":
+        res.writeHead(302, { location: "/accounts/onetap/?next=%2Fli_onetap%2F" });
+        return res.end();
+      // Another page of the same site (not the profile, not an account page).
+      case "/li_other_path/":
+        res.writeHead(302, { location: "/explore/" });
+        return res.end();
+      // The page changes its own address without a document request (history API).
+      // The page's own script sends it to an account page after capture's settle wait and checks: at the
+      // moment capture adds its blur style (right before the screenshots), not on a timer.
+      case "/li_late_wall/":
+        return send(
+          200,
+          signedIn(profileBody(3)).replace(
+            "</body>",
+            `<script>const o=new MutationObserver(()=>{if(Array.from(document.querySelectorAll("style")).some((s)=>(s.textContent||"").includes("blur(6px)"))){o.disconnect();location.href="/auth_platform/codeentry/";}});o.observe(document.documentElement,{childList:true,subtree:true});</script></body>`,
+          ),
+        );
+      // Diagnose has no capture style to wait for: the page moves on a timer, well inside the sampling window.
+      case "/li_timer_wall/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{location.href="/auth_platform/codeentry/";},400);</script></body>`));
+      case "/li_pushstate_login/":
+        // After capture's checks (when its blur style lands), so only the guard's history watch can see it.
+        return send(
+          200,
+          signedIn(profileBody(3)).replace(
+            "</body>",
+            `<script>const o=new MutationObserver(()=>{if(Array.from(document.querySelectorAll("style")).some((s)=>(s.textContent||"").includes("blur(6px)"))){o.disconnect();history.pushState({}, "", "/challenge/x/");}});o.observe(document.documentElement,{childList:true,subtree:true});</script></body>`,
+          ),
+        );
+      case "/li_pushstate_wall/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{history.pushState({}, "", "/accounts/onetap/");},100);</script></body>`));
+      case "/li_pushstate/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{history.pushState({}, "", "/explore/");},100);</script></body>`));
       case "/login_page/":
         return send(200, page(`<form><input name="username"><input name="password" type="password"><button>Log in</button></form>`));
       case "/li_jp/":
