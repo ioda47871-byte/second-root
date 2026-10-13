@@ -31,6 +31,7 @@ import {
   POSTS,
   PRIVATE_MARKER,
   SIGNED_IN,
+  wallReason,
   type CaptureTarget,
   type NavigationState,
 } from "../worker/capture";
@@ -41,6 +42,8 @@ import { displayEnvironment, INSTAGRAM_HOME, type LaunchPersistent } from "./ses
 export const DIAGNOSE_CODES = [
   "SESSION_OK",
   "SESSION_MISSING",
+  /** The session check page is outside the target (the guard refuses it); nothing was opened. */
+  "SESSION_NOT_CHECKED",
   "HTTP_200",
   "HTTP_404",
   "HTTP_OTHER",
@@ -146,8 +149,9 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
     }
     void p.close().catch(() => undefined);
   });
-  const leave = (p: Page) => {
+  const leave = (p: Page, detail?: NavigationState["offSiteDetail"]) => {
     state.offSite = true;
+    state.offSiteDetail ??= detail;
     void p.close().catch(() => undefined);
   };
   const newPage = async () => {
@@ -159,7 +163,10 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
       // request (redirect hops included) or page that is off the site.
       p.on("request", (request) => {
         try {
-          if (request.isNavigationRequest() && request.frame() === p.mainFrame() && !target.allowNavigation(request.url())) leave(p);
+          if (request.isNavigationRequest() && request.frame() === p.mainFrame() && !target.allowNavigation(request.url())) {
+            const kind = target.refusal?.(request.url());
+            leave(p, kind === "same_site" || kind === "wall" ? "OFF_SITE_SAME_SITE_PATH" : kind === "other_host" ? "OFF_SITE_OTHER_HOST" : undefined);
+          }
         } catch {
           // a request without a frame yet (a popup's); popups are closed above
         }
@@ -168,7 +175,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
         const url = frame.url();
         // about:blank(#blocked) and a failed load's error page are not a place the page went.
         if (url.startsWith("about:") || url.startsWith("chrome-error:")) return;
-        if (frame === p.mainFrame() && !target.allowNavigation(url)) leave(p);
+        if (frame === p.mainFrame() && !target.allowNavigation(url)) leave(p, "OFF_SITE_IN_PAGE");
       });
     }
     return p;
@@ -184,6 +191,8 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
     }
   };
   const stopped = (p: Page) => state.offSite || p.isClosed();
+  /** STOPPED_OFF_SITE and, when known, where the main frame was going (a fixed code, never the URL). */
+  const offSiteLine = () => `${mode} STOPPED_OFF_SITE${state.offSiteDetail ? ` ${state.offSiteDetail}` : ""}`;
   /** Samples the page over time; false when it left the site on the way. */
   const sample = async (page: Page): Promise<boolean> => {
     const start = Date.now();
@@ -193,7 +202,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
       const codes = stopped(page) ? [] : await pageCodes(page);
       // Codes read while the page was leaving the site are not printed.
       if (stopped(page)) {
-        say(`${mode} STOPPED_OFF_SITE`);
+        say(offSiteLine());
         return false;
       }
       say(`${mode} t=${Math.round(at / 1000)}s ${codes.join(" ")}`);
@@ -204,12 +213,12 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
 
   const { page, status } = await load(target.url);
   if (stopped(page)) {
-    say(`${mode} STOPPED_OFF_SITE`);
+    say(offSiteLine());
     return;
   }
   // The guard stopped a redirect to a sign-in / challenge page (never loaded): nothing to sample.
   if (state.wall !== undefined) {
-    say(`${mode} ${MODES[mode].label} HTTP_OTHER${/challenge|checkpoint|suspended/.test(state.wall) ? " CHALLENGE_PRESENT" : ""}`);
+    say(`${mode} ${MODES[mode].label} HTTP_OTHER${wallReason(state.wall) === "CHALLENGE" ? " CHALLENGE_PRESENT" : ""}`);
     await page.close().catch(() => undefined);
   } else {
     say(`${mode} ${MODES[mode].label} ${httpCode(status)}`);
@@ -217,7 +226,15 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   }
 
   // The signed-in navigation is drawn by script: look for it for a while before calling the session missing.
-  const { page: home } = await load(options.homeUrl ?? INSTAGRAM_HOME);
+  // The home page is not the target: when the target allows only the profile itself, it is not opened at
+  // all (C could not hold its first request back) and the session is reported as not checked, never as
+  // the target having left the site.
+  const homeUrl = options.homeUrl ?? INSTAGRAM_HOME;
+  if (!target.allowNavigation(homeUrl)) {
+    say(`${mode} SESSION_NOT_CHECKED`);
+    return;
+  }
+  const { page: home } = await load(homeUrl);
   const until = Date.now() + (options.sessionWaitMs ?? SESSION_WAIT_MS);
   let ok = false;
   while (!stopped(home)) {
@@ -226,7 +243,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
     await new Promise((r) => setTimeout(r, 500));
   }
   if (stopped(home)) {
-    say(`${mode} STOPPED_OFF_SITE`);
+    say(offSiteLine());
     return;
   }
   say(`${mode} ${ok ? "SESSION_OK" : "SESSION_MISSING"}`);

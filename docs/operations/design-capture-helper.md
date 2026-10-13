@@ -174,8 +174,8 @@ npm run -s sales:design-capture -- --request-id shop-001 --source-file ~/sr-desi
 |---|---|---|
 | `CAPTURED` | 撮れた。PNG は `~/.local/share/second-root-design/helper-captures/<id>/`（24 時間で消える） | 0 |
 | `LOGIN_REQUIRED (NO_PROFILE など)` | session が無い・切れた。表示された login コマンドを**人が**打つ。`(WAITING_FOR_PERSON)` は「前に壁に当たったので、人がログインするまで browser を開かない」 | 5 |
-| `INSTAGRAM_CHALLENGE` / `INSTAGRAM_CAPTCHA` | 確認を求められた。回避しない。人が様子を見る | 6 |
-| `PUBLIC_SOURCE_UNAVAILABLE (理由)` | 非公開・存在しない・外への移動など | 4 |
+| `INSTAGRAM_CHALLENGE` / `INSTAGRAM_CAPTCHA` | 確認を求められた（Instagram のアカウント用ページ `/auth_platform/`・`/accounts/suspended/` などへの redirect を含む）。回避しない。人が様子を見る | 6 |
+| `PUBLIC_SOURCE_UNAVAILABLE (理由)` | 非公開・存在しない・外への移動など。外への移動は行き先の種類で `OFF_SITE_OTHER_HOST` / `OFF_SITE_SAME_SITE_PATH` / `OFF_SITE_IN_PAGE`（分からないときは `OFF_SITE_REDIRECT`） | 4 |
 | `RATE_CAPPED` | 1 日の上限 | 4 |
 | `REQUEST_INVALID` | request の形が違う | 4 |
 | `CAPTURE_HELPER_TIMEOUT` | 時間内に答えが無い（helper が止まっている、順番待ち） | 4 |

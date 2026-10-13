@@ -61,4 +61,32 @@ describe("instagramTarget: only the profile itself (or a wall the guard stops)",
       expect(t.allowNavigation(bad), bad).toBe(false);
     }
   });
+
+  it("names a refused move without letting it through: an account page is a wall, anything else off-site", async () => {
+    const { instagramTarget, wallReason } = await import("@/lib/design-agent/worker/capture");
+    const t = instagramTarget({ url: `${IG}/ex.ample_1/`, username: "ex.ample_1" });
+    const walls = [
+      `${IG}/auth_platform/codeentry/?apc=x`,
+      `${IG}/accounts/suspended/`,
+      `${IG}/accounts/onetap/?next=%2F`,
+      `${IG}/accounts/disabled/`,
+      `${IG}/accounts/consent/`,
+      `${IG}/consent/`,
+      `${IG}/privacy/checks/`,
+      `${IG_BARE}/terms/unblock/?next=x`,
+    ];
+    for (const url of walls) {
+      expect(t.allowNavigation(url), url).toBe(false); // still refused: the guard never sends it
+      expect(t.refusal!(url), url).toBe("wall");
+      expect(wallReason(url), url).toBe("CHALLENGE");
+    }
+    for (const url of [`${IG}/accounts/login/?next=x`, `${IG}/accounts/emailsignup/`]) expect(wallReason(url), url).toBe("LOGIN_WALL");
+    for (const url of [`${IG}/challenge/abc/`, `${IG}/checkpoint/x/`]) expect(wallReason(url), url).toBe("CHALLENGE");
+    for (const url of [`${IG}/`, `${IG}/explore/`, `${IG}/direct/inbox/`, `${IG}/accounts/edit/`, `${IG}/accounts_consent/`, `${IG}/consentx/`]) {
+      expect(t.refusal!(url), url).toBe("same_site");
+    }
+    for (const url of ["https://evil.example/ex.ample_1/", `${IG.replace("https:", "http:")}/ex.ample_1/`, `${IG}.evil.test/auth_platform/`]) {
+      expect(t.refusal!(url), url).toBe("other_host");
+    }
+  });
 });

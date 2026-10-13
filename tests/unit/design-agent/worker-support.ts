@@ -78,6 +78,20 @@ export async function startMockSite(): Promise<MockSite> {
       case "/li_challenge/":
         res.writeHead(302, { location: "/challenge/abc/" });
         return res.end();
+      // An account page a session can be sent to instead of a profile (the newer verification flow).
+      case "/li_auth_platform/":
+        res.writeHead(302, { location: "/auth_platform/codeentry/?apc=x" });
+        return res.end();
+      case "/li_onetap/":
+        res.writeHead(302, { location: "/accounts/onetap/?next=%2Fli_onetap%2F" });
+        return res.end();
+      // Another page of the same site (not the profile, not an account page).
+      case "/li_other_path/":
+        res.writeHead(302, { location: "/explore/" });
+        return res.end();
+      // The page changes its own address without a document request (history API).
+      case "/li_pushstate/":
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{history.pushState({}, "", "/explore/");},100);</script></body>`));
       case "/login_page/":
         return send(200, page(`<form><input name="username"><input name="password" type="password"><button>Log in</button></form>`));
       case "/li_jp/":
