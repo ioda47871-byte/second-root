@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { Fragment, type CSSProperties } from "react";
 import type { RenderFeature, RenderPhoto, RenderPhotos } from "@/lib/design-agent/assets/resolve";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
@@ -170,11 +170,17 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
           <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length} data-fit="phone">
             {lines.map((line, i) => (
               <span key={`${i}-${line}`} className={styles.phoneLine}>
-                {nameTokens(line).map((piece, j) => (
-                  <span key={`${j}-${piece}`} className={styles.piece}>
-                    {piece}
-                  </span>
-                ))}
+                {nameTokens(line).map((piece, j, all) => {
+                  // a space after a piece stays outside it; one that ends a phone line is not shown there
+                  const body = piece.replace(/\s+$/u, "");
+                  const space = piece.slice(body.length);
+                  return (
+                    <Fragment key={`${j}-${piece}`}>
+                      {body && <span className={styles.piece}>{body}</span>}
+                      {space && j === all.length - 1 ? <span className={styles.lineEnd}>{space}</span> : space}
+                    </Fragment>
+                  );
+                })}
               </span>
             ))}
           </h1>

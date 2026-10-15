@@ -171,6 +171,7 @@
     word-break: keep-all;
   }
   .hero .title h1.name[data-fit="phone"] .phoneLine { display: block; }
+  .hero .title h1.name[data-fit="phone"] .lineEnd { display: none; }
   .hero[data-layout="split_crop"] .title h1.name[data-fit="phone"] .phoneLine:nth-child(even) { text-align: right; }
 }
 @media (min-width: 720px) {

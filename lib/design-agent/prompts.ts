@@ -114,7 +114,7 @@ export function historyBlock(
   return [
     "Earlier rounds of this review (scores only):",
     ...history.map(line),
-    best ? `The best so far is ${best.candidate} (${best.total}/${outOf}). Build on what it did well and fix its problems; do not repeat a change that made a later round score lower than it.` : "",
+    best ? `The highest score so far is ${best.candidate} (${best.total}/${outOf}). Keep what scored well and fix the problems; do not repeat a change that made a later round score lower than it.` : "",
     again
       ? `This is ${again.candidate} again: its revision ${again.lower} scored lower (${again.lowerTotal}/${outOf}). Give a different ${revision} that starts from the profile below, avoiding what made ${again.lower} worse.`
       : "",

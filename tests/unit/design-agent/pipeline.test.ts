@@ -178,7 +178,7 @@ describe("runDesignPipeline revision search (DEV-034)", () => {
     expect(second!.prompt).toContain(
       "- candidate-0: revise, total 15/25 (brand_fit 3, visual_quality 3, hierarchy 3, mobile_quality 2, generic_template_feel 2); problems: mobile high, hero medium",
     );
-    expect(second!.prompt).toContain("The best so far is candidate-0 (15/25)");
+    expect(second!.prompt).toContain("The highest score so far is candidate-0 (15/25)");
     expect(second!.prompt).toContain("do not repeat a change that made a later round score lower than it");
     // the reviewer's own words (notes, summaries) never go back into a prompt
     for (const a of h.asked) expect(a.prompt).not.toContain(SECRET_NOTE);

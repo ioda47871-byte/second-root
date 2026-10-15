@@ -70,6 +70,20 @@ const OPENS = /^[「『（(【〈《［\[｛{“‘]$/;
 /** A piece ends after these: a middle dot, a space, an emoji or a decorative symbol (★ ♪ ♡ ／ × |). */
 const ENDS_PIECE = /^(?:[・･\s★☆♪♫♡♥❤✿❀◆◇■□●○▲△×／/|｜]|\p{Extended_Pictographic})$/u;
 
+/** An emoji as the eye sees it (one grapheme): pictographs, flags, keycaps (1️⃣ #️⃣), emoji presentation (FE0F). */
+const EMOJI = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3|\uFE0F/u;
+
+/** The text's graphemes (what the eye counts as one character); without Intl.Segmenter, code points with their marks. */
+export function graphemes(text: string): string[] {
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
+  if (Seg) return [...new Seg("ja", { granularity: "grapheme" }).segment(text)].map((x) => x.segment);
+  return [...text].reduce<string[]>((out, ch) => {
+    if (out.length && ZERO_WIDTH.test(ch)) out[out.length - 1] += ch;
+    else out.push(ch);
+    return out;
+  }, []);
+}
+
 /**
  * The pieces of a name that are never broken, in order; they join back to
  * the exact name. Hiragana stays with what comes before it (たまご after 焼
@@ -87,12 +101,12 @@ export function nameTokens(name: string): string[] {
   let prev: Script | null = null;
   let last = ""; // the last character with a width of its own
   let joined = false; // the last character was a joiner (ZWJ): the next one belongs to it
-  for (const ch of [...name]) {
+  const feed = (ch: string) => {
     if (current && (ZERO_WIDTH.test(ch) || JOINS_LEFT.test(ch) || CLOSES.test(ch) || joined)) {
       current += ch; // the script of the run is the one before the mark
       joined = ch === "\u200D";
       if (!ZERO_WIDTH.test(ch)) last = ch;
-      continue;
+      return;
     }
     const script = scriptOf(ch);
     const afterEnd = last !== "" && ENDS_PIECE.test(last);
@@ -101,7 +115,6 @@ export function nameTokens(name: string): string[] {
       afterOpen ||
       (!afterEnd &&
         !OPENS.test(ch) &&
-        !/\p{Extended_Pictographic}/u.test(ch) &&
         (prev === null ||
           script === "other" ||
           prev === "other" ||
@@ -114,6 +127,19 @@ export function nameTokens(name: string): string[] {
     current += ch;
     prev = script;
     last = ch;
+    joined = false;
+  };
+  for (const g of graphemes(name)) {
+    if (!EMOJI.test(g)) {
+      for (const ch of g) feed(ch);
+      continue;
+    }
+    // An emoji (a pictograph, flag or keycap, with its joiners and modifiers) is a piece of its own.
+    if (current) tokens.push(current);
+    tokens.push(g);
+    current = "";
+    prev = null;
+    last = "";
     joined = false;
   }
   if (current) tokens.push(current);
@@ -130,9 +156,7 @@ export function nameTokens(name: string): string[] {
 
 /** Characters the eye counts (letter-spacing is added after each): zero-width marks and joined emoji parts are not counted. */
 export function visibleLength(text: string): number {
-  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
-  if (Seg) return [...new Seg("ja", { granularity: "grapheme" }).segment(text)].length;
-  return [...text].filter((ch) => !ZERO_WIDTH.test(ch)).length;
+  return graphemes(text).length;
 }
 
 /** Longest a phone line may be (em) and still be set large; longer names get more lines. */
@@ -201,10 +225,13 @@ export function monogram(name: string): string {
 
 /** Approximate width in em (full-width 1em, Latin narrower). */
 export function emWidth(text: string): number {
+  return graphemes(text).reduce((sum, g) => sum + (EMOJI.test(g) ? 1.2 : charsWidth(g)), 0);
+}
+
+function charsWidth(text: string): number {
   return [...text].reduce((sum, ch) => {
     if (ZERO_WIDTH.test(ch)) return sum;
     if (/\s/.test(ch)) return sum + (ch === "\u3000" ? 1 : 0.3);
-    if (/\p{Extended_Pictographic}/u.test(ch)) return sum + 1.2;
     if (/[A-Z0-9]/.test(ch)) return sum + 0.72;
     if (/[a-z]/.test(ch)) return sum + 0.56;
     if (/[!-ɏ\uFF61-\uFF9F]/.test(ch)) return sum + 0.5; // incl. half-width katakana
@@ -219,12 +246,16 @@ export function emWidth(text: string): number {
  * room for the widest display face (light_grotesk is set at 104% width).
  */
 export function fitWidth(text: string): number {
+  // an emoji (a pictograph, flag or keycap) is drawn wider than a full-width character
+  return graphemes(text).reduce((sum, g) => sum + (EMOJI.test(g) ? 1.35 : charsFitWidth(g)), 0);
+}
+
+function charsFitWidth(text: string): number {
   const latin = (w: number) => w * 1.04;
   return [...text].reduce((sum, ch) => {
     if (ZERO_WIDTH.test(ch)) return sum;
     if (/\s/.test(ch)) return sum + (ch === "\u3000" ? 1 : 0.35);
-    // emoji are drawn wider than a full-width character; so are some symbols (Ⅲ ★ ♪ arrows) in a Latin face
-    if (/\p{Extended_Pictographic}/u.test(ch)) return sum + 1.35;
+    // some symbols (Ⅲ ★ ♪ arrows) are drawn wider than 1em in a Latin face
     if (/[\u2000-\u2BFF]/.test(ch)) return sum + 1.2;
     if (/[MWmwＭＷｍｗ@%]/.test(ch)) return sum + latin(1.1);
     if (/[A-Za-z\u00C0-\u024F]/.test(ch)) return sum + latin(0.86);
@@ -248,7 +279,8 @@ export function nameSizing(name: string): CSSProperties {
     // --fit-chars lets the CSS add the profile's letter-spacing per character.
     // Sized from fitWidth (an upper bound), so no face or case overflows.
     const phone = phoneNameLines(name);
-    const longest = phone.reduce((a, b) => (fitWidth(b) > fitWidth(a) ? b : a));
+    // a space at the end of a line hangs: it takes no room on that line
+    const longest = phone.map((line) => line.replace(/\s+$/u, "")).reduce((a, b) => (fitWidth(b) > fitWidth(a) ? b : a));
     style["--fit-units"] = Math.max(1, Math.round(fitWidth(longest) * 1.06 * 100) / 100);
     style["--fit-chars"] = visibleLength(longest);
     style["--name-units"] = Math.max(1, Math.round(fitWidth(name.trim()) * 1.06 * 100) / 100);

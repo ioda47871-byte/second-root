@@ -79,6 +79,11 @@ const NAMES = {
   // a Japanese name with a space is set in pieces too (the space does not make its words breakable)
   spacedJa: "テスト　ベーカリーアンドカフェ",
   spacedMixed: "ア ベーカリーカフェテスト",
+  spacedShort: "パン工房　テスト",
+  keycaps: "1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣",
+  keycapJa: "カフェ1️⃣2️⃣3️⃣号店",
+  hashKeycap: "#️⃣テスト",
+  flag: "テスト🇯🇵カフェ",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -132,6 +137,7 @@ type NameMeasure = {
   lineTops: number[];
   family: string;
   probe: number;
+  text: string;
 };
 
 let browser: Browser;
@@ -206,6 +212,7 @@ async function measure(
         titleRight: tr.right - parseFloat(cs.paddingRight),
         overflowX: document.documentElement.scrollWidth > innerWidth,
         lineTops: [...new Set(pieces.map((x) => x.top))],
+        text: h1.textContent ?? "",
         family: getComputedStyle(h1).fontFamily,
         probe: (() => {
           // width of a fixed Latin string in the name's own face, at a fixed size
@@ -254,6 +261,9 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens(NAMES.emoji)).toEqual(["テストカフェ", "☕", "🍞"]);
     expect(nameTokens(NAMES.emojiJoined)).toEqual(["架空", "👩‍🍳", "テスト"]);
     expect(nameTokens(NAMES.spacedJa)).toEqual(["テスト　", "ベーカリーアンドカフェ"]);
+    // a keycap or a flag is one emoji: a piece of its own
+    expect(nameTokens(NAMES.keycapJa)).toEqual(["カフェ", "1️⃣", "2️⃣", "3️⃣", "号店"]);
+    expect(nameTokens(NAMES.flag)).toEqual(["テスト", "🇯🇵", "カフェ"]);
     for (const name of Object.values(NAMES))
       expect(nameTokens(name).join("")).toBe(name);
   });
@@ -321,7 +331,9 @@ describe("unspaced shop names in the hero (Chromium)", () => {
               for (const [vp, viewport] of Object.entries(PHONES)) {
                 const label = `${key}/${display}/${tracking}/${layout}/${displayCase}/${vp}`;
                 const m = await measure(name, p, viewport, true);
-                expect(m.pieces.map((x) => x.text).join(""), label).toBe(name);
+                expect(m.text, label).toBe(name);
+                // the pieces are the name without its spaces (a space stays outside them, free to hang)
+                expect(m.pieces.map((x) => x.text).join(""), label).toBe(name.replace(/\s+/gu, ""));
                 for (const piece of m.pieces)
                   expect(
                     piece.rects,
