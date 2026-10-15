@@ -474,7 +474,8 @@ describe("diagnose", () => {
     expect(all).not.toMatch(/li_shop|example_shop|Fictional|LEAK|localhost|127\.0\.0\.1|http|sr-instagram-browser|fake_session/);
   });
 
-  it("with the production target: names a refused move and an account-page wall, and does not open the home page", async () => {
+  // About ten persistent-profile launches in one test: 9–10 s locally, but over 60 s on a loaded CI runner.
+  it("with the production target: names a refused move and an account-page wall, and does not open the home page", { timeout: 180_000 }, async () => {
     const s = await signedInProfile();
     const as = (username: string) => profileTarget({ url: `${site.origin}/${username}/`, username }, (u) => u.startsWith(`${site.origin}/`));
     const run = async (username: string, modes: DiagnoseMode[]) => {

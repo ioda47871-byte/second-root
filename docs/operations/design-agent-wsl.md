@@ -31,6 +31,7 @@ npm run sales:design-demo -- --facts <facts.json> --screens <dir> --screens-revi
      → revise なら改訂 profile で描き直す（最大 2 回）
        - 改訂はその時点で点の最も高い candidate から作る（DEV-034）。改訂が best より低い点なら、best をもう一度 review してその改訂 profile を使う（同点は後の candidate を best とする）
        - 2 回目以降の review には、前の round の verdict・5 つの点・合計・問題の area と severity だけを短く渡す（Codex の文章や画像の中身は渡さない）
+       - 写真のある job（DEV-029 の loop）も同じ。run の残り時間が 20 分未満なら best の再 review はせずに止め、best を final にする（`REVISION_FROM_BEST_NO_TIME`）
      → renderer 自体の機能が要ると言われたら BLOCKED で止まる（コードは自動で変えない）
   6. 点の最も高い candidate を final にして撮る。before / after を並べて置く
 ```

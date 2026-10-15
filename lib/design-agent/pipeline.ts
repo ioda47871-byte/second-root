@@ -1,9 +1,10 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import type { PlacedPhoto } from "./assets/render-check";
+import { DeadlineError } from "./bounded-process";
 import { CodexError, isEnvironmentFailure } from "./codex";
 import { CATEGORY_DEFAULT_PROFILES, LOW_CONFIDENCE } from "./defaults";
 import { checkProfile, designProfileJsonSchema, looseJsonSchema, type DesignProfile } from "./profile";
-import { runPhotoLoop, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
+import { runPhotoLoop, timeForSecondLook, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
 import { buildBriefPrompt, buildReviewPrompt } from "./prompts";
 import { reviewScore, visualReviewJsonSchema, VisualReviewSchema, type VisualReview } from "./review";
 
@@ -34,6 +35,8 @@ export interface PipelineDeps {
   renderPhotos?(candidate: string): Promise<{ shots: Shots; sections: string[]; placed: PlacedPhoto[] }>;
   /** Reads a run record back (a stored PhotoAnalysis is reused when it matches the asset set). */
   readRecord?(name: string): Promise<unknown>;
+  /** Time left in the run (ms), checked before a second look at the best candidate (DEV-034). */
+  timeLeftMs?(): number;
   log(line: string): void;
 }
 
@@ -141,7 +144,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       maxRevisions,
       schema,
       notes,
-      deps: { askCodex: (r) => deps.askCodex(r), askPhotoCodex, writeProfile: deps.writeProfile, writeRecord: deps.writeRecord, readRecord: deps.readRecord, renderPhotos, log: deps.log },
+      deps: { askCodex: (r) => deps.askCodex(r), askPhotoCodex, writeProfile: deps.writeProfile, writeRecord: deps.writeRecord, readRecord: deps.readRecord, renderPhotos, ...(deps.timeLeftMs ? { timeLeftMs: deps.timeLeftMs } : {}), log: deps.log },
     });
     photoStats = result.stats;
     if (result.kind === "environment") return report("environment_failure", { profileSource, briefConfidence, photos: photoStats });
@@ -193,6 +196,11 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       }
       return parsed.data;
     } catch (error) {
+      // The run's clock ran out during the second look: the best scored candidate is the final one.
+      if (again && error instanceof DeadlineError) {
+        notes.push("REVISION_FROM_BEST_NO_TIME");
+        return null;
+      }
       if (!(error instanceof CodexError)) throw error;
       notes.push(`REVIEW_${error.code}`);
       if (isEnvironmentFailure(error.code)) state.status = "environment_failure";
@@ -235,6 +243,10 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     if (leader.name !== current.name) {
       // This revision scored lower than the best so far: revise from the best instead.
       notes.push(`REVISION_FROM_BEST_${revisions + 1}`);
+      if (!timeForSecondLook(deps.timeLeftMs)) {
+        notes.push("REVISION_FROM_BEST_NO_TIME");
+        break;
+      }
       const again = await review(leader, leader.shots, { lower: current.name, lowerTotal: total });
       if (!again) break;
       await deps.writeRecord(`review-${leader.name}-again-${revisions + 1}.json`, again);

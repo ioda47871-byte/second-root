@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { DeadlineError } from "@/lib/design-agent/bounded-process";
 import { CodexError } from "@/lib/design-agent/codex";
 import { CATEGORY_DEFAULT_PROFILES } from "@/lib/design-agent/defaults";
+import { SECOND_LOOK_MIN_MS } from "@/lib/design-agent/photo-pipeline";
 import { runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import { AMERICAN_EDITORIAL, review, SHOP } from "./fixtures";
@@ -17,7 +19,7 @@ function harness(answers: Answer[]) {
     askCodex: async ({ kind, images, prompt }) => {
       asked.push({ kind, images, prompt });
       const next = answers.shift();
-      if (next instanceof CodexError) throw next;
+      if (next instanceof Error) throw next;
       return next;
     },
     writeProfile: async (name, profile) => void profiles.set(name, profile),
@@ -202,6 +204,42 @@ describe("runDesignPipeline revision search (DEV-034)", () => {
     expect(a).toMatchObject({ status: "done", finalCandidate: "candidate-0", revisions: 1 });
     // the final choice and the score are unchanged: the best first review (15) beats 13
     expect(accepted.profiles.get("final")).toEqual(accepted.profiles.get("candidate-0"));
+  });
+
+  it("ends the search, never revising from the worse candidate, when the second look fails", async () => {
+    const base = () => [AMERICAN_EDITORIAL, revise(fifteen, "#111111"), revise(thirteen, "#222222")];
+    const cases: Array<{ answer: Answer; note: string; status: string }> = [
+      { answer: { not: "a review" }, note: "REVIEW_INVALID_candidate-0_AGAIN", status: "done" },
+      { answer: review({ ...fifteen, verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: null } }), note: "NO_REVISED_PROFILE", status: "done" },
+      { answer: new CodexError("CODEX_QUOTA", "x"), note: "REVIEW_CODEX_QUOTA", status: "environment_failure" },
+      { answer: new DeadlineError(), note: "REVISION_FROM_BEST_NO_TIME", status: "done" },
+    ];
+    for (const c of cases) {
+      const h = harness([...base(), c.answer]);
+      const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+      expect(report.notes, c.note).toEqual(expect.arrayContaining(["REVISION_FROM_BEST_2", c.note]));
+      expect(report, c.note).toMatchObject({ status: c.status, revisions: 1, finalCandidate: "candidate-0" });
+      expect(h.profiles.has("candidate-2"), c.note).toBe(false);
+      expect(h.profiles.get("final"), c.note).toEqual(h.profiles.get("candidate-0"));
+    }
+  });
+
+  it("skips the second look when the run has too little time left: the best so far is final", async () => {
+    const h = harness([AMERICAN_EDITORIAL, revise(fifteen, "#111111"), revise(thirteen, "#222222"), review()]);
+    let left = 60 * 60 * 1000;
+    h.deps.timeLeftMs = () => left;
+    h.deps.log = (line) => {
+      if (line.startsWith("review candidate-1")) left = SECOND_LOOK_MIN_MS - 1;
+    };
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    expect(h.asked.filter((a) => a.kind === "review")).toHaveLength(2);
+    expect(report.notes).toEqual(expect.arrayContaining(["REVISION_FROM_BEST_2", "REVISION_FROM_BEST_NO_TIME"]));
+    expect(report).toMatchObject({ status: "done", revisions: 1, finalCandidate: "candidate-0" });
+  });
+
+  it("does not catch the run's deadline outside the second look", async () => {
+    const h = harness([AMERICAN_EDITORIAL, new DeadlineError()]);
+    await expect(runDesignPipeline({ demo: SHOP, references: refs }, h.deps)).rejects.toBeInstanceOf(DeadlineError);
   });
 
   it("does not revise past the limit: a lower last revision ends the loop without an extra review", async () => {

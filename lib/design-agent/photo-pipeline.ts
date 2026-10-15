@@ -6,6 +6,7 @@ import type { AssetManifest } from "./assets/manifest";
 import { analyzePhotos, checkPhotoAnalyses, directImages, type CodexPhotoCall, type PhotoInput, type PhotoStep } from "./assets/photo-codex";
 import { checkRenderedPhotos, type PlacedPhoto } from "./assets/render-check";
 import { sectionsPresent } from "./assets/resolve";
+import { DeadlineError } from "./bounded-process";
 import { CodexError, isEnvironmentFailure, type CodexFailureCode } from "./codex";
 import { buildPhotoReviewPrompt } from "./photo-prompts";
 import { photoReviewJsonSchema, PhotoReviewSchema, photoReviewScore, revisionPlan, type PhotoIssue, type PhotoReview } from "./photo-review";
@@ -29,6 +30,16 @@ import { checkProfile, type DesignProfile } from "./profile";
 // job like a failed brief; a page that does not show what its direction says
 // is BLOCKED for a person.
 
+/**
+ * DEV-034: the time a second look at the best candidate needs, with the
+ * revision after it and the final render. With less left in the run, the
+ * loop stops there and the best candidate so far is the final one.
+ */
+export const SECOND_LOOK_MIN_MS = 20 * 60 * 1000;
+
+/** Whether there is time for a second look (always, when the run has no clock). */
+export const timeForSecondLook = (timeLeftMs?: () => number): boolean => !timeLeftMs || timeLeftMs() >= SECOND_LOOK_MIN_MS;
+
 export type PhotoPipelineInput = { runId: string; manifest: AssetManifest; inputs: PhotoInput[] };
 
 export type PhotoStats = {
@@ -47,11 +58,15 @@ export interface PhotoDeps {
   writeRecord(name: string, value: unknown): Promise<void>;
   readRecord?(name: string): Promise<unknown>;
   renderPhotos(candidate: string): Promise<{ shots: Shots; sections: string[]; placed: PlacedPhoto[] }>;
+  /** Time left in the run (ms); without it the loop does not check. */
+  timeLeftMs?(): number;
   log(line: string): void;
 }
 
 export type PhotoRound = {
   candidate: string;
+  /** DEV-034: the best candidate reviewed again after a lower-scoring revision. */
+  again?: true;
   scores: { brand_fit: number; visual_quality: number; hierarchy: number; mobile_quality: number; generic_template_feel: number; total: number };
   verdict: PhotoReview["verdict"];
   problems: Array<{ area: string; severity: string }>;
@@ -136,17 +151,81 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
     return failed(first);
   }
 
+  // DEV-034: as in the loop without photos (pipeline.ts), each review is told
+  // the earlier rounds (scores and problem codes only), and the next revision
+  // always starts from the best-scored candidate so far: after a revision that
+  // scores lower, the best one is reviewed again and that review drives the
+  // revision. Tie: the later candidate leads. Scores, the verdict, the
+  // revision limit and the renderer-change stop are unchanged.
   const rounds: PhotoRound[] = [];
   const candidates: Array<{ name: string; profile: DesignProfile; direction: ImageDirection; score: number }> = [];
   let status: "done" | "blocked" | "fallback_template" | "environment_failure" = "done";
   let revisions = 0;
-  let current = { name: "candidate-0", profile: ctx.profile, direction: first.value };
+  type Candidate = { name: string; profile: DesignProfile; direction: ImageDirection };
+  type Rendered = Awaited<ReturnType<PhotoDeps["renderPhotos"]>>;
+  let current: Candidate = { name: "candidate-0", profile: ctx.profile, direction: first.value };
+  let leader: (Candidate & { score: number; rendered: Rendered }) | null = null;
 
   const show = async (name: string, profile: DesignProfile, direction: ImageDirection) => {
     await deps.writeProfile(name, profile);
     await deps.writeRecord(`${name}.images.json`, imagesArtifact(runId, name, manifest, analysesArt, profile, sections, direction));
     const rendered = await deps.renderPhotos(name);
     return { rendered, problems: checkRenderedPhotos(direction, manifest, rendered.placed) };
+  };
+
+  /** One photo review; null when the answer is unusable (recorded in notes / status). */
+  const reviewOf = async (target: Candidate, rendered: Rendered, again: { lower: string; lowerTotal: number } | null): Promise<PhotoReview | null> => {
+    try {
+      stats.calls.photo_review += 1;
+      const answer = await deps.askCodex({
+        kind: "photo_review",
+        prompt: buildPhotoReviewPrompt({
+          demo: ctx.demo,
+          profile: target.profile,
+          direction: target.direction,
+          analyses,
+          referenceCount: ctx.references.length,
+          referenceKind: ctx.referenceKind,
+          sectionCount: rendered.sections.length,
+          round: revisions,
+          maxRevisions: ctx.maxRevisions,
+          history: rounds,
+          best: leader && rounds.length > 0 ? { candidate: leader.name, total: leader.score } : null,
+          again: again ? { candidate: target.name, ...again } : null,
+        }),
+        images: [...ctx.references, rendered.shots.desktop, rendered.shots.mobile, ...rendered.sections],
+        schema: ctx.schema(photoReviewJsonSchema()),
+      });
+      const parsed = PhotoReviewSchema.safeParse(answer);
+      if (!parsed.success) {
+        notes.push(`REVIEW_INVALID_${target.name}${again ? "_AGAIN" : ""}`);
+        return null;
+      }
+      return parsed.data;
+    } catch (error) {
+      // The run's clock ran out during the second look: the best scored candidate is the final one.
+      if (again && error instanceof DeadlineError) {
+        notes.push("REVISION_FROM_BEST_NO_TIME");
+        return null;
+      }
+      if (!(error instanceof CodexError)) throw error;
+      notes.push(`REVIEW_${error.code}`);
+      if (isEnvironmentFailure(error.code)) status = "environment_failure";
+      return null;
+    }
+  };
+  const record = (name: string, review: PhotoReview, again: boolean): number => {
+    const total = photoReviewScore(review);
+    rounds.push({
+      candidate: name,
+      ...(again ? { again: true as const } : {}),
+      scores: { brand_fit: review.brand_fit, visual_quality: review.visual_quality, hierarchy: review.hierarchy, mobile_quality: review.mobile_quality, generic_template_feel: review.generic_template_feel, total },
+      verdict: review.verdict,
+      problems: [...review.problems.map((p) => ({ area: p.area, severity: p.severity })), ...review.photo_issues.map((p) => ({ area: `photo_${p.issue}`, severity: p.severity }))],
+      revisionTarget: review.revision_target,
+    });
+    deps.log(`review ${name}${again ? " (again)" : ""}: ${review.verdict}, total ${total}/65, target ${review.revision_target}`);
+    return total;
   };
 
   for (;;) {
@@ -159,50 +238,15 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
       status = "blocked";
       break;
     }
-    let review: PhotoReview;
-    try {
-      stats.calls.photo_review += 1;
-      const answer = await deps.askCodex({
-        kind: "photo_review",
-        prompt: buildPhotoReviewPrompt({
-          demo: ctx.demo,
-          profile: current.profile,
-          direction: current.direction,
-          analyses,
-          referenceCount: ctx.references.length,
-          referenceKind: ctx.referenceKind,
-          sectionCount: rendered.sections.length,
-          round: revisions,
-          maxRevisions: ctx.maxRevisions,
-        }),
-        images: [...ctx.references, rendered.shots.desktop, rendered.shots.mobile, ...rendered.sections],
-        schema: ctx.schema(photoReviewJsonSchema()),
-      });
-      const parsed = PhotoReviewSchema.safeParse(answer);
-      if (!parsed.success) {
-        notes.push(`REVIEW_INVALID_${current.name}`);
-        candidates.push({ ...current, score: -1 });
-        break;
-      }
-      review = parsed.data;
-    } catch (error) {
-      if (!(error instanceof CodexError)) throw error;
-      notes.push(`REVIEW_${error.code}`);
+    const review = await reviewOf(current, rendered, null);
+    if (!review) {
       candidates.push({ ...current, score: -1 });
-      if (isEnvironmentFailure(error.code)) status = "environment_failure";
       break;
     }
     await deps.writeRecord(`review-${current.name}.json`, review);
-    const total = photoReviewScore(review);
+    const total = record(current.name, review, false);
     candidates.push({ ...current, score: total });
-    rounds.push({
-      candidate: current.name,
-      scores: { brand_fit: review.brand_fit, visual_quality: review.visual_quality, hierarchy: review.hierarchy, mobile_quality: review.mobile_quality, generic_template_feel: review.generic_template_feel, total },
-      verdict: review.verdict,
-      problems: [...review.problems.map((p) => ({ area: p.area, severity: p.severity })), ...review.photo_issues.map((p) => ({ area: `photo_${p.issue}`, severity: p.severity }))],
-      revisionTarget: review.revision_target,
-    });
-    deps.log(`review ${current.name}: ${review.verdict}, total ${total}/65, target ${review.revision_target}`);
+    if (!leader || total >= leader.score) leader = { ...current, score: total, rendered };
     if (review.needs_renderer_change) {
       notes.push("RENDERER_CHANGE_NEEDED");
       status = "blocked";
@@ -210,15 +254,38 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
     }
     if (review.verdict === "accept" || revisions >= ctx.maxRevisions) break;
 
+    // ---- the revision starts from the best candidate so far
+    let base: Candidate = current;
+    let basis = review;
+    if (leader.name !== current.name) {
+      notes.push(`REVISION_FROM_BEST_${revisions + 1}`);
+      if (!timeForSecondLook(deps.timeLeftMs)) {
+        notes.push("REVISION_FROM_BEST_NO_TIME");
+        break;
+      }
+      const again = await reviewOf(leader, leader.rendered, { lower: current.name, lowerTotal: total });
+      if (!again) break;
+      await deps.writeRecord(`review-${leader.name}-again-${revisions + 1}.json`, again);
+      record(leader.name, again, true);
+      if (again.needs_renderer_change) {
+        notes.push("RENDERER_CHANGE_NEEDED");
+        status = "blocked";
+        break;
+      }
+      if (again.verdict === "accept") break;
+      base = leader;
+      basis = again;
+    }
+
     // ---- one revision round: the state machine
-    const plan = revisionPlan(review.revision_target);
+    const plan = revisionPlan(basis.revision_target);
     if (!plan.revise) {
       notes.push("NO_REVISION_TARGET");
       break;
     }
-    let nextProfile = current.profile;
+    let nextProfile = base.profile;
     if (plan.profile) {
-      const revised = review.recommended_profile_changes.revised_profile;
+      const revised = basis.recommended_profile_changes.revised_profile;
       if (revised === null) {
         notes.push("NO_REVISED_PROFILE");
         break;
@@ -231,7 +298,7 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
       }
       nextProfile = check.profile;
     }
-    const next = await direct(nextProfile, plan.imageFeedback ? review.photo_issues : []);
+    const next = await direct(nextProfile, plan.imageFeedback ? basis.photo_issues : []);
     if (!next.ok) {
       notes.push(environmental(next.code) ? next.code : `REVISION_IMAGE_DIRECTION_INVALID_${revisions + 1}`);
       if (environmental(next.code)) status = "environment_failure";

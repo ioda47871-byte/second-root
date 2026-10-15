@@ -96,19 +96,25 @@ export type RoundSummary = {
  * the problem areas with their severity. No notes, no reasoning, no image
  * content. Empty for the first round, so its prompt is unchanged.
  */
-export function historyBlock(history: readonly RoundSummary[], best: { candidate: string; total: number } | null, again: { candidate: string; lower: string; lowerTotal: number } | null): string {
+export function historyBlock(
+  history: readonly RoundSummary[],
+  best: { candidate: string; total: number } | null,
+  again: { candidate: string; lower: string; lowerTotal: number } | null,
+  outOf = 25,
+  revision = "revised_profile",
+): string {
   if (history.length === 0) return "";
   const line = (r: RoundSummary) => {
     const s = r.scores;
     const problems = r.problems.length ? r.problems.map((p) => `${p.area} ${p.severity}`).join(", ") : "none";
-    return `- ${r.candidate}: ${r.verdict}, total ${s.total}/25 (brand_fit ${s.brand_fit}, visual_quality ${s.visual_quality}, hierarchy ${s.hierarchy}, mobile_quality ${s.mobile_quality}, generic_template_feel ${s.generic_template_feel}); problems: ${problems}`;
+    return `- ${r.candidate}: ${r.verdict}, total ${s.total}/${outOf} (brand_fit ${s.brand_fit}, visual_quality ${s.visual_quality}, hierarchy ${s.hierarchy}, mobile_quality ${s.mobile_quality}, generic_template_feel ${s.generic_template_feel}); problems: ${problems}`;
   };
   return [
     "Earlier rounds of this review (scores only):",
     ...history.map(line),
-    best ? `The best so far is ${best.candidate} (${best.total}/25). Build on what it did well and fix its problems; do not repeat a change that made a later round score lower than it.` : "",
+    best ? `The best so far is ${best.candidate} (${best.total}/${outOf}). Build on what it did well and fix its problems; do not repeat a change that made a later round score lower than it.` : "",
     again
-      ? `This is ${again.candidate} again: its revision ${again.lower} scored lower (${again.lowerTotal}/25). Give a different revised_profile that starts from the profile below, avoiding what made ${again.lower} worse.`
+      ? `This is ${again.candidate} again: its revision ${again.lower} scored lower (${again.lowerTotal}/${outOf}). Give a different ${revision} that starts from the profile below, avoiding what made ${again.lower} worse.`
       : "",
   ]
     .filter(Boolean)

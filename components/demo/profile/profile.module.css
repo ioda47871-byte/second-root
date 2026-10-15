@@ -175,7 +175,7 @@
 }
 @media (min-width: 720px) {
   .hero .title h1.name[data-fit="phone"] {
-    font-size: clamp(1.6rem, calc(100cqi / (var(--units, 8) + var(--name-chars, 8) * var(--track-n, 0))), 13rem);
+    font-size: min(13rem, calc(100cqi / (var(--name-units, 8) + var(--name-chars, 8) * var(--track-n, 0))));
     overflow-wrap: normal;
     word-break: keep-all;
   }

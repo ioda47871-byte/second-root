@@ -547,6 +547,7 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
           overflow.push(...result.overflow);
           return result.shots;
         },
+        timeLeftMs: () => options.deadline.remainingMs(),
         log: (line) => log(`job ${jobId}: ${line}`),
       },
     );

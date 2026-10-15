@@ -105,13 +105,14 @@ async function measure(demo: DemoView, profile: DesignProfile, device: keyof typ
     const body = renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} />);
     await page.setContent(`<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS}</style></head><body>${body}</body></html>`);
     return await page.evaluate(
-      ({ hero, pleats, stamp, folio, dek, lineText, notice, footer }) => {
+      ({ hero, pleats, stamp, folio, dek, lineText, piece, notice, footer }) => {
         const box = (e: Element): Box => {
           const r = e.getBoundingClientRect();
           return { left: r.left, top: r.top + scrollY, right: r.right, bottom: r.bottom + scrollY };
         };
         const h1 = document.querySelector("h1")!;
-        const parts = [...h1.querySelectorAll(`.${lineText}`)];
+        // the name's own boxes: its lines, or the unbreakable pieces of an unspaced name (DEV-034)
+        const parts = [...h1.querySelectorAll(`.${lineText}, .${piece}`)];
         const name = (parts.length > 0 ? parts : [h1]).flatMap((e) =>
           [...e.getClientRects()].map((r) => ({ left: r.left, top: r.top + scrollY, right: r.right, bottom: r.bottom + scrollY })),
         );
@@ -136,6 +137,7 @@ async function measure(demo: DemoView, profile: DesignProfile, device: keyof typ
         folio: profileStyles.folio,
         dek: profileStyles.dek,
         lineText: profileStyles.lineText,
+        piece: profileStyles.piece,
         notice: demoStyles.notice,
         footer: demoStyles.footer,
       },

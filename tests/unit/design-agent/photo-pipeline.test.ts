@@ -276,6 +276,37 @@ describe("runDesignPipeline with photos", () => {
     expect(h.calls.filter((c) => c === "photo_analysis")).toHaveLength(1);
   });
 
+  it("DEV-034: a lower revision sends the search back to the best candidate (reviewed again, with the history)", async () => {
+    const lower = { ...photoReview().photo_scores, crop: 2, mobile_crop: 2 };
+    const h = harness({
+      codex: [
+        AMERICAN_EDITORIAL,
+        photoReview({ verdict: "revise", revision_target: "profile", recommended_profile_changes: { summary: [], revised_profile: revisedProfile("#111111") }, problems: [{ area: "mobile", severity: "high", note: "NOTE_TEXT" }] }),
+        photoReview({ verdict: "revise", revision_target: "profile", photo_scores: lower, recommended_profile_changes: { summary: [], revised_profile: revisedProfile("#222222") } }),
+        photoReview({ verdict: "revise", revision_target: "profile", recommended_profile_changes: { summary: [], revised_profile: revisedProfile("#333333") } }),
+        photoReview({ verdict: "accept" }),
+      ],
+      photo: [analysesAnswer(), direction(), direction(), direction()],
+    });
+    const report = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, h.deps);
+    expect(h.calls.filter((c) => c === "photo_review")).toHaveLength(4);
+    // the third review looks at candidate-0 again; the revision is made from it
+    expect(h.reviewImages[2]).toEqual([...refs, "/shots/candidate-0-d.png", "/shots/candidate-0-m.png", "/shots/candidate-0-m-section-1.png"]);
+    expect(h.reviewPrompts[0]).not.toContain("Earlier rounds");
+    expect(h.reviewPrompts[1]).toContain("problems: mobile high");
+    expect(h.reviewPrompts[2]).toMatch(/This is candidate-0 again: its revision candidate-1 scored lower \(\d+\/65\)/);
+    for (const prompt of h.reviewPrompts) expect(prompt).not.toContain("NOTE_TEXT");
+    expect(h.profiles.get("candidate-2")?.palette.accent).toBe("#333333");
+    expect(report.rounds.map((r) => [r.candidate, r.again ?? false])).toEqual([
+      ["candidate-0", false],
+      ["candidate-1", false],
+      ["candidate-0", true],
+      ["candidate-2", false],
+    ]);
+    expect(report).toMatchObject({ status: "done", revisions: 2, finalCandidate: "candidate-2" });
+    expect(report.notes).toContain("REVISION_FROM_BEST_2");
+  });
+
   it("none target or a missing revised profile stops; an invalid revised direction stops with the best so far", async () => {
     const none = harness({ codex: [AMERICAN_EDITORIAL, photoReview({ verdict: "revise", revision_target: "none" })], photo: [analysesAnswer(), direction()] });
     expect((await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, none.deps)).notes).toContain("NO_REVISION_TARGET");
