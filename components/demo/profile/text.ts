@@ -181,7 +181,8 @@ export function nameTokens(name: string): string[] {
     // A listed prefix kanji before a katakana word is that word's prefix: a strong one wherever it stands
     // (生チョコ…, テスト塩ラーメン), the others where no word comes right before it (焼ドーナツ, の和カフェ;
     // タコ焼 / ホルモン焼 keep their 焼).
-    const free = !beforeLast || ENDS_PIECE.test(beforeLast) || OPENS.test(beforeLast) || /[のとやがはをにでへも]/.test(beforeLast);
+    // (only after a kana word can it be that word's suffix)
+    const free = !beforeLast || ENDS_PIECE.test(beforeLast) || !/^(?:katakana|hiragana)$/.test(scriptOf(beforeLast)) || /[のとやがはをにでへも]/.test(beforeLast);
     if (oneKanji && t === core && (STRONG_PREFIX_KANJI.test(t) || (PREFIX_KANJI.test(t) && free)) && katakanaStart(tokens[i + 1])) {
       tokens[i + 1] = t + tokens[i + 1];
       continue;
@@ -214,7 +215,8 @@ function prefixKanji(name: string, tokens: string[]): void {
   let prevLength = 0;
   for (const part of new Seg("ja", { granularity: "word" }).segment(name)) {
     const n = [...part.segment].length;
-    if (n === 1 && prevLength >= 2 && PREFIX_KANJI.test(part.segment)) single.add(part.index);
+    // 焼 after a kanji word is its suffix (炭火焼, 石窯焼), never moved
+    if (n === 1 && prevLength >= 2 && PREFIX_KANJI.test(part.segment) && part.segment !== "焼") single.add(part.index);
     prevLength = n;
   }
   let at = 0;

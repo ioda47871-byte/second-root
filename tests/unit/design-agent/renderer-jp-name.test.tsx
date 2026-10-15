@@ -331,6 +331,9 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens("タコ焼カフェテスト本店")[0]).toBe("タコ焼");
     expect(nameTokens("ホルモン焼ハウス架空")[0]).toBe("ホルモン焼");
     expect(nameTokens("カフェ・焼ドーナツ専門店").some((t) => t.endsWith("焼"))).toBe(false);
+    for (const n of ["BAKERY焼ドーナツ専門店", "cafe和モダン食堂", "「テスト」焼ドーナツ専門店"])
+      expect(nameTokens(n).some((t) => /[焼和]$/.test(t)), n).toBe(false);
+    expect(nameTokens("架空炭火焼ハンバーグ専門店").some((t) => t.startsWith("焼")), "炭火焼").toBe(false);
     for (const n of ["生チョコレートファクトリー", "新ブランドコレクション", "カフェ・生チョコレートファクトリー", "テスト塩ラーメン専門店"])
       expect(nameTokens(n).some((t) => /[生新塩]$/.test(t)), n).toBe(false);
     // a one-kanji suffix stays with the word before it, even before a katakana word
