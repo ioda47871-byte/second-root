@@ -178,8 +178,8 @@ export function nameTokens(name: string): string[] {
     const core = [...t.replace(/(?:さん|ちゃん|さま)(?=[\s）)」』]*$)/u, "")].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch) && !/\s/u.test(ch)).join("");
     const beforeLast = before ? [...before].filter((ch) => !ZERO_WIDTH.test(ch)).at(-1) : undefined;
     const oneKanji = [...core].length === 1 && scriptOf(core) === "kanji";
-    // One kanji after a particle and before a katakana word is that word's prefix (の塩パン, と生ハム).
-    if (oneKanji && t === core && PREFIX_KANJI.test(t) && beforeLast && /[のとやがはをにでへも]/.test(beforeLast) && katakanaStart(tokens[i + 1])) {
+    // A listed prefix kanji before a katakana word is that word's prefix wherever it stands (生チョコ…, の塩パン).
+    if (oneKanji && t === core && PREFIX_KANJI.test(t) && katakanaStart(tokens[i + 1])) {
       tokens[i + 1] = t + tokens[i + 1];
       continue;
     }

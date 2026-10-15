@@ -105,6 +105,7 @@ const NAMES = {
   panyasan: "まちのパン屋さんテスト",
   shioPan: "架空の塩パン専門店",
   namaHam: "テスト珈琲と生ハムの店",
+  prefixFirst: "生チョコレートファクトリー",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -326,6 +327,8 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens(NAMES.namaHam).some((t) => t.endsWith("生"))).toBe(false);
     expect(nameTokens("名古屋生チョコテスト").some((t) => t.endsWith("生"))).toBe(false);
     expect(nameTokens("テスト店カフェ")[0]).toBe("テスト店");
+    for (const n of ["生チョコレートファクトリー", "新ブランドコレクション", "カフェ・生チョコレートファクトリー", "テスト塩ラーメン専門店"])
+      expect(nameTokens(n).some((t) => /[生新塩]$/.test(t)), n).toBe(false);
     // a one-kanji suffix stays with the word before it, even before a katakana word
     for (const [n, word] of [["いろは堂ベーカリーテスト", "いろは堂"], ["はなや堂カフェテスト", "はなや堂"], ["京都風ラーメン架空", "京都風"], ["北海道産バターのパン屋", "北海道産"], ["名古屋駅カフェテスト", "名古屋駅"]] as const)
       expect(nameTokens(n).some((t) => t.startsWith(word)), n).toBe(true);
