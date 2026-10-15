@@ -178,8 +178,11 @@ export function nameTokens(name: string): string[] {
     const core = [...t.replace(/(?:さん|ちゃん|さま)(?=[\s）)」』]*$)/u, "")].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch) && !/\s/u.test(ch)).join("");
     const beforeLast = before ? [...before].filter((ch) => !ZERO_WIDTH.test(ch)).at(-1) : undefined;
     const oneKanji = [...core].length === 1 && scriptOf(core) === "kanji";
-    // A listed prefix kanji before a katakana word is that word's prefix wherever it stands (生チョコ…, の塩パン).
-    if (oneKanji && t === core && PREFIX_KANJI.test(t) && katakanaStart(tokens[i + 1])) {
+    // A listed prefix kanji before a katakana word is that word's prefix: a strong one wherever it stands
+    // (生チョコ…, テスト塩ラーメン), the others where no word comes right before it (焼ドーナツ, の和カフェ;
+    // タコ焼 / ホルモン焼 keep their 焼).
+    const free = !beforeLast || ENDS_PIECE.test(beforeLast) || OPENS.test(beforeLast) || /[のとやがはをにでへも]/.test(beforeLast);
+    if (oneKanji && t === core && (STRONG_PREFIX_KANJI.test(t) || (PREFIX_KANJI.test(t) && free)) && katakanaStart(tokens[i + 1])) {
       tokens[i + 1] = t + tokens[i + 1];
       continue;
     }
@@ -196,6 +199,8 @@ export function nameTokens(name: string): string[] {
  * (いろは堂, 京都風, 北海道産, 名古屋駅), which stay where they are.
  */
 const PREFIX_KANJI = /^[生塩新旬純和洋黒白焼]$/;
+/** The prefixes that are never a suffix of the word before them. */
+const STRONG_PREFIX_KANJI = /^[生塩新旬純]$/;
 
 /**
  * A kanji run that ends in a one-kanji dictionary word right before a katakana word gives that kanji to
