@@ -1570,7 +1570,7 @@
     {
       "id": "DEV-034",
       "title": "Design loop: unspaced Japanese names on phones, revisions from the best candidate, reviewer round history",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-030"
