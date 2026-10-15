@@ -84,6 +84,11 @@ const NAMES = {
   keycapJa: "カフェ1️⃣2️⃣3️⃣号店",
   hashKeycap: "#️⃣テスト",
   flag: "テスト🇯🇵カフェ",
+  // a number with its counter, and a particle after a Latin word, stay with their word
+  counter: "テスト1号店カフェ",
+  anniversary: "架空珈琲10周年記念店",
+  latinParticle: "EXAMPLEのパン工房",
+  registered: "架空焼菓子工房ベーカリーカフェ®",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -264,6 +269,12 @@ describe("unspaced shop names (text helpers)", () => {
     // a keycap or a flag is one emoji: a piece of its own
     expect(nameTokens(NAMES.keycapJa)).toEqual(["カフェ", "1️⃣", "2️⃣", "3️⃣", "号店"]);
     expect(nameTokens(NAMES.flag)).toEqual(["テスト", "🇯🇵", "カフェ"]);
+    expect(nameTokens(NAMES.counter)).toEqual(["テスト", "1号店", "カフェ"]);
+    expect(nameTokens(NAMES.anniversary)).toEqual(["架空珈琲", "10周年記念店"]);
+    expect(nameTokens(NAMES.latinParticle)).toEqual(["EXAMPLEの", "パン", "工房"]);
+    expect(nameTokens(NAMES.registered).at(-1)).toBe("ベーカリーカフェ®"); // a text-style mark stays with its word
+    expect(nameTokens("架空\u200Dテスト").join("")).toBe("架空\u200Dテスト");
+    expect(nameTokens("架空\u200Dテスト").some((t) => t.endsWith("テ"))).toBe(false);
     for (const name of Object.values(NAMES))
       expect(nameTokens(name).join("")).toBe(name);
   });

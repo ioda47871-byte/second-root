@@ -70,8 +70,8 @@ const OPENS = /^[「『（(【〈《［\[｛{“‘]$/;
 /** A piece ends after these: a middle dot, a space, an emoji or a decorative symbol (★ ♪ ♡ ／ × |). */
 const ENDS_PIECE = /^(?:[・･\s★☆♪♫♡♥❤✿❀◆◇■□●○▲△×／/|｜]|\p{Extended_Pictographic})$/u;
 
-/** An emoji as the eye sees it (one grapheme): pictographs, flags, keycaps (1️⃣ #️⃣), emoji presentation (FE0F). */
-const EMOJI = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3|\uFE0F/u;
+/** An emoji as the eye sees it (one grapheme): pictographs, flags, keycaps (1️⃣ #️⃣), emoji presentation (FE0F). A text-style mark (® ™ ‼) is not one. */
+const EMOJI = /\p{Emoji_Presentation}|\p{Regional_Indicator}|\u20E3|\uFE0F/u;
 
 /** The text's graphemes (what the eye counts as one character); without Intl.Segmenter, code points with their marks. */
 export function graphemes(text: string): string[] {
@@ -87,7 +87,8 @@ export function graphemes(text: string): string[] {
 /**
  * The pieces of a name that are never broken, in order; they join back to
  * the exact name. Hiragana stays with what comes before it (たまご after 焼
- * stays "焼たまご"; の after a katakana word stays with it); a katakana run, a
+ * stays "焼たまご"; の after a katakana or Latin word stays with it); a number
+ * stays with the kanji counter after it ("1号店"); a katakana run, a
  * kanji run after kana or katakana, a Latin word, an opening bracket, and
  * whatever follows a middle dot, a space, an emoji or a decorative symbol
  * each start a piece. A long-vowel mark, small kana, an iteration mark or ヶ,
@@ -104,6 +105,8 @@ export function nameTokens(name: string): string[] {
   const feed = (ch: string) => {
     if (current && (ZERO_WIDTH.test(ch) || JOINS_LEFT.test(ch) || CLOSES.test(ch) || joined)) {
       current += ch; // the script of the run is the one before the mark
+      // a character joined by a ZWJ takes its own script (架空‍テスト: テスト stays one word)
+      if (joined && !ZERO_WIDTH.test(ch)) prev = scriptOf(ch);
       joined = ch === "\u200D";
       if (!ZERO_WIDTH.test(ch)) last = ch;
       return;
@@ -118,8 +121,10 @@ export function nameTokens(name: string): string[] {
         (prev === null ||
           script === "other" ||
           prev === "other" ||
-          (script === "hiragana" && prev !== "latin") ||
-          (script === prev && script !== "hiragana")));
+          script === "hiragana" ||
+          // a number and its counter stay together (1号店, 10周年)
+          (script === "kanji" && prev === "latin" && /[0-9０-９]$/.test(current)) ||
+          script === prev));
     if (!joins && current) {
       tokens.push(current);
       current = "";
@@ -255,6 +260,8 @@ function charsFitWidth(text: string): number {
   return [...text].reduce((sum, ch) => {
     if (ZERO_WIDTH.test(ch)) return sum;
     if (/\s/.test(ch)) return sum + (ch === "\u3000" ? 1 : 0.35);
+    // a text-style pictograph (❤ ‼ ™) may still be drawn as an emoji
+    if (/\p{Extended_Pictographic}/u.test(ch)) return sum + 1.35;
     // some symbols (Ⅲ ★ ♪ arrows) are drawn wider than 1em in a Latin face
     if (/[\u2000-\u2BFF]/.test(ch)) return sum + 1.2;
     if (/[MWmwＭＷｍｗ@%]/.test(ch)) return sum + latin(1.1);

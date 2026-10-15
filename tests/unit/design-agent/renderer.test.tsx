@@ -39,7 +39,7 @@ const WHOLE_NODES = ["Bakery", "Baked Goods", "Cafe", "About", "Menu", "Visit", 
 function leftover(demo: DemoView, profile: DesignProfile): string {
   const facts = [demo.name, demo.ward, demo.address, demo.hours, demo.closedDays, demo.access, demo.phone, demo.description, ...demo.menuItems].filter((v): v is string => Boolean(v));
   // the name's own words and unbreakable pieces (DEV-034) are mechanical pieces of the name
-  const whole = [...WHOLE_NODES, monogram(demo.name), ...nameLines(demo.name), ...nameTokens(demo.name)];
+  const whole = [...WHOLE_NODES, monogram(demo.name), ...nameLines(demo.name), ...nameTokens(demo.name).map((t) => t.trimEnd())];
   const text = visibleText(renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} />)).filter((n) => !whole.includes(n)).join("\n");
   const strip = (s: string, phrases: string[]) => [...phrases].sort((a, b) => b.length - a.length).reduce((acc, p) => acc.split(p).join(""), s);
   return strip(strip(text, facts), FIXED_COPY).replace(/\s+/g, "");
