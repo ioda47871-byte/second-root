@@ -196,6 +196,7 @@ async function main(): Promise<number> {
           if (mobileOverflow > 0) overflows.push(`OVERFLOW_${candidate}_MOBILE`);
           return shots;
         },
+        timeLeftMs: () => deadline.remainingMs(),
         log: (line) => console.log(`  ${line}`),
       },
     );

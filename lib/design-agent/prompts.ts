@@ -83,7 +83,59 @@ export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number
     .join("\n\n");
 }
 
-export function buildReviewPrompt(input: { demo: DemoView; profile: DesignProfile; referenceCount: number; referenceKind?: "website" | "instagram"; round: number; maxRevisions: number }): string {
+/** One earlier round, as the reviewer is told about it: scores and problem codes only (DEV-034). */
+export type RoundSummary = {
+  candidate: string;
+  /** The best candidate reviewed again after a lower-scoring revision. */
+  again?: true;
+  verdict: "accept" | "revise";
+  scores: { brand_fit: number; visual_quality: number; hierarchy: number; mobile_quality: number; generic_template_feel: number; total: number };
+  problems: Array<{ area: string; severity: string }>;
+};
+
+/**
+ * The earlier rounds, short (DEV-034): verdict, the five scores, the total and
+ * the problem areas with their severity. No notes, no reasoning, no image
+ * content. Empty for the first round, so its prompt is unchanged.
+ */
+export function historyBlock(
+  history: readonly RoundSummary[],
+  best: { candidate: string; total: number } | null,
+  again: { candidate: string; lower: string; lowerTotal: number } | null,
+  outOf = 25,
+  revision = "revised_profile",
+): string {
+  if (history.length === 0) return "";
+  const line = (r: RoundSummary) => {
+    const s = r.scores;
+    const problems = r.problems.length ? r.problems.map((p) => `${p.area} ${p.severity}`).join(", ") : "none";
+    return `- ${r.candidate}${r.again ? " (second look)" : ""}: ${r.verdict}, total ${s.total}/${outOf} (brand_fit ${s.brand_fit}, visual_quality ${s.visual_quality}, hierarchy ${s.hierarchy}, mobile_quality ${s.mobile_quality}, generic_template_feel ${s.generic_template_feel}); problems: ${problems}`;
+  };
+  return [
+    "Earlier rounds of this review (scores only):",
+    ...history.map(line),
+    best ? `The highest score so far is ${best.candidate} (${best.total}/${outOf}). Keep what scored well and fix the problems; do not repeat a change that made a later round score lower than it.` : "",
+    again
+      ? `This is ${again.candidate} again: its revision ${again.lower} scored lower (${again.lowerTotal}/${outOf}). Give a different ${revision} that starts from the profile below, avoiding what made ${again.lower} worse.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function buildReviewPrompt(input: {
+  demo: DemoView;
+  profile: DesignProfile;
+  referenceCount: number;
+  referenceKind?: "website" | "instagram";
+  round: number;
+  maxRevisions: number;
+  /** DEV-034: earlier rounds (empty / omitted for the first round). */
+  history?: readonly RoundSummary[];
+  best?: { candidate: string; total: number } | null;
+  /** DEV-034: the best candidate reviewed again after a lower-scoring revision. */
+  again?: { candidate: string; lower: string; lowerTotal: number } | null;
+}): string {
   return [
     "You are reviewing a rendered proposal demo against the shop's own public presence.",
     VOCABULARY,
@@ -93,9 +145,12 @@ export function buildReviewPrompt(input: { demo: DemoView; profile: DesignProfil
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise and give a complete revised_profile using only the vocabulary above.",
     "If the fix needs something the renderer cannot do (a new layout, a new motif), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
+    historyBlock(input.history ?? [], input.best ?? null, input.again ?? null),
     "Profile that produced these screenshots:",
     JSON.stringify(input.profile, null, 2),
     "Verified facts:",
     factsBlock(input.demo),
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }

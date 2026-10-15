@@ -113,6 +113,7 @@ type Timing = { capture_ms: number; pipeline_ms: number; codex_ms: number; call_
 
 /**
  * Revision r costs: capture + the brief + the analysis + (r + 1) × (direction + review)
+ * (conservative: + r second looks at the best candidate, DEV-034)
  * + the pipeline's own time besides Codex (renders), scaled by the rounds.
  * A revision stage never measured takes its round-0 stage's figure.
  */
@@ -133,6 +134,8 @@ export function estimateRuntime(timing: Timing | null, budgetMs: number): Runtim
           f(of(["profile_brief"], all)) +
           f(of(["photo_analysis"], all)) +
           (r + 1) * (f(of(["image_direction", "image_direction_revision"], all)) + f(of(["visual_review", "visual_review_revision"], all))) +
+          // conservative: each revision may first look at the best candidate again (DEV-034)
+          (all ? r : 0) * f(of(["visual_review", "visual_review_revision"], all)) +
           (r + 2) * overheadPerRender,
       ),
     ) as [number, number, number];

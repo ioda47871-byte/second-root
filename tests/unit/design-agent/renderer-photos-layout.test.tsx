@@ -111,7 +111,7 @@ const VIEWPORTS = {
 
 type Box = { left: number; top: number; right: number; bottom: number };
 type Figure = { box: Box; source: string; label: Box | null; labelVisible: boolean; loaded: boolean; fit: string; position: string; container: string };
-type Measure = { figures: Figure[]; text: { what: string; box: Box }[]; hero: Box; split: Box | null; header: Box; nameLines: Box[]; title: Box; overflowX: boolean };
+type Measure = { figures: Figure[]; text: { what: string; box: Box }[]; hero: Box; split: Box | null; header: Box; nameLines: Box[]; brokenPieces: string[]; title: Box; overflowX: boolean };
 
 let browser: Browser;
 beforeAll(async () => {
@@ -132,7 +132,7 @@ async function measure(demo: DemoView, profile: DesignProfile, photos: RenderPho
     const body = renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} photos={photos} />);
     await page.setContent(`<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS}</style></head><body>${body}</body></html>`);
     await page.evaluate(() => Promise.all([...document.images].map((img) => img.decode().catch(() => undefined))));
-    const names = ["imageLabel", "heroSplit", "lineText", "folio", "dek", "stamp", "pleats", "monogram", "lead", "visit", "menu", "title"] as const;
+    const names = ["imageLabel", "heroSplit", "lineText", "piece", "folio", "dek", "stamp", "pleats", "monogram", "lead", "visit", "menu", "title"] as const;
     const s = Object.fromEntries(names.map((n) => [n, (profileStyles as Record<string, string>)[n]])) as Record<(typeof names)[number], string>;
     return await page.evaluate((c) => {
       const box = (e: Element) => {
@@ -160,7 +160,7 @@ async function measure(demo: DemoView, profile: DesignProfile, photos: RenderPho
       });
       const text: { what: string; box: { left: number; top: number; right: number; bottom: number } }[] = [];
       const add = (what: string, els: Element[]) => els.forEach((e) => rects(e).forEach((b) => text.push({ what, box: b })));
-      add("name", all(`.${c.lineText}`).length ? all(`.${c.lineText}`) : all("h1"));
+      add("name", all(`.${c.lineText}, .${c.piece}`).length ? all(`.${c.lineText}, .${c.piece}`) : all("h1"));
       add("folio", all(`.${c.folio}`));
       add("dek", all(`.${c.dek}`));
       add("motif", all(`.${c.stamp}, .${c.pleats}, .${c.monogram}`));
@@ -178,6 +178,8 @@ async function measure(demo: DemoView, profile: DesignProfile, photos: RenderPho
         split: document.querySelector(`.${c.heroSplit}`) ? box(document.querySelector(`.${c.heroSplit}`)!) : null,
         header: box(header),
         nameLines: rects(header.querySelector("h1")!),
+        // the unbreakable pieces of an unspaced name, each on one line (DEV-034)
+        brokenPieces: all(`.${c.piece}`).filter((e) => rects(e).length !== 1).map((e) => e.textContent ?? ""),
         title: box(header.querySelector(`.${c.title}`)!),
         overflowX: document.documentElement.scrollWidth > innerWidth,
       };
@@ -209,6 +211,7 @@ describe("photo layouts (Chromium, 390 × 844 and 1440 × 900)", () => {
             expect(m.figures.length, label).toBe(count);
             expect(m.overflowX, `${label}: sideways scroll`).toBe(false);
             for (const line of m.nameLines) expect(inside(line, m.header), `${label}: name clipped`).toBe(true);
+            expect(m.brokenPieces, `${label}: a piece of the name broken across lines`).toEqual([]);
             m.figures.forEach((f, i) => {
               const photo = used[i];
               const what = `${label}: photo ${i}`;

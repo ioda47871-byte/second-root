@@ -123,7 +123,8 @@ describe("runtime estimate", () => {
     );
     // 1 capture + 4 brief + 2 analysis + (r + 1) × (2 + 4) + (r + 2) × 1 (2 min besides Codex over 2 renders)
     expect(e.mean_ms).toEqual([15 * min, 22 * min, 29 * min]);
-    expect(e.conservative_ms).toEqual(e.mean_ms);
+    // conservative: + r second looks at the best candidate (DEV-034), each as slow as the slowest review
+    expect(e.conservative_ms).toEqual([15 * min, 26 * min, 37 * min]);
     expect(e.verdict).toBe("OK");
   });
 
@@ -134,7 +135,7 @@ describe("runtime estimate", () => {
     );
     expect(slow.verdict).toBe("OVER");
     const risky = estimateRuntime(
-      { capture_ms: 1 * min, pipeline_ms: 20 * min, codex_ms: 19 * min, call_list: [call("profile_brief", 5 * min), call("photo_analysis", 4 * min), call("image_direction", 4 * min), call("visual_review", 5 * min), call("visual_review", 6 * min, "CODEX_TIMEOUT")] },
+      { capture_ms: 1 * min, pipeline_ms: 20 * min, codex_ms: 19 * min, call_list: [call("profile_brief", 4 * min), call("photo_analysis", 3 * min), call("image_direction", 3 * min), call("visual_review", 4 * min), call("visual_review", 5 * min, "CODEX_TIMEOUT")] },
       50 * min,
     );
     expect(risky.conservative_ms[2]).toBeGreaterThan(40 * min);

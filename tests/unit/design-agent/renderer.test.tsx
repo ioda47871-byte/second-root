@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
-import { KEEP_TOGETHER_MAX, keepTogether, locationLabels, monogram, nameLines, WARD_ROMAJI } from "@/components/demo/profile/text";
+import { KEEP_TOGETHER_MAX, keepTogether, locationLabels, monogram, nameLines, nameTokens, WARD_ROMAJI } from "@/components/demo/profile/text";
 import { CATEGORY_DEFAULT_PROFILES } from "@/lib/design-agent/defaults";
 import { loadPreviewRun, previewRoot } from "@/lib/design-agent/preview";
 import { DIVIDERS, HERO_LAYOUTS, INFO_STYLES, MOTIFS, type DesignProfile } from "@/lib/design-agent/profile";
@@ -38,7 +38,8 @@ const WHOLE_NODES = ["Bakery", "Baked Goods", "Cafe", "About", "Menu", "Visit", 
 
 function leftover(demo: DemoView, profile: DesignProfile): string {
   const facts = [demo.name, demo.ward, demo.address, demo.hours, demo.closedDays, demo.access, demo.phone, demo.description, ...demo.menuItems].filter((v): v is string => Boolean(v));
-  const whole = [...WHOLE_NODES, monogram(demo.name), ...nameLines(demo.name)];
+  // the name's own words and unbreakable pieces (DEV-034) are mechanical pieces of the name
+  const whole = [...WHOLE_NODES, monogram(demo.name), ...nameLines(demo.name), ...nameTokens(demo.name).map((t) => t.trimEnd())];
   const text = visibleText(renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} />)).filter((n) => !whole.includes(n)).join("\n");
   const strip = (s: string, phrases: string[]) => [...phrases].sort((a, b) => b.length - a.length).reduce((acc, p) => acc.split(p).join(""), s);
   return strip(strip(text, facts), FIXED_COPY).replace(/\s+/g, "");

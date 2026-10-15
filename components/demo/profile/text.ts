@@ -38,6 +38,284 @@ export function nameLines(name: string): string[] {
   return words.length > 1 && words.length <= 4 ? words : [name.trim()];
 }
 
+// ---------------------------------------------------------------- unspaced names (DEV-034)
+//
+// A name without spaces (most Japanese shop names: "〇〇ベーカリー", a single
+// Latin word) has no place where a line may break by itself; left to the
+// browser it broke anywhere, in the middle of a word ("ベー / カリー"). The
+// renderer now sets such a name from pieces that are never split: a run of
+// kanji with the kana that follow it (okurigana, particles), a run of
+// katakana, a Latin word or number. On phones it keeps the name on one line,
+// sized to fit, when that line stays large; a longer name goes on two or
+// three balanced lines that break only between pieces.
+
+type Script = "kanji" | "hiragana" | "katakana" | "latin" | "other";
+
+function scriptOf(ch: string): Script {
+  if (/[\u30A0-\u30FF\u31F0-\u31FF\uFF66-\uFF9F]/.test(ch)) return "katakana"; // incl. ー ・ and half-width
+  if (/[\u3040-\u309F]/.test(ch)) return "hiragana";
+  if (/[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々〆〇ヶ]/.test(ch)) return "kanji";
+  if (/[A-Za-z0-9\u00C0-\u024F\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A'’.&-]/.test(ch)) return "latin";
+  return "other";
+}
+
+/** Marks that belong to the character before them: long vowel, iteration marks, small kana, ヶ. */
+const JOINS_LEFT = /^[ーｰ〜～ゝゞヽヾ々ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰ-ㇿｧ-ｯﾞﾟ]$/;
+/** Characters with no width of their own: combining marks (a decomposed ベ), joiners, variation selectors, skin tones. */
+const ZERO_WIDTH = /^(?:\p{M}|[\u200B-\u200D\u2060\uFE00-\uFE0F]|[\u{1F3FB}-\u{1F3FF}]|[\u{E0020}-\u{E007F}])$/u;
+/** Closing brackets and punctuation stay with what comes before them. */
+const CLOSES = /^[」』）)】〉》］\]｝}”’"、。，．！？!?＆&]$/;
+/** Opening brackets start a piece and stay with what follows. */
+const OPENS = /^[「『（(【〈《［\[｛{“‘]$/;
+/** A piece ends after these: a middle dot, a space, an emoji or a decorative symbol (★ ♪ ♡ ／ × |). */
+const ENDS_PIECE = /^(?:[・･\s★☆♪♫♡♥❤✿❀◆◇■□●○▲△×／/|｜]|\p{Extended_Pictographic})$/u;
+
+/** An emoji as the eye sees it (one grapheme): pictographs, flags, keycaps (1️⃣ #️⃣), emoji presentation (FE0F). A text-style mark (® ™ ‼) is not one. */
+const EMOJI = /\p{Emoji_Presentation}|\p{Regional_Indicator}|\u20E3|\uFE0F/u;
+
+/** The text's graphemes (what the eye counts as one character); without Intl.Segmenter, code points with their marks. */
+export function graphemes(text: string): string[] {
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
+  if (Seg) return [...new Seg("ja", { granularity: "grapheme" }).segment(text)].map((x) => x.segment);
+  return [...text].reduce<string[]>((out, ch) => {
+    if (out.length && ZERO_WIDTH.test(ch)) out[out.length - 1] += ch;
+    else out.push(ch);
+    return out;
+  }, []);
+}
+
+/**
+ * The pieces of a name that are never broken, in order; they join back to
+ * the exact name. Hiragana stays with what comes before it (たまご after 焼
+ * stays "焼たまご"; の after a katakana or Latin word stays with it); a number
+ * stays with the kanji counter after it ("1号店"); a katakana run, a
+ * kanji run after kana or katakana, a Latin word, an opening bracket, and
+ * whatever follows a middle dot, a space, an emoji or a decorative symbol
+ * each start a piece. A long-vowel mark, small kana, an iteration mark or ヶ,
+ * a combining mark, a joiner and a closing bracket stay with the character
+ * before them ("らーめん", "霞ヶ関", "（テスト）", a decomposed "ベ"). One kanji
+ * after a katakana word is its suffix and stays with it ("テスト店").
+ */
+export function nameTokens(name: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let prev: Script | null = null;
+  let last = ""; // the last character with a width of its own
+  let joined = false; // the last character was a joiner (ZWJ): the next one belongs to it
+  const feed = (ch: string) => {
+    // a middle dot ends the word before it, never starts a line (EXAMPLE・テスト)
+    if (current && (ZERO_WIDTH.test(ch) || JOINS_LEFT.test(ch) || CLOSES.test(ch) || /^[・･]$/.test(ch) || joined)) {
+      current += ch; // the script of the run is the one before the mark
+      // a character joined by a ZWJ takes its own script (架空‍テスト: テスト stays one word)
+      if (joined && !ZERO_WIDTH.test(ch)) prev = scriptOf(ch);
+      joined = ch === "\u200D";
+      if (!ZERO_WIDTH.test(ch)) last = ch;
+      return;
+    }
+    const script = scriptOf(ch);
+    const afterEnd = last !== "" && ENDS_PIECE.test(last);
+    const afterOpen = last !== "" && OPENS.test(last);
+    const joins =
+      afterOpen ||
+      (!afterEnd &&
+        !OPENS.test(ch) &&
+        (prev === null ||
+          script === "other" ||
+          prev === "other" ||
+          script === "hiragana" ||
+          // a number and its counter stay together (1号店, 10周年, 第1号店), and 第 with its number
+          (script === "kanji" && prev === "latin" && /(?:^|第)[0-9０-９]+$/.test(current)) ||
+          (script === "latin" && /^[0-9０-９]$/.test(ch) && /第$/.test(current)) ||
+          // hiragana and the kanji after it are one word (焼き鳥, ほうじ茶, たこ焼き) unless the kana ends
+          // in a particle (架空の店 may break after の); お / ご are handled as an honorific below
+          (script === "kanji" && prev === "hiragana" && !/[のとやがはをにでへもおご]$/.test(current)) ||
+          // が between kanji links a place name (星が丘), and so does の after a numeral (三の丸)
+          (script === "kanji" && /[\u3400-\u9FFF\uF900-\uFAFF々〆〇]が$/u.test(current)) ||
+          (script === "kanji" && /(?:^|[^\u3400-\u9FFF])[一二三四五六七八九十]の$/u.test(current)) ||
+          script === prev));
+    // An honorific お / ご belongs to the noun after it (お菓子, ご飯). It is moved there only when that is
+    // clear: at the start, right after a word that is not hiragana, or after such a word and a particle
+    // (架空のお菓子). After other hiragana it may end a word (えがお, すがお): no cut there at all.
+    const kanaPrefix = !joins && script === "kanji" && prev === "hiragana" && /[おご]$/.test(current);
+    const honorific = kanaPrefix && /(?:^|[^\u3041-\u309F]|[^\u3041-\u309F][のとや])[おご]$/.test(current);
+    if (!joins && current && !(kanaPrefix && !honorific)) {
+      if (!honorific) tokens.push(current);
+      else if (current.length > 1) tokens.push(current.slice(0, -1));
+      current = honorific ? current.slice(-1) : "";
+    }
+    current += ch;
+    prev = script;
+    last = ch;
+    joined = false;
+  };
+  for (const g of graphemes(name)) {
+    if (!EMOJI.test(g)) {
+      for (const ch of g) feed(ch);
+      continue;
+    }
+    // An emoji (a pictograph, flag or keycap, with its joiners and modifiers) is a piece of its own.
+    if (current) tokens.push(current);
+    tokens.push(g);
+    current = "";
+    prev = null;
+    last = "";
+    joined = false;
+  }
+  if (current) tokens.push(current);
+  // A full-size linker kana between kanji is inside a place name or surname (霞ケ関, 三ノ宮, 四ツ谷), like ヶ.
+  for (let i = tokens.length - 2; i >= 1; i--) {
+    const [before, linker, after] = [tokens[i - 1], tokens[i], tokens[i + 1]];
+    if (/^(?:[ケノツガｹﾉﾂ]|ｶﾞ)$/.test(linker) && scriptOf([...before].at(-1)!) === "kanji" && scriptOf([...after][0]) === "kanji") tokens.splice(i - 1, 3, before + linker + after);
+  }
+  dictionaryGate(name, tokens);
+  // One kanji right after a kana word is its suffix (テスト店, カフェ堂, こもれび堂): keep them together.
+  const out: string[] = [];
+  const katakanaStart = (t: string | undefined) => t !== undefined && scriptOf([...t][0]) === "katakana";
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const before = out[out.length - 1];
+    // "店）", "店　" count as one kanji, and so does a kanji with an honorific (屋さん)
+    const core = [...t.replace(/(?:さん|ちゃん|さま)(?=[\s）)」』]*$)/u, "")].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch) && !/\s/u.test(ch)).join("");
+    const beforeLast = before ? [...before].filter((ch) => !ZERO_WIDTH.test(ch)).at(-1) : undefined;
+    const oneKanji = [...core].length === 1 && scriptOf(core) === "kanji";
+    // A listed prefix kanji before a katakana word is that word's prefix: a strong one wherever it stands
+    // (生チョコ…, テスト塩ラーメン), the others where no word comes right before it (焼ドーナツ, の和カフェ;
+    // タコ焼 / ホルモン焼 keep their 焼).
+    // (only after a kana word can it be that word's suffix)
+    const free = !beforeLast || ENDS_PIECE.test(beforeLast) || !/^(?:katakana|hiragana)$/.test(scriptOf(beforeLast)) || /[のとやがはをにでへも]/.test(beforeLast);
+    if (oneKanji && t === core && (STRONG_PREFIX_KANJI.test(t) || (PREFIX_KANJI.test(t) && free)) && katakanaStart(tokens[i + 1])) {
+      tokens[i + 1] = t + tokens[i + 1];
+      continue;
+    }
+    if (before && beforeLast && oneKanji && /^(?:katakana|hiragana)$/.test(scriptOf(beforeLast)) && !ENDS_PIECE.test(beforeLast)) out[out.length - 1] = before + t;
+    else out.push(t);
+  }
+  prefixKanji(name, out);
+  return out;
+}
+
+/**
+ * Kanji that are a prefix of the katakana word after them (生チョコ, 塩パン, 新ブランド, 和モダン, 黒ゴマ).
+ * Only these move forward: most one-kanji words before katakana are a suffix of the word before them
+ * (いろは堂, 京都風, 北海道産, 名古屋駅), which stay where they are.
+ */
+const PREFIX_KANJI = /^[生塩新旬純和洋黒白焼]$/;
+/** The prefixes that are never a suffix of the word before them. */
+const STRONG_PREFIX_KANJI = /^[生塩新旬純]$/;
+
+/**
+ * A kanji run that ends in a one-kanji dictionary word right before a katakana word gives that kanji to
+ * the word (名古屋 / 生チョコ): it is the word's prefix, not the end of the run. Needs Intl.Segmenter.
+ */
+function prefixKanji(name: string, tokens: string[]): void {
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
+  if (!Seg) return;
+  // offsets of one-kanji prefixes that follow a longer word (名古屋|生); a suffix (風 産 駅 店 …) stays
+  const single = new Set<number>();
+  let prevLength = 0;
+  for (const part of new Seg("ja", { granularity: "word" }).segment(name)) {
+    const n = [...part.segment].length;
+    // 焼 after a kanji word is its suffix (炭火焼, 石窯焼), never moved
+    if (n === 1 && prevLength >= 2 && PREFIX_KANJI.test(part.segment) && part.segment !== "焼") single.add(part.index);
+    prevLength = n;
+  }
+  let at = 0;
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const t = tokens[i];
+    at += t.length;
+    const last = [...t].at(-1)!;
+    const prevCh = [...t].at(-2);
+    if (t.length > 1 && scriptOf(last) === "kanji" && prevCh && scriptOf(prevCh) === "kanji" && single.has(at - last.length) && scriptOf([...tokens[i + 1]][0]) === "katakana") {
+      tokens[i] = t.slice(0, -last.length);
+      tokens[i + 1] = last + tokens[i + 1];
+      at -= last.length;
+    }
+  }
+}
+
+/**
+ * A second check with the platform's Japanese word dictionary (ICU, Intl.Segmenter): a cut between two
+ * pieces stays only where the dictionary also sees a word boundary (星が丘, ほうじ茶, もも肉 stay whole).
+ * It can only remove cuts, never add one. Without Intl.Segmenter the pieces stay as they are.
+ */
+function dictionaryGate(name: string, tokens: string[]): void {
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
+  if (!Seg) return;
+  const bounds = new Set<number>();
+  for (const part of new Seg("ja", { granularity: "word" }).segment(name)) bounds.add(part.index);
+  let at = tokens[0]?.length ?? 0;
+  for (let i = 1; i < tokens.length; ) {
+    if (bounds.has(at)) {
+      at += tokens[i].length;
+      i += 1;
+    } else {
+      at += tokens[i].length;
+      tokens.splice(i - 1, 2, tokens[i - 1] + tokens[i]);
+    }
+  }
+}
+
+/** Characters the eye counts (letter-spacing is added after each): zero-width marks and joined emoji parts are not counted. */
+export function visibleLength(text: string): number {
+  return graphemes(text).length;
+}
+
+/** Longest a phone line may be (em) and still be set large; longer names get more lines. */
+export const PHONE_LINE_EM = 7.5;
+const MAX_PHONE_LINES = 3;
+
+/**
+ * The name's lines on a phone: the whole name when it fits on one large line,
+ * otherwise the split into 2–3 lines (between pieces only) whose longest line
+ * is shortest. A name that is one piece stays one line (it is then sized to fit).
+ */
+const phoneLinesCache = new Map<string, string[]>();
+
+export function phoneNameLines(name: string): string[] {
+  const text = name.trim();
+  const cached = phoneLinesCache.get(text);
+  if (cached) return [...cached];
+  const lines = planPhoneLines(text);
+  if (phoneLinesCache.size > 500) phoneLinesCache.clear();
+  phoneLinesCache.set(text, lines);
+  return [...lines];
+}
+
+function planPhoneLines(text: string): string[] {
+  const tokens = nameTokens(text);
+  if (emWidth(text) <= PHONE_LINE_EM || tokens.length < 2) return [text];
+  const want = Math.min(MAX_PHONE_LINES, tokens.length, Math.ceil(emWidth(text) / PHONE_LINE_EM));
+  let best: string[] = [text];
+  let bestWidth = Infinity;
+  // Every way to cut the pieces into `want` lines (names are short: at most a few dozen pieces).
+  const walk = (start: number, left: number, lines: string[]) => {
+    if (left === 1) {
+      const all = [...lines, tokens.slice(start).join("")];
+      // measured as the lines are sized: a space at the end of a line takes no room
+      const width = Math.max(...all.map((line) => emWidth(line.replace(/\s+$/u, ""))));
+      if (width < bestWidth) {
+        best = all;
+        bestWidth = width;
+      }
+      return;
+    }
+    for (let end = start + 1; end <= tokens.length - (left - 1); end++) walk(end, left - 1, [...lines, tokens.slice(start, end).join("")]);
+  };
+  walk(0, want, []);
+  return best;
+}
+
+/**
+ * Whether the name is set from unbreakable pieces: a name with no space of
+ * its own to break at, and any name with Japanese in it (a space in
+ * 「パン工房　テスト」 does not make its words breakable). A spaced Latin name
+ * keeps breaking at its spaces.
+ */
+export function setsInPieces(name: string): boolean {
+  const text = name.trim();
+  return !/\s/.test(text) || /[\u3040-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF66-\uFF9F々〆ヶ]/.test(text);
+}
+
 /** Up to two letters taken from the name: "EXAMPLE BAKE" → "EB", "焼菓子店" → "焼". */
 export function monogram(name: string): string {
   const words = name.split(/[\s・･·.\-_/&+]+/).filter(Boolean);
@@ -49,11 +327,44 @@ export function monogram(name: string): string {
 
 /** Approximate width in em (full-width 1em, Latin narrower). */
 export function emWidth(text: string): number {
+  return graphemes(text).reduce((sum, g) => sum + (EMOJI.test(g) ? 1.2 : charsWidth(g)), 0);
+}
+
+function charsWidth(text: string): number {
   return [...text].reduce((sum, ch) => {
-    if (ch === " ") return sum + 0.3;
+    if (ZERO_WIDTH.test(ch)) return sum;
+    if (/\s/.test(ch)) return sum + (ch === "\u3000" ? 1 : 0.3);
     if (/[A-Z0-9]/.test(ch)) return sum + 0.72;
     if (/[a-z]/.test(ch)) return sum + 0.56;
-    if (/[!-ɏ]/.test(ch)) return sum + 0.5;
+    if (/[!-ɏ\uFF61-\uFF9F]/.test(ch)) return sum + 0.5; // incl. half-width katakana
+    return sum + 1;
+  }, 0);
+}
+
+/**
+ * A safe upper bound of the width in em, for sizing a name so it can never
+ * overflow (DEV-034): every Latin letter as wide as its capital (the profile
+ * may set the name in capitals), the widest capitals at their widest, and
+ * room for the widest display face (light_grotesk is set at 104% width).
+ */
+export function fitWidth(text: string): number {
+  // an emoji (a pictograph, flag or keycap) is drawn wider than a full-width character
+  return graphemes(text).reduce((sum, g) => sum + (EMOJI.test(g) ? 1.35 : charsFitWidth(g)), 0);
+}
+
+function charsFitWidth(text: string): number {
+  const latin = (w: number) => w * 1.04;
+  return [...text].reduce((sum, ch) => {
+    if (ZERO_WIDTH.test(ch)) return sum;
+    if (/\s/.test(ch)) return sum + (ch === "\u3000" ? 1 : 0.35);
+    // a text-style pictograph (❤ ‼ ™) may still be drawn as an emoji
+    if (/\p{Extended_Pictographic}/u.test(ch)) return sum + 1.35;
+    // some symbols (Ⅲ ★ ♪ arrows) are drawn wider than 1em in a Latin face
+    if (/[\u2000-\u2BFF]/.test(ch)) return sum + 1.2;
+    if (/[MWmwＭＷｍｗ@%]/.test(ch)) return sum + latin(1.1);
+    if (/[A-Za-z\u00C0-\u024F]/.test(ch)) return sum + latin(0.86);
+    if (/[0-9&#]/.test(ch)) return sum + latin(0.76);
+    if (/[!-~\u00A0-\u00BF\uFF61-\uFF9F]/.test(ch)) return sum + latin(0.6);
     return sum + 1;
   }, 0);
 }
@@ -66,7 +377,20 @@ const units = (em: number) => Math.min(40, Math.max(2.5, Math.round(em * 1.06 * 
  */
 export function nameSizing(name: string): CSSProperties {
   const lines = nameLines(name);
-  return { "--units": units(emWidth(name)), "--line-units": units(Math.max(...lines.map(emWidth))) } as CSSProperties;
+  const style: Record<string, number> = { "--units": units(emWidth(name)), "--line-units": units(Math.max(...lines.map(emWidth))) };
+  if (setsInPieces(name)) {
+    // DEV-034: phone fit for an unspaced name, from its longest phone line;
+    // --fit-chars lets the CSS add the profile's letter-spacing per character.
+    // Sized from fitWidth (an upper bound), so no face or case overflows.
+    const phone = phoneNameLines(name);
+    // a space at the end of a line hangs: it takes no room on that line
+    const longest = phone.map((line) => line.replace(/\s+$/u, "")).reduce((a, b) => (fitWidth(b) > fitWidth(a) ? b : a));
+    style["--fit-units"] = Math.max(1, Math.round(fitWidth(longest) * 1.06 * 100) / 100);
+    style["--fit-chars"] = visibleLength(longest);
+    style["--name-units"] = Math.max(1, Math.round(fitWidth(name.trim()) * 1.06 * 100) / 100);
+    style["--name-chars"] = visibleLength(name.trim());
+  }
+  return style as CSSProperties;
 }
 
 /**

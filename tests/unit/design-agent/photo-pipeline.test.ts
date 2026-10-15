@@ -15,6 +15,7 @@ import {
 import type { PhotoInput } from "@/lib/design-agent/assets/photo-codex";
 import { checkRenderedPhotos, type PlacedPhoto } from "@/lib/design-agent/assets/render-check";
 import type { PublicAssetId } from "@/lib/design-agent/assets/types";
+import { DeadlineError } from "@/lib/design-agent/bounded-process";
 import { CodexError } from "@/lib/design-agent/codex";
 import { runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
 import { photoReviewJsonSchema, PhotoReviewSchema, revisionPlan, type PhotoReview } from "@/lib/design-agent/photo-review";
@@ -175,7 +176,7 @@ function harness(answers: { codex?: Answer[]; photo?: Answer[] }, opts: { placed
   const manifest = manifestOf();
   const take = (list: Answer[]) => {
     const next = list.shift();
-    if (next instanceof CodexError) throw next;
+    if (next instanceof Error) throw next;
     return next;
   };
   const deps: PipelineDeps = {
@@ -274,6 +275,49 @@ describe("runDesignPipeline with photos", () => {
     expect(h.profiles.get("candidate-1")?.palette.accent).toBe("#8A6A3A");
     expect(h.profiles.get("candidate-2")?.palette.accent).toBe("#9A7A4A");
     expect(h.calls.filter((c) => c === "photo_analysis")).toHaveLength(1);
+  });
+
+  it("DEV-034: a lower revision sends the search back to the best candidate (reviewed again, with the history)", async () => {
+    const lower = { ...photoReview().photo_scores, crop: 2, mobile_crop: 2 };
+    const h = harness({
+      codex: [
+        AMERICAN_EDITORIAL,
+        photoReview({ verdict: "revise", revision_target: "profile", recommended_profile_changes: { summary: [], revised_profile: revisedProfile("#111111") }, problems: [{ area: "mobile", severity: "high", note: "NOTE_TEXT" }] }),
+        photoReview({ verdict: "revise", revision_target: "profile", photo_scores: lower, recommended_profile_changes: { summary: [], revised_profile: revisedProfile("#222222") } }),
+        photoReview({ verdict: "revise", revision_target: "profile", recommended_profile_changes: { summary: [], revised_profile: revisedProfile("#333333") } }),
+        photoReview({ verdict: "accept" }),
+      ],
+      photo: [analysesAnswer(), direction(), direction(), direction()],
+    });
+    const report = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, h.deps);
+    expect(h.calls.filter((c) => c === "photo_review")).toHaveLength(4);
+    // the third review looks at candidate-0 again; the revision is made from it
+    expect(h.reviewImages[2]).toEqual([...refs, "/shots/candidate-0-d.png", "/shots/candidate-0-m.png", "/shots/candidate-0-m-section-1.png"]);
+    expect(h.reviewPrompts[0]).not.toContain("Earlier rounds");
+    expect(h.reviewPrompts[1]).toContain("problems: mobile high");
+    expect(h.reviewPrompts[2]).toMatch(/This is candidate-0 again: its revision candidate-1 scored lower \(\d+\/65\)/);
+    for (const prompt of h.reviewPrompts) expect(prompt).not.toContain("NOTE_TEXT");
+    expect(h.profiles.get("candidate-2")?.palette.accent).toBe("#333333");
+    expect(report.rounds.map((r) => [r.candidate, r.again ?? false])).toEqual([
+      ["candidate-0", false],
+      ["candidate-1", false],
+      ["candidate-0", true],
+      ["candidate-2", false],
+    ]);
+    expect(report).toMatchObject({ status: "done", revisions: 2, finalCandidate: "candidate-2" });
+    expect(report.notes).toContain("REVISION_FROM_BEST_2");
+  });
+
+  it("DEV-034: the run's deadline in a revision's direction or review ends the search with the best candidate", async () => {
+    const reviseProfile = (accent: string) => photoReview({ verdict: "revise", revision_target: "profile", recommended_profile_changes: { summary: [], revised_profile: revisedProfile(accent) } });
+    const inDirection = harness({ codex: [AMERICAN_EDITORIAL, reviseProfile("#111111")], photo: [analysesAnswer(), direction(), new DeadlineError()] });
+    const a = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, inDirection.deps);
+    expect(a.notes).toContain("REVISION_NO_TIME");
+    expect(a).toMatchObject({ status: "done", revisions: 0, finalCandidate: "candidate-0" });
+    const inReview = harness({ codex: [AMERICAN_EDITORIAL, reviseProfile("#111111"), new DeadlineError()], photo: [analysesAnswer(), direction(), direction()] });
+    const b = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, inReview.deps);
+    expect(b.notes).toContain("REVIEW_NO_TIME");
+    expect(b).toMatchObject({ status: "done", revisions: 1, finalCandidate: "candidate-0" });
   });
 
   it("none target or a missing revised profile stops; an invalid revised direction stops with the best so far", async () => {

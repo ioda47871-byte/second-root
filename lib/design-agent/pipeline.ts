@@ -1,9 +1,10 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import type { PlacedPhoto } from "./assets/render-check";
+import { DeadlineError } from "./bounded-process";
 import { CodexError, isEnvironmentFailure } from "./codex";
 import { CATEGORY_DEFAULT_PROFILES, LOW_CONFIDENCE } from "./defaults";
 import { checkProfile, designProfileJsonSchema, looseJsonSchema, type DesignProfile } from "./profile";
-import { runPhotoLoop, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
+import { runPhotoLoop, timeForSecondLook, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
 import { buildBriefPrompt, buildReviewPrompt } from "./prompts";
 import { reviewScore, visualReviewJsonSchema, VisualReviewSchema, type VisualReview } from "./review";
 
@@ -34,11 +35,15 @@ export interface PipelineDeps {
   renderPhotos?(candidate: string): Promise<{ shots: Shots; sections: string[]; placed: PlacedPhoto[] }>;
   /** Reads a run record back (a stored PhotoAnalysis is reused when it matches the asset set). */
   readRecord?(name: string): Promise<unknown>;
+  /** Time left in the run (ms), checked before a second look at the best candidate (DEV-034). */
+  timeLeftMs?(): number;
   log(line: string): void;
 }
 
 export type RoundRecord = {
   candidate: string;
+  /** DEV-034: the best candidate reviewed again after a lower-scoring revision. */
+  again?: true;
   scores: Pick<VisualReview, "brand_fit" | "visual_quality" | "hierarchy" | "mobile_quality" | "generic_template_feel"> & { total: number };
   verdict: VisualReview["verdict"];
   problems: Array<{ area: string; severity: string }>;
@@ -139,7 +144,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       maxRevisions,
       schema,
       notes,
-      deps: { askCodex: (r) => deps.askCodex(r), askPhotoCodex, writeProfile: deps.writeProfile, writeRecord: deps.writeRecord, readRecord: deps.readRecord, renderPhotos, log: deps.log },
+      deps: { askCodex: (r) => deps.askCodex(r), askPhotoCodex, writeProfile: deps.writeProfile, writeRecord: deps.writeRecord, readRecord: deps.readRecord, renderPhotos, ...(deps.timeLeftMs ? { timeLeftMs: deps.timeLeftMs } : {}), log: deps.log },
     });
     photoStats = result.stats;
     if (result.kind === "environment") return report("environment_failure", { profileSource, briefConfidence, photos: photoStats });
@@ -151,60 +156,110 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   const withPhotos = photoStats ? { photos: photoStats } : {};
 
   // ---- review / revise
+  // DEV-034: each review is told the earlier rounds (scores and problem codes
+  // only). The next revision always starts from the best-scored candidate so
+  // far: when a revision scores lower than the leader, the leader is reviewed
+  // again (with the history) and that review's revised profile is used, never
+  // one made from the worse candidate. Tie: the later candidate counts as the
+  // leader, the same rule as the final choice below. Scores, the verdict, the
+  // revision limit and the renderer-change stop are unchanged.
   const rounds: RoundRecord[] = [];
   const candidates: Array<{ name: string; profile: DesignProfile; score: number }> = [];
-  let status: PipelineReport["status"] = "done";
+  const state: { status: PipelineReport["status"] } = { status: "done" };
   let revisions = 0;
   let current = { name: "candidate-0", profile };
-  for (;;) {
-    await deps.writeProfile(current.name, current.profile);
-    const shots = await deps.render(current.name);
-    let review: VisualReview;
+  let leader: { name: string; profile: DesignProfile; score: number; shots: Shots } | null = null;
+
+  /** One review call; null when the answer is unusable (recorded in notes / status). */
+  const review = async (target: { name: string; profile: DesignProfile }, shots: Shots, again: { lower: string; lowerTotal: number } | null): Promise<VisualReview | null> => {
     try {
       const answer = await deps.askCodex({
         kind: "review",
-        prompt: buildReviewPrompt({ demo: input.demo, profile: current.profile, referenceCount: input.references.length, referenceKind: input.referenceKind, round: revisions, maxRevisions }),
+        prompt: buildReviewPrompt({
+          demo: input.demo,
+          profile: target.profile,
+          referenceCount: input.references.length,
+          referenceKind: input.referenceKind,
+          round: revisions,
+          maxRevisions,
+          history: rounds,
+          best: leader && rounds.length > 0 ? { candidate: leader.name, total: leader.score } : null,
+          again: again ? { candidate: target.name, ...again } : null,
+        }),
         images: [...input.references, shots.desktop, shots.mobile],
         schema: schema(visualReviewJsonSchema()),
       });
       const parsed = VisualReviewSchema.safeParse(answer);
       if (!parsed.success) {
-        notes.push(`REVIEW_INVALID_${current.name}`);
-        candidates.push({ ...current, score: -1 });
-        break;
+        notes.push(`REVIEW_INVALID_${target.name}${again ? "_AGAIN" : ""}`);
+        return null;
       }
-      review = parsed.data;
+      return parsed.data;
     } catch (error) {
+      // The run's clock ran out after a candidate was scored: the best scored candidate is the final one.
+      if (error instanceof DeadlineError && leader) {
+        notes.push(again ? "REVISION_FROM_BEST_NO_TIME" : "REVIEW_NO_TIME");
+        return null;
+      }
       if (!(error instanceof CodexError)) throw error;
       notes.push(`REVIEW_${error.code}`);
-      candidates.push({ ...current, score: -1 });
-      if (isEnvironmentFailure(error.code)) status = "environment_failure";
-      break;
+      if (isEnvironmentFailure(error.code)) state.status = "environment_failure";
+      return null;
     }
-    await deps.writeRecord(`review-${current.name}.json`, review);
-    const total = reviewScore(review);
-    candidates.push({ ...current, score: total });
+  };
+  const record = (name: string, r: VisualReview, again: boolean): number => {
+    const total = reviewScore(r);
     rounds.push({
-      candidate: current.name,
-      scores: {
-        brand_fit: review.brand_fit,
-        visual_quality: review.visual_quality,
-        hierarchy: review.hierarchy,
-        mobile_quality: review.mobile_quality,
-        generic_template_feel: review.generic_template_feel,
-        total,
-      },
-      verdict: review.verdict,
-      problems: review.problems.map((p) => ({ area: p.area, severity: p.severity })),
+      candidate: name,
+      ...(again ? { again: true as const } : {}),
+      scores: { brand_fit: r.brand_fit, visual_quality: r.visual_quality, hierarchy: r.hierarchy, mobile_quality: r.mobile_quality, generic_template_feel: r.generic_template_feel, total },
+      verdict: r.verdict,
+      problems: r.problems.map((p) => ({ area: p.area, severity: p.severity })),
     });
-    deps.log(`review ${current.name}: ${review.verdict}, total ${total}/25`);
-    if (review.needs_renderer_change) {
-      notes.push("RENDERER_CHANGE_NEEDED");
-      status = "blocked";
+    deps.log(`review ${name}${again ? " (again)" : ""}: ${r.verdict}, total ${total}/25`);
+    return total;
+  };
+
+  for (;;) {
+    await deps.writeProfile(current.name, current.profile);
+    const shots = await deps.render(current.name);
+    const r = await review(current, shots, null);
+    if (!r) {
+      candidates.push({ ...current, score: -1 });
       break;
     }
-    if (review.verdict === "accept" || revisions >= maxRevisions) break;
-    const revised = review.recommended_profile_changes.revised_profile;
+    await deps.writeRecord(`review-${current.name}.json`, r);
+    const total = record(current.name, r, false);
+    candidates.push({ ...current, score: total });
+    if (!leader || total >= leader.score) leader = { ...current, score: total, shots };
+    if (r.needs_renderer_change) {
+      notes.push("RENDERER_CHANGE_NEEDED");
+      state.status = "blocked";
+      break;
+    }
+    if (r.verdict === "accept" || revisions >= maxRevisions) break;
+
+    let next = r;
+    if (leader.name !== current.name) {
+      // This revision scored lower than the best so far: revise from the best instead.
+      notes.push(`REVISION_FROM_BEST_${revisions + 1}`);
+      if (!timeForSecondLook(deps.timeLeftMs)) {
+        notes.push("REVISION_FROM_BEST_NO_TIME");
+        break;
+      }
+      const again = await review(leader, leader.shots, { lower: current.name, lowerTotal: total });
+      if (!again) break;
+      await deps.writeRecord(`review-${leader.name}-again-${revisions + 1}.json`, again);
+      record(leader.name, again, true);
+      if (again.needs_renderer_change) {
+        notes.push("RENDERER_CHANGE_NEEDED");
+        state.status = "blocked";
+        break;
+      }
+      if (again.verdict === "accept") break;
+      next = again;
+    }
+    const revised = next.recommended_profile_changes.revised_profile;
     if (revised === null) {
       notes.push("NO_REVISED_PROFILE");
       break;
@@ -224,9 +279,9 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   const best = candidates.reduce((a, b) => (b.score >= a.score ? b : a));
   if (best.score < 0) {
     notes.push("NO_REVIEWED_CANDIDATE");
-    return report(status === "environment_failure" ? "environment_failure" : "fallback_template", { profileSource, rounds, revisions, briefConfidence, ...withPhotos });
+    return report(state.status === "environment_failure" ? "environment_failure" : "fallback_template", { profileSource, rounds, revisions, briefConfidence, ...withPhotos });
   }
   await deps.writeProfile("final", best.profile);
   const after = await deps.render("final");
-  return { status, notes, profileSource, rounds, finalCandidate: best.name, revisions, briefConfidence, before, after, ...withPhotos };
+  return { status: state.status, notes, profileSource, rounds, finalCandidate: best.name, revisions, briefConfidence, before, after, ...withPhotos };
 }

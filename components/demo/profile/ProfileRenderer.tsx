@@ -1,11 +1,11 @@
-import type { CSSProperties } from "react";
+import { Fragment, type CSSProperties } from "react";
 import type { RenderFeature, RenderPhoto, RenderPhotos } from "@/lib/design-agent/assets/resolve";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
 import { areaLabel, infoRows } from "../info";
 import { editorial, grotesk } from "./fonts";
-import { keepTogether, locationLabels, monogram, nameLines, nameSizing, ordinal } from "./text";
+import { keepTogether, locationLabels, monogram, nameLines, nameSizing, nameTokens, ordinal, phoneNameLines, setsInPieces } from "./text";
 import styles from "./profile.module.css";
 
 // Shared renderer for design profiles (DEV-028). Every word on the page comes
@@ -102,7 +102,10 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
   const others = rows.filter((r) => r !== address);
   const motifs = new Set(profile.motifs);
   const mark = monogram(demo.name);
-  const lines = profile.heroLayout.layout === "split_crop" ? nameLines(demo.name) : [demo.name];
+  // An unspaced or Japanese name (DEV-034) is set from unbreakable pieces, on the lines
+  // a phone uses; a spaced Latin name keeps breaking at its spaces as before.
+  const unspaced = setsInPieces(demo.name);
+  const lines = unspaced ? phoneNameLines(demo.name) : profile.heroLayout.layout === "split_crop" ? nameLines(demo.name) : [demo.name];
   const labels = motifs.has("location_labels") ? locationLabels(demo) : [];
   const t = profile.typography;
   const heroPhoto = photos?.hero ?? null;
@@ -163,14 +166,34 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
       {framed && <PhotoFigure photo={heroPhoto} className={styles.framePhoto} role="hero" />}
 
       <div className={styles.title}>
-        <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length}>
-          {lines.map((line, i) => (
-            <span key={`${i}-${line}`} className={styles.line}>
-              {i > 0 ? " " : null}
-              <span className={styles.lineText}>{line}</span>
-            </span>
-          ))}
-        </h1>
+        {unspaced ? (
+          <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length} data-fit="phone">
+            {lines.map((line, i) => (
+              <span key={`${i}-${line}`} className={styles.phoneLine}>
+                {nameTokens(line).map((piece, j, all) => {
+                  // a space after a piece stays outside it; one that ends a phone line is not shown there
+                  const body = piece.replace(/\s+$/u, "");
+                  const space = piece.slice(body.length);
+                  return (
+                    <Fragment key={`${j}-${piece}`}>
+                      {body && <span className={styles.piece}>{body}</span>}
+                      {space && j === all.length - 1 ? <span className={styles.lineEnd}>{space}</span> : space}
+                    </Fragment>
+                  );
+                })}
+              </span>
+            ))}
+          </h1>
+        ) : (
+          <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length}>
+            {lines.map((line, i) => (
+              <span key={`${i}-${line}`} className={styles.line}>
+                {i > 0 ? " " : null}
+                <span className={styles.lineText}>{line}</span>
+              </span>
+            ))}
+          </h1>
+        )}
       </div>
 
       <p className={styles.dek}>

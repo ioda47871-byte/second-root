@@ -1566,6 +1566,55 @@
       "attempts": 0,
       "last_failure": "Three fresh reviews (Critical/High/Medium 0 after fixes; .ai/reviews/DEV-033.md), CI green. Helper reflects it only after a person approves the merged commit (admin.sh approve). The real destination of the Staging PoC redirect is known only after the next run.",
       "branch": "feature/dev-033-capture-wall-classification"
+    },
+    {
+      "id": "DEV-034",
+      "title": "Design loop: unspaced Japanese names on phones, revisions from the best candidate, reviewer round history",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-030"
+      ],
+      "purpose": "Staging second PoC（2026-10-15、demo b2048c61…）: capture は CAPTURED、brief / review は strict OK だが、candidate 0/1/2 が 15 → 13 → 13 で、最後の review が RENDERER_CHANGE_NEEDED（日本語店名の responsive sizing と意味のある改行）を求めて blocked。renderer の名前の組み方と、revision の探索・reviewer への文脈を直す。review の基準・閾値・点の計算・renderer change の停止は変えない",
+      "acceptance_criteria": [
+        "空白のない店名は割れない piece（漢字＋続く仮名、カタカナの連なり、Latin の語、中黒の後）から組み、piece の途中で改行しない",
+        "phone では大きく 1 行に入る名前は 1 行、それ以外は piece の間だけで 2〜3 行に均等に分け、各行を hero の幅と letter-spacing に合わせて縮める。360 / 390 px で横にはみ出さない",
+        "desktop は 1 行のまま（split_crop の 1 行規則で折れていたのも直る）。空白のある名前は従来どおり",
+        "Latin や大文字・幅の広い face でも phone / desktop で切れない（幅は大文字・最も広い face を上限として見積もる）。長音・小書き仮名・ヶ・閉じ括弧は前の文字に付け、開き括弧は後ろに付ける",
+        "次の revision は常にその時点の best-scored candidate から作る。改訂が best より低いときは best を再 review してその改訂 profile を使う。同点は後の candidate を best とする（final の選び方と同じ）",
+        "写真のある job の loop（photo-pipeline）も同じ規則。run の残り時間が足りなければ best の再 review はせず、best を final にする（DeadlineError で job を落とさない）",
+        "2 回目以降の review prompt に前の round の verdict・5 つの点・合計・問題の area / severity だけを渡し、前より悪化した変更を繰り返さないよう明記する。Codex の文章・画像の中身は渡さない。最初の round の prompt は変えない",
+        "点の計算・accept / revise・revision の上限 2・needs_renderer_change → BLOCKED は変えない",
+        "test は架空の店名だけ。実店舗名・Instagram handle・run artifact を fixture に入れない"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent/renderer-jp-name.test.tsx（Chromium、全 display face × tracking × hero layout、360 / 390 / 1440）",
+        "unit: tests/unit/design-agent/pipeline.test.ts / photo-pipeline.test.ts（15 → 13 で revision 2 が candidate-0 から、round history、同点、再 review の BLOCKED / accept / invalid / NO_REVISED_PROFILE / 環境失敗 / 時間切れ、上限）",
+        "既存の renderer / layout / snapshot、unit / integration / e2e / build"
+      ],
+      "allowed_scope": [
+        "components/demo/profile/",
+        "lib/design-agent/pipeline.ts",
+        "lib/design-agent/photo-pipeline.ts",
+        "lib/design-agent/prompts.ts",
+        "lib/design-agent/photo-prompts.ts",
+        "lib/design-agent/worker/run.ts（pipeline に残り時間を渡す 1 行）",
+        "scripts/sales-design/design-demo.ts（同じ 1 行）",
+        "tests/",
+        "docs/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "review の閾値・点の計算・強制 accept・needs_renderer_change の bypass",
+        "jail・capture helper・Navigation Guard・Cookie / session・bridge token・RLS / Auth・Production・timer・DM",
+        "DesignProfile の schema 変更"
+      ],
+      "human_approval_triggers": [
+        "Third PoC の WSL root 実行"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-034-jp-name-and-revision"
     }
   ]
 }
