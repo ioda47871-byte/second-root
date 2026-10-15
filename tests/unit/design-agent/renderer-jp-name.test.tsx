@@ -326,6 +326,9 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens(NAMES.namaHam).some((t) => t.endsWith("生"))).toBe(false);
     expect(nameTokens("名古屋生チョコテスト").some((t) => t.endsWith("生"))).toBe(false);
     expect(nameTokens("テスト店カフェ")[0]).toBe("テスト店");
+    // a one-kanji suffix stays with the word before it, even before a katakana word
+    for (const [n, word] of [["いろは堂ベーカリーテスト", "いろは堂"], ["はなや堂カフェテスト", "はなや堂"], ["京都風ラーメン架空", "京都風"], ["北海道産バターのパン屋", "北海道産"], ["名古屋駅カフェテスト", "名古屋駅"]] as const)
+      expect(nameTokens(n).some((t) => t.startsWith(word)), n).toBe(true);
     expect(nameTokens("架空の焼菓子とコーヒーのテスト店")).toEqual(["架空の", "焼菓子と", "コーヒーの", "テスト店"]);
     expect(nameTokens("架空第1号店")).toEqual(["架空第1号店"]);
     expect(nameTokens("EXAMPLE365架空")).toEqual(["EXAMPLE365", "架空"]);

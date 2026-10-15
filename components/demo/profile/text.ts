@@ -179,7 +179,7 @@ export function nameTokens(name: string): string[] {
     const beforeLast = before ? [...before].filter((ch) => !ZERO_WIDTH.test(ch)).at(-1) : undefined;
     const oneKanji = [...core].length === 1 && scriptOf(core) === "kanji";
     // One kanji after a particle and before a katakana word is that word's prefix (の塩パン, と生ハム).
-    if (oneKanji && t === core && beforeLast && /[のとやがはをにでへも]/.test(beforeLast) && katakanaStart(tokens[i + 1])) {
+    if (oneKanji && t === core && PREFIX_KANJI.test(t) && beforeLast && /[のとやがはをにでへも]/.test(beforeLast) && katakanaStart(tokens[i + 1])) {
       tokens[i + 1] = t + tokens[i + 1];
       continue;
     }
@@ -191,18 +191,25 @@ export function nameTokens(name: string): string[] {
 }
 
 /**
+ * Kanji that are a prefix of the katakana word after them (生チョコ, 塩パン, 新ブランド, 和モダン, 黒ゴマ).
+ * Only these move forward: most one-kanji words before katakana are a suffix of the word before them
+ * (いろは堂, 京都風, 北海道産, 名古屋駅), which stay where they are.
+ */
+const PREFIX_KANJI = /^[生塩新旬純和洋黒白焼]$/;
+
+/**
  * A kanji run that ends in a one-kanji dictionary word right before a katakana word gives that kanji to
  * the word (名古屋 / 生チョコ): it is the word's prefix, not the end of the run. Needs Intl.Segmenter.
  */
 function prefixKanji(name: string, tokens: string[]): void {
   const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
   if (!Seg) return;
-  // offsets of one-kanji words that follow a longer word (名古屋|生), never a shop suffix (駅前|店, 1号|店)
+  // offsets of one-kanji prefixes that follow a longer word (名古屋|生); a suffix (風 産 駅 店 …) stays
   const single = new Set<number>();
   let prevLength = 0;
   for (const part of new Seg("ja", { granularity: "word" }).segment(name)) {
     const n = [...part.segment].length;
-    if (n === 1 && prevLength >= 2 && scriptOf(part.segment) === "kanji" && !/[店屋堂亭館舗庵房園院所]/.test(part.segment)) single.add(part.index);
+    if (n === 1 && prevLength >= 2 && PREFIX_KANJI.test(part.segment)) single.add(part.index);
     prevLength = n;
   }
   let at = 0;
