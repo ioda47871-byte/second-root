@@ -169,15 +169,54 @@ export function nameTokens(name: string): string[] {
   }
   dictionaryGate(name, tokens);
   // One kanji right after a kana word is its suffix (テスト店, カフェ堂, こもれび堂): keep them together.
-  return tokens.reduce<string[]>((out, t) => {
+  const out: string[] = [];
+  const katakanaStart = (t: string | undefined) => t !== undefined && scriptOf([...t][0]) === "katakana";
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
     const before = out[out.length - 1];
     // "店）", "店　" count as one kanji, and so does a kanji with an honorific (屋さん)
     const core = [...t.replace(/(?:さん|ちゃん|さま)(?=[\s）)」』]*$)/u, "")].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch) && !/\s/u.test(ch)).join("");
     const beforeLast = before ? [...before].filter((ch) => !ZERO_WIDTH.test(ch)).at(-1) : undefined;
-    if (before && beforeLast && [...core].length === 1 && scriptOf(core) === "kanji" && /^(?:katakana|hiragana)$/.test(scriptOf(beforeLast)) && !ENDS_PIECE.test(beforeLast)) out[out.length - 1] = before + t;
+    const oneKanji = [...core].length === 1 && scriptOf(core) === "kanji";
+    // One kanji after a particle and before a katakana word is that word's prefix (の塩パン, と生ハム).
+    if (oneKanji && t === core && beforeLast && /[のとやがはをにでへも]/.test(beforeLast) && katakanaStart(tokens[i + 1])) {
+      tokens[i + 1] = t + tokens[i + 1];
+      continue;
+    }
+    if (before && beforeLast && oneKanji && /^(?:katakana|hiragana)$/.test(scriptOf(beforeLast)) && !ENDS_PIECE.test(beforeLast)) out[out.length - 1] = before + t;
     else out.push(t);
-    return out;
-  }, []);
+  }
+  prefixKanji(name, out);
+  return out;
+}
+
+/**
+ * A kanji run that ends in a one-kanji dictionary word right before a katakana word gives that kanji to
+ * the word (名古屋 / 生チョコ): it is the word's prefix, not the end of the run. Needs Intl.Segmenter.
+ */
+function prefixKanji(name: string, tokens: string[]): void {
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
+  if (!Seg) return;
+  // offsets of one-kanji words that follow a longer word (名古屋|生), never a shop suffix (駅前|店, 1号|店)
+  const single = new Set<number>();
+  let prevLength = 0;
+  for (const part of new Seg("ja", { granularity: "word" }).segment(name)) {
+    const n = [...part.segment].length;
+    if (n === 1 && prevLength >= 2 && scriptOf(part.segment) === "kanji" && !/[店屋堂亭館舗庵房園院所]/.test(part.segment)) single.add(part.index);
+    prevLength = n;
+  }
+  let at = 0;
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const t = tokens[i];
+    at += t.length;
+    const last = [...t].at(-1)!;
+    const prevCh = [...t].at(-2);
+    if (t.length > 1 && scriptOf(last) === "kanji" && prevCh && scriptOf(prevCh) === "kanji" && single.has(at - last.length) && scriptOf([...tokens[i + 1]][0]) === "katakana") {
+      tokens[i] = t.slice(0, -last.length);
+      tokens[i + 1] = last + tokens[i + 1];
+      at -= last.length;
+    }
+  }
 }
 
 /**

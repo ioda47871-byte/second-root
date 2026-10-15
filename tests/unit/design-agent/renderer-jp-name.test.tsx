@@ -103,6 +103,8 @@ const NAMES = {
   linkerNo: "三ノ宮駅前架空食堂",
   linkerGa: "架空が丘洋菓子工房",
   panyasan: "まちのパン屋さんテスト",
+  shioPan: "架空の塩パン専門店",
+  namaHam: "テスト珈琲と生ハムの店",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -319,8 +321,11 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens(NAMES.panyasan).some((t) => t.startsWith("屋"))).toBe(false);
     expect(nameTokens("三の丸手作り焼菓子工房").some((t) => t.endsWith("三の"))).toBe(false);
     expect(nameTokens("霞ｶﾞ関架空").length).toBe(1);
-    // の after a word is still a break (架空の / 店…)
-    expect(nameTokens("架空の焼菓子とコーヒーのテスト店")).toEqual(["架空の", "焼菓子と", "コーヒーの", "テスト店"]);
+    // a one-kanji prefix stays with its katakana word
+    expect(nameTokens(NAMES.shioPan).some((t) => t.endsWith("塩"))).toBe(false);
+    expect(nameTokens(NAMES.namaHam).some((t) => t.endsWith("生"))).toBe(false);
+    expect(nameTokens("名古屋生チョコテスト").some((t) => t.endsWith("生"))).toBe(false);
+    expect(nameTokens("テスト店カフェ")[0]).toBe("テスト店");
     expect(nameTokens("架空の焼菓子とコーヒーのテスト店")).toEqual(["架空の", "焼菓子と", "コーヒーの", "テスト店"]);
     expect(nameTokens("架空第1号店")).toEqual(["架空第1号店"]);
     expect(nameTokens("EXAMPLE365架空")).toEqual(["EXAMPLE365", "架空"]);
