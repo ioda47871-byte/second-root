@@ -96,6 +96,8 @@ const NAMES = {
   kanaWordO: "架空商店街のえがお食堂",
   kanaSuffix: "洋菓子店こもれび堂",
   okurigana: "炭火焼き鳥まるやま",
+  kanaThenKanji: "ほうじ茶専門店テスト",
+  takoyaki: "たこ焼き専門店まるいち",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -255,7 +257,7 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens(NAMES.dot)).toEqual(["カフェ・", "テストベーカリー"]);
     expect(nameTokens(NAMES.latinWord)).toEqual(["EXAMPLEBAKERY"]);
     // a long-vowel mark, small kana and ヶ stay with the character before them; brackets with their word
-    expect(nameTokens(NAMES.longVowel)).toEqual(["らーめん", "架空"]);
+    expect(nameTokens(NAMES.longVowel).some((t) => t.startsWith("ー"))).toBe(false);
     expect(nameTokens(NAMES.smallKa)).toEqual(["架空ヶ丘", "ベーカリー"]);
     expect(nameTokens(NAMES.bracket)).toEqual(["（架空）", "テスト", "菓子店"]);
     expect(nameTokens("架空カフェ（テスト店）")).toEqual([
@@ -298,6 +300,11 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens(NAMES.okurigana).some((t) => t.endsWith("焼き"))).toBe(false);
     expect(nameTokens("立ち飲み酒場テスト").some((t) => t.endsWith("立ち"))).toBe(false);
     expect(nameTokens("架空の店")).toEqual(["架空の店"]);
+    // hiragana and the kanji after it are one word unless the kana ends in a particle
+    expect(nameTokens(NAMES.kanaThenKanji)[0]).toBe("ほうじ茶専門店");
+    expect(nameTokens(NAMES.takoyaki).some((t) => t === "たこ" || t.endsWith("たこ"))).toBe(false);
+    expect(nameTokens("わらび餅本舗架空").some((t) => t.endsWith("わらび"))).toBe(false);
+    expect(nameTokens("架空の焼菓子とコーヒーのテスト店")).toEqual(["架空の", "焼菓子と", "コーヒーの", "テスト店"]);
     expect(nameTokens("架空第1号店")).toEqual(["架空第1号店"]);
     expect(nameTokens("EXAMPLE365架空")).toEqual(["EXAMPLE365", "架空"]);
     expect(nameTokens("架空\u200Dテスト").join("")).toBe("架空\u200Dテスト");

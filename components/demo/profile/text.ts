@@ -126,8 +126,9 @@ export function nameTokens(name: string): string[] {
           // a number and its counter stay together (1号店, 10周年, 第1号店), and 第 with its number
           (script === "kanji" && prev === "latin" && /(?:^|第)[0-9０-９]+$/.test(current)) ||
           (script === "latin" && /^[0-9０-９]$/.test(ch) && /第$/.test(current)) ||
-          // okurigana: kanji + one kana that is not a particle + kanji is one word (焼き鳥, 立ち飲み)
-          (script === "kanji" && /[\u3400-\u9FFF々][\u3041-\u309F]$/u.test(current) && !/[のとやがはをにでへもおご]$/.test(current)) ||
+          // hiragana and the kanji after it are one word (焼き鳥, ほうじ茶, たこ焼き) unless the kana ends
+          // in a particle (架空の店 may break after の); お / ご are handled as an honorific below
+          (script === "kanji" && prev === "hiragana" && !/[のとやがはをにでへもおご]$/.test(current)) ||
           script === prev));
     // An honorific お / ご belongs to the noun after it (お菓子, ご飯). It is moved there only when that is
     // clear: at the start, right after a word that is not hiragana, or after such a word and a particle
