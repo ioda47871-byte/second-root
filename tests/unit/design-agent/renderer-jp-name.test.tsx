@@ -89,6 +89,9 @@ const NAMES = {
   anniversary: "架空珈琲10周年記念店",
   latinParticle: "EXAMPLEのパン工房",
   registered: "架空焼菓子工房ベーカリーカフェ®",
+  suffixSpace: "テスト店　カフェ",
+  honorific: "架空のお菓子工房",
+  dotAfterLatin: "EXAMPLE・テスト",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -273,6 +276,16 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens(NAMES.anniversary)).toEqual(["架空珈琲", "10周年記念店"]);
     expect(nameTokens(NAMES.latinParticle)).toEqual(["EXAMPLEの", "パン", "工房"]);
     expect(nameTokens(NAMES.registered).at(-1)).toBe("ベーカリーカフェ®"); // a text-style mark stays with its word
+    expect(nameTokens(NAMES.suffixSpace)).toEqual(["テスト店　", "カフェ"]);
+    expect(nameTokens(NAMES.honorific)).toEqual(["架空の", "お菓子工房"]);
+    expect(nameTokens("お菓子工房テスト")).toEqual(["お菓子工房", "テスト"]);
+    expect(nameTokens("架空のご飯処")).toEqual(["架空の", "ご飯処"]);
+    // ご inside a word stays where it is
+    expect(nameTokens("たまご焼テスト")).toEqual(["たまご", "焼", "テスト"]);
+    expect(nameTokens("いちご大福テスト")[0]).toBe("いちご");
+    expect(nameTokens(NAMES.dotAfterLatin)).toEqual(["EXAMPLE・", "テスト"]);
+    expect(nameTokens("架空第1号店")).toEqual(["架空第1号店"]);
+    expect(nameTokens("EXAMPLE365架空")).toEqual(["EXAMPLE365", "架空"]);
     expect(nameTokens("架空\u200Dテスト").join("")).toBe("架空\u200Dテスト");
     expect(nameTokens("架空\u200Dテスト").some((t) => t.endsWith("テ"))).toBe(false);
     for (const name of Object.values(NAMES))

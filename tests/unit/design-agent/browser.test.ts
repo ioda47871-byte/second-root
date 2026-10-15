@@ -474,13 +474,29 @@ describe("diagnose", () => {
     expect(all).not.toMatch(/li_shop|example_shop|Fictional|LEAK|localhost|127\.0\.0\.1|http|sr-instagram-browser|fake_session/);
   });
 
-  // About ten persistent-profile launches in one test: 9–10 s locally, but over 60 s on a loaded CI runner.
+  // About ten persistent-profile launches in one test: 6–10 s locally and on CI, but it has hung on CI
+  // now and then (also on develop). Each step is bounded and names itself, so a hang says where it is.
   it("with the production target: names a refused move and an account-page wall, and does not open the home page", { timeout: 180_000 }, async () => {
-    const s = await signedInProfile();
+    const bounded = async <T,>(label: string, work: Promise<T>, lines: string[] = []): Promise<T> => {
+      let timer: NodeJS.Timeout | undefined;
+      const hung = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} did not finish in 60 s (lines so far: ${lines.join(" | ") || "none"})`)), 60_000);
+      });
+      try {
+        return await Promise.race([work, hung]);
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    const s = await bounded("signedInProfile", signedInProfile());
     const as = (username: string) => profileTarget({ url: `${site.origin}/${username}/`, username }, (u) => u.startsWith(`${site.origin}/`));
     const run = async (username: string, modes: DiagnoseMode[]) => {
       const lines: string[] = [];
-      await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent, modes, sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, homeUrl: `${site.origin}/home_signed_in/`, hasDisplay: false, say: (l) => lines.push(l) });
+      await bounded(
+        `${username} ${modes.join("")}`,
+        runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent, modes, sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, homeUrl: `${site.origin}/home_signed_in/`, hasDisplay: false, say: (l) => lines.push(l) }),
+        lines,
+      );
       onlyCodes(lines);
       return lines;
     };
@@ -506,7 +522,11 @@ describe("diagnose", () => {
     // without interception an account page is named as the guard names it (its first request may be out)
     expect((await run("li_auth_platform", ["C"]))[0]).toBe("C headless+no-interception HTTP_OTHER CHALLENGE_PRESENT");
     // a wall the page is sent to while it is being sampled stops the sampling
-    const late = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as("li_timer_wall"), launchPersistent, modes: ["A"], sampleAtMs: [100, 1_500], pauseMs: 0, sessionWaitMs: 1_000, hasDisplay: false, say: (l) => lateLines.push(l) });
+    const late = await bounded(
+      "li_timer_wall A",
+      runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as("li_timer_wall"), launchPersistent, modes: ["A"], sampleAtMs: [100, 1_500], pauseMs: 0, sessionWaitMs: 1_000, hasDisplay: false, say: (l) => lateLines.push(l) }),
+      lateLines,
+    );
     expect(late).toBe("DIAGNOSED");
     expect(lateLines.at(-1)).toBe("A STOPPED_WALL CHALLENGE_PRESENT");
     onlyCodes(lateLines);

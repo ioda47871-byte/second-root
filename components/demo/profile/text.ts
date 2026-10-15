@@ -103,7 +103,8 @@ export function nameTokens(name: string): string[] {
   let last = ""; // the last character with a width of its own
   let joined = false; // the last character was a joiner (ZWJ): the next one belongs to it
   const feed = (ch: string) => {
-    if (current && (ZERO_WIDTH.test(ch) || JOINS_LEFT.test(ch) || CLOSES.test(ch) || joined)) {
+    // a middle dot ends the word before it, never starts a line (EXAMPLE・テスト)
+    if (current && (ZERO_WIDTH.test(ch) || JOINS_LEFT.test(ch) || CLOSES.test(ch) || /^[・･]$/.test(ch) || joined)) {
       current += ch; // the script of the run is the one before the mark
       // a character joined by a ZWJ takes its own script (架空‍テスト: テスト stays one word)
       if (joined && !ZERO_WIDTH.test(ch)) prev = scriptOf(ch);
@@ -122,12 +123,17 @@ export function nameTokens(name: string): string[] {
           script === "other" ||
           prev === "other" ||
           script === "hiragana" ||
-          // a number and its counter stay together (1号店, 10周年)
-          (script === "kanji" && prev === "latin" && /[0-9０-９]$/.test(current)) ||
+          // a number and its counter stay together (1号店, 10周年, 第1号店), and 第 with its number
+          (script === "kanji" && prev === "latin" && /(?:^|第)[0-9０-９]+$/.test(current)) ||
+          (script === "latin" && /^[0-9０-９]$/.test(ch) && /第$/.test(current)) ||
           script === prev));
     if (!joins && current) {
-      tokens.push(current);
-      current = "";
+      // an honorific お / ご belongs to the noun after it (お菓子, ご飯), not to the word before it
+      // (only at the start of the run or after a particle: たまご焼, いちご大福 keep their ご)
+      const honorific = script === "kanji" && prev === "hiragana" && /(?:^|[^\u3041-\u309F]|[のとやがはをにでへも])[おご]$/.test(current) ? current.slice(-1) : "";
+      if (honorific && current.length > 1) tokens.push(current.slice(0, -1));
+      else if (!honorific) tokens.push(current);
+      current = honorific;
     }
     current += ch;
     prev = script;
@@ -151,7 +157,7 @@ export function nameTokens(name: string): string[] {
   // One kanji right after a katakana word is its suffix (テスト店, カフェ堂): keep them together.
   return tokens.reduce<string[]>((out, t) => {
     const before = out[out.length - 1];
-    const core = [...t].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch)).join(""); // "店）" counts as one kanji
+    const core = [...t].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch) && !/\s/u.test(ch)).join(""); // "店）", "店　" count as one kanji
     const beforeLast = before ? [...before].filter((ch) => !ZERO_WIDTH.test(ch)).at(-1) : undefined;
     if (before && beforeLast && [...core].length === 1 && scriptOf(core) === "kanji" && scriptOf(beforeLast) === "katakana" && !ENDS_PIECE.test(beforeLast)) out[out.length - 1] = before + t;
     else out.push(t);
@@ -195,7 +201,8 @@ function planPhoneLines(text: string): string[] {
   const walk = (start: number, left: number, lines: string[]) => {
     if (left === 1) {
       const all = [...lines, tokens.slice(start).join("")];
-      const width = Math.max(...all.map(emWidth));
+      // measured as the lines are sized: a space at the end of a line takes no room
+      const width = Math.max(...all.map((line) => emWidth(line.replace(/\s+$/u, ""))));
       if (width < bestWidth) {
         best = all;
         bestWidth = width;
