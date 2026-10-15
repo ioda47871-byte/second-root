@@ -94,6 +94,8 @@ const NAMES = {
   dotAfterLatin: "EXAMPLE・テスト",
   // お at the end of a hiragana word (えがお) is not an honorific: the word is never cut
   kanaWordO: "架空商店街のえがお食堂",
+  kanaSuffix: "洋菓子店こもれび堂",
+  okurigana: "炭火焼き鳥まるやま",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -291,6 +293,11 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens("すがお珈琲")).toEqual(["すがお珈琲"]);
     expect(nameTokens("みなとお菓子")).toEqual(["みなとお菓子"]);
     expect(nameTokens("テストのお菓子")).toEqual(["テストの", "お菓子"]);
+    // a one-kanji suffix stays with the kana word before it; okurigana stays inside its word
+    expect(nameTokens(NAMES.kanaSuffix)).not.toContain("堂");
+    expect(nameTokens(NAMES.okurigana).some((t) => t.endsWith("焼き"))).toBe(false);
+    expect(nameTokens("立ち飲み酒場テスト").some((t) => t.endsWith("立ち"))).toBe(false);
+    expect(nameTokens("架空の店")).toEqual(["架空の店"]);
     expect(nameTokens("架空第1号店")).toEqual(["架空第1号店"]);
     expect(nameTokens("EXAMPLE365架空")).toEqual(["EXAMPLE365", "架空"]);
     expect(nameTokens("架空\u200Dテスト").join("")).toBe("架空\u200Dテスト");

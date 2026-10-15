@@ -126,6 +126,8 @@ export function nameTokens(name: string): string[] {
           // a number and its counter stay together (1号店, 10周年, 第1号店), and 第 with its number
           (script === "kanji" && prev === "latin" && /(?:^|第)[0-9０-９]+$/.test(current)) ||
           (script === "latin" && /^[0-9０-９]$/.test(ch) && /第$/.test(current)) ||
+          // okurigana: kanji + one kana that is not a particle + kanji is one word (焼き鳥, 立ち飲み)
+          (script === "kanji" && /[\u3400-\u9FFF々][\u3041-\u309F]$/u.test(current) && !/[のとやがはをにでへもおご]$/.test(current)) ||
           script === prev));
     // An honorific お / ご belongs to the noun after it (お菓子, ご飯). It is moved there only when that is
     // clear: at the start, right after a word that is not hiragana, or after such a word and a particle
@@ -156,12 +158,12 @@ export function nameTokens(name: string): string[] {
     joined = false;
   }
   if (current) tokens.push(current);
-  // One kanji right after a katakana word is its suffix (テスト店, カフェ堂): keep them together.
+  // One kanji right after a kana word is its suffix (テスト店, カフェ堂, こもれび堂): keep them together.
   return tokens.reduce<string[]>((out, t) => {
     const before = out[out.length - 1];
     const core = [...t].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch) && !/\s/u.test(ch)).join(""); // "店）", "店　" count as one kanji
     const beforeLast = before ? [...before].filter((ch) => !ZERO_WIDTH.test(ch)).at(-1) : undefined;
-    if (before && beforeLast && [...core].length === 1 && scriptOf(core) === "kanji" && scriptOf(beforeLast) === "katakana" && !ENDS_PIECE.test(beforeLast)) out[out.length - 1] = before + t;
+    if (before && beforeLast && [...core].length === 1 && scriptOf(core) === "kanji" && /^(?:katakana|hiragana)$/.test(scriptOf(beforeLast)) && !ENDS_PIECE.test(beforeLast)) out[out.length - 1] = before + t;
     else out.push(t);
     return out;
   }, []);
