@@ -196,9 +196,9 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       }
       return parsed.data;
     } catch (error) {
-      // The run's clock ran out during the second look: the best scored candidate is the final one.
-      if (again && error instanceof DeadlineError) {
-        notes.push("REVISION_FROM_BEST_NO_TIME");
+      // The run's clock ran out after a candidate was scored: the best scored candidate is the final one.
+      if (error instanceof DeadlineError && leader) {
+        notes.push(again ? "REVISION_FROM_BEST_NO_TIME" : "REVIEW_NO_TIME");
         return null;
       }
       if (!(error instanceof CodexError)) throw error;

@@ -15,6 +15,7 @@ import {
 import type { PhotoInput } from "@/lib/design-agent/assets/photo-codex";
 import { checkRenderedPhotos, type PlacedPhoto } from "@/lib/design-agent/assets/render-check";
 import type { PublicAssetId } from "@/lib/design-agent/assets/types";
+import { DeadlineError } from "@/lib/design-agent/bounded-process";
 import { CodexError } from "@/lib/design-agent/codex";
 import { runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
 import { photoReviewJsonSchema, PhotoReviewSchema, revisionPlan, type PhotoReview } from "@/lib/design-agent/photo-review";
@@ -175,7 +176,7 @@ function harness(answers: { codex?: Answer[]; photo?: Answer[] }, opts: { placed
   const manifest = manifestOf();
   const take = (list: Answer[]) => {
     const next = list.shift();
-    if (next instanceof CodexError) throw next;
+    if (next instanceof Error) throw next;
     return next;
   };
   const deps: PipelineDeps = {
@@ -305,6 +306,18 @@ describe("runDesignPipeline with photos", () => {
     ]);
     expect(report).toMatchObject({ status: "done", revisions: 2, finalCandidate: "candidate-2" });
     expect(report.notes).toContain("REVISION_FROM_BEST_2");
+  });
+
+  it("DEV-034: the run's deadline in a revision's direction or review ends the search with the best candidate", async () => {
+    const reviseProfile = (accent: string) => photoReview({ verdict: "revise", revision_target: "profile", recommended_profile_changes: { summary: [], revised_profile: revisedProfile(accent) } });
+    const inDirection = harness({ codex: [AMERICAN_EDITORIAL, reviseProfile("#111111")], photo: [analysesAnswer(), direction(), new DeadlineError()] });
+    const a = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, inDirection.deps);
+    expect(a.notes).toContain("REVISION_NO_TIME");
+    expect(a).toMatchObject({ status: "done", revisions: 0, finalCandidate: "candidate-0" });
+    const inReview = harness({ codex: [AMERICAN_EDITORIAL, reviseProfile("#111111"), new DeadlineError()], photo: [analysesAnswer(), direction(), direction()] });
+    const b = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, inReview.deps);
+    expect(b.notes).toContain("REVIEW_NO_TIME");
+    expect(b).toMatchObject({ status: "done", revisions: 1, finalCandidate: "candidate-0" });
   });
 
   it("none target or a missing revised profile stops; an invalid revised direction stops with the best so far", async () => {

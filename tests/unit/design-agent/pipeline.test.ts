@@ -237,9 +237,14 @@ describe("runDesignPipeline revision search (DEV-034)", () => {
     expect(report).toMatchObject({ status: "done", revisions: 1, finalCandidate: "candidate-0" });
   });
 
-  it("does not catch the run's deadline outside the second look", async () => {
+  it("fails on the run's deadline before any candidate is scored, and finishes with the best one after", async () => {
     const h = harness([AMERICAN_EDITORIAL, new DeadlineError()]);
     await expect(runDesignPipeline({ demo: SHOP, references: refs }, h.deps)).rejects.toBeInstanceOf(DeadlineError);
+    const later = harness([AMERICAN_EDITORIAL, revise(fifteen, "#111111"), new DeadlineError()]);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, later.deps);
+    expect(report.notes).toContain("REVIEW_NO_TIME");
+    expect(report).toMatchObject({ status: "done", revisions: 1, finalCandidate: "candidate-0" });
+    expect(later.profiles.get("final")).toEqual(later.profiles.get("candidate-0"));
   });
 
   it("does not revise past the limit: a lower last revision ends the loop without an extra review", async () => {

@@ -86,6 +86,8 @@ export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number
 /** One earlier round, as the reviewer is told about it: scores and problem codes only (DEV-034). */
 export type RoundSummary = {
   candidate: string;
+  /** The best candidate reviewed again after a lower-scoring revision. */
+  again?: true;
   verdict: "accept" | "revise";
   scores: { brand_fit: number; visual_quality: number; hierarchy: number; mobile_quality: number; generic_template_feel: number; total: number };
   problems: Array<{ area: string; severity: string }>;
@@ -107,7 +109,7 @@ export function historyBlock(
   const line = (r: RoundSummary) => {
     const s = r.scores;
     const problems = r.problems.length ? r.problems.map((p) => `${p.area} ${p.severity}`).join(", ") : "none";
-    return `- ${r.candidate}: ${r.verdict}, total ${s.total}/${outOf} (brand_fit ${s.brand_fit}, visual_quality ${s.visual_quality}, hierarchy ${s.hierarchy}, mobile_quality ${s.mobile_quality}, generic_template_feel ${s.generic_template_feel}); problems: ${problems}`;
+    return `- ${r.candidate}${r.again ? " (second look)" : ""}: ${r.verdict}, total ${s.total}/${outOf} (brand_fit ${s.brand_fit}, visual_quality ${s.visual_quality}, hierarchy ${s.hierarchy}, mobile_quality ${s.mobile_quality}, generic_template_feel ${s.generic_template_feel}); problems: ${problems}`;
   };
   return [
     "Earlier rounds of this review (scores only):",

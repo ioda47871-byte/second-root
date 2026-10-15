@@ -61,37 +61,47 @@ function scriptOf(ch: string): Script {
 
 /** Marks that belong to the character before them: long vowel, iteration marks, small kana, ヶ. */
 const JOINS_LEFT = /^[ーｰ〜～ゝゞヽヾ々ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰ-ㇿｧ-ｯﾞﾟ]$/;
+/** Characters with no width of their own: combining marks (a decomposed ベ), joiners, variation selectors, skin tones. */
+const ZERO_WIDTH = /^(?:\p{M}|[\u200B-\u200D\u2060\uFE00-\uFE0F]|[\u{1F3FB}-\u{1F3FF}]|[\u{E0020}-\u{E007F}])$/u;
 /** Closing brackets and punctuation stay with what comes before them. */
 const CLOSES = /^[」』）)】〉》］\]｝}”’"、。，．！？!?＆&]$/;
 /** Opening brackets start a piece and stay with what follows. */
 const OPENS = /^[「『（(【〈《［\[｛{“‘]$/;
+/** A piece ends after these: a middle dot, a space, an emoji or a decorative symbol (★ ♪ ♡ ／ × |). */
+const ENDS_PIECE = /^(?:[・･\s★☆♪♫♡♥❤✿❀◆◇■□●○▲△×／/|｜]|\p{Extended_Pictographic})$/u;
 
 /**
- * The pieces of an unspaced name that are never broken, in order; they join
- * back to the exact name. Hiragana stays with what comes before it (たまご
- * after 焼 stays "焼たまご"; の after a katakana word stays with it); a katakana
- * run, a kanji run after kana or katakana, a Latin word, an opening bracket,
- * and whatever follows a middle dot each start a piece. A long-vowel mark,
- * small kana, an iteration mark or ヶ, and a closing bracket stay with the
- * character before them ("らーめん", "霞ヶ関", "（テスト）"). One kanji after a
- * katakana word is its suffix and stays with it ("テスト店").
+ * The pieces of a name that are never broken, in order; they join back to
+ * the exact name. Hiragana stays with what comes before it (たまご after 焼
+ * stays "焼たまご"; の after a katakana word stays with it); a katakana run, a
+ * kanji run after kana or katakana, a Latin word, an opening bracket, and
+ * whatever follows a middle dot, a space, an emoji or a decorative symbol
+ * each start a piece. A long-vowel mark, small kana, an iteration mark or ヶ,
+ * a combining mark, a joiner and a closing bracket stay with the character
+ * before them ("らーめん", "霞ヶ関", "（テスト）", a decomposed "ベ"). One kanji
+ * after a katakana word is its suffix and stays with it ("テスト店").
  */
 export function nameTokens(name: string): string[] {
   const tokens: string[] = [];
   let current = "";
   let prev: Script | null = null;
+  let last = ""; // the last character with a width of its own
+  let joined = false; // the last character was a joiner (ZWJ): the next one belongs to it
   for (const ch of [...name]) {
-    if (current && (JOINS_LEFT.test(ch) || CLOSES.test(ch))) {
+    if (current && (ZERO_WIDTH.test(ch) || JOINS_LEFT.test(ch) || CLOSES.test(ch) || joined)) {
       current += ch; // the script of the run is the one before the mark
+      joined = ch === "\u200D";
+      if (!ZERO_WIDTH.test(ch)) last = ch;
       continue;
     }
     const script = scriptOf(ch);
-    const afterDot = /[・･]$/.test(current);
-    const afterOpen = current !== "" && OPENS.test([...current].at(-1)!);
+    const afterEnd = last !== "" && ENDS_PIECE.test(last);
+    const afterOpen = last !== "" && OPENS.test(last);
     const joins =
       afterOpen ||
-      (!afterDot &&
+      (!afterEnd &&
         !OPENS.test(ch) &&
+        !/\p{Extended_Pictographic}/u.test(ch) &&
         (prev === null ||
           script === "other" ||
           prev === "other" ||
@@ -103,16 +113,26 @@ export function nameTokens(name: string): string[] {
     }
     current += ch;
     prev = script;
+    last = ch;
+    joined = false;
   }
   if (current) tokens.push(current);
   // One kanji right after a katakana word is its suffix (テスト店, カフェ堂): keep them together.
   return tokens.reduce<string[]>((out, t) => {
-    const last = out[out.length - 1];
-    const core = [...t].filter((ch) => !CLOSES.test(ch)).join(""); // "店）" counts as one kanji
-    if (last && [...core].length === 1 && scriptOf(core) === "kanji" && scriptOf([...last].at(-1)!) === "katakana" && !/[・･]$/.test(last)) out[out.length - 1] = last + t;
+    const before = out[out.length - 1];
+    const core = [...t].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch)).join(""); // "店）" counts as one kanji
+    const beforeLast = before ? [...before].filter((ch) => !ZERO_WIDTH.test(ch)).at(-1) : undefined;
+    if (before && beforeLast && [...core].length === 1 && scriptOf(core) === "kanji" && scriptOf(beforeLast) === "katakana" && !ENDS_PIECE.test(beforeLast)) out[out.length - 1] = before + t;
     else out.push(t);
     return out;
   }, []);
+}
+
+/** Characters the eye counts (letter-spacing is added after each): zero-width marks and joined emoji parts are not counted. */
+export function visibleLength(text: string): number {
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
+  if (Seg) return [...new Seg("ja", { granularity: "grapheme" }).segment(text)].length;
+  return [...text].filter((ch) => !ZERO_WIDTH.test(ch)).length;
 }
 
 /** Longest a phone line may be (em) and still be set large; longer names get more lines. */
@@ -159,9 +179,15 @@ function planPhoneLines(text: string): string[] {
   return best;
 }
 
-/** Whether the name is set from unbreakable pieces (it has no space of its own to break at). */
-export function isUnspacedName(name: string): boolean {
-  return !/\s/.test(name.trim());
+/**
+ * Whether the name is set from unbreakable pieces: a name with no space of
+ * its own to break at, and any name with Japanese in it (a space in
+ * 「パン工房　テスト」 does not make its words breakable). A spaced Latin name
+ * keeps breaking at its spaces.
+ */
+export function setsInPieces(name: string): boolean {
+  const text = name.trim();
+  return !/\s/.test(text) || /[\u3040-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF66-\uFF9F々〆ヶ]/.test(text);
 }
 
 /** Up to two letters taken from the name: "EXAMPLE BAKE" → "EB", "焼菓子店" → "焼". */
@@ -176,7 +202,9 @@ export function monogram(name: string): string {
 /** Approximate width in em (full-width 1em, Latin narrower). */
 export function emWidth(text: string): number {
   return [...text].reduce((sum, ch) => {
-    if (ch === " ") return sum + 0.3;
+    if (ZERO_WIDTH.test(ch)) return sum;
+    if (/\s/.test(ch)) return sum + (ch === "\u3000" ? 1 : 0.3);
+    if (/\p{Extended_Pictographic}/u.test(ch)) return sum + 1.2;
     if (/[A-Z0-9]/.test(ch)) return sum + 0.72;
     if (/[a-z]/.test(ch)) return sum + 0.56;
     if (/[!-ɏ\uFF61-\uFF9F]/.test(ch)) return sum + 0.5; // incl. half-width katakana
@@ -193,7 +221,11 @@ export function emWidth(text: string): number {
 export function fitWidth(text: string): number {
   const latin = (w: number) => w * 1.04;
   return [...text].reduce((sum, ch) => {
-    if (ch === " ") return sum + 0.3;
+    if (ZERO_WIDTH.test(ch)) return sum;
+    if (/\s/.test(ch)) return sum + (ch === "\u3000" ? 1 : 0.35);
+    // emoji are drawn wider than a full-width character; so are some symbols (Ⅲ ★ ♪ arrows) in a Latin face
+    if (/\p{Extended_Pictographic}/u.test(ch)) return sum + 1.35;
+    if (/[\u2000-\u2BFF]/.test(ch)) return sum + 1.2;
     if (/[MWmwＭＷｍｗ@%]/.test(ch)) return sum + latin(1.1);
     if (/[A-Za-z\u00C0-\u024F]/.test(ch)) return sum + latin(0.86);
     if (/[0-9&#]/.test(ch)) return sum + latin(0.76);
@@ -211,16 +243,16 @@ const units = (em: number) => Math.min(40, Math.max(2.5, Math.round(em * 1.06 * 
 export function nameSizing(name: string): CSSProperties {
   const lines = nameLines(name);
   const style: Record<string, number> = { "--units": units(emWidth(name)), "--line-units": units(Math.max(...lines.map(emWidth))) };
-  if (isUnspacedName(name)) {
+  if (setsInPieces(name)) {
     // DEV-034: phone fit for an unspaced name, from its longest phone line;
     // --fit-chars lets the CSS add the profile's letter-spacing per character.
     // Sized from fitWidth (an upper bound), so no face or case overflows.
     const phone = phoneNameLines(name);
     const longest = phone.reduce((a, b) => (fitWidth(b) > fitWidth(a) ? b : a));
     style["--fit-units"] = Math.max(1, Math.round(fitWidth(longest) * 1.06 * 100) / 100);
-    style["--fit-chars"] = [...longest].length;
+    style["--fit-chars"] = visibleLength(longest);
     style["--name-units"] = Math.max(1, Math.round(fitWidth(name.trim()) * 1.06 * 100) / 100);
-    style["--name-chars"] = [...name.trim()].length;
+    style["--name-chars"] = visibleLength(name.trim());
   }
   return style as CSSProperties;
 }

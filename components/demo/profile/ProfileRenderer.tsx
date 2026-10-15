@@ -5,7 +5,7 @@ import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
 import { areaLabel, infoRows } from "../info";
 import { editorial, grotesk } from "./fonts";
-import { isUnspacedName, keepTogether, locationLabels, monogram, nameLines, nameSizing, nameTokens, ordinal, phoneNameLines } from "./text";
+import { keepTogether, locationLabels, monogram, nameLines, nameSizing, nameTokens, ordinal, phoneNameLines, setsInPieces } from "./text";
 import styles from "./profile.module.css";
 
 // Shared renderer for design profiles (DEV-028). Every word on the page comes
@@ -102,9 +102,9 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
   const others = rows.filter((r) => r !== address);
   const motifs = new Set(profile.motifs);
   const mark = monogram(demo.name);
-  // An unspaced name (DEV-034) is set from unbreakable pieces, on the lines a phone uses;
-  // a name with spaces keeps breaking at its spaces as before.
-  const unspaced = isUnspacedName(demo.name);
+  // An unspaced or Japanese name (DEV-034) is set from unbreakable pieces, on the lines
+  // a phone uses; a spaced Latin name keeps breaking at its spaces as before.
+  const unspaced = setsInPieces(demo.name);
   const lines = unspaced ? phoneNameLines(demo.name) : profile.heroLayout.layout === "split_crop" ? nameLines(demo.name) : [demo.name];
   const labels = motifs.has("location_labels") ? locationLabels(demo) : [];
   const t = profile.typography;

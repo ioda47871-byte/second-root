@@ -529,8 +529,14 @@
   .canvas[data-intro="letter_reveal"] .name {
     animation-name: reveal;
   }
+  /* a name set to fit its width (DEV-034) does not open its letter-spacing */
+  .canvas[data-intro="letter_reveal"] h1.name[data-fit] {
+    animation-name: rise;
+  }
   .canvas[data-intro="letter_reveal"] .line:nth-child(2) .lineText,
-  .canvas[data-intro="fade_rise"] .line:nth-child(2) .lineText {
+  .canvas[data-intro="fade_rise"] .line:nth-child(2) .lineText,
+  .canvas[data-intro="letter_reveal"] .phoneLine:nth-child(2),
+  .canvas[data-intro="fade_rise"] .phoneLine:nth-child(2) {
     animation: rise 0.9s 0.12s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
   .canvas[data-intro="rule_expand"] .rule,

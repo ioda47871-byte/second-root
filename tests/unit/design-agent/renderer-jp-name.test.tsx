@@ -12,6 +12,7 @@ import {
   nameTokens,
   PHONE_LINE_EM,
   phoneNameLines,
+  setsInPieces,
 } from "@/components/demo/profile/text";
 import {
   DISPLAY_FACES,
@@ -68,6 +69,16 @@ const NAMES = {
   smallKa: "架空ヶ丘ベーカリー",
   bracket: "（架空）テスト菓子店",
   halfWidth: "ﾃｽﾄﾍﾞｰｶﾘｰ",
+  // a decomposed name (combining dakuten), as text copied from some sources arrives
+  decomposed: "架空ベーカリー".normalize("NFD"),
+  emoji: "テストカフェ☕🍞",
+  emojiMany: "架空🍞🍞🍞🍞🍞",
+  emojiJoined: "架空👩‍🍳テスト",
+  roman: "Ⅲテスト",
+  star: "テスト★ベーカリー★カフェ",
+  // a Japanese name with a space is set in pieces too (the space does not make its words breakable)
+  spacedJa: "テスト　ベーカリーアンドカフェ",
+  spacedMixed: "ア ベーカリーカフェテスト",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -235,6 +246,14 @@ describe("unspaced shop names (text helpers)", () => {
     ]);
     expect(nameTokens(NAMES.mixed)).toEqual(["café", "工房", "テスト"]);
     expect(nameTokens(NAMES.halfWidth)).toEqual([NAMES.halfWidth]);
+    // a decomposed ベ stays one character: the same pieces as the composed name
+    expect(nameTokens(NAMES.decomposed).map((t) => t.normalize("NFC"))).toEqual(["架空", "ベーカリー"]);
+    expect(phoneNameLines(NAMES.decomposed)).toHaveLength(1);
+    expect(emWidth(NAMES.decomposed)).toBe(emWidth(NAMES.short));
+    expect(nameTokens(NAMES.star)).toEqual(["テスト★", "ベーカリー★", "カフェ"]);
+    expect(nameTokens(NAMES.emoji)).toEqual(["テストカフェ", "☕", "🍞"]);
+    expect(nameTokens(NAMES.emojiJoined)).toEqual(["架空", "👩‍🍳", "テスト"]);
+    expect(nameTokens(NAMES.spacedJa)).toEqual(["テスト　", "ベーカリーアンドカフェ"]);
     for (const name of Object.values(NAMES))
       expect(nameTokens(name).join("")).toBe(name);
   });
@@ -263,6 +282,13 @@ describe("unspaced shop names (text helpers)", () => {
     }
     expect(emWidth(NAMES.short)).toBeLessThanOrEqual(PHONE_LINE_EM);
     expect(emWidth(NAMES.halfWidth)).toBe(4.5);
+  });
+
+  it("sets Japanese names in pieces with or without a space, and spaced Latin names as before", () => {
+    expect(setsInPieces(NAMES.spacedJa)).toBe(true);
+    expect(setsInPieces(NAMES.spacedMixed)).toBe(true);
+    expect(setsInPieces(NAMES.short)).toBe(true);
+    expect(setsInPieces("EXAMPLE TEST BAKE")).toBe(false);
   });
 
   it("sizes from an upper bound: Latin counted as wide capitals, never below the estimate", () => {

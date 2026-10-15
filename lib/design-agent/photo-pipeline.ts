@@ -203,9 +203,9 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
       }
       return parsed.data;
     } catch (error) {
-      // The run's clock ran out during the second look: the best scored candidate is the final one.
-      if (again && error instanceof DeadlineError) {
-        notes.push("REVISION_FROM_BEST_NO_TIME");
+      // The run's clock ran out after a candidate was scored: the best scored candidate is the final one.
+      if (error instanceof DeadlineError && leader) {
+        notes.push(again ? "REVISION_FROM_BEST_NO_TIME" : "REVIEW_NO_TIME");
         return null;
       }
       if (!(error instanceof CodexError)) throw error;
@@ -298,7 +298,15 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
       }
       nextProfile = check.profile;
     }
-    const next = await direct(nextProfile, plan.imageFeedback ? basis.photo_issues : []);
+    let next: PhotoStep<ImageDirection>;
+    try {
+      next = await direct(nextProfile, plan.imageFeedback ? basis.photo_issues : []);
+    } catch (error) {
+      // A candidate is scored: when the run's clock runs out, the best one is the final one.
+      if (!(error instanceof DeadlineError)) throw error;
+      notes.push("REVISION_NO_TIME");
+      break;
+    }
     if (!next.ok) {
       notes.push(environmental(next.code) ? next.code : `REVISION_IMAGE_DIRECTION_INVALID_${revisions + 1}`);
       if (environmental(next.code)) status = "environment_failure";
