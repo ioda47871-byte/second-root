@@ -5,7 +5,7 @@ import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
 import { areaLabel, infoRows } from "../info";
 import { editorial, grotesk } from "./fonts";
-import { keepTogether, locationLabels, monogram, nameLines, nameSizing, ordinal } from "./text";
+import { isUnspacedName, keepTogether, locationLabels, monogram, nameLines, nameSizing, nameTokens, ordinal, phoneNameLines } from "./text";
 import styles from "./profile.module.css";
 
 // Shared renderer for design profiles (DEV-028). Every word on the page comes
@@ -102,7 +102,10 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
   const others = rows.filter((r) => r !== address);
   const motifs = new Set(profile.motifs);
   const mark = monogram(demo.name);
-  const lines = profile.heroLayout.layout === "split_crop" ? nameLines(demo.name) : [demo.name];
+  // An unspaced name (DEV-034) is set from unbreakable pieces, on the lines a phone uses;
+  // a name with spaces keeps breaking at its spaces as before.
+  const unspaced = isUnspacedName(demo.name);
+  const lines = unspaced ? phoneNameLines(demo.name) : profile.heroLayout.layout === "split_crop" ? nameLines(demo.name) : [demo.name];
   const labels = motifs.has("location_labels") ? locationLabels(demo) : [];
   const t = profile.typography;
   const heroPhoto = photos?.hero ?? null;
@@ -163,14 +166,28 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
       {framed && <PhotoFigure photo={heroPhoto} className={styles.framePhoto} role="hero" />}
 
       <div className={styles.title}>
-        <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length}>
-          {lines.map((line, i) => (
-            <span key={`${i}-${line}`} className={styles.line}>
-              {i > 0 ? " " : null}
-              <span className={styles.lineText}>{line}</span>
-            </span>
-          ))}
-        </h1>
+        {unspaced ? (
+          <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length} data-fit="phone">
+            {lines.map((line, i) => (
+              <span key={`${i}-${line}`} className={styles.phoneLine}>
+                {nameTokens(line).map((piece, j) => (
+                  <span key={`${j}-${piece}`} className={styles.piece}>
+                    {piece}
+                  </span>
+                ))}
+              </span>
+            ))}
+          </h1>
+        ) : (
+          <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length}>
+            {lines.map((line, i) => (
+              <span key={`${i}-${line}`} className={styles.line}>
+                {i > 0 ? " " : null}
+                <span className={styles.lineText}>{line}</span>
+              </span>
+            ))}
+          </h1>
+        )}
       </div>
 
       <p className={styles.dek}>

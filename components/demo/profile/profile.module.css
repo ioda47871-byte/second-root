@@ -45,9 +45,9 @@
 .canvas[data-weight="bold"] { --display-weight: 700; }
 .canvas[data-weight="black"] { --display-weight: 900; }
 
-.canvas[data-tracking="tight"] { --display-track: -0.03em; }
-.canvas[data-tracking="normal"] { --display-track: 0; }
-.canvas[data-tracking="wide"] { --display-track: 0.06em; }
+.canvas[data-tracking="tight"] { --display-track: -0.03em; --track-n: -0.03; }
+.canvas[data-tracking="normal"] { --display-track: 0; --track-n: 0; }
+.canvas[data-tracking="wide"] { --display-track: 0.06em; --track-n: 0.06; }
 
 .canvas[data-body="serif"] { --body: var(--font-display), serif; }
 
@@ -153,6 +153,33 @@
 
 .line { display: block; }
 .lineText { display: inline-block; }
+
+/* An unspaced name (DEV-034): unbreakable pieces; a line may only break
+   between them. Desktop keeps it on one line as before. */
+.piece { white-space: nowrap; }
+.phoneLine { display: inline; }
+
+/* Phones: the name's own lines (one when it stays large), each sized to fit
+   the hero's width with the profile's letter-spacing counted per character,
+   so it never overflows and never breaks inside a word. Desktop: the whole
+   name on one line, sized the same way. (h1 in the selectors: these must win
+   over the layouts' own name sizes, split_crop's single-line rule included.) */
+@media (max-width: 719.98px) {
+  .hero .title h1.name[data-fit="phone"] {
+    font-size: min(13rem, calc(100cqi / (var(--fit-units, 8) + var(--fit-chars, 8) * var(--track-n, 0))));
+    overflow-wrap: normal;
+    word-break: keep-all;
+  }
+  .hero .title h1.name[data-fit="phone"] .phoneLine { display: block; }
+  .hero[data-layout="split_crop"] .title h1.name[data-fit="phone"] .phoneLine:nth-child(even) { text-align: right; }
+}
+@media (min-width: 720px) {
+  .hero .title h1.name[data-fit="phone"] {
+    font-size: clamp(1.6rem, calc(100cqi / (var(--units, 8) + var(--name-chars, 8) * var(--track-n, 0))), 13rem);
+    overflow-wrap: normal;
+    word-break: keep-all;
+  }
+}
 
 /* split_crop: one word per line, each set as large as the longest word allows;
    the second line is pushed to the right edge of the grid. */

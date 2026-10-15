@@ -38,6 +38,105 @@ export function nameLines(name: string): string[] {
   return words.length > 1 && words.length <= 4 ? words : [name.trim()];
 }
 
+// ---------------------------------------------------------------- unspaced names (DEV-034)
+//
+// A name without spaces (most Japanese shop names: "〇〇ベーカリー", a single
+// Latin word) has no place where a line may break by itself; left to the
+// browser it broke anywhere, in the middle of a word ("ベー / カリー"). The
+// renderer now sets such a name from pieces that are never split: a run of
+// kanji with the kana that follow it (okurigana, particles), a run of
+// katakana, a Latin word or number. On phones it keeps the name on one line,
+// sized to fit, when that line stays large; a longer name goes on two or
+// three balanced lines that break only between pieces.
+
+type Script = "kanji" | "hiragana" | "katakana" | "latin" | "other";
+
+function scriptOf(ch: string): Script {
+  if (/[\u30A0-\u30FF\u31F0-\u31FF\uFF66-\uFF9F]/.test(ch)) return "katakana"; // incl. ー ・ and half-width
+  if (/[\u3040-\u309F]/.test(ch)) return "hiragana";
+  if (/[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF々〆〇ヶ]/.test(ch)) return "kanji";
+  if (/[A-Za-z0-9\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A'’.&-]/.test(ch)) return "latin";
+  return "other";
+}
+
+/**
+ * The pieces of an unspaced name that are never broken, in order; they join
+ * back to the exact name. Hiragana stays with what comes before it (たまご
+ * after 焼 stays "焼たまご"; の after a katakana word stays with it); a katakana
+ * run, a kanji run after kana or katakana, a Latin word, and whatever follows
+ * a middle dot each start a piece. One kanji after a katakana word is its
+ * suffix and stays with it ("テスト店").
+ */
+export function nameTokens(name: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let prev: Script | null = null;
+  for (const ch of [...name]) {
+    const script = scriptOf(ch);
+    const afterDot = /[・･]$/.test(current);
+    const joins =
+      !afterDot &&
+      (prev === null ||
+      script === "other" ||
+      prev === "other" ||
+      (script === "hiragana" && prev !== "latin") ||
+      (script === prev && script !== "hiragana") ||
+      (script === "hiragana" && prev === "hiragana"));
+    if (!joins && current) {
+      tokens.push(current);
+      current = "";
+    }
+    current += ch;
+    prev = script;
+  }
+  if (current) tokens.push(current);
+  // One kanji right after a katakana word is its suffix (テスト店, カフェ堂): keep them together.
+  return tokens.reduce<string[]>((out, t) => {
+    const last = out[out.length - 1];
+    if (last && [...t].length === 1 && scriptOf(t) === "kanji" && scriptOf([...last].at(-1)!) === "katakana" && !/[・･]$/.test(last)) out[out.length - 1] = last + t;
+    else out.push(t);
+    return out;
+  }, []);
+}
+
+/** Longest a phone line may be (em) and still be set large; longer names get more lines. */
+export const PHONE_LINE_EM = 7.5;
+const MAX_PHONE_LINES = 3;
+
+/**
+ * The name's lines on a phone: the whole name when it fits on one large line,
+ * otherwise the split into 2–3 lines (between pieces only) whose longest line
+ * is shortest. A name that is one piece stays one line (it is then sized to fit).
+ */
+export function phoneNameLines(name: string): string[] {
+  const text = name.trim();
+  const tokens = nameTokens(text);
+  if (emWidth(text) <= PHONE_LINE_EM || tokens.length < 2) return [text];
+  const want = Math.min(MAX_PHONE_LINES, tokens.length, Math.ceil(emWidth(text) / PHONE_LINE_EM));
+  let best: string[] = [text];
+  let bestWidth = Infinity;
+  // Every way to cut the pieces into `want` lines (names are short: at most a few dozen pieces).
+  const walk = (start: number, left: number, lines: string[]) => {
+    if (left === 1) {
+      const all = [...lines, tokens.slice(start).join("")];
+      const width = Math.max(...all.map(emWidth));
+      if (width < bestWidth) {
+        best = all;
+        bestWidth = width;
+      }
+      return;
+    }
+    for (let end = start + 1; end <= tokens.length - (left - 1); end++) walk(end, left - 1, [...lines, tokens.slice(start, end).join("")]);
+  };
+  walk(0, want, []);
+  return best;
+}
+
+/** Whether the name is set from unbreakable pieces (it has no space of its own to break at). */
+export function isUnspacedName(name: string): boolean {
+  return !/\s/.test(name.trim());
+}
+
 /** Up to two letters taken from the name: "EXAMPLE BAKE" → "EB", "焼菓子店" → "焼". */
 export function monogram(name: string): string {
   const words = name.split(/[\s・･·.\-_/&+]+/).filter(Boolean);
@@ -66,7 +165,17 @@ const units = (em: number) => Math.min(40, Math.max(2.5, Math.round(em * 1.06 * 
  */
 export function nameSizing(name: string): CSSProperties {
   const lines = nameLines(name);
-  return { "--units": units(emWidth(name)), "--line-units": units(Math.max(...lines.map(emWidth))) } as CSSProperties;
+  const style: Record<string, number> = { "--units": units(emWidth(name)), "--line-units": units(Math.max(...lines.map(emWidth))) };
+  if (isUnspacedName(name)) {
+    // DEV-034: phone fit for an unspaced name, from its longest phone line;
+    // --fit-chars lets the CSS add the profile's letter-spacing per character.
+    const phone = phoneNameLines(name);
+    const longest = phone.reduce((a, b) => (emWidth(b) > emWidth(a) ? b : a));
+    style["--fit-units"] = Math.max(1, Math.round(emWidth(longest) * 1.06 * 100) / 100);
+    style["--fit-chars"] = [...longest].length;
+    style["--name-chars"] = [...name.trim()].length;
+  }
+  return style as CSSProperties;
 }
 
 /**
