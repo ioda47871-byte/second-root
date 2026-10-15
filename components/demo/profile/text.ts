@@ -127,13 +127,15 @@ export function nameTokens(name: string): string[] {
           (script === "kanji" && prev === "latin" && /(?:^|第)[0-9０-９]+$/.test(current)) ||
           (script === "latin" && /^[0-9０-９]$/.test(ch) && /第$/.test(current)) ||
           script === prev));
-    if (!joins && current) {
-      // an honorific お / ご belongs to the noun after it (お菓子, ご飯), not to the word before it
-      // (only at the start of the run or after a particle: たまご焼, いちご大福 keep their ご)
-      const honorific = script === "kanji" && prev === "hiragana" && /(?:^|[^\u3041-\u309F]|[のとやがはをにでへも])[おご]$/.test(current) ? current.slice(-1) : "";
-      if (honorific && current.length > 1) tokens.push(current.slice(0, -1));
-      else if (!honorific) tokens.push(current);
-      current = honorific;
+    // An honorific お / ご belongs to the noun after it (お菓子, ご飯). It is moved there only when that is
+    // clear: at the start, right after a word that is not hiragana, or after such a word and a particle
+    // (架空のお菓子). After other hiragana it may end a word (えがお, すがお): no cut there at all.
+    const kanaPrefix = !joins && script === "kanji" && prev === "hiragana" && /[おご]$/.test(current);
+    const honorific = kanaPrefix && /(?:^|[^\u3041-\u309F]|[^\u3041-\u309F][のとや])[おご]$/.test(current);
+    if (!joins && current && !(kanaPrefix && !honorific)) {
+      if (!honorific) tokens.push(current);
+      else if (current.length > 1) tokens.push(current.slice(0, -1));
+      current = honorific ? current.slice(-1) : "";
     }
     current += ch;
     prev = script;
