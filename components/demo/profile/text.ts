@@ -129,6 +129,9 @@ export function nameTokens(name: string): string[] {
           // hiragana and the kanji after it are one word (焼き鳥, ほうじ茶, たこ焼き) unless the kana ends
           // in a particle (架空の店 may break after の); お / ご are handled as an honorific below
           (script === "kanji" && prev === "hiragana" && !/[のとやがはをにでへもおご]$/.test(current)) ||
+          // が between kanji links a place name (星が丘), and so does の after a numeral (三の丸)
+          (script === "kanji" && /[\u3400-\u9FFF\uF900-\uFAFF々〆〇]が$/u.test(current)) ||
+          (script === "kanji" && /(?:^|[^\u3400-\u9FFF])[一二三四五六七八九十]の$/u.test(current)) ||
           script === prev));
     // An honorific お / ご belongs to the noun after it (お菓子, ご飯). It is moved there only when that is
     // clear: at the start, right after a word that is not hiragana, or after such a word and a particle
@@ -162,17 +165,41 @@ export function nameTokens(name: string): string[] {
   // A full-size linker kana between kanji is inside a place name or surname (霞ケ関, 三ノ宮, 四ツ谷), like ヶ.
   for (let i = tokens.length - 2; i >= 1; i--) {
     const [before, linker, after] = [tokens[i - 1], tokens[i], tokens[i + 1]];
-    if (/^[ケノツガｹﾉﾂ]$/.test(linker) && scriptOf([...before].at(-1)!) === "kanji" && scriptOf([...after][0]) === "kanji") tokens.splice(i - 1, 3, before + linker + after);
+    if (/^(?:[ケノツガｹﾉﾂ]|ｶﾞ)$/.test(linker) && scriptOf([...before].at(-1)!) === "kanji" && scriptOf([...after][0]) === "kanji") tokens.splice(i - 1, 3, before + linker + after);
   }
+  dictionaryGate(name, tokens);
   // One kanji right after a kana word is its suffix (テスト店, カフェ堂, こもれび堂): keep them together.
   return tokens.reduce<string[]>((out, t) => {
     const before = out[out.length - 1];
-    const core = [...t].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch) && !/\s/u.test(ch)).join(""); // "店）", "店　" count as one kanji
+    // "店）", "店　" count as one kanji, and so does a kanji with an honorific (屋さん)
+    const core = [...t.replace(/(?:さん|ちゃん|さま)(?=[\s）)」』]*$)/u, "")].filter((ch) => !CLOSES.test(ch) && !ZERO_WIDTH.test(ch) && !/\s/u.test(ch)).join("");
     const beforeLast = before ? [...before].filter((ch) => !ZERO_WIDTH.test(ch)).at(-1) : undefined;
     if (before && beforeLast && [...core].length === 1 && scriptOf(core) === "kanji" && /^(?:katakana|hiragana)$/.test(scriptOf(beforeLast)) && !ENDS_PIECE.test(beforeLast)) out[out.length - 1] = before + t;
     else out.push(t);
     return out;
   }, []);
+}
+
+/**
+ * A second check with the platform's Japanese word dictionary (ICU, Intl.Segmenter): a cut between two
+ * pieces stays only where the dictionary also sees a word boundary (星が丘, ほうじ茶, もも肉 stay whole).
+ * It can only remove cuts, never add one. Without Intl.Segmenter the pieces stay as they are.
+ */
+function dictionaryGate(name: string, tokens: string[]): void {
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
+  if (!Seg) return;
+  const bounds = new Set<number>();
+  for (const part of new Seg("ja", { granularity: "word" }).segment(name)) bounds.add(part.index);
+  let at = tokens[0]?.length ?? 0;
+  for (let i = 1; i < tokens.length; ) {
+    if (bounds.has(at)) {
+      at += tokens[i].length;
+      i += 1;
+    } else {
+      at += tokens[i].length;
+      tokens.splice(i - 1, 2, tokens[i - 1] + tokens[i]);
+    }
+  }
 }
 
 /** Characters the eye counts (letter-spacing is added after each): zero-width marks and joined emoji parts are not counted. */

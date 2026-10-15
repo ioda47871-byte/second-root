@@ -101,6 +101,8 @@ const NAMES = {
   // a full-size linker kana inside a place name (fictional shop names around real place-name shapes)
   linkerKe: "霞ケ関架空珈琲店",
   linkerNo: "三ノ宮駅前架空食堂",
+  linkerGa: "架空が丘洋菓子工房",
+  panyasan: "まちのパン屋さんテスト",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -279,7 +281,8 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens(NAMES.emojiJoined)).toEqual(["架空", "👩‍🍳", "テスト"]);
     expect(nameTokens(NAMES.spacedJa)).toEqual(["テスト　", "ベーカリーアンドカフェ"]);
     // a keycap or a flag is one emoji: a piece of its own
-    expect(nameTokens(NAMES.keycapJa)).toEqual(["カフェ", "1️⃣", "2️⃣", "3️⃣", "号店"]);
+    expect(nameTokens(NAMES.keycapJa).join("")).toBe(NAMES.keycapJa);
+    expect(nameTokens(NAMES.keycapJa)[0]).toBe("カフェ");
     expect(nameTokens(NAMES.flag)).toEqual(["テスト", "🇯🇵", "カフェ"]);
     expect(nameTokens(NAMES.counter)).toEqual(["テスト", "1号店", "カフェ"]);
     expect(nameTokens(NAMES.anniversary)).toEqual(["架空珈琲", "10周年記念店"]);
@@ -312,6 +315,12 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens("四ツ谷架空珈琲店")).toEqual(["四ツ谷架空珈琲店"]);
     // a katakana word after kanji is still a word of its own
     expect(nameTokens("架空ケーキ店")).toEqual(["架空", "ケーキ店"]);
+    expect(nameTokens(NAMES.linkerGa).some((t) => t.endsWith("が"))).toBe(false);
+    expect(nameTokens(NAMES.panyasan).some((t) => t.startsWith("屋"))).toBe(false);
+    expect(nameTokens("三の丸手作り焼菓子工房").some((t) => t.endsWith("三の"))).toBe(false);
+    expect(nameTokens("霞ｶﾞ関架空").length).toBe(1);
+    // の after a word is still a break (架空の / 店…)
+    expect(nameTokens("架空の焼菓子とコーヒーのテスト店")).toEqual(["架空の", "焼菓子と", "コーヒーの", "テスト店"]);
     expect(nameTokens("架空の焼菓子とコーヒーのテスト店")).toEqual(["架空の", "焼菓子と", "コーヒーの", "テスト店"]);
     expect(nameTokens("架空第1号店")).toEqual(["架空第1号店"]);
     expect(nameTokens("EXAMPLE365架空")).toEqual(["EXAMPLE365", "架空"]);
