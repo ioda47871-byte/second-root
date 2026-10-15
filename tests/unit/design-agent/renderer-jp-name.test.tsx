@@ -98,6 +98,9 @@ const NAMES = {
   okurigana: "炭火焼き鳥まるやま",
   kanaThenKanji: "ほうじ茶専門店テスト",
   takoyaki: "たこ焼き専門店まるいち",
+  // a full-size linker kana inside a place name (fictional shop names around real place-name shapes)
+  linkerKe: "霞ケ関架空珈琲店",
+  linkerNo: "三ノ宮駅前架空食堂",
 } as const;
 const LATIN = new Set<string>([
   NAMES.latinWord,
@@ -304,6 +307,11 @@ describe("unspaced shop names (text helpers)", () => {
     expect(nameTokens(NAMES.kanaThenKanji)[0]).toBe("ほうじ茶専門店");
     expect(nameTokens(NAMES.takoyaki).some((t) => t === "たこ" || t.endsWith("たこ"))).toBe(false);
     expect(nameTokens("わらび餅本舗架空").some((t) => t.endsWith("わらび"))).toBe(false);
+    expect(nameTokens(NAMES.linkerKe)).toEqual([NAMES.linkerKe]);
+    expect(nameTokens(NAMES.linkerNo)).toEqual([NAMES.linkerNo]);
+    expect(nameTokens("四ツ谷架空珈琲店")).toEqual(["四ツ谷架空珈琲店"]);
+    // a katakana word after kanji is still a word of its own
+    expect(nameTokens("架空ケーキ店")).toEqual(["架空", "ケーキ店"]);
     expect(nameTokens("架空の焼菓子とコーヒーのテスト店")).toEqual(["架空の", "焼菓子と", "コーヒーの", "テスト店"]);
     expect(nameTokens("架空第1号店")).toEqual(["架空第1号店"]);
     expect(nameTokens("EXAMPLE365架空")).toEqual(["EXAMPLE365", "架空"]);

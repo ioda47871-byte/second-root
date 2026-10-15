@@ -159,6 +159,11 @@ export function nameTokens(name: string): string[] {
     joined = false;
   }
   if (current) tokens.push(current);
+  // A full-size linker kana between kanji is inside a place name or surname (霞ケ関, 三ノ宮, 四ツ谷), like ヶ.
+  for (let i = tokens.length - 2; i >= 1; i--) {
+    const [before, linker, after] = [tokens[i - 1], tokens[i], tokens[i + 1]];
+    if (/^[ケノツガｹﾉﾂ]$/.test(linker) && scriptOf([...before].at(-1)!) === "kanji" && scriptOf([...after][0]) === "kanji") tokens.splice(i - 1, 3, before + linker + after);
+  }
   // One kanji right after a kana word is its suffix (テスト店, カフェ堂, こもれび堂): keep them together.
   return tokens.reduce<string[]>((out, t) => {
     const before = out[out.length - 1];
