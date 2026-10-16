@@ -78,6 +78,14 @@ export type BridgeOptions = {
 
 export type BridgeMode = "once" | "deliver-only";
 
+/** The mode for the command line: exactly one of `--once` / `--deliver-only`, compared as strings; anything else is null. */
+export function bridgeModeFor(args: readonly string[]): BridgeMode | null {
+  if (args.length !== 1) return null;
+  if (args[0] === "--once") return "once";
+  if (args[0] === "--deliver-only") return "deliver-only";
+  return null;
+}
+
 export type BridgeReport = {
   delivered: string[];
   superseded: string[];
@@ -238,8 +246,9 @@ export async function runBridgeOnce(options: BridgeOptions): Promise<BridgeRepor
       }
     }
 
-    // 3. claim, one job at a time, only while the worker is running (never in deliver-only)
-    if (options.mode === "deliver-only") return report;
+    // 3. claim, one job at a time, only while the worker is running.
+    // Only "once" (or no mode) claims: deliver-only, and any value that is not a known mode, stop here.
+    if (options.mode !== undefined && options.mode !== "once") return report;
     const heartbeat = await readHeartbeat(options.spool.fromWorker);
     const age = heartbeat ? now().getTime() - heartbeat.getTime() : Infinity;
     const workerRunning = age >= -5 * 60 * 1000 && age <= WORKER_HEARTBEAT_MAX_MS;
@@ -274,4 +283,10 @@ export async function runBridgeOnce(options: BridgeOptions): Promise<BridgeRepor
     log(`stopped: ${error.code}`);
   }
   return report;
+}
+
+/** The one summary line of a run (fixed words, counts and job ids only). */
+export function bridgeSummary(report: BridgeReport, mode: BridgeMode): string {
+  const claimed = report.claimed ?? (mode === "deliver-only" ? "none (BRIDGE_DELIVER_ONLY)" : report.workerIdle ? "none (BRIDGE_WORKER_IDLE)" : "none");
+  return `bridge: delivered ${report.delivered.length}, superseded ${report.superseded.length}, refused ${report.refused.length}, expired ${report.expired.length}, claimed ${claimed}`;
 }

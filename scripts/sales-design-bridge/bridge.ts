@@ -20,7 +20,7 @@
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { BridgeError, readTokenFile, runBridgeOnce, type BridgeMode } from "../../lib/design-agent/bridge/client";
+import { BridgeError, bridgeModeFor, bridgeSummary, readTokenFile, runBridgeOnce } from "../../lib/design-agent/bridge/client";
 import { bridgeSpool } from "../../lib/design-agent/bridge/spool";
 
 process.umask(0o077);
@@ -29,8 +29,7 @@ const say = (line: string) => process.stdout.write(`${line}\n`);
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
-  const modes: Record<string, BridgeMode> = { "--once": "once", "--deliver-only": "deliver-only" };
-  const mode = args.length === 1 ? modes[args[0]!] : undefined;
+  const mode = bridgeModeFor(args);
   if (!mode) {
     process.stderr.write("usage: bridge.ts --once | --deliver-only\n");
     return 2;
@@ -62,9 +61,7 @@ async function main(): Promise<number> {
     say(`stopped: ${error instanceof BridgeError ? error.code : "BRIDGE_SPOOL_INVALID"}`);
     return 3;
   }
-  say(
-    `bridge: delivered ${report.delivered.length}, superseded ${report.superseded.length}, refused ${report.refused.length}, expired ${report.expired.length}, claimed ${report.claimed ?? (mode === "deliver-only" ? "none (BRIDGE_DELIVER_ONLY)" : report.workerIdle ? "none (BRIDGE_WORKER_IDLE)" : "none")}`,
-  );
+  say(bridgeSummary(report, mode));
   return report.stopped ? 3 : 0;
 }
 

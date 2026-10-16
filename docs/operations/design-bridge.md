@@ -125,7 +125,8 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 4. bridge をもう一度、今度は `--deliver-only` → `delivered 1` … `claimed none (BRIDGE_DELIVER_ONLY)`
    （`--once` は deliver → expire → claim の順に動くので、届けた同じ回で次の job を claim する。
    1 件ずつ確かめるときは結果を届けるだけの `--deliver-only` を使う。`--deliver-only` は claim を頼まず、
-   worker 用の job file も書かない。期限切れの job の片付けと ledger の整理だけは `--once` と同じに行う）
+   worker 用の job file も書かない。期限切れの job の片付けと ledger の整理だけは `--once` と同じに行う。
+   1 件ずつ確かめる間は `sr-design-bridge.timer`（F）を止めておく。timer の `--once` は claim する）
 5. `/admin/sales` で「デモ確認可能」→ プレビューで確認 → 人が DM を送る → 「送信済み」
 
 ## 7. 出力の符号

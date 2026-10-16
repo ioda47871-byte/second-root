@@ -2,7 +2,7 @@ import { chmod, link, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { bridgeEndpoint, LOCAL_EXPIRY_MS, readTokenFile, runBridgeOnce, submitBody, WORKER_HEARTBEAT_MAX_MS, type BridgeOptions } from "@/lib/design-agent/bridge/client";
+import { bridgeEndpoint, bridgeModeFor, bridgeSummary, LOCAL_EXPIRY_MS, readTokenFile, runBridgeOnce, submitBody, WORKER_HEARTBEAT_MAX_MS, type BridgeOptions } from "@/lib/design-agent/bridge/client";
 import { bridgeSpool, readHeartbeat, readSpoolJson, resultCode, spoolIds, writeHeartbeat, writeSpoolJson, WorkerResultSchema, type BridgeSpool } from "@/lib/design-agent/bridge/spool";
 import { exportBridgeResults, importBridgeJobs, resultFromRecords } from "@/lib/design-agent/bridge/worker-side";
 import type { DesignProfile } from "@/lib/design-agent/profile";
@@ -322,12 +322,33 @@ describe("bridge client", () => {
     expect(await spoolIds(spool.toWorker)).toEqual([]);
   });
 
-  it("deliver-only keeps the fixed stops", async () => {
+  it("deliver-only keeps the fixed stops, and never reaches a claim-time stop", async () => {
     answers.push(claimed());
     await runBridgeOnce(options());
     await resultFile();
     answers.push({ status: 401, body: { error: "unauthorized" } });
     expect(await runBridgeOnce({ ...options(), mode: "deliver-only" })).toMatchObject({ stopped: "BRIDGE_UNAUTHORIZED", delivered: [], claimed: null });
+    answers.length = 0;
+    answers.push(submitted(), { status: 401, body: { error: "unauthorized" } }); // a claim would stop here
+    expect(await runBridgeOnce({ ...options(), mode: "deliver-only" })).toMatchObject({ delivered: [WJOB], stopped: null, claimed: null });
+    expect(calls.map((c) => c.body.action)).toEqual(["claim", "submit", "submit"]);
+  });
+
+  it("an unknown mode never claims, and only the two exact arguments name a mode", async () => {
+    answers.push(claimed());
+    expect(await runBridgeOnce({ ...options(), mode: "claim" as never })).toMatchObject({ claimed: null });
+    expect(calls).toEqual([]);
+    expect(bridgeModeFor(["--once"])).toBe("once");
+    expect(bridgeModeFor(["--deliver-only"])).toBe("deliver-only");
+    for (const args of [[], ["constructor"], ["__proto__"], ["toString"], ["--ONCE"], ["--once", "--once"]]) expect(bridgeModeFor(args)).toBeNull();
+  });
+
+  it("prints one fixed summary line per mode", () => {
+    const report = { delivered: ["b-1"], superseded: [], refused: [], expired: [], claimed: null, workerIdle: false, stopped: null };
+    expect(bridgeSummary(report, "deliver-only")).toBe("bridge: delivered 1, superseded 0, refused 0, expired 0, claimed none (BRIDGE_DELIVER_ONLY)");
+    expect(bridgeSummary(report, "once")).toBe("bridge: delivered 1, superseded 0, refused 0, expired 0, claimed none");
+    expect(bridgeSummary({ ...report, workerIdle: true }, "once")).toBe("bridge: delivered 1, superseded 0, refused 0, expired 0, claimed none (BRIDGE_WORKER_IDLE)");
+    expect(bridgeSummary({ ...report, claimed: "b-2" }, "once")).toBe("bridge: delivered 1, superseded 0, refused 0, expired 0, claimed b-2");
   });
 
   it("claims nothing while the worker is not running (no heartbeat, or an old one)", async () => {
@@ -405,7 +426,7 @@ describe("the worker never gets the bridge token", () => {
     const tsx = join(process.cwd(), "node_modules/.bin/tsx");
     const script = join(process.cwd(), "scripts/sales-design-bridge/bridge.ts");
     const env = { PATH: process.env.PATH ?? "", HOME: base } as unknown as NodeJS.ProcessEnv;
-    for (const args of [[], ["--claim"], ["--once", "--deliver-only"], ["--deliver-only", "x"]]) {
+    for (const args of [[], ["--claim"], ["--once", "--deliver-only"], ["--deliver-only", "x"], ["constructor"], ["__proto__"]]) {
       const run = spawnSync(tsx, [script, ...args], { env, encoding: "utf8", timeout: 60_000 });
       expect(run.status).toBe(2);
       expect(run.stdout).toBe("");
