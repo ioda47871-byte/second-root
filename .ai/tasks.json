@@ -1745,6 +1745,47 @@
       "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-037-bridge-deliver-only"
+    },
+    {
+      "id": "DEV-038",
+      "title": "Renderer: spacing=tight をページ全体の密度にする（2 回目。cover・行・visit・notice / footer）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-036"
+      ],
+      "purpose": "DEV-036 後の controlled rerun（2 件とも 0.83 の brief、centered_cover / medium / tight）でも、review が desktop の medium cover の高さ、phone の address → access の間隔・menu の行・notice / footer を求めて RENDERER_CHANGE_NEEDED になった。DEV-036 の section 間隔は変えず、残りの定数を tight のときだけ（notice / footer は profile demo の phone で）詰める",
+      "acceptance_criteria": [
+        "tight はページ全体の密度: desktop の centered_cover + medium + tight は hero の高さ（min-height・padding）を減らす。名前の上限だけではない",
+        "phone の tight: visit の address → access の間隔、menu / 情報の行の上下 padding を減らす",
+        "phone の profile demo: notice / footer の文字と padding を小さくする。文言はすべて残し、12px 以上で読める",
+        "DEV-036 の section 間隔は変えない。DEV-034 の名前の fit、split photo hero の高さ、standard / generous の見た目は変えない。実店舗の特例なし"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent/renderer-density-pass2.test.tsx（架空の疎な baked_goods / bakery、360 / 390 / 1440 の実寸: medium cover の高さ、menu の行、address → access、本文 → footer、notice / footer の高さ。旧 CSS は失敗、新 CSS は通過）",
+        "DEV-034 / DEV-036 の renderer test、unit / integration / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        "components/demo/profile/profile.module.css",
+        "tests/unit/design-agent/renderer-density-pass2.test.tsx",
+        "tests/unit/design-agent/renderer-layout.test.tsx（phone の notice / footer の期待値のみ）",
+        ".ai/",
+        "tests/unit/design-agent/demo-frame-public.test.tsx（profile demo の phone の footer padding の期待値のみ）"
+      ],
+      "forbidden_scope": [
+        "DesignProfile の schema / enum",
+        "score・accept / revise の閾値・needs_renderer_change → BLOCKED・max revisions",
+        "brief の confidence 閾値 0.5",
+        "components/demo/demo.module.css（template demo の notice / footer）",
+        "実店舗の名前・handle・screenshot・run の記録",
+        "Production・DM・timer・helper・jail"
+      ],
+      "human_approval_triggers": [
+        "Staging の controlled rerun（WSL root の実行）"
+      ],
+      "attempts": 1,
+      "last_failure": null,
+      "branch": "feature/dev-038-tight-density-2"
     }
   ]
 }

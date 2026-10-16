@@ -209,11 +209,13 @@ describe("profile renderer layout (Chromium)", () => {
     expect(desktop.hero.bottom - desktop.hero.top).toBeGreaterThanOrEqual(0.56 * 900 - 1);
   });
 
-  it("leaves the notice and the footer of every demo as they were", async () => {
-    for (const device of ["phone", "desktop"] as const) {
-      const m = await measure(SHOPS.long, PROFILES.split_crop, device);
-      expect(m.noticeSize).toBe("12.8px");
-      expect(m.footerPadding).toBe("28px 16px 40px");
-    }
+  it("leaves the notice and the footer as they were on desktop; on phones a profile demo sets them smaller (DEV-038)", async () => {
+    const desktop = await measure(SHOPS.long, PROFILES.split_crop, "desktop");
+    expect(desktop.noticeSize).toBe("12.8px");
+    expect(desktop.footerPadding).toBe("28px 16px 40px");
+    // phones: still 12px, with the full wording (tests/unit/design-agent/renderer-density-pass2.test.tsx)
+    const phone = await measure(SHOPS.long, PROFILES.split_crop, "phone");
+    expect(phone.noticeSize).toBe("12px");
+    expect(phone.footerPadding).toBe("16px 16px 20px");
   });
 });
