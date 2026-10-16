@@ -616,9 +616,20 @@ describe("diagnose", () => {
     const stuckPageClose: LaunchPersistent = async (dir, options) => {
       const context = await launchPersistent(dir, options);
       contexts.push(context);
+      // As in a lost detach: once its close was asked for, a page can no longer be attached to and
+      // Playwright never sees it close, so only the target id remembered at open can close it.
+      const asked = new WeakSet<import("playwright").Page>();
+      const attach = context.newCDPSession.bind(context);
+      context.newCDPSession = (async (page: import("playwright").Page) => {
+        if (asked.has(page)) throw new Error("target gone");
+        return attach(page);
+      }) as typeof context.newCDPSession;
       const patch = (page: import("playwright").Page) => {
+        const isClosed = page.isClosed.bind(page);
+        page.isClosed = () => (asked.has(page) ? false : isClosed());
         page.close = () => {
           hung += 1;
+          asked.add(page);
           return new Promise<void>(() => undefined); // never settles
         };
       };
@@ -641,7 +652,8 @@ describe("diagnose", () => {
       expect(hung, `${label}: page.close() hung`).toBeGreaterThan(0);
       expect(lines, label).toEqual([...expected]);
       expect(Date.now() - started, `${label}: bounded`).toBeLessThan(30_000);
-      expect(contexts.at(-1)!.browser()?.isConnected() ?? false, `${label}: browser ended`).toBe(false);
+      expect(contexts.at(-1)!.browser(), `${label}: a browser to end`).not.toBeNull();
+      expect(contexts.at(-1)!.browser()!.isConnected(), `${label}: browser ended`).toBe(false);
       onlyCodes(lines);
     }
   });

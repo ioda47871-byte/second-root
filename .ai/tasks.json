@@ -1832,9 +1832,9 @@
       "purpose": "CI の Chromium 151 で、C のときに別ホームへの移動中の page.close() が 10 秒で終わらず、DEV-035 の有限の close が CLOSE_TIMEOUT を出して browser.test.ts の diagnose test が落ちる（PR #53 で 2 回、#56 で 2 回）。最初の page.close() は残し、終わらないときだけそのページ自身の target を CDP で閉じる。人の明示の承認あり（capture helper の code の変更）",
       "acceptance_criteria": [
         "最初の page.close()（有限）は今のまま",
-        "終わらないとき、ページ自身の CDP session から Target.getTargetInfo で自分の target を取り、Target.closeTarget で閉じる。URL で選ばない",
+        "終わらないとき、そのページ自身の target（開いたときにページ自身の CDP session の Target.getTargetInfo で取っておいた id。なければそのとき読む）を browser の CDP session で Target.closeTarget する。URL で選ばない",
         "CDP の fallback も有限（同じ時間）。新しい無限の待ちは作らない",
-        "target の close でページが閉じたら閉じたとして扱い、CLOSE_TIMEOUT を出さない",
+        "Chromium の Target.getTargets からその id が消えたら閉じたとして扱い、CLOSE_TIMEOUT を出さない（Playwright の close event には頼らない）",
         "閉じなかったときは今の CLOSE_TIMEOUT と最後の context / browser の片付けをそのまま",
         "Navigation Guard とすべての停止の符号は変えない"
       ],

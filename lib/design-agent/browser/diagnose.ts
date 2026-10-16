@@ -181,7 +181,8 @@ export async function rememberTargetId(page: Page, ms = 2_000): Promise<void> {
  * from the page's own session): never matched by URL, as two pages may show the same URL. Success is
  * judged by the browser's own target list, not by Playwright's close event: page.close() already sends
  * Target.closeTarget and waits for that event, so a close whose event never arrives would otherwise
- * look stuck here too. Stops polling at `deadline`; the session is detached without waiting.
+ * look stuck here too. A remembered id Chromium no longer lists counts as closed (that is the lost
+ * detach this handles). Stops polling at `deadline`; the session is detached without waiting.
  */
 export async function closeTargetByCdp(page: Page, deadline: number): Promise<boolean> {
   const browser = page.context().browser();
@@ -189,6 +190,7 @@ export async function closeTargetByCdp(page: Page, deadline: number): Promise<bo
   const id = targetIds.get(page) ?? (await readTargetId(page));
   const session = await browser.newBrowserCDPSession();
   try {
+    if (Date.now() >= deadline) return false; // the caller has given up: send nothing more
     void session.send("Target.closeTarget", { targetId: id }).catch(() => undefined);
     while (Date.now() < deadline) {
       const { targetInfos } = await session.send("Target.getTargets");
