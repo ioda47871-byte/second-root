@@ -1661,7 +1661,7 @@
     {
       "id": "DEV-037",
       "title": "Bridge: --deliver-only（届けるだけの回が次の job を claim しない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-030"
