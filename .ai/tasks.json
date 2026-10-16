@@ -1786,6 +1786,40 @@
       "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-038-tight-density-2"
+    },
+    {
+      "id": "DEV-039",
+      "title": "調査: bakery の残る renderer-change note は密度の欠陥か、review の揺れか（read-only）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-038"
+      ],
+      "purpose": "DEV-038 後の最終 rerun で baked_goods は ready、bakery は 18/18/18 で RENDERER_CHANGE_NEEDED。最後の renderer_change_note は DEV-038 で満たした値（12px・1.6・footer 16/20px・heading gap 16px）と、未対応の値（section 上 32→24px、folio tracking 0.26em、rowLabel 12.5px / 0.12em）が混ざっている。実装はせず、実寸と review の入力から原因を分類する",
+      "acceptance_criteria": [
+        "架空の疎な fixture で、390px（review と同じ viewport・deviceScaleFactor 2）の section 上 padding、heading → 本文、folio、area label、notice、footer（段落・link 別）を実測する",
+        "reviewer が満たした値を求めた理由を、review に渡す画像と prompt から説明する",
+        "6 run の構造的な収束を記録する",
+        "残る blocker を A / B / C のどれか 1 つに分類し、最小の次の一手を提案する（実装しない）"
+      ],
+      "required_tests": [
+        "なし（read-only の調査。計測は一時的な probe で行い、commit しない）"
+      ],
+      "allowed_scope": [
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "CSS・renderer・prompt・review・pipeline の変更",
+        "review の閾値・score・schema / enum・max revisions・brief 閾値",
+        "実店舗の画像・データ",
+        "Staging / Production / Vercel / timer / helper / jail / DM / email"
+      ],
+      "human_approval_triggers": [
+        "次の一手（CSS の差分、または review 入力の変更）の実装"
+      ],
+      "attempts": 1,
+      "last_failure": null,
+      "branch": "develop（.ai のみ）"
     }
   ]
 }
