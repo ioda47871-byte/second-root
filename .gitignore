@@ -47,3 +47,7 @@ next-env.d.ts
 /blob-report/
 /playwright/.cache/
 build.log
+
+# Python caches (e.g. the jail probe)
+__pycache__/
+*.py[cod]

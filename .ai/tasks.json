@@ -1615,6 +1615,35 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-034-jp-name-and-revision"
+    },
+    {
+      "id": "DEV-035",
+      "title": "Browser diagnose: a close racing a refused move can hang (DEV-033 diagnose)",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-033"
+      ],
+      "purpose": "DEV-034 の CI で断続的に `browser.test.ts` の diagnose（li_auth_platform、mode C）が止まった（.ai/reviews/DEV-034.md）。C で外への移動を見つけたとき request handler の中で page を閉じ、run 側も page.close() / context.close() を待つため、負荷時に close が settle せず止まる。navigation guard・challenge / login wall の扱い・cookie / session・jail・helper の権限は変えない",
+      "acceptance_criteria": [
+        "request handler の中では page を閉じない。止まった理由だけを記録し、run は navigation を待たずに止まって、page を 1 回だけ閉じる",
+        "page.close() / context.close() は短い時間で打ち切り、終わらないときは browser を終わらせる（CDP の Browser.close と browser.close()）",
+        "出力は従来どおりの符号だけ（browser も終わらないときだけ `BROWSER_STUCK`）",
+        "Navigation Guard の許可範囲、challenge / login wall の扱い、cookie / session、jail、helper の権限は変えない",
+        "追跡されていた jail probe の .pyc を削除し、.gitignore で Python cache を除外する"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent/browser.test.ts（close が settle しない launcher で、旧実装は timeout、新実装は有限時間で終わる）",
+        "既存の browser / diagnose / capture test、unit / integration / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/browser/diagnose.ts",
+        "tests/unit/design-agent/browser.test.ts",
+        "docs/operations/design-browser-wsl.md",
+        ".gitignore",
+        "scripts/sales-design-capture/jail/__pycache__/（削除のみ）",
+        ".ai/"
+      ]
     }
   ]
 }
