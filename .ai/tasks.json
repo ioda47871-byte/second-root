@@ -1657,6 +1657,53 @@
       "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-035-diagnose-close-hang"
+    },
+    {
+      "id": "DEV-037",
+      "title": "Bridge: --deliver-only（届けるだけの回が次の job を claim しない）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-030"
+      ],
+      "purpose": "Staging PoC で、job 1 の結果を届けるつもりの `run.sh --once` が deliver → expire → claim の順で job 2 も claim し、1 件ずつの確認ができなかった。shell で出力を読むのではなく、bridge に明示の mode を足す。`--once` の動きは変えない",
+      "acceptance_criteria": [
+        "`run.sh --deliver-only` は終わった結果を提出し、期限切れの job の片付けと ledger の整理をする",
+        "`--deliver-only` は action=claim を送らず、worker 用の新しい job file を書かない",
+        "出力は従来どおりの固定の符号（`claimed none (BRIDGE_DELIVER_ONLY)`）",
+        "`--once` の動き、token・利用者・spool の安全性は変えない。bridge.ts は `--once` か `--deliver-only` のどちらか 1 つだけを受け付ける"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent/bridge.test.ts（server に次の job が待っている状態で `--deliver-only` が届けて claim しない。後の `--once` は claim できる。期限切れ・固定の stop・引数）",
+        "integration: tests/integration/design-bridge.test.ts（実際の route と DB で、次の demo が pending / attempts 0 のまま）",
+        "unit / integration / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/bridge/client.ts",
+        "scripts/sales-design-bridge/bridge.ts",
+        "scripts/sales-design-bridge/run.sh（コメントのみ）",
+        "tests/unit/design-agent/bridge.test.ts",
+        "tests/integration/design-bridge.test.ts",
+        "docs/operations/design-bridge.md",
+        "docs/ARCHITECTURE.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "shell で出力を読んで claim を避けること",
+        "bridge token の扱い・token file の検査",
+        "run.sh の環境変数の allowlist・利用者の拒否・flock",
+        "spool の権限・形式",
+        "server の claim / submit / lease / attempts",
+        "systemd unit・timer の有効化",
+        "Production・DM・helper・jail"
+      ],
+      "human_approval_triggers": [
+        "bridge の checkout 更新（sr-designbridge が承認した commit を checkout する）",
+        "Staging の controlled rerun（WSL root の実行）"
+      ],
+      "attempts": 1,
+      "last_failure": null,
+      "branch": "feature/dev-037-bridge-deliver-only"
     }
   ]
 }

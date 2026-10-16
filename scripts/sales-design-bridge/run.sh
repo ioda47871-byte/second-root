@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Second Root design bridge — the one supported entry point (DEV-030).
 #
-#   ./scripts/sales-design-bridge/run.sh --once
+#   ./scripts/sales-design-bridge/run.sh --once           deliver, expire, claim one job
+#   ./scripts/sales-design-bridge/run.sh --deliver-only   deliver and expire; never claim
 #
 # Run as the dedicated Linux user sr-designbridge (never sr-designgen), by
 # hand or from sr-design-bridge.service (docs/operations/design-bridge.md).
@@ -11,7 +12,8 @@
 #      0600 file by bridge.ts),
 #   2. refuses to run as the worker user or as root,
 #   3. allows one run at a time (flock),
-#   4. runs one pass of the bridge with a time limit.
+#   4. runs one pass of the bridge with a time limit (bridge.ts checks the
+#      mode and refuses anything else).
 # It does not update its own checkout: a person checks out an approved commit.
 {
 set -euo pipefail

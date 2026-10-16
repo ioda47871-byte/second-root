@@ -289,6 +289,47 @@ describe("bridge client", () => {
     expect(await spoolIds(spool.toWorker)).toEqual([WJOB2]);
   });
 
+  it("deliver-only delivers a finished result and never claims the pending next job; a later --once may", async () => {
+    answers.push(claimed());
+    await runBridgeOnce(options());
+    await resultFile();
+    // The server has JOB2 pending: a claim would hand it out. deliver-only must not ask.
+    answers.push(submitted(), claimed(JOB2));
+    const report = await runBridgeOnce({ ...options(), mode: "deliver-only" });
+    expect(report).toMatchObject({ delivered: [WJOB], claimed: null, workerIdle: false, stopped: null });
+    expect(calls.map((c) => c.body.action)).toEqual(["claim", "submit"]);
+    expect(await spoolIds(spool.toWorker)).toEqual([]); // no new job file for the worker
+    const ledger = JSON.parse(await readFile(join(stateDir, "ledger.json"), "utf8")) as { jobs: Record<string, unknown> };
+    expect(Object.keys(ledger.jobs)).toEqual([WJOB]);
+    expect(lines.join("\n")).not.toContain(TOKEN);
+    // Nothing left to deliver: still no claim.
+    expect(await runBridgeOnce({ ...options(), mode: "deliver-only" })).toMatchObject({ delivered: [], claimed: null });
+    expect(calls).toHaveLength(2);
+    // The ordinary pass claims the next job.
+    expect(await runBridgeOnce(options())).toMatchObject({ claimed: WJOB2 });
+    expect(calls.map((c) => c.body.action)).toEqual(["claim", "submit", "claim"]);
+    expect(await spoolIds(spool.toWorker)).toEqual([WJOB2]);
+  });
+
+  it("deliver-only still expires a job the worker never answered, and claims nothing", async () => {
+    answers.push(claimed());
+    await runBridgeOnce(options());
+    clock = new Date(clock.getTime() + LOCAL_EXPIRY_MS + 1000);
+    await writeHeartbeat(spool.fromWorker, clock);
+    answers.push(claimed(JOB2));
+    expect(await runBridgeOnce({ ...options(), mode: "deliver-only" })).toMatchObject({ expired: [WJOB], claimed: null });
+    expect(calls).toHaveLength(1);
+    expect(await spoolIds(spool.toWorker)).toEqual([]);
+  });
+
+  it("deliver-only keeps the fixed stops", async () => {
+    answers.push(claimed());
+    await runBridgeOnce(options());
+    await resultFile();
+    answers.push({ status: 401, body: { error: "unauthorized" } });
+    expect(await runBridgeOnce({ ...options(), mode: "deliver-only" })).toMatchObject({ stopped: "BRIDGE_UNAUTHORIZED", delivered: [], claimed: null });
+  });
+
   it("claims nothing while the worker is not running (no heartbeat, or an old one)", async () => {
     const { rm } = await import("node:fs/promises");
     await rm(join(spool.fromWorker, "worker-heartbeat.json"));
@@ -357,6 +398,23 @@ describe("the worker never gets the bridge token", () => {
     const keep = /for name in ([\s\S]*?); do/.exec(runSh)![1]!.split(/[\s\\]+/).filter(Boolean);
     expect(keep).toContain("SR_DESIGN_BRIDGE_SPOOL");
     expect(keep.filter((n) => /TOKEN|SECRET|KEY|SALES_|SUPABASE|BRIDGE_API|BRIDGE_TOKEN/.test(n))).toEqual([]);
+  });
+
+  it("bridge.ts takes exactly one of --once / --deliver-only", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const tsx = join(process.cwd(), "node_modules/.bin/tsx");
+    const script = join(process.cwd(), "scripts/sales-design-bridge/bridge.ts");
+    const env = { PATH: process.env.PATH ?? "", HOME: base } as unknown as NodeJS.ProcessEnv;
+    for (const args of [[], ["--claim"], ["--once", "--deliver-only"], ["--deliver-only", "x"]]) {
+      const run = spawnSync(tsx, [script, ...args], { env, encoding: "utf8", timeout: 60_000 });
+      expect(run.status).toBe(2);
+      expect(run.stdout).toBe("");
+    }
+    for (const mode of ["--once", "--deliver-only"]) {
+      const run = spawnSync(tsx, [script, mode], { env, encoding: "utf8", timeout: 60_000 });
+      expect(run.stdout).toBe("stopped: BRIDGE_NOT_CONFIGURED\n"); // reaches configuration, never the network
+      expect(run.status).toBe(3);
+    }
   });
 
   it("the bridge's run.sh keeps no token variable and refuses the worker and helper users", async () => {

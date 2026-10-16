@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { POST as designPost } from "@/app/api/internal/sales-design/jobs/route";
 import { POST as ingestPost } from "@/app/api/internal/sales-agent/runs/route";
 import { runBridgeOnce } from "@/lib/design-agent/bridge/client";
-import { bridgeSpool } from "@/lib/design-agent/bridge/spool";
+import { bridgeSpool, spoolIds } from "@/lib/design-agent/bridge/spool";
 import { exportBridgeResults, importBridgeJobs } from "@/lib/design-agent/bridge/worker-side";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import { ensureQueue, queueDirs } from "@/lib/design-agent/worker/queue";
@@ -427,6 +427,43 @@ describe("end to end: bridge → spool → worker → bridge → public demo", (
     await markSent(prospectId);
     expect((await loadPublicDemo(serviceClient(), token, new Date(), { SALES_AI_DESIGN_ENABLED: "true" }))?.profile).toEqual(PROFILE);
     expect((await loadPublicDemo(serviceClient(), token, new Date(), {}))?.profile).toBeNull();
+  });
+
+  it("deliver-only delivers a finished job and leaves the next waiting demo unclaimed (DEV-037)", async () => {
+    const firstProspect = await prepare(candidate(), true);
+    const base = await mkdtemp(join(tmpdir(), "sr-bridge-e2e-"));
+    const spool = bridgeSpool(join(base, "spool"));
+    await mkdir(spool.toWorker, { recursive: true });
+    await mkdir(spool.fromWorker, { recursive: true });
+    const dirs = queueDirs(join(base, "queue"));
+    await ensureQueue(dirs);
+    const outRoot = join(base, "out");
+    await mkdir(outRoot);
+    const viaRoute: typeof fetch = async (input, init) =>
+      designPost(new NextRequest(String(input), { method: "POST", headers: init?.headers as Record<string, string>, body: String(init?.body) }));
+    const bridge = (mode?: "deliver-only") => runBridgeOnce({ spool, stateDir: join(base, "state"), apiUrl: "https://secondroot.example.com", token: BRIDGE_TOKEN, fetch: viaRoute, mode });
+
+    await importBridgeJobs(spool, dirs, outRoot); // heartbeat
+    const workerJobId = (await bridge()).claimed!;
+    expect(workerJobId).toMatch(/^b-/);
+    const secondProspect = await prepare(candidate(), true); // the next job waits on the server
+    expect((await importBridgeJobs(spool, dirs, outRoot)).imported).toEqual([workerJobId]);
+    await writeFile(join(dirs.done, `${workerJobId}.json`), "{}");
+    await writeFile(join(dirs.done, `${workerJobId}.result.json`), JSON.stringify({ job_id: workerJobId, bucket: "done", outcome: "done" }));
+    await mkdir(join(outRoot, workerJobId));
+    await writeFile(join(outRoot, workerJobId, "report.json"), JSON.stringify({ outcome: "done", worker: { commit: "0123abcd4567" } }));
+    await writeFile(join(outRoot, workerJobId, "final.json"), JSON.stringify(AMERICAN_EDITORIAL));
+    expect((await exportBridgeResults(spool, dirs, outRoot)).exported).toEqual([workerJobId]);
+
+    expect(await bridge("deliver-only")).toMatchObject({ delivered: [workerJobId], claimed: null, stopped: null });
+    expect((await demoOf(firstProspect)).design_status).toBe("ready");
+    expect(await demoOf(secondProspect)).toMatchObject({ design_status: "pending", design_attempts: 0, design_job_id: null });
+    expect(await spoolIds(spool.toWorker)).toEqual([]);
+
+    // A later ordinary pass may claim it.
+    const next = await bridge();
+    expect(next.claimed).toMatch(/^b-/);
+    expect((await demoOf(secondProspect)).design_status).toBe("processing");
   });
 });
 

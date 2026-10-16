@@ -14,6 +14,10 @@
  *      to-worker/ as the worker's job file. With the worker stopped, nothing
  *      is claimed, so no job uses up its lease and attempts while waiting.
  *
+ * `--deliver-only` (mode "deliver-only") runs 1 and 2 and never 3: it never
+ * asks the server for a job and never writes a job file, so delivering one
+ * result cannot start the next job.
+ *
  * Output is fixed codes only. The token is read from a file owned by this
  * user (0600), never from the environment, and nothing is started as a child
  * process, so it cannot be inherited by anything.
@@ -66,9 +70,13 @@ export type BridgeOptions = {
   fetch?: typeof fetch;
   now?: () => Date;
   log?: (line: string) => void;
+  /** "once" (default): deliver, expire, claim. "deliver-only": deliver and expire, never claim. */
+  mode?: BridgeMode;
   /** Tests only: allow http://127.0.0.1 / localhost. Production requires https. */
   allowLocalHttp?: boolean;
 };
+
+export type BridgeMode = "once" | "deliver-only";
 
 export type BridgeReport = {
   delivered: string[];
@@ -230,7 +238,8 @@ export async function runBridgeOnce(options: BridgeOptions): Promise<BridgeRepor
       }
     }
 
-    // 3. claim, one job at a time, only while the worker is running
+    // 3. claim, one job at a time, only while the worker is running (never in deliver-only)
+    if (options.mode === "deliver-only") return report;
     const heartbeat = await readHeartbeat(options.spool.fromWorker);
     const age = heartbeat ? now().getTime() - heartbeat.getTime() : Infinity;
     const workerRunning = age >= -5 * 60 * 1000 && age <= WORKER_HEARTBEAT_MAX_MS;
