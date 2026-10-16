@@ -1657,6 +1657,47 @@
       "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-035-diagnose-close-hang"
+    },
+    {
+      "id": "DEV-036",
+      "title": "Renderer: spacing=tight を疎な demo で本当に詰める（centered_cover+medium の phone / desktop）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-034"
+      ],
+      "purpose": "Staging PoC の 2 件（baked_goods / bakery）は最終 profile が spacing=tight・centered_cover/medium・motif なしでも、review が phone の余白・見出し・hero・desktop の短い名前の大きさを求めて RENDERER_CHANGE_NEEDED になった。section の padding-top と `.section + .section` の margin-top が同じ --gap で、section 間が 2 倍になっていた。enum・schema・review の閾値・score・needs_renderer_change の扱い・max revisions・brief 閾値 0.5 は変えない",
+      "acceptance_criteria": [
+        "360 / 390 で tight は section 上の余白・section 間・見出しと本文の間・footer 前を目に見えて詰める（section 間は padding だけ。margin で 2 倍にしない）",
+        "tight の phone 見出しは従来の最小より小さくてよいが、display の大きさで読める",
+        "centered_cover+medium は phone で compact な hero になる",
+        "desktop の centered_cover+medium は短い名前を記念碑的にしない（layout / height に対する一般的な上限。店や文字種の特例なし）",
+        "DEV-034 の名前の意味的な改行、360 / 390 / 1440 で overflow なし、長い名前の fit、desktop の構造、notice / footer、事実だけの描画を保つ"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent/renderer-sparse-density.test.tsx（架空の疎な baked_goods（短い Latin 名）と bakery（短い日本語名）、360 / 390 / 1440 の実寸。旧 CSS は失敗、新 CSS は通過）",
+        "DEV-034 の日本語名・overflow の test と既存の renderer test、unit / integration / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        "components/demo/profile/profile.module.css",
+        "tests/unit/design-agent/renderer-sparse-density.test.tsx",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "review の score 計算・accept / revise の閾値",
+        "needs_renderer_change → BLOCKED",
+        "max revisions",
+        "DesignProfile の schema / enum",
+        "brief の confidence 閾値 0.5",
+        "実店舗の名前・handle・screenshot・run の記録を repo に置くこと",
+        "Production・DM・timer・helper・jail"
+      ],
+      "human_approval_triggers": [
+        "Staging の controlled rerun（WSL root の実行）"
+      ],
+      "attempts": 1,
+      "last_failure": null,
+      "branch": "feature/dev-036-sparse-compact"
     }
   ]
 }
