@@ -98,6 +98,8 @@ export interface DiagnoseOptions {
   hasDisplay?: boolean;
   /** Tests only: how long a close may take (production: CLOSE_TIMEOUT_MS). */
   closeTimeoutMs?: number;
+  /** Tests only: the targeted close used when page.close() does not settle (production: closeTargetByCdp). */
+  closeTarget?: (page: Page) => Promise<unknown>;
   say: (line: string) => void;
 }
 
@@ -144,6 +146,34 @@ async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolea
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Closes exactly this page's target through the page's own CDP session (DEV-041): the session is
+ * attached to the page, so Target.getTargetInfo without an id names this target and no other (no URL
+ * matching; two pages may show the same URL).
+ */
+export async function closeTargetByCdp(page: Page): Promise<void> {
+  const session = await page.context().newCDPSession(page);
+  const { targetInfo } = await session.send("Target.getTargetInfo");
+  await session.send("Target.closeTarget", { targetId: targetInfo.targetId });
+}
+
+/**
+ * Closes a page within bounded time (DEV-035, DEV-041): page.close() first; when that does not settle
+ * within `ms` (seen on CI with a close racing a cross-host navigation), the page's own target is closed
+ * through CDP, and the page counts as closed once it reports its close event, again within `ms`.
+ * "timeout" when neither settled: the caller reports CLOSE_TIMEOUT and ends the browser as before.
+ */
+export async function closePageBounded(page: Page, ms: number, closeTarget: (page: Page) => Promise<unknown> = closeTargetByCdp): Promise<"closed" | "target_closed" | "timeout"> {
+  if (await settlesWithin(page.close(), ms)) return "closed";
+  if (page.isClosed()) return "target_closed";
+  const gone = new Promise<void>((resolve) => page.once("close", () => resolve()));
+  const attempt = Promise.resolve()
+    .then(() => closeTarget(page))
+    .then(() => gone);
+  await settlesWithin(Promise.race([attempt, gone]), ms);
+  return page.isClosed() ? "target_closed" : "timeout";
 }
 
 /**
@@ -201,7 +231,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   const closePage = async (p: Page) => {
     if (closed.has(p)) return;
     closed.add(p);
-    if (!(await settlesWithin(p.close(), closeMs))) throw new CloseTimeout();
+    if ((await closePageBounded(p, closeMs, options.closeTarget)) === "timeout") throw new CloseTimeout();
   };
   const guard = guarded ? await guardNavigation(context, target, state) : null;
   // Only pages this code opens are kept; any other (a popup, with or without an opener) is closed at once.
