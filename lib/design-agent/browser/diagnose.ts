@@ -148,7 +148,9 @@ async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolea
 
 /**
  * Closes the browser of a run within a bounded time: the context first, and when that does not
- * settle, the browser process itself (also through CDP, in case the normal close is the stuck part).
+ * settle, the browser itself (CDP Browser.close and browser.close()). A browser that does not answer
+ * at all is killed by Playwright's own close (SIGKILL after its timeout); "stuck" says the run did
+ * not see it end in time.
  */
 export async function closeBrowser(context: BrowserContext, ms: number): Promise<"closed" | "killed" | "stuck"> {
   if (await settlesWithin(context.close(), ms)) return "closed";
@@ -177,13 +179,24 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   const closeMs = options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS;
   const guarded = MODES[mode].guard;
   const state: NavigationState = { offSite: false };
-  // A refused move only records why the run stops (DEV-035): closing the page inside the request
-  // handler, while its navigation was in flight, sometimes left a close that never settled. The run
-  // stops waiting for the navigation at once and closes the page itself, once, within a bounded time.
+  // A refused move only records why the run stops and wakes the run (DEV-035): closing the page inside
+  // the request handler, while its navigation was in flight, sometimes left a close that never settled.
+  // The run then stops at once (while loading, sampling or waiting for the home page) and closes the
+  // page itself, once, within a bounded time; it does not wait for that navigation to finish.
+  // The signal is armed again for each page the run opens.
   let stop: () => void = () => undefined;
-  const stopped$ = new Promise<void>((resolve) => {
-    stop = resolve;
-  });
+  let stopped$ = Promise.resolve();
+  const arm = () => {
+    stopped$ = new Promise<void>((resolve) => {
+      stop = resolve;
+    });
+  };
+  /** Waits `ms`, or less when a refused move stops the run. */
+  const pause = async (ms: number) => {
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([new Promise<void>((resolve) => (timer = setTimeout(resolve, ms))), stopped$]);
+    clearTimeout(timer);
+  };
   const closed = new WeakSet<Page>();
   const closePage = async (p: Page) => {
     if (closed.has(p)) return;
@@ -244,6 +257,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   };
   /** Loads a URL; the browser follows allowed redirects itself (the guard checks each hop). */
   const load = async (url: string): Promise<{ page: Page; status?: number }> => {
+    arm();
     const page = await newPage();
     state.wall = undefined;
     const loaded = page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 }).then(
@@ -263,7 +277,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
     const start = Date.now();
     for (const at of options.sampleAtMs ?? SAMPLE_AT_MS) {
       const wait = start + at - Date.now();
-      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      if (wait > 0 && !stopped(page)) await pause(wait);
       const codes = stopped(page) ? [] : await pageCodes(page);
       // Codes read while the page was leaving the site are not printed.
       if (stopped(page)) {
@@ -309,7 +323,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   while (!stopped(home)) {
     ok = await signedIn(home);
     if (ok || Date.now() >= until) break;
-    await new Promise((r) => setTimeout(r, 500));
+    await pause(500);
   }
   if (stopped(home)) {
     say(stopLine());
@@ -361,7 +375,8 @@ export async function runDiagnose(options: DiagnoseOptions): Promise<DiagnoseOut
         await runMode(context, mode, options);
       } catch (error) {
         // A page that would not close ends the run, not the diagnosis: what it printed stands.
-        if (!(error instanceof CloseTimeout)) {
+        if (error instanceof CloseTimeout) options.say(`${mode} CLOSE_TIMEOUT`);
+        else {
           failed += 1;
           options.say(`${mode} BROWSER_ERROR`);
         }

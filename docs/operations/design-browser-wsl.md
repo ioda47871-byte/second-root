@@ -135,7 +135,7 @@ cd ~/work/second-root && npm run -s sales:design-browser -- diagnose --source-fi
 - 読み込んだ後でアカウント用のページへ移ろうとしたときは `STOPPED_WALL`。C（interception なし）でも、アカウント用のページは A と同じく `HTTP_OTHER CHALLENGE_PRESENT` と出す（ただし C は最初の 1 リクエストを止められない）
 - 外へ出て止めたときは `STOPPED_OFF_SITE` の後に、分かれば行き先の種類（`OFF_SITE_OTHER_HOST` / `OFF_SITE_SAME_SITE_PATH` / `OFF_SITE_IN_PAGE`）を出す。C は移動を止められず、request と移動のどちらが先に見えるかも決まらないので、行き先の種類（`OTHER_HOST` / `SAME_SITE_PATH`）だけで名付ける（ページ内の移動も `SAME_SITE_PATH`）
 - どの run も browser が起動できなかったときは `DIAGNOSE_FAILED`（終了コード 4）
-- ページや browser の close が 10 秒で終わらないときは、その run の browser を終わらせて次へ進む（DEV-035。負荷の高い時に close が終わらず止まることがあった）。それでも終わらなかったときだけ `BROWSER_STUCK`。C で外への移動を見つけたときは、request の handler の中ではページを閉じず、run の側で 1 回だけ閉じる
+- ページや browser の close が 10 秒で終わらないときは、その run の browser を終わらせて次へ進む（DEV-035。負荷の高い時に close が終わらず止まることがあった）。close が終わらずに run を打ち切ったときは `CLOSE_TIMEOUT`、browser も終わったと確かめられなかったときは `BROWSER_STUCK`（応答しない browser は Playwright 自身が後で強制終了する）。C で外への移動を見つけたときは、request の handler の中ではページを閉じず、run の側がすぐに（読み込み中・様子を見る間・ホームを待つ間のどこでも）1 回だけ閉じる
 - 出る符号は `HTTP_200` / `HTTP_404` / `HTTP_OTHER`、`MAIN_*` / `HEADER_*` / `POSTS_*`（`PRESENT` / `MISSING`）、`BODY_PRIVATE_MARKER`、`BODY_UNAVAILABLE_MARKER`、`SIGNED_IN_NAV_PRESENT`、`CHALLENGE_PRESENT`、`CAPTCHA_PRESENT` だけ
 - username・bio・キャプション・cookie・token・ページの文・URL は出さない。画像も保存しない
 - capture の安全ガードは変えていない（C は diagnose の中だけ）

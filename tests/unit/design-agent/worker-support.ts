@@ -223,6 +223,13 @@ export async function startMockSite(): Promise<MockSite> {
         return send(410, page("gone"));
       case "/li_private/":
         return send(200, signedIn(`<header style="height:200px"><h2>x</h2></header><h2>This account is private</h2>`));
+      case "/li_late_offsite/":
+        // DEV-035: a profile page that moves off the site after it has loaded, to a page that keeps requesting
+        return send(200, signedIn(profileBody(3)).replace("</body>", `<script>setTimeout(()=>{location.href="http://localhost:${port}/pinger/";},300);</script></body>`));
+      case "/pinger/":
+        return send(200, page(`<script>setInterval(()=>fetch("/pinger/ping").catch(()=>{}),50);</script>`));
+      case "/pinger/ping":
+        return send(200, "ok");
       case "/li_offsite/":
         res.writeHead(302, { location: `http://localhost:${port}/elsewhere/` });
         return res.end();
