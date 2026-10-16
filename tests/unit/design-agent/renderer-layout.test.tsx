@@ -209,7 +209,7 @@ describe("profile renderer layout (Chromium)", () => {
     expect(desktop.hero.bottom - desktop.hero.top).toBeGreaterThanOrEqual(0.56 * 900 - 1);
   });
 
-  it("leaves the notice and the footer as they were on desktop; on phones a profile demo sets them smaller (DEV-038)", async () => {
+  it("keeps the notice and the footer of a non-tight profile demo on desktop; on phones a profile demo sets them smaller (DEV-038)", async () => {
     const desktop = await measure(SHOPS.long, PROFILES.split_crop, "desktop");
     expect(desktop.noticeSize).toBe("12.8px");
     expect(desktop.footerPadding).toBe("28px 16px 40px");

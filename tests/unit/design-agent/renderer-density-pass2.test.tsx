@@ -57,13 +57,13 @@ const profile = (over: Partial<DesignProfile> = {}): DesignProfile => ({
   ...over,
 });
 
-type Geo = { heroMinH: number; noticeClipped: boolean; footerClipped: boolean; heroH: number; menuRowH: number; addressToAccess: number; contentToFooter: number; noticeH: number; footerH: number; noticePx: number; footerPx: number; overflowX: boolean; noticeText: string; footerText: string };
+type Geo = { rowH: number; addressInner: number; menuPad: string; footerPad: string; heroMinH: number; noticeClipped: boolean; footerClipped: boolean; heroH: number; menuRowH: number; addressToAccess: number; contentToFooter: number; noticeH: number; footerH: number; noticePx: number; footerPx: number; overflowX: boolean; noticeText: string; footerText: string };
 
 async function measure(page: Page, demo: DemoView, p: DesignProfile, photos: RenderPhotos | null = null): Promise<Geo> {
   const body = renderToStaticMarkup(<ProfileRenderer demo={demo} profile={p} photos={photos} />);
   await page.setContent(`<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS}</style></head><body>${body}</body></html>`);
   return page.evaluate(
-    ({ hero, menuItem, address, rows, section }) => {
+    ({ hero, menuItem, address, rows, section, row, rowLabel, addressValue }) => {
       const r = (e: Element) => e.getBoundingClientRect();
       const q = (c: string) => document.querySelector(`.${c}`)!;
       const sections = [...document.querySelectorAll(`.${section}`)];
@@ -73,6 +73,10 @@ async function measure(page: Page, demo: DemoView, p: DesignProfile, photos: Ren
       const footer = document.querySelector("footer")!;
       return {
         heroH: Math.round(r(q(hero)).height),
+        rowH: Math.round(r(q(row)).height),
+        addressInner: Math.round(r(document.querySelector(`.${address} .${addressValue}`)!).top - r(document.querySelector(`.${address} .${rowLabel}`)!).bottom),
+        menuPad: getComputedStyle(q(menuItem)).paddingTop,
+        footerPad: `${getComputedStyle(footer).paddingTop} ${getComputedStyle(footer).paddingBottom}`,
         heroMinH: parseFloat(getComputedStyle(q(hero)).minHeight) || 0,
         noticeClipped: notice.scrollHeight > notice.clientHeight + 1 || notice.scrollWidth > notice.clientWidth + 1,
         footerClipped: footer.scrollHeight > footer.clientHeight + 1 || footer.scrollWidth > footer.clientWidth + 1,
@@ -88,7 +92,7 @@ async function measure(page: Page, demo: DemoView, p: DesignProfile, photos: Ren
         footerText: footer.textContent ?? "",
       };
     },
-    { hero: profileStyles.hero, menuItem: profileStyles.menuItem, address: profileStyles.address, rows: profileStyles.rows, section: profileStyles.section },
+    { hero: profileStyles.hero, menuItem: profileStyles.menuItem, address: profileStyles.address, rows: profileStyles.rows, section: profileStyles.section, row: profileStyles.row, rowLabel: profileStyles.rowLabel, addressValue: profileStyles.addressValue },
   );
 }
 
@@ -141,6 +145,8 @@ describe("DEV-038 tight as whole-page density (sparse demo)", () => {
         // address → access 40px, notice 62px, footer 246px.
         expect(g.heroH).toBeLessThanOrEqual(VIEWPORTS[vp].height * 0.26);
         expect(g.menuRowH).toBeLessThanOrEqual(56);
+        expect(g.rowH).toBeLessThanOrEqual(88); // the access row (develop: 95px)
+        expect(g.addressInner).toBeLessThanOrEqual(10); // label → address value (develop: 12px)
         expect(g.addressToAccess).toBeLessThanOrEqual(24);
         expect(g.addressToAccess).toBeGreaterThanOrEqual(12);
         expect(g.contentToFooter).toBeLessThanOrEqual(28); // DEV-036's footer gap is kept
@@ -160,6 +166,7 @@ describe("DEV-038 tight as whole-page density (sparse demo)", () => {
       // before: hero 504px (56svh), footer 176px
       expect(g.heroH).toBeLessThanOrEqual(VIEWPORTS.desktop.height * 0.4);
       expect(g.footerH).toBeLessThanOrEqual(150);
+      expect(g.footerPad).toBe("16px 20px"); // tight: the footer is closer on desktop too
       expect(g.contentToFooter).toBeLessThanOrEqual(36);
       expect(g.noticeText).toMatch(NOTICE);
       expect(g.footerText).toMatch(FOOTER);
@@ -168,13 +175,16 @@ describe("DEV-038 tight as whole-page density (sparse demo)", () => {
     });
   }
 
-  it("standard spacing keeps its rows, visit gap and desktop cover", async () => {
+  it("standard spacing keeps its rows, visit gap and desktop cover; the phone notice / footer rule applies to every profile demo", async () => {
     const phone = await measure(await pageFor("phone390"), SHOPS.latinBakedGoods, profile({ spacing: { scale: "standard" } }));
-    expect(phone.menuRowH).toBe(66);
+    expect(phone.menuPad).toBe("16px");
     expect(phone.addressToAccess).toBe(40);
+    expect(phone.footerPad).toBe("16px 20px"); // phones: every profile demo (DEV-038 requirement 4)
+    expect(phone.noticePx).toBe(12);
     const desktop = await measure(await pageFor("desktop"), SHOPS.latinBakedGoods, profile({ spacing: { scale: "standard" } }));
-    expect(desktop.heroH).toBe(504);
-    expect(desktop.footerH).toBe(176);
+    expect(desktop.heroMinH).toBe(504); // 56svh
+    expect(desktop.footerPad).toBe("28px 40px");
+    expect(desktop.noticePx).toBe(12.8);
   });
 
   it("a split photo hero keeps its own height under tight (no floor on phones, 56svh on desktop)", async () => {
