@@ -421,22 +421,36 @@ describe("the worker never gets the bridge token", () => {
     expect(keep.filter((n) => /TOKEN|SECRET|KEY|SALES_|SUPABASE|BRIDGE_API|BRIDGE_TOKEN/.test(n))).toEqual([]);
   });
 
-  it("bridge.ts takes exactly one of --once / --deliver-only", async () => {
+  it("bridge.ts takes exactly one of --once / --deliver-only, and passes the mode to the run", async () => {
     const { spawnSync } = await import("node:child_process");
     const tsx = join(process.cwd(), "node_modules/.bin/tsx");
     const script = join(process.cwd(), "scripts/sales-design-bridge/bridge.ts");
-    const env = { PATH: process.env.PATH ?? "", HOME: base } as unknown as NodeJS.ProcessEnv;
     // One refused argument end to end; the full set of refused arguments is checked in-process (bridgeModeFor).
-    for (const args of [["constructor"]]) {
-      const run = spawnSync(tsx, [script, ...args], { env, encoding: "utf8", timeout: 60_000 });
-      expect(run.status).toBe(2);
-      expect(run.stdout).toBe("");
-    }
-    for (const mode of ["--once", "--deliver-only"]) {
-      const run = spawnSync(tsx, [script, mode], { env, encoding: "utf8", timeout: 60_000 });
-      expect(run.stdout).toBe("stopped: BRIDGE_NOT_CONFIGURED\n"); // reaches configuration, never the network
-      expect(run.status).toBe(3);
-    }
+    const refused = spawnSync(tsx, [script, "constructor"], { env: { PATH: process.env.PATH ?? "", HOME: base } as unknown as NodeJS.ProcessEnv, encoding: "utf8", timeout: 20_000 });
+    expect(refused.status).toBe(2);
+    expect(refused.stdout).toBe("");
+    expect(refused.stderr).toContain("usage: bridge.ts --once | --deliver-only");
+    // Configured, with a running worker and nothing outstanding, against a closed local port (no network):
+    // --once tries to claim and stops; --deliver-only never asks.
+    const tokenFile = join(base, "bridge.token");
+    await writeFile(tokenFile, `${TOKEN}\n`, { mode: 0o600 });
+    await writeHeartbeat(spool.fromWorker, new Date());
+    const env = {
+      PATH: process.env.PATH ?? "",
+      HOME: base,
+      XDG_STATE_HOME: join(base, "xdg"),
+      SR_DESIGN_BRIDGE_API_URL: "https://127.0.0.1:9",
+      SR_DESIGN_BRIDGE_TOKEN_FILE: tokenFile,
+      SR_DESIGN_BRIDGE_SPOOL: join(base, "spool"),
+    } as unknown as NodeJS.ProcessEnv;
+    const deliverOnly = spawnSync(tsx, [script, "--deliver-only"], { env, encoding: "utf8", timeout: 20_000 });
+    expect(deliverOnly.stdout).toBe("bridge: delivered 0, superseded 0, refused 0, expired 0, claimed none (BRIDGE_DELIVER_ONLY)\n");
+    expect(deliverOnly.status).toBe(0);
+    expect(await spoolIds(spool.toWorker)).toEqual([]);
+    const once = spawnSync(tsx, [script, "--once"], { env, encoding: "utf8", timeout: 20_000 });
+    expect(once.stdout).toContain("stopped: BRIDGE_API_UNAVAILABLE"); // it asked for a job
+    expect(once.status).toBe(3);
+    for (const out of [deliverOnly.stdout, once.stdout]) expect(out).not.toContain(TOKEN);
   }, 60_000);
 
   it("the bridge's run.sh keeps no token variable and refuses the worker and helper users", async () => {
