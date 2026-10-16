@@ -74,6 +74,13 @@ export const SAMPLE_AT_MS = [1_000, 3_000, 5_000, 8_000, 15_000]; // 5 s: when c
 /** How long the home page is watched for the signed-in navigation. */
 export const SESSION_WAIT_MS = 15_000;
 
+/**
+ * How long a page or the browser may take to close (DEV-035). On a loaded machine a close racing a
+ * refused navigation sometimes never settled and the run hung; a close that takes longer than this
+ * ends the browser instead.
+ */
+export const CLOSE_TIMEOUT_MS = 10_000;
+
 export interface DiagnoseOptions {
   profileDir: string;
   stateDir: string;
@@ -89,6 +96,8 @@ export interface DiagnoseOptions {
   homeUrl?: string;
   /** Whether a display exists for B (production: DISPLAY / WAYLAND_DISPLAY). */
   hasDisplay?: boolean;
+  /** Tests only: how long a close may take (production: CLOSE_TIMEOUT_MS). */
+  closeTimeoutMs?: number;
   say: (line: string) => void;
 }
 
@@ -124,6 +133,36 @@ export async function pageCodes(page: Page): Promise<DiagnoseCode[]> {
   return out;
 }
 
+/** Waits for `work` at most `ms`; true when it settled (resolved or failed) in time. */
+async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+  });
+  try {
+    return await Promise.race([work.then(() => true as const, () => true as const), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Closes the browser of a run within a bounded time: the context first, and when that does not
+ * settle, the browser itself (CDP Browser.close and browser.close()). A browser that does not answer
+ * at all is killed by Playwright's own close (SIGKILL after its timeout); "stuck" says the run did
+ * not see it end in time.
+ */
+export async function closeBrowser(context: BrowserContext, ms: number): Promise<"closed" | "killed" | "stuck"> {
+  if (await settlesWithin(context.close(), ms)) return "closed";
+  const browser = context.browser();
+  if (!browser) return "stuck";
+  const cdp = browser
+    .newBrowserCDPSession()
+    .then((s) => s.send("Browser.close"))
+    .catch(() => undefined);
+  return (await settlesWithin(Promise.all([cdp, browser.close()]), ms)) ? "killed" : "stuck";
+}
+
 function httpCode(status: number | undefined): DiagnoseCode {
   return status === 200 ? "HTTP_200" : status === 404 ? "HTTP_404" : "HTTP_OTHER";
 }
@@ -137,8 +176,33 @@ async function signedIn(page: Page): Promise<boolean> {
 /** One run: open the target, sample it, then check the session on the home page. */
 async function runMode(context: BrowserContext, mode: DiagnoseMode, options: DiagnoseOptions): Promise<void> {
   const { target, say } = options;
+  const closeMs = options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS;
   const guarded = MODES[mode].guard;
   const state: NavigationState = { offSite: false };
+  // A refused move only records why the run stops and wakes the run (DEV-035): closing the page inside
+  // the request handler, while its navigation was in flight, sometimes left a close that never settled.
+  // The run then stops at once (while loading, sampling or waiting for the home page) and closes the
+  // page itself, once, within a bounded time; it does not wait for that navigation to finish.
+  // The signal is armed again for each page the run opens.
+  let stop: () => void = () => undefined;
+  let stopped$ = Promise.resolve();
+  const arm = () => {
+    stopped$ = new Promise<void>((resolve) => {
+      stop = resolve;
+    });
+  };
+  /** Waits `ms`, or less when a refused move stops the run. */
+  const pause = async (ms: number) => {
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([new Promise<void>((resolve) => (timer = setTimeout(resolve, ms))), stopped$]);
+    clearTimeout(timer);
+  };
+  const closed = new WeakSet<Page>();
+  const closePage = async (p: Page) => {
+    if (closed.has(p)) return;
+    closed.add(p);
+    if (!(await settlesWithin(p.close(), closeMs))) throw new CloseTimeout();
+  };
   const guard = guarded ? await guardNavigation(context, target, state) : null;
   // Only pages this code opens are kept; any other (a popup, with or without an opener) is closed at once.
   let opening = 0;
@@ -154,7 +218,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
    * already have happened (nothing holds it back), so it is named by where it went, whichever event
    * saw it first: an account page as the guard names it (a wall), else the kind of place off the site.
    */
-  const refuse = (p: Page, url: string) => {
+  const refuse = (url: string) => {
     let kind: ReturnType<NonNullable<CaptureTarget["refusal"]>> | undefined;
     try {
       kind = target.refusal?.(url);
@@ -166,7 +230,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
       state.offSite = true;
       state.offSiteDetail ??= kind === "same_site" ? "OFF_SITE_SAME_SITE_PATH" : kind === "other_host" ? "OFF_SITE_OTHER_HOST" : undefined;
     }
-    void p.close().catch(() => undefined);
+    stop();
   };
   const newPage = async () => {
     opening += 1;
@@ -177,7 +241,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
       // request (redirect hops included) or page that is off the site.
       p.on("request", (request) => {
         try {
-          if (request.isNavigationRequest() && request.frame() === p.mainFrame() && !target.allowNavigation(request.url())) refuse(p, request.url());
+          if (request.isNavigationRequest() && request.frame() === p.mainFrame() && !target.allowNavigation(request.url())) refuse(request.url());
         } catch {
           // a request without a frame yet (a popup's); popups are closed above
         }
@@ -186,20 +250,22 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
         const url = frame.url();
         // about:blank(#blocked) and a failed load's error page are not a place the page went.
         if (url.startsWith("about:") || url.startsWith("chrome-error:")) return;
-        if (frame === p.mainFrame() && !target.allowNavigation(url)) refuse(p, url);
+        if (frame === p.mainFrame() && !target.allowNavigation(url)) refuse(url);
       });
     }
     return p;
   };
   /** Loads a URL; the browser follows allowed redirects itself (the guard checks each hop). */
   const load = async (url: string): Promise<{ page: Page; status?: number }> => {
+    arm();
     const page = await newPage();
     state.wall = undefined;
-    try {
-      return { page, status: (await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 }))?.status() };
-    } catch {
-      return { page }; // a failed load, or a hop the guard stopped
-    }
+    const loaded = page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 }).then(
+      (response) => ({ page, status: response?.status() }),
+      () => ({ page }), // a failed load, or a hop the guard stopped
+    );
+    // Without interception a refused move does not end the navigation: stop waiting for it.
+    return Promise.race([loaded, stopped$.then(() => ({ page }))]);
   };
   const stopped = (p: Page) => state.offSite || state.wall !== undefined || p.isClosed();
   const challenge = () => (state.wall !== undefined && wallReason(state.wall) === "CHALLENGE" ? " CHALLENGE_PRESENT" : "");
@@ -211,7 +277,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
     const start = Date.now();
     for (const at of options.sampleAtMs ?? SAMPLE_AT_MS) {
       const wait = start + at - Date.now();
-      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      if (wait > 0 && !stopped(page)) await pause(wait);
       const codes = stopped(page) ? [] : await pageCodes(page);
       // Codes read while the page was leaving the site are not printed.
       if (stopped(page)) {
@@ -220,22 +286,26 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
       }
       say(`${mode} t=${Math.round(at / 1000)}s ${codes.join(" ")}`);
     }
-    await page.close().catch(() => undefined);
+    await closePage(page);
     return true;
   };
 
   const { page, status } = await load(target.url);
   if (state.offSite || (state.wall === undefined && page.isClosed())) {
     say(stopLine());
+    await closePage(page);
     return;
   }
   // The guard stopped a redirect to a sign-in / challenge page (never loaded): nothing to sample.
   if (state.wall !== undefined) {
     say(`${mode} ${MODES[mode].label} HTTP_OTHER${challenge()}`);
-    await page.close().catch(() => undefined);
+    await closePage(page);
   } else {
     say(`${mode} ${MODES[mode].label} ${httpCode(status)}`);
-    if (!(await sample(page))) return;
+    if (!(await sample(page))) {
+      await closePage(page);
+      return;
+    }
   }
 
   // The signed-in navigation is drawn by script: look for it for a while before calling the session missing.
@@ -253,14 +323,22 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   while (!stopped(home)) {
     ok = await signedIn(home);
     if (ok || Date.now() >= until) break;
-    await new Promise((r) => setTimeout(r, 500));
+    await pause(500);
   }
   if (stopped(home)) {
     say(stopLine());
+    await closePage(home);
     return;
   }
   say(`${mode} ${ok ? "SESSION_OK" : "SESSION_MISSING"}`);
-  await home.close().catch(() => undefined);
+  await closePage(home);
+}
+
+/** A page did not close in time; the run ends its browser (its lines so far stand). */
+class CloseTimeout extends Error {
+  constructor() {
+    super("A page did not close in time.");
+  }
 }
 
 export async function runDiagnose(options: DiagnoseOptions): Promise<DiagnoseOutcome> {
@@ -295,11 +373,15 @@ export async function runDiagnose(options: DiagnoseOptions): Promise<DiagnoseOut
           ...CONTEXT_OPTIONS,
         });
         await runMode(context, mode, options);
-      } catch {
-        failed += 1;
-        options.say(`${mode} BROWSER_ERROR`);
+      } catch (error) {
+        // A page that would not close ends the run, not the diagnosis: what it printed stands.
+        if (error instanceof CloseTimeout) options.say(`${mode} CLOSE_TIMEOUT`);
+        else {
+          failed += 1;
+          options.say(`${mode} BROWSER_ERROR`);
+        }
       } finally {
-        await context?.close().catch(() => undefined);
+        if (context && (await closeBrowser(context, options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS)) === "stuck") options.say(`${mode} BROWSER_STUCK`);
       }
     }
     return ran > 0 && failed === ran ? "FAILED" : "DIAGNOSED";

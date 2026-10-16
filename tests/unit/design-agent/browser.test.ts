@@ -406,7 +406,7 @@ describe("diagnose", () => {
     });
     return { outcome, lines };
   };
-  const STRUCTURE = /^(A|B|C)$|^t=\d+s$|^headless\+guard$|^headless\+no-interception$|^headed\+guard$|^STOPPED_OFF_SITE$|^STOPPED_WALL$|^OFF_SITE_(OTHER_HOST|SAME_SITE_PATH|IN_PAGE)$|^SKIPPED_NO_DISPLAY$|^BROWSER_ERROR$/;
+  const STRUCTURE = /^(A|B|C)$|^t=\d+s$|^headless\+guard$|^headless\+no-interception$|^headed\+guard$|^STOPPED_OFF_SITE$|^STOPPED_WALL$|^OFF_SITE_(OTHER_HOST|SAME_SITE_PATH|IN_PAGE)$|^SKIPPED_NO_DISPLAY$|^BROWSER_ERROR$|^BROWSER_STUCK$|^CLOSE_TIMEOUT$/;
   const onlyCodes = (lines: string[]) => {
     for (const word of lines.join(" ").split(/\s+/)) expect(DIAGNOSE_CODES.includes(word as never) || STRUCTURE.test(word), word).toBe(true);
   };
@@ -530,6 +530,78 @@ describe("diagnose", () => {
     expect(late).toBe("DIAGNOSED");
     expect(lateLines.at(-1)).toBe("A STOPPED_WALL CHALLENGE_PRESENT");
     onlyCodes(lateLines);
+  });
+
+  // DEV-035: a move off the site while the page is being sampled stops the run at once (the page is
+  // closed by the run right away, not at the next sample), so the off-site page does not keep loading.
+  it("in C, stops at once on a move off the site during sampling (the off-site page does not keep loading)", async () => {
+    const s = await signedInProfile();
+    const target = profileTarget({ url: `${site.origin}/li_late_offsite/`, username: "li_late_offsite" }, (u) => u.startsWith(`${site.origin}/`));
+    const before = site.requests.length;
+    const lines: string[] = [];
+    const started = Date.now();
+    await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target, launchPersistent, modes: ["C"], sampleAtMs: [100, 6_000], pauseMs: 0, sessionWaitMs: 1_000, hasDisplay: false, say: (l) => lines.push(l) });
+    expect(lines.at(-1)).toBe("C STOPPED_OFF_SITE OFF_SITE_OTHER_HOST");
+    expect(Date.now() - started, "woke before the next sample").toBeLessThan(5_000);
+    const pings = site.requests.slice(before).filter((r) => r.includes("/pinger/ping")).length;
+    expect(pings, "off-site requests after the move").toBeLessThanOrEqual(3);
+    onlyCodes(lines);
+  });
+
+  // DEV-035: in C, a refused move used to close the page inside the request handler while its
+  // navigation was in flight; the run then awaited page.close() and context.close(). Under load one of
+  // those closes sometimes never settled and the run hung (seen on CI with li_auth_platform). Here every
+  // close never settles, as in that race: the run must still end in bounded time, close each page at
+  // most once, never from the request handler, and end the browser itself.
+  it("ends in bounded time when a close never settles (refused move in C), and ends the browser", { timeout: 120_000 }, async () => {
+    const s = await signedInProfile();
+    const as = (username: string) => profileTarget({ url: `${site.origin}/${username}/`, username }, (u) => u.startsWith(`${site.origin}/`));
+    const contexts: import("playwright").BrowserContext[] = [];
+    const closeCalls: Array<{ url: string; navigating: boolean; fromHandler: boolean }> = [];
+    const stuckLaunch: LaunchPersistent = async (dir, options) => {
+      const context = await launchPersistent(dir, options);
+      contexts.push(context);
+      const navigating = new WeakSet<import("playwright").Page>();
+      const patch = (page: import("playwright").Page) => {
+        page.on("request", (r) => {
+          if (r.isNavigationRequest() && r.frame() === page.mainFrame()) navigating.add(page);
+        });
+        page.on("domcontentloaded", () => navigating.delete(page));
+        page.close = () => {
+          // the old code closed from the request handler (refuse); the run must close it itself
+          closeCalls.push({ url: page.url(), navigating: navigating.has(page), fromHandler: /\brefuse\b/.test(new Error().stack ?? "") });
+          return new Promise<void>(() => undefined); // never settles
+        };
+      };
+      context.pages().forEach(patch);
+      context.on("page", patch);
+      context.close = () => new Promise<void>(() => undefined); // never settles
+      return context;
+    };
+    for (const [username, mode, first] of [
+      ["li_auth_platform", "C", "C headless+no-interception HTTP_OTHER CHALLENGE_PRESENT"],
+      ["li_offsite", "C", "C STOPPED_OFF_SITE OFF_SITE_OTHER_HOST"],
+      ["li_shop", "A", "A headless+guard HTTP_200"],
+    ] as const) {
+      const lines: string[] = [];
+      closeCalls.length = 0;
+      const started = Date.now();
+      const outcome = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent: stuckLaunch, modes: [mode], sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, closeTimeoutMs: 1_000, hasDisplay: false, say: (l) => lines.push(l) });
+      const label = `${username} ${mode}`;
+      expect(Date.now() - started, `${label}: bounded`).toBeLessThan(30_000);
+      expect(outcome, label).toBe("DIAGNOSED");
+      expect(lines[0], label).toBe(first);
+      expect(lines, label).not.toContain(`${mode} BROWSER_STUCK`);
+      onlyCodes(lines);
+      // the run closed the target page itself, once, never while its navigation was in flight from the handler
+      const targetCloses = closeCalls.filter((c) => !c.url.startsWith("about:"));
+      expect(targetCloses.length, `${label}: closed once`).toBeLessThanOrEqual(1);
+      expect(closeCalls.filter((c) => c.fromHandler), `${label}: never closed from the request handler`).toEqual([]);
+      // the run says it was cut short by a close that did not finish
+      expect(lines.at(-1), label).toBe(`${mode} CLOSE_TIMEOUT`);
+      // the browser was ended even though context.close() never settled
+      expect(contexts.at(-1)!.browser()?.isConnected(), `${label}: browser ended`).toBe(false);
+    }
   });
 
   it("runs the headed check only with a display, and refuses to run without a profile or while it is in use", async () => {
