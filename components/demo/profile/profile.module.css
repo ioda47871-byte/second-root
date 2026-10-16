@@ -367,6 +367,7 @@
   .canvas[data-spacing="tight"] .heading { font-size: clamp(1.75rem, 7vw, 2.6rem); }
   .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 28svh; padding-bottom: 20px; }
   .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 20px 0; }
+  .heroSplit .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 0; } /* a split hero keeps no floor */
 }
 
 .headingJa {

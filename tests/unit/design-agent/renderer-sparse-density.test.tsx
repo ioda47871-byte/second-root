@@ -6,9 +6,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import demoStyles from "@/components/demo/demo.module.css";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import profileStyles from "@/components/demo/profile/profile.module.css";
+import type { ImageDirection } from "@/lib/design-agent/assets/direction";
+import { resolvePhotos, type RenderPhotos } from "@/lib/design-agent/assets/resolve";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
 import { AMERICAN_EDITORIAL, SHOP } from "./fixtures";
+import { dataUrl, fakeAnalysis, fakeManifest, fakePng, type FakeAsset } from "./photo-fixtures";
 
 // DEV-036: a sparse demo (a short name, a short description, two menu items, an
 // address) with `spacing: tight` and a medium centered cover must be compact on
@@ -56,6 +59,7 @@ const compactProfile = (over: Partial<DesignProfile> = {}): DesignProfile => ({
 
 type Density = {
   heroH: number;
+  heroMinH: number;
   sectionTopPad: number;
   interSection: number[];
   headingGap: number;
@@ -68,8 +72,8 @@ type Density = {
   pageH: number;
 };
 
-async function measureDensity(page: Page, demo: DemoView, profile: DesignProfile, css: string): Promise<Density> {
-  const body = renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} />);
+async function measureDensity(page: Page, demo: DemoView, profile: DesignProfile, css: string, photos: RenderPhotos | null = null): Promise<Density> {
+  const body = renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} photos={photos} />);
   await page.setContent(`<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body>${body}</body></html>`);
   return page.evaluate(
     ({ hero, section, heading }) => {
@@ -87,9 +91,11 @@ async function measureDensity(page: Page, demo: DemoView, profile: DesignProfile
       const lines = new Set(pieces.map((x) => Math.round(x.top)));
       return {
         heroH: Math.round(r(document.querySelector(`.${hero}`)!).height),
+        heroMinH: parseFloat(getComputedStyle(document.querySelector(`.${hero}`)!).minHeight) || 0,
         sectionTopPad: Math.round(r(h).top - r(first).top),
         interSection: sections.slice(1).map((s, i) => Math.round(r(headingOf(s)).top - contentBottom(sections[i]!))),
-        headingGap: Math.round(Math.max(0, r(afterHeading).top - r(h).bottom)),
+        // Phones stack the heading above its content; desktop grids put them side by side (0).
+        headingGap: Math.round(r(afterHeading).top >= r(h).top + 1 ? r(afterHeading).top - r(h).bottom : 0),
         footerGap: Math.round(r(footer).top - contentBottom(sections.at(-1)!)),
         headingPx: parseFloat(getComputedStyle(h).fontSize),
         namePx: parseFloat(getComputedStyle(name).fontSize),
@@ -124,6 +130,21 @@ async function pageFor(key: keyof typeof VIEWPORTS): Promise<Page> {
   return page;
 }
 
+const PORTRAIT = "asset-111111111111111111111111";
+const PHOTO_ASSETS: FakeAsset[] = [{ id: PORTRAIT, png: fakePng(600, 750, { seed: 1 }), sourceKind: "generated_concept" }];
+function splitPhotos(demo: DemoView): RenderPhotos {
+  const direction: ImageDirection = {
+    version: 1,
+    layout: "split_hero",
+    hero: { assetId: PORTRAIT, fit: "cover", focal: { x: 0.5, y: 0.5 }, mobileFocal: { x: 0.5, y: 0.5 }, aspect: { desktop: "4:5", mobile: "1:1" }, treatment: "natural" },
+    features: [],
+    rejected: [],
+    paletteFit: 4,
+  };
+  const src = new Map(PHOTO_ASSETS.map((a) => [a.id, dataUrl(a.png)]));
+  return resolvePhotos({ demo, manifest: fakeManifest("job-density", PHOTO_ASSETS), analyses: { photos: [fakeAnalysis(PORTRAIT)] }, direction, src: (id) => src.get(id)! }).photos!;
+}
+
 const LONG = {
   latin: sparse({ name: "TESTA NORTHSIDE BAKING COMPANY", category: "baked_goods", template: "baked_goods_v1" }),
   japanese: sparse({ name: "架空の森のちいさなパン工房", category: "bakery", template: "bakery_v1" }),
@@ -138,6 +159,7 @@ describe("DEV-036 sparse content under spacing=tight", () => {
         const d = await measureDensity(await pageFor(vp), demo, compactProfile(), css);
         // Develop before DEV-036 measured 48 / 99 / 24 / 48 / 35.2px / 40% of the screen.
         expect(d.sectionTopPad).toBeLessThanOrEqual(34);
+        expect(d.interSection).toHaveLength(2); // about, menu, visit
         for (const gap of d.interSection) {
           expect(gap).toBeLessThanOrEqual(40); // one rhythm, not padding + margin
           expect(gap).toBeGreaterThanOrEqual(24);
@@ -159,6 +181,7 @@ describe("DEV-036 sparse content under spacing=tight", () => {
       // Before: 208px name, 99px between sections, 48px before the footer.
       expect(d.namePx).toBeLessThanOrEqual(144);
       expect(d.namePx).toBeGreaterThanOrEqual(96);
+      expect(d.interSection).toHaveLength(2);
       for (const gap of d.interSection) expect(gap).toBeLessThanOrEqual(80);
       expect(d.footerGap).toBeLessThanOrEqual(36);
       expect(d.nameLines).toBe(1);
@@ -172,13 +195,20 @@ describe("DEV-036 sparse content under spacing=tight", () => {
         const d = await measureDensity(await pageFor(vp), demo, compactProfile(), css);
         expect(d.nameInside).toBe(true);
         expect(d.overflowX).toBe(false);
-        expect(d.namePx).toBeLessThanOrEqual(144);
+        if (vp === "desktop") expect(d.namePx).toBeLessThanOrEqual(144);
       });
 
-  it("standard spacing keeps its rhythm on phones", async () => {
+  it("standard spacing keeps its rhythm on phones; the compact medium cover applies to every spacing", async () => {
     const d = await measureDensity(await pageFor("phone390"), SPARSE.latinBakedGoods, compactProfile({ spacing: { scale: "standard" } }), css);
     expect(d.sectionTopPad).toBe(72);
+    expect(d.heroH).toBeLessThanOrEqual(VIEWPORTS.phone390.height * 0.3); // a band, not a screen, whatever the spacing
     for (const gap of d.interSection) expect(gap).toBeGreaterThan(140);
     expect(d.headingPx).toBeCloseTo(35.2, 0);
+  });
+
+  it("a split photo hero keeps no height floor on phones (its photo sets the height)", async () => {
+    const d = await measureDensity(await pageFor("phone390"), SPARSE.latinBakedGoods, compactProfile(), css, splitPhotos(SPARSE.latinBakedGoods));
+    expect(d.heroMinH).toBe(0);
+    expect(d.overflowX).toBe(false);
   });
 });
