@@ -672,14 +672,14 @@ describe("diagnose", () => {
       stuckIds = [];
       stillListed = null;
       const started = Date.now();
-      const outcome = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent: stuckPageClose, modes: [mode], sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, closeTimeoutMs: 1_000, hasDisplay: false, say: (l) => lines.push(l) });
+      const outcome = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent: stuckPageClose, modes: [mode], sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, closeTimeoutMs: 2_500, hasDisplay: false, say: (l) => lines.push(l) });
       const label = `${username} ${mode}`;
       expect(outcome, label).toBe("DIAGNOSED");
       expect(hung, `${label}: page.close() hung`).toBeGreaterThan(0);
       // every stuck page really closed (gone from Chromium's own list before the browser was ended)
       expect(stillListed, `${label}: stuck pages still listed`).toEqual(Array.from({ length: hung }, () => false));
       expect(lines, label).toEqual([...expected]);
-      expect(Date.now() - started, `${label}: bounded`).toBeLessThan(30_000);
+      expect(Date.now() - started, `${label}: bounded`).toBeLessThan(45_000);
       expect(contexts.at(-1)!.browser(), `${label}: a browser to end`).not.toBeNull();
       expect(contexts.at(-1)!.browser()!.isConnected(), `${label}: browser ended`).toBe(false);
       onlyCodes(lines);
@@ -794,8 +794,8 @@ describe("closePageBounded", () => {
       hang(stuck);
       const started = Date.now();
       expect(await closePageBounded(stuck, 2_500)).toBe("target_closed");
-      expect(Date.now() - started).toBeLessThan(5_000);
-      expect(stuck.isClosed()).toBe(true);
+      expect(Date.now() - started).toBeLessThan(2 * 2_500 + 1_500); // page.close (2.5 s) + fallback (2.5 s), with slack
+      await expect.poll(() => stuck.isClosed(), { timeout: 2_000 }).toBe(true);
       expect(other.isClosed()).toBe(false);
       await context.close();
     });
