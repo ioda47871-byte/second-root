@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkProfileLocation, checkProfileTree, prepareProfileDir, purgeOldCaptures, type ProfileEnv } from "@/lib/design-agent/browser/profile";
-import { closePageBounded, DIAGNOSE_CODES, runDiagnose, type DiagnoseMode } from "@/lib/design-agent/browser/diagnose";
+import { closePageBounded, DIAGNOSE_CODES, rememberTargetId, runDiagnose, type DiagnoseMode } from "@/lib/design-agent/browser/diagnose";
 import { displayEnvironment, runLogin, runSignedInCapture, type LaunchPersistent } from "@/lib/design-agent/browser/session";
 import { childEnvironment } from "@/lib/design-agent/worker/env";
 import { hideAccountChrome, profileTarget } from "@/lib/design-agent/worker/capture";
@@ -587,7 +587,7 @@ describe("diagnose", () => {
       closeCalls.length = 0;
       const started = Date.now();
       // DEV-041: the targeted CDP close hangs too, so the run still says CLOSE_TIMEOUT
-      const outcome = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent: stuckLaunch, modes: [mode], sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, closeTimeoutMs: 1_000, closeTarget: () => new Promise(() => undefined), hasDisplay: false, say: (l) => lines.push(l) });
+      const outcome = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent: stuckLaunch, modes: [mode], sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, closeTimeoutMs: 1_000, closeTarget: () => new Promise<boolean>(() => undefined), hasDisplay: false, say: (l) => lines.push(l) });
       const label = `${username} ${mode}`;
       expect(Date.now() - started, `${label}: bounded`).toBeLessThan(30_000);
       expect(closeCalls.length, `${label}: page.close() was tried`).toBeGreaterThan(0);
@@ -738,34 +738,70 @@ describe("closePageBounded", () => {
     page.close = () => new Promise<void>(() => undefined);
   };
 
-  it("an ordinary close is just a close", async () => {
-    const { context, a } = await open();
+  it("an ordinary close is just a close; an already closed page is closed", async () => {
+    const { context, a, b } = await open();
     expect(await closePageBounded(a, 2_000)).toBe("closed");
     expect(a.isClosed()).toBe(true);
+    await b.close();
+    expect(await closePageBounded(b, 2_000)).toBe("closed");
     await context.close();
   });
 
-  it("when page.close() never settles, closes exactly that page's target (not another page with the same content)", async () => {
+  for (const which of ["first", "second"] as const)
+    it(`when page.close() never settles, closes exactly that page's target (${which} of two pages with the same content)`, async () => {
+      const { context, a, b } = await open();
+      const [stuck, other] = which === "first" ? [a, b] : [b, a];
+      hang(stuck);
+      const started = Date.now();
+      expect(await closePageBounded(stuck, 1_000)).toBe("target_closed");
+      expect(Date.now() - started).toBeLessThan(5_000);
+      expect(stuck.isClosed()).toBe(true);
+      expect(other.isClosed()).toBe(false);
+      await context.close();
+    });
+
+  it("closes the remembered target even when the page can no longer be attached to (lost detach)", async () => {
     const { context, a, b } = await open();
+    await rememberTargetId(a);
     hang(a);
-    const started = Date.now();
+    a.isClosed = () => false;
+    const ctx = a.context();
+    const attach = ctx.newCDPSession.bind(ctx);
+    ctx.newCDPSession = (async (page: import("playwright").Page) => {
+      if (page === a) throw new Error("target gone");
+      return attach(page);
+    }) as typeof ctx.newCDPSession;
     expect(await closePageBounded(a, 1_000)).toBe("target_closed");
-    expect(Date.now() - started).toBeLessThan(5_000);
-    expect(a.isClosed()).toBe(true);
     expect(b.isClosed()).toBe(false);
     await context.close();
   });
 
-  it("when the targeted close fails or never settles too, says timeout within its bounds", async () => {
-    for (const closeTarget of [() => Promise.reject(new Error("cdp refused")), () => new Promise(() => undefined), async () => undefined]) {
+  it("counts Chromium's own target list, not Playwright's close event (a close event that never arrives)", async () => {
+    const { context, a, b } = await open();
+    hang(a);
+    a.isClosed = () => false; // Playwright never notices
+    expect(await closePageBounded(a, 1_000)).toBe("target_closed");
+    expect(b.isClosed()).toBe(false);
+    await context.close();
+  });
+
+  it("when the targeted close fails, throws, never settles or leaves the target, says timeout within its bounds", async () => {
+    const closers = [
+      () => Promise.reject(new Error("cdp refused")),
+      () => {
+        throw new Error("thrown at once");
+      },
+      () => new Promise<boolean>(() => undefined),
+      async () => false,
+    ];
+    for (const closeTarget of closers) {
       const { context, a } = await open();
       hang(a);
       const started = Date.now();
-      expect(await closePageBounded(a, 500, closeTarget)).toBe("timeout");
+      expect(await closePageBounded(a, 500, closeTarget as (p: import("playwright").Page, d: number) => Promise<boolean>)).toBe("timeout");
       expect(Date.now() - started).toBeLessThan(2_500); // page.close (500) + fallback (500), with slack
       expect(a.isClosed()).toBe(false);
       await context.close();
     }
   });
 });
-
