@@ -283,7 +283,13 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   const closePage = async (p: Page) => {
     if (closed.has(p)) return;
     closed.add(p);
-    if ((await closePageBounded(p, closeMs, options.closeTarget)) === "timeout") throw new CloseTimeout();
+    const result = await closePageBounded(p, closeMs, options.closeTarget);
+    if (result === "timeout") throw new CloseTimeout();
+    // Closed through CDP: should the page object still deliver events, they no longer reach this run.
+    if (result === "target_closed") {
+      p.removeAllListeners("request");
+      p.removeAllListeners("framenavigated");
+    }
   };
   const guard = guarded ? await guardNavigation(context, target, state) : null;
   // Only pages this code opens are kept; any other (a popup, with or without an opener) is closed at once.
