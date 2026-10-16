@@ -355,6 +355,21 @@
 
 .canvas[data-case="uppercase"] .heading > span:first-child { text-transform: uppercase; }
 
+/* Phones, spacing=tight: one rhythm between sections (the padding alone, not
+   padding plus margin), a closer heading and footer, and headings allowed
+   below the default minimum while staying display-sized. A medium centered
+   cover is a band, not a screen (every spacing). */
+@media (max-width: 719.98px) {
+  .canvas[data-spacing="tight"] { --gap: 32px; }
+  .canvas[data-spacing="tight"] .main { padding-bottom: 24px; }
+  .canvas[data-spacing="tight"] .section { gap: 16px; }
+  .canvas[data-spacing="tight"] .section + .section { margin-top: 0; }
+  .canvas[data-spacing="tight"] .heading { font-size: clamp(1.75rem, 7vw, 2.6rem); }
+  .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 28svh; padding-bottom: 20px; }
+  .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 20px 0; }
+  .heroSplit .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 0; } /* a split hero keeps no floor */
+}
+
 .headingJa {
   font-family: var(--font-body), sans-serif;
   font-weight: 500;
@@ -646,6 +661,14 @@
   .name { font-size: clamp(2.6rem, calc(100cqi / var(--units, 8)), 13rem); }
   .hero[data-layout="split_crop"] .name { font-size: clamp(3rem, calc(90cqi / var(--line-units, 6)), 17rem); }
   .hero[data-height="medium"] { min-height: 56svh; }
+  /* A medium centered cover holds a short name at a set size, not a monument;
+     long names still shrink to fit the width. */
+  .hero[data-layout="centered_cover"][data-height="medium"] .title h1.name { font-size: clamp(2.6rem, calc(100cqi / var(--units, 8)), 9rem); }
+  .hero[data-layout="centered_cover"][data-height="medium"] .title h1.name[data-fit="phone"] {
+    font-size: min(9rem, calc(100cqi / (var(--name-units, 8) + var(--name-chars, 8) * var(--track-n, 0))));
+  }
+  .canvas[data-spacing="tight"] .section + .section { margin-top: 24px; }
+  .canvas[data-spacing="tight"] .main { padding-bottom: 32px; }
   .motifRow { gap: 28px; margin-top: 22px; }
   .pleats { width: 168px; }
   .stamp { width: 104px; height: 104px; }
