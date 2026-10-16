@@ -203,12 +203,20 @@ describe("DEV-036 sparse content under spacing=tight", () => {
     expect(d.sectionTopPad).toBe(72);
     expect(d.heroH).toBeLessThanOrEqual(VIEWPORTS.phone390.height * 0.3); // a band, not a screen, whatever the spacing
     for (const gap of d.interSection) expect(gap).toBeGreaterThan(140);
+    expect(d.interSection).toHaveLength(2);
     expect(d.headingPx).toBeCloseTo(35.2, 0);
   });
 
   it("a split photo hero keeps no height floor on phones (its photo sets the height)", async () => {
     const d = await measureDensity(await pageFor("phone390"), SPARSE.latinBakedGoods, compactProfile(), css, splitPhotos(SPARSE.latinBakedGoods));
     expect(d.heroMinH).toBe(0);
+    expect(d.overflowX).toBe(false);
+  });
+
+  it("a short spaced name (two words) is capped on desktop too", async () => {
+    const d = await measureDensity(await pageFor("desktop"), sparse({ name: "TEST BAKE", category: "baked_goods", template: "baked_goods_v1" }), compactProfile(), css);
+    expect(d.namePx).toBeLessThanOrEqual(144); // develop: 206px
+    expect(d.nameInside).toBe(true);
     expect(d.overflowX).toBe(false);
   });
 });
