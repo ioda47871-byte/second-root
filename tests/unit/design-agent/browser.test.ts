@@ -540,9 +540,15 @@ describe("diagnose", () => {
     const before = site.requests.length;
     const lines: string[] = [];
     const started = Date.now();
-    await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target, launchPersistent, modes: ["C"], sampleAtMs: [100, 6_000], pauseMs: 0, sessionWaitMs: 1_000, hasDisplay: false, say: (l) => lines.push(l) });
+    let stoppedAt = Infinity;
+    const say = (l: string) => {
+      lines.push(l);
+      if (l.includes("STOPPED_OFF_SITE")) stoppedAt = Math.min(stoppedAt, Date.now());
+    };
+    await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target, launchPersistent, modes: ["C"], sampleAtMs: [100, 6_000], pauseMs: 0, sessionWaitMs: 1_000, hasDisplay: false, say });
     expect(lines.at(-1)).toBe("C STOPPED_OFF_SITE OFF_SITE_OTHER_HOST");
-    expect(Date.now() - started, "woke before the next sample").toBeLessThan(5_000);
+    // the run stops (says so) before the next sample; closing the page afterwards is bounded separately (DEV-041)
+    expect(stoppedAt - started, "woke before the next sample").toBeLessThan(5_000);
     const pings = site.requests.slice(before).filter((r) => r.includes("/pinger/ping")).length;
     expect(pings, "off-site requests after the move").toBeLessThanOrEqual(3);
     onlyCodes(lines);
