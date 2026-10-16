@@ -1643,7 +1643,20 @@
         ".gitignore",
         "scripts/sales-design-capture/jail/__pycache__/（削除のみ）",
         ".ai/"
-      ]
+      ],
+      "forbidden_scope": [
+        "Navigation Guard の許可範囲の拡張",
+        "Instagram の challenge / login wall の回避、自動ログイン",
+        "Cookie / session の読み書き・移送の変更",
+        "jail の境界、helper の権限",
+        "Production・DM・timer"
+      ],
+      "human_approval_triggers": [
+        "merge 後の helper 更新（WSL root の admin.sh approve）"
+      ],
+      "attempts": 1,
+      "last_failure": null,
+      "branch": "feature/dev-035-diagnose-close-hang"
     }
   ]
 }
