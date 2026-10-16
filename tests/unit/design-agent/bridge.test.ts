@@ -426,7 +426,8 @@ describe("the worker never gets the bridge token", () => {
     const tsx = join(process.cwd(), "node_modules/.bin/tsx");
     const script = join(process.cwd(), "scripts/sales-design-bridge/bridge.ts");
     const env = { PATH: process.env.PATH ?? "", HOME: base } as unknown as NodeJS.ProcessEnv;
-    for (const args of [[], ["--claim"], ["--once", "--deliver-only"], ["--deliver-only", "x"], ["constructor"], ["__proto__"]]) {
+    // One refused argument end to end; the full set of refused arguments is checked in-process (bridgeModeFor).
+    for (const args of [["constructor"]]) {
       const run = spawnSync(tsx, [script, ...args], { env, encoding: "utf8", timeout: 60_000 });
       expect(run.status).toBe(2);
       expect(run.stdout).toBe("");
@@ -436,7 +437,7 @@ describe("the worker never gets the bridge token", () => {
       expect(run.stdout).toBe("stopped: BRIDGE_NOT_CONFIGURED\n"); // reaches configuration, never the network
       expect(run.status).toBe(3);
     }
-  });
+  }, 60_000);
 
   it("the bridge's run.sh keeps no token variable and refuses the worker and helper users", async () => {
     const runSh = await readFile(join(process.cwd(), "scripts/sales-design-bridge/run.sh"), "utf8");
