@@ -1619,7 +1619,7 @@
     {
       "id": "DEV-035",
       "title": "Browser diagnose: a close racing a refused move can hang (DEV-033 diagnose)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-033"
