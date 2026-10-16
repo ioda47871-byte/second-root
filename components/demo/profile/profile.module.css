@@ -28,6 +28,7 @@
   .root > footer { font-size: 0.75rem; line-height: 1.6; padding: 16px 16px 20px; }
   .root > footer p { margin: 0; }
   .root > footer p + p { margin-top: 8px; }
+  .root > footer a { display: inline-block; padding-block: 3px; } /* keeps the link's tap height */
 }
 /* spacing=tight is whole-page density: the footer (outside the canvas) is closer too. */
 .root:has(> .canvas[data-spacing="tight"]) > footer { padding-top: 16px; padding-bottom: 20px; }

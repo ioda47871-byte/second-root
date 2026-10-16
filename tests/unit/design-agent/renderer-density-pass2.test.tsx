@@ -57,7 +57,7 @@ const profile = (over: Partial<DesignProfile> = {}): DesignProfile => ({
   ...over,
 });
 
-type Geo = { rowH: number; addressInner: number; menuPad: string; footerPad: string; heroMinH: number; noticeClipped: boolean; footerClipped: boolean; heroH: number; menuRowH: number; addressToAccess: number; contentToFooter: number; noticeH: number; footerH: number; noticePx: number; footerPx: number; overflowX: boolean; noticeText: string; footerText: string };
+type Geo = { titlePad: string; rowH: number; addressInner: number; menuPad: string; footerPad: string; heroMinH: number; noticeClipped: boolean; footerClipped: boolean; heroH: number; menuRowH: number; addressToAccess: number; contentToFooter: number; noticeH: number; footerH: number; noticePx: number; footerPx: number; overflowX: boolean; noticeText: string; footerText: string };
 
 async function measure(page: Page, demo: DemoView, p: DesignProfile, photos: RenderPhotos | null = null): Promise<Geo> {
   const body = renderToStaticMarkup(<ProfileRenderer demo={demo} profile={p} photos={photos} />);
@@ -74,6 +74,7 @@ async function measure(page: Page, demo: DemoView, p: DesignProfile, photos: Ren
       return {
         heroH: Math.round(r(q(hero)).height),
         rowH: Math.round(r(q(row)).height),
+        titlePad: getComputedStyle(q(hero).querySelector("h1")!.parentElement!).paddingTop,
         addressInner: Math.round(r(document.querySelector(`.${address} .${addressValue}`)!).top - r(document.querySelector(`.${address} .${rowLabel}`)!).bottom),
         menuPad: getComputedStyle(q(menuItem)).paddingTop,
         footerPad: `${getComputedStyle(footer).paddingTop} ${getComputedStyle(footer).paddingBottom}`,
@@ -144,6 +145,7 @@ describe("DEV-038 tight as whole-page density (sparse demo)", () => {
         // develop before DEV-038 (see .ai/reviews/DEV-038.md): hero 28% of the screen, menu row 66px,
         // address → access 40px, notice 62px, footer 246px.
         expect(g.heroH).toBeLessThanOrEqual(VIEWPORTS[vp].height * 0.26);
+        expect(g.titlePad).toBe("14px"); // develop: 20px
         expect(g.menuRowH).toBeLessThanOrEqual(56);
         expect(g.rowH).toBeLessThanOrEqual(88); // the access row (develop: 95px)
         expect(g.addressInner).toBeLessThanOrEqual(10); // label → address value (develop: 12px)
@@ -167,6 +169,7 @@ describe("DEV-038 tight as whole-page density (sparse demo)", () => {
       expect(g.heroH).toBeLessThanOrEqual(VIEWPORTS.desktop.height * 0.4);
       expect(g.footerH).toBeLessThanOrEqual(150);
       expect(g.footerPad).toBe("16px 20px"); // tight: the footer is closer on desktop too
+      expect(g.titlePad).toBe("24px"); // develop: 36px (matters when the content is taller than the floor)
       expect(g.contentToFooter).toBeLessThanOrEqual(36);
       expect(g.noticeText).toMatch(NOTICE);
       expect(g.footerText).toMatch(FOOTER);
