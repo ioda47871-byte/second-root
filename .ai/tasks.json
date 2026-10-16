@@ -1813,7 +1813,10 @@
         "lib/design-agent/preview-server.ts（viewport の値の参照先のみ）",
         "tests/unit/design-agent/review-scale.test.ts",
         "tests/unit/design-agent/__snapshots__/photo-codex.test.ts.snap",
-        ".ai/"
+        ".ai/",
+        "lib/design-agent/photo-pipeline.ts（crop の順序と page ごとの数のみ）",
+        "tests/unit/design-agent/photo-pipeline.test.ts",
+        "tests/unit/design-agent/__snapshots__/review-scale.test.ts.snap"
       ],
       "forbidden_scope": [
         "profile の CSS",

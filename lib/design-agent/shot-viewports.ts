@@ -16,10 +16,21 @@ export function screenshotScaleLine(o: { crops?: boolean } = {}): string {
   const d = SHOT_VIEWPORTS.desktop;
   const m = SHOT_VIEWPORTS.mobile;
   return [
-    `Screenshot scale: the full width of the desktop image is ${d.width} CSS px (stored at 1×); the full width of the mobile image is ${m.width} CSS px (stored at deviceScaleFactor ${m.scale}: the file is ${m.width * m.scale} px wide, 1 CSS px = ${m.scale} px in the file).` +
-      (o.crops ? ` Each photo-section crop spans the full width of its page: a wide crop is from the desktop page (${d.width} CSS px across), a narrow one from the mobile page (${m.width} CSS px across).` : ""),
+    `Screenshot scale: the full width of the desktop image is ${d.width} CSS px (stored at 1×); the full width of the mobile image is ${m.width} CSS px (stored at deviceScaleFactor ${m.scale}, a ${m.width * m.scale} px file).` +
+      (o.crops ? " Each photo-section crop spans the full width of its page, at that page's scale." : ""),
     "Images may be scaled before you see them: judge type sizes and spacing in CSS px, as a fraction of the image's full width, never from raw pixel counts.",
   ].join("\n");
+}
+
+/**
+ * The photo-section crops of a render, by page: desktop first, then mobile (their
+ * file names say which; see capturePage's `sectionPrefix`). The review prompt counts
+ * them in this order, so the reviewer knows each crop's page without guessing from its shape.
+ */
+export function cropsByPage(paths: readonly string[]): { desktop: string[]; mobile: string[] } {
+  const desktop = paths.filter((p) => p.includes("-desktop-section-"));
+  const mobile = paths.filter((p) => !p.includes("-desktop-section-"));
+  return { desktop, mobile };
 }
 
 /** When a renderer change may be asked for (both review prompts; `photos` adds the image direction). */

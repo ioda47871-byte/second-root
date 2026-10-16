@@ -93,6 +93,14 @@ paletteFit: 1 to 5, how well the fixed palette below sits with the photos you us
 }
 
 /** The DEV-028 renderer vocabulary, with its "no photographs" line replaced for a page with photos. */
+function cropLine(crops: { desktop: number; mobile: number }): string {
+  const parts = [
+    crops.desktop > 0 ? `${crops.desktop} desktop crop(s) (each ${SHOT_VIEWPORTS.desktop.width} CSS px across)` : null,
+    crops.mobile > 0 ? `${crops.mobile} mobile crop(s) (each ${SHOT_VIEWPORTS.mobile.width} CSS px across)` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? `, then ${parts.join(", then ")} of photo sections the full screenshots cut off (a crop may overlap their end).` : ".";
+}
+
 function photoVocabulary(): string {
   return VOCABULARY.replace(/There are no photographs[^\n]*/, "Photographs appear only where the image direction below places them; nothing else on the page is a photo.");
 }
@@ -104,7 +112,8 @@ export function buildPhotoReviewPrompt(input: {
   analyses: readonly PhotoAnalysis[];
   referenceCount: number;
   referenceKind?: "website" | "instagram";
-  sectionCount: number;
+  /** Photo-section crops attached after the two full screenshots: desktop ones first, then mobile ones. */
+  crops: { desktop: number; mobile: number };
   round: number;
   maxRevisions: number;
   /** DEV-034: the earlier rounds (scores and problem codes only) and the best so far. */
@@ -120,8 +129,8 @@ export function buildPhotoReviewPrompt(input: {
     RULES,
     PHOTO_RULES,
     `Attached images: the first ${input.referenceCount} are ${refs} (reference; photos in them are blurred and pixelated). Then the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide)` +
-      (input.sectionCount > 0 ? `, then ${input.sectionCount} crop(s) of photo sections below the end of the full screenshots.` : "."),
-    screenshotScaleLine({ crops: true }),
+      cropLine(input.crops),
+    screenshotScaleLine({ crops: input.crops.desktop + input.crops.mobile > 0 }),
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
     `photo_scores: image_selection (the right photos for this shop), crop, focal_visibility (the subject stays visible), text_image_collision (5 = no photo gets in the way of the name, headings or facts),
 image_repetition (5 = nothing repeated), image_quality, mobile_crop, photo_brand_fit. photo_issues: up to 6 from ${PHOTO_ISSUES.join(", ")}.`,

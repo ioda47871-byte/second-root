@@ -216,7 +216,7 @@ function harness(answers: { codex?: Answer[]; photo?: Answer[] }, opts: { placed
                 }))
               : [],
           );
-      return { shots: { desktop: `/shots/${candidate}-d.png`, mobile: `/shots/${candidate}-m.png` }, sections: [`/shots/${candidate}-m-section-1.png`], placed };
+      return { shots: { desktop: `/shots/${candidate}-d.png`, mobile: `/shots/${candidate}-m.png` }, sections: [`/shots/${candidate}-mobile-section-1.png`, `/shots/${candidate}-desktop-section-1.png`], placed }; // mobile first: the pipeline orders them
     },
     log: () => undefined,
   };
@@ -228,6 +228,13 @@ const photosInput = (n = 3) => ({ runId: RUN, manifest: manifestOf(n), inputs: i
 const analysesAnswer = (n = 3) => ({ photos: ANALYSES.slice(0, n) });
 
 describe("runDesignPipeline with photos", () => {
+  it("attaches the photo-section crops desktop first, then mobile, and counts them by page in the prompt (DEV-039)", async () => {
+    const h = harness({ codex: [AMERICAN_EDITORIAL, photoReview({ verdict: "accept" })], photo: [analysesAnswer(1), direction(1)] });
+    await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput(1) }, h.deps);
+    expect(h.reviewImages[0]!.slice(-4)).toEqual(["/shots/candidate-0-d.png", "/shots/candidate-0-m.png", "/shots/candidate-0-desktop-section-1.png", "/shots/candidate-0-mobile-section-1.png"]);
+    expect(h.reviewPrompts[0]).toContain("then 1 desktop crop(s) (each 1440 CSS px across), then 1 mobile crop(s) (each 390 CSS px across)");
+  });
+
   it("1, 2 and 3 photos, no revision: brief, analysis, direction, photo review — 4 Codex calls", async () => {
     for (const n of [1, 2, 3]) {
       const h = harness({ codex: [AMERICAN_EDITORIAL, photoReview({ verdict: "accept" })], photo: [analysesAnswer(n), direction(n)] });
@@ -240,7 +247,7 @@ describe("runDesignPipeline with photos", () => {
       expect((h.records.get("candidate-0.images.json") as { value: ImageDirection }).value).toEqual(direction(n));
       expect((h.records.get("final.images.json") as { candidate: string; value: ImageDirection })).toMatchObject({ candidate: "final", value: direction(n) });
       // the review sees the references, both screenshots and the section crops
-      expect(h.reviewImages[0]).toEqual([...refs, "/shots/candidate-0-d.png", "/shots/candidate-0-m.png", "/shots/candidate-0-m-section-1.png"]);
+      expect(h.reviewImages[0]).toEqual([...refs, "/shots/candidate-0-d.png", "/shots/candidate-0-m.png", "/shots/candidate-0-desktop-section-1.png", "/shots/candidate-0-mobile-section-1.png"]);
       expect(h.reviewPrompts[0]).toContain(`"layout": "split_hero"`);
       expect(report.photos).toMatchObject({ analysis: "done", finalLayout: "split_hero" });
     }
@@ -292,7 +299,7 @@ describe("runDesignPipeline with photos", () => {
     const report = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, h.deps);
     expect(h.calls.filter((c) => c === "photo_review")).toHaveLength(4);
     // the third review looks at candidate-0 again; the revision is made from it
-    expect(h.reviewImages[2]).toEqual([...refs, "/shots/candidate-0-d.png", "/shots/candidate-0-m.png", "/shots/candidate-0-m-section-1.png"]);
+    expect(h.reviewImages[2]).toEqual([...refs, "/shots/candidate-0-d.png", "/shots/candidate-0-m.png", "/shots/candidate-0-desktop-section-1.png", "/shots/candidate-0-mobile-section-1.png"]);
     expect(h.reviewPrompts[0]).not.toContain("Earlier rounds");
     expect(h.reviewPrompts[1]).toContain("problems: mobile high");
     expect(h.reviewPrompts[2]).toMatch(/This is candidate-0 again: its revision candidate-1 scored lower \(\d+\/65\)/);
