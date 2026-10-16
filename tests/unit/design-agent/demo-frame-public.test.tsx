@@ -116,6 +116,6 @@ describe("design preview: the profile's notice and footer stay scoped to its fra
     const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
     const c = AMERICAN_EDITORIAL.palette;
     expect(m.notice).toMatchObject({ marginTop: "0px", marginBottom: "0px", borderBottomWidth: "1px", backgroundColor: rgb(c.background), color: rgb(c.secondary) });
-    expect(m.footer).toMatchObject({ backgroundColor: rgb(c.primary), color: rgb(c.background), paddingTop: "28px", paddingBottom: "40px" });
+    expect(m.footer).toMatchObject({ backgroundColor: rgb(c.primary), color: rgb(c.background), paddingTop: "16px", paddingBottom: "20px" }); // phones: DEV-038
   });
 });

@@ -21,6 +21,18 @@
   color: var(--footer-ink);
 }
 
+/* Phones (DEV-038): the notice and footer of a profile demo stay complete and readable (12px)
+   but do not outweigh a sparse page. */
+@media (max-width: 719.98px) {
+  .root > [role="note"] { font-size: 0.75rem; line-height: 1.5; padding: 6px 12px; }
+  .root > footer { font-size: 0.75rem; line-height: 1.6; padding: 16px 16px 20px; }
+  .root > footer p { margin: 0; }
+  .root > footer p + p { margin-top: 8px; }
+  .root > footer a { display: inline-block; padding-block: 3px; } /* keeps the link's tap height */
+}
+/* spacing=tight is whole-page density: the footer (outside the canvas) is closer too. */
+.root:has(> .canvas[data-spacing="tight"]) > footer { padding-top: 16px; padding-bottom: 20px; }
+
 .canvas {
   --pad: 20px;
   --gap: 72px;
@@ -368,6 +380,14 @@
   .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 28svh; padding-bottom: 20px; }
   .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 20px 0; }
   .heroSplit .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 0; } /* a split hero keeps no floor */
+  /* DEV-038: tight is whole-page density — the cover, the menu and information rows, and the
+     address → access gap are closer too. */
+  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 22svh; padding-top: 14px; padding-bottom: 14px; }
+  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 14px 0; }
+  .canvas[data-spacing="tight"] .menuItem { padding: 10px 0; }
+  .canvas[data-spacing="tight"] .row { padding: 10px 0; }
+  .canvas[data-spacing="tight"] .visit { gap: 20px; }
+  .canvas[data-spacing="tight"] .address { gap: 8px; }
 }
 
 .headingJa {
@@ -669,6 +689,10 @@
   }
   .canvas[data-spacing="tight"] .section + .section { margin-top: 24px; }
   .canvas[data-spacing="tight"] .main { padding-bottom: 32px; }
+  /* DEV-038: a medium centered cover under tight is a band on desktop too, not most of the screen
+     (the canvas's own hero only: a split photo hero keeps its height). */
+  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 38svh; padding-top: 18px; padding-bottom: 24px; }
+  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 24px 0; }
   .motifRow { gap: 28px; margin-top: 22px; }
   .pleats { width: 168px; }
   .stamp { width: 104px; height: 104px; }
