@@ -7,6 +7,7 @@ import { createServer } from "node:net";
 import type { Browser, Page } from "playwright";
 import type { PlacedPhoto } from "./assets/render-check";
 import { DECODE_PHOTOS_SCRIPT, DecodedPhotosSchema, PAGE_INFO_SCRIPT, PageInfoSchema } from "./page-scripts";
+import { SHOT_VIEWPORTS } from "./shot-viewports";
 
 const servers = new Set<ChildProcess>();
 
@@ -99,7 +100,7 @@ export type CapturedPage = { overflow: number; sections: string[]; placed: Place
  * whether any text of the page lies under it.
  */
 export async function capturePage(page: Page, o: { path: string; mobile: boolean; sectionPrefix: string }): Promise<CapturedPage> {
-  const width = o.mobile ? 390 : 1440;
+  const width = o.mobile ? SHOT_VIEWPORTS.mobile.width : SHOT_VIEWPORTS.desktop.width;
   const cap = o.mobile ? SHOT_CAP.mobile : SHOT_CAP.desktop;
   // The page side is source text (page-scripts.ts): tsx / esbuild never rewrites it, so no
   // __name helper (keepNames) can reach the page. Its answer is checked before use.
@@ -132,7 +133,9 @@ export async function capturePage(page: Page, o: { path: string; mobile: boolean
 /** Full-page screenshot (capped height) and photo-section crops of one preview URL. */
 export async function screenshotPage(browser: Browser, url: string, path: string, mobile: boolean): Promise<CapturedPage> {
   const context = await browser.newContext(
-    mobile ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: "reduce" } : { viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" },
+    mobile
+      ? { viewport: { width: SHOT_VIEWPORTS.mobile.width, height: SHOT_VIEWPORTS.mobile.height }, deviceScaleFactor: SHOT_VIEWPORTS.mobile.scale, isMobile: true, hasTouch: true, reducedMotion: "reduce" }
+      : { viewport: { width: SHOT_VIEWPORTS.desktop.width, height: SHOT_VIEWPORTS.desktop.height }, deviceScaleFactor: SHOT_VIEWPORTS.desktop.scale, reducedMotion: "reduce" },
   );
   try {
     const page = await context.newPage();

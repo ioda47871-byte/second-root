@@ -1789,37 +1789,47 @@
     },
     {
       "id": "DEV-039",
-      "title": "調査: bakery の残る renderer-change note は密度の欠陥か、review の揺れか（read-only）",
-      "status": "review",
+      "title": "Review の画像スケールの較正（CSS px と画像の px を区別する）",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-038"
       ],
-      "purpose": "DEV-038 後の最終 rerun で baked_goods は ready、bakery は 18/18/18 で RENDERER_CHANGE_NEEDED。最後の renderer_change_note は DEV-038 で満たした値（12px・1.6・footer 16/20px・heading gap 16px）と、未対応の値（section 上 32→24px、folio tracking 0.26em、rowLabel 12.5px / 0.12em）が混ざっている。実装はせず、実寸と review の入力から原因を分類する",
+      "purpose": "調査（.ai/reviews/DEV-039.md）で、review の phone 画像は 390 CSS px の viewport を deviceScaleFactor 2 で撮った 780 px 幅の画像なのに、prompt は「mobile (390px wide)」としか言わず、reviewer が満たした値（12px など）を renderer change として求めていたことが分かった。prompt で CSS px と画像の px を区別し、needs_renderer_change の使い方を明確にする。CSS・score・判定・blocking は変えない",
       "acceptance_criteria": [
-        "架空の疎な fixture で、390px（review と同じ viewport・deviceScaleFactor 2）の section 上 padding、heading → 本文、folio、area label、notice、footer（段落・link 別）を実測する",
-        "reviewer が満たした値を求めた理由を、review に渡す画像と prompt から説明する",
-        "6 run の構造的な収束を記録する",
-        "残る blocker を A / B / C のどれか 1 つに分類し、最小の次の一手を提案する（実装しない）"
+        "review prompt（写真なし / 写真あり）が、desktop 1440 CSS px・1×、mobile 390 CSS px・deviceScaleFactor 2（780 px 幅の画像）を明記し、大きさと間隔を CSS px で判断するよう求める",
+        "needs_renderer_change は profile の vocabulary と renderer の今の動きで届かないときだけ。画像の px から CSS の目標を作らない。ページがすでに持つ大きさ・間隔のために renderer change を求めない",
+        "数値は screenshot と prompt で 1 か所（lib/design-agent/shot-viewports.ts）から取る。CSS の定数の 2 つ目の写しは作らない",
+        "実測値を reviewer に渡すこと（measured-context）は scope を広げるため DEV-039 ではしない。follow-up として記録する"
       ],
       "required_tests": [
-        "なし（read-only の調査。計測は一時的な probe で行い、commit しない）"
+        "unit: tests/unit/design-agent/review-scale.test.ts（2 つの prompt の文言、screenshotPage が SHOT_VIEWPORTS を使うこと）",
+        "photo-codex の snapshot（review prompt の意図した変更のみ）、unit / integration / typecheck / lint / check:secrets / CI"
       ],
       "allowed_scope": [
+        "lib/design-agent/shot-viewports.ts",
+        "lib/design-agent/prompts.ts",
+        "lib/design-agent/photo-prompts.ts",
+        "lib/design-agent/preview-server.ts（viewport の値の参照先のみ）",
+        "tests/unit/design-agent/review-scale.test.ts",
+        "tests/unit/design-agent/__snapshots__/photo-codex.test.ts.snap",
         ".ai/"
       ],
       "forbidden_scope": [
-        "CSS・renderer・prompt・review・pipeline の変更",
-        "review の閾値・score・schema / enum・max revisions・brief 閾値",
-        "実店舗の画像・データ",
-        "Staging / Production / Vercel / timer / helper / jail / DM / email"
+        "profile の CSS",
+        "DesignProfile の schema / enum",
+        "score・score の計算・accept / revise",
+        "needs_renderer_change → BLOCKED の意味",
+        "MAX_REVISIONS・brief の閾値 0.5",
+        "screenshot の viewport・scale そのものの変更",
+        "Production・DM / email・timer・capture helper・jail"
       ],
       "human_approval_triggers": [
-        "次の一手（CSS の差分、または review 入力の変更）の実装"
+        "Staging の controlled rerun（bakery の 1 件のみ、WSL root の実行）"
       ],
       "attempts": 1,
       "last_failure": null,
-      "branch": "develop（.ai のみ）"
+      "branch": "feature/dev-039-review-scale"
     }
   ]
 }

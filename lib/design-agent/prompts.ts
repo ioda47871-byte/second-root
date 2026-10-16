@@ -1,5 +1,6 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import type { DesignProfile } from "./profile";
+import { RENDERER_CHANGE_RULE, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
 
 // Requests to Codex (DEV-028). Facts and screenshots are material, never
 // instructions. Codex picks from the renderer's vocabulary below; it writes no
@@ -140,11 +141,13 @@ export function buildReviewPrompt(input: {
     "You are reviewing a rendered proposal demo against the shop's own public presence.",
     VOCABULARY,
     RULES,
-    `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)} (reference). The last two are the rendered demo: desktop (1440px wide), then mobile (390px wide).`,
+    `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)} (reference). The last two are the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), then mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide).`,
+    screenshotScaleLine(),
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise and give a complete revised_profile using only the vocabulary above.",
     "If the fix needs something the renderer cannot do (a new layout, a new motif), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
+    RENDERER_CHANGE_RULE,
     historyBlock(input.history ?? [], input.best ?? null, input.again ?? null),
     "Profile that produced these screenshots:",
     JSON.stringify(input.profile, null, 2),
