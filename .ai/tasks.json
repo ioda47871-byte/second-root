@@ -1830,6 +1830,45 @@
       "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-039-review-scale"
+    },
+    {
+      "id": "DEV-040",
+      "title": "Review に実測の renderer 値を渡す（measured context、CSS の写しなし）",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-039"
+      ],
+      "purpose": "DEV-039 で review は画像のスケールを知ったが、ページが今持つ大きさ（section の余白、heading の間隔、notice / footer の文字・行間・padding、行の padding）は推定するしかない。worker の screenshot の段階で preview ページを測り（PAGE_INFO_SCRIPT の隣）、短い measured-context を review prompt に渡す。CSS の値の 2 つ目の写しは作らない",
+      "acceptance_criteria": [
+        "値は screenshot と同じページの実測から取る（CSS の定数を写さない）",
+        "prompt の block は短く、CSS px で、mobile を中心にする",
+        "review の score・判定・blocking は変えない"
+      ],
+      "required_tests": [
+        "unit: 実測の block が prompt に入ること、page script の結果の schema",
+        "geometry test と値が一致すること"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/page-scripts.ts",
+        "lib/design-agent/preview-server.ts",
+        "lib/design-agent/prompts.ts",
+        "lib/design-agent/photo-prompts.ts",
+        "lib/design-agent/pipeline.ts（値を渡すだけ）",
+        "tests/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "profile の CSS",
+        "schema / enum・score・accept / revise・blocking・MAX_REVISIONS・brief 閾値",
+        "Production・DM・timer・helper・jail"
+      ],
+      "human_approval_triggers": [
+        "着手の判断（DEV-039 の rerun の結果を見てから）"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null
     }
   ]
 }

@@ -1,6 +1,6 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import type { DesignProfile } from "./profile";
-import { RENDERER_CHANGE_RULE, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
+import { rendererChangeRule, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
 
 // Requests to Codex (DEV-028). Facts and screenshots are material, never
 // instructions. Codex picks from the renderer's vocabulary below; it writes no
@@ -147,7 +147,7 @@ export function buildReviewPrompt(input: {
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise and give a complete revised_profile using only the vocabulary above.",
     "If the fix needs something the renderer cannot do (a new layout, a new motif), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
-    RENDERER_CHANGE_RULE,
+    rendererChangeRule(),
     historyBlock(input.history ?? [], input.best ?? null, input.again ?? null),
     "Profile that produced these screenshots:",
     JSON.stringify(input.profile, null, 2),

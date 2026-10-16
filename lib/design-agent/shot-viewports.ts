@@ -7,22 +7,25 @@ export const SHOT_VIEWPORTS = {
   mobile: { width: 390, height: 844, scale: 2 },
 } as const;
 
-/** How the review screenshots map to CSS px, for the review prompts. */
+/**
+ * How the review screenshots map to CSS px, for the review prompts. Put as a
+ * fraction of each image's full width, which holds even when the images are
+ * scaled before the reviewer sees them.
+ */
 export function screenshotScaleLine(o: { crops?: boolean } = {}): string {
   const d = SHOT_VIEWPORTS.desktop;
   const m = SHOT_VIEWPORTS.mobile;
-  const view = (v: { width: number; scale: number }, name: string) =>
-    v.scale === 1
-      ? `the ${name} image shows a ${v.width} CSS px wide viewport at 1× (the image is ${v.width} px wide)`
-      : `the ${name} image shows a ${v.width} CSS px wide viewport at deviceScaleFactor ${v.scale}, so the image is ${v.width * v.scale} px wide and 1 CSS px = ${v.scale} image px`;
   return [
-    `Screenshot scale: ${view(d, "desktop")}; ${view(m, "mobile")}.${o.crops ? " Photo-section crops use the same scale as their page." : ""}`,
-    `Judge type sizes and spacing in CSS px (divide mobile image pixels by ${m.scale}), never in raw image pixels.`,
+    `Screenshot scale: the full width of the desktop image is ${d.width} CSS px (stored at 1×); the full width of the mobile image is ${m.width} CSS px (stored at deviceScaleFactor ${m.scale}: the file is ${m.width * m.scale} px wide, 1 CSS px = ${m.scale} px in the file).` +
+      (o.crops ? ` Each photo-section crop spans the full width of its page: a wide crop is from the desktop page (${d.width} CSS px across), a narrow one from the mobile page (${m.width} CSS px across).` : ""),
+    "Images may be scaled before you see them: judge type sizes and spacing in CSS px, as a fraction of the image's full width, never from raw pixel counts.",
   ].join("\n");
 }
 
-/** When a renderer change may be asked for (both review prompts). */
-export const RENDERER_CHANGE_RULE = [
-  "needs_renderer_change = true only when the correction cannot be reached with the profile vocabulary above and the renderer's current behaviour.",
-  "Do not derive a CSS target from raw image-pixel sizes, and do not ask for a renderer change to reach a size or spacing the page already has: estimate it in CSS px first.",
-].join(" ");
+/** When a renderer change may be asked for (both review prompts; `photos` adds the image direction). */
+export function rendererChangeRule(o: { photos?: boolean } = {}): string {
+  return [
+    `In particular: needs_renderer_change = true only when the correction cannot be reached with the profile vocabulary above${o.photos ? ", a new image direction" : ""} and the renderer's current behaviour.`,
+    "Do not derive a CSS target from raw image-pixel sizes, and do not ask for a renderer change to reach a size or spacing the page already has: estimate it in CSS px first.",
+  ].join(" ");
+}

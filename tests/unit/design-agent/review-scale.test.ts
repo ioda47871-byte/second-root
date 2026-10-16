@@ -3,7 +3,9 @@ import type { ImageDirection } from "@/lib/design-agent/assets/direction";
 import { buildPhotoReviewPrompt } from "@/lib/design-agent/photo-prompts";
 import { screenshotPage } from "@/lib/design-agent/preview-server";
 import { buildReviewPrompt } from "@/lib/design-agent/prompts";
-import { RENDERER_CHANGE_RULE, SHOT_VIEWPORTS } from "@/lib/design-agent/shot-viewports";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { rendererChangeRule, SHOT_VIEWPORTS } from "@/lib/design-agent/shot-viewports";
 import { AMERICAN_EDITORIAL, SHOP } from "./fixtures";
 import { fakeAnalysis } from "./photo-fixtures";
 
@@ -27,26 +29,30 @@ const prompts = {
 
 describe("review prompts: CSS px vs screenshot pixels", () => {
   for (const [name, prompt] of Object.entries(prompts)) {
-    it(`${name}: names the CSS viewport, the raster width and the scale, and asks for CSS px`, () => {
+    it(`${name}: names each image's full width in CSS px, the stored raster scale, and asks for CSS px`, () => {
       expect(prompt).toContain("mobile (390 CSS px wide)");
       expect(prompt).toContain("desktop (1440 CSS px wide)");
-      expect(prompt).toContain("390 CSS px wide viewport at deviceScaleFactor 2, so the image is 780 px wide and 1 CSS px = 2 image px");
-      expect(prompt).toContain("1440 CSS px wide viewport at 1× (the image is 1440 px wide)");
-      expect(prompt).toContain("Judge type sizes and spacing in CSS px (divide mobile image pixels by 2), never in raw image pixels.");
+      expect(prompt).toContain("the full width of the desktop image is 1440 CSS px (stored at 1×)");
+      expect(prompt).toContain("the full width of the mobile image is 390 CSS px (stored at deviceScaleFactor 2: the file is 780 px wide, 1 CSS px = 2 px in the file)");
+      expect(prompt).toContain("Images may be scaled before you see them: judge type sizes and spacing in CSS px, as a fraction of the image's full width, never from raw pixel counts.");
       expect(prompt).not.toMatch(/\(390px wide\)|\(1440px wide\)/);
-    });
-
-    it(`${name}: asks for a renderer change only for what the vocabulary and the renderer cannot reach`, () => {
-      expect(prompt).toContain(RENDERER_CHANGE_RULE);
-      expect(RENDERER_CHANGE_RULE).toContain("cannot be reached with the profile vocabulary above and the renderer's current behaviour");
-      expect(RENDERER_CHANGE_RULE).toContain("Do not derive a CSS target from raw image-pixel sizes");
-      expect(RENDERER_CHANGE_RULE).toContain("do not ask for a renderer change to reach a size or spacing the page already has");
     });
   }
 
-  it("mentions photo-section crops only where there are any", () => {
-    expect(prompts.photo).toContain("Photo-section crops use the same scale as their page.");
-    expect(prompts.review).not.toContain("Photo-section crops");
+  it("asks for a renderer change only for what the vocabulary (and, with photos, a new image direction) and the renderer cannot reach", () => {
+    expect(prompts.review).toContain(rendererChangeRule());
+    expect(prompts.photo).toContain(rendererChangeRule({ photos: true }));
+    expect(rendererChangeRule()).toContain("cannot be reached with the profile vocabulary above and the renderer's current behaviour");
+    expect(rendererChangeRule({ photos: true })).toContain("the profile vocabulary above, a new image direction and the renderer's current behaviour");
+    for (const rule of [rendererChangeRule(), rendererChangeRule({ photos: true })]) {
+      expect(rule).toContain("Do not derive a CSS target from raw image-pixel sizes");
+      expect(rule).toContain("do not ask for a renderer change to reach a size or spacing the page already has");
+    }
+  });
+
+  it("tells which page a photo-section crop is from, only where there are crops", () => {
+    expect(prompts.photo).toContain("a wide crop is from the desktop page (1440 CSS px across), a narrow one from the mobile page (390 CSS px across)");
+    expect(prompts.review).not.toContain("photo-section crop");
   });
 });
 
@@ -63,5 +69,11 @@ describe("the screenshots and the prompts share one source", () => {
     expect(seen[0]).toMatchObject({ viewport: { width: SHOT_VIEWPORTS.mobile.width, height: SHOT_VIEWPORTS.mobile.height }, deviceScaleFactor: SHOT_VIEWPORTS.mobile.scale, isMobile: true });
     expect(seen[1]).toMatchObject({ viewport: { width: SHOT_VIEWPORTS.desktop.width, height: SHOT_VIEWPORTS.desktop.height }, deviceScaleFactor: SHOT_VIEWPORTS.desktop.scale });
     expect(SHOT_VIEWPORTS).toEqual({ desktop: { width: 1440, height: 900, scale: 1 }, mobile: { width: 390, height: 844, scale: 2 } });
+  });
+
+  it("preview-server.ts keeps no second copy of the viewport numbers", () => {
+    const src = readFileSync(join(process.cwd(), "lib/design-agent/preview-server.ts"), "utf8");
+    expect(src).not.toMatch(/\b(390|844|1440|900)\b/);
+    expect(src).not.toMatch(/deviceScaleFactor:\s*\d/);
   });
 });

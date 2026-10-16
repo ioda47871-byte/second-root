@@ -6,7 +6,7 @@ import type { PhotoIssue } from "./photo-review";
 import { PHOTO_ISSUES, REVISION_TARGETS } from "./photo-review";
 import type { DesignProfile } from "./profile";
 import { factsBlock, historyBlock, RULES, VOCABULARY, type RoundSummary } from "./prompts";
-import { RENDERER_CHANGE_RULE, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
+import { rendererChangeRule, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
 
 // Requests to Codex for the photos of a demo (DEV-029). Separate from the
 // DEV-028 brief and review prompts (prompts.ts), which stay as they are for
@@ -131,7 +131,7 @@ You cannot place photos yourself; a new direction is made separately from your p
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise.",
     "If the fix needs something the renderer cannot do (a new layout, a new motif, a photo place that does not exist), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
-    RENDERER_CHANGE_RULE,
+    rendererChangeRule({ photos: true }),
     historyBlock(input.history ?? [], input.best ?? null, input.again ?? null, 65, "revision (revision_target, revised_profile, photo_issues)"),
     "Image direction that produced these screenshots:",
     JSON.stringify(input.direction, null, 2),
