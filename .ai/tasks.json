@@ -1661,7 +1661,7 @@
     {
       "id": "DEV-036",
       "title": "Renderer: spacing=tight を疎な demo で本当に詰める（centered_cover+medium の phone / desktop）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-034"
