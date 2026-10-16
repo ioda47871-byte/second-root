@@ -92,15 +92,17 @@ paletteFit: 1 to 5, how well the fixed palette below sits with the photos you us
     .join("\n\n");
 }
 
-/** The DEV-028 renderer vocabulary, with its "no photographs" line replaced for a page with photos. */
-function cropLine(crops: { desktop: number; mobile: number }): string {
+/** The crops after the two full screenshots, counted by page in the order they are attached. */
+function cropLine(crops: { desktop: number; mobile: number; unknown?: number }): string {
   const parts = [
     crops.desktop > 0 ? `${crops.desktop} desktop crop(s) (each ${SHOT_VIEWPORTS.desktop.width} CSS px across)` : null,
     crops.mobile > 0 ? `${crops.mobile} mobile crop(s) (each ${SHOT_VIEWPORTS.mobile.width} CSS px across)` : null,
+    crops.unknown ? `${crops.unknown} crop(s) whose page is not known` : null,
   ].filter(Boolean);
   return parts.length > 0 ? `, then ${parts.join(", then ")} of photo sections the full screenshots cut off (a crop may overlap their end).` : ".";
 }
 
+/** The DEV-028 renderer vocabulary, with its "no photographs" line replaced for a page with photos. */
 function photoVocabulary(): string {
   return VOCABULARY.replace(/There are no photographs[^\n]*/, "Photographs appear only where the image direction below places them; nothing else on the page is a photo.");
 }
@@ -113,7 +115,7 @@ export function buildPhotoReviewPrompt(input: {
   referenceCount: number;
   referenceKind?: "website" | "instagram";
   /** Photo-section crops attached after the two full screenshots: desktop ones first, then mobile ones. */
-  crops: { desktop: number; mobile: number };
+  crops: { desktop: number; mobile: number; unknown?: number };
   round: number;
   maxRevisions: number;
   /** DEV-034: the earlier rounds (scores and problem codes only) and the best so far. */
@@ -130,7 +132,7 @@ export function buildPhotoReviewPrompt(input: {
     PHOTO_RULES,
     `Attached images: the first ${input.referenceCount} are ${refs} (reference; photos in them are blurred and pixelated). Then the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide)` +
       cropLine(input.crops),
-    screenshotScaleLine({ crops: input.crops.desktop + input.crops.mobile > 0 }),
+    screenshotScaleLine({ crops: input.crops.desktop + input.crops.mobile + (input.crops.unknown ?? 0) > 0 }),
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
     `photo_scores: image_selection (the right photos for this shop), crop, focal_visibility (the subject stays visible), text_image_collision (5 = no photo gets in the way of the name, headings or facts),
 image_repetition (5 = nothing repeated), image_quality, mobile_crop, photo_brand_fit. photo_issues: up to 6 from ${PHOTO_ISSUES.join(", ")}.`,

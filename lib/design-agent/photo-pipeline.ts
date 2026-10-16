@@ -188,14 +188,14 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
           analyses,
           referenceCount: ctx.references.length,
           referenceKind: ctx.referenceKind,
-          crops: { desktop: crops.desktop.length, mobile: crops.mobile.length },
+          crops: { desktop: crops.desktop.length, mobile: crops.mobile.length, unknown: crops.unknown.length },
           round: revisions,
           maxRevisions: ctx.maxRevisions,
           history: rounds,
           best: leader && rounds.length > 0 ? { candidate: leader.name, total: leader.score } : null,
           again: again ? { candidate: target.name, ...again } : null,
         }),
-        images: [...ctx.references, rendered.shots.desktop, rendered.shots.mobile, ...crops.desktop, ...crops.mobile],
+        images: [...ctx.references, rendered.shots.desktop, rendered.shots.mobile, ...crops.desktop, ...crops.mobile, ...crops.unknown],
         schema: ctx.schema(photoReviewJsonSchema()),
       });
       const parsed = PhotoReviewSchema.safeParse(answer);

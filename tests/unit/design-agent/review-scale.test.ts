@@ -22,7 +22,7 @@ const direction: ImageDirection = {
   rejected: [],
   paletteFit: 4,
 };
-const photoPrompt = (crops: { desktop: number; mobile: number }) =>
+const photoPrompt = (crops: { desktop: number; mobile: number; unknown?: number }) =>
   buildPhotoReviewPrompt({ demo: SHOP, profile: AMERICAN_EDITORIAL, direction, analyses: [fakeAnalysis(P)], referenceCount: 2, referenceKind: "instagram", crops, round: 1, maxRevisions: 2 });
 const prompts = {
   review: buildReviewPrompt({ demo: SHOP, profile: AMERICAN_EDITORIAL, referenceCount: 3, referenceKind: "instagram", round: 1, maxRevisions: 2 }),
@@ -66,7 +66,13 @@ describe("review prompts: CSS px vs screenshot pixels", () => {
 
   it("orders the crops desktop first, then mobile, whatever order the renderer returns them in", () => {
     const shots = ["/s/candidate-1-mobile-section-1.png", "/s/candidate-1-desktop-section-1.png", "/s/candidate-1-mobile-section-2.png"];
-    expect(cropsByPage(shots)).toEqual({ desktop: ["/s/candidate-1-desktop-section-1.png"], mobile: ["/s/candidate-1-mobile-section-1.png", "/s/candidate-1-mobile-section-2.png"] });
+    expect(cropsByPage(shots)).toEqual({ desktop: ["/s/candidate-1-desktop-section-1.png"], mobile: ["/s/candidate-1-mobile-section-1.png", "/s/candidate-1-mobile-section-2.png"], unknown: [] });
+  });
+
+  it("never counts a crop whose name names neither page as desktop or mobile (by file name, not directory)", () => {
+    const shots = ["/s/candidate-1-d-section-1.png", "/run-desktop-section-x/candidate-1-m-section-1.png", "/s/candidate-1-mobile-section-1.png"];
+    expect(cropsByPage(shots)).toEqual({ desktop: [], mobile: ["/s/candidate-1-mobile-section-1.png"], unknown: ["/s/candidate-1-d-section-1.png", "/run-desktop-section-x/candidate-1-m-section-1.png"] });
+    expect(photoPrompt({ desktop: 0, mobile: 1, unknown: 2 })).toContain("then 1 mobile crop(s) (each 390 CSS px across), then 2 crop(s) whose page is not known of photo sections");
   });
 
   it("the photo review prompt changes only where DEV-039 meant it to", () => {

@@ -23,14 +23,17 @@ export function screenshotScaleLine(o: { crops?: boolean } = {}): string {
 }
 
 /**
- * The photo-section crops of a render, by page: desktop first, then mobile (their
- * file names say which; see capturePage's `sectionPrefix`). The review prompt counts
- * them in this order, so the reviewer knows each crop's page without guessing from its shape.
+ * The photo-section crops of a render, by page: desktop, then mobile, then any whose
+ * file name names neither page (capturePage's `sectionPrefix` always does). The review
+ * prompt counts them in this order, so the reviewer knows each crop's page without
+ * guessing from its shape, and a crop of unknown page is never counted as either.
  */
-export function cropsByPage(paths: readonly string[]): { desktop: string[]; mobile: string[] } {
-  const desktop = paths.filter((p) => p.includes("-desktop-section-"));
-  const mobile = paths.filter((p) => !p.includes("-desktop-section-"));
-  return { desktop, mobile };
+export function cropsByPage(paths: readonly string[]): { desktop: string[]; mobile: string[]; unknown: string[] } {
+  const page = (p: string) => {
+    const name = p.slice(p.lastIndexOf("/") + 1);
+    return name.includes("-desktop-section-") ? "desktop" : name.includes("-mobile-section-") ? "mobile" : "unknown";
+  };
+  return { desktop: paths.filter((p) => page(p) === "desktop"), mobile: paths.filter((p) => page(p) === "mobile"), unknown: paths.filter((p) => page(p) === "unknown") };
 }
 
 /** When a renderer change may be asked for (both review prompts; `photos` adds the image direction). */

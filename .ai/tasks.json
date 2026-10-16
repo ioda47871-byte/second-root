@@ -1816,7 +1816,8 @@
         ".ai/",
         "lib/design-agent/photo-pipeline.ts（crop の順序と page ごとの数のみ）",
         "tests/unit/design-agent/photo-pipeline.test.ts",
-        "tests/unit/design-agent/__snapshots__/review-scale.test.ts.snap"
+        "tests/unit/design-agent/__snapshots__/review-scale.test.ts.snap",
+        "tests/unit/design-agent/photo-codex.test.ts（DEV-028 snapshot test の注記のみ）"
       ],
       "forbidden_scope": [
         "profile の CSS",
