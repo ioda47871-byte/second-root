@@ -364,7 +364,7 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
 
 ### 10.4 local bridge と worker
 
-- `scripts/sales-design-bridge/run.sh --once`（`bridge.ts`）: 利用者 `sr-designbridge` だけで動く（root・`sr-designgen`・`sr-igcapture` では止まる）。token は 0600 の file から読み、環境変数にしない。子 process を起動しない。1 回で「結果の提出 → 期限切れの job の破棄 → 1 件の claim」。
+- `scripts/sales-design-bridge/run.sh --once`（`bridge.ts`）: 利用者 `sr-designbridge` だけで動く（root・`sr-designgen`・`sr-igcapture` では止まる）。token は 0600 の file から読み、環境変数にしない。子 process を起動しない。1 回で「結果の提出 → 期限切れの job の破棄 → 1 件の claim」。`--deliver-only` は「結果の提出 → 期限切れの job の破棄」だけで、claim を頼まず worker 用の job file も書かない（DEV-037）。
 - worker は `SR_DESIGN_BRIDGE_SPOOL` があるときだけ、run の前に `to-worker/` の job を自分の inbox に取り込み、run の後に終わった bridge job の結果を `from-worker/` に書く（`lib/design-agent/bridge/worker-side.ts`）。書くのは outcome・final profile（rationale を落として `checkProfile` を通したもの）・固定の符号（既知の符号だけ。他は `WORKER_FAILED`）・commit だけ。
   - run の初めに heartbeat（`from-worker/worker-heartbeat.json`）を書く。bridge は heartbeat が 90 分以内のときだけ claim する。worker が止まっている間に job が lease を待ち切って試行を使い切ることはない。**bridge を動かす間は、worker を少なくとも 1 時間に 1 回動かす。**
   - bridge が手放した job（spool の job file が消えた）は、inbox で待っていれば取り下げ、結果も書かない。閉じた job の結果 file は worker が消す。

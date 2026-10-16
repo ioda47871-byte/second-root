@@ -122,7 +122,11 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 2. bridge: `sudo -u sr-designbridge env $(cat ~sr-designbridge/.config/second-root/design-bridge.env) ~sr-designbridge/second-root/scripts/sales-design-bridge/run.sh --once` → `claimed b-…`
 3. worker: 通常どおり 1 run（`run.sh`）→ `bridge: imported 1` … `bridge: exported 1`
    （bridge は worker の heartbeat が新しいときだけ claim する。最初は worker を 1 回動かしてから 2. を行う）
-4. bridge をもう一度 `--once` → `delivered 1`
+4. bridge をもう一度、今度は `--deliver-only` → `delivered 1` … `claimed none (BRIDGE_DELIVER_ONLY)`
+   （`--once` は deliver → expire → claim の順に動くので、届けた同じ回で次の job を claim する。
+   1 件ずつ確かめるときは結果を届けるだけの `--deliver-only` を使う。`--deliver-only` は claim を頼まず、
+   worker 用の job file も書かない。期限切れの job の片付けと ledger の整理だけは `--once` と同じに行う。
+   1 件ずつ確かめる間は `sr-design-bridge.timer`（F）を止めておく。timer の `--once` は claim する）
 5. `/admin/sales` で「デモ確認可能」→ プレビューで確認 → 人が DM を送る → 「送信済み」
 
 ## 7. 出力の符号
@@ -136,6 +140,7 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 | `BRIDGE_UNAUTHORIZED` | token 不一致 | §2 |
 | `BRIDGE_API_UNAVAILABLE` / `BRIDGE_RESPONSE_INVALID` | 通信・応答の問題 | 次の回に自動で再試行 |
 | `BRIDGE_SPOOL_INVALID` | spool に書けない | §3 |
+| `BRIDGE_DELIVER_ONLY`（`claimed none (…)`） | `--deliver-only` の回。claim はしていない | 次の job は `--once` で |
 | `BRIDGE_WRONG_USER` | root・`sr-designgen`・`sr-igcapture` で起動した | `sr-designbridge` で起動する |
 
 demo の `design_error_code`（管理画面では「デザインBLOCKED」「AIデザイン失敗」と既存テンプレートの案内）:

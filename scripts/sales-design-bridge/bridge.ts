@@ -4,9 +4,11 @@
  * sr-designbridge (never as the worker user sr-designgen).
  *
  *   tsx scripts/sales-design-bridge/bridge.ts --once
+ *   tsx scripts/sales-design-bridge/bridge.ts --deliver-only
  *
  * One pass: deliver finished worker results, expire unanswered jobs, claim
- * at most one new job. See docs/operations/design-bridge.md.
+ * at most one new job. `--deliver-only` does the first two and never claims
+ * (no claim request, no new job file). See docs/operations/design-bridge.md.
  *
  * Settings (environment, all optional except the URL):
  *   SR_DESIGN_BRIDGE_API_URL     https origin of Second Root (e.g. https://secondroot.jp)
@@ -18,7 +20,7 @@
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { BridgeError, readTokenFile, runBridgeOnce } from "../../lib/design-agent/bridge/client";
+import { BridgeError, bridgeModeFor, bridgeSummary, readTokenFile, runBridgeOnce } from "../../lib/design-agent/bridge/client";
 import { bridgeSpool } from "../../lib/design-agent/bridge/spool";
 
 process.umask(0o077);
@@ -27,8 +29,9 @@ const say = (line: string) => process.stdout.write(`${line}\n`);
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
-  if (args.length !== 1 || args[0] !== "--once") {
-    process.stderr.write("usage: bridge.ts --once\n");
+  const mode = bridgeModeFor(args);
+  if (!mode) {
+    process.stderr.write("usage: bridge.ts --once | --deliver-only\n");
     return 2;
   }
   const home = homedir();
@@ -51,15 +54,14 @@ async function main(): Promise<number> {
       stateDir: join(process.env.XDG_STATE_HOME ?? join(home, ".local/state"), "sr-design-bridge"),
       apiUrl,
       token,
+      mode,
       log: say,
     });
   } catch (error) {
     say(`stopped: ${error instanceof BridgeError ? error.code : "BRIDGE_SPOOL_INVALID"}`);
     return 3;
   }
-  say(
-    `bridge: delivered ${report.delivered.length}, superseded ${report.superseded.length}, refused ${report.refused.length}, expired ${report.expired.length}, claimed ${report.claimed ?? (report.workerIdle ? "none (BRIDGE_WORKER_IDLE)" : "none")}`,
-  );
+  say(bridgeSummary(report, mode));
   return report.stopped ? 3 : 0;
 }
 

@@ -2,7 +2,7 @@ import { chmod, link, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { bridgeEndpoint, LOCAL_EXPIRY_MS, readTokenFile, runBridgeOnce, submitBody, WORKER_HEARTBEAT_MAX_MS, type BridgeOptions } from "@/lib/design-agent/bridge/client";
+import { bridgeEndpoint, bridgeModeFor, bridgeSummary, LOCAL_EXPIRY_MS, readTokenFile, runBridgeOnce, submitBody, WORKER_HEARTBEAT_MAX_MS, type BridgeOptions } from "@/lib/design-agent/bridge/client";
 import { bridgeSpool, readHeartbeat, readSpoolJson, resultCode, spoolIds, writeHeartbeat, writeSpoolJson, WorkerResultSchema, type BridgeSpool } from "@/lib/design-agent/bridge/spool";
 import { exportBridgeResults, importBridgeJobs, resultFromRecords } from "@/lib/design-agent/bridge/worker-side";
 import type { DesignProfile } from "@/lib/design-agent/profile";
@@ -289,6 +289,68 @@ describe("bridge client", () => {
     expect(await spoolIds(spool.toWorker)).toEqual([WJOB2]);
   });
 
+  it("deliver-only delivers a finished result and never claims the pending next job; a later --once may", async () => {
+    answers.push(claimed());
+    await runBridgeOnce(options());
+    await resultFile();
+    // The server has JOB2 pending: a claim would hand it out. deliver-only must not ask.
+    answers.push(submitted(), claimed(JOB2));
+    const report = await runBridgeOnce({ ...options(), mode: "deliver-only" });
+    expect(report).toMatchObject({ delivered: [WJOB], claimed: null, workerIdle: false, stopped: null });
+    expect(calls.map((c) => c.body.action)).toEqual(["claim", "submit"]);
+    expect(await spoolIds(spool.toWorker)).toEqual([]); // no new job file for the worker
+    const ledger = JSON.parse(await readFile(join(stateDir, "ledger.json"), "utf8")) as { jobs: Record<string, unknown> };
+    expect(Object.keys(ledger.jobs)).toEqual([WJOB]);
+    expect(lines.join("\n")).not.toContain(TOKEN);
+    // Nothing left to deliver: still no claim.
+    expect(await runBridgeOnce({ ...options(), mode: "deliver-only" })).toMatchObject({ delivered: [], claimed: null });
+    expect(calls).toHaveLength(2);
+    // The ordinary pass claims the next job.
+    expect(await runBridgeOnce(options())).toMatchObject({ claimed: WJOB2 });
+    expect(calls.map((c) => c.body.action)).toEqual(["claim", "submit", "claim"]);
+    expect(await spoolIds(spool.toWorker)).toEqual([WJOB2]);
+  });
+
+  it("deliver-only still expires a job the worker never answered, and claims nothing", async () => {
+    answers.push(claimed());
+    await runBridgeOnce(options());
+    clock = new Date(clock.getTime() + LOCAL_EXPIRY_MS + 1000);
+    await writeHeartbeat(spool.fromWorker, clock);
+    answers.push(claimed(JOB2));
+    expect(await runBridgeOnce({ ...options(), mode: "deliver-only" })).toMatchObject({ expired: [WJOB], claimed: null });
+    expect(calls).toHaveLength(1);
+    expect(await spoolIds(spool.toWorker)).toEqual([]);
+  });
+
+  it("deliver-only keeps the fixed stops, and never reaches a claim-time stop", async () => {
+    answers.push(claimed());
+    await runBridgeOnce(options());
+    await resultFile();
+    answers.push({ status: 401, body: { error: "unauthorized" } });
+    expect(await runBridgeOnce({ ...options(), mode: "deliver-only" })).toMatchObject({ stopped: "BRIDGE_UNAUTHORIZED", delivered: [], claimed: null });
+    answers.length = 0;
+    answers.push(submitted(), { status: 401, body: { error: "unauthorized" } }); // a claim would stop here
+    expect(await runBridgeOnce({ ...options(), mode: "deliver-only" })).toMatchObject({ delivered: [WJOB], stopped: null, claimed: null });
+    expect(calls.map((c) => c.body.action)).toEqual(["claim", "submit", "submit"]);
+  });
+
+  it("an unknown mode never claims, and only the two exact arguments name a mode", async () => {
+    answers.push(claimed());
+    expect(await runBridgeOnce({ ...options(), mode: "claim" as never })).toMatchObject({ claimed: null });
+    expect(calls).toEqual([]);
+    expect(bridgeModeFor(["--once"])).toBe("once");
+    expect(bridgeModeFor(["--deliver-only"])).toBe("deliver-only");
+    for (const args of [[], ["constructor"], ["__proto__"], ["toString"], ["--ONCE"], ["--once", "--once"]]) expect(bridgeModeFor(args)).toBeNull();
+  });
+
+  it("prints one fixed summary line per mode", () => {
+    const report = { delivered: ["b-1"], superseded: [], refused: [], expired: [], claimed: null, workerIdle: false, stopped: null };
+    expect(bridgeSummary(report, "deliver-only")).toBe("bridge: delivered 1, superseded 0, refused 0, expired 0, claimed none (BRIDGE_DELIVER_ONLY)");
+    expect(bridgeSummary(report, "once")).toBe("bridge: delivered 1, superseded 0, refused 0, expired 0, claimed none");
+    expect(bridgeSummary({ ...report, workerIdle: true }, "once")).toBe("bridge: delivered 1, superseded 0, refused 0, expired 0, claimed none (BRIDGE_WORKER_IDLE)");
+    expect(bridgeSummary({ ...report, claimed: "b-2" }, "once")).toBe("bridge: delivered 1, superseded 0, refused 0, expired 0, claimed b-2");
+  });
+
   it("claims nothing while the worker is not running (no heartbeat, or an old one)", async () => {
     const { rm } = await import("node:fs/promises");
     await rm(join(spool.fromWorker, "worker-heartbeat.json"));
@@ -358,6 +420,59 @@ describe("the worker never gets the bridge token", () => {
     expect(keep).toContain("SR_DESIGN_BRIDGE_SPOOL");
     expect(keep.filter((n) => /TOKEN|SECRET|KEY|SALES_|SUPABASE|BRIDGE_API|BRIDGE_TOKEN/.test(n))).toEqual([]);
   });
+
+  it("bridge.ts takes exactly one of --once / --deliver-only, and passes the mode to the run", async () => {
+    const { spawn, spawnSync } = await import("node:child_process");
+    const { createServer } = await import("node:net");
+    const tsx = join(process.cwd(), "node_modules/.bin/tsx");
+    const script = join(process.cwd(), "scripts/sales-design-bridge/bridge.ts");
+    // One refused argument end to end; the full set of refused arguments is checked in-process (bridgeModeFor).
+    const refused = spawnSync(tsx, [script, "constructor"], { env: { PATH: process.env.PATH ?? "", HOME: base } as unknown as NodeJS.ProcessEnv, encoding: "utf8", timeout: 20_000 });
+    expect(refused.status).toBe(2);
+    expect(refused.stdout).toBe("");
+    expect(refused.stderr).toContain("usage: bridge.ts --once | --deliver-only");
+    // Configured, with a running worker and nothing outstanding, against a local port that drops every
+    // connection at once (no network): --once tries to claim and stops; --deliver-only never asks.
+    const refuser = createServer((socket) => socket.destroy());
+    await new Promise<void>((resolve) => refuser.listen(0, "127.0.0.1", resolve));
+    const port = (refuser.address() as { port: number }).port;
+    const tokenFile = join(base, "bridge.token");
+    await writeFile(tokenFile, `${TOKEN}\n`, { mode: 0o600 });
+    await writeHeartbeat(spool.fromWorker, new Date());
+    const env = {
+      PATH: process.env.PATH ?? "",
+      HOME: base,
+      XDG_STATE_HOME: join(base, "xdg"),
+      SR_DESIGN_BRIDGE_API_URL: `https://127.0.0.1:${port}`,
+      SR_DESIGN_BRIDGE_TOKEN_FILE: tokenFile,
+      SR_DESIGN_BRIDGE_SPOOL: join(base, "spool"),
+    } as unknown as NodeJS.ProcessEnv;
+    // Spawned asynchronously, so this process keeps serving the local port.
+    const runBridge = (mode: string) =>
+      new Promise<{ status: number | null; signal: string | null; stdout: string; stderr: string }>((resolve) => {
+        const child = spawn(tsx, [script, mode], { env, timeout: 20_000 });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (d) => (stdout += String(d)));
+        child.stderr.on("data", (d) => (stderr += String(d)));
+        child.on("close", (status, signal) => resolve({ status, signal, stdout, stderr }));
+      });
+    let deliverOnly, once;
+    try {
+      deliverOnly = await runBridge("--deliver-only");
+      once = await runBridge("--once");
+    } finally {
+      refuser.close();
+    }
+    expect(deliverOnly.signal).toBeNull();
+    expect(once.signal).toBeNull(); // not killed by the time limit
+    expect(deliverOnly.stdout).toBe("bridge: delivered 0, superseded 0, refused 0, expired 0, claimed none (BRIDGE_DELIVER_ONLY)\n");
+    expect(deliverOnly.status).toBe(0);
+    expect(await spoolIds(spool.toWorker)).toEqual([]);
+    expect(once.stdout).toContain("stopped: BRIDGE_API_UNAVAILABLE"); // it asked for a job
+    expect(once.status).toBe(3);
+    for (const out of [deliverOnly.stdout, deliverOnly.stderr, once.stdout, once.stderr]) expect(out).not.toContain(TOKEN);
+  }, 60_000);
 
   it("the bridge's run.sh keeps no token variable and refuses the worker and helper users", async () => {
     const runSh = await readFile(join(process.cwd(), "scripts/sales-design-bridge/run.sh"), "utf8");
