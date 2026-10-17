@@ -1820,6 +1820,47 @@
       "attempts": 1,
       "last_failure": null,
       "branch": "develop（.ai のみ）"
+    },
+    {
+      "id": "DEV-041",
+      "title": "Diagnose: page.close() が終わらないとき、そのページの target を CDP で閉じる（CI の CLOSE_TIMEOUT）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-035"
+      ],
+      "purpose": "CI の Chromium 151 で、C のときに別ホームへの移動中の page.close() が 10 秒で終わらず、DEV-035 の有限の close が CLOSE_TIMEOUT を出して browser.test.ts の diagnose test が落ちる（PR #53 で 2 回、#56 で 2 回）。最初の page.close() は残し、終わらないときだけそのページ自身の target を CDP で閉じる。人の明示の承認あり（capture helper の code の変更）",
+      "acceptance_criteria": [
+        "最初の page.close()（有限）は今のまま",
+        "終わらないとき、そのページ自身の target（開いたときにページ自身の CDP session の Target.getTargetInfo で取っておいた id。なければそのとき読む）を browser の CDP session で Target.closeTarget する。URL で選ばない",
+        "CDP の fallback も有限（同じ時間）。新しい無限の待ちは作らない",
+        "Chromium の Target.getTargets からその id が消えたら閉じたとして扱い、CLOSE_TIMEOUT を出さない（Playwright の close event には頼らない）",
+        "閉じなかったときは今の CLOSE_TIMEOUT と最後の context / browser の片付けをそのまま",
+        "Navigation Guard とすべての停止の符号は変えない"
+      ],
+      "required_tests": [
+        "unit: tests/unit/design-agent/browser.test.ts（closePageBounded: 通常の close、page.close() が終わらず target の close が効く（同じ内容の別ページは開いたまま）、target の close も失敗 / 終わらない → timeout が有限）",
+        "diagnose: page.close() が終わらない launcher で、外への移動の STOPPED_OFF_SITE・wall / login の停止・通常の run が CLOSE_TIMEOUT なしで今と同じ行、browser は終わる。両方が終わらないとき CLOSE_TIMEOUT と有限の片付け",
+        "unit / integration / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/browser/diagnose.ts",
+        "tests/unit/design-agent/browser.test.ts",
+        "docs/operations/design-browser-wsl.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Navigation Guard の許可範囲・challenge / login wall の扱い",
+        "Cookie / session・jail・helper の権限",
+        "review / prompt / CSS / schema / 閾値（DEV-039 PR #56 とは別）",
+        "Staging・Vercel・Production・DM / email・timer"
+      ],
+      "human_approval_triggers": [
+        "merge 後の helper 更新（WSL root の admin.sh approve <sha>）"
+      ],
+      "attempts": 1,
+      "last_failure": null,
+      "branch": "feature/dev-041-close-race"
     }
   ]
 }
