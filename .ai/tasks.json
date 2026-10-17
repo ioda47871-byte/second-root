@@ -1872,7 +1872,8 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null
+      "branch": null,
+      "decision": "2026-10-17: 実装は保留（branch は作らない）。DEV-039 だけで controlled rerun（job b-2afe7931…）は RENDERER_CHANGE_NEEDED なしに 16 → 16 → 18 accept になった。measured-context は、較正済みの review が今の geometry ですでに満たしている値のために renderer change を再び求めたときだけ考え直す。"
     },
     {
       "id": "DEV-041",
@@ -1914,6 +1915,39 @@
       "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-041-close-race"
+    },
+    {
+      "id": "DEV-042",
+      "title": "構造の収束の調査（centered_cover / medium / editorial_12 / ruled_list / hairline / tight）",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-039"
+      ],
+      "purpose": "PoC・rerun の final が direction・palette・type を除いて同じ構造に収束する。調査を先に行い、repo の根拠つきで原因を順位づける。コードの変更は、小さく一般的で明らかに正当なものが 1 つあるときだけ",
+      "acceptance_criteria": [
+        "category default・brief / fallback・revision prompt・reviewer の推奨・DesignProfile の vocabulary・renderer の能力・疎な内容の扱い・generic_template_feel の採点・過去の run 記録を比べる",
+        "原因を順位づけ、それぞれに repo の根拠（file:line・記録）を付ける",
+        "結論: 調査だけで閉じる / 小さな修正 1 つ / follow-up task に分ける のどれかを記録する",
+        "private な screenshot・Instagram の内容・cookie・HTML・session・URL を開かない・載せない"
+      ],
+      "required_tests": [
+        "調査だけのときは無し。修正するときは回帰 test・unit / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        ".ai/",
+        "（修正するときのみ、範囲を決めてから追記）"
+      ],
+      "forbidden_scope": [
+        "Production・Staging DB・SALES_AI_DESIGN_ENABLED・Vercel protection・DM / email・timer・migration・capture helper / jail・WSL root・secrets",
+        "score・閾値・MAX_REVISIONS の変更（調査の結論で別 task にする）"
+      ],
+      "human_approval_triggers": [
+        "Staging の controlled rerun（WSL root の実行）"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null
     }
   ]
 }
