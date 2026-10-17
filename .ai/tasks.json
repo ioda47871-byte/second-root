@@ -1953,7 +1953,7 @@
     {
       "id": "DEV-043",
       "title": "疎なページの詰めを hero の全 layout に揃える（stacked_oversized / split_crop）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-042"
@@ -1983,8 +1983,7 @@
         "Production・Staging・DM / email・timer・helper・jail"
       ],
       "human_approval_triggers": [
-        "着手の判断",
-        "Staging の controlled rerun（WSL root の実行）"
+        "Staging の controlled rerun（bakery の 1 件のみ、WSL root の実行、demo を pending に戻す Staging DB 更新）"
       ],
       "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）"
     },
