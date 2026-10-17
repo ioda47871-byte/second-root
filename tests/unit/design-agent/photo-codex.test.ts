@@ -362,6 +362,7 @@ fs.writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify
 // ---------------------------------------------------------------- DEV-028 without photos is unchanged
 
 describe("DEV-028 prompts and schemas (pages without photos)", () => {
+  // The review prompt changes only by DEV-039's scale and renderer-change lines (review-scale.test.ts).
   it("are unchanged", () => {
     expect(buildBriefPrompt({ demo: SHOP, referenceCount: 3, referenceKind: "instagram", currentDemoCount: 2, hint: "American Editorial" })).toMatchSnapshot("brief");
     expect(buildBriefPrompt({ demo: MINIMAL_SHOP, referenceCount: 2, referenceKind: "website", currentDemoCount: 2 })).toMatchSnapshot("brief-minimal");

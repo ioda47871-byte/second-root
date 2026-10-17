@@ -6,6 +6,7 @@ import type { PhotoIssue } from "./photo-review";
 import { PHOTO_ISSUES, REVISION_TARGETS } from "./photo-review";
 import type { DesignProfile } from "./profile";
 import { factsBlock, historyBlock, RULES, VOCABULARY, type RoundSummary } from "./prompts";
+import { rendererChangeRule, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
 
 // Requests to Codex for the photos of a demo (DEV-029). Separate from the
 // DEV-028 brief and review prompts (prompts.ts), which stay as they are for
@@ -91,6 +92,16 @@ paletteFit: 1 to 5, how well the fixed palette below sits with the photos you us
     .join("\n\n");
 }
 
+/** The crops after the two full screenshots, counted by page in the order they are attached. */
+function cropLine(crops: { desktop: number; mobile: number; unknown?: number }): string {
+  const parts = [
+    crops.desktop > 0 ? `${crops.desktop} desktop crop(s) (each ${SHOT_VIEWPORTS.desktop.width} CSS px across)` : null,
+    crops.mobile > 0 ? `${crops.mobile} mobile crop(s) (each ${SHOT_VIEWPORTS.mobile.width} CSS px across)` : null,
+    crops.unknown ? `${crops.unknown} crop(s) whose page is not known` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? `, then ${parts.join(", then ")} of photo sections the full screenshots cut off (a crop may overlap their end).` : ".";
+}
+
 /** The DEV-028 renderer vocabulary, with its "no photographs" line replaced for a page with photos. */
 function photoVocabulary(): string {
   return VOCABULARY.replace(/There are no photographs[^\n]*/, "Photographs appear only where the image direction below places them; nothing else on the page is a photo.");
@@ -103,7 +114,8 @@ export function buildPhotoReviewPrompt(input: {
   analyses: readonly PhotoAnalysis[];
   referenceCount: number;
   referenceKind?: "website" | "instagram";
-  sectionCount: number;
+  /** Photo-section crops attached after the two full screenshots: desktop ones first, then mobile ones. */
+  crops: { desktop: number; mobile: number; unknown?: number };
   round: number;
   maxRevisions: number;
   /** DEV-034: the earlier rounds (scores and problem codes only) and the best so far. */
@@ -118,8 +130,9 @@ export function buildPhotoReviewPrompt(input: {
     photoVocabulary(),
     RULES,
     PHOTO_RULES,
-    `Attached images: the first ${input.referenceCount} are ${refs} (reference; photos in them are blurred and pixelated). Then the rendered demo: desktop (1440px wide), mobile (390px wide)` +
-      (input.sectionCount > 0 ? `, then ${input.sectionCount} crop(s) of photo sections below the end of the full screenshots.` : "."),
+    `Attached images: the first ${input.referenceCount} are ${refs} (reference; photos in them are blurred and pixelated). Then the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide)` +
+      cropLine(input.crops),
+    screenshotScaleLine({ crops: input.crops.desktop + input.crops.mobile + (input.crops.unknown ?? 0) > 0 }),
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
     `photo_scores: image_selection (the right photos for this shop), crop, focal_visibility (the subject stays visible), text_image_collision (5 = no photo gets in the way of the name, headings or facts),
 image_repetition (5 = nothing repeated), image_quality, mobile_crop, photo_brand_fit. photo_issues: up to 6 from ${PHOTO_ISSUES.join(", ")}.`,
@@ -129,6 +142,7 @@ You cannot place photos yourself; a new direction is made separately from your p
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise.",
     "If the fix needs something the renderer cannot do (a new layout, a new motif, a photo place that does not exist), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
+    rendererChangeRule({ photos: true }),
     historyBlock(input.history ?? [], input.best ?? null, input.again ?? null, 65, "revision (revision_target, revised_profile, photo_issues)"),
     "Image direction that produced these screenshots:",
     JSON.stringify(input.direction, null, 2),

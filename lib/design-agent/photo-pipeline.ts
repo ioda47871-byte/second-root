@@ -5,6 +5,7 @@ import { analysesArtifact, assetsArtifact, imagesArtifact, reusableAnalyses, Ana
 import type { AssetManifest } from "./assets/manifest";
 import { analyzePhotos, checkPhotoAnalyses, directImages, type CodexPhotoCall, type PhotoInput, type PhotoStep } from "./assets/photo-codex";
 import { checkRenderedPhotos, type PlacedPhoto } from "./assets/render-check";
+import { cropsByPage } from "./shot-viewports";
 import { sectionsPresent } from "./assets/resolve";
 import { DeadlineError } from "./bounded-process";
 import { CodexError, isEnvironmentFailure, type CodexFailureCode } from "./codex";
@@ -177,6 +178,7 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
   const reviewOf = async (target: Candidate, rendered: Rendered, again: { lower: string; lowerTotal: number } | null): Promise<PhotoReview | null> => {
     try {
       stats.calls.photo_review += 1;
+      const crops = cropsByPage(rendered.sections);
       const answer = await deps.askCodex({
         kind: "photo_review",
         prompt: buildPhotoReviewPrompt({
@@ -186,14 +188,14 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
           analyses,
           referenceCount: ctx.references.length,
           referenceKind: ctx.referenceKind,
-          sectionCount: rendered.sections.length,
+          crops: { desktop: crops.desktop.length, mobile: crops.mobile.length, unknown: crops.unknown.length },
           round: revisions,
           maxRevisions: ctx.maxRevisions,
           history: rounds,
           best: leader && rounds.length > 0 ? { candidate: leader.name, total: leader.score } : null,
           again: again ? { candidate: target.name, ...again } : null,
         }),
-        images: [...ctx.references, rendered.shots.desktop, rendered.shots.mobile, ...rendered.sections],
+        images: [...ctx.references, rendered.shots.desktop, rendered.shots.mobile, ...crops.desktop, ...crops.mobile, ...crops.unknown],
         schema: ctx.schema(photoReviewJsonSchema()),
       });
       const parsed = PhotoReviewSchema.safeParse(answer);
