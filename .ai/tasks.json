@@ -1790,7 +1790,7 @@
     {
       "id": "DEV-039",
       "title": "Review の画像スケールの較正（CSS px と画像の px を区別する）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-038"
