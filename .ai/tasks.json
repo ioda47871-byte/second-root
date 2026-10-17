@@ -1985,7 +1985,7 @@
       "human_approval_triggers": [
         "Staging の controlled rerun（bakery の 1 件のみ、WSL root の実行、demo を pending に戻す Staging DB 更新）"
       ],
-      "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）。2026-10-17（人の判断）: 直後の Staging rerun は見送り（既存 bakery は低 confidence なら centered_cover の default から始まり、変えた layout を通らない可能性が高い）。runtime の確認は stacked_oversized / split_crop を選ぶ run か、DEV-044 の後に行う"
+      "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）。2026-10-17（人の判断）: 直後の Staging rerun は見送り（既存 bakery は低 confidence なら centered_cover の default から始まり、変えた layout を通らない可能性が高い）。runtime の確認は stacked_oversized / split_crop を選ぶ run か、DEV-044 の後に行う。2026-10-17: step 0 で保存済みの低 confidence brief の構造が centered_cover / tall / left / editorial_12 / ruled_list / generous（default と同じ）と分かり、rerun は no-go（人の判断）。runtime の確認は brief が stacked_oversized / split_crop を選ぶ自然な run か将来の test case まで待つ"
     },
     {
       "id": "DEV-044",
@@ -2029,6 +2029,38 @@
         "Staging の controlled rerun（WSL root の実行）"
       ],
       "decision": "2026-10-17（人の判断）: backlog のまま。DEV-043 の後の controlled rerun で収束が続くかを見てから決める（原因の切り分けのため DEV-043 と同時にしない）。考え直すときの第一候補は hybrid fallback: schema を満たす低 confidence の brief から安全な構造の値を残し、brand に関わる styling だけ category default に戻す。category ごとに固定の構造を割り当てるだけの案より優先する。まだ実装しない。2026-10-17（人の判断）: hybrid fallback を承認。field ごとの分類は .ai/reviews/DEV-044.md（構造 6 field を brief から、他は category default）"
+    },
+    {
+      "id": "DEV-045",
+      "title": "brief 自体が centered_cover / tall / editorial_12 / ruled_list / generous を選ぶ理由の調査",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-044"
+      ],
+      "purpose": "保存済みの低 confidence brief（bakery、0.46）が category default と同じ構造を選んでいた。prompt の偏り・enum の順・疎な証拠での合理的な選択・構造を区別する情報の不足を分け、repo の根拠で原因を示す",
+      "acceptance_criteria": [
+        "buildBriefPrompt・VOCABULARY / RULES・schema と enum の順・Codex に見せる例や default・category default の brief への漏れ・.ai/reviews の過去の brief 記録を調べる",
+        "原因を 4 つ（prompt / enum の順 / 疎な証拠での合理的選択 / 情報不足）に分けて根拠を付ける",
+        "コード変更が正当でなければ調査だけで閉じる。小さく一般的な変更が明らかに正当なら狭い follow-up を定義して実装する",
+        "private な screenshot・Instagram の内容・cookie・HTML・URL・session を見ない"
+      ],
+      "required_tests": [
+        "調査だけのときは無し"
+      ],
+      "allowed_scope": [
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "0.5・score・MAX_REVISIONS・schema / enum",
+        "Production・Staging・SALES_AI_DESIGN_ENABLED・Vercel protection・DM / email・timer・migration・helper / jail・WSL root"
+      ],
+      "human_approval_triggers": [
+        "Staging の controlled rerun（WSL root の実行）"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null
     }
   ]
 }
