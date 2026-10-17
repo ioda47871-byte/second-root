@@ -183,7 +183,7 @@ describe("DEV-043 tight + medium: every hero layout gets the sparse-page compact
     }
   });
 
-  it("photo heroes: a split hero keeps its own height; a framed hero grows past the floor to hold its photo", async () => {
+  it("photo heroes keep their height: split heroes everywhere, framed heroes of the non-cover layouts", async () => {
     for (const layout of HERO_LAYOUTS) {
       const split = photosFor(SHOPS.latinBakedGoods, "split_hero");
       expect((await measure(await pageFor("phone390"), SHOPS.latinBakedGoods, profile(layout), split)).heroMinH).toBe(0);
@@ -191,10 +191,48 @@ describe("DEV-043 tight + medium: every hero layout gets the sparse-page compact
       const framed = photosFor(SHOPS.latinBakedGoods, "framed_hero");
       for (const vp of [...PHONES, "desktop"] as const) {
         const g = await measure(await pageFor(vp), SHOPS.latinBakedGoods, profile(layout), framed);
+        const desktop = vp === "desktop";
+        if (layout === "centered_cover") {
+          // DEV-038's values, unchanged
+          const want = desktop ? TIGHT_MEDIUM.desktop : TIGHT_MEDIUM.phone;
+          expect(g.heroMinH).toBeCloseTo(VIEWPORTS[vp].height * want.floor, 0);
+          expect(g.heroPad).toBe(want.heroPad);
+          expect(g.titlePad).toBe(want.titlePad);
+        } else {
+          // develop's generic medium hero (DEV-043 does not touch photo heroes)
+          expect(g.heroMinH).toBeCloseTo(VIEWPORTS[vp].height * (desktop ? 0.56 : 0.4), 0);
+          expect(g.heroPad).toBe(desktop ? "24px 36px" : "20px 28px");
+          expect(g.titlePad).toBe("36px");
+        }
         expect(g.nameInHero).toBe(true);
         expect(g.overflowX).toBe(false);
-        expect(g.heroH).toBeGreaterThan(g.heroMinH); // the photo makes it taller than the floor
       }
     }
+  });
+
+  it("motifs in the shorter hero: folio, motif row, name and area line never overlap", async () => {
+    const sets = [["monogram", "location_labels", "ruled_frame", "corner_marks"], ["stamp_ring", "muffin_paper_svg", "dot_grid"]] as const;
+    for (const layout of HERO_LAYOUTS)
+      for (const vp of [...PHONES, "desktop"] as const)
+        for (const motifs of sets)
+          for (const demo of [SHOPS.latinTwoWords, SHOPS.longJapanese]) {
+            const page = await pageFor(vp);
+            await measure(page, demo, profile(layout, { motifs: [...motifs], motion: { intro: "letter_reveal", sectionFade: false } }));
+            const overlaps = await page.evaluate(
+              ({ hero, folio, motifRow, title, dek }) => {
+                const h = document.querySelector(`.${hero}`)!;
+                const boxes = [folio, motifRow, title, dek]
+                  .map((c) => [c, h.querySelector(`.${c}`)] as const)
+                  .filter(([, e]) => e !== null)
+                  .map(([c, e]) => [c, e!.getBoundingClientRect()] as const);
+                const hit = (a: DOMRect, b: DOMRect) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5 && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5;
+                const out: string[] = [];
+                for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (hit(boxes[i][1], boxes[j][1])) out.push(`${boxes[i][0]}/${boxes[j][0]}`);
+                return out;
+              },
+              { hero: profileStyles.hero, folio: profileStyles.folio, motifRow: profileStyles.motifRow, title: profileStyles.title, dek: profileStyles.dek },
+            );
+            expect(overlaps, `${layout} @${vp} ${motifs.join("+")} ${demo.name}`).toEqual([]);
+          }
   });
 });
