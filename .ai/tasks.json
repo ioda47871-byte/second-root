@@ -1953,16 +1953,16 @@
     {
       "id": "DEV-043",
       "title": "疎なページの詰めを hero の全 layout に揃える（stacked_oversized / split_crop）",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-042"
       ],
       "required_tests": [
-        "geometry test（360 / 390 / 1440、layout × height × spacing、旧 CSS は失敗・新 CSS は通過）",
+        "unit: tests/unit/design-agent/renderer-hero-parity.test.tsx（3 layout × 360 / 390 / 1440 × 4 つの架空の名前。旧 CSS は 12 件失敗・新 CSS は全件通過。他の spacing・height・photo hero は不変）",
         "unit / typecheck / lint / check:secrets / CI"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-043-hero-parity",
       "purpose": "DEV-036 / DEV-038 の tight・medium の詰めは centered_cover + medium だけにあり、他の layout は medium の床が phone 40svh・desktop 56svh のまま。疎なページで review が高さを詰めたいとき centered_cover しか選べず、構造が収束する（DEV-042 原因 3）。CSS だけで他の layout にも同等の詰めを与える",
