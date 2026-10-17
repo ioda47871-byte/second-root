@@ -1985,40 +1985,50 @@
       "human_approval_triggers": [
         "Staging の controlled rerun（bakery の 1 件のみ、WSL root の実行、demo を pending に戻す Staging DB 更新）"
       ],
-      "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）"
+      "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）。2026-10-17（人の判断）: 直後の Staging rerun は見送り（既存 bakery は低 confidence なら centered_cover の default から始まり、変えた layout を通らない可能性が高い）。runtime の確認は stacked_oversized / split_crop を選ぶ run か、DEV-044 の後に行う"
     },
     {
       "id": "DEV-044",
       "title": "開始時の構造の多様性（category default と低 confidence 時の扱い）",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P2",
       "depends_on": [
         "DEV-042"
       ],
       "required_tests": [
-        "方針が決まってから定める"
+        "unit: tests/unit/design-agent/pipeline.test.ts（低 confidence で構造 6 field だけ brief から・他は default、高 confidence は不変、不正な brief は fallback_template、組み合わせが不正なら default）",
+        "unit: defaults の合成関数の test（3 category）",
+        "worker.test.ts の profile_source の期待値",
+        "unit / integration / typecheck / lint / check:secrets / CI"
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null,
+      "branch": "feature/dev-044-hybrid-fallback",
       "purpose": "bakery / baked_goods の default は同じ base（centered_cover / editorial_12 / ruled_list / hairline）で、brief が 0.5 未満だと構造ごと default に置き換わる。revision は構造を変えないので、開始構造がそのまま final になる（DEV-042 原因 1・2）",
       "acceptance_criteria": [
-        "人の判断で方針を決める: category ごとの構造の default を変える / 低 confidence の brief の構造を残して他の値だけ default にする / 何もしない",
-        "0.5 の閾値そのものは変えない"
+        "schema を満たし checkProfile を通った brief の confidence が 0.5 未満のとき: heroLayout.layout / height / alignment・composition.grid / infoStyle・spacing.scale を brief から、他（direction・palette・typography・motifs・divider・motion・confidence）は category default から取る。rationale は固定の 1 行",
+        "confidence ≥ 0.5 の動きは今のまま",
+        "brief が不正・Codex error のときは今のまま（fallback_template / environment failure）",
+        "組み合わせた profile が checkProfile を通らないときは category default そのまま（note を残す）",
+        "report の profile_source と notes で hybrid を区別できる",
+        "0.5・score・MAX_REVISIONS・schema / enum・prompt は変えない"
       ],
       "allowed_scope": [
-        ".ai/",
-        "（方針の決定後に追記）"
+        "lib/design-agent/defaults.ts",
+        "lib/design-agent/pipeline.ts（低 confidence の分岐と profileSource の型だけ）",
+        "tests/unit/design-agent/",
+        "docs/operations/design-worker-wsl.md（profile_source の説明のみ）",
+        ".ai/"
       ],
       "forbidden_scope": [
-        "閾値 0.5・score・MAX_REVISIONS・schema / enum（方針で明示されない限り）",
-        "Production・Staging・DM / email・timer・helper・jail"
+        "LOW_CONFIDENCE（0.5）・score・MAX_REVISIONS・schema / enum・prompts・review",
+        "CSS・renderer",
+        "Production・Staging・SALES_AI_DESIGN_ENABLED・Vercel protection・DM / email・timer・migration・helper / jail・WSL root"
       ],
       "human_approval_triggers": [
-        "方針の決定（design の判断）",
         "Staging の controlled rerun（WSL root の実行）"
       ],
-      "decision": "2026-10-17（人の判断）: backlog のまま。DEV-043 の後の controlled rerun で収束が続くかを見てから決める（原因の切り分けのため DEV-043 と同時にしない）。考え直すときの第一候補は hybrid fallback: schema を満たす低 confidence の brief から安全な構造の値を残し、brand に関わる styling だけ category default に戻す。category ごとに固定の構造を割り当てるだけの案より優先する。まだ実装しない"
+      "decision": "2026-10-17（人の判断）: backlog のまま。DEV-043 の後の controlled rerun で収束が続くかを見てから決める（原因の切り分けのため DEV-043 と同時にしない）。考え直すときの第一候補は hybrid fallback: schema を満たす低 confidence の brief から安全な構造の値を残し、brand に関わる styling だけ category default に戻す。category ごとに固定の構造を割り当てるだけの案より優先する。まだ実装しない。2026-10-17（人の判断）: hybrid fallback を承認。field ごとの分類は .ai/reviews/DEV-044.md（構造 6 field を brief から、他は category default）"
     }
   ]
 }
