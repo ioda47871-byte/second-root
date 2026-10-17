@@ -1990,7 +1990,7 @@
     {
       "id": "DEV-044",
       "title": "開始時の構造の多様性（category default と低 confidence 時の扱い）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-042"
