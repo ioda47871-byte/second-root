@@ -1919,7 +1919,7 @@
     {
       "id": "DEV-042",
       "title": "構造の収束の調査（centered_cover / medium / editorial_12 / ruled_list / hairline / tight）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-039"
@@ -1945,9 +1945,79 @@
       "human_approval_triggers": [
         "Staging の controlled rerun（WSL root の実行）"
       ],
+      "attempts": 1,
+      "last_failure": null,
+      "branch": null,
+      "decision": "2026-10-17: 調査だけで閉じる（.ai/reviews/DEV-042.md）。原因は独立した 2 系統: 開始構造（category default と低 confidence 時の置き換え、revision が構造を変えない）と renderer（疎なページの詰めが centered_cover + medium だけ）。小さな一般的修正 1 つでは足りないため DEV-043 / DEV-044 に分けた。コード・CSS・prompt・閾値・schema・data は変えていない"
+    },
+    {
+      "id": "DEV-043",
+      "title": "疎なページの詰めを hero の全 layout に揃える（stacked_oversized / split_crop）",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-042"
+      ],
+      "required_tests": [
+        "geometry test（360 / 390 / 1440、layout × height × spacing、旧 CSS は失敗・新 CSS は通過）",
+        "unit / typecheck / lint / check:secrets / CI"
+      ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null
+      "branch": null,
+      "purpose": "DEV-036 / DEV-038 の tight・medium の詰めは centered_cover + medium だけにあり、他の layout は medium の床が phone 40svh・desktop 56svh のまま。疎なページで review が高さを詰めたいとき centered_cover しか選べず、構造が収束する（DEV-042 原因 3）。CSS だけで他の layout にも同等の詰めを与える",
+      "acceptance_criteria": [
+        "tight + medium の stacked_oversized / split_crop の hero の床が centered_cover と同等（phone / desktop）",
+        "名前の fit・overflow・split / framed photo hero は今のまま",
+        "centered_cover の値は変えない",
+        "関連: unspaced な名前での split_crop の弱さ（DEV-042 原因 5）は調べて記録する"
+      ],
+      "allowed_scope": [
+        "components/demo/profile/profile.module.css",
+        "tests/unit/design-agent/",
+        "tests/support/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "schema / enum・score・閾値・MAX_REVISIONS・prompt",
+        "Production・Staging・DM / email・timer・helper・jail"
+      ],
+      "human_approval_triggers": [
+        "着手の判断",
+        "Staging の controlled rerun（WSL root の実行）"
+      ]
+    },
+    {
+      "id": "DEV-044",
+      "title": "開始時の構造の多様性（category default と低 confidence 時の扱い）",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-042"
+      ],
+      "required_tests": [
+        "方針が決まってから定める"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null,
+      "purpose": "bakery / baked_goods の default は同じ base（centered_cover / editorial_12 / ruled_list / hairline）で、brief が 0.5 未満だと構造ごと default に置き換わる。revision は構造を変えないので、開始構造がそのまま final になる（DEV-042 原因 1・2）",
+      "acceptance_criteria": [
+        "人の判断で方針を決める: category ごとの構造の default を変える / 低 confidence の brief の構造を残して他の値だけ default にする / 何もしない",
+        "0.5 の閾値そのものは変えない"
+      ],
+      "allowed_scope": [
+        ".ai/",
+        "（方針の決定後に追記）"
+      ],
+      "forbidden_scope": [
+        "閾値 0.5・score・MAX_REVISIONS・schema / enum（方針で明示されない限り）",
+        "Production・Staging・DM / email・timer・helper・jail"
+      ],
+      "human_approval_triggers": [
+        "方針の決定（design の判断）",
+        "Staging の controlled rerun（WSL root の実行）"
+      ]
     }
   ]
 }
