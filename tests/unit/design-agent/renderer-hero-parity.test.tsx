@@ -210,6 +210,9 @@ describe("DEV-043 tight + medium: every hero layout gets the sparse-page compact
     }
   });
 
+  // The hero's grid rows (folio, motif row, title, area line) never overlap with any motif set.
+  // The absolutely positioned motifs (frame, corners, dots) are not checked here; their
+  // closeness on phones is recorded in .ai/reviews/DEV-043.md.
   it("motifs in the shorter hero: folio, motif row, name and area line never overlap", async () => {
     const sets = [["monogram", "location_labels", "ruled_frame", "corner_marks"], ["stamp_ring", "muffin_paper_svg", "dot_grid"]] as const;
     for (const layout of HERO_LAYOUTS)
@@ -217,7 +220,7 @@ describe("DEV-043 tight + medium: every hero layout gets the sparse-page compact
         for (const motifs of sets)
           for (const demo of [SHOPS.latinTwoWords, SHOPS.longJapanese]) {
             const page = await pageFor(vp);
-            await measure(page, demo, profile(layout, { motifs: [...motifs], motion: { intro: "letter_reveal", sectionFade: false } }));
+            await measure(page, demo, profile(layout, { motifs: [...motifs] }));
             const overlaps = await page.evaluate(
               ({ hero, folio, motifRow, title, dek }) => {
                 const h = document.querySelector(`.${hero}`)!;
