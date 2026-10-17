@@ -2033,7 +2033,7 @@
     {
       "id": "DEV-045",
       "title": "brief 自体が centered_cover / tall / editorial_12 / ruled_list / generous を選ぶ理由の調査",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-044"
@@ -2058,9 +2058,76 @@
       "human_approval_triggers": [
         "Staging の controlled rerun（WSL root の実行）"
       ],
+      "attempts": 1,
+      "last_failure": null,
+      "branch": null,
+      "decision": "2026-10-17: 調査だけで閉じる（.ai/reviews/DEV-045.md）。原因: ① prompt の「calm」が構造にも効く・split_crop の例が Latin だけ ② enum の順と説明の偏り（grid / infoStyle / spacing / divider は先頭で説明もある値、hero は説明の効果）③ 疎な証拠での合理的な安定の選択 ④ 構造を区別する情報の不足（根本）。category default の漏れは無い（hint は本番で未使用、prompts は defaults を import しない）。どの修正もモデルの選択を変える方針の判断で rerun が要るため、小さな修正は正当化できない。候補 DEV-046（brief の構造の案内、prompt のみ）・DEV-047（各 layout の描画例を brief に添える）を backlog に置く"
+    },
+    {
+      "id": "DEV-046",
+      "title": "brief の構造の案内（calm は色・書体だけ、構造は内容の形で、split_crop の例の偏り）",
+      "status": "backlog",
+      "priority": "P3",
+      "depends_on": [
+        "DEV-045"
+      ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null
+      "branch": null,
+      "purpose": "DEV-045 原因 1・2: 疎な証拠での「calm」が構造まで centered_cover / tall / generous に寄せ、説明の無い grid / info / spacing の値は先頭が選ばれる",
+      "acceptance_criteria": [
+        "人の判断で方針を決める（prompt の文言のみ。enum・schema・閾値・score は変えない）",
+        "変更後は controlled rerun で brief の構造の分布を見る"
+      ],
+      "required_tests": [
+        "prompt の snapshot・unit / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/prompts.ts（VOCABULARY / RULES の文言のみ）",
+        "tests/unit/design-agent/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "schema / enum・閾値 0.5・score・MAX_REVISIONS",
+        "Production・Staging・DM / email・timer・helper / jail"
+      ],
+      "human_approval_triggers": [
+        "着手の判断（design の方針）",
+        "Staging の controlled rerun（WSL root の実行）"
+      ]
+    },
+    {
+      "id": "DEV-047",
+      "title": "brief に各 hero layout の描画例を添える（架空の疎な demo、自前の renderer）",
+      "status": "backlog",
+      "priority": "P3",
+      "depends_on": [
+        "DEV-045"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null,
+      "purpose": "DEV-045 原因 4: brief は構造を文章でしか知らず、疎な証拠では区別できない",
+      "acceptance_criteria": [
+        "人の判断で着手を決める",
+        "店舗の素材は使わない（架空の demo のみ）",
+        "画像数・時間の上限を守る"
+      ],
+      "required_tests": [
+        "方針が決まってから定める"
+      ],
+      "allowed_scope": [
+        "（方針の決定後に定める）",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "schema / enum・閾値 0.5・score・MAX_REVISIONS",
+        "Production・Staging・DM / email・timer・helper / jail"
+      ],
+      "human_approval_triggers": [
+        "着手の判断",
+        "Staging の controlled rerun（WSL root の実行）"
+      ]
     }
   ]
 }
