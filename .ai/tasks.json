@@ -1953,7 +1953,7 @@
     {
       "id": "DEV-043",
       "title": "疎なページの詰めを hero の全 layout に揃える（stacked_oversized / split_crop）",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P2",
       "depends_on": [
         "DEV-042"
@@ -1964,7 +1964,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null,
+      "branch": "feature/dev-043-hero-parity",
       "purpose": "DEV-036 / DEV-038 の tight・medium の詰めは centered_cover + medium だけにあり、他の layout は medium の床が phone 40svh・desktop 56svh のまま。疎なページで review が高さを詰めたいとき centered_cover しか選べず、構造が収束する（DEV-042 原因 3）。CSS だけで他の layout にも同等の詰めを与える",
       "acceptance_criteria": [
         "tight + medium の stacked_oversized / split_crop の hero の床が centered_cover と同等（phone / desktop）",
@@ -1985,7 +1985,8 @@
       "human_approval_triggers": [
         "着手の判断",
         "Staging の controlled rerun（WSL root の実行）"
-      ]
+      ],
+      "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）"
     },
     {
       "id": "DEV-044",
@@ -2017,7 +2018,8 @@
       "human_approval_triggers": [
         "方針の決定（design の判断）",
         "Staging の controlled rerun（WSL root の実行）"
-      ]
+      ],
+      "decision": "2026-10-17（人の判断）: backlog のまま。DEV-043 の後の controlled rerun で収束が続くかを見てから決める（原因の切り分けのため DEV-043 と同時にしない）。考え直すときの第一候補は hybrid fallback: schema を満たす低 confidence の brief から安全な構造の値を残し、brand に関わる styling だけ category default に戻す。category ごとに固定の構造を割り当てるだけの案より優先する。まだ実装しない"
     }
   ]
 }
