@@ -98,6 +98,8 @@ export interface DiagnoseOptions {
   hasDisplay?: boolean;
   /** Tests only: how long a close may take (production: CLOSE_TIMEOUT_MS). */
   closeTimeoutMs?: number;
+  /** Tests only: the targeted close used when page.close() does not settle (production: closeTargetByCdp). */
+  closeTarget?: (page: Page, deadline: number) => Promise<boolean>;
   say: (line: string) => void;
 }
 
@@ -144,6 +146,86 @@ async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolea
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Each page's CDP target id, read when the run opened the page (DEV-041). */
+const targetIds = new WeakMap<Page, string>();
+
+/** The page's own target id, from its own CDP session (Target.getTargetInfo without an id names this target). */
+async function readTargetId(page: Page): Promise<string> {
+  const session = await page.context().newCDPSession(page);
+  try {
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    return targetInfo.targetId;
+  } finally {
+    void session.detach().catch(() => undefined);
+  }
+}
+
+/**
+ * Remembers a page's target id right after the run opens it (DEV-041), so the targeted close below
+ * still knows it when the page can no longer be attached to. Bounded and best effort: without it the
+ * close looks the id up later.
+ */
+export async function rememberTargetId(page: Page, ms = 2_000): Promise<void> {
+  const id = readTargetId(page).then(
+    (value) => targetIds.set(page, value),
+    () => undefined,
+  );
+  await settlesWithin(id, ms);
+}
+
+/**
+ * Closes exactly this page's target through the browser's CDP session and reports whether Chromium
+ * no longer lists it (DEV-041). The target is the page's own (remembered when it was opened, or read
+ * from the page's own session): never matched by URL, as two pages may show the same URL. Success is
+ * judged by the browser's own target list, not by Playwright's close event: page.close() already sends
+ * Target.closeTarget and waits for that event, so a close whose event never arrives would otherwise
+ * look stuck here too. A remembered id Chromium no longer lists counts as closed (that is the lost
+ * detach this handles). Stops polling at `deadline`; the session is detached without waiting.
+ */
+export async function closeTargetByCdp(page: Page, deadline: number): Promise<boolean> {
+  const browser = page.context().browser();
+  if (!browser) return false;
+  const id = targetIds.get(page) ?? (await readTargetId(page));
+  const session = await browser.newBrowserCDPSession();
+  try {
+    if (Date.now() >= deadline) return false; // the caller has given up: send nothing more
+    void session.send("Target.closeTarget", { targetId: id }).catch(() => undefined);
+    while (Date.now() < deadline) {
+      const { targetInfos } = await session.send("Target.getTargets");
+      if (!targetInfos.some((t) => t.targetId === id)) return true;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return false;
+  } finally {
+    void session.detach().catch(() => undefined);
+  }
+}
+
+/**
+ * Closes a page within bounded time (DEV-035, DEV-041): page.close() first; when that does not settle
+ * within `ms` (seen on CI with a close racing a cross-host navigation), the page's own target is closed
+ * through CDP and counts as closed once Chromium no longer lists it, again within `ms`. So one page
+ * close takes at most 2 × `ms`. "timeout" when neither worked: the caller reports CLOSE_TIMEOUT and
+ * ends the browser as before.
+ */
+export async function closePageBounded(
+  page: Page,
+  ms: number,
+  closeTarget: (page: Page, deadline: number) => Promise<boolean> = closeTargetByCdp,
+): Promise<"closed" | "target_closed" | "timeout"> {
+  if (await settlesWithin(page.close(), ms)) return "closed";
+  if (page.isClosed()) return "closed"; // closed meanwhile, though close() itself did not settle
+  const deadline = Date.now() + ms;
+  let gone = false;
+  const attempt = Promise.resolve()
+    .then(() => closeTarget(page, deadline))
+    .then((closed) => {
+      gone = closed === true;
+    });
+  await settlesWithin(attempt, ms);
+  return gone || page.isClosed() ? "target_closed" : "timeout";
 }
 
 /**
@@ -201,7 +283,13 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   const closePage = async (p: Page) => {
     if (closed.has(p)) return;
     closed.add(p);
-    if (!(await settlesWithin(p.close(), closeMs))) throw new CloseTimeout();
+    const result = await closePageBounded(p, closeMs, options.closeTarget);
+    if (result === "timeout") throw new CloseTimeout();
+    // Closed through CDP: should the page object still deliver events, they no longer reach this run.
+    if (result === "target_closed") {
+      p.removeAllListeners("request");
+      p.removeAllListeners("framenavigated");
+    }
   };
   const guard = guarded ? await guardNavigation(context, target, state) : null;
   // Only pages this code opens are kept; any other (a popup, with or without an opener) is closed at once.
@@ -235,6 +323,7 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   const newPage = async () => {
     opening += 1;
     const p = guard ? await guard.newPage() : await context.newPage();
+    await rememberTargetId(p);
     p.on("dialog", (d) => void d.dismiss().catch(() => undefined));
     if (!guard) {
       // Without interception nothing can hold a request back. Stop the run at the first main-frame
