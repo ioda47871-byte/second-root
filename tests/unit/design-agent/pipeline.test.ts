@@ -102,18 +102,20 @@ describe("runDesignPipeline", () => {
 
   it("DEV-044: when Codex is not confident, keeps only the brief's structure on the category default", async () => {
     const records: string[] = [];
-    const h = harness([{ ...AMERICAN_EDITORIAL, confidence: 0.3 }, review()]);
+    // every structural value differs from the baked_goods default
+    const low: DesignProfile = { ...AMERICAN_EDITORIAL, confidence: 0.3, heroLayout: { layout: "split_crop", height: "medium", alignment: "center" }, composition: { grid: "single_column", infoStyle: "ledger_columns", divider: "thick_rule" }, spacing: { scale: "tight" } };
+    const h = harness([low, review()]);
     h.deps.writeRecord = async (name) => void records.push(name);
     const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
     expect(report).toMatchObject({ status: "done", profileSource: "category_default_brief_structure", briefConfidence: 0.3 });
     expect(report.notes).toEqual(["LOW_CONFIDENCE_CATEGORY_DEFAULT", "BRIEF_STRUCTURE_KEPT"]);
     expect(records).toContain("brief-low-confidence.json");
     const base = CATEGORY_DEFAULT_PROFILES[SHOP.category];
-    expect(h.profiles.get("candidate-0")).toEqual(briefStructureOnDefault(AMERICAN_EDITORIAL, SHOP.category));
+    expect(h.profiles.get("candidate-0")).toEqual(briefStructureOnDefault(low, SHOP.category));
     expect(h.profiles.get("candidate-0")).toMatchObject({
-      heroLayout: AMERICAN_EDITORIAL.heroLayout,
-      composition: { grid: AMERICAN_EDITORIAL.composition.grid, infoStyle: AMERICAN_EDITORIAL.composition.infoStyle, divider: base.composition.divider },
-      spacing: AMERICAN_EDITORIAL.spacing,
+      heroLayout: low.heroLayout,
+      composition: { grid: "single_column", infoStyle: "ledger_columns", divider: base.composition.divider },
+      spacing: { scale: "tight" },
       direction: base.direction,
       palette: base.palette,
       typography: base.typography,

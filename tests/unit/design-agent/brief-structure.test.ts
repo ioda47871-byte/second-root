@@ -22,7 +22,9 @@ function leaves(value: unknown, prefix = ""): Map<string, unknown> {
 /** A low-confidence brief that differs from every default in every leaf it can. */
 const BRIEF: DesignProfile = {
   ...AMERICAN_EDITORIAL,
-  heroLayout: { layout: "stacked_oversized", height: "medium", alignment: "center" },
+  // no default uses these: a leak of any of them would show
+  typography: { display: "condensed_grotesk", body: "serif", displayCase: "uppercase", displayWeight: "black", tracking: "wide" },
+  heroLayout: { layout: "split_crop", height: "medium", alignment: "center" },
   composition: { grid: "asymmetric_7_5", infoStyle: "ledger_columns", divider: "thick_rule" },
   spacing: { scale: "tight" },
   motion: { intro: "letter_reveal", sectionFade: true },
@@ -41,6 +43,8 @@ describe("briefStructureOnDefault (DEV-044)", () => {
       const fromBrief = leaves(BRIEF);
       const fromBase = leaves(base);
       expect([...got.keys()].sort()).toEqual([...fromBase.keys()].sort());
+      // the test is only meaningful where the brief differs from the default
+      for (const path of got.keys()) if (path !== "rationale" && path !== "version" && !path.startsWith("palette.")) expect(fromBrief.get(path), `brief vs ${category} default: ${path}`).not.toEqual(fromBase.get(path));
       for (const [path, value] of got) {
         if (path === "rationale") continue;
         if (FROM_BRIEF.includes(path)) expect(value, path).toEqual(fromBrief.get(path));
