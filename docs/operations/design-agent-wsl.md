@@ -201,7 +201,9 @@ Windows から見るには、エクスプローラーで
 | `CODEX_QUOTA` | 時間を置く（ChatGPT の利用枠） |
 | `CODEX_TIMEOUT` / `CODEX_EXEC_FAILED` / `CODEX_NO_JSON` | 1 回だけやり直す。続くなら `--schema-mode loose` を試す |
 | `BRIEF_PROFILE_INVALID` | Codex の答えが列挙値やコントラストの検査を通らなかった。`brief-rejected.json` を見る |
-| `LOW_CONFIDENCE_CATEGORY_DEFAULT` | 材料が弱かった。スクリーンショットを見直す |
+| `LOW_CONFIDENCE_CATEGORY_DEFAULT` | 材料が弱かった。スクリーンショットを見直す。色・書体・motif などは category default から取る |
+| `BRIEF_STRUCTURE_KEPT` | DEV-044: 低 confidence の brief から構造（hero の layout / height / alignment、grid、infoStyle、spacing）だけを残した。`profile_source: category_default_brief_structure` |
+| `BRIEF_STRUCTURE_REJECTED` | DEV-044: 組み合わせた profile が検査を通らず、category default をそのまま使った（`profile_source: category_default`） |
 | `RENDERER_CHANGE_NEEDED` | BLOCKED。renderer の拡張は人が判断し、PR で行う |
 | `NO_REVIEWED_CANDIDATE` | review が 1 回も成功しなかった。未評価の design は出さず、既存テンプレートのまま |
 | `OVERFLOW_<candidate>_DESKTOP / _MOBILE` | その candidate が横にはみ出した。スクリーンショットで確認する |

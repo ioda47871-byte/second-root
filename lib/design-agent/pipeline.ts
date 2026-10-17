@@ -2,7 +2,7 @@ import type { DemoView } from "@/lib/sales/demo-content";
 import type { PlacedPhoto } from "./assets/render-check";
 import { DeadlineError } from "./bounded-process";
 import { CodexError, isEnvironmentFailure } from "./codex";
-import { CATEGORY_DEFAULT_PROFILES, LOW_CONFIDENCE } from "./defaults";
+import { briefStructureOnDefault, CATEGORY_DEFAULT_PROFILES, LOW_CONFIDENCE } from "./defaults";
 import { checkProfile, designProfileJsonSchema, looseJsonSchema, type DesignProfile } from "./profile";
 import { runPhotoLoop, timeForSecondLook, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
 import { buildBriefPrompt, buildReviewPrompt } from "./prompts";
@@ -53,7 +53,8 @@ export type PipelineReport = {
   status: "done" | "blocked" | "fallback_template" | "environment_failure";
   /** Codes only (never Codex's words). */
   notes: string[];
-  profileSource: "codex" | "category_default" | null;
+  /** DEV-044: "category_default_brief_structure" = a low-confidence brief's structure on the category default. */
+  profileSource: "codex" | "category_default" | "category_default_brief_structure" | null;
   rounds: RoundRecord[];
   finalCandidate: string | null;
   /** Revised profiles that were rendered (0–2). */
@@ -125,10 +126,20 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   const briefConfidence = profile.confidence;
   if (profile.confidence < LOW_CONFIDENCE) {
     notes.push("LOW_CONFIDENCE_CATEGORY_DEFAULT");
-    deps.log(`brief: confidence ${profile.confidence} < ${LOW_CONFIDENCE} → category default profile`);
     await deps.writeRecord("brief-low-confidence.json", profile);
-    profile = CATEGORY_DEFAULT_PROFILES[input.demo.category];
-    profileSource = "category_default";
+    // DEV-044: keep the brief's structure, take the styling from the category default.
+    const combined = briefStructureOnDefault(profile, input.demo.category);
+    if (combined) {
+      notes.push("BRIEF_STRUCTURE_KEPT");
+      deps.log(`brief: confidence ${profile.confidence} < ${LOW_CONFIDENCE} → category default styling, brief structure`);
+      profile = combined;
+      profileSource = "category_default_brief_structure";
+    } else {
+      notes.push("BRIEF_STRUCTURE_REJECTED");
+      deps.log(`brief: confidence ${profile.confidence} < ${LOW_CONFIDENCE} → category default profile`);
+      profile = CATEGORY_DEFAULT_PROFILES[input.demo.category];
+      profileSource = "category_default";
+    }
   }
 
   // ---- with photos (DEV-029): its own loop; unusable photos mean the page without them

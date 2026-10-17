@@ -240,12 +240,12 @@ describe("design outcomes", () => {
     expect(JSON.stringify(rep)).not.toContain(LEAK.note);
   });
 
-  it("reports Codex's own low confidence when the category default is used", async () => {
+  it("reports Codex's own low confidence when the category default styling is used (DEV-044: with the brief's structure)", async () => {
     const l = makeLayout();
     writeJob(l, "job-low");
     const { report } = await runWorker(l, site, { steps: [{ answer: { ...AMERICAN_EDITORIAL, confidence: 0.3 } }, { answer: review() }] });
     expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
-    expect(json(join(l.out, "job-low", "report.json")).codex).toMatchObject({ profile_source: "category_default", brief_confidence: 0.3, revisions: 0 });
+    expect(json(join(l.out, "job-low", "report.json")).codex).toMatchObject({ profile_source: "category_default_brief_structure", brief_confidence: 0.3, revisions: 0, notes: expect.arrayContaining(["LOW_CONFIDENCE_CATEGORY_DEFAULT", "BRIEF_STRUCTURE_KEPT"]) });
   });
 
   it("revises the profile at most twice", async () => {

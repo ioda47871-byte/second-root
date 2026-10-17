@@ -1990,7 +1990,7 @@
     {
       "id": "DEV-044",
       "title": "開始時の構造の多様性（category default と低 confidence 時の扱い）",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-042"
@@ -2001,7 +2001,7 @@
         "worker.test.ts の profile_source の期待値",
         "unit / integration / typecheck / lint / check:secrets / CI"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-044-hybrid-fallback",
       "purpose": "bakery / baked_goods の default は同じ base（centered_cover / editorial_12 / ruled_list / hairline）で、brief が 0.5 未満だと構造ごと default に置き換わる。revision は構造を変えないので、開始構造がそのまま final になる（DEV-042 原因 1・2）",
@@ -2017,7 +2017,7 @@
         "lib/design-agent/defaults.ts",
         "lib/design-agent/pipeline.ts（低 confidence の分岐と profileSource の型だけ）",
         "tests/unit/design-agent/",
-        "docs/operations/design-worker-wsl.md（profile_source の説明のみ）",
+        "docs/operations/design-agent-wsl.md（note の表のみ）",
         ".ai/"
       ],
       "forbidden_scope": [
