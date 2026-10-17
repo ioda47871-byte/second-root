@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DeadlineError } from "@/lib/design-agent/bounded-process";
 import { CodexError } from "@/lib/design-agent/codex";
-import { CATEGORY_DEFAULT_PROFILES } from "@/lib/design-agent/defaults";
+import { briefStructureOnDefault, CATEGORY_DEFAULT_PROFILES } from "@/lib/design-agent/defaults";
 import { SECOND_LOOK_MIN_MS } from "@/lib/design-agent/photo-pipeline";
 import { runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
 import type { DesignProfile } from "@/lib/design-agent/profile";
@@ -100,11 +100,44 @@ describe("runDesignPipeline", () => {
     expect((await runDesignPipeline({ demo: SHOP, references: refs }, h.deps)).status).toBe("environment_failure");
   });
 
-  it("uses the category default when Codex is not confident", async () => {
-    const h = harness([{ ...AMERICAN_EDITORIAL, confidence: 0.3 }, review()]);
+  it("DEV-044: when Codex is not confident, keeps only the brief's structure on the category default", async () => {
+    const records: string[] = [];
+    // every structural value differs from the baked_goods default
+    const low: DesignProfile = { ...AMERICAN_EDITORIAL, confidence: 0.3, heroLayout: { layout: "split_crop", height: "medium", alignment: "center" }, composition: { grid: "single_column", infoStyle: "ledger_columns", divider: "thick_rule" }, spacing: { scale: "tight" } };
+    const h = harness([low, review()]);
+    h.deps.writeRecord = async (name) => void records.push(name);
     const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
-    expect(report.profileSource).toBe("category_default");
-    expect(h.profiles.get("candidate-0")).toEqual(CATEGORY_DEFAULT_PROFILES.baked_goods);
+    expect(report).toMatchObject({ status: "done", profileSource: "category_default_brief_structure", briefConfidence: 0.3 });
+    expect(report.notes).toEqual(["LOW_CONFIDENCE_CATEGORY_DEFAULT", "BRIEF_STRUCTURE_KEPT"]);
+    expect(records).toContain("brief-low-confidence.json");
+    const base = CATEGORY_DEFAULT_PROFILES[SHOP.category];
+    expect(h.profiles.get("candidate-0")).toEqual(briefStructureOnDefault(low, SHOP.category));
+    expect(h.profiles.get("candidate-0")).toMatchObject({
+      heroLayout: low.heroLayout,
+      composition: { grid: "single_column", infoStyle: "ledger_columns", divider: base.composition.divider },
+      spacing: { scale: "tight" },
+      direction: base.direction,
+      palette: base.palette,
+      typography: base.typography,
+      motifs: base.motifs,
+      motion: base.motion,
+    });
+  });
+
+  it("DEV-044: a brief at exactly the threshold is used as is (high-confidence behaviour unchanged)", async () => {
+    const atThreshold = { ...AMERICAN_EDITORIAL, confidence: 0.5 };
+    const h = harness([atThreshold, review()]);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    expect(report).toMatchObject({ profileSource: "codex", notes: [] });
+    expect(h.profiles.get("candidate-0")).toEqual(atThreshold);
+  });
+
+  it("DEV-044: an invalid low-confidence brief still falls back to the template (no structure is kept)", async () => {
+    const lowAndUnreadable = { ...AMERICAN_EDITORIAL, confidence: 0.3, palette: { ...AMERICAN_EDITORIAL.palette, text: "#F4E8D2" } };
+    const h = harness([lowAndUnreadable]);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    expect(report).toMatchObject({ status: "fallback_template", profileSource: null, notes: ["BRIEF_PROFILE_INVALID"] });
+    expect(h.profiles.size).toBe(0);
   });
 
   it("stops revising when a revision is invalid, keeping the reviewed candidate", async () => {
