@@ -1985,7 +1985,7 @@
       "human_approval_triggers": [
         "Staging の controlled rerun（bakery の 1 件のみ、WSL root の実行、demo を pending に戻す Staging DB 更新）"
       ],
-      "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）。2026-10-17（人の判断）: 直後の Staging rerun は見送り（既存 bakery は低 confidence なら centered_cover の default から始まり、変えた layout を通らない可能性が高い）。runtime の確認は stacked_oversized / split_crop を選ぶ run か、DEV-044 の後に行う。2026-10-17: step 0 で保存済みの低 confidence brief の構造が centered_cover / tall / left / editorial_12 / ruled_list / generous（default と同じ）と分かり、rerun は no-go（人の判断）。runtime の確認は brief が stacked_oversized / split_crop を選ぶ自然な run か将来の test case まで待つ"
+      "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）。2026-10-17（人の判断）: 直後の Staging rerun は見送り（既存 bakery は低 confidence なら centered_cover の default から始まり、変えた layout を通らない可能性が高い）。runtime の確認は stacked_oversized / split_crop を選ぶ run か、DEV-044 の後に行う。2026-10-17: step 0 で保存済みの低 confidence brief の構造が centered_cover / tall / left / editorial_12 / ruled_list / generous（default と同じ）と分かり、rerun は no-go（人の判断）。runtime の確認は brief が stacked_oversized / split_crop を選ぶ自然な run か将来の test case まで待つ。2026-10-18: DEV-046 の Window 7 rerun で brief が stacked_oversized / medium / standard を選び、runtime の確認対象が得られた（表示の確認は実画面で別途行う）"
     },
     {
       "id": "DEV-044",
@@ -2101,7 +2101,7 @@
         "着手の判断（design の方針）",
         "Staging の controlled rerun（WSL root の実行）"
       ],
-      "decision": "2026-10-18（人の判断）: 着手。DEV-047 は保留（DEV-046 で足りないときだけ）。prompts.ts の VOCABULARY / RULES の文言だけ。calm は direction・palette・typography（brand に関わる styling）だけ、構造は内容の形で選ぶ、grid / infoStyle / spacing を対称に説明、split_crop の Latin だけの例の偏りを直す（日本語の短い名前で同じに効くとは言わない）。enum の順・0.5・score・MAX_REVISIONS・schema・renderer・heroLayout.alignment は触らない"
+      "decision": "2026-10-18（人の判断）: 着手。DEV-047 は保留（DEV-046 で足りないときだけ）。prompts.ts の VOCABULARY / RULES の文言だけ。calm は direction・palette・typography（brand に関わる styling）だけ、構造は内容の形で選ぶ、grid / infoStyle / spacing を対称に説明、split_crop の Latin だけの例の偏りを直す（日本語の短い名前で同じに効くとは言わない）。enum の順・0.5・score・MAX_REVISIONS・schema・renderer・heroLayout.alignment は触らない。2026-10-18 Staging controlled rerun（Window 7、bakery d5656932 のみ、develop d1f1d8f、attempts 1→2）: job b-e14b6950-f0f2-4145-99d0-505e870ac6e1 → signed-in capture CAPTURED → Codex profile_brief（32.2s）・visual_review（14.8s）strict ok → candidate-0 accept（19/25）→ delivered ready。brief の構造: stacked_oversized / medium / left / editorial_12 / ruled_list / standard（前回 centered_cover / tall / generous の default と同じ構造から変化）、confidence 0.68（前回 0.43）。hero・spacing の default への寄りは解消。grid / infoStyle は今回も先頭の値で、1 件では偏りか内容の判断か区別できない（DEV-047 は保留のまま）。runtime 検証は 1 件分の単発の実証で、継続運用の安定性は別途"
     },
     {
       "id": "DEV-047",
@@ -2134,7 +2134,8 @@
       "human_approval_triggers": [
         "着手の判断",
         "Staging の controlled rerun（WSL root の実行）"
-      ]
+      ],
+      "decision": "2026-10-18: DEV-046 rerun 1 件では grid / infoStyle の先頭の値の偏りを結論できないため保留を継続（人の判断）"
     }
   ]
 }
