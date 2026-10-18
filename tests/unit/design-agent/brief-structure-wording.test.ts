@@ -18,7 +18,8 @@ function description(text: string, value: string, others: readonly string[]): st
   expect(start, `${value} is described`).toBeGreaterThanOrEqual(0);
   const rest = text.slice(start + value.length);
   const ends = others.filter((o) => o !== value).map((o) => rest.search(new RegExp(`\\b${o}\\b\\s*(=|\\()`))).filter((i) => i >= 0);
-  const listEnd = rest.search(/\n- |\n {2}[a-zA-Z.]+(?:\.[a-zA-Z]+)?(?: \([^)]*\))?:|\. [a-z]+:/);
+  // the end of the option's list: the next "- field" line, the next "  field (…):" line, or ". next label:" on the same line
+  const listEnd = rest.search(/\n- |\n {2}[a-zA-Z.]+(?:\.[a-zA-Z]+)?(?: \([^)]*\))?:|\. [a-z][a-z ]*:/);
   return rest.slice(0, Math.min(...ends, listEnd >= 0 ? listEnd : rest.length));
 }
 
@@ -53,9 +54,14 @@ describe("brief structure wording (DEV-046)", () => {
 
   it("split_crop does not assume a spaced Latin name, and does not claim the same split for unspaced names", () => {
     const d = description(VOCABULARY, "split_crop", HERO_LAYOUTS);
-    expect(d).toMatch(/A name of two to four spaced words\s+is set one word per line/);
-    expect(d).toMatch(/a name without spaces \(most Japanese names\) is kept in whole pieces/);
+    expect(d).toMatch(/A Latin name of two to four spaced\s+words is set one word per line/);
+    expect(d).toMatch(/a longer Latin name stays on one line/);
+    expect(d).toMatch(/a name with no spaces or with\s+any Japanese in it \(most names here, even when spaced\) is kept in whole pieces/);
     expect(d).toMatch(/so the split shows less/);
+  });
+
+  it("the ledger_columns description stops at the divider list (the helper isolates each option)", () => {
+    expect(description(VOCABULARY, "ledger_columns", INFO_STYLES)).not.toMatch(/divider|hairline/);
   });
 
   it("keeps the safety and low-confidence instructions and the alignment wording unchanged", () => {

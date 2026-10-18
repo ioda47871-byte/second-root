@@ -16,22 +16,25 @@ Renderer vocabulary (the only things you can choose; every value is already impl
   light_grotesk (wide light sans), mincho (Japanese Mincho for everything). body: sans | serif.
   displayCase: as_is | uppercase (Latin only). displayWeight: light | regular | bold | black. tracking: tight | normal | wide.
 - heroLayout.layout (each one sets the shop name as the hero's main visual):
-  split_crop = the name set oversized and cropped by the grid, with lines pushed right in turn. A name of two to four spaced words
-    is set one word per line (e.g. "EXAMPLE" / "      BAKE"); a name without spaces (most Japanese names) is kept in whole pieces,
-    on one line on desktop and on as few lines as fit on phones, so the split shows less;
+  split_crop = the name set oversized and cropped by the grid, with lines pushed right in turn. A Latin name of two to four spaced
+    words is set one word per line (e.g. "EXAMPLE" / "      BAKE"); a longer Latin name stays on one line; a name with no spaces or with
+    any Japanese in it (most names here, even when spaced) is kept in whole pieces, on one line on desktop and on as few lines as fit
+    on phones, so the split shows less;
   stacked_oversized = the whole name at the bottom-left of the hero, as large as the width allows;
-  centered_cover = a magazine cover: folio line on top, the name centred, a double rule and the area line below.
-  heroLayout.height (the hero grows past it when its content needs more): full (the whole first screen) | tall (most of the first screen) |
-    medium (a band at the top). alignment: left | center (text in the lower sections).
+  centered_cover = the name centred, and the area line centred below a double rule.
+  heroLayout.height (a minimum: the hero grows past it when its content needs more; a split photo hero keeps its own height):
+    full (the whole first screen on desktop; on phones about as tall as tall) | tall (most of the first screen) |
+    medium (about half the first screen; with spacing tight, a band at the top). alignment: left | center (text in the lower sections).
 - composition.grid (applies from tablet width; phones always show one column):
-  editorial_12 (a narrow label column beside a wide text column) | asymmetric_7_5 (a wider label column beside the text, about 5:7) |
-  single_column (headings above their text, one column).
+  editorial_12 (a narrow label column beside a wide text column, about 1 : 3) | asymmetric_7_5 (a label column wider than in editorial_12, label 5 : text 7) |
+  single_column (headings above their text instead of beside it).
   infoStyle: ruled_list (label / value rows between hairlines) | colophon (a centred block, like the last page of a magazine) |
   ledger_columns (label and value on one row, joined by a dotted leader). divider between sections: hairline | double_rule | thick_rule | none.
 - motifs (up to 4, no repeats): monogram (initials made from the shop name), location_labels (small uppercase ward / NAGOYA labels),
   muffin_paper_svg (abstract pleated-liner lines, not a drawing of food), ruled_frame (thin frame around the hero),
   dot_grid (small dotted field), stamp_ring (round stamp around the monogram), corner_marks (print crop marks).
-- spacing.scale: generous (the most space between and within sections) | standard (a medium amount) | tight (the least; rows sit closer too).
+- spacing.scale: generous (the most space between sections) | standard (a medium amount between sections) |
+  tight (the least between sections; on phones the rows, headings and a medium hero are closer too).
 - motion.intro: none | fade_rise | rule_expand | letter_reveal (one short entrance on first view; nothing ever loops).
   motion.sectionFade: sections fade in once.
 The page always has, in this order: a small non-official notice bar, hero, about (only if a verified description exists),
