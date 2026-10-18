@@ -101,6 +101,16 @@ unique(normalized_name, normalized_address) による重複防止。
 
 デモに出す事実は sales_sources で出典が確認できるものだけ。
 
+### sales_exclusions（除外リスト、DEV-049）
+| 列 | 備考 |
+|---|---|
+| label / reason / note | 表示名・`existing_customer` / `partner` / `other`・任意のメモ |
+| instagram_handle / website_domain / public_email | ingest と同じ正規化。それぞれ partial unique |
+| normalized_name + normalized_address | 2 つで 1 キー（片方だけは不可）。partial unique |
+| created_by | 登録した管理者 |
+
+照合キーが 1 つ以上必要。読み取りは管理者だけ（RLS）。追加・削除は `sales_add_exclusion` / `sales_remove_exclusion`（SECURITY DEFINER、最初に管理者を確認）だけで、API role の直接書き込みは無い。`sales_persist_candidate` が §7.4 の順で照合する。
+
 ### sales_demos
 | 列 | 備考 |
 |---|---|
@@ -265,6 +275,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | 工程 | 確認できない / 失敗したとき | 結果 |
 |---|---|---|
 | dedupe（name+住所 / domain / Instagram / email） | 照合クエリ失敗 | `error(dedupe_unavailable)`。営業準備しない |
+| 除外リスト（DEV-049。既存顧客など、管理者が登録。自 run の再処理は除く） | 照合クエリ失敗 | `error(exclusion_unavailable)`。営業準備しない。該当は `rejected(excluded)`（当日上限の枠を使わない） |
 | DNC | 照合クエリ失敗 | `error(dnc_unavailable)`。営業準備しない |
 | DNC 該当 | — | `rejected(do_not_contact)` |
 | 当日上限（5件/日, JST） | 当日すでに新規 actionable になった prospect 数が上限 | `rejected(daily_cap)`。「新規 actionable」= 当日（JST）に初回営業の下書き（outreach_ready）が作られた prospect（全 run 合計）。verified 候補が最大10件でも当日の残り枠（最大5件）までで、枠は verified の提出順に割り当てる |
