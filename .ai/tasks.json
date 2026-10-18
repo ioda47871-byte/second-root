@@ -2066,12 +2066,12 @@
     {
       "id": "DEV-046",
       "title": "brief の構造の案内（calm は色・書体だけ、構造は内容の形で、split_crop の例の偏り）",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-045"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-046-brief-structure-wording",
       "purpose": "DEV-045 原因 1・2: 疎な証拠での「calm」が構造まで centered_cover / tall / generous に寄せ、説明の無い grid / info / spacing の値は先頭が選ばれる",
