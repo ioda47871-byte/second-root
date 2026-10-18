@@ -76,7 +76,9 @@ describe("brief structure wording (DEV-046)", () => {
     expect(RULES).toContain("No step-by-step reasoning.");
     expect(RULES).toContain("Answer with the JSON object only.");
     expect(VOCABULARY).toContain("alignment: left | center (text in the lower sections).");
-    expect(VOCABULARY).not.toMatch(/split photo hero/);
+    // the height descriptions do not hold for a split photo hero (no floor on phones; tall has none on desktop)
+    expect(VOCABULARY).toContain("heroLayout.height (a minimum for a hero without a split photo;");
+    expect(VOCABULARY).toMatch(/\n  alignment: left \| center \(text in the lower sections\)\.\n/);
     expect(VOCABULARY).toContain("There are no photographs, logos or illustrations of food, and there never will be.");
     expect(VOCABULARY).toContain("Renderer vocabulary (the only things you can choose; every value is already implemented):");
   });
