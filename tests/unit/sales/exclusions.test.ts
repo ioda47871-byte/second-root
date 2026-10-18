@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { parseExclusion } from "@/lib/sales/exclusions";
 import { normalizeAddress, normalizeName } from "@/lib/sales/normalize";
-import { emailDigest, prepareCandidate } from "@/lib/sales/prepare";
+import { EMAIL_DIGEST_PATTERN, EMAIL_DIGEST_PREFIX, emailDigest } from "@/lib/sales/email-digest";
+import { prepareCandidate } from "@/lib/sales/prepare";
+import { createHash } from "node:crypto";
 import { verifiedEmailInput, verifiedInput } from "./ingest-fixtures";
 
 // DEV-049: admin input → the same keys ingest stores (lib/sales/prepare.ts).
@@ -32,7 +34,7 @@ describe("parseExclusion", () => {
     expect(r).toMatchObject({
       ok: true,
       value: {
-        publicEmail: "info@example.jp",
+        normalizedEmail: "info@example.jp",
         normalizedName: normalizeName("パン屋　ムギノミ"),
         normalizedAddress: normalizeAddress("名古屋市中区栄三丁目4番5号 2F"),
       },
@@ -49,6 +51,10 @@ describe("parseExclusion", () => {
     [{ address: "名古屋市中区栄3-4-5" }, "店名と住所"],
     [{}, "1つ以上"],
     [{ instagram: "mugi_no_mi", note: "x".repeat(501) }, "メモ"],
+    [{ instagram: "mugi_no_mi", label: "店 owner@customer.example.jp" }, "メールアドレスを書かないで"],
+    [{ instagram: "mugi_no_mi", note: "連絡: owner@customer.example.jp" }, "メールアドレスを書かないで"],
+    [{ name: "owner@customer.example.jp", address: "名古屋市中区栄3-4-5" }, "店名と住所にはメールアドレス"],
+    [{ name: "ムギノミ", address: "owner@customer.example.jp 名古屋市中区栄3-4-5" }, "店名と住所にはメールアドレス"],
   ])("refuses %o", (patch, message) => {
     const r = parseExclusion({ ...base, ...patch });
     expect(r.ok).toBe(false);
@@ -64,7 +70,7 @@ describe("parseExclusion", () => {
         note: "2025年から",
         instagramHandle: "mugi_no_mi",
         websiteDomain: null,
-        publicEmail: null,
+        normalizedEmail: null,
         normalizedName: null,
         normalizedAddress: null,
       },
@@ -91,8 +97,8 @@ describe("parity with ingest (the keys persist compares)", () => {
     const x = parseExclusion({ ...base, website: raw.website.url!, email: raw.email!.address.toUpperCase() });
     if (!x.ok) throw new Error(x.error);
     expect(x.value.websiteDomain).toBe(p.candidate.website_domain);
-    expect(x.value.publicEmail).toBe(p.candidate.public_email);
-    expect(emailDigest(x.value.publicEmail!)).toBe(p.candidate.email_digest);
+    expect(x.value.normalizedEmail).toBe(p.candidate.public_email);
+    expect(emailDigest(x.value.normalizedEmail!)).toBe(p.candidate.email_digest);
   });
 
   it("keeps a digest (not the email) for an email that is not first-party", () => {
@@ -102,5 +108,23 @@ describe("parity with ingest (the keys persist compares)", () => {
     expect(p.candidate.public_email).toBeNull();
     expect(p.candidate.email_digest).toBe(emailDigest("owner@gmail.example.com"));
     expect(JSON.stringify(p.candidate)).not.toContain("gmail.example.com");
+  });
+});
+
+describe("DEV-050: email digest", () => {
+  it("is a 64-hex SHA-256 over the versioned prefix + the normalised email", () => {
+    const d = emailDigest("info@example.jp");
+    expect(d).toMatch(EMAIL_DIGEST_PATTERN);
+    expect(d).toBe(createHash("sha256").update(`${EMAIL_DIGEST_PREFIX}info@example.jp`, "utf8").digest("hex"));
+    // Domain separation: not the plain sha256(email) found in generic tables.
+    expect(d).not.toBe(createHash("sha256").update("info@example.jp", "utf8").digest("hex"));
+    expect(EMAIL_DIGEST_PREFIX).toBe("second-root/exclusion-email/v1\n");
+  });
+
+  it("is the same for differently written forms of one address (normalised first)", () => {
+    const a = parseExclusion({ ...base, email: " Info@Example.JP " });
+    const b = parseExclusion({ ...base, email: "info@example.jp" });
+    if (!a.ok || !b.ok) throw new Error("parse failed");
+    expect(emailDigest(a.value.normalizedEmail!)).toBe(emailDigest(b.value.normalizedEmail!));
   });
 });

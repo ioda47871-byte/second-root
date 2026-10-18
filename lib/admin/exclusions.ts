@@ -11,7 +11,8 @@ export type ExclusionItem = {
   note: string | null;
   instagramHandle: string | null;
   websiteDomain: string | null;
-  publicEmail: string | null;
+  /** DEV-050: only whether an email was registered; the address is never stored. */
+  hasEmail: boolean;
   normalizedName: string | null;
   normalizedAddress: string | null;
   createdAt: string;
@@ -24,7 +25,7 @@ type Row = {
   note: string | null;
   instagram_handle: string | null;
   website_domain: string | null;
-  public_email: string | null;
+  email_digest: string | null;
   normalized_name: string | null;
   normalized_address: string | null;
   created_at: string;
@@ -33,7 +34,7 @@ type Row = {
 export async function loadExclusions(supabase: SupabaseClient, limit = 500): Promise<ExclusionItem[]> {
   const { data, error } = await supabase
     .from("sales_exclusions")
-    .select("id, label, reason, note, instagram_handle, website_domain, public_email, normalized_name, normalized_address, created_at")
+    .select("id, label, reason, note, instagram_handle, website_domain, email_digest, normalized_name, normalized_address, created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error("exclusions_unavailable");
@@ -44,7 +45,7 @@ export async function loadExclusions(supabase: SupabaseClient, limit = 500): Pro
     note: r.note,
     instagramHandle: r.instagram_handle,
     websiteDomain: r.website_domain,
-    publicEmail: r.public_email,
+    hasEmail: r.email_digest !== null,
     normalizedName: r.normalized_name,
     normalizedAddress: r.normalized_address,
     createdAt: r.created_at,

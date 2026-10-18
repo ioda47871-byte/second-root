@@ -3,11 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/auth";
+import { emailDigest } from "@/lib/sales/email-digest";
 import { parseExclusion, type ExclusionInput } from "@/lib/sales/exclusions";
 import { createAuthClient } from "@/lib/supabase/server";
 
 // DEV-049: add / remove an exclusion — human admin only. The database checks
 // the admin again (SECURITY DEFINER + sales_assert_admin) and the shape.
+// DEV-050: an email leaves this function only as its digest; nothing here
+// logs or echoes the input, and `next dev`'s Server Function argument log is
+// off (next.config.ts logging.serverFunctions).
 
 export type ExclusionResult = { ok: true } | { ok: false; error: string };
 
@@ -41,7 +45,7 @@ export async function addExclusion(raw: ExclusionInput): Promise<ExclusionResult
     p_note: v.note,
     p_instagram_handle: v.instagramHandle,
     p_website_domain: v.websiteDomain,
-    p_public_email: v.publicEmail,
+    p_email_digest: v.normalizedEmail ? emailDigest(v.normalizedEmail) : null,
     p_normalized_name: v.normalizedName,
     p_normalized_address: v.normalizedAddress,
   });

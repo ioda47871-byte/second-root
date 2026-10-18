@@ -246,6 +246,20 @@ export const SECURITY_CHECKS = [
  */
 export const REQUIRED_CHECKS = [
   {
+    // DEV-050: an email is kept only as its digest, and the add function takes
+    // only the digest. Also catches a database that applied the first DEV-049
+    // version of 20261018000000 (version names alone cannot show that).
+    id: "exclusions_no_plain_email",
+    title: "sales_exclusions keeps only an email digest, and sales_add_exclusion takes only p_email_digest",
+    sql: `select 'column ' || column_name as item from information_schema.columns
+          where table_schema = 'public' and table_name = 'sales_exclusions' and column_name like '%email%' and column_name <> 'email_digest'
+          union all
+          select 'function sales_add_exclusion(' || pg_get_function_identity_arguments(p.oid) || ')' as item
+          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'sales_add_exclusion'
+            and (pg_get_function_identity_arguments(p.oid) not like '%p_email_digest%' or pg_get_function_identity_arguments(p.oid) like '%p_public_email%')`,
+  },
+  {
     id: "authenticated_can_read",
     title: "signed-in users can SELECT every sales_* table and view (RLS limits rows to the admin)",
     sql: `select c.relname as item from pg_class c join pg_namespace n on n.oid = c.relnamespace

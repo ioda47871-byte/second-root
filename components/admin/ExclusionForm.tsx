@@ -55,7 +55,7 @@ export default function ExclusionForm() {
       </p>
       {field("instagram", "Instagram（URL か @ユーザー名）", { maxLength: 200, autoComplete: "off" })}
       {field("website", "公式サイトの URL", { maxLength: 300, inputMode: "url", autoComplete: "off" })}
-      {field("email", "メールアドレス", { maxLength: 254, inputMode: "email", autoComplete: "off" })}
+      {field("email", "メールアドレス（照合用。アドレスそのものは保存せず、後から表示もしません）", { maxLength: 254, inputMode: "email", autoComplete: "off" })}
       {field("name", "店名（住所とセット）", { maxLength: 200, autoComplete: "off" })}
       {field("address", "住所（店名とセット）", { maxLength: 300, autoComplete: "off" })}
       {field("note", "メモ（任意）", { maxLength: 500 })}

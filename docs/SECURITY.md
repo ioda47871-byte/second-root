@@ -44,6 +44,10 @@
 - checkpoint は 1 run 64KB 以下（DB の check constraint とAPI で二重に制限）。`error_summary` は 500 文字以内。
 - `sales_agent_runs` は RLS で管理者のみ read、書き込みは ingest API（service role, server only）のみ。
 
+## 3.2 除外リストのメール（DEV-050）
+
+除外リスト（`sales_exclusions`）はメールのアドレスを保存しない。サーバーで計算した digest（`docs/ARCHITECTURE.md` の sales_exclusions）だけを DB に渡し、管理画面はアドレスを再表示しない。表示名・メモ・店名・住所にアドレスは書けない。開発サーバー（`next dev`）が Server Function の引数を端末に出す既定の記録は `next.config.ts` の `logging.serverFunctions: false` で止めている（管理画面の操作はメール・営業文・返信の下書きを受け取るため）。digest は鍵なしの hash で、推測による確認は防げない（HMAC 化は承認後の別 task）。
+
 ## 4. SSRF
 
 - Second Root サーバーは Claude が提出した `source_url` 等を **fetch しない**。

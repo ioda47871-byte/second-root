@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import { decideChannel, hasFirstPartyEmail } from "./channel";
 import { checkpointProblem } from "./checkpoint";
+import { emailDigest } from "./email-digest";
 import { checkTarget } from "./eligibility";
 import type { VerifiedCandidateInput } from "./ingest-schema";
 import { nagoyaWard, normalizeAddress, normalizeEmail, normalizeName } from "./normalize";
@@ -35,9 +35,10 @@ export type PreparedCandidate = {
   instagram_handle: string | null;
   public_email: string | null;
   /**
-   * DEV-049: SHA-256 (hex) of the normalised submitted email, whatever its
-   * source, used only to match the admin's exclusion list. The email itself
-   * is kept only when it is first-party (public_email).
+   * DEV-049 / DEV-050: digest (lib/sales/email-digest.ts) of the normalised
+   * submitted email, whatever its source, used only to match the admin's
+   * exclusion list. The email itself is kept only when it is first-party
+   * (public_email).
    */
   email_digest: string | null;
   channel: Channel;
@@ -225,7 +226,3 @@ export function prepareCandidate(input: VerifiedCandidateInput): Preparation {
   return { stage: "pending", candidate };
 }
 
-/** DEV-049: digest of a normalised email for the exclusion check (same as SQL sha256 over UTF-8). */
-export function emailDigest(normalizedEmail: string): string {
-  return createHash("sha256").update(normalizedEmail, "utf8").digest("hex");
-}
