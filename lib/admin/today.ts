@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { aiDesignEnabled, isDesignStatus, type DesignStatus } from "@/lib/sales/design";
+import { aiDesignEnabled, initialSendAllowed, isDesignStatus, type DesignStatus } from "@/lib/sales/design";
 import { isFollowUpDue } from "@/lib/sales/followup";
 import { selectWorkQueue, type QueueItem } from "@/lib/sales/queue";
 import { LIMITS, type Category, type Channel } from "@/lib/sales/types";
@@ -24,6 +24,11 @@ export type TodayItem = QueueItem & {
   /** DEV-030: the demo's AI design state; null for a legacy demo or with the step off. */
   designStatus: DesignStatus | null;
 };
+
+// DEV-048: with the AI design step on, drafts waiting for a design must not
+// hide sendable ones behind the limit, so more drafts are read and ordered in
+// TypeScript (selectWorkQueue). With the step off the query is the legacy one.
+const DESIGN_DRAFT_SCAN = 50;
 
 type DemoRow = { public_token: string; disabled_at: string | null; design_status?: unknown };
 
@@ -64,7 +69,7 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
   const [due, drafts] = await Promise.all([
     supabase.from("sales_followup_due").select("outreach_id").order("sent_at").limit(limit),
     supabase.from("sales_outreaches").select(SELECT).eq("kind", "initial").eq("status", "drafted")
-      .eq("prospect.do_not_contact", false).order("created_at").limit(limit),
+      .eq("prospect.do_not_contact", false).order("created_at").limit(design ? DESIGN_DRAFT_SCAN : limit),
   ]);
   if (due.error || drafts.error) throw new Error("queue_unavailable");
   const dueIds = (due.data ?? []).map((r) => r.outreach_id as string);
@@ -79,6 +84,7 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
     const p = row.prospect;
     if (!p) return null;
     const demo = Array.isArray(p.demo) ? p.demo[0] : p.demo;
+    const designStatus = design && demo && isDesignStatus(demo.design_status) ? demo.design_status : null;
     return {
       kind,
       prospectId: row.prospect_id,
@@ -96,7 +102,8 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
       // A disabled demo would be a dead link: no send action is offered.
       demoToken: demo && !demo.disabled_at ? demo.public_token : null,
       sentAt: row.sent_at,
-      designStatus: design && demo && isDesignStatus(demo.design_status) ? demo.design_status : null,
+      designStatus,
+      sendable: kind === "follow_up" || initialSendAllowed(design, designStatus),
     };
   };
 

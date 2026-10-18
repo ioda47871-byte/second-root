@@ -69,6 +69,32 @@ describe("work queue and daily capacity", () => {
     expect(queue.map((q) => q.prospectId)).toEqual(["f2", "f1", "i2", "i3", "i1"]);
   });
 
+  it("DEV-048: sendable drafts come before drafts waiting for their AI design", () => {
+    const wait = (id: string, d: number) => ({ ...item("initial", id, d), sendable: false });
+    const queue = selectWorkQueue([
+      wait("w1", 9),
+      wait("w2", 8),
+      wait("w3", 7),
+      wait("w4", 6),
+      wait("w5", 5),
+      { ...item("initial", "r1", 1), sendable: true },
+      item("initial", "r2", 2),
+      item("follow_up", "f1", 6),
+    ]);
+    expect(queue.map((q) => q.prospectId)).toEqual(["f1", "r2", "r1", "w1", "w2"]);
+  });
+
+  it("DEV-048: without the flag (all sendable) the order is the legacy one", () => {
+    const all = [item("initial", "i1", 1), item("initial", "i2", 3), item("initial", "i3", 2)];
+    const flagged = all.map((i) => ({ ...i, sendable: true }));
+    expect(selectWorkQueue(flagged).map((q) => q.prospectId)).toEqual(selectWorkQueue(all).map((q) => q.prospectId));
+  });
+
+  it("DEV-048: a waiting DNC draft is still excluded", () => {
+    const queue = selectWorkQueue([{ ...item("initial", "dnc", 3, true), sendable: true }, { ...item("initial", "w", 1), sendable: false }]);
+    expect(queue.map((q) => q.prospectId)).toEqual(["w"]);
+  });
+
   it("does not pad the queue", () => {
     expect(selectWorkQueue([item("initial", "i1", 1)])).toHaveLength(1);
   });

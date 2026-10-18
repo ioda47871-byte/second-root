@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import type { TodayItem } from "@/lib/admin/today";
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
 import { DESIGN_FALLBACK_NOTE, DESIGN_STATUS_LABEL } from "@/lib/sales/design";
+import DncControl from "./DncControl";
+import SkipDraft from "./SkipDraft";
 import styles from "./admin.module.css";
 
 // One item of today's queue: shop, channel, minimal state and one big
@@ -57,6 +59,8 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
           <>
             {item.subject && <p>件名: {item.subject}</p>}
             <p className={styles.message}>{item.body}</p>
+            <SkipDraft outreachId={item.outreachId} />
+            <DncControl prospectId={item.prospectId} doNotContact={false} />
           </>
         )}
       </details>
