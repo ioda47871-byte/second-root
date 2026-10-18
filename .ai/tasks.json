@@ -2136,6 +2136,52 @@
         "Staging の controlled rerun（WSL root の実行）"
       ],
       "decision": "2026-10-18: DEV-046 rerun 1 件では grid / infoStyle の先頭の値の偏りを結論できないため保留を継続（人の判断）"
+    },
+    {
+      "id": "DEV-048",
+      "title": "今日やること: 送らない下書きの見送り・DNC と、送れる項目を先に出す",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-009",
+        "DEV-030"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-048-today-skip-and-order",
+      "purpose": "Phase C 監査（2026-10-18）: 今日の一覧に drafted を見送る手段がなく、送らない下書きが created_at の古い順で 5 枠を占め続ける。AI デザインが有効だと pending / processing の下書きが枠を占め、後ろの ready が出ない（MVP_SPEC §3.1・§5「任意の状態 → lost（人間判断）」）",
+      "acceptance_criteria": [
+        "今日の一覧の初回の下書きに「見送る」（確認・任意の理由、既存の sales_mark_lost）があり、見送ると一覧から消えて次の項目が出る",
+        "今日の一覧の初回の下書きから「営業不要（DNC）」にできる（既存の DncControl・sales_set_dnc）",
+        "AI デザインが有効なとき、送信できる初回（ready / blocked / failed）を待機中（pending / processing）より先に出す。同じ群の中は従来どおり古い順。フォローは従来どおり先頭",
+        "AI デザインが無効なときの query・順序は従来と同じ",
+        "履歴で、送らずに lost になった下書きは「見送り」と表示する（送信後の lost は従来どおり「失注」）",
+        "metrics（送信済みだけを数える）・DB の state machine・RPC・schema は変えない"
+      ],
+      "required_tests": [
+        "unit: tests/unit/queue.test.ts（ready 優先・同群は古い順・design 無効時は従来順・DNC 除外・上限）",
+        "e2e: tests/e2e の今日の一覧（見送る → 一覧から消える・履歴で見送り）",
+        "unit / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        "lib/sales/queue.ts",
+        "lib/admin/today.ts",
+        "app/admin/sales/",
+        "components/admin/",
+        "tests/unit/",
+        "tests/e2e/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "supabase/migrations（schema・RPC・state machine）",
+        "metrics の定義",
+        "送信の実行・DM / email の自動送信",
+        "Production・Staging の data"
+      ],
+      "human_approval_triggers": [
+        "Production release（develop → main）"
+      ],
+      "decision": "2026-10-18（人の指示）: Phase C の自律開発の開始。候補審査・重複防止・営業禁止チェック・営業キューを優先。監査の D-1・D-2 を 1 task にまとめる"
     }
   ]
 }
