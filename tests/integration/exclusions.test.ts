@@ -70,6 +70,16 @@ describe("persist with the exclusion list", () => {
     expect(result).toMatchObject({ stage: "rejected", reason: "excluded" });
   });
 
+  it("DEV-050: an older-format email_digest in the checkpoint does not hide a first-party email match", async () => {
+    const shop = emailCandidate();
+    const stale = { ...shop, email_digest: "0".repeat(64) };
+    await exclude({ email_digest: emailDigest(String(shop.public_email)) });
+    const run = randomUUID();
+    await verifiedRun(run, { c01: stale });
+    const [result] = await persistAll(run, ["c01"]);
+    expect(result).toMatchObject({ stage: "rejected", reason: "excluded" });
+  });
+
   it("does not match a name without the same address", async () => {
     const shop = candidate();
     await exclude({ normalized_name: shop.normalized_name, normalized_address: "愛知県名古屋市中区べつの町1-1" });

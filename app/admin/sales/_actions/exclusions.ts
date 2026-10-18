@@ -10,7 +10,8 @@ import { createAuthClient } from "@/lib/supabase/server";
 // DEV-049: add / remove an exclusion — human admin only. The database checks
 // the admin again (SECURITY DEFINER + sales_assert_admin) and the shape.
 // DEV-050: an email leaves this function only as its digest; nothing here
-// logs or echoes the input.
+// logs or echoes the input, and `next dev`'s Server Function argument log is
+// off (next.config.ts logging.serverFunctions).
 
 export type ExclusionResult = { ok: true } | { ok: false; error: string };
 

@@ -53,6 +53,8 @@ describe("parseExclusion", () => {
     [{ instagram: "mugi_no_mi", note: "x".repeat(501) }, "メモ"],
     [{ instagram: "mugi_no_mi", label: "店 owner@customer.example.jp" }, "メールアドレスを書かないで"],
     [{ instagram: "mugi_no_mi", note: "連絡: owner@customer.example.jp" }, "メールアドレスを書かないで"],
+    [{ name: "owner@customer.example.jp", address: "名古屋市中区栄3-4-5" }, "店名と住所にはメールアドレス"],
+    [{ name: "ムギノミ", address: "owner@customer.example.jp 名古屋市中区栄3-4-5" }, "店名と住所にはメールアドレス"],
   ])("refuses %o", (patch, message) => {
     const r = parseExclusion({ ...base, ...patch });
     expect(r.ok).toBe(false);

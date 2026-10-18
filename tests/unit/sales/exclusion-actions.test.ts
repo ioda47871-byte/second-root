@@ -12,6 +12,7 @@ vi.mock("@/lib/supabase/server", () => ({ createAuthClient: vi.fn(async () => ({
 
 import { addExclusion, removeExclusion } from "@/app/admin/sales/_actions/exclusions";
 import { emailDigest } from "@/lib/sales/email-digest";
+import nextConfig from "../../../next.config";
 
 beforeEach(() => {
   state.rpc.mockReset();
@@ -73,5 +74,11 @@ describe("removeExclusion", () => {
   it("refuses a malformed id without calling the database", async () => {
     expect((await removeExclusion("not-a-uuid")).ok).toBe(false);
     expect(state.rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe("DEV-050: development logging", () => {
+  it("does not log Server Function arguments (emails, DM text, reply drafts) in next dev", () => {
+    expect(nextConfig.logging).toMatchObject({ serverFunctions: false });
   });
 });

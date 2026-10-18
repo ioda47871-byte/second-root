@@ -182,13 +182,14 @@ begin
         where (e.instagram_handle is not null and e.instagram_handle = c->>'instagram_handle')
            or (e.website_domain is not null and e.website_domain = c->>'website_domain')
            -- DEV-050: email by digest only. Any submitted email (first-party or
-           -- not) through the candidate's email_digest; a checkpoint written
-           -- before email_digest existed falls back to its first-party
-           -- public_email, digested the same way (lib/sales/email-digest.ts).
-           or (e.email_digest is not null and e.email_digest = coalesce(
-                 c->>'email_digest',
-                 case when c->>'public_email' is not null then encode(sha256(convert_to(
-                   'second-root/exclusion-email/v1' || chr(10) || (c->>'public_email'), 'UTF8')), 'hex') end))
+           -- not) through the candidate's email_digest, and also its first-party
+           -- public_email digested the same way (lib/sales/email-digest.ts), so a
+           -- checkpoint written before (or with an older) email_digest still matches.
+           -- A null public_email gives a null digest, which matches nothing.
+           or (e.email_digest is not null and (
+                 e.email_digest = c->>'email_digest'
+                 or e.email_digest = encode(sha256(convert_to(
+                   'second-root/exclusion-email/v1' || chr(10) || (c->>'public_email'), 'UTF8')), 'hex')))
            or (e.normalized_name is not null and e.normalized_name = c->>'normalized_name'
                and e.normalized_address = c->>'normalized_address')
         limit 1;

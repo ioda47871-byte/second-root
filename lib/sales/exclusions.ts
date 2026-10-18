@@ -90,6 +90,9 @@ export function parseExclusion(input: ExclusionInput): ExclusionParse {
   const email = mail ? normalizeEmail(mail) : null;
   if (mail && !email) return { ok: false, error: "メールアドレスを正しく入力してください。" };
   if ((name === "") !== (address === "")) return { ok: false, error: "店名と住所は両方そろえて入力してください。" };
+  if (LOOKS_LIKE_EMAIL.test(name) || LOOKS_LIKE_EMAIL.test(address)) {
+    return { ok: false, error: "店名と住所にはメールアドレスを書かないでください（メールは照合用の欄に入力してください）。" };
+  }
   const normalizedName = name ? normalizeName(name) : null;
   const normalizedAddress = address ? normalizeAddress(address) : null;
   if (name && (!normalizedName || !normalizedAddress || normalizedName.length > 200 || normalizedAddress.length > 300)) {

@@ -77,6 +77,7 @@ test("DEV-050: an email-only entry stores and shows no address", async ({ page }
   await expect(form.getByRole("status")).toHaveText("追加しました。");
   const item = page.getByTestId("exclusion-item").filter({ hasText: label });
   await expect(item.getByText("メール: 登録済み（アドレスは保存していません）")).toBeVisible();
+  expect((await page.content()).toLowerCase()).not.toContain(email.toLowerCase());
   const { rows } = await db.query(
     "select email_digest, row_to_json(e)::jsonb - 'label' as rest from public.sales_exclusions e where label = $1",
     [label],

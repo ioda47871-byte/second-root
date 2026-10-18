@@ -14,6 +14,11 @@ const privateRouteHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // DEV-050: `next dev` logs every Server Function call with its arguments by
+  // default. Admin actions receive shop emails (exclusion list), DM / email
+  // text and reply drafts, so they must never reach the dev terminal or a
+  // captured log. (Production never logs them; this only affects development.)
+  logging: { serverFunctions: false },
   async headers() {
     return [
       { source: "/demo/:path*", headers: privateRouteHeaders },
