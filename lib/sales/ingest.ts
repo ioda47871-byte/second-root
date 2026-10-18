@@ -64,7 +64,7 @@ const CLIENT_ERRORS: Record<string, number> = {
   not_draftable: 409,
 };
 
-const CANDIDATE_ERROR_CODES = new Set(["dedupe_unavailable", "persist_failed", "demo_failed", "outreach_failed"]);
+const CANDIDATE_ERROR_CODES = new Set(["dedupe_unavailable", "exclusion_unavailable", "persist_failed", "demo_failed", "outreach_failed"]);
 
 class RunError extends Error {
   constructor(

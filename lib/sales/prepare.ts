@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { decideChannel, hasFirstPartyEmail } from "./channel";
 import { checkpointProblem } from "./checkpoint";
 import { checkTarget } from "./eligibility";
@@ -33,6 +34,12 @@ export type PreparedCandidate = {
   instagram_url: string | null;
   instagram_handle: string | null;
   public_email: string | null;
+  /**
+   * DEV-049: SHA-256 (hex) of the normalised submitted email, whatever its
+   * source, used only to match the admin's exclusion list. The email itself
+   * is kept only when it is first-party (public_email).
+   */
+  email_digest: string | null;
   channel: Channel;
   sources: PreparedSource[];
   demo: { template: string; content: DemoContent };
@@ -204,6 +211,7 @@ export function prepareCandidate(input: VerifiedCandidateInput): Preparation {
     instagram_url: instagram?.url ?? null,
     instagram_handle: instagram?.handle ?? null,
     public_email: firstPartyEmail ? email : null,
+    email_digest: email ? emailDigest(email) : null,
     channel: decision.channel,
     sources,
     demo: { template: TEMPLATE_BY_CATEGORY[target.category], content },
@@ -215,4 +223,9 @@ export function prepareCandidate(input: VerifiedCandidateInput): Preparation {
 
   if (checkpointProblem(candidate) !== null) return reject("unsafe_content");
   return { stage: "pending", candidate };
+}
+
+/** DEV-049: digest of a normalised email for the exclusion check (same as SQL sha256 over UTF-8). */
+export function emailDigest(normalizedEmail: string): string {
+  return createHash("sha256").update(normalizedEmail, "utf8").digest("hex");
 }

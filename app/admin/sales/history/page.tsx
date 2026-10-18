@@ -34,6 +34,11 @@ export default async function HistoryPage() {
   return (
     <>
       <h1 className={styles.h1}>履歴</h1>
+      <p>
+        <a className={styles.secondary} href="/admin/sales/exclusions">
+          除外リスト（既存のお客様など）
+        </a>
+      </p>
       <h2 className={styles.h2}>成果（送信済みの初回営業）</h2>
       {metrics.length === 0 ? (
         <p className={styles.muted}>まだ送信済みの営業はありません。</p>
