@@ -2232,17 +2232,17 @@
       "human_approval_triggers": [
         "Production への migration 適用（develop → main）"
       ],
-      "decision": "2026-10-18（人の指示）: Phase C の候補審査に既存顧客の確認を含める。監査の D-7 のうち除外リストだけを先に実装（Op Claude への「既知の店舗」照会と RUN_PROMPT の Instagram 優先は ingest API の範囲を広げるため別 task）。2026-10-18: Staging への migration 20261018000000 の適用は人の操作待ち（HUMAN-008）"
+      "decision": "2026-10-18（人の指示）: Phase C の候補審査に既存顧客の確認を含める。監査の D-7 のうち除外リストだけを先に実装（Op Claude への「既知の店舗」照会と RUN_PROMPT の Instagram 優先は ingest API の範囲を広げるため別 task）。2026-10-18: Staging への migration 20261018000000 の適用は人の操作待ち（HUMAN-008）。2026-10-18: 除外リストのメールの平文保存を DEV-050 で修正（hosted 未適用の migration を書き換え）"
     },
     {
       "id": "DEV-050",
       "title": "除外リストのメールを digest だけで保存・照合する（平文メールを残さない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-049"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-050-exclusion-email-digest",
       "purpose": "HUMAN-008 の適用前レビュー（人、2026-10-18）: DEV-049 の sales_exclusions.public_email は管理者が入力したメールを平文で保存し、RPC も平文を受け取り、管理画面も表示していた。報告（メール自体は保存しない）とも不一致。Staging 未適用（20261009000000 まで）",
@@ -2264,6 +2264,8 @@
       ],
       "allowed_scope": [
         "supabase/migrations/20261018000000_sales_exclusions.sql（hosted に未適用のため書き換え）",
+        "next.config.ts（logging.serverFunctions のみ）",
+        "scripts/staging/lib.mjs（REQUIRED_CHECKS の追加のみ）",
         "lib/sales/",
         "lib/admin/",
         "app/admin/sales/",
@@ -2282,7 +2284,7 @@
         "Staging への migration 適用（HUMAN-008）",
         "HMAC 用の secret の追加"
       ],
-      "decision": "2026-10-18（人の指示）: HUMAN-008 を保留し、除外リストのメールを digest のみにする修正を自律で進め、新しい PR でレビュー・CI まで行う。migration は hosted に未適用（Staging は 20261009000000 まで、読み取りで確認）なので、新しい migration を足さず 20261018000000 を書き換え、平文の列を一度も作らない"
+      "decision": "2026-10-18（人の指示）: HUMAN-008 を保留し、除外リストのメールを digest のみにする修正を自律で進め、新しい PR でレビュー・CI まで行う。migration は hosted に未適用（Staging は 20261009000000 まで、読み取りで確認）なので、新しい migration を足さず 20261018000000 を書き換え、平文の列を一度も作らない。2026-10-18: Fresh Review の Medium（next dev が Server Function の引数を端末に記録する既定）のため、要件「平文メールがサーバーのログに残らない」に従い next.config.ts を scope に加えた。drift 検出が version 名だけのため staging の REQUIRED_CHECK を追加"
     }
   ]
 }

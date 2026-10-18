@@ -5,14 +5,16 @@
 
 ## 未解除
 
-### HUMAN-008 — Staging に DEV-049 の migration を適用（除外リスト）
+### HUMAN-008 — Staging に除外リストの migration を適用（DEV-049 / DEV-050）
 
-- **保留（2026-10-18、人の判断）**: 除外リストがメールを平文で保存していたため、DEV-050 の修正が develop に入るまで適用しない。下の手順は DEV-050 の後に作り直す。
-
-- 何: `supabase/migrations/20261018000000_sales_exclusions.sql`（新しい table `sales_exclusions`・admin RPC 2 つ・`sales_persist_candidate` の置き換え）を Staging（`znbqgvawublgyjwfpmei`）に適用する。Staging は `20261009000000` まで適用済みで、未適用はこの 1 本だけ（2026-10-18 読み取りで確認）。
+- 何: `supabase/migrations/20261018000000_sales_exclusions.sql`（DEV-050 で書き換え済み: メールは digest だけ）を Staging（`znbqgvawublgyjwfpmei`）に適用する。2026-10-18 の読み取りで、Staging は `20261009000000` まで適用済み・`sales_exclusions` は存在しない・`email_digest` を持つ checkpoint は 0 件。未適用はこの 1 本だけ。
+- 前提: develop が DEV-050（PR #63、merge bfbc86f）以降であること（DEV-049 の最初の版の migration は平文メールの列を持っていたため、それ以前の checkout から適用しない）。
 - なぜ人: Staging の schema 変更は、この session の自動実行の安全確認で止められた（plan のみの実行も含む）。
-- 手順: `SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei`（plan）→ 未適用が 1 本だけと確認 → `… --confirm-ref znbqgvawublgyjwfpmei --apply`（適用と security check）。
-- 解除条件: 適用後、Claude が読み取りで `sales_exclusions` の存在・RLS・`sales_persist_candidate` の差分を確認する。
+- 手順（手元の repo、`git pull` で develop 最新にしてから）:
+  1. `git log -1 --format=%H` が bfbc86f 以降、`grep -c email_digest supabase/migrations/20261018000000_sales_exclusions.sql` が 1 以上、`grep -c "public_email text" supabase/migrations/20261018000000_sales_exclusions.sql` が 0 であることを確認する。
+  2. plan: `SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei` → `1 pending`・`pending 20261018000000_sales_exclusions.sql` だけであること（違えば止める）。
+  3. 適用と検査: `SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei --confirm-ref znbqgvawublgyjwfpmei --apply` → すべて PASS であること（新しい検査 `sales_exclusions keeps only an email digest, and sales_add_exclusion takes only p_email_digest` を含む）。FAIL が 1 つでもあれば、その出力を Claude に渡す（再実行しない）。
+- 解除条件: 適用後、Claude が読み取りで次を確認する: `sales_exclusions` の列（メールは `email_digest` だけ）・RLS 有効・`sales_add_exclusion(p_email_digest …)` の引数・`sales_persist_candidate` の本文が repo と一致・行 0 件。
 - 適用しないとき: persist の照合は DB 関数の中にあるため、Staging は旧い `sales_persist_candidate`（除外の照合なし）のまま動く。管理画面の除外リストは読み込みエラーを表示する。既存顧客の除外が効かない以外の挙動は従来どおり。
 
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
