@@ -2066,7 +2066,7 @@
     {
       "id": "DEV-046",
       "title": "brief の構造の案内（calm は色・書体だけ、構造は内容の形で、split_crop の例の偏り）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-045"
