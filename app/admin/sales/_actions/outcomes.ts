@@ -69,3 +69,21 @@ export async function markLost(outreachId: string, reason: unknown): Promise<Out
   const text = lostReason.parse(reason);
   return call("sales_mark_lost", { p_outreach_id: outreachId, p_reason: text === "" ? null : text });
 }
+
+/**
+ * DEV-048: 今日の一覧で送らない初回の下書きを見送る（drafted → lost、MVP_SPEC §5
+ * 「任意の状態 → lost（人間判断）」）. Only an unsent draft is skipped here; a
+ * message that was sent in the meantime is left for the reply / meeting pages.
+ */
+export async function skipDraft(outreachId: string, reason: unknown): Promise<OutcomeResult> {
+  await requireAdmin();
+  if (!id.safeParse(outreachId).success) return { ok: false, error: "対象が見つかりません。" };
+  const supabase = await createAuthClient();
+  const { data, error } = await supabase.from("sales_outreaches").select("status, kind").eq("id", outreachId).maybeSingle();
+  if (error || !data) return { ok: false, error: "対象が見つかりません。画面を再読み込みしてください。" };
+  if (data.kind !== "initial" || data.status !== "drafted") {
+    return { ok: false, error: "この下書きはすでに送信済みか見送り済みです。画面を再読み込みしてください。" };
+  }
+  const text = lostReason.parse(reason);
+  return call("sales_mark_lost", { p_outreach_id: outreachId, p_reason: text === "" ? null : text });
+}

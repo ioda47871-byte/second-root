@@ -87,7 +87,7 @@ export default async function HistoryPage() {
             <li key={item.prospectId} className={styles.card} data-testid="history-item">
               <h3 className={styles.itemTitle}>{item.shopName}</h3>
               <div className={styles.badges}>
-                <span className={styles.badge}>{STATUS[item.status]}</span>
+                <span className={styles.badge}>{item.status === "lost" && !item.sentAt ? "見送り" : STATUS[item.status]}</span>
                 <span className={styles.badge}>{CHANNEL[item.channel]}</span>
                 <span className={styles.badge}>{CATEGORY_LABEL[item.category]}</span>
                 {item.doNotContact && <span className={`${styles.badge} ${styles.badgeWarn}`}>DNC</span>}

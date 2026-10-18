@@ -127,6 +127,29 @@ describe("today queue", () => {
     expect(items.map((i) => [i.kind, i.prospectId])).toEqual([["follow_up", due]]);
   });
 
+  it("DEV-048: with the AI design step on, sendable drafts come before drafts waiting for a design", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 7; i += 1) ids.push(await prepare(candidate()));
+    // Oldest five wait for a design; the sixth is blocked (sendable with the template); the seventh is a legacy demo.
+    await db.query("update public.sales_demos set design_status = 'pending' where prospect_id = any($1::uuid[])", [ids.slice(0, 5)]);
+    await db.query("update public.sales_demos set design_status = 'blocked', design_error_code = 'NO_VISUAL_SOURCE' where prospect_id = $1", [ids[5]]);
+    const before = process.env.SALES_AI_DESIGN_ENABLED;
+    try {
+      process.env.SALES_AI_DESIGN_ENABLED = "true";
+      const on = await loadTodayQueue(admin);
+      expect(on.map((i) => i.prospectId)).toEqual([ids[5], ids[6], ids[0], ids[1], ids[2]]);
+      expect(on.map((i) => i.designStatus)).toEqual(["blocked", null, "pending", "pending", "pending"]);
+      expect(on.map((i) => i.sendable)).toEqual([true, true, false, false, false]);
+      process.env.SALES_AI_DESIGN_ENABLED = "false";
+      const off = await loadTodayQueue(admin);
+      expect(off.map((i) => i.prospectId)).toEqual(ids.slice(0, 5));
+      expect(off.every((i) => i.sendable && i.designStatus === null)).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.SALES_AI_DESIGN_ENABLED;
+      else process.env.SALES_AI_DESIGN_ENABLED = before;
+    }
+  });
+
   it("shows nothing to a non-admin session", async () => {
     await prepare(candidate());
     const outsider = await signedInClient("queue-outsider@test.example.com");

@@ -55,3 +55,53 @@ test("does not show a DNC shop", async ({ page }) => {
   await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
   await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
 });
+
+test("DEV-048: skips an unsent draft from today's list (drafted → lost, shown as 見送り)", async ({ page }) => {
+  const draft = await seedDraft(db);
+  seeded.push(draft.prospectId);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByText("詳細").click();
+  await card.getByTestId("skip-draft").click();
+  await card.getByLabel("見送る理由（任意）").fill("E2E: 写真が少ない");
+  await card.getByRole("button", { name: "はい、見送る" }).click();
+  await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
+  const { rows } = await db.query(
+    "select status, sent_at, lost_reason from public.sales_outreaches where prospect_id = $1 and kind = 'initial'",
+    [draft.prospectId],
+  );
+  expect(rows).toEqual([{ status: "lost", sent_at: null, lost_reason: "E2E: 写真が少ない" }]);
+  await page.goto("/admin/sales/history");
+  await expect(page.getByTestId("history-item").filter({ hasText: draft.name }).getByText("見送り")).toBeVisible();
+});
+
+test("DEV-048: marks a shop DNC from today's list", async ({ page }) => {
+  const draft = await seedDraft(db);
+  seeded.push(draft.prospectId);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByText("詳細").click();
+  await card.getByRole("button", { name: "営業不要（DNC）にする" }).click();
+  await card.getByRole("button", { name: "はい、営業不要（DNC）にする" }).click();
+  await expect(page.getByTestId("today-item").filter({ hasText: draft.name })).toHaveCount(0);
+  const { rows } = await db.query("select do_not_contact, dnc_reason from public.sales_prospects where id = $1", [draft.prospectId]);
+  expect(rows).toEqual([{ do_not_contact: true, dnc_reason: "admin_manual" }]);
+});
+
+test("DEV-048: refuses to skip a draft that was sent in the meantime (stale page)", async ({ page }) => {
+  const draft = await seedDraft(db);
+  seeded.push(draft.prospectId);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByText("詳細").click();
+  await card.getByTestId("skip-draft").click();
+  // Sent from another tab after this page was rendered.
+  await db.query(
+    "update public.sales_outreaches set status = 'sent', sent_at = now() where prospect_id = $1 and kind = 'initial'",
+    [draft.prospectId],
+  );
+  await card.getByRole("button", { name: "はい、見送る" }).click();
+  await expect(card.getByRole("alert")).toContainText("すでに送信済みか見送り済み");
+  const { rows } = await db.query("select status from public.sales_outreaches where prospect_id = $1 and kind = 'initial'", [draft.prospectId]);
+  expect(rows).toEqual([{ status: "sent" }]);
+});
