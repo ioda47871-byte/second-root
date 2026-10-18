@@ -5,6 +5,8 @@
 -- advisory lock as dedupe / DNC / daily cap; a match becomes
 -- rejected(excluded) and creates no prospect, demo or outreach. Values are
 -- stored with the same normalisation as ingest (lib/sales/exclusions.ts).
+-- An email exclusion also matches a candidate whose submitted email is not
+-- first-party, through the candidate's email_digest (no raw email kept).
 -- Read: admin only (RLS). Write: admin SECURITY DEFINER functions only.
 -- Operational Claude never sees this table. Existing drafts are not touched.
 
@@ -163,6 +165,11 @@ begin
         where (e.instagram_handle is not null and e.instagram_handle = c->>'instagram_handle')
            or (e.website_domain is not null and e.website_domain = c->>'website_domain')
            or (e.public_email is not null and e.public_email = c->>'public_email')
+           -- Any submitted email (not only a first-party one), by digest only:
+           -- an existing customer registered by email is excluded even when
+           -- the candidate comes through Instagram.
+           or (e.public_email is not null and c->>'email_digest' is not null
+               and encode(sha256(convert_to(e.public_email, 'UTF8')), 'hex') = c->>'email_digest')
            or (e.normalized_name is not null and e.normalized_name = c->>'normalized_name'
                and e.normalized_address = c->>'normalized_address')
         limit 1;

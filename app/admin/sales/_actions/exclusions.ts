@@ -11,20 +11,26 @@ import { createAuthClient } from "@/lib/supabase/server";
 
 export type ExclusionResult = { ok: true } | { ok: false; error: string };
 
-const text = z.string().max(1000).catch("");
+// Missing fields are empty; an over-long or non-string field is refused
+// (never silently dropped, which would save an entry without that key).
+const field = z.string().max(1000).optional();
+const inputSchema = z.object({
+  label: field,
+  reason: field,
+  note: field,
+  instagram: field,
+  website: field,
+  email: field,
+  name: field,
+  address: field,
+});
 
 export async function addExclusion(raw: ExclusionInput): Promise<ExclusionResult> {
   await requireAdmin();
-  const input: ExclusionInput = {
-    label: text.parse(raw?.label),
-    reason: text.parse(raw?.reason),
-    note: text.parse(raw?.note),
-    instagram: text.parse(raw?.instagram),
-    website: text.parse(raw?.website),
-    email: text.parse(raw?.email),
-    name: text.parse(raw?.name),
-    address: text.parse(raw?.address),
-  };
+  const checked = inputSchema.safeParse(raw ?? {});
+  if (!checked.success) return { ok: false, error: "入力が長すぎるか、形式が正しくありません。" };
+  const d = checked.data;
+  const input: ExclusionInput = { ...d, label: d.label ?? "", reason: d.reason ?? "" };
   const parsed = parseExclusion(input);
   if (!parsed.ok) return parsed;
   const v = parsed.value;

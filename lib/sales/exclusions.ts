@@ -40,11 +40,18 @@ export type ExclusionParse = { ok: true; value: ExclusionKeys } | { ok: false; e
 
 const trim = (s: string | undefined) => (s ?? "").normalize("NFKC").trim();
 
-/** Instagram URL, "@handle" or bare handle → the canonical handle. */
+/** Instagram URL (scheme optional, http / m. accepted), "@handle" or bare handle → the canonical handle. */
 function instagramHandle(input: string): string | null {
   const s = input.replace(/^@/, "");
-  const url = /^https?:\/\//i.test(s) ? s : `https://www.instagram.com/${s.replace(/\/+$/, "")}/`;
-  return parseInstagramProfile(url)?.handle ?? null;
+  let url: string;
+  if (/^(https?:\/\/)?((www|m)\.)?instagram\.com\//i.test(s)) {
+    url = s.replace(/^(https?:\/\/)?((www|m)\.)?instagram\.com\//i, "https://www.instagram.com/");
+  } else if (/^https?:\/\//i.test(s)) {
+    return null;
+  } else {
+    url = `https://www.instagram.com/${s.replace(/\/+$/, "")}/`;
+  }
+  return parseInstagramProfile(url.split(/[?#]/)[0])?.handle ?? null;
 }
 
 /** Site URL (scheme optional) → the same dedupe key as ingest. */

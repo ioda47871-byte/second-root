@@ -105,7 +105,7 @@ unique(normalized_name, normalized_address) による重複防止。
 | 列 | 備考 |
 |---|---|
 | label / reason / note | 表示名・`existing_customer` / `partner` / `other`・任意のメモ |
-| instagram_handle / website_domain / public_email | ingest と同じ正規化。それぞれ partial unique |
+| instagram_handle / website_domain / public_email | ingest と同じ正規化。それぞれ partial unique。public_email は候補の第一者メールに加え、候補が出したメールの SHA-256（checkpoint の `email_digest`、第一者でなくても）とも照合する |
 | normalized_name + normalized_address | 2 つで 1 キー（片方だけは不可）。partial unique |
 | created_by | 登録した管理者 |
 

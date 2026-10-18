@@ -50,7 +50,9 @@ export default function ExclusionForm() {
           ))}
         </select>
       </label>
-      <p className={styles.muted}>照合に使う項目を1つ以上入力してください。どれか1つが一致すれば、その店舗は営業の準備をしません。</p>
+      <p className={styles.muted}>
+        照合に使う項目を1つ以上入力してください。どれか1つが一致すれば、その店舗は営業の準備をしません。見つかり方は店舗ごとに違うため、分かる項目（特に Instagram）はできるだけすべて入力してください。
+      </p>
       {field("instagram", "Instagram（URL か @ユーザー名）", { maxLength: 200, autoComplete: "off" })}
       {field("website", "公式サイトの URL", { maxLength: 300, inputMode: "url", autoComplete: "off" })}
       {field("email", "メールアドレス", { maxLength: 254, inputMode: "email", autoComplete: "off" })}

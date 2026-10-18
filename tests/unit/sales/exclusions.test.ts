@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseExclusion } from "@/lib/sales/exclusions";
 import { normalizeAddress, normalizeName } from "@/lib/sales/normalize";
+import { emailDigest, prepareCandidate } from "@/lib/sales/prepare";
+import { verifiedEmailInput, verifiedInput } from "./ingest-fixtures";
 
 // DEV-049: admin input → the same keys ingest stores (lib/sales/prepare.ts).
 
@@ -12,6 +14,9 @@ describe("parseExclusion", () => {
     ["https://instagram.com/mugi_no_mi", "mugi_no_mi"],
     ["@mugi_no_mi", "mugi_no_mi"],
     ["mugi_no_mi", "mugi_no_mi"],
+    ["instagram.com/mugi_no_mi", "mugi_no_mi"],
+    ["http://instagram.com/mugi_no_mi/?igsh=abc", "mugi_no_mi"],
+    ["https://m.instagram.com/mugi_no_mi/", "mugi_no_mi"],
   ])("normalises the Instagram account %s", (instagram, handle) => {
     const r = parseExclusion({ ...base, instagram });
     expect(r).toMatchObject({ ok: true, value: { instagramHandle: handle } });
@@ -64,5 +69,38 @@ describe("parseExclusion", () => {
         normalizedAddress: null,
       },
     });
+  });
+});
+
+describe("parity with ingest (the keys persist compares)", () => {
+  it("an Instagram shop gives the same handle and name + address", () => {
+    const raw = verifiedInput();
+    const p = prepareCandidate(raw);
+    if (p.stage !== "pending") throw new Error("fixture not prepared");
+    const x = parseExclusion({ ...base, instagram: raw.instagramUrl!, name: raw.name, address: raw.address });
+    if (!x.ok) throw new Error(x.error);
+    expect(x.value.instagramHandle).toBe(p.candidate.instagram_handle);
+    expect(x.value.normalizedName).toBe(p.candidate.normalized_name);
+    expect(x.value.normalizedAddress).toBe(p.candidate.normalized_address);
+  });
+
+  it("an email shop gives the same domain, email and email digest", () => {
+    const raw = verifiedEmailInput();
+    const p = prepareCandidate(raw);
+    if (p.stage !== "pending") throw new Error("fixture not prepared");
+    const x = parseExclusion({ ...base, website: raw.website.url!, email: raw.email!.address.toUpperCase() });
+    if (!x.ok) throw new Error(x.error);
+    expect(x.value.websiteDomain).toBe(p.candidate.website_domain);
+    expect(x.value.publicEmail).toBe(p.candidate.public_email);
+    expect(emailDigest(x.value.publicEmail!)).toBe(p.candidate.email_digest);
+  });
+
+  it("keeps a digest (not the email) for an email that is not first-party", () => {
+    const raw = verifiedInput({ email: { address: "Owner@Gmail.example.com", sourceUrl: "https://lit.link/someone", sourceType: "other" } as never });
+    const p = prepareCandidate(raw);
+    if (p.stage !== "pending") throw new Error("fixture not prepared");
+    expect(p.candidate.public_email).toBeNull();
+    expect(p.candidate.email_digest).toBe(emailDigest("owner@gmail.example.com"));
+    expect(JSON.stringify(p.candidate)).not.toContain("gmail.example.com");
   });
 });

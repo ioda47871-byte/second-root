@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { emailDigest } from "@/lib/sales/prepare";
 import { candidate, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-049: the admin's exclusion list is checked at persist (rejected(excluded),
@@ -46,6 +47,17 @@ describe("persist with the exclusion list", () => {
     expect(await count("sales_prospects")).toBe(0);
     expect(await count("sales_demos")).toBe(0);
     expect(await count("sales_outreaches")).toBe(0);
+  });
+
+  it("matches an email exclusion against a candidate whose email is not first-party (digest only)", async () => {
+    const shop = candidate({ email_digest: emailDigest("owner@customer.example.com") });
+    expect(shop.public_email).toBeNull();
+    await exclude({ public_email: "owner@customer.example.com" });
+    const run = randomUUID();
+    await verifiedRun(run, { c01: shop, c02: candidate({ email_digest: emailDigest("someone@else.example.com") }) });
+    const results = await persistAll(run, ["c01", "c02"]);
+    expect(results.map((r) => r.stage)).toEqual(["rejected", "outreach_ready"]);
+    expect(results[0]).toMatchObject({ reason: "excluded" });
   });
 
   it("does not match a name without the same address", async () => {
