@@ -5,19 +5,28 @@
 -- advisory lock as dedupe / DNC / daily cap; a match becomes
 -- rejected(excluded) and creates no prospect, demo or outreach. Values are
 -- stored with the same normalisation as ingest (lib/sales/exclusions.ts).
--- An email exclusion also matches a candidate whose submitted email is not
--- first-party, through the candidate's email_digest (no raw email kept).
+--
+-- DEV-050: no email is stored here, only email_digest — the digest of the
+-- normalised email computed by the server (lib/sales/email-digest.ts:
+-- SHA-256 over a versioned prefix + the email). The add RPC receives only the
+-- digest, so the plain address never reaches the database, its function
+-- arguments or its logs. It is compared with the candidate's email_digest
+-- (any submitted email, first-party or not), so a customer registered by
+-- email is excluded even when the candidate comes through Instagram.
+-- (This file was rewritten before it was applied to any hosted project:
+-- the plain-text column it first had never existed outside local stacks.)
 -- Read: admin only (RLS). Write: admin SECURITY DEFINER functions only.
 -- Operational Claude never sees this table. Existing drafts are not touched.
 
 create table public.sales_exclusions (
   id uuid primary key default gen_random_uuid(),
-  label text not null check (char_length(label) between 1 and 200),
+  -- DEV-050: free text never carries an email address (same rule as lib/sales/exclusions.ts).
+  label text not null check (char_length(label) between 1 and 200 and label !~ '[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+'),
   reason text not null check (reason in ('existing_customer', 'partner', 'other')),
-  note text check (note is null or char_length(note) <= 500),
+  note text check (note is null or (char_length(note) <= 500 and note !~ '[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+')),
   instagram_handle text check (instagram_handle is null or instagram_handle ~ '^[a-z0-9._]{1,30}$'),
   website_domain text check (website_domain is null or char_length(website_domain) between 3 and 253),
-  public_email text check (public_email is null or (char_length(public_email) <= 254 and public_email like '%_@_%')),
+  email_digest text check (email_digest is null or email_digest ~ '^[0-9a-f]{64}$'),
   normalized_name text check (normalized_name is null or char_length(normalized_name) between 1 and 200),
   normalized_address text check (normalized_address is null or char_length(normalized_address) between 1 and 300),
   created_at timestamptz not null default now(),
@@ -25,12 +34,12 @@ create table public.sales_exclusions (
   constraint sales_exclusions_name_address_pair
     check ((normalized_name is null) = (normalized_address is null)),
   constraint sales_exclusions_has_key
-    check (instagram_handle is not null or website_domain is not null or public_email is not null or normalized_name is not null)
+    check (instagram_handle is not null or website_domain is not null or email_digest is not null or normalized_name is not null)
 );
 
 create unique index sales_exclusions_handle_key on public.sales_exclusions (instagram_handle) where instagram_handle is not null;
 create unique index sales_exclusions_domain_key on public.sales_exclusions (website_domain) where website_domain is not null;
-create unique index sales_exclusions_email_key on public.sales_exclusions (public_email) where public_email is not null;
+create unique index sales_exclusions_email_key on public.sales_exclusions (email_digest) where email_digest is not null;
 create unique index sales_exclusions_name_address_key on public.sales_exclusions (normalized_name, normalized_address) where normalized_name is not null;
 
 alter table public.sales_exclusions enable row level security;
@@ -42,7 +51,7 @@ grant all on public.sales_exclusions to service_role;
 
 create function public.sales_add_exclusion(
   p_label text, p_reason text, p_note text,
-  p_instagram_handle text, p_website_domain text, p_public_email text,
+  p_instagram_handle text, p_website_domain text, p_email_digest text,
   p_normalized_name text, p_normalized_address text)
 returns uuid
 language plpgsql
@@ -53,12 +62,20 @@ declare
   new_id uuid;
 begin
   perform public.sales_assert_admin();
+  -- DEV-050: refuse a malformed digest or an address in the free text before
+  -- the insert, so a check violation never writes the failing row (with the
+  -- address in it) to the database log.
+  if (nullif(p_email_digest, '') is not null and p_email_digest !~ '^[0-9a-f]{64}$')
+     or coalesce(p_label, '') ~ '[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+'
+     or coalesce(p_note, '') ~ '[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+' then
+    raise exception 'invalid_exclusion' using errcode = '22023';
+  end if;
   insert into public.sales_exclusions (
-    label, reason, note, instagram_handle, website_domain, public_email,
+    label, reason, note, instagram_handle, website_domain, email_digest,
     normalized_name, normalized_address, created_by)
   values (
     p_label, p_reason, nullif(p_note, ''), nullif(p_instagram_handle, ''), nullif(p_website_domain, ''),
-    nullif(p_public_email, ''), nullif(p_normalized_name, ''), nullif(p_normalized_address, ''), auth.uid())
+    nullif(p_email_digest, ''), nullif(p_normalized_name, ''), nullif(p_normalized_address, ''), auth.uid())
   returning id into new_id;
   return new_id;
 exception
@@ -164,12 +181,14 @@ begin
         from public.sales_exclusions e
         where (e.instagram_handle is not null and e.instagram_handle = c->>'instagram_handle')
            or (e.website_domain is not null and e.website_domain = c->>'website_domain')
-           or (e.public_email is not null and e.public_email = c->>'public_email')
-           -- Any submitted email (not only a first-party one), by digest only:
-           -- an existing customer registered by email is excluded even when
-           -- the candidate comes through Instagram.
-           or (e.public_email is not null and c->>'email_digest' is not null
-               and encode(sha256(convert_to(e.public_email, 'UTF8')), 'hex') = c->>'email_digest')
+           -- DEV-050: email by digest only. Any submitted email (first-party or
+           -- not) through the candidate's email_digest; a checkpoint written
+           -- before email_digest existed falls back to its first-party
+           -- public_email, digested the same way (lib/sales/email-digest.ts).
+           or (e.email_digest is not null and e.email_digest = coalesce(
+                 c->>'email_digest',
+                 case when c->>'public_email' is not null then encode(sha256(convert_to(
+                   'second-root/exclusion-email/v1' || chr(10) || (c->>'public_email'), 'UTF8')), 'hex') end))
            or (e.normalized_name is not null and e.normalized_name = c->>'normalized_name'
                and e.normalized_address = c->>'normalized_address')
         limit 1;

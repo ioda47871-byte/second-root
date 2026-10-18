@@ -50,7 +50,7 @@ export default async function ExclusionsPage() {
               <ul className={styles.muted}>
                 {item.instagramHandle && <li>Instagram: @{item.instagramHandle}</li>}
                 {item.websiteDomain && <li>サイト: {item.websiteDomain}</li>}
-                {item.publicEmail && <li>メール: {item.publicEmail}</li>}
+                {item.hasEmail && <li>メール: 登録済み（アドレスは保存していません）</li>}
                 {item.normalizedName && <li>店名+住所: {item.normalizedName} / {item.normalizedAddress}</li>}
               </ul>
               {item.note && <p className={styles.muted}>メモ: {item.note}</p>}

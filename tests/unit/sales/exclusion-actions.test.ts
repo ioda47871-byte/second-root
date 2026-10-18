@@ -11,6 +11,7 @@ vi.mock("@/lib/admin/auth", () => ({ requireAdmin: vi.fn(async () => undefined) 
 vi.mock("@/lib/supabase/server", () => ({ createAuthClient: vi.fn(async () => ({ rpc: state.rpc })) }));
 
 import { addExclusion, removeExclusion } from "@/app/admin/sales/_actions/exclusions";
+import { emailDigest } from "@/lib/sales/email-digest";
 
 beforeEach(() => {
   state.rpc.mockReset();
@@ -38,10 +39,27 @@ describe("addExclusion", () => {
       p_note: null,
       p_instagram_handle: "mugi_no_mi",
       p_website_domain: null,
-      p_public_email: "info@example.jp",
+      p_email_digest: emailDigest("info@example.jp"),
       p_normalized_name: null,
       p_normalized_address: null,
     });
+  });
+
+  it("DEV-050: never passes the email itself to the database, logs or errors", async () => {
+    const logs: unknown[] = [];
+    const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation((...a) => void logs.push(a)));
+    try {
+      const ok = await addExclusion({ label: "店", reason: "existing_customer", email: "Owner@Customer.Example.JP" });
+      expect(ok).toEqual({ ok: true });
+      state.rpc.mockResolvedValue({ data: null, error: { message: "already_excluded" } });
+      const dup = await addExclusion({ label: "店", reason: "existing_customer", email: "Owner@Customer.Example.JP" });
+      const seen = JSON.stringify([state.rpc.mock.calls, ok, dup, logs]).toLowerCase();
+      expect(seen).not.toContain("owner@customer.example.jp");
+      expect(seen).not.toContain("customer.example");
+      expect(state.rpc.mock.calls[0][1]).toMatchObject({ p_email_digest: emailDigest("owner@customer.example.jp") });
+    } finally {
+      spies.forEach((s) => s.mockRestore());
+    }
   });
 
   it("maps a duplicate to a clear message", async () => {

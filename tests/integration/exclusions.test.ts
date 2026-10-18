@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { emailDigest } from "@/lib/sales/prepare";
+import { emailDigest } from "@/lib/sales/email-digest";
 import { candidate, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-049: the admin's exclusion list is checked at persist (rejected(excluded),
@@ -34,7 +34,7 @@ describe("persist with the exclusion list", () => {
   it.each([
     ["instagram handle", candidate, (c: Record<string, unknown>) => ({ instagram_handle: c.instagram_handle })],
     ["website domain", emailCandidate, (c: Record<string, unknown>) => ({ website_domain: c.website_domain })],
-    ["first-party email", emailCandidate, (c: Record<string, unknown>) => ({ public_email: c.public_email })],
+    ["first-party email (digest)", (o?: Record<string, unknown>) => { const c = emailCandidate(o); return { ...c, email_digest: emailDigest(String(c.public_email)) }; }, (c: Record<string, unknown>) => ({ email_digest: c.email_digest })],
     ["name + address", candidate, (c: Record<string, unknown>) => ({ normalized_name: c.normalized_name, normalized_address: c.normalized_address })],
   ])("rejects a candidate matching by %s and creates nothing", async (_label, make, key) => {
     const shop = make();
@@ -52,12 +52,22 @@ describe("persist with the exclusion list", () => {
   it("matches an email exclusion against a candidate whose email is not first-party (digest only)", async () => {
     const shop = candidate({ email_digest: emailDigest("owner@customer.example.com") });
     expect(shop.public_email).toBeNull();
-    await exclude({ public_email: "owner@customer.example.com" });
+    await exclude({ email_digest: emailDigest("owner@customer.example.com") });
     const run = randomUUID();
     await verifiedRun(run, { c01: shop, c02: candidate({ email_digest: emailDigest("someone@else.example.com") }) });
     const results = await persistAll(run, ["c01", "c02"]);
     expect(results.map((r) => r.stage)).toEqual(["rejected", "outreach_ready"]);
     expect(results[0]).toMatchObject({ reason: "excluded" });
+  });
+
+  it("DEV-050: a checkpoint written before email_digest existed still matches by its first-party email", async () => {
+    const shop = emailCandidate();
+    expect(shop.email_digest).toBeUndefined();
+    await exclude({ email_digest: emailDigest(String(shop.public_email)) });
+    const run = randomUUID();
+    await verifiedRun(run, { c01: shop });
+    const [result] = await persistAll(run, ["c01"]);
+    expect(result).toMatchObject({ stage: "rejected", reason: "excluded" });
   });
 
   it("does not match a name without the same address", async () => {
@@ -104,6 +114,32 @@ describe("persist with the exclusion list", () => {
   });
 });
 
+describe("DEV-050: no plain email in the exclusion list", () => {
+  it("has no email column other than the 64-hex digest", async () => {
+    const { rows } = await db.query(
+      "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'sales_exclusions' and column_name like '%email%'",
+    );
+    expect(rows).toEqual([{ column_name: "email_digest" }]);
+    await expect(exclude({ email_digest: "owner@customer.example.com" })).rejects.toThrow(/check constraint/);
+    await expect(exclude({ email_digest: "A".repeat(64) })).rejects.toThrow(/check constraint/);
+    await expect(
+      db.query("insert into public.sales_exclusions (label, reason, instagram_handle) values ('連絡 owner@customer.example.jp', 'other', 'x_shop')"),
+    ).rejects.toThrow(/check constraint/);
+    await expect(
+      db.query("insert into public.sales_exclusions (label, reason, note, instagram_handle) values ('店', 'other', 'owner@customer.example.jp', 'x_shop')"),
+    ).rejects.toThrow(/check constraint/);
+    await db.query("insert into public.sales_exclusions (label, reason, instagram_handle) values ('Cafe@Home', 'other', 'x_shop')");
+  });
+
+  it("the add function takes a digest, not an email", async () => {
+    const { rows } = await db.query(
+      "select pg_get_function_identity_arguments('public.sales_add_exclusion(text, text, text, text, text, text, text, text)'::regprocedure) as args",
+    );
+    expect(rows[0].args).toContain("p_email_digest");
+    expect(rows[0].args).not.toMatch(/public_email/);
+  });
+});
+
 describe("exclusion list access", () => {
   let admin: Awaited<ReturnType<typeof signedInClient>>;
   let outsider: Awaited<ReturnType<typeof signedInClient>>;
@@ -120,9 +156,24 @@ describe("exclusion list access", () => {
     p_note: "",
     p_instagram_handle: handle,
     p_website_domain: null,
-    p_public_email: null,
+    p_email_digest: null,
     p_normalized_name: null,
     p_normalized_address: null,
+  });
+
+  it("DEV-050: refuses an email (or anything but a digest) in the digest argument and stores no '@'", async () => {
+    const bad = await admin.rpc("sales_add_exclusion", { ...args(""), p_email_digest: "owner@rpc-check.example.com" });
+    expect(bad.error?.message).toMatch(/invalid_exclusion/);
+    const inLabel = await admin.rpc("sales_add_exclusion", { ...args("label_shop"), p_label: "owner@rpc-check.example.com" });
+    expect(inLabel.error?.message).toMatch(/invalid_exclusion/);
+    const inNote = await admin.rpc("sales_add_exclusion", { ...args("note_shop"), p_note: "owner@rpc-check.example.com" });
+    expect(inNote.error?.message).toMatch(/invalid_exclusion/);
+    const good = await admin.rpc("sales_add_exclusion", { ...args(""), p_email_digest: emailDigest("owner@customer.example.com") });
+    expect(good.error).toBeNull();
+    const { rows } = await db.query("select row_to_json(e)::text as row from public.sales_exclusions e");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].row).not.toContain("@");
+    await admin.rpc("sales_remove_exclusion", { p_id: good.data });
   });
 
   it("lets the admin add, read and remove; refuses duplicates and empty keys", async () => {

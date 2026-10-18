@@ -101,15 +101,22 @@ unique(normalized_name, normalized_address) による重複防止。
 
 デモに出す事実は sales_sources で出典が確認できるものだけ。
 
-### sales_exclusions（除外リスト、DEV-049）
+### sales_exclusions（除外リスト、DEV-049 / DEV-050）
 | 列 | 備考 |
 |---|---|
 | label / reason / note | 表示名・`existing_customer` / `partner` / `other`・任意のメモ |
-| instagram_handle / website_domain / public_email | ingest と同じ正規化。それぞれ partial unique。public_email は候補の第一者メールに加え、候補が出したメールの SHA-256（checkpoint の `email_digest`、第一者でなくても）とも照合する |
+| instagram_handle / website_domain | ingest と同じ正規化。それぞれ partial unique |
+| email_digest | DEV-050: メールの**アドレスは持たない**。正規化メールの digest（64 桁 hex、partial unique）。候補の `email_digest`（候補が出したメール、第一者でなくても）と照合し、それが無い旧い checkpoint は第一者の `public_email` から同じ方式で作って照合する |
 | normalized_name + normalized_address | 2 つで 1 キー（片方だけは不可）。partial unique |
 | created_by | 登録した管理者 |
 
 照合キーが 1 つ以上必要。読み取りは管理者だけ（RLS）。追加・削除は `sales_add_exclusion` / `sales_remove_exclusion`（SECURITY DEFINER、最初に管理者を確認）だけで、API role の直接書き込みは無い。`sales_persist_candidate` が §7.4 の順で照合する。
+
+メールの digest（DEV-050、`lib/sales/email-digest.ts`）:
+
+- 方式: `sha256("second-root/exclusion-email/v1\n" + normalizeEmail(address))` の hex。server action と `prepareCandidate` が同じ関数で計算し、SQL の旧 checkpoint 向けの照合も同じ接頭辞で作る。平文のアドレスは DB・関数の引数・DB のログに届かない（`sales_add_exclusion` は digest の形を insert の前に検査し、制約違反で行の中身がログに出ないようにする）。表示名・メモにアドレスの形の文字列は入れられない（画面と DB の check）。
+- 限界: 鍵のない hash なので、admin だけが読める行を読める人は、推測したアドレスが登録済みかを確かめられる（辞書攻撃）。接頭辞は、一般的な `sha256(email)` の対応表をそのまま使えなくするだけ。
+- より安全な方式（承認が要る次の段階）: サーバーだけが持つ secret を鍵にした HMAC-SHA256。候補側（ingest）と管理画面の両方が同じ鍵を持つ必要があり、新しい secret の追加・鍵の交換時の再計算（除外リストと進行中の checkpoint）が要るため、人の承認の後に別 task で行う。接頭辞の版（`v1`）を上げて移行できる。
 
 ### sales_demos
 | 列 | 備考 |
