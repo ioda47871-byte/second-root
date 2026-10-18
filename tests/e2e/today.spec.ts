@@ -87,3 +87,21 @@ test("DEV-048: marks a shop DNC from today's list", async ({ page }) => {
   const { rows } = await db.query("select do_not_contact, dnc_reason from public.sales_prospects where id = $1", [draft.prospectId]);
   expect(rows).toEqual([{ do_not_contact: true, dnc_reason: "admin_manual" }]);
 });
+
+test("DEV-048: refuses to skip a draft that was sent in the meantime (stale page)", async ({ page }) => {
+  const draft = await seedDraft(db);
+  seeded.push(draft.prospectId);
+  await login(page);
+  const card = page.getByTestId("today-item").filter({ hasText: draft.name });
+  await card.getByText("詳細").click();
+  await card.getByTestId("skip-draft").click();
+  // Sent from another tab after this page was rendered.
+  await db.query(
+    "update public.sales_outreaches set status = 'sent', sent_at = now() where prospect_id = $1 and kind = 'initial'",
+    [draft.prospectId],
+  );
+  await card.getByRole("button", { name: "はい、見送る" }).click();
+  await expect(card.getByRole("alert")).toContainText("すでに送信済みか見送り済み");
+  const { rows } = await db.query("select status from public.sales_outreaches where prospect_id = $1 and kind = 'initial'", [draft.prospectId]);
+  expect(rows).toEqual([{ status: "sent" }]);
+});
