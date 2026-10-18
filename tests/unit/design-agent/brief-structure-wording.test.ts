@@ -56,7 +56,7 @@ describe("brief structure wording (DEV-046)", () => {
     const d = description(VOCABULARY, "split_crop", HERO_LAYOUTS);
     expect(d).toMatch(/Only a Latin name of two to four\s+spaced words gets this split\./);
     expect(d).toMatch(/Any other name \(with Japanese in it, without spaces, or longer; most names here\) is set without\s+a word-by-word split/);
-    expect(d).not.toMatch(/oversized|cropped|as large as/);
+    expect(d).not.toMatch(/oversized|cropped|as large as|alternate the same way/);
     expect(description(VOCABULARY, "stacked_oversized", HERO_LAYOUTS)).not.toMatch(/as large as/);
   });
 

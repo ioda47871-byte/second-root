@@ -17,7 +17,7 @@ Renderer vocabulary (the only things you can choose; every value is already impl
 - heroLayout.layout (each one sets the shop name as the hero's main visual):
   split_crop = one word per line, every other line pushed right (e.g. "EXAMPLE" / "      BAKE"). Only a Latin name of two to four
     spaced words gets this split. Any other name (with Japanese in it, without spaces, or longer; most names here) is set without
-    a word-by-word split, centred vertically in the hero (on phones a long one is broken into a few lines that alternate the same way);
+    a word-by-word split, centred vertically in the hero;
   stacked_oversized = the whole name set at the bottom-left of the hero;
   centered_cover = the name centred, and the area line centred below a double rule.
   heroLayout.height (a minimum for a hero without a split photo; the hero grows past it when its content needs more):
@@ -94,7 +94,7 @@ Renderer vocabulary (the only things you can choose; every value is already impl
 - heroLayout.layout (each one sets the shop name as the hero's main visual):
   split_crop = one word per line, every other line pushed right (e.g. "EXAMPLE" / "      BAKE"). Only a Latin name of two to four
     spaced words gets this split. Any other name (with Japanese in it, without spaces, or longer; most names here) is set without
-    a word-by-word split, centred vertically in the hero (on phones a long one is broken into a few lines that alternate the same way);
+    a word-by-word split, centred vertically in the hero;
   stacked_oversized = the whole name set at the bottom-left of the hero;
   centered_cover = the name centred, and the area line centred below a double rule.
   heroLayout.height (a minimum for a hero without a split photo; the hero grows past it when its content needs more):
@@ -434,7 +434,7 @@ Renderer vocabulary (the only things you can choose; every value is already impl
 - heroLayout.layout (each one sets the shop name as the hero's main visual):
   split_crop = one word per line, every other line pushed right (e.g. "EXAMPLE" / "      BAKE"). Only a Latin name of two to four
     spaced words gets this split. Any other name (with Japanese in it, without spaces, or longer; most names here) is set without
-    a word-by-word split, centred vertically in the hero (on phones a long one is broken into a few lines that alternate the same way);
+    a word-by-word split, centred vertically in the hero;
   stacked_oversized = the whole name set at the bottom-left of the hero;
   centered_cover = the name centred, and the area line centred below a double rule.
   heroLayout.height (a minimum for a hero without a split photo; the hero grows past it when its content needs more):
