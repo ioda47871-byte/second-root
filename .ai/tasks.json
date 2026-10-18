@@ -2140,13 +2140,13 @@
     {
       "id": "DEV-048",
       "title": "今日やること: 送らない下書きの見送り・DNC と、送れる項目を先に出す",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-009",
         "DEV-030"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-048-today-skip-and-order",
       "purpose": "Phase C 監査（2026-10-18）: 今日の一覧に drafted を見送る手段がなく、送らない下書きが created_at の古い順で 5 枠を占め続ける。AI デザインが有効だと pending / processing の下書きが枠を占め、後ろの ready が出ない（MVP_SPEC §3.1・§5「任意の状態 → lost（人間判断）」）",
