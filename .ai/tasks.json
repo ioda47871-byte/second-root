@@ -2182,6 +2182,57 @@
         "Production release（develop → main）"
       ],
       "decision": "2026-10-18（人の指示）: Phase C の自律開発の開始。候補審査・重複防止・営業禁止チェック・営業キューを優先。監査の D-1・D-2 を 1 task にまとめる"
+    },
+    {
+      "id": "DEV-049",
+      "title": "既存顧客などの除外リスト（persist で照合し、営業準備しない）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-003",
+        "DEV-030"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-049-exclusions",
+      "purpose": "Phase C 監査（2026-10-18）: 候補審査に既存顧客の除外がない。実在の取引先が第一者 email や Instagram で見つかると営業候補になりうる。人の指示（2026-10-18）の候補審査の項目「既存顧客」",
+      "acceptance_criteria": [
+        "管理者だけが読める除外リスト（Instagram handle / website domain / email / 店名+住所のいずれか、表示名、理由 existing_customer | partner | other、任意のメモ）。追加・削除は管理者の SECURITY DEFINER RPC のみ（直接の table 書き込みなし、RLS 有効）",
+        "persist は同じ advisory lock の下で除外リストを照合し、該当する候補を rejected(excluded) にして prospect / demo / outreach を作らない。照合失敗は error(exclusion_unavailable)",
+        "自 run の再処理（同じ run・同じ key の既存結果）は今まで通り同じ結果を返す（冪等）",
+        "除外の値は ingest と同じ正規化（normalizeName / normalizeAddress / websiteKey / parseInstagramProfile / normalizeEmail）で保存する",
+        "管理画面に除外リストの一覧・追加・削除（確認つき）",
+        "Operational Claude の API・prompt は変えない（除外リストは Op Claude から見えない）",
+        "既に作られた下書きには触れない（必要なら DEV-048 の見送る / DNC を使う）"
+      ],
+      "required_tests": [
+        "integration: persist が handle / domain / email / 店名+住所 の各除外で rejected(excluded) になり行を作らない、除外なしは従来通り、自 run の再処理は冪等",
+        "integration: db-security-audit（RLS・直接書き込み不可・admin check）が新しい table / function にも通る、非管理者は RPC 不可",
+        "unit: 除外の入力の正規化と検証",
+        "e2e: 管理画面で除外を追加・削除",
+        "unit / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        "supabase/migrations（新規 migration のみ）",
+        "lib/sales/",
+        "lib/admin/",
+        "app/admin/sales/",
+        "components/admin/",
+        "tests/",
+        "docs/ARCHITECTURE.md（§7.4 の表）",
+        "docs/MVP_SPEC.md（候補審査の記述）",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "ingest API の action・Op Claude の prompt",
+        "既存の dedupe / DNC / daily cap の意味",
+        "RLS の弱体化",
+        "Production・Staging の data（Staging への migration 適用は検証の段階で別に行う）"
+      ],
+      "human_approval_triggers": [
+        "Production への migration 適用（develop → main）"
+      ],
+      "decision": "2026-10-18（人の指示）: Phase C の候補審査に既存顧客の確認を含める。監査の D-7 のうち除外リストだけを先に実装（Op Claude への「既知の店舗」照会と RUN_PROMPT の Instagram 優先は ingest API の範囲を広げるため別 task）"
     }
   ]
 }
