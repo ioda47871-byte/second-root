@@ -52,12 +52,16 @@ describe("brief structure wording (DEV-046)", () => {
     expect(VOCABULARY).not.toMatch(/calm/i);
   });
 
-  it("split_crop does not assume a spaced Latin name, and does not claim the same split for unspaced names", () => {
+  it("split_crop says which names get its split, and does not claim it for the others", () => {
     const d = description(VOCABULARY, "split_crop", HERO_LAYOUTS);
-    expect(d).toMatch(/A Latin name of two to four spaced\s+words is set one word per line/);
-    expect(d).toMatch(/a longer Latin name stays on one line/);
-    expect(d).toMatch(/a name with no spaces or with\s+any Japanese in it \(most names here, even when spaced\) is kept in whole pieces/);
-    expect(d).toMatch(/so the split shows less/);
+    expect(d).toMatch(/Only a Latin name of two to four\s+spaced words gets this split\./);
+    expect(d).toMatch(/Any other name \(with Japanese in it, without spaces, or longer; most names here\) is set without\s+a word-by-word split/);
+    expect(d).not.toMatch(/oversized|cropped|as large as/);
+    expect(description(VOCABULARY, "stacked_oversized", HERO_LAYOUTS)).not.toMatch(/as large as/);
+  });
+
+  it("states the centred cover's phone band instead of hiding it", () => {
+    expect(description(VOCABULARY, "medium", HERO_HEIGHTS)).toMatch(/a medium centered_cover is a band on phones at every spacing/);
   });
 
   it("the ledger_columns description stops at the divider list (the helper isolates each option)", () => {
@@ -72,6 +76,7 @@ describe("brief structure wording (DEV-046)", () => {
     expect(RULES).toContain("No step-by-step reasoning.");
     expect(RULES).toContain("Answer with the JSON object only.");
     expect(VOCABULARY).toContain("alignment: left | center (text in the lower sections).");
+    expect(VOCABULARY).not.toMatch(/split photo hero/);
     expect(VOCABULARY).toContain("There are no photographs, logos or illustrations of food, and there never will be.");
     expect(VOCABULARY).toContain("Renderer vocabulary (the only things you can choose; every value is already implemented):");
   });
