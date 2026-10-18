@@ -2186,13 +2186,13 @@
     {
       "id": "DEV-049",
       "title": "既存顧客などの除外リスト（persist で照合し、営業準備しない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-003",
         "DEV-030"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-049-exclusions",
       "purpose": "Phase C 監査（2026-10-18）: 候補審査に既存顧客の除外がない。実在の取引先が第一者 email や Instagram で見つかると営業候補になりうる。人の指示（2026-10-18）の候補審査の項目「既存顧客」",
@@ -2232,7 +2232,7 @@
       "human_approval_triggers": [
         "Production への migration 適用（develop → main）"
       ],
-      "decision": "2026-10-18（人の指示）: Phase C の候補審査に既存顧客の確認を含める。監査の D-7 のうち除外リストだけを先に実装（Op Claude への「既知の店舗」照会と RUN_PROMPT の Instagram 優先は ingest API の範囲を広げるため別 task）"
+      "decision": "2026-10-18（人の指示）: Phase C の候補審査に既存顧客の確認を含める。監査の D-7 のうち除外リストだけを先に実装（Op Claude への「既知の店舗」照会と RUN_PROMPT の Instagram 優先は ingest API の範囲を広げるため別 task）。2026-10-18: Staging への migration 20261018000000 の適用は人の操作待ち（HUMAN-008）"
     }
   ]
 }

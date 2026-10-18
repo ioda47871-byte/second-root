@@ -5,6 +5,14 @@
 
 ## 未解除
 
+### HUMAN-008 — Staging に DEV-049 の migration を適用（除外リスト）
+
+- 何: `supabase/migrations/20261018000000_sales_exclusions.sql`（新しい table `sales_exclusions`・admin RPC 2 つ・`sales_persist_candidate` の置き換え）を Staging（`znbqgvawublgyjwfpmei`）に適用する。Staging は `20261009000000` まで適用済みで、未適用はこの 1 本だけ（2026-10-18 読み取りで確認）。
+- なぜ人: Staging の schema 変更は、この session の自動実行の安全確認で止められた（plan のみの実行も含む）。
+- 手順: `SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei`（plan）→ 未適用が 1 本だけと確認 → `… --confirm-ref znbqgvawublgyjwfpmei --apply`（適用と security check）。
+- 解除条件: 適用後、Claude が読み取りで `sales_exclusions` の存在・RLS・`sales_persist_candidate` の差分を確認する。
+- 適用しないとき: develop の persist（Vercel Preview / Staging）が `sales_exclusions` を参照し、`exclusion_unavailable` で営業準備をしない（fail-closed）。Staging の営業 Routine は schedule 無効のため、実害は手動の Run now のときだけ。
+
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: **PR #29 を main へ merge 済み（2026-09-28、b14aab7。人間の明示承認に基づき Claude が実行）**。残りは merge 後の人間の作業。
   - **smoke test**（`docs/RELEASE.md` §8 の 5）: 管理者ログイン・非管理者の拒否・token ありの ingest `status`。
