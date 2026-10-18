@@ -1985,7 +1985,7 @@
       "human_approval_triggers": [
         "Staging の controlled rerun（bakery の 1 件のみ、WSL root の実行、demo を pending に戻す Staging DB 更新）"
       ],
-      "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）。2026-10-17（人の判断）: 直後の Staging rerun は見送り（既存 bakery は低 confidence なら centered_cover の default から始まり、変えた layout を通らない可能性が高い）。runtime の確認は stacked_oversized / split_crop を選ぶ run か、DEV-044 の後に行う。2026-10-17: step 0 で保存済みの低 confidence brief の構造が centered_cover / tall / left / editorial_12 / ruled_list / generous（default と同じ）と分かり、rerun は no-go（人の判断）。runtime の確認は brief が stacked_oversized / split_crop を選ぶ自然な run か将来の test case まで待つ。2026-10-18: DEV-046 の Window 7 rerun で brief が stacked_oversized / medium / standard を選び、runtime の確認対象が得られた（表示の確認は実画面で別途行う）"
+      "decision": "2026-10-17（人の判断）: 着手。DEV-044 とは同時にしない（rerun での切り分けのため）。2026-10-17（人の判断）: 直後の Staging rerun は見送り（既存 bakery は低 confidence なら centered_cover の default から始まり、変えた layout を通らない可能性が高い）。runtime の確認は stacked_oversized / split_crop を選ぶ run か、DEV-044 の後に行う。2026-10-17: step 0 で保存済みの低 confidence brief の構造が centered_cover / tall / left / editorial_12 / ruled_list / generous（default と同じ）と分かり、rerun は no-go（人の判断）。runtime の確認は brief が stacked_oversized / split_crop を選ぶ自然な run か将来の test case まで待つ。2026-10-18: DEV-046 の Window 7 rerun で brief が stacked_oversized / medium / standard を選び、runtime の確認対象が得られた（表示の確認は実画面で別途行う）。2026-10-18: 実データの描画確認（本番と同じ ProfileRenderer、390 / 1440）で stacked_oversized / medium / standard は崩れなし。tight の詰めの経路は今回の profile（standard）では通らない"
     },
     {
       "id": "DEV-044",
