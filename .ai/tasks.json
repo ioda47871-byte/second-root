@@ -2233,6 +2233,56 @@
         "Production への migration 適用（develop → main）"
       ],
       "decision": "2026-10-18（人の指示）: Phase C の候補審査に既存顧客の確認を含める。監査の D-7 のうち除外リストだけを先に実装（Op Claude への「既知の店舗」照会と RUN_PROMPT の Instagram 優先は ingest API の範囲を広げるため別 task）。2026-10-18: Staging への migration 20261018000000 の適用は人の操作待ち（HUMAN-008）"
+    },
+    {
+      "id": "DEV-050",
+      "title": "除外リストのメールを digest だけで保存・照合する（平文メールを残さない）",
+      "status": "in_progress",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-049"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-050-exclusion-email-digest",
+      "purpose": "HUMAN-008 の適用前レビュー（人、2026-10-18）: DEV-049 の sales_exclusions.public_email は管理者が入力したメールを平文で保存し、RPC も平文を受け取り、管理画面も表示していた。報告（メール自体は保存しない）とも不一致。Staging 未適用（20261009000000 まで）",
+      "acceptance_criteria": [
+        "sales_exclusions はメールの平文を持たず、正規化メールの digest（email_digest、64 桁 hex）だけを保存する。追加の RPC も digest だけを受け取る（平文は DB・RPC の引数・Postgres のログに届かない）",
+        "digest は候補側（prepare の email_digest）と同じ正規化・同じ関数（ドメイン分離の接頭辞つき SHA-256）で、server 側の TypeScript で計算する",
+        "メールだけで登録した既存顧客は、メールが第一者でない Instagram 経由の候補でも除外される。email_digest の無い旧い checkpoint の候補は public_email から同じ方式で digest を作って照合する",
+        "管理画面はメールを表示しない（「メール登録済み」）",
+        "平文メールが DB（除外リスト）・サーバーのログ・エラー出力に残らないことを test で確認する",
+        "RLS・管理者認証・DNC・重複除外・日次 5 件・自 run の再処理の冪等性は不変",
+        "SHA-256 の限界（推測による確認）を docs に明記し、より安全な方式（HMAC と秘密の pepper）を承認が要る次の段階として記録する"
+      ],
+      "required_tests": [
+        "unit: digest の決定性・接頭辞・prepare との一致、server action が RPC に平文を渡さない",
+        "integration: 除外リストにメール列が無い、digest で Instagram 経由の候補を除外、旧い checkpoint の public_email で照合、RPC が digest の形以外を拒否、既存の DEV-049 の test",
+        "integration: db-security-audit",
+        "e2e: メールで登録 → 「メール登録済み」表示・画面と DB に平文なし",
+        "unit / typecheck / lint / check:secrets / CI / Fresh Review"
+      ],
+      "allowed_scope": [
+        "supabase/migrations/20261018000000_sales_exclusions.sql（hosted に未適用のため書き換え）",
+        "lib/sales/",
+        "lib/admin/",
+        "app/admin/sales/",
+        "components/admin/",
+        "tests/",
+        "docs/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production",
+        "Staging DB への書き込み（適用は HUMAN-008 で人が行う）",
+        "新しい secret・認証情報の追加（HMAC は承認後の別 task）",
+        "ingest API の action・Op Claude の prompt"
+      ],
+      "human_approval_triggers": [
+        "Staging への migration 適用（HUMAN-008）",
+        "HMAC 用の secret の追加"
+      ],
+      "decision": "2026-10-18（人の指示）: HUMAN-008 を保留し、除外リストのメールを digest のみにする修正を自律で進め、新しい PR でレビュー・CI まで行う。migration は hosted に未適用（Staging は 20261009000000 まで、読み取りで確認）なので、新しい migration を足さず 20261018000000 を書き換え、平文の列を一度も作らない"
     }
   ]
 }

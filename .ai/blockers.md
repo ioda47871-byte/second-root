@@ -7,6 +7,8 @@
 
 ### HUMAN-008 — Staging に DEV-049 の migration を適用（除外リスト）
 
+- **保留（2026-10-18、人の判断）**: 除外リストがメールを平文で保存していたため、DEV-050 の修正が develop に入るまで適用しない。下の手順は DEV-050 の後に作り直す。
+
 - 何: `supabase/migrations/20261018000000_sales_exclusions.sql`（新しい table `sales_exclusions`・admin RPC 2 つ・`sales_persist_candidate` の置き換え）を Staging（`znbqgvawublgyjwfpmei`）に適用する。Staging は `20261009000000` まで適用済みで、未適用はこの 1 本だけ（2026-10-18 読み取りで確認）。
 - なぜ人: Staging の schema 変更は、この session の自動実行の安全確認で止められた（plan のみの実行も含む）。
 - 手順: `SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei`（plan）→ 未適用が 1 本だけと確認 → `… --confirm-ref znbqgvawublgyjwfpmei --apply`（適用と security check）。
