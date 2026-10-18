@@ -2066,21 +2066,27 @@
     {
       "id": "DEV-046",
       "title": "brief の構造の案内（calm は色・書体だけ、構造は内容の形で、split_crop の例の偏り）",
-      "status": "backlog",
-      "priority": "P3",
+      "status": "in_progress",
+      "priority": "P2",
       "depends_on": [
         "DEV-045"
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null,
+      "branch": "feature/dev-046-brief-structure-wording",
       "purpose": "DEV-045 原因 1・2: 疎な証拠での「calm」が構造まで centered_cover / tall / generous に寄せ、説明の無い grid / info / spacing の値は先頭が選ばれる",
       "acceptance_criteria": [
-        "人の判断で方針を決める（prompt の文言のみ。enum・schema・閾値・score は変えない）",
-        "変更後は controlled rerun で brief の構造の分布を見る"
+        "calm の指示は brand に関わる styling（direction・palette・typography・motifs）だけに限り、構造には使わない",
+        "構造（hero の layout / height、grid、infoStyle、spacing）は内容の形（名前の長さ・文字・空白、事実の数）で選ぶと明記し、どの選択肢も既定・安全とは言わない",
+        "hero の layout / height、grid、infoStyle、spacing の全ての値を対称に説明する",
+        "split_crop の説明が空白のある Latin の名前だけを前提にしない。空白の無い名前での実際の描き方を正しく書く（同じように効くとは言わない）",
+        "低 confidence（0.5 未満）・事実は data・文章を書かない などの既存の安全の指示は残す",
+        "heroLayout.alignment の文言・enum の順・schema・閾値・score・MAX_REVISIONS・renderer は変えない"
       ],
       "required_tests": [
-        "prompt の snapshot・unit / typecheck / lint / check:secrets / CI"
+        "unit: tests/unit/design-agent/brief-structure-wording.test.ts（全ての構造の値に説明がある、calm が構造の選択の指示に使われない、どの値も明示的に優先されない、既存の安全・低 confidence の指示が残る、alignment の文言が不変）",
+        "prompt の snapshot（photo-codex・review-scale、意図した変更のみ）",
+        "unit / typecheck / lint / check:secrets / CI"
       ],
       "allowed_scope": [
         "lib/design-agent/prompts.ts（VOCABULARY / RULES の文言のみ）",
@@ -2094,7 +2100,8 @@
       "human_approval_triggers": [
         "着手の判断（design の方針）",
         "Staging の controlled rerun（WSL root の実行）"
-      ]
+      ],
+      "decision": "2026-10-18（人の判断）: 着手。DEV-047 は保留（DEV-046 で足りないときだけ）。prompts.ts の VOCABULARY / RULES の文言だけ。calm は direction・palette・typography（brand に関わる styling）だけ、構造は内容の形で選ぶ、grid / infoStyle / spacing を対称に説明、split_crop の Latin だけの例の偏りを直す（日本語の短い名前で同じに効くとは言わない）。enum の順・0.5・score・MAX_REVISIONS・schema・renderer・heroLayout.alignment は触らない"
     },
     {
       "id": "DEV-047",
