@@ -11,7 +11,7 @@
 - なぜ人: Staging の schema 変更は、この session の自動実行の安全確認で止められた（plan のみの実行も含む）。
 - 手順: `SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei`（plan）→ 未適用が 1 本だけと確認 → `… --confirm-ref znbqgvawublgyjwfpmei --apply`（適用と security check）。
 - 解除条件: 適用後、Claude が読み取りで `sales_exclusions` の存在・RLS・`sales_persist_candidate` の差分を確認する。
-- 適用しないとき: develop の persist（Vercel Preview / Staging）が `sales_exclusions` を参照し、`exclusion_unavailable` で営業準備をしない（fail-closed）。Staging の営業 Routine は schedule 無効のため、実害は手動の Run now のときだけ。
+- 適用しないとき: persist の照合は DB 関数の中にあるため、Staging は旧い `sales_persist_candidate`（除外の照合なし）のまま動く。管理画面の除外リストは読み込みエラーを表示する。既存顧客の除外が効かない以外の挙動は従来どおり。
 
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: **PR #29 を main へ merge 済み（2026-09-28、b14aab7。人間の明示承認に基づき Claude が実行）**。残りは merge 後の人間の作業。
