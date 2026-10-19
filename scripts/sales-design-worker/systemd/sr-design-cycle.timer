@@ -1,0 +1,17 @@
+# Second Root design worker cycle (DEV-052). NOT installed or enabled by anything in this
+# repository; enabling it is a separate human decision (docs/operations/design-worker-cycle.md).
+[Unit]
+Description=Second Root design worker cycle (hourly)
+
+[Timer]
+# Once an hour (the bridge claims only while the worker's heartbeat is under 90 minutes old).
+# A start while the previous cycle still runs (it can take up to 75 minutes) is skipped by
+# systemd, and cycle.sh's lock would refuse it too.
+OnCalendar=*-*-* *:17:00
+RandomizedDelaySec=10min
+AccuracySec=1min
+# No catch-up run right after boot or after the timer was stopped (e.g. around an Instagram login).
+Persistent=false
+
+[Install]
+WantedBy=timers.target
