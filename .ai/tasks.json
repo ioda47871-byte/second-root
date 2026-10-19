@@ -2706,7 +2706,7 @@
     {
       "id": "DEV-061",
       "title": "diagnose: graceful close で終わらない Chromium をその profile の process だけ終わらせる（CI の BROWSER_STUCK）",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-060"
@@ -2737,7 +2737,7 @@
         "Production・Staging"
       ],
       "human_approval_triggers": [],
-      "decision": "2026-10-19: Claude が追加（CI failure の根本対策、PR #74）"
+      "decision": "2026-10-19: Claude が追加（CI failure の根本対策、PR #74）; 2026-10-19: PR #74 merge（78a4fd6）。Fresh Review PASS（Medium 1: 切断だけでは終了とみなさない → 修正、強制終了は \"forced\" として区別、CI の test は終わり方を label に出す）→ 再レビュー PASS（Low 2: 本物の Chromium での kill の test、コメントの「browser process」表記。後続で対応）、CI green"
     }
   ]
 }
