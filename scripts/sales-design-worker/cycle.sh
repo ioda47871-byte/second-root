@@ -170,9 +170,9 @@ pair = re.compile(r"([^=;,\s]+)=[^;,\s]*")
 rules = [
     (re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+"), "[url]"),
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+"), "[email]"),
-    (re.compile(r"(?i)\b(set-cookie|cookie)([\"\x27]?\s*[=:]\s*)(.*)"), lambda m: m.group(1) + m.group(2) + pair.sub(r"\1=[redacted]", m.group(3))),
+    (re.compile(r"(?i)\b(set-cookie|cookie)([\"\x27]?\s*[=:]\s*)(.*)"), lambda m: m.group(1) + m.group(2) + (pair.sub(r"\1=[redacted]", m.group(3)) if "=" in m.group(3) else "[redacted]")),
     (re.compile(r"(?i)\b(bearer|basic)\s+\S+"), r"\1 [redacted]"),
-    (re.compile(r"(?i)\b([A-Za-z0-9_.-]*(token|secret|password|passwd|cookie|api[_-]?key|authorization|credential|sessionid)[A-Za-z0-9_.-]*)([\"\x27]?\s*[=:]\s*)(\"[^\"]*\"?|\x27[^\x27]*\x27?|\S+)"), r"\1\3[redacted]"),
+    (re.compile(r"(?i)\b([A-Za-z0-9_.-]*(token|secret|password|passwd|cookie|api[_-]?key|authorization|credential|sessionid)[A-Za-z0-9_.-]*)([\"\x27]?\s*[=:]\s*)(?![^\s=]*=\[redacted\])(\"[^\"]*\"?|\x27[^\x27]*\x27?|\S+)"), r"\1\3[redacted]"),
     (re.compile(r"(?i)\b(x-api-key|api[_-]?key)\s+(?![=:\s])\S+"), r"\1 [redacted]"),
     (re.compile(r"(?<![A-Za-z0-9_])[0-9A-Fa-f]{32,}(?![A-Za-z0-9_])"), "[redacted]"),
     (re.compile(r"\beyJ[A-Za-z0-9_-]{6,}(\.[A-Za-z0-9_-]*)*"), "[redacted]"),
