@@ -2544,7 +2544,7 @@
     {
       "id": "DEV-057",
       "title": "営業ファネル指標: 準備から成約までの段階と期間で見る",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -2583,7 +2583,7 @@
       "human_approval_triggers": [
         "Staging への migration の適用"
       ],
-      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
+      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加; 2026-10-19: PR #71 merge（77c728b）。Fresh Review PASS（Low 5、1/2/4/5 は修正、3 は migration の順序: 20261020110000 を DEV-058 の 20261020120000 より先に適用する）、CI green。Staging への migration の適用は人の承認待ち（HUMAN-011）"
     },
     {
       "id": "DEV-058",

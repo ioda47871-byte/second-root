@@ -5,6 +5,14 @@
 
 ## 未解除
 
+### HUMAN-011 — Staging に DEV-057（と DEV-058）の migration を適用
+
+- 何: `20261020110000_sales_funnel_views.sql`（DEV-057、view 2 つだけ）。DEV-058 が merge されたら `20261020120000_sales_design_review.sql` も同じ回に、この順で適用する（逆順だと db push が順序違反で拒否する）。
+- 前提: develop が DEV-057 の merge（77c728b）以降。checkout が LF（STAGING.md §3）。
+- 手順: HUMAN-009 と同じ（`git ls-files --eol supabase/migrations | grep -v w/lf` が空 → plan で pending が上の migration だけ → `--confirm-ref znbqgvawublgyjwfpmei --apply` で全 PASS）。FAIL は再実行せず出力を Claude に渡す。
+- 適用しないとき: Staging の履歴タブでファネルの部分だけ「読み込めませんでした」になる（他は表示される）。`staging:verify` の migration 一致の検査が差分を示す。
+- 解除条件: 適用後、Claude が読み取りで view・grant・security_invoker を確認する。
+
 ### HUMAN-010 — design worker の cycle（DEV-052）の WSL への install と timer の有効化
 
 - 何: `scripts/sales-design-worker/cycle.sh` と `scripts/sales-design-worker/systemd/sr-design-cycle.{service,timer}` を、root の admin clone（`/root/sr-capture-admin`）から install し、dry-run の後に timer を有効化する。手順は `docs/operations/design-worker-cycle.md`。
