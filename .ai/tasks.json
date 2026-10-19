@@ -2634,7 +2634,7 @@
     {
       "id": "DEV-059",
       "title": "Vercel Authentication を維持したまま認証された bridge だけを通す方式の検討",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -2667,7 +2667,7 @@
       "human_approval_triggers": [
         "secret の作成・Deployment Protection の設定変更"
       ],
-      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
+      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加; 2026-10-19: PR #69 merge（fc1c7ac）。Fresh Review PASS（Low 6、Low 1〜5 は修正済み: 文書の有効化条件・値の検査・O_NOFOLLOW＋fstat・0600 で統一・test）。allowed_scope を lib/design-agent/bridge/・scripts/sales-design-bridge/ に拡張（bridge の client がそこにあるため、Low 6）。コードは既定で無効。secret の作成と有効化は人の承認待ち（HUMAN-010 とは別に承認しない）"
     },
     {
       "id": "DEV-060",
