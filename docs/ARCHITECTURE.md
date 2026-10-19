@@ -371,14 +371,15 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
 - claim は全体の advisory lock の下で `for update skip locked` で 1 件ずつ取る。同じ demo を二重に渡さない。
 - submit は job id で demo を特定する（lineage）。今の job でない id（lease 切れで回収された古い job）は `job_superseded`（409）で捨てる。同じ job の再送は何も変えず `replayed`。
 - 初回営業がもう送信済みなら、demo を後から変えない（claim でも submit でも `blocked` / `ALREADY_SENT`）。DNC・無効化済みの demo もデザインしない。
-- 関数は service role だけが実行できる（`sales_design_claim` / `sales_design_submit`、migration `20261009000000`）。
+- 関数は service role だけが実行できる（`sales_design_claim` / `sales_design_submit`、migration `20261009000000`。`sales_design_submit` は DEV-058 の `20261020120000` で省略可の `p_review` を足した同じ関数に置き換え）。
+- `design_review`（DEV-058、§10.5）は `ready` か `blocked` の demo にだけある（`sales_demos_design_review_final`）。`pending` / `processing` に戻る demo（失敗の再試行・lease 切れの回収・やり直し）は持てないので、再 claim の前に必ず空になる（`design_profile` が `ready` にだけあるのと同じ扱い）。
 
 ### 10.2 bridge API（`POST /api/internal/sales-design/jobs`）
 
 | action | body | 返すもの |
 |---|---|---|
 | `claim` | なし | `{ job: { jobId, workerJobId: "b-<jobId>", attempt, facts, source } \| null }`。facts は fact-only の DemoView に通るものだけ（email・未知の key は落ちる）、source は検証済みの公式サイト（`website_status = present`、SNS・portal は除く）と canonical な Instagram profile URL だけ |
-| `submit` | `jobId, outcome (ready / blocked / failed), profile (ready のときだけ、rationale は空), errorCode (ready 以外、固定の符号), workerCommit, lineage.workerJobId` | `{ result: { jobId, status, errorCode, attempts, replayed } }` |
+| `submit` | `jobId, outcome (ready / blocked / failed), profile (ready のときだけ、rationale は空), errorCode (ready 以外、固定の符号), workerCommit, lineage.workerJobId`、省略可の `review`（DEV-058、§10.5。`ready` か `blocked` / `QUALITY_NOT_ACCEPTED` のときだけ） | `{ result: { jobId, status, errorCode, attempts, replayed } }` |
 
 - 認証: `Authorization: Bearer <bridge token>`。server は `SALES_DESIGN_BRIDGE_TOKEN_SHA256`（64 桁の hex）だけを持ち、受け取った token を SHA-256 して定数時間で比べる（DEV-032）。flag 無効・hash 未設定 / 不正・token そのものが server に設定されている・ingest token の hash と同じ、なら **503**、不一致は 401。ingest token では通らず、bridge token で ingest API も通らない。
 - strict schema: 未知の key（screenshot・HTML・Cookie・prompt・Codex の出力・stderr・推論など）があれば 400 で何も書かない。値は返さない。本文は 32KB まで。
@@ -391,6 +392,7 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
 - `/demo/[publicToken]`: flag 有効・`ready`・profile が再検証を通る → `ProfileRenderer`（写真なし）。それ以外 → 既存の bakery / baked_goods / cafe template。表示の可否（送信済み・30 日・無効化・DNC）と notice・footer・noindex は既存のまま。表示文は fact-only の DemoView と固定の見出しだけ。
 - 公開しないもの: DEV-029 の写真、Instagram・公式サイトの screenshot、capture helper の PNG、reference 画像。保存するのは validated DesignProfile と最小の metadata（状態・job id・試行回数・commit・符号）だけ。
 - `/admin/sales`（今日）: 初回の項目に「AIデザイン待ち / AIデザイン生成中 / デモ確認可能 / デザインBLOCKED / AIデザイン失敗」を出す。flag 有効で `pending` / `processing` の項目は送信ボタンを出さず、「送信済み」もサーバー（server action）で拒否する。`ready` はプレビューへのリンクを出す。`blocked` / `failed` は既存 template のデモで送れる。
+  - DEV-058: flag 有効時だけ `design_review` も読み、`ready` / `blocked` の初回の項目の「詳細」（畳んだ部分）に「AI レビュー: accept 19/25（2 回）」と観点ごとの点（店らしさ・見た目・情報の階層・スマホ・テンプレ感（低いほど良い））・確信度を出す。読むときにも `ReviewSummarySchema` で検証し、通らなければ出さない。公開 demo（`/demo`）は `design_review` を読まない（`lib/sales/demo-data.ts` の列は変えていない）。
   - `design_error_code` の管理画面向けの文言は `lib/sales/design.ts` の `DESIGN_ERROR_LABEL` / `designErrorLabel`（DEV-053。`QUALITY_NOT_ACCEPTED` を含む）。今日の一覧（`lib/admin/today.ts`）は flag 有効時だけ `design_error_code` を読み、`blocked` / `failed` の初回の項目に「理由: …」として表示する（flag 無効時の query は従来と同じ）。
   - この拒否は server action で行い、DB の `sales_mark_sent`（管理者だけが呼べる RPC）は変えていない。flag は env にあり DB からは見えないため、flag 無効時の legacy の挙動を DB で崩さないための選択。管理者が RPC を直接呼べば送信済みにできるが、それは管理者本人の操作に限られる。
   - flag を一度無効にして、その間に待ち・生成中の demo を送った後で再び有効にすると、その demo は `ALREADY_SENT` で閉じる（送った後でページを変えない）。
@@ -399,7 +401,7 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
 ### 10.4 local bridge と worker
 
 - `scripts/sales-design-bridge/run.sh --once`（`bridge.ts`）: 利用者 `sr-designbridge` だけで動く（root・`sr-designgen`・`sr-igcapture` では止まる）。token は 0600 の file から読み、環境変数にしない。子 process を起動しない。1 回で「結果の提出 → 期限切れの job の破棄 → 1 件の claim」。`--deliver-only` は「結果の提出 → 期限切れの job の破棄」だけで、claim を頼まず worker 用の job file も書かない（DEV-037）。
-- worker は `SR_DESIGN_BRIDGE_SPOOL` があるときだけ、run の前に `to-worker/` の job を自分の inbox に取り込み、run の後に終わった bridge job の結果を `from-worker/` に書く（`lib/design-agent/bridge/worker-side.ts`）。書くのは outcome・final profile（rationale を落として `checkProfile` を通したもの）・固定の符号（既知の符号だけ。他は `WORKER_FAILED`）・commit だけ。
+- worker は `SR_DESIGN_BRIDGE_SPOOL` があるときだけ、run の前に `to-worker/` の job を自分の inbox に取り込み、run の後に終わった bridge job の結果を `from-worker/` に書く（`lib/design-agent/bridge/worker-side.ts`）。書くのは outcome・final profile（rationale を落として `checkProfile` を通したもの）・固定の符号（既知の符号だけ。他は `WORKER_FAILED`）・commit と、DEV-058 の review の要約（§10.5。数値と enum だけ）だけ。
   - run の初めに heartbeat（`from-worker/worker-heartbeat.json`）を書く。bridge は heartbeat が 90 分以内のときだけ claim する。worker が止まっている間に job が lease を待ち切って試行を使い切ることはない。**bridge を動かす間は、worker を少なくとも 1 時間に 1 回動かす。**
   - bridge が手放した job（spool の job file が消えた）は、inbox で待っていれば取り下げ、結果も書かない。閉じた job の結果 file は worker が消す。
   - **品質ゲート（DEV-053）**: final は従来どおり点の最も高い candidate（同点は後）だが、`ready` で出すのはその candidate の最後の review（best の再 review を含む）が `accept` のときだけ。accept でなければ（改訂の上限・改訂 profile なし・時間切れ・後の review の失敗）pipeline は `blocked`、notes と `report.json` の `codex.quality_not_accepted` に記録し、bridge には `blocked` / `QUALITY_NOT_ACCEPTED`（profile なし）を出す。demo は既存 template で、送信は止めない（他の `blocked` と同じ）。final.json・after の画像・`rounds`（verdict と点数）・`final_candidate` は worker の記録に残る（Codex の文章は残さない）。renderer の変更が要る stop（`RENDERER_CHANGE_NEEDED`）・写真の描画不一致・template への fallback・環境の失敗は変わらない。
@@ -408,4 +410,26 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
   - worker の profile は写真つきで選ばれることがある（DEV-029 の写真 job）が、公開 demo は写真なしで描く。bridge の job には写真を付けない運用にする（写真の公開は後続 DEV）。
 - spool の file は link を辿らず、通常ファイル・link 数 1・サイズ上限・strict schema で読む（`lib/design-agent/bridge/spool.ts`）。
 - systemd の unit（`scripts/sales-design-bridge/systemd/`）は repo に置くだけで、install・enable は人が行う。手順: `docs/operations/design-bridge.md`。
+
+### 10.5 レビューの要約（DEV-058）
+
+DEV-053 の品質ゲートで `blocked` になった理由は符号しか残らなかった。worker は Codex の visual review の要約を結果に付け、server が `sales_demos.design_review` に保存し、今日の画面の詳細に出す。
+
+```json
+{ "version": 1, "verdict": "accept", "total": 19, "max": 25,
+  "scores": { "brand_fit": 4, "visual_quality": 4, "hierarchy": 4, "mobile_quality": 4, "generic_template_feel": 3 },
+  "rounds": 2, "confidence": 0.72, "qualityNotAccepted": false }
+```
+
+- 固定の key と数値・enum だけ。Codex の文章（problems・notes・summary・renderer の note）は入らない。
+  - `verdict`・`scores` の観点は review の schema（`VisualReviewSchema`、変えていない）から取る。final の candidate の**最後の** review（品質ゲートが見るのと同じ round）の verdict と点。
+  - `total` は pipeline の `reviewScore`（4 観点 + `6 - generic_template_feel`、5〜25）、`max` は 25 固定、`rounds` は review の回数（1〜10）。
+  - `confidence` は final の profile 自身の confidence（0〜1、小数 2 桁）。記録がなければ null。
+  - `qualityNotAccepted` は final が accept されなかったこと（`verdict` が accept でないことと一致しなければ schema が拒む）。
+- 付くのは `ready` と `blocked` / `QUALITY_NOT_ACCEPTED` だけ。ほかの blocked（`RENDERER_CHANGE_NEEDED`・`FALLBACK_TEMPLATE` など）・failed・round が記録の形でない run には付けない（key ごと無い）。
+- 作るのは worker（`lib/design-agent/review-summary.ts` の `reviewSummaryFromReport`。`report.json` の `codex.rounds`・`final_candidate`・`confidence`・`quality_not_accepted` から）。spool の `WorkerResultSchema`・bridge の `submitBody`・server の `designBridgeRequest` が同じ `ReviewSummarySchema`（strict）で検証する。profile が描けず failed に落とした結果には付けない。
+- DB（migration `20261020120000`）: `design_review jsonb` の check で object・`version` 1・key の集合がちょうど 8 個（`scores` は 5 観点）・型と範囲（点は 1〜5 の整数、`verdict` は `accept` / `revise`）・`pg_column_size` 512 byte 以下を強制する。`sales_design_submit(…, p_review jsonb default null)` は要約を `ready` か `blocked` / `QUALITY_NOT_ACCEPTED` でだけ受け（他は `invalid_result`）、check に通らない値も `invalid_result`（400）にして何も書かない。送信済みに変わっていた（`ALREADY_SENT` / `OUTREACH_CLOSED`）ときは要約を保存しない。
+- **後方互換**: 要約は省略できる。古い bridge（`review` を送らない）・`p_review` を渡さない呼び出しは従来どおり動く（古い 6 引数の関数は置き換えたので、同じ名前付き引数の呼び出しは新しい関数に解決される）。server は要約があるときだけ `p_review` を渡す。
+- **入れる順番**（人が行う）: migration → server（Vercel）→ WSL の bridge → worker。schema は strict なので、古い bridge は `review` の付いた worker の結果を不正として拒む（`refused`）。古い server は `review` の付いた submit を 400 にし、bridge はその結果を `refused` にする（demo は lease 切れで次の試行に回る）。
+- flag 無効時、今日の画面の query は従来と同じで、`design_review` を読まない。
 

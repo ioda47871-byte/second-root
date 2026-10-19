@@ -28,6 +28,7 @@ Second Root server ──https── local bridge（sr-designbridge, token あ�
 | D | worker の jail に spool の bind を 2 行足し、root だけの clone から入れ直す | security boundary の設定（root） |
 | E | `SALES_AI_DESIGN_ENABLED=true`（Staging → Production） | 機能を有効にする |
 | F | `sr-design-bridge.timer` の install / enable（任意。それまでは手で `--once`） | 自動実行 |
+| G | DEV-058 の migration `20261020120000_sales_design_review.sql` を Staging に適用（次に Production）し、その後 bridge・worker の checkout を承認した commit に更新（§10） | DB schema の変更・WSL の更新 |
 
 ## 1. migration（A）
 
@@ -144,7 +145,7 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 | `BRIDGE_WRONG_USER` | root・`sr-designgen`・`sr-igcapture` で起動した | `sr-designbridge` で起動する |
 
 demo の `design_error_code`（管理画面では「デザインBLOCKED」「AIデザイン失敗」と既存テンプレートの案内）:
-- `PUBLIC_SOURCE_UNAVAILABLE`、`FALLBACK_TEMPLATE`、`DESIGN_BLOCKED`、`RENDERER_CHANGE_NEEDED`、`QUALITY_NOT_ACCEPTED`（DEV-053: final の review が一度も accept しなかった。worker の run directory の `report.json`・`review-*.json` で best の candidate と点数を見る）
+- `PUBLIC_SOURCE_UNAVAILABLE`、`FALLBACK_TEMPLATE`、`DESIGN_BLOCKED`、`RENDERER_CHANGE_NEEDED`、`QUALITY_NOT_ACCEPTED`（DEV-053: final の review が一度も accept しなかった。worker の run directory の `report.json`・`review-*.json` で best の candidate と点数を見る。DEV-058 以降は管理画面の項目の「詳細」にも verdict・合計点・観点ごとの点・回数が出る（§10））
 - `DO_NOT_CONTACT`、`DEMO_DISABLED`、`ALREADY_SENT`、`OUTREACH_CLOSED`、`NO_VISUAL_SOURCE`、`DEMO_CONTENT_INVALID`
 - `PROFILE_INVALID`、`WORKER_FAILED`（ほか worker の固定の符号）、`DESIGN_STALE`
 
@@ -168,3 +169,18 @@ bridge と worker を 1 回ずつ安全に組み合わせる cycle（idle run �
   - 無効の間に、待ち・生成中だった demo を人が送った後で再び有効にすると、その demo は `ALREADY_SENT` で閉じる（送った後でページを変えない）。
 - bridge だけ止める: timer を disable するか、token file を消す。
 - migration は forward only。flag が無効なら列は使われないので、戻す必要はない。
+
+## 10. レビューの要約（DEV-058）の入れ方（G）
+
+worker は ready と `QUALITY_NOT_ACCEPTED` の結果に、Codex の review の要約（固定の key と数値・enum だけ。`docs/ARCHITECTURE.md` §10.5）を付ける。server が `sales_demos.design_review` に保存し、`/admin/sales` の項目の「詳細」に「AI レビュー: accept 19/25（2 回）」と観点ごとの点を出す（公開 demo には出さない）。
+
+**この順番で人が行う**（schema が strict なので、順番を変えると結果が `refused` になる）:
+
+1. migration `20261020120000_sales_design_review.sql` を Staging に適用し（`npm run staging:apply`）、`npm run staging:verify` を確かめる。Production は `docs/RELEASE.md` の手順。
+2. server（Vercel）をこの commit 以降にする。要約のない submit（古い bridge）は従来どおり受ける。
+3. bridge（`sr-designbridge` の checkout）を承認した commit に更新する（§5。`git checkout --detach <commit> && npm ci`）。新しい bridge は要約の付いた結果も付かない結果も届ける。
+4. worker（root だけの clone と worker の checkout）を同じ commit に更新する。ここから要約が付き始める。
+
+- 1 の前に 2 を行い、要約の付いた submit が来ると、server は 503 を返し、bridge は `BRIDGE_DISABLED` で止まって次の回に再送する（結果は失われない）。
+- 3 の前に 4 を行うと、古い bridge は要約の付いた結果を不正として `refused` にする（demo は lease 切れで次の試行に回る）。
+- 戻すとき: worker を前の commit に戻せば要約は付かなくなる。列と関数はそのまま残してよい（flag 無効なら読まない）。
