@@ -341,6 +341,9 @@ ExecStart=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admi
 TimeoutStartSec=3600
 ```
 
+design bridge と組み合わせて動かすときは、この unit ではなく、bridge の claim・deliver と STOP 条件まで含めた
+1 回分の cycle（`design-worker-cycle.md`、`sr-design-cycle.{service,timer}`）を使う。
+
 Windows へのコピー先は jail の中に見える `/mnt/sr-export`（`design-capture-helper.md` §1 の、その folder だけの mount）。
 ログインの前には止める:
 

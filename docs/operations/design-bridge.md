@@ -156,6 +156,9 @@ demo の `design_error_code`（管理画面では「デザインBLOCKED」「AI�
 `scripts/sales-design-bridge/systemd/sr-design-bridge.service` / `.timer`（10 分ごと）を、root だけの clone から `/etc/systemd/system/` に入れて enable する。
 **repo のどの script も enable しない。** worker の timer も別の判断で、この文書は enable しない。
 
+bridge と worker を 1 回ずつ安全に組み合わせる cycle（idle run → deliver-only → claim 1 件 → worker → deliver-only）は
+`design-worker-cycle.md`（DEV-052）。cycle を使うときは `sr-design-bridge.timer` を enable しない（claim は cycle だけが行う）。
+
 ## 9. 止める・戻す
 
 - **即時に止める**: Vercel の `SALES_AI_DESIGN_ENABLED` を外す（または `false`）。
