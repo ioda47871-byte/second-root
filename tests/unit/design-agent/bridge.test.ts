@@ -168,6 +168,65 @@ describe("worker side: export", () => {
     expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: { quality_not_accepted: "yes" } }, final: null }).error_code).toBe("DESIGN_BLOCKED");
   });
 
+  describe("DEV-058: the review summary", () => {
+    const round = (candidate: string, verdict: "accept" | "revise", s: number) => ({
+      candidate,
+      scores: { brand_fit: s, visual_quality: s, hierarchy: s, mobile_quality: s, generic_template_feel: 3, total: 4 * s + 3 },
+      verdict,
+      problems: [{ area: "hero", severity: "high" }],
+    });
+    const accepted = { rounds: [round("initial", "revise", 3), round("rev1", "accept", 4)], final_candidate: "rev1", confidence: 0.72, quality_not_accepted: false, notes: ["CODEX_SAID_SOMETHING"] };
+    const notAccepted = { rounds: [round("initial", "revise", 4), round("rev1", "revise", 3)], final_candidate: "initial", confidence: 0.6, renderer_change_needed: false, quality_not_accepted: true };
+    const SUMMARY = { version: 1, verdict: "accept", total: 19, max: 25, scores: { brand_fit: 4, visual_quality: 4, hierarchy: 4, mobile_quality: 4, generic_template_feel: 3 }, rounds: 2, confidence: 0.72, qualityNotAccepted: false };
+
+    it("a ready and a QUALITY_NOT_ACCEPTED result carry it; it reaches the submit body", () => {
+      const ready = resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "done", codex: accepted }, final: PROFILE });
+      expect(ready).toMatchObject({ outcome: "ready", review: SUMMARY });
+      expect(WorkerResultSchema.safeParse(ready).success).toBe(true);
+      expect(submitBody(JOB, ready)).toMatchObject({ outcome: "ready", review: SUMMARY });
+      expect(designBridgeRequest.safeParse(submitBody(JOB, ready)).success).toBe(true);
+
+      const quality = resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: notAccepted }, final: PROFILE });
+      expect(quality).toMatchObject({ outcome: "blocked", error_code: "QUALITY_NOT_ACCEPTED", review: { verdict: "revise", total: 19, rounds: 2, qualityNotAccepted: true } });
+      expect(WorkerResultSchema.safeParse(quality).success).toBe(true);
+      expect(designBridgeRequest.safeParse(submitBody(JOB, quality)).success).toBe(true);
+    });
+
+    it("no other result carries it (other blocks, failures, a report without well-formed rounds)", () => {
+      expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: { ...notAccepted, renderer_change_needed: true } }, final: null })).not.toHaveProperty("review");
+      expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "fallback_template", codex: accepted }, final: null })).not.toHaveProperty("review");
+      expect(resultFromRecords({ id: WJOB, bucket: "failed", record: { code: "WORKER_FAILED" }, report: { outcome: "done", codex: accepted }, final: null })).not.toHaveProperty("review");
+      expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "done", codex: { ...accepted, rounds: [{ verdict: "accept" }] } }, final: PROFILE })).not.toHaveProperty("review");
+      // a ready run whose final was not accepted cannot happen (DEV-053); its summary is not sent
+      expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "done", codex: notAccepted }, final: PROFILE })).not.toHaveProperty("review");
+    });
+
+    it("the spool refuses a summary with another outcome, or one with free text", () => {
+      const base = { version: 1, job_id: WJOB, outcome: "ready", profile: PROFILE, error_code: null, worker_commit: "0123abcd" };
+      expect(WorkerResultSchema.safeParse({ ...base, review: SUMMARY }).success).toBe(true);
+      expect(WorkerResultSchema.safeParse({ ...base, outcome: "failed", profile: null, error_code: "WORKER_FAILED", review: SUMMARY }).success).toBe(false);
+      expect(WorkerResultSchema.safeParse({ ...base, review: { ...SUMMARY, note: "Codex said" } }).success).toBe(false);
+      expect(WorkerResultSchema.safeParse({ ...base, review: { ...SUMMARY, verdict: "great" } }).success).toBe(false);
+    });
+
+    it("a profile that cannot be drawn downgrades to failed without the summary", () => {
+      const bad = { version: 1 as const, job_id: WJOB, outcome: "ready" as const, profile: { ...PROFILE, palette: { ...PROFILE.palette, text: PROFILE.palette.background } }, error_code: null, worker_commit: null, review: SUMMARY as never };
+      const body = submitBody(JOB, bad);
+      expect(body).toMatchObject({ outcome: "failed", errorCode: "PROFILE_INVALID" });
+      expect(body).not.toHaveProperty("review");
+    });
+
+    it("the exported result file carries the summary, still nothing of Codex's words", async () => {
+      await writeSpoolJson(spool.toWorker, WJOB, job());
+      await finished(WJOB, "done", AMERICAN_EDITORIAL, { codex: accepted });
+      expect((await exportBridgeResults(spool, dirs, outRoot)).exported).toEqual([WJOB]);
+      const written = JSON.parse(await readFile(join(spool.fromWorker, `${WJOB}.json`), "utf8")) as Record<string, unknown>;
+      expect(Object.keys(written).sort()).toEqual(["error_code", "job_id", "outcome", "profile", "review", "version", "worker_commit"]);
+      expect(written.review).toEqual(SUMMARY);
+      expect(JSON.stringify(written)).not.toMatch(/CODEX_SAID_SOMETHING|rev1|initial|severity/);
+    });
+  });
+
   it("writes one result per finished bridge job, with only the result fields", async () => {
     await writeSpoolJson(spool.toWorker, WJOB, job());
     await finished(WJOB, "done", AMERICAN_EDITORIAL);
@@ -249,6 +308,20 @@ describe("bridge client", () => {
     answers.push({ status: 500, body: null });
     await runBridgeOnce(options());
     expect(calls.map((c) => c.body.action)).toEqual(["claim", "submit", "claim"]); // not re-sent, no claim while JOB2 is out
+  });
+
+  it("DEV-058: passes a result's review summary on, and sends no review key for a result without one", async () => {
+    const review = { version: 1, verdict: "accept", total: 19, max: 25, scores: { brand_fit: 4, visual_quality: 4, hierarchy: 4, mobile_quality: 4, generic_template_feel: 3 }, rounds: 2, confidence: 0.72, qualityNotAccepted: false };
+    answers.push(claimed());
+    await runBridgeOnce(options());
+    await resultFile(WJOB, { review });
+    answers.push(submitted(), claimed(JOB2));
+    expect(await runBridgeOnce(options())).toMatchObject({ delivered: [WJOB] });
+    expect(calls[1]!.body).toEqual({ action: "submit", jobId: JOB, outcome: "ready", profile: PROFILE, errorCode: null, workerCommit: "0123abcd", lineage: { workerJobId: WJOB }, review });
+    await resultFile(WJOB2); // an older worker: no summary
+    answers.push(submitted(JOB2), { status: 200, body: { job: null } });
+    await runBridgeOnce(options());
+    expect(calls[3]!.body).not.toHaveProperty("review");
   });
 
   it("drops a superseded or refused result and never sends results of jobs it did not claim", async () => {

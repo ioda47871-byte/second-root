@@ -10,15 +10,18 @@
  *   export: a finished bridge job (done/ or failed/) that the bridge still
  *           holds → from-worker/<id>.json, once, as a WorkerResult: outcome,
  *           the checked final profile without its rationale, a fixed code,
- *           the worker commit; results of jobs the bridge has closed are
- *           removed
+ *           the worker commit and (DEV-058) the review summary of a ready or
+ *           QUALITY_NOT_ACCEPTED run; results of jobs the bridge has closed
+ *           are removed
  *
  * Nothing else of the run directory leaves the worker user: no report text,
- * screenshots, timing, Codex notes or rounds.
+ * screenshots, timing, Codex notes or rounds (the summary is fixed numbers
+ * and enums built from the rounds, never their problems or notes).
  */
 import { lstat, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkProfile } from "../profile";
+import { reviewSummaryFromReport } from "../review-summary";
 import { uploadableProfile, WORKER_COMMIT } from "../../sales/design";
 import { JobSchema, type QueueDirs } from "../worker/queue";
 import { readSpoolJson, resultCode, spoolIds, writeHeartbeat, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
@@ -86,6 +89,9 @@ const readJson = (path: string) =>
  *     review accepted the final candidate (DEV-053), else DESIGN_BLOCKED; no
  *     profile is sent, so the demo keeps the existing template)
  *   failed (or anything unexpected)                                → failed
+ * DEV-058: a ready or QUALITY_NOT_ACCEPTED result also carries the review
+ * summary (reviewSummaryFromReport) when the report has well-formed rounds;
+ * no other result does.
  */
 export function resultFromRecords(input: {
   id: string;
@@ -102,12 +108,16 @@ export function resultFromRecords(input: {
   if (outcome === "done") {
     const checked = checkProfile(input.final);
     if (!checked.ok) return { ...base, outcome: "failed", profile: null, error_code: "PROFILE_INVALID" };
-    return { ...base, outcome: "ready", profile: uploadableProfile(checked.profile), error_code: null };
+    const review = reviewSummaryFromReport(input.report);
+    const ready: WorkerResult = { ...base, outcome: "ready", profile: uploadableProfile(checked.profile), error_code: null };
+    return review && !review.qualityNotAccepted ? { ...ready, review } : ready;
   }
   if (outcome === "blocked") {
     const codex = input.report?.codex as { renderer_change_needed?: unknown; quality_not_accepted?: unknown } | undefined;
     const error_code = codex?.renderer_change_needed === true ? "RENDERER_CHANGE_NEEDED" : codex?.quality_not_accepted === true ? "QUALITY_NOT_ACCEPTED" : "DESIGN_BLOCKED";
-    return { ...base, outcome: "blocked", profile: null, error_code };
+    const blocked: WorkerResult = { ...base, outcome: "blocked", profile: null, error_code };
+    const review = error_code === "QUALITY_NOT_ACCEPTED" ? reviewSummaryFromReport(input.report) : null;
+    return review?.qualityNotAccepted ? { ...blocked, review } : blocked;
   }
   if (outcome === "fallback_template") return { ...base, outcome: "blocked", profile: null, error_code: "FALLBACK_TEMPLATE" };
   if (outcome === "PUBLIC_SOURCE_UNAVAILABLE") return { ...base, outcome: "blocked", profile: null, error_code: "PUBLIC_SOURCE_UNAVAILABLE" };

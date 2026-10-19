@@ -14,7 +14,8 @@
  * jail) never does and never talks to the server. What crosses the spool is
  * fixed: a job is the worker's existing job file (verified facts and source
  * URLs); a result is an outcome, a checked DesignProfile without rationale,
- * a fixed error code and the worker commit. No screenshot, HTML, cookie,
+ * a fixed error code, the worker commit and (DEV-058) a review summary of
+ * fixed keys, numbers and enums. No screenshot, HTML, cookie,
  * prompt, Codex output, stderr or reasoning can be expressed in either.
  *
  * Both sides read spool files the same careful way: no link followed, a
@@ -25,9 +26,10 @@ import { open, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { DesignProfileSchema } from "../profile";
+import { ReviewSummarySchema } from "../review-summary";
 import { DESIGN_ERROR_CODE, WORKER_COMMIT } from "../../sales/design";
 import { PUBLIC_MESSAGES } from "../worker/messages";
-import { DESIGN_OUTCOMES, WORKER_JOB_ID } from "../../sales/design-bridge-schema";
+import { DESIGN_OUTCOMES, reviewFits, WORKER_JOB_ID } from "../../sales/design-bridge-schema";
 
 export const BRIDGE_SPOOL_ROOT = "/srv/sr-design-bridge";
 export const MAX_SPOOL_FILE_BYTES = 64 * 1024;
@@ -59,10 +61,13 @@ export const WorkerResultSchema = z
     profile: DesignProfileSchema.nullable(),
     error_code: z.string().regex(DESIGN_ERROR_CODE).nullable(),
     worker_commit: z.string().regex(WORKER_COMMIT).nullable(),
+    /** DEV-058: the review summary (numbers and enums only), with ready or QUALITY_NOT_ACCEPTED only. Absent from older workers. */
+    review: ReviewSummarySchema.optional(),
   })
   .refine((r) => (r.outcome === "ready") === (r.profile !== null), { message: "profile only with ready" })
   .refine((r) => (r.outcome === "ready") === (r.error_code === null), { message: "error_code only without ready" })
-  .refine((r) => r.profile === null || r.profile.rationale.length === 0, { message: "rationale must be empty" });
+  .refine((r) => r.profile === null || r.profile.rationale.length === 0, { message: "rationale must be empty" })
+  .refine((r) => r.review === undefined || reviewFits(r.outcome, r.error_code, r.review.qualityNotAccepted), { message: "review only with ready or QUALITY_NOT_ACCEPTED" });
 export type WorkerResult = z.infer<typeof WorkerResultSchema>;
 
 /**

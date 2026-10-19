@@ -26,7 +26,7 @@ import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path";
 import { checkProfile } from "../profile";
 import { DESIGN_LEASE_SECONDS } from "../../sales/design";
-import { ClaimResponseSchema, SubmitResponseSchema, workerJobIdFor, type DesignJob } from "../../sales/design-bridge-schema";
+import { ClaimResponseSchema, reviewFits, SubmitResponseSchema, workerJobIdFor, type DesignJob } from "../../sales/design-bridge-schema";
 import { MAX_RESULT_BYTES, readHeartbeat, readSpoolJson, resultCode, spoolIds, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
 
 export const MIN_TOKEN_LENGTH = 32;
@@ -172,7 +172,7 @@ function stopFor(status: number): BridgeCode | null {
   return null;
 }
 
-/** The submit body for a result: the result's own fields, checked again; a profile that cannot be drawn becomes a failure. */
+/** The submit body for a result: the result's own fields, checked again; a profile that cannot be drawn becomes a failure. No review key without a summary (an older server stays compatible with results that have none). */
 export function submitBody(jobId: string, result: WorkerResult): Record<string, unknown> {
   let { outcome, profile, error_code } = result;
   // Only known fixed codes reach the server (a worker cannot invent a word).
@@ -182,7 +182,10 @@ export function submitBody(jobId: string, result: WorkerResult): Record<string, 
     profile = null;
     error_code = "PROFILE_INVALID";
   }
-  return { action: "submit", jobId, outcome, profile, errorCode: error_code, workerCommit: result.worker_commit, lineage: { workerJobId: workerJobIdFor(jobId) } };
+  const body: Record<string, unknown> = { action: "submit", jobId, outcome, profile, errorCode: error_code, workerCommit: result.worker_commit, lineage: { workerJobId: workerJobIdFor(jobId) } };
+  // DEV-058: the review summary only while the result is still the one it summarises (never on a downgraded failure).
+  if (result.review && reviewFits(outcome, error_code, result.review.qualityNotAccepted)) body.review = result.review;
+  return body;
 }
 
 function workerJobFile(job: DesignJob) {
