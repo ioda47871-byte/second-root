@@ -5,6 +5,21 @@
 
 ## 未解除
 
+### HUMAN-009 — Staging に DEV-054 の migration を適用（探索段階の既知判定・却下の記憶）
+
+- 何: `supabase/migrations/20261019120000_sales_discovery_screening.sql`（新しい table `sales_rejected_candidates`・`sales_discovery_known_keys`・`sales_remember_rejections`・`sales_run_state` の再定義）を Staging（`znbqgvawublgyjwfpmei`）に適用する。2026-10-19 の読み取りで Staging は `20261018000000` まで（18 本）。未適用はこの 1 本だけ。
+- 前提: develop が 7d3762e（PR #65 の merge）以降。手元の checkout が LF であること（STAGING.md §3、DEV-051）。
+- 手順: `git ls-files --eol supabase/migrations | grep -v w/lf` が何も出さないこと → plan（`npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei`）で `pending 20261019120000_sales_discovery_screening.sql` だけ → `--confirm-ref znbqgvawublgyjwfpmei --apply` で全 PASS。FAIL があれば出力を Claude に渡す（再実行しない）。
+- 適用しないとき: ingest は既知判定の RPC が無いため印を付けずに checkpoint を保存する（fail-open、従来どおり全候補を verify）。却下の記憶は書かれない（best effort）。persist は不変。
+- 解除条件: 適用後、Claude が読み取りで table・RLS・関数の引数と本文（LF で一致）・0 行を確認する。
+
+### HUMAN-010 — design worker の cycle（DEV-052）の WSL への install と timer の有効化
+
+- 何: `scripts/sales-design-worker/cycle.sh` と `scripts/sales-design-worker/systemd/sr-design-cycle.{service,timer}` を、root の admin clone（`/root/sr-capture-admin`）から install し、dry-run の後に timer を有効化する。手順は `docs/operations/design-worker-cycle.md`。
+- 前提: Staging の `SALES_AI_DESIGN_ENABLED=true` と Vercel Preview の bridge 経路が常時使えること（今は controlled rerun のたびに一時開放）。これは Authentication の常時の扱いに関わるため、別途人の判断。
+- 人の判断が要る点（PR #66）: bridge を `sudo -u` でなく `runuser` で動かす・`/etc/second-root/design-cycle.conf` に承認した bridge の SHA を置く・preflight SERIAL を OK とする・最初の deliver-only は全件 0 を求める・回復 SQL（job id と processing を条件）。
+- 解除条件: 人が install と dry-run（`CYCLE_DRY_RUN_OK`）を行い、timer の有効化を承認する。
+
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: **PR #29 を main へ merge 済み（2026-09-28、b14aab7。人間の明示承認に基づき Claude が実行）**。残りは merge 後の人間の作業。
   - **smoke test**（`docs/RELEASE.md` §8 の 5）: 管理者ログイン・非管理者の拒否・token ありの ingest `status`。

@@ -2321,13 +2321,13 @@
     {
       "id": "DEV-052",
       "title": "design worker の定期実行の基盤（1 回分の cycle script と systemd unit、有効化はしない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-037",
         "DEV-046"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-052-worker-cycle",
       "purpose": "Phase C 監査: worker は人が root で毎回貼り付ける WSL script（dev046_window3.sh）でしか動かず、worker の timer は repo に無い。Window 2〜7 の安全ガード（resource preflight・時間予算・STOP 条件・claim 1 件・deliver-only）を repo の正式な 1 回分の cycle にし、将来 timer で回せる形にする",
@@ -2364,7 +2364,7 @@
         "WSL への install と timer の enable",
         "Staging の flag を常時 ON にすること"
       ],
-      "decision": "2026-10-19（人の指示）: Phase C の優先 1。開発・test・review まで自律、有効化は承認"
+      "decision": "2026-10-19（人の指示）: Phase C の優先 1。開発・test・review まで自律、有効化は承認。2026-10-19: WSL への install・timer の enable は人の承認待ち（HUMAN-010）"
     },
     {
       "id": "DEV-053",
@@ -2418,13 +2418,13 @@
     {
       "id": "DEV-054",
       "title": "Instagram 中心の候補探索と、探索段階の除外判定（既知の店舗を verify しない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-049",
         "DEV-050"
       ],
-      "attempts": 0,
+      "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-054-instagram-discovery",
       "purpose": "Phase C 監査: 発見が Instagram 中心でなく、却下した候補の記憶もなく、Op Claude が同じ店舗を毎日調べ直す。人の指示: 候補発見は Instagram を中心に、公式サイトのない店舗を探す",
@@ -2463,7 +2463,7 @@
         "Staging への migration 適用",
         "Staging の営業 Routine の schedule ON"
       ],
-      "decision": "2026-10-19（人の指示）: Phase C の優先 3。ingest API の範囲を広げる（MVP_SPEC §10）ことは人の指示で承認済み"
+      "decision": "2026-10-19（人の指示）: Phase C の優先 3。ingest API の範囲を広げる（MVP_SPEC §10）ことは人の指示で承認済み。2026-10-19: Staging への migration 20261019120000 の適用は人の操作待ち（HUMAN-009）"
     },
     {
       "id": "DEV-055",
