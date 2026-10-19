@@ -2369,7 +2369,7 @@
     {
       "id": "DEV-053",
       "title": "design の品質ゲート（review が accept しない final は ready にしない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-039",
@@ -2413,7 +2413,7 @@
       "human_approval_triggers": [
         "基準値の決定に迷う場合は提案して人の判断"
       ],
-      "decision": "2026-10-19（人の指示）: Phase C の優先 2"
+      "decision": "2026-10-19（人の指示）: Phase C の優先 2; 2026-10-19: PR #67 merge（fd606d3）。Fresh Review PASS（Critical/High 0、Low 4 は修正済み）、CI green。人の判断待ち: accept された最良候補を使うか、mobile_quality ≥ 3 の数値基準"
     },
     {
       "id": "DEV-054",
