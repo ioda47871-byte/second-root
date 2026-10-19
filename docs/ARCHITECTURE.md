@@ -376,7 +376,7 @@ design worker（sr-designgen、jail の中。token・DB・server を知らない
 - `/demo/[publicToken]`: flag 有効・`ready`・profile が再検証を通る → `ProfileRenderer`（写真なし）。それ以外 → 既存の bakery / baked_goods / cafe template。表示の可否（送信済み・30 日・無効化・DNC）と notice・footer・noindex は既存のまま。表示文は fact-only の DemoView と固定の見出しだけ。
 - 公開しないもの: DEV-029 の写真、Instagram・公式サイトの screenshot、capture helper の PNG、reference 画像。保存するのは validated DesignProfile と最小の metadata（状態・job id・試行回数・commit・符号）だけ。
 - `/admin/sales`（今日）: 初回の項目に「AIデザイン待ち / AIデザイン生成中 / デモ確認可能 / デザインBLOCKED / AIデザイン失敗」を出す。flag 有効で `pending` / `processing` の項目は送信ボタンを出さず、「送信済み」もサーバー（server action）で拒否する。`ready` はプレビューへのリンクを出す。`blocked` / `failed` は既存 template のデモで送れる。
-  - `design_error_code` の管理画面向けの文言は `lib/sales/design.ts` の `DESIGN_ERROR_LABEL` / `designErrorLabel`（DEV-053。`QUALITY_NOT_ACCEPTED` を含む）。今日の一覧（`lib/admin/today.ts`）はまだ `design_error_code` を読まないので、画面への表示は後続で配線する。
+  - `design_error_code` の管理画面向けの文言は `lib/sales/design.ts` の `DESIGN_ERROR_LABEL` / `designErrorLabel`（DEV-053。`QUALITY_NOT_ACCEPTED` を含む）。今日の一覧（`lib/admin/today.ts`）は flag 有効時だけ `design_error_code` を読み、`blocked` / `failed` の初回の項目に「理由: …」として表示する（flag 無効時の query は従来と同じ）。
   - この拒否は server action で行い、DB の `sales_mark_sent`（管理者だけが呼べる RPC）は変えていない。flag は env にあり DB からは見えないため、flag 無効時の legacy の挙動を DB で崩さないための選択。管理者が RPC を直接呼べば送信済みにできるが、それは管理者本人の操作に限られる。
   - flag を一度無効にして、その間に待ち・生成中の demo を送った後で再び有効にすると、その demo は `ALREADY_SENT` で閉じる（送った後でページを変えない）。
 - `/admin/preview/[prospectId]`: 公開ページと同じ描き方と、デザインの状態。

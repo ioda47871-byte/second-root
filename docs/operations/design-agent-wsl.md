@@ -208,7 +208,7 @@ Windows から見るには、エクスプローラーで
 | `BRIEF_STRUCTURE_KEPT` | DEV-044: 低 confidence の brief から構造（hero の layout / height / alignment、grid、infoStyle、spacing）だけを残した。`profile_source: category_default_brief_structure` |
 | `BRIEF_STRUCTURE_REJECTED` | DEV-044: 組み合わせた profile が検査を通らず、category default をそのまま使った（`profile_source: category_default`） |
 | `RENDERER_CHANGE_NEEDED` | BLOCKED。renderer の拡張は人が判断し、PR で行う |
-| `QUALITY_NOT_ACCEPTED` | BLOCKED（DEV-053）。final（点の最も高い candidate）の review が一度も accept しなかった（改訂の上限・改訂 profile なし・時間切れ・後の review の失敗）。`review-*.json` と `final.json`・after の画像を見て人が判断する。demo は既存テンプレート。`scripts/sales-design/design-demo.ts` は終了コード 2 と renderer の案内を出すが、符号は `notes` で見分ける |
+| `QUALITY_NOT_ACCEPTED` | BLOCKED（DEV-053）。final（点の最も高い candidate）の review が一度も accept しなかった（改訂の上限・改訂 profile なし・時間切れ・後の review の失敗）。`review-*.json` と `final.json`・after の画像を見て人が判断する。demo は既存テンプレート。`scripts/sales-design/design-demo.ts` は終了コード 2 と、`notes` に応じて品質ゲート（accept されなかった）か renderer の変更かを案内する |
 | `NO_REVIEWED_CANDIDATE` | review が 1 回も成功しなかった。未評価の design は出さず、既存テンプレートのまま |
 | `OVERFLOW_<candidate>_DESKTOP / _MOBILE` | その candidate が横にはみ出した。スクリーンショットで確認する |
 
