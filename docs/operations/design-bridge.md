@@ -112,6 +112,7 @@ chmod 600 ~/.config/second-root/design-bridge.env
 Staging の Preview は Vercel Authentication で保護されている。bridge を通すには、bridge 専用の Protection Bypass（DEV-059、既定で無効）を
 `design-bridge.env` の `SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE` / `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN`（両方そろったときだけ有効）で設定する。
 方式の比較・人の操作・確認・失効は `design-bridge-access.md`。Authentication を外す運用は使わない。
+bypass file と 2 行は手で書かず、root が `sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh` で入れる（DEV-063。値は表示しない prompt に 1 回貼る、`design-bridge-access.md` §6）。
 
 `run.sh` は自分の checkout に `cd` してから動く（DEV-062）ので、どの directory から起動してもよい（cycle.sh は `/` から起動する）。以前は起動した directory のままで、tsx が `tsconfig.json`（`@/` の import）を見つけられず MODULE_NOT_FOUND になり、WSL の `/mnt/c/...` からは esbuild の起動が EACCES になった。`XDG_STATE_HOME`・`SR_DESIGN_BRIDGE_SPOOL`・token / bypass の file の path は絶対 path にする（相対 path は `BRIDGE_PATH_NOT_ABSOLUTE` で止まる）。
 

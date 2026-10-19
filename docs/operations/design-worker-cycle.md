@@ -13,6 +13,9 @@ cycle は DB・Vercel・jail・helper・admin.sh・bridge の権限・`SR_DESIGN
 
 設計は `docs/ARCHITECTURE.md` §10、bridge は `design-bridge.md`、worker は `design-worker-wsl.md`、jail は `design-wsl-isolation.md`、
 Vercel Authentication を維持したまま bridge を通す方式は `design-bridge-access.md`（DEV-059）。
+その設定（bridge の bypass file・env の 2 行・接続の確認・この文書の conf があるときだけ `SR_DESIGN_CYCLE_VERCEL_BYPASS=on` と `cycle.sh --dry-run`）は、
+人が 1 回貼る `sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh`（DEV-063、`design-bridge-access.md` §6）が行う。
+その script は conf が無ければ作らない（§4 の install は HUMAN-010 のまま）。
 
 ## 1. 1 回の cycle で何が起きるか
 
