@@ -41,6 +41,10 @@ esac
 
 umask 077
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+# DEV-062: run from the checkout, not from wherever it was started. tsx spawns
+# esbuild with the current directory; started from a Windows path under WSL
+# (/mnt/c/...) that the bridge user cannot use, the spawn failed with EACCES.
+cd "$REPO"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/sr-design-bridge"
 mkdir -p "$STATE"
 chmod 700 "$STATE"

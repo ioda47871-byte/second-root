@@ -665,6 +665,31 @@ describe("the worker never gets the bridge token", () => {
     for (const out of [deliverOnly.stdout, deliverOnly.stderr, once.stdout, once.stderr]) expect(out).not.toContain(TOKEN);
   }, 60_000);
 
+  it("the bridge's run.sh runs tsx from its own checkout, wherever it was started (DEV-062)", async () => {
+    const { mkdtemp, mkdir, copyFile, writeFile: write, chmod, realpath } = await import("node:fs/promises");
+    const { spawnSync } = await import("node:child_process");
+    const root = await mkdtemp(join(tmpdir(), "sr-bridge-cwd-"));
+    const repo = join(root, "checkout");
+    await mkdir(join(repo, "scripts/sales-design-bridge"), { recursive: true });
+    await mkdir(join(repo, "node_modules/.bin"), { recursive: true });
+    await copyFile(join(process.cwd(), "scripts/sales-design-bridge/run.sh"), join(repo, "scripts/sales-design-bridge/run.sh"));
+    // stand-ins: tsx prints the directory it was started in; id reports the bridge user (the test may run as root)
+    await write(join(repo, "node_modules/.bin/tsx"), '#!/usr/bin/env bash\necho "cwd=$PWD"\n');
+    await chmod(join(repo, "node_modules/.bin/tsx"), 0o755);
+    const bin = join(root, "bin");
+    await mkdir(bin);
+    await write(join(bin, "id"), "#!/usr/bin/env bash\necho sr-designbridge\n");
+    await chmod(join(bin, "id"), 0o755);
+    const elsewhere = join(root, "started-here"); // e.g. /mnt/c/Users/... under WSL
+    await mkdir(elsewhere);
+    const r = spawnSync("bash", [join(repo, "scripts/sales-design-bridge/run.sh"), "--deliver-only"], {
+      cwd: elsewhere,
+      env: { PATH: `${bin}:${process.env.PATH}`, HOME: root },
+      encoding: "utf8",
+    });
+    expect({ status: r.status, out: r.stdout.trim() }).toEqual({ status: 0, out: `cwd=${await realpath(repo)}` });
+  });
+
   it("the bridge's run.sh keeps no token variable and refuses the worker and helper users", async () => {
     const runSh = await readFile(join(process.cwd(), "scripts/sales-design-bridge/run.sh"), "utf8");
     const keep = /for name in ([\s\S]*?); do/.exec(runSh)![1]!.split(/[\s\\]+/).filter(Boolean);
