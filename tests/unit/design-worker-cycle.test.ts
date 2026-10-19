@@ -564,14 +564,26 @@ describe("cycle.sh: the Vercel bypass of the bridge (DEV-059, off by default)", 
     expect(count(r.calls, "admin") + count(r.calls, "bridge")).toBe(0);
   });
 
-  it("a child line with the bypass header is redacted", () => {
+  it("a child line with the bypass header is redacted (by the bypass rule: the value is short, lower-case, no hex run)", () => {
     const w = world();
-    const value = `Vb${randomBytes(15).toString("hex")}`;
+    const value = `bpv${Array.from(randomBytes(8), (b) => String.fromCharCode(103 + (b % 20))).join("")}`;
     play(w, "bridge", 1, { out: `debug x-vercel-protection-bypass: ${value}\n${DELIVER_NONE}` });
     const r = cycle(w);
     expect(r.status).toBe(0);
     expect(r.out).not.toContain(value);
     expect(r.out).toContain("x-vercel-protection-bypass: [redacted]");
+  });
+});
+
+describe("cycle.sh: the bridge blocked by Vercel (DEV-059)", () => {
+  it("the claim stops with BRIDGE_PROTECTION_BLOCKED (nothing claimed) → CYCLE_STOP_CLAIM before the claim", () => {
+    const w = world();
+    play(w, "bridge", 2, { out: "stopped: BRIDGE_PROTECTION_BLOCKED\nbridge: delivered 0, superseded 0, refused 0, expired 0, claimed none", rc: 3, ledger: JSON.stringify({ version: 1, jobs: {} }) });
+    const r = cycle(w);
+    expect(r.status).toBe(25);
+    expect(r.stdout).toContain("stopped: BRIDGE_PROTECTION_BLOCKED");
+    expect(r.last).toBe("CYCLE_RESULT CYCLE_STOP_CLAIM phase=before_claim job=none exit=25");
+    expect(count(r.calls, "admin")).toBe(1);
   });
 });
 

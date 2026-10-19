@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { chmod, link, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { createServer, type IncomingHttpHeaders } from "node:http";
@@ -86,15 +86,13 @@ describe("the origin the header may go to", () => {
 });
 
 describe("the bypass file", () => {
-  it("is read only as a regular, single-link file of this user without group / other bits", async () => {
+  it("is read only as a regular, single-link file of this user with mode exactly 0600 (the cycle's rule)", async () => {
     const path = await bypassFile();
     expect(await readBypassFile(path)).toBe(secret);
-    for (const mode of [0o640, 0o604, 0o644, 0o660, 0o606, 0o620, 0o602, 0o610]) {
+    for (const mode of [0o640, 0o604, 0o644, 0o660, 0o606, 0o620, 0o602, 0o610, 0o400, 0o700, 0o4600]) {
       await chmod(path, mode);
       expect(await caught(readBypassFile(path))).toMatchObject({ code: "BRIDGE_BYPASS_UNSAFE" });
     }
-    await chmod(path, 0o400);
-    expect(await readBypassFile(path)).toBe(secret); // read-only for the owner is fine
     await chmod(path, 0o600);
     expect(await caught(readBypassFile(path, 12345))).toMatchObject({ code: "BRIDGE_BYPASS_UNSAFE" }); // another owner
     const linked = join(base, "linked");
@@ -107,6 +105,10 @@ describe("the bypass file", () => {
     expect(await caught(readBypassFile("relative/path"))).toMatchObject({ code: "BRIDGE_BYPASS_UNSAFE" });
     await mkdir(join(base, "dir"), { mode: 0o700 });
     expect(await caught(readBypassFile(join(base, "dir")))).toMatchObject({ code: "BRIDGE_BYPASS_UNSAFE" });
+    // a FIFO is refused at once (opened non-blocking, then not a regular file), never waited on
+    const fifo = join(base, "fifo");
+    expect(spawnSync("mkfifo", ["-m", "600", fifo]).status).toBe(0);
+    expect(await caught(readBypassFile(fifo))).toMatchObject({ code: "BRIDGE_BYPASS_UNSAFE" });
   });
 
   it("holds one visible value of 16–256 characters, at most 512 bytes", async () => {
@@ -264,6 +266,25 @@ describe("bridge.ts with the bypass settings", () => {
       expect(r.out).not.toContain(file);
       expect(r.out).not.toContain("vercel.app");
     }
+  }, 60_000);
+
+  it("with a valid bypass: one fixed line that it is in use, the run and its summary unchanged, the value never shown", async () => {
+    const tokenFile = join(base, "bridge.token");
+    await writeFile(tokenFile, `${TOKEN}\n`, { mode: 0o600 });
+    const file = await bypassFile();
+    // --deliver-only with nothing to deliver sends no request, so this needs no network
+    const r = await run({
+      SR_DESIGN_BRIDGE_API_URL: ALIAS,
+      SR_DESIGN_BRIDGE_TOKEN_FILE: tokenFile,
+      SR_DESIGN_BRIDGE_SPOOL: join(base, "spool"),
+      SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE: file,
+      SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN: ALIAS,
+    });
+    expect(r).toEqual({
+      status: 0,
+      out: "vercel protection bypass in use (configured origin only)\nbridge: delivered 0, superseded 0, refused 0, expired 0, claimed none (BRIDGE_DELIVER_ONLY)\n",
+    });
+    expect(r.out).not.toContain(secret);
   }, 60_000);
 
   it("the bridge's run.sh passes only the bypass file path and origin, never a value", async () => {

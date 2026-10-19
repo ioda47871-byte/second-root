@@ -123,6 +123,10 @@ export function bridgeEndpoint(base: string, allowLocalHttp = false): string {
 }
 
 /**
+ * (The Vercel bypass file of DEV-059 is read through an O_NOFOLLOW handle with
+ * fstat checks, vercel-bypass.ts. This reader keeps its lstat-then-read form:
+ * it is not a shared helper, and changing it is outside DEV-059.)
+ *
  * Reads the token file: a regular file (no link) owned by this user, not
  * readable by anyone else, at most 512 bytes, one token of 32+ visible
  * characters.

@@ -11,8 +11,10 @@
  *
  * OFF by default: without both settings nothing is read and no header is
  * sent. When on:
- *   - the value comes from a file of this user only (regular file, not a link,
- *     owner = this user, no group / other bits, at most 512 bytes);
+ *   - the value comes from a file of this user only, opened without following
+ *     a link (O_NOFOLLOW) and checked on the opened handle (regular file, one
+ *     link, owner = this user, mode exactly 0600, at most 512 bytes), the
+ *     same rule as the cycle's check;
  *   - the header is sent only to one exact https origin on *.vercel.app, which
  *     must equal the bridge API URL's origin (so never to the Production custom
  *     domain or anywhere else);
@@ -20,7 +22,8 @@
  *     the header cannot be carried to another host;
  *   - the value is never logged or printed: errors carry fixed codes only.
  */
-import { lstat, readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open, type FileHandle } from "node:fs/promises";
 
 export const VERCEL_BYPASS_HEADER = "x-vercel-protection-bypass";
 /** Vercel's secrets are 32 characters; anything visible, 16–256 characters, without spaces is accepted. */
@@ -70,17 +73,34 @@ export function bypassOrigin(configured: string, apiUrl: string): string {
   return url.origin;
 }
 
-/** Reads the bypass file: a regular file (no link) of this user, no group / other permission bits, one value. */
+/**
+ * Reads the bypass file: opened with O_NOFOLLOW (a link is refused by the
+ * kernel) and O_NONBLOCK (a FIFO cannot hang the run), then the opened handle
+ * itself is checked (regular file, one link, this user's, mode exactly 0600,
+ * at most 512 bytes) and read. Nothing is checked by name after opening, so
+ * the file cannot be swapped between the check and the read.
+ */
 export async function readBypassFile(path: string, uid: number = process.getuid?.() ?? -1): Promise<string> {
   if (!path.startsWith("/")) throw new BypassError("BRIDGE_BYPASS_UNSAFE");
-  const info = await lstat(path).catch(() => null);
-  if (!info) throw new BypassError("BRIDGE_BYPASS_NOT_CONFIGURED");
-  if (!info.isFile() || info.uid !== uid || (info.mode & 0o077) !== 0 || info.nlink !== 1 || info.size > MAX_FILE_BYTES) throw new BypassError("BRIDGE_BYPASS_UNSAFE");
+  let handle: FileHandle;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch (error) {
+    throw new BypassError((error as NodeJS.ErrnoException).code === "ENOENT" ? "BRIDGE_BYPASS_NOT_CONFIGURED" : "BRIDGE_BYPASS_UNSAFE");
+  }
   let text: string;
   try {
-    text = await readFile(path, "utf8");
-  } catch {
-    throw new BypassError("BRIDGE_BYPASS_UNSAFE");
+    const info = await handle.stat();
+    if (!info.isFile() || info.nlink !== 1 || info.uid !== uid || (info.mode & 0o7777) !== 0o600 || info.size > MAX_FILE_BYTES) throw new BypassError("BRIDGE_BYPASS_UNSAFE");
+    const buffer = Buffer.alloc(MAX_FILE_BYTES + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead > MAX_FILE_BYTES) throw new BypassError("BRIDGE_BYPASS_UNSAFE");
+    text = buffer.subarray(0, bytesRead).toString("utf8");
+    buffer.fill(0);
+  } catch (error) {
+    throw error instanceof BypassError ? error : new BypassError("BRIDGE_BYPASS_UNSAFE");
+  } finally {
+    await handle.close().catch(() => undefined);
   }
   const value = text.trim();
   if (!BYPASS_VALUE.test(value)) throw new BypassError("BRIDGE_BYPASS_UNSAFE");
