@@ -126,7 +126,7 @@ for name in HTTPS_PROXY https_proxy NO_PROXY no_proxy SSL_CERT_FILE CURL_CA_BUND
   if [ -n "${!name+x}" ]; then bridge_env+=("$name=${!name}"); fi
 done
 as_bridge() {
-  runuser -u "$BRIDGE_USER" -- env -i "${bridge_env[@]}" "$@"
+  runuser -u "$BRIDGE_USER" -- env -i "${bridge_env[@]}" "$@" 8>&-
 }
 
 # The file and every directory above it owned by root and writable by nobody else (as cycle.sh).
@@ -174,15 +174,22 @@ valid "$v" || { v=; exit 3; }
 if is_token "$v" "$2"; then v=; exit 4; fi
 v=
 '
-# Removes temporary files a killed earlier run may have left (each holds a value); prints how many.
+# Removes temporary files a killed earlier run may have left (each holds a value). Only a regular
+# file with one link is touched: a symbolic link (shred would wipe its target, e.g. the token), a
+# hard link to another file, a FIFO (shred would hang) or anything else is left as it is and
+# counted. Prints "<removed> <skipped>".
 CLEAN_TEMP='
 shopt -s nullglob
-n=0
+n=0 s=0
 for f in "$1"/.design-bridge.vercel-bypass.?*; do
+  if [ -L "$f" ] || [ ! -f "$f" ] || [ "$(stat -c %h -- "$f")" != 1 ]; then
+    s=$((s + 1))
+    continue
+  fi
   shred -u -- "$f" 2>/dev/null || rm -f -- "$f"
-  n=$((n + 1))
+  if [ ! -e "$f" ] && [ ! -L "$f" ]; then n=$((n + 1)); else s=$((s + 1)); fi
 done
-printf "%s\n" "$n"
+printf "%s %s\n" "$n" "$s"
 '
 # exit 0 written, 3 not a valid value, 4 the bridge token, 5 a file appeared meanwhile (not replaced), 6 not written
 WRITE_VALUE="$VALUE_FUNCS"'
@@ -257,6 +264,17 @@ else:
     print("PROBE_FAILED")
 '
 
+# One setup at a time (two would remove each other's temporary file): root's lock, in /run (root's
+# directory, outside anything the bridge user controls), never a link, never truncated.
+LOCK="$R/run/sr-bypass-setup.lock"
+[ -z "$R" ] || mkdir -p "$R/run"
+[ ! -L "$LOCK" ] || { say "the lock file is a symbolic link; nothing done"; finish BYPASS_SETUP_LOCKED 11; }
+exec 8>>"$LOCK"
+if ! flock -n 8; then
+  say "another setup-vercel-bypass.sh is running; nothing done"
+  finish BYPASS_SETUP_LOCKED 11
+fi
+
 say "step 1: bridge user $BRIDGE_USER; replace: $([ "$REPLACE" = 1 ] && echo yes || echo no); cycle dry run: $([ "$DRY_RUN" = 1 ] && echo yes || echo no)"
 
 # ---------------------------------------------------------------- 2. read-only checks
@@ -319,11 +337,13 @@ say "checks: OK"
 # ---------------------------------------------------------------- 3. the value
 STEP=3
 left="$(as_bridge bash -c "$CLEAN_TEMP" _ "$CONF_DIR" </dev/null 2>/dev/null)" || left=error
-case "$left" in
-  0) ;;
-  [1-9]*) say "BYPASS_TEMP_REMOVED: $left leftover temporary file(s) of an interrupted run removed (as $BRIDGE_USER)" ;;
-  *) say "leftover temporary files could not be checked"; finish BYPASS_WRITE_FAILED 4 ;;
-esac
+if [[ "$left" =~ ^([0-9]+)\ ([0-9]+)$ ]]; then
+  [ "${BASH_REMATCH[1]}" = 0 ] || say "BYPASS_TEMP_REMOVED: ${BASH_REMATCH[1]} leftover temporary file(s) of an interrupted run removed (as $BRIDGE_USER)"
+  [ "${BASH_REMATCH[2]}" = 0 ] || say "BYPASS_TEMP_SKIPPED: ${BASH_REMATCH[2]} entry(ies) named .design-bridge.vercel-bypass.* that are not a regular single-link file were left as they are; a person looks at them"
+else
+  say "leftover temporary files could not be checked"
+  finish BYPASS_WRITE_FAILED 4
+fi
 if [ -e "$BYPASS_FILE" ] || [ -L "$BYPASS_FILE" ]; then EXISTS=1; else EXISTS=0; fi
 if [ "$EXISTS" = 1 ] && [ "$REPLACE" = 0 ]; then
   say "BYPASS_FILE_PRESENT: kept, not read into this shell (use --replace to put a new value)"
@@ -460,7 +480,7 @@ else
 fi
 [ -f "$CYCLE" ] || { say "no cycle.sh in this clone"; finish CYCLE_DRY_RUN_NOT_OK 7; }
 rc=0
-cycle_out="$(bash "$CYCLE" --dry-run </dev/null 2>&1)" || rc=$?
+cycle_out="$(bash "$CYCLE" --dry-run </dev/null 2>&1 8>&-)" || rc=$?
 # cycle.sh prints fixed, redacted lines; relay only its bypass line, its check line and its result.
 grep -E '^(cycle: vercel bypass: (on|off)|cycle: check: [A-Z_]+|cycle: checks: OK)' <<<"$cycle_out" | cut -c1-200 | sed 's/^/  /' || true
 result="$(grep -E '^CYCLE_RESULT [A-Z_]+ ' <<<"$cycle_out" | tail -n 1 | cut -c1-200 || true)"

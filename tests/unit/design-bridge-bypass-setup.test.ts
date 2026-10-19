@@ -660,12 +660,27 @@ describe("setup-vercel-bypass.sh: review fixes (DEV-063 fresh review)", () => {
   // M1, statically (also where strace is missing): only builtins hold the value.
   it("every line that uses the value uses it through a bash builtin, never an external command", () => {
     const code = readFileSync(SCRIPT, "utf8").split("\n").filter((l) => !l.trimStart().startsWith("#"));
-    const uses = code.filter((l) => /\$\{?v\b|\$\{?BYPASS_VALUE\b|"\$1" != \*|\$\{#1\}/.test(l));
+    // Taint: v and BYPASS_VALUE, plus every variable assigned from a tainted one (x="$v", y=${x}, …).
+    const tainted = new Set(["v", "BYPASS_VALUE"]);
+    const ref = () => new RegExp(`\\$\\{?#?(${[...tainted].join("|")})\\b`);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const l of code) {
+        for (const m of l.matchAll(/(?:^|[\s;&|({])(?:local\s+|declare\s+(?:-\w+\s+)?|readonly\s+)?([A-Za-z_]\w*)\+?=("[^"]*"|'[^']*'|\S+)/g)) {
+          if (!tainted.has(m[1]) && ref().test(m[2])) {
+            tainted.add(m[1]);
+            grew = true;
+          }
+        }
+      }
+    }
+    const uses = code.filter((l) => ref().test(l) || /"\$1" != \*|\$\{#1\}/.test(l));
     expect(uses.length).toBeGreaterThan(8);
+    const names = [...tainted].join("|");
     for (const l of uses) {
-      expect(l, l).not.toMatch(/(^|[;|&({]|\$\()\s*(\/[\w./-]+|command|builtin|env|exec|xargs|sudo|runuser|nohup|time|stdbuf|timeout)\s[^|]*(\$\{?v\b|\$\{?BYPASS_VALUE\b|\$1)/);
-      for (const m of l.matchAll(/(?:^|[;&({]|\|\|?|&&|\$\()\s*([A-Za-z_][\w-]*)(?=\s[^|]*(?:\$\{?v\b|\$\{?BYPASS_VALUE\b))/g)) {
-        expect(["printf", "valid", "is_token", "trim", "if", "local", "unset", "read", "case", "then", "elif", "IFS", "v", "BYPASS_VALUE"], `${m[1]} in: ${l}`).toContain(m[1]);
+      expect(l, l).not.toMatch(new RegExp(`(^|[;|&({]|\\$\\()\\s*(\\/[\\w./-]+|command|builtin|env|exec|xargs|sudo|runuser|nohup|time|stdbuf|timeout)\\s[^|]*(\\$\\{?(${names})\\b|\\$1)`));
+      for (const m of l.matchAll(new RegExp(`(?:^|[;&({]|\\|\\|?|&&|\\$\\()\\s*([A-Za-z_][\\w-]*)(?=\\s[^|]*\\$\\{?(?:${names})\\b)`, "g"))) {
+        expect(["printf", "valid", "is_token", "trim", "if", "local", "unset", "read", "case", "then", "elif", "IFS", ...tainted], `${m[1]} in: ${l}`).toContain(m[1]);
       }
     }
   });
@@ -712,6 +727,57 @@ describe("setup-vercel-bypass.sh: review fixes (DEV-063 fresh review)", () => {
       expect(r.out).not.toContain(stale);
       expect(r.calls).not.toContain("REFUSED");
     }
+  });
+
+  it("a leftover-named symbolic link, hard link or FIFO is never touched (the token stays intact, no hang)", { timeout: 30_000 }, async () => {
+    const w = world();
+    const token = readFileSync(w.token, "utf8");
+    symlinkSync(w.token, join(w.conf, ".design-bridge.vercel-bypass.Lnk001"));
+    linkSync(w.token, join(w.conf, ".design-bridge.vercel-bypass.Hard01"));
+    expect(spawnSync("mkfifo", [join(w.conf, ".design-bridge.vercel-bypass.Fifo01")]).status).toBe(0);
+    writeFileSync(join(w.conf, ".design-bridge.vercel-bypass.Real01"), newValue(), { mode: 0o600 });
+    const value = newValue();
+    // Its own process group, killed as a whole after 15 s: a hang (shred opening the FIFO) fails the test, never stalls it.
+    const child = spawn("bash", [SCRIPT], { detached: true, env: { PATH: `${w.bin}:${process.env.PATH}`, SR_BYPASS_SETUP_TEST_ROOT: w.t } as unknown as NodeJS.ProcessEnv });
+    let stdout = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", () => undefined);
+    child.stdin.end(`${value}\n`);
+    let killed = false;
+    const timer = setTimeout(() => {
+      killed = true;
+      process.kill(-child.pid!, "SIGKILL");
+    }, 15_000);
+    await new Promise((resolve) => child.on("close", resolve));
+    clearTimeout(timer);
+    const r = { stdout };
+    expect(killed).toBe(false);
+    expect(r.stdout.trimEnd().split("\n").pop()).toBe("BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6");
+    expect(r.stdout).toContain("BYPASS_TEMP_REMOVED: 1 leftover");
+    expect(r.stdout).toContain("BYPASS_TEMP_SKIPPED: 3 entry(ies)");
+    expect(readFileSync(w.token, "utf8")).toBe(token);
+    expect(statSync(w.token).mode & 0o7777).toBe(0o600);
+    expect(leftovers(w).sort()).toEqual([".design-bridge.vercel-bypass.Fifo01", ".design-bridge.vercel-bypass.Hard01", ".design-bridge.vercel-bypass.Lnk001"]);
+    expect(readFileSync(w.bypass, "utf8")).toBe(value);
+  });
+
+  it("a second setup while one runs → BYPASS_SETUP_LOCKED, nothing done", () => {
+    const w = world();
+    const lock = join(w.t, "run/sr-bypass-setup.lock");
+    mkdirSync(dirname(lock), { recursive: true });
+    const r = spawnSync("flock", [lock, "bash", SCRIPT], {
+      encoding: "utf8",
+      input: `${newValue()}\n`,
+      env: { PATH: `${w.bin}:${process.env.PATH}`, SR_BYPASS_SETUP_TEST_ROOT: w.t } as unknown as NodeJS.ProcessEnv,
+      timeout: 20_000,
+    });
+    expect(r.status).toBe(11);
+    expect(r.stdout.trimEnd().split("\n").pop()).toBe("BYPASS_SETUP_RESULT BYPASS_SETUP_LOCKED step=1");
+    expect(existsSync(w.bypass)).toBe(false);
+    expect(readFileSync(w.env, "utf8")).toBe(`SR_DESIGN_BRIDGE_API_URL=${ALIAS}\n`);
+    expect(readFileSync(w.calls, "utf8")).toBe("");
+    // and once it is free, the same run works
+    expect(run(w, [], `${newValue()}\n`).status).toBe(0);
   });
 
   it("a kept file with a NUL byte is refused, as the bridge refuses it", () => {
