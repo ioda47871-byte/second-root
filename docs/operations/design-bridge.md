@@ -113,6 +113,8 @@ Staging の Preview は Vercel Authentication で保護されている。bridge 
 `design-bridge.env` の `SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE` / `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN`（両方そろったときだけ有効）で設定する。
 方式の比較・人の操作・確認・失効は `design-bridge-access.md`。Authentication を外す運用は使わない。
 
+`run.sh` は自分の checkout に `cd` してから動く（DEV-062）ので、どの directory から起動してもよい（cycle.sh は `/` から起動する）。以前は起動した directory のままで、tsx が `tsconfig.json`（`@/` の import）を見つけられず MODULE_NOT_FOUND になり、WSL の `/mnt/c/...` からは esbuild の起動が EACCES になった。`XDG_STATE_HOME`・`SR_DESIGN_BRIDGE_SPOOL`・token / bypass の file の path は絶対 path にする（相対 path は `BRIDGE_PATH_NOT_ABSOLUTE` で止まる）。
+
 worker の設定（`design-worker-wsl.md` の service / 手での起動）に、spool の path だけを足す:
 
 ```
@@ -139,6 +141,7 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 | bridge | 意味 | 対応 |
 |---|---|---|
 | `BRIDGE_NOT_CONFIGURED` | URL か token file がない | §5 |
+| `BRIDGE_PATH_NOT_ABSOLUTE (<変数名>)` | `XDG_STATE_HOME`・spool・token / bypass の file の path が相対 path か空（run.sh が checkout の中を指さないように止める。値は出さない） | §5（DEV-062） |
 | `BRIDGE_TOKEN_UNSAFE` | token file が自分の 0600 の通常ファイルでない、短い | §2 |
 | `BRIDGE_API_UNSAFE` | URL が https でない、credential や query がある | §5 |
 | `BRIDGE_DISABLED` | server が 503（flag 無効・hash 未設定 / 不正・token そのものが server にある・ingest token と同じ） | Vercel の設定 |
