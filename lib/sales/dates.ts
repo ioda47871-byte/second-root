@@ -14,3 +14,11 @@ export function addDays(at: Date, days: number): Date {
 export function daysBetween(from: Date, to: Date): number {
   return (to.getTime() - from.getTime()) / DAY_MS;
 }
+
+/**
+ * Whole Asia/Tokyo calendar days from `from` to `to` (0 on the same JST date,
+ * 1 from 23:59 to 00:00 JST). Japan has no DST, so a fixed offset is exact.
+ */
+export function jstCalendarDaysBetween(from: Date, to: Date): number {
+  return Math.round((Date.parse(jstDate(to)) - Date.parse(jstDate(from))) / DAY_MS);
+}
