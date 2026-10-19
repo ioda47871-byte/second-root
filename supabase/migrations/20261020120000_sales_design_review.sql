@@ -15,7 +15,9 @@
 --     re-claimed job) never carries one.
 --   * sales_design_submit takes it as an optional last argument
 --     (p_review, default null). A call without it (an older bridge, the
---     claim's own blocked closes) is the same call as before.
+--     claim's own blocked closes) is the same call as before. A summary the
+--     table's checks refuse is invalid_result; any other check violation of
+--     the update is raised unchanged, as before this migration.
 --
 -- Nothing reads this column with SALES_AI_DESIGN_ENABLED off, and the public
 -- demo never reads it.
@@ -74,6 +76,7 @@ declare
   code text := p_error_code;
   review jsonb := p_review;
   next_status text;
+  violated text;
 begin
   if p_job_id is null or outcome is null or outcome not in ('ready', 'blocked', 'failed')
      or (outcome = 'ready') <> (profile is not null)
@@ -118,8 +121,13 @@ begin
       where id = d.id
       returning * into d;
   exception when check_violation then
-    -- A summary (or any value) the table refuses: nothing is written.
-    raise exception 'invalid_result' using errcode = '22023';
+    -- Only a summary the table refuses becomes invalid_result (nothing is
+    -- written). Any other check violation is raised unchanged, as before.
+    get stacked diagnostics violated = constraint_name;
+    if violated in ('sales_demos_design_review_shape', 'sales_demos_design_review_final') then
+      raise exception 'invalid_result' using errcode = '22023';
+    end if;
+    raise;
   end;
   return public.sales_design_state(d, false);
 end;
