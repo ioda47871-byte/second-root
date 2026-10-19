@@ -44,6 +44,8 @@ worker は同じ pipeline（brief → render → review → 最大 2 回の prof
     10. スクリーンショットを検査する（枚数・形式・8 MB・symlink でない・所有者・600）
     11. Codex brief → DesignProfile → ProfileRenderer → PC / mobile を撮る → Codex VisualReview
         → 最大 2 回 profile を直す → final。renderer の機能が要れば BLOCKED
+        （DEV-053: final（点の最も高い candidate）の最後の review が accept でなければ、
+         final は描いて記録に残すが outcome は blocked、符号は `QUALITY_NOT_ACCEPTED`）
         （JSON Schema は最初に strict を送る。CLI が断れば（CODEX_EXEC_FAILED / CODEX_NO_JSON）
          その呼び出しを 1 回だけ loose で送り直し、その job の残りは loose を使う。
          答えはどちらでも完全な zod schema と palette の検査に通す。report には
@@ -254,6 +256,7 @@ SR_DESIGN_EXPORT_DIR=/mnt/c/Users/<windows-user>/Desktop/second-root-codex-resul
   - `fallback`
   - `blocked`
   - `renderer_change_needed`
+  - `quality_not_accepted`（DEV-053: final の review が一度も accept しなかった。`final_candidate` と `rounds` の点数で、どの candidate が best だったかが分かる）
   - `notes`（符号のみ）
 - `timing`（DEV-029）: Codex の exec ごとの `stage`（`profile_brief` / `photo_analysis` / `image_direction(_revision)` / `visual_review(_revision)`）・`duration_ms`・`schema`・`result`（`ok` か符号）、`capture_ms`、`pipeline_ms`、合計と最も遅い call。ログにも `codex <stage> <ms> ms <schema> <result>` の 1 行が出る
 - `photos`（DEV-029。写真のない job は null）: 写真数、analysis の結果、final の layout、種類ごとの Codex call 数

@@ -34,6 +34,9 @@ npm run sales:design-demo -- --facts <facts.json> --screens <dir> --screens-revi
        - 写真のある job（DEV-029 の loop）も同じ。run の残り時間が 20 分未満なら best の再 review はせずに止め、best を final にする（`REVISION_FROM_BEST_NO_TIME`）
      → renderer 自体の機能が要ると言われたら BLOCKED で止まる（コードは自動で変えない）
   6. 点の最も高い candidate を final にして撮る。before / after を並べて置く
+     → 品質ゲート（DEV-053）: final の最後の review（再 review を含む）が accept でなければ
+       BLOCKED（`QUALITY_NOT_ACCEPTED`）。final.json と after の画像は記録として残すが、
+       bridge は profile を送らず、demo は既存テンプレートのまま
 ```
 
 Codex が決めてよいのは次の値だけである（`lib/design-agent/profile.ts` の列挙値の中から選ぶ）。
@@ -187,7 +190,7 @@ Windows から見るには、エクスプローラーで
 | code | 意味 |
 |---|---|
 | 0 | 完了。または `fallback_template`（既存テンプレートのまま） |
-| 2 | BLOCKED（renderer の機能追加が要る。`review-*.json` を読み、人が判断する） |
+| 2 | BLOCKED（renderer の機能追加が要る、または final が accept されなかった（`QUALITY_NOT_ACCEPTED`）。`review-*.json` を読み、人が判断する） |
 | 3 | 環境の都合（サインイン・利用枠） |
 | 1 | 入力の誤り、描画やシステムの失敗（`failure.json` に符号だけを残す） |
 
@@ -205,6 +208,7 @@ Windows から見るには、エクスプローラーで
 | `BRIEF_STRUCTURE_KEPT` | DEV-044: 低 confidence の brief から構造（hero の layout / height / alignment、grid、infoStyle、spacing）だけを残した。`profile_source: category_default_brief_structure` |
 | `BRIEF_STRUCTURE_REJECTED` | DEV-044: 組み合わせた profile が検査を通らず、category default をそのまま使った（`profile_source: category_default`） |
 | `RENDERER_CHANGE_NEEDED` | BLOCKED。renderer の拡張は人が判断し、PR で行う |
+| `QUALITY_NOT_ACCEPTED` | BLOCKED（DEV-053）。final（点の最も高い candidate）の review が一度も accept しなかった（改訂の上限・改訂 profile なし・時間切れ・後の review の失敗）。`review-*.json` と `final.json`・after の画像を見て人が判断する。demo は既存テンプレート。`scripts/sales-design/design-demo.ts` は終了コード 2 と renderer の案内を出すが、符号は `notes` で見分ける |
 | `NO_REVIEWED_CANDIDATE` | review が 1 回も成功しなかった。未評価の design は出さず、既存テンプレートのまま |
 | `OVERFLOW_<candidate>_DESKTOP / _MOBILE` | その candidate が横にはみ出した。スクリーンショットで確認する |
 
