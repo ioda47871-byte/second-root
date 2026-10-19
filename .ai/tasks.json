@@ -2464,6 +2464,40 @@
         "Staging の営業 Routine の schedule ON"
       ],
       "decision": "2026-10-19（人の指示）: Phase C の優先 3。ingest API の範囲を広げる（MVP_SPEC §10）ことは人の指示で承認済み"
+    },
+    {
+      "id": "DEV-055",
+      "title": "diagnose C: 別サイトへ出たページをすぐ閉じる（CI の browser.test.ts の繰り返す失敗）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-041"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-055-offsite-close-now",
+      "purpose": "tests/unit/design-agent/browser.test.ts「in C, stops at once on a move off the site during sampling」が CI で 3 回失敗（DEV-046・DEV-049・DEV-052 の PR、off-site の request 199 件 vs 上限 3）。原因: C（割り込みなし）では別サイトへ出たページが page.close() の停滞中も動き続け、CDP の targeted close は closeTimeoutMs（10 s）待った後にしか始まらない。実運用でもログイン済みの browser が別ホストと 10 秒通信しうる",
+      "acceptance_criteria": [
+        "C で off-site により止まったページは、page.close() と同時に targeted close を始める（合計は closeTimeoutMs 以内）",
+        "他の close（A / B、off-site 以外）の動きは不変",
+        "test の基準（off-site の request ≤ 3）を緩めない"
+      ],
+      "required_tests": [
+        "unit: page.close() が終わらない C の off-site で request ≤ 3・CLOSE_TIMEOUT なし",
+        "unit: closePageBounded の now",
+        "unit / typecheck / lint / CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/browser/",
+        "tests/unit/design-agent/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "test の基準の緩和・skip",
+        "Production・Staging"
+      ],
+      "human_approval_triggers": [],
+      "decision": "2026-10-19: Claude が追加（CI failure の根本原因）"
     }
   ]
 }
