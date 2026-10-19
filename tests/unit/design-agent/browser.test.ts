@@ -972,7 +972,9 @@ describe("closeBrowser", () => {
     expect(Date.now() - started).toBeLessThan(2_000);
   });
 
-  it("keeps the production bound when it is above the floor", async () => {
-    expect(await closeBrowser(fakeContext(100), 10_000)).toBe("killed");
+  it("keeps the production bound when it is above the floor", { timeout: 30_000 }, async () => {
+    // ends after 7 s: only a kill bound above the 5 s floor (the 10 s production bound) sees it end
+    expect(await closeBrowser(fakeContext(7_000), 1, 10_000)).toBe("killed");
+    expect(await closeBrowser(fakeContext(7_000), 1)).toBe("stuck");
   });
 });
