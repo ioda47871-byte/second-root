@@ -9,21 +9,34 @@ import { anonClient, candidate, createUser, db, emailCandidate, makeAdmin, reset
 
 let admin: Awaited<ReturnType<typeof signedInClient>>;
 let outsider: Awaited<ReturnType<typeof signedInClient>>;
-const now = new Date();
-const since = periodSince("30d", now)!;
+// Every fixture is pinned to a time relative to one fixed anchor (the start of
+// the 30-day window computed once here) and every query passes that same
+// `since`, so nothing depends on the clock while the file runs: crossing
+// 00:00 JST mid-run changes neither the fixtures nor the expectations.
+const since = periodSince("30d", new Date())!;
+const windowStart = new Date(`${since}T00:00:00+09:00`);
+const at = (ms: number) => new Date(windowStart.getTime() + ms).toISOString();
+const DAY = 24 * 3600 * 1000;
+/** Inside the window: noon JST, 10 days after its first day. */
+const INSIDE = at(10 * DAY + 3 * 3600 * 1000);
 
-async function prepared(c: Record<string, unknown>) {
+/**
+ * A shop prepared through the real persist path, then moved to `when` at once.
+ * Nothing stays on today's date, so persist's 5-per-JST-day cap is never hit.
+ */
+async function prepared(c: Record<string, unknown>, when: string) {
   const runId = randomUUID();
   await verifiedRun(runId, { c01: c });
   await rpc("sales_run_begin_persist", { p_run_id: runId });
   const { prospect_id } = await rpc<{ prospect_id: string }>("sales_persist_candidate", { p_run_id: runId, p_key: "c01" });
   await rpc("sales_run_finalize", { p_run_id: runId });
   const id = (await db.query("select id from public.sales_outreaches where prospect_id = $1", [prospect_id])).rows[0].id as string;
+  await preparedAt(id, when);
   return { id, prospectId: prospect_id };
 }
 
-async function sent(c: Record<string, unknown>) {
-  const o = await prepared(c);
+async function sent(c: Record<string, unknown>, when: string) {
+  const o = await prepared(c, when);
   const { error } = await admin.rpc("sales_mark_sent", { p_outreach_id: o.id });
   if (error) throw error;
   return o;
@@ -35,12 +48,12 @@ async function ok(p: PromiseLike<{ error: unknown }>) {
 }
 
 /** Moves an outreach's preparation time (created_at is immutable for the API roles). */
-async function preparedAt(outreachId: string, at: string) {
+async function preparedAt(outreachId: string, when: string) {
   const client = await db.connect();
   try {
     await client.query("begin");
     await client.query("set local session_replication_role = replica");
-    await client.query("update public.sales_outreaches set created_at = $2 where id = $1", [outreachId, at]);
+    await client.query("update public.sales_outreaches set created_at = $2 where id = $1", [outreachId, when]);
     await client.query("commit");
   } finally {
     client.release();
@@ -62,27 +75,24 @@ beforeAll(async () => {
   admin = await signedInClient("funnel-admin@test.example.com");
   outsider = await signedInClient("funnel-outsider@test.example.com");
 
-  // Prepared earlier (moved off today first: persist allows 5 new shops per JST day).
-  const firstDay = await prepared(candidate()); // 00:00 JST of the first day of 直近 30 日
-  await preparedAt(firstDay.id, `${since}T00:00:00+09:00`);
-  const lastOut = await prepared(candidate()); // one second before the window: 全期間 only
-  await preparedAt(lastOut.id, new Date(new Date(`${since}T00:00:00+09:00`).getTime() - 1000).toISOString());
-  const old = await sent(candidate()); // 40 days ago: 全期間 only
+  // Outside the window (全期間 only):
+  await prepared(candidate(), at(-1000)); // lastOut: one second before 00:00 JST of the first day
+  const old = await sent(candidate(), at(-10 * DAY)); // well before the window
   await ok(admin.rpc("sales_record_reply", { p_outreach_id: old.id, p_reply_type: "question", p_future_contact_refused: false }));
-  await preparedAt(old.id, new Date(now.getTime() - 40 * 24 * 3600 * 1000).toISOString());
 
-  // Prepared today:
-  const won = await sent(candidate()); // meeting_request → meeting → won 150000
+  // Inside the window:
+  await prepared(candidate(), at(0)); // firstDay: exactly 00:00 JST of the first day
+  const won = await sent(candidate(), INSIDE); // meeting_request → meeting → won 150000
   await ok(admin.rpc("sales_record_reply", { p_outreach_id: won.id, p_reply_type: "meeting_request", p_future_contact_refused: false }));
   await ok(admin.rpc("sales_mark_meeting", { p_outreach_id: won.id }));
   await ok(admin.rpc("sales_mark_won", { p_outreach_id: won.id, p_amount_jpy: 150000 }));
-  const refused = await sent(emailCandidate()); // decline + DNC (closed as lost, but it was sent)
+  const refused = await sent(emailCandidate(), INSIDE); // decline + DNC (closed as lost, but it was sent)
   await ok(admin.rpc("sales_record_reply", { p_outreach_id: refused.id, p_reply_type: "decline", p_future_contact_refused: true }));
-  const interested = await sent(candidate());
+  const interested = await sent(candidate(), INSIDE);
   await ok(admin.rpc("sales_record_reply", { p_outreach_id: interested.id, p_reply_type: "interested", p_future_contact_refused: false }));
-  const skipped = await prepared(candidate()); // 見送り: lost without sending
+  const skipped = await prepared(candidate(), INSIDE); // 見送り: lost without sending
   await ok(admin.rpc("sales_mark_lost", { p_outreach_id: skipped.id, p_reason: "今日は送らない" }));
-  const unsent = await prepared(candidate()); // still a draft
+  const unsent = await prepared(candidate(), INSIDE); // still a draft
 
   await design(won.prospectId, "failed", "WORKER_FAILED");
   await design(interested.prospectId, "blocked", "QUALITY_NOT_ACCEPTED");

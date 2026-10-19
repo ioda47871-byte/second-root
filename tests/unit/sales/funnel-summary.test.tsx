@@ -58,4 +58,35 @@ describe("FunnelSummary", () => {
     expect(html).toContain('data-code="QUALITY_NOT_ACCEPTED"');
     expect(html).toContain("品質の確認で合格しなかった");
   });
+
+  it("shows an unknown code once, a known one in words with the code", () => {
+    const design = sumDesign(
+      [
+        { preparedOn: "2026-10-01", status: "failed", errorCode: "SOME_NEW_CODE", demos: 2 },
+        { preparedOn: "2026-10-01", status: "blocked", errorCode: "QUALITY_NOT_ACCEPTED", demos: 1 },
+      ],
+      null,
+    );
+    const html = renderToStaticMarkup(<FunnelSummary period="all" totals={totals} design={design} />);
+    expect(html).toContain('<li data-code="SOME_NEW_CODE">SOME_NEW_CODE: 2 件</li>');
+    expect(html).not.toContain("SOME_NEW_CODE（SOME_NEW_CODE）");
+    expect(html).toContain("（QUALITY_NOT_ACCEPTED）: 1 件");
+  });
+
+  it("when the funnel cannot be read, says so and still shows the period switch and the design results", () => {
+    const design = sumDesign([{ preparedOn: "2026-10-01", status: "ready", errorCode: null, demos: 1 }], null);
+    const html = renderToStaticMarkup(<FunnelSummary period="30d" totals={null} design={design} />);
+    expect(html).toContain('data-testid="funnel-error"');
+    expect(html).toContain('aria-label="集計期間"');
+    expect(html).not.toContain('data-stage="prepared"');
+    expect(html).toContain('data-testid="design-outcomes"');
+  });
+
+  it("when only the design results cannot be read, the funnel still shows", () => {
+    const html = renderToStaticMarkup(<FunnelSummary period="30d" totals={totals} design="unavailable" />);
+    expect(html).toContain('data-stage="prepared"');
+    expect(html).toContain('data-testid="design-outcomes-error"');
+    expect(html).not.toContain('data-testid="design-outcomes"');
+    expect(html).not.toContain('data-testid="funnel-error"');
+  });
 });

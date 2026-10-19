@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isDesignStatus } from "@/lib/sales/design";
-import type { DesignDay, FunnelDay } from "@/lib/sales/funnel";
+import { aiDesignEnabled, isDesignStatus } from "@/lib/sales/design";
+import { periodSince, sumDesign, sumFunnel, type DesignDay, type DesignTotals, type FunnelDay, type FunnelPeriod, type FunnelTotals } from "@/lib/sales/funnel";
 import type { MetricRow } from "@/lib/sales/metrics";
 import type { Category, Channel, OutreachStatus } from "@/lib/sales/types";
 
@@ -116,4 +116,35 @@ export async function loadDesignOutcomes(supabase: SupabaseClient, since: string
       ? [{ preparedOn: String(r.prepared_on), status: r.design_status, errorCode: typeof r.design_error_code === "string" ? r.design_error_code : null, demos: r.demos }]
       : [],
   );
+}
+
+/**
+ * DEV-057: the 履歴 funnel section. Each part fails on its own so the page
+ * still renders everything else: funnel null = sales_funnel_daily could not
+ * be read; design null = the AI design step is off (nothing is read),
+ * "unavailable" = sales_design_daily could not be read.
+ */
+export type FunnelSection = { funnel: FunnelTotals | null; design: DesignTotals | null | "unavailable" };
+
+export async function loadFunnelSection(
+  supabase: SupabaseClient,
+  period: FunnelPeriod,
+  now: Date = new Date(),
+  designEnabled: boolean = aiDesignEnabled(),
+): Promise<FunnelSection> {
+  const since = periodSince(period, now);
+  const [funnel, design] = await Promise.all([
+    loadFunnel(supabase, since).then(
+      (days) => sumFunnel(days, since),
+      () => null,
+    ),
+    // Design columns are read only with the AI design step on (lib/sales/design.ts).
+    designEnabled
+      ? loadDesignOutcomes(supabase, since).then(
+          (days) => sumDesign(days, since),
+          () => "unavailable" as const,
+        )
+      : Promise.resolve(null),
+  ]);
+  return { funnel, design };
 }

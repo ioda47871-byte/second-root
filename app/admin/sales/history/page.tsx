@@ -1,12 +1,11 @@
 import DncControl from "@/components/admin/DncControl";
-import FunnelSummary, { FUNNEL_HEADING, PeriodSwitch } from "@/components/admin/FunnelSummary";
+import FunnelSummary from "@/components/admin/FunnelSummary";
 import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
-import { loadDesignOutcomes, loadFunnel, loadHistory, loadMetrics } from "@/lib/admin/history";
+import { loadFunnelSection, loadHistory, loadMetrics } from "@/lib/admin/history";
 import { formatDate } from "@/lib/admin/pipeline";
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
-import { aiDesignEnabled } from "@/lib/sales/design";
-import { parseFunnelPeriod, periodSince, sumDesign, sumFunnel, type DesignTotals, type FunnelPeriod, type FunnelTotals } from "@/lib/sales/funnel";
+import { parseFunnelPeriod } from "@/lib/sales/funnel";
 import { DIMENSION_LABEL, formatYen, groupMetrics, rate, valueLabel } from "@/lib/sales/metrics";
 import { createAuthClient } from "@/lib/supabase/server";
 
@@ -17,24 +16,6 @@ import { createAuthClient } from "@/lib/supabase/server";
 const STATUS = { drafted: "未送信", sent: "返信待ち", replied: "返信あり", meeting: "商談中", won: "成約", lost: "失注" } as const;
 const CHANNEL = { instagram: "Instagram", email: "メール" } as const;
 const HISTORY_LIMIT = 200;
-
-type Supabase = Awaited<ReturnType<typeof createAuthClient>>;
-
-// The funnel reads its own views (migration 20261020110000). If they cannot be
-// read, only that section says so (null); the rest of 履歴 still loads.
-async function loadFunnelSection(supabase: Supabase, period: FunnelPeriod): Promise<{ totals: FunnelTotals; design: DesignTotals | null } | null> {
-  const since = periodSince(period, new Date());
-  try {
-    const [days, designDays] = await Promise.all([
-      loadFunnel(supabase, since),
-      // Design columns are read only with the AI design step on (lib/sales/design.ts).
-      aiDesignEnabled() ? loadDesignOutcomes(supabase, since) : null,
-    ]);
-    return { totals: sumFunnel(days, since), design: designDays ? sumDesign(designDays, since) : null };
-  } catch {
-    return null;
-  }
-}
 
 export default async function HistoryPage({ searchParams }: PageProps<"/admin/sales/history">) {
   await requireAdminPage();
@@ -62,17 +43,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/admin/sa
           除外リスト（既存のお客様など）
         </a>
       </p>
-      {funnel ? (
-        <FunnelSummary period={period} totals={funnel.totals} design={funnel.design} />
-      ) : (
-        <section data-testid="funnel" data-period={period}>
-          <h2 className={styles.h2}>{FUNNEL_HEADING}</h2>
-          <PeriodSwitch period={period} />
-          <p className={styles.error} role="alert">
-            ファネルを読み込めませんでした。時間をおいて再読み込みしてください。
-          </p>
-        </section>
-      )}
+      <FunnelSummary period={period} totals={funnel.funnel} design={funnel.design} />
       <h2 className={styles.h2}>成果（送信済みの初回営業・全期間）</h2>
       {metrics.length === 0 ? (
         <p className={styles.muted}>まだ送信済みの営業はありません。</p>

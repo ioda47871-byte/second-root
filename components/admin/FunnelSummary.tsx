@@ -17,6 +17,12 @@ import { REPLY_TYPES } from "@/lib/sales/types";
 
 const STAGE_LABEL = { prepared: "準備", skipped: "見送り", sent: "送信", replied: "返信", meetings: "商談", won: "成約" } as const;
 
+/** A known code in words with the code; an unknown one (shown as it is) only once. */
+function codeText(code: string): string {
+  const label = designErrorLabel(code);
+  return label && label !== code ? `${label}（${code}）` : code;
+}
+
 export const FUNNEL_HEADING = "ファネル（初回営業・準備した日で集計）";
 
 export function PeriodSwitch({ period }: { period: FunnelPeriod }) {
@@ -31,7 +37,19 @@ export function PeriodSwitch({ period }: { period: FunnelPeriod }) {
   );
 }
 
-export default function FunnelSummary({ period, totals, design }: { period: FunnelPeriod; totals: FunnelTotals; design: DesignTotals | null }) {
+/**
+ * totals null: the funnel could not be read. design null: the AI design step
+ * is off (nothing shown); "unavailable": only the design results failed.
+ */
+export default function FunnelSummary({
+  period,
+  totals,
+  design,
+}: {
+  period: FunnelPeriod;
+  totals: FunnelTotals | null;
+  design: DesignTotals | null | "unavailable";
+}) {
   const label = FUNNEL_PERIOD_LABEL[period];
   return (
     <section aria-labelledby="funnel-heading" data-testid="funnel" data-period={period}>
@@ -39,7 +57,11 @@ export default function FunnelSummary({ period, totals, design }: { period: Funn
         {FUNNEL_HEADING}
       </h2>
       <PeriodSwitch period={period} />
-      {totals.prepared === 0 ? (
+      {totals === null ? (
+        <p className={styles.error} role="alert" data-testid="funnel-error">
+          ファネルを読み込めませんでした。時間をおいて再読み込みしてください。
+        </p>
+      ) : totals.prepared === 0 ? (
         <p className={styles.muted}>{label}に準備した営業はありません。</p>
       ) : (
         <>
@@ -96,7 +118,12 @@ export default function FunnelSummary({ period, totals, design }: { period: Funn
         </>
       )}
 
-      {design && (
+      {design === "unavailable" && (
+        <p className={styles.error} role="alert" data-testid="design-outcomes-error">
+          AI デザインの結果を読み込めませんでした。時間をおいて再読み込みしてください。
+        </p>
+      )}
+      {design && design !== "unavailable" && (
         <div className={styles.tableWrap} tabIndex={0} role="region" aria-label={`AI デザインの結果: ${label}`} data-testid="design-outcomes">
           <table className={styles.metrics}>
             <caption className={`${styles.muted} ${styles.caption}`}>AI デザインの結果</caption>
@@ -121,7 +148,7 @@ export default function FunnelSummary({ period, totals, design }: { period: Funn
             <ul className={styles.errorCodes} aria-label="止まった・失敗した理由（多い順）">
               {design.topErrors.map((e) => (
                 <li key={e.code} data-code={e.code}>
-                  {designErrorLabel(e.code)}（{e.code}）: {e.count} 件
+                  {codeText(e.code)}: {e.count} 件
                 </li>
               ))}
             </ul>
