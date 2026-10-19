@@ -39,6 +39,7 @@
 - 業種 `category`: `bakery`（パン屋）/ `baked_goods`（焼菓子店）/ `cafe`（カフェ）。
 - 1 run の上限: 探索候補 `discovered` ≤ 20 件、検証済み `verified` ≤ 10 件。
   新規に営業準備されるのはサーバーが決める当日の残り枠まで（最大 5 件/日）。**枠を埋めるために条件を緩めない。**
+- 探す中心は**公式サイトがなく Instagram で発信している店舗**（§3）。
 - 次の店舗は候補にしない（提出しても対象外になるだけなので、検証の手間をかけない）:
   - 公式サイトがあり、Instagram があり、第一者の公開メールがない店舗（MVP 営業対象外）
   - 公式サイトの有無を確認できず（unknown）、第一者の公開メールもない店舗
@@ -76,8 +77,10 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
      **新しい run を始めずに**報告して終了する（1 日 1 run。サーバーは今日（日本時間）の run をこうして返し続ける）。
    - `run` が `null`（今日まだ run がない）なら、新しい UUID v4 を作り（例: `cat /proc/sys/kernel/random/uuid`）
      `{"action":"start","runId":"<uuid>"}`。
-2. `nextAction = "discover"`: Web 検索で候補を探し、`checkpoint`（`phase: "discovered"`）で候補の要約（stub）を保存する。
-3. `nextAction = "verify"`: **`status` 応答の `run.discovered`（discovered の stub）だけ**を対象に確認する。
+2. `nextAction = "discover"`: Instagram を中心に候補を探し（§3）、`checkpoint`（`phase: "discovered"`）で候補の要約（stub）を保存する。
+   応答の `run.knownKeys` を確認する（§3.4）。
+3. `nextAction = "verify"`: **`status` 応答の `run.discovered`（discovered の stub）のうち `known` でないものだけ**を対象に確認する
+   （`known: true` の stub と `run.knownKeys` の key は verify しない。§3.4）。
    session が変わっても stub は `run.discovered` に入っているので、探索し直さない・新しい店舗や key を追加しない
    （verified の key は discovered の key のどれかでないと 400 `unknown_candidate_key`）。
    確認できた候補だけを `checkpoint`（`phase: "verified"`、≤10 件）で提出する。1 件も確認できなければ `candidates: []` で提出してよい。
@@ -112,17 +115,38 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
 | 413 `payload_too_large` / `checkpoint_too_large` | 本文 256KB 超 / checkpoint 64KB 超 | 候補数・事実の数・文字数を減らして再送 |
 | 503 `ingest_disabled` / `internal_error` | サーバー側が未設定・DB 不達 | 上の再送規則で 3 回まで。直らなければ BLOCKED 報告 |
 
-## 3. discover（候補探索）
+## 3. discover（候補探索: Instagram 中心・公式サイトのない店舗）
 
-- discover は「候補の店舗を特定する」段階。住所が名古屋市内であることは**住所が載っているページで**確認してから stub にする
+### 3.1 何を探すか
+
+- **公式サイトを持たず、Instagram で発信している名古屋市内の個人店・小規模店**を中心に探す
+  （ホームページの提案が最も役に立つ店舗。§1 の対象・対象外の条件はそのまま）。
+- 公式サイトがある店舗は、第一者の公開メールがなければ営業対象外（§1）。discover の時点で公式サイトが見つかった店舗は優先度を下げ、
+  入れる場合は `websiteUrl` を必ず入れる。
+- discover の時点で公式サイトが見つからなかったことは、`website.status = "not_found"` の根拠にしない。
+  公式サイトの有無は verify（§4.1）で 2 回以上の独立した検索を行って決め、その回数だけを `checks` に入れる。
+
+### 3.2 探し方（ログインしない・推測しない）
+
+- Web 検索で店舗の Instagram プロフィールを探す。例: `site:instagram.com 名古屋 中区 パン屋`、`site:instagram.com 名古屋市 焼き菓子`、
+  `名古屋 千種区 カフェ instagram`。区（16 区）や業種の言い方を変えて探す。
+- 地図・グルメサイトの店舗ページで、Instagram へのリンクがあり公式サイトの記載がない店舗も候補にしてよい
+  （地図・グルメサイトは「店舗の存在を知る」ためにだけ使う。連絡先の取得には使わない）。
+- **Instagram にログインしない。** ログインを求められるページ（Instagram 内の検索・ハッシュタグ・フォロー一覧など）は開かない。
+  Instagram の API・非公開の取得手段・有料ツールは使わない。プロフィールが読めないときは、検索結果に出たプロフィール URL と、
+  住所が載っている別のページ（店舗の紹介・地図のページ等）で店舗を特定する。
+- 住所が名古屋市内であることは**住所が載っているページで**確認してから stub にする
   （検索結果の要約・AI の要約だけで判断しない。要約は県名などを間違えることがある）。
 - §1 の対象外条件は、discover の時点で分かる範囲で当てはめる（メールの有無などの詳しい確認は verify で行う）。
   discover で保存した候補を verify で外すのは問題ない。
-- stub の `websiteUrl` / `instagramUrl` は未確認でもよい。verify で正しい URL に直してよい（同じ店舗・同じ key のまま）。
 - 業種が迷う場合は主な業態で決める: 店内で飲み物と食事を出すのが中心なら `cafe`、持ち帰りの焼菓子が中心なら `baked_goods`、パンが中心なら `bakery`。
 
-- Web 検索（地図・グルメサイトは「店舗の存在を知る」ためにだけ使う）で名古屋市内の対象業種の店舗を探す。
+### 3.3 stub の書き方
+
 - 各候補に run 内で一意の短い `key` を付ける（`c01`, `c02` …。先頭は英小文字か数字、以降は英小文字・数字・`_`・`-`、32 文字以内）。
+- `instagramUrl` はプロフィールの URL を `https://www.instagram.com/<handle>/` の形で（投稿・リール・ハッシュタグ・他人のアカウントは不可）。
+  `websiteUrl` は見つかった公式サイト（SNS・地図・グルメサイトは入れない）。**分かっている URL は必ず入れる**
+  （サーバーが既知の店舗かを URL で照合する。§3.4）。どちらも未確認でもよく、verify で正しい URL に直してよい（同じ店舗・同じ key のまま）。
 - 文字数の上限: 店名 200・住所 300・区 20・事実の値 500・営業文 1200・件名 100・`errorSummary` 500。
 - 提出する stub（≤20 件）:
 
@@ -137,6 +161,16 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
   ]
 }
 ```
+
+### 3.4 既知の店舗（`known`）は verify しない
+
+- discovered の応答の `run.knownKeys`（と `run.discovered[].known: true`）は、**サーバーが既に知っている店舗**の key。
+  その key は **verify しない・verified に入れない**。理由は返らない。理由を推測したり調べたりしない。
+- 印を避けるために、同じ店舗を別の key・別の表記・URL を外した stub・別の形の URL（http、モバイル、別のドメイン表記など）で出し直さない。
+- known でない stub だけを verify する（§4）。known が多く残りが少ないとき（目安: 5 件未満）は、**同じ session の中で 1 回だけ**、
+  新しい店舗を足した discovered を再送してよい。既に送った stub は key・内容とも変えずに残し、新しい stub を後ろに足す（合計 20 件以内）。
+  再送は上書き保存で、サーバーが改めて照合する。
+- known でない店舗も、persist でサーバーが重複・営業不要・除外・当日上限を判定する（known の印は確認の手間を省くためのもので、最終判断ではない）。
 
 ## 4. verify（公式サイト再確認・第一者 email・出典）
 
@@ -241,7 +275,7 @@ curl -sS --max-time 90 -w '\nHTTP_STATUS:%{http_code}\n' -X POST "$SALES_AGENT_I
 SALES_AGENT_RUN_REPORT
 runId: <uuid>
 status: completed | failed | running（途中で終了した場合。次回の起動で status から再開される）
-discovered: <件数>
+discovered: <件数>（うち known: <件数>）
 verified: <提出件数>
 outreach_ready: <件数> / rejected: <件数（reason 別）> / duplicate: <件数> / error: <件数（code 別）>
 notes: <気づいたこと 1〜3 行（店舗の個人情報・連絡先を書かない）>
