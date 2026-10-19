@@ -47,10 +47,11 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 # includes cycle.sh, which starts it from /); and esbuild is spawned in the
 # current directory, so a Windows path under WSL (/mnt/c/...) the bridge user
 # cannot use failed with EACCES. Relative paths in the settings would then point
-# into the checkout, so they are refused.
+# into the checkout, so they are refused, and so is a set but empty one (the
+# bridge would treat "" as a path in the checkout too: a fresh ledger there).
 for name in XDG_STATE_HOME SR_DESIGN_BRIDGE_SPOOL SR_DESIGN_BRIDGE_TOKEN_FILE SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE; do
   value="${!name:-}"
-  if [ -n "$value" ] && [ "${value#/}" = "$value" ]; then
+  if [ -n "${!name+x}" ] && [ "${value#/}" = "$value" ]; then
     echo "stopped: BRIDGE_PATH_NOT_ABSOLUTE ($name)"
     exit 3
   fi

@@ -711,10 +711,12 @@ describe("the worker never gets the bridge token", () => {
     }, 60_000);
 
     it.each(["XDG_STATE_HOME", "SR_DESIGN_BRIDGE_SPOOL", "SR_DESIGN_BRIDGE_TOKEN_FILE", "SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE"])(
-      "refuses a relative %s (it would point into the checkout)",
+      "refuses a relative or empty %s (it would point into the checkout)",
       (name) => {
-        const r = start(join(process.cwd(), "scripts/sales-design-bridge/run.sh"), { [name]: "relative/path" });
-        expect({ status: r.status, out: r.stdout.trim() }).toEqual({ status: 3, out: `stopped: BRIDGE_PATH_NOT_ABSOLUTE (${name})` });
+        for (const value of ["relative/path", ""]) {
+          const r = start(join(process.cwd(), "scripts/sales-design-bridge/run.sh"), { [name]: value });
+          expect({ value, status: r.status, out: r.stdout.trim() }).toEqual({ value, status: 3, out: `stopped: BRIDGE_PATH_NOT_ABSOLUTE (${name})` });
+        }
       },
     );
   });

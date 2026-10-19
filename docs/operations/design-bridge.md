@@ -141,6 +141,7 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 | bridge | 意味 | 対応 |
 |---|---|---|
 | `BRIDGE_NOT_CONFIGURED` | URL か token file がない | §5 |
+| `BRIDGE_PATH_NOT_ABSOLUTE (<変数名>)` | `XDG_STATE_HOME`・spool・token / bypass の file の path が相対 path か空（run.sh が checkout の中を指さないように止める。値は出さない） | §5（DEV-062） |
 | `BRIDGE_TOKEN_UNSAFE` | token file が自分の 0600 の通常ファイルでない、短い | §2 |
 | `BRIDGE_API_UNSAFE` | URL が https でない、credential や query がある | §5 |
 | `BRIDGE_DISABLED` | server が 503（flag 無効・hash 未設定 / 不正・token そのものが server にある・ingest token と同じ） | Vercel の設定 |
