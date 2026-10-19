@@ -50,49 +50,88 @@ function toItem(r: Row): PipelineItem {
   };
 }
 
-export async function loadPipeline(supabase: SupabaseClient, statuses: OutreachStatus[], limit = 100): Promise<PipelineItem[]> {
-  const { data, error } = await supabase
-    .from("sales_outreaches")
-    .select(`${COLUMNS}, prospect:sales_prospects!inner(name, do_not_contact)`)
-    .eq("kind", "initial")
-    .in("status", statuses)
-    .order("sent_at", { ascending: false })
-    .limit(limit);
-  if (error) throw new Error("pipeline_unavailable");
-  return ((data ?? []) as unknown as Row[]).map(toItem);
+/** Rows per request when reading a whole list (below PostgREST's max_rows of 1000). */
+export const PIPELINE_PAGE = 500;
+
+/**
+ * Every row of an ordered query, page by page, so no item is ever hidden
+ * behind a cap. The 返信 tab's 返信あり and the 商談 tab's actions are the only
+ * way to move these outreaches on, and an unanswered `sent` outreach never
+ * leaves the list by itself. At MVP volume (at most 5 initials a day, one
+ * admin) this is one or a few small requests.
+ */
+async function readAll<T>(page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>, size: number): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += size) {
+    const { data, error } = await page(from, from + size - 1);
+    if (error) throw new Error("pipeline_unavailable");
+    const rows = (data ?? []) as T[];
+    out.push(...rows);
+    if (rows.length < size) return out;
+  }
+}
+
+/** All initial outreaches in the given states (no cap, see readAll). */
+export async function loadPipeline(supabase: SupabaseClient, statuses: OutreachStatus[], pageSize = PIPELINE_PAGE): Promise<PipelineItem[]> {
+  const rows = await readAll<Row>(
+    (from, to) =>
+      supabase
+        .from("sales_outreaches")
+        .select(`${COLUMNS}, prospect:sales_prospects!inner(name, do_not_contact)`)
+        .eq("kind", "initial")
+        .in("status", statuses)
+        .order("sent_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to),
+    pageSize,
+  );
+  return rows.map(toItem);
+}
+
+/**
+ * 商談 tab order (display only, DEV-056): the stalest first — replies by reply
+ * date, meetings by meeting start; a missing date goes last.
+ */
+export function byStageAge(a: PipelineItem, b: PipelineItem): number {
+  const since = (i: PipelineItem) => {
+    const t = Date.parse((i.status === "meeting" ? i.meetingAt : i.repliedAt) ?? "");
+    return Number.isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
+  };
+  return since(a) - since(b) || (a.outreachId < b.outreachId ? -1 : a.outreachId > b.outreachId ? 1 : 0);
 }
 
 export type AwaitingReplyItem = PipelineItem & { followUp: FollowUpStatus };
 
 /**
- * Sent initial outreaches waiting for a reply (DEV-056), oldest sent first so
- * the longest-waiting shops come first, with their follow-up state. The 5-day
- * rule itself lives in lib/sales/followup.ts; this only reads the data it
- * needs (a sent follow-up row, DNC, demo visibility).
+ * All sent initial outreaches waiting for a reply (DEV-056), oldest sent first
+ * so the longest-waiting shops come first, with their follow-up state. No cap
+ * (see readAll): this list holds the only 返信あり button. The 5-day rule
+ * itself lives in lib/sales/followup.ts; this only reads the data it needs (a
+ * sent follow-up row, DNC, demo visibility).
  */
-export async function loadAwaitingReplies(supabase: SupabaseClient, now: Date = new Date(), limit = 100): Promise<AwaitingReplyItem[]> {
-  const { data, error } = await supabase
-    .from("sales_outreaches")
-    .select(`${COLUMNS}, prospect:sales_prospects!inner(name, do_not_contact, demo:sales_demos(disabled_at, expires_at, keep_alive))`)
-    .eq("kind", "initial")
-    .eq("status", "sent")
-    .order("sent_at", { ascending: true })
-    .limit(limit);
-  if (error) throw new Error("pipeline_unavailable");
-  const rows = (data ?? []) as unknown as Row[];
+export async function loadAwaitingReplies(supabase: SupabaseClient, now: Date = new Date(), pageSize = PIPELINE_PAGE): Promise<AwaitingReplyItem[]> {
+  const rows = await readAll<Row>(
+    (from, to) =>
+      supabase
+        .from("sales_outreaches")
+        .select(`${COLUMNS}, prospect:sales_prospects!inner(name, do_not_contact, demo:sales_demos(disabled_at, expires_at, keep_alive))`)
+        .eq("kind", "initial")
+        .eq("status", "sent")
+        .order("sent_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    pageSize,
+  );
   if (rows.length === 0) return [];
 
-  const followed = await supabase
-    .from("sales_outreaches")
-    .select("prospect_id")
-    .eq("kind", "follow_up")
-    .eq("status", "sent")
-    .in(
-      "prospect_id",
-      rows.map((r) => r.prospect_id),
-    );
-  if (followed.error) throw new Error("pipeline_unavailable");
-  const hasFollowUp = new Set((followed.data ?? []).map((f) => f.prospect_id as string));
+  // At most one sent follow-up per shop: read them all instead of putting
+  // every prospect id in the URL.
+  const followed = await readAll<{ prospect_id: string }>(
+    (from, to) =>
+      supabase.from("sales_outreaches").select("prospect_id").eq("kind", "follow_up").eq("status", "sent").order("id", { ascending: true }).range(from, to),
+    pageSize,
+  );
+  const hasFollowUp = new Set(followed.map((f) => f.prospect_id));
 
   return rows.map((r) => {
     const item = toItem(r);

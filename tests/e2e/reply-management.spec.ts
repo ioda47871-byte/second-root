@@ -72,9 +72,9 @@ test("返信待ち shows days since sending and the follow-up state, oldest firs
   await expect(card(due.name).getByTestId("reply-elapsed")).toHaveText("送信から 6 日");
   await expect(card(due.name).getByTestId("reply-followup")).toHaveAttribute("data-follow-up", "due");
   await expect(card(due.name).getByTestId("reply-followup")).toContainText("フォロー可能");
-  await expect(card(waiting.name).getByTestId("reply-followup")).toHaveText("フォロー期限まで 3 日");
+  await expect(card(waiting.name).getByTestId("reply-followup")).toHaveText("フォロー可能まで 3 日");
   await expect(card(today.name).getByTestId("reply-elapsed")).toHaveText("本日送信");
-  await expect(card(today.name).getByTestId("reply-followup")).toHaveText("フォロー期限まで 5 日");
+  await expect(card(today.name).getByTestId("reply-followup")).toHaveText("フォロー可能まで 5 日");
 
   // Oldest sent first.
   const titles = await page.getByTestId("reply-item").locator("h2").allTextContents();
@@ -86,9 +86,34 @@ test("返信待ち shows days since sending and the follow-up state, oldest firs
   const { rows } = await db.query("select count(*)::int as n from public.sales_outreaches where prospect_id = any($1::uuid[]) and (kind = 'follow_up' or status <> 'sent')", [seeded]);
   expect(rows[0].n).toBe(0);
 
-  // The follow-up itself is still offered only on 今日 (§4.3).
-  await page.getByRole("navigation", { name: "営業管理" }).getByRole("link", { name: "今日" }).click();
-  await expect(page.getByTestId("today-item").filter({ hasText: due.name })).toContainText("フォロー（初回から6日）");
+  // The follow-up itself is not sent from here: it stays on 今日 (§4.3), whose
+  // few slots may be taken by older rows in a shared database, so only the
+  // absence of a send action here is checked.
+  await expect(card(due.name).getByRole("link", { name: "フォローメールを作成" })).toHaveCount(0);
+});
+
+test("返信待ち lists every sent outreach, however many older ones there are", async ({ page }) => {
+  const older = [];
+  for (let i = 0; i < 6; i += 1) {
+    const shop = await seedEmailDraft(db);
+    seeded.push(shop.prospectId);
+    await sentDaysAgo(shop, 20 + i);
+    older.push(shop);
+  }
+  const newest = await seedDraft(db);
+  seeded.push(newest.prospectId);
+  await sentDaysAgo(newest, 0);
+
+  await login(page);
+  await page.goto("/admin/sales/replies");
+  const { rows } = await db.query("select count(*)::int as n from public.sales_outreaches where kind = 'initial' and status = 'sent'");
+  await expect(page.getByTestId("reply-item")).toHaveCount(rows[0].n);
+  await expect(page.getByTestId("reply-summary")).toContainText(`返信待ち ${rows[0].n} 件`);
+  // Due follow-ups exist, so the summary says 今日 shows them a few at a time.
+  await expect(page.getByTestId("reply-summary")).toContainText("今日の画面に一度に 5 件まで、古い順で出ます");
+  const titles = await page.getByTestId("reply-item").locator("h2").allTextContents();
+  expect(titles.at(-1)).toBe(newest.name);
+  for (const shop of older) expect(titles.indexOf(shop.name)).toBeLessThan(titles.indexOf(newest.name));
 });
 
 test("商談 shows days since the reply and since the meeting started", async ({ page }) => {
@@ -109,4 +134,8 @@ test("商談 shows days since the reply and since the meeting started", async ({
   await expect(card(replied.name)).toContainText("質問");
   await expect(card(replied.name).getByTestId("meeting-elapsed")).toHaveText("返信から 3 日");
   await expect(card(meeting.name).getByTestId("meeting-elapsed")).toHaveText("本日商談開始");
+  // The stalest first: the 3-day-old reply before today's meeting.
+  const titles = await page.getByTestId("meeting-item").locator("h2").allTextContents();
+  expect(titles.indexOf(replied.name)).toBeGreaterThanOrEqual(0);
+  expect(titles.indexOf(replied.name)).toBeLessThan(titles.indexOf(meeting.name));
 });

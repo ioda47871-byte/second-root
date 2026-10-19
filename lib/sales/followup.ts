@@ -48,7 +48,10 @@ export function followUpStatus(input: FollowUpInput & { demoPublic: boolean }, n
   if (input.hasFollowUp) return { kind: "sent" };
   if (input.doNotContact) return { kind: "dnc" };
   if (input.status !== "sent" || input.sentAt === null) return { kind: "none" };
-  if (isFollowUpDue(input, now)) return input.demoPublic ? { kind: "due" } : { kind: "demo_unavailable" };
+  // No public demo (none, disabled or expired): the follow-up would carry a
+  // dead link, so none is shown whatever the day (§4.3).
+  if (!input.demoPublic) return { kind: "demo_unavailable" };
+  if (isFollowUpDue(input, now)) return { kind: "due" };
   // Not due yet, so only the 5 days remain. Counted in JST calendar days:
   // 0 means it becomes due later today.
   return { kind: "waiting", daysLeft: Math.max(0, jstCalendarDaysBetween(now, followUpDueAt(input.sentAt))) };
@@ -57,13 +60,14 @@ export function followUpStatus(input: FollowUpInput & { demoPublic: boolean }, n
 export function followUpStatusLabel(status: FollowUpStatus): string {
   switch (status.kind) {
     case "waiting":
-      return status.daysLeft === 0 ? "本日フォロー可能になります" : `フォロー期限まで ${status.daysLeft} 日`;
+      return status.daysLeft === 0 ? "本日フォロー可能になります" : `フォロー可能まで ${status.daysLeft} 日`;
     case "due":
-      return "フォロー可能（今日の画面から送れます）";
+      // 今日 shows at most LIMITS.workQueue items at a time, oldest first.
+      return "フォロー可能（今日の画面に古い順で出ます）";
     case "sent":
       return "フォロー送信済み";
     case "demo_unavailable":
-      return "デモ公開終了のためフォローなし";
+      return "デモが公開されていないためフォローなし";
     case "instagram":
       return "Instagram はフォローなし";
     case "dnc":

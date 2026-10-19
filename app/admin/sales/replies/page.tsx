@@ -6,6 +6,7 @@ import { requireAdminPage } from "@/lib/admin/auth";
 import { formatDateTime, loadInbox, loadMatchCandidates } from "@/lib/admin/inbox";
 import { formatDate, loadAwaitingReplies } from "@/lib/admin/pipeline";
 import { elapsedDaysLabel, followUpStatusLabel } from "@/lib/sales/followup";
+import { LIMITS } from "@/lib/sales/types";
 import { createAuthClient } from "@/lib/supabase/server";
 
 // 返信: Instagram replies received through the official API with the AI
@@ -82,6 +83,7 @@ export default async function RepliesPage() {
         <>
           <p className={styles.meta} data-testid="reply-summary">
             返信待ち {items.length} 件・うちフォロー可能 {followUpDue} 件（送信の古い順）
+            {followUpDue > 0 && <>。フォローは今日の画面に一度に {LIMITS.workQueue} 件まで、古い順で出ます。</>}
           </p>
           <ul className={styles.list}>
             {items.map((item) => (

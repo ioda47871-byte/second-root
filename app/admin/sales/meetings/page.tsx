@@ -1,12 +1,13 @@
 import OutcomeActions from "@/components/admin/OutcomeActions";
 import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
-import { formatDate, loadPipeline } from "@/lib/admin/pipeline";
+import { byStageAge, formatDate, loadPipeline } from "@/lib/admin/pipeline";
 import { elapsedDaysLabel } from "@/lib/sales/followup";
 import { createAuthClient } from "@/lib/supabase/server";
 
 // 商談: replies that may become meetings, and meetings awaiting an outcome,
-// with the JST calendar days since the reply / the meeting start (DEV-056).
+// with the JST calendar days since the reply / the meeting start, the stalest
+// first (DEV-056; display order only).
 
 const REPLY = { interested: "興味あり", question: "質問", meeting_request: "商談希望", decline: "断り", other: "その他" } as const;
 
@@ -16,7 +17,7 @@ export default async function MeetingsPage() {
   const since = (what: string, iso: string | null) => elapsedDaysLabel(what, iso ? new Date(iso) : null, now);
   let items;
   try {
-    items = await loadPipeline(await createAuthClient(), ["replied", "meeting"]);
+    items = (await loadPipeline(await createAuthClient(), ["replied", "meeting"])).sort(byStageAge);
   } catch {
     return (
       <>

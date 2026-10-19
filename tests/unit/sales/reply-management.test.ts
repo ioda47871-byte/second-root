@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { byStageAge, type PipelineItem } from "@/lib/admin/pipeline";
 import { jstCalendarDaysBetween } from "@/lib/sales/dates";
 import { elapsedDaysLabel, followUpDueAt, followUpStatus, followUpStatusLabel, isFollowUpDue } from "@/lib/sales/followup";
 
@@ -78,15 +79,44 @@ describe("followUpStatus", () => {
 
   it("is not offered when the demo is no longer public (§4.3)", () => {
     expect(followUpStatus({ ...base, demoPublic: false }, at("2026-10-20T03:00:00Z")).kind).toBe("demo_unavailable");
-    // Before day 5 the demo state does not matter yet.
-    expect(followUpStatus({ ...base, demoPublic: false }, at("2026-10-11T03:00:00Z")).kind).toBe("waiting");
+    // Before day 5 too: no countdown to a follow-up that will not be offered.
+    expect(followUpStatus({ ...base, demoPublic: false }, at("2026-10-11T03:00:00Z")).kind).toBe("demo_unavailable");
   });
 
   it("labels each state", () => {
-    expect(followUpStatusLabel({ kind: "waiting", daysLeft: 3 })).toBe("フォロー期限まで 3 日");
+    expect(followUpStatusLabel({ kind: "waiting", daysLeft: 3 })).toBe("フォロー可能まで 3 日");
     expect(followUpStatusLabel({ kind: "waiting", daysLeft: 0 })).toBe("本日フォロー可能になります");
-    expect(followUpStatusLabel({ kind: "due" })).toContain("フォロー可能");
+    // 今日 shows only a few at a time: no promise that every one is there now.
+    expect(followUpStatusLabel({ kind: "due" })).toBe("フォロー可能（今日の画面に古い順で出ます）");
     expect(followUpStatusLabel({ kind: "sent" })).toBe("フォロー送信済み");
     expect(followUpStatusLabel({ kind: "instagram" })).toBe("Instagram はフォローなし");
+    // Neutral: covers a missing demo as well as a disabled or expired one.
+    expect(followUpStatusLabel({ kind: "demo_unavailable" })).toBe("デモが公開されていないためフォローなし");
+  });
+});
+
+describe("byStageAge (商談 tab order)", () => {
+  const item = (id: string, status: "replied" | "meeting", repliedAt: string | null, meetingAt: string | null = null): PipelineItem => ({
+    outreachId: id,
+    prospectId: id,
+    shopName: id,
+    channel: "email",
+    status,
+    replyType: "interested",
+    sentAt: "2026-10-01T00:00:00Z",
+    repliedAt,
+    meetingAt,
+    doNotContact: false,
+  });
+
+  it("puts the stalest first: replies by reply date, meetings by meeting start, missing dates last", () => {
+    const items = [
+      item("new-reply", "replied", "2026-10-15T00:00:00Z"),
+      item("no-date", "replied", null),
+      item("old-meeting", "meeting", "2026-10-02T00:00:00Z", "2026-10-05T00:00:00Z"),
+      item("old-reply", "replied", "2026-10-03T00:00:00Z"),
+      item("recent-meeting", "meeting", "2026-10-01T00:00:00Z", "2026-10-14T00:00:00Z"),
+    ];
+    expect([...items].sort(byStageAge).map((i) => i.outreachId)).toEqual(["old-reply", "old-meeting", "recent-meeting", "new-reply", "no-date"]);
   });
 });

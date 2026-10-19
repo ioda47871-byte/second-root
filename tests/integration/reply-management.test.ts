@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadAwaitingReplies, loadPipeline } from "@/lib/admin/pipeline";
+import { seedDraft, seedEmailDraft } from "../support/seed-demo";
 import { candidate, createUser, db, emailCandidate, makeAdmin, resetSalesData, rpc, signedInClient, verifiedRun } from "./helpers";
 
 // DEV-056: the 返信 tab's waiting list (oldest sent first, follow-up state)
@@ -86,6 +87,26 @@ describe("loadAwaitingReplies", () => {
     const dueIds = (await loadAwaitingReplies(admin)).filter((i) => i.followUp.kind === "due").map((i) => i.outreachId);
     expect(dueIds).toEqual(view);
     expect(dueIds).toEqual([a.outreachId]);
+  });
+
+  it("never hides a sent outreach: more than the old cap of 100, across pages, newest included", async () => {
+    // Direct fixtures (the persist RPC caps new drafts at 5 a day).
+    const ids: string[] = [];
+    for (let i = 0; i < 120; i += 1) {
+      const shop = await seedDraft(db);
+      await sentDaysAgo(shop, 200 - i);
+      ids.push(shop.outreachId);
+    }
+    const newest = await seedEmailDraft(db);
+    await sentDaysAgo(newest, 0);
+    ids.push(newest.outreachId);
+
+    const all = await loadAwaitingReplies(admin);
+    expect(all.map((i) => i.outreachId)).toEqual(ids);
+    // Several pages give the same complete list.
+    expect((await loadAwaitingReplies(admin, new Date(), 50)).map((i) => i.outreachId)).toEqual(ids);
+    expect(all.at(-1)).toMatchObject({ outreachId: newest.outreachId, followUp: { kind: "waiting", daysLeft: 5 } });
+    expect(await loadPipeline(admin, ["sent"], 50)).toHaveLength(121);
   });
 
   it("returns nothing to a signed-in non-admin", async () => {
