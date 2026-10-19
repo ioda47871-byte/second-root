@@ -3,8 +3,10 @@ import { DeadlineError } from "@/lib/design-agent/bounded-process";
 import { CodexError } from "@/lib/design-agent/codex";
 import { briefStructureOnDefault, CATEGORY_DEFAULT_PROFILES } from "@/lib/design-agent/defaults";
 import { SECOND_LOOK_MIN_MS } from "@/lib/design-agent/photo-pipeline";
-import { runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
+import { finalAccepted, MAX_REVISIONS, QUALITY_NOT_ACCEPTED, runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
 import type { DesignProfile } from "@/lib/design-agent/profile";
+import type { VisualReview } from "@/lib/design-agent/review";
+import { DESIGN_ERROR_CODE } from "@/lib/sales/design";
 import { AMERICAN_EDITORIAL, review, SHOP } from "./fixtures";
 
 // The review loop with scripted Codex answers and in-memory rendering.
@@ -242,16 +244,18 @@ describe("runDesignPipeline revision search (DEV-034)", () => {
   it("ends the search, never revising from the worse candidate, when the second look fails", async () => {
     const base = () => [AMERICAN_EDITORIAL, revise(fifteen, "#111111"), revise(thirteen, "#222222")];
     const cases: Array<{ answer: Answer; note: string; status: string }> = [
-      { answer: { not: "a review" }, note: "REVIEW_INVALID_candidate-0_AGAIN", status: "done" },
-      { answer: review({ ...fifteen, verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: null } }), note: "NO_REVISED_PROFILE", status: "done" },
+      { answer: { not: "a review" }, note: "REVIEW_INVALID_candidate-0_AGAIN", status: "blocked" },
+      { answer: review({ ...fifteen, verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: null } }), note: "NO_REVISED_PROFILE", status: "blocked" },
       { answer: new CodexError("CODEX_QUOTA", "x"), note: "REVIEW_CODEX_QUOTA", status: "environment_failure" },
-      { answer: new DeadlineError(), note: "REVISION_FROM_BEST_NO_TIME", status: "done" },
+      { answer: new DeadlineError(), note: "REVISION_FROM_BEST_NO_TIME", status: "blocked" },
     ];
     for (const c of cases) {
       const h = harness([...base(), c.answer]);
       const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
       expect(report.notes, c.note).toEqual(expect.arrayContaining(["REVISION_FROM_BEST_2", c.note]));
       expect(report, c.note).toMatchObject({ status: c.status, revisions: 1, finalCandidate: "candidate-0" });
+      // DEV-053: candidate-0 was never accepted: still the final (recorded), but blocked
+      expect(report.notes.includes("QUALITY_NOT_ACCEPTED"), c.note).toBe(c.status === "blocked");
       expect(h.profiles.has("candidate-2"), c.note).toBe(false);
       expect(h.profiles.get("final"), c.note).toEqual(h.profiles.get("candidate-0"));
     }
@@ -267,7 +271,8 @@ describe("runDesignPipeline revision search (DEV-034)", () => {
     const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
     expect(h.asked.filter((a) => a.kind === "review")).toHaveLength(2);
     expect(report.notes).toEqual(expect.arrayContaining(["REVISION_FROM_BEST_2", "REVISION_FROM_BEST_NO_TIME"]));
-    expect(report).toMatchObject({ status: "done", revisions: 1, finalCandidate: "candidate-0" });
+    expect(report).toMatchObject({ status: "blocked", revisions: 1, finalCandidate: "candidate-0" });
+    expect(report.notes).toContain("QUALITY_NOT_ACCEPTED");
   });
 
   it("fails on the run's deadline before any candidate is scored, and finishes with the best one after", async () => {
@@ -276,7 +281,8 @@ describe("runDesignPipeline revision search (DEV-034)", () => {
     const later = harness([AMERICAN_EDITORIAL, revise(fifteen, "#111111"), new DeadlineError()]);
     const report = await runDesignPipeline({ demo: SHOP, references: refs }, later.deps);
     expect(report.notes).toContain("REVIEW_NO_TIME");
-    expect(report).toMatchObject({ status: "done", revisions: 1, finalCandidate: "candidate-0" });
+    expect(report).toMatchObject({ status: "blocked", revisions: 1, finalCandidate: "candidate-0" });
+    expect(report.notes).toContain("QUALITY_NOT_ACCEPTED");
     expect(later.profiles.get("final")).toEqual(later.profiles.get("candidate-0"));
   });
 
@@ -285,5 +291,93 @@ describe("runDesignPipeline revision search (DEV-034)", () => {
     const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
     expect(h.asked.filter((a) => a.kind === "review")).toHaveLength(3);
     expect(report).toMatchObject({ revisions: 2, finalCandidate: "candidate-1" });
+  });
+});
+
+// DEV-053: the quality gate. The final is still the best-scored candidate
+// (recorded with its scores), but only a final whose own latest review said
+// accept ships as "done"; otherwise the run is BLOCKED with QUALITY_NOT_ACCEPTED.
+describe("runDesignPipeline quality gate (DEV-053)", () => {
+  const reviseTo = (accent: string, over: Partial<VisualReview> = {}) =>
+    review({ verdict: "revise", ...over, recommended_profile_changes: { summary: [], revised_profile: revised(accent) } });
+
+  it("finalAccepted reads the final candidate's latest review (a second look counts)", () => {
+    expect(finalAccepted([{ candidate: "candidate-0", verdict: "accept" }], "candidate-0")).toBe(true);
+    expect(finalAccepted([{ candidate: "candidate-0", verdict: "revise" }, { candidate: "candidate-1", verdict: "accept" }], "candidate-0")).toBe(false);
+    expect(finalAccepted([{ candidate: "candidate-0", verdict: "revise" }, { candidate: "candidate-1", verdict: "revise" }, { candidate: "candidate-0", verdict: "accept" }], "candidate-0")).toBe(true);
+    expect(finalAccepted([], "candidate-0")).toBe(false);
+    expect(QUALITY_NOT_ACCEPTED).toMatch(DESIGN_ERROR_CODE);
+  });
+
+  it("accepted → done, no gate note", async () => {
+    const h = harness([AMERICAN_EDITORIAL, reviseTo("#8A6A3A", { brand_fit: 2 }), review()]);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    expect(report).toMatchObject({ status: "done", finalCandidate: "candidate-1", revisions: 1 });
+    expect(report.notes).not.toContain(QUALITY_NOT_ACCEPTED);
+  });
+
+  it("never accepted after the revision limit → blocked QUALITY_NOT_ACCEPTED; the best candidate and its scores stay in the record", async () => {
+    const h = harness([AMERICAN_EDITORIAL, reviseTo("#8A6A3A", { brand_fit: 2 }), reviseTo("#9A7A4A", { brand_fit: 5 }), reviseTo("#AA8A5A", { brand_fit: 3 })]);
+    const logs: string[] = [];
+    h.deps.log = (line) => void logs.push(line);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    expect(report).toMatchObject({ status: "blocked", finalCandidate: "candidate-1", revisions: MAX_REVISIONS });
+    expect(report.notes).toEqual([QUALITY_NOT_ACCEPTED]);
+    expect(report.rounds.map((r) => [r.candidate, r.verdict, r.scores.brand_fit])).toEqual([
+      ["candidate-0", "revise", 2],
+      ["candidate-1", "revise", 5],
+      ["candidate-2", "revise", 3],
+    ]);
+    // the final is still written and rendered for the person who reads the record
+    expect(h.profiles.get("final")?.palette.accent).toBe("#8A6A3A");
+    expect(report.after).toEqual({ desktop: "/shots/final-d.png", mobile: "/shots/final-m.png" });
+    expect(logs.some((l) => l.includes(QUALITY_NOT_ACCEPTED))).toBe(true);
+  });
+
+  it("a revision the reviewer accepts but that scores below the best does not make the best shippable", async () => {
+    const h = harness([AMERICAN_EDITORIAL, reviseTo("#8A6A3A", { brand_fit: 5 }), review({ brand_fit: 1 })]);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    // the final choice is unchanged (best score); the gate reads that candidate's own verdict
+    expect(report).toMatchObject({ status: "blocked", finalCandidate: "candidate-0" });
+    expect(report.notes).toContain(QUALITY_NOT_ACCEPTED);
+  });
+
+  it("the renderer-change stop keeps its own code (the gate adds nothing)", async () => {
+    const h = harness([AMERICAN_EDITORIAL, review({ verdict: "revise", needs_renderer_change: true })]);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    expect(report.status).toBe("blocked");
+    expect(report.notes).toEqual(["RENDERER_CHANGE_NEEDED"]);
+  });
+
+  it("template fallbacks and environment failures are unaffected", async () => {
+    const invalid = await runDesignPipeline({ demo: SHOP, references: refs }, harness([{ ...AMERICAN_EDITORIAL, direction: "vaporwave" }]).deps);
+    expect(invalid).toMatchObject({ status: "fallback_template", notes: ["BRIEF_PROFILE_INVALID"] });
+    const unreviewed = await runDesignPipeline({ demo: SHOP, references: refs }, harness([AMERICAN_EDITORIAL, { verdict: "maybe" }]).deps);
+    expect(unreviewed.status).toBe("fallback_template");
+    expect(unreviewed.notes).not.toContain(QUALITY_NOT_ACCEPTED);
+    const quota = await runDesignPipeline({ demo: SHOP, references: refs }, harness([AMERICAN_EDITORIAL, reviseTo("#8A6A3A"), new CodexError("CODEX_QUOTA", "x")]).deps);
+    expect(quota.status).toBe("environment_failure");
+    expect(quota.notes).not.toContain(QUALITY_NOT_ACCEPTED);
+  });
+
+  it("strict and loose schema modes behave the same", async () => {
+    for (const schemaMode of ["strict", "loose"] as const) {
+      const ok = await runDesignPipeline({ demo: SHOP, references: refs, schemaMode }, harness([AMERICAN_EDITORIAL, review()]).deps);
+      expect(ok.status, schemaMode).toBe("done");
+      const never = await runDesignPipeline({ demo: SHOP, references: refs, schemaMode, maxRevisions: 0 }, harness([AMERICAN_EDITORIAL, reviseTo("#8A6A3A")]).deps);
+      expect(never, schemaMode).toMatchObject({ status: "blocked", finalCandidate: "candidate-0", revisions: 0 });
+      expect(never.notes, schemaMode).toContain(QUALITY_NOT_ACCEPTED);
+    }
+  });
+
+  it("low-confidence (category default) paths: accepted → done, never accepted → blocked like any other", async () => {
+    const low = { ...AMERICAN_EDITORIAL, confidence: 0.3 };
+    const ok = await runDesignPipeline({ demo: SHOP, references: refs }, harness([low, review()]).deps);
+    expect(ok).toMatchObject({ status: "done", briefConfidence: 0.3 });
+    expect(ok.notes).toContain("LOW_CONFIDENCE_CATEGORY_DEFAULT");
+    expect(ok.notes).not.toContain(QUALITY_NOT_ACCEPTED);
+    const never = await runDesignPipeline({ demo: SHOP, references: refs, maxRevisions: 0 }, harness([low, review({ verdict: "revise" })]).deps);
+    expect(never.status).toBe("blocked");
+    expect(never.notes).toEqual(expect.arrayContaining(["LOW_CONFIDENCE_CATEGORY_DEFAULT", QUALITY_NOT_ACCEPTED]));
   });
 });

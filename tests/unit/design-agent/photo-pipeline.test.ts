@@ -320,11 +320,13 @@ describe("runDesignPipeline with photos", () => {
     const inDirection = harness({ codex: [AMERICAN_EDITORIAL, reviseProfile("#111111")], photo: [analysesAnswer(), direction(), new DeadlineError()] });
     const a = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, inDirection.deps);
     expect(a.notes).toContain("REVISION_NO_TIME");
-    expect(a).toMatchObject({ status: "done", revisions: 0, finalCandidate: "candidate-0" });
+    expect(a).toMatchObject({ status: "blocked", revisions: 0, finalCandidate: "candidate-0" });
+    expect(a.notes).toContain("QUALITY_NOT_ACCEPTED");
     const inReview = harness({ codex: [AMERICAN_EDITORIAL, reviseProfile("#111111"), new DeadlineError()], photo: [analysesAnswer(), direction(), direction()] });
     const b = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, inReview.deps);
     expect(b.notes).toContain("REVIEW_NO_TIME");
-    expect(b).toMatchObject({ status: "done", revisions: 1, finalCandidate: "candidate-0" });
+    expect(b).toMatchObject({ status: "blocked", revisions: 1, finalCandidate: "candidate-0" });
+    expect(b.notes).toContain("QUALITY_NOT_ACCEPTED");
   });
 
   it("none target or a missing revised profile stops; an invalid revised direction stops with the best so far", async () => {
@@ -334,8 +336,31 @@ describe("runDesignPipeline with photos", () => {
     expect((await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, noProfile.deps)).notes).toContain("NO_REVISED_PROFILE");
     const badDirection = harness({ codex: [AMERICAN_EDITORIAL, photoReview({ verdict: "revise", revision_target: "images" })], photo: [analysesAnswer(), direction(), { ...direction(), layout: "gallery_grid" }] });
     const r = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, badDirection.deps);
-    expect(r).toMatchObject({ status: "done", finalCandidate: "candidate-0", revisions: 0 });
+    expect(r).toMatchObject({ status: "blocked", finalCandidate: "candidate-0", revisions: 0 });
+    expect(r.notes).toContain("QUALITY_NOT_ACCEPTED");
     expect(r.notes).toContain("REVISION_IMAGE_DIRECTION_INVALID_1");
+  });
+
+  it("DEV-053: a photo final no review accepted is blocked (QUALITY_NOT_ACCEPTED), still rendered and recorded; an accepted one is done", async () => {
+    const images = (over: Partial<PhotoReview> = {}) => photoReview({ verdict: "revise", revision_target: "images", ...over });
+    const never = harness({ codex: [AMERICAN_EDITORIAL, images(), images(), images()], photo: [analysesAnswer(), direction(), direction(), direction()] });
+    const report = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, never.deps);
+    expect(report).toMatchObject({ status: "blocked", revisions: 2, finalCandidate: "candidate-2" });
+    expect(report.notes).toContain("QUALITY_NOT_ACCEPTED");
+    expect(report.rounds.every((r) => r.verdict === "revise")).toBe(true);
+    expect(never.rendered.at(-1)).toBe("final");
+    expect(report.photos?.finalLayout).toBe("split_hero");
+    const accepted = harness({ codex: [AMERICAN_EDITORIAL, images(), photoReview({ verdict: "accept" })], photo: [analysesAnswer(), direction(), direction()] });
+    const ok = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, accepted.deps);
+    expect(ok).toMatchObject({ status: "done", finalCandidate: "candidate-1" });
+    expect(ok.notes).not.toContain("QUALITY_NOT_ACCEPTED");
+  });
+
+  it("DEV-053: a render mismatch keeps its own block (the gate adds nothing)", async () => {
+    const h = harness({ codex: [AMERICAN_EDITORIAL], photo: [analysesAnswer(), direction()] }, { placed: () => [] });
+    const report = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, h.deps);
+    expect(report.status).toBe("blocked");
+    expect(report.notes).not.toContain("QUALITY_NOT_ACCEPTED");
   });
 
   it("falls back to the page without photos (the DEV-028 loop) when the analysis or the first direction is unusable", async () => {
