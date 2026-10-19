@@ -48,6 +48,13 @@
 
 除外リスト（`sales_exclusions`）はメールのアドレスを保存しない。サーバーで計算した digest（`docs/ARCHITECTURE.md` の sales_exclusions）だけを DB に渡し、管理画面はアドレスを再表示しない。表示名・メモ・店名・住所にアドレスは書けない。開発サーバー（`next dev`）が Server Function の引数を端末に出す既定の記録は `next.config.ts` の `logging.serverFunctions: false` で止めている（管理画面の操作はメール・営業文・返信の下書きを受け取るため）。digest は鍵なしの hash で、推測による確認は防げない（HMAC 化は承認後の別 task）。
 
+## 3.3 探索段階の既知判定（DEV-054）
+
+- ingest API は discovered の stub ごとに「既知かどうか」（`known`）だけを返す。どの一覧（prospect・DNC・除外リスト・却下の記憶）に当たったか、一覧の中身・理由は返さない。照合は Instagram handle と公式サイトのキーだけで、除外リストのメール digest・店名+住所は探索段階では使わない。
+- 残るリスク（受け入れ）: ingest token を持つ者は、任意の handle / domain を stub にして「既知か」を確かめられる（どの一覧かは分からない）。token は Operational Claude だけが持ち、persist の結果（`duplicate` / `excluded`）からも同程度のことは分かる。
+- 却下の記憶（`sales_rejected_candidates`）はメールを平文でも digest でも持たない。RLS で管理者だけが読め、書き込みは service role の関数だけ。期限（90 日）で消える。
+- 照合・記憶の関数は service role だけが実行できる（PUBLIC / anon / authenticated は不可。`tests/integration/db-security-audit.test.ts`）。
+
 ## 4. SSRF
 
 - Second Root サーバーは Claude が提出した `source_url` 等を **fetch しない**。

@@ -84,8 +84,19 @@ Second Root の営業を、人間ができるだけ考えず、少ないクリ�
 - 照合キーは重複排除と同じ 4 つ（正規化した Instagram handle / 公式サイトの domain / メール / 正規化店名+住所）。1 つでも一致すれば、persist はその候補を `rejected(excluded)` にし、prospect / demo / 営業下書きを作らない（当日上限の枠も使わない）。
 - メールは**アドレスを保存しない**（DEV-050）。除外リストには正規化メールの digest（`lib/sales/email-digest.ts`: 版つきの接頭辞 + メールの SHA-256）だけを保存し、管理画面は「メール登録済み」とだけ表示する。digest はサーバーで計算し、DB の関数にも digest だけを渡す。候補側も同じ digest を checkpoint に持ち（第一者でないメール自体は保存しない）、メールだけで登録した既存顧客は Instagram 経由の候補でも除外される。
 - 表示名・メモにメールアドレスは書けない（画面と DB の両方で拒否）。
-- 登録・削除は管理者だけ。Operational Claude は一覧も内容も見られず、変更もできない（persist の結果に reason `excluded` が返るだけ）。
+- 登録・削除は管理者だけ。Operational Claude は一覧も内容も見られず、変更もできない（persist の結果に reason `excluded` が返るだけ。DEV-054 からは discovered の時点で、どの一覧かを示さない `known` の印も付く: §3.5.2）。
 - 既に営業準備済みの店舗には触れない（必要なら「今日」で見送る / 営業不要（DNC）にする）。
+
+### 3.5.2 探索段階の既知判定と却下の記憶（DEV-054）
+
+Operational Claude が同じ店舗を毎日調べ直さないように、サーバーは `discovered` の checkpoint の時点で既知の店舗の stub に印（`known`）を付ける。Operational Claude は印の付いた stub を verify しない。
+
+- 照合キーは stub が持つ、それだけで 1 店舗を特定できる 2 つだけ: Instagram の handle（`parseInstagramProfile`）と公式サイトのキー（`websiteKey`）。ingest と同じ正規化。
+- 店名・区では照合しない。stub には住所が無く、同じ区の同名の別店舗を「既知」にすると、その店舗は黙って営業候補から消える（§3.5 の「別店舗の統合は重複の見逃しより悪い」）。見逃しは確認の手間が 1 回増えるだけで、persist が全キーで重複を判定する。
+- 既知とするもの: 既存の prospect（営業不要（DNC）を含む、状態を問わない）/ 除外リスト（§3.5.1。handle と domain のキー。メールの digest と店名+住所は stub に無いため探索段階では照合されず、persist で照合される）/ 過去に却下した候補の記憶（下記、期限内のもの）。
+- Operational Claude に返すのは key が既知かどうかだけ（`knownKeys`、`discovered[].known`）。どの一覧に当たったか・一覧の中身・理由は返さない。
+- 印は手間を省くためのもので最終判断ではない。persist の判定（重複・DNC・除外・当日上限・冪等）は変わらず、印の付いた店舗が verify されて提出されても persist が判定する。照合に失敗したときは印を付けない（fail-open。営業準備の安全性は persist が守る）。
+- 却下の記憶（`sales_rejected_candidates`）: verify の時点で、店舗そのものが理由の却下（`site_without_email`: 公式サイトがあり第一者メールがない / `no_eligible_channel`: 公式サイトなし（2 回確認）・Instagram なし・第一者メールなし）だけを、handle / 公式サイトのキー / 正規化店名+住所で 90 日記憶する。当日上限・エラー・提出内容の不備（出典不足・再確認不足・unknown 等）は記憶しない。除外・DNC・重複は除外リストと prospect が答えるので記憶しない（除外の削除がすぐ効くように）。メールは平文も digest も持たない。
 
 ### 3.6 fail-closed（確認できなければ営業準備しない）
 
@@ -182,6 +193,9 @@ drafted → sent → replied(interested|question|meeting_request|decline|other)
 ## 10. Operational Claude（日々の店舗探索）
 
 フロー: Web検索 → 候補発見 → 公式サイト再確認 → 第一者公開メール確認 → 出典付き情報整理 → 推奨チャネル → 営業文準備 → `POST /api/internal/sales-agent/runs` へ提出。
+
+- 候補発見は **Instagram を中心に、公式サイトのない名古屋市内の店舗**を探す（DEV-054、`ops/sales-agent/RUN_PROMPT.md` §3）。Instagram にはログインせず、Web 検索と公開ページ（地図・グルメサイトは店舗の存在を知るためだけ）で探す。公式サイトの有無は従来どおり verify で 2 回以上の独立した検索で決める。
+- サーバーが `discovered` の stub のうち既知の店舗に `known` の印を付け、Operational Claude はそれを verify しない（§3.5.2）。ingest API の変更は後方互換（既存の action・応答の項目は不変、`knownKeys` と `discovered[].known` を追加）。
 
 run は `sales_agent_runs` に工程（phase）と checkpoint を残し、Claude のセッションが途中で消えても、次の run が Supabase の状態だけから続きを再開できる。
 

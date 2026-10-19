@@ -118,6 +118,19 @@ unique(normalized_name, normalized_address) による重複防止。
 - 限界: 鍵のない hash なので、admin だけが読める行を読める人は、推測したアドレスが登録済みかを確かめられる（辞書攻撃）。接頭辞は、一般的な `sha256(email)` の対応表をそのまま使えなくするだけ。
 - より安全な方式（承認が要る次の段階）: サーバーだけが持つ secret を鍵にした HMAC-SHA256。候補側（ingest）と管理画面の両方が同じ鍵を持つ必要があり、新しい secret の追加・鍵の交換時の再計算（除外リストと進行中の checkpoint）が要るため、人の承認の後に別 task で行う。接頭辞の版（`v1`）を上げて移行できる。
 
+### sales_rejected_candidates（却下した候補の記憶、DEV-054）
+| 列 | 備考 |
+|---|---|
+| key_type / key_value | `instagram_handle` / `website_domain` / `name_address`（`normalizeName(name) + "\|" + normalizeAddress(address)`、`lib/sales/dedupe.ts` と同じ）。ingest と同じ正規化。unique(key_type, key_value)。key_value に空白・メールの形は入らない（check） |
+| reason | `site_without_email` / `no_eligible_channel`（check）。店舗そのものが理由で、出典を確認した後に決まる却下だけ（`lib/sales/discovery.ts` の `DURABLE_REJECTIONS`） |
+| run_id | 最後に却下した run（追跡用） |
+| first_rejected_at / last_rejected_at / expires_at | 期限は最後の却下から 90 日。期限切れの行は照合に使わず、次の書き込みで削除する |
+
+- 書き込みは service role の `sales_remember_rejections(run_id, entries)` だけ。verified の checkpoint を保存した後に ingest API が呼び、その run の checkpoint に同じ key が同じ理由で `rejected` として残っているものだけを記録する（それ以外は無視）。同じ key の再記録は理由・run・期限を更新するだけ（冪等）。失敗しても run には影響しない（次回また verify されるだけ）。
+- 記憶しない: 当日上限・エラー（一時的）、出典不足・再確認不足・unknown・URL 不正など提出内容の問題、市外・対象外業種（出典確認の前に決まる）、除外・DNC・重複（除外リストと prospect が答える。除外の削除がすぐ効くように）。
+- 90 日の理由: 店舗の Web の状況（サイトの閉鎖・メールの掲載・Instagram の開始）は数か月で変わりうる。1 日 1 run・20 件の探索で同じ店舗が繰り返し見つかるのを止めるには十分長く、四半期ごとに見直される程度に短い。保存する情報も期限で消える。
+- メールは平文も digest も持たない（stub にメールが無く、探索段階の照合に使えないため）。読み取りは管理者だけ（RLS）、API role の直接書き込みは無い。
+
 ### sales_demos
 | 列 | 備考 |
 |---|---|
@@ -171,8 +184,8 @@ run の現在地を**このテーブルだけから**判断できるようにす
 |---|---|---|---|
 | `start` | `runId` | run を `running / started` で作成 | 既存 run があれば作成せず現在の状態を返す（`replayed: true`）。**別の run が running の間は作成せず 409 `run_in_progress`**（24 時間 checkpoint がない run は先に `failed / run_expired` にするので妨げない。DEV-025） |
 | `status` | `runId?` | run の状態・checkpoint・`nextAction` を返す。`runId` 省略時は実行中の run → なければ今日（Asia/Tokyo）開始の run（completed は 200、failed は 409 と `start_new_run`）→ なければ `null`（§7.3） | 読み取りのみ |
-| `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める | 同じ phase の再送は上書き保存（`persisting` 以降は拒否） |
-| `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤10。超過は 400 で全体拒否)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存 | 同上 |
+| `checkpoint` | `runId, phase: "discovered", candidates: stub[] (≤20)` | 候補の要約を checkpoint に保存し phase を進める。DEV-054: 保存の前に stub の Instagram handle / 公式サイトのキーを既知の店舗（prospect・DNC・除外リスト・却下の記憶）と照合し、当たった stub に `known: true` を付けて保存する（`sales_discovery_known_keys`。照合失敗は印なしで保存） | 同じ phase の再送は上書き保存（`persisting` 以降は拒否）。再送のたびに照合し直す |
+| `checkpoint` | `runId, phase: "verified", candidates: verified[] (≤10。超過は 400 で全体拒否)` | 候補ごとに schema と入力 Hard Rules（URL scheme・Instagram host・email 出典形式等）を検証し、合格分を checkpoint に保存。DEV-054: 保存できたら、店舗そのものが理由の却下を `sales_rejected_candidates` に記録する（best effort） | 同上 |
 | `persist` | `runId` | `verified` checkpoint の候補を §7.4 の手順で処理し、候補ごとの stage を checkpoint に記録。全候補が終端に達したら（または試行上限で）`completed` にし `result` を保存 | 何度呼んでも同じ結果に収束（§7.3）。同じ run の `persist` 同時実行は 409 `run_busy` |
 | `inbox_pending` | `limit?`（≤20） | Instagram の未処理の返信（最新の受信に返信案がない会話）を古い順に返す。未照合の会話は公式 API の username で安全に照合を試みる（DEV-021、`docs/INSTAGRAM_MESSAGING.md`） | 読み取りのみ（照合は一意な場合だけ） |
 | `inbox_draft` | `threadId, messageId, replyType, body, futureContactRefused` | 返信案を検証して保存（連絡先・他の URL は拒否、価格・納期・契約の表現は人間確認の印、明示的な拒否は dnc_candidate）。**送信はしない** | 同じ messageId の再送は同じ案を更新、古い messageId は 409 |
@@ -182,10 +195,11 @@ run の現在地を**このテーブルだけから**判断できるようにす
 - `completed` の run に `start` / `checkpoint` / `persist` を送った場合は処理せず、保存済みの `result` を返す（HTTP 200、`replayed: true`）。
 - phase を飛ばす要求（例: `discovered` 前の `verified`、`verified` 前の `persist`）は 409 `phase_order_violation`。
 - 返り値は常に `{ runId, status, phase, checkpointAt, nextAction, candidates: [{ key, stage, prospectId?, reason? }], replayed }`。
+  DEV-054 で追加（後方互換、既存の項目は不変）: `knownKeys`（discovered のうちサーバーが既知と判定した key）と `discovered[].known`（boolean）。どの一覧に当たったか・理由は返さない（`docs/MVP_SPEC.md` §3.5.2）。`known` は Operational Claude からは送れない（strict schema で 400）。
 - この endpoint は DNC 変更・成約状態変更・送信を**一切できない**。
 - `source_url` 等をサーバーから fetch しない（SSRF 経路を作らない）。
 - 処理順の詳細・fail-closed 条件は §7。
-- 実装: `app/api/internal/sales-agent/runs/route.ts`（認証・サイズ・schema）、`lib/sales/ingest-schema.ts`（request schema の正本）、`lib/sales/prepare.ts`（verified 候補の検証・正規化・チャネル決定・デモ内容）、`lib/sales/ingest.ts`（action 実行）。
+- 実装: `app/api/internal/sales-agent/runs/route.ts`（認証・サイズ・schema）、`lib/sales/ingest-schema.ts`（request schema の正本）、`lib/sales/prepare.ts`（verified 候補の検証・正規化・チャネル決定・デモ内容）、`lib/sales/discovery.ts`（DEV-054: 探索段階の照合キーと記憶する却下）、`lib/sales/ingest.ts`（action 実行）。
 - HTTP: 200 正常 / 400 schema・内容不正（値は返さない）/ 401 token 不一致 / 404 run なし / 409 phase 違反・run_busy・run_in_progress・failed run（`nextAction: start_new_run`）/ 413 本文 256KB 超・checkpoint 64KB 超 / 503 token 未設定・DB 不達。
 
 ## 6. 認証・認可
@@ -232,7 +246,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | checkpoint | 保存するもの | 誰が確定するか |
 |---|---|---|
 | run 開始 | run_id, started_at | `start` |
-| 候補探索完了 (`discovered`) | 候補 stub（key・店名・区・業種・公式サイト/Instagram URL）≤20 件 | `checkpoint` |
+| 候補探索完了 (`discovered`) | 候補 stub（key・店名・区・業種・公式サイト/Instagram URL）≤20 件。既知の店舗の stub にはサーバーが `known: true` を付ける（DEV-054） | `checkpoint` |
 | 検証完了 (`verified`) | 検証済み候補 ≤10 件（website_status と再確認記録、第一者 email と出典、出典付き事実、推奨チャネル、営業文案） | `checkpoint` |
 | dedupe/DNC 確認 → 永続化 → demo 準備 → outreach 準備 | 候補ごとの stage・prospectId・reason / error_code | `persist`（候補ごとに更新） |
 | run 完了 | 最終 result（件数と候補ごとの結果） | `persist` |
@@ -293,6 +307,7 @@ run phase:   started ──► discovered ──► verified ──► persistin
 | demo 準備 | 失敗 | `error(demo_failed)`。outreach を作らない |
 | outreach 下書き | 失敗 | `error(outreach_failed)` |
 
+- DEV-054 の探索段階の `known` の印と却下の記憶は、この表の判定を変えない。印の付いた店舗が提出されても、この表の順で判定される。
 - 候補ごとの transaction なので「prospect はあるが demo だけない」等の中途半端な行は残らない。
 - `error` の候補は再度 `persist` を呼べば再試行される（stage は checkpoint にあり、DB 制約で重複しない）。
 - `persist` の試行回数は checkpoint に記録する。**3 回目の `persist` 後も `error` が残る場合、サーバーが run を `completed`（error_code `partial_errors`）で確定**し、残りの候補は `error` のまま営業準備しない。run が `persisting` に留まり続けて新しい探索を妨げることはない（該当店舗は後日の run で再発見されれば改めて処理される）。

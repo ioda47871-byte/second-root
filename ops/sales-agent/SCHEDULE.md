@@ -62,6 +62,12 @@ SALES_AGENT_INGEST_TOKEN=<32文字以上> node scripts/with-supabase-env.mjs npx
 SALES_AGENT_INGEST_TOKEN=<同じ値> node ops/sales-agent/dry-run.mjs http://localhost:3000
 ```
 
+### 4.1 探索段階の既知判定（DEV-054）
+
+- RUN_PROMPT §3 の discover は Instagram 中心（公式サイトのない店舗）。応答の `run.knownKeys` / `run.discovered[].known` の店舗は verify しない。
+- 印付けと却下の記憶は migration `20261019120000_sales_discovery_screening.sql` が必要。適用前の環境でも ingest API は動き、印が付かないだけ（従来どおり全 stub を verify する）。Staging / Production への適用は人間が行う。
+- 印付けの結果は報告の `discovered: <件数>（うち known: <件数>）` で確認できる。known が多すぎる・少なすぎる日が続くときは、管理者が `sales_rejected_candidates`（管理者だけが読める）を確認する。
+
 ## 5. Instagram inbox job（DEV-021〜）
 
 | 項目 | 値 |
