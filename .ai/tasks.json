@@ -2775,6 +2775,55 @@
         "WSL の bridge の checkout の更新（人）"
       ],
       "decision": "2026-10-19: 人の報告（HUMAN-012）から Claude が追加（PR #75）; 2026-10-19: PR #75 merge（90c4c38）。Fresh Review PASS（Medium 1: cwd は tsconfig の @/ import にも効く。cycle.sh は / から起動するので bridge の pass が MODULE_NOT_FOUND になっていた → 文書・本物の run.sh の test を追加。Low: 相対 path を拒否）→ 再レビュー PASS（Low: 空の値も拒否 → Claude が修正）、CI green。人の作業: WSL の bridge を 90c4c38 以降に更新"
+    },
+    {
+      "id": "DEV-063",
+      "title": "bridge 専用 Vercel bypass の設定を 1 回の貼り付けにする script と、読み取りだけの状態確認",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-059",
+        "DEV-062"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-063-bypass-setup",
+      "purpose": "人の指示（2026-10-19）: Vercel Authentication を維持したまま WSL の bridge を安全に接続し、人の操作を最小にする。design-bridge-access.md §6 の手での貼り付けを、検査つき・test つきの script（値を出さない・argv や env に載せない・既存を上書きしない・接続確認と dry-run まで）にし、Claude が値なしで Vercel の状態を確かめる script を足す",
+      "acceptance_criteria": [
+        "人の操作は Vercel の画面で secret を作る 1 回と WSL の貼り付け 1 回",
+        "値は端末に表示せず、argv・環境変数・ログ・file 以外に残さない",
+        "bypass file は sr-designbridge の 0600、既存は上書きしない（入れ替えは明示の option）",
+        "bridge token を使わない接続確認（bypass あり → app に届く、なし → Vercel が止める）",
+        "Vercel・flag・timer・DB を変えない"
+      ],
+      "required_tests": [
+        "unit: 値の検証・非表示・argv/env に出ない・上書きしない・入れ替え・接続確認の判定",
+        "unit: 読み取りの状態確認（値を出さない）",
+        "CI"
+      ],
+      "allowed_scope": [
+        "scripts/sales-design-bridge/",
+        "scripts/sales-design-worker/",
+        "scripts/staging/",
+        "tests/unit/",
+        "docs/operations/",
+        "docs/STAGING.md",
+        "package.json",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Vercel の設定変更・secret の発行",
+        "Vercel Authentication の無効化",
+        "SALES_AI_DESIGN_ENABLED の変更",
+        "timer の有効化",
+        "Production"
+      ],
+      "human_approval_triggers": [
+        "Vercel で bypass secret を作る",
+        "WSL で script を実行する",
+        "controlled run の window（flag の一時 ON）"
+      ],
+      "decision": "2026-10-19: 人の指示で Claude が追加"
     }
   ]
 }
