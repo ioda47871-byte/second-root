@@ -51,8 +51,11 @@
 ## 3.3 探索段階の既知判定（DEV-054）
 
 - ingest API は discovered の stub ごとに「既知かどうか」（`known`）だけを返す。どの一覧（prospect・DNC・除外リスト・却下の記憶）に当たったか、一覧の中身・理由は返さない。照合は Instagram handle と公式サイトのキーだけで、除外リストのメール digest・店名+住所は探索段階では使わない。
-- 残るリスク（受け入れ）: ingest token を持つ者は、任意の handle / domain を stub にして「既知か」を確かめられる（どの一覧かは分からない）。token は Operational Claude だけが持ち、persist の結果（`duplicate` / `excluded`）からも同程度のことは分かる。
-- 却下の記憶（`sales_rejected_candidates`）はメールを平文でも digest でも持たない。RLS で管理者だけが読め、書き込みは service role の関数だけ。期限（90 日）で消える。
+- 残るリスク（受け入れ）: ingest token を持つ者は、任意の handle / domain を stub にして「既知か」を確かめられる。token は Operational Claude だけが持つ。
+  - 探索段階の照合は persist より安く、痕跡も残らない: 副作用がなく（prospect も記憶も作らない）、1 回の要求で最大 20 キーを確かめられ、discovered の再送で何度でも繰り返せる。ただし一覧を特定しない（prospect・DNC・除外リスト・却下の記憶のどれに当たったかは分からない）。
+  - persist の結果（`duplicate` / `excluded`）は一覧を特定するが、当日上限と run ごとの件数で制限され、当たらなかった候補は目に見える prospect として残る。
+  - どちらも token の漏洩が前提で、得られるのは「既知か」だけ（一覧の中身は返らない）なので受け入れる。
+- 却下の記憶（`sales_rejected_candidates`）が保存するのは Instagram handle と公式サイトのキー（`site_without_email` の却下だけ）で、店名・住所・メールは平文でも digest でも持たない。RLS で管理者だけが読め、書き込みは service role の関数だけ。期限（90 日）で消える。
 - 照合・記憶の関数は service role だけが実行できる（PUBLIC / anon / authenticated は不可。`tests/integration/db-security-audit.test.ts`）。
 
 ## 4. SSRF

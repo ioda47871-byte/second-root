@@ -121,13 +121,13 @@ unique(normalized_name, normalized_address) による重複防止。
 ### sales_rejected_candidates（却下した候補の記憶、DEV-054）
 | 列 | 備考 |
 |---|---|
-| key_type / key_value | `instagram_handle` / `website_domain` / `name_address`（`normalizeName(name) + "\|" + normalizeAddress(address)`、`lib/sales/dedupe.ts` と同じ）。ingest と同じ正規化。unique(key_type, key_value)。key_value に空白・メールの形は入らない（check） |
-| reason | `site_without_email` / `no_eligible_channel`（check）。店舗そのものが理由で、出典を確認した後に決まる却下だけ（`lib/sales/discovery.ts` の `DURABLE_REJECTIONS`） |
+| key_type / key_value | `instagram_handle` / `website_domain` の 2 種だけ（check）。探索段階の照合（`sales_discovery_known_keys`）が使うキーと同じで、ingest と同じ正規化（`parseInstagramProfile` / `websiteKey`）。店名・住所・メールは保存しない（照合に使わないため）。unique(key_type, key_value)。key_value に空白・メールの形は入らない（check） |
+| reason | `site_without_email` だけ（check）。公式サイトがあり第一者メールがない、という店舗そのものが理由で出典確認の後に決まる却下（`lib/sales/discovery.ts` の `DURABLE_REJECTIONS`）。候補がメールを**一つも提出していない**ときだけ記録する（提出したメールが不採用だった場合は提出の誤りの可能性があるため記録しない） |
 | run_id | 最後に却下した run（追跡用） |
 | first_rejected_at / last_rejected_at / expires_at | 期限は最後の却下から 90 日。期限切れの行は照合に使わず、次の書き込みで削除する |
 
-- 書き込みは service role の `sales_remember_rejections(run_id, entries)` だけ。verified の checkpoint を保存した後に ingest API が呼び、その run の checkpoint に同じ key が同じ理由で `rejected` として残っているものだけを記録する（それ以外は無視）。同じ key の再記録は理由・run・期限を更新するだけ（冪等）。失敗しても run には影響しない（次回また verify されるだけ）。
-- 記憶しない: 当日上限・エラー（一時的）、出典不足・再確認不足・unknown・URL 不正など提出内容の問題、市外・対象外業種（出典確認の前に決まる）、除外・DNC・重複（除外リストと prospect が答える。除外の削除がすぐ効くように）。
+- 書き込みは service role の `sales_remember_rejections(run_id, entries)` だけ。verified の checkpoint を保存した後に ingest API が呼び、その run の checkpoint に同じ key が同じ理由で `rejected` として残っているものだけを記録する（それ以外は無視）。同じ key の再記録は理由・run・期限を更新するだけ（冪等）。送る前にサーバーが各キーを表の check と同じ規則（形・長さ・空白・メールの形）で検証し（`validMemoryEntries`）、関数側も表が拒むキー（check / not null 違反）はそのキーだけ飛ばして残りを記録する。失敗しても run には影響しない（次回また verify されるだけ）。
+- 記憶しない: 当日上限・エラー（一時的）、出典不足・再確認不足・unknown・URL 不正・提出したメールの不採用など提出内容の問題、市外・対象外業種（出典確認の前に決まる）、`no_eligible_channel`（公式サイトも Instagram もなく、照合に使えるキーがない）、除外・DNC・重複（除外リストと prospect が答える。除外の削除がすぐ効くように）。
 - 90 日の理由: 店舗の Web の状況（サイトの閉鎖・メールの掲載・Instagram の開始）は数か月で変わりうる。1 日 1 run・20 件の探索で同じ店舗が繰り返し見つかるのを止めるには十分長く、四半期ごとに見直される程度に短い。保存する情報も期限で消える。
 - メールは平文も digest も持たない（stub にメールが無く、探索段階の照合に使えないため）。読み取りは管理者だけ（RLS）、API role の直接書き込みは無い。
 
