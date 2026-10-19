@@ -50,7 +50,7 @@ async function insertProspect(keys: { handle?: string; domain?: string; dnc?: bo
       keys.name ?? `既知の店${seq}`,
       keys.name ?? `きちのみせ${seq}`,
       keys.address ?? `名古屋市中区既知${seq}-1`,
-      keys.address ?? `愛知県名古屋市中区既知${seq}-1`,
+      keys.address ? `愛知県${keys.address}` : `愛知県名古屋市中区既知${seq}-1`,
       keys.domain ? "present" : "not_found",
       keys.domain ? `https://${keys.domain}/` : null,
       keys.domain ?? null,
