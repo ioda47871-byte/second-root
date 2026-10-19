@@ -21,12 +21,18 @@
  * Output is fixed codes only. The token is read from a file owned by this
  * user (0600), never from the environment, and nothing is started as a child
  * process, so it cannot be inherited by anything.
+ *
+ * Optional (DEV-059, off by default): a dedicated Vercel Protection Bypass
+ * for Automation value, sent as `x-vercel-protection-bypass` to the one
+ * configured *.vercel.app origin only (vercel-bypass.ts). It gets a request
+ * past Vercel Authentication; the bridge token is still required.
  */
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkProfile } from "../profile";
 import { DESIGN_LEASE_SECONDS } from "../../sales/design";
 import { ClaimResponseSchema, reviewFits, SubmitResponseSchema, workerJobIdFor, type DesignJob } from "../../sales/design-bridge-schema";
+import { bypassHeaders, type VercelBypass } from "./vercel-bypass";
 import { MAX_RESULT_BYTES, readHeartbeat, readSpoolJson, resultCode, spoolIds, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
 
 export const MIN_TOKEN_LENGTH = 32;
@@ -43,6 +49,9 @@ export type BridgeCode =
   | "BRIDGE_TOKEN_UNSAFE"
   | "BRIDGE_API_UNSAFE"
   | "BRIDGE_UNAUTHORIZED"
+  | "BRIDGE_PROTECTION_BLOCKED"
+  | "BRIDGE_BYPASS_NOT_CONFIGURED"
+  | "BRIDGE_BYPASS_UNSAFE"
   | "BRIDGE_DISABLED"
   | "BRIDGE_API_UNAVAILABLE"
   | "BRIDGE_RESPONSE_INVALID"
@@ -74,6 +83,8 @@ export type BridgeOptions = {
   mode?: BridgeMode;
   /** Tests only: allow http://127.0.0.1 / localhost. Production requires https. */
   allowLocalHttp?: boolean;
+  /** DEV-059, off when absent: the Vercel bypass for the one configured origin (loadVercelBypass). */
+  vercelBypass?: VercelBypass | null;
 };
 
 export type BridgeMode = "once" | "deliver-only";
@@ -112,6 +123,10 @@ export function bridgeEndpoint(base: string, allowLocalHttp = false): string {
 }
 
 /**
+ * (The Vercel bypass file of DEV-059 is read through an O_NOFOLLOW handle with
+ * fstat checks, vercel-bypass.ts. This reader keeps its lstat-then-read form:
+ * it is not a shared helper, and changing it is outside DEV-059.)
+ *
  * Reads the token file: a regular file (no link) owned by this user, not
  * readable by anyone else, at most 512 bytes, one token of 32+ visible
  * characters.
@@ -143,6 +158,9 @@ type Api = { post(body: Record<string, unknown>): Promise<{ status: number; body
 
 function api(options: BridgeOptions): Api {
   const endpoint = bridgeEndpoint(options.apiUrl, options.allowLocalHttp);
+  // A bypass configured for another origin than the endpoint's is a configuration error, not "send nothing".
+  if (options.vercelBypass && new URL(endpoint).origin !== options.vercelBypass.origin) throw new BridgeError("BRIDGE_BYPASS_UNSAFE");
+  const extra = bypassHeaders(options.vercelBypass, endpoint);
   const doFetch = options.fetch ?? fetch;
   return {
     async post(body) {
@@ -150,8 +168,9 @@ function api(options: BridgeOptions): Api {
       try {
         response = await doFetch(endpoint, {
           method: "POST",
-          headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+          headers: { ...extra, authorization: `Bearer ${options.token}`, "content-type": "application/json" },
           body: JSON.stringify(body),
+          // Never follow a redirect: the token and the bypass header stay with this one origin.
           redirect: "error",
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
@@ -164,9 +183,17 @@ function api(options: BridgeOptions): Api {
   };
 }
 
-/** Maps auth / availability answers to a stop; anything else is the caller's. */
-function stopFor(status: number): BridgeCode | null {
-  if (status === 401) return "BRIDGE_UNAUTHORIZED";
+/**
+ * Maps auth / availability answers to a stop; anything else is the caller's.
+ * A 401 is the bridge API's own only with its body `{"error":"unauthorized"}`;
+ * any other 401 (Vercel Authentication answers with a `protection` object)
+ * means the request never reached the API.
+ */
+function stopFor(status: number, body: unknown): BridgeCode | null {
+  if (status === 401) {
+    const own = typeof body === "object" && body !== null && (body as { error?: unknown }).error === "unauthorized";
+    return own ? "BRIDGE_UNAUTHORIZED" : "BRIDGE_PROTECTION_BLOCKED";
+  }
   if (status === 503) return "BRIDGE_DISABLED";
   if (status >= 500 || status === 429) return "BRIDGE_API_UNAVAILABLE";
   return null;
@@ -218,7 +245,7 @@ export async function runBridgeOnce(options: BridgeOptions): Promise<BridgeRepor
         continue;
       }
       const answer = await client.post(submitBody(entry.jobId, parsed.data));
-      const stop = stopFor(answer.status);
+      const stop = stopFor(answer.status, answer.body);
       if (stop) throw new BridgeError(stop);
       if (answer.status === 200) {
         if (!SubmitResponseSchema.safeParse(answer.body).success) throw new BridgeError("BRIDGE_RESPONSE_INVALID");
@@ -261,7 +288,7 @@ export async function runBridgeOnce(options: BridgeOptions): Promise<BridgeRepor
     }
     if (workerRunning && !Object.values(ledger.jobs).some((e) => !e.closed)) {
       const answer = await client.post({ action: "claim" });
-      const stop = stopFor(answer.status);
+      const stop = stopFor(answer.status, answer.body);
       if (stop) throw new BridgeError(stop);
       const parsed = answer.status === 200 ? ClaimResponseSchema.safeParse(answer.body) : null;
       if (!parsed?.success) throw new BridgeError("BRIDGE_RESPONSE_INVALID");

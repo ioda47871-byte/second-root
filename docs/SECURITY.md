@@ -10,6 +10,7 @@
 | `SALES_AGENT_INGEST_TOKEN` | Vercel env + Claude Cloud 環境 | Operational Claude（**これだけ**。例外は下の Staging 用 bypass 値のみ） |
 | `SALES_AGENT_VERCEL_BYPASS`（Staging のみ・任意） | Staging の Routine environment だけ | Operational Claude（Vercel Preview の保護を通るためだけ。ingest には token が別に必要）。Vercel の Protection Bypass for Automation の値で **project 全体の保護付き deployment に効く**ため、露出が疑われたら人間が Vercel で再生成する。Production には置かない |
 | bridge token（DEV-030 / DEV-032） | **local bridge の利用者 `sr-designbridge` の file（`~/.config/second-root/design-bridge.token`、0600）だけ**。server（Vercel）には SHA-256（`SALES_DESIGN_BRIDGE_TOKEN_SHA256`）だけを置く | local design bridge だけ。ingest token とは別の値（同じ hash なら bridge API は 503）。token は表示・log・GitHub・Vercel・Claude の session に出さない。design worker（`sr-designgen`）・Codex・Operational Claude には渡さない |
+| bridge 専用の Vercel bypass（DEV-059・Staging のみ・任意。既定で無効） | **`sr-designbridge` の file（`~/.config/second-root/design-bridge.vercel-bypass`、0600）だけ** | local design bridge だけ。Vercel の Protection Bypass for Automation のうち bridge 専用の secret（note「Second Root design bridge (WSL)」。Operational Claude の bypass とは別、env var にしない）。**project 全体の保護付き deployment に効く**ため、bridge は設定した 1 つの `*.vercel.app` origin（API URL と同じ）にだけ header を付け、redirect を辿らない。bridge API には bridge token が別に必要。表示・log・GitHub・Claude の session に出さない。漏れの疑いは Vercel で revoke（`docs/operations/design-bridge-access.md` §8） |
 | Vercel token / GitHub write token / admin password | 人間 | 人間のみ |
 
 - Secret を GitHub に commit しない。`.env*` は `.gitignore` 済み（`.env.local.example` のみ例外、値はダミー）。
@@ -171,6 +172,7 @@ Sales Agent の demo と AI design worker をつなぐ。**既定は無効**（`
   - server は token を持たず、SHA-256（`SALES_DESIGN_BRIDGE_TOKEN_SHA256`、64 桁の hex）だけを持つ。Bearer の token（32〜512 文字の可視 ASCII）を SHA-256 して定数時間で比べる（DEV-032）。
   - worker（`sr-designgen`）・Codex・capture helper には token も Supabase の鍵も Sales Agent の token も渡らない。worker の環境は allowlist（`lib/design-agent/worker/env.ts`、`run.sh`）で、bridge 関係は spool の path（`SR_DESIGN_BRIDGE_SPOOL`）だけ。
   - bridge の `run.sh` は root・`sr-designgen`・`sr-igcapture` では動かない。
+- **Vercel の保護は外さない（DEV-059）**: Staging の Preview は Vercel Authentication のまま。bridge は任意で bridge 専用の Protection Bypass（`sr-designbridge` の 0600 file、既定で無効）を、設定した 1 つの `*.vercel.app` origin への request にだけ付ける（redirect は辿らない、値は出力しない）。bypass は Vercel の保護を通るだけで、bridge API の認証（bridge token）は変わらない。比較と手順: `docs/operations/design-bridge-access.md`
 - **API は狭い**
   - `claim` と `submit` だけ。prospect・outreach・DNC・run・送信には触れない。
   - 503: flag 無効・hash 未設定・hash が 64 桁の hex でない・token そのもの（`SALES_DESIGN_BRIDGE_TOKEN`）が server に設定されている・ingest token の hash と同じ。401: 不一致。

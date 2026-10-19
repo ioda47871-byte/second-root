@@ -109,6 +109,10 @@ chmod 600 ~/.config/second-root/design-bridge.env
 # token file は §2 の値で、0600
 ```
 
+Staging の Preview は Vercel Authentication で保護されている。bridge を通すには、bridge 専用の Protection Bypass（DEV-059、既定で無効）を
+`design-bridge.env` の `SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE` / `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN`（両方そろったときだけ有効）で設定する。
+方式の比較・人の操作・確認・失効は `design-bridge-access.md`。Authentication を外す運用は使わない。
+
 worker の設定（`design-worker-wsl.md` の service / 手での起動）に、spool の path だけを足す:
 
 ```
@@ -138,7 +142,9 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 | `BRIDGE_TOKEN_UNSAFE` | token file が自分の 0600 の通常ファイルでない、短い | §2 |
 | `BRIDGE_API_UNSAFE` | URL が https でない、credential や query がある | §5 |
 | `BRIDGE_DISABLED` | server が 503（flag 無効・hash 未設定 / 不正・token そのものが server にある・ingest token と同じ） | Vercel の設定 |
-| `BRIDGE_UNAUTHORIZED` | token 不一致 | §2 |
+| `BRIDGE_UNAUTHORIZED` | token 不一致（bridge API 自身の 401 `{"error":"unauthorized"}`） | §2 |
+| `BRIDGE_PROTECTION_BLOCKED` | Vercel の保護（Authentication）で止められた（API に届いていない 401） | `design-bridge-access.md` §7・§8（bypass が無効・値が違う・revoke 済み） |
+| `BRIDGE_BYPASS_NOT_CONFIGURED` / `BRIDGE_BYPASS_UNSAFE` | bypass の設定が片方だけ・file が無い / file が自分の 0600 の通常 file でない・値の形が違う・origin が `https://<name>.vercel.app` でない・API URL の origin と違う。request は送っていない | `design-bridge-access.md` §5・§6 |
 | `BRIDGE_API_UNAVAILABLE` / `BRIDGE_RESPONSE_INVALID` | 通信・応答の問題 | 次の回に自動で再試行 |
 | `BRIDGE_SPOOL_INVALID` | spool に書けない | §3 |
 | `BRIDGE_DELIVER_ONLY`（`claimed none (…)`） | `--deliver-only` の回。claim はしていない | 次の job は `--once` で |

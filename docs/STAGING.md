@@ -53,6 +53,7 @@ Supabase と Vercel の token は、Claude Code environment の **API credential
 |---|---|---|
 | Staging の ingest token | 手元で `openssl rand -hex 32`（Production とは別の値） | ① Vercel → second-root → Settings → Environment Variables: `SALES_AGENT_INGEST_TOKEN`、Environment は **Preview だけ**、Branch `develop`、**Sensitive**<br>② Claude Cloud environment の **API credential「Second Root Staging API」**（host `second-root-git-develop-brot-yanagi.vercel.app` 限定）の header `Authorization: Bearer <token>` |
 | Protection Bypass for Automation（「Second Root Staging Claude」） | Vercel → Settings → Deployment Protection で作成済み | 同じ API credential「Second Root Staging API」の header `x-vercel-protection-bypass: <値>` |
+| Protection Bypass for Automation（「Second Root design bridge (WSL)」、DEV-059・未作成） | 人が Vercel → Settings → Deployment Protection で作る（bridge 専用。上の値を使い回さない、env var にしない） | WSL の `sr-designbridge` の 0600 file だけ（`docs/operations/design-bridge-access.md` §6）。Claude Cloud には置かない |
 
 - 2026-09-28 の最終形: Staging Routine と開発 session は同じ Claude Cloud environment を使い、環境変数は `SALES_AGENT_INGEST_URL` だけ。`SALES_AGENT_INGEST_TOKEN` / `SALES_AGENT_VERCEL_BYPASS` の環境変数は置かない。proxy が上の 2 header を ingest の host にだけ付けるので、値は Claude の process・shell・ログに入らない（RUN_PROMPT §0・§2 は両方式に対応）。
 - 注意: credential は host 単位なので、Claude がこの host（develop の固定 URL）に送る request にはすべて 2 header が付く。token なしの fail-closed 確認は、credential の付かない deployment 固有 URL で行う（§7 #1）。
@@ -114,6 +115,7 @@ Preview のうち **`develop` branch の deployment だけ**に設定する。Pr
 - **Deployment Protection**: Preview に「Vercel Authentication」が掛かっていると、Operational Claude（Routine）の ingest 呼び出しが Vercel に 401 で止められる（Meta の Webhook も同じ）。どちらかを人間が選ぶ:
   - (a) 推奨: Settings → Deployment Protection → **Protection Bypass for Automation** を作成する。prompt は対応済みで、Staging の Routine environment に `SALES_AGENT_VERCEL_BYPASS` として入れると header `x-vercel-protection-bypass` を付けて呼ぶ（RUN_PROMPT / INBOX_PROMPT §0）。この値で通れるのは Vercel の保護だけで、ingest API には token が別に必要。ただし値は **project 全体**（他 branch の Preview も含む）の保護付き deployment に効くので、露出が疑われたら Vercel で再生成する。
   - (b) Preview の Vercel Authentication を OFF にする（管理画面はログイン必須、ingest は token 必須、デモは推測できない URL なので、データは守られる）。
+- **design bridge（WSL）**（DEV-059）: Authentication は外さない。bridge 専用の Protection Bypass for Automation を 3 つ目の secret として作り、WSL の bridge だけが固定の alias に header で付ける（Operational Claude の bypass とは別の値）。2026-10-19 の読み取りでは、project の bypass は 2 つ（note なしで env var の `VERCEL_AUTOMATION_BYPASS_SECRET` になっているもの、と「Second Root Staging Claude」）。比較・推奨・人の操作・確認・失効は `docs/operations/design-bridge-access.md`。これまでの「controlled rerun のたびに Authentication を一時的に外す」運用は、その確認の後は使わない。
 - Vercel の Preview build が rate limit 中（HUMAN-005）なら、解除後に再デプロイする。
 
 ## 6. Operational Claude（Staging の Routine、人間）
