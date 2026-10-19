@@ -684,7 +684,7 @@ describe("the worker never gets the bridge token", () => {
     await mkdir(elsewhere);
     const r = spawnSync("bash", [join(repo, "scripts/sales-design-bridge/run.sh"), "--deliver-only"], {
       cwd: elsewhere,
-      env: { PATH: `${bin}:${process.env.PATH}`, HOME: root },
+      env: { PATH: `${bin}:${process.env.PATH}`, HOME: root } as unknown as NodeJS.ProcessEnv,
       encoding: "utf8",
     });
     expect({ status: r.status, out: r.stdout.trim() }).toEqual({ status: 0, out: `cwd=${await realpath(repo)}` });
