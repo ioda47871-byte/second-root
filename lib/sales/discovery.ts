@@ -46,7 +46,8 @@ export const REJECTION_MEMORY_DAYS = 90;
 export type MemoryKey = { type: "instagram_handle" | "website_domain" | "name_address"; value: string };
 export type RejectionMemoryEntry = { key: string; reason: DurableRejection; keys: MemoryKey[] };
 
-const LOOKS_LIKE_EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+// Normalisation strips dots, so an address-like name is caught on the raw text.
+const HAS_AT_SIGN = /[@＠]/;
 
 export function isDurableRejection(reason: string): reason is DurableRejection {
   return (DURABLE_REJECTIONS as readonly string[]).includes(reason);
@@ -66,8 +67,7 @@ export function rejectionMemoryEntry(input: VerifiedCandidateInput, reason: Reje
     name.length > 0 &&
     !name.includes("|") &&
     isNagoyaAddress(input.address) &&
-    !LOOKS_LIKE_EMAIL.test(name) &&
-    !LOOKS_LIKE_EMAIL.test(address) &&
+    !HAS_AT_SIGN.test(input.name + input.address + name + address) &&
     !/\s/.test(name + address)
   ) {
     keys.push({ type: "name_address", value: `${name}|${address}` });
