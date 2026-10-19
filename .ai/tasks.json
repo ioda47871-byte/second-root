@@ -2702,6 +2702,42 @@
       ],
       "human_approval_triggers": [],
       "decision": "2026-10-19: Claude が追加（CI failure の根本原因、PR #73）; 2026-10-19: PR #73 merge（cf7f0b3）。Fresh Review PASS（Medium 1: 原因は推定で未証明。5 秒の下限は本当の hang を隠さない。文言を修正し、本番の上限を示す test に変更）、CI green"
+    },
+    {
+      "id": "DEV-061",
+      "title": "diagnose: graceful close で終わらない Chromium をその profile の process だけ終わらせる（CI の BROWSER_STUCK）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-060"
+      ],
+      "attempts": 0,
+      "last_failure": "DEV-060 の 5 秒の下限の後も CI（Chromium 1234）で BROWSER_STUCK（PR #72、185d148）",
+      "branch": "fix/dev-061-kill-stuck-browser",
+      "purpose": "CI だけで li_offsite C の browser が graceful close の後も終わらない（ローカルの 1194 では 36/36 回 0.1 秒で終わる）。これまで止まった Chromium を終わらせる手段がなかった",
+      "acceptance_criteria": [
+        "Playwright が切断を報告した時点で browser は終わったとみなす",
+        "graceful close で終わらないときは、その run の profile（--user-data-dir が完全一致）で起動した自分の process だけを SIGKILL",
+        "他の profile・他の user の process に触れない",
+        "test の期待は緩めない"
+      ],
+      "required_tests": [
+        "unit: 切断で終わり・完全一致の process だけ kill・prefix 一致は kill しない・kill できないときは stuck",
+        "browser.test.ts 全体",
+        "CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/browser/",
+        "tests/unit/design-agent/",
+        "docs/operations/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "test の基準の緩和・skip",
+        "Production・Staging"
+      ],
+      "human_approval_triggers": [],
+      "decision": "2026-10-19: Claude が追加（CI failure の根本対策、PR #74）"
     }
   ]
 }
