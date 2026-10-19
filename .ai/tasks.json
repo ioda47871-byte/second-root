@@ -2668,6 +2668,40 @@
         "secret の作成・Deployment Protection の設定変更"
       ],
       "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
+    },
+    {
+      "id": "DEV-060",
+      "title": "diagnose: browser を終わらせる待ちに 5 秒の下限（CI の BROWSER_STUCK）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-055"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "fix/dev-060-browser-end-floor",
+      "purpose": "PR #69 の CI（cf62928）で browser.test.ts「ends in bounded time when a close never settles」の li_offsite C が BROWSER_STUCK。page の close の上限（test では 1 秒）が browser 全体を終わらせる待ちにも使われ、CI の負荷で別ホストと通信中の browser の終了が 1 秒を超えた",
+      "acceptance_criteria": [
+        "browser を終わらせる待ちは max(close の上限, 5 秒)",
+        "本番（10 秒）は不変",
+        "test の期待（BROWSER_STUCK なし・30 秒以内・CLOSE_TIMEOUT）は緩めない"
+      ],
+      "required_tests": [
+        "unit: closeBrowser の下限・stuck・本番の上限",
+        "browser.test.ts 全体",
+        "CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/browser/",
+        "tests/unit/design-agent/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "test の基準の緩和・skip",
+        "Production・Staging"
+      ],
+      "human_approval_triggers": [],
+      "decision": "2026-10-19: Claude が追加（CI failure の根本原因、PR #73）"
     }
   ]
 }
