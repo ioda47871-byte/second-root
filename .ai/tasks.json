@@ -2285,6 +2285,185 @@
         "HMAC 用の secret の追加"
       ],
       "decision": "2026-10-18（人の指示）: HUMAN-008 を保留し、除外リストのメールを digest のみにする修正を自律で進め、新しい PR でレビュー・CI まで行う。migration は hosted に未適用（Staging は 20261009000000 まで、読み取りで確認）なので、新しい migration を足さず 20261018000000 を書き換え、平文の列を一度も作らない。2026-10-18: Fresh Review の Medium（next dev が Server Function の引数を端末に記録する既定）のため、要件「平文メールがサーバーのログに残らない」に従い next.config.ts を scope に加えた。drift 検出が version 名だけのため staging の REQUIRED_CHECK を追加"
+    },
+    {
+      "id": "DEV-051",
+      "title": "repo の改行を LF に固定（.gitattributes）",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-051-gitattributes-lf",
+      "purpose": "HUMAN-008 の適用後の確認で、Staging の関数本文が CRLF だった（Windows 側の checkout の改行設定）。migration・WSL で実行する shell script が CRLF になると、関数本文の差分・shell の実行失敗の原因になる",
+      "acceptance_criteria": [
+        "`.gitattributes` で text を LF に固定（binary は自動判定のまま）",
+        "index は既に LF で、既存ファイルの内容は変わらない（renormalize で差分 0）"
+      ],
+      "required_tests": [
+        "`git add --renormalize .` で差分が出ない",
+        "unit / typecheck / lint / check:secrets / CI"
+      ],
+      "allowed_scope": [
+        ".gitattributes",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production",
+        "定期ジョブの有効化（systemd enable / Routine schedule ON）",
+        "実際の DM / email 送信",
+        "Staging DB への書き込み（migration 適用は人）",
+        "secret・認証情報の追加・変更"
+      ],
+      "human_approval_triggers": [],
+      "decision": "2026-10-19: Claude が追加（再開性・運用上の明確な欠陥）"
+    },
+    {
+      "id": "DEV-052",
+      "title": "design worker の定期実行の基盤（1 回分の cycle script と systemd unit、有効化はしない）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-037",
+        "DEV-046"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-052-worker-cycle",
+      "purpose": "Phase C 監査: worker は人が root で毎回貼り付ける WSL script（dev046_window3.sh）でしか動かず、worker の timer は repo に無い。Window 2〜7 の安全ガード（resource preflight・時間予算・STOP 条件・claim 1 件・deliver-only）を repo の正式な 1 回分の cycle にし、将来 timer で回せる形にする",
+      "acceptance_criteria": [
+        "1 回分の cycle（idle 掃除 → deliver-only → 残り時間の確認 → claim 1 件 → worker --max=1 → deliver-only）を repo の script にする。既存の jail・helper・admin.sh・bridge の境界と権限は変えない",
+        "STOP 条件（LOGIN_REQUIRED / LOGIN_WALL / JAIL_UNSAFE / BRIDGE_UNAUTHORIZED / resource preflight NG / 時間不足 等）は回避せず止まり、再試行しない。claim 後に止まったときの状態を明記",
+        "同時実行は 1（lock）。cycle の時間予算と worker 予算の関係を R2 と同じ考え方で検査",
+        "systemd の service / timer の unit を repo に置く（install / enable はしない。人の承認が必要と明記）",
+        "ログに secret・cookie・token・Codex の出力・メールを出さない",
+        "docs（operations）に install・dry-run・停止・ロールバックの手順"
+      ],
+      "required_tests": [
+        "unit / shell の test（STOP 条件・時間予算・lock・出力の検査、fake の bridge / worker で）",
+        "unit / typecheck / lint / check:secrets / CI",
+        "Fresh Review"
+      ],
+      "allowed_scope": [
+        "scripts/sales-design-worker/",
+        "scripts/sales-design-bridge/systemd/（参照のみ・必要なら worker の unit を別 dir に）",
+        "docs/operations/",
+        "tests/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production",
+        "定期ジョブの有効化（systemd enable / Routine schedule ON）",
+        "実際の DM / email 送信",
+        "Staging DB への書き込み（migration 適用は人）",
+        "secret・認証情報の追加・変更",
+        "jail・helper・admin.sh・bridge の権限境界の変更",
+        "STOP 条件の緩和"
+      ],
+      "human_approval_triggers": [
+        "WSL への install と timer の enable",
+        "Staging の flag を常時 ON にすること"
+      ],
+      "decision": "2026-10-19（人の指示）: Phase C の優先 1。開発・test・review まで自律、有効化は承認"
+    },
+    {
+      "id": "DEV-053",
+      "title": "design の品質ゲート（review が accept しない final は ready にしない）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-039",
+        "DEV-046"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-053-quality-gate",
+      "purpose": "Phase C 監査: review が一度も accept しなくても最高スコアの候補を final にして ready で提出する（pipeline.ts / worker-side.ts）。品質の合否基準がなく、人がすべて目視する必要がある",
+      "acceptance_criteria": [
+        "final の review が accept でない（または必須の観点が基準未満）とき、worker は ready ではなく blocked（新しい符号、例 QUALITY_NOT_ACCEPTED）で提出し、demo は既存の template の fallback になる（送信は止めない、既存の blocked の扱い）",
+        "基準は既存の review の schema・score を使い、schema・enum・score の計算・MAX_REVISIONS・閾値 0.5 は変えない（新しい基準値を足す場合は docs に根拠）",
+        "管理画面で blocked の理由が分かる（既存の design_error_code の表示）",
+        "既存の DEV-030〜046 の test が通る"
+      ],
+      "required_tests": [
+        "unit: pipeline / worker の accept・not accept・revision 上限の各経路",
+        "integration: submit の blocked 符号",
+        "unit / typecheck / lint / check:secrets / CI",
+        "Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "lib/sales/design*.ts",
+        "components/admin/",
+        "tests/",
+        "docs/ARCHITECTURE.md（§10）",
+        "docs/operations/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production",
+        "定期ジョブの有効化（systemd enable / Routine schedule ON）",
+        "実際の DM / email 送信",
+        "Staging DB への書き込み（migration 適用は人）",
+        "secret・認証情報の追加・変更",
+        "review の schema・enum・score の計算・MAX_REVISIONS・0.5 の閾値",
+        "renderer",
+        "prompt の文言（DEV-046 の範囲）"
+      ],
+      "human_approval_triggers": [
+        "基準値の決定に迷う場合は提案して人の判断"
+      ],
+      "decision": "2026-10-19（人の指示）: Phase C の優先 2"
+    },
+    {
+      "id": "DEV-054",
+      "title": "Instagram 中心の候補探索と、探索段階の除外判定（既知の店舗を verify しない）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-049",
+        "DEV-050"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-054-instagram-discovery",
+      "purpose": "Phase C 監査: 発見が Instagram 中心でなく、却下した候補の記憶もなく、Op Claude が同じ店舗を毎日調べ直す。人の指示: 候補発見は Instagram を中心に、公式サイトのない店舗を探す",
+      "acceptance_criteria": [
+        "RUN_PROMPT の discover を Instagram 中心（公式サイトのない店舗）に改め、既存の fail-closed・出典・送信しない等の規則は維持",
+        "discovered の checkpoint の時点で、サーバーが既知の店舗（既存 prospect・DNC・除外リスト・過去に却下した候補）に当たる stub を印付けし、Op Claude はそれを verify しない。理由の内訳と除外リストの内容は Op Claude に見せない",
+        "過去に却下した候補の記憶は、平文の個人情報を増やさない形（handle / domain / 正規化店名+住所、メールは digest）で、期限つき",
+        "persist 側の最終判定（dedupe・DNC・除外・日次 5 件・冪等）は変えない",
+        "ingest API の変更は後方互換（既存の action と応答の形を壊さない）"
+      ],
+      "required_tests": [
+        "unit: discovered の印付け・RUN_PROMPT の規則の test",
+        "integration: discovered checkpoint の印付け（各キー、理由を返さない）、記憶の期限、既存の ingest test",
+        "unit / typecheck / lint / check:secrets / CI",
+        "Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/sales/",
+        "app/api/internal/sales-agent/",
+        "supabase/migrations（新規のみ）",
+        "ops/sales-agent/",
+        "docs/",
+        "tests/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production",
+        "定期ジョブの有効化（systemd enable / Routine schedule ON）",
+        "実際の DM / email 送信",
+        "Staging DB への書き込み（migration 適用は人）",
+        "secret・認証情報の追加・変更",
+        "Op Claude の secret・権限の拡大",
+        "既存の dedupe / DNC / 除外 / daily cap の意味"
+      ],
+      "human_approval_triggers": [
+        "Staging への migration 適用",
+        "Staging の営業 Routine の schedule ON"
+      ],
+      "decision": "2026-10-19（人の指示）: Phase C の優先 3。ingest API の範囲を広げる（MVP_SPEC §10）ことは人の指示で承認済み"
     }
   ]
 }
