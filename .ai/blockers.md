@@ -5,18 +5,11 @@
 
 ## 未解除
 
-### HUMAN-009 — Staging に DEV-054 の migration を適用（探索段階の既知判定・却下の記憶）
-
-- 何: `supabase/migrations/20261019120000_sales_discovery_screening.sql`（新しい table `sales_rejected_candidates`・`sales_discovery_known_keys`・`sales_remember_rejections`・`sales_run_state` の再定義）を Staging（`znbqgvawublgyjwfpmei`）に適用する。2026-10-19 の読み取りで Staging は `20261018000000` まで（18 本）。未適用はこの 1 本だけ。
-- 前提: develop が 7d3762e（PR #65 の merge）以降。手元の checkout が LF であること（STAGING.md §3、DEV-051）。
-- 手順: `git ls-files --eol supabase/migrations | grep -v w/lf` が何も出さないこと → plan（`npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei`）で `pending 20261019120000_sales_discovery_screening.sql` だけ → `--confirm-ref znbqgvawublgyjwfpmei --apply` で全 PASS。FAIL があれば出力を Claude に渡す（再実行しない）。
-- 適用しないとき: ingest は既知判定の RPC が無いため印を付けずに checkpoint を保存する（fail-open、従来どおり全候補を verify）。却下の記憶は書かれない（best effort）。persist は不変。
-- 解除条件: 適用後、Claude が読み取りで table・RLS・関数の引数と本文（LF で一致）・0 行を確認する。
-
 ### HUMAN-010 — design worker の cycle（DEV-052）の WSL への install と timer の有効化
 
 - 何: `scripts/sales-design-worker/cycle.sh` と `scripts/sales-design-worker/systemd/sr-design-cycle.{service,timer}` を、root の admin clone（`/root/sr-capture-admin`）から install し、dry-run の後に timer を有効化する。手順は `docs/operations/design-worker-cycle.md`。
 - 前提: Staging の `SALES_AI_DESIGN_ENABLED=true` と Vercel Preview の bridge 経路が常時使えること（今は controlled rerun のたびに一時開放）。これは Authentication の常時の扱いに関わるため、別途人の判断。
+- 状態（2026-10-19、人）: **保留**。timer は有効化しない。Vercel Authentication は維持し、認証された bridge だけが通る方式を Claude が検討する。
 - 人の判断が要る点（PR #66）: bridge を `sudo -u` でなく `runuser` で動かす・`/etc/second-root/design-cycle.conf` に承認した bridge の SHA を置く・preflight SERIAL を OK とする・最初の deliver-only は全件 0 を求める・回復 SQL（job id と processing を条件）。
 - 解除条件: 人が install と dry-run（`CYCLE_DRY_RUN_OK`）を行い、timer の有効化を承認する。
 
@@ -85,6 +78,11 @@
 - DEV-004 で Claude が allowed_scope を拡張（GA を /demo・/admin で無効化、noindex / no-referrer ヘッダ、e2e 分割）。既存ページの挙動は不変とレビュー確認済み。異論があれば PR #12 を参照。
 
 ## 解除済み
+
+### HUMAN-009 — Staging に DEV-054 の migration を適用（探索段階の既知判定・却下の記憶）（解除: 2026-10-19）
+
+- 人が適用: `20261019120000_sales_discovery_screening.sql`、18 → 19 applied、`HUMAN009_APPLY_OK`、セキュリティ検査すべて PASS。ChatGPT による独立の読み取り検証も完了。再適用しない。
+- Claude の読み取り確認（2026-10-19）: migration 19 本（最新 20261019120000）・`sales_rejected_candidates` は RLS 有効・0 行・`sales_discovery_known_keys(p_stubs jsonb)` / `sales_remember_rejections(p_run_id uuid, p_entries jsonb)` / `sales_run_state(r sales_agent_runs, p_replayed boolean)` は anon・authenticated に実行権限なし、本文は LF で、md5 がローカル（同じ migration を適用した DB）と一致。
 
 ### HUMAN-008 — Staging に除外リストの migration を適用（DEV-049 / DEV-050）（解除: 2026-10-19）
 
