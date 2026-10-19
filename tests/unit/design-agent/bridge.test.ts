@@ -236,6 +236,17 @@ describe("worker side: export", () => {
       expect(await readdir(spool.fromWorker)).not.toContain(`${WJOB}.review.json`);
     });
 
+    it("a sidecar left without its result is removed once the bridge has closed the job, kept while the job is live", async () => {
+      const orphan = "b-11111111-2222-4333-8444-555555555555";
+      await writeFile(join(spool.fromWorker, `${orphan}.review.json`), JSON.stringify(SUMMARY));
+      await writeSpoolJson(spool.toWorker, WJOB, job());
+      await writeFile(join(spool.fromWorker, `${WJOB}.review.json`), JSON.stringify(SUMMARY)); // live job, result not written yet
+      await exportBridgeResults(spool, dirs, outRoot);
+      const left = await readdir(spool.fromWorker);
+      expect(left).not.toContain(`${orphan}.review.json`);
+      expect(left).toContain(`${WJOB}.review.json`);
+    });
+
     it("the sidecar is read like a result: no link, one link, size limit, strict schema", async () => {
       const sidecar = join(spool.fromWorker, `${WJOB}.review.json`);
       await writeFile(sidecar, JSON.stringify(SUMMARY));

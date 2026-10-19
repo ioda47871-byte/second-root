@@ -195,3 +195,4 @@ worker は ready と `QUALITY_NOT_ACCEPTED` の結果の横に、Codex の revie
 - 2 の前に 3・4（bridge / worker が古い server に向いている）: 要約付きの submit が 400 で拒まれると、bridge は 1 回だけ要約を外して送り直し、`result <id>: BRIDGE_REVIEW_DROPPED` を出す。demo は要約なしで `ready` / `blocked` になる。
   - 送り直すのは、その 400 が「未知の key か `review` の値」についてのものだけ。401・403・5xx・他の 400 では送り直さない（従来どおり）。
 - 戻すとき: worker を前の commit に戻せば要約は付かなくなる。列と関数はそのまま残してよい（flag 無効なら読まない）。
+  - 前の worker は閉じた job の sidecar（`from-worker/<id>.review.json`）を消さない。cycle は sidecar を結果として数えないので止まらないが、残った sidecar は戻した後に root で `find <spool>/from-worker -maxdepth 1 -name 'b-*.review.json' -delete` で消してよい（結果の file は消さない）。新しい worker に戻せば次の run で消える。

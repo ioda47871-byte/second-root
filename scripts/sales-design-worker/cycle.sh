@@ -434,7 +434,7 @@ codes="$(stop_codes_in "$WORK/idle-worker.out")"
 has_line "$WORK/idle-worker.out" 'bridge: imported 0' && has_line "$WORK/idle-worker.out" 'no jobs in the inbox' &&
   has_line "$WORK/idle-worker.out" 'bridge: exported 0(, removed [0-9]+)?' ||
   { say "idle worker: not an idle run (imported 0 / no jobs / exported 0 expected)"; finish CYCLE_STOP_IDLE_RUN 22; }
-[ -z "$(find "$SPOOL/from-worker" -maxdepth 1 -name '*.json' ! -name worker-heartbeat.json -print -quit)" ] ||
+[ -z "$(find "$SPOOL/from-worker" -maxdepth 1 -name '*.json' ! -name worker-heartbeat.json ! -name '*.review.json' -print -quit)" ] ||
   { say "idle worker: a result file is left in from-worker"; finish CYCLE_STOP_IDLE_RUN 22; }
 
 # ---------------------------------------------------------------- 4. deliver-only: nothing to deliver

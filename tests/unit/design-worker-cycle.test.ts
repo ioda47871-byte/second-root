@@ -271,6 +271,19 @@ describe("cycle.sh: STOP before the claim (nothing changed in Staging)", () => {
     expect(count(r.calls, "bridge")).toBe(0);
   });
 
+  it("a result file left in from-worker after the idle run → CYCLE_STOP_IDLE_RUN; a review sidecar alone does not stop it (DEV-058)", () => {
+    const left = world();
+    writeFileSync(join(left.t, "srv/sr-design-bridge/from-worker", `${JOB}.json`), "{}");
+    const r1 = cycle(left);
+    expect(r1.status).toBe(22);
+    expect(r1.stdout).toContain("a result file is left in from-worker");
+    const sidecarOnly = world();
+    writeFileSync(join(sidecarOnly.t, "srv/sr-design-bridge/from-worker", `${JOB}.review.json`), "{}");
+    const r2 = cycle(sidecarOnly);
+    expect(r2.stdout).not.toContain("a result file is left in from-worker");
+    expect(r2.status).not.toBe(22);
+  });
+
   it("LOGIN_REQUIRED in the idle run → CYCLE_STOP_IDLE_RUN", () => {
     const w = world();
     play(w, "admin", 1, { out: `${ts} bridge: imported 0\n${ts} no jobs in the inbox\n${ts} capture helper LOGIN_REQUIRED\n${ts} bridge: exported 0` });
