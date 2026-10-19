@@ -69,6 +69,26 @@ describe("database security audit", () => {
     expect(rows).toEqual([]);
   });
 
+  it("DEV-054: the rejection memory and the screening functions exist, are service-role only, and are covered above", async () => {
+    const { rows: tables } = await db.query(
+      "select c.relrowsecurity as rls from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relname = 'sales_rejected_candidates'",
+    );
+    expect(tables).toEqual([{ rls: true }]);
+    const { rows } = await db.query(`
+      select p.proname, p.prosecdef,
+             has_function_privilege('service_role', p.oid, 'EXECUTE') as service,
+             has_function_privilege('authenticated', p.oid, 'EXECUTE') as authed,
+             has_function_privilege('anon', p.oid, 'EXECUTE') as anon
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname in ('sales_discovery_known_keys', 'sales_remember_rejections', 'sales_run_state')
+      order by p.proname`);
+    expect(rows).toEqual([
+      { proname: "sales_discovery_known_keys", prosecdef: false, service: true, authed: false, anon: false },
+      { proname: "sales_remember_rejections", prosecdef: false, service: true, authed: false, anon: false },
+      { proname: "sales_run_state", prosecdef: false, service: true, authed: false, anon: false },
+    ]);
+  });
+
   it("checks the admin first in every SECURITY DEFINER function the signed-in role can call", async () => {
     const { rows } = await db.query(`
       select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace

@@ -130,7 +130,11 @@ declare
   st jsonb;
   saved integer := 0;
 begin
-  if jsonb_typeof(p_entries) is distinct from 'array' or jsonb_array_length(p_entries) > 10 then
+  -- Two steps: jsonb_array_length must never see a non-array.
+  if jsonb_typeof(p_entries) is distinct from 'array' then
+    raise exception 'invalid_rejection_memory' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_entries) > 10 then
     raise exception 'invalid_rejection_memory' using errcode = '22023';
   end if;
   select * into r from public.sales_agent_runs where run_id = p_run_id;
