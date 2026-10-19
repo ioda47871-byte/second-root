@@ -821,6 +821,37 @@ describe("closePageBounded", () => {
     await context.close();
   });
 
+  it("DEV-055: a targeted close that Chromium drops is sent again until the page is gone", async () => {
+    const { context, a, b } = await open();
+    await rememberTargetId(a);
+    hang(a);
+    // The first Target.closeTarget is swallowed, as when it arrives during the cross-host navigation.
+    const open$ = browser.newBrowserCDPSession.bind(browser);
+    let dropped = 0;
+    browser.newBrowserCDPSession = (async () => {
+      const session = await open$();
+      const send = session.send.bind(session) as (m: string, p?: object) => Promise<unknown>;
+      (session as unknown as { send: typeof send }).send = (method, params) => {
+        if (method === "Target.closeTarget" && dropped === 0) {
+          dropped += 1;
+          return Promise.resolve({ success: true });
+        }
+        return send(method, params);
+      };
+      return session;
+    }) as typeof browser.newBrowserCDPSession;
+    try {
+      const started = Date.now();
+      expect(await closePageBounded(a, 2_500, closeTargetByCdp, { now: true })).toBe("target_closed");
+      expect(dropped).toBe(1);
+      expect(Date.now() - started).toBeLessThan(1_500); // the next poll asks again (every 100 ms)
+      expect(b.isClosed()).toBe(false);
+    } finally {
+      browser.newBrowserCDPSession = open$;
+      await context.close();
+    }
+  });
+
   it("an ordinary close is just a close; an already closed page is closed", async () => {
     const { context, a, b } = await open();
     expect(await closePageBounded(a, 2_000)).toBe("closed");
