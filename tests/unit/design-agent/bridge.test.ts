@@ -2,9 +2,10 @@ import { chmod, link, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { bridgeEndpoint, bridgeModeFor, bridgeSummary, LOCAL_EXPIRY_MS, readTokenFile, runBridgeOnce, submitBody, WORKER_HEARTBEAT_MAX_MS, type BridgeOptions } from "@/lib/design-agent/bridge/client";
-import { bridgeSpool, readHeartbeat, readSpoolJson, resultCode, spoolIds, writeHeartbeat, writeSpoolJson, WorkerResultSchema, type BridgeSpool } from "@/lib/design-agent/bridge/spool";
-import { exportBridgeResults, importBridgeJobs, resultFromRecords } from "@/lib/design-agent/bridge/worker-side";
+import { bridgeEndpoint, bridgeModeFor, bridgeSummary, isReviewRejection, LOCAL_EXPIRY_MS, readTokenFile, runBridgeOnce, submitBody, WORKER_HEARTBEAT_MAX_MS, type BridgeOptions } from "@/lib/design-agent/bridge/client";
+import { bridgeSpool, readHeartbeat, readReviewSidecar, readSpoolJson, resultCode, spoolIds, writeHeartbeat, writeSpoolJson, WorkerResultSchema, type BridgeSpool } from "@/lib/design-agent/bridge/spool";
+import { exportBridgeResults, importBridgeJobs, resultFromRecords, reviewForResult } from "@/lib/design-agent/bridge/worker-side";
+import type { ReviewSummary } from "@/lib/design-agent/review-summary";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import { childEnvironment } from "@/lib/design-agent/worker/env";
 import { ensureQueue, queueDirs, type QueueDirs } from "@/lib/design-agent/worker/queue";
@@ -177,53 +178,82 @@ describe("worker side: export", () => {
     });
     const accepted = { rounds: [round("initial", "revise", 3), round("rev1", "accept", 4)], final_candidate: "rev1", confidence: 0.72, quality_not_accepted: false, notes: ["CODEX_SAID_SOMETHING"] };
     const notAccepted = { rounds: [round("initial", "revise", 4), round("rev1", "revise", 3)], final_candidate: "initial", confidence: 0.6, renderer_change_needed: false, quality_not_accepted: true };
-    const SUMMARY = { version: 1, verdict: "accept", total: 19, max: 25, scores: { brand_fit: 4, visual_quality: 4, hierarchy: 4, mobile_quality: 4, generic_template_feel: 3 }, rounds: 2, confidence: 0.72, qualityNotAccepted: false };
+    const SUMMARY: ReviewSummary = { version: 1, verdict: "accept", total: 19, max: 25, scores: { brand_fit: 4, visual_quality: 4, hierarchy: 4, mobile_quality: 4, generic_template_feel: 3 }, rounds: 2, confidence: 0.72, qualityNotAccepted: false };
 
-    it("a ready and a QUALITY_NOT_ACCEPTED result carry it; it reaches the submit body", () => {
-      const ready = resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "done", codex: accepted }, final: PROFILE });
-      expect(ready).toMatchObject({ outcome: "ready", review: SUMMARY });
-      expect(WorkerResultSchema.safeParse(ready).success).toBe(true);
-      expect(submitBody(JOB, ready)).toMatchObject({ outcome: "ready", review: SUMMARY });
-      expect(designBridgeRequest.safeParse(submitBody(JOB, ready)).success).toBe(true);
+    it("a ready and a QUALITY_NOT_ACCEPTED result get it; it reaches the submit body; the result itself keeps its old shape", () => {
+      const readyReport = { outcome: "done", codex: accepted };
+      const ready = resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: readyReport, final: PROFILE });
+      expect(Object.keys(ready).sort()).toEqual(["error_code", "job_id", "outcome", "profile", "version", "worker_commit"]);
+      expect(reviewForResult(ready, readyReport)).toEqual(SUMMARY);
+      expect(submitBody(JOB, ready, SUMMARY)).toMatchObject({ outcome: "ready", review: SUMMARY });
+      expect(designBridgeRequest.safeParse(submitBody(JOB, ready, SUMMARY)).success).toBe(true);
 
-      const quality = resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: notAccepted }, final: PROFILE });
-      expect(quality).toMatchObject({ outcome: "blocked", error_code: "QUALITY_NOT_ACCEPTED", review: { verdict: "revise", total: 19, rounds: 2, qualityNotAccepted: true } });
-      expect(WorkerResultSchema.safeParse(quality).success).toBe(true);
-      expect(designBridgeRequest.safeParse(submitBody(JOB, quality)).success).toBe(true);
+      const qualityReport = { outcome: "blocked", codex: notAccepted };
+      const quality = resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: qualityReport, final: PROFILE });
+      const review = reviewForResult(quality, qualityReport);
+      expect(review).toMatchObject({ verdict: "revise", total: 19, rounds: 2, qualityNotAccepted: true });
+      expect(designBridgeRequest.safeParse(submitBody(JOB, quality, review)).success).toBe(true);
     });
 
-    it("no other result carries it (other blocks, failures, a report without well-formed rounds)", () => {
-      expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: { ...notAccepted, renderer_change_needed: true } }, final: null })).not.toHaveProperty("review");
-      expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "fallback_template", codex: accepted }, final: null })).not.toHaveProperty("review");
-      expect(resultFromRecords({ id: WJOB, bucket: "failed", record: { code: "WORKER_FAILED" }, report: { outcome: "done", codex: accepted }, final: null })).not.toHaveProperty("review");
-      expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "done", codex: { ...accepted, rounds: [{ verdict: "accept" }] } }, final: PROFILE })).not.toHaveProperty("review");
+    it("no other result gets it (other blocks, failures, a report without well-formed rounds)", () => {
+      const forReport = (bucket: "done" | "failed", report: Record<string, unknown>, final: unknown = null) =>
+        reviewForResult(resultFromRecords({ id: WJOB, bucket, record: { code: "WORKER_FAILED" }, report, final }), report);
+      expect(forReport("done", { outcome: "blocked", codex: { ...notAccepted, renderer_change_needed: true } })).toBeNull();
+      expect(forReport("done", { outcome: "fallback_template", codex: accepted })).toBeNull();
+      expect(forReport("failed", { outcome: "done", codex: accepted })).toBeNull();
+      expect(forReport("done", { outcome: "done", codex: { ...accepted, rounds: [{ verdict: "accept" }] } }, PROFILE)).toBeNull();
       // a ready run whose final was not accepted cannot happen (DEV-053); its summary is not sent
-      expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "done", codex: notAccepted }, final: PROFILE })).not.toHaveProperty("review");
+      expect(forReport("done", { outcome: "done", codex: notAccepted }, PROFILE)).toBeNull();
     });
 
-    it("the spool refuses a summary with another outcome, or one with free text", () => {
+    it("the result schema is the one an older bridge has: a result with a review key is refused", () => {
       const base = { version: 1, job_id: WJOB, outcome: "ready", profile: PROFILE, error_code: null, worker_commit: "0123abcd" };
-      expect(WorkerResultSchema.safeParse({ ...base, review: SUMMARY }).success).toBe(true);
-      expect(WorkerResultSchema.safeParse({ ...base, outcome: "failed", profile: null, error_code: "WORKER_FAILED", review: SUMMARY }).success).toBe(false);
-      expect(WorkerResultSchema.safeParse({ ...base, review: { ...SUMMARY, note: "Codex said" } }).success).toBe(false);
-      expect(WorkerResultSchema.safeParse({ ...base, review: { ...SUMMARY, verdict: "great" } }).success).toBe(false);
+      expect(WorkerResultSchema.safeParse(base).success).toBe(true);
+      expect(WorkerResultSchema.safeParse({ ...base, review: SUMMARY }).success).toBe(false);
     });
 
     it("a profile that cannot be drawn downgrades to failed without the summary", () => {
-      const bad = { version: 1 as const, job_id: WJOB, outcome: "ready" as const, profile: { ...PROFILE, palette: { ...PROFILE.palette, text: PROFILE.palette.background } }, error_code: null, worker_commit: null, review: SUMMARY as never };
-      const body = submitBody(JOB, bad);
+      const bad = { version: 1 as const, job_id: WJOB, outcome: "ready" as const, profile: { ...PROFILE, palette: { ...PROFILE.palette, text: PROFILE.palette.background } }, error_code: null, worker_commit: null };
+      const body = submitBody(JOB, bad, SUMMARY);
       expect(body).toMatchObject({ outcome: "failed", errorCode: "PROFILE_INVALID" });
       expect(body).not.toHaveProperty("review");
     });
 
-    it("the exported result file carries the summary, still nothing of Codex's words", async () => {
+    it("the worker writes the summary as a sidecar next to an unchanged result, and removes both when the job closes", async () => {
       await writeSpoolJson(spool.toWorker, WJOB, job());
       await finished(WJOB, "done", AMERICAN_EDITORIAL, { codex: accepted });
       expect((await exportBridgeResults(spool, dirs, outRoot)).exported).toEqual([WJOB]);
       const written = JSON.parse(await readFile(join(spool.fromWorker, `${WJOB}.json`), "utf8")) as Record<string, unknown>;
-      expect(Object.keys(written).sort()).toEqual(["error_code", "job_id", "outcome", "profile", "review", "version", "worker_commit"]);
-      expect(written.review).toEqual(SUMMARY);
-      expect(JSON.stringify(written)).not.toMatch(/CODEX_SAID_SOMETHING|rev1|initial|severity/);
+      expect(Object.keys(written).sort()).toEqual(["error_code", "job_id", "outcome", "profile", "version", "worker_commit"]);
+      const sidecar = join(spool.fromWorker, `${WJOB}.review.json`);
+      expect(JSON.parse(await readFile(sidecar, "utf8"))).toEqual(SUMMARY);
+      expect((await stat(sidecar)).mode & 0o777).toBe(0o640);
+      expect(await readFile(sidecar, "utf8")).not.toMatch(/CODEX_SAID_SOMETHING|rev1|initial|severity|hero/);
+      expect(await spoolIds(spool.fromWorker)).toEqual([WJOB]); // the sidecar is not a result to anyone listing results
+      const { rm } = await import("node:fs/promises");
+      await rm(join(spool.toWorker, `${WJOB}.json`)); // the bridge closed the job
+      expect((await exportBridgeResults(spool, dirs, outRoot)).removed).toEqual([WJOB]);
+      expect(await readdir(spool.fromWorker)).not.toContain(`${WJOB}.review.json`);
+    });
+
+    it("the sidecar is read like a result: no link, one link, size limit, strict schema", async () => {
+      const sidecar = join(spool.fromWorker, `${WJOB}.review.json`);
+      await writeFile(sidecar, JSON.stringify(SUMMARY));
+      expect(await readReviewSidecar(spool.fromWorker, WJOB)).toEqual(SUMMARY);
+      await writeFile(sidecar, JSON.stringify({ ...SUMMARY, note: "Codex said" }));
+      expect(await readReviewSidecar(spool.fromWorker, WJOB)).toBeNull();
+      await writeFile(sidecar, JSON.stringify({ ...SUMMARY, pad: "x".repeat(4096) }));
+      expect(await readReviewSidecar(spool.fromWorker, WJOB)).toBeNull();
+      const { rm } = await import("node:fs/promises");
+      await rm(sidecar);
+      const target = join(base, "elsewhere.json");
+      await writeFile(target, JSON.stringify(SUMMARY));
+      await symlink(target, sidecar);
+      expect(await readReviewSidecar(spool.fromWorker, WJOB)).toBeNull();
+      await rm(sidecar);
+      await link(target, sidecar);
+      expect(await readReviewSidecar(spool.fromWorker, WJOB)).toBeNull();
+      expect(await readReviewSidecar(spool.fromWorker, WJOB2)).toBeNull(); // none at all
     });
   });
 
@@ -310,18 +340,81 @@ describe("bridge client", () => {
     expect(calls.map((c) => c.body.action)).toEqual(["claim", "submit", "claim"]); // not re-sent, no claim while JOB2 is out
   });
 
-  it("DEV-058: passes a result's review summary on, and sends no review key for a result without one", async () => {
+  describe("DEV-058: the review summary", () => {
     const review = { version: 1, verdict: "accept", total: 19, max: 25, scores: { brand_fit: 4, visual_quality: 4, hierarchy: 4, mobile_quality: 4, generic_template_feel: 3 }, rounds: 2, confidence: 0.72, qualityNotAccepted: false };
-    answers.push(claimed());
-    await runBridgeOnce(options());
-    await resultFile(WJOB, { review });
-    answers.push(submitted(), claimed(JOB2));
-    expect(await runBridgeOnce(options())).toMatchObject({ delivered: [WJOB] });
-    expect(calls[1]!.body).toEqual({ action: "submit", jobId: JOB, outcome: "ready", profile: PROFILE, errorCode: null, workerCommit: "0123abcd", lineage: { workerJobId: WJOB }, review });
-    await resultFile(WJOB2); // an older worker: no summary
-    answers.push(submitted(JOB2), { status: 200, body: { job: null } });
-    await runBridgeOnce(options());
-    expect(calls[3]!.body).not.toHaveProperty("review");
+    const plain = { action: "submit", jobId: JOB, outcome: "ready", profile: PROFILE, errorCode: null, workerCommit: "0123abcd", lineage: { workerJobId: WJOB } };
+    const sidecar = (id = WJOB, value: unknown = review) => writeFile(join(spool.fromWorker, `${id}.review.json`), JSON.stringify(value));
+    const oldServer400 = { status: 400, body: { error: "invalid_request", issues: [{ path: "", code: "unrecognized_keys" }] } };
+    const outstanding = async () => {
+      answers.push(claimed());
+      await runBridgeOnce(options());
+      await resultFile();
+    };
+
+    it("sends the sidecar's summary with the result", async () => {
+      await outstanding();
+      await sidecar();
+      answers.push(submitted(), { status: 200, body: { job: null } });
+      expect(await runBridgeOnce(options())).toMatchObject({ delivered: [WJOB], stopped: null });
+      expect(calls[1]!.body).toEqual({ ...plain, review });
+    });
+
+    it("an old-shape result with no sidecar (an older worker) goes without a review key", async () => {
+      await outstanding();
+      answers.push(submitted(), { status: 200, body: { job: null } });
+      expect(await runBridgeOnce(options())).toMatchObject({ delivered: [WJOB] });
+      expect(calls[1]!.body).toEqual(plain);
+    });
+
+    it("an invalid sidecar is dropped and the result still goes", async () => {
+      await outstanding();
+      await sidecar(WJOB, { ...review, note: "Codex said it is lovely" });
+      answers.push(submitted(), { status: 200, body: { job: null } });
+      expect(await runBridgeOnce(options())).toMatchObject({ delivered: [WJOB], refused: [] });
+      expect(calls[1]!.body).toEqual(plain);
+    });
+
+    it("a server that predates the summary (400 on review): sent once more without it, then delivered", async () => {
+      await outstanding();
+      await sidecar();
+      answers.push(oldServer400, submitted(), { status: 200, body: { job: null } });
+      expect(await runBridgeOnce(options())).toMatchObject({ delivered: [WJOB], refused: [], stopped: null });
+      expect(calls.slice(1, 3).map((c) => c.body)).toEqual([{ ...plain, review }, plain]);
+      expect(lines).toContain(`result ${WJOB}: BRIDGE_REVIEW_DROPPED`);
+      expect(lines.join("\n")).not.toMatch(/accept|19|brand_fit/);
+    });
+
+    it("a refused resubmit is refused as before; only one resubmit", async () => {
+      await outstanding();
+      await sidecar();
+      answers.push(oldServer400, oldServer400, { status: 200, body: { job: null } });
+      expect(await runBridgeOnce(options())).toMatchObject({ delivered: [], refused: [WJOB] });
+      expect(calls.filter((c) => c.body.action === "submit")).toHaveLength(2);
+    });
+
+    it("a 400 on a submit without review is not retried", async () => {
+      await outstanding();
+      answers.push(oldServer400, { status: 200, body: { job: null } });
+      expect(await runBridgeOnce(options())).toMatchObject({ refused: [WJOB] });
+      expect(calls.filter((c) => c.body.action === "submit")).toHaveLength(1);
+      expect(lines.join("\n")).not.toContain("BRIDGE_REVIEW_DROPPED");
+    });
+
+    it.each([
+      ["another 400 (invalid_profile)", { status: 400, body: { error: "invalid_profile" } }, { refused: [WJOB] }],
+      ["a 400 about another field", { status: 400, body: { error: "invalid_request", issues: [{ path: "profile", code: "custom" }] } }, { refused: [WJOB] }],
+      ["401", { status: 401, body: { error: "unauthorized" } }, { stopped: "BRIDGE_UNAUTHORIZED" }],
+      ["403", { status: 403, body: null }, { refused: [WJOB] }],
+      ["503", { status: 503, body: null }, { stopped: "BRIDGE_DISABLED" }],
+      ["500", { status: 500, body: null }, { stopped: "BRIDGE_API_UNAVAILABLE" }],
+    ])("a submit with review answered %s is not resent without it", async (_label, answer, expected) => {
+      await outstanding();
+      await sidecar();
+      answers.push(answer, { status: 200, body: { job: null } });
+      expect(await runBridgeOnce(options())).toMatchObject(expected);
+      expect(calls.filter((c) => c.body.action === "submit")).toHaveLength(1);
+      expect(isReviewRejection(answer.status, answer.body)).toBe(false);
+    });
   });
 
   it("drops a superseded or refused result and never sends results of jobs it did not claim", async () => {

@@ -148,6 +148,7 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 | `BRIDGE_API_UNAVAILABLE` / `BRIDGE_RESPONSE_INVALID` | 通信・応答の問題 | 次の回に自動で再試行 |
 | `BRIDGE_SPOOL_INVALID` | spool に書けない | §3 |
 | `BRIDGE_DELIVER_ONLY`（`claimed none (…)`） | `--deliver-only` の回。claim はしていない | 次の job は `--once` で |
+| `BRIDGE_REVIEW_DROPPED`（`result <id>: …`、止まらない） | server が要約（DEV-058）を受けなかったので、要約を外して 1 回だけ送り直した | server を DEV-058 以降にする（§10） |
 | `BRIDGE_WRONG_USER` | root・`sr-designgen`・`sr-igcapture` で起動した | `sr-designbridge` で起動する |
 
 demo の `design_error_code`（管理画面では「デザインBLOCKED」「AIデザイン失敗」と既存テンプレートの案内）:
@@ -178,15 +179,19 @@ bridge と worker を 1 回ずつ安全に組み合わせる cycle（idle run �
 
 ## 10. レビューの要約（DEV-058）の入れ方（G）
 
-worker は ready と `QUALITY_NOT_ACCEPTED` の結果に、Codex の review の要約（固定の key と数値・enum だけ。`docs/ARCHITECTURE.md` §10.5）を付ける。server が `sales_demos.design_review` に保存し、`/admin/sales` の項目の「詳細」に「AI レビュー: accept 19/25（2 回）」と観点ごとの点を出す（公開 demo には出さない）。
+worker は ready と `QUALITY_NOT_ACCEPTED` の結果の横に、Codex の review の要約（固定の key と数値・enum だけ。`docs/ARCHITECTURE.md` §10.5）を別 file（`from-worker/<id>.review.json`）で置く。server が `sales_demos.design_review` に保存し、`/admin/sales` の項目の「詳細」に「AI レビュー: accept 19/25（2 回）」と観点ごとの点を出す（公開 demo には出さない）。
 
-**この順番で人が行う**（schema が strict なので、順番を変えると結果が `refused` になる）:
+**推奨の順番**（人が行う。順番を間違えても結果は失われない。下の「順番が違ったとき」）:
 
 1. migration `20261020120000_sales_design_review.sql` を Staging に適用し（`npm run staging:apply`）、`npm run staging:verify` を確かめる。Production は `docs/RELEASE.md` の手順。
 2. server（Vercel）をこの commit 以降にする。要約のない submit（古い bridge）は従来どおり受ける。
 3. bridge（`sr-designbridge` の checkout）を承認した commit に更新する（§5。`git checkout --detach <commit> && npm ci`）。新しい bridge は要約の付いた結果も付かない結果も届ける。
 4. worker（root だけの clone と worker の checkout）を同じ commit に更新する。ここから要約が付き始める。
 
-- 1 の前に 2 を行い、要約の付いた submit が来ると、server は 503 を返し、bridge は `BRIDGE_DISABLED` で止まって次の回に再送する（結果は失われない）。
-- 3 の前に 4 を行うと、古い bridge は要約の付いた結果を不正として `refused` にする（demo は lease 切れで次の試行に回る）。
+順番が違ったとき（どれも結果は届く。Codex の run を無駄にしない）:
+
+- 1 の前に 2: 要約の付いた submit が来ると server は 503 を返し、bridge は `BRIDGE_DISABLED` で止まって次の回に再送する。migration を入れれば届く。
+- 3 の前に 4: 要約は別 file なので、古い bridge は結果の file を従来どおり読んで要約なしで届ける（sidecar は読まない）。
+- 2 の前に 3・4（bridge / worker が古い server に向いている）: 要約付きの submit が 400 で拒まれると、bridge は 1 回だけ要約を外して送り直し、`result <id>: BRIDGE_REVIEW_DROPPED` を出す。demo は要約なしで `ready` / `blocked` になる。
+  - 送り直すのは、その 400 が「未知の key か `review` の値」についてのものだけ。401・403・5xx・他の 400 では送り直さない（従来どおり）。
 - 戻すとき: worker を前の commit に戻せば要約は付かなくなる。列と関数はそのまま残してよい（flag 無効なら読まない）。

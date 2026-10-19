@@ -33,7 +33,8 @@ import { checkProfile } from "../profile";
 import { DESIGN_LEASE_SECONDS } from "../../sales/design";
 import { ClaimResponseSchema, reviewFits, SubmitResponseSchema, workerJobIdFor, type DesignJob } from "../../sales/design-bridge-schema";
 import { bypassHeaders, type VercelBypass } from "./vercel-bypass";
-import { MAX_RESULT_BYTES, readHeartbeat, readSpoolJson, resultCode, spoolIds, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
+import type { ReviewSummary } from "../review-summary";
+import { MAX_RESULT_BYTES, readHeartbeat, readReviewSidecar, readSpoolJson, resultCode, spoolIds, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
 
 export const MIN_TOKEN_LENGTH = 32;
 /** Kept a little longer than the server's lease, so the server always gives up first. */
@@ -199,8 +200,13 @@ function stopFor(status: number, body: unknown): BridgeCode | null {
   return null;
 }
 
-/** The submit body for a result: the result's own fields, checked again; a profile that cannot be drawn becomes a failure. No review key without a summary (an older server stays compatible with results that have none). */
-export function submitBody(jobId: string, result: WorkerResult): Record<string, unknown> {
+/**
+ * The submit body for a result: the result's own fields, checked again; a
+ * profile that cannot be drawn becomes a failure. DEV-058: the review
+ * summary (from the result's sidecar) is added only when it still fits the
+ * outcome sent; without one there is no review key at all.
+ */
+export function submitBody(jobId: string, result: WorkerResult, review: ReviewSummary | null = null): Record<string, unknown> {
   let { outcome, profile, error_code } = result;
   // Only known fixed codes reach the server (a worker cannot invent a word).
   if (error_code !== null) error_code = resultCode(error_code);
@@ -211,8 +217,26 @@ export function submitBody(jobId: string, result: WorkerResult): Record<string, 
   }
   const body: Record<string, unknown> = { action: "submit", jobId, outcome, profile, errorCode: error_code, workerCommit: result.worker_commit, lineage: { workerJobId: workerJobIdFor(jobId) } };
   // DEV-058: the review summary only while the result is still the one it summarises (never on a downgraded failure).
-  if (result.review && reviewFits(outcome, error_code, result.review.qualityNotAccepted)) body.review = result.review;
+  if (review && reviewFits(outcome, error_code, review.qualityNotAccepted)) body.review = review;
   return body;
+}
+
+/**
+ * DEV-058: the answer of a server that predates the review summary (or that
+ * refuses this summary): 400 invalid_request whose issues are an unknown
+ * top-level key or a path under `review`. Only then is the result sent once
+ * more without the summary; any other answer is handled as before.
+ */
+export function isReviewRejection(status: number, body: unknown): boolean {
+  if (status !== 400 || typeof body !== "object" || body === null) return false;
+  const b = body as { error?: unknown; issues?: unknown };
+  if (b.error !== "invalid_request" || !Array.isArray(b.issues) || b.issues.length === 0) return false;
+  return b.issues.every((i: unknown) => {
+    if (typeof i !== "object" || i === null) return false;
+    const { path, code } = i as { path?: unknown; code?: unknown };
+    if (typeof path !== "string") return false;
+    return (code === "unrecognized_keys" && path === "") || path === "review" || path.startsWith("review.");
+  });
 }
 
 function workerJobFile(job: DesignJob) {
@@ -244,7 +268,16 @@ export async function runBridgeOnce(options: BridgeOptions): Promise<BridgeRepor
         report.refused.push(id);
         continue;
       }
-      const answer = await client.post(submitBody(entry.jobId, parsed.data));
+      // DEV-058: the summary from the sidecar; missing or invalid → the result goes without it.
+      const body = submitBody(entry.jobId, parsed.data, await readReviewSidecar(options.spool.fromWorker, id));
+      let answer = await client.post(body);
+      if ("review" in body && isReviewRejection(answer.status, answer.body)) {
+        // A server without the summary (or refusing this one): send the same result once more without it.
+        log(`result ${id}: BRIDGE_REVIEW_DROPPED`);
+        const { review: _dropped, ...withoutReview } = body;
+        void _dropped;
+        answer = await client.post(withoutReview);
+      }
       const stop = stopFor(answer.status, answer.body);
       if (stop) throw new BridgeError(stop);
       if (answer.status === 200) {
