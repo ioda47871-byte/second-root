@@ -2468,7 +2468,7 @@
     {
       "id": "DEV-055",
       "title": "diagnose C: 別サイトへ出たページをすぐ閉じる（CI の browser.test.ts の繰り返す失敗）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-041"
@@ -2497,7 +2497,7 @@
         "Production・Staging"
       ],
       "human_approval_triggers": [],
-      "decision": "2026-10-19: Claude が追加（CI failure の根本原因）"
+      "decision": "2026-10-19: Claude が追加（CI failure の根本原因）; 2026-10-19: PR #68 merge（520bd67）。Fresh Review FAIL→修正（100 ms ごとの再送）→再レビュー PASS、CI green"
     }
   ]
 }
