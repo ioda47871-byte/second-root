@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { TodayItem } from "@/lib/admin/today";
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
-import { DESIGN_FALLBACK_NOTE, DESIGN_STATUS_LABEL } from "@/lib/sales/design";
+import { DESIGN_FALLBACK_NOTE, DESIGN_STATUS_LABEL, designErrorLabel } from "@/lib/sales/design";
 import DncControl from "./DncControl";
 import SkipDraft from "./SkipDraft";
 import styles from "./admin.module.css";
@@ -44,7 +44,15 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
         </a>
       )}
       {item.kind === "initial" && (item.designStatus === "blocked" || item.designStatus === "failed") && (
-        <p className={styles.muted}>{DESIGN_FALLBACK_NOTE}</p>
+        <p className={styles.muted}>
+          {DESIGN_FALLBACK_NOTE}
+          {item.designErrorCode && (
+            <>
+              <br />
+              <span data-testid="design-error">理由: {designErrorLabel(item.designErrorCode)}</span>
+            </>
+          )}
+        </p>
       )}
       <div className={styles.actions}>{action}</div>
       <details className={styles.details}>

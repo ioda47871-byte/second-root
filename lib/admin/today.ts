@@ -23,6 +23,8 @@ export type TodayItem = QueueItem & {
   sentAt: string | null;
   /** DEV-030: the demo's AI design state; null for a legacy demo or with the step off. */
   designStatus: DesignStatus | null;
+  /** DEV-053: why a design is blocked / failed (e.g. QUALITY_NOT_ACCEPTED); null otherwise or with the step off. */
+  designErrorCode: string | null;
 };
 
 // DEV-048: with the AI design step on, drafts waiting for a design must not
@@ -30,7 +32,7 @@ export type TodayItem = QueueItem & {
 // TypeScript (selectWorkQueue). With the step off the query is the legacy one.
 const DESIGN_DRAFT_SCAN = 50;
 
-type DemoRow = { public_token: string; disabled_at: string | null; design_status?: unknown };
+type DemoRow = { public_token: string; disabled_at: string | null; design_status?: unknown; design_error_code?: unknown };
 
 type Row = {
   id: string;
@@ -57,7 +59,7 @@ type Row = {
 function select(design: boolean): string {
   return `id, prospect_id, kind, channel, status, subject, body, sent_at, created_at,
   prospect:sales_prospects!inner(name, category, ward, do_not_contact, instagram_url, public_email,
-    demo:sales_demos(public_token, disabled_at${design ? ", design_status" : ""}))`;
+    demo:sales_demos(public_token, disabled_at${design ? ", design_status, design_error_code" : ""}))`;
 }
 
 export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new Date()): Promise<TodayItem[]> {
@@ -103,6 +105,10 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
       demoToken: demo && !demo.disabled_at ? demo.public_token : null,
       sentAt: row.sent_at,
       designStatus,
+      designErrorCode:
+        designStatus && (designStatus === "blocked" || designStatus === "failed") && typeof demo?.design_error_code === "string"
+          ? demo.design_error_code
+          : null,
       sendable: kind === "follow_up" || initialSendAllowed(design, designStatus),
     };
   };
