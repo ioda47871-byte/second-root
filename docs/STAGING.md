@@ -68,6 +68,7 @@ npm run staging:verify -- --project-ref znbqgvawublgyjwfpmei            # 読み
 ```
 
 - `--apply`: 未適用の migration を順に適用し、続けて security 確認を行う。`--confirm-ref` に同じ ref を書かないと実行しない。
+- 改行（DEV-051）: repo は `.gitattributes` で全テキストを LF に固定している。それ以前に Windows で clone した作業ツリーは、取り直すまで CRLF のまま残る（2026-10-19、Staging の関数本文が CRLF になった原因）。Windows の checkout から適用する前に、変更の無い状態で一度 `git rm --cached -r . && git reset --hard` を実行するか clone し直し、`git ls-files --eol supabase/migrations | grep -v w/lf` が何も出さないことを確かめる。
   - 最初の変更の前に、実際の project で次を確かめ、違えば何も変えずに止まる:
     - SQL が CLI と同じ `postgres` として実行されること
     - 途中で失敗した複数文の request が何も残さない（1 transaction）こと（公式ドキュメントに明記がないため、毎回その場で確認する）
