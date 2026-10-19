@@ -47,7 +47,7 @@ echo "${name}#$n $*${extra}" >> '${calls}'
 exit $(cat '${sc}'/${name}-$n.rc 2>/dev/null || echo 0)`;
   exe(join(t, "root/sr-capture-admin/scripts/ops/wsl-resource-preflight.sh"), step("preflight"));
   exe(join(t, "root/sr-capture-admin/scripts/sales-design-capture/admin.sh"), step("admin"));
-  exe(join(t, "home/sr-designbridge/second-root/scripts/sales-design-bridge/run.sh"), step("bridge", " api=${SR_DESIGN_BRIDGE_API_URL:+set} spool=${SR_DESIGN_BRIDGE_SPOOL:-} home=${HOME:-}"));
+  exe(join(t, "home/sr-designbridge/second-root/scripts/sales-design-bridge/run.sh"), step("bridge", " api=${SR_DESIGN_BRIDGE_API_URL:+set} spool=${SR_DESIGN_BRIDGE_SPOOL:-} home=${HOME:-} bypass=${SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE:-none}@${SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN:-none}"));
   exe(join(t, "home/sr-designgen/work/second-root/scripts/sales-design-worker/run.sh"), "exit 99");
   exe(join(bin, "git"), `echo "git $*" >> '${calls}'
 case "$*" in
@@ -482,6 +482,96 @@ describe("cycle.sh: STOP after the claim (the job stays processing; a person rec
     const w = world();
     play(w, "bridge", 3, { out: "stopped: BRIDGE_UNAUTHORIZED\nbridge: delivered 0, superseded 0, refused 0, expired 0, claimed none (BRIDGE_DELIVER_ONLY)", rc: 3 });
     after(cycle(w), "CYCLE_STOP_DELIVER_AFTER", 34);
+  });
+});
+
+describe("cycle.sh: the Vercel bypass of the bridge (DEV-059, off by default)", () => {
+  const ALIAS = "https://second-root-git-develop-brot-yanagi.vercel.app";
+  const confPath = (w: World) => join(w.t, "etc/second-root/design-cycle.conf");
+  const bridgeConf = (w: World) => join(w.t, "home/sr-designbridge/.config/second-root");
+  /** The bridge's env file pointing at the alias, with the two bypass lines, a 0600 bypass file, and root's switch. */
+  function withBypass(w: World, opts: { switch?: string; envLines?: string[]; mode?: number; apiUrl?: string } = {}) {
+    const file = join(bridgeConf(w), "design-bridge.vercel-bypass");
+    const value = `Vb${randomBytes(15).toString("hex")}`;
+    writeFileSync(file, value, { mode: opts.mode ?? 0o600 });
+    chmodSync(file, opts.mode ?? 0o600);
+    const lines = opts.envLines ?? [`SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=${file}`, `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=${ALIAS}`];
+    writeFileSync(join(bridgeConf(w), "design-bridge.env"), [`SR_DESIGN_BRIDGE_API_URL=${opts.apiUrl ?? ALIAS}`, ...lines, ""].join("\n"), { mode: 0o600 });
+    if (opts.switch !== undefined) writeFileSync(confPath(w), `SR_DESIGN_CYCLE_BRIDGE_SHA=${SHA}\n${opts.switch}\n`, { mode: 0o644 });
+    return { file, value };
+  }
+  const bridgeLines = (calls: string) => calls.split("\n").filter((l) => l.startsWith("bridge#"));
+
+  it("off by default: nothing is passed to the bridge, even when the env file has the bypass lines", () => {
+    const plain = world();
+    const r0 = cycle(plain);
+    expect(r0.status).toBe(0);
+    expect(r0.stdout).toContain("cycle: vercel bypass: off");
+    for (const line of bridgeLines(r0.calls)) expect(line).toMatch(/ bypass=none@none$/);
+    for (const sw of [undefined, "SR_DESIGN_CYCLE_VERCEL_BYPASS=off"]) {
+      const w = world();
+      const { value } = withBypass(w, { switch: sw });
+      const r = cycle(w);
+      expect(r.last).toBe(`CYCLE_RESULT CYCLE_OK phase=done job=${JOB} exit=0`);
+      expect(r.stdout).toContain("cycle: vercel bypass: off");
+      expect(bridgeLines(r.calls)).toHaveLength(3);
+      for (const line of bridgeLines(r.calls)) expect(line).toMatch(/ bypass=none@none$/);
+      expect(r.out).not.toContain(value);
+    }
+  });
+
+  it("on (root's config): the bridge gets the file path and the origin, never the value; the cycle never reads it", () => {
+    const w = world();
+    const { file, value } = withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on" });
+    const r = cycle(w);
+    expect(r.last).toBe(`CYCLE_RESULT CYCLE_OK phase=done job=${JOB} exit=0`);
+    expect(r.stdout).toContain("cycle: vercel bypass: on");
+    expect(bridgeLines(r.calls)).toHaveLength(3);
+    for (const line of bridgeLines(r.calls)) expect(line.endsWith(` bypass=${file}@${ALIAS}`)).toBe(true);
+    expect(r.out).not.toContain(value);
+    expect(r.calls).not.toContain(value);
+    expect(r.out).not.toContain(ALIAS);
+  });
+
+  it("dry run with the bypass on checks it and passes", () => {
+    const w = world();
+    withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on" });
+    const r = cycle(w, ["--dry-run"]);
+    expect(r.last).toBe("CYCLE_RESULT CYCLE_DRY_RUN_OK phase=before_claim job=none exit=0");
+    expect(r.stdout).toContain("cycle: vercel bypass: on");
+  });
+
+  const bypassChecks: [string, (w: World) => void, string][] = [
+    ["a switch that is not on / off", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=yes" }), "CHECK_CONFIG_INVALID"],
+    ["two switch lines", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on\nSR_DESIGN_CYCLE_VERCEL_BYPASS=off" }), "CHECK_CONFIG_INVALID"],
+    ["on without the env lines", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on", envLines: [] }), "CHECK_BYPASS_INVALID"],
+    ["on with only the file line", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on", envLines: ["SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=/x/y"] }), "CHECK_BYPASS_INVALID"],
+    ["a relative file path", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on", envLines: ["SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=x/y", `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=${ALIAS}`] }), "CHECK_BYPASS_INVALID"],
+    ["an origin that is not *.vercel.app", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on", apiUrl: "https://secondroot.jp", envLines: ["SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=/x/y", "SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=https://secondroot.jp"] }), "CHECK_BYPASS_INVALID"],
+    ["an origin with a trailing slash", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on", envLines: ["SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=/x/y", `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=${ALIAS}/`] }), "CHECK_BYPASS_INVALID"],
+    ["an origin that is not the API URL's", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on", apiUrl: "https://second-root-75vcnoz75-brot-yanagi.vercel.app" }), "CHECK_BYPASS_INVALID"],
+    ["a bypass file readable by the group", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on", mode: 0o640 }), "CHECK_BYPASS_FILE_UNSAFE"],
+    ["a bypass file readable by others", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on", mode: 0o604 }), "CHECK_BYPASS_FILE_UNSAFE"],
+    ["a missing bypass file", (w) => withBypass(w, { switch: "SR_DESIGN_CYCLE_VERCEL_BYPASS=on", envLines: [`SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=${join(w.t, "nowhere")}`, `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=${ALIAS}`] }), "CHECK_BYPASS_FILE_UNSAFE"],
+  ];
+  it.each(bypassChecks)("%s → CYCLE_STOP_CHECK", (_, set, code) => {
+    const w = world();
+    set(w);
+    const r = cycle(w);
+    expect(r.status).toBe(21);
+    expect(r.stdout).toContain(`check: ${code}`);
+    expect(r.out).not.toContain(ALIAS);
+    expect(count(r.calls, "admin") + count(r.calls, "bridge")).toBe(0);
+  });
+
+  it("a child line with the bypass header is redacted", () => {
+    const w = world();
+    const value = `Vb${randomBytes(15).toString("hex")}`;
+    play(w, "bridge", 1, { out: `debug x-vercel-protection-bypass: ${value}\n${DELIVER_NONE}` });
+    const r = cycle(w);
+    expect(r.status).toBe(0);
+    expect(r.out).not.toContain(value);
+    expect(r.out).toContain("x-vercel-protection-bypass: [redacted]");
   });
 });
 

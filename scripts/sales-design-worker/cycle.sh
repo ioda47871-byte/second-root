@@ -15,7 +15,9 @@
 #   1. resource preflight (scripts/ops/wsl-resource-preflight.sh; STOP = do not start)
 #   2. read-only checks: this clone, the bridge checkout at the approved commit and clean, the bridge /
 #      worker units inactive, no bridge / worker process, env / token file owner and mode, the bridge
-#      ledger with no open job, empty spool and worker queue
+#      ledger with no open job, empty spool and worker queue; with SR_DESIGN_CYCLE_VERCEL_BYPASS=on
+#      in the config (DEV-059, off by default), also the Vercel bypass file's owner and mode and its
+#      origin (never its value)
 #   3. an idle worker run (heartbeat; removes results of jobs the bridge has closed)
 #   4. bridge --deliver-only: must deliver, supersede, refuse and expire nothing
 #   5. time guard, then bridge --once: claims exactly one job, or nothing (CYCLE_IDLE)
@@ -172,7 +174,7 @@ rules = [
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+"), "[email]"),
     (re.compile(r"(?i)\b(set-cookie|cookie)([\"\x27]?\s*[=:]\s*)(.*)"), lambda m: m.group(1) + m.group(2) + (pair.sub(r"\1=[redacted]", m.group(3)) if "=" in m.group(3) else "[redacted]")),
     (re.compile(r"(?i)\b(bearer|basic)\s+\S+"), r"\1 [redacted]"),
-    (re.compile(r"(?i)\b([A-Za-z0-9_.-]*(token|secret|password|passwd|cookie|api[_-]?key|authorization|credential|sessionid)[A-Za-z0-9_.-]*)([\"\x27]?\s*[=:]\s*)(?![^\s=]*=\[redacted\])(\"[^\"]*\"?|\x27[^\x27]*\x27?|\S+)"), r"\1\3[redacted]"),
+    (re.compile(r"(?i)\b([A-Za-z0-9_.-]*(token|secret|password|passwd|cookie|api[_-]?key|authorization|credential|sessionid|bypass)[A-Za-z0-9_.-]*)([\"\x27]?\s*[=:]\s*)(?![^\s=]*=\[redacted\])(\"[^\"]*\"?|\x27[^\x27]*\x27?|\S+)"), r"\1\3[redacted]"),
     (re.compile(r"(?i)\b(x-api-key|api[_-]?key)\s+(?![=:\s])\S+"), r"\1 [redacted]"),
     (re.compile(r"(?<![A-Za-z0-9_])[0-9A-Fa-f]{32,}(?![A-Za-z0-9_])"), "[redacted]"),
     (re.compile(r"\beyJ[A-Za-z0-9_-]{6,}(\.[A-Za-z0-9_-]*)*"), "[redacted]"),
@@ -307,6 +309,16 @@ mapfile -t sha_lines < <(grep -E '^SR_DESIGN_CYCLE_BRIDGE_SHA=' "$CONF" || true)
 [ "${#sha_lines[@]}" = 1 ] && [[ "${sha_lines[0]}" =~ ^SR_DESIGN_CYCLE_BRIDGE_SHA=([0-9a-f]{40})$ ]] ||
   check_fail "CHECK_CONFIG_INVALID: one line SR_DESIGN_CYCLE_BRIDGE_SHA=<40 hex>"
 BRIDGE_SHA="${BASH_REMATCH[1]}"
+# DEV-059: the Vercel Protection Bypass for the bridge. Off unless root's config says on; the cycle then
+# passes only the file path and the origin to the bridge (it never reads the value).
+mapfile -t bypass_conf < <(grep -E '^SR_DESIGN_CYCLE_VERCEL_BYPASS=' "$CONF" || true)
+BYPASS=off
+if [ "${#bypass_conf[@]}" -gt 0 ]; then
+  [ "${#bypass_conf[@]}" = 1 ] && [[ "${bypass_conf[0]}" =~ ^SR_DESIGN_CYCLE_VERCEL_BYPASS=(on|off)$ ]] ||
+    check_fail "CHECK_CONFIG_INVALID: at most one line SR_DESIGN_CYCLE_VERCEL_BYPASS=on|off"
+  BYPASS="${BASH_REMATCH[1]}"
+fi
+unset bypass_conf
 
 for unit in sr-design-bridge.timer sr-design-bridge.service sr-design-worker.timer sr-design-worker.service; do
   if systemctl is-active --quiet "$unit" 2>/dev/null; then check_fail "CHECK_UNIT_ACTIVE: $unit"; fi
@@ -340,8 +352,27 @@ if [ "${#token_lines[@]}" -gt 0 ]; then
     check_fail "CHECK_ENV_INVALID: SR_DESIGN_BRIDGE_TOKEN_FILE must be one absolute path"
   TOKEN_FILE="${BASH_REMATCH[1]}"
 fi
-unset env_text url_lines token_lines
 private_file "$TOKEN_FILE" "$BRIDGE_USER" || check_fail "CHECK_TOKEN_FILE_UNSAFE: the token file must be $BRIDGE_USER's regular 0600 file (not read here)"
+BYPASS_FILE=""
+BYPASS_ORIGIN=""
+if [ "$BYPASS" = on ]; then
+  mapfile -t bypass_file_lines < <(grep -E '^SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=' <<<"$env_text" || true)
+  mapfile -t bypass_origin_lines < <(grep -E '^SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=' <<<"$env_text" || true)
+  path_re='^SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=(/[^[:space:]"'\''\]+)$'
+  [ "${#bypass_file_lines[@]}" = 1 ] && [[ "${bypass_file_lines[0]}" =~ $path_re ]] ||
+    check_fail "CHECK_BYPASS_INVALID: design-bridge.env needs one line SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=<absolute path>"
+  BYPASS_FILE="${BASH_REMATCH[1]}"
+  origin_re='^SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=(https://[a-z0-9]([a-z0-9-]*[a-z0-9])?\.vercel\.app)$'
+  [ "${#bypass_origin_lines[@]}" = 1 ] && [[ "${bypass_origin_lines[0]}" =~ $origin_re ]] ||
+    check_fail "CHECK_BYPASS_INVALID: design-bridge.env needs one line SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=https://<name>.vercel.app"
+  BYPASS_ORIGIN="${BASH_REMATCH[1]}"
+  [[ "$API_URL" =~ ^(https://[^/]+) ]] && [ "${BASH_REMATCH[1]}" = "$BYPASS_ORIGIN" ] ||
+    check_fail "CHECK_BYPASS_INVALID: the bypass origin is not the bridge API URL's origin (values not shown)"
+  private_file "$BYPASS_FILE" "$BRIDGE_USER" || check_fail "CHECK_BYPASS_FILE_UNSAFE: the bypass file must be $BRIDGE_USER's regular 0600 file (not read here)"
+  unset bypass_file_lines bypass_origin_lines
+fi
+unset env_text url_lines token_lines
+say "vercel bypass: $BYPASS"
 
 read_ledger || check_fail "CHECK_LEDGER_INVALID: the bridge ledger cannot be read"
 [ -z "$LEDGER_OPEN" ] || check_fail "CHECK_LEDGER_OPEN: the bridge holds $(grep -c . <<<"$LEDGER_OPEN") open job(s) (a stopped cycle; §6)"
@@ -367,6 +398,7 @@ bridge_pass() { # <mode> <name>
   (
     export SR_DESIGN_BRIDGE_API_URL="$API_URL" SR_DESIGN_BRIDGE_SPOOL="$SPOOL"
     [ "$TOKEN_FILE" = "$BRIDGE_HOME/.config/second-root/design-bridge.token" ] || export SR_DESIGN_BRIDGE_TOKEN_FILE="$TOKEN_FILE"
+    if [ "$BYPASS" = on ]; then export SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE="$BYPASS_FILE" SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN="$BYPASS_ORIGIN"; fi
     as_bridge timeout --kill-after=5 $((BRIDGE_TIMEOUT + 10)) "$BRIDGE_RUN" "--$1"
   ) </dev/null >"$WORK/$2.out" 2>&1 || rc=$?
   show "$2" "$WORK/$2.out"
