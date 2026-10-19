@@ -5,18 +5,6 @@
 
 ## 未解除
 
-### HUMAN-008 — Staging に除外リストの migration を適用（DEV-049 / DEV-050）
-
-- 何: `supabase/migrations/20261018000000_sales_exclusions.sql`（DEV-050 で書き換え済み: メールは digest だけ）を Staging（`znbqgvawublgyjwfpmei`）に適用する。2026-10-18 の読み取りで、Staging は `20261009000000` まで適用済み・`sales_exclusions` は存在しない・`email_digest` を持つ checkpoint は 0 件。未適用はこの 1 本だけ。
-- 前提: develop が DEV-050（PR #63、merge bfbc86f）以降であること（DEV-049 の最初の版の migration は平文メールの列を持っていたため、それ以前の checkout から適用しない）。
-- なぜ人: Staging の schema 変更は、この session の自動実行の安全確認で止められた（plan のみの実行も含む）。
-- 手順（手元の repo、`git pull` で develop 最新にしてから）:
-  1. `git log -1 --format=%H` が bfbc86f 以降、`grep -c email_digest supabase/migrations/20261018000000_sales_exclusions.sql` が 1 以上、`grep -c "public_email text" supabase/migrations/20261018000000_sales_exclusions.sql` が 0 であることを確認する。
-  2. plan: `SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei` → `1 pending`・`pending 20261018000000_sales_exclusions.sql` だけであること（違えば止める）。
-  3. 適用と検査: `SUPABASE_ACCESS_TOKEN=… npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei --confirm-ref znbqgvawublgyjwfpmei --apply` → すべて PASS であること（新しい検査 `sales_exclusions keeps only an email digest, and sales_add_exclusion takes only p_email_digest` を含む）。FAIL が 1 つでもあれば、その出力を Claude に渡す（再実行しない）。
-- 解除条件: 適用後、Claude が読み取りで次を確認する: `sales_exclusions` の列（メールは `email_digest` だけ）・RLS 有効・`sales_add_exclusion(p_email_digest …)` の引数・`sales_persist_candidate` の本文が repo と一致・行 0 件。
-- 適用しないとき: persist の照合は DB 関数の中にあるため、Staging は旧い `sales_persist_candidate`（除外の照合なし）のまま動く。管理画面の除外リストは読み込みエラーを表示する。既存顧客の除外が効かない以外の挙動は従来どおり。
-
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: **PR #29 を main へ merge 済み（2026-09-28、b14aab7。人間の明示承認に基づき Claude が実行）**。残りは merge 後の人間の作業。
   - **smoke test**（`docs/RELEASE.md` §8 の 5）: 管理者ログイン・非管理者の拒否・token ありの ingest `status`。
@@ -82,6 +70,12 @@
 - DEV-004 で Claude が allowed_scope を拡張（GA を /demo・/admin で無効化、noindex / no-referrer ヘッダ、e2e 分割）。既存ページの挙動は不変とレビュー確認済み。異論があれば PR #12 を参照。
 
 ## 解除済み
+
+### HUMAN-008 — Staging に除外リストの migration を適用（DEV-049 / DEV-050）（解除: 2026-10-19）
+
+- 人が適用（`npm run staging:apply … --apply`）: `20261018000000_sales_exclusions.sql`、17 → 18 applied、検査 13 項目すべて PASS（`exclusions_no_plain_email` を含む）、APPLY_SUCCEEDED。再適用しない。
+- 適用後の `staging:verify` は、限定トークンに `auth_config_read` の権限がないため Auth 設定の読み取りで 403 になり止まった（DB の検証の失敗ではない）。Auth 設定の確認は人が別途行う。
+- Claude の読み取り確認（2026-10-19）: migration 18 本（最新 20261018000000）・`sales_exclusions` の列にメールは `email_digest` だけ・RLS 有効・policy `sales_exclusions_admin_read`・0 行・`sales_add_exclusion(… p_email_digest …)` / `sales_remove_exclusion` は SECURITY DEFINER・`sales_persist_candidate` は SECURITY INVOKER のまま。3 つの関数の本文は repo と一致（改行が CRLF である点だけが違う。適用した checkout の改行設定による。PL/pgSQL の動作には影響しない。今後は `.gitattributes` で migration を LF に固定する）。
 
 ### HUMAN-002 — Second Root 専用 Supabase project
 - 状態: **Staging 用は作成済み（2026-09-28、人間）**。project `second-root`、ref `znbqgvawublgyjwfpmei`、Region ap-northeast-1。まず Staging / DEV-016 に使う。
