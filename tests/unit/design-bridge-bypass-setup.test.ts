@@ -58,10 +58,11 @@ ${name === "ln" ? `[ ! -f '${sc}/ln-fail' ] || exit 1
 [ ! -f '${sc}/ln-race' ] || printf 'raced-%s' 0123456789abcdef > "\${@: -1}"` : ""}
 exec "$real" "$@"`);
   }
-  // curl: refuses unless run as the bridge user; records argv and environment (never stdin, which
+  // curl: refuses unless run as the bridge user, or if it inherited root's setup lock (fd 8); records argv and environment (never stdin, which
   // only the test reads); like the real curl it would read $HOME/.curlrc unless -q comes first
   // (here: a .curlrc "traces" the header); then plays sc/curl-<with|without>.{body,status,rc}
   exe(join(bin, "curl"), `[ -n "\${SR_FAKE_AS_BRIDGE:-}" ] || { echo "REFUSED curl $*" >> '${calls}'; exit 97; }
+[ ! -e /proc/$$/fd/8 ] || { echo "REFUSED curl holds the setup lock fd 8 $*" >> '${calls}'; exit 96; }
 how=without; hdr=""; case " $* " in *" @- "*) how=with; hdr="$(/usr/bin/cat)"; printf '%s\\n' "$hdr" >> '${curlStdin}' ;; esac
 if [ "$1" != -q ] && [ "$1" != --disable ] && [ -f "$HOME/.curlrc" ]; then printf '%s\\n' "$hdr" >> '${join(t, "curlrc-trace")}'; fi
 { printf 'curl#%s argv: %s\\n' "$how" "$*"; printf 'curl#%s env: %s\\n' "$how" "$(/usr/bin/env | /usr/bin/tr '\\n' ' ')"; } >> '${calls}'
