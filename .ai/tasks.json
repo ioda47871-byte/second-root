@@ -2588,7 +2588,7 @@
     {
       "id": "DEV-058",
       "title": "AI デザインのレビュー要約を保存し管理画面に表示する",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -2629,7 +2629,7 @@
         "Staging への migration の適用",
         "WSL の bridge の更新"
       ],
-      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
+      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加; 2026-10-19: PR #72 merge（f7e7712）。Fresh Review PASS（Low 4）→ 修正（要約は sidecar file、古い server には 1 回だけ要約を外して再送、制約名を限定した例外処理、サイズ上限の test）→ 再レビュー PASS（Low 2）→ Claude が修正（cycle は sidecar を結果と数えない、戻すときの片付け、孤立 sidecar の test）→ 最終レビュー PASS（指摘なし）、CI green（39300969002）。どの順番で入れても結果は失われない。Staging への migration と WSL の bridge 更新は人の作業（HUMAN-011・HUMAN-012）"
     },
     {
       "id": "DEV-059",

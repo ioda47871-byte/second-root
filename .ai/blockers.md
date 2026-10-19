@@ -5,13 +5,20 @@
 
 ## 未解除
 
-### HUMAN-011 — Staging に DEV-057（と DEV-058）の migration を適用
+### HUMAN-011 — Staging に DEV-057 と DEV-058 の migration を適用（この順で 1 回に）
 
-- 何: `20261020110000_sales_funnel_views.sql`（DEV-057、view 2 つだけ）。DEV-058 が merge されたら `20261020120000_sales_design_review.sql` も同じ回に、この順で適用する（逆順だと db push が順序違反で拒否する）。
-- 前提: develop が DEV-057 の merge（77c728b）以降。checkout が LF（STAGING.md §3）。
-- 手順: HUMAN-009 と同じ（`git ls-files --eol supabase/migrations | grep -v w/lf` が空 → plan で pending が上の migration だけ → `--confirm-ref znbqgvawublgyjwfpmei --apply` で全 PASS）。FAIL は再実行せず出力を Claude に渡す。
-- 適用しないとき: Staging の履歴タブでファネルの部分だけ「読み込めませんでした」になる（他は表示される）。`staging:verify` の migration 一致の検査が差分を示す。
-- 解除条件: 適用後、Claude が読み取りで view・grant・security_invoker を確認する。
+- 何: `20261020110000_sales_funnel_views.sql`（DEV-057、view 2 つだけ）と `20261020120000_sales_design_review.sql`（DEV-058、`sales_demos.design_review` 列・check 2 つ・`sales_design_submit` の置き換え）。Staging は `20261019120000` まで（19 本）。未適用はこの 2 本だけ。
+- 前提: develop が f7e7712（PR #72 の merge）以降。checkout が LF（STAGING.md §3）。
+- 手順: `git ls-files --eol supabase/migrations | grep -v w/lf` が空 → plan（`npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei`）で pending がこの 2 本だけ → `--confirm-ref znbqgvawublgyjwfpmei --apply` で全 PASS。FAIL は再実行せず出力を Claude に渡す。
+- 適用しないとき: 履歴タブのファネルの部分だけ「読み込めませんでした」。AI デザインは flag が off なので影響なし（on にしても要約付きの submit は 503 で止まり、bridge が次の回に再送するだけ）。
+- 解除条件: 適用後、Claude が読み取りで view・grant・security_invoker、`design_review` の check、`sales_design_submit` の引数（7 つ）・権限（service_role だけ）・本文（LF、repo と一致）を確認する。
+
+### HUMAN-012 — WSL の design bridge を DEV-058 / DEV-059 以降の commit に更新（任意、HUMAN-010 とは別）
+
+- 何: `sr-designbridge` の checkout（`~sr-designbridge/second-root`）を承認した commit（f7e7712 以降）に `git checkout --detach <commit> && npm ci`。手順は `docs/operations/design-bridge.md` §5・§10。
+- 推奨の順番: HUMAN-011（migration）→ Staging の server（develop の自動 deploy で済み）→ bridge → worker（worker は `SR_DESIGN_WORKER_REF=develop` で run ごとに develop に揃う）。順番が違っても結果は失われない（§10）。
+- bridge の Vercel bypass（DEV-059）は既定で無効のまま。有効にするのは `design-bridge-access.md` の人の承認後。timer（HUMAN-010）は保留のまま。
+- 解除条件: 人が更新し、次の controlled run で `result <id>: delivered` と管理画面の「AI レビュー: …」の表示を確かめる。
 
 ### HUMAN-010 — design worker の cycle（DEV-052）の WSL への install と timer の有効化
 
