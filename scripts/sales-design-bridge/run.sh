@@ -9,7 +9,8 @@
 # It
 #   1. restarts itself with an allowlisted environment (no other secret, and
 #      the bridge token is never an environment variable: it is read from a
-#      0600 file by bridge.ts),
+#      0600 file by bridge.ts; the optional Vercel bypass of DEV-059 likewise:
+#      only its file path and origin pass),
 #   2. refuses to run as the worker user or as root,
 #   3. allows one run at a time (flock),
 #   4. runs one pass of the bridge with a time limit (bridge.ts checks the
@@ -24,7 +25,8 @@ else
   keep=()
   for name in HOME PATH USER LOGNAME LANG TZ XDG_STATE_HOME \
     HTTPS_PROXY https_proxy NO_PROXY no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE \
-    SR_DESIGN_BRIDGE_API_URL SR_DESIGN_BRIDGE_TOKEN_FILE SR_DESIGN_BRIDGE_SPOOL; do
+    SR_DESIGN_BRIDGE_API_URL SR_DESIGN_BRIDGE_TOKEN_FILE SR_DESIGN_BRIDGE_SPOOL \
+    SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN; do
     if [ -n "${!name+x}" ]; then keep+=("$name=${!name}"); fi
   done
   exec env -i "${keep[@]}" bash "$0" --sr-clean-env "$@"
