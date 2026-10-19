@@ -2498,6 +2498,176 @@
       ],
       "human_approval_triggers": [],
       "decision": "2026-10-19: Claude が追加（CI failure の根本原因）; 2026-10-19: PR #68 merge（520bd67）。Fresh Review FAIL→修正（100 ms ごとの再送）→再レビュー PASS、CI green"
+    },
+    {
+      "id": "DEV-056",
+      "title": "返信管理: 返信待ちの経過日数・フォロー期限・未対応の返信を見やすくする",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-056-reply-management",
+      "purpose": "返信タブは送信済みの一覧と「返信あり」だけで、どれから見るべきかが分からない。送信からの経過日数、5 日フォローの期限、返信ありで次の操作がない項目を並べ、日々の返信の確認を速くする（MVP_SPEC §5、§4.3）",
+      "acceptance_criteria": [
+        "返信待ちに送信からの日数とフォロー期限（期限到来・送信済み）を表示し、古い順に並べる",
+        "返信あり・商談の項目に経過日数を表示する",
+        "状態遷移と DNC の規則は不変（サーバーの state machine を通る）",
+        "自動の返信取得・自動送信を追加しない"
+      ],
+      "required_tests": [
+        "unit: 経過日数・期限の計算（JST の日付境界）",
+        "integration: 管理者だけが読める",
+        "e2e: 返信タブの表示",
+        "lint / typecheck / CI"
+      ],
+      "allowed_scope": [
+        "app/admin/sales/",
+        "components/admin/",
+        "lib/admin/",
+        "lib/sales/",
+        "tests/",
+        "docs/MVP_SPEC.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production・Staging の変更",
+        "実際の営業送信・自動送信",
+        "timer の有効化",
+        "test の基準の緩和・skip"
+      ],
+      "human_approval_triggers": [
+        "新しい状態遷移・DNC の扱いの変更"
+      ],
+      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
+    },
+    {
+      "id": "DEV-057",
+      "title": "営業ファネル指標: 準備から成約までの段階と期間で見る",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-057-funnel-metrics",
+      "purpose": "履歴の指標は送信後（sent→replied→meeting→won）を条件ごとに出すだけ。準備（drafted）・見送り・送信・返信の内訳・商談・成約を 1 本のファネルとし、直近 30 日・全期間を切り替え、AI デザインの結果（ready / blocked / failed）も数える（MVP_SPEC §9、AI 不要）",
+      "acceptance_criteria": [
+        "ファネルの各段階の件数と前段からの率を表示する",
+        "期間（直近 30 日・全期間、JST）を切り替えられる",
+        "返信の種類の内訳を表示する",
+        "RLS で管理者だけが読める（security_invoker の view か admin session の query）",
+        "既存の sales_metrics の結果は不変"
+      ],
+      "required_tests": [
+        "unit: 率・期間の境界",
+        "integration: 集計の正しさと非管理者の拒否",
+        "e2e: 履歴タブ",
+        "lint / typecheck / CI"
+      ],
+      "allowed_scope": [
+        "app/admin/sales/",
+        "components/admin/",
+        "lib/admin/",
+        "lib/sales/",
+        "supabase/migrations/（新しい view だけ）",
+        "tests/",
+        "docs/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production・Staging の変更",
+        "実際の営業送信・自動送信",
+        "timer の有効化",
+        "test の基準の緩和・skip"
+      ],
+      "human_approval_triggers": [
+        "Staging への migration の適用"
+      ],
+      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
+    },
+    {
+      "id": "DEV-058",
+      "title": "AI デザインのレビュー要約を保存し管理画面に表示する",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-058-review-summary",
+      "purpose": "DEV-053 の品質ゲートで blocked になった理由は code しか残らない。worker が Codex review の要約（最終の verdict・合計点・観点ごとの点・round 数・confidence。Codex の文章は含めない）を提出し、DB に保存して今日の画面の詳細に表示する",
+      "acceptance_criteria": [
+        "要約は固定の key と数値・enum だけ（自由文なし、サイズ上限、DB の check で強制）",
+        "古い bridge（要約なし）の提出も受け付ける（後方互換）",
+        "公開 demo には出さない",
+        "flag が off のときの query は不変"
+      ],
+      "required_tests": [
+        "unit: 要約の作成・schema",
+        "integration: 提出と保存・check 違反の拒否・後方互換",
+        "e2e または unit: 管理画面の表示",
+        "lint / typecheck / CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "lib/sales/",
+        "lib/admin/",
+        "components/admin/",
+        "app/api/internal/",
+        "scripts/sales-design-worker/",
+        "supabase/migrations/（列と RPC だけ）",
+        "tests/",
+        "docs/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production・Staging の変更",
+        "実際の営業送信・自動送信",
+        "timer の有効化",
+        "test の基準の緩和・skip"
+      ],
+      "human_approval_triggers": [
+        "Staging への migration の適用",
+        "WSL の bridge の更新"
+      ],
+      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
+    },
+    {
+      "id": "DEV-059",
+      "title": "Vercel Authentication を維持したまま認証された bridge だけを通す方式の検討",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-059-bridge-access",
+      "purpose": "これまで design の controlled rerun のたびに Preview の Vercel Authentication を一時的に外していた（HUMAN-010 の前提）。Authentication を維持したまま、認証された bridge だけが design の API に届く方式を比較し、推奨案と必要な人の操作をまとめる。コードの準備は既定で無効",
+      "acceptance_criteria": [
+        "方式の比較（Protection Bypass for Automation の専用 secret、その他）と、各方式の露出範囲・費用・失効手順",
+        "推奨案の手順（人の操作を 1 つにまとめる）",
+        "コードを変える場合は既定で無効、値をログ・出力に出さない、送り先の host を固定"
+      ],
+      "required_tests": [
+        "unit: header を付ける host の限定・値の非出力（コードを変える場合）",
+        "lint / typecheck / CI"
+      ],
+      "allowed_scope": [
+        "docs/",
+        "scripts/sales-design-worker/",
+        "lib/sales/design-bridge*",
+        "tests/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production・Staging の変更",
+        "実際の営業送信・自動送信",
+        "timer の有効化",
+        "test の基準の緩和・skip",
+        "secret の作成・変更（人が行う）"
+      ],
+      "human_approval_triggers": [
+        "secret の作成・Deployment Protection の設定変更"
+      ],
+      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
     }
   ]
 }
