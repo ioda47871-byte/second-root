@@ -1,5 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isDesignStatus } from "@/lib/sales/design";
+import type { DesignDay, FunnelDay } from "@/lib/sales/funnel";
 import type { MetricRow } from "@/lib/sales/metrics";
 import type { Category, Channel, OutreachStatus } from "@/lib/sales/types";
 
@@ -63,4 +65,55 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricRow[]
     won: r.won,
     wonAmountJpy: Number(r.won_amount_jpy),
   }));
+}
+
+/**
+ * DEV-057: funnel counts per JST preparation day (sales_funnel_daily) from
+ * `since` (YYYY-MM-DD) on, or every day for null. RLS: non-admins get none.
+ */
+export async function loadFunnel(supabase: SupabaseClient, since: string | null): Promise<FunnelDay[]> {
+  let query = supabase
+    .from("sales_funnel_daily")
+    .select(
+      "prepared_on, prepared, skipped, unsent, sent, replied, meetings, won, won_amount_jpy, reply_interested, reply_question, reply_meeting_request, reply_decline, reply_other, dnc",
+    );
+  if (since !== null) query = query.gte("prepared_on", since);
+  const { data, error } = await query.order("prepared_on");
+  if (error) throw new Error("funnel_unavailable");
+  return (data ?? []).map((r) => ({
+    preparedOn: String(r.prepared_on),
+    prepared: r.prepared,
+    skipped: r.skipped,
+    unsent: r.unsent,
+    sent: r.sent,
+    replied: r.replied,
+    meetings: r.meetings,
+    won: r.won,
+    wonAmountJpy: Number(r.won_amount_jpy),
+    replies: {
+      interested: r.reply_interested,
+      question: r.reply_question,
+      meeting_request: r.reply_meeting_request,
+      decline: r.reply_decline,
+      other: r.reply_other,
+    },
+    dnc: r.dnc,
+  }));
+}
+
+/**
+ * DEV-057: AI design results per JST preparation day (sales_design_daily).
+ * Call it only with the AI design step on (the design columns are not read
+ * otherwise, lib/sales/design.ts).
+ */
+export async function loadDesignOutcomes(supabase: SupabaseClient, since: string | null): Promise<DesignDay[]> {
+  let query = supabase.from("sales_design_daily").select("prepared_on, design_status, design_error_code, demos");
+  if (since !== null) query = query.gte("prepared_on", since);
+  const { data, error } = await query.order("prepared_on");
+  if (error) throw new Error("design_outcomes_unavailable");
+  return (data ?? []).flatMap((r) =>
+    isDesignStatus(r.design_status)
+      ? [{ preparedOn: String(r.prepared_on), status: r.design_status, errorCode: typeof r.design_error_code === "string" ? r.design_error_code : null, demos: r.demos }]
+      : [],
+  );
 }
