@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { checkProfile } from "@/lib/design-agent/profile";
+import type { ReviewSummary } from "@/lib/design-agent/review-summary";
 import { toDemoView, type DemoView } from "./demo-content";
 import { DESIGN_LEASE_SECONDS, DESIGN_MAX_ATTEMPTS } from "./design";
 import { workerJobIdFor, type DesignBridgeRequest, type DesignFacts, type DesignJob, type DesignResult } from "./design-bridge-schema";
@@ -56,7 +57,7 @@ function errorCode(message: string | undefined): string {
 
 async function submitRow(
   db: SupabaseClient,
-  args: { jobId: string; outcome: "ready" | "blocked" | "failed"; profile: unknown; errorCode: string | null; workerCommit: string | null },
+  args: { jobId: string; outcome: "ready" | "blocked" | "failed"; profile: unknown; errorCode: string | null; workerCommit: string | null; review?: ReviewSummary },
 ): Promise<{ ok: true; row: StateRow } | { ok: false; code: string }> {
   const { data, error } = await db.rpc("sales_design_submit", {
     p_job_id: args.jobId,
@@ -65,6 +66,8 @@ async function submitRow(
     p_error_code: args.errorCode,
     p_worker_commit: args.workerCommit,
     p_max_attempts: DESIGN_MAX_ATTEMPTS,
+    // DEV-058: only with a summary, so a submit without one is the same call as before.
+    ...(args.review ? { p_review: args.review } : {}),
   });
   if (error) return { ok: false, code: errorCode(error.message) };
   return { ok: true, row: data as StateRow };
