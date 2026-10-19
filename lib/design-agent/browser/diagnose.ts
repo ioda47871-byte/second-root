@@ -108,6 +108,8 @@ export interface DiagnoseOptions {
   hasDisplay?: boolean;
   /** Tests only: how long a page or context close may take (production: CLOSE_TIMEOUT_MS). Ending the whole browser gets at least BROWSER_END_MIN_MS. */
   closeTimeoutMs?: number;
+  /** Tests only: how each run's browser ended ("<mode> browser closed|killed|forced|stuck"), for diagnosing CI. */
+  trace?: (line: string) => void;
   /** Tests only: the targeted close used when page.close() does not settle (production: closeTargetByCdp). */
   closeTarget?: (page: Page, deadline: number) => Promise<boolean>;
   say: (line: string) => void;
@@ -281,33 +283,39 @@ export async function closePageBounded(
 /**
  * Closes the browser of a run within a bounded time: the context first (within `ms`), and when that
  * does not settle, the browser itself (CDP Browser.close and browser.close(), within `killMs`: at least
- * BROWSER_END_MIN_MS). Both are graceful: Playwright's browser.close() waits for the process to exit and
- * does not kill it on a timeout. DEV-061: when that graceful close has not ended the browser in time
- * and the run's profile directory is known, the Chromium started with exactly that profile
- * (`--user-data-dir=<profileDir>`, this user's own process: the run holds the profile's lock) is killed
- * (SIGKILL), and the run waits a little more for Playwright to see it gone. "killed" means it ended
- * after the browser-level close or the kill; "stuck" means the run still did not see it end.
+ * BROWSER_END_MIN_MS). browser.close() settles only once the process has exited; Playwright's own
+ * SIGKILL comes only ~30 s after the close started. DEV-061: when the graceful close has not finished
+ * in time (even if Playwright already saw the browser disconnect: Chromium drops the pipe before it has
+ * exited), the Chromium started with exactly this run's profile (`--user-data-dir=<profileDir>`, this
+ * user's own process: the run holds the profile's lock) is killed (SIGKILL), and the run waits a little
+ * more for it to be gone. "killed": ended by the browser-level close; "forced": ended after the kill;
+ * "stuck": the run did not see it end.
  */
 export async function closeBrowser(
   context: BrowserContext,
   ms: number,
   killMs: number = Math.max(ms, BROWSER_END_MIN_MS),
   options: { profileDir?: string; killWaitMs?: number } = {},
-): Promise<"closed" | "killed" | "stuck"> {
+): Promise<"closed" | "killed" | "forced" | "stuck"> {
   if (await settlesWithin(context.close(), ms)) return "closed";
   const browser = context.browser();
   if (!browser) return "stuck";
-  const gone = new Promise<void>((resolve) => {
-    if (!browser.isConnected()) resolve();
-    browser.once("disconnected", () => resolve());
-  });
   const cdp = browser
     .newBrowserCDPSession()
     .then((s) => s.send("Browser.close"))
     .catch(() => undefined);
-  if (await settlesWithin(Promise.race([Promise.all([cdp, browser.close().catch(() => undefined)]), gone]), killMs)) return "killed";
-  if (!options.profileDir || (await killProfileBrowser(options.profileDir)) === 0) return "stuck";
-  return (await settlesWithin(gone, options.killWaitMs ?? 3_000)) ? "killed" : "stuck";
+  const exited = Promise.all([cdp, browser.close().catch(() => undefined)]);
+  if (await settlesWithin(exited, killMs)) return "killed";
+  if (!options.profileDir) return "stuck";
+  const signalled = await killProfileBrowser(options.profileDir);
+  if (signalled === 0) {
+    // No process of this profile is left: it ended by itself just now (browser.close() may still be
+    // waiting on its output pipes). Without a disconnect the run cannot tell, so it says stuck.
+    return browser.isConnected() ? "stuck" : "killed";
+  }
+  if (await settlesWithin(exited, options.killWaitMs ?? 3_000)) return "forced";
+  // Killed, disconnected and nothing of this profile left: gone, though close() still waits on pipes.
+  return !browser.isConnected() && (await killProfileBrowser(options.profileDir)) === 0 ? "forced" : "stuck";
 }
 
 /**
@@ -566,7 +574,11 @@ export async function runDiagnose(options: DiagnoseOptions): Promise<DiagnoseOut
           options.say(`${mode} BROWSER_ERROR`);
         }
       } finally {
-        if (context && (await closeBrowser(context, options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS, undefined, { profileDir: options.profileDir })) === "stuck") options.say(`${mode} BROWSER_STUCK`);
+        if (context) {
+          const ended = await closeBrowser(context, options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS, undefined, { profileDir: options.profileDir });
+          options.trace?.(`${mode} browser ${ended}`);
+          if (ended === "stuck") options.say(`${mode} BROWSER_STUCK`);
+        }
       }
     }
     return ran > 0 && failed === ran ? "FAILED" : "DIAGNOSED";

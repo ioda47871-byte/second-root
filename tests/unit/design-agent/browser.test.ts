@@ -619,8 +619,10 @@ describe("diagnose", () => {
       closeCalls.length = 0;
       const started = Date.now();
       // DEV-041: the targeted CDP close hangs too, so the run still says CLOSE_TIMEOUT
-      const outcome = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent: stuckLaunch, modes: [mode], sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, closeTimeoutMs: 1_000, closeTarget: () => new Promise<boolean>(() => undefined), hasDisplay: false, say: (l) => lines.push(l) });
-      const label = `${username} ${mode}`;
+      const traces: string[] = [];
+      const outcome = await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target: as(username), launchPersistent: stuckLaunch, modes: [mode], sampleAtMs: [200], pauseMs: 0, sessionWaitMs: 1_000, closeTimeoutMs: 1_000, closeTarget: () => new Promise<boolean>(() => undefined), hasDisplay: false, say: (l) => lines.push(l), trace: (l) => traces.push(`${l} @${Date.now() - started}ms`) });
+      // DEV-061: how the browser ended goes into every label, so a CI failure says which way it went
+      const label = `${username} ${mode} [${traces.join(", ")}]`;
       expect(Date.now() - started, `${label}: bounded`).toBeLessThan(30_000);
       expect(closeCalls.length, `${label}: page.close() was tried`).toBeGreaterThan(0);
       expect(outcome, label).toBe("DIAGNOSED");
@@ -995,8 +997,10 @@ describe("closeBrowser", () => {
     expect(await closeBrowser(fake(7_000).context, 1)).toBe("stuck");
   });
 
-  it("counts the browser as ended once it disconnects, even if browser.close() itself never settles", async () => {
-    expect(await closeBrowser(fake(100, false).context, 1, 2_000)).toBe("killed");
+  it("a disconnect alone is not \"ended\": without a profile to check it is stuck; with no process of the profile left it ended", async () => {
+    // browser.close() never settles (its process exit is never seen), but Playwright saw the pipe drop
+    expect(await closeBrowser(fake(100, false).context, 1, 500)).toBe("stuck");
+    expect(await closeBrowser(fake(100, false).context, 1, 500, { profileDir: join(tmpdir(), "sr-no-such-profile-dir") })).toBe("killed");
   });
 
   it("kills the Chromium of exactly this profile when the graceful close never ends it, and no other", { timeout: 30_000 }, async () => {
@@ -1011,7 +1015,7 @@ describe("closeBrowser", () => {
       await new Promise((resolve) => setTimeout(resolve, 300)); // both are running with their arguments
       const f = fake(null);
       void exited(mine).then(f.exit); // Playwright sees the browser gone when its process exits
-      expect(await closeBrowser(f.context, 1, 300, { profileDir: profile, killWaitMs: 5_000 })).toBe("killed");
+      expect(await closeBrowser(f.context, 1, 300, { profileDir: profile, killWaitMs: 1_000 })).toBe("forced");
       await exited(mine);
       expect(mine.signalCode).toBe("SIGKILL");
       expect(other.exitCode === null && other.signalCode === null, "another profile's browser is not touched").toBe(true);
@@ -1021,7 +1025,7 @@ describe("closeBrowser", () => {
     }
   });
 
-  it("killProfileBrowser matches the profile argument exactly, never by prefix", async () => {
+  it("killProfileBrowser finds nothing for a profile no process was started with", async () => {
     expect(await killProfileBrowser(join(tmpdir(), "sr-no-such-profile-dir"))).toBe(0);
   });
 });
