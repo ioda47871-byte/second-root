@@ -195,6 +195,10 @@ export async function closeTargetByCdp(page: Page, deadline: number): Promise<bo
     while (Date.now() < deadline) {
       const { targetInfos } = await session.send("Target.getTargets");
       if (!targetInfos.some((t) => t.targetId === id)) return true;
+      // DEV-055: a close sent while the page's cross-host navigation is still in flight can be dropped
+      // (on CI the page kept running until a later close); ask again on every poll until it is gone.
+      // Closing the same exact target again is harmless.
+      void session.send("Target.closeTarget", { targetId: id }).catch(() => undefined);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     return false;
@@ -229,14 +233,18 @@ export async function closePageBounded(
       () => (closedNormally = true),
       () => undefined,
     );
-    const targeted = Promise.resolve()
-      .then(() => closeTarget(page, deadline))
-      .then(
-        (closed) => {
-          gone = closed === true;
-        },
-        () => undefined,
-      );
+    // The targeted close is tried again until the deadline: right after the page opened, its target id
+    // may not be remembered yet (rememberTargetId is bounded), and reading it can fail while it moves.
+    const targeted = (async () => {
+      while (!gone && !closedNormally && Date.now() < deadline) {
+        try {
+          gone = (await closeTarget(page, deadline)) === true;
+        } catch {
+          gone = false;
+        }
+        if (!gone && !closedNormally && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    })();
     // Done as soon as either way has closed the page, or both have finished trying.
     const first = new Promise<void>((resolve) => {
       void normal.then(() => (closedNormally ? resolve() : undefined));
