@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkProfileLocation, checkProfileTree, prepareProfileDir, purgeOldCaptures, type ProfileEnv } from "@/lib/design-agent/browser/profile";
-import { BROWSER_END_MIN_MS, closeBrowser, closePageBounded, closeTargetByCdp, DIAGNOSE_CODES, rememberTargetId, runDiagnose, type DiagnoseMode } from "@/lib/design-agent/browser/diagnose";
+import { BROWSER_END_MIN_MS, closeBrowser, closePageBounded, killProfileBrowser, closeTargetByCdp, DIAGNOSE_CODES, rememberTargetId, runDiagnose, type DiagnoseMode } from "@/lib/design-agent/browser/diagnose";
 import { displayEnvironment, runLogin, runSignedInCapture, type LaunchPersistent } from "@/lib/design-agent/browser/session";
 import { childEnvironment } from "@/lib/design-agent/worker/env";
 import { hideAccountChrome, profileTarget } from "@/lib/design-agent/worker/capture";
@@ -949,32 +949,79 @@ describe("closePageBounded", () => {
 });
 
 // DEV-060: ending the whole browser gets at least BROWSER_END_MIN_MS, whatever the (short) page-close bound.
+// DEV-061: a graceful close that never ends it is followed by killing that profile's own Chromium.
 describe("closeBrowser", () => {
-  const fakeContext = (exitAfterMs: number) =>
-    ({
-      close: () => new Promise<void>(() => undefined), // the context close never settles
-      browser: () => ({
-        newBrowserCDPSession: () => Promise.reject(new Error("no session")),
-        close: () => new Promise<void>((resolve) => setTimeout(resolve, exitAfterMs)),
-      }),
-    }) as unknown as import("playwright").BrowserContext;
+  type Fake = { exit: () => void; context: import("playwright").BrowserContext };
+  const fake = (exitAfterMs: number | null, closeSettles = true): Fake => {
+    let connected = true;
+    const listeners: Array<() => void> = [];
+    const exit = () => {
+      if (!connected) return;
+      connected = false;
+      listeners.splice(0).forEach((l) => l());
+    };
+    const browser = {
+      isConnected: () => connected,
+      once: (_event: string, listener: () => void) => void listeners.push(listener),
+      newBrowserCDPSession: () => Promise.reject(new Error("no session")),
+      close: () =>
+        new Promise<void>((resolve) => {
+          if (exitAfterMs === null) return; // never ends by itself
+          setTimeout(() => {
+            exit();
+            if (closeSettles) resolve();
+          }, exitAfterMs);
+        }),
+    };
+    return { exit, context: { close: () => new Promise<void>(() => undefined), browser: () => browser } as unknown as import("playwright").BrowserContext };
+  };
 
   it("waits at least BROWSER_END_MIN_MS for the browser to end, even with a 1 s close bound", async () => {
     expect(BROWSER_END_MIN_MS).toBeGreaterThanOrEqual(5_000);
     const started = Date.now();
-    expect(await closeBrowser(fakeContext(2_000), 1_000)).toBe("killed");
+    expect(await closeBrowser(fake(2_000).context, 1_000)).toBe("killed");
     expect(Date.now() - started).toBeLessThan(1_000 + BROWSER_END_MIN_MS);
   });
 
-  it("still says stuck when the browser does not end within the kill bound", async () => {
+  it("still says stuck when the browser does not end and there is no profile to kill", async () => {
     const started = Date.now();
-    expect(await closeBrowser(fakeContext(60_000), 200, 300)).toBe("stuck");
+    expect(await closeBrowser(fake(null).context, 200, 300)).toBe("stuck");
     expect(Date.now() - started).toBeLessThan(2_000);
   });
 
   it("keeps the production bound when it is above the floor", { timeout: 30_000 }, async () => {
     // ends after 7 s: only a kill bound above the 5 s floor (the 10 s production bound) sees it end
-    expect(await closeBrowser(fakeContext(7_000), 1, 10_000)).toBe("killed");
-    expect(await closeBrowser(fakeContext(7_000), 1)).toBe("stuck");
+    expect(await closeBrowser(fake(7_000).context, 1, 10_000)).toBe("killed");
+    expect(await closeBrowser(fake(7_000).context, 1)).toBe("stuck");
+  });
+
+  it("counts the browser as ended once it disconnects, even if browser.close() itself never settles", async () => {
+    expect(await closeBrowser(fake(100, false).context, 1, 2_000)).toBe("killed");
+  });
+
+  it("kills the Chromium of exactly this profile when the graceful close never ends it, and no other", { timeout: 30_000 }, async () => {
+    const { spawn } = await import("node:child_process");
+    const dir = mkdtempSync(join(tmpdir(), "sr-kill-"));
+    const profile = join(dir, "profile");
+    const hold = "setInterval(() => undefined, 1000)";
+    const mine = spawn(process.execPath, ["-e", hold, "--", `--user-data-dir=${profile}`], { stdio: "ignore" });
+    const other = spawn(process.execPath, ["-e", hold, "--", `--user-data-dir=${profile}-other`], { stdio: "ignore" });
+    const exited = (child: typeof mine) => new Promise<void>((resolve) => (child.exitCode !== null || child.signalCode !== null ? resolve() : child.once("exit", () => resolve())));
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 300)); // both are running with their arguments
+      const f = fake(null);
+      void exited(mine).then(f.exit); // Playwright sees the browser gone when its process exits
+      expect(await closeBrowser(f.context, 1, 300, { profileDir: profile, killWaitMs: 5_000 })).toBe("killed");
+      await exited(mine);
+      expect(mine.signalCode).toBe("SIGKILL");
+      expect(other.exitCode === null && other.signalCode === null, "another profile's browser is not touched").toBe(true);
+    } finally {
+      mine.kill("SIGKILL");
+      other.kill("SIGKILL");
+    }
+  });
+
+  it("killProfileBrowser matches the profile argument exactly, never by prefix", async () => {
+    expect(await killProfileBrowser(join(tmpdir(), "sr-no-such-profile-dir"))).toBe(0);
   });
 });

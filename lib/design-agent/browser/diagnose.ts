@@ -17,7 +17,8 @@
  * Output is fixed codes only (see DIAGNOSE_CODES): never a username, bio,
  * caption, cookie, token, page text, URL or query.
  */
-import { lstat } from "node:fs/promises";
+import { lstat, readdir, readFile } from "node:fs/promises";
+import { resolve as resolvePath } from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import { childEnvironment } from "../worker/env";
 import { acquireLock } from "../worker/state";
@@ -280,20 +281,63 @@ export async function closePageBounded(
 /**
  * Closes the browser of a run within a bounded time: the context first (within `ms`), and when that
  * does not settle, the browser itself (CDP Browser.close and browser.close(), within `killMs`: at least
- * BROWSER_END_MIN_MS). Both are graceful: Playwright's browser.close() waits for the process to exit
- * and does not kill it on a timeout, so "killed" means it ended after the browser-level close, and
- * "stuck" means the run did not see it end in time. A Chromium that never answers stays until the
- * diagnose process itself exits (Playwright then kills its children).
+ * BROWSER_END_MIN_MS). Both are graceful: Playwright's browser.close() waits for the process to exit and
+ * does not kill it on a timeout. DEV-061: when that graceful close has not ended the browser in time
+ * and the run's profile directory is known, the Chromium started with exactly that profile
+ * (`--user-data-dir=<profileDir>`, this user's own process: the run holds the profile's lock) is killed
+ * (SIGKILL), and the run waits a little more for Playwright to see it gone. "killed" means it ended
+ * after the browser-level close or the kill; "stuck" means the run still did not see it end.
  */
-export async function closeBrowser(context: BrowserContext, ms: number, killMs: number = Math.max(ms, BROWSER_END_MIN_MS)): Promise<"closed" | "killed" | "stuck"> {
+export async function closeBrowser(
+  context: BrowserContext,
+  ms: number,
+  killMs: number = Math.max(ms, BROWSER_END_MIN_MS),
+  options: { profileDir?: string; killWaitMs?: number } = {},
+): Promise<"closed" | "killed" | "stuck"> {
   if (await settlesWithin(context.close(), ms)) return "closed";
   const browser = context.browser();
   if (!browser) return "stuck";
+  const gone = new Promise<void>((resolve) => {
+    if (!browser.isConnected()) resolve();
+    browser.once("disconnected", () => resolve());
+  });
   const cdp = browser
     .newBrowserCDPSession()
     .then((s) => s.send("Browser.close"))
     .catch(() => undefined);
-  return (await settlesWithin(Promise.all([cdp, browser.close()]), killMs)) ? "killed" : "stuck";
+  if (await settlesWithin(Promise.race([Promise.all([cdp, browser.close().catch(() => undefined)]), gone]), killMs)) return "killed";
+  if (!options.profileDir || (await killProfileBrowser(options.profileDir)) === 0) return "stuck";
+  return (await settlesWithin(gone, options.killWaitMs ?? 3_000)) ? "killed" : "stuck";
+}
+
+/**
+ * DEV-061: kills (SIGKILL) this user's processes started with `--user-data-dir=<profileDir>` exactly
+ * (the browser process of that profile; its renderers end with it). Linux /proc only; returns how many
+ * were signalled. Never matches by prefix, so another profile's browser is never touched.
+ */
+export async function killProfileBrowser(profileDir: string): Promise<number> {
+  const wanted = new Set([`--user-data-dir=${profileDir}`, `--user-data-dir=${resolvePath(profileDir)}`]);
+  const uid = process.getuid?.();
+  let killed = 0;
+  for (const entry of await readdir("/proc").catch(() => [] as string[])) {
+    if (!/^\d+$/.test(entry)) continue;
+    const pid = Number(entry);
+    if (pid === process.pid) continue;
+    const cmdline = await readFile(`/proc/${entry}/cmdline`).catch(() => null);
+    if (!cmdline || !cmdline.toString("utf8").split("\0").some((arg) => wanted.has(arg))) continue;
+    if (uid !== undefined) {
+      const status = await readFile(`/proc/${entry}/status`, "utf8").catch(() => "");
+      const owner = /^Uid:\s+(\d+)/m.exec(status)?.[1];
+      if (owner === undefined || Number(owner) !== uid) continue;
+    }
+    try {
+      process.kill(pid, "SIGKILL");
+      killed += 1;
+    } catch {
+      // already gone, or not ours
+    }
+  }
+  return killed;
 }
 
 function httpCode(status: number | undefined): DiagnoseCode {
@@ -522,7 +566,7 @@ export async function runDiagnose(options: DiagnoseOptions): Promise<DiagnoseOut
           options.say(`${mode} BROWSER_ERROR`);
         }
       } finally {
-        if (context && (await closeBrowser(context, options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS)) === "stuck") options.say(`${mode} BROWSER_STUCK`);
+        if (context && (await closeBrowser(context, options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS, undefined, { profileDir: options.profileDir })) === "stuck") options.say(`${mode} BROWSER_STUCK`);
       }
     }
     return ran > 0 && failed === ran ? "FAILED" : "DIAGNOSED";
