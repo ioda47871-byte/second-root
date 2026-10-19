@@ -62,7 +62,7 @@ bash $A run sr-designgen -- /bin/bash -lc "cd ~/work/second-root && git fetch -q
 
 1 枚 PoC の report で次がすべて満たされたときだけ、`J=poc-photo-003`、画像 3 枚（`--image` を 3 回）で同じ手順を流す。
 
-- `outcome: done`、`lineage_ok: true`、`cleanup_ok: true`
+- `outcome: done`、`lineage_ok: true`、`cleanup_ok: true`（DEV-053: final の review が accept しなかった run は `outcome: blocked`・`codex.quality_not_accepted: true`。lineage・cleanup・見積りの確認には使えるが、デザインの品質は合格していない）
 - `estimate.verdict: OK`（revision 2 の保守的な見積りが 50 分の 80 % 以内）
 - `codex.notes` に `PHOTO_RENDER_MISMATCH` / `RENDERER_CHANGE_NEEDED` がない
 
