@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkProfileLocation, checkProfileTree, prepareProfileDir, purgeOldCaptures, type ProfileEnv } from "@/lib/design-agent/browser/profile";
-import { closePageBounded, closeTargetByCdp, DIAGNOSE_CODES, rememberTargetId, runDiagnose, type DiagnoseMode } from "@/lib/design-agent/browser/diagnose";
+import { BROWSER_END_MIN_MS, closeBrowser, closePageBounded, closeTargetByCdp, DIAGNOSE_CODES, rememberTargetId, runDiagnose, type DiagnoseMode } from "@/lib/design-agent/browser/diagnose";
 import { displayEnvironment, runLogin, runSignedInCapture, type LaunchPersistent } from "@/lib/design-agent/browser/session";
 import { childEnvironment } from "@/lib/design-agent/worker/env";
 import { hideAccountChrome, profileTarget } from "@/lib/design-agent/worker/capture";
@@ -945,5 +945,36 @@ describe("closePageBounded", () => {
       expect(a.isClosed()).toBe(false);
       await context.close();
     }
+  });
+});
+
+// DEV-060: ending the whole browser gets at least BROWSER_END_MIN_MS, whatever the (short) page-close bound.
+describe("closeBrowser", () => {
+  const fakeContext = (exitAfterMs: number) =>
+    ({
+      close: () => new Promise<void>(() => undefined), // the context close never settles
+      browser: () => ({
+        newBrowserCDPSession: () => Promise.reject(new Error("no session")),
+        close: () => new Promise<void>((resolve) => setTimeout(resolve, exitAfterMs)),
+      }),
+    }) as unknown as import("playwright").BrowserContext;
+
+  it("waits at least BROWSER_END_MIN_MS for the browser to end, even with a 1 s close bound", async () => {
+    expect(BROWSER_END_MIN_MS).toBeGreaterThanOrEqual(5_000);
+    const started = Date.now();
+    expect(await closeBrowser(fakeContext(2_000), 1_000)).toBe("killed");
+    expect(Date.now() - started).toBeLessThan(1_000 + BROWSER_END_MIN_MS);
+  });
+
+  it("still says stuck when the browser does not end within the kill bound", async () => {
+    const started = Date.now();
+    expect(await closeBrowser(fakeContext(60_000), 200, 300)).toBe("stuck");
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("keeps the production bound when it is above the floor", { timeout: 30_000 }, async () => {
+    // ends after 7 s: only a kill bound above the 5 s floor (the 10 s production bound) sees it end
+    expect(await closeBrowser(fakeContext(7_000), 1, 10_000)).toBe("killed");
+    expect(await closeBrowser(fakeContext(7_000), 1)).toBe("stuck");
   });
 });
