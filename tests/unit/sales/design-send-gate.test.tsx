@@ -85,6 +85,7 @@ function item(designStatus: DesignStatus | null): TodayItem {
     sentAt: null,
     designStatus,
     designErrorCode: null,
+    designReview: null,
   };
 }
 
