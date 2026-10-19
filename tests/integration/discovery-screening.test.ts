@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/internal/sales-agent/runs/route";
 import { emailDigest } from "@/lib/sales/email-digest";
-import { verifiedInput } from "../unit/sales/ingest-fixtures";
+import { verifiedEmailInput, verifiedInput } from "../unit/sales/ingest-fixtures";
 import { anonClient, createUser, db, makeAdmin, resetSalesData, rpc, signedInClient } from "./helpers";
 
 // DEV-054: the discovered checkpoint marks stubs of shops the server already
@@ -173,7 +173,6 @@ describe("memory of rejected candidates", () => {
     const handle = new URL(site.instagramUrl!).pathname.split("/")[1];
     expect(rows.map((r) => [r.key_type, r.reason, r.run_id, Number(r.days)])).toEqual([
       ["instagram_handle", "site_without_email", runId, 90],
-      ["name_address", "site_without_email", runId, 90],
       ["website_domain", "site_without_email", runId, 90],
     ]);
     expect(rows.find((r) => r.key_type === "instagram_handle").key_value).toBe(handle);
@@ -181,7 +180,7 @@ describe("memory of rejected candidates", () => {
 
     // Re-sending the same verified checkpoint does not add rows.
     await ok({ action: "checkpoint", runId, phase: "verified", candidates: [site, transient] });
-    expect(await count("sales_rejected_candidates")).toBe(3);
+    expect(await count("sales_rejected_candidates")).toBe(2);
     await ok({ action: "persist", runId });
 
     // The next run's discovery skips the shop by either key.
@@ -191,6 +190,18 @@ describe("memory of rejected candidates", () => {
       { key: "c", name: "再確認", category: "bakery", instagramUrl: transient.instagramUrl },
     ]);
     expect(next.run.knownKeys).toEqual(["a", "b"]);
+  });
+
+  it("does not remember a site without email when an email was submitted (a submission problem)", async () => {
+    const shop = verifiedEmailInput({
+      instagramUrl: ig("typo_email_pan"),
+      email: { address: "owner@other.example.com", sourceUrl: "https://linktr.ee/typo_email_pan", sourceType: "other" },
+    });
+    const noChannel = verifiedInput({ instagramUrl: null }); // no_eligible_channel: not remembered
+    const { runId } = await discover([shop, noChannel].map((c) => ({ key: c.key, name: c.name, category: "bakery" })));
+    const verified = (await ok({ action: "checkpoint", runId, phase: "verified", candidates: [shop, noChannel] })).run;
+    expect(verified.candidates.map((c: { reason: string }) => c.reason)).toEqual(["site_without_email", "no_eligible_channel"]);
+    expect(await count("sales_rejected_candidates")).toBe(0);
   });
 
   it("never remembers daily_cap, excluded, DNC, duplicate or errors", async () => {
@@ -219,9 +230,41 @@ describe("memory of rejected candidates", () => {
     await expect(rpc("sales_remember_rejections", { p_run_id: runId, p_entries: {} })).rejects.toThrow(/invalid_rejection_memory/);
   });
 
+  it("skips a bad key on its own and still records the rest of the batch", async () => {
+    const a = verifiedInput({ website: { status: "present", url: "https://skip-a.example.com/", checks: 1 } });
+    const b = verifiedInput({ website: { status: "present", url: "https://skip-b.example.com/", checks: 1 } });
+    const { runId } = await discover([a, b].map((c) => ({ key: c.key, name: c.name, category: "bakery" })));
+    await ok({ action: "checkpoint", runId, phase: "verified", candidates: [a, b] });
+    await db.query("truncate public.sales_rejected_candidates");
+    const saved = await rpc<number>("sales_remember_rejections", {
+      p_run_id: runId,
+      p_entries: [
+        {
+          key: a.key,
+          reason: "site_without_email",
+          keys: [
+            { type: "instagram_handle", value: "Bad Handle" },
+            { type: "name_address", value: "店|愛知県名古屋市中区1-1" },
+            { type: "website_domain", value: "owner@skip-a.example.com" },
+            { value: "no_type_pan" },
+            "not-an-object",
+            { type: "instagram_handle", value: "good_skip_a" },
+          ],
+        },
+        { key: b.key, reason: "site_without_email", keys: [{ type: "website_domain", value: "skip-b.example.com" }] },
+      ],
+    });
+    expect(saved).toBe(2);
+    const { rows } = await db.query("select key_type, key_value from public.sales_rejected_candidates order by key_type");
+    expect(rows).toEqual([
+      { key_type: "instagram_handle", key_value: "good_skip_a" },
+      { key_type: "website_domain", key_value: "skip-b.example.com" },
+    ]);
+  });
+
   it("deletes expired rows on the next write", async () => {
     await db.query(
-      "insert into public.sales_rejected_candidates (key_type, key_value, reason, first_rejected_at, last_rejected_at, expires_at) values ('instagram_handle', 'expired_pan', 'no_eligible_channel', now() - interval '100 days', now() - interval '100 days', now() - interval '10 days')",
+      "insert into public.sales_rejected_candidates (key_type, key_value, reason, first_rejected_at, last_rejected_at, expires_at) values ('instagram_handle', 'expired_pan', 'site_without_email', now() - interval '100 days', now() - interval '100 days', now() - interval '10 days')",
     );
     const shop = verifiedInput({ website: { status: "present", url: "https://purge-site.example.com/", checks: 1 } });
     const { runId } = await discover([{ key: shop.key, name: shop.name, category: "bakery" }]);
@@ -233,10 +276,15 @@ describe("memory of rejected candidates", () => {
   it("refuses emails and malformed keys in the table", async () => {
     const insert = (type: string, value: string) =>
       db.query("insert into public.sales_rejected_candidates (key_type, key_value, reason, expires_at) values ($1, $2, 'site_without_email', now() + interval '1 day')", [type, value]);
-    await expect(insert("name_address", "owner@shop.example.com|愛知県名古屋市中区1-1")).rejects.toThrow(/check constraint/);
+    await expect(insert("website_domain", "owner@shop.example.com")).rejects.toThrow(/check constraint/);
     await expect(insert("instagram_handle", "Bad Handle")).rejects.toThrow(/check constraint/);
-    await expect(insert("name_address", "店|愛知県豊田市1-1")).rejects.toThrow(/check constraint/);
+    await expect(insert("website_domain", "Shop.Example.com")).rejects.toThrow(/check constraint/);
+    // Only the two keys screening matches on are stored.
+    await expect(insert("name_address", "店|愛知県名古屋市中区1-1")).rejects.toThrow(/check constraint/);
     await expect(insert("email", "x")).rejects.toThrow(/check constraint/);
+    await expect(
+      db.query("insert into public.sales_rejected_candidates (key_type, key_value, reason, expires_at) values ('instagram_handle', 'reason_pan', 'no_eligible_channel', now() + interval '1 day')"),
+    ).rejects.toThrow(/check constraint/);
     const { rows } = await db.query("select column_name from information_schema.columns where table_schema = 'public' and table_name = 'sales_rejected_candidates' and column_name like '%email%'");
     expect(rows).toEqual([]);
   });

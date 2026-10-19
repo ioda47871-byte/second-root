@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import { dedupeKeys } from "@/lib/sales/dedupe";
-import { DURABLE_REJECTIONS, discoveryKeys, isDurableRejection, rejectionMemoryEntry, screenableStubs } from "@/lib/sales/discovery";
+import { DURABLE_REJECTIONS, discoveryKeys, isDurableRejection, isValidMemoryKey, rejectionMemoryEntry, screenableStubs, validMemoryEntries, type RejectionMemoryEntry } from "@/lib/sales/discovery";
 import { handleIngest, toView } from "@/lib/sales/ingest";
 import { ingestRequest, type IngestRequest } from "@/lib/sales/ingest-schema";
 import { prepareCandidate, type RejectionReason } from "@/lib/sales/prepare";
@@ -53,18 +53,18 @@ describe("discoveryKeys", () => {
 
 describe("rejectionMemoryEntry", () => {
   it("treats only shop-caused rejections as durable", () => {
-    expect([...DURABLE_REJECTIONS].sort()).toEqual(["no_eligible_channel", "site_without_email"]);
-    for (const transient of ["daily_cap", "excluded", "do_not_contact", "duplicate", "persist_failed", "dedupe_unavailable"]) {
+    expect([...DURABLE_REJECTIONS]).toEqual(["site_without_email"]);
+    for (const transient of ["daily_cap", "excluded", "do_not_contact", "duplicate", "persist_failed", "dedupe_unavailable", "no_eligible_channel"]) {
       expect(isDurableRejection(transient), transient).toBe(false);
     }
     const notDurable: RejectionReason[] = [
-      "outside_nagoya", "unsupported_category", "missing_source", "invalid_website", "invalid_instagram",
+      "outside_nagoya", "unsupported_category", "missing_source", "invalid_website", "invalid_instagram", "no_eligible_channel",
       "website_not_rechecked", "website_unknown_without_email", "unsourced_name_or_address", "message_contains_url", "unsafe_content",
     ];
     for (const reason of notDurable) expect(rejectionMemoryEntry(verifiedInput(), reason), reason).toBeNull();
   });
 
-  it("remembers a site without email by handle, website key and name + address", () => {
+  it("remembers a site without email by handle and website key only", () => {
     const input = verifiedInput({ website: { status: "present", url: "https://www.pan-site.example.com/about", checks: 1 } });
     expect(prepareCandidate(input)).toEqual({ stage: "rejected", reason: "site_without_email" });
     const entry = rejectionMemoryEntry(input, "site_without_email");
@@ -75,32 +75,78 @@ describe("rejectionMemoryEntry", () => {
       keys: [
         { type: "instagram_handle", value: dk.instagram },
         { type: "website_domain", value: "pan-site.example.com" },
-        { type: "name_address", value: dk.nameAddress },
       ],
     });
-    expect(dk.nameAddress.split("|")[1].startsWith("愛知県名古屋市")).toBe(true);
+    // No name / address: screening never matches on it.
+    expect(JSON.stringify(entry)).not.toContain(input.address);
   });
 
-  it("remembers a shop with no channel by name + address only", () => {
+  it("does not remember a shop with no channel (it has no screening key)", () => {
     const input = verifiedInput({ instagramUrl: null });
     expect(prepareCandidate(input)).toEqual({ stage: "rejected", reason: "no_eligible_channel" });
-    const entry = rejectionMemoryEntry(input, "no_eligible_channel");
-    expect(entry?.keys.map((k) => k.type)).toEqual(["name_address"]);
+    expect(rejectionMemoryEntry(input, "no_eligible_channel")).toBeNull();
+  });
+
+  it("does not remember a site without email when any email was submitted (a submission mistake)", () => {
+    const at = (address: string, sourceUrl: string, sourceType: "other" | "official_contact" | "official_site") => ({ address, sourceUrl, sourceType });
+    for (const email of [
+      at("owner@pan.example.com", "https://linktr.ee/x", "other"), // wrong source type
+      at("info@pan-typo.example.com", "https://pan-typo.example.com/contact", "official_contact"), // other site
+      at("info@shop.pan-site.example.com", "https://shop.pan-site.example.com/", "official_site"), // other subdomain
+    ]) {
+      const input = verifiedEmailInput({ instagramUrl: "https://www.instagram.com/typo_pan/", website: { status: "present", url: "https://pan-site.example.com/", checks: 1 }, email });
+      expect(prepareCandidate(input), email.address).toEqual({ stage: "rejected", reason: "site_without_email" });
+      expect(rejectionMemoryEntry(input, "site_without_email"), email.address).toBeNull();
+    }
+    const none = verifiedEmailInput({ instagramUrl: "https://www.instagram.com/typo_pan/", website: { status: "present", url: "https://pan-site.example.com/", checks: 1 }, email: null });
+    expect(rejectionMemoryEntry(none, "site_without_email")?.keys.map((k) => k.type)).toEqual(["instagram_handle", "website_domain"]);
+    const absent = { ...none } as Partial<typeof none>;
+    delete absent.email;
+    expect(rejectionMemoryEntry(absent as typeof none, "site_without_email")).not.toBeNull();
   });
 
   it("never stores an email, plain or as part of a key", () => {
-    const input = verifiedEmailInput({ email: { address: "owner@pan.example.com", sourceUrl: "https://linktr.ee/x", sourceType: "other" } });
-    expect(prepareCandidate(input)).toEqual({ stage: "rejected", reason: "site_without_email" });
+    const input = verifiedInput({ website: { status: "present", url: "https://owner-pan.example.com/", checks: 1 } });
     const json = JSON.stringify(rejectionMemoryEntry(input, "site_without_email"));
-    expect(json).not.toContain("owner@");
     expect(json).not.toContain("@");
   });
+});
 
-  it("leaves out a name + address key that looks like an email or has the separator", () => {
-    for (const name of ["owner@pan.example.com", "パン|工房"]) {
-      const input = verifiedInput({ name, instagramUrl: null });
-      expect(rejectionMemoryEntry(input, "no_eligible_channel"), name).toBeNull();
-    }
+describe("memory key validation (same rules as the table)", () => {
+  it("accepts the keys the table accepts", () => {
+    for (const k of [
+      { type: "instagram_handle", value: "test_pan.2" },
+      { type: "website_domain", value: "pan.example.com" },
+      { type: "website_domain", value: "ameblo.jp/test-pan" },
+    ]) expect(isValidMemoryKey(k), k.value).toBe(true);
+  });
+
+  it("refuses bad types, shapes, lengths, whitespace and emails", () => {
+    for (const k of [
+      { type: "name_address", value: "店|愛知県名古屋市中区1-1" },
+      { type: "email", value: "x" },
+      { type: "instagram_handle", value: "Bad_Handle" },
+      { type: "instagram_handle", value: "a".repeat(31) },
+      { type: "instagram_handle", value: "" },
+      { type: "website_domain", value: "Pan.example.com" },
+      { type: "website_domain", value: "ab" },
+      { type: "website_domain", value: `${"a".repeat(509)}.com` },
+      { type: "website_domain", value: "pan example.com" },
+      { type: "website_domain", value: "note.com/owner@pan.example.com" },
+      { type: "instagram_handle", value: 42 },
+    ]) expect(isValidMemoryKey(k), String(k.value)).toBe(false);
+  });
+
+  it("drops bad keys and keyless or non-durable entries before sending", () => {
+    const entries = [
+      { key: "a", reason: "site_without_email", keys: [{ type: "instagram_handle", value: "Bad Handle" }, { type: "website_domain", value: "a.example.com" }] },
+      { key: "b", reason: "site_without_email", keys: [{ type: "website_domain", value: "owner@b.example.com" }] },
+      { key: "c", reason: "no_eligible_channel", keys: [{ type: "instagram_handle", value: "c_pan" }] },
+      { key: "", reason: "site_without_email", keys: [{ type: "instagram_handle", value: "d_pan" }] },
+    ] as unknown as RejectionMemoryEntry[];
+    expect(validMemoryEntries(entries)).toEqual([{ key: "a", reason: "site_without_email", keys: [{ type: "website_domain", value: "a.example.com" }] }]);
+    const many = Array.from({ length: 12 }, (_, i) => ({ key: `k${i}`, reason: "site_without_email" as const, keys: [{ type: "instagram_handle" as const, value: `k${i}_pan` }] }));
+    expect(validMemoryEntries(many)).toHaveLength(10);
   });
 });
 

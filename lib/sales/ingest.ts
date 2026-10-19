@@ -5,7 +5,7 @@ import { checkDraft } from "@/lib/instagram/draft";
 import { fetchUsername } from "@/lib/instagram/graph";
 import { checkpointProblem } from "./checkpoint";
 import { aiDesignEnabled } from "./design";
-import { discoveryKeys, rejectionMemoryEntry, screenableStubs, type RejectionMemoryEntry } from "./discovery";
+import { discoveryKeys, rejectionMemoryEntry, screenableStubs, validMemoryEntries, type RejectionMemoryEntry } from "./discovery";
 import type { IngestRequest } from "./ingest-schema";
 import { prepareCandidate, type PreparedCandidate } from "./prepare";
 import { isTerminalStage, nextAction, type CandidateStage, type NextAction, type RunPhase, type RunStatus } from "./run";
@@ -328,9 +328,11 @@ async function knownDiscoveredKeys(db: SupabaseClient, candidates: Array<{ key: 
  * rejected either way) and only means it may be verified again later.
  */
 async function rememberRejections(db: SupabaseClient, runId: string, entries: RejectionMemoryEntry[]): Promise<void> {
-  if (entries.length === 0) return;
+  // Validated before sending, so one bad key cannot fail the whole call.
+  const valid = validMemoryEntries(entries);
+  if (valid.length === 0) return;
   try {
-    await db.rpc("sales_remember_rejections", { p_run_id: runId, p_entries: entries });
+    await db.rpc("sales_remember_rejections", { p_run_id: runId, p_entries: valid });
   } catch {
     // Best effort (see above).
   }

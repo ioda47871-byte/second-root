@@ -22,12 +22,13 @@
 -- Memory of rejected candidates
 -- ---------------------------------------------------------------------------
 --
--- Durable reasons only (lib/sales/discovery.ts DURABLE_REJECTIONS), both
+-- One durable reason only (lib/sales/discovery.ts DURABLE_REJECTIONS),
 -- decided after the shop's name and address were checked against their sources:
---   site_without_email  : the shop has its own website and no first-party email
---                         (out of MVP scope, MVP_SPEC §3.2)
---   no_eligible_channel : no website (checked twice), no Instagram, no
---                         first-party email
+--   site_without_email : the shop has its own website and no first-party email
+--                        (out of MVP scope, MVP_SPEC §3.2). Remembered only
+--                        when the candidate submitted no email at all (a
+--                        submitted email prepare refused is a submission
+--                        problem, not the shop's).
 -- Not remembered: excluded / do_not_contact / duplicate (the exclusion list and
 -- the prospects already answer those, and removing an exclusion must take
 -- effect at once), daily_cap and every error (transient), and reasons about
@@ -35,23 +36,25 @@
 -- website_not_rechecked, website_unknown_without_email, invalid_*, ...).
 -- outside_nagoya / unsupported_category are decided before the name and
 -- address are source-checked, so they are not remembered either.
+-- no_eligible_channel (no website, no Instagram) is not remembered: it has
+-- neither of the keys screening matches on.
 --
--- Keys use the ingest normalisation: instagram_handle (parseInstagramProfile),
--- website_domain (websiteKey) and name_address
--- (normalizeName(name) || '|' || normalizeAddress(address), as lib/sales/dedupe.ts).
--- No email, plain or digested: the discovered stubs never carry one.
+-- Keys: exactly the two that discovery screening matches on, with the ingest
+-- normalisation: instagram_handle (parseInstagramProfile) and website_domain
+-- (websiteKey). No name / address and no email, plain or digested: the
+-- discovered stubs carry neither, so they would never be used.
 -- A row expires 90 days after the last rejection (shops change: a site is
 -- dropped, an email is published); expired rows are ignored and deleted on the
 -- next write. Read: admin only (RLS). Write: the service-role function below.
 
 create table public.sales_rejected_candidates (
   id uuid primary key default gen_random_uuid(),
-  key_type text not null check (key_type in ('instagram_handle', 'website_domain', 'name_address')),
+  key_type text not null check (key_type in ('instagram_handle', 'website_domain')),
   key_value text not null check (
     char_length(key_value) between 1 and 520
     and key_value !~ '[[:space:]]'
     and key_value !~ '[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+'),
-  reason text not null check (reason in ('site_without_email', 'no_eligible_channel')),
+  reason text not null check (reason in ('site_without_email')),
   run_id uuid references public.sales_agent_runs (run_id) on delete set null,
   first_rejected_at timestamptz not null default now(),
   last_rejected_at timestamptz not null default now(),
@@ -59,8 +62,7 @@ create table public.sales_rejected_candidates (
   constraint sales_rejected_candidates_key unique (key_type, key_value),
   constraint sales_rejected_candidates_key_shape check (
     (key_type = 'instagram_handle' and key_value ~ '^[a-z0-9._]{1,30}$')
-    or (key_type = 'website_domain' and key_value = lower(key_value) and char_length(key_value) between 3 and 512)
-    or (key_type = 'name_address' and key_value ~ '^[^|]+\|愛知県名古屋市')),
+    or (key_type = 'website_domain' and key_value = lower(key_value) and char_length(key_value) between 3 and 512)),
   constraint sales_rejected_candidates_expiry check (expires_at > last_rejected_at)
 );
 
@@ -116,7 +118,10 @@ $$;
 -- the server from the submitted candidate. An entry is recorded only when the
 -- run's checkpoint holds that key as rejected with that same durable reason,
 -- so nothing else can be remembered. Re-sending is idempotent (one row per
--- key; a repeat refreshes the reason, run and expiry).
+-- key; a repeat refreshes the reason, run and expiry). A key the table refuses
+-- (bad type / shape, check_violation or not_null_violation) is skipped on its
+-- own; the rest of the batch is still recorded (the server validates first,
+-- lib/sales/discovery.ts validMemoryEntries).
 
 create function public.sales_remember_rejections(p_run_id uuid, p_entries jsonb)
 returns integer
@@ -148,17 +153,22 @@ begin
     st := r.checkpoint->'candidates'->(e->>'key');
     if st is null or st->>'stage' is distinct from 'rejected'
        or st->>'reason' is distinct from e->>'reason'
-       or e->>'reason' not in ('site_without_email', 'no_eligible_channel')
+       or e->>'reason' is distinct from 'site_without_email'
        or jsonb_typeof(e->'keys') is distinct from 'array' then
       continue;
     end if;
     for k in select value from jsonb_array_elements(e->'keys') loop
-      insert into public.sales_rejected_candidates (key_type, key_value, reason, run_id, expires_at)
-        values (k->>'type', k->>'value', e->>'reason', p_run_id, now() + interval '90 days')
-        on conflict (key_type, key_value) do update
-          set reason = excluded.reason, run_id = excluded.run_id,
-              last_rejected_at = now(), expires_at = excluded.expires_at;
-      saved := saved + 1;
+      -- One bad key skips only itself (a subtransaction per key).
+      begin
+        insert into public.sales_rejected_candidates (key_type, key_value, reason, run_id, expires_at)
+          values (k->>'type', k->>'value', e->>'reason', p_run_id, now() + interval '90 days')
+          on conflict (key_type, key_value) do update
+            set reason = excluded.reason, run_id = excluded.run_id,
+                last_rejected_at = now(), expires_at = excluded.expires_at;
+        saved := saved + 1;
+      exception when check_violation or not_null_violation then
+        null;
+      end;
     end loop;
   end loop;
   return saved;
