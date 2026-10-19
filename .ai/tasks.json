@@ -2738,6 +2738,43 @@
       ],
       "human_approval_triggers": [],
       "decision": "2026-10-19: Claude が追加（CI failure の根本対策、PR #74）; 2026-10-19: PR #74 merge（78a4fd6）。Fresh Review PASS（Medium 1: 切断だけでは終了とみなさない → 修正、強制終了は \"forced\" として区別、CI の test は終わり方を label に出す）→ 再レビュー PASS（Low 2: 本物の Chromium での kill の test、コメントの「browser process」表記。後続で対応）、CI green"
+    },
+    {
+      "id": "DEV-062",
+      "title": "bridge の run.sh を起動した directory に依存させない（WSL の /mnt/c で EACCES）",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-058"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "fix/dev-062-bridge-run-cwd",
+      "purpose": "HUMAN-012 の bridge 更新で、/mnt/c/... から run.sh を起動すると tsx が esbuild を起動するときに EACCES（cd ~sr-designbridge/second-root からは成功）。他の入口の script は cd \"$REPO\" 済みで、bridge の run.sh だけ未対応",
+      "acceptance_criteria": [
+        "run.sh は自分の checkout に cd してから tsx を起動する",
+        "環境変数の allowlist・user の検査・flock・時間制限は不変",
+        "回帰 test（別の directory から起動しても tsx の cwd が checkout）"
+      ],
+      "required_tests": [
+        "unit: 別の directory から起動した run.sh の tsx の cwd",
+        "bridge / vercel-bypass / design-worker-cycle",
+        "CI"
+      ],
+      "allowed_scope": [
+        "scripts/sales-design-bridge/",
+        "tests/unit/design-agent/",
+        "docs/operations/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Production・Staging・Vercel の設定",
+        "timer の有効化"
+      ],
+      "human_approval_triggers": [
+        "WSL の bridge の checkout の更新（人）"
+      ],
+      "decision": "2026-10-19: 人の報告（HUMAN-012）から Claude が追加（PR #75）"
     }
   ]
 }

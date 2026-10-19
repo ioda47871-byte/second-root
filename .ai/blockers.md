@@ -5,21 +5,6 @@
 
 ## 未解除
 
-### HUMAN-011 — Staging に DEV-057 と DEV-058 の migration を適用（この順で 1 回に）
-
-- 何: `20261020110000_sales_funnel_views.sql`（DEV-057、view 2 つだけ）と `20261020120000_sales_design_review.sql`（DEV-058、`sales_demos.design_review` 列・check 2 つ・`sales_design_submit` の置き換え）。Staging は `20261019120000` まで（19 本）。未適用はこの 2 本だけ。
-- 前提: develop が f7e7712（PR #72 の merge）以降。checkout が LF（STAGING.md §3）。
-- 手順: `git ls-files --eol supabase/migrations | grep -v w/lf` が空 → plan（`npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei`）で pending がこの 2 本だけ → `--confirm-ref znbqgvawublgyjwfpmei --apply` で全 PASS。FAIL は再実行せず出力を Claude に渡す。
-- 適用しないとき: 履歴タブのファネルの部分だけ「読み込めませんでした」。AI デザインは flag が off なので影響なし（on にしても要約付きの submit は 503 で止まり、bridge が次の回に再送するだけ）。
-- 解除条件: 適用後、Claude が読み取りで view・grant・security_invoker、`design_review` の check、`sales_design_submit` の引数（7 つ）・権限（service_role だけ）・本文（LF、repo と一致）を確認する。
-
-### HUMAN-012 — WSL の design bridge を DEV-058 / DEV-059 以降の commit に更新（任意、HUMAN-010 とは別）
-
-- 何: `sr-designbridge` の checkout（`~sr-designbridge/second-root`）を承認した commit（f7e7712 以降）に `git checkout --detach <commit> && npm ci`。手順は `docs/operations/design-bridge.md` §5・§10。
-- 推奨の順番: HUMAN-011（migration）→ Staging の server（develop の自動 deploy で済み）→ bridge → worker（worker は `SR_DESIGN_WORKER_REF=develop` で run ごとに develop に揃う）。順番が違っても結果は失われない（§10）。
-- bridge の Vercel bypass（DEV-059）は既定で無効のまま。有効にするのは `design-bridge-access.md` の人の承認後。timer（HUMAN-010）は保留のまま。
-- 解除条件: 人が更新し、次の controlled run で `result <id>: delivered` と管理画面の「AI レビュー: …」の表示を確かめる。
-
 ### HUMAN-010 — design worker の cycle（DEV-052）の WSL への install と timer の有効化
 
 - 何: `scripts/sales-design-worker/cycle.sh` と `scripts/sales-design-worker/systemd/sr-design-cycle.{service,timer}` を、root の admin clone（`/root/sr-capture-admin`）から install し、dry-run の後に timer を有効化する。手順は `docs/operations/design-worker-cycle.md`。
@@ -93,6 +78,26 @@
 - DEV-004 で Claude が allowed_scope を拡張（GA を /demo・/admin で無効化、noindex / no-referrer ヘッダ、e2e 分割）。既存ページの挙動は不変とレビュー確認済み。異論があれば PR #12 を参照。
 
 ## 解除済み
+
+### HUMAN-012 — WSL の design bridge を DEV-058 / DEV-059 以降の commit に更新（任意、HUMAN-010 とは別）（解除: 2026-10-19）
+
+- 何: `sr-designbridge` の checkout（`~sr-designbridge/second-root`）を承認した commit（f7e7712 以降）に `git checkout --detach <commit> && npm ci`。手順は `docs/operations/design-bridge.md` §5・§10。
+- 推奨の順番: HUMAN-011（migration）→ Staging の server（develop の自動 deploy で済み）→ bridge → worker（worker は `SR_DESIGN_WORKER_REF=develop` で run ごとに develop に揃う）。順番が違っても結果は失われない（§10）。
+- bridge の Vercel bypass（DEV-059）は既定で無効のまま。有効にするのは `design-bridge-access.md` の人の承認後。timer（HUMAN-010）は保留のまま。
+- 解除条件: 人が更新し、次の controlled run で `result <id>: delivered` と管理画面の「AI レビュー: …」の表示を確かめる。
+
+- 人が更新（2026-10-19）: bridge を b04e135 に、npm ci 成功、TypeScript の動作確認 PASS。`/mnt/c/...` から run.sh を起動すると tsx の esbuild 起動が EACCES になる問題を発見（checkout に cd すれば成功）→ DEV-062（PR #75）で修正中。merge 後に bridge をその commit に更新すると、どこから起動してもよくなる。
+
+### HUMAN-011 — Staging に DEV-057 と DEV-058 の migration を適用（この順で 1 回に）（解除: 2026-10-19）
+
+- 何: `20261020110000_sales_funnel_views.sql`（DEV-057、view 2 つだけ）と `20261020120000_sales_design_review.sql`（DEV-058、`sales_demos.design_review` 列・check 2 つ・`sales_design_submit` の置き換え）。Staging は `20261019120000` まで（19 本）。未適用はこの 2 本だけ。
+- 前提: develop が f7e7712（PR #72 の merge）以降。checkout が LF（STAGING.md §3）。
+- 手順: `git ls-files --eol supabase/migrations | grep -v w/lf` が空 → plan（`npm run staging:apply -- --project-ref znbqgvawublgyjwfpmei`）で pending がこの 2 本だけ → `--confirm-ref znbqgvawublgyjwfpmei --apply` で全 PASS。FAIL は再実行せず出力を Claude に渡す。
+- 適用しないとき: 履歴タブのファネルの部分だけ「読み込めませんでした」。AI デザインは flag が off なので影響なし（on にしても要約付きの submit は 503 で止まり、bridge が次の回に再送するだけ）。
+- 解除条件: 適用後、Claude が読み取りで view・grant・security_invoker、`design_review` の check、`sales_design_submit` の引数（7 つ）・権限（service_role だけ）・本文（LF、repo と一致）を確認する。
+
+- 人が適用（2026-10-19）: 19 → 21 本、セキュリティ検査 13 項目 PASS、Supabase の独立検証も正常。再適用しない。
+- Claude の読み取り確認: migration 21 本（最新 20261020120000）・`sales_funnel_daily` / `sales_design_daily` は security_invoker、authenticated / service_role は SELECT だけ・anon は不可・`sales_demos_design_review_shape` / `_final` の check あり・`sales_design_submit` は 7 引数・service_role だけ実行可・本文は LF で md5 がローカルと一致・`design_review` は 0 行。
 
 ### HUMAN-009 — Staging に DEV-054 の migration を適用（探索段階の既知判定・却下の記憶）（解除: 2026-10-19）
 
