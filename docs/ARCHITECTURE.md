@@ -156,6 +156,16 @@ unique(normalized_name, normalized_address) による重複防止。
 | sent_at, replied_at, reply_type | reply_type: `interested` / `question` / `meeting_request` / `decline` / `other` |
 | won_amount_jpy | status=`won` のとき必須（check） |
 
+### 集計 view（読み取りのみ・security_invoker）
+| view | 内容 |
+|---|---|
+| `sales_metrics` | 送信済みの初回営業を営業条件ごとに sent / replied / meeting / won・成約金額（DEV-013、MVP_SPEC §9） |
+| `sales_funnel_daily` | 初回営業を JST の準備日（`created_at`）ごとに: 準備・見送り・未送信・送信・返信・商談・成約・成約金額・返信の種類 5 つ・DNC（DEV-057、MVP_SPEC §9.1） |
+| `sales_design_daily` | 同じ準備日ごとの demo の `design_status` × `design_error_code` の件数（legacy は除く）。管理画面は `SALES_AI_DESIGN_ENABLED` 有効時だけ読む |
+
+- どれも `authenticated` と `service_role` に SELECT だけ（anon・PUBLIC は revoke）。security_invoker なので元の table の RLS がかかり、管理者以外は 0 行。
+- 履歴（`/admin/sales/history`）は期間の合計と率を `lib/sales/funnel.ts` で出す。2 つの view は別々に読む（`loadFunnelSection`）。読めない view があるとき（migration 20261020110000 の適用前など）は、その欄（ファネル、または AI デザインの結果）だけが「読み込めませんでした」になり、もう一方の欄・店舗の一覧・`sales_metrics` の表はそのまま出る。
+
 ### sales_agent_runs（Operational run の実行状態・checkpoint）
 
 run の現在地を**このテーブルだけから**判断できるようにする（詳細は §5, §7）。

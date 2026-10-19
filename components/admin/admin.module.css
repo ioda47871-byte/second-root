@@ -362,3 +362,36 @@
 .threadText {
   white-space: pre-wrap;
 }
+
+/* DEV-057: 履歴の集計期間（直近 30 日 / 全期間）. Two equal tap targets. */
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  color: var(--accent);
+  background: var(--card);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.segment[aria-current="page"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.errorCodes {
+  margin: 0;
+  padding: 8px 6px 8px 24px;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}

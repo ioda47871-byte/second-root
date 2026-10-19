@@ -1,25 +1,29 @@
 import DncControl from "@/components/admin/DncControl";
+import FunnelSummary from "@/components/admin/FunnelSummary";
 import styles from "@/components/admin/admin.module.css";
 import { requireAdminPage } from "@/lib/admin/auth";
-import { loadHistory, loadMetrics } from "@/lib/admin/history";
+import { loadFunnelSection, loadHistory, loadMetrics } from "@/lib/admin/history";
 import { formatDate } from "@/lib/admin/pipeline";
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
+import { parseFunnelPeriod } from "@/lib/sales/funnel";
 import { DIMENSION_LABEL, formatYen, groupMetrics, rate, valueLabel } from "@/lib/sales/metrics";
 import { createAuthClient } from "@/lib/supabase/server";
 
-// 履歴: every prepared shop with its outcome, plus funnel metrics by
-// channel / category / website status / follow-up (MVP_SPEC §9).
+// 履歴: every prepared shop with its outcome, the sales funnel for a period
+// (DEV-057), plus funnel metrics by channel / category / website status /
+// follow-up (MVP_SPEC §9).
 
 const STATUS = { drafted: "未送信", sent: "返信待ち", replied: "返信あり", meeting: "商談中", won: "成約", lost: "失注" } as const;
 const CHANNEL = { instagram: "Instagram", email: "メール" } as const;
 const HISTORY_LIMIT = 200;
 
-export default async function HistoryPage() {
+export default async function HistoryPage({ searchParams }: PageProps<"/admin/sales/history">) {
   await requireAdminPage();
-  let history, metrics;
+  const period = parseFunnelPeriod((await searchParams).period);
+  let history, metrics, funnel;
   try {
     const supabase = await createAuthClient();
-    [history, metrics] = await Promise.all([loadHistory(supabase, HISTORY_LIMIT), loadMetrics(supabase)]);
+    [history, metrics, funnel] = await Promise.all([loadHistory(supabase, HISTORY_LIMIT), loadMetrics(supabase), loadFunnelSection(supabase, period)]);
   } catch {
     return (
       <>
@@ -39,7 +43,8 @@ export default async function HistoryPage() {
           除外リスト（既存のお客様など）
         </a>
       </p>
-      <h2 className={styles.h2}>成果（送信済みの初回営業）</h2>
+      <FunnelSummary period={period} totals={funnel.funnel} design={funnel.design} />
+      <h2 className={styles.h2}>成果（送信済みの初回営業・全期間）</h2>
       {metrics.length === 0 ? (
         <p className={styles.muted}>まだ送信済みの営業はありません。</p>
       ) : (

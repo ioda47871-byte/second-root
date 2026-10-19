@@ -152,6 +152,7 @@ drafted → sent → replied(interested|question|meeting_request|decline|other)
 - `decline`（「今回は不要」「興味なし」等）だけでは `do_not_contact` にしない。この店舗への営業はそこで終了する（別チャネルで追撃しない・フォローしない）。MVP では再営業の仕組みは作らない（DNC と区別して記録するのは、将来の営業判断と計測のため）。
 - 「今後連絡不要」「もう営業連絡しないでほしい」等、**将来の連絡を明示的に拒否**された場合だけ、管理者が返信記録時に「今後の連絡を拒否された（DNC）」を選び `do_not_contact = true` にする（§6）。
 - 状態遷移はサーバー側の state machine で検証し、不正遷移は拒否する。
+- 返信タブの「返信待ち」（DEV-056）: `sent` の初回営業を**件数の上限なしですべて**（返信ありを記録できるのはここだけのため）送信の古い順に並べ、送信からの日数（JST の暦日）とフォローの状態（フォロー可能まで N 日 / フォロー可能 / フォロー送信済み / Instagram はフォローなし / DNC またはデモが公開されていないためフォローなし）を表示する。上部に「返信待ち N 件・うちフォロー可能 M 件」。フォロー可能の判定は §4.3 の規則（`lib/sales/followup.ts`・view `sales_followup_due`）のまま、フォローメールの作成・送信済みは従来どおり「今日」から行う（今日の画面には一度に 5 件まで、古い順で出る）。商談タブは返信から・商談開始からの日数を表示し、古いものから並べる（表示順だけ）。どちらも表示だけで、状態遷移・DNC の規則・自動取得・自動送信は変えない。
 
 ## 6. Do Not Contact (DNC)
 
@@ -183,12 +184,34 @@ drafted → sent → replied(interested|question|meeting_request|decline|other)
 - Supabase Auth。MVP 管理者は明示された1名のみ。
 - モバイルファースト。ナビは「今日 / 返信 / 商談 / 履歴」の4つ。
 - 今日の画面: 店名・営業チャネル・最低限の状態・大きな送信ボタンを優先。詳細は折りたたむ。
+- 返信・商談の画面: 経過日数（JST の暦日）とフォローの状態を見て、古いもの・フォロー可能なものから確認できるようにする（§5、DEV-056）。
 - 日常操作を「開く → 送る → 送信済み」に近づける。
 
 ## 9. 計測（軽量）
 
-- 営業条件（業種、チャネル、website_status、デモ有無、フォロー有無）ごとの sent / replied / meeting / won 件数と率、成約金額合計。
+- 営業条件（業種、チャネル、website_status、デモ有無、フォロー有無）ごとの sent / replied / meeting / won 件数と率、成約金額合計（`sales_metrics`、送信済みの初回営業・全期間）。
 - AI 不要。SQL / 通常コードで集計する。
+
+### 9.1 営業ファネル（DEV-057、管理画面「履歴」）
+
+初回営業（`sales_outreaches.kind = 'initial'`）1 件 = 1 店舗を、準備から成約まで 1 本のファネルで数える。段階は §5 の state machine の列だけで決める（`lost` はどの段階からも入るため、`status` ではなく到達の記録で数える）。
+
+| 段階 | 定義 | 率の分母 |
+|---|---|---|
+| 準備 | 初回営業の下書きが作られた（すべての初回営業。作成時は必ず `drafted`） | — |
+| 見送り | 送らずに閉じた: `status = 'lost'` かつ `sent_at is null`（今日の一覧の「見送る」など） | 準備 |
+| 送信 | `sent_at is not null`（その後に失注・断りになっても送信として数える） | 準備 |
+| 返信 | `reply_type is not null`（断り `decline` を含む） | 送信 |
+| 商談 | `meeting_at is not null` | 返信 |
+| 成約 | `status = 'won'`。成約金額は `won_amount_jpy` の合計 | 商談 |
+
+- 見送りは準備からの分岐なので、見送りと送信はどちらも準備に対する率。残り（`status = 'drafted'`）は「未送信（下書きのまま）」として件数を出す（準備 = 見送り + 送信 + 未送信）。
+- 送信・返信・商談・成約の判定は `sales_metrics` と同じ。全期間のファネルは `sales_metrics` の合計行と一致する。
+- 返信の種類の内訳: `interested`（興味あり）/ `question`（質問）/ `meeting_request`（商談希望）/ `decline`（断り）/ `other`（その他）の件数と、返信に占める率。
+- DNC: その期間に準備した店舗のうち、現在 `do_not_contact = true` の件数。
+- **期間**: 「直近 30 日」（既定）と「全期間」を `?period=30d` / `?period=all` で切り替える（それ以外の値は直近 30 日）。各店舗は**準備した日**（初回営業の `created_at` の Asia/Tokyo の日付）の cohort に入れ、後の段階もその店舗の段階として数える（同じ店舗の集合に対する率になる）。直近 30 日 = 今日（JST）とその前の 29 日。最近準備した店舗は、まだ返信・商談の途中であることに注意。
+- **AI デザインの結果**（`SALES_AI_DESIGN_ENABLED` が有効なときだけ表示。無効なら design の列は読まない）: 同じ cohort の demo の `design_status`（`pending` / `processing` / `ready` / `blocked` / `failed`）の件数と率、`blocked` / `failed` の `design_error_code` の多い順の上位 3 件。legacy の demo（`design_status = null`）は数えない。
+- 集計は view `sales_funnel_daily` / `sales_design_daily`（JST の準備日ごとの件数、security_invoker・RLS で管理者だけが行を読める）と、期間の合計・率を出す通常コード（`lib/sales/funnel.ts`）で行う。
 
 ## 10. Operational Claude（日々の店舗探索）
 

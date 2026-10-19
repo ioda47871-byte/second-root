@@ -2502,7 +2502,7 @@
     {
       "id": "DEV-056",
       "title": "返信管理: 返信待ちの経過日数・フォロー期限・未対応の返信を見やすくする",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -2539,12 +2539,12 @@
       "human_approval_triggers": [
         "新しい状態遷移・DNC の扱いの変更"
       ],
-      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
+      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加; 2026-10-19: PR #70 merge（65dc57e）。Fresh Review FAIL（High: 100 件の上限で新しい送信が返信タブから消え返信ありを押せない）→ 修正（上限なし・空ページまで読む）→ 再レビュー PASS、CI green。人の判断待ち: 返信なしで終了の操作・返信タブからのフォロー・Instagram の見切りの目安"
     },
     {
       "id": "DEV-057",
       "title": "営業ファネル指標: 準備から成約までの段階と期間で見る",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -2583,7 +2583,7 @@
       "human_approval_triggers": [
         "Staging への migration の適用"
       ],
-      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加"
+      "decision": "2026-10-19: 人の指示（HUMAN-009 完了報告）で Phase C の次工程として Claude が追加; 2026-10-19: PR #71 merge（77c728b）。Fresh Review PASS（Low 5、1/2/4/5 は修正、3 は migration の順序: 20261020110000 を DEV-058 の 20261020120000 より先に適用する）、CI green。Staging への migration の適用は人の承認待ち（HUMAN-011）"
     },
     {
       "id": "DEV-058",
@@ -2672,7 +2672,7 @@
     {
       "id": "DEV-060",
       "title": "diagnose: browser を終わらせる待ちに 5 秒の下限（CI の BROWSER_STUCK）",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-055"
@@ -2701,7 +2701,7 @@
         "Production・Staging"
       ],
       "human_approval_triggers": [],
-      "decision": "2026-10-19: Claude が追加（CI failure の根本原因、PR #73）"
+      "decision": "2026-10-19: Claude が追加（CI failure の根本原因、PR #73）; 2026-10-19: PR #73 merge（cf7f0b3）。Fresh Review PASS（Medium 1: 原因は推定で未証明。5 秒の下限は本当の hang を隠さない。文言を修正し、本番の上限を示す test に変更）、CI green"
     }
   ]
 }

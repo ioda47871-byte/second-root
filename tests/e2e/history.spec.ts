@@ -63,3 +63,52 @@ test("shows outcomes, metrics, and lets the admin set and clear DNC", async ({ p
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+// DEV-057: the funnel, its period switch (直近 30 日 / 全期間) and the reply types.
+test("shows the sales funnel and switches between 直近 30 日 and 全期間", async ({ page }) => {
+  const recent = await seedDraft(db);
+  const old = await seedDraft(db);
+  seeded.push(recent.prospectId, old.prospectId);
+  await db.query("update public.sales_outreaches set status = 'sent', sent_at = now() where id = $1", [recent.outreachId]);
+  // Prepared 40 days ago: only in 全期間 (created_at is immutable for the API roles).
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    await client.query("set local session_replication_role = replica");
+    await client.query("update public.sales_outreaches set created_at = now() - interval '40 days' where id = $1", [old.outreachId]);
+    await client.query("commit");
+  } finally {
+    client.release();
+  }
+
+  await login(page);
+  await page.getByRole("navigation", { name: "営業管理" }).getByRole("link", { name: "履歴" }).click();
+  const funnel = page.getByTestId("funnel");
+  await expect(funnel).toHaveAttribute("data-period", "30d");
+  const periods = page.getByRole("navigation", { name: "集計期間" });
+  await expect(periods.getByRole("link", { name: "直近 30 日" })).toHaveAttribute("aria-current", "page");
+  const table = page.getByRole("region", { name: "ファネル: 直近 30 日" });
+  for (const stage of ["準備", "見送り", "送信", "返信", "商談", "成約", "成約金額"]) {
+    await expect(table.getByRole("rowheader", { name: stage, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole("region", { name: "返信の種類: 直近 30 日" })).toContainText("商談希望");
+  const prepared = async (period: string) =>
+    Number(await page.getByRole("region", { name: `ファネル: ${period}` }).locator('tr[data-stage="prepared"] td').first().textContent());
+  const recentPrepared = await prepared("直近 30 日");
+  expect(recentPrepared).toBeGreaterThanOrEqual(1);
+  await expect(table.locator('tr[data-stage="sent"] td').first()).not.toHaveText("0");
+
+  await periods.getByRole("link", { name: "全期間" }).click();
+  await expect(page).toHaveURL(/\/admin\/sales\/history\?period=all$/);
+  await expect(funnel).toHaveAttribute("data-period", "all");
+  await expect(periods.getByRole("link", { name: "全期間" })).toHaveAttribute("aria-current", "page");
+  expect(await prepared("全期間")).toBeGreaterThanOrEqual(recentPrepared + 1);
+  // The per-condition table is still there.
+  await expect(page.getByRole("table").filter({ hasText: "全体" })).toContainText("合計");
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+
+  // An unknown period falls back to 直近 30 日.
+  await page.goto("/admin/sales/history?period=bogus");
+  await expect(page.getByTestId("funnel")).toHaveAttribute("data-period", "30d");
+});

@@ -80,6 +80,15 @@ export const SESSION_WAIT_MS = 15_000;
  * ends the browser instead.
  */
 export const CLOSE_TIMEOUT_MS = 10_000;
+/**
+ * DEV-060: ending a whole Chromium (Browser.close, then the process exit) is given at least this long,
+ * whatever the page-close bound. A short close bound (tests use 1 s) is about pages; under CI load a
+ * browser that was still talking to an off-site host once took over 1 s to answer the close (CI on PR #69),
+ * which read as BROWSER_STUCK. Most likely a slow exit (locally it takes 0.1–0.3 s, more under load);
+ * a browser that never ends still says BROWSER_STUCK after this floor, so a real hang is not hidden.
+ * Production's bound (10 s) is above this, so nothing changes there.
+ */
+export const BROWSER_END_MIN_MS = 5_000;
 
 export interface DiagnoseOptions {
   profileDir: string;
@@ -96,7 +105,7 @@ export interface DiagnoseOptions {
   homeUrl?: string;
   /** Whether a display exists for B (production: DISPLAY / WAYLAND_DISPLAY). */
   hasDisplay?: boolean;
-  /** Tests only: how long a close may take (production: CLOSE_TIMEOUT_MS). */
+  /** Tests only: how long a page or context close may take (production: CLOSE_TIMEOUT_MS). Ending the whole browser gets at least BROWSER_END_MIN_MS. */
   closeTimeoutMs?: number;
   /** Tests only: the targeted close used when page.close() does not settle (production: closeTargetByCdp). */
   closeTarget?: (page: Page, deadline: number) => Promise<boolean>;
@@ -269,12 +278,14 @@ export async function closePageBounded(
 }
 
 /**
- * Closes the browser of a run within a bounded time: the context first, and when that does not
- * settle, the browser itself (CDP Browser.close and browser.close()). A browser that does not answer
- * at all is killed by Playwright's own close (SIGKILL after its timeout); "stuck" says the run did
- * not see it end in time.
+ * Closes the browser of a run within a bounded time: the context first (within `ms`), and when that
+ * does not settle, the browser itself (CDP Browser.close and browser.close(), within `killMs`: at least
+ * BROWSER_END_MIN_MS). Both are graceful: Playwright's browser.close() waits for the process to exit
+ * and does not kill it on a timeout, so "killed" means it ended after the browser-level close, and
+ * "stuck" means the run did not see it end in time. A Chromium that never answers stays until the
+ * diagnose process itself exits (Playwright then kills its children).
  */
-export async function closeBrowser(context: BrowserContext, ms: number): Promise<"closed" | "killed" | "stuck"> {
+export async function closeBrowser(context: BrowserContext, ms: number, killMs: number = Math.max(ms, BROWSER_END_MIN_MS)): Promise<"closed" | "killed" | "stuck"> {
   if (await settlesWithin(context.close(), ms)) return "closed";
   const browser = context.browser();
   if (!browser) return "stuck";
@@ -282,7 +293,7 @@ export async function closeBrowser(context: BrowserContext, ms: number): Promise
     .newBrowserCDPSession()
     .then((s) => s.send("Browser.close"))
     .catch(() => undefined);
-  return (await settlesWithin(Promise.all([cdp, browser.close()]), ms)) ? "killed" : "stuck";
+  return (await settlesWithin(Promise.all([cdp, browser.close()]), killMs)) ? "killed" : "stuck";
 }
 
 function httpCode(status: number | undefined): DiagnoseCode {
