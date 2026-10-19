@@ -10,18 +10,24 @@
  *   export: a finished bridge job (done/ or failed/) that the bridge still
  *           holds → from-worker/<id>.json, once, as a WorkerResult: outcome,
  *           the checked final profile without its rationale, a fixed code,
- *           the worker commit; results of jobs the bridge has closed are
+ *           the worker commit; (DEV-058) the review summary of a ready or
+ *           QUALITY_NOT_ACCEPTED run goes in its own sidecar file next to the
+ *           result, so the result file keeps the shape an older bridge
+ *           accepts; results (and sidecars) of jobs the bridge has closed are
  *           removed
  *
  * Nothing else of the run directory leaves the worker user: no report text,
- * screenshots, timing, Codex notes or rounds.
+ * screenshots, timing, Codex notes or rounds (the summary is fixed numbers
+ * and enums built from the rounds, never their problems or notes).
  */
 import { lstat, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkProfile } from "../profile";
+import { reviewSummaryFromReport, type ReviewSummary } from "../review-summary";
 import { uploadableProfile, WORKER_COMMIT } from "../../sales/design";
 import { JobSchema, type QueueDirs } from "../worker/queue";
-import { readSpoolJson, resultCode, spoolIds, writeHeartbeat, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
+import { readSpoolJson, removeReviewSidecar, resultCode, reviewSidecarIds, spoolIds, writeHeartbeat, writeReviewSidecar, writeSpoolJson, WorkerResultSchema, type BridgeSpool, type WorkerResult } from "./spool";
+import { reviewFits } from "../../sales/design-bridge-schema";
 
 const exists = (path: string) =>
   lstat(path).then(
@@ -114,6 +120,17 @@ export function resultFromRecords(input: {
   return { ...base, outcome: "failed", profile: null, error_code: "RESULT_MISSING" };
 }
 
+/**
+ * DEV-058: the review summary that goes with a result, from the same report:
+ * only for a ready or a blocked QUALITY_NOT_ACCEPTED result, and only when
+ * the report has well-formed rounds. Null for everything else.
+ */
+export function reviewForResult(result: WorkerResult, report: Record<string, unknown> | null): ReviewSummary | null {
+  if (result.outcome === "failed") return null;
+  const review = reviewSummaryFromReport(report);
+  return review && reviewFits(result.outcome, result.error_code, review.qualityNotAccepted) ? review : null;
+}
+
 async function finishedRecords(dirs: QueueDirs): Promise<Map<string, Record_>> {
   const out = new Map<string, Record_>();
   for (const bucket of ["done", "failed"] as const) {
@@ -143,23 +160,26 @@ export async function exportBridgeResults(spool: BridgeSpool, dirs: QueueDirs, o
   for (const id of already) {
     if (live.has(id)) continue;
     await rm(join(spool.fromWorker, `${id}.json`), { force: true });
+    await removeReviewSidecar(spool.fromWorker, id);
     report.removed.push(id);
+  }
+  // A sidecar left without its result (a run stopped between the two writes) for a job the bridge closed.
+  for (const id of await reviewSidecarIds(spool.fromWorker)) {
+    if (!live.has(id) && !already.has(id)) await removeReviewSidecar(spool.fromWorker, id);
   }
   for (const [id, { bucket, record }] of await finishedRecords(dirs)) {
     if (!live.has(id) || already.has(id)) continue;
     const runDir = join(outRoot, id);
     const reportJson = bucket === "done" ? await readJson(join(runDir, "report.json")) : null;
     const final = bucket === "done" ? await readJson(join(runDir, "final.json")) : null;
-    const result = resultFromRecords({
-      id,
-      bucket,
-      record,
-      report: reportJson && typeof reportJson === "object" ? (reportJson as Record<string, unknown>) : null,
-      final,
-    });
+    const reportRecord = reportJson && typeof reportJson === "object" ? (reportJson as Record<string, unknown>) : null;
+    const result = resultFromRecords({ id, bucket, record, report: reportRecord, final });
     // The same schema the bridge applies: a result that does not pass is never written.
     const checked = WorkerResultSchema.safeParse(result);
     if (!checked.success) continue;
+    // The sidecar first: once the bridge sees the result, its summary is already there.
+    const review = reviewForResult(checked.data, reportRecord);
+    if (review) await writeReviewSidecar(spool.fromWorker, id, review);
     await writeSpoolJson(spool.fromWorker, id, checked.data);
     report.exported.push(id);
   }

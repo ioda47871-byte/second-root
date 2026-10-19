@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DesignProfileSchema } from "@/lib/design-agent/profile";
+import { ReviewSummarySchema } from "@/lib/design-agent/review-summary";
 import { DESIGN_ERROR_CODE, DESIGN_MAX_ATTEMPTS, DESIGN_STATUSES, WORKER_COMMIT } from "./design";
 
 // The narrow bridge API (DEV-030): POST /api/internal/sales-design/jobs.
@@ -11,6 +12,7 @@ import { DESIGN_ERROR_CODE, DESIGN_MAX_ATTEMPTS, DESIGN_STATUSES, WORKER_COMMIT 
 // prompt, Codex's output, stderr, a reasoning text) fails validation and
 // nothing is written. The only free-form value in a submit is the
 // DesignProfile, itself an enum-only schema whose rationale must be empty.
+// The optional review summary (DEV-058) is numbers and enums only.
 
 /** The keys of sales_demos.content a design job carries (the fact-only DemoView's inputs). */
 export const DESIGN_FACT_KEYS = ["name", "category", "ward", "address", "hours", "closed_days", "access", "phone", "description", "menu_items"] as const;
@@ -53,6 +55,15 @@ export type DesignJob = z.infer<typeof DesignJobSchema>;
 
 export const DESIGN_OUTCOMES = ["ready", "blocked", "failed"] as const;
 
+/**
+ * DEV-058: a review summary goes only with a ready result (whose final was
+ * accepted) or a blocked QUALITY_NOT_ACCEPTED one (whose final was not).
+ */
+export function reviewFits(outcome: (typeof DESIGN_OUTCOMES)[number], errorCode: string | null, qualityNotAccepted: boolean): boolean {
+  if (outcome === "ready") return errorCode === null && !qualityNotAccepted;
+  return outcome === "blocked" && errorCode === "QUALITY_NOT_ACCEPTED" && qualityNotAccepted;
+}
+
 const submitBody = z.strictObject({
   action: z.literal("submit"),
   jobId: z.uuid(),
@@ -61,6 +72,8 @@ const submitBody = z.strictObject({
   errorCode: z.string().regex(DESIGN_ERROR_CODE).nullable(),
   workerCommit: z.string().regex(WORKER_COMMIT).nullable(),
   lineage: z.strictObject({ workerJobId: z.string().regex(WORKER_JOB_ID) }),
+  /** DEV-058: optional; an older bridge never sends it. Fixed keys, numbers and enums only. */
+  review: ReviewSummarySchema.optional(),
 });
 export type DesignSubmit = z.infer<typeof submitBody>;
 
@@ -72,6 +85,7 @@ export const designBridgeRequest = z
     if ((body.outcome === "ready") !== (body.errorCode === null)) ctx.addIssue({ code: "custom", path: ["errorCode"], message: "errorCode only without ready" });
     if (body.profile && body.profile.rationale.length > 0) ctx.addIssue({ code: "custom", path: ["profile", "rationale"], message: "rationale must be empty" });
     if (body.lineage.workerJobId !== workerJobIdFor(body.jobId)) ctx.addIssue({ code: "custom", path: ["lineage", "workerJobId"], message: "lineage mismatch" });
+    if (body.review && !reviewFits(body.outcome, body.errorCode, body.review.qualityNotAccepted)) ctx.addIssue({ code: "custom", path: ["review"], message: "review only with ready or QUALITY_NOT_ACCEPTED" });
   });
 export type DesignBridgeRequest = z.infer<typeof designBridgeRequest>;
 

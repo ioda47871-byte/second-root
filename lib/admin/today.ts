@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ReviewSummarySchema, type ReviewSummary } from "@/lib/design-agent/review-summary";
 import { aiDesignEnabled, initialSendAllowed, isDesignStatus, type DesignStatus } from "@/lib/sales/design";
 import { isFollowUpDue } from "@/lib/sales/followup";
 import { selectWorkQueue, type QueueItem } from "@/lib/sales/queue";
@@ -25,6 +26,8 @@ export type TodayItem = QueueItem & {
   designStatus: DesignStatus | null;
   /** DEV-053: why a design is blocked / failed (e.g. QUALITY_NOT_ACCEPTED); null otherwise or with the step off. */
   designErrorCode: string | null;
+  /** DEV-058: the design's review summary (ready / blocked only, re-validated); null otherwise or with the step off. */
+  designReview: ReviewSummary | null;
 };
 
 // DEV-048: with the AI design step on, drafts waiting for a design must not
@@ -32,7 +35,7 @@ export type TodayItem = QueueItem & {
 // TypeScript (selectWorkQueue). With the step off the query is the legacy one.
 const DESIGN_DRAFT_SCAN = 50;
 
-type DemoRow = { public_token: string; disabled_at: string | null; design_status?: unknown; design_error_code?: unknown };
+type DemoRow = { public_token: string; disabled_at: string | null; design_status?: unknown; design_error_code?: unknown; design_review?: unknown };
 
 type Row = {
   id: string;
@@ -56,16 +59,23 @@ type Row = {
 };
 
 // With the AI design step off (DEV-030) the query is exactly the legacy one.
-function select(design: boolean): string {
+export function todaySelect(design: boolean): string {
   return `id, prospect_id, kind, channel, status, subject, body, sent_at, created_at,
   prospect:sales_prospects!inner(name, category, ward, do_not_contact, instagram_url, public_email,
-    demo:sales_demos(public_token, disabled_at${design ? ", design_status, design_error_code" : ""}))`;
+    demo:sales_demos(public_token, disabled_at${design ? ", design_status, design_error_code, design_review" : ""}))`;
+}
+
+/** DEV-058: a stored summary is shown only on a finished design and only while it is still the agreed shape. */
+function reviewOf(status: DesignStatus | null, value: unknown): ReviewSummary | null {
+  if (status !== "ready" && status !== "blocked") return null;
+  const parsed = ReviewSummarySchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new Date()): Promise<TodayItem[]> {
   const limit = LIMITS.workQueue;
   const design = aiDesignEnabled();
-  const SELECT = select(design);
+  const SELECT = todaySelect(design);
   // Due follow-ups are computed in SQL (view sales_followup_due), so nothing
   // is truncated before filtering; at most `limit` of each kind is needed.
   const [due, drafts] = await Promise.all([
@@ -109,6 +119,7 @@ export async function loadTodayQueue(supabase: SupabaseClient, now: Date = new D
         designStatus && (designStatus === "blocked" || designStatus === "failed") && typeof demo?.design_error_code === "string"
           ? demo.design_error_code
           : null,
+      designReview: kind === "initial" ? reviewOf(designStatus, demo?.design_review) : null,
       sendable: kind === "follow_up" || initialSendAllowed(design, designStatus),
     };
   };

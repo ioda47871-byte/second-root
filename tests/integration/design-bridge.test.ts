@@ -270,6 +270,162 @@ describe("claim / submit", () => {
   });
 });
 
+// ------------------------------------------------------------------ DEV-058 review summary
+
+const REVIEW = {
+  version: 1,
+  verdict: "accept",
+  total: 19,
+  max: 25,
+  scores: { brand_fit: 4, visual_quality: 4, hierarchy: 4, mobile_quality: 4, generic_template_feel: 3 },
+  rounds: 2,
+  confidence: 0.72,
+  qualityNotAccepted: false,
+};
+const REVISE = { ...REVIEW, verdict: "revise", qualityNotAccepted: true };
+const submitWithReview = (jobId: string, outcome: string, profile: unknown, code: string | null, review: unknown) =>
+  rpc<State>("sales_design_submit", { p_job_id: jobId, p_outcome: outcome, p_profile: profile, p_error_code: code, p_worker_commit: "0123abcd", p_max_attempts: 3, p_review: review });
+
+describe("review summary (DEV-058)", () => {
+  it("there is exactly one sales_design_submit, service role only; the old arguments still resolve to it", async () => {
+    const { rows } = await db.query(`
+      select pg_get_function_identity_arguments(p.oid) as args,
+             has_function_privilege('service_role', p.oid, 'EXECUTE') as service,
+             has_function_privilege('authenticated', p.oid, 'EXECUTE') as authed,
+             has_function_privilege('anon', p.oid, 'EXECUTE') as anon
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname = 'sales_design_submit'`);
+    expect(rows).toEqual([
+      { args: "p_job_id uuid, p_outcome text, p_profile jsonb, p_error_code text, p_worker_commit text, p_max_attempts integer, p_review jsonb", service: true, authed: false, anon: false },
+    ]);
+    const p = await prepare(candidate(), true);
+    const job = (await claim())!;
+    // an older bridge: no p_review, not even p_max_attempts
+    expect(await rpc<State>("sales_design_submit", { p_job_id: job.job_id, p_outcome: "ready", p_profile: PROFILE, p_error_code: null, p_worker_commit: null })).toMatchObject({ status: "ready" });
+    expect(await demoOf(p)).toMatchObject({ design_status: "ready", design_review: null });
+  });
+
+  it("ready stores the summary; a replay changes nothing", async () => {
+    const p = await prepare(candidate(), true);
+    const job = (await claim())!;
+    expect(await submitWithReview(job.job_id, "ready", PROFILE, null, REVIEW)).toMatchObject({ status: "ready", replayed: false });
+    expect(await submitWithReview(job.job_id, "ready", PROFILE, null, { ...REVIEW, rounds: 3 })).toMatchObject({ replayed: true });
+    expect(await demoOf(p)).toMatchObject({ design_status: "ready", design_review: REVIEW });
+  });
+
+  it("the quality gate's block stores its summary", async () => {
+    const p = await prepare(candidate(), true);
+    const job = (await claim())!;
+    expect(await submitWithReview(job.job_id, "blocked", null, "QUALITY_NOT_ACCEPTED", REVISE)).toMatchObject({ status: "blocked", error_code: "QUALITY_NOT_ACCEPTED" });
+    expect(await demoOf(p)).toMatchObject({ design_profile: null, design_review: REVISE });
+  });
+
+  it("refuses a summary with another outcome or code, or one the table refuses, without writing", async () => {
+    const p = await prepare(candidate(), true);
+    const job = (await claim())!;
+    await expect(submitWithReview(job.job_id, "failed", null, "WORKER_FAILED", REVISE)).rejects.toThrow(/invalid_result/);
+    await expect(submitWithReview(job.job_id, "blocked", null, "DESIGN_BLOCKED", REVISE)).rejects.toThrow(/invalid_result/);
+    await expect(submitWithReview(job.job_id, "ready", PROFILE, null, { ...REVIEW, note: "Codex said it looks great" })).rejects.toThrow(/invalid_result/);
+    await expect(submitWithReview(job.job_id, "ready", PROFILE, null, { ...REVIEW, verdict: "looks great" })).rejects.toThrow(/invalid_result/);
+    expect(await demoOf(p)).toMatchObject({ design_status: "processing", design_review: null, design_profile: null });
+  });
+
+  it("only the summary's own check violations become invalid_result; any other is raised as before", async () => {
+    const p = await prepare(candidate(), true);
+    const job = (await claim())!;
+    const call = rpc<State>("sales_design_submit", { p_job_id: job.job_id, p_outcome: "ready", p_profile: PROFILE, p_error_code: null, p_worker_commit: "main", p_max_attempts: 3, p_review: REVIEW });
+    await expect(call).rejects.toThrow(/check constraint/);
+    await expect(call).rejects.not.toThrow(/invalid_result/);
+    expect(await demoOf(p)).toMatchObject({ design_status: "processing", design_review: null });
+  });
+
+  it("a result for a demo already sent keeps no summary; a retried failure keeps none", async () => {
+    const sent = await prepare(candidate(), true);
+    const job = (await claim())!;
+    await markSent(sent);
+    expect(await submitWithReview(job.job_id, "ready", PROFILE, null, REVIEW)).toMatchObject({ status: "blocked", error_code: "ALREADY_SENT" });
+    expect((await demoOf(sent)).design_review).toBeNull();
+
+    const retried = await prepare(candidate(), true);
+    const first = (await claim())!;
+    expect(await submit(first.job_id, "failed", null, "WORKER_FAILED")).toMatchObject({ status: "pending" });
+    expect((await demoOf(retried)).design_review).toBeNull();
+  });
+
+  it("a demo going back to pending or processing (re-claimed, reset) never keeps a summary", async () => {
+    const p = await prepare(candidate(), true);
+    const job = (await claim())!;
+    await submitWithReview(job.job_id, "blocked", null, "QUALITY_NOT_ACCEPTED", REVISE);
+    for (const status of ["pending", "processing"]) {
+      await expect(
+        db.query(`update public.sales_demos set design_status = $2, design_job_id = gen_random_uuid(), design_claimed_at = now() where prospect_id = $1`, [p, status]),
+      ).rejects.toThrow(/sales_demos_design_review_final/);
+    }
+    // reset the way the design step would (summary cleared with it): accepted, and the next claim starts clean
+    await db.query("update public.sales_demos set design_status = 'pending', design_review = null, design_error_code = null where prospect_id = $1", [p]);
+    const again = (await claim())!;
+    expect(again.job_id).not.toBe(job.job_id);
+    expect(await demoOf(p)).toMatchObject({ design_status: "processing", design_review: null });
+  });
+
+  describe("the table's check", () => {
+    let prospectId: string;
+    beforeEach(async () => {
+      prospectId = await prepare(candidate(), true);
+      const job = (await claim())!;
+      await submit(job.job_id, "blocked", null, "QUALITY_NOT_ACCEPTED");
+    });
+    const setReview = (value: unknown) => db.query("update public.sales_demos set design_review = $2::jsonb where prospect_id = $1", [prospectId, JSON.stringify(value)]);
+
+    it("takes a summary on a finished design", async () => {
+      await setReview(REVISE);
+      await setReview({ ...REVISE, confidence: null });
+      expect((await demoOf(prospectId)).design_review).toEqual({ ...REVISE, confidence: null });
+    });
+
+    it.each([
+      ["a non-object", "x"],
+      ["an array", [REVIEW]],
+      ["another version", { ...REVIEW, version: 2 }],
+      ["a version as a string", { ...REVIEW, version: "1" }],
+      ["an extra key", { ...REVIEW, note: "looks great" }],
+      ["a missing key", { ...REVIEW, confidence: undefined }],
+      ["an extra score axis", { ...REVIEW, scores: { ...REVIEW.scores, layout: 3 } }],
+      ["a missing score axis", { ...REVIEW, scores: { ...REVIEW.scores, hierarchy: undefined } }],
+      ["a string score", { ...REVIEW, scores: { ...REVIEW.scores, hierarchy: "4" } }],
+      ["a score out of range", { ...REVIEW, scores: { ...REVIEW.scores, hierarchy: 6 } }],
+      ["a fractional score", { ...REVIEW, scores: { ...REVIEW.scores, hierarchy: 3.5 } }],
+      ["a score in an array", { ...REVIEW, scores: { ...REVIEW.scores, hierarchy: [4] } }],
+      ["free text as the verdict", { ...REVIEW, verdict: "looks great" }],
+      ["a string total", { ...REVIEW, total: "19" }],
+      ["a total in an array", { ...REVIEW, total: [19] }],
+      ["a total out of range", { ...REVIEW, total: 26 }],
+      ["another max", { ...REVIEW, max: 30 }],
+      ["zero rounds", { ...REVIEW, rounds: 0 }],
+      ["a string confidence", { ...REVIEW, confidence: "0.7" }],
+      ["a confidence over 1", { ...REVIEW, confidence: 1.5 }],
+      ["a string flag", { ...REVIEW, qualityNotAccepted: "false" }],
+      ["a long text (also over the size limit)", { ...REVIEW, verdict: "accept".repeat(200) }],
+    ])("refuses %s", async (_label, value) => {
+      await expect(setReview(value)).rejects.toThrow(/sales_demos_design_review_shape/);
+    });
+
+    it("the size limit holds on its own: a summary valid in every other way but over 512 bytes (a very long confidence numeral)", async () => {
+      // JSON.stringify cannot write such a numeral, so the text is built by hand (significant digits: numeric stores leading zeros as a weight).
+      const withConfidence = (digits: number) => JSON.stringify({ ...REVISE, confidence: 0 }).replace('"confidence":0', `"confidence":0.${"7".repeat(digits)}`);
+      const raw = (text: string) => db.query("update public.sales_demos set design_review = $2::jsonb where prospect_id = $1", [prospectId, text]);
+      await raw(withConfidence(100)); // long but within the limit: every other check passes
+      expect((await db.query("select pg_column_size(design_review) as n from public.sales_demos where prospect_id = $1", [prospectId])).rows[0].n).toBeLessThanOrEqual(512);
+      await expect(raw(withConfidence(800))).rejects.toThrow(/sales_demos_design_review_shape/);
+    });
+
+    it("refuses a summary on a legacy demo", async () => {
+      const legacy = await prepare(candidate(), false);
+      await expect(db.query("update public.sales_demos set design_review = $2::jsonb where prospect_id = $1", [legacy, JSON.stringify(REVIEW)])).rejects.toThrow(/check constraint/);
+    });
+  });
+});
+
 // ------------------------------------------------------------------ the API route
 
 function bridgeCall(body: unknown, token: string | null = BRIDGE_TOKEN) {
@@ -363,6 +519,27 @@ describe("bridge API", () => {
     expect((await bridgeCall({ ...body, jobId: other, lineage: { workerJobId: workerJobIdFor(other) } })).status).toBe(409);
   });
 
+  it("DEV-058: submit takes an optional review summary; one with free text or the wrong outcome is 400", async () => {
+    const p = await prepare(candidate(), true);
+    const { job } = await (await bridgeCall({ action: "claim" })).json();
+    const body = { action: "submit", jobId: job.jobId, outcome: "blocked", profile: null, errorCode: "QUALITY_NOT_ACCEPTED", workerCommit: "0123abcd", lineage: { workerJobId: job.workerJobId } };
+    for (const bad of [
+      { ...body, review: { ...REVISE, note: "Codex: the hero is too dark" } },
+      { ...body, review: { ...REVISE, scores: { ...REVISE.scores, hierarchy: "4" } } },
+      { ...body, review: REVIEW }, // an accepted summary with the gate's code
+      { ...body, errorCode: "DESIGN_BLOCKED", review: REVISE },
+    ]) {
+      const r = await bridgeCall(bad);
+      expect(r.status).toBe(400);
+      expect(JSON.stringify(await r.json())).not.toMatch(/Codex|dark/);
+    }
+    expect(await demoOf(p)).toMatchObject({ design_status: "processing", design_review: null });
+    const ok = await bridgeCall({ ...body, review: REVISE });
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).result).toMatchObject({ status: "blocked", errorCode: "QUALITY_NOT_ACCEPTED", replayed: false });
+    expect(await demoOf(p)).toMatchObject({ design_status: "blocked", design_review: REVISE });
+  });
+
   it("persist through the ingest API: pending with the flag on, legacy with it off", async () => {
     const run = async () => {
       const runId = randomUUID();
@@ -421,20 +598,72 @@ describe("end to end: bridge → spool → worker → bridge → public demo", (
     await writeFile(join(dirs.done, `${workerJobId}.json`), "{}");
     await writeFile(join(dirs.done, `${workerJobId}.result.json`), JSON.stringify({ job_id: workerJobId, bucket: "done", outcome: "done" }));
     await mkdir(join(outRoot, workerJobId));
-    await writeFile(join(outRoot, workerJobId, "report.json"), JSON.stringify({ outcome: "done", worker: { commit: "0123abcd4567" } }));
+    // DEV-058: the run's rounds as run.ts records them (with Codex's problem codes, which never leave the worker)
+    const scores = (s: number) => ({ brand_fit: s, visual_quality: s, hierarchy: s, mobile_quality: s, generic_template_feel: 3, total: 4 * s + 3 });
+    const codex = {
+      rounds: [
+        { candidate: "initial", scores: scores(3), verdict: "revise", problems: [{ area: "hero", severity: "high" }] },
+        { candidate: "rev1", scores: scores(4), verdict: "accept", problems: [] },
+      ],
+      final_candidate: "rev1",
+      confidence: 0.72,
+      quality_not_accepted: false,
+      notes: ["SOMETHING_CODEX_NOTED"],
+    };
+    await writeFile(join(outRoot, workerJobId, "report.json"), JSON.stringify({ outcome: "done", worker: { commit: "0123abcd4567" }, codex }));
     await writeFile(join(outRoot, workerJobId, "final.json"), JSON.stringify(AMERICAN_EDITORIAL));
     expect((await exportBridgeResults(spool, dirs, outRoot)).exported).toEqual([workerJobId]);
 
     expect(await bridge()).toMatchObject({ delivered: [workerJobId], stopped: null });
     const demo = await demoOf(prospectId);
-    expect(demo).toMatchObject({ design_status: "ready", design_profile: PROFILE, design_worker_commit: "0123abcd4567" });
+    expect(demo).toMatchObject({ design_status: "ready", design_profile: PROFILE, design_worker_commit: "0123abcd4567", design_review: REVIEW });
 
     // Unsent: still not public. Sent: drawn with the profile; flag off: the legacy template.
     const token = demo.public_token as string;
     expect(await loadPublicDemo(serviceClient(), token, new Date(), { SALES_AI_DESIGN_ENABLED: "true" })).toBeNull();
     await markSent(prospectId);
-    expect((await loadPublicDemo(serviceClient(), token, new Date(), { SALES_AI_DESIGN_ENABLED: "true" }))?.profile).toEqual(PROFILE);
+    const drawn = await loadPublicDemo(serviceClient(), token, new Date(), { SALES_AI_DESIGN_ENABLED: "true" });
+    expect(drawn?.profile).toEqual(PROFILE);
+    // DEV-058: the public page never gets the review summary
+    expect(Object.keys(drawn!).sort()).toEqual(["profile", "view"]);
+    expect(JSON.stringify(drawn)).not.toMatch(/verdict|qualityNotAccepted|brand_fit/);
     expect((await loadPublicDemo(serviceClient(), token, new Date(), {}))?.profile).toBeNull();
+  });
+
+  it("DEV-058: against a server that predates the summary, the result is still delivered (sent once more without it)", async () => {
+    const prospectId = await prepare(candidate(), true);
+    const base = await mkdtemp(join(tmpdir(), "sr-bridge-e2e-"));
+    const spool = bridgeSpool(join(base, "spool"));
+    await mkdir(spool.toWorker, { recursive: true });
+    await mkdir(spool.fromWorker, { recursive: true });
+    const dirs = queueDirs(join(base, "queue"));
+    await ensureQueue(dirs);
+    const outRoot = join(base, "out");
+    await mkdir(outRoot);
+    // The older server: its strict submit schema answers 400 to the unknown review key.
+    const bodies: Array<Record<string, unknown>> = [];
+    const oldServer: typeof fetch = async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      bodies.push(body);
+      if ("review" in body) return new Response(JSON.stringify({ error: "invalid_request", issues: [{ path: "", code: "unrecognized_keys" }] }), { status: 400, headers: { "content-type": "application/json" } });
+      return designPost(new NextRequest(String(input), { method: "POST", headers: init?.headers as Record<string, string>, body: String(init?.body) }));
+    };
+    const bridge = () => runBridgeOnce({ spool, stateDir: join(base, "state"), apiUrl: "https://secondroot.example.com", token: BRIDGE_TOKEN, fetch: oldServer });
+    await importBridgeJobs(spool, dirs, outRoot); // heartbeat
+    const workerJobId = (await bridge()).claimed!;
+    expect((await importBridgeJobs(spool, dirs, outRoot)).imported).toEqual([workerJobId]);
+    await writeFile(join(dirs.done, `${workerJobId}.json`), "{}");
+    await writeFile(join(dirs.done, `${workerJobId}.result.json`), JSON.stringify({ job_id: workerJobId, bucket: "done", outcome: "done" }));
+    await mkdir(join(outRoot, workerJobId));
+    const scores = (s: number) => ({ brand_fit: s, visual_quality: s, hierarchy: s, mobile_quality: s, generic_template_feel: 3, total: 4 * s + 3 });
+    const codex = { rounds: [{ candidate: "initial", scores: scores(4), verdict: "accept", problems: [] }], final_candidate: "initial", confidence: 0.72, quality_not_accepted: false };
+    await writeFile(join(outRoot, workerJobId, "report.json"), JSON.stringify({ outcome: "done", worker: { commit: "0123abcd4567" }, codex }));
+    await writeFile(join(outRoot, workerJobId, "final.json"), JSON.stringify(AMERICAN_EDITORIAL));
+    await exportBridgeResults(spool, dirs, outRoot);
+
+    expect(await bridge()).toMatchObject({ delivered: [workerJobId], refused: [], stopped: null });
+    expect(bodies.filter((b) => b.action === "submit").map((b) => "review" in b)).toEqual([true, false]);
+    expect(await demoOf(prospectId)).toMatchObject({ design_status: "ready", design_profile: PROFILE, design_review: null });
   });
 
   it("deliver-only delivers a finished job and leaves the next waiting demo unclaimed (DEV-037)", async () => {
@@ -495,5 +724,19 @@ describe("today queue", () => {
     vi.stubEnv("SALES_AI_DESIGN_ENABLED", "false");
     const off = await loadTodayQueue(admin);
     expect(off.map((i) => i.designStatus)).toEqual([null, null]);
+  });
+
+  it("DEV-058: shows the review summary of a finished design only with the step on", async () => {
+    const reviewed = await prepare(candidate(), true);
+    const job = (await claim())!;
+    await submitWithReview(job.job_id, "blocked", null, "QUALITY_NOT_ACCEPTED", REVISE);
+    const waiting = await prepare(candidate(), true);
+    vi.stubEnv("SALES_AI_DESIGN_ENABLED", "true");
+    const on = await loadTodayQueue(admin);
+    expect(on.find((i) => i.prospectId === reviewed)).toMatchObject({ designStatus: "blocked", designErrorCode: "QUALITY_NOT_ACCEPTED", designReview: REVISE });
+    expect(on.find((i) => i.prospectId === waiting)?.designReview).toBeNull();
+    vi.stubEnv("SALES_AI_DESIGN_ENABLED", "false");
+    const off = await loadTodayQueue(admin);
+    expect(off.map((i) => i.designReview)).toEqual([null, null]);
   });
 });

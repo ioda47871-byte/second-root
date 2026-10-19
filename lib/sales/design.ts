@@ -1,4 +1,5 @@
 import { checkProfile, type DesignProfile } from "@/lib/design-agent/profile";
+import { REVIEW_SCORE_KEYS, type ReviewScoreKey, type ReviewSummary } from "@/lib/design-agent/review-summary";
 
 // AI design step for sales demos (DEV-030, Sales Design Bridge). Pure rules
 // shared by the bridge API, the public demo, the admin screens and tests.
@@ -95,4 +96,24 @@ export const DESIGN_ERROR_LABEL: Readonly<Record<string, string>> = {
 export function designErrorLabel(code: string | null | undefined): string | null {
   if (!code) return null;
   return Object.hasOwn(DESIGN_ERROR_LABEL, code) ? DESIGN_ERROR_LABEL[code]! : code;
+}
+
+/** DEV-058: the admin's words for the review's score axes (generic_template_feel: lower is better). */
+export const REVIEW_AXIS_LABEL: Readonly<Record<ReviewScoreKey, string>> = {
+  brand_fit: "店らしさ",
+  visual_quality: "見た目",
+  hierarchy: "情報の階層",
+  mobile_quality: "スマホ",
+  generic_template_feel: "テンプレ感（低いほど良い）",
+};
+
+/** DEV-058: one line for a stored review summary, e.g. 「AI レビュー: accept 19/25（2 回）」. Numbers and enums only. */
+export function reviewSummaryLine(r: ReviewSummary): string {
+  return `AI レビュー: ${r.verdict} ${r.total}/${r.max}（${r.rounds} 回）`;
+}
+
+/** DEV-058: the axis scores of a summary in the review schema's order, then the confidence when recorded. */
+export function reviewAxisLines(r: ReviewSummary): string[] {
+  const axes = REVIEW_SCORE_KEYS.map((k) => `${REVIEW_AXIS_LABEL[k]} ${r.scores[k]}/5`);
+  return r.confidence === null ? axes : [...axes, `確信度 ${r.confidence.toFixed(2)}`];
 }

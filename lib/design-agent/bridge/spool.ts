@@ -14,7 +14,10 @@
  * jail) never does and never talks to the server. What crosses the spool is
  * fixed: a job is the worker's existing job file (verified facts and source
  * URLs); a result is an outcome, a checked DesignProfile without rationale,
- * a fixed error code and the worker commit. No screenshot, HTML, cookie,
+ * a fixed error code and the worker commit. DEV-058: next to a result the
+ * worker may write a review summary of fixed keys, numbers and enums as its
+ * own sidecar file (<worker job id>.review.json), so a result file keeps the
+ * shape an older bridge accepts. No screenshot, HTML, cookie,
  * prompt, Codex output, stderr or reasoning can be expressed in either.
  *
  * Both sides read spool files the same careful way: no link followed, a
@@ -25,6 +28,7 @@ import { open, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { DesignProfileSchema } from "../profile";
+import { ReviewSummarySchema, type ReviewSummary } from "../review-summary";
 import { DESIGN_ERROR_CODE, WORKER_COMMIT } from "../../sales/design";
 import { PUBLIC_MESSAGES } from "../worker/messages";
 import { DESIGN_OUTCOMES, WORKER_JOB_ID } from "../../sales/design-bridge-schema";
@@ -64,6 +68,46 @@ export const WorkerResultSchema = z
   .refine((r) => (r.outcome === "ready") === (r.error_code === null), { message: "error_code only without ready" })
   .refine((r) => r.profile === null || r.profile.rationale.length === 0, { message: "rationale must be empty" });
 export type WorkerResult = z.infer<typeof WorkerResultSchema>;
+
+/**
+ * DEV-058: the review summary sidecar, from-worker/<worker job id>.review.json.
+ * A separate file, so the result file itself keeps the shape every bridge
+ * accepts (an older bridge never reads, lists or sends the sidecar). Written
+ * the same way as a result (atomic, mode 0640) and read the same careful way
+ * (no link, one link, size limit, strict schema).
+ */
+export const REVIEW_SIDECAR_SUFFIX = ".review.json";
+export const MAX_REVIEW_BYTES = 2 * 1024;
+
+export function reviewSidecarName(id: string): string {
+  if (!SPOOL_FILE.test(`${id}.json`)) throw Object.assign(new Error("spool id"), { code: "BRIDGE_SPOOL_INVALID" });
+  return `${id}${REVIEW_SIDECAR_SUFFIX}`;
+}
+
+export async function writeReviewSidecar(dir: string, id: string, review: ReviewSummary, mode: number = 0o640): Promise<void> {
+  await writeFileAtomic(dir, reviewSidecarName(id), ReviewSummarySchema.parse(review), mode);
+}
+
+/** The sidecar's summary when it is there and valid; null otherwise (an invalid sidecar is never an error). */
+export async function readReviewSidecar(dir: string, id: string): Promise<ReviewSummary | null> {
+  const parsed = ReviewSummarySchema.safeParse(await readSpoolJson(join(dir, reviewSidecarName(id)), MAX_REVIEW_BYTES));
+  return parsed.success ? parsed.data : null;
+}
+
+export async function removeReviewSidecar(dir: string, id: string): Promise<void> {
+  await rm(join(dir, reviewSidecarName(id)), { force: true });
+}
+
+const SIDECAR_FILE = /^(b-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.review\.json$/;
+
+/** Worker job ids of the review sidecars in a directory. */
+export async function reviewSidecarIds(dir: string): Promise<string[]> {
+  const names = await readdir(dir).catch(() => [] as string[]);
+  return names
+    .map((n) => SIDECAR_FILE.exec(n)?.[1])
+    .filter((id): id is string => id !== undefined)
+    .sort();
+}
 
 /**
  * Reads one spool file: opened without following a link, a regular file

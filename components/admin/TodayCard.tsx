@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { TodayItem } from "@/lib/admin/today";
 import { CATEGORY_LABEL } from "@/lib/sales/demo-content";
-import { DESIGN_FALLBACK_NOTE, DESIGN_STATUS_LABEL, designErrorLabel } from "@/lib/sales/design";
+import { DESIGN_FALLBACK_NOTE, DESIGN_STATUS_LABEL, designErrorLabel, reviewAxisLines, reviewSummaryLine } from "@/lib/sales/design";
 import DncControl from "./DncControl";
 import SkipDraft from "./SkipDraft";
 import styles from "./admin.module.css";
@@ -60,6 +60,13 @@ export default function TodayCard({ item, now, action }: { item: TodayItem; now:
         <p>
           {item.ward ? `名古屋市${item.ward}` : "名古屋市"}・{CATEGORY_LABEL[item.category]}
         </p>
+        {item.kind === "initial" && item.designReview && (
+          <p className={styles.muted} data-testid="design-review" data-verdict={item.designReview.verdict}>
+            {reviewSummaryLine(item.designReview)}
+            <br />
+            {reviewAxisLines(item.designReview).join("・")}
+          </p>
+        )}
         <a className={styles.secondary} href={`/admin/preview/${item.prospectId}`}>
           デモを確認
         </a>
