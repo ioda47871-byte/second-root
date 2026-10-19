@@ -1,0 +1,55 @@
+# Second Root design worker cycle (DEV-052). NOT installed or enabled by anything in this
+# repository: a person installs it from the root-only admin clone after approval
+# (docs/operations/design-worker-cycle.md). One cycle per start; see cycle.sh for the steps.
+#
+# Runs as root (no User=): cycle.sh starts the worker only through
+# `admin.sh run sr-designgen -- ...` (root, the requester jail) and the bridge only as
+# sr-designbridge (runuser). The hardening below keeps what that needs and nothing more.
+[Unit]
+Description=Second Root design worker cycle (one claim, one worker run)
+After=network-online.target
+Wants=network-online.target
+# No Conflicts= with the bridge / old worker units: that would stop them in the middle of a pass.
+# cycle.sh refuses to start while any of them is active or enabled (CHECK_UNIT_*).
+
+[Service]
+Type=oneshot
+WorkingDirectory=/
+ExecStart=/usr/bin/bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh
+# cycle.sh ends inside its own 4500 s budget (deadlines fixed at the start; the worker is cut at
+# RuntimeMaxSec=3500 by admin.sh run, a bridge pass at 250 s). This is the last resort above it.
+TimeoutStartSec=4800
+# 10 = CYCLE_IDLE (nothing to claim), 11 = CYCLE_LOCKED (another cycle runs): not failures.
+SuccessExitStatus=10 11
+# The lock and the per-run output files (0700, root only).
+StateDirectory=sr-design-cycle
+StateDirectoryMode=0700
+UMask=0077
+# Root may still drop to sr-designbridge (runuser needs no setuid binary); nothing here may gain privileges.
+# (sudo would refuse under NoNewPrivileges, so cycle.sh uses runuser.)
+NoNewPrivileges=yes
+# Read-only system and homes. Writable: the state directory (above), and what the bridge, which
+# runs in this unit's namespace, writes: its own state and the to-worker spool (as sr-design-bridge.service).
+# The jailed worker is a separate transient unit started by systemd, not affected by these lines.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/sr-designbridge/.local/state/sr-design-bridge /srv/sr-design-bridge/to-worker
+ReadOnlyPaths=/srv/sr-design-bridge/from-worker
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+# AF_UNIX: systemctl / systemd-run talk to systemd (admin.sh run). AF_INET(6): the bridge's https. AF_NETLINK: id / getent lookups.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Not set, on purpose:
+#   ProtectProc / CapabilityBoundingSet: admin.sh's host check reads every process's /proc as root,
+#     and runuser needs CAP_SETUID / CAP_SETGID.
+#   PrivateNetwork / IPAddressDeny: the bridge must reach the Second Root server.
+#   MemoryDenyWriteExecute: the bridge runs node (JIT).
+#   PrivateUsers / DynamicUser: root must stay root for admin.sh.
