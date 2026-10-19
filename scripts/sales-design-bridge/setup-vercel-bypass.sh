@@ -102,6 +102,8 @@ if [ "$REPO" = "$PROD_CLONE" ]; then
   FILE_ROOT=root
   export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   BRIDGE_HOME="$(getent passwd "$BRIDGE_USER" | cut -d: -f6)" || BRIDGE_HOME=""
+  # cycle.sh, run.sh's units and the docs all use /home/sr-designbridge; another home is refused at step 2.
+  EXPECTED_HOME=/home/sr-designbridge
 else
   # Any other copy runs only the unit tests' fake world (tests/unit/design-bridge-bypass-setup.test.ts).
   [ -n "$TEST_ROOT" ] && [ -d "$TEST_ROOT" ] || usage "run from the root-only clone: sudo bash $PROD_CLONE/scripts/sales-design-bridge/setup-vercel-bypass.sh"
@@ -109,6 +111,7 @@ else
   BRIDGE_USER="$(id -un)"
   FILE_ROOT="$(id -un)"
   BRIDGE_HOME="$R/home/sr-designbridge"
+  EXPECTED_HOME="$BRIDGE_HOME"
 fi
 CONF_DIR="$BRIDGE_HOME/.config/second-root"
 BRIDGE_ENV="$CONF_DIR/design-bridge.env"
@@ -154,19 +157,32 @@ bypass_file_ok() {
 }
 
 # Shell code run AS the bridge user. Values travel on stdin or stay in that shell's own unexported
-# variables; only paths are arguments. Whitespace around a value is trimmed (as the bridge does), and
-# the value rule is the bridge's: 16-256 visible ASCII characters (C locale: [:graph:] = 0x21-0x7e).
+# variables, and only builtins (printf, read, [[ ]], $(<file)) ever hold them; only paths are
+# arguments. Whitespace around a value is trimmed (as the bridge does), and the value rule is the
+# bridge's: 16-256 visible ASCII characters (C locale: [:graph:] = 0x21-0x7e), no NUL byte.
 VALUE_FUNCS='
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; printf "%s" "${s%"${s##*[![:space:]]}"}"; }
 valid() { [ "${#1}" -ge 16 ] && [ "${#1}" -le 256 ] && [[ "$1" != *[![:graph:]]* ]]; }
+no_nul() { [ "$(tr -d "\000" <"$1" | wc -c)" = "$(wc -c <"$1")" ]; }
 is_token() { local t=""; [ -f "$2" ] && [ ! -L "$2" ] || return 1; t="$(trim "$(<"$2")")"; [ "$1" = "$t" ]; }
 '
 # exit 0 ok, 3 not a valid value, 4 the bridge token
 CHECK_EXISTING="$VALUE_FUNCS"'
+no_nul "$1" || exit 3
 v="$(trim "$(<"$1")")" || exit 3
 valid "$v" || { v=; exit 3; }
 if is_token "$v" "$2"; then v=; exit 4; fi
 v=
+'
+# Removes temporary files a killed earlier run may have left (each holds a value); prints how many.
+CLEAN_TEMP='
+shopt -s nullglob
+n=0
+for f in "$1"/.design-bridge.vercel-bypass.?*; do
+  shred -u -- "$f" 2>/dev/null || rm -f -- "$f"
+  n=$((n + 1))
+done
+printf "%s\n" "$n"
 '
 # exit 0 written, 3 not a valid value, 4 the bridge token, 5 a file appeared meanwhile (not replaced), 6 not written
 WRITE_VALUE="$VALUE_FUNCS"'
@@ -175,25 +191,29 @@ dir="$1" file="$2" token="$3" how="$4" v="" tmp=""
 IFS= read -r -d "" v || true
 valid "$v" || { v=; exit 3; }
 if is_token "$v" "$token"; then v=; exit 4; fi
+trap '\''[ -z "$tmp" ] || rm -f "$tmp"'\'' EXIT
+trap '\''exit 129'\'' HUP
+trap '\''exit 130'\'' INT
+trap '\''exit 143'\'' TERM
 tmp="$(mktemp "$dir/.design-bridge.vercel-bypass.XXXXXX")" || { v=; exit 6; }
-trap '\''rm -f "$tmp"'\'' EXIT
 printf "%s" "$v" >"$tmp" || { v=; exit 6; }
 v=
 chmod 600 "$tmp" || exit 6
 if [ "$how" = replace ]; then
   mv -fT "$tmp" "$file" || exit 6
-else
-  ln -T "$tmp" "$file" 2>/dev/null || exit 5
-  rm -f "$tmp"
+elif ! ln -T "$tmp" "$file" 2>/dev/null; then
+  if [ -e "$file" ] || [ -L "$file" ]; then exit 5; fi
+  exit 6
 fi
-trap - EXIT
 '
-# Prints the response body, a newline and the HTTP status (000 when there was none). The bypass
-# header, when asked for, is built by the printf builtin and handed to curl on stdin.
+# Prints the response body, a newline and the HTTP status (000 when there was none). curl starts
+# with -q, so the bridge user's ~/.curlrc is never read (it could add a trace, a proxy or a header).
+# The bypass header, when asked for, is built by the printf builtin and handed to curl on stdin.
 PROBE='
 url="$1" file="$2" how="$3"
-args=(-sS --max-redirs 0 --max-time 20 -o - -w "\n%{http_code}" -X POST -H "content-type: application/json" --data "{}")
+args=(-q -sS --max-redirs 0 --max-time 20 -o - -w "\n%{http_code}" -X POST -H "content-type: application/json" --data "{}")
 if [ "$how" = with ]; then
+  [ "$(tr -d "\000" <"$file" | wc -c)" = "$(wc -c <"$file")" ] || exit 0
   v="$(<"$file")"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"
   printf "x-vercel-protection-bypass: %s\n" "$v" | curl "${args[@]}" -H @- "$url" 2>/dev/null || true
   v=
@@ -202,6 +222,10 @@ else
 fi
 '
 # Classifies a probe from that output; prints one code only (never the body).
+#   without the header: Vercel's protection 401 = PROTECTION_ON; the app's own JSON error (it was
+#     reached without a bypass) = PROTECTION_NOT_ON; anything else (404, 429, 5xx, HTML) = PROBE_FAILED
+#   with the header: the app's expected answers = REACHED_APP; Vercel's protection 401 =
+#     BYPASS_REJECTED; anything else = PROBE_FAILED
 CLASSIFY_PY='
 import json, sys
 how = sys.argv[1]
@@ -216,10 +240,16 @@ try:
 except Exception:
     doc = None
 protection = isinstance(doc, dict) and "protection" in doc
-error = doc.get("error") if isinstance(doc, dict) else None
+error = doc.get("error") if isinstance(doc, dict) and not protection else None
+vercel_401 = status == "401" and protection
 if how == "without":
-    print("PROTECTION_ON" if status == "401" and protection else "PROTECTION_NOT_ON")
-elif protection:
+    if vercel_401:
+        print("PROTECTION_ON")
+    elif isinstance(error, str) and error in ("design_bridge_disabled", "unauthorized", "invalid_json", "payload_too_large", "invalid_request"):
+        print("PROTECTION_NOT_ON")
+    else:
+        print("PROBE_FAILED")
+elif vercel_401:
     print("BYPASS_REJECTED")
 elif (status, error) in (("503", "design_bridge_disabled"), ("401", "unauthorized")):
     print("REACHED_APP " + error)
@@ -245,6 +275,8 @@ if [ -z "$R" ]; then
 fi
 [ "${BRIDGE_HOME#/}" != "$BRIDGE_HOME" ] && [ -d "$BRIDGE_HOME" ] ||
   check_fail "BYPASS_BRIDGE_USER_MISSING: $BRIDGE_USER has no home directory"
+[ "$BRIDGE_HOME" = "$EXPECTED_HOME" ] ||
+  check_fail "BRIDGE_HOME_UNEXPECTED: $BRIDGE_USER's home is not /home/sr-designbridge (cycle.sh and the units expect it there)"
 [ -d "$CONF_DIR" ] && [ ! -L "$CONF_DIR" ] && [ "$(stat -c %U "$CONF_DIR")" = "$BRIDGE_USER" ] &&
   [ $(( 0$(stat -c %a "$CONF_DIR") & 022 )) -eq 0 ] ||
   check_fail "BYPASS_CONFIG_DIR_UNSAFE: ~$BRIDGE_USER/.config/second-root must be $BRIDGE_USER's directory, writable by nobody else"
@@ -286,6 +318,12 @@ say "checks: OK"
 
 # ---------------------------------------------------------------- 3. the value
 STEP=3
+left="$(as_bridge bash -c "$CLEAN_TEMP" _ "$CONF_DIR" </dev/null 2>/dev/null)" || left=error
+case "$left" in
+  0) ;;
+  [1-9]*) say "BYPASS_TEMP_REMOVED: $left leftover temporary file(s) of an interrupted run removed (as $BRIDGE_USER)" ;;
+  *) say "leftover temporary files could not be checked"; finish BYPASS_WRITE_FAILED 4 ;;
+esac
 if [ -e "$BYPASS_FILE" ] || [ -L "$BYPASS_FILE" ]; then EXISTS=1; else EXISTS=0; fi
 if [ "$EXISTS" = 1 ] && [ "$REPLACE" = 0 ]; then
   say "BYPASS_FILE_PRESENT: kept, not read into this shell (use --replace to put a new value)"
@@ -311,9 +349,18 @@ else
   fi
   printf 'Paste the Vercel bypass value for the design bridge (not shown), then Enter: ' >&4
   BYPASS_VALUE=""
-  if ! IFS= read -r -s -t 600 BYPASS_VALUE <&3; then
-    [ -n "$BYPASS_VALUE" ] || { printf '\n' >&4; unset BYPASS_VALUE; finish BYPASS_VALUE_INVALID 4; }
+  READ_TIMEOUT=600
+  if [ -n "$R" ] && [ -f "$R/read-timeout" ]; then READ_TIMEOUT="$(cat "$R/read-timeout")"; fi
+  rc=0
+  IFS= read -r -s -t "$READ_TIMEOUT" BYPASS_VALUE <&3 || rc=$?
+  if [ "$rc" -gt 128 ]; then
+    # Timed out: whatever was typed without Enter is discarded.
+    printf '\n' >&4
+    unset BYPASS_VALUE
+    say "no value within $READ_TIMEOUT s; nothing written"
+    finish BYPASS_INPUT_TIMEOUT 4
   fi
+  [ "$rc" = 0 ] || [ -n "$BYPASS_VALUE" ] || { printf '\n' >&4; unset BYPASS_VALUE; finish BYPASS_VALUE_INVALID 4; }
   printf '\n' >&4
   exec 3<&- 4>&-
   # Trim the whitespace a paste may carry, then the bridge's rule. No regex: BASH_REMATCH would keep a copy.

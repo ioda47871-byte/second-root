@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -37,13 +37,34 @@ function world(opts: { stdin?: boolean } = {}) {
   const curlStdin = join(t, "curl-stdin.log");
   mkdirSync(sc, { recursive: true });
   writeFileSync(calls, "");
-  // runuser -u <user> -- <command…>: records argv and environment, then runs the command as this user
+  const shims = join(t, "shims.log");
+  writeFileSync(shims, "");
+  // runuser -u <user> -- <command…>: records argv and environment, then runs the command as this user.
+  // What runs "as the bridge user" carries the marker SR_FAKE_AS_BRIDGE=1 (inserted after `env -i`).
   exe(join(bin, "runuser"), `{ printf 'runuser argv: %s\\n' "$*"; printf 'runuser env: %s\\n' "$(env | tr '\\n' ' ')"; } >> '${calls}'
 while [ $# -gt 0 ] && [ "$1" != -- ]; do shift; done; shift
+if [ "\${1:-}" = env ] && [ "\${2:-}" = -i ]; then shift 2; exec env -i SR_FAKE_AS_BRIDGE=1 "$@"; fi
 exec "$@"`);
-  // curl: records argv and environment (never stdin, which only the test reads), then plays sc/curl-<with|without>.{body,status,rc}
-  exe(join(bin, "curl"), `how=without; case " $* " in *" @- "*) how=with; cat >> '${curlStdin}' ;; esac
-{ printf 'curl#%s argv: %s\\n' "$how" "$*"; printf 'curl#%s env: %s\\n' "$how" "$(env | tr '\\n' ' ')"; } >> '${calls}'
+  // Common external commands: each records its argv (the value must never be there) and refuses to
+  // touch a path under the bridge user's home unless it runs as the bridge user (root must never
+  // create, move, link, read or remove files in a directory that user controls).
+  for (const name of ["mktemp", "ln", "mv", "chmod", "cat", "tail", "tr", "wc", "rm", "shred", "cmp", "cp", "touch", "tee", "find", "printf", "echo", "dd", "head"]) {
+    exe(join(bin, name), `real="$(PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin command -v ${name})"
+printf '${name} %s | env %s\\n' "$*" "$(/usr/bin/env | /usr/bin/tr '\\n' ' ')" >> '${shims}'
+if [ -z "\${SR_FAKE_AS_BRIDGE:-}" ]; then
+  for a in "$@"; do case "$a" in *home/sr-designbridge*) printf 'REFUSED ${name} %s\\n' "$*" >> '${calls}'; exit 97 ;; esac; done
+fi
+${name === "ln" ? `[ ! -f '${sc}/ln-fail' ] || exit 1
+[ ! -f '${sc}/ln-race' ] || printf 'raced-%s' 0123456789abcdef > "\${@: -1}"` : ""}
+exec "$real" "$@"`);
+  }
+  // curl: refuses unless run as the bridge user; records argv and environment (never stdin, which
+  // only the test reads); like the real curl it would read $HOME/.curlrc unless -q comes first
+  // (here: a .curlrc "traces" the header); then plays sc/curl-<with|without>.{body,status,rc}
+  exe(join(bin, "curl"), `[ -n "\${SR_FAKE_AS_BRIDGE:-}" ] || { echo "REFUSED curl $*" >> '${calls}'; exit 97; }
+how=without; hdr=""; case " $* " in *" @- "*) how=with; hdr="$(/usr/bin/cat)"; printf '%s\\n' "$hdr" >> '${curlStdin}' ;; esac
+if [ "$1" != -q ] && [ "$1" != --disable ] && [ -f "$HOME/.curlrc" ]; then printf '%s\\n' "$hdr" >> '${join(t, "curlrc-trace")}'; fi
+{ printf 'curl#%s argv: %s\\n' "$how" "$*"; printf 'curl#%s env: %s\\n' "$how" "$(/usr/bin/env | /usr/bin/tr '\\n' ' ')"; } >> '${calls}'
 rc=$(cat '${sc}'/curl-$how.rc 2>/dev/null || echo 0)
 if [ "$rc" != 0 ]; then printf '\\n000'; exit "$rc"; fi
 cat '${sc}'/curl-$how.body; printf '\\n%s' "$(cat '${sc}'/curl-$how.status)"`);
@@ -60,7 +81,7 @@ cat '${sc}/cycle.out'; exit $(cat '${sc}/cycle.rc' 2>/dev/null || echo 0)`);
   writeFileSync(env, `SR_DESIGN_BRIDGE_API_URL=${ALIAS}\n`, { mode: 0o600 });
   writeFileSync(token, `Tk9${randomBytes(30).toString("base64url")}\n`, { mode: 0o600 });
   if (opts.stdin !== false) writeFileSync(join(t, "tty-is-stdin"), "");
-  const w = { t, sc, bin, calls, curlStdin, conf, env, token, bypass, cycleConf: join(t, "etc/second-root/design-cycle.conf") };
+  const w = { t, sc, bin, calls, shims, curlStdin, conf, env, token, bypass, cycleConf: join(t, "etc/second-root/design-cycle.conf") };
   answer(w, "without", 401, VERCEL_401);
   answer(w, "with", 503, APP_DISABLED);
   return w;
@@ -90,6 +111,9 @@ const leftovers = (w: World) => readdirSync(w.conf).filter((f) => f.startsWith("
 function expectHidden(w: World, r: ReturnType<typeof run>, value: string) {
   expect(r.out).not.toContain(value);
   expect(r.calls).not.toContain(value); // every runuser / curl argv and environment
+  const shims = readFileSync(w.shims, "utf8");
+  expect(shims).not.toContain(value); // every shimmed external command's argv and environment
+  expect(r.calls).not.toContain("REFUSED"); // root never touched the bridge user's files itself
   expect(r.out).not.toContain(ALIAS);
   expect(r.out).not.toContain("should-not-pass");
   expect(r.calls).not.toContain("should-not-pass");
@@ -189,6 +213,10 @@ describe("setup-vercel-bypass.sh: one paste", () => {
     expect(existsSync(dirname(w.cycleConf))).toBe(false);
     expect(r.calls).not.toContain("cycle#");
     expectHidden(w, r, value);
+    // the bridge user did the file work (the shims saw it, with the marker); curl started with -q
+    const shims = readFileSync(w.shims, "utf8");
+    for (const name of ["mktemp", "chmod", "ln", "rm"]) expect(shims).toMatch(new RegExp(`^${name} .*SR_FAKE_AS_BRIDGE=1`, "m"));
+    for (const line of [...curlCalls(r.calls, "without"), ...curlCalls(r.calls, "with")]) expect(line).toMatch(/^curl#\w+ argv: -q /);
   });
 
   it("the token (and the bridge's own secrets) are never read into curl, argv or the output", () => {
@@ -601,6 +629,154 @@ sys.stdout.write(out.decode("utf-8", "replace"))
     });
     expect(r.stdout.trimEnd().split("\n").pop()).toBe("BYPASS_SETUP_RESULT BYPASS_NO_TTY step=3");
     expect(existsSync(w.bypass)).toBe(false);
+  });
+});
+
+describe("setup-vercel-bypass.sh: review fixes (DEV-063 fresh review)", () => {
+  // M1: the value never reaches an external process's argv or environment. strace sees every
+  // execve, including an absolute /usr/bin/printf that a PATH shim cannot catch.
+  const canStrace = spawnSync("strace", ["-f", "-qq", "-e", "trace=execve", "-o", "/dev/null", "true"]).status === 0;
+  it.skipIf(!canStrace)("no execve anywhere (argv or environment) carries the value", () => {
+    for (const replace of [false, true]) {
+      const w = world();
+      if (replace) writeFileSync(w.bypass, newValue(), { mode: 0o600 });
+      const value = newValue();
+      const trace = join(w.t, "execve.trace");
+      const r = spawnSync("strace", ["-f", "-qq", "-v", "-s", "65536", "-e", "trace=execve", "-o", trace, "bash", SCRIPT, ...(replace ? ["--replace"] : [])], {
+        encoding: "utf8",
+        input: `${value}\n`,
+        env: { PATH: `${w.bin}:${process.env.PATH}`, SR_BYPASS_SETUP_TEST_ROOT: w.t } as unknown as NodeJS.ProcessEnv,
+        timeout: 60_000,
+      });
+      expect(r.stdout.trimEnd().split("\n").pop()).toBe("BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6");
+      const text = readFileSync(trace, "utf8");
+      expect(text).toContain("execve(");
+      expect(text).toContain("mktemp");
+      expect(text).not.toContain(value);
+      expect(readFileSync(w.bypass, "utf8")).toBe(value);
+    }
+  });
+
+  // M1, statically (also where strace is missing): only builtins hold the value.
+  it("every line that uses the value uses it through a bash builtin, never an external command", () => {
+    const code = readFileSync(SCRIPT, "utf8").split("\n").filter((l) => !l.trimStart().startsWith("#"));
+    const uses = code.filter((l) => /\$\{?v\b|\$\{?BYPASS_VALUE\b|"\$1" != \*|\$\{#1\}/.test(l));
+    expect(uses.length).toBeGreaterThan(8);
+    for (const l of uses) {
+      expect(l, l).not.toMatch(/(^|[;|&({]|\$\()\s*(\/[\w./-]+|command|builtin|env|exec|xargs|sudo|runuser|nohup|time|stdbuf|timeout)\s[^|]*(\$\{?v\b|\$\{?BYPASS_VALUE\b|\$1)/);
+      for (const m of l.matchAll(/(?:^|[;&({]|\|\|?|&&|\$\()\s*([A-Za-z_][\w-]*)(?=\s[^|]*(?:\$\{?v\b|\$\{?BYPASS_VALUE\b))/g)) {
+        expect(["printf", "valid", "is_token", "trim", "if", "local", "unset", "read", "case", "then", "elif", "IFS", "v", "BYPASS_VALUE"], `${m[1]} in: ${l}`).toContain(m[1]);
+      }
+    }
+  });
+
+  // M7, statically: every piece of shell code that touches the bridge user's files runs as that user.
+  it("every `bash -c` runs through as_bridge, and root writes nothing under the bridge user's directory", () => {
+    const code = readFileSync(SCRIPT, "utf8").split("\n").filter((l) => !l.trimStart().startsWith("#"));
+    const bashC = code.filter((l) => /\bbash -c\b/.test(l));
+    expect(bashC.length).toBeGreaterThanOrEqual(5);
+    for (const l of bashC) expect(l, l).toMatch(/\bas_bridge bash -c\b/);
+    const VARS = "(CONF_DIR|BRIDGE_ENV|BYPASS_FILE|TOKEN_FILE)";
+    const touch = new RegExp(`[<>]{1,2}\\s*"\\$${VARS}|\\b(mktemp|ln|mv|cp|rm|shred|chmod|chown|touch|tee|install|cat|tail|head|cmp)\\s[^|]*"\\$${VARS}`);
+    let checked = 0;
+    for (const l of code) {
+      const m = touch.exec(l);
+      if (!m) continue;
+      checked += 1;
+      expect(l.slice(0, m.index), l).toMatch(/\bas_bridge\b/);
+    }
+    expect(checked).toBeGreaterThanOrEqual(1);
+  });
+
+  it("the bridge user's ~/.curlrc is never read (curl starts with -q)", () => {
+    const w = world();
+    writeFileSync(join(w.t, "home/sr-designbridge/.curlrc"), `trace-ascii = "${join(w.t, "trace.txt")}"\n`, { mode: 0o600 });
+    const value = newValue();
+    const r = run(w, [], `${value}\n`);
+    expect(r.status).toBe(0);
+    expect(existsSync(join(w.t, "curlrc-trace"))).toBe(false);
+    for (const line of [...curlCalls(r.calls, "without"), ...curlCalls(r.calls, "with")]) expect(line).toMatch(/^curl#\w+ argv: -q /);
+  });
+
+  it("temporary files left by an interrupted run are removed as the bridge user (also when the file is kept)", () => {
+    for (const present of [false, true]) {
+      const w = world();
+      if (present) writeFileSync(w.bypass, newValue(), { mode: 0o600 });
+      const stale = newValue();
+      writeFileSync(join(w.conf, ".design-bridge.vercel-bypass.Ab12Cd"), stale, { mode: 0o600 });
+      writeFileSync(join(w.conf, ".design-bridge.vercel-bypass.Zz99Yy"), stale, { mode: 0o600 });
+      const r = run(w, [], `${newValue()}\n`);
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("BYPASS_TEMP_REMOVED: 2 leftover temporary file(s)");
+      expect(leftovers(w)).toEqual([]);
+      expect(r.out).not.toContain(stale);
+      expect(r.calls).not.toContain("REFUSED");
+    }
+  });
+
+  it("a kept file with a NUL byte is refused, as the bridge refuses it", () => {
+    const w = world();
+    writeFileSync(w.bypass, Buffer.concat([Buffer.from(newValue()), Buffer.from([0]), Buffer.from("tail")]), { mode: 0o600 });
+    const r = run(w);
+    expect(r.last).toBe("BYPASS_SETUP_RESULT BYPASS_VALUE_INVALID step=3");
+    expect(r.calls).not.toContain("curl#");
+  });
+
+  it("a file that appears between the check and the link → BYPASS_FILE_PRESENT_RACE; that file is kept, no temporary file left", () => {
+    const w = world();
+    writeFileSync(join(w.sc, "ln-race"), "");
+    const r = run(w, [], `${newValue()}\n`);
+    expect(r.status).toBe(4);
+    expect(r.last).toBe("BYPASS_SETUP_RESULT BYPASS_FILE_PRESENT_RACE step=3");
+    expect(readFileSync(w.bypass, "utf8")).toBe("raced-0123456789abcdef");
+    expect(leftovers(w)).toEqual([]);
+  });
+
+  it("another link error (no file appeared) → BYPASS_WRITE_FAILED, nothing written, no temporary file left", () => {
+    const w = world();
+    writeFileSync(join(w.sc, "ln-fail"), "");
+    const r = run(w, [], `${newValue()}\n`);
+    expect(r.last).toBe("BYPASS_SETUP_RESULT BYPASS_WRITE_FAILED step=3");
+    expect(existsSync(w.bypass)).toBe(false);
+    expect(leftovers(w)).toEqual([]);
+  });
+
+  it("a read that times out discards what was typed (no Enter) → BYPASS_INPUT_TIMEOUT, nothing written", async () => {
+    const w = world();
+    writeFileSync(join(w.t, "read-timeout"), "1");
+    const value = newValue();
+    const child = spawn("bash", [SCRIPT], { env: { PATH: `${w.bin}:${process.env.PATH}`, SR_BYPASS_SETUP_TEST_ROOT: w.t } as unknown as NodeJS.ProcessEnv });
+    let stdout = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", () => undefined);
+    child.stdin.write(value); // pasted, Enter never pressed; stdin stays open
+    const code = await new Promise<number | null>((resolve) => child.on("close", resolve));
+    child.stdin.destroy();
+    expect(code).toBe(4);
+    expect(stdout.trimEnd().split("\n").pop()).toBe("BYPASS_SETUP_RESULT BYPASS_INPUT_TIMEOUT step=3");
+    expect(stdout).not.toContain(value);
+    expect(existsSync(w.bypass)).toBe(false);
+  });
+
+  const notProtection: [string, number, string][] = [
+    ["a Vercel 404 (DEPLOYMENT_NOT_FOUND)", 404, JSON.stringify({ error: { code: "DEPLOYMENT_NOT_FOUND", message: "The deployment could not be found on Vercel." } })],
+    ["an HTML 404", 404, "<html>not found</html>"],
+    ["a 502 edge error", 502, "An error occurred with your deployment\n\nFUNCTION_INVOCATION_FAILED"],
+    ["a 429", 429, JSON.stringify({ error: "too_many_requests" })],
+  ];
+  it.each(notProtection)("without the bypass: %s is not 'Authentication off' → PROBE_FAILED", (_, status, body) => {
+    const w = world();
+    answer(w, "without", status, body);
+    const r = run(w, [], `${newValue()}\n`);
+    expect(r.last).toBe("BYPASS_SETUP_RESULT PROBE_FAILED step=5");
+    expect(r.stdout).not.toContain("WARNING");
+    expect(curlCalls(r.calls, "with")).toHaveLength(0);
+  });
+
+  it("with the bypass: Vercel's protection body on a status other than 401 → PROBE_FAILED, not BYPASS_REJECTED", () => {
+    const w = world();
+    answer(w, "with", 403, VERCEL_401);
+    expect(run(w, [], `${newValue()}\n`).last).toBe("BYPASS_SETUP_RESULT PROBE_FAILED step=5");
   });
 });
 
