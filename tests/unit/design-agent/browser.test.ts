@@ -554,6 +554,32 @@ describe("diagnose", () => {
     onlyCodes(lines);
   });
 
+  // DEV-055: when page.close() is slow (it raced the cross-host navigation on CI), the page that left
+  // the site kept running the off-site host's scripts until the targeted close took over (~10 s, ~200
+  // requests). In C the targeted close now starts with page.close(), so the off-site page stops at once.
+  it("in C, a page that left the site is closed at once even when page.close() never settles", { timeout: 60_000 }, async () => {
+    const s = await signedInProfile();
+    const target = profileTarget({ url: `${site.origin}/li_late_offsite/`, username: "li_late_offsite" }, (u) => u.startsWith(`${site.origin}/`));
+    const slowClose: LaunchPersistent = async (dir, options) => {
+      const context = await launchPersistent(dir, options);
+      const patch = (page: import("playwright").Page) => {
+        page.close = () => new Promise<void>(() => undefined); // never settles, as in the CI race
+      };
+      context.pages().forEach(patch);
+      context.on("page", patch);
+      return context;
+    };
+    const before = site.requests.length;
+    const lines: string[] = [];
+    const started = Date.now();
+    await runDiagnose({ profileDir: s.profile, stateDir: s.state, env: s.env, target, launchPersistent: slowClose, modes: ["C"], sampleAtMs: [100, 6_000], pauseMs: 0, sessionWaitMs: 1_000, closeTimeoutMs: 5_000, hasDisplay: false, say: (l) => lines.push(l) });
+    expect(lines).toContain("C STOPPED_OFF_SITE OFF_SITE_OTHER_HOST");
+    expect(lines.some((l) => l.includes("CLOSE_TIMEOUT")), lines.join(" | ")).toBe(false);
+    const pings = site.requests.slice(before).filter((r) => r.includes("/pinger/ping")).length;
+    expect(pings, "off-site requests after the move").toBeLessThanOrEqual(3);
+    expect(Date.now() - started, "no wait for the stuck page.close()").toBeLessThan(5_000 + 3_000);
+  });
+
   // DEV-035: in C, a refused move used to close the page inside the request handler while its
   // navigation was in flight; the run then awaited page.close() and context.close(). Under load one of
   // those closes sometimes never settled and the run hung (seen on CI with li_auth_platform). Here every
@@ -783,6 +809,17 @@ describe("closePageBounded", () => {
   const hang = (page: import("playwright").Page) => {
     page.close = () => new Promise<void>(() => undefined);
   };
+
+  it("DEV-055: with now, the targeted close starts at once instead of after page.close() gives up", async () => {
+    const { context, a, b } = await open();
+    hang(a);
+    const started = Date.now();
+    expect(await closePageBounded(a, 2_500, closeTargetByCdp, { now: true })).toBe("target_closed");
+    expect(Date.now() - started).toBeLessThan(2_500); // without now it waits 2.5 s for page.close() first
+    expect(b.isClosed()).toBe(false);
+    expect(await closePageBounded(b, 2_500, closeTargetByCdp, { now: true })).toBe("closed"); // an ordinary close
+    await context.close();
+  });
 
   it("an ordinary close is just a close; an already closed page is closed", async () => {
     const { context, a, b } = await open();

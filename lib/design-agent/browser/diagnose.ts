@@ -209,12 +209,44 @@ export async function closeTargetByCdp(page: Page, deadline: number): Promise<bo
  * through CDP and counts as closed once Chromium no longer lists it, again within `ms`. So one page
  * close takes at most 2 × `ms`. "timeout" when neither worked: the caller reports CLOSE_TIMEOUT and
  * ends the browser as before.
+ *
+ * DEV-055: with `now` (a page that already left the site without interception, mode C), the targeted
+ * close starts at the same time as page.close() instead of after it gave up: such a page keeps running
+ * the off-site host's scripts and requests until it is gone, so waiting up to `ms` for page.close() let
+ * it talk to that host for seconds (seen on CI as ~200 requests). Still at most `ms` in total then.
  */
 export async function closePageBounded(
   page: Page,
   ms: number,
   closeTarget: (page: Page, deadline: number) => Promise<boolean> = closeTargetByCdp,
+  options: { now?: boolean } = {},
 ): Promise<"closed" | "target_closed" | "timeout"> {
+  if (options.now) {
+    const deadline = Date.now() + ms;
+    let gone = false;
+    let closedNormally = false;
+    const normal = page.close().then(
+      () => (closedNormally = true),
+      () => undefined,
+    );
+    const targeted = Promise.resolve()
+      .then(() => closeTarget(page, deadline))
+      .then(
+        (closed) => {
+          gone = closed === true;
+        },
+        () => undefined,
+      );
+    // Done as soon as either way has closed the page, or both have finished trying.
+    const first = new Promise<void>((resolve) => {
+      void normal.then(() => (closedNormally ? resolve() : undefined));
+      void targeted.then(() => (gone ? resolve() : undefined));
+      void Promise.allSettled([normal, targeted]).then(() => resolve());
+    });
+    await settlesWithin(first, ms);
+    if (closedNormally) return "closed";
+    return gone || page.isClosed() ? "target_closed" : "timeout";
+  }
   if (await settlesWithin(page.close(), ms)) return "closed";
   if (page.isClosed()) return "closed"; // closed meanwhile, though close() itself did not settle
   const deadline = Date.now() + ms;
@@ -283,7 +315,8 @@ async function runMode(context: BrowserContext, mode: DiagnoseMode, options: Dia
   const closePage = async (p: Page) => {
     if (closed.has(p)) return;
     closed.add(p);
-    const result = await closePageBounded(p, closeMs, options.closeTarget);
+    // DEV-055: without interception a page that left the site is already on the other host: close it now.
+    const result = await closePageBounded(p, closeMs, options.closeTarget, { now: !guarded && state.offSite });
     if (result === "timeout") throw new CloseTimeout();
     // Closed through CDP: should the page object still deliver events, they no longer reach this run.
     if (result === "target_closed") {
