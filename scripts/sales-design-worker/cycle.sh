@@ -46,6 +46,8 @@ else
   exec env -i "${keep[@]}" bash "${BASH_SOURCE[0]}" --sr-clean-env "$@"
 fi
 
+# Where this copy lives, resolved before `cd /` so a relative invocation finds the same clone.
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
 umask 077
 cd /
 
@@ -56,7 +58,7 @@ BRIDGE_MAX=260             # one bridge pass at worst: this script's own timeout
 WORKER_BUDGET=3300         # SR_DESIGN_WORKER_BUDGET_SECONDS (run.sh's own cap)
 WORKER_RUNTIME_MAX=3500    # admin.sh run: RuntimeMaxSec=3500 for the jailed worker
 WORKER_STOP_GRACE=90       # systemd's default TimeoutStopSec after RuntimeMaxSec
-CLAIM_MIN_LEFT=4200        # claim only with this much left: a claim pass + the worker guard
+CLAIM_MIN_LEFT=4220        # claim only with this much left: a claim pass at worst + the worker guard
 WORKER_MIN_LEFT=3960       # start the worker only with this much left: the worker at worst + the last pass + margin
 DELIVER_MIN_LEFT=$BRIDGE_MAX
 WORKER_REF=develop
@@ -106,7 +108,7 @@ case "${1:-}" in
 esac
 
 # ---------------------------------------------------------------- where things are
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+REPO="$(dirname "$(dirname "$(dirname "$SELF")")")"
 PROD_CLONE=/root/sr-capture-admin
 TEST_ROOT="${SR_DESIGN_CYCLE_TEST_ROOT:-}"
 if [ "$REPO" = "$PROD_CLONE" ]; then
@@ -149,24 +151,30 @@ now() {
 # controls (a .git/config or a link could make root run or read something).
 as_bridge() {
   if [ -n "$R" ]; then
-    env HOME="$BRIDGE_HOME" "$@"
+    env HOME="$BRIDGE_HOME" "$@" 9>&-
   else
-    runuser -u "$BRIDGE_USER" -- env HOME="$BRIDGE_HOME" "$@"
+    runuser -u "$BRIDGE_USER" -- env HOME="$BRIDGE_HOME" "$@" 9>&-
   fi
 }
 
 # ---------------------------------------------------------------- output
-# Fixed codes stay; URLs, e-mail addresses, bearer values, key=value secrets, JWTs, known key
-# prefixes and long random-looking strings become [url] / [email] / [redacted]. Control
-# characters go, lines are cut at 300 characters, and only the last 200 lines are shown.
+# Fixed codes stay; URLs, e-mail addresses, bearer values, every value of a Cookie / Set-Cookie
+# line, key=value and "key": "value" secrets, `x-api-key <value>`, JWTs, known key prefixes, long
+# hex strings (job ids b-<uuid> and UUIDs have no 32-hex run, so they stay) and long
+# random-looking strings become [url] / [email] / [redacted]. Control characters go, lines are
+# cut at 300 characters, and only the last 200 lines are shown.
 REDACT_PY='
 import re, sys
 name = sys.argv[1]
+pair = re.compile(r"([^=;,\s]+)=[^;,\s]*")
 rules = [
     (re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+"), "[url]"),
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+"), "[email]"),
+    (re.compile(r"(?i)\b(set-cookie|cookie)([\"\x27]?\s*[=:]\s*)(.*)"), lambda m: m.group(1) + m.group(2) + pair.sub(r"\1=[redacted]", m.group(3))),
     (re.compile(r"(?i)\b(bearer|basic)\s+\S+"), r"\1 [redacted]"),
-    (re.compile(r"(?i)\b([A-Za-z0-9_.-]*(token|secret|password|passwd|cookie|api[_-]?key|authorization|credential|sessionid)[A-Za-z0-9_.-]*)(\s*[=:]\s*)\S+"), r"\1\3[redacted]"),
+    (re.compile(r"(?i)\b([A-Za-z0-9_.-]*(token|secret|password|passwd|cookie|api[_-]?key|authorization|credential|sessionid)[A-Za-z0-9_.-]*)([\"\x27]?\s*[=:]\s*)(\"[^\"]*\"?|\x27[^\x27]*\x27?|\S+)"), r"\1\3[redacted]"),
+    (re.compile(r"(?i)\b(x-api-key|api[_-]?key)\s+(?![=:\s])\S+"), r"\1 [redacted]"),
+    (re.compile(r"(?<![A-Za-z0-9_])[0-9A-Fa-f]{32,}(?![A-Za-z0-9_])"), "[redacted]"),
     (re.compile(r"\beyJ[A-Za-z0-9_-]{6,}(\.[A-Za-z0-9_-]*)*"), "[redacted]"),
     (re.compile(r"\b(sk-|gh[pousr]_|github_pat_|sb_secret_|sbp_|vercel_)[A-Za-z0-9_-]{8,}"), "[redacted]"),
     (re.compile(r"(?<![A-Za-z0-9+/=_-])(?=[A-Za-z0-9+/=_-]*[0-9])(?=[A-Za-z0-9+/=_-]*[a-z])(?=[A-Za-z0-9+/=_-]*[A-Z])[A-Za-z0-9+/=_-]{32,}"), "[redacted]"),
@@ -181,12 +189,24 @@ for line in lines:
         line = pattern.sub(repl, line)
     print("  %s| %s" % (name, line[:300]))
 '
-show() { python3 -I -c "$REDACT_PY" "$1" <"$2"; }
+show() { python3 -I -c "$REDACT_PY" "$1" <"$2" 9>&-; }
 
 # Codes in a child's output that stop the cycle (whole words: JAIL_OK and the like never match).
-STOP_CODES='LOGIN_REQUIRED|LOGIN_WALL|LOGIN_ABORTED|INSTAGRAM_CHALLENGE|INSTAGRAM_CAPTCHA|CHALLENGE|CAPTCHA|WAITING_FOR_PERSON|SKIPPED_NO_TIME|RATE_CAPPED|JAIL_UNSAFE|JAIL_NOT_INSTALLED|JAIL_PROPS_FAILED|JAIL_UNIT_REJECTED|HOST_UNSAFE|ADMIN_SCRIPT_UNTRUSTED|REQUESTER_[A-Z_]+|WSL_INTEROP_[A-Z_]+|BRIDGE_[A-Z_]+|CODEX_SANDBOX_[A-Z_]+|CODEX_API_KEY_AUTH|CODEX_NOT_SIGNED_IN|CODEX_NOT_INSTALLED|CODEX_QUOTA|SPOOL_UNSAFE|WORKER_NOT_ON_REF|WORKER_TREE_DIRTY|WORKER_ENV_FILE_PRESENT|WORKER_LOCK_FAILED|WORKER_RUN_TIME_BUDGET|RUN_TIME_BUDGET|WORKER_STOPPED_BY_SIGNAL|WORKER_UNEXPECTED|WORKER_SYSTEM_ERROR|OOM|Killed'
+STOP_CODES='LOGIN_REQUIRED|LOGIN_WALL|LOGIN_ABORTED|INSTAGRAM_CHALLENGE|INSTAGRAM_CAPTCHA|CHALLENGE|CAPTCHA|WAITING_FOR_PERSON|SKIPPED_NO_TIME|RATE_CAPPED|RATE_LIMITED|JAIL_UNSAFE|JAIL_NOT_INSTALLED|JAIL_PROPS_FAILED|JAIL_UNIT_REJECTED|HOST_UNSAFE|ADMIN_SCRIPT_UNTRUSTED|REQUESTER_[A-Z_]+|WSL_INTEROP_[A-Z_]+|BRIDGE_[A-Z_]+|CODEX_SANDBOX_[A-Z_]+|CODEX_API_KEY_AUTH|CODEX_NOT_SIGNED_IN|CODEX_NOT_INSTALLED|CODEX_QUOTA|SPOOL_UNSAFE|WORKER_NOT_ON_REF|WORKER_TREE_DIRTY|WORKER_ENV_FILE_PRESENT|WORKER_LOCK_FAILED|WORKER_RUN_TIME_BUDGET|RUN_TIME_BUDGET|WORKER_STOPPED_BY_SIGNAL|WORKER_UNEXPECTED|WORKER_SYSTEM_ERROR|OOM|Killed'
 stop_codes_in() {
   grep -oE "(^|[^A-Za-z0-9_])($STOP_CODES)([^A-Za-z0-9_]|$)" "$1" | grep -oE "$STOP_CODES" | sort -u | tr '\n' ' ' || true
+}
+
+# The capture helper gave no answer (busy, timed out, not reachable, its own error, an unusable
+# result). The worker then falls back to the public capture; if that ends the job
+# PUBLIC_SOURCE_UNAVAILABLE, the result is not about the shop but about the helper, and delivering
+# it closes the demo as blocked. Such a job is a stop. A helper answer (CAPTURED, LOGIN_REQUIRED,
+# INSTAGRAM_*, its own PUBLIC_SOURCE_UNAVAILABLE) is handled by STOP_CODES or delivered as it is.
+HELPER_NO_ANSWER='BROWSER_BUSY|HELPER_BUSY|HELPER_ERROR|CAPTURE_FAILED|CAPTURE_HELPER_TIMEOUT|CAPTURE_HELPER_UNAVAILABLE|CAPTURE_RESULT_INVALID|CAPTURE_REQUEST_INVALID|REQUEST_INVALID'
+helper_no_answer_in() { # <file> <job>
+  grep -Eq "(^|[[:space:]])job $2: PUBLIC_SOURCE_UNAVAILABLE([^A-Za-z0-9_]|\$)" "$1" || return 0
+  grep -oE "(^|[[:space:]])job $2: signed-in capture ($HELPER_NO_ANSWER)([^A-Za-z0-9_]|\$)" "$1" |
+    grep -oE "capture ($HELPER_NO_ANSWER)" | sed 's/^capture //' | sort -u | tr '\n' ' ' || true
 }
 
 # Open (not closed) job ids in the bridge ledger, one per line; exit 2 when it cannot be read.
@@ -234,7 +254,7 @@ private_file() {
 budget_ok() {
   [ "$WORKER_BUDGET" -lt "$WORKER_RUNTIME_MAX" ] &&
     [ "$WORKER_MIN_LEFT" -ge $((WORKER_RUNTIME_MAX + WORKER_STOP_GRACE + DELIVER_MIN_LEFT)) ] &&
-    [ "$CLAIM_MIN_LEFT" -ge $((WORKER_MIN_LEFT + BRIDGE_TIMEOUT)) ] &&
+    [ "$CLAIM_MIN_LEFT" -ge $((WORKER_MIN_LEFT + BRIDGE_MAX)) ] &&
     [ "$CYCLE_BUDGET" -ge "$CLAIM_MIN_LEFT" ]
 }
 budget_ok || usage "CYCLE_BUDGET_INVALID: the budget constants do not add up"
@@ -256,7 +276,7 @@ say "budget ${CYCLE_BUDGET} s: the claim starts within $((CYCLE_BUDGET - CLAIM_M
 
 # ---------------------------------------------------------------- 1. resource preflight
 rc=0
-timeout 60 bash "$PREFLIGHT" </dev/null >"$WORK/preflight.out" 2>&1 || rc=$?
+timeout 60 bash "$PREFLIGHT" </dev/null >"$WORK/preflight.out" 2>&1 9>&- || rc=$?
 show preflight "$WORK/preflight.out"
 case "$rc" in
   0 | 10) ;; # OK / SERIAL: this cycle is one heavy job
@@ -277,7 +297,7 @@ if [ -z "$R" ]; then
     trusted_path "$f" || check_fail "CHECK_SCRIPT_UNTRUSTED: ${f#"$REPO"/} can be changed by a user other than root"
   done
 fi
-[ -z "$(git -C "$ROOT_CLONE" status --porcelain --untracked-files=normal 2>/dev/null || echo error)" ] ||
+[ -z "$(git -C "$ROOT_CLONE" status --porcelain --untracked-files=normal 2>/dev/null 9>&- || echo error)" ] ||
   check_fail "CHECK_ROOT_CLONE_DIRTY: $PROD_CLONE has local changes"
 
 [ -f "$CONF" ] && [ ! -L "$CONF" ] || check_fail "CHECK_CONFIG_MISSING: /etc/second-root/design-cycle.conf (the approved bridge commit)"
@@ -357,7 +377,7 @@ summary_of() { grep -E '^bridge: ' "$1" || true; }
 worker_run() { # <name>
   local rc=0
   bash "$ADMIN" run "$WORKER_USER" -- /usr/bin/env SR_DESIGN_WORKER_REF="$WORKER_REF" SR_DESIGN_BRIDGE_SPOOL="$SPOOL" \
-    SR_DESIGN_WORKER_BUDGET_SECONDS="$WORKER_BUDGET" "$WORKER_RUN" --max=1 </dev/null >"$WORK/$1.out" 2>&1 || rc=$?
+    SR_DESIGN_WORKER_BUDGET_SECONDS="$WORKER_BUDGET" "$WORKER_RUN" --max=1 </dev/null >"$WORK/$1.out" 2>&1 9>&- || rc=$?
   show "$1" "$WORK/$1.out"
   return "$rc"
 }
@@ -422,10 +442,12 @@ rc=0
 worker_run worker || rc=$?
 codes="$(stop_codes_in "$WORK/worker.out")"
 [ -z "$codes" ] || { say "worker: stop codes: $codes"; finish CYCLE_STOP_WORKER_SIGNAL 31; }
+codes="$(helper_no_answer_in "$WORK/worker.out" "$JOB")"
+[ -z "$codes" ] || { say "worker: PUBLIC_SOURCE_UNAVAILABLE after the capture helper gave no answer: $codes"; finish CYCLE_STOP_WORKER_SIGNAL 31; }
 if [ "$rc" != 0 ]; then
   say "worker: exit $rc"
   if [ "$rc" = 137 ]; then
-    timeout 60 bash "$PREFLIGHT" --oom-check --since "2 hours ago" </dev/null >"$WORK/oom.out" 2>&1 || true
+    timeout 60 bash "$PREFLIGHT" --oom-check --since "2 hours ago" </dev/null >"$WORK/oom.out" 2>&1 9>&- || true
     show oom-check "$WORK/oom.out"
   fi
   finish CYCLE_STOP_WORKER_EXIT 32
