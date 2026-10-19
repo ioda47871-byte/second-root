@@ -187,8 +187,29 @@ drafted → sent → replied(interested|question|meeting_request|decline|other)
 
 ## 9. 計測（軽量）
 
-- 営業条件（業種、チャネル、website_status、デモ有無、フォロー有無）ごとの sent / replied / meeting / won 件数と率、成約金額合計。
+- 営業条件（業種、チャネル、website_status、デモ有無、フォロー有無）ごとの sent / replied / meeting / won 件数と率、成約金額合計（`sales_metrics`、送信済みの初回営業・全期間）。
 - AI 不要。SQL / 通常コードで集計する。
+
+### 9.1 営業ファネル（DEV-057、管理画面「履歴」）
+
+初回営業（`sales_outreaches.kind = 'initial'`）1 件 = 1 店舗を、準備から成約まで 1 本のファネルで数える。段階は §5 の state machine の列だけで決める（`lost` はどの段階からも入るため、`status` ではなく到達の記録で数える）。
+
+| 段階 | 定義 | 率の分母 |
+|---|---|---|
+| 準備 | 初回営業の下書きが作られた（すべての初回営業。作成時は必ず `drafted`） | — |
+| 見送り | 送らずに閉じた: `status = 'lost'` かつ `sent_at is null`（今日の一覧の「見送る」など） | 準備 |
+| 送信 | `sent_at is not null`（その後に失注・断りになっても送信として数える） | 準備 |
+| 返信 | `reply_type is not null`（断り `decline` を含む） | 送信 |
+| 商談 | `meeting_at is not null` | 返信 |
+| 成約 | `status = 'won'`。成約金額は `won_amount_jpy` の合計 | 商談 |
+
+- 見送りは準備からの分岐なので、見送りと送信はどちらも準備に対する率。残り（`status = 'drafted'`）は「未送信（下書きのまま）」として件数を出す（準備 = 見送り + 送信 + 未送信）。
+- 送信・返信・商談・成約の判定は `sales_metrics` と同じ。全期間のファネルは `sales_metrics` の合計行と一致する。
+- 返信の種類の内訳: `interested`（興味あり）/ `question`（質問）/ `meeting_request`（商談希望）/ `decline`（断り）/ `other`（その他）の件数と、返信に占める率。
+- DNC: その期間に準備した店舗のうち、現在 `do_not_contact = true` の件数。
+- **期間**: 「直近 30 日」（既定）と「全期間」を `?period=30d` / `?period=all` で切り替える（それ以外の値は直近 30 日）。各店舗は**準備した日**（初回営業の `created_at` の Asia/Tokyo の日付）の cohort に入れ、後の段階もその店舗の段階として数える（同じ店舗の集合に対する率になる）。直近 30 日 = 今日（JST）とその前の 29 日。最近準備した店舗は、まだ返信・商談の途中であることに注意。
+- **AI デザインの結果**（`SALES_AI_DESIGN_ENABLED` が有効なときだけ表示。無効なら design の列は読まない）: 同じ cohort の demo の `design_status`（`pending` / `processing` / `ready` / `blocked` / `failed`）の件数と率、`blocked` / `failed` の `design_error_code` の多い順の上位 3 件。legacy の demo（`design_status = null`）は数えない。
+- 集計は view `sales_funnel_daily` / `sales_design_daily`（JST の準備日ごとの件数、security_invoker・RLS で管理者だけが行を読める）と、期間の合計・率を出す通常コード（`lib/sales/funnel.ts`）で行う。
 
 ## 10. Operational Claude（日々の店舗探索）
 
