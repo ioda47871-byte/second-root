@@ -82,6 +82,9 @@ const readJson = (path: string) =>
  * records. Pure: the mapping is the whole policy.
  *   done + outcome done + a final profile that passes checkProfile → ready
  *   done + blocked / fallback_template / PUBLIC_SOURCE_UNAVAILABLE → blocked
+ *     (blocked: RENDERER_CHANGE_NEEDED, else QUALITY_NOT_ACCEPTED when no
+ *     review accepted the final candidate (DEV-053), else DESIGN_BLOCKED; no
+ *     profile is sent, so the demo keeps the existing template)
  *   failed (or anything unexpected)                                → failed
  */
 export function resultFromRecords(input: {
@@ -102,8 +105,9 @@ export function resultFromRecords(input: {
     return { ...base, outcome: "ready", profile: uploadableProfile(checked.profile), error_code: null };
   }
   if (outcome === "blocked") {
-    const rendererChange = (input.report?.codex as { renderer_change_needed?: unknown } | undefined)?.renderer_change_needed === true;
-    return { ...base, outcome: "blocked", profile: null, error_code: rendererChange ? "RENDERER_CHANGE_NEEDED" : "DESIGN_BLOCKED" };
+    const codex = input.report?.codex as { renderer_change_needed?: unknown; quality_not_accepted?: unknown } | undefined;
+    const error_code = codex?.renderer_change_needed === true ? "RENDERER_CHANGE_NEEDED" : codex?.quality_not_accepted === true ? "QUALITY_NOT_ACCEPTED" : "DESIGN_BLOCKED";
+    return { ...base, outcome: "blocked", profile: null, error_code };
   }
   if (outcome === "fallback_template") return { ...base, outcome: "blocked", profile: null, error_code: "FALLBACK_TEMPLATE" };
   if (outcome === "PUBLIC_SOURCE_UNAVAILABLE") return { ...base, outcome: "blocked", profile: null, error_code: "PUBLIC_SOURCE_UNAVAILABLE" };

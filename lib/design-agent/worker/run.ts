@@ -31,7 +31,7 @@ import { assetStoreRoot, checkStoreRoot, loadManifest } from "../assets/intake";
 import type { AssetManifest } from "../assets/manifest";
 import { loadPhotoInputs, type PhotoInput } from "../assets/photo-codex";
 import type { PlacedPhoto } from "../assets/render-check";
-import { runDesignPipeline, type PipelineReport, type Shots } from "../pipeline";
+import { QUALITY_NOT_ACCEPTED, runDesignPipeline, type PipelineReport, type Shots } from "../pipeline";
 import { factsToDemoView } from "../preview";
 import { looseJsonSchema } from "../profile";
 import { capturePublicProfile, instagramTarget, type CaptureTarget } from "./capture";
@@ -592,6 +592,8 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         fallback: pipeline.status === "fallback_template",
         blocked: pipeline.status === "blocked",
         renderer_change_needed: pipeline.notes.includes("RENDERER_CHANGE_NEEDED"),
+        // DEV-053: the best candidate (final_candidate, its scores in rounds) was never accepted.
+        quality_not_accepted: pipeline.notes.includes(QUALITY_NOT_ACCEPTED),
         schema_mode: schemaMode,
         notes: [...notes, ...pipeline.notes],
       },
