@@ -53,7 +53,7 @@ root（systemd の sr-design-cycle.service、または人の sudo）
 | `CHECK_BRIDGE_NOT_AT_SHA` / `CHECK_BRIDGE_DIRTY` / `CHECK_BRIDGE_MISSING` | bridge の checkout が設定の commit にあり、clean |
 | `CHECK_ENV_FILE_UNSAFE` / `CHECK_ENV_INVALID` | `design-bridge.env` が `sr-designbridge` の 0600 の通常 file で、`SR_DESIGN_BRIDGE_API_URL=https://…` が 1 行 |
 | `CHECK_TOKEN_FILE_UNSAFE` | token file が `sr-designbridge` の 0600 の通常 file（中身は読まない） |
-| `CHECK_BYPASS_INVALID` / `CHECK_BYPASS_FILE_UNSAFE` | `SR_DESIGN_CYCLE_VERCEL_BYPASS=on` のときだけ（DEV-059）: `design-bridge.env` に `SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=<絶対 path>` と `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=https://<name>.vercel.app` が 1 行ずつあり、origin が API URL の origin と同じ。bypass file が `sr-designbridge` の 0600 の通常 file（中身は読まない）。`design-bridge-access.md` |
+| `CHECK_BYPASS_INVALID` / `CHECK_BYPASS_FILE_UNSAFE` | `SR_DESIGN_CYCLE_VERCEL_BYPASS=on` のときだけ（DEV-059。このスイッチは cycle が bypass を渡すかだけを決め、env の 2 行があれば bridge の unit・手での実行は使う）: `design-bridge.env` に `SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=<絶対 path>` と `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=https://<name>.vercel.app` が 1 行ずつあり、origin が API URL の origin と同じ。bypass file が `sr-designbridge` の 0600 の通常 file（中身は読まない）。`design-bridge-access.md` |
 | `CHECK_LEDGER_INVALID` / `CHECK_LEDGER_OPEN` | bridge の ledger が読め、開いている job が 0 件（前の cycle が claim の後で止まっていない） |
 | `CHECK_SPOOL_MISSING` / `CHECK_SPOOL_PENDING` | spool の 2 つの directory があり、`to-worker/` に job file がない |
 | `CHECK_WORKER_QUEUE_BUSY` / `CHECK_WORKER_MISSING` | worker の `inbox/`・`processing/` が空、worker の checkout に `run.sh` がある |
@@ -230,7 +230,7 @@ returning id, design_status, design_attempts;
 ## 7. Vercel の flag との関係
 
 - bridge が動くには、Staging（Vercel Preview）で `SALES_AI_DESIGN_ENABLED=true` で、bridge から Preview の API に届くことが要る
-- **Vercel Authentication は外さない**（2026-10-19 の人の指示）。bridge は bridge 専用の Protection Bypass で届く（DEV-059、既定で無効）。有効にするのは `design-cycle.conf` の `SR_DESIGN_CYCLE_VERCEL_BYPASS=on`（root）と `design-bridge.env` の 2 行（`design-bridge-access.md` §5・§6）。cycle はスイッチが on のときだけ path と origin を bridge に渡す
+- **Vercel Authentication は外さない**（2026-10-19 の人の指示）。bridge は bridge 専用の Protection Bypass で届く（DEV-059、既定で無効）。bypass を有効にするのは `design-bridge.env` の 2 行（`SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE` / `_ORIGIN`）で、**この 2 行だけで `sr-design-bridge.service` と手での `run.sh` は header を付ける**。`design-cycle.conf` の `SR_DESIGN_CYCLE_VERCEL_BYPASS=on`（root）は `cycle.sh` だけのスイッチで、on のときだけ cycle が path と origin を bridge に渡す（off なら cycle は渡さないが、cycle 以外の実行は止めない）。**無効にするとは、env の 2 行を消すこと（と、このスイッチの行を消すこと）**（`design-bridge-access.md` §5・§8）
 - **cycle は Vercel を変えない。**flag も Deployment Protection も触らない
 - flag が無効なら claim は `stopped: BRIDGE_DISABLED`（503）、Vercel の保護で塞がれていれば `BRIDGE_PROTECTION_BLOCKED`（bypass が無い・値が違う・revoke 済み）、token が違えば `BRIDGE_UNAUTHORIZED` → `CYCLE_STOP_CLAIM`（phase=before_claim。何も変わらない）
 - bypass の方式は HUMAN-010（timer の有効化）を承認しない。timer は別の人の判断のまま
