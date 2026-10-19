@@ -14,9 +14,40 @@ import { reviewScore, visualReviewJsonSchema, VisualReviewSchema, type VisualRev
 // Only the design profile ever changes. When the reviewer says the renderer
 // itself needs a new ability, the run stops as BLOCKED for a person. Any
 // failure of the brief falls back to the existing template; a low-confidence
-// brief uses the category's calm default profile.
+// brief uses the category's calm default profile. A final candidate the
+// reviewer never accepted is BLOCKED too (DEV-053, the quality gate).
 
 export const MAX_REVISIONS = 2;
+
+/**
+ * DEV-053: the quality gate. The final candidate is still the best-scored one,
+ * but it is only shipped (status "done", bridge outcome "ready") when its own
+ * latest review said `accept`. A final the reviewer never accepted (revision
+ * limit reached, no usable revised profile, the clock ran out, a later review
+ * unusable) is BLOCKED with this code: the demo keeps the existing template
+ * and a person reads the record. The gate reads the verdict only: no score
+ * bar of its own (the scores, the verdict and the revision limit are unchanged).
+ */
+export const QUALITY_NOT_ACCEPTED = "QUALITY_NOT_ACCEPTED";
+
+type Verdicts = ReadonlyArray<{ candidate: string; verdict: string }>;
+
+/** Whether the final candidate's latest review (a second look counts) said accept. */
+export function finalAccepted(rounds: Verdicts, finalCandidate: string): boolean {
+  for (let i = rounds.length - 1; i >= 0; i -= 1) {
+    const round = rounds[i]!;
+    if (round.candidate === finalCandidate) return round.verdict === "accept";
+  }
+  return false;
+}
+
+/** The gate on a finished loop: only a "done" run changes, to "blocked" with QUALITY_NOT_ACCEPTED in the notes. */
+function qualityGate(status: PipelineReport["status"], rounds: Verdicts, finalCandidate: string | null, notes: string[], log: (line: string) => void): PipelineReport["status"] {
+  if (status !== "done" || finalCandidate === null || finalAccepted(rounds, finalCandidate)) return status;
+  notes.push(QUALITY_NOT_ACCEPTED);
+  log(`final ${finalCandidate}: no review accepted it → BLOCKED (${QUALITY_NOT_ACCEPTED})`);
+  return "blocked";
+}
 
 export type Shots = { desktop: string; mobile: string };
 
@@ -160,7 +191,8 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     photoStats = result.stats;
     if (result.kind === "environment") return report("environment_failure", { profileSource, briefConfidence, photos: photoStats });
     if (result.kind === "done") {
-      const { status, rounds, finalCandidate, revisions, after } = result;
+      const { rounds, finalCandidate, revisions, after } = result;
+      const status = qualityGate(result.status, rounds, finalCandidate, notes, deps.log);
       return { status, notes, profileSource, rounds, finalCandidate, revisions, briefConfidence, before, after, photos: photoStats };
     }
   }
@@ -287,6 +319,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
 
   // ---- final: the best-scored candidate (later wins a tie). A design no
   // review has scored is not shipped: the demo keeps the existing template.
+  // One that no review accepted is rendered and recorded, but BLOCKED (DEV-053).
   const best = candidates.reduce((a, b) => (b.score >= a.score ? b : a));
   if (best.score < 0) {
     notes.push("NO_REVIEWED_CANDIDATE");
@@ -294,5 +327,6 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   }
   await deps.writeProfile("final", best.profile);
   const after = await deps.render("final");
-  return { status: state.status, notes, profileSource, rounds, finalCandidate: best.name, revisions, briefConfidence, before, after, ...withPhotos };
+  const status = qualityGate(state.status, rounds, best.name, notes, deps.log);
+  return { status, notes, profileSource, rounds, finalCandidate: best.name, revisions, briefConfidence, before, after, ...withPhotos };
 }

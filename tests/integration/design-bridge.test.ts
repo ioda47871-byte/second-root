@@ -164,6 +164,14 @@ describe("claim / submit", () => {
     expect(await claim()).toBeNull();
   });
 
+  it("DEV-053: the quality gate's blocked code is accepted and kept (template fallback, no profile)", async () => {
+    const p = await prepare(candidate(), true);
+    const job = (await claim())!;
+    expect(await submit(job.job_id, "blocked", null, "QUALITY_NOT_ACCEPTED")).toMatchObject({ status: "blocked", error_code: "QUALITY_NOT_ACCEPTED" });
+    expect(await demoOf(p)).toMatchObject({ design_status: "blocked", design_error_code: "QUALITY_NOT_ACCEPTED", design_profile: null });
+    expect(await claim()).toBeNull();
+  });
+
   it("a stale job (lease over) is handed out again, and fails after the last attempt", async () => {
     const p = await prepare(candidate(), true);
     const first = (await claim())!;

@@ -97,6 +97,7 @@ export async function readSpoolJson(path: string, maxBytes: number = MAX_SPOOL_F
 export const BRIDGE_RESULT_CODES: ReadonlySet<string> = new Set([
   "DESIGN_BLOCKED",
   "RENDERER_CHANGE_NEEDED",
+  "QUALITY_NOT_ACCEPTED",
   "FALLBACK_TEMPLATE",
   "PUBLIC_SOURCE_UNAVAILABLE",
   "PROFILE_INVALID",

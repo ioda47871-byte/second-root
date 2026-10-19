@@ -212,7 +212,12 @@ async function main(): Promise<number> {
     for (const r of report.rounds) console.log(`  ${r.candidate}: ${r.verdict}, total ${r.scores.total}/25, template feel ${r.scores.generic_template_feel}/5`);
     if (report.finalCandidate) console.log(`final: ${report.finalCandidate} → ${join(runDir, "final.json")}`);
     console.log(`compare: ${join(runDir, "before-desktop.png")} / after-desktop.png (and -mobile)`);
-    if (report.status === "blocked") console.log("BLOCKED: the reviewer asked for a renderer change. Read review-*.json and decide by hand.");
+    if (report.status === "blocked")
+      console.log(
+        report.notes.includes("QUALITY_NOT_ACCEPTED")
+          ? "BLOCKED: the reviewer never accepted the final candidate (DEV-053 quality gate). Read review-*.json and decide by hand."
+          : "BLOCKED: the reviewer asked for a renderer change. Read review-*.json and decide by hand.",
+      );
     return report.status === "environment_failure" ? 3 : report.status === "blocked" ? 2 : 0;
   } catch (error) {
     // Rendering or system failure: leave a code-only record, keep the template.

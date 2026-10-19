@@ -144,7 +144,7 @@ worker の `run.sh` はこの変数だけを通す。token・API の URL は wor
 | `BRIDGE_WRONG_USER` | root・`sr-designgen`・`sr-igcapture` で起動した | `sr-designbridge` で起動する |
 
 demo の `design_error_code`（管理画面では「デザインBLOCKED」「AIデザイン失敗」と既存テンプレートの案内）:
-- `PUBLIC_SOURCE_UNAVAILABLE`、`FALLBACK_TEMPLATE`、`DESIGN_BLOCKED`、`RENDERER_CHANGE_NEEDED`
+- `PUBLIC_SOURCE_UNAVAILABLE`、`FALLBACK_TEMPLATE`、`DESIGN_BLOCKED`、`RENDERER_CHANGE_NEEDED`、`QUALITY_NOT_ACCEPTED`（DEV-053: final の review が一度も accept しなかった。worker の run directory の `report.json`・`review-*.json` で best の candidate と点数を見る）
 - `DO_NOT_CONTACT`、`DEMO_DISABLED`、`ALREADY_SENT`、`OUTREACH_CLOSED`、`NO_VISUAL_SOURCE`、`DEMO_CONTENT_INVALID`
 - `PROFILE_INVALID`、`WORKER_FAILED`（ほか worker の固定の符号）、`DESIGN_STALE`
 

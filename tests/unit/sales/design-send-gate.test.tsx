@@ -84,6 +84,7 @@ function item(designStatus: DesignStatus | null): TodayItem {
     demoToken: "A".repeat(43),
     sentAt: null,
     designStatus,
+    designErrorCode: null,
   };
 }
 

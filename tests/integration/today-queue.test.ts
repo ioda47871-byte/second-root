@@ -140,10 +140,12 @@ describe("today queue", () => {
       expect(on.map((i) => i.prospectId)).toEqual([ids[5], ids[6], ids[0], ids[1], ids[2]]);
       expect(on.map((i) => i.designStatus)).toEqual(["blocked", null, "pending", "pending", "pending"]);
       expect(on.map((i) => i.sendable)).toEqual([true, true, false, false, false]);
+      // DEV-053: the reason a design is blocked reaches the card; nothing for the others.
+      expect(on.map((i) => i.designErrorCode)).toEqual(["NO_VISUAL_SOURCE", null, null, null, null]);
       process.env.SALES_AI_DESIGN_ENABLED = "false";
       const off = await loadTodayQueue(admin);
       expect(off.map((i) => i.prospectId)).toEqual(ids.slice(0, 5));
-      expect(off.every((i) => i.sendable && i.designStatus === null)).toBe(true);
+      expect(off.every((i) => i.sendable && i.designStatus === null && i.designErrorCode === null)).toBe(true);
     } finally {
       if (before === undefined) delete process.env.SALES_AI_DESIGN_ENABLED;
       else process.env.SALES_AI_DESIGN_ENABLED = before;

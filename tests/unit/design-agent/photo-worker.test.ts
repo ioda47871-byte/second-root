@@ -213,7 +213,7 @@ describe("the worker with photos", () => {
       repoDir: process.cwd(),
       budgetMs: RUN_TIME_BUDGET_MS,
     });
-    expect(poc).toMatchObject({ status: "REPORT", outcome: "done", lineage_ok: true, cleanup_ok: true, codex: { revisions: 2 }, photos: { assets: 3 }, timing: { calls: 8 }, estimate: { verdict: "OK" } });
+    expect(poc).toMatchObject({ status: "REPORT", outcome: "blocked", lineage_ok: true, cleanup_ok: true, codex: { revisions: 2, quality_not_accepted: true, notes: expect.arrayContaining(["QUALITY_NOT_ACCEPTED"]) }, photos: { assets: 3 }, timing: { calls: 8 }, estimate: { verdict: "OK" } });
     expect((poc as { lineage: Array<{ check: string }> }).lineage.map((c) => c.check)).toEqual(["assets", "photo_analyses", "images_candidate-0", "images_candidate-1", "images_candidate-2", "images_final"]);
     expect(JSON.stringify(poc)).not.toContain(two.root);
     // an edited direction breaks the lineage

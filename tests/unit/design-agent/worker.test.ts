@@ -6,6 +6,7 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { resultFromRecords } from "@/lib/design-agent/bridge/worker-side";
 import { acquireLock, currentHolder, LOCK_STALE_MS } from "@/lib/design-agent/worker/state";
 import { cleanStaleTemp } from "@/lib/design-agent/worker/temp";
 import { AMERICAN_EDITORIAL, review } from "./fixtures";
@@ -48,7 +49,7 @@ describe("a normal run", () => {
       worker: { commit: WORKER_SHA },
       outcome: "done",
       instagram: { status: "captured", temp_deleted: true },
-      codex: { status: "done", direction: "american_editorial", reviews: 1, fallback: false, blocked: false, renderer_change_needed: false },
+      codex: { status: "done", direction: "american_editorial", reviews: 1, fallback: false, blocked: false, renderer_change_needed: false, quality_not_accepted: false },
       windows_copy: "success",
     });
     expect(rep.instagram.images).toBeGreaterThanOrEqual(2);
@@ -248,16 +249,33 @@ describe("design outcomes", () => {
     expect(json(join(l.out, "job-low", "report.json")).codex).toMatchObject({ profile_source: "category_default_brief_structure", brief_confidence: 0.3, revisions: 0, notes: expect.arrayContaining(["LOW_CONFIDENCE_CATEGORY_DEFAULT", "BRIEF_STRUCTURE_KEPT"]) });
   });
 
-  it("revises the profile at most twice", async () => {
+  it("revises the profile at most twice; a final no review accepted is BLOCKED (DEV-053) with its record kept", async () => {
     const l = makeLayout();
     writeJob(l, "job-revise");
     const revise = review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: AMERICAN_EDITORIAL } });
     const { report, preview } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { answer: revise }, { answer: revise }, { answer: revise }, { answer: revise }] });
-    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "blocked" }] });
     const rep = json(join(l.out, "job-revise", "report.json"));
-    expect(rep.codex).toMatchObject({ reviews: 3, revisions: 2 });
+    expect(rep.codex).toMatchObject({ reviews: 3, revisions: 2, blocked: true, renderer_change_needed: false, quality_not_accepted: true, final_candidate: "candidate-2", notes: ["QUALITY_NOT_ACCEPTED"] });
+    expect((rep.codex.rounds as Array<{ verdict: string }>).map((r) => r.verdict)).toEqual(["revise", "revise", "revise"]);
+    expect(ls(join(l.out, "job-revise"))).toContain("final.json");
     expect(preview.renders).toEqual(["none", "candidate-0", "candidate-1", "candidate-2", "final"]);
     expect(execCalls(l)).toHaveLength(4);
+    // the result the bridge would upload: blocked with the code, no profile
+    expect(resultFromRecords({ id: "job-revise", bucket: "done", record: {}, report: rep, final: json(join(l.out, "job-revise", "final.json")) })).toMatchObject({
+      outcome: "blocked",
+      profile: null,
+      error_code: "QUALITY_NOT_ACCEPTED",
+    });
+  });
+
+  it("an accepted revision is done (DEV-053: the gate passes)", async () => {
+    const l = makeLayout();
+    writeJob(l, "job-revise-ok");
+    const revise = review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: AMERICAN_EDITORIAL } });
+    const { report } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { answer: revise }, { answer: review() }] });
+    expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
+    expect(json(join(l.out, "job-revise-ok", "report.json")).codex).toMatchObject({ reviews: 2, revisions: 1, blocked: false, quality_not_accepted: false });
   });
 
   it("falls back to the template when the brief is not a valid profile", async () => {

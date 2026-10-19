@@ -8,7 +8,7 @@ import { exportBridgeResults, importBridgeJobs, resultFromRecords } from "@/lib/
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import { childEnvironment } from "@/lib/design-agent/worker/env";
 import { ensureQueue, queueDirs, type QueueDirs } from "@/lib/design-agent/worker/queue";
-import { workerJobIdFor } from "@/lib/sales/design-bridge-schema";
+import { designBridgeRequest, workerJobIdFor } from "@/lib/sales/design-bridge-schema";
 import { AMERICAN_EDITORIAL } from "./fixtures";
 
 // DEV-030 local design bridge: the file spool between the bridge user
@@ -152,6 +152,20 @@ describe("worker side: export", () => {
     expect(resultCode("CODEX_TIMEOUT")).toBe("CODEX_TIMEOUT");
     const blocked = resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: { renderer_change_needed: true } }, final: null });
     expect(blocked.error_code).toBe("RENDERER_CHANGE_NEEDED");
+  });
+
+  it("DEV-053: a final no review accepted is blocked QUALITY_NOT_ACCEPTED, never ready, and reaches the server as that code", () => {
+    // the run still wrote a valid final.json (the record): it must not be uploaded
+    const quality = resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: { renderer_change_needed: false, quality_not_accepted: true } }, final: PROFILE });
+    expect(quality).toMatchObject({ outcome: "blocked", profile: null, error_code: "QUALITY_NOT_ACCEPTED" });
+    expect(WorkerResultSchema.safeParse(quality).success).toBe(true);
+    expect(resultCode("QUALITY_NOT_ACCEPTED")).toBe("QUALITY_NOT_ACCEPTED");
+    const body = submitBody(JOB, quality);
+    expect(body).toMatchObject({ outcome: "blocked", profile: null, errorCode: "QUALITY_NOT_ACCEPTED" });
+    expect(designBridgeRequest.safeParse(body).success).toBe(true);
+    // the renderer-change stop keeps its own code; a blocked report without either flag stays DESIGN_BLOCKED
+    expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: { renderer_change_needed: true, quality_not_accepted: true } }, final: null }).error_code).toBe("RENDERER_CHANGE_NEEDED");
+    expect(resultFromRecords({ id: WJOB, bucket: "done", record: {}, report: { outcome: "blocked", codex: { quality_not_accepted: "yes" } }, final: null }).error_code).toBe("DESIGN_BLOCKED");
   });
 
   it("writes one result per finished bridge job, with only the result fields", async () => {

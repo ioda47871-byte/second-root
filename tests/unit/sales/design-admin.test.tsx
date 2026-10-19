@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import TodayCard from "@/components/admin/TodayCard";
 import type { TodayItem } from "@/lib/admin/today";
-import { DESIGN_STATUSES, type DesignStatus } from "@/lib/sales/design";
+import { DESIGN_STATUSES, type DesignStatus, designErrorLabel } from "@/lib/sales/design";
 
 // DEV-030 admin UX: the today card shows the demo's AI design state and,
 // when ready, a direct way to the demo preview. A legacy item (no design
@@ -28,12 +28,21 @@ function item(designStatus: DesignStatus | null, kind: "initial" | "follow_up" =
     demoToken: "A".repeat(43),
     sentAt: kind === "follow_up" ? now.toISOString() : null,
     designStatus,
+    designErrorCode: null,
   };
 }
 
 const render = (i: TodayItem) => renderToStaticMarkup(<TodayCard item={i} now={now} action={<button>DMを送る</button>} />);
 
 describe("TodayCard design state", () => {
+  it("DEV-053: shows why a design is blocked (e.g. the quality gate) and nothing for ready", () => {
+    const blocked = render({ ...item("blocked"), designErrorCode: "QUALITY_NOT_ACCEPTED" });
+    expect(blocked).toContain('data-testid="design-error"');
+    expect(blocked).toContain(designErrorLabel("QUALITY_NOT_ACCEPTED")!);
+    expect(render({ ...item("ready"), designErrorCode: null })).not.toContain('data-testid="design-error"');
+    expect(render({ ...item("blocked"), designErrorCode: null })).not.toContain('data-testid="design-error"');
+  });
+
   it.each([
     ["pending", "AIデザイン待ち"],
     ["processing", "AIデザイン生成中"],

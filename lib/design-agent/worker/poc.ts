@@ -221,6 +221,7 @@ export async function pocReport(o: {
           rounds: codex.rounds,
           blocked: codex.blocked,
           renderer_change_needed: codex.renderer_change_needed,
+          quality_not_accepted: codex.quality_not_accepted ?? false,
           schema_mode: codex.schema_mode,
           notes: codex.notes,
         }

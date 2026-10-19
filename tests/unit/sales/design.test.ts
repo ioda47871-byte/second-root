@@ -7,7 +7,10 @@ import { FACT_KEYS } from "@/lib/design-agent/worker/queue";
 import { loadPublicDemo } from "@/lib/sales/demo-data";
 import {
   aiDesignEnabled,
+  DESIGN_ERROR_CODE,
+  DESIGN_ERROR_LABEL,
   DESIGN_STATUSES,
+  designErrorLabel,
   initialSendAllowed,
   renderableProfile,
   uploadableProfile,
@@ -240,5 +243,20 @@ describe("loadPublicDemo", () => {
     expect(await loadPublicDemo(fakeDb({ ...base, expires_at: null, disabled_at: null }).db, token, new Date(), env)).toBeNull();
     expect(await loadPublicDemo(fakeDb({ ...base, expires_at: sent, disabled_at: new Date().toISOString() }).db, token, new Date(), env)).toBeNull();
     expect(await loadPublicDemo(fakeDb({ ...base, expires_at: new Date(Date.now() - 1000).toISOString(), disabled_at: null }).db, token, new Date(), env)).toBeNull();
+  });
+});
+
+describe("design error labels (DEV-053)", () => {
+  it("labels every fixed code, including QUALITY_NOT_ACCEPTED; every key is a valid stored code", () => {
+    for (const code of Object.keys(DESIGN_ERROR_LABEL)) expect(code).toMatch(DESIGN_ERROR_CODE);
+    expect(designErrorLabel("QUALITY_NOT_ACCEPTED")).toContain("accept");
+    expect(designErrorLabel("RENDERER_CHANGE_NEEDED")).not.toBe("RENDERER_CHANGE_NEEDED");
+    // an unknown (still fixed) code is shown as it is; no code, no label
+    expect(designErrorLabel("CODEX_QUOTA")).toBe("CODEX_QUOTA");
+    expect(designErrorLabel("toString")).toBe("toString");
+    expect(designErrorLabel(null)).toBeNull();
+  });
+  it("a quality block is still sendable with the existing template", () => {
+    expect(initialSendAllowed(true, "blocked")).toBe(true);
   });
 });
