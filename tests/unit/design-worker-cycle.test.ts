@@ -55,7 +55,8 @@ case "$*" in
   *status*) [ ! -f '${sc}'/dirty-$(basename "$2") ] || echo " M scripts/x" ;;
 esac`);
   exe(join(bin, "systemctl"), `u="\${@: -1}"; case "$1" in is-active) [ -f '${sc}'/active-$u ] ;; is-enabled) [ -f '${sc}'/enabled-$u ] ;; *) exit 1 ;; esac`);
-  exe(join(bin, "pgrep"), `[ -f '${sc}/pgrep' ]`);
+  // sc/pgrep: both checks see a process; sc/pgrep-worker: only the worker check (pgrep -f)
+  exe(join(bin, "pgrep"), `case " $* " in *" -f "*) [ -f '${sc}/pgrep' ] || [ -f '${sc}/pgrep-worker' ] ;; *) [ -f '${sc}/pgrep' ] ;; esac`);
   writeFileSync(join(sc, "head"), `${SHA}\n`);
 
   mkdirSync(join(t, "etc/second-root"), { recursive: true });
@@ -115,6 +116,54 @@ describe("cycle.sh: the file", () => {
     expect(r.status).toBe(2);
     expect(r.stdout).toContain("run from the root-only clone");
     expect(r.stdout.trimEnd().split("\n").pop()).toBe("CYCLE_RESULT CYCLE_USAGE phase=before_claim job=none exit=2");
+  });
+
+  it("runs the same when invoked by a relative path (the path is resolved before cd /)", () => {
+    const w = world();
+    const r = spawnSync("bash", ["sales-design-worker/cycle.sh", "--dry-run"], {
+      cwd: join(REPO, "scripts"),
+      encoding: "utf8",
+      env: { PATH: `${w.bin}:${process.env.PATH}`, SR_DESIGN_CYCLE_TEST_ROOT: w.t } as unknown as NodeJS.ProcessEnv,
+    });
+    expect(r.stdout.trimEnd().split("\n").pop()).toBe("CYCLE_RESULT CYCLE_DRY_RUN_OK phase=before_claim job=none exit=0");
+  });
+
+  // The production guards, exercised for real: a private mount namespace (unprivileged user
+  // namespace) puts a copy of the script at /root/sr-capture-admin on a tmpfs that only this
+  // test's processes see. Nothing outside the namespace is touched, and the test hook stays
+  // refused there: no production path takes it.
+  const canUnshare = spawnSync("unshare", ["-rm", "true"]).status === 0;
+  it.skipIf(!canUnshare)("the production copy refuses the test hook (absolute and relative path) and a non-root user", () => {
+    const w = world();
+    const copy = join(w.t, "cycle-copy.sh");
+    writeFileSync(copy, readFileSync(CYCLE));
+    const prod = "/root/sr-capture-admin/scripts/sales-design-worker";
+    const script = [
+      "set -u",
+      "mount -t tmpfs -o mode=0755 none /root",
+      `mkdir -p ${prod}`,
+      `cp '${copy}' ${prod}/cycle.sh`,
+      `echo '--- absolute'; SR_DESIGN_CYCLE_TEST_ROOT='${w.t}' bash ${prod}/cycle.sh`,
+      `echo '--- relative'; cd /root/sr-capture-admin/scripts && SR_DESIGN_CYCLE_TEST_ROOT='${w.t}' bash sales-design-worker/cycle.sh; cd /`,
+      `echo '--- nobody'; unshare --user bash ${prod}/cycle.sh`,
+      "true",
+    ].join("\n");
+    const r = spawnSync("unshare", ["-rm", "bash", "-c", script], { encoding: "utf8", env: { PATH: process.env.PATH } as unknown as NodeJS.ProcessEnv, timeout: 60_000 });
+    const parts = Object.fromEntries(
+      r.stdout
+        .split(/^--- /m)
+        .filter(Boolean)
+        .map((p) => [p.split("\n")[0], p]),
+    );
+    for (const k of ["absolute", "relative"]) {
+      expect(parts[k]).toContain("CYCLE_TEST_HOOK_REFUSED: test hooks are refused in /root/sr-capture-admin");
+      expect(parts[k]).toContain("CYCLE_RESULT CYCLE_USAGE phase=before_claim job=none exit=2");
+    }
+    expect(parts.nobody).toContain("run as root: sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh");
+    expect(parts.nobody).toContain("CYCLE_RESULT CYCLE_USAGE phase=before_claim job=none exit=2");
+    // nothing of the fake world ran, and no state directory was made in it
+    expect(readFileSync(w.calls, "utf8")).toBe("");
+    expect(existsSync(join(w.t, "var/lib/sr-design-cycle"))).toBe(false);
   });
 });
 
@@ -182,6 +231,7 @@ describe("cycle.sh: STOP before the claim (nothing changed in Staging)", () => {
     ["old worker service active", (w) => writeFileSync(join(w.sc, "active-sr-design-worker.service"), ""), "CHECK_UNIT_ACTIVE"],
     ["bridge timer enabled", (w) => writeFileSync(join(w.sc, "enabled-sr-design-bridge.timer"), ""), "CHECK_UNIT_ENABLED"],
     ["a bridge / worker process", (w) => writeFileSync(join(w.sc, "pgrep"), ""), "CHECK_BRIDGE_RUNNING"],
+    ["only a worker process of sr-designgen", (w) => writeFileSync(join(w.sc, "pgrep-worker"), ""), "CHECK_WORKER_RUNNING"],
     ["bridge not at the approved commit", (w) => writeFileSync(join(w.sc, "head"), "f".repeat(40)), "CHECK_BRIDGE_NOT_AT_SHA"],
     ["bridge checkout dirty", (w) => writeFileSync(join(w.sc, "dirty-second-root"), ""), "CHECK_BRIDGE_DIRTY"],
     ["root clone dirty", (w) => writeFileSync(join(w.sc, "dirty-sr-capture-admin"), ""), "CHECK_ROOT_CLONE_DIRTY"],
@@ -264,20 +314,33 @@ describe("cycle.sh: STOP before the claim (nothing changed in Staging)", () => {
     expect(count(r.calls, "admin")).toBe(1);
   });
 
-  it("time guard before the claim: fewer than 4200 s left → no claim", () => {
+  it("time guard before the claim: fewer than 4220 s left → no claim", () => {
     const w = world();
-    play(w, "bridge", 1, { out: DELIVER_NONE, clock: T0 + 301 });
+    play(w, "bridge", 1, { out: DELIVER_NONE, clock: T0 + 281 });
     const r = cycle(w);
     expect(r.status).toBe(24);
     expect(r.last).toBe("CYCLE_RESULT CYCLE_STOP_TIME_BEFORE_CLAIM phase=before_claim job=none exit=24");
     expect(r.calls).not.toContain("--once");
   });
 
-  it("exactly 4200 s left is still enough for the claim (the deadline is fixed at the start)", () => {
+  it("exactly 4220 s left is still enough for the claim (the deadline is fixed at the start)", () => {
     const w = world();
-    play(w, "bridge", 1, { out: DELIVER_NONE, clock: T0 + 300 });
+    play(w, "bridge", 1, { out: DELIVER_NONE, clock: T0 + 280 });
     play(w, "bridge", 2, { out: `job ${JOB}: claimed (attempt 1)\nbridge: delivered 0, superseded 0, refused 0, expired 0, claimed ${JOB}`, ledger: ledgerWith(false), clock: T0 + 540 });
     expect(cycle(w).status).toBe(0);
+  });
+
+  it.each([
+    ["the ledger cannot be read after the pass", "{"],
+    ["the ledger holds two open jobs", JSON.stringify({ version: 1, jobs: { [JOB]: { jobId: JOB.slice(2), claimedAt: ts }, [`b-${"1".repeat(8)}-1111-4111-8111-${"1".repeat(12)}`]: { jobId: "x", claimedAt: ts } } })],
+  ])("a failed claim pass and %s → phase=claim_unknown, job=none, the person is told", (_, ledger) => {
+    const w = world();
+    play(w, "bridge", 2, { out: "stopped: BRIDGE_API_UNAVAILABLE\nbridge: delivered 0, superseded 0, refused 0, expired 0, claimed none", rc: 3, ledger });
+    const r = cycle(w);
+    expect(r.status).toBe(25);
+    expect(r.last).toBe("CYCLE_RESULT CYCLE_STOP_CLAIM phase=claim_unknown job=none exit=25");
+    expect(r.stdout).toContain("job none may stay 'processing' in Staging");
+    expect(count(r.calls, "admin")).toBe(1);
   });
 });
 
@@ -303,12 +366,68 @@ describe("cycle.sh: STOP after the claim (the job stays processing; a person rec
     ["JAIL_UNSAFE", "JAIL_UNSAFE NETWORK_NOT_PRIVATE"],
     ["BRIDGE_SPOOL_UNAVAILABLE", `${ts} bridge: export skipped (BRIDGE_SPOOL_UNAVAILABLE)`],
     ["INSTAGRAM_CHALLENGE", `${ts} job ${JOB}: signed-in capture INSTAGRAM_CHALLENGE`],
+    ["RATE_LIMITED", `${ts} job ${JOB}: PUBLIC_SOURCE_UNAVAILABLE (RATE_LIMITED)`],
+    ["RATE_LIMITED", `${ts} job ${JOB}: website PUBLIC_SOURCE_UNAVAILABLE (RATE_LIMITED)`],
   ])("%s in the worker output → CYCLE_STOP_WORKER_SIGNAL, no delivery", (code, line) => {
     const w = world();
     play(w, "admin", 2, { out: [`${ts} bridge: imported 1`, `${ts} job ${JOB}: claimed`, line, `${ts} bridge: exported 1`].join("\n") });
     const r = cycle(w);
     after(r, "CYCLE_STOP_WORKER_SIGNAL", 31);
     expect(r.stdout).toContain(`stop codes: ${code}`);
+    expect(count(r.calls, "bridge")).toBe(2);
+  });
+
+  it("RATE_LIMITED only as a whole word: RATE_LIMITED_X is not a stop code", () => {
+    const w = world();
+    play(w, "admin", 2, { out: [`${ts} bridge: imported 1`, `${ts} job ${JOB}: claimed`, `${ts} job ${JOB}: note RATE_LIMITED_X`, `${ts} bridge: exported 1`].join("\n") });
+    expect(cycle(w).status).toBe(0);
+  });
+
+  it.each(["CAPTURE_HELPER_TIMEOUT", "CAPTURE_HELPER_UNAVAILABLE", "BROWSER_BUSY", "HELPER_BUSY", "HELPER_ERROR", "CAPTURE_FAILED", "CAPTURE_RESULT_INVALID"])(
+    "the helper gave no answer (%s) and the public fallback ended PUBLIC_SOURCE_UNAVAILABLE → CYCLE_STOP_WORKER_SIGNAL",
+    (code) => {
+      const w = world();
+      play(w, "admin", 2, {
+        out: [`${ts} bridge: imported 1`, `${ts} job ${JOB}: claimed`, `${ts} job ${JOB}: signed-in capture ${code}`, `${ts} job ${JOB}: PUBLIC_SOURCE_UNAVAILABLE (EMPTY_PAGE)`, `${ts} job ${JOB}: PUBLIC_SOURCE_UNAVAILABLE; windows copy unavailable`, `${ts} bridge: exported 1`].join("\n"),
+      });
+      const r = cycle(w);
+      after(r, "CYCLE_STOP_WORKER_SIGNAL", 31);
+      expect(r.stdout).toContain(`the capture helper gave no answer: ${code}`);
+      expect(count(r.calls, "bridge")).toBe(2);
+    },
+  );
+
+  it("the helper gave no answer but the public capture worked → delivered", () => {
+    const w = world();
+    play(w, "admin", 2, {
+      out: [`${ts} bridge: imported 1`, `${ts} job ${JOB}: claimed`, `${ts} job ${JOB}: signed-in capture CAPTURE_HELPER_TIMEOUT`, `${ts} job ${JOB}: instagram captured (3 images)`, `${ts} job ${JOB}: done; windows copy unavailable`, `${ts} bridge: exported 1`].join("\n"),
+    });
+    expect(cycle(w).status).toBe(0);
+  });
+
+  it("the helper's own answer PUBLIC_SOURCE_UNAVAILABLE (PRIVATE_OR_MISSING) is delivered", () => {
+    const w = world();
+    play(w, "admin", 2, {
+      out: [`${ts} bridge: imported 1`, `${ts} job ${JOB}: claimed`, `${ts} job ${JOB}: signed-in capture PUBLIC_SOURCE_UNAVAILABLE (PRIVATE_OR_MISSING)`, `${ts} job ${JOB}: PUBLIC_SOURCE_UNAVAILABLE (PRIVATE_OR_MISSING)`, `${ts} job ${JOB}: PUBLIC_SOURCE_UNAVAILABLE; windows copy unavailable`, `${ts} bridge: exported 1`].join("\n"),
+    });
+    expect(cycle(w).status).toBe(0);
+  });
+
+  it("time guard before the last pass: fewer than 260 s left → CYCLE_STOP_TIME_BEFORE_DELIVER", () => {
+    const w = world();
+    play(w, "admin", 2, { clock: T0 + 4500 - 259 });
+    const r = cycle(w);
+    after(r, "CYCLE_STOP_TIME_BEFORE_DELIVER", 35);
+    expect(count(r.calls, "bridge")).toBe(2);
+  });
+
+  it("an unexpected error after the claim → CYCLE_STOP_INTERNAL, the job is reported", () => {
+    const w = world();
+    // a clock that is not a number makes the next time guard fail inside the script
+    writeFileSync(join(w.sc, "admin-2.clock"), "1x\n");
+    const r = cycle(w);
+    after(r, "CYCLE_STOP_INTERNAL", 41);
+    expect(r.stdout).toContain("stopped by an unexpected error");
     expect(count(r.calls, "bridge")).toBe(2);
   });
 
@@ -387,13 +506,33 @@ describe("cycle.sh: lock and output", () => {
     const w = world();
     const random = `Rq7${randomBytes(40).toString("base64")}`;
     const jwt = ["eyJ", "hbGciOiJIUzI1NiJ9", ".", "eyJ", "zdWIiOiJ4In0", ".", "c2lnbmF0dXJlLXZhbHVl"].join("");
-    const leaks = [`https://www.instagram.com/some_shop/`, "owner@shop.example", "Authorization: Bearer abc.def.ghi", `token=${random}`, `cookie: sessionid=abcdef123456`, jwt, random, w.apiUrl, w.token];
+    const hex = randomBytes(16).toString("hex");
+    const hex2 = randomBytes(20).toString("hex");
+    const leaks = [`https://www.instagram.com/some_shop/`, "owner@shop.example", "Authorization: Bearer abc.def.ghi", `token=${random}`, `cookie: sessionid=abcdef123456`, jwt, random, w.apiUrl, w.token, hex, hex2];
+    // JSON keys, header style, every cookie pair
+    const values = ["qvalue1z", "ckvalA1", "ckvalB2", "ckvalC3", "setckv9", "hdrval7q", "sqvalue2"];
+    const shapes = [
+      `"access_token": "${hex}"`,
+      `{"refresh_token":"qvalue1z","n":1}`,
+      `x-api-key ${hex2}`,
+      "X-Api-Key: hdrval7q",
+      "Cookie: a=ckvalA1; b=ckvalB2; c=ckvalC3",
+      "Set-Cookie: sid=setckv9; Path=/; HttpOnly",
+      "'client_secret': 'sqvalue2'",
+    ];
     play(w, "admin", 2, {
-      out: [`${ts} bridge: imported 1`, `${ts} job ${JOB}: claimed`, ...leaks.map((l) => `${ts} job ${JOB}: debug ${l}`), `${ts} bridge: exported 1`].join("\n"),
+      out: [`${ts} bridge: imported 1`, `${ts} job ${JOB}: claimed`, ...[...leaks, ...shapes].map((l) => `${ts} job ${JOB}: debug ${l}`), `${ts} job ${JOB}: demo ${JOB.slice(2)}`, `${ts} bridge: exported 1`].join("\n"),
     });
     const r = cycle(w);
     expect(r.status).toBe(0);
-    for (const leak of leaks) expect(r.out).not.toContain(leak);
+    for (const leak of [...leaks, ...values]) expect(r.out).not.toContain(leak);
+    // the keys stay readable, only the values go
+    expect(r.out).toContain('"access_token": [redacted]');
+    expect(r.out).toContain('"refresh_token":[redacted]');
+    expect(r.out).toContain("x-api-key [redacted]");
+    expect(r.out).toContain("Cookie: a=[redacted]");
+    // a plain UUID (the demo's design_job_id) stays
+    expect(r.out).toContain(`demo ${JOB.slice(2)}`);
     expect(r.out).not.toContain("abcdef123456");
     expect(r.out).toContain("[url]");
     expect(r.out).toContain("[email]");
@@ -408,9 +547,9 @@ describe("cycle.sh: budget and units agree with the code they call", () => {
   const script = readFileSync(CYCLE, "utf8");
   const num = (name: string) => Number(new RegExp(`^${name}=(\\d+)`, "m").exec(script)![1]);
 
-  it("follows R2: claim with ≥ 4200 s left, the worker with ≥ 3960 s, budget 4500 s, worker budget 3300 s", () => {
+  it("follows R2: claim with ≥ 4220 s left, the worker with ≥ 3960 s, budget 4500 s, worker budget 3300 s", () => {
     expect(num("CYCLE_BUDGET")).toBe(4500);
-    expect(num("CLAIM_MIN_LEFT")).toBe(4200);
+    expect(num("CLAIM_MIN_LEFT")).toBe(4220);
     expect(num("WORKER_MIN_LEFT")).toBe(3960);
     expect(num("WORKER_BUDGET")).toBe(3300);
     const admin = readFileSync(join(REPO, "scripts/sales-design-capture/admin.sh"), "utf8");
@@ -423,7 +562,9 @@ describe("cycle.sh: budget and units agree with the code they call", () => {
     expect(num("BRIDGE_MAX")).toBeGreaterThanOrEqual(Number(bridgeTimeout) + Number(kill) + 5);
     // the worker at worst (RuntimeMaxSec + the stop grace) and the last pass fit after the worker guard
     expect(num("WORKER_MIN_LEFT")).toBeGreaterThanOrEqual(num("WORKER_RUNTIME_MAX") + num("WORKER_STOP_GRACE") + num("BRIDGE_MAX"));
-    expect(num("CLAIM_MIN_LEFT")).toBeGreaterThanOrEqual(num("WORKER_MIN_LEFT") + num("BRIDGE_TIMEOUT"));
+    // the claim pass at worst (BRIDGE_MAX, not the bridge's own timeout) and the worker guard fit after the claim guard
+    expect(num("CLAIM_MIN_LEFT")).toBeGreaterThanOrEqual(num("WORKER_MIN_LEFT") + num("BRIDGE_MAX"));
+    expect(script).toMatch(/\$\(\(WORKER_MIN_LEFT \+ BRIDGE_MAX\)\)/);
     expect(script).toContain("SR_DESIGN_WORKER_REF=\"$WORKER_REF\"");
     expect(script).toMatch(/^WORKER_REF=develop$/m);
   });
