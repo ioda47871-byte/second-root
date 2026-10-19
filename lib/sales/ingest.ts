@@ -5,6 +5,7 @@ import { checkDraft } from "@/lib/instagram/draft";
 import { fetchUsername } from "@/lib/instagram/graph";
 import { checkpointProblem } from "./checkpoint";
 import { aiDesignEnabled } from "./design";
+import { discoveryKeys, rejectionMemoryEntry, screenableStubs, type RejectionMemoryEntry } from "./discovery";
 import type { IngestRequest } from "./ingest-schema";
 import { prepareCandidate, type PreparedCandidate } from "./prepare";
 import { isTerminalStage, nextAction, type CandidateStage, type NextAction, type RunPhase, type RunStatus } from "./run";
@@ -23,7 +24,9 @@ type DbRunState = {
   error_code: string | null;
   error_summary: string | null;
   discovered_keys: string[];
-  discovered?: Array<{ key: string; name: string; category: string; ward: string | null; website_url: string | null; instagram_url: string | null }>;
+  /** DEV-054: discovered stubs the server marked known (absent before migration 20261019120000). */
+  known_keys?: string[];
+  discovered?: Array<{ key: string; name: string; category: string; ward: string | null; website_url: string | null; instagram_url: string | null; known?: boolean }>;
   verified_order: string[];
   candidates: Record<string, { stage: CandidateStage; prospect_id?: string; reason?: string; error_code?: string }>;
   replayed: boolean;
@@ -39,8 +42,13 @@ export type RunView = {
   errorCode: string | null;
   errorSummary: string | null;
   discoveredKeys: string[];
+  /**
+   * DEV-054: discovered keys that match a shop the server already knows
+   * (skip: do not verify). Never says why or which list matched.
+   */
+  knownKeys: string[];
   /** The discovered stubs, only while nextAction is verify (resume without searching again). */
-  discovered: Array<{ key: string; name: string; category: string; ward: string | null; websiteUrl: string | null; instagramUrl: string | null }>;
+  discovered: Array<{ key: string; name: string; category: string; ward: string | null; websiteUrl: string | null; instagramUrl: string | null; known: boolean }>;
   candidates: Array<{ key: string; stage: CandidateStage; prospectId?: string; reason?: string; errorCode?: string }>;
   replayed: boolean;
 };
@@ -101,6 +109,7 @@ export function toView(state: DbRunState, now: Date = new Date()): RunView {
     errorCode: state.error_code,
     errorSummary: state.error_summary,
     discoveredKeys: state.discovered_keys ?? [],
+    knownKeys: state.known_keys ?? (state.discovered ?? []).filter((c) => c.known === true).map((c) => c.key),
     discovered: (state.discovered ?? []).map((c) => ({
       key: c.key,
       name: c.name,
@@ -108,6 +117,7 @@ export function toView(state: DbRunState, now: Date = new Date()): RunView {
       ward: c.ward ?? null,
       websiteUrl: c.website_url ?? null,
       instagramUrl: c.instagram_url ?? null,
+      known: c.known === true,
     })),
     candidates: (state.verified_order ?? []).map((key) => {
       const c = state.candidates?.[key] ?? { stage: "pending" as const };
@@ -292,6 +302,40 @@ async function inboxDraft(db: SupabaseClient, request: Extract<IngestRequest, { 
   };
 }
 
+/**
+ * DEV-054: the discovered keys that belong to a shop the server already knows
+ * (prospect incl. DNC, exclusion list, remembered rejection). Only the keys
+ * come back. A failure marks nothing (fail open): the mark only saves a
+ * verification, and persist re-checks every rule. This also keeps the API
+ * working before migration 20261019120000 is applied.
+ */
+async function knownDiscoveredKeys(db: SupabaseClient, candidates: Array<{ key: string; websiteUrl?: string | null; instagramUrl?: string | null }>): Promise<Set<string>> {
+  const stubs = screenableStubs(candidates.map(discoveryKeys));
+  if (stubs.length === 0) return new Set();
+  try {
+    const { data, error } = await db.rpc("sales_discovery_known_keys", { p_stubs: stubs });
+    if (error || !Array.isArray(data)) return new Set();
+    const asked = new Set(stubs.map((s) => s.key));
+    return new Set((data as unknown[]).filter((k): k is string => typeof k === "string" && asked.has(k)));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * DEV-054: remembers the durable rejections of a saved verified checkpoint.
+ * Best effort: a failure changes nothing for this run (the candidate is
+ * rejected either way) and only means it may be verified again later.
+ */
+async function rememberRejections(db: SupabaseClient, runId: string, entries: RejectionMemoryEntry[]): Promise<void> {
+  if (entries.length === 0) return;
+  try {
+    await db.rpc("sales_remember_rejections", { p_run_id: runId, p_entries: entries });
+  } catch {
+    // Best effort (see above).
+  }
+}
+
 export async function handleIngest(db: SupabaseClient, request: IngestRequest): Promise<IngestResult> {
   try {
     switch (request.action) {
@@ -317,12 +361,17 @@ export async function handleIngest(db: SupabaseClient, request: IngestRequest): 
             })),
           };
           if (checkpointProblem(payload) !== null) return { status: 400, body: { error: "unsafe_checkpoint_content" } };
-          return respond(await call<DbRunState>(db, "sales_run_checkpoint", { p_run_id: request.runId, p_phase: "discovered", p_payload: payload }));
+          // DEV-054: mark stubs of shops the server already knows ("known":
+          // skip, do not verify). Only the server sets this field.
+          const known = await knownDiscoveredKeys(db, request.candidates);
+          const marked = { candidates: payload.candidates.map((c) => (known.has(c.key) ? { ...c, known: true } : c)) };
+          return respond(await call<DbRunState>(db, "sales_run_checkpoint", { p_run_id: request.runId, p_phase: "discovered", p_payload: marked }));
         }
 
         const order: string[] = [];
         const candidates: Record<string, PreparedCandidate> = {};
         const stages: Record<string, { stage: "pending" | "rejected"; reason?: string }> = {};
+        const memory: RejectionMemoryEntry[] = [];
         for (const input of request.candidates) {
           order.push(input.key);
           const prepared = prepareCandidate(input);
@@ -331,13 +380,20 @@ export async function handleIngest(db: SupabaseClient, request: IngestRequest): 
             stages[input.key] = { stage: "pending" };
           } else {
             stages[input.key] = { stage: "rejected", reason: prepared.reason };
+            const entry = rejectionMemoryEntry(input, prepared.reason);
+            if (entry) memory.push(entry);
           }
         }
         const payload = { order, candidates, stages };
         const problem = checkpointProblem(payload);
         if (problem === "too_large") return { status: 413, body: { error: "checkpoint_too_large" } };
         if (problem !== null) return { status: 400, body: { error: "unsafe_checkpoint_content" } };
-        return respond(await call<DbRunState>(db, "sales_run_checkpoint", { p_run_id: request.runId, p_phase: "verified", p_payload: payload }));
+        const saved = await call<DbRunState>(db, "sales_run_checkpoint", { p_run_id: request.runId, p_phase: "verified", p_payload: payload });
+        // DEV-054: only for a checkpoint this request actually saved.
+        if (saved.status === "running" && saved.phase === "verified" && !saved.replayed) {
+          await rememberRejections(db, request.runId, memory);
+        }
+        return respond(saved);
       }
 
       case "persist":
