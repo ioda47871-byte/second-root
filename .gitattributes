@@ -1,0 +1,5 @@
+# DEV-051: every text file is LF in the working tree on every platform.
+# Migrations applied from a Windows checkout reached Staging with CRLF in
+# function bodies, and a CRLF shell script fails on WSL / Linux. Binary files
+# are still detected automatically.
+* text=auto eol=lf
