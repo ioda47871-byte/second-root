@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -97,7 +97,7 @@ function play(w: { sc: string }, name: string, n: number, s: { out?: string; rc?
 function cycle(w: World, args: string[] = [], env: Record<string, string> = {}) {
   const r = spawnSync("bash", [CYCLE, ...args], {
     encoding: "utf8",
-    env: { PATH: `${w.bin}:${process.env.PATH}`, SR_DESIGN_CYCLE_TEST_ROOT: w.t, SOME_SECRET_KEY: "should-not-pass", ...env },
+    env: { PATH: `${w.bin}:${process.env.PATH}`, SR_DESIGN_CYCLE_TEST_ROOT: w.t, SOME_SECRET_KEY: "should-not-pass", ...env } as unknown as NodeJS.ProcessEnv,
     timeout: 60_000,
   });
   const lines = r.stdout.trimEnd().split("\n");
@@ -111,7 +111,7 @@ describe("cycle.sh: the file", () => {
     expect(spawnSync("bash", ["-n", CYCLE]).status).toBe(0);
     expect(readFileSync(CYCLE, "utf8").startsWith("#!/usr/bin/env bash")).toBe(true);
     expect(statSync(CYCLE).mode & 0o111).not.toBe(0);
-    const r = spawnSync("bash", [CYCLE], { encoding: "utf8", env: { PATH: process.env.PATH } });
+    const r = spawnSync("bash", [CYCLE], { encoding: "utf8", env: { PATH: process.env.PATH } as unknown as NodeJS.ProcessEnv });
     expect(r.status).toBe(2);
     expect(r.stdout).toContain("run from the root-only clone");
     expect(r.stdout.trimEnd().split("\n").pop()).toBe("CYCLE_RESULT CYCLE_USAGE phase=before_claim job=none exit=2");
@@ -346,9 +346,9 @@ describe("cycle.sh: STOP after the claim (the job stays processing; a person rec
   it("stopped by systemd (SIGTERM) during the worker → CYCLE_STOP_SIGNAL, no delivery", async () => {
     const w = world();
     writeFileSync(join(w.sc, "admin-2.sleep"), "");
-    const child = spawn("bash", [CYCLE], { env: { PATH: `${w.bin}:${process.env.PATH}`, SR_DESIGN_CYCLE_TEST_ROOT: w.t }, detached: true });
+    const child: ChildProcess = spawn("bash", [CYCLE], { env: { PATH: `${w.bin}:${process.env.PATH}`, SR_DESIGN_CYCLE_TEST_ROOT: w.t } as unknown as NodeJS.ProcessEnv, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
-    child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+    child.stdout!.on("data", (d: Buffer) => (stdout += d.toString()));
     for (let i = 0; i < 200 && !readFileSync(w.calls, "utf8").includes("admin#2"); i += 1) await new Promise((r) => setTimeout(r, 50));
     // systemd stops the whole cgroup: the cycle and the step it waits for
     process.kill(-child.pid!, "SIGTERM");
