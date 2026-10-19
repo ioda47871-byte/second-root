@@ -24,7 +24,7 @@ root（systemd の sr-design-cycle.service、または人の sudo）
    3. idle の worker run（admin.sh run sr-designgen -- … run.sh --max=1）
         heartbeat を書き、bridge が閉じた job の結果 file を消す。imported 0・no jobs・exported 0 であること
    4. bridge --deliver-only（sr-designbridge として）。delivered / superseded / refused / expired がすべて 0 であること
-   5. 残り 4200 秒以上なら bridge --once。claim はちょうど 1 件か、0 件（CYCLE_IDLE で終わる）
+   5. 残り 4220 秒以上なら bridge --once。claim はちょうど 1 件か、0 件（CYCLE_IDLE で終わる）
    6. 残り 3960 秒以上なら worker --max=1（予算 3300 秒、jail の中、RuntimeMaxSec=3500）
         出力に STOP の符号があれば止まる。imported 1・その job の claimed・exported 1 であること
    7. 残り 260 秒以上なら bridge --deliver-only。その job だけが delivered 1 であること
@@ -58,13 +58,15 @@ root（systemd の sr-design-cycle.service、または人の sudo）
 
 ### STOP の符号（6. の worker 出力、3. の idle run）
 
-`LOGIN_REQUIRED`・`LOGIN_WALL`・`LOGIN_ABORTED`・`INSTAGRAM_CHALLENGE`・`INSTAGRAM_CAPTCHA`・`CHALLENGE`・`CAPTCHA`・`WAITING_FOR_PERSON`・`SKIPPED_NO_TIME`・`RATE_CAPPED`・
+`LOGIN_REQUIRED`・`LOGIN_WALL`・`LOGIN_ABORTED`・`INSTAGRAM_CHALLENGE`・`INSTAGRAM_CAPTCHA`・`CHALLENGE`・`CAPTCHA`・`WAITING_FOR_PERSON`・`SKIPPED_NO_TIME`・`RATE_CAPPED`・`RATE_LIMITED`・
 `JAIL_UNSAFE`・`JAIL_NOT_INSTALLED`・`JAIL_PROPS_FAILED`・`JAIL_UNIT_REJECTED`・`HOST_UNSAFE`・`ADMIN_SCRIPT_UNTRUSTED`・`REQUESTER_*`・`WSL_INTEROP_*`・
 `BRIDGE_*`・`CODEX_SANDBOX_*`・`CODEX_API_KEY_AUTH`・`CODEX_NOT_SIGNED_IN`・`CODEX_NOT_INSTALLED`・`CODEX_QUOTA`・`SPOOL_UNSAFE`・
 `WORKER_NOT_ON_REF`・`WORKER_TREE_DIRTY`・`WORKER_ENV_FILE_PRESENT`・`WORKER_LOCK_FAILED`・`WORKER_RUN_TIME_BUDGET`・`RUN_TIME_BUDGET`・`WORKER_STOPPED_BY_SIGNAL`・`WORKER_UNEXPECTED`・`WORKER_SYSTEM_ERROR`・`OOM`・`Killed`
 
 - 符号は単語全体で比べる。`JAIL_OK`・`LOGIN_OK` などは一致しない（DEV-046 Window 5 の誤検出を繰り返さない）
 - worker が exit 0 でも、これらの符号があれば止まり、結果を届けない。例: `LOGIN_WALL` で `PUBLIC_SOURCE_UNAVAILABLE` になった job を届けると、demo は終端の `blocked` になる（Window 6）。セッションの問題で demo を閉じないため
+- `RATE_LIMITED`（`job <id>: PUBLIC_SOURCE_UNAVAILABLE (RATE_LIMITED)`、Instagram・website の 429 や「しばらくしてから」の画面）も一時的なものなので止まる
+- capture helper が答えなかったとき（`signed-in capture` が `BROWSER_BUSY`・`HELPER_BUSY`・`HELPER_ERROR`・`CAPTURE_FAILED`・`CAPTURE_HELPER_TIMEOUT`・`CAPTURE_HELPER_UNAVAILABLE`・`CAPTURE_RESULT_INVALID`・`CAPTURE_REQUEST_INVALID`・`REQUEST_INVALID`）、worker は公開 capture に切り替える。その job が `PUBLIC_SOURCE_UNAVAILABLE` で終わったら、店の答えではなく helper の問題なので止まる（`CYCLE_STOP_WORKER_SIGNAL`）。公開 capture で撮れたときは届ける
 - 回避しない。再試行しない。符号の一覧を緩めるのは STOP 条件の緩和なので、人の判断が要る
 
 ## 2. 時間の予算（R2 と同じ考え方）
@@ -72,18 +74,18 @@ root（systemd の sr-design-cycle.service、または人の sudo）
 | 値 | 秒 | 根拠 |
 |---|---|---|
 | cycle の予算 | 4500 | R2 の時間窓の下限。開始時に締め切りを決め、延ばさない |
-| claim の前に残っていること | 4200 | claim の 1 回（bridge の timeout 240）+ worker の前の 3960 |
+| claim の前に残っていること | 4220 | claim の 1 回の最悪（260）+ worker の前の 3960 |
 | worker の前に残っていること | 3960 | worker の最悪（admin.sh run の RuntimeMaxSec 3500 + systemd の停止の猶予 90）+ 最後の bridge 1 回（260）+ 余裕 110 |
 | worker の予算 | 3300 | `SR_DESIGN_WORKER_BUDGET_SECONDS`（run.sh の上限。変えない） |
 | bridge 1 回 | 最大 260 | bridge run.sh の `timeout --kill-after=10 240`、cycle 側でも 250 + 5 で切る |
 | unit の `TimeoutStartSec` | 4800 | cycle は 4500 の中で終わる。これは最後の手段 |
 
-- 開始から 300 秒以内に claim、540 秒以内に worker を始められなければ止まる（idle run で `npm ci` が走った回など）。claim の前なら何も変わらない
+- 開始から 280 秒以内に claim、540 秒以内に worker を始められなければ止まる（idle run で `npm ci` が走った回など）。claim の前なら何も変わらない
 - この関係は `budget_ok`（script の起動時）と test（admin.sh・run.sh・bridge run.sh の値との突き合わせ）が確かめる
 
 ## 3. 出力と `CYCLE_RESULT`
 
-子の出力は 1 行ずつ `  <段>| …` で表示する。その前に次を消す: URL（`[url]`）、メールアドレス（`[email]`）、Bearer の値・`token=` / `cookie:` などの値・JWT・既知の key の接頭辞・長い乱数らしい文字列（`[redacted]`）、制御文字。1 行 300 文字、1 段 200 行まで。
+子の出力は 1 行ずつ `  <段>| …` で表示する。その前に次を消す: URL（`[url]`）、メールアドレス（`[email]`）、Bearer の値・`token=` / `"access_token": "…"` などの値・`Cookie:` / `Set-Cookie:` の行のすべての値・`x-api-key <値>`・JWT・既知の key の接頭辞・32 文字以上の 16 進（job id の `b-<uuid>` と UUID は残る）・長い乱数らしい文字列（`[redacted]`）、制御文字。1 行 300 文字、1 段 200 行まで。
 worker と bridge はもともと符号と定型文だけを出す。これは二重の守り。env file の URL と token は表示しない（token は読みもしない）。
 
 最後の行は機械で読む 1 行:
@@ -103,7 +105,7 @@ CYCLE_RESULT <CODE> phase=<before_claim|claim_unknown|after_claim|done> job=<b-�
 | `CYCLE_STOP_CHECK` | 21 | before_claim | §1 の確認のどれか | 表示された `CHECK_*` を直す。`CHECK_LEDGER_OPEN` は §6 |
 | `CYCLE_STOP_IDLE_RUN` | 22 | before_claim | idle run が失敗・符号あり・idle でない・結果 file が残った | 出力の符号を見る（`LOGIN_REQUIRED` なら `admin.sh login`、`JAIL_UNSAFE` なら `admin.sh jail-check`） |
 | `CYCLE_STOP_DELIVER_BEFORE` | 23 | before_claim | 最初の `--deliver-only` がすべて 0 でない | 想定外の ledger・spool。読むだけで調べる |
-| `CYCLE_STOP_TIME_BEFORE_CLAIM` | 24 | before_claim | claim の前に 4200 秒残っていない | 次の回でよい（続くなら idle run の時間を調べる） |
+| `CYCLE_STOP_TIME_BEFORE_CLAIM` | 24 | before_claim | claim の前に 4220 秒残っていない | 次の回でよい（続くなら idle run の時間を調べる） |
 | `CYCLE_STOP_CLAIM` | 25 | before_claim / after_claim | `--once` が失敗した、ちょうど 1 件でない、`BRIDGE_WORKER_IDLE` | `stopped: BRIDGE_*` を見る（§7）。phase が after_claim なら §6 |
 | `CYCLE_STOP_TIME_BEFORE_WORKER` | 30 | after_claim | claim の後、worker の前に 3960 秒残っていない | §6 |
 | `CYCLE_STOP_WORKER_SIGNAL` | 31 | after_claim | worker の出力に STOP の符号 | 符号の原因（login・jail・bridge）を先に直し、§6 |
@@ -166,6 +168,8 @@ systemctl list-timers sr-design-cycle.timer
   ```bash
   sudo systemctl disable --now sr-design-cycle.timer
   sudo systemctl stop sr-design-cycle.service
+  sudo systemctl stop 'sr-jail-run-*'     # jail の worker は admin.sh run の別の transient unit。cycle を止めても残る
+  systemctl list-units 'sr-jail-run-*' --no-pager   # 何も残っていないこと
   ```
   claim の後に止めたときは §6。
 - Instagram のログインの前（`admin.sh login`）は timer を止め、動いている cycle が終わるのを待つ（`systemctl is-active sr-design-cycle.service` が `inactive`）。終わったら timer を戻す
@@ -203,6 +207,7 @@ Staging の demo（`sales_demos` の `design_status`・`design_job_id`・`design
 |---|---|
 | worker の結果は正しく、届けてよい（例: 最後の bridge が `BRIDGE_API_UNAVAILABLE` で失敗しただけ） | 原因を直してから bridge を手で 1 回: `design-bridge.md` §6 の 4.（`--deliver-only`）→ `delivered 1`・その job であること |
 | 結果を届けてはいけない（`LOGIN_WALL`・`LOGIN_REQUIRED` などで `blocked` になると、demo が終端で閉じる） | job id を条件にして demo を `pending` に戻す（R1 と同じ。`design_attempts` は変えない）。次に `--deliver-only` で古い結果を `superseded` で閉じる（Window 6b）。ledger の open が 0 になったことを 6.1 で確かめる |
+| worker が結果を出さずに止まった（`from-worker/` にその job の file がない。例: `CYCLE_STOP_SIGNAL`・`CYCLE_STOP_WORKER_EXIT`・`CYCLE_STOP_TIME_BEFORE_WORKER`） | 届けるものはない。worker・jail の unit が残っていないこと（§5 の `sr-jail-run-*`）を確かめ、bridge の local expiry（claim から 2 時間 15 分）を待つ → 人が `--deliver-only` を 1 回（`design-bridge.md` §6 の 4.）→ `expired 1`、その job であること（bridge は `to-worker/` の job file も消す）→ 手で worker を 1 回（§1 の表の worker の行と同じ `admin.sh run … --max=1`）。job が `inbox/` にあれば import がそれを取り下げる（`bridge: imported 0, withdrawn 1`・`no jobs in the inbox`）。job が `processing/` にあれば、worker 自身の stale recovery（持ち主の process がない `HOLDER_GONE` など）がその run の中で `inbox/` に戻し、`--max=1` で 1 回実行する（試行を 1 回数える）。その結果は bridge が閉じた job なので export されず、届かない → 6.1 で worker の `inbox/`・`processing/` が空、ledger の open が 0、spool が空であることを確かめる。demo は server の lease で次の claim の時に `pending` に戻る（`DESIGN_STALE`） |
 | 急がない | 何もしない。server の lease（2 時間）と bridge の local expiry（2 時間 15 分）が過ぎた後、人が `--deliver-only` を 1 回 → ledger が `expired` で閉じる。次の claim で demo は `pending`（`DESIGN_STALE`、試行は 1 回使う。3 回目なら `failed`） |
 
 job id を条件にした戻し方（Staging、人が承認して実行。`<uuid>` は 6.1 で確かめた値）:
