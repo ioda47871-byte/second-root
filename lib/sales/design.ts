@@ -68,3 +68,31 @@ export const DESIGN_STATUS_LABEL: Record<DesignStatus, string> = {
 
 /** What the admin is told for blocked / failed (the existing template is used). */
 export const DESIGN_FALLBACK_NOTE = "AIデザインは使えません。既存テンプレートのデモで送れます。";
+
+/**
+ * Why a demo is blocked / failed, in words for the admin (design_error_code).
+ * The codes are the fixed ones the worker, the bridge and the database write.
+ */
+export const DESIGN_ERROR_LABEL: Readonly<Record<string, string>> = {
+  PUBLIC_SOURCE_UNAVAILABLE: "公開の参照元（公式サイト・Instagram）を取得できなかった",
+  FALLBACK_TEMPLATE: "AIデザインを作れなかった（既存テンプレート）",
+  DESIGN_BLOCKED: "AIデザインが止まった（人の確認が必要）",
+  RENDERER_CHANGE_NEEDED: "描画側の拡張が必要（人の判断）",
+  QUALITY_NOT_ACCEPTED: "品質の確認で合格しなかった（レビューが一度も accept しなかった）",
+  DO_NOT_CONTACT: "連絡しない店",
+  DEMO_DISABLED: "デモが無効",
+  ALREADY_SENT: "初回は送信済み",
+  OUTREACH_CLOSED: "送らずに失注にした",
+  NO_VISUAL_SOURCE: "参照元（公式サイト・Instagram）がない",
+  DEMO_CONTENT_INVALID: "デモの内容が不正",
+  DESIGN_STALE: "期限内に結果が届かなかった",
+  PROFILE_INVALID: "AIデザインの profile が検証を通らなかった",
+  RESULT_MISSING: "worker の結果がなかった",
+  WORKER_FAILED: "worker が失敗した",
+};
+
+/** The admin's words for a design_error_code; an unknown code is shown as it is (it is always a fixed code). */
+export function designErrorLabel(code: string | null | undefined): string | null {
+  if (!code) return null;
+  return Object.hasOwn(DESIGN_ERROR_LABEL, code) ? DESIGN_ERROR_LABEL[code]! : code;
+}
