@@ -1,7 +1,8 @@
 import { chmod, link, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { bridgeEndpoint, bridgeModeFor, bridgeSummary, isReviewRejection, LOCAL_EXPIRY_MS, readTokenFile, runBridgeOnce, submitBody, WORKER_HEARTBEAT_MAX_MS, type BridgeOptions } from "@/lib/design-agent/bridge/client";
 import { bridgeSpool, readHeartbeat, readReviewSidecar, readSpoolJson, resultCode, spoolIds, writeHeartbeat, writeSpoolJson, WorkerResultSchema, type BridgeSpool } from "@/lib/design-agent/bridge/spool";
 import { exportBridgeResults, importBridgeJobs, resultFromRecords, reviewForResult } from "@/lib/design-agent/bridge/worker-side";
@@ -665,29 +666,57 @@ describe("the worker never gets the bridge token", () => {
     for (const out of [deliverOnly.stdout, deliverOnly.stderr, once.stdout, once.stderr]) expect(out).not.toContain(TOKEN);
   }, 60_000);
 
-  it("the bridge's run.sh runs tsx from its own checkout, wherever it was started (DEV-062)", async () => {
-    const { mkdtemp, mkdir, copyFile, writeFile: write, chmod, realpath } = await import("node:fs/promises");
-    const { spawnSync } = await import("node:child_process");
-    const root = await mkdtemp(join(tmpdir(), "sr-bridge-cwd-"));
-    const repo = join(root, "checkout");
-    await mkdir(join(repo, "scripts/sales-design-bridge"), { recursive: true });
-    await mkdir(join(repo, "node_modules/.bin"), { recursive: true });
-    await copyFile(join(process.cwd(), "scripts/sales-design-bridge/run.sh"), join(repo, "scripts/sales-design-bridge/run.sh"));
-    // stand-ins: tsx prints the directory it was started in; id reports the bridge user (the test may run as root)
-    await write(join(repo, "node_modules/.bin/tsx"), '#!/usr/bin/env bash\necho "cwd=$PWD"\n');
-    await chmod(join(repo, "node_modules/.bin/tsx"), 0o755);
-    const bin = join(root, "bin");
-    await mkdir(bin);
-    await write(join(bin, "id"), "#!/usr/bin/env bash\necho sr-designbridge\n");
-    await chmod(join(bin, "id"), 0o755);
-    const elsewhere = join(root, "started-here"); // e.g. /mnt/c/Users/... under WSL
-    await mkdir(elsewhere);
-    const r = spawnSync("bash", [join(repo, "scripts/sales-design-bridge/run.sh"), "--deliver-only"], {
-      cwd: elsewhere,
-      env: { PATH: `${bin}:${process.env.PATH}`, HOME: root } as unknown as NodeJS.ProcessEnv,
-      encoding: "utf8",
+  describe("run.sh wherever it is started (DEV-062)", () => {
+    let root = "";
+    let bin = "";
+    beforeAll(async () => {
+      const { mkdtemp, mkdir, writeFile: write, chmod } = await import("node:fs/promises");
+      root = await mkdtemp(join(tmpdir(), "sr-bridge-cwd-"));
+      bin = join(root, "bin");
+      await mkdir(bin);
+      // id reports the bridge user (the test may run as root, which run.sh refuses)
+      await write(join(bin, "id"), "#!/usr/bin/env bash\necho sr-designbridge\n");
+      await chmod(join(bin, "id"), 0o755);
+      await mkdir(join(root, "started-here")); // e.g. / for cycle.sh, or /mnt/c/Users/... under WSL
     });
-    expect({ status: r.status, out: r.stdout.trim() }).toEqual({ status: 0, out: `cwd=${await realpath(repo)}` });
+    afterAll(async () => {
+      const { rm } = await import("node:fs/promises");
+      await rm(root, { recursive: true, force: true });
+    });
+    const start = (runSh: string, env: Record<string, string> = {}) =>
+      spawnSync("bash", [runSh, "--deliver-only"], {
+        cwd: join(root, "started-here"),
+        env: { PATH: `${bin}:${process.env.PATH}`, HOME: root, ...env } as unknown as NodeJS.ProcessEnv,
+        encoding: "utf8",
+        timeout: 60_000,
+      });
+
+    it("hands tsx its own checkout as the working directory", async () => {
+      const { mkdir, copyFile, writeFile: write, chmod, realpath } = await import("node:fs/promises");
+      const repo = join(root, "checkout");
+      await mkdir(join(repo, "scripts/sales-design-bridge"), { recursive: true });
+      await mkdir(join(repo, "node_modules/.bin"), { recursive: true });
+      await copyFile(join(process.cwd(), "scripts/sales-design-bridge/run.sh"), join(repo, "scripts/sales-design-bridge/run.sh"));
+      await write(join(repo, "node_modules/.bin/tsx"), '#!/usr/bin/env bash\necho "cwd=$(pwd -P)"\n');
+      await chmod(join(repo, "node_modules/.bin/tsx"), 0o755);
+      const r = start(join(repo, "scripts/sales-design-bridge/run.sh"));
+      expect({ status: r.status, out: r.stdout.trim() }).toEqual({ status: 0, out: `cwd=${await realpath(repo)}` });
+    });
+
+    it("the real bridge resolves its @/ imports from elsewhere and stops only for the missing settings", () => {
+      // without the cd, tsx did not find tsconfig.json and the bridge died with MODULE_NOT_FOUND
+      const r = start(join(process.cwd(), "scripts/sales-design-bridge/run.sh"));
+      expect(`${r.stdout}${r.stderr}`).not.toMatch(/MODULE_NOT_FOUND|Cannot find (module|package)/);
+      expect({ status: r.status, out: r.stdout.trim() }).toEqual({ status: 3, out: "stopped: BRIDGE_NOT_CONFIGURED" });
+    }, 60_000);
+
+    it.each(["XDG_STATE_HOME", "SR_DESIGN_BRIDGE_SPOOL", "SR_DESIGN_BRIDGE_TOKEN_FILE", "SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE"])(
+      "refuses a relative %s (it would point into the checkout)",
+      (name) => {
+        const r = start(join(process.cwd(), "scripts/sales-design-bridge/run.sh"), { [name]: "relative/path" });
+        expect({ status: r.status, out: r.stdout.trim() }).toEqual({ status: 3, out: `stopped: BRIDGE_PATH_NOT_ABSOLUTE (${name})` });
+      },
+    );
   });
 
   it("the bridge's run.sh keeps no token variable and refuses the worker and helper users", async () => {

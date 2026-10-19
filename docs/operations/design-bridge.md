@@ -113,7 +113,7 @@ Staging の Preview は Vercel Authentication で保護されている。bridge 
 `design-bridge.env` の `SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE` / `SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN`（両方そろったときだけ有効）で設定する。
 方式の比較・人の操作・確認・失効は `design-bridge-access.md`。Authentication を外す運用は使わない。
 
-`run.sh` は自分の checkout に `cd` してから動く（DEV-062）ので、どの directory から起動してもよい（WSL の `/mnt/c/...` からでも。以前は起動した directory のまま tsx が esbuild を起動し、bridge user が使えない Windows の path だと EACCES になった）。
+`run.sh` は自分の checkout に `cd` してから動く（DEV-062）ので、どの directory から起動してもよい（cycle.sh は `/` から起動する）。以前は起動した directory のままで、tsx が `tsconfig.json`（`@/` の import）を見つけられず MODULE_NOT_FOUND になり、WSL の `/mnt/c/...` からは esbuild の起動が EACCES になった。`XDG_STATE_HOME`・`SR_DESIGN_BRIDGE_SPOOL`・token / bypass の file の path は絶対 path にする（相対 path は `BRIDGE_PATH_NOT_ABSOLUTE` で止まる）。
 
 worker の設定（`design-worker-wsl.md` の service / 手での起動）に、spool の path だけを足す:
 
