@@ -2289,10 +2289,10 @@
     {
       "id": "DEV-051",
       "title": "repo の改行を LF に固定（.gitattributes）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [],
-      "attempts": 0,
+      "attempts": 1,
       "last_failure": null,
       "branch": "feature/dev-051-gitattributes-lf",
       "purpose": "HUMAN-008 の適用後の確認で、Staging の関数本文が CRLF だった（Windows 側の checkout の改行設定）。migration・WSL で実行する shell script が CRLF になると、関数本文の差分・shell の実行失敗の原因になる",
