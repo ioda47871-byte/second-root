@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byStageAge, type PipelineItem } from "@/lib/admin/pipeline";
+import { byStageAge, readAll, type PipelineItem } from "@/lib/admin/pipeline";
 import { jstCalendarDaysBetween } from "@/lib/sales/dates";
 import { elapsedDaysLabel, followUpDueAt, followUpStatus, followUpStatusLabel, isFollowUpDue } from "@/lib/sales/followup";
 
@@ -92,6 +92,39 @@ describe("followUpStatus", () => {
     expect(followUpStatusLabel({ kind: "instagram" })).toBe("Instagram はフォローなし");
     // Neutral: covers a missing demo as well as a disabled or expired one.
     expect(followUpStatusLabel({ kind: "demo_unavailable" })).toBe("デモが公開されていないためフォローなし");
+  });
+});
+
+describe("readAll (no cap on the 返信 / 商談 lists)", () => {
+  /** A fake PostgREST range read over `total` rows that returns at most `maxRows` per request. */
+  function server(total: number, maxRows: number) {
+    const rows = Array.from({ length: total }, (_, i) => i);
+    const calls: Array<[number, number]> = [];
+    const page = async (from: number, to: number) => {
+      calls.push([from, to]);
+      return { data: rows.slice(from, Math.min(to + 1, from + maxRows)), error: null };
+    };
+    return { rows, calls, page };
+  }
+
+  it("returns every row when the server returns fewer rows than the page size", async () => {
+    const s = server(1234, 300);
+    expect(await readAll<number>(s.page, 500)).toEqual(s.rows);
+    // Each page starts right after the rows received, never skipping any.
+    expect(s.calls.map(([from]) => from)).toEqual([0, 300, 600, 900, 1200, 1234]);
+  });
+
+  it("stops on an empty page, at most one extra request", async () => {
+    const exact = server(1000, 1000);
+    expect(await readAll<number>(exact.page, 500)).toEqual(exact.rows);
+    expect(exact.calls).toHaveLength(3);
+    const none = server(0, 1000);
+    expect(await readAll<number>(none.page, 500)).toEqual([]);
+    expect(none.calls).toHaveLength(1);
+  });
+
+  it("fails closed on an error", async () => {
+    await expect(readAll(async () => ({ data: null, error: { message: "boom" } }), 500)).rejects.toThrow("pipeline_unavailable");
   });
 });
 

@@ -60,14 +60,17 @@ export const PIPELINE_PAGE = 500;
  * leaves the list by itself. At MVP volume (at most 5 initials a day, one
  * admin) this is one or a few small requests.
  */
-async function readAll<T>(page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>, size: number): Promise<T[]> {
+// A short page does not mean the end: the server may return fewer rows than
+// asked (PostgREST max_rows). So the next page starts after the rows actually
+// received, and only an empty page ends the read (one extra request at most).
+export async function readAll<T>(page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>, size: number): Promise<T[]> {
   const out: T[] = [];
-  for (let from = 0; ; from += size) {
-    const { data, error } = await page(from, from + size - 1);
+  for (;;) {
+    const { data, error } = await page(out.length, out.length + size - 1);
     if (error) throw new Error("pipeline_unavailable");
     const rows = (data ?? []) as T[];
+    if (rows.length === 0) return out;
     out.push(...rows);
-    if (rows.length < size) return out;
   }
 }
 
