@@ -2742,7 +2742,7 @@
     {
       "id": "DEV-062",
       "title": "bridge の run.sh を起動した directory に依存させない（WSL の /mnt/c で EACCES）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-058"
@@ -2774,7 +2774,7 @@
       "human_approval_triggers": [
         "WSL の bridge の checkout の更新（人）"
       ],
-      "decision": "2026-10-19: 人の報告（HUMAN-012）から Claude が追加（PR #75）"
+      "decision": "2026-10-19: 人の報告（HUMAN-012）から Claude が追加（PR #75）; 2026-10-19: PR #75 merge（90c4c38）。Fresh Review PASS（Medium 1: cwd は tsconfig の @/ import にも効く。cycle.sh は / から起動するので bridge の pass が MODULE_NOT_FOUND になっていた → 文書・本物の run.sh の test を追加。Low: 相対 path を拒否）→ 再レビュー PASS（Low: 空の値も拒否 → Claude が修正）、CI green。人の作業: WSL の bridge を 90c4c38 以降に更新"
     }
   ]
 }
