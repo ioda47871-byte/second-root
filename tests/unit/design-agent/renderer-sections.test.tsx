@@ -124,7 +124,7 @@ describe("sections from a layout", () => {
     // sections.module.css's classes all end in the module's own suffix
     const suffix = sectionStyles.sec.slice("_sec".length);
     expect(suffix).toMatch(/^_\w+$/);
-    const own = new RegExp(`\\s_[A-Za-z]+${suffix}(?=")|\\s(data-kind|data-variant|data-ground|data-first-view|data-scale|data-headings)="[^"]*"`, "g");
+    const own = new RegExp(`\\s_[A-Za-z]+${suffix}(?=")|\\s(data-kind|data-variant|data-ground|data-short|data-first-view|data-scale|data-headings)="[^"]*"`, "g");
     for (const c of baselineCases()) {
       const [shopKey, profileKey, photoKey] = c.key.split("/");
       const withDefault = render(BASELINE_SHOPS[shopKey], { ...BASELINE_PROFILES[profileKey], layout: DEFAULT_LAYOUT }, BASELINE_PHOTOS[photoKey]);

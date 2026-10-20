@@ -33,10 +33,19 @@ export type LayoutAdjustment =
   | `first_view:${(typeof FIRST_VIEWS)[number]}`
   | "about_in_first_view";
 
-/** How many menu items a name_menu first view shows (all of them stay in the menu section). */
+/**
+ * How many menu items a name_menu first view shows (all of them stay in the menu
+ * section). The excerpt needs a longer menu than this (otherwise it is the whole
+ * menu twice) and is not used when the menu section comes straight after the hero
+ * (the same items twice on the first screen); then the first view is the name alone.
+ */
 export const FIRST_VIEW_MENU_ITEMS = 3;
-/** The longest name set vertically (vertical_name). */
-export const VERTICAL_NAME_MAX = 12;
+/**
+ * The longest name set vertically (vertical_name). A vertical name must lead the
+ * page: at this length it is still set at least twice the size of the section
+ * headings on a 900px-high desktop; a longer name stays horizontal (name_only).
+ */
+export const VERTICAL_NAME_MAX = 6;
 
 // Japanese script only: kanji, kana, the long-vowel mark, iteration marks and the middle dot.
 // Latin letters, digits and spaces are never set vertically (they would lie on their side).
@@ -47,7 +56,7 @@ export function japaneseOnly(text: string): boolean {
   return JAPANESE_ONLY.test(text);
 }
 
-/** A shop name that may be set vertically: Japanese only, no spaces, at most 12 characters. */
+/** A shop name that may be set vertically: Japanese only, no spaces, at most VERTICAL_NAME_MAX characters. */
 export function verticalName(name: string): boolean {
   return japaneseOnly(name) && Array.from(name).length <= VERTICAL_NAME_MAX;
 }
@@ -68,7 +77,7 @@ function firstViewHasEvidence(view: (typeof FIRST_VIEWS)[number], demo: DemoView
     case "name_hours":
       return demo.hours !== null;
     case "name_menu":
-      return demo.menuItems.length > 0;
+      return demo.menuItems.length > FIRST_VIEW_MENU_ITEMS;
     case "vertical_name":
       return verticalName(demo.name);
   }
@@ -95,7 +104,14 @@ function sectionHasEvidence(kind: SectionKind, demo: DemoView, hoursSection: boo
   }
 }
 
-export function normalizeLayout(input: Layout, demo: DemoView): { layout: Layout; adjustments: LayoutAdjustment[] } {
+/**
+ * A layout after normalizeLayout: a render plan, never parsed or stored again.
+ * Unlike a stored layout (LayoutSchema: 1–4 sections) it may have no section at
+ * all — a shop with only its name has none, as the page before Stage 1.
+ */
+export type NormalizedLayout = Omit<Layout, "sections"> & { sections: LayoutSection[] };
+
+export function normalizeLayout(input: Layout | NormalizedLayout, demo: DemoView): { layout: NormalizedLayout; adjustments: LayoutAdjustment[] } {
   const adjustments: LayoutAdjustment[] = [];
 
   // 4. a kind once (the schema refuses repeats; a saved or hand-made layout may not have passed it)
@@ -143,11 +159,17 @@ export function normalizeLayout(input: Layout, demo: DemoView): { layout: Layout
     sections.push({ ...DEFAULT_SECTION[kind] });
   }
 
+  // the menu excerpt is not shown when the menu section opens the page (the same items twice in a row)
+  if (firstView === "name_menu" && sections[0]?.kind === "menu") {
+    adjustments.push("first_view:name_menu");
+    firstView = "name_only";
+  }
+
   return { layout: { firstView, sections, type: { ...input.type } }, adjustments };
 }
 
 /** Where each fact of the shop is drawn under a normalized layout (for tests and the report). */
-export function factPlacement(layout: Layout, demo: DemoView): Record<string, SectionKind | "first_view" | null> {
+export function factPlacement(layout: NormalizedLayout, demo: DemoView): Record<string, SectionKind | "first_view" | null> {
   const has = (kind: SectionKind) => layout.sections.some((s) => s.kind === kind);
   const hoursHome: SectionKind | null = has("hours") ? "hours" : has("visit") ? "visit" : null;
   return {

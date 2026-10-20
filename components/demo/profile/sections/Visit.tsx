@@ -107,7 +107,7 @@ export default function Visit({ rows, labels, photo, spec, headings }: SectionPr
   }
 
   return (
-    <section {...sectionAttrs(spec)} aria-labelledby="pr-visit" data-single={rows.length === 1 ? "" : undefined} data-photo-section={photo ? "visit" : undefined}>
+    <section {...sectionAttrs(spec, rows.length <= 2)} aria-labelledby="pr-visit" data-single={rows.length === 1 ? "" : undefined} data-photo-section={photo ? "visit" : undefined}>
       <Heading kind="visit" headings={headings} layout={spec !== null} />
       {body}
       {photo && <PhotoFigure photo={photo} className={styles.band} role="visit" side={photo.side} />}

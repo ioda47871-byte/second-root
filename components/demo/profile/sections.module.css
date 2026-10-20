@@ -74,8 +74,16 @@
    it adds no sideways scroll). Inside a band every colour is one of a pair the
    contrast rules guarantee: surface — text on surface; inverted — background
    on primary. The band's words, rules and marks all take its ink. */
-.sec[data-ground="surface"] { --g-bg: var(--p-surface); --g-fg: var(--p-text); }
-.sec[data-ground="inverted"] { --g-bg: var(--p-primary); --g-fg: var(--p-bg); }
+/* The palette as the profile sets it, taken on main (a direction may re-map the
+   tokens on its sections, e.g. boutique_minimal sets their primary to the text colour). */
+.main {
+  --g-surface: var(--p-surface);
+  --g-text: var(--p-text);
+  --g-primary: var(--p-primary);
+  --g-background: var(--p-bg);
+}
+.sec[data-ground="surface"] { --g-bg: var(--g-surface, var(--p-surface)); --g-fg: var(--g-text, var(--p-text)); }
+.sec[data-ground="inverted"] { --g-bg: var(--g-primary, var(--p-primary)); --g-fg: var(--g-background, var(--p-bg)); }
 
 .sec.sec.sec[data-ground="surface"],
 .sec.sec.sec[data-ground="inverted"] {
@@ -85,6 +93,23 @@
   color: var(--g-fg);
   box-shadow: 0 0 0 100vmax var(--g-bg);
   clip-path: inset(0 -100vmax);
+}
+/* A band starts at its own edge: no divider line across its top (the line would be
+   content-wide on a full-width ground). */
+.sec.sec.sec.sec[data-ground="surface"],
+.sec.sec.sec.sec[data-ground="inverted"] { border-top-color: transparent; }
+
+/* Panel directions (boutique_minimal: every section is a narrow panel) keep bands in
+   the panel column: a band is a panel of its own ground, not a full-width strip. */
+[data-direction="boutique_minimal"] .sec.sec.sec[data-ground="surface"],
+[data-direction="boutique_minimal"] .sec.sec.sec[data-ground="inverted"] { box-shadow: none; clip-path: none; }
+
+/* A band that ends the page meets the footer: no strip of the page ground between
+   them (panel directions keep their space). Where an inverted band meets the
+   footer (both dark), a hairline in the footer marks the end of the page. */
+[data-direction]:not([data-direction="boutique_minimal"]) > main.main:has(> .sec:last-child:is([data-ground="surface"], [data-ground="inverted"])) { padding-bottom: 0; }
+div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-ground="inverted"]) + footer {
+  border-top: 1px solid color-mix(in srgb, var(--footer-ink) 40%, transparent);
 }
 
 .sec[data-ground="surface"] > *,
@@ -142,7 +167,6 @@
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
-.sec.sec[data-variant="side_heading"] .h.h { font-size: max(1.2rem, calc(1.4rem * var(--k))); }
 
 /* ---------- menu ---------- */
 
@@ -153,6 +177,8 @@
   margin: 0;
   padding: 0;
   min-width: 0;
+  /* a grid row taller than the list (a side heading) does not stretch it */
+  align-self: start;
 }
 .item {
   min-width: 0;
@@ -162,7 +188,7 @@
   color: var(--p-text);
 }
 
-.chips { display: flex; flex-wrap: wrap; gap: 10px 12px; }
+.chips { display: flex; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; gap: 10px 12px; }
 .chips .item {
   max-width: 100%;
   padding: 0.5em 1.1em 0.55em;
@@ -302,18 +328,21 @@
 
 /* ---------- first view (inside the hero's title block) ---------- */
 
-/* Small words sit on the page's own ground, so a hero with a texture or a
-   coloured ground under the name keeps them readable. */
 .fvLead,
 .fvHours,
 .fvMenu {
   position: relative;
   z-index: 1;
-  background: var(--p-bg);
 }
-[data-direction="pop_bakeshop"] :is(.fvLead, .fvHours, .fvMenu),
-[data-direction="gallery_mono"] :is(.fvLead, .fvHours, .fvMenu),
-[data-direction="kissaten_retro"] :is(.fvLead, .fvHours, .fvMenu) { padding: 10px 14px; }
+/* A patterned hero (pop_bakeshop's dots): the small words sit on a rounded tag of the page ground. */
+[data-direction="pop_bakeshop"] :is(.fvLead, .fvHours, .fvMenu) { padding: 10px 14px; border-radius: 14px; background: var(--p-bg); }
+/* A filled hero (gallery_mono: the primary colour): the small words take the
+   background colour, the pair the contrast rules guarantee on primary. */
+[data-direction="gallery_mono"] :is(.fvLead, .fvHours, .fvMenu) {
+  --p-text: var(--p-bg);
+  --p-secondary: var(--p-bg);
+  --p-primary: var(--p-bg);
+}
 
 .fvLead {
   margin: 22px 0 0;
@@ -372,6 +401,18 @@
 [data-layout="centered_cover"] :is(.fvHours, .fvItems, .fvLabel) { justify-content: center; }
 [data-layout="centered_cover"] .fvMenu { justify-items: center; }
 
+/* ---------- alignment: center (heroLayout.alignment, DEV-067) ---------- */
+
+[data-align="center"] .chips,
+[data-align="center"] .fvItems { justify-content: center; }
+[data-align="center"] :is(.columns, .feature, .strip, .block, .cards, .statement) { text-align: center; }
+[data-align="center"] .statement { margin-inline: auto; }
+[data-align="center"] .statement::before { margin-inline: auto; }
+[data-align="center"] .pair.pair.pair.pair > dt,
+[data-align="center"] .card.card.card.card > dt { justify-content: center; }
+[data-align="center"] .pair,
+[data-align="center"] .card { justify-items: center; }
+
 /* ---------- desktop ---------- */
 
 @media (min-width: 720px) {
@@ -388,23 +429,46 @@
 
   /* Vertical writing: desktop only, Japanese script only (the fixed Japanese
      heading words; a Japanese-only short name). Phones keep horizontal text. */
-  .vertical {
+  /* A section with little content keeps a horizontal heading: a vertical one would
+     set the section's height (data-short). The vertical word is capped in size. */
+  .sec:not([data-short]) .vertical {
     display: inline-block;
     writing-mode: vertical-rl;
     letter-spacing: 0.14em;
     line-height: 1.1;
   }
-  [data-headings="vertical_ja"] .sec.sec.sec { grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); }
-  [data-headings="vertical_ja"] .sec.sec > .h { align-self: start; }
-  [data-headings="vertical_ja"] .sec.sec > :not(.h) { grid-column: 2; }
+  [data-headings="vertical_ja"] .sec:not([data-short]) h2.h.h > span.ja.ja.vertical { font-size: min(1em, 2.6rem); }
+  [data-headings="vertical_ja"] .sec.sec.sec:not([data-short]) { grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); }
+  [data-headings="vertical_ja"] .sec.sec:not([data-short]) > .h { align-self: start; }
+  [data-headings="vertical_ja"] .sec.sec:not([data-short]) > :not(.h) { grid-column: 2; }
 
+  /* vertical_name: two columns. The name is a tall column at the right (where
+     vertical text starts reading); the folio, motifs, a framed photo and the dek
+     form the left column, top to bottom. The name is at least twice the size of
+     the section headings (names over VERTICAL_NAME_MAX characters are not set
+     vertically). */
+  .vhero.vhero.vhero.vhero {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto 1fr auto;
+    column-gap: clamp(32px, 6vw, 112px);
+  }
+  .vfolio.vfolio.vfolio.vfolio { grid-column: 1; grid-row: 1; }
+  .vmotifs.vmotifs.vmotifs.vmotifs { grid-column: 1; grid-row: 2; justify-self: start; }
+  .vphoto.vphoto.vphoto.vphoto { grid-column: 1; grid-row: 3; align-self: start; max-width: 520px; }
+  .vdek.vdek.vdek.vdek { grid-column: 1; grid-row: 4; align-self: end; }
+  .vtitle.vtitle.vtitle.vtitle {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    container-type: normal;
+    align-content: center;
+    justify-items: end;
+    padding-block: 12px;
+  }
   h1.vname.vname.vname.vname[data-fit] {
-    justify-self: start;
     writing-mode: vertical-rl;
     /* an orthogonal grid item: its line length is the name's own (no column breaks) */
     inline-size: max-content;
-    font-size: min(9rem, calc(62svh / (var(--name-chars, 8) * (1.06 + var(--track-n, 0)))));
+    font-size: min(15rem, calc(72svh / (var(--name-chars, 6) * (1.06 + var(--track-n, 0)))));
     line-height: 1.05;
   }
-  [data-layout="centered_cover"] h1.vname.vname.vname.vname[data-fit] { justify-self: center; }
 }

@@ -13,7 +13,7 @@ import { Heading, sectionAttrs, type SectionProps } from "./common";
 export default function Menu({ items, spec, headings }: SectionProps<"menu"> & { items: string[] }) {
   const variant = spec?.variant ?? "numbered";
   return (
-    <section {...sectionAttrs(spec)} aria-labelledby="pr-menu">
+    <section {...sectionAttrs(spec, items.length <= 2)} aria-labelledby="pr-menu">
       <Heading kind="menu" headings={headings} layout={spec !== null} />
       {variant === "numbered" ? (
         <ol className={styles.menu}>

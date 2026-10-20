@@ -3,9 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import { normalizeLayout } from "@/lib/design-agent/layout";
-import { paletteProblems, type DesignProfile } from "@/lib/design-agent/profile";
+import { checkProfile, DIRECTIONS, paletteProblems, type DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
-import { BASE_PROFILE, coverageLayouts, FULL_SHOP, pageHtml, SPARSE_JP_SHOP, THREE_SHOPS, VIEWPORTS } from "./stage1-fixtures";
+import { BASE_PROFILE, coverageLayouts, PALETTES, FULL_SHOP, pageHtml, SPARSE_JP_SHOP, THREE_SHOPS, VIEWPORTS } from "./stage1-fixtures";
 
 // Stage 1 (DEV-071a) in a real browser: every section kind × variant × ground,
 // on a 390px and a 360px phone and a 1440px desktop, for a shop with many
@@ -32,6 +32,7 @@ type Check = {
   lowContrast: string[];
   vertical: string[];
   sections: string[];
+  long: number;
 };
 
 /** Page facts gathered in the browser (no shop data leaves the test). */
@@ -99,6 +100,7 @@ async function check(page: Page, facts: string[]): Promise<Check> {
       footer: Boolean(footer && visible(footer) && footer.textContent!.includes("公式サイト・公式情報ではありません")),
       lowContrast,
       vertical,
+      long: document.querySelectorAll("section[data-kind]:not([data-short])").length,
       sections: [...document.querySelectorAll("section[data-kind]")].map((s) => `${s.getAttribute("data-kind")}/${s.getAttribute("data-variant")}/${s.getAttribute("data-ground")}`),
     };
   }, facts);
@@ -135,7 +137,8 @@ describe("sections in Chromium", () => {
             expect(m.lowContrast, `${label}: band ink`).toEqual([]);
             if (device === "desktop") {
               for (const v of m.vertical) expect(v, `${label}: vertical text`).toMatch(JAPANESE_ONLY);
-              if (normal.type.headings === "vertical_ja") expect(m.vertical.length, `${label}: vertical headings`).toBeGreaterThanOrEqual(normal.sections.length);
+              // a section with little content (data-short) keeps a horizontal heading
+              if (normal.type.headings === "vertical_ja") expect(m.vertical.length, `${label}: vertical headings`).toBeGreaterThanOrEqual(m.long);
               if (normal.firstView === "vertical_name") expect(m.vertical, label).toContain(demo.name);
             } else {
               expect(m.vertical, `${label}: vertical text on a phone`).toEqual([]);
@@ -174,16 +177,20 @@ describe("three fictional shops", () => {
       const page = await context.newPage();
       try {
         const shots: Record<string, string> = {};
+        const doms: Record<string, string> = {};
         for (const k of keys) {
           const { demo, profile } = THREE_SHOPS[k];
           await page.setContent(pageHtml(renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} />)));
           const m = await check(page, factsOf(demo));
+          doms[k] = m.sections.join(">");
           expect(m.overflowX, `${k}/${device}`).toBe(false);
           expect(m.missing, `${k}/${device}`).toEqual([]);
           expect(m.lowContrast, `${k}/${device}`).toEqual([]);
           // the first screen and the page below it, at a fixed size
           shots[k] = (await page.screenshot({ fullPage: true, clip: { x: 0, y: 0, width: VIEWPORTS[device].viewport.width, height: 2400 } })).toString("base64");
         }
+        // the drawn pages differ in structure: section order, variants and grounds in the DOM
+        for (const [i, a] of keys.entries()) for (const b of keys.slice(i + 1)) expect(doms[a], `${a}/${b}/${device}: DOM sections`).not.toBe(doms[b]);
         // share of pixels that differ clearly between two pages (compared in the page's canvas)
         for (const [i, a] of keys.entries()) {
           for (const b of keys.slice(i + 1)) {
@@ -211,6 +218,150 @@ describe("three fictional shops", () => {
               return differ / (w * h);
             }, [shots[a], shots[b]] as const);
             expect(share, `${a}/${b}/${device}: share of differing pixels`).toBeGreaterThan(0.25);
+          }
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  });
+});
+
+// ------------------------------------------------------------ quality and colour pairs
+
+const VERTICAL_SHOP: DemoView = { ...FULL_SHOP, name: "麦と灯", category: "bakery", template: "bakery_v1" };
+
+type Quality = {
+  headingSizes: number[];
+  nameSize: number;
+  nameBox: { width: number; height: number };
+  hero: { width: number; height: number };
+  stretched: string[];
+  footerGap: number | null;
+};
+
+async function quality(page: Page): Promise<Quality> {
+  return page.evaluate(() => {
+    const h1 = document.querySelector("h1")!;
+    const hero = document.querySelector("header")!;
+    const stretched: string[] = [];
+    // a chip, a column item or a list never grows past its own content
+    for (const list of document.querySelectorAll("section[data-kind='menu'] ol")) {
+      const el = list as HTMLElement;
+      const now = el.getBoundingClientRect().height;
+      el.style.alignSelf = "start";
+      const own = el.getBoundingClientRect().height;
+      el.style.alignSelf = "";
+      if (now - own > 1) stretched.push(`list +${Math.round(now - own)}`);
+      // each item at its own height: as tall as when nothing around it may stretch it
+      const items = [...el.querySelectorAll("li")] as HTMLElement[];
+      const before = items.map((li) => li.getBoundingClientRect().height);
+      el.style.alignSelf = "start";
+      el.style.alignItems = "flex-start";
+      el.style.alignContent = "flex-start";
+      items.forEach((li, i) => {
+        const own = li.getBoundingClientRect().height;
+        if (before[i] - own > 1) stretched.push(`${li.textContent} +${Math.round(before[i] - own)}`);
+      });
+      el.style.alignSelf = el.style.alignItems = el.style.alignContent = "";
+    }
+    const main = document.querySelector("main")!;
+    const last = main.lastElementChild;
+    const footer = document.querySelector("footer")!;
+    const band = last && ["surface", "inverted"].includes(last.getAttribute("data-ground") ?? "");
+    return {
+      headingSizes: [...document.querySelectorAll("section > h2")].map((h) => parseFloat(getComputedStyle(h).fontSize)),
+      nameSize: parseFloat(getComputedStyle(h1).fontSize),
+      nameBox: { width: h1.getBoundingClientRect().width, height: h1.getBoundingClientRect().height },
+      hero: { width: hero.getBoundingClientRect().width, height: hero.getBoundingClientRect().height },
+      stretched,
+      footerGap: band ? footer.getBoundingClientRect().top - last!.getBoundingClientRect().bottom : null,
+    };
+  });
+}
+
+describe("layout quality in Chromium", () => {
+  it("vertical name leads the desktop hero; headings agree in size; lists are not stretched; a final band meets the footer", async () => {
+    for (const device of ["phone", "desktop"] as const) {
+      const context = await browser.newContext({ ...VIEWPORTS[device], reducedMotion: "reduce" });
+      const page = await context.newPage();
+      try {
+        for (const direction of DIRECTIONS) {
+          for (const [key, { demo, profile }] of [...Object.entries(THREE_SHOPS), ["vertical-full", { demo: VERTICAL_SHOP, profile: THREE_SHOPS.bakery.profile }] as const]) {
+            const label = `${key}/${direction}/${device}`;
+            await page.setContent(pageHtml(renderToStaticMarkup(<ProfileRenderer demo={demo} profile={{ ...profile, direction }} />)));
+            const q = await quality(page);
+            // one heading size per page (a variant does not shrink its heading)
+            expect(new Set(q.headingSizes.map((v) => Math.round(v))).size, `${label}: heading sizes ${q.headingSizes}`).toBeLessThanOrEqual(1);
+            expect(q.stretched, `${label}: stretched`).toEqual([]);
+            if (direction !== "boutique_minimal" && q.footerGap !== null) expect(Math.abs(q.footerGap), `${label}: band to footer`).toBeLessThan(1);
+            if (device === "desktop" && profile.layout?.firstView === "vertical_name") {
+              expect(q.nameSize, `${label}: name size vs headings`).toBeGreaterThanOrEqual(2 * Math.max(...q.headingSizes));
+              expect(q.nameBox.height / q.hero.height, `${label}: name column height`).toBeGreaterThan(0.5);
+            }
+          }
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  });
+
+  it("every word is set in a colour pair the palette guarantees: every direction × adversarial palettes × layouts, alpha and opacity included", async () => {
+    const guaranteed: Array<[string, string]> = [
+      ["text", "background"],
+      ["text", "surface"],
+      ["primary", "background"],
+      ["background", "primary"],
+      ["secondary", "background"],
+    ];
+    const layouts = coverageLayouts().filter((_, i) => i % 3 === 0);
+    for (const [paletteKey, palette] of Object.entries(PALETTES)) expect(checkProfile({ ...BASE_PROFILE, palette }).ok, paletteKey).toBe(true);
+    for (const device of ["phone", "desktop"] as const) {
+      const context = await browser.newContext({ ...VIEWPORTS[device], reducedMotion: "reduce" });
+      const page = await context.newPage();
+      try {
+        for (const [paletteKey, palette] of Object.entries(PALETTES)) {
+          const rgb = (hex: string) => `rgb(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)})`;
+          const tokens = Object.entries(palette).map(([k, hex]) => [k, rgb(hex)] as const);
+          const token = (c: string) => tokens.find(([, v]) => v === c)?.[0] ?? c;
+          for (const direction of DIRECTIONS) {
+            for (const { key, layout } of [...layouts, ...Object.entries(THREE_SHOPS).map(([k, v]) => ({ key: k, layout: v.profile.layout! }))]) {
+              const label = `${paletteKey}/${direction}/${key}/${device}`;
+              await page.setContent(pageHtml(renderToStaticMarkup(<ProfileRenderer demo={FULL_SHOP} profile={{ ...BASE_PROFILE, direction, palette, layout }} />)));
+              const pairs = await page.evaluate(() => {
+                const out: Array<{ text: string; fg: string; bg: string; faded: boolean }> = [];
+                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                  const text = (n.textContent ?? "").trim();
+                  const el = n.parentElement;
+                  if (!text || !el) continue;
+                  const cs = getComputedStyle(el);
+                  const r = el.getBoundingClientRect();
+                  if (cs.visibility === "hidden" || cs.display === "none" || r.width === 0 || r.height === 0) continue;
+                  // any transparency on the way (a colour's alpha, an ancestor's opacity) changes the pair
+                  let faded = /rgba|\/ /.test(cs.color);
+                  let bg = "";
+                  for (let a: Element | null = el; a; a = a.parentElement) {
+                    const s = getComputedStyle(a);
+                    if (Number(s.opacity) < 1) faded = true;
+                    const c = s.backgroundColor;
+                    if (!bg && c && c !== "rgba(0, 0, 0, 0)" && c !== "transparent") {
+                      bg = c;
+                      if (/rgba/.test(c)) faded = true;
+                    }
+                  }
+                  out.push({ text: text.slice(0, 24), fg: cs.color, bg, faded });
+                }
+                return out;
+              });
+              for (const p of pairs) {
+                const pair: [string, string] = [token(p.fg), token(p.bg)];
+                expect(p.faded, `${label}: "${p.text}" is not opaque`).toBe(false);
+                // contrast is symmetric: a guaranteed pair may be set either way round (a badge in a band)
+                expect(guaranteed.some(([f, b]) => (f === pair[0] && b === pair[1]) || (f === pair[1] && b === pair[0])), `${label}: "${p.text}" is ${pair[0]} on ${pair[1]}`).toBe(true);
+              }
+            }
           }
         }
       } finally {

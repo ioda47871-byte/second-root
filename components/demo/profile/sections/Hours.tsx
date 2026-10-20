@@ -12,7 +12,7 @@ import { Heading, sectionAttrs, type SectionProps } from "./common";
 export default function Hours({ rows, spec, headings }: SectionProps<"hours"> & { rows: InfoRow[] }) {
   if (!spec) return null;
   return (
-    <section {...sectionAttrs(spec)} aria-labelledby="pr-hours">
+    <section {...sectionAttrs(spec, spec.variant === "strip")} aria-labelledby="pr-hours">
       <Heading kind="hours" headings={headings} layout />
       <dl className={spec.variant === "strip" ? sx.strip : sx.block}>
         {rows.map((row) => (

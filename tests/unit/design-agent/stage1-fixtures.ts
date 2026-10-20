@@ -105,6 +105,20 @@ export function coverageLayouts(): { key: string; layout: Layout }[] {
   return out;
 }
 
+/**
+ * Palettes checkProfile accepts in which every pair it does NOT guarantee reads
+ * badly (primary or secondary on the surface, accent anywhere), so a word set in an
+ * unguaranteed pair shows up in the colour-pair test.
+ */
+export const PALETTES: Record<string, DesignProfile["palette"]> = {
+  // DEV-067's adversarial palette: a mid-brown surface
+  adverse: { background: "#FBF7EF", surface: "#B07A4F", text: "#000000", primary: "#8A4B22", secondary: "#6E5A44", accent: "#D4A017" },
+  // a dark page with a light primary
+  dark: { background: "#16130F", surface: "#4A4033", text: "#FFFFFF", primary: "#E9B44C", secondary: "#D8CDB8", accent: "#7A5C2E" },
+  // the surface equals the background, a grey primary
+  flat: { background: "#FFFFFF", surface: "#FFFFFF", text: "#111111", primary: "#5E5E5E", secondary: "#4A4A4A", accent: "#E0E0E0" },
+};
+
 /** A profile whose palette exercises the contrast pairs (dark primary, light background). */
 export const BASE_PROFILE: DesignProfile = {
   ...AMERICAN_EDITORIAL,
@@ -185,8 +199,8 @@ export const THREE_SHOPS: Record<string, { demo: DemoView; profile: DesignProfil
       layout: {
         firstView: "name_menu",
         sections: [
-          { kind: "menu", variant: "chips", ground: "inverted" },
           { kind: "visit", variant: "cards", ground: "plain" },
+          { kind: "menu", variant: "chips", ground: "inverted" },
           { kind: "about", variant: "statement", ground: "surface" },
         ],
         type: { scale: "dramatic", headings: "en_ja" },

@@ -199,18 +199,40 @@ describe("normalizeLayout", () => {
     });
   });
 
+  it("shows the menu excerpt only for a longer menu that does not open the page", () => {
+    const menu = { ...SHOP, menuItems: ["a", "b", "c", "d"] };
+    const ok = normalizeLayout(layout({ firstView: "name_menu" }), menu);
+    expect(ok).toEqual({ layout: layout({ firstView: "name_menu" }), adjustments: [] });
+    expect(normalizeLayout(layout({ firstView: "name_menu", sections: [s("menu", "chips"), s("visit", "cards")] }), menu)).toEqual({
+      layout: layout({ firstView: "name_only", sections: [s("menu", "chips"), s("visit", "cards"), s("about", "lead")] }),
+      adjustments: ["added:about", "first_view:name_menu"],
+    });
+    // a short menu has no excerpt: the whole menu would be shown twice
+    expect(normalizeLayout(layout({ firstView: "name_menu" }), SHOP).adjustments).toEqual(["first_view:name_menu"]);
+  });
+
+  it("returns a render plan that may have no section; stored layouts keep at least one", () => {
+    const { layout: plan } = normalizeLayout(DEFAULT_LAYOUT, MINIMAL_SHOP);
+    expect(plan.sections).toEqual([]);
+    // never parsed or stored again: the stored schema still refuses an empty list
+    expect(LayoutSchema.safeParse(plan).success).toBe(false);
+    expect(normalizeLayout(plan, MINIMAL_SHOP)).toEqual({ layout: plan, adjustments: [] });
+  });
+
   it("lists the sections and first views each shop's facts support", () => {
     expect(availableSections(SHOP)).toEqual(["about", "menu", "hours", "visit"]);
     expect(availableSections(MINIMAL_SHOP)).toEqual([]);
     expect(availableSections(SHOPS.hours_and_menu_only)).toEqual(["menu", "hours", "visit"]);
-    expect(availableFirstViews(SHOP)).toEqual(["name_only", "name_lead", "name_hours", "name_menu"]);
+    expect(availableFirstViews(SHOP)).toEqual(["name_only", "name_lead", "name_hours"]); // 2 items: no excerpt
+    expect(availableFirstViews({ ...SHOP, menuItems: ["a", "b", "c", "d"] })).toEqual(["name_only", "name_lead", "name_hours", "name_menu"]);
     expect(availableFirstViews(MINIMAL_SHOP)).toEqual(["name_only"]);
     expect(availableFirstViews(SHOPS.japanese_name_only)).toEqual(["name_only", "vertical_name"]);
   });
 
   it("sets only Japanese script vertically", () => {
-    for (const name of ["架空焼菓子店", "テスト珈琲", "ぱんのいえ", "パン・ド・テスト", "テストベーカリー", "一二三四五六七八九十一二"]) expect(verticalName(name), name).toBe(true);
-    for (const name of ["EXAMPLE", "テスト cafe", "テスト 珈琲", "テスト3号店", "パン屋ＡＢＣ", "一二三四五六七八九十一二三", "", "テスト！"]) expect(verticalName(name), name).toBe(false);
+    for (const name of ["架空焼菓子店", "テスト珈琲", "ぱんのいえ", "麦と灯", "パン・ド", "店"]) expect(verticalName(name), name).toBe(true);
+    // over six characters a vertical name could not lead the page (it would be set near heading size)
+    for (const name of ["EXAMPLE", "テスト cafe", "テスト 珈琲", "テスト3号店", "パン屋ＡＢＣ", "パン・ド・テスト", "一二三四五六七", "", "テスト！"]) expect(verticalName(name), name).toBe(false);
     for (const word of ["店について", "メニュー", "営業時間", "店舗のご案内"]) expect(japaneseOnly(word)).toBe(true);
   });
 });

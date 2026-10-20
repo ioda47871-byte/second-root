@@ -2,7 +2,7 @@ import type { RenderFeature } from "@/lib/design-agent/assets/resolve";
 import { PhotoFigure } from "../parts";
 import styles from "../profile.module.css";
 import sx from "../sections.module.css";
-import { Heading, sectionAttrs, type SectionProps } from "./common";
+import { chars, Heading, sectionAttrs, type SectionProps } from "./common";
 
 // About: the shop's description (a fact), nothing else.
 //   lead          the description as the page's lead paragraph (the page before Stage 1)
@@ -15,7 +15,7 @@ export const LONG_STATEMENT = 120;
 export default function About({ description, photo, spec, headings }: SectionProps<"about"> & { description: string; photo: RenderFeature | null }) {
   const variant = spec?.variant ?? "lead";
   return (
-    <section {...sectionAttrs(spec)} aria-labelledby="pr-about" data-photo-section={photo ? "about" : undefined}>
+    <section {...sectionAttrs(spec, chars(description) <= 60)} aria-labelledby="pr-about" data-photo-section={photo ? "about" : undefined}>
       <Heading kind="about" headings={headings} layout={spec !== null} />
       {variant === "lead" ? (
         <p className={spec ? `${styles.lead} ${sx.leadText}` : styles.lead}>{description}</p>

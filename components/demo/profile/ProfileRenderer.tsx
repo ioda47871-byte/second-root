@@ -93,10 +93,12 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
   const aboutPhoto = has("about") ? feature("about") : null;
   const visitPhoto = has("visit") ? feature("visit") : null;
   const vertical = firstView === "vertical_name";
+  // a layout's extra class on a part of the page (none without a layout: the page before Stage 1 is unchanged)
+  const cx = (base: string, extra: string | false) => (extra ? `${base} ${extra}` : base);
 
   const hero = (
     <header
-      className={styles.hero}
+      className={cx(styles.hero, vertical && sx.vhero)}
       data-layout={profile.heroLayout.layout}
       data-height={profile.heroLayout.height}
       data-photo={split ? "split" : framed ? "framed" : undefined}
@@ -113,7 +115,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
       )}
       {motifs.has("dot_grid") && <span className={styles.dots} aria-hidden="true" />}
 
-      <div className={styles.folio}>
+      <div className={cx(styles.folio, vertical && sx.vfolio)}>
         <span lang="en">{CATEGORY_EN[demo.category]}</span>
         {motifs.has("monogram") && !motifs.has("stamp_ring") && (
           <span className={styles.monogram} aria-hidden="true">
@@ -132,7 +134,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
       </div>
 
       {(motifs.has("stamp_ring") || motifs.has("muffin_paper_svg")) && (
-        <div className={styles.motifRow} aria-hidden="true">
+        <div className={cx(styles.motifRow, vertical && sx.vmotifs)} aria-hidden="true">
           {motifs.has("stamp_ring") && (
             <span className={styles.stamp}>
               <span className={styles.stampMark}>{mark}</span>
@@ -142,9 +144,9 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
         </div>
       )}
 
-      {framed && <PhotoFigure photo={heroPhoto} className={styles.framePhoto} role="hero" />}
+      {framed && <PhotoFigure photo={heroPhoto} className={cx(styles.framePhoto, vertical && sx.vphoto)} role="hero" />}
 
-      <div className={styles.title}>
+      <div className={cx(styles.title, vertical && sx.vtitle)}>
         {unspaced ? (
           <h1 className={vertical ? `${styles.name} ${sx.vname}` : styles.name} style={nameSizing(demo.name)} data-lines={lines.length} data-fit="phone">
             {lines.map((line, i) => (
@@ -176,7 +178,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
         {spec && <FirstView view={firstView} demo={demo} />}
       </div>
 
-      <p className={styles.dek}>
+      <p className={cx(styles.dek, vertical && sx.vdek)}>
         <span className={styles.rule} aria-hidden="true" />
         <span>{areaLabel(demo)}</span>
       </p>
@@ -218,7 +220,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
           hero
         )}
 
-        <main className={styles.main}>
+        <main className={cx(styles.main, spec !== null && sx.main)}>
           {sections.map((section) => {
             switch (section.kind) {
               case "about":
