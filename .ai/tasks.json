@@ -2872,6 +2872,50 @@
         "WSL で cycle を 1 回"
       ],
       "decision": "2026-10-20: 人の指示で Claude が追加; 2026-10-20: PR #77 merge（3968ff0）。Fresh Review PASS（Medium 2・Low 4・Nit 3 → 再レビュー PASS（Low 1・Nit 1）→ 最終 PASS、すべて merge 前に対応）。CI 39374714227 success（人が独立確認）"
+    },
+    {
+      "id": "DEV-065",
+      "title": "独立した復旧 session を Vercel の API だけ（push なし）にし、書き込み権限の確認（false の上に false を 1 回）を足す",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-064"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-065-recovery-api-only",
+      "purpose": "DEV-064 の予行（2026-10-20）で、scheduled task の新しい session は develop に push できない（repo が sources に付かず git proxy が 403）と分かった。人の指示（2026-10-20）: 復旧 session を Vercel の API による flag OFF 専用にし、独立 session の書き込み権限を false → false の 1 回で確かめ、controlled run の直前まで準備を終える",
+      "acceptance_criteria": [
+        "write-check は flag が直前に false、--id が Preview develop の flag の record のときだけ、その record に false を 1 回 PATCH",
+        "401/403 は WRITE_DENIED で何も変わらない",
+        "復旧 prompt は push しない（off --if-until と status だけ）",
+        "window の時間割・WSL の事前確認・失敗時の対処を文書に"
+      ],
+      "required_tests": [
+        "unit: write-check（1 回だけ・id・flag・Production・403）",
+        "CI"
+      ],
+      "allowed_scope": [
+        "scripts/staging/",
+        "tests/unit/",
+        "docs/operations/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "flag を true にする",
+        "window を開く",
+        "cycle の実走",
+        "Production",
+        "DB の書き込み",
+        "timer",
+        "認証・権限の拡大"
+      ],
+      "human_approval_triggers": [
+        "write-check の 1 回（2026-10-20 承認済み、条件つき）",
+        "window（W）",
+        "cycle（C）"
+      ],
+      "decision": "2026-10-20: 人の指示で Claude が追加"
     }
   ]
 }

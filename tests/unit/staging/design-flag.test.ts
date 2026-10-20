@@ -13,7 +13,7 @@ const UNTIL_OK = iso(NOW + 2 * 60 * 60 * 1000);
 
 type Env = { id: string; key: string; value?: string; type: string; target: string[]; gitBranch?: string | null; updatedAt?: number };
 
-function vercel(opts: { envs?: Env[]; productionBranch?: string; deployment?: Record<string, unknown> | null; failWrites?: number; hiddenProd?: number } = {}) {
+function vercel(opts: { envs?: Env[]; productionBranch?: string; deployment?: Record<string, unknown> | null; failWrites?: number; failStatus?: number; hiddenProd?: number } = {}) {
   let clock = NOW - 60_000;
   const envs: Env[] = (
     opts.envs ?? [{ id: "rMGvxH8aHWZZC5Z5", key: "SALES_AI_DESIGN_ENABLED", value: "false", type: "plain", target: ["preview"], gitBranch: "develop" }]
@@ -27,7 +27,7 @@ function vercel(opts: { envs?: Env[]; productionBranch?: string; deployment?: Re
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
     if (method !== "GET") {
       writes.push({ method, path, body });
-      if (opts.failWrites) return new Response(JSON.stringify({ error: { code: "forbidden" } }), { status: 403 });
+      if (opts.failWrites) return new Response(JSON.stringify({ error: { code: "forbidden" } }), { status: opts.failStatus ?? 403 });
     }
     clock += 1000;
     if (method === "GET" && path === `/v9/projects/${PROJECT}`) return Response.json({ name: "second-root", link: { productionBranch: opts.productionBranch ?? "main" } });
@@ -72,7 +72,7 @@ describe("design-flag: status", () => {
     expect(r.code).toBe(0);
     expect(api.writes).toEqual([]);
     expect(r.out).toContain('production branch "main"');
-    expect(r.out).toContain("SALES_AI_DESIGN_ENABLED (Preview, develop): false");
+    expect(r.out).toContain("SALES_AI_DESIGN_ENABLED (Preview, develop): false (record rMGvxH8aHWZZC5Z5)");
     expect(r.out).toContain("SALES_AI_DESIGN_ENABLED_UNTIL (Preview, develop): none");
     expect(r.out).not.toContain("do-not-print-me");
     expect(r.last).toBe("DESIGN_FLAG STATUS flag=false until=none");
@@ -352,5 +352,74 @@ describe("guardedFetch: PATCH only the checked records, only with their values",
   it("a body that is not JSON is refused without echoing it", () => {
     const ok = vi.fn(async () => Response.json({}));
     expect(() => guardedFetch(ok as unknown as typeof fetch, ids)(`${P}/env/rMGvxH8aHWZZC5Z5`, { method: "PATCH", body: "secret-ish{" })).toThrow(/^refused: PATCH .* not JSON$/);
+  });
+});
+
+describe("design-flag: write-check (DEV-065, false over false, once)", () => {
+  const ID = "rMGvxH8aHWZZC5Z5";
+
+  it("flag false and the right id: exactly one PATCH of false to that record", async () => {
+    const api = vercel();
+    const r = await run(api, ["write-check", "--id", ID]);
+    expect(r.code).toBe(0);
+    expect(r.last).toBe("DESIGN_FLAG WRITE_CHECK_OK flag=false until=none");
+    expect(api.writes).toEqual([{ method: "PATCH", path: `/v9/projects/${PROJECT}/env/${ID}`, body: { value: "false" } }]);
+    expect(flagOf(api)).toBe("false");
+    expect(r.out).not.toContain("do-not-print-me");
+  });
+
+  it("Vercel refuses (403): WRITE_DENIED, nothing changed", async () => {
+    const api = vercel({ failWrites: 1 });
+    const r = await run(api, ["write-check", "--id", ID]);
+    expect(r.code).toBe(1);
+    expect(r.last).toBe("DESIGN_FLAG WRITE_DENIED flag=false until=none");
+    expect(api.writes).toHaveLength(1);
+    expect(flagOf(api)).toBe("false");
+  });
+
+  it("refuses (nothing written) when the flag is not false", async () => {
+    const api = vercel({ envs: [{ id: ID, key: "SALES_AI_DESIGN_ENABLED", value: "true", type: "plain", target: ["preview"], gitBranch: "develop" }] });
+    const r = await run(api, ["write-check", "--id", ID]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("not false");
+    expect(api.writes).toEqual([]);
+  });
+
+  it.each([
+    ["another record's id", "otherSecretVar01"],
+    ["an unknown id", "zzzzzzzzzzzzzzzz"],
+    ["a malformed id", "../env"],
+  ])("refuses %s (nothing written)", async (_name, id) => {
+    const api = vercel();
+    const r = await run(api, ["write-check", "--id", id]);
+    expect(r.code).toBe(1);
+    expect(api.writes).toEqual([]);
+  });
+
+  it("needs --id; refuses with Production records or a hidden Production listing", async () => {
+    expect((await run(vercel(), ["write-check"])).code).toBe(1);
+    const prod = vercel({
+      envs: [
+        { id: ID, key: "SALES_AI_DESIGN_ENABLED", value: "false", type: "plain", target: ["preview"], gitBranch: "develop" },
+        { id: "prodFlagVar00001", key: "SALES_AI_DESIGN_ENABLED", value: "false", type: "plain", target: ["production"] },
+      ],
+    });
+    expect((await run(prod, ["write-check", "--id", ID])).code).toBe(1);
+    expect(prod.writes).toEqual([]);
+    const hidden = vercel({ hiddenProd: 2 });
+    expect((await run(hidden, ["write-check", "--id", ID])).code).toBe(1);
+    expect(hidden.writes).toEqual([]);
+  });
+
+  it("401 is WRITE_DENIED too; a 500 is FAILED; each after exactly one PATCH", async () => {
+    const denied = vercel({ failWrites: 1, failStatus: 401 });
+    const r1 = await run(denied, ["write-check", "--id", ID]);
+    expect(r1.last).toBe("DESIGN_FLAG WRITE_DENIED flag=false until=none");
+    expect(denied.writes).toHaveLength(1);
+    const broken = vercel({ failWrites: 1, failStatus: 500 });
+    const r2 = await run(broken, ["write-check", "--id", ID]);
+    expect(r2.code).toBe(1);
+    expect(r2.last).toBe("DESIGN_FLAG FAILED flag=false until=none");
+    expect(broken.writes).toHaveLength(1);
   });
 });
