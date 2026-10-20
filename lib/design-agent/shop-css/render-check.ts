@@ -1,7 +1,7 @@
 import type { Browser, BrowserContext } from "playwright";
 import { decodePng, type Pixels } from "../worker/png-paint";
 import { mediaBreakpointsPx, type GuardedShopCss } from "./guard";
-import { FREEZE_MOTION_CSS, HIDE_TEXT_CSS, HIT_TEST_CSS, MEASURE_SCRIPT, MeasureSchema, TEXT_KINDS, type Measure } from "./page-scripts";
+import { CLEAN_CSS, FREEZE_MOTION_CSS, HIDE_TEXT_CSS, HIT_TEST_CSS, MEASURE_SCRIPT, MeasureSchema, TEXT_KINDS, type Measure } from "./page-scripts";
 
 // The render check of a per-shop stylesheet (DEV-072, Stage 3). The static
 // guard proves the stylesheet can only use a small, safe vocabulary; this
@@ -36,17 +36,25 @@ export const MIN_FONT_PX = 12;
 export const MIN_OPACITY = 0.85;
 /** Share of a line's ground samples allowed below MIN_CONTRAST (underlines, a rule passing under). */
 export const CONTRAST_TOLERANCE = 0.1;
-/** A pixel is ink when the two pictures differ by this much (sum over R, G, B). */
-export const INK_DELTA = 60;
-/** A node's characters must show ink over at least this share of the vertical extent they show on the baseline. */
-export const INK_EXTENT_RATIO = 0.6;
+/** A pixel is ink when the text covers at least this much of it. */
+export const INK_COVERAGE = 0.5;
+/** Every character must keep at least this share of the ink it has with nothing over it. */
+export const INK_RATIO = 0.8;
+/** Characters with less reference ink than this (a full stop at 12px) are too small to measure. */
+export const MIN_REFERENCE_INK = 6;
 /**
- * Share of the notice bar's or footer's pixels allowed to differ from the
- * baseline: the footer moves with the page height, and text set at another
- * sub-pixel offset antialiases differently. Anything painted over a line is far
- * more, and every character there has its own pixel proof as well.
+ * Share of the notice bar's or footer's ground allowed to differ from the
+ * baseline. The ground is compared on the pictures without text (and without
+ * text decorations), inset from the top and bottom edge: text set at another
+ * sub-pixel offset antialiases differently (the footer moves with the page
+ * height, so it rarely sits at the same fraction of a pixel), but a plain
+ * ground does not. The text itself has its own, offset-free proof: every
+ * character of the notice and the footer must show ink on its own page
+ * (notice_ink / footer_ink). Anything painted over the ground changes far more.
  */
-export const FRAME_DIFF_TOLERANCE = 0.05;
+export const FRAME_DIFF_TOLERANCE = 0.01;
+/** Rows left out at the top and bottom edge of the compared ground (the boundary to the canvas is antialiased). */
+const FRAME_EDGE = 2;
 export const MAX_HEIGHT_FACTOR = 3;
 export const MAX_SCREENSHOT_HEIGHT = 16000;
 
@@ -133,58 +141,85 @@ export function lowContrastShare(ground: Pixels, node: Node): number {
   return all === 0 ? 1 : low / all;
 }
 
-export type Ink = { missing: number; extent: number };
+export type Ink = { missing: number; ratio: number };
+
+type Picture = { withText: Pixels; without: Pixels };
 
 /**
- * The pixel proof of a node: how many of its visible characters change no
- * pixel between the picture with text and the one without, and the mean
- * extent across the line of the changed pixels within the box of each inked
- * character (0..1).
+ * How much of a pixel the text covers (0..1): the change between the picture
+ * with the text and the one without, over the change full text colour would
+ * make there (the colour channel that differs most). A pixel the text cannot
+ * be told apart from (a difference under 24) counts as not covered.
  */
-export function inkOf(withText: Pixels, without: Pixels, node: Node): Ink {
-  let missing = 0;
-  let extent = 0;
-  let counted = 0;
-  for (const r of node.chars) {
-    const x0 = Math.max(0, Math.floor(r.left));
-    const x1 = Math.min(withText.width - 1, Math.ceil(r.left + r.width) - 1);
-    const y0 = Math.max(0, Math.floor(r.top));
-    const y1 = Math.min(withText.height - 1, Math.ceil(r.top + r.height) - 1);
-    if (x1 < x0 || y1 < y0 || withText.width !== without.width || withText.height !== without.height) {
-      missing += 1;
-      continue;
-    }
-    // the extent across the line: vertical for horizontal text, horizontal for vertical text
-    let first = -1;
-    let last = -1;
-    for (let y = y0; y <= y1; y++)
-      for (let x = x0; x <= x1; x++) {
-        const i = (y * withText.width + x) * withText.channels;
-        const d = Math.abs(withText.data[i]! - without.data[i]!) + Math.abs(withText.data[i + 1]! - without.data[i + 1]!) + Math.abs(withText.data[i + 2]! - without.data[i + 2]!);
-        if (d >= INK_DELTA) {
-          const at = node.vertical ? x : y;
-          if (first < 0 || at < first) first = at;
-          if (at > last) last = at;
-        }
-      }
-    if (first < 0) missing += 1;
-    else {
-      counted += 1;
-      extent += (last - first + 1) / (node.vertical ? x1 - x0 + 1 : y1 - y0 + 1);
+function coverage(p: Picture, i: number, colour: readonly number[], alpha: number): number {
+  let best = 0;
+  let change = 0;
+  for (let c = 0; c < 3; c++) {
+    const g = p.without.data[i + c]!;
+    const d = alpha * (colour[c]! - g);
+    if (Math.abs(d) > Math.abs(best)) {
+      best = d;
+      change = p.withText.data[i + c]! - g;
     }
   }
-  return { missing, extent: counted === 0 ? 0 : extent / counted };
+  return Math.abs(best) < 24 ? 0 : change / best;
+}
+
+const charBox = (px: Pixels, r: { left: number; top: number; width: number; height: number }) => ({
+  x0: Math.max(0, Math.floor(r.left)),
+  x1: Math.min(px.width - 1, Math.ceil(r.left + r.width) - 1),
+  y0: Math.max(0, Math.floor(r.top)),
+  y1: Math.min(px.height - 1, Math.ceil(r.top + r.height) - 1),
+});
+
+/** Ink pixels (coverage at least INK_COVERAGE) in a character's box. */
+function inkPixels(p: Picture, r: Node["chars"][number], colour: readonly number[], alpha: number): number {
+  const { x0, x1, y0, y1 } = charBox(p.withText, r);
+  let n = 0;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (coverage(p, (y * p.withText.width + x) * p.withText.channels, colour, alpha) >= INK_COVERAGE) n += 1;
+  return n;
+}
+
+/**
+ * The pixel proof of a node: for each visible character, its ink on the page
+ * (pictures with and without the text) over its ink in the reference pictures
+ * (the same layout with every other paint taken away, the text black on
+ * white; CLEAN_CSS). A character nothing covers keeps its ink; a cover of any
+ * kind — a ground, a shadow, a transformed neighbour, a pseudo-element — takes
+ * ink away where it lies. Returns the characters with no ink at all and the
+ * smallest ratio of any character (the worst one decides, never the mean).
+ * Characters with fewer than MIN_REFERENCE_INK reference pixels are too small
+ * to measure and are left out.
+ */
+export function inkOf(page: Picture, reference: Picture, node: Node): Ink {
+  if (page.withText.width !== reference.withText.width || page.withText.height !== reference.withText.height || page.without.width !== page.withText.width || reference.without.width !== reference.withText.width) return { missing: node.chars.length, ratio: 0 };
+  const [r, g, b, a] = node.color;
+  const alpha = Math.max(0, Math.min(1, a * node.opacity));
+  const refAlpha = Math.max(0, Math.min(1, node.opacity));
+  let missing = 0;
+  let ratio = 1;
+  for (const box of node.chars) {
+    const ref = inkPixels(reference, box, [0, 0, 0], refAlpha);
+    if (ref < MIN_REFERENCE_INK) continue;
+    const ink = inkPixels(page, box, [r, g, b], alpha);
+    if (ink === 0) missing += 1;
+    ratio = Math.min(ratio, ink / ref);
+  }
+  return { missing, ratio };
 }
 
 type Region = { left: number; top: number; width: number; height: number };
 /**
- * Share of pixels that differ strongly between two regions of two pictures,
+ * Share of pixels that differ between two regions of two pictures,
  * at the best of three vertical alignments (the regions may sit at different
  * sub-pixel offsets).
  */
 function regionDiff(a: Pixels, ra: Region, b: Pixels, rb: Region): number {
   return Math.min(...[-1, 0, 1].map((dy) => regionDiffAt(a, ra, b, { ...rb, top: rb.top + dy })));
 }
+
+/** A pixel differs when its channels differ by more than this in sum (a flat ground matches far closer). */
+const GROUND_DELTA = 30;
 
 function regionDiffAt(a: Pixels, ra: Region, b: Pixels, rb: Region): number {
   const w = Math.round(Math.min(ra.width, rb.width));
@@ -206,12 +241,12 @@ function regionDiffAt(a: Pixels, ra: Region, b: Pixels, rb: Region): number {
       const i = (ay * a.width + ax) * a.channels;
       const j = (by * b.width + bx) * b.channels;
       all += 1;
-      if (Math.abs(a.data[i]! - b.data[j]!) + Math.abs(a.data[i + 1]! - b.data[j + 1]!) + Math.abs(a.data[i + 2]! - b.data[j + 2]!) > 120) diff += 1;
+      if (Math.abs(a.data[i]! - b.data[j]!) + Math.abs(a.data[i + 1]! - b.data[j + 1]!) + Math.abs(a.data[i + 2]! - b.data[j + 2]!) > GROUND_DELTA) diff += 1;
     }
   return diff / all;
 }
 
-type Measured = { m: Measure; withText: Pixels | null; lowContrast: number[]; ink: Ink[] };
+type Measured = { m: Measure; ground: Pixels | null; lowContrast: number[]; ink: Ink[] };
 
 async function measure(context: BrowserContext, html: string, facts: readonly string[]): Promise<Measured> {
   const page = await context.newPage();
@@ -222,19 +257,34 @@ async function measure(context: BrowserContext, html: string, facts: readonly st
     const raw = await page.evaluate(`(${MEASURE_SCRIPT})(${JSON.stringify({ facts })})`);
     const m = MeasureSchema.parse(raw);
     let lowContrast: number[] = m.nodes.map(() => 1);
-    let ink: Ink[] = m.nodes.map((n) => ({ missing: n.chars.length || 1, extent: 0 }));
-    let withText: Pixels | null = null;
+    let ink: Ink[] = m.nodes.map((n) => ({ missing: n.chars.length || 1, ratio: 0 }));
+    let ground: Pixels | null = null;
     if (m.height <= MAX_SCREENSHOT_HEIGHT && m.nodes.length > 0) {
-      withText = decodePng(await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" }));
+      const shot = async () => decodePng(await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" }));
+      const withText = await shot();
+      const hide = await page.addStyleTag({ content: HIDE_TEXT_CSS });
+      const without = await shot();
+      await hide.evaluate("(el) => el.remove()");
+      // the reference: the same boxes, nothing painted but the text (black on white), then without it
+      await page.addStyleTag({ content: CLEAN_CSS });
+      const cleanWith = await shot();
       await page.addStyleTag({ content: HIDE_TEXT_CSS });
-      const without = decodePng(await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" }));
+      const cleanWithout = await shot();
       lowContrast = m.nodes.map((n) => lowContrastShare(without, n));
-      ink = m.nodes.map((n) => inkOf(withText!, without, n));
+      ink = m.nodes.map((n) => inkOf({ withText, without }, { withText: cleanWith, without: cleanWithout }, n));
+      ground = without;
     }
-    return { m, withText, lowContrast, ink };
+    return { m, ground, lowContrast, ink };
   } finally {
     await page.close();
   }
+}
+
+/** The notice bar's or footer's ground (pictures without text), inset from its top and bottom edge. */
+function frameGroundDiff(shop: Measured, rs: Region, base: Measured, rb: Region): number {
+  if (!shop.ground || !base.ground) return 1;
+  const inset = (r: Region): Region => ({ left: r.left, top: r.top + FRAME_EDGE, width: r.width, height: Math.max(0, r.height - 2 * FRAME_EDGE) });
+  return regionDiff(shop.ground, inset(rs), base.ground, inset(rb));
 }
 
 /** Problems the shop stylesheet causes at one width (compared with the baseline). */
@@ -265,15 +315,15 @@ export function compareMeasures(base: Measured, shop: Measured): ShopCssCheckCod
       if (shop.lowContrast[i]! > CONTRAST_TOLERANCE && base.lowContrast[i]! <= CONTRAST_TOLERANCE) code("contrast");
       const ink = shop.ink[i]!;
       const wasInk = base.ink[i]!;
-      if ((ink.missing > 0 && wasInk.missing === 0) || ink.extent < wasInk.extent * INK_EXTENT_RATIO) code("ink");
+      if ((ink.missing > 0 && wasInk.missing === 0) || (ink.ratio < INK_RATIO && wasInk.ratio >= INK_RATIO)) code("ink");
     });
   const same = (x: Measure["notice"], y: Measure["notice"], withTop: boolean) =>
     x !== null && y !== null && x.style === y.style && Math.abs(x.box.left - y.box.left) < 0.5 && Math.abs(x.box.width - y.box.width) < 0.5 && Math.abs(x.box.height - y.box.height) < 0.5 && (!withTop || Math.abs(x.box.top - y.box.top) < 0.5);
   if (!same(s.notice, b.notice, true)) out.add("notice_changed");
   if (!same(s.footer, b.footer, false)) out.add("footer_changed");
   // the notice bar and the footer, pixel for pixel as on the baseline
-  if (s.notice && b.notice && (!shop.withText || !base.withText || regionDiff(shop.withText, s.notice.box, base.withText, b.notice.box) > FRAME_DIFF_TOLERANCE)) out.add("notice_changed");
-  if (s.footer && b.footer && (!shop.withText || !base.withText || regionDiff(shop.withText, s.footer.box, base.withText, b.footer.box) > FRAME_DIFF_TOLERANCE)) out.add("footer_changed");
+  if (s.notice && b.notice && frameGroundDiff(shop, s.notice.box, base, b.notice.box) > FRAME_DIFF_TOLERANCE) out.add("notice_changed");
+  if (s.footer && b.footer && frameGroundDiff(shop, s.footer.box, base, b.footer.box) > FRAME_DIFF_TOLERANCE) out.add("footer_changed");
   if (s.noticeCovered && !b.noticeCovered) out.add("notice_covered");
   if (s.footerCovered && !b.footerCovered) out.add("footer_covered");
   return [...out];
@@ -283,13 +333,13 @@ export function compareMeasures(base: Measured, shop: Measured): ShopCssCheckCod
 function debugReport(width: number, base: Measured, shop: Measured): void {
   const sf = shop.m.footer;
   const bf = base.m.footer;
-  process.stderr.write(`${width} footer ${JSON.stringify(sf)} base ${JSON.stringify(bf)} diff ${sf && bf && shop.withText && base.withText ? regionDiff(shop.withText, sf.box, base.withText, bf.box).toFixed(4) : "-"}\n`);
+  process.stderr.write(`${width} footer ${JSON.stringify(sf)} base ${JSON.stringify(bf)} ground diff ${sf && bf ? frameGroundDiff(shop, sf.box, base, bf.box).toFixed(4) : "-"}\n`);
   shop.m.nodes.forEach((n, i) => {
     const b = base.m.nodes[i];
     if (!b) return;
     const ink = shop.ink[i]!;
     const wasInk = base.ink[i]!;
-    process.stderr.write(`${width} ${n.kind} ${JSON.stringify(n.text)} ink ${ink.missing}/${n.chars.length} ${ink.extent.toFixed(2)} (base ${wasInk.missing} ${wasInk.extent.toFixed(2)}) contrast ${shop.lowContrast[i]!.toFixed(2)} (base ${base.lowContrast[i]!.toFixed(2)})\n`);
+    process.stderr.write(`${width} ${n.kind} ${JSON.stringify(n.text)} cov ${n.covered}/${b.covered} ink ${ink.missing}/${n.chars.length} ${ink.ratio.toFixed(2)} (base ${wasInk.missing} ${wasInk.ratio.toFixed(2)}) contrast ${shop.lowContrast[i]!.toFixed(2)} (base ${base.lowContrast[i]!.toFixed(2)})\n`);
   });
 }
 
@@ -305,7 +355,7 @@ async function checkWidth(input: ShopCssCheckInput, width: number): Promise<stri
     const base = await measure(context, input.build(null), input.facts);
     const shop = await measure(context, input.build(input.css), input.facts);
     const codes = compareMeasures(base, shop);
-    if (process.env.SR_SHOP_CSS_DEBUG && codes.length > 0) debugReport(width, base, shop);
+    if (process.env.SR_SHOP_CSS_DEBUG && (codes.length > 0 || process.env.SR_SHOP_CSS_DEBUG === "all")) debugReport(width, base, shop);
     return codes.map((code) => `${width}:${code}`);
   } catch {
     return [`${width}:check_error`];

@@ -16,8 +16,8 @@ import { z } from "zod";
  *   notice  the text of the notice bar
  *   footer  the text of the footer notice
  * For each: whether it is laid out, inside the viewport horizontally, clipped by
- * an ancestor, covered by another element (elementFromPoint, the line scrolled
- * to the viewport's middle), its opacity product, its effective font size
+ * an ancestor, covered by another element (elementFromPoint at 15 points of
+ * each line, the line scrolled to the viewport's middle), its opacity product, its effective font size
  * (transform scales included), whether its lines are squeezed, its colour, its
  * line boxes and the box of each of its visible characters (page coordinates,
  * for the pixel proof). Marks each node's element with data-sr-text (for the
@@ -168,12 +168,15 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
       if (item.kind !== "notice") scrollTo(0, Math.max(0, before.top + scrollY - innerHeight / 2));
       const r = lineRects(n)[i];
       if (!r) continue;
-      const cy = r.top + r.height / 2;
-      const xs = r.width > 8 ? [r.left + 2, r.left + r.width / 2, r.right - 2] : [r.left + r.width / 2];
-      for (const x of xs) {
+      // 25 %, 50 % and 75 % of the line's height, five points across (a cover over part of a line is still a cover)
+      const xs = r.width > 8 ? [r.left + 2, r.left + r.width * 0.25, r.left + r.width / 2, r.left + r.width * 0.75, r.right - 2] : [r.left + r.width / 2];
+      for (const [x, cy] of xs.flatMap((x) => [0.25, 0.5, 0.75].map((f) => [x, r.top + r.height * f]))) {
         if (x < 0 || x > innerWidth || cy < 0 || cy > innerHeight) continue;
         const hit = document.elementFromPoint(x, cy);
         if (!hit || hit === el) continue;
+        // another line of the same heading or paragraph (tight display type: line boxes overlap), with no ground of its own
+        const block = el.closest("h1, h2, h3, p, li, dt, dd");
+        if (block && hit !== block && block.contains(hit) && !painted(getComputedStyle(hit)) && !painted(getComputedStyle(hit, "::before")) && !painted(getComputedStyle(hit, "::after"))) continue;
         // a transparent decoration over the text (no ground of its own nor of its ::before / ::after,
         // the point not on its border, no text) does not hide it; the pixel proof checks the rest
         if (hit instanceof HTMLElement && !hit.contains(el)) {
@@ -228,8 +231,18 @@ export const MeasureSchema = z.strictObject({
 });
 export type Measure = z.infer<typeof MeasureSchema>;
 
-/** Makes the measured text transparent (and nothing else), so a screenshot shows the ground actually painted under it. */
-export const HIDE_TEXT_CSS = "[data-sr-text], [data-sr-text] * { -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }";
+/** Makes the measured text and its decoration lines transparent (and nothing else), so a screenshot shows the ground actually painted under it. */
+export const HIDE_TEXT_CSS = "[data-sr-text], [data-sr-text] * { -webkit-text-fill-color: transparent !important; text-decoration-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }";
+
+/**
+ * The reference picture for the pixel proof: the same layout (nothing here
+ * changes a box), with every paint other than the measured text taken away —
+ * no ground, border, shadow, outline or decoration line, no pseudo-element, no
+ * image or SVG, every other text transparent — and the measured text in black
+ * on white. Each character then shows exactly the ink it has when nothing
+ * covers it, in its own font, size, weight, transform and opacity.
+ */
+export const CLEAN_CSS = "html, body { background: #fff !important; } *, *::before, *::after { background: none !important; background-color: transparent !important; box-shadow: none !important; border-color: transparent !important; outline-color: transparent !important; text-decoration-color: transparent !important; text-shadow: none !important; column-rule-color: transparent !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; } *::before, *::after, svg, img, video, canvas, iframe { visibility: hidden !important; } [data-sr-text], [data-sr-text] * { -webkit-text-fill-color: #000 !important; }";
 
 /** For hit-testing: decorations that opt out of pointer events still count as covering text. */
 export const HIT_TEST_CSS = "body * { pointer-events: auto !important; }";
