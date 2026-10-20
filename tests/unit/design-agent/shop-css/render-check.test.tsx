@@ -4,7 +4,7 @@ import type { Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { demoFacts, shopCssOrFallback } from "@/lib/design-agent/shop-css/apply";
 import { guardShopCss, type GuardedShopCss } from "@/lib/design-agent/shop-css/guard";
-import { checkShopCssRender, checkWidths, inkOf, type ShopCssPageBuilder } from "@/lib/design-agent/shop-css/render-check";
+import { checkShopCssRender, checkWidths, groundColour, inkOf, overprinted, type ShopCssPageBuilder } from "@/lib/design-agent/shop-css/render-check";
 import type { DemoView } from "@/lib/sales/demo-content";
 import { AMERICAN_EDITORIAL, SHOP } from "../fixtures";
 import { launch, pageBuilder } from "./support";
@@ -27,6 +27,18 @@ const guarded = (css: string): GuardedShopCss => {
   return r.css;
 };
 const example = (name: string) => readFileSync(join(process.cwd(), "tests/unit/design-agent/shop-css/examples", `${name}.css`), "utf8");
+
+// the reviewer's hyphen probes (re-review 2, Medium 1): a 6×12px ::after moved over the phone number's hyphens
+const HYPHEN: Record<string, string> = {
+  "hy-19": "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 19px; background-color: var(--p-bg); }",
+  "hy-20": "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 20px; background-color: var(--p-bg); }",
+  "hy-21": "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 21px; background-color: var(--p-bg); }",
+  "hy-22": "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 22px; background-color: var(--p-bg); }",
+  "hy-23": "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 23px; background-color: var(--p-bg); }",
+  "hy-24": "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 24px; background-color: var(--p-bg); }",
+  "hy-25": "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 25px; background-color: var(--p-bg); }",
+  "hy-26": "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 26px; background-color: var(--p-bg); }"
+};
 
 let browser: Browser;
 beforeAll(async () => {
@@ -107,6 +119,13 @@ describe("render check: guard-passing stylesheets that break facts fail (DEV-072
     // a cover hit-testing cannot see (an outer shadow over the top 40 % of the values): the ink proof alone
     const shadowed = await check(guarded("#shop-css { color: var(--p-text); }"), SHOP, bypass("#shop-css dl > div > dt { position: relative; z-index: 1; box-shadow: 0 0 0 14px #f4e8d2; }"));
     expect(codes(shadowed.problems), shadowed.problems.join(" ")).toContain("fact_ink");
+    // re-review 2, past the guard (0px tracks): text overprinting text in one paragraph, and small marks covered
+    const overprint = await check(guarded("#shop-css { color: var(--p-text); }"), SHOP, bypass("#shop-css section div > div > p:nth-child(2) { display: grid; grid-template-columns: 0px 0px; justify-content: start; font-size: 14px; white-space: nowrap; }"));
+    expect(codes(overprint.problems), overprint.problems.join(" ")).toContain("fact_overlap");
+    for (const name of ["hy-19", "hy-20", "hy-21", "hy-22", "hy-23", "hy-24", "hy-25", "hy-26"]) {
+      const hyphen = await check(guarded("#shop-css { color: var(--p-text); }"), SHOP, bypass(HYPHEN[name]!));
+      expect(codes(hyphen.problems).some((c) => c === "fact_ink" || c === "fact_overlap"), `${name}: ${hyphen.problems.join(" ")}`).toBe(true);
+    }
     // a page with a script is never accepted
     const script = await check(guarded("#shop-css { color: var(--p-text); }"), SHOP, (css) => base(css).replace("</body>", "<script>void 0</script></body>"));
     expect(codes(script.problems)).toContain("page_script");
@@ -151,7 +170,7 @@ describe("pixel proof and widths (pure)", () => {
     for (let y = 0; y < 10; y++) for (let x = 0; x < 20; x++) data.fill(fill(x, y), (y * 20 + x) * 3, (y * 20 + x) * 3 + 3);
     return { width: 20, height: 10, channels: 3, data };
   };
-  const node = { kind: "fact" as const, text: "ab", hidden: false, offscreen: false, clipped: false, covered: false, opacity: 1, fontSize: 16, vertical: false, squeezed: false, color: [0, 0, 0, 1] as [number, number, number, number], rects: [], chars: [{ left: 0, top: 0, width: 10, height: 10 }, { left: 10, top: 0, width: 10, height: 10 }] };
+  const node = { kind: "fact" as const, owner: 0, text: "ab", hidden: false, offscreen: false, clipped: false, covered: false, opacity: 1, fontSize: 16, vertical: false, squeezed: false, color: [0, 0, 0, 1] as [number, number, number, number], rects: [], chars: [{ left: 0, top: 0, width: 10, height: 10 }, { left: 10, top: 0, width: 10, height: 10 }] };
   it("each character keeps its reference ink, judged by the worst character", () => {
     const white = picture(() => 255);
     // the reference: both characters inked on rows 2..7
@@ -163,10 +182,26 @@ describe("pixel proof and widths (pure)", () => {
     const cut = inkOf({ withText: picture((x, y) => (y >= 2 && y <= 7 && (x < 10 || y >= 5) ? 0 : 255)), without: white }, reference, node);
     expect(cut.missing).toBe(0);
     expect(cut.ratio).toBeCloseTo(0.5);
-    // light text on a dark ground covers the same pixels: coverage is colour-free
+    // light text on a dark ground: the reference is drawn in the same colours, and coverage is colour-free
     const dark = picture(() => 30);
     const light = { ...node, color: [250, 250, 250, 1] as [number, number, number, number] };
-    expect(inkOf({ withText: picture((_x, y) => (y >= 2 && y <= 7 ? 250 : 30)), without: dark }, reference, light)).toEqual({ missing: 0, ratio: 1 });
+    const lightReference = { withText: picture((_x, y) => (y >= 2 && y <= 7 ? 250 : 30)), without: dark };
+    expect(inkOf(lightReference, lightReference, light)).toEqual({ missing: 0, ratio: 1 });
+    expect(inkOf({ withText: picture((x, y) => (y >= 2 && y <= 7 && (x < 10 || y >= 5) ? 250 : 30)), without: dark }, lightReference, light).ratio).toBeCloseTo(0.5);
+  });
+  it("overprinted: character cores of different text that overlap, not the empty leading around them", () => {
+    const at = (left: number, top: number) => ({ left, top, width: 10, height: 20 });
+    const measure = (a: { left: number; top: number }[], b: { left: number; top: number }[]) => ({ nodes: [{ ...node, chars: a.map((p) => at(p.left, p.top)) }, { ...node, chars: b.map((p) => at(p.left, p.top)) }] }) as unknown as Parameters<typeof overprinted>[0];
+    // side by side, and lines whose boxes overlap only in the top / bottom 20 %
+    expect(overprinted(measure([{ left: 0, top: 0 }], [{ left: 10, top: 0 }]))).toEqual([false, false]);
+    expect(overprinted(measure([{ left: 0, top: 0 }], [{ left: 0, top: 13 }]))).toEqual([false, false]);
+    // drawn over each other
+    expect(overprinted(measure([{ left: 0, top: 0 }], [{ left: 3, top: 2 }]))).toEqual([true, true]);
+  });
+  it("the ground colour under a node is the median of the picture without text", () => {
+    const without = picture((x) => (x === 0 ? 0 : 200));
+    expect(groundColour(without, { ...node, rects: [{ left: 0, top: 0, width: 20, height: 10 }] })).toBe("rgb(200, 200, 200)");
+    expect(groundColour(without, node)).toBeNull();
   });
   it("widths: the fixed set and each side of every breakpoint (em at 16px)", () => {
     expect(checkWidths(guarded("@media (min-width: 45em) { #shop-css p { color: #000; } }"))).toEqual([320, 360, 390, 719, 720, 721, 768, 1024, 1440, 1920]);

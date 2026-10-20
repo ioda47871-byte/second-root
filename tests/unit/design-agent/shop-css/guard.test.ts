@@ -234,6 +234,16 @@ const ADVERSARIAL: Array<[string, string]> = [
   ["a breakpoint in em above 1920px", "@media (min-width: 121em) { #shop-css p { color: #000; } }"],
   ["sideways values (Low 1)", "#shop-css dd { writing-mode: vertical-lr; text-orientation: sideways; }"],
   ["sideways headings", "#shop-css h2, #shop-css h1 { text-orientation: sideways; }"],
+  // DEV-072 security re-review 2 (76b7362): tracks of 0px let text and pseudo-elements spill over their neighbours
+  ["re-review 2: pseudo-strike-8 (0px grid tracks)", "#shop-css dl > div > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; } #shop-css dl > div > dd::after { content: \"\"; display: block; width: 160px; height: 1px; margin-top: 8px; background-color: #888888; }"],
+  ["re-review 2: overprint-address (0px grid tracks)", "#shop-css section p { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; }"],
+  ["re-review 2: hyphen-cover (0px grid tracks)", "#shop-css dl > div > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div > dd::after { content: \"\"; display: block; width: 5px; height: 4px; margin-top: 6px; margin-left: 22px; background-color: var(--p-bg); }"],
+  ["re-review 2: overprint-addr2 (0px grid tracks)", "#shop-css section div > div > p:nth-child(2) { display: grid; grid-template-columns: 0px 0px; justify-content: start; font-size: 14px; white-space: nowrap; }"],
+  ["re-review 2: overprint-addr3 (0px grid tracks)", "#shop-css section div > div > p:nth-child(2) { display: grid; grid-template-columns: 0px 0px; justify-content: start; font-size: 14px; white-space: nowrap; } #shop-css section div > div > p:nth-child(2) > span { margin-left: 28px; }"],
+  ["re-review 2: dot-14 (0px grid tracks)", "#shop-css dl > div > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div > dd::after { content: \"\"; display: block; width: 3px; height: 10px; margin-top: 2px; margin-left: 14px; background-color: var(--p-bg); }"],
+  ["re-review 2: hy-19 (0px grid tracks)", "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 19px; background-color: var(--p-bg); }"],
+  ["a 10px track", "#shop-css p { display: grid; grid-template-columns: 10px 1fr; }"],
+  ["minmax with a 0px maximum", "#shop-css p { display: grid; grid-template-columns: minmax(0, 0px) 1fr; }"],
   ["vendor prefix", "#shop-css p { -webkit-box-reflect: below; }"],
   ["unknown property", "#shop-css p { zoom: 0.1; }"],
 ];
@@ -329,6 +339,7 @@ describe("guardShopCss accepts the allowed vocabulary and re-serializes", () => 
     // breakpoints at the ends of the checked widths, in px and em
     accepts("@media (min-width: 320px) and (max-width: 1920px) { #shop-css p { color: #000; } } @media (min-width: 20em) and (max-width: 120em) { #shop-css li { color: #000; } }");
     accepts("#shop-css h1 { writing-mode: vertical-rl; text-orientation: upright; }");
+    accepts("#shop-css main { display: grid; grid-template-columns: 96px minmax(0, 1fr) repeat(auto-fit, minmax(140px, 1fr)); }");
   });
 
   it("the example shop stylesheets pass", () => {
