@@ -4,7 +4,7 @@ import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
 import { areaLabel, infoRows } from "../info";
-import { editorial, grotesk } from "./fonts";
+import { displayFaceVariables } from "./fonts";
 import { keepTogether, locationLabels, monogram, nameLines, nameSizing, nameTokens, ordinal, phoneNameLines, setsInPieces } from "./text";
 import styles from "./profile.module.css";
 
@@ -207,7 +207,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
     <DemoFrame
       shopName={demo.name}
       template={demo.template}
-      className={`${styles.root} ${editorial.variable} ${grotesk.variable}`}
+      className={`${styles.root} ${displayFaceVariables}`}
       style={tokens(profile)}
     >
       <div

@@ -47,10 +47,11 @@
 
 /* ---------- typography switches ---------- */
 
-.canvas[data-display="editorial_serif"] { --display: var(--font-editorial), var(--font-display), serif; }
-.canvas[data-display="mincho"] { --display: var(--font-display), serif; }
-.canvas[data-display="condensed_grotesk"] { --display: var(--font-grotesk), var(--font-body), sans-serif; --display-width: 72; }
-.canvas[data-display="light_grotesk"] { --display: var(--font-grotesk), var(--font-body), sans-serif; --display-width: 104; }
+/* DEV-068: each face has its own Japanese face (fonts.ts); the site's faces stay as the fallback. */
+.canvas[data-display="editorial_serif"] { --display: var(--font-editorial), var(--font-ja-editorial), var(--font-display), serif; }
+.canvas[data-display="mincho"] { --display: var(--font-ja-mincho), var(--font-display), serif; }
+.canvas[data-display="condensed_grotesk"] { --display: var(--font-grotesk), var(--font-ja-condensed), var(--font-body), sans-serif; --display-width: 72; }
+.canvas[data-display="light_grotesk"] { --display: var(--font-grotesk), var(--font-ja-light), var(--font-body), sans-serif; --display-width: 104; }
 
 .canvas[data-weight="light"] { --display-weight: 300; }
 .canvas[data-weight="regular"] { --display-weight: 400; }
