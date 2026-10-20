@@ -1,5 +1,5 @@
 import type { DemoView } from "@/lib/sales/demo-content";
-import { FIRST_VIEWS, SECTION_KINDS, SECTION_VARIANTS, type Layout, type LayoutSection, type SectionKind } from "./profile";
+import { FIRST_VIEWS, LayoutSchema, SECTION_KINDS, SECTION_VARIANTS, type DesignProfile, type Layout, type LayoutSection, type SectionKind } from "./profile";
 
 // Stage 1 (DEV-071): every layout is normalized against the shop's facts
 // before it is drawn, saved or compared. Pure: same layout and facts, same
@@ -200,6 +200,22 @@ export function normalizeLayout(input: Layout | NormalizedLayout, demo: DemoView
   }
 
   return { layout: { firstView, sections, type }, adjustments };
+}
+
+/**
+ * DEV-071b: a checked profile with its layout as the page draws it. The pipeline
+ * writes, reviews, compares and stores this form: what Codex and a person read is
+ * what the page shows, and rendering it again changes nothing (normalizing is
+ * idempotent). A profile without a layout is returned as it is (the page before
+ * Stage 1); a normalized layout with no section (a shop with only its name) is
+ * not a valid stored layout, so Codex's own layout is kept and the renderer
+ * normalizes it the same way.
+ */
+export function profileAsDrawn(profile: DesignProfile, demo: DemoView): { profile: DesignProfile; adjustments: LayoutAdjustment[] } {
+  if (!profile.layout) return { profile, adjustments: [] };
+  const { layout, adjustments } = normalizeLayout(profile.layout, demo);
+  const stored = LayoutSchema.safeParse(layout);
+  return { profile: stored.success ? { ...profile, layout: stored.data } : profile, adjustments };
 }
 
 /** Where each fact of the shop is drawn under a normalized layout (for tests and the report). */

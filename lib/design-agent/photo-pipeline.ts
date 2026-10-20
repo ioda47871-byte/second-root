@@ -12,7 +12,8 @@ import type { ObservedColours } from "./reference-colours";
 import { CodexError, isEnvironmentFailure, type CodexFailureCode } from "./codex";
 import { buildPhotoReviewPrompt } from "./photo-prompts";
 import { photoReviewJsonSchema, PhotoReviewSchema, photoReviewScore, revisionPlan, type PhotoIssue, type PhotoReview } from "./photo-review";
-import type { Shots } from "./pipeline";
+import { profileAsDrawn } from "./layout";
+import type { LayoutAdjustmentRecord, Shots } from "./pipeline";
 import { checkProfile, type DesignProfile } from "./profile";
 
 // The design loop for a job with photos (DEV-029 stage 4). Called by
@@ -99,6 +100,8 @@ type Ctx = {
   maxRevisions: number;
   schema: (s: object) => object;
   notes: string[];
+  /** DEV-071b: layout adjustments of the revised candidates (fixed codes), shared with the run report. */
+  layoutAdjustments?: LayoutAdjustmentRecord[];
   deps: PhotoDeps;
 };
 
@@ -302,7 +305,10 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
         await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
         break;
       }
-      nextProfile = check.profile;
+      // DEV-071b: the revised layout as the page draws it
+      const drawn = profileAsDrawn(check.profile, ctx.demo);
+      if (drawn.adjustments.length > 0) ctx.layoutAdjustments?.push({ candidate: `candidate-${revisions + 1}`, codes: drawn.adjustments });
+      nextProfile = drawn.profile;
     }
     let next: PhotoStep<ImageDirection>;
     try {

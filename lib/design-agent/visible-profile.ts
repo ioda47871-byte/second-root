@@ -1,3 +1,5 @@
+import type { DemoView } from "@/lib/sales/demo-content";
+import { DEFAULT_LAYOUT, normalizeLayout } from "./layout";
 import type { DesignProfile } from "./profile";
 
 // DEV-066: which profile settings the review screenshots can show. The
@@ -54,7 +56,31 @@ export const VISIBLE_SETTINGS = [
   "composition.divider",
   "motifs",
   "spacing.scale",
+  // DEV-071b: the layout, as the page draws it (normalized against the facts)
+  "layout.firstView",
+  "layout.sections",
+  "layout.type.scale",
+  "layout.type.headings",
 ] as const;
+
+/** DEV-071b: directions that draw every section as a surface panel, where a surface ground looks like plain. */
+export const PANEL_DIRECTIONS = ["boutique_minimal"] as const;
+
+/**
+ * The layout as the page draws it: normalized against the facts (sections without
+ * facts left out, a first view without facts shown as the name alone, vertical
+ * headings beside short sections set horizontally), a surface ground drawn like
+ * plain in a panel direction, and no type hierarchy on a page without sections.
+ */
+function drawnLayout(profile: DesignProfile, demo: DemoView) {
+  const { layout } = normalizeLayout(profile.layout ?? DEFAULT_LAYOUT, demo);
+  const panel = (PANEL_DIRECTIONS as readonly string[]).includes(profile.direction);
+  return {
+    firstView: layout.firstView,
+    sections: layout.sections.map((s) => ({ kind: s.kind, variant: s.variant, ground: panel && s.ground === "surface" ? "plain" : s.ground })),
+    type: layout.sections.length > 0 ? layout.type : null,
+  };
+}
 
 function read(profile: DesignProfile, path: string): unknown {
   let value: unknown = profile;
@@ -71,17 +97,19 @@ function same(a: unknown, b: unknown): boolean {
 
 /**
  * The visible settings that differ between two profiles (palette colours
- * compare case-insensitively). Without photos (the DEV-028 loop) the settings
+ * compare case-insensitively; the layout as drawn for these facts, DEV-071b). Without photos (the DEV-028 loop) the settings
  * drawn only on photo pages do not count unless either profile's direction
  * draws them; the accent counts only when either profile has a motif or a
  * direction drawn in it (gallery_mono repaints the accent motifs).
  */
-export function visibleChanges(before: DesignProfile, after: DesignProfile, options: { photos: boolean }): string[] {
+export function visibleChanges(before: DesignProfile, after: DesignProfile, options: { photos: boolean; demo: DemoView }): string[] {
   const has = (list: readonly string[], value: string) => list.includes(value);
+  const drawn = [before, after].map((p) => ({ ...p, layout: drawnLayout(p, options.demo) }));
   const accentShown = [before, after].some(
     (p) => (!has(NO_ACCENT_DIRECTIONS, p.direction) && p.motifs.some((m) => has(ACCENT_MOTIFS, m))) || has(ACCENT_DIRECTIONS, p.direction),
   );
-  const surfaceShown = options.photos || [before, after].some((p) => has(SURFACE_DIRECTIONS, p.direction));
+  // the surface colour also shows on a page with a surface band (DEV-071b)
+  const surfaceShown = options.photos || drawn.some((p) => has(SURFACE_DIRECTIONS, p.direction) || p.layout.sections.some((s) => s.ground === "surface"));
   const hidden: readonly string[] = [...(surfaceShown ? [] : ONLY_WITH_PHOTOS), ...(accentShown ? [] : ["palette.accent"])];
-  return VISIBLE_SETTINGS.filter((path) => !hidden.includes(path) && !same(read(before, path), read(after, path)));
+  return VISIBLE_SETTINGS.filter((path) => !hidden.includes(path) && !same(read(drawn[0] as DesignProfile, path), read(drawn[1] as DesignProfile, path)));
 }

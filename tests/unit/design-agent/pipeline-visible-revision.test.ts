@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SECOND_LOOK_MIN_MS } from "@/lib/design-agent/photo-pipeline";
 import { QUALITY_NOT_ACCEPTED, runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
-import { DesignProfileCoreSchema, type DesignProfile } from "@/lib/design-agent/profile";
+import { DEFAULT_LAYOUT } from "@/lib/design-agent/layout";
+import { DesignProfileCodexSchema, type DesignProfile, type Layout } from "@/lib/design-agent/profile";
 import { notVisibleLine, VOCABULARY } from "@/lib/design-agent/prompts";
 import { ACCENT_DIRECTIONS, NOT_IN_SCREENSHOTS, SURFACE_DIRECTIONS, VISIBLE_SETTINGS, visibleChanges } from "@/lib/design-agent/visible-profile";
 import { CodexError } from "@/lib/design-agent/codex";
@@ -35,7 +36,7 @@ function harness(answers: unknown[]) {
 }
 
 const refs = ["/refs/ig-1.png"];
-const NO_PHOTOS = { photos: false };
+const NO_PHOTOS = { photos: false, demo: SHOP };
 const invisible: DesignProfile = {
   ...AMERICAN_EDITORIAL,
   motion: { intro: AMERICAN_EDITORIAL.motion.intro === "none" ? "fade_rise" : "none", sectionFade: !AMERICAN_EDITORIAL.motion.sectionFade },
@@ -47,6 +48,34 @@ const revise = (profile: DesignProfile | null, extra: object = {}) =>
   review({ verdict: "revise", brand_fit: 3, generic_template_feel: 3, recommended_profile_changes: { summary: [], revised_profile: profile }, ...extra });
 
 describe("visibleChanges", () => {
+  it("DEV-071b: the layout as the page draws it", () => {
+    const withLayout = (layout: Layout): DesignProfile => ({ ...AMERICAN_EDITORIAL, layout });
+    const p = withLayout(DEFAULT_LAYOUT);
+    const s = DEFAULT_LAYOUT.sections;
+    // no layout draws DEFAULT_LAYOUT
+    expect(visibleChanges(AMERICAN_EDITORIAL, p, NO_PHOTOS)).toEqual([]);
+    expect(visibleChanges(p, withLayout({ ...DEFAULT_LAYOUT, sections: [s[1], s[0], s[2]] }), NO_PHOTOS)).toEqual(["layout.sections"]);
+    expect(visibleChanges(p, withLayout({ ...DEFAULT_LAYOUT, sections: [{ kind: "menu", variant: "chips", ground: "plain" }, s[0], s[2]] }), NO_PHOTOS)).toEqual(["layout.sections"]);
+    expect(visibleChanges(p, withLayout({ ...DEFAULT_LAYOUT, firstView: "name_lead" }), NO_PHOTOS)).toEqual(["layout.firstView", "layout.sections"]);
+    expect(visibleChanges(p, withLayout({ ...DEFAULT_LAYOUT, type: { scale: "dramatic", headings: "en_ja" } }), NO_PHOTOS)).toEqual(["layout.type.scale"]);
+    expect(visibleChanges(p, withLayout({ ...DEFAULT_LAYOUT, type: { scale: "standard", headings: "ja_en" } }), NO_PHOTOS)).toEqual(["layout.type.headings"]);
+    // not drawn for these facts: a first view without facts, a section without facts, vertical headings beside a short section
+    expect(visibleChanges(p, withLayout({ ...DEFAULT_LAYOUT, firstView: "vertical_name" }), NO_PHOTOS)).toEqual([]);
+    expect(visibleChanges(p, withLayout({ ...DEFAULT_LAYOUT, firstView: "name_menu" }), NO_PHOTOS)).toEqual([]);
+    expect(visibleChanges(withLayout({ ...DEFAULT_LAYOUT, type: { scale: "standard", headings: "ja_only" } }), withLayout({ ...DEFAULT_LAYOUT, type: { scale: "standard", headings: "vertical_ja" } }), NO_PHOTOS)).toEqual([]);
+    const minimal = { photos: false, demo: { ...SHOP, description: null, menuItems: [], address: null, hours: null, closedDays: null, access: null, phone: null } };
+    expect(visibleChanges(p, withLayout({ ...DEFAULT_LAYOUT, sections: [{ kind: "about", variant: "statement", ground: "inverted" }] }), minimal)).toEqual([]);
+    expect(visibleChanges(p, withLayout({ ...DEFAULT_LAYOUT, type: { scale: "dramatic", headings: "ja_only" } }), minimal)).toEqual([]);
+    // boutique_minimal draws every section as a surface panel: plain and surface look the same there
+    const boutique = (ground: "plain" | "surface" | "inverted"): DesignProfile => ({ ...p, direction: "boutique_minimal", layout: { ...DEFAULT_LAYOUT, sections: [{ ...s[0], ground }, s[1], s[2]] } });
+    expect(visibleChanges(boutique("plain"), boutique("surface"), NO_PHOTOS)).toEqual([]);
+    expect(visibleChanges(boutique("plain"), boutique("inverted"), NO_PHOTOS)).toEqual(["layout.sections"]);
+    // a surface band shows the surface colour
+    const surfaceBand = withLayout({ ...DEFAULT_LAYOUT, sections: [{ ...s[0], ground: "surface" }, s[1], s[2]] });
+    expect(visibleChanges(surfaceBand, { ...surfaceBand, palette: { ...surfaceBand.palette, surface: "#000000" } }, NO_PHOTOS)).toEqual(["palette.surface"]);
+    expect(visibleChanges(p, { ...p, palette: { ...p.palette, surface: "#000000" } }, NO_PHOTOS)).toEqual([]);
+  });
+
   it("ignores the settings the screenshots cannot show", () => {
     expect(visibleChanges(AMERICAN_EDITORIAL, invisible, NO_PHOTOS)).toEqual([]);
   });
@@ -96,7 +125,7 @@ describe("visibleChanges", () => {
     const p = AMERICAN_EDITORIAL;
     const surface = { ...p, palette: { ...p.palette, surface: "#000000" } };
     expect(visibleChanges(p, surface, NO_PHOTOS)).toEqual([]);
-    expect(visibleChanges(p, surface, { photos: true })).toEqual(["palette.surface"]);
+    expect(visibleChanges(p, surface, { photos: true, demo: SHOP })).toEqual(["palette.surface"]);
     const plain = { ...p, motifs: ["monogram", "corner_marks"] } as DesignProfile;
     expect(visibleChanges(plain, { ...plain, palette: { ...plain.palette, accent: "#000000" } }, NO_PHOTOS)).toEqual([]);
     expect(visibleChanges(plain, { ...plain, motifs: ["monogram", "dot_grid"], palette: { ...plain.palette, accent: "#000000" } }, NO_PHOTOS)).toEqual(["palette.accent", "motifs"]);
@@ -108,8 +137,8 @@ describe("visibleChanges", () => {
         const inner = (v as { shape?: Record<string, unknown> }).shape;
         return inner ? leaves(inner, `${prefix}${k}.`) : [`${prefix}${k}`];
       });
-    // The settings Codex chooses today. DEV-071b adds layout (Stage 1) to Codex's answer and to visibleChanges.
-    const all = leaves(DesignProfileCoreSchema.shape as Record<string, unknown>).filter((k) => k !== "version");
+    // Everything Codex chooses, the layout included (DEV-071b).
+    const all = leaves(DesignProfileCodexSchema.shape as Record<string, unknown>).filter((k) => k !== "version");
     expect([...VISIBLE_SETTINGS, ...NOT_IN_SCREENSHOTS].sort()).toEqual(all.sort());
   });
 });

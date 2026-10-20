@@ -1,4 +1,5 @@
 import type { Category } from "@/lib/sales/types";
+import { DEFAULT_LAYOUT } from "./layout";
 import { checkProfile, type DesignProfile } from "./profile";
 
 // Calm per-category profiles, used when Codex answers with low confidence
@@ -15,6 +16,8 @@ const base = {
   motion: { intro: "fade_rise", sectionFade: false },
   confidence: 1,
   rationale: ["Category default (not enough material about the shop's own style)."],
+  // DEV-071b: the calm page (about, menu, visit on the page ground; the same page as before Stage 1)
+  layout: DEFAULT_LAYOUT,
 } satisfies Omit<DesignProfile, "direction" | "palette" | "typography" | "motifs">;
 
 export const CATEGORY_DEFAULT_PROFILES: Record<Category, DesignProfile> = {
@@ -45,7 +48,7 @@ export const CATEGORY_DEFAULT_PROFILES: Record<Category, DesignProfile> = {
 
 /** Fixed note on a combined profile (never rendered; removed before upload). */
 export const BRIEF_STRUCTURE_RATIONALE =
-  "Category default styling; hero layout, height and alignment, grid, information style and spacing from a low-confidence brief.";
+  "Category default styling; hero layout, height and alignment, grid, information style, spacing and page structure from a low-confidence brief.";
 
 /**
  * DEV-044: a low-confidence brief (schema-valid, checked, confidence < LOW_CONFIDENCE).
@@ -53,6 +56,10 @@ export const BRIEF_STRUCTURE_RATIONALE =
  * the information style and the spacing scale. Everything brand-sensitive or without
  * evidence (direction, palette, typography, motifs, divider, motion, confidence) comes from
  * the category default. Field-by-field reasons: .ai/reviews/DEV-044.md.
+ * DEV-071b, the layout: its structure (which sections, their order and variants, the
+ * first view) follows the content's shape like the hero and the grid, so it is kept;
+ * its grounds (a band in the primary or surface colour) and its type hierarchy (scale,
+ * heading style) are brand styling, so they come from the default (plain, its type).
  * Returns null if the combination fails the profile check (the caller then uses the default).
  */
 export function briefStructureOnDefault(brief: DesignProfile, category: Category): DesignProfile | null {
@@ -62,6 +69,9 @@ export function briefStructureOnDefault(brief: DesignProfile, category: Category
     heroLayout: { layout: brief.heroLayout.layout, height: brief.heroLayout.height, alignment: brief.heroLayout.alignment },
     composition: { grid: brief.composition.grid, infoStyle: brief.composition.infoStyle, divider: base.composition.divider },
     spacing: { scale: brief.spacing.scale },
+    layout: brief.layout
+      ? { firstView: brief.layout.firstView, sections: brief.layout.sections.map((s) => ({ ...s, ground: "plain" as const })), type: base.layout?.type ?? DEFAULT_LAYOUT.type }
+      : base.layout,
     rationale: [BRIEF_STRUCTURE_RATIONALE],
   };
   const check = checkProfile(combined);
