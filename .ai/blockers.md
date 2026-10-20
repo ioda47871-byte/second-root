@@ -5,20 +5,15 @@
 
 ## 未解除
 
-### HUMAN-013 — bridge 専用 Vercel bypass secret の作成と WSL への設定（DEV-059 / DEV-063）
+### HUMAN-014 — cycle の install と dry-run（timer なし、HUMAN-010 の一部）
 
-- 状態（2026-10-20）: Claude 側の準備は完了（PR #76 merge c066618）。人の操作待ち。Vercel Authentication は ON のまま、secret は 2 つ（bridge 用は未作成）、Staging の `SALES_AI_DESIGN_ENABLED`（Preview・develop）は `false`。
-- 人の操作 1（Vercel の画面）: second-root → Settings → Deployment Protection → Protection Bypass for Automation → Create。note は `Second Root design bridge (WSL)`。**env var にはしない**。既存の 2 つは変えない。表示された値をコピー（チャット・GitHub・Claude には貼らない）。
-- 人の操作 2（WSL、1 行。root の clone を c066618 に合わせてから setup script を動かす。prompt に値を貼って Enter、画面には出ない）:
-  `sudo git -C /root/sr-capture-admin fetch -q origin && sudo git -C /root/sr-capture-admin checkout -q --detach c066618cd6a40fe1cef57f75a71b755eea4157e8 && test -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" && sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh`
-  - 成功: `PROTECTION_ON`・`BYPASS_OK`（`REACHED_APP design_bridge_disabled`。flag が OFF なので正しい）・`CYCLE_CONF_ABSENT`（cycle の conf は HUMAN-010 の前なので無い。失敗ではない）・最後の行 `BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6`。
-  - 止まったら出力の符号を Claude に渡す（値は貼らない）。`BYPASS_REJECTED` は値の貼り間違い → 同じ 1 行の末尾に ` --replace` を付けて正しい値でやり直す。`PROTECTION_NOT_ON` は Authentication が外れている可能性 → すぐ Vercel を確かめる。
-  - bridge の checkout（`~sr-designbridge/second-root`、90c4c38）は bypass の対応（DEV-059）を含むので更新不要。
-- 解除条件: Claude が `npm run staging:bypass-status` で `bridge_secret=present`・`isEnvVar: false`・`auth=on` を値なしで確認し、人の出力の `BYPASS_SETUP_OK` を確かめる。
-- 戻し方・失効: `docs/operations/design-bridge-access.md` §8（Vercel で note の secret を revoke、WSL の file を消す。redeploy 不要）。
-- 2026-10-20 人の実機結果: `BYPASS_FILE_WRITTEN`・`BYPASS_ENV_APPENDED`・`PROTECTION_ON`・`REACHED_APP design_bridge_disabled`・`BYPASS_OK`・`CYCLE_CONF_ABSENT`・`BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6`。
-- 2026-10-20 Claude の読み取り（`npm run staging:bypass-status`、値は出さない）: Authentication on（all_except_custom_domains）、Password / Trusted IPs / OPTIONS off、secret 3 つ。**ただし note が入れ違い**: #1（2026-08-22 作成・`isEnvVar: true`、全 deployment の env に入っている古いもの）の note が `Second Root design bridge (WSL)`、#3（2026-10-20 作成・`isEnvVar: false`）の note が `Second Root design bridge`（"(WSL)" なし）。結果 `bridge_secret=env_var`。WSL の file にどちらの値が入っているかは Claude からは分からない（どちらでも Vercel は通すので BYPASS_OK になる）。
-- **未解除**。直し方（人、値は出さない）: (1) Vercel の Protection Bypass for Automation で #1 の note を元に戻す（空か `legacy env var (do not use)`）、#3 の note を `Second Root design bridge (WSL)` にする（note を変えられなければ #3 はそのまま、#1 の note だけ外す）。(2) #3（2026-10-20、env var でないもの）の値をコピーし、WSL で `sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh --replace` に貼る（`BYPASS_SETUP_OK` まで）。これで WSL の file が env var の secret でないことが確定する。(3) Claude が `staging:bypass-status` で `bridge_secret=present` を確認して解除。
+- 何: `/etc/second-root/design-cycle.conf` を作り（bridge の commit と bypass のスイッチ）、setup script を `--replace` なしで動かして段 6 の `cycle.sh --dry-run` まで通す。unit は置かない・timer は enable しない・flag は変えない・DB は変えない。
+- 前提: root の clone `/root/sr-capture-admin` は c066618（HUMAN-013 で合わせた）、bridge の checkout は 90c4c38caef5dafc539121195a6fd4d48753f477。
+- 人の操作（WSL、1 行。bridge の checkout が 90c4c38 で clean であること・conf がまだ無いことを確かめてから作る。どれかが違えば何も書かずに止まる）:
+  `B=$(sudo -u sr-designbridge -H git -C /home/sr-designbridge/second-root rev-parse HEAD) && [ "$B" = 90c4c38caef5dafc539121195a6fd4d48753f477 ] && test -z "$(sudo -u sr-designbridge -H git -C /home/sr-designbridge/second-root status --porcelain --untracked-files=normal)" && sudo test ! -e /etc/second-root/design-cycle.conf && sudo install -d -o root -g root -m 0755 /etc/second-root && printf 'SR_DESIGN_CYCLE_BRIDGE_SHA=%s\nSR_DESIGN_CYCLE_VERCEL_BYPASS=on\n' "$B" | sudo tee /etc/second-root/design-cycle.conf >/dev/null && sudo chmod 0644 /etc/second-root/design-cycle.conf && sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh`
+  - 値は聞かれない（file があるので `BYPASS_FILE_PRESENT`）。`BYPASS_OK` の後、段 6 で `cycle: vercel bypass: on` と `CYCLE_RESULT CYCLE_DRY_RUN_OK …`、最後の行 `BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6`。
+  - dry-run が止まったら（`CYCLE_DRY_RUN_NOT_OK`）、表示された `CHECK_*` / `CYCLE_STOP_PREFLIGHT` の符号だけを Claude に渡す。conf は残してよい（cycle は timer なしでは動かない）。やめるときは `sudo rm /etc/second-root/design-cycle.conf`。
+- 解除条件: 人の出力に `CYCLE_DRY_RUN_OK` と `cycle: vercel bypass: on`。
 
 ### HUMAN-010 — design worker の cycle（DEV-052）の WSL への install と timer の有効化
 
@@ -35,6 +30,13 @@
   5. PR #66 の判断: bridge を `runuser` で動かす・conf に承認した bridge の SHA を置く・preflight の SERIAL を OK とする・最初の deliver-only は全件 0・claim 後に止まったときの回復 SQL（job id と processing を条件）。
   6. Instagram のログインが有効であること（`LOGIN_REQUIRED` なら `admin.sh login`。cycle は回避せず止まる）。
   7. 上がすべて済んでから timer の enable を承認（`design-worker-cycle.md` §5）。
+- controlled run の計画（2026-10-20、承認待ち。どれも人の承認が要る）:
+  - 対象: demo `efb4bdb2-5fb8-4575-b2e1-76217a832485`（baked_goods、Instagram のみ、outreach は drafted・未公開、design_attempts 1/3）。予備は `b2048c61-422e-4bc7-8019-5f3c91a075a2`（bakery、attempts 1）。`d5656932`（attempts 2）は使わない。
+  - 手順: (1) 事前の写し: Claude が読み取りで対象の design_status・attempts・job_id・worker_commit・updated_at と profile の hash を記録（profile 本体は git に入れない）。(2) 人が承認した DB の書き込み（下の SQL、1 行だけ返ること）。(3) Staging の flag を一時的に true + develop を redeploy（人）。(4) WSL で `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh` を 1 回 → `CYCLE_OK`（bridge の段に `vercel protection bypass in use`）。(5) flag を false に戻して redeploy（人）。(6) Claude が読み取りで design_status・design_review・attempts と flag を確認。
+  - pending に戻す SQL（Staging、人の承認後に実行）:
+    `update public.sales_demos set design_status = 'pending', design_profile = null, design_review = null, design_job_id = null, design_claimed_at = null, design_error_code = null, design_worker_commit = null, design_updated_at = now() where id = 'efb4bdb2-5fb8-4575-b2e1-76217a832485' and design_status = 'ready' and exists (select 1 from public.sales_outreaches o where o.prospect_id = sales_demos.prospect_id and o.kind = 'initial' and o.status = 'drafted') returning id, design_status, design_attempts;`
+  - 復旧: `ready` なら新しい profile と要約で終わり。`blocked` / `failed` なら demo はテンプレートで表示される（未送信・未公開なので外への影響なし、attempts は残り 1）。claim の後で止まったら `design-worker-cycle.md` §6（lease の満了を待つ、または job id と processing を条件にした SQL）。前の profile に戻したいときは (1) の写しをもとに人が承認した SQL で戻す（Claude が用意）。どの場合も最後に flag を false に戻す。
+
 
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: **PR #29 を main へ merge 済み（2026-09-28、b14aab7。人間の明示承認に基づき Claude が実行）**。残りは merge 後の人間の作業。
@@ -101,6 +103,23 @@
 - DEV-004 で Claude が allowed_scope を拡張（GA を /demo・/admin で無効化、noindex / no-referrer ヘッダ、e2e 分割）。既存ページの挙動は不変とレビュー確認済み。異論があれば PR #12 を参照。
 
 ## 解除済み
+
+### HUMAN-013 — bridge 専用 Vercel bypass secret の作成と WSL への設定（DEV-059 / DEV-063）（解除: 2026-10-20）
+
+- 状態（2026-10-20）: Claude 側の準備は完了（PR #76 merge c066618）。人の操作待ち。Vercel Authentication は ON のまま、secret は 2 つ（bridge 用は未作成）、Staging の `SALES_AI_DESIGN_ENABLED`（Preview・develop）は `false`。
+- 人の操作 1（Vercel の画面）: second-root → Settings → Deployment Protection → Protection Bypass for Automation → Create。note は `Second Root design bridge (WSL)`。**env var にはしない**。既存の 2 つは変えない。表示された値をコピー（チャット・GitHub・Claude には貼らない）。
+- 人の操作 2（WSL、1 行。root の clone を c066618 に合わせてから setup script を動かす。prompt に値を貼って Enter、画面には出ない）:
+  `sudo git -C /root/sr-capture-admin fetch -q origin && sudo git -C /root/sr-capture-admin checkout -q --detach c066618cd6a40fe1cef57f75a71b755eea4157e8 && test -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" && sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh`
+  - 成功: `PROTECTION_ON`・`BYPASS_OK`（`REACHED_APP design_bridge_disabled`。flag が OFF なので正しい）・`CYCLE_CONF_ABSENT`（cycle の conf は HUMAN-010 の前なので無い。失敗ではない）・最後の行 `BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6`。
+  - 止まったら出力の符号を Claude に渡す（値は貼らない）。`BYPASS_REJECTED` は値の貼り間違い → 同じ 1 行の末尾に ` --replace` を付けて正しい値でやり直す。`PROTECTION_NOT_ON` は Authentication が外れている可能性 → すぐ Vercel を確かめる。
+  - bridge の checkout（`~sr-designbridge/second-root`、90c4c38）は bypass の対応（DEV-059）を含むので更新不要。
+- 解除条件: Claude が `npm run staging:bypass-status` で `bridge_secret=present`・`isEnvVar: false`・`auth=on` を値なしで確認し、人の出力の `BYPASS_SETUP_OK` を確かめる。
+- 戻し方・失効: `docs/operations/design-bridge-access.md` §8（Vercel で note の secret を revoke、WSL の file を消す。redeploy 不要）。
+- 2026-10-20 人の実機結果: `BYPASS_FILE_WRITTEN`・`BYPASS_ENV_APPENDED`・`PROTECTION_ON`・`REACHED_APP design_bridge_disabled`・`BYPASS_OK`・`CYCLE_CONF_ABSENT`・`BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6`。
+- 2026-10-20 Claude の読み取り（`npm run staging:bypass-status`、値は出さない）: Authentication on（all_except_custom_domains）、Password / Trusted IPs / OPTIONS off、secret 3 つ。**ただし note が入れ違い**: #1（2026-08-22 作成・`isEnvVar: true`、全 deployment の env に入っている古いもの）の note が `Second Root design bridge (WSL)`、#3（2026-10-20 作成・`isEnvVar: false`）の note が `Second Root design bridge`（"(WSL)" なし）。結果 `bridge_secret=env_var`。WSL の file にどちらの値が入っているかは Claude からは分からない（どちらでも Vercel は通すので BYPASS_OK になる）。
+- **未解除**。直し方（人、値は出さない）: (1) Vercel の Protection Bypass for Automation で #1 の note を元に戻す（空か `legacy env var (do not use)`）、#3 の note を `Second Root design bridge (WSL)` にする（note を変えられなければ #3 はそのまま、#1 の note だけ外す）。(2) #3（2026-10-20、env var でないもの）の値をコピーし、WSL で `sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh --replace` に貼る（`BYPASS_SETUP_OK` まで）。これで WSL の file が env var の secret でないことが確定する。(3) Claude が `staging:bypass-status` で `bridge_secret=present` を確認して解除。
+- 2026-10-20 人が note を修正（#1 `Legacy automation env var`・#2 `Second Root Staging Claude`・#3 `Second Root design bridge (WSL)`）し、#3 の値で `--replace`: `BYPASS_FILE_REPLACED`・`BYPASS_ENV_PRESENT`・`PROTECTION_ON`・`REACHED_APP design_bridge_disabled`・`BYPASS_OK`・`CYCLE_CONF_ABSENT`・`BYPASS_SETUP_OK step=6`。
+- Claude の読み取り（2026-10-20）: `VERCEL_BYPASS_STATUS OK auth=on bridge_secret=present`。Authentication on（all_except_custom_domains）、secret 3 つ、#3 は isEnvVar false、Staging の flag は "false"、develop の alias は a64cc4b で READY。値は表示・記録していない。
 
 ### HUMAN-012 — WSL の design bridge を DEV-058 / DEV-059 以降の commit に更新（任意、HUMAN-010 とは別）（解除: 2026-10-19）
 
