@@ -16,6 +16,9 @@
   - bridge の checkout（`~sr-designbridge/second-root`、90c4c38）は bypass の対応（DEV-059）を含むので更新不要。
 - 解除条件: Claude が `npm run staging:bypass-status` で `bridge_secret=present`・`isEnvVar: false`・`auth=on` を値なしで確認し、人の出力の `BYPASS_SETUP_OK` を確かめる。
 - 戻し方・失効: `docs/operations/design-bridge-access.md` §8（Vercel で note の secret を revoke、WSL の file を消す。redeploy 不要）。
+- 2026-10-20 人の実機結果: `BYPASS_FILE_WRITTEN`・`BYPASS_ENV_APPENDED`・`PROTECTION_ON`・`REACHED_APP design_bridge_disabled`・`BYPASS_OK`・`CYCLE_CONF_ABSENT`・`BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6`。
+- 2026-10-20 Claude の読み取り（`npm run staging:bypass-status`、値は出さない）: Authentication on（all_except_custom_domains）、Password / Trusted IPs / OPTIONS off、secret 3 つ。**ただし note が入れ違い**: #1（2026-08-22 作成・`isEnvVar: true`、全 deployment の env に入っている古いもの）の note が `Second Root design bridge (WSL)`、#3（2026-10-20 作成・`isEnvVar: false`）の note が `Second Root design bridge`（"(WSL)" なし）。結果 `bridge_secret=env_var`。WSL の file にどちらの値が入っているかは Claude からは分からない（どちらでも Vercel は通すので BYPASS_OK になる）。
+- **未解除**。直し方（人、値は出さない）: (1) Vercel の Protection Bypass for Automation で #1 の note を元に戻す（空か `legacy env var (do not use)`）、#3 の note を `Second Root design bridge (WSL)` にする（note を変えられなければ #3 はそのまま、#1 の note だけ外す）。(2) #3（2026-10-20、env var でないもの）の値をコピーし、WSL で `sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh --replace` に貼る（`BYPASS_SETUP_OK` まで）。これで WSL の file が env var の secret でないことが確定する。(3) Claude が `staging:bypass-status` で `bridge_secret=present` を確認して解除。
 
 ### HUMAN-010 — design worker の cycle（DEV-052）の WSL への install と timer の有効化
 
