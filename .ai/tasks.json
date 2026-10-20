@@ -2916,6 +2916,48 @@
         "cycle（C）"
       ],
       "decision": "2026-10-20: 人の指示で Claude が追加; 2026-10-20: PR #78 merge（e59121d）。Fresh Review PASS（Medium 1・Low 4・Nit 3 → すべて対応 → 再レビュー PASS）。CI 39388403968 success（人が独立確認）。write-check を独立 session（trig_0158TxdeGYFqU9Fj2CwDNGxX → cse_01FYXGAaGhMLhpV2oXy4TGrg、run_once_fired）から 1 回: WRITE_CHECK_OK、flag は false のまま"
+    },
+    {
+      "id": "DEV-066",
+      "title": "見えない修正で round を使わない（見える設定の変更を記録し、変化が無ければ同じ review にもう一度だけ求める）と、語彙の事実の訂正",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-053",
+        "DEV-034"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-066-visible-revisions",
+      "purpose": "2026-10-20 の controlled run（efb4bdb2）は 3 候補とも revise 18/25（brand_fit 3・generic_template_feel 3）で QUALITY_NOT_ACCEPTED。調査で、profile の direction・heroLayout.alignment・motion・confidence・rationale は screenshot に何も描かれない（CSS が読まない／reduced motion で撮る）のに、語彙は「すべて実装済み」と書き、修正がそれらだけを変えても検出されないと分かった。品質基準は緩めない",
+      "acceptance_criteria": [
+        "修正候補ごとに変えた見える設定を round に記録（changed）",
+        "見える変化の無い修正は描画せず、同じ review にもう一度だけ求める（固定文、Codex の言葉は渡さない）。それでも無ければ NO_VISIBLE_REVISION で止める",
+        "scores・verdict・gate・MAX_REVISIONS・score の式は変えない",
+        "語彙は direction は名前だけ・alignment は未反映・motion は screenshot に出ないと書く"
+      ],
+      "required_tests": [
+        "unit: visibleChanges（見えない設定・色の大小・motif の順・schema の全設定が分類済み）",
+        "unit: pipeline（もう一度・止まる・accept・時間切れ・上限）",
+        "snapshot の更新は語彙の行だけ",
+        "CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "tests/unit/design-agent/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "品質の閾値・verdict・gate の緩和",
+        "cycle の再実走",
+        "DB",
+        "flag",
+        "Production"
+      ],
+      "human_approval_triggers": [
+        "次の controlled run（新しい demo か、人の判断した demo）"
+      ],
+      "decision": "2026-10-20: 人の指示（品質の原因調査と改善）で Claude が追加。大きい改善（direction の CSS preset・日本語の display 書体・参照画像の色・review の notes の受け渡し・複数の初期候補・写真）は DEV-067 以降の案として blockers に"
     }
   ]
 }

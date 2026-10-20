@@ -7,6 +7,7 @@ import { checkProfile, designProfileJsonSchema, looseJsonSchema, type DesignProf
 import { runPhotoLoop, timeForSecondLook, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
 import { buildBriefPrompt, buildReviewPrompt } from "./prompts";
 import { reviewScore, visualReviewJsonSchema, VisualReviewSchema, type VisualReview } from "./review";
+import { visibleChanges } from "./visible-profile";
 
 // The design agent's loop for one shop (DEV-028):
 //   before shots → brief (Codex) → candidate-0 → shots → review (Codex)
@@ -78,6 +79,10 @@ export type RoundRecord = {
   scores: Pick<VisualReview, "brand_fit" | "visual_quality" | "hierarchy" | "mobile_quality" | "generic_template_feel"> & { total: number };
   verdict: VisualReview["verdict"];
   problems: Array<{ area: string; severity: string }>;
+  /** DEV-066: for a revised candidate, the visible settings it changed from the profile it was revised from. */
+  changed?: string[];
+  /** DEV-066: the same candidate reviewed again because its revision changed nothing visible (recorded with again: true). */
+  notVisible?: true;
 };
 
 export type PipelineReport = {
@@ -214,7 +219,12 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   let leader: { name: string; profile: DesignProfile; score: number; shots: Shots } | null = null;
 
   /** One review call; null when the answer is unusable (recorded in notes / status). */
-  const review = async (target: { name: string; profile: DesignProfile }, shots: Shots, again: { lower: string; lowerTotal: number } | null): Promise<VisualReview | null> => {
+  const review = async (
+    target: { name: string; profile: DesignProfile },
+    shots: Shots,
+    again: { lower: string; lowerTotal: number } | null,
+    notVisible = false,
+  ): Promise<VisualReview | null> => {
     try {
       const answer = await deps.askCodex({
         kind: "review",
@@ -228,20 +238,21 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
           history: rounds,
           best: leader && rounds.length > 0 ? { candidate: leader.name, total: leader.score } : null,
           again: again ? { candidate: target.name, ...again } : null,
+          notVisible: notVisible ? { candidate: target.name } : null,
         }),
         images: [...input.references, shots.desktop, shots.mobile],
         schema: schema(visualReviewJsonSchema()),
       });
       const parsed = VisualReviewSchema.safeParse(answer);
       if (!parsed.success) {
-        notes.push(`REVIEW_INVALID_${target.name}${again ? "_AGAIN" : ""}`);
+        notes.push(`REVIEW_INVALID_${target.name}${again ? "_AGAIN" : notVisible ? "_NOT_VISIBLE" : ""}`);
         return null;
       }
       return parsed.data;
     } catch (error) {
       // The run's clock ran out after a candidate was scored: the best scored candidate is the final one.
       if (error instanceof DeadlineError && leader) {
-        notes.push(again ? "REVISION_FROM_BEST_NO_TIME" : "REVIEW_NO_TIME");
+        notes.push(again ? "REVISION_FROM_BEST_NO_TIME" : notVisible ? "REVISION_NOT_VISIBLE_NO_TIME" : "REVIEW_NO_TIME");
         return null;
       }
       if (!(error instanceof CodexError)) throw error;
@@ -250,11 +261,16 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       return null;
     }
   };
-  const record = (name: string, r: VisualReview, again: boolean): number => {
+  // DEV-066: the visible settings each revised candidate changed (recorded on its first review).
+  const changedBy = new Map<string, string[]>();
+  const record = (name: string, r: VisualReview, again: boolean, notVisible = false): number => {
     const total = reviewScore(r);
+    const changed = again ? undefined : changedBy.get(name);
     rounds.push({
       candidate: name,
       ...(again ? { again: true as const } : {}),
+      ...(notVisible ? { notVisible: true as const } : {}),
+      ...(changed ? { changed } : {}),
       scores: { brand_fit: r.brand_fit, visual_quality: r.visual_quality, hierarchy: r.hierarchy, mobile_quality: r.mobile_quality, generic_template_feel: r.generic_template_feel, total },
       verdict: r.verdict,
       problems: r.problems.map((p) => ({ area: p.area, severity: p.severity })),
@@ -283,6 +299,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     if (r.verdict === "accept" || revisions >= maxRevisions) break;
 
     let next = r;
+    let base: { name: string; profile: DesignProfile; shots: Shots } = { name: current.name, profile: current.profile, shots };
     if (leader.name !== current.name) {
       // This revision scored lower than the best so far: revise from the best instead.
       notes.push(`REVISION_FROM_BEST_${revisions + 1}`);
@@ -301,20 +318,64 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       }
       if (again.verdict === "accept") break;
       next = again;
+      base = { name: leader.name, profile: leader.profile, shots: leader.shots };
     }
-    const revised = next.recommended_profile_changes.revised_profile;
+    let revised = next.recommended_profile_changes.revised_profile;
     if (revised === null) {
       notes.push("NO_REVISED_PROFILE");
       break;
     }
-    const check = checkProfile(revised);
+    let check = checkProfile(revised);
     if (!check.ok) {
       notes.push(`REVISION_INVALID_${revisions + 1}`);
       await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
       break;
     }
+    // This loop renders no photos (the photo loop is runPhotoLoop).
+    let changed = visibleChanges(base.profile, check.profile, { photos: false });
+    if (changed.length === 0) {
+      // DEV-066: the revision changes only settings the screenshots cannot show
+      // (or nothing): it would render the same page. Ask the same review once
+      // more for a revision that changes something visible; the scores, the
+      // verdict and the revision limit are unchanged.
+      notes.push(`REVISION_NOT_VISIBLE_${revisions + 1}`);
+      if (!timeForSecondLook(deps.timeLeftMs)) {
+        notes.push("REVISION_NOT_VISIBLE_NO_TIME");
+        break;
+      }
+      const retry = await review(base, base.shots, null, true);
+      if (!retry) break;
+      await deps.writeRecord(`review-${base.name}-not-visible-${revisions + 1}.json`, retry);
+      // Recorded like a second look: the leader and the candidates keep their
+      // first scores, so the leader is chosen the same way as the final.
+      record(base.name, retry, true, true);
+      if (retry.needs_renderer_change) {
+        notes.push("RENDERER_CHANGE_NEEDED");
+        state.status = "blocked";
+        break;
+      }
+      if (retry.verdict === "accept") break;
+      revised = retry.recommended_profile_changes.revised_profile;
+      if (revised === null) {
+        notes.push("NO_REVISED_PROFILE");
+        break;
+      }
+      check = checkProfile(revised);
+      if (!check.ok) {
+        notes.push(`REVISION_INVALID_${revisions + 1}`);
+        await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
+        break;
+      }
+      changed = visibleChanges(base.profile, check.profile, { photos: false });
+      if (changed.length === 0) {
+        notes.push("NO_VISIBLE_REVISION");
+        break;
+      }
+    }
     revisions += 1;
     current = { name: `candidate-${revisions}`, profile: check.profile };
+    changedBy.set(current.name, changed);
+    deps.log(`${current.name}: changes ${changed.join(", ")}`);
   }
 
   // ---- final: the best-scored candidate (later wins a tie). A design no

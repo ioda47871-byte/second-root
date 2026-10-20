@@ -7,11 +7,13 @@ import { rendererChangeRule, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-
 // copy, HTML or CSS.
 
 export const VOCABULARY = `
-Renderer vocabulary (the only things you can choose; every value is already implemented):
+Renderer vocabulary (the only things you can choose; every value is accepted):
 - direction: a label for the overall art direction (american_editorial, editorial_luxury, french_classic, nordic_minimal, japanese_modern, kissaten_retro, gallery_mono, craft_paper, boutique_minimal, pop_bakeshop).
-- palette: six hex colours. background = page; surface = panels; text = body text (≥4.5:1 on background and surface);
+  It is a name only: the page looks the same for every direction. The look comes from the settings below.
+- palette: six hex colours. background = page; surface = the ground behind photos (pages without photos never show it); text = body text (≥4.5:1 on background and surface);
   primary = shop name and strong rules (≥3:1 on background; background on primary ≥4.5:1, used for the footer);
-  secondary = small labels and the notice bar text (≥4.5:1 on background); accent = monogram / motif details.
+  secondary = small labels and the notice bar text (≥4.5:1 on background); accent = motif details only (location label marks, dot_grid, stamp_ring,
+  muffin_paper_svg): with none of these motifs it shows nowhere. The monogram is drawn in primary.
 - typography.display: editorial_serif (high-contrast Latin serif, Japanese in Mincho), condensed_grotesk (tall, narrow, heavy sans),
   light_grotesk (wide light sans), mincho (Japanese Mincho for everything). body: sans | serif.
   displayCase: as_is | uppercase (Latin only). displayWeight: light | regular | bold | black. tracking: tight | normal | wide.
@@ -24,7 +26,7 @@ Renderer vocabulary (the only things you can choose; every value is already impl
   heroLayout.height (a minimum for a hero without a split photo; the hero grows past it when its content needs more):
     full (the whole first screen on desktop; on phones about as tall as tall) | tall (most of the first screen) |
     medium (about half the first screen; without a photo, a band at the top with spacing tight, and a medium centered_cover is a band on phones at every spacing).
-  alignment: left | center (text in the lower sections).
+  alignment: left | center (recorded only; it does not change the page yet).
 - composition.grid (applies from tablet width; phones always show one column):
   editorial_12 (a narrow label column beside a wide text column, about 1 : 3) | asymmetric_7_5 (a label column wider than in editorial_12, label 5 : text 7) |
   single_column (headings above their text instead of beside it).
@@ -37,6 +39,7 @@ Renderer vocabulary (the only things you can choose; every value is already impl
   tight (the least between sections, and a medium hero without a photo becomes a band; on phones the rows and headings are closer too).
 - motion.intro: none | fade_rise | rule_expand | letter_reveal (one short entrance on first view; nothing ever loops).
   motion.sectionFade: sections fade in once.
+  Motion never shows in the review screenshots (they are taken with reduced motion), so it cannot fix anything a review sees.
 The page always has, in this order: a small non-official notice bar, hero, about (only if a verified description exists),
 menu (only verified item names), visit (only verified hours / closed days / address / access / phone), footer notice.
 There are no photographs, logos or illustrations of food, and there never will be.`;
@@ -96,6 +99,14 @@ export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number
     .join("\n\n");
 }
 
+/**
+ * DEV-066: what a review is told when its revised_profile changed nothing the
+ * screenshots can show. Fixed text (no words from Codex).
+ */
+export function notVisibleLine(candidate: string): string {
+  return `This is ${candidate} again: your revised_profile for it changed nothing the screenshots can show (only direction, alignment, motion, confidence, rationale, the surface colour, or the accent colour without a motif drawn in it, or nothing at all), so it would render the same page. Give a revised_profile that changes at least one visible setting (the background, text, primary or secondary colour, typography, heroLayout.layout or height, composition, motifs, spacing) aimed at the problems you found.`;
+}
+
 /** One earlier round, as the reviewer is told about it: scores and problem codes only (DEV-034). */
 export type RoundSummary = {
   candidate: string;
@@ -148,6 +159,8 @@ export function buildReviewPrompt(input: {
   best?: { candidate: string; total: number } | null;
   /** DEV-034: the best candidate reviewed again after a lower-scoring revision. */
   again?: { candidate: string; lower: string; lowerTotal: number } | null;
+  /** DEV-066: the same candidate again because its revision changed nothing visible. */
+  notVisible?: { candidate: string } | null;
 }): string {
   return [
     "You are reviewing a rendered proposal demo against the shop's own public presence.",
@@ -161,6 +174,8 @@ export function buildReviewPrompt(input: {
     "If the fix needs something the renderer cannot do (a new layout, a new motif), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
     rendererChangeRule(),
     historyBlock(input.history ?? [], input.best ?? null, input.again ?? null),
+    input.notVisible ? notVisibleLine(input.notVisible.candidate) : "",
+    "Revise with settings the screenshots show: a revised_profile that changes only direction, alignment or motion renders the same page.",
     "Profile that produced these screenshots:",
     JSON.stringify(input.profile, null, 2),
     "Verified facts:",

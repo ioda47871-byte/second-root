@@ -5,6 +5,18 @@
 
 ## 未解除
 
+### DEV-066 の残りと品質改善の次の案（2026-10-20、人の判断待ちを含む）
+
+- 背景: controlled run（efb4bdb2、job b-c73a43b5-…）は 3 候補とも revise 18/25（brand_fit 3・generic_template_feel 3・他は 4）→ BLOCKED QUALITY_NOT_ACCEPTED。原因の調査（読み取りだけ）: revise は実際に次の候補を作っているが、(1) profile の direction・heroLayout.alignment・motion・confidence・rationale は screenshot に何も描かれない（写真の無い頁では palette.surface も、accent の motif が無ければ accent も）、(2) 頁の骨組み（節の順・見出し・英語の分類ラベル）は固定で、Instagram だけの店は事実が少なく短い頁になる、(3) 写真は出ない（Instagram の写真は使わない方針）、(4) 日本語の店名では display 書体が実質 2 通り、(5) review の notes は次の round に渡らない（DEV-034）。DEV-066 は (1) で round を無駄にしないようにした（品質基準は不変）
+- DEV-066 の残り: 写真の loop（photo-pipeline）には見える変化の確認が無い / 以前の低い候補と同じ修正の検出は無い / 追加の review（見えない修正のときのもう一度）の accept は second look と同じく gate を通る（1 run の review の上限は 4 → 6）。扱いを変えるかは人の判断
+- 次の案（効果の大きい順の見込み。どれも閾値・verdict・gate は変えない）:
+  - DEV-067 案: direction に CSS の preset を付ける（`[data-direction=…]` で罫線・見出し・label・menu の番号・hero の枠などを変える）。schema は変えない。renderer の test（direction の組ごとに computed style が違う・overflow 無し・contrast）。テンプレート感への効果が最も大きい見込み。人の判断は不要（Claude が進めてよいか確認）
+  - DEV-068 案: 日本語の display 書体を face ごとに別にする（editorial_serif と mincho、2 つの grotesk）。next/font で自前配信
+  - DEV-069 案: heroLayout.alignment を CSS で効かせる（または語彙から外す）
+  - DEV-070 案: 参照画像（ぼかし済み）から主要色を数個だけ測って brief / review に hex で渡す（画像の内容・文字は渡さない）
+  - 人の判断が要る: review の notes を次の round に渡す（DEV-034 の方針の変更）／ 初期候補を 2〜3 個にする（Codex の時間とコスト）／ Instagram の写真を使う（権利・同意の判断）
+- 次の実走: efb4bdb2 は attempts 2/3 で blocked（再 reset は未承認）。改善の効果は新しい controlled run（人の承認: 対象 demo・DB の reset・W・C）で測る
+
 ### HUMAN-015 — Claude の Supabase（Staging）読み取りが 401
 
 - 何: 2026-10-20、この session の proxy が入れる Supabase の token が `Invalid access token`（401）になった。Vercel の読み取りは動く。controlled run の前後の読み取り（`.ai/runbooks/controlled-run/snapshot.sql`・`after.sql`）が Claude からできない。
