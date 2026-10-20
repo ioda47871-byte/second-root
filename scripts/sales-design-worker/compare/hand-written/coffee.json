@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "direction": "gallery_mono",
+  "palette": { "background": "#F3F3F0", "surface": "#FFFFFF", "text": "#121212", "primary": "#121212", "secondary": "#3D3D3A", "accent": "#C8471E" },
+  "typography": { "display": "condensed_grotesk", "body": "sans", "displayCase": "uppercase", "displayWeight": "black", "tracking": "tight" },
+  "heroLayout": { "layout": "split_crop", "height": "medium", "alignment": "left" },
+  "composition": { "grid": "editorial_12", "infoStyle": "ledger_columns", "divider": "thick_rule" },
+  "motifs": ["dot_grid"],
+  "spacing": { "scale": "tight" },
+  "motion": { "intro": "none", "sectionFade": false },
+  "confidence": 1,
+  "rationale": ["Hand-written spec for the DEV-073 demo (not a Codex answer)."],
+  "layout": {
+    "firstView": "name_menu",
+    "sections": [
+      { "kind": "hours", "variant": "strip", "ground": "inverted" },
+      { "kind": "menu", "variant": "chips", "ground": "plain" },
+      { "kind": "about", "variant": "statement", "ground": "surface" },
+      { "kind": "visit", "variant": "cards", "ground": "plain" }
+    ],
+    "type": { "scale": "dramatic", "headings": "en_ja" }
+  }
+}
