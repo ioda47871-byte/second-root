@@ -53,7 +53,7 @@ const DETAILED = png(2400, 3000, (x, y) => {
 const SMALL = png(400, 500, (x, y) => [180 - (y % 60), 120 + (x % 90), 90]);
 
 const figure = (id: string, role: string, src: string, ar: string) =>
-  `<figure data-asset="${id}" data-role="${role}" style="margin:0;position:relative;overflow:hidden;aspect-ratio:${ar};background:#fbf4e6"><img src="${src}" alt="" loading="eager" decoding="async" style="display:block;width:100%;height:100%;object-fit:cover"><span data-image-label="" style="position:absolute;top:8px;left:8px;background:#f4e8d2">イメージ画像</span></figure>`;
+  `<figure data-asset="${id}" data-role="${role}" style="margin:0;position:relative;overflow:hidden;aspect-ratio:${ar};background:#fbf4e6"><img src="${src}" alt="" loading="eager" decoding="async" style="display:block;width:100%;height:100%;object-fit:cover"></figure>`;
 const PAGE = (aboutSrc: string) => `<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;background:#f4e8d2;font:16px sans-serif">
   <section data-photo-section="hero" style="padding:20px">${figure("asset-aaaaaaaaaaaaaaaaaaaaaaaa", "hero", "/small.png", "4/5")}<h1>Name</h1></section>

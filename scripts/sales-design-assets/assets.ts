@@ -3,8 +3,6 @@
  * (DEV-029). A person runs this; the worker and Codex never add assets.
  *
  *   npm run -s sales:design-assets -- add --job-id <id> --file <photo.png|jpg|webp> --people none \
- *     --source generated_concept --created-by <handle> --created-at <ISO time>
- *   npm run -s sales:design-assets -- add --job-id <id> --file <photo> --people none \
  *     --source approved_real --consent-id <id of your own record> --approved-by <handle> \
  *     --approved-at <ISO time> --scope local_preview[,public_demo]
  *   npm run -s sales:design-assets -- list --job-id <id>
@@ -12,6 +10,9 @@
  * The photo is drawn again by Chromium into a new PNG (no metadata survives).
  * Reference screenshots (Instagram / website captures) are refused. MVP: no
  * people in any photo, at most 3 photos per job, PNG / JPEG / WebP only.
+ * approved_real is the only source (DEV-070): a photo the shop provided or
+ * allowed, with your own consent record. No generated or made-up image, and
+ * never an Instagram / website image without the shop's permission.
  * Output: codes and asset ids only.
  */
 import { homedir } from "node:os";
@@ -31,15 +32,11 @@ const flag = (name: string): string | undefined => {
 };
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
 const say = (line: string) => process.stdout.write(`${line}\n`);
-const USAGE = "usage: add --job-id <id> --file <photo> --people none --source generated_concept|approved_real [...] | list --job-id <id>";
+const USAGE =
+  "usage: add --job-id <id> --file <photo> --people none --source approved_real --consent-id <id> --approved-by <handle> --approved-at <ISO time> --scope local_preview[,public_demo] | list --job-id <id>";
 
 function source(): IntakeSource | null {
   const kind = flag("source");
-  if (kind === "generated_concept") {
-    const createdBy = flag("created-by");
-    const createdAt = flag("created-at");
-    return createdBy && createdAt ? { sourceKind: kind, createdBy, createdAt } : null;
-  }
   if (kind === "approved_real") {
     const consentId = flag("consent-id");
     const approvedBy = flag("approved-by");
@@ -60,10 +57,11 @@ async function main(): Promise<number> {
   if (command === "list") {
     const manifest = await loadManifest(store, jobId);
     if (!manifest) {
+      // No manifest, or one that no longer parses (e.g. a generated_concept photo left from before DEV-070).
       say("NO_MANIFEST");
       return 1;
     }
-    for (const a of manifest.assets) say(`${a.assetId} ${a.sourceKind} ${a.width}x${a.height}${a.sourceKind === "approved_real" ? ` scopes=${a.consent.scopes.join(",")}` : ""}`);
+    for (const a of manifest.assets) say(`${a.assetId} ${a.sourceKind} ${a.width}x${a.height} scopes=${a.consent.scopes.join(",")}`);
     return 0;
   }
   if (command !== "add") {

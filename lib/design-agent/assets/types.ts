@@ -1,7 +1,7 @@
 // Two kinds of image path that must never cross (DEV-029).
 //
 // - PublicAssetId: a photo a person put into the asset store on purpose
-//   (approved_real or generated_concept). Only these may ever be drawn on a
+//   (approved_real only, DEV-070). Only these may ever be drawn on a
 //   demo page, and only through the store, by id.
 // - ReferenceImagePath: a screenshot of the shop's Instagram or website,
 //   taken by the worker or the capture helper for Codex to look at. It lives

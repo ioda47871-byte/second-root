@@ -14,7 +14,7 @@ import { join } from "node:path";
 
 const PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const PAGE = `<!doctype html><html><body style="margin:0">
-  <section data-photo-section="hero" style="height:500px"><figure data-asset="asset-aaaaaaaaaaaaaaaaaaaaaaaa" data-role="hero" style="margin:0"><img src="${PIXEL}" style="width:300px;height:300px"><span data-image-label="">イメージ画像</span></figure><h1>Name</h1></section>
+  <section data-photo-section="hero" style="height:500px"><figure data-asset="asset-aaaaaaaaaaaaaaaaaaaaaaaa" data-role="hero" style="margin:0"><img src="${PIXEL}" style="width:300px;height:300px"></figure><h1>Name</h1></section>
   <div style="height:3000px"></div>
   <section data-photo-section="visit" style="height:400px"><figure data-asset="asset-bbbbbbbbbbbbbbbbbbbbbbbb" data-role="visit" style="margin:0"><img src="${PIXEL}" style="width:300px;height:200px"></figure></section>
 </body></html>`;

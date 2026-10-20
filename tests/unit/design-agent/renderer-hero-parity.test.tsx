@@ -110,7 +110,7 @@ async function pageFor(key: Vp): Promise<Page> {
 }
 
 const PORTRAIT = "asset-111111111111111111111111";
-const PHOTO_ASSETS: FakeAsset[] = [{ id: PORTRAIT, png: fakePng(600, 750, { seed: 1 }), sourceKind: "generated_concept" }];
+const PHOTO_ASSETS: FakeAsset[] = [{ id: PORTRAIT, png: fakePng(600, 750, { seed: 1 }), sourceKind: "approved_real" }];
 function photosFor(demo: DemoView, layout: ImageDirection["layout"]): RenderPhotos {
   const direction: ImageDirection = {
     version: 1,

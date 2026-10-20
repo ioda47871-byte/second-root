@@ -12,7 +12,7 @@ import { fakeManifest, fakePng, writeStore, type FakeAsset } from "./photo-fixtu
 vi.mock("next/server", () => ({ connection: async () => undefined }));
 
 const A = "asset-aaaaaaaaaaaaaaaaaaaaaaaa";
-const ASSETS: FakeAsset[] = [{ id: A, png: fakePng(320, 400), sourceKind: "generated_concept" }];
+const ASSETS: FakeAsset[] = [{ id: A, png: fakePng(320, 400), sourceKind: "approved_real" }];
 const saved = { ...process.env };
 let base: string;
 

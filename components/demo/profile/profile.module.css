@@ -615,9 +615,8 @@
 }
 
 /* ---------- photos (DEV-029) ----------
-   A photo always has a grid cell of its own: page text is never drawn over it.
-   The only text on a photo is the fixed "イメージ画像" label of a generated
-   image, on a solid ground. Phones first; the desktop crop is set below. */
+   A photo always has a grid cell of its own: page text is never drawn over it,
+   and no text is drawn on a photo. Phones first; the desktop crop is set below. */
 
 .photo {
   position: relative;
@@ -639,22 +638,6 @@
 .photo[data-fit="contain"] .photoImg { object-fit: contain; }
 .photo[data-treatment="warm"] .photoImg { filter: sepia(0.16) saturate(1.06); }
 .photo[data-treatment="mono"] .photoImg { filter: grayscale(1) contrast(1.04); }
-
-.imageLabel {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 1;
-  padding: 3px 8px;
-  border: 1px solid var(--p-primary);
-  background: var(--p-bg);
-  color: var(--p-text);
-  font-family: var(--font-body), sans-serif;
-  font-size: 0.75rem;
-  line-height: 1.4;
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-}
 
 /* split_hero: the photo, then the type hero (phones); side by side from 720px. */
 .heroSplit { border-bottom: 1px solid var(--p-primary); }

@@ -96,7 +96,7 @@ export type CapturedPage = { overflow: number; sections: string[]; placed: Place
  * Screenshots of an open preview page (DEV-029 stage 4): the full page up to
  * its cap, plus one crop for each photo section (data-photo-section) the cap
  * cuts off, so no photo drops out of the review. Also collects the page's
- * photos for the mechanical check: which asset, where, visible, labelled, and
+ * photos for the mechanical check: which asset, where, visible, and
  * whether any text of the page lies under it.
  */
 export async function capturePage(page: Page, o: { path: string; mobile: boolean; sectionPrefix: string }): Promise<CapturedPage> {

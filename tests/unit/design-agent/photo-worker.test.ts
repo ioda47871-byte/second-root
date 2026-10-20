@@ -9,7 +9,7 @@ import { pocReport } from "@/lib/design-agent/worker/poc";
 import { RUN_TIME_BUDGET_MS, type PreviewSession, type WorkerOptions, type WorkerReport } from "@/lib/design-agent/worker/run";
 import { passthroughSandbox } from "../../support/passthrough-sandbox";
 import { AMERICAN_EDITORIAL, review } from "./fixtures";
-import { fakeAnalysis, fakePng, writeStore, type FakeAsset } from "./photo-fixtures";
+import { fakeAnalysis, fakePng, legacyGeneratedConceptManifest, writeStore, type FakeAsset } from "./photo-fixtures";
 import { codexCalls, FAKE_CODEX, makeLayout, PNG, runWorker, startMockSite, writeJob, type Layout, type MockSite, type Step } from "./worker-support";
 
 // DEV-029 stage 4: photos through the real design worker (fake Codex CLI,
@@ -31,9 +31,9 @@ const A = "asset-aaaaaaaaaaaaaaaaaaaaaaaa";
 const B = "asset-bbbbbbbbbbbbbbbbbbbbbbbb";
 const C = "asset-cccccccccccccccccccccccc";
 const ASSETS: FakeAsset[] = [
-  { id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "generated_concept" },
+  { id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "approved_real" },
   { id: B, png: fakePng(480, 320, { seed: 2 }), sourceKind: "approved_real" },
-  { id: C, png: fakePng(400, 400, { seed: 3 }), sourceKind: "generated_concept" },
+  { id: C, png: fakePng(400, 400, { seed: 3 }), sourceKind: "approved_real" },
 ];
 const ANALYSES = [fakeAnalysis(A, { orientation: "portrait" }), fakeAnalysis(B, { orientation: "landscape" }), fakeAnalysis(C, { orientation: "square" })];
 const place = (assetId: string, over: Record<string, unknown> = {}) => ({ assetId, fit: "cover", focal: { x: 0.5, y: 0.4 }, mobileFocal: { x: 0.5, y: 0.45 }, aspect: { desktop: "4:5", mobile: "1:1" }, treatment: "natural", ...over });
@@ -69,7 +69,6 @@ function photoPreview(rendered: string[]): WorkerOptions["startPreview"] {
                   ...p,
                   device,
                   visible: true,
-                  labelled: ASSETS.find((a) => a.id === p.assetId)?.sourceKind === "generated_concept",
                   overlapsText: false,
                 }))
               : [],
@@ -156,6 +155,26 @@ describe("the worker with photos", () => {
     expect(report.jobs[0]).toMatchObject({ status: "done" });
     expect(execs(l)).toHaveLength(2);
     expect(existsSync(join(l.out, "job-mine-1", "assets.json"))).toBe(false);
+  });
+
+  it("runs a job whose manifest still lists a generated_concept photo (left from before DEV-070) without photos, and does not fail", async () => {
+    const l = makeLayout();
+    const jobId = "job-legacy-1";
+    await writeStore(join(l.root, ".local", "share", "second-root-design-assets"), jobId, ASSETS, legacyGeneratedConceptManifest(jobId, ASSETS));
+    const rendered: string[] = [];
+    writeJob(l, jobId, "https://www.instagram.com/example_shop/", FACTS_WITH_VISIT);
+    const result = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { answer: review() }], startPreview: photoPreview(rendered) });
+    const report = result.report as Extract<WorkerReport, { status: "finished" }>;
+    // the existing page without photos: no photo call, no asset artifact, no photo on any render
+    expect(report.jobs[0], JSON.stringify(result)).toMatchObject({ status: "done" });
+    expect(execs(l)).toHaveLength(2);
+    // (reference screenshots may still be attached; no photo copy is)
+    for (const call of execs(l)) expect(call.args.some((a) => a.startsWith("--image=") && /photo-\d+\.png$/.test(a))).toBe(false);
+    const runDir = join(l.out, jobId);
+    expect(existsSync(join(runDir, "assets.json"))).toBe(false);
+    expect(json(join(runDir, "report.json")).photos).toBeNull();
+    expect(readdirSync(runDir).filter((n) => n.endsWith(".images.json"))).toEqual([]);
+    assertClean(l);
   });
 
   it("revision 1 (images) and revision 2 (worst case): analysis once, two rounds at most; cleanup holds", async () => {
