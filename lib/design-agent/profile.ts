@@ -60,7 +60,54 @@ export const PaletteSchema = z.strictObject({
   accent: hex,
 });
 
-export const DesignProfileSchema = z.strictObject({
+// ---------------------------------------------------------------- layout (DEV-071, Stage 1)
+//
+// The Design Spec: which sections the page has and in what order, how each is
+// set (variant) and on what ground, the type hierarchy and the first view.
+// Sections are drawn only when the shop's facts give them content
+// (lib/design-agent/layout.ts normalizes every layout before rendering), and
+// every word on them is a fact or a fixed heading word.
+
+export const SECTION_KINDS = ["about", "menu", "hours", "visit"] as const;
+export const SECTION_VARIANTS = {
+  about: ["lead", "statement", "side_heading"],
+  menu: ["numbered", "chips", "columns", "feature_first"],
+  hours: ["strip", "block"],
+  visit: ["ledger", "cards", "split", "stacked"],
+} as const;
+export const GROUNDS = ["plain", "surface", "inverted"] as const;
+export const FIRST_VIEWS = ["name_only", "name_lead", "name_hours", "name_menu", "vertical_name"] as const;
+export const TYPE_SCALES = ["quiet", "standard", "dramatic"] as const;
+export const HEADING_STYLES = ["en_ja", "ja_en", "ja_only", "vertical_ja"] as const;
+
+const section = <K extends (typeof SECTION_KINDS)[number]>(kind: K) =>
+  z.strictObject({ kind: z.literal(kind), variant: z.enum(SECTION_VARIANTS[kind]), ground: z.enum(GROUNDS) });
+
+// A plain union (JSON Schema anyOf): Codex's structured output takes anyOf, not the
+// oneOf a discriminated union emits. The kinds are literals, so one branch matches.
+export const SectionSchema = z.union([section("about"), section("menu"), section("hours"), section("visit")]);
+
+export const LayoutSchema = z.strictObject({
+  firstView: z.enum(FIRST_VIEWS),
+  sections: z
+    .array(SectionSchema)
+    .min(1)
+    .max(SECTION_KINDS.length)
+    .refine((list) => new Set(list.map((s) => s.kind)).size === list.length, { message: "section kinds repeat" }),
+  type: z.strictObject({ scale: z.enum(TYPE_SCALES), headings: z.enum(HEADING_STYLES) }),
+});
+
+export type SectionKind = (typeof SECTION_KINDS)[number];
+export type LayoutSection = z.infer<typeof SectionSchema>;
+export type Layout = z.infer<typeof LayoutSchema>;
+
+/**
+ * The profile without `layout`: what Codex is asked for until DEV-071b (its
+ * JSON Schema, the review's revised profile). DEV-071b makes `layout` part of
+ * Codex's output (required there) and derives the output schema from
+ * DesignProfileSchema instead.
+ */
+export const DesignProfileCoreSchema = z.strictObject({
   version: z.literal(1),
   direction: z.enum(DIRECTIONS),
   palette: PaletteSchema,
@@ -89,12 +136,22 @@ export const DesignProfileSchema = z.strictObject({
   rationale: z.array(z.string().max(160)).max(4),
 });
 
+/**
+ * A stored or rendered profile. `layout` is optional: profiles saved before
+ * Stage 1 have none and render the fixed page (DEFAULT_LAYOUT). The version
+ * stays 1 (the database keeps version = '1' and at most 8192 bytes).
+ */
+export const DesignProfileSchema = DesignProfileCoreSchema.extend({ layout: LayoutSchema.optional() });
+
 export type DesignProfile = z.infer<typeof DesignProfileSchema>;
 export type Palette = z.infer<typeof PaletteSchema>;
 
-/** JSON Schema for `codex exec --output-schema`. */
+/**
+ * JSON Schema for `codex exec --output-schema`. Until DEV-071b this is the
+ * profile without `layout` (Codex is not yet asked for one).
+ */
 export function designProfileJsonSchema(): object {
-  return withoutMeta(z.toJSONSchema(DesignProfileSchema));
+  return withoutMeta(z.toJSONSchema(DesignProfileCoreSchema));
 }
 
 export function withoutMeta(schema: object): object {
