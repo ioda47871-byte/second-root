@@ -29,9 +29,9 @@ const A = "asset-aaaaaaaaaaaaaaaaaaaaaaaa"; // portrait
 const B = "asset-bbbbbbbbbbbbbbbbbbbbbbbb"; // landscape
 const C = "asset-cccccccccccccccccccccccc"; // square
 const ASSETS: FakeAsset[] = [
-  { id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "generated_concept" },
+  { id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "approved_real" },
   { id: B, png: fakePng(480, 320, { seed: 2, busy: true }), sourceKind: "approved_real" },
-  { id: C, png: fakePng(400, 400, { seed: 3 }), sourceKind: "generated_concept" },
+  { id: C, png: fakePng(400, 400, { seed: 3 }), sourceKind: "approved_real" },
 ];
 const MARKERS = { store: "STOREMARKER", job: "job-secret-7", consent: "consent-secret-777", approver: "approver-x9" };
 const manifestFor = (assets: FakeAsset[], jobId = MARKERS.job) => {

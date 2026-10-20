@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SandboxError } from "@/lib/design-agent/sandbox";
 import { estimateRuntime, pocPreflight } from "@/lib/design-agent/worker/poc";
 import { passthroughSandbox } from "../../support/passthrough-sandbox";
-import { fakePng, writeStore, type FakeAsset } from "./photo-fixtures";
+import { fakePng, legacyGeneratedConceptManifest, writeStore, type FakeAsset } from "./photo-fixtures";
 import { fakeCodex, makeLayout } from "./worker-support";
 
 // DEV-029 stage 5: the photo PoC's preflight and its runtime estimate. The
@@ -14,9 +14,9 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const A = "asset-aaaaaaaaaaaaaaaaaaaaaaaa";
 const B = "asset-bbbbbbbbbbbbbbbbbbbbbbbb";
-const concept: FakeAsset[] = [{ id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "generated_concept" }];
+const approved: FakeAsset[] = [{ id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "approved_real" }];
 
-function setup(assets: FakeAsset[] | null, login: "chatgpt" | "apikey" | "none" = "chatgpt") {
+function setup(assets: FakeAsset[] | null, login: "chatgpt" | "apikey" | "none" = "chatgpt", manifest?: unknown) {
   const l = makeLayout();
   const env = { PATH: process.env.PATH, HOME: l.root, CODEX_HOME: join(l.root, "codex-home"), TMPDIR: l.tmp };
   const store = join(l.root, ".local", "share", "second-root-design-assets");
@@ -29,14 +29,14 @@ function setup(assets: FakeAsset[] | null, login: "chatgpt" | "apikey" | "none" 
     repoDir: process.cwd(),
     prepareSandbox: prepare ?? (async () => passthroughSandbox(bin, env)),
   });
-  return { l, store, options, ready: assets ? writeStore(store, "poc-photo-1", assets) : Promise.resolve() };
+  return { l, store, options, ready: assets ? writeStore(store, "poc-photo-1", assets, ...(manifest ? [manifest] : [])) : Promise.resolve() };
 }
 
 const codes = (r: { checks: Array<{ check: string; ok: boolean; code?: string }> }) => Object.fromEntries(r.checks.map((c) => [c.check, c.ok ? "ok" : c.code]));
 
 describe("poc preflight", () => {
-  it("is ready for an unused job with verified generated_concept photos, a sandbox and a ChatGPT sign-in", async () => {
-    const s = setup(concept);
+  it("is ready for an unused job with verified approved_real photos allowed for the local preview, a sandbox and a ChatGPT sign-in", async () => {
+    const s = setup(approved);
     await s.ready;
     const r = await pocPreflight(s.options("poc-photo-1"));
     expect(codes(r)).toEqual({
@@ -45,7 +45,7 @@ describe("poc preflight", () => {
       asset_store_safe: "ok",
       manifest: "ok",
       photos_verified: "ok",
-      generated_concept_only: "ok",
+      approved_for_local_preview: "ok",
       no_people: "ok",
       sandbox_store_hidden: "ok",
       codex_chatgpt_sign_in: "ok",
@@ -56,7 +56,7 @@ describe("poc preflight", () => {
   });
 
   it("refuses a job id already queued or run (no second run of the same job)", async () => {
-    const s = setup(concept);
+    const s = setup(approved);
     await s.ready;
     for (const dir of ["inbox", "done"]) {
       mkdirSync(join(s.l.queue, dir), { recursive: true });
@@ -65,31 +65,39 @@ describe("poc preflight", () => {
       expect(r.ready).toBe(false);
       expect(codes(r).job_id_unused).toMatch(/^JOB_ALREADY_/);
     }
-    const busy = setup(concept);
+    const busy = setup(approved);
     await busy.ready;
     mkdirSync(join(busy.l.queue, "inbox"), { recursive: true });
     writeFileSync(join(busy.l.queue, "inbox", "shop-001.json"), "{}");
     expect(codes(await pocPreflight(busy.options("poc-photo-1"))).queue_idle).toBe("OTHER_JOBS_WAITING");
-    const t = setup(concept);
+    const t = setup(approved);
     await t.ready;
     mkdirSync(join(t.l.out, "poc-photo-1"), { recursive: true });
     expect(codes(await pocPreflight(t.options("poc-photo-1"))).job_id_unused).toBe("JOB_ALREADY_RESULTS");
   });
 
-  it("is not ready without a manifest, with a changed photo, with an approved photo, without the sandbox or the sign-in", async () => {
+  it("is not ready without a manifest, with a changed photo, a photo without local preview consent, a leftover generated_concept manifest, without the sandbox or the sign-in", async () => {
     const none = setup(null);
     expect(codes(await pocPreflight(none.options("poc-photo-1"))).manifest).toBe("NO_PHOTOS");
 
-    const changed = setup(concept);
+    const changed = setup(approved);
     await changed.ready;
     writeFileSync(join(changed.store, "poc-photo-1", `${A}.png`), fakePng(360, 450, { seed: 7 }));
     expect(codes(await pocPreflight(changed.options("poc-photo-1"))).photos_verified).toBe("PHOTO_INPUT_REJECTED");
 
-    const real = setup([...concept, { id: B, png: fakePng(480, 320, { seed: 2 }), sourceKind: "approved_real" }]);
-    await real.ready;
-    expect(codes(await pocPreflight(real.options("poc-photo-1"))).generated_concept_only).toBe("NOT_GENERATED_CONCEPT");
+    // DEV-070: every photo needs consent covering the local preview
+    const publicOnly = setup([...approved, { id: B, png: fakePng(480, 320, { seed: 2 }), sourceKind: "approved_real", scopes: ["public_demo"] }]);
+    await publicOnly.ready;
+    expect(codes(await pocPreflight(publicOnly.options("poc-photo-1")))).toMatchObject({ photos_verified: "PHOTO_INPUT_REJECTED", approved_for_local_preview: "NOT_APPROVED_FOR_LOCAL_PREVIEW" });
 
-    const leak = setup(concept);
+    // DEV-070: a manifest left from a generated_concept PoC is not a manifest any more
+    const legacy = setup(approved, "chatgpt", legacyGeneratedConceptManifest("poc-photo-1", approved));
+    await legacy.ready;
+    const lr = await pocPreflight(legacy.options("poc-photo-1"));
+    expect(lr).toMatchObject({ ready: false, photos: 0 });
+    expect(codes(lr).manifest).toBe("MANIFEST_INVALID");
+
+    const leak = setup(approved);
     await leak.ready;
     const r = await pocPreflight(
       leak.options("poc-photo-1", async () => {
@@ -100,7 +108,7 @@ describe("poc preflight", () => {
     expect(r.checks.some((c) => c.check === "codex_chatgpt_sign_in")).toBe(false);
 
     for (const login of ["none", "apikey"] as const) {
-      const s = setup(concept, login);
+      const s = setup(approved, login);
       await s.ready;
       expect(codes(await pocPreflight(s.options("poc-photo-1"))).codex_chatgpt_sign_in).toBe(login === "none" ? "CODEX_NOT_SIGNED_IN" : "CODEX_API_KEY_AUTH");
     }

@@ -38,6 +38,7 @@ export type IntakeCode =
   | "COUNT"
   | "DUPLICATE"
   | "PEOPLE_NOT_CONFIRMED"
+  | "SOURCE_KIND"
   | "CONSENT"
   | "MANIFEST_INVALID";
 
@@ -47,9 +48,8 @@ export class IntakeError extends Error {
   }
 }
 
-export type IntakeSource =
-  | { sourceKind: "generated_concept"; createdBy: string; createdAt: string }
-  | { sourceKind: "approved_real"; consentId: string; approvedBy: string; approvedAt: string; scopes: ConsentScope[] };
+/** approved_real only (DEV-070): a photo the shop provided or allowed, with the person's consent record. */
+export type IntakeSource = { sourceKind: "approved_real"; consentId: string; approvedBy: string; approvedAt: string; scopes: ConsentScope[] };
 
 /** Decodes an image and draws it again as a PNG no larger than MAX_SIDE. */
 export type Normalizer = (bytes: Buffer, mime: string) => Promise<{ png: Buffer; width: number; height: number }>;
@@ -188,7 +188,9 @@ export type IntakeOptions = {
 export async function intakeAsset(o: IntakeOptions): Promise<{ assetId: PublicAssetId; manifest: AssetManifest }> {
   if (!JOB_ID.test(o.jobId)) throw new IntakeError("JOB_ID");
   if (!o.peopleConfirmedNone) throw new IntakeError("PEOPLE_NOT_CONFIRMED");
-  if (o.source.sourceKind === "approved_real" && o.source.scopes.length === 0) throw new IntakeError("CONSENT");
+  // Checked at run time too: a caller outside TypeScript (or an old script) may still pass another kind.
+  if ((o.source as { sourceKind?: unknown }).sourceKind !== "approved_real") throw new IntakeError("SOURCE_KIND");
+  if (!Array.isArray(o.source.scopes) || o.source.scopes.length === 0) throw new IntakeError("CONSENT");
   if (!checkStoreRoot(o.storeRoot, { repoDir: o.repoDir, env: o.env })) throw new IntakeError("STORE_UNSAFE");
 
   const { bytes, mime } = await readSource(o.file, o.env);
@@ -213,19 +215,20 @@ export async function intakeAsset(o: IntakeOptions): Promise<{ assetId: PublicAs
   const assetId = toPublicAssetId(`asset-${randomBytes(12).toString("hex")}`)!;
   const at = (o.now ?? new Date()).toISOString();
   const common = { assetId, file: `${assetId}.png`, sha256, width, height, bytes: png.length, intakeAt: at, people: "none" as const };
-  const record: AssetRecord =
-    o.source.sourceKind === "generated_concept"
-      ? { ...common, sourceKind: "generated_concept", generation: { method: "human_upload", createdBy: o.source.createdBy, createdAt: o.source.createdAt } }
-      : { ...common, sourceKind: "approved_real", consent: { consentId: o.source.consentId, approvedBy: o.source.approvedBy, approvedAt: o.source.approvedAt, scopes: o.source.scopes } };
+  const record: AssetRecord = { ...common, sourceKind: "approved_real", consent: { consentId: o.source.consentId, approvedBy: o.source.approvedBy, approvedAt: o.source.approvedAt, scopes: o.source.scopes } };
   const next = AssetManifestSchema.safeParse({ ...manifest, assets: [...manifest.assets, record] });
-  if (!next.success) throw new IntakeError(o.source.sourceKind === "approved_real" ? "CONSENT" : "MANIFEST_INVALID");
+  if (!next.success) throw new IntakeError("CONSENT");
 
   await writeAtomic(join(dir, record.file), png);
   await writeAtomic(join(dir, MANIFEST), `${JSON.stringify(next.data, null, 2)}\n`);
   return { assetId, manifest: next.data };
 }
 
-/** Reads a job's manifest from the store (null when there is none or it is invalid). */
+/**
+ * Reads a job's manifest from the store (null when there is none or it is invalid).
+ * A manifest left from before DEV-070 that still lists a generated_concept photo is
+ * invalid: null, so the job has no photos and the page is drawn without them.
+ */
 export async function loadManifest(storeRoot: string, jobId: string): Promise<AssetManifest | null> {
   if (!JOB_ID.test(jobId)) return null;
   return readManifest(join(storeRoot, jobId), jobId).catch(() => null);

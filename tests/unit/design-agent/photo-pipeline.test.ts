@@ -32,9 +32,9 @@ const A = "asset-aaaaaaaaaaaaaaaaaaaaaaaa";
 const B = "asset-bbbbbbbbbbbbbbbbbbbbbbbb";
 const C = "asset-cccccccccccccccccccccccc";
 const ASSETS: FakeAsset[] = [
-  { id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "generated_concept" },
+  { id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "approved_real" },
   { id: B, png: fakePng(480, 320, { seed: 2 }), sourceKind: "approved_real" },
-  { id: C, png: fakePng(400, 400, { seed: 3 }), sourceKind: "generated_concept" },
+  { id: C, png: fakePng(400, 400, { seed: 3 }), sourceKind: "approved_real" },
 ];
 const RUN = "job-photo-1";
 const manifestOf = (n = 3, jobId = RUN) => fakeManifest(jobId, ASSETS.slice(0, n));
@@ -140,23 +140,25 @@ describe("render check: the page shows exactly what the direction says", () => {
     (["desktop", "mobile"] as const).flatMap((device) => [
       ...(d.hero ? [{ assetId: d.hero.assetId, role: "hero" as const }] : []),
       ...d.features.map((f) => ({ assetId: f.assetId, role: f.slot })),
-    ].map((p) => over({ ...p, device, visible: true, labelled: manifest.assets.find((a) => a.assetId === p.assetId)?.sourceKind === "generated_concept", overlapsText: false })));
+    ].map((p) => over({ ...p, device, visible: true, overlapsText: false })));
 
   it("accepts the directed photos in their places on both devices", () => {
     expect(checkRenderedPhotos(direction(), manifest, placedFor(direction()))).toEqual([]);
   });
 
-  it("refuses a missing, extra, misplaced, hidden, unlabelled or text-covering photo, or one device missing", () => {
+  it("refuses a missing, extra, misplaced, hidden or text-covering photo, or one device missing", () => {
     const d = direction();
     const all = placedFor(d);
     expect(checkRenderedPhotos(d, manifest, all.slice(1))).not.toEqual([]);
     expect(checkRenderedPhotos(d, manifest, [...all, { ...all[0], role: "about" }])).not.toEqual([]);
     expect(checkRenderedPhotos(d, manifest, placedFor(d, (p) => (p.role === "visit" ? { ...p, role: "about" } : p)))).not.toEqual([]);
     expect(checkRenderedPhotos(d, manifest, placedFor(d, (p) => (p.device === "mobile" && p.role === "hero" ? { ...p, visible: false } : p)))).not.toEqual([]);
-    expect(checkRenderedPhotos(d, manifest, placedFor(d, (p) => ({ ...p, labelled: false })))).not.toEqual([]);
     expect(checkRenderedPhotos(d, manifest, placedFor(d, (p) => (p.role === "hero" ? { ...p, overlapsText: true } : p)))).not.toEqual([]);
     expect(checkRenderedPhotos(d, manifest, all.filter((p) => p.device === "desktop"))).not.toEqual([]);
     expect(checkRenderedPhotos(d, manifest, [...all, { ...all[0], assetId: "asset-dddddddddddddddddddddddd" }])).not.toEqual([]);
+    // a photo whose consent does not cover the local preview
+    const publicOnly = fakeManifest(RUN, ASSETS.map((a, i) => (i === 0 ? { ...a, scopes: ["public_demo" as const] } : a)));
+    expect(checkRenderedPhotos(d, publicOnly, all)).toContain(`desktop: ${all[0].assetId} is not allowed`);
   });
 });
 
@@ -211,7 +213,6 @@ function harness(answers: { codex?: Answer[]; photo?: Answer[] }, opts: { placed
                   ...p,
                   device,
                   visible: true,
-                  labelled: manifest.assets.find((a) => a.assetId === p.assetId)?.sourceKind === "generated_concept",
                   overlapsText: false,
                 }))
               : [],

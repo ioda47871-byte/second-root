@@ -41,9 +41,9 @@ const A = "asset-aaaaaaaaaaaaaaaaaaaaaaaa";
 const B = "asset-bbbbbbbbbbbbbbbbbbbbbbbb";
 const C = "asset-cccccccccccccccccccccccc";
 const ASSETS: FakeAsset[] = [
-  { id: A, png: fakePng(720, 900, { seed: 11 }), sourceKind: "generated_concept" },
-  { id: B, png: fakePng(960, 640, { seed: 12 }), sourceKind: "generated_concept" },
-  { id: C, png: fakePng(800, 800, { seed: 13 }), sourceKind: "generated_concept" },
+  { id: A, png: fakePng(720, 900, { seed: 11 }), sourceKind: "approved_real" },
+  { id: B, png: fakePng(960, 640, { seed: 12 }), sourceKind: "approved_real" },
+  { id: C, png: fakePng(800, 800, { seed: 13 }), sourceKind: "approved_real" },
 ];
 const ANALYSES = [fakeAnalysis(A, { orientation: "portrait" }), fakeAnalysis(B, { orientation: "landscape", suitability: { hero: 3, feature: 5 } }), fakeAnalysis(C, { orientation: "square" })];
 const place = (assetId: string, over: Record<string, unknown> = {}) => ({ assetId, fit: "cover", focal: { x: 0.5, y: 0.45 }, mobileFocal: { x: 0.5, y: 0.45 }, aspect: { desktop: "4:5", mobile: "4:5" }, treatment: "natural", ...over });

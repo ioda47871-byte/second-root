@@ -27,8 +27,8 @@ const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 
 /**
  * One photo (DEV-029). Its area is a grid cell of its own: no page text is ever
- * drawn over it. A generated image always carries the fixed "イメージ画像"
- * label, drawn here and not switchable by the profile or the direction.
+ * drawn over it, and nothing is drawn on the photo. Only approved_real photos
+ * exist (DEV-070 removed generated images and their label).
  */
 export function PhotoFigure({ photo, className, role, side }: { photo: RenderPhoto; className: string; role: "hero" | RenderFeature["slot"]; side?: RenderFeature["side"] }) {
   const style = {
@@ -44,11 +44,6 @@ export function PhotoFigure({ photo, className, role, side }: { photo: RenderPho
       {/* A local preview route: no image optimisation, no remote loader. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img className={styles.photoImg} src={photo.src} alt="" width={photo.width} height={photo.height} loading="eager" decoding="sync" />
-      {photo.sourceKind === "generated_concept" && (
-        <span className={styles.imageLabel} data-image-label="">
-          イメージ画像
-        </span>
-      )}
     </figure>
   );
 }

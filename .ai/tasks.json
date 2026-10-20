@@ -1372,7 +1372,8 @@
       ],
       "attempts": 0,
       "last_failure": "段階 1〜5 と実機 PoC を完了し、受入条件を満たした（2026-10-09 completion review: .ai/reviews/DEV-029.md）。実機 PoC は poc-photo-001 / 003 / 004（mobile の About 写真が未描画で BLOCKED → decode を修正）/ 005（同じ 3 枚の AI 生成概念画像で accept・done）。2026-10-09 人の指示で、DEV-028（PR #43、640c9e7）の merge 後に develop を取り込み（conflict なし。公開 /demo の CSS・DemoFrame は develop と同一）、base を develop に変えて PR #46 を merge。未検証: approved_real の実機確認。",
-      "branch": "feature/dev-029-photo-art-direction"
+      "branch": "feature/dev-029-photo-art-direction",
+      "superseded_note": "2026-10-20 人の決定（正式承認）により DEV-070 で generated_concept（人が入れた「イメージ画像」）・「イメージ画像」ラベル・その render check を削除した。写真の source は approved_real だけ。上の acceptance_criteria の generated_concept の項は履歴として残す"
     },
     {
       "id": "DEV-030",
@@ -3081,6 +3082,52 @@
         "次の controlled run"
       ],
       "decision": "2026-10-20: 人の指示で Claude が追加。WSL: build は .next/cache（git clean は -x なしなので残る）が温まっていれば font を再取得しない（2026-10-20 に proxy なしの再 build で確認）。Fresh Review FAIL（Medium 1: 住所の weight 上限 600 が 400/900 の書体で Black になる）→ 対応: editorial_serif の住所はサイトの明朝（400/600）、Shippori Mincho B1 は 400 でサイトの Shippori Mincho とほぼ同じ字形のため外し mincho はサイトの書体に。静的 font は 19MB → 30MB（初回取得と build 出力の増分は約 11MB）、demo 系 3 route の font CSS は 3 書体で約 150KB gzip（unicode-range の宣言。字形ファイルは頁で使う範囲だけ）。後続: 静的書体では light=regular・bold=black に見え、Playfair は 400 未満が無いので editorial_serif の和文名の light↔regular は描かれない（DEV-066 の見える判定は見える扱い）。再レビュー PASS（Nit 2 → 対応: CSS の注記と語彙の和文の説明）"
+    },
+    {
+      "id": "DEV-070",
+      "title": "generated_concept（イメージ画像）の経路を削除し、写真は approved_real だけにする",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-029"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-070-remove-generated-concept",
+      "purpose": "人の決定（2026-10-20、正式承認。.ai/proposals/design-agent-direction-2026-10-20.md §8.4）: generated_concept が使われていない・依存が無いことを確かめて画像生成経路を削除する。AI 生成の架空の店舗写真は使わない。Instagram 画像は取得・分析とサイトへの再掲載を区別し、利用許可なしに公開しない",
+      "acceptance_criteria": [
+        "未使用・依存なしの確認を .ai/reviews/DEV-070.md「確認」に記録（公開 route・DB / migration・Vercel 側・画像生成のコード）",
+        "SOURCE_KINDS は approved_real だけ。intake は他の source kind を SOURCE_KIND で拒否し、asset CLI も generated_concept を受け付けない",
+        "「イメージ画像」ラベル（renderer・CSS）と render check の label 判定を削除。他の写真の検査（配置・可視・同意・文字との重なり）は残す",
+        "generated_concept を含む古い manifest は読み込みで無効（null）になり、写真なしの既存の表示になる。worker は失敗しない（test）",
+        "写真 PoC（poc.ts・photo-poc.sh）は approved_real かつ同意が local_preview を含む写真だけを受け付け、流すには写真ごとの人の明示的な承認が要ると script と docs に書く",
+        "Instagram の規則（取得・分析は可、利用許可なしの再掲載・表示はしない、reference screenshot から asset への経路は無い）を MVP_SPEC §7・SECURITY §6・提案書に記録"
+      ],
+      "required_tests": [
+        "unit: assets.test.ts（source kind の拒否・古い manifest）・photos.test.tsx（ラベルなし・古い manifest で写真なし・asset route 404）・photo-poc.test.ts（approved_for_local_preview・古い manifest）・photo-worker.test.ts（古い manifest の job が写真なしで done）",
+        "既存の写真の test（fixture を approved_real + 同意の記録に置き換え、検査の内容は保つ）",
+        "eslint・tsc・npm run build・tests/unit/ai-tasks*",
+        "CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "components/demo/profile/",
+        "scripts/sales-design-assets/",
+        "scripts/sales-design-worker/photo-poc.sh",
+        "tests/",
+        "docs/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Staging / Production / DB / flag / Vercel / WSL の操作",
+        "公開 demo に写真を出すこと（PUBLIC_DEMO_ASSETS_ENABLED は false のまま）",
+        "WSL に残った PoC の asset の削除（人の任意の操作）"
+      ],
+      "human_approval_triggers": [
+        "写真 PoC の実行（使う写真ごとの承認）",
+        "WSL の古い generated_concept asset の削除（任意）"
+      ],
+      "decision": "2026-10-20: 人の決定（§8.4）で Claude が追加。generated_concept は local preview だけで、公開 route・DB・Vercel 側からの依存は無かった（.ai/reviews/DEV-070.md）。Fresh Review PASS（Low 3・Nit 5 → Low 1・2・Nit 3 を対応、PR #84）"
     },
     {
       "id": "DEV-071",
