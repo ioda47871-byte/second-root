@@ -2962,7 +2962,7 @@
     {
       "id": "DEV-069",
       "title": "参考画像（privacy 処理済み）の色を測り、hex と割合だけを brief / review に渡す",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-066"
@@ -2996,7 +2996,7 @@
       "human_approval_triggers": [
         "次の controlled run"
       ],
-      "decision": "2026-10-20: 人の指示で Claude が追加"
+      "decision": "2026-10-20: 人の指示で Claude が追加; 2026-10-20: PR #81 merge（2a952fe）。Fresh Review FAIL（Medium 2: Instagram の UI 色の除外が website と投稿の色も消す・空の一覧の文言）→ 対応（kind 別の除外・colourfulShare による文言・明暗の中立色の割合・photo review にも）→ 再レビュー PASS。CI 39423213361 success"
     }
   ]
 }
