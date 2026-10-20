@@ -116,7 +116,10 @@ describe("render check: guard-passing stylesheets that break facts fail (DEV-072
     const r = await checkShopCssRender({ browser, build: pageBuilder(SHOP, AMERICAN_EDITORIAL), css, facts: demoFacts(SHOP), exhaustive: true });
     expect(r.widths).toEqual(expect.arrayContaining([320, 360, 390, 399, 400, 401, 768, 1024, 1399, 1400, 1401, 1440, 1920]));
     const failing = new Set(r.problems.filter((p) => p.endsWith(":fact_contrast")).map((p) => Number(p.split(":")[0])));
-    expect([...failing].sort((a, b) => a - b)).toEqual([400, 401, 768, 1024, 1399, 1400]);
+    // every checked width inside the band fails, including the page's own container-switch widths (DEV-072 after DEV-071b)
+    const inBand = r.widths.filter((w) => w >= 400 && w <= 1400);
+    expect(inBand).toEqual(expect.arrayContaining([400, 401, 768, 1024, 1399, 1400]));
+    expect([...failing].sort((a, b) => a - b)).toEqual(inBand);
   });
 
   it("is a second line of defence: CSS that reached the notice bar (a guard bypass, simulated) fails", async () => {
