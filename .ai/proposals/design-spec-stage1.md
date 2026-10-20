@@ -137,3 +137,31 @@ adjustments を report に記録（Codex の言葉は残さない規則のまま
 店舗間の構造・見た目の違い（DOM の節の順・variant の違い、画素の差）/ 実画面（next build + start の screenshot）/
 品質審査（実走は人の承認ごと。local の比較は審査の prompt を使わず目視と機械検査）/ 生成時間とモデルの費用（prompt の長さ、
 Codex の呼び出し回数は変わらない）/ 安全性と運用の安定（DB migration なし、保存済み profile の互換、注記の検査）
+
+## 10. DEV-071a の実装メモ（設計からの調整と理由、2026-10-20）
+
+- **Section の schema は `z.union`**（discriminated union にしない）: zod の discriminated union は JSON Schema の `oneOf` を出し、
+  Codex の structured output は `anyOf` だけを受ける。kind は literal なので一致する枝は 1 つ（test で `oneOf` が無いことを確認）
+- **Codex への schema は 071b まで layout なし**: `DesignProfileCoreSchema`（layout なし）から `designProfileJsonSchema()` と
+  review の `revised_profile` を作る（snapshot 不変）。保存・読込（`DesignProfileSchema`・`checkProfile`・bridge の schema）は任意の
+  layout を受ける。`visibleChanges` の網羅 test は Core に限定（071b で layout を足す）
+- **hours と visit**: hours 節が無いときは visit が営業時間・定休日を出す（今の頁と同じ）。だから DEFAULT_LAYOUT に hours 節を
+  `added` しない。「事実を出す節が無いときだけ足す」。hours 節があり visit に他の事実が無ければ visit は `dropped:visit`
+- **adjustment の符号**: `dropped:<kind>`・`added:<kind>`・`first_view:<value>`・`about_in_first_view` に加え、重複は
+  `duplicate:<kind>`。名前しかない店では normalize 後の sections は空（今と同じく節なし）
+- **vertical_name は和文だけの店名**（「和文を含む」より厳しく）: 英字・数字・空白の混じる店名は縦書きにしない（横倒しになるため）。
+  12 字以下。phone は横書き
+- **name_hours は営業時間だけ**を hero に（定休日は節に）。name_menu は最初の 3 品（語は足さない）
+- **互換**: `layout` 無しの profile は layout の data 属性も class も出さず、今の markup と byte 単位で同じ（8 店 × 4 profile ×
+  写真 3 種の hash を 3b1c2fb の renderer から固定）。`layout: DEFAULT_LAYOUT` は同じ markup に layout の属性と
+  sections.module.css の class が加わるだけ（test で除いて一致を確認）。en_ja の About は今と同じく英字だけ
+- **写真**: about / visit の slot は節が描かれるときだけ。`sectionsPresent`（photo の direction の選択）は事実から決めたまま →
+  071b で normalize した layout から決める（name_lead で about の写真を選ばないように）
+- **CSS**: profile.module.css は変えない。sections.module.css の selector は class の重ねで specificity を上げ、読み込み順に依存しない。
+  direction は線の種類・太さ・角の丸み（変数）で新しい variant に効き、見出しの処理は既存の `.heading` に乗る。
+  DEV-067（PR #80）を一時的に merge した tree で、10 の direction すべてについて Chromium の検査（overflow・文字の切れ・
+  事実・注記・band の contrast・縦書き）が通ることを確認（merge は commit していない）。boutique_minimal は節の
+  `--p-primary` を text にするので、inverted の band の地は text の色になる（text on background の保証された組のまま）
+- **未対応（後続）**: alignment=center（DEV-067）の中央揃えは既存の class だけが対象で、新しい variant（chips・cards など）は左揃えのまま
+- **Test の書体**: この container の既定の和文書体（WenQuanYi）は縦書きの metrics を持たず字が重なる。Chromium の test は IPA の書体を
+  `--font-body` / `--font-display` に入れる（実際の頁は next/font の和文書体で、`next build` + `start` の実画面で縦書きを確認）
