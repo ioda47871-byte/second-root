@@ -35,7 +35,9 @@
   - 残りの承認: (R) 予行（one-shot の scheduled task 1 つ、新しい session が develop で `status` を実行し `.ai/progress.md` に 1 行 push。Vercel・DB は書かない）→ (W) window（復旧 task の作成・`on --until`（開始 + 150 分）・push・verify・終了時の `off`・push・verify・task の削除）→ (C) 人が WSL で `cycle.sh --dry-run` → `cycle.sh` を 1 回（期限まで 80 分以上あるときだけ）
   - 開始前チェック: 予行が通った / `status` が flag false・production branch main / `staging:bypass-status` が auth on・bridge_secret present / Sales Agent の scheduled task 2 つが無効 / demo が pending・attempts 1・queue_open 1（人の read-only） / 人が window の 2.5 時間 WSL にいられる
   - 復旧: 上の「復旧」と同じ。flag は window の終わりに必ず `false`（`design-flag-window.md` §5）
-  - 予行 R の結果（2026-10-20）: 新しい session の起動・checkout・Vercel の読み取りは成功、**develop への push は 403**（scheduled task の session に repo の sources が付かない）。復旧 session の手順の見直しが要る（人の判断待ち）: (a) 推奨: 復旧は Vercel の API だけ（`off --if-until` と `status`）で行い、redeploy の push はしない（期限の後は app が無効、flag の record も false。次の push で deployment も false になる）。文書の小さな修正 PR と、書かない予行の再実行 / (b) 人が claude.ai の routine の画面で repo を sources に付けた one-shot を作る / (c) この session に向けた scheduled task（この session が残っている前提）
+  - 予行 R の結果（2026-10-20）: 新しい session の起動・checkout・Vercel の読み取りは成功、develop への push は 403（scheduled task の session に repo が付かない）→ DEV-065（e59121d）で復旧 session を Vercel の API だけ（`off --if-until` + `status`、push なし）に変更
+  - DEV-065 の書き込み確認（2026-10-20、人の承認 1 回）: 独立 session（`trig_0158TxdeGYFqU9Fj2CwDNGxX` → `cse_01FYXGAaGhMLhpV2oXy4TGrg`、`run_once_fired`・`enabled: false`）が `write-check --id rMGvxH8aHWZZC5Z5` を 1 回 → `WRITE_CHECK_OK`（false の上に false、他の env・Production・Authentication は不変）。その後 Claude が develop に記録を push し `verify --expect off`
+  - **残りの承認**: (W) window を開く（`design-flag-window.md` §3・§7: 復旧 task の作成・`on --until <T+150 分>`・push・`VERIFIED_ON` → cycle の後に `off`・push・`VERIFIED_OFF`・task の削除）/ (C) 人が WSL で事前確認（§7）→ `cycle.sh` を 1 回。demo efb4bdb2 は pending のまま（再 reset しない）。DB の読み取りは人の側（HUMAN-015）
 
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: **PR #29 を main へ merge 済み（2026-09-28、b14aab7。人間の明示承認に基づき Claude が実行）**。残りは merge 後の人間の作業。

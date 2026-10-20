@@ -2876,7 +2876,7 @@
     {
       "id": "DEV-065",
       "title": "独立した復旧 session を Vercel の API だけ（push なし）にし、書き込み権限の確認（false の上に false を 1 回）を足す",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-064"
@@ -2915,7 +2915,7 @@
         "window（W）",
         "cycle（C）"
       ],
-      "decision": "2026-10-20: 人の指示で Claude が追加"
+      "decision": "2026-10-20: 人の指示で Claude が追加; 2026-10-20: PR #78 merge（e59121d）。Fresh Review PASS（Medium 1・Low 4・Nit 3 → すべて対応 → 再レビュー PASS）。CI 39388403968 success（人が独立確認）。write-check を独立 session（trig_0158TxdeGYFqU9Fj2CwDNGxX → cse_01FYXGAaGhMLhpV2oXy4TGrg、run_once_fired）から 1 回: WRITE_CHECK_OK、flag は false のまま"
     }
   ]
 }
