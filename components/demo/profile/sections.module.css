@@ -1,0 +1,499 @@
+/* Stage 1 (DEV-071a): the Design Spec's sections — variants, grounds, the type
+   scale, the heading styles and the first view. Drawn only for a profile with
+   a layout (the layout's classes and data attributes are absent otherwise, so
+   the page before Stage 1 is unchanged). Colours come from the profile's
+   tokens; no text (content is "" only), no images, no animation.
+
+   Specificity: these rules must win over profile.module.css's own rules for
+   the same elements (e.g. `.canvas[data-grid] .section`, (0,3,0)), whatever
+   the order the two files load in, so repeated classes (`.sec.sec.sec`) lift
+   them. Direction presets (data-direction) keep their texture: headings keep
+   their treatment, and the new variants read the line style and corner radius
+   each direction sets below. */
+
+.sec {
+  --k: 1;
+  --k-body: 1;
+  --h-base: clamp(2.2rem, 8vw, 3.6rem);
+  --line-style: solid;
+  --line-width: 1px;
+  --chip-radius: 999px;
+  --card-radius: 0px;
+  --soft-line: color-mix(in srgb, var(--p-primary) 30%, transparent);
+}
+
+/* ---------- direction texture for the new variants ---------- */
+
+[data-direction="american_editorial"] .sec { --line-width: 2px; --chip-radius: 0px; }
+[data-direction="editorial_luxury"] .sec { --chip-radius: 0px; }
+[data-direction="french_classic"] .sec { --line-style: double; --line-width: 3px; --chip-radius: 0px; }
+[data-direction="nordic_minimal"] .sec { --soft-line: color-mix(in srgb, var(--p-primary) 14%, transparent); }
+[data-direction="japanese_modern"] .sec { --chip-radius: 0px; }
+[data-direction="kissaten_retro"] .sec { --line-style: double; --line-width: 4px; --chip-radius: 12px; --card-radius: 12px; }
+[data-direction="gallery_mono"] .sec { --line-width: 2px; --chip-radius: 0px; }
+[data-direction="craft_paper"] .sec { --line-style: dashed; --chip-radius: 6px; --card-radius: 6px; }
+[data-direction="pop_bakeshop"] .sec { --line-width: 2px; --card-radius: 18px; }
+
+/* ---------- type scale: the heading-to-body ratio ---------- */
+
+[data-scale="quiet"] .sec { --k: 0.72; --k-body: 0.94; }
+[data-scale="dramatic"] .sec { --k: 1.38; --k-body: 1.1; }
+
+.sec.sec .h.h {
+  font-size: calc(var(--heading-size, var(--h-base)) * var(--k));
+  overflow-wrap: anywhere;
+}
+.sec.sec .leadText { font-size: calc(clamp(1.1rem, 3.4vw, 1.6rem) * var(--k-body)); }
+
+@media (max-width: 719.98px) {
+  [data-spacing="tight"] .sec { --h-base: clamp(1.75rem, 7vw, 2.6rem); }
+}
+@media (min-width: 720px) {
+  /* a heading in the grid's narrow column keeps that column's size */
+  [data-grid="editorial_12"] .sec.sec .h.h,
+  [data-grid="asymmetric_7_5"] .sec.sec .h.h { font-size: calc(2.6rem * var(--k)); }
+}
+
+/* ---------- heading styles ---------- */
+
+/* ja_en / ja_only / vertical_ja: the Japanese word leads (a direction's
+   first-child treatment, such as a badge, lands on it); ja_en adds the English
+   word small. Sizes only: each direction keeps its colours. */
+[data-headings] h2.h.h > span.ja.ja { font-size: 1em; letter-spacing: 0.06em; line-height: 1.15; }
+[data-headings] h2.h.h > span.en.en {
+  font-size: max(0.75rem, 0.3em);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--p-secondary);
+}
+
+/* ---------- grounds ---------- */
+
+/* surface and inverted are bands across the page (the shadow widens the
+   section's own background to the edges; the clip keeps it to its height and
+   it adds no sideways scroll). Inside a band every colour is one of a pair the
+   contrast rules guarantee: surface — text on surface; inverted — background
+   on primary. The band's words, rules and marks all take its ink. */
+/* The palette as the profile sets it, taken on main (a direction may re-map the
+   tokens on its sections, e.g. boutique_minimal sets their primary to the text colour). */
+.main {
+  --g-surface: var(--p-surface);
+  --g-text: var(--p-text);
+  --g-primary: var(--p-primary);
+  --g-background: var(--p-bg);
+}
+.sec[data-ground="surface"] { --g-bg: var(--g-surface, var(--p-surface)); --g-fg: var(--g-text, var(--p-text)); }
+.sec[data-ground="inverted"] { --g-bg: var(--g-primary, var(--p-primary)); --g-fg: var(--g-background, var(--p-bg)); }
+
+.sec.sec.sec[data-ground="surface"],
+.sec.sec.sec[data-ground="inverted"] {
+  padding-top: calc(var(--gap) * 0.75);
+  padding-bottom: calc(var(--gap) * 0.75);
+  background: var(--g-bg);
+  color: var(--g-fg);
+  box-shadow: 0 0 0 100vmax var(--g-bg);
+  clip-path: inset(0 -100vmax);
+}
+/* A band starts at its own edge: no divider line across its top (the line would be
+   content-wide on a full-width ground). */
+.sec.sec.sec.sec[data-ground="surface"],
+.sec.sec.sec.sec[data-ground="inverted"] { border-top-color: transparent; }
+
+/* Panel directions (boutique_minimal: every section is a narrow panel) keep bands in
+   the panel column: a band is a panel of its own ground, not a full-width strip. */
+[data-direction="boutique_minimal"] .sec.sec.sec[data-ground="surface"],
+[data-direction="boutique_minimal"] .sec.sec.sec[data-ground="inverted"] { box-shadow: none; clip-path: none; }
+
+/* A band that ends the page meets the footer: no strip of the page ground between
+   them (panel directions keep their space). Where an inverted band meets the
+   footer (both dark), a hairline in the footer marks the end of the page. */
+[data-direction]:not([data-direction="boutique_minimal"]) > main.main:has(> .sec:last-child:is([data-ground="surface"], [data-ground="inverted"])) { padding-bottom: 0; }
+div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-ground="inverted"]) + footer {
+  border-top: 1px solid color-mix(in srgb, var(--footer-ink) 40%, transparent);
+}
+
+.sec[data-ground="surface"] > *,
+.sec[data-ground="inverted"] > * {
+  --p-bg: var(--g-bg);
+  --p-surface: var(--g-bg);
+  --p-text: var(--g-fg);
+  --p-primary: var(--g-fg);
+  --p-secondary: var(--g-fg);
+  --p-accent: var(--g-fg);
+  --panel-line: var(--g-fg);
+  --soft-line: color-mix(in srgb, var(--g-fg) 35%, transparent);
+}
+
+/* the section after a band: the band's own padding is the space between them, and no divider */
+.sec.sec.sec[data-ground="surface"] + .sec.sec,
+.sec.sec.sec[data-ground="inverted"] + .sec.sec { margin-top: 0; border-top-color: transparent; }
+/* panel directions keep the space between panels */
+[data-direction="boutique_minimal"] .sec.sec.sec[data-ground="surface"] + .sec.sec.sec,
+[data-direction="boutique_minimal"] .sec.sec.sec[data-ground="inverted"] + .sec.sec.sec { margin-top: 20px; }
+
+/* ---------- about ---------- */
+
+.statement {
+  margin: 0;
+  max-width: 24em;
+  font-family: var(--display);
+  font-weight: min(var(--display-weight), 600);
+  font-variation-settings: normal;
+  font-size: calc(clamp(1.5rem, 5.2vw, 2.6rem) * var(--k-body));
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--p-text);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.statement::before {
+  content: "";
+  display: block;
+  width: 56px;
+  height: 3px;
+  margin-bottom: 0.7em;
+  background: var(--p-primary);
+}
+.statement[data-long] {
+  max-width: 30em;
+  font-size: calc(clamp(1.2rem, 3.4vw, 1.7rem) * var(--k-body));
+  line-height: 1.85;
+}
+
+.sideText {
+  margin: 0;
+  max-width: 34em;
+  padding-left: 20px;
+  border-left: 2px solid var(--p-primary);
+  font-size: calc(1.05rem * var(--k-body));
+  line-height: 2;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- menu ---------- */
+
+.chips,
+.columns,
+.feature {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  /* a grid row taller than the list (a side heading) does not stretch it */
+  align-self: start;
+}
+.item {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: calc(1.08rem * var(--k-body));
+  font-weight: 600;
+  color: var(--p-text);
+}
+
+.chips { display: flex; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; gap: 10px 12px; }
+.chips .item {
+  max-width: 100%;
+  padding: 0.5em 1.1em 0.55em;
+  border: var(--line-width) var(--line-style) var(--p-primary);
+  border-radius: var(--chip-radius);
+}
+[data-direction="pop_bakeshop"] .chips .item { box-shadow: 3px 3px 0 var(--p-accent); }
+
+.columns {
+  columns: 3 11em;
+  column-gap: 40px;
+  column-rule: 1px solid var(--soft-line);
+}
+.columns .item {
+  display: block;
+  break-inside: avoid;
+  padding: 10px 0;
+  border-bottom: 1px dotted var(--p-secondary);
+}
+[data-direction="craft_paper"] .columns .item { border-bottom-style: dashed; }
+
+.feature {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14em), 1fr));
+  column-gap: 32px;
+  border-top: var(--line-width) var(--line-style) var(--p-primary);
+}
+.feature .item { padding: 14px 0; border-bottom: 1px solid var(--soft-line); }
+/* the first item, in the shop's own order, set large: no word is added to it */
+.feature .item:first-child {
+  grid-column: 1 / -1;
+  padding: 24px 0 22px;
+  border-bottom: var(--line-width) var(--line-style) var(--p-primary);
+  font-family: var(--display);
+  font-weight: var(--display-weight);
+  font-size: max(1.75rem, calc(clamp(2rem, 7vw, 4rem) * var(--k)));
+  line-height: 1.15;
+  color: var(--p-primary);
+}
+
+/* Labels sit with their values (the colophon info style centres the ledger's labels only). */
+.pair.pair.pair > dt,
+.card.card.card > dt,
+.splitRow.splitRow.splitRow > dt,
+.splitMain.splitMain.splitMain > p { justify-content: flex-start; }
+
+/* ---------- hours ---------- */
+
+.strip,
+.block { margin: 0; min-width: 0; }
+.pair { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.value {
+  margin: 0;
+  font-size: calc(1.1rem * var(--k-body));
+  line-height: 1.6;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.strip { display: grid; border-block: var(--line-width) var(--line-style) var(--p-primary); }
+.strip .pair { padding: 16px 0; }
+.strip .pair + .pair { border-top: 1px solid var(--soft-line); }
+
+.block { display: grid; gap: 22px; }
+.block .pair[data-key="hours"] .value {
+  font-family: var(--display);
+  font-weight: min(var(--display-weight), 600);
+  font-variation-settings: normal;
+  font-size: calc(clamp(1.5rem, 5vw, 2.4rem) * var(--k-body));
+  line-height: 1.4;
+}
+.block .pair[data-key="closedDays"] { padding-top: 18px; border-top: 1px solid var(--soft-line); }
+
+/* ---------- visit ---------- */
+
+.cards {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15em), 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  padding: 18px 20px;
+  border: var(--line-width) var(--line-style) var(--p-primary);
+  border-radius: var(--card-radius);
+}
+[data-direction="pop_bakeshop"] .card { box-shadow: 4px 4px 0 var(--p-accent); }
+.card[data-key="address"] { grid-column: 1 / -1; }
+.card[data-key="address"] .value,
+.stackRow[data-key="address"] .value {
+  font-family: var(--display);
+  font-weight: min(var(--display-weight), 600);
+  font-variation-settings: normal;
+  font-size: calc(clamp(1.2rem, 4.2vw, 1.8rem) * var(--k-body));
+  line-height: 1.5;
+}
+
+.split { display: grid; gap: 28px; min-width: 0; }
+.splitMain {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+  padding-left: 18px;
+  border-left: 4px solid var(--p-primary);
+}
+.splitRows { margin: 0; display: grid; min-width: 0; }
+.splitRow {
+  display: grid;
+  gap: 4px 20px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 12px 0;
+  border-bottom: 1px dotted var(--p-secondary);
+}
+[data-direction="craft_paper"] .splitRow { border-bottom-style: dashed; }
+
+.stacked {
+  margin: 0 auto;
+  display: grid;
+  gap: 26px;
+  justify-items: center;
+  width: min(100%, 40em);
+  text-align: center;
+}
+.stackRow { display: grid; gap: 8px; justify-items: center; min-width: 0; max-width: 100%; }
+.stackRow > dt { justify-content: center; }
+.stackRow + .stackRow { padding-top: 26px; border-top: 1px solid var(--soft-line); width: 100%; }
+
+.sec.sec.sec[data-variant="stacked"] { justify-items: center; text-align: center; }
+.sec.sec[data-variant="stacked"] .h.h { justify-content: center; align-items: center; }
+
+/* ---------- first view (inside the hero's title block) ---------- */
+
+.fvLead,
+.fvHours,
+.fvMenu {
+  position: relative;
+  z-index: 1;
+}
+/* A patterned hero (pop_bakeshop's dots): the small words sit on a rounded tag of the page ground. */
+[data-direction="pop_bakeshop"] :is(.fvLead, .fvHours, .fvMenu) { padding: 10px 14px; border-radius: 14px; background: var(--p-bg); }
+/* A filled hero (gallery_mono: the primary colour): the small words take the
+   background colour, the pair the contrast rules guarantee on primary. */
+[data-direction="gallery_mono"] :is(.fvLead, .fvHours, .fvMenu) {
+  --p-text: var(--p-bg);
+  --p-secondary: var(--p-bg);
+  --p-primary: var(--p-bg);
+}
+
+.fvLead {
+  margin: 22px 0 0;
+  max-width: 34em;
+  font-size: clamp(1rem, 2.6vw, 1.2rem);
+  line-height: 1.95;
+  color: var(--p-text);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.fvLabel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  color: var(--p-secondary);
+}
+.fvLabel > [lang="en"] { font-family: var(--display); letter-spacing: 0.24em; text-transform: uppercase; }
+
+.fvHours {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  margin: 22px 0 0;
+}
+.fvValue {
+  min-width: 0;
+  font-family: var(--display);
+  font-weight: min(var(--display-weight), 600);
+  font-variation-settings: normal;
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  line-height: 1.5;
+  color: var(--p-text);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.fvMenu { display: grid; gap: 10px; margin-top: 22px; }
+.fvItems { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 10px; }
+.fvItems > li {
+  max-width: 100%;
+  padding: 0.38em 0.95em 0.42em;
+  border: 1px solid var(--p-primary);
+  border-radius: 999px;
+  font-size: 0.95rem;
+  color: var(--p-text);
+  overflow-wrap: anywhere;
+}
+
+[data-layout="centered_cover"] .fvLead { margin-inline: auto; text-align: center; }
+[data-layout="centered_cover"] :is(.fvHours, .fvItems, .fvLabel) { justify-content: center; }
+[data-layout="centered_cover"] .fvMenu { justify-items: center; }
+
+/* ---------- alignment: center (heroLayout.alignment, DEV-067) ---------- */
+
+[data-align="center"] .chips,
+[data-align="center"] .fvItems { justify-content: center; }
+[data-align="center"] :is(.columns, .feature, .strip, .block, .cards, .statement) { text-align: center; }
+[data-align="center"] .statement { margin-inline: auto; }
+[data-align="center"] .statement::before { margin-inline: auto; }
+[data-align="center"] .pair.pair.pair.pair > dt,
+[data-align="center"] .card.card.card.card > dt { justify-content: center; }
+[data-align="center"] .pair,
+[data-align="center"] .card { justify-items: center; }
+
+/* ---------- desktop ---------- */
+
+@media (min-width: 720px) {
+  .sec.sec.sec[data-variant="statement"] { grid-template-columns: minmax(0, 1fr); }
+  .sec.sec.sec[data-variant="side_heading"] { grid-template-columns: minmax(0, 1fr) minmax(0, 2.6fr); column-gap: 48px; }
+  .sec.sec.sec[data-variant="stacked"] { grid-template-columns: minmax(0, 1fr); }
+
+  .strip { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .strip .pair { padding: 20px 28px 20px 0; }
+  .strip .pair + .pair { padding-left: 28px; border-top: 0; border-left: 1px solid var(--soft-line); }
+
+  .split { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: start; }
+  .splitRow { grid-template-columns: minmax(9em, auto) minmax(0, 1fr); }
+
+  /* Vertical writing: desktop only, Japanese script only (the fixed Japanese
+     heading words; a Japanese-only short name). Phones keep horizontal text. */
+  /* Vertical headings are set only when every section has enough content beside
+     them: a vertical heading next to a line or two would set the section's height
+     (data-short marks a section with little content). Otherwise the page's
+     headings all stay horizontal, so one page never mixes the two. The vertical
+     word is capped in size. */
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .vertical {
+    display: inline-block;
+    writing-mode: vertical-rl;
+    letter-spacing: 0.14em;
+    line-height: 1.1;
+  }
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) h2.h.h > span.ja.ja.vertical { font-size: min(1em, 2.2rem); }
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec.sec { grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); }
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > .h { align-self: start; }
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > :not(.h) { grid-column: 2; }
+
+  /* vertical_name: a hanging scroll. The folio runs across the top; below it the
+     name (a tall column, at least twice the section headings; names over
+     VERTICAL_NAME_MAX characters are not set vertically) and, directly to its left
+     and top-aligned with it, the area label as a vertical caption, together in the
+     middle of the hero with even space on both sides. The hero is as tall as the
+     name. Motifs and a framed photo, where the profile has them, sit in the space
+     at the right and the name block moves left of centre to balance them. The
+     caption is vertical only when it is Japanese script (vdek). */
+  .vhero.vhero.vhero.vhero {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: clamp(20px, 2.4vw, 40px);
+  }
+  .vfolio.vfolio.vfolio.vfolio { grid-column: 1 / -1; grid-row: 1; }
+  .vhero.vhero.vhero.vhero:has(> .vmotifs, > .vphoto) { grid-template-columns: minmax(0, 0.7fr) auto auto minmax(0, 1fr); }
+  .vmotifs.vmotifs.vmotifs.vmotifs { grid-column: 4; grid-row: 2; justify-self: center; align-self: center; margin: 0; }
+  .vphoto.vphoto.vphoto.vphoto { grid-column: 4; grid-row: 2; justify-self: center; align-self: center; width: min(100%, 420px); margin: 28px 8px; }
+  .vdek.vdek.vdek.vdek {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+    align-self: start;
+    margin-top: 40px;
+    writing-mode: vertical-rl;
+    border-top: 0;
+    letter-spacing: 0.3em;
+  }
+  .vdek.vdek.vdek.vdek > span:first-child { width: 1px; height: 56px; }
+  .vdek.vdek.vdek.vdek::after { width: 1px; height: 48px; }
+  /* an area label with Latin letters or digits stays horizontal, under the name block */
+  .vdekH.vdekH.vdekH.vdekH { grid-column: 2 / 4; grid-row: 3; justify-self: start; }
+  .vtitle.vtitle.vtitle.vtitle {
+    grid-column: 3;
+    grid-row: 2;
+    container-type: normal;
+    align-content: start;
+    justify-items: start;
+    margin-block: 28px 0;
+    padding-block: 12px;
+  }
+  h1.vname.vname.vname.vname[data-fit] {
+    writing-mode: vertical-rl;
+    /* an orthogonal grid item: its line length is the name's own (no column breaks) */
+    inline-size: max-content;
+    font-size: min(15rem, calc(72svh / (var(--name-chars, 6) * (1.06 + var(--track-n, 0)))));
+    line-height: 1.05;
+  }
+}

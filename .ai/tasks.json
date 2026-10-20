@@ -3130,6 +3130,52 @@
       "decision": "2026-10-20: 人の決定（§8.4）で Claude が追加。generated_concept は local preview だけで、公開 route・DB・Vercel 側からの依存は無かった（.ai/reviews/DEV-070.md）。Fresh Review PASS（Low 3・Nit 5 → Low 1・2・Nit 3 を対応、PR #84）"
     },
     {
+      "id": "DEV-071",
+      "title": "Stage 1 Design Spec: 節の構成・節ごとの組み方と地・文字組の階層・first view を profile の任意の layout に（071a: schema・normalize・renderer・test）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-066"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-071-design-spec",
+      "purpose": "人の正式承認（2026-10-20、design-agent-direction §8 の 2・5）: Codex が店ごとに節の構成と順序・節ごとの layout・タイポの階層・first view を設計する Design Spec（B）。テンプレートの選択ではなく店ごとの設計へ。設計は .ai/proposals/design-spec-stage1.md",
+      "acceptance_criteria": [
+        "profile は version 1 のまま任意の layout（DB の制約 version='1'・8192 byte 以下を守る）",
+        "normalizeLayout: 根拠の無い節を出さない・全事実が頁に出る・説明文を二度出さない・固定の符号だけを記録",
+        "文字は事実か固定の見出し語だけ。主張の語を足さない。お知らせ帯・footer の注記を保つ",
+        "surface / inverted の地の文字は contrast が保証された組だけ。縦書きは desktop の和文だけ",
+        "layout 無しの profile は今と byte 単位で同じ markup",
+        "071a では Codex の prompt・output schema・pipeline を変えない（071b）"
+      ],
+      "required_tests": [
+        "unit: schema（正常・不正・互換・必須版の JSON Schema）",
+        "unit: normalizeLayout の事実 × firstView の組み合わせ",
+        "Chromium: 全 kind × variant × ground × 390 / 360 / 1440 × 事実の多い店 / 少ない和文の店",
+        "互換（固定した hash）と 3 店の違い（DOM と画素）",
+        "next build + start の実画面",
+        "CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "components/demo/profile/",
+        "tests/unit/design-agent/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Staging / Production / DB / flag / Vercel / worker の操作",
+        "品質の閾値・gate",
+        "店舗情報・商品・口コミ・実績の創作",
+        "Codex の prompt・output schema（071b）"
+      ],
+      "human_approval_triggers": [
+        "次の controlled run",
+        "Stage 1 の比較の実走（WSL worker）"
+      ],
+      "decision": "2026-10-20: 人の正式承認（Stage 1）。071a: Fresh Review FAIL → 対応 → 再レビュー FAIL（Medium 1: vertical_name の hero の構図、Low 4: DEV-067 の phone の枠の test の所要）→ 対応（掛け軸の構図、空きの検査、test の分割）→ 再々レビュー待ち。071b への申し送り: data-short の判断を normalize の adjustment へ・boutique_minimal の plain/surface は見えない変更・availableFirstViews に name_menu の節順の条件（design-spec-stage1.md）。2026-10-20: DEV-071a（renderer 側）Fresh Review FAIL → 対応 → 再レビュー FAIL（vertical_name の hero）→ 対応 → 再レビュー PASS、PR #83 で develop へ。DEV-071b（prompt・Codex の output schema・pipeline・visibleChanges と記録した follow-up）は未着手"
+    },
+    {
       "id": "DEV-072",
       "title": "Stage 3 の技術検証: 店舗別 CSS の検査器（静的 guard と Chromium の render check、local preview だけ）",
       "status": "in_progress",
