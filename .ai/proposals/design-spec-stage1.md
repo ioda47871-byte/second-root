@@ -191,17 +191,19 @@ Codex の呼び出し回数は変わらない）/ 安全性と運用の安定（
   （`DesignProfileCodexSchema`。閉じた object・全 property required・`anyOf` だけ、loose 版も同じ形で上限だけを外す）。答えの parse は
   `DesignProfileSchema`（layout 任意）のまま: 保存済みの profile と、万一 layout の無い答えは今の頁（DEFAULT_LAYOUT）を描く。後者は report に
   `layout:missing` を記録する
+- **重複した kind**（Fresh Review 後）: JSON Schema では一意を表せないので、Codex の答えは check の前に最初の 1 つへ畳み `duplicate:<kind>` を記録
 - **normalize の形を保存する（判断）**: pipeline は Codex の答えを checkProfile の後で `profileAsDrawn`（normalize した layout が保存できる形
   ＝1 節以上なら、それに置き換える）にかけ、その profile を candidate に書き、描き、review に見せ、`visibleChanges` で比べ、final として保存する。
   理由: (1) review の prompt の「この screenshot を作った profile」が実際の頁と一致する（Codex は描かれなかった節や first view を
   見せられない）、(2) DB の profile を人が読んでも描かれる頁と一致する、(3) normalize は冪等なので描き直しても同じ頁、(4) Codex の
-  元の指定との差は固定の符号で report に残る（`codex.layout_adjustments`）。名前だけの店（節 0）は保存できる形にならないので Codex の
-  layout のまま（renderer が同じく normalize する）
+  元の指定との差は固定の符号で report に残る（`codex.layout_adjustments`）。名前だけの店（節 0）は first view と type だけ
+  normalize した値にし、sections は保存の形を保つため Codex のもの（描かれない。Fresh Review 後）
 - **短い節の判断を normalize へ**（Low 1）: `sectionIsShort`（事実と variant だけ: 説明 60 字以下・2 品以下・hours の strip・visit 2 行以下）が
   一つでもあれば `vertical_ja` を `ja_only` にし `headings:vertical_ja` を記録。CSS の `:has()` の判定は削除（描く側は normalize の結果だけ）
 - **visibleChanges**（DEV-066）: `layout.firstView`・`layout.sections`（順・variant・地）・`layout.type.scale`・`layout.type.headings` を、
   事実に対して normalize した「描かれる形」で比べる。描かれない変更（事実の無い first view・節、短い節の縦の見出し、節の無い頁の type）は
-  見えない変更。boutique_minimal では surface の地は plain と同じ見た目（Low 2）。surface の band がある頁では palette.surface も見える
+  見えない変更。surface の band がある頁では palette.surface も見える。Fresh Review 後: boutique_minimal の surface は plain と描かれ方が
+  違うので見える変更（PANEL_DIRECTIONS は削除）。composition.grid / infoStyle / divider は使う節があるときだけ見える
 - **prompt**: VOCABULARY に layout の全値を「何を描くか」で書いた。「The page always has, in this order」は削除し「事実のある節だけを、あなたの順で」に。
   店ごとの `layoutOptionsLine`（固定の語だけ: 使える節と first view、name_menu の節順の条件 = Low 3）を brief・review・photo review に。
   RULES: layout は構造（中身と店に従う。about, menu, visit の順を守るのではなく頁を設計する）、地と type は low confidence の規則では styling
@@ -214,6 +216,8 @@ Codex の呼び出し回数は変わらない）/ 安全性と運用の安定（
   （DB は `pg_column_size(design_profile) <= 8192`）。bridge の submit schema と `renderableProfile` を通ることを test
 - **幅の検査**（DEV-071a の不具合）: split の visit 行が 720〜768px で横にはみ出していた（label 9em + 電話番号の改行しない塊）。
   1100px 未満では label を値の上に置く。Stage 1 の Chromium の test は 320〜1440 と各 breakpoint ±1px の 13 幅で全 variant・全 direction を検査
+  （Fresh Review 後: 1432・1600・1920・2560 を加えた 17 幅、節の中の語が節の箱に収まることも検査。boutique_minimal の 1440px 超の
+  列の不具合（DEV-067 由来、layout の無い頁でも）を直し、split の行は列自身の幅（container query）で並べ方を決める）
 
 ### §9 の比較: prompt の長さ（生成時間とモデルの費用の目安）
 
