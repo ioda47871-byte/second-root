@@ -262,3 +262,53 @@ Counts: Critical 0 / High 0 / Medium 1 / Low 4 / Nit 1
 4. **Nit 1**（ruled_frame と full-bleed band）: DEV-067 の枠の扱いと一緒に決める（未対応のまま）。
 
 再確認: design-agent と ai-tasks の suite（Chromium あり）720 pass / 16 skipped（1 件は縦の添え書きを見出しと数えた test 側の誤りで、直して単独で 4/4 pass）。eslint 0、tsc 0、`npm run build` 成功。
+
+## 再レビュー (2)（2026-10-20、82b7646）
+
+Reviewer: 別 context の Claude agent（初回・再レビューと同じ）。対象は 82b7646（17b3edc からの差分: vertical_name の hero の CSS、添え書きの class、test 2 file、文書）。
+Verdict: **PASS**
+Counts: Critical 0 / High 0 / Medium 0 / Low 0（新規）/ Nit 2
+
+再レビューの Medium 1 は解消した。Low 1〜3 は DEV-071b への申し送りとして記録されている（`design-spec-stage1.md`・tasks.json）。071a の merge を止めるものではない。
+安全側（事実と固定語だけ・根拠の無い節なし・全事実・注記・contrast・品質ゲート・layout 無しの byte 互換）に退行は無い。
+
+### 実行したこと
+
+- **`npx vitest run tests/unit/design-agent` の全体**（Chromium あり、PLAYWRIGHT_CHROMIUM_EXECUTABLE 指定）: **48 files pass / 2 skipped、638 pass / 16 skipped、fail 0**、465 s。
+  - 実装者は最後の test の修正の後に全体を回していなかったので、ここで確かめた。
+  - 分割した DEV-067 の phone の枠の test は、10 個とも 1.5〜2.4 s で pass。
+- `npx tsc --noEmit` → 0。`npx eslint`（変更した ts/tsx）→ 0。`npm run build` → 成功。tree は無変更。
+- 実画面（`scratchpad/stage1/real3/`、`real3-sheet-*.png`、`metrics.txt`）で次を見た:
+  - bakery × 10 direction × 390/1440
+  - 6 字の店 × 10 direction × 390/1440
+  - motif の店 × 3 direction × 390/1440
+
+### Medium 1（vertical_name の hero）の確認 — 解消
+
+- **desktop:** 名前の列と、そのすぐ左に上端を揃えた縦の添え書きが、hero の中央に一つの塊として立つ（掛け軸の構図）。hero の高さは名前の列に合わせて詰まった（約 760px）。左右の余白は 559〜641px でほぼ対称（`metrics.txt` の leftFree / rightFree）。
+  - 各 direction の地・枠（editorial_luxury の二重枠・french_classic のアーチ・kissaten_retro の札・pop_bakeshop の丸い札・gallery_mono の塗りの hero）は、名前の列の札や塊の地として効いている。
+  - 10 direction とも、余白が名前の塊を基準にした意図した「間」として読める。orchestrator の判断と同じ。
+  - 添え書きと名前の距離は 35〜74px で、名前の列の幅（203px）以下。
+- **6 字（架空焼菓子店）:** 列は 101px、名前は 96px（見出し 41px の 2.3 倍）。塊は細いが、中央の掛け軸として成立している。phone では横書きの 1 行（52px）で、overflow は無い。
+- **motif:** stamp_ring・muffin_paper_svg が右の余白の中央に置かれ、名前の塊は左に寄る（0.7fr : 1fr）。釣り合いは取れている。
+- **390:** layout の無い頁と同じ横書きの hero（変更なし）。見出しは 1 種類、overflow 0、10 direction とも崩れは無い。
+- **「35% は事実を足さずには届かない」という主張について:** 妥当と判断する。
+  - 縦の 1 列を 1440 幅に置けば、中央でも左右どちらかの余白が hero の 4 割前後になる。それより小さくするには、hero に事実を重ねて出す（説明文の重複など）か、意味の無い飾りで埋めるしかない。どちらも規則に反する。
+  - 初回に私が出した 35% は目安で、根拠のある値ではなかった。「同じ店・同じ direction の layout 無しの頁以下（+0.01）、かつ 0.43 以下」という基準の方が、「vertical_name を選んで first screen が悪くならない」という本来の要件をそのまま測っている。
+- **test の強さ:** 前回の構図（右の名前・左下の全幅の箱）は `captionGap`（添え書きが縦で、名前の脇にあること）で fail する。空きの率の基準は緩めだが、構図の退行は captionGap が止める（Nit 1）。
+
+### Low 4（DEV-067 の phone の枠の test の分割）の確認 — 解消
+
+- 分割前と分割後のループを比べた。direction ごとの test の中で、2 大きさ × spacing 2 × 高さ 2 × motif 2 組 × layout 3 = 48 頁を回し、10 direction で計 480 頁。分割前と同じ組み合わせ・同じ検査（`g.problems` が空、名前と枠の距離 ≥ 6）。
+- 違いは、頁を大きさごとに 1 つ作って使い回すこと（`setContent` で毎回中身を置き換える）だけ。検査は各頁の layout から測るので、使い回しの影響は無い。所要は 139 s → 約 20 s。
+
+### Nit
+
+1. hero の「最大の空き矩形 ≤ 0.43」は、前回の右寄せの構図（左の空き約 0.44）でもほぼ境目にあり、単独では構図の退行を見分けにくい。今は captionGap の検査が実際の歯止め。将来、添え書きを横書きに戻す変更（`vdekH` の経路）が入ったときに備え、「左右の余白の差 ≤ hero の幅の 10%」も足すとよい（任意）。
+2. ruled_frame と full-bleed の band（前回の Nit 1）は未対応のまま。DEV-067 の枠の扱いと一緒に決める、という記録で良い。
+
+### DEV-071b への申し送り（前回の Low 1〜3、記録済み）
+
+- `data-short` の判断を `normalizeLayout` の adjustment にする（visibleChanges・report・prompt と描かれる頁を一致させる）。
+- boutique_minimal の plain ↔ surface は見えない変更として扱う。
+- `availableFirstViews` に name_menu の節の順の条件を加える。
