@@ -927,7 +927,9 @@
 
 /* boutique_minimal: a narrow, centred column on panels of the surface colour;
    thin spaced headings; the menu as a soft list. */
-.canvas[data-direction="boutique_minimal"] .main { max-width: 1080px; margin-inline: auto; }
+/* the column is 1080px of content: main's own side padding (--pad, which grows past
+   1432px) is added to it, never taken from it (DEV-071b: at 2560px it left 80px) */
+.canvas[data-direction="boutique_minimal"] .main { max-width: calc(1080px + 2 * var(--pad)); margin-inline: auto; }
 .canvas[data-direction="boutique_minimal"] .section { padding: calc(var(--gap) * 0.6) 20px 28px; background: var(--p-surface); }
 /* a band of the page ground between panels (under tight, a narrower one) */
 .canvas[data-direction="boutique_minimal"] .section + .section { margin-top: 20px; }

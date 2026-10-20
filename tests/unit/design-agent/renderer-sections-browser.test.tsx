@@ -27,6 +27,7 @@ afterAll(async () => {
 type Check = {
   overflowX: boolean;
   clipped: string[];
+  outsideSection: string[];
   missing: string[];
   notice: boolean;
   footer: boolean;
@@ -65,6 +66,18 @@ async function check(page: Page, facts: string[]): Promise<Check> {
       range.selectNodeContents(t);
       for (const r of range.getClientRects()) if (r.width > 0 && (r.left < -0.5 || r.right > innerWidth + 0.5)) clipped.push(t.textContent!.trim().slice(0, 24));
     }
+    // every word of a section stays inside its section's box (a column squeezed by padding sets words outside it)
+    const outsideSection: string[] = [];
+    for (const section of document.querySelectorAll("main > section")) {
+      const box = section.getBoundingClientRect();
+      for (const t of texts) {
+        if (!section.contains(t)) continue;
+        const range = document.createRange();
+        range.selectNodeContents(t);
+        for (const r of range.getClientRects()) if (r.width > 0 && (r.left < box.left - 1 || r.right > box.right + 1)) outsideSection.push(t.textContent!.trim().slice(0, 24));
+      }
+      if (section.scrollWidth > section.clientWidth + 1) outsideSection.push(`section ${section.getAttribute("data-kind") ?? ""} scrolls`);
+    }
     const flat = (s: string) => s.replace(/\s+/g, "");
     const pageText = flat(document.body.innerText);
     const missing = facts.filter((f) => !pageText.includes(flat(f)));
@@ -96,6 +109,7 @@ async function check(page: Page, facts: string[]): Promise<Check> {
     return {
       overflowX: document.documentElement.scrollWidth > innerWidth,
       clipped,
+      outsideSection,
       missing,
       notice: Boolean(note && visible(note) && note.textContent!.includes("公式サイトではありません")),
       footer: Boolean(footer && visible(footer) && footer.textContent!.includes("公式サイト・公式情報ではありません")),
@@ -134,6 +148,7 @@ describe("sections in Chromium", () => {
             m.sections.forEach((s) => seen.add(s));
             expect.soft(m.overflowX, `${label}: sideways scroll`).toBe(false);
             expect.soft(m.clipped, `${label}: text outside the page`).toEqual([]);
+            expect.soft(m.outsideSection, `${label}: words outside their section`).toEqual([]);
             expect.soft(m.missing, `${label}: facts not shown`).toEqual([]);
             expect(m.notice, `${label}: notice bar`).toBe(true);
             expect(m.footer, `${label}: footer notice`).toBe(true);
@@ -176,6 +191,8 @@ describe("every direction at every width (DEV-071b)", () => {
               const m = await check(page, factsOf(demo));
               expect.soft(m.overflowX, `${label}: sideways scroll`).toBe(false);
               expect.soft(m.clipped, `${label}: text outside the page`).toEqual([]);
+              expect.soft(m.outsideSection, `${label}: words outside their section`).toEqual([]);
+            expect.soft(m.outsideSection, `${label}: words outside their section`).toEqual([]);
               expect.soft(m.missing, `${label}: facts not shown`).toEqual([]);
             }
           }
