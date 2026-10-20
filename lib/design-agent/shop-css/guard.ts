@@ -19,7 +19,7 @@ import { propertySpec, serializeTerms, terms, valueMatches, type Term } from "./
 //               attr(), env(), expression(), content text, position fixed/sticky/absolute
 
 export const SHOP_CSS_SCOPE_ID = "shop-css";
-export const SHOP_CSS_LIMITS = { bytes: 24 * 1024, rules: 300, declarations: 1500, declarationsPerRule: 60, selectorsPerRule: 12, compoundsPerSelector: 8, media: 24, valueTerms: 40 } as const;
+export const SHOP_CSS_LIMITS = { bytes: 24 * 1024, rules: 300, declarations: 1500, declarationsPerRule: 60, selectorsPerRule: 12, compoundsPerSelector: 8, media: 24, breakpoints: 4, valueTerms: 40 } as const;
 
 declare const guarded: unique symbol;
 /** A stylesheet that came out of guardShopCss (normalized). */
@@ -145,11 +145,8 @@ function parseSelector(source: string, items: CV[], p: Problems): Selector | nul
       c.parts.push({ kind: "type", name });
       continue;
     }
-    if (cv.t === "delim" && cv.v === "*") {
-      if (c.parts.length > 0 || c.root) return fail("selector_syntax");
-      c.parts.push({ kind: "type", name: "*" });
-      continue;
-    }
+    // no universal selector: every compound names one of the allowed elements (so * and :not() never reach a, img, svg, figure)
+    if (cv.t === "delim" && cv.v === "*") return fail("selector_element");
     if (cv.t === "block" && cv.open === "[") {
       const attr = parseAttribute(cv.items);
       if (!attr) return fail("selector_attribute");
@@ -177,6 +174,7 @@ function parseSelector(source: string, items: CV[], p: Problems): Selector | nul
   if (!current && pendingCombinator === ">") return fail("selector_syntax");
   if (compounds.length === 0 || !compounds[0]!.root) return fail("selector_scope");
   if (compounds.length > SHOP_CSS_LIMITS.compoundsPerSelector) return fail("selector_too_long");
+  if (compounds.slice(1).some((c) => c.parts[0]?.kind !== "type")) return fail("selector_element");
   // a pseudo-element only on the last compound
   if (compounds.slice(0, -1).some((c) => c.pseudoElement !== null)) return fail("selector_pseudo");
   return { compounds, combinators };
@@ -276,7 +274,7 @@ function parseDeclarations(items: CV[], pseudo: boolean, p: Problems): string[] 
       p.add(`value_forbidden:${prop}`);
       continue;
     }
-    const bad = valueTerms.find((t) => t.t === "fn" && !["var", "rgb", "rgba", "color-mix", "calc", "min", "max", "clamp", "linear-gradient", "radial-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "minmax", "repeat", "fit-content", "rotate", "translate", "translatex", "translatey", "scale", "scalex", "scaley"].includes(t.name));
+    const bad = valueTerms.find((t) => t.t === "fn" && !["var", "rgb", "rgba", "color-mix", "calc", "min", "max", "clamp", "linear-gradient", "radial-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "minmax", "repeat", "fit-content", "rotate", "scale", "scalex", "scaley"].includes(t.name));
     if (bad) {
       p.add("function_forbidden");
       continue;
@@ -401,6 +399,16 @@ function serialize(blocks: Block[]): string {
 }
 
 /**
+ * The widths (CSS px; em counted at 16px) where a guarded stylesheet's @media
+ * conditions switch. The render check looks at each side of every one.
+ */
+export function mediaBreakpointsPx(css: string): number[] {
+  const out = new Set<number>();
+  for (const m of css.matchAll(/^@media (.*) \{$/gm)) for (const c of m[1]!.matchAll(/\((?:min|max)-width: ([0-9.]+)(px|em)\)/g)) out.add(Number(c[1]) * (c[2] === "em" ? 16 : 1));
+  return [...out].sort((a, b) => a - b);
+}
+
+/**
  * Checks a per-shop stylesheet and returns it normalized, or the fixed codes
  * of everything wrong with it. Never throws.
  */
@@ -416,6 +424,7 @@ export function guardShopCss(css: string): GuardResult {
     if (counts.rules > SHOP_CSS_LIMITS.rules) p.add("too_many_rules");
     if (counts.declarations > SHOP_CSS_LIMITS.declarations) p.add("too_many_declarations");
     if (counts.media > SHOP_CSS_LIMITS.media) p.add("too_many_media");
+    if (mediaBreakpointsPx(serialize(blocks)).length > SHOP_CSS_LIMITS.breakpoints) p.add("too_many_breakpoints");
     if (p.set.size > 0) return { ok: false, problems: [...p.set].sort() };
     const out = serialize(blocks);
     if (out.length === 0) return { ok: false, problems: ["empty"] };

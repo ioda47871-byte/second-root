@@ -218,6 +218,10 @@ type Spec = {
   commas?: number;
   /** A single slash allowed between terms (border-radius, grid-area, aspect-ratio). */
   slash?: boolean;
+  /** A check of each whole comma group (box-shadow). */
+  groups?: (g: Term[]) => boolean;
+  /** A check of the whole value's terms (transform). */
+  whole?: (list: Term[]) => boolean;
 };
 
 const kw =
@@ -239,10 +243,8 @@ const number =
 
 const SIZE: LenOptions = { max: 2400, pctMax: 100 };
 const SPACE: LenOptions = { max: 400, pctMax: 50 };
-const OFFSET: LenOptions = { max: 48, pctMax: 10, negative: true };
 const BORDER: LenOptions = { max: 16, units: ["px", "em", "rem"] };
 const RADIUS: LenOptions = { max: 999, pctMax: 50 };
-const FONT: LenOptions = { max: 256, pctMax: 400, units: ["px", "em", "rem", "vw"] };
 const TRACK: LenOptions = { max: 2400, pctMax: 100, units: ["px", "em", "rem", "ch", "vw"] };
 
 const color: Item = isColor;
@@ -271,22 +273,17 @@ const tracks: Spec = { items: [(t) => isTrack(t), kw("none")], max: 12 };
 
 const gridLine: Spec = { items: [int(-12, 12), kw("auto", "span")], max: 4, slash: true };
 
-/** transform: rotate / translate / scale within small limits; nothing that can hide or throw text away. */
+/** transform: a small rotate and / or scale; nothing that can move, hide or throw text away. */
 function isTransformFn(t: Term): boolean {
   if (t.t !== "fn") return false;
   const groups = commaGroups(terms(t.args));
   const single = groups.every((g) => g.length === 1) ? groups.map((g) => g[0]!) : null;
   if (!single) return false;
-  const move = (x: Term) => isLength(x, OFFSET);
   const scale = (x: Term) => num(x, 0.75, 2);
   switch (t.name) {
     case "rotate":
-      return single.length === 1 && isAngle(single[0], 20);
-    case "translate":
-      return single.length >= 1 && single.length <= 2 && single.every(move);
-    case "translatex":
-    case "translatey":
-      return single.length === 1 && move(single[0]!);
+      return single.length === 1 && isAngle(single[0], 8);
+    // no translate: like an offset, it can move a value next to another label
     case "scale":
       return single.length >= 1 && single.length <= 2 && single.every(scale);
     case "scalex":
@@ -299,16 +296,37 @@ function isTransformFn(t: Term): boolean {
 
 const textDecorationLine = kw("none", "underline", "overline"); // no line-through: a struck-out fact reads as withdrawn
 
+/** A font size at least 12px on every screen: px ≥ 12 or rem ≥ 0.75 (no % or em: they compound when nested). */
+const FONT_FLOOR = (t: Term | undefined) => t?.t === "dim" && ((t.unit === "px" && t.v >= 12 && t.v <= 256) || (t.unit === "rem" && t.v >= 0.75 && t.v <= 16));
+/** The preferred value of clamp(): px, rem, vw or calc() of them (the floor of clamp() keeps it ≥ 12px). */
+const FONT_FLUID = (t: Term) => isLength(t, { max: 256, units: ["px", "rem", "vw"] });
+function isFontSize(t: Term): boolean {
+  if (FONT_FLOOR(t)) return true;
+  if (t.t !== "fn") return false;
+  const groups = commaGroups(terms(t.args));
+  if (!groups.every((g) => g.length >= 1)) return false;
+  if (t.name === "clamp") return groups.length === 3 && groups.every((g) => g.length === 1) && FONT_FLOOR(groups[0]![0]) && FONT_FLUID(groups[1]![0]!) && FONT_FLOOR(groups[2]![0]);
+  // max(12px, 2vw): one argument is the floor
+  if (t.name === "max") return groups.length >= 2 && groups.length <= 3 && groups.every((g) => g.length === 1 && FONT_FLUID(g[0]!)) && groups.some((g) => FONT_FLOOR(g[0]));
+  return false;
+}
+
+/** box-shadow: inset only (painted under the element's own content, never over a neighbour). */
+function isInsetShadow(g: Term[]): boolean {
+  if (g.length === 1 && kw("none")(g[0]!)) return true;
+  const inset = g.filter((t) => kw("inset")(t)).length;
+  const colours = g.filter((t) => isColor(t)).length;
+  const lengths = g.filter((t) => isLength(t, { max: 16, units: ["px"], negative: true }));
+  return inset === 1 && colours <= 1 && lengths.length >= 2 && lengths.length <= 4 && inset + colours + lengths.length === g.length;
+}
+
 const PROPS_BASE: Record<string, Spec> = {
   // layout
-  display: one(kw("block", "inline", "inline-block", "flex", "inline-flex", "grid", "inline-grid", "flow-root", "list-item")),
+  // no list-item (its marker is text), none or contents (they hide)
+  display: one(kw("block", "inline", "inline-block", "flex", "inline-flex", "grid", "inline-grid", "flow-root")),
   "box-sizing": one(kw("border-box", "content-box")),
   position: one(kw("static", "relative")),
-  top: one(len(OFFSET), kw("auto")),
-  right: one(len(OFFSET), kw("auto")),
-  bottom: one(len(OFFSET), kw("auto")),
-  left: one(len(OFFSET), kw("auto")),
-  inset: { items: [len(OFFSET), kw("auto")], max: 4 },
+  // no top / right / bottom / left / inset: an offset can move a value next to another label
   "z-index": one(int(0, 5), kw("auto")),
   float: one(kw("none", "left", "right", "inline-start", "inline-end")),
   clear: one(kw("none", "left", "right", "both", "inline-start", "inline-end")),
@@ -368,7 +386,7 @@ const PROPS_BASE: Record<string, Spec> = {
   "column-rule": { items: [len(BORDER), borderStyle, color], max: 3 },
   // typography
   "font-family": { items: [isFontFamilyItem], max: 1, commas: 6 },
-  "font-size": one(len(FONT)),
+  "font-size": one(isFontSize),
   "font-weight": one(kw("normal", "bold", "lighter", "bolder"), (t) => t.t === "num" && t.v >= 100 && t.v <= 900),
   "font-style": one(kw("normal", "italic")),
   "font-variant-numeric": { items: [kw("normal", "lining-nums", "oldstyle-nums", "proportional-nums", "tabular-nums")], max: 2 },
@@ -387,16 +405,15 @@ const PROPS_BASE: Record<string, Spec> = {
   "word-break": one(kw("normal", "keep-all", "break-all", "auto-phrase")),
   "overflow-wrap": one(kw("normal", "anywhere", "break-word")),
   "line-break": one(kw("auto", "loose", "normal", "strict", "anywhere")),
-  hyphens: one(kw("none", "manual", "auto")),
-  "list-style-type": one(kw("none", "disc", "circle", "square", "decimal", "decimal-leading-zero")),
-  "list-style-position": one(kw("inside", "outside")),
+  // hyphens: auto would insert hyphen glyphs into facts
+  hyphens: one(kw("none", "manual")),
+  // markers are text: only none
+  "list-style-type": one(kw("none")),
   "list-style": one(kw("none")),
-  "text-decoration": { items: [textDecorationLine, kw("solid", "double", "dotted", "dashed", "wavy"), color, len({ max: 4, units: ["px", "em"] })], max: 4 },
+  // decoration lines in the text's own colour, thin, at the default offset (no line over a neighbouring line)
+  "text-decoration": { items: [textDecorationLine, kw("solid", "double", "dotted", "dashed", "wavy")], max: 3 },
   "text-decoration-line": { items: [textDecorationLine], max: 2 },
   "text-decoration-style": one(kw("solid", "double", "dotted", "dashed", "wavy")),
-  "text-decoration-color": one(color),
-  "text-decoration-thickness": one(len({ max: 4, units: ["px", "em"] }), kw("auto", "from-font")),
-  "text-underline-offset": one(len({ max: 16, units: ["px", "em"] }), kw("auto")),
   // colour and ground
   color: one(color),
   "background-color": one(color),
@@ -407,17 +424,12 @@ const PROPS_BASE: Record<string, Spec> = {
   "background-clip": one(kw("border-box", "padding-box", "content-box")),
   "background-origin": one(kw("border-box", "padding-box", "content-box")),
   opacity: one(number(0.85, 1)),
-  // borders, outlines, shadows
+  // borders and shadows (no outline: it paints over neighbours; shadows inset only)
   "border-radius": { items: [len(RADIUS)], max: 8, slash: true },
-  "outline-width": one(len({ max: 4, units: ["px"] })),
-  "outline-style": one(kw("none", "solid", "double", "dotted", "dashed")),
-  "outline-color": one(color),
-  "outline-offset": one(len({ max: 4, units: ["px"] })),
-  outline: { items: [len({ max: 4, units: ["px"] }), kw("none", "solid", "double", "dotted", "dashed"), color], max: 3 },
-  "box-shadow": { items: [kw("none", "inset"), color, len({ max: 16, units: ["px"], negative: true })], max: 5, commas: 3 },
-  // transforms
-  transform: { items: [kw("none"), isTransformFn], max: 3 },
-  "transform-origin": { items: [len({ max: 2400, pctMax: 100 }), kw("center", ...SIDES)], max: 2 },
+  "box-shadow": { items: [() => true], max: 6, commas: 3, groups: isInsetShadow },
+  // transforms: one small rotation and / or scale about the element's own box
+  transform: { items: [kw("none"), isTransformFn], max: 2, whole: (list) => new Set(list.map((t) => (t.t === "fn" ? t.name.replace(/[xy]$/, "") : "none"))).size === list.length },
+  "transform-origin": { items: [kw("center", ...SIDES), (t) => t.t === "pct" && t.v >= 0 && t.v <= 100], max: 2 },
 };
 
 for (const side of ["top", "right", "bottom", "left"]) {
@@ -489,6 +501,8 @@ export function valueMatches(spec: Spec, list: Term[]): boolean {
     if (g.length > 0 && g[g.length - 1]!.t === "delim") return false;
     if (items.length < (spec.min ?? 1) || items.length > spec.max) return false;
     if (!items.every((t) => spec.items.some((p) => p(t)))) return false;
+    if (spec.groups && !spec.groups(g)) return false;
+    if (spec.whole && !spec.whole(g)) return false;
   }
   return true;
 }
