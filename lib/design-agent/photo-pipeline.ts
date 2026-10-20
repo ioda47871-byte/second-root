@@ -12,7 +12,7 @@ import type { ObservedColours } from "./reference-colours";
 import { CodexError, isEnvironmentFailure, type CodexFailureCode } from "./codex";
 import { buildPhotoReviewPrompt } from "./photo-prompts";
 import { photoReviewJsonSchema, PhotoReviewSchema, photoReviewScore, revisionPlan, type PhotoIssue, type PhotoReview } from "./photo-review";
-import { profileAsDrawn } from "./layout";
+import { collapseRepeatedSections, profileAsDrawn } from "./layout";
 import type { LayoutAdjustmentRecord, Shots } from "./pipeline";
 import { checkProfile, type DesignProfile } from "./profile";
 
@@ -293,21 +293,23 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
       break;
     }
     let nextProfile = base.profile;
+    let layoutCodes: string[] = [];
     if (plan.profile) {
       const revised = basis.recommended_profile_changes.revised_profile;
       if (revised === null) {
         notes.push("NO_REVISED_PROFILE");
         break;
       }
-      const check = checkProfile(revised);
+      const collapsed = collapseRepeatedSections(revised);
+      const check = checkProfile(collapsed.value);
       if (!check.ok) {
         notes.push(`REVISION_INVALID_${revisions + 1}`);
         await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
         break;
       }
-      // DEV-071b: the revised layout as the page draws it
+      // DEV-071b: the revised layout as the page draws it (its codes are recorded once the candidate exists)
       const drawn = profileAsDrawn(check.profile, ctx.demo);
-      if (drawn.adjustments.length > 0) ctx.layoutAdjustments?.push({ candidate: `candidate-${revisions + 1}`, codes: drawn.adjustments });
+      layoutCodes = [...collapsed.codes, ...drawn.adjustments];
       nextProfile = drawn.profile;
     }
     let next: PhotoStep<ImageDirection>;
@@ -326,6 +328,7 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
     }
     revisions += 1;
     current = { name: `candidate-${revisions}`, profile: nextProfile, direction: next.value };
+    if (layoutCodes.length > 0) ctx.layoutAdjustments?.push({ candidate: current.name, codes: layoutCodes });
   }
 
   // ---- final: the best-reviewed candidate (later wins a tie)

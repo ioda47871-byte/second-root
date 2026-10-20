@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DesignProfileCodexSchema, DesignProfileSchema, withoutMeta } from "./profile";
+import { DesignProfileAnswerSchema, DesignProfileCodexSchema, withoutMeta } from "./profile";
 
 // Visual review (DEV-028): Codex looks at screenshots of the rendered demo
 // and scores it. It may propose a whole revised profile (still limited to the
@@ -14,8 +14,9 @@ export const REVIEW_AREAS = ["hero", "typography", "palette", "layout", "spacing
 /**
  * The review's fields with the given revised-profile schema. DEV-071b: the JSON
  * Schema for Codex requires the revised profile's layout (DesignProfileCodexSchema);
- * the answer is parsed with DesignProfileSchema, where a missing layout means the
- * page before Stage 1.
+ * the answer is parsed with DesignProfileAnswerSchema (layout optional: a missing
+ * one means the page before Stage 1; repeated section kinds allowed, collapsed and
+ * checked by the pipeline).
  */
 export function reviewShape<P extends z.ZodType>(profile: P) {
   return {
@@ -44,7 +45,7 @@ export function reviewShape<P extends z.ZodType>(profile: P) {
   };
 }
 
-export const VisualReviewSchema = z.strictObject(reviewShape(DesignProfileSchema));
+export const VisualReviewSchema = z.strictObject(reviewShape(DesignProfileAnswerSchema));
 /** What Codex is asked to answer (JSON Schema only): the revised profile's layout is required. */
 export const VisualReviewCodexSchema = z.strictObject(reviewShape(DesignProfileCodexSchema));
 

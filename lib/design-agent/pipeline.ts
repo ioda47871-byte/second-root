@@ -3,7 +3,7 @@ import type { PlacedPhoto } from "./assets/render-check";
 import { DeadlineError } from "./bounded-process";
 import { CodexError, isEnvironmentFailure } from "./codex";
 import { briefStructureOnDefault, CATEGORY_DEFAULT_PROFILES, LOW_CONFIDENCE } from "./defaults";
-import { profileAsDrawn } from "./layout";
+import { collapseRepeatedSections, profileAsDrawn } from "./layout";
 import { checkProfile, designProfileJsonSchema, looseJsonSchema, type DesignProfile } from "./profile";
 import { runPhotoLoop, timeForSecondLook, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
 import { buildBriefPrompt, buildReviewPrompt } from "./prompts";
@@ -133,10 +133,10 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   const notes: string[] = [];
   const layoutAdjustments: LayoutAdjustmentRecord[] = [];
   /** DEV-071b: a checked profile as the page draws it (see profileAsDrawn); its adjustments are recorded. */
-  const asDrawn = (candidate: string, checked: DesignProfile): DesignProfile => {
+  const asDrawn = (candidate: string, checked: DesignProfile, collapsed: string[] = []): DesignProfile => {
+    // an answer without a layout (the schema requires one) draws the page before Stage 1: layout:missing
     const { profile: drawn, adjustments } = profileAsDrawn(checked, input.demo);
-    // an answer without a layout (the schema requires one) draws the page before Stage 1
-    const codes = checked.layout ? adjustments : ["layout:missing"];
+    const codes = [...collapsed, ...adjustments];
     if (codes.length > 0) layoutAdjustments.push({ candidate, codes });
     return drawn;
   };
@@ -157,6 +157,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
 
   // ---- brief
   let profile: DesignProfile;
+  let briefCodes: string[] = [];
   let profileSource: PipelineReport["profileSource"] = "codex";
   try {
     const answer = await deps.askCodex({
@@ -172,7 +173,9 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       images: [...input.references, before.desktop, before.mobile],
       schema: schema(designProfileJsonSchema()),
     });
-    const check = checkProfile(answer);
+    const collapsed = collapseRepeatedSections(answer);
+    briefCodes = collapsed.codes;
+    const check = checkProfile(collapsed.value);
     if (!check.ok) {
       notes.push("BRIEF_PROFILE_INVALID");
       await deps.writeRecord("brief-rejected.json", { problems: check.problems });
@@ -189,7 +192,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     throw error;
   }
   const briefConfidence = profile.confidence;
-  profile = asDrawn("brief", profile);
+  profile = asDrawn("brief", profile, briefCodes);
   if (profile.confidence < LOW_CONFIDENCE) {
     notes.push("LOW_CONFIDENCE_CATEGORY_DEFAULT");
     await deps.writeRecord("brief-low-confidence.json", profile);
@@ -358,7 +361,8 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       notes.push("NO_REVISED_PROFILE");
       break;
     }
-    let check = checkProfile(revised);
+    let collapsed = collapseRepeatedSections(revised);
+    let check = checkProfile(collapsed.value);
     if (!check.ok) {
       notes.push(`REVISION_INVALID_${revisions + 1}`);
       await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
@@ -393,7 +397,8 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
         notes.push("NO_REVISED_PROFILE");
         break;
       }
-      check = checkProfile(revised);
+      collapsed = collapseRepeatedSections(revised);
+      check = checkProfile(collapsed.value);
       if (!check.ok) {
         notes.push(`REVISION_INVALID_${revisions + 1}`);
         await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
@@ -406,7 +411,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       }
     }
     revisions += 1;
-    current = { name: `candidate-${revisions}`, profile: asDrawn(`candidate-${revisions}`, check.profile) };
+    current = { name: `candidate-${revisions}`, profile: asDrawn(`candidate-${revisions}`, check.profile, collapsed.codes) };
     changedBy.set(current.name, changed);
     deps.log(`${current.name}: changes ${changed.join(", ")}`);
   }

@@ -174,6 +174,29 @@ describe("sections in Chromium", () => {
   });
 });
 
+describe("boutique_minimal grounds (DEV-071b)", () => {
+  it("a surface band is drawn differently from a plain panel (visibleChanges counts it)", async () => {
+    const context = await browser.newContext({ ...VIEWPORTS.desktop, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    try {
+      const shape = async (ground: "plain" | "surface") => {
+        const layout = { ...THREE_SHOPS.bakery.profile.layout!, sections: [{ kind: "about", variant: "lead", ground }, { kind: "menu", variant: "numbered", ground: "plain" }, { kind: "visit", variant: "ledger", ground: "plain" }] } as never;
+        await page.setContent(pageHtml(renderToStaticMarkup(<ProfileRenderer demo={FULL_SHOP} profile={{ ...BASE_PROFILE, direction: "boutique_minimal", layout }} />)));
+        return page.evaluate(() => {
+          const s = document.querySelector("main > section")!;
+          const cs = getComputedStyle(s);
+          return { height: Math.round(s.getBoundingClientRect().height), padding: cs.paddingTop, nextRule: getComputedStyle(s.nextElementSibling!).borderTopColor };
+        });
+      };
+      const [plain, surface] = [await shape("plain"), await shape("surface")];
+      expect(surface).not.toEqual(plain);
+      expect(surface.height).toBeGreaterThan(plain.height);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
 describe("every direction at every width (DEV-071b)", () => {
   // DIRECTIONS restyle the sections (panels, frames, tiles): each one, with the
   // layouts that use every variant, at every sweep width.

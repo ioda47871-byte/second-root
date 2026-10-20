@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { briefStructureOnDefault, CATEGORY_DEFAULT_PROFILES } from "@/lib/design-agent/defaults";
-import { DEFAULT_LAYOUT } from "@/lib/design-agent/layout";
+import { collapseRepeatedSections, DEFAULT_LAYOUT } from "@/lib/design-agent/layout";
 import { runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
+import { buildPhotoReviewPrompt } from "@/lib/design-agent/photo-prompts";
 import { buildBriefPrompt, buildReviewPrompt, layoutOptionsLine } from "@/lib/design-agent/prompts";
 import { checkProfile, type DesignProfile, type Layout } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
@@ -61,11 +62,30 @@ describe("pipeline with layouts (DEV-071b)", () => {
     expect(JSON.stringify(report.layoutAdjustments)).toMatch(/^[\w:":,{}[\]\-]+$/);
   });
 
-  it("keeps Codex's layout when the page has no section (a valid stored layout needs one); the renderer normalizes it", async () => {
-    const h = harness([withLayout(DESIGNED), review()]);
+  it("a page with no section stores the drawn first view and type, with Codex's sections only to keep the stored layout valid", async () => {
+    const vertical = { ...DESIGNED, type: { scale: "dramatic" as const, headings: "vertical_ja" as const } };
+    const h = harness([withLayout(vertical), review()]);
     const report = await runDesignPipeline({ demo: MINIMAL_SHOP, references: refs }, h.deps);
     expect(report.layoutAdjustments[0]?.codes).toEqual(["first_view:name_lead", "dropped:menu", "dropped:about", "dropped:hours", "dropped:visit"]);
-    expect(h.written["candidate-0"]?.layout).toEqual(DESIGNED);
+    expect(h.written["candidate-0"]?.layout).toEqual({ ...vertical, firstView: "name_only" });
+    expect(checkProfile(h.written["candidate-0"]).ok).toBe(true);
+  });
+
+  it("collapses a repeated section kind before the check (duplicate:<kind>) instead of rejecting the answer", async () => {
+    const repeated = { ...withLayout(DEFAULT_LAYOUT), layout: { ...DEFAULT_LAYOUT, sections: [DEFAULT_LAYOUT.sections[1], { kind: "menu", variant: "chips", ground: "inverted" }, DEFAULT_LAYOUT.sections[0], DEFAULT_LAYOUT.sections[2], { kind: "about", variant: "statement", ground: "plain" }] } };
+    expect(checkProfile(repeated).ok).toBe(false);
+    const h = harness([repeated, revise({ ...repeated, palette: { ...repeated.palette, primary: "#5A1520" } } as never), review()]);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    expect(report.notes).toEqual([]);
+    expect(report.status).toBe("done");
+    expect(report.layoutAdjustments).toEqual([
+      { candidate: "brief", codes: ["duplicate:menu", "duplicate:about"] },
+      { candidate: "candidate-1", codes: ["duplicate:menu", "duplicate:about"] },
+    ]);
+    expect(h.written["candidate-0"]?.layout?.sections).toEqual([DEFAULT_LAYOUT.sections[1], DEFAULT_LAYOUT.sections[0], DEFAULT_LAYOUT.sections[2]]);
+    // something that is not a list of sections is left to the check
+    expect(collapseRepeatedSections({ layout: { sections: "x" } })).toEqual({ value: { layout: { sections: "x" } }, codes: [] });
+    expect(collapseRepeatedSections(null)).toEqual({ value: null, codes: [] });
   });
 
   it("an answer without a layout draws the page before Stage 1 and is recorded as layout:missing", async () => {
@@ -163,5 +183,12 @@ describe("layout options in the prompts (DEV-071b)", () => {
       expect(prompt).toContain("layout.sections: the sections in the order you choose");
       expect(prompt).not.toContain("The page always has, in this order");
     }
+    // a layout change is a profile change, never a reason for needs_renderer_change (review and photo review)
+    const photo = buildPhotoReviewPrompt({ demo: SHOP, profile: AMERICAN_EDITORIAL, direction: { version: 1, layout: "none", hero: null, features: [], rejected: [], paletteFit: 4 } as never, analyses: [], referenceCount: 1, crops: { desktop: 0, mobile: 0 }, round: 0, maxRevisions: 2 });
+    for (const prompt of [reviewPrompt, photo]) {
+      expect(prompt).not.toMatch(/a new layout/);
+      expect(prompt).toContain("Changing the layout (which sections, their order, each section's variant and ground, the first view, the type scale or heading style) is a profile change: give it in revised_profile.");
+    }
+    expect(reviewPrompt).toContain("or a layout setting the shop's facts do not support");
   });
 });

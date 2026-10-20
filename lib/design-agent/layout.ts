@@ -203,18 +203,41 @@ export function normalizeLayout(input: Layout | NormalizedLayout, demo: DemoView
 }
 
 /**
+ * DEV-071b: Codex's answer with a repeated section kind collapsed to its first
+ * section, before the profile check. The JSON Schema cannot say that kinds are
+ * unique (and the loose schema drops the list's limits), so a repeat would
+ * otherwise reject the whole answer. Fixed codes: duplicate:<kind>. Anything that
+ * is not a list of objects with a string kind is left to the check.
+ */
+export function collapseRepeatedSections(value: unknown): { value: unknown; codes: string[] } {
+  const layout = (value as { layout?: { sections?: unknown } } | null)?.layout;
+  const sections = layout?.sections;
+  if (!Array.isArray(sections) || !sections.every((s) => s && typeof s === "object" && typeof (s as { kind?: unknown }).kind === "string")) return { value, codes: [] };
+  const seen = new Set<string>();
+  const codes: string[] = [];
+  const kept = sections.filter((s: { kind: string }) => {
+    if (!seen.has(s.kind)) return seen.add(s.kind), true;
+    if ((SECTION_KINDS as readonly string[]).includes(s.kind)) codes.push(`duplicate:${s.kind}`);
+    return false;
+  });
+  if (kept.length === sections.length) return { value, codes: [] };
+  return { value: { ...(value as object), layout: { ...layout, sections: kept } }, codes };
+}
+
+/**
  * DEV-071b: a checked profile with its layout as the page draws it. The pipeline
  * writes, reviews, compares and stores this form: what Codex and a person read is
  * what the page shows, and rendering it again changes nothing (normalizing is
  * idempotent). A profile without a layout is returned as it is (the page before
- * Stage 1); a normalized layout with no section (a shop with only its name) is
- * not a valid stored layout, so Codex's own layout is kept and the renderer
- * normalizes it the same way.
+ * Stage 1, recorded as "layout:missing"). A normalized layout with no section (a
+ * shop with only its name) is not a valid stored layout: it keeps the normalized
+ * first view and type, and Codex's sections, which no page draws (the prompts say
+ * this shop supports no section), so the stored layout stays valid.
  */
-export function profileAsDrawn(profile: DesignProfile, demo: DemoView): { profile: DesignProfile; adjustments: LayoutAdjustment[] } {
-  if (!profile.layout) return { profile, adjustments: [] };
+export function profileAsDrawn(profile: DesignProfile, demo: DemoView): { profile: DesignProfile; adjustments: Array<LayoutAdjustment | "layout:missing"> } {
+  if (!profile.layout) return { profile, adjustments: ["layout:missing"] };
   const { layout, adjustments } = normalizeLayout(profile.layout, demo);
-  const stored = LayoutSchema.safeParse(layout);
+  const stored = LayoutSchema.safeParse(layout.sections.length > 0 ? layout : { ...layout, sections: profile.layout.sections });
   return { profile: stored.success ? { ...profile, layout: stored.data } : profile, adjustments };
 }
 

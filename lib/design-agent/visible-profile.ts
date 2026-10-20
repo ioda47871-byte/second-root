@@ -34,6 +34,9 @@ export const ACCENT_DIRECTIONS = ["french_classic", "pop_bakeshop"] as const;
 /** DEV-067: directions that repaint every accent motif in another colour (gallery_mono's hero draws them in the background colour). */
 export const NO_ACCENT_DIRECTIONS = ["gallery_mono"] as const;
 
+/** DEV-071b: section variants that set their own columns on desktop, whatever composition.grid says. */
+export const FIXED_COLUMN_VARIANTS = ["statement", "stacked", "side_heading"] as const;
+
 /** Every visible setting, as a dotted path (stable order). */
 export const VISIBLE_SETTINGS = [
   "direction",
@@ -63,21 +66,18 @@ export const VISIBLE_SETTINGS = [
   "layout.type.headings",
 ] as const;
 
-/** DEV-071b: directions that draw every section as a surface panel, where a surface ground looks like plain. */
-export const PANEL_DIRECTIONS = ["boutique_minimal"] as const;
-
 /**
  * The layout as the page draws it: normalized against the facts (sections without
  * facts left out, a first view without facts shown as the name alone, vertical
- * headings beside short sections set horizontally), a surface ground drawn like
- * plain in a panel direction, and no type hierarchy on a page without sections.
+ * headings beside short sections set horizontally), and no type hierarchy on a page
+ * without sections. Every ground counts: in boutique_minimal (sections drawn as
+ * surface panels) a surface band is still a panel with more space and no rule.
  */
 function drawnLayout(profile: DesignProfile, demo: DemoView) {
   const { layout } = normalizeLayout(profile.layout ?? DEFAULT_LAYOUT, demo);
-  const panel = (PANEL_DIRECTIONS as readonly string[]).includes(profile.direction);
   return {
     firstView: layout.firstView,
-    sections: layout.sections.map((s) => ({ kind: s.kind, variant: s.variant, ground: panel && s.ground === "surface" ? "plain" : s.ground })),
+    sections: layout.sections.map((s) => ({ kind: s.kind, variant: s.variant, ground: s.ground })),
     type: layout.sections.length > 0 ? layout.type : null,
   };
 }
@@ -110,6 +110,22 @@ export function visibleChanges(before: DesignProfile, after: DesignProfile, opti
   );
   // the surface colour also shows on a page with a surface band (DEV-071b)
   const surfaceShown = options.photos || drawn.some((p) => has(SURFACE_DIRECTIONS, p.direction) || p.layout.sections.some((s) => s.ground === "surface"));
-  const hidden: readonly string[] = [...(surfaceShown ? [] : ONLY_WITH_PHOTOS), ...(accentShown ? [] : ["palette.accent"])];
+  // DEV-071b: the composition settings draw only on the sections that use them (on both pages).
+  // grid: none without sections; editorial_12 and asymmetric_7_5 differ only in the columns, which a
+  // statement, stacked or side_heading section or vertical headings set themselves (both set the same
+  // heading size). infoStyle: only the ledger (and split) visit. divider: only between two sections.
+  const forced = (p: (typeof drawn)[number]) => p.layout.type?.headings === "vertical_ja" || p.layout.sections.every((x) => has(FIXED_COLUMN_VARIANTS, x.variant));
+  const grids = new Set([before.composition.grid, after.composition.grid]);
+  const gridHidden = drawn.every((p) => p.layout.sections.length === 0) || (grids.has("editorial_12") && grids.has("asymmetric_7_5") && drawn.every(forced));
+  // (the split visit's location labels follow colophon's centring too)
+  const ledgerShown = drawn.some((p) => p.layout.sections.some((x) => x.kind === "visit" && (x.variant === "ledger" || x.variant === "split")));
+  const dividerShown = drawn.some((p) => p.layout.sections.length > 1);
+  const hidden: readonly string[] = [
+    ...(surfaceShown ? [] : ONLY_WITH_PHOTOS),
+    ...(accentShown ? [] : ["palette.accent"]),
+    ...(gridHidden ? ["composition.grid"] : []),
+    ...(ledgerShown ? [] : ["composition.infoStyle"]),
+    ...(dividerShown ? [] : ["composition.divider"]),
+  ];
   return VISIBLE_SETTINGS.filter((path) => !hidden.includes(path) && !same(read(drawn[0] as DesignProfile, path), read(drawn[1] as DesignProfile, path)));
 }

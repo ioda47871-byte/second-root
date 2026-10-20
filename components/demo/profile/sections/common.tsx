@@ -35,8 +35,6 @@ export function sectionAttrs(spec: LayoutSection | null, short = false) {
   return { className: `${styles.section} ${sx.sec}`, "data-kind": spec.kind, "data-variant": spec.variant, "data-ground": spec.ground, "data-short": short ? "" : undefined };
 }
 
-
-
 export function Heading({ kind, headings, layout }: { kind: SectionKind; headings: HeadingStyle; layout: boolean }) {
   const words = HEADING_WORDS[kind];
   const id = `pr-${kind}`;

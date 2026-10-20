@@ -97,6 +97,14 @@ export const LayoutSchema = z.strictObject({
   type: z.strictObject({ scale: z.enum(TYPE_SCALES), headings: z.enum(HEADING_STYLES) }),
 });
 
+/**
+ * DEV-071b: a layout inside a review's answer, before its revised profile is
+ * checked: any number of sections, kinds may repeat. The pipeline collapses
+ * repeats (collapseRepeatedSections, duplicate:<kind>) and then checks the
+ * revised profile with DesignProfileSchema, so a repeat never rejects the review.
+ */
+export const LayoutAnswerSchema = LayoutSchema.extend({ sections: z.array(SectionSchema).min(1) });
+
 export type SectionKind = (typeof SECTION_KINDS)[number];
 export type LayoutSection = z.infer<typeof SectionSchema>;
 export type Layout = z.infer<typeof LayoutSchema>;
@@ -146,6 +154,9 @@ export const DesignProfileSchema = DesignProfileCoreSchema.extend({ layout: Layo
  * the page before Stage 1).
  */
 export const DesignProfileCodexSchema = DesignProfileCoreSchema.extend({ layout: LayoutSchema });
+
+/** DEV-071b: the revised profile as a review's answer is parsed (repeated kinds collapsed later). */
+export const DesignProfileAnswerSchema = DesignProfileCoreSchema.extend({ layout: LayoutAnswerSchema.optional() });
 
 export type DesignProfile = z.infer<typeof DesignProfileSchema>;
 export type Palette = z.infer<typeof PaletteSchema>;
