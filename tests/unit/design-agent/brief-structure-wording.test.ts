@@ -75,15 +75,16 @@ describe("brief structure wording (DEV-046)", () => {
     expect(RULES).toContain("set confidence below 0.5");
     expect(RULES).toContain("No step-by-step reasoning.");
     expect(RULES).toContain("Answer with the JSON object only.");
-    // DEV-066: alignment draws nothing yet (no CSS reads data-align); the vocabulary says so
-    expect(VOCABULARY).toContain("alignment: left | center (recorded only; it does not change the page yet).");
+    // DEV-067: alignment centres the lower sections (DEV-066 said it drew nothing yet)
+    expect(VOCABULARY).toContain("alignment: left | center (the headings, the description, the menu and the visit block of the lower sections, within their column).");
     // the height descriptions do not hold for a split photo hero (no floor on phones; tall has none on desktop)
     expect(VOCABULARY).toContain("heroLayout.height (a minimum for a hero without a split photo;");
-    expect(VOCABULARY).toMatch(/\n  alignment: left \| center \(recorded only; it does not change the page yet\)\.\n/);
+    expect(VOCABULARY).toMatch(/\n  alignment: left \| center \(the headings, the description, the menu and the visit block of the lower sections, within their column\)\.\n/);
     expect(VOCABULARY).toContain("There are no photographs, logos or illustrations of food, and there never will be.");
     // DEV-066: direction is a name only, so "every value is already implemented" is no longer claimed
     expect(VOCABULARY).toContain("Renderer vocabulary (the only things you can choose; every value is accepted):");
-    expect(VOCABULARY).toContain("It is a name only: the page looks the same for every direction.");
+    // DEV-067: each direction draws its own treatment
+    expect(VOCABULARY).toContain("Each one draws the section headings, the menu, the folio and dek, the address block,");
     expect(VOCABULARY).toContain("Motion never shows in the review screenshots");
   });
 

@@ -2961,6 +2961,52 @@
       "decision": "2026-10-20: 人の指示（品質の原因調査と改善）で Claude が追加。大きい改善（direction の CSS preset・日本語の display 書体・参照画像の色・review の notes の受け渡し・複数の初期候補・写真）は DEV-067 以降の案として blockers に; 2026-10-20: PR #79 merge（1ab669f）。Fresh Review FAIL（Medium 2: 追加の review で leader の score が動く・写真なしの surface を見える扱い）→ 対応 → 再レビュー PASS（Low 1 → 対応）。CI 39410544089 success（worker test の fixture を見える修正に直した後）"
     },
     {
+      "id": "DEV-067",
+      "title": "direction ごとの CSS preset（見出し・menu・folio/dek・住所・地・hero の枠）と heroLayout.alignment の反映",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-066"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-067-direction-presets",
+      "purpose": "人の指示（2026-10-20）: 店ごとに実際の見た目が違う、魅力的な頁を作れる仕組みを最優先。DEV-066 の調査で direction は名前だけ・alignment は描かれないと分かった。色違いだけでなく構図・余白・タイポ・階層に違いを作る。品質基準は緩めない",
+      "acceptance_criteria": [
+        "10 の direction がそれぞれ見出し・menu・folio/dek・住所・地・hero の枠を独自に描く（色は palette だけ、文字は足さない）",
+        "alignment=center で下の節が列の中央に",
+        "hero の名前の寸法・divider・info style・grid は各自の設定のまま",
+        "スマホ・デスクトップで overflow なし・事実がすべて出る・狭い列に押し込まれない",
+        "direction の組ごとに computed style と画素が違う（hero と節の両方）",
+        "DEV-066 の見える設定の判定を更新（direction・alignment は見える、surface・accent は描く direction で見える）",
+        "語彙を事実どおりに"
+      ],
+      "required_tests": [
+        "unit（Chromium）: 全 direction × 左/中央 × スマホ/デスクトップ",
+        "unit: 見える判定と stylesheet の一致",
+        "既存の renderer の test がすべて通る",
+        "CI"
+      ],
+      "allowed_scope": [
+        "components/demo/profile/",
+        "lib/design-agent/",
+        "tests/unit/design-agent/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "品質の閾値・verdict・gate・score の式",
+        "事実の創作・文字の追加",
+        "DB",
+        "flag",
+        "cycle",
+        "Production"
+      ],
+      "human_approval_triggers": [
+        "次の controlled run"
+      ],
+      "decision": "2026-10-20: 人の指示で Claude が追加。Fresh Review FAIL（High 1: surface のパネルの上の primary / secondary に contrast の保証が無い。Medium 2: desktop の grid で見出しが伸びる。Medium 3: 枠で Latin の語が折れる。Low 7）→ 対応: パネル内の文字は text の色、grid の見出しは align-self: start、phone の枠は hero の padding の中へ、ほか Low をすべて → 再レビュー FAIL（Medium A: editorial_luxury の phone で枠が重なり ruled_frame が名前を横切る。Medium B: tight × medium で名前が枠に接する。Low 2）→ 対応: editorial_luxury の phone の title は上下の罫だけ、tight の title は padding-block だけ、phone の内側の余白 8px、ruled_frame は title の枠と並ばない、japanese_modern の frame は帯の下から → 再レビュー PASS（Low 2・Nit 1）→ Low も対応（editorial_luxury の phone は ruled_frame の上辺と corner marks を描かない、語彙に「phone では一部だけ」）。develop（DEV-068）を merge"
+    },
+    {
       "id": "DEV-069",
       "title": "参考画像（privacy 処理済み）の色を測り、hex と割合だけを brief / review に渡す",
       "status": "done",

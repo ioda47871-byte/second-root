@@ -41,6 +41,9 @@
   --display-track: 0;
   --display-width: 100;
   --body: var(--font-body), sans-serif;
+  /* DEV-067: the primary colour for rules and frames on surface panels, where the
+     panel's own text is set in the text colour (see "ink on surface panels"). */
+  --panel-line: var(--p-primary);
   font-family: var(--body);
   background: var(--p-bg);
 }
@@ -361,7 +364,7 @@
   font-family: var(--display);
   font-weight: var(--display-weight);
   font-variation-settings: "wdth" var(--display-width);
-  font-size: clamp(2.2rem, 8vw, 3.6rem);
+  font-size: var(--heading-size, clamp(2.2rem, 8vw, 3.6rem));
   line-height: 1;
   color: var(--p-primary);
 }
@@ -379,16 +382,16 @@
   .canvas[data-spacing="tight"] .section + .section { margin-top: 0; }
   .canvas[data-spacing="tight"] .heading { font-size: clamp(1.75rem, 7vw, 2.6rem); }
   .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 28svh; padding-bottom: 20px; }
-  .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 20px 0; }
+  .hero[data-layout="centered_cover"][data-height="medium"] .title { padding-block: 20px; }
   .heroSplit .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 0; } /* a split hero keeps no floor */
   /* DEV-038: tight is whole-page density — the cover, the menu and information rows, and the
      address → access gap are closer too. */
   .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 22svh; padding-top: 14px; padding-bottom: 14px; }
-  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 14px 0; }
+  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding-block: 14px; }
   /* DEV-043: the same band for every layout without a photo, so a sparse page is not steered
      to centered_cover. A framed photo hero of another layout keeps its height. */
   .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) { min-height: 22svh; padding-top: 14px; padding-bottom: 14px; }
-  .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) .title { padding: 14px 0; }
+  .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) .title { padding-block: 14px; }
   .canvas[data-spacing="tight"] .menuItem { padding: 10px 0; }
   .canvas[data-spacing="tight"] .row { padding: 10px 0; }
   .canvas[data-spacing="tight"] .visit { gap: 20px; }
@@ -686,10 +689,10 @@
   /* DEV-038: a medium centered cover under tight is a band on desktop too, not most of the screen
      (the canvas's own hero only: a split photo hero keeps its height). */
   .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 38svh; padding-top: 18px; padding-bottom: 24px; }
-  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 24px 0; }
+  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding-block: 24px; }
   /* DEV-043: every layout without a photo (see the phone rule). */
   .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) { min-height: 38svh; padding-top: 18px; padding-bottom: 24px; }
-  .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) .title { padding: 24px 0; }
+  .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) .title { padding-block: 24px; }
   .motifRow { gap: 28px; margin-top: 22px; }
   .pleats { width: 168px; }
   .stamp { width: 104px; height: 104px; }
@@ -728,3 +731,385 @@
 @media (min-width: 1100px) {
   .canvas { --pad: max(56px, calc((100% - 1320px) / 2)); }
 }
+
+/* ---------- alignment (DEV-067) ----------
+   heroLayout.alignment sets the text of the lower sections: left (as before) or
+   centred. Headings, the lead, the menu and the visit block are centred within
+   their column (the grid's columns on wide screens are kept). */
+
+.canvas[data-align="center"] .section { justify-items: center; text-align: center; }
+.canvas[data-align="center"] .heading { justify-content: center; }
+.canvas[data-align="center"] .lead { margin-inline: auto; }
+.canvas[data-align="center"] .menu { width: 100%; }
+.canvas[data-align="center"] .menuItem { display: flex; justify-content: center; align-items: baseline; gap: 12px; }
+.canvas[data-align="center"] .visit { justify-items: center; width: 100%; }
+.canvas[data-align="center"] .address,
+.canvas[data-align="center"] .rowLabel,
+.canvas[data-align="center"] .addressTags { justify-items: center; justify-content: center; }
+.canvas[data-align="center"] .rows { width: 100%; }
+.canvas[data-align="center"] .row { justify-items: center; }
+.canvas[data-align="center"][data-info="ledger_columns"] .row { grid-template-columns: minmax(0, 1fr); }
+.canvas[data-align="center"][data-info="ledger_columns"] .rowValue { text-align: center; }
+@media (min-width: 720px) {
+  .canvas[data-align="center"][data-grid="editorial_12"] .heading,
+  .canvas[data-align="center"][data-grid="asymmetric_7_5"] .heading { align-items: center; }
+  .canvas[data-align="center"][data-info="ruled_list"] .row { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- direction presets (DEV-067) ----------
+   Each direction is a visual treatment of the parts no other setting draws:
+   section headings, the menu, the folio and dek, the address block, the lead,
+   the page ground and frame. They use the profile's colours only and never add
+   text (marks are borders and empty boxes only). The
+   hero's name, the dividers between sections, the visit rows' info style and the
+   grid columns stay with their own settings. */
+
+/* american_editorial: a magazine. A heavy bar over each heading with a short
+   accent tab, a drop cap on the lead, big set numerals in the menu. */
+.canvas[data-direction="american_editorial"] .folio { border-bottom-width: 3px; }
+.canvas[data-direction="american_editorial"] .heading { padding-top: 14px; border-top: 5px solid var(--p-primary); }
+.canvas[data-direction="american_editorial"] .heading { position: relative; }
+.canvas[data-direction="american_editorial"] .heading::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 0;
+  width: 56px;
+  height: 11px;
+  background: var(--p-primary);
+}
+.canvas[data-direction="american_editorial"] .lead::first-letter {
+  float: left;
+  margin: 0.06em 0.12em 0 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 3.4em;
+  line-height: 0.8;
+  color: var(--p-primary);
+}
+.canvas[data-direction="american_editorial"] .menuNo {
+  font-family: var(--display);
+  font-style: normal;
+  font-weight: 700;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--p-primary);
+}
+
+/* editorial_luxury: quiet and spaced. A fine double frame around the page, small
+   light headings in wide tracking over a short hairline, a menu without lines. */
+.canvas[data-direction="editorial_luxury"] { box-shadow: inset 0 0 0 9px var(--p-bg), inset 0 0 0 10px var(--p-primary), inset 0 0 0 13px var(--p-bg), inset 0 0 0 14px var(--p-primary); }
+.canvas[data-direction="editorial_luxury"] .main { padding-inline: calc(var(--pad) + 10px); }
+.canvas[data-direction="editorial_luxury"] .heading {
+  --heading-size: clamp(1.9rem, 6vw, 2.6rem);
+  font-weight: 300;
+  letter-spacing: 0.14em;
+  flex-direction: column;
+  gap: 10px;
+}
+.canvas[data-direction="editorial_luxury"] .heading::after { content: ""; width: 44px; height: 1px; background: var(--p-primary); }
+.canvas[data-direction="editorial_luxury"] .menu { border-top: 0; gap: 4px; }
+.canvas[data-direction="editorial_luxury"] .menuItem { border-bottom: 0; padding: 12px 0; }
+.canvas[data-direction="editorial_luxury"] .menuNo { font-size: 0.8rem; letter-spacing: 0.3em; font-style: normal; }
+.canvas[data-direction="editorial_luxury"] .menuName { font-weight: 400; letter-spacing: 0.06em; }
+.canvas[data-direction="editorial_luxury"] .lead { line-height: 2.2; letter-spacing: 0.04em; }
+
+/* french_classic: a menu card. Italic headings closed by a small diamond, a
+   double rule under each heading, dotted lines between dishes, the address in a
+   double-ruled box. */
+.canvas[data-direction="french_classic"] .heading { font-style: italic; padding-bottom: 14px; border-bottom: 3px double var(--p-primary); }
+.canvas[data-direction="french_classic"] .heading > span:first-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.22em;
+  height: 0.22em;
+  margin-left: 0.3em;
+  vertical-align: middle;
+  background: var(--p-accent);
+  transform: rotate(45deg);
+}
+.canvas[data-direction="french_classic"] .folio { font-style: italic; letter-spacing: 0.18em; }
+.canvas[data-direction="french_classic"] .menu { border-top: 0; }
+.canvas[data-direction="french_classic"] .menuItem { border-bottom: 1px dotted var(--p-secondary); }
+.canvas[data-direction="french_classic"] .address { padding: 18px 20px; border: 3px double var(--p-primary); }
+
+/* nordic_minimal: air and restraint. Small sans headings in wide caps, no
+   rules on the folio or the menu, no menu numbers, light lines elsewhere. */
+.canvas[data-direction="nordic_minimal"] .hero { border-bottom-color: color-mix(in srgb, var(--p-primary) 25%, transparent); }
+.canvas[data-direction="nordic_minimal"] .folio { border-bottom: 0; letter-spacing: 0.4em; }
+.canvas[data-direction="nordic_minimal"] .heading {
+  --heading-size: clamp(1.7rem, 5.4vw, 2.2rem);
+  font-family: var(--font-body), sans-serif;
+  font-weight: 500;
+  font-variation-settings: normal;
+  letter-spacing: 0.18em;
+}
+.canvas[data-direction="nordic_minimal"] .menu { border-top: 0; gap: 6px; }
+.canvas[data-direction="nordic_minimal"] .menuItem { grid-template-columns: minmax(0, 1fr); border-bottom: 0; padding: 10px 0; }
+.canvas[data-direction="nordic_minimal"] .menuNo { display: none; }
+.canvas[data-direction="nordic_minimal"] .menuName { font-weight: 400; }
+.canvas[data-direction="nordic_minimal"] .row { border-bottom-color: color-mix(in srgb, var(--p-primary) 14%, transparent); }
+
+/* japanese_modern: Japanese first. The Japanese heading leads beside a thick
+   vertical bar, the English is a small label; a filled folio band; the menu in
+   ruled boxes. */
+/* The band is the folio's own box, widened to the hero's edges and up through the
+   hero's top padding by a shadow (no margins: the hero's padding differs by spacing
+   and screen); the hero clips it. */
+.canvas[data-direction="japanese_modern"] .folio {
+  padding-block: 10px;
+  border-bottom: 0;
+  background: var(--p-primary);
+  box-shadow: 0 0 0 100vmax var(--p-primary);
+  clip-path: inset(-100vmax -100vmax 0 -100vmax);
+  color: var(--p-bg);
+}
+.canvas[data-direction="japanese_modern"] .folio .monogram { border-color: var(--p-bg); color: var(--p-bg); }
+.canvas[data-direction="japanese_modern"] .folio .label + .label::before { background: var(--p-bg); }
+/* The band is the top edge of the ruled frame: the frame runs from the hero's top
+   under the band (whatever its height), and the band takes the place of the top
+   corner marks. */
+.canvas[data-direction="japanese_modern"] .hero .frame { top: 0; border-top: 0; }
+.canvas[data-direction="japanese_modern"] .hero .corners > span:nth-child(-n + 2) { display: none; }
+.canvas[data-direction="japanese_modern"] .heading { flex-direction: column-reverse; align-items: flex-start; gap: 8px; padding-left: 16px; border-left: 6px solid var(--p-primary); }
+.canvas[data-direction="japanese_modern"] .heading > span:first-child:not(:only-child) { font-size: 0.42em; letter-spacing: 0.24em; color: var(--p-secondary); }
+.canvas[data-direction="japanese_modern"] .headingJa { font-size: clamp(1.5rem, 5vw, 2rem); font-weight: 700; letter-spacing: 0.08em; color: var(--p-primary); }
+.canvas[data-direction="japanese_modern"][data-align="center"] .heading { align-items: center; }
+.canvas[data-direction="japanese_modern"] .menu { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; border-top: 0; }
+.canvas[data-direction="japanese_modern"] .menuItem { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 14px; border: 1px solid var(--p-primary); }
+
+/* kissaten_retro: a coffee-house card. Headings in a rounded badge, menu items
+   in double-ruled cards on the surface colour, a striped hero ground. */
+.canvas[data-direction="kissaten_retro"] .hero {
+  background-image: repeating-linear-gradient(90deg, transparent 0 22px, color-mix(in srgb, var(--p-primary) 7%, transparent) 22px 44px);
+}
+/* small text on the stripes sits on a ground of its own (the contrast rules hold on the background) */
+.canvas[data-direction="kissaten_retro"] .folio,
+.canvas[data-direction="kissaten_retro"] .dek { background: var(--p-bg); }
+.canvas[data-direction="kissaten_retro"] .dek { padding: 10px 12px 4px; }
+.canvas[data-direction="kissaten_retro"] .heading { --heading-size: clamp(1.8rem, 6.4vw, 2.6rem); }
+.canvas[data-direction="kissaten_retro"] .heading > span:first-child {
+  padding: 0.12em 0.5em 0.18em;
+  border-radius: 0.3em;
+  background: var(--p-primary);
+  color: var(--p-bg);
+}
+.canvas[data-direction="kissaten_retro"] .menu { border-top: 0; gap: 12px; }
+.canvas[data-direction="kissaten_retro"] .menuItem { padding: 14px 16px; border: 4px double var(--panel-line); border-radius: 12px; background: var(--p-surface); }
+.canvas[data-direction="kissaten_retro"] .address { padding: 16px 18px; border-radius: 12px; background: var(--p-surface); }
+
+/* gallery_mono: a catalogue. Each heading is a small spaced label under a
+   solid block; the menu is a grid of ruled tiles; heavy rules. */
+.canvas[data-direction="gallery_mono"] .folio { border-bottom-width: 0; border-top: 6px solid var(--p-primary); padding-top: 12px; }
+.canvas[data-direction="gallery_mono"] .heading { flex-direction: column; align-items: flex-start; gap: 6px; }
+.canvas[data-direction="gallery_mono"] .heading::before { content: ""; width: 0.9em; height: 0.9em; background: var(--p-primary); }
+.canvas[data-direction="gallery_mono"] .heading > span:first-child { font-size: 0.62em; letter-spacing: 0.3em; }
+.canvas[data-direction="gallery_mono"][data-align="center"] .heading { align-items: center; }
+.canvas[data-direction="gallery_mono"] .menu { grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 0; border-left: 2px solid var(--p-primary); }
+.canvas[data-direction="gallery_mono"] .menuItem { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 14px; border-bottom: 2px solid var(--p-primary); border-right: 2px solid var(--p-primary); }
+.canvas[data-direction="gallery_mono"] .menuItem:nth-child(-n + 2) { border-top: 2px solid var(--p-primary); }
+
+/* craft_paper: handmade. A paper grain, wavy underlined headings, stitched
+   (dashed) lines, menu numbers in a dashed ring, the address on a dashed tag. */
+.canvas[data-direction="craft_paper"] {
+  background-image:
+    radial-gradient(color-mix(in srgb, var(--p-secondary) 6%, transparent) 0.7px, transparent 0.9px),
+    radial-gradient(color-mix(in srgb, var(--p-primary) 4%, transparent) 0.7px, transparent 0.9px);
+  background-size: 7px 7px, 11px 11px;
+  background-position: 0 0, 3px 5px;
+}
+.canvas[data-direction="craft_paper"] .heading > span:first-child { text-decoration: underline wavy var(--p-primary); text-decoration-thickness: 0.06em; text-underline-offset: 0.2em; }
+.canvas[data-direction="craft_paper"] .folio { border-bottom-style: dashed; }
+.canvas[data-direction="craft_paper"] .menu { border-top-style: dashed; }
+.canvas[data-direction="craft_paper"] .menuItem { border-bottom: 1px dashed var(--p-primary); }
+.canvas[data-direction="craft_paper"] .menuNo { display: inline-grid; place-items: center; width: 2.2em; height: 2.2em; border: 1px dashed var(--p-primary); border-radius: 50%; font-size: 0.85rem; }
+.canvas[data-direction="craft_paper"] .address { padding: 16px 18px; border: 1.5px dashed var(--p-primary); border-radius: 6px; }
+
+/* boutique_minimal: a narrow, centred column on panels of the surface colour;
+   thin spaced headings; the menu as a soft list. */
+.canvas[data-direction="boutique_minimal"] .main { max-width: 1080px; margin-inline: auto; }
+.canvas[data-direction="boutique_minimal"] .section { padding: calc(var(--gap) * 0.6) 20px 28px; background: var(--p-surface); }
+/* a band of the page ground between panels (under tight, a narrower one) */
+.canvas[data-direction="boutique_minimal"] .section + .section { margin-top: 20px; }
+.canvas[data-direction="boutique_minimal"][data-spacing="tight"] .section + .section { margin-top: 12px; }
+.canvas[data-direction="boutique_minimal"] .heading { --heading-size: clamp(1.8rem, 6vw, 2.4rem); font-weight: 300; letter-spacing: 0.1em; }
+.canvas[data-direction="boutique_minimal"] .menu { border-top: 0; }
+.canvas[data-direction="boutique_minimal"] .menuItem { border-bottom-color: color-mix(in srgb, var(--p-primary) 16%, transparent); }
+.canvas[data-direction="boutique_minimal"] .menuNo { font-style: normal; font-size: 0.75rem; letter-spacing: 0.2em; }
+
+/* pop_bakeshop: playful. Tilted pill headings, the menu as rounded chips with
+   an offset shadow in the accent colour, a dotted hero (the sections' small
+   text keeps the plain background). */
+.canvas[data-direction="pop_bakeshop"] .heading { --heading-size: clamp(1.8rem, 6.6vw, 2.8rem); }
+.canvas[data-direction="pop_bakeshop"] .heading > span:first-child {
+  display: inline-block;
+  padding: 0.12em 0.6em 0.2em;
+  border-radius: 999px;
+  background: var(--p-primary);
+  color: var(--p-bg);
+  transform: rotate(-2deg);
+}
+.canvas[data-direction="pop_bakeshop"] .menu { display: flex; flex-wrap: wrap; gap: 12px; border-top: 0; }
+.canvas[data-direction="pop_bakeshop"][data-align="center"] .menu { justify-content: center; }
+.canvas[data-direction="pop_bakeshop"] .menuItem {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  max-width: 100%;
+  padding: 10px 18px;
+  border: 2px solid var(--panel-line);
+  border-radius: 22px;
+  background: var(--p-surface);
+  box-shadow: 4px 4px 0 var(--p-accent);
+}
+.canvas[data-direction="pop_bakeshop"] .menuNo { font-style: normal; font-weight: 700; color: var(--p-primary); }
+.canvas[data-direction="pop_bakeshop"] .address { padding: 16px 18px; border: 2px solid var(--panel-line); border-radius: 18px; background: var(--p-surface); box-shadow: 5px 5px 0 var(--p-accent); }
+
+@media (min-width: 720px) {
+  .canvas[data-direction="japanese_modern"] .menu { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .canvas[data-direction="gallery_mono"] .menu { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .canvas[data-direction="gallery_mono"] .menuItem:nth-child(-n + 3) { border-top: 2px solid var(--p-primary); }
+  .canvas[data-direction="kissaten_retro"] .menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .canvas[data-direction="boutique_minimal"] .section { padding-inline: 40px; }
+  .canvas[data-direction="boutique_minimal"] .visit { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+}
+
+/* ---------- direction presets: the hero (DEV-067) ----------
+   The first screen carries the direction too: its ground, rules, folio and
+   dek, and a frame or bar around the name's block. The name keeps its own
+   sizing (a frame narrows its block, so the name is set smaller to fit). */
+
+.canvas[data-direction="american_editorial"] .hero { border-bottom-width: 6px; }
+.canvas[data-direction="american_editorial"] .dek { font-family: var(--font-grotesk), var(--font-body), sans-serif; font-weight: 700; letter-spacing: 0.3em; }
+.canvas[data-direction="american_editorial"] .rule { height: 6px; width: 72px; }
+
+.canvas[data-direction="editorial_luxury"] .hero { border-bottom: 0; }
+.canvas[data-direction="editorial_luxury"] .folio { border-bottom-color: color-mix(in srgb, var(--p-primary) 40%, transparent); padding-inline: 10px; }
+.canvas[data-direction="editorial_luxury"] .dek { justify-content: center; letter-spacing: 0.5em; }
+.canvas[data-direction="editorial_luxury"] .title { margin: 18px 8px; padding: 30px 22px; border: 1px solid var(--p-primary); outline: 1px solid var(--p-primary); outline-offset: 6px; }
+.canvas[data-direction="editorial_luxury"] .dek::after { content: ""; flex: none; width: 48px; height: 1px; background: var(--p-primary); }
+
+.canvas[data-direction="french_classic"] .title { margin-block: 12px; padding: 28px 18px; border: 3px double var(--p-primary); border-radius: 999px 999px 0 0 / 120px 120px 0 0; }
+.canvas[data-direction="french_classic"] .dek { justify-content: center; font-style: italic; }
+
+.canvas[data-direction="nordic_minimal"] .rule { display: none; }
+.canvas[data-direction="nordic_minimal"] .dek { letter-spacing: 0.4em; }
+
+.canvas[data-direction="japanese_modern"] .title { padding-left: 18px; border-left: 8px solid var(--p-primary); }
+.canvas[data-direction="japanese_modern"] .dek { padding: 8px 12px; border: 1px solid var(--p-primary); }
+
+.canvas[data-direction="kissaten_retro"] .title { margin-block: 12px; padding: 22px 16px; border: 4px double var(--panel-line); border-radius: 18px; background: var(--p-surface); }
+.canvas[data-direction="kissaten_retro"] .dek { justify-content: center; }
+
+.canvas[data-direction="gallery_mono"] .hero { background: var(--p-primary); border-bottom: 0; }
+.canvas[data-direction="gallery_mono"] .hero .name,
+.canvas[data-direction="gallery_mono"] .hero .folio,
+.canvas[data-direction="gallery_mono"] .hero .dek,
+.canvas[data-direction="gallery_mono"] .hero .monogram,
+.canvas[data-direction="gallery_mono"] .hero .stampMark { color: var(--p-bg); }
+.canvas[data-direction="gallery_mono"] .hero .folio { border-top-color: var(--p-bg); }
+.canvas[data-direction="gallery_mono"] .hero .monogram,
+.canvas[data-direction="gallery_mono"] .hero .stamp,
+.canvas[data-direction="gallery_mono"] .hero .frame,
+.canvas[data-direction="gallery_mono"] .hero .corners > span { border-color: var(--p-bg); }
+.canvas[data-direction="gallery_mono"] .hero .stamp { box-shadow: inset 0 0 0 5px var(--p-primary), inset 0 0 0 6px var(--p-bg); }
+.canvas[data-direction="gallery_mono"] .hero .rule,
+.canvas[data-direction="gallery_mono"] .hero .label + .label::before { background: var(--p-bg); }
+.canvas[data-direction="gallery_mono"] .hero .dots { background-image: radial-gradient(var(--p-bg) 1.1px, transparent 1.3px); }
+.canvas[data-direction="gallery_mono"] .hero .pleatRim,
+.canvas[data-direction="gallery_mono"] .hero .pleatLine,
+.canvas[data-direction="gallery_mono"] .hero .pleatBase { stroke: var(--p-bg); }
+.canvas[data-direction="gallery_mono"] .hero[data-layout="centered_cover"] .dek { border-top-color: var(--p-bg); }
+
+.canvas[data-direction="craft_paper"] .hero { border-bottom-style: dashed; }
+.canvas[data-direction="craft_paper"] .title { margin-block: 12px; padding: 20px 16px; border: 1.5px dashed var(--p-primary); border-radius: 6px; }
+
+.canvas[data-direction="boutique_minimal"] .hero { border-bottom: 0; }
+.canvas[data-direction="boutique_minimal"] .title { margin-block: 8px; padding: 28px 16px; border-block: 1px solid color-mix(in srgb, var(--panel-line) 35%, transparent); background: var(--p-surface); }
+.canvas[data-direction="boutique_minimal"] .dek { justify-content: center; }
+.canvas[data-direction="boutique_minimal"] .rule { display: none; }
+
+.canvas[data-direction="pop_bakeshop"] .hero {
+  border-bottom-width: 3px;
+  background-image: radial-gradient(color-mix(in srgb, var(--p-accent) 30%, transparent) 1.4px, transparent 1.6px);
+  background-size: 18px 18px;
+}
+.canvas[data-direction="pop_bakeshop"] .dek { justify-self: center; padding: 6px 16px; border-radius: 999px; background: var(--p-primary); color: var(--p-bg); }
+.canvas[data-direction="pop_bakeshop"] .dek .rule { background: var(--p-bg); }
+
+/* ---------- direction presets: fixes (DEV-067 review) ---------- */
+
+/* Ink on surface panels. The contrast rules guarantee only the text colour on
+   the surface colour, so every word on a surface panel is set in the text colour
+   (the primary / secondary of everything inside a panel resolve to it). Rules
+   and frames of the panels keep the primary colour (--panel-line). */
+.canvas[data-direction="kissaten_retro"] .title,
+.canvas[data-direction="kissaten_retro"] .menuItem,
+.canvas[data-direction="kissaten_retro"] .address,
+.canvas[data-direction="boutique_minimal"] .title,
+.canvas[data-direction="boutique_minimal"] .section,
+.canvas[data-direction="pop_bakeshop"] .menuItem,
+.canvas[data-direction="pop_bakeshop"] .address {
+  --p-primary: var(--p-text);
+  --p-secondary: var(--p-text);
+}
+.canvas[data-direction="boutique_minimal"] .section + .section { border-top-color: var(--panel-line); }
+
+/* Desktop grids: a heading sits at the top of its row (it does not stretch to the
+   row's height, so japanese_modern's bar and french_classic's double rule stay with
+   the words). */
+@media (min-width: 720px) {
+  .canvas[data-grid="editorial_12"] .section > .heading,
+  .canvas[data-grid="asymmetric_7_5"] .section > .heading { align-self: start; }
+}
+
+/* Framed titles on phones: the frame and an 8px inner margin sit in the hero's
+   side padding (negative side margins of the same width), so the name keeps the
+   width it has without a frame and a long spaced Latin word does not break.
+   editorial_luxury's page frame already runs in that padding: there the title keeps
+   only its top and bottom rules on phones and the page frame closes its sides.
+   The ruled frame (inset 10px) would run beside or over these title frames: on
+   phones it keeps its top and bottom lines there, and the title frame draws the
+   sides. */
+@media (max-width: 719.98px) {
+  .canvas[data-direction="editorial_luxury"] .title { margin: 14px 0; padding: 18px 0; border-inline: 0; outline: 0; border-block: 3px double var(--p-primary); }
+  .canvas[data-direction="french_classic"] .title { margin-inline: -11px; padding: 18px 8px; }
+  .canvas[data-direction="kissaten_retro"] .title { margin-inline: -11px; padding: 16px 8px; border-width: 3px; }
+  .canvas[data-direction="craft_paper"] .title { margin-inline: -9.5px; padding: 14px 8px; }
+  .canvas[data-direction="boutique_minimal"] .title { margin-inline: -8px; padding: 20px 8px; }
+  .canvas[data-direction="japanese_modern"] .title { margin-left: -13px; padding-left: 8px; border-left-width: 5px; }
+  .canvas[data-direction="french_classic"] .hero .frame,
+  .canvas[data-direction="kissaten_retro"] .hero .frame,
+  .canvas[data-direction="craft_paper"] .hero .frame,
+  .canvas[data-direction="editorial_luxury"] .hero .frame { border-inline: 0; }
+  .canvas[data-direction="japanese_modern"] .hero .frame { border-left: 0; }
+}
+
+/* french_classic × centered_cover: the title's double frame already closes the name;
+   the dek keeps no second double rule beside it. */
+.canvas[data-direction="french_classic"] .hero[data-layout="centered_cover"] .dek { border-top: 0; }
+
+/* editorial_luxury draws a frame around the page: the ruled frame and the corner
+   marks move inside it, clear of its lines. */
+.canvas[data-direction="editorial_luxury"] .hero .frame { inset: 22px; }
+.canvas[data-direction="editorial_luxury"] .hero .corners { inset: 16px; }
+@media (max-width: 719.98px) {
+  /* the page frame already draws the hero's top edge and corners: the ruled frame
+     keeps only its bottom line, and no corner marks are drawn */
+  .canvas[data-direction="editorial_luxury"] .hero .frame { inset: 22px 22px 8px; border-top: 0; }
+  .canvas[data-direction="editorial_luxury"] .hero .corners { display: none; }
+}
+
+/* gallery_mono × dot_grid: the dots in the background colour stay faint over the name. */
+.canvas[data-direction="gallery_mono"] .hero .dots { opacity: 0.25; }
+
+/* alignment=center with a tiled menu (japanese_modern, gallery_mono): the tiles are
+   centred as a group, whatever the number of dishes. */
+.canvas[data-direction="japanese_modern"][data-align="center"] .menu,
+.canvas[data-direction="gallery_mono"][data-align="center"] .menu {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 220px));
+  justify-content: center;
+}
+.canvas[data-direction="gallery_mono"][data-align="center"] .menu { gap: 8px; border-left: 0; }
+.canvas[data-direction="gallery_mono"][data-align="center"] .menuItem,
+.canvas[data-direction="gallery_mono"][data-align="center"] .menuItem:nth-child(-n + 3) { border: 2px solid var(--p-primary); }
+
