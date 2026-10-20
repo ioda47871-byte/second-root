@@ -142,7 +142,7 @@
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
-.sec.sec[data-variant="side_heading"] .h.h { font-size: calc(1.4rem * var(--k)); }
+.sec.sec[data-variant="side_heading"] .h.h { font-size: max(1.2rem, calc(1.4rem * var(--k))); }
 
 /* ---------- menu ---------- */
 

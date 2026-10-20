@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SECOND_LOOK_MIN_MS } from "@/lib/design-agent/photo-pipeline";
 import { QUALITY_NOT_ACCEPTED, runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
-import { DesignProfileSchema, type DesignProfile } from "@/lib/design-agent/profile";
+import { DesignProfileCoreSchema, type DesignProfile } from "@/lib/design-agent/profile";
 import { notVisibleLine, VOCABULARY } from "@/lib/design-agent/prompts";
 import { NOT_IN_SCREENSHOTS, VISIBLE_SETTINGS, visibleChanges } from "@/lib/design-agent/visible-profile";
 import { CodexError } from "@/lib/design-agent/codex";
@@ -75,7 +75,8 @@ describe("visibleChanges", () => {
         const inner = (v as { shape?: Record<string, unknown> }).shape;
         return inner ? leaves(inner, `${prefix}${k}.`) : [`${prefix}${k}`];
       });
-    const all = leaves(DesignProfileSchema.shape as Record<string, unknown>).filter((k) => k !== "version");
+    // The settings Codex chooses today. DEV-071b adds layout (Stage 1) to Codex's answer and to visibleChanges.
+    const all = leaves(DesignProfileCoreSchema.shape as Record<string, unknown>).filter((k) => k !== "version");
     expect([...VISIBLE_SETTINGS, ...NOT_IN_SCREENSHOTS].sort()).toEqual(all.sort());
   });
 });
