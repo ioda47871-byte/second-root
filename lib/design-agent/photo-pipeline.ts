@@ -8,6 +8,7 @@ import { checkRenderedPhotos, type PlacedPhoto } from "./assets/render-check";
 import { cropsByPage } from "./shot-viewports";
 import { sectionsPresent } from "./assets/resolve";
 import { DeadlineError } from "./bounded-process";
+import type { ObservedColours } from "./reference-colours";
 import { CodexError, isEnvironmentFailure, type CodexFailureCode } from "./codex";
 import { buildPhotoReviewPrompt } from "./photo-prompts";
 import { photoReviewJsonSchema, PhotoReviewSchema, photoReviewScore, revisionPlan, type PhotoIssue, type PhotoReview } from "./photo-review";
@@ -91,6 +92,8 @@ type Ctx = {
   demo: DemoView;
   references: string[];
   referenceKind?: "website" | "instagram";
+  /** DEV-069: colours measured in the references (hex values and shares only). */
+  observedColours?: ObservedColours | null;
   photos: PhotoPipelineInput;
   profile: DesignProfile;
   maxRevisions: number;
@@ -194,6 +197,7 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
           history: rounds,
           best: leader && rounds.length > 0 ? { candidate: leader.name, total: leader.score } : null,
           again: again ? { candidate: target.name, ...again } : null,
+          observedColours: ctx.observedColours,
         }),
         images: [...ctx.references, rendered.shots.desktop, rendered.shots.mobile, ...crops.desktop, ...crops.mobile, ...crops.unknown],
         schema: ctx.schema(photoReviewJsonSchema()),
