@@ -1,0 +1,52 @@
+/* Fictional shop, local test data only: a small wagashi shop in spring tones.
+   A soft pink band behind the name (solid fallback colour), green rules,
+   vertical Japanese headings on wide screens. */
+#shop-css {
+  background-color: #fff7f8;
+  color: #2d1f24;
+}
+#shop-css header {
+  background-color: #f7dbe0;
+  background-image: radial-gradient(circle at 80% 20%, #fbe8eb 0%, #f7dbe0 60%);
+}
+#shop-css h1 {
+  font-family: var(--font-ja-light), var(--sans), sans-serif;
+  font-weight: 500;
+  color: #5b1f33;
+}
+#shop-css h2 {
+  color: #2f5d3a;
+  font-weight: 700;
+}
+#shop-css main > section {
+  border-left: 4px solid #2f5d3a;
+  padding-left: 16px;
+  margin-top: 32px;
+}
+#shop-css section[aria-labelledby="pr-menu"] ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+#shop-css section[aria-labelledby="pr-menu"] li {
+  border: 1px solid #c5698a;
+  border-radius: 6px;
+  padding: 6px 12px;
+  background-color: #ffffff;
+}
+#shop-css dd {
+  color: #2d1f24;
+}
+@media (min-width: 1024px) {
+  #shop-css main > section {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    column-gap: 32px;
+    border-left: 0;
+  }
+  #shop-css main > section > h2 {
+    grid-row: 1 / span 4;
+    font-size: 1.5rem;
+    writing-mode: vertical-rl;
+  }
+}

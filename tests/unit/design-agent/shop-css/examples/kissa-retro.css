@@ -1,0 +1,62 @@
+/* Fictional shop, local test data only: a Showa-era kissaten.
+   Deep brown ground, cream panels, a ruled menu card, rounded "tile" rows. */
+#shop-css {
+  background-color: #3b2418;
+  color: #f6ead6;
+}
+#shop-css header {
+  background-image: linear-gradient(180deg, #3b2418 0%, #4a2e1f 100%);
+  background-color: #3b2418;
+  color: #f6ead6;
+  border-bottom: 6px double #c98b4a;
+}
+#shop-css header p,
+#shop-css header span {
+  color: #f6ead6;
+}
+#shop-css h1 {
+  font-family: var(--font-ja-editorial), serif;
+  letter-spacing: 0.04em;
+  color: #fbe9c8;
+}
+#shop-css main {
+  background-color: #f6ead6;
+  color: #2b1a10;
+  padding: 24px 16px 48px;
+}
+#shop-css main > section {
+  background-color: #fffaf0;
+  border: 2px solid #3b2418;
+  border-radius: 18px;
+  padding: 20px 18px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 0 #c98b4a;
+}
+#shop-css h2 {
+  color: #7a3b12;
+  border-bottom: 1px dashed #7a3b12;
+  padding-bottom: 6px;
+}
+#shop-css section[aria-labelledby="pr-menu"] ol {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+#shop-css section[aria-labelledby="pr-menu"] li {
+  background-color: #fbe9c8;
+  border-radius: 999px;
+  padding: 8px 14px;
+  color: #2b1a10;
+}
+#shop-css dl > div {
+  border-bottom: 1px dotted #7a3b12;
+  padding: 6px 0;
+}
+@media (min-width: 720px) {
+  #shop-css main {
+    padding: 48px 8vw 72px;
+  }
+  #shop-css main > section {
+    padding: 28px 32px;
+  }
+}
