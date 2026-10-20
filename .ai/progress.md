@@ -182,3 +182,5 @@
 - 2026-10-20 10:31Z: window 終了を確認: develop 5b0b1e6（dpl_9UzRsYsaNeHwhuHkDB4R2zTUcFc7）READY で `DESIGN_FLAG VERIFIED_OFF flag=false`。その後で復旧 task `trig_01UXps9c6Ly6M7eh1vG7N6jZ` と確認 `trig_01H6o1ioSi5zcPRq1ftwsT3y` を削除。Authentication on・bypass present・Production は main fe388c3 のまま（Production の最新 deployment は 2026-10-01）。Claude は DB・timer・送信に触れていない（期限の record 12:41Z は残るが flag false なので無害）。
   - 次: 品質審査 18/25（revise）の原因調査と改善（品質基準は緩めない）。同じ cycle の再実行・DB reset・restore SQL・flag の再 ON は未承認。
 
+- 2026-10-20: DEV-066 merge（PR #79、1ab669f）: 品質審査 18/25 の原因調査（brand_fit 3・generic_template_feel 3）。profile の direction・alignment・motion・confidence・rationale（写真なしでは surface、accent motif なしでは accent も）は screenshot に何も描かれないのに、語彙は「すべて実装済み」と書いていた → 見える変化の無い修正は描画せず同じ review にもう一度だけ求める・候補ごとに変えた見える設定を記録・語彙を事実どおりに。品質基準（scores・verdict・gate・MAX_REVISIONS）は不変。次の案（direction の CSS preset など）と人の判断が要る項目は blockers の「DEV-066 の残りと品質改善の次の案」。
+  - 学び: worker.test.ts など Chromium を使う design-agent の test はこの container では環境で落ちる（develop でも 103 件）。その中の本当の失敗を見落とした → 変更が pipeline に触れるときは CI の unit job の結果で確かめる。

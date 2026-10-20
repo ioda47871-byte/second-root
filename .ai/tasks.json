@@ -2920,7 +2920,7 @@
     {
       "id": "DEV-066",
       "title": "見えない修正で round を使わない（見える設定の変更を記録し、変化が無ければ同じ review にもう一度だけ求める）と、語彙の事実の訂正",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-053",
@@ -2957,7 +2957,7 @@
       "human_approval_triggers": [
         "次の controlled run（新しい demo か、人の判断した demo）"
       ],
-      "decision": "2026-10-20: 人の指示（品質の原因調査と改善）で Claude が追加。大きい改善（direction の CSS preset・日本語の display 書体・参照画像の色・review の notes の受け渡し・複数の初期候補・写真）は DEV-067 以降の案として blockers に"
+      "decision": "2026-10-20: 人の指示（品質の原因調査と改善）で Claude が追加。大きい改善（direction の CSS preset・日本語の display 書体・参照画像の色・review の notes の受け渡し・複数の初期候補・写真）は DEV-067 以降の案として blockers に; 2026-10-20: PR #79 merge（1ab669f）。Fresh Review FAIL（Medium 2: 追加の review で leader の score が動く・写真なしの surface を見える扱い）→ 対応 → 再レビュー PASS（Low 1 → 対応）。CI 39410544089 success（worker test の fixture を見える修正に直した後）"
     }
   ]
 }
