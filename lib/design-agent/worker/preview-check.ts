@@ -160,7 +160,7 @@ export async function writeFixture(previewRoot: string, storeRoot: string, runId
     "candidate-0.json": profile,
     "assets.json": assetsArtifact(runId, manifest),
     "photo-analyses.json": analysesArt,
-    "candidate-0.images.json": imagesArtifact(runId, "candidate-0", manifest, analysesArt, profile, sectionsPresent(demo), direction),
+    "candidate-0.images.json": imagesArtifact(runId, "candidate-0", manifest, analysesArt, profile, sectionsPresent(demo, profile.layout), direction),
   };
   for (const [name, value] of Object.entries(files)) await writeFile(join(runDir, name), JSON.stringify(value, null, 2), { mode: 0o600 });
   return { manifest, direction };

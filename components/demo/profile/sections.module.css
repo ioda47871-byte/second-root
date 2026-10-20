@@ -59,7 +59,14 @@
 /* ja_en / ja_only / vertical_ja: the Japanese word leads (a direction's
    first-child treatment, such as a badge, lands on it); ja_en adds the English
    word small. Sizes only: each direction keeps its colours. */
-[data-headings] h2.h.h > span.ja.ja { font-size: 1em; letter-spacing: 0.06em; line-height: 1.15; }
+[data-headings] h2.h.h > span.ja.ja {
+  font-size: 1em;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  /* a direction's pill or badge around the word (pop_bakeshop tilts it) stays inside the
+     section on a narrow phone: the word wraps inside it instead */
+  max-width: calc(100% - 0.25em);
+}
 [data-headings] h2.h.h > span.en.en {
   font-size: max(0.75rem, 0.3em);
   letter-spacing: 0.24em;
@@ -303,7 +310,7 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
   padding-left: 18px;
   border-left: 4px solid var(--p-primary);
 }
-.splitRows { margin: 0; display: grid; min-width: 0; }
+.splitRows { margin: 0; display: grid; min-width: 0; container-type: inline-size; }
 .splitRow {
   display: grid;
   gap: 4px 20px;
@@ -428,25 +435,23 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
   .strip .pair + .pair { padding-left: 28px; border-top: 0; border-left: 1px solid var(--soft-line); }
 
   .split { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: start; }
-  .splitRow { grid-template-columns: minmax(9em, auto) minmax(0, 1fr); }
 
   /* Vertical writing: desktop only, Japanese script only (the fixed Japanese
      heading words; a Japanese-only short name). Phones keep horizontal text. */
-  /* Vertical headings are set only when every section has enough content beside
-     them: a vertical heading next to a line or two would set the section's height
-     (data-short marks a section with little content). Otherwise the page's
-     headings all stay horizontal, so one page never mixes the two. The vertical
-     word is capped in size. */
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .vertical {
+  /* Vertical headings: normalizeLayout keeps vertical_ja only when every section
+     has enough content beside its heading (sectionIsShort; otherwise headings:
+     vertical_ja and ja_only), so one page never mixes the two. The vertical word
+     is capped in size. */
+  [data-headings="vertical_ja"] .vertical {
     display: inline-block;
     writing-mode: vertical-rl;
     letter-spacing: 0.14em;
     line-height: 1.1;
   }
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) h2.h.h > span.ja.ja.vertical { font-size: min(1em, 2.2rem); }
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec.sec { grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); }
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > .h { align-self: start; }
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > :not(.h) { grid-column: 2; }
+  [data-headings="vertical_ja"] h2.h.h > span.ja.ja.vertical { font-size: min(1em, 2.2rem); max-width: none; }
+  [data-headings="vertical_ja"] .sec.sec.sec { grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); }
+  [data-headings="vertical_ja"] .sec.sec > .h { align-self: start; }
+  [data-headings="vertical_ja"] .sec.sec > :not(.h) { grid-column: 2; }
 
   /* vertical_name: a hanging scroll. The folio runs across the top; below it the
      name (a tall column, at least twice the section headings; names over
@@ -496,4 +501,11 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
     font-size: min(15rem, calc(72svh / (var(--name-chars, 6) * (1.06 + var(--track-n, 0)))));
     line-height: 1.05;
   }
+}
+
+/* The split variant's rows set label and value side by side only when their own
+   column has room for a label and an unbreakable number run (a phone number); a
+   narrower column (720–1100px and more, depending on the grid) keeps the label above. */
+@container (min-width: 26em) {
+  .splitRow { grid-template-columns: minmax(8em, auto) minmax(0, 1fr); }
 }

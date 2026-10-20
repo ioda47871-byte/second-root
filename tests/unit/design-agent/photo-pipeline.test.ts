@@ -342,6 +342,23 @@ describe("runDesignPipeline with photos", () => {
     expect(r.notes).toContain("REVISION_IMAGE_DIRECTION_INVALID_1");
   });
 
+  it("DEV-071b: records layout codes for a revised candidate only once it exists (layout:missing included)", async () => {
+    const revised = (accent: string) => photoReview({ verdict: "revise", revision_target: "profile", recommended_profile_changes: { summary: [], revised_profile: revisedProfile(accent) } });
+    // the revised profile's direction is refused: no candidate-1, nothing recorded for it
+    const failed = harness({ codex: [AMERICAN_EDITORIAL, revised("#8A6A3A")], photo: [analysesAnswer(), direction(), { ...direction(), layout: "gallery_grid" }] });
+    const r1 = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, failed.deps);
+    expect(r1.revisions).toBe(0);
+    expect(r1.layoutAdjustments).toEqual([{ candidate: "brief", codes: ["layout:missing"] }]);
+    // created: its own code is recorded under its name
+    const made = harness({ codex: [AMERICAN_EDITORIAL, revised("#8A6A3A"), photoReview()], photo: [analysesAnswer(), direction(), direction()] });
+    const r2 = await runDesignPipeline({ demo: SHOP, references: refs, photos: photosInput() }, made.deps);
+    expect(r2.revisions).toBe(1);
+    expect(r2.layoutAdjustments).toEqual([
+      { candidate: "brief", codes: ["layout:missing"] },
+      { candidate: "candidate-1", codes: ["layout:missing"] },
+    ]);
+  });
+
   it("DEV-053: a photo final no review accepted is blocked (QUALITY_NOT_ACCEPTED), still rendered and recorded; an accepted one is done", async () => {
     const images = (over: Partial<PhotoReview> = {}) => photoReview({ verdict: "revise", revision_target: "images", ...over });
     const never = harness({ codex: [AMERICAN_EDITORIAL, images(), images(), images()], photo: [analysesAnswer(), direction(), direction(), direction()] });

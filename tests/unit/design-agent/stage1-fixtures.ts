@@ -35,6 +35,18 @@ export const VIEWPORTS = {
   desktop: { viewport: { width: 1440, height: 900 } },
 } as const;
 
+/**
+ * Widths every Stage 1 layout is checked at (DEV-071b: a phone number overflowed at
+ * 720–760px while only 360 / 390 / 1440 were tested): small and common screens, and
+ * each breakpoint of profile.module.css / sections.module.css (720 and 1100) ±1px, and wide
+ * screens past 1432px, where the page's side padding (--pad) starts to grow.
+ */
+export const SWEEP_WIDTHS = [320, 360, 390, 719, 720, 721, 760, 768, 1024, 1099, 1100, 1101, 1432, 1440, 1600, 1920, 2560] as const;
+/** The renderer's desktop rules start here (vertical writing included). */
+export const DESKTOP_MIN = 720;
+export const sweepViewport = (width: number) =>
+  width < DESKTOP_MIN ? { viewport: { width, height: 800 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true } : { viewport: { width, height: 900 } };
+
 /** Many facts, long ones included. */
 export const FULL_SHOP: DemoView = {
   ...SHOP,

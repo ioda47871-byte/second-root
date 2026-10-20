@@ -9,10 +9,10 @@ import { Heading, sectionAttrs, type SectionProps } from "./common";
 //   strip  the hours and the closed days side by side in one ruled band
 //   block  the hours set large, the closed days under them
 
-export default function Hours({ rows, spec, headings }: SectionProps<"hours"> & { rows: InfoRow[] }) {
+export default function Hours({ short = false, rows, spec, headings }: SectionProps<"hours"> & { short?: boolean; rows: InfoRow[] }) {
   if (!spec) return null;
   return (
-    <section {...sectionAttrs(spec, spec.variant === "strip")} aria-labelledby="pr-hours">
+    <section {...sectionAttrs(spec, short)} aria-labelledby="pr-hours">
       <Heading kind="hours" headings={headings} layout />
       <dl className={spec.variant === "strip" ? sx.strip : sx.block}>
         {rows.map((row) => (

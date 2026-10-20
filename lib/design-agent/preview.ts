@@ -75,7 +75,7 @@ async function loadPhotos(dir: string, runId: string, candidate: string, demo: D
     const analyses = verifyAnalyses(analysesArtifact, runId, run.manifest);
     const direction = verifyImages(images, runId, candidate, run.manifest, analysesArtifact, profile);
     if (!analyses || !direction) return null;
-    return resolvePhotos({ demo, manifest: run.manifest, analyses, direction, src: (id) => previewAssetUrl(runId, id) }).photos;
+    return resolvePhotos({ demo, manifest: run.manifest, analyses, direction, layout: profile.layout, src: (id) => previewAssetUrl(runId, id) }).photos;
   } catch {
     return null;
   }

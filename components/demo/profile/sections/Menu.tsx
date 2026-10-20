@@ -10,10 +10,10 @@ import { Heading, sectionAttrs, type SectionProps } from "./common";
 //   feature_first  the first item set large, the rest as a list (no word is added:
 //                  the order is the shop's, nothing is called a speciality)
 
-export default function Menu({ items, spec, headings }: SectionProps<"menu"> & { items: string[] }) {
+export default function Menu({ short = false, items, spec, headings }: SectionProps<"menu"> & { short?: boolean; items: string[] }) {
   const variant = spec?.variant ?? "numbered";
   return (
-    <section {...sectionAttrs(spec, items.length <= 2)} aria-labelledby="pr-menu">
+    <section {...sectionAttrs(spec, short)} aria-labelledby="pr-menu">
       <Heading kind="menu" headings={headings} layout={spec !== null} />
       {variant === "numbered" ? (
         <ol className={styles.menu}>

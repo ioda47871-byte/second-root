@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withoutMeta } from "./profile";
-import { reviewScore, VisualReviewSchema } from "./review";
+import { reviewScore, VisualReviewCodexSchema, VisualReviewSchema } from "./review";
 
 // The review of a candidate with photos (DEV-029 stage 4). The DEV-028 review
 // (review.ts) stays as it is for pages without photos. This one adds photo
@@ -13,8 +13,7 @@ const score = z.number().int().min(1).max(5);
 export const PHOTO_ISSUES = ["selection", "placement", "crop", "focal_lost", "text_collision", "repetition", "quality", "mobile_crop", "brand_mismatch"] as const;
 export const REVISION_TARGETS = ["none", "profile", "images", "both"] as const;
 
-export const PhotoReviewSchema = z.strictObject({
-  ...VisualReviewSchema.shape,
+const photoFields = {
   photo_scores: z.strictObject({
     image_selection: score,
     crop: score,
@@ -30,14 +29,18 @@ export const PhotoReviewSchema = z.strictObject({
   photo_issues: z.array(z.strictObject({ issue: z.enum(PHOTO_ISSUES), severity: z.enum(["high", "medium", "low"]) })).max(6),
   /** What a revision changes: nothing, the profile (then a new direction for it), the photos only, or both. */
   revision_target: z.enum(REVISION_TARGETS),
-});
+};
+
+export const PhotoReviewSchema = z.strictObject({ ...VisualReviewSchema.shape, ...photoFields });
+/** What Codex is asked to answer (JSON Schema only): the revised profile's layout is required (DEV-071b). */
+const PhotoReviewCodexSchema = z.strictObject({ ...VisualReviewCodexSchema.shape, ...photoFields });
 
 export type PhotoReview = z.infer<typeof PhotoReviewSchema>;
 export type RevisionTarget = (typeof REVISION_TARGETS)[number];
 export type PhotoIssue = PhotoReview["photo_issues"][number];
 
 export function photoReviewJsonSchema(): object {
-  return withoutMeta(z.toJSONSchema(PhotoReviewSchema));
+  return withoutMeta(z.toJSONSchema(PhotoReviewCodexSchema));
 }
 
 /** One number to compare photo rounds: the DEV-028 total plus the photo scores (higher is better). */

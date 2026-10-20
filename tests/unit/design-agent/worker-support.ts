@@ -11,6 +11,7 @@ import type { CaptureTarget } from "@/lib/design-agent/worker/capture";
 import { runDesignWorker, type PreviewSession, type WorkerOptions } from "@/lib/design-agent/worker/run";
 import { passthroughSandbox } from "../../support/passthrough-sandbox";
 import { AMERICAN_EDITORIAL, review } from "./fixtures";
+import { DEFAULT_LAYOUT } from "@/lib/design-agent/layout";
 
 export const FAKE_CODEX = resolve(__dirname, "../../support/fake-codex.mjs");
 export const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
@@ -366,7 +367,8 @@ export function writeJob(
 
 export type Step = { answer?: unknown; text?: string; exit?: number; stderr?: string; sleepMs?: number };
 
-export const OK_STEPS: Step[] = [{ answer: { ...AMERICAN_EDITORIAL, rationale: [LEAK.rationale] } }, { answer: review() }];
+// DEV-071b: Codex answers with a layout (its schema requires one)
+export const OK_STEPS: Step[] = [{ answer: { ...AMERICAN_EDITORIAL, rationale: [LEAK.rationale], layout: { ...DEFAULT_LAYOUT, firstView: "name_lead" } } }, { answer: review() }];
 
 /** A codex wrapper with the fake's settings baked in (the worker passes children an allowlisted environment). */
 export function fakeCodex(l: Layout, steps: Step[], login: "chatgpt" | "apikey" | "none" = "chatgpt"): string {

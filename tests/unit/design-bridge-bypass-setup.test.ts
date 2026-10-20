@@ -656,7 +656,7 @@ describe("setup-vercel-bypass.sh: review fixes (DEV-063 fresh review)", () => {
       expect(text).not.toContain(value);
       expect(readFileSync(w.bypass, "utf8")).toBe(value);
     }
-  });
+  }, 20_000); // strace runs the script twice: about 5 s on a loaded machine (CI passes well under it)
 
   // M1, statically (also where strace is missing): only builtins hold the value.
   it("every line that uses the value uses it through a bash builtin, never an external command", () => {

@@ -1,5 +1,5 @@
 import type { DemoView } from "@/lib/sales/demo-content";
-import { FIRST_VIEWS, SECTION_KINDS, SECTION_VARIANTS, type Layout, type LayoutSection, type SectionKind } from "./profile";
+import { FIRST_VIEWS, LayoutSchema, SECTION_KINDS, SECTION_VARIANTS, type DesignProfile, type Layout, type LayoutSection, type SectionKind } from "./profile";
 
 // Stage 1 (DEV-071): every layout is normalized against the shop's facts
 // before it is drawn, saved or compared. Pure: same layout and facts, same
@@ -31,7 +31,8 @@ export type LayoutAdjustment =
   | `dropped:${SectionKind}`
   | `added:${SectionKind}`
   | `first_view:${(typeof FIRST_VIEWS)[number]}`
-  | "about_in_first_view";
+  | "about_in_first_view"
+  | "headings:vertical_ja";
 
 /**
  * How many menu items a name_menu first view shows (all of them stay in the menu
@@ -111,6 +112,31 @@ function sectionHasEvidence(kind: SectionKind, demo: DemoView, hoursSection: boo
  */
 export type NormalizedLayout = Omit<Layout, "sections"> & { sections: LayoutSection[] };
 
+/** An about text up to this many characters is a short section (two lines or so). */
+export const SHORT_DESCRIPTION = 60;
+
+/**
+ * A section with little content beside its heading (DEV-071b, from the facts and
+ * the variant only): a description of at most SHORT_DESCRIPTION characters, at
+ * most two menu items, the one-band hours strip, at most two visit rows. A
+ * vertical heading beside it would set the section's height, so a page with one
+ * keeps its headings horizontal (normalizeLayout: headings:vertical_ja).
+ */
+export function sectionIsShort(section: LayoutSection, demo: DemoView, hoursSection: boolean): boolean {
+  switch (section.kind) {
+    case "about":
+      return demo.description !== null && Array.from(demo.description).length <= SHORT_DESCRIPTION;
+    case "menu":
+      return demo.menuItems.length <= 2;
+    case "hours":
+      return section.variant === "strip";
+    case "visit": {
+      const rows = [demo.address, demo.access, demo.phone, ...(hoursSection ? [] : [demo.hours, demo.closedDays])].filter((v) => v !== null);
+      return rows.length <= 2;
+    }
+  }
+}
+
 export function normalizeLayout(input: Layout | NormalizedLayout, demo: DemoView): { layout: NormalizedLayout; adjustments: LayoutAdjustment[] } {
   const adjustments: LayoutAdjustment[] = [];
 
@@ -165,7 +191,54 @@ export function normalizeLayout(input: Layout | NormalizedLayout, demo: DemoView
     firstView = "name_only";
   }
 
-  return { layout: { firstView, sections, type: { ...input.type } }, adjustments };
+  // vertical headings only beside enough content on every section (one page never mixes the two)
+  const type = { ...input.type };
+  const hoursHere = sections.some((s) => s.kind === "hours");
+  if (type.headings === "vertical_ja" && sections.some((s) => sectionIsShort(s, demo, hoursHere))) {
+    adjustments.push("headings:vertical_ja");
+    type.headings = "ja_only";
+  }
+
+  return { layout: { firstView, sections, type }, adjustments };
+}
+
+/**
+ * DEV-071b: Codex's answer with a repeated section kind collapsed to its first
+ * section, before the profile check. The JSON Schema cannot say that kinds are
+ * unique (and the loose schema drops the list's limits), so a repeat would
+ * otherwise reject the whole answer. Fixed codes: duplicate:<kind>. Anything that
+ * is not a list of objects with a string kind is left to the check.
+ */
+export function collapseRepeatedSections(value: unknown): { value: unknown; codes: string[] } {
+  const layout = (value as { layout?: { sections?: unknown } } | null)?.layout;
+  const sections = layout?.sections;
+  if (!Array.isArray(sections) || !sections.every((s) => s && typeof s === "object" && typeof (s as { kind?: unknown }).kind === "string")) return { value, codes: [] };
+  const seen = new Set<string>();
+  const codes: string[] = [];
+  const kept = sections.filter((s: { kind: string }) => {
+    if (!seen.has(s.kind)) return seen.add(s.kind), true;
+    if ((SECTION_KINDS as readonly string[]).includes(s.kind)) codes.push(`duplicate:${s.kind}`);
+    return false;
+  });
+  if (kept.length === sections.length) return { value, codes: [] };
+  return { value: { ...(value as object), layout: { ...layout, sections: kept } }, codes };
+}
+
+/**
+ * DEV-071b: a checked profile with its layout as the page draws it. The pipeline
+ * writes, reviews, compares and stores this form: what Codex and a person read is
+ * what the page shows, and rendering it again changes nothing (normalizing is
+ * idempotent). A profile without a layout is returned as it is (the page before
+ * Stage 1, recorded as "layout:missing"). A normalized layout with no section (a
+ * shop with only its name) is not a valid stored layout: it keeps the normalized
+ * first view and type, and Codex's sections, which no page draws (the prompts say
+ * this shop supports no section), so the stored layout stays valid.
+ */
+export function profileAsDrawn(profile: DesignProfile, demo: DemoView): { profile: DesignProfile; adjustments: Array<LayoutAdjustment | "layout:missing"> } {
+  if (!profile.layout) return { profile, adjustments: ["layout:missing"] };
+  const { layout, adjustments } = normalizeLayout(profile.layout, demo);
+  const stored = LayoutSchema.safeParse(layout.sections.length > 0 ? layout : { ...layout, sections: profile.layout.sections });
+  return { profile: stored.success ? { ...profile, layout: stored.data } : profile, adjustments };
 }
 
 /** Where each fact of the shop is drawn under a normalized layout (for tests and the report). */

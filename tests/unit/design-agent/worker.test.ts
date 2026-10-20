@@ -66,6 +66,11 @@ describe("a normal run", () => {
       expect(c.hex).toMatch(/^#[0-9A-F]{6}$/);
       expect(c.share).toBeGreaterThanOrEqual(0.04);
     }
+    // DEV-071b: the final page's layout (enums) and what normalizing changed (fixed codes only)
+    expect(rep.codex.layout).toMatchObject({ firstView: expect.stringMatching(/^name_(lead|only)$/) });
+    for (const a of rep.codex.layout_adjustments as Array<{ candidate: string; codes: string[] }>)
+      for (const code of a.codes) expect(code).toMatch(/^(duplicate|dropped|added):(about|menu|hours|visit)$|^first_view:[a-z_]+$|^about_in_first_view$|^headings:vertical_ja$|^layout:missing$/);
+    expect(JSON.stringify(rep.codex.layout_adjustments)).not.toContain(LEAK.rationale);
     // the screenshots existed while Codex worked, and are gone now
     expect(preview.refsSeen.every((n) => n >= 2)).toBe(true);
     expect(ls(l.tmp)).toEqual([]);
