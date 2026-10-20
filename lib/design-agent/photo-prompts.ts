@@ -6,6 +6,7 @@ import type { PhotoIssue } from "./photo-review";
 import { PHOTO_ISSUES, REVISION_TARGETS } from "./photo-review";
 import type { DesignProfile } from "./profile";
 import { factsBlock, historyBlock, RULES, VOCABULARY, type RoundSummary } from "./prompts";
+import { observedColoursLine, type ObservedColours } from "./reference-colours";
 import { rendererChangeRule, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
 
 // Requests to Codex for the photos of a demo (DEV-029). Separate from the
@@ -123,6 +124,8 @@ export function buildPhotoReviewPrompt(input: {
   best?: { candidate: string; total: number } | null;
   /** DEV-034: the best candidate reviewed again after a lower-scoring revision. */
   again?: { candidate: string; lower: string; lowerTotal: number } | null;
+  /** DEV-069: colours measured in the references (hex values and shares only). */
+  observedColours?: ObservedColours | null;
 }): string {
   const refs = input.referenceKind === "website" ? "the shop's own website" : "the shop's public Instagram profile";
   return [
@@ -133,6 +136,7 @@ export function buildPhotoReviewPrompt(input: {
     `Attached images: the first ${input.referenceCount} are ${refs} (reference; photos in them are blurred and pixelated). Then the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide)` +
       cropLine(input.crops),
     screenshotScaleLine({ crops: input.crops.desktop + input.crops.mobile + (input.crops.unknown ?? 0) > 0 }),
+    observedColoursLine(input.observedColours, input.referenceKind),
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
     `photo_scores: image_selection (the right photos for this shop), crop, focal_visibility (the subject stays visible), text_image_collision (5 = no photo gets in the way of the name, headings or facts),
 image_repetition (5 = nothing repeated), image_quality, mobile_crop, photo_brand_fit. photo_issues: up to 6 from ${PHOTO_ISSUES.join(", ")}.`,
