@@ -273,22 +273,17 @@ const tracks: Spec = { items: [(t) => isTrack(t), kw("none")], max: 12 };
 
 const gridLine: Spec = { items: [int(-12, 12), kw("auto", "span")], max: 4, slash: true };
 
-/** transform: a small rotate and / or scale; nothing that can move, hide or throw text away. */
+/** transform: one small rotation; nothing that can move, stretch, hide or throw text away. */
 function isTransformFn(t: Term): boolean {
   if (t.t !== "fn") return false;
   const groups = commaGroups(terms(t.args));
   const single = groups.every((g) => g.length === 1) ? groups.map((g) => g[0]!) : null;
   if (!single) return false;
-  const scale = (x: Term) => num(x, 0.75, 2);
   switch (t.name) {
     case "rotate":
       return single.length === 1 && isAngle(single[0], 8);
-    // no translate: like an offset, it can move a value next to another label
-    case "scale":
-      return single.length >= 1 && single.length <= 2 && single.every(scale);
-    case "scalex":
-    case "scaley":
-      return single.length === 1 && scale(single[0]!);
+    // no translate: like an offset, it can move a value next to another label; no scale: a
+    // neighbour stretched with scaleY(2) covered the top of the values (re-review High 1)
     default:
       return false;
   }
@@ -399,7 +394,8 @@ const PROPS_BASE: Record<string, Spec> = {
   "text-align": one(kw("left", "right", "center", "start", "end", "justify")),
   "text-indent": one(len({ max: 200, pctMax: 20 })),
   "writing-mode": one(kw("horizontal-tb", "vertical-rl", "vertical-lr")),
-  "text-orientation": one(kw("mixed", "upright", "sideways")),
+  // no sideways: it turns Japanese on its side
+  "text-orientation": one(kw("mixed", "upright")),
   "text-wrap": one(kw("wrap", "balance", "pretty", "stable")),
   "white-space": one(kw("normal", "nowrap")),
   "word-break": one(kw("normal", "keep-all", "break-all", "auto-phrase")),
@@ -428,7 +424,7 @@ const PROPS_BASE: Record<string, Spec> = {
   "border-radius": { items: [len(RADIUS)], max: 8, slash: true },
   "box-shadow": { items: [() => true], max: 6, commas: 3, groups: isInsetShadow },
   // transforms: one small rotation and / or scale about the element's own box
-  transform: { items: [kw("none"), isTransformFn], max: 2, whole: (list) => new Set(list.map((t) => (t.t === "fn" ? t.name.replace(/[xy]$/, "") : "none"))).size === list.length },
+  transform: one(kw("none"), isTransformFn),
   "transform-origin": { items: [kw("center", ...SIDES), (t) => t.t === "pct" && t.v >= 0 && t.v <= 100], max: 2 },
 };
 

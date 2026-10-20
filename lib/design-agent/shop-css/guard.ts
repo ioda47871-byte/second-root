@@ -7,7 +7,7 @@ import { propertySpec, serializeTerms, terms, valueMatches, type Term } from "./
 // the parsed tree (never returned verbatim). Anything else is a fixed problem
 // code, and the caller falls back to the profile renderer's own CSS.
 //
-//   at-rules    @media with (min-width|max-width: <px|em>) only, not nested
+//   at-rules    @media with (min-width|max-width: <px|em>) between 320 and 1920px only, not nested
 //   selectors   start at the scope root #shop-css; type selectors from a fixed
 //               list, the renderer's stable data attributes with fixed values,
 //               :first-child … :nth-child(An+B), :not(simple), ::before/::after;
@@ -19,6 +19,8 @@ import { propertySpec, serializeTerms, terms, valueMatches, type Term } from "./
 //               attr(), env(), expression(), content text, position fixed/sticky/absolute
 
 export const SHOP_CSS_SCOPE_ID = "shop-css";
+/** @media breakpoints must lie within the checked widths (render-check.ts SHOP_CSS_BASE_WIDTHS: 320 … 1920). */
+export const SHOP_CSS_MEDIA_RANGE = { min: 320, max: 1920 } as const;
 export const SHOP_CSS_LIMITS = { bytes: 24 * 1024, rules: 300, declarations: 1500, declarationsPerRule: 60, selectorsPerRule: 12, compoundsPerSelector: 8, media: 24, breakpoints: 4, valueTerms: 40 } as const;
 
 declare const guarded: unique symbol;
@@ -324,7 +326,9 @@ function parseMedia(prelude: CV[]): string | null {
     if (inner.length !== 3) return null;
     const [feature, colon, value] = inner as [CV, CV, CV];
     if (feature.t !== "ident" || !["min-width", "max-width"].includes(feature.v.toLowerCase()) || colon.t !== ":") return null;
-    if (value.t !== "dim" || !((value.unit === "px" && value.v >= 0 && value.v <= 4000) || (value.unit === "em" && value.v >= 0 && value.v <= 250))) return null;
+    // only inside the widths the render check covers (320–1920px; em at 16px): a band outside them is never checked
+    const px = value.t === "dim" && (value.unit === "px" || value.unit === "em") ? value.v * (value.unit === "em" ? 16 : 1) : -1;
+    if (px < SHOP_CSS_MEDIA_RANGE.min || px > SHOP_CSS_MEDIA_RANGE.max || value.t !== "dim") return null;
     parts.push(`(${feature.v.toLowerCase()}: ${value.raw.replace(/^\+/, "")}${value.unit})`);
   }
   return parts.join(" and ");
