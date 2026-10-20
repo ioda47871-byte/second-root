@@ -3001,7 +3001,7 @@
     {
       "id": "DEV-068",
       "title": "日本語の display 書体を face ごとに別にする（Zen Old Mincho・Zen Kaku Gothic New・M PLUS 1、mincho はサイトの Shippori Mincho）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-066"
@@ -3034,7 +3034,7 @@
       "human_approval_triggers": [
         "次の controlled run"
       ],
-      "decision": "2026-10-20: 人の指示で Claude が追加。WSL: build は .next/cache（git clean は -x なしなので残る）が温まっていれば font を再取得しない（2026-10-20 に proxy なしの再 build で確認）。Fresh Review FAIL（Medium 1: 住所の weight 上限 600 が 400/900 の書体で Black になる）→ 対応: editorial_serif の住所はサイトの明朝（400/600）、Shippori Mincho B1 は 400 でサイトの Shippori Mincho とほぼ同じ字形のため外し mincho はサイトの書体に。静的 font は 19MB → 30MB（初回取得と build 出力の増分は約 11MB）、demo 系 3 route の font CSS は 3 書体で約 150KB gzip（unicode-range の宣言。字形ファイルは頁で使う範囲だけ）。後続: 静的書体では light=regular・bold=black に見え、Playfair は 400 未満が無いので editorial_serif の和文名の light↔regular は描かれない（DEV-066 の見える判定は見える扱い）"
+      "decision": "2026-10-20: 人の指示で Claude が追加。WSL: build は .next/cache（git clean は -x なしなので残る）が温まっていれば font を再取得しない（2026-10-20 に proxy なしの再 build で確認）。Fresh Review FAIL（Medium 1: 住所の weight 上限 600 が 400/900 の書体で Black になる）→ 対応: editorial_serif の住所はサイトの明朝（400/600）、Shippori Mincho B1 は 400 でサイトの Shippori Mincho とほぼ同じ字形のため外し mincho はサイトの書体に。静的 font は 19MB → 30MB（初回取得と build 出力の増分は約 11MB）、demo 系 3 route の font CSS は 3 書体で約 150KB gzip（unicode-range の宣言。字形ファイルは頁で使う範囲だけ）。後続: 静的書体では light=regular・bold=black に見え、Playfair は 400 未満が無いので editorial_serif の和文名の light↔regular は描かれない（DEV-066 の見える判定は見える扱い）。再レビュー PASS（Nit 2 → 対応: CSS の注記と語彙の和文の説明）"
     }
   ]
 }

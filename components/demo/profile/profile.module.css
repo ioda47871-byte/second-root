@@ -47,7 +47,7 @@
 
 /* ---------- typography switches ---------- */
 
-/* DEV-068: each face has its own Japanese face (fonts.ts); the site's faces stay as the fallback. */
+/* DEV-068: editorial_serif and the grotesks have a Japanese face of their own (fonts.ts); mincho uses the site's Shippori Mincho; the site's faces stay as the fallback. */
 .canvas[data-display="editorial_serif"] { --display: var(--font-editorial), var(--font-ja-editorial), var(--font-display), serif; }
 .canvas[data-display="mincho"] { --display: var(--font-display), serif; }
 .canvas[data-display="condensed_grotesk"] { --display: var(--font-grotesk), var(--font-ja-condensed), var(--font-body), sans-serif; --display-width: 72; }
