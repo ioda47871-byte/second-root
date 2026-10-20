@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties } from "react";
 import type { RenderFeature, RenderPhotos } from "@/lib/design-agent/assets/resolve";
-import { DEFAULT_LAYOUT, normalizeLayout } from "@/lib/design-agent/layout";
+import { DEFAULT_LAYOUT, japaneseOnly, normalizeLayout } from "@/lib/design-agent/layout";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
@@ -178,7 +178,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
         {spec && <FirstView view={firstView} demo={demo} />}
       </div>
 
-      <p className={cx(styles.dek, vertical && sx.vdek)}>
+      <p className={cx(styles.dek, vertical && (japaneseOnly(areaLabel(demo)) ? sx.vdek : sx.vdekH))}>
         <span className={styles.rule} aria-hidden="true" />
         <span>{areaLabel(demo)}</span>
       </p>

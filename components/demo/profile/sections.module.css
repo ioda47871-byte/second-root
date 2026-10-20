@@ -448,26 +448,45 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
   [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > .h { align-self: start; }
   [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > :not(.h) { grid-column: 2; }
 
-  /* vertical_name: the folio across the top, then two columns. The name is a tall
-     column at the right (where vertical text starts reading); the motifs, a framed
-     photo and the dek form the left column, top to bottom. The name is at least twice the size of
-     the section headings (names over VERTICAL_NAME_MAX characters are not set
-     vertically). */
+  /* vertical_name: a hanging scroll. The folio runs across the top; below it the
+     name (a tall column, at least twice the section headings; names over
+     VERTICAL_NAME_MAX characters are not set vertically) and, directly to its left
+     and top-aligned with it, the area label as a vertical caption, together in the
+     middle of the hero with even space on both sides. The hero is as tall as the
+     name. Motifs and a framed photo, where the profile has them, sit in the space
+     at the right and the name block moves left of centre to balance them. The
+     caption is vertical only when it is Japanese script (vdek). */
   .vhero.vhero.vhero.vhero {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto 1fr auto;
-    column-gap: clamp(32px, 6vw, 112px);
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: clamp(20px, 2.4vw, 40px);
   }
   .vfolio.vfolio.vfolio.vfolio { grid-column: 1 / -1; grid-row: 1; }
-  .vmotifs.vmotifs.vmotifs.vmotifs { grid-column: 1; grid-row: 2; justify-self: start; }
-  .vphoto.vphoto.vphoto.vphoto { grid-column: 1; grid-row: 3; align-self: start; max-width: 520px; }
-  .vdek.vdek.vdek.vdek { grid-column: 1; grid-row: 4; align-self: end; }
-  .vtitle.vtitle.vtitle.vtitle {
+  .vhero.vhero.vhero.vhero:has(> .vmotifs, > .vphoto) { grid-template-columns: minmax(0, 0.7fr) auto auto minmax(0, 1fr); }
+  .vmotifs.vmotifs.vmotifs.vmotifs { grid-column: 4; grid-row: 2; justify-self: center; align-self: center; margin: 0; }
+  .vphoto.vphoto.vphoto.vphoto { grid-column: 4; grid-row: 2; justify-self: center; align-self: center; width: min(100%, 420px); margin: 28px 8px; }
+  .vdek.vdek.vdek.vdek {
     grid-column: 2;
-    grid-row: 2 / -1;
+    grid-row: 2;
+    justify-self: end;
+    align-self: start;
+    margin-top: 40px;
+    writing-mode: vertical-rl;
+    border-top: 0;
+    letter-spacing: 0.3em;
+  }
+  .vdek.vdek.vdek.vdek > span:first-child { width: 1px; height: 56px; }
+  .vdek.vdek.vdek.vdek::after { width: 1px; height: 48px; }
+  /* an area label with Latin letters or digits stays horizontal, under the name block */
+  .vdekH.vdekH.vdekH.vdekH { grid-column: 2 / 4; grid-row: 3; justify-self: start; }
+  .vtitle.vtitle.vtitle.vtitle {
+    grid-column: 3;
+    grid-row: 2;
     container-type: normal;
-    align-content: center;
-    justify-items: end;
+    align-content: start;
+    justify-items: start;
+    margin-block: 28px 0;
     padding-block: 12px;
   }
   h1.vname.vname.vname.vname[data-fit] {

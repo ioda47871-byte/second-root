@@ -150,3 +150,115 @@ develop（DEV-067 4ac0ae1・DEV-068・DEV-070 7c04478）を 2 回 merge し、�
 14. **Nit 2**: alignment=center を新しい variant（chips・columns・feature・strip・block・cards・statement・first view の抜粋）に適用。
 
 再確認: `npx vitest run tests/unit/design-agent tests/unit/ai-tasks.test.ts` 712 pass / 16 skipped（Chromium あり）、eslint 0、tsc 0、`npm run build` 成功。実画面（`next build` + `start`）: 3 店 × 10 direction + layout なし × 390 / 1440 と edge（6 字・7 字の和文名、名前だけ、1 品の name_menu、中身の短いパン屋）。overflow 0。contact sheet と数値: `scratchpad/stage1/sheet-*.png`・`scratchpad/stage1/real2/metrics.txt`。
+
+## 再レビュー（2026-10-20、17b3edc）
+
+Reviewer: 別 context の Claude agent（初回と同じ）。対象は `feature/dev-071-design-spec` の 17b3edc（develop 7c04478 = DEV-067・068・070 を merge 済み）。
+Verdict: **FAIL**（残りは Medium 1 つ。直しは CSS だけで小さい）
+Counts: Critical 0 / High 0 / Medium 1 / Low 4 / Nit 1
+
+初回の High 2・Medium 5・Low 5・Nit 2 は、下の 1 点を除いて直っている。安全側（事実と固定語だけ・根拠の無い節なし・全事実・注記・contrast・品質ゲート）に退行は無い。
+残る 1 点は vertical_name の hero の構図。名前は右の大きな列になり、見出しとの大小も正しくなった。ただ、hero の左の約 55% は空いたままで、全 10 direction で同じ。
+その余白に置かれているのは、下端の dek（多くの direction で枠付きの全幅の箱）だけで、名前の列と組み合わさっていない。そのため意図した「間」には見えず、
+未完成の hero に見える。人の「品質基準を下げない」に照らして finding として残す。
+
+### 実行したこと
+
+- `npx vitest run tests/unit/design-agent`（Chromium あり）: 626 pass / 3 fail / 16 skipped、613 s。fail は次の 2 file で、どちらも単独の再実行で pass した。
+  - `browser.test.ts` の時間の test 2 件: 負荷による flake。単独で 2 回とも 76/76。本 PR はこの file に触れていない。
+  - `renderer-direction.test.tsx` の「phones: the name keeps clear of its frame」: 全体の実行では 180 s の timeout。単独では 139 s で pass（Low 4）。
+- 新しい test の所要: renderer-sections-browser 47 s（4 test）、layout 0.2 s、baseline 0.4 s。
+- `npx tsc --noEmit` → 0。`npx eslint`（変更した ts/tsx 全部）→ 0。
+- **baseline の出所を独自に確認した**:
+  - origin/develop 7c04478 を一時 worktree に checkout した。`ProfileRenderer.tsx` に sections.module.css の参照は無く、`lib/design-agent/layout.ts` も無い（Stage 1 の code を含まない tree）。
+  - 17b3edc の `renderer-baseline.test.tsx`・`renderer-baseline-cases.tsx`・fixture だけを写し、env なし（書き込みなし）で実行した → pass。`tests/unit/design-agent/fixtures.ts` は 7c04478 と 17b3edc で同一。
+  - 結論: hash は Stage 1 を含まない develop の renderer の出力と一致する。主張どおり。worktree は削除済み。
+- **新しい色の組の test の強さを mutation で確認した**: surface / inverted の band の中で `--p-secondary` を `--g-primary` にすると、`"営業時間" is primary on primary` で fail する（`sections.module.css` は元に戻した）。
+  - 最初に試した `--p-secondary: var(--p-secondary)`（循環参照）は無効値として継承に落ちるため、色が変わらず pass した。これは mutation 側の誤りで、test の弱さではない。
+- 実装者の実画面（`scratchpad/stage1/real2/`、3 店 × 10 direction + layout なし × 390/1440、edge 6 種、`metrics.txt`）と contact sheet を全部見た。次の数値を確かめた:
+  - band と footer の間隔 = 0（boutique_minimal 以外）。
+  - 頁の見出しの大きさは 1 種類。
+  - 縦の名前は 193px（6 字の名前は 96px）、見出しは 41px。
+  - overflow 0。
+
+### 初回の findings の確認
+
+| # | 判定 | 確認 |
+|---|---|---|
+| High 1 統合 | 解決 | develop を merge。baseline は 7c04478 から取り直され、出所を独自に再現した。fixture に `source` が残り、手順は test の comment にある |
+| High 2 vertical_name | **一部（Medium 1 として残す）** | 6 字以下に限定。名前は見出しの 2 倍以上で、hero の高さの 8 割を占める。ただし左の列の構図が残る（下記） |
+| Medium 3 見出しの大きさ | 解決 | side_heading の縮小を削除。test で頁の h2 が 1 種類 |
+| Medium 4 band と footer | 解決 | 0px。inverted の後は footer に 40% の hairline。boutique_minimal は panel の間隔を保つ（意図どおり） |
+| Medium 5 引き伸ばし | 解決 | `align-self: start`・flex-start。test は伸びを実測する（実装者の mutation で 94px を検出） |
+| Medium 6 縦の見出しと短い節 | 解決（Low 1 に注記） | `data-short` が 1 つでもあれば頁の見出しをすべて横書きにする。縦の語は 2.2rem で上限 |
+| Medium 7 boutique_minimal | 解決（Low 2 に注記） | band の地は main で取った本来の palette。band は panel の列の中に置く |
+| Low 1 name_menu | 解決 | 抜粋は「メニューが 3 品より多い」かつ「menu 節が hero の直後でない」ときだけ。それ以外は `first_view:name_menu` で name_only。1 品の店は name_only（edge-oneitem で確認） |
+| Low 2 first view の箱 | 解決 | gallery_mono は primary の上に background の色（保証された組）。pop_bakeshop だけ角丸の札 |
+| Low 3 contrast の test | 解決 | 10 direction × 3 palette × layout × phone/desktop で、全文字が保証された色の組であること・alpha と opacity が無いことを検査。上の mutation で検出を確認 |
+| Low 4 0 節の layout | 解決 | `NormalizedLayout`（保存しない描画の計画）。`LayoutSchema` は 1 節以上のまま |
+| Low 5 band の上の罫 | 解決 | band の border-top は透明 |
+| Nit 1・2 | 解決 | DOM の節の比較を追加。alignment=center を新しい variant に適用 |
+
+### Findings
+
+1. **Medium 1 — vertical_name の desktop の hero は、左の約 55% が意図の見えない空白のまま。**（`sections.module.css` の `.vhero` 以下）
+   - **現状**（1440×900、`real2/bakery-*-1440.png`）:
+     - hero は 1440 × 約 740。右に名前の列（193 × 613）。左の列（約 900 × 520）には、下端の dek だけが置かれている。
+     - japanese_modern・american_editorial など多くの direction では、dek は全幅の枠付きの箱で、名前の列と下端も揃わない。
+     - boutique_minimal では dek が左の列の中ほどに浮く。6 字の名前（edge-v6）は列の幅が 96px で、空白はさらに広い。
+   - **判断:** 名前と見出しの階層は直った。しかし左の列に名前と関係を持つ要素が無いため、この空白は構図として働いていない（右寄せの看板の「間」なら、名前の脇に添え書きか縦の罫など、空白の基準になる線が要る）。
+     layout の無い同じ店の頁（`bakery-nolayout-1440.png`）は横幅いっぱいの店名なので、vertical_name を選ぶと first screen の密度が明らかに下がる。
+   - **修正案**（CSS のみ。具体的には次の組み合わせ）:
+     1. **縦組の一塊にする:** desktop では dek（`areaLabel`、和文だけの事実。`japaneseOnly` で確かめ、英字が混じれば今の位置）を `writing-mode: vertical-rl` にし、名前の列のすぐ左に上端を揃えて置く（名前 → 添え書きの順）。
+        `.vhero` の列は `minmax(0,1fr) auto auto` にする。dek の枠と全幅の箱は vertical_name では外す。
+     2. **余白の量を名前に合わせる:** 名前と添え書きの塊を hero の中央寄り（例: 右の端から 1/3 の位置。`justify-self: end` + 右の padding を `clamp(48px, 10vw, 180px)`）に置く。
+        hero の `min-height` は名前の列の高さに合わせて詰め、塊の左右の空白を対称に近づける。
+     3. **motif・枠の写真がある direction:** 今のまま左の列に置く（そこに中身がある）。
+     4. **test を足す:** desktop で「dek と名前の列の水平の距離 ≤ 名前の列の幅」と「hero の中で文字も motif も無い最大の矩形 ≤ hero の 35%」を 10 direction で確かめる。
+   - 本 review では実装していない。直した後は、実画面（10 direction × 1440 と、6 字の名前）で目視する。
+
+2. **Low 1 — `data-short` の規則は筋が通っているが、2 つ注意がある。**
+   - **筋が通っている点:** 頁の中で縦と横を混ぜない。中身の少ない節の高さを縦の見出しが決めない。
+   - **注意 1 — 当たる店が少ない:** 小さな店の典型（visit が住所とアクセスの 2 行、hours が strip）では、vertical_ja が実質 ja_only になる。
+     3 店の bakery の fixture も、説明を 60 字超に延ばし電話を足して、縦の見出しが出る形に変えてある（初回の facts では横になる）。
+   - **注意 2 — 判断の場所:** 判断は CSS（`:has(.sec[data-short])`）にあり、`normalizeLayout` と adjustments は知らない。DEV-071b の `visibleChanges` は「vertical_ja → ja_only」を見える変更と数えるが、描かれる頁は同じになりうる（DEV-066 が防いだ「同じ頁で round を使う」）。
+   - **修正案（071b）:** 短さは事実（字数・品数・行数）と variant だけで決まる。だから `normalizeLayout` に移し、`headings:vertical_ja` のような固定の符号の adjustment にして、headings を ja_only に落とす。
+     そうすれば prompt の「使える設定」、report、visibleChanges が描かれる頁と一致する。CSS の `data-short` はその結果を描くだけにする。
+
+3. **Low 2 — boutique_minimal では、plain の節と surface の band が同じ見た目になる。**
+   - plain の節も surface の panel なので、Codex が surface を選んでも何も変わらない（`real2/bakery-boutique_minimal-1440.png`。店について（plain）とメニュー（surface）が同じ地）。
+   - inverted は区別できる。
+   - DEV-071b の visibleChanges で、boutique_minimal の plain ↔ surface を「見えない変更」と扱うか、語彙で説明する。
+
+4. **Low 3 — name_menu の利用可否が、prompt 用の一覧と normalize で食い違う。**
+   - `availableFirstViews` は品数（> 3）だけを見る。normalize は節の順（menu が先頭か）でも name_menu を外す。
+   - 071b で brief に「使える first view」を渡すときは、「menu 節を最初にしない場合に限る」を一覧の側にも書く。そうしないと Codex が組み合わせを外し続ける。
+
+5. **Low 4 — DEV-067 の `renderer-direction.test.tsx`（phones の枠の test）が、単独でも 139 s かかる。** 全体の実行（4 core）では 180 s の timeout に当たった。
+   - 本 PR の差分ではない（layout の無い頁の test）。しかし sections.module.css が頁の CSS に加わった後の実行なので、CI で flake の元になる。
+   - 修正案: test の timeout を延ばす、または case を分割する（DEV-067 の後続で可）。
+
+6. **Nit 1 — ruled_frame のある頁で、full-bleed の band が頁の枠の線を覆う**（editorial_luxury・french_classic の patisserie / bakery）。
+   - 枠が band の所で途切れる。読みには影響しない。
+   - band を枠の内側までにするかは、DEV-067 の枠の扱いと一緒に決めればよい。
+
+### 再々 review の条件
+
+- Medium 1 を直す。
+- 実画面（`next build` + `start`）で、10 direction × bakery × 1440 と、6 字の名前・motif のある direction を撮り直して目視する。追加した test の数値も示す。
+- Low 1〜3 は DEV-071b の作業に含めればよい（071a の merge を止めない）。
+
+## 対応 (2)（実装者、2026-10-20、再レビューへ）
+
+1. **Medium 1 vertical_name の hero**: 「掛け軸」の構図にした（CSS と、添え書きに class を付けるだけ）。
+   - desktop: folio は上に全幅。その下で縦の店名と、そのすぐ左に上端を揃えた縦の添え書き（`areaLabel`、和文だけのとき。英数が混じれば横書きで名前の塊の下）を **hero の中央** に置く（列は `minmax(0,1fr) auto auto minmax(0,1fr)`）。添え書きの全幅の箱・上の罫は外し、各 direction の地や枠は細い縦の札として残る。hero の min-height は外し、高さは店名の列に合わせる。
+   - motif・枠の写真がある profile は、それを右の余白に置き、列を `0.7fr auto auto 1fr` にして名前の塊を左へ寄せて釣り合わせる。
+   - 提案の「右から 1/3」ではなく中央にした理由: 1440 幅で縦の 1 列（3 字 203px・6 字 101px）を右寄せにすると、左の空きが 900px 前後で一つの大きな空白になる。中央に置けば空きが左右に分かれ、各 590px 前後で対称になり、意図した余白として読める（実画面 real3 で 10 direction とも確認）。
+   - **test**（Chromium、desktop、10 direction × 3 字の店・6 字の店・motif の店 + 3 店）: 添え書きと名前の列の水平距離 ≤ 名前の列の幅（実測 35〜74px、列の幅 203 / 101px）。hero の中で文字・motif・写真の無い最大の矩形（8px の格子）は **0.43 以下、かつ同じ店・同じ direction の layout なしの頁以下（+0.01）**。
+   - 35% にしなかった理由: 縦の名前は 1 列なので、1440 幅では左右どちらかの余白が hero の 37〜42% になる（3 字 0.378〜0.389、6 字 0.410〜0.422、motif あり 0.30 台）。これを 35% 未満にするには事実を hero に足す（説明文を二度出すなど）か、無意味な飾りで埋めるしかなく、どちらも規則に反する。一方、同じ店の layout なしの hero は 0.444〜0.478（3 字の横の店名の上の空き）で、**vertical_name の方が first screen の空きは少ない**。この比較（layout なしの頁以下）を test の基準にした。
+   - 実画面（`next build` + `start`、`scratchpad/stage1/real3/`）: bakery × 10 direction × 390/1440、6 字の店 × 10 direction、motif の店 × 3 direction。overflow 0。1440 の数値は `real3/metrics.txt`（captionGap・leftFree / rightFree は左右 559〜641px でほぼ対称）。contact sheet: `scratchpad/stage1/real3-sheet-*.png`。
+2. **Low 4**: DEV-067 の「phones: the name keeps clear of its frame」を direction ごとの 10 個の test に分け、phone の大きさごとに 1 つの page を使い回す（頁ごとに browser context を作っていたのが遅さの原因）。組み合わせは同じ（2 大きさ × spacing 2 × 高さ 2 × motif 2 組 × layout 3 × direction 10）。所要は全体の実行の中で 1 direction 1.5〜1.9 秒（以前は 1 test で 139 秒）。
+3. **Low 1〜3**: DEV-071b への申し送りとして design-spec-stage1.md と tasks.json の DEV-071 に記録（data-short の判断を normalize の adjustment に・boutique_minimal の plain / surface は見えない変更・availableFirstViews に name_menu の節順の条件）。今回は実装しない。
+4. **Nit 1**（ruled_frame と full-bleed band）: DEV-067 の枠の扱いと一緒に決める（未対応のまま）。
+
+再確認: design-agent と ai-tasks の suite（Chromium あり）720 pass / 16 skipped（1 件は縦の添え書きを見出しと数えた test 側の誤りで、直して単独で 4/4 pass）。eslint 0、tsc 0、`npm run build` 成功。

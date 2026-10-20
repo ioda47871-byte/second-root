@@ -1,6 +1,7 @@
 import { chromium, type Browser, type Page } from "playwright";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { areaLabel } from "@/components/demo/info";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import { normalizeLayout } from "@/lib/design-agent/layout";
 import { checkProfile, DIRECTIONS, paletteProblems, type DesignProfile } from "@/lib/design-agent/profile";
@@ -140,7 +141,8 @@ describe("sections in Chromium", () => {
               for (const v of m.vertical) expect(v, `${label}: vertical text`).toMatch(JAPANESE_ONLY);
               // a section with little content (data-short) keeps a horizontal heading
               if (normal.type.headings === "vertical_ja") expect(m.vertical.length, `${label}: vertical headings`).toBeGreaterThanOrEqual(m.long);
-              if (m.long === 0) expect(m.vertical.filter((v) => v !== demo.name), `${label}: mixed heading directions`).toEqual([]);
+              // (the hero's vertical name and its caption are not headings)
+              if (m.long === 0) expect(m.vertical.filter((v) => v !== demo.name && v !== areaLabel(demo)), `${label}: mixed heading directions`).toEqual([]);
               if (normal.firstView === "vertical_name") expect(m.vertical, label).toContain(demo.name);
             } else {
               expect(m.vertical, `${label}: vertical text on a phone`).toEqual([]);
@@ -232,6 +234,7 @@ describe("three fictional shops", () => {
 // ------------------------------------------------------------ quality and colour pairs
 
 const VERTICAL_SHOP: DemoView = { ...FULL_SHOP, name: "麦と灯", category: "bakery", template: "bakery_v1" };
+const VERTICAL_SIX: DemoView = { ...VERTICAL_SHOP, name: "架空焼菓子店" };
 
 type Quality = {
   headingSizes: number[];
@@ -240,6 +243,11 @@ type Quality = {
   hero: { width: number; height: number };
   stretched: string[];
   footerGap: number | null;
+  /** vertical_name: horizontal distance from the area label to the name column, and the name column's width */
+  captionGap: number | null;
+  nameWidth: number;
+  /** the largest rectangle of the hero with no word, motif or photo in it, as a share of the hero */
+  emptyShare: number;
 };
 
 async function quality(page: Page): Promise<Quality> {
@@ -271,7 +279,50 @@ async function quality(page: Page): Promise<Quality> {
     const last = main.lastElementChild;
     const footer = document.querySelector("footer")!;
     const band = last && ["surface", "inverted"].includes(last.getAttribute("data-ground") ?? "");
+    // the largest empty rectangle of the hero, on an 8px grid (words, motifs, photos are content;
+    // the frame and corner lines are not)
+    const hb = hero.getBoundingClientRect();
+    const cell = 8;
+    const cols = Math.ceil(hb.width / cell);
+    const rows = Math.ceil(hb.height / cell);
+    const busy = Array.from({ length: rows }, () => new Uint8Array(cols));
+    const mark = (r: DOMRect) => {
+      if (r.width === 0 || r.height === 0) return;
+      for (let y = Math.max(0, Math.floor((r.top - hb.top) / cell)); y < Math.min(rows, Math.ceil((r.bottom - hb.top) / cell)); y++)
+        for (let x = Math.max(0, Math.floor((r.left - hb.left) / cell)); x < Math.min(cols, Math.ceil((r.right - hb.left) / cell)); x++) busy[y][x] = 1;
+    };
+    const walker = document.createTreeWalker(hero, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!(n.textContent ?? "").trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) mark(r);
+    }
+    for (const el of hero.querySelectorAll("svg, figure, [aria-hidden='true'] > span")) mark(el.getBoundingClientRect());
+    let best = 0;
+    const heights = new Array(cols).fill(0);
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) heights[x] = busy[y][x] ? 0 : heights[x] + 1;
+      const stack: number[] = [];
+      for (let x = 0; x <= cols; x++) {
+        const h = x === cols ? 0 : heights[x];
+        while (stack.length && heights[stack[stack.length - 1]] >= h) {
+          const top = heights[stack.pop()!];
+          const left = stack.length ? stack[stack.length - 1] + 1 : 0;
+          best = Math.max(best, top * (x - left));
+        }
+        stack.push(x);
+      }
+    }
+    const dek = hero.querySelector("p");
+    const nameRect = h1.getBoundingClientRect();
+    const dekRange = dek ? document.createRange() : null;
+    dekRange?.selectNodeContents(dek!);
+    const dr = dekRange?.getBoundingClientRect();
     return {
+      captionGap: dr && getComputedStyle(dek!).writingMode.startsWith("vertical") ? nameRect.left - dr.right : null,
+      nameWidth: nameRect.width,
+      emptyShare: best / (rows * cols),
       headingSizes: [...document.querySelectorAll("section > h2")].map((h) => parseFloat(getComputedStyle(h).fontSize)),
       nameSize: parseFloat(getComputedStyle(h1).fontSize),
       nameBox: { width: h1.getBoundingClientRect().width, height: h1.getBoundingClientRect().height },
@@ -289,7 +340,7 @@ describe("layout quality in Chromium", () => {
       const page = await context.newPage();
       try {
         for (const direction of DIRECTIONS) {
-          for (const [key, { demo, profile }] of [...Object.entries(THREE_SHOPS), ["vertical-full", { demo: VERTICAL_SHOP, profile: THREE_SHOPS.bakery.profile }] as const]) {
+          for (const [key, { demo, profile }] of [...Object.entries(THREE_SHOPS), ["vertical-full", { demo: VERTICAL_SHOP, profile: THREE_SHOPS.bakery.profile }] as const, ["vertical-six", { demo: VERTICAL_SIX, profile: THREE_SHOPS.bakery.profile }] as const, ["vertical-motifs", { demo: VERTICAL_SHOP, profile: { ...THREE_SHOPS.bakery.profile, motifs: ["stamp_ring", "muffin_paper_svg", "ruled_frame"] as DesignProfile["motifs"] } }] as const]) {
             const label = `${key}/${direction}/${device}`;
             await page.setContent(pageHtml(renderToStaticMarkup(<ProfileRenderer demo={demo} profile={{ ...profile, direction }} />)));
             const q = await quality(page);
@@ -300,6 +351,17 @@ describe("layout quality in Chromium", () => {
             if (device === "desktop" && profile.layout?.firstView === "vertical_name") {
               expect(q.nameSize, `${label}: name size vs headings`).toBeGreaterThanOrEqual(2 * Math.max(...q.headingSizes));
               expect(q.nameBox.height / q.hero.height, `${label}: name column height`).toBeGreaterThan(0.5);
+              // the area label is a caption beside the name, and the hero has no large unused field
+              expect(q.captionGap, `${label}: caption beside the name`).not.toBeNull();
+              expect(q.captionGap!, `${label}: caption to name`).toBeLessThanOrEqual(q.nameWidth);
+              // The same shop without a layout (the name across the hero) as the yardstick:
+              // choosing vertical_name must not leave more of the first screen unused.
+              const { layout: _l, ...plain } = { ...profile, direction };
+              void _l;
+              await page.setContent(pageHtml(renderToStaticMarkup(<ProfileRenderer demo={demo} profile={plain} />)));
+              const base = await quality(page);
+              expect(q.emptyShare, `${label}: largest empty rectangle vs the same shop without a layout (${base.emptyShare.toFixed(2)})`).toBeLessThanOrEqual(base.emptyShare + 0.01);
+              expect(q.emptyShare, `${label}: largest empty rectangle of the hero`).toBeLessThanOrEqual(0.43);
             }
           }
         }

@@ -168,10 +168,19 @@ Codex の呼び出し回数は変わらない）/ 安全性と運用の安定（
 
 ### Fresh Review（FAIL）への対応で変えた規則（2026-10-20）
 
-- vertical_name: 和文だけ・**6 字以下**。desktop は folio の下に 2 列（右に縦の店名、左に motif・dek）、店名は見出しの 2 倍以上
+- vertical_name: 和文だけ・**6 字以下**。desktop は「掛け軸」の構図: folio が上に全幅、その下で縦の店名と、そのすぐ左に上端を揃えた縦の添え書き（地域と業種、和文だけのとき）を hero の中央に置き、左右の余白をほぼ等しくする。hero の高さは店名に合わせる。motif・枠の写真がある profile では、それを右の余白に置き店名の塊を左へ寄せて釣り合わせる。店名は見出しの 2 倍以上
 - name_menu: メニューが 4 品以上、かつ menu 節が最初の節でないときだけ（それ以外は `first_view:name_menu` で name_only）
 - 縦書きの見出し（vertical_ja）: 頁のどの節も短くない（`data-short` なし）ときだけ縦。混ぜない
 - side_heading は見出しを縮めない。band の地は main で取った palette から（direction の token の付け替えに影響されない）。
   最後の band は footer に接する。boutique_minimal の band は panel の列の中
 - normalize の結果は `NormalizedLayout`（節 0 個を許す描画の計画、再 parse しない）
 - renderer の baseline は develop の renderer（Stage 1 を含まない tree）から取り直し、fixture に commit を記録
+
+### DEV-071b への申し送り（再レビューの Low 1〜3、2026-10-20）
+
+- **短い節（`data-short`）の判断を normalize へ**: 今は CSS の `:has(.sec[data-short])` で頁の見出しを横書きに戻す。短さは事実（字数・品数・行数）と
+  variant だけで決まるので、`normalizeLayout` で判定し、固定の符号（例 `headings:vertical_ja`）の adjustment にして headings を ja_only に落とす。
+  prompt の「使える設定」・report・`visibleChanges` を描かれる頁と一致させる（DEV-066 の「見えない変更で round を使わない」）。CSS は結果を描くだけにする
+- **boutique_minimal の plain と surface は同じ見た目**（plain の節も surface の panel）: `visibleChanges` でこの組の変更を見えない変更と扱う、または語彙で説明する
+- **name_menu の利用可否**: `availableFirstViews` は品数（> 3）だけを見るが、normalize は「menu 節が最初の節」でも外す。brief の「使える first view」の一覧にも
+  「menu 節を最初にしない場合に限る」を書く（Codex が組み合わせを外し続けないように）
