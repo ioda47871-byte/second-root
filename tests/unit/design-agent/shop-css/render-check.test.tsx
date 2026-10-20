@@ -50,6 +50,17 @@ afterAll(async () => {
 
 const check = (css: GuardedShopCss, demo: DemoView = SHOP, build: ShopCssPageBuilder = pageBuilder(demo, AMERICAN_EDITORIAL)) => checkShopCssRender({ browser, build, css, facts: demoFacts(demo) });
 const codes = (problems: string[]) => [...new Set(problems.map((p) => p.split(":")[1]))];
+/**
+ * A probe: through the guard when it passes; when the guard rejects it (the
+ * vocabulary was reduced after it was written), past the guard, injected raw
+ * into the page, so the render check still has to stop it on its own.
+ */
+const probe = (css: string, demo: DemoView = SHOP) => {
+  const g = guardShopCss(css);
+  if (g.ok) return check(g.css, demo);
+  const base = pageBuilder(demo, AMERICAN_EDITORIAL);
+  return check(guarded("#shop-css { color: var(--p-text); }"), demo, (c) => (c === null ? base(null) : base(c).replace("</head>", `<style>${css}</style></head>`)));
+};
 
 describe("render check: guard-passing stylesheets that break facts fail (DEV-072)", () => {
   const BAD: Array<[string, string, string[]]> = [
@@ -77,10 +88,22 @@ describe("render check: guard-passing stylesheets that break facts fail (DEV-072
     ["a wide rotated label with a ground over the values (scale is gone; rotate is left)", "#shop-css dl > div > dt { position: relative; z-index: 1; width: 320px; height: 24px; transform: rotate(8deg); background-color: var(--p-bg); }", ["fact_covered", "fact_ink"]],
     ["a heading over the text in the same grid cell", "#shop-css section { display: grid; } #shop-css section > h2, #shop-css section > p { grid-row: 1; grid-column: 1; } #shop-css section > h2 { position: relative; z-index: 2; }", ["fact_covered", "fact_ink"]],
     ["a label's ::before ground over the value in the same cell", '#shop-css dl > div { display: grid; } #shop-css dl > div > dt { grid-row: 1; grid-column: 1; position: relative; z-index: 1; width: 40px; margin-left: 40px; } #shop-css dl > div > dd { grid-row: 1; grid-column: 1; } #shop-css dl > div > dt::before { content: ""; display: block; height: 14px; background-color: var(--p-bg); }', ["fact_covered", "fact_ink", "label_squeezed"]],
+    // DEV-072 security re-review 3 (783fd5f): guard-rejected now (pseudo-elements, gradients, nowrap,
+    // grid on text), and still stopped by the render check when injected past the guard
+    ["re-review 3: inflate-a", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; background-image: linear-gradient(90deg, #888888 0px, #888888 56px, #ffffff 56px, #ffffff 96px, #888888 96px); } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 40px; height: 9px; margin-left: 32px; margin-top: 3px; background-color: #ffffff; }", ["fact_ink", "fact_overflow", "fact_covered", "fact_overlap"]],
+    ["re-review 3: after-cover-plain", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 40px; height: 9px; margin-left: 32px; margin-top: 3px; background-color: var(--p-bg); }", ["fact_ink", "fact_overflow"]],
+    ["re-review 3: overprint-24", "#shop-css section div > div > p:nth-child(2) { display: grid; grid-template-columns: 24px 24px; justify-content: start; font-size: 14px; white-space: nowrap; }", ["fact_overlap", "fact_overflow"]],
+    ["re-review 3: pct-track", "#shop-css section div > div > p:nth-child(2) { display: grid; grid-template-columns: 1% 1%; justify-content: start; font-size: 14px; white-space: nowrap; }", ["fact_overlap", "fact_overflow"]],
+    ["re-review 3: colon-38", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 8px; height: 20px; margin-left: 38px; background-color: var(--p-bg); }", ["fact_ink", "fact_overflow"]],
+    ["re-review 3: colon-40", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 8px; height: 20px; margin-left: 40px; background-color: var(--p-bg); }", ["fact_ink", "fact_overflow"]],
+    ["re-review 3: colon-42", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 8px; height: 20px; margin-left: 42px; background-color: var(--p-bg); }", ["fact_ink", "fact_overflow"]],
+    ["re-review 3: inflate-b", "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; background-image: linear-gradient(90deg, #888888 0px, #888888 56px, #ffffff 56px, #ffffff 100px, #888888 100px); } #shop-css dl > div:nth-child(4) > dd > span { color: #2a1916; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 44px; height: 9px; margin-left: 32px; margin-top: 3px; background-color: #ffffff; }", ["fact_ink", "fact_overflow", "fact_covered", "fact_overlap"]],
+    ["re-review 3: border-rot", "#shop-css dl > div > dt { transform: rotate(8deg); border-bottom: 16px solid #f4e8d2; padding-bottom: 0; margin-bottom: 0; }", ["label_overlap", "label_covered", "label_ink", "fact_covered", "fact_ink", "fact_overlap"]],
+    ["re-review 3: border-rot-thin", "#shop-css dl > div > dt { transform: rotate(4deg); border-bottom: 6px solid #f4e8d2; }", ["label_overlap", "label_covered", "label_ink", "fact_covered", "fact_ink", "fact_overlap"]],
   ];
   for (const [name, css, expected] of BAD)
     it(name, async () => {
-      const r = await check(guarded(css));
+      const r = await probe(css);
       if (process.env.SR_SHOP_CSS_DEBUG) console.log(name, r.problems.join(" "));
       expect(r.ok).toBe(false);
       expect(codes(r.problems).some((c) => expected.includes(c!)), r.problems.join(" ")).toBe(true);
@@ -170,7 +193,7 @@ describe("pixel proof and widths (pure)", () => {
     for (let y = 0; y < 10; y++) for (let x = 0; x < 20; x++) data.fill(fill(x, y), (y * 20 + x) * 3, (y * 20 + x) * 3 + 3);
     return { width: 20, height: 10, channels: 3, data };
   };
-  const node = { kind: "fact" as const, owner: 0, text: "ab", hidden: false, offscreen: false, clipped: false, covered: false, opacity: 1, fontSize: 16, vertical: false, squeezed: false, color: [0, 0, 0, 1] as [number, number, number, number], rects: [], chars: [{ left: 0, top: 0, width: 10, height: 10 }, { left: 10, top: 0, width: 10, height: 10 }] };
+  const node = { kind: "fact" as const, owner: 0, text: "ab", hidden: false, offscreen: false, clipped: false, covered: false, overflow: false, opacity: 1, fontSize: 16, vertical: false, squeezed: false, color: [0, 0, 0, 1] as [number, number, number, number], rects: [], chars: [{ left: 0, top: 0, width: 10, height: 10 }, { left: 10, top: 0, width: 10, height: 10 }] };
   it("each character keeps its reference ink, judged by the worst character", () => {
     const white = picture(() => 255);
     // the reference: both characters inked on rows 2..7

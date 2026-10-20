@@ -6,10 +6,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import { FIRST_VIEWS, GROUNDS, HEADING_STYLES, SECTION_KINDS, SECTION_VARIANTS, TYPE_SCALES } from "@/lib/design-agent/profile";
 import { demoFacts } from "@/lib/design-agent/shop-css/apply";
-import { guardShopCss, SHOP_CSS_ATTRIBUTES, type GuardedShopCss } from "@/lib/design-agent/shop-css/guard";
+import { guardShopCss, SHOP_CSS_ATTRIBUTES, TEXT_FREE_ELEMENTS, type GuardedShopCss } from "@/lib/design-agent/shop-css/guard";
 import { MEASURE_SCRIPT, MeasureSchema } from "@/lib/design-agent/shop-css/page-scripts";
 import { checkShopCssRender } from "@/lib/design-agent/shop-css/render-check";
-import { BASE_PROFILE, coverageLayouts, FULL_SHOP, THREE_SHOPS } from "../stage1-fixtures";
+import { AMERICAN_EDITORIAL, SHOP } from "../fixtures";
+import { BASE_PROFILE, coverageLayouts, FULL_SHOP, SPARSE_JP_SHOP, THREE_SHOPS } from "../stage1-fixtures";
 import { launch, pageBuilder } from "./support";
 
 // DEV-072 on the Stage 1 renderer (DEV-071a): the allowlisted hooks are the
@@ -55,6 +56,28 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await browser?.close();
+});
+
+describe("the guard can tell which elements hold no text (grid and flex only on them)", () => {
+  it("header, main, section, div, ol, ul and dl never hold text directly, on any layout", async () => {
+    const pages = [
+      renderToStaticMarkup(<ProfileRenderer demo={SHOP} profile={AMERICAN_EDITORIAL} />),
+      renderToStaticMarkup(<ProfileRenderer demo={SPARSE_JP_SHOP} profile={AMERICAN_EDITORIAL} />),
+      ...coverageLayouts().map(({ layout }) => renderToStaticMarkup(<ProfileRenderer demo={FULL_SHOP} profile={{ ...BASE_PROFILE, layout }} />)),
+      ...Object.values(THREE_SHOPS).map(({ demo, profile }) => renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} />)),
+      ...(["name_lead", "name_hours", "name_menu", "vertical_name"] as const).map((firstView) => renderToStaticMarkup(<ProfileRenderer demo={FULL_SHOP} profile={{ ...BASE_PROFILE, layout: { firstView, sections: [{ kind: "visit", variant: "ledger", ground: "plain" }], type: { scale: "standard", headings: "en_ja" } } }} />)),
+    ];
+    const page = await browser.newPage();
+    try {
+      for (const html of pages) {
+        await page.setContent(`<!doctype html><html><body>${html}</body></html>`);
+        const found = await page.evaluate(`(() => Array.from(document.querySelectorAll(${JSON.stringify(TEXT_FREE_ELEMENTS.join(","))})).filter((el) => el.closest('[role="note"], footer') === null && Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== "")).map((el) => el.tagName + "." + el.className))()`);
+        expect(found).toEqual([]);
+      }
+    } finally {
+      await page.close();
+    }
+  });
 });
 
 describe("render check on Stage 1 layouts", () => {

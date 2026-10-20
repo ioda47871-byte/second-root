@@ -62,7 +62,10 @@ describe("render check under LCD antialiasing and other faces", () => {
     expect(stretched.problems.some((p) => /:(fact_ink|fact_covered)$/.test(p)), stretched.problems.join(" ")).toBe(true);
     const shadowed = await checkShopCssRender({ browser, build: bypass("#shop-css dl > div > dt { position: relative; z-index: 1; box-shadow: 0 0 0 14px #f4e8d2; }"), css: plain, facts: demoFacts(SHOP) });
     expect(shadowed.problems.some((p) => p.endsWith(":fact_ink")), shadowed.problems.join(" ")).toBe(true);
-    const raised = await checkShopCssRender({ browser, build: base, css: guarded('#shop-css header > span[aria-hidden="true"] { z-index: 5; } #shop-css header > span[aria-hidden="true"]::before { content: ""; display: block; width: 100%; height: 2400px; background-color: var(--p-bg); }'), facts: demoFacts(SHOP) });
+    const raised = await checkShopCssRender({ browser, build: bypass('#shop-css header > span[aria-hidden="true"] { z-index: 5; } #shop-css header > span[aria-hidden="true"]::before { content: ""; display: block; width: 100%; height: 2400px; background-color: var(--p-bg); }'), css: plain, facts: demoFacts(SHOP) });
     expect(raised.problems.some((p) => /:(fact_ink|fact_covered)$/.test(p)), raised.problems.join(" ")).toBe(true);
+    // re-review 3: a striped ground under part of a line and a ::after over the top of the characters
+    const inflated = await checkShopCssRender({ browser, build: bypass("#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; background-image: linear-gradient(90deg, #888888 0px, #888888 56px, #ffffff 56px, #ffffff 96px, #888888 96px); } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 40px; height: 9px; margin-left: 32px; margin-top: 3px; background-color: #ffffff; }"), css: plain, facts: demoFacts(SHOP) });
+    expect(inflated.problems.some((p) => /:(fact_ink|fact_overflow)$/.test(p)), inflated.problems.join(" ")).toBe(true);
   });
 });

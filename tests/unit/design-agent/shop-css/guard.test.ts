@@ -242,6 +242,29 @@ const ADVERSARIAL: Array<[string, string]> = [
   ["re-review 2: overprint-addr3 (0px grid tracks)", "#shop-css section div > div > p:nth-child(2) { display: grid; grid-template-columns: 0px 0px; justify-content: start; font-size: 14px; white-space: nowrap; } #shop-css section div > div > p:nth-child(2) > span { margin-left: 28px; }"],
   ["re-review 2: dot-14 (0px grid tracks)", "#shop-css dl > div > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div > dd::after { content: \"\"; display: block; width: 3px; height: 10px; margin-top: 2px; margin-left: 14px; background-color: var(--p-bg); }"],
   ["re-review 2: hy-19 (0px grid tracks)", "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 0px 0px; justify-content: start; white-space: nowrap; font-size: 12px; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 6px; height: 12px; margin-top: 2px; margin-left: 19px; background-color: var(--p-bg); }"],
+  // DEV-072 security re-review 3 (783fd5f): the vocabulary is reduced (fail closed)
+  ["re-review 3: inflate-a", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; background-image: linear-gradient(90deg, #888888 0px, #888888 56px, #ffffff 56px, #ffffff 96px, #888888 96px); } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 40px; height: 9px; margin-left: 32px; margin-top: 3px; background-color: #ffffff; }"],
+  ["re-review 3: after-cover-plain", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 40px; height: 9px; margin-left: 32px; margin-top: 3px; background-color: var(--p-bg); }"],
+  ["re-review 3: overprint-24", "#shop-css section div > div > p:nth-child(2) { display: grid; grid-template-columns: 24px 24px; justify-content: start; font-size: 14px; white-space: nowrap; }"],
+  ["re-review 3: pct-track", "#shop-css section div > div > p:nth-child(2) { display: grid; grid-template-columns: 1% 1%; justify-content: start; font-size: 14px; white-space: nowrap; }"],
+  ["re-review 3: colon-38", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 8px; height: 20px; margin-left: 38px; background-color: var(--p-bg); }"],
+  ["re-review 3: colon-40", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 8px; height: 20px; margin-left: 40px; background-color: var(--p-bg); }"],
+  ["re-review 3: colon-42", "#shop-css dl > div:nth-child(1) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; } #shop-css dl > div:nth-child(1) > dd::after { content: \"\"; display: block; width: 8px; height: 20px; margin-left: 42px; background-color: var(--p-bg); }"],
+  ["re-review 3: inflate-b", "#shop-css dl > div:nth-child(4) > dd { display: grid; grid-template-columns: 24px 24px; justify-content: start; white-space: nowrap; font-size: 16px; background-image: linear-gradient(90deg, #888888 0px, #888888 56px, #ffffff 56px, #ffffff 100px, #888888 100px); } #shop-css dl > div:nth-child(4) > dd > span { color: #2a1916; } #shop-css dl > div:nth-child(4) > dd::after { content: \"\"; display: block; width: 44px; height: 9px; margin-left: 32px; margin-top: 3px; background-color: #ffffff; }"],
+  ["any ::before", '#shop-css h2::before { content: ""; display: block; height: 4px; background-color: #000; }'],
+  ["any ::after", '#shop-css section::after { content: ""; }'],
+  ["::before on the root", '#shop-css::before { content: ""; display: block; height: 2400px; }'],
+  ["a gradient ground", "#shop-css dd { background-image: linear-gradient(90deg, #888 56px, #fff 56px); }"],
+  ["a radial gradient ground", "#shop-css header { background-image: radial-gradient(circle, #fff, #eee); }"],
+  ["background-size", "#shop-css header { background-size: cover; }"],
+  ["white-space nowrap", "#shop-css dd { white-space: nowrap; }"],
+  ["white-space pre", "#shop-css dd { white-space: pre; }"],
+  ["word-break keep-all", "#shop-css p { word-break: keep-all; }"],
+  ["grid on a text element (p)", "#shop-css p { display: grid; grid-template-columns: 24px 24px; }"],
+  ["flex on a text element (dd)", "#shop-css dd { display: flex; }"],
+  ["inline-grid on a span", "#shop-css span { display: inline-grid; }"],
+  ["grid on li (holds text in Stage 1)", "#shop-css li { display: grid; }"],
+  ["grid on a mixed rule (div and p)", "#shop-css div, #shop-css p { display: grid; }"],
   ["a 10px track", "#shop-css p { display: grid; grid-template-columns: 10px 1fr; }"],
   ["minmax with a 0px maximum", "#shop-css p { display: grid; grid-template-columns: minmax(0, 0px) 1fr; }"],
   ["vendor prefix", "#shop-css p { -webkit-box-reflect: below; }"],
@@ -258,11 +281,12 @@ describe("guardShopCss rejects (DEV-072)", () => {
     expect(rejects("#shop-css { pos\\ition: fixed }")).toEqual(["escape"]);
     expect(rejects("#shop-css p { visibility: hidden }")).toEqual(["property_forbidden"]);
     expect(rejects("#shop-css p { display: none }")).toEqual(["value_forbidden:display"]);
-    expect(rejects('#shop-css p::before { content: "x" }')).toEqual(["value_forbidden:content"]);
+    expect(rejects('#shop-css p::before { content: "x" }')).toEqual(["selector_pseudo"]);
     expect(rejects("p { color: #000 }")).toEqual(["selector_scope"]);
     expect(rejects("#shop-css ~ footer { color: #000 }")).toEqual(["selector_combinator"]);
     expect(rejects('#shop-css [data-kind^="m"] { color: #000 }')).toEqual(["selector_attribute"]);
-    expect(rejects("#shop-css p::before { position: relative }")).toEqual(["pseudo_property:position"]);
+    expect(rejects("#shop-css p { display: grid }")).toEqual(["display_on_text"]);
+    expect(rejects("#shop-css p { background-image: linear-gradient(#fff, #000) }")).toEqual(["property_forbidden"]);
     expect(rejects("#shop-css * { color: #000 }")).toEqual(["selector_element"]);
     expect(rejects("#shop-css p { box-shadow: 0 4px 0 #000 }")).toEqual(["value_forbidden:box-shadow"]);
     expect(rejects("#shop-css p { font-size: 1px }")).toEqual(["value_forbidden:font-size"]);
@@ -303,11 +327,11 @@ describe("guardShopCss accepts the allowed vocabulary and re-serializes", () => 
       #shop-css{color:var(--p-text);background-color:var(--p-bg)}
       #shop-css   section[aria-labelledby=pr-menu]>ol   li:nth-child( 2n + 1 ) { background-color : rgb( 255 250 240 / 0.9 ) }
       @media (MIN-WIDTH:720PX) and (max-width: 1199.98px){#shop-css main{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:24px}}
-      #shop-css h2>span:first-child::before{content:'';display:inline-block;width:10px;height:10px;background-color:#d2451e}
+      #shop-css h2>span:first-child{border-left:10px solid #d2451e;padding-left:10px}
     `);
     expect(css).toContain('section[aria-labelledby="pr-menu"] > ol li:nth-child(2n+1)');
     expect(css).toContain("@media (min-width: 720px) and (max-width: 1199.98px)");
-    expect(css).toContain('content: "";');
+    expect(css).toContain("border-left: 10px solid #d2451e;");
     expect(guardShopCss(css)).toEqual({ ok: true, css });
     expect(isGuardedShopCss(css)).toBe(true);
     expect(isGuardedShopCss(`${css} `)).toBe(false);
@@ -330,7 +354,7 @@ describe("guardShopCss accepts the allowed vocabulary and re-serializes", () => 
       text-decoration: underline wavy;
     }`);
     accepts(`#shop-css header {
-      background-image: repeating-linear-gradient(45deg, #fff 0 8px, #f3e7d3 8px 16px), radial-gradient(circle at top left, #fff, #eee 60%);
+      background-color: #f3e7d3;
       border-bottom: 4px double var(--p-primary); box-shadow: inset 0 -2px 0 #000, inset 0 0 0 2px var(--p-accent);
       padding: 24px clamp(16px, 4vw, 64px); min-height: 60vw; position: relative; z-index: 1;
     }`);
@@ -340,6 +364,10 @@ describe("guardShopCss accepts the allowed vocabulary and re-serializes", () => 
     accepts("@media (min-width: 320px) and (max-width: 1920px) { #shop-css p { color: #000; } } @media (min-width: 20em) and (max-width: 120em) { #shop-css li { color: #000; } }");
     accepts("#shop-css h1 { writing-mode: vertical-rl; text-orientation: upright; }");
     accepts("#shop-css main { display: grid; grid-template-columns: 96px minmax(0, 1fr) repeat(auto-fit, minmax(140px, 1fr)); }");
+    // grid and flex on the elements that hold no text of their own
+    accepts("#shop-css section, #shop-css div, #shop-css ol, #shop-css ul, #shop-css dl, #shop-css header, #shop-css main { display: flex; }");
+    accepts("#shop-css { display: grid; }");
+    accepts("#shop-css p, #shop-css dd, #shop-css li { display: inline-block; }");
   });
 
   it("the example shop stylesheets pass", () => {
@@ -354,7 +382,6 @@ describe("the Fresh Review's static probes (DEV-072)", () => {
   // Probes the guard lets through as harmless or leaves to the render check
   // (render-check.test.tsx has the harmful ones): never a throw, never a way out.
   const PASSING = [
-    '#shop-css::before { content: ""; display:block; height: 2400px }',
     "#shop-css p { color: rgb(0 0 0 / 0.1) }",
     "#shop-css p { color: color-mix(in srgb, transparent, #000 10%) }",
     "#shop-css p { letter-spacing: -1px; word-spacing: 0 }",
@@ -363,10 +390,8 @@ describe("the Fresh Review's static probes (DEV-072)", () => {
     "#shop-css p { height: 0 }",
     "#shop-css p { column-count: 4; height: 20px }",
     "#shop-css dt { color: transparent }",
-    "#shop-css p::before { content: '' ; display: block; height: 2400px; background-color: #fff }",
     "#shop-css p { order: -10 }",
     "#shop-css p { float: left; width: 2400px }",
-    "#shop-css p { white-space: nowrap }",
     "#shop-css p { color: #0000 }",
   ];
   it("what passes is re-serialized and safe", () => {

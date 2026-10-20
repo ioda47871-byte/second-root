@@ -21,14 +21,9 @@
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #111111;
-}
-#shop-css h2 > span[lang="en"]::before {
-  content: "";
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 10px;
-  background-color: #d2451e;
+  /* the accent square, as a thick left rule on the English word */
+  border-left: 10px solid #d2451e;
+  padding-left: 10px;
 }
 #shop-css main > section {
   border-top: 1px solid #111111;
@@ -58,7 +53,6 @@
 #shop-css section[data-ground="surface"],
 #shop-css section[data-ground="inverted"] {
   background-color: #fbfaf7;
-  background-image: none;
 }
 #shop-css main section p,
 #shop-css main section li,
