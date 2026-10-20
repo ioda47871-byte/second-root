@@ -240,3 +240,4 @@ returning id, design_status, design_attempts;
 - timer を enable したまま flag を無効にすると、毎時 `CYCLE_STOP_CLAIM` で unit が failed になる。flag を無効にする間は timer を止める
 - Staging の flag を常時 ON にすること自体が人の承認事項（DEV-052 の human approval trigger）。それまでは、人が承認した window の中で手で cycle を動かす
 - 即時に止める方法は `design-bridge.md` §9 と同じ（flag を外す）。claim の後で止まった job は §6
+- controlled run の window（flag を期限つきで一時的に ON、Claude が操作し、期限で自然に閉じ、独立した復旧 session つき）は `design-flag-window.md`（DEV-064）

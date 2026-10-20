@@ -2824,6 +2824,54 @@
         "controlled run の window（flag の一時 ON）"
       ],
       "decision": "2026-10-19: 人の指示で Claude が追加; 2026-10-20: PR #76 merge（c066618）。Fresh Review PASS（Medium 1・Low 3・Nit 5）→ 修正 → 再レビュー PASS（Low 1・Nit 2）→ 修正 → 最終レビュー PASS（Nit 1: lock の fd 8 の test → Claude が追加 54d8606）。CI green（39331135273、6 job）。人の作業は HUMAN-013（Vercel で secret 作成 + WSL で 1 行）"
+    },
+    {
+      "id": "DEV-064",
+      "title": "Staging の design flag を期限つきで開閉する（app 内の期限 + 範囲を限った flag 操作 script + 独立した復旧手順）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-063"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-064-design-flag-window",
+      "purpose": "人の指示（2026-10-20）: controlled run をできるだけ Claude 主体で進め、Claude が途中で止まっても期限までに flag が OFF に戻る独立した手段を用意する。Production に影響しない範囲だけを変える",
+      "acceptance_criteria": [
+        "SALES_AI_DESIGN_ENABLED_UNTIL（任意、厳密な UTC 形式）の後は flag を無効として扱う。形が違えば無効、未設定なら従来どおり",
+        "flag 操作 script は Preview develop の 2 record だけを変え、送ってよい request を列挙して他を拒否する",
+        "on は期限を先に書き、期限は 30 分〜4 時間先だけ",
+        "production branch が main でない・他の record があるときは何も書かない",
+        "off は冪等、verify は env と deployment（commit・READY・変更後の build）を確かめる",
+        "window の手順・復旧 task の文面・失敗時の対処を文書にする"
+      ],
+      "required_tests": [
+        "unit: 期限の判定（境界・形・fail closed・bridge auth）",
+        "unit: flag script（範囲・順序・拒否・冪等・verify）",
+        "CI"
+      ],
+      "allowed_scope": [
+        "lib/sales/design.ts",
+        "scripts/staging/",
+        "tests/unit/",
+        "docs/operations/",
+        "package.json",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Vercel の設定変更（実行）",
+        "SALES_AI_DESIGN_ENABLED の変更（実行）",
+        "Vercel Authentication の無効化",
+        "timer の有効化",
+        "Production",
+        "実営業送信"
+      ],
+      "human_approval_triggers": [
+        "window を開く（flag の一時 ON、期限 env の作成）",
+        "復旧の scheduled task を作る",
+        "WSL で cycle を 1 回"
+      ],
+      "decision": "2026-10-20: 人の指示で Claude が追加"
     }
   ]
 }
