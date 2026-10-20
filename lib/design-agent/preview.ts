@@ -53,8 +53,8 @@ export async function loadPreviewRun(
   // An unusable profile renders the existing template (fail-safe).
   if (!check.ok) return { demo, profile: null, photos: null };
   // DEV-072 (Stage 3 trial): an accepted per-shop stylesheet, only when its record matches this run,
-  // candidate and profile and the guard passes it again; anything else is the profile's own page.
-  const shopCss = shopCssFromRecord(await readJson(join(dir, `${candidate}.shop-css.json`)), runId, candidate, check.profile);
+  // candidate, profile and facts and the guard passes it again; anything else is the profile's own page.
+  const shopCss = shopCssFromRecord(await readJson(join(dir, `${candidate}.shop-css.json`)), runId, candidate, check.profile, demo);
   return { demo, profile: check.profile, photos: await loadPhotos(dir, runId, candidate, demo, check.profile, options), shopCss };
 }
 

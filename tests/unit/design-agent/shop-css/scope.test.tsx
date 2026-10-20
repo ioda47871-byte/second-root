@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import { renderDemo, renderDesignedDemo } from "@/components/demo/renderDemo";
-import { loadPreviewRun } from "@/lib/design-agent/preview";
+import { factsToDemoView, loadPreviewRun } from "@/lib/design-agent/preview";
 import { guardShopCss, SHOP_CSS_SCOPE_ID, type GuardedShopCss } from "@/lib/design-agent/shop-css/guard";
 import { shopCssFromRecord, shopCssRecord } from "@/lib/design-agent/shop-css/record";
 import { AMERICAN_EDITORIAL, SHOP } from "../fixtures";
@@ -33,7 +33,7 @@ describe("renderer: the shop stylesheet's scope", () => {
 
   it("a guarded stylesheet: a <style> outside the canvas, the canvas is the scope root with its own stacking context", () => {
     const html = renderToStaticMarkup(<ProfileRenderer demo={SHOP} profile={AMERICAN_EDITORIAL} shopCss={CSS} />);
-    expect(html).toContain(`<style data-shop-css-style="">${CSS}</style><div id="shop-css" data-shop-css="" style="isolation:isolate" class=`);
+    expect(html).toContain(`<style data-shop-css-style="">${CSS}</style><div id="shop-css" data-shop-css="" style="isolation:isolate;overflow:clip" class=`);
     expect(html.match(/<style/g)).toHaveLength(1);
     // the notice comes before the style, the footer after the canvas: neither is inside the scope
     expect(html.indexOf('role="note"')).toBeLessThan(html.indexOf("<style"));
@@ -82,18 +82,22 @@ describe("public /demo and the admin preview cannot load a shop stylesheet", () 
 describe("design preview: an accepted stylesheet's record", () => {
   let root: string;
   const runId = "run-shopcss-1";
+  const FACTS = { name: "EXAMPLE TEST", category: "baked_goods", ward: "北区", address: "名古屋市北区テスト町1-2-3", description: "テスト用の架空の紹介文です。" };
+  const DEMO = factsToDemoView(FACTS)!;
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), "shop-css-test-"));
     const run = join(root, runId);
     await mkdir(run);
-    await writeFile(join(run, "facts.json"), JSON.stringify({ name: "EXAMPLE TEST", category: "baked_goods", ward: "北区", address: "名古屋市北区テスト町1-2-3", description: "テスト用の架空の紹介文です。" }));
-    for (const c of ["candidate-0", "candidate-1", "candidate-2", "candidate-3"]) await writeFile(join(run, `${c}.json`), JSON.stringify(AMERICAN_EDITORIAL));
-    await writeFile(join(run, "candidate-0.shop-css.json"), JSON.stringify(shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, CSS)));
+    await writeFile(join(run, "facts.json"), JSON.stringify(FACTS));
+    for (const c of ["candidate-0", "candidate-1", "candidate-2", "candidate-3", "candidate-4"]) await writeFile(join(run, `${c}.json`), JSON.stringify(AMERICAN_EDITORIAL));
+    await writeFile(join(run, "candidate-0.shop-css.json"), JSON.stringify(shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, DEMO, CSS)));
     // a record for another candidate, for another profile, and one whose CSS was edited after the check
-    await writeFile(join(run, "candidate-1.shop-css.json"), JSON.stringify(shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, CSS)));
-    await writeFile(join(run, "candidate-2.shop-css.json"), JSON.stringify(shopCssRecord(runId, "candidate-2", { ...AMERICAN_EDITORIAL, confidence: 0.5 }, CSS)));
-    const edited = { ...shopCssRecord(runId, "candidate-3", AMERICAN_EDITORIAL, CSS), css: `${CSS}\n#shop-css p {\n  color: #fff;\n}` };
+    await writeFile(join(run, "candidate-1.shop-css.json"), JSON.stringify(shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, DEMO, CSS)));
+    await writeFile(join(run, "candidate-2.shop-css.json"), JSON.stringify(shopCssRecord(runId, "candidate-2", { ...AMERICAN_EDITORIAL, confidence: 0.5 }, DEMO, CSS)));
+    const edited = { ...shopCssRecord(runId, "candidate-3", AMERICAN_EDITORIAL, DEMO, CSS), css: `${CSS}\n#shop-css p {\n  color: #fff;\n}` };
     await writeFile(join(run, "candidate-3.shop-css.json"), JSON.stringify(edited));
+    // checked with other facts (the run's facts.json was replaced since)
+    await writeFile(join(run, "candidate-4.shop-css.json"), JSON.stringify(shopCssRecord(runId, "candidate-4", AMERICAN_EDITORIAL, { ...DEMO, phone: "052-111-1111" }, CSS)));
   });
   afterAll(async () => {
     await rm(root, { recursive: true, force: true });
@@ -104,14 +108,15 @@ describe("design preview: an accepted stylesheet's record", () => {
     expect((await loadPreviewRun(root, runId, "candidate-1"))?.shopCss).toBeNull();
     expect((await loadPreviewRun(root, runId, "candidate-2"))?.shopCss).toBeNull();
     expect((await loadPreviewRun(root, runId, "candidate-3"))?.shopCss).toBeNull();
+    expect((await loadPreviewRun(root, runId, "candidate-4"))?.shopCss).toBeNull();
     expect((await loadPreviewRun(root, runId, "none"))?.shopCss).toBeUndefined();
   });
 
   it("rejects a record whose CSS fails the guard even with a matching hash", () => {
     const bad = "#shop-css { background-image: url(x) }";
-    const record = { ...shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, CSS), css: bad, cssSha256: createHash("sha256").update(bad).digest("hex") };
-    expect(shopCssFromRecord(record, runId, "candidate-0", AMERICAN_EDITORIAL)).toBeNull();
-    expect(shopCssFromRecord({ ...shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, CSS), report: { accepted: false, guard: [], render: [] } }, runId, "candidate-0", AMERICAN_EDITORIAL)).toBeNull();
-    expect(shopCssFromRecord(shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, CSS), runId, "candidate-0", AMERICAN_EDITORIAL)).toBe(CSS);
+    const record = { ...shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, DEMO, CSS), css: bad, cssSha256: createHash("sha256").update(bad).digest("hex") };
+    expect(shopCssFromRecord(record, runId, "candidate-0", AMERICAN_EDITORIAL, DEMO)).toBeNull();
+    expect(shopCssFromRecord({ ...shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, DEMO, CSS), report: { accepted: false, guard: [], render: [] } }, runId, "candidate-0", AMERICAN_EDITORIAL, DEMO)).toBeNull();
+    expect(shopCssFromRecord(shopCssRecord(runId, "candidate-0", AMERICAN_EDITORIAL, DEMO, CSS), runId, "candidate-0", AMERICAN_EDITORIAL, DEMO)).toBe(CSS);
   });
 });

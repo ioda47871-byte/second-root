@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import type { DemoView } from "@/lib/sales/demo-content";
 import type { DesignProfile } from "../profile";
 import { isGuardedShopCss, type GuardedShopCss } from "./guard";
 
@@ -20,6 +21,8 @@ function stable(value: unknown): string {
   return JSON.stringify(value);
 }
 export const profileDigest = (profile: DesignProfile) => sha256(stable(profile));
+/** The facts the stylesheet was checked with: other facts mean another check. */
+export const demoDigest = (demo: DemoView) => sha256(stable(demo));
 
 /** `<candidate>.shop-css.json` in a preview run: an accepted stylesheet, bound to its run, candidate and profile. */
 export const ShopCssRecordSchema = z.strictObject({
@@ -27,26 +30,27 @@ export const ShopCssRecordSchema = z.strictObject({
   runId: z.string().max(80),
   candidate: z.string().max(40),
   profileSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  demoSha256: z.string().regex(/^[0-9a-f]{64}$/),
   cssSha256: z.string().regex(/^[0-9a-f]{64}$/),
   css: z.string().max(64 * 1024),
   report: z.strictObject({ accepted: z.literal(true), guard: z.array(z.string()).max(0), render: z.array(z.string()).max(0) }),
 });
 export type ShopCssRecord = z.infer<typeof ShopCssRecordSchema>;
 
-export function shopCssRecord(runId: string, candidate: string, profile: DesignProfile, css: GuardedShopCss): ShopCssRecord {
-  return { version: 1, runId, candidate, profileSha256: profileDigest(profile), cssSha256: sha256(css), css, report: { accepted: true, guard: [], render: [] } };
+export function shopCssRecord(runId: string, candidate: string, profile: DesignProfile, demo: DemoView, css: GuardedShopCss): ShopCssRecord {
+  return { version: 1, runId, candidate, profileSha256: profileDigest(profile), demoSha256: demoDigest(demo), cssSha256: sha256(css), css, report: { accepted: true, guard: [], render: [] } };
 }
 
 /**
  * The stylesheet of a stored record, or null (fallback) unless it is for this
- * run, candidate and profile, its hash matches, and the guard passes it again
+ * run, candidate, profile and facts (DemoView), its hash matches, and the guard passes it again
  * unchanged. The render check is not repeated here (it needs Chromium); the
  * record says it passed, and the guard is the security boundary.
  */
-export function shopCssFromRecord(raw: unknown, runId: string, candidate: string, profile: DesignProfile): GuardedShopCss | null {
+export function shopCssFromRecord(raw: unknown, runId: string, candidate: string, profile: DesignProfile, demo: DemoView): GuardedShopCss | null {
   const parsed = ShopCssRecordSchema.safeParse(raw);
   if (!parsed.success) return null;
   const r = parsed.data;
-  if (r.runId !== runId || r.candidate !== candidate || r.profileSha256 !== profileDigest(profile) || r.cssSha256 !== sha256(r.css)) return null;
+  if (r.runId !== runId || r.candidate !== candidate || r.profileSha256 !== profileDigest(profile) || r.demoSha256 !== demoDigest(demo) || r.cssSha256 !== sha256(r.css)) return null;
   return isGuardedShopCss(r.css) ? r.css : null;
 }
