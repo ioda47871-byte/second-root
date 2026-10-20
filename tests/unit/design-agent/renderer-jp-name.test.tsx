@@ -40,7 +40,7 @@ function moduleCss(file: string, names: Record<string, string>): string {
 // next/font's faces are not loaded here; each display face gets a different,
 // wide local face instead (from the fonts Playwright's Chromium depends on),
 // so the loop measures really different faces (checked below), not one fallback.
-const FACES = `:root { --font-editorial: "Liberation Serif", "DejaVu Serif"; --font-grotesk: "DejaVu Sans", "Liberation Sans"; --font-display: "WenQuanYi Zen Hei", "IPAGothic"; --font-body: "IPAGothic", "WenQuanYi Zen Hei"; --font-ja-editorial: "WenQuanYi Zen Hei", "IPAGothic"; --font-ja-mincho: "WenQuanYi Zen Hei", "IPAGothic"; --font-ja-condensed: "IPAGothic", "WenQuanYi Zen Hei"; --font-ja-light: "IPAGothic", "WenQuanYi Zen Hei"; }`; // DEV-068: the Japanese display faces (stand-ins)
+const FACES = `:root { --font-editorial: "Liberation Serif", "DejaVu Serif"; --font-grotesk: "DejaVu Sans", "Liberation Sans"; --font-display: "WenQuanYi Zen Hei", "IPAGothic"; --font-body: "IPAGothic", "WenQuanYi Zen Hei"; --font-ja-editorial: "WenQuanYi Zen Hei", "IPAGothic"; --font-ja-condensed: "IPAGothic", "WenQuanYi Zen Hei"; --font-ja-light: "IPAGothic", "WenQuanYi Zen Hei"; }`; // DEV-068: the Japanese display faces (stand-ins)
 const CSS = [
   "*, *::before, *::after { box-sizing: border-box; } body { margin: 0; }",
   FACES,

@@ -49,7 +49,7 @@
 
 /* DEV-068: each face has its own Japanese face (fonts.ts); the site's faces stay as the fallback. */
 .canvas[data-display="editorial_serif"] { --display: var(--font-editorial), var(--font-ja-editorial), var(--font-display), serif; }
-.canvas[data-display="mincho"] { --display: var(--font-ja-mincho), var(--font-display), serif; }
+.canvas[data-display="mincho"] { --display: var(--font-display), serif; }
 .canvas[data-display="condensed_grotesk"] { --display: var(--font-grotesk), var(--font-ja-condensed), var(--font-body), sans-serif; --display-width: 72; }
 .canvas[data-display="light_grotesk"] { --display: var(--font-grotesk), var(--font-ja-light), var(--font-body), sans-serif; --display-width: 104; }
 
@@ -495,6 +495,12 @@
 .canvas[data-display="condensed_grotesk"] .addressValue,
 .canvas[data-display="light_grotesk"] .addressValue {
   font-family: var(--font-body), sans-serif;
+}
+
+/* DEV-068: Zen Old Mincho has only 400 and 900, so the 600 cap above would draw
+   the address in Black; the address keeps the site's Mincho (400 / 600) instead. */
+.canvas[data-display="editorial_serif"] .addressValue {
+  font-family: var(--font-editorial), var(--font-display), serif;
 }
 
 .addressTags {

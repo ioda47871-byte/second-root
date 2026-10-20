@@ -3000,7 +3000,7 @@
     },
     {
       "id": "DEV-068",
-      "title": "日本語の display 書体を face ごとに別にする（Zen Old Mincho・Shippori Mincho B1・Zen Kaku Gothic New・M PLUS 1）",
+      "title": "日本語の display 書体を face ごとに別にする（Zen Old Mincho・Zen Kaku Gothic New・M PLUS 1、mincho はサイトの Shippori Mincho）",
       "status": "in_progress",
       "priority": "P1",
       "depends_on": [
@@ -3011,7 +3011,7 @@
       "branch": "feature/dev-068-ja-display-faces",
       "purpose": "人の指示（2026-10-20）: 日本語店舗に適した表示用フォントの選択肢を増やす（ライセンス・読み込み負荷・可読性も確認）。日本語の店名は face が 4 つでも実質 2 通り（Shippori Mincho / Noto Sans JP）で、weight も 400/600 しか無かった",
       "acceptance_criteria": [
-        "4 つの display face がそれぞれ別の日本語書体（すべて SIL OFL）",
+        "4 つの display face がそれぞれ別の日本語書体（すべて SIL OFL。mincho はサイトの Shippori Mincho を使い、新しい書体は 3 つ）",
         "weight は軽い / 重いの 2 つ（M PLUS 1 は variable）、preload しない",
         "実際の build で face ごとに見た目が違い、長い名前も overflow しない",
         "静的 font の増分を記録"
@@ -3019,7 +3019,7 @@
       "required_tests": [
         "unit: CSS の stack と fonts.ts（face ごとに別・preload なし・weight 2 つ）",
         "既存の jp-name の test",
-        "実 build の screenshot（.ai/reviews）",
+        "実 build での計測（.ai/reviews/DEV-068.md: 実 font で overflow なし・住所の書体）",
         "CI"
       ],
       "allowed_scope": [
@@ -3034,7 +3034,7 @@
       "human_approval_triggers": [
         "次の controlled run"
       ],
-      "decision": "2026-10-20: 人の指示で Claude が追加。静的 font は 19MB → 41MB（unicode-range 分割、頁で使う範囲だけを読む）。WSL: build は .next/cache（git clean は -x なしなので残る）が温まっていれば font を再取得しない（2026-10-20 に proxy なしの再 build で確認）。増分は初回の約 22MB の取得と build 出力の約 22MB"
+      "decision": "2026-10-20: 人の指示で Claude が追加。WSL: build は .next/cache（git clean は -x なしなので残る）が温まっていれば font を再取得しない（2026-10-20 に proxy なしの再 build で確認）。Fresh Review FAIL（Medium 1: 住所の weight 上限 600 が 400/900 の書体で Black になる）→ 対応: editorial_serif の住所はサイトの明朝（400/600）、Shippori Mincho B1 は 400 でサイトの Shippori Mincho とほぼ同じ字形のため外し mincho はサイトの書体に。静的 font は 19MB → 30MB（初回取得と build 出力の増分は約 11MB）、demo 系 3 route の font CSS は 3 書体で約 150KB gzip（unicode-range の宣言。字形ファイルは頁で使う範囲だけ）。後続: 静的書体では light=regular・bold=black に見え、Playfair は 400 未満が無いので editorial_serif の和文名の light↔regular は描かれない（DEV-066 の見える判定は見える扱い）"
     }
   ]
 }
