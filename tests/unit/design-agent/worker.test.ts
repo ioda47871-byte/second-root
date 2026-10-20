@@ -10,6 +10,9 @@ import { resultFromRecords } from "@/lib/design-agent/bridge/worker-side";
 import { acquireLock, currentHolder, LOCK_STALE_MS } from "@/lib/design-agent/worker/state";
 import { cleanStaleTemp } from "@/lib/design-agent/worker/temp";
 import { AMERICAN_EDITORIAL, review } from "./fixtures";
+
+// DEV-066: a revision must change something the screenshots show; these differ from AMERICAN_EDITORIAL (generous) and each other.
+const SPACED = (scale: "standard" | "tight") => ({ ...AMERICAN_EDITORIAL, spacing: { scale } });
 import { allText, codexCalls, LEAK, makeLayout, PNG, runWorker, startMockSite, WORKER_SHA, writeJob, type Layout, type MockSite } from "./worker-support";
 
 // The design worker end to end with a real headless Chromium against a local
@@ -252,8 +255,8 @@ describe("design outcomes", () => {
   it("revises the profile at most twice; a final no review accepted is BLOCKED (DEV-053) with its record kept", async () => {
     const l = makeLayout();
     writeJob(l, "job-revise");
-    const revise = review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: AMERICAN_EDITORIAL } });
-    const { report, preview } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { answer: revise }, { answer: revise }, { answer: revise }, { answer: revise }] });
+    const revise = (scale: "standard" | "tight") => review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: SPACED(scale) } });
+    const { report, preview } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { answer: revise("standard") }, { answer: revise("tight") }, { answer: revise("standard") }, { answer: revise("tight") }] });
     expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "blocked" }] });
     const rep = json(join(l.out, "job-revise", "report.json"));
     expect(rep.codex).toMatchObject({ reviews: 3, revisions: 2, blocked: true, renderer_change_needed: false, quality_not_accepted: true, final_candidate: "candidate-2", notes: ["QUALITY_NOT_ACCEPTED"] });
@@ -272,7 +275,7 @@ describe("design outcomes", () => {
   it("an accepted revision is done (DEV-053: the gate passes)", async () => {
     const l = makeLayout();
     writeJob(l, "job-revise-ok");
-    const revise = review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: AMERICAN_EDITORIAL } });
+    const revise = review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: SPACED("standard") } });
     const { report } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { answer: revise }, { answer: review() }] });
     expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
     expect(json(join(l.out, "job-revise-ok", "report.json")).codex).toMatchObject({ reviews: 2, revisions: 1, blocked: false, quality_not_accepted: false });
@@ -304,7 +307,7 @@ describe("design outcomes", () => {
   it("strict brief → strict review refused → loose review, and every later review starts loose", async () => {
     const l = makeLayout();
     writeJob(l, "job-loose-review");
-    const revise = review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: AMERICAN_EDITORIAL } });
+    const revise = review({ verdict: "revise", recommended_profile_changes: { summary: [], revised_profile: SPACED("standard") } });
     const { report } = await runWorker(l, site, { steps: [{ answer: AMERICAN_EDITORIAL }, { text: "no json here" }, { answer: revise }, { answer: review() }] });
     expect(report, "report").toMatchObject({ jobs: [{ status: "done", outcome: "done" }] });
     const rep = json(join(l.out, "job-loose-review", "report.json"));
