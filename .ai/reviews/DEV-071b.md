@@ -309,3 +309,102 @@ Counts: Critical 0 / High 0 / Medium 1（新規）/ Low 1（新規）/ Nit 1
    first view・見出し・scale・motion の各種類を含む）。所要は direction ごと 34〜46 秒（10 test、計約 7 分）。
    - 検出力の確認: infoStyle の規則を直す前（ledger だけ）に戻すと、1 行の visit の組（cards・stacked・縦書き・coverage）で失敗する。
 4. **Nit（jp-name の test の所要）**: 指示どおり触れない。
+
+## 再レビュー (2)（879b7f8）
+
+Reviewer: 同じ Fresh Reviewer（2026-10-20）。対象は `git diff 83838bf 879b7f8`（`visible-profile.ts`・`renderer-visibility.test.tsx`・`pipeline-visible-revision.test.ts`・文書）。
+Verdict: **PASS**
+Counts: Critical 0 / High 0 / Medium 0 / Low 2（新規、merge を止めない）/ Nit 1
+
+### 実行したこと
+
+- **`npx vitest run tests/unit/design-agent` の全体**（Chromium あり）を実行した。
+  - 結果は 49 files pass / 1 failed / 2 skipped、673 pass / 1 fail、959 s（load average 12〜17）。
+  - 落ちたのは `browser.test.ts`「in C, a page that left the site is closed at once even when page.close() never settles」（5027 ms、既定の 5 s の timeout）。
+  - load の無い状態で `browser.test.ts` を単独で実行すると **76 / 76 pass**（同じ test は 2017 ms）。本 branch はこの file に触れていない（前回の 2 件と同じ種類の load の flake）。
+  - 新しい `renderer-visibility.test.tsx` は 10 / 10 pass（suite の中では 765 s）。
+- `renderer-visibility.test.tsx` を **単独で、load の無い状態で** 実行: 373 s（4 CPU）。
+- `tests/unit/ai-tasks*` → 83 pass。
+- `npx eslint`（変更した ts/tsx 全部）→ 0。
+- `npm run build` → 成功。その後の `npx tsc --noEmit` → 0。
+- 一時の vitest（browser なし、実行後に削除）で、safety net の「縦書きの見出しの頁の grid」が実際に隠す側の組として描かれることを確かめた。
+  - vertical の layout を full・one_visit_row・sparse_jp の店に当てると、短い節があるので ja_only に落ちる。この場合 grid は「見える」になる。
+  - vertical_jp（THREE_SHOPS.bakery）の店では vertical_ja のまま残り、grid は `[]` になる。data-grid が違うので HTML も違い、画素で比べられる。
+- tree は本ファイル以外は無変更。commit・push はしていない。
+
+### 前回の指摘の確認
+
+- **Medium（1 行の visit の infoStyle）— 解消。**
+  - `ledgerShown` は「visit 節がある頁」になった。variant を問わない。
+  - colophon の `.section[data-single]` の rule（variant に依存しない）を含めて、visit のある頁の infoStyle は常に見える扱いになる。
+  - 隠すのは visit 節の無い頁だけで、そこでは `.visit`・`.rows`・`.row`・`.address`・`data-single` が DOM に無いので、何も描かれない。
+- **Low（grid の 12 ↔ 7_5）— 解消。**
+  - 隠すのは「両方の頁が縦書きの見出し」のときだけになった。statement・stacked・side_heading の頁は見える扱いになる（前回の +8 / +16px の差）。
+  - 縦書きの見出しでは、`[data-headings="vertical_ja"] .sec.sec.sec`（0,4,0）が列と column-gap を決める。節は見出しと本文の 1 行なので、grid の row-gap（40 / 48）は効かない。
+    - 前回の probe で 10 direction × 1440 / 390 とも 0 差だった。
+    - 今回の net でも、vertical_jp の店で画素の一致を確認している。
+  - 頁の無い節（名前だけの店）では grid も隠す。`.heading`・`.section` が無いので正しい。
+- **退行なし。**
+  - 判定を「見える」側へ戻しただけなので、前回までの規則（surface・accent・divider・layout の正規化）は不変。
+  - `pipeline-visible-revision.test.ts` の変更は期待値の更新（infoStyle・grid が見える組）で、緩めたものは無い。
+
+### safety net（`renderer-visibility.test.tsx`）の評価
+
+**意味のある検査になっている。**
+- **検査の向き:** `visibleChanges` が `[]` を返す組だけを集め、2 つの頁を 1440 と 390 で描き、full page の PNG の byte 一致を求める。誤りの悪い側（見える変更を見えないと数える）を直接検査する向きである。
+- **組の数の下限:** direction ごとに、隠す組 60 超・描く組 40 超を要求する。主な設定（grid・info・divider・first_view・headings・scale・motion）の組が 1 つ以上あることも要求する。
+- **HTML が同じ組を飛ばすこと:** 安全。同じ markup・同じ CSS・同じ Chromium は同じ画素になる。飛ばされるのは、正規化で同じ描画計画になる組（事実の無い first view、短い節の縦の見出しなど）だけで、どちらも renderer と `visibleChanges` が同じ `normalizeLayout` を通る（構造上の一致）。data 属性が変わる組（grid・info・divider・motion の attribute など）は必ず描かれて比べられる。
+- **比べ方:** 比較は厳密な byte 一致で、許容の幅は無い。前回の Medium を戻すと、one_visit_row の店で落ちる（実装者の確認どおり。colophon の `data-single` で頁の高さが変わるため）。
+- **設定の範囲:**
+  - 節の順と variant の変更は含まれない。ただし、それらは描かれる節が変わる限り常に「見える」で、隠れるのは正規化で消える節だけ。そちらは name_only の店で検査されている。十分と判断する。
+  - surface:
+    - surface の帯がある layout（fixed_columns）と無い layout がある。
+    - surface を描く direction（kissaten・boutique・pop）と描かない direction の両方を回す。
+    - 隠す側の組が描かれる。
+  - accent:
+    - 隠す側の組は、accent の motif が無い頁・accent の direction 以外で描かれる。
+    - 不足は Low 2 の 1 点。
+
+### 新規
+
+1. **Low — CI の unit の時間の余裕が小さい。**
+   - `renderer-visibility.test.tsx` は、1 file の中で 10 direction を順に回す。load の無い 4 CPU でも 373 s、load があると 765 s かかり、suite で最も長い file になる。
+   - vitest は file 単位で並列に動く（config で worker 数の指定は無いので、既定の CPU 数に応じた数）。そのため、この 1 file が job の長さの下限を決める。
+   - CI の unit は約 7 → 約 11 分になった。job の `timeout-minutes: 15` には npm ci・playwright install・bwrap の準備・cross-user の段も含まれるので、残りは約 4 分。runner が遅い日や、今後の Chromium の test の追加で超えうる。
+   - 今は green なので、merge は止めない。ただし保証を保ったまま軽くすることを勧める。案:
+     - **(a) file を分ける:** 10 direction を 2〜3 個の file（例: direction の配列を半分ずつ）に分ける。vitest の worker に並列で載るので、wall time は約半分になる。組と比較の中身は同じなので、保証は変わらない。最も簡単。
+     - **(b) 390 の比較を絞る:** 390 で描く組は「390 でも差が出うる設定」だけにする。phone でも効く設定（infoStyle・divider・surface・accent・motifs・地・type）は残し、grid（720px 以上だけで効く）と縦書きの見出し（desktop だけ）は 1440 だけにする。CSS の media の条件に沿うので、保証は保てる。
+     - **(c) 一致の確認を早く打ち切る:** 同じ (shop, layout) の基準の画像の cache は既にある。full page の PNG を base64 にして比べる代わりに、Buffer の比較か `page.screenshot` の viewport の clip を順に比べれば、byte の生成と比較の費用が少し減る（効果は小さい）。
+   - 合わせて、unit の job の `timeout-minutes` を 20 に上げることも検討してよい（人の判断）。
+
+2. **Low — safety net の小さな穴（前の規則のうち、net に掛からないもの）。**
+   - 基準の profile の motifs は `["monogram","corner_marks"]` に固定されている。そのため「accent の motif があるが gallery_mono（NO_ACCENT_DIRECTIONS）なので accent が見えない」組は作られない（DEV-067 の規則で、本 PR の新規ではない）。
+   - divider の「節が 1 つの頁」は、net では作られない（店は 0 節の name_only か 2 節以上だけ）。前回の私の probe では、1 節の頁の divider は 10 direction × 1440 / 390 で 0 差だった。
+   - **提案:** motifs に `dot_grid` を持つ基準を 1 つと、visit だけの店（説明・メニューなし）を SHOPS に足す。組が数十増えるだけなので、Low 1 の (a) と一緒に入れるとよい。
+
+### Nit
+
+- N1 — `browser.test.ts`（DEV-0xx の browser の close の test 群）は、load の下で既定の 5 s の timeout を超えることが、前回と今回で計 2 件あった（単独では 2〜3 s）。本 branch の範囲外。DEV-071b の N4 と同じく、明示の timeout を付ける別 task を勧める。
+
+### 結論
+
+- 前回の Medium と Low は解消した。新しい safety net は、`visibleChanges` の誤りの悪い側（見える変更を見えないと数える）を画素で検査する、意味のある検査である。
+- 安全側（事実と固定語だけ・根拠の無い節を描かない・保存する profile = 描いた形・注記・contrast・品質ゲート）に退行は無い。
+- 残りは CI の時間の余裕と net の小さな穴（Low 2 件）で、merge を止めない。
+- **PASS。**
+
+## merge 前の対応（再々レビュー PASS の Low・Nit）
+
+1. **Low 1（CI の余裕）**: `renderer-visibility.test.tsx` を `renderer-visibility-support.tsx`（`defineVisibilityTests(part)`・`VISIBILITY_PARTS`）と
+   `renderer-visibility-{1,2,3}.test.tsx` に分けた（vitest が並列に走らせる）。part 1 に「3 つの part が全 direction をちょうど 1 回ずつ持つ」test。
+   検査の中身と direction ごとの下限（見えない組 60 以上・描く組 40 以上・各種類）は同じ。加えて、同じ 2 つの頁になる組は 1 回だけ描き
+   （名前だけ・visit だけの店では多くの layout が同じ頁になる）、比べる画像は JPEG（品質 100: 同じ画素は同じ byte、PNG より速く符号化）にした。
+   - wall time（この container、load average 4〜11）: 3 file 並列で **約 3 分 6 秒**（file ごと 149 / 151 / 約 180 s）。分割前の 1 file は約 6 分（reviewer 373 s）。
+   - 検出力: infoStyle の規則を直す前に戻すと、引き続き 1 行の visit の組で失敗する（JPEG の比較でも確認）。
+2. **Low 2（網の穴）**: base の motif に accent の motif を含む組（`dot_grid`、DEFAULT と layout なしの 2 つ）と、visit だけの 1 節の店を追加。
+   gallery_mono では accent の変更が見えない組が描かれること、どの direction でも 1 節の頁の divider の組が描かれることを test で確認。
+3. **Nit（browser.test.ts）**: 該当する 2 つの test（「in C, stops at once on a move off the site during sampling」「in C, a page that left the site is
+   closed at once even when page.close() never settles」）は、既に file の `testTimeout: 60_000` と明示の `{ timeout: 60_000 }` を持つ。
+   load の下での失敗は timeout ではなく「off-site requests after the move ≤ 3」の assertion（12・16 件）なので、timeout を足しても変わらない。
+   assertion は変えない指示のため、この commit では触れていない（必要なら別の task で load への強さを見直す）。
+4. **.ai**: tasks.json の DEV-071 を done（残りの follow-up を decision に記録）、progress.md に 1 行。
