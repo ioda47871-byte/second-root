@@ -2958,6 +2958,52 @@
         "次の controlled run（新しい demo か、人の判断した demo）"
       ],
       "decision": "2026-10-20: 人の指示（品質の原因調査と改善）で Claude が追加。大きい改善（direction の CSS preset・日本語の display 書体・参照画像の色・review の notes の受け渡し・複数の初期候補・写真）は DEV-067 以降の案として blockers に; 2026-10-20: PR #79 merge（1ab669f）。Fresh Review FAIL（Medium 2: 追加の review で leader の score が動く・写真なしの surface を見える扱い）→ 対応 → 再レビュー PASS（Low 1 → 対応）。CI 39410544089 success（worker test の fixture を見える修正に直した後）"
+    },
+    {
+      "id": "DEV-067",
+      "title": "direction ごとの CSS preset（見出し・menu・folio/dek・住所・地・hero の枠）と heroLayout.alignment の反映",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-066"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-067-direction-presets",
+      "purpose": "人の指示（2026-10-20）: 店ごとに実際の見た目が違う、魅力的な頁を作れる仕組みを最優先。DEV-066 の調査で direction は名前だけ・alignment は描かれないと分かった。色違いだけでなく構図・余白・タイポ・階層に違いを作る。品質基準は緩めない",
+      "acceptance_criteria": [
+        "10 の direction がそれぞれ見出し・menu・folio/dek・住所・地・hero の枠を独自に描く（色は palette だけ、文字は足さない）",
+        "alignment=center で下の節が列の中央に",
+        "hero の名前の寸法・divider・info style・grid は各自の設定のまま",
+        "スマホ・デスクトップで overflow なし・事実がすべて出る・狭い列に押し込まれない",
+        "direction の組ごとに computed style と画素が違う（hero と節の両方）",
+        "DEV-066 の見える設定の判定を更新（direction・alignment は見える、surface・accent は描く direction で見える）",
+        "語彙を事実どおりに"
+      ],
+      "required_tests": [
+        "unit（Chromium）: 全 direction × 左/中央 × スマホ/デスクトップ",
+        "unit: 見える判定と stylesheet の一致",
+        "既存の renderer の test がすべて通る",
+        "CI"
+      ],
+      "allowed_scope": [
+        "components/demo/profile/",
+        "lib/design-agent/",
+        "tests/unit/design-agent/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "品質の閾値・verdict・gate・score の式",
+        "事実の創作・文字の追加",
+        "DB",
+        "flag",
+        "cycle",
+        "Production"
+      ],
+      "human_approval_triggers": [
+        "次の controlled run"
+      ],
+      "decision": "2026-10-20: 人の指示で Claude が追加"
     }
   ]
 }

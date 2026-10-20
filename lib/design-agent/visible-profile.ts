@@ -3,8 +3,8 @@ import type { DesignProfile } from "./profile";
 // DEV-066: which profile settings the review screenshots can show. The
 // controlled run of 2026-10-20 ended with three candidates at 18/25 each;
 // the renderer draws some settings nowhere a screenshot can see them:
-// - direction is only a label (data-direction, no rule reads it)
-// - heroLayout.alignment is written as data-align, no rule reads it
+// - (until DEV-067) direction was only a label and heroLayout.alignment was
+//   read by no rule; DEV-067 gives both a visual effect
 // - motion only runs under prefers-reduced-motion: no-preference, and the
 //   shots are taken with reducedMotion "reduce"
 // - confidence and rationale are never rendered
@@ -12,22 +12,27 @@ import type { DesignProfile } from "./profile";
 // round on nothing. The quality bar (scores, verdict, gate) is unchanged.
 
 /** Settings a revision can change without any change in the screenshots. */
-export const NOT_IN_SCREENSHOTS = ["direction", "heroLayout.alignment", "motion.intro", "motion.sectionFade", "confidence", "rationale"] as const;
+export const NOT_IN_SCREENSHOTS = ["motion.intro", "motion.sectionFade", "confidence", "rationale"] as const;
 
 /**
  * DEV-066: settings the renderer draws only on a page with photos: the surface
- * colour is the ground of a photo frame (.photo) and nothing else reads it.
+ * colour is the ground of a photo frame (.photo). DEV-067: the directions in
+ * SURFACE_DIRECTIONS draw panels in it too, with or without photos.
  */
 export const ONLY_WITH_PHOTOS = ["palette.surface"] as const;
+export const SURFACE_DIRECTIONS = ["kissaten_retro", "boutique_minimal", "pop_bakeshop"] as const;
 
 /**
  * The motifs drawn in the accent colour (location label marks, the dot field,
  * the stamp ring, the pleated liner). With none of them the accent shows nowhere.
  */
 export const ACCENT_MOTIFS = ["location_labels", "dot_grid", "stamp_ring", "muffin_paper_svg"] as const;
+/** DEV-067: directions that draw in the accent colour whatever the motifs (french_classic's diamonds, pop_bakeshop's dots and shadows). */
+export const ACCENT_DIRECTIONS = ["french_classic", "pop_bakeshop"] as const;
 
 /** Every visible setting, as a dotted path (stable order). */
 export const VISIBLE_SETTINGS = [
+  "direction",
   "palette.background",
   "palette.surface",
   "palette.text",
@@ -41,6 +46,7 @@ export const VISIBLE_SETTINGS = [
   "typography.tracking",
   "heroLayout.layout",
   "heroLayout.height",
+  "heroLayout.alignment",
   "composition.grid",
   "composition.infoStyle",
   "composition.divider",
@@ -64,11 +70,14 @@ function same(a: unknown, b: unknown): boolean {
 /**
  * The visible settings that differ between two profiles (palette colours
  * compare case-insensitively). Without photos (the DEV-028 loop) the settings
- * drawn only on photo pages do not count; the accent counts only when either
- * profile has a motif drawn in it.
+ * drawn only on photo pages do not count unless either profile's direction
+ * draws them; the accent counts only when either profile has a motif or a
+ * direction drawn in it.
  */
 export function visibleChanges(before: DesignProfile, after: DesignProfile, options: { photos: boolean }): string[] {
-  const accentShown = [before, after].some((p) => p.motifs.some((m) => (ACCENT_MOTIFS as readonly string[]).includes(m)));
-  const hidden: readonly string[] = [...(options.photos ? [] : ONLY_WITH_PHOTOS), ...(accentShown ? [] : ["palette.accent"])];
+  const has = (list: readonly string[], value: string) => list.includes(value);
+  const accentShown = [before, after].some((p) => p.motifs.some((m) => has(ACCENT_MOTIFS, m)) || has(ACCENT_DIRECTIONS, p.direction));
+  const surfaceShown = options.photos || [before, after].some((p) => has(SURFACE_DIRECTIONS, p.direction));
+  const hidden: readonly string[] = [...(surfaceShown ? [] : ONLY_WITH_PHOTOS), ...(accentShown ? [] : ["palette.accent"])];
   return VISIBLE_SETTINGS.filter((path) => !hidden.includes(path) && !same(read(before, path), read(after, path)));
 }

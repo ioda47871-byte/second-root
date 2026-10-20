@@ -8,12 +8,22 @@ import { rendererChangeRule, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-
 
 export const VOCABULARY = `
 Renderer vocabulary (the only things you can choose; every value is accepted):
-- direction: a label for the overall art direction (american_editorial, editorial_luxury, french_classic, nordic_minimal, japanese_modern, kissaten_retro, gallery_mono, craft_paper, boutique_minimal, pop_bakeshop).
-  It is a name only: the page looks the same for every direction. The look comes from the settings below.
-- palette: six hex colours. background = page; surface = the ground behind photos (pages without photos never show it); text = body text (≥4.5:1 on background and surface);
+- direction: the overall art direction. Each one draws the section headings, the menu, the folio and dek, the address block,
+  the page ground and a frame or bar around the name's block in its own way (with the colours below; it adds no words):
+  american_editorial = a magazine: heavy bars over the headings, a drop cap on the description, large menu numerals, a thick rule under the hero;
+  editorial_luxury = quiet and spaced: a fine double frame around the page and around the name, small light headings in wide tracking, a menu without lines;
+  french_classic = a menu card: italic headings with a small accent diamond and a double rule, an arched double frame over the name, dotted lines between dishes, the address in a double-ruled box;
+  nordic_minimal = air and restraint: small sans headings in wide caps, no rules on the folio or the menu, no menu numbers, light lines;
+  japanese_modern = Japanese first: the Japanese heading leads beside a thick vertical bar, a filled folio band, a bar beside the name, the menu in ruled boxes;
+  kissaten_retro = a coffee-house card: headings in a rounded badge, a striped hero, the name in a double-ruled rounded panel, menu cards on the surface colour;
+  gallery_mono = a catalogue: the hero filled with the primary colour (the name in the background colour), solid blocks over small spaced headings, the menu as a grid of ruled tiles;
+  craft_paper = handmade: a paper grain, wavy underlined headings, dashed (stitched) lines and boxes, menu numbers in dashed rings;
+  boutique_minimal = a centred column of panels in the surface colour, thin spaced headings, the name on a panel between fine rules;
+  pop_bakeshop = playful: tilted pill headings, the menu as rounded chips with an offset shadow in the accent colour, a dotted ground, the area line in a pill.
+- palette: six hex colours. background = page; surface = the ground behind photos and the panels of kissaten_retro, boutique_minimal and pop_bakeshop (other pages without photos never show it); text = body text (≥4.5:1 on background and surface);
   primary = shop name and strong rules (≥3:1 on background; background on primary ≥4.5:1, used for the footer);
-  secondary = small labels and the notice bar text (≥4.5:1 on background); accent = motif details only (location label marks, dot_grid, stamp_ring,
-  muffin_paper_svg): with none of these motifs it shows nowhere. The monogram is drawn in primary.
+  secondary = small labels and the notice bar text (≥4.5:1 on background); accent = motif details (location label marks, dot_grid, stamp_ring,
+  muffin_paper_svg) and the accents of french_classic and pop_bakeshop: otherwise it shows nowhere. The monogram is drawn in primary.
 - typography.display: editorial_serif (high-contrast Latin serif, Japanese in Mincho), condensed_grotesk (tall, narrow, heavy sans),
   light_grotesk (wide light sans), mincho (Japanese Mincho for everything). body: sans | serif.
   displayCase: as_is | uppercase (Latin only). displayWeight: light | regular | bold | black. tracking: tight | normal | wide.
@@ -26,7 +36,7 @@ Renderer vocabulary (the only things you can choose; every value is accepted):
   heroLayout.height (a minimum for a hero without a split photo; the hero grows past it when its content needs more):
     full (the whole first screen on desktop; on phones about as tall as tall) | tall (most of the first screen) |
     medium (about half the first screen; without a photo, a band at the top with spacing tight, and a medium centered_cover is a band on phones at every spacing).
-  alignment: left | center (recorded only; it does not change the page yet).
+  alignment: left | center (the headings, the description, the menu and the visit block of the lower sections, within their column).
 - composition.grid (applies from tablet width; phones always show one column):
   editorial_12 (a narrow label column beside a wide text column, about 1 : 3) | asymmetric_7_5 (a label column wider than in editorial_12, label 5 : text 7) |
   single_column (headings above their text instead of beside it).
@@ -104,7 +114,7 @@ export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number
  * screenshots can show. Fixed text (no words from Codex).
  */
 export function notVisibleLine(candidate: string): string {
-  return `This is ${candidate} again: your revised_profile for it changed nothing the screenshots can show (only direction, alignment, motion, confidence, rationale, the surface colour, or the accent colour without a motif drawn in it, or nothing at all), so it would render the same page. Give a revised_profile that changes at least one visible setting (the background, text, primary or secondary colour, typography, heroLayout.layout or height, composition, motifs, spacing) aimed at the problems you found.`;
+  return `This is ${candidate} again: your revised_profile for it changed nothing the screenshots can show (only motion, confidence, rationale, the surface or accent colour where the page does not draw it, or nothing at all), so it would render the same page. Give a revised_profile that changes at least one visible setting (direction, the background, text, primary or secondary colour, typography, heroLayout, composition, motifs, spacing) aimed at the problems you found.`;
 }
 
 /** One earlier round, as the reviewer is told about it: scores and problem codes only (DEV-034). */
@@ -175,7 +185,7 @@ export function buildReviewPrompt(input: {
     rendererChangeRule(),
     historyBlock(input.history ?? [], input.best ?? null, input.again ?? null),
     input.notVisible ? notVisibleLine(input.notVisible.candidate) : "",
-    "Revise with settings the screenshots show: a revised_profile that changes only direction, alignment or motion renders the same page.",
+    "Revise with settings the screenshots show: a revised_profile that changes only motion, confidence or rationale renders the same page.",
     "Profile that produced these screenshots:",
     JSON.stringify(input.profile, null, 2),
     "Verified facts:",
