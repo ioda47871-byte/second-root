@@ -101,12 +101,7 @@ export type SectionKind = (typeof SECTION_KINDS)[number];
 export type LayoutSection = z.infer<typeof SectionSchema>;
 export type Layout = z.infer<typeof LayoutSchema>;
 
-/**
- * The profile without `layout`: what Codex is asked for until DEV-071b (its
- * JSON Schema, the review's revised profile). DEV-071b makes `layout` part of
- * Codex's output (required there) and derives the output schema from
- * DesignProfileSchema instead.
- */
+/** The profile's settings without `layout` (the part every profile has had since DEV-028). */
 export const DesignProfileCoreSchema = z.strictObject({
   version: z.literal(1),
   direction: z.enum(DIRECTIONS),
@@ -143,15 +138,21 @@ export const DesignProfileCoreSchema = z.strictObject({
  */
 export const DesignProfileSchema = DesignProfileCoreSchema.extend({ layout: LayoutSchema.optional() });
 
+/**
+ * DEV-071b: what Codex must answer (the brief, a review's revised profile):
+ * the profile with its layout required. Only the JSON Schema given to
+ * `codex exec --output-schema` is made from it; answers are parsed with
+ * DesignProfileSchema (a stored profile without a layout stays valid and draws
+ * the page before Stage 1).
+ */
+export const DesignProfileCodexSchema = DesignProfileCoreSchema.extend({ layout: LayoutSchema });
+
 export type DesignProfile = z.infer<typeof DesignProfileSchema>;
 export type Palette = z.infer<typeof PaletteSchema>;
 
-/**
- * JSON Schema for `codex exec --output-schema`. Until DEV-071b this is the
- * profile without `layout` (Codex is not yet asked for one).
- */
+/** JSON Schema for `codex exec --output-schema`: the profile with its layout required (DEV-071b). */
 export function designProfileJsonSchema(): object {
-  return withoutMeta(z.toJSONSchema(DesignProfileCoreSchema));
+  return withoutMeta(z.toJSONSchema(DesignProfileCodexSchema));
 }
 
 export function withoutMeta(schema: object): object {

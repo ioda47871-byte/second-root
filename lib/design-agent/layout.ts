@@ -31,7 +31,8 @@ export type LayoutAdjustment =
   | `dropped:${SectionKind}`
   | `added:${SectionKind}`
   | `first_view:${(typeof FIRST_VIEWS)[number]}`
-  | "about_in_first_view";
+  | "about_in_first_view"
+  | "headings:vertical_ja";
 
 /**
  * How many menu items a name_menu first view shows (all of them stay in the menu
@@ -111,6 +112,31 @@ function sectionHasEvidence(kind: SectionKind, demo: DemoView, hoursSection: boo
  */
 export type NormalizedLayout = Omit<Layout, "sections"> & { sections: LayoutSection[] };
 
+/** An about text up to this many characters is a short section (two lines or so). */
+export const SHORT_DESCRIPTION = 60;
+
+/**
+ * A section with little content beside its heading (DEV-071b, from the facts and
+ * the variant only): a description of at most SHORT_DESCRIPTION characters, at
+ * most two menu items, the one-band hours strip, at most two visit rows. A
+ * vertical heading beside it would set the section's height, so a page with one
+ * keeps its headings horizontal (normalizeLayout: headings:vertical_ja).
+ */
+export function sectionIsShort(section: LayoutSection, demo: DemoView, hoursSection: boolean): boolean {
+  switch (section.kind) {
+    case "about":
+      return demo.description !== null && Array.from(demo.description).length <= SHORT_DESCRIPTION;
+    case "menu":
+      return demo.menuItems.length <= 2;
+    case "hours":
+      return section.variant === "strip";
+    case "visit": {
+      const rows = [demo.address, demo.access, demo.phone, ...(hoursSection ? [] : [demo.hours, demo.closedDays])].filter((v) => v !== null);
+      return rows.length <= 2;
+    }
+  }
+}
+
 export function normalizeLayout(input: Layout | NormalizedLayout, demo: DemoView): { layout: NormalizedLayout; adjustments: LayoutAdjustment[] } {
   const adjustments: LayoutAdjustment[] = [];
 
@@ -165,7 +191,15 @@ export function normalizeLayout(input: Layout | NormalizedLayout, demo: DemoView
     firstView = "name_only";
   }
 
-  return { layout: { firstView, sections, type: { ...input.type } }, adjustments };
+  // vertical headings only beside enough content on every section (one page never mixes the two)
+  const type = { ...input.type };
+  const hoursHere = sections.some((s) => s.kind === "hours");
+  if (type.headings === "vertical_ja" && sections.some((s) => sectionIsShort(s, demo, hoursHere))) {
+    adjustments.push("headings:vertical_ja");
+    type.headings = "ja_only";
+  }
+
+  return { layout: { firstView, sections, type }, adjustments };
 }
 
 /** Where each fact of the shop is drawn under a normalized layout (for tests and the report). */

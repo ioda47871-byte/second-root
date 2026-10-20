@@ -144,7 +144,6 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
     await deps.writeRecord("photo-analyses.json", analysesArt);
   }
 
-  const sections = sectionsPresent(ctx.demo);
   const direct = (profile: DesignProfile, feedback: readonly PhotoIssue[]): Promise<PhotoStep<ImageDirection>> =>
     directImages({ call: call("image_direction"), inputs, analyses, manifest, profile, demo: ctx.demo, feedback });
 
@@ -172,7 +171,8 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
 
   const show = async (name: string, profile: DesignProfile, direction: ImageDirection) => {
     await deps.writeProfile(name, profile);
-    await deps.writeRecord(`${name}.images.json`, imagesArtifact(runId, name, manifest, analysesArt, profile, sections, direction));
+    // the sections of this candidate's own layout (DEV-071b)
+    await deps.writeRecord(`${name}.images.json`, imagesArtifact(runId, name, manifest, analysesArt, profile, sectionsPresent(ctx.demo, profile.layout), direction));
     const rendered = await deps.renderPhotos(name);
     return { rendered, problems: checkRenderedPhotos(direction, manifest, rendered.placed) };
   };

@@ -1,5 +1,6 @@
-import { infoRows } from "@/components/demo/info";
 import type { DemoView } from "@/lib/sales/demo-content";
+import { DEFAULT_LAYOUT, normalizeLayout, type NormalizedLayout } from "../layout";
+import type { Layout } from "../profile";
 import { PhotoAnalysesSchema } from "./analysis";
 import { checkImageDirection, type ImageDirection } from "./direction";
 import { findAsset, type AssetManifest, type ConsentScope, type SourceKind } from "./manifest";
@@ -36,9 +37,14 @@ export type RenderPhotos = {
   features: RenderFeature[];
 };
 
-/** The sections a feature photo can sit in, as the renderer draws them. */
-export function sectionsPresent(demo: DemoView): Record<ImageDirection["features"][number]["slot"], boolean> {
-  return { about: Boolean(demo.description), visit: infoRows(demo).length > 0 };
+/**
+ * The sections a feature photo can sit in, as the renderer draws them: the
+ * profile's layout normalized against the facts (DEV-071b; without a layout,
+ * the page before Stage 1: about with a description, visit with a visit row).
+ */
+export function sectionsPresent(demo: DemoView, layout?: Layout | NormalizedLayout | null): Record<ImageDirection["features"][number]["slot"], boolean> {
+  const kinds = normalizeLayout(layout ?? DEFAULT_LAYOUT, demo).layout.sections.map((s) => s.kind);
+  return { about: kinds.includes("about"), visit: kinds.includes("visit") };
 }
 
 export type ResolveInput = {
@@ -48,6 +54,8 @@ export type ResolveInput = {
   direction: unknown;
   src: (id: PublicAssetId) => string;
   scope?: ConsentScope;
+  /** The profile's layout (DEV-071b): a feature photo needs its section on the drawn page. */
+  layout?: Layout | null;
 };
 
 export function resolvePhotos(input: ResolveInput): { photos: RenderPhotos | null; problems: string[] } {
@@ -60,7 +68,7 @@ export function resolvePhotos(input: ResolveInput): { photos: RenderPhotos | nul
   const d = check.direction;
   if (d.layout === "none") return { photos: null, problems: [] };
 
-  const present = sectionsPresent(input.demo);
+  const present = sectionsPresent(input.demo, input.layout);
   const problems = d.features.filter((f) => !present[f.slot]).map((f) => `slot ${f.slot} has no section`);
   if (problems.length > 0) return { photos: null, problems };
 

@@ -34,7 +34,7 @@ function AddressTags({ labels }: { labels: string[] }) {
   );
 }
 
-export default function Visit({ rows, labels, photo, spec, headings }: SectionProps<"visit"> & { rows: InfoRow[]; labels: string[]; photo: RenderFeature | null }) {
+export default function Visit({ short = false, rows, labels, photo, spec, headings }: SectionProps<"visit"> & { short?: boolean; rows: InfoRow[]; labels: string[]; photo: RenderFeature | null }) {
   const variant = spec?.variant ?? "ledger";
   const address = rows.find((r) => r.key === "address");
   const others = rows.filter((r) => r !== address);
@@ -107,7 +107,7 @@ export default function Visit({ rows, labels, photo, spec, headings }: SectionPr
   }
 
   return (
-    <section {...sectionAttrs(spec, rows.length <= 2)} aria-labelledby="pr-visit" data-single={rows.length === 1 ? "" : undefined} data-photo-section={photo ? "visit" : undefined}>
+    <section {...sectionAttrs(spec, short)} aria-labelledby="pr-visit" data-single={rows.length === 1 ? "" : undefined} data-photo-section={photo ? "visit" : undefined}>
       <Heading kind="visit" headings={headings} layout={spec !== null} />
       {body}
       {photo && <PhotoFigure photo={photo} className={styles.band} role="visit" side={photo.side} />}

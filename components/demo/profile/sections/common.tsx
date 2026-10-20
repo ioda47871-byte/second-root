@@ -26,17 +26,16 @@ export type SectionProps<K extends SectionKind> = {
 };
 
 /**
- * The section element's class and layout attributes. `short`: the section has
- * little content (a vertical heading would set its height), so its heading stays
- * horizontal.
+ * The section element's class and layout attributes. `short` (data-short): the
+ * section has little content (sectionIsShort); normalizeLayout keeps such a
+ * page's headings horizontal.
  */
 export function sectionAttrs(spec: LayoutSection | null, short = false) {
   if (!spec) return { className: styles.section };
   return { className: `${styles.section} ${sx.sec}`, "data-kind": spec.kind, "data-variant": spec.variant, "data-ground": spec.ground, "data-short": short ? "" : undefined };
 }
 
-/** Text length in characters (graphemes are not needed for a rough measure). */
-export const chars = (text: string) => Array.from(text).length;
+
 
 export function Heading({ kind, headings, layout }: { kind: SectionKind; headings: HeadingStyle; layout: boolean }) {
   const words = HEADING_WORDS[kind];

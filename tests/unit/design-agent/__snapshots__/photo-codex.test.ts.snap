@@ -271,6 +271,188 @@ exports[`DEV-028 prompts and schemas (pages without photos) > are unchanged > pr
       ],
       "type": "object",
     },
+    "layout": {
+      "additionalProperties": false,
+      "properties": {
+        "firstView": {
+          "enum": [
+            "name_only",
+            "name_lead",
+            "name_hours",
+            "name_menu",
+            "vertical_name",
+          ],
+          "type": "string",
+        },
+        "sections": {
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ground": {
+                    "enum": [
+                      "plain",
+                      "surface",
+                      "inverted",
+                    ],
+                    "type": "string",
+                  },
+                  "kind": {
+                    "const": "about",
+                    "type": "string",
+                  },
+                  "variant": {
+                    "enum": [
+                      "lead",
+                      "statement",
+                      "side_heading",
+                    ],
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "kind",
+                  "variant",
+                  "ground",
+                ],
+                "type": "object",
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ground": {
+                    "enum": [
+                      "plain",
+                      "surface",
+                      "inverted",
+                    ],
+                    "type": "string",
+                  },
+                  "kind": {
+                    "const": "menu",
+                    "type": "string",
+                  },
+                  "variant": {
+                    "enum": [
+                      "numbered",
+                      "chips",
+                      "columns",
+                      "feature_first",
+                    ],
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "kind",
+                  "variant",
+                  "ground",
+                ],
+                "type": "object",
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ground": {
+                    "enum": [
+                      "plain",
+                      "surface",
+                      "inverted",
+                    ],
+                    "type": "string",
+                  },
+                  "kind": {
+                    "const": "hours",
+                    "type": "string",
+                  },
+                  "variant": {
+                    "enum": [
+                      "strip",
+                      "block",
+                    ],
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "kind",
+                  "variant",
+                  "ground",
+                ],
+                "type": "object",
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ground": {
+                    "enum": [
+                      "plain",
+                      "surface",
+                      "inverted",
+                    ],
+                    "type": "string",
+                  },
+                  "kind": {
+                    "const": "visit",
+                    "type": "string",
+                  },
+                  "variant": {
+                    "enum": [
+                      "ledger",
+                      "cards",
+                      "split",
+                      "stacked",
+                    ],
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "kind",
+                  "variant",
+                  "ground",
+                ],
+                "type": "object",
+              },
+            ],
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "type": "array",
+        },
+        "type": {
+          "additionalProperties": false,
+          "properties": {
+            "headings": {
+              "enum": [
+                "en_ja",
+                "ja_en",
+                "ja_only",
+                "vertical_ja",
+              ],
+              "type": "string",
+            },
+            "scale": {
+              "enum": [
+                "quiet",
+                "standard",
+                "dramatic",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "scale",
+            "headings",
+          ],
+          "type": "object",
+        },
+      },
+      "required": [
+        "firstView",
+        "sections",
+        "type",
+      ],
+      "type": "object",
+    },
     "motifs": {
       "items": {
         "enum": [
@@ -442,6 +624,7 @@ exports[`DEV-028 prompts and schemas (pages without photos) > are unchanged > pr
     "motion",
     "confidence",
     "rationale",
+    "layout",
   ],
   "type": "object",
 }
@@ -763,6 +946,188 @@ exports[`DEV-028 prompts and schemas (pages without photos) > are unchanged > re
                   ],
                   "type": "object",
                 },
+                "layout": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "firstView": {
+                      "enum": [
+                        "name_only",
+                        "name_lead",
+                        "name_hours",
+                        "name_menu",
+                        "vertical_name",
+                      ],
+                      "type": "string",
+                    },
+                    "sections": {
+                      "items": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "ground": {
+                                "enum": [
+                                  "plain",
+                                  "surface",
+                                  "inverted",
+                                ],
+                                "type": "string",
+                              },
+                              "kind": {
+                                "const": "about",
+                                "type": "string",
+                              },
+                              "variant": {
+                                "enum": [
+                                  "lead",
+                                  "statement",
+                                  "side_heading",
+                                ],
+                                "type": "string",
+                              },
+                            },
+                            "required": [
+                              "kind",
+                              "variant",
+                              "ground",
+                            ],
+                            "type": "object",
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "ground": {
+                                "enum": [
+                                  "plain",
+                                  "surface",
+                                  "inverted",
+                                ],
+                                "type": "string",
+                              },
+                              "kind": {
+                                "const": "menu",
+                                "type": "string",
+                              },
+                              "variant": {
+                                "enum": [
+                                  "numbered",
+                                  "chips",
+                                  "columns",
+                                  "feature_first",
+                                ],
+                                "type": "string",
+                              },
+                            },
+                            "required": [
+                              "kind",
+                              "variant",
+                              "ground",
+                            ],
+                            "type": "object",
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "ground": {
+                                "enum": [
+                                  "plain",
+                                  "surface",
+                                  "inverted",
+                                ],
+                                "type": "string",
+                              },
+                              "kind": {
+                                "const": "hours",
+                                "type": "string",
+                              },
+                              "variant": {
+                                "enum": [
+                                  "strip",
+                                  "block",
+                                ],
+                                "type": "string",
+                              },
+                            },
+                            "required": [
+                              "kind",
+                              "variant",
+                              "ground",
+                            ],
+                            "type": "object",
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "ground": {
+                                "enum": [
+                                  "plain",
+                                  "surface",
+                                  "inverted",
+                                ],
+                                "type": "string",
+                              },
+                              "kind": {
+                                "const": "visit",
+                                "type": "string",
+                              },
+                              "variant": {
+                                "enum": [
+                                  "ledger",
+                                  "cards",
+                                  "split",
+                                  "stacked",
+                                ],
+                                "type": "string",
+                              },
+                            },
+                            "required": [
+                              "kind",
+                              "variant",
+                              "ground",
+                            ],
+                            "type": "object",
+                          },
+                        ],
+                      },
+                      "maxItems": 4,
+                      "minItems": 1,
+                      "type": "array",
+                    },
+                    "type": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "headings": {
+                          "enum": [
+                            "en_ja",
+                            "ja_en",
+                            "ja_only",
+                            "vertical_ja",
+                          ],
+                          "type": "string",
+                        },
+                        "scale": {
+                          "enum": [
+                            "quiet",
+                            "standard",
+                            "dramatic",
+                          ],
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "scale",
+                        "headings",
+                      ],
+                      "type": "object",
+                    },
+                  },
+                  "required": [
+                    "firstView",
+                    "sections",
+                    "type",
+                  ],
+                  "type": "object",
+                },
                 "motifs": {
                   "items": {
                     "enum": [
@@ -934,6 +1299,7 @@ exports[`DEV-028 prompts and schemas (pages without photos) > are unchanged > re
                 "motion",
                 "confidence",
                 "rationale",
+                "layout",
               ],
               "type": "object",
             },

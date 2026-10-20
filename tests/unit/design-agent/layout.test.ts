@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { availableFirstViews, availableSections, DEFAULT_LAYOUT, factPlacement, japaneseOnly, normalizeLayout, verticalName } from "@/lib/design-agent/layout";
+import { availableFirstViews, availableSections, DEFAULT_LAYOUT, sectionIsShort, SHORT_DESCRIPTION, factPlacement, japaneseOnly, normalizeLayout, verticalName } from "@/lib/design-agent/layout";
 import {
   checkProfile,
   DesignProfileCoreSchema,
@@ -10,6 +10,7 @@ import {
   GROUNDS,
   HEADING_STYLES,
   LayoutSchema,
+  looseJsonSchema,
   SECTION_KINDS,
   SECTION_VARIANTS,
   TYPE_SCALES,
@@ -17,7 +18,10 @@ import {
   type LayoutSection,
 } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
-import { AMERICAN_EDITORIAL, MINIMAL_SHOP, SHOP } from "./fixtures";
+import { sectionsPresent } from "@/lib/design-agent/assets/resolve";
+import { photoReviewJsonSchema } from "@/lib/design-agent/photo-review";
+import { visualReviewJsonSchema, VisualReviewSchema } from "@/lib/design-agent/review";
+import { AMERICAN_EDITORIAL, MINIMAL_SHOP, review, SHOP } from "./fixtures";
 
 // Stage 1 (DEV-071a): the Design Spec's schema and its normalization against
 // the facts. Fictional shops only.
@@ -75,13 +79,13 @@ describe("layout schema", () => {
     expect(Buffer.byteLength(JSON.stringify(full))).toBeLessThan(8192);
   });
 
-  it("leaves Codex's output schema without layout until DEV-071b, and a required-layout schema is strict", () => {
-    expect(Object.keys((designProfileJsonSchema() as { properties: object }).properties)).not.toContain("layout");
-    const { $schema, ...core } = z.toJSONSchema(DesignProfileCoreSchema) as Record<string, unknown>;
+  it("asks Codex for a layout (DEV-071b): its schemas require one, stay closed and fully required, and use no oneOf", () => {
+    const required = designProfileJsonSchema() as { properties: object; required: string[] };
+    expect(Object.keys(required.properties)).toContain("layout");
+    expect(required.required).toContain("layout");
+    const { $schema, ...codex } = z.toJSONSchema(DesignProfileCoreSchema.extend({ layout: LayoutSchema })) as Record<string, unknown>;
     expect($schema).toBeDefined();
-    expect(designProfileJsonSchema()).toEqual(core);
-    // DEV-071b: Codex's schema will require layout. It stays closed and fully required.
-    const required = z.toJSONSchema(DesignProfileCoreSchema.extend({ layout: LayoutSchema }));
+    expect(required).toEqual(codex);
     const walk = (node: unknown): void => {
       if (Array.isArray(node)) return node.forEach(walk);
       if (!node || typeof node !== "object") return;
@@ -92,8 +96,15 @@ describe("layout schema", () => {
       }
       Object.values(o).forEach(walk);
     };
-    walk(required);
-    expect(JSON.stringify(required)).not.toContain("oneOf"); // structured output takes anyOf only
+    for (const schema of [required, visualReviewJsonSchema(), photoReviewJsonSchema(), looseJsonSchema(required)]) {
+      walk(schema);
+      expect(JSON.stringify(schema)).not.toContain("oneOf"); // structured output takes anyOf only
+    }
+    // the review's revised profile carries the layout too
+    expect(JSON.stringify(visualReviewJsonSchema())).toContain('"firstView"');
+    expect(JSON.stringify(photoReviewJsonSchema())).toContain('"firstView"');
+    // answers are parsed with the stored schema: an answer without a layout is still a valid profile
+    expect(VisualReviewSchema.safeParse(review({ recommended_profile_changes: { summary: [], revised_profile: AMERICAN_EDITORIAL } })).success).toBe(true);
     // stored profiles: layout optional
     expect(DesignProfileSchema.safeParse(AMERICAN_EDITORIAL).success).toBe(true);
   });
@@ -166,10 +177,12 @@ describe("normalizeLayout", () => {
             expect(added, label).toEqual({ kind: added.kind, variant: SECTION_VARIANTS[added.kind][0], ground: "plain" });
           }
           // adjustments are fixed codes only
-          for (const a of adjustments) expect(a, label).toMatch(/^(duplicate|dropped|added):(about|menu|hours|visit)$|^first_view:[a-z_]+$|^about_in_first_view$/);
+          for (const a of adjustments) expect(a, label).toMatch(/^(duplicate|dropped|added):(about|menu|hours|visit)$|^first_view:[a-z_]+$|^about_in_first_view$|^headings:vertical_ja$/);
           // normalizing again changes nothing
           expect(normalizeLayout(out, demo), label).toEqual({ layout: out, adjustments: [] });
-          expect(out.type, label).toEqual(base.type);
+          // vertical headings fall back to Japanese-only headings when a section is short
+          expect(out.type, label).toEqual(adjustments.includes("headings:vertical_ja") ? { ...base.type, headings: "ja_only" } : base.type);
+          if (out.type.headings === "vertical_ja") for (const x of out.sections) expect(sectionIsShort(x, demo, kinds.includes("hours")), `${label}: short ${x.kind}`).toBe(false);
         }
       }
     }
@@ -209,6 +222,30 @@ describe("normalizeLayout", () => {
     });
     // a short menu has no excerpt: the whole menu would be shown twice
     expect(normalizeLayout(layout({ firstView: "name_menu" }), SHOP).adjustments).toEqual(["first_view:name_menu"]);
+  });
+
+  it("keeps vertical headings only when no section is short (headings:vertical_ja)", () => {
+    const vertical = (sections: LayoutSection[]) => layout({ sections, type: { scale: "standard", headings: "vertical_ja" } });
+    // the full fixture: a short description and two menu items
+    expect(normalizeLayout(vertical(DEFAULT_LAYOUT.sections), SHOP)).toEqual({ layout: { ...vertical(DEFAULT_LAYOUT.sections), type: { scale: "standard", headings: "ja_only" } }, adjustments: ["headings:vertical_ja"] });
+    const long = { ...SHOP, description: "あ".repeat(SHORT_DESCRIPTION + 1), menuItems: ["a", "b", "c"] };
+    expect(normalizeLayout(vertical(DEFAULT_LAYOUT.sections), long).adjustments).toEqual([]);
+    // an hours strip is one band: short; the block is not
+    expect(normalizeLayout(vertical([s("hours", "strip"), s("about", "lead"), s("menu", "chips"), s("visit", "ledger")]), long).adjustments).toEqual(["headings:vertical_ja"]);
+    expect(normalizeLayout(vertical([s("hours", "block"), s("about", "lead"), s("menu", "chips"), s("visit", "ledger")]), long).adjustments).toEqual([]);
+    // visit without the hours rows (an hours section takes them) and only two rows left: short
+    expect(normalizeLayout(vertical([s("hours", "block"), s("about", "lead"), s("menu", "chips"), s("visit", "ledger")]), { ...long, phone: null }).adjustments).toEqual(["headings:vertical_ja"]);
+  });
+
+  it("gives photos the sections of the drawn page (sectionsPresent from the normalized layout)", () => {
+    expect(sectionsPresent(SHOP)).toEqual({ about: true, visit: true });
+    expect(sectionsPresent(SHOP, DEFAULT_LAYOUT)).toEqual({ about: true, visit: true });
+    // the description in the first view: no about section, no about photo
+    expect(sectionsPresent(SHOP, layout({ firstView: "name_lead" }))).toEqual({ about: false, visit: true });
+    // an hours section takes the only visit rows
+    const hoursOnly = { ...MINIMAL_SHOP, hours: "9:00〜18:00" };
+    expect(sectionsPresent(hoursOnly)).toEqual({ about: false, visit: true });
+    expect(sectionsPresent(hoursOnly, layout({ sections: [s("hours", "block")] }))).toEqual({ about: false, visit: false });
   });
 
   it("returns a render plan that may have no section; stored layouts keep at least one", () => {

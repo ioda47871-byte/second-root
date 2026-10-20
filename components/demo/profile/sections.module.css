@@ -432,21 +432,20 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
 
   /* Vertical writing: desktop only, Japanese script only (the fixed Japanese
      heading words; a Japanese-only short name). Phones keep horizontal text. */
-  /* Vertical headings are set only when every section has enough content beside
-     them: a vertical heading next to a line or two would set the section's height
-     (data-short marks a section with little content). Otherwise the page's
-     headings all stay horizontal, so one page never mixes the two. The vertical
-     word is capped in size. */
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .vertical {
+  /* Vertical headings: normalizeLayout keeps vertical_ja only when every section
+     has enough content beside its heading (sectionIsShort; otherwise headings:
+     vertical_ja and ja_only), so one page never mixes the two. The vertical word
+     is capped in size. */
+  [data-headings="vertical_ja"] .vertical {
     display: inline-block;
     writing-mode: vertical-rl;
     letter-spacing: 0.14em;
     line-height: 1.1;
   }
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) h2.h.h > span.ja.ja.vertical { font-size: min(1em, 2.2rem); }
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec.sec { grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); }
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > .h { align-self: start; }
-  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > :not(.h) { grid-column: 2; }
+  [data-headings="vertical_ja"] h2.h.h > span.ja.ja.vertical { font-size: min(1em, 2.2rem); }
+  [data-headings="vertical_ja"] .sec.sec.sec { grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); }
+  [data-headings="vertical_ja"] .sec.sec > .h { align-self: start; }
+  [data-headings="vertical_ja"] .sec.sec > :not(.h) { grid-column: 2; }
 
   /* vertical_name: a hanging scroll. The folio runs across the top; below it the
      name (a tall column, at least twice the section headings; names over
