@@ -19,7 +19,11 @@ export const REVIEW_VERDICTS = VisualReviewSchema.shape.verdict.options;
 
 /** The best possible total (reviewScore: four axes + the inverted generic_template_feel, 5 × 5). */
 export const REVIEW_MAX_TOTAL = 25;
-/** More reviews than one job can have (the first, 2 revisions, a second look at the best after each). */
+/**
+ * More reviews than one job can have: the first, 2 revisions, a second look at
+ * the best after each, and (DEV-066) one more look when a revision changed
+ * nothing visible. At most 6 for the DEV-028 loop.
+ */
 export const REVIEW_MAX_ROUNDS = 10;
 
 const scoreSchema = VisualReviewSchema.shape.brand_fit;

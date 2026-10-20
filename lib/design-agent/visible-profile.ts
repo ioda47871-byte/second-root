@@ -14,6 +14,18 @@ import type { DesignProfile } from "./profile";
 /** Settings a revision can change without any change in the screenshots. */
 export const NOT_IN_SCREENSHOTS = ["direction", "heroLayout.alignment", "motion.intro", "motion.sectionFade", "confidence", "rationale"] as const;
 
+/**
+ * DEV-066: settings the renderer draws only on a page with photos: the surface
+ * colour is the ground of a photo frame (.photo) and nothing else reads it.
+ */
+export const ONLY_WITH_PHOTOS = ["palette.surface"] as const;
+
+/**
+ * The motifs drawn in the accent colour (location label marks, the dot field,
+ * the stamp ring, the pleated liner). With none of them the accent shows nowhere.
+ */
+export const ACCENT_MOTIFS = ["location_labels", "dot_grid", "stamp_ring", "muffin_paper_svg"] as const;
+
 /** Every visible setting, as a dotted path (stable order). */
 export const VISIBLE_SETTINGS = [
   "palette.background",
@@ -49,7 +61,14 @@ function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** The visible settings that differ between two profiles (palette colours compare case-insensitively). */
-export function visibleChanges(before: DesignProfile, after: DesignProfile): string[] {
-  return VISIBLE_SETTINGS.filter((path) => !same(read(before, path), read(after, path)));
+/**
+ * The visible settings that differ between two profiles (palette colours
+ * compare case-insensitively). Without photos (the DEV-028 loop) the settings
+ * drawn only on photo pages do not count; the accent counts only when either
+ * profile has a motif drawn in it.
+ */
+export function visibleChanges(before: DesignProfile, after: DesignProfile, options: { photos: boolean }): string[] {
+  const accentShown = [before, after].some((p) => p.motifs.some((m) => (ACCENT_MOTIFS as readonly string[]).includes(m)));
+  const hidden: readonly string[] = [...(options.photos ? [] : ONLY_WITH_PHOTOS), ...(accentShown ? [] : ["palette.accent"])];
+  return VISIBLE_SETTINGS.filter((path) => !hidden.includes(path) && !same(read(before, path), read(after, path)));
 }

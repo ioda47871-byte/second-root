@@ -4,6 +4,7 @@ import { QUALITY_NOT_ACCEPTED, runDesignPipeline, type PipelineDeps } from "@/li
 import { DesignProfileSchema, type DesignProfile } from "@/lib/design-agent/profile";
 import { notVisibleLine, VOCABULARY } from "@/lib/design-agent/prompts";
 import { NOT_IN_SCREENSHOTS, VISIBLE_SETTINGS, visibleChanges } from "@/lib/design-agent/visible-profile";
+import { CodexError } from "@/lib/design-agent/codex";
 import { AMERICAN_EDITORIAL, review, SHOP } from "./fixtures";
 
 // DEV-066: a revision that changes only settings the screenshots cannot show
@@ -32,6 +33,7 @@ function harness(answers: unknown[]) {
 }
 
 const refs = ["/refs/ig-1.png"];
+const NO_PHOTOS = { photos: false };
 const invisible: DesignProfile = {
   ...AMERICAN_EDITORIAL,
   direction: AMERICAN_EDITORIAL.direction === "pop_bakeshop" ? "craft_paper" : "pop_bakeshop",
@@ -46,15 +48,25 @@ const revise = (profile: DesignProfile | null, extra: object = {}) =>
 
 describe("visibleChanges", () => {
   it("ignores the settings the screenshots cannot show", () => {
-    expect(visibleChanges(AMERICAN_EDITORIAL, invisible)).toEqual([]);
+    expect(visibleChanges(AMERICAN_EDITORIAL, invisible, NO_PHOTOS)).toEqual([]);
   });
 
   it("names each visible setting that changed; colours compare case-insensitively; motif order does not count", () => {
     const p = AMERICAN_EDITORIAL;
-    expect(visibleChanges(p, visible("#123456"))).toEqual(["palette.accent"]);
-    expect(visibleChanges(p, { ...p, palette: { ...p.palette, accent: p.palette.accent.toLowerCase() } })).toEqual([]);
-    expect(visibleChanges(p, { ...p, motifs: [...p.motifs].reverse() })).toEqual([]);
-    expect(visibleChanges(p, { ...p, spacing: { scale: p.spacing.scale === "tight" ? "generous" : "tight" } })).toEqual(["spacing.scale"]);
+    expect(visibleChanges(p, visible("#123456"), NO_PHOTOS)).toEqual(["palette.accent"]);
+    expect(visibleChanges(p, { ...p, palette: { ...p.palette, accent: p.palette.accent.toLowerCase() } }, NO_PHOTOS)).toEqual([]);
+    expect(visibleChanges(p, { ...p, motifs: [...p.motifs].reverse() }, NO_PHOTOS)).toEqual([]);
+    expect(visibleChanges(p, { ...p, spacing: { scale: p.spacing.scale === "tight" ? "generous" : "tight" } }, NO_PHOTOS)).toEqual(["spacing.scale"]);
+  });
+
+  it("surface counts only on pages with photos; accent only with a motif drawn in it", () => {
+    const p = AMERICAN_EDITORIAL;
+    const surface = { ...p, palette: { ...p.palette, surface: "#000000" } };
+    expect(visibleChanges(p, surface, NO_PHOTOS)).toEqual([]);
+    expect(visibleChanges(p, surface, { photos: true })).toEqual(["palette.surface"]);
+    const plain = { ...p, motifs: ["monogram", "corner_marks"] } as DesignProfile;
+    expect(visibleChanges(plain, { ...plain, palette: { ...plain.palette, accent: "#000000" } }, NO_PHOTOS)).toEqual([]);
+    expect(visibleChanges(plain, { ...plain, motifs: ["monogram", "dot_grid"], palette: { ...plain.palette, accent: "#000000" } }, NO_PHOTOS)).toEqual(["palette.accent", "motifs"]);
   });
 
   it("every profile setting is either visible or listed as not in the screenshots", () => {
@@ -126,5 +138,57 @@ describe("runDesignPipeline: revisions that change nothing visible (DEV-066)", (
     expect(VOCABULARY).toContain("It is a name only: the page looks the same for every direction.");
     expect(VOCABULARY).toContain("recorded only; it does not change the page yet");
     expect(VOCABULARY).toContain("Motion never shows in the review screenshots");
+  });
+
+  it("the extra look does not move the leader (DEV-034: the leader is chosen like the final)", async () => {
+    const h = harness([AMERICAN_EDITORIAL, revise(invisible), revise(visible("#111111"), { brand_fit: 4 }), revise(visible("#222222")), review()]);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    expect(report.notes).toEqual(["REVISION_NOT_VISIBLE_1"]);
+    expect(report.rounds.map((r) => [r.candidate, r.notVisible ?? false, r.scores.total])).toEqual([
+      ["candidate-0", false, 18],
+      ["candidate-0", true, 19],
+      ["candidate-1", false, 18],
+      ["candidate-2", false, 20],
+    ]);
+    expect(report.finalCandidate).toBe("candidate-2");
+    expect(report.status).toBe("done");
+  });
+
+  it("after a revise-from-best second look, a revision with no visible change is checked against the best candidate", async () => {
+    const lower = review({ verdict: "revise", brand_fit: 2, generic_template_feel: 3, recommended_profile_changes: { summary: [], revised_profile: visible("#333333") } });
+    const h = harness([AMERICAN_EDITORIAL, revise(visible("#111111")), lower, revise(AMERICAN_EDITORIAL), revise(visible("#444444")), review()]);
+    const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+    expect(report.notes).toEqual(["REVISION_FROM_BEST_2", "REVISION_NOT_VISIBLE_2"]);
+    expect(report.rounds.map((r) => [r.candidate, r.again ?? false, r.notVisible ?? false])).toEqual([
+      ["candidate-0", false, false],
+      ["candidate-1", false, false],
+      ["candidate-0", true, false],
+      ["candidate-0", true, true],
+      ["candidate-2", false, false],
+    ]);
+    expect(report.rounds[4]!.changed).toEqual(["palette.accent"]);
+    expect(report.status).toBe("done");
+  });
+
+  it("the extra look ends like any review: renderer change, no profile, an invalid answer, an error", async () => {
+    const cases: Array<[unknown, string[]]> = [
+      [revise(null, { needs_renderer_change: true, renderer_change_note: "x" }), ["REVISION_NOT_VISIBLE_1", "RENDERER_CHANGE_NEEDED"]],
+      [revise(null), ["REVISION_NOT_VISIBLE_1", "NO_REVISED_PROFILE", QUALITY_NOT_ACCEPTED]],
+      [{ verdict: "maybe" }, ["REVISION_NOT_VISIBLE_1", "REVIEW_INVALID_candidate-0_NOT_VISIBLE", QUALITY_NOT_ACCEPTED]],
+      [new CodexError("CODEX_TIMEOUT", "x"), ["REVISION_NOT_VISIBLE_1", "REVIEW_CODEX_TIMEOUT", QUALITY_NOT_ACCEPTED]],
+    ];
+    for (const [answer, notes] of cases) {
+      const answers: unknown[] = [AMERICAN_EDITORIAL, revise(invisible), answer];
+      const h = harness([]);
+      h.deps.askCodex = async () => {
+        const next = answers.shift();
+        if (next instanceof Error) throw next;
+        return next;
+      };
+      const report = await runDesignPipeline({ demo: SHOP, references: refs }, h.deps);
+      expect(report.notes).toEqual(notes);
+      expect(report.status).toBe("blocked");
+      expect(report.revisions).toBe(0);
+    }
   });
 });

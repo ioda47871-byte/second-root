@@ -81,6 +81,8 @@ export type RoundRecord = {
   problems: Array<{ area: string; severity: string }>;
   /** DEV-066: for a revised candidate, the visible settings it changed from the profile it was revised from. */
   changed?: string[];
+  /** DEV-066: the same candidate reviewed again because its revision changed nothing visible (recorded with again: true). */
+  notVisible?: true;
 };
 
 export type PipelineReport = {
@@ -261,12 +263,13 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   };
   // DEV-066: the visible settings each revised candidate changed (recorded on its first review).
   const changedBy = new Map<string, string[]>();
-  const record = (name: string, r: VisualReview, again: boolean): number => {
+  const record = (name: string, r: VisualReview, again: boolean, notVisible = false): number => {
     const total = reviewScore(r);
     const changed = again ? undefined : changedBy.get(name);
     rounds.push({
       candidate: name,
       ...(again ? { again: true as const } : {}),
+      ...(notVisible ? { notVisible: true as const } : {}),
       ...(changed ? { changed } : {}),
       scores: { brand_fit: r.brand_fit, visual_quality: r.visual_quality, hierarchy: r.hierarchy, mobile_quality: r.mobile_quality, generic_template_feel: r.generic_template_feel, total },
       verdict: r.verdict,
@@ -328,7 +331,8 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
       break;
     }
-    let changed = visibleChanges(base.profile, check.profile);
+    // This loop renders no photos (the photo loop is runPhotoLoop).
+    let changed = visibleChanges(base.profile, check.profile, { photos: false });
     if (changed.length === 0) {
       // DEV-066: the revision changes only settings the screenshots cannot show
       // (or nothing): it would render the same page. Ask the same review once
@@ -342,8 +346,9 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       const retry = await review(base, base.shots, null, true);
       if (!retry) break;
       await deps.writeRecord(`review-${base.name}-not-visible-${revisions + 1}.json`, retry);
-      const retryTotal = record(base.name, retry, true);
-      if (base.name === leader.name && retryTotal >= leader.score) leader = { ...leader, score: retryTotal };
+      // Recorded like a second look: the leader and the candidates keep their
+      // first scores, so the leader is chosen the same way as the final.
+      record(base.name, retry, true, true);
       if (retry.needs_renderer_change) {
         notes.push("RENDERER_CHANGE_NEEDED");
         state.status = "blocked";
@@ -361,7 +366,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
         await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
         break;
       }
-      changed = visibleChanges(base.profile, check.profile);
+      changed = visibleChanges(base.profile, check.profile, { photos: false });
       if (changed.length === 0) {
         notes.push("NO_VISIBLE_REVISION");
         break;
