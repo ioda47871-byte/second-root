@@ -179,7 +179,10 @@ describe("the metrics", () => {
     expect(structureDistance(s.coffee!, s.coffee!).total).toBe(0);
     const d = structureDistance(s.coffee!, s.wagashi!);
     expect(d.total).toBeGreaterThan(0.5);
-    for (const v of Object.values(d)) expect(v).toBeGreaterThanOrEqual(0), expect(v).toBeLessThanOrEqual(1);
+    for (const v of Object.values(d)) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
     const base = structureOf(baselineProfile("cafe"), shops[0]!.demo);
     // the baseline draws the default layout (about, menu, visit) with the category's direction
     expect(base.sections.map((x) => x.kind)).toEqual(["about", "menu", "visit"]);
@@ -237,7 +240,10 @@ describe("runComparison", () => {
     expect(coffee.subject?.codex?.scores).toEqual({ brand_fit: 4, visual_quality: 4, hierarchy: 4, mobile_quality: 4, generic_template_feel: 2, total: 20 });
     expect(coffee.subject?.codex?.call_list.map((c) => c.stage)).toEqual(["profile_brief", "visual_review", "visual_review_revision"]);
     expect(coffee.subject?.prompt_sizes.map((p) => p.kind)).toEqual(["brief", "review", "review"]);
-    for (const p of coffee.subject!.prompt_sizes) expect(p.prompt_chars).toBeGreaterThan(5000), expect(p.images).toBe(2);
+    for (const p of coffee.subject!.prompt_sizes) {
+      expect(p.prompt_chars).toBeGreaterThan(5000);
+      expect(p.images).toBe(2);
+    }
     expect(coffee.subject?.layout?.first_view).toBe("name_menu");
     const wagashi = report.shops.find((s) => s.shop === "wagashi")!;
     expect(wagashi.subject?.layout).toMatchObject({ direction: "japanese_modern", first_view: "vertical_name" });
@@ -313,7 +319,7 @@ describe("the entry points refuse without the approval flag", () => {
     const home = mkdtempSync(join(tmpdir(), "sr-compare-cli-"));
     const err = await run(join(REPO, "node_modules/.bin/tsx"), [join(REPO, "scripts/sales-design-worker/compare.ts"), "--compare-id", "cmp-cli-1"], {
       cwd: REPO,
-      env: { PATH: process.env.PATH, HOME: home },
+      env: { PATH: process.env.PATH, HOME: home } as unknown as NodeJS.ProcessEnv,
     }).catch((e: { code: number; stderr: string }) => e);
     expect(err).toMatchObject({ code: 2 });
     expect((err as { stderr: string }).stderr).toContain("STOP: --human-approval-confirmed is missing");
@@ -338,7 +344,7 @@ describe("the entry points refuse without the approval flag", () => {
     tool(join(repo, "scripts/ops/wsl-resource-preflight.sh"), "preflight");
     tool(join(repo, "node_modules/.bin/tsx"), "tsx", `env | cut -d= -f1 | sort | tr '\\n' ' ' | sed 's/^/env /' >> '${record}'`);
     const script = join(repo, "scripts/sales-design-worker/compare-local.sh");
-    const env = { PATH: `${bin}:${process.env.PATH}`, HOME: home, OPENAI_API_KEY: "sk-test", SUPABASE_SERVICE_ROLE_KEY: "x", SR_DESIGN_WORKER_NO_UPDATE: "1" };
+    const env = { PATH: `${bin}:${process.env.PATH}`, HOME: home, OPENAI_API_KEY: "sk-test", SUPABASE_SERVICE_ROLE_KEY: "x", SR_DESIGN_WORKER_NO_UPDATE: "1" } as unknown as NodeJS.ProcessEnv;
     const refused = await run("bash", [script, "--compare-id", "cmp-001"], { env }).catch((e: { code: number; stdout: string }) => e);
     expect(refused).toMatchObject({ code: 2 });
     expect((refused as { stdout: string }).stdout).toContain("STOP: --human-approval-confirmed is missing");
