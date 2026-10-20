@@ -102,7 +102,7 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
   - 異なる breakpoint は 4 つまで（render check の幅の数を抑える）。
 - **selector**: root の `#shop-css`（固定値の属性を付けてもよい）から始め、子孫の複合は型名で始める。使えるものは次のとおり。
   - 型: header main section div p span h1 h2 ol ul li dl dt dd
-  - 属性: data-kind / data-variant / data-ground / data-first-view / data-scale / data-headings / data-fv / data-key は Stage 1 のもの。aria-labelledby / lang / aria-hidden は今の markup にもある。
+  - 属性: data-kind / data-variant / data-ground / data-first-view / data-scale / data-headings / data-fv / data-key は Stage 1 のもの。data-short（DEV-071b、値は常に空）は `[data-short=""]` だけ。aria-labelledby / lang / aria-hidden は今の markup にもある。
   - 疑似 class: `:first-child` など、`:nth-child(An+B)`（|A|・|B| は 99 以下）、`:not(単純)`。
   - 疑似要素: 無い。
 - **property**: 明示の許可リスト（§2.1 の制限つき）。値は種類と上限で縛る。
@@ -116,6 +116,9 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
 
 **検査する幅**
 - 固定の 320・360・390・768・1024・1440・1920 に、shop CSS の breakpoint ごとに「b−1・b・b+1」（em は 16px で換算）を加える。
+- **container query の切り替わり**（DEV-071b: split の visit の行は、自分の幅が 26em 以上で label と値を横に並べる）: shop CSS は `@container` も `container-type` も書けないが、容器の幅を変えて、切り替わる viewport の幅を動かせる。
+  - そこで、CSS あり / なしの両方の頁で 320〜1920px を 16px 刻みで走査し、各容器の内側の幅と `@container` の長さの差の符号が変わる幅を 1px まで二分探索する。その両側の幅を検査の幅に足す。
+  - 切り替わりが 24 を超えたら不合格にする（`container_switches`、fail closed）。
 - 帯の中は標本で見ている（再レビュー Low 2）。`repeat(auto-fill, minmax())` や vw の値は帯の中で連続に変わり、帯の中ほどだけの崩れを証明するものではない。breakpoint の両側と固定の幅で見る。
 - viewport は mobile emulation を使わない（isMobile なし、820px 以下は touch）。shop CSS は幅でしか分岐できず、module CSS に `(hover)` / `(pointer)` の media は無い。入れば、その両側も検査する。
 - 4 幅ずつ並行して検査する。不合格が出た組で止める（`exhaustive` なら最後まで）。

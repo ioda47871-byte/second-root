@@ -200,3 +200,4 @@
   - 再レビュー FAIL（High 1: scaleY の隣が値の上側を消す・Medium 1: 検査幅の外の @media・Low: sideways）→ 対応: scale を外す、画素の証明を「字ごとの墨の画素数 ÷ 基準の画（文字以外の塗りを消した白地に黒）の同じ字、最悪の字で 0.8」に、hit-test を行の 25/50/75% × 5 点に、breakpoint を 320〜1920px に、text-orientation は mixed / upright だけ。
   - CI（job 118792775207）の `*_ink`: 原因は基準の画を白地に黒で描いたこと（LCD の antialias で色と地により墨が変わる。fontconfig で LCD を有効にして local でも再現）。基準を「自分の色・頁の実際の地の色」で描くようにし、第 2 の書体環境（LCD + 別書体）の test を追加。再レビュー 2（文字の重なり・小さな記号の消去）→ 字の芯の重なりの検査（`*_overlap`）・小さな字も墨の半分を保つ・grid の track は 24px 以上。
   - 再レビュー 3 FAIL（自分の ::after の覆い・中央値の地での墨の水増し）→ 語彙を縮小（疑似要素・gradient の地・nowrap / pre / keep-all・文字を持つ要素の grid / flex を外す）、`*_overflow`（字が自分の box の外・無名の item）を追加、墨は画素ごとの被覆率の和（地に依らない）、hit-test の例外は枠・outline も塗りとみなす。
+  - develop（DEV-071b、2faa27d）を merge。split の visit の container query（26em）は、shop CSS が容器の幅を変えると切り替わる幅が動く → render check が CSS あり / なしの頁で切り替わりの幅を走査・二分探索して検査の幅に足す（24 超は `container_switches` で不合格）。新しい hook の `data-short` を `[data-short=""]` として許可。
