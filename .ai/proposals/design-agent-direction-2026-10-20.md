@@ -121,3 +121,10 @@
 6. 禁止は継続: Staging DB reset・復旧 SQL・cycle 実走・flag 再 ON・Production・timer・実営業送信・権限の拡張・未承認の画像利用
 7. 最終的に、業種・ブランドの異なる 3 店舗で明確に違う Web サイトを生成できるかを比較する
 
+
+### 実装メモ: §8.4（DEV-070、2026-10-20）
+
+- 確認: `generated_concept` は local `/design-preview` だけで使われ、公開 `/demo`・DB（migration）・Vercel 側のコード（bridge・ingest・admin）からの依存は無かった。リポジトリに画像生成 API（DALL·E・gpt-image など）を呼ぶコードも無い（実機の PoC 001〜005 は人が別に作った画像を入れていた）。証跡は `.ai/reviews/DEV-070.md`「確認」。
+- 削除: 写真の source は `approved_real` だけ（`SOURCE_KINDS = ["approved_real"]`）。intake・asset CLI は他の種類を拒否。「イメージ画像」ラベル（renderer・CSS）と render check の label 判定を削除（他の写真の検査は残す）。`generated_concept` を含む古い manifest は無効として読み込まれず、写真なしの既存の表示になる（worker は失敗しない）。
+- 写真 PoC: `approved_real` で同意が `local_preview` を含む写真だけ。流すには、使う写真そのものについて人の明示的な承認が要る（`photo-poc.sh --human-approval-confirmed`、`docs/operations/design-photo-poc.md`）。
+- Instagram の画像: **取得・分析**（privacy 処理済みの reference screenshot を色・雰囲気の判断に使い、job の後に消す。DEV-028 / DEV-069 の既存の経路）は続ける。**再掲載・表示**は店舗の利用許可なしにしない。reference screenshot から写真 asset へ移す経路は無い（型と intake の場所の検査）。規則の正本は `docs/MVP_SPEC.md` §7（`docs/SECURITY.md` §6 にも）。

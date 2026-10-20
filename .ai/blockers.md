@@ -17,6 +17,14 @@
   - 人の判断が要る: review の notes を次の round に渡す（DEV-034 の方針の変更）／ 初期候補を 2〜3 個にする（Codex の時間とコスト）／ Instagram の写真を使う（権利・同意の判断）
 - 次の実走: efb4bdb2 は attempts 2/3 で blocked（再 reset は未承認）。改善の効果は新しい controlled run（人の承認: 対象 demo・DB の reset・W・C）で測る
 
+### HUMAN-016（任意）— WSL に残る generated_concept の PoC asset の削除（DEV-070）
+
+- 何: DEV-029 の写真 PoC（poc-photo-001〜005 など）で入れた `generated_concept` の画像と manifest が、WSL の worker 利用者の asset store に残っているかもしれない。DEV-070 から、その manifest は無効として読み込まれず（写真なしの表示になり、worker は失敗しない）、画像が頁に出ることは無い。消すのは任意の後片付け。
+- 場所（コードの規則: `lib/design-agent/assets/store-root.ts`）: `SR_DESIGN_ASSETS_ROOT`（絶対 path のとき）、無ければ `$HOME/.local/share/second-root-design-assets`。worker 利用者 `sr-designgen` なら `/home/sr-designgen/.local/share/second-root-design-assets/<job id>/`（`manifest.json` と `asset-<24 桁の hex>.png`）。PoC の job id は `poc-photo-*`、preview-check の一時 store は終了時に自動で消える。
+- 入力に置いた元画像があれば `/home/sr-designgen/sr-design-input/poc-photo-*/`（`concept-*.png`）も対象。
+- 人の操作（任意）: 中身を確かめて、`generated_concept` を含む job の directory を消す。Claude は WSL に触れない（何も実行していない）。
+- 解除条件: 人が消した、または残すと決めた。
+
 ### HUMAN-015 — Claude の Supabase（Staging）読み取りが 401
 
 - 何: 2026-10-20、この session の proxy が入れる Supabase の token が `Invalid access token`（401）になった。Vercel の読み取りは動く。controlled run の前後の読み取り（`.ai/runbooks/controlled-run/snapshot.sql`・`after.sql`）が Claude からできない。
