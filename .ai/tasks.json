@@ -3218,7 +3218,7 @@
       "human_approval_triggers": [
         "WSL での比較の実走（HUMAN-017）"
       ],
-      "decision": "2026-10-20: 着手（develop 2faa27d から）"
+      "decision": "2026-10-20: 着手（develop 2faa27d から）。実装: worker の runJob から runJobPipeline / copyPipelineShots / pipelineRecord を切り出して共有（同じコード）、lib/design-agent/compare/（shops・safety・metrics・report・contact-sheet・run）、scripts/sales-design-worker/compare-local.sh・compare.ts・compare-report.ts、fixture の 3 店と手書きの spec、tests/unit/design-agent/compare.test.tsx（fake Codex + Chromium）。参照画像なし（PoC の example.com は local fixture ではない）: 参照 0 枚のときだけ prompt の 1 行が「参照なし」を言う。手書きの spec の demo（next build + start、Codex の生成ではない）で店の間の構造の距離 0.78〜0.89・baseline どうし 0.23〜0.40。PR は未作成（指示）。残り: Fresh Review・PR、WSL での実走（HUMAN-017、docs/operations/design-compare-local.md）"
     }
   ]
 }
