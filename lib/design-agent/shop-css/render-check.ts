@@ -1,7 +1,7 @@
 import type { Browser, BrowserContext } from "playwright";
 import { decodePng, type Pixels } from "../worker/png-paint";
 import { mediaBreakpointsPx, type GuardedShopCss } from "./guard";
-import { CLEAN_CSS, FREEZE_MOTION_CSS, HIDE_TEXT_CSS, HIT_TEST_CSS, MEASURE_SCRIPT, MeasureSchema, TEXT_KINDS, type Measure } from "./page-scripts";
+import { CLEAN_CSS, FREEZE_MOTION_CSS, HIDE_TEXT_CSS, REFERENCE_SCRIPT, HIT_TEST_CSS, MEASURE_SCRIPT, MeasureSchema, TEXT_KINDS, type Measure } from "./page-scripts";
 
 // The render check of a per-shop stylesheet (DEV-072, Stage 3). The static
 // guard proves the stylesheet can only use a small, safe vocabulary; this
@@ -36,12 +36,22 @@ export const MIN_FONT_PX = 12;
 export const MIN_OPACITY = 0.85;
 /** Share of a line's ground samples allowed below MIN_CONTRAST (underlines, a rule passing under). */
 export const CONTRAST_TOLERANCE = 0.1;
-/** A pixel is ink when the text covers at least this much of it. */
-export const INK_COVERAGE = 0.5;
 /** Every character must keep at least this share of the ink it has with nothing over it. */
 export const INK_RATIO = 0.8;
-/** Characters with less reference ink than this (a full stop at 12px) are too small to measure. */
-export const MIN_REFERENCE_INK = 6;
+/** Characters with less reference ink than this (summed channel change; about 3 pixels of full contrast) are too small for the ratio. */
+export const MIN_REFERENCE_INK = 2000;
+/** A mark with at least this much reference ink (a fraction of one pixel) must keep MARK_KEPT of it. */
+export const MIN_MARK_INK = 150;
+export const MARK_KEPT = 0.5;
+/**
+ * Glyph boxes of two different characters may not overlap by more than this
+ * share of the smaller one. The boxes are the characters' cores: the range box
+ * (advance × font ascent + descent) with CORE_INSET of its height taken off at
+ * the top and the bottom (left and right for vertical text), so tight leading
+ * that only lets the empty ascender / descender space overlap is not overprint.
+ */
+export const OVERLAP_SHARE = 0.2;
+export const CORE_INSET = 0.2;
 /**
  * Share of the notice bar's or footer's ground allowed to differ from the
  * baseline. The ground is compared on the pictures without text (and without
@@ -58,7 +68,7 @@ const FRAME_EDGE = 2;
 export const MAX_HEIGHT_FACTOR = 3;
 export const MAX_SCREENSHOT_HEIGHT = 16000;
 
-const NODE_CHECKS = ["hidden", "offscreen", "clipped", "covered", "faded", "small", "squeezed", "contrast", "ink"] as const;
+const NODE_CHECKS = ["hidden", "offscreen", "clipped", "covered", "overlap", "faded", "small", "squeezed", "contrast", "ink"] as const;
 export const SHOP_CSS_CHECK_CODES = [
   "scope_missing",
   "page_script",
@@ -145,26 +155,6 @@ export type Ink = { missing: number; ratio: number };
 
 type Picture = { withText: Pixels; without: Pixels };
 
-/**
- * How much of a pixel the text covers (0..1): the change between the picture
- * with the text and the one without, over the change full text colour would
- * make there (the colour channel that differs most). A pixel the text cannot
- * be told apart from (a difference under 24) counts as not covered.
- */
-function coverage(p: Picture, i: number, colour: readonly number[], alpha: number): number {
-  let best = 0;
-  let change = 0;
-  for (let c = 0; c < 3; c++) {
-    const g = p.without.data[i + c]!;
-    const d = alpha * (colour[c]! - g);
-    if (Math.abs(d) > Math.abs(best)) {
-      best = d;
-      change = p.withText.data[i + c]! - g;
-    }
-  }
-  return Math.abs(best) < 24 ? 0 : change / best;
-}
-
 const charBox = (px: Pixels, r: { left: number; top: number; width: number; height: number }) => ({
   x0: Math.max(0, Math.floor(r.left)),
   x1: Math.min(px.width - 1, Math.ceil(r.left + r.width) - 1),
@@ -172,40 +162,69 @@ const charBox = (px: Pixels, r: { left: number; top: number; width: number; heig
   y1: Math.min(px.height - 1, Math.ceil(r.top + r.height) - 1),
 });
 
-/** Ink pixels (coverage at least INK_COVERAGE) in a character's box. */
-function inkPixels(p: Picture, r: Node["chars"][number], colour: readonly number[], alpha: number): number {
+/**
+ * A character's ink: how much the text changes its box, summed over pixels and
+ * colour channels (the picture with the text against the one without).
+ */
+function inkMass(p: Picture, r: Node["chars"][number]): number {
   const { x0, x1, y0, y1 } = charBox(p.withText, r);
-  let n = 0;
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (coverage(p, (y * p.withText.width + x) * p.withText.channels, colour, alpha) >= INK_COVERAGE) n += 1;
-  return n;
+  let mass = 0;
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      const i = (y * p.withText.width + x) * p.withText.channels;
+      mass += Math.abs(p.withText.data[i]! - p.without.data[i]!) + Math.abs(p.withText.data[i + 1]! - p.without.data[i + 1]!) + Math.abs(p.withText.data[i + 2]! - p.without.data[i + 2]!);
+    }
+  return mass;
 }
 
 /**
  * The pixel proof of a node: for each visible character, its ink on the page
- * (pictures with and without the text) over its ink in the reference pictures
- * (the same layout with every other paint taken away, the text black on
- * white; CLEAN_CSS). A character nothing covers keeps its ink; a cover of any
+ * over its ink in the reference pictures — the same layout with every other
+ * paint taken away, the text in its own colour (currentcolor, so a
+ * ::first-letter keeps its own) on the colour painted under it on the page
+ * (CLEAN_CSS and REFERENCE_SCRIPT). The text is drawn exactly as on the page
+ * (face, synthesis, size, transform, colour, ground, so the same
+ * antialiasing, greyscale or subpixel); only nothing covers it. A cover of any
  * kind — a ground, a shadow, a transformed neighbour, a pseudo-element — takes
  * ink away where it lies. Returns the characters with no ink at all and the
  * smallest ratio of any character (the worst one decides, never the mean).
- * Characters with fewer than MIN_REFERENCE_INK reference pixels are too small
- * to measure and are left out.
+ * Characters with less than MIN_REFERENCE_INK are too faint or small to
+ * measure (a faint one fails the contrast check).
  */
 export function inkOf(page: Picture, reference: Picture, node: Node): Ink {
   if (page.withText.width !== reference.withText.width || page.withText.height !== reference.withText.height || page.without.width !== page.withText.width || reference.without.width !== reference.withText.width) return { missing: node.chars.length, ratio: 0 };
-  const [r, g, b, a] = node.color;
-  const alpha = Math.max(0, Math.min(1, a * node.opacity));
-  const refAlpha = Math.max(0, Math.min(1, node.opacity));
   let missing = 0;
   let ratio = 1;
   for (const box of node.chars) {
-    const ref = inkPixels(reference, box, [0, 0, 0], refAlpha);
-    if (ref < MIN_REFERENCE_INK) continue;
-    const ink = inkPixels(page, box, [r, g, b], alpha);
-    if (ink === 0) missing += 1;
+    const ref = inkMass(reference, box);
+    if (ref < MIN_REFERENCE_INK) {
+      // a small mark (- : . , ・) is too small for a ratio, but it must not vanish (re-review 2, Medium 1)
+      if (ref >= MIN_MARK_INK && inkMass(page, box) < ref * MARK_KEPT) missing += 1;
+      continue;
+    }
+    const ink = inkMass(page, box);
+    if (ink < MIN_REFERENCE_INK / 10) missing += 1;
     ratio = Math.min(ratio, ink / ref);
   }
   return { missing, ratio };
+}
+
+/** The median colour of the ground painted under a node's lines (the picture without text), or null. */
+export function groundColour(without: Pixels, node: Node): string | null {
+  const channels: number[][] = [[], [], []];
+  for (const r of node.rects) {
+    const { x0, x1, y0, y1 } = charBox(without, r);
+    const sx = Math.max(1, Math.floor((x1 - x0) / 24));
+    const sy = Math.max(1, Math.floor((y1 - y0) / 8));
+    for (let y = y0; y <= y1; y += sy)
+      for (let x = x0; x <= x1; x += sx) {
+        const i = (y * without.width + x) * without.channels;
+        for (let c = 0; c < 3; c++) channels[c]!.push(without.data[i + c]!);
+      }
+  }
+  if (channels[0]!.length === 0) return null;
+  const median = (v: number[]) => v.sort((a, b) => a - b)[Math.floor(v.length / 2)]!;
+  return `rgb(${median(channels[0]!)}, ${median(channels[1]!)}, ${median(channels[2]!)})`;
 }
 
 type Region = { left: number; top: number; width: number; height: number };
@@ -265,10 +284,14 @@ async function measure(context: BrowserContext, html: string, facts: readonly st
       const hide = await page.addStyleTag({ content: HIDE_TEXT_CSS });
       const without = await shot();
       await hide.evaluate("(el) => el.remove()");
-      // the reference: the same boxes, nothing painted but the text (black on white), then without it
+      // the reference: the same boxes, nothing painted but the text, in its own colour on the
+      // colour painted under it on the page; then the same without the text
+      const owners = [...new Set(m.nodes.map((n) => n.owner))];
+      const style = (fill: () => string) => owners.map((i) => ({ i, bg: groundColour(without, m.nodes[i]!), fill: fill() }));
       await page.addStyleTag({ content: CLEAN_CSS });
+      await page.evaluate(`(${REFERENCE_SCRIPT})(${JSON.stringify(style(() => "currentcolor"))})`);
       const cleanWith = await shot();
-      await page.addStyleTag({ content: HIDE_TEXT_CSS });
+      await page.evaluate(`(${REFERENCE_SCRIPT})(${JSON.stringify(style(() => "transparent"))})`);
       const cleanWithout = await shot();
       lowContrast = m.nodes.map((n) => lowContrastShare(without, n));
       ink = m.nodes.map((n) => inkOf({ withText, without }, { withText: cleanWith, without: cleanWithout }, n));
@@ -287,6 +310,40 @@ function frameGroundDiff(shop: Measured, rs: Region, base: Measured, rb: Region)
   return regionDiff(shop.ground, inset(rs), base.ground, inset(rb));
 }
 
+type Core = { node: number; char: number; left: number; right: number; top: number; bottom: number };
+
+/**
+ * Which nodes have a character overprinted by another character (of another
+ * node, or of the same node elsewhere): text on text, which the pixel proof
+ * cannot see (both keep their ink) and hit-testing may not (re-review 2, High 1).
+ */
+export function overprinted(m: Measure): boolean[] {
+  const cores: Core[] = [];
+  m.nodes.forEach((n, node) => {
+    if (n.hidden) return;
+    n.chars.forEach((c, char) => {
+      const dx = n.vertical ? c.width * CORE_INSET : 0;
+      const dy = n.vertical ? 0 : c.height * CORE_INSET;
+      cores.push({ node, char, left: c.left + dx, right: c.left + c.width - dx, top: c.top + dy, bottom: c.top + c.height - dy });
+    });
+  });
+  cores.sort((a, b) => a.top - b.top);
+  const out = m.nodes.map(() => false);
+  for (let i = 0; i < cores.length; i++) {
+    const a = cores[i]!;
+    for (let j = i + 1; j < cores.length && cores[j]!.top < a.bottom; j++) {
+      const b = cores[j]!;
+      if (a.node === b.node && a.char === b.char) continue;
+      const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (w <= 0 || h <= 0) continue;
+      const smaller = Math.min((a.right - a.left) * (a.bottom - a.top), (b.right - b.left) * (b.bottom - b.top));
+      if (smaller > 0 && (w * h) / smaller > OVERLAP_SHARE) out[a.node] = out[b.node] = true;
+    }
+  }
+  return out;
+}
+
 /** Problems the shop stylesheet causes at one width (compared with the baseline). */
 export function compareMeasures(base: Measured, shop: Measured): ShopCssCheckCode[] {
   const out = new Set<ShopCssCheckCode>();
@@ -300,7 +357,9 @@ export function compareMeasures(base: Measured, shop: Measured): ShopCssCheckCod
   // the same markup with and without the stylesheet: text nodes line up one to one
   const sameNodes = s.nodes.length === b.nodes.length && s.nodes.every((n, i) => n.kind === b.nodes[i]!.kind && n.text === b.nodes[i]!.text);
   if (!sameNodes) out.add(s.nodes.filter((n) => n.kind === "fact").length !== b.nodes.filter((n) => n.kind === "fact").length ? "fact_missing" : "label_missing");
-  else
+  else {
+    const over = overprinted(s);
+    const wasOver = overprinted(b);
     s.nodes.forEach((n, i) => {
       const was = b.nodes[i]!;
       const code = (check: (typeof NODE_CHECKS)[number]) => out.add(`${n.kind}_${check}` as ShopCssCheckCode);
@@ -309,6 +368,7 @@ export function compareMeasures(base: Measured, shop: Measured): ShopCssCheckCod
       if (n.offscreen && !was.offscreen) code("offscreen");
       if (n.clipped && !was.clipped) code("clipped");
       if (n.covered && !was.covered) code("covered");
+      if (over[i] && !wasOver[i]) code("overlap");
       if (n.opacity < MIN_OPACITY && was.opacity >= MIN_OPACITY) code("faded");
       if (n.fontSize < MIN_FONT_PX - 0.01 && was.fontSize >= MIN_FONT_PX - 0.01) code("small");
       if (n.squeezed && !was.squeezed) code("squeezed");
@@ -317,6 +377,7 @@ export function compareMeasures(base: Measured, shop: Measured): ShopCssCheckCod
       const wasInk = base.ink[i]!;
       if ((ink.missing > 0 && wasInk.missing === 0) || (ink.ratio < INK_RATIO && wasInk.ratio >= INK_RATIO)) code("ink");
     });
+  }
   const same = (x: Measure["notice"], y: Measure["notice"], withTop: boolean) =>
     x !== null && y !== null && x.style === y.style && Math.abs(x.box.left - y.box.left) < 0.5 && Math.abs(x.box.width - y.box.width) < 0.5 && Math.abs(x.box.height - y.box.height) < 0.5 && (!withTop || Math.abs(x.box.top - y.box.top) < 0.5);
   if (!same(s.notice, b.notice, true)) out.add("notice_changed");
