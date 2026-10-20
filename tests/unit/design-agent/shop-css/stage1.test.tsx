@@ -95,6 +95,14 @@ describe("render check on Stage 1 layouts", () => {
     expect(patisserie.nodes.some((n) => n.kind === "fact" && THREE_SHOPS.patisserie!.demo.description!.startsWith(n.text.slice(0, 10)))).toBe(true);
   });
 
+  it("a footer moved by a fraction of a pixel is the same footer (CI 118754174929: the text antialiased differently)", async () => {
+    const { demo, profile } = THREE_SHOPS.cafe!;
+    for (const shift of ["0.25px", "0.5px", "0.75px"]) {
+      const r = await checkShopCssRender({ browser, build: pageBuilder(demo, profile), css: guarded(`#shop-css main { padding-bottom: calc(24px + ${shift}); }`), facts: demoFacts(demo), exhaustive: true });
+      expect(r.problems, shift).toEqual([]);
+    }
+  });
+
   const BAD: Array<[string, keyof typeof THREE_SHOPS, string, string[]]> = [
     ["the vertical name made transparent (pixel proof on vertical text)", "bakery", "#shop-css h1 { color: transparent; }", ["fact_contrast", "fact_ink"]],
     ["vertical headings made transparent", "bakery", "#shop-css section h2 span { color: transparent; }", ["label_contrast", "label_ink"]],

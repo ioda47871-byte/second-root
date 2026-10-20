@@ -13,6 +13,10 @@ import { launch, pageBuilder } from "./support";
 // 1440 px, against the same page without it. Stylesheets that pass the static
 // guard but hide, cover, shrink, fade or wash out facts must fail; the example
 // shop stylesheets must pass. Fictional shops only; nothing is fetched.
+//
+// Viewports are not mobile-emulated (isMobile off, touch below 821px): a shop
+// stylesheet can only branch on width, and the renderer's module CSS has no
+// (hover) or (pointer) media. If it ever gets one, check both sides here too.
 
 vi.setConfig({ testTimeout: 240_000 });
 
@@ -40,7 +44,6 @@ describe("render check: guard-passing stylesheets that break facts fail (DEV-072
     ["white text on the page ground", "#shop-css p, #shop-css li, #shop-css dd { color: #fefefe; }", ["fact_contrast"]],
     ["a ground the colour of the text", "#shop-css main { background-color: #2a1916; }", ["fact_contrast"]],
     ["a gradient the colour of the text", "#shop-css main { background-image: linear-gradient(#2a1916, #2b1a17); }", ["fact_contrast"]],
-    ["shrunk by a transform", "#shop-css dd { font-size: 12px; } #shop-css main { transform: scale(0.75); }", ["fact_small"]],
     ["faded through two ancestors", "#shop-css main { opacity: 0.9; } #shop-css section { opacity: 0.9; }", ["fact_faded"]],
     ["covered by a heading moved over them", "#shop-css section { display: grid; } #shop-css section > h2, #shop-css section > p, #shop-css section > ol, #shop-css section > div { grid-row: 1; grid-column: 1; } #shop-css section > h2 { order: 2; background-color: var(--p-bg); }", ["fact_covered"]],
     ["clipped by the hero", "#shop-css header { min-height: 0; max-height: 80px; }", ["fact_clipped"]],
@@ -54,6 +57,14 @@ describe("render check: guard-passing stylesheets that break facts fail (DEV-072
     ["values in a faint colour (alpha-text)", "#shop-css dd { color: rgb(42 25 22 / 0.2); }", ["fact_contrast"]],
     ["an almost transparent colour-mix", "#shop-css p { color: color-mix(in srgb, transparent, #000 10%); }", ["fact_contrast"]],
     ["a decoration raised over the name (corners-cover, on top)", '#shop-css header > span[aria-hidden="true"] { z-index: 5; } #shop-css header > span[aria-hidden="true"]::before { content: ""; display: block; width: 100%; height: 2400px; background-color: var(--p-bg); }', ["fact_covered", "fact_ink", "label_covered", "label_ink"]],
+    // DEV-072 security re-review (364df61): guard-passing probes the render check must stop
+    ["a strike-through band in the text colour (gradient on dd)", "#shop-css dd { background-image: linear-gradient(transparent 47%, #2a1916 47%, #2a1916 53%, transparent 53%); }", ["fact_contrast", "fact_ink"]],
+    ["a strike-through band on the inline spans", "#shop-css dd > span, #shop-css li > span { background-image: linear-gradient(transparent 46%, #2a1916 46%, #2a1916 56%, transparent 56%); }", ["fact_contrast", "fact_ink"]],
+    ["an inset ground in the text colour", "#shop-css dd { box-shadow: inset 0 0 0 16px #2a1916; }", ["fact_contrast", "fact_ink"]],
+    ["a faint colour-mix", "#shop-css dd { color: color-mix(in srgb, #2a1916 35%, transparent); }", ["fact_contrast"]],
+    ["a wide rotated label with a ground over the values (scale is gone; rotate is left)", "#shop-css dl > div > dt { position: relative; z-index: 1; width: 320px; height: 24px; transform: rotate(8deg); background-color: var(--p-bg); }", ["fact_covered", "fact_ink"]],
+    ["a heading over the text in the same grid cell", "#shop-css section { display: grid; } #shop-css section > h2, #shop-css section > p { grid-row: 1; grid-column: 1; } #shop-css section > h2 { position: relative; z-index: 2; }", ["fact_covered", "fact_ink"]],
+    ["a label's ::before ground over the value in the same cell", '#shop-css dl > div { display: grid; } #shop-css dl > div > dt { grid-row: 1; grid-column: 1; position: relative; z-index: 1; width: 40px; margin-left: 40px; } #shop-css dl > div > dd { grid-row: 1; grid-column: 1; } #shop-css dl > div > dt::before { content: ""; display: block; height: 14px; background-color: var(--p-bg); }', ["fact_covered", "fact_ink", "label_squeezed"]],
   ];
   for (const [name, css, expected] of BAD)
     it(name, async () => {
@@ -90,6 +101,12 @@ describe("render check: guard-passing stylesheets that break facts fail (DEV-072
     expect(codes(shadow.problems).some((c) => c === "notice_ink" || c === "notice_changed" || c === "notice_contrast"), shadow.problems.join(" ")).toBe(true);
     const footerShadow = await check(guarded("#shop-css { color: var(--p-text); }"), SHOP, bypass("#shop-css main { position: relative; z-index: 1; box-shadow: 0 16px 0 16px #761D27; } #shop-css { overflow: visible !important; }"));
     expect(codes(footerShadow.problems).some((c) => c === "footer_ink" || c === "footer_changed"), footerShadow.problems.join(" ")).toBe(true);
+    // High 1 of the re-review, past the guard: a stretched neighbour over the top of the values
+    const stretched = await check(guarded("#shop-css { color: var(--p-text); }"), SHOP, bypass("#shop-css dl > div > dt { transform: scaleY(2); background-color: #f4e8d2; }"));
+    expect(codes(stretched.problems).some((c) => c === "fact_ink" || c === "fact_covered"), stretched.problems.join(" ")).toBe(true);
+    // a cover hit-testing cannot see (an outer shadow over the top 40 % of the values): the ink proof alone
+    const shadowed = await check(guarded("#shop-css { color: var(--p-text); }"), SHOP, bypass("#shop-css dl > div > dt { position: relative; z-index: 1; box-shadow: 0 0 0 14px #f4e8d2; }"));
+    expect(codes(shadowed.problems), shadowed.problems.join(" ")).toContain("fact_ink");
     // a page with a script is never accepted
     const script = await check(guarded("#shop-css { color: var(--p-text); }"), SHOP, (css) => base(css).replace("</body>", "<script>void 0</script></body>"));
     expect(codes(script.problems)).toContain("page_script");
@@ -135,14 +152,21 @@ describe("pixel proof and widths (pure)", () => {
     return { width: 20, height: 10, channels: 3, data };
   };
   const node = { kind: "fact" as const, text: "ab", hidden: false, offscreen: false, clipped: false, covered: false, opacity: 1, fontSize: 16, vertical: false, squeezed: false, color: [0, 0, 0, 1] as [number, number, number, number], rects: [], chars: [{ left: 0, top: 0, width: 10, height: 10 }, { left: 10, top: 0, width: 10, height: 10 }] };
-  it("a character whose box does not change between the two pictures has no ink", () => {
-    const ground = picture(() => 255);
-    // ink in the first character only, rows 2..7
-    const text = picture((x, y) => (x < 10 && y >= 2 && y <= 7 ? 0 : 255));
-    expect(inkOf(text, ground, node)).toEqual({ missing: 1, extent: 0.6 });
-    // the top half covered: the ink reaches less far
-    const half = picture((x, y) => (y >= 5 && y <= 7 ? 0 : 255));
-    expect(inkOf(half, ground, node)).toEqual({ missing: 0, extent: 0.3 });
+  it("each character keeps its reference ink, judged by the worst character", () => {
+    const white = picture(() => 255);
+    // the reference: both characters inked on rows 2..7
+    const reference = { withText: picture((_x, y) => (y >= 2 && y <= 7 ? 0 : 255)), without: white };
+    expect(inkOf(reference, reference, node)).toEqual({ missing: 0, ratio: 1 });
+    // the page: the second character covered by a ground of the page colour (both pictures equal there)
+    expect(inkOf({ withText: picture((x, y) => (x < 10 && y >= 2 && y <= 7 ? 0 : 255)), without: white }, reference, node)).toEqual({ missing: 1, ratio: 0 });
+    // the top 40 % of the second character covered (High 1 of the re-review): its ratio, not the mean, decides
+    const cut = inkOf({ withText: picture((x, y) => (y >= 2 && y <= 7 && (x < 10 || y >= 5) ? 0 : 255)), without: white }, reference, node);
+    expect(cut.missing).toBe(0);
+    expect(cut.ratio).toBeCloseTo(0.5);
+    // light text on a dark ground covers the same pixels: coverage is colour-free
+    const dark = picture(() => 30);
+    const light = { ...node, color: [250, 250, 250, 1] as [number, number, number, number] };
+    expect(inkOf({ withText: picture((_x, y) => (y >= 2 && y <= 7 ? 250 : 30)), without: dark }, reference, light)).toEqual({ missing: 0, ratio: 1 });
   });
   it("widths: the fixed set and each side of every breakpoint (em at 16px)", () => {
     expect(checkWidths(guarded("@media (min-width: 45em) { #shop-css p { color: #000; } }"))).toEqual([320, 360, 390, 719, 720, 721, 768, 1024, 1440, 1920]);

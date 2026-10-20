@@ -219,7 +219,21 @@ const ADVERSARIAL: Array<[string, string]> = [
   ["universal in a chain", "#shop-css section > * { color: #000; }"],
   [":not() alone (Low 1)", "#shop-css :not(p) { color: #000; }"],
   ["attribute alone reaches svg", '#shop-css [aria-hidden="true"] { display: block; }'],
-  ["too many breakpoints", "@media (min-width: 100px) { #shop-css p { color: #000; } } @media (min-width: 200px) { #shop-css p { color: #000; } } @media (min-width: 300px) { #shop-css p { color: #000; } } @media (min-width: 400px) and (max-width: 500px) { #shop-css p { color: #000; } }"],
+  ["too many breakpoints", "@media (min-width: 400px) { #shop-css p { color: #000; } } @media (min-width: 500px) { #shop-css p { color: #000; } } @media (min-width: 600px) { #shop-css p { color: #000; } } @media (min-width: 700px) and (max-width: 800px) { #shop-css p { color: #000; } }"],
+  // DEV-072 security re-review (364df61)
+  ["scaleY a neighbour over the values (High 1)", "#shop-css dl > div > dt { transform: scaleY(2); background-color: var(--p-bg); }"],
+  ["scaleY(1.6)", "#shop-css dl > div > dt { transform: scaleY(1.6); background-color: var(--p-bg); }"],
+  ["scaleX a heading", "#shop-css h2 { transform: scaleX(2); background-color: var(--p-bg); }"],
+  ["scale with rotate", "#shop-css dl > div > dt { transform: rotate(8deg) scale(2); background-color: var(--p-bg); }"],
+  ["scale down", "#shop-css main { transform: scale(0.75); }"],
+  ["two rotations", "#shop-css h2 { transform: rotate(4deg) rotate(4deg); }"],
+  ["a band above the checked widths (Medium 1)", "@media (min-width: 2561px) { #shop-css p, #shop-css dd, #shop-css li, #shop-css span, #shop-css h1, #shop-css h2, #shop-css dt { color: var(--p-bg); } }"],
+  ["a band below the checked widths", "@media (max-width: 279px) { #shop-css p, #shop-css dd, #shop-css li, #shop-css span, #shop-css h1, #shop-css h2, #shop-css dt { color: var(--p-bg); } }"],
+  ["a breakpoint just above 1920px", "@media (min-width: 1921px) { #shop-css p { color: #000; } }"],
+  ["a breakpoint just below 320px", "@media (max-width: 319px) { #shop-css p { color: #000; } }"],
+  ["a breakpoint in em above 1920px", "@media (min-width: 121em) { #shop-css p { color: #000; } }"],
+  ["sideways values (Low 1)", "#shop-css dd { writing-mode: vertical-lr; text-orientation: sideways; }"],
+  ["sideways headings", "#shop-css h2, #shop-css h1 { text-orientation: sideways; }"],
   ["vendor prefix", "#shop-css p { -webkit-box-reflect: below; }"],
   ["unknown property", "#shop-css p { zoom: 0.1; }"],
 ];
@@ -302,7 +316,7 @@ describe("guardShopCss accepts the allowed vocabulary and re-serializes", () => 
       font-family: var(--font-ja-editorial), var(--serif), serif;
       font-size: clamp(2.5rem, 9vw, 7rem); font-weight: 900; line-height: 1.1; letter-spacing: 0.04em;
       color: color-mix(in srgb, var(--p-primary) 80%, #000);
-      transform: rotate(-3deg) scale(1.05); transform-origin: left center;
+      transform: rotate(-3deg); transform-origin: left center;
       text-decoration: underline wavy;
     }`);
     accepts(`#shop-css header {
@@ -312,6 +326,9 @@ describe("guardShopCss accepts the allowed vocabulary and re-serializes", () => 
     }`);
     accepts("#shop-css main { display: grid; grid-template-columns: 1fr minmax(0, 32em) 1fr; } #shop-css main > section { grid-column: 2 / 3; }");
     accepts("#shop-css ol { display: flex; flex-flow: row wrap; gap: 8px 12px; list-style: none; padding: 0; }");
+    // breakpoints at the ends of the checked widths, in px and em
+    accepts("@media (min-width: 320px) and (max-width: 1920px) { #shop-css p { color: #000; } } @media (min-width: 20em) and (max-width: 120em) { #shop-css li { color: #000; } }");
+    accepts("#shop-css h1 { writing-mode: vertical-rl; text-orientation: upright; }");
   });
 
   it("the example shop stylesheets pass", () => {
