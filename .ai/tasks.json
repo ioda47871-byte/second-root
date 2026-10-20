@@ -2779,7 +2779,7 @@
     {
       "id": "DEV-063",
       "title": "bridge 専用 Vercel bypass の設定を 1 回の貼り付けにする script と、読み取りだけの状態確認",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-059",
@@ -2823,7 +2823,7 @@
         "WSL で script を実行する",
         "controlled run の window（flag の一時 ON）"
       ],
-      "decision": "2026-10-19: 人の指示で Claude が追加"
+      "decision": "2026-10-19: 人の指示で Claude が追加; 2026-10-20: PR #76 merge（c066618）。Fresh Review PASS（Medium 1・Low 3・Nit 5）→ 修正 → 再レビュー PASS（Low 1・Nit 2）→ 修正 → 最終レビュー PASS（Nit 1: lock の fd 8 の test → Claude が追加 54d8606）。CI green（39331135273、6 job）。人の作業は HUMAN-013（Vercel で secret 作成 + WSL で 1 行）"
     }
   ]
 }
