@@ -28,8 +28,8 @@ production branch が `main` でない、flag の record が Preview `develop` �
 1. **app の中の期限（`SALES_AI_DESIGN_ENABLED_UNTIL`、DEV-064）**: 値は `YYYY-MM-DDTHH:MM:SSZ`。設定されていると、flag はその時刻より前だけ有効（`lib/sales/design.ts` の `aiDesignEnabled`、request ごとの判定）。期限を過ぎると、誰も何もしなくても bridge API は `design_bridge_disabled`（503）、demo はテンプレート、Sales Agent の persist は従来どおり。形が違う値・空の値は無効（fail closed）。未設定（record が無い）なら従来どおり（Production は未設定）。
    - `on` は期限を**先に**書き、flag を後で `true` にする。期限なしで flag が `true` になる瞬間は無い。`--until` は 30 分〜4 時間先だけ。flag が `false` でない間の `on` は拒否（window を延ばさない。延ばすなら `off` → 改めて承認）
    - 遠い未来の期限は script では書けない（4 時間まで）。Vercel の画面で人が書いた値は app が形だけを確かめる
-2. **独立した復旧 session（Claude の one-shot の scheduled task）**: 期限の 10 分後に、この環境で**新しい session**が起き、develop を checkout して `off --if-until <UNTIL>` → develop に記録を push（redeploy）→ `verify --expect off` まで行う。この session（window を開いた Claude）が止まっていても動く。flag がすでに `false` で、その後の deployment なら何もしない。期限の値が `<UNTIL>` でない（別の window）なら何もしない。
-   - **予行（window の前、読むだけ）**: 同じ形の one-shot の scheduled task を数分後に 1 回だけ作り、新しい session が develop を checkout して `staging:design-flag -- status` を `DESIGN_FLAG STATUS` まで実行でき、develop に `.ai/progress.md` の予行の記録 1 行を commit して push できることを確かめる（`git push --dry-run` は変更が無いと権限を確かめない）。Vercel・DB には何も書かない（push は develop の Preview を作り直すだけで、flag は `false` のまま）
+2. **独立した復旧 session（Claude の one-shot の scheduled task）**: 期限の 10 分後に、この環境で**新しい session**が起き、develop を checkout して `off --if-until <UNTIL>` → develop に記録を push（redeploy）→ `verify --expect off` まで行う。この session（window を開いた Claude）が止まっていても動く。flag がすでに `false` で、その後の deployment なら何もしない。期限が `<UNTIL>` と違う正しい時刻（別の window）なら何もしない（期限が無い・壊れているときは off する）。
+   - **予行（window の前。Vercel・DB には書かない）**: 同じ形の one-shot の scheduled task を数分後に 1 回だけ作り、新しい session が develop を checkout して `staging:design-flag -- status` を `DESIGN_FLAG STATUS` まで実行でき、develop に `.ai/progress.md` の予行の記録 1 行を commit して push できることを確かめる（`git push --dry-run` は変更が無いと権限を確かめない）。Vercel・DB には何も書かない（push は develop の Preview を作り直すだけで、flag は `false` のまま）
 
 どちらも効かなかったときは §5。
 
