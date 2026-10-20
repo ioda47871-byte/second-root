@@ -1,12 +1,11 @@
 /**
- * The local 3-shop comparison (DEV-073). Started by
- * scripts/sales-design-worker/compare-local.sh (the supported entry point on the
- * human's WSL machine, inside the jail), which pins the checkout, holds the
- * worker's run lock and gives this process a time budget. See
+ * The local 3-shop comparison (DEV-073). Runs only under
+ * scripts/sales-design-worker/compare-local.sh (the human's WSL machine, inside
+ * the jail), which holds the worker's run lock, pins the checkout, allowlists
+ * the environment and gives this process its time budget; it sets
+ * SR_DESIGN_COMPARE_LOCKED for this process, and without it this refuses
+ * (exit 2, nothing started). Never start it directly. See
  * docs/operations/design-compare-local.md.
- *
- *   tsx scripts/sales-design-worker/compare.ts --compare-id cmp-<n> --mode design|baseline|hand_written \
- *     --human-approval-confirmed [--budget-seconds <n>] [--shops wagashi,coffee,patisserie]
  *
  * Paths (outside the repository; the repository is public):
  *   comparison  $SR_DESIGN_COMPARE_ROOT or ~/sr-design-compare/<compare id>/
@@ -20,7 +19,8 @@ import { join, relative, resolve } from "node:path";
 import { chromium } from "playwright";
 import { killAllBoundedChildren, runBounded, RunDeadline } from "../../lib/design-agent/bounded-process";
 import { COMPARE_ID, COMPARE_MODES, runComparison, type CompareMode } from "../../lib/design-agent/compare/run";
-import { loadHandWritten, loadShops } from "../../lib/design-agent/compare/shops";
+import { writeCompareReport } from "../../lib/design-agent/compare/report";
+import { loadHandWritten, loadShops, selectShops } from "../../lib/design-agent/compare/shops";
 import { killPreviewServers } from "../../lib/design-agent/preview-server";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 import { productionPreview } from "../../lib/design-agent/worker/preview";
@@ -30,8 +30,11 @@ const REPO = resolve(__dirname, "../..");
 const FIXTURES = join(REPO, "scripts/sales-design-worker/compare");
 process.umask(0o077);
 const WATCHDOG_GRACE_MS = 60 * 1000;
-/** Three shops × the worker's 50-minute budget, and the build. */
-const MAX_BUDGET_SECONDS = 3 * 50 * 60 + 30 * 60;
+/** The jail's one run (admin.sh run: RuntimeMaxSec=3500) holds the whole comparison, as run.sh's 3300 s. */
+const MAX_BUDGET_SECONDS = 3300;
+/** Set when the report can be written so far (after the comparison started). */
+let compareDir: string | null = null;
+let stopping = false;
 
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -48,18 +51,30 @@ const usage = (message: string): never => {
   process.exit(2);
 };
 
-function stopNow(code: string): never {
+/** Stops the children, writes the report of what was done so far (no contact sheet; at most 20 s), then exits 1. */
+function stopNow(code: string): void {
+  if (stopping) return;
+  stopping = true;
   killPreviewServers();
   killAllBoundedChildren();
   removeActiveTempRootsSync();
-  process.stdout.write(`${JSON.stringify({ status: "stopped", code })}\n`);
-  process.exit(1);
+  const dir = compareDir;
+  const report = dir ? Promise.race([writeCompareReport(dir).then(() => true, () => false), new Promise<boolean>((r) => setTimeout(() => r(false), 20_000))]) : Promise.resolve(false);
+  void report.then((written) => {
+    process.stdout.write(`${JSON.stringify({ status: "stopped", code, report_so_far: written })}\n`);
+    process.exit(1);
+  });
 }
 
 async function main(): Promise<number> {
   // The human's explicit approval comes first: without it nothing is read, built or started.
   if (!argv.includes("--human-approval-confirmed")) {
     process.stderr.write("STOP: --human-approval-confirmed is missing. The comparison runs only with the human's explicit approval of this run. Nothing was started.\n");
+    return 2;
+  }
+  // Only under compare-local.sh: the worker's run lock, the pinned checkout and the allowlisted environment.
+  if (process.env.SR_DESIGN_COMPARE_LOCKED !== "run.lock") {
+    process.stderr.write("STOP: start the comparison with scripts/sales-design-worker/compare-local.sh (it holds the worker's run lock). Nothing was started.\n");
     return 2;
   }
   const compareId = flag("compare-id") ?? "";
@@ -78,13 +93,8 @@ async function main(): Promise<number> {
   };
   for (const p of [root, ...Object.values(workerPaths)]) if (insideRepo(p)) usage("the comparison and the worker's directories must be outside the repository.");
 
-  let shops = await loadShops(join(FIXTURES, "shops"));
-  const only = flag("shops");
-  if (only !== undefined) {
-    const keys = only.split(",");
-    shops = shops.filter((s) => keys.includes(s.key));
-    if (shops.length !== keys.length) usage("--shops: keys of scripts/sales-design-worker/compare/shops/*.json, comma separated.");
-  }
+  const shops = selectShops(await loadShops(join(FIXTURES, "shops")), flag("shops"));
+  if (!shops) return usage("--shops: keys of scripts/sales-design-worker/compare/shops/*.json, comma separated, each once.");
   const handWritten = mode === "hand_written" ? await loadHandWritten(join(FIXTURES, "hand-written"), shops.map((s) => s.key)) : undefined;
 
   const env = childEnvironment(process.env);
@@ -94,6 +104,7 @@ async function main(): Promise<number> {
     chromium.launch({ headless: true, env: e, ...(e.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: e.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
 
   setTimeout(() => stopNow("COMPARE_RUN_TIME_BUDGET"), budgetMs + WATCHDOG_GRACE_MS).unref();
+  compareDir = join(root, compareId);
   say(`comparison ${compareId} (${mode}, ${shops.length} shops, commit ${workerSha.slice(0, 12)}, budget ${Math.round(budgetMs / 60000)} min)`);
   const result = await runComparison({
     humanApprovalConfirmed: true,
@@ -112,10 +123,13 @@ async function main(): Promise<number> {
     log: say,
   });
   process.stdout.write(`${JSON.stringify(result.status === "done" ? { status: result.status, runs: result.runs } : result, null, 2)}\n`);
-  if (result.status === "refused") return 2;
+  if (result.status === "refused") {
+    compareDir = null;
+    return 2;
+  }
   const dir = join(root, compareId);
   say(`report: ${join(dir, "compare-report.md")}`);
-  say(`preview: SR_DESIGN_PREVIEW_ROOT=${join(dir, "runs")} npx next start → /design-preview/<run id>?profile=final`);
+  say(`pages: ${join(dir, "contact-sheet.png")} and runs/<run id>/page-{desktop,mobile}.png (a live preview: docs/operations/design-compare-local.md, never in the worker's checkout)`);
   return result.status === "done" ? 0 : 1;
 }
 

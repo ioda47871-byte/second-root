@@ -32,7 +32,7 @@ import { copyPipelineShots, environmentCode, pipelineRecord, RUN_TIME_BUDGET_MS,
 import { acquireLock, writeJsonAtomic } from "../worker/state";
 import { cleanStaleTemp, createTempRoot, removeTempRoot } from "../worker/temp";
 import { writeCompareReport } from "./report";
-import { checkPageSafety, type Safety } from "./safety";
+import { checkPageSafety, type SafetyRecord } from "./safety";
 import type { CompareShop } from "./shops";
 
 export const COMPARE_ID = /^cmp-[a-z0-9-]{1,30}$/;
@@ -40,6 +40,8 @@ export const COMPARE_MODES = ["design", "baseline", "hand_written"] as const;
 export type CompareMode = (typeof COMPARE_MODES)[number];
 /** Per shop, the worker's own run budget (its timeouts are unchanged). */
 export const SHOP_BUDGET_MS = RUN_TIME_BUDGET_MS;
+/** A design shop starts only with at least this much of the comparison's budget left. */
+export const MIN_SHOP_MS = 10 * 60 * 1000;
 
 export const runIdFor = (compareId: string, key: string, kind: "design" | "baseline" | "hand_written") =>
   kind === "design" ? `${compareId}-${key}` : `${compareId}-${key}-${kind === "baseline" ? "base" : "hand"}`;
@@ -155,7 +157,7 @@ export async function runComparison(o: CompareOptions): Promise<CompareResult> {
       runs.push(await runBaseline(ctx, shop));
       if (o.mode === "hand_written") runs.push(await runHandWritten(ctx, shop, o.handWritten![shop.key]!));
       if (o.mode === "design") {
-        if (o.deadline.remainingMs() < 10 * 60 * 1000) {
+        if (o.deadline.remainingMs() < MIN_SHOP_MS) {
           stop = "COMPARE_RUN_TIME_BUDGET";
           log("not enough time left for another shop");
           break;
@@ -175,6 +177,8 @@ export async function runComparison(o: CompareOptions): Promise<CompareResult> {
   } catch (error) {
     const code = error instanceof DeadlineError ? "COMPARE_RUN_TIME_BUDGET" : codeOf(error);
     log(`comparison stopped: ${code}`);
+    // the report of what was done so far (compare-report.ts can write it again)
+    if (runs.length > 0) await writeCompareReport(compareDir, { browser }).catch(() => undefined);
     return { status: "stopped", code, runs };
   } finally {
     await browser?.close().catch(() => undefined);
@@ -215,9 +219,10 @@ const baseRecord = (ctx: ShopContext, runId: string, shop: CompareShop, kind: Co
   compare: { compare_id: ctx.o.compareId, shop: shop.key, category: shop.demo.category, richness: shop.richness, kind, references: 0 },
 });
 
-async function safetyOf(ctx: ShopContext, runId: string, candidate: string, shop: CompareShop): Promise<Safety | null> {
-  if (!ctx.session.origin) return null;
-  return checkPageSafety(ctx.browser, `${ctx.session.origin}/design-preview/${runId}?profile=${candidate}`, shop.demo).catch(() => null);
+/** A check that could not run is recorded as failed (shown as NG), never as missing. */
+async function safetyOf(ctx: ShopContext, runId: string, candidate: string, shop: CompareShop): Promise<SafetyRecord> {
+  if (!ctx.session.origin) return { ok: false, error: "SAFETY_CHECK_FAILED" };
+  return checkPageSafety(ctx.browser, `${ctx.session.origin}/design-preview/${runId}?profile=${candidate}`, shop.demo).catch(() => ({ ok: false as const, error: "SAFETY_CHECK_FAILED" }));
 }
 
 /** Renders one candidate and keeps its screenshots as the compared page (page-desktop.png / page-mobile.png). */

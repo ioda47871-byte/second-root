@@ -23,9 +23,12 @@
   worker と同じ pipeline（実 Codex）に流し、baseline（今の頁）と比べる。道具は `scripts/sales-design-worker/compare-local.sh`、手順・時間と費用の見込み・
   しないこと・report の読み方は `docs/operations/design-compare-local.md`。Claude は WSL に触れない（この container では fake Codex の test と手書きの spec の demo だけ）。
 - 範囲: local の `~/sr-design-compare/<compare id>/` だけ。DB・bridge・Staging・Production・flag・cycle・timer・送信・worker の queue と結果には触れない。参照画像なし、写真なし。
-  Codex は 3 店で 6〜21 回（ChatGPT の plan の枠、API の課金なし）、通常 15〜30 分、上限 3 時間。
+  Codex は 3 店で 6〜21 回（ChatGPT の plan の枠、API の課金なし）、通常 15〜30 分、上限 3300 秒（55 分。jail の 1 回の実行 3500 秒の中、run.sh と同じ）。
+  worker の timer には一切触れない（同時に走らないことは run.lock で保つ）。入口は `compare-local.sh` だけ（`compare.ts` の直接起動は止まる）。
+  結果は参照なし・架空の店の条件なので、styling の差は実際の job より控えめに出うる（doc の「条件の偏り」）。
 - 人の操作: (1) この実行を承認する、(2) まず `--mode baseline`（Codex なし）で道具の動作を確かめる、(3) `--mode design --compare-id cmp-001 --human-approval-confirmed` を
-  jail の中で流す（timer は止めて戻す。doc の 1 コマンド）、(4) `compare-report.md`（と `.json`・`contact-sheet.png`）を Claude に渡す。
+  jail の中で流す（doc の 1 コマンド。timer はそのまま）、(4) `compare-report.md`（と `.json`・`contact-sheet.png`）を Claude に渡す。時間切れで止まったら、
+  それまでの report と符号を渡す（残りの店は新しい compare id と `--shops` で流せる）。
 - 解除条件: design の report が届く（または人が流さないと決める）。
 
 ### HUMAN-016（任意）— WSL に残る generated_concept の PoC asset の削除（DEV-070）

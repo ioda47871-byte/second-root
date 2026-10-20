@@ -78,3 +78,12 @@ export function factStrings(demo: DemoView): Array<{ key: string; text: string }
     ...demo.menuItems.map((text, i) => ({ key: `menu_items.${i}`, text })),
   ];
 }
+
+/** --shops: the listed keys (comma separated, each once, all known), or every shop when absent; null when invalid. */
+export function selectShops(shops: CompareShop[], only: string | undefined): CompareShop[] | null {
+  if (only === undefined) return shops;
+  const keys = only.split(",");
+  if (keys.length === 0 || new Set(keys).size !== keys.length) return null;
+  const picked = shops.filter((s) => keys.includes(s.key));
+  return picked.length === keys.length ? picked : null;
+}

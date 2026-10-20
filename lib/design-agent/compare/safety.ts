@@ -19,7 +19,8 @@ export const SAFETY_SCRIPT = String.raw`((facts) => {
     const s = getComputedStyle(e);
     return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && Number(s.opacity) > 0;
   };
-  const flat = (s) => s.replace(/\s+/g, "");
+  // case-insensitive: a displayCase "uppercase" page shows the name in capitals (innerText follows text-transform)
+  const flat = (s) => s.replace(/\s+/g, "").toLowerCase();
   const text = flat(document.body.innerText || "");
   const note = document.querySelector('[role="note"]');
   const footer = document.querySelector("footer");
@@ -39,6 +40,8 @@ const PageSafetySchema = z.strictObject({
 });
 export type PageSafety = z.infer<typeof PageSafetySchema>;
 export type Safety = { desktop: PageSafety; mobile: PageSafety; ok: boolean };
+/** What a run records: the check, or that it could not run (a failed check, never a pass). */
+export type SafetyRecord = Safety | { ok: false; error: "SAFETY_CHECK_FAILED" };
 
 export const pageSafe = (p: PageSafety) => p.missing.length === 0 && p.notice && p.footer && p.overflow === 0;
 

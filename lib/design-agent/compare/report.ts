@@ -13,6 +13,21 @@ import { RUN_ID } from "../run-id";
 import { writeContactSheet } from "./contact-sheet";
 import { pixelDifference, structureDistance, structureOf, type PixelDifference, type Structure, type StructureDistance } from "./metrics";
 import type { Safety } from "./safety";
+
+/**
+ * The comparison's conditions that differ from a real worker job and can bias
+ * the result (Fresh Review DEV-073 Low 5). Fixed codes; the Markdown explains them.
+ */
+export const COMPARE_CONDITIONS = [
+  // no reference image: Codex sees only the facts, the category and the current demo
+  "NO_REFERENCES",
+  // the description says the shop is fictional (it is shown on the page)
+  "FICTIONAL_SHOP_DESCRIPTION",
+  // every menu item starts with テスト
+  "TEST_PREFIXED_MENU_ITEMS",
+  // RULES: thin material → calm styling and confidence below 0.5 (structure is exempt)
+  "THIN_MATERIAL_CALM_STYLING",
+] as const;
 import { factStrings } from "./shops";
 
 type Json = Record<string, unknown>;
@@ -86,9 +101,11 @@ function scoresOf(round: Json | null) {
 
 function safetyOf(v: unknown) {
   const s = v as Safety | null | undefined;
-  if (!s || typeof s !== "object" || !s.desktop || !s.mobile) return null;
+  if (!s || typeof s !== "object") return null;
+  // a check that could not run is a failed check (NG), not a missing one
+  if (!s.desktop || !s.mobile) return { ok: false, error: code((s as { error?: unknown }).error) ?? "SAFETY_CHECK_FAILED", desktop: null, mobile: null };
   const page = (p: Safety["desktop"]) => ({ missing_facts: codes(p.missing), notice: p.notice === true, footer: p.footer === true, overflow_px: num(p.overflow) });
-  return { ok: s.ok === true, desktop: page(s.desktop), mobile: page(s.mobile) };
+  return { ok: s.ok === true, error: null, desktop: page(s.desktop), mobile: page(s.mobile) };
 }
 
 function layoutOf(run: Run) {
@@ -222,6 +239,8 @@ export async function buildCompareReport(compareDir: string) {
     /** hand_written: a person wrote the specs (a renderer demo); Codex generated nothing. */
     hand_written_specs: mode === "hand_written",
     references: 0,
+    /** Conditions that differ from a real worker job (see COMPARE_CONDITIONS); only for Codex's own work. */
+    conditions: mode === "design" || mode === "mixed" ? [...COMPARE_CONDITIONS] : [],
     worker_commit: code(((subjects[0] ?? baselines[0])?.record.worker as Json | undefined)?.commit),
     shops: shops.map((shop) => {
       const s = subjectOf(shop);
@@ -262,6 +281,8 @@ const f = (n: number | null | undefined, digits = 3) => (typeof n === "number" ?
 const pct = (n: number | null | undefined) => (typeof n === "number" ? `${(n * 100).toFixed(1)}%` : "–");
 const sec = (ms: number | null | undefined) => (typeof ms === "number" ? `${(ms / 1000).toFixed(1)} s` : "–");
 
+const okNg = (s: { ok: boolean; error: string | null } | null | undefined) => (!s ? "–" : s.ok ? "OK" : s.error ? "NG（検査失敗）" : "NG");
+
 export function reportMarkdown(r: CompareReport): string {
   const lines: string[] = [];
   lines.push(`# 3 店の比較 ${r.compare_id}`, "");
@@ -270,13 +291,26 @@ export function reportMarkdown(r: CompareReport): string {
   else if (r.mode === "design") lines.push("> Codex の実際の生成（worker と同じ pipeline・prompt・gate）。参照画像なし（架空の店）。", "");
   else lines.push("> baseline だけ（category default から layout を除いた今の頁）。", "");
   lines.push(`mode: ${r.mode} / worker commit: ${r.worker_commit ?? "–"} / 参照画像: ${r.references}`, "");
+  if (r.conditions.length) {
+    lines.push(
+      "## 条件の偏り（実際の job との違い）",
+      "",
+      "この比較は実際の worker の job と次の点で違う。styling（色・書体・direction・画素の差）は実際の job より控えめに出うる。構造（節・順・first view）は RULES で calm の規則から外されているので影響は小さい。",
+      "",
+      "- `NO_REFERENCES`: 参照画像が無い。Codex は事実・category・今の demo だけで判断する",
+      "- `FICTIONAL_SHOP_DESCRIPTION`: 説明文に「比較用の架空の…実在の店舗ではありません」がある（頁にも出る）",
+      "- `TEST_PREFIXED_MENU_ITEMS`: menu の全品が「テスト」で始まる",
+      "- `THIN_MATERIAL_CALM_STYLING`: RULES の「material が style について少ししか言わなければ styling を calm にし confidence を 0.5 未満にする」が働きうる",
+      "",
+    );
+  }
 
   lines.push("## 店ごと", "", "| 店 | 業種 | 事実 | 結果 | 判定 | brand | visual | hierarchy | mobile | generic | total | round | revision | Codex 呼び出し | Codex 時間 | prompt 字数（≈token） | 安全 |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const s of r.shops) {
     const x = s.subject;
     const c = x?.codex;
     lines.push(
-      `| ${s.shop} | ${s.category ?? "–"} | ${s.richness ?? "–"} (${s.facts ?? "–"}) | ${x?.outcome ?? "–"} | ${c?.verdict ?? "–"} | ${c?.scores?.brand_fit ?? "–"} | ${c?.scores?.visual_quality ?? "–"} | ${c?.scores?.hierarchy ?? "–"} | ${c?.scores?.mobile_quality ?? "–"} | ${c?.scores?.generic_template_feel ?? "–"} | ${c?.scores?.total ?? "–"} | ${c?.rounds ?? "–"} | ${c?.revisions ?? "–"} | ${c?.calls ?? "–"} | ${sec(c?.codex_ms)} | ${x?.prompt_chars_total ? `${x.prompt_chars_total}（≈${Math.round(x.prompt_chars_total / 4)}）` : "–"} | ${x?.safety ? (x.safety.ok ? "OK" : "NG") : "–"} / base ${s.baseline?.safety ? (s.baseline.safety.ok ? "OK" : "NG") : "–"} |`,
+      `| ${s.shop} | ${s.category ?? "–"} | ${s.richness ?? "–"} (${s.facts ?? "–"}) | ${x?.outcome ?? "–"} | ${c?.verdict ?? "–"} | ${c?.scores?.brand_fit ?? "–"} | ${c?.scores?.visual_quality ?? "–"} | ${c?.scores?.hierarchy ?? "–"} | ${c?.scores?.mobile_quality ?? "–"} | ${c?.scores?.generic_template_feel ?? "–"} | ${c?.scores?.total ?? "–"} | ${c?.rounds ?? "–"} | ${c?.revisions ?? "–"} | ${c?.calls ?? "–"} | ${sec(c?.codex_ms)} | ${x?.prompt_chars_total ? `${x.prompt_chars_total}（≈${Math.round(x.prompt_chars_total / 4)}）` : "–"} | ${okNg(x?.safety)} / base ${okNg(s.baseline?.safety)} |`,
     );
   }
   lines.push("");
@@ -319,7 +353,11 @@ export function reportMarkdown(r: CompareReport): string {
   for (const s of r.shops) {
     for (const x of [s.subject, s.baseline]) {
       if (!x?.safety) continue;
-      const p = (q: NonNullable<typeof x.safety>["desktop"]) => `${q.missing_facts.join(", ") || "なし"} / ${q.notice ? "あり" : "なし"} / ${q.footer ? "あり" : "なし"} / ${q.overflow_px ?? "–"}px`;
+      if (!x.safety.desktop || !x.safety.mobile) {
+        lines.push(`| ${x.run_id} | NG（検査できなかった: ${x.safety.error}） | NG |`);
+        continue;
+      }
+      const p = (q: NonNullable<NonNullable<typeof x.safety>["desktop"]>) => `${q.missing_facts.join(", ") || "なし"} / ${q.notice ? "あり" : "なし"} / ${q.footer ? "あり" : "なし"} / ${q.overflow_px ?? "–"}px`;
       lines.push(`| ${x.run_id} | ${p(x.safety.desktop)} | ${p(x.safety.mobile)} |`);
     }
   }

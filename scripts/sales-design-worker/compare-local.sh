@@ -5,6 +5,7 @@
 #
 #   ./scripts/sales-design-worker/compare-local.sh --compare-id cmp-001 --mode design --human-approval-confirmed
 #   ./scripts/sales-design-worker/compare-local.sh --compare-id cmp-002 --mode baseline --human-approval-confirmed
+#   (--shops wagashi,coffee runs some of the shops only)
 #
 # Running it is the human's operation and needs the human's explicit approval
 # of this run first (HUMAN-017 in .ai/blockers.md); --human-approval-confirmed
@@ -19,9 +20,12 @@
 #   2. resource preflight (STOP: nothing is started)
 #   3. the worker's run lock (run.sh's flock): no worker run at the same time
 #   4. pin this checkout to origin/$SR_DESIGN_WORKER_REF (default: develop) and install
-#   5. compare.ts with the time budget (its own per-shop budget = the worker's 50 minutes)
+#   5. compare.ts with the time budget: at most 3300 s in all, as run.sh, so it ends inside
+#      the jail's one run (admin.sh run: RuntimeMaxSec=3500); a shop starts only with
+#      10 minutes left, and a stop writes the report of what was done so far
 # Never touches the worker's queue, results or ledger, the database, the bridge,
-# Staging, Production, the timer or any shop's real data. Never run a comparison id twice.
+# Staging, Production, the worker's timer or any shop's real data: a timer-fired
+# run.sh finds the lock taken and exits 0. Never run a comparison id twice.
 {
 set -euo pipefail
 
@@ -41,12 +45,14 @@ fi
 umask 077
 COMPARE=""
 MODE="design"
+SHOPS=""
 APPROVED=""
-USAGE="usage: --compare-id cmp-<n> [--mode design|baseline|hand_written] --human-approval-confirmed"
+USAGE="usage: --compare-id cmp-<n> [--mode design|baseline|hand_written] [--shops key,key] --human-approval-confirmed"
 while [ $# -gt 0 ]; do
   case "$1" in
     --compare-id) COMPARE="${2:-}"; shift 2 ;;
     --mode) MODE="${2:-}"; shift 2 ;;
+    --shops) SHOPS="${2:-}"; shift 2 ;;
     --human-approval-confirmed) APPROVED=1; shift ;;
     *) echo "$USAGE"; exit 2 ;;
   esac
@@ -55,14 +61,17 @@ done
 # A generic id only: never a shop's name.
 [[ "$COMPARE" =~ ^cmp-[a-z0-9-]{1,30}$ ]] || { echo "--compare-id: cmp-<lowercase letters, digits, ->"; exit 2; }
 case "$MODE" in design|baseline|hand_written) ;; *) echo "--mode: design | baseline | hand_written"; exit 2 ;; esac
+[ -z "$SHOPS" ] || [[ "$SHOPS" =~ ^[a-z]{3,12}(,[a-z]{3,12}){0,5}$ ]] || { echo "--shops: shop keys, comma separated"; exit 2; }
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 REF="${SR_DESIGN_WORKER_REF:-develop}"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/sr-design-worker"
-# design: three shops × the worker's 50-minute job budget, and the build; the other modes need no Codex
-if [ "$MODE" = design ]; then BUDGET="${SR_DESIGN_COMPARE_BUDGET_SECONDS:-10800}"; else BUDGET="${SR_DESIGN_COMPARE_BUDGET_SECONDS:-2400}"; fi
+# The jail's one run (admin.sh run) ends at RuntimeMaxSec=3500: the whole comparison fits in 3300 s, as run.sh.
+if [ "$MODE" = design ]; then BUDGET="${SR_DESIGN_COMPARE_BUDGET_SECONDS:-3300}"; else BUDGET="${SR_DESIGN_COMPARE_BUDGET_SECONDS:-2400}"; fi
 [[ "$BUDGET" =~ ^[1-9][0-9]{2,4}$ ]] || { echo "SR_DESIGN_COMPARE_BUDGET_SECONDS: 100-99999"; exit 2; }
-[ "$BUDGET" -le 10800 ] || BUDGET=10800
+[ "$BUDGET" -le 3300 ] || BUDGET=3300
+# compare.ts needs time for the build and at least one shop (it starts a shop only with 10 minutes left)
+MIN_COMPARE_SECONDS=900
 KILL_AFTER=30
 cd "$REPO"
 
@@ -102,16 +111,24 @@ echo "commit $(git rev-parse --short=12 HEAD)"
 
 echo "== 4. comparison $COMPARE ($MODE)"
 REMAINING=$((BUDGET - (SECONDS - START)))
+if [ "$REMAINING" -lt "$MIN_COMPARE_SECONDS" ]; then
+  echo "STOP: COMPARE_RUN_TIME_BUDGET (only ${REMAINING}s left after the checkout; nothing was compared)"
+  exit 1
+fi
 set +e
-timeout --kill-after="$KILL_AFTER" "$REMAINING" \
+# SR_DESIGN_COMPARE_LOCKED: compare.ts runs only under this script (the lock above is held)
+SR_DESIGN_COMPARE_LOCKED=run.lock timeout --kill-after="$KILL_AFTER" "$REMAINING" \
   "$REPO/node_modules/.bin/tsx" "$REPO/scripts/sales-design-worker/compare.ts" \
-  --compare-id "$COMPARE" --mode "$MODE" --human-approval-confirmed --budget-seconds="$((REMAINING - 120))"
+  --compare-id "$COMPARE" --mode "$MODE" ${SHOPS:+--shops "$SHOPS"} --human-approval-confirmed --budget-seconds="$((REMAINING - 120))"
 RUN=$?
 set -e
 echo "compare.ts exit $RUN"
 if [ "$RUN" -eq 137 ] || [ "$RUN" -eq 124 ]; then
   echo "compare.ts was killed or timed out: check for an OOM kill before treating it as a bug:"
   bash "$REPO/scripts/ops/wsl-resource-preflight.sh" --oom-check --since "4 hours ago" || true
+fi
+if [ "$RUN" -ne 0 ] && [ "$RUN" -ne 2 ]; then
+  echo "the report of what was done so far: ${SR_DESIGN_COMPARE_ROOT:-$HOME/sr-design-compare}/$COMPARE/compare-report.md (write it again: npx tsx scripts/sales-design-worker/compare-report.ts --compare-id $COMPARE)"
 fi
 exit "$RUN"
 }

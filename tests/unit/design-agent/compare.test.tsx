@@ -13,9 +13,9 @@ import { RunDeadline } from "@/lib/design-agent/bounded-process";
 import { pixelDifference, structureDistance, structureOf } from "@/lib/design-agent/compare/metrics";
 import { reportMarkdown, buildCompareReport } from "@/lib/design-agent/compare/report";
 import { baselineProfile, runComparison, type CompareOptions } from "@/lib/design-agent/compare/run";
-import { loadHandWritten, loadShops, parseShop } from "@/lib/design-agent/compare/shops";
+import { loadHandWritten, loadShops, parseShop, selectShops } from "@/lib/design-agent/compare/shops";
 import { CATEGORY_DEFAULT_PROFILES } from "@/lib/design-agent/defaults";
-import { buildBriefPrompt } from "@/lib/design-agent/prompts";
+import { buildBriefPrompt, buildReviewPrompt } from "@/lib/design-agent/prompts";
 import { loadPreviewRun } from "@/lib/design-agent/preview";
 import { screenshotPage } from "@/lib/design-agent/preview-server";
 import { checkProfile, type DesignProfile } from "@/lib/design-agent/profile";
@@ -163,11 +163,27 @@ describe("the test shops", () => {
     expect(parseShop({ key: "x", richness: "rich", industry: "", facts: {} })).toBeNull();
   });
 
-  it("brief prompt without references says so instead of counting zero screenshots", async () => {
+  it("brief and review prompts without references say so instead of counting zero screenshots", async () => {
     const [shop] = await loadShops(join(FIXTURES, "shops"));
-    const prompt = buildBriefPrompt({ demo: shop!.demo, referenceCount: 0, currentDemoCount: 2 });
-    expect(prompt).toContain("Attached images: none of the shop");
-    expect(prompt).not.toContain("the first 0 are");
+    const brief = buildBriefPrompt({ demo: shop!.demo, referenceCount: 0, currentDemoCount: 2 });
+    expect(brief).toContain("Attached images: 2, the current generic demo (desktop, then mobile)");
+    expect(brief).toContain("No image of the shop itself is attached");
+    expect(brief).not.toMatch(/the first 0|The last 2/);
+    const reviewPrompt = buildReviewPrompt({ demo: shop!.demo, profile: CATEGORY_DEFAULT_PROFILES.cafe, referenceCount: 0, round: 0, maxRevisions: 2 });
+    expect(reviewPrompt).toContain("Attached images: two, the rendered demo: desktop (1440 CSS px wide), then mobile (390 CSS px wide). No image of the shop itself is attached");
+    expect(reviewPrompt).not.toMatch(/the first 0|\(reference\)|The last two/);
+    // with references (the worker: always at least one) the lines are as before
+    expect(buildBriefPrompt({ demo: shop!.demo, referenceCount: 3, currentDemoCount: 2 })).toContain("Attached images: the first 3 are");
+    expect(buildBriefPrompt({ demo: shop!.demo, referenceCount: 3, currentDemoCount: 2 })).not.toContain("No image of the shop");
+  });
+
+  it("--shops picks listed keys only (each once, all known)", async () => {
+    const shops = await loadShops(join(FIXTURES, "shops"));
+    expect(selectShops(shops, undefined)?.map((s) => s.key)).toEqual(["coffee", "patisserie", "wagashi"]);
+    expect(selectShops(shops, "wagashi,coffee")?.map((s) => s.key)).toEqual(["coffee", "wagashi"]);
+    expect(selectShops(shops, "coffee,coffee")).toBeNull();
+    expect(selectShops(shops, "coffee,ramen")).toBeNull();
+    expect(selectShops(shops, "")).toBeNull();
   });
 });
 
@@ -314,6 +330,58 @@ describe("runComparison", () => {
   });
 });
 
+describe("runComparison: fallback and stops", () => {
+  const one = async (keys: string) => selectShops(await loadShops(join(FIXTURES, "shops")), keys)!;
+
+  it("design fallback (no final candidate): page_candidate none, no layout, the existing template's pixels compared", async () => {
+    const l = makeLayout();
+    const { o } = await options(l, { compareId: "cmp-fb-1", shops: await one("coffee"), steps: [{ exit: 1 }, { exit: 1 }] });
+    expect(await runComparison(o)).toMatchObject({ status: "done" });
+    const run = JSON.parse(readFileSync(join(o.root, "cmp-fb-1", "runs", "cmp-fb-1-coffee", "report.json"), "utf8")) as { page_candidate: string; outcome: string };
+    expect(run).toMatchObject({ page_candidate: "none", outcome: "fallback_template" });
+    const report = await buildCompareReport(join(o.root, "cmp-fb-1"));
+    const coffee = report.shops[0]!;
+    expect(coffee.subject).toMatchObject({ outcome: "fallback_template", layout: null });
+    expect(coffee.subject?.codex?.verdict).toBeNull();
+    expect(coffee.subject?.safety?.ok).toBe(true);
+    const p = report.differences.against_baseline.pairs[0]!;
+    expect(p.structure).toBeNull();
+    expect(p.pixels.desktop_1440).not.toBeNull();
+  });
+
+  it("an environment failure stops the comparison and still writes the report of what was done", async () => {
+    const l = makeLayout();
+    const { o } = await options(l, { compareId: "cmp-env-1", shops: await one("coffee,patisserie"), steps: [{ exit: 1, stderr: "usage limit reached" }] });
+    const result = await runComparison(o);
+    expect(result).toMatchObject({ status: "stopped", code: "CODEX_QUOTA" });
+    expect((result as { runs: unknown[] }).runs).toEqual([
+      { runId: "cmp-env-1-coffee-base", shop: "coffee", kind: "baseline", outcome: "baseline" },
+      { runId: "cmp-env-1-coffee", shop: "coffee", kind: "design", outcome: "environment_failure" },
+    ]);
+    const dir = join(o.root, "cmp-env-1");
+    const report = JSON.parse(readFileSync(join(dir, "compare-report.json"), "utf8")) as Awaited<ReturnType<typeof buildCompareReport>>;
+    expect(report.shops.map((s) => [s.shop, s.subject?.outcome, s.subject?.code, s.baseline?.outcome])).toEqual([["coffee", "environment_failure", "CODEX_QUOTA", "baseline"]]);
+    expect(existsSync(join(dir, "runs", "cmp-env-1-patisserie"))).toBe(false);
+    expect(readFileSync(join(dir, "compare-report.md"), "utf8")).toContain("## 条件の偏り");
+  });
+
+  it("no design shop starts with less than 10 minutes left: stops with the report so far; a check that cannot run is NG", async () => {
+    const l = makeLayout();
+    const { o } = await options(l, { compareId: "cmp-time-1", deadline: new RunDeadline(Date.now() + 5 * 60_000) });
+    // a preview without an origin: the safety check cannot run
+    const start = o.startPreview;
+    o.startPreview = async (x) => ({ ...(await start(x)), origin: undefined });
+    const result = await runComparison(o);
+    expect(result).toMatchObject({ status: "stopped", code: "COMPARE_RUN_TIME_BUDGET" });
+    // the sign-in check only: no brief, no review
+    expect(codexCalls(l).filter((c) => c.args[0] === "exec")).toEqual([]);
+    const report = await buildCompareReport(join(o.root, "cmp-time-1"));
+    expect(report.shops.map((s) => [s.shop, s.subject, s.baseline?.outcome])).toEqual([["coffee", null, "baseline"]]);
+    expect(report.shops[0]!.baseline?.safety).toMatchObject({ ok: false, error: "SAFETY_CHECK_FAILED" });
+    expect(readFileSync(join(o.root, "cmp-time-1", "compare-report.md"), "utf8")).toContain("NG（検査できなかった: SAFETY_CHECK_FAILED）");
+  });
+});
+
 describe("the entry points refuse without the approval flag", () => {
   it("compare.ts: STOP, exit 2, nothing started", async () => {
     const home = mkdtempSync(join(tmpdir(), "sr-compare-cli-"));
@@ -323,6 +391,14 @@ describe("the entry points refuse without the approval flag", () => {
     }).catch((e: { code: number; stderr: string }) => e);
     expect(err).toMatchObject({ code: 2 });
     expect((err as { stderr: string }).stderr).toContain("STOP: --human-approval-confirmed is missing");
+    expect(existsSync(join(home, "sr-design-compare"))).toBe(false);
+    // started directly (not under compare-local.sh, which holds the worker's run lock): STOP
+    const direct = await run(join(REPO, "node_modules/.bin/tsx"), [join(REPO, "scripts/sales-design-worker/compare.ts"), "--compare-id", "cmp-cli-1", "--human-approval-confirmed"], {
+      cwd: REPO,
+      env: { PATH: process.env.PATH, HOME: home } as unknown as NodeJS.ProcessEnv,
+    }).catch((e: { code: number; stderr: string }) => e);
+    expect(direct).toMatchObject({ code: 2 });
+    expect((direct as { stderr: string }).stderr).toContain("STOP: start the comparison with scripts/sales-design-worker/compare-local.sh");
     expect(existsSync(join(home, "sr-design-compare"))).toBe(false);
   });
 
@@ -352,12 +428,31 @@ describe("the entry points refuse without the approval flag", () => {
     expect(await run("bash", [script, "--compare-id", "Real Shop", "--human-approval-confirmed"], { env }).catch((e: { code: number }) => e)).toMatchObject({ code: 2 });
     expect(existsSync(record)).toBe(false);
 
-    await run("bash", [script, "--compare-id", "cmp-001", "--mode", "baseline", "--human-approval-confirmed"], { env });
+    await run("bash", [script, "--compare-id", "cmp-001", "--mode", "baseline", "--shops", "wagashi,coffee", "--human-approval-confirmed"], { env });
     const log = readFileSync(record, "utf8");
     expect(log).toContain("preflight");
-    expect(log).toMatch(/tsx .*scripts\/sales-design-worker\/compare\.ts --compare-id cmp-001 --mode baseline --human-approval-confirmed --budget-seconds=\d+/);
+    expect(log).toMatch(/tsx .*scripts\/sales-design-worker\/compare\.ts --compare-id cmp-001 --mode baseline --shops wagashi,coffee --human-approval-confirmed --budget-seconds=\d+/);
     const seen = /^env (.*)$/m.exec(log)![1]!;
     expect(seen).not.toContain("OPENAI_API_KEY");
     expect(seen).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(seen).toContain("SR_DESIGN_COMPARE_LOCKED");
+    // the design budget fits in the jail's one run (3300 s, as run.sh), whatever is asked
+    writeFileSync(record, "");
+    await run("bash", [script, "--compare-id", "cmp-002", "--human-approval-confirmed"], { env: { ...env, SR_DESIGN_COMPARE_BUDGET_SECONDS: "10800" } as unknown as NodeJS.ProcessEnv });
+    expect(Number(/--budget-seconds=(\d+)/.exec(readFileSync(record, "utf8"))![1])).toBeLessThanOrEqual(3300 - 120);
+
+    // a worker run (run.sh) holds the run lock: STOP, exit 3, compare.ts never starts
+    writeFileSync(record, "");
+    const lockFile = join(home, ".local/state/sr-design-worker/run.lock");
+    const holder = execFile("flock", ["-x", lockFile, "sleep", "30"]);
+    try {
+      for (let i = 0; i < 50 && !(await run("flock", ["-n", lockFile, "true"]).then(() => false, () => true)); i++) await new Promise((r) => setTimeout(r, 100));
+      const busy = await run("bash", [script, "--compare-id", "cmp-003", "--human-approval-confirmed"], { env }).catch((e: { code: number; stdout: string }) => e);
+      expect(busy).toMatchObject({ code: 3 });
+      expect((busy as { stdout: string }).stdout).toContain("STOP: a design worker run (run.sh) is in progress");
+      expect(readFileSync(record, "utf8")).not.toContain("tsx");
+    } finally {
+      holder.kill();
+    }
   });
 });
