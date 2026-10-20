@@ -68,6 +68,8 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
   - `background-image`（gradient）と `background-size` / `-position` / `-repeat` / `-clip` / `-origin`。地は `background-color` の単色だけ。
   - `white-space`（nowrap / pre）と `word-break: keep-all`（文字を箱からあふれさせる）。数字の並びは renderer の keep-together の span が守る。
   - grid / flex は、文字を直接持たない要素（header・main・section・div・ol・ul・dl と scope root）だけ。p・span・li・dt・dd・h1・h2 は不可。これで grid / flex の item はいつも実際の要素になり、無名の box（測れない track）に文字が入らない。どの要素が文字を直接持たないかは、renderer の固定の markup から決まる（Stage 1 の全 layout で test）。
+  - `order` も同じ要素だけ（`order_on_text`）。行・節・list の並びは変えられるが、行の中で値を label の前に出すことはできない（再レビュー 4 Nit 1）。行の中の見た目の順は、`flex-direction: row-reverse` や grid の配置でまだ変えられる（組と事実は保たれる。読み上げの順は DOM のまま）。
+  - grid の `repeat()` の回数は 1〜12 の整数だけ（`auto-fill` / `auto-fit` は不可。再レビュー 4 Medium 1 の多重の守り）。
   - 例の 3 つは、gradient を inset の影（kissa は hero の足元の帯、sakura は内側の淡い枠）に、atelier の疑似要素の四角を枠に置き換えた。見た目の違いは保っている。
 
 ### 2.2 文字を足す手段の監査（Medium 1）
@@ -117,9 +119,13 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
 **検査する幅**
 - 固定の 320・360・390・768・1024・1440・1920 に、shop CSS の breakpoint ごとに「b−1・b・b+1」（em は 16px で換算）を加える。
 - **container query の切り替わり**（DEV-071b: split の visit の行は、自分の幅が 26em 以上で label と値を横に並べる）: shop CSS は `@container` も `container-type` も書けないが、容器の幅を変えて、切り替わる viewport の幅を動かせる。
-  - そこで、CSS あり / なしの両方の頁で 320〜1920px を 16px 刻みで走査し、各容器の内側の幅と `@container` の長さの差の符号が変わる幅を 1px まで二分探索する。その両側の幅を検査の幅に足す。
+  - そこで、CSS あり / なしの両方の頁で 320〜1920px を **1px ごとに**調べ、各容器の内側の幅と `@container` の長さの差の符号が変わる幅（容器の数が変わる幅も）の両側を検査の幅に足す。
+  - 標本 + 二分探索にしない理由（再レビュー 4 Medium 1）: 容器の幅は viewport に対して単調とは限らない（auto-fill の列は鋸の歯）。16px 刻みの標本の間にある 4px の帯を取りこぼした。
+  - 方法: 1920px の空の頁に、高さ 900px（検査と同じ）の iframe として頁を置き、iframe の幅を 1px ずつ変えて 1 回の evaluate の中で読む。各幅で iframe の `innerWidth` と layout の幅がその幅に等しいことを確かめ、違えば不合格（fail closed）。実際の viewport を 1px ごとに変える方法と、3 店 × 4 種（基準・auto-fill 2 種・flex-wrap）で結果が一致した。
+  - 費用: 1 頁あたり約 3 秒（viewport を変える方法は 4 頁並行で約 7 秒・CPU は約 4 倍）。同じ browser・同じ頁の結果は再利用する（基準の頁、最大 32 件）。`@container` の幅の条件を持たない頁は 0 秒。
+  - 多重の守り: guard は `repeat()` の回数を 1〜12 の整数だけにする（`auto-fill` / `auto-fit` を外す）。
   - 切り替わりが 24 を超えたら不合格にする（`container_switches`、fail closed）。
-- 帯の中は標本で見ている（再レビュー Low 2）。`repeat(auto-fill, minmax())` や vw の値は帯の中で連続に変わり、帯の中ほどだけの崩れを証明するものではない。breakpoint の両側と固定の幅で見る。
+- 帯の中は標本で見ている（再レビュー Low 2）。vw の値などは帯の中で連続に変わり、帯の中ほどだけの崩れを証明するものではない。breakpoint の両側と固定の幅で見る。
 - viewport は mobile emulation を使わない（isMobile なし、820px 以下は touch）。shop CSS は幅でしか分岐できず、module CSS に `(hover)` / `(pointer)` の media は無い。入れば、その両側も検査する。
 - 4 幅ずつ並行して検査する。不合格が出た組で止める（`exhaustive` なら最後まで）。
 
