@@ -63,6 +63,12 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
   - 子孫の複合はどれも許可された型名から始まる（`*` も、型の無い `:not()` / 属性だけの複合も無い。Low 1）。
   - これで `a`・`img`・`svg`・`figure` に届かない。
 - **grid の track**: 中身を持つ track は 24px 以上。小さくできるのは `minmax()` の最小だけ。0px の列は、その文字や疑似要素を隣へあふれさせ、文字を重ねられた（再レビュー 2 High 1）。
+- **語彙の縮小（再レビュー 3、fail closed）**: 次のものを外した。Stage 3 は local の技術検証なので、動的な検査の継ぎ足しより、攻撃面を小さくする方を選んだ。
+  - 疑似要素（`::before` / `::after`）と `content`。
+  - `background-image`（gradient）と `background-size` / `-position` / `-repeat` / `-clip` / `-origin`。地は `background-color` の単色だけ。
+  - `white-space`（nowrap / pre）と `word-break: keep-all`（文字を箱からあふれさせる）。数字の並びは renderer の keep-together の span が守る。
+  - grid / flex は、文字を直接持たない要素（header・main・section・div・ol・ul・dl と scope root）だけ。p・span・li・dt・dd・h1・h2 は不可。これで grid / flex の item はいつも実際の要素になり、無名の box（測れない track）に文字が入らない。どの要素が文字を直接持たないかは、renderer の固定の markup から決まる（Stage 1 の全 layout で test）。
+  - 例の 3 つは、gradient を inset の影（kissa は hero の足元の帯、sakura は内側の淡い枠）に、atelier の疑似要素の四角を枠に置き換えた。見た目の違いは保っている。
 
 ### 2.2 文字を足す手段の監査（Medium 1）
 
@@ -70,17 +76,18 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
 
 | 手段 | 扱い |
 |---|---|
-| `content` | `::before` / `::after` だけで、`none` / `normal` / `""` に限る（文字は書けない） |
+| `content` | 疑似要素ごと無い（`::before` / `::after` は selector で拒否。再レビュー 3） |
 | list の marker | `display: list-item` は無い。`list-style-type` は `none` だけ（`list-style-position` も無い）。`::marker` は選べない |
 | counter・`quotes`・`attr()`・`text-overflow` の文字列・`text-emphasis` | 無い |
 | `hyphens: auto`（折り返しに「-」を足す） | 無い（`none` / `manual` だけ） |
 | `text-transform` | 大文字・小文字・語頭の大文字だけ（字を足さない。full-width などは無い） |
 | `font-variant-*` / `font-family` | 字形の変化だけ（字を足さない） |
-| 背景の gradient / 罫線 / `column-rule` | 図形だけ（文字にならない） |
+| 罫線 / 単色の地 / inset の影 / `column-rule` | 図形だけ（文字にならない）。gradient と画像の地は無い（再レビュー 3） |
 
-疑似要素について、次の 2 点を書いておく。
-- 静的に保証しているのは、shop CSS が疑似要素に offset・配置・stacking・transform を与えられないことまで。
-- module CSS がすでに位置指定している装飾の疑似要素に地を付けられる点は、静的には止めない。render check（hit-test で疑似要素の地も見る、画素の証明）で止める（Nit 2）。
+疑似要素について（再レビュー 3 で語彙から外した）:
+- shop CSS は `::before` / `::after` を一切選べない。自分の要素の文字の上に塗られる疑似要素は、hit-test では元の要素を返すので原理的に見えず、0px の列やはみ出しと組むと文字を覆えた。
+- 飾りは、実際の要素の枠・単色の地・inset の影で描く（例の atelier-mono の見出しの四角は、英字の span の左の太い枠）。
+- module CSS の装飾の疑似要素は、shop CSS からは配置も地も変えられない。親を grid / flex にすると自分の cell に置かれるだけ。
 
 ## 3. 各検査が何を見るか
 
@@ -97,7 +104,7 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
   - 型: header main section div p span h1 h2 ol ul li dl dt dd
   - 属性: data-kind / data-variant / data-ground / data-first-view / data-scale / data-headings / data-fv / data-key は Stage 1 のもの。aria-labelledby / lang / aria-hidden は今の markup にもある。
   - 疑似 class: `:first-child` など、`:nth-child(An+B)`（|A|・|B| は 99 以下）、`:not(単純)`。
-  - 疑似要素: 最後に `::before` / `::after`。
+  - 疑似要素: 無い。
 - **property**: 明示の許可リスト（§2.1 の制限つき）。値は種類と上限で縛る。
   - 色に使えるもの: hex・`transparent` などの少数の keyword・`var(--p-*)`（palette、fallback なし）・`rgb()`・`color-mix()`。
 - **出力**: parse tree から再直列化する（入力をそのまま返さない）。冪等。
@@ -132,19 +139,20 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
 | clipped | overflow / clip-path を持つ祖先で切れる |
 | covered | 行を viewport の中央に scroll し、行の高さの 30%・50%・70% × 横 5 点の `elementFromPoint` が自分以外を返す |
 | overlap | 字の芯が別の字の芯と重なる（下の「文字の重なり」） |
+| overflow | 字の芯が自分の box（inline でない最も近い要素: block、grid / flex の item）の外に出る。grid / flex の容器に直接入った文字（無名の item）も不合格（再レビュー 3） |
 | faded | 祖先の opacity の積が 0.85 未満 |
 | small | transform を含めた字の大きさが 12px 未満 |
 | squeezed | 1 行が 2.5 字分より細い行が 3 行以上ある |
 | contrast | 実際に塗られた地の上で 4.5 未満の画素が 10% を超える |
 | ink（画素の証明） | §「画素の証明」を参照 |
 
-- covered の補足: 透明で文字の無い飾りは覆いとみなさない。ただし、その飾りの `::before` / `::after` に地があれば覆いとみなす。別の測った文字の要素で地の無いもの（行送りの詰まった大きな字で行の box が届く）も、hit-test では覆いとみなさない。文字が文字に重なる場合は overlap の検査で見る。
+- covered の補足: 透明で文字の無い飾りは覆いとみなさない。ただし、その飾りか `::before` / `::after` が何かを塗っていれば（地・画像・影・枠・outline）覆いとみなす（再レビュー 3 Low 1 で枠と outline を足した）。別の測った文字の要素で地の無いもの（行送りの詰まった大きな字で行の box が届く）も、hit-test では覆いとみなさない。文字が文字に重なる場合は overlap の検査で見る。
 - **画素の証明（ink）**: 頁を 4 枚撮る。
   - 頁の画: 文字ありと、検査する文字だけを透明にしたもの。
   - 基準の画: 同じ配置のまま文字以外の塗りをすべて消し（地・枠・影・装飾線・疑似要素・画像・ほかの文字）、各要素の文字をその要素自身の色（`currentcolor`）で描いたもの。地には、頁でその文字の下に実際に塗られている色（文字なしの画の中央値）を不透明で敷く。その文字ありと文字なし。
     - 書体・合成・大きさ・transform・色・地が頁と同じなので、antialias（greyscale でも LCD でも）も同じになる。違うのは覆いが無いことだけ。
     - CI の runner は LCD の antialias で、以前の白地に黒の基準ではずれた（CI 118792775207）。
-  - 字ごとの墨（文字ありと文字なしの channel の差の和）を、頁と基準で比べる。**最も悪い字**が基準の 0.8 未満なら不合格。平均ではない。墨の無い字も不合格。
+  - 字ごとの墨は、画素ごとの被覆率（文字ありと文字なしの差を、その画素の地での文字色の差で割る。3 channel の最小二乗）の和。色にも地にも依らない。同じ字は、どの地の上でも同じ画素を同じだけ覆う。そのため、行の一部の下だけ contrast の高い地を敷いても、墨を水増しできない（再レビュー 3 High 1・Medium 1）。頁と基準で比べる。**最も悪い字**が基準の 0.8 未満なら不合格。平均ではない。墨の無い字も不合格。
   - 比に足りない小さな字（`-` `:` `.` `,` `・`）も、墨の半分以上を残すことを求める（再レビュー 2 Medium 1）。
   - 影・outline・疑似要素・伸ばした隣・回転した隣など、何で覆っても、覆ったところの墨が減る。
   - **1 字あたり 20% 未満の欠けは許す**（再レビュー 2 Low 1）。細い線の字（`1` `l`）では、20% で形が変わりうる。生成器をつなぐ段階で、店ごとの誤検出の実績と合わせてこの閾値を見直す。

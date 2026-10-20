@@ -197,3 +197,4 @@
   - CI（job 118754174929）の `320:footer_changed`: 原因は footer の文字を絶対位置の画素で比べていたこと（sub-pixel の位置の差で antialias が変わる、local 4.9% / 許容 5%）。footer / notice は「地」（文字なしの画）だけを 1% で比べ、文字は位置に依らない画素の証明で見るよう修正。
   - 再レビュー FAIL（High 1: scaleY の隣が値の上側を消す・Medium 1: 検査幅の外の @media・Low: sideways）→ 対応: scale を外す、画素の証明を「字ごとの墨の画素数 ÷ 基準の画（文字以外の塗りを消した白地に黒）の同じ字、最悪の字で 0.8」に、hit-test を行の 25/50/75% × 5 点に、breakpoint を 320〜1920px に、text-orientation は mixed / upright だけ。
   - CI（job 118792775207）の `*_ink`: 原因は基準の画を白地に黒で描いたこと（LCD の antialias で色と地により墨が変わる。fontconfig で LCD を有効にして local でも再現）。基準を「自分の色・頁の実際の地の色」で描くようにし、第 2 の書体環境（LCD + 別書体）の test を追加。再レビュー 2（文字の重なり・小さな記号の消去）→ 字の芯の重なりの検査（`*_overlap`）・小さな字も墨の半分を保つ・grid の track は 24px 以上。
+  - 再レビュー 3 FAIL（自分の ::after の覆い・中央値の地での墨の水増し）→ 語彙を縮小（疑似要素・gradient の地・nowrap / pre / keep-all・文字を持つ要素の grid / flex を外す）、`*_overflow`（字が自分の box の外・無名の item）を追加、墨は画素ごとの被覆率の和（地に依らない）、hit-test の例外は枠・outline も塗りとみなす。
