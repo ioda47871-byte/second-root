@@ -298,3 +298,48 @@ export const HIT_TEST_CSS = "body * { pointer-events: auto !important; }";
 
 /** Every animation and transition at its end state (motion is not part of the check). */
 export const FREEZE_MOTION_CSS = "*, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; transition-delay: 0s !important; }";
+
+/**
+ * The page's container-query switches (DEV-071b: the split visit's rows switch
+ * at 26em of their own width). For every container (container-type other than
+ * normal) and every width condition of a @container rule, how far the
+ * container's inline size is from the condition's length, in px (positive:
+ * wider). A shop stylesheet cannot write @container or container-type, but it
+ * can change the width a container gets, and so the viewport width where a
+ * switch happens; the render check finds those widths from these distances.
+ */
+export const CONTAINER_SCRIPT = String.raw`() => {
+  const lengths = [];
+  const visit = (rules) => {
+    for (const rule of Array.from(rules)) {
+      if (rule.type === 12 || rule.type === 4) {
+        visit(rule.cssRules);
+        continue;
+      }
+      if (rule.constructor && rule.constructor.name === "CSSContainerRule") {
+        for (const m of String(rule.conditionText || "").matchAll(/(?:min|max)-width\s*:\s*([0-9.]+)(px|em|rem)/g)) lengths.push({ v: Number(m[1]), unit: m[2] });
+        visit(rule.cssRules);
+      }
+    }
+  };
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      visit(sheet.cssRules);
+    } catch (e) {
+      // a sheet that cannot be read has no container rules of ours
+    }
+  }
+  const out = [];
+  if (lengths.length === 0) return out;
+  const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  for (const el of Array.from(document.querySelectorAll("body *"))) {
+    const s = getComputedStyle(el);
+    if (!s.containerType || s.containerType === "normal") continue;
+    const vertical = s.writingMode.startsWith("vertical");
+    const r = el.getBoundingClientRect();
+    const inline = (vertical ? r.height : r.width) - parseFloat(vertical ? s.paddingTop : s.paddingLeft) - parseFloat(vertical ? s.paddingBottom : s.paddingRight) - parseFloat(vertical ? s.borderTopWidth : s.borderLeftWidth) - parseFloat(vertical ? s.borderBottomWidth : s.borderRightWidth);
+    const em = parseFloat(s.fontSize) || 16;
+    for (const l of lengths) out.push(inline - l.v * (l.unit === "px" ? 1 : l.unit === "rem" ? root : em));
+  }
+  return out;
+}`;

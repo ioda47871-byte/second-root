@@ -343,6 +343,9 @@ describe("guardShopCss accepts the allowed vocabulary and re-serializes", () => 
     accepts('#shop-css section[data-ground="inverted"] { background-color: var(--p-primary); color: var(--p-bg); }');
     accepts('#shop-css div[data-key="closedDays"] dd { font-weight: 700; }');
     accepts('#shop-css li:not([lang="en"]) { font-style: normal; }');
+    // DEV-071b: a short section (the attribute's value is always "")
+    accepts('#shop-css section[data-short=""] { padding-top: 8px; }');
+    expect(rejects("#shop-css section[data-short] { padding-top: 8px; }")).toEqual(["selector_attribute"]);
   });
 
   it("accepts typical design declarations", () => {

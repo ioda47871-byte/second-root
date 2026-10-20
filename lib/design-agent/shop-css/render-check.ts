@@ -1,7 +1,7 @@
 import type { Browser, BrowserContext } from "playwright";
 import { decodePng, type Pixels } from "../worker/png-paint";
-import { mediaBreakpointsPx, type GuardedShopCss } from "./guard";
-import { CLEAN_CSS, FREEZE_MOTION_CSS, HIDE_TEXT_CSS, REFERENCE_SCRIPT, HIT_TEST_CSS, MEASURE_SCRIPT, MeasureSchema, TEXT_KINDS, type Measure } from "./page-scripts";
+import { mediaBreakpointsPx, SHOP_CSS_MEDIA_RANGE, type GuardedShopCss } from "./guard";
+import { CLEAN_CSS, CONTAINER_SCRIPT, FREEZE_MOTION_CSS, HIDE_TEXT_CSS, REFERENCE_SCRIPT, HIT_TEST_CSS, MEASURE_SCRIPT, MeasureSchema, TEXT_KINDS, type Measure } from "./page-scripts";
 
 // The render check of a per-shop stylesheet (DEV-072, Stage 3). The static
 // guard proves the stylesheet can only use a small, safe vocabulary; this
@@ -82,6 +82,7 @@ export const SHOP_CSS_CHECK_CODES = [
   "footer_changed",
   "footer_covered",
   "check_error",
+  "container_switches",
 ] as const;
 export type ShopCssCheckCode = (typeof SHOP_CSS_CHECK_CODES)[number];
 
@@ -451,8 +452,77 @@ async function checkWidth(input: ShopCssCheckInput, width: number): Promise<stri
  * a failure of the check itself is a problem (check_error), so the caller
  * falls back.
  */
+/** Viewport widths scanned for container-query switches, and the cap on the switches added. */
+const SCAN_STEP = 16;
+export const MAX_CONTAINER_SWITCHES = 24;
+
+/**
+ * The viewport widths, within the checked range, where a container query of
+ * the page switches (a container's inline size crosses a @container length),
+ * found by scanning and then bisecting to the pixel. Each switch adds the width
+ * on either side of it to the checked widths: the shop stylesheet moves these
+ * switches by changing the widths containers get, so its @media breakpoints
+ * alone do not find them. null when there are more than MAX_CONTAINER_SWITCHES
+ * (the check then fails closed).
+ */
+export async function containerSwitchWidths(browser: Browser, html: string): Promise<number[] | null> {
+  const context = await browser.newContext({ viewport: { width: SHOP_CSS_MEDIA_RANGE.min, height: VIEWPORT_HEIGHT }, deviceScaleFactor: 1, reducedMotion: "reduce", serviceWorkers: "block" });
+  try {
+    await context.route("**/*", (route) => route.abort());
+    const page = await context.newPage();
+    await page.setContent(html, { waitUntil: "load" });
+    const at = async (width: number) => {
+      await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
+      return (await page.evaluate(`(${CONTAINER_SCRIPT})()`)) as number[];
+    };
+    const widths = new Set<number>();
+    let prevWidth: number = SHOP_CSS_MEDIA_RANGE.min;
+    let prev = await at(prevWidth);
+    for (let w = prevWidth + SCAN_STEP; w <= SHOP_CSS_MEDIA_RANGE.max + SCAN_STEP - 1; w += SCAN_STEP) {
+      const width: number = Math.min(w, SHOP_CSS_MEDIA_RANGE.max);
+      const now = await at(width);
+      const n = Math.min(prev.length, now.length);
+      for (let i = 0; i < n; i++) {
+        if (Math.sign(prev[i]!) === Math.sign(now[i]!)) continue;
+        // bisect to the first width on the other side
+        let lo = prevWidth;
+        let hi = width;
+        const side = Math.sign(prev[i]!);
+        while (hi - lo > 1) {
+          const mid = Math.floor((lo + hi) / 2);
+          const d = (await at(mid))[i];
+          if (d !== undefined && Math.sign(d) === side) lo = mid;
+          else hi = mid;
+        }
+        widths.add(lo);
+        widths.add(hi);
+        if (widths.size > MAX_CONTAINER_SWITCHES * 2) return null;
+      }
+      // a different number of containers (a media switch added or removed one): check both widths
+      if (prev.length !== now.length) {
+        widths.add(prevWidth);
+        widths.add(width);
+      }
+      prev = now;
+      prevWidth = width;
+      if (width === SHOP_CSS_MEDIA_RANGE.max) break;
+    }
+    return [...widths].sort((a, b) => a - b);
+  } finally {
+    await context.close().catch(() => undefined);
+  }
+}
+
 export async function checkShopCssRender(input: ShopCssCheckInput): Promise<ShopCssCheckResult> {
-  const widths = checkWidths(input.css);
+  let switches: number[] | null;
+  try {
+    const [shop, base] = await Promise.all([containerSwitchWidths(input.browser, input.build(input.css)), containerSwitchWidths(input.browser, input.build(null))]);
+    switches = shop && base ? [...shop, ...base] : null;
+  } catch {
+    switches = null;
+  }
+  if (switches === null) return { ok: false, problems: ["container_switches"], widths: [] };
+  const widths = [...new Set([...checkWidths(input.css), ...switches])].sort((a, b) => a - b);
   const problems: string[] = [];
   const checked: number[] = [];
   for (let i = 0; i < widths.length; i += PARALLEL) {

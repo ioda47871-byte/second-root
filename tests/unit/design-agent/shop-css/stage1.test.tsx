@@ -8,7 +8,7 @@ import { FIRST_VIEWS, GROUNDS, HEADING_STYLES, SECTION_KINDS, SECTION_VARIANTS, 
 import { demoFacts } from "@/lib/design-agent/shop-css/apply";
 import { guardShopCss, SHOP_CSS_ATTRIBUTES, TEXT_FREE_ELEMENTS, type GuardedShopCss } from "@/lib/design-agent/shop-css/guard";
 import { MEASURE_SCRIPT, MeasureSchema } from "@/lib/design-agent/shop-css/page-scripts";
-import { checkShopCssRender } from "@/lib/design-agent/shop-css/render-check";
+import { checkShopCssRender, checkWidths, containerSwitchWidths } from "@/lib/design-agent/shop-css/render-check";
 import { AMERICAN_EDITORIAL, SHOP } from "../fixtures";
 import { BASE_PROFILE, coverageLayouts, FULL_SHOP, SPARSE_JP_SHOP, THREE_SHOPS } from "../stage1-fixtures";
 import { launch, pageBuilder } from "./support";
@@ -124,6 +124,21 @@ describe("render check on Stage 1 layouts", () => {
       const r = await checkShopCssRender({ browser, build: pageBuilder(demo, profile), css: guarded(`#shop-css main { padding-bottom: calc(24px + ${shift}); }`), facts: demoFacts(demo), exhaustive: true });
       expect(r.problems, shift).toEqual([]);
     }
+  });
+
+  it("container-query switches (DEV-071b split visit) are found and checked on both sides, where the shop CSS moves them", async () => {
+    const { demo, profile } = THREE_SHOPS.bakery!;
+    const build = pageBuilder(demo, profile);
+    const base = await containerSwitchWidths(browser, build(null));
+    expect(base, "the split visit's rows switch somewhere in 320–1920px").not.toBeNull();
+    expect(base!.length).toBeGreaterThan(0);
+    // wider padding around the split block moves the switch to a wider viewport
+    const css = guarded('#shop-css section[data-variant="split"] { padding-left: 120px; padding-right: 120px; }');
+    const moved = await containerSwitchWidths(browser, build(css));
+    expect(moved).not.toEqual(base);
+    const r = await checkShopCssRender({ browser, build, css, facts: demoFacts(demo), exhaustive: true });
+    for (const w of [...base!, ...moved!]) expect(r.widths, `width ${w}`).toContain(w);
+    expect(r.widths.length).toBeGreaterThan(checkWidths(css).length);
   });
 
   const BAD: Array<[string, keyof typeof THREE_SHOPS, string, string[]]> = [

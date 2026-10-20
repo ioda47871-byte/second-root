@@ -50,6 +50,8 @@ export const SHOP_CSS_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = 
   "data-headings": ["en_ja", "ja_en", "ja_only", "vertical_ja"],
   "data-fv": ["lead", "hours", "menu"],
   "data-key": ["hours", "closedDays", "address", "access", "phone"],
+  // DEV-071b: a section with little content (presence only: the value is always "")
+  "data-short": [""],
   "aria-labelledby": ["pr-about", "pr-menu", "pr-hours", "pr-visit"],
   lang: ["en"],
   "aria-hidden": ["true"],
