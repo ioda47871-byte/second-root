@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DesignProfileSchema, withoutMeta } from "./profile";
+import { DesignProfileCoreSchema, withoutMeta } from "./profile";
 
 // Visual review (DEV-028): Codex looks at screenshots of the rendered demo
 // and scores it. It may propose a whole revised profile (still limited to the
@@ -30,7 +30,7 @@ export const VisualReviewSchema = z.strictObject({
     .max(6),
   recommended_profile_changes: z.strictObject({
     summary: z.array(z.string().max(160)).max(5),
-    revised_profile: z.union([DesignProfileSchema, z.null()]),
+    revised_profile: z.union([DesignProfileCoreSchema, z.null()]), // DEV-071b: with layout
   }),
   needs_renderer_change: z.boolean(),
   renderer_change_note: z.string().max(300),

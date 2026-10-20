@@ -361,15 +361,21 @@ describe("direction presets (DEV-067)", () => {
 
   // ---- DEV-067 re-review: lines of the frames vs the name
 
-  it("phones: the name keeps clear of its frame, and no frame line runs over the hero's words or beside the title's frame", async () => {
+  // One test per direction (DEV-071a re-review: the single test took ~139 s and hit the
+  // timeout under full-suite load); each reuses one page per phone size. Same coverage.
+  for (const direction of DIRECTIONS)
+  it(`phones (${direction}): the name keeps clear of its frame, and no frame line runs over the hero's words or beside the title's frame`, async () => {
     const sizes = { phone360: { viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true }, phone390: VIEWPORTS.phone };
-    for (const [vp, opts] of Object.entries(sizes))
+    const contexts = await Promise.all(Object.values(sizes).map((opts) => browser.newContext({ ...opts, reducedMotion: "reduce" })));
+    const pages = Object.fromEntries(await Promise.all(Object.keys(sizes).map(async (vp, i) => [vp, await contexts[i].newPage()] as const)));
+    try {
+    for (const vp of Object.keys(sizes))
       for (const spacing of ["tight", "standard"] as const)
         for (const height of ["medium", "full"] as const)
           for (const motifs of [["ruled_frame", "corner_marks", "location_labels"], ["monogram", "location_labels"]] as DesignProfile["motifs"][])
             for (const layout of ["centered_cover", "split_crop", "stacked_oversized"] as const)
-            for (const direction of DIRECTIONS) {
-              const page = await browser.newPage({ ...opts, reducedMotion: "reduce" });
+            {
+              const page = pages[vp];
               const profile: DesignProfile = { ...withDirection(direction), spacing: { scale: spacing }, motifs, heroLayout: { layout, height, alignment: "left" } };
               const html = renderToStaticMarkup(<ProfileRenderer demo={SHOPS.full!} profile={profile} />);
               await page.setContent(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS}</style></head><body>${html}</body></html>`);
@@ -445,10 +451,12 @@ describe("direction presets (DEV-067)", () => {
                 },
                 { hero: cls("hero"), title: cls("title"), frame: cls("frame"), corners: cls("corners"), canvas: cls("canvas") },
               );
-              await page.close();
               const tag = `${vp} ${spacing}/${height} ${layout} ${direction} [${motifs.join(",")}]`;
               expect(g.problems, tag).toEqual([]);
               for (const gap of g.gaps) expect(gap, `${tag}: name to its frame`).toBeGreaterThanOrEqual(6);
             }
+    } finally {
+      await Promise.all(contexts.map((c) => c.close()));
+    }
   });
 });
