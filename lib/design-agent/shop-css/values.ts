@@ -253,14 +253,26 @@ const sizeKw = kw("auto", "min-content", "max-content", "fit-content");
 const one = (...items: Item[]): Spec => ({ items, max: 1 });
 
 /** Grid track lists: lengths, fr, keywords, repeat(), minmax(), fit-content(). */
+/**
+ * A track that holds content is at least MIN_TRACK_PX wide (a 0px track lets its
+ * text spill over the next one: re-review 2, High 1). Only the minimum of
+ * minmax() may be smaller (minmax(0, 1fr) is the usual way to let a track shrink).
+ */
+const MIN_TRACK_PX = 24;
+const sizedTrack = (t: Term) => isLength(t, TRACK) && lengthFloorPx(t) >= MIN_TRACK_PX;
+
 function isTrack(t: Term, depth = 0): boolean {
   if (t.t === "dim" && t.unit === "fr") return t.v > 0 && t.v <= 24;
   if (kw("auto", "min-content", "max-content")(t)) return true;
-  if (isLength(t, TRACK)) return true;
+  if (sizedTrack(t)) return true;
   if (t.t !== "fn" || depth > 1) return false;
   const groups = commaGroups(terms(t.args));
-  if (t.name === "minmax") return groups.length === 2 && groups.every((g) => g.length === 1 && isTrack(g[0]!, depth + 1) && g[0]!.t !== "fn");
-  if (t.name === "fit-content") return groups.length === 1 && groups[0]!.length === 1 && isLength(groups[0]![0]!, TRACK);
+  if (t.name === "minmax") {
+    if (groups.length !== 2 || !groups.every((g) => g.length === 1 && g[0]!.t !== "fn")) return false;
+    const [min, max] = [groups[0]![0]!, groups[1]![0]!];
+    return (isLength(min, TRACK) || kw("auto", "min-content", "max-content")(min)) && isTrack(max, depth + 1);
+  }
+  if (t.name === "fit-content") return groups.length === 1 && groups[0]!.length === 1 && sizedTrack(groups[0]![0]!);
   if (t.name === "repeat") {
     if (groups.length !== 2 || groups[0]!.length !== 1) return false;
     const count = groups[0]![0]!;
@@ -268,6 +280,13 @@ function isTrack(t: Term, depth = 0): boolean {
     return groups[1]!.length >= 1 && groups[1]!.length <= 6 && groups[1]!.every((x) => isTrack(x, depth + 1));
   }
   return false;
+}
+
+/** The smallest a plain length can be in px (vw at a 320px screen, % unknown: 0); math functions count as 0. */
+function lengthFloorPx(t: Term): number {
+  if (t.t === "dim") return t.unit === "vw" ? t.v * 3.2 : t.v * (PX_PER[t.unit] ?? 0);
+  if (t.t === "pct") return t.v > 0 ? MIN_TRACK_PX : 0;
+  return 0;
 }
 const tracks: Spec = { items: [(t) => isTrack(t), kw("none")], max: 12 };
 
