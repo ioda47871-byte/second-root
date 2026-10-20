@@ -6,7 +6,7 @@ import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import { normalizeLayout } from "@/lib/design-agent/layout";
 import { checkProfile, DIRECTIONS, paletteProblems, type DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
-import { BASE_PROFILE, coverageLayouts, PALETTES, FULL_SHOP, pageHtml, SPARSE_JP_SHOP, THREE_SHOPS, VIEWPORTS } from "./stage1-fixtures";
+import { BASE_PROFILE, coverageLayouts, DESKTOP_MIN, PALETTES, SWEEP_WIDTHS, sweepViewport, FULL_SHOP, pageHtml, SPARSE_JP_SHOP, THREE_SHOPS, VIEWPORTS } from "./stage1-fixtures";
 
 // Stage 1 (DEV-071a) in a real browser: every section kind × variant × ground,
 // on a 390px and a 360px phone and a 1440px desktop, for a shop with many
@@ -114,12 +114,13 @@ const factsOf = (demo: DemoView) =>
 const JAPANESE_ONLY = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー々〆ヶ・]+$/u;
 
 describe("sections in Chromium", () => {
-  it("every kind × variant × ground: no sideways scroll or cut text, every fact shown, notices kept, band ink readable, vertical text on desktop only", async () => {
+  it("every kind × variant × ground at every width (320 to 1440, each breakpoint ±1px): no sideways scroll or cut text, every fact shown, notices kept, band ink readable, vertical text on desktop only", async () => {
     const shops: Record<string, DemoView> = { full: FULL_SHOP, sparse_jp: SPARSE_JP_SHOP };
     const seen = new Set<string>();
     expect(paletteProblems(BASE_PROFILE.palette)).toEqual([]);
-    for (const device of ["phone", "narrow", "desktop"] as const) {
-      const context = await browser.newContext({ ...VIEWPORTS[device], reducedMotion: "reduce" });
+    for (const width of SWEEP_WIDTHS) {
+      const device = `${width}px`;
+      const context = await browser.newContext({ ...sweepViewport(width), reducedMotion: "reduce" });
       const page = await context.newPage();
       try {
         for (const [shopKey, demo] of Object.entries(shops)) {
@@ -131,13 +132,13 @@ describe("sections in Chromium", () => {
             const normal = normalizeLayout(layout, demo).layout;
             expect(m.sections, label).toEqual(normal.sections.map((s) => `${s.kind}/${s.variant}/${s.ground}`));
             m.sections.forEach((s) => seen.add(s));
-            expect(m.overflowX, `${label}: sideways scroll`).toBe(false);
-            expect(m.clipped, `${label}: text outside the page`).toEqual([]);
-            expect(m.missing, `${label}: facts not shown`).toEqual([]);
+            expect.soft(m.overflowX, `${label}: sideways scroll`).toBe(false);
+            expect.soft(m.clipped, `${label}: text outside the page`).toEqual([]);
+            expect.soft(m.missing, `${label}: facts not shown`).toEqual([]);
             expect(m.notice, `${label}: notice bar`).toBe(true);
             expect(m.footer, `${label}: footer notice`).toBe(true);
             expect(m.lowContrast, `${label}: band ink`).toEqual([]);
-            if (device === "desktop") {
+            if (width >= DESKTOP_MIN) {
               for (const v of m.vertical) expect(v, `${label}: vertical text`).toMatch(JAPANESE_ONLY);
               // a section with little content (data-short) keeps a horizontal heading
               if (normal.type.headings === "vertical_ja") expect(m.vertical.length, `${label}: vertical headings`).toBeGreaterThanOrEqual(m.long);
@@ -156,6 +157,33 @@ describe("sections in Chromium", () => {
     // the full shop drew every kind × variant × ground
     expect(seen.size).toBe(13 * 3);
   });
+});
+
+describe("every direction at every width (DEV-071b)", () => {
+  // DIRECTIONS restyle the sections (panels, frames, tiles): each one, with the
+  // layouts that use every variant, at every sweep width.
+  for (const direction of DIRECTIONS)
+    it(`${direction}: no sideways scroll, no text outside the page, every fact shown`, async () => {
+      const layouts = [...coverageLayouts(), ...Object.values(THREE_SHOPS).map((v) => ({ key: "three", layout: v.profile.layout! }))];
+      for (const width of SWEEP_WIDTHS) {
+        const context = await browser.newContext({ ...sweepViewport(width), reducedMotion: "reduce" });
+        const page = await context.newPage();
+        try {
+          for (const [shopKey, demo] of Object.entries({ full: FULL_SHOP, sparse_jp: SPARSE_JP_SHOP })) {
+            for (const { key, layout } of layouts.filter((_, i) => shopKey === "full" || i % 3 === 0)) {
+              const label = `${direction}/${shopKey}/${key}/${width}px`;
+              await page.setContent(pageHtml(renderToStaticMarkup(<ProfileRenderer demo={demo} profile={{ ...BASE_PROFILE, direction, layout }} />)));
+              const m = await check(page, factsOf(demo));
+              expect.soft(m.overflowX, `${label}: sideways scroll`).toBe(false);
+              expect.soft(m.clipped, `${label}: text outside the page`).toEqual([]);
+              expect.soft(m.missing, `${label}: facts not shown`).toEqual([]);
+            }
+          }
+        } finally {
+          await context.close();
+        }
+      }
+    });
 });
 
 describe("three fictional shops", () => {

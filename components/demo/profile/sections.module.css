@@ -428,7 +428,6 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
   .strip .pair + .pair { padding-left: 28px; border-top: 0; border-left: 1px solid var(--soft-line); }
 
   .split { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: start; }
-  .splitRow { grid-template-columns: minmax(9em, auto) minmax(0, 1fr); }
 
   /* Vertical writing: desktop only, Japanese script only (the fixed Japanese
      heading words; a Japanese-only short name). Phones keep horizontal text. */
@@ -495,4 +494,11 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
     font-size: min(15rem, calc(72svh / (var(--name-chars, 6) * (1.06 + var(--track-n, 0)))));
     line-height: 1.05;
   }
+}
+
+/* The split variant's rows set label and value side by side only where its narrow
+   column has room for a label and an unbreakable number run (a phone number):
+   between 720 and 1100px the column is too narrow and the label sits above. */
+@media (min-width: 1100px) {
+  .splitRow { grid-template-columns: minmax(9em, auto) minmax(0, 1fr); }
 }
