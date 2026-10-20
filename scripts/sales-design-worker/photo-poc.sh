@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
-# DEV-029 photo PoC — one fictional bakery job with person-made concept photos
+# DEV-029 photo PoC — one fictional bakery job with approved real photos
 # through the normal design worker (real Codex, inside the jail).
 #
-#   ./scripts/sales-design-worker/photo-poc.sh --job-id poc-photo-001 \
-#     --created-by <your handle> --created-at <ISO time the images were made> \
-#     --image <concept-1.png|jpg|webp> [--image <concept-2> --image <concept-3>]
+# DEV-070 (2026-10-20): the photos are approved_real only — photos a shop
+# provided or allowed, with your own consent record whose permission covers
+# this local preview use. No AI-generated or made-up photo, no Instagram /
+# website image without the shop's permission (未承認の画像利用は禁止).
+# Running this needs the human's explicit approval for these specific photos
+# first; --human-approval-confirmed states that this approval was given.
+#
+#   ./scripts/sales-design-worker/photo-poc.sh --job-id poc-photo-006 \
+#     --consent-id <id of your own consent record> --approved-by <your handle> \
+#     --approved-at <ISO time of the permission> --human-approval-confirmed \
+#     --image <photo-1.png|jpg|webp> [--image <photo-2> --image <photo-3>]
 #
 # Run as the worker user (sr-designgen) inside the jail, e.g.
 #   sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- \
 #     /home/sr-designgen/work/second-root/scripts/sales-design-worker/photo-poc.sh …
 # See docs/operations/design-photo-poc.md. Steps, each stopping on failure:
 #   0. resource preflight (STOP: nothing is started)
-#   1. pin this checkout to origin/$SR_DESIGN_WORKER_REF (default: the DEV-029 branch) and install
+#   1. pin this checkout to origin/$SR_DESIGN_WORKER_REF (default: develop) and install
 #   2. write the fictional facts (no real shop) outside the repository
-#   3. intake the images as generated_concept, people none (refused if the job already has photos)
-#   4. poc-preflight (job id unused, queue idle, photos verified, sandbox with the store hidden, ChatGPT sign-in)
+#   3. intake the images as approved_real, scope local_preview only, people none (refused if the job already has photos)
+#   4. poc-preflight (job id unused, queue idle, photos verified and approved for local_preview, sandbox with the store hidden, ChatGPT sign-in)
 #   5. enqueue (reference: https://example.com/, the IANA documentation domain — no shop, no Instagram)
 #   6. run.sh --max=1 (the supported entry point; its own budget and timeouts, unchanged)
 #   7. poc-report → ~/sr-design-poc/<job>.json (codes, counts and milliseconds only)
@@ -24,26 +32,33 @@ set -euo pipefail
 umask 077
 
 JOB=""
+CONSENT=""
 BY=""
 AT=""
+APPROVED=""
 IMAGES=()
+USAGE="usage: --job-id poc-photo-<n> --consent-id <id> --approved-by <handle> --approved-at <ISO time> --human-approval-confirmed --image <file> [--image …]"
 while [ $# -gt 0 ]; do
   case "$1" in
     --job-id) JOB="${2:-}"; shift 2 ;;
-    --created-by) BY="${2:-}"; shift 2 ;;
-    --created-at) AT="${2:-}"; shift 2 ;;
+    --consent-id) CONSENT="${2:-}"; shift 2 ;;
+    --approved-by) BY="${2:-}"; shift 2 ;;
+    --approved-at) AT="${2:-}"; shift 2 ;;
+    --human-approval-confirmed) APPROVED=1; shift ;;
     --image) IMAGES+=("${2:-}"); shift 2 ;;
-    *) echo "usage: --job-id poc-photo-<n> --created-by <handle> --created-at <ISO time> --image <file> [--image …]"; exit 2 ;;
+    *) echo "$USAGE"; exit 2 ;;
   esac
 done
 # A generic PoC id only: never a shop's name.
 [[ "$JOB" =~ ^poc-photo-[a-z0-9-]{1,40}$ ]] || { echo "--job-id: poc-photo-<lowercase letters, digits, ->"; exit 2; }
-[[ "$BY" =~ ^[A-Za-z0-9._@-]{1,64}$ ]] || { echo "--created-by: a handle (letters, digits, . _ @ -)"; exit 2; }
-[ -n "$AT" ] || { echo "--created-at: when the images were made (ISO time, e.g. 2026-10-02T09:00:00+09:00)"; exit 2; }
+[[ "$CONSENT" =~ ^[A-Za-z0-9_-]{3,64}$ ]] || { echo "--consent-id: the id of your own record of the shop's permission (letters, digits, _ -)"; exit 2; }
+[[ "$BY" =~ ^[A-Za-z0-9._@-]{1,64}$ ]] || { echo "--approved-by: a handle (letters, digits, . _ @ -)"; exit 2; }
+[ -n "$AT" ] || { echo "--approved-at: when the permission was given (ISO time, e.g. 2026-10-02T09:00:00+09:00)"; exit 2; }
+[ -n "$APPROVED" ] || { echo "STOP: --human-approval-confirmed is missing. Running the photo PoC needs the human's explicit approval for these specific photos (未承認の画像利用は禁止). Nothing was started."; exit 2; }
 [ "${#IMAGES[@]}" -ge 1 ] && [ "${#IMAGES[@]}" -le 3 ] || { echo "--image: 1 to 3 images"; exit 2; }
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-REF="${SR_DESIGN_WORKER_REF:-feature/dev-029-photo-art-direction}"
+REF="${SR_DESIGN_WORKER_REF:-develop}"
 [[ "$REF" =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || { echo "SR_DESIGN_WORKER_REF: not a branch name"; exit 2; }
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/sr-design-worker"
 INPUT="$HOME/sr-design-input/$JOB"
@@ -86,7 +101,7 @@ cat > "$INPUT/facts.json" <<'FACTS'
 }
 FACTS
 
-echo "== 3. intake (generated_concept, people none)"
+echo "== 3. intake (approved_real, scope local_preview, people none)"
 EXISTING="$(npm run -s sales:design-assets -- list --job-id "$JOB" 2>/dev/null || true)"
 if grep -q '^asset-' <<<"$EXISTING"; then
   echo "STOP: $JOB already has photos. Use a new --job-id (a PoC job is never run twice)."
@@ -94,7 +109,7 @@ if grep -q '^asset-' <<<"$EXISTING"; then
 fi
 for img in "${IMAGES[@]}"; do
   npm run -s sales:design-assets -- add --job-id "$JOB" --file "$img" --people none \
-    --source generated_concept --created-by "$BY" --created-at "$AT"
+    --source approved_real --consent-id "$CONSENT" --approved-by "$BY" --approved-at "$AT" --scope local_preview
 done
 npm run -s sales:design-assets -- list --job-id "$JOB"
 

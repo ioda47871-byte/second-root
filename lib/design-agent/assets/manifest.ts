@@ -7,16 +7,20 @@ import { ASSET_ID, type PublicAssetId } from "./types";
 // never holds shop text, and nothing in it is drawn on the page.
 //
 // MVP rules fixed by people:
-// - sources: approved_real (the shop provided it, or allowed its use) and
-//   generated_concept (an illustrative image, always labelled on the page);
-//   a reference screenshot is never an asset.
+// - one source only: approved_real (the shop provided it, or allowed its
+//   use, with a consent record). DEV-070 (2026-10-20, people's decision)
+//   removed generated_concept: no AI-generated or made-up shop photo is ever
+//   drawn. A manifest that still lists one no longer parses, so its job has
+//   no photos (the page without photos, as before).
+// - a reference screenshot (Instagram, website) is never an asset: it is
+//   captured and analysed for colour and mood only, and never republished.
 // - no people in any photo (`people` is the literal "none").
 // - approved_real carries a consent record with separate scopes for the local
 //   preview and the public demo. DEV-029 uses the local preview only, and the
 //   public demo shows no photo at all (MVP_SPEC §7 unchanged).
 // - at most 3 photos per job.
 
-export const SOURCE_KINDS = ["approved_real", "generated_concept"] as const;
+export const SOURCE_KINDS = ["approved_real"] as const;
 export const CONSENT_SCOPES = ["local_preview", "public_demo"] as const;
 export const MAX_ASSETS_PER_JOB = 3;
 /** The public demo shows no photo in DEV-029 (MVP_SPEC §7), whatever the consent says. */
@@ -57,18 +61,8 @@ export const ApprovedRealSchema = z.strictObject({
   }),
 });
 
-export const GeneratedConceptSchema = z.strictObject({
-  ...base,
-  sourceKind: z.literal("generated_concept"),
-  generation: z.strictObject({
-    /** MVP: a person made the image and put it in (no image API in the worker). */
-    method: z.literal("human_upload"),
-    createdBy: handle,
-    createdAt: isoTime,
-  }),
-});
-
-export const AssetRecordSchema = z.discriminatedUnion("sourceKind", [ApprovedRealSchema, GeneratedConceptSchema]);
+/** approved_real is the only source kind (DEV-070); any other kind fails to parse. */
+export const AssetRecordSchema = ApprovedRealSchema;
 
 export const AssetManifestSchema = z
   .strictObject({
@@ -91,10 +85,9 @@ export function emptyManifest(jobId: string): AssetManifest {
   return { version: 1, jobId, assets: [] };
 }
 
-/** Whether the record's own permission covers this use. Generated images are ours: local preview only in DEV-029. */
+/** Whether the record's own permission covers this use. */
 export function consentAllows(asset: AssetRecord, scope: ConsentScope): boolean {
-  if (asset.sourceKind === "generated_concept") return scope === "local_preview";
-  return asset.consent.scopes.includes(scope);
+  return asset.sourceKind === "approved_real" && asset.consent.scopes.includes(scope);
 }
 
 /** Whether a photo may be drawn in this place at all (consent and the MVP's public-demo switch). */

@@ -34,9 +34,9 @@ const P = "asset-111111111111111111111111"; // portrait, quiet, generated
 const L = "asset-222222222222222222222222"; // landscape, busy, approved
 const S = "asset-333333333333333333333333"; // square, quiet, generated
 const ASSETS: FakeAsset[] = [
-  { id: P, png: fakePng(600, 750, { seed: 1 }), sourceKind: "generated_concept" },
+  { id: P, png: fakePng(600, 750, { seed: 1 }), sourceKind: "approved_real" },
   { id: L, png: fakePng(900, 600, { seed: 2, busy: true }), sourceKind: "approved_real" },
-  { id: S, png: fakePng(640, 640, { seed: 3 }), sourceKind: "generated_concept" },
+  { id: S, png: fakePng(640, 640, { seed: 3 }), sourceKind: "approved_real" },
 ];
 const SRC = new Map(ASSETS.map((a) => [a.id, dataUrl(a.png)]));
 const MANIFEST = fakeManifest("job-layout", ASSETS);
@@ -110,7 +110,7 @@ const VIEWPORTS = {
 } as const;
 
 type Box = { left: number; top: number; right: number; bottom: number };
-type Figure = { box: Box; source: string; label: Box | null; labelVisible: boolean; loaded: boolean; fit: string; position: string; container: string };
+type Figure = { box: Box; source: string; extra: number; loaded: boolean; fit: string; position: string; container: string };
 type Measure = { figures: Figure[]; text: { what: string; box: Box }[]; hero: Box; split: Box | null; header: Box; nameLines: Box[]; brokenPieces: string[]; title: Box; overflowX: boolean };
 
 let browser: Browser;
@@ -132,7 +132,7 @@ async function measure(demo: DemoView, profile: DesignProfile, photos: RenderPho
     const body = renderToStaticMarkup(<ProfileRenderer demo={demo} profile={profile} photos={photos} />);
     await page.setContent(`<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS}</style></head><body>${body}</body></html>`);
     await page.evaluate(() => Promise.all([...document.images].map((img) => img.decode().catch(() => undefined))));
-    const names = ["imageLabel", "heroSplit", "lineText", "piece", "folio", "dek", "stamp", "pleats", "monogram", "lead", "visit", "menu", "title"] as const;
+    const names = ["heroSplit", "lineText", "piece", "folio", "dek", "stamp", "pleats", "monogram", "lead", "visit", "menu", "title"] as const;
     const s = Object.fromEntries(names.map((n) => [n, (profileStyles as Record<string, string>)[n]])) as Record<(typeof names)[number], string>;
     return await page.evaluate((c) => {
       const box = (e: Element) => {
@@ -143,15 +143,13 @@ async function measure(demo: DemoView, profile: DesignProfile, photos: RenderPho
       const all = (sel: string) => [...document.querySelectorAll(sel)];
       const figures = all("figure").map((f) => {
         const img = f.querySelector("img")!;
-        const label = f.querySelector(`.${c.imageLabel}`);
         const style = getComputedStyle(img);
-        const ls = label ? getComputedStyle(label) : null;
         const container = f.closest(`.${c.heroSplit}`) ? "split" : f.closest("header") ? "header" : (f.closest("section")?.getAttribute("aria-labelledby") ?? "none");
         return {
           box: box(f),
           source: f.getAttribute("data-source") ?? "",
-          label: label ? box(label) : null,
-          labelVisible: Boolean(label && ls && ls.visibility === "visible" && ls.display !== "none" && Number(ls.opacity) > 0.99 && label.textContent === "イメージ画像"),
+          // anything drawn on the photo besides the image itself (DEV-070: no label, no text)
+          extra: [...f.children].filter((e) => e !== img).length + (f.textContent ?? "").trim().length,
           loaded: img.complete && img.naturalWidth > 0,
           fit: style.objectFit,
           position: style.objectPosition,
@@ -218,12 +216,9 @@ describe("photo layouts (Chromium, 390 × 844 and 1440 × 900)", () => {
               expect(f.loaded, `${what} not loaded`).toBe(true);
               for (const t of m.text) expect(overlaps(f.box, t.box), `${what} over ${t.what}`).toBe(false);
               m.figures.forEach((g, j) => j !== i && expect(overlaps(f.box, g.box), `${what} over photo ${j}`).toBe(false));
-              // the generated image label, and only there
-              expect(f.label !== null, `${what} label`).toBe(f.source === "generated_concept");
-              if (f.label) {
-                expect(f.labelVisible, `${what} label hidden`).toBe(true);
-                expect(inside(f.label, f.box), `${what} label outside the photo`).toBe(true);
-              }
+              // an approved photo with nothing drawn on it (DEV-070 removed the generated image label)
+              expect(f.source, what).toBe("approved_real");
+              expect(f.extra, `${what} has something drawn on it`).toBe(0);
               // fit, crop direction and aspect as directed, per device
               expect(f.fit, what).toBe(photo.fit);
               const focal = device === "phone" ? photo.mobileFocal : photo.focal;

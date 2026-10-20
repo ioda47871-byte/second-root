@@ -8,11 +8,12 @@ import { monogram, nameLines, WARD_ROMAJI } from "@/components/demo/profile/text
 import type { ImageDirection } from "@/lib/design-agent/assets/direction";
 import { resolvePhotos, type RenderPhotos } from "@/lib/design-agent/assets/resolve";
 import { analysesArtifact, assetsArtifact, imagesArtifact } from "@/lib/design-agent/assets/lineage";
+import { loadManifest } from "@/lib/design-agent/assets/intake";
 import { previewAssetUrl, readPreviewAsset } from "@/lib/design-agent/assets/serve";
 import { loadPreviewRun } from "@/lib/design-agent/preview";
 import type { DemoView } from "@/lib/sales/demo-content";
 import { AMERICAN_EDITORIAL, MINIMAL_SHOP, SHOP } from "./fixtures";
-import { fakeAnalysis, fakeManifest, fakePng, writeStore, type FakeAsset } from "./photo-fixtures";
+import { fakeAnalysis, fakeManifest, fakePng, legacyGeneratedConceptManifest, writeStore, type FakeAsset } from "./photo-fixtures";
 
 // DEV-029 stage 2: what the profile renderer draws with photos, when it draws
 // none, and the only way a photo file reaches the local preview.
@@ -21,9 +22,9 @@ const A = "asset-aaaaaaaaaaaaaaaaaaaaaaaa";
 const B = "asset-bbbbbbbbbbbbbbbbbbbbbbbb";
 const C = "asset-cccccccccccccccccccccccc";
 const ASSETS: FakeAsset[] = [
-  { id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "generated_concept" },
+  { id: A, png: fakePng(360, 450, { seed: 1 }), sourceKind: "approved_real" },
   { id: B, png: fakePng(480, 320, { seed: 2, busy: true }), sourceKind: "approved_real" },
-  { id: C, png: fakePng(400, 400, { seed: 3 }), sourceKind: "generated_concept" },
+  { id: C, png: fakePng(400, 400, { seed: 3 }), sourceKind: "approved_real" },
 ];
 const MANIFEST = fakeManifest("job-001", ASSETS);
 const ANALYSES = { photos: [fakeAnalysis(A), fakeAnalysis(B, { orientation: "landscape", busy: "busy" }), fakeAnalysis(C, { orientation: "square" })] };
@@ -54,7 +55,7 @@ describe("photo resolution: every doubt means no photos", () => {
     const { photos, problems } = resolve(SHOP, direction());
     expect(problems).toEqual([]);
     expect(photos?.layout).toBe("split_hero");
-    expect(photos?.hero).toMatchObject({ assetId: A, src: `/x/${A}`, sourceKind: "generated_concept", width: 360, height: 450 });
+    expect(photos?.hero).toMatchObject({ assetId: A, src: `/x/${A}`, sourceKind: "approved_real", width: 360, height: 450 });
     expect(photos?.features).toMatchObject([{ assetId: B, slot: "visit", sourceKind: "approved_real" }]);
   });
 
@@ -107,22 +108,24 @@ describe("profile renderer with photos", () => {
     }
   });
 
-  it("labels every generated image and no approved one, with fixed text only", () => {
+  it("draws approved photos only, with no label or other text on any photo (DEV-070)", () => {
     const three = direction({ layout: "framed_hero", features: [{ ...place(B), slot: "visit", side: "right" }, { ...place(C), slot: "about", side: "left" }], rejected: [] });
     const html = render(SHOP, resolve(SHOP, three).photos);
     const figures = [...html.matchAll(/<figure[^>]*data-source="([a-z_]+)"[^>]*>([\s\S]*?)<\/figure>/g)];
-    expect(figures.map((f) => f[1]).sort()).toEqual(["approved_real", "generated_concept", "generated_concept"]);
-    for (const [, source, inner] of figures) expect(inner.includes(">イメージ画像</span>"), source).toBe(source === "generated_concept");
+    expect(figures.map((f) => f[1])).toEqual(["approved_real", "approved_real", "approved_real"]);
+    for (const [, , inner] of figures) expect(inner.replace(/<img [^>]*>/g, "")).toBe("");
+    expect(html).not.toContain("イメージ画像");
+    expect(html).not.toContain("data-image-label");
     expect([...html.matchAll(/<img [^>]*>/g)].every((m) => /alt=""/.test(m[0]))).toBe(true);
     // decoded before paint, wherever the photo sits (poc-photo-004: an About photo below the fold
     // was painted as an empty frame on the mobile screenshot)
     expect([...html.matchAll(/<img [^>]*>/g)].every((m) => /decoding="sync"/.test(m[0]) && /loading="eager"/.test(m[0]))).toBe(true);
   });
 
-  it("shows only verified facts, fixed copy and the image label (fact-only holds with photos)", () => {
+  it("shows only verified facts and fixed copy (fact-only holds with photos)", () => {
     const html = render(SHOP, resolve(SHOP, direction({ layout: "framed_hero", features: [{ ...place(B), slot: "visit", side: "right" }, { ...place(C), slot: "about", side: "left" }], rejected: [] })).photos);
     const facts = [SHOP.name, SHOP.ward, SHOP.address, SHOP.hours, SHOP.closedDays, SHOP.access, SHOP.phone, SHOP.description, ...SHOP.menuItems].filter((v): v is string => Boolean(v));
-    const fixed = ["これは", "Second Root", "が作成した", "ご提案用のデモページ", "です。", "様の公式サイトではありません。", "このページは、", "様に向けて Second Root が公開情報をもとに作成したデモです。", "掲載内容は確認できた公開情報のみで、公式サイト・公式情報ではありません。", "Second Root（セカンドルート）｜名古屋の小さなお店のホームページ制作", "営業時間", "定休日", "住所", "アクセス", "電話", "メニュー", "店舗のご案内", "名古屋市の", "名古屋の", "焼菓子店", "名古屋市", "イメージ画像"];
+    const fixed = ["これは", "Second Root", "が作成した", "ご提案用のデモページ", "です。", "様の公式サイトではありません。", "このページは、", "様に向けて Second Root が公開情報をもとに作成したデモです。", "掲載内容は確認できた公開情報のみで、公式サイト・公式情報ではありません。", "Second Root（セカンドルート）｜名古屋の小さなお店のホームページ制作", "営業時間", "定休日", "住所", "アクセス", "電話", "メニュー", "店舗のご案内", "名古屋市の", "名古屋の", "焼菓子店", "名古屋市"];
     const whole = ["Baked Goods", "About", "Menu", "Visit", "Hours", "Closed", "Address", "Access", "Tel", "NAGOYA", ...Object.values(WARD_ROMAJI), "01", "02", monogram(SHOP.name), ...nameLines(SHOP.name)];
     const strip = (s: string, phrases: string[]) => [...phrases].sort((a, b) => b.length - a.length).reduce((acc, p) => acc.split(p).join(""), s);
     const rest = strip(strip(visibleText(html).filter((n) => !whole.includes(n)).join("\n"), facts), fixed).replace(/\s+/g, "");
@@ -188,6 +191,28 @@ describe("local preview photos and the asset route", () => {
   it("serves a listed, allowed photo as the exact PNG of the manifest", async () => {
     const png = await serve(A);
     expect(png?.equals(ASSETS[0].png)).toBe(true);
+  });
+
+  it("draws no photo from a manifest left over with a generated_concept photo (DEV-070), and serves none of its files", async () => {
+    // The run's lineage is complete for these photos: with a valid manifest the candidate shows them ...
+    const shadow = fakeManifest("job-legacy", ASSETS);
+    const legacy = join(previewRoot, "run-legacy-1");
+    await mkdir(legacy, { recursive: true });
+    for (const name of ["facts.json", "candidate-0.json"]) await writeFile(join(legacy, name), await readFile(join(previewRoot, "run-photos-1", name)));
+    const analyses = analysesArtifact("run-legacy-1", shadow, ANALYSES);
+    await writeFile(join(legacy, "photo-analyses.json"), JSON.stringify(analyses));
+    await writeFile(join(legacy, "candidate-0.images.json"), JSON.stringify(imagesArtifact("run-legacy-1", "candidate-0", shadow, analyses, AMERICAN_EDITORIAL, { about: true, visit: true }, direction())));
+    await writeFile(join(legacy, "assets.json"), JSON.stringify(assetsArtifact("run-legacy-1", shadow)));
+    await writeStore(store, "job-legacy", ASSETS, shadow);
+    expect((await loadPreviewRun(previewRoot, "run-legacy-1", "candidate-0", { env, repoDir: process.cwd() }))?.photos?.hero?.assetId).toBe(A);
+    // ... but the store job as written before DEV-070 (e.g. a photo PoC on the worker machine) lists a generated_concept photo:
+    // its manifest no longer parses, so the page is drawn without photos and no file is served.
+    await writeStore(store, "job-legacy", ASSETS, legacyGeneratedConceptManifest("job-legacy", ASSETS));
+    expect(await loadManifest(store, "job-legacy")).toBeNull();
+    const run = await loadPreviewRun(previewRoot, "run-legacy-1", "candidate-0", { env, repoDir: process.cwd() });
+    expect(run?.profile).not.toBeNull();
+    expect(run?.photos).toBeNull();
+    for (const id of [A, B, C]) expect(await serve(id, { runId: "run-legacy-1" }), id).toBeNull();
   });
 
   it("serves nothing for a malformed id, a path, an unlisted id or an unknown run", async () => {

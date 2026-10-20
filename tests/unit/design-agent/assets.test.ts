@@ -18,7 +18,7 @@ import {
   type IntakeOptions,
   type IntakeSource,
 } from "@/lib/design-agent/assets/intake";
-import { AssetManifestSchema, assetUsableIn, consentAllows, type AssetManifest, type AssetRecord } from "@/lib/design-agent/assets/manifest";
+import { AssetManifestSchema, assetUsableIn, consentAllows, SOURCE_KINDS, type AssetManifest, type AssetRecord } from "@/lib/design-agent/assets/manifest";
 import { toPublicAssetId, toReferenceImagePath, type PublicAssetId, type ReferenceImagePath } from "@/lib/design-agent/assets/types";
 
 // DEV-029 stage 1: asset types, manifest, analysis / direction schemas and
@@ -29,7 +29,6 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const REPO = process.cwd();
 const MARKER = "SR-METADATA-MARKER-GPS-35.0-136.9";
-const GENERATED: IntakeSource = { sourceKind: "generated_concept", createdBy: "designer", createdAt: "2026-10-02T09:00:00Z" };
 const APPROVED: IntakeSource = { sourceKind: "approved_real", consentId: "consent-001", approvedBy: "sales-admin", approvedAt: "2026-10-02T09:00:00Z", scopes: ["local_preview"] };
 
 let browser: Browser;
@@ -119,7 +118,7 @@ async function photoFile(bytes: Buffer, ext: string, dir = photos): Promise<stri
 }
 
 function options(jobId: string, file: string, over: Partial<IntakeOptions> = {}): IntakeOptions {
-  return { storeRoot: store, repoDir: REPO, env, jobId, file, source: GENERATED, peopleConfirmedNone: true, normalize: chromiumNormalizer(scratch), ...over };
+  return { storeRoot: store, repoDir: REPO, env, jobId, file, source: APPROVED, peopleConfirmedNone: true, normalize: chromiumNormalizer(scratch), ...over };
 }
 
 async function refusal(promise: Promise<unknown>): Promise<string> {
@@ -165,30 +164,35 @@ const record = (over: Partial<AssetRecord> & { assetId?: string } = {}): AssetRe
     bytes: 1000,
     intakeAt: "2026-10-02T09:00:00Z",
     people: "none",
-    sourceKind: "generated_concept",
-    generation: { method: "human_upload", createdBy: "designer", createdAt: "2026-10-02T09:00:00Z" },
+    sourceKind: "approved_real",
+    consent: { consentId: "consent-001", approvedBy: "sales-admin", approvedAt: "2026-10-02T09:00:00Z", scopes: ["local_preview"] },
     ...over,
   } as AssetRecord;
 };
-const approved = (scopes: string[], over: Record<string, unknown> = {}): AssetRecord => {
-  const { generation: _generated, ...common } = record() as Extract<AssetRecord, { sourceKind: "generated_concept" }>;
-  void _generated;
-  const assetId = (over.assetId as string | undefined) ?? common.assetId;
-  return {
-    ...common,
-    assetId,
-    file: `${assetId}.png`,
-    sourceKind: "approved_real",
-    consent: { consentId: "consent-001", approvedBy: "sales-admin", approvedAt: "2026-10-02T09:00:00Z", scopes },
-    ...over,
-  } as unknown as AssetRecord;
+const approved = (scopes: string[], over: Record<string, unknown> = {}): AssetRecord =>
+  record({ consent: { consentId: "consent-001", approvedBy: "sales-admin", approvedAt: "2026-10-02T09:00:00Z", scopes }, ...over } as unknown as Partial<AssetRecord>);
+/** A generated_concept record as DEV-029 wrote it (removed in DEV-070). */
+const generatedConcept = (): unknown => {
+  const { consent: _drop, ...common } = record();
+  void _drop;
+  return { ...common, sourceKind: "generated_concept", generation: { method: "human_upload", createdBy: "designer", createdAt: "2026-10-02T09:00:00Z" } };
 };
 const manifestOf = (...assets: AssetRecord[]) => ({ version: 1, jobId: "job-001", assets });
 
 describe("asset manifest", () => {
-  it("accepts generated and approved photos with their records", () => {
+  it("accepts approved photos with their consent records", () => {
     expect(AssetManifestSchema.safeParse(manifestOf(record())).success).toBe(true);
     expect(AssetManifestSchema.safeParse(manifestOf(approved(["local_preview", "public_demo"]))).success).toBe(true);
+  });
+
+  it("has approved_real as its only source: a generated_concept or any other kind is refused (DEV-070)", () => {
+    expect(SOURCE_KINDS).toEqual(["approved_real"]);
+    expect(AssetManifestSchema.safeParse(manifestOf(generatedConcept() as AssetRecord)).success).toBe(false);
+    // one generated photo among approved ones spoils the whole manifest (no photo is drawn from it)
+    expect(AssetManifestSchema.safeParse(manifestOf(approved(["local_preview"], { assetId: `asset-${"b".repeat(24)}`, sha256: "b".repeat(64) }), generatedConcept() as AssetRecord)).success).toBe(false);
+    for (const sourceKind of ["reference_screenshot", "instagram", "ai_generated", undefined]) {
+      expect(AssetManifestSchema.safeParse(manifestOf({ ...record(), sourceKind } as unknown as AssetRecord)).success, String(sourceKind)).toBe(false);
+    }
   });
 
   it("refuses an approved photo without consent, with no scope or a repeated one", () => {
@@ -336,7 +340,7 @@ describe("asset intake", () => {
       expect(pngChunkTypes(png).filter((t) => t !== "IDAT")).toEqual(["IHDR", "IEND"]);
     }
     const loaded = await loadManifest(store, "job-formats");
-    expect(loaded?.assets.map((a) => a.sourceKind)).toEqual(["generated_concept", "generated_concept", "generated_concept"]);
+    expect(loaded?.assets.map((a) => a.sourceKind)).toEqual(["approved_real", "approved_real", "approved_real"]);
   });
 
   it("leaves no metadata of the original file in the stored asset (EXIF, PNG text)", async () => {
@@ -394,6 +398,27 @@ describe("asset intake", () => {
     const { manifest } = await intakeAsset(options("job-consent", file, { source: APPROVED }));
     expect(manifest.assets[0]).toMatchObject({ sourceKind: "approved_real", consent: { scopes: ["local_preview"] } });
     expect(await refusal(intakeAsset(options("bad/../id", file)))).toBe("JOB_ID");
+  });
+
+  it("takes approved_real only: a generated_concept or unknown source is refused before anything is read or written (DEV-070)", async () => {
+    const file = await photoFile(await fakePhoto({ width: 800, height: 600, format: "png", seed: 16 }), "png");
+    for (const source of [
+      { sourceKind: "generated_concept", createdBy: "designer", createdAt: "2026-10-02T09:00:00Z" },
+      { ...APPROVED, sourceKind: "reference_screenshot" },
+      { consentId: "consent-001", approvedBy: "sales-admin", approvedAt: "2026-10-02T09:00:00Z", scopes: ["local_preview"] },
+    ]) {
+      expect(await refusal(intakeAsset(options("job-source-kind", file, { source: source as unknown as IntakeSource }))), JSON.stringify(source)).toBe("SOURCE_KIND");
+    }
+    await expect(readdir(join(store, "job-source-kind"))).rejects.toThrow();
+  });
+
+  it("adds nothing to a job whose manifest still lists a generated_concept photo, and reads that manifest as none", async () => {
+    const file = await photoFile(await fakePhoto({ width: 800, height: 600, format: "png", seed: 17 }), "png");
+    await mkdir(join(store, "job-legacy"), { recursive: true, mode: 0o700 });
+    await writeFile(join(store, "job-legacy", "manifest.json"), JSON.stringify({ version: 1, jobId: "job-legacy", assets: [generatedConcept()] }), { mode: 0o600 });
+    expect(await loadManifest(store, "job-legacy")).toBeNull();
+    expect(await refusal(intakeAsset(options("job-legacy", file)))).toBe("MANIFEST_INVALID");
+    expect(await readdir(join(store, "job-legacy"))).toEqual(["manifest.json"]);
   });
 
   it("never takes a reference screenshot: capture results, worker temp roots, preview output", async () => {

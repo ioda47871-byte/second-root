@@ -73,9 +73,23 @@ export function fakeRecord(a: FakeAsset): AssetRecord {
     intakeAt: "2026-10-02T09:00:00Z",
     people: "none" as const,
   };
-  return a.sourceKind === "generated_concept"
-    ? { ...common, sourceKind: "generated_concept", generation: { method: "human_upload", createdBy: "designer", createdAt: "2026-10-02T09:00:00Z" } }
-    : { ...common, sourceKind: "approved_real", consent: { consentId: "consent-001", approvedBy: "sales-admin", approvedAt: "2026-10-02T09:00:00Z", scopes: a.scopes ?? ["local_preview"] } };
+  return { ...common, sourceKind: "approved_real", consent: { consentId: "consent-001", approvedBy: "sales-admin", approvedAt: "2026-10-02T09:00:00Z", scopes: a.scopes ?? ["local_preview"] } };
+}
+
+/**
+ * A manifest as written before DEV-070, still listing a generated_concept photo
+ * (a person-made concept image). Raw JSON: today's schema no longer accepts it.
+ */
+export function legacyGeneratedConceptManifest(jobId: string, assets: FakeAsset[]): unknown {
+  return {
+    version: 1,
+    jobId,
+    assets: assets.map((a, i) => {
+      const { consent: _consent, ...common } = fakeRecord(a);
+      void _consent;
+      return i === 0 ? { ...common, sourceKind: "generated_concept", generation: { method: "human_upload", createdBy: "designer", createdAt: "2026-10-02T09:00:00Z" } } : fakeRecord(a);
+    }),
+  };
 }
 
 export function fakeManifest(jobId: string, assets: FakeAsset[]): AssetManifest {
@@ -101,7 +115,7 @@ export function fakeAnalysis(assetId: string, over: Partial<PhotoAnalysis> = {})
 }
 
 /** Writes a job's photos and manifest into an asset store (0700 / 0600, like intake). */
-export async function writeStore(store: string, jobId: string, assets: FakeAsset[], manifest = fakeManifest(jobId, assets)): Promise<void> {
+export async function writeStore(store: string, jobId: string, assets: FakeAsset[], manifest: unknown = fakeManifest(jobId, assets)): Promise<void> {
   const dir = join(store, jobId);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   for (const a of assets) await writeFile(join(dir, `${a.id}.png`), a.png, { mode: 0o600 });

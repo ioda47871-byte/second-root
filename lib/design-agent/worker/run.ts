@@ -658,7 +658,13 @@ async function jobPhotos(ctx: JobContext, jobId: string): Promise<{ input?: { ru
   const store = assetStoreRoot(env);
   if (!checkStoreRoot(store, { repoDir: process.cwd(), env })) return {};
   const manifest = await loadManifest(store, jobId);
-  if (!manifest || manifest.jobId !== jobId || manifest.assets.length === 0) return {};
+  // A missing manifest loads as an empty one; null means one that no longer parses
+  // (e.g. a generated_concept photo left from before DEV-070): say why there are no photos.
+  if (!manifest) {
+    ctx.log(`job ${jobId}: photos MANIFEST_INVALID → page without photos`);
+    return { note: "MANIFEST_INVALID" };
+  }
+  if (manifest.jobId !== jobId || manifest.assets.length === 0) return {};
   const loaded = await loadPhotoInputs({ store, jobId, manifest });
   if (!loaded.ok) {
     ctx.log(`job ${jobId}: photos ${loaded.code} → page without photos`);

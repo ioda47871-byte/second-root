@@ -94,7 +94,7 @@ describe("collected photos of the real renderer pass the render check", () => {
   const A = "asset-111111111111111111111111";
   const B = "asset-222222222222222222222222";
   const ASSETS: FakeAsset[] = [
-    { id: A, png: fakePng(600, 750, { seed: 1 }), sourceKind: "generated_concept" },
+    { id: A, png: fakePng(600, 750, { seed: 1 }), sourceKind: "approved_real" },
     { id: B, png: fakePng(900, 600, { seed: 2 }), sourceKind: "approved_real" },
   ];
   const manifest = fakeManifest("job-shots", ASSETS);

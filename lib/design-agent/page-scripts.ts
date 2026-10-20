@@ -14,8 +14,8 @@ import { z } from "zod";
 /**
  * The preview page's layout facts for capturePage (DEV-029): the document
  * height and horizontal overflow, the page box of every photo section, and for
- * every figure with a photo its asset, role, visibility, the イメージ画像
- * label and whether any page text lies under it.
+ * every figure with a photo its asset, role, visibility and whether any page
+ * text lies under it.
  */
 export const PAGE_INFO_SCRIPT = String.raw`(() => {
   const box = (e) => {
@@ -32,14 +32,11 @@ export const PAGE_INFO_SCRIPT = String.raw`(() => {
   const placed = Array.from(document.querySelectorAll("figure[data-asset]")).map((f) => {
     const img = f.querySelector("img");
     const b = box(f);
-    const label = f.querySelector("[data-image-label]");
-    const ls = label ? getComputedStyle(label) : null;
     return {
       assetId: f.getAttribute("data-asset") || "",
       role: f.getAttribute("data-role") || "",
       box: b,
       visible: Boolean(img && img.complete && img.naturalWidth > 0 && b.right - b.left > 0 && b.bottom - b.top > 0 && getComputedStyle(f).visibility === "visible"),
-      labelled: Boolean(label && ls && ls.display !== "none" && ls.visibility === "visible" && Number(ls.opacity) > 0.99 && label.textContent === "イメージ画像"),
       overlapsText: textBoxes.some((t) => hit(b, t)),
     };
   });
@@ -82,7 +79,7 @@ export const PageInfoSchema = z.strictObject({
   height: z.number().nonnegative(),
   sections: z.array(Box).max(50),
   placed: z
-    .array(z.strictObject({ assetId: z.string().max(80), role: z.string().max(20), box: Box, visible: z.boolean(), labelled: z.boolean(), overlapsText: z.boolean() }))
+    .array(z.strictObject({ assetId: z.string().max(80), role: z.string().max(20), box: Box, visible: z.boolean(), overlapsText: z.boolean() }))
     .max(50),
 });
 export type PageInfo = z.infer<typeof PageInfoSchema>;

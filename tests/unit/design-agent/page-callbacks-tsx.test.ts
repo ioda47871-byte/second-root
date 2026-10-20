@@ -22,14 +22,14 @@ describe("page callbacks under tsx (keepNames), as the worker runs them", () => 
     });
     const line = run.stdout.trim().split("\n").at(-1) ?? "";
     expect(line, run.stderr).not.toContain("__name");
-    const out = JSON.parse(line) as { ok: boolean; sections: number; placed: Array<{ assetId: string; role: string; visible: boolean; labelled: boolean; overlapsText: boolean }>; rects: number };
+    const out = JSON.parse(line) as { ok: boolean; sections: number; placed: Array<{ assetId: string; role: string; visible: boolean; overlapsText: boolean }>; rects: number };
     expect(out.ok).toBe(true);
     expect(run.status).toBe(0);
-    // the photo section below the mobile cap got its own crop; both photos were found, labelled as marked
+    // the photo section below the mobile cap got its own crop; both photos were found
     expect(out.sections).toBe(1);
-    expect(out.placed.map((p) => [p.role, p.visible, p.labelled, p.overlapsText])).toEqual([
-      ["hero", true, true, false],
-      ["visit", true, false, false],
+    expect(out.placed.map((p) => [p.role, p.visible, p.overlapsText])).toEqual([
+      ["hero", true, false],
+      ["visit", true, false],
     ]);
     expect(out.rects).toBe(2);
   });
