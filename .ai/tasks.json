@@ -2828,7 +2828,7 @@
     {
       "id": "DEV-064",
       "title": "Staging の design flag を期限つきで開閉する（app 内の期限 + 範囲を限った flag 操作 script + 独立した復旧手順）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-063"
@@ -2871,7 +2871,7 @@
         "復旧の scheduled task を作る",
         "WSL で cycle を 1 回"
       ],
-      "decision": "2026-10-20: 人の指示で Claude が追加"
+      "decision": "2026-10-20: 人の指示で Claude が追加; 2026-10-20: PR #77 merge（3968ff0）。Fresh Review PASS（Medium 2・Low 4・Nit 3 → 再レビュー PASS（Low 1・Nit 1）→ 最終 PASS、すべて merge 前に対応）。CI 39374714227 success（人が独立確認）"
     }
   ]
 }

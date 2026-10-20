@@ -29,17 +29,12 @@
   5. PR #66 の判断: bridge を `runuser` で動かす・conf に承認した bridge の SHA を置く・preflight の SERIAL を OK とする・最初の deliver-only は全件 0・claim 後に止まったときの回復 SQL（job id と processing を条件）。
   6. Instagram のログインが有効であること（`LOGIN_REQUIRED` なら `admin.sh login`。cycle は回避せず止まる）。
   7. 上がすべて済んでから timer の enable を承認（`design-worker-cycle.md` §5）。
-- controlled run の手順（2026-10-20 更新。HUMAN-014 は済み。DB の書き込み・flag・run・timer はすべて未承認）。SQL は `.ai/runbooks/controlled-run/`（ローカルの Postgres で確かめた）
-  - 対象: demo `efb4bdb2-5fb8-4575-b2e1-76217a832485`（baked_goods、Instagram のみ、outreach は drafted、attempts 1/3）。予備 `b2048c61-…`。`d5656932-…`（attempts 2）は使わない
-  - A. 読むだけ（承認不要）: `snapshot.sql` で ready・attempts 1・outreach が drafted で未送信・do_not_contact false・disabled でない・`queue_open` 0 を確かめる（HUMAN-015 で Claude から読めない間は人が実行）
-  - B. 人が `restore-gen.sql`（読むだけ）を実行し、出力の update 文を自分の PC に保存（git・会話に貼らない）。保存したら確かめる: 文が `update public.sales_demos set design_status = 'ready'` で始まり `returning … profile_md5;` で終わる 1 行、`89911ff811874960e23ae80d449e4542` は文の中には出ない（戻した後に returning が返す値）。0 行なら demo が ready でない → 止まる。戻すときは returning の profile_md5 が `89911ff8…` であることを確かめる
-  - 承認の単位（2026-10-20 整理）: 承認 1 = C（reset.sql を 1 回、1 行）、承認 2 = D と F（flag を true → 必ず false、window の長さを決める）、承認 3 = E（cycle.sh を 1 回、timer・unit なし）。B の update を使う復旧は別の書き込みなので、使うときに改めて承認
-  - C. **[承認 1: DB 書き込み]** 人が `reset.sql` → 1 行・`pending`・attempts 1。0 行なら止まって Claude に知らせる
-  - D. **[承認 2: Staging の flag]** Vercel の Preview（develop）で `SALES_AI_DESIGN_ENABLED=true` → develop を redeploy → Claude が `npm run staging:bypass-status` で "true"・READY を確認。window の間は Sales Agent の run を始めない（flag が on だと新しい demo が pending で作られる）
-  - E. **[承認 3: cycle を 1 回]** WSL で `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh --dry-run` → `CYCLE_DRY_RUN_OK` の後に `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh`（timer・unit は使わない）。最後の `CYCLE_RESULT` 行を Claude に
-  - F. **[承認 2 の続き]** 結果に関係なく flag を `false` に戻し redeploy → Claude が "false" を確認
-  - G. 読むだけ: `after.sql`（Claude、または人）
-  - 復旧: `CYCLE_OK` で `ready` → 終わり。`blocked` → demo はテンプレートで表示（未送信・未公開で外への影響なし）。worker の失敗で `pending`（attempts 2）に戻った → そのまま置く（timer なしで動かない）か、B の update で元に戻す。`CYCLE_STOP_*` で `phase=before_claim` → 何も変わっていない（demo は pending のまま、B で戻せる）。`phase=after_claim` / `claim_unknown` → `design-worker-cycle.md` §6（job id を条件にした SQL・`--deliver-only`・lease の満了）。前のデザインに戻したいときはどの場合も B の update（processing の間は 0 行で何もしない）。どの場合も F（flag を false）は必ず行う
+- controlled run の手順（2026-10-20 再更新、DEV-064 merge 後）。正本は `docs/operations/design-flag-window.md`。SQL は `.ai/runbooks/controlled-run/`
+  - 状態: 対象 demo `efb4bdb2-5fb8-4575-b2e1-76217a832485` は人の承認済みの更新で `pending`（attempts 1、queue_open 1、outreach drafted 未送信）。**再度 reset しない**。restore 用 SQL は人の PC に保存済み。flag `false`・期限なし・timer 無効
+  - flag の操作・redeploy・確認は Claude（`npm run staging:design-flag`、Preview develop だけ、期限つき）。期限で app が自然に無効、加えて期限 + 10 分の独立した復旧 session
+  - 残りの承認: (R) 予行（one-shot の scheduled task 1 つ、新しい session が develop で `status` を実行し `.ai/progress.md` に 1 行 push。Vercel・DB は書かない）→ (W) window（復旧 task の作成・`on --until`（開始 + 150 分）・push・verify・終了時の `off`・push・verify・task の削除）→ (C) 人が WSL で `cycle.sh --dry-run` → `cycle.sh` を 1 回（期限まで 80 分以上あるときだけ）
+  - 開始前チェック: 予行が通った / `status` が flag false・production branch main / `staging:bypass-status` が auth on・bridge_secret present / Sales Agent の scheduled task 2 つが無効 / demo が pending・attempts 1・queue_open 1（人の read-only） / 人が window の 2.5 時間 WSL にいられる
+  - 復旧: 上の「復旧」と同じ。flag は window の終わりに必ず `false`（`design-flag-window.md` §5）
 
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: **PR #29 を main へ merge 済み（2026-09-28、b14aab7。人間の明示承認に基づき Claude が実行）**。残りは merge 後の人間の作業。
