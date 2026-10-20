@@ -7,24 +7,32 @@ import { z } from "zod";
 // Each script is a function expression; the caller appends its JSON argument.
 
 /**
- * Measures a page for the shop-CSS render check. Fact text nodes are the text
- * nodes inside the scope root (#shop-css; on the baseline page, the canvas) that are not aria-hidden and whose
- * text is part of a fact. For each, in document order: whether it is laid out,
- * inside the viewport horizontally, clipped by an ancestor, covered by another
- * element (elementFromPoint, with the line scrolled to the viewport's middle),
- * its opacity product, its effective font size (transform scales included),
- * whether its lines are squeezed, its colour, and its line boxes in page
- * coordinates. Marks each fact's element with data-sr-fact (for the contrast
- * screenshot). Also the notice bar and the footer: their boxes, styles and
- * whether anything covers them.
+ * Measures a page for the shop-CSS render check. Every text that must stay
+ * readable is a node, in document order, of one of four kinds:
+ *   fact    text inside the scope root (#shop-css; on the baseline page, the
+ *           canvas) that is part of a fact
+ *   label   any other text there that is not aria-hidden (headings, row labels,
+ *           the folio): a value without its label can change meaning
+ *   notice  the text of the notice bar
+ *   footer  the text of the footer notice
+ * For each: whether it is laid out, inside the viewport horizontally, clipped by
+ * an ancestor, covered by another element (elementFromPoint, the line scrolled
+ * to the viewport's middle), its opacity product, its effective font size
+ * (transform scales included), whether its lines are squeezed, its colour, its
+ * line boxes and the box of each of its visible characters (page coordinates,
+ * for the pixel proof). Marks each node's element with data-sr-text (for the
+ * screenshot with the text made transparent). Also the boxes and styles of the
+ * notice bar and the footer, whether anything covers them, and the number of
+ * script elements (there must be none).
  */
 export const MEASURE_SCRIPT = String.raw`(arg) => {
   const facts = arg.facts.map((f) => f.replace(/\s+/g, ""));
   const scoped = document.getElementById("shop-css");
-  const noticeEl = document.querySelector('[role="note"]');
+  const notice = document.querySelector('[role="note"]');
+  const footer = document.querySelector("footer");
   // the baseline page has no scope root: its canvas is the frame's child that is neither the notice, the footer nor a style
-  const root = scoped || (noticeEl && noticeEl.parentElement ? Array.from(noticeEl.parentElement.children).find((c) => c !== noticeEl && c.tagName !== "FOOTER" && c.tagName !== "STYLE") : null);
-  const out = { scope: Boolean(scoped && scoped.hasAttribute("data-shop-css")), overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, height: document.documentElement.scrollHeight, nodes: [], present: [], notice: null, footer: null, noticeCovered: false, footerCovered: false };
+  const root = scoped || (notice && notice.parentElement ? Array.from(notice.parentElement.children).find((c) => c !== notice && c.tagName !== "FOOTER" && c.tagName !== "STYLE") : null);
+  const out = { scope: Boolean(scoped && scoped.hasAttribute("data-shop-css")), scripts: document.querySelectorAll("script").length, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, height: document.documentElement.scrollHeight, nodes: [], present: [], notice: null, footer: null, noticeCovered: false, footerCovered: false };
   const canvas = document.createElement("canvas");
   canvas.width = 1;
   canvas.height = 1;
@@ -37,6 +45,7 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
     const d = ctx.getImageData(0, 0, 1, 1).data;
     return [d[0], d[1], d[2], d[3] / 255];
   };
+  const painted = (s) => rgba(s.backgroundColor)[3] > 0 || s.backgroundImage !== "none" || s.boxShadow !== "none";
   const pick = (el) => {
     if (!el) return null;
     const s = getComputedStyle(el);
@@ -46,8 +55,6 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
       style: [s.backgroundColor, s.color, s.fontSize, s.fontWeight, s.lineHeight, s.paddingTop, s.paddingBottom, s.borderBottomWidth, s.position, s.opacity, s.visibility, s.display, s.transform, s.zIndex].join("|"),
     };
   };
-  const notice = document.querySelector('[role="note"]');
-  const footer = document.querySelector("footer");
   out.notice = pick(notice);
   out.footer = pick(footer);
   const within = (el, x, y) => {
@@ -71,20 +78,23 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
       for (const x of [r.left + 8, r.left + r.width / 2, r.right - 8]) if (y >= 0 && y <= innerHeight && !within(footer, x, y)) out.footerCovered = true;
   }
   scrollTo(0, 0);
-  if (!root) return out;
 
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const nodes = [];
-  let joined = "";
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    const text = n.data.replace(/\s+/g, "");
-    if (!text) continue;
-    const el = n.parentElement;
-    if (!el || el.closest('[aria-hidden="true"]')) continue;
-    if (!facts.some((f) => f.includes(text))) continue;
-    nodes.push(n);
-    joined += text;
-  }
+  const collect = (container, kind) => {
+    const list = [];
+    if (!container) return list;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const text = n.data.replace(/\s+/g, "");
+      if (!text) continue;
+      const el = n.parentElement;
+      if (!el || el.closest('[aria-hidden="true"]') || el.closest("style, script")) continue;
+      if (kind === "scope") list.push({ n, kind: facts.some((f) => f.includes(text)) ? "fact" : "label" });
+      else list.push({ n, kind });
+    }
+    return list;
+  };
+  const items = [...collect(notice, "notice"), ...collect(root, "scope"), ...collect(footer, "footer")];
+  const joined = items.filter((i) => i.kind === "fact").map((i) => i.n.data.replace(/\s+/g, "")).join("");
   out.present = facts.map((f) => joined.includes(f));
 
   const lineRects = (n) => {
@@ -92,9 +102,27 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
     range.selectNodeContents(n);
     return Array.from(range.getClientRects()).filter((r) => r.width > 0.5 && r.height > 0.5);
   };
-  for (const n of nodes) {
+  const charRects = (n) => {
+    const boxes = [];
+    const range = document.createRange();
+    const data = n.data;
+    for (let i = 0; i < data.length && boxes.length < 240; i++) {
+      const code = data.charCodeAt(i);
+      const end = code >= 0xd800 && code <= 0xdbff && i + 1 < data.length ? i + 2 : i + 1;
+      const ch = data.slice(i, end);
+      const start = i;
+      i = end - 1;
+      if (/\s/.test(ch)) continue;
+      range.setStart(n, start);
+      range.setEnd(n, end);
+      for (const r of Array.from(range.getClientRects())) if (r.width > 0.5 && r.height > 0.5) boxes.push({ left: r.left, top: r.top + scrollY, width: r.width, height: r.height });
+    }
+    return boxes;
+  };
+  for (const item of items) {
+    const n = item.n;
     const el = n.parentElement;
-    el.setAttribute("data-sr-fact", "");
+    el.setAttribute("data-sr-text", "");
     const s = getComputedStyle(el);
     let opacity = 1;
     let scale = 1;
@@ -110,6 +138,7 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
     const rects = lineRects(n);
     const vertical = s.writingMode.startsWith("vertical") || s.writingMode.startsWith("sideways");
     const node = {
+      kind: item.kind,
       text: n.data.trim().slice(0, 80),
       hidden: rects.length === 0 || hiddenByAncestor,
       offscreen: false,
@@ -117,10 +146,11 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
       covered: false,
       opacity,
       fontSize,
-      large: fontSize >= 24 || (fontSize >= 18.66 && Number(s.fontWeight) >= 700),
+      vertical,
       squeezed: rects.length >= 3 && rects.every((r) => (vertical ? r.height : r.width) < fontSize * 2.5),
       color: rgba(s.color),
       rects: rects.slice(0, 12).map((r) => ({ left: r.left, top: r.top + scrollY, width: r.width, height: r.height })),
+      chars: charRects(n),
     };
     for (const r of rects) {
       if (r.left < -0.5 || r.right > innerWidth + 0.5 || r.top + scrollY < -0.5) node.offscreen = true;
@@ -135,7 +165,7 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
     for (let i = 0; i < Math.min(rects.length, 6); i++) {
       const before = lineRects(n)[i];
       if (!before) continue;
-      scrollTo(0, Math.max(0, before.top + scrollY - innerHeight / 2));
+      if (item.kind !== "notice") scrollTo(0, Math.max(0, before.top + scrollY - innerHeight / 2));
       const r = lineRects(n)[i];
       if (!r) continue;
       const cy = r.top + r.height / 2;
@@ -144,12 +174,13 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
         if (x < 0 || x > innerWidth || cy < 0 || cy > innerHeight) continue;
         const hit = document.elementFromPoint(x, cy);
         if (!hit || hit === el) continue;
-        // a transparent decoration over the text (no ground, the point not on its border) does not hide it
+        // a transparent decoration over the text (no ground of its own nor of its ::before / ::after,
+        // the point not on its border, no text) does not hide it; the pixel proof checks the rest
         if (hit instanceof HTMLElement && !hit.contains(el)) {
           const hs = getComputedStyle(hit);
           const hb = hit.getBoundingClientRect();
           const inside = x > hb.left + parseFloat(hs.borderLeftWidth) && x < hb.right - parseFloat(hs.borderRightWidth) && cy > hb.top + parseFloat(hs.borderTopWidth) && cy < hb.bottom - parseFloat(hs.borderBottomWidth);
-          if (rgba(hs.backgroundColor)[3] === 0 && hs.backgroundImage === "none" && hs.boxShadow === "none" && inside && !hit.innerText.trim()) continue;
+          if (!painted(hs) && !painted(getComputedStyle(hit, "::before")) && !painted(getComputedStyle(hit, "::after")) && inside && !hit.innerText.trim()) continue;
         }
         node.covered = true;
       }
@@ -163,8 +194,11 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
 const Box = z.strictObject({ left: z.number(), top: z.number(), width: z.number(), height: z.number() });
 const FramePart = z.strictObject({ box: Box, style: z.string().max(2000) }).nullable();
 
+export const TEXT_KINDS = ["fact", "label", "notice", "footer"] as const;
+
 export const MeasureSchema = z.strictObject({
   scope: z.boolean(),
+  scripts: z.number().int().nonnegative(),
   overflow: z.number(),
   height: z.number().nonnegative(),
   present: z.array(z.boolean()).max(200),
@@ -175,6 +209,7 @@ export const MeasureSchema = z.strictObject({
   nodes: z
     .array(
       z.strictObject({
+        kind: z.enum(TEXT_KINDS),
         text: z.string().max(200),
         hidden: z.boolean(),
         offscreen: z.boolean(),
@@ -182,18 +217,19 @@ export const MeasureSchema = z.strictObject({
         covered: z.boolean(),
         opacity: z.number(),
         fontSize: z.number(),
-        large: z.boolean(),
+        vertical: z.boolean(),
         squeezed: z.boolean(),
         color: z.tuple([z.number(), z.number(), z.number(), z.number()]),
         rects: z.array(Box).max(12),
+        chars: z.array(Box).max(480),
       }),
     )
     .max(2000),
 });
 export type Measure = z.infer<typeof MeasureSchema>;
 
-/** Makes the fact text transparent (and nothing else), so a screenshot shows the ground actually painted under it. */
-export const HIDE_FACT_TEXT_CSS = "[data-sr-fact], [data-sr-fact] * { -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }";
+/** Makes the measured text transparent (and nothing else), so a screenshot shows the ground actually painted under it. */
+export const HIDE_TEXT_CSS = "[data-sr-text], [data-sr-text] * { -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }";
 
 /** For hit-testing: decorations that opt out of pointer events still count as covering text. */
 export const HIT_TEST_CSS = "body * { pointer-events: auto !important; }";

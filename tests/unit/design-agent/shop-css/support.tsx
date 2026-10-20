@@ -18,8 +18,14 @@ function moduleCss(file: string, names: Record<string, string>): string {
   const css = readFileSync(join(process.cwd(), file), "utf8");
   return css.replace(/\.(-?[_a-zA-Z][\w-]*)/g, (whole, name: string) => (names[name] ? `.${names[name]}` : whole));
 }
+// Local stand-ins for the app's self-hosted faces (next/font is not available here). The
+// Japanese stand-in is IPA Gothic: WenQuanYi has no vertical metrics and sets vertical text
+// with overlapping glyphs, which the pixel proof rightly reports.
+const FACES = `:root { --font-editorial: "Liberation Serif", "DejaVu Serif"; --font-grotesk: "DejaVu Sans", "Liberation Sans"; --font-display: "IPAGothic"; --font-body: "IPAGothic"; --font-ja-editorial: "IPAGothic"; --font-ja-condensed: "IPAGothic"; --font-ja-light: "IPAGothic"; --serif: "IPAGothic", serif; --sans: "IPAGothic", sans-serif; } body { font-family: "IPAGothic", sans-serif; }`;
+
 export const BASE_CSS = [
   "*, *::before, *::after { box-sizing: border-box; } body { margin: 0; }",
+  FACES,
   moduleCss("components/demo/demo.module.css", demoStyles as Record<string, string>),
   moduleCss("components/demo/profile/profile.module.css", profileStyles as Record<string, string>),
 ].join("\n");

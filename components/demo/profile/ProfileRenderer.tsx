@@ -96,14 +96,16 @@ function PhotoFigure({ photo, className, role, side }: { photo: RenderPhoto; cla
  * A per-shop stylesheet (DEV-072, Stage 3 trial): only the local design
  * preview passes one (public /demo and the admin preview never do). It is
  * checked by the guard again here, and scoped to the canvas (id shop-css, its
- * own stacking context), so it never reaches the notice bar or the footer. The
+ * own stacking context, clipped to its box), so it never reaches the notice
+ * bar or the footer. The
  * <style> sits outside the canvas, where no shop selector can show it.
  */
 function shopScope(shopCss: GuardedShopCss | null | undefined) {
   if (!shopCss || !isGuardedShopCss(shopCss)) return null;
   return {
     style: <style data-shop-css-style="">{shopCss}</style>,
-    attrs: { id: SHOP_CSS_SCOPE_ID, "data-shop-css": "", style: { isolation: "isolate" } as CSSProperties },
+    // its own stacking context, and nothing it draws (a shadow, a rotation) paints outside it
+    attrs: { id: SHOP_CSS_SCOPE_ID, "data-shop-css": "", style: { isolation: "isolate", overflow: "clip" } as CSSProperties },
   };
 }
 
