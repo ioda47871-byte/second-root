@@ -72,7 +72,8 @@ Renderer vocabulary (the only things you can choose; every value is accepted):
       the other rows compact in the other | stacked = one centred column, each label over its value.
     ground: plain = the page ground | surface = a full-width band in the surface colour (every word in it in the text colour) |
       inverted = a full-width band in the primary colour (every word in it in the background colour). boutique_minimal already draws
-      every section as a surface panel, so there surface looks like plain. A band that ends the page meets the footer.
+      every section as a surface panel: there a band stays in the panel column (surface = a panel with more space and no rule
+      above it; inverted = a panel in the primary colour). A band that ends the page meets the footer.
   layout.firstView (what the hero shows besides the name and the area line): name_only | name_lead = the description under the name
     (then there is no about section) | name_hours = the opening hours under the name | name_menu = the first ${FIRST_VIEW_MENU_ITEMS} menu items under
     the name (only when the menu has more than ${FIRST_VIEW_MENU_ITEMS} items and the menu section is not the first section) | vertical_name = on desktop the
@@ -171,6 +172,17 @@ export function buildBriefPrompt(input: {
 }
 
 /**
+ * DEV-071b: when a fix needs the renderer. Layout settings are profile changes now:
+ * only something outside the vocabulary is a renderer change.
+ */
+export const RENDERER_CHANGE_LINE =
+  "If the fix needs something the renderer cannot do (a section kind, variant, ground, first view, type setting or motif that is not in the vocabulary above), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty. Changing the layout (which sections, their order, each section's variant and ground, the first view, the type scale or heading style) is a profile change: give it in revised_profile.";
+
+/** What renders the same page (DEV-066, with the layout settings the facts cannot show, DEV-071b). */
+export const REVISE_VISIBLE_LINE =
+  "Revise with settings the screenshots show: a revised_profile that changes only motion, confidence or rationale, or a layout setting the shop's facts do not support (a section or first view without facts, vertical headings beside a short section), renders the same page.";
+
+/**
  * DEV-066: what a review is told when its revised_profile changed nothing the
  * screenshots can show. Fixed text (no words from Codex).
  */
@@ -246,11 +258,11 @@ export function buildReviewPrompt(input: {
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise and give a complete revised_profile using only the vocabulary above.",
-    "If the fix needs something the renderer cannot do (a new layout, a new motif), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
+    RENDERER_CHANGE_LINE,
     rendererChangeRule(),
     historyBlock(input.history ?? [], input.best ?? null, input.again ?? null),
     input.notVisible ? notVisibleLine(input.notVisible.candidate) : "",
-    "Revise with settings the screenshots show: a revised_profile that changes only motion, confidence or rationale renders the same page.",
+    REVISE_VISIBLE_LINE,
     "Profile that produced these screenshots:",
     JSON.stringify(input.profile, null, 2),
     "Verified facts:",

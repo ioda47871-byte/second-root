@@ -146,7 +146,7 @@ image_repetition (5 = nothing repeated), image_quality, mobile_crop, photo_brand
 You cannot place photos yourself; a new direction is made separately from your photo_issues.`,
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise.",
-    "If the fix needs something the renderer cannot do (a new layout, a new motif, a photo place that does not exist), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
+    "If the fix needs something the renderer cannot do (a section kind, variant, ground, first view, type setting or motif that is not in the vocabulary above, a photo place that does not exist), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty. Changing the layout (which sections, their order, each section's variant and ground, the first view, the type scale or heading style) is a profile change: give it in revised_profile.",
     rendererChangeRule({ photos: true }),
     historyBlock(input.history ?? [], input.best ?? null, input.again ?? null, 65, "revision (revision_target, revised_profile, photo_issues)"),
     "Image direction that produced these screenshots:",
