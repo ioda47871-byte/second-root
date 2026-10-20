@@ -54,8 +54,8 @@ AI 生成の店舗写真・Instagram 画像は使わない（写真は無し）�
 
 ```bash
 V=~/sr-design-compare/viewer; SHA=<compare-report.md の worker commit>
-[ -d "$V" ] || git clone -q --no-hardlinks ~/work/second-root "$V"     # worker の checkout は読むだけ
-cd "$V" && git fetch -q origin && git checkout -q --force --detach "$SHA" && npm ci --no-audit --no-fund --loglevel=error && npm run build \
+rm -rf "$V" && git clone -q --no-hardlinks ~/work/second-root "$V"     # 毎回作り直す（worker の checkout は読むだけ。detached HEAD の SHA も確実に含む）
+cd "$V" && git checkout -q --force --detach "$SHA" && npm ci --no-audit --no-fund --loglevel=error && npm run build \
   && SR_DESIGN_PREVIEW_ROOT=$HOME/sr-design-compare/cmp-001/runs npx next start --port 3100 --hostname 127.0.0.1
 # http://127.0.0.1:3100/design-preview/cmp-001-wagashi?profile=final（baseline は …-wagashi-base?profile=default、Codex の前の頁は ?profile=none）
 # 見終わったら Ctrl-C（または next start の PID を kill）

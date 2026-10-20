@@ -14,6 +14,7 @@
  *
  * Output: codes and fixed messages only. Exit: 0 done, 1 stopped, 2 refused / usage.
  */
+import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { chromium } from "playwright";
@@ -104,7 +105,8 @@ async function main(): Promise<number> {
     chromium.launch({ headless: true, env: e, ...(e.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: e.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
 
   setTimeout(() => stopNow("COMPARE_RUN_TIME_BUDGET"), budgetMs + WATCHDOG_GRACE_MS).unref();
-  compareDir = join(root, compareId);
+  // Only a new comparison dir may be written on a stop: a used id is refused by runComparison.
+  if (!existsSync(join(root, compareId))) compareDir = join(root, compareId);
   say(`comparison ${compareId} (${mode}, ${shops.length} shops, commit ${workerSha.slice(0, 12)}, budget ${Math.round(budgetMs / 60000)} min)`);
   const result = await runComparison({
     humanApprovalConfirmed: true,
