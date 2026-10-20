@@ -18,6 +18,7 @@
     "staging:verify": "NODE_USE_ENV_PROXY=1 node scripts/staging/verify.mjs",
     "staging:admin": "NODE_USE_ENV_PROXY=1 node scripts/staging/admin.mjs",
     "staging:vercel": "NODE_USE_ENV_PROXY=1 node scripts/staging/vercel-preview.mjs",
+    "staging:bypass-status": "NODE_USE_ENV_PROXY=1 node scripts/staging/vercel-bypass-status.mjs",
     "sales:design-demo": "tsx scripts/sales-design/design-demo.ts",
     "sales:design-worker": "tsx scripts/sales-design-worker/worker.ts",
     "sales:design-browser": "tsx scripts/sales-design-browser/browser.ts",

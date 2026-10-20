@@ -24,7 +24,7 @@ Preview には Vercel Authentication が掛かっているので、これまで�
 | 無認証の API 呼び出しへの応答 | **401**、`content-type: application/json`、本文は `{"protection":{…,"vercel_auth_enabled":true,…},"message":"Protected by Vercel Authentication",…}`（ブラウザ以外には 302 ではなく JSON の 401。`_vercel_sso_nonce` の cookie つき） |
 | 存在しない（でたらめな）bypass 値を付けた場合 | 同じ 401（Vercel の JSON） |
 
-bridge API 自身の 401 は `{"error":"unauthorized"}`。本文で区別できるので、bridge は Vercel の 401 を `BRIDGE_PROTECTION_BLOCKED`、API の 401 を `BRIDGE_UNAUTHORIZED` と分けて止まる（§6）。
+bridge API 自身の 401 は `{"error":"unauthorized"}`。本文で区別できるので、bridge は Vercel の 401 を `BRIDGE_PROTECTION_BLOCKED`、API の 401 を `BRIDGE_UNAUTHORIZED` と分けて止まる（§5）。§6 の setup script（DEV-063）の接続確認も、この違いで判定する。
 
 ## 2. Vercel の仕様（出典）
 
@@ -116,59 +116,64 @@ public の issuer を安定して置ける場所ができたら、(a) から移�
   - bridge token は今までどおり必要（bypass は token の代わりにならない）。
 - cycle（`scripts/sales-design-worker/cycle.sh`）: スイッチが `on` のときだけ、env file の 2 行の形・origin が API URL の origin と同じこと・bypass file が `sr-designbridge` の 0600 の通常 file であること（中身は読まない）を確かめ、bridge に path と origin だけを渡す。出力は `cycle: vercel bypass: on|off`。子の出力の redaction は `*bypass*` という名前の値も消す。
 
-## 6. 人の操作（1 回にまとめる）
+## 6. 人の操作（Vercel の画面で 1 回 + WSL で 1 回の貼り付け）
 
-**前提**（DEV-059 を含む承認済みの commit への更新。HUMAN-010 の install と同じ流れで、timer は有効化しない）:
-`/root/sr-capture-admin` と `~sr-designbridge/second-root` をその commit に合わせ、`design-cycle.conf` の `SR_DESIGN_CYCLE_BRIDGE_SHA` を更新する（`design-worker-cycle.md` §4 の 1.〜2.、`design-bridge.md` §5）。
+**前提**（DEV-059 と DEV-063 を含む承認済みの commit への更新。HUMAN-010 の install と同じ流れで、timer は有効化しない）:
+`/root/sr-capture-admin` と `~sr-designbridge/second-root` をその commit に合わせる（`design-worker-cycle.md` §4 の 1.、`design-bridge.md` §5）。
+`/etc/second-root/design-cycle.conf` が既にあれば、その `SR_DESIGN_CYCLE_BRIDGE_SHA` も更新する（`design-worker-cycle.md` §4 の 2.。無ければ作らない。下の script も作らない）。
 
-**人の操作（1 回）**:
+**人の操作**:
 
-1. Vercel → second-root → Settings → Deployment Protection → Protection Bypass for Automation → **Create**。note は `Second Root design bridge (WSL)`。env var（`VERCEL_AUTOMATION_BYPASS_SECRET`）にする secret は今のまま変えない。表示された値をコピーする（チャット・GitHub・Claude には貼らない）。
-2. WSL で次をそのまま貼る。値は画面に出さずに入力する（`read -s`）。file が既にあれば上書きしない。
-   値が空・短い・空白や制御文字を含むなど bridge が受け付けない形なら、**値を表示せずに**止まり、file も env の行も cycle のスイッチも書かない（bridge と同じ規則: 16〜256 文字の可視 ASCII）。
+1. Vercel → second-root → Settings → Deployment Protection → Protection Bypass for Automation → **Create**。note は `Second Root design bridge (WSL)`。**env var にはしない**（env var の `VERCEL_AUTOMATION_BYPASS_SECRET` になっている secret は今のまま変えない）。表示された値をコピーする（チャット・GitHub・Claude には貼らない）。
+2. WSL で次の 1 行を貼り、prompt `Paste the Vercel bypass value for the design bridge (not shown), then Enter:` に 1. の値を貼って Enter（画面には出ない）:
    ```bash
-   sudo -u sr-designbridge -H bash -c 'umask 077; export LC_ALL=C
-     d="$HOME/.config/second-root"; f="$d/design-bridge.vercel-bypass"; e="$d/design-bridge.env"
-     test ! -e "$f" || { echo "bypass file exists; not overwritten" >&2; exit 1; }
-     IFS= read -rs -p "Vercel bypass value (not shown): " v; echo
-     [[ "$v" =~ ^[!-~]{16,256}$ ]] || { unset v; echo "BYPASS_VALUE_INVALID: empty or not 16-256 visible ASCII characters (not shown); nothing written" >&2; exit 1; }
-     printf "%s" "$v" > "$f"; unset v; chmod 600 "$f"
-     grep -q "^SR_DESIGN_BRIDGE_VERCEL_BYPASS_" "$e" || printf "SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=%s\nSR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=https://second-root-git-develop-brot-yanagi.vercel.app\n" "$f" >> "$e"
-     stat -c "%U %a %s bytes" "$f"' \
-   && { sudo grep -q '^SR_DESIGN_CYCLE_VERCEL_BYPASS=' /etc/second-root/design-cycle.conf || echo 'SR_DESIGN_CYCLE_VERCEL_BYPASS=on' | sudo tee -a /etc/second-root/design-cycle.conf >/dev/null; } \
-   && sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh --dry-run
+   sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh
    ```
-   - `stat` が `sr-designbridge 600 32 bytes` 前後、最後の行が `CYCLE_RESULT CYCLE_DRY_RUN_OK …`、途中に `cycle: vercel bypass: on` が出ること。
-   - `design-bridge.env` の `SR_DESIGN_BRIDGE_API_URL` が `https://second-root-git-develop-brot-yanagi.vercel.app` であること（違えば dry-run が `CHECK_BYPASS_INVALID` で止まる）。
-   - 途中で失敗して空の file が残ったら `sudo -u sr-designbridge -H sh -c 'rm "$HOME/.config/second-root/design-bridge.vercel-bypass"'` で消してやり直す。
+   最後の行が `BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6` であれば終わり。途中の `probe with the bypass: REACHED_APP …` と `BYPASS_OK` が、Authentication を ON のまま bridge の bypass が Vercel を通ったこと（§7 の 2.）を示す。
 
-この操作は Vercel の Deployment Protection の設定を変えない（secret を 1 つ足すだけ）。Authentication は ON のまま。Staging の flag も変えない。
+script（`scripts/sales-design-bridge/setup-vercel-bypass.sh`、DEV-063。test は `tests/unit/design-bridge-bypass-setup.test.ts`）が行うこと。各段で固定の符号だけを出し、最後の行は `BYPASS_SETUP_RESULT <符号> step=<1-6>`:
+
+| 段 | すること | 止まる符号（exit） |
+|---|---|---|
+| 1 | root だけが、root だけの clone（`/root/sr-capture-admin`）から動かせる。許可した環境変数だけで自分を起動し直す（cycle.sh と同じ）。同時に動くのは 1 本だけ（root の lock `/run/sr-bypass-setup.lock`。2 本目は何もしない） | `BYPASS_USAGE`（2）/ `BYPASS_SETUP_LOCKED`（11） |
+| 2 | 読むだけの確認: この script と cycle.sh とその上の directory が root の所有で他から書けない、`sr-designbridge` があり home が `/home/sr-designbridge`（cycle.sh・unit・この文書が前提にする場所。違えば `BRIDGE_HOME_UNEXPECTED`）、`~/.config/second-root` がその利用者の directory で他から書けない、`design-bridge.env` がその利用者の 0600 の通常 file で `SR_DESIGN_BRIDGE_API_URL=https://<label 1 つ>.vercel.app[/…]` が 1 行（origin をここから決める。値は出さず `api origin: *.vercel.app ok` だけ）、token file がその利用者の 0600 file（読まない）、env の `SR_DESIGN_BRIDGE_VERCEL_BYPASS_*` の行が無いか、この file とこの origin の 2 行そのもの | `BYPASS_SCRIPT_UNTRUSTED` / `BYPASS_BRIDGE_USER_MISSING` / `BYPASS_CONFIG_DIR_UNSAFE` / `BYPASS_ENV_FILE_UNSAFE` / `BYPASS_API_URL_INVALID` / `BYPASS_TOKEN_FILE_UNSAFE` / `BYPASS_ENV_CONFLICT` / `BRIDGE_HOME_UNEXPECTED`（3）。どれも何かを書く前 |
+| 3 | 最初に、中断された前の実行が残した一時 file（`.design-bridge.vercel-bypass.*`、値を含む）があれば `sr-designbridge` として消す（`BYPASS_TEMP_REMOVED: <数>`）。消すのは link 数 1 の通常 file だけで、同じ名前の symbolic link・hard link・FIFO などには触れず `BYPASS_TEMP_SKIPPED: <数>` と出す（人が見る）。値: bypass file が**既にあれば読み込まずに残し**（`BYPASS_FILE_PRESENT`）、bridge と同じ規則（`sr-designbridge` の通常 file・link 数 1・mode ちょうど 0600・512 byte 以下・値の形・bridge token と違う）で確かめる。無ければ（または `--replace`）端末から `read -s` で読み、前後の空白を除いて bridge の規則（空白のない 16〜256 文字の可視 ASCII）で確かめ、**`sr-designbridge` として**標準入力だけで渡して書く（同じ directory の umask 077 の一時 file → 新規は link、`--replace` は rename で置き換える。一時 file は終了・HUP・INT・TERM で消す）。10 分以内に Enter が無ければ、入力を捨てて止まる。NUL を含む既存の file は bridge と同じく拒否する。bridge token と同じ値は `sr-designbridge` の shell の中で比べて拒否する | `BYPASS_VALUE_INVALID` / `BYPASS_EQUALS_TOKEN` / `BYPASS_FILE_UNSAFE` / `BYPASS_NO_TTY` / `BYPASS_INPUT_TIMEOUT` / `BYPASS_FILE_PRESENT_RACE`（確認と書き込みの間に file ができた。その file は残す）/ `BYPASS_WRITE_FAILED`（4）。値が規則に合わなければ何も書かない |
+| 4 | env の 2 行（`SR_DESIGN_BRIDGE_VERCEL_BYPASS_FILE=<上の file>`・`SR_DESIGN_BRIDGE_VERCEL_BYPASS_ORIGIN=<API URL の origin>`）が無ければ `sr-designbridge` として足す（file は 0600 のまま）。同じものがあれば何もしない | `BYPASS_ENV_WRITE_FAILED`（5） |
+| 5 | 接続の確認（bridge token を使わない・claim しない）: `sr-designbridge` として `<origin>/api/internal/sales-design/jobs` に `{}` を POST する（`curl -q --max-redirs 0 --max-time 20`。`-q` が先頭なので `~/.curlrc` は読まない）。header なし → Vercel の保護の 401（JSON に `protection`）であること（`PROTECTION_ON`）。header あり（値は `printf` の組み込みから curl の標準入力 `-H @-` へ。argv・環境変数に載せない）→ app に届く `REACHED_APP design_bridge_disabled`（flag OFF）か `REACHED_APP unauthorized`（flag ON・token なし）= `BYPASS_OK` | `PROTECTION_NOT_ON`（header なしで app 自身の JSON の `error` が返った = Vercel を通った。**Authentication が OFF の可能性**。人がすぐ確かめる）/ `BYPASS_REJECTED`（header ありで Vercel の保護の 401: 値が違う・revoke 済み）/ `PROBE_FAILED`（通信・timeout、404 `DEPLOYMENT_NOT_FOUND`・429・5xx・HTML など、それ以外のすべて）（6） |
+| 6 | `--no-dry-run` でなければ: `/etc/second-root/design-cycle.conf` が**あるときだけ** `SR_DESIGN_CYCLE_VERCEL_BYPASS=on` を確かめ（無ければ 1 行足す。別の値があれば変えない）、同じ clone の `cycle.sh --dry-run` を動かして `cycle: vercel bypass: …` と `CYCLE_RESULT …` を中継する。conf が無ければ作らない（`CYCLE_CONF_ABSENT`。cycle の install は HUMAN-010 で、まだ承認されていない。失敗ではない） | `CYCLE_CONF_UNSAFE` / `CYCLE_SWITCH_NOT_ON` / `CYCLE_DRY_RUN_NOT_OK`（7） |
+
+- 値は端末に表示されず、ログ・argv・他の process の環境変数・GitHub・Claude に出ない。残るのは `sr-designbridge` の bypass file だけ。出力は固定の符号だけで、URL も出さない。
+- **既存の file は上書きしない**。入れ替えは `--replace` を明示したときだけ（§8）。
+- 何度動かしてもよい: 成功の後にもう一度動かすと、何も変えずに確認（段 2・3 の確かめ、段 5 の接続、段 6 の dry-run）だけをやり直す。
+- `BYPASS_ENV_CONFLICT` は、env にこの script が書くのと違う bypass の行がある（別の origin・別の file・片方だけ・重複）。何も書いていない。人が行を見て直す。
+- `BYPASS_REJECTED` で止まったときは、値が file に残っている（bridge は Vercel に止められるだけで、何も起きない）。正しい値で `--replace` を付けて動かし直す（§8）。
+- `--no-dry-run` は段 6 を飛ばす（conf も変えない）。
+- この script は Vercel・Supabase・flag・systemd の unit・timer を変えない。Vercel の Deployment Protection の設定も変えない（secret を 1 つ足すのは 1. の人の操作だけ）。Authentication は ON のまま。
+
+（DEV-059 の時点では、この段の代わりに長い snippet を手で貼る手順だった。DEV-063 で上の script に置き換えた。）
 
 ## 7. 確かめ方
 
 Authentication は ON のまま。claim をしない確かめ方から順に行う。
 
-1. **Claude（読み取りだけ）**: `api.vercel.com` の project を GET し、bypass の数が 3、新しい secret の note が `Second Root design bridge (WSL)`、`isEnvVar: false`、`ssoProtection` が変わっていないことを、値を出さずに確かめる。
-2. **人（WSL、bridge token を使わない・claim しない）**: bypass が Vercel を通るかだけを見る。値は sh の組み込みの `printf` から curl の標準入力へ渡し、表示しない。bridge token を付けないので、API は何も claim しない。
-   ```bash
-   sudo -u sr-designbridge -H sh -c 'printf "x-vercel-protection-bypass: %s\n" "$(cat "$HOME/.config/second-root/design-bridge.vercel-bypass")" \
-     | curl -sS --max-redirs 0 -H @- -X POST -H "content-type: application/json" --data "{}" \
-         https://second-root-git-develop-brot-yanagi.vercel.app/api/internal/sales-design/jobs' \
-     | python3 -I -c 'import json,sys; b=json.load(sys.stdin); print("VERCEL_BLOCKED" if "protection" in b else "REACHED_APP " + str(b.get("error")))'
-   ```
-   - `REACHED_APP design_bridge_disabled`（flag が OFF）か `REACHED_APP unauthorized`（flag が ON、token なし）なら bypass は効いている。
-   - `VERCEL_BLOCKED` なら値が違う・revoke 済み。header を付けずに同じ curl をすると `VERCEL_BLOCKED` になることも確かめてよい。
-3. **controlled rerun（人が承認した window の中で、今までどおり）**: Authentication は外さずに、flag だけを今までの手順で一時的に ON にして `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh` を 1 回。`CYCLE_OK`（または `CYCLE_IDLE`）であること、bridge の段に `vercel protection bypass in use` が出ること。これまでの「Authentication を外す」「復旧タスク 2 つ」は要らなくなる（flag の扱いと期限は今までどおり人が決める）。
+1. **Claude（読み取りだけ）**: `npm run staging:bypass-status`（`scripts/staging/vercel-bypass-status.mjs`、DEV-063）。`api.vercel.com` への GET だけ（GET 以外は送る前に拒否）で、値は出さない（API は secret を `protectionBypass` の key として返すが、key は表示せず、表示する行からも消す）。
+   - `Vercel Authentication: on (all_except_custom_domains)`、Password / Trusted IPs / OPTIONS Allowlist が off、`Protection Bypass for Automation: 3 secret(s)`、各 secret の作成日・note・`isEnvVar`
+   - `design bridge secret (note "Second Root design bridge (WSL)", not an env var): present`
+   - `SALES_AI_DESIGN_ENABLED (Preview, develop)` の値（plain の on/off の値だけ表示）と、develop の alias の deployment の commit
+   - 最後の行 `VERCEL_BYPASS_STATUS OK auth=on bridge_secret=present`。Authentication が OFF なら `VERCEL_AUTH_NOT_ON`（exit 3）
+2. **接続（bridge token を使わない・claim しない）**: §6 の script の段 5 に含まれる（`PROTECTION_ON` と `BYPASS_OK`）。後でもう一度確かめるときは、同じ script をそのまま動かす（file があれば値は聞かれず、何も変えずに確認だけをする）。
+3. **controlled rerun（人が承認した window の中で、今までどおり）**: Authentication は外さずに、flag だけを今までの手順で一時的に ON にして `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh` を 1 回。`CYCLE_OK`（または `CYCLE_IDLE`）であること、bridge の段に `vercel protection bypass in use` が出ること。これまでの「Authentication を外す」「復旧タスク 2 つ」は要らなくなる（flag の扱いと期限は今までどおり人が決める）。cycle の conf がまだ無い（HUMAN-010 の前）ときは、`design-bridge.md` §6 の手での 1 回ずつの確かめで同じことを見る。
 
 ## 8. 戻し方・失効・入れ替え
 
 | したいこと | 操作 | 結果 |
 |---|---|---|
 | **使うのをやめる（無効にする）** | `design-bridge.env` の 2 行を消す（`sr-designbridge`）**と**、`/etc/second-root/design-cycle.conf` の `SR_DESIGN_CYCLE_VERCEL_BYPASS` の行を消す（root） | どの実行（cycle・`sr-design-bridge.service`・手での `run.sh`）も header を付けない。Vercel が 401 → `BRIDGE_PROTECTION_BLOCKED`（cycle は `CYCLE_STOP_CLAIM`、何も変わらない）。env の行を消さずにスイッチだけを消すと、cycle は `cycle: vercel bypass: off` で渡さないが、bridge の unit と手での実行は送り続ける |
-| cycle だけを一時的に止める | `SR_DESIGN_CYCLE_VERCEL_BYPASS=off`（root） | cycle だけが渡さなくなる。cycle 以外は上の行のとおり変わらない |
-| 失効（漏れた疑いを含む） | Vercel の Deployment Protection で note `Second Root design bridge (WSL)` の secret を revoke / delete → WSL の file を消す（`sudo -u sr-designbridge -H sh -c 'shred -u "$HOME/.config/second-root/design-bridge.vercel-bypass"'`） | すべての deployment で即時に無効。redeploy は要らない。Operational Claude（②）は影響なし |
+| cycle だけを一時的に止める | `SR_DESIGN_CYCLE_VERCEL_BYPASS=off`（root） | cycle だけが渡さなくなる。cycle 以外は上の行のとおり変わらない。この間に §6 の script を動かすと、`off` は変えずに段 6 の `CYCLE_SWITCH_NOT_ON` で止まる（段 1〜5 は済んでいる） |
+| 失効（漏れた疑いを含む） | Vercel の Deployment Protection で note `Second Root design bridge (WSL)` の secret を revoke / delete → WSL の file を消す（`sudo -u sr-designbridge -H sh -c 'shred -u "$HOME/.config/second-root/design-bridge.vercel-bypass"'`）。中断された setup の一時 file `.design-bridge.vercel-bypass.*` が同じ directory に残っていれば、それも同じように消す（setup script も次の実行の最初に消す） | すべての deployment で即時に無効。redeploy は要らない。Operational Claude（②）は影響なし |
 | `sr-designbridge` が乗っ取られた疑い | 上の失効に加えて、bridge token も替える（`design-bridge.md` §2・`SALES_DESIGN_BRIDGE_TOKEN_SHA256`） | 両方の鍵が替わる |
-| 定期の入れ替え（例: 90 日ごと、WSL の入れ替え時） | 新しい secret を作る → file を新しい値で置き換える（§6 の 2. は既存の file を上書きしないので、古い file を消してから）→ §7 の 2. → 古い secret を revoke | 止まる時間なし |
+| 定期の入れ替え（例: 90 日ごと、WSL の入れ替え時） | Vercel で新しい secret を作る（note は同じ）→ WSL で `sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh --replace` に新しい値を貼る（file を rename で置き換え、`BYPASS_OK` まで確かめる）→ Claude が `npm run staging:bypass-status`（同じ note が 2 つ）→ 古い secret を revoke（作成日で見分ける）→ もう一度 `staging:bypass-status` | 止まる時間なし |
+| 値を貼り間違えた（`BYPASS_REJECTED`） | 正しい値で `--replace` を付けて §6 の script を動かし直す | 段 5 の `BYPASS_OK` まで確かめる |
 | 方式ごとやめる | 上の失効 + conf と env の行を消す | DEV-059 以前と同じ（Authentication ON のままでは bridge は届かない） |
 
 コードの戻しは不要（設定が無ければ何もしない）。DB・migration は無い。
