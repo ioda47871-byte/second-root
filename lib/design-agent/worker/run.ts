@@ -34,6 +34,7 @@ import type { PlacedPhoto } from "../assets/render-check";
 import { QUALITY_NOT_ACCEPTED, runDesignPipeline, type PipelineReport, type Shots } from "../pipeline";
 import { factsToDemoView } from "../preview";
 import { looseJsonSchema } from "../profile";
+import { observeColours } from "../reference-colours";
 import { capturePublicProfile, instagramTarget, type CaptureTarget } from "./capture";
 import { childEnvironment } from "./env";
 import { copyToWindows, exportFiles, type WindowsCopy } from "./export";
@@ -479,6 +480,11 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     const captureMs = Math.round(performance.now() - captureStart);
     const problem = await checkReferenceImages(refs);
     if (problem) throw Object.assign(new Error(problem), { code: "REFERENCE_CHECK_FAILED" });
+    // DEV-069: colours measured in the same checked references (hex values only reach the prompts).
+    const observedColours = observeColours(
+      await Promise.all(refs.map((f) => readFile(f).catch(() => Buffer.alloc(0)))),
+      visualSource === "website" ? "website" : "instagram",
+    );
 
     // ---- the job's photos (DEV-029): the asset store job with this job's id,
     // nothing else. Its manifest and every photo are checked (local preview
@@ -519,6 +525,7 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         references: refs,
         referenceKind: visualSource === "website" ? "website" : "instagram",
         ...(photos.input ? { photos: photos.input } : {}),
+        observedColours,
       },
       {
         askCodex: ({ kind, prompt, images, schema }) => {
@@ -595,6 +602,8 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         // DEV-053: the best candidate (final_candidate, its scores in rounds) was never accepted.
         quality_not_accepted: pipeline.notes.includes(QUALITY_NOT_ACCEPTED),
         schema_mode: schemaMode,
+        // DEV-069: what the prompts were told (hex values and shares; null when the references could not be read)
+        reference_colours: observedColours,
         notes: [...notes, ...pipeline.notes],
       },
       overflow,

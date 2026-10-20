@@ -1,5 +1,6 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import type { DesignProfile } from "./profile";
+import { observedColoursLine, type ObservedColours } from "./reference-colours";
 import { rendererChangeRule, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
 
 // Requests to Codex (DEV-028). Facts and screenshots are material, never
@@ -94,7 +95,15 @@ function referencesLine(count: number, kind: "website" | "instagram" | undefined
   return `the first ${count} are ${what}; photos in them are deliberately blurred and pixelated — read colour, density, spacing, type and layout, not details`;
 }
 
-export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number; referenceKind?: "website" | "instagram"; currentDemoCount: number; hint?: string }): string {
+export function buildBriefPrompt(input: {
+  demo: DemoView;
+  referenceCount: number;
+  referenceKind?: "website" | "instagram";
+  currentDemoCount: number;
+  hint?: string;
+  /** DEV-069: colours measured in the references (hex values and shares only). */
+  observedColours?: ObservedColours | null;
+}): string {
   return [
     "You are the art director for a one-page proposal demo website for a small shop in Nagoya.",
     "Choose visual settings so the page feels designed for this particular shop, not a template. The shop name is the hero's main visual.",
@@ -102,6 +111,7 @@ export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number
     RULES,
     `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)}.`,
     `The last ${input.currentDemoCount} show the current generic demo (desktop, then mobile) — the look to move away from.`,
+    observedColoursLine(input.observedColours, input.referenceKind),
     input.hint ? `A starting idea from the team (you may choose something better if the material supports it): ${input.hint}` : "",
     "Verified facts (the only shop information the page will show):",
     factsBlock(input.demo),
@@ -172,6 +182,8 @@ export function buildReviewPrompt(input: {
   again?: { candidate: string; lower: string; lowerTotal: number } | null;
   /** DEV-066: the same candidate again because its revision changed nothing visible. */
   notVisible?: { candidate: string } | null;
+  /** DEV-069: colours measured in the references (hex values and shares only). */
+  observedColours?: ObservedColours | null;
 }): string {
   return [
     "You are reviewing a rendered proposal demo against the shop's own public presence.",
@@ -179,6 +191,7 @@ export function buildReviewPrompt(input: {
     RULES,
     `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)} (reference). The last two are the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), then mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide).`,
     screenshotScaleLine(),
+    observedColoursLine(input.observedColours, input.referenceKind),
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise and give a complete revised_profile using only the vocabulary above.",

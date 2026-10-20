@@ -3004,6 +3004,45 @@
         "次の controlled run"
       ],
       "decision": "2026-10-20: 人の指示で Claude が追加"
+    },
+    {
+      "id": "DEV-069",
+      "title": "参考画像（privacy 処理済み）の色を測り、hex と割合だけを brief / review に渡す",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-066"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-069-reference-colours",
+      "purpose": "人の指示（2026-10-20）: 参考画像の色を安全に解析しデザインへ反映。既存の許可された画像アクセスを超えない。brand_fit を色の証拠で上げる",
+      "acceptance_criteria": [
+        "読むのは Codex に渡す同じ検査済みの参考 PNG だけ",
+        "prompt に出るのは hex と割合と固定文だけ",
+        "白・灰・黒と Instagram の UI の色（青・story ring）を除く",
+        "読めなければ prompt は今までと同じ",
+        "report に reference_colours を記録"
+      ],
+      "required_tests": [
+        "unit: 測色（IG 風の capture・中立・読めない・上限）と prompt の行",
+        "worker の report",
+        "CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "tests/unit/design-agent/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "新しい画像の取得・新しい外部アクセス",
+        "画像の内容・文字の prompt への受け渡し",
+        "品質の閾値・gate"
+      ],
+      "human_approval_triggers": [
+        "次の controlled run"
+      ],
+      "decision": "2026-10-20: 人の指示で Claude が追加; 2026-10-20: PR #81 merge（2a952fe）。Fresh Review FAIL（Medium 2: Instagram の UI 色の除外が website と投稿の色も消す・空の一覧の文言）→ 対応（kind 別の除外・colourfulShare による文言・明暗の中立色の割合・photo review にも）→ 再レビュー PASS。CI 39423213361 success"
     }
   ]
 }

@@ -184,3 +184,6 @@
 
 - 2026-10-20: DEV-066 merge（PR #79、1ab669f）: 品質審査 18/25 の原因調査（brand_fit 3・generic_template_feel 3）。profile の direction・alignment・motion・confidence・rationale（写真なしでは surface、accent motif なしでは accent も）は screenshot に何も描かれないのに、語彙は「すべて実装済み」と書いていた → 見える変化の無い修正は描画せず同じ review にもう一度だけ求める・候補ごとに変えた見える設定を記録・語彙を事実どおりに。品質基準（scores・verdict・gate・MAX_REVISIONS）は不変。次の案（direction の CSS preset など）と人の判断が要る項目は blockers の「DEV-066 の残りと品質改善の次の案」。
   - 学び: worker.test.ts など Chromium を使う design-agent の test はこの container では環境で落ちる（develop でも 103 件）。その中の本当の失敗を見落とした → 変更が pipeline に触れるときは CI の unit job の結果で確かめる。
+- 2026-10-20: DEV-069 merge（PR #81、2a952fe）: 参考 PNG（検査済み・privacy 処理済み）の色を測り、hex と割合と明暗の中立色の割合だけを brief / review / photo review に渡す（Instagram の青だけを Instagram の参考で除く）。report に codex.reference_colours。DEV-067（direction preset）は Fresh Review の High（surface の上の文字の contrast）などを修正中、DEV-068（日本語 display 書体、PR #82）は review 前。
+  - 方向の点検（人の問い）: `.ai/proposals/design-agent-direction-2026-10-20.md`。今は「固定の骨組みの設定選択」で構想とずれが大きい。B（構成の仕様化）→ C（店ごとの CSS 生成、検査器つき）の段階移行を提案、人の判断待ち。
+  - 学び: Chromium の test は `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome` でこの container でも動く。branch の並行作業は git worktree で（同じ checkout で branch を切り替えない）。
