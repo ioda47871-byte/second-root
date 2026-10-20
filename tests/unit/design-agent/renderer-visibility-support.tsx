@@ -16,16 +16,8 @@ import { BASE_PROFILE, coverageLayouts, FULL_SHOP, pageHtml, SPARSE_JP_SHOP, swe
 // varied: composition (grid, infoStyle, divider), the surface and accent colours,
 // motifs, motion, and the layout (first view, grounds, type), across directions,
 // visit sections of one and of many rows, section mixes and pages without sections.
-
-vi.setConfig({ testTimeout: 600_000 });
-
-let browser: Browser;
-beforeAll(async () => {
-  browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
-});
-afterAll(async () => {
-  await browser?.close();
-});
+// The directions are split over renderer-visibility-{1,2,3}.test.tsx so vitest runs
+// them in parallel; each file calls defineVisibilityTests with its directions.
 
 const SHOPS: Record<string, DemoView> = {
   full: FULL_SHOP,
@@ -33,7 +25,15 @@ const SHOPS: Record<string, DemoView> = {
   sparse_jp: SPARSE_JP_SHOP,
   vertical_jp: THREE_SHOPS.bakery.demo,
   name_only: { ...MINIMAL_SHOP, name: "EXAMPLE TEST BAKE" },
+  // one section only (visit): the divider draws nothing
+  visit_only: { ...MINIMAL_SHOP, name: "EXAMPLE TEST BAKE", address: "名古屋市北区テスト町1-2-3", access: "テスト駅から徒歩5分" },
 };
+
+/** The base profiles' motifs: none drawn in the accent colour, and one drawn in it (gallery_mono repaints it). */
+const MOTIF_SETS: DesignProfile["motifs"][] = [
+  ["monogram", "corner_marks"],
+  ["dot_grid", "monogram"],
+];
 
 const LAYOUTS: Record<string, Layout | undefined> = {
   none: undefined,
@@ -67,43 +67,74 @@ const markup = (demo: DemoView, profile: DesignProfile) => renderToStaticMarkup(
 
 async function shot(page: Page, html: string): Promise<string> {
   await page.setContent(pageHtml(html));
-  return (await page.screenshot({ fullPage: true })).toString("base64");
+  // JPEG at full quality: identical pixels give identical bytes, and it encodes much faster than PNG
+  return (await page.screenshot({ fullPage: true, type: "jpeg", quality: 100 })).toString("base64");
 }
 
-describe("visibleChanges against the drawn page (Chromium)", () => {
+/** The directions of renderer-visibility-1/2/3.test.tsx (each runs in its own file, in parallel). */
+export const VISIBILITY_PARTS: readonly (readonly DesignProfile["direction"][])[] = [
+  ["american_editorial", "editorial_luxury", "french_classic", "nordic_minimal"],
+  ["japanese_modern", "kissaten_retro", "gallery_mono"],
+  ["craft_paper", "boutique_minimal", "pop_bakeshop"],
+];
+
+export function defineVisibilityTests(part: number): void {
+  const directions = VISIBILITY_PARTS[part]!;
+  vi.setConfig({ testTimeout: 600_000 });
+  let browser: Browser;
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
+  });
+  afterAll(async () => {
+    await browser?.close();
+  });
+
+  describe("visibleChanges against the drawn page (Chromium)", () => {
+  if (part === 0)
+    it("the parts cover every direction exactly once", () => {
+      expect([...VISIBILITY_PARTS.flat()].sort()).toEqual([...DIRECTIONS].sort());
+    });
   // one test per direction keeps each within its time limit
-  for (const direction of DIRECTIONS)
+  for (const direction of directions)
     it(`${direction}: every revision it calls invisible draws the same pixels at 1440 and 390`, async () => {
       // the pairs it calls invisible
       const pairs: Array<{ label: string; demo: DemoView; a: DesignProfile; b: DesignProfile }> = [];
       for (const [shopKey, demo] of Object.entries(SHOPS))
-        for (const [layoutKey, layout] of Object.entries(LAYOUTS)) {
-          const a: DesignProfile = { ...BASE_PROFILE, direction, motifs: ["monogram", "corner_marks"], ...(layout ? { layout } : {}) };
-          for (const m of mutations(a)) {
-            const b = m.apply(a);
-            if (visibleChanges(a, b, { photos: false, demo }).length === 0) pairs.push({ label: `${shopKey}/${layoutKey}/${m.key}`, demo, a, b });
+        for (const [layoutKey, layout] of Object.entries(LAYOUTS))
+          for (const [motifKey, motifs] of MOTIF_SETS.entries()) {
+            // the accent-motif base on two layouts only (it exercises the accent rules)
+            if (motifKey > 0 && !["none", "default"].includes(layoutKey)) continue;
+            const a: DesignProfile = { ...BASE_PROFILE, direction, motifs, ...(layout ? { layout } : {}) };
+            for (const m of mutations(a)) {
+              const b = m.apply(a);
+              if (visibleChanges(a, b, { photos: false, demo }).length === 0) pairs.push({ label: `${shopKey}/${layoutKey}${motifKey > 0 ? "+accent" : ""}/${m.key}`, demo, a, b });
+            }
           }
-        }
       // the net is not empty: hidden cases of every kind are drawn
       expect(pairs.length).toBeGreaterThan(60);
       // (surface and accent are hidden only in some directions: checked across them below)
       for (const kind of ["grid", "info", "divider", "first_view", "headings", "scale", "motion"]) expect(pairs.some((p) => p.label.split("/")[2]!.startsWith(kind)), kind).toBe(true);
+      // the one-section page's divider, and gallery_mono's repainted accent motif
+      expect(pairs.some((p) => p.label.startsWith("visit_only/") && p.label.includes("/divider:")), "divider on a one-section page").toBe(true);
+      if (direction === "gallery_mono") expect(pairs.some((p) => p.label.includes("+accent/accent")), "gallery_mono accent").toBe(true);
 
-      let drawn = 0;
+      // Each distinct pair of pages is drawn once: the same markup with the same CSS is the same page,
+      // so a pair with equal markup needs no drawing, and pairs that render the same two pages (a
+      // sparse shop collapses many layouts) are compared once.
+      const cases = new Map<string, { label: string; htmlA: string; htmlB: string }>();
+      for (const { label, demo, a, b } of pairs) {
+        const [htmlA, htmlB] = [markup(demo, a), markup(demo, b)];
+        if (htmlA !== htmlB && !cases.has(htmlA + "\u0000" + htmlB)) cases.set(htmlA + "\u0000" + htmlB, { label, htmlA, htmlB });
+      }
+      const drawn = cases.size;
       for (const width of [1440, 390]) {
         const context = await browser.newContext({ ...sweepViewport(width), reducedMotion: "reduce" });
         const page = await context.newPage();
         try {
           const cache = new Map<string, string>();
-          for (const { label, demo, a, b } of pairs) {
-            const [htmlA, htmlB] = [markup(demo, a), markup(demo, b)];
-            // the same markup with the same CSS is the same page; only differing markup is drawn
-            if (htmlA === htmlB) continue;
-            drawn += 1;
-            const key = `${label.split("/").slice(0, 2).join("/")}`;
-            if (!cache.has(key)) cache.set(key, await shot(page, htmlA));
-            expect.soft(await shot(page, htmlB) === cache.get(key), `${direction}/${label}/${width}px: called invisible, but the page changes`).toBe(true);
-          }
+          const of = async (html: string) => cache.get(html) ?? cache.set(html, await shot(page, html)).get(html)!;
+          for (const { label, htmlA, htmlB } of cases.values())
+            expect.soft((await of(htmlB)) === (await of(htmlA)), `${direction}/${label}/${width}px: called invisible, but the page changes`).toBe(true);
         } finally {
           await context.close();
         }
@@ -111,4 +142,5 @@ describe("visibleChanges against the drawn page (Chromium)", () => {
       // most hidden cases change the markup (data attributes): they are really drawn and compared
       expect(drawn).toBeGreaterThan(40);
     });
-});
+  });
+}
