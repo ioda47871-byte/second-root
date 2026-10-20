@@ -5,7 +5,7 @@ import type { PublicAssetId } from "./assets/types";
 import type { PhotoIssue } from "./photo-review";
 import { PHOTO_ISSUES, REVISION_TARGETS } from "./photo-review";
 import type { DesignProfile } from "./profile";
-import { factsBlock, historyBlock, RULES, VOCABULARY, type RoundSummary } from "./prompts";
+import { factsBlock, historyBlock, layoutOptionsLine, RULES, VOCABULARY, type RoundSummary } from "./prompts";
 import { observedColoursLine, type ObservedColours } from "./reference-colours";
 import { rendererChangeRule, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
 
@@ -132,6 +132,7 @@ export function buildPhotoReviewPrompt(input: {
     "You are reviewing a rendered proposal demo that uses photos, against the shop's own public presence.",
     photoVocabulary(),
     RULES,
+    layoutOptionsLine(input.demo),
     PHOTO_RULES,
     `Attached images: the first ${input.referenceCount} are ${refs} (reference; photos in them are blurred and pixelated). Then the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide)` +
       cropLine(input.crops),
