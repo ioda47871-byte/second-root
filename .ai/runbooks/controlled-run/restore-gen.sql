@@ -1,0 +1,3 @@
+select format($f$update public.sales_demos set design_status = 'ready', design_profile = %L::jsonb, design_review = %L::jsonb, design_attempts = %s, design_job_id = %L::uuid, design_claimed_at = null, design_error_code = %L, design_worker_commit = %L, design_updated_at = now() where id = %L and design_status in ('pending', 'ready', 'blocked', 'failed') returning id, design_status, design_attempts, md5(design_profile::text) as profile_md5;$f$,
+  design_profile::text, design_review::text, design_attempts, design_job_id, design_error_code, design_worker_commit, id) as restore_sql
+from public.sales_demos where id = 'efb4bdb2-5fb8-4575-b2e1-76217a832485' and design_status = 'ready';

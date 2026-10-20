@@ -5,15 +5,12 @@
 
 ## 未解除
 
-### HUMAN-014 — cycle の install と dry-run（timer なし、HUMAN-010 の一部）
+### HUMAN-015 — Claude の Supabase（Staging）読み取りが 401
 
-- 何: `/etc/second-root/design-cycle.conf` を作り（bridge の commit と bypass のスイッチ）、setup script を `--replace` なしで動かして段 6 の `cycle.sh --dry-run` まで通す。unit は置かない・timer は enable しない・flag は変えない・DB は変えない。
-- 前提: root の clone `/root/sr-capture-admin` は c066618（HUMAN-013 で合わせた）、bridge の checkout は 90c4c38caef5dafc539121195a6fd4d48753f477。
-- 人の操作（WSL、1 行。bridge の checkout が 90c4c38 で clean であること・conf がまだ無いことを確かめてから作る。どれかが違えば何も書かずに止まる）:
-  `B=$(sudo -u sr-designbridge -H git -C /home/sr-designbridge/second-root rev-parse HEAD) && [ "$B" = 90c4c38caef5dafc539121195a6fd4d48753f477 ] && test -z "$(sudo -u sr-designbridge -H git -C /home/sr-designbridge/second-root status --porcelain --untracked-files=normal)" && sudo test ! -e /etc/second-root/design-cycle.conf && sudo install -d -o root -g root -m 0755 /etc/second-root && printf 'SR_DESIGN_CYCLE_BRIDGE_SHA=%s\nSR_DESIGN_CYCLE_VERCEL_BYPASS=on\n' "$B" | sudo tee /etc/second-root/design-cycle.conf >/dev/null && sudo chmod 0644 /etc/second-root/design-cycle.conf && sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh`
-  - 値は聞かれない（file があるので `BYPASS_FILE_PRESENT`）。`BYPASS_OK` の後、段 6 で `cycle: vercel bypass: on` と `CYCLE_RESULT CYCLE_DRY_RUN_OK …`、最後の行 `BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6`。
-  - dry-run が止まったら（`CYCLE_DRY_RUN_NOT_OK`）、表示された `CHECK_*` / `CYCLE_STOP_PREFLIGHT` の符号だけを Claude に渡す。conf は残してよい（cycle は timer なしでは動かない）。やめるときは `sudo rm /etc/second-root/design-cycle.conf`。
-- 解除条件: 人の出力に `CYCLE_DRY_RUN_OK` と `cycle: vercel bypass: on`。
+- 何: 2026-10-20、この session の proxy が入れる Supabase の token が `Invalid access token`（401）になった。Vercel の読み取りは動く。controlled run の前後の読み取り（`.ai/runbooks/controlled-run/snapshot.sql`・`after.sql`）が Claude からできない。
+- 人の操作: Supabase で read-only に使える新しい access token を発行し、Claude の cloud environment の設定（session の title bar の environment メニュー → Edit → Network secrets）で `api.supabase.com` の値を差し替える。新しい session から有効。値は会話・GitHub に出さない。古い token は revoke。
+- 代わり: 人が Supabase SQL editor で `snapshot.sql`・`after.sql` を実行し、結果（profile の中身は含まない）を貼ってもよい。
+- 解除条件: Claude の read-only query が通る。
 
 ### HUMAN-010 — design worker の cycle（DEV-052）の WSL への install と timer の有効化
 
@@ -30,13 +27,16 @@
   5. PR #66 の判断: bridge を `runuser` で動かす・conf に承認した bridge の SHA を置く・preflight の SERIAL を OK とする・最初の deliver-only は全件 0・claim 後に止まったときの回復 SQL（job id と processing を条件）。
   6. Instagram のログインが有効であること（`LOGIN_REQUIRED` なら `admin.sh login`。cycle は回避せず止まる）。
   7. 上がすべて済んでから timer の enable を承認（`design-worker-cycle.md` §5）。
-- controlled run の計画（2026-10-20、承認待ち。どれも人の承認が要る）:
-  - 対象: demo `efb4bdb2-5fb8-4575-b2e1-76217a832485`（baked_goods、Instagram のみ、outreach は drafted・未公開、design_attempts 1/3）。予備は `b2048c61-422e-4bc7-8019-5f3c91a075a2`（bakery、attempts 1）。`d5656932`（attempts 2）は使わない。
-  - 手順: (1) 事前の写し: Claude が読み取りで対象の design_status・attempts・job_id・worker_commit・updated_at と profile の hash を記録（profile 本体は git に入れない）。(2) 人が承認した DB の書き込み（下の SQL、1 行だけ返ること）。(3) Staging の flag を一時的に true + develop を redeploy（人）。(4) WSL で `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh` を 1 回 → `CYCLE_OK`（bridge の段に `vercel protection bypass in use`）。(5) flag を false に戻して redeploy（人）。(6) Claude が読み取りで design_status・design_review・attempts と flag を確認。
-  - pending に戻す SQL（Staging、人の承認後に実行）:
-    `update public.sales_demos set design_status = 'pending', design_profile = null, design_review = null, design_job_id = null, design_claimed_at = null, design_error_code = null, design_worker_commit = null, design_updated_at = now() where id = 'efb4bdb2-5fb8-4575-b2e1-76217a832485' and design_status = 'ready' and exists (select 1 from public.sales_outreaches o where o.prospect_id = sales_demos.prospect_id and o.kind = 'initial' and o.status = 'drafted') returning id, design_status, design_attempts;`
-  - 復旧: `ready` なら新しい profile と要約で終わり。`blocked` / `failed` なら demo はテンプレートで表示される（未送信・未公開なので外への影響なし、attempts は残り 1）。claim の後で止まったら `design-worker-cycle.md` §6（lease の満了を待つ、または job id と processing を条件にした SQL）。前の profile に戻したいときは (1) の写しをもとに人が承認した SQL で戻す（Claude が用意）。どの場合も最後に flag を false に戻す。
-
+- controlled run の手順（2026-10-20 更新。HUMAN-014 は済み。DB の書き込み・flag・run・timer はすべて未承認）。SQL は `.ai/runbooks/controlled-run/`（ローカルの Postgres で確かめた）
+  - 対象: demo `efb4bdb2-5fb8-4575-b2e1-76217a832485`（baked_goods、Instagram のみ、outreach は drafted、attempts 1/3）。予備 `b2048c61-…`。`d5656932-…`（attempts 2）は使わない
+  - A. 読むだけ（承認不要）: `snapshot.sql` で ready・attempts 1・outreach が drafted で未送信・do_not_contact false・disabled でない・`queue_open` 0 を確かめる（HUMAN-015 で Claude から読めない間は人が実行）
+  - B. 人が `restore-gen.sql`（読むだけ）を実行し、出力の update 文を自分の PC に保存（git・会話に貼らない）
+  - C. **[承認 1: DB 書き込み]** 人が `reset.sql` → 1 行・`pending`・attempts 1。0 行なら止まって Claude に知らせる
+  - D. **[承認 2: Staging の flag]** Vercel の Preview（develop）で `SALES_AI_DESIGN_ENABLED=true` → develop を redeploy → Claude が `npm run staging:bypass-status` で "true"・READY を確認。window の間は Sales Agent の run を始めない（flag が on だと新しい demo が pending で作られる）
+  - E. **[承認 3: cycle を 1 回]** WSL で `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh --dry-run` → `CYCLE_DRY_RUN_OK` の後に `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh`（timer・unit は使わない）。最後の `CYCLE_RESULT` 行を Claude に
+  - F. **[承認 2 の続き]** 結果に関係なく flag を `false` に戻し redeploy → Claude が "false" を確認
+  - G. 読むだけ: `after.sql`（Claude、または人）
+  - 復旧: `CYCLE_OK` で `ready` → 終わり。`blocked` → demo はテンプレートで表示（未送信・未公開で外への影響なし）。worker の失敗で `pending`（attempts 2）に戻った → そのまま置く（timer なしで動かない）か、B の update で元に戻す。`CYCLE_STOP_*` で `phase=before_claim` → 何も変わっていない（demo は pending のまま、B で戻せる）。`phase=after_claim` / `claim_unknown` → `design-worker-cycle.md` §6（job id を条件にした SQL・`--deliver-only`・lease の満了）。前のデザインに戻したいときはどの場合も B の update（processing の間は 0 行で何もしない）。どの場合も F（flag を false）は必ず行う
 
 ### HUMAN-007 — Production 準備と Release PR #29 の merge（DEV-019）
 - 状態: **PR #29 を main へ merge 済み（2026-09-28、b14aab7。人間の明示承認に基づき Claude が実行）**。残りは merge 後の人間の作業。
@@ -103,6 +103,17 @@
 - DEV-004 で Claude が allowed_scope を拡張（GA を /demo・/admin で無効化、noindex / no-referrer ヘッダ、e2e 分割）。既存ページの挙動は不変とレビュー確認済み。異論があれば PR #12 を参照。
 
 ## 解除済み
+
+### HUMAN-014 — cycle の install と dry-run（timer なし、HUMAN-010 の一部）（解除: 2026-10-20）
+
+- 何: `/etc/second-root/design-cycle.conf` を作り（bridge の commit と bypass のスイッチ）、setup script を `--replace` なしで動かして段 6 の `cycle.sh --dry-run` まで通す。unit は置かない・timer は enable しない・flag は変えない・DB は変えない。
+- 前提: root の clone `/root/sr-capture-admin` は c066618（HUMAN-013 で合わせた）、bridge の checkout は 90c4c38caef5dafc539121195a6fd4d48753f477。
+- 人の操作（WSL、1 行。bridge の checkout が 90c4c38 で clean であること・conf がまだ無いことを確かめてから作る。どれかが違えば何も書かずに止まる）:
+  `B=$(sudo -u sr-designbridge -H git -C /home/sr-designbridge/second-root rev-parse HEAD) && [ "$B" = 90c4c38caef5dafc539121195a6fd4d48753f477 ] && test -z "$(sudo -u sr-designbridge -H git -C /home/sr-designbridge/second-root status --porcelain --untracked-files=normal)" && sudo test ! -e /etc/second-root/design-cycle.conf && sudo install -d -o root -g root -m 0755 /etc/second-root && printf 'SR_DESIGN_CYCLE_BRIDGE_SHA=%s\nSR_DESIGN_CYCLE_VERCEL_BYPASS=on\n' "$B" | sudo tee /etc/second-root/design-cycle.conf >/dev/null && sudo chmod 0644 /etc/second-root/design-cycle.conf && sudo bash /root/sr-capture-admin/scripts/sales-design-bridge/setup-vercel-bypass.sh`
+  - 値は聞かれない（file があるので `BYPASS_FILE_PRESENT`）。`BYPASS_OK` の後、段 6 で `cycle: vercel bypass: on` と `CYCLE_RESULT CYCLE_DRY_RUN_OK …`、最後の行 `BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6`。
+  - dry-run が止まったら（`CYCLE_DRY_RUN_NOT_OK`）、表示された `CHECK_*` / `CYCLE_STOP_PREFLIGHT` の符号だけを Claude に渡す。conf は残してよい（cycle は timer なしでは動かない）。やめるときは `sudo rm /etc/second-root/design-cycle.conf`。
+- 解除条件: 人の出力に `CYCLE_DRY_RUN_OK` と `cycle: vercel bypass: on`。
+- 2026-10-20 人が WSL で実行: `CYCLE_CONFIG_CREATED`・`BYPASS_FILE_PRESENT`・`PROTECTION_ON`・`BYPASS_OK`・`CYCLE_SWITCH_ON`・`cycle: vercel bypass: on`・`cycle: checks: OK`・`CYCLE_RESULT CYCLE_DRY_RUN_OK phase=before_claim job=none exit=0`・`BYPASS_SETUP_RESULT BYPASS_SETUP_OK step=6`。unit・timer・flag・DB は変わっていない。
 
 ### HUMAN-013 — bridge 専用 Vercel bypass secret の作成と WSL への設定（DEV-059 / DEV-063）（解除: 2026-10-20）
 
