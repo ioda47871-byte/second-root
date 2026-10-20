@@ -27,7 +27,7 @@ export const WORKER_COMMIT = /^[0-9a-f]{7,40}$/;
  * Optional time box for the flag (DEV-064): an instant in UTC, written exactly as
  * YYYY-MM-DDTHH:MM:SSZ. While set, the flag counts only before that instant, so a
  * window opened for a controlled run closes on its own even if nobody turns the
- * flag off. Unset (or empty): no time box, as before. Set but not in that exact
+ * flag off. Unset: no time box, as before. Set but empty, or not in that exact
  * form (or not a real date): the flag is off (fail closed).
  */
 export const DESIGN_ENABLED_UNTIL_KEY = "SALES_AI_DESIGN_ENABLED_UNTIL";
@@ -36,7 +36,7 @@ const UNTIL_FORMAT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 /** The time box in epoch ms; null when unset; NaN when set but not valid. */
 export function designEnabledUntil(env: Record<string, string | undefined> = process.env): number | null {
   const raw = env[DESIGN_ENABLED_UNTIL_KEY];
-  if (raw === undefined || raw === "") return null;
+  if (raw === undefined) return null;
   if (!UNTIL_FORMAT.test(raw)) return Number.NaN;
   const ms = Date.parse(raw);
   // Date.parse rolls 2026-02-31 over to March: refuse anything that does not round-trip.

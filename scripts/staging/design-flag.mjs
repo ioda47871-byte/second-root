@@ -14,6 +14,9 @@
 //   FIRST, then SALES_AI_DESIGN_ENABLED=true. The flag is never true without a time box.
 //   --until must be 30 minutes to 4 hours ahead.
 // - off: SALES_AI_DESIGN_ENABLED=false. Idempotent (already false: nothing is written).
+//   --if-until <iso>: only when the time box is that value (the recovery task of one window
+//   never closes a later window).
+// - on refuses while the flag is not false (a window is never extended; off first).
 // - verify: read only. The env vars give the expected state and the develop alias serves a
 //   READY deployment of <sha> created after the env vars last changed (Vercel reads env vars
 //   at build time, so only such a deployment carries the value). "off" needs the flag to be
@@ -25,8 +28,8 @@
 //
 // Refuses (before writing anything) when: the production branch is not main; the flag is
 // not exactly one plain record with target ["preview"] and gitBranch "develop"; any other
-// record of either key exists (another target, branch or type); a request is not one of
-// the allowed ones. Values of other env vars are never read into output.
+// record of either key exists (another target, branch or type); the env listing hides
+// Production records (hiddenProductionEnvCount); a request is not one of the allowed ones. Values of other env vars are never read into output.
 //
 // Exit: 0 ok; 1 failed / refused; 2 verify not (yet) as expected. Last line:
 //   DESIGN_FLAG <CODE> flag=<true|false|unknown> until=<iso|none|invalid|unknown>
@@ -45,21 +48,34 @@ export const MAX_WINDOW_MS = 4 * 60 * 60 * 1000;
 const UNTIL_FORMAT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const ENV_ID = /^[A-Za-z0-9]{8,64}$/;
 
-/** The only requests this script may send; anything else throws before it is sent. */
-export function guardedFetch(fetchImpl) {
+/**
+ * The only requests this script may send; anything else throws before it is sent.
+ * `patchable` maps env var ids to their key; only those records may be PATCHed (the
+ * caller adds the ids it has just checked to be the Preview develop records), and only
+ * with "true" / "false" (the flag) or a time box (the time box).
+ */
+export function guardedFetch(fetchImpl, patchable = new Map()) {
   const base = `${VERCEL_API}/v9/projects/${PROJECT}`;
   return (url, init = {}) => {
     const method = String(init.method ?? "GET").toUpperCase();
     const u = String(url);
-    const body = init.body === undefined ? undefined : JSON.parse(String(init.body));
+    let body;
+    try {
+      body = init.body === undefined ? undefined : JSON.parse(String(init.body));
+    } catch {
+      throw new Error(`refused: ${method} ${u.split("?")[0]} with a body that is not JSON`);
+    }
+    const patchKey = method === "PATCH" && u.startsWith(`${base}/env/`) ? patchable.get(u.slice(`${base}/env/`.length)) : undefined;
     const ok =
       (method === "GET" && body === undefined && (u === base || u === `${base}/env` || u === `${VERCEL_API}/v13/deployments/${ALIAS}`)) ||
       (method === "PATCH" &&
         u.startsWith(`${base}/env/`) &&
         ENV_ID.test(u.slice(`${base}/env/`.length)) &&
+        patchKey !== undefined &&
         body !== undefined &&
         Object.keys(body).join(",") === "value" &&
-        typeof body.value === "string") ||
+        typeof body.value === "string" &&
+        (patchKey === FLAG ? body.value === "true" || body.value === "false" : patchKey === UNTIL && UNTIL_FORMAT.test(body.value))) ||
       (method === "POST" &&
         u === `${VERCEL_API}/v10/projects/${PROJECT}/env` &&
         body !== undefined &&
@@ -99,18 +115,21 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
     const opts = {};
     for (let i = 0; i < rest.length; i += 2) {
       const k = rest[i];
-      if (!/^--(until|expect|sha)$/.test(k ?? "") || rest[i + 1] === undefined) throw new Error(`unknown or incomplete option ${String(k)}`);
+      if (!/^--(until|expect|sha|if-until)$/.test(k ?? "") || rest[i + 1] === undefined) throw new Error(`unknown or incomplete option ${String(k)}`);
       opts[k.slice(2)] = rest[i + 1];
     }
     const allowed = { status: [], on: ["until"], off: [], verify: ["expect", "sha"] }[cmd];
-    if (!allowed) throw new Error("usage: status | on --until <YYYY-MM-DDTHH:MM:SSZ> | off | verify --expect on|off --sha <40 hex>");
-    for (const k of Object.keys(opts)) if (!allowed.includes(k)) throw new Error(`--${k} is not an option of ${cmd}`);
+    const optional = cmd === "off" ? ["if-until"] : [];
+    if (!allowed) throw new Error("usage: status | on --until <YYYY-MM-DDTHH:MM:SSZ> | off [--if-until <YYYY-MM-DDTHH:MM:SSZ>] | verify --expect on|off --sha <40 hex>");
+    for (const k of Object.keys(opts)) if (!allowed.includes(k) && !optional.includes(k)) throw new Error(`--${k} is not an option of ${cmd}`);
     for (const k of allowed) if (opts[k] === undefined) throw new Error(`${cmd} needs --${k}`);
+    if (opts["if-until"] !== undefined && !Number.isFinite(parseUntil(opts["if-until"]))) throw new Error("--if-until must be YYYY-MM-DDTHH:MM:SSZ (UTC)");
 
     const token = env.VERCEL_TOKEN;
     if (token !== undefined && token.length < 20) throw new Error("VERCEL_TOKEN looks invalid");
     if (!token && !env.HTTPS_PROXY) throw new Error("no Vercel credential: set VERCEL_TOKEN or register an API credential for api.vercel.com");
-    const send = guardedFetch(fetchImpl);
+    const patchable = new Map();
+    const send = guardedFetch(fetchImpl, patchable);
     const call = async (method, url, body) => {
       const res = await send(url, {
         method,
@@ -129,7 +148,10 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
     const projectUrl = `${VERCEL_API}/v9/projects/${PROJECT}`;
 
     const read = async () => {
-      const envs = ((await call("GET", `${projectUrl}/env`))?.envs ?? []).filter((e) => e && (e.key === FLAG || e.key === UNTIL));
+      const listing = await call("GET", `${projectUrl}/env`);
+      // Production records this token may not see would escape the "no other records" check.
+      if (Number(listing?.hiddenProductionEnvCount ?? 0) !== 0) throw new Error("refused: the env listing hides Production records from this token");
+      const envs = (listing?.envs ?? []).filter((e) => e && (e.key === FLAG || e.key === UNTIL));
       const flags = envs.filter((e) => e.key === FLAG);
       const untils = envs.filter((e) => e.key === UNTIL);
       const strays = envs.filter((e) => !isOurs(e));
@@ -142,6 +164,9 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
       const f = flags[0];
       const u = untils[0] ?? null;
       if (!ENV_ID.test(String(f.id)) || (u && !ENV_ID.test(String(u.id)))) throw new Error("refused: unexpected env var id");
+      patchable.clear();
+      patchable.set(String(f.id), FLAG);
+      if (u) patchable.set(String(u.id), UNTIL);
       flag = f.value === "true" || f.value === "false" ? f.value : "unknown";
       until = u === null ? "none" : Number.isFinite(parseUntil(u.value)) ? u.value : "invalid";
       return { f, u };
@@ -185,6 +210,7 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
       if (!want && flag !== "false") problems.push(`${FLAG} is ${flag}, not false`);
       if (want && until === "none") problems.push(`${UNTIL} is not set`);
       if (!dep || dep.readyState !== "READY") problems.push("the alias deployment is not READY");
+      if (dep && dep.target === "production") problems.push("the alias deployment is a Production deployment");
       if (sha !== opts.sha) problems.push(`the alias serves ${sha.slice(0, 7)}, not ${opts.sha.slice(0, 7)}`);
       if (dep && !after) problems.push("the alias deployment was built before the env vars changed");
       if (problems.length) {
@@ -199,6 +225,8 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
       if (!Number.isFinite(ms)) throw new Error("--until must be YYYY-MM-DDTHH:MM:SSZ (UTC)");
       const ahead = ms - now();
       if (ahead < MIN_WINDOW_MS || ahead > MAX_WINDOW_MS) throw new Error("--until must be 30 minutes to 4 hours from now");
+      // No extending an open window: close it (off) first.
+      if (flag !== "false") throw new Error(`refused: ${FLAG} is ${flag}; run off first (a window is not extended)`);
       // The time box first: the flag is never true without one.
       if (u) await call("PATCH", `${projectUrl}/env/${u.id}`, { value: opts.until });
       else await call("POST", `${VERCEL_API}/v10/projects/${PROJECT}/env`, { key: UNTIL, value: opts.until, type: "plain", target: ["preview"], gitBranch: BRANCH });
@@ -213,6 +241,11 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
     }
 
     // off
+    if (opts["if-until"] !== undefined && until !== opts["if-until"]) {
+      // A recovery task of an earlier window must not close a later one.
+      log(`  the time box is ${until}, not ${opts["if-until"]}: this is another window; nothing written`);
+      return done("OFF_SKIPPED_OTHER_WINDOW", 0);
+    }
     if (flag === "false") {
       log("  already false: nothing written");
       return done("ALREADY_OFF", 0);

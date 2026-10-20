@@ -10,9 +10,8 @@ const T = Date.UTC(2026, 9, 20, 12, 0, 0);
 const on = (until?: string) => ({ SALES_AI_DESIGN_ENABLED: "true", ...(until === undefined ? {} : { SALES_AI_DESIGN_ENABLED_UNTIL: until }) });
 
 describe("aiDesignEnabled with SALES_AI_DESIGN_ENABLED_UNTIL", () => {
-  it("unset or empty: as before (the flag alone decides)", () => {
+  it("unset: as before (the flag alone decides)", () => {
     expect(aiDesignEnabled(on(), T)).toBe(true);
-    expect(aiDesignEnabled(on(""), T)).toBe(true);
     expect(aiDesignEnabled({ SALES_AI_DESIGN_ENABLED: "false" }, T)).toBe(false);
     expect(aiDesignEnabled({}, T)).toBe(false);
   });
@@ -37,6 +36,7 @@ describe("aiDesignEnabled with SALES_AI_DESIGN_ENABLED_UNTIL", () => {
     "tomorrow",
     " 2026-10-20T13:00:00Z",
     "1792473600000",
+    "",
   ])("set but not exactly YYYY-MM-DDTHH:MM:SSZ (%j): off, fail closed", (raw) => {
     expect(Number.isNaN(designEnabledUntil({ SALES_AI_DESIGN_ENABLED_UNTIL: raw }))).toBe(true);
     expect(aiDesignEnabled(on(raw), T)).toBe(false);

@@ -13,7 +13,7 @@ const UNTIL_OK = iso(NOW + 2 * 60 * 60 * 1000);
 
 type Env = { id: string; key: string; value?: string; type: string; target: string[]; gitBranch?: string | null; updatedAt?: number };
 
-function vercel(opts: { envs?: Env[]; productionBranch?: string; deployment?: Record<string, unknown> | null; failWrites?: number } = {}) {
+function vercel(opts: { envs?: Env[]; productionBranch?: string; deployment?: Record<string, unknown> | null; failWrites?: number; hiddenProd?: number } = {}) {
   let clock = NOW - 60_000;
   const envs: Env[] = (
     opts.envs ?? [{ id: "rMGvxH8aHWZZC5Z5", key: "SALES_AI_DESIGN_ENABLED", value: "false", type: "plain", target: ["preview"], gitBranch: "develop" }]
@@ -31,7 +31,7 @@ function vercel(opts: { envs?: Env[]; productionBranch?: string; deployment?: Re
     }
     clock += 1000;
     if (method === "GET" && path === `/v9/projects/${PROJECT}`) return Response.json({ name: "second-root", link: { productionBranch: opts.productionBranch ?? "main" } });
-    if (method === "GET" && path === `/v9/projects/${PROJECT}/env`) return Response.json({ envs });
+    if (method === "GET" && path === `/v9/projects/${PROJECT}/env`) return Response.json({ envs, hiddenProductionEnvCount: opts.hiddenProd ?? 0 });
     if (method === "GET" && path === `/v13/deployments/${ALIAS}`) return state.deployment ? Response.json(state.deployment) : new Response("{}", { status: 404 });
     if (method === "PATCH") {
       const e = envs.find((x) => path.endsWith(`/env/${x.id}`));
@@ -63,6 +63,7 @@ async function run(api: ReturnType<typeof vercel>, argv: string[], now = NOW) {
 }
 
 const flagOf = (api: ReturnType<typeof vercel>) => api.envs.find((e) => e.key === "SALES_AI_DESIGN_ENABLED")!.value;
+const untilOfApi = (api: ReturnType<typeof vercel>) => api.envs.find((e) => e.key === "SALES_AI_DESIGN_ENABLED_UNTIL")?.value;
 
 describe("design-flag: status", () => {
   it("reads only, shows the flag, the time box, the production branch and the alias; never other values", async () => {
@@ -252,5 +253,88 @@ describe("guardedFetch: only the listed requests leave", () => {
   ])("refuses %s", (_name, url, init) => {
     expect(() => g(url, init as RequestInit)).toThrow(/refused/);
     expect(ok).not.toHaveBeenCalled();
+  });
+});
+
+describe("design-flag: review fixes (DEV-064 Fresh Review)", () => {
+  it("refuses when the listing hides Production records from the token", async () => {
+    const api = vercel({ hiddenProd: 1 });
+    for (const argv of [["status"], ["on", "--until", UNTIL_OK], ["off"]]) {
+      const r = await run(api, argv);
+      expect(r.code).toBe(1);
+      expect(r.out).toContain("hides Production records");
+    }
+    expect(api.writes).toEqual([]);
+  });
+
+  it("on refuses while a window is open (no extending); off first", async () => {
+    const api = vercel();
+    await run(api, ["on", "--until", UNTIL_OK]);
+    const later = iso(NOW + 3 * 60 * 60 * 1000);
+    const r = await run(api, ["on", "--until", later]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("run off first");
+    expect(untilOfApi(api)).toBe(UNTIL_OK);
+    expect(api.writes).toHaveLength(2);
+  });
+
+  it("off --if-until: closes only the window it belongs to", async () => {
+    const api = vercel();
+    await run(api, ["on", "--until", UNTIL_OK]);
+    const skip = await run(api, ["off", "--if-until", "2026-10-20T13:00:00Z"]);
+    expect(skip.code).toBe(0);
+    expect(skip.last).toBe(`DESIGN_FLAG OFF_SKIPPED_OTHER_WINDOW flag=true until=${UNTIL_OK}`);
+    expect(flagOf(api)).toBe("true");
+    const r = await run(api, ["off", "--if-until", UNTIL_OK]);
+    expect(r.last).toBe(`DESIGN_FLAG OFF_WRITTEN flag=false until=${UNTIL_OK}`);
+    const again = await run(api, ["off", "--if-until", UNTIL_OK]);
+    expect(again.last).toBe(`DESIGN_FLAG ALREADY_OFF flag=false until=${UNTIL_OK}`);
+    expect((await run(api, ["off", "--if-until", "soon"])).code).toBe(1);
+  });
+
+  it("verify refuses a Production deployment behind the alias", async () => {
+    const api = vercel();
+    await run(api, ["on", "--until", UNTIL_OK]);
+    api.state.deployment = { id: "dpl_p", readyState: "READY", target: "production", createdAt: NOW + 60_000, meta: { githubCommitSha: SHA } };
+    const r = await run(api, ["verify", "--expect", "on", "--sha", SHA]);
+    expect(r.code).toBe(2);
+    expect(r.out).toContain("Production deployment");
+  });
+});
+
+describe("guardedFetch: PATCH only the checked records, only with their values", () => {
+  const P = `${VERCEL_API}/v9/projects/${PROJECT}`;
+  const ids = new Map([
+    ["rMGvxH8aHWZZC5Z5", "SALES_AI_DESIGN_ENABLED"],
+    ["untilVarId000001", "SALES_AI_DESIGN_ENABLED_UNTIL"],
+  ]);
+  const patch = (id: string, value: string) => ({ url: `${P}/env/${id}`, init: { method: "PATCH", body: JSON.stringify({ value }) } });
+
+  it.each([
+    ["another record (not checked)", patch("otherSecretVar01", "false")],
+    ["the flag with a value other than true / false", patch("rMGvxH8aHWZZC5Z5", "1")],
+    ["the time box with a value that is not a time box", patch("untilVarId000001", "")],
+    ["the time box with a flag value", patch("untilVarId000001", "true")],
+  ])("refuses %s", (_name, { url, init }) => {
+    const ok = vi.fn(async () => Response.json({}));
+    expect(() => guardedFetch(ok as unknown as typeof fetch, ids)(url, init as RequestInit)).toThrow(/refused/);
+    expect(ok).not.toHaveBeenCalled();
+  });
+
+  it("allows the flag true/false and a time box on their own records", async () => {
+    const ok = vi.fn(async () => Response.json({}));
+    const g = guardedFetch(ok as unknown as typeof fetch, ids);
+    for (const { url, init } of [patch("rMGvxH8aHWZZC5Z5", "true"), patch("rMGvxH8aHWZZC5Z5", "false"), patch("untilVarId000001", "2026-10-20T14:00:00Z")]) await g(url, init as RequestInit);
+    expect(ok).toHaveBeenCalledTimes(3);
+  });
+
+  it("with no checked ids, no PATCH leaves", () => {
+    const ok = vi.fn(async () => Response.json({}));
+    expect(() => guardedFetch(ok as unknown as typeof fetch)(patch("rMGvxH8aHWZZC5Z5", "false").url, patch("rMGvxH8aHWZZC5Z5", "false").init as RequestInit)).toThrow(/refused/);
+  });
+
+  it("a body that is not JSON is refused without echoing it", () => {
+    const ok = vi.fn(async () => Response.json({}));
+    expect(() => guardedFetch(ok as unknown as typeof fetch, ids)(`${P}/env/rMGvxH8aHWZZC5Z5`, { method: "PATCH", body: "secret-ish{" })).toThrow(/^refused: PATCH .* not JSON$/);
   });
 });

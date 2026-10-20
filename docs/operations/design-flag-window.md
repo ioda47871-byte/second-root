@@ -20,13 +20,16 @@ controlled run（HUMAN-010）のために、Staging の `SALES_AI_DESIGN_ENABLED
 `npm run staging:design-flag` が送ってよい request は次だけ（`guardedFetch`、それ以外は送る前に拒否。test あり）:
 GET（project・env 一覧・develop の alias の deployment）、PATCH `env/<id>`（body は `{ value }` だけ）、POST `v10/projects/<id>/env`（key `SALES_AI_DESIGN_ENABLED_UNTIL`・plain・target `["preview"]`・gitBranch `develop` のときだけ）。
 deployment を作る・promote する・env を消す・target を変える request は無い。
-production branch が `main` でない、flag の record が Preview `develop` の 1 つでない、どちらかの key に他の record（Production・全 branch・encrypted）がある、のどれかなら何も書かずに止まる。
+PATCH は、直前の読み取りで Preview `develop` の record だと確かめた id だけに、flag は `"true"` / `"false"`、期限は時刻の形の値だけ。
+production branch が `main` でない、flag の record が Preview `develop` の 1 つでない、どちらかの key に他の record（Production・全 branch・encrypted）がある、env の一覧が Production の record を隠している（`hiddenProductionEnvCount`）、のどれかなら何も書かずに止まる。
 
 ## 2. 期限で自然に閉じる仕組み（二重）
 
-1. **app の中の期限（`SALES_AI_DESIGN_ENABLED_UNTIL`、DEV-064）**: 値は `YYYY-MM-DDTHH:MM:SSZ`。設定されていると、flag はその時刻より前だけ有効（`lib/sales/design.ts` の `aiDesignEnabled`、request ごとの判定）。期限を過ぎると、誰も何もしなくても bridge API は `design_bridge_disabled`（503）、demo はテンプレート、Sales Agent の persist は従来どおり。形が違う値は無効（fail closed）。未設定なら従来どおり（Production は未設定）。
-   - `on` は期限を**先に**書き、flag を後で `true` にする。期限なしで flag が `true` になる瞬間は無い。`--until` は 30 分〜4 時間先だけ。
-2. **独立した復旧 session（Claude の one-shot の scheduled task）**: 期限の 10 分後に、この環境で**新しい session**が起き、`off` → develop に記録を push（redeploy）→ `verify --expect off` まで行う。この session（window を開いた Claude）が止まっていても動く。flag がすでに `false` で、その後の deployment なら何もしない。
+1. **app の中の期限（`SALES_AI_DESIGN_ENABLED_UNTIL`、DEV-064）**: 値は `YYYY-MM-DDTHH:MM:SSZ`。設定されていると、flag はその時刻より前だけ有効（`lib/sales/design.ts` の `aiDesignEnabled`、request ごとの判定）。期限を過ぎると、誰も何もしなくても bridge API は `design_bridge_disabled`（503）、demo はテンプレート、Sales Agent の persist は従来どおり。形が違う値・空の値は無効（fail closed）。未設定（record が無い）なら従来どおり（Production は未設定）。
+   - `on` は期限を**先に**書き、flag を後で `true` にする。期限なしで flag が `true` になる瞬間は無い。`--until` は 30 分〜4 時間先だけ。flag が `false` でない間の `on` は拒否（window を延ばさない。延ばすなら `off` → 改めて承認）
+   - 遠い未来の期限は script では書けない（4 時間まで）。Vercel の画面で人が書いた値は app が形だけを確かめる
+2. **独立した復旧 session（Claude の one-shot の scheduled task）**: 期限の 10 分後に、この環境で**新しい session**が起き、develop を checkout して `off --if-until <UNTIL>` → develop に記録を push（redeploy）→ `verify --expect off` まで行う。この session（window を開いた Claude）が止まっていても動く。flag がすでに `false` で、その後の deployment なら何もしない。期限の値が `<UNTIL>` でない（別の window）なら何もしない。
+   - **予行（window の前、読むだけ）**: 同じ形の one-shot の scheduled task を数分後に 1 回だけ作り、新しい session が develop を checkout して `staging:design-flag -- status` を `DESIGN_FLAG STATUS` まで実行でき、`git push --dry-run origin develop` が通ることを確かめる（何も書かない）
 
 どちらも効かなかったときは §5。
 
@@ -37,13 +40,13 @@ production branch が `main` でない、flag の record が Preview `develop` �
 | # | 誰 | 何 | 確認 |
 |---|---|---|---|
 | 0 | Claude | `staging:design-flag -- status`・`staging:bypass-status`（読むだけ）。Sales Agent の scheduled task が無効であること | flag `false`・Authentication on・production branch `main` |
-| 1 | Claude | 復旧の scheduled task を作る（§4、`<UNTIL>` + 10 分、新しい session） | task id を記録 |
+| 1 | Claude | 復旧の scheduled task を作る（§4、`<UNTIL>` + 10 分、新しい session）。§2 の予行が通っていること | task id を記録 |
 | 2 | Claude | `staging:design-flag -- on --until <UNTIL>` | `DESIGN_FLAG ON_WRITTEN flag=true until=<UNTIL>` |
 | 3 | Claude | `.ai/progress.md` に window の開始を 1 行書いて develop に push（= develop の redeploy） | — |
 | 4 | Claude | `staging:design-flag -- verify --expect on --sha <3 の commit>` を READY まで繰り返す | `DESIGN_FLAG VERIFIED_ON` |
 | 5 | **人（WSL）** | 期限まで 80 分以上あるときだけ: `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh --dry-run` → `CYCLE_DRY_RUN_OK` なら `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh` を 1 回。最後の `CYCLE_RESULT` 行を Claude に | `CYCLE_RESULT CYCLE_OK …` |
 | 6 | Claude | 結果に関係なく `staging:design-flag -- off` → `.ai` に結果を書いて push → `verify --expect off --sha <その commit>` | `DESIGN_FLAG VERIFIED_OFF` |
-| 7 | Claude | 1 の scheduled task を消す（残しても `ALREADY_OFF` で何もしない） | — |
+| 7 | Claude | 1 の scheduled task を必ず消す（残しても `--if-until` で別の window は閉じないが、記録の push が増える） | — |
 | 8 | 人 または Claude | `.ai/runbooks/controlled-run/after.sql`（読むだけ） | design_status・attempts・review |
 
 - window の間は develop に push しない（3 と 6 の記録だけ）。Sales Agent の run を始めない（flag が on だと新しい demo が `pending` で作られる）
@@ -53,8 +56,9 @@ production branch が `main` でない、flag の record が Preview `develop` �
 
 ```
 Second Root の Staging design flag の自動復旧（DEV-064、docs/operations/design-flag-window.md §4）。期限 <UNTIL> を過ぎた。
-リポジトリ ioda47871-byte/second-root の develop で、次だけを行う。Production・Vercel Authentication・DB・timer・営業送信・他の env には触れない。値（secret）を表示しない。
-1. npm run -s staging:design-flag -- off
+リポジトリ ioda47871-byte/second-root で、最初に git fetch origin develop && git checkout -B develop origin/develop（default branch は main で、script は develop にしかない）。その上で次だけを行う。Production・Vercel Authentication・DB・timer・営業送信・他の env には触れない。値（secret）を表示しない。
+1. npm run -s staging:design-flag -- off --if-until <UNTIL>
+   - OFF_SKIPPED_OTHER_WINDOW なら何もせず、その行を報告して終わる（別の window）
    - FAILED なら 2 回まで再実行。直らなければ最後の行と FAILED: の行だけを報告して終わる（app の期限で flag はすでに無効）
 2. ALREADY_OFF のときは git fetch origin develop して npm run -s staging:design-flag -- verify --expect off --sha <origin/develop の commit>。VERIFIED_OFF なら 4. へ（何も push しない）
    OFF_WRITTEN のとき、または 2. の verify が VERIFIED_OFF でないとき:
@@ -71,6 +75,8 @@ Second Root の Staging design flag の自動復旧（DEV-064、docs/operations/
 | Vercel が書き込みを拒む（403、token に権限がない） | `on` の最初の書き込み（期限）で止まる。flag は `false` のまま | window を開かない。人が画面で `SALES_AI_DESIGN_ENABLED_UNTIL` と flag を設定する（同じ範囲）か、token の権限を見直す |
 | `off` は書けたが redeploy しない | 新しい deployment まで旧い値。期限で無効 | develop に push（記録の commit）、または人が画面で Redeploy |
 | 期限が cycle の途中で来た | submit が 503 → `CYCLE_STOP_*`（`phase=after_claim`） | `design-worker-cycle.md` §6（job id を条件にした SQL・`--deliver-only`・lease の満了）。demo は未送信・未公開 |
-| 期限の値が壊れた・消えた | 形が違えば flag は無効（fail closed）。消えると期限なし（従来どおり） | `off` を実行。`status` で `until` を確かめる |
+| 期限の値が壊れた・空になった・消えた | 形が違う・空なら flag は無効（fail closed）。record が消えると期限なし（従来どおり） | `off` を実行。`status` で `until` を確かめる |
+| team の方針で期限の record が plain で作れず、encrypted / sensitive になった | script は「他の record」として以後すべて拒否（flag は `false` のまま） | 人が Vercel の画面でその record を消す。window は人が画面で行うか、方針を見直す |
+| 新しい session が develop を checkout できない・api.vercel.com の credential が無い・push できない | 復旧 session は止まる。期限で app は無効 | §2 の予行で事前に見つける。window の後なら上の 1 行目と同じ |
 
 最後の砦: timer は無効のまま（cycle は人が手で動かすときだけ走る）。bridge は token と Vercel の bypass の両方が要る。Production には flag も期限も無い。
