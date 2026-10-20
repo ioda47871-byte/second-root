@@ -23,6 +23,7 @@ import { lstatSync, renameSync, rmSync } from "node:fs";
 import { copyFile, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser } from "playwright";
+import type { DemoView } from "@/lib/sales/demo-content";
 import { DeadlineError, killAllBoundedChildren, type RunDeadline } from "../bounded-process";
 import { assertChatGptSignIn, CodexError, fromSandboxError, removeStaleCodexSessions, runCodexJson } from "../codex";
 import { workerProtectedPaths } from "../protected-paths";
@@ -34,7 +35,7 @@ import type { PlacedPhoto } from "../assets/render-check";
 import { QUALITY_NOT_ACCEPTED, runDesignPipeline, type PipelineReport, type Shots } from "../pipeline";
 import { factsToDemoView } from "../preview";
 import { looseJsonSchema } from "../profile";
-import { observeColours } from "../reference-colours";
+import { observeColours, type ObservedColours } from "../reference-colours";
 import { capturePublicProfile, instagramTarget, type CaptureTarget } from "./capture";
 import { childEnvironment } from "./env";
 import { copyToWindows, exportFiles, type WindowsCopy } from "./export";
@@ -74,6 +75,8 @@ export interface Renderer {
 export interface PreviewSession {
   renderer: Renderer;
   stop(): Promise<void>;
+  /** DEV-073: the preview server's origin (http://127.0.0.1:<port>), for the comparison's page checks. */
+  origin?: string;
 }
 
 export interface WorkerOptions {
@@ -486,99 +489,35 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       visualSource === "website" ? "website" : "instagram",
     );
 
-    // ---- the job's photos (DEV-029): the asset store job with this job's id,
-    // nothing else. Its manifest and every photo are checked (local preview
-    // allowed, PNG, size, hash, no link); any problem means a page without photos.
-    const notes: string[] = [];
-    const photos = await jobPhotos(ctx, jobId);
-    if (photos.note) notes.push(photos.note);
-
-    // ---- design pipeline
-    const overflow: string[] = [];
-    // Every job starts with the strict schema. If the CLI refuses it (it
-    // fails, or answers without JSON), that one call is retried once with the
-    // loose schema and the rest of the job (brief and reviews) uses the loose
-    // schema from the start. Answers are always checked against the full zod
-    // schemas (and the palette checks) by the pipeline, whichever was sent.
-    let schemaMode: "strict" | "loose" = "strict";
-    const timer = new CallTimer(undefined, (line) => log(`job ${jobId}: ${line}`));
-    const withSchemaFallback = async (kind: PipelineCallKind, schema: object, run: (s: object) => Promise<unknown>) => {
-      const stage = timer.next(kind);
-      const ask = (s: object) => timer.time(stage, s === schema ? "strict" : "loose", () => run(s));
-      if (schemaMode === "loose") return ask(looseJsonSchema(schema));
-      try {
-        return await ask(schema);
-      } catch (error) {
-        // Only a refused schema falls back; any other failure (timeout,
-        // quota, sign-in) is reported as it is. One retry, never more.
-        if (!(error instanceof CodexError) || (error.code !== "CODEX_EXEC_FAILED" && error.code !== "CODEX_NO_JSON")) throw error;
-        schemaMode = "loose";
-        notes.push(`SCHEMA_LOOSE_AFTER_${kind.toUpperCase()}_${error.code}`);
-        log(`job ${jobId}: ${kind} ${error.code} with the strict schema; loose schema from here on`);
-        return ask(looseJsonSchema(schema));
-      }
-    };
-    const pipelineStart = performance.now();
-    const pipeline: PipelineReport = await runDesignPipeline(
-      {
-        demo,
-        references: refs,
-        referenceKind: visualSource === "website" ? "website" : "instagram",
-        ...(photos.input ? { photos: photos.input } : {}),
-        observedColours,
-      },
-      {
-        askCodex: ({ kind, prompt, images, schema }) => {
-          const limit = kind === "brief" ? BRIEF_TIMEOUT_MS : REVIEW_TIMEOUT_MS;
-          // The time left is read again for each call, so a retry never overruns the run.
-          return withSchemaFallback(kind, schema, (s) =>
-            runCodexJson({ sandbox: ctx.sandbox, prompt, images, schema: s, timeoutMs: options.deadline.timeoutFor(limit, MIN_LONG_CALL_MS) }),
-          );
-        },
-        // The photos reach Codex only as copies in the call's own work dir,
-        // removed with it whatever the call's outcome (runCodexJson).
-        askPhotoCodex: ({ kind, prompt, schema, imageBytes }) =>
-          withSchemaFallback(kind, schema, (s) =>
-            runCodexJson({ sandbox: ctx.sandbox, prompt, imageBytes, schema: s, timeoutMs: options.deadline.timeoutFor(PHOTO_TIMEOUT_MS, MIN_LONG_CALL_MS) }),
-          ),
-        readRecord: (name) => readFile(join(runDir, name), "utf8").then((t) => JSON.parse(t) as unknown),
-        renderPhotos: async (candidate) => {
-          const result = await ctx.session.renderer.render(jobId, candidate, join(runDir, "shots"));
-          overflow.push(...result.overflow);
-          return { shots: result.shots, sections: result.sections ?? [], placed: result.placed ?? [] };
-        },
-        writeProfile: (name, profile) => writeFile(join(runDir, `${name}.json`), JSON.stringify(profile, null, 2), { mode: 0o600 }),
-        writeRecord: (name, value) => writeFile(join(runDir, name), JSON.stringify(value, null, 2), { mode: 0o600 }),
-        render: async (candidate) => {
-          const result = await ctx.session.renderer.render(jobId, candidate, join(runDir, "shots"));
-          overflow.push(...result.overflow);
-          return result.shots;
-        },
-        timeLeftMs: () => options.deadline.remainingMs(),
-        log: (line) => log(`job ${jobId}: ${line}`),
-      },
-    );
+    // ---- design pipeline (the same function the local comparison runs, DEV-073)
+    const run = await runJobPipeline({
+      jobId,
+      runDir,
+      demo,
+      refs,
+      referenceKind: visualSource === "website" ? "website" : "instagram",
+      observedColours,
+      renderer: ctx.session.renderer,
+      sandbox: ctx.sandbox,
+      deadline: options.deadline,
+      env: options.env,
+      tempRoot: ctx.tempRoot,
+      log,
+    });
+    const pipeline = run.pipeline;
 
     // ---- the screenshots of the shop are not needed any more
     await rm(jobTemp, { recursive: true, force: true });
     tempDeleted = !(await exists(jobTemp));
 
     if (pipeline.status === "environment_failure") {
-      const code = pipeline.notes.map((n) => n.replace(/^REVIEW_/, "")).find((n) => ENVIRONMENT_CODES.has(n)) ?? "CODEX_QUOTA";
+      const code = environmentCode(pipeline);
       await rm(runDir, { recursive: true, force: true });
       await requeueJob(dirs, jobId);
       return { stop: code };
     }
-    if (pipeline.after) {
-      await copyFile(pipeline.before.desktop, join(runDir, "before-desktop.png"));
-      await copyFile(pipeline.before.mobile, join(runDir, "before-mobile.png"));
-      await copyFile(pipeline.after.desktop, join(runDir, "after-desktop.png"));
-      await copyFile(pipeline.after.mobile, join(runDir, "after-mobile.png"));
-    } else {
-      await copyFile(pipeline.before.desktop, join(runDir, "before-desktop.png"));
-      await copyFile(pipeline.before.mobile, join(runDir, "before-mobile.png"));
-    }
-    const final = pipeline.finalCandidate ? await readFile(join(runDir, "final.json"), "utf8").then((t) => JSON.parse(t) as Record<string, unknown>).catch(() => null) : null;
+    await copyPipelineShots(runDir, pipeline);
+    const record = await pipelineRecord(runDir, run);
     const report = {
       ...baseReport(options, jobId, startedAt, now),
       outcome: pipeline.status,
@@ -586,45 +525,11 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
       sources,
       references: { images: refs.length, media_softened: softened, temp_deleted: tempDeleted },
       instagram: visualSource === "website" ? null : { status: "captured", images: refs.length, media_softened: softened, temp_deleted: tempDeleted },
-      codex: {
-        status: pipeline.status,
-        profile_source: pipeline.profileSource,
-        direction: final?.direction ?? null,
-        confidence: final?.confidence ?? null,
-        brief_confidence: pipeline.briefConfidence,
-        reviews: pipeline.rounds.length,
-        revisions: pipeline.revisions,
-        rounds: pipeline.rounds,
-        final_candidate: pipeline.finalCandidate,
-        fallback: pipeline.status === "fallback_template",
-        blocked: pipeline.status === "blocked",
-        renderer_change_needed: pipeline.notes.includes("RENDERER_CHANGE_NEEDED"),
-        // DEV-053: the best candidate (final_candidate, its scores in rounds) was never accepted.
-        quality_not_accepted: pipeline.notes.includes(QUALITY_NOT_ACCEPTED),
-        schema_mode: schemaMode,
-        // DEV-069: what the prompts were told (hex values and shares; null when the references could not be read)
-        reference_colours: observedColours,
-        // DEV-071b: the final page's layout (enum values only) and what normalizing each candidate's layout changed (fixed codes)
-        layout: final?.layout ?? null,
-        layout_adjustments: pipeline.layoutAdjustments,
-        notes: [...notes, ...pipeline.notes],
-      },
-      overflow,
+      codex: record.codex,
+      overflow: record.overflow,
       // Codex time per call (fixed values only: worker/timing.ts).
-      timing: {
-        capture_ms: captureMs,
-        pipeline_ms: Math.round(performance.now() - pipelineStart),
-        ...timer.summary(),
-        call_list: timer.calls,
-      },
-      photos: pipeline.photos
-        ? {
-            assets: pipeline.photos.assets,
-            analysis: pipeline.photos.analysis,
-            final_layout: pipeline.photos.finalLayout,
-            codex_calls: pipeline.photos.calls,
-          }
-        : null,
+      timing: { capture_ms: captureMs, ...record.timing },
+      photos: record.photos,
     };
     return await complete(ctx, runDir, report);
   } catch (error) {
@@ -651,13 +556,188 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
   }
 }
 
+export type PipelineRunInput = {
+  jobId: string;
+  /** The run directory the preview route reads (facts.json and shots/ already made). */
+  runDir: string;
+  demo: DemoView;
+  /** Checked reference screenshots (empty: none were available; the prompts say so). */
+  refs: string[];
+  referenceKind: "website" | "instagram" | undefined;
+  observedColours: ObservedColours | null;
+  renderer: Renderer;
+  sandbox: CodexSandbox;
+  deadline: RunDeadline;
+  /** The worker's own environment (the asset store root is read from it). */
+  env: Record<string, string | undefined>;
+  tempRoot: string;
+  log: (line: string) => void;
+  /** DEV-073: each pipeline request's size (prompt characters, attached images). Numbers only. */
+  onCodexRequest?: (request: { kind: PipelineCallKind; promptChars: number; images: number }) => void;
+};
+
+export type PipelineRun = {
+  pipeline: PipelineReport;
+  schemaMode: "strict" | "loose";
+  notes: string[];
+  overflow: string[];
+  timer: CallTimer;
+  pipelineStart: number;
+  observedColours: ObservedColours | null;
+};
+
+/**
+ * One job's design: its photos, then the design pipeline with the worker's
+ * Codex calls (timeouts, the strict → loose schema fallback, per-call timing)
+ * and the preview renderer. Shared by the worker (runJob) and the local
+ * comparison (DEV-073), so both run the same loop, prompts and gate.
+ */
+export async function runJobPipeline(input: PipelineRunInput): Promise<PipelineRun> {
+  const { jobId, runDir, log } = input;
+  // ---- the job's photos (DEV-029): the asset store job with this job's id,
+  // nothing else. Its manifest and every photo are checked (local preview
+  // allowed, PNG, size, hash, no link); any problem means a page without photos.
+  const notes: string[] = [];
+  const photos = await jobPhotos({ env: input.env, tempRoot: input.tempRoot, log }, jobId);
+  if (photos.note) notes.push(photos.note);
+
+  const overflow: string[] = [];
+  // Every job starts with the strict schema. If the CLI refuses it (it
+  // fails, or answers without JSON), that one call is retried once with the
+  // loose schema and the rest of the job (brief and reviews) uses the loose
+  // schema from the start. Answers are always checked against the full zod
+  // schemas (and the palette checks) by the pipeline, whichever was sent.
+  let schemaMode: "strict" | "loose" = "strict";
+  const timer = new CallTimer(undefined, (line) => log(`job ${jobId}: ${line}`));
+  const withSchemaFallback = async (kind: PipelineCallKind, schema: object, run: (s: object) => Promise<unknown>) => {
+    const stage = timer.next(kind);
+    const ask = (s: object) => timer.time(stage, s === schema ? "strict" : "loose", () => run(s));
+    if (schemaMode === "loose") return ask(looseJsonSchema(schema));
+    try {
+      return await ask(schema);
+    } catch (error) {
+      // Only a refused schema falls back; any other failure (timeout,
+      // quota, sign-in) is reported as it is. One retry, never more.
+      if (!(error instanceof CodexError) || (error.code !== "CODEX_EXEC_FAILED" && error.code !== "CODEX_NO_JSON")) throw error;
+      schemaMode = "loose";
+      notes.push(`SCHEMA_LOOSE_AFTER_${kind.toUpperCase()}_${error.code}`);
+      log(`job ${jobId}: ${kind} ${error.code} with the strict schema; loose schema from here on`);
+      return ask(looseJsonSchema(schema));
+    }
+  };
+  const pipelineStart = performance.now();
+  const pipeline: PipelineReport = await runDesignPipeline(
+    {
+      demo: input.demo,
+      references: input.refs,
+      referenceKind: input.referenceKind,
+      ...(photos.input ? { photos: photos.input } : {}),
+      observedColours: input.observedColours,
+    },
+    {
+      askCodex: ({ kind, prompt, images, schema }) => {
+        input.onCodexRequest?.({ kind, promptChars: prompt.length, images: images.length });
+        const limit = kind === "brief" ? BRIEF_TIMEOUT_MS : REVIEW_TIMEOUT_MS;
+        // The time left is read again for each call, so a retry never overruns the run.
+        return withSchemaFallback(kind, schema, (s) =>
+          runCodexJson({ sandbox: input.sandbox, prompt, images, schema: s, timeoutMs: input.deadline.timeoutFor(limit, MIN_LONG_CALL_MS) }),
+        );
+      },
+      // The photos reach Codex only as copies in the call's own work dir,
+      // removed with it whatever the call's outcome (runCodexJson).
+      askPhotoCodex: ({ kind, prompt, schema, imageBytes }) => {
+        input.onCodexRequest?.({ kind, promptChars: prompt.length, images: imageBytes.length });
+        return withSchemaFallback(kind, schema, (s) =>
+          runCodexJson({ sandbox: input.sandbox, prompt, imageBytes, schema: s, timeoutMs: input.deadline.timeoutFor(PHOTO_TIMEOUT_MS, MIN_LONG_CALL_MS) }),
+        );
+      },
+      readRecord: (name) => readFile(join(runDir, name), "utf8").then((t) => JSON.parse(t) as unknown),
+      renderPhotos: async (candidate) => {
+        const result = await input.renderer.render(jobId, candidate, join(runDir, "shots"));
+        overflow.push(...result.overflow);
+        return { shots: result.shots, sections: result.sections ?? [], placed: result.placed ?? [] };
+      },
+      writeProfile: (name, profile) => writeFile(join(runDir, `${name}.json`), JSON.stringify(profile, null, 2), { mode: 0o600 }),
+      writeRecord: (name, value) => writeFile(join(runDir, name), JSON.stringify(value, null, 2), { mode: 0o600 }),
+      render: async (candidate) => {
+        const result = await input.renderer.render(jobId, candidate, join(runDir, "shots"));
+        overflow.push(...result.overflow);
+        return result.shots;
+      },
+      timeLeftMs: () => input.deadline.remainingMs(),
+      log: (line) => log(`job ${jobId}: ${line}`),
+    },
+  );
+  return { pipeline, schemaMode: schemaMode as "strict" | "loose", notes, overflow, timer, pipelineStart, observedColours: input.observedColours };
+}
+
+/** The code an environment failure of the pipeline stops the run with. */
+export function environmentCode(pipeline: PipelineReport): string {
+  return pipeline.notes.map((n) => n.replace(/^REVIEW_/, "")).find((n) => ENVIRONMENT_CODES.has(n)) ?? "CODEX_QUOTA";
+}
+
+/** The before / after screenshots of a finished pipeline, kept in the run directory. */
+export async function copyPipelineShots(runDir: string, pipeline: PipelineReport): Promise<void> {
+  await copyFile(pipeline.before.desktop, join(runDir, "before-desktop.png"));
+  await copyFile(pipeline.before.mobile, join(runDir, "before-mobile.png"));
+  if (pipeline.after) {
+    await copyFile(pipeline.after.desktop, join(runDir, "after-desktop.png"));
+    await copyFile(pipeline.after.mobile, join(runDir, "after-mobile.png"));
+  }
+}
+
+/** The report's codex / overflow / timing / photos parts of a finished pipeline (fixed values only). */
+export async function pipelineRecord(runDir: string, run: PipelineRun) {
+  const { pipeline, notes, schemaMode, observedColours } = run;
+  const final = pipeline.finalCandidate ? await readFile(join(runDir, "final.json"), "utf8").then((t) => JSON.parse(t) as Record<string, unknown>).catch(() => null) : null;
+  return {
+    codex: {
+      status: pipeline.status,
+      profile_source: pipeline.profileSource,
+      direction: final?.direction ?? null,
+      confidence: final?.confidence ?? null,
+      brief_confidence: pipeline.briefConfidence,
+      reviews: pipeline.rounds.length,
+      revisions: pipeline.revisions,
+      rounds: pipeline.rounds,
+      final_candidate: pipeline.finalCandidate,
+      fallback: pipeline.status === "fallback_template",
+      blocked: pipeline.status === "blocked",
+      renderer_change_needed: pipeline.notes.includes("RENDERER_CHANGE_NEEDED"),
+      // DEV-053: the best candidate (final_candidate, its scores in rounds) was never accepted.
+      quality_not_accepted: pipeline.notes.includes(QUALITY_NOT_ACCEPTED),
+      schema_mode: schemaMode,
+      // DEV-069: what the prompts were told (hex values and shares; null when the references could not be read)
+      reference_colours: observedColours,
+      // DEV-071b: the final page's layout (enum values only) and what normalizing each candidate's layout changed (fixed codes)
+      layout: final?.layout ?? null,
+      layout_adjustments: pipeline.layoutAdjustments,
+      notes: [...notes, ...pipeline.notes],
+    },
+    overflow: run.overflow,
+    timing: {
+      pipeline_ms: Math.round(performance.now() - run.pipelineStart),
+      ...run.timer.summary(),
+      call_list: run.timer.calls,
+    },
+    photos: pipeline.photos
+      ? {
+          assets: pipeline.photos.assets,
+          analysis: pipeline.photos.analysis,
+          final_layout: pipeline.photos.finalLayout,
+          codex_calls: pipeline.photos.calls,
+        }
+      : null,
+  };
+}
+
 /**
  * The job's photos: the asset store job with the worker job's own id. No
  * manifest, an unsafe store or any photo that fails its checks: no photos
  * (with a note), never another job's.
  */
-async function jobPhotos(ctx: JobContext, jobId: string): Promise<{ input?: { runId: string; manifest: AssetManifest; inputs: PhotoInput[] }; note?: string }> {
-  const env = { ...ctx.options.env, TMPDIR: ctx.tempRoot };
+async function jobPhotos(ctx: { env: Record<string, string | undefined>; tempRoot: string; log: (line: string) => void }, jobId: string): Promise<{ input?: { runId: string; manifest: AssetManifest; inputs: PhotoInput[] }; note?: string }> {
+  const env = { ...ctx.env, TMPDIR: ctx.tempRoot };
   const store = assetStoreRoot(env);
   if (!checkStoreRoot(store, { repoDir: process.cwd(), env })) return {};
   const manifest = await loadManifest(store, jobId);

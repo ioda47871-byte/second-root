@@ -136,6 +136,8 @@ export function factsBlock(demo: DemoView): string {
 
 /** What the reference screenshots are (all were privacy-processed: photos blurred and pixelated). */
 function referencesLine(count: number, kind: "website" | "instagram" | undefined): string {
+  // DEV-073: the local comparison runs without references (fictional shops have no public pages)
+  if (count === 0) return "none of the shop (this shop has no public pages to show): judge the brand from the verified facts and the category alone";
   const what =
     kind === "website"
       ? "the top screen of a few pages of the shop's own official website"
@@ -252,7 +254,7 @@ export function buildReviewPrompt(input: {
     VOCABULARY,
     RULES,
     layoutOptionsLine(input.demo),
-    `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)} (reference). The last two are the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), then mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide).`,
+    `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)}${input.referenceCount === 0 ? "" : " (reference)"}. The last two are the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), then mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide).`,
     screenshotScaleLine(),
     observedColoursLine(input.observedColours, input.referenceKind),
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
