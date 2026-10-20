@@ -174,36 +174,8 @@ export function isColor(t: Term): boolean {
 
 const isFontFamilyItem = (t: Term) => varName(t, FONT_VARS) !== null || (t.t === "ident" && GENERIC_FAMILIES.includes(t.v.toLowerCase()));
 
-// ---------------------------------------------------------------- gradients
-
-const GRADIENTS = new Set(["linear-gradient", "radial-gradient", "repeating-linear-gradient", "repeating-radial-gradient"]);
 const SIDES = ["top", "bottom", "left", "right"];
-const RADIAL_WORDS = ["circle", "ellipse", "closest-side", "closest-corner", "farthest-side", "farthest-corner", "at", "center", ...SIDES];
-const STOP_LEN: LenOptions = { max: 2400, pctMax: 100 };
-
 const isAngle = (t: Term | undefined, max = 360) => t?.t === "dim" && ((t.unit === "deg" && Math.abs(t.v) <= max) || (t.unit === "turn" && Math.abs(t.v) <= max / 360));
-
-export function isGradient(t: Term): boolean {
-  if (t.t !== "fn" || !GRADIENTS.has(t.name)) return false;
-  const groups = commaGroups(terms(t.args));
-  if (groups.length < 2 || groups.length > 12) return false;
-  let stops = groups;
-  const head = groups[0]!;
-  const linear = t.name.endsWith("linear-gradient");
-  if (linear) {
-    if (head.length === 1 && isAngle(head[0])) stops = groups.slice(1);
-    else if (head[0]?.t === "ident" && head[0].v.toLowerCase() === "to") {
-      const sides = head.slice(1);
-      if (sides.length < 1 || sides.length > 2 || !sides.every((s) => s.t === "ident" && SIDES.includes(s.v.toLowerCase()))) return false;
-      stops = groups.slice(1);
-    }
-  } else if (head.length > 0 && head.every((x) => (x.t === "ident" && RADIAL_WORDS.includes(x.v.toLowerCase())) || isLength(x, STOP_LEN))) {
-    if (head.length > 6) return false;
-    stops = groups.slice(1);
-  }
-  if (stops.length < 2) return false;
-  return stops.every((g) => g.length >= 1 && g.length <= 3 && isColor(g[0]!) && g.slice(1).every((x) => isLength(x, STOP_LEN)));
-}
 
 // ---------------------------------------------------------------- the property table
 
@@ -416,8 +388,9 @@ const PROPS_BASE: Record<string, Spec> = {
   // no sideways: it turns Japanese on its side
   "text-orientation": one(kw("mixed", "upright")),
   "text-wrap": one(kw("wrap", "balance", "pretty", "stable")),
-  "white-space": one(kw("normal", "nowrap")),
-  "word-break": one(kw("normal", "keep-all", "break-all", "auto-phrase")),
+  // no white-space (nowrap let text spill out of its box) and no keep-all (the same for Japanese);
+  // the renderer's own keep-together spans hold number runs
+  "word-break": one(kw("normal", "break-all", "auto-phrase")),
   "overflow-wrap": one(kw("normal", "anywhere", "break-word")),
   "line-break": one(kw("auto", "loose", "normal", "strict", "anywhere")),
   // hyphens: auto would insert hyphen glyphs into facts
@@ -432,12 +405,7 @@ const PROPS_BASE: Record<string, Spec> = {
   // colour and ground
   color: one(color),
   "background-color": one(color),
-  "background-image": { items: [isGradient, kw("none")], max: 1, commas: 4 },
-  "background-size": { items: [len(SIZE), kw("auto", "cover", "contain")], max: 2, commas: 4 },
-  "background-position": { items: [len({ max: 2400, pctMax: 100, negative: true }), kw("center", ...SIDES)], max: 4, commas: 4 },
-  "background-repeat": { items: [kw("repeat", "no-repeat", "repeat-x", "repeat-y", "space", "round")], max: 2, commas: 4 },
-  "background-clip": one(kw("border-box", "padding-box", "content-box")),
-  "background-origin": one(kw("border-box", "padding-box", "content-box")),
+  // a solid ground only: no gradient or image (a striped ground could inflate the pixel proof: re-review 3)
   opacity: one(number(0.85, 1)),
   // borders and shadows (no outline: it paints over neighbours; shadows inset only)
   "border-radius": { items: [len(RADIUS)], max: 8, slash: true },
@@ -474,28 +442,13 @@ PROPS_BASE["border-color"] = { items: [color], max: 4 };
 /** Properties on elements. */
 export const ELEMENT_PROPS: Readonly<Record<string, Spec>> = PROPS_BASE;
 
-/**
- * Properties on ::before / ::after: in-flow decoration only (no text, no
- * offset, no placement, no stacking), so a pseudo-element can never sit over
- * the text of its own element, where hit-testing cannot see it.
- */
-export const PSEUDO_PROPS: Readonly<Record<string, Spec>> = Object.fromEntries(
-  Object.entries(PROPS_BASE).filter(
-    ([name]) =>
-      /^(width|height|min-width|min-height|max-width|max-height|inline-size|block-size|aspect-ratio|vertical-align|background-color|background-image|background-size|background-position|background-repeat|border-radius)$/.test(name) ||
-      /^(margin|padding|border)(-|$)/.test(name),
-  ),
-);
-const PSEUDO_EXTRA: Record<string, Spec> = {
-  display: one(kw("none", "block", "inline", "inline-block")),
-  // no text: only none, normal or the empty string
-  content: one(kw("none", "normal"), (t) => t.t === "string" && t.v === ""),
-};
-
-export function propertySpec(name: string, pseudo: boolean): Spec | null {
-  if (pseudo) return PSEUDO_EXTRA[name] ?? PSEUDO_PROPS[name] ?? null;
+/** The spec of a property, or null (no pseudo-elements: re-review 3 removed them from the vocabulary). */
+export function propertySpec(name: string): Spec | null {
   return ELEMENT_PROPS[name] ?? null;
 }
+
+/** display values that make an element a grid or flex container. */
+export const CONTAINER_DISPLAYS = ["flex", "inline-flex", "grid", "inline-grid"] as const;
 
 /** Checks a declaration's terms against its spec. */
 export function valueMatches(spec: Spec, list: Term[]): boolean {

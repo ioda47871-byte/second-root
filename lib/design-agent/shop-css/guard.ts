@@ -1,5 +1,5 @@
 import { componentValues, CssSyntaxError, tokenize, type CV } from "./tokenize";
-import { propertySpec, serializeTerms, terms, valueMatches, type Term } from "./values";
+import { CONTAINER_DISPLAYS, propertySpec, serializeTerms, terms, valueMatches, type Term } from "./values";
 
 // The static guard for a per-shop stylesheet (DEV-072, Stage 3; design note:
 // .ai/proposals/stage3-shop-css.md). A stylesheet is accepted only when every
@@ -10,7 +10,7 @@ import { propertySpec, serializeTerms, terms, valueMatches, type Term } from "./
 //   at-rules    @media with (min-width|max-width: <px|em>) between 320 and 1920px only, not nested
 //   selectors   start at the scope root #shop-css; type selectors from a fixed
 //               list, the renderer's stable data attributes with fixed values,
-//               :first-child … :nth-child(An+B), :not(simple), ::before/::after;
+//               :first-child … :nth-child(An+B), :not(simple); no pseudo-elements;
 //               descendant and child combinators only (no sibling combinators:
 //               the notice bar and the footer are the scope root's siblings)
 //   properties  an explicit allowlist with value grammars and caps (values.ts)
@@ -57,7 +57,6 @@ export const SHOP_CSS_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = 
 
 const SIMPLE_PSEUDO_CLASSES = ["first-child", "last-child", "only-child", "first-of-type", "last-of-type"];
 const NTH_PSEUDO_CLASSES = ["nth-child", "nth-of-type", "nth-last-child"];
-const PSEUDO_ELEMENTS = ["before", "after"];
 
 type Simple = { kind: "type"; name: string } | { kind: "attr"; name: string; value: string } | { kind: "pseudo"; text: string };
 type Compound = { root: boolean; parts: Simple[]; pseudoElement: string | null };
@@ -157,13 +156,9 @@ function parseSelector(source: string, items: CV[], p: Problems): Selector | nul
     }
     if (cv.t === ":") {
       const next = list[i + 1];
-      if (next?.t === ":") {
-        const name = list[i + 2];
-        if (name?.t !== "ident" || !PSEUDO_ELEMENTS.includes(name.v.toLowerCase())) return fail("selector_pseudo");
-        c.pseudoElement = name.v.toLowerCase();
-        i += 2;
-        continue;
-      }
+      // no pseudo-elements at all (re-review 3: a ::after painted over its own element's text, where
+      // hit-testing cannot see it); decoration is borders, grounds and inset shadows of real elements
+      if (next?.t === ":") return fail("selector_pseudo");
       if (c.root) return fail("selector_pseudo");
       const pseudo = parsePseudoClass(source, next, p, false);
       if (!pseudo) return fail("selector_pseudo");
@@ -242,7 +237,16 @@ function splitAt(items: CV[], sep: ";" | ","): CV[][] {
   return out;
 }
 
-function parseDeclarations(items: CV[], pseudo: boolean, p: Problems): string[] {
+/**
+ * Elements of the renderer that never hold text directly (only other
+ * elements; tests/unit/design-agent/shop-css/stage1.test.tsx checks it on the
+ * markup). Only they may become grid or flex containers: then every grid or
+ * flex item is a real element whose box the render check can measure, never an
+ * anonymous box around loose text.
+ */
+export const TEXT_FREE_ELEMENTS = ["header", "main", "section", "div", "ol", "ul", "dl"] as const;
+
+function parseDeclarations(items: CV[], containers: boolean, p: Problems): string[] {
   const out: string[] = [];
   for (const segment of splitAt(items, ";")) {
     const list = segment.filter((c) => c.t !== "ws");
@@ -265,9 +269,9 @@ function parseDeclarations(items: CV[], pseudo: boolean, p: Problems): string[] 
       p.add(rest.some((c) => c.t === "ident" && c.v.toLowerCase() === "important") ? "important" : "value_forbidden");
       continue;
     }
-    const spec = propertySpec(prop, pseudo);
+    const spec = propertySpec(prop);
     if (!spec) {
-      p.add(propertySpec(prop, !pseudo) ? (pseudo ? `pseudo_property:${prop}` : `property_forbidden:${prop}`) : "property_forbidden");
+      p.add("property_forbidden");
       continue;
     }
     // the value's own whitespace is dropped; fn args are checked inside the specs
@@ -276,13 +280,17 @@ function parseDeclarations(items: CV[], pseudo: boolean, p: Problems): string[] 
       p.add(`value_forbidden:${prop}`);
       continue;
     }
-    const bad = valueTerms.find((t) => t.t === "fn" && !["var", "rgb", "rgba", "color-mix", "calc", "min", "max", "clamp", "linear-gradient", "radial-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "minmax", "repeat", "fit-content", "rotate", "scale", "scalex", "scaley"].includes(t.name));
+    const bad = valueTerms.find((t) => t.t === "fn" && !["var", "rgb", "rgba", "color-mix", "calc", "min", "max", "clamp", "minmax", "repeat", "fit-content", "rotate", "scale", "scalex", "scaley"].includes(t.name));
     if (bad) {
       p.add("function_forbidden");
       continue;
     }
     if (!valueMatches(spec, valueTerms as Term[])) {
       p.add(`value_forbidden:${prop}`);
+      continue;
+    }
+    if (prop === "display" && !containers && valueTerms.some((t) => t.t === "ident" && (CONTAINER_DISPLAYS as readonly string[]).includes(t.v.toLowerCase()))) {
+      p.add("display_on_text");
       continue;
     }
     out.push(`${prop}: ${serializeTerms(valueTerms as Term[])}`);
@@ -296,13 +304,14 @@ function parseRule(source: string, prelude: CV[], body: CV[], p: Problems, count
   if (selectorItems.length > SHOP_CSS_LIMITS.selectorsPerRule) p.add("too_many_selectors");
   const selectors = selectorItems.map((s) => parseSelector(source, s, p));
   if (selectors.some((s) => s === null)) return null;
-  const pseudo = selectors.map((s) => s!.compounds[s!.compounds.length - 1]!.pseudoElement !== null);
-  // one rule is either all pseudo-elements or none (the pseudo-element property list differs)
-  if (pseudo.some((x) => x) && !pseudo.every((x) => x)) {
-    p.add("selector_mixed_pseudo");
-    return null;
-  }
-  const declarations = parseDeclarations(body, pseudo[0]!, p);
+  // grid / flex only when every subject is an element that holds no text of its own (or the scope root)
+  const containers = selectors.every((s) => {
+    const subject = s!.compounds[s!.compounds.length - 1]!;
+    if (subject.root) return true;
+    const type = subject.parts[0];
+    return type?.kind === "type" && (TEXT_FREE_ELEMENTS as readonly string[]).includes(type.name);
+  });
+  const declarations = parseDeclarations(body, containers, p);
   counts.rules += 1;
   counts.declarations += declarations.length;
   if (declarations.length > SHOP_CSS_LIMITS.declarationsPerRule) p.add("too_many_declarations");
