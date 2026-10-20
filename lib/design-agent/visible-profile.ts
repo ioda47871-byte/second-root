@@ -29,6 +29,8 @@ export const SURFACE_DIRECTIONS = ["kissaten_retro", "boutique_minimal", "pop_ba
 export const ACCENT_MOTIFS = ["location_labels", "dot_grid", "stamp_ring", "muffin_paper_svg"] as const;
 /** DEV-067: directions that draw in the accent colour whatever the motifs (french_classic's diamonds, pop_bakeshop's dots and shadows). */
 export const ACCENT_DIRECTIONS = ["french_classic", "pop_bakeshop"] as const;
+/** DEV-067: directions that repaint every accent motif in another colour (gallery_mono's hero draws them in the background colour). */
+export const NO_ACCENT_DIRECTIONS = ["gallery_mono"] as const;
 
 /** Every visible setting, as a dotted path (stable order). */
 export const VISIBLE_SETTINGS = [
@@ -72,11 +74,13 @@ function same(a: unknown, b: unknown): boolean {
  * compare case-insensitively). Without photos (the DEV-028 loop) the settings
  * drawn only on photo pages do not count unless either profile's direction
  * draws them; the accent counts only when either profile has a motif or a
- * direction drawn in it.
+ * direction drawn in it (gallery_mono repaints the accent motifs).
  */
 export function visibleChanges(before: DesignProfile, after: DesignProfile, options: { photos: boolean }): string[] {
   const has = (list: readonly string[], value: string) => list.includes(value);
-  const accentShown = [before, after].some((p) => p.motifs.some((m) => has(ACCENT_MOTIFS, m)) || has(ACCENT_DIRECTIONS, p.direction));
+  const accentShown = [before, after].some(
+    (p) => (!has(NO_ACCENT_DIRECTIONS, p.direction) && p.motifs.some((m) => has(ACCENT_MOTIFS, m))) || has(ACCENT_DIRECTIONS, p.direction),
+  );
   const surfaceShown = options.photos || [before, after].some((p) => has(SURFACE_DIRECTIONS, p.direction));
   const hidden: readonly string[] = [...(surfaceShown ? [] : ONLY_WITH_PHOTOS), ...(accentShown ? [] : ["palette.accent"])];
   return VISIBLE_SETTINGS.filter((path) => !hidden.includes(path) && !same(read(before, path), read(after, path)));

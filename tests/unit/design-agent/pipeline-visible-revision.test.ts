@@ -76,6 +76,14 @@ describe("visibleChanges", () => {
     expect(visibleChanges(plain, accent(plain), NO_PHOTOS)).toEqual([]);
   });
 
+  it("DEV-067 review: gallery_mono repaints the accent motifs, so its accent is not a visible change", () => {
+    const g = { ...AMERICAN_EDITORIAL, direction: "gallery_mono", motifs: ["location_labels", "dot_grid"] } as DesignProfile;
+    expect(visibleChanges(g, { ...g, palette: { ...g.palette, accent: "#000000" } }, NO_PHOTOS)).toEqual([]);
+    // the same motifs under another direction draw the accent
+    const n = { ...g, direction: "nordic_minimal" } as DesignProfile;
+    expect(visibleChanges(n, { ...n, palette: { ...n.palette, accent: "#000000" } }, NO_PHOTOS)).toEqual(["palette.accent"]);
+  });
+
   it("the lists match the stylesheet: the directions whose rules read the surface / accent colour", () => {
     const css = readFileSync(join(process.cwd(), "components/demo/profile/profile.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const reading = (token: string) =>

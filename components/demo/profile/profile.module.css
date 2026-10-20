@@ -41,6 +41,9 @@
   --display-track: 0;
   --display-width: 100;
   --body: var(--font-body), sans-serif;
+  /* DEV-067: the primary colour for rules and frames on surface panels, where the
+     panel's own text is set in the text colour (see "ink on surface panels"). */
+  --panel-line: var(--p-primary);
   font-family: var(--body);
   background: var(--p-bg);
 }
@@ -860,16 +863,24 @@
 /* japanese_modern: Japanese first. The Japanese heading leads beside a thick
    vertical bar, the English is a small label; a filled folio band; the menu in
    ruled boxes. */
+/* The band is the folio's own box, widened to the hero's edges and up through the
+   hero's top padding by a shadow (no margins: the hero's padding differs by spacing
+   and screen); the hero clips it. */
 .canvas[data-direction="japanese_modern"] .folio {
-  margin: -20px calc(-1 * var(--pad)) 0;
-  padding: 10px var(--pad);
+  padding-block: 10px;
   border-bottom: 0;
   background: var(--p-primary);
+  box-shadow: 0 0 0 100vmax var(--p-primary);
+  clip-path: inset(-100vmax -100vmax 0 -100vmax);
   color: var(--p-bg);
 }
 .canvas[data-direction="japanese_modern"] .folio .monogram { border-color: var(--p-bg); color: var(--p-bg); }
+.canvas[data-direction="japanese_modern"] .folio .label + .label::before { background: var(--p-bg); }
+/* the frame and the corner marks start below the band */
+.canvas[data-direction="japanese_modern"] .hero .frame { top: 96px; }
+.canvas[data-direction="japanese_modern"] .hero .corners > span:nth-child(-n + 2) { top: 96px; }
 .canvas[data-direction="japanese_modern"] .heading { flex-direction: column-reverse; align-items: flex-start; gap: 8px; padding-left: 16px; border-left: 6px solid var(--p-primary); }
-.canvas[data-direction="japanese_modern"] .heading > span:first-child { font-size: 0.42em; letter-spacing: 0.24em; color: var(--p-secondary); }
+.canvas[data-direction="japanese_modern"] .heading > span:first-child:not(:only-child) { font-size: 0.42em; letter-spacing: 0.24em; color: var(--p-secondary); }
 .canvas[data-direction="japanese_modern"] .headingJa { font-size: clamp(1.5rem, 5vw, 2rem); font-weight: 700; letter-spacing: 0.08em; color: var(--p-primary); }
 .canvas[data-direction="japanese_modern"][data-align="center"] .heading { align-items: center; }
 .canvas[data-direction="japanese_modern"] .menu { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; border-top: 0; }
@@ -880,6 +891,10 @@
 .canvas[data-direction="kissaten_retro"] .hero {
   background-image: repeating-linear-gradient(90deg, transparent 0 22px, color-mix(in srgb, var(--p-primary) 7%, transparent) 22px 44px);
 }
+/* small text on the stripes sits on a ground of its own (the contrast rules hold on the background) */
+.canvas[data-direction="kissaten_retro"] .folio,
+.canvas[data-direction="kissaten_retro"] .dek { background: var(--p-bg); }
+.canvas[data-direction="kissaten_retro"] .dek { padding: 10px 12px 4px; }
 .canvas[data-direction="kissaten_retro"] .heading { --heading-size: clamp(1.8rem, 6.4vw, 2.6rem); }
 .canvas[data-direction="kissaten_retro"] .heading > span:first-child {
   padding: 0.12em 0.5em 0.18em;
@@ -888,7 +903,7 @@
   color: var(--p-bg);
 }
 .canvas[data-direction="kissaten_retro"] .menu { border-top: 0; gap: 12px; }
-.canvas[data-direction="kissaten_retro"] .menuItem { padding: 14px 16px; border: 4px double var(--p-primary); border-radius: 12px; background: var(--p-surface); }
+.canvas[data-direction="kissaten_retro"] .menuItem { padding: 14px 16px; border: 4px double var(--panel-line); border-radius: 12px; background: var(--p-surface); }
 .canvas[data-direction="kissaten_retro"] .address { padding: 16px 18px; border-radius: 12px; background: var(--p-surface); }
 
 /* gallery_mono: a catalogue. Each heading is a small spaced label under a
@@ -906,8 +921,8 @@
    (dashed) lines, menu numbers in a dashed ring, the address on a dashed tag. */
 .canvas[data-direction="craft_paper"] {
   background-image:
-    radial-gradient(color-mix(in srgb, var(--p-secondary) 9%, transparent) 0.7px, transparent 0.9px),
-    radial-gradient(color-mix(in srgb, var(--p-primary) 6%, transparent) 0.7px, transparent 0.9px);
+    radial-gradient(color-mix(in srgb, var(--p-secondary) 6%, transparent) 0.7px, transparent 0.9px),
+    radial-gradient(color-mix(in srgb, var(--p-primary) 4%, transparent) 0.7px, transparent 0.9px);
   background-size: 7px 7px, 11px 11px;
   background-position: 0 0, 3px 5px;
 }
@@ -922,18 +937,17 @@
    thin spaced headings; the menu as a soft list. */
 .canvas[data-direction="boutique_minimal"] .main { max-width: 1080px; margin-inline: auto; }
 .canvas[data-direction="boutique_minimal"] .section { padding: calc(var(--gap) * 0.6) 20px 28px; background: var(--p-surface); }
+/* a band of the page ground between panels (under tight, a narrower one) */
 .canvas[data-direction="boutique_minimal"] .section + .section { margin-top: 20px; }
+.canvas[data-direction="boutique_minimal"][data-spacing="tight"] .section + .section { margin-top: 12px; }
 .canvas[data-direction="boutique_minimal"] .heading { --heading-size: clamp(1.8rem, 6vw, 2.4rem); font-weight: 300; letter-spacing: 0.1em; }
 .canvas[data-direction="boutique_minimal"] .menu { border-top: 0; }
 .canvas[data-direction="boutique_minimal"] .menuItem { border-bottom-color: color-mix(in srgb, var(--p-primary) 16%, transparent); }
 .canvas[data-direction="boutique_minimal"] .menuNo { font-style: normal; font-size: 0.75rem; letter-spacing: 0.2em; }
 
 /* pop_bakeshop: playful. Tilted pill headings, the menu as rounded chips with
-   an offset shadow in the accent colour, a dotted ground under the sections. */
-.canvas[data-direction="pop_bakeshop"] .main {
-  background-image: radial-gradient(color-mix(in srgb, var(--p-accent) 30%, transparent) 1.4px, transparent 1.6px);
-  background-size: 18px 18px;
-}
+   an offset shadow in the accent colour, a dotted hero (the sections' small
+   text keeps the plain background). */
 .canvas[data-direction="pop_bakeshop"] .heading { --heading-size: clamp(1.8rem, 6.6vw, 2.8rem); }
 .canvas[data-direction="pop_bakeshop"] .heading > span:first-child {
   display: inline-block;
@@ -944,21 +958,21 @@
   transform: rotate(-2deg);
 }
 .canvas[data-direction="pop_bakeshop"] .menu { display: flex; flex-wrap: wrap; gap: 12px; border-top: 0; }
+.canvas[data-direction="pop_bakeshop"][data-align="center"] .menu { justify-content: center; }
 .canvas[data-direction="pop_bakeshop"] .menuItem {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
   max-width: 100%;
   padding: 10px 18px;
-  border: 2px solid var(--p-primary);
+  border: 2px solid var(--panel-line);
   border-radius: 22px;
   background: var(--p-surface);
   box-shadow: 4px 4px 0 var(--p-accent);
 }
 .canvas[data-direction="pop_bakeshop"] .menuNo { font-style: normal; font-weight: 700; color: var(--p-primary); }
-.canvas[data-direction="pop_bakeshop"] .address { padding: 16px 18px; border: 2px solid var(--p-primary); border-radius: 18px; background: var(--p-surface); box-shadow: 5px 5px 0 var(--p-accent); }
+.canvas[data-direction="pop_bakeshop"] .address { padding: 16px 18px; border: 2px solid var(--panel-line); border-radius: 18px; background: var(--p-surface); box-shadow: 5px 5px 0 var(--p-accent); }
 
 @media (min-width: 720px) {
-  .canvas[data-direction="japanese_modern"] .folio { margin-top: -24px; }
   .canvas[data-direction="japanese_modern"] .menu { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .canvas[data-direction="gallery_mono"] .menu { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .canvas[data-direction="gallery_mono"] .menuItem:nth-child(-n + 3) { border-top: 2px solid var(--p-primary); }
@@ -991,7 +1005,7 @@
 .canvas[data-direction="japanese_modern"] .title { padding-left: 18px; border-left: 8px solid var(--p-primary); }
 .canvas[data-direction="japanese_modern"] .dek { padding: 8px 12px; border: 1px solid var(--p-primary); }
 
-.canvas[data-direction="kissaten_retro"] .title { margin-block: 12px; padding: 22px 16px; border: 4px double var(--p-primary); border-radius: 18px; background: var(--p-surface); }
+.canvas[data-direction="kissaten_retro"] .title { margin-block: 12px; padding: 22px 16px; border: 4px double var(--panel-line); border-radius: 18px; background: var(--p-surface); }
 .canvas[data-direction="kissaten_retro"] .dek { justify-content: center; }
 
 .canvas[data-direction="gallery_mono"] .hero { background: var(--p-primary); border-bottom: 0; }
@@ -1018,7 +1032,7 @@
 .canvas[data-direction="craft_paper"] .title { margin-block: 12px; padding: 20px 16px; border: 1.5px dashed var(--p-primary); border-radius: 6px; }
 
 .canvas[data-direction="boutique_minimal"] .hero { border-bottom: 0; }
-.canvas[data-direction="boutique_minimal"] .title { margin-block: 8px; padding: 28px 16px; border-block: 1px solid color-mix(in srgb, var(--p-primary) 35%, transparent); background: var(--p-surface); }
+.canvas[data-direction="boutique_minimal"] .title { margin-block: 8px; padding: 28px 16px; border-block: 1px solid color-mix(in srgb, var(--panel-line) 35%, transparent); background: var(--p-surface); }
 .canvas[data-direction="boutique_minimal"] .dek { justify-content: center; }
 .canvas[data-direction="boutique_minimal"] .rule { display: none; }
 
@@ -1029,3 +1043,65 @@
 }
 .canvas[data-direction="pop_bakeshop"] .dek { justify-self: center; padding: 6px 16px; border-radius: 999px; background: var(--p-primary); color: var(--p-bg); }
 .canvas[data-direction="pop_bakeshop"] .dek .rule { background: var(--p-bg); }
+
+/* ---------- direction presets: fixes (DEV-067 review) ---------- */
+
+/* Ink on surface panels. The contrast rules guarantee only the text colour on
+   the surface colour, so every word on a surface panel is set in the text colour
+   (the primary / secondary of everything inside a panel resolve to it). Rules
+   and frames of the panels keep the primary colour (--panel-line). */
+.canvas[data-direction="kissaten_retro"] .title,
+.canvas[data-direction="kissaten_retro"] .menuItem,
+.canvas[data-direction="kissaten_retro"] .address,
+.canvas[data-direction="boutique_minimal"] .title,
+.canvas[data-direction="boutique_minimal"] .section,
+.canvas[data-direction="pop_bakeshop"] .menuItem,
+.canvas[data-direction="pop_bakeshop"] .address {
+  --p-primary: var(--p-text);
+  --p-secondary: var(--p-text);
+}
+.canvas[data-direction="boutique_minimal"] .section + .section { border-top-color: var(--panel-line); }
+
+/* Desktop grids: a heading sits at the top of its row (it does not stretch to the
+   row's height, so japanese_modern's bar and french_classic's double rule stay with
+   the words). */
+@media (min-width: 720px) {
+  .canvas[data-grid="editorial_12"] .section > .heading,
+  .canvas[data-grid="asymmetric_7_5"] .section > .heading { align-self: start; }
+}
+
+/* Framed titles on phones: the frame and its padding sit in the hero's side
+   padding (negative side margins of the same width), so the name keeps the width
+   it has without a frame and a long spaced Latin word does not break. */
+@media (max-width: 719.98px) {
+  .canvas[data-direction="editorial_luxury"] .title { margin: 14px -5px; padding: 18px 4px; }
+  .canvas[data-direction="french_classic"] .title { margin-inline: -7px; padding: 18px 4px; }
+  .canvas[data-direction="kissaten_retro"] .title { margin-inline: -7px; padding: 16px 4px; border-width: 3px; }
+  .canvas[data-direction="craft_paper"] .title { margin-inline: -5.5px; padding: 14px 4px; }
+  .canvas[data-direction="boutique_minimal"] .title { margin-inline: -4px; padding: 20px 4px; }
+  .canvas[data-direction="japanese_modern"] .title { margin-left: -13px; padding-left: 8px; border-left-width: 5px; }
+}
+
+/* french_classic × centered_cover: the title's double frame already closes the name;
+   the dek keeps no second double rule beside it. */
+.canvas[data-direction="french_classic"] .hero[data-layout="centered_cover"] .dek { border-top: 0; }
+
+/* editorial_luxury draws a frame around the page: the ruled frame and the corner
+   marks move inside it, clear of its lines. */
+.canvas[data-direction="editorial_luxury"] .hero .frame { inset: 22px; }
+.canvas[data-direction="editorial_luxury"] .hero .corners { inset: 16px; }
+
+/* gallery_mono × dot_grid: the dots in the background colour stay faint over the name. */
+.canvas[data-direction="gallery_mono"] .hero .dots { opacity: 0.25; }
+
+/* alignment=center with a tiled menu (japanese_modern, gallery_mono): the tiles are
+   centred as a group, whatever the number of dishes. */
+.canvas[data-direction="japanese_modern"][data-align="center"] .menu,
+.canvas[data-direction="gallery_mono"][data-align="center"] .menu {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 220px));
+  justify-content: center;
+}
+.canvas[data-direction="gallery_mono"][data-align="center"] .menu { gap: 8px; border-left: 0; }
+.canvas[data-direction="gallery_mono"][data-align="center"] .menuItem,
+.canvas[data-direction="gallery_mono"][data-align="center"] .menuItem:nth-child(-n + 3) { border: 2px solid var(--p-primary); }
+
