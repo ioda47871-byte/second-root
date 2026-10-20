@@ -38,10 +38,10 @@ export const MIN_OPACITY = 0.85;
 export const CONTRAST_TOLERANCE = 0.1;
 /** Every character must keep at least this share of the ink it has with nothing over it. */
 export const INK_RATIO = 0.8;
-/** Characters with less reference ink than this (summed channel change; about 3 pixels of full contrast) are too small for the ratio. */
-export const MIN_REFERENCE_INK = 2000;
+/** Characters with less reference ink than this (pixels' worth of full coverage) are too small for the ratio. */
+export const MIN_REFERENCE_INK = 4;
 /** A mark with at least this much reference ink (a fraction of one pixel) must keep MARK_KEPT of it. */
-export const MIN_MARK_INK = 150;
+export const MIN_MARK_INK = 0.3;
 export const MARK_KEPT = 0.5;
 /**
  * Glyph boxes of two different characters may not overlap by more than this
@@ -68,7 +68,7 @@ const FRAME_EDGE = 2;
 export const MAX_HEIGHT_FACTOR = 3;
 export const MAX_SCREENSHOT_HEIGHT = 16000;
 
-const NODE_CHECKS = ["hidden", "offscreen", "clipped", "covered", "overlap", "faded", "small", "squeezed", "contrast", "ink"] as const;
+const NODE_CHECKS = ["hidden", "offscreen", "clipped", "covered", "overlap", "overflow", "faded", "small", "squeezed", "contrast", "ink"] as const;
 export const SHOP_CSS_CHECK_CODES = [
   "scope_missing",
   "page_script",
@@ -163,17 +163,33 @@ const charBox = (px: Pixels, r: { left: number; top: number; width: number; heig
 });
 
 /**
- * A character's ink: how much the text changes its box, summed over pixels and
- * colour channels (the picture with the text against the one without).
+ * How much of a pixel the text covers (0..1): the change between the picture
+ * with the text and the one without, against the change full text colour would
+ * make on that pixel's own ground, fitted over the three channels (least
+ * squares: subpixel antialiasing covers each channel a little differently).
+ * Colour-free and ground-free: the same glyph covers the same pixels on any
+ * ground, so a ground of higher contrast under part of a line cannot inflate
+ * the ink (re-review 3, High 1 and Medium 1). A pixel where full text colour
+ * would change little (under 24) counts as not covered.
  */
-function inkMass(p: Picture, r: Node["chars"][number]): number {
+function coverage(p: Picture, i: number, colour: readonly number[], alpha: number): number {
+  let dot = 0;
+  let norm = 0;
+  for (let c = 0; c < 3; c++) {
+    const g = p.without.data[i + c]!;
+    const d = alpha * (colour[c]! - g);
+    dot += (p.withText.data[i + c]! - g) * d;
+    norm += d * d;
+  }
+  if (norm < 24 * 24) return 0;
+  return Math.max(0, Math.min(1, dot / norm));
+}
+
+/** A character's ink: the text's coverage summed over its box (in pixels' worth of full colour). */
+function inkMass(p: Picture, r: Node["chars"][number], colour: readonly number[], alpha: number): number {
   const { x0, x1, y0, y1 } = charBox(p.withText, r);
   let mass = 0;
-  for (let y = y0; y <= y1; y++)
-    for (let x = x0; x <= x1; x++) {
-      const i = (y * p.withText.width + x) * p.withText.channels;
-      mass += Math.abs(p.withText.data[i]! - p.without.data[i]!) + Math.abs(p.withText.data[i + 1]! - p.without.data[i + 1]!) + Math.abs(p.withText.data[i + 2]! - p.without.data[i + 2]!);
-    }
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) mass += coverage(p, (y * p.withText.width + x) * p.withText.channels, colour, alpha);
   return mass;
 }
 
@@ -193,16 +209,19 @@ function inkMass(p: Picture, r: Node["chars"][number]): number {
  */
 export function inkOf(page: Picture, reference: Picture, node: Node): Ink {
   if (page.withText.width !== reference.withText.width || page.withText.height !== reference.withText.height || page.without.width !== page.withText.width || reference.without.width !== reference.withText.width) return { missing: node.chars.length, ratio: 0 };
+  const [cr, cg, cb, ca] = node.color;
+  const colour = [cr, cg, cb];
+  const alpha = Math.max(0, Math.min(1, ca * node.opacity));
   let missing = 0;
   let ratio = 1;
   for (const box of node.chars) {
-    const ref = inkMass(reference, box);
+    const ref = inkMass(reference, box, colour, alpha);
     if (ref < MIN_REFERENCE_INK) {
       // a small mark (- : . , ・) is too small for a ratio, but it must not vanish (re-review 2, Medium 1)
-      if (ref >= MIN_MARK_INK && inkMass(page, box) < ref * MARK_KEPT) missing += 1;
+      if (ref >= MIN_MARK_INK && inkMass(page, box, colour, alpha) < ref * MARK_KEPT) missing += 1;
       continue;
     }
-    const ink = inkMass(page, box);
+    const ink = inkMass(page, box, colour, alpha);
     if (ink < MIN_REFERENCE_INK / 10) missing += 1;
     ratio = Math.min(ratio, ink / ref);
   }
@@ -369,6 +388,7 @@ export function compareMeasures(base: Measured, shop: Measured): ShopCssCheckCod
       if (n.clipped && !was.clipped) code("clipped");
       if (n.covered && !was.covered) code("covered");
       if (over[i] && !wasOver[i]) code("overlap");
+      if (n.overflow && !was.overflow) code("overflow");
       if (n.opacity < MIN_OPACITY && was.opacity >= MIN_OPACITY) code("faded");
       if (n.fontSize < MIN_FONT_PX - 0.01 && was.fontSize >= MIN_FONT_PX - 0.01) code("small");
       if (n.squeezed && !was.squeezed) code("squeezed");
@@ -400,7 +420,7 @@ function debugReport(width: number, base: Measured, shop: Measured): void {
     if (!b) return;
     const ink = shop.ink[i]!;
     const wasInk = base.ink[i]!;
-    process.stderr.write(`${width} ${n.kind} ${JSON.stringify(n.text)} cov ${n.covered}/${b.covered} ink ${ink.missing}/${n.chars.length} ${ink.ratio.toFixed(2)} (base ${wasInk.missing} ${wasInk.ratio.toFixed(2)}) contrast ${shop.lowContrast[i]!.toFixed(2)} (base ${base.lowContrast[i]!.toFixed(2)})\n`);
+    process.stderr.write(`${width} ${n.kind} ${JSON.stringify(n.text)} cov ${n.covered}/${b.covered} ovf ${n.overflow}/${b.overflow} ink ${ink.missing}/${n.chars.length} ${ink.ratio.toFixed(2)} (base ${wasInk.missing} ${wasInk.ratio.toFixed(2)}) contrast ${shop.lowContrast[i]!.toFixed(2)} (base ${base.lowContrast[i]!.toFixed(2)})\n`);
   });
 }
 

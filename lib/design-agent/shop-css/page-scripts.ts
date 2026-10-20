@@ -46,7 +46,13 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
     const d = ctx.getImageData(0, 0, 1, 1).data;
     return [d[0], d[1], d[2], d[3] / 255];
   };
-  const painted = (s) => rgba(s.backgroundColor)[3] > 0 || s.backgroundImage !== "none" || s.boxShadow !== "none";
+  // anything an element paints itself: a ground, an image, a shadow, a border or an outline
+  const painted = (s) =>
+    rgba(s.backgroundColor)[3] > 0 ||
+    s.backgroundImage !== "none" ||
+    s.boxShadow !== "none" ||
+    ["Top", "Right", "Bottom", "Left"].some((side) => parseFloat(s["border" + side + "Width"]) > 0 && s["border" + side + "Style"] !== "none" && rgba(s["border" + side + "Color"])[3] > 0) ||
+    (parseFloat(s.outlineWidth) > 0 && s.outlineStyle !== "none" && rgba(s.outlineColor)[3] > 0);
   const pick = (el) => {
     if (!el) return null;
     const s = getComputedStyle(el);
@@ -156,7 +162,24 @@ export const MEASURE_SCRIPT = String.raw`(arg) => {
       color: rgba(s.color),
       rects: rects.slice(0, 12).map((r) => ({ left: r.left, top: r.top + scrollY, width: r.width, height: r.height })),
       chars: charRects(n),
+      overflow: false,
     };
+    // the text must stay inside its own box: the nearest element around it that is a box of its own
+    // (not inline): a block, a grid or flex item (re-review 3: nowrap text spilled out of its grid track)
+    // loose text in a grid or flex container sits in an anonymous item whose box (a track) cannot be
+    // measured: it counts as out of its box (the guard allows grid / flex only on text-free elements)
+    if (/(^|-)(grid|flex)$/.test(s.display)) node.overflow = true;
+    let box = el;
+    while (box.parentElement && ["inline", "contents"].includes(getComputedStyle(box).display)) box = box.parentElement;
+    const bb = box.getBoundingClientRect();
+    // the glyph's core across the line (a fallback face's ascent and descent may reach past a tight
+    // line box with nothing drawn there; the same core as the overlap check), its full advance along it
+    for (const c of node.chars) {
+      const dx = vertical ? c.width * 0.2 : 0;
+      const dy = vertical ? 0 : c.height * 0.2;
+      const top = c.top - scrollY + dy;
+      if (c.left + dx < bb.left - 1 || c.left + c.width - dx > bb.right + 1 || top < bb.top - 1 || top + c.height - 2 * dy > bb.bottom + 1) node.overflow = true;
+    }
     for (const r of rects) {
       if (r.left < -0.5 || r.right > innerWidth + 0.5 || r.top + scrollY < -0.5) node.offscreen = true;
       for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
@@ -230,6 +253,8 @@ export const MeasureSchema = z.strictObject({
         fontSize: z.number(),
         vertical: z.boolean(),
         squeezed: z.boolean(),
+        /** A character lies outside the node's own box (block, grid or flex item). */
+        overflow: z.boolean(),
         color: z.tuple([z.number(), z.number(), z.number(), z.number()]),
         rects: z.array(Box).max(12),
         chars: z.array(Box).max(480),
