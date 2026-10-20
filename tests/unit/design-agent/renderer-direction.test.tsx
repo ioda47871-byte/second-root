@@ -358,4 +358,92 @@ describe("direction presets (DEV-067)", () => {
             await page.close();
           }
     });
+
+  // ---- DEV-067 re-review: lines of the frames vs the name
+
+  it("phones: the name keeps clear of its frame, and no frame line runs over the hero's words or beside the title's frame", async () => {
+    const sizes = { phone360: { viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true }, phone390: VIEWPORTS.phone };
+    for (const [vp, opts] of Object.entries(sizes))
+      for (const spacing of ["tight", "standard"] as const)
+        for (const height of ["medium", "full"] as const)
+          for (const motifs of [["ruled_frame", "corner_marks", "location_labels"], ["monogram", "location_labels"]] as DesignProfile["motifs"][])
+            for (const layout of ["centered_cover", "split_crop", "stacked_oversized"] as const)
+            for (const direction of DIRECTIONS) {
+              const page = await browser.newPage({ ...opts, reducedMotion: "reduce" });
+              const profile: DesignProfile = { ...withDirection(direction), spacing: { scale: spacing }, motifs, heroLayout: { layout, height, alignment: "left" } };
+              const html = renderToStaticMarkup(<ProfileRenderer demo={SHOPS.full!} profile={profile} />);
+              await page.setContent(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS}</style></head><body>${html}</body></html>`);
+              const g = await page.evaluate(
+                (sel) => {
+                  type Line = { kind: string; vertical: boolean; at: number; from: number; to: number };
+                  const lines: Line[] = [];
+                  const boxLines = (kind: string, el: Element | null) => {
+                    if (!el) return;
+                    const r = el.getBoundingClientRect();
+                    const cs = getComputedStyle(el);
+                    const w = (side: string) => (cs.getPropertyValue(`border-${side}-style`) === "none" ? 0 : parseFloat(cs.getPropertyValue(`border-${side}-width`)));
+                    if (w("left") > 0) lines.push({ kind, vertical: true, at: r.left + w("left") / 2, from: r.top, to: r.bottom });
+                    if (w("right") > 0) lines.push({ kind, vertical: true, at: r.right - w("right") / 2, from: r.top, to: r.bottom });
+                    if (w("top") > 0) lines.push({ kind, vertical: false, at: r.top + w("top") / 2, from: r.left, to: r.right });
+                    if (w("bottom") > 0) lines.push({ kind, vertical: false, at: r.bottom - w("bottom") / 2, from: r.left, to: r.right });
+                    if (cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) > 0) {
+                      const o = parseFloat(cs.outlineOffset) + parseFloat(cs.outlineWidth) / 2;
+                      lines.push({ kind: `${kind}-outline`, vertical: true, at: r.left - o, from: r.top - o, to: r.bottom + o });
+                      lines.push({ kind: `${kind}-outline`, vertical: true, at: r.right + o, from: r.top - o, to: r.bottom + o });
+                    }
+                  };
+                  const hero = document.querySelector(sel.hero)!;
+                  const title = hero.querySelector(sel.title)!;
+                  boxLines("frame", hero.querySelector(sel.frame));
+                  for (const c of hero.querySelectorAll(`${sel.corners} > span`)) if (getComputedStyle(c).display !== "none") boxLines("corner", c);
+                  const own: Line[] = [];
+                  const before = lines.length;
+                  boxLines("title", title);
+                  own.push(...lines.splice(before));
+                  // editorial_luxury's page frame (inset box-shadows at 9.5px and 13.5px)
+                  if (document.querySelector(sel.canvas)!.getAttribute("data-direction") === "editorial_luxury") {
+                    const c = document.querySelector(sel.canvas)!.getBoundingClientRect();
+                    for (const d of [9.5, 13.5]) {
+                      lines.push({ kind: "page", vertical: true, at: c.left + d, from: c.top, to: c.bottom });
+                      lines.push({ kind: "page", vertical: true, at: c.right - d, from: c.top, to: c.bottom });
+                    }
+                  }
+                  // the words of the hero
+                  const words: Array<{ text: string; l: number; r: number; t: number; b: number }> = [];
+                  const walker = document.createTreeWalker(hero, NodeFilter.SHOW_TEXT);
+                  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                    if (!(n.textContent ?? "").trim()) continue;
+                    const range = document.createRange();
+                    range.selectNodeContents(n);
+                    for (const r of range.getClientRects()) if (r.width > 0) words.push({ text: (n.textContent ?? "").trim().slice(0, 16), l: r.left, r: r.right, t: r.top, b: r.bottom });
+                  }
+                  const problems: string[] = [];
+                  for (const line of [...lines, ...own])
+                    for (const w of words) {
+                      const across = line.vertical ? line.at > w.l + 0.5 && line.at < w.r - 0.5 && line.from < w.b && line.to > w.t : line.at > w.t + 0.5 && line.at < w.b - 0.5 && line.from < w.r && line.to > w.l;
+                      if (across) problems.push(`${line.kind} line crosses "${w.text}" (${line.vertical ? "x" : "y"}=${line.at.toFixed(1)} ${line.from.toFixed(0)}–${line.to.toFixed(0)}; word ${w.l.toFixed(0)}–${w.r.toFixed(0)} × ${w.t.toFixed(0)}–${w.b.toFixed(0)})`);
+                    }
+                  for (const a of own)
+                    for (const b of lines)
+                      if (a.vertical === b.vertical && Math.abs(a.at - b.at) < 6 && a.from < b.to && a.to > b.from) problems.push(`${a.kind} line ${Math.abs(a.at - b.at).toFixed(1)}px from a ${b.kind} line`);
+                  // the name's distance from the inner side of the title's side borders
+                  const name = title.querySelector("h1") ?? title;
+                  const range = document.createRange();
+                  range.selectNodeContents(name);
+                  const nr = range.getBoundingClientRect();
+                  const tr = title.getBoundingClientRect();
+                  const cs = getComputedStyle(title);
+                  const gaps: number[] = [];
+                  if (cs.borderLeftStyle !== "none" && parseFloat(cs.borderLeftWidth) > 0) gaps.push(nr.left - (tr.left + parseFloat(cs.borderLeftWidth)));
+                  if (cs.borderRightStyle !== "none" && parseFloat(cs.borderRightWidth) > 0) gaps.push(tr.right - parseFloat(cs.borderRightWidth) - nr.right);
+                  return { problems, gaps };
+                },
+                { hero: cls("hero"), title: cls("title"), frame: cls("frame"), corners: cls("corners"), canvas: cls("canvas") },
+              );
+              await page.close();
+              const tag = `${vp} ${spacing}/${height} ${layout} ${direction} [${motifs.join(",")}]`;
+              expect(g.problems, tag).toEqual([]);
+              for (const gap of g.gaps) expect(gap, `${tag}: name to its frame`).toBeGreaterThanOrEqual(6);
+            }
+  });
 });

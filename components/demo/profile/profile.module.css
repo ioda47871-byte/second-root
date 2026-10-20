@@ -381,16 +381,16 @@
   .canvas[data-spacing="tight"] .section + .section { margin-top: 0; }
   .canvas[data-spacing="tight"] .heading { font-size: clamp(1.75rem, 7vw, 2.6rem); }
   .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 28svh; padding-bottom: 20px; }
-  .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 20px 0; }
+  .hero[data-layout="centered_cover"][data-height="medium"] .title { padding-block: 20px; }
   .heroSplit .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 0; } /* a split hero keeps no floor */
   /* DEV-038: tight is whole-page density — the cover, the menu and information rows, and the
      address → access gap are closer too. */
   .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 22svh; padding-top: 14px; padding-bottom: 14px; }
-  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 14px 0; }
+  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding-block: 14px; }
   /* DEV-043: the same band for every layout without a photo, so a sparse page is not steered
      to centered_cover. A framed photo hero of another layout keeps its height. */
   .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) { min-height: 22svh; padding-top: 14px; padding-bottom: 14px; }
-  .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) .title { padding: 14px 0; }
+  .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) .title { padding-block: 14px; }
   .canvas[data-spacing="tight"] .menuItem { padding: 10px 0; }
   .canvas[data-spacing="tight"] .row { padding: 10px 0; }
   .canvas[data-spacing="tight"] .visit { gap: 20px; }
@@ -699,10 +699,10 @@
   /* DEV-038: a medium centered cover under tight is a band on desktop too, not most of the screen
      (the canvas's own hero only: a split photo hero keeps its height). */
   .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] { min-height: 38svh; padding-top: 18px; padding-bottom: 24px; }
-  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding: 24px 0; }
+  .canvas[data-spacing="tight"] > .hero[data-layout="centered_cover"][data-height="medium"] .title { padding-block: 24px; }
   /* DEV-043: every layout without a photo (see the phone rule). */
   .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) { min-height: 38svh; padding-top: 18px; padding-bottom: 24px; }
-  .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) .title { padding: 24px 0; }
+  .canvas[data-spacing="tight"] > .hero[data-height="medium"]:not([data-photo]) .title { padding-block: 24px; }
   .motifRow { gap: 28px; margin-top: 22px; }
   .pleats { width: 168px; }
   .stamp { width: 104px; height: 104px; }
@@ -876,9 +876,11 @@
 }
 .canvas[data-direction="japanese_modern"] .folio .monogram { border-color: var(--p-bg); color: var(--p-bg); }
 .canvas[data-direction="japanese_modern"] .folio .label + .label::before { background: var(--p-bg); }
-/* the frame and the corner marks start below the band */
-.canvas[data-direction="japanese_modern"] .hero .frame { top: 96px; }
-.canvas[data-direction="japanese_modern"] .hero .corners > span:nth-child(-n + 2) { top: 96px; }
+/* The band is the top edge of the ruled frame: the frame runs from the hero's top
+   under the band (whatever its height), and the band takes the place of the top
+   corner marks. */
+.canvas[data-direction="japanese_modern"] .hero .frame { top: 0; border-top: 0; }
+.canvas[data-direction="japanese_modern"] .hero .corners > span:nth-child(-n + 2) { display: none; }
 .canvas[data-direction="japanese_modern"] .heading { flex-direction: column-reverse; align-items: flex-start; gap: 8px; padding-left: 16px; border-left: 6px solid var(--p-primary); }
 .canvas[data-direction="japanese_modern"] .heading > span:first-child:not(:only-child) { font-size: 0.42em; letter-spacing: 0.24em; color: var(--p-secondary); }
 .canvas[data-direction="japanese_modern"] .headingJa { font-size: clamp(1.5rem, 5vw, 2rem); font-weight: 700; letter-spacing: 0.08em; color: var(--p-primary); }
@@ -1070,16 +1072,26 @@
   .canvas[data-grid="asymmetric_7_5"] .section > .heading { align-self: start; }
 }
 
-/* Framed titles on phones: the frame and its padding sit in the hero's side
-   padding (negative side margins of the same width), so the name keeps the width
-   it has without a frame and a long spaced Latin word does not break. */
+/* Framed titles on phones: the frame and an 8px inner margin sit in the hero's
+   side padding (negative side margins of the same width), so the name keeps the
+   width it has without a frame and a long spaced Latin word does not break.
+   editorial_luxury's page frame already runs in that padding: there the title keeps
+   only its top and bottom rules on phones and the page frame closes its sides.
+   The ruled frame (inset 10px) would run beside or over these title frames: on
+   phones it keeps its top and bottom lines there, and the title frame draws the
+   sides. */
 @media (max-width: 719.98px) {
-  .canvas[data-direction="editorial_luxury"] .title { margin: 14px -5px; padding: 18px 4px; }
-  .canvas[data-direction="french_classic"] .title { margin-inline: -7px; padding: 18px 4px; }
-  .canvas[data-direction="kissaten_retro"] .title { margin-inline: -7px; padding: 16px 4px; border-width: 3px; }
-  .canvas[data-direction="craft_paper"] .title { margin-inline: -5.5px; padding: 14px 4px; }
-  .canvas[data-direction="boutique_minimal"] .title { margin-inline: -4px; padding: 20px 4px; }
+  .canvas[data-direction="editorial_luxury"] .title { margin: 14px 0; padding: 18px 0; border-inline: 0; outline: 0; border-block: 3px double var(--p-primary); }
+  .canvas[data-direction="french_classic"] .title { margin-inline: -11px; padding: 18px 8px; }
+  .canvas[data-direction="kissaten_retro"] .title { margin-inline: -11px; padding: 16px 8px; border-width: 3px; }
+  .canvas[data-direction="craft_paper"] .title { margin-inline: -9.5px; padding: 14px 8px; }
+  .canvas[data-direction="boutique_minimal"] .title { margin-inline: -8px; padding: 20px 8px; }
   .canvas[data-direction="japanese_modern"] .title { margin-left: -13px; padding-left: 8px; border-left-width: 5px; }
+  .canvas[data-direction="french_classic"] .hero .frame,
+  .canvas[data-direction="kissaten_retro"] .hero .frame,
+  .canvas[data-direction="craft_paper"] .hero .frame,
+  .canvas[data-direction="editorial_luxury"] .hero .frame { border-inline: 0; }
+  .canvas[data-direction="japanese_modern"] .hero .frame { border-left: 0; }
 }
 
 /* french_classic × centered_cover: the title's double frame already closes the name;
@@ -1090,6 +1102,12 @@
    marks move inside it, clear of its lines. */
 .canvas[data-direction="editorial_luxury"] .hero .frame { inset: 22px; }
 .canvas[data-direction="editorial_luxury"] .hero .corners { inset: 16px; }
+@media (max-width: 719.98px) {
+  .canvas[data-direction="editorial_luxury"] .hero .frame { inset: 17px 17px 8px; }
+  /* small marks just inside the page frame, clear of the folio */
+  .canvas[data-direction="editorial_luxury"] .hero .corners { inset: 7px; }
+  .canvas[data-direction="editorial_luxury"] .hero .corners > span { width: 11px; height: 11px; }
+}
 
 /* gallery_mono × dot_grid: the dots in the background colour stay faint over the name. */
 .canvas[data-direction="gallery_mono"] .hero .dots { opacity: 0.25; }
