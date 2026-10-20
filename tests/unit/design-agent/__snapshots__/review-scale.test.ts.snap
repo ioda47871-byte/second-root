@@ -16,14 +16,14 @@ Renderer vocabulary (the only things you can choose; every value is accepted):
   gallery_mono = a catalogue: the hero filled with the primary colour (the name in the background colour), solid blocks over small spaced headings, the menu as a grid of ruled tiles;
   craft_paper = handmade: a paper grain, wavy underlined headings, dashed (stitched) lines and boxes, menu numbers in dashed rings;
   boutique_minimal = a centred column of panels in the surface colour, thin spaced headings, the name on a panel between fine rules;
-  pop_bakeshop = playful: tilted pill headings, the menu as rounded chips with an offset shadow in the accent colour, a dotted ground, the area line in a pill.
+  pop_bakeshop = playful: tilted pill headings, the menu as rounded chips with an offset shadow in the accent colour, a dotted hero, the area line in a pill.
 - palette: six hex colours. background = page; surface = the ground behind photos and the panels of kissaten_retro, boutique_minimal and pop_bakeshop (other pages without photos never show it); text = body text (≥4.5:1 on background and surface);
   primary = shop name and strong rules (≥3:1 on background; background on primary ≥4.5:1, used for the footer);
   secondary = small labels and the notice bar text (≥4.5:1 on background); accent = motif details (location label marks, dot_grid, stamp_ring,
   muffin_paper_svg; gallery_mono draws these in the background colour instead) and the accents of french_classic and pop_bakeshop: otherwise it shows nowhere.
   The monogram is drawn in primary. On the surface-colour panels of kissaten_retro, boutique_minimal and pop_bakeshop every word is set in the text colour.
-- typography.display: editorial_serif (high-contrast Latin serif, Japanese in Mincho), condensed_grotesk (tall, narrow, heavy sans),
-  light_grotesk (wide light sans), mincho (Japanese Mincho for everything). body: sans | serif.
+- typography.display: editorial_serif (high-contrast Latin serif, Japanese in an old-style Mincho), condensed_grotesk (tall, narrow, heavy Latin sans; Japanese in a square gothic),
+  light_grotesk (wide light Latin sans; Japanese in an open gothic), mincho (Japanese Mincho for everything). body: sans | serif.
   displayCase: as_is | uppercase (Latin only). displayWeight: light | regular | bold | black. tracking: tight | normal | wide.
 - heroLayout.layout (each one sets the shop name as the hero's main visual):
   split_crop = one word per line, every other line pushed right (e.g. "EXAMPLE" / "      BAKE"). Only a Latin name of two to four
@@ -41,7 +41,7 @@ Renderer vocabulary (the only things you can choose; every value is accepted):
   infoStyle: ruled_list (label / value rows between hairlines) | colophon (a centred block, like the last page of a magazine) |
   ledger_columns (label and value on one row, joined by a dotted leader). divider between sections: hairline | double_rule | thick_rule | none.
 - motifs (up to 4, no repeats): monogram (initials made from the shop name), location_labels (small uppercase ward / NAGOYA labels),
-  muffin_paper_svg (abstract pleated-liner lines, not a drawing of food), ruled_frame (thin frame around the hero),
+  muffin_paper_svg (abstract pleated-liner lines, not a drawing of food), ruled_frame (thin frame around the hero; on phones some directions draw only part of it, where their own frames take its place),
   dot_grid (small dotted field), stamp_ring (round stamp around the monogram), corner_marks (print crop marks).
 - spacing.scale: generous (the most space between sections) | standard (a medium amount between sections) |
   tight (the least between sections, and a medium hero without a photo becomes a band; on phones the rows and headings are closer too).

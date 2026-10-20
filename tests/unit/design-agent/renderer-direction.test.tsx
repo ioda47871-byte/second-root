@@ -406,6 +406,7 @@ describe("direction presets (DEV-067)", () => {
                     for (const d of [9.5, 13.5]) {
                       lines.push({ kind: "page", vertical: true, at: c.left + d, from: c.top, to: c.bottom });
                       lines.push({ kind: "page", vertical: true, at: c.right - d, from: c.top, to: c.bottom });
+                      lines.push({ kind: "page", vertical: false, at: c.top + d, from: c.left, to: c.right });
                     }
                   }
                   // the words of the hero
@@ -423,6 +424,10 @@ describe("direction presets (DEV-067)", () => {
                       const across = line.vertical ? line.at > w.l + 0.5 && line.at < w.r - 0.5 && line.from < w.b && line.to > w.t : line.at > w.t + 0.5 && line.at < w.b - 0.5 && line.from < w.r && line.to > w.l;
                       if (across) problems.push(`${line.kind} line crosses "${w.text}" (${line.vertical ? "x" : "y"}=${line.at.toFixed(1)} ${line.from.toFixed(0)}–${line.to.toFixed(0)}; word ${w.l.toFixed(0)}–${w.r.toFixed(0)} × ${w.t.toFixed(0)}–${w.b.toFixed(0)})`);
                     }
+                  // the hero's motif lines and the page frame do not run side by side either
+                  for (const a of lines.filter((l) => l.kind !== "page"))
+                    for (const b of lines.filter((l) => l.kind === "page"))
+                      if (a.vertical === b.vertical && Math.abs(a.at - b.at) < 6 && a.from < b.to && a.to > b.from) problems.push(`${a.kind} line ${Math.abs(a.at - b.at).toFixed(1)}px from a page line`);
                   for (const a of own)
                     for (const b of lines)
                       if (a.vertical === b.vertical && Math.abs(a.at - b.at) < 6 && a.from < b.to && a.to > b.from) problems.push(`${a.kind} line ${Math.abs(a.at - b.at).toFixed(1)}px from a ${b.kind} line`);

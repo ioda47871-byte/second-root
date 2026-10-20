@@ -50,10 +50,11 @@
 
 /* ---------- typography switches ---------- */
 
-.canvas[data-display="editorial_serif"] { --display: var(--font-editorial), var(--font-display), serif; }
+/* DEV-068: editorial_serif and the grotesks have a Japanese face of their own (fonts.ts); mincho uses the site's Shippori Mincho; the site's faces stay as the fallback. */
+.canvas[data-display="editorial_serif"] { --display: var(--font-editorial), var(--font-ja-editorial), var(--font-display), serif; }
 .canvas[data-display="mincho"] { --display: var(--font-display), serif; }
-.canvas[data-display="condensed_grotesk"] { --display: var(--font-grotesk), var(--font-body), sans-serif; --display-width: 72; }
-.canvas[data-display="light_grotesk"] { --display: var(--font-grotesk), var(--font-body), sans-serif; --display-width: 104; }
+.canvas[data-display="condensed_grotesk"] { --display: var(--font-grotesk), var(--font-ja-condensed), var(--font-body), sans-serif; --display-width: 72; }
+.canvas[data-display="light_grotesk"] { --display: var(--font-grotesk), var(--font-ja-light), var(--font-body), sans-serif; --display-width: 104; }
 
 .canvas[data-weight="light"] { --display-weight: 300; }
 .canvas[data-weight="regular"] { --display-weight: 400; }
@@ -497,6 +498,12 @@
 .canvas[data-display="condensed_grotesk"] .addressValue,
 .canvas[data-display="light_grotesk"] .addressValue {
   font-family: var(--font-body), sans-serif;
+}
+
+/* DEV-068: Zen Old Mincho has only 400 and 900, so the 600 cap above would draw
+   the address in Black; the address keeps the site's Mincho (400 / 600) instead. */
+.canvas[data-display="editorial_serif"] .addressValue {
+  font-family: var(--font-editorial), var(--font-display), serif;
 }
 
 .addressTags {
@@ -1103,10 +1110,10 @@
 .canvas[data-direction="editorial_luxury"] .hero .frame { inset: 22px; }
 .canvas[data-direction="editorial_luxury"] .hero .corners { inset: 16px; }
 @media (max-width: 719.98px) {
-  .canvas[data-direction="editorial_luxury"] .hero .frame { inset: 17px 17px 8px; }
-  /* small marks just inside the page frame, clear of the folio */
-  .canvas[data-direction="editorial_luxury"] .hero .corners { inset: 7px; }
-  .canvas[data-direction="editorial_luxury"] .hero .corners > span { width: 11px; height: 11px; }
+  /* the page frame already draws the hero's top edge and corners: the ruled frame
+     keeps only its bottom line, and no corner marks are drawn */
+  .canvas[data-direction="editorial_luxury"] .hero .frame { inset: 22px 22px 8px; border-top: 0; }
+  .canvas[data-direction="editorial_luxury"] .hero .corners { display: none; }
 }
 
 /* gallery_mono × dot_grid: the dots in the background colour stay faint over the name. */
