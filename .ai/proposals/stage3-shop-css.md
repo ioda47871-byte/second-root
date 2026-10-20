@@ -172,8 +172,15 @@ postcss は next の推移的依存として node_modules にあるが、**使�
 - **保存と配信**:
   - 公開 demo に使うなら、DB には検査済みの CSS だけを置く（大きさ・hash）。配信前に server で guard をもう一度通す。
   - render check をどこで繰り返すかを決める（事実が変われば必ず繰り返す）。
-- **Stage 1（DEV-071、PR #83）の data 属性**: develop に入ると、節ごとの selector（`[data-kind]` など）が効く。
-  - 今の develop の markup では `section[aria-labelledby="pr-menu"]` などで節を選ぶ（例の 3 つはこちら）。
+- **Stage 1（DEV-071a、PR #83）との関係**: merge 済み。許可した属性の値は profile の schema の定数と一致し、どの値も実際の markup に現れる（test）。`lang` は `en` だけ（`ja` は markup に無い）。
+  - 例の 4 つ（kissa-retro・atelier-mono・sakura-wagashi・stage1-hooks）は、Stage 1 の 3 店の layout（vertical_name + vertical_ja・name_menu・name_lead）の全幅で通る。
+  - 例を 3 店で検査して、render check が実際の崩れを捕まえた（例を直した）。
+    - 2 段組の main と全幅の帯が重なり、帯が Visit 節を覆った。
+    - 縦書きの見出しの字が重なった。
+    - split の visit で電話番号が画面からはみ出した。
+  - 店ごとの CSS は layout に合わせて書く必要がある。帯（surface / inverted）と first view の抜粋には、その店の地と文字色を与える。
+  - render check の viewport は isMobile を使わない。mobile の viewport は画面より広い頁を縮小表示するので、CSS あり / なしで画の倍率がずれる。
+  - 見つけた renderer の問題（別 task）: DEV-071a の split の visit が 720〜760px で横にはみ出す（電話番号の keep span）。
 - **test の書体**: test の頁は IPA Gothic を和文の代わりに使う。WenQuanYi は縦書きの metrics を持たず、縦書きの字が重なり、画素の証明が正しく不合格にする。
   - 実際の頁は next/font の和文書体。実画面での確認は後の段階で行う。
 - **比較**: 3 店の比較（§8.7）と、生成時間・費用の記録。
