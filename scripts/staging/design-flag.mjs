@@ -14,8 +14,8 @@
 //   FIRST, then SALES_AI_DESIGN_ENABLED=true. The flag is never true without a time box.
 //   --until must be 30 minutes to 4 hours ahead.
 // - off: SALES_AI_DESIGN_ENABLED=false. Idempotent (already false: nothing is written).
-//   --if-until <iso>: only when the time box is that value (the recovery task of one window
-//   never closes a later window).
+//   --if-until <iso>: skipped when the time box is another valid time (the recovery task of
+//   one window never closes a later window); a missing or invalid time box still turns it off.
 // - on refuses while the flag is not false (a window is never extended; off first).
 // - verify: read only. The env vars give the expected state and the develop alias serves a
 //   READY deployment of <sha> created after the env vars last changed (Vercel reads env vars
@@ -241,8 +241,9 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
     }
 
     // off
-    if (opts["if-until"] !== undefined && until !== opts["if-until"]) {
-      // A recovery task of an earlier window must not close a later one.
+    if (opts["if-until"] !== undefined && until !== opts["if-until"] && Number.isFinite(parseUntil(until))) {
+      // A recovery task of an earlier window must not close a later one. A time box that is
+      // missing or invalid is not another window: then the flag is turned off.
       log(`  the time box is ${until}, not ${opts["if-until"]}: this is another window; nothing written`);
       return done("OFF_SKIPPED_OTHER_WINDOW", 0);
     }

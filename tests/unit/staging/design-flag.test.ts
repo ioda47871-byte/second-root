@@ -292,6 +292,22 @@ describe("design-flag: review fixes (DEV-064 Fresh Review)", () => {
     expect((await run(api, ["off", "--if-until", "soon"])).code).toBe(1);
   });
 
+  it("off --if-until: a missing or invalid time box is not another window (turns the flag off)", async () => {
+    for (const envs of [
+      [{ id: "rMGvxH8aHWZZC5Z5", key: "SALES_AI_DESIGN_ENABLED", value: "true", type: "plain", target: ["preview"], gitBranch: "develop" }],
+      [
+        { id: "rMGvxH8aHWZZC5Z5", key: "SALES_AI_DESIGN_ENABLED", value: "true", type: "plain", target: ["preview"], gitBranch: "develop" },
+        { id: "untilVarId000009", key: "SALES_AI_DESIGN_ENABLED_UNTIL", value: "", type: "plain", target: ["preview"], gitBranch: "develop" },
+      ],
+    ]) {
+      const api = vercel({ envs });
+      const r = await run(api, ["off", "--if-until", UNTIL_OK]);
+      expect(r.code).toBe(0);
+      expect(r.last).toMatch(/^DESIGN_FLAG OFF_WRITTEN flag=false /);
+      expect(flagOf(api)).toBe("false");
+    }
+  });
+
   it("verify refuses a Production deployment behind the alias", async () => {
     const api = vercel();
     await run(api, ["on", "--until", UNTIL_OK]);

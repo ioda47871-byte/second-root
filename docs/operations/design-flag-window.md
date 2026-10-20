@@ -29,7 +29,7 @@ production branch が `main` でない、flag の record が Preview `develop` �
    - `on` は期限を**先に**書き、flag を後で `true` にする。期限なしで flag が `true` になる瞬間は無い。`--until` は 30 分〜4 時間先だけ。flag が `false` でない間の `on` は拒否（window を延ばさない。延ばすなら `off` → 改めて承認）
    - 遠い未来の期限は script では書けない（4 時間まで）。Vercel の画面で人が書いた値は app が形だけを確かめる
 2. **独立した復旧 session（Claude の one-shot の scheduled task）**: 期限の 10 分後に、この環境で**新しい session**が起き、develop を checkout して `off --if-until <UNTIL>` → develop に記録を push（redeploy）→ `verify --expect off` まで行う。この session（window を開いた Claude）が止まっていても動く。flag がすでに `false` で、その後の deployment なら何もしない。期限の値が `<UNTIL>` でない（別の window）なら何もしない。
-   - **予行（window の前、読むだけ）**: 同じ形の one-shot の scheduled task を数分後に 1 回だけ作り、新しい session が develop を checkout して `staging:design-flag -- status` を `DESIGN_FLAG STATUS` まで実行でき、`git push --dry-run origin develop` が通ることを確かめる（何も書かない）
+   - **予行（window の前、読むだけ）**: 同じ形の one-shot の scheduled task を数分後に 1 回だけ作り、新しい session が develop を checkout して `staging:design-flag -- status` を `DESIGN_FLAG STATUS` まで実行でき、develop に `.ai/progress.md` の予行の記録 1 行を commit して push できることを確かめる（`git push --dry-run` は変更が無いと権限を確かめない）。Vercel・DB には何も書かない（push は develop の Preview を作り直すだけで、flag は `false` のまま）
 
 どちらも効かなかったときは §5。
 
@@ -58,7 +58,7 @@ production branch が `main` でない、flag の record が Preview `develop` �
 Second Root の Staging design flag の自動復旧（DEV-064、docs/operations/design-flag-window.md §4）。期限 <UNTIL> を過ぎた。
 リポジトリ ioda47871-byte/second-root で、最初に git fetch origin develop && git checkout -B develop origin/develop（default branch は main で、script は develop にしかない）。その上で次だけを行う。Production・Vercel Authentication・DB・timer・営業送信・他の env には触れない。値（secret）を表示しない。
 1. npm run -s staging:design-flag -- off --if-until <UNTIL>
-   - OFF_SKIPPED_OTHER_WINDOW なら何もせず、その行を報告して終わる（別の window）
+   - OFF_SKIPPED_OTHER_WINDOW なら何もせず、その行を報告して終わる（期限が別の正しい時刻 = 別の window。期限が無い・壊れているときは off する）
    - FAILED なら 2 回まで再実行。直らなければ最後の行と FAILED: の行だけを報告して終わる（app の期限で flag はすでに無効）
 2. ALREADY_OFF のときは git fetch origin develop して npm run -s staging:design-flag -- verify --expect off --sha <origin/develop の commit>。VERIFIED_OFF なら 4. へ（何も push しない）
    OFF_WRITTEN のとき、または 2. の verify が VERIFIED_OFF でないとき:
