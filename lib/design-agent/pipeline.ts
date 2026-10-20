@@ -6,6 +6,7 @@ import { briefStructureOnDefault, CATEGORY_DEFAULT_PROFILES, LOW_CONFIDENCE } fr
 import { checkProfile, designProfileJsonSchema, looseJsonSchema, type DesignProfile } from "./profile";
 import { runPhotoLoop, timeForSecondLook, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
 import { buildBriefPrompt, buildReviewPrompt } from "./prompts";
+import type { ObservedColours } from "./reference-colours";
 import { reviewScore, visualReviewJsonSchema, VisualReviewSchema, type VisualReview } from "./review";
 import { visibleChanges } from "./visible-profile";
 
@@ -113,6 +114,8 @@ export interface PipelineInput {
   schemaMode?: "strict" | "loose";
   /** The job's verified photos (DEV-029). None or empty: the DEV-028 loop alone. */
   photos?: PhotoPipelineInput;
+  /** DEV-069: colours measured in the references; null or omitted: the prompts say nothing about colours. */
+  observedColours?: ObservedColours | null;
 }
 
 export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps): Promise<PipelineReport> {
@@ -139,7 +142,14 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   try {
     const answer = await deps.askCodex({
       kind: "brief",
-      prompt: buildBriefPrompt({ demo: input.demo, referenceCount: input.references.length, referenceKind: input.referenceKind, currentDemoCount: 2, hint: input.hint }),
+      prompt: buildBriefPrompt({
+        demo: input.demo,
+        referenceCount: input.references.length,
+        referenceKind: input.referenceKind,
+        currentDemoCount: 2,
+        hint: input.hint,
+        observedColours: input.observedColours,
+      }),
       images: [...input.references, before.desktop, before.mobile],
       schema: schema(designProfileJsonSchema()),
     });
@@ -239,6 +249,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
           best: leader && rounds.length > 0 ? { candidate: leader.name, total: leader.score } : null,
           again: again ? { candidate: target.name, ...again } : null,
           notVisible: notVisible ? { candidate: target.name } : null,
+          observedColours: input.observedColours,
         }),
         images: [...input.references, shots.desktop, shots.mobile],
         schema: schema(visualReviewJsonSchema()),
