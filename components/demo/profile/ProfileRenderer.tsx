@@ -1,21 +1,35 @@
 import { Fragment, type CSSProperties } from "react";
-import type { RenderFeature, RenderPhoto, RenderPhotos } from "@/lib/design-agent/assets/resolve";
+import type { RenderFeature, RenderPhotos } from "@/lib/design-agent/assets/resolve";
+import { DEFAULT_LAYOUT, normalizeLayout } from "@/lib/design-agent/layout";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
 import { areaLabel, infoRows } from "../info";
 import { editorial, grotesk } from "./fonts";
-import { keepTogether, locationLabels, monogram, nameLines, nameSizing, nameTokens, ordinal, phoneNameLines, setsInPieces } from "./text";
+import { PhotoFigure } from "./parts";
+import About from "./sections/About";
+import FirstView from "./sections/FirstView";
+import Hours from "./sections/Hours";
+import Menu from "./sections/Menu";
+import Visit from "./sections/Visit";
+import { locationLabels, monogram, nameLines, nameSizing, nameTokens, phoneNameLines, setsInPieces } from "./text";
 import styles from "./profile.module.css";
+import sx from "./sections.module.css";
 
 // Shared renderer for design profiles (DEV-028). Every word on the page comes
 // from the fact-only DemoView or from fixed template copy (headings, the
 // English category, romanised ward, the name's own initials). The profile
 // only switches visual settings, through data attributes and colour tokens;
 // it can never add text.
+//
+// Stage 1 (DEV-071a): a profile may carry a `layout` (the Design Spec): the
+// first view, the sections in order with their variant and ground, and the
+// type hierarchy. It is normalized against the facts before drawing
+// (lib/design-agent/layout.ts), so a section without facts is never drawn and
+// every fact stays on the page. A profile without `layout` draws the page
+// before Stage 1 with exactly its markup (DEFAULT_LAYOUT, no layout attributes).
 
 const CATEGORY_EN: Record<DemoView["category"], string> = { bakery: "Bakery", baked_goods: "Baked Goods", cafe: "Cafe" };
-const ROW_EN = { hours: "Hours", closedDays: "Closed", address: "Address", access: "Access", phone: "Tel" } as const;
 
 function tokens(p: DesignProfile): CSSProperties {
   const c = p.palette;
@@ -52,54 +66,16 @@ function PleatsArt() {
   );
 }
 
-/** A fact as text, with number runs ("1-2-3") kept on one line when it wraps. */
-function FactText({ text }: { text: string }) {
-  return keepTogether(text).map((part, i) =>
-    part.keep ? (
-      <span key={i} className={styles.keep} data-keep="">
-        {part.text}
-      </span>
-    ) : (
-      part.text
-    ),
-  );
-}
-
-const ratio = (aspect: string) => aspect.replace(":", " / ");
-const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
-
-/**
- * One photo (DEV-029). Its area is a grid cell of its own: no page text is ever
- * drawn over it. A generated image always carries the fixed "イメージ画像"
- * label, drawn here and not switchable by the profile or the direction.
- */
-function PhotoFigure({ photo, className, role, side }: { photo: RenderPhoto; className: string; role: "hero" | RenderFeature["slot"]; side?: RenderFeature["side"] }) {
-  const style = {
-    "--ar": ratio(photo.aspect.mobile),
-    "--ar-d": ratio(photo.aspect.desktop),
-    "--fx": pct(photo.mobileFocal.x),
-    "--fy": pct(photo.mobileFocal.y),
-    "--fx-d": pct(photo.focal.x),
-    "--fy-d": pct(photo.focal.y),
-  } as CSSProperties;
-  return (
-    <figure className={`${styles.photo} ${className}`} data-asset={photo.assetId} data-role={role} data-fit={photo.fit} data-treatment={photo.treatment} data-source={photo.sourceKind} data-side={side} style={style}>
-      {/* A local preview route: no image optimisation, no remote loader. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className={styles.photoImg} src={photo.src} alt="" width={photo.width} height={photo.height} loading="eager" decoding="sync" />
-      {photo.sourceKind === "generated_concept" && (
-        <span className={styles.imageLabel} data-image-label="">
-          イメージ画像
-        </span>
-      )}
-    </figure>
-  );
-}
-
 export default function ProfileRenderer({ demo, profile, photos = null }: { demo: DemoView; profile: DesignProfile; photos?: RenderPhotos | null }) {
   const rows = infoRows(demo);
-  const address = rows.find((r) => r.key === "address");
-  const others = rows.filter((r) => r !== address);
+  // null: no layout — the page before Stage 1, without any layout attribute
+  const spec = profile.layout ? normalizeLayout(profile.layout, demo).layout : null;
+  const sections = (spec ?? normalizeLayout(DEFAULT_LAYOUT, demo).layout).sections;
+  const headings = spec?.type.headings ?? "en_ja";
+  const firstView = spec?.firstView ?? "name_only";
+  const hoursSection = sections.some((s) => s.kind === "hours");
+  const hourRows = rows.filter((r) => r.key === "hours" || r.key === "closedDays");
+  const visitRows = hoursSection ? rows.filter((r) => !hourRows.includes(r)) : rows;
   const motifs = new Set(profile.motifs);
   const mark = monogram(demo.name);
   // An unspaced or Japanese name (DEV-034) is set from unbreakable pieces, on the lines
@@ -112,8 +88,11 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
   const split = photos?.layout === "split_hero" && heroPhoto !== null;
   const framed = photos?.layout === "framed_hero" && heroPhoto !== null;
   const feature = (slot: RenderFeature["slot"]) => photos?.features.find((f) => f.slot === slot) ?? null;
-  const aboutPhoto = feature("about");
-  const visitPhoto = feature("visit");
+  // a feature photo sits in its section, and only when that section is drawn
+  const has = (kind: RenderFeature["slot"]) => sections.some((s) => s.kind === kind);
+  const aboutPhoto = has("about") ? feature("about") : null;
+  const visitPhoto = has("visit") ? feature("visit") : null;
+  const vertical = firstView === "vertical_name";
 
   const hero = (
     <header
@@ -167,7 +146,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
 
       <div className={styles.title}>
         {unspaced ? (
-          <h1 className={styles.name} style={nameSizing(demo.name)} data-lines={lines.length} data-fit="phone">
+          <h1 className={vertical ? `${styles.name} ${sx.vname}` : styles.name} style={nameSizing(demo.name)} data-lines={lines.length} data-fit="phone">
             {lines.map((line, i) => (
               <span key={`${i}-${line}`} className={styles.phoneLine}>
                 {nameTokens(line).map((piece, j, all) => {
@@ -194,6 +173,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
             ))}
           </h1>
         )}
+        {spec && <FirstView view={firstView} demo={demo} />}
       </div>
 
       <p className={styles.dek}>
@@ -225,6 +205,9 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
         data-spacing={profile.spacing.scale}
         data-intro={profile.motion.intro}
         data-fade={profile.motion.sectionFade ? "" : undefined}
+        data-first-view={spec?.firstView}
+        data-scale={spec?.type.scale}
+        data-headings={spec?.type.headings}
       >
         {split ? (
           <div className={styles.heroSplit} data-photo-section="hero">
@@ -236,81 +219,18 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
         )}
 
         <main className={styles.main}>
-          {demo.description && (
-            <section className={styles.section} aria-labelledby="pr-about" data-photo-section={aboutPhoto ? "about" : undefined}>
-              <h2 id="pr-about" className={styles.heading}>
-                <span lang="en">About</span>
-              </h2>
-              <p className={styles.lead}>{demo.description}</p>
-              {aboutPhoto && <PhotoFigure photo={aboutPhoto} className={styles.band} role="about" side={aboutPhoto.side} />}
-            </section>
-          )}
-
-          {demo.menuItems.length > 0 && (
-            <section className={styles.section} aria-labelledby="pr-menu">
-              <h2 id="pr-menu" className={styles.heading}>
-                <span lang="en">Menu</span>
-                <span className={styles.headingJa}>メニュー</span>
-              </h2>
-              <ol className={styles.menu}>
-                {demo.menuItems.map((item, i) => (
-                  <li key={`${i}-${item}`} className={styles.menuItem}>
-                    <span className={styles.menuNo}>{ordinal(i)}</span>
-                    <span className={styles.menuName}>{item}</span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          )}
-
-          {rows.length > 0 && (
-            <section className={styles.section} aria-labelledby="pr-visit" data-single={rows.length === 1 ? "" : undefined} data-photo-section={visitPhoto ? "visit" : undefined}>
-              <h2 id="pr-visit" className={styles.heading}>
-                <span lang="en">Visit</span>
-                <span className={styles.headingJa}>店舗のご案内</span>
-              </h2>
-              <div className={styles.visit}>
-                {address && (
-                  <div className={styles.address}>
-                    <p className={styles.rowLabel}>
-                      <span lang="en" className={styles.rowEn}>
-                        {ROW_EN.address}
-                      </span>
-                      <span>{address.label}</span>
-                    </p>
-                    <p className={styles.addressValue}>
-                      <FactText text={address.value} />
-                    </p>
-                    {labels.length > 0 && (
-                      <p className={styles.addressTags} lang="en" aria-hidden="true">
-                        {labels.map((label) => (
-                          <span key={label}>{label}</span>
-                        ))}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {others.length > 0 && (
-                  <dl className={styles.rows}>
-                    {others.map((row) => (
-                      <div key={row.key} className={styles.row}>
-                        <dt className={styles.rowLabel}>
-                          <span lang="en" className={styles.rowEn}>
-                            {ROW_EN[row.key]}
-                          </span>
-                          <span>{row.label}</span>
-                        </dt>
-                        <dd className={styles.rowValue}>
-                          <FactText text={row.value} />
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-              </div>
-              {visitPhoto && <PhotoFigure photo={visitPhoto} className={styles.band} role="visit" side={visitPhoto.side} />}
-            </section>
-          )}
+          {sections.map((section) => {
+            switch (section.kind) {
+              case "about":
+                return <About key="about" description={demo.description!} photo={aboutPhoto} spec={spec ? section : null} headings={headings} />;
+              case "menu":
+                return <Menu key="menu" items={demo.menuItems} spec={spec ? section : null} headings={headings} />;
+              case "hours":
+                return <Hours key="hours" rows={hourRows} spec={spec ? section : null} headings={headings} />;
+              case "visit":
+                return <Visit key="visit" rows={visitRows} labels={labels} photo={visitPhoto} spec={spec ? section : null} headings={headings} />;
+            }
+          })}
         </main>
       </div>
     </DemoFrame>

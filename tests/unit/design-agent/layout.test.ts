@@ -77,7 +77,9 @@ describe("layout schema", () => {
 
   it("leaves Codex's output schema without layout until DEV-071b, and a required-layout schema is strict", () => {
     expect(Object.keys((designProfileJsonSchema() as { properties: object }).properties)).not.toContain("layout");
-    expect(designProfileJsonSchema()).toEqual((({ $schema: _s, ...rest }) => rest)(z.toJSONSchema(DesignProfileCoreSchema) as Record<string, unknown>));
+    const { $schema, ...core } = z.toJSONSchema(DesignProfileCoreSchema) as Record<string, unknown>;
+    expect($schema).toBeDefined();
+    expect(designProfileJsonSchema()).toEqual(core);
     // DEV-071b: Codex's schema will require layout. It stays closed and fully required.
     const required = z.toJSONSchema(DesignProfileCoreSchema.extend({ layout: LayoutSchema }));
     const walk = (node: unknown): void => {
