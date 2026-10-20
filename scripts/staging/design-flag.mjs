@@ -192,7 +192,7 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
     const show = () => {
       const ms = parseUntil(until);
       const left = Number.isFinite(ms) ? Math.round((ms - now()) / 60000) : null;
-      log(`  ${FLAG} (Preview, ${BRANCH}): ${flag}`);
+      log(`  ${FLAG} (Preview, ${BRANCH}): ${flag} (record ${String(f.id)})`);
       log(`  ${UNTIL} (Preview, ${BRANCH}): ${until}${left === null ? "" : left > 0 ? ` (${left} min left)` : " (passed: the app treats the flag as off)"}`);
     };
     show();
@@ -259,7 +259,7 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
         await call("PATCH", `${projectUrl}/env/${f.id}`, { value: "false" });
       } catch (err) {
         if (/ (401|403)$/.test(err.message)) {
-          log(`  Vercel refused the write (${err.message.split(" ").pop()}): nothing changed`);
+          log(`  the write was refused (${err.message.split(" ").pop()}; by Vercel, or by the session's proxy): nothing changed`);
           return done("WRITE_DENIED", 1);
         }
         throw err;
