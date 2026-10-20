@@ -1,0 +1,15 @@
+{
+  "key": "coffee",
+  "richness": "medium",
+  "industry": "modern specialty coffee stand",
+  "facts": {
+    "name": "EXAMPLE BREW STAND",
+    "category": "cafe",
+    "ward": "中区",
+    "address": "名古屋市中区テスト栄2-4-6 テストビル1F",
+    "hours": "8:00〜17:00",
+    "closed_days": "不定休",
+    "description": "比較用の架空のコーヒースタンドです。実在の店舗ではありません。",
+    "menu_items": ["テストエスプレッソ", "テストカフェラテ", "テストハンドドリップ（日替わりの豆）", "テストコールドブリュー"]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "direction": "japanese_modern",
+  "palette": { "background": "#F6F2EA", "surface": "#ECE4D6", "text": "#1E1C1A", "primary": "#5B2333", "secondary": "#3E3A36", "accent": "#A8823F" },
+  "typography": { "display": "mincho", "body": "serif", "displayCase": "as_is", "displayWeight": "regular", "tracking": "wide" },
+  "heroLayout": { "layout": "stacked_oversized", "height": "tall", "alignment": "left" },
+  "composition": { "grid": "single_column", "infoStyle": "ruled_list", "divider": "hairline" },
+  "motifs": ["corner_marks"],
+  "spacing": { "scale": "generous" },
+  "motion": { "intro": "none", "sectionFade": false },
+  "confidence": 1,
+  "rationale": ["Hand-written spec for the DEV-073 demo (not a Codex answer)."],
+  "layout": {
+    "firstView": "vertical_name",
+    "sections": [
+      { "kind": "about", "variant": "side_heading", "ground": "plain" },
+      { "kind": "menu", "variant": "columns", "ground": "surface" },
+      { "kind": "hours", "variant": "block", "ground": "plain" },
+      { "kind": "visit", "variant": "split", "ground": "inverted" }
+    ],
+    "type": { "scale": "quiet", "headings": "vertical_ja" }
+  }
+}

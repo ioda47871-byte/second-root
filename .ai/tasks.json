@@ -3174,6 +3174,51 @@
         "Stage 1 の比較の実走（WSL worker）"
       ],
       "decision": "2026-10-20: 人の正式承認（Stage 1）。071a: Fresh Review FAIL → 対応 → 再レビュー FAIL（Medium 1: vertical_name の hero の構図、Low 4: DEV-067 の phone の枠の test の所要）→ 対応（掛け軸の構図、空きの検査、test の分割）→ 再々レビュー待ち。071b への申し送り: data-short の判断を normalize の adjustment へ・boutique_minimal の plain/surface は見えない変更・availableFirstViews に name_menu の節順の条件（design-spec-stage1.md）。2026-10-20: DEV-071a（renderer 側）Fresh Review FAIL → 対応 → 再レビュー FAIL（vertical_name の hero）→ 対応 → 再レビュー PASS、PR #83 で develop へ。DEV-071b（prompt・Codex の output schema・pipeline・visibleChanges と記録した follow-up）は未着手; 2026-10-20: 071a merge（PR #83、afd3d9b）。071b を feature/dev-071b-design-spec-codex で実装中（Codex の output schema で layout 必須・prompt の語彙と店ごとの使える節・pipeline の normalize と report・visibleChanges・写真の slot・幅の検査と split の overflow の修正。design-spec-stage1.md §11）; 2026-10-20: 071b Fresh Review FAIL → 対応 → 再レビュー FAIL（visibleChanges の隠す規則）→ 対応（画素の安全網の test）→ 再々レビュー PASS（879b7f8）。Low の対応（安全網の test を 3 file に分割・accent motif と 1 節の頁を追加）の後で merge。Stage 1（071a・071b）はこれで完了。残り: (1) §8-3 の比較の実走（WSL の worker で Codex が実際に layout を作る run、人の承認と操作）、(2) 実走の report で duplicate:<kind>・layout:missing・headings:vertical_ja の頻度を見る、(3) ruled_frame と全幅の band の重なり（DEV-067 の枠の扱いと一緒に）、(4) renderer-jp-name の test の所要（load で 180 s の上限に近い）"
+    },
+    {
+      "id": "DEV-073",
+      "title": "Stage 1 の比較: 業種・ブランドの違う架空の 3 店を、実際の design pipeline で local に流して比べる道具（runner・baseline・metrics report・contact sheet）",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-071"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-073-local-compare",
+      "purpose": "人の正式承認（2026-10-20、design-agent-direction §8 の 5・7）: 業種・ブランドの異なる 3 店で明確に違う Web サイトを生成できるかを、各段の比較項目（店舗間の構造・見た目の違い / 実画面での改善 / 品質審査の結果 / 生成時間とモデルの費用 / 安全性と運用の安定）で比べる。Codex の実走は人の WSL でだけ動くので、この container では道具と test（fake Codex）だけを作り、実走は人の承認ごとに頼む",
+      "acceptance_criteria": [
+        "架空の 3 店（和菓子・コーヒースタンド・ブーランジュリー兼パティスリー、事実の多い / 中 / 少ない）を repo の fixture に。名前・住所は実在しえない「テスト」「架空」の値",
+        "runner は worker と同じ pipeline（brief → render → screenshot → review → revision、同じ gate と prompt）を worker のコードで流す（pipeline を複製しない）。DB・bridge・Staging・queue に触れない。結果は /design-preview/<runId> で見られる run dir",
+        "--human-approval-confirmed が無ければ何も始めない（shell と TS の両方）",
+        "baseline（category default から layout を除いた今の頁）を同じ preview で描く",
+        "report は固定の符号と数だけ（Codex の文章・rationale・shop の文は入れない）: 判定・5 軸・round・revision・Codex の呼び出し数と時間・prompt の長さ・layout と adjustments・店の間と baseline との構造の距離と画素の差・安全の検査。contact sheet の PNG",
+        "参照画像は使わない（PoC の参照 example.com は local fixture ではないため。prompt はその旨を言う）。AI 生成の写真・Instagram 画像は使わない"
+      ],
+      "required_tests": [
+        "unit: fake Codex で runner が run dir・report・contact sheet を作る（Chromium）",
+        "unit: 承認の flag が無ければ拒否（shell・TS）",
+        "unit: report の距離・画素の差・安全の検査",
+        "worker の既存 test（refactor の後も同じ挙動）",
+        "eslint・tsc・build"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "scripts/sales-design-worker/",
+        "tests/unit/design-agent/",
+        "docs/operations/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Staging DB・cycle・flag・Production・timer・実営業送信",
+        "WSL での実走（人の操作と承認）",
+        "品質の閾値・gate・review の prompt の変更",
+        "店舗情報・商品・口コミ・実績の創作、AI 生成の店舗写真、Instagram 画像"
+      ],
+      "human_approval_triggers": [
+        "WSL での比較の実走（HUMAN-017）"
+      ],
+      "decision": "2026-10-20: 着手（develop 2faa27d から）。実装: worker の runJob から runJobPipeline / copyPipelineShots / pipelineRecord を切り出して共有（同じコード）、lib/design-agent/compare/（shops・safety・metrics・report・contact-sheet・run）、scripts/sales-design-worker/compare-local.sh・compare.ts・compare-report.ts、fixture の 3 店と手書きの spec、tests/unit/design-agent/compare.test.tsx（fake Codex + Chromium）。参照画像なし（PoC の example.com は local fixture ではない）: 参照 0 枚のときだけ prompt の 1 行が「参照なし」を言う。手書きの spec の demo（next build + start、Codex の生成ではない）で店の間の構造の距離 0.78〜0.89・baseline どうし 0.23〜0.40。PR #87。Fresh Review（d960ecb）FAIL: Medium 2・Low 6・Nit 6 → 対応済み（.ai/reviews/DEV-073.md の「対応」）: 予算を 3300 秒（jail の 3500 秒の中）、止まるときも report、timer に触れない doc の 1 コマンド、lock の中での checkout、worker の checkout で build しない、compare.ts は compare-local.sh の下でだけ動く、条件の偏りの節、test の追加。forbidden_scope（review の prompt の変更）の例外: brief と review の `Attached images` の行の、参照 0 枚の分岐だけ（DEV-073 の比較専用）。worker は参照 0 枚の job を REFERENCE_CHECK_FAILED で拒否するので到達せず、参照 1 枚以上の prompt は 1 字も変わらない（既存の prompt の snapshot test は無変更で pass）。品質の閾値・gate・review の基準は不変。残り: Fresh Review の再確認、WSL での実走（HUMAN-017、docs/operations/design-compare-local.md）。Fresh Review FAIL（Medium 2: jail の 58 分の上限・timer に触れる手順）→ 対応 → 再レビュー PASS（Nit 2 → 対応）。WSL での実行は HUMAN-017（人の承認）"
     }
   ]
 }

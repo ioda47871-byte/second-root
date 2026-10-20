@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "direction": "french_classic",
+  "palette": { "background": "#FBF5F2", "surface": "#F3E4DF", "text": "#2B2124", "primary": "#7A2E3A", "secondary": "#4D3A3F", "accent": "#C99A6E" },
+  "typography": { "display": "editorial_serif", "body": "serif", "displayCase": "as_is", "displayWeight": "light", "tracking": "normal" },
+  "heroLayout": { "layout": "centered_cover", "height": "tall", "alignment": "center" },
+  "composition": { "grid": "asymmetric_7_5", "infoStyle": "colophon", "divider": "double_rule" },
+  "motifs": ["ruled_frame"],
+  "spacing": { "scale": "generous" },
+  "motion": { "intro": "none", "sectionFade": false },
+  "confidence": 1,
+  "rationale": ["Hand-written spec for the DEV-073 demo (not a Codex answer)."],
+  "layout": {
+    "firstView": "name_hours",
+    "sections": [
+      { "kind": "menu", "variant": "feature_first", "ground": "surface" },
+      { "kind": "visit", "variant": "stacked", "ground": "plain" }
+    ],
+    "type": { "scale": "quiet", "headings": "ja_en" }
+  }
+}
