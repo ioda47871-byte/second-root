@@ -104,7 +104,7 @@ export function buildBriefPrompt(input: { demo: DemoView; referenceCount: number
  * screenshots can show. Fixed text (no words from Codex).
  */
 export function notVisibleLine(candidate: string): string {
-  return `This is ${candidate} again: your revised_profile for it changed nothing the screenshots can show (only direction, alignment, motion, confidence or rationale, or nothing at all), so it would render the same page. Give a revised_profile that changes at least one visible setting (palette, typography, heroLayout.layout or height, composition, motifs, spacing) aimed at the problems you found.`;
+  return `This is ${candidate} again: your revised_profile for it changed nothing the screenshots can show (only direction, alignment, motion, confidence, rationale, the surface colour, or the accent colour without a motif drawn in it, or nothing at all), so it would render the same page. Give a revised_profile that changes at least one visible setting (the background, text, primary or secondary colour, typography, heroLayout.layout or height, composition, motifs, spacing) aimed at the problems you found.`;
 }
 
 /** One earlier round, as the reviewer is told about it: scores and problem codes only (DEV-034). */
