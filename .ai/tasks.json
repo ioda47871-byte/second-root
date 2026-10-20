@@ -3081,6 +3081,53 @@
         "次の controlled run"
       ],
       "decision": "2026-10-20: 人の指示で Claude が追加。WSL: build は .next/cache（git clean は -x なしなので残る）が温まっていれば font を再取得しない（2026-10-20 に proxy なしの再 build で確認）。Fresh Review FAIL（Medium 1: 住所の weight 上限 600 が 400/900 の書体で Black になる）→ 対応: editorial_serif の住所はサイトの明朝（400/600）、Shippori Mincho B1 は 400 でサイトの Shippori Mincho とほぼ同じ字形のため外し mincho はサイトの書体に。静的 font は 19MB → 30MB（初回取得と build 出力の増分は約 11MB）、demo 系 3 route の font CSS は 3 書体で約 150KB gzip（unicode-range の宣言。字形ファイルは頁で使う範囲だけ）。後続: 静的書体では light=regular・bold=black に見え、Playfair は 400 未満が無いので editorial_serif の和文名の light↔regular は描かれない（DEV-066 の見える判定は見える扱い）。再レビュー PASS（Nit 2 → 対応: CSS の注記と語彙の和文の説明）"
+    },
+    {
+      "id": "DEV-072",
+      "title": "Stage 3 の技術検証: 店舗別 CSS の検査器（静的 guard と Chromium の render check、local preview だけ）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-067"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-072-css-guard",
+      "purpose": "人の正式承認（2026-10-20、design-agent-direction-2026-10-20.md §8.3）: Stage 3（店舗別 CSS 生成）の技術検証。まず生成 CSS を通す検査器を作る: 構文解析と許可リスト・JS / 外部通信 / 任意 URL の禁止・店舗情報と注記を隠さない・font / contrast / 可読性・PC とスマホの崩れの検証・不合格なら既存の表示へ",
+      "acceptance_criteria": [
+        "guardShopCss: 自前の厳格な tokenizer / parser（CSS Syntax 3 の部分集合、fail closed）。escape・<・非 ASCII・url()・@import など at-rule・!important・custom property・許可外の property / value / 関数 / selector を固定の符号で拒否し、通ったものは parse tree から再直列化",
+        "selector はすべて scope root #shop-css から。兄弟結合子なし（notice と footer は scope の兄弟）。属性は renderer の安定した属性の固定値だけ",
+        "render check（Chromium、360・390・1440）: 横 overflow・事実の存在 / 非表示 / 画面外 / 切れ / 覆い / 不透明度 / 字の大きさ / 潰れ / 実際に塗られた地の上の contrast・注記帯と footer が変わらず覆われない・頁の高さ。shop CSS なしの同じ頁と比べ、壊したものだけを固定の符号で返す",
+        "shopCssOrFallback: guard と render check の両方を通ったときだけ CSS、そうでなければ null（profile renderer の表示）",
+        "renderer は local の design preview だけが shop CSS を渡せる（公開 /demo と admin preview は渡せないことを test で確認）。renderer でももう一度 guard",
+        "架空の店の手書きの shop CSS 3 つが通る"
+      ],
+      "required_tests": [
+        "unit: guard の adversarial corpus（各禁止構文・escape・大文字小文字・comment・注記への selector・content の文字・display none・font-size 0・position fixed・巨大な値）と許可される例・出力の冪等性",
+        "Chromium: guard を通るが事実を隠す / 覆う / 低 contrast / 縮める CSS が落ちる・注記に届いた CSS（guard の迂回を模擬）が落ちる・例の 3 つが通る",
+        "scope: 公開 /demo と admin preview のコードと markup に shop CSS が無い・preview の record の束縛",
+        "eslint・tsc・next build・CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/shop-css/",
+        "components/demo/profile/ProfileRenderer.tsx",
+        "lib/design-agent/preview.ts",
+        "app/design-preview/",
+        "tests/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "公開 /demo・admin preview での shop CSS",
+        "生成器（prompt）・WSL jail への接続・保存 / 配信（別の承認）",
+        "Staging / Production / DB / flag / Vercel / WSL の操作",
+        "CSS・font のネットワーク取得"
+      ],
+      "human_approval_triggers": [
+        "実際の WSL worker への投入",
+        "Staging 実走",
+        "公開 demo への適用"
+      ],
+      "decision": "2026-10-20: §8.3 の承認に基づき Claude が追加。設計は .ai/proposals/stage3-shop-css.md。parser は postcss（next の推移的依存）ではなく自前の小さな厳格 parser（寛容な error recovery が無く、許可する部分集合だけを読むので fail closed にしやすい・依存を増やさない）"
     }
   ]
 }
