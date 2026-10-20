@@ -53,11 +53,28 @@ jobs:
       # The Codex sandbox tests run against real bubblewrap, unprivileged (as on the WSL worker).
       # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor; WSL does not.
       - run: sudo apt-get install -y bubblewrap && sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - run: npm test
+      # The shop-CSS guard's render checks (Chromium, many widths) run in their own job below.
+      - run: npx vitest run --exclude "tests/unit/design-agent/shop-css/**"
         env:
           SR_REQUIRE_BWRAP: "1"
       # The capture helper's Unix boundary with real users (needs root to create them).
       - run: sudo env "PATH=$PATH" SR_CROSS_USER_TEST=1 npx vitest run tests/unit/design-agent/cross-user.test.ts
+
+  # DEV-072: the shop-CSS guard and its Chromium render checks, in parallel with unit
+  # (together they no longer fit unit's time limit). Every test still runs on every PR.
+  shop-css:
+    name: shop-css
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx vitest run tests/unit/design-agent/shop-css
 
   integration:
     name: integration
