@@ -169,6 +169,10 @@ drafted → sent → replied(interested|question|meeting_request|decline|other)
 - `noindex,nofollow`（meta）＋ `X-Robots-Tag: noindex, nofollow`。
 - 表示できるのは**確認済みの公開情報のみ**。架空の営業時間・商品・価格・沿革・店主ストーリー・人気商品・受賞歴等は禁止。不明なら省略。
 - Instagram 画像等を無断転載しない。Second Root 側のテンプレート素材と確認済みテキストのみ。
+- 画像の取得・分析と再掲載を区別する（DEV-070、2026-10-20 人間決定）:
+  - **取得・分析は可**: Instagram・公式サイトの reference screenshot（privacy 処理済み）を、色・雰囲気などのデザイン判断のために Codex に見せる（DEV-028 の既存の経路）。撮った画像は job の後に消す。
+  - **再掲載・表示はしない**: Instagram の画像を、店舗の利用許可なしに demo の頁へ載せない・表示しない。reference screenshot から写真 asset へ移す経路は無い（asset intake は capture・temp・preview の場所を拒否し、型でも分けている）。
+  - 写真 asset は `approved_real`（店舗が提供または利用を許可し、同意の記録があるもの）だけ。**AI 生成・架空の店舗写真は使わない**（DEV-029 の `generated_concept` は DEV-070 で削除）。公開 demo には今も写真を出さない（`PUBLIC_DEMO_ASSETS_ENABLED = false`）。
 - 公開期間: 原則初回営業から30日。
   - デモ作成時（ingest 時・未送信）は `expires_at = null`。**未送信デモは公開 URL では表示せず**、ログイン済み管理者だけが管理画面のプレビューで確認できる。
   - 初回営業を人間が「送信済み」にした時点で `expires_at = sent_at + 30日` を設定し、公開 URL で表示されるようになる。
