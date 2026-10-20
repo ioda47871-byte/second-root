@@ -11,6 +11,8 @@
 - 人の操作: Supabase で read-only に使える新しい access token を発行し、Claude の cloud environment の設定（session の title bar の environment メニュー → Edit → Network secrets）で `api.supabase.com` の値を差し替える。新しい session から有効。値は会話・GitHub に出さない。古い token は revoke。
 - 代わり: 人が Supabase SQL editor で `snapshot.sql`・`after.sql` を実行し、結果（profile の中身は含まない）を貼ってもよい。
 - 解除条件: Claude の read-only query が通る。
+- 2026-10-20 人の判断: 新しい token は今は発行しない。読み取りは人の側の Supabase 接続（ChatGPT 経由、read-only）で行う。Claude からの読み取りは 401 のまま（未解除のまま残す。必要になったら上の手順で）。
+- 2026-10-20 人が `snapshot.sql` を read-only で実行（事前の写し）: demo `efb4bdb2-5fb8-4575-b2e1-76217a832485`・`ready`・attempts 1・job `0fdbda79-794a-410b-931f-9677628742a3`・worker commit `f562166fda314af32d7c0b60a2c6f0f4262fa697`・updated_at 2026-10-16 10:10:44.754171+00・profile_md5 `89911ff811874960e23ae80d449e4542`・profile_bytes 722・outreach initial / instagram / drafted / 未送信・do_not_contact false・disabled_at null・queue_open 0。手順 A の前提はすべて満たす。
 
 ### HUMAN-010 — design worker の cycle（DEV-052）の WSL への install と timer の有効化
 
@@ -30,7 +32,8 @@
 - controlled run の手順（2026-10-20 更新。HUMAN-014 は済み。DB の書き込み・flag・run・timer はすべて未承認）。SQL は `.ai/runbooks/controlled-run/`（ローカルの Postgres で確かめた）
   - 対象: demo `efb4bdb2-5fb8-4575-b2e1-76217a832485`（baked_goods、Instagram のみ、outreach は drafted、attempts 1/3）。予備 `b2048c61-…`。`d5656932-…`（attempts 2）は使わない
   - A. 読むだけ（承認不要）: `snapshot.sql` で ready・attempts 1・outreach が drafted で未送信・do_not_contact false・disabled でない・`queue_open` 0 を確かめる（HUMAN-015 で Claude から読めない間は人が実行）
-  - B. 人が `restore-gen.sql`（読むだけ）を実行し、出力の update 文を自分の PC に保存（git・会話に貼らない）
+  - B. 人が `restore-gen.sql`（読むだけ）を実行し、出力の update 文を自分の PC に保存（git・会話に貼らない）。保存したら確かめる: 文が `update public.sales_demos set design_status = 'ready'` で始まり `returning … profile_md5;` で終わる 1 行、`89911ff811874960e23ae80d449e4542` は文の中には出ない（戻した後に returning が返す値）。0 行なら demo が ready でない → 止まる。戻すときは returning の profile_md5 が `89911ff8…` であることを確かめる
+  - 承認の単位（2026-10-20 整理）: 承認 1 = C（reset.sql を 1 回、1 行）、承認 2 = D と F（flag を true → 必ず false、window の長さを決める）、承認 3 = E（cycle.sh を 1 回、timer・unit なし）。B の update を使う復旧は別の書き込みなので、使うときに改めて承認
   - C. **[承認 1: DB 書き込み]** 人が `reset.sql` → 1 行・`pending`・attempts 1。0 行なら止まって Claude に知らせる
   - D. **[承認 2: Staging の flag]** Vercel の Preview（develop）で `SALES_AI_DESIGN_ENABLED=true` → develop を redeploy → Claude が `npm run staging:bypass-status` で "true"・READY を確認。window の間は Sales Agent の run を始めない（flag が on だと新しい demo が pending で作られる）
   - E. **[承認 3: cycle を 1 回]** WSL で `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh --dry-run` → `CYCLE_DRY_RUN_OK` の後に `sudo bash /root/sr-capture-admin/scripts/sales-design-worker/cycle.sh`（timer・unit は使わない）。最後の `CYCLE_RESULT` 行を Claude に
