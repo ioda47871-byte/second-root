@@ -15,8 +15,8 @@ Renderer vocabulary (the only things you can choose; every value is accepted):
   primary = shop name and strong rules (≥3:1 on background; background on primary ≥4.5:1, used for the footer);
   secondary = small labels and the notice bar text (≥4.5:1 on background); accent = motif details only (location label marks, dot_grid, stamp_ring,
   muffin_paper_svg): with none of these motifs it shows nowhere. The monogram is drawn in primary.
-- typography.display: editorial_serif (high-contrast Latin serif, Japanese in Mincho), condensed_grotesk (tall, narrow, heavy sans),
-  light_grotesk (wide light sans), mincho (Japanese Mincho for everything). body: sans | serif.
+- typography.display: editorial_serif (high-contrast Latin serif, Japanese in an old-style Mincho), condensed_grotesk (tall, narrow, heavy Latin sans; Japanese in a square gothic),
+  light_grotesk (wide light Latin sans; Japanese in an open gothic), mincho (Japanese Mincho for everything). body: sans | serif.
   displayCase: as_is | uppercase (Latin only). displayWeight: light | regular | bold | black. tracking: tight | normal | wide.
 - heroLayout.layout (each one sets the shop name as the hero's main visual):
   split_crop = one word per line, every other line pushed right (e.g. "EXAMPLE" / "      BAKE"). Only a Latin name of two to four
