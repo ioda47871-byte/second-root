@@ -3040,7 +3040,7 @@
     {
       "id": "DEV-070",
       "title": "generated_concept（イメージ画像）の経路を削除し、写真は approved_real だけにする",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-029"
@@ -3081,7 +3081,7 @@
         "写真 PoC の実行（使う写真ごとの承認）",
         "WSL の古い generated_concept asset の削除（任意）"
       ],
-      "decision": "2026-10-20: 人の決定（§8.4）で Claude が追加。generated_concept は local preview だけで、公開 route・DB・Vercel 側からの依存は無かった（.ai/reviews/DEV-070.md）"
+      "decision": "2026-10-20: 人の決定（§8.4）で Claude が追加。generated_concept は local preview だけで、公開 route・DB・Vercel 側からの依存は無かった（.ai/reviews/DEV-070.md）。Fresh Review PASS（Low 3・Nit 5 → Low 1・2・Nit 3 を対応、PR #84）"
     }
   ]
 }

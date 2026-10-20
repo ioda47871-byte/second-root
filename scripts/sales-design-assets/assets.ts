@@ -57,7 +57,7 @@ async function main(): Promise<number> {
   if (command === "list") {
     const manifest = await loadManifest(store, jobId);
     if (!manifest) {
-      // No manifest, or one that no longer parses (e.g. a generated_concept photo left from before DEV-070).
+      // A manifest that no longer parses (e.g. a generated_concept photo left from before DEV-070); a missing one lists as empty.
       say("NO_MANIFEST");
       return 1;
     }

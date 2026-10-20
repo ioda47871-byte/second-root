@@ -12,7 +12,7 @@
 
 - job は架空のパン屋（`POC SAMPLE BAKERY`、facts は `photo-poc.sh` に固定）。実店舗の facts・名称・URL・Instagram は使わない。
 - reference は `https://example.com/`（IANA の文書用ドメイン。店舗ではない）。公式サイトの capture 経路をそのまま通るが、写真 asset にはならない。
-- 写真は `approved_real` だけ。同意の記録（`--consent-id`・`--approved-by`・`--approved-at`）が要り、scope は `local_preview` だけで入れる（公開 demo には出さない）。
+- 写真は `approved_real` だけ。同意の記録（`--consent-id`・`--approved-by`・`--approved-at`）が要り、scope は `local_preview` だけで入れる（公開 demo には出さない）。PoC の頁は架空の店の事実で組むので、同意は「その店の写真を、架空の店の試験用の local preview に使う」ことを明示して得る。
   preflight は全写真が `approved_real` で同意が `local_preview` を含むことを確かめる（`approved_for_local_preview`、満たさなければ `NOT_APPROVED_FOR_LOCAL_PREVIEW`）。
 - worker・Codex は画像を作らない。画像生成 AI・外部の画像生成 API は使わない。
 - Instagram・公式サイトの画像は、店舗の利用許可（同意の記録）が無ければ写真として入れない。reference screenshot は色・雰囲気の分析にだけ使われ、asset にはならない（intake が拒否する）。

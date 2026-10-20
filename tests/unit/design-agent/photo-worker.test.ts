@@ -173,6 +173,8 @@ describe("the worker with photos", () => {
     const runDir = join(l.out, jobId);
     expect(existsSync(join(runDir, "assets.json"))).toBe(false);
     expect(json(join(runDir, "report.json")).photos).toBeNull();
+    // the report says why the page has no photos
+    expect((json(join(runDir, "report.json")) as { codex: { notes: string[] } }).codex.notes).toContain("MANIFEST_INVALID");
     expect(readdirSync(runDir).filter((n) => n.endsWith(".images.json"))).toEqual([]);
     assertClean(l);
   });
