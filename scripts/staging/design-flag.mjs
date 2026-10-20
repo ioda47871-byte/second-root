@@ -7,6 +7,7 @@
 //   npm run staging:design-flag -- on --until 2026-10-21T03:00:00Z
 //   npm run staging:design-flag -- off
 //   npm run staging:design-flag -- verify --expect on|off --sha <40 hex>
+//   npm run staging:design-flag -- write-check --id <the flag's env var id>
 //
 // - status: reads the two env vars, the project's production branch and the deployment
 //   behind the develop alias. Changes nothing.
@@ -17,6 +18,12 @@
 //   --if-until <iso>: skipped when the time box is another valid time (the recovery task of
 //   one window never closes a later window); a missing or invalid time box still turns it off.
 // - on refuses while the flag is not false (a window is never extended; off first).
+// - write-check (DEV-065): proves that this credential may write the flag, without changing
+//   it. Only when the flag reads "false" right before, and --id is the id of the checked
+//   Preview develop flag record: ONE PATCH of the same value "false", then read back.
+//   WRITE_CHECK_OK, or WRITE_DENIED (Vercel answered 401/403; nothing changed). The record's
+//   updatedAt may move, so the next develop deployment (a push) is what `verify --expect off`
+//   then checks.
 // - verify: read only. The env vars give the expected state and the develop alias serves a
 //   READY deployment of <sha> created after the env vars last changed (Vercel reads env vars
 //   at build time, so only such a deployment carries the value). "off" needs the flag to be
@@ -115,12 +122,16 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
     const opts = {};
     for (let i = 0; i < rest.length; i += 2) {
       const k = rest[i];
-      if (!/^--(until|expect|sha|if-until)$/.test(k ?? "") || rest[i + 1] === undefined) throw new Error(`unknown or incomplete option ${String(k)}`);
+      if (!/^--(until|expect|sha|if-until|id)$/.test(k ?? "") || rest[i + 1] === undefined) throw new Error(`unknown or incomplete option ${String(k)}`);
       opts[k.slice(2)] = rest[i + 1];
     }
-    const allowed = { status: [], on: ["until"], off: [], verify: ["expect", "sha"] }[cmd];
+    const allowed = { status: [], on: ["until"], off: [], verify: ["expect", "sha"], "write-check": ["id"] }[cmd];
     const optional = cmd === "off" ? ["if-until"] : [];
-    if (!allowed) throw new Error("usage: status | on --until <YYYY-MM-DDTHH:MM:SSZ> | off [--if-until <YYYY-MM-DDTHH:MM:SSZ>] | verify --expect on|off --sha <40 hex>");
+    if (!allowed)
+      throw new Error(
+        "usage: status | on --until <YYYY-MM-DDTHH:MM:SSZ> | off [--if-until <YYYY-MM-DDTHH:MM:SSZ>] | verify --expect on|off --sha <40 hex> | write-check --id <env var id>",
+      );
+    if (opts.id !== undefined && !ENV_ID.test(opts.id)) throw new Error("--id must be a Vercel env var id");
     for (const k of Object.keys(opts)) if (!allowed.includes(k) && !optional.includes(k)) throw new Error(`--${k} is not an option of ${cmd}`);
     for (const k of allowed) if (opts[k] === undefined) throw new Error(`${cmd} needs --${k}`);
     if (opts["if-until"] !== undefined && !Number.isFinite(parseUntil(opts["if-until"]))) throw new Error("--if-until must be YYYY-MM-DDTHH:MM:SSZ (UTC)");
@@ -238,6 +249,28 @@ export async function designFlag({ argv, env, fetchImpl, log, now = Date.now }) 
       log("  written. Takes effect in the next develop deployment (push to develop), then: verify --expect on --sha <that commit>");
       show();
       return done("ON_WRITTEN", 0);
+    }
+
+    if (cmd === "write-check") {
+      if (String(f.id) !== opts.id) throw new Error(`refused: --id is not the id of the ${FLAG} record for Preview ${BRANCH}`);
+      if (flag !== "false") throw new Error(`refused: ${FLAG} is ${flag}, not false; the check only rewrites false`);
+      const before = Number(f.updatedAt ?? 0);
+      try {
+        await call("PATCH", `${projectUrl}/env/${f.id}`, { value: "false" });
+      } catch (err) {
+        if (/ (401|403)$/.test(err.message)) {
+          log(`  Vercel refused the write (${err.message.split(" ").pop()}): nothing changed`);
+          return done("WRITE_DENIED", 1);
+        }
+        throw err;
+      }
+      ({ f, u } = await read());
+      if (flag !== "false") throw new Error(`${FLAG} did not read back as false`);
+      const after = Number(f.updatedAt ?? 0);
+      log(`  wrote "false" over "false" (record ${f.id}, Preview ${BRANCH}); updatedAt ${after > before ? "moved" : "unchanged"}`);
+      log("  next: push to develop (a new deployment), then verify --expect off --sha <that commit>");
+      show();
+      return done("WRITE_CHECK_OK", 0);
     }
 
     // off
