@@ -68,7 +68,7 @@ describe("render check: guard-passing stylesheets that break facts fail (DEV-072
     ["a ground the colour of the text", "#shop-css main { background-color: #2a1916; }", ["fact_contrast"]],
     ["a gradient the colour of the text", "#shop-css main { background-image: linear-gradient(#2a1916, #2b1a17); }", ["fact_contrast"]],
     ["faded through two ancestors", "#shop-css main { opacity: 0.9; } #shop-css section { opacity: 0.9; }", ["fact_faded"]],
-    ["covered by a heading moved over them", "#shop-css section { display: grid; } #shop-css section > h2, #shop-css section > p, #shop-css section > ol, #shop-css section > div { grid-row: 1; grid-column: 1; } #shop-css section > h2 { order: 2; background-color: var(--p-bg); }", ["fact_covered"]],
+    ["covered by a heading moved over them", "#shop-css section { display: grid; } #shop-css section > h2, #shop-css section > p, #shop-css section > ol, #shop-css section > div { grid-row: 1; grid-column: 1; } #shop-css section > h2 { position: relative; z-index: 1; background-color: var(--p-bg); }", ["fact_covered"]],
     ["clipped by the hero", "#shop-css header { min-height: 0; max-height: 80px; }", ["fact_clipped"]],
     ["squeezed into a narrow column", "#shop-css section p { max-width: 20px; }", ["fact_squeezed"]],
     ["wider than the screen (the canvas clips it)", "#shop-css main { min-width: 2400px; }", ["overflow_x", "fact_clipped", "fact_offscreen"]],

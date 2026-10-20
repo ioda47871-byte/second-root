@@ -307,6 +307,7 @@ export const FREEZE_MOTION_CSS = "*, *::before, *::after { animation-duration: 0
  * wider). A shop stylesheet cannot write @container or container-type, but it
  * can change the width a container gets, and so the viewport width where a
  * switch happens; the render check finds those widths from these distances.
+ * null when the page has no @container width condition at all.
  */
 export const CONTAINER_SCRIPT = String.raw`() => {
   const lengths = [];
@@ -329,8 +330,9 @@ export const CONTAINER_SCRIPT = String.raw`() => {
       // a sheet that cannot be read has no container rules of ours
     }
   }
+  // no width condition in any @container rule (whatever the media): nothing can switch
+  if (lengths.length === 0) return null;
   const out = [];
-  if (lengths.length === 0) return out;
   const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   for (const el of Array.from(document.querySelectorAll("body *"))) {
     const s = getComputedStyle(el);

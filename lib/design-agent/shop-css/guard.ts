@@ -295,6 +295,12 @@ function parseDeclarations(items: CV[], containers: boolean, p: Problems): strin
       p.add("display_on_text");
       continue;
     }
+    // order only moves rows, sections and lists, never a text element inside its row
+    // (a value before its label: re-review 4, Nit 1)
+    if (prop === "order" && !containers) {
+      p.add("order_on_text");
+      continue;
+    }
     out.push(`${prop}: ${serializeTerms(valueTerms as Term[])}`);
   }
   return out;
@@ -306,7 +312,7 @@ function parseRule(source: string, prelude: CV[], body: CV[], p: Problems, count
   if (selectorItems.length > SHOP_CSS_LIMITS.selectorsPerRule) p.add("too_many_selectors");
   const selectors = selectorItems.map((s) => parseSelector(source, s, p));
   if (selectors.some((s) => s === null)) return null;
-  // grid / flex only when every subject is an element that holds no text of its own (or the scope root)
+  // grid / flex and order only when every subject is an element that holds no text of its own (or the scope root)
   const containers = selectors.every((s) => {
     const subject = s!.compounds[s!.compounds.length - 1]!;
     if (subject.root) return true;

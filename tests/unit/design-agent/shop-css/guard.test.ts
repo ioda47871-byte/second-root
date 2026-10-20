@@ -286,6 +286,15 @@ describe("guardShopCss rejects (DEV-072)", () => {
     expect(rejects("#shop-css ~ footer { color: #000 }")).toEqual(["selector_combinator"]);
     expect(rejects('#shop-css [data-kind^="m"] { color: #000 }')).toEqual(["selector_attribute"]);
     expect(rejects("#shop-css p { display: grid }")).toEqual(["display_on_text"]);
+    // re-review 4, Nit 1: a value moved before its label in its row
+    expect(rejects("#shop-css dd { order: -1 }")).toEqual(["order_on_text"]);
+    expect(rejects("#shop-css dl > div > dt { order: 1 }")).toEqual(["order_on_text"]);
+    expect(rejects("#shop-css section, #shop-css h2 { order: 1 }")).toEqual(["order_on_text"]);
+    // re-review 4, Medium 1: auto-fill / auto-fit columns (a container's width as a sawtooth of the viewport)
+    for (const count of ["auto-fill", "auto-fit", "AUTO-FILL"])
+      expect(rejects(`#shop-css section > div { display: grid; grid-template-columns: repeat(${count}, minmax(414px, 1fr)) }`)).toEqual(["value_forbidden:grid-template-columns"]);
+    expect(rejects("#shop-css section > div { display: grid; grid-template-rows: repeat(auto-fill, 40px) }")).toEqual(["value_forbidden:grid-template-rows"]);
+    expect(rejects("#shop-css section > div { display: grid; grid-template-columns: 1fr minmax(0, repeat(auto-fit, 1fr)) }")).toEqual(["value_forbidden:grid-template-columns"]);
     expect(rejects("#shop-css p { background-image: linear-gradient(#fff, #000) }")).toEqual(["property_forbidden"]);
     expect(rejects("#shop-css * { color: #000 }")).toEqual(["selector_element"]);
     expect(rejects("#shop-css p { box-shadow: 0 4px 0 #000 }")).toEqual(["value_forbidden:box-shadow"]);
@@ -366,7 +375,9 @@ describe("guardShopCss accepts the allowed vocabulary and re-serializes", () => 
     // breakpoints at the ends of the checked widths, in px and em
     accepts("@media (min-width: 320px) and (max-width: 1920px) { #shop-css p { color: #000; } } @media (min-width: 20em) and (max-width: 120em) { #shop-css li { color: #000; } }");
     accepts("#shop-css h1 { writing-mode: vertical-rl; text-orientation: upright; }");
-    accepts("#shop-css main { display: grid; grid-template-columns: 96px minmax(0, 1fr) repeat(auto-fit, minmax(140px, 1fr)); }");
+    accepts("#shop-css main { display: grid; grid-template-columns: 96px minmax(0, 1fr) repeat(3, minmax(140px, 1fr)); }");
+    // order on rows, sections and lists
+    accepts("#shop-css main > section:last-child { order: -1; } #shop-css dl > div:first-child { order: 2; }");
     // grid and flex on the elements that hold no text of their own
     accepts("#shop-css section, #shop-css div, #shop-css ol, #shop-css ul, #shop-css dl, #shop-css header, #shop-css main { display: flex; }");
     accepts("#shop-css { display: grid; }");
@@ -393,7 +404,7 @@ describe("the Fresh Review's static probes (DEV-072)", () => {
     "#shop-css p { height: 0 }",
     "#shop-css p { column-count: 4; height: 20px }",
     "#shop-css dt { color: transparent }",
-    "#shop-css p { order: -10 }",
+    "#shop-css div { order: -10 }",
     "#shop-css p { float: left; width: 2400px }",
     "#shop-css p { color: #0000 }",
   ];

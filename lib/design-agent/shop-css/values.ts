@@ -248,7 +248,10 @@ function isTrack(t: Term, depth = 0): boolean {
   if (t.name === "repeat") {
     if (groups.length !== 2 || groups[0]!.length !== 1) return false;
     const count = groups[0]![0]!;
-    if (!(int(1, 12)(count) || kw("auto-fit", "auto-fill")(count))) return false;
+    // a fixed count only: auto-fill / auto-fit make column widths a sawtooth of the
+    // viewport, so a container's width can cross a @container length in a band of
+    // a few px anywhere (re-review 4, Medium 1); defence in depth beside the 1px scan
+    if (!int(1, 12)(count)) return false;
     return groups[1]!.length >= 1 && groups[1]!.length <= 6 && groups[1]!.every((x) => isTrack(x, depth + 1));
   }
   return false;

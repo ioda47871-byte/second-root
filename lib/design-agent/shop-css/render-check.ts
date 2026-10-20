@@ -452,62 +452,81 @@ async function checkWidth(input: ShopCssCheckInput, width: number): Promise<stri
  * a failure of the check itself is a problem (check_error), so the caller
  * falls back.
  */
-/** Viewport widths scanned for container-query switches, and the cap on the switches added. */
-const SCAN_STEP = 16;
+/** The cap on the container-query switches added to the checked widths. */
 export const MAX_CONTAINER_SWITCHES = 24;
+
+/**
+ * Runs in a blank page as wide as the widest checked width: sets the page in a
+ * frame VIEWPORT_HEIGHT px high and, for every width from min to max, makes the
+ * frame that wide and reads CONTAINER_SCRIPT in it. The frame's viewport is
+ * then exactly a page of that width (checked at every width: innerWidth and the
+ * layout width must equal it, or the scan fails). One evaluation, no resize of
+ * the real viewport per pixel: the cost is the layout alone.
+ */
+const SCAN_SCRIPT = String.raw`async ({ html, script, min, max, height }) => {
+  const frame = document.createElement("iframe");
+  frame.style.cssText = "border:0;margin:0;padding:0;display:block;width:" + min + "px;height:" + height + "px";
+  frame.srcdoc = html;
+  await new Promise((resolve) => {
+    frame.onload = resolve;
+    document.body.appendChild(frame);
+  });
+  const win = frame.contentWindow;
+  const read = win.eval("(" + script + ")");
+  const at = (width) => {
+    frame.style.width = width + "px";
+    if (win.innerWidth !== width || win.document.documentElement.clientWidth !== width) return undefined;
+    return read();
+  };
+  const first = at(min);
+  if (first === undefined) return null;
+  if (first === null) return [];
+  const out = [];
+  let prev = first;
+  for (let width = min + 1; width <= max; width++) {
+    const now = at(width);
+    if (now === undefined || now === null) return null;
+    // a different number of containers (a media switch added or removed one) also counts
+    if (prev.length !== now.length || now.some((d, i) => Math.sign(d) !== Math.sign(prev[i]))) out.push(width - 1, width);
+    prev = now;
+  }
+  return out;
+}`;
+
+/** Scans already made, per browser (its faces set the em and the text widths) and page. */
+const SCANS = new WeakMap<Browser, Map<string, number[]>>();
+const SCAN_CACHE_SIZE = 32;
 
 /**
  * The viewport widths, within the checked range, where a container query of
  * the page switches (a container's inline size crosses a @container length),
- * found by scanning and then bisecting to the pixel. Each switch adds the width
- * on either side of it to the checked widths: the shop stylesheet moves these
+ * found at every width from 320 to 1920px. Each switch adds the width on
+ * either side of it to the checked widths: the shop stylesheet moves these
  * switches by changing the widths containers get, so its @media breakpoints
- * alone do not find them. null when there are more than MAX_CONTAINER_SWITCHES
- * (the check then fails closed).
+ * alone do not find them. Every pixel, not samples: a container's width need
+ * not be monotonic in the viewport (re-review 4, Medium 1: auto-fill columns,
+ * and flex items that wrap, are a sawtooth; a band of 4px between two samples
+ * 16px apart was missed). null when there are more than MAX_CONTAINER_SWITCHES
+ * or the scan could not set a width exactly (the check then fails closed).
  */
 export async function containerSwitchWidths(browser: Browser, html: string): Promise<number[] | null> {
-  const context = await browser.newContext({ viewport: { width: SHOP_CSS_MEDIA_RANGE.min, height: VIEWPORT_HEIGHT }, deviceScaleFactor: 1, reducedMotion: "reduce", serviceWorkers: "block" });
+  const cache = SCANS.get(browser) ?? new Map<string, number[]>();
+  SCANS.set(browser, cache);
+  const known = cache.get(html);
+  if (known) return known;
+  const { min, max } = SHOP_CSS_MEDIA_RANGE;
+  const context = await browser.newContext({ viewport: { width: max, height: VIEWPORT_HEIGHT }, deviceScaleFactor: 1, reducedMotion: "reduce", serviceWorkers: "block" });
   try {
     await context.route("**/*", (route) => route.abort());
     const page = await context.newPage();
-    await page.setContent(html, { waitUntil: "load" });
-    const at = async (width: number) => {
-      await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-      return (await page.evaluate(`(${CONTAINER_SCRIPT})()`)) as number[];
-    };
-    const widths = new Set<number>();
-    let prevWidth: number = SHOP_CSS_MEDIA_RANGE.min;
-    let prev = await at(prevWidth);
-    for (let w = prevWidth + SCAN_STEP; w <= SHOP_CSS_MEDIA_RANGE.max + SCAN_STEP - 1; w += SCAN_STEP) {
-      const width: number = Math.min(w, SHOP_CSS_MEDIA_RANGE.max);
-      const now = await at(width);
-      const n = Math.min(prev.length, now.length);
-      for (let i = 0; i < n; i++) {
-        if (Math.sign(prev[i]!) === Math.sign(now[i]!)) continue;
-        // bisect to the first width on the other side
-        let lo = prevWidth;
-        let hi = width;
-        const side = Math.sign(prev[i]!);
-        while (hi - lo > 1) {
-          const mid = Math.floor((lo + hi) / 2);
-          const d = (await at(mid))[i];
-          if (d !== undefined && Math.sign(d) === side) lo = mid;
-          else hi = mid;
-        }
-        widths.add(lo);
-        widths.add(hi);
-        if (widths.size > MAX_CONTAINER_SWITCHES * 2) return null;
-      }
-      // a different number of containers (a media switch added or removed one): check both widths
-      if (prev.length !== now.length) {
-        widths.add(prevWidth);
-        widths.add(width);
-      }
-      prev = now;
-      prevWidth = width;
-      if (width === SHOP_CSS_MEDIA_RANGE.max) break;
-    }
-    return [...widths].sort((a, b) => a - b);
+    await page.setContent('<!doctype html><html style="margin:0;padding:0"><body style="margin:0;padding:0"></body></html>', { waitUntil: "load" });
+    const found = (await page.evaluate(`(${SCAN_SCRIPT})(${JSON.stringify({ html, script: CONTAINER_SCRIPT, min, max, height: VIEWPORT_HEIGHT })})`)) as number[] | null;
+    if (found === null) return null;
+    const widths = [...new Set(found)].sort((a, b) => a - b);
+    if (widths.length > MAX_CONTAINER_SWITCHES * 2) return null;
+    if (cache.size >= SCAN_CACHE_SIZE) cache.delete(cache.keys().next().value!);
+    cache.set(html, widths);
+    return widths;
   } finally {
     await context.close().catch(() => undefined);
   }

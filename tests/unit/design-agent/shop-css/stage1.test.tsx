@@ -141,12 +141,32 @@ describe("render check on Stage 1 layouts", () => {
     expect(r.widths.length).toBeGreaterThan(checkWidths(css).length);
   });
 
+  it("finds a container switch in a band of a few px between any two widths (re-review 4, Medium 1: auto-fill columns, past the guard)", async () => {
+    const { demo, profile } = THREE_SHOPS.bakery!;
+    const build = pageBuilder(demo, profile);
+    // the reviewer's probe and the 1px brute-force scan's switches; the 16px scan missed the bands above 1000px
+    const cases: Array<[number, number, number[]]> = [
+      [414, 6, [1075, 1076, 1079, 1080, 1108, 1109, 1112, 1113]],
+      [415, 10, [1081, 1082, 1083, 1084, 1115, 1116, 1117, 1118]],
+    ];
+    for (const [min, pad, expected] of cases) {
+      const raw = `#shop-css section[data-variant="split"] > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(${min}px, 1fr)); } #shop-css section[data-variant="split"] { padding-left: ${pad}px; }`;
+      // the guard refuses it now (defence in depth); the scan alone must still find every band
+      expect(guardShopCss(raw).ok).toBe(false);
+      const started = Date.now();
+      const html = build(guarded("#shop-css { color: var(--p-text); }")).replace("</head>", `<style>${raw}</style></head>`);
+      const found = await containerSwitchWidths(browser, html);
+      console.info(`containerSwitchWidths ${min}/${pad}: ${Date.now() - started}ms, ${JSON.stringify(found)}`);
+      expect(found, `${min}px / ${pad}px`).toEqual(expect.arrayContaining(expected));
+    }
+  });
+
   const BAD: Array<[string, keyof typeof THREE_SHOPS, string, string[]]> = [
     ["the vertical name made transparent (pixel proof on vertical text)", "bakery", "#shop-css h1 { color: transparent; }", ["fact_contrast", "fact_ink"]],
     ["vertical headings made transparent", "bakery", "#shop-css section h2 span { color: transparent; }", ["label_contrast", "label_ink"]],
     ["the inverted band's values made transparent (data-ground hook)", "bakery", '#shop-css section[data-ground="inverted"] dd { color: transparent; }', ["fact_contrast", "fact_ink"]],
     ["the first-view menu excerpt washed out (data-fv hook)", "cafe", '#shop-css div[data-fv="menu"] li { color: var(--p-bg); }', ["fact_contrast", "fact_ink"]],
-    ["the chips covered by their heading (data-kind hook)", "cafe", '#shop-css section[data-kind="menu"] { display: grid; } #shop-css section[data-kind="menu"] > h2, #shop-css section[data-kind="menu"] > ol { grid-row: 1; grid-column: 1; } #shop-css section[data-kind="menu"] > h2 { order: 2; background-color: var(--p-bg); }', ["fact_covered", "fact_ink"]],
+    ["the chips covered by their heading (data-kind hook)", "cafe", '#shop-css section[data-kind="menu"] { display: grid; } #shop-css section[data-kind="menu"] > h2, #shop-css section[data-kind="menu"] > ol { grid-row: 1; grid-column: 1; } #shop-css section[data-kind="menu"] > h2 { position: relative; z-index: 1; background-color: var(--p-bg); }', ["fact_covered", "fact_ink"]],
   ];
   for (const [name, shop, css, expected] of BAD)
     it(name, async () => {
