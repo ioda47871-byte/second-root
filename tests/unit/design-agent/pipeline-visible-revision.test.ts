@@ -1,14 +1,16 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SECOND_LOOK_MIN_MS } from "@/lib/design-agent/photo-pipeline";
 import { QUALITY_NOT_ACCEPTED, runDesignPipeline, type PipelineDeps } from "@/lib/design-agent/pipeline";
 import { DesignProfileCoreSchema, type DesignProfile } from "@/lib/design-agent/profile";
 import { notVisibleLine, VOCABULARY } from "@/lib/design-agent/prompts";
-import { NOT_IN_SCREENSHOTS, VISIBLE_SETTINGS, visibleChanges } from "@/lib/design-agent/visible-profile";
+import { ACCENT_DIRECTIONS, NOT_IN_SCREENSHOTS, SURFACE_DIRECTIONS, VISIBLE_SETTINGS, visibleChanges } from "@/lib/design-agent/visible-profile";
 import { CodexError } from "@/lib/design-agent/codex";
 import { AMERICAN_EDITORIAL, review, SHOP } from "./fixtures";
 
 // DEV-066: a revision that changes only settings the screenshots cannot show
-// (direction, alignment, motion, confidence, rationale) renders the same page.
+// (motion, confidence, rationale; until DEV-067 also direction and alignment) renders the same page.
 // The review is asked once more for a visible change; the scores, the verdict,
 // the revision limit and the quality gate are unchanged.
 
@@ -36,8 +38,6 @@ const refs = ["/refs/ig-1.png"];
 const NO_PHOTOS = { photos: false };
 const invisible: DesignProfile = {
   ...AMERICAN_EDITORIAL,
-  direction: AMERICAN_EDITORIAL.direction === "pop_bakeshop" ? "craft_paper" : "pop_bakeshop",
-  heroLayout: { ...AMERICAN_EDITORIAL.heroLayout, alignment: AMERICAN_EDITORIAL.heroLayout.alignment === "left" ? "center" : "left" },
   motion: { intro: AMERICAN_EDITORIAL.motion.intro === "none" ? "fade_rise" : "none", sectionFade: !AMERICAN_EDITORIAL.motion.sectionFade },
   confidence: 0.9,
   rationale: ["other words"],
@@ -57,6 +57,39 @@ describe("visibleChanges", () => {
     expect(visibleChanges(p, { ...p, palette: { ...p.palette, accent: p.palette.accent.toLowerCase() } }, NO_PHOTOS)).toEqual([]);
     expect(visibleChanges(p, { ...p, motifs: [...p.motifs].reverse() }, NO_PHOTOS)).toEqual([]);
     expect(visibleChanges(p, { ...p, spacing: { scale: p.spacing.scale === "tight" ? "generous" : "tight" } }, NO_PHOTOS)).toEqual(["spacing.scale"]);
+  });
+
+  it("DEV-067: direction and alignment are visible changes", () => {
+    const p = AMERICAN_EDITORIAL;
+    expect(visibleChanges(p, { ...p, direction: p.direction === "gallery_mono" ? "craft_paper" : "gallery_mono" }, NO_PHOTOS)).toEqual(["direction"]);
+    expect(visibleChanges(p, { ...p, heroLayout: { ...p.heroLayout, alignment: p.heroLayout.alignment === "left" ? "center" : "left" } }, NO_PHOTOS)).toEqual(["heroLayout.alignment"]);
+  });
+
+  it("DEV-067: the surface counts for the directions that draw panels in it, the accent for those that draw in it", () => {
+    const p = { ...AMERICAN_EDITORIAL, motifs: ["monogram"] } as DesignProfile;
+    const surface = (q: DesignProfile) => ({ ...q, palette: { ...q.palette, surface: "#000000" } });
+    const accent = (q: DesignProfile) => ({ ...q, palette: { ...q.palette, accent: "#000000" } });
+    for (const d of SURFACE_DIRECTIONS) expect(visibleChanges({ ...p, direction: d }, surface({ ...p, direction: d }), NO_PHOTOS)).toEqual(["palette.surface"]);
+    for (const d of ACCENT_DIRECTIONS) expect(visibleChanges({ ...p, direction: d }, accent({ ...p, direction: d }), NO_PHOTOS)).toEqual(["palette.accent"]);
+    const plain = { ...p, direction: "nordic_minimal" } as DesignProfile;
+    expect(visibleChanges(plain, surface(plain), NO_PHOTOS)).toEqual([]);
+    expect(visibleChanges(plain, accent(plain), NO_PHOTOS)).toEqual([]);
+  });
+
+  it("DEV-067 review: gallery_mono repaints the accent motifs, so its accent is not a visible change", () => {
+    const g = { ...AMERICAN_EDITORIAL, direction: "gallery_mono", motifs: ["location_labels", "dot_grid"] } as DesignProfile;
+    expect(visibleChanges(g, { ...g, palette: { ...g.palette, accent: "#000000" } }, NO_PHOTOS)).toEqual([]);
+    // the same motifs under another direction draw the accent
+    const n = { ...g, direction: "nordic_minimal" } as DesignProfile;
+    expect(visibleChanges(n, { ...n, palette: { ...n.palette, accent: "#000000" } }, NO_PHOTOS)).toEqual(["palette.accent"]);
+  });
+
+  it("the lists match the stylesheet: the directions whose rules read the surface / accent colour", () => {
+    const css = readFileSync(join(process.cwd(), "components/demo/profile/profile.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const reading = (token: string) =>
+      new Set([...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[2]!.includes(`var(${token})`)).flatMap((m) => [...m[1]!.matchAll(/data-direction="([a-z_]+)"/g)].map((d) => d[1]!)));
+    expect([...reading("--p-surface")].sort()).toEqual([...SURFACE_DIRECTIONS].sort());
+    expect([...reading("--p-accent")].sort()).toEqual([...ACCENT_DIRECTIONS].sort());
   });
 
   it("surface counts only on pages with photos; accent only with a motif drawn in it", () => {
@@ -136,9 +169,8 @@ describe("runDesignPipeline: revisions that change nothing visible (DEV-066)", (
   });
 
   it("the review prompt says which settings do not show", () => {
-    expect(VOCABULARY).toContain("It is a name only: the page looks the same for every direction.");
-    expect(VOCABULARY).toContain("recorded only; it does not change the page yet");
     expect(VOCABULARY).toContain("Motion never shows in the review screenshots");
+    expect(VOCABULARY).not.toContain("It is a name only");
   });
 
   it("the extra look does not move the leader (DEV-034: the leader is chosen like the final)", async () => {

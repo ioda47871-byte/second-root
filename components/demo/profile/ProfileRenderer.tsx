@@ -5,7 +5,7 @@ import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
 import { areaLabel, infoRows } from "../info";
-import { editorial, grotesk } from "./fonts";
+import { displayFaceVariables } from "./fonts";
 import { PhotoFigure } from "./parts";
 import About from "./sections/About";
 import FirstView from "./sections/FirstView";
@@ -187,7 +187,7 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
     <DemoFrame
       shopName={demo.name}
       template={demo.template}
-      className={`${styles.root} ${editorial.variable} ${grotesk.variable}`}
+      className={`${styles.root} ${displayFaceVariables}`}
       style={tokens(profile)}
     >
       <div

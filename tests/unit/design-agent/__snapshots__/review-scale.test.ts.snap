@@ -5,14 +5,25 @@ exports[`review prompts: CSS px vs screenshot pixels > the photo review prompt c
 
 
 Renderer vocabulary (the only things you can choose; every value is accepted):
-- direction: a label for the overall art direction (american_editorial, editorial_luxury, french_classic, nordic_minimal, japanese_modern, kissaten_retro, gallery_mono, craft_paper, boutique_minimal, pop_bakeshop).
-  It is a name only: the page looks the same for every direction. The look comes from the settings below.
-- palette: six hex colours. background = page; surface = the ground behind photos (pages without photos never show it); text = body text (≥4.5:1 on background and surface);
+- direction: the overall art direction. Each one draws the section headings, the menu, the folio and dek, the address block,
+  the page ground and a frame or bar around the name's block in its own way (with the colours below; it adds no words):
+  american_editorial = a magazine: heavy bars over the headings, a drop cap on the description, large menu numerals, a thick rule under the hero;
+  editorial_luxury = quiet and spaced: a fine double frame around the page and around the name, small light headings in wide tracking, a menu without lines;
+  french_classic = a menu card: italic headings with a small accent diamond and a double rule, an arched double frame over the name, dotted lines between dishes, the address in a double-ruled box;
+  nordic_minimal = air and restraint: small sans headings in wide caps, no rules on the folio or the menu, no menu numbers, light lines;
+  japanese_modern = Japanese first: the Japanese heading leads beside a thick vertical bar, a filled folio band, a bar beside the name, the menu in ruled boxes;
+  kissaten_retro = a coffee-house card: headings in a rounded badge, a striped hero, the name in a double-ruled rounded panel, menu cards on the surface colour;
+  gallery_mono = a catalogue: the hero filled with the primary colour (the name in the background colour), solid blocks over small spaced headings, the menu as a grid of ruled tiles;
+  craft_paper = handmade: a paper grain, wavy underlined headings, dashed (stitched) lines and boxes, menu numbers in dashed rings;
+  boutique_minimal = a centred column of panels in the surface colour, thin spaced headings, the name on a panel between fine rules;
+  pop_bakeshop = playful: tilted pill headings, the menu as rounded chips with an offset shadow in the accent colour, a dotted hero, the area line in a pill.
+- palette: six hex colours. background = page; surface = the ground behind photos and the panels of kissaten_retro, boutique_minimal and pop_bakeshop (other pages without photos never show it); text = body text (≥4.5:1 on background and surface);
   primary = shop name and strong rules (≥3:1 on background; background on primary ≥4.5:1, used for the footer);
-  secondary = small labels and the notice bar text (≥4.5:1 on background); accent = motif details only (location label marks, dot_grid, stamp_ring,
-  muffin_paper_svg): with none of these motifs it shows nowhere. The monogram is drawn in primary.
-- typography.display: editorial_serif (high-contrast Latin serif, Japanese in Mincho), condensed_grotesk (tall, narrow, heavy sans),
-  light_grotesk (wide light sans), mincho (Japanese Mincho for everything). body: sans | serif.
+  secondary = small labels and the notice bar text (≥4.5:1 on background); accent = motif details (location label marks, dot_grid, stamp_ring,
+  muffin_paper_svg; gallery_mono draws these in the background colour instead) and the accents of french_classic and pop_bakeshop: otherwise it shows nowhere.
+  The monogram is drawn in primary. On the surface-colour panels of kissaten_retro, boutique_minimal and pop_bakeshop every word is set in the text colour.
+- typography.display: editorial_serif (high-contrast Latin serif, Japanese in an old-style Mincho), condensed_grotesk (tall, narrow, heavy Latin sans; Japanese in a square gothic),
+  light_grotesk (wide light Latin sans; Japanese in an open gothic), mincho (Japanese Mincho for everything). body: sans | serif.
   displayCase: as_is | uppercase (Latin only). displayWeight: light | regular | bold | black. tracking: tight | normal | wide.
 - heroLayout.layout (each one sets the shop name as the hero's main visual):
   split_crop = one word per line, every other line pushed right (e.g. "EXAMPLE" / "      BAKE"). Only a Latin name of two to four
@@ -23,14 +34,14 @@ Renderer vocabulary (the only things you can choose; every value is accepted):
   heroLayout.height (a minimum for a hero without a split photo; the hero grows past it when its content needs more):
     full (the whole first screen on desktop; on phones about as tall as tall) | tall (most of the first screen) |
     medium (about half the first screen; without a photo, a band at the top with spacing tight, and a medium centered_cover is a band on phones at every spacing).
-  alignment: left | center (recorded only; it does not change the page yet).
+  alignment: left | center (the headings, the description, the menu and the visit block of the lower sections, within their column).
 - composition.grid (applies from tablet width; phones always show one column):
   editorial_12 (a narrow label column beside a wide text column, about 1 : 3) | asymmetric_7_5 (a label column wider than in editorial_12, label 5 : text 7) |
   single_column (headings above their text instead of beside it).
   infoStyle: ruled_list (label / value rows between hairlines) | colophon (a centred block, like the last page of a magazine) |
   ledger_columns (label and value on one row, joined by a dotted leader). divider between sections: hairline | double_rule | thick_rule | none.
 - motifs (up to 4, no repeats): monogram (initials made from the shop name), location_labels (small uppercase ward / NAGOYA labels),
-  muffin_paper_svg (abstract pleated-liner lines, not a drawing of food), ruled_frame (thin frame around the hero),
+  muffin_paper_svg (abstract pleated-liner lines, not a drawing of food), ruled_frame (thin frame around the hero; on phones some directions draw only part of it, where their own frames take its place),
   dot_grid (small dotted field), stamp_ring (round stamp around the monogram), corner_marks (print crop marks).
 - spacing.scale: generous (the most space between sections) | standard (a medium amount between sections) |
   tight (the least between sections, and a medium hero without a photo becomes a band; on phones the rows and headings are closer too).

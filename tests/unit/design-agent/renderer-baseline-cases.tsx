@@ -69,7 +69,7 @@ export const BASELINE_PHOTOS: Record<string, RenderPhotos | null> = {
   none: null,
   split_features: {
     layout: "split_hero",
-    hero: photo("asset-111111111111111111111111", { sourceKind: "generated_concept" }),
+    hero: photo("asset-111111111111111111111111", { treatment: "mono" }),
     features: [feature("asset-222222222222222222222222", "about", "left"), feature("asset-333333333333333333333333", "visit", "right")],
   },
   framed_visit: { layout: "framed_hero", hero: photo("asset-444444444444444444444444", { treatment: "warm" }), features: [feature("asset-555555555555555555555555", "visit", "left")] },
