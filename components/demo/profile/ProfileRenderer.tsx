@@ -1,6 +1,7 @@
 import { Fragment, type CSSProperties } from "react";
 import type { RenderFeature, RenderPhoto, RenderPhotos } from "@/lib/design-agent/assets/resolve";
 import type { DesignProfile } from "@/lib/design-agent/profile";
+import { isGuardedShopCss, SHOP_CSS_SCOPE_ID, type GuardedShopCss } from "@/lib/design-agent/shop-css/guard";
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
 import { areaLabel, infoRows } from "../info";
@@ -96,7 +97,23 @@ function PhotoFigure({ photo, className, role, side }: { photo: RenderPhoto; cla
   );
 }
 
-export default function ProfileRenderer({ demo, profile, photos = null }: { demo: DemoView; profile: DesignProfile; photos?: RenderPhotos | null }) {
+/**
+ * A per-shop stylesheet (DEV-072, Stage 3 trial): only the local design
+ * preview passes one (public /demo and the admin preview never do). It is
+ * checked by the guard again here, and scoped to the canvas (id shop-css, its
+ * own stacking context), so it never reaches the notice bar or the footer. The
+ * <style> sits outside the canvas, where no shop selector can show it.
+ */
+function shopScope(shopCss: GuardedShopCss | null | undefined) {
+  if (!shopCss || !isGuardedShopCss(shopCss)) return null;
+  return {
+    style: <style data-shop-css-style="">{shopCss}</style>,
+    attrs: { id: SHOP_CSS_SCOPE_ID, "data-shop-css": "", style: { isolation: "isolate" } as CSSProperties },
+  };
+}
+
+export default function ProfileRenderer({ demo, profile, photos = null, shopCss = null }: { demo: DemoView; profile: DesignProfile; photos?: RenderPhotos | null; shopCss?: GuardedShopCss | null }) {
+  const shop = shopScope(shopCss);
   const rows = infoRows(demo);
   const address = rows.find((r) => r.key === "address");
   const others = rows.filter((r) => r !== address);
@@ -210,7 +227,9 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
       className={`${styles.root} ${displayFaceVariables}`}
       style={tokens(profile)}
     >
+      {shop?.style}
       <div
+        {...shop?.attrs}
         className={styles.canvas}
         data-direction={profile.direction}
         data-display={t.display}

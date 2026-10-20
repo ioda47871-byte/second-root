@@ -12,6 +12,9 @@ import { loadPreviewRun, previewRoot } from "@/lib/design-agent/preview";
 // the Vercel environments never set it, so there it is always a 404.
 // DEV-029: a candidate may come with photos (checked in loadPreviewRun; any
 // problem means none). The "before" template never shows photos.
+// DEV-072: a candidate may come with an accepted per-shop stylesheet (Stage 3
+// trial, checked in loadPreviewRun; any problem means none). Only this local
+// route passes one; public /demo and the admin preview never do.
 
 export const metadata: Metadata = { robots: { index: false, follow: false, nocache: true } };
 
@@ -23,5 +26,5 @@ export default async function DesignPreviewPage({ params, searchParams }: PagePr
   const { profile } = await searchParams;
   const run = await loadPreviewRun(root, runId, typeof profile === "string" ? profile : "none", { env: process.env, repoDir: process.cwd() });
   if (!run) notFound();
-  return run.profile ? <ProfileRenderer demo={run.demo} profile={run.profile} photos={run.photos} /> : renderDemo(run.demo);
+  return run.profile ? <ProfileRenderer demo={run.demo} profile={run.profile} photos={run.photos} shopCss={run.shopCss ?? null} /> : renderDemo(run.demo);
 }
