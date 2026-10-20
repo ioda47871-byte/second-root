@@ -3144,7 +3144,7 @@
       "acceptance_criteria": [
         "guardShopCss: 自前の厳格な tokenizer / parser（CSS Syntax 3 の部分集合、fail closed）。escape・<・非 ASCII・url()・@import など at-rule・!important・custom property・許可外の property / value / 関数 / selector を固定の符号で拒否し、通ったものは parse tree から再直列化",
         "selector はすべて scope root #shop-css から。兄弟結合子なし（notice と footer は scope の兄弟）。属性は renderer の安定した属性の固定値だけ",
-        "render check（Chromium、360・390・1440）: 横 overflow・事実の存在 / 非表示 / 画面外 / 切れ / 覆い / 不透明度 / 字の大きさ / 潰れ / 実際に塗られた地の上の contrast・注記帯と footer が変わらず覆われない・頁の高さ。shop CSS なしの同じ頁と比べ、壊したものだけを固定の符号で返す",
+        "render check（Chromium、固定 7 幅 + CSS の breakpoint の両側）: 横 overflow・事実 / 固定の label / 注記帯 / footer の文字ごとの存在・非表示・画面外・切れ・覆い・不透明度・字の大きさ・潰れ・実際に塗られた地の上の contrast・画素の証明（文字ごとに画素が変わる）・注記帯と footer の style / box / 画素・頁の高さ・script の不在。shop CSS なしの同じ頁と比べ、壊したものだけを固定の符号で返す",
         "shopCssOrFallback: guard と render check の両方を通ったときだけ CSS、そうでなければ null（profile renderer の表示）",
         "renderer は local の design preview だけが shop CSS を渡せる（公開 /demo と admin preview は渡せないことを test で確認）。renderer でももう一度 guard",
         "架空の店の手書きの shop CSS 3 つが通る"
@@ -3174,7 +3174,7 @@
         "Staging 実走",
         "公開 demo への適用"
       ],
-      "decision": "2026-10-20: §8.3 の承認に基づき Claude が追加。設計は .ai/proposals/stage3-shop-css.md。parser は postcss（next の推移的依存）ではなく自前の小さな厳格 parser（寛容な error recovery が無く、許可する部分集合だけを読むので fail closed にしやすい・依存を増やさない）"
+      "decision": "2026-10-20: §8.3 の承認に基づき Claude が追加。設計は .ai/proposals/stage3-shop-css.md。parser は postcss（next の推移的依存）ではなく自前の小さな厳格 parser（寛容な error recovery が無く、許可する部分集合だけを読むので fail closed にしやすい・依存を増やさない）。Fresh Review（security）FAIL（Critical 2・High 2・Medium 2・Low 3・Nit 2: 外側の shadow / outline が事実と footer を塗る・幅 3 つと font-size の下限なし・label を測らない・list の marker など）→ 全件対応: shadow は inset だけ・outline / offset / translate なし・font-size の下限 12px・list-item なし・`*` なし・canvas に overflow: clip・render check は固定 7 幅 + breakpoint の両側・label / notice / footer の文字も検査・文字ごとの画素の証明・record を事実に束縛（.ai/reviews/DEV-072.md の対応）"
     }
   ]
 }
