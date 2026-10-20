@@ -165,3 +165,13 @@ Codex の呼び出し回数は変わらない）/ 安全性と運用の安定（
 - **未対応（後続）**: alignment=center（DEV-067）の中央揃えは既存の class だけが対象で、新しい variant（chips・cards など）は左揃えのまま
 - **Test の書体**: この container の既定の和文書体（WenQuanYi）は縦書きの metrics を持たず字が重なる。Chromium の test は IPA の書体を
   `--font-body` / `--font-display` に入れる（実際の頁は next/font の和文書体で、`next build` + `start` の実画面で縦書きを確認）
+
+### Fresh Review（FAIL）への対応で変えた規則（2026-10-20）
+
+- vertical_name: 和文だけ・**6 字以下**。desktop は folio の下に 2 列（右に縦の店名、左に motif・dek）、店名は見出しの 2 倍以上
+- name_menu: メニューが 4 品以上、かつ menu 節が最初の節でないときだけ（それ以外は `first_view:name_menu` で name_only）
+- 縦書きの見出し（vertical_ja）: 頁のどの節も短くない（`data-short` なし）ときだけ縦。混ぜない
+- side_heading は見出しを縮めない。band の地は main で取った palette から（direction の token の付け替えに影響されない）。
+  最後の band は footer に接する。boutique_minimal の band は panel の列の中
+- normalize の結果は `NormalizedLayout`（節 0 個を許す描画の計画、再 parse しない）
+- renderer の baseline は develop の renderer（Stage 1 を含まない tree）から取り直し、fixture に commit を記録

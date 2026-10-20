@@ -3173,7 +3173,7 @@
         "次の controlled run",
         "Stage 1 の比較の実走（WSL worker）"
       ],
-      "decision": "2026-10-20: 人の正式承認（Stage 1）。071a を feature/dev-071-design-spec で実装中（PR 前、Fresh Review 前）"
+      "decision": "2026-10-20: 人の正式承認（Stage 1）。071a: Fresh Review FAIL（High 2: develop との統合・vertical_name の構図、Medium 5、Low 5、Nit 2）→ 対応（develop の DEV-067/068/070 を merge、baseline を 7c04478 から取り直し、構図・見出し・band・list・first view・色の組の test）→ 再レビュー待ち"
     }
   ]
 }

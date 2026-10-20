@@ -127,6 +127,9 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
 /* the section after a band: the band's own padding is the space between them, and no divider */
 .sec.sec.sec[data-ground="surface"] + .sec.sec,
 .sec.sec.sec[data-ground="inverted"] + .sec.sec { margin-top: 0; border-top-color: transparent; }
+/* panel directions keep the space between panels */
+[data-direction="boutique_minimal"] .sec.sec.sec[data-ground="surface"] + .sec.sec.sec,
+[data-direction="boutique_minimal"] .sec.sec.sec[data-ground="inverted"] + .sec.sec.sec { margin-top: 20px; }
 
 /* ---------- about ---------- */
 
@@ -429,22 +432,25 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
 
   /* Vertical writing: desktop only, Japanese script only (the fixed Japanese
      heading words; a Japanese-only short name). Phones keep horizontal text. */
-  /* A section with little content keeps a horizontal heading: a vertical one would
-     set the section's height (data-short). The vertical word is capped in size. */
-  .sec:not([data-short]) .vertical {
+  /* Vertical headings are set only when every section has enough content beside
+     them: a vertical heading next to a line or two would set the section's height
+     (data-short marks a section with little content). Otherwise the page's
+     headings all stay horizontal, so one page never mixes the two. The vertical
+     word is capped in size. */
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .vertical {
     display: inline-block;
     writing-mode: vertical-rl;
     letter-spacing: 0.14em;
     line-height: 1.1;
   }
-  [data-headings="vertical_ja"] .sec:not([data-short]) h2.h.h > span.ja.ja.vertical { font-size: min(1em, 2.6rem); }
-  [data-headings="vertical_ja"] .sec.sec.sec:not([data-short]) { grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); }
-  [data-headings="vertical_ja"] .sec.sec:not([data-short]) > .h { align-self: start; }
-  [data-headings="vertical_ja"] .sec.sec:not([data-short]) > :not(.h) { grid-column: 2; }
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) h2.h.h > span.ja.ja.vertical { font-size: min(1em, 2.2rem); }
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec.sec { grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); }
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > .h { align-self: start; }
+  [data-headings="vertical_ja"]:not(:has(.sec[data-short])) .sec.sec > :not(.h) { grid-column: 2; }
 
-  /* vertical_name: two columns. The name is a tall column at the right (where
-     vertical text starts reading); the folio, motifs, a framed photo and the dek
-     form the left column, top to bottom. The name is at least twice the size of
+  /* vertical_name: the folio across the top, then two columns. The name is a tall
+     column at the right (where vertical text starts reading); the motifs, a framed
+     photo and the dek form the left column, top to bottom. The name is at least twice the size of
      the section headings (names over VERTICAL_NAME_MAX characters are not set
      vertically). */
   .vhero.vhero.vhero.vhero {
@@ -452,13 +458,13 @@ div:not([data-direction="boutique_minimal"]):has(> main > .sec:last-child[data-g
     grid-template-rows: auto auto 1fr auto;
     column-gap: clamp(32px, 6vw, 112px);
   }
-  .vfolio.vfolio.vfolio.vfolio { grid-column: 1; grid-row: 1; }
+  .vfolio.vfolio.vfolio.vfolio { grid-column: 1 / -1; grid-row: 1; }
   .vmotifs.vmotifs.vmotifs.vmotifs { grid-column: 1; grid-row: 2; justify-self: start; }
   .vphoto.vphoto.vphoto.vphoto { grid-column: 1; grid-row: 3; align-self: start; max-width: 520px; }
   .vdek.vdek.vdek.vdek { grid-column: 1; grid-row: 4; align-self: end; }
   .vtitle.vtitle.vtitle.vtitle {
     grid-column: 2;
-    grid-row: 1 / -1;
+    grid-row: 2 / -1;
     container-type: normal;
     align-content: center;
     justify-items: end;

@@ -145,8 +145,8 @@ export const THREE_SHOPS: Record<string, { demo: DemoView; profile: DesignProfil
       hours: "8:00〜売り切れまで",
       closedDays: "日曜・月曜",
       access: "テスト駅から徒歩6分",
-      phone: null,
-      description: "テスト用の架空のパン屋です。国産小麦の食パンと、季節の果物を使ったパンを少しずつ焼いています。",
+      phone: "052-000-3141",
+      description: "テスト用の架空のパン屋です。国産小麦の食パンと、季節の果物を使ったパンを少しずつ焼いています。朝の焼き上がりから順に店頭に並べ、売り切れたらその日の営業を終えます。",
       menuItems: ["テスト食パン", "テストカンパーニュ", "季節の果物のテストデニッシュ", "テストあんぱん", "テストクリームパン"],
     },
     profile: {

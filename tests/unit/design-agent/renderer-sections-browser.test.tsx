@@ -100,7 +100,8 @@ async function check(page: Page, facts: string[]): Promise<Check> {
       footer: Boolean(footer && visible(footer) && footer.textContent!.includes("公式サイト・公式情報ではありません")),
       lowContrast,
       vertical,
-      long: document.querySelectorAll("section[data-kind]:not([data-short])").length,
+      // vertical headings are set only when no section is short (one page never mixes the two)
+      long: document.querySelector("section[data-kind][data-short]") ? 0 : document.querySelectorAll("section[data-kind]").length,
       sections: [...document.querySelectorAll("section[data-kind]")].map((s) => `${s.getAttribute("data-kind")}/${s.getAttribute("data-variant")}/${s.getAttribute("data-ground")}`),
     };
   }, facts);
@@ -139,6 +140,7 @@ describe("sections in Chromium", () => {
               for (const v of m.vertical) expect(v, `${label}: vertical text`).toMatch(JAPANESE_ONLY);
               // a section with little content (data-short) keeps a horizontal heading
               if (normal.type.headings === "vertical_ja") expect(m.vertical.length, `${label}: vertical headings`).toBeGreaterThanOrEqual(m.long);
+              if (m.long === 0) expect(m.vertical.filter((v) => v !== demo.name), `${label}: mixed heading directions`).toEqual([]);
               if (normal.firstView === "vertical_name") expect(m.vertical, label).toContain(demo.name);
             } else {
               expect(m.vertical, `${label}: vertical text on a phone`).toEqual([]);
