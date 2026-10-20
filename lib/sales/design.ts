@@ -23,8 +23,31 @@ export const DESIGN_LEASE_SECONDS = 2 * 60 * 60;
 export const DESIGN_ERROR_CODE = /^[A-Z][A-Z0-9_]{2,47}$/;
 export const WORKER_COMMIT = /^[0-9a-f]{7,40}$/;
 
-export function aiDesignEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env.SALES_AI_DESIGN_ENABLED === "true";
+/**
+ * Optional time box for the flag (DEV-064): an instant in UTC, written exactly as
+ * YYYY-MM-DDTHH:MM:SSZ. While set, the flag counts only before that instant, so a
+ * window opened for a controlled run closes on its own even if nobody turns the
+ * flag off. Unset: no time box, as before. Set but empty, or not in that exact
+ * form (or not a real date): the flag is off (fail closed).
+ */
+export const DESIGN_ENABLED_UNTIL_KEY = "SALES_AI_DESIGN_ENABLED_UNTIL";
+const UNTIL_FORMAT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+/** The time box in epoch ms; null when unset; NaN when set but not valid. */
+export function designEnabledUntil(env: Record<string, string | undefined> = process.env): number | null {
+  const raw = env[DESIGN_ENABLED_UNTIL_KEY];
+  if (raw === undefined) return null;
+  if (!UNTIL_FORMAT.test(raw)) return Number.NaN;
+  const ms = Date.parse(raw);
+  // Date.parse rolls 2026-02-31 over to March: refuse anything that does not round-trip.
+  if (!Number.isFinite(ms) || new Date(ms).toISOString() !== `${raw.slice(0, 19)}.000Z`) return Number.NaN;
+  return ms;
+}
+
+export function aiDesignEnabled(env: Record<string, string | undefined> = process.env, now: number = Date.now()): boolean {
+  if (env.SALES_AI_DESIGN_ENABLED !== "true") return false;
+  const until = designEnabledUntil(env);
+  return until === null || now < until;
 }
 
 export function isDesignStatus(value: unknown): value is DesignStatus {
