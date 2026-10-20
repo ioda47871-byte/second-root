@@ -90,6 +90,7 @@
 - 絶対に出さない: 営業内部メモ / メールアドレス / Claude 内部評価 / 成約金額 / outcome / internal ID / secret。
 - 期限切れ・無効化されたデモは 404 相当（存在有無を区別しない）。
 - 事実は確認済み公開情報のみ。Instagram 画像等の無断転載をしない。
+- 画像は取得・分析（reference screenshot を色・雰囲気の判断に使い、job の後に消す）と再掲載を区別する。Instagram の画像は店舗の利用許可なしに demo に載せない。写真 asset は `approved_real` だけで、AI 生成・架空の店舗写真は使わない（DEV-070。`docs/MVP_SPEC.md` §7）。
 
 ## 7. Resend
 
@@ -186,7 +187,7 @@ Sales Agent の demo と AI design worker をつなぐ。**既定は無効**（`
   - 古い job の結果は `job_superseded`。同じ job の再送は `replayed` で何も変えない。`ready` は再生成しない。
   - 試行は最大 3 回、lease は 2 時間。
 - **公開しないもの**
-  - 写真（DEV-029）、Instagram・公式サイトの screenshot、capture helper の PNG、reference 画像は公開 demo に出さない。public demo の `ProfileRenderer` には写真を渡さない。
+  - 写真（DEV-029。DEV-070 から `approved_real` だけ）、Instagram・公式サイトの screenshot、capture helper の PNG、reference 画像は公開 demo に出さない。public demo の `ProfileRenderer` には写真を渡さない。
   - 写真の公開は後続の DEV で、同意（approved_real の `public_demo` scope）とともに設計する。
 - **spool**
   - `/srv/sr-design-bridge/to-worker`（bridge が書き、worker は読むだけ）と `from-worker`（worker が書き、bridge は読むだけ）。

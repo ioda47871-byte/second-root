@@ -2,9 +2,12 @@
 //
 //   preflight  before enqueue: the job id is unused (no second run of the
 //              same job), no other job waits or runs, the asset store is safe, the job's manifest and
-//              every photo verify, the photos are generated_concept only (the
-//              first real PoC), the Codex sandbox prepares with the asset store
-//              hidden, and Codex is signed in with ChatGPT.
+//              every photo verify, every photo is approved_real with a consent
+//              record whose scopes include local_preview (DEV-070: no generated
+//              or made-up photo; a person's explicit approval of these specific
+//              photos is a precondition of running the PoC at all), no people,
+//              the Codex sandbox prepares with the asset store hidden, and
+//              Codex is signed in with ChatGPT.
 //   report     after the run: outcome, per-call Codex timing and a runtime
 //              estimate for revision 0 / 1 / 2 against the run budget, the
 //              artifact lineage verified from the store, and that no image
@@ -17,6 +20,7 @@ import { basename, join } from "node:path";
 import type { ImageDirection } from "../assets/direction";
 import { assetStoreRoot, checkStoreRoot, loadManifest } from "../assets/intake";
 import { AnalysesArtifactSchema, verifyAnalyses, verifyImages } from "../assets/lineage";
+import { consentAllows } from "../assets/manifest";
 import { loadPhotoInputs } from "../assets/photo-codex";
 import { runAssets } from "../assets/serve";
 import { assertChatGptSignIn, CodexError, fromSandboxError, listDesignAgentSessions } from "../codex";
@@ -78,7 +82,7 @@ export async function pocPreflight(o: {
     const loaded = await loadPhotoInputs({ store, jobId: o.jobId, manifest });
     add("photos_verified", loaded.ok, loaded.ok ? undefined : loaded.code);
     if (loaded.ok) photos = loaded.value.length;
-    add("generated_concept_only", manifest.assets.every((a) => a.sourceKind === "generated_concept"), "NOT_GENERATED_CONCEPT");
+    add("approved_for_local_preview", manifest.assets.every((a) => a.sourceKind === "approved_real" && consentAllows(a, "local_preview")), "NOT_APPROVED_FOR_LOCAL_PREVIEW");
     add("no_people", manifest.assets.every((a) => a.people === "none"), "PEOPLE");
   }
 

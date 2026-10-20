@@ -3,9 +3,10 @@ import { assetUsableIn, findAsset, type AssetManifest } from "./manifest";
 
 // The mechanical check of a rendered candidate (DEV-029 stage 4): the page
 // shows exactly the photos its ImageDirection uses, in their places, on both
-// devices; each is visible, labelled when generated, allowed for the local
-// preview, and covers no text. Done in code before any review, so a review
-// never has to be trusted for any of this.
+// devices; each is visible, allowed for the local preview, and covers no text.
+// Done in code before any review, so a review never has to be trusted for any
+// of this. (DEV-070 removed generated photos, and with them the image label
+// and its check.)
 
 export type PhotoRole = "hero" | "about" | "visit";
 export type PlacedPhoto = {
@@ -13,7 +14,6 @@ export type PlacedPhoto = {
   role: PhotoRole;
   device: "desktop" | "mobile";
   visible: boolean;
-  labelled: boolean;
   overlapsText: boolean;
   /** The figure's page box in CSS pixels (from capturePage; used to check the screenshot itself). */
   box?: { top: number; bottom: number; left: number; right: number };
@@ -33,7 +33,6 @@ export function checkRenderedPhotos(direction: ImageDirection, manifest: AssetMa
       const asset = findAsset(manifest, p.assetId);
       if (!asset || !assetUsableIn(asset, "local_preview")) problems.push(`${device}: ${p.assetId} is not allowed`);
       if (!p.visible) problems.push(`${device}: ${p.assetId} not visible`);
-      if (asset && p.labelled !== (asset.sourceKind === "generated_concept")) problems.push(`${device}: ${p.assetId} label`);
       if (p.overlapsText) problems.push(`${device}: ${p.assetId} covers text`);
     }
   }

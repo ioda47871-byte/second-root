@@ -113,8 +113,9 @@ export async function writeFixture(previewRoot: string, storeRoot: string, runId
       bytes: p.png.length,
       intakeAt: at,
       people: "none",
-      sourceKind: "generated_concept",
-      generation: { method: "human_upload", createdBy: "preview-check", createdAt: at },
+      // Drawn here (gradients, no photo of anything): a fixture record, local preview only, in a temporary store.
+      sourceKind: "approved_real",
+      consent: { consentId: "preview-check-fixture", approvedBy: "preview-check", approvedAt: at, scopes: ["local_preview"] },
     })),
   });
   const jobDir = join(storeRoot, runId);
