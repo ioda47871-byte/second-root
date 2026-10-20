@@ -11,7 +11,8 @@
   border-bottom: 6px double #c98b4a;
 }
 #shop-css header p,
-#shop-css header span {
+#shop-css header span,
+#shop-css header li {
   color: #f6ead6;
 }
 #shop-css h1 {
@@ -54,9 +55,35 @@
 }
 @media (min-width: 720px) {
   #shop-css main {
-    padding: 48px 8vw 72px;
+    padding: 40px 3vw 64px;
   }
   #shop-css main > section {
-    padding: 28px 32px;
+    padding: 24px 20px;
+  }
+}
+/* Stage 1 layouts: banded sections (surface / inverted grounds) and the
+   first-view excerpts take this shop's own panel and ink, so every word keeps
+   its contrast whatever the layout. */
+#shop-css section[data-ground="surface"],
+#shop-css section[data-ground="inverted"] {
+  background-color: #fffaf0;
+  background-image: none;
+}
+#shop-css main section p,
+#shop-css main section li,
+#shop-css main section dt,
+#shop-css main section dd,
+#shop-css main section span {
+  color: #2b1a10;
+}
+#shop-css main section h2,
+#shop-css main section h2 span {
+  color: #7a3b12;
+}
+/* The split visit block stacks below 1024px: the address column and the
+   rows column side by side leave a phone number no room on tablets. */
+@media (max-width: 1023px) {
+  #shop-css section[data-variant="split"] > div {
+    display: block;
   }
 }

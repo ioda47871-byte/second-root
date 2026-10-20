@@ -15,14 +15,14 @@
   letter-spacing: -0.02em;
   color: #111111;
 }
-#shop-css h2 {
+#shop-css h2 span[lang="en"] {
   font-family: var(--font-grotesk), sans-serif;
   font-size: 0.875rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #111111;
 }
-#shop-css h2 > span:first-child::before {
+#shop-css h2 > span[lang="en"]::before {
   content: "";
   display: inline-block;
   width: 10px;
@@ -45,12 +45,36 @@
   max-width: 34em;
 }
 @media (min-width: 960px) {
-  #shop-css main {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 64px;
+  #shop-css section[aria-labelledby="pr-about"] p {
+    max-width: 28em;
   }
-  #shop-css section[aria-labelledby="pr-about"] {
-    grid-column: 1 / -1;
+  #shop-css h2 span[lang="en"] {
+    letter-spacing: 0.3em;
+  }
+}
+/* Stage 1 layouts: banded sections (surface / inverted grounds) and the
+   first-view excerpts take this shop's own panel and ink, so every word keeps
+   its contrast whatever the layout. */
+#shop-css section[data-ground="surface"],
+#shop-css section[data-ground="inverted"] {
+  background-color: #fbfaf7;
+  background-image: none;
+}
+#shop-css main section p,
+#shop-css main section li,
+#shop-css main section dt,
+#shop-css main section dd,
+#shop-css main section span {
+  color: #111111;
+}
+#shop-css main section h2,
+#shop-css main section h2 span {
+  color: #111111;
+}
+/* The split visit block stacks below 1024px: the address column and the
+   rows column side by side leave a phone number no room on tablets. */
+@media (max-width: 1023px) {
+  #shop-css section[data-variant="split"] > div {
+    display: block;
   }
 }

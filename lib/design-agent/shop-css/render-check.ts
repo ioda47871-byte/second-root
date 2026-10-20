@@ -26,7 +26,7 @@ export const SHOP_CSS_BASE_WIDTHS = [320, 360, 390, 768, 1024, 1440, 1920] as co
 export const MIN_WIDTH = 280;
 export const MAX_WIDTH = 2560;
 const VIEWPORT_HEIGHT = 900;
-const MOBILE_UP_TO = 820;
+const TOUCH_UP_TO = 820;
 /** Widths checked at the same time (separate browser contexts). */
 const PARALLEL = 4;
 
@@ -296,8 +296,10 @@ function debugReport(width: number, base: Measured, shop: Measured): void {
 async function checkWidth(input: ShopCssCheckInput, width: number): Promise<string[]> {
   let context: BrowserContext | null = null;
   try {
-    const mobile = width <= MOBILE_UP_TO;
-    context = await input.browser.newContext({ viewport: { width, height: VIEWPORT_HEIGHT }, deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, reducedMotion: "reduce", serviceWorkers: "block" });
+    // isMobile stays off: a mobile viewport zooms out a page wider than the screen, and the
+    // baseline and the shop page would then be pictured at different scales
+    const touch = width <= TOUCH_UP_TO;
+    context = await input.browser.newContext({ viewport: { width, height: VIEWPORT_HEIGHT }, deviceScaleFactor: 1, isMobile: false, hasTouch: touch, reducedMotion: "reduce", serviceWorkers: "block" });
     // local test data only: nothing is ever fetched (no font, no image, no CSS)
     await context.route("**/*", (route) => route.abort());
     const base = await measure(context, input.build(null), input.facts);

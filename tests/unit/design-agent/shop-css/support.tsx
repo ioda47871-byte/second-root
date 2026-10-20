@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import demoStyles from "@/components/demo/demo.module.css";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import profileStyles from "@/components/demo/profile/profile.module.css";
+import sectionStyles from "@/components/demo/profile/sections.module.css";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { GuardedShopCss } from "@/lib/design-agent/shop-css/guard";
 import type { ShopCssPageBuilder } from "@/lib/design-agent/shop-css/render-check";
@@ -28,6 +29,7 @@ export const BASE_CSS = [
   FACES,
   moduleCss("components/demo/demo.module.css", demoStyles as Record<string, string>),
   moduleCss("components/demo/profile/profile.module.css", profileStyles as Record<string, string>),
+  moduleCss("components/demo/profile/sections.module.css", sectionStyles as Record<string, string>),
 ].join("\n");
 
 export function pageBuilder(demo: DemoView, profile: DesignProfile): ShopCssPageBuilder {

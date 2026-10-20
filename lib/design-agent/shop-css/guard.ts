@@ -49,7 +49,7 @@ export const SHOP_CSS_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = 
   "data-fv": ["lead", "hours", "menu"],
   "data-key": ["hours", "closedDays", "address", "access", "phone"],
   "aria-labelledby": ["pr-about", "pr-menu", "pr-hours", "pr-visit"],
-  lang: ["en", "ja"],
+  lang: ["en"],
   "aria-hidden": ["true"],
 };
 
