@@ -196,6 +196,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       demo: input.demo,
       references: input.references,
       referenceKind: input.referenceKind,
+      observedColours: input.observedColours,
       photos: input.photos,
       profile,
       maxRevisions,

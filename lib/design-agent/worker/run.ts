@@ -481,7 +481,10 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
     const problem = await checkReferenceImages(refs);
     if (problem) throw Object.assign(new Error(problem), { code: "REFERENCE_CHECK_FAILED" });
     // DEV-069: colours measured in the same checked references (hex values only reach the prompts).
-    const observedColours = observeColours(await Promise.all(refs.map((f) => readFile(f).catch(() => Buffer.alloc(0)))));
+    const observedColours = observeColours(
+      await Promise.all(refs.map((f) => readFile(f).catch(() => Buffer.alloc(0)))),
+      visualSource === "website" ? "website" : "instagram",
+    );
 
     // ---- the job's photos (DEV-029): the asset store job with this job's id,
     // nothing else. Its manifest and every photo are checked (local preview

@@ -57,8 +57,15 @@ describe("a normal run", () => {
     });
     expect(rep.instagram.images).toBeGreaterThanOrEqual(2);
     // DEV-069: the colours measured in the references (hex values and shares only)
-    expect(rep.codex.reference_colours).toMatchObject({ colourfulShare: expect.any(Number) });
-    for (const c of rep.codex.reference_colours.colours as Array<{ hex: string; share: number }>) expect(c.hex).toMatch(/^#[0-9A-F]{6}$/);
+    const rc = rep.codex.reference_colours as { colours: Array<{ hex: string; share: number }>; colourfulShare: number; lightNeutralShare: number; darkNeutralShare: number };
+    expect(rc).toMatchObject({ colourfulShare: expect.any(Number), lightNeutralShare: expect.any(Number), darkNeutralShare: expect.any(Number) });
+    // every sampled pixel is colourful, light neutral or dark neutral
+    expect(Math.abs(rc.colourfulShare + rc.lightNeutralShare + rc.darkNeutralShare - 1)).toBeLessThanOrEqual(0.02);
+    expect(rc.colours.length).toBeLessThanOrEqual(5);
+    for (const c of rc.colours) {
+      expect(c.hex).toMatch(/^#[0-9A-F]{6}$/);
+      expect(c.share).toBeGreaterThanOrEqual(0.04);
+    }
     // the screenshots existed while Codex worked, and are gone now
     expect(preview.refsSeen.every((n) => n >= 2)).toBe(true);
     expect(ls(l.tmp)).toEqual([]);
