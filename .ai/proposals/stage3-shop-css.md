@@ -52,13 +52,13 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
 - **位置をずらすもの**:
   - `top` / `right` / `bottom` / `left` / `inset` は無い。`translate` も無い（dd の値を隣の行の label の横へ動かせた）。
   - `position` は static / relative だけで、`z-index` の層を作ることにしか使えない。
-  - `transform` は `rotate`（±8°）と `scale`（0.75〜2）をそれぞれ 1 回まで。`transform-origin` は keyword と % だけ。
+  - `transform` は `rotate`（±8°）を 1 つだけ。`scale` / `scaleX` / `scaleY` は無い（隣の要素を `scaleY(2)` で伸ばし、値の上側を消せた。再レビュー High 1）。`transform-origin` は keyword と % だけ。
+  - `text-orientation` は `mixed` / `upright` だけ（`sideways` は和文を横倒しにする。再レビュー Low 1）。
 - **字の大きさ**:
   - 下限は 12px で、書けるのは次の 3 つだけ（`%`・`em`・vw 単独・`calc` は不可。High 1・Low 2）。
     - `px` ≥ 12・`rem` ≥ 0.75
     - `clamp(<下限>, <px|rem|vw の式>, <上限>)`
     - 下限を 1 つ含む `max()`
-  - transform の縮小との組み合わせは render check が見る。
 - **selector**:
   - 子孫の複合はどれも許可された型名から始まる（`*` も、型の無い `:not()` / 属性だけの複合も無い。Low 1）。
   - これで `a`・`img`・`svg`・`figure` に届かない。
@@ -90,6 +90,7 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
 - **構文**: CSS Syntax Level 3 の tokenization の部分集合を自前で実装した（escape なし）。component value に組み、括弧の対応が崩れたら拒否する。
 - **at-rule**: `@media` だけ。
   - 条件は `(min-width|max-width: <px|em>)` で、`and` でつなげるのは 2 つまで。入れ子は不可。
+  - breakpoint は render check の幅の範囲（320〜1920px、em は 16px で換算）の中だけ。範囲の外だけで効く帯は検査されないため（再レビュー Medium 1）。
   - 異なる breakpoint は 4 つまで（render check の幅の数を抑える）。
 - **selector**: root の `#shop-css`（固定値の属性を付けてもよい）から始め、子孫の複合は型名で始める。使えるものは次のとおり。
   - 型: header main section div p span h1 h2 ol ul li dl dt dd
@@ -106,7 +107,9 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
 実装は `lib/design-agent/shop-css/render-check.ts`・`page-scripts.ts`。
 
 **検査する幅**
-- 固定の 320・360・390・768・1024・1440・1920 に、shop CSS の breakpoint ごとに「b−1・b・b+1」（em は 16px で換算、280〜2560 の範囲）を加える。
+- 固定の 320・360・390・768・1024・1440・1920 に、shop CSS の breakpoint ごとに「b−1・b・b+1」（em は 16px で換算）を加える。
+- 帯の中は標本で見ている（再レビュー Low 2）。`repeat(auto-fill, minmax())` や vw の値は帯の中で連続に変わり、帯の中ほどだけの崩れを証明するものではない。breakpoint の両側と固定の幅で見る。
+- viewport は mobile emulation を使わない（isMobile なし、820px 以下は touch）。shop CSS は幅でしか分岐できず、module CSS に `(hover)` / `(pointer)` の media は無い。入れば、その両側も検査する。
 - 4 幅ずつ並行して検査する。不合格が出た組で止める（`exhaustive` なら最後まで）。
 
 **比較のしかた**
@@ -126,22 +129,27 @@ facts（DemoView）+ profile ──► ProfileRenderer ──► 事実だけの
 | hidden | box が無いか、祖先が非表示 |
 | offscreen | 横が viewport の外に出る |
 | clipped | overflow / clip-path を持つ祖先で切れる |
-| covered | 行を viewport の中央に scroll し、`elementFromPoint` の 3 点が自分以外を返す |
+| covered | 行を viewport の中央に scroll し、行の高さの 25%・50%・75% × 横 5 点の `elementFromPoint` が自分以外を返す |
 | faded | 祖先の opacity の積が 0.85 未満 |
 | small | transform を含めた字の大きさが 12px 未満 |
 | squeezed | 1 行が 2.5 字分より細い行が 3 行以上ある |
 | contrast | 実際に塗られた地の上で 4.5 未満の画素が 10% を超える |
 | ink（画素の証明） | §「画素の証明」を参照 |
 
-- covered の補足: 透明で文字の無い飾りは覆いとみなさない。ただし、その飾りの `::before` / `::after` に地があれば覆いとみなす。
-- **画素の証明（ink）**: 頁を文字ありと、検査する文字だけを透明にしたものの 2 枚で撮る。次のどちらかで不合格。
-  - 見える文字のうち、自分の box で画素が変わらない文字が 1 つでもある。
-  - 変わる範囲（横書きは縦、縦書きは横）が CSS なしの 0.6 倍未満（上半分が覆われた、など）。
-  - 影・outline・疑似要素・隣の要素など、何で覆っても 2 枚はその文字のところで同じ画素になるので、この検査で捕まる。
+- covered の補足: 透明で文字の無い飾りは覆いとみなさない。ただし、その飾りの `::before` / `::after` に地があれば覆いとみなす。同じ見出し・段落の別の行（行送りの詰まった大きな字で行の box が重なる）で地の無いものも覆いとみなさない。
+- **画素の証明（ink）**: 頁を 4 枚撮る。
+  - 頁の画: 文字あり、検査する文字だけを透明にしたもの。
+  - 基準の画: 同じ配置のまま、文字以外の塗りをすべて消したもの（地・枠・影・装飾線・疑似要素・画像を消し、文字は白地に黒）。その文字ありと文字なし。
+  - 字ごとに、「墨」の画素（文字が 50% 以上覆う画素）の数を頁と基準で比べる。被覆率は「文字あり − 文字なし」を「文字色 − 文字なし」で割る。色に依らないので、明るい地の暗い字も、暗い地の明るい字も同じに測れる。
+  - **最も悪い字**が基準の 0.8 未満なら不合格。平均ではない（再レビュー High 1: 上側 40% の覆いは幅の平均では見えなかった）。墨のまったく無い字も不合格。基準で 6 画素未満の小さな字は測らない。
+  - 影・outline・疑似要素・伸ばした隣・回転した隣など、何で覆っても、覆ったところの墨が減る。
 - 事実の存在は `fact_missing` で見る。text node の並びが変われば `fact_missing` / `label_missing`。
 
 **注記帯と footer**
-- `notice_changed` / `footer_changed`: 計算された style と box が CSS なしと違う（notice は位置も比べる）。または、その領域の画素が CSS なしと 5% を超えて違う（sub-pixel の差は許す。1 行が塗られれば遥かに超える）。
+- `notice_changed` / `footer_changed`: 次のどちらかで不合格。
+  - 計算された style と box が CSS なしと違う（notice は位置も比べる）。
+  - **地**（文字と装飾線を透明にした画、上下の端 2px を除く）が CSS なしと 1% を超えて違う。
+  - 文字そのものは比べない。footer は頁の高さで動き、sub-pixel の位置が違うと同じ文字でも antialias が違うため（CI 118754174929 で 320px の footer が 5% を超えた）。文字は位置に依らない画素の証明（`notice_ink` / `footer_ink`）で見る。
 - `notice_covered` / `footer_covered`: 覆われている。
 - 各文字は上の文字ごとの検査（ink を含む）にもかかる。
 
