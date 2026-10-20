@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties } from "react";
 import type { RenderFeature, RenderPhotos } from "@/lib/design-agent/assets/resolve";
-import { DEFAULT_LAYOUT, japaneseOnly, normalizeLayout } from "@/lib/design-agent/layout";
+import { DEFAULT_LAYOUT, japaneseOnly, normalizeLayout, sectionIsShort } from "@/lib/design-agent/layout";
 import type { DesignProfile } from "@/lib/design-agent/profile";
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
@@ -224,13 +224,13 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
           {sections.map((section) => {
             switch (section.kind) {
               case "about":
-                return <About key="about" description={demo.description!} photo={aboutPhoto} spec={spec ? section : null} headings={headings} />;
+                return <About key="about" short={spec !== null && sectionIsShort(section, demo, hoursSection)} description={demo.description!} photo={aboutPhoto} spec={spec ? section : null} headings={headings} />;
               case "menu":
-                return <Menu key="menu" items={demo.menuItems} spec={spec ? section : null} headings={headings} />;
+                return <Menu key="menu" short={spec !== null && sectionIsShort(section, demo, hoursSection)} items={demo.menuItems} spec={spec ? section : null} headings={headings} />;
               case "hours":
-                return <Hours key="hours" rows={hourRows} spec={spec ? section : null} headings={headings} />;
+                return <Hours key="hours" short={spec !== null && sectionIsShort(section, demo, hoursSection)} rows={hourRows} spec={spec ? section : null} headings={headings} />;
               case "visit":
-                return <Visit key="visit" rows={visitRows} labels={labels} photo={visitPhoto} spec={spec ? section : null} headings={headings} />;
+                return <Visit key="visit" short={spec !== null && sectionIsShort(section, demo, hoursSection)} rows={visitRows} labels={labels} photo={visitPhoto} spec={spec ? section : null} headings={headings} />;
             }
           })}
         </main>

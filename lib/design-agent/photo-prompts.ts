@@ -5,7 +5,7 @@ import type { PublicAssetId } from "./assets/types";
 import type { PhotoIssue } from "./photo-review";
 import { PHOTO_ISSUES, REVISION_TARGETS } from "./photo-review";
 import type { DesignProfile } from "./profile";
-import { factsBlock, historyBlock, RULES, VOCABULARY, type RoundSummary } from "./prompts";
+import { factsBlock, historyBlock, layoutOptionsLine, RULES, VOCABULARY, type RoundSummary } from "./prompts";
 import { observedColoursLine, type ObservedColours } from "./reference-colours";
 import { rendererChangeRule, screenshotScaleLine, SHOT_VIEWPORTS } from "./shot-viewports";
 
@@ -132,6 +132,7 @@ export function buildPhotoReviewPrompt(input: {
     "You are reviewing a rendered proposal demo that uses photos, against the shop's own public presence.",
     photoVocabulary(),
     RULES,
+    layoutOptionsLine(input.demo),
     PHOTO_RULES,
     `Attached images: the first ${input.referenceCount} are ${refs} (reference; photos in them are blurred and pixelated). Then the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide)` +
       cropLine(input.crops),
@@ -145,7 +146,7 @@ image_repetition (5 = nothing repeated), image_quality, mobile_crop, photo_brand
 You cannot place photos yourself; a new direction is made separately from your photo_issues.`,
     `This is round ${input.round} of at most ${input.maxRevisions} revisions.`,
     "verdict = accept when the page is ready to show the shop owner; otherwise revise.",
-    "If the fix needs something the renderer cannot do (a new layout, a new motif, a photo place that does not exist), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty.",
+    "If the fix needs something the renderer cannot do (a section kind, variant, ground, first view, type setting or motif that is not in the vocabulary above, a photo place that does not exist), set needs_renderer_change = true and describe it briefly in renderer_change_note. Otherwise leave that note empty. Changing the layout (which sections, their order, each section's variant and ground, the first view, the type scale or heading style) is a profile change: give it in revised_profile.",
     rendererChangeRule({ photos: true }),
     historyBlock(input.history ?? [], input.best ?? null, input.again ?? null, 65, "revision (revision_target, revised_profile, photo_issues)"),
     "Image direction that produced these screenshots:",

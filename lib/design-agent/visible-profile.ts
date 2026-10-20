@@ -1,3 +1,5 @@
+import type { DemoView } from "@/lib/sales/demo-content";
+import { DEFAULT_LAYOUT, normalizeLayout } from "./layout";
 import type { DesignProfile } from "./profile";
 
 // DEV-066: which profile settings the review screenshots can show. The
@@ -54,7 +56,28 @@ export const VISIBLE_SETTINGS = [
   "composition.divider",
   "motifs",
   "spacing.scale",
+  // DEV-071b: the layout, as the page draws it (normalized against the facts)
+  "layout.firstView",
+  "layout.sections",
+  "layout.type.scale",
+  "layout.type.headings",
 ] as const;
+
+/**
+ * The layout as the page draws it: normalized against the facts (sections without
+ * facts left out, a first view without facts shown as the name alone, vertical
+ * headings beside short sections set horizontally), and no type hierarchy on a page
+ * without sections. Every ground counts: in boutique_minimal (sections drawn as
+ * surface panels) a surface band is still a panel with more space and no rule.
+ */
+function drawnLayout(profile: DesignProfile, demo: DemoView) {
+  const { layout } = normalizeLayout(profile.layout ?? DEFAULT_LAYOUT, demo);
+  return {
+    firstView: layout.firstView,
+    sections: layout.sections.map((s) => ({ kind: s.kind, variant: s.variant, ground: s.ground })),
+    type: layout.sections.length > 0 ? layout.type : null,
+  };
+}
 
 function read(profile: DesignProfile, path: string): unknown {
   let value: unknown = profile;
@@ -71,17 +94,37 @@ function same(a: unknown, b: unknown): boolean {
 
 /**
  * The visible settings that differ between two profiles (palette colours
- * compare case-insensitively). Without photos (the DEV-028 loop) the settings
+ * compare case-insensitively; the layout as drawn for these facts, DEV-071b). Without photos (the DEV-028 loop) the settings
  * drawn only on photo pages do not count unless either profile's direction
  * draws them; the accent counts only when either profile has a motif or a
  * direction drawn in it (gallery_mono repaints the accent motifs).
  */
-export function visibleChanges(before: DesignProfile, after: DesignProfile, options: { photos: boolean }): string[] {
+export function visibleChanges(before: DesignProfile, after: DesignProfile, options: { photos: boolean; demo: DemoView }): string[] {
   const has = (list: readonly string[], value: string) => list.includes(value);
+  const drawn = [before, after].map((p) => ({ ...p, layout: drawnLayout(p, options.demo) }));
   const accentShown = [before, after].some(
     (p) => (!has(NO_ACCENT_DIRECTIONS, p.direction) && p.motifs.some((m) => has(ACCENT_MOTIFS, m))) || has(ACCENT_DIRECTIONS, p.direction),
   );
-  const surfaceShown = options.photos || [before, after].some((p) => has(SURFACE_DIRECTIONS, p.direction));
-  const hidden: readonly string[] = [...(surfaceShown ? [] : ONLY_WITH_PHOTOS), ...(accentShown ? [] : ["palette.accent"])];
-  return VISIBLE_SETTINGS.filter((path) => !hidden.includes(path) && !same(read(before, path), read(after, path)));
+  // the surface colour also shows on a page with a surface band (DEV-071b)
+  const surfaceShown = options.photos || drawn.some((p) => has(SURFACE_DIRECTIONS, p.direction) || p.layout.sections.some((s) => s.ground === "surface"));
+  // DEV-071b: the composition settings that draw nothing on these pages (when unsure, a setting counts:
+  // a wrong "visible" costs one extra ask, a wrong "hidden" throws away a real revision; the Chromium
+  // property test in renderer-visibility.test.tsx checks every hidden case pixel for pixel).
+  // grid: nothing without sections; editorial_12 and asymmetric_7_5 differ only in columns and gap, which
+  // vertical headings set themselves. infoStyle: only with a visit section (any variant: colophon also
+  // centres a one-row visit). divider: only between two sections.
+  const grids = new Set([before.composition.grid, after.composition.grid]);
+  const gridHidden =
+    drawn.every((p) => p.layout.sections.length === 0) ||
+    (grids.has("editorial_12") && grids.has("asymmetric_7_5") && drawn.every((p) => p.layout.type?.headings === "vertical_ja"));
+  const ledgerShown = drawn.some((p) => p.layout.sections.some((x) => x.kind === "visit"));
+  const dividerShown = drawn.some((p) => p.layout.sections.length > 1);
+  const hidden: readonly string[] = [
+    ...(surfaceShown ? [] : ONLY_WITH_PHOTOS),
+    ...(accentShown ? [] : ["palette.accent"]),
+    ...(gridHidden ? ["composition.grid"] : []),
+    ...(ledgerShown ? [] : ["composition.infoStyle"]),
+    ...(dividerShown ? [] : ["composition.divider"]),
+  ];
+  return VISIBLE_SETTINGS.filter((path) => !hidden.includes(path) && !same(read(drawn[0] as DesignProfile, path), read(drawn[1] as DesignProfile, path)));
 }

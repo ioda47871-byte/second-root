@@ -604,6 +604,9 @@ async function runJob(ctx: JobContext): Promise<JobOutcome | { stop: string }> {
         schema_mode: schemaMode,
         // DEV-069: what the prompts were told (hex values and shares; null when the references could not be read)
         reference_colours: observedColours,
+        // DEV-071b: the final page's layout (enum values only) and what normalizing each candidate's layout changed (fixed codes)
+        layout: final?.layout ?? null,
+        layout_adjustments: pipeline.layoutAdjustments,
         notes: [...notes, ...pipeline.notes],
       },
       overflow,

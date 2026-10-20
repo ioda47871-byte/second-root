@@ -114,7 +114,7 @@ export async function directImages(o: {
   feedback?: readonly PhotoIssue[];
 }): Promise<PhotoStep<ImageDirection>> {
   if (o.inputs.length === 0) return { ok: true, value: NO_IMAGES };
-  const sections = sectionsPresent(o.demo);
+  const sections = sectionsPresent(o.demo, o.profile.layout);
   const prompt = buildImageDirectionPrompt({ photos: o.inputs.map(({ assetId, width, height }) => ({ assetId, width, height })), analyses: o.analyses, profile: o.profile, sections, feedback: o.feedback });
   const result = await ask(o.call, { prompt, schema: imageDirectionJsonSchema(), imageBytes: o.inputs.map((p) => p.png) });
   if (!result.ok) return fail(result.code);

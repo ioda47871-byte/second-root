@@ -3,6 +3,7 @@ import type { PlacedPhoto } from "./assets/render-check";
 import { DeadlineError } from "./bounded-process";
 import { CodexError, isEnvironmentFailure } from "./codex";
 import { briefStructureOnDefault, CATEGORY_DEFAULT_PROFILES, LOW_CONFIDENCE } from "./defaults";
+import { collapseRepeatedSections, profileAsDrawn } from "./layout";
 import { checkProfile, designProfileJsonSchema, looseJsonSchema, type DesignProfile } from "./profile";
 import { runPhotoLoop, timeForSecondLook, type PhotoPipelineInput, type PhotoStats } from "./photo-pipeline";
 import { buildBriefPrompt, buildReviewPrompt } from "./prompts";
@@ -102,7 +103,15 @@ export type PipelineReport = {
   after: Shots | null;
   /** Only for a job with photos (DEV-029). */
   photos?: PhotoStats;
+  /**
+   * DEV-071b: what normalizing each candidate's layout against the facts changed
+   * (fixed codes only, never Codex's words; "layout:missing" = no layout, the page
+   * before Stage 1); candidates with no change are left out.
+   */
+  layoutAdjustments: LayoutAdjustmentRecord[];
 };
+
+export type LayoutAdjustmentRecord = { candidate: string; codes: string[] };
 
 export interface PipelineInput {
   demo: DemoView;
@@ -122,6 +131,15 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   const maxRevisions = Math.min(MAX_REVISIONS, Math.max(0, input.maxRevisions ?? MAX_REVISIONS));
   const schema = (s: object) => (input.schemaMode === "loose" ? looseJsonSchema(s) : s);
   const notes: string[] = [];
+  const layoutAdjustments: LayoutAdjustmentRecord[] = [];
+  /** DEV-071b: a checked profile as the page draws it (see profileAsDrawn); its adjustments are recorded. */
+  const asDrawn = (candidate: string, checked: DesignProfile, collapsed: string[] = []): DesignProfile => {
+    // an answer without a layout (the schema requires one) draws the page before Stage 1: layout:missing
+    const { profile: drawn, adjustments } = profileAsDrawn(checked, input.demo);
+    const codes = [...collapsed, ...adjustments];
+    if (codes.length > 0) layoutAdjustments.push({ candidate, codes });
+    return drawn;
+  };
   const before = await deps.render("none");
   const report = (status: PipelineReport["status"], extra: Partial<PipelineReport> = {}): PipelineReport => ({
     status,
@@ -133,11 +151,13 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     briefConfidence: null,
     before,
     after: null,
+    layoutAdjustments,
     ...extra,
   });
 
   // ---- brief
   let profile: DesignProfile;
+  let briefCodes: string[] = [];
   let profileSource: PipelineReport["profileSource"] = "codex";
   try {
     const answer = await deps.askCodex({
@@ -153,7 +173,9 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       images: [...input.references, before.desktop, before.mobile],
       schema: schema(designProfileJsonSchema()),
     });
-    const check = checkProfile(answer);
+    const collapsed = collapseRepeatedSections(answer);
+    briefCodes = collapsed.codes;
+    const check = checkProfile(collapsed.value);
     if (!check.ok) {
       notes.push("BRIEF_PROFILE_INVALID");
       await deps.writeRecord("brief-rejected.json", { problems: check.problems });
@@ -170,6 +192,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     throw error;
   }
   const briefConfidence = profile.confidence;
+  profile = asDrawn("brief", profile, briefCodes);
   if (profile.confidence < LOW_CONFIDENCE) {
     notes.push("LOW_CONFIDENCE_CATEGORY_DEFAULT");
     await deps.writeRecord("brief-low-confidence.json", profile);
@@ -178,12 +201,12 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     if (combined) {
       notes.push("BRIEF_STRUCTURE_KEPT");
       deps.log(`brief: confidence ${profile.confidence} < ${LOW_CONFIDENCE} → category default styling, brief structure`);
-      profile = combined;
+      profile = asDrawn("brief_structure", combined);
       profileSource = "category_default_brief_structure";
     } else {
       notes.push("BRIEF_STRUCTURE_REJECTED");
       deps.log(`brief: confidence ${profile.confidence} < ${LOW_CONFIDENCE} → category default profile`);
-      profile = CATEGORY_DEFAULT_PROFILES[input.demo.category];
+      profile = asDrawn("category_default", CATEGORY_DEFAULT_PROFILES[input.demo.category]);
       profileSource = "category_default";
     }
   }
@@ -202,6 +225,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       maxRevisions,
       schema,
       notes,
+      layoutAdjustments,
       deps: { askCodex: (r) => deps.askCodex(r), askPhotoCodex, writeProfile: deps.writeProfile, writeRecord: deps.writeRecord, readRecord: deps.readRecord, renderPhotos, ...(deps.timeLeftMs ? { timeLeftMs: deps.timeLeftMs } : {}), log: deps.log },
     });
     photoStats = result.stats;
@@ -209,7 +233,7 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
     if (result.kind === "done") {
       const { rounds, finalCandidate, revisions, after } = result;
       const status = qualityGate(result.status, rounds, finalCandidate, notes, deps.log);
-      return { status, notes, profileSource, rounds, finalCandidate, revisions, briefConfidence, before, after, photos: photoStats };
+      return { status, notes, profileSource, rounds, finalCandidate, revisions, briefConfidence, before, after, photos: photoStats, layoutAdjustments };
     }
   }
   const withPhotos = photoStats ? { photos: photoStats } : {};
@@ -337,14 +361,15 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
       notes.push("NO_REVISED_PROFILE");
       break;
     }
-    let check = checkProfile(revised);
+    let collapsed = collapseRepeatedSections(revised);
+    let check = checkProfile(collapsed.value);
     if (!check.ok) {
       notes.push(`REVISION_INVALID_${revisions + 1}`);
       await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
       break;
     }
     // This loop renders no photos (the photo loop is runPhotoLoop).
-    let changed = visibleChanges(base.profile, check.profile, { photos: false });
+    let changed = visibleChanges(base.profile, check.profile, { photos: false, demo: input.demo });
     if (changed.length === 0) {
       // DEV-066: the revision changes only settings the screenshots cannot show
       // (or nothing): it would render the same page. Ask the same review once
@@ -372,20 +397,21 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
         notes.push("NO_REVISED_PROFILE");
         break;
       }
-      check = checkProfile(revised);
+      collapsed = collapseRepeatedSections(revised);
+      check = checkProfile(collapsed.value);
       if (!check.ok) {
         notes.push(`REVISION_INVALID_${revisions + 1}`);
         await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
         break;
       }
-      changed = visibleChanges(base.profile, check.profile, { photos: false });
+      changed = visibleChanges(base.profile, check.profile, { photos: false, demo: input.demo });
       if (changed.length === 0) {
         notes.push("NO_VISIBLE_REVISION");
         break;
       }
     }
     revisions += 1;
-    current = { name: `candidate-${revisions}`, profile: check.profile };
+    current = { name: `candidate-${revisions}`, profile: asDrawn(`candidate-${revisions}`, check.profile, collapsed.codes) };
     changedBy.set(current.name, changed);
     deps.log(`${current.name}: changes ${changed.join(", ")}`);
   }
@@ -401,5 +427,5 @@ export async function runDesignPipeline(input: PipelineInput, deps: PipelineDeps
   await deps.writeProfile("final", best.profile);
   const after = await deps.render("final");
   const status = qualityGate(state.status, rounds, best.name, notes, deps.log);
-  return { status, notes, profileSource, rounds, finalCandidate: best.name, revisions, briefConfidence, before, after, ...withPhotos };
+  return { status, notes, profileSource, rounds, finalCandidate: best.name, revisions, briefConfidence, before, after, ...withPhotos, layoutAdjustments };
 }

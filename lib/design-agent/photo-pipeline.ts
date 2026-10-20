@@ -12,7 +12,8 @@ import type { ObservedColours } from "./reference-colours";
 import { CodexError, isEnvironmentFailure, type CodexFailureCode } from "./codex";
 import { buildPhotoReviewPrompt } from "./photo-prompts";
 import { photoReviewJsonSchema, PhotoReviewSchema, photoReviewScore, revisionPlan, type PhotoIssue, type PhotoReview } from "./photo-review";
-import type { Shots } from "./pipeline";
+import { collapseRepeatedSections, profileAsDrawn } from "./layout";
+import type { LayoutAdjustmentRecord, Shots } from "./pipeline";
 import { checkProfile, type DesignProfile } from "./profile";
 
 // The design loop for a job with photos (DEV-029 stage 4). Called by
@@ -99,6 +100,8 @@ type Ctx = {
   maxRevisions: number;
   schema: (s: object) => object;
   notes: string[];
+  /** DEV-071b: layout adjustments of the revised candidates (fixed codes), shared with the run report. */
+  layoutAdjustments?: LayoutAdjustmentRecord[];
   deps: PhotoDeps;
 };
 
@@ -144,7 +147,6 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
     await deps.writeRecord("photo-analyses.json", analysesArt);
   }
 
-  const sections = sectionsPresent(ctx.demo);
   const direct = (profile: DesignProfile, feedback: readonly PhotoIssue[]): Promise<PhotoStep<ImageDirection>> =>
     directImages({ call: call("image_direction"), inputs, analyses, manifest, profile, demo: ctx.demo, feedback });
 
@@ -172,7 +174,8 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
 
   const show = async (name: string, profile: DesignProfile, direction: ImageDirection) => {
     await deps.writeProfile(name, profile);
-    await deps.writeRecord(`${name}.images.json`, imagesArtifact(runId, name, manifest, analysesArt, profile, sections, direction));
+    // the sections of this candidate's own layout (DEV-071b)
+    await deps.writeRecord(`${name}.images.json`, imagesArtifact(runId, name, manifest, analysesArt, profile, sectionsPresent(ctx.demo, profile.layout), direction));
     const rendered = await deps.renderPhotos(name);
     return { rendered, problems: checkRenderedPhotos(direction, manifest, rendered.placed) };
   };
@@ -290,19 +293,24 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
       break;
     }
     let nextProfile = base.profile;
+    let layoutCodes: string[] = [];
     if (plan.profile) {
       const revised = basis.recommended_profile_changes.revised_profile;
       if (revised === null) {
         notes.push("NO_REVISED_PROFILE");
         break;
       }
-      const check = checkProfile(revised);
+      const collapsed = collapseRepeatedSections(revised);
+      const check = checkProfile(collapsed.value);
       if (!check.ok) {
         notes.push(`REVISION_INVALID_${revisions + 1}`);
         await deps.writeRecord(`revision-${revisions + 1}-rejected.json`, { problems: check.problems });
         break;
       }
-      nextProfile = check.profile;
+      // DEV-071b: the revised layout as the page draws it (its codes are recorded once the candidate exists)
+      const drawn = profileAsDrawn(check.profile, ctx.demo);
+      layoutCodes = [...collapsed.codes, ...drawn.adjustments];
+      nextProfile = drawn.profile;
     }
     let next: PhotoStep<ImageDirection>;
     try {
@@ -320,6 +328,7 @@ export async function runPhotoLoop(ctx: Ctx): Promise<PhotoLoopResult> {
     }
     revisions += 1;
     current = { name: `candidate-${revisions}`, profile: nextProfile, direction: next.value };
+    if (layoutCodes.length > 0) ctx.layoutAdjustments?.push({ candidate: current.name, codes: layoutCodes });
   }
 
   // ---- final: the best-reviewed candidate (later wins a tie)
