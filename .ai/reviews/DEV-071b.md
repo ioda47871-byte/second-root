@@ -198,3 +198,114 @@ commit: 044159d（High）・7f8f48d（Medium・N1・N2）・d62e6ee（Low 1〜5�
 8. **Nits**: N1 は 3 と同時、N2 は「Revise with settings…」に描かれない layout の設定を追加、N3 は空行を削除、N4 は strace の test に 20 秒の
    timeout（別 commit 431a617、検査の中身は不変）。
 
+
+## 再レビュー（83838bf）
+
+Reviewer: 同じ Fresh Reviewer（2026-10-20）。対象は `git diff 9e28d88 83838bf`。
+Verdict: **FAIL**（直すのは `visibleChanges` の隠す規則の 2 か所だけ。他の対応はすべて確認済み）
+Counts: Critical 0 / High 0 / Medium 1（新規）/ Low 1（新規）/ Nit 1
+
+### 実行したこと
+
+- **`npx vitest run tests/unit/design-agent` の全体**（Chromium あり）を実行した。
+  - 結果は 47 files pass / 2 failed / 2 skipped、662 pass / 2 fail、822 s。
+  - 落ちたのは次の 2 件で、どちらも本 branch が触れていない file:
+    - `browser.test.ts`「in C, stops at once … during sampling」（off-site の要求 15 > 3）
+    - `renderer-jp-name.test.tsx`「never breaks inside a piece …」（180 s の timeout）
+  - 実行中の load average は 23〜26。私の probe を同時に走らせたことも load の一因。
+  - 2 file を単独で再実行すると **84 / 84 pass**（jp-name は 148 s）。load による flake と判断する。
+  - jp-name は 180 s の上限に近いので、Nit 1 に記録した。
+- `tests/unit/ai-tasks*` → 83 pass。
+- `npx eslint`（変更した ts/tsx 全部）→ 0。
+- `npm run build` → 成功。その後の `npx tsc --noEmit` → 0。
+- 一時の Chromium probe（実行後に削除。tree は本ファイル以外は無変更）。中身は次の 2 つ:
+  - **隠す規則の画素比較:** `visibleChanges` が `[]` を返す組を、10 direction × 1440 / 390 で描いて比べた。対象は grid・infoStyle・divider の 7 種の場面。
+  - **split の container query:** 10 direction × alignment left / center × infoStyle 3 種 × 320 / 390 / 760 / 1024 / 1440 / 1920 で、次を検査した。
+    - 行の幅
+    - dt / dd のはみ出し
+    - 横 scroll
+- Vercel・Supabase・WSL・他の worktree には触れていない。commit・push もしていない。
+
+### 前回の指摘の確認
+
+- **High（boutique の 1440 超）— 解消。**
+  - `max-width: calc(1080px + 2 * var(--pad))` なので、中身は常に 1080px になる。
+  - 17 幅の sweep と「節の箱の中の語」の検査は全体の実行で pass した。
+- **container query — 問題なし。**
+  - `next build` の CSS に `container-type:inline-size` と `@container (min-width: 26em){…splitRow{…}}` がそのまま残る。review の screenshot は同じ Chromium（Playwright）で preview の頁を撮るので、描き方は test と同じになる。
+  - `.splitRows` の inline-size の封じ込めは、縮む文脈で幅 0 に潰れるおそれがある。そこで alignment=center・colophon の中央揃えでも確かめたが、全組み合わせで行の幅は 120px 以上、はみ出し 0、横 scroll 0 だった。
+- **Medium（needs_renderer_change の文）— 解消。**
+  - review と photo review のどちらも、例は「語彙に無いもの」だけになった。「layout の変更は profile の変更」も明記された。
+- **Low 1（boutique の surface）— 解消。**
+  - `PANEL_DIRECTIONS` は削除され、surface は見える変更として数える。
+  - 語彙も事実どおりになった（panel の列の中。inverted は primary の panel）。
+- **Low 2（名前だけの店）— 解消。**
+  - first view と type は normalize した値で保存し、sections だけ Codex のもの（1 節以上の形を保つため）。
+  - `LayoutSchema.safeParse` に通すので、保存できない形にはならない。
+- **Low 3（photo loop の記録）— 解消。**
+  - `profileAsDrawn` が `layout:missing` を返し、両方の loop で記録する。
+  - photo loop の符号は `revisions += 1` の後で記録する。
+- **Low 5 / DesignProfileAnswerSchema — 安全。**
+  - review の答えの parse は、重複と 5 節以上を許す。ただし profile として使うのは、`collapseRepeatedSections` → `checkProfile`（`DesignProfileSchema`、1〜4 節・kind 一意）→ `profileAsDrawn` の後だけ。
+  - brief、DEV-028 の通常の改訂、再質問の改訂、photo loop の改訂の 4 か所すべてで、この順を確かめた。
+  - `writeProfile`・`visibleChanges`・leader・final に入るのは、check 済みで描いた形だけ。
+  - 畳む前の生の答えが残るのは `review-<c>.json` などの記録だけで、以前と同じく local。
+  - 畳むときは最初の 1 つを残す。`normalizeLayout` の duplicate と同じ規則。
+- **N1〜N4 — 解消。**
+
+### 新規
+
+1. **Medium — Low 4 の対応で、見える変更を「見えない」と数える場面ができた: 1 行だけの visit を cards / stacked で描く頁の `composition.infoStyle`。**（`visible-profile.ts` の `ledgerShown`）
+   - `profile.module.css` l.726–727 の 2 つの rule は、visit の variant に関係なく `data-single`（visit の行が 1 つ）の節に効く:
+     - `.canvas[data-info="colophon"] .section[data-single] { grid-template-columns: minmax(0,1fr); justify-items: center; text-align: center; }`
+     - 同じく `.heading { flex-direction: row; justify-content: center }`
+   - colophon にすると、節は 1 列で中央揃えになり、見出しは横並びになる。
+   - **実測（1440、10 direction とも）:**
+     - cards: ruled_list → colophon で頁の高さが +38〜+101px。節の組みも、見出しの左列 → 中央の 1 列に変わる。
+     - stacked: −19〜−51px。
+     - ところが `visibleChanges` は `[]` を返す。
+   - **失敗シナリオ:** 住所しか無い店で、Codex が visit を cards にした頁。review が「店舗情報を中央に」と infoStyle だけを colophon に変える。`REVISION_NOT_VISIBLE_n` → 再質問になり、同じ答えなら `NO_VISIBLE_REVISION` で loop が終わる。頁は実際に変わる改訂なのに、1 回分を失う。品質基準は下げない（止まる側）。
+   - 見える変更を見えないと数える誤りは、逆の誤り（round の空費）より悪い。実装者の方針（DEV-066）でも、判定は「見える」側に倒すことになっている。
+   - **提案:**
+     - `ledgerShown` に「visit の行が 1 つの頁（`data-single` になる頁）」を足す。行の数は `infoRows` と hours 節の有無から決まり、`sectionIsShort` と同じ計算でよい。
+     - または、infoStyle を隠すのは「visit 節が無い頁」だけにする。
+     - この組を画素で固定する test を足す。
+
+2. **Low — `composition.grid` の editorial_12 ↔ asymmetric_7_5 を、全節が statement / stacked / side_heading の頁で見えない扱いにしているが、実際は節の行の間隔が変わる。**
+   - `profile.module.css` l.714–715 の grid の rule は、列と同時に `gap: 40px` / `48px` を決める。statement・stacked は 1 列で、見出しと本文の 2 行なので、row-gap の 8px が節ごとに効く。side_heading でも、写真が無ければ 1 行のはずが差が出た。
+   - **実測（1440、10 direction とも）:**
+     - statement + stacked の頁で +16px
+     - side_heading + stacked の頁で +8px
+   - 縦書きの見出し（vertical_ja）の頁は 0 差で、正しい。
+   - 見た目の差は小さい（列は同じで、間隔が 8px ずつ）。review が狙う「列の比」は確かに描かれないので、実害は小さい。
+   - ただし「同じ頁」ではない。
+   - **提案（どちらか）:**
+     - この組では grid を隠さない（保守的な側）。
+     - sections.module.css で statement / stacked / side_heading の `row-gap` を固定し、grid に依存しないようにしてから隠す。
+
+### Nit
+
+- N1 — `renderer-jp-name.test.tsx` の「never breaks inside a piece …」は、load 23 前後で 180 s の上限を超え、単独では 148 s かかった。本 branch は触れていない。DEV-071a の Low 4（phone の枠の test）と同じく、browser context を使い回して分割すると安定する（別 task）。
+
+### 結論
+
+- 安全側（事実と固定語だけ・根拠の無い節を描かない・保存する profile = 描いた形・注記・contrast・品質ゲート）に退行は無い。
+- 前回の High・Medium・Low 1〜3・Low 5・Nits はすべて解消した。
+- Low 4 の対応で入った隠す規則のうち、infoStyle の 1 行の visit（Medium）は、見える変更を見えないと数える。品質基準は下げない。ただ、DEV-066 の判定の原則（迷ったら見える側）に反するので、merge の前に直すことを求める。
+- 直した後は、`visible-profile.ts` と test の差分だけを確認すれば PASS にできる見込み。
+
+## 対応 (2)（実装者、再レビューへ）
+
+1. **Medium（1 行の visit と infoStyle）**: `composition.infoStyle` は visit 節があれば（variant を問わず）見える変更にした（colophon は 1 行の visit を
+   variant に関係なく中央に組むため）。visit 節の無い頁だけが見えない扱い。
+2. **Low（grid の gap）**: editorial_12 ↔ asymmetric_7_5 を見えない扱いにするのは、両方の頁の見出しが縦書き（vertical_ja、列も間隔も見出しの規則が決める）
+   のときだけにした。statement・stacked・side_heading だけの頁でも見える変更（gap 40 / 48px）。節の無い頁では grid は見えないまま。
+   迷うときは見える側（誤って見える＝もう一度の質問だけ、誤って見えない＝本物の改訂を捨てる）。
+3. **安全網の test**（`tests/unit/design-agent/renderer-visibility.test.tsx`、Chromium）: direction ごとに、5 店（visit 多行・visit 1 行・事実の少ない和文の店・
+   縦書きの店名の店・名前だけ）× 6 layout（無し・DEFAULT・自分で列を決める variant・cards と inverted・縦書き・coverage）の profile から、
+   grid・infoStyle・divider・surface・accent・motif の順・motion・first view・見出しの型・type の scale・地を 1 つずつ変えた組を作り、
+   `visibleChanges` が `[]` を返す組をすべて 1440 と 390 で full page に描いて、画素（PNG の byte）が一致することを確かめる。
+   markup が同じ組は同じ頁なので描かない（描く組は direction ごとに 40 以上を下限で確認、見えない組は 60 以上、grid・info・divider・
+   first view・見出し・scale・motion の各種類を含む）。所要は direction ごと 34〜46 秒（10 test、計約 7 分）。
+   - 検出力の確認: infoStyle の規則を直す前（ledger だけ）に戻すと、1 行の visit の組（cards・stacked・縦書き・coverage）で失敗する。
+4. **Nit（jp-name の test の所要）**: 指示どおり触れない。

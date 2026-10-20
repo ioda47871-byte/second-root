@@ -72,17 +72,23 @@ describe("visibleChanges", () => {
     expect(visibleChanges(boutique("plain"), boutique("surface"), NO_PHOTOS)).toEqual(["layout.sections"]);
     expect(visibleChanges(boutique("plain"), boutique("inverted"), NO_PHOTOS)).toEqual(["layout.sections"]);
     // composition draws only on the sections that use it
-    const fixed = withLayout({ ...DEFAULT_LAYOUT, sections: [{ kind: "about", variant: "statement", ground: "plain" }, { kind: "menu", variant: "chips", ground: "plain" }, { kind: "visit", variant: "stacked", ground: "plain" }] });
     const grid = (q: DesignProfile, g: DesignProfile["composition"]["grid"]) => ({ ...q, composition: { ...q.composition, grid: g } });
     const info = (q: DesignProfile) => ({ ...q, composition: { ...q.composition, infoStyle: q.composition.infoStyle === "colophon" ? ("ruled_list" as const) : ("colophon" as const) } });
-    // chips is not a fixed-column variant: the grid still sets that section's columns
-    expect(visibleChanges(grid(fixed, "editorial_12"), grid(fixed, "asymmetric_7_5"), NO_PHOTOS)).toEqual(["composition.grid"]);
+    // statement / stacked set their own columns, but the grid's gap still differs: visible (re-review Low)
     const allFixed = withLayout({ ...DEFAULT_LAYOUT, sections: [{ kind: "about", variant: "statement", ground: "plain" }, { kind: "visit", variant: "stacked", ground: "plain" }] });
     const shop = { photos: false, demo: { ...SHOP, menuItems: [] } };
-    expect(visibleChanges(grid(allFixed, "editorial_12"), grid(allFixed, "asymmetric_7_5"), shop)).toEqual([]);
-    expect(visibleChanges(grid(allFixed, "editorial_12"), grid(allFixed, "single_column"), shop)).toEqual(["composition.grid"]); // heading size
-    expect(visibleChanges(info(allFixed), allFixed, shop)).toEqual([]); // no ledger visit
+    expect(visibleChanges(grid(allFixed, "editorial_12"), grid(allFixed, "asymmetric_7_5"), shop)).toEqual(["composition.grid"]);
+    // vertical headings set their own columns and gap: the two grids draw the same page
+    const long = { photos: false, demo: { ...SHOP, description: "あ".repeat(80), menuItems: ["a", "b", "c"] } };
+    const vertical = withLayout({ ...DEFAULT_LAYOUT, type: { scale: "standard", headings: "vertical_ja" } });
+    expect(visibleChanges(grid(vertical, "editorial_12"), grid(vertical, "asymmetric_7_5"), long)).toEqual([]);
+    expect(visibleChanges(grid(vertical, "editorial_12"), grid(vertical, "single_column"), long)).toEqual(["composition.grid"]);
+    // infoStyle: any visit section (colophon centres a one-row visit whatever its variant, re-review Medium)
+    expect(visibleChanges(info(allFixed), allFixed, shop)).toEqual(["composition.infoStyle"]);
     expect(visibleChanges(info(p), p, NO_PHOTOS)).toEqual(["composition.infoStyle"]);
+    const noVisit = withLayout({ ...DEFAULT_LAYOUT, sections: [DEFAULT_LAYOUT.sections[0], DEFAULT_LAYOUT.sections[1]] });
+    const factsWithoutVisit = { photos: false, demo: { ...SHOP, address: null, access: null, phone: null, hours: null, closedDays: null } };
+    expect(visibleChanges(info(noVisit), noVisit, factsWithoutVisit)).toEqual([]);
     // a page without sections: grid, info style and divider draw nothing
     expect(visibleChanges(grid(info(p), "single_column"), p, minimal)).toEqual([]);
     // a surface band shows the surface colour
