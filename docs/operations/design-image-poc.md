@@ -14,6 +14,13 @@
 > [preflight](#preflight-dev-078) and reads the CLI's own session log **in memory** before the cleanup removes it
 > ([why](#why-the-image-tool-was-not-used-dev-078), [new codes](#stop-classes-dev-078)). The prompt is unchanged. Next: HUMAN-021 (local check → v1 re-run → v2).
 
+> **DEV-080 (2026-10-21):** HUMAN-021a found **Codex CLI 0.159.0** on the machine (`.env` absent, no `config.toml` line, bundled models with
+> `['text','image']`). Read at that version, `codex exec` writes its session log in the **paginated** history mode (not legacy:
+> no `image_generation_end`; the tool's end record is an `item_completed` **Extension** item), and every bundled model but `gpt-5.5`
+> is **code-mode-only** (imagegen is called from JavaScript inside an `exec` cell; there is no `function_call imagegen`). DEV-078's
+> parsing read neither, so it could report `TOOL_NOT_CALLED` for a call it could not see. Fixed: [DEV-080](#codex-cli-01590-paginated-history-and-code-mode-dev-080).
+> A new outcome `TOOL_NOT_SEEN_CODE_MODE` (class `inconclusive`) replaces "not called" where the log cannot tell. Nothing about the run changed (no `-m`).
+
 > **Human approval is required first** (`.ai/blockers.md` HUMAN-018) for **each** run. With approval, add `--human-approval-confirmed`.
 > Without it, neither `design-image-poc.sh` nor `design-image-poc.ts` reads a file, prepares the sandbox or starts Codex
 > (`STOP: --human-approval-confirmed is missing`).
@@ -188,10 +195,12 @@ POC_DIAG_SUMMARY code=CODEX_NO_IMAGE dir=v2 prompt_chars=6801 codex=1 exit=0 thr
 Note (DEV-078, settled): in Codex CLI 0.163.0 `codex exec --json` has no image-generation item at all, so `image_tool=0/0`
 never proves the tool was not called. The session-log fields below decide.
 
-### DEV-078 fields (schema `sr-design-image-poc-diagnostics/2`)
+### DEV-078 fields (schema `sr-design-image-poc-diagnostics/2`; `/3` since DEV-080)
 
 `diagnostics.json` gains `preflight`, `session` and `classification`; `POC_DIAG_SUMMARY` gains
 `cli= dotenv= model= provider_openai= log= img_calls= img_ok= img_failed= img_fail= other_calls= outcome= answer= class=`.
+DEV-080 (schema `/3`) adds `hist= tool_mode= cm_cells= cm_ref=` after `log=` (`session.history_mode`, `tool_mode`,
+`code_mode_cells`, `code_mode_imagegen_ref`).
 
 | field | from | meaning |
 |---|---|---|
@@ -199,17 +208,22 @@ never proves the tool was not called. The session-log fields below decide.
 | `dotenv` | `lstat $CODEX_HOME/.env` (never opened) | 1 stops the run (`CODEX_DOTENV_PRESENT`) |
 | `model`, `provider_openai` | the session log's `turn_context.model` / `session_meta.model_provider` | the model slug (`other` if it does not look like an OpenAI model name) and whether the provider was `openai` |
 | `log` | the session log of this thread exists (regular file, not a link) | 0: nothing below can be known (`outcome=NO_SESSION_LOG`) |
-| `img_calls`, `img_ok`, `img_failed` | `response_item` `function_call` name `imagegen` namespace `image_gen` (or the older `image_generation_call`), its `function_call_output`, and `event_msg` `image_generation_end` | how often the image tool was called and how each call ended |
-| `img_fail` | the CLI's failure record (`failure.type = usageLimitExceeded`) first, else the tool output matched in memory | `USAGE_LIMIT`, `POLICY`, `OTHER` (see the precedence below) |
-| `other_calls` | other tool calls in the session log (count only) | e.g. the model ran a shell command instead |
-| `outcome` | the above | `IMAGE_SAVED`, `NO_SESSION_LOG`, `TOOL_NOT_CALLED`, `TOOL_FAILED_USAGE_LIMIT`, `TOOL_FAILED_POLICY`, `TOOL_FAILED`, `TOOL_CALLED_NO_FILE` |
+| `hist` (DEV-080) | `session_meta.history_mode` | `paginated` (what `codex exec` writes), `legacy`, `other` (any other string), `-` (not recorded) |
+| `tool_mode` (DEV-080) | the model slug against a fixed list from the 0.159.0 bundled catalog (never read at runtime) | `direct` (`gpt-5.5`: imagegen is a direct function tool), `code_mode_only` (every other bundled slug), `unknown` (any other slug) |
+| `cm_cells`, `cm_ref` (DEV-080) | `response_item` `custom_tool_call` name `exec` (code-mode cells; no longer counted in `other_calls`); whether any cell's input contains `image_gen__imagegen` (matched in memory, the input is never kept) | the model ran JavaScript cells, and whether one named the image tool |
+| `img_calls`, `img_ok`, `img_failed` | distinct call ids from: `response_item` `function_call` name `imagegen` namespace `image_gen` (direct mode), `event_msg` `item_completed` with `item.type = "Extension"`, `item.kind = "image_gen.generation"` (paginated history, also for a call from a code-mode cell: `item.id` is the call id), `event_msg` `image_generation_end` (legacy history), or the older `image_generation_call`; and the `function_call_output` of a direct call | how often the image tool was called and how each call ended |
+| `img_fail` | the CLI's failure record (`failure.type = usageLimitExceeded` on the Extension item or on `image_generation_end`) first, else the tool output matched in memory | `USAGE_LIMIT`, `POLICY`, `OTHER` (see the precedence below) |
+| `other_calls` | other tool calls in the session log (count only; code-mode `exec` cells are `cm_cells`) | e.g. the model ran a shell command instead |
+| `outcome` | the above | `IMAGE_SAVED`, `NO_SESSION_LOG`, `TOOL_NOT_CALLED`, `TOOL_NOT_SEEN_CODE_MODE` (DEV-080), `TOOL_FAILED_USAGE_LIMIT`, `TOOL_FAILED_POLICY`, `TOOL_FAILED`, `TOOL_CALLED_NO_FILE` |
 | `answer` | the model's final answer, matched in memory against fixed patterns | `TEXT_NONE`, `TEXT_TOOL_UNAVAILABLE`, `TEXT_TOOL_ERROR`, `TEXT_USAGE_LIMIT`, `TEXT_REFUSAL`, `TEXT_OTHER` — informational: a machine state is never decided from it |
 | `class` | `pocStopClass` (run.ts) | see [Stop classes](#stop-classes-dev-078) |
 
-**Precedence per image call** (`readSessionFacts`, in the order Codex 0.163.0 writes the records: `function_call` →
-`image_generation_end` → `function_call_output`, but independent of the order): (1) a structured `failure` object on the CLI's
-end record decides *failed* and its code (`usageLimitExceeded` → `USAGE_LIMIT`, any other type → `OTHER`) and nothing overrides it;
-(2) else the CLI's end `status` (`completed` / `failed`) decides the status and wins over the shape of the tool output — so
+**Precedence per image call** (`readSessionFacts`, independent of the order of the records; `codex exec` 0.159.0 / 0.163.0 writes,
+in direct mode, `function_call` → `item_completed` Extension → `function_call_output` (paginated history; a legacy-history log has
+`image_generation_end` where the Extension item is), and in code mode `custom_tool_call` exec → `item_completed` Extension →
+`custom_tool_call_output`, with no `function_call` at all): (1) a structured `failure` object on the CLI's
+end record (the Extension item or `image_generation_end`) decides *failed* and its code (`usageLimitExceeded` → `USAGE_LIMIT`, any other type → `OTHER`) and nothing overrides it;
+(2) else the CLI's end `status` (`completed` / `failed`; `in_progress` is ignored) decides the status and wins over the shape of the tool output — so
 `end(completed)` with an output that carries no image counts as completed (`outcome=TOOL_CALLED_NO_FILE`); (3) else the output's
 shape decides (an image content item → completed, none → failed). A failed call without a structured failure takes `USAGE_LIMIT`
 or `POLICY` from the tool output's text when it names one; any failed call still without a code becomes `OTHER`, only at the end.
@@ -220,10 +234,14 @@ dirs hit 20 000 entries) or `unreadable` (could not be opened, or its real path 
 `sessions` / `archived_sessions` dir is never walked. On a signal before the thread id came, the log is found by this run's own
 work dir (as the cleanup finds it), never another call's.
 
-Reading HUMAN-021's runs: `outcome=TOOL_FAILED_USAGE_LIMIT` (stop `CODEX_QUOTA`) → the image tool's usage window; wait and do not
-re-run the same day. `outcome=TOOL_NOT_CALLED answer=TEXT_TOOL_UNAVAILABLE` → the tool was most likely not offered (check `cli`,
-`model` and HUMAN-021a). `outcome=TOOL_NOT_CALLED answer=TEXT_OTHER|TEXT_REFUSAL` → the model chose text: a prompt question.
-`outcome=TOOL_FAILED*` → the tool ran and failed (`img_fail`).
+Reading HUMAN-021's runs (corrected by DEV-080; check `cli=0.159.0 hist=paginated` and `tool_mode=` first):
+
+| what you see | meaning |
+|---|---|
+| `outcome=TOOL_FAILED_USAGE_LIMIT` (stop `CODEX_QUOTA`) | the image tool's own `image_gen` usage window (structured failure on the Extension item); wait, do not re-run the same day |
+| `outcome=TOOL_FAILED` / `TOOL_FAILED_POLICY` (stop `CODEX_IMAGE_TOOL_FAILED`) | the tool ran and failed (`img_fail`); in code mode `cm_ref=1` and `img_calls≥1` with no `function_call` is normal |
+| `outcome=TOOL_NOT_SEEN_CODE_MODE` (class `inconclusive`) | no image call is visible, but imagegen was reachable only from code-mode `exec` cells (`cm_cells>0` or `tool_mode=code_mode_only`). A call refused before the tool started (argument validation) leaves no record, and the tool list is not in a 0.159.0 log, so it is **not known** whether the model tried. `cm_ref=1` says a cell at least named `image_gen__imagegen`. Not a prompt verdict; see the [`-m gpt-5.5` proposal](#proposal-not-applied-a-direct-mode-model) |
+| `outcome=TOOL_NOT_CALLED` | trustworthy **only** with `tool_mode=direct` (or `unknown`) **and** `cm_cells=0`: imagegen was a direct tool and no call was made. With `answer=TEXT_TOOL_UNAVAILABLE` the tool was most likely not offered (compare with HUMAN-021a); with `TEXT_OTHER` / `TEXT_REFUSAL` the model chose text: a prompt question |
 
 Still never recorded or printed: the session log's content (prompt, answer, tool arguments and output, base64 image, base
 instructions), any path or file name, the thread id. The session log is read in memory (≤ 64 MiB, `O_NOFOLLOW`, regular files
@@ -253,6 +271,7 @@ is still exactly one model call.
 | `approval`, `input` | `POC_NOT_APPROVED`, `POC_INPUT_INVALID`, `POC_DIRECTION_INVALID` | nothing was started; fix the request |
 | `environment` | `CODEX_QUOTA`, `CODEX_NOT_SIGNED_IN`, `CODEX_API_KEY_AUTH`, `CODEX_SANDBOX_*`, `CODEX_NOT_INSTALLED`, `CODEX_DOTENV_PRESENT`, `CODEX_PREFLIGHT_FAILED`, `POC_OUTPUT_UNSAFE` | halt the whole queue and alert a human; no further model call until fixed (quota: after the reset) |
 | `capability` | `CODEX_IMAGE_TOOL_FAILED`; `CODEX_NO_IMAGE` with `outcome=TOOL_NOT_CALLED answer=TEXT_TOOL_UNAVAILABLE` | halt and alert; the human runs HUMAN-021a's local checks. The model's words may choose this class only because it halts and never loosens anything |
+| `inconclusive` (DEV-080) | `CODEX_NO_IMAGE` with `outcome=TOOL_NOT_SEEN_CODE_MODE`, whatever the answer | halt and alert; the log cannot say whether the model tried the tool (code mode). Never read as a prompt failure, never retried; a human decides the next step (e.g. the direct-mode proposal below) |
 | `request` | `CODEX_NO_IMAGE` (otherwise), `CODEX_NO_THREAD`, `CODEX_EXEC_FAILED` | a failure of this request with its code; never re-sent unchanged (a changed prompt is a new, reviewed request) |
 | `output` | `CODEX_IMAGE_INVALID`, `CODEX_IMAGE_UNSUPPORTED_FORMAT` | the image is refused; never converted |
 | `interrupted` | `CODEX_TIMEOUT`, `POC_STOPPED_BY_SIGNAL`, `POC_RUN_TIME_BUDGET`, `POC_UNEXPECTED` | check for an OOM kill first; then treat as `request` |
@@ -280,13 +299,16 @@ published 2026-10-15, and the `@openai/codex@0.163.0-linux-x64` package read as 
   (community.openai.com/t/…/1382726), i.e. not as a 429 our quota check would see.
 - **Where the file goes.** `<save_root>/generated_images/<thread>/<call_id>.png` (`ext/image-generation/src/artifact.rs`), written
   by the CLI itself (not a sandboxed command), as the PoC already expects.
-- **What the session log keeps.** `rollout/src/policy.rs` persists `session_meta` (incl. `cli_version`, `model_provider`),
-  `turn_context` (incl. `model`), `function_call` / `function_call_output` and, in the default legacy history mode, the
-  `image_generation_end` event (status, failure). It does **not** list the tools offered to the model, so "not offered" vs
-  "offered but not called" is inferred (no call + the answer's code + HUMAN-021a), not read.
+- **What the session log keeps.** `rollout/src/policy.rs` persists `session_meta` (incl. `cli_version`, `model_provider`,
+  `history_mode`), `turn_context` (incl. `model`), `function_call` / `function_call_output` and `custom_tool_call` /
+  `custom_tool_call_output`. **Corrected by DEV-080:** `image_generation_end` is kept only in the *legacy* history mode, and
+  `codex exec` does not use it — it writes *paginated* history, where the tool's status and failure are on an `item_completed`
+  Extension item ([below](#codex-cli-01590-paginated-history-and-code-mode-dev-080)). The log does **not** list the tools
+  offered to the model, so "not offered" vs "offered but not called" is inferred (no call + the answer's code + HUMAN-021a), not read.
 - **Version.** No stable Codex CLI was published between HUMAN-018 and HUMAN-020 (all on 2026-10-21; `latest` 0.163.0 since
   2026-10-15), so a CLI update between the runs is unlikely unless the machine runs an alpha. Plan-side usage windows and the
-  server-side model catalog can change without a CLI update.
+  server-side model catalog can change without a CLI update. **DEV-080:** HUMAN-021a found the machine on 0.159.0 (2026-09-29);
+  the parts read here are the same at that tag ([below](#codex-cli-01590-paginated-history-and-code-mode-dev-080)).
 - **The v2 escape-hatch line** ("If the image generation tool cannot be used, do not use any substitute; answer only with the
   error it returned.") is a faithful English rendering of curiosity-media's daily-working line
   (「画像生成ツールが使えないときは、代替手段を取らずに、返ってきたエラーをそのまま答えてください。」, `entry-image.ts` /
@@ -298,6 +320,71 @@ published 2026-10-15, and the `@openai/codex@0.163.0-linux-x64` package read as 
   `runCodexJson`, used by the production worker) do not check it yet**, so a `.env` in `sr-designgen`'s CODEX_HOME could feed an
   `OPENAI_API_KEY` / `OPENAI_BASE_URL` to them. Moving the check into `codex.ts` and failing closed before every sandboxed Codex
   process is **DEV-079** (P1, backlog, its own review); until then, HUMAN-021a's first line shows whether the file exists. The diagnostics dirs stay in the output root (repo-external, never published); delete them with `sudo rm -r` when done.
+
+### Codex CLI 0.159.0, paginated history and code mode (DEV-080)
+
+HUMAN-021a (2026-10-21) returned: `.env: absent`, `codex-cli 0.159.0`, `config.toml: no matching line`, and the bundled models
+with `['text','image']`. 0.159.0 was released on 2026-09-29. Research without running Codex: the openai/codex repository at tags
+`rust-v0.159.0` and `rust-v0.163.0`, read as data. The behaviour relevant here is **identical in both versions**:
+
+- **The rollout wire format** is the same: one JSON object per line, `{"timestamp", "type": "session_meta" | "turn_context" |
+  "response_item" | "event_msg", "payload": …}`. Unchanged and still read as before: `session_meta.cli_version` /
+  `model_provider`, `turn_context.model`, `function_call {name, namespace, call_id}`, a function output as a plain string or an
+  array with `input_image` / `input_text`, the image path `<CODEX_HOME>/generated_images/<thread>/<call_id>.png`, and
+  `codex --version` printing `codex-cli 0.159.0` (`parseCodexVersion` accepts it, tested).
+- **`codex exec` writes paginated history, not legacy.** `exec/src/lib.rs` (≈ line 1380): `history_mode:
+  (!config.ephemeral).then_some(ThreadHistoryMode::Paginated)`, used whenever the local state DB exists;
+  `session_meta.payload.history_mode` is `"legacy"` or `"paginated"`. In paginated mode `rollout/src/policy.rs` (≈ 121–134) drops
+  `ImageGenerationEnd` and keeps `ItemCompleted` events with the TurnItem, serialized as
+  `{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"Extension","kind":"image_gen.generation","id":<call_id>,
+  "status":"completed|failed|in_progress","failure":{"type":"usageLimitExceeded","limitId":"image_gen","resetsAt":…}|…, …}}}`
+  (TurnItem `#[serde(tag = "type")]` variant `Extension`; ExtensionItem `#[serde(tag = "kind")]`, rename `image_gen.generation`).
+  The item can also carry `revised_prompt`, `result` (the base64 image) and `saved_path`; **none of them is ever recorded** (tested
+  with canaries). DEV-078 only accepted an `item.type` like `image_generation`, so on the default path the structured status and
+  failure were never read.
+- **Code mode.** In the 0.159.0 bundled catalog (`codex-rs/models-manager/models.json`) every model except `gpt-5.5`
+  (`gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-daybreak-blue-latest`,
+  `gpt-daybreak-red-latest`, `codex-auto-review`) has `"tool_mode": "code_mode_only"`, and the PoC passes no `-m`. A model's own
+  `tool_mode` takes precedence over the features (`core/src/tools/mod.rs` ≈ 74–84 `requested_tool_mode`; `code_mode` /
+  `code_mode_only` are off by default in `features/src/lib.rs`, so `gpt-5.5` is direct). In code-mode-only, direct tools such as
+  imagegen are hidden; they can only be called from JavaScript inside the `exec` custom tool as `image_gen__imagegen`
+  (`tools/src/code_mode.rs` ≈ 230–242). The log then has `response_item` `custom_tool_call` name `exec` plus
+  `custom_tool_call_output`, and **no** `function_call imagegen` / `function_call_output`. The extension still writes the
+  Extension item above for a call that started; a call that fails argument validation before it started leaves **no** item.
+- **The tool list is not in the log.** 0.159.0 does not persist the tools offered to the model (that persistence began in 0.162),
+  so "not offered" can still not be read from the log.
+- **0.160–0.163.** Their release notes contain no image-generation change; the files above were compared at both tags.
+
+**What changed in the PoC** (`capability.ts`, `diagnostics.ts`, `run.ts`): the Extension item is read as the structured end
+record (keyed by `item.id`, the same precedence as `image_generation_end`, which is still read for a legacy log); an Extension
+item without a `function_call` counts as a call (`img_calls` = distinct call ids from `function_call`, the Extension item or
+`image_generation_end`); `hist=`, `tool_mode=`, `cm_cells=`, `cm_ref=` are recorded; no image call seen with `cm_cells>0` or
+`tool_mode=code_mode_only` is `TOOL_NOT_SEEN_CODE_MODE` (class `inconclusive`), never `TOOL_NOT_CALLED`. The session log is read
+line by line from the capped buffer (≤ 64 MiB, a large base64 line is parsed once and dropped) and still removed by the cleanup.
+Unchanged: the command line, the jail, sign-in, `run.lock`, the env allowlist, the budget, the cleanup, the PNG checks, exactly
+one model call without retry, both prompts byte for byte.
+
+**Outcome table** (no PNG taken; `log=1`, not truncated or unreadable):
+
+| `img_calls` | `cm_cells` / `tool_mode` | failures | `outcome` | stop code | class |
+|---|---|---|---|---|---|
+| 0 | `cm_cells=0` and `tool_mode` `direct` / `unknown` | – | `TOOL_NOT_CALLED` | `CODEX_NO_IMAGE` | `request` (`capability` with `answer=TEXT_TOOL_UNAVAILABLE`) |
+| 0 | `cm_cells>0` or `tool_mode=code_mode_only` | – | `TOOL_NOT_SEEN_CODE_MODE` | `CODEX_NO_IMAGE` | `inconclusive` (whatever the answer) |
+| ≥ 1 | any | any `USAGE_LIMIT` | `TOOL_FAILED_USAGE_LIMIT` | `CODEX_QUOTA` | `environment` |
+| ≥ 1 | any | `POLICY` (no usage limit) | `TOOL_FAILED_POLICY` | `CODEX_IMAGE_TOOL_FAILED` | `capability` |
+| ≥ 1 | any | `OTHER` only | `TOOL_FAILED` | `CODEX_IMAGE_TOOL_FAILED` | `capability` |
+| ≥ 1 | any | none, no file | `TOOL_CALLED_NO_FILE` | `CODEX_NO_IMAGE` | `request` |
+
+A PNG taken is always `IMAGE_SAVED`; `log=0`, `truncated` or `unreadable` is `NO_SESSION_LOG`.
+
+#### Proposal (not applied): a direct-mode model
+
+Option: add `-m gpt-5.5` to the one `codex exec` so that imagegen is a **direct** tool (`gpt-5.5` has no `tool_mode` in the
+0.159.0 catalog and the code-mode features are off by default; a model's own `tool_mode` wins over features,
+`core/src/tools/mod.rs` ≈ 74–84). The log would then show a `function_call imagegen` for every call, and `TOOL_NOT_CALLED`
+would be conclusive. This changes which model runs (behaviour, quality and plan usage), so it **needs human approval** and its
+own small PR; DEV-080 does not add `-m` or any other model / config override. Ask for it only if HUMAN-021b ends
+`TOOL_NOT_SEEN_CODE_MODE`.
 
 To send back (no secrets inside): the `POC_STOP` line and the `POC_DIAG_SUMMARY` line, or `sudo cat <POC_DIAG path>`.
 
@@ -370,6 +457,16 @@ How the wagashi visuals could later be made as standalone, reviewed image assets
 ## Checks in this container (no Codex)
 
 DEV-077 adds (`design-image-poc.test.ts` "diagnostics"): cases (a) text answer, (b) image in another new dir / a nested dir / a WebP (`CODEX_IMAGE_UNSUPPORTED_FORMAT`) / the work dir / elsewhere in CODEX_HOME, (c) image tool started then an error item (`POLICY`), (d) `turn.failed`, a timeout with a cut stream, a signal mid-call (snapshot before cleanup, cleanup unchanged), success; unknown types count as `other`; a canary in the prompt, answer, errors, stderr, file names and env never appears in `diagnostics.json`, the summary or the entry's stdout; 0700 / 0600; no file before the output root exists and none on a refusal; the entry prints `POC_DIAG` / `POC_DIAG_SUMMARY` (run with nothing but node on PATH, so no Codex can start); `runBounded`'s stdout observer only observes; the v2 prompt's first lines, no build-task words, each prohibition exactly once, ≤ 7131 chars; v1 byte-identical. Review fixes: a signal's / the watchdog's stop code is frozen when the cleanup starts (diagnostics and `POC_STOP` agree even if the killed child returns first); a stdout line over 1 MiB is dropped (`unparsed`, `trunc=1`) and `runBounded` stops calling the observer at its 64 MiB capture cap (a 64 MiB newline-free stream stays bounded); GIF is its own class; a link named `.jpg` is not taken for another format; every v2 `hard_rules` entry is mapped (`V2_HARD_RULE_COVERAGE`).
+
+DEV-080 adds (`design-image-poc.test.ts` "DEV-080", fixtures in the 0.159.0 shape: `history_mode: "paginated"`, Extension items,
+`custom_tool_call` exec cells): paginated direct mode, `function_call` + Extension failed `usageLimitExceeded` → `CODEX_QUOTA`
+(`environment`); the Extension failure decides over the output text, `in_progress` is ignored, another Extension kind is not the
+tool; code mode, an exec cell naming `image_gen__imagegen` + Extension failed (other) → `img_calls=1`, `CODEX_IMAGE_TOOL_FAILED`;
+an exec cell without an Extension item → `TOOL_NOT_SEEN_CODE_MODE`, class `inconclusive` for every answer (also a code_mode_only
+model without cells, and an unknown model with a cell); direct mode with no call → `TOOL_NOT_CALLED` (`request`); Extension
+completed with the PNG → `IMAGE_SAVED` with a ~16 MiB base64 `result` on one line; `history_mode` legacy / paginated / other /
+absent; a log over 64 MiB is still not read; `toolModeOf`; `parseCodexVersion("codex-cli 0.159.0")`; canaries in the exec input,
+`revised_prompt`, `result` and `saved_path` never reach `diagnostics.json` or the summary.
 
 `tests/unit/design-agent/design-image-poc.test.ts` (fake sandbox playing the Codex CLI): refusal without the flag (no file access, no sandbox) and without the shell token; the wrapper's STOP before preflight / lock / git / npm / tsx, its env allowlist, budget cap and lock; the happy path; no thread; no image; invalid PNGs (bad CRC, truncated, trailing data, too small, too large, a link); quota; timeout; sign-out (not from the model's words); API-key sign-in; cleanup (session log, new image dirs only, work dir, also on a signal); output permissions 0700 / 0600 outside the repo; report with codes and numbers only; the prompt's content and no environment in it; nothing else reads the output root.
 
