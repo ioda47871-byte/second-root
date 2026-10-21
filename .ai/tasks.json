@@ -3318,13 +3318,14 @@
     {
       "id": "DEV-075",
       "title": "Design image PoC 第2案: 架空菓庵の Web デザイン comp（header nav + Hero / 商品・こだわり / 店舗情報）、和菓子の AI 生成イメージを提案用に許可（PoC の中だけ）",
-      "status": "review",
+      "status": "blocked",
       "priority": "P2",
       "depends_on": [
         "DEV-074"
       ],
       "attempts": 0,
       "last_failure": null,
+      "blocked_reason": "HUMAN-019: 第2案を WSL で 1 回流す人の承認と実行、その画像の評価（22/25 以上 + hard fail なし）待ち",
       "branch": "feature/design-image-v2",
       "purpose": "HUMAN-018 の 1 枚目はポスター風で営業の訴求が弱かった。人の新しい方針（2026-10-21）で和菓子そのものの AI 生成画像を提案用イメージとして許し、実装できる Web サイトの design comp（3 節・nav・商品の画像 card・店舗情報の定義リスト）を 1 枚作らせて評価する。店舗・人物の画像・logo・事実の創作・実物だと言う文は引き続き禁止。v2 と方針は PoC の中だけ",
       "acceptance_criteria": [
