@@ -17,13 +17,17 @@
  * Direction: SR_DESIGN_IMAGE_POC_DIRECTION=v1|v2 (unset: v2, the 第2案 of
  * DEV-075); any other value is refused (POC_DIRECTION_INVALID, exit 2). The
  * v2 direction is read by this PoC only, never by the worker or the site.
+ * Diagnostics (DEV-077): after a run that got as far as the output root,
+ * `POC_DIAG: <root>/diag-XXXXXX/diagnostics.json` and one line
+ * `POC_DIAG_SUMMARY …` of fixed codes and numbers (never Codex's words, the
+ * prompt, a path inside CODEX_HOME, a file name or an env value).
  * Exit: 0 done, 1 stopped, 2 refused / usage.
  */
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
 import { parseDirectionVersion, PocDirectionError, type DirectionVersion } from "../../lib/design-agent/design-image/prompt";
-import { cleanupActivePoc, isInsidePath, runDesignImagePoc } from "../../lib/design-agent/design-image/run";
+import { cleanupActivePoc, isInsidePath, lastPocDiagnostics, runDesignImagePoc } from "../../lib/design-agent/design-image/run";
 import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 
@@ -38,12 +42,21 @@ const argv = process.argv.slice(2);
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
 const insideRepo = (p: string) => isInsidePath(p, REPO);
 
-/** Kills Codex, cleans up (session log, image dirs, work dir; at most 20 s), prints a fixed code, exits 1. */
+/** The diagnostics lines (fixed codes and numbers; the file path is under the PoC's own output root). */
+function printDiagnostics(): void {
+  const d = lastPocDiagnostics();
+  if (!d) return;
+  if (d.file) process.stdout.write(`POC_DIAG: ${d.file}\n`);
+  process.stdout.write(`POC_DIAG_SUMMARY ${d.summary}\n`);
+}
+
+/** Kills Codex, cleans up (diagnostics first, then session log, image dirs, work dir; at most 20 s), prints a fixed code, exits 1. */
 function stopNow(code: string): void {
   if (stopping) return;
   stopping = true;
   killAllBoundedChildren();
-  void Promise.race([cleanupActivePoc(), new Promise((r) => setTimeout(r, 20_000))]).then(() => {
+  void Promise.race([cleanupActivePoc(code), new Promise((r) => setTimeout(r, 20_000))]).then(() => {
+    printDiagnostics();
     process.stdout.write(`${JSON.stringify({ status: "stopped", code })}\n`);
     process.stdout.write(`POC_STOP: ${code}\n`);
     process.exit(1);
@@ -109,6 +122,7 @@ async function main(): Promise<number> {
     workerCommit: commit,
     log: say,
   });
+  if (result.status !== "refused") printDiagnostics();
   if (result.status === "done") {
     const r = result.report;
     process.stdout.write(`${JSON.stringify({ status: r.status, width: r.width, height: r.height, png_bytes: r.png_bytes, png_sha256: r.png_sha256, codex_ms: r.codex_ms })}\n`);

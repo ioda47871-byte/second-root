@@ -26,6 +26,12 @@
  *   run's work dir, a partly written result dir, and the work dir
  * - results and failures are fixed codes and numbers; Codex's words, stdout
  *   and stderr are never copied anywhere
+ * - diagnostics (DEV-077, diagnostics.ts): on every outcome once the output
+ *   root is ready, BEFORE the cleanup removes anything, a diag-XXXXXX/
+ *   diagnostics.json (0700 / 0600) of fixed codes, booleans and numbers only
+ *   (event / item type counts from an allowlist, error codes, agent message
+ *   count and length, timings, exit, where image files are); it never changes
+ *   what the cleanup removes
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
@@ -45,9 +51,20 @@ import {
 import { workerProtectedPaths } from "../protected-paths";
 import { SandboxError, type CodexSandbox } from "../sandbox";
 import { childEnvironment } from "../worker/env";
+import {
+  CodexEventTracker,
+  DIAGNOSTICS_SCHEMA,
+  diagnosticsSummary,
+  generatedImageEntries,
+  snapshotImageLocations,
+  type ImageLocationDiagnostics,
+  type PocDiagnostics,
+} from "./diagnostics";
 import { PngError, readPngNoFollow } from "./png";
 import { buildMockupPrompt, DEFAULT_DIRECTION_VERSION, DIRECTION_VERSIONS, loadPocInputs, POC_SHOP_KEY, PocDirectionError, PocInputError, type DirectionVersion } from "./prompt";
 
+/** The diagnostics snapshot before the cleanup waits at most this long (it only reads and counts). */
+const DIAGNOSTICS_MAX_MS = 5_000;
 /** One image call: at most 15 minutes (the jail's run and the shell budget hold the whole PoC). */
 export const POC_CODEX_TIMEOUT_MS = 15 * 60 * 1000;
 export const POC_STATUS = "IMAGE_GENERATED_NOT_IMPLEMENTED";
@@ -72,6 +89,7 @@ export type PocCode =
   | "CODEX_QUOTA"
   | "CODEX_NO_THREAD"
   | "CODEX_NO_IMAGE"
+  | "CODEX_IMAGE_UNSUPPORTED_FORMAT"
   | "CODEX_IMAGE_INVALID";
 
 export class PocError extends Error {
@@ -147,12 +165,26 @@ export function isInsidePath(child: string, parent: string): boolean {
 const inside = isInsidePath;
 
 /** Cleanups of the run in progress (for a signal: the entry runs them before exiting). */
-const activeCleanups = new Set<() => Promise<void>>();
+const activeCleanups = new Set<(stopCode?: string) => Promise<void>>();
 
-/** Runs every pending cleanup of a run in progress (idempotent; never throws). */
-export async function cleanupActivePoc(): Promise<void> {
-  await Promise.all([...activeCleanups].map((fn) => fn().catch(() => undefined)));
+/**
+ * Runs every pending cleanup of a run in progress (idempotent; never throws).
+ * `stopCode` (a fixed code: the entry's POC_STOPPED_BY_SIGNAL / POC_RUN_TIME_BUDGET)
+ * goes into the diagnostics when the run itself has not ended yet.
+ */
+export async function cleanupActivePoc(stopCode?: string): Promise<void> {
+  const code = stopCode !== undefined && CODE.test(stopCode) ? stopCode : undefined;
+  await Promise.all([...activeCleanups].map((fn) => fn(code).catch(() => undefined)));
 }
+
+/** The diagnostics of the last run: the file (when the output root was ready) and the one-line summary. */
+export interface PocDiagnosticsRecord {
+  file?: string;
+  summary: string;
+  diagnostics: PocDiagnostics;
+}
+let lastDiagnostics: PocDiagnosticsRecord | undefined;
+export const lastPocDiagnostics = (): PocDiagnosticsRecord | undefined => lastDiagnostics;
 
 /**
  * UUID-shaped entries of CODEX_HOME/generated_images (a thread dir per Codex
@@ -210,7 +242,12 @@ async function takeImage(dir: string): Promise<Awaited<ReturnType<typeof readPng
     if (!PNG_NAME.test(name) || entry.isSymbolicLink() || !entry.isFile()) throw new PocError("CODEX_IMAGE_INVALID");
     pngs.push({ path, mtime: entry.mtimeMs });
   }
-  if (pngs.length === 0) throw new PocError("CODEX_NO_IMAGE");
+  if (pngs.length === 0) {
+    // Another raster format from the image tool is reported as such, never converted or accepted.
+    const other = await readdir(dir).catch(() => [] as string[]);
+    if (other.some((n) => /\.(jpe?g|webp|gif)$/i.test(n))) throw new PocError("CODEX_IMAGE_UNSUPPORTED_FORMAT");
+    throw new PocError("CODEX_NO_IMAGE");
+  }
   const newest = pngs.sort((a, b) => b.mtime - a.mtime)[0]!;
   try {
     return await readPngNoFollow(newest.path);
@@ -228,6 +265,15 @@ async function writeNew(path: string, data: string | Buffer): Promise<void> {
   } finally {
     await handle.close();
   }
+}
+
+/** A fresh dir of ours under the output root: mkdtemp, 0700, not a link, a directory, our uid. */
+async function freshDir(outRoot: string, prefix: string): Promise<string> {
+  const dir = await mkdtemp(join(outRoot, prefix));
+  await chmod(dir, 0o700);
+  const info = await lstat(dir);
+  if (info.isSymbolicLink() || !info.isDirectory() || info.uid !== process.getuid?.()) throw new PocError("POC_OUTPUT_UNSAFE");
+  return dir;
 }
 
 /** The output root: created 0700, ours, not a link, outside the repository and every worker / Codex directory. */
@@ -262,6 +308,7 @@ const codeOf = (error: unknown): PocCode => {
 
 /** Runs the PoC once. Never throws: a refusal or a stop is a fixed code. */
 export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
+  lastDiagnostics = undefined;
   // The human's approval comes first: without it nothing is read, created or started.
   if (o.humanApprovalConfirmed !== true) return { status: "refused", code: "POC_NOT_APPROVED" };
   // Only a direction from the fixed list; checked before anything is read or created.
@@ -269,6 +316,20 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   if (!DIRECTION_VERSIONS.includes(version)) return { status: "refused", code: "POC_DIRECTION_INVALID" };
   const now = o.now ?? Date.now;
   const log = o.log ?? (() => undefined);
+  const runStarted = now();
+  /** What the diagnostics need (fixed values and numbers only; the prompt itself is never kept here). */
+  const diag: {
+    promptChars: number | null;
+    outRoot?: string;
+    tracker?: CodexEventTracker;
+    invoked: boolean;
+    exit: { code: number | null; signal: string | null; timedOut: boolean } | null;
+    codexMs: number | null;
+    codexWallStart?: number;
+    beforeAll?: Set<string>;
+    stopCode?: string;
+    done: boolean;
+  } = { promptChars: null, invoked: false, exit: null, codexMs: null, done: false };
   let cwd: string | undefined;
   let sandbox: CodexSandbox | undefined;
   let threadId: string | undefined;
@@ -277,7 +338,62 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   const ownCwds = new Set<string>();
   /** The result dir while its files are being written (removed by a stop before the last one). */
   let partialDest: string | undefined;
-  const doCleanup = async (): Promise<void> => {
+  /** Snapshot first (nothing removed yet), then write diagnostics.json; any failure here is ignored and never stops the cleanup. */
+  const recordDiagnostics = async (signalCode: string | undefined): Promise<void> => {
+    let images: ImageLocationDiagnostics | null = null;
+    if (sandbox && diag.invoked) {
+      const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");
+      images = await snapshotImageLocations({
+        codexHome,
+        ...(threadId ? { threadId } : {}),
+        ...(diag.beforeAll ? { before: diag.beforeAll } : {}),
+        ...(cwd ? { cwd } : {}),
+        sinceMs: (diag.codexWallStart ?? Date.now()) - 1000,
+      }).catch(() => null);
+    }
+    const tracker = diag.tracker;
+    tracker?.end(tracker.sawLiveOutput);
+    const stopCode = diag.done ? null : (diag.stopCode ?? signalCode ?? "POC_STOPPED_BY_SIGNAL");
+    const d: PocDiagnostics = {
+      schema: DIAGNOSTICS_SCHEMA,
+      outcome: diag.done ? "done" : "stopped",
+      stop_code: stopCode,
+      direction_version: version,
+      prompt_chars: diag.promptChars,
+      worker_commit: o.workerCommit && /^[0-9a-f]{7,40}$/.test(o.workerCommit) ? o.workerCommit : null,
+      codex: {
+        invoked: diag.invoked,
+        exit_code: diag.exit?.code ?? null,
+        signal: diag.exit?.signal && /^SIG[A-Z0-9]{2,10}$/.test(diag.exit.signal) ? diag.exit.signal : null,
+        timed_out: diag.exit?.timedOut ?? false,
+        thread_id_present: threadId !== undefined || (tracker?.result().thread_started ?? false),
+      },
+      timings_ms: {
+        total: now() - runStarted,
+        codex: diag.codexMs,
+        first_event: tracker?.firstEventMs ?? null,
+        first_image_tool_event: tracker?.firstImageToolMs ?? null,
+      },
+      events: tracker ? tracker.result() : null,
+      images,
+    };
+    const record: PocDiagnosticsRecord = { summary: diagnosticsSummary(d), diagnostics: d };
+    if (diag.outRoot) {
+      try {
+        const dir = await freshDir(diag.outRoot, "diag-");
+        await writeNew(join(dir, "diagnostics.json"), `${JSON.stringify(d, null, 2)}\n`);
+        record.file = join(dir, "diagnostics.json");
+      } catch {
+        // no diagnostics file; the summary line still says what is known
+      }
+    }
+    lastDiagnostics = record;
+  };
+  const doCleanup = async (signalCode?: string): Promise<void> => {
+    // At most DIAGNOSTICS_MAX_MS, so a signal's 20 s cleanup window still removes everything below.
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([recordDiagnostics(signalCode).catch(() => undefined), new Promise<void>((r) => (timer = setTimeout(r, DIAGNOSTICS_MAX_MS)))]);
+    clearTimeout(timer);
     if (sandbox) {
       const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");
       // Images first: an image dir left behind would later look "pre-existing" and never be removed.
@@ -298,12 +414,14 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   };
   /** Memoised: every caller (the finally, a signal, the watchdog) waits for the same, complete cleanup. */
   let pending: Promise<void> | undefined;
-  const cleanup = (): Promise<void> => (pending ??= doCleanup().catch(() => undefined));
+  const cleanup = (signalCode?: string): Promise<void> => (pending ??= doCleanup(signalCode).catch(() => undefined));
   activeCleanups.add(cleanup);
   try {
     const inputs = await loadPocInputs(o.repoDir, version);
     const prompt = buildMockupPrompt(inputs);
+    diag.promptChars = prompt.length;
     const outRoot = await prepareOutRoot(o, o.env.CODEX_HOME || (o.env.HOME ? join(o.env.HOME, ".codex") : undefined));
+    diag.outRoot = outRoot;
     const protectedPaths = [...new Set([...workerProtectedPaths({ ...o.workerPaths, env: o.env }), outRoot])];
     sandbox = await o.prepareSandbox(childEnvironment(o.env), protectedPaths).catch((error: unknown) => {
       throw fromSandboxError(error);
@@ -312,10 +430,15 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     await removeStaleDesignAgentState(sandbox.env, codexHome);
     await assertChatGptSignIn({ sandbox });
     before = await imageThreads(codexHome);
+    diag.beforeAll = await generatedImageEntries(codexHome);
     cwd = await mkdtemp(join(o.tmpBase, "sr-design-codex-"));
     ownCwds.add(cwd);
     ownCwds.add(await realpath(cwd));
     const started = now();
+    const tracker = new CodexEventTracker(started, now);
+    diag.tracker = tracker;
+    diag.codexWallStart = Date.now();
+    diag.invoked = true;
     log("codex: one image call");
     let result;
     try {
@@ -323,12 +446,20 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
         workDir: cwd,
         input: prompt,
         timeoutMs: o.timeoutMs ?? POC_CODEX_TIMEOUT_MS,
+        onStdout: (chunk) => tracker.feed(chunk),
       });
     } catch (error) {
       if (error instanceof SandboxError) throw error;
       throw new PocError("CODEX_SANDBOX_UNAVAILABLE");
     }
     const codexMs = now() - started;
+    diag.codexMs = codexMs;
+    diag.exit = { code: result.code, signal: result.signal, timedOut: result.timedOut };
+    // a sandbox that did not stream (or a cut stream): the counts from the whole stdout, without timings
+    if (!tracker.sawLiveOutput) {
+      tracker.feed(result.stdout, false);
+      tracker.end(false);
+    }
     const events = readCodexEvents(result.stdout);
     if (events.threadId !== undefined && THREAD_ID.test(events.threadId)) threadId = events.threadId;
     if (result.timedOut) throw new PocError("CODEX_TIMEOUT");
@@ -369,6 +500,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       await writeNew(join(dest, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
       if (pending) throw new PocError("POC_OUTPUT_UNSAFE"); // a stop cleaned up meanwhile: the dir is gone or incomplete
       partialDest = undefined;
+      diag.done = true;
     } catch {
       await rm(dest, { recursive: true, force: true });
       throw new PocError("POC_OUTPUT_UNSAFE");
@@ -376,6 +508,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     return { status: "done", dir: dest, report };
   } catch (error) {
     const code = codeOf(error);
+    diag.stopCode = code;
     return { status: code === "POC_INPUT_INVALID" || code === "POC_DIRECTION_INVALID" ? "refused" : "stopped", code };
   } finally {
     await cleanup();
