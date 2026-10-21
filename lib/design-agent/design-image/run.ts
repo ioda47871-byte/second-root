@@ -454,10 +454,12 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     }
     const tracker = diag.tracker;
     tracker?.end(tracker.sawLiveOutput);
-    // A stop before the session log was read (a signal mid-call): read it now, before the cleanup removes it.
-    if (sandbox && diag.invoked && diag.session === undefined && threadId) {
+    // A stop before the session log was read (a signal mid-call, when the thread id never came from stdout): read
+    // it now, before the cleanup removes it — by this thread's id when known, else, as the cleanup finds it, the
+    // log whose cwd is this run's own work dir (never another call's).
+    if (sandbox && diag.invoked && diag.session === undefined && (threadId || ownCwds.size > 0)) {
       const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");
-      diag.session = await readSessionFacts(codexHome, threadId).catch(() => undefined);
+      diag.session = await readSessionFacts(codexHome, threadId ? { threadId } : { cwds: ownCwds }).catch(() => undefined);
     }
     const outcome = diag.invoked && diag.session ? deriveImageOutcome(diag.session, stopCode === null) : null;
     const d: PocDiagnostics = {

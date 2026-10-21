@@ -200,11 +200,25 @@ never proves the tool was not called. The session-log fields below decide.
 | `model`, `provider_openai` | the session log's `turn_context.model` / `session_meta.model_provider` | the model slug (`other` if it does not look like an OpenAI model name) and whether the provider was `openai` |
 | `log` | the session log of this thread exists (regular file, not a link) | 0: nothing below can be known (`outcome=NO_SESSION_LOG`) |
 | `img_calls`, `img_ok`, `img_failed` | `response_item` `function_call` name `imagegen` namespace `image_gen` (or the older `image_generation_call`), its `function_call_output`, and `event_msg` `image_generation_end` | how often the image tool was called and how each call ended |
-| `img_fail` | the CLI's failure record (`failure.type = usageLimitExceeded`) first, else the tool output matched in memory | `USAGE_LIMIT`, `POLICY`, `OTHER` |
+| `img_fail` | the CLI's failure record (`failure.type = usageLimitExceeded`) first, else the tool output matched in memory | `USAGE_LIMIT`, `POLICY`, `OTHER` (see the precedence below) |
 | `other_calls` | other tool calls in the session log (count only) | e.g. the model ran a shell command instead |
 | `outcome` | the above | `IMAGE_SAVED`, `NO_SESSION_LOG`, `TOOL_NOT_CALLED`, `TOOL_FAILED_USAGE_LIMIT`, `TOOL_FAILED_POLICY`, `TOOL_FAILED`, `TOOL_CALLED_NO_FILE` |
 | `answer` | the model's final answer, matched in memory against fixed patterns | `TEXT_NONE`, `TEXT_TOOL_UNAVAILABLE`, `TEXT_TOOL_ERROR`, `TEXT_USAGE_LIMIT`, `TEXT_REFUSAL`, `TEXT_OTHER` — informational: a machine state is never decided from it |
 | `class` | `pocStopClass` (run.ts) | see [Stop classes](#stop-classes-dev-078) |
+
+**Precedence per image call** (`readSessionFacts`, in the order Codex 0.163.0 writes the records: `function_call` →
+`image_generation_end` → `function_call_output`, but independent of the order): (1) a structured `failure` object on the CLI's
+end record decides *failed* and its code (`usageLimitExceeded` → `USAGE_LIMIT`, any other type → `OTHER`) and nothing overrides it;
+(2) else the CLI's end `status` (`completed` / `failed`) decides the status and wins over the shape of the tool output — so
+`end(completed)` with an output that carries no image counts as completed (`outcome=TOOL_CALLED_NO_FILE`); (3) else the output's
+shape decides (an image content item → completed, none → failed). A failed call without a structured failure takes `USAGE_LIMIT`
+or `POLICY` from the tool output's text when it names one; any failed call still without a code becomes `OTHER`, only at the end.
+**Mixed results** (several image calls): `img_fail` lists every failed call's code; `outcome` is `IMAGE_SAVED` whenever a PNG was
+taken, otherwise any failed call makes it `TOOL_FAILED_*` (`USAGE_LIMIT` before `POLICY` before `OTHER`) even if another call completed.
+`log=1` with `outcome=NO_SESSION_LOG` means the log was found but not usable: `truncated` (over 64 MiB, or the walk of the session
+dirs hit 20 000 entries) or `unreadable` (could not be opened, or its real path leaves `CODEX_HOME`); a symlinked
+`sessions` / `archived_sessions` dir is never walked. On a signal before the thread id came, the log is found by this run's own
+work dir (as the cleanup finds it), never another call's.
 
 Reading HUMAN-021's runs: `outcome=TOOL_FAILED_USAGE_LIMIT` (stop `CODEX_QUOTA`) → the image tool's usage window; wait and do not
 re-run the same day. `outcome=TOOL_NOT_CALLED answer=TEXT_TOOL_UNAVAILABLE` → the tool was most likely not offered (check `cli`,
@@ -219,8 +233,10 @@ output, the base instructions, the model name, the CLI version and `.env`, and a
 ### Preflight (DEV-078)
 
 Before the one model call, in the same jail with the same environment allowlist: (1) `$CODEX_HOME/.env` must not exist
-(`lstat` only), (2) `codex --version` (clap prints the version and exits before config, sign-in or network; no model call, no
-plan usage). `codex features list` and `codex debug models` are **not** run automatically: they load Codex's config, which can
+(`lstat` only), **checked first, before any Codex process** — every `codex` invocation, `--version` and `login status`
+included, first runs arg0's setup: `load_dotenv` reads `$CODEX_HOME/.env` into Codex's own environment (only `CODEX_*` keys are
+filtered) and the arg0 alias setup writes under `CODEX_HOME`, all before clap parses the arguments; (2) `codex --version`
+(after that arg0 setup, clap prints the version and exits before config, sign-in or network; no model call, no plan usage). `codex features list` and `codex debug models` are **not** run automatically: they load Codex's config, which can
 fetch a cloud config bundle over the network (`codex-rs/cli/src/cloud_config.rs`), so they are a human, local step (HUMAN-021a;
 `codex debug models --bundled` reads only the catalog in the binary).
 `exec` also gets `-c features.image_generation=true`: the image tool's feature flag (stable, default on in 0.163.0) pinned on
@@ -278,7 +294,10 @@ published 2026-10-15, and the `@openai/codex@0.163.0-linux-x64` package read as 
   short answer, not the missing image. The prompt is left unchanged until HUMAN-021 separates the causes.
 - Side finding: Codex loads `$CODEX_HOME/.env` into its own environment at start, filtering only `CODEX_*` keys
   (`codex-rs/arg0/src/lib.rs` `load_dotenv`), so an `OPENAI_API_KEY` there would bypass the env allowlist. The PoC now refuses
-  to start when that file exists; the design worker's other Codex calls (`codex.ts`) do not check it yet. The diagnostics dirs stay in the output root (repo-external, never published); delete them with `sudo rm -r` when done.
+  to start when that file exists. **The design worker's Codex calls (`lib/design-agent/codex.ts`: `assertChatGptSignIn`,
+  `runCodexJson`, used by the production worker) do not check it yet**, so a `.env` in `sr-designgen`'s CODEX_HOME could feed an
+  `OPENAI_API_KEY` / `OPENAI_BASE_URL` to them. Moving the check into `codex.ts` and failing closed before every sandboxed Codex
+  process is **DEV-079** (P1, backlog, its own review); until then, HUMAN-021a's first line shows whether the file exists. The diagnostics dirs stay in the output root (repo-external, never published); delete them with `sudo rm -r` when done.
 
 To send back (no secrets inside): the `POC_STOP` line and the `POC_DIAG_SUMMARY` line, or `sudo cat <POC_DIAG path>`.
 

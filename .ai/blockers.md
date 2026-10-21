@@ -26,20 +26,23 @@
   DEV-078 は、model を呼ばない preflight と、CLI の session log と最後の答えをメモリの中だけで固定の符号にする分類（`outcome=` `answer=` `img_calls=` `img_fail=` `cli=` `model=` `class=`）を足した。prompt は変えていない（v2 の「使えなければエラーを答える」は curiosity-media の毎日動いている文の忠実な訳で、根拠なしに変えると原因が分からなくなる）。
 - 前提: DEV-078 の PR が develop に merge されていること（`POC_DIAG_SUMMARY` に `outcome=` と `cli=` があることで確かめる）。
 - 順番（安い順。前の段の結果で次を決める。どの段も Claude は WSL に触れない）:
-  1. **21a — 手元の確認（model の呼び出しなし・費用 0）**。`sr-designgen` で、Codex の版・`.env` の有無・config.toml の model / feature の行・bundled の model 一覧を見る:
+  1. **21a — 手元の確認（model の呼び出しなし・費用 0）**。jail の中の `sr-designgen` で（capture helper のある machine では `sudo -iu sr-designgen` は nologin で使えず、jail の外の `sr-designgen` の process は helper を `REQUESTER_PRIVILEGED` にする: `design-worker-wsl.md`・`design-capture-helper.md`・`design-wsl-isolation.md`）。
+     **`.env` の確認を最初に**: Codex は `--version` でも、clap の前に `$CODEX_HOME/.env` を自分の環境に読み込む（arg0 の `load_dotenv`）ので、`.env` があれば `codex` を 1 つも起動せずに止まる:
 
      ```bash
-     sudo -iu sr-designgen bash -lc '
+     sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+     H="${CODEX_HOME:-$HOME/.codex}"
+     if [ -e "$H/.env" ] || [ -L "$H/.env" ]; then ls -la "$H/.env" | cut -c1-10; echo "STOP: $H/.env exists (contents not shown); no codex command was run"; exit 0; fi
+     echo ".env: absent"
      codex --version
      npm ls -g --depth=0 @openai/codex 2>/dev/null | tail -n +2
-     ls -la "${CODEX_HOME:-$HOME/.codex}/.env" 2>&1 | head -1
-     grep -n -E "^[[:space:]]*(model|model_provider|model_reasoning_effort|profile)[[:space:]]*=|image_generation|imagegen|^\[features\]" "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null || echo "config.toml: no matching line"
+     grep -n -E "^[[:space:]]*(model|model_provider|model_reasoning_effort|profile)[[:space:]]*=|image_generation|imagegen|^\[features\]" "$H/config.toml" 2>/dev/null || echo "config.toml: no matching line"
      codex debug models --bundled 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); [print(m.get(\"slug\"), m.get(\"input_modalities\")) for m in d.get(\"models\", [])]" | head -20'
      ```
 
-     分かること: 版（0.163.0 か、もっと古いか）、`.env` があれば DEV-078 は `CODEX_DOTENV_PRESENT` で止まる（中身は貼らない。人が消すか移す）、config.toml が `image_generation = false` にしていないか、使う model が画像の入力に対応しているか（`image_generation_available` の条件）。
-     返してほしいもの: 出力そのまま（秘密は含まない。`.env` の行は有無だけ）。
-     任意: `codex features list | grep -E "^image_generation"`（model の呼び出しはないが、cloud の設定を取りに network に出うる。利用枠は使わない）。
+     分かること: `.env` の有無（あれば DEV-078 は `CODEX_DOTENV_PRESENT` で止まる。中身は見ない・貼らない。人が jail の中で消すか移す。その後もう一度 21a）、版（0.163.0 か、もっと古いか）、config.toml が `image_generation = false` にしていないか、使う model が画像の入力に対応しているか（`image_generation_available` の条件）。`--bundled` は binary の中の一覧だけを読む（network なし）。
+     返してほしいもの: 出力そのまま（秘密は含まない）。
+     任意（同じ `admin.sh run sr-designgen -- /bin/bash -lc '…'` の中で、`.env` が無いと確かめた後に）: `codex features list | grep -E "^image_generation"`（model の呼び出しはないが、cloud の設定を取りに network に出うる。利用枠は使わない）。
   2. **21b — v1 の再走（実績のある prompt、Codex 1 回）**。HUMAN-020 から少なくとも数時間（できれば翌日）空けて、画像の利用枠の窓が戻ってから:
 
      ```bash

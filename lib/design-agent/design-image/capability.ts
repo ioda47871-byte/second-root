@@ -22,26 +22,31 @@
  * path) is matched against fixed patterns in memory and never stored, returned
  * or printed. The same holds for the model's final answer (classifyAnswerText).
  *
- * Preflight (before the one model call): `codex --version` inside the same
- * jail (clap prints the version and exits: no config, no network, no model)
- * and whether $CODEX_HOME/.env exists (Codex loads it into its own
- * environment at start, filtering only CODEX_* keys — arg0/src/lib.rs
- * load_dotenv — so an OPENAI_API_KEY there would bypass the env allowlist; the
- * file is never opened). Whether the tool is offered to the model for a turn
+ * Preflight (before the one model call), in this order: (1) whether
+ * $CODEX_HOME/.env exists — lstat only, never opened — BEFORE any Codex
+ * process, because every `codex` invocation (`--version` and `login status`
+ * too) first runs arg0_dispatch: load_dotenv reads $CODEX_HOME/.env into its
+ * own environment, filtering only CODEX_* keys (arg0/src/lib.rs), so an
+ * OPENAI_API_KEY / OPENAI_BASE_URL there would bypass the env allowlist; and
+ * the arg0 alias setup writes under CODEX_HOME. (2) `codex --version` inside
+ * the same jail: after that arg0 setup clap prints the version and exits — no
+ * config load, no sign-in, no network, no model. Whether the tool is offered to the model for a turn
  * (feature flag, ChatGPT plan not Free, provider capability, the model's image
  * input modality: core/src/tools/spec_plan.rs image_generation_available)
  * cannot be read locally without loading Codex's config, which can reach the
  * network (cloud config); that check stays a human, local step (HUMAN-021).
  */
 import { constants } from "node:fs";
-import { lstat, open, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, open, readdir, realpath } from "node:fs/promises";
+import { join, sep } from "node:path";
 
 /** `codex --version` prints `codex-cli 0.163.0` (clap: the binary name and the version). */
 const VERSION_LINE = /^codex(?:-cli)?\s+(\d{1,3}\.\d{1,4}\.\d{1,4}(?:-(?:alpha|beta|rc)(?:\.\d{1,4}){1,3})?)\s*$/m;
 const VERSION = /^\d{1,3}\.\d{1,4}\.\d{1,4}(?:-(?:alpha|beta|rc)(?:\.\d{1,4}){1,3})?$/;
-/** A model slug as Codex names OpenAI models (gpt-…, o3…, codex-…); anything else is recorded as "other". */
+/** A model slug as Codex names OpenAI models (gpt-…, o3…, codex-…), at most 32 characters; anything else is recorded as "other". */
 const MODEL = /^(?:gpt|o[0-9]|codex)[A-Za-z0-9._-]{0,48}$/;
+const MODEL_MAX_CHARS = 32;
+const modelSlug = (m: string): string => (m.length <= MODEL_MAX_CHARS && MODEL.test(m) ? m : "other");
 
 /** The CLI version from `codex --version`'s stdout, or null when it is not in the expected shape. */
 export function parseCodexVersion(stdout: string): string | null {
@@ -120,8 +125,10 @@ export interface SessionFacts {
   image_failure_codes: ImageFailureCode[];
   /** Other tool calls (shell, apply_patch, MCP …), by count only. */
   other_tool_calls: number;
-  /** The log was larger than the read cap and was not parsed. */
+  /** A log was larger than the read cap, or the walk of the session dirs hit its entry cap (facts are incomplete). */
   truncated: boolean;
+  /** A matching log could not be opened or read (not a regular file, a link, outside CODEX_HOME, an I/O error). */
+  unreadable: boolean;
 }
 
 export const emptySessionFacts = (): SessionFacts => ({
@@ -137,11 +144,16 @@ export const emptySessionFacts = (): SessionFacts => ({
   image_failure_codes: [],
   other_tool_calls: 0,
   truncated: false,
+  unreadable: false,
 });
 
 /** The largest session log read (a successful image adds its base64 a few times). */
 export const MAX_SESSION_LOG_BYTES = 64 * 1024 * 1024;
 const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** At most this many entries are looked at per session dir (a huge CODEX_HOME cannot stall the run), as diagnostics.ts. */
+export const SESSION_WALK_LIMIT = 20_000;
+/** The head read to find a log's cwd (its first line, the session metadata), as the cleanup does. */
+const HEAD_BYTES = 256 * 1024;
 const IMAGE_TOOL_NAME = "imagegen";
 const IMAGE_TOOL_NAMESPACE = "image_gen";
 const OTHER_CALL_TYPES = new Set(["function_call", "custom_tool_call", "local_shell_call", "tool_search_call", "web_search_call"]);
@@ -165,76 +177,148 @@ function outputText(output: unknown): string {
   return items.map((i) => str(obj(i)?.text) ?? "").join(" ");
 }
 
-/** The session log file(s) of a thread under sessions / archived_sessions (regular files only). */
-async function sessionLogsOf(codexHome: string, threadId: string): Promise<string[]> {
+/** Which session log(s) to read: this thread's (by the file name), or — when the thread id never came (a signal mid-call) — those whose cwd is this run's work dir (as the cleanup finds them). */
+export interface SessionSelector {
+  threadId?: string;
+  cwds?: ReadonlySet<string>;
+}
+
+type Read = { ok: true; buf: Buffer } | { ok: false; why: "too_large" | "unreadable" };
+
+/** Reads at most `max` bytes (`max + 1` to detect overflow): never through a link, regular files only, never to EOF of a huge file. */
+async function readCapped(path: string, max: number): Promise<Read> {
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch {
+    return { ok: false, why: "unreadable" };
+  }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) return { ok: false, why: "unreadable" };
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const chunkSize = 1024 * 1024;
+    while (total <= max) {
+      const want = Math.min(chunkSize, max + 1 - total);
+      const buf = Buffer.alloc(want);
+      const { bytesRead } = await handle.read(buf, 0, want, null);
+      if (bytesRead === 0) break;
+      chunks.push(bytesRead === want ? buf : buf.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    if (total > max) return { ok: false, why: "too_large" };
+    return { ok: true, buf: Buffer.concat(chunks, total) };
+  } catch {
+    return { ok: false, why: "unreadable" };
+  } finally {
+    await handle.close().catch(() => undefined);
+  }
+}
+
+/** The cwd in a log's first line (session_meta), as the cleanup reads it; undefined when absent. */
+async function cwdOf(path: string): Promise<string | undefined> {
+  const head = await readCapped(path, HEAD_BYTES);
+  // a head over the cap still has a complete first line in practice; only the first line is parsed
+  const text = head.ok ? head.buf.toString("utf8") : "";
+  try {
+    const meta = obj(JSON.parse(text.split("\n")[0] ?? ""));
+    return str(obj(meta?.payload)?.cwd) ?? str(meta?.cwd);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The session log file(s) selected under CODEX_HOME/sessions and archived_sessions. Each session dir must be a
+ * real directory (not a link); at most SESSION_WALK_LIMIT entries are looked at; a file must be a regular file
+ * whose real path lies inside CODEX_HOME's real path.
+ */
+async function sessionLogs(codexHome: string, select: SessionSelector, f: SessionFacts): Promise<string[]> {
+  const threadId = select.threadId && THREAD_ID.test(select.threadId) ? select.threadId : undefined;
+  if (!threadId && !(select.cwds && select.cwds.size > 0)) return [];
+  const home = await realpath(codexHome).catch(() => null);
+  if (!home) return [];
   const found: string[] = [];
   for (const dir of ["sessions", "archived_sessions"]) {
     const root = join(codexHome, dir);
+    const info = await lstat(root).catch(() => null);
+    if (!info || info.isSymbolicLink() || !info.isDirectory()) continue;
     let names: string[];
     try {
       names = await readdir(root, { recursive: true });
     } catch {
       continue;
     }
+    if (names.length > SESSION_WALK_LIMIT) {
+      f.truncated = true;
+      names = names.slice(0, SESSION_WALK_LIMIT);
+    }
     for (const name of names) {
       const base = name.split("/").pop() ?? "";
-      if (!base.startsWith("rollout-") || !base.endsWith(`${threadId}.jsonl`)) continue;
-      const info = await lstat(join(root, name)).catch(() => null);
-      if (info?.isFile() && !info.isSymbolicLink()) found.push(join(root, name));
+      if (!base.startsWith("rollout-") || !base.endsWith(".jsonl")) continue;
+      if (threadId && !base.endsWith(`${threadId}.jsonl`)) continue;
+      const path = join(root, name);
+      const entry = await lstat(path).catch(() => null);
+      if (!entry || entry.isSymbolicLink() || !entry.isFile()) continue;
+      const real = await realpath(path).catch(() => null);
+      if (!real || !(real.startsWith(`${home}${sep}`))) {
+        f.unreadable = true;
+        continue;
+      }
+      if (!threadId) {
+        const cwd = await cwdOf(path);
+        if (cwd === undefined || !select.cwds!.has(cwd)) continue;
+      }
+      found.push(path);
     }
   }
   return found;
 }
 
-async function readCapped(path: string): Promise<string | null> {
-  let handle;
-  try {
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  } catch {
-    return null;
-  }
-  try {
-    const info = await handle.stat();
-    if (!info.isFile() || info.size > MAX_SESSION_LOG_BYTES) return null;
-    return (await handle.readFile()).toString("utf8");
-  } finally {
-    await handle.close();
-  }
-}
-
 /**
- * Reads this thread's session log in memory and returns fixed facts only.
- * Never throws; a missing or unreadable log is `log_found: false`.
+ * Reads the selected session log(s) in memory and returns fixed facts only.
+ * Never throws; no log is `log_found: false`.
+ *
+ * Per image call (keyed by call id), the evidence is weighed in this order:
+ * 1. the CLI's structured failure object (image_generation_end / item `failure`) decides failed + its code
+ *    (usageLimitExceeded → USAGE_LIMIT, any other type → OTHER); nothing overrides it;
+ * 2. else the CLI's structured end status (completed / failed) decides the status — it wins over the shape of
+ *    the tool's output (so end(completed) + an output without an image is completed: TOOL_CALLED_NO_FILE);
+ * 3. else the output's shape decides (an image content item → completed, none → failed);
+ * a failed call without a structured failure takes its code from the tool output's text when that text names a
+ * usage / rate limit (USAGE_LIMIT) or a policy refusal (POLICY), whatever the order of the records; every failed
+ * call still without a code is OTHER, assigned only at the end. The model's own words are never read here.
+ *
+ * Several calls (mixed results): `image_failure_codes` lists every failed call's code; the outcome
+ * (deriveImageOutcome) is IMAGE_SAVED whenever a PNG was taken, else any failed call makes it TOOL_FAILED_*
+ * with USAGE_LIMIT before POLICY before OTHER, even if another call completed.
  */
-export async function readSessionFacts(codexHome: string, threadId: string | undefined): Promise<SessionFacts> {
+export async function readSessionFacts(codexHome: string, select: SessionSelector | string | undefined): Promise<SessionFacts> {
   const f = emptySessionFacts();
-  if (!threadId || !THREAD_ID.test(threadId)) return f;
-  const paths = await sessionLogsOf(codexHome, threadId).catch(() => [] as string[]);
+  const selector: SessionSelector = typeof select === "string" ? { threadId: select } : (select ?? {});
+  if (selector.threadId !== undefined && !THREAD_ID.test(selector.threadId)) return f;
+  const paths = await sessionLogs(codexHome, selector, f).catch(() => [] as string[]);
   if (paths.length === 0) return f;
   f.log_found = true;
-  /** Image calls by call id: their outcome and failure code (the CLI's structured record wins over the tool output's text). */
-  type Call = { status: "pending" | "completed" | "failed"; failure?: ImageFailureCode; structured?: boolean };
+  type Status = "completed" | "failed";
+  type Call = { endStatus?: Status; endFailure?: ImageFailureCode; shapeStatus?: Status; textFailure?: ImageFailureCode };
   const calls = new Map<string, Call>();
   let anonymous = 0;
-  const settle = (id: string | undefined, status: "completed" | "failed", failure?: { code: ImageFailureCode; structured: boolean }) => {
+  const callOf = (id: string | undefined): Call => {
     const key = id ?? `anon-${anonymous++}`;
-    const now = calls.get(key) ?? { status: "pending" };
-    // a recorded failure is never overwritten by a later "completed" of the same call
-    if (now.status !== "failed") now.status = status;
-    if (status === "failed" && failure && (now.failure === undefined || (failure.structured && !now.structured))) {
-      now.failure = failure.code;
-      now.structured = failure.structured;
-    }
-    if (status === "failed" && now.failure === undefined) now.failure = "OTHER";
-    calls.set(key, now);
+    let c = calls.get(key);
+    if (!c) calls.set(key, (c = {}));
+    return c;
   };
   for (const path of paths) {
-    const text = await readCapped(path).catch(() => null);
-    if (text === null) {
-      f.truncated = true;
+    const read = await readCapped(path, MAX_SESSION_LOG_BYTES);
+    if (!read.ok) {
+      if (read.why === "too_large") f.truncated = true;
+      else f.unreadable = true;
       continue;
     }
-    for (const raw of text.split("\n")) {
+    for (const raw of read.buf.toString("utf8").split("\n")) {
       const line = raw.trim();
       if (line === "") continue;
       f.lines += 1;
@@ -257,24 +341,28 @@ export async function readSessionFacts(codexHome: string, threadId: string | und
         if (provider !== undefined) f.model_provider_openai = provider === "openai";
       } else if (type === "turn_context") {
         const m = str(p.model);
-        if (m !== undefined) f.model = MODEL.test(m) ? m : "other";
+        if (m !== undefined) f.model = modelSlug(m);
       } else if (type === "response_item") {
         const t = str(p.type);
         const name = str(p.name);
         const ns = str(p.namespace);
         const isImageCall = t === "function_call" && (name === IMAGE_TOOL_NAME || name === `${IMAGE_TOOL_NAMESPACE}.${IMAGE_TOOL_NAME}`) && (ns === undefined || ns === IMAGE_TOOL_NAMESPACE);
         if (isImageCall) {
-          const id = str(p.call_id) ?? `anon-${anonymous++}`;
-          if (!calls.has(id)) calls.set(id, { status: "pending" });
+          callOf(str(p.call_id));
         } else if (t === "image_generation_call") {
-          // the older hosted image tool: its own item carries the status
+          // the older hosted image tool: its own item carries the status (structured)
           const status = str(p.status);
-          settle(str(p.id), status === "completed" ? "completed" : status === "failed" ? "failed" : "completed");
+          callOf(str(p.id)).endStatus = status === "failed" ? "failed" : "completed";
         } else if (t === "function_call_output") {
           const id = str(p.call_id);
           if (id !== undefined && calls.has(id)) {
-            if (outputHasImage(p.output)) settle(id, "completed");
-            else settle(id, "failed", { code: classifyToolFailure(outputText(p.output)), structured: false });
+            const c = callOf(id);
+            if (outputHasImage(p.output)) c.shapeStatus = "completed";
+            else {
+              c.shapeStatus = "failed";
+              const code = classifyToolFailure(outputText(p.output));
+              if (code !== "OTHER") c.textFailure = code;
+            }
           }
         } else if (t !== undefined && OTHER_CALL_TYPES.has(t)) {
           f.other_tool_calls += 1;
@@ -284,22 +372,28 @@ export async function readSessionFacts(codexHome: string, threadId: string | und
         const item = t === "item_completed" ? obj(p.item) : undefined;
         const record = t === "image_generation_end" ? p : item && /image_?generation/i.test(str(item.type) ?? "") ? item : undefined;
         if (record) {
-          const id = str(record.call_id) ?? str(record.id);
+          const c = callOf(str(record.call_id) ?? str(record.id));
           const failure = obj(record.failure);
           const status = str(record.status);
-          if (failure) settle(id, "failed", { code: /usage ?limit/i.test(str(failure.type) ?? "") ? "USAGE_LIMIT" : "OTHER", structured: true });
-          else if (status === "failed") settle(id, "failed");
-          else if (status === "completed") settle(id, "completed");
-          else if (id !== undefined && !calls.has(id)) calls.set(id, { status: "pending" });
+          if (failure) {
+            c.endStatus = "failed";
+            c.endFailure = /usage ?limit/i.test(str(failure.type) ?? "") ? "USAGE_LIMIT" : "OTHER";
+          } else if (c.endFailure === undefined && (status === "failed" || status === "completed")) {
+            c.endStatus = status;
+          }
         }
       }
     }
   }
-  const all = [...calls.values()];
-  f.image_tool_calls = all.length;
-  f.image_tool_completed = all.filter((c) => c.status === "completed").length;
-  f.image_tool_failed = all.filter((c) => c.status === "failed").length;
-  f.image_failure_codes = IMAGE_FAILURE_CODES.filter((code) => all.some((c) => c.status === "failed" && c.failure === code));
+  const settled = [...calls.values()].map((c) => {
+    const status: Status | "pending" = c.endFailure ? "failed" : (c.endStatus ?? c.shapeStatus ?? "pending");
+    const failure: ImageFailureCode | undefined = status === "failed" ? (c.endFailure ?? c.textFailure ?? "OTHER") : undefined;
+    return { status, failure };
+  });
+  f.image_tool_calls = settled.length;
+  f.image_tool_completed = settled.filter((c) => c.status === "completed").length;
+  f.image_tool_failed = settled.filter((c) => c.status === "failed").length;
+  f.image_failure_codes = IMAGE_FAILURE_CODES.filter((code) => settled.some((c) => c.failure === code));
   return f;
 }
 
@@ -309,7 +403,7 @@ export type ImageOutcome = (typeof IMAGE_OUTCOMES)[number];
 
 export function deriveImageOutcome(facts: SessionFacts, imageSaved: boolean): ImageOutcome {
   if (imageSaved) return "IMAGE_SAVED";
-  if (!facts.log_found || facts.truncated) return "NO_SESSION_LOG";
+  if (!facts.log_found || facts.truncated || facts.unreadable) return "NO_SESSION_LOG";
   if (facts.image_tool_calls === 0) return "TOOL_NOT_CALLED";
   if (facts.image_tool_failed > 0) {
     if (facts.image_failure_codes.includes("USAGE_LIMIT")) return "TOOL_FAILED_USAGE_LIMIT";
