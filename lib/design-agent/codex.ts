@@ -11,6 +11,10 @@
  *   Instagram browser profile and the results are not visible at all; a probe
  *   checks that before each call, fail closed). Reference images reach it only
  *   as copies in <work dir>/inputs.
+ * - DEV-079: no Codex process at all while $CODEX_HOME/.env exists (the CLI
+ *   would load an API key or base URL from it past the cleared environment).
+ *   sandbox.ts checks it before every process (lstat only, never opened):
+ *   CODEX_DOTENV_PRESENT, an environment failure.
  * - Inside, Codex runs with `--sandbox read-only` in an empty temporary directory
  *   that is deleted afterwards. It is asked for a JSON answer only; the answer
  *   shape is fixed with `--output-schema` and checked again with zod by the
@@ -33,6 +37,8 @@ import { join } from "node:path";
 import type { BoundedResult } from "./bounded-process";
 import { SandboxError, stageInputBytes, stageInputs, type CodexSandbox } from "./sandbox";
 
+export { codexDotenvPresent } from "./codex-dotenv";
+
 export const CODEX_BLOCKED_ENV = ["OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL"] as const;
 
 export type CodexFailureCode =
@@ -47,7 +53,8 @@ export type CodexFailureCode =
   | "CODEX_SANDBOX_LEAK"
   | "CODEX_SANDBOX_CONFIG"
   | "CODEX_INPUT_REJECTED"
-  | "CODEX_ANSWER_REJECTED";
+  | "CODEX_ANSWER_REJECTED"
+  | "CODEX_DOTENV_PRESENT";
 
 export class CodexError extends Error {
   readonly code: CodexFailureCode;
@@ -67,7 +74,8 @@ export function isEnvironmentFailure(code: CodexFailureCode): boolean {
     code === "CODEX_QUOTA" ||
     code === "CODEX_SANDBOX_UNAVAILABLE" ||
     code === "CODEX_SANDBOX_LEAK" ||
-    code === "CODEX_SANDBOX_CONFIG"
+    code === "CODEX_SANDBOX_CONFIG" ||
+    code === "CODEX_DOTENV_PRESENT"
   );
 }
 
@@ -77,6 +85,7 @@ const SANDBOX_MESSAGES: Record<SandboxError["code"], string> = {
   CODEX_SANDBOX_LEAK: "The Codex sandbox would show protected files; Codex was not started.",
   CODEX_SANDBOX_CONFIG: "The Codex sandbox could not be set up safely; Codex was not started.",
   CODEX_INPUT_REJECTED: "A reference image was not a regular PNG file; Codex was not started.",
+  CODEX_DOTENV_PRESENT: "A .env file exists in the Codex home; Codex was not started.",
 };
 
 /** A sandbox failure as a CodexError (fixed message). */

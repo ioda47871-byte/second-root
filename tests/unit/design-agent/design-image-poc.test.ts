@@ -26,7 +26,7 @@ import {
 import { classifyError, CodexEventTracker, IMAGE_ITEM_TYPES, ITEM_TYPES, MAX_PARTIAL_LINE_CHARS, type EventDiagnostics, type ImageLocationDiagnostics, type PocDiagnostics } from "@/lib/design-agent/design-image/diagnostics";
 import { classifyAnswerText, deriveImageOutcome, emptySessionFacts, MAX_SESSION_LOG_BYTES, parseCodexVersion, readSessionFacts } from "@/lib/design-agent/design-image/capability";
 import { cleanupActivePoc, isInsidePath, lastPocDiagnostics, pocStopClass, REPORT_NOTES, REPORT_NOTES_V2, runDesignImagePoc, type PocOptions } from "@/lib/design-agent/design-image/run";
-import type { CodexSandbox } from "@/lib/design-agent/sandbox";
+import { SandboxError, type CodexSandbox } from "@/lib/design-agent/sandbox";
 
 // The design-image PoC (DEV-074) against a fake sandbox whose `run` plays the
 // Codex CLI in-process: the sign-in check, then one `exec` that may leave a PNG
@@ -1161,6 +1161,31 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
     spawnSync("rm", ["-f", join(codexHome, ".env")]);
     symlinkSync("/nonexistent-target", join(codexHome, ".env"));
     expect(await runDesignImagePoc(options(happy))).toEqual({ status: "stopped", code: "CODEX_DOTENV_PRESENT" });
+  });
+
+  it("CODEX_DOTENV_PRESENT (DEV-079): a .env that appears after the PoC's own preflight is refused by the jail before the exec; no model call", async () => {
+    // the jail's own check (sandbox.ts run(), tested against the real prepareCodexSandbox in codex-dotenv.test.ts), mimicked here
+    const base = fakeSandbox(happy);
+    const seen: string[] = [];
+    const jail: CodexSandbox = {
+      env: base.env,
+      run: async (args, o) => {
+        if (existsSync(join(codexHome, ".env"))) throw new SandboxError("CODEX_DOTENV_PRESENT");
+        seen.push(args[0]!);
+        const result = await base.run(args, o);
+        // the file appears once `codex --version` has run (after the PoC's lstat preflight)
+        if (args[0] === "--version") writeFileSync(join(codexHome, ".env"), `SOME_URL=${CANARY}\n`);
+        return result;
+      },
+    };
+    expect(await runDesignImagePoc({ ...options(happy), prepareSandbox: async () => jail })).toEqual({ status: "stopped", code: "CODEX_DOTENV_PRESENT" });
+    expect(seen).toEqual(["login", "--version"]);
+    expect(prompts).toHaveLength(0);
+    const { d, text, summary } = diag();
+    expect(d.preflight).toEqual({ cli_version: "0.163.0", dotenv_present: false });
+    expect(d.classification.stop_class).toBe("environment");
+    expect(summary).toContain("code=CODEX_DOTENV_PRESENT");
+    clean(text, summary);
   });
 
   it("CODEX_PREFLIGHT_FAILED: `codex --version` failing stops before the model call; an unexpected version shape is recorded as null", async () => {

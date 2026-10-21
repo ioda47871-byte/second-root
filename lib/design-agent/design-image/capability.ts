@@ -53,12 +53,8 @@ export function parseCodexVersion(stdout: string): string | null {
   return VERSION_LINE.exec(stdout.slice(0, 4096))?.[1] ?? null;
 }
 
-/** Whether $CODEX_HOME/.env exists in any form (never opened, never followed). */
-export async function codexDotenvPresent(codexHome: string): Promise<boolean> {
-  const info = await lstat(join(codexHome, ".env")).catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" || error.code === "ENOTDIR" ? null : error));
-  // unreadable (EACCES …): treated as present, fail closed
-  return info !== null;
-}
+/** Whether $CODEX_HOME/.env exists in any form (never opened, never followed). Shared since DEV-079 (../codex-dotenv.ts). */
+export { codexDotenvPresent } from "../codex-dotenv";
 
 /** Fixed codes for why the image tool failed (from the CLI's own failure record and the tool's output, never the model's words). */
 export const IMAGE_FAILURE_CODES = ["USAGE_LIMIT", "POLICY", "OTHER"] as const;

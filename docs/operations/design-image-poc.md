@@ -146,7 +146,7 @@ If Codex is not signed in, sandbox probe fails, API-key authentication is detect
 | `CODEX_TIMEOUT` | the call passed 15 min |
 | `CODEX_EXEC_FAILED`, `CODEX_NO_THREAD`, `CODEX_NO_IMAGE`, `CODEX_IMAGE_INVALID` | no acceptable image; no result dir (only `diag-XXXXXX/`). Read `POC_DIAG_SUMMARY` ([Diagnostics](#diagnostics-dev-077)) |
 | `CODEX_IMAGE_UNSUPPORTED_FORMAT` | the thread's dir holds a regular JPEG / WebP / GIF file (judged by its name; a link is ignored) but no PNG: never converted or accepted (DEV-077) |
-| `CODEX_DOTENV_PRESENT` | `$CODEX_HOME/.env` exists (DEV-078): Codex would load it into its own environment (only `CODEX_*` keys are filtered), which can carry an API key past the env allowlist. Codex not started; the file is never opened. Remove or move it as `sr-designgen` |
+| `CODEX_DOTENV_PRESENT` | `$CODEX_HOME/.env` exists (DEV-078; since DEV-079 also refused by the jail before every Codex process): Codex would load it into its own environment (only `CODEX_*` keys are filtered), which can carry an API key past the env allowlist. Codex not started; the file is never opened. Remove or move it as `sr-designgen` (`design-worker-wsl.md`, `CODEX_DOTENV_PRESENT`) |
 | `CODEX_PREFLIGHT_FAILED` | `codex --version` inside the jail did not run cleanly (DEV-078); no model call was made |
 | `CODEX_IMAGE_TOOL_FAILED` | the CLI's session log shows the image tool was called and failed (not a usage limit: that is `CODEX_QUOTA`); `img_fail=` says `POLICY` / `OTHER` (DEV-078) |
 | `POC_STOPPED_BY_SIGNAL`, `POC_KILLED_OR_TIMED_OUT`, exit 137 / 124 | check for an OOM kill first (the wrapper prints `--oom-check`) |
@@ -294,10 +294,14 @@ published 2026-10-15, and the `@openai/codex@0.163.0-linux-x64` package read as 
   short answer, not the missing image. The prompt is left unchanged until HUMAN-021 separates the causes.
 - Side finding: Codex loads `$CODEX_HOME/.env` into its own environment at start, filtering only `CODEX_*` keys
   (`codex-rs/arg0/src/lib.rs` `load_dotenv`), so an `OPENAI_API_KEY` there would bypass the env allowlist. The PoC now refuses
-  to start when that file exists. **The design worker's Codex calls (`lib/design-agent/codex.ts`: `assertChatGptSignIn`,
-  `runCodexJson`, used by the production worker) do not check it yet**, so a `.env` in `sr-designgen`'s CODEX_HOME could feed an
-  `OPENAI_API_KEY` / `OPENAI_BASE_URL` to them. Moving the check into `codex.ts` and failing closed before every sandboxed Codex
-  process is **DEV-079** (P1, backlog, its own review); until then, HUMAN-021a's first line shows whether the file exists. The diagnostics dirs stay in the output root (repo-external, never published); delete them with `sudo rm -r` when done.
+  to start when that file exists. Before DEV-079 the design worker's Codex calls (`lib/design-agent/codex.ts`: `assertChatGptSignIn`,
+  `runCodexJson`, used by the production worker) did not check it, so a `.env` in `sr-designgen`'s CODEX_HOME could feed an
+  API key or base URL to them. **DEV-079** closes this: the check lives in `lib/design-agent/codex-dotenv.ts` (re-exported by
+  `codex.ts` and `capability.ts`) and the jail's `run()` (`sandbox.ts`) refuses every Codex process while the file exists
+  (before the probe and again right before the spawn), for the worker, photos, compare, design-demo and this PoC alike. The
+  PoC's own preflight still runs first and records `dotenv=1`; a `.env` that appears after it is refused by the jail with the
+  same `CODEX_DOTENV_PRESENT` (then `dotenv=0` in the diagnostics: the preflight saw none). Removing it: `design-worker-wsl.md`
+  (`CODEX_DOTENV_PRESENT`). The diagnostics dirs stay in the output root (repo-external, never published); delete them with `sudo rm -r` when done.
 
 To send back (no secrets inside): the `POC_STOP` line and the `POC_DIAG_SUMMARY` line, or `sudo cat <POC_DIAG path>`.
 

@@ -105,6 +105,37 @@ worker の環境に `CODEX_HOME=~/.codex-design`）。既定の `~/.codex` を�
 | `CODEX_SANDBOX_LEAK` | sandbox の中から守る path が見えた。Codex は起動していない。止めて調べる |
 | `CODEX_SANDBOX_CONFIG` | 安全に組めない（例: `CODEX_HOME` が link・ホームそのもの、Codex の install が守る場所の中） |
 | `CODEX_INPUT_REJECTED` | 参考画像が通常の PNG / JPEG / WebP ファイルでない（link など） |
+| `CODEX_DOTENV_PRESENT` | `$CODEX_HOME/.env` がある（DEV-079）。Codex は起動していない。下の手順で人が jail の中で移す |
+
+### `CODEX_DOTENV_PRESENT`（DEV-079）
+
+Codex CLI は、どの起動でも（`--version`・`login status` も）引数を読む前に `$CODEX_HOME/.env` を自分の環境へ読み込み、
+`CODEX_*` しか除かない（arg0 の `load_dotenv`）。そこに API key や base URL があると、sandbox の env の allowlist を通らずに
+Codex へ届く（API の課金・通信先の差し替え）。だから sandbox（`lib/design-agent/sandbox.ts` の `run()`）は、**すべての Codex
+process の前に**（probe の前と、起動の直前にもう一度）`.env` を `lstat` だけで確かめ、あれば Codex を起動せずに
+`CODEX_DOTENV_PRESENT` で止まる。worker・photo・比較（compare）・design-demo・PoC のどれもこの1か所を通る。
+
+- 中身は開かない・読まない・出さない。file・link（先が無くても）・directory・`lstat` できない（EACCES など）は、どれも「ある」とみなす
+- worker の扱いは `CODEX_NOT_SIGNED_IN` と同じ環境の失敗: run は `stopped`（exit 3）、job は inbox に戻り、ledger に数えない
+  （job の途中で現れたときも同じ。結果の途中の file は残さない）。自分で再試行しない。cycle は `CYCLE_STOP_WORKER_EXIT` で止まる
+- 結果・ledger・log・通知に出るのは符号と固定の文だけ（`.env` の中身・path は出さない）
+
+人の手順（jail の中の `sr-designgen` で。Claude は行わない。中身は表示しない・貼らない）:
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+H="${CODEX_HOME:-$HOME/.codex}"
+if [ -e "$H/.env" ] || [ -L "$H/.env" ]; then
+  Q="$HOME/codex-dotenv-quarantine"; mkdir -p -m 700 "$Q"
+  mv -- "$H/.env" "$Q/env-$(date +%Y%m%d%H%M%S)" && echo "moved out of CODEX_HOME (contents not shown)"
+else
+  echo ".env: absent"
+fi'
+```
+
+- worker の `CODEX_HOME` を分けている（`~/.codex-design` など）ときは、その値で `H` を置き換える
+- 移した file は人が中身を確かめて消す。API key が入っていたら、その key を失効・作り直すかを人が決める
+- その後の worker run は、`.env` が無ければ今までどおり動く（符号の他に変える設定はない）
 
 ## 公式サイトの取得
 
