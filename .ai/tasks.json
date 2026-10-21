@@ -3266,6 +3266,54 @@
         "WSL での比較の実走（HUMAN-017）"
       ],
       "decision": "2026-10-20: 着手（develop 2faa27d から）。実装: worker の runJob から runJobPipeline / copyPipelineShots / pipelineRecord を切り出して共有（同じコード）、lib/design-agent/compare/（shops・safety・metrics・report・contact-sheet・run）、scripts/sales-design-worker/compare-local.sh・compare.ts・compare-report.ts、fixture の 3 店と手書きの spec、tests/unit/design-agent/compare.test.tsx（fake Codex + Chromium）。参照画像なし（PoC の example.com は local fixture ではない）: 参照 0 枚のときだけ prompt の 1 行が「参照なし」を言う。手書きの spec の demo（next build + start、Codex の生成ではない）で店の間の構造の距離 0.78〜0.89・baseline どうし 0.23〜0.40。PR #87。Fresh Review（d960ecb）FAIL: Medium 2・Low 6・Nit 6 → 対応済み（.ai/reviews/DEV-073.md の「対応」）: 予算を 3300 秒（jail の 3500 秒の中）、止まるときも report、timer に触れない doc の 1 コマンド、lock の中での checkout、worker の checkout で build しない、compare.ts は compare-local.sh の下でだけ動く、条件の偏りの節、test の追加。forbidden_scope（review の prompt の変更）の例外: brief と review の `Attached images` の行の、参照 0 枚の分岐だけ（DEV-073 の比較専用）。worker は参照 0 枚の job を REFERENCE_CHECK_FAILED で拒否するので到達せず、参照 1 枚以上の prompt は 1 字も変わらない（既存の prompt の snapshot test は無変更で pass）。品質の閾値・gate・review の基準は不変。残り: Fresh Review の再確認、WSL での実走（HUMAN-017、docs/operations/design-compare-local.md）。Fresh Review FAIL（Medium 2: jail の 58 分の上限・timer に触れる手順）→ 対応 → 再レビュー PASS（Nit 2 → 対応）。WSL での実行は HUMAN-017（人の承認）"
+    },
+    {
+      "id": "DEV-074",
+      "title": "Design image PoC: 架空菓庵の Web デザイン mockup PNG を 1 枚、Codex の組み込み画像生成で作る（local・人の承認ごと・jail の中）",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-073"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/design-image-poc-v02",
+      "purpose": "curated v0.2 の art direction（design-library/poc/wagashi-art-direction.json）と DEV-073 の架空の和菓子屋の事実から、ChatGPT サインインの Codex に独自の Web デザイン mockup の PNG を 1 枚だけ作らせ、人が見て評価する。Web サイトは作らない・公開しない。実走は人の WSL で、承認ごと（HUMAN-018）",
+      "acceptance_criteria": [
+        "入口は scripts/sales-design-worker/design-image-poc.sh だけ（DEV-073 の compare-local.sh と同じ形: --human-approval-confirmed・env の allowlist で再起動・resource preflight・worker の run.lock を flock -n・lock の中で origin/develop に checkout（package-lock が変わったときだけ npm ci）・全体 3300 秒以内・固定の符号の STOP）。design-image-poc.ts は flag と SR_DESIGN_IMAGE_POC_LOCKED が無ければ何もしない",
+        "Codex は worker の bubblewrap jail（prepareCodexSandbox・workerProtectedPaths + 出力先）で、ChatGPT サインインだけ（API key 拒否・sign-out は stderr と CLI の error event だけで CODEX_NOT_SIGNED_IN）・--sandbox read-only・prompt は stdin・参照画像なし・1 回",
+        "画像は CODEX_HOME/generated_images/<thread>/ からだけ受け取り、O_NOFOLLOW で開き、chunk の walk・CRC・IHDR の寸法・IEND・末尾のデータなし・大きさの上限で検査",
+        "作業 dir は sr-design-codex- の prefix。開始時に古い design-agent の session と画像 dir を消す。どう終わっても session log・この run の間に増えた画像 dir（前からあったものは消さない）・作業 dir を消す",
+        "出力は repo の外（~/sr-design-image-poc、0700 / 0600）。report は固定の符号と数だけ（Codex の文章は入れない）。renderer・worker・preview・asset は出力先を読まない",
+        "prompt は art direction を構造化した文（goal・theme・節ごとの意図・technique の use / avoid・色・hard rules）、事実は data-not-instructions の区切りの中だけ、縦長 2:3、写真 / render・logo・価格・口コミ・受賞・人物・沿革の禁止、架空店舗のデザイン提案の表示。fixture の テスト の値（menu・access・説明文の架空の注記）は画像から省いてよい（事実は変えない）"
+      ],
+      "required_tests": [
+        "unit（fake sandbox）: flag なし・shell の token なしの拒否、正常系、thread なし、画像なし、不正な PNG（CRC・切れ・末尾・小さすぎ・大きすぎ・symlink）、quota、timeout、sign-out、API key、後片付け（signal を含む）、出力の権限と場所、report に Codex の文章が無い、prompt の内容と環境の値が無いこと、出力先を他が読まないこと",
+        "unit: design-image-poc.sh の STOP・env の allowlist・予算の上限・run.lock",
+        "codex*.test.ts・sandbox.test.ts・ai-tasks の既存 test",
+        "eslint・tsc（next typegen）・bash -n"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/",
+        "lib/design-agent/codex.ts（codexLooksSignedOut の追加だけ）",
+        "scripts/sales-design-worker/design-image-poc.sh",
+        "scripts/sales-design-worker/design-image-poc.ts",
+        "design-library/poc/",
+        "tests/unit/design-agent/",
+        "docs/operations/design-image-poc.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "WSL での実走・Codex の実呼び出し（人の承認 HUMAN-018 の後に人が流す）",
+        "Staging / Production / DB / flag / Vercel / worker の timer・queue・結果",
+        "AI 生成の店舗写真・食品や店舗の写真風の画像、店舗情報の創作、fixture の事実の変更",
+        "生成画像の公開・commit・worker / renderer / preview での利用"
+      ],
+      "human_approval_triggers": [
+        "WSL での PoC の実走 1 回（HUMAN-018）",
+        "生成画像を使った実装・worker への接続"
+      ],
+      "decision": "2026-10-21: PR #88（repo owner の draft）を Claude が review の指摘に沿って修正。.mjs を TS（lib/design-agent/design-image/ + scripts/sales-design-worker/design-image-poc.ts）に書き直し、DEV-073 と同じ形の shell の入口を追加。runbook は npm・admin.sh run sr-designgen の中・lock の中の checkout・timer に触れない形に。画像の受け取りは curiosity-media codex-image.ts（D-139 / D-141 / D-143）と同じ規約。codex.ts に codexLooksSignedOut を追加（既存の挙動は不変）。品質の注意: fixture の menu は全品「テスト」入り、説明文の頭は架空の注記、access は「テスト線テスト駅」→ prompt で画像から省くことを許す（事実は不変）。PoC は merge の後に develop から流す。残り: review、merge、HUMAN-018"
     }
   ]
 }
