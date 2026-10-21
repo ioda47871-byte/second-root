@@ -3270,7 +3270,7 @@
     {
       "id": "DEV-074",
       "title": "Design image PoC: 架空菓庵の Web デザイン mockup PNG を 1 枚、Codex の組み込み画像生成で作る（local・人の承認ごと・jail の中）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-073"
@@ -3313,7 +3313,97 @@
         "WSL での PoC の実走 1 回（HUMAN-018）",
         "生成画像を使った実装・worker への接続"
       ],
-      "decision": "2026-10-21: PR #88（repo owner の draft）を Claude が review の指摘に沿って修正。.mjs を TS（lib/design-agent/design-image/ + scripts/sales-design-worker/design-image-poc.ts）に書き直し、DEV-073 と同じ形の shell の入口を追加。runbook は npm・admin.sh run sr-designgen の中・lock の中の checkout・timer に触れない形に。画像の受け取りは curiosity-media codex-image.ts（D-139 / D-141 / D-143）と同じ規約。codex.ts に codexLooksSignedOut を追加（既存の挙動は不変）。品質の注意: fixture の menu は全品「テスト」入り、説明文の頭は架空の注記、access は「テスト線テスト駅」→ prompt で画像から省くことを許す（事実は不変）。PoC は merge の後に develop から流す。残り: review、merge、HUMAN-018"
+      "decision": "2026-10-21: PR #88（repo owner の draft）を Claude が review の指摘に沿って修正。.mjs を TS（lib/design-agent/design-image/ + scripts/sales-design-worker/design-image-poc.ts）に書き直し、DEV-073 と同じ形の shell の入口を追加。runbook は npm・admin.sh run sr-designgen の中・lock の中の checkout・timer に触れない形に。画像の受け取りは curiosity-media codex-image.ts（D-139 / D-141 / D-143）と同じ規約。codex.ts に codexLooksSignedOut を追加（既存の挙動は不変）。品質の注意: fixture の menu は全品「テスト」入り、説明文の頭は架空の注記、access は「テスト線テスト駅」→ prompt で画像から省くことを許す（事実は不変）。PoC は merge の後に develop から流す。残り: review、merge、HUMAN-018 / 2026-10-21: PR #88 を develop に merge（42b9c40）。HUMAN-018 を人が 1 回流し、画像を確認（和風だがポスター風、Web サイトとしての訴求が弱い）。続きは DEV-075（第2案）"
+    },
+    {
+      "id": "DEV-075",
+      "title": "Design image PoC 第2案: 架空菓庵の Web デザイン comp（header nav + Hero / 商品・こだわり / 店舗情報）、和菓子の AI 生成イメージを提案用に許可（PoC の中だけ）",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-074"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/design-image-v2",
+      "purpose": "HUMAN-018 の 1 枚目はポスター風で営業の訴求が弱かった。人の新しい方針（2026-10-21）で和菓子そのものの AI 生成画像を提案用イメージとして許し、実装できる Web サイトの design comp（3 節・nav・商品の画像 card・店舗情報の定義リスト）を 1 枚作らせて評価する。店舗・人物の画像・logo・事実の創作・実物だと言う文は引き続き禁止。v2 と方針は PoC の中だけ",
+      "acceptance_criteria": [
+        "design-library/poc/wagashi-art-direction-v2.json（0.3-poc）: theme・palette（hex）・書体（明朝 display + ゴシック本文）・12 col grid・節ごとの意図と layout・和菓子の画像の方向（光・素材・断面・接写・季節の上生菓子・一貫性・人と店舗なし）・Web UI（nav 3・CTA「店舗情報を見る」・節の label・情報の label）・technique・avoid・hard rules（AI のイメージ・表示「架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです」・価格 / 口コミ / 受賞 / 沿革 / 人物 / 店舗写真なし・事実だけ・テストの値は省いてよい）。v1 は履歴として残す",
+        "prompt.ts: SR_DESIGN_IMAGE_POC_DIRECTION=v1|v2（未設定は v2、それ以外は POC_DIRECTION_INVALID）。wrapper の env allowlist に含め、shell と TS の両方で検査。v1 の prompt は 1 byte も変わらない（hash の test）",
+        "v2 の prompt: Web サイトの design comp（全頁の desktop の screenshot 風・device frame なし・実際の Web の文字の大きさ・縦 2:3）、header nav、節 2 に商品の画像 card 2〜3、節 3 は定義リスト / 表、和菓子の画像は許可・店舗 / 人物 / logo / 価格 / 口コミ / 受賞 / 沿革 / 実物の主張は禁止、表示の行、日本語は店名・label・事実・表示に限る、事実は data block の中だけ、fixture は変えない",
+        "report.json に direction_version、v2 の notes に AI_FOOD_VISUALS_CONCEPT_ONLY と EVALUATION_REQUIRED。design-spec.json は選んだ direction",
+        "v2 と方針は PoC の中だけ: 静的 test で、wagashi-art-direction-v2 / AI_FOOD_VISUALS を名指すのは PoC の入口と lib/design-agent/design-image/ だけ",
+        "評価: docs/operations/design-image-eval-template.md の 5 項目（美しさ・店舗との相性・独自性・Web サイトとしての構成・実装可能性、各 1〜5）で 22/25 以上・4 未満なし・hard fail なし。人が流した画像を Claude が採点し人が確認して初めて done（既存の gate・閾値・CI は変えない）",
+        "再利用できる和菓子の asset の設計だけ（docs/operations/design-image-assets.md）。生成器は作らない。PoC の Codex 呼び出しは 1 回のまま"
+      ],
+      "required_tests": [
+        "unit（fake sandbox）: 既定は v2・v1 も選べる・不正な direction は POC_DIRECTION_INVALID（TS・shell・runDesignImagePoc）・v1 の prompt の hash と禁止の行・v2 の prompt（表示・和菓子の画像の許可・店舗と人物の禁止・節と nav・環境の値なし）・report の direction_version と notes・v2 の direction の検査（表示・余分な key・予約の CTA・節の順）・PoC の外が v2 を読まないこと",
+        "既存の design-image・codex・ai-tasks の test",
+        "eslint・tsc・bash -n"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/",
+        "scripts/sales-design-worker/design-image-poc.sh",
+        "scripts/sales-design-worker/design-image-poc.ts",
+        "design-library/poc/",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "docs/operations/design-image-poc.md",
+        "docs/operations/design-image-eval-template.md",
+        "docs/operations/design-image-assets.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "WSL での実走・Codex の実呼び出し（人の承認 HUMAN-019 の後に人が流す）",
+        "Staging / Production / DB / flag / Vercel / worker の timer・queue・結果",
+        "worker・demo の生成・preset・renderer・asset store が v2 や AI の食品画像の方針を読むこと",
+        "架空の店舗・人物の AI 画像、logo、店舗情報・価格・口コミ・受賞・沿革の創作、fixture の事実の変更",
+        "既存の品質 gate・閾値・CI の変更",
+        "和菓子の asset の生成器の実装、PoC の Codex 呼び出しを増やすこと",
+        "生成画像の公開・commit・worker / renderer / preview での利用"
+      ],
+      "human_approval_triggers": [
+        "WSL での第2案の実走 1 回（HUMAN-019）",
+        "評価の点の確認",
+        "AI の和菓子の画像を worker・demo・Production で使うこと（評価と別の承認）"
+      ],
+      "decision": "2026-10-21: 人の方針（和菓子の AI 生成画像を提案用イメージとして許可、店舗・人物は禁止）と追加の要件（asset の設計だけ・v2 は PoC の中だけ・評価の rubric）で着手（develop 4551a4d から）。v1 の prompt は byte 単位で不変。Codex は実行していない"
+    },
+    {
+      "id": "DEV-076",
+      "title": "AI の和菓子の画像を 1 枚ずつの asset として作る（設計は別途承認）",
+      "status": "backlog",
+      "priority": "P3",
+      "depends_on": [
+        "DEV-075"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "第2案の comp から切り抜くのではなく、hero のどら焼きの断面・上生菓子 2〜3・粒あんの接写を 1 asset 1 回の Codex 呼び出しで作り、人の review の後に実装で再利用できるようにする。設計は docs/operations/design-image-assets.md。着手は設計の別途の承認の後",
+      "acceptance_criteria": [
+        "docs/operations/design-image-assets.md の設計を人が承認してから着手",
+        "1 run 1 asset・1 回の Codex 呼び出し・それぞれ人の承認、PoC と同じ jail・lock・png.ts の検査・後片付け",
+        "v2 の food_visuals の block を verbatim で使う（一貫性）",
+        "出力は repo の外、人の review と承認の後でなければ asset store に入れない（ai_generated_concept の source kind は DEV-070 の一部を戻すので別の人の判断）",
+        "asset ごとの metadata（source: ai_generated_concept・prompt の版・sha256・承認の記録・実物と言わない alt）、使う頁には表示の行"
+      ],
+      "required_tests": [
+        "unit（fake sandbox）: PoC と同じ範囲",
+        "asset store の schema を変えるなら、その test"
+      ],
+      "allowed_scope": [
+        "（設計の承認のときに決める）"
+      ],
+      "forbidden_scope": [
+        "承認なしの Codex の実呼び出し",
+        "comp からの切り抜きを本番の asset にすること",
+        "店舗・人物の画像",
+        "承認なしの asset store・worker・renderer への接続"
+      ],
+      "human_approval_triggers": [
+        "設計の承認",
+        "asset ごとの Codex の実走",
+        "asset store に ai_generated_concept を足すこと（DEV-070 の変更）"
+      ]
     }
   ]
 }

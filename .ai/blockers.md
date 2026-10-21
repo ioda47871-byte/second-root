@@ -17,6 +17,38 @@
   - 人の判断が要る: review の notes を次の round に渡す（DEV-034 の方針の変更）／ 初期候補を 2〜3 個にする（Codex の時間とコスト）／ Instagram の写真を使う（権利・同意の判断）
 - 次の実走: efb4bdb2 は attempts 2/3 で blocked（再 reset は未承認）。改善の効果は新しい controlled run（人の承認: 対象 demo・DB の reset・W・C）で測る
 
+### HUMAN-019 — DEV-075 の design image PoC 第2案（v2）を WSL で 1 回流す承認
+
+- 何: 架空菓庵の Web デザイン comp の PNG を 1 枚、第2案の art direction（`design-library/poc/wagashi-art-direction-v2.json`、0.3-poc）で `sr-designgen` の ChatGPT サインインの Codex（組み込み画像生成）に作らせる。
+  header nav・Hero（店名と、どら焼きの断面の和菓子の画像）・商品・こだわり（商品の画像の card 2〜3 枚）・店舗情報（定義リスト）の 3 節、縦 2:3。
+  道具は HUMAN-018 と同じ `scripts/sales-design-worker/design-image-poc.sh`（v2 が既定）、手順・画像の見方・評価は `docs/operations/design-image-poc.md` の「第2案」。Claude は WSL に触れない。
+- 方針の変更（2026-10-21、人が承認）: 和菓子そのもの（どら焼き・上生菓子・粒あんの接写）と抽象的な素材（和紙・木の盆・器・麻）の AI 生成の画像を、**提案用のイメージとしてだけ**許す（実際の店の商品の写真として扱わない）。
+  引き続き禁止: 架空の店舗の AI 画像（外観・内観・店員・人・手・看板）、Instagram や第三者の写真・デザインの模倣、logo・紋、画像が実物だと言う文、価格・口コミ・受賞・沿革・人物の創作。
+  画像の中の表示は「架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです」。fixture の「テスト」の値は出さなくてよい（fixture は変えない）。
+  **この方針と v2 は PoC の中だけ**（worker・demo の生成・preset・renderer・asset store は読まない。静的 test で固定）。worker・demo・Production での採用は、評価と別の人の承認が要る。
+- 前提: DEV-075 の PR が develop に merge されていること（古い develop では v1 が流れる。log の `direction v2` と `report.json` の `direction_version: "v2"` で確かめる）。
+- コマンド（HUMAN-018 と同じ。jail の中、timer はそのまま）:
+
+  ```bash
+  sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+  S=~/.local/state/sr-design-worker; mkdir -p "$S" && chmod 700 "$S"
+  flock -n "$S/run.lock" sh -c "cd ~/work/second-root && timeout 180 git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && timeout 60 git checkout -q --force --detach origin/develop" \
+    || { echo "STOP: a design worker run is in progress; nothing was changed"; exit 3; }
+  cd ~/work/second-root && ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed'
+  ```
+
+  （v1 をもう一度流すときだけ `./scripts/…` の前に `SR_DESIGN_IMAGE_POC_DIRECTION=v1 ` を付ける。それ以外の値は `POC_DIRECTION_INVALID` で何もせず止まる）
+- 費用: Codex の呼び出し **1 回**（画像生成つき）、ChatGPT の plan の利用枠。API の従量課金なし（API key は子 process に渡らず、API key のサインインは拒否）。
+- 時間: Codex の 1 回は 15 分で打ち切り（通常は数分）。全体の上限 3300 秒（55 分）。
+- 触れないもの: DB・Supabase（Staging / Production）・bridge・Vercel・flag・cycle・worker の timer（止める・戻す・有効化するのどれも）・worker の queue / 結果 / ledger・
+  asset store・公開 `/demo`・実営業の送信・GitHub（commit・push しない）。参照画像なし、店舗・人物の画像なし、店舗の事実は fixture のまま。出力は
+  `~/sr-design-image-poc/wagashi-XXXXXX/` だけ（repo の外、公開しない）。
+- 同時に流さないもの: この PoC の間は `design-demo.ts`・`photo-poc.sh`・手動の `codex` を同じ `sr-designgen` で流さない（これらは run.lock を取らず、PoC の開始時の掃除と終了時の画像 dir の差分が、同時に動く call の session log / 画像を消しうる）。
+- 人の操作: (1) この 1 回を承認する、(2) 上のコマンドを流す、(3) runbook の「第2案 › Viewing」で `mockup.png` を Windows の Desktop に `kakuu-kaan-mockup-v2.png` として写して見る、
+  (4) その PNG（と `report.json`）を Claude の session に upload する。止まったら表示された `POC_STOP: <符号>` を渡す。
+- 評価: 画像ができただけでは DEV-075 は終わらない。`docs/operations/design-image-eval-template.md` の 5 項目（各 1〜5）で Claude が採点し人が確認、**22/25 以上・4 未満の項目なし・hard fail なし**で合格。
+- 解除条件: 画像（または停止の符号）が届く、または人が流さないと決める。
+
 ### HUMAN-018 — DEV-074 の design image PoC を WSL で 1 回流す承認
 
 - 何: 架空菓庵（DEV-073 の fixture）の Web デザイン mockup の PNG を 1 枚、`sr-designgen` の ChatGPT サインインの Codex（組み込み画像生成）に作らせる。
@@ -44,6 +76,7 @@
 - 人の操作: (1) この 1 回を承認する、(2) 上のコマンドを流す、(3) doc の「Viewing the result」で `mockup.png` を Windows の Desktop に写して見る、
   (4) その PNG（と `report.json`）を Claude の session に upload する。止まったら表示された `POC_STOP: <符号>` を渡す。
 - 解除条件: 画像（または停止の符号）が届く、または人が流さないと決める。
+- 状況（2026-10-21）: 人が 1 回流し、画像を見た（和風だがポスター風で、Web サイトとしての営業の訴求が弱い）。第2案は DEV-075 / HUMAN-019。
 
 ### HUMAN-017 — DEV-073 の 3 店の比較を WSL で流す承認と操作
 
