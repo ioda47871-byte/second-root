@@ -71,7 +71,7 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export interface CodexSandbox {
   /** Runs Codex with `args` inside the sandbox; the work dir is visible at its own path. */
-  /** `onStdout` only observes stdout as it arrives (bounded-process); it changes nothing in the jail or the run. */
+  /** `onStdout` only observes stdout as it arrives (bounded-process; synchronous, read-only); it changes nothing in the jail or the run. */
   run(args: readonly string[], options: { workDir: string; input?: string; timeoutMs: number; onStdout?: (chunk: string) => void }): Promise<BoundedResult>;
   /** CODEX_HOME / HOME on the host (for cleaning up the CLI's session logs). */
   readonly env: Readonly<Record<string, string>>;

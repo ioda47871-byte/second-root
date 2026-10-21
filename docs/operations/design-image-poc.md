@@ -139,7 +139,7 @@ If Codex is not signed in, sandbox probe fails, API-key authentication is detect
 | `CODEX_QUOTA` | ChatGPT plan usage limit / busy: try another day |
 | `CODEX_TIMEOUT` | the call passed 15 min |
 | `CODEX_EXEC_FAILED`, `CODEX_NO_THREAD`, `CODEX_NO_IMAGE`, `CODEX_IMAGE_INVALID` | no acceptable image; no result dir (only `diag-XXXXXX/`). Read `POC_DIAG_SUMMARY` ([Diagnostics](#diagnostics-dev-077)) |
-| `CODEX_IMAGE_UNSUPPORTED_FORMAT` | the thread's dir holds a JPEG / WebP / GIF but no PNG: never converted or accepted (DEV-077) |
+| `CODEX_IMAGE_UNSUPPORTED_FORMAT` | the thread's dir holds a regular JPEG / WebP / GIF file (judged by its name; a link is ignored) but no PNG: never converted or accepted (DEV-077) |
 | `POC_STOPPED_BY_SIGNAL`, `POC_KILLED_OR_TIMED_OUT`, exit 137 / 124 | check for an OOM kill first (the wrapper prints `--oom-check`) |
 
 ## Diagnostics (DEV-077)
@@ -151,7 +151,7 @@ watchdog — and prints two lines before the final status:
 
 ```
 POC_DIAG: /home/sr-designgen/sr-design-image-poc/diag-AbC123/diagnostics.json
-POC_DIAG_SUMMARY code=CODEX_NO_IMAGE dir=v2 prompt_chars=7099 codex=1 exit=0 thread=1 image_tool=0/0 agent_msgs=1 agent_chars=812 reasoning=1 cmds=0 other_items=0 errors=0 error_codes=- turn=completed gen_dir=1 thread_dir=0 images_thread=0 thread_png=0 thread_other=0 images_other=0 other_dirs=0 cwd_images=0 home_images=0 ms=184233 codex_ms=181020 first_event_ms=1450 image_tool_ms=-
+POC_DIAG_SUMMARY code=CODEX_NO_IMAGE dir=v2 prompt_chars=6801 codex=1 exit=0 thread=1 image_tool=0/0 agent_msgs=1 agent_chars=812 reasoning=1 cmds=0 other_items=0 errors=0 error_codes=- turn=completed gen_dir=1 thread_dir=0 images_thread=0 thread_png=0 thread_other=0 images_other=0 other_dirs=0 cwd_images=0 home_images=0 unparsed=0 trunc=0 ms=184233 codex_ms=181020 first_event_ms=1450 image_tool_ms=-
 ```
 
 **What it contains — only fixed codes, booleans and numbers** (`lib/design-agent/design-image/diagnostics.ts`):
@@ -160,7 +160,7 @@ POC_DIAG_SUMMARY code=CODEX_NO_IMAGE dir=v2 prompt_chars=7099 codex=1 exit=0 thr
 - timings in ms: total, the Codex call, time to the first JSON event, time to the first image-tool event
 - counts of `codex exec --json` event types (`thread.started`, `turn.started`, `turn.completed`, `turn.failed`, `item.started`, `item.updated`, `item.completed`, `error`) and item types started / completed (`agent_message`, `reasoning`, `command_execution`, `file_change`, `mcp_tool_call`, `collab_tool_call`, `web_search`, `todo_list`, `error`, and the image-tool spellings `image_generation`, `image_generation_call`, `image_gen`, `imagegen`, `generate_image`); any other name counts as `other`
 - whether an image-tool item started / completed (from the item type only), the number of agent messages and their total length (never the text), error events / error items and their **codes** (`SIGNED_OUT`, `QUOTA`, `POLICY`, `IMAGE_TOOL`, `OTHER`, classified from the CLI's own error text, which is never kept), how the turn ended (`completed` / `failed` / `none`)
-- where image files are, counted right **before** the cleanup (which removes exactly what it removed before): whether `CODEX_HOME/generated_images` and the thread's dir exist; files in the thread's dir by extension class (png / jpg / webp / other), nested dirs and links in it; new dirs under `generated_images` not named after the thread and their files; image-like files under the work dir; image-like files written during the run elsewhere in `CODEX_HOME`
+- where image files are, counted right **before** the cleanup (which removes exactly what it removed before): whether `CODEX_HOME/generated_images` and the thread's dir exist; files in the thread's dir by extension class (png / jpg / webp / gif / other), nested dirs and links in it; new dirs under `generated_images` not named after the thread and their files; image-like files under the work dir; image-like files written during the run elsewhere in `CODEX_HOME`
 
 **Never recorded or printed:** the prompt, Codex's answer or error text, stdout / stderr, the sign-in, session-log contents, any path inside `CODEX_HOME`, file or dir names, the thread id, environment values. Tests plant a canary in the prompt, the answer, error messages, stderr, file names and an env var and assert it never appears in `diagnostics.json` or stdout.
 
@@ -170,9 +170,11 @@ POC_DIAG_SUMMARY code=CODEX_NO_IMAGE dir=v2 prompt_chars=7099 codex=1 exit=0 thr
 |---|---|---|
 | `image_tool=0/0 agent_msgs≥1 turn=completed images_thread=0 images_other=0` | (a) | Codex answered with text and never called the image tool (if `other_items>0`, an unknown item type appeared: possibly the image tool under another name — then the file counts decide) |
 | `thread_dir=0` or `images_thread=0`, but `images_other>0`, `thread_other>0` (nested dir), `cwd_images>0` or `home_images>0` | (b) | the tool wrote an image somewhere this PoC does not take it from; send the summary, the location rule needs a reviewed fix |
-| `code=CODEX_IMAGE_UNSUPPORTED_FORMAT` / `thread_png=0` with `images_thread>0` | (b) | another format; never converted |
+| `code=CODEX_IMAGE_UNSUPPORTED_FORMAT` / `thread_png=0` with `images_thread>0` (`images_thread` counts png + jpg + webp + gif) | (b) | another format; never converted |
 | `image_tool=1/0` or `errors>0` with `error_codes=POLICY` / `IMAGE_TOOL` / `QUOTA` | (c) | the tool was called but failed or was refused (`agent_msgs` then usually holds the tool's error, which is not recorded) |
-| `turn=failed`, `turn=none`, `exit≠0`, `exit=SIGKILL`, `code=CODEX_TIMEOUT` / `POC_STOPPED_BY_SIGNAL` | (d) | the turn failed or was cut short |
+| `turn=failed`, `turn=none`, `exit≠0`, `exit=SIGKILL`, `code=CODEX_TIMEOUT` / `POC_STOPPED_BY_SIGNAL` / `POC_RUN_TIME_BUDGET` | (d) | the turn failed or was cut short (on a signal or the watchdog the summary carries that code, the same as `POC_STOP`) |
+| `unparsed=N` | any | stdout lines that were not a JSON object (a line over 1 MiB is dropped and counted here once) |
+| `trunc=1` | any | the counts are lower bounds: a stdout line over 1 MiB was dropped, or a directory walk hit its 20 000-entry limit |
 
 Note: the exact item type of an image-generation call in `codex exec --json` is not pinned down in our references (curiosity-media
 reads only `generated_images/<thread>/`), so `image_tool=0/0` alone does not prove the tool was not called; the file counts and
@@ -200,12 +202,14 @@ The first image (HUMAN-018, v1) looked Japanese but read as a poster, with weak 
 
 ### What the v2 prompt asks for
 
-DEV-077 tightened it after the HUMAN-019 stop (12379 → 7099 chars; budget ≤ 1.5 × the 4754-char v1 prompt = 7131, tested):
+DEV-077 tightened it after the HUMAN-019 stop (12379 → 6801 chars; budget ≤ 1.5 × the 4754-char v1 prompt = 7131, tested):
 its first lines say, as curiosity-media's working image prompts do, to use **only** the built-in image generation tool, that the
 answer is one raster image (not HTML / CSS / code, not a text description, no plan or question first), and to answer with the
 tool's error instead of any substitute; the build-task vocabulary (HTML and CSS a developer could build, screenshot, 1440 px,
-12 columns as a grid spec) is gone; each prohibition is said once, in code (the direction's `hard_rules`, `avoid` and
-`techniques` repeat the same things and stay in `design-spec.json`). Every prohibition below is unchanged.
+a 12-column grid spec; the Hero layout in the v2 direction now says "on about 60% of the width") is gone; each prohibition is said once, in code
+(the direction's `hard_rules`, `avoid` and `techniques` repeat the same things and stay in `design-spec.json`; `V2_HARD_RULE_COVERAGE` in
+`prompt.ts` maps every `hard_rules` entry to the code lines that say it, or says why it concerns only later use, and a test fails when
+the direction's rules change without that map). Every prohibition below is unchanged.
 
 - a **website design comp**: one flat, full-page mockup image (no device frame, laptop or browser window), realistic web typography sizes, tall portrait about 2:3 (e.g. 1024 × 1536)
 - a slim **header nav** with 2 anchors, one per section below the Hero (「商品・こだわり」「店舗情報」; no 「アクセス」 anchor, since the access line may be left out), and one CTA 「店舗情報を見る」 (no purchase / reservation UI: there is no such fact)
@@ -246,7 +250,7 @@ How the wagashi visuals could later be made as standalone, reviewed image assets
 
 ## Checks in this container (no Codex)
 
-DEV-077 adds (`design-image-poc.test.ts` "diagnostics"): cases (a) text answer, (b) image in another new dir / a nested dir / a WebP (`CODEX_IMAGE_UNSUPPORTED_FORMAT`) / the work dir / elsewhere in CODEX_HOME, (c) image tool started then an error item (`POLICY`), (d) `turn.failed`, a timeout with a cut stream, a signal mid-call (snapshot before cleanup, cleanup unchanged), success; unknown types count as `other`; a canary in the prompt, answer, errors, stderr, file names and env never appears in `diagnostics.json`, the summary or the entry's stdout; 0700 / 0600; no file before the output root exists and none on a refusal; the entry prints `POC_DIAG` / `POC_DIAG_SUMMARY` (run with nothing but node on PATH, so no Codex can start); `runBounded`'s stdout observer only observes; the v2 prompt's first lines, no build-task words, each prohibition exactly once, ≤ 7131 chars; v1 byte-identical.
+DEV-077 adds (`design-image-poc.test.ts` "diagnostics"): cases (a) text answer, (b) image in another new dir / a nested dir / a WebP (`CODEX_IMAGE_UNSUPPORTED_FORMAT`) / the work dir / elsewhere in CODEX_HOME, (c) image tool started then an error item (`POLICY`), (d) `turn.failed`, a timeout with a cut stream, a signal mid-call (snapshot before cleanup, cleanup unchanged), success; unknown types count as `other`; a canary in the prompt, answer, errors, stderr, file names and env never appears in `diagnostics.json`, the summary or the entry's stdout; 0700 / 0600; no file before the output root exists and none on a refusal; the entry prints `POC_DIAG` / `POC_DIAG_SUMMARY` (run with nothing but node on PATH, so no Codex can start); `runBounded`'s stdout observer only observes; the v2 prompt's first lines, no build-task words, each prohibition exactly once, ≤ 7131 chars; v1 byte-identical. Review fixes: a signal's / the watchdog's stop code is frozen when the cleanup starts (diagnostics and `POC_STOP` agree even if the killed child returns first); a stdout line over 1 MiB is dropped (`unparsed`, `trunc=1`) and `runBounded` stops calling the observer at its 64 MiB capture cap (a 64 MiB newline-free stream stays bounded); GIF is its own class; a link named `.jpg` is not taken for another format; every v2 `hard_rules` entry is mapped (`V2_HARD_RULE_COVERAGE`).
 
 `tests/unit/design-agent/design-image-poc.test.ts` (fake sandbox playing the Codex CLI): refusal without the flag (no file access, no sandbox) and without the shell token; the wrapper's STOP before preflight / lock / git / npm / tsx, its env allowlist, budget cap and lock; the happy path; no thread; no image; invalid PNGs (bad CRC, truncated, trailing data, too small, too large, a link); quota; timeout; sign-out (not from the model's words); API-key sign-in; cleanup (session log, new image dirs only, work dir, also on a signal); output permissions 0700 / 0600 outside the repo; report with codes and numbers only; the prompt's content and no environment in it; nothing else reads the output root.
 

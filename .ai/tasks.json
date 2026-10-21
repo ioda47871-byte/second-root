@@ -3424,8 +3424,8 @@
         "記録は固定の符号・真偽・数だけ: codex exec --json の event と item の型の数（allowlist、それ以外は other）、画像ツールの item の開始 / 完了、error / turn.failed / error item の有無と固定の符号（SIGNED_OUT / QUOTA / POLICY / IMAGE_TOOL / OTHER）、turn の終わり方、agent_message の数と文字数の合計、時間（全体・Codex・最初の event・最初の画像ツールの event）、exit / signal、thread id の有無、generated_images と thread dir の有無、thread dir の file 数（拡張子の種類別・入れ子の dir・link）、thread の名でない新しい dir と file の数、作業 dir の画像 file の数、CODEX_HOME の他の場所に run 中にできた画像 file の数、prompt の文字数、direction、停止の符号",
         "記録・表示しないもの: prompt、Codex の答え・error の文、stdout / stderr、サインイン、session log、CODEX_HOME の中の path、file 名、thread id、env の値（canary の test）",
         "stdout に POC_DIAG: <path> と POC_DIAG_SUMMARY の 1 行",
-        "v2 の prompt: 最初に組み込みの画像生成ツールだけを使う指示（curiosity-media と同じ形）、答えは 1 枚の raster 画像で HTML / CSS / code・文章の説明・計画や質問ではない、ツールが使えなければ代わりをせずエラーを答える。作る作業と読める語（developer・screenshot・1440 px・HTML と CSS で作れる）を外し、禁止事項は 1 回ずつ（どれも残す）。長さは v1（4754）の 1.5 倍 7131 以下を test で固定（12379 → 7099）。v1 は 1 byte も変えない（hash の test）",
-        "thread dir に PNG がなく JPEG / WebP / GIF があれば CODEX_IMAGE_UNSUPPORTED_FORMAT（変換しない・受け取らない）。O_NOFOLLOW・大きさ・CRC・cleanup の規則は変えない",
+        "v2 の prompt: 最初に組み込みの画像生成ツールだけを使う指示（curiosity-media と同じ形）、答えは 1 枚の raster 画像で HTML / CSS / code・文章の説明・計画や質問ではない、ツールが使えなければ代わりをせずエラーを答える。作る作業と読める語（developer・screenshot・1440 px・HTML と CSS で作れる）を外し、禁止事項は 1 回ずつ（どれも残す）。長さは v1（4754）の 1.5 倍 7131 以下を test で固定（12379 → 6801）。v1 は 1 byte も変えない（hash の test）",
+        "thread dir に PNG がなく JPEG / WebP / GIF の通常の file（名前で判断、link は数えない）があれば CODEX_IMAGE_UNSUPPORTED_FORMAT（変換しない・受け取らない）。O_NOFOLLOW・大きさ・CRC・cleanup の規則は変えない",
         "jail・protected path・ChatGPT サインインだけ・API key の遮断・run.lock・env の allowlist・3300 秒・cleanup・Codex の呼び出し 1 回（自動の再試行なし）を弱めない"
       ],
       "required_tests": [
@@ -3437,6 +3437,7 @@
         "lib/design-agent/design-image/",
         "lib/design-agent/bounded-process.ts（stdout の observer の追加だけ）",
         "lib/design-agent/sandbox.ts（observer を渡すだけ）",
+        "design-library/poc/wagashi-art-direction-v2.json（prompt の短縮に合わせた文言の整理だけ。禁止事項は変えない）",
         "scripts/sales-design-worker/design-image-poc.ts",
         "tests/unit/design-agent/design-image-poc.test.ts",
         "docs/operations/design-image-poc.md",

@@ -29,8 +29,10 @@ export interface BoundedOptions {
   graceMs?: number;
   /**
    * Observer of stdout as it arrives (the design-image PoC's diagnostics time
-   * the first event from it). Read-only: it changes nothing that is captured,
-   * and an exception it throws is swallowed.
+   * the first event from it). It MUST be synchronous and only read: it changes
+   * nothing that is captured; an exception it throws (or a promise it returns
+   * by mistake, and that promise's rejection) is ignored. It sees exactly the
+   * captured stdout: once MAX_CAPTURE is reached it is not called any more.
    */
   onStdout?: (chunk: string) => void;
 }
@@ -120,13 +122,17 @@ export function runBounded(
       liveGroups.add(pid);
     }
     child.stdout?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      if (stdout.length < MAX_CAPTURE) {
-        stdout += text;
+      if (stdout.length >= MAX_CAPTURE) {
+        return;
       }
+      const text = chunk.toString("utf8");
+      stdout += text;
       if (options.onStdout !== undefined) {
         try {
-          options.onStdout(text);
+          const returned: unknown = options.onStdout(text);
+          if (returned !== null && typeof returned === "object" && typeof (returned as { then?: unknown }).then === "function") {
+            (returned as Promise<unknown>).then(undefined, () => undefined);
+          }
         } catch {
           /* an observer never changes the run */
         }

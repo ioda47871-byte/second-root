@@ -22,7 +22,7 @@
 - 背景: HUMAN-019（develop 1effb40、v2）は Codex の呼び出しは始まったが `CODEX_NO_IMAGE` で止まり（`design-image-poc.ts` exit 1、画像なし）、理由が分からなかった。
   DEV-077 は Codex を流さずに (1) 理由を分ける診断（`POC_DIAG` / `POC_DIAG_SUMMARY`、固定の符号と数だけ）を足し、(2) v2 の prompt を締めた
   （最初に組み込みの画像生成ツールだけを使う・答えは 1 枚の raster 画像で HTML / CSS / code や文章の説明ではない・ツールが使えなければ代わりをせずエラーを答える、
-  coding agent に作る作業と読める語を外す、禁止の重複を 1 回に、12379 → 7099 文字、上限は v1 の 1.5 倍 7131 を test で固定）。禁止事項はどれも変えていない。
+  coding agent に作る作業と読める語を外す、禁止の重複を 1 回に、12379 → 6801 文字、上限は v1 の 1.5 倍 7131 を test で固定）。禁止事項はどれも変えていない。
 - 前提: DEV-077 の PR が develop に merge されていること（log の `direction v2` と、最後の方に `POC_DIAG_SUMMARY` の行が出ることで確かめる。出なければ古い develop）。
 - コマンド（HUMAN-019 と同じ。jail の中、timer はそのまま）:
 

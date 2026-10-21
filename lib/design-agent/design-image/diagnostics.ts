@@ -49,6 +49,9 @@ export function classifyError(text: string): ErrorCode {
   return "OTHER";
 }
 
+/** The longest unfinished line kept while reading live stdout; anything longer is dropped (counted as unparsed, `truncated`). */
+export const MAX_PARTIAL_LINE_CHARS = 1024 * 1024;
+
 type Counts = Record<string, number>;
 const zero = (names: readonly string[]): Counts => Object.fromEntries([...names, "other"].map((n) => [n, 0]));
 const bump = (counts: Counts, name: unknown): void => {
@@ -74,6 +77,8 @@ export interface EventDiagnostics {
   turn: "completed" | "failed" | "none";
   error_codes: ErrorCode[];
   thread_started: boolean;
+  /** A line longer than MAX_PARTIAL_LINE_CHARS was dropped (the counts are then lower bounds). */
+  truncated: boolean;
 }
 
 /**
@@ -83,6 +88,8 @@ export interface EventDiagnostics {
  */
 export class CodexEventTracker {
   private partial = "";
+  /** Dropping the rest of an over-long line until its newline. */
+  private skipping = false;
   private seen = false;
   private readonly d: EventDiagnostics = {
     lines: 0,
@@ -100,6 +107,7 @@ export class CodexEventTracker {
     turn: "none",
     error_codes: [],
     thread_started: false,
+    truncated: false,
   };
   firstEventMs: number | null = null;
   firstImageToolMs: number | null = null;
@@ -116,16 +124,38 @@ export class CodexEventTracker {
 
   feed(chunk: string, live = true): void {
     if (live && chunk.length > 0) this.seen = true;
-    const text = this.partial + chunk;
-    const lines = text.split("\n");
+    let rest = chunk;
+    if (this.skipping) {
+      const nl = rest.indexOf("\n");
+      if (nl === -1) return;
+      rest = rest.slice(nl + 1);
+      this.skipping = false;
+    }
+    const lines = (this.partial + rest).split("\n");
     this.partial = lines.pop() ?? "";
     for (const line of lines) this.line(line, live);
+    if (this.partial.length > MAX_PARTIAL_LINE_CHARS) this.dropPartial();
+  }
+
+  /** An over-long unfinished line: dropped, counted once as an unparsed line, the rest skipped up to its newline. */
+  private dropPartial(): void {
+    this.partial = "";
+    this.skipping = true;
+    this.d.lines += 1;
+    this.d.unparsed_lines += 1;
+    this.d.truncated = true;
+  }
+
+  /** Characters held for an unfinished line (at most MAX_PARTIAL_LINE_CHARS plus one chunk). */
+  get bufferedChars(): number {
+    return this.partial.length;
   }
 
   /** The last line without a newline. */
   end(live = true): void {
     if (this.partial !== "") this.line(this.partial, live);
     this.partial = "";
+    this.skipping = false;
   }
 
   private line(raw: string, live: boolean): void {
@@ -193,16 +223,17 @@ export class CodexEventTracker {
 }
 
 /** Extension classes (the name itself is never kept). */
-export type ExtCounts = { png: number; jpg: number; webp: number; other: number };
+export type ExtCounts = { png: number; jpg: number; webp: number; gif: number; other: number };
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif)$/i;
 const extOf = (name: string): keyof ExtCounts => {
   const n = name.toLowerCase();
   if (n.endsWith(".png")) return "png";
   if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "jpg";
   if (n.endsWith(".webp")) return "webp";
+  if (n.endsWith(".gif")) return "gif";
   return "other";
 };
-const noExt = (): ExtCounts => ({ png: 0, jpg: 0, webp: 0, other: 0 });
+const noExt = (): ExtCounts => ({ png: 0, jpg: 0, webp: 0, gif: 0, other: 0 });
 
 /** At most this many entries are looked at per walk (a huge CODEX_HOME cannot stall the exit). */
 const WALK_LIMIT = 20_000;
@@ -370,7 +401,7 @@ const b = (v: boolean): string => (v ? "1" : "0");
 export function diagnosticsSummary(d: PocDiagnostics): string {
   const e = d.events;
   const i = d.images;
-  const threadImages = i ? i.thread_ext.png + i.thread_ext.jpg + i.thread_ext.webp : null;
+  const threadImages = i ? i.thread_ext.png + i.thread_ext.jpg + i.thread_ext.webp + i.thread_ext.gif : null;
   const parts = [
     `code=${d.stop_code ?? "IMAGE_READY"}`,
     `dir=${d.direction_version ?? "-"}`,
@@ -396,6 +427,8 @@ export function diagnosticsSummary(d: PocDiagnostics): string {
     `other_dirs=${n(i?.new_other_dirs)}`,
     `cwd_images=${n(i?.cwd_image_files)}`,
     `home_images=${n(i?.codex_home_new_images_elsewhere)}`,
+    `unparsed=${n(e?.unparsed_lines)}`,
+    `trunc=${b(!!(e?.truncated || i?.truncated))}`,
     `ms=${n(d.timings_ms.total)}`,
     `codex_ms=${n(d.timings_ms.codex)}`,
     `first_event_ms=${n(d.timings_ms.first_event)}`,

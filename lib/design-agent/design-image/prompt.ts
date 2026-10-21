@@ -245,6 +245,27 @@ function buildV1Prompt(demo: DemoView, direction: ArtDirection): string {
   ].join("\n");
 }
 
+/**
+ * Each hard rule of the v2 direction (its exact text) and the code-fixed prompt
+ * lines that say it (DEV-077: the prompt says every rule once, in code). A rule
+ * that concerns only the later use of the image says why instead. A test fails
+ * when the direction gains, loses or rewords a rule without this map following.
+ */
+export const V2_HARD_RULE_COVERAGE: ReadonlyArray<{ rule: string; prompt: readonly string[] } | { rule: string; notInPrompt: string }> = [
+  { rule: "The wagashi images are AI concept imagery for a design proposal, never photos of a real shop's products", prompt: ["concept imagery for a design proposal, not photos of this shop's products", "Nothing may claim that the images are real photographs"] },
+  { rule: `Show the disclosure exactly: ${POC_DISCLOSURE_V2}`, prompt: [`- Show the line ${POC_DISCLOSURE_V2} small but legible`] },
+  { rule: "No prices, reviews or ratings, awards, founding years or history, people or staff, and no photos or images of a store", prompt: ["no prices, reviews or ratings, awards or rankings, people or founder names, founding years or shop history", "- NO images of a store", "NO people: no staff"] },
+  { rule: "Use only the business facts provided with this request, exactly as given; invent nothing", prompt: ["- Use only the facts in the FACTS block below, exactly as written. Never invent, translate or change a fact."] },
+  { rule: "Placeholder test values in the facts (names containing テスト, a test station) may be left out instead of shown", prompt: ["- the menu items (placeholder names that contain テスト)", "- the access line (it names a placeholder station)"] },
+  { rule: "No logo, emblem or crest; the shop name is set as type", prompt: ["- No logos, emblems or crests", "set as type (a wordmark); no emblem or logo mark"] },
+  { rule: "Original composition; no copying of Instagram, third-party photos or other sites", prompt: ["- Original composition only; never copy or imitate Instagram posts, third-party photos or other websites."] },
+  { rule: "No publication; the image is a design spec for a later implementation", notInPrompt: "the PoC never publishes; the output stays outside the repository (code, not the image)" },
+  {
+    rule: "Text in the generated image is NOT a source of truth; the later implementation takes its copy from the provided facts, never from the pixels",
+    notInPrompt: "report note TEXT_IN_IMAGE_IS_NOT_A_SOURCE_OF_TRUTH_USE_SHOP_FACTS_JSON (later use, not the image)",
+  },
+];
+
 /** The v1 prompt's length (chars), the one that produced an image (HUMAN-018). */
 export const V1_PROMPT_CHARS = 4754;
 /** The v2 prompt's length budget (DEV-077): at most 1.5 x the v1 prompt; the v2 prompt of HUMAN-019 (12379 chars, 2.6 x) produced none. */
@@ -280,13 +301,13 @@ function buildV2Prompt(demo: DemoView, direction: ArtDirectionV2): string {
   return [
     "TASK",
     "Use ONLY your built-in image generation tool to generate exactly ONE image, now. The answer is that single raster image (a PNG) of the design below.",
-    "Do not write HTML, CSS or any other code, do not describe the design in text, and do not plan or ask questions first. Do not run commands or read files: everything you need is in this message.",
+    "Do not write HTML, CSS or any other code, do not describe the design in text, and do not plan or ask questions first. Do not run commands or read files.",
     "If the image generation tool cannot be used, do not use any substitute; answer only with the error it returned.",
     "",
     "WHAT THE IMAGE IS",
-    "A professional website design comp: one flat, full-page mockup image of a one-page website for a fictional high-end Japanese wagashi (traditional confectionery) shop, as a designer would present it to a client.",
+    "A professional website design comp: one flat, full-page mockup image of a one-page website for a fictional high-end Japanese wagashi (traditional confectionery) shop, as a designer would present it.",
     "It is a website layout, NOT a poster: a slim header nav, a Hero, 2 more sections below it, and a thin footer. No device frame, laptop, desk scene, mouse cursor or browser window.",
-    "One tall portrait image with an aspect ratio of about 2:3 (for example 1024 x 1536 px). Use realistic web typography sizes (a clear heading hierarchy); no giant poster lettering.",
+    "One tall portrait image, aspect ratio about 2:3 (for example 1024 x 1536 px). Use realistic web typography sizes (a clear heading hierarchy); no giant poster lettering.",
     "",
     "LOOK",
     `- Theme: ${direction.theme}`,
@@ -294,13 +315,15 @@ function buildV2Prompt(demo: DemoView, direction: ArtDirectionV2): string {
     "- Type: a refined Mincho (明朝) for the shop name, headings and captions; a clean Gothic (ゴシック) sans for everything else.",
     "",
     "PAGE (top to bottom)",
-    `- Header: ${ui.header} Nav anchors, exactly: ${quote(ui.nav)}`,
+    ui.nav.join("|") === ui.section_labels.join("|")
+      ? `- Header: ${ui.header} Nav anchors and section headings, exactly: ${quote(ui.nav)}`
+      : `- Header: ${ui.header} Nav anchors, exactly: ${quote(ui.nav)}. Section headings, exactly: ${quote(ui.section_labels)}`,
     `- 1. Hero. ${hero.layout} One call-to-action, exactly: ${quote([ui.cta])} (no purchase, order or reservation UI).`,
     `- 2. ${products.label}. ${products.intent} This section MUST contain 2 to 3 product visual cards; it is never text only. Card captions are ONLY phrases copied verbatim from the description in the FACTS block (for example 季節の上生菓子, 粒あんのどら焼き); a third card, if present, is the tsubu-an macro with no caption. Never invent a caption.`,
-    `- 3. ${info.label}. It MUST be a structured information block (a definition list or a two-column table: label, value) with the labels, exactly: ${quote(ui.info_labels)}. Show at least the opening hours, closed days, address and phone.`,
-    `- Footer: ${ui.footer} Section labels, exactly: ${quote(ui.section_labels)}`,
+    `- 3. ${info.label}. It MUST be a structured information block (a definition list or a two-column table: label, value) with exactly these labels, each with its fact value: ${quote(ui.info_labels)}.`,
+    `- Footer: ${ui.footer}`,
     "",
-    "WAGASHI VISUALS (AI concept imagery for this design proposal)",
+    "WAGASHI VISUALS (AI concept imagery)",
     `- Lighting: ${fv.lighting}`,
     `- Surfaces: ${fv.surfaces}`,
     `- Hero cross-section: ${fv.cross_section}`,
@@ -318,7 +341,7 @@ function buildV2Prompt(demo: DemoView, direction: ArtDirectionV2): string {
     "- No logos, emblems or crests; no prices, reviews or ratings, awards or rankings, people or founder names, founding years or shop history, social media handles, QR codes.",
     "- Nothing may claim that the images are real photographs or the shop's actual products; never write words such as 実物, 当店の写真 or 商品写真.",
     "- Original composition only; never copy or imitate Instagram posts, third-party photos or other websites.",
-    "- Use only the facts in the FACTS block below, exactly as written. Never invent, translate or change a fact. A fact you cannot render exactly, leave out.",
+    "- Use only the facts in the FACTS block below, exactly as written. Never invent, translate or change a fact.",
     "- No tagline or slogan unless it is copied verbatim from the description in the FACTS block; otherwise leave it out. Never write new marketing copy or claims.",
     `- The shop name is exactly ${POC_SHOP_NAME}, set as type (a wordmark); no emblem or logo mark. Shop name and wagashi image share the Hero; the name must not cover or crowd the sweets.`,
     `- Show the line ${POC_DISCLOSURE_V2} small but legible, in the footer or directly under the Hero.`,
@@ -326,7 +349,7 @@ function buildV2Prompt(demo: DemoView, direction: ArtDirectionV2): string {
     "YOU MAY LEAVE OUT (the fixture holds placeholder test values)",
     "- the menu items (placeholder names that contain テスト)",
     "- the access line (it names a placeholder station)",
-    "- the description's opening sentences that only say the shop is fictional (the disclosure line already says so)",
+    "- the description's sentences saying the shop is fictional (the disclosure says so)",
     "Everything else that you show must match the facts exactly.",
     "",
     "FACTS",

@@ -243,9 +243,13 @@ async function takeImage(dir: string): Promise<Awaited<ReturnType<typeof readPng
     pngs.push({ path, mtime: entry.mtimeMs });
   }
   if (pngs.length === 0) {
-    // Another raster format from the image tool is reported as such, never converted or accepted.
-    const other = await readdir(dir).catch(() => [] as string[]);
-    if (other.some((n) => /\.(jpe?g|webp|gif)$/i.test(n))) throw new PocError("CODEX_IMAGE_UNSUPPORTED_FORMAT");
+    // Another raster format from the image tool (a regular file, judged by its name) is reported as such,
+    // never converted or accepted. Links and anything else are not counted.
+    for (const name of await readdir(dir).catch(() => [] as string[])) {
+      if (!/\.(jpe?g|webp|gif)$/i.test(name)) continue;
+      const entry = await lstat(join(dir, name)).catch(() => null);
+      if (entry && entry.isFile() && !entry.isSymbolicLink()) throw new PocError("CODEX_IMAGE_UNSUPPORTED_FORMAT");
+    }
     throw new PocError("CODEX_NO_IMAGE");
   }
   const newest = pngs.sort((a, b) => b.mtime - a.mtime)[0]!;
@@ -339,7 +343,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   /** The result dir while its files are being written (removed by a stop before the last one). */
   let partialDest: string | undefined;
   /** Snapshot first (nothing removed yet), then write diagnostics.json; any failure here is ignored and never stops the cleanup. */
-  const recordDiagnostics = async (signalCode: string | undefined): Promise<void> => {
+  const recordDiagnostics = async (stopCode: string | null): Promise<void> => {
     let images: ImageLocationDiagnostics | null = null;
     if (sandbox && diag.invoked) {
       const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");
@@ -353,10 +357,9 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     }
     const tracker = diag.tracker;
     tracker?.end(tracker.sawLiveOutput);
-    const stopCode = diag.done ? null : (diag.stopCode ?? signalCode ?? "POC_STOPPED_BY_SIGNAL");
     const d: PocDiagnostics = {
       schema: DIAGNOSTICS_SCHEMA,
-      outcome: diag.done ? "done" : "stopped",
+      outcome: stopCode === null ? "done" : "stopped",
       stop_code: stopCode,
       direction_version: version,
       prompt_chars: diag.promptChars,
@@ -390,9 +393,12 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     lastDiagnostics = record;
   };
   const doCleanup = async (signalCode?: string): Promise<void> => {
+    // The stop code is frozen now: a signal's / the watchdog's code wins over whatever the run's own catch sets
+    // later (e.g. CODEX_EXEC_FAILED once the killed child returns), so the diagnostics say what the entry prints.
+    const stopCode = signalCode ?? (diag.done ? null : (diag.stopCode ?? "POC_STOPPED_BY_SIGNAL"));
     // At most DIAGNOSTICS_MAX_MS, so a signal's 20 s cleanup window still removes everything below.
     let timer: NodeJS.Timeout | undefined;
-    await Promise.race([recordDiagnostics(signalCode).catch(() => undefined), new Promise<void>((r) => (timer = setTimeout(r, DIAGNOSTICS_MAX_MS)))]);
+    await Promise.race([recordDiagnostics(stopCode).catch(() => undefined), new Promise<void>((r) => (timer = setTimeout(r, DIAGNOSTICS_MAX_MS)))]);
     clearTimeout(timer);
     if (sandbox) {
       const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");

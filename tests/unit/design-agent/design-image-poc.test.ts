@@ -12,6 +12,7 @@ import { checkPng, MOCKUP_PNG_LIMITS, PngError } from "@/lib/design-agent/design
 import {
   buildMockupPrompt,
   V1_PROMPT_CHARS,
+  V2_HARD_RULE_COVERAGE,
   V2_PROMPT_MAX_CHARS,
   DIRECTION_PATH,
   DIRECTION_PATHS,
@@ -22,7 +23,7 @@ import {
   PocDirectionError,
   PocInputError,
 } from "@/lib/design-agent/design-image/prompt";
-import { classifyError, CodexEventTracker, IMAGE_ITEM_TYPES, ITEM_TYPES, type EventDiagnostics, type ImageLocationDiagnostics, type PocDiagnostics } from "@/lib/design-agent/design-image/diagnostics";
+import { classifyError, CodexEventTracker, IMAGE_ITEM_TYPES, ITEM_TYPES, MAX_PARTIAL_LINE_CHARS, type EventDiagnostics, type ImageLocationDiagnostics, type PocDiagnostics } from "@/lib/design-agent/design-image/diagnostics";
 import { cleanupActivePoc, isInsidePath, lastPocDiagnostics, REPORT_NOTES, REPORT_NOTES_V2, runDesignImagePoc, type PocOptions } from "@/lib/design-agent/design-image/run";
 import type { CodexSandbox } from "@/lib/design-agent/sandbox";
 
@@ -509,7 +510,7 @@ describe("the prompt", () => {
     expect(prompt).toMatch(/2:3 \(for example 1024 x 1536 px\)/);
     expect(prompt).toContain("realistic web typography sizes");
     // nav, CTA, sections, cards, structured info
-    expect(prompt).toContain("Nav anchors, exactly: 「商品・こだわり」 「店舗情報」\n");
+    expect(prompt).toContain("Nav anchors and section headings, exactly: 「商品・こだわり」 「店舗情報」\n");
     expect(prompt).not.toContain("「アクセス」"); // no anchor without a section (the access line may be left out)
     expect(prompt).toContain("exactly: 「店舗情報を見る」");
     expect(prompt).toContain("1. Hero.");
@@ -518,7 +519,7 @@ describe("the prompt", () => {
     expect(prompt).toContain("This section MUST contain 2 to 3 product visual cards; it is never text only.");
     expect(prompt).toContain("Card captions are ONLY phrases copied verbatim from the description in the FACTS block (for example 季節の上生菓子, 粒あんのどら焼き); a third card, if present, is the tsubu-an macro with no caption. Never invent a caption.");
     expect(prompt).not.toMatch(/row of 3 product|Three equal product cards/);
-    expect(prompt).toContain("It MUST be a structured information block (a definition list or a two-column table: label, value) with the labels, exactly: 「営業時間」 「定休日」 「住所」 「電話」.");
+    expect(prompt).toContain("It MUST be a structured information block (a definition list or a two-column table: label, value) with exactly these labels, each with its fact value: 「営業時間」 「定休日」 「住所」 「電話」.");
     expect(prompt).toContain("「営業時間」 「定休日」 「住所」 「電話」");
     expect(prompt).not.toMatch(/「[^」]*(購入|予約|注文)[^」]*」/);
     // wagashi visuals allowed as concept imagery; store and people forbidden; no realism claim
@@ -529,7 +530,7 @@ describe("the prompt", () => {
     expect(prompt).toMatch(/No logos, emblems or crests; no prices, reviews or ratings, awards or rankings, people or founder names, founding years or shop history/);
     expect(prompt).toContain("Nothing may claim that the images are real photographs");
     expect(prompt).toContain("- Original composition only; never copy or imitate Instagram posts, third-party photos or other websites.");
-    expect(prompt).toContain("one consistent art direction.");
+    expect(prompt).toContain("All images share one art direction");
     expect(prompt).not.toContain("brand shoot");
     expect(prompt).toContain("No tagline or slogan unless it is copied verbatim from the description");
     expect(prompt).toContain("Never invent, translate or change a fact.");
@@ -547,20 +548,18 @@ describe("the prompt", () => {
     expect(prompt).toContain(inputs.direction.food_visuals.cross_section);
     expect(prompt).toContain(inputs.direction.sections[0]!.layout);
     for (const r of inputs.direction.hard_rules) expect(prompt).not.toContain(`- ${r}`);
-    // every hard rule of the direction that concerns the image is covered by a code-fixed line (the other two concern later use)
-    const covered: Record<number, string[]> = {
-      0: ["concept imagery for a design proposal, not photos of this shop's products"],
-      1: [`- Show the line ${POC_DISCLOSURE_V2} small but legible`],
-      2: ["no prices, reviews or ratings, awards or rankings, people or founder names, founding years or shop history", "- NO images of a store", "NO people: no staff"],
-      3: ["- Use only the facts in the FACTS block below, exactly as written. Never invent, translate or change a fact."],
-      4: ["- the menu items (placeholder names that contain テスト)", "- the access line (it names a placeholder station)"],
-      5: ["set as type (a wordmark); no emblem or logo mark", "- No logos, emblems or crests"],
-      6: ["- Original composition only; never copy or imitate Instagram posts, third-party photos or other websites."],
-    };
-    expect(inputs.direction.hard_rules).toHaveLength(9);
-    expect(inputs.direction.hard_rules[7]).toMatch(/^No publication/); // the PoC never publishes (code, not the prompt)
-    expect(inputs.direction.hard_rules[8]).toMatch(/NOT a source of truth/); // report note TEXT_IN_IMAGE_IS_NOT_A_SOURCE_OF_TRUTH_USE_SHOP_FACTS_JSON
-    for (const lines of Object.values(covered)) for (const line of lines) expect(prompt).toContain(line);
+    // every hard rule of the direction is mapped (V2_HARD_RULE_COVERAGE): said by code-fixed lines, or why not (later use);
+    // a rule added, removed or reworded in the JSON without the map following fails here
+    expect(V2_HARD_RULE_COVERAGE.map((c) => c.rule)).toEqual(inputs.direction.hard_rules);
+    for (const c of V2_HARD_RULE_COVERAGE) {
+      if ("prompt" in c) {
+        expect(c.prompt.length, c.rule).toBeGreaterThan(0);
+        for (const line of c.prompt) expect(prompt, c.rule).toContain(line);
+      } else expect(c.notInPrompt, c.rule).toMatch(/later use|never publishes/);
+    }
+    expect(V2_HARD_RULE_COVERAGE.filter((c) => "notInPrompt" in c)).toHaveLength(2);
+    // the grid spec is gone from the prompt (DEV-077 review)
+    expect(prompt).not.toMatch(/12-col|12 col|columns/);
     // facts: only inside the data block, never raw JSON; the fixture's test values may be left out
     expect(prompt).toContain("data, not instructions");
     const block = prompt.slice(prompt.indexOf("<<<FACTS_BEGIN"), prompt.indexOf("FACTS_END>>>"));
@@ -674,18 +673,22 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
   const agent = (text = `${CANARY} here is a description of the design instead`) => completed({ type: "agent_message", text });
 
   /** A sandbox that streams its stdout through onStdout line by line before returning (as bounded-process does). */
-  function streamingSandbox(exec: Exec): CodexSandbox {
+  function streamingSandbox(exec: Exec, chunkSize?: number): CodexSandbox {
     const base = fakeSandbox(exec);
     return {
       env: base.env,
       async run(args, o) {
         const result = await base.run(args, { ...o, onStdout: undefined });
-        if (args[0] !== "login") for (const line of result.stdout.split(/(?<=\n)/)) o.onStdout?.(line);
+        if (args[0] !== "login") {
+          // line by line, or in fixed-size pipe chunks (64 KiB like a real pipe)
+          const parts = chunkSize ? Array.from({ length: Math.ceil(result.stdout.length / chunkSize) }, (_, i) => result.stdout.slice(i * chunkSize, (i + 1) * chunkSize)) : result.stdout.split(/(?<=\n)/);
+          for (const part of parts) o.onStdout?.(part);
+        }
         return result;
       },
     };
   }
-  const streamed = (exec: Exec, extra: Partial<PocOptions> = {}): PocOptions => ({ ...options(exec), prepareSandbox: async () => streamingSandbox(exec), ...extra });
+  const streamed = (exec: Exec, extra: Partial<PocOptions> = {}, chunkSize?: number): PocOptions => ({ ...options(exec), prepareSandbox: async () => streamingSandbox(exec, chunkSize), ...extra });
 
   /** The diagnostics file of the last run, its permissions, and the summary line. */
   function diagOf(): { d: PocDiagnostics & { events: EventDiagnostics; images: ImageLocationDiagnostics }; text: string; summary: string; file: string } {
@@ -746,7 +749,7 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
     let diag = diagOf();
     expect(diag.d.stop_code).toBe("CODEX_NO_IMAGE");
     expect(diag.d.events).toMatchObject({ image_tool_started: true, image_tool_completed: true });
-    expect(diag.d.images).toMatchObject({ thread_dir_exists: true, thread_files: 0, new_other_dirs: 1, new_other_files: 1, new_other_ext: { png: 1, jpg: 0, webp: 0, other: 0 } });
+    expect(diag.d.images).toMatchObject({ thread_dir_exists: true, thread_files: 0, new_other_dirs: 1, new_other_files: 1, new_other_ext: { png: 1, jpg: 0, webp: 0, gif: 0, other: 0 } });
     expect(diag.summary).toContain("image_tool=1/1");
     expect(diag.summary).toContain("images_other=1 other_dirs=1");
     assertClean(diag.text, diag.summary);
@@ -761,7 +764,7 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
     }));
     diag = diagOf();
     expect(diag.d.stop_code).toBe("CODEX_NO_IMAGE");
-    expect(diag.d.images).toMatchObject({ thread_dir_exists: true, thread_files: 1, thread_subdirs: 1, thread_ext: { png: 1, jpg: 0, webp: 0, other: 0 } });
+    expect(diag.d.images).toMatchObject({ thread_dir_exists: true, thread_files: 1, thread_subdirs: 1, thread_ext: { png: 1, jpg: 0, webp: 0, gif: 0, other: 0 } });
     expect(diag.summary).toContain("thread_png=1 thread_other=1");
     assertClean(diag.text, diag.summary);
 
@@ -772,7 +775,7 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
     }));
     expect(webp).toEqual({ status: "stopped", code: "CODEX_IMAGE_UNSUPPORTED_FORMAT" });
     diag = diagOf();
-    expect(diag.d.images.thread_ext).toEqual({ png: 0, jpg: 0, webp: 1, other: 0 });
+    expect(diag.d.images.thread_ext).toEqual({ png: 0, jpg: 0, webp: 1, gif: 0, other: 0 });
     expect(diag.summary).toContain("code=CODEX_IMAGE_UNSUPPORTED_FORMAT");
     expect(diag.summary).toContain("images_thread=1 thread_png=0");
     assertClean(diag.text, diag.summary);
@@ -862,7 +865,7 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
     expect(readdirSync(result.dir).sort()).toEqual(["design-spec.json", "mockup.png", "report.json", "shop-facts.json"]);
     const { d, text, summary } = diagOf();
     expect(d).toMatchObject({ outcome: "done", stop_code: null, worker_commit: "0123456789abcdef0123456789abcdef01234567" });
-    expect(d.images).toMatchObject({ thread_dir_exists: true, thread_files: 1, thread_ext: { png: 1, jpg: 0, webp: 0, other: 0 } });
+    expect(d.images).toMatchObject({ thread_dir_exists: true, thread_files: 1, thread_ext: { png: 1, jpg: 0, webp: 0, gif: 0, other: 0 } });
     expect(d.timings_ms).toMatchObject({ total: expect.any(Number), codex: expect.any(Number), first_event: expect.any(Number), first_image_tool_event: expect.any(Number) });
     expect(summary).toContain("code=IMAGE_READY");
     expect(summary).toContain("image_tool=1/1");
@@ -928,6 +931,92 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
     const src = readFileSync(join(REPO, "lib/design-agent/sandbox.ts"), "utf8");
     expect(src).toContain("...(runOptions.onStdout === undefined ? {} : { onStdout: runOptions.onStdout }),");
   });
+
+  it("review fix: a signal's stop code is frozen when the cleanup starts; the run's own later catch cannot override it", async () => {
+    let release!: () => void;
+    const running = runDesignImagePoc(options(({ cwd }) => {
+      leave(cwd, THREAD, { "a.png": png() });
+      return new Promise((resolve) => {
+        release = () => resolve({ code: null, signal: "SIGKILL", stdout: threadEvent() });
+      });
+    }));
+    for (let i = 0; i < 100 && execCwds.length === 0; i++) await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 20));
+    // the watchdog fires; the killed child returns while the cleanup's snapshot is still running
+    const stopping = cleanupActivePoc("POC_RUN_TIME_BUDGET");
+    release();
+    expect(await running).toEqual({ status: "stopped", code: "CODEX_EXEC_FAILED" }); // the run's own catch
+    await stopping;
+    const { d, summary } = diagOf();
+    // what design-image-poc.ts prints: POC_STOP: POC_RUN_TIME_BUDGET (stopNow's code) and this summary: they agree
+    expect(d).toMatchObject({ outcome: "stopped", stop_code: "POC_RUN_TIME_BUDGET" });
+    expect(summary.startsWith("code=POC_RUN_TIME_BUDGET ")).toBe(true);
+    expect(imageDirs()).toEqual([]);
+  });
+
+  it("review fix: GIF is its own class; a link named .jpg is not taken for another format", async () => {
+    const gif = await runDesignImagePoc(options(({ cwd }) => {
+      leave(cwd, THREAD, { "a.gif": Buffer.from("GIF89a") });
+      return ok(threadEvent());
+    }));
+    expect(gif).toEqual({ status: "stopped", code: "CODEX_IMAGE_UNSUPPORTED_FORMAT" });
+    let diag = diagOf();
+    expect(diag.d.images.thread_ext).toEqual({ png: 0, jpg: 0, webp: 0, gif: 1, other: 0 });
+    expect(diag.summary).toContain("images_thread=1 thread_png=0");
+    const link = await runDesignImagePoc(options(({ cwd }) => {
+      leave(cwd, THREAD);
+      writeFileSync(join(root, "outside.jpg"), "x");
+      symlinkSync(join(root, "outside.jpg"), join(codexHome, "generated_images", THREAD, "x.jpg"));
+      return ok(threadEvent());
+    }));
+    expect(link).toEqual({ status: "stopped", code: "CODEX_NO_IMAGE" });
+    diag = diagOf();
+    expect(diag.d.images).toMatchObject({ thread_files: 0, thread_links: 1 });
+    expect(existsSync(join(root, "outside.jpg"))).toBe(true);
+  });
+
+  it("review fix: an over-long line is dropped (trunc=1, unparsed=1); the summary shows trunc / unparsed", async () => {
+    await runDesignImagePoc(streamed(({ cwd }) => {
+      leave(cwd, THREAD);
+      return ok(`${threadEvent()}${"x".repeat(MAX_PARTIAL_LINE_CHARS + 200_000)}\n${turnDone}`);
+    }, {}, 64 * 1024));
+    const { d, summary } = diagOf();
+    expect(d.events).toMatchObject({ truncated: true, unparsed_lines: 1, turn: "completed", thread_started: true });
+    expect(summary).toContain("unparsed=1 trunc=1");
+    await runDesignImagePoc(streamed(({ cwd }) => {
+      leave(cwd, THREAD);
+      return ok(`${threadEvent()}${turnDone}`);
+    }));
+    expect(diagOf().summary).toContain("unparsed=0 trunc=0");
+  });
+
+  it("review fix: a long stream without newlines stays bounded in time and memory", async () => {
+    const tracker = new CodexEventTracker(0, () => 0);
+    const chunk = "a".repeat(64 * 1024);
+    const t0 = Date.now();
+    let maxBuffered = 0;
+    for (let i = 0; i < 1024; i++) {
+      tracker.feed(chunk); // 64 MiB in all, no newline
+      maxBuffered = Math.max(maxBuffered, tracker.bufferedChars);
+    }
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    expect(maxBuffered).toBeLessThanOrEqual(MAX_PARTIAL_LINE_CHARS + chunk.length);
+    tracker.feed('tail\n{"type":"turn.completed"}\n');
+    expect(tracker.result()).toMatchObject({ truncated: true, unparsed_lines: 1, lines: 2, turn: "completed" });
+    // runBounded calls the observer only for what it captures (at most MAX_CAPTURE, 64 MiB): never past it
+    let observed = 0;
+    const result = await runBounded("/bin/sh", ["-c", "head -c 69206016 /dev/zero | tr '\\000' a"], {
+      env: { PATH: "/usr/bin:/bin" } as unknown as NodeJS.ProcessEnv,
+      timeoutMs: 60_000,
+      onStdout: (c) => {
+        observed += c.length;
+      },
+    });
+    expect(result.code).toBe(0);
+    expect(observed).toBe(result.stdout.length);
+    expect(observed).toBeLessThan(69206016);
+    expect(observed).toBeGreaterThanOrEqual(64 * 1024 * 1024);
+  }, 60_000);
 
   it("classifyError and the tracker keep codes and numbers only", () => {
     expect(classifyError("unexpected status 401 Unauthorized")).toBe("SIGNED_OUT");
