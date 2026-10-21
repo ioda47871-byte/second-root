@@ -3552,7 +3552,7 @@
     {
       "id": "DEV-080",
       "title": "Design image PoC: Codex CLI 0.159.0 の session log（paginated の Extension item・code mode の exec cell）を正しく読み、HUMAN-021b で原因を分けられるようにする（Codex は流さない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-078"
