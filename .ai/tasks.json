@@ -3178,7 +3178,7 @@
     {
       "id": "DEV-072",
       "title": "Stage 3 の技術検証: 店舗別 CSS の検査器（静的 guard と Chromium の render check、local preview だけ）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-067"
@@ -3220,7 +3220,52 @@
         "Staging 実走",
         "公開 demo への適用"
       ],
-      "decision": "2026-10-20: §8.3 の承認に基づき Claude が追加。設計は .ai/proposals/stage3-shop-css.md。parser は postcss（next の推移的依存）ではなく自前の小さな厳格 parser（寛容な error recovery が無く、許可する部分集合だけを読むので fail closed にしやすい・依存を増やさない）。Fresh Review（security）FAIL（Critical 2・High 2・Medium 2・Low 3・Nit 2: 外側の shadow / outline が事実と footer を塗る・幅 3 つと font-size の下限なし・label を測らない・list の marker など）→ 全件対応: shadow は inset だけ・outline / offset / translate なし・font-size の下限 12px・list-item なし・`*` なし・canvas に overflow: clip・render check は固定 7 幅 + breakpoint の両側・label / notice / footer の文字も検査・文字ごとの画素の証明・record を事実に束縛（.ai/reviews/DEV-072.md の対応）"
+      "decision": "2026-10-20: §8.3 の承認に基づき Claude が追加。設計は .ai/proposals/stage3-shop-css.md。parser は postcss（next の推移的依存）ではなく自前の小さな厳格 parser（寛容な error recovery が無く、許可する部分集合だけを読むので fail closed にしやすい・依存を増やさない）。Fresh Review（security）FAIL（Critical 2・High 2・Medium 2・Low 3・Nit 2: 外側の shadow / outline が事実と footer を塗る・幅 3 つと font-size の下限なし・label を測らない・list の marker など）→ 全件対応: shadow は inset だけ・outline / offset / translate なし・font-size の下限 12px・list-item なし・`*` なし・canvas に overflow: clip・render check は固定 7 幅 + breakpoint の両側・label / notice / footer の文字も検査・文字ごとの画素の証明・record を事実に束縛（.ai/reviews/DEV-072.md の対応）。2026-10-21: 安全性の Fresh Review を 6 回（FAIL ×4 → 許可リストを縮小・検査を強化 → 5 回目 PASS（条件: container の 1px scan）→ 対応 → 再確認 PASS）。残り: row-reverse / grid の配置で値がラベルの前に見える（組は保たれる）は generator を繋ぐときに閉じる。CI は shop-css を別 job（2 分割）に"
+    },
+    {
+      "id": "DEV-073",
+      "title": "Stage 1 の比較: 業種・ブランドの違う架空の 3 店を、実際の design pipeline で local に流して比べる道具（runner・baseline・metrics report・contact sheet）",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-071"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-073-local-compare",
+      "purpose": "人の正式承認（2026-10-20、design-agent-direction §8 の 5・7）: 業種・ブランドの異なる 3 店で明確に違う Web サイトを生成できるかを、各段の比較項目（店舗間の構造・見た目の違い / 実画面での改善 / 品質審査の結果 / 生成時間とモデルの費用 / 安全性と運用の安定）で比べる。Codex の実走は人の WSL でだけ動くので、この container では道具と test（fake Codex）だけを作り、実走は人の承認ごとに頼む",
+      "acceptance_criteria": [
+        "架空の 3 店（和菓子・コーヒースタンド・ブーランジュリー兼パティスリー、事実の多い / 中 / 少ない）を repo の fixture に。名前・住所は実在しえない「テスト」「架空」の値",
+        "runner は worker と同じ pipeline（brief → render → screenshot → review → revision、同じ gate と prompt）を worker のコードで流す（pipeline を複製しない）。DB・bridge・Staging・queue に触れない。結果は /design-preview/<runId> で見られる run dir",
+        "--human-approval-confirmed が無ければ何も始めない（shell と TS の両方）",
+        "baseline（category default から layout を除いた今の頁）を同じ preview で描く",
+        "report は固定の符号と数だけ（Codex の文章・rationale・shop の文は入れない）: 判定・5 軸・round・revision・Codex の呼び出し数と時間・prompt の長さ・layout と adjustments・店の間と baseline との構造の距離と画素の差・安全の検査。contact sheet の PNG",
+        "参照画像は使わない（PoC の参照 example.com は local fixture ではないため。prompt はその旨を言う）。AI 生成の写真・Instagram 画像は使わない"
+      ],
+      "required_tests": [
+        "unit: fake Codex で runner が run dir・report・contact sheet を作る（Chromium）",
+        "unit: 承認の flag が無ければ拒否（shell・TS）",
+        "unit: report の距離・画素の差・安全の検査",
+        "worker の既存 test（refactor の後も同じ挙動）",
+        "eslint・tsc・build"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/",
+        "scripts/sales-design-worker/",
+        "tests/unit/design-agent/",
+        "docs/operations/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "Staging DB・cycle・flag・Production・timer・実営業送信",
+        "WSL での実走（人の操作と承認）",
+        "品質の閾値・gate・review の prompt の変更",
+        "店舗情報・商品・口コミ・実績の創作、AI 生成の店舗写真、Instagram 画像"
+      ],
+      "human_approval_triggers": [
+        "WSL での比較の実走（HUMAN-017）"
+      ],
+      "decision": "2026-10-20: 着手（develop 2faa27d から）。実装: worker の runJob から runJobPipeline / copyPipelineShots / pipelineRecord を切り出して共有（同じコード）、lib/design-agent/compare/（shops・safety・metrics・report・contact-sheet・run）、scripts/sales-design-worker/compare-local.sh・compare.ts・compare-report.ts、fixture の 3 店と手書きの spec、tests/unit/design-agent/compare.test.tsx（fake Codex + Chromium）。参照画像なし（PoC の example.com は local fixture ではない）: 参照 0 枚のときだけ prompt の 1 行が「参照なし」を言う。手書きの spec の demo（next build + start、Codex の生成ではない）で店の間の構造の距離 0.78〜0.89・baseline どうし 0.23〜0.40。PR #87。Fresh Review（d960ecb）FAIL: Medium 2・Low 6・Nit 6 → 対応済み（.ai/reviews/DEV-073.md の「対応」）: 予算を 3300 秒（jail の 3500 秒の中）、止まるときも report、timer に触れない doc の 1 コマンド、lock の中での checkout、worker の checkout で build しない、compare.ts は compare-local.sh の下でだけ動く、条件の偏りの節、test の追加。forbidden_scope（review の prompt の変更）の例外: brief と review の `Attached images` の行の、参照 0 枚の分岐だけ（DEV-073 の比較専用）。worker は参照 0 枚の job を REFERENCE_CHECK_FAILED で拒否するので到達せず、参照 1 枚以上の prompt は 1 字も変わらない（既存の prompt の snapshot test は無変更で pass）。品質の閾値・gate・review の基準は不変。残り: Fresh Review の再確認、WSL での実走（HUMAN-017、docs/operations/design-compare-local.md）。Fresh Review FAIL（Medium 2: jail の 58 分の上限・timer に触れる手順）→ 対応 → 再レビュー PASS（Nit 2 → 対応）。WSL での実行は HUMAN-017（人の承認）"
     }
   ]
 }

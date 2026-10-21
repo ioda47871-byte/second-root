@@ -26,6 +26,7 @@ export function productionPreview(repoDir: string, launch: (env: NodeJS.ProcessE
     const port = server.port;
     const b = browser;
     return {
+      origin: `http://127.0.0.1:${port}`,
       renderer: {
         async render(runId, candidate, shotsDir) {
           const url = `http://127.0.0.1:${port}/design-preview/${runId}?profile=${candidate}`;

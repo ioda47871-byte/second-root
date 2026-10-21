@@ -1,0 +1,17 @@
+{
+  "key": "wagashi",
+  "richness": "rich",
+  "industry": "traditional Japanese confectionery (wagashi)",
+  "facts": {
+    "name": "架空菓庵",
+    "category": "baked_goods",
+    "ward": "東区",
+    "address": "名古屋市東区テスト町一丁目2-3",
+    "hours": "9:00〜18:00（売り切れ次第終了）",
+    "closed_days": "水曜・第2火曜",
+    "access": "テスト線テスト駅 1番出口から徒歩4分",
+    "phone": "052-000-0731",
+    "description": "比較用の架空の和菓子屋です。実在の店舗ではありません。季節の上生菓子と、毎朝炊く粒あんのどら焼きを、小さな店頭で一つずつお包みしています。",
+    "menu_items": ["季節のテスト上生菓子", "テストどら焼き（粒あん）", "テスト最中", "テスト栗きんとん（秋季）", "テスト羊羹 一棹", "テスト豆大福", "テストわらび餅"]
+  }
+}

@@ -134,6 +134,9 @@ export function factsBlock(demo: DemoView): string {
   return JSON.stringify(facts, null, 2);
 }
 
+/** DEV-073 only (never reached by the worker): no image of the shop is attached. */
+const NO_REFERENCES = "No image of the shop itself is attached (this shop has no public pages): judge the brand from the verified facts and the category alone.";
+
 /** What the reference screenshots are (all were privacy-processed: photos blurred and pixelated). */
 function referencesLine(count: number, kind: "website" | "instagram" | undefined): string {
   const what =
@@ -160,8 +163,11 @@ export function buildBriefPrompt(input: {
     VOCABULARY,
     RULES,
     layoutOptionsLine(input.demo),
-    `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)}.`,
-    `The last ${input.currentDemoCount} show the current generic demo (desktop, then mobile) — the look to move away from.`,
+    // DEV-073: the local comparison of fictional shops attaches no reference (the worker always does: checkReferenceImages refuses 0)
+    input.referenceCount === 0
+      ? `Attached images: ${input.currentDemoCount}, the current generic demo (desktop, then mobile) — the look to move away from. ${NO_REFERENCES}`
+      : `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)}.`,
+    input.referenceCount === 0 ? "" : `The last ${input.currentDemoCount} show the current generic demo (desktop, then mobile) — the look to move away from.`,
     observedColoursLine(input.observedColours, input.referenceKind),
     input.hint ? `A starting idea from the team (you may choose something better if the material supports it): ${input.hint}` : "",
     "Verified facts (the only shop information the page will show):",
@@ -252,7 +258,9 @@ export function buildReviewPrompt(input: {
     VOCABULARY,
     RULES,
     layoutOptionsLine(input.demo),
-    `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)} (reference). The last two are the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), then mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide).`,
+    input.referenceCount === 0
+      ? `Attached images: two, the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), then mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide). ${NO_REFERENCES}`
+      : `Attached images: ${referencesLine(input.referenceCount, input.referenceKind)} (reference). The last two are the rendered demo: desktop (${SHOT_VIEWPORTS.desktop.width} CSS px wide), then mobile (${SHOT_VIEWPORTS.mobile.width} CSS px wide).`,
     screenshotScaleLine(),
     observedColoursLine(input.observedColours, input.referenceKind),
     "Score 1–5. generic_template_feel: 5 = looks like a generic template (bad), 1 = clearly designed for this shop.",
