@@ -32,12 +32,12 @@
       "id": "Hero",
       "label": "Hero",
       "intent": "Two leads in balance: the shop name 架空菓庵 and an appetising wagashi visual. Quality and appetite first.",
-      "layout": "Asymmetric split on the 12-col grid: a large AI concept image of a dorayaki cut in half, showing the glossy tsubu-an texture in the cross-section, on about 7 columns; the shop name in Mincho, a thin vermilion rule and the CTA on the remaining columns."
+      "layout": "Asymmetric split: a large AI concept image of a dorayaki cut in half, showing the glossy tsubu-an texture in the cross-section, on about 60% of the width; the shop name in Mincho, a thin vermilion rule and the CTA in the remaining space."
     },
     {
       "id": "Products",
       "label": "商品・こだわり",
-      "intent": "Show the seasonal jō-namagashi and the tsubu-an dorayaki as things to want. Visual, never a text-only section.",
+      "intent": "Show the seasonal jō-namagashi and the tsubu-an dorayaki as things to want.",
       "layout": "Section label, then a row of 2 to 3 product visual cards plus one short copy block aligned to the grid. Captions only as phrases copied verbatim from the description (季節の上生菓子, 粒あんのどら焼き) in small Mincho; a third card, if present, is the tsubu-an macro with no caption. Copy only verbatim from the description or neutral placeholder lines."
     },
     {
@@ -54,7 +54,7 @@
     "cross_section": "The hero dorayaki is cut cleanly in half: even golden-brown castella layers and a thick layer of glossy tsubu-an with visible whole azuki beans.",
     "macro": "One card may be a close macro of the tsubu-an texture or the soft skin of the dorayaki.",
     "seasonal_motif": "One card shows a seasonal jō-namagashi (for example an autumn maple or chestnut motif shaped by hand) on a small plate; delicate, matte, realistic proportions.",
-    "consistency": "All images share one art direction: same light direction, the same muted kinari and sumi environment, similar camera height and depth of field: one consistent art direction.",
+    "consistency": "All images share one art direction: same light direction, the same muted kinari and sumi environment, similar camera height and depth of field.",
     "never": "No people, no hands, no faces, no staff; no store exterior, interior, signage or noren with writing; no packaging with a brand or logo; no text inside the images."
   },
   "web_ui": {

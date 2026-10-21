@@ -27,6 +27,14 @@ export interface BoundedOptions {
   timeoutMs: number;
   /** Grace period (see KILL_GRACE_MS). */
   graceMs?: number;
+  /**
+   * Observer of stdout as it arrives (the design-image PoC's diagnostics time
+   * the first event from it). It MUST be synchronous and only read: it changes
+   * nothing that is captured; an exception it throws (or a promise it returns
+   * by mistake, and that promise's rejection) is ignored. It sees exactly the
+   * captured stdout: once MAX_CAPTURE is reached it is not called any more.
+   */
+  onStdout?: (chunk: string) => void;
 }
 
 /** Grace between SIGTERM and SIGKILL (and between exit and cutting the pipes). */
@@ -114,8 +122,20 @@ export function runBounded(
       liveGroups.add(pid);
     }
     child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdout.length < MAX_CAPTURE) {
-        stdout += chunk.toString("utf8");
+      if (stdout.length >= MAX_CAPTURE) {
+        return;
+      }
+      const text = chunk.toString("utf8");
+      stdout += text;
+      if (options.onStdout !== undefined) {
+        try {
+          const returned: unknown = options.onStdout(text);
+          if (returned !== null && typeof returned === "object" && typeof (returned as { then?: unknown }).then === "function") {
+            (returned as Promise<unknown>).then(undefined, () => undefined);
+          }
+        } catch {
+          /* an observer never changes the run */
+        }
       }
     });
     child.stderr?.on("data", (chunk: Buffer) => {
