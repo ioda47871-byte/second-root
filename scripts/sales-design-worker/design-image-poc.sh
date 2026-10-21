@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # DEV-074 design-image PoC — ONE Codex image call (ChatGPT sign-in, inside the
 # worker's bubblewrap jail) for one original web-design mockup PNG of the
-# fictional wagashi shop 架空菓庵 (DEV-073 fixture), from the curated art
-# direction design-library/poc/wagashi-art-direction.json.
+# fictional wagashi shop 架空菓庵 (DEV-073 fixture), from a curated art
+# direction: v2 by default (第2案, DEV-075: design-library/poc/
+# wagashi-art-direction-v2.json, AI concept visuals of the wagashi allowed),
+# or v1 (the first PoC, design-library/poc/wagashi-art-direction.json).
 #
 #   ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed
+#   SR_DESIGN_IMAGE_POC_DIRECTION=v1 ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed
+#
+# SR_DESIGN_IMAGE_POC_DIRECTION: unset / v2 / v1 only; anything else stops
+# (POC_DIRECTION_INVALID, exit 2) before the preflight, the lock or git.
 #
 # Running it is the human's operation and needs the human's explicit approval
 # of this run first (HUMAN-018 in .ai/blockers.md); --human-approval-confirmed
@@ -36,7 +42,7 @@ else
     XDG_DATA_HOME XDG_STATE_HOME CODEX_HOME \
     HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE \
     SR_DESIGN_WORKER_REF SR_DESIGN_WORKER_NO_UPDATE SR_DESIGN_JOBS SR_DESIGN_ASSETS_ROOT \
-    SR_DESIGN_IMAGE_POC_ROOT SR_DESIGN_IMAGE_POC_BUDGET_SECONDS; do
+    SR_DESIGN_IMAGE_POC_ROOT SR_DESIGN_IMAGE_POC_BUDGET_SECONDS SR_DESIGN_IMAGE_POC_DIRECTION; do
     if [ -n "${!name+x}" ]; then keep+=("$name=${!name}"); fi
   done
   exec env -i "${keep[@]}" bash "$0" --sr-clean-env "$@"
@@ -51,7 +57,11 @@ while [ $# -gt 0 ]; do
     *) echo "$USAGE"; exit 2 ;;
   esac
 done
-[ -n "$APPROVED" ] || { echo "STOP: --human-approval-confirmed is missing. The PoC runs one real Codex image call (ChatGPT plan usage) on this machine and needs the human's explicit approval of this run (HUMAN-018). Nothing was started."; exit 2; }
+[ -n "$APPROVED" ] || { echo "STOP: --human-approval-confirmed is missing. The PoC runs one real Codex image call (ChatGPT plan usage) on this machine and needs the human's explicit approval of this run (HUMAN-018 / HUMAN-019). Nothing was started."; exit 2; }
+case "${SR_DESIGN_IMAGE_POC_DIRECTION:-}" in
+  "" | v1 | v2) ;;
+  *) echo "STOP: POC_DIRECTION_INVALID (SR_DESIGN_IMAGE_POC_DIRECTION: v1 or v2; unset means v2). Nothing was started."; exit 2 ;;
+esac
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 REF="${SR_DESIGN_WORKER_REF:-develop}"
@@ -100,7 +110,7 @@ fi
 echo "commit $(git rev-parse --short=12 HEAD)"
 [ -f "$REPO/scripts/sales-design-worker/design-image-poc.ts" ] || { echo "STOP: POC_NOT_ON_REF (design-image-poc.ts is not on origin/$REF yet; it runs only after the PR is merged)"; exit 2; }
 
-echo "== 4. design-image PoC (one Codex image call)"
+echo "== 4. design-image PoC (one Codex image call, direction ${SR_DESIGN_IMAGE_POC_DIRECTION:-v2})"
 REMAINING=$((BUDGET - (SECONDS - START)))
 if [ "$REMAINING" -lt "$MIN_POC_SECONDS" ]; then
   echo "STOP: POC_RUN_TIME_BUDGET (only ${REMAINING}s left after the checkout; Codex was not started)"

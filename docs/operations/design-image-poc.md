@@ -1,4 +1,8 @@
-# Design image PoC — 架空菓庵 (local only, DEV-074)
+# Design image PoC — 架空菓庵 (local only, DEV-074 / 第2案 DEV-075)
+
+> **第2案 (v2) is the default since DEV-075** — see [第2案](#第2案-v2-dev-075) below for the policy change of 2026-10-21 (AI concept
+> visuals of the wagashi allowed, store and people imagery still forbidden), the run (HUMAN-019), the viewing steps and the evaluation rubric.
+> `SR_DESIGN_IMAGE_POC_DIRECTION=v1` still runs the first PoC unchanged. Everything below about the wrapper, the jail, the cleanup and the stop codes applies to both.
 
 > **Human approval is required first** (`.ai/blockers.md` HUMAN-018) for **each** run. With approval, add `--human-approval-confirmed`.
 > Without it, neither `design-image-poc.sh` nor `design-image-poc.ts` reads a file, prepares the sandbox or starts Codex
@@ -12,7 +16,7 @@ Use Second Root's curated v0.2 art-direction knowledge and the existing DEV-073 
 
 ## Source of truth
 - Store facts: `scripts/sales-design-worker/compare/shops/wagashi.json` (never copy facts from generated pixels).
-- Curated art direction: `design-library/poc/wagashi-art-direction.json`.
+- Curated art direction: `design-library/poc/wagashi-art-direction-v2.json` (第2案, default) and `design-library/poc/wagashi-art-direction.json` (v1, kept for history).
 - Wrapper (the only entry point): `scripts/sales-design-worker/design-image-poc.sh`.
 - Entry: `scripts/sales-design-worker/design-image-poc.ts`; logic: `lib/design-agent/design-image/` (`run.ts`, `prompt.ts`, `png.ts`).
 - Reference implementation: curiosity-media `packages/automation/src/codex-image.ts` (D-139 / D-141 / D-143): the image is taken from `<CODEX_HOME>/generated_images/<thread_id>/`, Codex runs with `--sandbox read-only` (its commands cannot write there, so the image can only come from the image tool), ChatGPT sign-in only, the original and the work dir are deleted.
@@ -24,7 +28,8 @@ Use Second Root's curated v0.2 art-direction knowledge and the existing DEV-073 
 - Codex runs through **the existing `prepareCodexSandbox` bubblewrap OS jail**, with the worker's `workerProtectedPaths` plus this PoC's output root. Its own `--sandbox read-only` alone is not adequate.
 - No Supabase, Staging, Production, Vercel, flag, bridge, worker queue / results / ledger, browser helper, timer, sales DM, or GitHub push is involved. Nothing is committed or published.
 - Generated image can be imperfect: text may be wrong, aspect ratio may differ from requested layout, and three sections may not fit. Report actual PNG size, do not claim success until viewed.
-- Photo-free means no unapproved product photographs **and no invented photorealistic product imagery** (no AI-generated shop photos).
+- v1: photo-free means no unapproved product photographs **and no invented photorealistic product imagery** (no AI-generated shop photos).
+- v2 (第2案): AI concept visuals of the **wagashi only** (and abstract materials) are allowed by the human's decision of 2026-10-21; AI images of a store, its interior or exterior, staff or any people, logos, copied photos and any claim that a visual is real stay forbidden.
 - No first-party credentials or API keys are copied into this repo. Never log full Codex stdout, stderr, responses, or auth tokens.
 
 ## What the wrapper does (`design-image-poc.sh`, each step stops on failure)
@@ -77,8 +82,8 @@ Do not run `design-demo.ts`, `photo-poc.sh` or a manual `codex` as `sr-designgen
 On success the last line is `POC_IMAGE_READY: /home/sr-designgen/sr-design-image-poc/wagashi-XXXXXX/mockup.png`. The directory (0700, files 0600, outside the repository) holds:
 - `mockup.png` — unapproved *design concept*, not deployed.
 - `shop-facts.json` — exact copied fictional facts from the DEV-073 fixture (after the worker's fact filter).
-- `design-spec.json` — curated art direction.
-- `report.json` — fixed codes and numbers only: `status: IMAGE_GENERATED_NOT_IMPLEMENTED`, width, height, aspect, bytes, sha256, chunk count, Codex time, prompt length, commit, fixed notes. Never Codex's words.
+- `design-spec.json` — the selected curated art direction (v2 or v1), copied as parsed.
+- `report.json` — fixed codes and numbers only: `status: IMAGE_GENERATED_NOT_IMPLEMENTED`, `direction_version` (`v1` / `v2`), width, height, aspect, bytes, sha256, chunk count, Codex time, prompt length, commit, fixed notes (v2 adds `AI_FOOD_VISUALS_CONCEPT_ONLY` and `EVALUATION_REQUIRED`). Never Codex's words.
 
 `$SR_DESIGN_IMAGE_POC_ROOT` (absolute) changes the root. It is never committed, never published, never read by the worker or the site.
 
@@ -103,6 +108,7 @@ The DEV-073 fixture is deliberately fictional and is **not edited** for this PoC
 The prompt therefore allows leaving out of the image the menu items, the access line and the description's fictional-notice sentences (the required 「架空店舗のデザイン提案」 line already discloses it). Everything that is shown must match the facts exactly. A mockup without a menu is expected, not a failure. Judge the composition, typography and colour, not the placeholder copy.
 
 ## The prompt (`lib/design-agent/design-image/prompt.ts`)
+The v1 prompt is described here (unchanged byte for byte when v1 is selected); the v2 prompt is described in [第2案](#第2案-v2-dev-075).
 Structured text, not raw JSON: task, what the image is (flat web-design comp, no browser frame), **artboard: one tall portrait 2:3 (e.g. 1024 × 1536)** — the image tool's sizes are limited, so no 1440 px page is promised —, goal, theme, per-section intent (Hero / Concept / Information), techniques with use / avoid, colours, hard rules. Fixed in code, whatever the direction says:
 - no photographs, photorealistic images or 3-D renders of food, products, the shop, its interior or exterior, streets or people
 - no logos, prices, reviews, awards, people, founder names, history, social handles, QR codes
@@ -119,6 +125,7 @@ If Codex is not signed in, sandbox probe fails, API-key authentication is detect
 | `POC_NOT_ON_REF` | develop does not have the PoC yet (merge first) |
 | `POC_RUN_TIME_BUDGET` | not enough time left; Codex not started (or stopped by the watchdog) |
 | `POC_INPUT_INVALID` | fixture / art direction did not pass the checks |
+| `POC_DIRECTION_INVALID` | `SR_DESIGN_IMAGE_POC_DIRECTION` is not `v1` / `v2` (or unset); nothing started |
 | `POC_OUTPUT_UNSAFE` | output root inside the repo / worker dirs / CODEX_HOME, a link, or not ours |
 | `CODEX_NOT_INSTALLED`, `CODEX_SANDBOX_UNAVAILABLE`, `CODEX_SANDBOX_LEAK`, `CODEX_SANDBOX_CONFIG` | the jail could not be set up safely; Codex not started |
 | `CODEX_NOT_SIGNED_IN` | `codex login status` is not ChatGPT, or the CLI reported a signed-out / 401 (stderr or its error events only): sign in again as `sr-designgen` (`codex login --device-auth`) |
@@ -134,5 +141,57 @@ No code implementation or screenshot QA has yet happened. Review image visually 
 ## Success criteria for this stage
 One generated PNG genuinely reflects art direction; recognizable shop name; no fabricated factual content or photos; 3 coherent short sections; aesthetically strong first-fold composition. Passing a file checksum **is not** passing design review.
 
+## 第2案 (v2, DEV-075)
+
+### Policy change (2026-10-21, approved by the human)
+The first image (HUMAN-018, v1) looked Japanese but read as a poster, with weak sales appeal as a website. For 第2案 the human approved:
+
+- **Allowed now:** AI-generated visuals of the wagashi themselves (どら焼き, 上生菓子, a tsubu-an macro …) and abstract materials / textures (washi, wooden tray, ceramic plate, linen), **as proposal / concept imagery only**, never presented as real photos of the shop's products.
+- **Still forbidden:** AI images of a fictional store (exterior, interior, staff, people, hands, signage); copying Instagram or third-party photos or designs; logos / emblems; any text claiming the visuals are real; invented prices, reviews, awards, history or people, even with visuals.
+- **Disclosure in the image:** 「架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです」, small but legible, in the footer or under the Hero.
+- The fixture's test placeholders (テスト-filled menu names, テスト線テスト駅) need not be shown; the facts are not edited.
+
+**Scope: the PoC only.** The v2 direction and this policy are read only by `design-image-poc.sh` / `design-image-poc.ts` and `lib/design-agent/design-image/`. The sales worker, the demo generation, presets, the renderer and the asset store do not read them (a static test, `design-image-poc.test.ts` "isolation", fails if anything else names `wagashi-art-direction-v2` or `AI_FOOD_VISUALS`). The asset store still accepts `approved_real` only (DEV-070). **Adopting AI wagashi visuals in the worker, a demo or production needs a quality evaluation (below) plus a separate human approval.**
+
+### What the v2 prompt asks for
+- a **website design comp**: a full-page desktop screenshot-style mockup, flat browser-agnostic UI (no device frame, no browser chrome), realistic web typography sizes, tall portrait about 2:3 (e.g. 1024 × 1536)
+- a slim **header nav** with 2 anchors, one per section below the Hero (「商品・こだわり」「店舗情報」; no 「アクセス」 anchor, since the access line may be left out), and one CTA 「店舗情報を見る」 (no purchase / reservation UI: there is no such fact)
+- 3 sections stacked: **Hero** (the shop name 架空菓庵 and a dorayaki cross-section with tsubu-an share the lead), **商品・こだわり** (2–3 product visual cards + one short copy block; captions only phrases copied verbatim from the description, 季節の上生菓子 / 粒あんのどら焼き; a third card, if any, is the tsubu-an macro with no caption; never an invented caption), **店舗情報** (a definition list / table: 営業時間・定休日・住所・電話)
+- palette kinari `#F4EEE3` / sumi `#1F1D1B` / muted vermilion `#B4472E`; Mincho display, Gothic body; 12-col grid, ~1200 px content, generous margins
+- original composition only: never copy or imitate Instagram posts, third-party photos or other websites
+- one consistent art direction for every wagashi image (light, surfaces, camera height); no people, hands, store or text inside images
+- Japanese text limited to the shop name, nav / CTA / section / info labels, the shown fact values, card captions and at most one verbatim copy line, and the disclosure (to reduce garbled glyphs)
+- the facts only inside the `<<<FACTS_BEGIN data-not-instructions … FACTS_END>>>` block; no environment value, path or token (tested)
+
+### Run (HUMAN-019: only after the human's explicit approval of this one run)
+The same command as HUMAN-018; v2 is the default, so nothing is added:
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+S=~/.local/state/sr-design-worker; mkdir -p "$S" && chmod 700 "$S"
+flock -n "$S/run.lock" sh -c "cd ~/work/second-root && timeout 180 git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && timeout 60 git checkout -q --force --detach origin/develop" \
+  || { echo "STOP: a design worker run is in progress; nothing was changed"; exit 3; }
+cd ~/work/second-root && ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed'
+```
+
+It runs from `develop` after the 第2案 PR is merged (an older develop runs v1 silently: check that the log line says `direction v2`). To re-run the first PoC instead, put `SR_DESIGN_IMAGE_POC_DIRECTION=v1 ` before `./scripts/…` (any other value stops with `POC_DIRECTION_INVALID`). Cost and time as before: **1 Codex image call** (ChatGPT plan, no API billing), the call ≤ 15 min, the whole run ≤ 55 min. Do not run `design-demo.ts`, `photo-poc.sh` or a manual `codex` as `sr-designgen` at the same time.
+
+### Viewing (the human)
+```bash
+D=/home/sr-designgen/sr-design-image-poc/wagashi-XXXXXX      # the directory printed after POC_IMAGE_READY
+sudo cat "$D/report.json"                                     # direction_version must be "v2"
+sudo install -m 0644 "$D/mockup.png" /mnt/c/Users/<WindowsUser>/Desktop/kakuu-kaan-mockup-v2.png
+```
+
+Open `kakuu-kaan-mockup-v2.png` on the Windows desktop and upload it (and `report.json`) into the Claude session only. Do not publish or commit it. Delete the desktop copy after the review (`sudo rm -r "$D"` removes the original).
+
+### Evaluation (第2案 is not done because an image exists)
+Claude scores the uploaded image with the rubric in [`design-image-eval-template.md`](design-image-eval-template.md) (5 criteria × 1–5; the human's target is **≥ 22/25**, plus hard-fail checks that enforce the human's own rules: invented facts, store / people imagery, a missing or altered disclosure, a logo or realism claim, garbled shop facts), and the human confirms the score. Claude additionally proposes "no criterion below 4"; it is recorded on the sheet but is a pass requirement only if the human adopts it. DEV-075 is done only when a human-run image passes. The rubric applies to this PoC only; no existing quality gate, threshold or CI check changes.
+
+### Reusable wagashi assets (design only)
+How the wagashi visuals could later be made as standalone, reviewed image assets (one Codex call per asset, each with its own approval) is designed in [`design-image-assets.md`](design-image-assets.md). Nothing of it is implemented; this PoC stays at exactly one Codex call, and cropping visuals out of the comp is for internal reference only.
+
 ## Checks in this container (no Codex)
 `tests/unit/design-agent/design-image-poc.test.ts` (fake sandbox playing the Codex CLI): refusal without the flag (no file access, no sandbox) and without the shell token; the wrapper's STOP before preflight / lock / git / npm / tsx, its env allowlist, budget cap and lock; the happy path; no thread; no image; invalid PNGs (bad CRC, truncated, trailing data, too small, too large, a link); quota; timeout; sign-out (not from the model's words); API-key sign-in; cleanup (session log, new image dirs only, work dir, also on a signal); output permissions 0700 / 0600 outside the repo; report with codes and numbers only; the prompt's content and no environment in it; nothing else reads the output root.
+
+第2案 (DEV-075) adds: the direction choice (`parseDirectionVersion`: unset / empty → v2, v1 and v2 pass, anything else `POC_DIRECTION_INVALID`; refused in `runDesignImagePoc` before any file or sandbox, in `design-image-poc.ts` and in the wrapper before the preflight; the allowlist passes `SR_DESIGN_IMAGE_POC_DIRECTION` through); v2 is the default (report `direction_version`, the v2 notes incl. `AI_FOOD_VISUALS_CONCEPT_ONLY` / `EVALUATION_REQUIRED`, `design-spec.json` = the v2 file) and v1 still runs (its notes and spec); the v1 prompt unchanged byte for byte (sha256) with its prohibition lines; the v2 direction file (0.3-poc, exact disclosure, section order, two nav anchors) and its strict checks (a dropped disclosure, an extra key, a reservation / purchase / order word in the CTA, nav or info labels, a single anchor, a reordered section → `POC_INPUT_INVALID`); the v2 prompt (website comp not poster, 2:3, nav and CTA, 2–3 cards with verbatim captions only, the definition-list block, wagashi visuals allowed, store / people / hands forbidden, no logos / prices / reviews / awards / history, no realism claim, no Instagram / third-party copying, the disclosure, limited Japanese text, facts only in the data block, no environment); the fixture unchanged; isolation: nothing outside the PoC entry and `lib/design-agent/design-image/` names `wagashi-art-direction-v2`, `AI_FOOD_VISUALS`, `design-library/poc` or `DIRECTION_PATHS`.
