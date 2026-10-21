@@ -3463,7 +3463,7 @@
     {
       "id": "DEV-078",
       "title": "Design image PoC: Codex の組み込み画像ツールが使われなかった（HUMAN-019 / HUMAN-020）理由を分ける能力の preflight と固定の分類（Codex は流さない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-077"
