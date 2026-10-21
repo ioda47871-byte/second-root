@@ -51,7 +51,7 @@
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { chmod, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, open, readdir, realpath, rm } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, sep } from "node:path";
 import {
   assertChatGptSignIn,
@@ -62,6 +62,7 @@ import {
   listDesignAgentSessions,
   readCodexEvents,
   removeCodexSession,
+  removeCodexSessionsOf,
   removeStaleCodexSessions,
 } from "../codex";
 import { workerProtectedPaths } from "../protected-paths";
@@ -280,21 +281,6 @@ async function imageThreads(codexHome: string): Promise<Set<string> | undefined>
     return new Set((await readdir(join(codexHome, "generated_images"))).filter((n) => THREAD_ID.test(n)));
   } catch (error) {
     return (error as NodeJS.ErrnoException | null)?.code === "ENOENT" ? new Set() : undefined;
-  }
-}
-
-/** Removes the design-agent session logs whose working directory is one of `cwds` (this run's own; never another call's). */
-async function removeSessionsOf(env: Record<string, string | undefined>, cwds: ReadonlySet<string>): Promise<void> {
-  for (const path of await listDesignAgentSessions(env).catch(() => [] as string[])) {
-    const head = await readFile(path, "utf8").then((t) => t.slice(0, 256 * 1024), () => "");
-    let meta: { cwd?: unknown; payload?: { cwd?: unknown } } | null;
-    try {
-      meta = JSON.parse(head.split("\n")[0] ?? "") as typeof meta;
-    } catch {
-      continue;
-    }
-    const cwd = meta?.payload?.cwd ?? meta?.cwd;
-    if (typeof cwd === "string" && cwds.has(cwd)) await rm(path, { force: true }).catch(() => undefined);
   }
 }
 
@@ -538,7 +524,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       // Then the session logs: this thread's, and any whose cwd is this run's work dir (a call cut off before
       // its thread id was read). Another design-agent call's logs (design-demo, photo PoC: no run lock) are not touched.
       if (threadId) await removeCodexSession(threadId, sandbox.env).catch(() => 0);
-      if (ownCwds.size > 0) await removeSessionsOf(sandbox.env, ownCwds);
+      if (ownCwds.size > 0) await removeCodexSessionsOf(sandbox.env, ownCwds);
     }
     if (partialDest) await rm(partialDest, { recursive: true, force: true }).catch(() => undefined);
     if (cwd) await rm(cwd, { recursive: true, force: true }).catch(() => undefined);

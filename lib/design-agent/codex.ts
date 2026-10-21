@@ -31,7 +31,7 @@
  *   the run.
  */
 import { constants } from "node:fs";
-import { lstat, mkdtemp, open, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BoundedResult } from "./bounded-process";
@@ -85,7 +85,7 @@ const SANDBOX_MESSAGES: Record<SandboxError["code"], string> = {
   CODEX_SANDBOX_LEAK: "The Codex sandbox would show protected files; Codex was not started.",
   CODEX_SANDBOX_CONFIG: "The Codex sandbox could not be set up safely; Codex was not started.",
   CODEX_INPUT_REJECTED: "A reference image was not a regular PNG file; Codex was not started.",
-  CODEX_DOTENV_PRESENT: "A .env file exists in the Codex home; Codex was not started.",
+  CODEX_DOTENV_PRESENT: "A .env file exists in the Codex home; Codex was refused or its result discarded.",
 };
 
 /** A sandbox failure as a CodexError (fixed message). */
@@ -279,6 +279,21 @@ export async function listDesignAgentSessions(env: Record<string, string | undef
   return found;
 }
 
+/** Removes the design-agent session logs whose working directory is one of `cwds` (one call's own; never another call's). */
+export async function removeCodexSessionsOf(env: Record<string, string | undefined>, cwds: ReadonlySet<string>): Promise<void> {
+  for (const path of await listDesignAgentSessions(env).catch(() => [] as string[])) {
+    const head = await readFile(path, "utf8").then((t) => t.slice(0, 256 * 1024), () => "");
+    let meta: { cwd?: unknown; payload?: { cwd?: unknown } } | null;
+    try {
+      meta = JSON.parse(head.split("\n")[0] ?? "") as typeof meta;
+    } catch {
+      continue;
+    }
+    const cwd = meta?.payload?.cwd ?? meta?.cwd;
+    if (typeof cwd === "string" && cwds.has(cwd)) await rm(path, { force: true }).catch(() => undefined);
+  }
+}
+
 /** The answer file Codex wrote in its work dir: not a link, a regular file of ours, at most 1 MiB. */
 async function readAnswerFile(path: string): Promise<string | undefined> {
   let handle;
@@ -400,6 +415,12 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
     try {
       result = await sandbox.run(args, { workDir: cwd, input: options.prompt, timeoutMs: options.timeoutMs ?? 900_000 });
     } catch (error) {
+      // DEV-079: Codex ran and its result was thrown away (a .env found after it ended): its session log goes now,
+      // found by this call's own work dir (as given and resolved), never another call's
+      if (error instanceof SandboxError && error.started) {
+        const own = new Set([cwd, await realpath(cwd).catch(() => cwd)]);
+        await removeCodexSessionsOf(sandbox.env, own).catch(() => undefined);
+      }
       if (error instanceof SandboxError) throw fromSandboxError(error);
       throw new CodexError("CODEX_SANDBOX_UNAVAILABLE", SANDBOX_MESSAGES.CODEX_SANDBOX_UNAVAILABLE);
     }

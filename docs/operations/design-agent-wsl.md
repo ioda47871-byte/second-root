@@ -83,7 +83,7 @@ Codex は引数を読む前に `$CODEX_HOME/.env` を自分の環境に読み込
 先に `.env` が無いことを確かめる。STOP が出たら次の block へ進まず、codex を動かさない（`design-worker-wsl.md` の `CODEX_DOTENV_PRESENT`）:
 
 ```bash
-for h in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do if [ -e "$h/.env" ] || [ -L "$h/.env" ]; then echo "STOP: a .env exists in a Codex home (contents not shown); do not run codex"; break; fi; done
+for h in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do if [ -d "$h" ] && ! [ -x "$h" ]; then echo "STOP: a Codex home cannot be searched (.env unknown); do not run codex"; break; fi; if [ -e "$h/.env" ] || [ -L "$h/.env" ]; then echo "STOP: a .env exists in a Codex home (contents not shown); do not run codex"; break; fi; done
 ```
 
 何も出なければ:

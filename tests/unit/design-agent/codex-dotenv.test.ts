@@ -42,15 +42,17 @@ let home: string;
 let codexHome: string;
 
 /** The stand-in bubblewrap: answers the probe (optionally planting a .env on probe N), logs and runs every Codex process. */
-function fakeBwrap(dir: string, plantOnProbe?: { n: number; codexHome: string }): { bin: string; spawned: () => string[] } {
+function fakeBwrap(dir: string, plantOnProbe?: { n: number; codexHome: string }, plantAfterExec?: string): { bin: string; spawned: () => string[] } {
   const log = join(dir, "codex-spawned.log");
   const count = join(dir, "probes");
   const bin = join(dir, "bwrap");
   const plant = plantOnProbe ? `n=$(cat '${count}' 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > '${count}'; [ "$n" -ge ${plantOnProbe.n} ] && : > '${plantOnProbe.codexHome}/.env'\n` : "";
   writeFileSync(
     bin,
-    // TESTS ONLY: drops every bwrap option; the probe's script is not run.
-    `#!/bin/sh\nwhile [ "$1" != "--" ]; do shift; done; shift\nif [ "$1" = /bin/sh ]; then\n${plant}echo PROBE_OK; exit 0\nfi\necho "$2" >> '${log}'\nPATH='${dirname(process.execPath)}':/usr/bin:/bin; export PATH\nexec "$@"\n`,
+    // TESTS ONLY: keeps only the --setenv values (CODEX_HOME ...), drops every other bwrap option; the probe's script is not run.
+    `#!/bin/sh\nwhile [ "$1" != "--" ]; do if [ "$1" = --setenv ]; then export "$2=$3"; shift 3; else shift; fi; done; shift\n` +
+      `if [ "$1" = /bin/sh ]; then\n${plant}echo PROBE_OK; exit 0\nfi\necho "$2" >> '${log}'\nPATH='${dirname(process.execPath)}':/usr/bin:/bin; export PATH\n` +
+      (plantAfterExec ? `"$@"; rc=$?; [ "$2" = exec ] && : > '${plantAfterExec}/.env'; exit $rc\n` : `exec "$@"\n`),
     { mode: 0o755 },
   );
   return { bin, spawned: () => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean) : []) };
@@ -62,7 +64,7 @@ function fakeCli(dir: string, plantOnExec?: string): string {
   const plant = plantOnExec ? ` : > '${plantOnExec}/.env';` : "";
   writeFileSync(
     bin,
-    `#!/bin/sh\ncase "$1" in\n  login) echo "Logged in using ChatGPT";;\n  --version) echo "codex-cli 0.163.0";;\n  exec)${plant} cat >/dev/null; while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && echo '{"ok":true}' > "$2"; shift; done;;\nesac\n`,
+    `#!/bin/sh\ncase "$1" in\n  login) echo "Logged in using ChatGPT";;\n  --version) echo "codex-cli 0.163.0";;\n  exec)${plant} cat >/dev/null; d="$CODEX_HOME/sessions/2026/10/21"; mkdir -p "$d"; printf '{"type":"session_meta","payload":{"cwd":"%s"}}\\n' "$(pwd -P)" > "$d/rollout-2026-10-21T10-00-00-$$-0000-4000-8000-000000000000.jsonl"; while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && echo '{"ok":true}' > "$2"; shift; done;;\nesac\n`,
     { mode: 0o755 },
   );
   return bin;
@@ -107,6 +109,12 @@ async function sandboxFor(dir: string, plant?: number, plantOnExec = false) {
   const sandbox = await prepareCodexSandbox({ env: env(), codexBin: fakeCli(dir, plantOnExec ? codexHome : undefined), bwrapBin: bwrap.bin, protectedPaths: [] });
   return { sandbox, spawned: bwrap.spawned };
 }
+
+/** Every session log under CODEX_HOME (relative paths, sorted). */
+const sessionLogs = (h = codexHome) => {
+  const dir = join(h, "sessions");
+  return existsSync(dir) ? (readdirSync(dir, { recursive: true }) as string[]).filter((n) => n.endsWith(".jsonl")).sort() : [];
+};
 
 const shown = (error: unknown) => `${String(error)} ${(error as Error).message} ${JSON.stringify(error)}`;
 
@@ -162,7 +170,7 @@ describe("the sandbox refuses every Codex process while $CODEX_HOME/.env exists"
       const json = await runCodexJson({ sandbox, prompt: "x", schema: {}, timeoutMs: 30_000 }).catch((e: unknown) => e);
       for (const err of [signIn, json]) {
         expect(err).toBeInstanceOf(CodexError);
-        expect(err).toMatchObject({ code: "CODEX_DOTENV_PRESENT", message: "A .env file exists in the Codex home; Codex was not started." });
+        expect(err).toMatchObject({ code: "CODEX_DOTENV_PRESENT", message: "A .env file exists in the Codex home; Codex was refused or its result discarded." });
         // neither the contents nor the path
         expect(shown(err)).not.toContain(CANARY);
         expect(shown(err)).not.toContain(codexHome);
@@ -188,11 +196,19 @@ describe("the sandbox refuses every Codex process while $CODEX_HOME/.env exists"
     expect(raw).toBeInstanceOf(SandboxError);
     expect(raw).toMatchObject({ code: "CODEX_DOTENV_PRESENT", started: true });
     rmSync(join(codexHome, ".env"), { force: true });
-    // through runCodexJson: the answer Codex wrote is never returned
+    // another design-agent call's session log (another work dir): never touched
+    const other = join(codexHome, "sessions", "2026", "10", "20");
+    mkdirSync(other, { recursive: true });
+    const otherLog = join(other, "rollout-2026-10-20T10-00-00-11111111-1111-4111-8111-111111111111.jsonl");
+    writeFileSync(otherLog, JSON.stringify({ type: "session_meta", payload: { cwd: join(tmpdir(), "sr-design-codex-zzzzzz") } }) + "\n");
+    const before = sessionLogs();
+    // through runCodexJson: the answer Codex wrote is never returned, and that call's session log is removed (R3)
     const err = await runCodexJson({ sandbox, prompt: "x", schema: {}, timeoutMs: 30_000 }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CodexError);
     expect(err).toMatchObject({ code: "CODEX_DOTENV_PRESENT" });
     expect(spawned()).toEqual(["exec", "login", "exec"]);
+    expect(sessionLogs()).toEqual(before);
+    expect(existsSync(otherLog)).toBe(true);
     rmSync(work, { recursive: true, force: true });
   });
 
@@ -207,7 +223,7 @@ describe("the sandbox refuses every Codex process while $CODEX_HOME/.env exists"
   it("is an environment failure with a fixed public message in the worker (stops the run, never counted against the job)", () => {
     expect(isEnvironmentFailure("CODEX_DOTENV_PRESENT")).toBe(true);
     expect(ENVIRONMENT_CODES.has("CODEX_DOTENV_PRESENT")).toBe(true);
-    expect(PUBLIC_MESSAGES.CODEX_DOTENV_PRESENT).toMatch(/Codex was not started/);
+    expect(PUBLIC_MESSAGES.CODEX_DOTENV_PRESENT).toMatch(/Codex was refused or its result discarded/);
   });
 });
 
@@ -249,8 +265,9 @@ describe("every entry point stops before Codex starts", () => {
     });
 
     /** runWorker with the REAL sandbox around the worker's fake Codex (runWorker writes it to <bin>/codex). */
-    const realSandbox = (l: ReturnType<typeof makeLayout>, plant?: number) => {
-      const bwrap = fakeBwrap(l.root, plant === undefined ? undefined : { n: plant, codexHome: join(l.root, "codex-home") });
+    const realSandbox = (l: ReturnType<typeof makeLayout>, plant?: number, plantAfterExec = false) => {
+      const h = join(l.root, "codex-home");
+      const bwrap = fakeBwrap(l.root, plant === undefined ? undefined : { n: plant, codexHome: h }, plantAfterExec ? h : undefined);
       const prepareSandbox = (e: NodeJS.ProcessEnv) => prepareCodexSandbox({ env: e, codexBin: join(l.bin, "codex"), bwrapBin: bwrap.bin, protectedPaths: [] });
       return { prepareSandbox, spawned: bwrap.spawned };
     };
@@ -289,6 +306,23 @@ describe("every entry point stops before Codex starts", () => {
       expect(existsSync(join(l.state, "ledger.json")) ? (JSON.parse(readFileSync(join(l.state, "ledger.json"), "utf8")) as { jobs: unknown }).jobs : {}).toEqual({});
       expect(spawned()).toEqual(["login"]);
       chmodSync(l.root, 0o700);
+      rmSync(l.root, { recursive: true, force: true });
+    });
+
+    it("after the exec (a .env found once Codex ended): the result is thrown away, the job requeued, no ledger entry, no run dir, no session log of the call", async () => {
+      const l = makeLayout();
+      writeJob(l, "job-dotenv-after");
+      const { prepareSandbox, spawned } = realSandbox(l, undefined, true);
+      const { report, logs } = await runWorker(l, site, { prepareSandbox });
+      expect(report).toMatchObject({ status: "stopped", code: "CODEX_DOTENV_PRESENT" });
+      expect(readdirSync(join(l.queue, "inbox"))).toEqual(["job-dotenv-after.json"]);
+      expect(existsSync(join(l.out, "job-dotenv-after"))).toBe(false);
+      expect(existsSync(join(l.state, "ledger.json")) ? (JSON.parse(readFileSync(join(l.state, "ledger.json"), "utf8")) as { jobs: unknown }).jobs : {}).toEqual({});
+      expect(spawned()).toEqual(["login", "login", "exec"]); // the run's sign-in check, then the call's own, then the exec
+      // the fake CLI writes its call's log (thread 00000000-…) and an unrelated one (11111111-…, not a design-agent cwd)
+      expect(sessionLogs(join(l.root, "codex-home")).filter((n) => n.includes("00000000-0000-4000-8000-000000000000"))).toEqual([]);
+      expect(sessionLogs(join(l.root, "codex-home")).filter((n) => n.includes("11111111-1111-4111-8111-111111111111"))).toHaveLength(1);
+      expect(JSON.stringify({ report, logs })).not.toContain(join(l.root, "codex-home"));
       rmSync(l.root, { recursive: true, force: true });
     });
   });

@@ -123,25 +123,37 @@ process の前に**（probe の前と、起動の直前にもう一度。終わ�
 - worker の扱いは `CODEX_NOT_SIGNED_IN` と同じ環境の失敗: run は `stopped`（exit 3）、job は inbox に戻り、ledger に数えない
   （job の途中で現れたときも同じ。結果の途中の file は残さない）。自分で再試行しない。cycle は `CYCLE_STOP_WORKER_SIGNAL`（STOP の符号）で止まる
 - 結果・ledger・log・通知に出るのは符号と固定の文だけ（`.env` の中身・path は出さない）
+- 終わった後に見つかったとき（結果を捨てたとき）は、その呼び出しの session log も、その呼び出しの作業 dir を手がかりに
+  消す（他の呼び出しの log は消さない）
+- 残る限界: 1回の Codex の実行の間に現れて、終わる前に消えた `.env` は検出できない（確認は起動の前と終わった後だけ）。
+  そのような file を置けるのは jail の中の `sr-designgen` 自身だけである
 
 人の手順（jail の中の `sr-designgen` で。Claude は行わない。中身は表示しない・貼らない）:
 
 ```bash
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
 Q="$HOME/codex-dotenv-quarantine"
+n=0
 for H in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do
+  n=$((n+1)); name="$(basename "$H")"
+  if [ -d "$H" ] && ! [ -x "$H" ]; then echo "$name: unknown (cannot be searched) - STOP"; continue; fi
   if [ -e "$H/.env" ] || [ -L "$H/.env" ]; then
     mkdir -p -m 700 "$Q"
-    mv -- "$H/.env" "$Q/$(basename "$H")-env-$(date +%Y%m%d%H%M%S)" && echo "$(basename "$H"): moved"
+    T="$Q/${name#.}-env-$(date +%Y%m%d%H%M%S)-$n"
+    mv -n -- "$H/.env" "$T"
+    if [ -e "$H/.env" ] || [ -L "$H/.env" ]; then echo "$name: not moved - STOP"; else echo "$name: moved"; fi
   else
-    echo "$(basename "$H"): absent"
+    echo "$name: absent"
   fi
 done'
 ```
 
 - 見る CODEX_HOME: run.sh・`design-image-poc.sh` は呼び出し側の `CODEX_HOME` をそのまま渡し、無ければ Codex は
   `~/.codex` を使う。worker 専用に分けるときの推奨は `~/.codex-design`（上）。この3つを全部見る。別の値を使っているなら足す
-- 出すのは CODEX_HOME の名前と `moved` / `absent` だけ（中身は出さない）
+- 出すのは CODEX_HOME の名前と `moved` / `absent`、または `unknown` / `not moved` の STOP だけ（中身は出さない）。
+  STOP が出たら worker を動かさず、人が調べる
+- 移した先は 0700 の `~/codex-dotenv-quarantine/` の中の、見える名前（`codex-design-env-<日時>-<番号>`）。
+  同じ秒に2つの home を扱っても名前は重ならず、`mv -n` は既にある file を上書きしない
 - 移した file は人が中身を確かめて消す。API key が入っていたら、その key を失効・作り直すかを人が決める
 - その後の worker run は、`.env` が無ければ今までどおり動く（符号の他に変える設定はない）
 
@@ -208,7 +220,7 @@ done'
 `.env` が無いことを確かめる。STOP が出たら codex を動かさず、上の `CODEX_DOTENV_PRESENT` の手順で移す:
 
 ```bash
-for h in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do if [ -e "$h/.env" ] || [ -L "$h/.env" ]; then echo "STOP: a .env exists in a Codex home (contents not shown); do not run codex"; break; fi; done
+for h in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do if [ -d "$h" ] && ! [ -x "$h" ]; then echo "STOP: a Codex home cannot be searched (.env unknown); do not run codex"; break; fi; if [ -e "$h/.env" ] || [ -L "$h/.env" ]; then echo "STOP: a .env exists in a Codex home (contents not shown); do not run codex"; break; fi; done
 ```
 
 `codex login status` が「ChatGPT」を示すこと。

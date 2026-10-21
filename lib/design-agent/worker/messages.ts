@@ -18,7 +18,7 @@ export const PUBLIC_MESSAGES: Readonly<Record<string, string>> = {
   CODEX_SANDBOX_LEAK: "The Codex sandbox would show protected files; Codex was not started.",
   CODEX_SANDBOX_CONFIG: "The Codex sandbox could not be set up safely; Codex was not started.",
   CODEX_INPUT_REJECTED: "A reference image was not a regular PNG file; Codex was not started.",
-  CODEX_DOTENV_PRESENT: "A .env file exists in the Codex home; Codex was not started (a person removes it in the jail).",
+  CODEX_DOTENV_PRESENT: "A .env file exists in the Codex home; Codex was refused or its result discarded (a person removes it in the jail).",
   CODEX_ANSWER_REJECTED: "Codex's answer carried a piece of its own sign-in token and was thrown away.",
   PUBLIC_SOURCE_UNAVAILABLE: "The public Instagram profile could not be read without logging in.",
   JOB_INVALID: "The job file is not a valid design job.",
