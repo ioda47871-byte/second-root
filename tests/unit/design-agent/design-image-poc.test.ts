@@ -1185,7 +1185,31 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
     expect(d.preflight).toEqual({ cli_version: "0.163.0", dotenv_present: false });
     expect(d.classification.stop_class).toBe("environment");
     expect(summary).toContain("code=CODEX_DOTENV_PRESENT");
+    // the jail refused before the spawn: Codex never started (N2)
+    expect(d.codex.invoked).toBe(false);
+    expect(summary).toContain("codex=0");
     clean(text, summary);
+  });
+
+  it("CODEX_DOTENV_PRESENT (DEV-079): a .env found by the jail after Codex ended throws the result away; the call is recorded as made", async () => {
+    const base = fakeSandbox(happy);
+    const jail: CodexSandbox = {
+      env: base.env,
+      run: async (args, o) => {
+        const result = await base.run(args, o);
+        if (args[0] !== "exec") return result;
+        writeFileSync(join(codexHome, ".env"), `SOME_URL=${CANARY}\n`);
+        throw new SandboxError("CODEX_DOTENV_PRESENT", true);
+      },
+    };
+    expect(await runDesignImagePoc({ ...options(happy), prepareSandbox: async () => jail })).toEqual({ status: "stopped", code: "CODEX_DOTENV_PRESENT" });
+    expect(prompts).toHaveLength(1);
+    const { d, text, summary } = diag();
+    expect(d.codex.invoked).toBe(true);
+    expect(summary).toContain("codex=1");
+    expect(summary).toContain("code=CODEX_DOTENV_PRESENT");
+    clean(text, summary);
+    expect(sessionLogs()).toEqual([]); // the cleanup still removes the call's session log
   });
 
   it("CODEX_PREFLIGHT_FAILED: `codex --version` failing stops before the model call; an unexpected version shape is recorded as null", async () => {

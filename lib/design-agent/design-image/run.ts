@@ -588,6 +588,8 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
         onStdout: (chunk) => tracker.feed(chunk),
       });
     } catch (error) {
+      // DEV-079: the jail refused before the spawn (a probe failure, a .env): Codex never started (codex=0)
+      if (error instanceof SandboxError && !error.started) diag.invoked = false;
       if (error instanceof SandboxError) throw error;
       throw new PocError("CODEX_SANDBOX_UNAVAILABLE");
     }

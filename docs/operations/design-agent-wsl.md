@@ -79,6 +79,15 @@ CLI は子プロセスへ渡す前に消すが、そもそも置かない。
 
 ## 3. サインインする（人が 1 回。切れたら同じ手順）
 
+Codex は引数を読む前に `$CODEX_HOME/.env` を自分の環境に読み込む（API key がそこにあると迂回される。DEV-079）。
+先に `.env` が無いことを確かめる。STOP が出たら次の block へ進まず、codex を動かさない（`design-worker-wsl.md` の `CODEX_DOTENV_PRESENT`）:
+
+```bash
+for h in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do if [ -e "$h/.env" ] || [ -L "$h/.env" ]; then echo "STOP: a .env exists in a Codex home (contents not shown); do not run codex"; break; fi; done
+```
+
+何も出なければ:
+
 ```bash
 codex login --device-auth  # 表示された URL を開き、コードを入れて ChatGPT でサインイン
 codex login status         # 「Logged in using ChatGPT」であること（API key なら CLI は止まる）

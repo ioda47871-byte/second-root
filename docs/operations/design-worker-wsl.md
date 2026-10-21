@@ -110,30 +110,38 @@ worker の環境に `CODEX_HOME=~/.codex-design`）。既定の `~/.codex` を�
 ### `CODEX_DOTENV_PRESENT`（DEV-079）
 
 Codex CLI は、どの起動でも（`--version`・`login status` も）引数を読む前に `$CODEX_HOME/.env` を自分の環境へ読み込み、
-`CODEX_*` しか除かない（arg0 の `load_dotenv`）。そこに API key や base URL があると、sandbox の env の allowlist を通らずに
+`CODEX_*` しか除かない（arg0 の `load_dotenv`）。確認した source（openai/codex `rust-v0.159.0`、machine の版、
+`codex-rs/arg0/src/lib.rs`）: 164 行 `load_dotenv();`（`arg0_dispatch` の中、thread を作る前）、308〜310 行
+`fn load_dotenv()` は `find_codex_home()` の `codex_home.join(".env")` を `dotenvy::from_path_iter` で読むだけ、
+302 行 `ILLEGAL_ENV_VAR_PREFIX = "CODEX_"`、322 行で大文字にしてから前方一致で除く。`dotenvy::dotenv()` のような
+cwd から上へ `.env` を探す呼び出しは、この file には無い。だから見るのは `$CODEX_HOME/.env` の1つだけでよい。そこに API key や base URL があると、sandbox の env の allowlist を通らずに
 Codex へ届く（API の課金・通信先の差し替え）。だから sandbox（`lib/design-agent/sandbox.ts` の `run()`）は、**すべての Codex
-process の前に**（probe の前と、起動の直前にもう一度）`.env` を `lstat` だけで確かめ、あれば Codex を起動せずに
+process の前に**（probe の前と、起動の直前にもう一度。終わった後にも見て、あれば結果を捨てる）`.env` を `lstat` だけで確かめ、あれば Codex を起動せずに
 `CODEX_DOTENV_PRESENT` で止まる。worker・photo・比較（compare）・design-demo・PoC のどれもこの1か所を通る。
 
 - 中身は開かない・読まない・出さない。file・link（先が無くても）・directory・`lstat` できない（EACCES など）は、どれも「ある」とみなす
 - worker の扱いは `CODEX_NOT_SIGNED_IN` と同じ環境の失敗: run は `stopped`（exit 3）、job は inbox に戻り、ledger に数えない
-  （job の途中で現れたときも同じ。結果の途中の file は残さない）。自分で再試行しない。cycle は `CYCLE_STOP_WORKER_EXIT` で止まる
+  （job の途中で現れたときも同じ。結果の途中の file は残さない）。自分で再試行しない。cycle は `CYCLE_STOP_WORKER_SIGNAL`（STOP の符号）で止まる
 - 結果・ledger・log・通知に出るのは符号と固定の文だけ（`.env` の中身・path は出さない）
 
 人の手順（jail の中の `sr-designgen` で。Claude は行わない。中身は表示しない・貼らない）:
 
 ```bash
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
-H="${CODEX_HOME:-$HOME/.codex}"
-if [ -e "$H/.env" ] || [ -L "$H/.env" ]; then
-  Q="$HOME/codex-dotenv-quarantine"; mkdir -p -m 700 "$Q"
-  mv -- "$H/.env" "$Q/env-$(date +%Y%m%d%H%M%S)" && echo "moved out of CODEX_HOME (contents not shown)"
-else
-  echo ".env: absent"
-fi'
+Q="$HOME/codex-dotenv-quarantine"
+for H in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do
+  if [ -e "$H/.env" ] || [ -L "$H/.env" ]; then
+    mkdir -p -m 700 "$Q"
+    mv -- "$H/.env" "$Q/$(basename "$H")-env-$(date +%Y%m%d%H%M%S)" && echo "$(basename "$H"): moved"
+  else
+    echo "$(basename "$H"): absent"
+  fi
+done'
 ```
 
-- worker の `CODEX_HOME` を分けている（`~/.codex-design` など）ときは、その値で `H` を置き換える
+- 見る CODEX_HOME: run.sh・`design-image-poc.sh` は呼び出し側の `CODEX_HOME` をそのまま渡し、無ければ Codex は
+  `~/.codex` を使う。worker 専用に分けるときの推奨は `~/.codex-design`（上）。この3つを全部見る。別の値を使っているなら足す
+- 出すのは CODEX_HOME の名前と `moved` / `absent` だけ（中身は出さない）
 - 移した file は人が中身を確かめて消す。API key が入っていたら、その key を失効・作り直すかを人が決める
 - その後の worker run は、`.env` が無ければ今までどおり動く（符号の他に変える設定はない）
 
@@ -192,9 +200,16 @@ fi'
 
 - 利用者 `sr-designgen`
 - Node 22
-- `codex login --device-auth`
+- `codex login --device-auth`（その前に、下の `.env` の確認）
 - `npm ci`
 - Playwright の Chromium
+
+`codex` を手で動かす前に（`login --device-auth`・`login status` も、Codex は引数を読む前に `$CODEX_HOME/.env` を読み込む）、
+`.env` が無いことを確かめる。STOP が出たら codex を動かさず、上の `CODEX_DOTENV_PRESENT` の手順で移す:
+
+```bash
+for h in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do if [ -e "$h/.env" ] || [ -L "$h/.env" ]; then echo "STOP: a .env exists in a Codex home (contents not shown); do not run codex"; break; fi; done
+```
 
 `codex login status` が「ChatGPT」を示すこと。
 `OPENAI_API_KEY` / `CODEX_API_KEY` は設定しない。設定されていても、run.sh と worker は子 process に渡さない。

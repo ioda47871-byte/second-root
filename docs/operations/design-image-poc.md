@@ -320,9 +320,13 @@ published 2026-10-15, and the `@openai/codex@0.163.0-linux-x64` package read as 
   `runCodexJson`, used by the production worker) did not check it, so a `.env` in `sr-designgen`'s CODEX_HOME could feed an
   API key or base URL to them. **DEV-079** closes this: the check lives in `lib/design-agent/codex-dotenv.ts` (re-exported by
   `codex.ts` and `capability.ts`) and the jail's `run()` (`sandbox.ts`) refuses every Codex process while the file exists
-  (before the probe and again right before the spawn), for the worker, photos, compare, design-demo and this PoC alike. The
+  (before the probe, again right before the spawn, and after Codex ends: then its result is thrown away), for the worker, photos, compare, design-demo and this PoC alike. The
   PoC's own preflight still runs first and records `dotenv=1`; a `.env` that appears after it is refused by the jail with the
-  same `CODEX_DOTENV_PRESENT` (then `dotenv=0` in the diagnostics: the preflight saw none). Removing it: `design-worker-wsl.md`
+  same `CODEX_DOTENV_PRESENT` (then `dotenv=0` in the diagnostics: the preflight saw none; `codex=0` when refused before the
+  spawn, `codex=1` when found after Codex ended). Checked on the machine's version too (openai/codex `rust-v0.159.0`,
+  `codex-rs/arg0/src/lib.rs`): line 164 calls `load_dotenv()` in `arg0_dispatch`; lines 308–310 read only
+  `find_codex_home()`/`.env` with `dotenvy::from_path_iter`; line 302 `ILLEGAL_ENV_VAR_PREFIX = "CODEX_"`, line 322 the
+  case-insensitive filter. No `dotenvy::dotenv()` (a walk up from the cwd) in that file, so `$CODEX_HOME/.env` is the one file. Removing it: `design-worker-wsl.md`
   (`CODEX_DOTENV_PRESENT`). The diagnostics dirs stay in the output root (repo-external, never published); delete them with `sudo rm -r` when done.
 
 ### Codex CLI 0.159.0, paginated history and code mode (DEV-080)

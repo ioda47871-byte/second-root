@@ -56,12 +56,13 @@ function fakeBwrap(dir: string, plantOnProbe?: { n: number; codexHome: string })
   return { bin, spawned: () => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean) : []) };
 }
 
-/** A Codex stand-in: signed in with ChatGPT, prints a version, answers exec with {} . */
-function fakeCli(dir: string): string {
+/** A Codex stand-in: signed in with ChatGPT, prints a version, answers exec with {} (optionally planting a .env while it runs). */
+function fakeCli(dir: string, plantOnExec?: string): string {
   const bin = join(dir, "codex");
+  const plant = plantOnExec ? ` : > '${plantOnExec}/.env';` : "";
   writeFileSync(
     bin,
-    `#!/bin/sh\ncase "$1" in\n  login) echo "Logged in using ChatGPT";;\n  --version) echo "codex-cli 0.163.0";;\n  exec) cat >/dev/null; while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && echo '{"ok":true}' > "$2"; shift; done;;\nesac\n`,
+    `#!/bin/sh\ncase "$1" in\n  login) echo "Logged in using ChatGPT";;\n  --version) echo "codex-cli 0.163.0";;\n  exec)${plant} cat >/dev/null; while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && echo '{"ok":true}' > "$2"; shift; done;;\nesac\n`,
     { mode: 0o755 },
   );
   return bin;
@@ -100,10 +101,10 @@ const VARIANTS: Array<[string, () => void]> = [
   ],
 ];
 
-async function sandboxFor(dir: string, plant?: number) {
+async function sandboxFor(dir: string, plant?: number, plantOnExec = false) {
   mkdirSync(dir, { recursive: true });
   const bwrap = fakeBwrap(dir, plant === undefined ? undefined : { n: plant, codexHome });
-  const sandbox = await prepareCodexSandbox({ env: env(), codexBin: fakeCli(dir), bwrapBin: bwrap.bin, protectedPaths: [] });
+  const sandbox = await prepareCodexSandbox({ env: env(), codexBin: fakeCli(dir, plantOnExec ? codexHome : undefined), bwrapBin: bwrap.bin, protectedPaths: [] });
   return { sandbox, spawned: bwrap.spawned };
 }
 
@@ -178,6 +179,29 @@ describe("the sandbox refuses every Codex process while $CODEX_HOME/.env exists"
     expect(err).toMatchObject({ code: "CODEX_DOTENV_PRESENT" });
     expect(spawned()).toEqual(["login"]);
     expect(existsSync(join(codexHome, ".env"))).toBe(true);
+  });
+
+  it("checks once more after Codex ended: a .env that appeared while it ran (a lost race) is detected and the result thrown away", async () => {
+    const { sandbox, spawned } = await sandboxFor(join(root, "after-run"), undefined, true);
+    const work = mkdtempSync(join(tmpdir(), "sr-design-codex-"));
+    const raw = await sandbox.run(["exec", "-"], { workDir: work, input: "x", timeoutMs: 30_000 }).catch((e: unknown) => e);
+    expect(raw).toBeInstanceOf(SandboxError);
+    expect(raw).toMatchObject({ code: "CODEX_DOTENV_PRESENT", started: true });
+    rmSync(join(codexHome, ".env"), { force: true });
+    // through runCodexJson: the answer Codex wrote is never returned
+    const err = await runCodexJson({ sandbox, prompt: "x", schema: {}, timeoutMs: 30_000 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CodexError);
+    expect(err).toMatchObject({ code: "CODEX_DOTENV_PRESENT" });
+    expect(spawned()).toEqual(["exec", "login", "exec"]);
+    rmSync(work, { recursive: true, force: true });
+  });
+
+  it("a refusal before the spawn says nothing was started", async () => {
+    const { sandbox } = await sandboxFor(join(root, "before-spawn"));
+    writeFileSync(join(codexHome, ".env"), "");
+    const work = mkdtempSync(join(tmpdir(), "sr-design-codex-"));
+    expect(await sandbox.run(["--version"], { workDir: work, timeoutMs: 30_000 }).catch((e: unknown) => e)).toMatchObject({ code: "CODEX_DOTENV_PRESENT", started: false });
+    rmSync(work, { recursive: true, force: true });
   });
 
   it("is an environment failure with a fixed public message in the worker (stops the run, never counted against the job)", () => {
