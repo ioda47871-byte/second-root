@@ -17,6 +17,33 @@
   - 人の判断が要る: review の notes を次の round に渡す（DEV-034 の方針の変更）／ 初期候補を 2〜3 個にする（Codex の時間とコスト）／ Instagram の写真を使う（権利・同意の判断）
 - 次の実走: efb4bdb2 は attempts 2/3 で blocked（再 reset は未承認）。改善の効果は新しい controlled run（人の承認: 対象 demo・DB の reset・W・C）で測る
 
+### HUMAN-018 — DEV-074 の design image PoC を WSL で 1 回流す承認
+
+- 何: 架空菓庵（DEV-073 の fixture）の Web デザイン mockup の PNG を 1 枚、`sr-designgen` の ChatGPT サインインの Codex（組み込み画像生成）に作らせる。
+  道具は `scripts/sales-design-worker/design-image-poc.sh`、手順・しないこと・停止の符号・画像の見方は `docs/operations/design-image-poc.md`。
+  Claude は WSL に触れない（この container では fake sandbox の test だけ）。
+- 前提: PR #88 が develop に merge されていること（wrapper は lock の中で `origin/develop` に合わせる。無ければ `POC_NOT_ON_REF` で止まる）。
+- コマンド（jail の中、timer はそのまま。doc の「Run」と同じ）:
+
+  ```bash
+  sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+  S=~/.local/state/sr-design-worker; mkdir -p "$S" && chmod 700 "$S"
+  flock -n "$S/run.lock" sh -c "cd ~/work/second-root && git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && git checkout -q --force --detach origin/develop" \
+    || { echo "STOP: a design worker run is in progress; nothing was changed"; exit 3; }
+  cd ~/work/second-root && ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed'
+  ```
+
+- 費用: Codex の呼び出し 1 回（画像生成つき）、ChatGPT の plan の利用枠。API の従量課金なし（API key は子 process に渡らず、API key のサインインは拒否）。
+- 時間: Codex の 1 回は 15 分で打ち切り（通常は数分）。全体の上限 3300 秒（55 分、jail の 1 回の実行 3500 秒の中、run.sh と同じ）。
+- 触れないもの: DB・Supabase（Staging / Production）・bridge・Vercel・flag・cycle・worker の timer（止める・戻す・有効化するのどれも）・worker の queue / 結果 / ledger・
+  asset store・公開 `/demo`・実営業の送信・GitHub（commit・push しない）。参照画像なし、写真なし（食品・店舗の写真 / render を禁止）、店舗の事実は fixture のまま。出力は
+  `~/sr-design-image-poc/wagashi-XXXXXX/` だけ（repo の外、公開しない）。
+- 品質の注意: fixture の menu は全品「テスト」入り、説明文の頭は「比較用の架空の和菓子屋です。実在の店舗ではありません。」、access は「テスト線テスト駅」。
+  prompt はこれらを画像から省くことを許す（事実は変えない）。menu の無い mockup は失敗ではない。
+- 人の操作: (1) この 1 回を承認する、(2) 上のコマンドを流す、(3) doc の「Viewing the result」で `mockup.png` を Windows の Desktop に写して見る、
+  (4) その PNG（と `report.json`）を Claude の session に upload する。止まったら表示された `POC_STOP: <符号>` を渡す。
+- 解除条件: 画像（または停止の符号）が届く、または人が流さないと決める。
+
 ### HUMAN-017 — DEV-073 の 3 店の比較を WSL で流す承認と操作
 
 - 何: Stage 1 の比較（design-agent-direction §8 の 5・7、design-spec-stage1.md §8-3）。架空の 3 店（和菓子・コーヒースタンド・ブーランジュリー兼パティスリー）を
