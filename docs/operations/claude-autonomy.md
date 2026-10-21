@@ -14,15 +14,15 @@
 
 1. push 後、対象PR番号・**最新head SHA**・開始時刻・必要なcheck・Fresh Reviewの対象SHAを記録。
 2. 通知イベントだけに依存しない。セッションが実行可能であれば、約5分後にGitHub Actions/check-runを**直接照会**し、未完了なら約10分ごとに再照会する。可能な範囲で待機時間に独立して進められる安全な作業を進める。
-3. 途中でpushが増えたら、**最新head SHAの必須CIと必要なFresh Reviewを再評価**。旧SHAの成功を新SHAの成功とみなさない。
-4. 最新SHAの必須CIがすべて成功し、必要なFresh ReviewがPASS、Critical/Highが0、競合なし、Protected Scope変更なし、必要なintegration条件達成を確認できたら、追加の問題がない限り自律マージしてdevelopを確認する。
+3. 途中でpushが増えたら、**最新head SHAの必須CIとFresh Reviewを再評価**。旧SHAの成功を新SHAの成功とみなさない。
+4. 最新SHAの必須CIがすべて成功し、Fresh Reviewer PASS（最新head SHA対象、`.ai/reviews/<task-id>.md` に保存済み。feature→developでは常に必須）、Critical/Highが0、競合なし、Protected Scope変更なし、必要なintegration条件達成を確認できたら、追加の問題がない限り自律マージしてdevelopを確認する。
 5. checkが失敗したらログを調べて修正する。timeout/infra障害とコード不具合は区別する。テストのskip・閾値引き下げ・チェック解除による「green化」は禁止。
 6. **セッション自体が停止したら自力で再開できるとは限らない**。有効な待機実行環境や承認済みのscheduled checkがない場合、「自動的に後で確認する」と約束しない。進捗と次の確認条件をGitHubに残し、利用者に**現時点では自動再開できない**と報告する。
 7. 目安として、同じ外部待ちが30分以上続いて解決不能、または確認可能な時間枠を使い切った場合は、沈黙して待ち続けず、未完了の理由と最新状態を明示する。実際に存在しないタイマーやリマインダーを作成済みと主張しない。
 
 ## 3. 人間承認まで進める／必ず止める境界
 
-**自律でよい:** 既存Task範囲内のソース・docs変更、テスト、Fresh Review依頼・修正、PR作成、CI確認、条件を満たすfeature→developマージ、進捗の記録、**読み取り専用**の診断、実行コマンド・rollbackの準備。
+**自律でよい:** 既存Task範囲内のソース・docs変更、テスト、Fresh Review依頼・修正、PR作成、CI確認、条件を満たすfeature→developマージ、進捗の記録、リポジトリ・GitHub/CI・ローカルtest環境の**読み取り専用**の診断（Production/Stagingのデータ・secretへのアクセスを除く）、実行コマンド・rollbackの準備。
 
 **実行前に個別の明示承認が必要:**
 
@@ -36,8 +36,8 @@
 
 ## 4. 作業の現在地と復旧
 
-- 初回と再開時は `docs/AI_WORKFLOW.md` §2 に従って `CLAUDE.md` / `AGENTS.md` / `.ai/tasks.json` / `.ai/progress.md` / `.ai/blockers.md`、PRとCIを確認。
-- 作業の意味ある区切りでcommit+pushし、`progress.md`に**Task / branch / PR / 最新SHA / CI / review / 次のアクション**を記録する。featureでは `.ai/progress.md` を直接編集しない既存ルールを守り、規定の方法で更新する。
+- 初回と再開時は `docs/AI_WORKFLOW.md` §2 の全手順に従い、加えて開いているPRと最新head SHAのCIを確認する。
+- 作業の意味ある区切りでcommit+pushし、**Task / branch / PR / 最新SHA / CI / review / 次のアクション**を記録する。feature branchでは `.ai/progress.md` を編集しない（`.ai/progress.md` 冒頭の注意）。作業中の現在地はPRの説明・コメントに残し、merge後に `docs/AI_WORKFLOW.md` §3 に従ってdevelopへの `.ai/` のみの記録commitで `progress.md` を更新する。
 - 人間の操作待ちは `.ai/blockers.md` のID・解除条件を明示する。権限がない・ツールが使えない・ローカルWSLにアクセスできない場合は、処理したふりをせず具体的な次操作を提示する。
 - 既存Task以外に進む場合は `docs/AI_WORKFLOW.md` §3 の新規Task追加ルールを守る。新機能・MVP拡大・有料サービスを自分で決めない。
 
@@ -51,11 +51,11 @@
 
 「作業中」「待っています」だけで終えない。実行できない作業と実行済みの作業を混同しない。
 
-## 6. 本件の具体例
+## 6. 例（HUMAN-xxx 待ちの PoC PR）
 
-- PR #88 (DEV-074)のコードreview/CIが最新SHAで成功したら、merge条件を確認してfeature→developマージまで進める。
-- **HUMAN-018は別途承認が出るまで実行しない**。デザイン画像1枚が生成されるまでは「画像生成済み」と言わない。
-- 出力PNGの手動受け渡しが必要なら、`docs/operations/design-image-poc.md`の手順を案内する。デザイン画像→Claude実装→画像比較は**別工程**であり、先回りして自動本番公開しない。
+- PoC PRのコードreviewとCIが最新SHAで成功したら、merge条件を確認してfeature→developマージまで進める。
+- 実機での実行（例: HUMAN-018）は別途承認が出るまで実行しない。成果物が実際にできるまでは「生成済み」と言わない。
+- 成果物の手動受け渡しが必要なら、該当runbook（例: `docs/operations/design-image-poc.md`）の手順を案内する。後続工程を先回りして自動で本番公開しない。
 - すでにPRがマージ済みなら、同じレビュー/mergeを繰り返さず次の承認待ちタスクの準備へ進む。
 
 ---
