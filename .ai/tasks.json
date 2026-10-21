@@ -3410,7 +3410,7 @@
     {
       "id": "DEV-077",
       "title": "Design image PoC 第2案の CODEX_NO_IMAGE（HUMAN-019）の調査: 理由を分ける安全な診断と、v2 の prompt の最小の修正（Codex は流さない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-074"
