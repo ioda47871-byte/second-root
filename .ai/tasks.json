@@ -3548,6 +3548,57 @@
         "着手（P1、別の review）",
         "worker の挙動の変更なので Fresh Review と develop への merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-080",
+      "title": "Design image PoC: Codex CLI 0.159.0 の session log（paginated の Extension item・code mode の exec cell）を正しく読み、HUMAN-021b で原因を分けられるようにする（Codex は流さない）",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-078"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-080-rollout-parsing",
+      "purpose": "HUMAN-021a の結果: .env なし・codex-cli 0.159.0・config.toml に該当行なし・bundled model は ['text','image']。openai/codex rust-v0.159.0（と 0.163.0）の source を読むと、codex exec は paginated history で rollout を書き（image_generation_end は残らず、item_completed の Extension item kind=image_gen.generation が status / failure を持つ）、gpt-5.5 以外の bundled model は tool_mode=code_mode_only で imagegen は exec の custom tool の JavaScript から image_gen__imagegen として呼ばれる（function_call imagegen は出ない）。DEV-078 の分類はこのどちらも読めず、既定の経路で TOOL_NOT_CALLED を誤って出しうる。読み方を直し、code mode で呼び出しが見えないときは結論を出さない符号にする",
+      "acceptance_criteria": [
+        "event_msg item_completed の item.type=Extension・kind=image_gen.generation を item.id（call_id）ごとの終わりの記録として読む（status completed / failed、in_progress は無視、failure.type usageLimitExceeded → USAGE_LIMIT・他 → OTHER、優先順位は image_generation_end と同じ）。legacy の image_generation_end も読み続ける。function_call の無い Extension item も画像の呼び出しに数える",
+        "session_meta.history_mode（legacy / paginated / other / null）、custom_tool_call name=exec の数（code_mode_cells）、その input に image_gen__imagegen があるか（真偽だけ、文は保存しない）、model の slug から tool_mode（gpt-5.5 → direct、0.159.0 の bundled の code_mode_only の slug → code_mode_only、他 → unknown。catalog は実行時に読まない）を diagnostics.json（schema /3）と summary（hist= tool_mode= cm_cells= cm_ref=）に",
+        "img_calls=0 で code_mode_cells>0 または tool_mode=code_mode_only なら TOOL_NOT_SEEN_CODE_MODE（stop class inconclusive、request ではない）。TOOL_NOT_CALLED は direct mode か exec cell の無い log だけ。USAGE_LIMIT → CODEX_QUOTA、他の失敗 → CODEX_IMAGE_TOOL_FAILED は Extension item の構造化された失敗でも働く",
+        "-m や model / config の上書きは足さない（direct mode の model を強制するのは挙動の変更で、人の承認が要る。runbook に提案として書く）",
+        "変えないもの: jail・auth・run.lock・env allowlist・budget・cleanup（session log は読んだ後に消す）・PNG の検査・model の呼び出しは 1 回で再試行なし・v1 / v2 の prompt（byte 単位）・codexDotenvPresent と .env の扱い（DEV-079 の範囲）",
+        "runbook（design-image-poc.md）と .ai/blockers.md HUMAN-021 の読み方を直し、21a を人の結果つきで済みにする"
+      ],
+      "required_tests": [
+        "design-image-poc（fake sandbox、0.159.0 の形の fixture）: paginated direct mode の usageLimitExceeded → CODEX_QUOTA、code mode の exec cell + Extension failed → img_calls=1・CODEX_IMAGE_TOOL_FAILED、exec cell だけ → TOOL_NOT_SEEN_CODE_MODE（request ではない）、direct で呼び出しなし → TOOL_NOT_CALLED、Extension completed + PNG → IMAGE_SAVED、history_mode、canary（exec の input・revised_prompt・saved_path・result）、64 MiB の上限と大きな base64 の行",
+        "codex / sandbox / guardrails / ai-tasks",
+        "npm run typecheck、eslint（変えた file）、check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/capability.ts（parsing・分類。codexDotenvPresent は除く）",
+        "lib/design-agent/design-image/run.ts（stop class とコメント）",
+        "lib/design-agent/design-image/diagnostics.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "docs/operations/design-image-poc.md",
+        ".ai/tasks.json",
+        ".ai/blockers.md",
+        ".ai/reviews/DEV-080.md"
+      ],
+      "forbidden_scope": [
+        "Codex の実呼び出し",
+        "WSL・Staging・Production・DB・worker・timer",
+        "-m・model・config の上書きの追加（人の承認が要る）",
+        "codexDotenvPresent と .env の扱い（DEV-079）",
+        "jail・env allowlist・保護 path・cleanup を弱めること",
+        "v1 / v2 の prompt の変更",
+        "自動の再試行",
+        "session log や exec の input の文の保存や表示"
+      ],
+      "human_approval_triggers": [
+        "HUMAN-021b / 21c の実走",
+        "-m gpt-5.5 など direct mode の model を強制する案の採用",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }

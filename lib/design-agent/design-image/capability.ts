@@ -12,10 +12,29 @@
  * is returned to the MODEL as the tool's output, not as an error event: the
  * turn still completes with exit 0 and the model answers in text. The CLI's
  * own session log ($CODEX_HOME/sessions/…/rollout-…-<thread>.jsonl, deleted by
- * the PoC's cleanup) does record the call (response_item function_call
- * name=imagegen namespace=image_gen), its output and, in the default legacy
- * history mode, an event_msg image_generation_end with status and failure.
+ * the PoC's cleanup) records the call. DEV-080 (checked at rust-v0.159.0, the
+ * version HUMAN-021a found on the machine, and rust-v0.163.0: the same here):
  *
+ * - `codex exec` writes its rollout in the PAGINATED history mode, not legacy
+ *   (exec/src/lib.rs `history_mode: (!config.ephemeral).then_some(Paginated)`;
+ *   `session_meta.payload.history_mode`). Paginated drops `image_generation_end`
+ *   (rollout/src/policy.rs) and keeps the tool's TurnItem instead:
+ *   event_msg `item_completed` with `item.type = "Extension"`, `item.kind =
+ *   "image_gen.generation"`, `item.id` = the call id, `status`
+ *   (in_progress / completed / failed) and `failure` ({type: usageLimitExceeded …}).
+ *   That item is the structured end record; `image_generation_end` is still read
+ *   for a legacy-mode log.
+ * - A model whose catalog entry says `tool_mode: code_mode_only` (every bundled
+ *   model but gpt-5.5 in 0.159.0; the PoC passes no `-m`) never sees imagegen as
+ *   a direct tool: it can only call `image_gen__imagegen` from JavaScript inside
+ *   the `exec` custom tool (tools/src/code_mode.rs). The log then has
+ *   `custom_tool_call` name=exec cells and NO `function_call` imagegen; only the
+ *   Extension item shows the call, and a call refused before it started leaves
+ *   no item at all. So "no image call seen" in code mode is inconclusive
+ *   (TOOL_NOT_SEEN_CODE_MODE), never TOOL_NOT_CALLED.
+ * - The tools offered to the model are not in a 0.159.0 log, so "not offered" is
+ *   never read from it.
+
  * So, before the cleanup removes it, the session log is read IN MEMORY and only
  * fixed facts come out: counts, booleans, a validated CLI version and model
  * slug, and fixed failure codes. Text (the prompt, the answer, a tool output, a
@@ -101,6 +120,38 @@ export function classifyAnswerText(text: string | undefined): AnswerTextCode {
   return "TEXT_OTHER";
 }
 
+/** session_meta.history_mode as a fixed value ("other": any other string; null: not recorded). */
+export const HISTORY_MODES = ["legacy", "paginated", "other"] as const;
+export type HistoryMode = (typeof HISTORY_MODES)[number];
+
+/**
+ * How the model sees the image tool, from its slug only (a hint; the catalog is never read at runtime).
+ * From the bundled catalog of Codex CLI 0.159.0 (codex-rs/models-manager/models.json at rust-v0.159.0):
+ * gpt-5.5 has no `tool_mode` (so the features decide; `code_mode` / `code_mode_only` are off by default,
+ * features/src/lib.rs) and every other bundled slug has `"tool_mode": "code_mode_only"`. A model's own
+ * tool_mode takes precedence over the features (core/src/tools/mod.rs requested_tool_mode).
+ */
+export const TOOL_MODES = ["direct", "code_mode_only", "unknown"] as const;
+export type ToolMode = (typeof TOOL_MODES)[number];
+const DIRECT_MODELS: ReadonlySet<string> = new Set(["gpt-5.5"]);
+const CODE_MODE_ONLY_MODELS: ReadonlySet<string> = new Set([
+  "gpt-6-astra",
+  "gpt-6-sol",
+  "gpt-6-luna",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+  "gpt-daybreak-blue-latest",
+  "gpt-daybreak-red-latest",
+  "codex-auto-review",
+]);
+export function toolModeOf(model: string | null): ToolMode {
+  if (model === null) return "unknown";
+  if (DIRECT_MODELS.has(model)) return "direct";
+  if (CODE_MODE_ONLY_MODELS.has(model)) return "code_mode_only";
+  return "unknown";
+}
+
 /** What the CLI's own session log of this thread says (fixed values only). */
 export interface SessionFacts {
   /** A session log of this thread was found (a regular file, not a link). */
@@ -113,7 +164,19 @@ export interface SessionFacts {
   model: string | null;
   /** session_meta.model_provider is "openai" (null: not recorded). */
   model_provider_openai: boolean | null;
-  /** Calls of the image tool (function_call imagegen / image_gen, or the older image_generation_call item). */
+  /** session_meta.history_mode (DEV-080: `codex exec` writes "paginated"). */
+  history_mode: HistoryMode | null;
+  /** toolModeOf(model): whether imagegen is a direct tool for this model or only reachable from a code-mode `exec` cell. */
+  tool_mode: ToolMode;
+  /** Code-mode cells: response_item custom_tool_call name=exec (not counted in other_tool_calls). */
+  code_mode_cells: number;
+  /** Some exec cell's input names `image_gen__imagegen` (matched in memory; the input is never kept). */
+  code_mode_imagegen_ref: boolean;
+  /**
+   * Image tool calls: distinct call ids seen in a function_call imagegen (direct mode), an event_msg
+   * item_completed Extension item of kind image_gen.generation (paginated history, also from a code-mode cell),
+   * an image_generation_end (legacy history) or the older image_generation_call item.
+   */
   image_tool_calls: number;
   image_tool_completed: number;
   image_tool_failed: number;
@@ -134,6 +197,10 @@ export const emptySessionFacts = (): SessionFacts => ({
   cli_version: null,
   model: null,
   model_provider_openai: null,
+  history_mode: null,
+  tool_mode: "unknown",
+  code_mode_cells: 0,
+  code_mode_imagegen_ref: false,
   image_tool_calls: 0,
   image_tool_completed: 0,
   image_tool_failed: 0,
@@ -152,6 +219,12 @@ export const SESSION_WALK_LIMIT = 20_000;
 const HEAD_BYTES = 256 * 1024;
 const IMAGE_TOOL_NAME = "imagegen";
 const IMAGE_TOOL_NAMESPACE = "image_gen";
+/** The image tool's TurnItem in a paginated rollout: TurnItem::Extension (`type`), ExtensionItem kind (`kind`). */
+const EXTENSION_ITEM_TYPE = "Extension";
+const IMAGE_EXTENSION_KIND = "image_gen.generation";
+/** The code-mode custom tool, and how a cell's JavaScript names the image tool (tools/src/code_mode.rs). */
+const CODE_MODE_TOOL = "exec";
+const CODE_MODE_IMAGEGEN = `${IMAGE_TOOL_NAMESPACE}__${IMAGE_TOOL_NAME}`;
 const OTHER_CALL_TYPES = new Set(["function_call", "custom_tool_call", "local_shell_call", "tool_search_call", "web_search_call"]);
 
 type Json = Record<string, unknown>;
@@ -277,9 +350,10 @@ async function sessionLogs(codexHome: string, select: SessionSelector, f: Sessio
  * Never throws; no log is `log_found: false`.
  *
  * Per image call (keyed by call id), the evidence is weighed in this order:
- * 1. the CLI's structured failure object (image_generation_end / item `failure`) decides failed + its code
+ * 1. the CLI's structured failure object (`failure` on the paginated Extension item_completed, or on the legacy
+ *    image_generation_end) decides failed + its code
  *    (usageLimitExceeded → USAGE_LIMIT, any other type → OTHER); nothing overrides it;
- * 2. else the CLI's structured end status (completed / failed) decides the status — it wins over the shape of
+ * 2. else the CLI's structured end status (completed / failed; in_progress is ignored) decides the status — it wins over the shape of
  *    the tool's output (so end(completed) + an output without an image is completed: TOOL_CALLED_NO_FILE);
  * 3. else the output's shape decides (an image content item → completed, none → failed);
  * a failed call without a structured failure takes its code from the tool output's text when that text names a
@@ -314,8 +388,14 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
       else f.unreadable = true;
       continue;
     }
-    for (const raw of read.buf.toString("utf8").split("\n")) {
-      const line = raw.trim();
+    // Line by line over the buffer (never one 64 MiB string split into an array of every line): a successful
+    // image's line can carry its base64 a few times; only that one line is decoded and parsed at a time.
+    const buf = read.buf;
+    for (let start = 0; start < buf.length; ) {
+      let stop = buf.indexOf(0x0a, start);
+      if (stop === -1) stop = buf.length;
+      const line = buf.toString("utf8", start, stop).trim();
+      start = stop + 1;
       if (line === "") continue;
       f.lines += 1;
       let rec: Json | undefined;
@@ -335,6 +415,8 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
         if (v !== undefined && VERSION.test(v)) f.cli_version = v;
         const provider = str(p.model_provider);
         if (provider !== undefined) f.model_provider_openai = provider === "openai";
+        const history = str(p.history_mode);
+        if (history !== undefined) f.history_mode = history === "legacy" || history === "paginated" ? history : "other";
       } else if (type === "turn_context") {
         const m = str(p.model);
         if (m !== undefined) f.model = modelSlug(m);
@@ -360,13 +442,20 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
               if (code !== "OTHER") c.textFailure = code;
             }
           }
+        } else if (t === "custom_tool_call" && name === CODE_MODE_TOOL) {
+          // a code-mode cell: counted, its JavaScript matched in memory for the image tool's name only
+          f.code_mode_cells += 1;
+          if (str(p.input)?.includes(CODE_MODE_IMAGEGEN)) f.code_mode_imagegen_ref = true;
         } else if (t !== undefined && OTHER_CALL_TYPES.has(t)) {
           f.other_tool_calls += 1;
         }
       } else if (type === "event_msg") {
         const t = str(p.type);
         const item = t === "item_completed" ? obj(p.item) : undefined;
-        const record = t === "image_generation_end" ? p : item && /image_?generation/i.test(str(item.type) ?? "") ? item : undefined;
+        // legacy history: image_generation_end; paginated history: item_completed with the Extension item
+        // (in_progress is not an end status and is ignored below); an older image-generation TurnItem spelling too
+        const isExtension = !!item && str(item.type) === EXTENSION_ITEM_TYPE && str(item.kind) === IMAGE_EXTENSION_KIND;
+        const record = t === "image_generation_end" ? p : item && (isExtension || /image_?generation/i.test(str(item.type) ?? "")) ? item : undefined;
         if (record) {
           const c = callOf(str(record.call_id) ?? str(record.id));
           const failure = obj(record.failure);
@@ -386,6 +475,7 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
     const failure: ImageFailureCode | undefined = status === "failed" ? (c.endFailure ?? c.textFailure ?? "OTHER") : undefined;
     return { status, failure };
   });
+  f.tool_mode = toolModeOf(f.model);
   f.image_tool_calls = settled.length;
   f.image_tool_completed = settled.filter((c) => c.status === "completed").length;
   f.image_tool_failed = settled.filter((c) => c.status === "failed").length;
@@ -394,13 +484,28 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
 }
 
 /** How the image step ended, as one fixed code. */
-export const IMAGE_OUTCOMES = ["IMAGE_SAVED", "NO_SESSION_LOG", "TOOL_NOT_CALLED", "TOOL_FAILED_USAGE_LIMIT", "TOOL_FAILED_POLICY", "TOOL_FAILED", "TOOL_CALLED_NO_FILE"] as const;
+export const IMAGE_OUTCOMES = [
+  "IMAGE_SAVED",
+  "NO_SESSION_LOG",
+  "TOOL_NOT_CALLED",
+  "TOOL_NOT_SEEN_CODE_MODE",
+  "TOOL_FAILED_USAGE_LIMIT",
+  "TOOL_FAILED_POLICY",
+  "TOOL_FAILED",
+  "TOOL_CALLED_NO_FILE",
+] as const;
 export type ImageOutcome = (typeof IMAGE_OUTCOMES)[number];
 
+/**
+ * No image call seen means "not called" (TOOL_NOT_CALLED) only when imagegen was a direct tool, as far as the
+ * log shows: no code-mode cell ran and the model is not a code_mode_only one. Otherwise (DEV-080) a call from
+ * inside an exec cell that failed before the tool started leaves no record, so it is TOOL_NOT_SEEN_CODE_MODE:
+ * inconclusive, never read as "the model chose text".
+ */
 export function deriveImageOutcome(facts: SessionFacts, imageSaved: boolean): ImageOutcome {
   if (imageSaved) return "IMAGE_SAVED";
   if (!facts.log_found || facts.truncated || facts.unreadable) return "NO_SESSION_LOG";
-  if (facts.image_tool_calls === 0) return "TOOL_NOT_CALLED";
+  if (facts.image_tool_calls === 0) return facts.code_mode_cells > 0 || facts.tool_mode === "code_mode_only" ? "TOOL_NOT_SEEN_CODE_MODE" : "TOOL_NOT_CALLED";
   if (facts.image_tool_failed > 0) {
     if (facts.image_failure_codes.includes("USAGE_LIMIT")) return "TOOL_FAILED_USAGE_LIMIT";
     if (facts.image_failure_codes.includes("POLICY")) return "TOOL_FAILED_POLICY";
