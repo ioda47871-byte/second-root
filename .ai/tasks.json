@@ -3322,11 +3322,12 @@
       "priority": "P2",
       "depends_on": [
         "DEV-074",
-        "DEV-077"
+        "DEV-077",
+        "DEV-078"
       ],
       "attempts": 0,
       "last_failure": null,
-      "blocked_reason": "HUMAN-019 は流した（2026-10-21、CODEX_NO_IMAGE）。DEV-077（診断と v2 の prompt の修正）の merge の後、HUMAN-020: 第2案をもう 1 回流す人の承認と実行、その画像の評価（22/25 以上 + hard fail なし）待ち",
+      "blocked_reason": "HUMAN-019（1effb40）と HUMAN-020（cae33e8）は流した（2026-10-21、どちらも CODEX_NO_IMAGE: exit 0・短い文章の答え・画像なし）。DEV-078（画像ツールの能力の preflight・session log からの固定の分類）の merge の後、HUMAN-021（費用 0 の手元の確認 → v1 の再走 → v2）の人の承認と実行、その画像の評価（22/25 以上 + hard fail なし）待ち",
       "branch": "feature/design-image-v2",
       "purpose": "HUMAN-018 の 1 枚目はポスター風で営業の訴求が弱かった。人の新しい方針（2026-10-21）で和菓子そのものの AI 生成画像を提案用イメージとして許し、実装できる Web サイトの design comp（3 節・nav・商品の画像 card・店舗情報の定義リスト）を 1 枚作らせて評価する。店舗・人物の画像・logo・事実の創作・実物だと言う文は引き続き禁止。v2 と方針は PoC の中だけ",
       "acceptance_criteria": [
@@ -3458,6 +3459,95 @@
         "診断が (b) を示したときの画像の受け取り場所の規則の変更（review の後）"
       ],
       "decision": "2026-10-21: 人の依頼（HUMAN-019 が CODEX_NO_IMAGE）で着手（develop 1effb40 から）。Codex は流していない。最も疑わしいのは (a): v2 の prompt が v1 の 2.6 倍（12379 文字）で、HTML / CSS・developer・screenshot・grid などの作る作業の語が多く、画像ツールの指示は 1 回だけ（v1 と同じ文）で末尾の「Generate the image now.」まで 1.2 万文字。(b)〜(d) は証拠がないので診断で分ける"
+    },
+    {
+      "id": "DEV-078",
+      "title": "Design image PoC: Codex の組み込み画像ツールが使われなかった（HUMAN-019 / HUMAN-020）理由を分ける能力の preflight と固定の分類（Codex は流さない）",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-077"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/design-image-tool-check",
+      "purpose": "HUMAN-020 は exit 0・image_tool=0/0・agent_msgs=1（32 文字）・errors=0・turn=completed・画像なしで止まった。Codex CLI 0.163.0 の source では画像ツールは extension の function tool image_gen.imagegen で、codex exec --json はその item を出さない（image_tool=0/0 は何も証明しない）。ツールの失敗（image_gen の利用枠を含む）は error event ではなくツールの出力としてモデルに返る。CLI 自身の session log（cleanup が消す）には呼び出しと失敗が残る。prompt を書き換えて流し直すのではなく、model を呼ばない preflight と、session log と最後の答えをメモリの中だけで固定の符号にする分類を足し、次の 1 回で原因を分けられるようにする。人の実験の順番（費用 0 の手元の確認 → v1 の再走 → v2）は HUMAN-021",
+      "acceptance_criteria": [
+        "preflight（model の呼び出しの前、同じ jail・同じ env）: $CODEX_HOME/.env があれば CODEX_DOTENV_PRESENT で止まる（Codex は .env を自分の環境に読み込み CODEX_* しか除かないので API key が allowlist を迂回しうる。中身は開かない）。codex --version を jail の中で 1 回（network・model なし）、失敗は CODEX_PREFLIGHT_FAILED、形の違う出力は null で続行",
+        "exec に -c features.image_generation=true（0.163.0 では stable・既定で有効。config.toml が切っていても command line で固定。config.toml は変えない。sandbox・network は変えない）",
+        "Codex の後、cleanup の前に、この thread の session log をメモリの中だけで読み、固定の事実だけを出す: CLI の版（形を検査）、model（slug の形、それ以外は other）、provider が openai か、画像ツールの呼び出し / 完了 / 失敗の数、失敗の符号（USAGE_LIMIT / POLICY / OTHER: CLI の失敗の記録とツールの出力から。モデルの答えからは決めない）、他のツールの呼び出しの数",
+        "最後の答えを固定の符号（TEXT_NONE / TEXT_TOOL_UNAVAILABLE / TEXT_TOOL_ERROR / TEXT_USAGE_LIMIT / TEXT_REFUSAL / TEXT_OTHER）にする。文は保存・表示しない。機械の状態（利用枠・サインイン）を答えの文から決めない",
+        "image_outcome（IMAGE_SAVED / NO_SESSION_LOG / TOOL_NOT_CALLED / TOOL_FAILED_USAGE_LIMIT / TOOL_FAILED_POLICY / TOOL_FAILED / TOOL_CALLED_NO_FILE）と stop_class（approval / input / environment / capability / request / output / interrupted）を diagnostics.json（schema /2）と POC_DIAG_SUMMARY に。画像ツールの利用枠は CODEX_QUOTA、他のツールの失敗は CODEX_IMAGE_TOOL_FAILED",
+        "変えないもの: v1 の prompt（byte 単位）、v2 の prompt と禁止事項と長さの上限、jail と保護 path、ChatGPT だけ・API key の遮断、run.lock、env の allowlist、3300 秒、cleanup（session log は従来どおり消す）、PNG の検査、model の呼び出しは 1 回・自動の再試行なし",
+        "runbook（design-image-poc.md）に調査の根拠（出典つき）・新しい符号・stop class と自動化での扱い（同じ依頼を自動で再試行しない）・診断の読み方の訂正",
+        "HUMAN-020 を結果つきで記録し、HUMAN-021（費用 0 の手元の確認 → v1 の再走 → v2、順番と費用と分かること）を .ai/blockers.md に"
+      ],
+      "required_tests": [
+        "design-image-poc（fake sandbox）: preflight の順番と 1 回の model 呼び出し、.env で止まる、--version の失敗、session log の分類（利用枠・policy・呼ばれない・画像なし）、答えの分類、canary（prompt・答え・ツールの出力・session log・model 名・版）が diagnostics.json と summary に出ない",
+        "codex / photo-codex / sandbox / ai-tasks",
+        "npm run typecheck、eslint（変えた file）、bash -n、check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/**",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "docs/operations/design-image-poc.md",
+        ".ai/tasks.json",
+        ".ai/blockers.md",
+        ".ai/reviews/DEV-078.md"
+      ],
+      "forbidden_scope": [
+        "Codex の実呼び出し・API key",
+        "WSL・Staging・Production・DB・worker・timer",
+        "config.toml・.wslconfig の変更",
+        "sandbox / jail / env allowlist / 保護 path を弱めること",
+        "v1 の prompt の変更",
+        "自動の再試行",
+        "応答の文・session log の保存や表示"
+      ],
+      "human_approval_triggers": [
+        "HUMAN-021 の各段（手元の確認、v1 の再走、v2 の実走）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
+    },
+    {
+      "id": "DEV-079",
+      "title": "design worker の Codex 呼び出しで $CODEX_HOME/.env を見て fail closed にする（API key の迂回を塞ぐ）",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-078"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "DEV-078 の調査: Codex CLI はどの起動でも（--version・login status を含む）clap の前に $CODEX_HOME/.env を自分の環境に読み込み、CODEX_* しか除かない（codex-rs/arg0/src/lib.rs load_dotenv）。worker の env allowlist（sandbox.ts）と CODEX_BLOCKED_ENV を通らずに OPENAI_API_KEY / OPENAI_BASE_URL が Codex に届きうる。DEV-078 は PoC だけを塞いだ（CODEX_DOTENV_PRESENT）。worker（lib/design-agent/codex.ts の assertChatGptSignIn・runCodexJson、photo の Codex 呼び出し）は未対応",
+      "acceptance_criteria": [
+        "codexDotenvPresent（lstat だけ、中身は開かない、link も存在とみなす、読めなければ存在とみなす）を lib/design-agent/codex.ts に移し、design-image の capability.ts はそれを使う",
+        "sandbox の中のすべての Codex process（login status・--version・exec、worker・photo・compare・PoC）の前に確かめ、あれば Codex を起動せずに固定の符号（環境の失敗、isEnvironmentFailure）で止まる",
+        "worker の結果・ledger・通知は固定の符号だけ（.env の中身・path を出さない）",
+        "runbook（design-worker-wsl.md など）に符号と、人が jail の中で .env を消す / 移す手順"
+      ],
+      "required_tests": [
+        "codex / photo-codex / design-image-poc / worker の unit（fake sandbox）: .env（file・link・読めない）で Codex を起動しない、無ければ今までどおり",
+        "npm run typecheck、eslint、check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/codex.ts",
+        "lib/design-agent/design-image/capability.ts",
+        "lib/design-agent/**（呼び出し側の符号の扱い）",
+        "tests/unit/design-agent/**",
+        "docs/operations/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "Codex の実呼び出し",
+        "WSL・Staging・Production・DB・worker の timer",
+        "jail・env allowlist・保護 path を弱めること",
+        "CODEX_HOME の file を書き換える・消すこと（人の操作）"
+      ],
+      "human_approval_triggers": [
+        "着手（P1、別の review）",
+        "worker の挙動の変更なので Fresh Review と develop への merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }

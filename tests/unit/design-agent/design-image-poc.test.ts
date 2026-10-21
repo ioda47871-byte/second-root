@@ -1,6 +1,6 @@
 import { execFile, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -24,7 +24,8 @@ import {
   PocInputError,
 } from "@/lib/design-agent/design-image/prompt";
 import { classifyError, CodexEventTracker, IMAGE_ITEM_TYPES, ITEM_TYPES, MAX_PARTIAL_LINE_CHARS, type EventDiagnostics, type ImageLocationDiagnostics, type PocDiagnostics } from "@/lib/design-agent/design-image/diagnostics";
-import { cleanupActivePoc, isInsidePath, lastPocDiagnostics, REPORT_NOTES, REPORT_NOTES_V2, runDesignImagePoc, type PocOptions } from "@/lib/design-agent/design-image/run";
+import { classifyAnswerText, deriveImageOutcome, emptySessionFacts, MAX_SESSION_LOG_BYTES, parseCodexVersion, readSessionFacts } from "@/lib/design-agent/design-image/capability";
+import { cleanupActivePoc, isInsidePath, lastPocDiagnostics, pocStopClass, REPORT_NOTES, REPORT_NOTES_V2, runDesignImagePoc, type PocOptions } from "@/lib/design-agent/design-image/run";
 import type { CodexSandbox } from "@/lib/design-agent/sandbox";
 
 // The design-image PoC (DEV-074) against a fake sandbox whose `run` plays the
@@ -69,6 +70,7 @@ let outRoot: string;
 let prompts: string[];
 let execCwds: string[];
 let prepared: Array<{ env: Record<string, string | undefined>; paths: string[] }>;
+let versionCalls: string[];
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "sr-img-poc-test-"));
@@ -80,6 +82,7 @@ beforeEach(() => {
   prompts = [];
   execCwds = [];
   prepared = [];
+  versionCalls = [];
 });
 
 afterEach(() => {
@@ -104,6 +107,10 @@ function fakeSandbox(exec: Exec, login = "Logged in using ChatGPT\n"): CodexSand
     env: { HOME: home, CODEX_HOME: codexHome },
     async run(args, o) {
       if (args[0] === "login") return ok(login);
+      if (args[0] === "--version") {
+        versionCalls.push(o.workDir);
+        return ok("codex-cli 0.163.0\n");
+      }
       execCwds.push(o.workDir);
       prompts.push(o.input ?? "");
       expect(args.slice(0, 5)).toEqual(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json"]);
@@ -679,7 +686,7 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
       env: base.env,
       async run(args, o) {
         const result = await base.run(args, { ...o, onStdout: undefined });
-        if (args[0] !== "login") {
+        if (args[0] !== "login" && args[0] !== "--version") {
           // line by line, or in fixed-size pipe chunks (64 KiB like a real pipe)
           const parts = chunkSize ? Array.from({ length: Math.ceil(result.stdout.length / chunkSize) }, (_, i) => result.stdout.slice(i * chunkSize, (i + 1) * chunkSize)) : result.stdout.split(/(?<=\n)/);
           for (const part of parts) o.onStdout?.(part);
@@ -719,7 +726,12 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
     }));
     expect(result).toEqual({ status: "stopped", code: "CODEX_NO_IMAGE" });
     const { d, text, summary } = diagOf();
-    expect(d).toMatchObject({ schema: "sr-design-image-poc-diagnostics/1", outcome: "stopped", stop_code: "CODEX_NO_IMAGE", direction_version: "v2", codex: { invoked: true, exit_code: 0, signal: null, timed_out: false, thread_id_present: true } });
+    expect(d).toMatchObject({ schema: "sr-design-image-poc-diagnostics/2", outcome: "stopped", stop_code: "CODEX_NO_IMAGE", direction_version: "v2", codex: { invoked: true, exit_code: 0, signal: null, timed_out: false, thread_id_present: true } });
+    // DEV-078: the session log has no image call; the answer is a description (TEXT_OTHER), a request stop
+    expect(d.preflight).toEqual({ cli_version: "0.163.0", dotenv_present: false });
+    expect(d.session).toMatchObject({ log_found: true, image_tool_calls: 0, image_tool_failed: 0 });
+    expect(d.classification).toEqual({ image_outcome: "TOOL_NOT_CALLED", answer_text: "TEXT_OTHER", stop_class: "request" });
+    expect(summary).toContain("outcome=TOOL_NOT_CALLED answer=TEXT_OTHER class=request");
     expect(d.prompt_chars).toBe(prompts[0]!.length);
     expect(d.events).toMatchObject({ image_tool_started: false, image_tool_completed: false, agent_messages: 1, agent_text_chars: `${CANARY} here is a description of the design instead`.length, error_events: 0, turn_failed: false, turn: "completed", error_codes: [] });
     expect(d.events.types).toMatchObject({ "thread.started": 1, "turn.started": 1, "item.completed": 1, "turn.completed": 1, other: 0 });
@@ -1063,6 +1075,321 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
     expect(readFileSync(file!, "utf8")).not.toContain(h);
     spawnSync("rm", ["-rf", h]);
   }, 60_000);
+});
+
+describe("DEV-078: preflight, the CLI's session log and fixed classification codes", () => {
+  const CANARY = "CANARY-dev078-DO-NOT-LEAK";
+  const line = (o: unknown) => `${JSON.stringify(o)}\n`;
+  /** A session log as Codex CLI 0.163.0 writes it (legacy history mode), plus `records`. */
+  function leaveLog(cwd: string, records: unknown[], meta: Record<string, unknown> = {}, images: Record<string, Buffer> = {}): void {
+    const sessions = join(codexHome, "sessions", "2026", "10", "21");
+    mkdirSync(sessions, { recursive: true });
+    const head = [
+      { timestamp: "t", type: "session_meta", payload: { id: THREAD, cwd, cli_version: "0.163.0", originator: "codex_exec", model_provider: "openai", base_instructions: { text: CANARY }, ...meta } },
+      { timestamp: "t", type: "turn_context", payload: { cwd, model: "gpt-5.5-codex", approval_policy: "never", sandbox_policy: { type: "read-only" } } },
+      { timestamp: "t", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: `${CANARY} the prompt` }] } },
+    ];
+    writeFileSync(join(sessions, `rollout-2026-10-21T10-00-00-${THREAD}.jsonl`), [...head, ...records].map((r) => line(r)).join(""));
+    const dir = join(codexHome, "generated_images", THREAD);
+    mkdirSync(dir, { recursive: true });
+    for (const [name, bytes] of Object.entries(images)) writeFileSync(join(dir, name), bytes);
+  }
+  const call = (id = "call_1") => ({ timestamp: "t", type: "response_item", payload: { type: "function_call", name: "imagegen", namespace: "image_gen", arguments: JSON.stringify({ prompt: CANARY }), call_id: id } });
+  const failedOutput = (text: string, id = "call_1") => ({ timestamp: "t", type: "response_item", payload: { type: "function_call_output", call_id: id, output: text } });
+  const okOutput = (id = "call_1") => ({ timestamp: "t", type: "response_item", payload: { type: "function_call_output", call_id: id, output: [{ type: "input_image", image_url: `data:image/png;base64,${CANARY}` }, { type: "input_text", text: `${CANARY} saved` }] } });
+  const end = (status: string, failure?: unknown, id = "call_1") => ({ timestamp: "t", type: "event_msg", payload: { type: "image_generation_end", call_id: id, status, revised_prompt: CANARY, result: "", ...(failure ? { failure } : {}) } });
+  const answer = (text: string) => `${threadEvent()}${line({ type: "turn.started" })}${line({ type: "item.completed", item: { id: "i", type: "agent_message", text } })}${line({ type: "turn.completed" })}`;
+
+  function diag(): { d: PocDiagnostics; text: string; summary: string } {
+    const r = lastPocDiagnostics()!;
+    const text = r.file ? readFileSync(r.file, "utf8") : "";
+    return { d: r.diagnostics, text, summary: r.summary };
+  }
+  function clean(text: string, summary: string): void {
+    for (const s of [CANARY, root, codexHome, THREAD, "image generation failed", "架空菓庵", "FACTS_BEGIN"]) {
+      expect(text, s).not.toContain(s);
+      expect(summary, s).not.toContain(s);
+    }
+    expect(summary).toMatch(/^[a-z_]+=[A-Za-z0-9_.,/-]+( [a-z_]+=[A-Za-z0-9_.,/-]+)*$/);
+  }
+
+  it("preflight: `codex --version` in the jail once, before the one exec; the flag pinned on the command line; one model call", async () => {
+    const seen: string[][] = [];
+    const exec: Exec = ({ cwd }) => {
+      leaveLog(cwd, [call(), okOutput(), end("completed")], {}, { "call_1.png": png() });
+      return ok(answer("done"));
+    };
+    const result = await runDesignImagePoc({
+      ...options(exec),
+      prepareSandbox: async () => {
+        const base = fakeSandbox(exec);
+        return { env: base.env, run: (args, o) => (seen.push([...args]), base.run(args, o)) };
+      },
+    });
+    expect(result.status).toBe("done");
+    expect(seen.map((a) => a[0])).toEqual(["login", "--version", "exec"]);
+    expect(seen[1]).toEqual(["--version"]);
+    const exec0 = seen[2]!;
+    expect(exec0).toEqual(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", execCwds[0], "-"]);
+    expect(exec0.join(" ")).not.toMatch(/danger|full-access|workspace-write|--enable|network/);
+    expect(prompts).toHaveLength(1); // exactly one model call
+    expect(versionCalls).toHaveLength(1);
+    expect(versionCalls[0]).toMatch(/\/sr-design-codex-[A-Za-z0-9]{6}$/);
+    expect(existsSync(versionCalls[0]!)).toBe(false); // its work dir is removed
+    const { d, text, summary } = diag();
+    expect(d.preflight).toEqual({ cli_version: "0.163.0", dotenv_present: false });
+    expect(d.session).toMatchObject({ log_found: true, cli_version: "0.163.0", model: "gpt-5.5-codex", model_provider_openai: true, image_tool_calls: 1, image_tool_completed: 1, image_tool_failed: 0, image_failure_codes: [] });
+    expect(d.classification).toEqual({ image_outcome: "IMAGE_SAVED", answer_text: "TEXT_OTHER", stop_class: null });
+    expect(summary).toContain("cli=0.163.0 dotenv=0 model=gpt-5.5-codex provider_openai=1 log=1 img_calls=1 img_ok=1 img_failed=0 img_fail=- other_calls=0 outcome=IMAGE_SAVED");
+    clean(text, summary);
+    expect(sessionLogs()).toEqual([]); // the cleanup still removes the session log
+  });
+
+  it("CODEX_DOTENV_PRESENT: a $CODEX_HOME/.env stops before any Codex process; its content is never read", async () => {
+    writeFileSync(join(codexHome, ".env"), `OPENAI_API_KEY=${CANARY}\n`);
+    const result = await runDesignImagePoc(options(happy));
+    expect(result).toEqual({ status: "stopped", code: "CODEX_DOTENV_PRESENT" });
+    expect(prompts).toHaveLength(0);
+    expect(versionCalls).toHaveLength(0);
+    const { d, text, summary } = diag();
+    expect(d.preflight).toEqual({ cli_version: null, dotenv_present: true });
+    expect(d.classification.stop_class).toBe("environment");
+    expect(summary).toContain("code=CODEX_DOTENV_PRESENT");
+    expect(summary).toContain("dotenv=1");
+    clean(text, summary);
+    // a link named .env counts too (never followed)
+    spawnSync("rm", ["-f", join(codexHome, ".env")]);
+    symlinkSync("/nonexistent-target", join(codexHome, ".env"));
+    expect(await runDesignImagePoc(options(happy))).toEqual({ status: "stopped", code: "CODEX_DOTENV_PRESENT" });
+  });
+
+  it("CODEX_PREFLIGHT_FAILED: `codex --version` failing stops before the model call; an unexpected version shape is recorded as null", async () => {
+    const failing: CodexSandbox = { env: { HOME: home, CODEX_HOME: codexHome }, run: async (args, o) => (args[0] === "--version" ? { ...ok(), code: 2 } : fakeSandbox(happy).run(args, o)) };
+    expect(await runDesignImagePoc({ ...options(happy), prepareSandbox: async () => failing })).toEqual({ status: "stopped", code: "CODEX_PREFLIGHT_FAILED" });
+    expect(prompts).toHaveLength(0);
+    expect(diag().d.classification.stop_class).toBe("environment");
+    const odd: CodexSandbox = { env: { HOME: home, CODEX_HOME: codexHome }, run: async (args, o) => (args[0] === "--version" ? ok(`${CANARY}\n`) : fakeSandbox(happy).run(args, o)) };
+    expect((await runDesignImagePoc({ ...options(happy), prepareSandbox: async () => odd })).status).toBe("done");
+    const { d, text, summary } = diag();
+    expect(d.preflight).toEqual({ cli_version: null, dotenv_present: false });
+    clean(text, summary);
+  });
+
+  it("the image tool hit its usage limit (CLI failure record): CODEX_QUOTA, environment; no text kept", async () => {
+    const result = await runDesignImagePoc(options(({ cwd }) => {
+      leaveLog(cwd, [call(), failedOutput(`image generation failed: ${CANARY}`), end("failed", { type: "usageLimitExceeded", limitId: "image_gen", resetsAt: 1 })]);
+      return ok(answer(`image generation failed: ${CANARY}`));
+    }));
+    expect(result).toEqual({ status: "stopped", code: "CODEX_QUOTA" });
+    const { d, text, summary } = diag();
+    expect(d.session).toMatchObject({ image_tool_calls: 1, image_tool_failed: 1, image_failure_codes: ["USAGE_LIMIT"] });
+    expect(d.classification).toEqual({ image_outcome: "TOOL_FAILED_USAGE_LIMIT", answer_text: "TEXT_TOOL_ERROR", stop_class: "environment" });
+    expect(summary).toContain("img_calls=1 img_ok=0 img_failed=1 img_fail=USAGE_LIMIT");
+    clean(text, summary);
+    expect(sessionLogs()).toEqual([]);
+  });
+
+  it("the image tool failed otherwise (its output says a policy refusal): CODEX_IMAGE_TOOL_FAILED, capability", async () => {
+    const result = await runDesignImagePoc(options(({ cwd }) => {
+      leaveLog(cwd, [call(), failedOutput(`image generation failed: rejected by the safety system ${CANARY}`)]);
+      return ok(answer(`${CANARY} sorry`));
+    }));
+    expect(result).toEqual({ status: "stopped", code: "CODEX_IMAGE_TOOL_FAILED" });
+    const { d, text, summary } = diag();
+    expect(d.session).toMatchObject({ image_tool_calls: 1, image_tool_failed: 1, image_failure_codes: ["POLICY"] });
+    expect(d.classification).toEqual({ image_outcome: "TOOL_FAILED_POLICY", answer_text: "TEXT_REFUSAL", stop_class: "capability" });
+    clean(text, summary);
+  });
+
+  it("the model's words never decide a machine state: a text answer that claims a usage limit stays CODEX_NO_IMAGE", async () => {
+    const result = await runDesignImagePoc(options(({ cwd }) => {
+      leaveLog(cwd, []);
+      return ok(answer(`usage limit reached ${CANARY}`));
+    }));
+    expect(result).toEqual({ status: "stopped", code: "CODEX_NO_IMAGE" });
+    expect(diag().d.classification).toEqual({ image_outcome: "TOOL_NOT_CALLED", answer_text: "TEXT_USAGE_LIMIT", stop_class: "request" });
+  });
+
+  it("no image tool call and a short 'tool unavailable' answer: CODEX_NO_IMAGE, TEXT_TOOL_UNAVAILABLE, a capability stop", async () => {
+    const result = await runDesignImagePoc(options(({ cwd }) => {
+      leaveLog(cwd, [{ timestamp: "t", type: "response_item", payload: { type: "function_call", name: "exec_command", arguments: CANARY, call_id: "c9" } }]);
+      return ok(answer("Image generation is unavailable."));
+    }));
+    expect(result).toEqual({ status: "stopped", code: "CODEX_NO_IMAGE" });
+    const { d, text, summary } = diag();
+    expect(d.session).toMatchObject({ image_tool_calls: 0, other_tool_calls: 1 });
+    expect(d.classification).toEqual({ image_outcome: "TOOL_NOT_CALLED", answer_text: "TEXT_TOOL_UNAVAILABLE", stop_class: "capability" });
+    expect(summary).toContain("outcome=TOOL_NOT_CALLED answer=TEXT_TOOL_UNAVAILABLE class=capability");
+    clean(text, summary);
+  });
+
+  it("the tool returned an image but no file landed: TOOL_CALLED_NO_FILE (CODEX_NO_IMAGE)", async () => {
+    const result = await runDesignImagePoc(options(({ cwd }) => {
+      leaveLog(cwd, [call(), okOutput(), end("completed")]);
+      return ok(answer("done"));
+    }));
+    expect(result).toEqual({ status: "stopped", code: "CODEX_NO_IMAGE" });
+    expect(diag().d.classification.image_outcome).toBe("TOOL_CALLED_NO_FILE");
+  });
+
+  it("readSessionFacts: validated version and model only; a canary model is 'other'; links, other threads and huge logs are not read", async () => {
+    const sessions = join(codexHome, "sessions", "2026", "10", "21");
+    mkdirSync(sessions, { recursive: true });
+    const write = (thread: string, records: unknown[]) => writeFileSync(join(sessions, `rollout-x-${thread}.jsonl`), `${records.map((r) => JSON.stringify(r)).join("\n")}\nnot json\n`);
+    write(THREAD, [
+      { type: "session_meta", payload: { cli_version: `${CANARY}`, model_provider: "custom" } },
+      { type: "turn_context", payload: { model: `${CANARY}` } },
+      { type: "response_item", payload: { type: "image_generation_call", id: "ig_1", status: "completed", result: CANARY } },
+      { type: "event_msg", payload: { type: "item_completed", item: { type: "imageGeneration", id: "ig_2", status: "failed", failure: { type: "usageLimitExceeded" } } } },
+    ]);
+    write(OTHER_THREAD, [call("x"), failedOutput("quota", "x")]);
+    const f = await readSessionFacts(codexHome, THREAD);
+    expect(f).toMatchObject({ log_found: true, cli_version: null, model: "other", model_provider_openai: false, image_tool_calls: 2, image_tool_completed: 1, image_tool_failed: 1, image_failure_codes: ["USAGE_LIMIT"], unparsed_lines: 1 });
+    expect(JSON.stringify(f)).not.toContain(CANARY);
+    expect(await readSessionFacts(codexHome, undefined)).toEqual(emptySessionFacts());
+    expect(await readSessionFacts(codexHome, "../../etc")).toEqual(emptySessionFacts());
+    // a link is never followed
+    const t3 = "33333333-3333-4333-8333-333333333333";
+    symlinkSync(join(sessions, `rollout-x-${THREAD}.jsonl`), join(sessions, `rollout-y-${t3}.jsonl`));
+    expect((await readSessionFacts(codexHome, t3)).log_found).toBe(false);
+  });
+
+  describe("review F1: the real record order (call → image_generation_end → function_call_output)", () => {
+    const facts = async (records: unknown[]) => {
+      leaveLog(join(root, "cwd-x"), records);
+      return readSessionFacts(codexHome, THREAD);
+    };
+    it("end(failed) without a failure object + a policy text in the output → POLICY (text refines, OTHER only at the end)", async () => {
+      expect(await facts([call(), end("failed"), failedOutput(`image generation failed: rejected by the safety system ${CANARY}`)])).toMatchObject({ image_tool_calls: 1, image_tool_failed: 1, image_failure_codes: ["POLICY"] });
+    });
+    it("end(failed) + 'rate limit 429' in the output → USAGE_LIMIT, and the run stops as CODEX_QUOTA", async () => {
+      expect(await facts([call(), end("failed"), failedOutput("image generation failed: rate limit 429")])).toMatchObject({ image_tool_failed: 1, image_failure_codes: ["USAGE_LIMIT"] });
+      const result = await runDesignImagePoc(options(({ cwd }) => {
+        leaveLog(cwd, [call(), end("failed"), failedOutput("image generation failed: rate limit 429")]);
+        return ok(answer("x"));
+      }));
+      expect(result).toEqual({ status: "stopped", code: "CODEX_QUOTA" });
+      expect(lastPocDiagnostics()!.diagnostics.classification).toMatchObject({ image_outcome: "TOOL_FAILED_USAGE_LIMIT", stop_class: "environment" });
+    });
+    it("end(failed, usageLimitExceeded) + any output → USAGE_LIMIT (the structured failure wins over a policy text)", async () => {
+      expect(await facts([call(), end("failed", { type: "usageLimitExceeded", limitId: "image_gen", resetsAt: null }), failedOutput("safety system")])).toMatchObject({ image_tool_failed: 1, image_failure_codes: ["USAGE_LIMIT"] });
+      // the output first, the structured failure later: the same
+      expect(await facts([call(), failedOutput("safety system"), end("failed", { type: "usageLimitExceeded" })])).toMatchObject({ image_failure_codes: ["USAGE_LIMIT"] });
+    });
+    it("end(failed) + a neutral output text → OTHER (assigned at the end)", async () => {
+      expect(await facts([call(), end("failed"), failedOutput("image generation failed: boom")])).toMatchObject({ image_tool_failed: 1, image_failure_codes: ["OTHER"] });
+    });
+    it("end(completed) + an output without an image → completed (the structured status wins over the output's shape): TOOL_CALLED_NO_FILE", async () => {
+      const f = await facts([call(), end("completed"), failedOutput("no image here, rate limit")]);
+      expect(f).toMatchObject({ image_tool_calls: 1, image_tool_completed: 1, image_tool_failed: 0, image_failure_codes: [] });
+      expect(deriveImageOutcome(f, false)).toBe("TOOL_CALLED_NO_FILE");
+    });
+    it("no end record: the output's shape decides (an image → completed, none → failed with the text's code)", async () => {
+      expect(await facts([call(), okOutput()])).toMatchObject({ image_tool_completed: 1, image_tool_failed: 0 });
+      expect(await facts([call(), failedOutput("quota exceeded")])).toMatchObject({ image_tool_failed: 1, image_failure_codes: ["USAGE_LIMIT"] });
+    });
+    it("mixed results (N6): every failed call's code is listed; any failure without a saved PNG is TOOL_FAILED_* (USAGE_LIMIT > POLICY > OTHER)", async () => {
+      const f = await facts([call("a"), end("completed", undefined, "a"), okOutput("a"), call("b"), end("failed", undefined, "b"), failedOutput("safety system", "b"), call("c"), end("failed", undefined, "c"), failedOutput("boom", "c")]);
+      expect(f).toMatchObject({ image_tool_calls: 3, image_tool_completed: 1, image_tool_failed: 2, image_failure_codes: ["POLICY", "OTHER"] });
+      expect(deriveImageOutcome(f, false)).toBe("TOOL_FAILED_POLICY");
+      expect(deriveImageOutcome(f, true)).toBe("IMAGE_SAVED");
+    });
+  });
+
+  it("review N1/N4: a log over the cap is not read to EOF (truncated); a matching non-regular entry is skipped, an unreadable file is flagged apart", async () => {
+    const sessions = join(codexHome, "sessions", "2026", "10", "21");
+    mkdirSync(sessions, { recursive: true });
+    const big = join(sessions, `rollout-big-${THREAD}.jsonl`);
+    writeFileSync(big, "");
+    truncateSync(big, MAX_SESSION_LOG_BYTES + 1); // sparse: one byte over the cap
+    const f = await readSessionFacts(codexHome, THREAD);
+    expect(f).toMatchObject({ log_found: true, truncated: true, unreadable: false, lines: 0 });
+    expect(deriveImageOutcome(f, false)).toBe("NO_SESSION_LOG");
+    spawnSync("rm", ["-f", big]);
+    const locked = join(sessions, `rollout-locked-${THREAD}.jsonl`);
+    writeFileSync(locked, "{}\n");
+    chmodSync(locked, 0o000);
+    const g = await readSessionFacts(codexHome, THREAD);
+    // root can still read a 000 file; elsewhere it is unreadable — either way never "truncated"
+    expect(g.truncated).toBe(false);
+    if (process.getuid?.() !== 0) expect(g).toMatchObject({ log_found: true, unreadable: true });
+    chmodSync(locked, 0o600);
+  });
+
+  it("review N2: a symlinked sessions dir is never walked; a log whose real path leaves CODEX_HOME is not read", async () => {
+    const elsewhere = join(root, "elsewhere-sessions");
+    mkdirSync(elsewhere, { recursive: true });
+    writeFileSync(join(elsewhere, `rollout-x-${THREAD}.jsonl`), `${JSON.stringify({ type: "turn_context", payload: { model: "gpt-5" } })}\n`);
+    symlinkSync(elsewhere, join(codexHome, "sessions"));
+    expect(await readSessionFacts(codexHome, THREAD)).toEqual(emptySessionFacts());
+    // a real sessions dir whose sub-dir is a link out of CODEX_HOME
+    spawnSync("rm", ["-f", join(codexHome, "sessions")]);
+    mkdirSync(join(codexHome, "archived_sessions"), { recursive: true });
+    symlinkSync(elsewhere, join(codexHome, "archived_sessions", "2026"));
+    const f = await readSessionFacts(codexHome, THREAD);
+    expect(f.model).toBeNull();
+    expect(f.lines).toBe(0);
+  });
+
+  it("review N3: a model slug longer than 32 characters is 'other'", async () => {
+    leaveLog(join(root, "cwd-m"), [{ timestamp: "t", type: "turn_context", payload: { model: `gpt-${"x".repeat(29)}` } }]);
+    expect((await readSessionFacts(codexHome, THREAD)).model).toBe("other"); // the later turn_context wins
+    leaveLog(join(root, "cwd-m"), [{ timestamp: "t", type: "turn_context", payload: { model: `gpt-${"x".repeat(28)}` } }]);
+    expect((await readSessionFacts(codexHome, THREAD)).model).toBe(`gpt-${"x".repeat(28)}`);
+  });
+
+  it("review N5: a signal before the thread id came: the session is read through this run's cwd-matched log, before the cleanup removes it", async () => {
+    let release!: () => void;
+    const running = runDesignImagePoc(
+      options(({ cwd }) => {
+        leaveLog(cwd, [call(), end("failed", { type: "usageLimitExceeded" })]);
+        // another design-agent call's log (another cwd) is never read
+        const sessions = join(codexHome, "sessions", "2026", "10", "21");
+        writeFileSync(join(sessions, `rollout-other-${OTHER_THREAD}.jsonl`), `${JSON.stringify({ type: "session_meta", payload: { cwd: join(tmpBase, "sr-design-codex-OTHER1") } })}\n${JSON.stringify({ type: "response_item", payload: { type: "function_call", name: "exec_command", call_id: "o" } })}\n`);
+        return new Promise((resolve) => {
+          release = () => resolve({ code: null, signal: "SIGKILL" });
+        });
+      }),
+    );
+    for (let i = 0; i < 100 && execCwds.length === 0; i++) await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 20));
+    await cleanupActivePoc("POC_STOPPED_BY_SIGNAL");
+    const d = lastPocDiagnostics()!.diagnostics;
+    expect(d.stop_code).toBe("POC_STOPPED_BY_SIGNAL");
+    expect(d.session).toMatchObject({ log_found: true, image_tool_calls: 1, image_tool_failed: 1, image_failure_codes: ["USAGE_LIMIT"], other_tool_calls: 0 });
+    expect(d.classification).toMatchObject({ image_outcome: "TOOL_FAILED_USAGE_LIMIT", stop_class: "interrupted" });
+    expect(sessionLogs().some((n) => n.includes(THREAD))).toBe(false); // the cleanup still removed this run's log
+    release();
+    await running;
+  });
+
+  it("classifyAnswerText / parseCodexVersion / deriveImageOutcome / pocStopClass return fixed codes only", () => {
+    expect(classifyAnswerText(undefined)).toBe("TEXT_NONE");
+    expect(classifyAnswerText("  ")).toBe("TEXT_NONE");
+    for (const t of ["Image generation is unavailable.", "The image generation tool is not available in this session.", "I don't have access to an image generation tool.", "I cannot generate images here.", "No image tool available.", "画像生成ツールは利用できません。"]) expect(classifyAnswerText(t), t).toBe("TEXT_TOOL_UNAVAILABLE");
+    expect(classifyAnswerText("image generation failed: boom")).toBe("TEXT_TOOL_ERROR");
+    expect(classifyAnswerText("You've hit your usage limit.")).toBe("TEXT_USAGE_LIMIT");
+    expect(classifyAnswerText("Sorry, I can't help with that.")).toBe("TEXT_REFUSAL");
+    expect(classifyAnswerText("Here is the design: a header ...")).toBe("TEXT_OTHER");
+    expect(parseCodexVersion("codex-cli 0.163.0\n")).toBe("0.163.0");
+    expect(parseCodexVersion("codex-cli 0.164.0-alpha.8\n")).toBe("0.164.0-alpha.8");
+    expect(parseCodexVersion(`codex-cli ${CANARY}\n`)).toBeNull();
+    expect(parseCodexVersion("")).toBeNull();
+    const f = { ...emptySessionFacts(), log_found: true };
+    expect(deriveImageOutcome(f, true)).toBe("IMAGE_SAVED");
+    expect(deriveImageOutcome(emptySessionFacts(), false)).toBe("NO_SESSION_LOG");
+    expect(deriveImageOutcome({ ...f, truncated: true }, false)).toBe("NO_SESSION_LOG");
+    expect(deriveImageOutcome(f, false)).toBe("TOOL_NOT_CALLED");
+    expect(deriveImageOutcome({ ...f, image_tool_calls: 1, image_tool_failed: 1, image_failure_codes: ["OTHER"] }, false)).toBe("TOOL_FAILED");
+    expect(deriveImageOutcome({ ...f, image_tool_calls: 1, image_tool_completed: 1 }, false)).toBe("TOOL_CALLED_NO_FILE");
+    expect(pocStopClass("CODEX_QUOTA")).toBe("environment");
+    expect(pocStopClass("CODEX_IMAGE_TOOL_FAILED")).toBe("capability");
+    expect(pocStopClass("CODEX_NO_IMAGE", "TOOL_NOT_CALLED", "TEXT_OTHER")).toBe("request");
+    expect(pocStopClass("CODEX_NO_IMAGE", "TOOL_NOT_CALLED", "TEXT_TOOL_UNAVAILABLE")).toBe("capability");
+    expect(pocStopClass("CODEX_NO_IMAGE", "TOOL_CALLED_NO_FILE", "TEXT_TOOL_UNAVAILABLE")).toBe("request");
+    expect(pocStopClass("POC_STOPPED_BY_SIGNAL")).toBe("interrupted");
+    expect(pocStopClass("SOMETHING_NEW")).toBe("interrupted");
+  });
 });
 
 describe("checkPng", () => {

@@ -32,6 +32,15 @@
  *   (event / item type counts from an allowlist, error codes, agent message
  *   count and length, timings, exit, where image files are); it never changes
  *   what the cleanup removes
+ * - DEV-078 (capability.ts): preflight before the one model call — a
+ *   $CODEX_HOME/.env stops the run (CODEX_DOTENV_PRESENT: Codex would load an
+ *   API key from it), `codex --version` runs in the same jail
+ *   (CODEX_PREFLIGHT_FAILED when it cannot); `-c features.image_generation=true`
+ *   pins the image tool's flag on the command line (never in config.toml);
+ *   after the call the CLI's session log is read in memory for fixed facts (was
+ *   the image tool called, did it fail and why) and the final answer becomes one
+ *   fixed code; an image-tool usage limit stops as CODEX_QUOTA, another tool
+ *   failure as CODEX_IMAGE_TOOL_FAILED. Still exactly one model call, no retry.
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
@@ -60,6 +69,16 @@ import {
   type ImageLocationDiagnostics,
   type PocDiagnostics,
 } from "./diagnostics";
+import {
+  classifyAnswerText,
+  codexDotenvPresent,
+  deriveImageOutcome,
+  parseCodexVersion,
+  readSessionFacts,
+  type AnswerTextCode,
+  type ImageOutcome,
+  type SessionFacts,
+} from "./capability";
 import { PngError, readPngNoFollow } from "./png";
 import { buildMockupPrompt, DEFAULT_DIRECTION_VERSION, DIRECTION_VERSIONS, loadPocInputs, POC_SHOP_KEY, PocDirectionError, PocInputError, type DirectionVersion } from "./prompt";
 
@@ -90,7 +109,59 @@ export type PocCode =
   | "CODEX_NO_THREAD"
   | "CODEX_NO_IMAGE"
   | "CODEX_IMAGE_UNSUPPORTED_FORMAT"
-  | "CODEX_IMAGE_INVALID";
+  | "CODEX_IMAGE_INVALID"
+  | "CODEX_DOTENV_PRESENT"
+  | "CODEX_PREFLIGHT_FAILED"
+  | "CODEX_IMAGE_TOOL_FAILED";
+
+/**
+ * How automation treats a stop (DEV-078, docs/operations/design-image-poc.md
+ * "Stop classes"). No class ever retries the same request on its own:
+ *
+ * - approval / input: nothing was started; fix the request or get approval
+ * - environment: the machine, sign-in, jail or plan usage; halt and alert, no model call is worth retrying
+ * - capability: the image tool failed, or the model said it has none; halt and alert, check HUMAN-021's local steps
+ * - request: Codex ran but made no image (e.g. answered in text); a failure of this request, never retried as is
+ * - output: an image came but was refused (format, PNG checks)
+ * - interrupted: time budget, timeout or a signal; check for an OOM kill first
+ */
+export type PocStopClass = "approval" | "input" | "environment" | "capability" | "request" | "output" | "interrupted";
+
+const STOP_CLASSES: Readonly<Record<string, PocStopClass>> = {
+  POC_NOT_APPROVED: "approval",
+  POC_INPUT_INVALID: "input",
+  POC_DIRECTION_INVALID: "input",
+  POC_OUTPUT_UNSAFE: "environment",
+  CODEX_NOT_INSTALLED: "environment",
+  CODEX_NOT_SIGNED_IN: "environment",
+  CODEX_API_KEY_AUTH: "environment",
+  CODEX_SANDBOX_UNAVAILABLE: "environment",
+  CODEX_SANDBOX_LEAK: "environment",
+  CODEX_SANDBOX_CONFIG: "environment",
+  CODEX_QUOTA: "environment",
+  CODEX_DOTENV_PRESENT: "environment",
+  CODEX_PREFLIGHT_FAILED: "environment",
+  CODEX_IMAGE_TOOL_FAILED: "capability",
+  CODEX_EXEC_FAILED: "request",
+  CODEX_NO_THREAD: "request",
+  CODEX_NO_IMAGE: "request",
+  CODEX_IMAGE_INVALID: "output",
+  CODEX_IMAGE_UNSUPPORTED_FORMAT: "output",
+  CODEX_TIMEOUT: "interrupted",
+  POC_STOPPED_BY_SIGNAL: "interrupted",
+  POC_RUN_TIME_BUDGET: "interrupted",
+  POC_UNEXPECTED: "interrupted",
+};
+
+/**
+ * The class of a stop. A text answer that says the image tool is unavailable
+ * (with no image tool call in the CLI's session log) is a capability stop: it
+ * only ever halts, it never loosens anything, so the model's words may choose it.
+ */
+export function pocStopClass(code: string, outcome?: ImageOutcome | null, answer?: AnswerTextCode | null): PocStopClass {
+  if (code === "CODEX_NO_IMAGE" && outcome === "TOOL_NOT_CALLED" && answer === "TEXT_TOOL_UNAVAILABLE") return "capability";
+  return STOP_CLASSES[code] ?? "interrupted";
+}
 
 export class PocError extends Error {
   constructor(readonly code: PocCode) {
@@ -310,6 +381,28 @@ const codeOf = (error: unknown): PocCode => {
   return "POC_UNEXPECTED";
 };
 
+/**
+ * `codex --version` inside the jail (DEV-078): clap prints the version and exits before any config,
+ * sign-in or network. A failure to run it stops the PoC before the model call (CODEX_PREFLIGHT_FAILED);
+ * an unexpected output shape is recorded as null and does not stop it.
+ */
+async function codexVersion(sandbox: CodexSandbox, tmpBase: string): Promise<string | null> {
+  const workDir = await mkdtemp(join(tmpBase, "sr-design-codex-"));
+  try {
+    let result;
+    try {
+      result = await sandbox.run(["--version"], { workDir, timeoutMs: 30_000 });
+    } catch (error) {
+      if (error instanceof SandboxError) throw error;
+      throw new PocError("CODEX_SANDBOX_UNAVAILABLE");
+    }
+    if (result.timedOut || result.code !== 0) throw new PocError("CODEX_PREFLIGHT_FAILED");
+    return parseCodexVersion(result.stdout);
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 /** Runs the PoC once. Never throws: a refusal or a stop is a fixed code. */
 export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   lastDiagnostics = undefined;
@@ -333,6 +426,10 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     beforeAll?: Set<string>;
     stopCode?: string;
     done: boolean;
+    cliVersion?: string | null;
+    dotenvPresent?: boolean;
+    session?: SessionFacts;
+    answerText?: AnswerTextCode;
   } = { promptChars: null, invoked: false, exit: null, codexMs: null, done: false };
   let cwd: string | undefined;
   let sandbox: CodexSandbox | undefined;
@@ -357,6 +454,14 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     }
     const tracker = diag.tracker;
     tracker?.end(tracker.sawLiveOutput);
+    // A stop before the session log was read (a signal mid-call, when the thread id never came from stdout): read
+    // it now, before the cleanup removes it — by this thread's id when known, else, as the cleanup finds it, the
+    // log whose cwd is this run's own work dir (never another call's).
+    if (sandbox && diag.invoked && diag.session === undefined && (threadId || ownCwds.size > 0)) {
+      const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");
+      diag.session = await readSessionFacts(codexHome, threadId ? { threadId } : { cwds: ownCwds }).catch(() => undefined);
+    }
+    const outcome = diag.invoked && diag.session ? deriveImageOutcome(diag.session, stopCode === null) : null;
     const d: PocDiagnostics = {
       schema: DIAGNOSTICS_SCHEMA,
       outcome: stopCode === null ? "done" : "stopped",
@@ -379,6 +484,13 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       },
       events: tracker ? tracker.result() : null,
       images,
+      preflight: diag.dotenvPresent === undefined ? null : { cli_version: diag.cliVersion ?? null, dotenv_present: diag.dotenvPresent },
+      session: diag.session ?? null,
+      classification: {
+        image_outcome: outcome,
+        answer_text: diag.answerText ?? null,
+        stop_class: stopCode === null ? null : pocStopClass(stopCode, outcome, diag.answerText),
+      },
     };
     const record: PocDiagnosticsRecord = { summary: diagnosticsSummary(d), diagnostics: d };
     if (diag.outRoot) {
@@ -433,8 +545,14 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       throw fromSandboxError(error);
     });
     const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");
+    // Preflight 1 (DEV-078), before any Codex process: Codex loads $CODEX_HOME/.env into its own
+    // environment (only CODEX_* keys are filtered), which would bypass the env allowlist. Never opened.
+    diag.dotenvPresent = await codexDotenvPresent(codexHome);
+    if (diag.dotenvPresent) throw new PocError("CODEX_DOTENV_PRESENT");
     await removeStaleDesignAgentState(sandbox.env, codexHome);
     await assertChatGptSignIn({ sandbox });
+    // Preflight 2 (DEV-078): `codex --version` in the same jail, same env (no config, no network, no model).
+    diag.cliVersion = await codexVersion(sandbox, o.tmpBase);
     before = await imageThreads(codexHome);
     diag.beforeAll = await generatedImageEntries(codexHome);
     cwd = await mkdtemp(join(o.tmpBase, "sr-design-codex-"));
@@ -448,7 +566,9 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     log("codex: one image call");
     let result;
     try {
-      result = await sandbox.run(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "--cd", cwd, "-"], {
+      // features.image_generation=true (DEV-078): the image tool's feature flag (stable, on by default in 0.163.0)
+      // pinned on the command line, so a config.toml cannot switch it off; an older CLI only warns about the key.
+      result = await sandbox.run(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--json", "-c", 'model_provider="openai"', "-c", "features.image_generation=true", "--cd", cwd, "-"], {
         workDir: cwd,
         input: prompt,
         timeoutMs: o.timeoutMs ?? POC_CODEX_TIMEOUT_MS,
@@ -468,6 +588,10 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     }
     const events = readCodexEvents(result.stdout);
     if (events.threadId !== undefined && THREAD_ID.test(events.threadId)) threadId = events.threadId;
+    // In memory only: the final answer becomes one fixed code (the text is not kept), and the CLI's own
+    // session log gives fixed facts about the image tool before the cleanup removes it (capability.ts).
+    diag.answerText = classifyAnswerText(events.lastMessage);
+    diag.session = await readSessionFacts(codexHome, threadId).catch(() => undefined);
     if (result.timedOut) throw new PocError("CODEX_TIMEOUT");
     if (result.code !== 0 && codexLooksSignedOut(result.stdout, result.stderr)) throw new PocError("CODEX_NOT_SIGNED_IN");
     if (result.code !== 0 && codexLooksRateLimited(result.stdout, result.stderr)) throw new PocError("CODEX_QUOTA");
@@ -478,6 +602,12 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       image = await takeImage(join(codexHome, "generated_images", threadId));
     } catch (error) {
       if (error instanceof PocError && error.code === "CODEX_NO_IMAGE" && codexLooksRateLimited(result.stdout, result.stderr)) throw new PocError("CODEX_QUOTA");
+      // The image tool's own failure (the CLI's record / the tool's output, never the model's answer).
+      if (error instanceof PocError && error.code === "CODEX_NO_IMAGE" && diag.session) {
+        const outcome = deriveImageOutcome(diag.session, false);
+        if (outcome === "TOOL_FAILED_USAGE_LIMIT") throw new PocError("CODEX_QUOTA");
+        if (outcome === "TOOL_FAILED" || outcome === "TOOL_FAILED_POLICY") throw new PocError("CODEX_IMAGE_TOOL_FAILED");
+      }
       throw error;
     }
     const report: PocReport = {
