@@ -27,7 +27,7 @@
  * process, because every `codex` invocation (`--version` and `login status`
  * too) first runs arg0_dispatch: load_dotenv reads $CODEX_HOME/.env into its
  * own environment, filtering only CODEX_* keys (arg0/src/lib.rs), so an
- * OPENAI_API_KEY / OPENAI_BASE_URL there would bypass the env allowlist; and
+ * an OpenAI API key or base URL there would bypass the env allowlist; and
  * the arg0 alias setup writes under CODEX_HOME. (2) `codex --version` inside
  * the same jail: after that arg0 setup clap prints the version and exits — no
  * config load, no sign-in, no network, no model. Whether the tool is offered to the model for a turn
