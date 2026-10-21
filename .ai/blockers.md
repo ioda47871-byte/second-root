@@ -25,8 +25,15 @@
   HUMAN-018（v1）の直後から続けて失敗していること・183 秒かかっていること（画像ツールは数分かかる）は (iv)（画像の利用枠を含む）と合うが、確定はできない。
   DEV-078 は、model を呼ばない preflight と、CLI の session log と最後の答えをメモリの中だけで固定の符号にする分類（`outcome=` `answer=` `img_calls=` `img_fail=` `cli=` `model=` `class=`）を足した。prompt は変えていない（v2 の「使えなければエラーを答える」は curiosity-media の毎日動いている文の忠実な訳で、根拠なしに変えると原因が分からなくなる）。
 - 前提: DEV-078 の PR が develop に merge されていること（`POC_DIAG_SUMMARY` に `outcome=` と `cli=` があることで確かめる）。
+  **21b・21c は DEV-080 の merge の後**（`POC_DIAG_SUMMARY` に `hist=` と `cm_cells=` があることで確かめる。無ければ古い develop で、0.159.0 の log を読み違える）。
+- DEV-080 の訂正（2026-10-21、Codex は流していない。openai/codex rust-v0.159.0 と 0.163.0 の source を data として読んだ。`docs/operations/design-image-poc.md` の「Codex CLI 0.159.0, paginated history and code mode (DEV-080)」）:
+  `codex exec` は session log を **paginated** の history で書く（legacy ではない）ので `image_generation_end` は残らず、画像ツールの状態と失敗は `item_completed` の **Extension** item（kind `image_gen.generation`）にある。
+  さらに 0.159.0 の bundled の model は `gpt-5.5` 以外すべて **code_mode_only** で（PoC は `-m` を渡さない）、imagegen は `exec` の cell の JavaScript から `image_gen__imagegen` として呼ばれ、`function_call imagegen` は出ない。
+  DEV-078 の分類はこのどちらも読めず、呼ばれていても `TOOL_NOT_CALLED` と出しえた。DEV-080 が両方を読み、code mode で呼び出しが見えないときは `TOOL_NOT_SEEN_CODE_MODE`（class `inconclusive`、結論なし）にした。
 - 順番（安い順。前の段の結果で次を決める。どの段も Claude は WSL に触れない）:
-  1. **21a — 手元の確認（model の呼び出しなし・費用 0）**。jail の中の `sr-designgen` で（capture helper のある machine では `sudo -iu sr-designgen` は nologin で使えず、jail の外の `sr-designgen` の process は helper を `REQUESTER_PRIVILEGED` にする: `design-worker-wsl.md`・`design-capture-helper.md`・`design-wsl-isolation.md`）。
+  1. **21a — 手元の確認（model の呼び出しなし・費用 0）。済み（2026-10-21、人が流した）**: `.env: absent`・`codex-cli 0.159.0`（2026-09-29 の版）・`config.toml: no matching line`・bundled の model はどれも `['text','image']`。
+     → `.env` の問題なし、config.toml は画像ツールを切っていない、model は画像の入力に対応。版が 0.163.0 ではなく 0.159.0 だったので、その版の source で log の読み方を確かめた（DEV-080）。以下は記録として残す手順:
+     jail の中の `sr-designgen` で（capture helper のある machine では `sudo -iu sr-designgen` は nologin で使えず、jail の外の `sr-designgen` の process は helper を `REQUESTER_PRIVILEGED` にする: `design-worker-wsl.md`・`design-capture-helper.md`・`design-wsl-isolation.md`）。
      **`.env` の確認を最初に**: Codex は `--version` でも、clap の前に `$CODEX_HOME/.env` を自分の環境に読み込む（arg0 の `load_dotenv`）ので、`.env` があれば `codex` を 1 つも起動せずに止まる:
 
      ```bash
@@ -54,10 +61,14 @@
      ```
 
      費用: Codex 1 回（画像生成つき、ChatGPT の plan の枠、API の課金なし、自動の再試行なし、15 分 / 全体 3300 秒）。
-     分かること: v1 も画像なし → 原因は prompt ではなく環境（`outcome=TOOL_FAILED_USAGE_LIMIT` / `POC_STOP: CODEX_QUOTA` なら利用枠、`TOOL_NOT_CALLED` + `answer=TEXT_TOOL_UNAVAILABLE` ならツールが出ていない: 21a の結果と照らす）。v1 で画像が出る → 今日の環境は動く、v2 の prompt が疑わしい（21c へ）。
+     分かること（DEV-080 の後。まず `cli=0.159.0 hist=paginated` と `tool_mode=` を見る）: v1 で画像が出る → 今日の環境は動く、v2 の prompt が疑わしい（21c へ）。v1 も画像なし →
+     `outcome=TOOL_FAILED_USAGE_LIMIT` / `POC_STOP: CODEX_QUOTA` なら画像の利用枠（Extension item の構造化された失敗）。`TOOL_FAILED*` / `CODEX_IMAGE_TOOL_FAILED` ならツールは呼ばれて失敗した（`img_fail`。code mode では `cm_ref=1`・`img_calls≥1` で `function_call` が無いのが普通）。
+     `TOOL_NOT_SEEN_CODE_MODE`（class `inconclusive`）なら、code mode（`cm_cells>0` か `tool_mode=code_mode_only`）で呼び出しが見えないだけで、**試みたかどうかは分からない**（引数の検査で始まる前に断られた呼び出しは何も残さない。0.159.0 の log にはツールの一覧も無い）。prompt の問題とは読まない。次の一手は runbook の提案「`-m gpt-5.5` で imagegen を direct のツールにする」（挙動の変更なので人の承認と別の PR が要る）。
+     `TOOL_NOT_CALLED` を信じてよいのは `tool_mode=direct`（か `unknown`）**かつ** `cm_cells=0` のときだけ（+ `answer=TEXT_TOOL_UNAVAILABLE` ならツールが出ていない、`TEXT_OTHER` / `TEXT_REFUSAL` ならモデルが文章を選んだ）。
   3. **21c — v2（DEV-078 の版、prompt は HUMAN-020 と同じ）、Codex 1 回**。21b で v1 が画像を出した後だけ。コマンドは 21b から `SR_DESIGN_IMAGE_POC_DIRECTION=v1 ` を外したもの（HUMAN-020 と同じ）。
-     分かること: `outcome=` と `answer=` で、呼ばなかった（`TOOL_NOT_CALLED`）か、呼んで失敗した（`TOOL_FAILED*`）かが分かる。`TOOL_NOT_CALLED` + `TEXT_OTHER` / `TEXT_REFUSAL` なら、v2 の prompt を v1 の実績のある指示の書き方に寄せる修正（別 Task、根拠つき）を提案する。
-  - 最小の画像 probe（1 行の prompt で「赤い丸を 1 枚」）は、21b の v1 が `TOOL_NOT_CALLED` + `TEXT_OTHER` で曖昧なときだけ提案する（今は作っていない。作るなら PoC の 3 つ目の direction として別の小さい PR と別の承認）。
+     分かること: `outcome=` と `answer=` で、呼んで失敗した（`TOOL_FAILED*`）か、呼ばなかった（`TOOL_NOT_CALLED`、direct mode で `cm_cells=0` のときだけ）か、code mode で分からない（`TOOL_NOT_SEEN_CODE_MODE`、`inconclusive`）かが分かる。
+     `TOOL_NOT_CALLED` + `TEXT_OTHER` / `TEXT_REFUSAL` のときだけ、v2 の prompt を v1 の実績のある指示の書き方に寄せる修正（別 Task、根拠つき）を提案する。`TOOL_NOT_SEEN_CODE_MODE` では prompt を直さず、21b と同じく direct mode の model の提案（人の承認）へ。
+  - 最小の画像 probe（1 行の prompt で「赤い丸を 1 枚」）は、21b の v1 が（direct mode で）`TOOL_NOT_CALLED` + `TEXT_OTHER` で曖昧なときだけ提案する（今は作っていない。作るなら PoC の 3 つ目の direction として別の小さい PR と別の承認）。
 - 触れないもの: HUMAN-019 / 020 と同じ（DB・Staging・Production・Vercel・flag・worker の timer / queue / 結果・asset store・送信・GitHub）。同時に `design-demo.ts`・`photo-poc.sh`・手動の `codex exec` を流さない。`~/.codex/config.toml` は変えない（DEV-078 は command line の `-c` だけ）。
 - 返してほしいもの: 各段の出力（21a）／`POC_STOP` または `POC_IMAGE_READY` の行と `POC_DIAG_SUMMARY` の 1 行（21b・21c）。
 - 解除条件: 21b と（必要なら）21c の結果が届く、または人が流さないと決める。

@@ -41,6 +41,13 @@
  *   the image tool called, did it fail and why) and the final answer becomes one
  *   fixed code; an image-tool usage limit stops as CODEX_QUOTA, another tool
  *   failure as CODEX_IMAGE_TOOL_FAILED. Still exactly one model call, no retry.
+ * - DEV-080: `codex exec` writes the session log in the paginated history mode
+ *   (the tool's structured end record is an item_completed Extension item, not
+ *   image_generation_end), and with a code_mode_only model (the default when no
+ *   `-m` is given) imagegen is called from a code-mode `exec` cell, so there is
+ *   no `function_call imagegen` at all. No image call seen in code mode is
+ *   TOOL_NOT_SEEN_CODE_MODE (class `inconclusive`), never TOOL_NOT_CALLED. No
+ *   model or config override is passed (forcing a direct-mode model needs approval).
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
@@ -122,10 +129,13 @@ export type PocCode =
  * - environment: the machine, sign-in, jail or plan usage; halt and alert, no model call is worth retrying
  * - capability: the image tool failed, or the model said it has none; halt and alert, check HUMAN-021's local steps
  * - request: Codex ran but made no image (e.g. answered in text); a failure of this request, never retried as is
+ * - inconclusive (DEV-080): no image call is visible, but the model reached imagegen only through code-mode
+ *   `exec` cells (TOOL_NOT_SEEN_CODE_MODE), where a call refused before it started leaves no record; it is not
+ *   known whether the model tried. Halt and alert a human; never read as a prompt problem, never retried
  * - output: an image came but was refused (format, PNG checks)
  * - interrupted: time budget, timeout or a signal; check for an OOM kill first
  */
-export type PocStopClass = "approval" | "input" | "environment" | "capability" | "request" | "output" | "interrupted";
+export type PocStopClass = "approval" | "input" | "environment" | "capability" | "inconclusive" | "request" | "output" | "interrupted";
 
 const STOP_CLASSES: Readonly<Record<string, PocStopClass>> = {
   POC_NOT_APPROVED: "approval",
@@ -157,8 +167,11 @@ const STOP_CLASSES: Readonly<Record<string, PocStopClass>> = {
  * The class of a stop. A text answer that says the image tool is unavailable
  * (with no image tool call in the CLI's session log) is a capability stop: it
  * only ever halts, it never loosens anything, so the model's words may choose it.
+ * No image call seen while imagegen was reachable only from code-mode cells is `inconclusive` whatever the
+ * answer says (DEV-080): the model's view of its tools there says nothing about whether the tool was offered.
  */
 export function pocStopClass(code: string, outcome?: ImageOutcome | null, answer?: AnswerTextCode | null): PocStopClass {
+  if (code === "CODEX_NO_IMAGE" && outcome === "TOOL_NOT_SEEN_CODE_MODE") return "inconclusive";
   if (code === "CODEX_NO_IMAGE" && outcome === "TOOL_NOT_CALLED" && answer === "TEXT_TOOL_UNAVAILABLE") return "capability";
   return STOP_CLASSES[code] ?? "interrupted";
 }

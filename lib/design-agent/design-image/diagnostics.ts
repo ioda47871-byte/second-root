@@ -19,8 +19,8 @@ import { lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { AnswerTextCode, ImageOutcome, SessionFacts } from "./capability";
 
-/** /2 (DEV-078): adds preflight, session and classification. */
-export const DIAGNOSTICS_SCHEMA = "sr-design-image-poc-diagnostics/2";
+/** /2 (DEV-078): adds preflight, session and classification. /3 (DEV-080): session gains history_mode, tool_mode, code_mode_cells, code_mode_imagegen_ref. */
+export const DIAGNOSTICS_SCHEMA = "sr-design-image-poc-diagnostics/3";
 
 /** `codex exec --json` event types counted by name (any other: `other`). */
 export const EVENT_TYPES = ["thread.started", "turn.started", "turn.completed", "turn.failed", "item.started", "item.updated", "item.completed", "error"] as const;
@@ -449,6 +449,10 @@ export function diagnosticsSummary(d: PocDiagnostics): string {
     `model=${d.session?.model ?? "-"}`,
     `provider_openai=${typeof d.session?.model_provider_openai === "boolean" ? b(d.session.model_provider_openai) : "-"}`,
     `log=${d.session ? b(d.session.log_found) : "-"}`,
+    `hist=${d.session?.history_mode ?? "-"}`,
+    `tool_mode=${d.session?.tool_mode ?? "-"}`,
+    `cm_cells=${n(d.session?.code_mode_cells)}`,
+    `cm_ref=${d.session ? b(d.session.code_mode_imagegen_ref) : "-"}`,
     `img_calls=${n(d.session?.image_tool_calls)}`,
     `img_ok=${n(d.session?.image_tool_completed)}`,
     `img_failed=${n(d.session?.image_tool_failed)}`,
