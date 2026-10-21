@@ -45,7 +45,7 @@ Then `design-image-poc.ts` (`lib/design-agent/design-image/run.ts`):
 - snapshots the thread dirs in `CODEX_HOME/generated_images/`
 - one `codex exec --skip-git-repo-check --sandbox read-only --json -c model_provider="openai" --cd <work dir> -` (prompt on stdin, **no reference image attached**), work dir `$TMPDIR/sr-design-codex-XXXXXX` (the design agent's prefix, so `removeStaleCodexSessions` recognises it)
 - takes the newest PNG in `CODEX_HOME/generated_images/<thread>/`; any link or non-regular `.png` there is refused; the PNG is opened with `O_NOFOLLOW` and fully checked (signature, chunk walk with CRC, IHDR first with sane depth / colour type, 512–8192 px a side, ≤ 40 Mpx, ≤ 24 MiB, IDAT present, IEND last, nothing after it)
-- on every exit (success, failure, timeout, signal): removes the session log, the thread's image dir and every image dir that **appeared during this run** (never one that existed before), and the work dir. Only a SIGKILL of the whole process can leave something; the next run's start removes design-agent session logs and their image dirs
+- on every exit (success, failure, timeout, signal), in this order: removes the thread's image dir and every image dir that **appeared during this run** (never one that existed before; if the snapshot of `generated_images/` could not be read, only the thread's own dir), then this run's session logs (this thread's, and any whose cwd is this run's work dir — never another design-agent call's: `design-demo.ts` and the photo PoC do not take `run.lock`), a partly written result dir, and the work dir. A signal (SIGTERM / SIGINT / SIGHUP, the watchdog) waits for that same cleanup (memoised; at most 20 s) before exiting. Only a SIGKILL (e.g. the wrapper's `timeout --kill-after=30`, an OOM kill) or a cleanup longer than 20 s can leave something; the next run's start removes leftover design-agent session logs and those threads' image dirs
 
 ### Isolation (what Codex can see)
 - The bubblewrap jail of `lib/design-agent/sandbox.ts`: `/` read-only; `/home`, the real home, `/root`, `/mnt` (incl. `/mnt/c`), `/media`, `/srv`, `/run` are empty tmpfs; `/tmp` is an empty writable tmpfs; the worker's protected paths (browser profile, capture spool, `~/.ssh`, `~/.config/gh`, `~/.claude`, git credentials, the worker's state / queue / results, the asset store) and this PoC's output root are checked invisible by the probe before each call.
@@ -60,7 +60,7 @@ One command, as DEV-073 (the jail's one run; the checkout changes only inside th
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
 S=~/.local/state/sr-design-worker; mkdir -p "$S" && chmod 700 "$S"
 # so that an older checkout without the wrapper also works: move to develop only inside the worker run lock (if the worker runs, change nothing and stop)
-flock -n "$S/run.lock" sh -c "cd ~/work/second-root && git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && git checkout -q --force --detach origin/develop" \
+flock -n "$S/run.lock" sh -c "cd ~/work/second-root && timeout 180 git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && timeout 60 git checkout -q --force --detach origin/develop" \
   || { echo "STOP: a design worker run is in progress; nothing was changed"; exit 3; }
 cd ~/work/second-root && ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed'
 ```

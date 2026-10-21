@@ -7,7 +7,7 @@
     "theme": "Contemporary Japanese editorial confectionery; modern calligraphy-like typography without clichéd shrine motifs.",
     "hero": "Make the exact name 架空菓庵 the dominant visual anchor; asymmetric but aligned on a disciplined grid.",
     "sections": [
-      "Hero: logo-type, one short verified tagline; maximal impact",
+      "Hero: the shop name set as large type (a wordmark, no emblem or logo mark), at most one short line taken verbatim from the provided facts; maximal impact",
       "Concept: restrained verified description + small selected menu subset; generous rhythm",
       "Information: accurate opening hours, closed days and address; clear and quietly beautiful"
     ],
@@ -50,8 +50,8 @@
     "No generated or real photos of food/products/shops",
     "No invented claims, prices, awards, founder name, testimonials, business history, or logo",
     "No publication; image is a design spec for later Claude implementation",
-    "Exact business facts must come from scripts/sales-design-worker/compare/shops/wagashi.json",
+    "Use only the business facts provided with this request, exactly as given",
     "Show a discreet fictional-demo disclosure",
-    "Generated text is NOT source of truth; implement from facts JSON"
+    "Text in the generated image is NOT a source of truth; the later implementation takes its copy from the provided facts, never from the pixels"
   ]
 }

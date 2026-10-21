@@ -28,7 +28,7 @@
   ```bash
   sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
   S=~/.local/state/sr-design-worker; mkdir -p "$S" && chmod 700 "$S"
-  flock -n "$S/run.lock" sh -c "cd ~/work/second-root && git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && git checkout -q --force --detach origin/develop" \
+  flock -n "$S/run.lock" sh -c "cd ~/work/second-root && timeout 180 git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && timeout 60 git checkout -q --force --detach origin/develop" \
     || { echo "STOP: a design worker run is in progress; nothing was changed"; exit 3; }
   cd ~/work/second-root && ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed'
   ```
