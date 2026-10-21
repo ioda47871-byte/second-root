@@ -35,16 +35,34 @@
  * sandbox and must report that no protected path is visible and that the
  * home holds nothing but the expected entries. If bubblewrap is missing,
  * cannot start, or the probe sees anything, Codex is not started.
+ *
+ * DEV-079: and never while $CODEX_HOME/.env exists (codex-dotenv.ts: the CLI
+ * loads it into its own environment before parsing its arguments, past the
+ * cleared environment). Checked here, in run(), so every Codex process of
+ * every caller passes it: before the probe, again right before the spawn,
+ * and once more after Codex ended (its result is then thrown away).
+ * lstat only; the file is never opened. CODEX_DOTENV_PRESENT, fail closed.
  */
 import { constants } from "node:fs";
 import { access, lstat, mkdir, open, realpath, stat } from "node:fs/promises";
 import { basename, delimiter, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { runBounded, type BoundedResult } from "./bounded-process";
+import { codexDotenvPresent } from "./codex-dotenv";
 
-export type SandboxFailureCode = "CODEX_NOT_INSTALLED" | "CODEX_SANDBOX_UNAVAILABLE" | "CODEX_SANDBOX_LEAK" | "CODEX_SANDBOX_CONFIG" | "CODEX_INPUT_REJECTED";
+export type SandboxFailureCode =
+  | "CODEX_NOT_INSTALLED"
+  | "CODEX_SANDBOX_UNAVAILABLE"
+  | "CODEX_SANDBOX_LEAK"
+  | "CODEX_SANDBOX_CONFIG"
+  | "CODEX_INPUT_REJECTED"
+  | "CODEX_DOTENV_PRESENT";
 
 export class SandboxError extends Error {
-  constructor(readonly code: SandboxFailureCode) {
+  /** `started`: Codex did run, and its result was thrown away (DEV-079: a .env found after it ended). Otherwise nothing was started. */
+  constructor(
+    readonly code: SandboxFailureCode,
+    readonly started = false,
+  ) {
     super(code);
     this.name = "SandboxError";
   }
@@ -308,9 +326,15 @@ export async function prepareCodexSandbox(options: SandboxOptions): Promise<Code
     if (lines.length !== 1) throw new SandboxError("CODEX_SANDBOX_LEAK");
   };
 
+  /** DEV-079: no Codex process while $CODEX_HOME/.env exists (lstat only, never opened). */
+  const refuseDotenv = async (): Promise<void> => {
+    if (await codexDotenvPresent(codexHome)) throw new SandboxError("CODEX_DOTENV_PRESENT");
+  };
+
   return {
     env: { HOME: homeRaw, CODEX_HOME: codexHome },
     async run(args, runOptions) {
+      await refuseDotenv();
       const workDir = await realpath(runOptions.workDir).catch(() => {
         throw new SandboxError("CODEX_SANDBOX_CONFIG");
       });
@@ -319,13 +343,19 @@ export async function prepareCodexSandbox(options: SandboxOptions): Promise<Code
       for (const p of protectedReal) if (inside(p, workDir) || inside(workDir, p)) throw new SandboxError("CODEX_SANDBOX_CONFIG");
       await mkdir(join(workDir, "inputs"), { recursive: true, mode: 0o700 });
       await probe(workDir);
-      return runBounded(bwrap, [...argsFor(workDir), "--", realCodex, ...args], {
+      // again right before the spawn: the file may have appeared since (another call, a person)
+      await refuseDotenv();
+      const result = await runBounded(bwrap, [...argsFor(workDir), "--", realCodex, ...args], {
         env: BWRAP_ENV,
         cwd: workDir,
         timeoutMs: runOptions.timeoutMs,
         ...(runOptions.input === undefined ? {} : { input: runOptions.input }),
         ...(runOptions.onStdout === undefined ? {} : { onStdout: runOptions.onStdout }),
       });
+      // and once more after it ended: a .env that appeared between the last check and the spawn (a lost race)
+      // is detected, and the result of a Codex that may have loaded it is thrown away
+      if (await codexDotenvPresent(codexHome)) throw new SandboxError("CODEX_DOTENV_PRESENT", true);
+      return result;
     },
   };
 }

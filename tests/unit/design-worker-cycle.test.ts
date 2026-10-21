@@ -381,6 +381,8 @@ describe("cycle.sh: STOP after the claim (the job stays processing; a person rec
     ["INSTAGRAM_CHALLENGE", `${ts} job ${JOB}: signed-in capture INSTAGRAM_CHALLENGE`],
     ["RATE_LIMITED", `${ts} job ${JOB}: PUBLIC_SOURCE_UNAVAILABLE (RATE_LIMITED)`],
     ["RATE_LIMITED", `${ts} job ${JOB}: website PUBLIC_SOURCE_UNAVAILABLE (RATE_LIMITED)`],
+    // DEV-079: a $CODEX_HOME/.env (Codex not started)
+    ["CODEX_DOTENV_PRESENT", `${ts} run stopped: CODEX_DOTENV_PRESENT`],
   ])("%s in the worker output → CYCLE_STOP_WORKER_SIGNAL, no delivery", (code, line) => {
     const w = world();
     play(w, "admin", 2, { out: [`${ts} bridge: imported 1`, `${ts} job ${JOB}: claimed`, line, `${ts} bridge: exported 1`].join("\n") });

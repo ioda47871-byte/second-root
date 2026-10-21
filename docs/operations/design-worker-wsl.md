@@ -105,6 +105,57 @@ worker の環境に `CODEX_HOME=~/.codex-design`）。既定の `~/.codex` を�
 | `CODEX_SANDBOX_LEAK` | sandbox の中から守る path が見えた。Codex は起動していない。止めて調べる |
 | `CODEX_SANDBOX_CONFIG` | 安全に組めない（例: `CODEX_HOME` が link・ホームそのもの、Codex の install が守る場所の中） |
 | `CODEX_INPUT_REJECTED` | 参考画像が通常の PNG / JPEG / WebP ファイルでない（link など） |
+| `CODEX_DOTENV_PRESENT` | `$CODEX_HOME/.env` がある（DEV-079）。Codex は起動していない。下の手順で人が jail の中で移す |
+
+### `CODEX_DOTENV_PRESENT`（DEV-079）
+
+Codex CLI は、どの起動でも（`--version`・`login status` も）引数を読む前に `$CODEX_HOME/.env` を自分の環境へ読み込み、
+`CODEX_*` しか除かない（arg0 の `load_dotenv`）。確認した source（openai/codex `rust-v0.159.0`、machine の版、
+`codex-rs/arg0/src/lib.rs`）: 164 行 `load_dotenv();`（`arg0_dispatch` の中、thread を作る前）、308〜310 行
+`fn load_dotenv()` は `find_codex_home()` の `codex_home.join(".env")` を `dotenvy::from_path_iter` で読むだけ、
+302 行 `ILLEGAL_ENV_VAR_PREFIX = "CODEX_"`、322 行で大文字にしてから前方一致で除く。`dotenvy::dotenv()` のような
+cwd から上へ `.env` を探す呼び出しは、この file には無い。だから見るのは `$CODEX_HOME/.env` の1つだけでよい。そこに API key や base URL があると、sandbox の env の allowlist を通らずに
+Codex へ届く（API の課金・通信先の差し替え）。だから sandbox（`lib/design-agent/sandbox.ts` の `run()`）は、**すべての Codex
+process の前に**（probe の前と、起動の直前にもう一度。終わった後にも見て、あれば結果を捨てる）`.env` を `lstat` だけで確かめ、あれば Codex を起動せずに
+`CODEX_DOTENV_PRESENT` で止まる。worker・photo・比較（compare）・design-demo・PoC のどれもこの1か所を通る。
+
+- 中身は開かない・読まない・出さない。file・link（先が無くても）・directory・`lstat` できない（EACCES など）は、どれも「ある」とみなす
+- worker の扱いは `CODEX_NOT_SIGNED_IN` と同じ環境の失敗: run は `stopped`（exit 3）、job は inbox に戻り、ledger に数えない
+  （job の途中で現れたときも同じ。結果の途中の file は残さない）。自分で再試行しない。cycle は `CYCLE_STOP_WORKER_SIGNAL`（STOP の符号）で止まる
+- 結果・ledger・log・通知に出るのは符号と固定の文だけ（`.env` の中身・path は出さない）
+- 終わった後に見つかったとき（結果を捨てたとき）は、その呼び出しの session log も、その呼び出しの作業 dir を手がかりに
+  消す（他の呼び出しの log は消さない）
+- 残る限界: 1回の Codex の実行の間に現れて、終わる前に消えた `.env` は検出できない（確認は起動の前と終わった後だけ）。
+  そのような file を置けるのは jail の中の `sr-designgen` 自身だけである
+
+人の手順（jail の中の `sr-designgen` で。Claude は行わない。中身は表示しない・貼らない）:
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+Q="$HOME/codex-dotenv-quarantine"
+n=0
+for H in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do
+  n=$((n+1)); name="$(basename "$H")"
+  if [ -d "$H" ] && ! [ -x "$H" ]; then echo "$name: unknown (cannot be searched) - STOP"; continue; fi
+  if [ -e "$H/.env" ] || [ -L "$H/.env" ]; then
+    mkdir -p -m 700 "$Q"
+    T="$Q/${name#.}-env-$(date +%Y%m%d%H%M%S)-$n"
+    mv -n -- "$H/.env" "$T"
+    if [ -e "$H/.env" ] || [ -L "$H/.env" ]; then echo "$name: not moved - STOP"; else echo "$name: moved"; fi
+  else
+    echo "$name: absent"
+  fi
+done'
+```
+
+- 見る CODEX_HOME: run.sh・`design-image-poc.sh` は呼び出し側の `CODEX_HOME` をそのまま渡し、無ければ Codex は
+  `~/.codex` を使う。worker 専用に分けるときの推奨は `~/.codex-design`（上）。この3つを全部見る。別の値を使っているなら足す
+- 出すのは CODEX_HOME の名前と `moved` / `absent`、または `unknown` / `not moved` の STOP だけ（中身は出さない）。
+  STOP が出たら worker を動かさず、人が調べる
+- 移した先は 0700 の `~/codex-dotenv-quarantine/` の中の、見える名前（`codex-design-env-<日時>-<番号>`）。
+  同じ秒に2つの home を扱っても名前は重ならず、`mv -n` は既にある file を上書きしない
+- 移した file は人が中身を確かめて消す。API key が入っていたら、その key を失効・作り直すかを人が決める
+- その後の worker run は、`.env` が無ければ今までどおり動く（符号の他に変える設定はない）
 
 ## 公式サイトの取得
 
@@ -161,9 +212,16 @@ worker の環境に `CODEX_HOME=~/.codex-design`）。既定の `~/.codex` を�
 
 - 利用者 `sr-designgen`
 - Node 22
-- `codex login --device-auth`
+- `codex login --device-auth`（その前に、下の `.env` の確認）
 - `npm ci`
 - Playwright の Chromium
+
+`codex` を手で動かす前に（`login --device-auth`・`login status` も、Codex は引数を読む前に `$CODEX_HOME/.env` を読み込む）、
+`.env` が無いことを確かめる。STOP が出たら codex を動かさず、上の `CODEX_DOTENV_PRESENT` の手順で移す:
+
+```bash
+for h in ${CODEX_HOME:+"$CODEX_HOME"} "$HOME/.codex" "$HOME/.codex-design"; do if [ -d "$h" ] && ! [ -x "$h" ]; then echo "STOP: a Codex home cannot be searched (.env unknown); do not run codex"; break; fi; if [ -e "$h/.env" ] || [ -L "$h/.env" ]; then echo "STOP: a .env exists in a Codex home (contents not shown); do not run codex"; break; fi; done
+```
 
 `codex login status` が「ChatGPT」を示すこと。
 `OPENAI_API_KEY` / `CODEX_API_KEY` は設定しない。設定されていても、run.sh と worker は子 process に渡さない。
