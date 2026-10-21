@@ -38,6 +38,7 @@
 - 触れないもの: DB・Supabase（Staging / Production）・bridge・Vercel・flag・cycle・worker の timer（止める・戻す・有効化するのどれも）・worker の queue / 結果 / ledger・
   asset store・公開 `/demo`・実営業の送信・GitHub（commit・push しない）。参照画像なし、写真なし（食品・店舗の写真 / render を禁止）、店舗の事実は fixture のまま。出力は
   `~/sr-design-image-poc/wagashi-XXXXXX/` だけ（repo の外、公開しない）。
+- 同時に流さないもの: この PoC の間は `design-demo.ts`・`photo-poc.sh`・手動の `codex` を同じ `sr-designgen` で流さない（これらは run.lock を取らず、PoC の開始時の掃除と終了時の画像 dir の差分が、同時に動く call の session log / 画像を消しうる）。
 - 品質の注意: fixture の menu は全品「テスト」入り、説明文の頭は「比較用の架空の和菓子屋です。実在の店舗ではありません。」、access は「テスト線テスト駅」。
   prompt はこれらを画像から省くことを許す（事実は変えない）。menu の無い mockup は失敗ではない。
 - 人の操作: (1) この 1 回を承認する、(2) 上のコマンドを流す、(3) doc の「Viewing the result」で `mockup.png` を Windows の Desktop に写して見る、

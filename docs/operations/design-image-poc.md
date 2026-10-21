@@ -67,6 +67,8 @@ cd ~/work/second-root && ./scripts/sales-design-worker/design-image-poc.sh --hum
 
 The flag means consent to the **one** image-generation Codex call and its ChatGPT plan usage. Do not fetch or check out a feature branch in the worker's checkout, do not build there, and do not run `design-image-poc.ts` by hand.
 
+Do not run `design-demo.ts`, `photo-poc.sh` or a manual `codex` as `sr-designgen` while the PoC runs: they take no run.lock, and the PoC's start-of-run sweep and its exit-time image-dir diff could remove a concurrent call's session log or image.
+
 ### Time and cost
 - Codex: **1 call** with image generation, on the ChatGPT plan of `sr-designgen`'s sign-in (plan usage; **no API billing**, no API key). Usually a few minutes; the call is cut at **15 min**.
 - Whole run: checkout + (rarely) `npm ci` + the call; capped at **3300 s (55 min)**, inside the jail's 3500 s.

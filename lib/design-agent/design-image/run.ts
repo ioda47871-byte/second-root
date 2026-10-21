@@ -338,6 +338,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       worker_commit: o.workerCommit && /^[0-9a-f]{7,40}$/.test(o.workerCommit) ? o.workerCommit : null,
       notes: REPORT_NOTES,
     };
+    if (pending) throw new PocError("POC_OUTPUT_UNSAFE"); // a stop already began: never create the result dir
     const dest = await mkdtemp(join(outRoot, `${POC_SHOP_KEY}-`));
     partialDest = dest;
     try {
