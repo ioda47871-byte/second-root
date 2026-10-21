@@ -1,0 +1,57 @@
+{
+  "version": "0.2-poc",
+  "fixture": "wagashi",
+  "goal": "One visually compelling full-page desktop design mockup for fictional Japanese confectionery shop; ~3 sections, hero takes visual priority.",
+  "source": "Second Root design-library v0.2; curated concepts, not copied screen layouts.",
+  "art_direction": {
+    "theme": "Contemporary Japanese editorial confectionery; modern calligraphy-like typography without clichéd shrine motifs.",
+    "hero": "Make the exact name 架空菓庵 the dominant visual anchor; asymmetric but aligned on a disciplined grid.",
+    "sections": [
+      "Hero: logo-type, one short verified tagline; maximal impact",
+      "Concept: restrained verified description + small selected menu subset; generous rhythm",
+      "Information: accurate opening hours, closed days and address; clear and quietly beautiful"
+    ],
+    "colors": [
+      "warm paper white",
+      "almost-black ink",
+      "a single muted reddish-brown accent"
+    ],
+    "no_photos": true,
+    "motion": "Not depicted; no need for invented animation."
+  },
+  "techniques": [
+    {
+      "id": "A01",
+      "name": "typographic hero",
+      "use": "Shop name is primary artwork, large distinctive Japanese type; allow emptiness to amplify it.",
+      "avoid": "Unreadable clipping or 3-D lettering gimmicks."
+    },
+    {
+      "id": "A02",
+      "name": "selective vertical type",
+      "use": "One tiny Japanese accent may be set vertically.",
+      "avoid": "Vertical addresses, hours, or long copy."
+    },
+    {
+      "id": "A06",
+      "name": "asymmetric precise grid",
+      "use": "Deliberate asymmetry, limited alignment axes.",
+      "avoid": "Random floating elements, repeated split-screen template."
+    },
+    {
+      "id": "A07",
+      "name": "three-part visual rhythm",
+      "use": "Hero loud, concept gentle, information precise.",
+      "avoid": "Same visual structure for every section."
+    }
+  ],
+  "hard_rules": [
+    "Original composition; no close copying of any reference",
+    "No generated or real photos of food/products/shops",
+    "No invented claims, prices, awards, founder name, testimonials, business history, or logo",
+    "No publication; image is a design spec for later Claude implementation",
+    "Exact business facts must come from scripts/sales-design-worker/compare/shops/wagashi.json",
+    "Show a discreet fictional-demo disclosure",
+    "Generated text is NOT source of truth; implement from facts JSON"
+  ]
+}
