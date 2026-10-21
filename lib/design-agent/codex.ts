@@ -128,6 +128,32 @@ export function codexLooksRateLimited(stdout: string, stderr: string): boolean {
   return false;
 }
 
+/**
+ * Signs that the ChatGPT sign-in has expired or was revoked (curiosity-media
+ * `codexLooksSignedOut`, DEV-139 review M2): `codex login status` only reads
+ * the local auth.json, so a revoked refresh token still passes it and `codex
+ * exec` is then refused with 401. Only the CLI's own wording, looked for in
+ * the same places as the quota signs: stderr and the CLI's own error /
+ * turn.failed events, never the model's answer (an answer steered to say so
+ * could otherwise disguise a bad result as a machine failure).
+ */
+const SIGNED_OUT_SIGN = /\b401 unauthorized\b|refresh token (?:has expired|was already used|was revoked|is invalid)|please (?:log out and )?sign in again|not logged in|invalid_grant/i;
+
+export function codexLooksSignedOut(stdout: string, stderr: string): boolean {
+  if (SIGNED_OUT_SIGN.test(stderr)) return true;
+  for (const line of stdout.split("\n")) {
+    let event: { type?: unknown; message?: unknown; error?: { message?: unknown } };
+    try {
+      event = JSON.parse(line) as typeof event;
+    } catch {
+      continue;
+    }
+    if (event.type !== "error" && event.type !== "turn.failed") continue;
+    if (SIGNED_OUT_SIGN.test(`${String(event.message ?? "")} ${String(event.error?.message ?? "")}`)) return true;
+  }
+  return false;
+}
+
 /** The thread id and the last agent message from `--json` output. */
 export function readCodexEvents(stdout: string): { threadId?: string; lastMessage?: string } {
   let threadId: string | undefined;
