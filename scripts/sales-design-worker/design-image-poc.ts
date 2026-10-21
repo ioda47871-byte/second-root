@@ -17,9 +17,9 @@
  * Exit: 0 done, 1 stopped, 2 refused / usage.
  */
 import { homedir, tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
-import { cleanupActivePoc, runDesignImagePoc } from "../../lib/design-agent/design-image/run";
+import { cleanupActivePoc, isInsidePath, runDesignImagePoc } from "../../lib/design-agent/design-image/run";
 import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 
@@ -32,7 +32,7 @@ let stopping = false;
 
 const argv = process.argv.slice(2);
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
-const insideRepo = (p: string) => !relative(REPO, p).startsWith("..");
+const insideRepo = (p: string) => isInsidePath(p, REPO);
 
 /** Kills Codex, cleans up (session log, image dirs, work dir; at most 20 s), prints a fixed code, exits 1. */
 function stopNow(code: string): void {

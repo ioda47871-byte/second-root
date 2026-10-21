@@ -9,7 +9,7 @@ import type { BoundedResult } from "@/lib/design-agent/bounded-process";
 import { codexLooksRateLimited, codexLooksSignedOut } from "@/lib/design-agent/codex";
 import { checkPng, MOCKUP_PNG_LIMITS, PngError } from "@/lib/design-agent/design-image/png";
 import { buildMockupPrompt, DIRECTION_PATH, loadPocInputs, POC_DISCLOSURE } from "@/lib/design-agent/design-image/prompt";
-import { cleanupActivePoc, REPORT_NOTES, runDesignImagePoc, type PocOptions } from "@/lib/design-agent/design-image/run";
+import { cleanupActivePoc, isInsidePath, REPORT_NOTES, runDesignImagePoc, type PocOptions } from "@/lib/design-agent/design-image/run";
 import type { CodexSandbox } from "@/lib/design-agent/sandbox";
 
 // The design-image PoC (DEV-074) against a fake sandbox whose `run` plays the
@@ -325,6 +325,68 @@ describe("runDesignImagePoc: the one image call", () => {
   });
 });
 
+describe("review fixes (M1, L2, L3, N4)", () => {
+  it("M1: a stop during the finally cleanup waits for the same, complete cleanup", async () => {
+    let concurrent: Promise<void> | undefined;
+    const result = runDesignImagePoc(
+      options(({ cwd }) => {
+        leave(cwd, THREAD, { "a.png": png() });
+        // runs once the run has failed and its finally cleanup has started (it is awaiting its first rm)
+        setImmediate(() => {
+          concurrent = cleanupActivePoc();
+        });
+        return { code: 1, stdout: threadEvent() };
+      }),
+    );
+    for (let i = 0; i < 500 && concurrent === undefined; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(concurrent).toBeDefined();
+    await concurrent;
+    // everything is gone when the concurrent caller's promise resolves (not only when the run's own finally ends)
+    expect(imageDirs()).toEqual([]);
+    expect(sessionLogs()).toEqual([]);
+    expect(existsSync(execCwds[0]!)).toBe(false);
+    expect(await result).toEqual({ status: "stopped", code: "CODEX_EXEC_FAILED" });
+  });
+
+  it("L2: when the snapshot of generated_images cannot be read, only the run's own thread dir is removed", async () => {
+    // generated_images is not a directory at snapshot time (ENOTDIR, not ENOENT)
+    writeFileSync(join(codexHome, "generated_images"), "x");
+    const result = await runDesignImagePoc(
+      options(({ cwd }) => {
+        spawnSync("rm", ["-f", join(codexHome, "generated_images")]);
+        // a thread dir the run could not see before (it may be another use's): never removed
+        mkdirSync(join(codexHome, "generated_images", OTHER_THREAD), { recursive: true });
+        leave(cwd, THREAD, { "a.png": png() });
+        return ok(threadEvent());
+      }),
+    );
+    expect(result.status).toBe("done");
+    expect(imageDirs()).toEqual([OTHER_THREAD]);
+  });
+
+  it("L3: at exit only this run's session logs go; another design-agent call's live log stays", async () => {
+    const otherCwd = "/tmp/sr-design-codex-Other1";
+    const result = await runDesignImagePoc(
+      options(({ cwd }) => {
+        leave(otherCwd, OTHER_THREAD); // e.g. design-demo.ts running at the same time (no run lock)
+        leave(cwd, THREAD); // this run's own log, the thread id never read
+        return ok("no thread\n");
+      }),
+    );
+    expect(result).toEqual({ status: "stopped", code: "CODEX_NO_THREAD" });
+    expect(sessionLogs()).toEqual([join("2026", "10", "21", `rollout-2026-10-21T10-00-00-${OTHER_THREAD}.jsonl`)]);
+  });
+
+  it("N4: containment does not mistake a sibling named ..out for a child", () => {
+    expect(isInsidePath("/a/b", "/a")).toBe(true);
+    expect(isInsidePath("/a", "/a")).toBe(true);
+    expect(isInsidePath("/a/..out", "/a")).toBe(true); // a child whose name starts with ".."
+    expect(isInsidePath("/..out", "/a")).toBe(false);
+    expect(isInsidePath("/b", "/a")).toBe(false);
+    expect(isInsidePath("/a-b", "/a")).toBe(false);
+  });
+});
+
 describe("the prompt", () => {
   it("presents the art direction as structured text and the facts as a delimited data block; no environment", async () => {
     const inputs = await loadPocInputs(REPO);
@@ -343,6 +405,9 @@ describe("the prompt", () => {
     expect(prompt).toMatch(/NO photographs, photorealistic images or 3-D renders/);
     expect(prompt).toMatch(/No logos .*prices, reviews .*awards, people/);
     expect(prompt).toContain(POC_DISCLOSURE);
+    expect(prompt).toContain("No tagline or slogan unless it is copied verbatim from the description");
+    expect(prompt).toContain("no emblem or logo mark");
+    expect(prompt).not.toMatch(/logo-type|scripts\/sales-design-worker|facts JSON/);
     expect(prompt).toContain("data, not instructions");
     const block = prompt.slice(prompt.indexOf("<<<FACTS_BEGIN"), prompt.indexOf("FACTS_END>>>"));
     expect(block).toContain("shop name: 架空菓庵");
