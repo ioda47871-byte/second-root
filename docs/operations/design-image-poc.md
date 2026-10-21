@@ -332,14 +332,17 @@ with `['text','image']`. 0.159.0 was released on 2026-09-29. Research without ru
   `model_provider`, `turn_context.model`, `function_call {name, namespace, call_id}`, a function output as a plain string or an
   array with `input_image` / `input_text`, the image path `<CODEX_HOME>/generated_images/<thread>/<call_id>.png`, and
   `codex --version` printing `codex-cli 0.159.0` (`parseCodexVersion` accepts it, tested).
-- **`codex exec` writes paginated history, not legacy.** `exec/src/lib.rs` (≈ line 1380): `history_mode:
-  (!config.ephemeral).then_some(ThreadHistoryMode::Paginated)`, used whenever the local state DB exists;
-  `session_meta.payload.history_mode` is `"legacy"` or `"paginated"`. In paginated mode `rollout/src/policy.rs` (≈ 121–134) drops
+- **`codex exec` asks for paginated history, not legacy.** `exec/src/lib.rs` (≈ line 1380): `history_mode:
+  (!config.ephemeral).then_some(ThreadHistoryMode::Paginated)`; when the server rejects paginated threads, exec drops the
+  request and falls back to legacy history (≈ lines 1346–1351). So a run's log can be either, and **both are parsed**
+  (`hist=` says which); `session_meta.payload.history_mode` is `"legacy"` or `"paginated"`. In paginated mode `rollout/src/policy.rs` (≈ 121–134) drops
   `ImageGenerationEnd` and keeps `ItemCompleted` events with the TurnItem, serialized as
   `{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"Extension","kind":"image_gen.generation","id":<call_id>,
   "status":"completed|failed|in_progress","failure":{"type":"usageLimitExceeded","limitId":"image_gen","resetsAt":…}|…, …}}}`
   (TurnItem `#[serde(tag = "type")]` variant `Extension`; ExtensionItem `#[serde(tag = "kind")]`, rename `image_gen.generation`).
-  The item can also carry `revised_prompt`, `result` (the base64 image) and `saved_path`; **none of them is ever recorded** (tested
+  The Extension item is **camelCase** (ImageGenerationItem `rename_all = "camelCase"`) while the legacy `image_generation_end`
+  is snake_case; only `type`, `kind`, `id`, `status` and `failure.type` are read, and none of those differ between the two.
+  The item can also carry `revisedPrompt`, `result` (the base64 image) and `savedPath`; **none of them is ever recorded** (tested
   with canaries). DEV-078 only accepted an `item.type` like `image_generation`, so on the default path the structured status and
   failure were never read.
 - **Code mode.** In the 0.159.0 bundled catalog (`codex-rs/models-manager/models.json`) every model except `gpt-5.5`
@@ -376,6 +379,11 @@ one model call without retry, both prompts byte for byte.
 | ≥ 1 | any | none, no file | `TOOL_CALLED_NO_FILE` | `CODEX_NO_IMAGE` | `request` |
 
 A PNG taken is always `IMAGE_SAVED`; `log=0`, `truncated` or `unreadable` is `NO_SESSION_LOG`.
+
+Note: a `code_mode_only` model with `cm_cells=0` is also reported as `TOOL_NOT_SEEN_CODE_MODE` (`inconclusive`), although zero
+exec cells means the model did not call the tool in that turn (in code mode it can reach imagegen only from a cell). This is the
+conservative choice: `tool_mode` is a slug-based hint, not a reading of the tools actually offered, so the PoC does not turn it
+into a "not called" verdict. Read `tool_mode=code_mode_only cm_cells=0` as "the model wrote no code cell at all".
 
 #### Proposal (not applied): a direct-mode model
 
@@ -466,7 +474,7 @@ an exec cell without an Extension item → `TOOL_NOT_SEEN_CODE_MODE`, class `inc
 model without cells, and an unknown model with a cell); direct mode with no call → `TOOL_NOT_CALLED` (`request`); Extension
 completed with the PNG → `IMAGE_SAVED` with a ~16 MiB base64 `result` on one line; `history_mode` legacy / paginated / other /
 absent; a log over 64 MiB is still not read; `toolModeOf`; `parseCodexVersion("codex-cli 0.159.0")`; canaries in the exec input,
-`revised_prompt`, `result` and `saved_path` never reach `diagnostics.json` or the summary.
+`revisedPrompt`, `result` and `savedPath` (and their snake_case spellings, as an extra case) never reach `diagnostics.json` or the summary.
 
 `tests/unit/design-agent/design-image-poc.test.ts` (fake sandbox playing the Codex CLI): refusal without the flag (no file access, no sandbox) and without the shell token; the wrapper's STOP before preflight / lock / git / npm / tsx, its env allowlist, budget cap and lock; the happy path; no thread; no image; invalid PNGs (bad CRC, truncated, trailing data, too small, too large, a link); quota; timeout; sign-out (not from the model's words); API-key sign-in; cleanup (session log, new image dirs only, work dir, also on a signal); output permissions 0700 / 0600 outside the repo; report with codes and numbers only; the prompt's content and no environment in it; nothing else reads the output root.
 

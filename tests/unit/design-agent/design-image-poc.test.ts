@@ -1367,12 +1367,21 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
     /** session_meta as `codex exec` 0.159.0 writes it (paginated history). */
     const META_159 = { cli_version: "0.159.0", history_mode: "paginated" };
     const turn = (model: string) => ({ timestamp: "t", type: "turn_context", payload: { cwd: "x", model, approval_policy: "never", sandbox_policy: { type: "read-only" } } });
-    /** event_msg item_completed with TurnItem::Extension, ExtensionItem kind image_gen.generation (it may carry the revised prompt, the base64 result and the saved path). */
-    const ext = (status: string, failure?: unknown, id = "call_1", result = "") => ({
-      timestamp: "t",
-      type: "event_msg",
-      payload: { type: "item_completed", thread_id: THREAD, turn_id: "turn_1", item: { type: "Extension", kind: "image_gen.generation", id, status, revised_prompt: `${CANARY} revised`, result, saved_path: `/home/x/.codex/generated_images/${THREAD}/${CANARY}.png`, failure: failure ?? null } },
-    });
+    /**
+     * event_msg item_completed with TurnItem::Extension, ExtensionItem kind image_gen.generation. The item is camelCase
+     * (ImageGenerationItem `rename_all = "camelCase"`: revisedPrompt, savedPath) and may carry the base64 result;
+     * `snake` writes the legacy-style snake_case keys instead (an extra case: neither spelling is ever recorded).
+     */
+    const ext = (status: string, failure?: unknown, id = "call_1", result = "", snake = false) => {
+      const text = snake
+        ? { revised_prompt: `${CANARY} revised`, saved_path: `/home/x/.codex/generated_images/${THREAD}/${CANARY}.png` }
+        : { revisedPrompt: `${CANARY} revised`, savedPath: `/home/x/.codex/generated_images/${THREAD}/${CANARY}.png` };
+      return {
+        timestamp: "t",
+        type: "event_msg",
+        payload: { type: "item_completed", thread_id: THREAD, turn_id: "turn_1", item: { type: "Extension", kind: "image_gen.generation", id, status, ...text, result, failure: failure ?? null } },
+      };
+    };
     const cell = (input: string, id = "cell_1") => ({ timestamp: "t", type: "response_item", payload: { type: "custom_tool_call", status: "completed", call_id: id, name: "exec", input } });
     const cellOutput = (id = "cell_1") => ({ timestamp: "t", type: "response_item", payload: { type: "custom_tool_call_output", call_id: id, output: `${CANARY} cell output` } });
     const imagegenCell = () => cell(`const r = await tools.image_gen__imagegen({ prompt: "${CANARY}" });\ntext(JSON.stringify(r));`);
@@ -1402,8 +1411,12 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
       expect(await facts([call(), ext("in_progress"), okOutput()])).toMatchObject({ image_tool_calls: 1, image_tool_completed: 1, image_tool_failed: 0 });
       // an Extension item of another kind is not the image tool
       const other = ext("failed", { type: "usageLimitExceeded" }, "z");
-      (other.payload.item as Record<string, unknown>).kind = "web_search.query";
+      (other.payload.item as Record<string, unknown>).kind = "web.search";
       expect(await facts([other])).toMatchObject({ image_tool_calls: 0 });
+      // the snake_case spelling of the text fields: read the same, and never recorded
+      const snake = await facts([call(), ext("failed", { type: "usageLimitExceeded" }, "call_1", CANARY, true)]);
+      expect(snake).toMatchObject({ image_tool_calls: 1, image_failure_codes: ["USAGE_LIMIT"] });
+      expect(JSON.stringify(snake)).not.toContain(CANARY);
     });
 
     it("paginated, code mode: an exec cell naming image_gen__imagegen + an Extension item failed (other) → img_calls=1, CODEX_IMAGE_TOOL_FAILED", async () => {
