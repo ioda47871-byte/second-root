@@ -38,7 +38,7 @@
       "id": "Products",
       "label": "商品・こだわり",
       "intent": "Show the seasonal jō-namagashi and the tsubu-an dorayaki as things to want. Visual, never a text-only section.",
-      "layout": "Section label, then a row of 3 product visual cards (image on top, short Mincho caption below), plus one short copy block aligned to the grid. Captions and copy only from the provided description, verbatim, or neutral placeholder text lines."
+      "layout": "Section label, then a row of 2 to 3 product visual cards plus one short copy block aligned to the grid. Captions only as phrases copied verbatim from the description (季節の上生菓子, 粒あんのどら焼き) in small Mincho; a third card, if present, is the tsubu-an macro with no caption. Copy only verbatim from the description or neutral placeholder lines."
     },
     {
       "id": "ShopInfo",
@@ -54,12 +54,12 @@
     "cross_section": "The hero dorayaki is cut cleanly in half: even golden-brown castella layers and a thick layer of glossy tsubu-an with visible whole azuki beans.",
     "macro": "One card may be a close macro of the tsubu-an texture or the soft skin of the dorayaki.",
     "seasonal_motif": "One card shows a seasonal jō-namagashi (for example an autumn maple or chestnut motif shaped by hand) on a small plate; delicate, matte, realistic proportions.",
-    "consistency": "All images share one art direction: same light direction, the same muted kinari and sumi environment, similar camera height and depth of field, so the page reads as one brand shoot.",
+    "consistency": "All images share one art direction: same light direction, the same muted kinari and sumi environment, similar camera height and depth of field: one consistent art direction.",
     "never": "No people, no hands, no faces, no staff; no store exterior, interior, signage or noren with writing; no packaging with a brand or logo; no text inside the images."
   },
   "web_ui": {
-    "header": "A slim header bar: the shop name small at the left (as type, not a logo mark) and 3 anchor links at the right.",
-    "nav": ["商品・こだわり", "店舗情報", "アクセス"],
+    "header": "A slim header bar: the shop name small at the left (as type, not a logo mark) and 2 anchor links at the right (to the two sections below the Hero).",
+    "nav": ["商品・こだわり", "店舗情報"],
     "cta": "店舗情報を見る",
     "section_labels": ["商品・こだわり", "店舗情報"],
     "info_labels": ["営業時間", "定休日", "住所", "電話"],
@@ -76,7 +76,7 @@
     {
       "id": "B02",
       "name": "card row with air",
-      "use": "Three equal product cards on the grid with generous gutters and short captions.",
+      "use": "Two or three equal product cards on the grid with generous gutters; captions only verbatim description phrases, or none.",
       "avoid": "Busy collages, overlapping images, carousels with arrows."
     },
     {

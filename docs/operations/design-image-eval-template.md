@@ -8,7 +8,9 @@
 1. The human uploads `kakuu-kaan-mockup-v2.png` (and `report.json`) into the Claude session.
 2. Claude checks the hard fails first, then scores the 5 criteria with the anchors below, citing what is visible (never Codex's words).
 3. The human confirms or corrects the score. The confirmed sheet goes into the PR / `.ai/reviews/DEV-075.md` (scores and short notes only; the PNG is not committed).
-4. **Pass = no hard fail AND total ≥ 22/25 AND no criterion below 4.** DEV-075 is done only after a pass on a human-run image.
+4. **Pass = no hard fail AND total ≥ 22/25** (the human's target). DEV-075 is done only after a pass on a human-run image.
+   *Proposed by Claude, for the human to confirm (not a pass requirement until confirmed):* no criterion below 4, so that a high total cannot hide one weak area. The sheet records whether it holds either way.
+   The hard fails are not a Claude addition: they enforce the human's own rules for this PoC (no invented facts, no store or people imagery, the disclosure, no logo or realism claim, the shop facts as given).
 
 ## Hard fails (independent of the score; any one fails the image)
 - [ ] **Invented facts**: a price, review / rating, award, founding year / history, person or staff name, a product name or claim not in the facts (beyond verbatim description phrases), a purchase / reservation / order UI
@@ -43,7 +45,7 @@
 - 1: looks copied
 
 ### 4. Webサイトとしての構成 (structure as a website)
-- 5: header nav with 3–4 anchors, CTA, Hero / 商品・こだわり (2–3 visual cards) / 店舗情報 (definition list or table) clearly separated, clear hierarchy, realistic web type sizes
+- 5: header nav with anchors to the sections, CTA, Hero / 商品・こだわり (2–3 visual cards) / 店舗情報 (definition list or table) clearly separated, clear hierarchy, realistic web type sizes
 - 4: all parts present, one is weak (e.g. small nav, cards a bit crowded)
 - 3: one required part missing (no nav, or a text-only middle section, or an unstructured info block)
 - 2: reads more like a poster than a page
@@ -77,7 +79,8 @@ Scores (1–5)
   5 実装可能性 .............. <n>  <one-line reason>
   total ..................... <n>/25   lowest <n>
 
-Result: PASS (no hard fail, ≥22, none <4) / FAIL (<reason>)
+Result: PASS (no hard fail, ≥22/25) / FAIL (<reason>)
+Proposed extra condition (none below 4): holds / does not hold (<which>) — human: adopt / do not adopt
 Confirmed by the human: <yes / corrected to …> on <date>
 Next: <e.g. implement as a page in a separate PoC / adjust the direction and ask for another approved run>
 ```

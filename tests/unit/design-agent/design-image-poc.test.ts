@@ -452,6 +452,7 @@ describe("the direction choice", () => {
     expect(v2.sections.map((s: { id: string }) => s.id)).toEqual(["Hero", "Products", "ShopInfo"]);
     expect(v2.hard_rules.join("\n")).toContain(POC_DISCLOSURE_V2);
     expect(JSON.stringify(v2.web_ui)).not.toMatch(/購入|予約|注文/);
+    expect(v2.web_ui.nav).toEqual(["商品・こだわり", "店舗情報"]);
     // v1 is kept unchanged for history
     expect(JSON.parse(readFileSync(join(REPO, DIRECTION_PATH), "utf8")).version).toBe("0.2-poc");
   });
@@ -470,6 +471,9 @@ describe("the direction choice", () => {
       { ...original, hard_rules: original.hard_rules.filter((r: string) => !r.includes(POC_DISCLOSURE_V2)) },
       { ...original, extra: "x" },
       { ...original, web_ui: { ...original.web_ui, cta: "ご予約はこちら" } },
+      { ...original, web_ui: { ...original.web_ui, nav: [...original.web_ui.nav, "オンライン購入"] } },
+      { ...original, web_ui: { ...original.web_ui, info_labels: [...original.web_ui.info_labels, "ご注文"] } },
+      { ...original, web_ui: { ...original.web_ui, nav: ["店舗情報"] } },
       { ...original, sections: [...original.sections].reverse() },
     ]) {
       write(broken);
@@ -502,12 +506,16 @@ describe("the prompt", () => {
     expect(prompt).toMatch(/2:3 \(for example 1024 x 1536 px\)/);
     expect(prompt).toContain("realistic web typography sizes");
     // nav, CTA, sections, cards, structured info
-    expect(prompt).toContain("Nav anchors, exactly: 「商品・こだわり」 「店舗情報」 「アクセス」");
+    expect(prompt).toContain("Nav anchors, exactly: 「商品・こだわり」 「店舗情報」\n");
+    expect(prompt).not.toContain("「アクセス」"); // no anchor without a section (the access line may be left out)
     expect(prompt).toContain("exactly: 「店舗情報を見る」");
     expect(prompt).toContain("1. Hero.");
     expect(prompt).toContain("2. 商品・こだわり.");
     expect(prompt).toContain("3. 店舗情報.");
-    expect(prompt).toContain("This section MUST contain 2 to 3 product visual cards (image + short caption); it is never text only.");
+    expect(prompt).toContain("This section MUST contain 2 to 3 product visual cards; it is never text only.");
+    expect(prompt).toContain("Card captions are ONLY phrases copied verbatim from the description in the FACTS block (for example 季節の上生菓子, 粒あんのどら焼き); a third card, if present, is the tsubu-an macro with no caption. Never invent a caption.");
+    expect(prompt).toContain("a row of 2 to 3 product visual cards");
+    expect(prompt).not.toMatch(/row of 3 product|Three equal product cards/);
     expect(prompt).toContain("It MUST be a structured information block (a definition list or a two-column table: label, value).");
     expect(prompt).toContain("「営業時間」 「定休日」 「住所」 「電話」");
     expect(prompt).not.toMatch(/「[^」]*(購入|予約|注文)[^」]*」/);
@@ -518,6 +526,9 @@ describe("the prompt", () => {
     expect(prompt).toContain("NO people: no staff, customers, faces, hands or bodies.");
     expect(prompt).toMatch(/No logos, emblems or crests; no prices, reviews or ratings, awards or rankings, people or founder names, founding years or shop history/);
     expect(prompt).toContain("Nothing may claim that the images are real photographs");
+    expect(prompt).toContain("- Original composition only; never copy or imitate Instagram posts, third-party photos or other websites.");
+    expect(prompt).toContain("one consistent art direction.");
+    expect(prompt).not.toContain("brand shoot");
     expect(prompt).toContain("No tagline or slogan unless it is copied verbatim from the description");
     expect(prompt).toContain("Never invent, translate or change a fact.");
     expect(prompt).not.toMatch(/NO photographs, photorealistic images or 3-D renders/);
@@ -735,7 +746,7 @@ describe("isolation of the PoC's output", () => {
     expect(files).toEqual(["scripts/sales-design-worker/design-image-poc.ts"]);
   });
 
-  it("the v2 direction and the AI food-visual policy stay inside the PoC (worker, demo, presets, renderer, asset store never read them)", () => {
+  it("the v2 direction, the direction files and the AI food-visual policy stay inside the PoC (worker, demo, presets, renderer, asset store never read them)", () => {
     const grep = spawnSync(
       "git",
       ["grep", "--untracked", "-lE", "wagashi-art-direction-v2|AI_FOOD_VISUALS", "--", ".", ":!docs", ":!.ai", ":!design-library/poc", ":!lib/design-agent/design-image", ":!tests/unit/design-agent/design-image-poc.test.ts"],
@@ -744,5 +755,13 @@ describe("isolation of the PoC's output", () => {
     expect(grep.status === 0 || grep.status === 1).toBe(true); // 1: no match
     const files = grep.stdout.trim().split("\n").filter(Boolean).sort();
     for (const f of files) expect(["scripts/sales-design-worker/design-image-poc.sh", "scripts/sales-design-worker/design-image-poc.ts"]).toContain(f);
+    // nor does anything else name the PoC's direction files or their table
+    const dirs = spawnSync(
+      "git",
+      ["grep", "--untracked", "-lE", "design-library/poc|DIRECTION_PATHS", "--", ".", ":!docs", ":!.ai", ":!design-library/poc", ":!lib/design-agent/design-image", ":!tests/unit/design-agent/design-image-poc.test.ts"],
+      { cwd: REPO, encoding: "utf8" },
+    );
+    expect(dirs.status === 0 || dirs.status === 1).toBe(true);
+    for (const f of dirs.stdout.trim().split("\n").filter(Boolean)) expect(["scripts/sales-design-worker/design-image-poc.sh", "scripts/sales-design-worker/design-image-poc.ts"]).toContain(f);
   });
 });

@@ -20,7 +20,7 @@
 ### HUMAN-019 — DEV-075 の design image PoC 第2案（v2）を WSL で 1 回流す承認
 
 - 何: 架空菓庵の Web デザイン comp の PNG を 1 枚、第2案の art direction（`design-library/poc/wagashi-art-direction-v2.json`、0.3-poc）で `sr-designgen` の ChatGPT サインインの Codex（組み込み画像生成）に作らせる。
-  header nav・Hero（店名と、どら焼きの断面の和菓子の画像）・商品・こだわり（商品の画像の card 2〜3 枚）・店舗情報（定義リスト）の 3 節、縦 2:3。
+  header nav（「商品・こだわり」「店舗情報」の 2 つ）・Hero（店名と、どら焼きの断面の和菓子の画像）・商品・こだわり（商品の画像の card 2〜3 枚、caption は説明文の言葉そのままだけ）・店舗情報（定義リスト）の 3 節、縦 2:3。
   道具は HUMAN-018 と同じ `scripts/sales-design-worker/design-image-poc.sh`（v2 が既定）、手順・画像の見方・評価は `docs/operations/design-image-poc.md` の「第2案」。Claude は WSL に触れない。
 - 方針の変更（2026-10-21、人が承認）: 和菓子そのもの（どら焼き・上生菓子・粒あんの接写）と抽象的な素材（和紙・木の盆・器・麻）の AI 生成の画像を、**提案用のイメージとしてだけ**許す（実際の店の商品の写真として扱わない）。
   引き続き禁止: 架空の店舗の AI 画像（外観・内観・店員・人・手・看板）、Instagram や第三者の写真・デザインの模倣、logo・紋、画像が実物だと言う文、価格・口コミ・受賞・沿革・人物の創作。
@@ -46,7 +46,7 @@
 - 同時に流さないもの: この PoC の間は `design-demo.ts`・`photo-poc.sh`・手動の `codex` を同じ `sr-designgen` で流さない（これらは run.lock を取らず、PoC の開始時の掃除と終了時の画像 dir の差分が、同時に動く call の session log / 画像を消しうる）。
 - 人の操作: (1) この 1 回を承認する、(2) 上のコマンドを流す、(3) runbook の「第2案 › Viewing」で `mockup.png` を Windows の Desktop に `kakuu-kaan-mockup-v2.png` として写して見る、
   (4) その PNG（と `report.json`）を Claude の session に upload する。止まったら表示された `POC_STOP: <符号>` を渡す。
-- 評価: 画像ができただけでは DEV-075 は終わらない。`docs/operations/design-image-eval-template.md` の 5 項目（各 1〜5）で Claude が採点し人が確認、**22/25 以上・4 未満の項目なし・hard fail なし**で合格。
+- 評価: 画像ができただけでは DEV-075 は終わらない。`docs/operations/design-image-eval-template.md` の 5 項目（各 1〜5）で Claude が採点し人が確認、**22/25 以上（人の目標）・hard fail なし**で合格。hard fail（事実の創作・店舗 / 人物の画像・表示の欠落・logo / 実物の主張・事実の崩れ）は人の決めた規則そのもの。「4 未満の項目なし」は Claude の追加の提案で、人が採用を決めるまで合格の条件ではない（評価の sheet には記録する）。
 - 解除条件: 画像（または停止の符号）が届く、または人が流さないと決める。
 
 ### HUMAN-018 — DEV-074 の design image PoC を WSL で 1 回流す承認

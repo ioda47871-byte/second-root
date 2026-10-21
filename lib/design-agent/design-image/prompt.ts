@@ -100,7 +100,7 @@ const DirectionV2Schema = z
     web_ui: z
       .object({
         header: Text,
-        nav: z.array(Label).min(3).max(4),
+        nav: z.array(Label).min(2).max(4),
         cta: Label,
         section_labels: z.array(Label).length(2),
         info_labels: z.array(Label).min(3).max(6),
@@ -144,7 +144,7 @@ export async function loadPocInputs(repoDir: string, version: DirectionVersion =
       const d = direction.data;
       if (d.sections.map((s) => s.id).join("|") !== SECTION_IDS_V2.join("|")) throw new PocInputError();
       if (d.web_ui.section_labels.join("|") !== SECTION_LABELS_V2.join("|")) throw new PocInputError();
-      if ([...d.web_ui.nav, d.web_ui.cta].some((label) => SALES_UI.test(label))) throw new PocInputError();
+      if ([...d.web_ui.nav, d.web_ui.cta, ...d.web_ui.info_labels].some((label) => SALES_UI.test(label))) throw new PocInputError();
       if (!d.hard_rules.some((r) => r.includes(POC_DISCLOSURE_V2))) throw new PocInputError();
       return { facts: shop.facts, demo: shop.demo, version, direction: d };
     }
@@ -303,7 +303,7 @@ function buildV2Prompt(demo: DemoView, direction: ArtDirectionV2): string {
     "",
     "SECTIONS (top to bottom; each section gets its own visual structure)",
     `1. Hero. ${hero.intent} Layout: ${hero.layout}`,
-    `2. ${products.label}. ${products.intent} Layout: ${products.layout} This section MUST contain 2 to 3 product visual cards (image + short caption); it is never text only.`,
+    `2. ${products.label}. ${products.intent} Layout: ${products.layout} This section MUST contain 2 to 3 product visual cards; it is never text only. Card captions are ONLY phrases copied verbatim from the description in the FACTS block (for example 季節の上生菓子, 粒あんのどら焼き); a third card, if present, is the tsubu-an macro with no caption. Never invent a caption.`,
     `3. ${info.label}. ${info.intent} Layout: ${info.layout} It MUST be a structured information block (a definition list or a two-column table: label, value).`,
     "",
     "WAGASHI VISUALS (AI concept imagery for this design proposal)",
@@ -329,6 +329,7 @@ function buildV2Prompt(demo: DemoView, direction: ArtDirectionV2): string {
     "HARD RULES",
     ...direction.hard_rules.map((r) => `- ${r}`),
     "- AI-generated images of the wagashi themselves ARE allowed and wanted (a dorayaki cross-section with tsubu-an, seasonal jō-namagashi, a tsubu-an macro), together with abstract materials and textures only (washi paper, wooden tray, ceramic plate, linen). They are concept imagery for a design proposal, not photos of this shop's products.",
+    "- Original composition only; never copy or imitate Instagram posts, third-party photos or other websites.",
     "- NO images of a store: no shop exterior or facade, no interior, counter or shelves, no signage, no noren or sign with writing, no street. NO people: no staff, customers, faces, hands or bodies.",
     "- No logos, emblems or crests; no prices, reviews or ratings, awards or rankings, people or founder names, founding years or shop history, social media handles, QR codes.",
     "- Nothing may claim that the images are real photographs or the shop's actual products; never write words such as 実物, 当店の写真 or 商品写真.",

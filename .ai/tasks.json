@@ -3318,7 +3318,7 @@
     {
       "id": "DEV-075",
       "title": "Design image PoC 第2案: 架空菓庵の Web デザイン comp（header nav + Hero / 商品・こだわり / 店舗情報）、和菓子の AI 生成イメージを提案用に許可（PoC の中だけ）",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-074"
@@ -3328,12 +3328,12 @@
       "branch": "feature/design-image-v2",
       "purpose": "HUMAN-018 の 1 枚目はポスター風で営業の訴求が弱かった。人の新しい方針（2026-10-21）で和菓子そのものの AI 生成画像を提案用イメージとして許し、実装できる Web サイトの design comp（3 節・nav・商品の画像 card・店舗情報の定義リスト）を 1 枚作らせて評価する。店舗・人物の画像・logo・事実の創作・実物だと言う文は引き続き禁止。v2 と方針は PoC の中だけ",
       "acceptance_criteria": [
-        "design-library/poc/wagashi-art-direction-v2.json（0.3-poc）: theme・palette（hex）・書体（明朝 display + ゴシック本文）・12 col grid・節ごとの意図と layout・和菓子の画像の方向（光・素材・断面・接写・季節の上生菓子・一貫性・人と店舗なし）・Web UI（nav 3・CTA「店舗情報を見る」・節の label・情報の label）・technique・avoid・hard rules（AI のイメージ・表示「架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです」・価格 / 口コミ / 受賞 / 沿革 / 人物 / 店舗写真なし・事実だけ・テストの値は省いてよい）。v1 は履歴として残す",
+        "design-library/poc/wagashi-art-direction-v2.json（0.3-poc）: theme・palette（hex）・書体（明朝 display + ゴシック本文）・12 col grid・節ごとの意図と layout・和菓子の画像の方向（光・素材・断面・接写・季節の上生菓子・一貫性・人と店舗なし）・Web UI（nav 2「商品・こだわり」「店舗情報」・CTA「店舗情報を見る」・節の label・情報の label）・technique・avoid・hard rules（AI のイメージ・表示「架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです」・価格 / 口コミ / 受賞 / 沿革 / 人物 / 店舗写真なし・事実だけ・テストの値は省いてよい）。v1 は履歴として残す",
         "prompt.ts: SR_DESIGN_IMAGE_POC_DIRECTION=v1|v2（未設定は v2、それ以外は POC_DIRECTION_INVALID）。wrapper の env allowlist に含め、shell と TS の両方で検査。v1 の prompt は 1 byte も変わらない（hash の test）",
-        "v2 の prompt: Web サイトの design comp（全頁の desktop の screenshot 風・device frame なし・実際の Web の文字の大きさ・縦 2:3）、header nav、節 2 に商品の画像 card 2〜3、節 3 は定義リスト / 表、和菓子の画像は許可・店舗 / 人物 / logo / 価格 / 口コミ / 受賞 / 沿革 / 実物の主張は禁止、表示の行、日本語は店名・label・事実・表示に限る、事実は data block の中だけ、fixture は変えない",
+        "v2 の prompt: Web サイトの design comp（全頁の desktop の screenshot 風・device frame なし・実際の Web の文字の大きさ・縦 2:3）、header nav（「商品・こだわり」「店舗情報」の 2 つ）、節 2 に商品の画像 card 2〜3（caption は説明文の言葉そのままだけ、3 枚目は caption なしの粒あんの接写）、節 3 は定義リスト / 表、和菓子の画像は許可・店舗 / 人物 / logo / 価格 / 口コミ / 受賞 / 沿革 / 実物の主張 / Instagram や第三者の写真・サイトの模倣は禁止、表示の行、日本語は店名・label・事実・表示に限る、事実は data block の中だけ、fixture は変えない",
         "report.json に direction_version、v2 の notes に AI_FOOD_VISUALS_CONCEPT_ONLY と EVALUATION_REQUIRED。design-spec.json は選んだ direction",
         "v2 と方針は PoC の中だけ: 静的 test で、wagashi-art-direction-v2 / AI_FOOD_VISUALS を名指すのは PoC の入口と lib/design-agent/design-image/ だけ",
-        "評価: docs/operations/design-image-eval-template.md の 5 項目（美しさ・店舗との相性・独自性・Web サイトとしての構成・実装可能性、各 1〜5）で 22/25 以上・4 未満なし・hard fail なし。人が流した画像を Claude が採点し人が確認して初めて done（既存の gate・閾値・CI は変えない）",
+        "評価: docs/operations/design-image-eval-template.md の 5 項目（美しさ・店舗との相性・独自性・Web サイトとしての構成・実装可能性、各 1〜5）で 22/25 以上（人の目標）・hard fail なし（人の規則）。「4 未満の項目なし」は Claude の提案で、人が採用したときだけ条件に加える。人が流した画像を Claude が採点し人が確認して初めて done（既存の gate・閾値・CI は変えない）",
         "再利用できる和菓子の asset の設計だけ（docs/operations/design-image-assets.md）。生成器は作らない。PoC の Codex 呼び出しは 1 回のまま"
       ],
       "required_tests": [
@@ -3366,7 +3366,7 @@
         "評価の点の確認",
         "AI の和菓子の画像を worker・demo・Production で使うこと（評価と別の承認）"
       ],
-      "decision": "2026-10-21: 人の方針（和菓子の AI 生成画像を提案用イメージとして許可、店舗・人物は禁止）と追加の要件（asset の設計だけ・v2 は PoC の中だけ・評価の rubric）で着手（develop 4551a4d から）。v1 の prompt は byte 単位で不変。Codex は実行していない"
+      "decision": "2026-10-21: 人の方針（和菓子の AI 生成画像を提案用イメージとして許可、店舗・人物は禁止）と追加の要件（asset の設計だけ・v2 は PoC の中だけ・評価の rubric）で着手（develop 4551a4d から）。v1 の prompt は byte 単位で不変。Codex は実行していない / PR #90（draft）。Fresh Review（a16778d）PASS-with-nits → 対応: Instagram・第三者の模倣の禁止を code の hard rule に、nav は 2 つ（「アクセス」は節が無いので外す）、card は 2〜3・caption は説明文そのままだけ、評価は 22/25（人の目標）+ hard fail、「4 未満なし」は Claude の提案（人の確認待ち）、info_labels にも購入・予約の検査、isolation の test を design-library/poc・DIRECTION_PATHS にも"
     },
     {
       "id": "DEV-076",
