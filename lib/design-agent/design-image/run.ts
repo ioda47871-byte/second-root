@@ -1,7 +1,8 @@
 /**
- * The design-image PoC (DEV-074): ONE Codex call that asks Codex's built-in
- * image tool for one original web-design mockup PNG of the fictional wagashi
- * shop (DEV-073 fixture). Human-approved, local, run by
+ * The design-image PoC (DEV-074; 第2案 DEV-075): ONE Codex call that asks
+ * Codex's built-in image tool for one original web-design mockup PNG of the
+ * fictional wagashi shop (DEV-073 fixture), from the chosen art direction
+ * (v2 by default, v1 on request; prompt.ts). Human-approved, local, run by
  * scripts/sales-design-worker/design-image-poc.sh only (docs/operations/
  * design-image-poc.md). Same safety design as the Kaii Dokuhon image worker
  * (curiosity-media codex-image.ts, D-139 / D-141 / D-143) and the design
@@ -45,7 +46,7 @@ import { workerProtectedPaths } from "../protected-paths";
 import { SandboxError, type CodexSandbox } from "../sandbox";
 import { childEnvironment } from "../worker/env";
 import { PngError, readPngNoFollow } from "./png";
-import { buildMockupPrompt, loadPocInputs, POC_SHOP_KEY, PocInputError } from "./prompt";
+import { buildMockupPrompt, DEFAULT_DIRECTION_VERSION, DIRECTION_VERSIONS, loadPocInputs, POC_SHOP_KEY, PocDirectionError, PocInputError, type DirectionVersion } from "./prompt";
 
 /** One image call: at most 15 minutes (the jail's run and the shell budget hold the whole PoC). */
 export const POC_CODEX_TIMEOUT_MS = 15 * 60 * 1000;
@@ -57,6 +58,7 @@ const CODE = /^[A-Z][A-Z0-9_]{2,40}$/;
 export type PocCode =
   | "POC_NOT_APPROVED"
   | "POC_INPUT_INVALID"
+  | "POC_DIRECTION_INVALID"
   | "POC_OUTPUT_UNSAFE"
   | "POC_UNEXPECTED"
   | "CODEX_NOT_INSTALLED"
@@ -83,6 +85,8 @@ export class PocError extends Error {
 export interface PocReport {
   status: typeof POC_STATUS;
   shop: typeof POC_SHOP_KEY;
+  /** The art direction the prompt was built from (v1 / v2). */
+  direction_version: DirectionVersion;
   width: number;
   height: number;
   aspect_h_per_w: number;
@@ -102,12 +106,23 @@ export const REPORT_NOTES = [
   "FIXTURE_HOLDS_PLACEHOLDER_TEST_VALUES",
 ] as const;
 
+/**
+ * v2 adds: the wagashi images are AI concept visuals (never real products), and
+ * the image counts for nothing until it is scored against the PoC rubric
+ * (docs/operations/design-image-eval-template.md).
+ */
+export const REPORT_NOTES_V2 = [...REPORT_NOTES, "AI_FOOD_VISUALS_CONCEPT_ONLY", "EVALUATION_REQUIRED"] as const;
+
+export const reportNotes = (version: DirectionVersion): readonly string[] => (version === "v2" ? REPORT_NOTES_V2 : REPORT_NOTES);
+
 export type PocResult = { status: "done"; dir: string; report: PocReport } | { status: "refused" | "stopped"; code: PocCode };
 
 export interface PocOptions {
   /** The human's explicit approval of this one run (--human-approval-confirmed). */
   humanApprovalConfirmed: boolean;
   repoDir: string;
+  /** The art direction (v1 / v2; default v2). Anything else is refused before any file is read. */
+  directionVersion?: DirectionVersion;
   /** Where results go (outside the repository): ~/sr-design-image-poc by default. */
   outRoot: string;
   /** The worker's own directories (hidden from Codex like the worker hides them). */
@@ -235,6 +250,7 @@ async function prepareOutRoot(o: PocOptions, codexHome: string | undefined): Pro
 const codeOf = (error: unknown): PocCode => {
   if (error instanceof PocError) return error.code;
   if (error instanceof PocInputError) return "POC_INPUT_INVALID";
+  if (error instanceof PocDirectionError) return "POC_DIRECTION_INVALID";
   if (error instanceof SandboxError) return error.code === "CODEX_INPUT_REJECTED" ? "CODEX_SANDBOX_CONFIG" : error.code;
   if (error instanceof CodexError && CODE.test(error.code)) {
     const c = error.code;
@@ -248,6 +264,9 @@ const codeOf = (error: unknown): PocCode => {
 export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   // The human's approval comes first: without it nothing is read, created or started.
   if (o.humanApprovalConfirmed !== true) return { status: "refused", code: "POC_NOT_APPROVED" };
+  // Only a direction from the fixed list; checked before anything is read or created.
+  const version = o.directionVersion ?? DEFAULT_DIRECTION_VERSION;
+  if (!DIRECTION_VERSIONS.includes(version)) return { status: "refused", code: "POC_DIRECTION_INVALID" };
   const now = o.now ?? Date.now;
   const log = o.log ?? (() => undefined);
   let cwd: string | undefined;
@@ -282,7 +301,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   const cleanup = (): Promise<void> => (pending ??= doCleanup().catch(() => undefined));
   activeCleanups.add(cleanup);
   try {
-    const inputs = await loadPocInputs(o.repoDir);
+    const inputs = await loadPocInputs(o.repoDir, version);
     const prompt = buildMockupPrompt(inputs);
     const outRoot = await prepareOutRoot(o, o.env.CODEX_HOME || (o.env.HOME ? join(o.env.HOME, ".codex") : undefined));
     const protectedPaths = [...new Set([...workerProtectedPaths({ ...o.workerPaths, env: o.env }), outRoot])];
@@ -327,6 +346,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     const report: PocReport = {
       status: POC_STATUS,
       shop: POC_SHOP_KEY,
+      direction_version: inputs.version,
       width: image.width,
       height: image.height,
       aspect_h_per_w: Math.round((image.height / image.width) * 1000) / 1000,
@@ -336,7 +356,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       codex_ms: codexMs,
       prompt_chars: prompt.length,
       worker_commit: o.workerCommit && /^[0-9a-f]{7,40}$/.test(o.workerCommit) ? o.workerCommit : null,
-      notes: REPORT_NOTES,
+      notes: reportNotes(inputs.version),
     };
     if (pending) throw new PocError("POC_OUTPUT_UNSAFE"); // a stop already began: never create the result dir
     const dest = await mkdtemp(join(outRoot, `${POC_SHOP_KEY}-`));
@@ -356,7 +376,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     return { status: "done", dir: dest, report };
   } catch (error) {
     const code = codeOf(error);
-    return { status: code === "POC_INPUT_INVALID" ? "refused" : "stopped", code };
+    return { status: code === "POC_INPUT_INVALID" || code === "POC_DIRECTION_INVALID" ? "refused" : "stopped", code };
   } finally {
     await cleanup();
     activeCleanups.delete(cleanup);

@@ -14,11 +14,15 @@
  * Output (outside the repository): $SR_DESIGN_IMAGE_POC_ROOT or
  * ~/sr-design-image-poc/wagashi-XXXXXX/ (mockup.png, shop-facts.json,
  * design-spec.json, report.json). Printed: codes, numbers and that path only.
+ * Direction: SR_DESIGN_IMAGE_POC_DIRECTION=v1|v2 (unset: v2, the 第2案 of
+ * DEV-075); any other value is refused (POC_DIRECTION_INVALID, exit 2). The
+ * v2 direction is read by this PoC only, never by the worker or the site.
  * Exit: 0 done, 1 stopped, 2 refused / usage.
  */
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
+import { parseDirectionVersion, PocDirectionError, type DirectionVersion } from "../../lib/design-agent/design-image/prompt";
 import { cleanupActivePoc, isInsidePath, runDesignImagePoc } from "../../lib/design-agent/design-image/run";
 import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -63,6 +67,15 @@ async function main(): Promise<number> {
     process.stderr.write("usage: --budget-seconds=<positive integer>\n");
     return 2;
   }
+  let directionVersion: DirectionVersion;
+  try {
+    directionVersion = parseDirectionVersion(process.env.SR_DESIGN_IMAGE_POC_DIRECTION);
+  } catch (error) {
+    if (!(error instanceof PocDirectionError)) throw error;
+    process.stdout.write(`${JSON.stringify({ status: "refused", code: error.code })}\n`);
+    process.stdout.write(`POC_STOP: ${error.code}\n`);
+    return 2;
+  }
   const budgetMs = Math.min(MAX_BUDGET_SECONDS, Number(budgetText ?? MAX_BUDGET_SECONDS)) * 1000;
 
   const outRoot = expand(process.env.SR_DESIGN_IMAGE_POC_ROOT ?? "~/sr-design-image-poc");
@@ -82,10 +95,11 @@ async function main(): Promise<number> {
   const commit = head?.code === 0 ? head.stdout.trim() : null;
   setTimeout(() => stopNow("POC_RUN_TIME_BUDGET"), budgetMs + WATCHDOG_GRACE_MS).unref();
   const say = (line: string) => process.stdout.write(`${new Date().toISOString()} ${line}\n`);
-  say(`design-image PoC (wagashi, commit ${(commit ?? "unknown").slice(0, 12)}, budget ${Math.round(budgetMs / 60000)} min)`);
+  say(`design-image PoC (wagashi, direction ${directionVersion}, commit ${(commit ?? "unknown").slice(0, 12)}, budget ${Math.round(budgetMs / 60000)} min)`);
   const result = await runDesignImagePoc({
     humanApprovalConfirmed: true,
     repoDir: REPO,
+    directionVersion,
     outRoot,
     workerPaths,
     tmpBase: tmpdir(),

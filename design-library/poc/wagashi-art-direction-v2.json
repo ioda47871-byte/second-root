@@ -1,0 +1,121 @@
+{
+  "version": "0.3-poc",
+  "fixture": "wagashi",
+  "supersedes": "0.2-poc (wagashi-art-direction.json, kept unchanged for history and still selectable as v1)",
+  "policy": {
+    "date": "2026-10-21",
+    "approved_by": "the human (repo owner), after reviewing the first image of HUMAN-018",
+    "change": "AI-generated visuals of the wagashi themselves (and abstract materials and textures) are allowed as proposal / concept imagery. AI images of a store, its interior or exterior, staff or any people stay forbidden, as do logos, copied photos or designs and any claim that a visual is real."
+  },
+  "goal": "One professional web design comp of a one-page website for a fictional high-end wagashi shop, good enough to show in a sales demo and to implement as a real site: a header nav and three clearly separated sections (Hero, 商品・こだわり, 店舗情報) that sell the sweets themselves, not only the shop name.",
+  "source": "Second Root design-library v0.3 PoC; curated by Claude from the human's review of the first mockup (2026-10-21). Concepts only, no copied site layouts or third-party photos.",
+  "theme": "A contemporary high-end wagashi brand: quiet, precise and appetising. Calm kinari paper tones, sumi-black type and one muted vermilion accent; generous whitespace; the confections are the colour and the hero of the page. Modern, not a generic 和風 template (no shrine motifs, no ornamental borders, no seigaiha wallpaper).",
+  "palette": [
+    { "name": "kinari 生成り", "hex": "#F4EEE3", "use": "page background" },
+    { "name": "pale kinari", "hex": "#EAE1D2", "use": "card and info-block surfaces, alternate section band" },
+    { "name": "sumi 墨黒", "hex": "#1F1D1B", "use": "headings, body text, header, hairline rules" },
+    { "name": "warm grey 灰茶", "hex": "#8C8379", "use": "secondary text, labels, thin dividers" },
+    { "name": "muted vermilion 落ち着いた朱", "hex": "#B4472E", "use": "the single accent: CTA, active nav underline, small section markers; never large fills" }
+  ],
+  "typography": {
+    "display": "A refined Mincho (明朝) for the shop name, section headings and card captions; elegant, high contrast, generous letter spacing for Japanese.",
+    "body": "A clean Gothic (ゴシック) sans for nav, labels, information values and the disclosure; regular weight, comfortable line height.",
+    "scale": "Real web sizes: shop name the largest type on the page but sized to share the hero with the visual (never a poster headline that hides the sweets); section headings clearly smaller; body and info text at normal reading size."
+  },
+  "grid": {
+    "desktop": "12 columns with even gutters; content aligned to a few shared axes.",
+    "max_width": "About 1200 px of content centred in a 1440 px desktop page (the comp shows that page scaled down).",
+    "margins": "Generous outer margins and large vertical spacing between sections; whitespace is part of the luxury."
+  },
+  "sections": [
+    {
+      "id": "Hero",
+      "label": "Hero",
+      "intent": "Two leads in balance: the shop name 架空菓庵 and an appetising wagashi visual. Quality and appetite first.",
+      "layout": "Asymmetric split on the 12-col grid: a large AI concept image of a dorayaki cut in half, showing the glossy tsubu-an texture in the cross-section, on about 7 columns; the shop name in Mincho, a thin vermilion rule and the CTA on the remaining columns."
+    },
+    {
+      "id": "Products",
+      "label": "商品・こだわり",
+      "intent": "Show the seasonal jō-namagashi and the tsubu-an dorayaki as things to want. Visual, never a text-only section.",
+      "layout": "Section label, then a row of 3 product visual cards (image on top, short Mincho caption below), plus one short copy block aligned to the grid. Captions and copy only from the provided description, verbatim, or neutral placeholder text lines."
+    },
+    {
+      "id": "ShopInfo",
+      "label": "店舗情報",
+      "intent": "Precise, quiet information design that a visitor can scan in seconds.",
+      "layout": "Section label, then a two-column definition list (label in warm grey Gothic, value in sumi) for opening hours, closed days, address and phone, set on a pale kinari band with hairline rules; a CTA-free, tidy block. A small footer below with the shop name and the disclosure."
+    }
+  ],
+  "food_visuals": {
+    "status": "AI-generated concept imagery for a design proposal; never presented as photos of this shop's products.",
+    "lighting": "Soft directional daylight from one side, gentle shadows, warm but natural colour; no harsh flash, no heavy vignette.",
+    "surfaces": "Abstract materials only: washi paper, a pale wooden tray, an unglazed or matte ceramic plate, linen. No room, counter, shelf or shop setting behind.",
+    "cross_section": "The hero dorayaki is cut cleanly in half: even golden-brown castella layers and a thick layer of glossy tsubu-an with visible whole azuki beans.",
+    "macro": "One card may be a close macro of the tsubu-an texture or the soft skin of the dorayaki.",
+    "seasonal_motif": "One card shows a seasonal jō-namagashi (for example an autumn maple or chestnut motif shaped by hand) on a small plate; delicate, matte, realistic proportions.",
+    "consistency": "All images share one art direction: same light direction, the same muted kinari and sumi environment, similar camera height and depth of field, so the page reads as one brand shoot.",
+    "never": "No people, no hands, no faces, no staff; no store exterior, interior, signage or noren with writing; no packaging with a brand or logo; no text inside the images."
+  },
+  "web_ui": {
+    "header": "A slim header bar: the shop name small at the left (as type, not a logo mark) and 3 anchor links at the right.",
+    "nav": ["商品・こだわり", "店舗情報", "アクセス"],
+    "cta": "店舗情報を見る",
+    "section_labels": ["商品・こだわり", "店舗情報"],
+    "info_labels": ["営業時間", "定休日", "住所", "電話"],
+    "footer": "A thin footer with the shop name in small type and the disclosure line.",
+    "hierarchy": "Clear hierarchy: header < hero (largest) > section headings > card captions > body and info values; consistent spacing that a developer could turn into CSS."
+  },
+  "techniques": [
+    {
+      "id": "B01",
+      "name": "product-led hero",
+      "use": "The wagashi image carries the appetite; the shop name carries the brand; both read at first glance.",
+      "avoid": "A name so large that it covers or crowds the sweets; a text-only hero."
+    },
+    {
+      "id": "B02",
+      "name": "card row with air",
+      "use": "Three equal product cards on the grid with generous gutters and short captions.",
+      "avoid": "Busy collages, overlapping images, carousels with arrows."
+    },
+    {
+      "id": "B03",
+      "name": "definition-list information",
+      "use": "Label / value pairs on two columns with hairline rules; numbers and addresses set horizontally.",
+      "avoid": "Vertical text for hours or addresses; icons for every row; a map screenshot."
+    },
+    {
+      "id": "B04",
+      "name": "one accent colour",
+      "use": "Muted vermilion only for the CTA, the active nav item and tiny markers.",
+      "avoid": "Large red fills, gradients, gold foil, glow."
+    },
+    {
+      "id": "B05",
+      "name": "implementable restraint",
+      "use": "Flat colour, hairlines, real image crops and web fonts that CSS can reproduce.",
+      "avoid": "Paint splashes, 3-D lettering, heavy textures over text, effects that need hand compositing."
+    }
+  ],
+  "avoid": [
+    "A single-poster, monotone composition",
+    "A shop name so large that it hides the product",
+    "A text-only middle section",
+    "Over-the-top effects that are hard to implement",
+    "The generic template-like 和風 site look (shrine motifs, ornamental frames, seigaiha or asanoha wallpaper, brush splashes)",
+    "Purchase, order, reservation or online-shop UI (no cart, buy or reserve buttons)"
+  ],
+  "disclosure": "架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです",
+  "hard_rules": [
+    "The wagashi images are AI concept imagery for a design proposal, never photos of a real shop's products",
+    "Show the disclosure exactly: 架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです",
+    "No prices, reviews or ratings, awards, founding years or history, people or staff, and no photos or images of a store",
+    "Use only the business facts provided with this request, exactly as given; invent nothing",
+    "Placeholder test values in the facts (names containing テスト, a test station) may be left out instead of shown",
+    "No logo, emblem or crest; the shop name is set as type",
+    "Original composition; no copying of Instagram, third-party photos or other sites",
+    "No publication; the image is a design spec for a later implementation",
+    "Text in the generated image is NOT a source of truth; the later implementation takes its copy from the provided facts, never from the pixels"
+  ]
+}
