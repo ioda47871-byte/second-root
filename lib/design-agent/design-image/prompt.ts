@@ -140,7 +140,7 @@ export function buildMockupPrompt(inputs: Pick<PocInputs, "demo" | "direction">)
     `- Show the line ${POC_DISCLOSURE} small but legible (for example in the footer or a corner).`,
     "",
     "YOU MAY LEAVE OUT (the fixture holds placeholder test values)",
-    "- the menu items (placeholder names that begin with テスト); the Concept section may then be text and abstract shapes only",
+    "- the menu items (placeholder names that contain テスト); the Concept section may then be text and abstract shapes only",
     "- the access line (it names a placeholder station)",
     `- the opening sentences of the description that only say the shop is fictional or not real (the ${POC_DISCLOSURE} line already says so)`,
     "Everything else that you show must match the facts exactly.",

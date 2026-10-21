@@ -353,7 +353,7 @@ describe("the prompt", () => {
     expect(prompt).not.toContain("{");
     expect(prompt).not.toContain('"facts"');
     // the placeholder test values may be left out of the image
-    expect(prompt).toMatch(/menu items \(placeholder names that begin with テスト\)/);
+    expect(prompt).toMatch(/menu items \(placeholder names that contain テスト\)/);
     expect(prompt).toMatch(/access line/);
     // no environment: paths, variables, tokens
     for (const s of [process.env.HOME ?? "/root", REPO, "CODEX_HOME", "OPENAI", "sk-", tmpdir()]) expect(prompt).not.toContain(s);
