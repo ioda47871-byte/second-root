@@ -17,7 +17,52 @@
   - 人の判断が要る: review の notes を次の round に渡す（DEV-034 の方針の変更）／ 初期候補を 2〜3 個にする（Codex の時間とコスト）／ Instagram の写真を使う（権利・同意の判断）
 - 次の実走: efb4bdb2 は attempts 2/3 で blocked（再 reset は未承認）。改善の効果は新しい controlled run（人の承認: 対象 demo・DB の reset・W・C）で測る
 
+### HUMAN-021 — 画像ツールが使われない原因を分ける、安い順の確認（DEV-078 の merge の後。1 段ずつ別の承認）
+
+- 背景: HUMAN-019（1effb40）と HUMAN-020（cae33e8）の v2 は、どちらも `CODEX_NO_IMAGE`。HUMAN-020 の診断: exit 0・`image_tool=0/0`・`agent_msgs=1`・`agent_chars=32`・`errors=0`・`turn=completed`・`thread_dir=0`・画像 0、Codex 約 183 秒（HUMAN-019 には診断がなかった）。
+  DEV-078 の調査（Codex CLI 0.163.0 の source、`docs/operations/design-image-poc.md` の「Why the image tool was not used (DEV-078)」）: 画像ツールは `image_gen.imagegen` で、`codex exec --json` はその item を出さない（`image_tool=0/0` は何も証明しない）。
+  ツールの失敗（画像の利用枠 `image_gen` を含む）は error event ではなくツールの出力としてモデルに返り、turn は exit 0 で終わる。つまり (i) ツールが出ていない、(ii) 出ていたがモデルが文章を選んだ、(iii) 方針で断った、(iv) ツールが呼ばれて失敗した、のどれも今の診断と矛盾しない。
+  HUMAN-018（v1）の直後から続けて失敗していること・183 秒かかっていること（画像ツールは数分かかる）は (iv)（画像の利用枠を含む）と合うが、確定はできない。
+  DEV-078 は、model を呼ばない preflight と、CLI の session log と最後の答えをメモリの中だけで固定の符号にする分類（`outcome=` `answer=` `img_calls=` `img_fail=` `cli=` `model=` `class=`）を足した。prompt は変えていない（v2 の「使えなければエラーを答える」は curiosity-media の毎日動いている文の忠実な訳で、根拠なしに変えると原因が分からなくなる）。
+- 前提: DEV-078 の PR が develop に merge されていること（`POC_DIAG_SUMMARY` に `outcome=` と `cli=` があることで確かめる）。
+- 順番（安い順。前の段の結果で次を決める。どの段も Claude は WSL に触れない）:
+  1. **21a — 手元の確認（model の呼び出しなし・費用 0）**。`sr-designgen` で、Codex の版・`.env` の有無・config.toml の model / feature の行・bundled の model 一覧を見る:
+
+     ```bash
+     sudo -iu sr-designgen bash -lc '
+     codex --version
+     npm ls -g --depth=0 @openai/codex 2>/dev/null | tail -n +2
+     ls -la "${CODEX_HOME:-$HOME/.codex}/.env" 2>&1 | head -1
+     grep -n -E "^[[:space:]]*(model|model_provider|model_reasoning_effort|profile)[[:space:]]*=|image_generation|imagegen|^\[features\]" "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null || echo "config.toml: no matching line"
+     codex debug models --bundled 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); [print(m.get(\"slug\"), m.get(\"input_modalities\")) for m in d.get(\"models\", [])]" | head -20'
+     ```
+
+     分かること: 版（0.163.0 か、もっと古いか）、`.env` があれば DEV-078 は `CODEX_DOTENV_PRESENT` で止まる（中身は貼らない。人が消すか移す）、config.toml が `image_generation = false` にしていないか、使う model が画像の入力に対応しているか（`image_generation_available` の条件）。
+     返してほしいもの: 出力そのまま（秘密は含まない。`.env` の行は有無だけ）。
+     任意: `codex features list | grep -E "^image_generation"`（model の呼び出しはないが、cloud の設定を取りに network に出うる。利用枠は使わない）。
+  2. **21b — v1 の再走（実績のある prompt、Codex 1 回）**。HUMAN-020 から少なくとも数時間（できれば翌日）空けて、画像の利用枠の窓が戻ってから:
+
+     ```bash
+     sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+     S=~/.local/state/sr-design-worker; mkdir -p "$S" && chmod 700 "$S"
+     flock -n "$S/run.lock" sh -c "cd ~/work/second-root && timeout 180 git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && timeout 60 git checkout -q --force --detach origin/develop" \
+       || { echo "STOP: a design worker run is in progress; nothing was changed"; exit 3; }
+     cd ~/work/second-root && SR_DESIGN_IMAGE_POC_DIRECTION=v1 ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed'
+     ```
+
+     費用: Codex 1 回（画像生成つき、ChatGPT の plan の枠、API の課金なし、自動の再試行なし、15 分 / 全体 3300 秒）。
+     分かること: v1 も画像なし → 原因は prompt ではなく環境（`outcome=TOOL_FAILED_USAGE_LIMIT` / `POC_STOP: CODEX_QUOTA` なら利用枠、`TOOL_NOT_CALLED` + `answer=TEXT_TOOL_UNAVAILABLE` ならツールが出ていない: 21a の結果と照らす）。v1 で画像が出る → 今日の環境は動く、v2 の prompt が疑わしい（21c へ）。
+  3. **21c — v2（DEV-078 の版、prompt は HUMAN-020 と同じ）、Codex 1 回**。21b で v1 が画像を出した後だけ。コマンドは 21b から `SR_DESIGN_IMAGE_POC_DIRECTION=v1 ` を外したもの（HUMAN-020 と同じ）。
+     分かること: `outcome=` と `answer=` で、呼ばなかった（`TOOL_NOT_CALLED`）か、呼んで失敗した（`TOOL_FAILED*`）かが分かる。`TOOL_NOT_CALLED` + `TEXT_OTHER` / `TEXT_REFUSAL` なら、v2 の prompt を v1 の実績のある指示の書き方に寄せる修正（別 Task、根拠つき）を提案する。
+  - 最小の画像 probe（1 行の prompt で「赤い丸を 1 枚」）は、21b の v1 が `TOOL_NOT_CALLED` + `TEXT_OTHER` で曖昧なときだけ提案する（今は作っていない。作るなら PoC の 3 つ目の direction として別の小さい PR と別の承認）。
+- 触れないもの: HUMAN-019 / 020 と同じ（DB・Staging・Production・Vercel・flag・worker の timer / queue / 結果・asset store・送信・GitHub）。同時に `design-demo.ts`・`photo-poc.sh`・手動の `codex exec` を流さない。`~/.codex/config.toml` は変えない（DEV-078 は command line の `-c` だけ）。
+- 返してほしいもの: 各段の出力（21a）／`POC_STOP` または `POC_IMAGE_READY` の行と `POC_DIAG_SUMMARY` の 1 行（21b・21c）。
+- 解除条件: 21b と（必要なら）21c の結果が届く、または人が流さないと決める。
+
 ### HUMAN-020 — DEV-077 の修正の後に、第2案（v2）を WSL でもう 1 回だけ流す承認
+
+- 状況（2026-10-21）: **人が 1 回流した（develop cae33e8、direction v2、prompt 6801 文字）。結果は `CODEX_NO_IMAGE`**: exit 0・`image_tool=0/0`・`agent_msgs=1`・`agent_chars=32`・`errors=0`・`turn=completed`・`thread_dir=0`・画像 file 0・Codex 約 183 秒。
+  調査と対策は DEV-078（Codex は流していない）。次は HUMAN-021（手元の確認 → v1 の再走 → v2）。
 
 - 背景: HUMAN-019（develop 1effb40、v2）は Codex の呼び出しは始まったが `CODEX_NO_IMAGE` で止まり（`design-image-poc.ts` exit 1、画像なし）、理由が分からなかった。
   DEV-077 は Codex を流さずに (1) 理由を分ける診断（`POC_DIAG` / `POC_DIAG_SUMMARY`、固定の符号と数だけ）を足し、(2) v2 の prompt を締めた

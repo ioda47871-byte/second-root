@@ -8,6 +8,12 @@
 > (`POC_DIAG` / `POC_DIAG_SUMMARY`, fixed codes and numbers only) and the v2 prompt was tightened ([below](#what-the-v2-prompt-asks-for)).
 > The next v2 run is HUMAN-020.
 
+> **DEV-078 (2026-10-21):** HUMAN-020 (v2, cae33e8) stopped with `CODEX_NO_IMAGE` again (exit 0, `image_tool=0/0`, one 32-char answer).
+> In Codex CLI 0.163.0 `codex exec --json` never shows the image tool, and a failed image call returns to the model as text, so
+> that summary could not tell "not offered / not called / failed / refused" apart. Each run now has a model-free
+> [preflight](#preflight-dev-078) and reads the CLI's own session log **in memory** before the cleanup removes it
+> ([why](#why-the-image-tool-was-not-used-dev-078), [new codes](#stop-classes-dev-078)). The prompt is unchanged. Next: HUMAN-021 (local check → v1 re-run → v2).
+
 > **Human approval is required first** (`.ai/blockers.md` HUMAN-018) for **each** run. With approval, add `--human-approval-confirmed`.
 > Without it, neither `design-image-poc.sh` nor `design-image-poc.ts` reads a file, prepares the sandbox or starts Codex
 > (`STOP: --human-approval-confirmed is missing`).
@@ -136,10 +142,13 @@ If Codex is not signed in, sandbox probe fails, API-key authentication is detect
 | `CODEX_NOT_INSTALLED`, `CODEX_SANDBOX_UNAVAILABLE`, `CODEX_SANDBOX_LEAK`, `CODEX_SANDBOX_CONFIG` | the jail could not be set up safely; Codex not started |
 | `CODEX_NOT_SIGNED_IN` | `codex login status` is not ChatGPT, or the CLI reported a signed-out / 401 (stderr or its error events only): sign in again as `sr-designgen` (`codex login --device-auth`) |
 | `CODEX_API_KEY_AUTH` | signed in with an API key: refused |
-| `CODEX_QUOTA` | ChatGPT plan usage limit / busy: try another day |
+| `CODEX_QUOTA` | ChatGPT plan usage limit / busy (stderr / the CLI's error events), or (DEV-078) the image tool's own `image_gen` usage limit in the session log: try another day |
 | `CODEX_TIMEOUT` | the call passed 15 min |
 | `CODEX_EXEC_FAILED`, `CODEX_NO_THREAD`, `CODEX_NO_IMAGE`, `CODEX_IMAGE_INVALID` | no acceptable image; no result dir (only `diag-XXXXXX/`). Read `POC_DIAG_SUMMARY` ([Diagnostics](#diagnostics-dev-077)) |
 | `CODEX_IMAGE_UNSUPPORTED_FORMAT` | the thread's dir holds a regular JPEG / WebP / GIF file (judged by its name; a link is ignored) but no PNG: never converted or accepted (DEV-077) |
+| `CODEX_DOTENV_PRESENT` | `$CODEX_HOME/.env` exists (DEV-078): Codex would load it into its own environment (only `CODEX_*` keys are filtered), which can carry an API key past the env allowlist. Codex not started; the file is never opened. Remove or move it as `sr-designgen` |
+| `CODEX_PREFLIGHT_FAILED` | `codex --version` inside the jail did not run cleanly (DEV-078); no model call was made |
+| `CODEX_IMAGE_TOOL_FAILED` | the CLI's session log shows the image tool was called and failed (not a usage limit: that is `CODEX_QUOTA`); `img_fail=` says `POLICY` / `OTHER` (DEV-078) |
 | `POC_STOPPED_BY_SIGNAL`, `POC_KILLED_OR_TIMED_OUT`, exit 137 / 124 | check for an OOM kill first (the wrapper prints `--oom-check`) |
 
 ## Diagnostics (DEV-077)
@@ -168,7 +177,7 @@ POC_DIAG_SUMMARY code=CODEX_NO_IMAGE dir=v2 prompt_chars=6801 codex=1 exit=0 thr
 
 | what you see | case | meaning |
 |---|---|---|
-| `image_tool=0/0 agent_msgs≥1 turn=completed images_thread=0 images_other=0` | (a) | Codex answered with text and never called the image tool (if `other_items>0`, an unknown item type appeared: possibly the image tool under another name — then the file counts decide) |
+| `image_tool=0/0 agent_msgs≥1 turn=completed images_thread=0 images_other=0` | (a) **or (c)** | **DEV-078 correction:** with Codex CLI 0.163.0 `image_tool` is always `0/0` (exec `--json` has no image item), so this row alone does not mean "never called". Read `outcome=` / `img_calls=` (below) |
 | `thread_dir=0` or `images_thread=0`, but `images_other>0`, `thread_other>0` (nested dir), `cwd_images>0` or `home_images>0` | (b) | the tool wrote an image somewhere this PoC does not take it from; send the summary, the location rule needs a reviewed fix |
 | `code=CODEX_IMAGE_UNSUPPORTED_FORMAT` / `thread_png=0` with `images_thread>0` (`images_thread` counts png + jpg + webp + gif) | (b) | another format; never converted |
 | `image_tool=1/0` or `errors>0` with `error_codes=POLICY` / `IMAGE_TOOL` / `QUOTA` | (c) | the tool was called but failed or was refused (`agent_msgs` then usually holds the tool's error, which is not recorded) |
@@ -176,9 +185,100 @@ POC_DIAG_SUMMARY code=CODEX_NO_IMAGE dir=v2 prompt_chars=6801 codex=1 exit=0 thr
 | `unparsed=N` | any | stdout lines that were not a JSON object (a line over 1 MiB is dropped and counted here once) |
 | `trunc=1` | any | the counts are lower bounds: a stdout line over 1 MiB was dropped, or a directory walk hit its 20 000-entry limit |
 
-Note: the exact item type of an image-generation call in `codex exec --json` is not pinned down in our references (curiosity-media
-reads only `generated_images/<thread>/`), so `image_tool=0/0` alone does not prove the tool was not called; the file counts and
-`other_items` decide. The diagnostics dirs stay in the output root (repo-external, never published); delete them with `sudo rm -r` when done.
+Note (DEV-078, settled): in Codex CLI 0.163.0 `codex exec --json` has no image-generation item at all, so `image_tool=0/0`
+never proves the tool was not called. The session-log fields below decide.
+
+### DEV-078 fields (schema `sr-design-image-poc-diagnostics/2`)
+
+`diagnostics.json` gains `preflight`, `session` and `classification`; `POC_DIAG_SUMMARY` gains
+`cli= dotenv= model= provider_openai= log= img_calls= img_ok= img_failed= img_fail= other_calls= outcome= answer= class=`.
+
+| field | from | meaning |
+|---|---|---|
+| `cli` | `codex --version` in the jail (preflight), else the session log's `cli_version` | the Codex CLI version, only when it has the shape of a version |
+| `dotenv` | `lstat $CODEX_HOME/.env` (never opened) | 1 stops the run (`CODEX_DOTENV_PRESENT`) |
+| `model`, `provider_openai` | the session log's `turn_context.model` / `session_meta.model_provider` | the model slug (`other` if it does not look like an OpenAI model name) and whether the provider was `openai` |
+| `log` | the session log of this thread exists (regular file, not a link) | 0: nothing below can be known (`outcome=NO_SESSION_LOG`) |
+| `img_calls`, `img_ok`, `img_failed` | `response_item` `function_call` name `imagegen` namespace `image_gen` (or the older `image_generation_call`), its `function_call_output`, and `event_msg` `image_generation_end` | how often the image tool was called and how each call ended |
+| `img_fail` | the CLI's failure record (`failure.type = usageLimitExceeded`) first, else the tool output matched in memory | `USAGE_LIMIT`, `POLICY`, `OTHER` |
+| `other_calls` | other tool calls in the session log (count only) | e.g. the model ran a shell command instead |
+| `outcome` | the above | `IMAGE_SAVED`, `NO_SESSION_LOG`, `TOOL_NOT_CALLED`, `TOOL_FAILED_USAGE_LIMIT`, `TOOL_FAILED_POLICY`, `TOOL_FAILED`, `TOOL_CALLED_NO_FILE` |
+| `answer` | the model's final answer, matched in memory against fixed patterns | `TEXT_NONE`, `TEXT_TOOL_UNAVAILABLE`, `TEXT_TOOL_ERROR`, `TEXT_USAGE_LIMIT`, `TEXT_REFUSAL`, `TEXT_OTHER` — informational: a machine state is never decided from it |
+| `class` | `pocStopClass` (run.ts) | see [Stop classes](#stop-classes-dev-078) |
+
+Reading HUMAN-021's runs: `outcome=TOOL_FAILED_USAGE_LIMIT` (stop `CODEX_QUOTA`) → the image tool's usage window; wait and do not
+re-run the same day. `outcome=TOOL_NOT_CALLED answer=TEXT_TOOL_UNAVAILABLE` → the tool was most likely not offered (check `cli`,
+`model` and HUMAN-021a). `outcome=TOOL_NOT_CALLED answer=TEXT_OTHER|TEXT_REFUSAL` → the model chose text: a prompt question.
+`outcome=TOOL_FAILED*` → the tool ran and failed (`img_fail`).
+
+Still never recorded or printed: the session log's content (prompt, answer, tool arguments and output, base64 image, base
+instructions), any path or file name, the thread id. The session log is read in memory (≤ 64 MiB, `O_NOFOLLOW`, regular files
+only) and removed by the cleanup exactly as before. Tests plant a canary in the prompt, the answer, the tool's arguments and
+output, the base instructions, the model name, the CLI version and `.env`, and assert none reaches `diagnostics.json` or the summary.
+
+### Preflight (DEV-078)
+
+Before the one model call, in the same jail with the same environment allowlist: (1) `$CODEX_HOME/.env` must not exist
+(`lstat` only), (2) `codex --version` (clap prints the version and exits before config, sign-in or network; no model call, no
+plan usage). `codex features list` and `codex debug models` are **not** run automatically: they load Codex's config, which can
+fetch a cloud config bundle over the network (`codex-rs/cli/src/cloud_config.rs`), so they are a human, local step (HUMAN-021a;
+`codex debug models --bundled` reads only the catalog in the binary).
+`exec` also gets `-c features.image_generation=true`: the image tool's feature flag (stable, default on in 0.163.0) pinned on
+the command line so a `config.toml` cannot switch it off; `config.toml` itself is never changed, and an older CLI only warns
+about an unknown feature key. Nothing about the sandbox (`--sandbox read-only`, the jail) or the network changes.
+
+### Stop classes (DEV-078)
+
+For a later automated worker (`pocStopClass` in `run.ts`). **No class retries the same request automatically**; each run
+is still exactly one model call.
+
+| class | codes | what automation does |
+|---|---|---|
+| `approval`, `input` | `POC_NOT_APPROVED`, `POC_INPUT_INVALID`, `POC_DIRECTION_INVALID` | nothing was started; fix the request |
+| `environment` | `CODEX_QUOTA`, `CODEX_NOT_SIGNED_IN`, `CODEX_API_KEY_AUTH`, `CODEX_SANDBOX_*`, `CODEX_NOT_INSTALLED`, `CODEX_DOTENV_PRESENT`, `CODEX_PREFLIGHT_FAILED`, `POC_OUTPUT_UNSAFE` | halt the whole queue and alert a human; no further model call until fixed (quota: after the reset) |
+| `capability` | `CODEX_IMAGE_TOOL_FAILED`; `CODEX_NO_IMAGE` with `outcome=TOOL_NOT_CALLED answer=TEXT_TOOL_UNAVAILABLE` | halt and alert; the human runs HUMAN-021a's local checks. The model's words may choose this class only because it halts and never loosens anything |
+| `request` | `CODEX_NO_IMAGE` (otherwise), `CODEX_NO_THREAD`, `CODEX_EXEC_FAILED` | a failure of this request with its code; never re-sent unchanged (a changed prompt is a new, reviewed request) |
+| `output` | `CODEX_IMAGE_INVALID`, `CODEX_IMAGE_UNSUPPORTED_FORMAT` | the image is refused; never converted |
+| `interrupted` | `CODEX_TIMEOUT`, `POC_STOPPED_BY_SIGNAL`, `POC_RUN_TIME_BUDGET`, `POC_UNEXPECTED` | check for an OOM kill first; then treat as `request` |
+
+### Why the image tool was not used (DEV-078)
+
+Research without running Codex (sources: the openai/codex repository at tag `rust-v0.163.0`, the current npm `latest`
+published 2026-10-15, and the `@openai/codex@0.163.0-linux-x64` package read as data, never executed):
+
+- **The tool.** `image_gen.imagegen`, an extension function tool (`codex-rs/ext/image-generation/src/lib.rs`:
+  `IMAGE_GEN_NAMESPACE = "image_gen"`, `IMAGEGEN_TOOL_NAME = "imagegen"`), backed by the images API with `gpt-image-2`
+  through the ChatGPT sign-in (`tool.rs`: `IMAGE_MODEL`). The bundled `imagegen` skill says the built-in tool "Does not require `OPENAI_API_KEY`".
+- **Feature flag.** `image_generation`, `Stage::Stable`, `default_enabled: true` (`codex-rs/features/src/lib.rs`); legacy alias `imagegenext`.
+- **When it is offered to the model** (`codex-rs/core/src/tools/spec_plan.rs` `image_generation_available`): the flag is on, the
+  ChatGPT plan is **not Free**, the provider's capabilities include image generation, the model's `input_modalities` include
+  images, and the provider uses OpenAI auth with the Codex (ChatGPT) backend. The extension is only installed for an OpenAI
+  provider (`ext/image-generation/src/extension.rs`; we pass `-c model_provider="openai"`). Nothing depends on `exec` vs the TUI or on `--sandbox read-only`.
+- **`codex exec --json` does not show it.** `exec/src/exec_events.rs` has item types `agent_message`, `reasoning`,
+  `command_execution`, `file_change`, `mcp_tool_call`, `collab_tool_call`, `web_search`, `todo_list`, `error` only, and
+  `exec/src/event_processor_with_jsonl_output.rs` maps every other item to `None`. DEV-077's `image_tool` counter therefore stays 0.
+- **A failure goes to the model, not to an error event.** `tool.rs` returns `FunctionCallError::RespondToModel("image generation failed: …")`;
+  a usage limit with `limit_id == "image_gen"` is recorded as `ImageGenerationFailure::UsageLimitExceeded` on the item. The turn
+  completes with exit 0, and the v2 prompt's last TASK line asks the model to answer with that error. OpenAI support confirmed
+  on 2026-10-02 that some `gpt-image-2-codex` rate-limit failures come back "inside an HTTP 200 response"
+  (community.openai.com/t/…/1382726), i.e. not as a 429 our quota check would see.
+- **Where the file goes.** `<save_root>/generated_images/<thread>/<call_id>.png` (`ext/image-generation/src/artifact.rs`), written
+  by the CLI itself (not a sandboxed command), as the PoC already expects.
+- **What the session log keeps.** `rollout/src/policy.rs` persists `session_meta` (incl. `cli_version`, `model_provider`),
+  `turn_context` (incl. `model`), `function_call` / `function_call_output` and, in the default legacy history mode, the
+  `image_generation_end` event (status, failure). It does **not** list the tools offered to the model, so "not offered" vs
+  "offered but not called" is inferred (no call + the answer's code + HUMAN-021a), not read.
+- **Version.** No stable Codex CLI was published between HUMAN-018 and HUMAN-020 (all on 2026-10-21; `latest` 0.163.0 since
+  2026-10-15), so a CLI update between the runs is unlikely unless the machine runs an alpha. Plan-side usage windows and the
+  server-side model catalog can change without a CLI update.
+- **The v2 escape-hatch line** ("If the image generation tool cannot be used, do not use any substitute; answer only with the
+  error it returned.") is a faithful English rendering of curiosity-media's daily-working line
+  (「画像生成ツールが使えないときは、代替手段を取らずに、返ってきたエラーをそのまま答えてください。」, `entry-image.ts` /
+  `kaii-body-images.ts`); v1 has no such line. It only shapes the answer when the tool is missing or failed, so it explains the
+  short answer, not the missing image. The prompt is left unchanged until HUMAN-021 separates the causes.
+- Side finding: Codex loads `$CODEX_HOME/.env` into its own environment at start, filtering only `CODEX_*` keys
+  (`codex-rs/arg0/src/lib.rs` `load_dotenv`), so an `OPENAI_API_KEY` there would bypass the env allowlist. The PoC now refuses
+  to start when that file exists; the design worker's other Codex calls (`codex.ts`) do not check it yet. The diagnostics dirs stay in the output root (repo-external, never published); delete them with `sudo rm -r` when done.
 
 To send back (no secrets inside): the `POC_STOP` line and the `POC_DIAG_SUMMARY` line, or `sudo cat <POC_DIAG path>`.
 

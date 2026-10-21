@@ -17,17 +17,21 @@
  */
 import { lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { AnswerTextCode, ImageOutcome, SessionFacts } from "./capability";
 
-export const DIAGNOSTICS_SCHEMA = "sr-design-image-poc-diagnostics/1";
+/** /2 (DEV-078): adds preflight, session and classification. */
+export const DIAGNOSTICS_SCHEMA = "sr-design-image-poc-diagnostics/2";
 
 /** `codex exec --json` event types counted by name (any other: `other`). */
 export const EVENT_TYPES = ["thread.started", "turn.started", "turn.completed", "turn.failed", "item.started", "item.updated", "item.completed", "error"] as const;
 /**
- * Item types that are an image-generation tool call. The exact name in
- * `codex exec --json` is not pinned down in our references (curiosity-media
- * takes the image from generated_images/<thread>/ and never reads image
- * events), so every plausible spelling counts; an unknown item type still
- * shows up as `other`, and the file counts below are the decisive evidence.
+ * Item types that are an image-generation tool call. DEV-078: in Codex CLI
+ * 0.163.0 `codex exec --json` has NO image item at all (exec_events.rs lists
+ * agent_message … error only; event_processor_with_jsonl_output.rs maps every
+ * other thread item to None), so these counts stay 0 even when the tool ran:
+ * `image_tool=0/0` proves nothing. The CLI's session log decides
+ * (capability.ts readSessionFacts: `session` in the diagnostics). The
+ * spellings stay counted in case a later CLI emits them.
  */
 export const IMAGE_ITEM_TYPES = ["image_generation", "image_generation_call", "image_gen", "imagegen", "generate_image"] as const;
 /** Item types counted by name (any other: `other`). */
@@ -392,6 +396,17 @@ export interface PocDiagnostics {
   };
   events: EventDiagnostics | null;
   images: ImageLocationDiagnostics | null;
+  /** DEV-078 preflight, before the model call (null: not reached). */
+  preflight: { cli_version: string | null; dotenv_present: boolean } | null;
+  /** DEV-078: the CLI's own session log of this thread, read in memory (fixed facts only; null: no call made). */
+  session: SessionFacts | null;
+  classification: {
+    image_outcome: ImageOutcome | null;
+    /** The model's final answer as a fixed code (informational; the text is never kept). */
+    answer_text: AnswerTextCode | null;
+    /** pocStopClass of the stop code (null on success). */
+    stop_class: string | null;
+  };
 }
 
 const n = (v: number | null | undefined): string => (v === null || v === undefined ? "-" : String(v));
@@ -429,6 +444,19 @@ export function diagnosticsSummary(d: PocDiagnostics): string {
     `home_images=${n(i?.codex_home_new_images_elsewhere)}`,
     `unparsed=${n(e?.unparsed_lines)}`,
     `trunc=${b(!!(e?.truncated || i?.truncated))}`,
+    `cli=${d.preflight?.cli_version ?? d.session?.cli_version ?? "-"}`,
+    `dotenv=${d.preflight ? b(d.preflight.dotenv_present) : "-"}`,
+    `model=${d.session?.model ?? "-"}`,
+    `provider_openai=${typeof d.session?.model_provider_openai === "boolean" ? b(d.session.model_provider_openai) : "-"}`,
+    `log=${d.session ? b(d.session.log_found) : "-"}`,
+    `img_calls=${n(d.session?.image_tool_calls)}`,
+    `img_ok=${n(d.session?.image_tool_completed)}`,
+    `img_failed=${n(d.session?.image_tool_failed)}`,
+    `img_fail=${d.session && d.session.image_failure_codes.length > 0 ? d.session.image_failure_codes.join(",") : "-"}`,
+    `other_calls=${n(d.session?.other_tool_calls)}`,
+    `outcome=${d.classification.image_outcome ?? "-"}`,
+    `answer=${d.classification.answer_text ?? "-"}`,
+    `class=${d.classification.stop_class ?? "-"}`,
     `ms=${n(d.timings_ms.total)}`,
     `codex_ms=${n(d.timings_ms.codex)}`,
     `first_event_ms=${n(d.timings_ms.first_event)}`,
