@@ -1,0 +1,74 @@
+/* Fictional shop, local test data only: a quiet bakery atelier.
+   Paper white, ink black, oversized type, a thin rule grid and one accent. */
+#shop-css {
+  background-color: #fbfaf7;
+  color: #111111;
+}
+#shop-css header {
+  background-color: #fbfaf7;
+  border-bottom: 1px solid #111111;
+}
+#shop-css h1 {
+  font-family: var(--font-grotesk), var(--sans), sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  color: #111111;
+}
+#shop-css h2 span[lang="en"] {
+  font-family: var(--font-grotesk), sans-serif;
+  font-size: 0.875rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #111111;
+  /* the accent square, as a thick left rule on the English word */
+  border-left: 10px solid #d2451e;
+  padding-left: 10px;
+}
+#shop-css main > section {
+  border-top: 1px solid #111111;
+  padding-top: 20px;
+}
+#shop-css section[aria-labelledby="pr-menu"] li {
+  border-bottom: 1px solid #d9d6cf;
+  padding: 10px 0;
+  font-size: 1.125rem;
+}
+#shop-css section[aria-labelledby="pr-about"] p {
+  font-size: clamp(1.125rem, 2.4vw, 1.75rem);
+  line-height: 1.6;
+  max-width: 34em;
+}
+@media (min-width: 960px) {
+  #shop-css section[aria-labelledby="pr-about"] p {
+    max-width: 28em;
+  }
+  #shop-css h2 span[lang="en"] {
+    letter-spacing: 0.3em;
+  }
+}
+/* Stage 1 layouts: banded sections (surface / inverted grounds) and the
+   first-view excerpts take this shop's own panel and ink, so every word keeps
+   its contrast whatever the layout. */
+#shop-css section[data-ground="surface"],
+#shop-css section[data-ground="inverted"] {
+  background-color: #fbfaf7;
+}
+#shop-css main section p,
+#shop-css main section li,
+#shop-css main section dt,
+#shop-css main section dd,
+#shop-css main section span {
+  color: #111111;
+}
+#shop-css main section h2,
+#shop-css main section h2 span {
+  color: #111111;
+}
+/* The split visit block stacks below 1024px: the address column and the
+   rows column side by side leave a phone number no room on tablets. */
+@media (max-width: 1023px) {
+  #shop-css section[data-variant="split"] > div {
+    display: block;
+  }
+}

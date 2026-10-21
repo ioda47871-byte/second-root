@@ -3176,6 +3176,53 @@
       "decision": "2026-10-20: 人の正式承認（Stage 1）。071a: Fresh Review FAIL → 対応 → 再レビュー FAIL（Medium 1: vertical_name の hero の構図、Low 4: DEV-067 の phone の枠の test の所要）→ 対応（掛け軸の構図、空きの検査、test の分割）→ 再々レビュー待ち。071b への申し送り: data-short の判断を normalize の adjustment へ・boutique_minimal の plain/surface は見えない変更・availableFirstViews に name_menu の節順の条件（design-spec-stage1.md）。2026-10-20: DEV-071a（renderer 側）Fresh Review FAIL → 対応 → 再レビュー FAIL（vertical_name の hero）→ 対応 → 再レビュー PASS、PR #83 で develop へ。DEV-071b（prompt・Codex の output schema・pipeline・visibleChanges と記録した follow-up）は未着手; 2026-10-20: 071a merge（PR #83、afd3d9b）。071b を feature/dev-071b-design-spec-codex で実装中（Codex の output schema で layout 必須・prompt の語彙と店ごとの使える節・pipeline の normalize と report・visibleChanges・写真の slot・幅の検査と split の overflow の修正。design-spec-stage1.md §11）; 2026-10-20: 071b Fresh Review FAIL → 対応 → 再レビュー FAIL（visibleChanges の隠す規則）→ 対応（画素の安全網の test）→ 再々レビュー PASS（879b7f8）。Low の対応（安全網の test を 3 file に分割・accent motif と 1 節の頁を追加）の後で merge。Stage 1（071a・071b）はこれで完了。残り: (1) §8-3 の比較の実走（WSL の worker で Codex が実際に layout を作る run、人の承認と操作）、(2) 実走の report で duplicate:<kind>・layout:missing・headings:vertical_ja の頻度を見る、(3) ruled_frame と全幅の band の重なり（DEV-067 の枠の扱いと一緒に）、(4) renderer-jp-name の test の所要（load で 180 s の上限に近い）"
     },
     {
+      "id": "DEV-072",
+      "title": "Stage 3 の技術検証: 店舗別 CSS の検査器（静的 guard と Chromium の render check、local preview だけ）",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-067"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-072-css-guard",
+      "purpose": "人の正式承認（2026-10-20、design-agent-direction-2026-10-20.md §8.3）: Stage 3（店舗別 CSS 生成）の技術検証。まず生成 CSS を通す検査器を作る: 構文解析と許可リスト・JS / 外部通信 / 任意 URL の禁止・店舗情報と注記を隠さない・font / contrast / 可読性・PC とスマホの崩れの検証・不合格なら既存の表示へ",
+      "acceptance_criteria": [
+        "guardShopCss: 自前の厳格な tokenizer / parser（CSS Syntax 3 の部分集合、fail closed）。escape・<・非 ASCII・url()・@import など at-rule・!important・custom property・許可外の property / value / 関数 / selector を固定の符号で拒否し、通ったものは parse tree から再直列化",
+        "selector はすべて scope root #shop-css から。兄弟結合子なし（notice と footer は scope の兄弟）。属性は renderer の安定した属性の固定値だけ",
+        "render check（Chromium、固定 7 幅 + CSS の breakpoint の両側）: 横 overflow・事実 / 固定の label / 注記帯 / footer の文字ごとの存在・非表示・画面外・切れ・覆い・不透明度・字の大きさ・潰れ・実際に塗られた地の上の contrast・画素の証明（文字ごとに画素が変わる）・注記帯と footer の style / box / 画素・頁の高さ・script の不在。shop CSS なしの同じ頁と比べ、壊したものだけを固定の符号で返す",
+        "shopCssOrFallback: guard と render check の両方を通ったときだけ CSS、そうでなければ null（profile renderer の表示）",
+        "renderer は local の design preview だけが shop CSS を渡せる（公開 /demo と admin preview は渡せないことを test で確認）。renderer でももう一度 guard",
+        "架空の店の手書きの shop CSS 3 つが通る"
+      ],
+      "required_tests": [
+        "unit: guard の adversarial corpus（各禁止構文・escape・大文字小文字・comment・注記への selector・content の文字・display none・font-size 0・position fixed・巨大な値）と許可される例・出力の冪等性",
+        "Chromium: guard を通るが事実を隠す / 覆う / 低 contrast / 縮める CSS が落ちる・注記に届いた CSS（guard の迂回を模擬）が落ちる・例の 3 つが通る",
+        "scope: 公開 /demo と admin preview のコードと markup に shop CSS が無い・preview の record の束縛",
+        "eslint・tsc・next build・CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/shop-css/",
+        "components/demo/profile/ProfileRenderer.tsx",
+        "lib/design-agent/preview.ts",
+        "app/design-preview/",
+        "tests/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "公開 /demo・admin preview での shop CSS",
+        "生成器（prompt）・WSL jail への接続・保存 / 配信（別の承認）",
+        "Staging / Production / DB / flag / Vercel / WSL の操作",
+        "CSS・font のネットワーク取得"
+      ],
+      "human_approval_triggers": [
+        "実際の WSL worker への投入",
+        "Staging 実走",
+        "公開 demo への適用"
+      ],
+      "decision": "2026-10-20: §8.3 の承認に基づき Claude が追加。設計は .ai/proposals/stage3-shop-css.md。parser は postcss（next の推移的依存）ではなく自前の小さな厳格 parser（寛容な error recovery が無く、許可する部分集合だけを読むので fail closed にしやすい・依存を増やさない）。Fresh Review（security）FAIL（Critical 2・High 2・Medium 2・Low 3・Nit 2: 外側の shadow / outline が事実と footer を塗る・幅 3 つと font-size の下限なし・label を測らない・list の marker など）→ 全件対応: shadow は inset だけ・outline / offset / translate なし・font-size の下限 12px・list-item なし・`*` なし・canvas に overflow: clip・render check は固定 7 幅 + breakpoint の両側・label / notice / footer の文字も検査・文字ごとの画素の証明・record を事実に束縛（.ai/reviews/DEV-072.md の対応）。2026-10-21: 安全性の Fresh Review を 6 回（FAIL ×4 → 許可リストを縮小・検査を強化 → 5 回目 PASS（条件: container の 1px scan）→ 対応 → 再確認 PASS）。残り: row-reverse / grid の配置で値がラベルの前に見える（組は保たれる）は generator を繋ぐときに閉じる。CI は shop-css を別 job（2 分割）に"
+    },
+    {
       "id": "DEV-073",
       "title": "Stage 1 の比較: 業種・ブランドの違う架空の 3 店を、実際の design pipeline で local に流して比べる道具（runner・baseline・metrics report・contact sheet）",
       "status": "done",

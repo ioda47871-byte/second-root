@@ -1,0 +1,95 @@
+/* Fictional shop, local test data only: a Showa-era kissaten.
+   Deep brown ground, cream panels, a ruled menu card, rounded "tile" rows. */
+#shop-css {
+  background-color: #3b2418;
+  color: #f6ead6;
+}
+#shop-css header {
+  /* a lighter band at the foot of the hero, drawn inside it */
+  box-shadow: inset 0 -14px 0 #4a2e1f;
+  background-color: #3b2418;
+  color: #f6ead6;
+  border-bottom: 6px double #c98b4a;
+}
+#shop-css header p,
+#shop-css header span,
+#shop-css header li {
+  color: #f6ead6;
+}
+#shop-css h1 {
+  font-family: var(--font-ja-editorial), serif;
+  letter-spacing: 0.04em;
+  color: #fbe9c8;
+}
+#shop-css main {
+  background-color: #f6ead6;
+  color: #2b1a10;
+  padding: 24px 16px 48px;
+}
+#shop-css main > section {
+  background-color: #fffaf0;
+  border: 2px solid #3b2418;
+  border-radius: 18px;
+  padding: 20px 18px;
+  margin-bottom: 24px;
+  box-shadow: inset 0 -4px 0 #c98b4a;
+}
+#shop-css h2 {
+  color: #7a3b12;
+  border-bottom: 1px dashed #7a3b12;
+  padding-bottom: 6px;
+}
+#shop-css section[aria-labelledby="pr-menu"] ol {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 480px) {
+  #shop-css section[aria-labelledby="pr-menu"] ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 960px) {
+  #shop-css section[aria-labelledby="pr-menu"] ol { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+#shop-css section[aria-labelledby="pr-menu"] li {
+  background-color: #fbe9c8;
+  border-radius: 999px;
+  padding: 8px 14px;
+  color: #2b1a10;
+}
+#shop-css dl > div {
+  border-bottom: 1px dotted #7a3b12;
+  padding: 6px 0;
+}
+@media (min-width: 720px) {
+  #shop-css main {
+    padding: 40px 3vw 64px;
+  }
+  #shop-css main > section {
+    padding: 24px 20px;
+  }
+}
+/* Stage 1 layouts: banded sections (surface / inverted grounds) and the
+   first-view excerpts take this shop's own panel and ink, so every word keeps
+   its contrast whatever the layout. */
+#shop-css section[data-ground="surface"],
+#shop-css section[data-ground="inverted"] {
+  background-color: #fffaf0;
+}
+#shop-css main section p,
+#shop-css main section li,
+#shop-css main section dt,
+#shop-css main section dd,
+#shop-css main section span {
+  color: #2b1a10;
+}
+#shop-css main section h2,
+#shop-css main section h2 span {
+  color: #7a3b12;
+}
+/* The split visit block stacks below 1024px: the address column and the
+   rows column side by side leave a phone number no room on tablets. */
+@media (max-width: 1023px) {
+  #shop-css section[data-variant="split"] > div {
+    display: block;
+  }
+}

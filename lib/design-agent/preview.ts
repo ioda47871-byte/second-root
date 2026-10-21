@@ -7,6 +7,8 @@ import { resolvePhotos, type RenderPhotos } from "./assets/resolve";
 import { previewAssetUrl, runAssets } from "./assets/serve";
 import { checkProfile, type DesignProfile } from "./profile";
 import { CANDIDATE, RUN_ID } from "./run-id";
+import type { GuardedShopCss } from "./shop-css/guard";
+import { shopCssFromRecord } from "./shop-css/record";
 
 // Reads a design run for the local preview route. Paths are built only from
 // validated parts: the root comes from the machine's environment, the run id
@@ -34,7 +36,7 @@ async function readJson(path: string): Promise<unknown> {
   }
 }
 
-export type PreviewRun = { demo: DemoView; profile: DesignProfile | null; photos: RenderPhotos | null };
+export type PreviewRun = { demo: DemoView; profile: DesignProfile | null; photos: RenderPhotos | null; shopCss?: GuardedShopCss | null };
 
 export async function loadPreviewRun(
   root: string,
@@ -50,7 +52,10 @@ export async function loadPreviewRun(
   const check = checkProfile(await readJson(join(dir, `${candidate}.json`)));
   // An unusable profile renders the existing template (fail-safe).
   if (!check.ok) return { demo, profile: null, photos: null };
-  return { demo, profile: check.profile, photos: await loadPhotos(dir, runId, candidate, demo, check.profile, options) };
+  // DEV-072 (Stage 3 trial): an accepted per-shop stylesheet, only when its record matches this run,
+  // candidate, profile and facts and the guard passes it again; anything else is the profile's own page.
+  const shopCss = shopCssFromRecord(await readJson(join(dir, `${candidate}.shop-css.json`)), runId, candidate, check.profile, demo);
+  return { demo, profile: check.profile, photos: await loadPhotos(dir, runId, candidate, demo, check.profile, options), shopCss };
 }
 
 /**

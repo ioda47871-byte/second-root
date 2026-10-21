@@ -1,0 +1,32 @@
+/* Fictional shops, local test data only: a stylesheet written against the
+   Stage 1 hooks (section kind / variant / ground, first view, heading style). */
+#shop-css section[data-kind="menu"] li {
+  border-radius: 6px;
+}
+#shop-css section[data-kind="menu"][data-variant="chips"] li {
+  border-radius: 999px;
+}
+#shop-css section[data-ground="surface"] {
+  box-shadow: inset 0 0 0 1px var(--p-primary);
+}
+#shop-css section[data-kind="hours"] dd {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+#shop-css section[data-kind="visit"] div[data-key="address"] dd {
+  font-size: 1.125rem;
+}
+#shop-css[data-headings="vertical_ja"] section h2 {
+  letter-spacing: 0.2em;
+}
+#shop-css[data-first-view="vertical_name"] h1 {
+  letter-spacing: 0.1em;
+}
+#shop-css div[data-fv="menu"] li {
+  font-weight: 700;
+}
+@media (min-width: 1024px) {
+  #shop-css section[data-kind="about"] p {
+    max-width: 36em;
+  }
+}

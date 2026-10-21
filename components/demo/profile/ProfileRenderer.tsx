@@ -2,6 +2,7 @@ import { Fragment, type CSSProperties } from "react";
 import type { RenderFeature, RenderPhotos } from "@/lib/design-agent/assets/resolve";
 import { DEFAULT_LAYOUT, japaneseOnly, normalizeLayout, sectionIsShort } from "@/lib/design-agent/layout";
 import type { DesignProfile } from "@/lib/design-agent/profile";
+import { isGuardedShopCss, SHOP_CSS_SCOPE_ID, type GuardedShopCss } from "@/lib/design-agent/shop-css/guard";
 import type { DemoView } from "@/lib/sales/demo-content";
 import DemoFrame from "../DemoFrame";
 import { areaLabel, infoRows } from "../info";
@@ -66,7 +67,25 @@ function PleatsArt() {
   );
 }
 
-export default function ProfileRenderer({ demo, profile, photos = null }: { demo: DemoView; profile: DesignProfile; photos?: RenderPhotos | null }) {
+/**
+ * A per-shop stylesheet (DEV-072, Stage 3 trial): only the local design
+ * preview passes one (public /demo and the admin preview never do). It is
+ * checked by the guard again here, and scoped to the canvas (id shop-css, its
+ * own stacking context, clipped to its box), so it never reaches the notice
+ * bar or the footer. The <style> sits outside the canvas, where no shop
+ * selector can show it.
+ */
+function shopScope(shopCss: GuardedShopCss | null | undefined) {
+  if (!shopCss || !isGuardedShopCss(shopCss)) return null;
+  return {
+    style: <style data-shop-css-style="">{shopCss}</style>,
+    // its own stacking context, and nothing it draws (a shadow, a rotation) paints outside it
+    attrs: { id: SHOP_CSS_SCOPE_ID, "data-shop-css": "", style: { isolation: "isolate", overflow: "clip" } as CSSProperties },
+  };
+}
+
+export default function ProfileRenderer({ demo, profile, photos = null, shopCss = null }: { demo: DemoView; profile: DesignProfile; photos?: RenderPhotos | null; shopCss?: GuardedShopCss | null }) {
+  const shop = shopScope(shopCss);
   const rows = infoRows(demo);
   // null: no layout — the page before Stage 1, without any layout attribute
   const spec = profile.layout ? normalizeLayout(profile.layout, demo).layout : null;
@@ -192,7 +211,9 @@ export default function ProfileRenderer({ demo, profile, photos = null }: { demo
       className={`${styles.root} ${displayFaceVariables}`}
       style={tokens(profile)}
     >
+      {shop?.style}
       <div
+        {...shop?.attrs}
         className={styles.canvas}
         data-direction={profile.direction}
         data-display={t.display}
