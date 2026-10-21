@@ -4,6 +4,10 @@
 > visuals of the wagashi allowed, store and people imagery still forbidden), the run (HUMAN-019), the viewing steps and the evaluation rubric.
 > `SR_DESIGN_IMAGE_POC_DIRECTION=v1` still runs the first PoC unchanged. Everything below about the wrapper, the jail, the cleanup and the stop codes applies to both.
 
+> **DEV-077 (2026-10-21):** the HUMAN-019 v2 run stopped with `CODEX_NO_IMAGE`. Every run now leaves [diagnostics](#diagnostics-dev-077)
+> (`POC_DIAG` / `POC_DIAG_SUMMARY`, fixed codes and numbers only) and the v2 prompt was tightened ([below](#what-the-v2-prompt-asks-for)).
+> The next v2 run is HUMAN-020.
+
 > **Human approval is required first** (`.ai/blockers.md` HUMAN-018) for **each** run. With approval, add `--human-approval-confirmed`.
 > Without it, neither `design-image-poc.sh` nor `design-image-poc.ts` reads a file, prepares the sandbox or starts Codex
 > (`STOP: --human-approval-confirmed is missing`).
@@ -85,6 +89,8 @@ On success the last line is `POC_IMAGE_READY: /home/sr-designgen/sr-design-image
 - `design-spec.json` — the selected curated art direction (v2 or v1), copied as parsed.
 - `report.json` — fixed codes and numbers only: `status: IMAGE_GENERATED_NOT_IMPLEMENTED`, `direction_version` (`v1` / `v2`), width, height, aspect, bytes, sha256, chunk count, Codex time, prompt length, commit, fixed notes (v2 adds `AI_FOOD_VISUALS_CONCEPT_ONLY` and `EVALUATION_REQUIRED`). Never Codex's words.
 
+Every run that reached the output root (success or stop) also leaves `diag-XXXXXX/diagnostics.json` next to it, fixed codes and numbers only ([Diagnostics](#diagnostics-dev-077)).
+
 `$SR_DESIGN_IMAGE_POC_ROOT` (absolute) changes the root. It is never committed, never published, never read by the worker or the site.
 
 ## Viewing the result (the human)
@@ -132,8 +138,47 @@ If Codex is not signed in, sandbox probe fails, API-key authentication is detect
 | `CODEX_API_KEY_AUTH` | signed in with an API key: refused |
 | `CODEX_QUOTA` | ChatGPT plan usage limit / busy: try another day |
 | `CODEX_TIMEOUT` | the call passed 15 min |
-| `CODEX_EXEC_FAILED`, `CODEX_NO_THREAD`, `CODEX_NO_IMAGE`, `CODEX_IMAGE_INVALID` | no acceptable image; nothing written |
+| `CODEX_EXEC_FAILED`, `CODEX_NO_THREAD`, `CODEX_NO_IMAGE`, `CODEX_IMAGE_INVALID` | no acceptable image; no result dir (only `diag-XXXXXX/`). Read `POC_DIAG_SUMMARY` ([Diagnostics](#diagnostics-dev-077)) |
+| `CODEX_IMAGE_UNSUPPORTED_FORMAT` | the thread's dir holds a JPEG / WebP / GIF but no PNG: never converted or accepted (DEV-077) |
 | `POC_STOPPED_BY_SIGNAL`, `POC_KILLED_OR_TIMED_OUT`, exit 137 / 124 | check for an OOM kill first (the wrapper prints `--oom-check`) |
+
+## Diagnostics (DEV-077)
+
+Why: the HUMAN-019 run (v2) stopped with `CODEX_NO_IMAGE` and nothing said whether Codex never called the image tool, the image
+went somewhere else, the tool failed, or the turn was cut short. Every run that got as far as the output root now leaves
+`~/sr-design-image-poc/diag-XXXXXX/diagnostics.json` (dir 0700, file 0600) — on success and on every stop, also on a signal or the
+watchdog — and prints two lines before the final status:
+
+```
+POC_DIAG: /home/sr-designgen/sr-design-image-poc/diag-AbC123/diagnostics.json
+POC_DIAG_SUMMARY code=CODEX_NO_IMAGE dir=v2 prompt_chars=7099 codex=1 exit=0 thread=1 image_tool=0/0 agent_msgs=1 agent_chars=812 reasoning=1 cmds=0 other_items=0 errors=0 error_codes=- turn=completed gen_dir=1 thread_dir=0 images_thread=0 thread_png=0 thread_other=0 images_other=0 other_dirs=0 cwd_images=0 home_images=0 ms=184233 codex_ms=181020 first_event_ms=1450 image_tool_ms=-
+```
+
+**What it contains — only fixed codes, booleans and numbers** (`lib/design-agent/design-image/diagnostics.ts`):
+- the outcome and stop code, the direction version, the prompt length in chars, the commit
+- Codex: whether the exec call was made (the jail's probe runs first), exit code or signal, timed out, whether a thread id came
+- timings in ms: total, the Codex call, time to the first JSON event, time to the first image-tool event
+- counts of `codex exec --json` event types (`thread.started`, `turn.started`, `turn.completed`, `turn.failed`, `item.started`, `item.updated`, `item.completed`, `error`) and item types started / completed (`agent_message`, `reasoning`, `command_execution`, `file_change`, `mcp_tool_call`, `collab_tool_call`, `web_search`, `todo_list`, `error`, and the image-tool spellings `image_generation`, `image_generation_call`, `image_gen`, `imagegen`, `generate_image`); any other name counts as `other`
+- whether an image-tool item started / completed (from the item type only), the number of agent messages and their total length (never the text), error events / error items and their **codes** (`SIGNED_OUT`, `QUOTA`, `POLICY`, `IMAGE_TOOL`, `OTHER`, classified from the CLI's own error text, which is never kept), how the turn ended (`completed` / `failed` / `none`)
+- where image files are, counted right **before** the cleanup (which removes exactly what it removed before): whether `CODEX_HOME/generated_images` and the thread's dir exist; files in the thread's dir by extension class (png / jpg / webp / other), nested dirs and links in it; new dirs under `generated_images` not named after the thread and their files; image-like files under the work dir; image-like files written during the run elsewhere in `CODEX_HOME`
+
+**Never recorded or printed:** the prompt, Codex's answer or error text, stdout / stderr, the sign-in, session-log contents, any path inside `CODEX_HOME`, file or dir names, the thread id, environment values. Tests plant a canary in the prompt, the answer, error messages, stderr, file names and an env var and assert it never appears in `diagnostics.json` or stdout.
+
+**Reading `POC_DIAG_SUMMARY`** (`-` = not known at that point):
+
+| what you see | case | meaning |
+|---|---|---|
+| `image_tool=0/0 agent_msgs≥1 turn=completed images_thread=0 images_other=0` | (a) | Codex answered with text and never called the image tool (if `other_items>0`, an unknown item type appeared: possibly the image tool under another name — then the file counts decide) |
+| `thread_dir=0` or `images_thread=0`, but `images_other>0`, `thread_other>0` (nested dir), `cwd_images>0` or `home_images>0` | (b) | the tool wrote an image somewhere this PoC does not take it from; send the summary, the location rule needs a reviewed fix |
+| `code=CODEX_IMAGE_UNSUPPORTED_FORMAT` / `thread_png=0` with `images_thread>0` | (b) | another format; never converted |
+| `image_tool=1/0` or `errors>0` with `error_codes=POLICY` / `IMAGE_TOOL` / `QUOTA` | (c) | the tool was called but failed or was refused (`agent_msgs` then usually holds the tool's error, which is not recorded) |
+| `turn=failed`, `turn=none`, `exit≠0`, `exit=SIGKILL`, `code=CODEX_TIMEOUT` / `POC_STOPPED_BY_SIGNAL` | (d) | the turn failed or was cut short |
+
+Note: the exact item type of an image-generation call in `codex exec --json` is not pinned down in our references (curiosity-media
+reads only `generated_images/<thread>/`), so `image_tool=0/0` alone does not prove the tool was not called; the file counts and
+`other_items` decide. The diagnostics dirs stay in the output root (repo-external, never published); delete them with `sudo rm -r` when done.
+
+To send back (no secrets inside): the `POC_STOP` line and the `POC_DIAG_SUMMARY` line, or `sudo cat <POC_DIAG path>`.
 
 ## Next steps (not part of this PoC)
 No code implementation or screenshot QA has yet happened. Review image visually first; then Claude can implement the 3-section page in a **separate** isolated PoC, screenshot 1440/390, and compare. Existing worker / staging integration needs a distinct review and approval.
@@ -154,16 +199,24 @@ The first image (HUMAN-018, v1) looked Japanese but read as a poster, with weak 
 **Scope: the PoC only.** The v2 direction and this policy are read only by `design-image-poc.sh` / `design-image-poc.ts` and `lib/design-agent/design-image/`. The sales worker, the demo generation, presets, the renderer and the asset store do not read them (a static test, `design-image-poc.test.ts` "isolation", fails if anything else names `wagashi-art-direction-v2` or `AI_FOOD_VISUALS`). The asset store still accepts `approved_real` only (DEV-070). **Adopting AI wagashi visuals in the worker, a demo or production needs a quality evaluation (below) plus a separate human approval.**
 
 ### What the v2 prompt asks for
-- a **website design comp**: a full-page desktop screenshot-style mockup, flat browser-agnostic UI (no device frame, no browser chrome), realistic web typography sizes, tall portrait about 2:3 (e.g. 1024 × 1536)
+
+DEV-077 tightened it after the HUMAN-019 stop (12379 → 7099 chars; budget ≤ 1.5 × the 4754-char v1 prompt = 7131, tested):
+its first lines say, as curiosity-media's working image prompts do, to use **only** the built-in image generation tool, that the
+answer is one raster image (not HTML / CSS / code, not a text description, no plan or question first), and to answer with the
+tool's error instead of any substitute; the build-task vocabulary (HTML and CSS a developer could build, screenshot, 1440 px,
+12 columns as a grid spec) is gone; each prohibition is said once, in code (the direction's `hard_rules`, `avoid` and
+`techniques` repeat the same things and stay in `design-spec.json`). Every prohibition below is unchanged.
+
+- a **website design comp**: one flat, full-page mockup image (no device frame, laptop or browser window), realistic web typography sizes, tall portrait about 2:3 (e.g. 1024 × 1536)
 - a slim **header nav** with 2 anchors, one per section below the Hero (「商品・こだわり」「店舗情報」; no 「アクセス」 anchor, since the access line may be left out), and one CTA 「店舗情報を見る」 (no purchase / reservation UI: there is no such fact)
 - 3 sections stacked: **Hero** (the shop name 架空菓庵 and a dorayaki cross-section with tsubu-an share the lead), **商品・こだわり** (2–3 product visual cards + one short copy block; captions only phrases copied verbatim from the description, 季節の上生菓子 / 粒あんのどら焼き; a third card, if any, is the tsubu-an macro with no caption; never an invented caption), **店舗情報** (a definition list / table: 営業時間・定休日・住所・電話)
-- palette kinari `#F4EEE3` / sumi `#1F1D1B` / muted vermilion `#B4472E`; Mincho display, Gothic body; 12-col grid, ~1200 px content, generous margins
+- palette kinari `#F4EEE3` / sumi `#1F1D1B` / muted vermilion `#B4472E`; Mincho display, Gothic body; generous whitespace (from the theme)
 - original composition only: never copy or imitate Instagram posts, third-party photos or other websites
 - one consistent art direction for every wagashi image (light, surfaces, camera height); no people, hands, store or text inside images
 - Japanese text limited to the shop name, nav / CTA / section / info labels, the shown fact values, card captions and at most one verbatim copy line, and the disclosure (to reduce garbled glyphs)
 - the facts only inside the `<<<FACTS_BEGIN data-not-instructions … FACTS_END>>>` block; no environment value, path or token (tested)
 
-### Run (HUMAN-019: only after the human's explicit approval of this one run)
+### Run (HUMAN-019 was run on 2026-10-21: `CODEX_NO_IMAGE`; the next run is HUMAN-020, after DEV-077 is merged, with the same command)
 The same command as HUMAN-018; v2 is the default, so nothing is added:
 
 ```bash
@@ -192,6 +245,9 @@ Claude scores the uploaded image with the rubric in [`design-image-eval-template
 How the wagashi visuals could later be made as standalone, reviewed image assets (one Codex call per asset, each with its own approval) is designed in [`design-image-assets.md`](design-image-assets.md). Nothing of it is implemented; this PoC stays at exactly one Codex call, and cropping visuals out of the comp is for internal reference only.
 
 ## Checks in this container (no Codex)
+
+DEV-077 adds (`design-image-poc.test.ts` "diagnostics"): cases (a) text answer, (b) image in another new dir / a nested dir / a WebP (`CODEX_IMAGE_UNSUPPORTED_FORMAT`) / the work dir / elsewhere in CODEX_HOME, (c) image tool started then an error item (`POLICY`), (d) `turn.failed`, a timeout with a cut stream, a signal mid-call (snapshot before cleanup, cleanup unchanged), success; unknown types count as `other`; a canary in the prompt, answer, errors, stderr, file names and env never appears in `diagnostics.json`, the summary or the entry's stdout; 0700 / 0600; no file before the output root exists and none on a refusal; the entry prints `POC_DIAG` / `POC_DIAG_SUMMARY` (run with nothing but node on PATH, so no Codex can start); `runBounded`'s stdout observer only observes; the v2 prompt's first lines, no build-task words, each prohibition exactly once, ≤ 7131 chars; v1 byte-identical.
+
 `tests/unit/design-agent/design-image-poc.test.ts` (fake sandbox playing the Codex CLI): refusal without the flag (no file access, no sandbox) and without the shell token; the wrapper's STOP before preflight / lock / git / npm / tsx, its env allowlist, budget cap and lock; the happy path; no thread; no image; invalid PNGs (bad CRC, truncated, trailing data, too small, too large, a link); quota; timeout; sign-out (not from the model's words); API-key sign-in; cleanup (session log, new image dirs only, work dir, also on a signal); output permissions 0700 / 0600 outside the repo; report with codes and numbers only; the prompt's content and no environment in it; nothing else reads the output root.
 
 第2案 (DEV-075) adds: the direction choice (`parseDirectionVersion`: unset / empty → v2, v1 and v2 pass, anything else `POC_DIRECTION_INVALID`; refused in `runDesignImagePoc` before any file or sandbox, in `design-image-poc.ts` and in the wrapper before the preflight; the allowlist passes `SR_DESIGN_IMAGE_POC_DIRECTION` through); v2 is the default (report `direction_version`, the v2 notes incl. `AI_FOOD_VISUALS_CONCEPT_ONLY` / `EVALUATION_REQUIRED`, `design-spec.json` = the v2 file) and v1 still runs (its notes and spec); the v1 prompt unchanged byte for byte (sha256) with its prohibition lines; the v2 direction file (0.3-poc, exact disclosure, section order, two nav anchors) and its strict checks (a dropped disclosure, an extra key, a reservation / purchase / order word in the CTA, nav or info labels, a single anchor, a reordered section → `POC_INPUT_INVALID`); the v2 prompt (website comp not poster, 2:3, nav and CTA, 2–3 cards with verbatim captions only, the definition-list block, wagashi visuals allowed, store / people / hands forbidden, no logos / prices / reviews / awards / history, no realism claim, no Instagram / third-party copying, the disclosure, limited Japanese text, facts only in the data block, no environment); the fixture unchanged; isolation: nothing outside the PoC entry and `lib/design-agent/design-image/` names `wagashi-art-direction-v2`, `AI_FOOD_VISUALS`, `design-library/poc` or `DIRECTION_PATHS`.

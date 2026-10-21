@@ -17,6 +17,31 @@
   - 人の判断が要る: review の notes を次の round に渡す（DEV-034 の方針の変更）／ 初期候補を 2〜3 個にする（Codex の時間とコスト）／ Instagram の写真を使う（権利・同意の判断）
 - 次の実走: efb4bdb2 は attempts 2/3 で blocked（再 reset は未承認）。改善の効果は新しい controlled run（人の承認: 対象 demo・DB の reset・W・C）で測る
 
+### HUMAN-020 — DEV-077 の修正の後に、第2案（v2）を WSL でもう 1 回だけ流す承認
+
+- 背景: HUMAN-019（develop 1effb40、v2）は Codex の呼び出しは始まったが `CODEX_NO_IMAGE` で止まり（`design-image-poc.ts` exit 1、画像なし）、理由が分からなかった。
+  DEV-077 は Codex を流さずに (1) 理由を分ける診断（`POC_DIAG` / `POC_DIAG_SUMMARY`、固定の符号と数だけ）を足し、(2) v2 の prompt を締めた
+  （最初に組み込みの画像生成ツールだけを使う・答えは 1 枚の raster 画像で HTML / CSS / code や文章の説明ではない・ツールが使えなければ代わりをせずエラーを答える、
+  coding agent に作る作業と読める語を外す、禁止の重複を 1 回に、12379 → 7099 文字、上限は v1 の 1.5 倍 7131 を test で固定）。禁止事項はどれも変えていない。
+- 前提: DEV-077 の PR が develop に merge されていること（log の `direction v2` と、最後の方に `POC_DIAG_SUMMARY` の行が出ることで確かめる。出なければ古い develop）。
+- コマンド（HUMAN-019 と同じ。jail の中、timer はそのまま）:
+
+  ```bash
+  sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+  S=~/.local/state/sr-design-worker; mkdir -p "$S" && chmod 700 "$S"
+  flock -n "$S/run.lock" sh -c "cd ~/work/second-root && timeout 180 git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && timeout 60 git checkout -q --force --detach origin/develop" \
+    || { echo "STOP: a design worker run is in progress; nothing was changed"; exit 3; }
+  cd ~/work/second-root && ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed'
+  ```
+
+- 費用・時間: Codex の呼び出し **1 回**（画像生成つき、ChatGPT の plan の枠、API の課金なし）。**自動の再試行はない**（失敗しても 2 回目は流れない）。1 回は 15 分で打ち切り、全体 3300 秒以内。
+- 触れないもの: HUMAN-019 と同じ（DB・Staging・Production・Vercel・flag・worker の timer / queue / 結果・asset store・送信・GitHub）。同時に `design-demo.ts`・`photo-poc.sh`・手動の `codex` を流さない。
+- 返してほしいもの（どれも秘密を含まない）:
+  - 画像ができたとき: `POC_IMAGE_READY` の後の `mockup.png` を runbook の「第2案 › Viewing」で `kakuu-kaan-mockup-v2.png` として見て upload（と `report.json`）。評価は HUMAN-019 と同じ rubric
+  - 止まったとき: `POC_STOP: <符号>` の行と、`POC_DIAG_SUMMARY …` の 1 行（または `sudo cat <POC_DIAG の path>` の diagnostics.json）
+  - どちらの場合も `POC_DIAG_SUMMARY` の行があれば一緒に（prompt・Codex の文章・path・file 名・thread id・env の値は入っていない）
+- 解除条件: 画像か停止の符号（と診断の行）が届く、または人が流さないと決める。
+
 ### HUMAN-019 — DEV-075 の design image PoC 第2案（v2）を WSL で 1 回流す承認
 
 - 何: 架空菓庵の Web デザイン comp の PNG を 1 枚、第2案の art direction（`design-library/poc/wagashi-art-direction-v2.json`、0.3-poc）で `sr-designgen` の ChatGPT サインインの Codex（組み込み画像生成）に作らせる。
@@ -48,6 +73,8 @@
   (4) その PNG（と `report.json`）を Claude の session に upload する。止まったら表示された `POC_STOP: <符号>` を渡す。
 - 評価: 画像ができただけでは DEV-075 は終わらない。`docs/operations/design-image-eval-template.md` の 5 項目（各 1〜5）で Claude が採点し人が確認、**22/25 以上（人の目標）・hard fail なし**で合格。hard fail（事実の創作・店舗 / 人物の画像・表示の欠落・logo / 実物の主張・事実の崩れ）は人の決めた規則そのもの。「4 未満の項目なし」は Claude の追加の提案で、人が採用を決めるまで合格の条件ではない（評価の sheet には記録する）。
 - 解除条件: 画像（または停止の符号）が届く、または人が流さないと決める。
+- 状況（2026-10-21）: **人が 1 回流した（develop 1effb40、direction v2）。結果は `CODEX_NO_IMAGE`**（Codex の呼び出しは始まり、`design-image-poc.ts` は exit 1、画像なし）。
+  理由を分ける診断は当時なかった。調査と修正は DEV-077（診断の追加と v2 の prompt の修正、Codex は流していない）。次の 1 回は HUMAN-020。
 
 ### HUMAN-018 — DEV-074 の design image PoC を WSL で 1 回流す承認
 

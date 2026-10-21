@@ -3321,11 +3321,12 @@
       "status": "blocked",
       "priority": "P2",
       "depends_on": [
-        "DEV-074"
+        "DEV-074",
+        "DEV-077"
       ],
       "attempts": 0,
       "last_failure": null,
-      "blocked_reason": "HUMAN-019: 第2案を WSL で 1 回流す人の承認と実行、その画像の評価（22/25 以上 + hard fail なし）待ち",
+      "blocked_reason": "HUMAN-019 は流した（2026-10-21、CODEX_NO_IMAGE）。DEV-077（診断と v2 の prompt の修正）の merge の後、HUMAN-020: 第2案をもう 1 回流す人の承認と実行、その画像の評価（22/25 以上 + hard fail なし）待ち",
       "branch": "feature/design-image-v2",
       "purpose": "HUMAN-018 の 1 枚目はポスター風で営業の訴求が弱かった。人の新しい方針（2026-10-21）で和菓子そのものの AI 生成画像を提案用イメージとして許し、実装できる Web サイトの design comp（3 節・nav・商品の画像 card・店舗情報の定義リスト）を 1 枚作らせて評価する。店舗・人物の画像・logo・事実の創作・実物だと言う文は引き続き禁止。v2 と方針は PoC の中だけ",
       "acceptance_criteria": [
@@ -3405,6 +3406,57 @@
         "asset ごとの Codex の実走",
         "asset store に ai_generated_concept を足すこと（DEV-070 の変更）"
       ]
+    },
+    {
+      "id": "DEV-077",
+      "title": "Design image PoC 第2案の CODEX_NO_IMAGE（HUMAN-019）の調査: 理由を分ける安全な診断と、v2 の prompt の最小の修正（Codex は流さない）",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-074"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/design-image-diag",
+      "purpose": "HUMAN-019（develop 1effb40、v2）は Codex の呼び出しが始まったのに CODEX_NO_IMAGE で止まり、(a) 画像ツールを呼ばず文章で答えた (b) 画像が別の場所・形式に出た (c) ツールが失敗・拒否された (d) turn が失敗・中断した、のどれか分からなかった。固定の符号と数だけの診断を足して次の 1 回で分けられるようにし、v2 の prompt を curiosity-media の実績のある書き方に寄せて短くする。DEV-075 の続き（DEV-075 は HUMAN-020 待ちで blocked のまま、この Task の merge を待つ。ai-tasks の test は in_progress の依存が done であることを求めるので、依存は done の DEV-074 にし、DEV-075 の depends_on に DEV-077 を足した）",
+      "acceptance_criteria": [
+        "diagnostics.json（出力先の下の新しい diag-XXXXXX、0700 / 0600、結果 dir と同じ安全な作り方）を、出力先ができた後のどの終わり方でも（成功・停止・signal・watchdog）書く。cleanup が何かを消す前に数え、cleanup が消すものは変えない",
+        "記録は固定の符号・真偽・数だけ: codex exec --json の event と item の型の数（allowlist、それ以外は other）、画像ツールの item の開始 / 完了、error / turn.failed / error item の有無と固定の符号（SIGNED_OUT / QUOTA / POLICY / IMAGE_TOOL / OTHER）、turn の終わり方、agent_message の数と文字数の合計、時間（全体・Codex・最初の event・最初の画像ツールの event）、exit / signal、thread id の有無、generated_images と thread dir の有無、thread dir の file 数（拡張子の種類別・入れ子の dir・link）、thread の名でない新しい dir と file の数、作業 dir の画像 file の数、CODEX_HOME の他の場所に run 中にできた画像 file の数、prompt の文字数、direction、停止の符号",
+        "記録・表示しないもの: prompt、Codex の答え・error の文、stdout / stderr、サインイン、session log、CODEX_HOME の中の path、file 名、thread id、env の値（canary の test）",
+        "stdout に POC_DIAG: <path> と POC_DIAG_SUMMARY の 1 行",
+        "v2 の prompt: 最初に組み込みの画像生成ツールだけを使う指示（curiosity-media と同じ形）、答えは 1 枚の raster 画像で HTML / CSS / code・文章の説明・計画や質問ではない、ツールが使えなければ代わりをせずエラーを答える。作る作業と読める語（developer・screenshot・1440 px・HTML と CSS で作れる）を外し、禁止事項は 1 回ずつ（どれも残す）。長さは v1（4754）の 1.5 倍 7131 以下を test で固定（12379 → 7099）。v1 は 1 byte も変えない（hash の test）",
+        "thread dir に PNG がなく JPEG / WebP / GIF があれば CODEX_IMAGE_UNSUPPORTED_FORMAT（変換しない・受け取らない）。O_NOFOLLOW・大きさ・CRC・cleanup の規則は変えない",
+        "jail・protected path・ChatGPT サインインだけ・API key の遮断・run.lock・env の allowlist・3300 秒・cleanup・Codex の呼び出し 1 回（自動の再試行なし）を弱めない"
+      ],
+      "required_tests": [
+        "unit（fake sandbox）: (a)〜(d) と別の場所（他の新しい dir・入れ子・WebP・作業 dir・CODEX_HOME の他の場所）、signal の途中、成功、未知の型は other、prompt・答え・error・stderr・file 名・env の canary が diagnostics.json・summary・入口の stdout に出ないこと、権限、出力先の前は file なし・拒否は診断なし",
+        "unit: runBounded の stdout の observer は観察だけ、v2 の prompt の先頭の指示・語・禁止の 1 回ずつ・長さの上限、v1 の hash",
+        "design-image-poc・codex・photo-codex・sandbox・ai-tasks の test、typecheck、eslint、bash -n、check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/",
+        "lib/design-agent/bounded-process.ts（stdout の observer の追加だけ）",
+        "lib/design-agent/sandbox.ts（observer を渡すだけ）",
+        "scripts/sales-design-worker/design-image-poc.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "docs/operations/design-image-poc.md",
+        ".ai/tasks.json",
+        ".ai/blockers.md"
+      ],
+      "forbidden_scope": [
+        "Codex の実呼び出し・WSL での実走（HUMAN-020 の後に人が流す）",
+        "Staging / Production / DB / Vercel / worker・timer・queue",
+        "Codex の呼び出しを増やすこと・自動の再試行",
+        "jail・protected path・サインイン・API key の遮断・run.lock・env の allowlist・時間の上限・cleanup・PNG の検査を弱めること",
+        "prompt・答え・path・file 名・秘密を診断や log に出すこと",
+        "v2 の禁止事項を減らすこと、v1 の prompt を変えること",
+        "feature branch での .ai/progress.md の編集"
+      ],
+      "human_approval_triggers": [
+        "修正の後の v2 の実走 1 回（HUMAN-020）",
+        "診断が (b) を示したときの画像の受け取り場所の規則の変更（review の後）"
+      ],
+      "decision": "2026-10-21: 人の依頼（HUMAN-019 が CODEX_NO_IMAGE）で着手（develop 1effb40 から）。Codex は流していない。最も疑わしいのは (a): v2 の prompt が v1 の 2.6 倍（12379 文字）で、HTML / CSS・developer・screenshot・grid などの作る作業の語が多く、画像ツールの指示は 1 回だけ（v1 と同じ文）で末尾の「Generate the image now.」まで 1.2 万文字。(b)〜(d) は証拠がないので診断で分ける"
     }
   ]
 }
