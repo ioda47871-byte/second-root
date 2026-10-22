@@ -3882,7 +3882,7 @@
     {
       "id": "DEV-087",
       "title": "HUMAN-024b / 24b-host の結果の記録、EOF と ERR_ETIMEDOUT の違いの分析、passt の更新計画の承認判断用の最終整理（docs だけ）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-086"
