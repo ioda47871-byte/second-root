@@ -3599,6 +3599,49 @@
         "-m gpt-5.5 など direct mode の model を強制する案の採用",
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-081",
+      "title": "Design image PoC: 呼ばれた画像ツールの失敗（HUMAN-021b の img_fail=OTHER）を固定の符号でさらに分け、models cache から model の tool_mode / 画像入力を記録する（Codex は流さない）",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-080"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-081-imagegen-failure",
+      "purpose": "HUMAN-021b（develop c3fa813、v1、CLI 0.159.0、model gpt-6.1-sol）: hist=paginated・tool_mode=unknown・cm_cells=1・cm_ref=1・img_calls=1・img_failed=1・img_fail=OTHER → TOOL_FAILED / CODEX_IMAGE_TOOL_FAILED（capability）。rust-v0.159.0 の source（data として読んだ）: Extension item は引数の検査の後（emit_started）にだけ作られ、failure は limit id が image_gen の usage limit のときだけ（ImageGenerationFailure の variant は UsageLimitExceeded の 1 つ）、他の失敗（他の 429・4xx・5xx・timeout・接続・認証・画像なし）はすべて failure: null。エラーの文はモデルに返る（direct は function_call_output、code mode は cell の JavaScript の rejection）。文を保存せずに固定の符号で分け、models_cache.json から model の実際の tool_mode / input_modalities を読む",
+      "acceptance_criteria": [
+        "failure.type は allowlist（usageLimitExceeded / other / none / no_record）だけを記録する",
+        "Codex 自身のエラー文（direct の function_call_output、code mode の exec / wait の出力の 'image generation failed:' から）をメモリの中だけで固定の reason（USAGE_LIMIT・HTTP_429・HTTP_5XX・TIMEOUT・NETWORK・AUTH・NOT_SUPPORTED・POLICY・BAD_REQUEST・INVALID_ARGS・NO_IMAGE_DATA・BAD_RESPONSE・OTHER・NO_TEXT）、HTTP status（400-599）、allowlist の API error code にする。文・URL・request id・prompt は残さない（canary で確かめる）",
+        "outcome に TOOL_FAILED_UNSUPPORTED（class capability）と TOOL_FAILED_TRANSIENT（class transient）を足す。stop code は CODEX_IMAGE_TOOL_FAILED のまま、既存の outcome / stop code の意味は変えない。再試行はどこにも足さない",
+        "CODEX_HOME/models_cache.json を O_NOFOLLOW・regular file・8 MiB 上限・link 不可でメモリに読み、client_version・age・model の tool_mode・画像入力の有無だけを記録する（identity・etag・説明は出さない）",
+        "summary に img_fail_type= img_fail_reason= img_http= img_err= cm_arg_err= effort= tool_mode_src= model_cache= model_tool_mode= model_image_input= を足す（既存の並びは変えない、schema /4）",
+        "jail・sign-in・run.lock・env allowlist・cleanup・PNG の検査・model の呼び出し 1 回・prompt（byte 単位）・-m なしは変えない"
+      ],
+      "required_tests": [
+        "design-image-poc の unit（0.159.0 の形の fixture: failure: null の code mode、429 usage_limit_reached、5xx / timeout / 接続、404 / usage_not_included、moderation_blocked、wait 経由、引数のエラー、models cache の各状態、canary）",
+        "codex・sandbox・guardrails・ai-tasks の unit、npm run typecheck、eslint（変更した file）、check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/**",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "docs/operations/design-image-poc.md",
+        ".ai/**（feature branch では progress.md を除く）"
+      ],
+      "forbidden_scope": [
+        "Codex の実呼び出し・API の呼び出し",
+        "WSL・Staging・Production・DB・worker の timer",
+        "jail・env allowlist・sign-in の制限・cleanup・PNG の検査を弱めること",
+        "prompt の変更・-m や model / config の上書き・CLI の更新",
+        "log・cache・エラーの文の保存や表示"
+      ],
+      "human_approval_triggers": [
+        "HUMAN-022（Codex を呼ばない、手元の state DB / thread history / models cache の読み取り）",
+        "HUMAN-021c の再開、-m gpt-5.5 や CLI の更新の採用",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }

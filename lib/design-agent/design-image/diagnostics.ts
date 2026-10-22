@@ -17,10 +17,14 @@
  */
 import { lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { AnswerTextCode, ImageOutcome, SessionFacts } from "./capability";
+import type { AnswerTextCode, ImageOutcome, ModelCatalogFacts, SessionFacts } from "./capability";
 
-/** /2 (DEV-078): adds preflight, session and classification. /3 (DEV-080): session gains history_mode, tool_mode, code_mode_cells, code_mode_imagegen_ref. */
-export const DIAGNOSTICS_SCHEMA = "sr-design-image-poc-diagnostics/3";
+/**
+ * /2 (DEV-078): adds preflight, session and classification. /3 (DEV-080): session gains history_mode, tool_mode, code_mode_cells,
+ * code_mode_imagegen_ref. /4 (DEV-081): session gains effort, tool_mode_source, image_failure_types / _reasons / _http /
+ * _api_codes / _sources, code_mode_arg_error; model_catalog (CODEX_HOME/models_cache.json facts) is added.
+ */
+export const DIAGNOSTICS_SCHEMA = "sr-design-image-poc-diagnostics/4";
 
 /** `codex exec --json` event types counted by name (any other: `other`). */
 export const EVENT_TYPES = ["thread.started", "turn.started", "turn.completed", "turn.failed", "item.started", "item.updated", "item.completed", "error"] as const;
@@ -400,6 +404,8 @@ export interface PocDiagnostics {
   preflight: { cli_version: string | null; dotenv_present: boolean } | null;
   /** DEV-078: the CLI's own session log of this thread, read in memory (fixed facts only; null: no call made). */
   session: SessionFacts | null;
+  /** DEV-081: the models cache's facts about the turn's model (fixed values only; null: no call made). */
+  model_catalog: ModelCatalogFacts | null;
   classification: {
     image_outcome: ImageOutcome | null;
     /** The model's final answer as a fixed code (informational; the text is never kept). */
@@ -411,6 +417,8 @@ export interface PocDiagnostics {
 
 const n = (v: number | null | undefined): string => (v === null || v === undefined ? "-" : String(v));
 const b = (v: boolean): string => (v ? "1" : "0");
+const bn = (v: boolean | null | undefined): string => (typeof v === "boolean" ? b(v) : "-");
+const list = (v: readonly (string | number)[] | undefined): string => (v && v.length > 0 ? v.join(",") : "-");
 
 /** One line of fixed codes and numbers (POC_DIAG_SUMMARY). */
 export function diagnosticsSummary(d: PocDiagnostics): string {
@@ -461,6 +469,20 @@ export function diagnosticsSummary(d: PocDiagnostics): string {
     `outcome=${d.classification.image_outcome ?? "-"}`,
     `answer=${d.classification.answer_text ?? "-"}`,
     `class=${d.classification.stop_class ?? "-"}`,
+    `img_fail_type=${list(d.session?.image_failure_types)}`,
+    `img_fail_reason=${list(d.session?.image_failure_reasons)}`,
+    `img_fail_src=${list(d.session?.image_failure_sources)}`,
+    `img_http=${list(d.session?.image_failure_http)}`,
+    `img_err=${list(d.session?.image_failure_api_codes)}`,
+    `cm_arg_err=${d.session ? b(d.session.code_mode_arg_error) : "-"}`,
+    `effort=${d.session?.effort ?? "-"}`,
+    `tool_mode_src=${d.session?.tool_mode_source ?? "-"}`,
+    `model_cache=${d.model_catalog?.cache ?? "-"}`,
+    `model_cache_cli=${d.model_catalog?.client_version ?? "-"}`,
+    `model_cache_age_s=${n(d.model_catalog?.age_s)}`,
+    `model_listed=${bn(d.model_catalog?.model_listed)}`,
+    `model_tool_mode=${d.model_catalog?.tool_mode ?? "-"}`,
+    `model_image_input=${bn(d.model_catalog?.image_input)}`,
     `ms=${n(d.timings_ms.total)}`,
     `codex_ms=${n(d.timings_ms.codex)}`,
     `first_event_ms=${n(d.timings_ms.first_event)}`,
