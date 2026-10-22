@@ -349,6 +349,42 @@ vertical Japanese type, mobile re-layout and textured / photographic grounds are
 each is forbidden above. A real comp that relies on one of them cannot be implemented faithfully in DEV-082; the
 implementation would have to approximate it, and the person comparing the screenshots would see the difference.
 
+## 6b. DEV-083 phase A: verification added, nothing relaxed (2026-10-22)
+
+Phase A of DEV-083 (`docs/design/dev-083-expressive-safe-reproduction.md` §7, built as §10 there) adds measurements and
+changes no outcome:
+- The allowlist above, the DOM allowlist, the spec schema, every check of §6 and every tolerance are as they were.
+- A new code enters `failed` only where the allowlist and the existing checks already refuse every page it refuses (the
+  argument per code is in the design doc §10).
+- Everything else goes to `report.advisory`, which never enters `failed`.
+
+So `mechanical_ok` and pass / fail are the same as before for every page (a page that already fails because a fact is
+hidden at some checked widths may additionally list `visibility_matrix`, a re-report). This is shown on the synthetic fixture and on three
+allowlisted pages a flat-ground gate would have refused.
+
+| report entry | measured | codes |
+|---|---|---|
+| `checks.layers_<width>` (every checked width), `checks.layers_sweep` (51 widths) | `LAYER_SCRIPT` (`layers.ts`) | blocking, and refused before rendering anyway: `PSEUDO_GEOMETRY_UNKNOWN`, `STACKING_CONTEXT`, `PROTECTED_VERTICAL` (`ROLE_*` exist but are never produced in the run: roles are derived from the DOM) |
+| `advisory.layers_<width>`, `advisory.layers_sweep` | the same scan; the ground under protected glyphs from the existing text-hidden picture | `PAINT_ORDER_COVER`, `DISCLOSURE_NONCONTENT_OVERLAP`, `FACT_NONCONTENT_OVERLAP`, `GROUND_NOT_FLAT` (protected glyph box + 1 px deviates > 6 levels from its median; threshold and semantics await approval), `GROUND_UNMEASURED` |
+| `checks.visibility_matrix` | facts shown per **checked** width | `FACT_VISIBILITY_CHANGES` (re-reports `TEXT_FACT_HIDDEN`) |
+| `checks.capabilities`, `report.capabilities` | none can be declared: a `capabilities` key in `layout-spec.json` is still `SPEC_SHAPE` | — |
+
+- **`data-comp-role` is not accepted on a page.** The DOM allowlist refuses it as before. Accepting it is deferred to
+  phase B, with the human's approval.
+- **Paint order** follows CSS 2.1 Appendix E: atomic painting of flex / grid items and inline-blocks, order-modified
+  document order, and the stacking-context triggers, failing closed.
+- A box counts as painting when any paint-affecting property is off its inert value, an inset `box-shadow` included.
+- It is compared with Chromium's painting pixel by pixel on 23 fixtures (`phase-a.test.ts`), locally and in CI.
+- On allowlisted pages it sees the fifth review's class (a later atomic item over an earlier item's sideways overflow) at
+  the checked and sweep widths, as advisory. The 1 px pass still refuses those pages.
+- **V4's content / non-content split is evadable by one character of text in the covering box.** Coverage of protected text
+  rests on V2 (any later painting box) plus the existing checks, not on V4.
+- **Harnesses, not gates in the run** (they matter once an overlap capability is approved):
+  - the layered ink reference (V3);
+  - the layout-change hash and gated 1 px pass (V6, equivalence-tested against the full pass on every DEV-082 probe);
+  - the metric perturbation pass (V10).
+- **Cost:** +0.94 s per run on the synthetic page (10.8 → 11.7 s). The numbers per block are in the design doc §10.
+
 ## 7. Comp similarity and the anti-template guard
 
 **Similarity (`similarity.ts`).** The comp and the desktop full-page screenshot are box-filtered onto the same 96 × n grid

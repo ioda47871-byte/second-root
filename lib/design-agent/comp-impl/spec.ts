@@ -44,6 +44,14 @@ export const SECTION_ROLES = ["header", "hero", "products", "info", "footer", "o
 export const PALETTE_ROLES = ["background", "surface", "text", "muted", "accent", "other"] as const;
 export const SLOT_KINDS = ["ai_concept", "placeholder"] as const;
 export const FACT_KEYS = ["name", "address", "hours", "closed_days", "access", "phone", "description"] as const;
+/**
+ * The capabilities a page may declare (DEV-083 V7, docs/design/dev-083-expressive-safe-reproduction.md §2, §3). Each
+ * one, once a human approves it, widens the page CSS allowlist by its own property set and brings its own checks. In
+ * phase A (verification only) none is approved, and the spec schema is unchanged: a `capabilities` key in
+ * layout-spec.json is refused as before (SPEC_SHAPE). The field and SPEC_CAPABILITY_NOT_APPROVED come with the first
+ * approved capability; rollback of a later approval is removing it from this list.
+ */
+export const APPROVED_CAPABILITIES = [] as const satisfies readonly string[];
 
 const Id = z.string().regex(/^[a-z][a-z0-9-]{1,31}$/);
 const Frac = z.number().min(0).max(1);

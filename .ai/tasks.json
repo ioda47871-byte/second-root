@@ -3748,7 +3748,7 @@
     {
       "id": "DEV-083",
       "title": "高品質なデザインを安全に再現する: comp 実装の表現（hero の文字の重ね・非対称の組み・縦書き・装飾の重なり・mobile の組み替え・地の画像とグラデーション）を、それぞれに対応する検査と組にして段階的に広げる（DEV-082 の後）",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P2",
       "depends_on": [
         "DEV-072",
@@ -3773,7 +3773,8 @@
         "guardrails・ai-tasks の unit、npm run typecheck、eslint（変更した file）、check:secrets"
       ],
       "allowed_scope": [
-        "（DEV-082 の merge の後、各段の着手のときに人が決める。設計の文書は docs/design/dev-083-expressive-safe-reproduction.md）"
+        "（DEV-082 の merge の後、各段の着手のときに人が決める。設計の文書は docs/design/dev-083-expressive-safe-reproduction.md）",
+        "phase A（2026-10-22 人が着手を承認: 検査を強めるだけ・CSS allowlist は緩めない・運用（worker・実 Codex・Next.js の route・営業）に繋がない・B 以降は docs の設計だけ）: lib/design-agent/comp-impl/**（layers.ts・verify.ts 新規、render.ts・run.ts・spec.ts に追加）、tests/unit/design-agent/comp-impl/**、docs/operations/comp-to-site.md、docs/design/dev-083-expressive-safe-reproduction.md"
       ],
       "forbidden_scope": [
         "対応する検査の無い allowlist の緩和、人の承認の無い品質ゲート・閾値の変更",
@@ -3790,7 +3791,7 @@
         "comp の rubric の implementability の基準の見直し",
         "feature → develop の merge は AI_WORKFLOW §4 の条件に加え、緩和を含む段は人の承認"
       ],
-      "decision": "2026-10-22: 人が DEV-083 の番号を予約し、内容（表現の幅を広げつつ厳格な検査を保つ。対応する検査なしに禁止を外さない。保護された文字・事実を隠す・変えることは引き続き禁止。anti-template の差は補助の指標で品質ではない）を統合指示で記述した。この PR（#98）は設計の文書だけ。#98 は #96（DEV-082）の後に merge する"
+      "decision": "2026-10-22: 人が DEV-083 の番号を予約し、内容（表現の幅を広げつつ厳格な検査を保つ。対応する検査なしに禁止を外さない。保護された文字・事実を隠す・変えることは引き続き禁止。anti-template の差は補助の指標で品質ではない）を統合指示で記述した。この PR（#98）は設計の文書だけ。#98 は #96（DEV-082）の後に merge する。2026-10-22: 人が phase A の着手を承認（条件: 検査を強めるだけ、CSS allowlist を緩めない、運用に繋がない、B 以降の緩和の実装は別の承認）。phase A は feature/dev-083-phase-a（draft PR）で進行中"
     },
     {
       "id": "DEV-085",
