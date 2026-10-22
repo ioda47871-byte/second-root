@@ -556,6 +556,10 @@ export const GEOMETRY_SCRIPT = String.raw`(arg) => {
   if (step) {
     html.style.setProperty("min-width", "0", "important");
     html.style.setProperty("max-width", "none", "important");
+    // a narrower stepped root must not be centred by the page's own auto margins (html { margin: 0 auto }); render.ts
+    // proved the margins are zero at both real ends of the segment, so zero is what a real viewport would give here
+    html.style.setProperty("margin-left", "0", "important");
+    html.style.setProperty("margin-right", "0", "important");
   }
   const lines = (el) => {
     const range = document.createRange();

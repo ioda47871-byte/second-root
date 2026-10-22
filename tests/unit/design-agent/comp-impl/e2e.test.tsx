@@ -693,3 +693,33 @@ describe("probes: sixth review (html with a box of its own)", () => {
     expect(pass.segmentsStepped).toBe(pass.segments);
   });
 });
+
+// seventh review of PR #96 (2ac5e8d, nit N1): an honest centred root (html { max-width; margin: 0 auto }) must pass — while
+// stepping, the stepped root is no longer centred by its own auto margins
+describe("honest pages with a centred root (seventh review N1)", () => {
+  const demo = parseShop(JSON.parse(readFileSync(FACTS_SOURCE, "utf8")) as unknown)!.demo;
+  const required = [demo.name, demo.hours!, demo.closedDays!, demo.address!, demo.access!, demo.phone!, demo.description!].map((f) => f.replace(/\s+/g, ""));
+  async function pageWith(extra: string) {
+    const dir = await pageCopy("seventh-");
+    temps.push(dir);
+    await editFile(dir, "style.css", (s) => `${s}\n${extra}\n`);
+    return loadCompPage(dir);
+  }
+  it.each<[string, string, [number, number]]>([
+    ["html { max-width: 1000px; margin: 0 auto } over 440–490 px", "html { max-width: 1000px; margin: 0 auto; }", [440, 490]],
+    ["the synthetic page with html { max-width: 1920px; margin: 0 auto }", "html { max-width: 1920px; margin: 0 auto; }", [700, 780]],
+  ])("%s: passes, stepped, and equals true resizes", async (_n, extra, range) => {
+    const page = await pageWith(extra);
+    expect(cssProblems(page.css)).toEqual([]);
+    const auto = await protectedGeometryPass(browser, page, required, { range });
+    const real = await protectedGeometryPass(browser, page, required, { range, forceReal: true });
+    expect(auto.segmentsReal).toBe(0);
+    expect(auto.run.failing).toEqual([]);
+    for (let w = range[0]; w <= range[1]; w++) expect(auto.run.failing.find((f) => f.w === w)?.codes ?? [], `width ${w}`).toEqual(real.run.failing.find((f) => f.w === w)?.codes ?? []);
+  });
+  it("the whole pass on the synthetic page with a centred 1920 px root finds nothing (no false OFFSCREEN)", async () => {
+    const r = protectedGeometryCheck(await protectedGeometryPass(browser, await pageWith("html { max-width: 1920px; margin: 0 auto; }"), required));
+    expect(r).toMatchObject({ ok: true, codes: [], segments_real: 0 });
+  });
+});
+

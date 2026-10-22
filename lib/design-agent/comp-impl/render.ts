@@ -334,6 +334,9 @@ export async function protectedGeometryPass(browser: Browser, compPage: CompPage
     const modes: GeometryPass["modes"] = [];
     let targets = 0;
     for (const [from, to] of segments) {
+      // "the ends decide" relies on the value grammar (shop-css/values.ts): it refuses subtraction and negative terms, so
+      // every html box value (width, min / max-width, margins, paddings, borders) is a non-decreasing function of the
+      // viewport width with slope ≤ 1 — zero with the margin box equal to the viewport at both ends means zero between them
       const stepped = !o.forceReal && (await plainRoot(from)) && (await plainRoot(to));
       modes.push({ from, to, mode: stepped ? "stepped" : "real" });
       if (stepped) {

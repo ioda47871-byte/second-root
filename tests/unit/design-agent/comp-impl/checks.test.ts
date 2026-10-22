@@ -340,6 +340,9 @@ describe("page source", () => {
     ["column-count", ".facts-list { column-count: 2; }", "CSS_PROPERTY"],
     ["column-width", ".facts-list { column-width: 200px; }", "CSS_PROPERTY"],
     ["columns", ".facts-list { columns: 2; }", "CSS_PROPERTY"],
+    // seventh review N2: the 1px pass's "ends decide" argument relies on these being refused (no subtraction, no negatives)
+    ["subtraction on html (calc(100% - 10px))", "html { width: calc(100% - 10px); }", "CSS_VALUE"],
+    ["a clamped subtraction on html (max(0px, calc(25% - 80px)))", "html { margin-right: max(0px, calc(25% - 80px)); }", "CSS_VALUE"],
     ["!important", "dd { color: #000 !important; }", "CSS_IMPORTANT"],
     ["a custom property", "dd { --x: 1px; }", "CSS_PROPERTY"],
     // media: width only, 320 … 1920

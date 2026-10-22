@@ -217,7 +217,11 @@ measured in the browser:
   ends are first measured with a real resize and no override**: only if the root element has **no box of its own** there —
   zero margin, border and padding on every side, and its margin box exactly the viewport's width (within 0.5 px) — does
   `GEOMETRY_SCRIPT` step the **root element's width** 1 px at a time inside the page (`stepped`). The root's styles are constant
-  inside a segment and a width clamped by `min-` / `max-width` moves monotonically, so the two ends decide. Otherwise the
+  inside a segment and a width clamped by `min-` / `max-width` moves monotonically, so the two ends decide — this relies on the
+  value grammar (`shop-css/values.ts`) refusing subtraction and negative terms (`calc(100% - 10px)` on `html` is refused), which
+  makes every `html` box value a non-decreasing function of the viewport width with slope ≤ 1. While stepping, `html`'s side
+  margins are set to 0 (they were proved 0 at both ends), so `html { max-width: …; margin: 0 auto }` does not centre the narrower
+  stepped root and invent off-page text. Otherwise the
   segment is measured with a **real `setViewportSize` at every 1 px**, nothing overridden (`real`). The check reports
   `segments_stepped`, `segments_real` and the real ranges. With no viewport or container units and no fixed positioning in the
   stylesheet, and no box on the root, layout depends on the viewport only through `@media`, so the stepped root width stands in
