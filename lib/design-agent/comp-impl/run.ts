@@ -28,6 +28,7 @@ import {
   legibilityCheck,
   linksCheck,
   pairsCheck,
+  protectedGeometryCheck,
   structureCheck,
   sweepCheck,
   mobileOrderCheck,
@@ -42,7 +43,7 @@ import {
 import { cssProblems, htmlSourceProblems, loadCompPage, type CompPage } from "./page";
 import { FingerprintSchema } from "./page-scripts";
 import { factValues, infoPairs } from "./spec";
-import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, inBatches, legibilityPass, legibilitySweep, MOBILE, openCompPage, overflowSweep, pageWidths, type Viewport } from "./render";
+import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, inBatches, legibilityPass, legibilitySweep, protectedGeometryPass, MOBILE, openCompPage, overflowSweep, pageWidths, type Viewport } from "./render";
 import { compSimilarity, type Similarity } from "./similarity";
 
 export const REPORT_SCHEMA = "comp-impl-report/1";
@@ -126,6 +127,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const plan = { pairs: infoPairs(bundle.demo), facts };
   const passes = await inBatches(widths, (width) => legibilityPass(o.browser, page, width, facts, required, plan));
   const sweepRun = await legibilitySweep(o.browser, page, facts, required, plan);
+  const geometry = await protectedGeometryPass(o.browser, page, required);
   const blocked = desktop.blocked + mobile.blocked + sweep.reduce((s, w) => s + w.blocked, 0) + passes.reduce((s, p) => s + p.blocked, 0) + sweepRun.blocked;
 
   const checks: Record<string, CheckResult> = {
@@ -155,6 +157,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
     structure_desktop: structureCheck(desktop.measure),
     structure_mobile: structureCheck(mobile.measure),
     legibility_sweep: sweepCheck(sweepRun.widths, { required, disclosure }),
+    protected_1px: protectedGeometryCheck(geometry),
   };
   const anti = antiTemplateCheck({ html: page.html, css: page.css, fingerprint, references, templateCss: await templateCss(o.repoDir) });
   const similarity = compSimilarity(bundle.comp, bundle.compApproved, { bytes: desktop.shot, width: desktop.measure.width, height: desktop.measure.height });

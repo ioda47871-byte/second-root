@@ -9,7 +9,7 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import type { Measure } from "../shop-css/page-scripts";
 import { CONTRAST_TOLERANCE, INK_RATIO, MIN_FONT_PX, MIN_OPACITY, overprinted, type Ink } from "../shop-css/render-check";
-import type { CompMeasure, DomAudit, Pairs, ProtectedScan } from "./page-scripts";
+import type { CompMeasure, DomAudit, GeometryRun, Pairs, ProtectedScan } from "./page-scripts";
 import { PAGE_ELEMENTS } from "./page-scripts";
 import type { PageAsset } from "./page";
 import { COMP_ALT_TEXTS, COMP_UI_LABELS, factValues, SALES_UI, type CompSpec } from "./spec";
@@ -89,7 +89,8 @@ export function factsCheck(m: CompMeasure, input: FactsInput): CheckResult {
     return value === undefined || !shownFlat.some((t) => t.includes(flat(value)));
   });
   if (missing.length > 0) codes.push("FACTS_REQUIRED_MISSING");
-  return result(codes, { unknown_text_nodes: leftovers.length, missing });
+  // the page's own leftover text (never the comp's), short, so a reader sees what was invented
+  return result(codes, { unknown_text_nodes: leftovers.length, unknown_text: leftovers.slice(0, 8), missing });
 }
 
 // ---------------------------------------------------------------- disclosure
@@ -442,4 +443,24 @@ export function sweepCheck(widths: ReadonlyArray<{ width: number; measure: Measu
     failing.flatMap((w) => w.codes),
     { widths: widths.length, failing_widths: failing.map((w) => w.width) },
   );
+}
+
+/** Consecutive widths as compact ranges ("450-476,500"). */
+export function widthRanges(widths: readonly number[]): string {
+  const sorted = [...new Set(widths)].sort((a, b) => a - b);
+  const out: string[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const start = sorted[i]!;
+    while (i + 1 < sorted.length && sorted[i + 1] === sorted[i]! + 1) i++;
+    out.push(start === sorted[i] ? `${start}` : `${start}-${sorted[i]}`);
+  }
+  return out.join(",");
+}
+
+/** The 1px pass: protected text must be in its box, on the page, uncovered and clear of images at every width from 320 to 1920. */
+export function protectedGeometryCheck(g: { run: GeometryRun; ms: number; segments: number }): CheckResult {
+  const byCode = new Map<string, number[]>();
+  for (const f of g.run.failing) for (const c of f.codes) byCode.set(c, [...(byCode.get(c) ?? []), f.w]);
+  const ranges = Object.fromEntries([...byCode.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([c, ws]) => [c, widthRanges(ws)]));
+  return result(byCode.keys(), { widths: 1601, targets: g.run.targets, segments: g.segments, ms: g.ms, failing_widths: g.run.failing.length, ranges });
 }

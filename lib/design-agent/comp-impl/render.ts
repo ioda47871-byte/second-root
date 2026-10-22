@@ -22,10 +22,13 @@ import {
   FINGERPRINT_SCRIPT,
   FingerprintSchema,
   PAGE_ELEMENTS,
+  GEOMETRY_SCRIPT,
+  GeometrySchema,
   PAIRS_SCRIPT,
   PairsSchema,
   PROTECTED_SCRIPT,
   ProtectedSchema,
+  type GeometryRun,
   type Pairs,
   SHARED_ATTRIBUTES,
   type CompMeasure,
@@ -276,6 +279,45 @@ export async function legibilitySweep(browser: Browser, compPage: CompPage, fact
       out.push({ width, measure, scan, pairs: await pairsOf(page, plan) });
     }
     return { widths: out, blocked: o.blocked() };
+  } finally {
+    await o.context.close();
+  }
+}
+
+/**
+ * The ranges of widths (320 … 1920) in which every @media rule of the page is
+ * constant: a min-width N rule changes between N-1 and N, a max-width N rule
+ * between N and N+1, so N and N+1 both start a new range.
+ */
+export function mediaSegments(css: string, from = 320, to = 1920): Array<[number, number]> {
+  const cuts = [...new Set(pageBreakpointsPx(css).flatMap((b) => [Math.ceil(b), Math.ceil(b) + 1]))].filter((c) => c > from && c <= to).sort((a, b) => a - b);
+  const starts = [from, ...cuts];
+  return starts.map((s, i) => [s, (starts[i + 1] ?? to + 1) - 1] as [number, number]);
+}
+
+/**
+ * The 1px geometric pass over protected text (fifth review of PR #96): every
+ * width from 320 to 1920. One page context; per media segment the viewport is
+ * set once (to the segment's widest width) and GEOMETRY_SCRIPT steps the root
+ * element's width through the segment inside the page — 1,601 real viewport
+ * resizes took about 11.7 s per page, this takes well under a second for the
+ * stepping itself. Equivalence with real resizes is a test
+ * (tests/unit/design-agent/comp-impl/e2e.test.tsx).
+ */
+export async function protectedGeometryPass(browser: Browser, compPage: CompPage, required: readonly string[]): Promise<{ run: GeometryRun; ms: number; segments: number }> {
+  const started = Date.now();
+  const segments = mediaSegments(compPage.css);
+  const o = await openCompPage(browser, compPage, { width: segments[0]![1], height: 900, scale: 1, mobile: false });
+  try {
+    const failing: GeometryRun["failing"] = [];
+    let targets = 0;
+    for (const [from, to] of segments) {
+      await o.page.setViewportSize({ width: to, height: 900 });
+      const run = GeometrySchema.parse(await o.page.evaluate(`(${GEOMETRY_SCRIPT})(${JSON.stringify({ facts: required, from, to })})`));
+      targets = Math.max(targets, run.targets);
+      failing.push(...run.failing);
+    }
+    return { run: { targets, failing }, ms: Date.now() - started, segments: segments.length };
   } finally {
     await o.context.close();
   }

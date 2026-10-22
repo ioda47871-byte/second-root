@@ -10,9 +10,10 @@ import { antiTemplateCheck, templateCss } from "@/lib/design-agent/comp-impl/ant
 import { failedChecks, loadReferences, runCompImpl, writeCompImplOutputs, type RunResult } from "@/lib/design-agent/comp-impl/run";
 import { buildSyntheticBundle } from "@/lib/design-agent/comp-impl/synthetic";
 import { loadHandWritten, parseShop } from "@/lib/design-agent/compare/shops";
-import { disclosureCheck, domProblems, factsCheck, imagesCheck, legibilityCheck, pairsCheck, requiredDisclosure, structureCheck, sweepCheck } from "@/lib/design-agent/comp-impl/checks";
-import { loadCompPage } from "@/lib/design-agent/comp-impl/page";
-import { compMeasure, DESKTOP, domAudit, fingerprintOf, legibilityPass, legibilitySweep, openCompPage, pageWidths } from "@/lib/design-agent/comp-impl/render";
+import { disclosureCheck, domProblems, factsCheck, imagesCheck, legibilityCheck, pairsCheck, protectedGeometryCheck, requiredDisclosure, structureCheck, sweepCheck } from "@/lib/design-agent/comp-impl/checks";
+import { cssProblems, loadCompPage } from "@/lib/design-agent/comp-impl/page";
+import { compMeasure, DESKTOP, domAudit, fingerprintOf, legibilityPass, legibilitySweep, mediaSegments, openCompPage, pageWidths, protectedGeometryPass } from "@/lib/design-agent/comp-impl/render";
+import { GEOMETRY_SCRIPT, GeometrySchema } from "@/lib/design-agent/comp-impl/page-scripts";
 import { factStrings } from "@/lib/design-agent/compare/shops";
 import { infoPairs, type CompSpec } from "@/lib/design-agent/comp-impl/spec";
 import { POC_DISCLOSURE, POC_DISCLOSURE_V2 } from "@/lib/design-agent/design-image/prompt";
@@ -92,6 +93,7 @@ describe("comp-to-site on the synthetic fixture", () => {
     expect(r.page.network_blocked).toBe(0);
     expect(r.bundle).toMatchObject({ comp_kind: "synthetic", comp_approved: false, eval_human_confirmed: false });
     expect(r.checks.overflow!.widths).toEqual([320, 360, 390, 759, 760, 761, 768, 1024, 1440, 1920]); // base widths + 1px around the 760px breakpoint
+    expect(r.checks.protected_1px).toMatchObject({ ok: true, widths: 1601, failing_widths: 0 });
   });
 
   it("writes report.json and both screenshots privately, outside the repository", async () => {
@@ -111,6 +113,8 @@ describe("comp-to-site on the synthetic fixture", () => {
   it("fails an invented price", () => {
     expect(defects.report.mechanical_ok).toBe(false);
     expect(defects.report.checks.facts_desktop!.codes).toContain("FACTS_UNKNOWN_TEXT");
+    // and the finding points at the invented price, not at some other leftover
+    expect(defects.report.checks.facts_desktop!.unknown_text).toEqual(["350円"]);
   });
 
   it("fails an AI concept image shown without the AI disclosure, and passes the disclosure once it is there", async () => {
@@ -538,5 +542,106 @@ describe("probes: fourth review", () => {
   // N1: a dd above its dt
   it("fails a dd whose line starts above its dt (measured directly, past the stylesheet check)", async () => {
     expect((await at(css(".facts-row { display: flex; flex-direction: column-reverse; }"))).pairs.codes).toContain("PAIR_LINE");
+  });
+});
+
+// fifth review of PR #96 (2d27cb3): flex items, grid items and inline-blocks paint atomically in tree order, so a later
+// item's ground covers an earlier item's sideways-overflowing text — inside width windows no breakpoint names
+describe("probes: fifth review (the 1px protected pass)", () => {
+  const demo = parseShop(JSON.parse(readFileSync(FACTS_SOURCE, "utf8")) as unknown)!.demo;
+  const all = factStrings(demo).map((f) => f.text.replace(/\s+/g, ""));
+  const required = [demo.name, demo.hours!, demo.closedDays!, demo.address!, demo.access!, demo.phone!, demo.description!].map((f) => f.replace(/\s+/g, ""));
+  const ROW = '<div class="facts-row"><dt data-comp-type="label">電話</dt><dd data-comp-type="body">052-000-0731</dd></div>';
+  // probe A, as the reviewer wrote it: a wrapping flex row, the dd may shrink (min-width: 0), a dark tab after it
+  const A = {
+    html: '<div class="facts-row tel-row"><dt data-comp-type="label">電話</dt><dd data-comp-type="body">052-000-0731</dd><div class="tel-tab"></div></div>',
+    css: ".tel-row { display: flex; flex-wrap: wrap; gap: 0; } .tel-row dt { flex: 0 0 170px; margin-right: 24px; } .tel-row dd { flex: 1 1 36px; min-width: 0; letter-spacing: 8px; } .tel-tab { flex: 0 0 180px; background: #1F1D1B; }",
+  };
+  // probe B: no min-width: 0 — an inline-block dd at 80 % beside a 20 % inline-block tab in a flex item squeezed to its
+  // min-content, so the last group of digits overflows the dd under the tab; a @media rule switches it off at 400 px
+  const B = {
+    html: '<div class="facts-row tel-row"><dt data-comp-type="label">電話</dt><div class="tel-cell"><dd data-comp-type="body">052-000-0731</dd><div class="tel-tab"></div></div></div>',
+    css: ".tel-row { display: flex; } .tel-row dt { flex: 0 0 394px; } .tel-cell { flex: 1 1 0px; } .tel-row dd { display: inline-block; width: 80%; letter-spacing: 6px; } .tel-tab { display: inline-block; width: 20%; min-height: 20px; background: #1F1D1B; } @media (max-width: 400px) { .tel-row { display: block; } }",
+  };
+  async function pageWith(probe: { html: string; css: string }, img = false) {
+    const dir = await pageCopy("fifth-");
+    temps.push(dir);
+    let html = probe.html;
+    if (img) {
+      const png = flatPng(180, 24, [31, 29, 27]);
+      await mkdir(join(dir, "assets"));
+      await writeFile(join(dir, "assets/tab.png"), png);
+      await writeFile(join(dir, "assets.json"), JSON.stringify({ version: 1, assets: [{ id: "tab", file: "assets/tab.png", sha256: sha256(png), kind: "placeholder", approval: null, published: false }] }));
+      html = html.replace('<div class="tel-tab"></div>', '<img class="tel-tab" src="assets/tab.png" alt="">');
+    }
+    await editFile(dir, "index.html", (s) => s.replace(ROW, html));
+    await editFile(dir, "style.css", (s) => `${s}\n${probe.css}\n`);
+    return loadCompPage(dir);
+  }
+  const inRanges = (ranges: string | undefined, w: number) => (ranges ?? "").split(",").filter(Boolean).some((r) => {
+    const [a, b] = r.split("-").map(Number);
+    return w >= a! && w <= (b ?? a!);
+  });
+
+  it("the stylesheets of both probes are inside the allowlist (the cover is measured, not refused)", async () => {
+    for (const probe of [A, B]) expect(cssProblems((await pageWith(probe)).css)).toEqual([]);
+  });
+
+  it("probe A: the phone digits covered at 450–476 px fail the 1px pass, and with it the run", async () => {
+    const r = protectedGeometryCheck(await protectedGeometryPass(browser, await pageWith(A), required));
+    expect(r.ok).toBe(false);
+    expect(r.codes).toContain("FACT_COVERED");
+    const ranges = r.ranges as Record<string, string>;
+    for (const w of [450, 460, 476]) expect(inRanges(ranges.FACT_COVERED, w)).toBe(true);
+    for (const w of [440, 500, 760, 1440]) expect(inRanges(ranges.FACT_COVERED, w)).toBe(false);
+    expect(failedChecks({ protected_1px: r }, { ok: true })).toEqual(["protected_1px"]);
+  });
+
+  it("probe B: the last digits under the inline-block tab fail the 1px pass, never below the 400px media rule", async () => {
+    const r = protectedGeometryCheck(await protectedGeometryPass(browser, await pageWith(B), required));
+    expect(r.ok).toBe(false);
+    const ranges = r.ranges as Record<string, string>;
+    const failsAt = (w: number) => Object.values(ranges).some((rg) => inRanges(rg, w));
+    // on screen and covered by the tab (the reviewer's 490–504 among them) …
+    for (const w of [490, 495, 504]) expect(inRanges(ranges.FACT_COVERED, w)).toBe(true);
+    // … and narrower, the overflowing digits run off the page (a real viewport cannot even hit-test them there)
+    expect(inRanges(ranges.FACT_OFFSCREEN, 401)).toBe(true);
+    for (let w = 401; w <= 504; w++) expect(failsAt(w), `width ${w}`).toBe(true);
+    for (const w of [320, 400, 600, 1440]) expect(failsAt(w), `width ${w}`).toBe(false);
+  });
+
+  it("probe A with an img for the tab: FACT_IMAGE_OVERLAP in the same window", async () => {
+    const r = protectedGeometryCheck(await protectedGeometryPass(browser, await pageWith(A, true), required));
+    expect(r.codes).toEqual(expect.arrayContaining(["FACT_IMAGE_OVERLAP", "FACT_COVERED"]));
+    expect(inRanges((r.ranges as Record<string, string>).FACT_IMAGE_OVERLAP, 460)).toBe(true);
+  });
+
+  it("the root-width stand-in gives the same findings as real viewport resizes, width by width", async () => {
+    for (const probe of [A, B]) {
+      const page = await pageWith(probe);
+      const pass = await protectedGeometryPass(browser, page, required);
+      const o = await openCompPage(browser, page, DESKTOP);
+      try {
+        // every width across both probes' windows and their edges, 396–512 (the 400 px breakpoint included)
+        for (let w = 396; w <= 512; w += 1) {
+          await o.page.setViewportSize({ width: w, height: 900 });
+          const real = GeometrySchema.parse(await o.page.evaluate(`(${GEOMETRY_SCRIPT})(${JSON.stringify({ facts: required, from: w, to: w })})`));
+          const stand = pass.run.failing.find((f) => f.w === w);
+          expect(real.failing[0]?.codes ?? [], `width ${w}`).toEqual(stand?.codes ?? []);
+        }
+      } finally {
+        await o.context.close();
+      }
+    }
+  });
+
+  it("splits 320–1920 into media segments at both edges of every breakpoint", () => {
+    expect(mediaSegments("@media (max-width: 400px) { p { color: #000; } }")).toEqual([[320, 399], [400, 400], [401, 1920]]);
+    expect(mediaSegments("")).toEqual([[320, 1920]]);
+  });
+
+  it("TEXT_BOX_OVERFLOW now reads the inline axis too (at a checked width and in the sweep)", async () => {
+    const pass = await legibilityPass(browser, await pageWith(A), 460, all, required, { pairs: infoPairs(demo), facts: all });
+    expect(pairsCheck(pass.pairs).codes).toContain("TEXT_BOX_OVERFLOW");
   });
 });

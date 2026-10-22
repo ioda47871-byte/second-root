@@ -419,7 +419,8 @@ export type ProtectedScan = z.infer<typeof ProtectedSchema>;
  *   offLine      a dd whose first line starts above its dt's line or not above
  *                the next dt's
  *   boxOverflow  an element (not inline) whose subtree holds text and whose
- *                content is taller than its box (scrollHeight > clientHeight + 1)
+ *                content is taller or wider than its box (scrollHeight >
+ *                clientHeight + 1, scrollWidth > clientWidth + 1)
  */
 export const PAIRS_SCRIPT = String.raw`(arg) => {
   const flat = (s) => (s || "").replace(/\s+/g, "");
@@ -474,7 +475,8 @@ export const PAIRS_SCRIPT = String.raw`(arg) => {
     if (!flat(el.textContent)) continue;
     const s = getComputedStyle(el);
     if (s.display === "inline" || s.display === "contents" || s.display === "none") continue;
-    if (el.scrollHeight > el.clientHeight + 1) out.boxOverflow += 1;
+    // both axes (fifth review: text overflowing sideways out of a flex item was covered by the next item)
+    if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) out.boxOverflow += 1;
   }
   return out;
 }`;
@@ -490,3 +492,118 @@ export const PairsSchema = z.strictObject({
   pairs: z.number().int().nonnegative(),
 });
 export type Pairs = z.infer<typeof PairsSchema>;
+
+/**
+ * The 1px geometric pass over protected text (fifth review of PR #96: a flex
+ * item's text overflowed sideways and a later item's ground covered it at
+ * 450–476 px, a width no breakpoint names). Called once per media segment
+ * (a range of widths where every @media rule is constant; the viewport is set
+ * inside it): for each width from `from` to `to`, the root element is given
+ * that width (with no viewport or container units and no fixed positioning in
+ * the stylesheet, layout depends on the viewport only through @media, which is
+ * constant here), and each element holding protected text — inside the
+ * disclosure, or whose own text holds a required fact — is measured:
+ *   HIDDEN       no line box
+ *   OUT_OF_BOX   a line box outside its own box, or the box's content wider or
+ *                taller than the box (scrollWidth / scrollHeight)
+ *   OFFSCREEN    a line box left of 0 or right of the width
+ *   COVERED      elementFromPoint at seven points across the middle of each line
+ *                (the line scrolled into view) hits something else that paints
+ *                (the shop-CSS hit-test's rule: a box with no ground, border or
+ *                text of its own over the point does not hide it)
+ *   IMAGE_OVERLAP a line box intersects an img
+ * Returns only the widths with a finding. No pixel proof (that runs at the
+ * checked widths). Argument: { facts, from, to }.
+ */
+export const GEOMETRY_SCRIPT = String.raw`(arg) => {
+  const flat = (s) => (s || "").replace(/\s+/g, "");
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const alpha = (css) => {
+    ctx.clearRect(0, 0, 1, 1);
+    ctx.fillStyle = "rgba(0, 0, 0, 0)";
+    ctx.fillStyle = css;
+    ctx.fillRect(0, 0, 1, 1);
+    return ctx.getImageData(0, 0, 1, 1).data[3];
+  };
+  const painted = (s) =>
+    alpha(s.backgroundColor) > 0 ||
+    s.backgroundImage !== "none" ||
+    s.boxShadow !== "none" ||
+    ["Top", "Right", "Bottom", "Left"].some((side) => parseFloat(s["border" + side + "Width"]) > 0 && s["border" + side + "Style"] !== "none" && alpha(s["border" + side + "Color"]) > 0);
+  const targets = [];
+  const seen = new Set();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const el = n.parentElement;
+    if (!el || seen.has(el) || !flat(n.data)) continue;
+    const own = flat(Array.from(el.childNodes).filter((c) => c.nodeType === 3).map((c) => c.data).join(""));
+    const disclosure = Boolean(el.closest("[data-comp-disclosure]"));
+    if (!disclosure && !arg.facts.some((f) => own.includes(f))) continue;
+    seen.add(el);
+    let box = el;
+    while (box.parentElement && ["inline", "contents"].includes(getComputedStyle(box).display)) box = box.parentElement;
+    targets.push({ el, box, prefix: disclosure ? "DISCLOSURE" : "FACT" });
+  }
+  const html = document.documentElement;
+  const saved = html.getAttribute("style");
+  html.style.setProperty("min-width", "0", "important");
+  html.style.setProperty("max-width", "none", "important");
+  const lines = (el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return Array.from(range.getClientRects()).filter((r) => r.width > 0.5 && r.height > 0.5);
+  };
+  const out = [];
+  for (let w = arg.from; w <= arg.to; w++) {
+    html.style.setProperty("width", w + "px", "important");
+    const codes = new Set();
+    // image boxes in page coordinates (the loop scrolls), compared with line boxes in page coordinates
+    const images = Array.from(document.images).map((img) => { const r = img.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top + scrollY, bottom: r.bottom + scrollY }; });
+    for (const t of targets) {
+      scrollTo(0, 0);
+      const rects = lines(t.el);
+      if (rects.length === 0) { codes.add(t.prefix + "_HIDDEN"); continue; }
+      const bb = t.box.getBoundingClientRect();
+      if (t.box.scrollWidth > t.box.clientWidth + 1 || t.box.scrollHeight > t.box.clientHeight + 1) codes.add(t.prefix + "_OUT_OF_BOX");
+      for (const r of rects) {
+        if (r.left < bb.left - 1 || r.right > bb.right + 1 || r.top < bb.top - 1 || r.bottom > bb.bottom + 1) codes.add(t.prefix + "_OUT_OF_BOX");
+        if (r.left < -0.5 || r.right > w + 0.5) codes.add(t.prefix + "_OFFSCREEN");
+        const top = r.top + scrollY;
+        const bottom = r.bottom + scrollY;
+        for (const ir of images) if (Math.min(r.right, ir.right) - Math.max(r.left, ir.left) > 0.5 && Math.min(bottom, ir.bottom) - Math.max(top, ir.top) > 0.5) codes.add(t.prefix + "_IMAGE_OVERLAP");
+      }
+      for (let i = 0; i < Math.min(rects.length, 6); i++) {
+        scrollTo(0, Math.max(0, rects[i].top - innerHeight / 2));
+        const r = lines(t.el)[i];
+        if (!r) continue;
+        const cy = r.top + r.height / 2;
+        if (cy < 0 || cy > innerHeight) continue;
+        for (let k = 0; k < 7; k++) {
+          const x = r.left + 1 + ((r.width - 2) * k) / 6;
+          // the width stepped to stands in for the viewport: a point right of it would be off screen
+          if (x < 0 || x >= Math.min(innerWidth, w)) continue;
+          const hit = document.elementFromPoint(x, cy);
+          if (!hit || hit === t.el || t.el.contains(hit) || hit.contains(t.el)) continue;
+          const hs = getComputedStyle(hit);
+          const hb = hit.getBoundingClientRect();
+          const inside = x > hb.left + parseFloat(hs.borderLeftWidth) && x < hb.right - parseFloat(hs.borderRightWidth) && cy > hb.top + parseFloat(hs.borderTopWidth) && cy < hb.bottom - parseFloat(hs.borderBottomWidth);
+          if (hit.tagName !== "IMG" && !painted(hs) && inside && !flat(hit.textContent)) continue;
+          codes.add(t.prefix + "_COVERED");
+        }
+      }
+    }
+    if (codes.size) out.push({ w, codes: Array.from(codes).sort() });
+  }
+  if (saved === null) html.removeAttribute("style"); else html.setAttribute("style", saved);
+  scrollTo(0, 0);
+  return { targets: targets.length, failing: out };
+}`;
+
+export const GeometrySchema = z.strictObject({
+  targets: z.number().int().nonnegative(),
+  failing: z.array(z.strictObject({ w: z.number().int(), codes: z.array(z.string().max(40)).max(20) })).max(2000),
+});
+export type GeometryRun = z.infer<typeof GeometrySchema>;

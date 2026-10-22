@@ -173,10 +173,13 @@ whole page (its selectors start at the renderer's `#shop-css` scope), so this mo
   sample. Percentages and `fr` still make wrapping width-dependent; that is what the coarse sweep and the fixed-height rule are for.
 
 **No stacking or painting-order change exists (fourth review).** With `position: static` only, no `z-index`, `opacity: 1`
-and no `transform`, no element creates a stacking context, so nothing can be lifted above other content: text that overflows an
-earlier block paints above later blocks' grounds in normal flow. The only remaining way to cover text is a later replaced
-element (`img`) overlapping it, which the image check below measures. **This drops the small rotation the earlier rounds
-allowed** (`rotate()` ≤ 8°); a comp that needs a tilted element cannot be implemented in this PoC.
+and no `transform`, no element creates a stacking context, so nothing can be lifted above other content. **Correction (fifth
+review):** that alone does not stop covering. Text that overflows an earlier *block* paints above later blocks' grounds, but
+**flex items, grid items and inline-blocks paint atomically in tree order**: a later item's ground covers an earlier item's
+text when that text overflows sideways (probe A: a phone `dd` with `min-width: 0` in a wrapping flex row, digits hidden at
+450–476 px; probe B: an inline-block `dd` at 80 % beside a 20 % inline-block tab, the last digit hidden). Images (replaced
+elements) can cover too. These covers are measured, not excluded by the stylesheet: the 1 px pass below. **This drops the small
+rotation the earlier rounds allowed** (`rotate()` ≤ 8°); a comp that needs a tilted element cannot be implemented in this PoC.
 
 ### Render-time rules the stylesheet alone cannot see (third and fourth reviews)
 
@@ -188,8 +191,9 @@ measured in the browser:
   `auto` (`ASPECT_RATIO_TEXT`; image slots and placeholders keep it), `min-height` / `min-block-size: 0`
   (`MIN_HEIGHT_ZERO_TEXT`), and — from the computed style — a length `flex-basis` on an item of a column flex
   (`COLUMN_FLEX_BASIS_TEXT`). Vertical writing is refused, so `width` never becomes a block size. And the generic catch-all,
-  at every checked width and in the sweep: **any text-holding box (not inline) whose content is taller than the box**
-  (`scrollHeight > clientHeight + 1`: `TEXT_BOX_OVERFLOW`). The fourth review's F1 (aspect-ratio + `min-height: 0` in a wrapping
+  at every checked width and in the sweep: **any text-holding box (not inline) whose content is taller or wider than the box**
+  (`scrollHeight > clientHeight + 1` or `scrollWidth > clientWidth + 1`: `TEXT_BOX_OVERFLOW`; the inline axis since the fifth
+  review). The fourth review's F1 (aspect-ratio + `min-height: 0` in a wrapping
   flex row, overflowing only at 641–670 px, covered by a later `position: relative` sibling) is refused at the stylesheet and
   fails every one of these rules when the positioning is left out.
 - **No image over protected text** (`DISCLOSURE_IMAGE_OVERLAP` / `FACT_IMAGE_OVERLAP`): at every checked width and in the
@@ -200,11 +204,21 @@ measured in the browser:
   (51 widths) in one page context, the viewport resized (no reload), re-measuring the disclosure, the required facts and
   the label pairs with `MEASURE_SCRIPT`, `PROTECTED_SCRIPT` and `PAIRS_SCRIPT` (shown, not clipped / covered / out of its box /
   overprinted / too small / faded / decorated / under an image, no effects, no text box overflow). The pixel proofs (contrast,
-  ink) run at the checked widths only; the sweep uses desktop emulation at every width. A full run takes about 13 s.
-  **No 16 px pass.** The CI unit job took 672 s of its 15-minute limit at 0301171; a 16 px pass would add about 6 s to every
-  full run (≈ 14 in the tests). It is left out: with no stacking context and no box shorter than its text, text can no longer
-  be covered at a width the sweep misses — overflowing text paints above later grounds, and the only cover left (an image) and
-  the overflow itself are measured.
+  ink) run at the checked widths only; the sweep uses desktop emulation at every width.
+- **1 px geometric pass over protected text** (`protected_1px`, fifth review): **every width from 320 to 1920** (1,601), for
+  the disclosure (and the AI disclosure) and every element whose own text holds a required fact, the `dd` values included.
+  At each width: no line box outside its own box and no content wider or taller than the box (`*_OUT_OF_BOX`), none off the
+  page (`*_OFFSCREEN`), none intersecting an `img` (`*_IMAGE_OVERLAP`), and `elementFromPoint` at seven points across the
+  middle of each line (scrolled into view) hits only the text's own element or what lies under it — anything else that paints a
+  ground, a border, text or an image is a cover (`*_COVERED`). Failing widths are reported as ranges per code
+  (`"FACT_COVERED": "450-477"`). No pixel proof in this pass (contrast and ink stay at the checked widths).
+  *How it stays cheap:* 1,601 real viewport resizes took about 11.7 s per page. Instead the widths are split into **media
+  segments** (ranges where every `@media` rule is constant: a breakpoint N starts a segment at N and at N + 1); per segment the
+  viewport is set once and `GEOMETRY_SCRIPT` steps the **root element's width** 1 px at a time inside the page. Because the
+  stylesheet has no viewport or container units and no fixed positioning, layout depends on the viewport only through `@media`,
+  which is constant within a segment, so the root width stands in for the viewport width. A test compares it with real
+  viewport resizes width by width. Cost: **about 0.8–1.4 s per page** (2–10 protected elements, 3–5 segments); a full run takes
+  about 14 s. **No 16 px pass** is needed on top: the 1 px pass covers every width.
 - **Labels mapped to their facts** (`pairs_<width>`, and in the sweep; fourth review F2 / F3): each info label names one fact
   (`spec.ts` `COMP_INFO_LABEL_FACTS`: 営業時間 → hours, 定休日 → closed days, 住所 → address, 電話 → phone, アクセス → access).
   Every `dt` must be one of these labels (`DT_NOT_A_LABEL`) and be followed by a `dd` (`DT_WITHOUT_DD`) whose text **is that
@@ -246,8 +260,11 @@ unit and Chromium tests in `tests/unit/design-agent/comp-impl/`.
 
 - **Only the five info labels are mapped to facts.** A `dl` of other content cannot be built (every `dt` must be one of them);
   a label word not in the list is ordinary text, checked only by the facts allowlist.
-- **Between the sweep's 32 px steps** the pixel proofs (contrast, ink) do not run; the structural checks above are what keep a
-  width-dependent defect from hiding there.
+- **The pixel proofs (contrast, ink) run at the checked widths only.** Colours change only at `@media` breakpoints, whose edges
+  are checked widths; between them, what can change is geometry, which the 1 px pass measures at every width. Its cover test is
+  geometric (`elementFromPoint`), not a pixel proof, and it covers protected text only — other labels and captions can still be
+  covered between the checked widths (all text is measured at the checked widths only). The root-width stand-in is
+  exact only because viewport units and fixed positioning are refused; allowing either (DEV-083) would need real resizes.
 - **Contrast and ink are proven only for the disclosure and the required facts.** Labels, captions, the CTA and other text
   can be faint or invisible without failing (the warm-grey labels of the synthetic page are below 4.5:1). Underlined
   protected text fails the ink upper bound by design.
