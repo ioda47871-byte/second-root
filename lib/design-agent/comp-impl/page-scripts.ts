@@ -507,13 +507,14 @@ export type Pairs = z.infer<typeof PairsSchema>;
  *   OUT_OF_BOX   a line box outside its own box, or the box's content wider or
  *                taller than the box (scrollWidth / scrollHeight)
  *   OFFSCREEN    a line box left of 0 or right of the width
- *   COVERED      elementFromPoint at seven points across the middle of each line
+ *   COVERED      elementFromPoint at fifteen points across the middle of every line
  *                (the line scrolled into view) hits something else that paints
  *                (the shop-CSS hit-test's rule: a box with no ground, border or
  *                text of its own over the point does not hide it)
  *   IMAGE_OVERLAP a line box intersects an img
  * Returns only the widths with a finding. No pixel proof (that runs at the
- * checked widths). Argument: { facts, from, to }.
+ * checked widths). Argument: { facts, from, to, step } (step: false — the real
+ * viewport was resized to `from` = `to`, nothing is overridden).
  */
 export const GEOMETRY_SCRIPT = String.raw`(arg) => {
   const flat = (s) => (s || "").replace(/\s+/g, "");
@@ -549,8 +550,13 @@ export const GEOMETRY_SCRIPT = String.raw`(arg) => {
   }
   const html = document.documentElement;
   const saved = html.getAttribute("style");
-  html.style.setProperty("min-width", "0", "important");
-  html.style.setProperty("max-width", "none", "important");
+  // step: the root's width stands in for the viewport (only where html has no box of its own: render.ts checks both ends of
+  // the segment with real resizes); otherwise the caller has resized the real viewport and nothing is overridden
+  const step = arg.step !== false;
+  if (step) {
+    html.style.setProperty("min-width", "0", "important");
+    html.style.setProperty("max-width", "none", "important");
+  }
   const lines = (el) => {
     const range = document.createRange();
     range.selectNodeContents(el);
@@ -558,7 +564,7 @@ export const GEOMETRY_SCRIPT = String.raw`(arg) => {
   };
   const out = [];
   for (let w = arg.from; w <= arg.to; w++) {
-    html.style.setProperty("width", w + "px", "important");
+    if (step) html.style.setProperty("width", w + "px", "important");
     const codes = new Set();
     // image boxes in page coordinates (the loop scrolls), compared with line boxes in page coordinates
     const images = Array.from(document.images).map((img) => { const r = img.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top + scrollY, bottom: r.bottom + scrollY }; });
@@ -575,14 +581,14 @@ export const GEOMETRY_SCRIPT = String.raw`(arg) => {
         const bottom = r.bottom + scrollY;
         for (const ir of images) if (Math.min(r.right, ir.right) - Math.max(r.left, ir.left) > 0.5 && Math.min(bottom, ir.bottom) - Math.max(top, ir.top) > 0.5) codes.add(t.prefix + "_IMAGE_OVERLAP");
       }
-      for (let i = 0; i < Math.min(rects.length, 6); i++) {
+      for (let i = 0; i < rects.length; i++) {
         scrollTo(0, Math.max(0, rects[i].top - innerHeight / 2));
         const r = lines(t.el)[i];
         if (!r) continue;
         const cy = r.top + r.height / 2;
         if (cy < 0 || cy > innerHeight) continue;
-        for (let k = 0; k < 7; k++) {
-          const x = r.left + 1 + ((r.width - 2) * k) / 6;
+        for (let k = 0; k < 15; k++) {
+          const x = r.left + 1 + ((r.width - 2) * k) / 14;
           // the width stepped to stands in for the viewport: a point right of it would be off screen
           if (x < 0 || x >= Math.min(innerWidth, w)) continue;
           const hit = document.elementFromPoint(x, cy);
@@ -597,7 +603,10 @@ export const GEOMETRY_SCRIPT = String.raw`(arg) => {
     }
     if (codes.size) out.push({ w, codes: Array.from(codes).sort() });
   }
-  if (saved === null) html.removeAttribute("style"); else html.setAttribute("style", saved);
+  if (step) {
+    if (saved === null) html.removeAttribute("style");
+    else html.setAttribute("style", saved);
+  }
   scrollTo(0, 0);
   return { targets: targets.length, failing: out };
 }`;
@@ -607,3 +616,19 @@ export const GeometrySchema = z.strictObject({
   failing: z.array(z.strictObject({ w: z.number().int(), codes: z.array(z.string().max(40)).max(20) })).max(2000),
 });
 export type GeometryRun = z.infer<typeof GeometrySchema>;
+
+/**
+ * Whether the root element has no box of its own at the current viewport (sixth review of PR #96): zero margin,
+ * border and padding on every side, and its margin box exactly the viewport's width. Only then does stepping the
+ * root's width stand in for resizing the viewport. No argument.
+ */
+export const HTML_BOX_SCRIPT = String.raw`() => {
+  const h = document.documentElement;
+  const s = getComputedStyle(h);
+  const sides = ["Top", "Right", "Bottom", "Left"];
+  const zero = sides.every((side) => parseFloat(s["margin" + side]) === 0 && parseFloat(s["padding" + side]) === 0 && parseFloat(s["border" + side + "Width"]) === 0);
+  const r = h.getBoundingClientRect();
+  const marginBox = r.width + parseFloat(s.marginLeft) + parseFloat(s.marginRight);
+  return { zero, marginBox, innerWidth };
+}`;
+export const HtmlBoxSchema = z.strictObject({ zero: z.boolean(), marginBox: z.number(), innerWidth: z.number() });

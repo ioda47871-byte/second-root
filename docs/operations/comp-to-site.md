@@ -208,17 +208,25 @@ measured in the browser:
 - **1 px geometric pass over protected text** (`protected_1px`, fifth review): **every width from 320 to 1920** (1,601), for
   the disclosure (and the AI disclosure) and every element whose own text holds a required fact, the `dd` values included.
   At each width: no line box outside its own box and no content wider or taller than the box (`*_OUT_OF_BOX`), none off the
-  page (`*_OFFSCREEN`), none intersecting an `img` (`*_IMAGE_OVERLAP`), and `elementFromPoint` at seven points across the
-  middle of each line (scrolled into view) hits only the text's own element or what lies under it — anything else that paints a
+  page (`*_OFFSCREEN`), none intersecting an `img` (`*_IMAGE_OVERLAP`), and `elementFromPoint` at fifteen points across the
+  middle of every line (scrolled into view; no cap on the number of lines) hits only the text's own element or what lies under it — anything else that paints a
   ground, a border, text or an image is a cover (`*_COVERED`). Failing widths are reported as ranges per code
   (`"FACT_COVERED": "450-477"`). No pixel proof in this pass (contrast and ink stay at the checked widths).
-  *How it stays cheap:* 1,601 real viewport resizes took about 11.7 s per page. Instead the widths are split into **media
-  segments** (ranges where every `@media` rule is constant: a breakpoint N starts a segment at N and at N + 1); per segment the
-  viewport is set once and `GEOMETRY_SCRIPT` steps the **root element's width** 1 px at a time inside the page. Because the
-  stylesheet has no viewport or container units and no fixed positioning, layout depends on the viewport only through `@media`,
-  which is constant within a segment, so the root width stands in for the viewport width. A test compares it with real
-  viewport resizes width by width. Cost: **about 0.8–1.4 s per page** (2–10 protected elements, 3–5 segments); a full run takes
-  about 14 s. **No 16 px pass** is needed on top: the 1 px pass covers every width.
+  *How it stays cheap:* 1,601 real viewport resizes take about 11.7 s per page. The widths are split into **media segments**
+  (ranges where every `@media` rule is constant: a breakpoint N starts a segment at N and at N + 1). For each segment, **both
+  ends are first measured with a real resize and no override**: only if the root element has **no box of its own** there —
+  zero margin, border and padding on every side, and its margin box exactly the viewport's width (within 0.5 px) — does
+  `GEOMETRY_SCRIPT` step the **root element's width** 1 px at a time inside the page (`stepped`). The root's styles are constant
+  inside a segment and a width clamped by `min-` / `max-width` moves monotonically, so the two ends decide. Otherwise the
+  segment is measured with a **real `setViewportSize` at every 1 px**, nothing overridden (`real`). The check reports
+  `segments_stepped`, `segments_real` and the real ranges. With no viewport or container units and no fixed positioning in the
+  stylesheet, and no box on the root, layout depends on the viewport only through `@media`, so the stepped root width stands in
+  for the viewport exactly; a test compares it with true resizes (no override) width by width. **Sixth review:** before this
+  check, `html { margin-right: 100px }` under 760 px (allowed CSS) made the stand-in measure a different content width, and a
+  phone number read 052-/000-/073 at 362–381 px unmeasured; that segment now falls back to real resizes and fails there.
+  Cost: **about 2 s per page when every segment is stepped** (the synthetic page: 3 segments, ends checked, 15 points per
+  line); **about 5–6.5 s** when a 440-width segment falls back to real resizes (the probe). A full run takes about 14–19 s.
+  **No 16 px pass** is needed on top: the 1 px pass covers every width.
 - **Labels mapped to their facts** (`pairs_<width>`, and in the sweep; fourth review F2 / F3): each info label names one fact
   (`spec.ts` `COMP_INFO_LABEL_FACTS`: 営業時間 → hours, 定休日 → closed days, 住所 → address, 電話 → phone, アクセス → access).
   Every `dt` must be one of these labels (`DT_NOT_A_LABEL`) and be followed by a `dd` (`DT_WITHOUT_DD`) whose text **is that
@@ -263,8 +271,10 @@ unit and Chromium tests in `tests/unit/design-agent/comp-impl/`.
 - **The pixel proofs (contrast, ink) run at the checked widths only.** Colours change only at `@media` breakpoints, whose edges
   are checked widths; between them, what can change is geometry, which the 1 px pass measures at every width. Its cover test is
   geometric (`elementFromPoint`), not a pixel proof, and it covers protected text only — other labels and captions can still be
-  covered between the checked widths (all text is measured at the checked widths only). The root-width stand-in is
-  exact only because viewport units and fixed positioning are refused; allowing either (DEV-083) would need real resizes.
+  covered between the checked widths (all text is measured at the checked widths only). The root-width stand-in is used
+  **only where `html` has no box of its own** (checked with real resizes at both ends of each segment); elsewhere real resizes
+  are used. It is exact only because viewport units and fixed positioning are refused; allowing either (DEV-083) would need
+  real resizes everywhere (about 12 s per page).
 - **Contrast and ink are proven only for the disclosure and the required facts.** Labels, captions, the CTA and other text
   can be faint or invisible without failing (the warm-grey labels of the synthetic page are below 4.5:1). Underlined
   protected text fails the ink upper bound by design.

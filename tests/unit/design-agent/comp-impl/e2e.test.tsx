@@ -13,7 +13,6 @@ import { loadHandWritten, parseShop } from "@/lib/design-agent/compare/shops";
 import { disclosureCheck, domProblems, factsCheck, imagesCheck, legibilityCheck, pairsCheck, protectedGeometryCheck, requiredDisclosure, structureCheck, sweepCheck } from "@/lib/design-agent/comp-impl/checks";
 import { cssProblems, loadCompPage } from "@/lib/design-agent/comp-impl/page";
 import { compMeasure, DESKTOP, domAudit, fingerprintOf, legibilityPass, legibilitySweep, mediaSegments, openCompPage, pageWidths, protectedGeometryPass } from "@/lib/design-agent/comp-impl/render";
-import { GEOMETRY_SCRIPT, GeometrySchema } from "@/lib/design-agent/comp-impl/page-scripts";
 import { factStrings } from "@/lib/design-agent/compare/shops";
 import { infoPairs, type CompSpec } from "@/lib/design-agent/comp-impl/spec";
 import { POC_DISCLOSURE, POC_DISCLOSURE_V2 } from "@/lib/design-agent/design-image/prompt";
@@ -616,22 +615,16 @@ describe("probes: fifth review (the 1px protected pass)", () => {
     expect(inRanges((r.ranges as Record<string, string>).FACT_IMAGE_OVERLAP, 460)).toBe(true);
   });
 
-  it("the root-width stand-in gives the same findings as real viewport resizes, width by width", async () => {
+  it("the root-width stand-in gives the same findings as true viewport resizes (no override), width by width", async () => {
+    // sixth review: the "real" side resizes the viewport and overrides nothing (forceReal), so a page whose html has a box of
+    // its own cannot hide behind the stand-in; windows of both probes and their edges (the 400 px breakpoint included)
     for (const probe of [A, B]) {
       const page = await pageWith(probe);
-      const pass = await protectedGeometryPass(browser, page, required);
-      const o = await openCompPage(browser, page, DESKTOP);
-      try {
-        // every width across both probes' windows and their edges, 396–512 (the 400 px breakpoint included)
-        for (let w = 396; w <= 512; w += 1) {
-          await o.page.setViewportSize({ width: w, height: 900 });
-          const real = GeometrySchema.parse(await o.page.evaluate(`(${GEOMETRY_SCRIPT})(${JSON.stringify({ facts: required, from: w, to: w })})`));
-          const stand = pass.run.failing.find((f) => f.w === w);
-          expect(real.failing[0]?.codes ?? [], `width ${w}`).toEqual(stand?.codes ?? []);
-        }
-      } finally {
-        await o.context.close();
-      }
+      const auto = await protectedGeometryPass(browser, page, required, { range: [396, 512] });
+      const real = await protectedGeometryPass(browser, page, required, { range: [396, 512], forceReal: true });
+      expect(auto.segmentsReal, "the probes' html has no box: the stand-in is used").toBe(0);
+      expect(real.segmentsStepped).toBe(0);
+      for (let w = 396; w <= 512; w++) expect(auto.run.failing.find((f) => f.w === w)?.codes ?? [], `width ${w}`).toEqual(real.run.failing.find((f) => f.w === w)?.codes ?? []);
     }
   });
 
@@ -643,5 +636,58 @@ describe("probes: fifth review (the 1px protected pass)", () => {
   it("TEXT_BOX_OVERFLOW now reads the inline axis too (at a checked width and in the sweep)", async () => {
     const pass = await legibilityPass(browser, await pageWith(A), 460, all, required, { pairs: infoPairs(demo), facts: all });
     expect(pairsCheck(pass.pairs).codes).toContain("TEXT_BOX_OVERFLOW");
+  });
+});
+
+// sixth review of PR #96 (9d8de8e): the stand-in assumed the root's width is the viewport; the page's own CSS can give html a
+// box (margin, padding, border, a percentage width / max-width / margin), and a window of widths went unmeasured
+describe("probes: sixth review (html with a box of its own)", () => {
+  const demo = parseShop(JSON.parse(readFileSync(FACTS_SOURCE, "utf8")) as unknown)!.demo;
+  const required = [demo.name, demo.hours!, demo.closedDays!, demo.address!, demo.access!, demo.phone!, demo.description!].map((f) => f.replace(/\s+/g, ""));
+  const ROW = '<div class="facts-row"><dt data-comp-type="label">電話</dt><dd data-comp-type="body">052-000-0731</dd></div>';
+  const TEL = '<div class="facts-row tel-row"><dt data-comp-type="label">電話</dt><dd data-comp-type="body">052-000-0731</dd><div class="tel-tab"></div></div>';
+  const TEL_CSS = ".tel-row { display: flex; flex-wrap: wrap; gap: 0; } .tel-row dt { flex: 0 0 54px; margin-right: 24px; } .tel-row dd { flex: 1 1 44px; min-width: 0; letter-spacing: 8px; } .tel-tab { flex: 0 0 100px; background: #1F1D1B; }";
+  async function pageWith(extra: string) {
+    const dir = await pageCopy("sixth-");
+    temps.push(dir);
+    await editFile(dir, "index.html", (s) => s.replace(ROW, TEL));
+    await editFile(dir, "style.css", (s) => `${s}\n${TEL_CSS}\n${extra}\n`);
+    return loadCompPage(dir);
+  }
+  const inRanges = (ranges: string | undefined, w: number) => (ranges ?? "").split(",").filter(Boolean).some((r) => {
+    const [a, b] = r.split("-").map(Number);
+    return w >= a! && w <= (b ?? a!);
+  });
+
+  it.each([
+    ["the reviewer's probe: html { margin-right: 100px } under 760 px", "@media (max-width: 760px) { html { margin-right: 100px; } }", 370],
+    ["html { padding-right: 100px }", "@media (max-width: 760px) { html { padding-right: 100px; } }", 370],
+    ["html { border-right: 16px } (the dt wider, so the window lands above 320 px)", "@media (max-width: 760px) { html { border-right: 16px solid #1F1D1B; } } .tel-row dt { flex: 0 0 140px; }", 372],
+    ["a percentage html width", "@media (max-width: 760px) { html { width: 75%; } }", 360],
+    ["a percentage html max-width", "@media (max-width: 760px) { html { max-width: 75%; } }", 360],
+    ["a percentage html margin", "@media (max-width: 760px) { html { margin-right: 25%; } }", 360],
+  ])("fails %s: the segment falls back to real resizes and the cover is found", async (_n, extra, width) => {
+    const page = await pageWith(extra);
+    expect(cssProblems(page.css)).toEqual([]); // inside the allowlist: measured, not refused
+    const r = protectedGeometryCheck(await protectedGeometryPass(browser, page, required));
+    expect(r.ok).toBe(false);
+    expect(r.segments_real).toBeGreaterThan(0);
+    expect(inRanges(r.real_widths as string, width)).toBe(true);
+    expect(inRanges((r.ranges as Record<string, string>).FACT_COVERED, width)).toBe(true);
+    expect(failedChecks({ protected_1px: r }, { ok: true })).toEqual(["protected_1px"]);
+  });
+
+  it("the reviewer's probe reads 052-/000-/073 at 362–381 px: the same findings as true resizes there", async () => {
+    const page = await pageWith("@media (max-width: 760px) { html { margin-right: 100px; } }");
+    const auto = await protectedGeometryPass(browser, page, required, { range: [350, 395] });
+    const real = await protectedGeometryPass(browser, page, required, { range: [350, 395], forceReal: true });
+    for (let w = 350; w <= 395; w++) expect(auto.run.failing.find((f) => f.w === w)?.codes ?? [], `width ${w}`).toEqual(real.run.failing.find((f) => f.w === w)?.codes ?? []);
+    expect(protectedGeometryCheck(auto).ranges).toMatchObject({ FACT_COVERED: "362-381" });
+  });
+
+  it("the synthetic page's html has no box: every segment is stepped (no cost increase)", async () => {
+    const pass = await protectedGeometryPass(browser, await loadCompPage(join(FIXTURE, "page")), required);
+    expect(pass.segmentsReal).toBe(0);
+    expect(pass.segmentsStepped).toBe(pass.segments);
   });
 });

@@ -24,6 +24,8 @@ import {
   PAGE_ELEMENTS,
   GEOMETRY_SCRIPT,
   GeometrySchema,
+  HTML_BOX_SCRIPT,
+  HtmlBoxSchema,
   PAIRS_SCRIPT,
   PairsSchema,
   PROTECTED_SCRIPT,
@@ -295,30 +297,62 @@ export function mediaSegments(css: string, from = 320, to = 1920): Array<[number
   return starts.map((s, i) => [s, (starts[i + 1] ?? to + 1) - 1] as [number, number]);
 }
 
+/** A segment's mode in the 1px pass: the root's width stepped inside the page, or the real viewport resized at every width. */
+export type SegmentMode = "stepped" | "real";
+export type GeometryPass = { run: GeometryRun; ms: number; segments: number; segmentsStepped: number; segmentsReal: number; modes: Array<{ from: number; to: number; mode: SegmentMode }> };
+
 /**
- * The 1px geometric pass over protected text (fifth review of PR #96): every
- * width from 320 to 1920. One page context; per media segment the viewport is
- * set once (to the segment's widest width) and GEOMETRY_SCRIPT steps the root
- * element's width through the segment inside the page — 1,601 real viewport
- * resizes took about 11.7 s per page, this takes well under a second for the
- * stepping itself. Equivalence with real resizes is a test
- * (tests/unit/design-agent/comp-impl/e2e.test.tsx).
+ * The 1px geometric pass over protected text (fifth and sixth reviews of PR
+ * #96): every width from 320 to 1920. One page context. The widths are split
+ * into media segments (every @media rule constant). For each segment, both ends
+ * are first measured with a REAL resize and no override (HTML_BOX_SCRIPT): only
+ * when the root element has no margin, border or padding and its margin box is
+ * the viewport's width at both ends (its styles are constant inside the
+ * segment, and a width clamped by min / max-width moves monotonically, so the
+ * ends decide) does stepping the root's width inside the page stand in for the
+ * viewport — fast (1,601 widths in well under a second of stepping). Otherwise
+ * the segment is measured with a real setViewportSize at every 1px, nothing
+ * overridden (about 7 ms a width). `range` limits the widths and `forceReal`
+ * measures every width with real resizes (the equivalence test).
  */
-export async function protectedGeometryPass(browser: Browser, compPage: CompPage, required: readonly string[]): Promise<{ run: GeometryRun; ms: number; segments: number }> {
+export async function protectedGeometryPass(browser: Browser, compPage: CompPage, required: readonly string[], o: { range?: [number, number]; forceReal?: boolean } = {}): Promise<GeometryPass> {
   const started = Date.now();
-  const segments = mediaSegments(compPage.css);
-  const o = await openCompPage(browser, compPage, { width: segments[0]![1], height: 900, scale: 1, mobile: false });
+  const [lo, hi] = o.range ?? [320, 1920];
+  const segments = mediaSegments(compPage.css)
+    .map(([a, b]) => [Math.max(a, lo), Math.min(b, hi)] as [number, number])
+    .filter(([a, b]) => a <= b);
+  const ctx = await openCompPage(browser, compPage, { width: segments[0]![1], height: 900, scale: 1, mobile: false });
+  const geometry = async (from: number, to: number, step: boolean) =>
+    GeometrySchema.parse(await ctx.page.evaluate(`(${GEOMETRY_SCRIPT})(${JSON.stringify({ facts: required, from, to, step })})`));
+  const plainRoot = async (width: number) => {
+    await ctx.page.setViewportSize({ width, height: 900 });
+    const box = HtmlBoxSchema.parse(await ctx.page.evaluate(`(${HTML_BOX_SCRIPT})()`));
+    return box.zero && Math.abs(box.marginBox - box.innerWidth) <= 0.5;
+  };
   try {
     const failing: GeometryRun["failing"] = [];
+    const modes: GeometryPass["modes"] = [];
     let targets = 0;
     for (const [from, to] of segments) {
-      await o.page.setViewportSize({ width: to, height: 900 });
-      const run = GeometrySchema.parse(await o.page.evaluate(`(${GEOMETRY_SCRIPT})(${JSON.stringify({ facts: required, from, to })})`));
-      targets = Math.max(targets, run.targets);
-      failing.push(...run.failing);
+      const stepped = !o.forceReal && (await plainRoot(from)) && (await plainRoot(to));
+      modes.push({ from, to, mode: stepped ? "stepped" : "real" });
+      if (stepped) {
+        await ctx.page.setViewportSize({ width: to, height: 900 });
+        const run = await geometry(from, to, true);
+        targets = Math.max(targets, run.targets);
+        failing.push(...run.failing);
+      } else {
+        for (let w = from; w <= to; w++) {
+          await ctx.page.setViewportSize({ width: w, height: 900 });
+          const run = await geometry(w, w, false);
+          targets = Math.max(targets, run.targets);
+          failing.push(...run.failing);
+        }
+      }
     }
-    return { run: { targets, failing }, ms: Date.now() - started, segments: segments.length };
+    const real = modes.filter((m) => m.mode === "real").length;
+    return { run: { targets, failing }, ms: Date.now() - started, segments: modes.length, segmentsStepped: modes.length - real, segmentsReal: real, modes };
   } finally {
-    await o.context.close();
+    await ctx.context.close();
   }
 }

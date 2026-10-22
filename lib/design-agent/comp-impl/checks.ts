@@ -458,9 +458,10 @@ export function widthRanges(widths: readonly number[]): string {
 }
 
 /** The 1px pass: protected text must be in its box, on the page, uncovered and clear of images at every width from 320 to 1920. */
-export function protectedGeometryCheck(g: { run: GeometryRun; ms: number; segments: number }): CheckResult {
+export function protectedGeometryCheck(g: { run: GeometryRun; ms: number; segments: number; segmentsStepped?: number; segmentsReal?: number; modes?: ReadonlyArray<{ from: number; to: number; mode: string }> }): CheckResult {
   const byCode = new Map<string, number[]>();
   for (const f of g.run.failing) for (const c of f.codes) byCode.set(c, [...(byCode.get(c) ?? []), f.w]);
   const ranges = Object.fromEntries([...byCode.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([c, ws]) => [c, widthRanges(ws)]));
-  return result(byCode.keys(), { widths: 1601, targets: g.run.targets, segments: g.segments, ms: g.ms, failing_widths: g.run.failing.length, ranges });
+  const real = (g.modes ?? []).filter((m) => m.mode === "real").map((m) => (m.from === m.to ? `${m.from}` : `${m.from}-${m.to}`)).join(",");
+  return result(byCode.keys(), { widths: 1601, targets: g.run.targets, segments: g.segments, segments_stepped: g.segmentsStepped ?? g.segments, segments_real: g.segmentsReal ?? 0, real_widths: real, ms: g.ms, failing_widths: g.run.failing.length, ranges });
 }
