@@ -134,6 +134,15 @@ export const IMAGE_FAILURE_REASONS = [
 ] as const;
 export type ImageFailureReason = (typeof IMAGE_FAILURE_REASONS)[number];
 
+/**
+ * Where a failed call's code came from (review F1): `struct` the CLI's structured failure; `fn_output` the call's own
+ * function_call_output (direct mode, written by Codex); `cell_error` Codex's uncaught-error item of a failed code-mode
+ * cell (failedCellError); `cell_print` only text a cell printed (the model's script: advisory, the code stays OTHER);
+ * `none` no text at all.
+ */
+export const IMAGE_FAILURE_SOURCES = ["struct", "fn_output", "cell_error", "cell_print", "none"] as const;
+export type ImageFailureSource = (typeof IMAGE_FAILURE_SOURCES)[number];
+
 /** API error codes / types that may be recorded (anything else found is "other"; none found: not recorded). */
 export const IMAGE_API_ERROR_CODES = [
   "usage_limit_reached",
@@ -195,7 +204,8 @@ export interface ImageFailureText {
 
 /**
  * Classifies one error text of the image tool in memory (DEV-081). Only fixed values come out; the caller must not keep
- * the text. Order (as DEV-078: usage limit before policy): usage limit, policy, not supported, auth, 429, 5xx, timeout, network, a bad response, no image data,
+ * the text. Order: policy (wins over a usage limit, review F1), usage limit, not supported (allowlisted code / 403 / 404), auth, 429,
+ * 5xx, timeout, network (never for a 4xx, review F2), a bad response, no image data,
  * a bad request, argument errors, other.
  */
 export function classifyImageFailureText(raw: string): ImageFailureText {
@@ -214,17 +224,26 @@ export function classifyImageFailureText(raw: string): ImageFailureText {
   }
   const code = api_code ?? "";
   const reason = ((): ImageFailureReason => {
-    if (USAGE_CODES.has(code) || /usage limit|usagelimitexceeded|quota exceeded|insufficient[ _]quota/i.test(text)) return "USAGE_LIMIT";
+    const is4xx = http !== null && http >= 400 && http < 500;
+    // review F1: a policy refusal wins over a usage limit whenever the text names both
     if (POLICY_CODES.has(code) || /content[ _-]?policy|safety system|moderation|(?:cyber|bio|misalignment) policy|policy[ _-]?violation/i.test(text)) return "POLICY";
-    if (UNSUPPORTED_CODES.has(code) || http === 404 || /usage not included|not supported|unsupported model|model[^.\n]{0,40}does not exist|not available (?:on|for|in) (?:your|this) (?:plan|account|workspace)/i.test(text)) return "NOT_SUPPORTED";
-    if (AUTH_CODES.has(code) || http === 401 || http === 403 || /unauthori[sz]ed|not logged in|sign in again|refresh token|invalid_grant/i.test(text)) return "AUTH";
-    if (RATE_CODES.has(code) || http === 429 || /rate limit|too many requests/i.test(text)) return "HTTP_429";
-    if (SERVER_CODES.has(code) || (http !== null && http >= 500) || /server overloaded|retry limit reached|internal server error/i.test(text)) return "HTTP_5XX";
-    if (/\btimeout\b|timed out/i.test(text)) return "TIMEOUT";
-    if (/connection failed|network error|request build error|connection (?:refused|reset|closed)|dns error/i.test(text)) return "NETWORK";
+    if (USAGE_CODES.has(code) || /usage limit|usagelimitexceeded|quota exceeded|insufficient[ _]quota/i.test(text)) return "USAGE_LIMIT";
+    // review F2: "not supported" only from an allowlisted code, a 403 / 404, or (without any HTTP status) ApiError's own
+    // `usage not included` (codex-api/src/error.rs:21-22) — never from the words of a 400 body
+    if (UNSUPPORTED_CODES.has(code)) return "NOT_SUPPORTED";
+    if (AUTH_CODES.has(code) || http === 401) return "AUTH";
+    if (http === 403 || http === 404) return "NOT_SUPPORTED";
+    if (http === null && /usage not included/i.test(text)) return "NOT_SUPPORTED";
+    if (http === null && /unauthori[sz]ed|not logged in|sign in again|refresh token|invalid_grant/i.test(text)) return "AUTH";
+    if (RATE_CODES.has(code) || http === 429 || (http === null && /rate limit|too many requests/i.test(text))) return "HTTP_429";
+    if (SERVER_CODES.has(code) || (http !== null && http >= 500)) return "HTTP_5XX";
+    // review F2: a 4xx is never transient, whatever its body says
+    if (!is4xx && /server overloaded|retry limit reached|internal server error/i.test(text)) return "HTTP_5XX";
+    if (!is4xx && /\btimeout\b|timed out/i.test(text)) return "TIMEOUT";
+    if (!is4xx && /connection failed|network error|request build error|connection (?:refused|reset|closed)|dns error/i.test(text)) return "NETWORK";
     if (/failed to (?:decode|encode) image (?:generation|edit) (?:response|request)/i.test(text)) return "BAD_RESPONSE";
     if (/returned no image data/i.test(text)) return "NO_IMAGE_DATA";
-    if (BAD_REQUEST_CODES.has(code) || http === 400 || /invalid request/i.test(text)) return "BAD_REQUEST";
+    if (BAD_REQUEST_CODES.has(code) || is4xx || /invalid request/i.test(text)) return "BAD_REQUEST";
     if (INVALID_ARGS_SIGN.test(text)) return "INVALID_ARGS";
     return "OTHER";
   })();
@@ -251,8 +270,9 @@ export function failureCodeOfReason(reason: ImageFailureReason): ImageFailureCod
 }
 
 function classifyToolFailure(text: string): ImageFailureCode {
-  if (QUOTA_SIGN.test(text)) return "USAGE_LIMIT";
+  // review F1: policy before a usage limit when the text names both
   if (POLICY_SIGN.test(text)) return "POLICY";
+  if (QUOTA_SIGN.test(text)) return "USAGE_LIMIT";
   return "OTHER";
 }
 
@@ -365,6 +385,8 @@ export interface SessionFacts {
   image_failure_types: ImageFailureType[];
   /** DEV-081: fixed reasons from the error text (matched in memory, never kept; see classifyImageFailureText). */
   image_failure_reasons: ImageFailureReason[];
+  /** Review F1: where each failed call's code came from (see IMAGE_FAILURE_SOURCES). */
+  image_failure_sources: ImageFailureSource[];
   /** DEV-081: HTTP statuses (400-599) named in that text. */
   image_failure_http: number[];
   /** DEV-081: allowlisted API error codes named in that text. */
@@ -398,6 +420,7 @@ export const emptySessionFacts = (): SessionFacts => ({
   image_failure_codes: [],
   image_failure_types: [],
   image_failure_reasons: [],
+  image_failure_sources: [],
   image_failure_http: [],
   image_failure_api_codes: [],
   code_mode_arg_error: false,
@@ -442,6 +465,27 @@ function outputText(output: unknown): string {
   if (typeof output === "string") return output;
   const items = Array.isArray(output) ? output : Array.isArray(obj(output)?.content) ? (obj(output)!.content as unknown[]) : [];
   return items.map((i) => str(obj(i)?.text) ?? "").join(" ");
+}
+
+/**
+ * Codex's own error text of a FAILED code-mode cell (review F1), or undefined. The rollout does not keep the output's
+ * `success` flag (FunctionCallOutputPayload serializes the body only, protocol/src/models.rs:2178, :2253-2262), so the
+ * failure is read from the shape Codex gives it: item 0 is the header Codex inserts, `Script failed\nWall time …`
+ * (code_mode/output.rs:27-33, status from code_mode/mod.rs:300-312), and the LAST item is the one Codex appends after the
+ * script's own items, `Script error:\n<text>` (code_mode/mod.rs:286-289). Text the script prints can occupy neither
+ * position. When Codex merged the items for size (utils/output-truncation/src/lib.rs:58-81) the shape is gone and the text
+ * only counts as printed. Residual: a script that throws a string of its own leaves that string in this item.
+ */
+function failedCellError(output: unknown): string | undefined {
+  const items = Array.isArray(output) ? output : Array.isArray(obj(output)?.content) ? (obj(output)!.content as unknown[]) : [];
+  if (items.length < 2) return undefined;
+  const first = obj(items[0]);
+  const last = obj(items[items.length - 1]);
+  const head = str(first?.text);
+  const tail = str(last?.text);
+  if (str(first?.type) !== "input_text" || str(last?.type) !== "input_text" || head === undefined || tail === undefined) return undefined;
+  if (!head.startsWith("Script failed\n") || !tail.startsWith("Script error:\n")) return undefined;
+  return tail.slice(0, MAX_MATCH_CHARS);
 }
 
 /** Which session log(s) to read: this thread's (by the file name), or — when the thread id never came (a signal mid-call) — those whose cwd is this run's work dir (as the cleanup finds them). */
@@ -589,8 +633,12 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
   /** Code-mode cells by call id (true: the cell's JavaScript names image_gen__imagegen), and wait calls. */
   const cells = new Map<string, boolean>();
   const waits = new Set<string>();
-  /** The image tool's failure texts seen in code-mode outputs (classified at once; the text is dropped). */
-  const cellFailures: ImageFailureText[] = [];
+  /**
+   * The image tool's failure texts seen in code-mode outputs (classified at once; the text is dropped). `cell_error`: Codex's
+   * own uncaught-error item of a failed cell (authoritative); `cell_print`: anywhere else in a cell's output, which the
+   * model's script writes (advisory: recorded as a reason, never decides the code — review F1).
+   */
+  const cellFailures: Array<{ src: "cell_error" | "cell_print"; t: ImageFailureText }> = [];
   for (const path of paths) {
     const read = await readCapped(path, MAX_SESSION_LOG_BYTES);
     if (!read.ok) {
@@ -658,7 +706,7 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
               if (code !== "OTHER") c.textFailure = code;
             }
           } else if (id !== undefined && waits.has(id)) {
-            cellOutput(outputText(p.output), [...cells.values()].some(Boolean));
+            cellOutput(p.output, [...cells.values()].some(Boolean));
           }
         } else if (t === "custom_tool_call" && name === CODE_MODE_TOOL) {
           // a code-mode cell: counted, its JavaScript matched in memory for the image tool's name only
@@ -669,7 +717,7 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
           if (id !== undefined) cells.set(id, refs || (cells.get(id) ?? false));
         } else if (t === "custom_tool_call_output") {
           const id = str(p.call_id);
-          if (id !== undefined && cells.has(id)) cellOutput(outputText(p.output), cells.get(id)!);
+          if (id !== undefined && cells.has(id)) cellOutput(p.output, cells.get(id)!);
         } else if (t !== undefined && OTHER_CALL_TYPES.has(t)) {
           f.other_tool_calls += 1;
           const id = str(p.call_id);
@@ -701,19 +749,31 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
     }
   }
   /**
-   * One code-mode output (exec cell / wait), matched in memory: the image tool's own failure message (Codex's fixed prefix,
-   * which the cell's JavaScript receives as the rejection, code_mode/delegate.rs:461 → runtime/module_loader.rs:90-93) is
-   * classified from that prefix on; an argument error only counts in a cell that named the tool. The text is then dropped.
+   * One code-mode output (exec cell / wait), matched in memory. The image tool's failure message reaches the cell's
+   * JavaScript as the rejection (code_mode/delegate.rs:461 → runtime/module_loader.rs:90-93); the script may print anything,
+   * Codex's prefix included, so only Codex's own uncaught-error item of a failed cell (failedCellError) is `cell_error` and
+   * may decide the code; text found anywhere else is `cell_print`, a recorded reason only (review F1). An argument error only
+   * counts in a cell that named the tool. The text is then dropped.
    */
-  function cellOutput(raw: string, namedTool: boolean): void {
-    const text = raw.slice(0, MAX_MATCH_CHARS);
+  function cellOutput(output: unknown, namedTool: boolean): void {
+    const error = failedCellError(output);
+    if (error !== undefined) {
+      const at = error.search(FAILED_PREFIX);
+      if (at >= 0) cellFailures.push({ src: "cell_error", t: classifyImageFailureText(error.slice(at, at + 4096)) });
+      else if (namedTool && INVALID_ARGS_SIGN.test(error)) f.code_mode_arg_error = true;
+      if (at >= 0) return;
+    }
+    const text = outputText(output).slice(0, MAX_MATCH_CHARS);
     const at = text.search(FAILED_PREFIX);
-    if (at >= 0) cellFailures.push(classifyImageFailureText(text.slice(at, at + 4096)));
+    if (at >= 0) cellFailures.push({ src: "cell_print", t: classifyImageFailureText(text.slice(at, at + 4096)) });
     else if (namedTool && INVALID_ARGS_SIGN.test(text)) f.code_mode_arg_error = true;
   }
-  const CODE_ORDER: readonly ImageFailureCode[] = ["USAGE_LIMIT", "POLICY", "UNSUPPORTED", "OTHER", "TRANSIENT"];
+  // POLICY first: a refusal wins over a usage limit among text-derived codes (review F1)
+  const CODE_ORDER: readonly ImageFailureCode[] = ["POLICY", "USAGE_LIMIT", "UNSUPPORTED", "OTHER", "TRANSIENT"];
   const worst = (codes: ImageFailureCode[]): ImageFailureCode | undefined => CODE_ORDER.find((c) => codes.includes(c));
-  const cellCode = worst(cellFailures.map((t) => failureCodeOfReason(t.reason)));
+  const cellErrors = cellFailures.filter((x) => x.src === "cell_error");
+  const cellCode = worst(cellErrors.map((x) => failureCodeOfReason(x.t.reason)));
+  const sources = new Set<ImageFailureSource>();
   const reasons = new Set<ImageFailureReason>();
   const http = new Set<number>();
   const apiCodes = new Set<ImageApiErrorCode>();
@@ -728,11 +788,15 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
     if (status !== "failed") return { status, failure: undefined };
     types.add(c.failureType ?? "no_record");
     // the call's own text (direct mode); else, with no function output at all (code mode), the cells' failure texts
-    const texts = c.text ? [c.text] : cellFailures;
+    // (Codex's uncaught-error items decide; text the script printed is only recorded as a reason)
+    const texts = c.text ? [c.text] : cellFailures.map((x) => x.t);
     if (texts.length === 0) reasons.add("NO_TEXT");
     for (const t of texts) note(t);
     const fromCells = c.text ? undefined : cellCode;
     const failure: ImageFailureCode = c.endFailure ?? c.textFailure ?? fromCells ?? "OTHER";
+    sources.add(
+      c.endFailure !== undefined ? "struct" : c.text ? "fn_output" : cellErrors.length > 0 ? "cell_error" : cellFailures.length > 0 ? "cell_print" : "none",
+    );
     return { status, failure };
   });
   if (f.tool_mode_source === "slug") f.tool_mode = toolModeOf(f.model);
@@ -742,6 +806,7 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
   f.image_failure_codes = IMAGE_FAILURE_CODES.filter((code) => settled.some((c) => c.failure === code));
   f.image_failure_types = IMAGE_FAILURE_TYPES.filter((t) => types.has(t));
   f.image_failure_reasons = IMAGE_FAILURE_REASONS.filter((r) => reasons.has(r));
+  f.image_failure_sources = IMAGE_FAILURE_SOURCES.filter((x) => sources.has(x));
   f.image_failure_http = [...http].sort((a, b) => a - b);
   f.image_failure_api_codes = [...IMAGE_API_ERROR_CODES, "other" as const].filter((c) => apiCodes.has(c));
   return f;
@@ -795,7 +860,8 @@ export function deriveImageOutcome(facts: SessionFacts, imageSaved: boolean): Im
  * are off by default) and whether `input_modalities` has "image" (absent: Codex's default text + image,
  * openai_models.rs:186-192). Never the identity, the ETag, a description, an instruction text or any other field.
  */
-export const CATALOG_STATES = ["found", "absent", "unreadable", "too_large", "invalid"] as const;
+/** `stale` (review F3): found, but written by another CLI version than the session's, so it is not applied. */
+export const CATALOG_STATES = ["found", "stale", "absent", "unreadable", "too_large", "invalid"] as const;
 export type CatalogState = (typeof CATALOG_STATES)[number];
 export const CATALOG_TOOL_MODES = ["direct", "code_mode", "code_mode_only", "none", "other"] as const;
 export type CatalogToolMode = (typeof CATALOG_TOOL_MODES)[number];
@@ -872,7 +938,21 @@ export async function readModelCatalog(codexHome: string, model: string | null, 
  * direct). Returns new facts; the session facts given are not changed.
  */
 export function applyModelCatalog(facts: SessionFacts, catalog: ModelCatalogFacts): SessionFacts {
+  if (catalog.cache !== "found" || catalog.client_version === null || catalog.client_version !== facts.cli_version) return facts;
   if (catalog.model_listed !== true || catalog.tool_mode === null || catalog.tool_mode === "other") return facts;
   const tool_mode: ToolMode = catalog.tool_mode === "none" ? "direct" : catalog.tool_mode;
   return { ...facts, tool_mode, tool_mode_source: "cache" };
+}
+
+/**
+ * Review F3: the cache's model facts count only when the cache was written by the session's own CLI version (Codex itself
+ * ignores an entry for another version, models-manager/src/cache.rs:200-208). Otherwise the catalog is recorded as `stale`
+ * with no tool_mode / image_input, and the session keeps the slug hint.
+ */
+export function reconcileModelCatalog(facts: SessionFacts, catalog: ModelCatalogFacts): { session: SessionFacts; catalog: ModelCatalogFacts } {
+  if (catalog.cache !== "found") return { session: facts, catalog };
+  if (catalog.client_version === null || catalog.client_version !== facts.cli_version) {
+    return { session: facts, catalog: { ...catalog, cache: "stale", tool_mode: null, image_input: null } };
+  }
+  return { session: applyModelCatalog(facts, catalog), catalog };
 }

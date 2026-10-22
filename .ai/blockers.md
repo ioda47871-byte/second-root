@@ -26,7 +26,7 @@
 - 何: runbook の「HUMAN-022」のコマンド（jail の中の `sr-designgen`、run.lock の中、SQLite は `mode=ro`、network・model・`codex` の process なし）。印字は固定の欄だけ（thread id・cwd・題・最初の message・prompt・結果・path・identity・ETag は出さない）。
 - 費用: なし（Codex 0 回）。
 - 分かること: HUMAN-018 と HUMAN-021b の model が違うか（違えば server 側の既定の model の変更が最有力 → `-m` の案）、21b の失敗が即座か（4xx）長くかかったか（5xx / timeout）、HUMAN-019 / 020 が画像ツールを呼んだか、catalog の先頭の model と `tool_mode`・画像入力。
-- 触れないもの: HUMAN-021 と同じ。CODEX_HOME の file は読むだけ（書かない・消さない）。`codex` を起動しない。
+- 触れないもの: HUMAN-021 と同じ。CODEX_HOME の行・既存の file は変えない（SQLite は `mode=ro` で開く。WAL の DB では SQLite が空の `-wal` / `-shm` を作ることがあるので「何も書かない」とは言わない。`immutable=1` は使わない）。`codex` を起動しない。
 - 返してほしいもの: 出力そのまま（秘密は含まない）。
 - 解除条件: 出力が届く、または人が流さないと決める。
 
@@ -66,7 +66,7 @@
   2. **21b — v1 の再走（実績のある prompt、Codex 1 回）。済み（2026-10-22、人が develop c3fa813 で流した）**: CLI 0.159.0・model `gpt-6.1-sol`・prompt 4 754 字・
      `hist=paginated tool_mode=unknown cm_cells=1 cm_ref=1 img_calls=1 img_ok=0 img_failed=1 img_fail=OTHER` → `outcome=TOOL_FAILED`・`class=capability`・stop `CODEX_IMAGE_TOOL_FAILED`、画像なし。
      → model は code mode の cell から imagegen を呼び、images の要求そのものが失敗した（`image_gen` の usage limit ではない）。理由の切り分けは DEV-081（`img_fail_type=` `img_fail_reason=` `img_http=` `img_err=` と models cache の欄）、次の確認は HUMAN-022（Codex を呼ばない）。以下は記録として残す手順:
-     HUMAN-020 から少なくとも数時間（できれば翌日）空けて、画像の利用枠の窓が戻ってから:HUMAN-020 から少なくとも数時間（できれば翌日）空けて、画像の利用枠の窓が戻ってから:
+     HUMAN-020 から少なくとも数時間（できれば翌日）空けて、画像の利用枠の窓が戻ってから:
 
      ```bash
      sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '

@@ -84,13 +84,13 @@ import {
   type PocDiagnostics,
 } from "./diagnostics";
 import {
-  applyModelCatalog,
   classifyAnswerText,
   codexDotenvPresent,
   deriveImageOutcome,
   parseCodexVersion,
   readModelCatalog,
   readSessionFacts,
+  reconcileModelCatalog,
   type AnswerTextCode,
   type ImageOutcome,
   type ModelCatalogFacts,
@@ -459,8 +459,13 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     const facts = await readSessionFacts(codexHome, select).catch(() => undefined);
     if (!facts) return;
     const catalog = await readModelCatalog(codexHome, facts.model).catch(() => undefined);
-    diag.catalog = catalog;
-    diag.session = catalog ? applyModelCatalog(facts, catalog) : facts;
+    if (!catalog) {
+      diag.session = facts;
+      return;
+    }
+    const r = reconcileModelCatalog(facts, catalog);
+    diag.catalog = r.catalog;
+    diag.session = r.session;
   };
   /** The result dir while its files are being written (removed by a stop before the last one). */
   let partialDest: string | undefined;

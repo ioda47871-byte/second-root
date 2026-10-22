@@ -22,7 +22,7 @@ import type { AnswerTextCode, ImageOutcome, ModelCatalogFacts, SessionFacts } fr
 /**
  * /2 (DEV-078): adds preflight, session and classification. /3 (DEV-080): session gains history_mode, tool_mode, code_mode_cells,
  * code_mode_imagegen_ref. /4 (DEV-081): session gains effort, tool_mode_source, image_failure_types / _reasons / _http /
- * _api_codes, code_mode_arg_error; model_catalog (CODEX_HOME/models_cache.json facts) is added.
+ * _api_codes / _sources, code_mode_arg_error; model_catalog (CODEX_HOME/models_cache.json facts) is added.
  */
 export const DIAGNOSTICS_SCHEMA = "sr-design-image-poc-diagnostics/4";
 
@@ -471,6 +471,7 @@ export function diagnosticsSummary(d: PocDiagnostics): string {
     `class=${d.classification.stop_class ?? "-"}`,
     `img_fail_type=${list(d.session?.image_failure_types)}`,
     `img_fail_reason=${list(d.session?.image_failure_reasons)}`,
+    `img_fail_src=${list(d.session?.image_failure_sources)}`,
     `img_http=${list(d.session?.image_failure_http)}`,
     `img_err=${list(d.session?.image_failure_api_codes)}`,
     `cm_arg_err=${d.session ? b(d.session.code_mode_arg_error) : "-"}`,

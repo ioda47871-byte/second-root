@@ -457,12 +457,18 @@ Research (openai/codex `rust-v0.159.0`, read as data, never built or run; paths 
 | field | values | from |
 |---|---|---|
 | `img_fail_type` | `usageLimitExceeded`, `other` (unknown type), `none` (`failure: null`), `no_record` (failed only by output shape) | the Extension item / `image_generation_end` |
-| `img_fail_reason` | `USAGE_LIMIT`, `HTTP_429`, `HTTP_5XX`, `TIMEOUT`, `NETWORK`, `AUTH`, `NOT_SUPPORTED`, `POLICY`, `BAD_REQUEST`, `INVALID_ARGS`, `NO_IMAGE_DATA`, `BAD_RESPONSE`, `OTHER`, `NO_TEXT` | direct: the call's `function_call_output`; code mode: exec / `wait` outputs, only from Codex's prefix `image generation failed:` / `… returned no image data` on (the model's own words without it count for nothing). `NO_TEXT`: a failed call whose message was nowhere (the script caught it and printed nothing) |
+| `img_fail_reason` | `USAGE_LIMIT`, `HTTP_429`, `HTTP_5XX`, `TIMEOUT`, `NETWORK`, `AUTH`, `NOT_SUPPORTED`, `POLICY`, `BAD_REQUEST`, `INVALID_ARGS`, `NO_IMAGE_DATA`, `BAD_RESPONSE`, `OTHER`, `NO_TEXT` | direct: the call's `function_call_output` (written by Codex); code mode: exec / `wait` outputs, from Codex's prefix `image generation failed:` / `… returned no image data` on. `NO_TEXT`: a failed call whose message was nowhere (the script caught it and printed nothing) |
+| `img_fail_src` | `struct`, `fn_output`, `cell_error`, `cell_print`, `none` | where the code came from (review F1). **The cell's script can print anything, Codex's prefix included**, so in code mode only `cell_error` — Codex's own uncaught-error item of a failed cell: item 0 is Codex's header `Script failed\nWall time …` (`core/src/tools/code_mode/output.rs:27-33`) and the **last** item is the `Script error:\n…` Codex appends after the script's items (`code_mode/mod.rs:286-289`); the rollout keeps no `success` flag (`protocol/src/models.rs:2178, 2253-2262`) — may decide the code. `cell_print` (the text appears anywhere else, or Codex merged the items for size, `utils/output-truncation/src/lib.rs:58-81`) is only a recorded reason; the code stays `OTHER`, never `TRANSIENT` / `UNSUPPORTED` / `USAGE_LIMIT`. Residual: a script that `throw`s a string of its own puts that string in Codex's error item |
 | `img_http` | integers 400–599 | `http NNN` / `api error NNN` in that text |
 | `img_err` | an allowlisted API error code / type (`usage_limit_reached`, `moderation_blocked`, `model_not_found`, `usage_not_included`, `server_is_overloaded`, …) or `other` | `"code"` / `"type"` in the body |
 | `cm_arg_err` | 0/1 | an argument error (above) in the output of an exec cell that named `image_gen__imagegen` (the call then leaves no item) |
 | `effort` | `none` … `persistent`, `other` | `turn_context.effort` |
 | `model_cache`, `model_cache_cli`, `model_cache_age_s`, `model_listed`, `model_tool_mode`, `model_image_input`, `tool_mode_src` | fixed | `$CODEX_HOME/models_cache.json` (below) |
+
+Text rules (review F1 / F2): `POLICY` wins over `USAGE_LIMIT` when a text names both; for a 4xx status the timeout / network /
+5xx rules are skipped (a 4xx is never transient: 408 and 4xx bodies that say "timeout" are `BAD_REQUEST`); `NOT_SUPPORTED` only
+for 403 / 404, an allowlisted code (`model_not_found`, `unsupported_model`, `not_found_error`, `usage_not_included`) or, with no
+HTTP status, ApiError's own `usage not included` — never from the words of a 400 body; 401 or an auth code is `AUTH`.
 
 Coarse codes and outcomes (`img_fail`, `outcome`): `USAGE_LIMIT` (structured, or reason `USAGE_LIMIT` / `HTTP_429` — a generic
 429 stays a usage window as DEV-078 read it) → `TOOL_FAILED_USAGE_LIMIT` / `CODEX_QUOTA`; `POLICY` → `TOOL_FAILED_POLICY`;
@@ -479,8 +485,10 @@ absent, :186-192, :470-471), `priority`, `visibility`). It is rewritten whenever
 `manager.rs:32`, :519-545); the default model is the first picker-visible one by priority (`manager.rs:168-180`,
 `protocol/src/openai_models.rs:1019-1031`), which is how `gpt-6.1-sol` was chosen without `-m`. The PoC now reads it after the
 call, like the session log (O_NOFOLLOW, a regular file directly in CODEX_HOME, never a link, ≤ 8 MiB, in memory, never written),
-and records only the fields above; when the model is listed its `tool_mode` replaces the slug hint (`tool_mode_src=cache`;
-`none` → `direct`, since the code-mode features are off by default). Never the identity, the ETag or any text.
+and records only the fields above; when the model is listed **and the cache's `client_version` equals the session's CLI version**
+its `tool_mode` replaces the slug hint (`tool_mode_src=cache`; `none` → `direct`, since the code-mode features are off by
+default). A cache from another version is `model_cache=stale` (review F3: Codex itself ignores it, `cache.rs:200-208`) with no
+`model_tool_mode` / `model_image_input`, and the slug hint stays. Never the identity, the ETag or any text.
 
 Other local state that survives the PoC's cleanup (which deletes only `sessions/**/rollout-*.jsonl`): `state_5.sqlite` table
 `threads` (`state/src/sqlite.rs:33`, `state/migrations/0001_threads.sql`, `0020` `model` / `reasoning_effort`, `0005`
@@ -497,11 +505,13 @@ overwritten); server-side quota state.
 
 #### HUMAN-022 — read what HUMAN-018 and HUMAN-021b left in CODEX_HOME (0 Codex calls)
 
-Read-only, local, no network, no model, no `codex` process. Inside the jail as `sr-designgen`, under the worker's run lock (no
-worker run at the same time). It opens the two SQLite files with `mode=ro`, filters threads by the design agent's work dir
+Local, no network, no model, no `codex` process. Inside the jail as `sr-designgen`, under the worker's run lock (no
+worker run at the same time). It opens the two SQLite files with `mode=ro` (no row and no existing file is changed; but SQLite
+may create empty `-wal` / `-shm` side files next to a WAL database when they are missing, so "nothing is written" is not
+claimed; `immutable=1` is deliberately not used, it would skip locking), filters threads by the design agent's work dir
 prefix, and prints **only** fixed fields: creation time (UTC, minutes), model slug, effort, CLI version, history mode, source,
 whether the rollout file still exists, and per `imageGeneration` item `status/failure-type/duration`; then the models cache's
-version, fetch time and per model `slug visibility tool_mode image_input`. Never the thread id, cwd, title, first message, prompt,
+version, fetch time (only when it has the RFC 3339 shape, else `other`) and per model `slug visibility tool_mode image_input`. Never the thread id, cwd, title, first message, prompt,
 `revisedPrompt`, result, path, identity or ETag.
 
 ```bash
@@ -513,6 +523,7 @@ import sys, os, json, re, sqlite3, datetime
 H = sys.argv[1]
 SLUG = re.compile(r"^[a-z0-9][a-z0-9._-]{0,40}$").match
 VER = re.compile(r"^\d{1,3}\.\d{1,4}\.\d{1,4}$").match
+RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$").match
 def pick(v, ok):
     if v is None:
         return "-"
@@ -567,7 +578,7 @@ try:
         raise ValueError("too large")
     c = json.loads(raw)
     ms = [m for m in c.get("models", []) if isinstance(m, dict)]
-    print("models_cache: cli=" + pick(c.get("client_version"), VER), "fetched=" + str(c.get("fetched_at", "-"))[:16], "models=%d" % len(ms))
+    print("models_cache: cli=" + pick(c.get("client_version"), VER), "fetched=" + pick(c.get("fetched_at"), RFC3339)[:16], "models=%d" % len(ms))
     for m in sorted(ms, key=lambda m: m.get("priority") if isinstance(m.get("priority"), int) else 9999):
         im = m.get("input_modalities")
         print("  " + pick(m.get("slug"), SLUG), "visibility=" + pick(m.get("visibility"), among("list", "hide", "none")),
@@ -690,6 +701,9 @@ overloaded → `TOOL_FAILED_TRANSIENT` (`transient`, one model call); 404 `model
 `TOOL_FAILED_UNSUPPORTED`; 400 `moderation_blocked` → `TOOL_FAILED_POLICY`; the structured failure still decides; an unknown
 `failure.type` is `other`; direct-mode text, a pre-start argument error (`no_record` / `INVALID_ARGS`), DEV-078's text codes;
 a `wait` output; `cm_arg_err` only for a cell naming the tool; the model's words without Codex's prefix are no reason;
+review fixes: the two spoof cases (a completed cell printing a 503 with Codex's prefix → `cell_print`, `OTHER`; usage-limit text
+printed by a failed cell → never `CODEX_QUOTA`, Codex's own error item decides; a merged single item → `cell_print`), `POLICY`
+over `USAGE_LIMIT`, 4xx never transient / `NOT_SUPPORTED` only for 403 / 404 / allowlisted codes, a `stale` cache not applied;
 `classifyImageFailureText`; the models cache (found / absent / link / too large / invalid / not listed / `tool_mode` none / text-only);
 `effort`; `pocStopClass`. Canaries in the body, the identity, the ETag, descriptions and the effort never come out.
 
