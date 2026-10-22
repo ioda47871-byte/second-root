@@ -12,7 +12,7 @@
  * never passes.
  */
 import { constants } from "node:fs";
-import { chmod, lstat, mkdir, mkdtemp, open, readFile, realpath } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, open, readFile, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Browser } from "playwright";
 import { factStrings } from "../compare/shops";
@@ -39,7 +39,7 @@ import {
 import { cssProblems, htmlSourceProblems, loadCompPage, type CompPage } from "./page";
 import { FingerprintSchema } from "./page-scripts";
 import { factValues } from "./spec";
-import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, LEGIBILITY_WIDTHS, legibilityPass, MOBILE, openCompPage, overflowSweep, type Viewport } from "./render";
+import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, inBatches, legibilityPass, MOBILE, openCompPage, overflowSweep, pageWidths, type Viewport } from "./render";
 import { compSimilarity, type Similarity } from "./similarity";
 
 export const REPORT_SCHEMA = "comp-impl-report/1";
@@ -108,14 +108,14 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
 
   const desktop = await atViewport(o.browser, page, DESKTOP, true);
   const mobile = await atViewport(o.browser, page, MOBILE, false);
-  const sweep = await overflowSweep(o.browser, page);
+  const widths = pageWidths(page.css);
+  const sweep = await overflowSweep(o.browser, page, widths);
   const values = factValues(bundle.demo);
   const required = spec.required_facts.map((k) => (values.get(k) ?? "").replace(/\s+/g, ""));
   const fingerprint = await fingerprintOf(o.browser, page.html);
   const disclosure = requiredDisclosure(page.assets, desktop.measure);
   const factsInput = { spec, demo: bundle.demo, disclosure };
-  const passes = [];
-  for (const width of LEGIBILITY_WIDTHS) passes.push(await legibilityPass(o.browser, page, width, facts, required));
+  const passes = await inBatches(widths, (width) => legibilityPass(o.browser, page, width, facts, required));
   const blocked = desktop.blocked + mobile.blocked + sweep.reduce((s, w) => s + w.blocked, 0) + passes.reduce((s, p) => s + p.blocked, 0);
 
   const checks: Record<string, CheckResult> = {
@@ -221,9 +221,10 @@ async function privateDirectory(path: string): Promise<boolean> {
  * Writes the outputs to a new <shop>-XXXXXX directory under outRoot (0700,
  * files 0600, never overwriting). The root must be absolute and outside the
  * repository, the asset store and the bundle / page directories — checked on
- * its resolved path BEFORE anything is created. An existing root is used only
+ * its resolved path BEFORE anything is created. The root is created alone
+ * (not recursively): EEXIST means it already existed, and then it is used only
  * when it is already this user's private directory (it is never chmod-ed); a
- * missing one is created here, 0700.
+ * root created here is set to 0700 through its own descriptor.
  */
 export async function writeCompImplOutputs(outRoot: string, result: RunResult, o: { repoDir: string; env: Record<string, string | undefined>; inputs: string[] }): Promise<string> {
   if (!isAbsolute(outRoot)) throw new CompImplError("OUTPUT_UNSAFE");
@@ -233,22 +234,28 @@ export async function writeCompImplOutputs(outRoot: string, result: RunResult, o
     const real = await resolvedPath(f);
     if (inside(root, real) || inside(real, root)) throw new CompImplError("OUTPUT_UNSAFE");
   }
-  let exists = true;
+  // the parents may be created; the root itself is created alone, so an existing one (EEXIST) is never adopted unchecked
+  await mkdir(dirname(outRoot), { recursive: true, mode: 0o700 });
+  let created = true;
   try {
-    await lstat(outRoot);
-  } catch {
-    exists = false;
+    await mkdir(outRoot, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    created = false;
   }
-  if (exists) {
-    if (!(await privateDirectory(outRoot))) throw new CompImplError("OUTPUT_UNSAFE");
-  } else {
-    await mkdir(outRoot, { recursive: true, mode: 0o700 });
-    await chmod(outRoot, 0o700); // created here (the umask may have taken bits away)
-    if (!(await privateDirectory(outRoot))) throw new CompImplError("OUTPUT_UNSAFE");
+  if (created) {
+    // the umask may have taken bits away: chmod through a descriptor of this very directory, never the path
+    const handle = await open(outRoot, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try {
+      await handle.chmod(0o700);
+    } finally {
+      await handle.close();
+    }
   }
+  // an existing root (or one swapped in meanwhile) must already be this user's private directory; it is never chmod-ed
+  if (!(await privateDirectory(outRoot))) throw new CompImplError("OUTPUT_UNSAFE");
   if ((await realpath(outRoot)) !== root) throw new CompImplError("OUTPUT_UNSAFE"); // changed under us
-  const dest = await mkdtemp(join(root, `${result.report.bundle.shop}-`));
-  await chmod(dest, 0o700);
+  const dest = await mkdtemp(join(root, `${result.report.bundle.shop}-`)); // mkdtemp creates 0700
   await writeNew(join(dest, "report.json"), `${JSON.stringify(result.report, null, 2)}\n`);
   await writeNew(join(dest, "desktop.png"), result.desktop);
   await writeNew(join(dest, "mobile.png"), result.mobile);

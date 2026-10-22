@@ -22,7 +22,7 @@ import { FACTS_SOURCE, FIXTURE, flatPng, launch, pageCopy, privateTemp, removeDi
 // disclosure logic is tested with a flat PNG flagged as an AI concept asset);
 // nothing is fetched or published.
 
-vi.setConfig({ testTimeout: 120_000 });
+vi.setConfig({ testTimeout: 180_000, hookTimeout: 180_000 });
 
 let browser: Browser;
 let bundle: string;
@@ -64,7 +64,7 @@ describe("comp-to-site on the synthetic fixture", () => {
     expect(r.anti_template.min_distance).toBeGreaterThan(r.anti_template.threshold);
     expect(r.page.network_blocked).toBe(0);
     expect(r.bundle).toMatchObject({ comp_kind: "synthetic", comp_approved: false, eval_human_confirmed: false });
-    expect(r.checks.overflow!.widths).toEqual([320, 360, 390, 768, 1024, 1440, 1920]);
+    expect(r.checks.overflow!.widths).toEqual([320, 360, 390, 759, 760, 761, 768, 1024, 1440, 1920]); // base widths + 1px around the 760px breakpoint
   });
 
   it("writes report.json and both screenshots privately, outside the repository", async () => {
@@ -195,21 +195,51 @@ describe("probes: the disclosure and the required facts must be readable", () =>
     expect(r.codes).toEqual(expect.arrayContaining(["DISCLOSURE_COLOUR_ALPHA", "DISCLOSURE_LOW_CONTRAST"]));
   });
 
-  it("a hidden required fact fails the whole run (with every width checked)", async () => {
-    const r = await changed(async (d) => {
-      await html(PHONE, '<dd data-comp-type="body" aria-hidden="true" class="gone">052-000-0731</dd>')(d);
-      await css(".gone { position: absolute; left: -9999px; }")(d);
-    });
+  it("a hidden required fact fails the whole run, at every width checked", async () => {
+    // off-screen placement is refused by the stylesheet allowlist now, so aria-hidden alone is the probe here
+    const r = await changed(html(PHONE, '<dd data-comp-type="body" aria-hidden="true">052-000-0731</dd>'));
     expect(r.report.mechanical_ok).toBe(false);
-    expect(Object.keys(r.report.checks).filter((k) => k.startsWith("legibility_"))).toEqual(["legibility_320", "legibility_390", "legibility_1440", "legibility_1920"]);
-    expect(r.report.checks.legibility_390!.codes).toContain("FACTS_REQUIRED_NOT_LEGIBLE");
+    const widths = Object.keys(r.report.checks).filter((k) => k.startsWith("legibility_"));
+    expect(widths).toEqual(["legibility_320", "legibility_360", "legibility_390", "legibility_759", "legibility_760", "legibility_761", "legibility_768", "legibility_1024", "legibility_1440", "legibility_1920"]);
+    for (const k of widths) expect(r.report.checks[k]!.codes).toEqual(expect.arrayContaining(["TEXT_ARIA_HIDDEN", "FACTS_REQUIRED_NOT_LEGIBLE"]));
   });
 
-  it.each([
-    ["list-style with a string", 'li.goods-card { display: list-item; list-style: "SALE 50% OFF" inside; }'],
-    ["hyphenate-character", '.goods-copy { hyphens: manual; hyphenate-character: "$9.80"; }'],
-  ])("never renders a stylesheet that draws invented text (%s)", async (_n, rule) => {
-    await expect(changed(css(rule))).rejects.toMatchObject({ code: "PAGE_SOURCE_REFUSED", problems: ["CSS_STRING"] });
+  it.each<[string, string, string]>([
+    ["list-style with a string", 'li.goods-card { display: list-item; list-style: "SALE 50% OFF" inside; }', "CSS_VALUE"],
+    ["hyphenate-character", '.goods-copy { hyphens: manual; hyphenate-character: "$9.80"; }', "CSS_PROPERTY"],
+    ["bidi override on a fact", ".facts-row dd { unicode-bidi: bidi-override; direction: rtl; }", "CSS_PROPERTY"],
+    ["::first-letter shrinking a fact", ".facts-row dd::first-letter { font-size: 1px; }", "CSS_PSEUDO_ELEMENT"],
+    ["::first-letter hiding the disclosure", ".colophon-note::first-letter { color: transparent; }", "CSS_PSEUDO_ELEMENT"],
+    ["a mirrored fact", ".facts-row dd { transform: scaleX(-1); }", "CSS_VALUE"],
+    ["a filter on the hero visual", ".lead-visual { filter: contrast(40); }", "CSS_PROPERTY"],
+    ["a print-only rule", "@media print { .colophon-note { color: #F4EEE3; } }", "CSS_MEDIA"],
+    ["a scripting-only rule", "@media (scripting: none) { .colophon-note { color: #F4EEE3; } }", "CSS_MEDIA"],
+  ])("never renders a page whose stylesheet is outside the allowlist (%s)", async (_n, rule, code) => {
+    const error = await changed(css(rule)).then(
+      () => null,
+      (e: unknown) => e as { code?: string; problems?: string[] },
+    );
+    expect(error?.code).toBe("PAGE_SOURCE_REFUSED");
+    expect(error?.problems).toContain(code);
+  });
+
+  it("checks every width around a breakpoint: text hidden only at tablet widths fails", async () => {
+    const r = await changed(css("@media (min-width: 761px) and (max-width: 767px) { .colophon-note { color: #F4EEE3; } }"));
+    expect(r.report.mechanical_ok).toBe(false);
+    const failing = Object.entries(r.report.checks).filter(([k, c]) => k.startsWith("legibility_") && !c.ok).map(([k]) => k);
+    expect(failing).toEqual(expect.arrayContaining(["legibility_761", "legibility_767"]));
+    expect(r.report.checks.legibility_1440!.ok).toBe(true);
+  });
+
+  it("refuses extra ink on protected text (an underline, allowed elsewhere, over the disclosure)", async () => {
+    const r = await changed(css(".colophon-note { text-decoration: underline; }"));
+    expect(r.report.checks.legibility_1440!.codes).toContain("DISCLOSURE_INK_EXCESS");
+    expect(r.report.mechanical_ok).toBe(false);
+  });
+
+  it("the ink bound holds even past the stylesheet check (a line-through, measured directly)", async () => {
+    const r = await legibility(css(".colophon-note { text-decoration: line-through; }"));
+    expect(r.codes).toContain("DISCLOSURE_INK_EXCESS");
   });
 });
 

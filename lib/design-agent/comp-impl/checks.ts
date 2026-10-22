@@ -324,7 +324,11 @@ export type LegibilityInput = {
   scan: ProtectedScan;
   lowContrast: ReadonlyMap<number, number>;
   ink: ReadonlyMap<number, Ink>;
+  inkExcess: ReadonlyMap<number, number>;
 };
+
+/** Protected text may carry at most this much more ink than the same glyphs alone (antialiasing differs a little; a bar, a shadow or overprint adds far more). */
+export const INK_EXCESS_MAX = 1.15;
 
 /**
  * The disclosure and every required fact must be really readable at this
@@ -364,6 +368,7 @@ export function legibilityCheck(l: LegibilityInput, o: { required: readonly stri
       if ((l.lowContrast.get(i) ?? 1) > CONTRAST_TOLERANCE) p.add("LOW_CONTRAST");
       const ink = l.ink.get(i);
       if (!ink || ink.missing > 0 || ink.ratio < INK_RATIO) p.add("NO_INK");
+      if ((l.inkExcess.get(i) ?? Number.POSITIVE_INFINITY) > INK_EXCESS_MAX) p.add("INK_EXCESS");
     }
     if (owner.colourAlpha < 255) p.add("COLOUR_ALPHA");
     if (owner.fillDiffers) p.add("TEXT_FILL");

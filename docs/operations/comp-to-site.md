@@ -35,7 +35,7 @@ As soon as a real comp passes the rubric, the same harness runs on it unchanged 
 | art direction | `design-library/poc/wagashi-art-direction-v2.json`, `design-image/prompt.ts` (`loadPocInputs`, `POC_DISCLOSURE*`, `SALES_UI`) | the bundle's `design-spec.json` must equal the repository's direction; the two disclosure strings and the sales-word rule come from here |
 | shop facts | `lib/design-agent/compare/shops.ts` (`parseShop`, `factStrings`) → `worker/queue.ts` `pickFacts` (the worker's fact filter) → `preview.ts` `factsToDemoView` → `lib/sales/demo-content.ts` `toDemoView` (DemoView) | facts are read **only** from the facts source of truth (default: the DEV-073 fixture `scripts/sales-design-worker/compare/shops/wagashi.json`) through the same filter; the bundle's copy must be identical |
 | fact-only text rule | `tests/unit/sales/demo-templates.test.tsx` (strip facts, then the allowed copy; nothing may be left) | `checks.ts` `factsCheck` applies the same allowlist method to every text node of the rendered page (hidden ones too), plus alt / aria-label / title |
-| CSS safety | `lib/design-agent/shop-css/tokenize.ts` (strict tokenizer), `guard.ts` (Stage 3 guard) | the tokenizer and the guard's "never" list are applied to `style.css`. **Gap:** `guardShopCss` cannot take a whole page: selectors must start at `#shop-css`, use the renderer's data attributes and a fixed element list (no `a`, `img`, `nav`, `footer`, `figure`), and its property allowlist is the renderer's subset. See §6 |
+| CSS safety | `lib/design-agent/shop-css/tokenize.ts` (strict tokenizer), `guard.ts` (Stage 3 guard) | `guardShopCss` cannot take a whole page (selectors must start at `#shop-css` and use the renderer's data attributes and element list), so `page-css.ts` reuses the **guard's tokenizer and value grammar** (`values.ts` `ELEMENT_PROPS`, `valueMatches`) with its own selector and `@media` allowlist — the same allowlist model. See §6 |
 | render checks | `shop-css/page-scripts.ts` `MEASURE_SCRIPT` + `MeasureSchema`, `HIDE_TEXT_CSS`, `CLEAN_CSS`, `REFERENCE_SCRIPT`; `shop-css/render-check.ts` `overprinted`, `lowContrastShare`, `inkOf`, `groundColour`, `MIN_FONT_PX`, `MIN_OPACITY`, `CONTRAST_TOLERANCE`, `INK_RATIO`, `SHOP_CSS_BASE_WIDTHS` | the text soundness check runs the shop-CSS measurement with the whole body as its scope (clipped, offscreen, covered, out of its own box, too small, faded, squeezed) and its text-on-text test; the disclosure and required facts get the Stage 3 contrast and ink proof; the overflow sweep uses the same 320…1920 widths |
 | screenshot sizes | `lib/design-agent/shot-viewports.ts` (`SHOT_VIEWPORTS`: 1440 × 900 @1, 390 × 844 @2) | the PC and mobile screenshots and measurements |
 | Chromium in tests | `tests/unit/design-agent/shop-css/support.tsx` `launch()` (`PLAYWRIGHT_CHROMIUM_EXECUTABLE`), un-gated in CI like the other renderer tests | same launch pattern; runs in CI |
@@ -84,15 +84,10 @@ wrong phone number, it is simply not implemented.
 - `index.html` — one page; allowed elements and attributes only (`page-scripts.ts` `PAGE_ELEMENTS`); no `<script>`, no event
   handler, no `style` attribute or element, no form / iframe / svg / video, no external or `data:` URL; exactly one
   `<link rel="stylesheet" href="style.css">`; links are in-page anchors only;
-- `style.css` — the whole stylesheet: the shop-CSS tokenizer (no escapes, no `<`, no non-ASCII outside comments, no url
-  tokens), only `@media` at-rules (so no `@counter-style`), no `attr()` / `env()` / `image-set()` / `counter()` / `counters()` /
-  `symbols()`, no `content` other than `""` / `none` / `normal`, **no string anywhere** except font family and grid area names
-  (`font-family`, `font`, `grid-template-areas`, `grid-template`, `grid`) — so no `list-style: "…"`, `list-style-type: "…"`,
-  `quotes`, `hyphenate-character`, `text-overflow: "…"` or string in a selector — and no `counter-reset` / `counter-set` /
-  `counter-increment` / `-webkit-text-security` (CSS can draw text outside the DOM; the review of PR #96 drew
-  「SALE 50% OFF」 with `list-style` and 「$9.80」 with `hyphenate-character` before this rule); local font stacks only (no `@font-face`);
-- `assets.json` + `assets/*.png` — only listed, hash-checked images; a `placeholder` must be one flat colour;
-- no `aria-hidden` on any element that holds text (such text is skipped by every text measurement);
+- `style.css` — the whole stylesheet, within the **page CSS allowlist** (§6, `page-css.ts`): anything not listed is refused;
+- `assets.json` + `assets/*.png` — only listed, hash-checked images; a `placeholder` must be exactly one colour;
+- no `aria-hidden` on any element that holds text (such text is skipped by every text measurement); no bidi control
+  characters (U+200E/F, U+202A–202E, U+2066–2069, U+061C, as characters or entities), no `dir` attribute, no `<bdo>` / `<bdi>`;
 - harness hooks: `data-comp-section` on each section, `data-comp-type` (display / heading / caption / body / label),
   `data-comp-slot` (+ `data-comp-placeholder` for a flat placeholder), `data-comp-nav`, `data-comp-cta`,
   `data-comp-disclosure`, `data-comp-container`;
@@ -107,7 +102,7 @@ the web app (AGENTS.md: this Next.js differs from training data; nothing here to
 - **Facts** come only from the facts source of truth. The page's visible text (and alt, aria-label, the title) must be made of
   facts, declared verbatim fact excerpts, `COMP_UI_LABELS` and the disclosure; anything else is `FACTS_UNKNOWN_TEXT`
   (an invented price, award, history, rating or a changed phone number fails). Sales words (`予約`, `購入`, `人気`, `おすすめ` …) fail.
-  Required facts must be shown verbatim in one text node that passes the legibility check (§6) at 320, 390, 1440 and 1920.
+  Required facts must be shown verbatim in one text node that passes the legibility check (§6) at every checked width.
 - **AI-generated images.** AI concept images are **not** in the asset store (DEV-070 removed `generated_concept`; DEV-076 is
   backlog and its store intake needs a separate human decision). The PoC may reference a **local, unpublished** concept image
   only as `kind: "ai_concept_local"` in `assets.json`, with a person's review record (`approved_by`, `approved_at`,
@@ -118,8 +113,8 @@ the web app (AGENTS.md: this Next.js differs from training data; nothing here to
 - The synthetic fixture uses **no AI image and no photo**: CSS placeholders only. The AI-disclosure rule is tested with a flat
   PNG flagged as an AI concept asset.
 - **Images are not read.** No check reads text inside an image (no OCR, by design). An asset's `kind` is the author's declaration:
-  the only technical check is that a `placeholder` PNG is one flat colour (every pixel within 6 levels of the first, so it cannot
-  carry text or a photo; `PAGE_ASSET_PLACEHOLDER_NOT_FLAT`). An `ai_concept_local` image could contain invented text and nothing
+  the only technical check is that a `placeholder` PNG is exactly one colour (every pixel equal to the first, so it cannot carry
+  text or a photo, not even in near-identical pixels; `PAGE_ASSET_PLACEHOLDER_NOT_FLAT`). An `ai_concept_local` image could contain invented text and nothing
   here would see it — that is what the person's per-image review record is for.
 
 ## 6. The validation harness and the fidelity checks
@@ -137,13 +132,64 @@ listed assets are served under an unresolvable origin, everything else is aborte
 | type size and hierarchy | max size per `data-comp-type` role | display > heading > body; desktop sizes ±20 % of the spec; ≥ 12 px everywhere |
 | product image placement | `data-comp-slot`: present once, in its section, aspect vs spec; img loaded; `object-fit: fill` keeps its own aspect | ±10 % aspect, ±2 % distortion; slot kind ↔ asset kind |
 | nav and buttons | nav labels and anchors in order; one CTA `<a>` with the label and target; every link an in-page anchor with a target | exact |
-| responsiveness | `scrollWidth − clientWidth` at 320, 360, 390, 768, 1024, 1440, 1920 | 0 |
-| missing / clipped / overlapping text | the shop-CSS `MEASURE_SCRIPT` on the whole body + `overprinted`, at **320, 390, 1440 and 1920** (scale 1) | no displayed text clipped, offscreen, covered, out of its box, < 12 px, faded or overprinted; no hidden fact |
-| legibility of the disclosure and every required fact | at the same four widths: `MEASURE_SCRIPT` + `PROTECTED_SCRIPT` + the **Stage 3 pixel proof** (`lowContrastShare` on the ground actually painted under the text, `inkOf` against the same boxes with nothing but the text) | every node of a protected element shown with no TEXT_* problem; size × transform × zoom ≥ 12 px; opacity product ≥ 0.85; colour alpha 1 and no different `-webkit-text-fill-color`; no clip-path / mask / filter / blend / clip on its chain; ≤ 10 % of its ground below 4.5:1; ink ratio ≥ 0.8; no `aria-hidden` over any text |
+| responsiveness | `scrollWidth − clientWidth` at the **checked widths**: 320, 360, 390, 768, 1024, 1440, 1920 and 1 px each side of every `@media` breakpoint (`render-check.ts` `checkWidths`, fed the page's own breakpoints) | 0 |
+| missing / clipped / overlapping text | the shop-CSS `MEASURE_SCRIPT` on the whole body + `overprinted`, at **every checked width** (scale 1) | no displayed text clipped, offscreen, covered, out of its box, < 12 px, faded or overprinted; no hidden fact |
+| legibility of the disclosure and every required fact | at every checked width: `MEASURE_SCRIPT` + `PROTECTED_SCRIPT` + the **Stage 3 pixel proof** (`lowContrastShare` on the ground actually painted under the text, `inkOf` against the same boxes with nothing but the text, and the per-character ink upper bound with `inkMass`) | every node of a protected element shown with no TEXT_* problem; size × transform × zoom ≥ 12 px; opacity product ≥ 0.85; colour alpha 1 and no different `-webkit-text-fill-color`; no clip-path / mask / filter / blend / clip on its chain; ≤ 10 % of its ground below 4.5:1; ink ratio ≥ 0.8 **and ≤ 1.15** (extra ink — a bar, a shadow, overprint, an underline — fails; a clean page measures 1.000, an underline 1.78); no `aria-hidden` over any text |
 | fact accuracy | §5 | exact |
 | AI disclosure | §5 | exact text, one element, placement, legibility |
 | anti-template | §7 | distance > 0.35, CSS reuse ≤ 20 %, no renderer markers |
 | comp similarity | §7 | reported, never passes |
+
+### The page CSS allowlist (`page-css.ts`)
+
+The same model as the Stage 3 shop-css guard: **everything not listed is refused**, and the value grammar is the guard's own
+(`shop-css/values.ts`: `ELEMENT_PROPS`, `valueMatches`; the tokenizer `shop-css/tokenize.ts`). The guard itself cannot take a
+whole page (its selectors start at the renderer's `#shop-css` scope), so this module adds its own selector and `@media` rules.
+
+- **Selectors:** type selectors of the page's allowed elements, `*`, `.class`, `#id`; `:first-child`, `:last-child`,
+  `:only-child`, `:first-of-type`, `:last-of-type`, `:nth-child(An+B)`, `:nth-of-type(An+B)`; descendant and `>` combinators.
+  No attribute selector, no sibling combinator, no state pseudo-class (`:hover`, `:focus` …), no `:not` / `:has` / `:root`,
+  and **no pseudo-element at all** (`::first-letter`, `::first-line`, `::marker`, `::selection`, `::before`, `::after` …, and
+  their one-colon spellings).
+- **`@media`:** only `(min-width: Npx)` / `(max-width: Npx)`, joined by `and`, N in 320 … 1920; no media type (`print`,
+  `screen`), no other feature (`scripting`, `prefers-*`, `orientation`, `hover`, resolution …), no range syntax, not nested.
+  No other at-rule (`@import`, `@font-face`, `@counter-style`, `@supports`, `@layer` …).
+- **Properties:** layout (`display` without `none` / `list-item` / `contents`, `position` static / relative **without
+  offsets**, sizes, `aspect-ratio`, `box-sizing`, `float`), spacing (`margin` / `padding` / `gap`, no negatives), flex
+  (no reversed directions, no `order`), grid (track lists; **placement by `span` only**, no line numbers, no `dense`: the
+  visual order is the source order), alignment, columns, colours (`color`, `background` / `background-color` as a plain
+  colour: hex, `rgb()`, `transparent`, `currentcolor`, `white`, `black`), borders and radius, inset `box-shadow` only,
+  `opacity` ≥ 0.85, `transform: rotate()` ≤ 8° only, `object-fit` / `object-position`, typography basics (`font-family` from a
+  fixed list of text faces, `font-size` ≥ 12 px, weight, style, `line-height`, `letter-spacing` ≥ 0, `word-spacing`,
+  `text-align`, `text-transform`, `text-indent` ≤ 2em / 32 px, `writing-mode`, wrapping), `list-style` / `list-style-type`
+  **`none` only**, `text-decoration` / `text-decoration-line` **`none` / `underline` only** (no style, colour, thickness or
+  offset property).
+- **Not listed, so refused** (the reviewers' probes among them): `content`, counters, `quotes`, `hyphenate-character`,
+  `text-overflow`, `unicode-bidi`, `direction`, `filter`, `backdrop-filter`, `mix-blend-mode`, `text-shadow`,
+  `-webkit-text-stroke`, `-webkit-text-fill-color`, `-webkit-text-security`, `text-emphasis`, `zoom`, `clip-path`, `mask`,
+  `visibility`, `overflow`, offsets (`top` / `left` …), backgrounds with images or gradients, `!important`, custom properties.
+
+**Adversarial sweep (local, after the re-review of b94c61b).** 101 probes over every pseudo-element (both spellings), bidi (CSS, the
+`dir` attribute, control characters and entities), `text-decoration` / `text-shadow` / stroke / emphasis, `letter-spacing`,
+16 media features and types, tablet-only rules between breakpoints, filters / blends / clip / mask on the hero visual,
+`list-style` values, grid stacking, nested opacity, `aria-hidden`, fonts and `!important`: 91 refused before rendering,
+10 rendered and failed (legibility at the widths around their breakpoints, text checks); **none passed**. The categories are
+unit and Chromium tests in `tests/unit/design-agent/comp-impl/`.
+
+### Remaining limits (honest list)
+
+- **Label ↔ value pairing is not checked.** The facts check proves every word is a fact or a label, and the allowlist keeps
+  the visual order equal to the source order, but the HTML itself could set 「電話」 next to the opening hours. Only a person
+  reading the screenshot sees that.
+- **Contrast and ink are proven only for the disclosure and the required facts.** Labels, captions, the CTA and other text
+  can be faint or invisible without failing (the warm-grey labels of the synthetic page are below 4.5:1). Underlined
+  protected text fails the ink upper bound by design.
+- **Images are not read** (§5): an `ai_concept_local` image could carry text; only the person's review would see it.
+- **Fonts:** names are limited to known text faces, but which one is installed varies by machine; the fallback is not
+  checked against the comp.
+- **The allowlist is narrower than CSS.** A real comp may need something it lacks (gradients, overlapping layers, offsets,
+  hover states); adding a property is a review decision, not a quick fix.
+- **Process gates** (§3) remain process gates.
 
 **Section placement, colours, spacing and type are compared against Claude's own spec**, which Claude wrote from the comp.
 They show that the page keeps to the spec, not that the spec (or the page) matches the comp: they are **not fidelity evidence**.
@@ -158,6 +204,10 @@ check and the stylesheet rules made invented text and a hidden disclosure imposs
 (`list-style`, `hyphenate-character`) drew invented text; the disclosure passed with `color: transparent`, a transparent text fill,
 the ground's colour, `zoom: 0.1`, `clip-path`, `scale` + `opacity`, or `aria-hidden` with off-screen placement; and a required fact
 under `aria-hidden` off screen passed. Each of these probes is now a test that must fail (`tests/unit/design-agent/comp-impl/`).
+The re-review at b94c61b showed the deny-list approach itself was the problem: 38 further probes (bidi override,
+`::first-letter`, `scaleX(-1)`, line-through and shadows that only add ink, print / scripting media, tablet-only rules,
+filters on images, list markers …) passed. The stylesheet is now an allowlist, the ink proof has an upper bound, and the
+checks run at every width around every breakpoint.
 
 ## 7. Comp similarity and the anti-template guard
 

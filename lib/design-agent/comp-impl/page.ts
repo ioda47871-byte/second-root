@@ -12,17 +12,11 @@
  * the HTML refusals and the stylesheet's safety. The browser-side checks
  * (allowed elements and attributes, links, rendering) are in render.ts.
  *
- * The stylesheet: the Stage 3 guard (shop-css/guard.ts) cannot take a whole
- * page's CSS. Its selectors must start at the renderer's scope root #shop-css
- * and use the renderer's data attributes and a fixed element list (no a, img,
- * nav, footer, figure), and its property list is the renderer's subset. So
- * the guard is not applied as a whole; its safety layer is: the same strict
- * tokenizer (shop-css/tokenize.ts: no escapes, no `<`, no non-ASCII, no
- * control characters, no url tokens) and the same "never" list (url(),
- * @import, @font-face and every other at-rule but @media, attr(), env(),
- * expression(), image-set(), counter(), text drawn by `content`), plus: no
- * string anywhere but font family and grid area names, no counter-* property
- * (CSS can draw text outside the DOM). The gap is written up in
+ * The stylesheet: an allowlist in the Stage 3 guard's model (page-css.ts):
+ * the guard itself (shop-css/guard.ts) cannot take a whole page's CSS (its
+ * selectors must start at the renderer's #shop-css scope and use the
+ * renderer's data attributes), so page-css.ts reuses the guard's tokenizer
+ * and value grammar with its own selector and @media rules. Written up in
  * docs/operations/comp-to-site.md.
  */
 import { lstat, readdir, realpath } from "node:fs/promises";
@@ -30,8 +24,8 @@ import { join } from "node:path";
 import { z } from "zod";
 import { MOCKUP_PNG_LIMITS, PngError, readPngNoFollow, type PngLimits } from "../design-image/png";
 import { decodePng } from "../worker/png-paint";
-import { componentValues, CssSyntaxError, tokenize, type CV, type Tok } from "../shop-css/tokenize";
 import { CompImplError, readSmallFile, sha256 } from "./bundle";
+import { pageCssProblems } from "./page-css";
 
 export const PAGE_LIMITS = { htmlBytes: 64 * 1024, cssBytes: 64 * 1024, assets: 6 } as const;
 /** An asset is a real image file of a sane size (the comp's own limits, with a smaller minimum side). */
@@ -114,8 +108,8 @@ export async function loadCompPage(pageDir: string): Promise<CompPage> {
   return { dir, html, css, assets, files, htmlSha256: sha256(html), cssSha256: sha256(css) };
 }
 
-/** A placeholder's every pixel must lie within this many levels (per channel, alpha included) of its first pixel. */
-export const PLACEHOLDER_FLAT_TOLERANCE = 6;
+/** A placeholder's every pixel must equal its first pixel (re-review: 6 levels could hold text a filter would reveal). */
+export const PLACEHOLDER_FLAT_TOLERANCE = 0;
 
 /**
  * Whether a PNG is one flat colour (every pixel near the first). Read with the
@@ -151,74 +145,16 @@ export function htmlSourceProblems(html: string): string[] {
   if (/<style\b|\sstyle\s*=/.test(lower)) p.add("HTML_INLINE_STYLE");
   if (/<meta[^>]*http-equiv/.test(lower)) p.add("HTML_META_REFRESH");
   if (/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/.test(html)) p.add("HTML_CONTROL_CHAR");
+  // bidi controls reorder what is drawn (an invented number from a fact's digits): never in a page
+  if (/[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]|&#x?0*(200e|200f|202[a-e]|206[6-9]|61c|8206|8207|823[4-8]|829[4-7]|1564);?/i.test(html)) p.add("HTML_BIDI_CONTROL");
+  if (/<bdo\b|<bdi\b|\sdir\s*=/.test(lower)) p.add("HTML_BIDI_CONTROL");
   return [...p].sort();
 }
 
-/** Functions a page stylesheet may not call (fetches, reads attributes or the environment, or paints text). */
-const CSS_FUNCTIONS_DENIED = new Set(["url", "attr", "env", "expression", "image-set", "-webkit-image-set", "element", "paint", "src", "counter", "counters", "symbols"]);
-const CSS_AT_RULES = new Set(["media"]);
 /**
- * The only properties whose values may hold a string: font family names and
- * grid area names (neither is ever drawn). Any other string (list-style,
- * list-style-type, quotes, hyphenate-character, text-overflow, content …) or a
- * string outside a declaration (a selector) is CSS_STRING (review of PR #96:
- * `list-style: "SALE 50% OFF" inside` and `hyphenate-character: "$9.80"`
- * drew invented text).
+ * The stylesheet's safety: the page CSS allowlist (page-css.ts, the Stage 3
+ * guard's model and value grammar). Problem codes; empty when accepted.
  */
-export const CSS_STRING_PROPERTIES = new Set(["font-family", "font", "grid-template-areas", "grid-template", "grid"]);
-/** Properties that change what text is drawn: counters (list numbers) and glyph masking. */
-const CSS_PROPERTIES_DENIED = new Set(["counter-reset", "counter-set", "counter-increment", "-webkit-text-security", "text-security"]);
-
-const hasString = (list: CV[]): boolean => list.some((c) => (c.t === "string" ? true : c.t === "block" ? hasString(c.items) : c.t === "fn" ? hasString(c.args) : false));
-
-/** The stylesheet's safety (the shop-css tokenizer and its "never" list, no drawn strings, no counters); problem codes. */
 export function cssProblems(css: string): string[] {
-  const p = new Set<string>();
-  let toks: Tok[];
-  let values: CV[];
-  try {
-    toks = tokenize(css);
-    values = componentValues(toks);
-  } catch (error) {
-    if (error instanceof CssSyntaxError) return [`CSS_SYNTAX_${error.code.toUpperCase()}`];
-    return ["CSS_SYNTAX"];
-  }
-  for (const t of toks) {
-    if (t.t === "at" && !CSS_AT_RULES.has(t.v.toLowerCase())) p.add("CSS_AT_RULE");
-    if (t.t === "function" && CSS_FUNCTIONS_DENIED.has(t.v.toLowerCase())) p.add("CSS_FUNCTION");
-  }
-  /** One declaration (the tokens between two ";" of a declaration block). */
-  const declaration = (segment: CV[]) => {
-    const parts = segment.filter((c) => c.t !== "ws");
-    if (parts.length === 0) return;
-    const name = parts[0]!.t === "ident" && parts[1]?.t === ":" ? parts[0]!.v.toLowerCase() : null;
-    const value = name ? parts.slice(2) : parts;
-    if (name && CSS_PROPERTIES_DENIED.has(name)) p.add("CSS_PROPERTY");
-    if (name === "content") {
-      // only an empty string or none / normal (an empty decoration box draws nothing)
-      for (const v of value) {
-        if (v.t === "string" && v.v !== "") p.add("CSS_CONTENT_TEXT");
-        if (v.t === "fn" || (v.t === "ident" && !["none", "normal"].includes(v.v.toLowerCase()))) p.add("CSS_CONTENT_TEXT");
-      }
-      return;
-    }
-    if (hasString(value) && !(name && CSS_STRING_PROPERTIES.has(name))) p.add("CSS_STRING");
-  };
-  const walk = (list: CV[]) => {
-    for (const c of list) {
-      if (c.t === "block" && c.open === "{" && !c.items.some((i) => i.t === "block" && i.open === "{")) {
-        let segment: CV[] = [];
-        for (const i of c.items) {
-          if (i.t === ";") {
-            declaration(segment);
-            segment = [];
-          } else segment.push(i);
-        }
-        declaration(segment);
-      } else if (c.t === "block") walk(c.items);
-      else if (c.t === "string" || (c.t === "fn" && hasString(c.args))) p.add("CSS_STRING"); // a string in a selector or prelude
-    }
-  };
-  walk(values);
-  return [...p].sort();
+  return pageCssProblems(css);
 }

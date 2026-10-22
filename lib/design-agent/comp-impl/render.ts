@@ -7,11 +7,12 @@
  * evaluate still runs). Fonts are the machine's own (no @font-face is allowed).
  */
 import type { Browser, BrowserContext, Page } from "playwright";
-import { groundColour, inkOf, lowContrastShare, SHOP_CSS_BASE_WIDTHS, type Ink } from "../shop-css/render-check";
+import { checkWidths, groundColour, inkMass, inkOf, lowContrastShare, MIN_REFERENCE_INK, SHOP_CSS_BASE_WIDTHS, type Ink, type Picture } from "../shop-css/render-check";
 import { CLEAN_CSS, HIDE_TEXT_CSS, MEASURE_SCRIPT, MeasureSchema, REFERENCE_SCRIPT, type Measure } from "../shop-css/page-scripts";
 import { decodePng } from "../worker/png-paint";
 import { SHOT_VIEWPORTS } from "../shot-viewports";
 import type { CompPage } from "./page";
+import { pageBreakpointsPx } from "./page-css";
 import {
   COMP_MEASURE_SCRIPT,
   CompMeasureSchema,
@@ -124,18 +125,35 @@ export async function fullPageShot(page: Page): Promise<Buffer> {
 }
 
 /** Horizontal overflow at every sweep width (a fresh context each, the desktop kind). */
-export async function overflowSweep(browser: Browser, compPage: CompPage): Promise<Array<{ width: number; overflow: number; blocked: number }>> {
-  const out: Array<{ width: number; overflow: number; blocked: number }> = [];
-  for (const width of OVERFLOW_WIDTHS) {
+export async function overflowSweep(browser: Browser, compPage: CompPage, widths: readonly number[] = OVERFLOW_WIDTHS): Promise<Array<{ width: number; overflow: number; blocked: number }>> {
+  return inBatches(widths, async (width) => {
     const o = await openCompPage(browser, compPage, { width, height: 900, scale: 1, mobile: false });
     try {
       const overflow = (await o.page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")) as number;
-      out.push({ width, overflow, blocked: o.blocked() });
+      return { width, overflow, blocked: o.blocked() };
     } finally {
       await o.context.close();
     }
-  }
+  });
+}
+
+/** Contexts open at the same time (as the shop-CSS render check's PARALLEL). */
+const PARALLEL = 4;
+/** Runs fn over items, PARALLEL at a time, results in item order. */
+export async function inBatches<T, R>(items: readonly T[], fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += PARALLEL) out.push(...(await Promise.all(items.slice(i, i + PARALLEL).map(fn))));
   return out;
+}
+
+/**
+ * The widths to check a page at: the shop-CSS check's base widths (320 … 1920)
+ * and 1px each side of every @media breakpoint (render-check.ts checkWidths,
+ * fed the page's own breakpoints), so a rule that hides text only between two
+ * breakpoints is seen.
+ */
+export function pageWidths(css: string): number[] {
+  return checkWidths(pageBreakpointsPx(css).map((b) => `@media (min-width: ${b}px) {`).join("\n"));
 }
 
 /** Adds a style element (page.addStyleTag waits for a script-side load event, which never fires with JavaScript off). */
@@ -143,8 +161,6 @@ async function addStyle(page: Page, id: string, css: string): Promise<void> {
   await page.evaluate(`(() => { const s = document.createElement("style"); s.id = ${JSON.stringify(id)}; s.textContent = ${JSON.stringify(css)}; document.head.appendChild(s); })()`);
 }
 
-/** The widths of the text and legibility pass (scale 1, so screenshot pixels are CSS px): the narrowest, the phone, the PC, the widest. */
-export const LEGIBILITY_WIDTHS = [320, 390, 1440, 1920] as const;
 
 export type Legibility = {
   width: number;
@@ -153,8 +169,23 @@ export type Legibility = {
   /** Per measured node of a protected element: the Stage 3 contrast share and ink proof. */
   lowContrast: Map<number, number>;
   ink: Map<number, Ink>;
+  /** Per measured node of a protected element: the largest ink ratio of any character, page over reference (extra ink: a bar, a shadow, overprint). */
+  inkExcess: Map<number, number>;
   blocked: number;
 };
+
+/** The largest ratio of a character's ink on the page to its ink in the reference (characters too small to measure are left out). */
+export function maxInkRatio(page: Picture, reference: Picture, node: Measure["nodes"][number]): number {
+  const [cr, cg, cb, ca] = node.color;
+  const alpha = Math.max(0, Math.min(1, ca * node.opacity));
+  let max = 0;
+  for (const box of node.chars) {
+    const ref = inkMass(reference, box, [cr, cg, cb], alpha);
+    if (ref < MIN_REFERENCE_INK) continue;
+    max = Math.max(max, inkMass(page, box, [cr, cg, cb], alpha) / ref);
+  }
+  return max;
+}
 
 /**
  * The shop-CSS render check's measurement and pixel proof at one width, for
@@ -177,6 +208,7 @@ export async function legibilityPass(browser: Browser, compPage: CompPage, width
     const nodes = measure.nodes.map((n, i) => ({ n, i })).filter(({ n }) => (n.kind === "fact" || n.kind === "label") && owners.has(n.owner));
     const lowContrast = new Map<number, number>();
     const ink = new Map<number, Ink>();
+    const inkExcess = new Map<number, number>();
     if (nodes.length > 0 && measure.height <= MAX_PAGE_HEIGHT) {
       const shot = async () => decodePng(await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" }));
       const withText = await shot();
@@ -194,9 +226,10 @@ export async function legibilityPass(browser: Browser, compPage: CompPage, width
       for (const { n, i } of nodes) {
         lowContrast.set(i, lowContrastShare(without, n));
         ink.set(i, inkOf({ withText, without }, { withText: cleanWith, without: cleanWithout }, n));
+        inkExcess.set(i, maxInkRatio({ withText, without }, { withText: cleanWith, without: cleanWithout }, n));
       }
     }
-    return { width, measure, scan, lowContrast, ink, blocked: o.blocked() };
+    return { width, measure, scan, lowContrast, ink, inkExcess, blocked: o.blocked() };
   } finally {
     await o.context.close();
   }

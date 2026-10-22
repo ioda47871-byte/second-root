@@ -217,45 +217,135 @@ describe("page source", () => {
     expect(htmlSourceProblems('<img src="data:image/png;base64,AA">')).toContain("HTML_URL_SCHEME");
     expect(htmlSourceProblems('<p style="color:red">')).toContain("HTML_INLINE_STYLE");
     expect(htmlSourceProblems("<form><input></form>")).toContain("HTML_ELEMENT");
+    // bidi controls (re-review of PR #96: an invented phone number drawn from a fact's digits)
+    expect(htmlSourceProblems("<dd>\u202e052-000-0731</dd>")).toContain("HTML_BIDI_CONTROL");
+    expect(htmlSourceProblems("<dd>&#x202E;052-000-0731</dd>")).toContain("HTML_BIDI_CONTROL");
+    expect(htmlSourceProblems("<dd>&#8238;052-000-0731</dd>")).toContain("HTML_BIDI_CONTROL");
+    expect(htmlSourceProblems('<dd dir="rtl">052-000-0731</dd>')).toContain("HTML_BIDI_CONTROL");
+    expect(htmlSourceProblems("<bdo>052-000-0731</bdo>")).toContain("HTML_BIDI_CONTROL");
   });
-  it("applies the shop-CSS tokenizer and its never list to the stylesheet", () => {
+  it("accepts the synthetic page's stylesheet under the allowlist", () => {
     expect(cssProblems(readFileSync(join(FIXTURE, "page/style.css"), "utf8"))).toEqual([]);
+  });
+
+  it("keeps the shop-CSS tokenizer's refusals", () => {
     expect(cssProblems("a { background: url(https://example.com/x.png); }")).toEqual(["CSS_SYNTAX_URL"]);
-    expect(cssProblems('@import "x.css";')).toEqual(["CSS_AT_RULE", "CSS_STRING"]);
-    expect(cssProblems("@font-face { font-family: x; }")).toEqual(["CSS_AT_RULE"]);
     expect(cssProblems('p::after { content: "人気"; }')).toEqual(["CSS_SYNTAX_NON_ASCII"]);
-    expect(cssProblems('p::after { content: "Best seller"; }')).toEqual(["CSS_CONTENT_TEXT"]);
-    expect(cssProblems("p::after { content: attr(title); }")).toContain("CSS_FUNCTION");
-    expect(cssProblems('p::after { content: ""; }')).toEqual([]);
-    expect(cssProblems("a { color: red; } }")).toEqual(["CSS_SYNTAX_UNBALANCED"]);
+    expect(cssProblems("a { color: #000; } }")).toEqual(["CSS_SYNTAX_UNBALANCED"]);
     expect(cssProblems("a { color: \\72 ed; }")).toEqual(["CSS_SYNTAX_ESCAPE"]);
   });
 
-  // review of PR #96: any string the browser could draw is refused, wherever it is
+  // Fresh Review of PR #96 (9daac92 and b94c61b): every probe the reviewers used, one by one.
+  // The stylesheet is now an allowlist (page-css.ts): anything not listed is refused.
   it.each<[string, string, string]>([
-    ["list-style with a string marker", 'li { display: list-item; list-style: "SALE 50% OFF" inside; }', "CSS_STRING"],
-    ["list-style-type with a string", 'li { list-style-type: "$9.80"; }', "CSS_STRING"],
-    ["quotes", 'q { quotes: "BEST" "SELLER"; }', "CSS_STRING"],
-    ["hyphenate-character", 'p { hyphens: manual; hyphenate-character: "$9.80"; }', "CSS_STRING"],
-    ["text-overflow", 'p { overflow: hidden; text-overflow: " - 50% OFF"; }', "CSS_STRING"],
-    ["a string in a selector", 'a[href="#info"] { color: red; }', "CSS_STRING"],
+    // strings and drawn text
+    ["list-style with a string marker", 'li { display: list-item; list-style: "SALE 50% OFF" inside; }', "CSS_VALUE"],
+    ["list-style-type with a string", 'li { list-style-type: "$9.80"; }', "CSS_VALUE"],
+    ["list-style other than none", "ul { list-style: disc; }", "CSS_VALUE"],
+    ["list-style-type decimal", "ol { list-style-type: decimal; }", "CSS_VALUE"],
+    ["display: list-item", "li { display: list-item; }", "CSS_VALUE"],
+    ["quotes", 'q { quotes: "BEST" "SELLER"; }', "CSS_PROPERTY"],
+    ["hyphenate-character", 'p { hyphenate-character: "$9.80"; }', "CSS_PROPERTY"],
+    ["text-overflow", 'p { text-overflow: " - 50% OFF"; }', "CSS_PROPERTY"],
+    ["content", 'p { content: "x"; }', "CSS_PROPERTY"],
     ["counter-reset (shifts list numbers)", "ol { counter-reset: list-item 279; }", "CSS_PROPERTY"],
     ["counter-set", "li { counter-set: list-item 280; }", "CSS_PROPERTY"],
     ["counter-increment", "li { counter-increment: list-item 100; }", "CSS_PROPERTY"],
-    ["-webkit-text-security (masks the glyphs)", "dd { -webkit-text-security: disc; }", "CSS_PROPERTY"],
-    ["@counter-style", "@counter-style price { system: cyclic; symbols: a; }", "CSS_AT_RULE"],
-    ["counter()", "li::after { content: counter(list-item); }", "CSS_FUNCTION"],
-    ["counters()", "li::after { content: counters(list-item, x); }", "CSS_FUNCTION"],
-    ["attr()", "a::after { content: attr(href); }", "CSS_FUNCTION"],
-    ["symbols()", "ol { list-style-type: symbols(cyclic x); }", "CSS_FUNCTION"],
+    ["-webkit-text-security", "dd { -webkit-text-security: disc; }", "CSS_PROPERTY"],
+    ["@counter-style", "@counter-style price { system: cyclic; }", "CSS_AT_RULE"],
+    ["@import", '@import "x.css";', "CSS_AT_RULE"],
+    ["@font-face", "@font-face { font-family: x; }", "CSS_AT_RULE"],
+    // every pseudo-element, both spellings
+    ["::first-letter", "p::first-letter { font-size: 12px; }", "CSS_PSEUDO_ELEMENT"],
+    [":first-letter (legacy)", "p:first-letter { font-size: 12px; }", "CSS_PSEUDO_ELEMENT"],
+    ["::first-line", "p::first-line { color: transparent; }", "CSS_PSEUDO_ELEMENT"],
+    ["::marker", "li::marker { color: #000; }", "CSS_PSEUDO_ELEMENT"],
+    ["::selection", "p::selection { color: #000; }", "CSS_PSEUDO_ELEMENT"],
+    ["::before", "p::before { color: #000; }", "CSS_PSEUDO_ELEMENT"],
+    ["::after", "p::after { color: #000; }", "CSS_PSEUDO_ELEMENT"],
+    [":before (legacy)", "p:before { color: #000; }", "CSS_PSEUDO_ELEMENT"],
+    // bidi and mirroring
+    ["unicode-bidi", "dd { unicode-bidi: bidi-override; }", "CSS_PROPERTY"],
+    ["direction", "dd { direction: rtl; }", "CSS_PROPERTY"],
+    ["scaleX(-1)", "dd { transform: scaleX(-1); }", "CSS_VALUE"],
+    ["scale(-1, 1)", "dd { transform: scale(-1, 1); }", "CSS_VALUE"],
+    ["rotate(180deg)", "dd { transform: rotate(180deg); }", "CSS_VALUE"],
+    ["translate", "dd { transform: translateX(-9999px); }", "CSS_VALUE"],
+    // decoration, shadow, stroke, spacing
+    ["text-decoration line-through", "dd { text-decoration: line-through; }", "CSS_VALUE"],
+    ["text-decoration overline", "dd { text-decoration: overline; }", "CSS_VALUE"],
+    ["text-decoration-thickness", "dd { text-decoration-thickness: 20px; }", "CSS_PROPERTY"],
+    ["text-decoration-style", "dd { text-decoration-style: wavy; }", "CSS_PROPERTY"],
+    ["text-decoration-color", "dd { text-decoration-color: #000; }", "CSS_PROPERTY"],
+    ["text-underline-offset", "dd { text-underline-offset: -10px; }", "CSS_PROPERTY"],
+    ["text-shadow", "dd { text-shadow: 1px 0 #000, -1px 0 #000; }", "CSS_PROPERTY"],
+    ["-webkit-text-stroke", "dd { -webkit-text-stroke: 4px #000; }", "CSS_PROPERTY"],
+    ["-webkit-text-fill-color", "dd { -webkit-text-fill-color: transparent; }", "CSS_PROPERTY"],
+    ["negative letter-spacing", "dd { letter-spacing: -0.5em; }", "CSS_VALUE"],
+    ["negative letter-spacing in px", "dd { letter-spacing: -1px; }", "CSS_VALUE"],
+    // filters, blending, clipping, hiding
+    ["filter on an image", "img { filter: contrast(10); }", "CSS_PROPERTY"],
+    ["backdrop-filter", "div { backdrop-filter: blur(4px); }", "CSS_PROPERTY"],
+    ["mix-blend-mode", "dd { mix-blend-mode: difference; }", "CSS_PROPERTY"],
+    ["clip-path", "dd { clip-path: inset(50%); }", "CSS_PROPERTY"],
+    ["mask-image", "dd { mask-image: linear-gradient(#000, transparent); }", "CSS_PROPERTY"],
+    ["zoom", "dd { zoom: 0.1; }", "CSS_PROPERTY"],
+    ["visibility", "dd { visibility: hidden; }", "CSS_PROPERTY"],
+    ["display: none", "dd { display: none; }", "CSS_VALUE"],
+    ["overflow: hidden", "dd { overflow: hidden; }", "CSS_PROPERTY"],
+    ["low opacity", "dd { opacity: 0.05; }", "CSS_VALUE"],
+    ["position: absolute", "dd { position: absolute; }", "CSS_VALUE"],
+    ["an offset", "dd { left: -9999px; }", "CSS_PROPERTY"],
+    ["a tiny font size", "dd { font-size: 1px; }", "CSS_VALUE"],
+    ["a background image or gradient", "dd { background: linear-gradient(#000, #fff); }", "CSS_VALUE"],
+    ["order (visual reordering)", "li { order: -1; }", "CSS_PROPERTY"],
+    ["a reversed flex direction", "ul { flex-direction: row-reverse; }", "CSS_VALUE"],
+    ["a grid line number (moves a label beside another value)", "dt { grid-row: 1; grid-column: 2; }", "CSS_VALUE"],
+    ["a grid line range", "dt { grid-column: 1 / 3; }", "CSS_VALUE"],
+    ["dense grid packing", "dl { grid-auto-flow: dense; }", "CSS_VALUE"],
+    ["a large text-indent", "p { text-indent: 200px; }", "CSS_VALUE"],
+    ["!important", "dd { color: #000 !important; }", "CSS_IMPORTANT"],
+    ["a custom property", "dd { --x: 1px; }", "CSS_PROPERTY"],
+    // media: width only, 320 … 1920
+    ["@media scripting", "@media (scripting: none) { dd { color: #000; } }", "CSS_MEDIA"],
+    ["@media prefers-reduced-motion", "@media (prefers-reduced-motion: reduce) { dd { color: #000; } }", "CSS_MEDIA"],
+    ["@media prefers-color-scheme", "@media (prefers-color-scheme: dark) { dd { color: #000; } }", "CSS_MEDIA"],
+    ["@media print", "@media print { dd { color: #000; } }", "CSS_MEDIA"],
+    ["@media screen and", "@media screen and (min-width: 400px) { dd { color: #000; } }", "CSS_MEDIA"],
+    ["@media orientation", "@media (orientation: portrait) { dd { color: #000; } }", "CSS_MEDIA"],
+    ["@media below 320px", "@media (max-width: 300px) { dd { color: #000; } }", "CSS_MEDIA"],
+    ["@media above 1920px", "@media (min-width: 2000px) { dd { color: #000; } }", "CSS_MEDIA"],
+    ["@media in em", "@media (min-width: 40em) { dd { color: #000; } }", "CSS_MEDIA"],
+    ["nested @media", "@media (min-width: 400px) { @media (min-width: 500px) { dd { color: #000; } } }", "CSS_MEDIA_NESTED"],
+    ["@supports", "@supports (display: grid) { dd { color: #000; } }", "CSS_AT_RULE"],
+    // selectors
+    ["an attribute selector", 'a[href="#info"] { color: #000; }', "CSS_SELECTOR"],
+    [":hover", "a:hover { color: #000; }", "CSS_SELECTOR"],
+    [":not()", "p:not(.x) { color: #000; }", "CSS_SELECTOR"],
+    [":has()", "p:has(a) { color: #000; }", "CSS_SELECTOR"],
+    ["a sibling combinator", "p + p { color: #000; }", "CSS_SELECTOR"],
+    ["an element outside the page's list", "svg { color: #000; }", "CSS_SELECTOR"],
+    // fonts: a face outside the list (a symbol font could draw a fact's digits as other glyphs)
+    ["an unknown font family", 'dd { font-family: "Wingdings", serif; }', "CSS_VALUE"],
+    ["a monospace / fantasy generic family", "dd { font-family: fantasy; }", "CSS_VALUE"],
+    ["an unquoted multi-word family", "dd { font-family: Noto Serif JP, serif; }", "CSS_VALUE"],
   ])("refuses %s", (_n, css, code) => {
     expect(cssProblems(css)).toContain(code);
   });
-  it("allows strings only in font family and grid area names, and an empty content", () => {
-    expect(cssProblems('body { font-family: "Noto Serif JP", serif; } h1 { font: 400 56px "Noto Serif JP"; }')).toEqual([]);
-    expect(cssProblems('.g { display: grid; grid-template-areas: "a b" "c d"; }')).toEqual([]);
-    expect(cssProblems('.x::before { content: ""; display: block; }')).toEqual([]);
-    expect(cssProblems("ol { list-style-type: decimal; } ul { list-style: none; }")).toEqual([]);
+
+  it("allows a page's ordinary vocabulary", () => {
+    for (const css of [
+      'body { font-family: "Noto Serif JP", IPAMincho, "Hiragino Mincho ProN", serif; }',
+      "main > section .card:first-child h2 { color: #1f1d1b; }",
+      "li:nth-child(2n+1) { background: #eae1d2; }",
+      ".g { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }",
+      "img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 4px; }",
+      "@media (min-width: 760px) and (max-width: 1200px) { .g { grid-template-columns: 1fr; } }",
+      "a { text-decoration: underline; letter-spacing: 0.1em; } ul { list-style: none; }",
+      "#hero { padding: 80px 0; transform: rotate(-2deg); opacity: 0.9; }",
+      ".wide { grid-column: span 2; grid-row: auto; } p { text-indent: 1em; }",
+    ])
+      expect(cssProblems(css), css).toEqual([]);
   });
 });
 
@@ -324,6 +414,15 @@ describe("placeholder images", () => {
     chunk.writeUInt32BE(crc32(Buffer.concat([Buffer.from("IDAT"), data])) >>> 0, 8 + data.length);
     const changed = Buffer.concat([marked.subarray(0, idatAt - 4), chunk, marked.subarray(idatAt + 8 + len)]);
     expect(isFlatPng(changed)).toBe(false);
+    // re-review: one level is enough (text in near-identical pixels could be revealed by a filter elsewhere)
+    raw[1 + 3 * 20] = 233;
+    const data1 = deflateSync(raw);
+    const chunk1 = Buffer.alloc(12 + data1.length);
+    chunk1.writeUInt32BE(data1.length, 0);
+    chunk1.write("IDAT", 4, "latin1");
+    data1.copy(chunk1, 8);
+    chunk1.writeUInt32BE(crc32(Buffer.concat([Buffer.from("IDAT"), data1])) >>> 0, 8 + data1.length);
+    expect(isFlatPng(Buffer.concat([marked.subarray(0, idatAt - 4), chunk1, marked.subarray(idatAt + 8 + len)]))).toBe(false);
     expect(isFlatPng(Buffer.from("not a png"))).toBe(false);
   });
 });

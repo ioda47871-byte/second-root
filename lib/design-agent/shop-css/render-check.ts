@@ -154,7 +154,7 @@ export function lowContrastShare(ground: Pixels, node: Node): number {
 
 export type Ink = { missing: number; ratio: number };
 
-type Picture = { withText: Pixels; without: Pixels };
+export type Picture = { withText: Pixels; without: Pixels };
 
 const charBox = (px: Pixels, r: { left: number; top: number; width: number; height: number }) => ({
   x0: Math.max(0, Math.floor(r.left)),
@@ -186,8 +186,8 @@ function coverage(p: Picture, i: number, colour: readonly number[], alpha: numbe
   return Math.max(0, Math.min(1, dot / norm));
 }
 
-/** A character's ink: the text's coverage summed over its box (in pixels' worth of full colour). */
-function inkMass(p: Picture, r: Node["chars"][number], colour: readonly number[], alpha: number): number {
+/** A character's ink: the text's coverage summed over its box (in pixels' worth of full colour). Exported for the comp-to-site PoC's upper bound (DEV-082). */
+export function inkMass(p: Picture, r: Node["chars"][number], colour: readonly number[], alpha: number): number {
   const { x0, x1, y0, y1 } = charBox(p.withText, r);
   let mass = 0;
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) mass += coverage(p, (y * p.withText.width + x) * p.withText.channels, colour, alpha);
