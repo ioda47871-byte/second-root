@@ -3686,6 +3686,47 @@
         "再試行 0 回の provider・1 回だけ呼ぶ prompt・最初の失敗で止める・proxy / WSL の network mode・upstream への報告の採用",
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-083",
+      "title": "高品質なデザインを安全に再現する: comp 実装の表現（hero の文字の重ね・非対称の組み・縦書き・装飾の重なり・mobile の組み替え・地の画像とグラデーション）を、それぞれに対応する検査と組にして段階的に広げる（DEV-082 の後）",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-072"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "purpose": "最終目標は店ごとの original な comp を忠実に実装すること。DEV-082 の厳格な allowlist は安全だが、高品質な comp に必要な表現（comp-to-site.md §6a）を禁じている。対応する検査なしに禁止を外さず、表現ごとに検査を組にして広げる。保護された文字と店舗の事実を隠す・変えることは引き続き禁止。設計は docs/design/dev-083-expressive-safe-reproduction.md、全体の道筋は docs/design/claude-auto-implementation-roadmap.md。着手は DEV-082（PR #96）の merge の後（DEV-082 は develop の tasks.json にまだ無いので、merge 後に depends_on へ足す）",
+      "acceptance_criteria": [
+        "着手は DEV-082 の merge の後。docs/design/dev-083-expressive-safe-reproduction.md の段階（§7: A 検査だけ → B → C → D → E → F）を 1 段 1 PR で進める",
+        "対応する検査の無い禁止の解除はしない: 各表現は §3 の「許す表現 ⇄ 検査」の組と D/H（機械か人か）に従い、検査を先に入れて probe が全部失敗することを示してから allowlist を広げる（§8）",
+        "不変条件 I1〜I7（§1: 語は事実・固定 label・disclosure だけ、保護された文字は全幅で表示・正確・判読可能・覆われない、script・network なし、label と事実の対応、検査が飛ばす文字なし、comp の文字は data にしない、類似度だけでは pass しない）を変えない",
+        "phase A は緩和なし: 役割（data-comp-role）・stacking の監査・装飾と保護された文字の交差・層を残した参照による文字ごとの ink proof・合成された地での contrast と busyness（報告）・capability の schema（空の enum）・可視性の表、と実測した時間",
+        "各段: 既存の 4 回の review の bypass の分類 + その表現の probe + 以前の表現との組み合わせの probe、Fresh Review、最新 SHA の CI、人の承認（品質ゲートの変更なので自律 merge しない）。rollback は enum から外すだけ（宣言した頁は拒否、fail closed）",
+        "anti-template の構造の距離は補助の指標（差は品質ではない）。comp への忠実さ・デザインの品質・非コピーは別々に評価し、距離を最適化の目標にしない（§4）",
+        "閾値（ink 0.8〜1.15・4.5:1・10 %・12 px・0.85・busyness の上限・予算・許容）の変更は別の承認。unit job に収まらなければ test を skip せず、CI の分割（人の承認）を待つ"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/comp-impl/*（各検査の pass / fail、各段の probe が失敗すること、組み合わせの probe）",
+        "guardrails・ai-tasks の unit、npm run typecheck、eslint（変更した file）、check:secrets"
+      ],
+      "allowed_scope": [
+        "（DEV-082 の merge の後、各段の着手のときに人が決める。設計の文書は docs/design/dev-083-expressive-safe-reproduction.md）"
+      ],
+      "forbidden_scope": [
+        "対応する検査の無い allowlist の緩和、人の承認の無い品質ゲート・閾値の変更",
+        "保護された文字（disclosure・必須の事実）を隠す・変える・覆うことを許す変更、CSS で文字を作ること（content の文字列・counter）",
+        "Codex の実行・model / API の呼び出し・WSL での操作",
+        "営業 demo の生成・worker・timer・asset store の規則・components/demo/*・Production・Staging・DB・.github/workflows（CI の分割は人の承認の後）・package.json の依存"
+      ],
+      "human_approval_triggers": [
+        "各段（B〜F）の allowlist の緩和と、すべての閾値・許容・予算の値（品質ゲートの変更）",
+        "CI の分割（.github/workflows/ci.yml）",
+        "texture・AI concept の asset を頁で使うこと（1 枚ずつの review）",
+        "comp の rubric の implementability の基準の見直し",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件に加え、緩和を含む段は人の承認"
+      ]
     }
   ]
 }
