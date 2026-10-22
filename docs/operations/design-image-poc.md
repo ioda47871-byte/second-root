@@ -669,7 +669,7 @@ Reading 24a:
 | kernel | `6.18.33.2-microsoft-standard-WSL2` |
 | WSL networking mode | `nat` |
 | passt (dpkg) | `0.0~git20240220.1e6f92b-1`: Ubuntu 24.04's own package (noble release pocket; noble has no `-updates`, `-security` or `-backports` build of passt) |
-| `pasta --version` | `unknown version`. The Debian/Ubuntu build has no git tree, so the Makefile's `VERSION` falls back to that string. Identify the binary by its dpkg version and hash, not by `--version` |
+| `pasta --version` | `pasta unknown version` (pasta prints its mode name, then the version). The Debian/Ubuntu build has no git tree, so the Makefile's `VERSION` falls back to `unknown version`. Identify the binary by its dpkg version and hash, not by `--version` |
 | system keepalive sysctls | `7200 75 9`. They do not apply to Codex's sockets: reqwest sets keepalive 15/15/3 and `TCP_USER_TIMEOUT` 30 s per socket |
 | jail | `JAIL_OK` |
 | proxy variables in the jail | all unset (`HTTP(S)_PROXY`, `NO_PROXY`, `ALL_PROXY`, upper and lower case) |
@@ -871,7 +871,7 @@ probes.
 |---|---|---|---|
 | A cut at about 27 s | all `OPEN` | **pasta is the cause.** H1 confirmed, H3 ruled out. Fits 24a: passt `1e6f92b` predates `238c69f` | the passt update, [`passt-update-plan.md`](passt-update-plan.md); each step has its own approval |
 | A cut at about 27 s | A cut at about 27 s | **WSL's NAT or something upstream** (a middlebox, the edge). H1 confirmed, but updating passt alone will not fix it | WSL networking (`.wslconfig`, human approval) or an upstream report; not the passt plan alone |
-| all `OPEN` | all `OPEN` (or not run) | **H2**: keepalives are answered on Codex's path, so the ~156 s is not the TCP cut. The server or edge most likely answers 5xx at about 30 s | 24c (one Codex run) |
+| all `OPEN` | all `OPEN` (or not run) | **unexpected given 24a** (the installed pasta `1e6f92b` does not ACK keepalives): send the output as it is. If it holds up, keepalives are answered on Codex's path, the ~156 s is not the TCP cut, and **H2** leads (the server or edge answers 5xx at about 30 s) | send the output; then H2 / 24c (one Codex run) |
 | all `OPEN` | A cut | unexpected: the jail path answers but the host path does not | send both outputs as they are |
 | A cut at about 27 s | not run | H1 confirmed on Codex's path; pasta versus NAT is still open | run 24b-host (same approval class) before deciding on the passt update |
 

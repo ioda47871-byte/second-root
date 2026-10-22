@@ -28,8 +28,10 @@ Labels used below:
   OPEN on the host"** (the decision table in `design-image-poc.md`).
 
 Ubuntu 24.04 has **no** newer passt: there is no `noble-updates`, `noble-security` or `noble-backports` build. The
-Launchpad publishing history has only the noble release pocket's `1e6f92b-1` (published 2024-02-24) and deleted
-`-proposed` uploads before it. So "update passt" always means a package from outside noble.
+Launchpad publishing history for noble ends with the release pocket's `1e6f92b-1` (published 2024-02-24, still
+Published). The earlier release-pocket uploads (`08344da`, `f091893`, …) are Superseded by it, and the `-proposed`
+uploads were Deleted. Nothing was published to noble after it. So "update passt" always means a package from outside
+noble.
 
 ## 2. (a) Which upstream version fixes it
 
@@ -162,7 +164,7 @@ where every `0.0.0.0` UDP service answers (`design-wsl-isolation.md` §2). That 
 
 **Is AppArmor active on this WSL kernel? INFERRED no.** Microsoft's `config-wsl` for the 6.18 branch has:
 - `CONFIG_SECURITY_APPARMOR=y`, but `CONFIG_DEFAULT_SECURITY_SELINUX=y`.
-- `CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,apparmor,tomoyo"`.
+- `CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,apparmor,tomoyo,bpf"`.
 
 SELinux comes first among the exclusive LSMs, so AppArmor is not the active major LSM unless the kernel command line
 changes it. The snapshot (§5, V-0) checks `/sys/kernel/security/lsm` and `aa-enabled`.
@@ -225,7 +227,10 @@ dpkg does not touch `/etc/systemd/system/sr-jail-*.service`. The only behaviour 
 
 Before any heavy step on the WSL machine, run the resource preflight (`docs/operations/wsl-resource-preflight.md`).
 
-**V-0 — snapshot before the update (A-4). Read only.** Run in the human's WSL shell, outside the jail. Keep the output:
+**V-0 — snapshot before the update (A-4).** Run in the human's WSL shell, outside the jail. Keep the output. Everything
+is read only except one root-only state file, `/root/sr-passt-update/v0-state`. It records what V-2 and the rollback
+must put back: whether Claude is enabled and active, whether passt is held, and whether the AppArmor `local/` file and
+cache for pasta exist.
 
 ```bash
 dpkg-query -W -f='${Package} ${Version} ${db:Status-Abbrev}\n' passt
@@ -233,7 +238,19 @@ apt-cache policy passt | head -n 6
 apt-mark showhold | grep -x passt || echo "passt: not held"
 stat -c '%i %h %U:%G %a %n' /usr/bin/passt /usr/bin/passt.avx2 /usr/bin/pasta /usr/bin/pasta.avx2
 sha256sum /usr/bin/passt /usr/bin/passt.avx2
-dpkg --verify passt && echo "dpkg-verify: clean"
+out="$(dpkg --verify passt)"; if [ -z "$out" ]; then echo "dpkg-verify: clean"; else printf '%s\n' "$out"; fi
+apt-cache rdepends --installed --no-recommends --no-suggests passt | tail -n +3 | grep . || echo "no installed package depends on passt"
+ls -l /etc/apparmor.d/local/ 2>&1 | grep -E 'usr\.bin\.pas' || echo "apparmor local/: no passt or pasta file"
+sudo find /var/cache/apparmor -name 'usr.bin.pas*' 2>/dev/null | grep . || echo "apparmor cache: no passt or pasta entry"
+systemctl is-enabled sr-jail-claude.service; systemctl is-active sr-jail-claude.service
+sudo install -d -m 0700 /root/sr-passt-update
+{
+  echo "claude_enabled=$(systemctl is-enabled sr-jail-claude.service 2>/dev/null || true)"
+  echo "claude_active=$(systemctl is-active sr-jail-claude.service 2>/dev/null || true)"
+  echo "passt_held=$(apt-mark showhold | grep -qx passt && echo yes || echo no)"
+  echo "local_pasta=$([ -e /etc/apparmor.d/local/usr.bin.pasta ] && echo present || echo absent)"
+  echo "cache_pasta=$(sudo find /var/cache/apparmor -name usr.bin.pasta 2>/dev/null | grep -q . && echo present || echo absent)"
+} | sudo tee /root/sr-passt-update/v0-state
 systemctl cat sr-jail-net.service | sha256sum
 systemctl show sr-jail-net.service -p ExecStart -p IPAddressAllow -p IPAddressDeny --no-pager
 PID="$(systemctl show -p MainPID --value sr-jail-net.service)"; echo "pasta pid: $PID"
@@ -251,7 +268,14 @@ Also keep the HUMAN-024b outputs, jail and host, as the baseline.
 Expected for today's package:
 - `/usr/bin/passt` sha256 `2edcf1d787b21564045045f27def85e6397b930557ce5884ed8bfa8d0c77e048`;
 - `passt.avx2` `da1809a041fd9075e638aaffc2b40b7be1723824fb8d0b6697c074c0cb4baec8`;
-- `pasta` and `pasta.avx2` are hard links to them (same inode, link count 2).
+- `pasta` and `pasta.avx2` are hard links to them (same inode, link count 2);
+- `dpkg-verify: clean`. On dpkg 1.22 `dpkg --verify` exits 0 even when it finds problems, which is why the snippet
+  tests its output. Exception: `missing` lines only under `/usr/share/doc` or `/usr/share/man` come from dpkg
+  path-excludes on a minimized image (`/etc/dpkg/dpkg.cfg.d/`) and are expected. Any line on `/usr/bin` or an `/etc`
+  conffile means a passt file was changed locally: stop and report. "Clean" in V-3 and R-3 means the same as here;
+  those doc and man lines may appear there too;
+- most likely `passt_held=no` and no pasta file in `local/` or in the cache. Whatever V-0 shows is the state the
+  rollback restores.
 
 **V-1 — fetch and verify the package (part of A-5, no install).** Run as root in a fresh root-only directory:
 
@@ -288,6 +312,7 @@ on 2026-10-22: every check passed and the stanza matched.
 
 ```bash
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-stop
+echo "49eaf773c120432bdf439d26d3de4d9867116580a819e6eba815b600c45b9840  /root/sr-passt-update/passt_0.0~git20260120.386b5f5-1_amd64.deb" | sudo sha256sum -c
 sudo dpkg -i /root/sr-passt-update/passt_0.0~git20260120.386b5f5-1_amd64.deb
 sudo apt-mark hold passt
 sudo systemctl restart sr-jail-net.service
@@ -295,18 +320,36 @@ systemctl is-active sr-jail-net.service
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-check
 ```
 
-- `dpkg -i` must not ask about a modified conffile. V-0's `dpkg --verify` shows whether any was modified; if a prompt
-  appears, answer **N** (keep the current one) and stop.
+- The hash is checked again right before `dpkg -i`, so the file installed is the file V-1 verified. If
+  `sha256sum -c` fails, do not run `dpkg -i`.
+- `dpkg -i` must not ask about a modified conffile. V-0's `dpkg --verify` output shows whether any was modified; if a
+  prompt appears, answer **N** (keep the current one) and stop.
 - If `sr-jail-net` is not `active` or `jail-check` is not `JAIL_OK`, roll back (§6). Do not change the jail to make it
   start.
+- `claude-stop` **disables** `sr-jail-claude`. Restoring Claude is a separate step (V-2b), run only after the V-3 checks
+  below pass.
+
+**V-2b — restore Claude to its V-0 state (success path).** Run after V-3's immediate checks pass. The hold set in V-2 is
+the one intended change (§6.2), so it stays.
+
+```bash
+CLAUDE_ENABLED="$(sudo sed -n 's/^claude_enabled=//p' /root/sr-passt-update/v0-state)"
+if [ "$CLAUDE_ENABLED" = enabled ]; then sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-start; else echo "sr-jail-claude stays stopped (V-0: ${CLAUDE_ENABLED:-unknown})"; fi
+systemctl is-enabled sr-jail-claude.service; systemctl is-active sr-jail-claude.service
+```
+
+The last line must show the V-0 values (`claude_enabled` / `claude_active` in `v0-state`). If V-0 had Claude enabled but
+not active, `claude-start` leaves it active: note that difference and do not stop it again on your own.
 
 **V-3 — checks after the update (same approval as A-5):**
 - **The 24a host commands.**
   - `dpkg-query` shows `0.0~git20260120.386b5f5-1`.
-  - `pasta --version` now prints `0.0~git20260120.386b5f5-1`: this build embeds its version, unlike noble's.
+  - The first line of `pasta --version` is now `pasta 0.0~git20260120.386b5f5-1` (pasta prints its mode name, then the
+    version). This build embeds its version; noble's printed `pasta unknown version`.
   - `/usr/bin/passt` sha256 is `a10789852407f65160c4abfac002efe511b254e6ab2cbfc658e807575db44832`, and `passt.avx2` is
     `e02708849808156f0c7f92f39b7d970b01f2d5c392fc559eeb294dbda72abed7`.
   - `apt-mark showhold` lists `passt`.
+  - `dpkg --verify` (the V-0 form) prints `dpkg-verify: clean`.
 - **The rest of V-0, compared line by line.**
   - The unit hash, `ExecStart`, `IPAddressAllow/Deny` and `ip -n srjail rule show` are **identical**.
   - In `/proc/<pid>/status`: `Uid` is the same; `CapEff/CapPrm/CapBnd` are not larger; `NoNewPrivs` is the same;
@@ -342,34 +385,89 @@ permission, and its result would add evidence but replace none of V-3.
 
 ## 6. (e) Rollback and the hold policy
 
-### 6.1 Rollback (pre-approved as A-5's abort path; run by a person)
+### 6.1 Rollback (approved together with A-5 as its abort path; run by a person)
+
+The rollback **purges** the hand-installed package, then installs the verified noble deb. A plain downgrade with
+`dpkg -i` is not used, for two reasons:
+- **It leaves `/etc/apparmor.d/usr.bin.pasta` behind.** The noble package does not ship that conffile, so dpkg keeps
+  it as an obsolete conffile of `passt`. If it stays on disk, noble's postinst still acts on it: it creates
+  `local/usr.bin.pasta` and, when AppArmor is enabled, runs `apparmor_parser -r -T -W`, which writes a cache entry.
+- **Moving the file aside does not help.** If it is moved aside first, `dpkg --verify` then reports `missing c` for it
+  indefinitely.
+
+`dpkg --purge passt` removes every passt conffile, and the 386b5f5 postrm (dh_apparmor) removes `local/` and
+`/var/cache/apparmor/*/` for `usr.bin.pasta`, `usr.bin.passt` and `usr.bin.passt-repair`. After `dpkg -i` of the old
+deb, the dpkg database and `/etc/apparmor.d` are as noble's package leaves them, which is the V-0 state, and
+`dpkg --verify` is clean.
+
+Purging is only safe when:
+- no passt conffile was changed locally (a purge would discard the change);
+- no installed package depends on passt (`dpkg --purge` would refuse).
+
+R-1 checks both. The jail is stopped during the purge, so a missing `/usr/bin/pasta` affects nothing.
+
+**R-1 — checks (read only).** Stop if:
+- `sha256sum -c` fails;
+- the verify output is not `dpkg-verify: clean` (apart from the doc and man lines V-0 allows);
+- a package depends on passt.
+
+If either of the last two is true, use the fallback below.
+
+```bash
+echo "de07c44dcae84b58107cdf47e58f7d6ca2fdd466b193a10aea8a7115cf97bead  /root/sr-passt-update/passt_0.0~git20240220.1e6f92b-1_amd64.deb" | sudo sha256sum -c
+out="$(dpkg --verify passt)"; if [ -z "$out" ]; then echo "dpkg-verify: clean"; else printf '%s\n' "$out"; fi
+apt-cache rdepends --installed --no-recommends --no-suggests passt | tail -n +3 | grep . || echo "no installed package depends on passt"
+sudo cat /root/sr-passt-update/v0-state
+```
+
+**R-2 — roll back.**
 
 ```bash
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-stop
-echo "de07c44dcae84b58107cdf47e58f7d6ca2fdd466b193a10aea8a7115cf97bead  /root/sr-passt-update/passt_0.0~git20240220.1e6f92b-1_amd64.deb" | sudo sha256sum -c
-sudo apt-mark unhold passt
-sudo dpkg -i /root/sr-passt-update/passt_0.0~git20240220.1e6f92b-1_amd64.deb
+sudo systemctl stop sr-jail-net.service
 if [ -e /etc/apparmor.d/usr.bin.pasta ]; then
+  sudo cp -p /etc/apparmor.d/usr.bin.pasta /root/sr-passt-update/usr.bin.pasta.from-386b5f5
   if aa-enabled --quiet 2>/dev/null; then sudo apparmor_parser -R /etc/apparmor.d/usr.bin.pasta || true; fi
-  sudo mv /etc/apparmor.d/usr.bin.pasta /root/sr-passt-update/usr.bin.pasta.from-386b5f5
 fi
-sudo systemctl restart sr-jail-net.service
+sudo apt-mark unhold passt
+sudo dpkg --purge passt
+sudo dpkg -i /root/sr-passt-update/passt_0.0~git20240220.1e6f92b-1_amd64.deb
+if [ "$(sudo sed -n 's/^local_pasta=//p' /root/sr-passt-update/v0-state)" = absent ]; then sudo rm -f /etc/apparmor.d/local/usr.bin.pasta; fi
+if [ "$(sudo sed -n 's/^cache_pasta=//p' /root/sr-passt-update/v0-state)" = absent ]; then sudo find /var/cache/apparmor -name usr.bin.pasta -delete 2>/dev/null || true; fi
+if [ "$(sudo sed -n 's/^passt_held=//p' /root/sr-passt-update/v0-state)" = yes ]; then sudo apt-mark hold passt; fi
+sudo systemctl start sr-jail-net.service
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-check
 ```
 
-- **Why the profile step.** Downgrading with `dpkg -i` leaves a conffile that the older package no longer ships
-  (`usr.bin.pasta`) on disk, as an obsolete conffile. With AppArmor active it would be loaded at the next boot. noble's
-  package never ships that file, so after the downgrade it is always moved aside, and kept for reference.
-- **Why `dpkg -i` and not `apt-get install passt=0.0~git20240220.1e6f92b-1`.** The apt form also works (noble's
-  release pocket still has that version), but `dpkg -i` of the verified copy works offline and pins the exact bytes.
-- **Verify the rollback:**
-  - `dpkg-query -W passt` → `0.0~git20240220.1e6f92b-1`;
-  - `pasta --version` → `unknown version`;
-  - `/usr/bin/passt` sha256 `2edcf1d7…c77e048`;
-  - `dpkg --verify passt` clean;
-  - `jail-check` → `JAIL_OK`;
-  - the V-0 `/proc/<pid>/status` lines match the snapshot.
-- **Then:** `admin.sh claude-start`.
+- **The profile.** The loaded `pasta` profile (if AppArmor is active) is unloaded before the purge, because the purge
+  removes the file but not the policy in the kernel. A copy is kept for reference. noble's postinst reloads its own
+  `usr.bin.passt`.
+- **The `local/` and cache cleanup.** It only removes what V-0 showed absent. The purge's postrm normally removes them
+  already, so these lines are a no-op then.
+- **The hold.** It ends as V-0 had it: unheld, unless V-0 showed `passt_held=yes`. It is lifted before the purge
+  because dpkg may refuse to remove a held package.
+- **Fallback, only if R-1 rules out the purge.**
+  - Unload and move `/etc/apparmor.d/usr.bin.pasta` aside **before** the downgrade (same `if` block, `mv` instead of
+    `cp`), then `sudo dpkg -i` the old deb.
+  - Clean `local/` and the cache as above.
+  - Afterwards `dpkg --verify passt` prints exactly one expected line, `missing   c /etc/apparmor.d/usr.bin.pasta` (an
+    obsolete conffile); any other line is a problem.
+  - Record that line, and keep any locally changed conffile as it was.
+- **Why not `apt-get install passt=0.0~git20240220.1e6f92b-1`.** The apt form also works (noble's release pocket still
+  has that version), but the verified local copy works offline and pins the exact bytes.
+
+**R-3 — verify, then restore Claude to its V-0 state:**
+- `dpkg-query -W passt` → `0.0~git20240220.1e6f92b-1`;
+- the first line of `pasta --version` → `pasta unknown version`;
+- `/usr/bin/passt` sha256 `2edcf1d7…c77e048`;
+- the V-0 `dpkg --verify` form prints `dpkg-verify: clean`, or with the fallback only the one `missing c` line;
+- `ls -l /etc/apparmor.d/local/` and the cache `find` print the same as in V-0;
+- `apt-mark showhold` matches `passt_held` in `v0-state`;
+- `jail-check` → `JAIL_OK`;
+- the V-0 `/proc/<pid>/status` lines match the snapshot.
+
+Then run V-2b's block, which starts Claude only if V-0 had it enabled.
+
 - **On a WSL backup:** `wsl --export` before A-5 is possible, but it is a Windows-side action with its own disk cost.
   It is not proposed; the deb copy is enough for one package.
 
@@ -381,8 +479,8 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-chec
   - The hold makes that explicit, covers a future noble upload with a higher version string, and shows up in
     `apt-mark showhold`.
   - unattended-upgrades respects holds.
-- After a rollback to noble's version: `apt-mark unhold passt`. The machine is then back on the normal noble package,
-  which gets whatever noble publishes.
+- After a rollback to noble's version: the hold state is whatever V-0 recorded (normally unheld). The machine is then
+  back on the normal noble package, which gets whatever noble publishes.
 - Any later change of the hand-installed version (a resolute SRU, a security fix) is a new approval. Follow V-1 → V-3
   with the new version and hash, and keep the previous deb as the rollback copy.
 
@@ -436,7 +534,7 @@ Nothing advances without the one before it. Each is a separate human decision.
 | A-2 | Proceed with a passt update **and** grant a written exception to `design-wsl-isolation.md` §6 for exactly `passt 0.0~git20260120.386b5f5-1` from Ubuntu resolute, verified as in V-1 (the docs change goes in the A-3 PR or its own) | decision | A-1 shows "cut in the jail, OPEN on the host" |
 | A-3 | The jail's DNS rule: only UDP/53 to 198.51.100.53, plus a probe check and tests (§4.2), as a code PR. **Or** accept the UDP/853 residual in writing | repo PR, then `admin.sh approve <sha>` on WSL (the usual approval) | A-2 |
 | A-4 | V-0 snapshot (read only) | WSL | A-2 (and A-3 deployed, if chosen) |
-| A-5 | V-1 fetch and verify, V-2 update and hold, the immediate V-3 checks; **rollback (§6.1) pre-approved as the abort path** | WSL, root | A-4 |
+| A-5 | V-1 fetch and verify, V-2 update and hold, the immediate V-3 checks; **rollback (§6.1) approved together with A-5 as its abort path** | WSL, root | A-4 |
 | A-6 | 24b in the jail and 24b-host after the update | WSL | A-5 passes V-3 |
 | A-7 | In-jail `sandbox.test.ts` / `worker.test.ts` (optional; resource preflight first) | WSL | A-5 |
 | A-8 | One Codex image run (24c-style, HUMAN-021b's v1 command) | WSL, plan quota | A-6 shows A `OPEN` |
