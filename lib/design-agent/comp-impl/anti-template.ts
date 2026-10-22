@@ -60,12 +60,12 @@ export function fingerprintDistance(a: Fingerprint, b: Fingerprint): number {
 }
 
 export function nearestReference(page: Fingerprint, refs: readonly ReferenceFingerprint[]): { id: string; distance: number } {
-  let best = { id: "none", distance: 1 };
+  let best = { id: "none", distance: Number.POSITIVE_INFINITY };
   for (const r of refs) {
     const d = fingerprintDistance(page, r.fingerprint);
     if (d < best.distance) best = { id: r.id, distance: d };
   }
-  return best;
+  return Number.isFinite(best.distance) ? best : { id: "none", distance: 1 };
 }
 
 /** The normalized declaration blocks of a stylesheet (innermost { … } blocks; declarations trimmed, lower-cased, sorted), with at least MIN_DECLARATIONS each. */
