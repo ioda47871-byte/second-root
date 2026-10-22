@@ -3751,7 +3751,8 @@
       "status": "backlog",
       "priority": "P2",
       "depends_on": [
-        "DEV-072"
+        "DEV-072",
+        "DEV-082"
       ],
       "attempts": 0,
       "last_failure": null,
