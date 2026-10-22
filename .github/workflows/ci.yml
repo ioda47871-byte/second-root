@@ -37,10 +37,16 @@ jobs:
       - run: npm run typecheck
       - run: npm run check:secrets
 
-  unit:
-    name: unit
+  # DEV-085: unit runs in two halves (vitest --shard), in parallel, so each stays well
+  # inside its time limit. Every test still runs on every PR, exactly once.
+  unit-shard:
+    name: unit (${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -49,16 +55,36 @@ jobs:
           cache: npm
       - run: npm ci
       # The design worker tests capture a local mock page with headless Chromium.
+      # Normally 20-40 s; the slowest seen was 6m47s on a slow apt mirror (still progressing).
+      # The limit stops a hung install; a timeout fails the step and the job.
       - run: npx playwright install --with-deps chromium
+        timeout-minutes: 8
       # The Codex sandbox tests run against real bubblewrap, unprivileged (as on the WSL worker).
       # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor; WSL does not.
       - run: sudo apt-get install -y bubblewrap && sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       # The shop-CSS guard's render checks (Chromium, many widths) run in their own job below.
-      - run: npx vitest run --exclude "tests/unit/design-agent/shop-css/**"
+      - run: npx vitest run --exclude "tests/unit/design-agent/shop-css/**" --shard=${{ matrix.shard }}/2
         env:
           SR_REQUIRE_BWRAP: "1"
       # The capture helper's Unix boundary with real users (needs root to create them).
-      - run: sudo env "PATH=$PATH" SR_CROSS_USER_TEST=1 npx vitest run tests/unit/design-agent/cross-user.test.ts
+      # Runs once, in the first half only.
+      - if: matrix.shard == 1
+        run: sudo env "PATH=$PATH" SR_CROSS_USER_TEST=1 npx vitest run tests/unit/design-agent/cross-user.test.ts
+
+  # The required check `unit`: green only if every unit half succeeded
+  # (a failed, cancelled or skipped half makes it red).
+  unit:
+    name: unit
+    needs: unit-shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULT: ${{ needs.unit-shard.result }}
+        run: |
+          echo "unit-shard result: $RESULT"
+          test "$RESULT" = "success"
 
   # DEV-072: the shop-CSS guard and its Chromium render checks, in parallel with unit
   # (together they no longer fit unit's time limit). Every test still runs on every PR.
@@ -79,6 +105,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+        timeout-minutes: 8
       - run: npx vitest run tests/unit/design-agent/shop-css --shard=${{ matrix.shard }}/2
 
   integration:
@@ -150,6 +177,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+        timeout-minutes: 8
       - uses: actions/download-artifact@v4
         with:
           name: next-build
@@ -178,6 +206,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+        timeout-minutes: 8
       - run: npx supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,postgres-meta,mailpit
       - uses: actions/download-artifact@v4
         with:
