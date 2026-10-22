@@ -72,7 +72,11 @@ describe("public /demo and the admin preview cannot load a shop stylesheet", () 
     walk(join(process.cwd(), "components"));
     walk(join(process.cwd(), "lib"));
     const allowed = new Set(["app/design-preview/[runId]/page.tsx", "components/demo/profile/ProfileRenderer.tsx", "lib/design-agent/preview.ts"]);
-    const users = files.map((f) => f.slice(process.cwd().length + 1)).filter((f) => !f.startsWith("lib/design-agent/shop-css/") && /shopCss|shop-css|ShopCss/.test(readFileSync(join(process.cwd(), f), "utf8")));
+    // DEV-082: the local comp-to-site PoC reuses the shop-css tokenizer and text measurement (never a shop stylesheet);
+    // it is imported only by its CLI (tests/unit/design-agent/comp-impl/isolation.test.ts)
+    const users = files
+      .map((f) => f.slice(process.cwd().length + 1))
+      .filter((f) => !f.startsWith("lib/design-agent/shop-css/") && !f.startsWith("lib/design-agent/comp-impl/") && /shopCss|shop-css|ShopCss/.test(readFileSync(join(process.cwd(), f), "utf8")));
     expect(users.filter((f) => !allowed.has(f))).toEqual([]);
     // the public and admin pages render through renderDesignedDemo only
     for (const page of ["app/demo/[publicToken]/page.tsx", "app/admin/preview/[prospectId]/page.tsx"]) expect(readFileSync(join(process.cwd(), page), "utf8")).not.toMatch(/shopCss|shop-css/);

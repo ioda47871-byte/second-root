@@ -3675,6 +3675,7 @@
         "scripts/sales-design-worker/comp-impl/**",
         "tests/unit/design-agent/comp-impl/**",
         "tests/unit/design-agent/design-image-poc.test.ts（隔離の検査に comp-impl の PoC だけを名指しで足す。renderer・worker・preview・assets の除外は不変）",
+        "tests/unit/design-agent/shop-css/scope.test.tsx（shop stylesheet の隔離の検査から comp-impl の PoC だけを除く。公開・admin の頁の検査は不変）",
         "docs/operations/comp-to-site.md",
         ".ai/**（feature branch では progress.md を除く）"
       ],
