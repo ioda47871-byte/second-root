@@ -3646,7 +3646,7 @@
     {
       "id": "DEV-084",
       "title": "Design image PoC: imagegen の最初の呼び出しが毎回約 156 秒で失敗する原因の調査（rust-v0.159.0 と reqwest の source を data として読む）と、呼び出しごとの時間の診断（Codex は流さない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-081"
