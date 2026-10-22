@@ -45,6 +45,7 @@ import { FingerprintSchema } from "./page-scripts";
 import { factValues, infoPairs } from "./spec";
 import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, inBatches, legibilityPass, legibilitySweep, protectedGeometryPass, MOBILE, openCompPage, overflowSweep, pageWidths, type Viewport } from "./render";
 import { compSimilarity, type Similarity } from "./similarity";
+import { capabilitiesCheck, layersCheck, layersSweepCheck, visibilityMatrixCheck } from "./verify";
 
 export const REPORT_SCHEMA = "comp-impl-report/1";
 export const REFERENCES_PATH = "lib/design-agent/comp-impl/template-fingerprints.json";
@@ -60,6 +61,8 @@ export type CompImplReport = {
   failed: string[];
   bundle: { shop: string; comp_sha256: string; comp_kind: string; comp_approved: boolean; width: number; height: number; direction_version: string; eval_total: number | null; eval_human_confirmed: boolean };
   page: { html_sha256: string; css_sha256: string; assets: number; ai_assets: number; network_blocked: number };
+  /** DEV-083 V7: the capabilities the spec declares (phase A approves none, so always empty on an accepted bundle). */
+  capabilities: string[];
   checks: Record<string, CheckResult>;
   anti_template: AntiTemplateResult;
   similarity: Similarity;
@@ -158,6 +161,11 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
     structure_mobile: structureCheck(mobile.measure),
     legibility_sweep: sweepCheck(sweepRun.widths, { required, disclosure }),
     protected_1px: protectedGeometryCheck(geometry),
+    // DEV-083 phase A (verification only: these add refusals; docs/design/dev-083-expressive-safe-reproduction.md §7)
+    ...Object.fromEntries(passes.map((p) => [`layers_${p.width}`, layersCheck(p.layers, p.ground)])),
+    layers_sweep: layersSweepCheck(sweepRun.widths),
+    visibility_matrix: visibilityMatrixCheck(passes),
+    capabilities: capabilitiesCheck(spec),
   };
   const anti = antiTemplateCheck({ html: page.html, css: page.css, fingerprint, references, templateCss: await templateCss(o.repoDir) });
   const similarity = compSimilarity(bundle.comp, bundle.compApproved, { bytes: desktop.shot, width: desktop.measure.width, height: desktop.measure.height });
@@ -181,6 +189,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
       eval_human_confirmed: bundle.evaluation.human_confirmed,
     },
     page: { html_sha256: page.htmlSha256, css_sha256: page.cssSha256, assets: page.assets.length, ai_assets: page.assets.filter((a) => a.kind === "ai_concept_local").length, network_blocked: blocked },
+    capabilities: spec.capabilities ?? [],
     checks,
     anti_template: anti,
     similarity,

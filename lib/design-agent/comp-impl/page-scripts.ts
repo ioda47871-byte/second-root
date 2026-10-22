@@ -45,8 +45,8 @@ export const PAGE_ELEMENTS: Readonly<Record<string, readonly string[]>> = {
   hr: [],
   address: [],
 };
-/** Attributes any element may carry: classes and ids, the harness's data-comp-* hooks, aria-hidden and aria-label (checked as text). */
-export const SHARED_ATTRIBUTES = ["class", "id", "aria-hidden", "aria-label", "data-comp-section", "data-comp-type", "data-comp-slot", "data-comp-placeholder", "data-comp-nav", "data-comp-cta", "data-comp-disclosure", "data-comp-container"] as const;
+/** Attributes any element may carry: classes and ids, the harness's data-comp-* hooks (data-comp-role: DEV-083 V1, checked against the DOM by layers.ts, never trusted), aria-hidden and aria-label (checked as text). */
+export const SHARED_ATTRIBUTES = ["class", "id", "aria-hidden", "aria-label", "data-comp-section", "data-comp-type", "data-comp-slot", "data-comp-placeholder", "data-comp-nav", "data-comp-cta", "data-comp-disclosure", "data-comp-container", "data-comp-role"] as const;
 
 /** Lists every element or attribute outside the allowlist (in the live document). Argument: { elements, shared }. */
 export const DOM_AUDIT_SCRIPT = String.raw`(arg) => {
