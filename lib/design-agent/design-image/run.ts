@@ -48,6 +48,12 @@
  *   no `function_call imagegen` at all. No image call seen in code mode is
  *   TOOL_NOT_SEEN_CODE_MODE (class `inconclusive`), never TOOL_NOT_CALLED. No
  *   model or config override is passed (forcing a direct-mode model needs approval).
+ * - DEV-081: a failed image call is told apart further, from fixed values only — its structured `failure.type`
+ *   (allowlist), fixed reason codes from Codex's own error text matched in memory (in code mode the text reaches the cell's
+ *   JavaScript, so it is read from the exec / wait outputs), the HTTP status and an allowlisted API error code — and the
+ *   models cache (CODEX_HOME/models_cache.json) gives the model's real tool_mode and image input. New outcomes
+ *   TOOL_FAILED_UNSUPPORTED (class capability) and TOOL_FAILED_TRANSIENT (class transient) stop as
+ *   CODEX_IMAGE_TOOL_FAILED; nothing is retried. Still exactly one model call.
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
@@ -78,14 +84,18 @@ import {
   type PocDiagnostics,
 } from "./diagnostics";
 import {
+  applyModelCatalog,
   classifyAnswerText,
   codexDotenvPresent,
   deriveImageOutcome,
   parseCodexVersion,
+  readModelCatalog,
   readSessionFacts,
   type AnswerTextCode,
   type ImageOutcome,
+  type ModelCatalogFacts,
   type SessionFacts,
+  type SessionSelector,
 } from "./capability";
 import { PngError, readPngNoFollow } from "./png";
 import { buildMockupPrompt, DEFAULT_DIRECTION_VERSION, DIRECTION_VERSIONS, loadPocInputs, POC_SHOP_KEY, PocDirectionError, PocInputError, type DirectionVersion } from "./prompt";
@@ -130,13 +140,16 @@ export type PocCode =
  * - environment: the machine, sign-in, jail or plan usage; halt and alert, no model call is worth retrying
  * - capability: the image tool failed, or the model said it has none; halt and alert, check HUMAN-021's local steps
  * - request: Codex ran but made no image (e.g. answered in text); a failure of this request, never retried as is
+ * - transient (DEV-081): the image tool was called and failed with a server / network error only (5xx, timeout, connection),
+ *   as Codex's own error text says (TOOL_FAILED_TRANSIENT). Halt and alert; never retried automatically — a human may
+ *   approve one new run later
  * - inconclusive (DEV-080): no image call is visible, but the model reached imagegen only through code-mode
  *   `exec` cells (TOOL_NOT_SEEN_CODE_MODE), where a call refused before it started leaves no record; it is not
  *   known whether the model tried. Halt and alert a human; never read as a prompt problem, never retried
  * - output: an image came but was refused (format, PNG checks)
  * - interrupted: time budget, timeout or a signal; check for an OOM kill first
  */
-export type PocStopClass = "approval" | "input" | "environment" | "capability" | "inconclusive" | "request" | "output" | "interrupted";
+export type PocStopClass = "approval" | "input" | "environment" | "capability" | "transient" | "inconclusive" | "request" | "output" | "interrupted";
 
 const STOP_CLASSES: Readonly<Record<string, PocStopClass>> = {
   POC_NOT_APPROVED: "approval",
@@ -173,6 +186,7 @@ const STOP_CLASSES: Readonly<Record<string, PocStopClass>> = {
  */
 export function pocStopClass(code: string, outcome?: ImageOutcome | null, answer?: AnswerTextCode | null): PocStopClass {
   if (code === "CODEX_NO_IMAGE" && outcome === "TOOL_NOT_SEEN_CODE_MODE") return "inconclusive";
+  if (code === "CODEX_IMAGE_TOOL_FAILED" && outcome === "TOOL_FAILED_TRANSIENT") return "transient";
   if (code === "CODEX_NO_IMAGE" && outcome === "TOOL_NOT_CALLED" && answer === "TEXT_TOOL_UNAVAILABLE") return "capability";
   return STOP_CLASSES[code] ?? "interrupted";
 }
@@ -428,6 +442,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     cliVersion?: string | null;
     dotenvPresent?: boolean;
     session?: SessionFacts;
+    catalog?: ModelCatalogFacts;
     answerText?: AnswerTextCode;
   } = { promptChars: null, invoked: false, exit: null, codexMs: null, done: false };
   let cwd: string | undefined;
@@ -436,6 +451,17 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   let before: Set<string> | undefined;
   /** The work dir as given and as resolved (a session log names the path Codex saw). */
   const ownCwds = new Set<string>();
+  /**
+   * The CLI's session log (in memory, fixed facts) and, DEV-081, the models cache's facts about the turn's model, which
+   * replace the slug hint for tool_mode when the model is listed. Local files only; never throws.
+   */
+  const readSession = async (codexHome: string, select: SessionSelector): Promise<void> => {
+    const facts = await readSessionFacts(codexHome, select).catch(() => undefined);
+    if (!facts) return;
+    const catalog = await readModelCatalog(codexHome, facts.model).catch(() => undefined);
+    diag.catalog = catalog;
+    diag.session = catalog ? applyModelCatalog(facts, catalog) : facts;
+  };
   /** The result dir while its files are being written (removed by a stop before the last one). */
   let partialDest: string | undefined;
   /** Snapshot first (nothing removed yet), then write diagnostics.json; any failure here is ignored and never stops the cleanup. */
@@ -458,7 +484,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     // log whose cwd is this run's own work dir (never another call's).
     if (sandbox && diag.invoked && diag.session === undefined && (threadId || ownCwds.size > 0)) {
       const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");
-      diag.session = await readSessionFacts(codexHome, threadId ? { threadId } : { cwds: ownCwds }).catch(() => undefined);
+      await readSession(codexHome, threadId ? { threadId } : { cwds: ownCwds });
     }
     const outcome = diag.invoked && diag.session ? deriveImageOutcome(diag.session, stopCode === null) : null;
     const d: PocDiagnostics = {
@@ -485,6 +511,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       images,
       preflight: diag.dotenvPresent === undefined ? null : { cli_version: diag.cliVersion ?? null, dotenv_present: diag.dotenvPresent },
       session: diag.session ?? null,
+      model_catalog: diag.catalog ?? null,
       classification: {
         image_outcome: outcome,
         answer_text: diag.answerText ?? null,
@@ -592,7 +619,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     // In memory only: the final answer becomes one fixed code (the text is not kept), and the CLI's own
     // session log gives fixed facts about the image tool before the cleanup removes it (capability.ts).
     diag.answerText = classifyAnswerText(events.lastMessage);
-    diag.session = await readSessionFacts(codexHome, threadId).catch(() => undefined);
+    await readSession(codexHome, threadId ? { threadId } : {});
     if (result.timedOut) throw new PocError("CODEX_TIMEOUT");
     if (result.code !== 0 && codexLooksSignedOut(result.stdout, result.stderr)) throw new PocError("CODEX_NOT_SIGNED_IN");
     if (result.code !== 0 && codexLooksRateLimited(result.stdout, result.stderr)) throw new PocError("CODEX_QUOTA");
@@ -607,7 +634,9 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
       if (error instanceof PocError && error.code === "CODEX_NO_IMAGE" && diag.session) {
         const outcome = deriveImageOutcome(diag.session, false);
         if (outcome === "TOOL_FAILED_USAGE_LIMIT") throw new PocError("CODEX_QUOTA");
-        if (outcome === "TOOL_FAILED" || outcome === "TOOL_FAILED_POLICY") throw new PocError("CODEX_IMAGE_TOOL_FAILED");
+        if (outcome === "TOOL_FAILED" || outcome === "TOOL_FAILED_POLICY" || outcome === "TOOL_FAILED_UNSUPPORTED" || outcome === "TOOL_FAILED_TRANSIENT") {
+          throw new PocError("CODEX_IMAGE_TOOL_FAILED");
+        }
       }
       throw error;
     }

@@ -34,6 +34,17 @@
  *   (TOOL_NOT_SEEN_CODE_MODE), never TOOL_NOT_CALLED.
  * - The tools offered to the model are not in a 0.159.0 log, so "not offered" is
  *   never read from it.
+ *
+ * DEV-081 (HUMAN-021b: code mode, img_calls=1, img_failed=1, img_fail=OTHER; rust-v0.159.0 read as data): an Extension item
+ * exists only after the tool's argument checks (`emit_started`, ext/image-generation/src/tool.rs:149-170), so a failed
+ * item is a failure of the images request itself (tool.rs:171-221). Its `failure` is set only for a usage limit whose limit
+ * id is `image_gen` (tool.rs:261-286); everything else — other 429s, 4xx, 5xx, timeout, connection, auth, "no image data"
+ * — is `failure: null`, which DEV-080 could only call OTHER. The message (`image generation failed: <ApiError>`) goes to
+ * the model as the tool's output (direct: function_call_output, core/src/tools/parallel.rs:303-327) or as the rejection in
+ * the cell's JavaScript (code mode: code_mode/delegate.rs:461, code-mode-runtime/src/runtime/module_loader.rs:90-93), from
+ * where it reaches the exec cell's custom_tool_call_output only if printed or uncaught (`Script error:`). So now: the
+ * structured type from an allowlist, fixed reason codes / HTTP status / allowlisted API code from that text in memory, and
+ * the models cache's facts about the model (readModelCatalog). Text is never kept.
 
  * So, before the cleanup removes it, the session log is read IN MEMORY and only
  * fixed facts come out: counts, booleans, a validated CLI version and model
@@ -75,12 +86,169 @@ export function parseCodexVersion(stdout: string): string | null {
 /** Whether $CODEX_HOME/.env exists in any form (never opened, never followed). Shared since DEV-079 (../codex-dotenv.ts). */
 export { codexDotenvPresent } from "../codex-dotenv";
 
-/** Fixed codes for why the image tool failed (from the CLI's own failure record and the tool's output, never the model's words). */
-export const IMAGE_FAILURE_CODES = ["USAGE_LIMIT", "POLICY", "OTHER"] as const;
+/**
+ * Fixed codes for why the image tool failed (from the CLI's own failure record and the tool's output, never the model's words).
+ * DEV-081 adds UNSUPPORTED (the image endpoint said the model / plan / feature is not available) and TRANSIENT (a server or
+ * network failure of this one call: 5xx, timeout, connection). Neither is ever retried.
+ */
+export const IMAGE_FAILURE_CODES = ["USAGE_LIMIT", "POLICY", "UNSUPPORTED", "TRANSIENT", "OTHER"] as const;
 export type ImageFailureCode = (typeof IMAGE_FAILURE_CODES)[number];
+
+/**
+ * The structured `failure.type` of a failed image call (DEV-081), from a fixed allowlist. In Codex CLI 0.159.0
+ * `ImageGenerationFailure` has exactly one variant, `UsageLimitExceeded` (serde `tag = "type"`, camelCase:
+ * `{"type":"usageLimitExceeded","limitId":…,"resetsAt":…}`, ext/items/src/image_generation.rs:7-20), and the tool sets it only
+ * for a usage-limit error whose limit id is `image_gen` (ext/image-generation/src/tool.rs:261-286); every other failure has
+ * `failure: null`. So: `usageLimitExceeded`; `other` (a failure object of an unknown type, from a later CLI); `none` (the CLI's
+ * end record says failed with `failure: null` — HUMAN-021b's case); `no_record` (failed known only from the tool output's shape,
+ * with no end record: e.g. a direct-mode call refused before it started).
+ */
+export const IMAGE_FAILURE_TYPES = ["usageLimitExceeded", "other", "none", "no_record"] as const;
+export type ImageFailureType = (typeof IMAGE_FAILURE_TYPES)[number];
+const KNOWN_FAILURE_TYPES: ReadonlySet<string> = new Set(["usageLimitExceeded"]);
+
+/**
+ * Fixed reason codes from the TEXT of the tool's error, matched in memory only (DEV-081). The text is Codex's own
+ * `image generation failed: <ApiError>` (tool.rs:175-181; ApiError / TransportError Display: codex-api/src/error.rs:9-52,
+ * http-client/src/error.rs:10-33, e.g. `http 429 Too Many Requests: Some("{…}")`, `timeout`, `connection failed: …`), the
+ * `image generation returned no image data` message (tool.rs:195-199), or an argument error from before the call started
+ * (tool.rs:439-605). Never stored: only the code, an HTTP status in 400-599 and an allowlisted API error code come out.
+ * NO_TEXT: a failed call whose error text was nowhere to be read (in code mode the cell's JavaScript may catch the rejection
+ * and print nothing; core/src/tools/code_mode/mod.rs:286-289 adds `Script error:` only for an uncaught one).
+ */
+export const IMAGE_FAILURE_REASONS = [
+  "USAGE_LIMIT",
+  "HTTP_429",
+  "HTTP_5XX",
+  "TIMEOUT",
+  "NETWORK",
+  "AUTH",
+  "NOT_SUPPORTED",
+  "POLICY",
+  "BAD_REQUEST",
+  "INVALID_ARGS",
+  "NO_IMAGE_DATA",
+  "BAD_RESPONSE",
+  "OTHER",
+  "NO_TEXT",
+] as const;
+export type ImageFailureReason = (typeof IMAGE_FAILURE_REASONS)[number];
+
+/** API error codes / types that may be recorded (anything else found is "other"; none found: not recorded). */
+export const IMAGE_API_ERROR_CODES = [
+  "usage_limit_reached",
+  "usage_not_included",
+  "insufficient_quota",
+  "rate_limit_exceeded",
+  "slow_down",
+  "server_is_overloaded",
+  "server_error",
+  "flex_unavailable",
+  "moderation_blocked",
+  "content_policy_violation",
+  "image_generation_user_error",
+  "invalid_prompt",
+  "invalid_request_error",
+  "unsupported_parameter",
+  "invalid_value",
+  "model_not_found",
+  "unsupported_model",
+  "not_found_error",
+  "authentication_error",
+  "permission_error",
+  "account_deactivated",
+] as const;
+export type ImageApiErrorCode = (typeof IMAGE_API_ERROR_CODES)[number] | "other";
+const API_ERROR_CODES: ReadonlySet<string> = new Set(IMAGE_API_ERROR_CODES);
 
 const QUOTA_SIGN = /usage limit|usagelimitexceeded|rate limit|quota|too many requests|\b429\b/i;
 const POLICY_SIGN = /content[ _-]?policy|safety|moderation|policy[ _-]?violation|refus/i;
+
+/** At most this much of one output's text is matched (in memory). */
+const MAX_MATCH_CHARS = 64 * 1024;
+/** Codex's own prefixes of a failed image call's message (tool.rs:177, :196). */
+const FAILED_PREFIX = /image generation failed:|image generation returned no image data/i;
+/** `http 429 Too Many Requests` (TransportError::Http) or `api error 400 Bad Request` (ApiError::Api). */
+const HTTP_STATUS = /\b(?:http|api error) ([45]\d\d)\b/i;
+/** `"code":"x"` / `"type":"x"` in the error body, also as Rust's Debug of a string (`\"code\": \"x\"`). */
+const API_CODE = /\\?"(?:code|type)\\?"\s*:\s*\\?"([A-Za-z0-9_.-]{1,64})\\?"/g;
+/** Argument errors the tool returns before it starts (no Extension item): tool.rs:439-605, code_mode/mod.rs:419-428. */
+const INVALID_ARGS_SIGN =
+  /`referenced_image_paths` must contain at most|referenced image paths are unavailable|`num_last_images_to_include` must be between|provide only one of `referenced_image_paths`|conversation images, but only \d+ were available|unable to (?:read|process) referenced image|expects a JSON object for arguments|unknown field `|missing field `prompt`|invalid type: [a-z ]+, expected/i;
+
+const USAGE_CODES: ReadonlySet<string> = new Set(["usage_limit_reached", "insufficient_quota"]);
+const POLICY_CODES: ReadonlySet<string> = new Set(["moderation_blocked", "content_policy_violation", "invalid_prompt"]);
+const UNSUPPORTED_CODES: ReadonlySet<string> = new Set(["usage_not_included", "model_not_found", "unsupported_model", "not_found_error"]);
+const AUTH_CODES: ReadonlySet<string> = new Set(["authentication_error", "permission_error", "account_deactivated"]);
+const RATE_CODES: ReadonlySet<string> = new Set(["rate_limit_exceeded", "slow_down"]);
+const SERVER_CODES: ReadonlySet<string> = new Set(["server_is_overloaded", "server_error", "flex_unavailable"]);
+const BAD_REQUEST_CODES: ReadonlySet<string> = new Set(["invalid_request_error", "unsupported_parameter", "invalid_value", "image_generation_user_error"]);
+
+/** One classified error text: fixed values only. */
+export interface ImageFailureText {
+  reason: ImageFailureReason;
+  /** The HTTP status in the text (400-599), else null. */
+  http: number | null;
+  /** The first allowlisted API error code / type in the text ("other": some code, not allowlisted; null: none). */
+  api_code: ImageApiErrorCode | null;
+}
+
+/**
+ * Classifies one error text of the image tool in memory (DEV-081). Only fixed values come out; the caller must not keep
+ * the text. Order (as DEV-078: usage limit before policy): usage limit, policy, not supported, auth, 429, 5xx, timeout, network, a bad response, no image data,
+ * a bad request, argument errors, other.
+ */
+export function classifyImageFailureText(raw: string): ImageFailureText {
+  const text = raw.slice(0, MAX_MATCH_CHARS);
+  const statusMatch = HTTP_STATUS.exec(text);
+  const http = statusMatch ? Number(statusMatch[1]) : null;
+  let api_code: ImageApiErrorCode | null = null;
+  for (const m of text.matchAll(API_CODE)) {
+    const c = m[1]!.toLowerCase();
+    if (API_ERROR_CODES.has(c)) {
+      api_code = c as ImageApiErrorCode;
+      break;
+    }
+    // a JSON "type" that is not an error code (e.g. `"type":"input_text"`) is not a finding
+    if (/error|limit|quota|policy|blocked|denied|forbidden|not_found|unsupported|invalid/.test(c)) api_code ??= "other";
+  }
+  const code = api_code ?? "";
+  const reason = ((): ImageFailureReason => {
+    if (USAGE_CODES.has(code) || /usage limit|usagelimitexceeded|quota exceeded|insufficient[ _]quota/i.test(text)) return "USAGE_LIMIT";
+    if (POLICY_CODES.has(code) || /content[ _-]?policy|safety system|moderation|(?:cyber|bio|misalignment) policy|policy[ _-]?violation/i.test(text)) return "POLICY";
+    if (UNSUPPORTED_CODES.has(code) || http === 404 || /usage not included|not supported|unsupported model|model[^.\n]{0,40}does not exist|not available (?:on|for|in) (?:your|this) (?:plan|account|workspace)/i.test(text)) return "NOT_SUPPORTED";
+    if (AUTH_CODES.has(code) || http === 401 || http === 403 || /unauthori[sz]ed|not logged in|sign in again|refresh token|invalid_grant/i.test(text)) return "AUTH";
+    if (RATE_CODES.has(code) || http === 429 || /rate limit|too many requests/i.test(text)) return "HTTP_429";
+    if (SERVER_CODES.has(code) || (http !== null && http >= 500) || /server overloaded|retry limit reached|internal server error/i.test(text)) return "HTTP_5XX";
+    if (/\btimeout\b|timed out/i.test(text)) return "TIMEOUT";
+    if (/connection failed|network error|request build error|connection (?:refused|reset|closed)|dns error/i.test(text)) return "NETWORK";
+    if (/failed to (?:decode|encode) image (?:generation|edit) (?:response|request)/i.test(text)) return "BAD_RESPONSE";
+    if (/returned no image data/i.test(text)) return "NO_IMAGE_DATA";
+    if (BAD_REQUEST_CODES.has(code) || http === 400 || /invalid request/i.test(text)) return "BAD_REQUEST";
+    if (INVALID_ARGS_SIGN.test(text)) return "INVALID_ARGS";
+    return "OTHER";
+  })();
+  return { reason, http, api_code };
+}
+
+/** The coarse failure code of a reason (a generic 429 stays USAGE_LIMIT, as DEV-078 read it: wait, never re-run the same day). */
+export function failureCodeOfReason(reason: ImageFailureReason): ImageFailureCode {
+  switch (reason) {
+    case "USAGE_LIMIT":
+    case "HTTP_429":
+      return "USAGE_LIMIT";
+    case "POLICY":
+      return "POLICY";
+    case "NOT_SUPPORTED":
+      return "UNSUPPORTED";
+    case "HTTP_5XX":
+    case "TIMEOUT":
+    case "NETWORK":
+      return "TRANSIENT";
+    default:
+      return "OTHER";
+  }
+}
 
 function classifyToolFailure(text: string): ImageFailureCode {
   if (QUOTA_SIGN.test(text)) return "USAGE_LIMIT";
@@ -131,7 +299,7 @@ export type HistoryMode = (typeof HISTORY_MODES)[number];
  * features/src/lib.rs) and every other bundled slug has `"tool_mode": "code_mode_only"`. A model's own
  * tool_mode takes precedence over the features (core/src/tools/mod.rs requested_tool_mode).
  */
-export const TOOL_MODES = ["direct", "code_mode_only", "unknown"] as const;
+export const TOOL_MODES = ["direct", "code_mode", "code_mode_only", "unknown"] as const;
 export type ToolMode = (typeof TOOL_MODES)[number];
 const DIRECT_MODELS: ReadonlySet<string> = new Set(["gpt-5.5"]);
 const CODE_MODE_ONLY_MODELS: ReadonlySet<string> = new Set([
@@ -145,6 +313,14 @@ const CODE_MODE_ONLY_MODELS: ReadonlySet<string> = new Set([
   "gpt-daybreak-red-latest",
   "codex-auto-review",
 ]);
+/** Where `tool_mode` came from: the slug hint above, or (DEV-081) the model's entry in CODEX_HOME/models_cache.json. */
+export type ToolModeSource = "slug" | "cache";
+
+/** turn_context.effort (ReasoningEffort, protocol/src/openai_models.rs:59-72, lowercase on the wire); any other value is "other". */
+export const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent", "other"] as const;
+export type ReasoningEffortCode = (typeof REASONING_EFFORTS)[number];
+const effortOf = (v: string): ReasoningEffortCode => ((REASONING_EFFORTS as readonly string[]).includes(v) && v !== "other" ? (v as ReasoningEffortCode) : "other");
+
 export function toolModeOf(model: string | null): ToolMode {
   if (model === null) return "unknown";
   if (DIRECT_MODELS.has(model)) return "direct";
@@ -166,8 +342,11 @@ export interface SessionFacts {
   model_provider_openai: boolean | null;
   /** session_meta.history_mode (DEV-080: `codex exec` writes "paginated"). */
   history_mode: HistoryMode | null;
-  /** toolModeOf(model): whether imagegen is a direct tool for this model or only reachable from a code-mode `exec` cell. */
+  /** turn_context.effort, the reasoning effort the turn ran with (null: not recorded). */
+  effort: ReasoningEffortCode | null;
+  /** toolModeOf(model), or the models cache's entry (DEV-081, applyModelCatalog): whether imagegen is a direct tool for this model or only reachable from a code-mode `exec` cell. */
   tool_mode: ToolMode;
+  tool_mode_source: ToolModeSource;
   /** Code-mode cells: response_item custom_tool_call name=exec (not counted in other_tool_calls). */
   code_mode_cells: number;
   /** Some exec cell's input names `image_gen__imagegen` (matched in memory; the input is never kept). */
@@ -182,6 +361,16 @@ export interface SessionFacts {
   image_tool_failed: number;
   /** Fixed codes of the failures (CLI failure record / tool output, never the model's answer). */
   image_failure_codes: ImageFailureCode[];
+  /** DEV-081: the failed calls' structured `failure.type` (allowlist; see IMAGE_FAILURE_TYPES). */
+  image_failure_types: ImageFailureType[];
+  /** DEV-081: fixed reasons from the error text (matched in memory, never kept; see classifyImageFailureText). */
+  image_failure_reasons: ImageFailureReason[];
+  /** DEV-081: HTTP statuses (400-599) named in that text. */
+  image_failure_http: number[];
+  /** DEV-081: allowlisted API error codes named in that text. */
+  image_failure_api_codes: ImageApiErrorCode[];
+  /** DEV-081: an output of an exec cell that named image_gen__imagegen carries one of the tool's argument errors (a call refused before it started leaves no Extension item). */
+  code_mode_arg_error: boolean;
   /** Other tool calls (shell, apply_patch, MCP …), by count only. */
   other_tool_calls: number;
   /** A log was larger than the read cap, or the walk of the session dirs hit its entry cap (facts are incomplete). */
@@ -198,13 +387,20 @@ export const emptySessionFacts = (): SessionFacts => ({
   model: null,
   model_provider_openai: null,
   history_mode: null,
+  effort: null,
   tool_mode: "unknown",
+  tool_mode_source: "slug",
   code_mode_cells: 0,
   code_mode_imagegen_ref: false,
   image_tool_calls: 0,
   image_tool_completed: 0,
   image_tool_failed: 0,
   image_failure_codes: [],
+  image_failure_types: [],
+  image_failure_reasons: [],
+  image_failure_http: [],
+  image_failure_api_codes: [],
+  code_mode_arg_error: false,
   other_tool_calls: 0,
   truncated: false,
   unreadable: false,
@@ -224,6 +420,8 @@ const EXTENSION_ITEM_TYPE = "Extension";
 const IMAGE_EXTENSION_KIND = "image_gen.generation";
 /** The code-mode custom tool, and how a cell's JavaScript names the image tool (tools/src/code_mode.rs). */
 const CODE_MODE_TOOL = "exec";
+/** The code-mode wait tool (a function tool): a yielded cell's later output, the tool's rejection included, comes back through it. */
+const CODE_MODE_WAIT_TOOL = "wait";
 const CODE_MODE_IMAGEGEN = `${IMAGE_TOOL_NAMESPACE}__${IMAGE_TOOL_NAME}`;
 const OTHER_CALL_TYPES = new Set(["function_call", "custom_tool_call", "local_shell_call", "tool_search_call", "web_search_call"]);
 
@@ -372,7 +570,14 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
   if (paths.length === 0) return f;
   f.log_found = true;
   type Status = "completed" | "failed";
-  type Call = { endStatus?: Status; endFailure?: ImageFailureCode; shapeStatus?: Status; textFailure?: ImageFailureCode };
+  type Call = {
+    endStatus?: Status;
+    endFailure?: ImageFailureCode;
+    failureType?: ImageFailureType;
+    shapeStatus?: Status;
+    textFailure?: ImageFailureCode;
+    text?: ImageFailureText;
+  };
   const calls = new Map<string, Call>();
   let anonymous = 0;
   const callOf = (id: string | undefined): Call => {
@@ -381,6 +586,11 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
     if (!c) calls.set(key, (c = {}));
     return c;
   };
+  /** Code-mode cells by call id (true: the cell's JavaScript names image_gen__imagegen), and wait calls. */
+  const cells = new Map<string, boolean>();
+  const waits = new Set<string>();
+  /** The image tool's failure texts seen in code-mode outputs (classified at once; the text is dropped). */
+  const cellFailures: ImageFailureText[] = [];
   for (const path of paths) {
     const read = await readCapped(path, MAX_SESSION_LOG_BYTES);
     if (!read.ok) {
@@ -420,6 +630,8 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
       } else if (type === "turn_context") {
         const m = str(p.model);
         if (m !== undefined) f.model = modelSlug(m);
+        const effort = str(p.effort);
+        if (effort !== undefined) f.effort = effortOf(effort);
       } else if (type === "response_item") {
         const t = str(p.type);
         const name = str(p.name);
@@ -438,16 +650,30 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
             if (outputHasImage(p.output)) c.shapeStatus = "completed";
             else {
               c.shapeStatus = "failed";
-              const code = classifyToolFailure(outputText(p.output));
+              // direct mode: this output IS the tool's error (core/src/tools/parallel.rs:303-327), matched in memory
+              const text = outputText(p.output);
+              c.text = classifyImageFailureText(text);
+              const byReason = failureCodeOfReason(c.text.reason);
+              const code = byReason !== "OTHER" ? byReason : classifyToolFailure(text);
               if (code !== "OTHER") c.textFailure = code;
             }
+          } else if (id !== undefined && waits.has(id)) {
+            cellOutput(outputText(p.output), [...cells.values()].some(Boolean));
           }
         } else if (t === "custom_tool_call" && name === CODE_MODE_TOOL) {
           // a code-mode cell: counted, its JavaScript matched in memory for the image tool's name only
           f.code_mode_cells += 1;
-          if (str(p.input)?.includes(CODE_MODE_IMAGEGEN)) f.code_mode_imagegen_ref = true;
+          const refs = str(p.input)?.includes(CODE_MODE_IMAGEGEN) ?? false;
+          if (refs) f.code_mode_imagegen_ref = true;
+          const id = str(p.call_id);
+          if (id !== undefined) cells.set(id, refs || (cells.get(id) ?? false));
+        } else if (t === "custom_tool_call_output") {
+          const id = str(p.call_id);
+          if (id !== undefined && cells.has(id)) cellOutput(outputText(p.output), cells.get(id)!);
         } else if (t !== undefined && OTHER_CALL_TYPES.has(t)) {
           f.other_tool_calls += 1;
+          const id = str(p.call_id);
+          if (t === "function_call" && name === CODE_MODE_WAIT_TOOL && id !== undefined) waits.add(id);
         }
       } else if (type === "event_msg") {
         const t = str(p.type);
@@ -462,24 +688,62 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
           const status = str(record.status);
           if (failure) {
             c.endStatus = "failed";
-            c.endFailure = /usage ?limit/i.test(str(failure.type) ?? "") ? "USAGE_LIMIT" : "OTHER";
+            const ft = str(failure.type) ?? "";
+            c.failureType = KNOWN_FAILURE_TYPES.has(ft) ? (ft as ImageFailureType) : "other";
+            c.endFailure = /usage ?limit/i.test(ft) ? "USAGE_LIMIT" : "OTHER";
           } else if (c.endFailure === undefined && (status === "failed" || status === "completed")) {
             c.endStatus = status;
+            // tool.rs:202-221: every failure but an `image_gen` usage limit is written with `failure: null`
+            if (status === "failed") c.failureType = "none";
           }
         }
       }
     }
   }
+  /**
+   * One code-mode output (exec cell / wait), matched in memory: the image tool's own failure message (Codex's fixed prefix,
+   * which the cell's JavaScript receives as the rejection, code_mode/delegate.rs:461 → runtime/module_loader.rs:90-93) is
+   * classified from that prefix on; an argument error only counts in a cell that named the tool. The text is then dropped.
+   */
+  function cellOutput(raw: string, namedTool: boolean): void {
+    const text = raw.slice(0, MAX_MATCH_CHARS);
+    const at = text.search(FAILED_PREFIX);
+    if (at >= 0) cellFailures.push(classifyImageFailureText(text.slice(at, at + 4096)));
+    else if (namedTool && INVALID_ARGS_SIGN.test(text)) f.code_mode_arg_error = true;
+  }
+  const CODE_ORDER: readonly ImageFailureCode[] = ["USAGE_LIMIT", "POLICY", "UNSUPPORTED", "OTHER", "TRANSIENT"];
+  const worst = (codes: ImageFailureCode[]): ImageFailureCode | undefined => CODE_ORDER.find((c) => codes.includes(c));
+  const cellCode = worst(cellFailures.map((t) => failureCodeOfReason(t.reason)));
+  const reasons = new Set<ImageFailureReason>();
+  const http = new Set<number>();
+  const apiCodes = new Set<ImageApiErrorCode>();
+  const types = new Set<ImageFailureType>();
+  const note = (t: ImageFailureText): void => {
+    reasons.add(t.reason);
+    if (t.http !== null) http.add(t.http);
+    if (t.api_code !== null) apiCodes.add(t.api_code);
+  };
   const settled = [...calls.values()].map((c) => {
     const status: Status | "pending" = c.endFailure ? "failed" : (c.endStatus ?? c.shapeStatus ?? "pending");
-    const failure: ImageFailureCode | undefined = status === "failed" ? (c.endFailure ?? c.textFailure ?? "OTHER") : undefined;
+    if (status !== "failed") return { status, failure: undefined };
+    types.add(c.failureType ?? "no_record");
+    // the call's own text (direct mode); else, with no function output at all (code mode), the cells' failure texts
+    const texts = c.text ? [c.text] : cellFailures;
+    if (texts.length === 0) reasons.add("NO_TEXT");
+    for (const t of texts) note(t);
+    const fromCells = c.text ? undefined : cellCode;
+    const failure: ImageFailureCode = c.endFailure ?? c.textFailure ?? fromCells ?? "OTHER";
     return { status, failure };
   });
-  f.tool_mode = toolModeOf(f.model);
+  if (f.tool_mode_source === "slug") f.tool_mode = toolModeOf(f.model);
   f.image_tool_calls = settled.length;
   f.image_tool_completed = settled.filter((c) => c.status === "completed").length;
   f.image_tool_failed = settled.filter((c) => c.status === "failed").length;
   f.image_failure_codes = IMAGE_FAILURE_CODES.filter((code) => settled.some((c) => c.failure === code));
+  f.image_failure_types = IMAGE_FAILURE_TYPES.filter((t) => types.has(t));
+  f.image_failure_reasons = IMAGE_FAILURE_REASONS.filter((r) => reasons.has(r));
+  f.image_failure_http = [...http].sort((a, b) => a - b);
+  f.image_failure_api_codes = [...IMAGE_API_ERROR_CODES, "other" as const].filter((c) => apiCodes.has(c));
   return f;
 }
 
@@ -491,7 +755,9 @@ export const IMAGE_OUTCOMES = [
   "TOOL_NOT_SEEN_CODE_MODE",
   "TOOL_FAILED_USAGE_LIMIT",
   "TOOL_FAILED_POLICY",
+  "TOOL_FAILED_UNSUPPORTED",
   "TOOL_FAILED",
+  "TOOL_FAILED_TRANSIENT",
   "TOOL_CALLED_NO_FILE",
 ] as const;
 export type ImageOutcome = (typeof IMAGE_OUTCOMES)[number];
@@ -505,11 +771,108 @@ export type ImageOutcome = (typeof IMAGE_OUTCOMES)[number];
 export function deriveImageOutcome(facts: SessionFacts, imageSaved: boolean): ImageOutcome {
   if (imageSaved) return "IMAGE_SAVED";
   if (!facts.log_found || facts.truncated || facts.unreadable) return "NO_SESSION_LOG";
-  if (facts.image_tool_calls === 0) return facts.code_mode_cells > 0 || facts.tool_mode === "code_mode_only" ? "TOOL_NOT_SEEN_CODE_MODE" : "TOOL_NOT_CALLED";
+  if (facts.image_tool_calls === 0) return facts.code_mode_cells > 0 || facts.tool_mode === "code_mode_only" || facts.tool_mode === "code_mode" ? "TOOL_NOT_SEEN_CODE_MODE" : "TOOL_NOT_CALLED";
   if (facts.image_tool_failed > 0) {
-    if (facts.image_failure_codes.includes("USAGE_LIMIT")) return "TOOL_FAILED_USAGE_LIMIT";
-    if (facts.image_failure_codes.includes("POLICY")) return "TOOL_FAILED_POLICY";
+    const codes = facts.image_failure_codes;
+    if (codes.includes("USAGE_LIMIT")) return "TOOL_FAILED_USAGE_LIMIT";
+    if (codes.includes("POLICY")) return "TOOL_FAILED_POLICY";
+    if (codes.includes("UNSUPPORTED")) return "TOOL_FAILED_UNSUPPORTED";
+    // DEV-081: transient only when every failure was a server / network one
+    if (codes.length > 0 && codes.every((c) => c === "TRANSIENT")) return "TOOL_FAILED_TRANSIENT";
     return "TOOL_FAILED";
   }
   return "TOOL_CALLED_NO_FILE";
+}
+
+/**
+ * DEV-081: what Codex's own models cache says about the model the turn ran with. `$CODEX_HOME/models_cache.json`
+ * (models-manager/src/manager.rs:31 MODEL_CACHE_FILE, written by FileModelsCache::store, cache.rs:150-155 / 238-243, with
+ * serde_json pretty JSON of ModelsCacheEntry: `fetched_at` (RFC 3339), `etag`, `client_version`, `identity` (a hash of the
+ * account), `models`: ModelInfo[] (cache.rs:63-84)) is rewritten on every remote catalog fetch (TTL 300 s, manager.rs:32;
+ * manager.rs:519-545), so after a run it is the catalog that run used. Read in memory, never written, no network, no model:
+ * only `client_version` (validated), the age of `fetched_at`, the number of models, and for the model's own entry its
+ * `tool_mode` (protocol/src/openai_models.rs:344-350, snake_case; absent / null: "none", i.e. the features decide, which
+ * are off by default) and whether `input_modalities` has "image" (absent: Codex's default text + image,
+ * openai_models.rs:186-192). Never the identity, the ETag, a description, an instruction text or any other field.
+ */
+export const CATALOG_STATES = ["found", "absent", "unreadable", "too_large", "invalid"] as const;
+export type CatalogState = (typeof CATALOG_STATES)[number];
+export const CATALOG_TOOL_MODES = ["direct", "code_mode", "code_mode_only", "none", "other"] as const;
+export type CatalogToolMode = (typeof CATALOG_TOOL_MODES)[number];
+
+export interface ModelCatalogFacts {
+  cache: CatalogState;
+  /** client_version of the cache entry (validated; Codex ignores an entry for another version, cache.rs:200-208). */
+  client_version: string | null;
+  /** Seconds between fetched_at and when it was read (null: absent or not a date). */
+  age_s: number | null;
+  models: number | null;
+  /** The turn's model is listed (null: no cache, or no usable model slug). */
+  model_listed: boolean | null;
+  tool_mode: CatalogToolMode | null;
+  image_input: boolean | null;
+}
+
+export const emptyModelCatalogFacts = (cache: CatalogState = "absent"): ModelCatalogFacts => ({
+  cache,
+  client_version: null,
+  age_s: null,
+  models: null,
+  model_listed: null,
+  tool_mode: null,
+  image_input: null,
+});
+
+/** The largest models cache read (the 0.159.0 bundled catalog is about 100 KiB). */
+export const MAX_MODELS_CACHE_BYTES = 8 * 1024 * 1024;
+const MODELS_CACHE_FILE = "models_cache.json";
+
+/** Reads CODEX_HOME/models_cache.json in memory (a regular file directly in CODEX_HOME, never a link). Never throws. */
+export async function readModelCatalog(codexHome: string, model: string | null, now: () => number = Date.now): Promise<ModelCatalogFacts> {
+  try {
+    const home = await realpath(codexHome).catch(() => null);
+    if (!home) return emptyModelCatalogFacts("absent");
+    const path = join(home, MODELS_CACHE_FILE);
+    const info = await lstat(path).catch(() => null);
+    if (!info) return emptyModelCatalogFacts("absent");
+    if (info.isSymbolicLink() || !info.isFile()) return emptyModelCatalogFacts("unreadable");
+    const read = await readCapped(path, MAX_MODELS_CACHE_BYTES);
+    if (!read.ok) return emptyModelCatalogFacts(read.why === "too_large" ? "too_large" : "unreadable");
+    let entry: Json | undefined;
+    try {
+      entry = obj(JSON.parse(read.buf.toString("utf8")));
+    } catch {
+      entry = undefined;
+    }
+    const list = entry && Array.isArray(entry.models) ? (entry.models as unknown[]) : undefined;
+    if (!entry || !list) return emptyModelCatalogFacts("invalid");
+    const facts = emptyModelCatalogFacts("found");
+    const version = str(entry.client_version);
+    if (version !== undefined && VERSION.test(version)) facts.client_version = version;
+    const fetched = Date.parse(str(entry.fetched_at) ?? "");
+    if (Number.isFinite(fetched)) facts.age_s = Math.max(0, Math.round((now() - fetched) / 1000));
+    facts.models = list.length;
+    if (model === null || model === "other") return facts;
+    const own = list.map(obj).find((m) => str(m?.slug) === model);
+    facts.model_listed = own !== undefined;
+    if (!own) return facts;
+    const mode = own.tool_mode;
+    facts.tool_mode = mode === undefined || mode === null ? "none" : mode === "direct" || mode === "code_mode" || mode === "code_mode_only" ? mode : "other";
+    const modalities = own.input_modalities;
+    facts.image_input = modalities === undefined ? true : Array.isArray(modalities) ? modalities.includes("image") : false;
+    return facts;
+  } catch {
+    return emptyModelCatalogFacts("unreadable");
+  }
+}
+
+/**
+ * The cache's tool_mode replaces the slug hint (tool_mode_source "cache") when the model is listed: a model's own tool_mode
+ * wins over the features (core/src/tools/mod.rs:75-85), and "none" means the features decide (code mode off by default:
+ * direct). Returns new facts; the session facts given are not changed.
+ */
+export function applyModelCatalog(facts: SessionFacts, catalog: ModelCatalogFacts): SessionFacts {
+  if (catalog.model_listed !== true || catalog.tool_mode === null || catalog.tool_mode === "other") return facts;
+  const tool_mode: ToolMode = catalog.tool_mode === "none" ? "direct" : catalog.tool_mode;
+  return { ...facts, tool_mode, tool_mode_source: "cache" };
 }

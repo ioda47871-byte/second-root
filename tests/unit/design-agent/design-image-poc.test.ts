@@ -24,7 +24,19 @@ import {
   PocInputError,
 } from "@/lib/design-agent/design-image/prompt";
 import { classifyError, CodexEventTracker, IMAGE_ITEM_TYPES, ITEM_TYPES, MAX_PARTIAL_LINE_CHARS, type EventDiagnostics, type ImageLocationDiagnostics, type PocDiagnostics } from "@/lib/design-agent/design-image/diagnostics";
-import { classifyAnswerText, deriveImageOutcome, emptySessionFacts, MAX_SESSION_LOG_BYTES, parseCodexVersion, readSessionFacts, toolModeOf } from "@/lib/design-agent/design-image/capability";
+import {
+  applyModelCatalog,
+  classifyAnswerText,
+  classifyImageFailureText,
+  deriveImageOutcome,
+  emptySessionFacts,
+  MAX_MODELS_CACHE_BYTES,
+  MAX_SESSION_LOG_BYTES,
+  parseCodexVersion,
+  readModelCatalog,
+  readSessionFacts,
+  toolModeOf,
+} from "@/lib/design-agent/design-image/capability";
 import { cleanupActivePoc, isInsidePath, lastPocDiagnostics, pocStopClass, REPORT_NOTES, REPORT_NOTES_V2, runDesignImagePoc, type PocOptions } from "@/lib/design-agent/design-image/run";
 import { SandboxError, type CodexSandbox } from "@/lib/design-agent/sandbox";
 
@@ -726,7 +738,7 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
     }));
     expect(result).toEqual({ status: "stopped", code: "CODEX_NO_IMAGE" });
     const { d, text, summary } = diagOf();
-    expect(d).toMatchObject({ schema: "sr-design-image-poc-diagnostics/3", outcome: "stopped", stop_code: "CODEX_NO_IMAGE", direction_version: "v2", codex: { invoked: true, exit_code: 0, signal: null, timed_out: false, thread_id_present: true } });
+    expect(d).toMatchObject({ schema: "sr-design-image-poc-diagnostics/4", outcome: "stopped", stop_code: "CODEX_NO_IMAGE", direction_version: "v2", codex: { invoked: true, exit_code: 0, signal: null, timed_out: false, thread_id_present: true } });
     // DEV-078: the session log has no image call; the answer is a description (TEXT_OTHER), a request stop
     expect(d.preflight).toEqual({ cli_version: "0.163.0", dotenv_present: false });
     expect(d.session).toMatchObject({ log_found: true, image_tool_calls: 0, image_tool_failed: 0 });
@@ -1560,6 +1572,217 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
       expect(toolModeOf("gpt-5.5")).toBe("direct");
       for (const m of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "codex-auto-review"]) expect(toolModeOf(m), m).toBe("code_mode_only");
       for (const m of [null, "other", "gpt-5.5-codex", "gpt-5"]) expect(toolModeOf(m)).toBe("unknown");
+    });
+
+    describe("DEV-081: why a called image tool failed (failure.type allowlist, fixed reasons from Codex's own text) and the models cache", () => {
+      /** turn_context as 0.159.0 writes it for HUMAN-021b: a remote-catalog model and a reasoning effort. */
+      const turn161 = (effort: unknown = "medium") => ({ timestamp: "t", type: "turn_context", payload: { cwd: "x", model: "gpt-6.1-sol", effort, summary: "auto", approval_policy: "never", sandbox_policy: { type: "read-only" } } });
+      /** Rust's Debug of the HTTP body inside TransportError::Http's Display: `http 429 Too Many Requests: Some("{\"error\":…}")`. */
+      const httpError = (status: string, body: Record<string, unknown>) => `image generation failed: http ${status}: Some(${JSON.stringify(JSON.stringify(body))})`;
+      /** An uncaught rejection inside the cell: the output is `Script failed …` + `Script error:\n<the tool's message>` (code_mode/mod.rs:286-289). */
+      const cellError = (message: string, id = "cell_1") => ({
+        timestamp: "t",
+        type: "response_item",
+        payload: { type: "custom_tool_call_output", call_id: id, output: [{ type: "input_text", text: "Script failed\nWall time 1.2 seconds\nOutput:\n" }, { type: "input_text", text: `Script error:\n${message}` }] },
+      });
+      const facts = async (records: unknown[]) => {
+        leaveLog(join(root, "cwd-81"), records, META_159);
+        return readSessionFacts(codexHome, THREAD);
+      };
+      const writeCache = (models: unknown[], extra: Record<string, unknown> = {}) =>
+        writeFileSync(
+          join(codexHome, "models_cache.json"),
+          JSON.stringify({ fetched_at: new Date(Date.now() - 30_000).toISOString(), etag: `W/"${CANARY}"`, client_version: "0.159.0", identity: CANARY, models, ...extra }, null, 2),
+        );
+      const model = (slug: string, more: Record<string, unknown> = {}) => ({ slug, display_name: CANARY, description: CANARY, base_instructions: CANARY, priority: 1, visibility: "list", input_modalities: ["text", "image"], ...more });
+
+      it("HUMAN-021b's shape: a code-mode call whose Extension item failed with failure: null and no readable text → type none, reason NO_TEXT, TOOL_FAILED (capability)", async () => {
+        const result = await runDesignImagePoc(options(({ cwd }) => {
+          leaveLog(cwd, [turn161(), imagegenCell(), ext("failed", null, "ig_call_1"), cellOutput()], META_159);
+          return ok(answer(`${CANARY} the tool failed`));
+        }));
+        expect(result).toEqual({ status: "stopped", code: "CODEX_IMAGE_TOOL_FAILED" });
+        const { d, text, summary } = diag();
+        expect(d.session).toMatchObject({ model: "gpt-6.1-sol", effort: "medium", tool_mode: "unknown", tool_mode_source: "slug", image_tool_failed: 1, image_failure_codes: ["OTHER"], image_failure_types: ["none"], image_failure_reasons: ["NO_TEXT"], image_failure_http: [], image_failure_api_codes: [] });
+        expect(d.classification).toMatchObject({ image_outcome: "TOOL_FAILED", stop_class: "capability" });
+        expect(summary).toContain("img_fail=OTHER other_calls=0 outcome=TOOL_FAILED"); // the DEV-080 fields are unchanged
+        expect(summary).toContain("img_fail_type=none img_fail_reason=NO_TEXT img_http=- img_err=- cm_arg_err=0 effort=medium tool_mode_src=slug model_cache=absent");
+        clean(text, summary);
+      });
+
+      it("code mode, the usage-limit 429 whose limit id is not image_gen (failure: null): the cell's error text gives USAGE_LIMIT / 429 → CODEX_QUOTA; no text is kept", async () => {
+        const msg = httpError("429 Too Many Requests", { error: { type: "usage_limit_reached", message: CANARY, plan_type: "plus", resets_at: 1761200000 } });
+        const result = await runDesignImagePoc(options(({ cwd }) => {
+          leaveLog(cwd, [turn161(), imagegenCell(), ext("failed", null, "ig_call_1"), cellError(msg)], META_159);
+          return ok(answer(`image generation failed ${CANARY}`));
+        }));
+        expect(result).toEqual({ status: "stopped", code: "CODEX_QUOTA" });
+        const { d, text, summary } = diag();
+        expect(d.session).toMatchObject({ image_failure_codes: ["USAGE_LIMIT"], image_failure_types: ["none"], image_failure_reasons: ["USAGE_LIMIT"], image_failure_http: [429], image_failure_api_codes: ["usage_limit_reached"] });
+        expect(d.classification).toMatchObject({ image_outcome: "TOOL_FAILED_USAGE_LIMIT", stop_class: "environment" });
+        expect(summary).toContain("img_fail_type=none img_fail_reason=USAGE_LIMIT img_http=429 img_err=usage_limit_reached");
+        clean(text, summary);
+        for (const s of ["plus", "1761200000", "Too Many Requests", "Script error"]) expect(text + summary, s).not.toContain(s);
+      });
+
+      it("transient (5xx / timeout / connection) → TOOL_FAILED_TRANSIENT, stop CODEX_IMAGE_TOOL_FAILED, class transient; never retried", async () => {
+        for (const [msg, reason, http] of [
+          [httpError("502 Bad Gateway", { error: { message: CANARY } }), "HTTP_5XX", [502]],
+          ["image generation failed: timeout", "TIMEOUT", []],
+          [`image generation failed: connection failed: ${CANARY}`, "NETWORK", []],
+          ["image generation failed: server overloaded", "HTTP_5XX", []],
+        ] as const) {
+          prompts.length = 0;
+          const result = await runDesignImagePoc(options(({ cwd }) => {
+            leaveLog(cwd, [turn161(), imagegenCell(), ext("failed", null, "ig_call_1"), cellError(msg)], META_159);
+            return ok(answer("x"));
+          }));
+          expect(result, msg).toEqual({ status: "stopped", code: "CODEX_IMAGE_TOOL_FAILED" });
+          expect(prompts).toHaveLength(1); // one model call, no retry
+          const { d, text, summary } = diag();
+          expect(d.session, msg).toMatchObject({ image_failure_codes: ["TRANSIENT"], image_failure_reasons: [reason], image_failure_http: [...http] });
+          expect(d.classification, msg).toMatchObject({ image_outcome: "TOOL_FAILED_TRANSIENT", stop_class: "transient" });
+          clean(text, summary);
+        }
+      });
+
+      it("not supported (404 / model_not_found / usage_not_included) → TOOL_FAILED_UNSUPPORTED (capability); policy (moderation_blocked) → TOOL_FAILED_POLICY", async () => {
+        const run = async (msg: string) => {
+          await runDesignImagePoc(options(({ cwd }) => {
+            leaveLog(cwd, [turn161(), imagegenCell(), ext("failed", null, "ig_call_1"), cellError(msg)], META_159);
+            return ok(answer("x"));
+          }));
+          return diag();
+        };
+        for (const msg of [
+          httpError("404 Not Found", { error: { code: "model_not_found", message: CANARY } }),
+          httpError("403 Forbidden", { error: { type: "usage_not_included", message: CANARY } }),
+        ]) {
+          const { d, text, summary } = await run(msg);
+          expect(d.session?.image_failure_reasons, msg).toEqual(["NOT_SUPPORTED"]);
+          expect(d.classification, msg).toMatchObject({ image_outcome: "TOOL_FAILED_UNSUPPORTED", stop_class: "capability" });
+          expect(d.stop_code).toBe("CODEX_IMAGE_TOOL_FAILED");
+          clean(text, summary);
+        }
+        const { d, text, summary } = await run(httpError("400 Bad Request", { error: { code: "moderation_blocked", message: CANARY } }));
+        expect(d.session).toMatchObject({ image_failure_reasons: ["POLICY"], image_failure_http: [400], image_failure_api_codes: ["moderation_blocked"] });
+        expect(d.classification).toMatchObject({ image_outcome: "TOOL_FAILED_POLICY", stop_class: "capability" });
+        clean(text, summary);
+      });
+
+      it("the text decides only the reason when a structured failure exists; an unknown failure.type is 'other', never its value", async () => {
+        const f1 = await facts([call(), ext("failed", { type: "usageLimitExceeded", limitId: "image_gen", resetsAt: 1 }), failedOutput("image generation failed: http 502 Bad Gateway: None")]);
+        expect(f1).toMatchObject({ image_failure_codes: ["USAGE_LIMIT"], image_failure_types: ["usageLimitExceeded"], image_failure_reasons: ["HTTP_5XX"], image_failure_http: [502] });
+        const f2 = await facts([call(), ext("failed", { type: CANARY, detail: CANARY }), failedOutput(`image generation failed: ${CANARY}`)]);
+        expect(f2).toMatchObject({ image_failure_codes: ["OTHER"], image_failure_types: ["other"], image_failure_reasons: ["OTHER"] });
+        expect(JSON.stringify(f2)).not.toContain(CANARY);
+      });
+
+      it("direct mode: the call's own output is classified; a call refused before it started (no item) is no_record / INVALID_ARGS", async () => {
+        const f1 = await facts([turn("gpt-5.5"), call(), ext("failed", null), failedOutput(httpError("503 Service Unavailable", { error: { code: "server_is_overloaded" } }))]);
+        expect(f1).toMatchObject({ tool_mode: "direct", image_failure_codes: ["TRANSIENT"], image_failure_types: ["none"], image_failure_reasons: ["HTTP_5XX"], image_failure_http: [503], image_failure_api_codes: ["server_is_overloaded"] });
+        expect(deriveImageOutcome(f1, false)).toBe("TOOL_FAILED_TRANSIENT");
+        const f2 = await facts([turn("gpt-5.5"), call(), failedOutput("unknown field `size`, expected one of `prompt`, `transparent_background`, `referenced_image_paths`, `num_last_images_to_include`")]);
+        expect(f2).toMatchObject({ image_tool_failed: 1, image_failure_codes: ["OTHER"], image_failure_types: ["no_record"], image_failure_reasons: ["INVALID_ARGS"] });
+        // DEV-078's text codes still hold for a direct output without Codex's prefix
+        expect(await facts([call(), failedOutput("rate limit 429")])).toMatchObject({ image_failure_codes: ["USAGE_LIMIT"], image_failure_reasons: ["HTTP_429"] });
+        expect(await facts([call(), failedOutput("refused by the safety system")])).toMatchObject({ image_failure_codes: ["POLICY"] });
+      });
+
+      it("code mode: a yielded cell's rejection read through `wait`; an argument error before the start (no item) sets cm_arg_err only for a cell that named the tool", async () => {
+        const wait = { timestamp: "t", type: "response_item", payload: { type: "function_call", name: "wait", arguments: JSON.stringify({ cell_id: "1" }), call_id: "w_1" } };
+        const waitOut = { timestamp: "t", type: "response_item", payload: { type: "function_call_output", call_id: "w_1", output: "Script error:\nimage generation failed: http 500 Internal Server Error: None" } };
+        expect(await facts([turn161(), imagegenCell(), ext("failed", null, "ig_1"), cellOutput(), wait, waitOut])).toMatchObject({ image_failure_reasons: ["HTTP_5XX"], image_failure_http: [500], other_tool_calls: 1 });
+        const argErr = cellError("missing field `prompt`");
+        const f = await facts([turn161(), imagegenCell(), argErr]);
+        expect(f).toMatchObject({ image_tool_calls: 0, code_mode_arg_error: true, image_failure_reasons: [] });
+        expect(deriveImageOutcome(f, false)).toBe("TOOL_NOT_SEEN_CODE_MODE");
+        expect(await facts([turn161(), cell("text('hi')"), argErr])).toMatchObject({ code_mode_arg_error: false });
+        // the model's own words without Codex's prefix are not a reason
+        expect(await facts([turn161(), imagegenCell(), ext("failed", null, "ig_1"), cellError(`http 429 rate limit ${CANARY}`)])).toMatchObject({ image_failure_reasons: ["NO_TEXT"], image_failure_codes: ["OTHER"] });
+      });
+
+      it("classifyImageFailureText returns fixed values only; unknown API codes are 'other'; a non-error JSON type is ignored", () => {
+        const cases: Array<[string, string, number | null, string | null]> = [
+          [httpError("429 Too Many Requests", { error: { type: "usage_limit_reached" } }), "USAGE_LIMIT", 429, "usage_limit_reached"],
+          [httpError("429 Too Many Requests", { error: { code: "rate_limit_exceeded" } }), "HTTP_429", 429, "rate_limit_exceeded"],
+          [httpError("401 Unauthorized", { error: { message: CANARY } }), "AUTH", 401, null],
+          [httpError("400 Bad Request", { error: { code: "invalid_value", message: CANARY } }), "BAD_REQUEST", 400, "invalid_value"],
+          [httpError("400 Bad Request", { error: { code: `${CANARY.toLowerCase()}_error` } }), "BAD_REQUEST", 400, "other"],
+          ["image generation failed: api error 404 Not Found: no such model", "NOT_SUPPORTED", 404, null],
+          ["image generation failed: stream error: failed to decode image generation response: EOF", "BAD_RESPONSE", null, null],
+          ["image generation returned no image data", "NO_IMAGE_DATA", null, null],
+          ["image generation failed: cyber policy: blocked", "POLICY", null, null],
+          [`image generation failed: ${CANARY} {"type":"input_text"}`, "OTHER", null, null],
+          ["`num_last_images_to_include` must be between 1 and 5", "INVALID_ARGS", null, null],
+        ];
+        for (const [t, reason, http, code] of cases) {
+          const r = classifyImageFailureText(t);
+          expect(r, t).toEqual({ reason, http, api_code: code });
+          expect(JSON.stringify(r)).not.toContain(CANARY);
+        }
+      });
+
+      it("models cache: the model's tool_mode and image input (fixed values only) replace the slug hint; identity / etag / descriptions never come out", async () => {
+        const result = await runDesignImagePoc(options(({ cwd }) => {
+          writeCache([model("gpt-5.5", { tool_mode: null }), model("gpt-6.1-sol", { tool_mode: "code_mode_only" })]);
+          leaveLog(cwd, [turn161(), imagegenCell(), ext("failed", null, "ig_1"), cellOutput()], META_159);
+          return ok(answer("x"));
+        }));
+        expect(result).toEqual({ status: "stopped", code: "CODEX_IMAGE_TOOL_FAILED" });
+        const { d, text, summary } = diag();
+        expect(d.model_catalog).toMatchObject({ cache: "found", client_version: "0.159.0", models: 2, model_listed: true, tool_mode: "code_mode_only", image_input: true });
+        expect(d.model_catalog!.age_s).toBeGreaterThanOrEqual(25);
+        expect(d.session).toMatchObject({ tool_mode: "code_mode_only", tool_mode_source: "cache" });
+        expect(summary).toContain("tool_mode=code_mode_only cm_cells=1");
+        expect(summary).toMatch(/model_cache=found model_cache_cli=0\.159\.0 model_cache_age_s=\d+ model_listed=1 model_tool_mode=code_mode_only model_image_input=1/);
+        clean(text, summary);
+        expect(text).not.toContain("W/");
+        expect(existsSync(join(codexHome, "models_cache.json"))).toBe(true); // read only, never removed or changed
+      });
+
+      it("readModelCatalog: absent / link / too large / invalid / not listed / tool_mode none → direct / text-only input; never throws", async () => {
+        const cachePath = join(codexHome, "models_cache.json");
+        expect(await readModelCatalog(codexHome, "gpt-6.1-sol")).toMatchObject({ cache: "absent", model_listed: null });
+        writeCache([model("gpt-5.5", { tool_mode: null, input_modalities: ["text"] }), model("gpt-6.1-sol", { tool_mode: CANARY })]);
+        const own = await readModelCatalog(codexHome, "gpt-5.5");
+        expect(own).toMatchObject({ cache: "found", model_listed: true, tool_mode: "none", image_input: false });
+        expect(applyModelCatalog({ ...emptySessionFacts(), model: "gpt-5.5" }, own)).toMatchObject({ tool_mode: "direct", tool_mode_source: "cache" });
+        const odd = await readModelCatalog(codexHome, "gpt-6.1-sol");
+        expect(odd).toMatchObject({ tool_mode: "other" });
+        expect(applyModelCatalog(emptySessionFacts(), odd).tool_mode_source).toBe("slug");
+        expect(JSON.stringify(odd)).not.toContain(CANARY);
+        expect(await readModelCatalog(codexHome, "gpt-9")).toMatchObject({ cache: "found", model_listed: false, tool_mode: null });
+        expect(await readModelCatalog(codexHome, "other")).toMatchObject({ cache: "found", model_listed: null });
+        writeCache([model("gpt-6.1-sol", { input_modalities: undefined })]);
+        expect(await readModelCatalog(codexHome, "gpt-6.1-sol")).toMatchObject({ tool_mode: "none", image_input: true }); // Codex's default: text + image
+        writeFileSync(cachePath, `{"models": ${CANARY}`);
+        expect(await readModelCatalog(codexHome, "gpt-6.1-sol")).toMatchObject({ cache: "invalid" });
+        writeFileSync(cachePath, "");
+        truncateSync(cachePath, MAX_MODELS_CACHE_BYTES + 1);
+        expect(await readModelCatalog(codexHome, "gpt-6.1-sol")).toMatchObject({ cache: "too_large" });
+        const elsewhere = join(root, "elsewhere-cache.json");
+        writeFileSync(elsewhere, JSON.stringify({ models: [model("gpt-6.1-sol")] }));
+        spawnSync("rm", ["-f", cachePath]);
+        symlinkSync(elsewhere, cachePath);
+        expect(await readModelCatalog(codexHome, "gpt-6.1-sol")).toMatchObject({ cache: "unreadable", model_listed: null });
+        expect(await readModelCatalog(join(root, "no-such-home"), "gpt-6.1-sol")).toMatchObject({ cache: "absent" });
+      });
+
+      it("effort: allowlisted values; anything else is 'other' (never its value)", async () => {
+        expect((await facts([turn161("xhigh")])).effort).toBe("xhigh");
+        const odd = await facts([turn161(CANARY)]);
+        expect(odd.effort).toBe("other");
+        expect(JSON.stringify(odd)).not.toContain(CANARY);
+        expect((await facts([turn("gpt-5.5")])).effort).toBeNull();
+      });
+
+      it("pocStopClass: transient only for CODEX_IMAGE_TOOL_FAILED + TOOL_FAILED_TRANSIENT; UNSUPPORTED stays capability", () => {
+        expect(pocStopClass("CODEX_IMAGE_TOOL_FAILED", "TOOL_FAILED_TRANSIENT")).toBe("transient");
+        expect(pocStopClass("CODEX_IMAGE_TOOL_FAILED", "TOOL_FAILED_UNSUPPORTED")).toBe("capability");
+        expect(pocStopClass("CODEX_IMAGE_TOOL_FAILED", "TOOL_FAILED")).toBe("capability");
+        expect(pocStopClass("CODEX_NO_IMAGE", "TOOL_FAILED_TRANSIENT")).toBe("request");
+      });
     });
   });
 
