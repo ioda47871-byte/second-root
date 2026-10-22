@@ -3791,6 +3791,51 @@
         "feature → develop の merge は AI_WORKFLOW §4 の条件に加え、緩和を含む段は人の承認"
       ],
       "decision": "2026-10-22: 人が DEV-083 の番号を予約し、内容（表現の幅を広げつつ厳格な検査を保つ。対応する検査なしに禁止を外さない。保護された文字・事実を隠す・変えることは引き続き禁止。anti-template の差は補助の指標で品質ではない）を統合指示で記述した。この PR（#98）は設計の文書だけ。#98 は #96（DEV-082）の後に merge する"
+    },
+    {
+      "id": "DEV-085",
+      "title": "CI: unit を 2 つの shard に分け（集約 check `unit` は残す）、Playwright の browser install に timeout を付ける（CI の安定化だけ）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/ci-unit-split",
+      "purpose": "unit job の vitest が約 10 分（job 全体で約 12 分、timeout 15 分）に達し、Playwright install は通常 20〜40 秒だが遅い apt mirror で 6 分 47 秒かかった例がある（run 39816848499 の e2e）。unit を vitest --shard で 2 つに分けて並列に走らせ、install が止まったときに有限の時間で失敗させる。",
+      "decision": "2026-10-22（人の明示承認）: .github/workflows/ci.yml の最小変更（unit の 2 shard 化と browser install の timeout）を承認。条件: test を 1 つも skip・除外・無効化しない／両 shard が成功したときだけ CI が成功／既存の required check 名と branch protection が動き続ける／install の失敗を成功扱いにしない／CI の安定化に必要な最小の変更／develop への merge の前に独立 review と green CI（merge は orchestrator が行う）。承認はこの変更だけを対象とする。",
+      "acceptance_criteria": [
+        "unit-shard（matrix shard 1/2・2/2、check 名 `unit (1/2)` / `unit (2/2)`）が今と同じ command に --shard=N/2 を足しただけで走り、2 つの shard の test file の和が分割前と一致し重ならない",
+        "check 名 `unit` は集約 job として残り、needs: unit-shard・if: always() で needs.unit-shard.result が success のときだけ成功（失敗・cancel・skip はすべて赤）",
+        "cross-user の sudo step（SR_CROSS_USER_TEST=1）は shard 1 でだけ 1 回走る",
+        "unit shard・shop-css・e2e・e2e-sales の `npx playwright install --with-deps chromium` に timeout-minutes: 8。continue-on-error なし・再試行なし",
+        "docs/RELEASE.md の必須 CI に `unit` が集約 check であることを注記",
+        "app・test・他の workflow は変えない"
+      ],
+      "required_tests": [
+        "PR の CI 全 job（static / unit (1/2) / unit (2/2) / unit / shop-css / integration / build / e2e / e2e-sales）green",
+        "vitest list で shard 1 + shard 2 の file 集合が分割前と一致することを確認",
+        "YAML / actionlint の検査"
+      ],
+      "allowed_scope": [
+        ".github/workflows/ci.yml（人の承認 2026-10-22、この変更だけ）",
+        "docs/RELEASE.md",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "app・tests の変更",
+        "他の workflow",
+        "branch protection・repository settings の変更",
+        "test の skip・除外・無効化",
+        "continue-on-error",
+        "WSL・Staging・Production",
+        "Codex の実行",
+        "develop への merge（orchestrator が行う）"
+      ],
+      "human_approval_triggers": [
+        "承認の範囲を超える CI の変更",
+        "required check 名の変更",
+        "test の除外"
+      ]
     }
   ]
 }
