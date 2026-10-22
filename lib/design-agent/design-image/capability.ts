@@ -143,6 +143,41 @@ export type ImageFailureReason = (typeof IMAGE_FAILURE_REASONS)[number];
 export const IMAGE_FAILURE_SOURCES = ["struct", "fn_output", "cell_error", "cell_print", "none"] as const;
 export type ImageFailureSource = (typeof IMAGE_FAILURE_SOURCES)[number];
 
+/**
+ * DEV-084: how long one image call took, as a fixed bucket. The duration is Codex's own `completed_at_ms - started_at_ms` of the
+ * call's ItemCompleted event (core/src/session/mod.rs:2584-2640 at rust-v0.159.0: started = right before the images request,
+ * ext/image-generation/src/tool.rs:153-181; completed = when the request returned or failed). `140-170s` is the band of
+ * HUMAN-018/019/020/21b's failures (155.6-157.8 s): five HTTP attempts (request_max_retries 4, model-provider-info/src/lib.rs:65,
+ * :446-452) of about 30-31 s each plus about 3 s of backoff (codex-client/src/retry.rs:43-52) — see
+ * docs/operations/imagegen-timeout-investigation.md. `unknown`: no usable timestamps (a legacy log, out of range, or exactly 0 —
+ * Codex writes `started_at_ms = completed_at_ms` when it has no recorded start, core/src/session/mod.rs:2618-2630).
+ */
+export const IMAGE_FAIL_TIMINGS = ["<5s", "5-60s", "60-140s", "140-170s", ">170s", "unknown"] as const;
+export type ImageFailTiming = (typeof IMAGE_FAIL_TIMINGS)[number];
+/** The longest duration recorded (a day); anything else is not a duration of one call. */
+const MAX_CALL_MS = 24 * 60 * 60 * 1000;
+/** At most this many per-call durations / timing buckets are recorded. */
+export const MAX_IMAGE_CALL_TIMINGS = 16;
+
+export function failTimingOf(ms: number | null | undefined): ImageFailTiming {
+  if (typeof ms !== "number" || !Number.isInteger(ms) || ms <= 0 || ms > MAX_CALL_MS) return "unknown";
+  if (ms < 5_000) return "<5s";
+  if (ms < 60_000) return "5-60s";
+  if (ms < 140_000) return "60-140s";
+  if (ms < 170_000) return "140-170s";
+  return ">170s";
+}
+
+/** `completed_at_ms - started_at_ms` of an ItemCompleted event payload (protocol/src/protocol.rs:1948-1960), or undefined. */
+function callMs(payload: Json): number | undefined {
+  const a = payload.started_at_ms;
+  const b = payload.completed_at_ms;
+  if (typeof a !== "number" || typeof b !== "number" || !Number.isSafeInteger(a) || !Number.isSafeInteger(b) || a <= 0 || b <= 0) return undefined;
+  const ms = b - a;
+  // 0: Codex's fallback when the start was not recorded (started_at_ms = completed_at_ms), not a measured duration
+  return ms > 0 && ms <= MAX_CALL_MS ? ms : undefined;
+}
+
 /** API error codes / types that may be recorded (anything else found is "other"; none found: not recorded). */
 export const IMAGE_API_ERROR_CODES = [
   "usage_limit_reached",
@@ -393,6 +428,14 @@ export interface SessionFacts {
   image_failure_api_codes: ImageApiErrorCode[];
   /** DEV-081: an output of an exec cell that named image_gen__imagegen carries one of the tool's argument errors (a call refused before it started leaves no Extension item). */
   code_mode_arg_error: boolean;
+  /**
+   * DEV-084: each ended image call's duration in ms (ItemCompleted `completed_at_ms - started_at_ms`), in the order the calls
+   * were first seen, at most MAX_IMAGE_CALL_TIMINGS. Only calls with usable timestamps (a paginated log); a legacy
+   * image_generation_end has none (protocol/src/protocol.rs:2796-2812).
+   */
+  image_call_ms: number[];
+  /** DEV-084: one fixed bucket per failed call (failTimingOf; `unknown` without timestamps), in call order. */
+  image_fail_timings: ImageFailTiming[];
   /** Other tool calls (shell, apply_patch, MCP …), by count only. */
   other_tool_calls: number;
   /** A log was larger than the read cap, or the walk of the session dirs hit its entry cap (facts are incomplete). */
@@ -424,6 +467,8 @@ export const emptySessionFacts = (): SessionFacts => ({
   image_failure_http: [],
   image_failure_api_codes: [],
   code_mode_arg_error: false,
+  image_call_ms: [],
+  image_fail_timings: [],
   other_tool_calls: 0,
   truncated: false,
   unreadable: false,
@@ -621,6 +666,8 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
     shapeStatus?: Status;
     textFailure?: ImageFailureCode;
     text?: ImageFailureText;
+    /** DEV-084: the end record's duration (ItemCompleted timestamps). */
+    ms?: number;
   };
   const calls = new Map<string, Call>();
   let anonymous = 0;
@@ -744,6 +791,11 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
             // tool.rs:202-221: every failure but an `image_gen` usage limit is written with `failure: null`
             if (status === "failed") c.failureType = "none";
           }
+          // DEV-084: the ItemCompleted event's own timestamps (on the payload, not the item); in_progress is not an end
+          if (record === item && (failure || status === "failed" || status === "completed")) {
+            const ms = callMs(p);
+            if (ms !== undefined) c.ms = ms;
+          }
         }
       }
     }
@@ -785,7 +837,7 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
   };
   const settled = [...calls.values()].map((c) => {
     const status: Status | "pending" = c.endFailure ? "failed" : (c.endStatus ?? c.shapeStatus ?? "pending");
-    if (status !== "failed") return { status, failure: undefined };
+    if (status !== "failed") return { status, failure: undefined, ms: c.ms };
     types.add(c.failureType ?? "no_record");
     // the call's own text (direct mode); else, with no function output at all (code mode), the cells' failure texts
     // (Codex's uncaught-error items decide; text the script printed is only recorded as a reason)
@@ -797,7 +849,7 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
     sources.add(
       c.endFailure !== undefined ? "struct" : c.text ? "fn_output" : cellErrors.length > 0 ? "cell_error" : cellFailures.length > 0 ? "cell_print" : "none",
     );
-    return { status, failure };
+    return { status, failure, ms: c.ms };
   });
   if (f.tool_mode_source === "slug") f.tool_mode = toolModeOf(f.model);
   f.image_tool_calls = settled.length;
@@ -809,6 +861,8 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
   f.image_failure_sources = IMAGE_FAILURE_SOURCES.filter((x) => sources.has(x));
   f.image_failure_http = [...http].sort((a, b) => a - b);
   f.image_failure_api_codes = [...IMAGE_API_ERROR_CODES, "other" as const].filter((c) => apiCodes.has(c));
+  f.image_call_ms = settled.flatMap((c) => (c.ms !== undefined && c.status !== "pending" ? [c.ms] : [])).slice(0, MAX_IMAGE_CALL_TIMINGS);
+  f.image_fail_timings = settled.filter((c) => c.status === "failed").map((c) => failTimingOf(c.ms)).slice(0, MAX_IMAGE_CALL_TIMINGS);
   return f;
 }
 

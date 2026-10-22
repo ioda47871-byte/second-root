@@ -22,9 +22,10 @@ import type { AnswerTextCode, ImageOutcome, ModelCatalogFacts, SessionFacts } fr
 /**
  * /2 (DEV-078): adds preflight, session and classification. /3 (DEV-080): session gains history_mode, tool_mode, code_mode_cells,
  * code_mode_imagegen_ref. /4 (DEV-081): session gains effort, tool_mode_source, image_failure_types / _reasons / _http /
- * _api_codes / _sources, code_mode_arg_error; model_catalog (CODEX_HOME/models_cache.json facts) is added.
+ * _api_codes / _sources, code_mode_arg_error; model_catalog (CODEX_HOME/models_cache.json facts) is added. /5 (DEV-084): session
+ * gains image_call_ms (each image call's duration) and image_fail_timings (a fixed bucket per failed call).
  */
-export const DIAGNOSTICS_SCHEMA = "sr-design-image-poc-diagnostics/4";
+export const DIAGNOSTICS_SCHEMA = "sr-design-image-poc-diagnostics/5";
 
 /** `codex exec --json` event types counted by name (any other: `other`). */
 export const EVENT_TYPES = ["thread.started", "turn.started", "turn.completed", "turn.failed", "item.started", "item.updated", "item.completed", "error"] as const;
@@ -487,6 +488,8 @@ export function diagnosticsSummary(d: PocDiagnostics): string {
     `codex_ms=${n(d.timings_ms.codex)}`,
     `first_event_ms=${n(d.timings_ms.first_event)}`,
     `image_tool_ms=${n(d.timings_ms.first_image_tool_event)}`,
+    `img_call_ms=${list(d.session?.image_call_ms)}`,
+    `img_fail_timing=${list(d.session?.image_fail_timings)}`,
   ];
   return parts.join(" ");
 }
