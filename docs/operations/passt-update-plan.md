@@ -1,15 +1,109 @@
-# Updating passt / pasta without weakening the jail (DEV-086, design only)
+# Updating passt / pasta without weakening the jail (DEV-086 design, DEV-087 final review)
 
-Status: **read-only design (2026-10-22). Nothing has been installed, changed or run on the WSL machine.** No Codex
-run, no passt update, no WSL config change. Every step in §5–§6 is a proposal, and each needs the human approval named in
-§8, in that order. Related: [`imagegen-timeout-investigation.md`](imagegen-timeout-investigation.md) (H1),
-[`design-image-poc.md`](design-image-poc.md) §"HUMAN-024" (24a result, 24b commands and the decision table),
+Status: **final plan for the approval decision (DEV-087, 2026-10-22). Nothing has been installed, changed or run on the
+WSL machine.** No Codex run, no passt update, no WSL config change, no jail change, no worker or timer change. Every step
+in §4.6 and §5–§6 is a proposal, and each needs the human approval named in §8, in that order. **Only A-1 (HUMAN-024b
+and 24b-host) is done; nothing else is approved.** Related: [`imagegen-timeout-investigation.md`](imagegen-timeout-investigation.md)
+(H1), [`design-image-poc.md`](design-image-poc.md) §"HUMAN-024" (24a and 24b results, the EOF analysis, 24b-v2),
 [`design-wsl-isolation.md`](design-wsl-isolation.md) (the jail), `.ai/blockers.md` HUMAN-024.
 
 Labels used below:
 - **CONFIRMED**: read in a primary source, or checked here.
 - **INFERRED**: reasoned from sources but not run.
 - **UNVERIFIED**: not checked yet; marked where it matters.
+
+## 0. 承認判断のための要約
+
+**結論.** 24b（jail の中で A が 27 秒・B が 57 秒で終わり、C と host の 3 本は 100 秒開いたまま）は、
+「古い pasta（`1e6f92b`）が keepalive の probe に ACK を返さないので、jail の kernel が接続を切る」ことを強く支持する。
+直す版は Ubuntu 26.04（resolute）の `passt 0.0~git20260120.386b5f5-1`（署名と hash を確認済み）。
+ただし **画像生成の約 156 秒の失敗が同じ原因だとはまだ言えない**（24b は応答を受け取った後の待機、Codex は応答前の POST の待機）。
+それを示せるのは更新後の Codex 1 回（A-8）だけ。
+EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python 3.12 の ssl が kernel の `ETIMEDOUT` を EOF として返すことを
+手元の試験（noble と同じ package）で確認した。人の machine での errno そのものは 24b では出せないので未確認だが、時刻の一致から
+これが最も確からしい（`design-image-poc.md` の「24b result」）。結論は変わらない。
+
+以下の 7 点は、どれも「事実 → リスク → 対策 → 残るリスク」の順。
+
+**1. Ubuntu 26.04 版の passt を 24.04 に入れる影響（§3.1）**
+- 事実: 依存は `libc6 (>= 2.38)` だけ（noble は 2.39、`GLIBC_2.38` より新しい symbol は使っていない）。他の package は引き上げない。
+  増える file は `/usr/bin/passt-repair`・その man・`/etc/apparmor.d/usr.bin.pasta`（AppArmor の profile）の 3 つ。消える file はない。
+  変わるのは passt / pasta の binary（hard link のまま）・`qrap`・AppArmor の abstractions と `usr.bin.passt`・man。
+  postinst は `local/usr.bin.pasta`（空）を作る。noble で passt を参照するのは podman（Recommends）と libvirt-daemon-driver-qemu（Suggests）だけで、Depends はない。
+  apt の source は足さない（deb 1 つを hash で固定して `dpkg -i`、その後 `apt-mark hold passt`）。
+  jail の flag の意味は `--dns-forward` 以外変わらない（option の削除なし、`--netns` では user namespace を作らないのは両方の版で同じ）。
+- リスク: (a) 他の release の deb を入れることになり、`design-wsl-isolation.md` §6 の規則に反する。
+  (b) 自動の security update が来ない（resolute の universe、noble の apt からは見えない）。
+  (c) podman などが pasta を使っていれば、その動作も変わる。
+- 対策: (a) は人の明示の例外（A-2）。(b) は保守の担当と頻度を決める（A-10。Ubuntu と Debian の CVE tracker と resolute の公開履歴を毎月と jail の変更の前に見る。現時点で passt の CVE はない）。
+  (c) は V-0 が他の pasta / passt の process と podman / buildah / libvirt の有無を記録し、あれば止まる。
+- 残るリスク: 更新は人の手作業（新しい版ごとに V-1〜V-3 を再実行）。resolute の universe は Canonical の security の保証の対象外。
+
+**2. DNS の UDP/853 が新たに許可される問題（§4.6）**
+- 事実: 新しい pasta の `--dns-forward` は UDP と TCP の 53 と 853 を host の resolver（WSL の DNS tunnel `10.255.255.254`）へ送る（`fwd.c` `is_dns_flow`）。
+  TCP は今の ip rule（`198.51.100.53` への TCP をすべて `prohibit`）で引き続き拒否される。**UDP/853 だけが新しく通る。**
+  386b5f5 には DNS の転送を 53 番に限る option はない（man page・`conf.c` を確認）。
+- リスク: jail から WSL VM の loopback 上の `10.255.255.254:853/udp` に届く（そこで何かが聞いていれば）。小さいが、今より広い。
+- 対策（安全性を緩めない方式）: jail の namespace の ip rule を「`198.51.100.53` へは UDP/53 だけ、他はすべて `prohibit`」に変え、853 は明示の `prohibit` も置く（3 行、§4.6 D-1）。
+  probe に「UDP/853 と他の port が即座に `EACCES`」の確認を足す。**更新の前に**入れる（古い pasta では、届かない文書用 address へ出ていた UDP が止まるだけなので、何も壊れないことを JAIL_OK と `getent` で示せる）。更新の後もそのまま。
+  jail の変更なので別の承認（A-3）。この PR では設計だけ、code は承認後の別 PR。
+- 残るリスク: UDP/53 で host の resolver に届くのは今と同じ。kernel が UDP の `prohibit` に `EACCES` を返すことは kernel の source で確認したが、WSL の kernel での実測は A-3 の後の D-3 で行う。
+
+**3. AppArmor・seccomp・jail のネットワーク制限の維持（§4.3〜§4.7）**
+- 事実: jail の制限（`jail.properties` の seccomp・`IPAddressDeny`、pasta の unit の `IPAddressAllow/Deny`、namespace の ip rule、probe）は systemd と kernel が持ち、package の更新では変わらない。
+  pasta 自身の seccomp と capability の削減は pasta の code が行う（版で変わりうる）。今の pasta は AppArmor の profile がなく、この WSL kernel では AppArmor は動いていない見込み（INFERRED）。
+- リスク: 新しい pasta が自分の権限を前より広く残すこと。AppArmor が動いていた場合に新しい profile が `/run/netns/srjail` を拒むこと。
+- 対策: 更新の前後で同じ snapshot（S-1）を取り、稼働中の pasta の `/proc/<pid>/status`（`Uid`・`CapEff/CapPrm/CapBnd/CapAmb`・`NoNewPrivs`・`Seccomp`）、AppArmor の状態（`/sys/kernel/security/lsm`・`aa-enabled`・profile の file）、ip rule、unit の hash と `IPAddressAllow/Deny`、`jail.properties` と probe の hash を行ごとに比べる。
+  capability が 1 つでも増える・`Seccomp` が 2 でない・unit / rule / 設定の hash が変わる → rollback。最後に JAIL_OK。
+  pasta が起動できなければ jail の unit はすべて止まる（`BindsTo`）ので、失敗は**閉じる側**（§4.7）。
+- 残るリスク: pasta は root で動くので、pasta の脆弱性は root への道のまま（今と同じ。`design-wsl-isolation.md` §6 の既存のリスク）。
+
+**4. 既存の Claude・worker の運用への影響（§5.0）**
+- 事実: 更新の間止まるのは jail の中のもの全部: `sr-jail-claude`（Remote Control の Claude）と、`admin.sh run` で動く一時 unit（worker・PoC・probe）。
+  `claude-stop` は `sr-jail-*` をすべて止めるので、**動いている worker の job も途中で止める**。jail の外の capture helper・bridge は pasta を通らないので影響なし。
+  記録では cycle の timer は有効化されていない（HUMAN-010 は保留）。
+- リスク: 作業中の worker の job や Codex を途中で切ること。Claude の作業中の turn が失われること。
+- 対策: timer を変えずに、作業の前に読むだけの確認（W-0）をする: timer の一覧と次の実行、`sr-jail-run-*` などの unit、worker / Codex の process、cycle の lock。何か動いていれば待つ。
+  timer が有効なら、次の実行まで 30 分以上ある時間を選ぶ。それができないときだけ、cycle 自身の lock を作業の間持つ（A-12a）か、timer を止める（A-12b、別の承認）。jail の Claude には事前に commit と push を済ませて止まってもらう。
+- 停止時間の見込み: Claude と jail の中のもの 5〜10 分（更新と直後の確認、24b-v2 を含む）。rollback すると +5〜10 分。jail の外と cloud の Claude Code の session は影響なし。
+- 残るリスク: 人が窓の間に手で worker や PoC を始めないこと（運用の約束）。
+
+**5. 更新前の状態保存と確実な rollback（§5 V-0、§6）**
+- 事実: 変わるのは passt の file・AppArmor の file（conffile、`local/`・`disable/`・`force-complain/`・cache）・dpkg の記録と hold・稼働中の pasta・Claude の enabled / active。
+- 対策: V-0 が全部を記録する（S-1 の snapshot を `v0.txt` に、Claude と hold を `v0-state` に、AppArmor の周りの file を `v0-apparmor.tar` に、旧版の deb を hash 付きで保存）。
+  rollback は「purge → 保存した noble の deb を `dpkg -i` → AppArmor の周りの file を V-0 と同じに戻す → hold を戻す → jail を起こす → Claude を V-0 の状態に戻す」。
+  最後に S-1 をもう一度取り、`v0.txt` と `diff` して差がないことを確かめる（§6.4 の checklist）。
+- 今回の見直しで直した点: (a) `systemctl show -p ExecStart` は起動時刻と pid を含み、更新の前後で必ず変わるので、比較は unit file の行と hash にした。
+  (b) purge は `local/usr.bin.passt` と `disable/`・`force-complain/` の passt の file も消すので、V-0 でそれらを保存し、R-2 で戻すようにした。
+  (c) file の比較から inode を外した（再 install で必ず変わる）。hard link は `-ef` で見る。
+- 残るリスク: 更新と rollback は root の手作業（1 行ずつ人が実行）。WSL 全体の backup（`wsl --export`）は提案しない。
+
+**6. 更新後の通信検証とセキュリティ確認（§5 V-3）**
+- 直後（A-5 の中）: S-1 の比較（上の 3）、`pasta --version`、hash、hold、`dpkg --verify`、JAIL_OK、jail の中で `getent hosts github.com`、UDP/853 の確認（A-3 を入れていれば `EACCES`、入れていなければ UDP は `NOT_REFUSED`）、TCP/53 と TCP/853 が `EACCES`。capability は減るのは可、増えれば rollback。`Seccomp_filters` は V-0 以上。
+- 通信（A-6）: 24b の代わりに **24b-v2** を jail と host で 1 回ずつ。期待: jail で A・B・C とも `end=OPEN`、A と B の `ack_age_max_s` が 20 以下（keepalive に ACK が返っている）、host は今と同じく 3 本とも `OPEN`。
+- 成功: 上のすべて → Claude を V-0 の状態に戻す（V-2b）。その後に Codex 1 回（A-8、別の承認）。
+- rollback する: jail-net が動かない、JAIL_OK でない、capability が増えた・`Seccomp` が 2 でない・unit / rule / 設定の hash が変わった、`dpkg --verify` が clean でない、jail で DNS が引けない、A-3 があるのに UDP/853 が通る、AppArmor の拒否（A-9 を承認していなければ）。
+- 止めて報告（自動で rollback しない）: 24b-v2 で jail の A / B がまだ `LOCAL_TIMEOUT`（直っていない。rollback を推奨）、host の結果が変わった、予想外の `PEER_RST` / `PEER_FIN`。
+- 残るリスク: 24b-v2 が OPEN でも、画像生成の失敗が直ったことにはならない（A-8 で初めて分かる）。
+
+**7. 作業ごとに必要な人の承認（§8）**: 下の表。**現時点で承認されているものはない。A-1（24b と 24b-host）だけが済み。**
+
+| # | 作業 | 何が変わるか | 戻せるか | 承認 | コマンド |
+|---|---|---|---|---|---|
+| A-1 | 24b・24b-host | なし（読むだけの通信） | – | **済み（2026-10-22）** | `design-image-poc.md` 24b |
+| A-1b | 任意: 更新前の 24b-v2（jail・host） | なし | – | 要（A-1 と同じ種類）。必須ではない | `design-image-poc.md` 24b-v2 |
+| A-2 | passt を更新すると決める + `design-wsl-isolation.md` §6 の例外（resolute の `386b5f5-1` だけ） | 方針（docs） | はい | 要（人の判断） | – |
+| A-3 | DNS の rule を UDP/53 だけにする（code の PR → merge → `admin.sh approve <sha>`） | jail-net の unit の ip rule・probe・test。適用時に jail が数秒止まる | はい（前の sha を approve し直す、D-4） | 要。**または** UDP/853 の残りを書面で受け入れる | §4.6 D-1〜D-4、W-0 |
+| A-4 | 窓の確認と V-0 の snapshot | `/root/sr-passt-update/` に記録の file だけ | はい（消すだけ） | 要 | S-1、W-0、V-0 |
+| A-5 | V-1 取得と検証、V-2 更新と hold、V-3a 直後の確認、成功なら V-2b。**失敗時の rollback（R-1〜R-3）を中止の手順として同時に承認** | passt の package・AppArmor の file・dpkg の hold・pasta の再起動・Claude の停止 | はい（R-1〜R-3） | 要（root、人がその場で実行） | V-1、V-2、V-3a、V-2b、R-1〜R-3 |
+| A-6 | 更新後の 24b-v2（jail・host） | なし | – | 要 | V-3b |
+| A-7 | 任意: jail の中の `sandbox.test.ts` / `worker.test.ts` | なし（resource preflight の後） | – | 要 | §5.1 |
+| A-8 | Codex 1 回（HUMAN-021b の v1 のコマンド） | plan の利用枠 | – | 要 | V-4 |
+| A-9 | AppArmor が動いていて pasta が拒否されたときだけ: complain → profile の調整、または pasta の profile を無効化 | AppArmor の設定 | はい | 要 | §4.3 |
+| A-10 | 手で入れた package の保守の担当と頻度 | 運用 | はい | 要 | §6.3 |
+| A-11 | 任意: noble への SRU の依頼（外部への投稿） | 外部 | – | 要 | §7 |
+| A-12a | timer が有効で窓が取れないときだけ: 作業の間 cycle の lock を持つ | なし（cycle は `CYCLE_LOCKED` で何もせず終わる） | はい（lock を離す） | 要 | L-1 |
+| A-12b | A-12a でも足りないときだけ: worker の timer を止めて戻す | timer | はい | 要（worker / timer の変更） | §5.0 |
 
 ## 1. Where we are
 
@@ -18,14 +112,26 @@ Labels used below:
 - Kernel `6.18.33.2-microsoft-standard-WSL2`, WSL `nat`.
 - Jail `JAIL_OK`, no proxy variables.
 - Upstream `1e6f92b` is an ancestor of `238c69f` (checked with `git merge-base --is-ancestor` in passt.top's repository).
-  So the pasta that carries every jail TCP connection does **not** ACK keep-alive segments (CONFIRMED from source, §2).
+  So the pasta that carries every jail TCP connection does **not** ACK keep-alive segments (CONFIRMED from source, §2;
+  DEV-087 re-read `tcp_data_from_tap()` at `1e6f92b`: a keep-alive gets no ACK, no FIN and no RST).
 
-**How that produces H1:**
+**What HUMAN-024b and 24b-host (2026-10-22) showed** (`design-image-poc.md` "24b result"):
+- In the jail: A (reqwest's options) ended at 27 s, B (keepalive only) at 57 s, C (no options) stayed open 100 s.
+- On the host: all three stayed open 100 s.
+- A and B printed `EOF`, not `ERR_ETIMEDOUT`. On Ubuntu 24.04's Python 3.12, the ssl module reports a socket the kernel
+  aborted with `ETIMEDOUT` as a ragged EOF (CONFIRMED by a local test on noble's own `python3.12` and `libssl3t64`, and
+  by the CPython source; fixed only in 3.13, gh-115627). The timing, not the word, is the evidence.
+
+**Reading.** This strongly supports H1 on the jail path: the old pasta drops the keep-alive ACKs, and the jail's kernel
+gives up at exactly the predicted times (`TCP_USER_TIMEOUT` 30 s − 3 s read window = 27 s; 15 + 3 × 15 − 3 = 57 s). The
+host path answers the probes. **It is not proven that the ~156 s image failures have the same cause**: 24b idles after
+a complete `GET`, while Codex `POST`s and waits for a response that has not started. That is why A-8 (one Codex run after
+the fix) stays in the plan as the deciding check.
+
+**How H1 would produce the image failures (INFERRED):**
 - Codex's reqwest sockets probe after 15 s idle, and they abort at 30 s without an ACK (`TCP_USER_TIMEOUT`).
 - An image generation that keeps the connection silent for more than about 30 s is therefore cut.
 - Codex retries this five times, which gives about 156 s.
-- This is still **INFERRED** until HUMAN-024b measures it. **This plan is only acted on if 24b shows "A cut in the jail,
-  OPEN on the host"** (the decision table in `design-image-poc.md`).
 
 Ubuntu 24.04 has **no** newer passt: there is no `noble-updates`, `noble-security` or `noble-backports` build. The
 Launchpad publishing history for noble ends with the release pocket's `1e6f92b-1` (published 2024-02-24, still
@@ -93,6 +199,54 @@ newer passt. So the update needs an explicit, written exception from the human (
 since 2024-02, and it sits in universe too. There are no CVEs for passt in the Ubuntu CVE tracker or the Debian security
 tracker (checked 2026-10-22).
 
+### 3.1 What installing resolute's deb on noble changes (DEV-087, checked against both `.deb` files)
+
+Both debs were downloaded again here and matched the hashes in V-1 (`de07c44d…` and `49eaf773…`).
+
+**Control fields.** Identical apart from `Version` and `Installed-Size` (432 → 680 KiB): `Depends: libc6 (>= 2.38)`,
+`Suggests: apparmor`, no `Pre-Depends`, `Breaks`, `Conflicts`, `Replaces` or `Provides`. The maintainer scripts are the
+same `dh_apparmor` blocks plus one for `usr.bin.passt-repair` (a profile the deb does not ship, so that block does
+nothing).
+
+**Files** (`dpkg-deb -c`, compared by path):
+
+| | files |
+|---|---|
+| new | `/usr/bin/passt-repair` (0755, no setuid, no file capabilities), `/usr/share/man/man1/passt-repair.1.gz`, `/etc/apparmor.d/usr.bin.pasta` (conffile) |
+| removed | none |
+| changed | `/usr/bin/passt`, `/usr/bin/passt.avx2` and their hard links `pasta`, `pasta.avx2`; `qrap`; the conffiles `/etc/apparmor.d/abstractions/passt` and `abstractions/pasta` (ABI 3.0 → 4.0, `userns`, new `/proc/sys/net/ipv4/*` reads, `@{run}/user/@{uid}/** rw`, `ptrace r`) and `/etc/apparmor.d/usr.bin.passt` (ABI 4.0, libvirt paths); man pages and docs |
+| created by the postinst (both versions) | `/etc/apparmor.d/local/usr.bin.passt` and, new, `local/usr.bin.pasta` (empty files), whether AppArmor runs or not. Profiles are loaded only when `aa-enabled` succeeds |
+
+noble's `apparmor` is 4.0.x, which understands `abi <abi/4.0>` (INFERRED from the version; it only matters if AppArmor
+is active, §4.3).
+
+**Other packages that use passt** (noble and noble-updates `Packages`, main and universe, amd64, searched 2026-10-22):
+
+| package | relation |
+|---|---|
+| `podman` 4.9.3 | `Recommends: … passt …` |
+| `libvirt-daemon-driver-qemu` 10.0.0 | `Suggests: … passt …` |
+
+Nothing **depends** on passt, so `dpkg --purge passt` in the rollback is not blocked by them. `buildah` does not
+reference passt. If podman or libvirt is installed **and** uses pasta / passt, new containers or VMs would start the new
+binary; podman 4.9's arguments are still accepted, because no option was removed between the two man pages (INFERRED: the
+podman side was not run). Running processes keep the old binary until they restart. S-1 records whether these packages
+are installed and whether any other pasta / passt process runs; if one does, stop and decide before V-2.
+
+**apt and the hold.** No apt source and no pin are added. With `386b5f5-1` installed by `dpkg -i`, apt sees an installed
+version higher than any candidate, so `apt upgrade` / `full-upgrade` never downgrades it, and `apt install passt` reports
+it as the newest version. `apt-mark hold passt` makes that explicit, covers a future noble upload with a higher version
+string, and is respected by unattended-upgrades (§6.2). The passt package was installed with `apt install` (`admin.sh`
+`PASTA_MISSING` hint), so it stays marked manual and `autoremove` does not touch it.
+
+**Security updates.** On noble nothing would ever offer an update for this package: noble's archive does not have it,
+and resolute is not an apt source. resolute's passt is in universe, which has no guaranteed security support from the
+Ubuntu Security Team. A fix would appear as a resolute upload, which a person has to notice and install by hand (V-1 to
+V-3 again, with the new hash). Responsibility, as proposed in A-10 (§6.3): the human, or Claude in a docs session on the
+human's request, checks the [Ubuntu CVE tracker](https://ubuntu.com/security/cves?package=passt), the
+[Debian security tracker](https://security-tracker.debian.org/tracker/source-package/passt) and resolute's publishing
+history monthly and before any jail change. No CVE for passt was listed in either tracker on 2026-10-22.
+
 ## 4. (c) Keeping the jail exactly as strong
 
 ### 4.1 How the jail runs pasta (`scripts/sales-design-capture/admin.sh`)
@@ -133,19 +287,28 @@ Compared from `passt.1` and `conf.c` at both commits:
 
 **DNS after the update.** On the TCP side nothing changes for the jail. The ip rule refuses **all** TCP to
 198.51.100.53 inside the namespace, so TCP/53 and TCP/853 are still refused with `EACCES`, and `probe.py`'s
-`DNS_TCP_NOT_REFUSED` check still applies. **UDP to 198.51.100.53:853 is new.** Today it goes nowhere; after the update
-pasta would forward it to the host resolver, `10.255.255.254:853`. The WSL DNS tunnel address sits on the VM's loopback,
-where every `0.0.0.0` UDP service answers (`design-wsl-isolation.md` §2). That is a small widening.
+`DNS_TCP_NOT_REFUSED` check still applies. **UDP to 198.51.100.53:853 is new.** Today pasta maps only UDP **port 53** on
+that address to the host resolver (`1e6f92b` `udp.c:856-858`), and UDP to any other port of it is sent on unchanged to
+the real 198.51.100.53, a documentation address nobody answers. After the update pasta would forward UDP/853 to the host
+resolver, `10.255.255.254:853` (`386b5f5` `fwd.c:855-859` `is_dns_flow`). The WSL DNS tunnel address sits on the VM's
+loopback, where every `0.0.0.0` UDP service answers (`design-wsl-isolation.md` §2). That is a small widening. The
+tightening that removes it is designed in §4.6 (A-3).
 
-- **Proposal (A-3, its own PR before the update):** change the namespace rules to "UDP/53 to 198.51.100.53 allowed,
-  everything else to it prohibited". For example:
-  - `ip -n srjail rule add to 198.51.100.53/32 ipproto udp dport 53 lookup main priority 99`
-  - `ip -n srjail rule add to 198.51.100.53/32 prohibit priority 100`
-- Add a `probe.py` check that UDP to `198.51.100.53:853` fails at once (`EACCES`), and update `jail.test.ts`.
-- The alternative is to accept the residual in writing. Either way, A-3 is decided before A-5.
-- iproute2 6.1 (noble) supports `ipproto`/`dport` in rules. Whether `prohibit` returns `EACCES` for UDP `sendto` as
-  it does for TCP connect is **UNVERIFIED**: the PR's test must show it.
-- The newer pasta also *could* carry DNS over TCP. Using that would loosen the UDP-only design and is **not** proposed.
+**Other changes between `1e6f92b` and `386b5f5` that touch the jail's flags (DEV-087).** There are 967 commits between
+the two. Reviewed: every commit to `conf.c` and `passt.1` (options and defaults), `isolation.c`, and the TCP keep-alive
+and timer code. Not reviewed one by one: vhost-user, migration (`passt-repair`, TCP_REPAIR), qrap and test-only commits;
+the jail runs pasta in namespace mode and uses none of them.
+
+| area | change | effect on the jail |
+|---|---|---|
+| options | no option removed (`passt.1` option lists compared). New: `--dns-host`, `--fqdn`, `--freebind`, `--host-lo-to-ns-lo`, `--map-guest-addr`, `--map-host-loopback`, `--no-splice`, `--splice-only`, `--stats`, `--repair-path`, `--vhost-user`, `--print-capabilities`, `--migrate-*` | none: the unit uses none of them, and their defaults are off or, for the mappings, disabled by `--no-map-gw` (table above) |
+| `--netns <path>` | implies `netns_only` in both versions (`conf_pasta_ns()`), so `isolate_user()` is called with `use_userns = 0`: pasta joins the jail's namespace and creates **no user namespace** (`1e6f92b` `conf.c:1682`, `386b5f5` `conf.c:2128`) | none; the capabilities in `/proc/<pid>/status` stay comparable before and after |
+| DNS resolver choice | `--dns-host` (`ff63ac9`) defaults to the first `nameserver` in the host's `resolv.conf`, as before. `a3d142a` (host gateway is a resolver) and `5024908` (a loopback resolver with `--no-map-gw`) change other cases | none expected: WSL's resolver `10.255.255.254` is neither in 127/8 nor the default gateway (INFERRED; V-3a's `getent` in the jail checks it) |
+| DNS ports | `becf81a` (2024-07): UDP and TCP, ports 53 and 853 | UDP/853 widening above, §4.6 |
+| TCP keep-alive | `238c69f`: a keep-alive gets an ACK and resets the activity timer (`386b5f5` `tcp.c:1885-1905`); `aa809d3`: pasta then sets `SO_KEEPALIVE` on its host-side socket | the fix. The host socket uses the host's sysctls (`7200 75 9`, 24a), so pasta's own host-side probes start only after 2 h idle |
+| TCP timers | `ACT_TIMEOUT` 7200 s and `FIN_TIMEOUT` 60 s unchanged; retransmission timeouts now follow RFC 6298 (`RTO_INIT` 1 s) and read `/proc/sys/net/ipv4/tcp_syn_retries` etc. | none on idle connections |
+| UDP | flow table; an idle UDP flow expires after 180 s (`udp_flow.c:20`) | none for DNS (one query per flow) |
+| isolation | `5da0316` keeps `CAP_DAC_OVERRIDE` during start-up (`isolate_initial()`); `isolate_user()` still drops every capability outside its keep-list afterwards | INFERRED unchanged final set; V-0 / V-3a compare it |
 
 ### 4.3 AppArmor
 
@@ -191,6 +354,9 @@ passt confines itself (`isolation.c`):
 - It detaches into new namespaces and `pivot_root`s into an empty tmpfs.
 - It installs a seccomp filter generated at build time from the source's `#syscalls` annotations.
 
+With `--netns <path>` pasta joins the jail's namespace without creating a user namespace, in both versions (§4.2), so
+the capability masks in `/proc/<pid>/status` are in the initial user namespace and comparable.
+
 Between the two versions, `isolation.c` changed (+48/−38). The commit relevant to root use is `5da0316` "keep
 CAP_DAC_OVERRIDE initially", which keeps it during start-up. Larger isolation changes happened **after** `386b5f5`:
 2026-07 `--chroot-fallback`, 2026-09 "Don't create our userns as nobody", and 2026-10 AppArmor fixes for the new
@@ -216,68 +382,295 @@ These are the same before and after:
 - the netns path and the netns-id check;
 - `IPAddressAllow/Deny`, both pasta's and the jail's;
 - the jail's `resolv.conf`;
-- the namespace's ip rule (unless A-3 tightens it).
+- the namespace's ip rules (A-3, if approved, changes them **before** the update, in its own step).
 
 dpkg does not touch `/etc/systemd/system/sr-jail-*.service`. The only behaviour changes are inside pasta:
 - keep-alive ACKs;
 - `SO_KEEPALIVE` on its host-side sockets when the jail sends keepalives;
 - the DNS mapping in §4.2.
 
+### 4.6 DNS: allow only UDP/53 to the jail's DNS address (A-3, design only; nothing here is implemented)
+
+**Goal.** After the update the jail must reach no more of the host resolver than today: UDP/53 only. The change must
+not loosen anything, must be deployable **before** the update as a provable no-op on the old pasta, and stays after it.
+
+**Options compared:**
+
+| option | safety | cost | verdict |
+|---|---|---|---|
+| **(1) ip rules in the jail's namespace** (the mechanism the jail already uses for TCP) | refuses everything to 198.51.100.53 except UDP/53, inside the jail's namespace, before any packet reaches pasta; independent of the pasta version; `EACCES` at once | 3 lines in `admin.sh`, a probe check, test updates | **recommended** |
+| (2) a pasta option | – | – | **does not exist**: in `386b5f5` `--dns-forward` "Maps only UDP and TCP traffic to port 53 or port 853" (`passt.1:262-268`), the ports are fixed in `is_dns_flow()`, and no option disables 853 (`conf.c` option table checked) |
+| (3) nftables in the jail's namespace | the same effect | a second packet-filter mechanism, the `nft` binary and its own ruleset to keep and test | not proposed |
+| (4) systemd `IPAddressDeny=` | cannot filter by port | – | not possible |
+| (5) accept the residual in writing | keeps a small widening | none | allowed by A-3 as the alternative, not recommended |
+
+**D-1 — the change** (in a later code PR after A-3 is approved; not in this PR). In `admin.sh` `jail_install`, today's
+line 176 becomes three rules, still inside the namespace, still before `ExecStart` (pasta):
+
+```diff
+-    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto tcp prohibit priority 100"
++    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto udp dport 853 prohibit priority 98"
++    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto udp dport 53 lookup main priority 99"
++    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 prohibit priority 100"
+```
+
+- Priority 100 now refuses **every** protocol and port to 198.51.100.53 (today: TCP only). TCP/53 and TCP/853 stay
+  refused exactly as today.
+- Priority 99 lets UDP/53 through to the normal route (through pasta's tap). Priority 98 states the 853 refusal
+  explicitly; it is redundant with 100 and is there so `ip rule show` documents it and a later edit of 99 cannot open 853.
+- The kernel matches `ipproto` and `dport` in rules (`net/ipv4/fib_rules.c` `fib4_rule_match`, v6.18 :204-212), a
+  `prohibit` rule returns `-EACCES` (:126-127), and `udp_sendmsg()` returns that error from the route lookup to the
+  caller (`net/ipv4/udp.c` :1450-1456). So a UDP `sendto` to a refused port fails at once with `EACCES`, like TCP's
+  `connect` today (CONFIRMED from the kernel source; not run on the WSL kernel, D-3 does that). iproute2 on noble
+  (6.1) accepts `ipproto` / `dport` in rules (INFERRED from the version).
+- The same PR changes the comments that say "DNS is UDP-only … Ubuntu 24.04's passt does not forward DNS over TCP"
+  (`admin.sh:100-103`, `jail.properties:60-63`, `probe.py` docstring) to "the DNS address takes UDP/53 only, whatever
+  pasta forwards".
+- `probe.py` gets one more check, next to `DNS_TCP_NOT_REFUSED` (failing closed like the others):
+
+```python
+    # The DNS address takes UDP/53 and nothing else: newer pasta also maps UDP/853 to the host resolver.
+    for port in (853, 9):
+        u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            u.sendto(b"x", (JAIL_DNS, port))
+            fail("DNS_UDP_PORT_NOT_REFUSED")
+        except OSError as e:
+            if e.errno != errno.EACCES:
+                fail("DNS_UDP_PORT_NOT_REFUSED")
+        finally:
+            u.close()
+```
+
+- `tests/unit/design-agent/jail.test.ts` pins the three rule lines and their order (after `netns add`, before `ExecStart`),
+  pins the probe check, and expects `JAIL_UNSAFE DNS_UDP_PORT_NOT_REFUSED` when the probe runs outside a jail (no rule).
+- `design-wsl-isolation.md` §6's DNS paragraph is updated in the same PR (the A-2 exception may go in it too).
+
+**D-2 — deploy (the usual approval, after the PR is merged; before A-4).** First W-0 (§5.0): `approve` re-runs
+`jail_install`, which restarts `sr-jail-net`, so every jail unit stops for a few seconds and Claude comes back on its own
+if it is enabled (`ExecStartPost`).
+
+```bash
+SHA=PASTE_THE_40_HEX_A3_MERGE_SHA
+if [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  sudo git -C /root/sr-capture-admin fetch -q origin
+  sudo git -C /root/sr-capture-admin checkout -q --detach "$SHA"
+  sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh approve "$SHA"
+else
+  echo "set SHA to the full A-3 merge commit first"
+fi
+```
+
+**D-3 — verify (read only, plus three 1-byte UDP sends that must be refused).**
+
+```bash
+sudo ip -n srjail rule show
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-check
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- getent hosts github.com
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /usr/bin/python3 -I -c 'import socket, errno
+for proto, port in (("udp", 853), ("udp", 9), ("tcp", 853), ("tcp", 53)):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM if proto == "udp" else socket.SOCK_STREAM)
+    s.settimeout(2)
+    try:
+        if proto == "udp":
+            s.sendto(b"x", ("198.51.100.53", port))
+        else:
+            s.connect(("198.51.100.53", port))
+        print("DNS_ADDR", proto, port, "NOT_REFUSED")
+    except OSError as e:
+        print("DNS_ADDR", proto, port, errno.errorcode.get(e.errno, e.errno))
+    finally:
+        s.close()'
+```
+
+Expected:
+- `ip rule show` lists `98: … to 198.51.100.53 ipproto udp dport 853 prohibit`, `99: … ipproto udp dport 53 lookup
+  main`, `100: … to 198.51.100.53 prohibit` between `0: … lookup local` and `32766: … lookup main` (exact spacing
+  INFERRED);
+- `JAIL_OK`; `getent` prints github.com's addresses;
+- four lines `DNS_ADDR … EACCES`.
+
+On the old pasta this is the no-op proof: DNS still resolves, TCP is refused as before, and the only traffic now refused
+is UDP to non-53 ports of a documentation address that nothing answers. The same D-3 runs again in V-3a after the update.
+Before A-3 (today) the UDP lines print `NOT_REFUSED`, which is harmless with the old pasta (the byte goes to the
+documentation address); after an update without A-3, `udp 853` would reach the host resolver.
+
+**D-4 — rollback of A-3.** Approve the previous sha again (the commit approved before D-2, from the helper's
+`approved-sha` file, which `approve` prints as "Changes since the approved commit …"):
+
+```bash
+SHA=PASTE_THE_40_HEX_PREVIOUSLY_APPROVED_SHA
+if [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  sudo git -C /root/sr-capture-admin checkout -q --detach "$SHA"
+  sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh approve "$SHA"
+  sudo ip -n srjail rule show
+else
+  echo "set SHA to the full previously approved commit first"
+fi
+```
+
+That rewrites the unit with today's single TCP rule and the old probe. Do not delete rules by hand with `ip rule del`:
+the unit re-creates its rules on every start, so hand edits are not durable and are not tested.
+
+**Residual after A-3:** UDP/53 to the host resolver, exactly as today (DNS can still carry data out, as today; the jail
+can reach public addresses anyway).
+
+### 4.7 What fails closed
+
+| failure | what happens |
+|---|---|
+| pasta does not start (a bad binary, an AppArmor denial, a changed option) | `sr-jail-net` fails; every jail unit has `Requires=`/`BindsTo=sr-jail-net`, so Claude and `admin.sh run` cannot start (`systemd-run` fails on the dependency). Nothing runs outside the jail instead |
+| pasta crashes at run time | the namespace keeps only `lo` and the dead tap: no way out. `Restart=always` starts pasta again after 5 s; Claude is restarted only if enabled |
+| `ip rule add` fails in `ExecStartPre` | the unit fails before pasta starts (no `-` prefix on those lines) |
+| any `JAIL_UNSAFE` from `probe.py` | `ExecStartPre` of every jail unit fails, the unit does not start |
+| the jail's cgroup filters (`IPAddressAllow/Deny`) and seccomp | set by systemd from `jail.properties`; the package does not touch them |
+| what does **not** fail closed | pasta's **own** self-confinement (dropped capabilities, its seccomp filter, its namespaces). Nothing outside pasta enforces it, which is why V-3a compares `/proc/<pid>/status` and stops on any increase |
+
 ## 5. (d) Verification plan (each step needs approval first; nothing here has been run)
 
 Before any heavy step on the WSL machine, run the resource preflight (`docs/operations/wsl-resource-preflight.md`).
 
-**V-0 — snapshot before the update (A-4).** Run in the human's WSL shell, outside the jail. Keep the output. Everything
-is read only except one root-only state file, `/root/sr-passt-update/v0-state`. It records what V-2 and the rollback
-must put back: whether Claude is enabled and active, whether passt is held, and whether the AppArmor `local/` file and
-cache for pasta exist.
+### 5.0 Claude, the worker and the window (DEV-087)
+
+**What stops while the jail is down.** Everything that runs in the jail:
+- `sr-jail-claude.service` (Claude Remote Control in tmux). `admin.sh claude-stop` disables and stops it.
+- Transient `sr-jail-run-*` units from `admin.sh run`. They carry the design worker run started by `cycle.sh` (and a
+  person's manual worker runs, PoC runs and probes); `sr-jail-shell-*` and `sr-jail-check-*` are a person's shell and
+  `jail-check`.
+- `claude-stop` stops **every** `sr-jail-*.service` except the net unit (`stop_jail_units`), so it would cut a worker job
+  that is running. A restart of `sr-jail-net` does the same through `BindsTo`.
+
+**What does not stop:** the Instagram capture helper (`sr-capture.*`, user `sr-igcapture`, outside the jail, host
+namespace) and the design bridge (user `sr-designbridge`, outside the jail). Neither goes through pasta. While Claude
+and the worker are stopped, nothing asks the helper for captures, and the bridge claims jobs only from a cycle (§ below).
+
+**The worker timer.** `sr-design-cycle.timer` (hourly at :17 + up to 10 min) is not installed or enabled by the
+repository, and the records say it has not been enabled (HUMAN-010 is on hold, 2026-10-19). The older
+`sr-design-worker.timer` / `sr-design-bridge.timer` must not be enabled when the cycle is used (`cycle.sh`
+`CHECK_UNIT_ENABLED`). W-0 checks all of them instead of trusting the records.
+
+**How to keep a job from running mid-update without touching a timer:**
+1. **W-0 (read only), right before D-2 and again before V-2:** no `sr-jail-run-*` / `sr-jail-shell-*` unit, no worker or
+   Codex process, the cycle lock free, and no timer due within 30 minutes. If something runs, wait for it to end. Do not
+   stop it.
+2. If a worker timer **is** enabled: pick a window right after a cycle ended (the lock is free and the next start is more
+   than 30 minutes away; a cycle can run up to 75 minutes). That needs no extra approval.
+3. Only if no such window can be found: **L-1 (A-12a)** holds `cycle.sh`'s own lock for the window. A cycle the timer
+   starts then ends at once with `CYCLE_LOCKED` (exit 11, a success status for the unit) before its preflight, claim or
+   worker, and the timer stays as it is. A person's manual `run.sh` takes a different lock, which is why the window is
+   also announced to whoever might start one.
+4. Only if L-1 is not acceptable either: **A-12b** disables the timer for the window and enables it again afterwards
+   (`systemctl disable --now` / `enable --now`, `design-worker-cycle.md`). That is a worker / timer change and needs its
+   own approval.
+
+**Claude in the jail.** Before the window, ask the jailed Claude to commit and push its work and to stop at a clean
+point. `claude-stop` ends its tmux server: the Remote Control session disconnects, and a running turn and its in-memory
+context are lost. Files in `~sr-designgen/work` stay on disk. V-2b starts it again only if V-0 had it enabled. Cloud
+Claude Code sessions (like the one that wrote this plan) and Claude outside the jail are not affected.
+
+**Expected downtime of the jail:** 5–10 minutes on the success path (V-2 under a minute, V-3a 2–3 minutes, 24b-v2
+about 2 minutes if A-6 is approved together and run before V-2b), plus 5–10 minutes for a rollback. A-3's deploy (D-2)
+interrupts the jail for a few seconds on its own.
+
+**W-0 — the window check (read only).** Run as a person in the WSL shell, outside the jail:
 
 ```bash
-dpkg-query -W -f='${Package} ${Version} ${db:Status-Abbrev}\n' passt
-apt-cache policy passt | head -n 6
-apt-mark showhold | grep -x passt || echo "passt: not held"
-stat -c '%i %h %U:%G %a %n' /usr/bin/passt /usr/bin/passt.avx2 /usr/bin/pasta /usr/bin/pasta.avx2
-sha256sum /usr/bin/passt /usr/bin/passt.avx2
-out="$(dpkg --verify passt)"; if [ -z "$out" ]; then echo "dpkg-verify: clean"; else printf '%s\n' "$out"; fi
-apt-cache rdepends --installed --no-recommends --no-suggests passt | tail -n +3 | grep . || echo "no installed package depends on passt"
-ls -l /etc/apparmor.d/local/ 2>&1 | grep -E 'usr\.bin\.pas' || echo "apparmor local/: no passt or pasta file"
-sudo find /var/cache/apparmor -name 'usr.bin.pas*' 2>/dev/null | grep . || echo "apparmor cache: no passt or pasta entry"
-systemctl is-enabled sr-jail-claude.service; systemctl is-active sr-jail-claude.service
+systemctl list-timers --all --no-pager 'sr-*'
+systemctl list-unit-files --no-legend 'sr-*.timer' 'sr-*.path' 'sr-*.service'
+systemctl list-units --all --plain --no-legend 'sr-jail-*' 'sr-design-*'
+if pgrep -u sr-designgen -f 'scripts/sales-design-worker/|sales-design-bridge/|design-image-poc|codex' >/dev/null; then echo "W0_STOP: a worker, PoC or Codex process of sr-designgen is running"; else echo "W0: no worker, PoC or Codex process"; fi
+if sudo test -e /var/lib/sr-design-cycle/cycle.lock; then sudo flock -n /var/lib/sr-design-cycle/cycle.lock true && echo "W0: cycle lock free" || echo "W0_STOP: a cycle is running"; else echo "W0: no cycle state (the cycle never ran)"; fi
+```
+
+Go on only when: no `sr-jail-run-*` or `sr-jail-shell-*` unit is active, both checks print `W0:`, and no `sr-*` timer
+is enabled with a next run within 30 minutes. Otherwise wait and run W-0 again.
+
+**L-1 — hold the cycle lock (A-12a, only if approved).** In a second root terminal, before V-2; it prints
+`CYCLE_LOCK_HELD` and holds the lock until Enter is pressed after V-3 / R-3:
+
+```bash
+sudo flock -n -E 75 /var/lib/sr-design-cycle/cycle.lock -c 'echo CYCLE_LOCK_HELD; read -r _'
+```
+
+Exit code 75 means a cycle holds the lock right now: wait. If the terminal closes, the lock is released.
+
+### 5.1 The snapshot (S-1), V-0 and the update
+
+**S-1 — the snapshot function.** Paste it into the WSL shell (outside the jail) before V-0, V-3a and R-3. It prints
+codes, versions, hashes, unit lines and capability masks only (no secrets, no addresses beyond the unit's own lines).
+It is run as root: `sudo bash -c "$(declare -f sr_snap); sr_snap"`.
+
+```bash
+sr_snap() {
+  local f pid out
+  dpkg-query -W -f='pkg ${Package} ${Version} ${db:Status-Abbrev}\n' passt 2>&1
+  echo "held $(apt-mark showhold | grep -qx passt && echo yes || echo no)"
+  for f in /usr/bin/passt /usr/bin/passt.avx2 /usr/bin/pasta /usr/bin/pasta.avx2 /usr/bin/passt-repair; do
+    if [ -e "$f" ]; then echo "file $f $(stat -c '%U:%G %a links=%h' "$f") $(sha256sum < "$f" | cut -c1-64)"; else echo "file $f absent"; fi
+  done
+  echo "hardlinks pasta=passt:$([ /usr/bin/pasta -ef /usr/bin/passt ] && echo yes || echo no) pasta.avx2=passt.avx2:$([ /usr/bin/pasta.avx2 -ef /usr/bin/passt.avx2 ] && echo yes || echo no)"
+  out="$(dpkg --verify passt 2>&1)"
+  if [ -z "$out" ]; then echo "dpkg-verify clean"; else printf '%s\n' "$out" | sed 's/^/dpkg-verify /'; fi
+  echo "rdepends $(apt-cache rdepends --installed --no-recommends --no-suggests passt 2>/dev/null | tail -n +3 | tr -d ' ' | paste -sd, -)"
+  echo "other-users $(dpkg-query -W -f='${Package}:${db:Status-Abbrev} ' podman buildah libvirt-daemon-driver-qemu 2>/dev/null)"
+  echo "processes pasta=$(pgrep -c -x 'pasta(\.avx2)?' || true) passt=$(pgrep -c -x 'passt(\.avx2)?' || true)"
+  find /etc/apparmor.d /var/cache/apparmor -name 'usr.bin.pas*' -type f -exec sha256sum {} + 2>/dev/null | sort -k2 | sed 's/^/aa /'
+  echo "lsm $(cat /sys/kernel/security/lsm 2>/dev/null)"
+  echo "aa-enabled $(aa-enabled 2>&1 || true)"
+  if aa-enabled --quiet 2>/dev/null; then aa-status 2>/dev/null | grep -E 'pas(st|ta)' | sed 's/^/aa-loaded /'; fi
+  echo "unit-sha $(systemctl cat sr-jail-net.service 2>/dev/null | sha256sum | cut -c1-64)"
+  grep -E '^(ExecStartPre|ExecStart|IPAddressAllow|IPAddressDeny)=' /etc/systemd/system/sr-jail-net.service | sed 's/^/unit /'
+  echo "jail-files $(sha256sum < /usr/local/lib/sr-jail/jail.properties | cut -c1-64) $(sha256sum < /usr/local/lib/sr-jail/probe.py | cut -c1-64)"
+  ip -n srjail rule show 2>&1 | sed 's/^/rule /'
+  echo "net $(systemctl is-active sr-jail-net.service 2>/dev/null)"
+  pid="$(systemctl show -p MainPID --value sr-jail-net.service 2>/dev/null)"
+  if [ -n "$pid" ] && [ "$pid" != 0 ]; then
+    echo "pasta-exe $(readlink "/proc/$pid/exe")"
+    grep -E '^(Uid|Gid|CapInh|CapPrm|CapEff|CapBnd|CapAmb|NoNewPrivs|Seccomp|Seccomp_filters):' "/proc/$pid/status" | tr -s '\t ' ' ' | sed 's/^/pasta /'
+  else
+    echo "pasta-exe none"
+  fi
+  echo "python $(python3 -c 'import sys, ssl; print(sys.version.split()[0], ssl.OPENSSL_VERSION.split()[1])' 2>&1)"
+  echo "claude $(systemctl is-enabled sr-jail-claude.service 2>/dev/null || true)/$(systemctl is-active sr-jail-claude.service 2>/dev/null || true)"
+  echo "timers $(systemctl list-unit-files --no-legend 'sr-*.timer' 'sr-*.path' 2>/dev/null | awk '{ print $1 "=" $2 }' | paste -sd' ' -)"
+  echo "jail-units $(systemctl list-units --all --plain --no-legend 'sr-jail-*' 2>/dev/null | awk '{ u = ($1 == "●" ? $2 : $1); s = ($1 == "●" ? $4 : $3); print u "=" s }' | sort | paste -sd' ' -)"
+}
+```
+
+**V-0 — snapshot before the update (A-4).** Everything is read only except the files it writes in the new root-only
+directory `/root/sr-passt-update/`: the snapshot `v0.txt`, the restore state `v0-state`, and a copy of every AppArmor
+side file of passt / pasta (`v0-apparmor.list`, `v0-apparmor.tar`), which a purge would delete.
+
+```bash
 sudo install -d -m 0700 /root/sr-passt-update
+sudo bash -c "$(declare -f sr_snap); sr_snap" | sudo tee /root/sr-passt-update/v0.txt
 {
   echo "claude_enabled=$(systemctl is-enabled sr-jail-claude.service 2>/dev/null || true)"
   echo "claude_active=$(systemctl is-active sr-jail-claude.service 2>/dev/null || true)"
   echo "passt_held=$(apt-mark showhold | grep -qx passt && echo yes || echo no)"
-  echo "local_pasta=$([ -e /etc/apparmor.d/local/usr.bin.pasta ] && echo present || echo absent)"
-  echo "cache_pasta=$(sudo find /var/cache/apparmor -name usr.bin.pasta 2>/dev/null | grep -q . && echo present || echo absent)"
 } | sudo tee /root/sr-passt-update/v0-state
-systemctl cat sr-jail-net.service | sha256sum
-systemctl show sr-jail-net.service -p ExecStart -p IPAddressAllow -p IPAddressDeny --no-pager
-PID="$(systemctl show -p MainPID --value sr-jail-net.service)"; echo "pasta pid: $PID"
-sudo readlink "/proc/$PID/exe"
-sudo grep -E '^(Uid|Gid|CapEff|CapPrm|CapBnd|NoNewPrivs|Seccomp|Seccomp_filters):' "/proc/$PID/status"
-cat /sys/kernel/security/lsm; echo
-aa-enabled 2>&1 || true
-ls -l /etc/apparmor.d/usr.bin.passt /etc/apparmor.d/usr.bin.pasta 2>&1
-sudo ip -n srjail rule show
+sudo bash -c 'cd / && { find etc/apparmor.d/local etc/apparmor.d/disable etc/apparmor.d/force-complain var/cache/apparmor -name "usr.bin.pas*" -type f 2>/dev/null || true; } | sort > /root/sr-passt-update/v0-apparmor.list && tar -cpf /root/sr-passt-update/v0-apparmor.tar --no-recursion --files-from=/root/sr-passt-update/v0-apparmor.list && tar -tf /root/sr-passt-update/v0-apparmor.tar'
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-check
 ```
 
-Also keep the HUMAN-024b outputs, jail and host, as the baseline.
+Also keep the HUMAN-024b outputs, jail and host, as the baseline (and 24b-v2's, if A-1b ran).
 
 Expected for today's package:
-- `/usr/bin/passt` sha256 `2edcf1d787b21564045045f27def85e6397b930557ce5884ed8bfa8d0c77e048`;
-- `passt.avx2` `da1809a041fd9075e638aaffc2b40b7be1723824fb8d0b6697c074c0cb4baec8`;
-- `pasta` and `pasta.avx2` are hard links to them (same inode, link count 2);
-- `dpkg-verify: clean`. On dpkg 1.22 `dpkg --verify` exits 0 even when it finds problems, which is why the snippet
-  tests its output. Exception: `missing` lines only under `/usr/share/doc` or `/usr/share/man` come from dpkg
-  path-excludes on a minimized image (`/etc/dpkg/dpkg.cfg.d/`) and are expected. Any line on `/usr/bin` or an `/etc`
-  conffile means a passt file was changed locally: stop and report. "Clean" in V-3 and R-3 means the same as here;
-  those doc and man lines may appear there too;
-- most likely `passt_held=no` and no pasta file in `local/` or in the cache. Whatever V-0 shows is the state the
-  rollback restores.
+- `pkg passt 0.0~git20240220.1e6f92b-1 ii`, `held no` (most likely);
+- `/usr/bin/passt` sha256 `2edcf1d787b21564045045f27def85e6397b930557ce5884ed8bfa8d0c77e048`, `passt.avx2`
+  `da1809a041fd9075e638aaffc2b40b7be1723824fb8d0b6697c074c0cb4baec8`, `links=2` and `hardlinks pasta=passt:yes
+  pasta.avx2=passt.avx2:yes`, `passt-repair absent`;
+- `dpkg-verify clean`. On dpkg 1.22 `dpkg --verify` exits 0 even when it finds problems, which is why S-1 tests its
+  output. Exception: `missing` lines only under `/usr/share/doc` or `/usr/share/man` come from dpkg path-excludes on a
+  minimized image (`/etc/dpkg/dpkg.cfg.d/`) and are expected. Any line on `/usr/bin` or an `/etc` conffile means a passt
+  file was changed locally: stop and report;
+- `rdepends` empty, `processes pasta=1 passt=0` (only the jail's pasta). `other-users` lists podman / buildah / libvirt
+  only if installed; if any of them is installed, or another pasta / passt process runs, stop and decide first (§3.1);
+- `aa` lines: the noble conffiles and `local/usr.bin.passt`; no `usr.bin.pasta` anywhere;
+- `pasta-exe /usr/bin/pasta.avx2` (or `/usr/bin/pasta` on a CPU without AVX2), never `(deleted)`; `pasta Seccomp: 2`;
+- whatever V-0 shows is the state the rollback restores.
 
-**V-1 — fetch and verify the package (part of A-5, no install).** Run as root in a fresh root-only directory:
+**V-1 — fetch and verify the package (part of A-5, no install).** Run as root in the root-only directory:
 
 ```bash
 sudo install -d -m 0700 /root/sr-passt-update
@@ -306,9 +699,9 @@ dpkg-deb -c passt_0.0~git20260120.386b5f5-1_amd64.deb | awk "{print \$6}"
 
 The old deb kept here is the rollback copy (§6). `apt-get download` into a root-only directory prints a harmless
 `W: Download is performed unsandboxed as root` warning. The script was run end to end in a scratch directory
-on 2026-10-22: every check passed and the stanza matched.
+on 2026-10-22: every check passed and the stanza matched. DEV-087 downloaded both debs again: the hashes still match.
 
-**V-2 — the update (A-5).** Run it as a person, at the console:
+**V-2 — the update (A-5).** Run it as a person, at the console, right after W-0 passed:
 
 ```bash
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-stop
@@ -322,15 +715,68 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-chec
 
 - The hash is checked again right before `dpkg -i`, so the file installed is the file V-1 verified. If
   `sha256sum -c` fails, do not run `dpkg -i`.
-- `dpkg -i` must not ask about a modified conffile. V-0's `dpkg --verify` output shows whether any was modified; if a
+- `dpkg -i` must not ask about a modified conffile. V-0's `dpkg-verify` lines show whether any was modified; if a
   prompt appears, answer **N** (keep the current one) and stop.
+- Until the restart the jail keeps running the old pasta (the running process keeps the old file). The restart of
+  `sr-jail-net` starts the new one; `ExecStartPost` does not start Claude, because `claude-stop` disabled it.
 - If `sr-jail-net` is not `active` or `jail-check` is not `JAIL_OK`, roll back (§6). Do not change the jail to make it
   start.
-- `claude-stop` **disables** `sr-jail-claude`. Restoring Claude is a separate step (V-2b), run only after the V-3 checks
-  below pass.
 
-**V-2b — restore Claude to its V-0 state (success path).** Run after V-3's immediate checks pass. The hold set in V-2 is
-the one intended change (§6.2), so it stays.
+**V-3a — immediate checks (part of A-5).**
+
+```bash
+sudo bash -c "$(declare -f sr_snap); sr_snap" | sudo tee /root/sr-passt-update/v3.txt >/dev/null
+sudo diff /root/sr-passt-update/v0.txt /root/sr-passt-update/v3.txt
+for k in CapInh CapPrm CapEff CapBnd CapAmb; do
+  a="$(sudo awk -v k="$k:" '$1 == "pasta" && $2 == k { print $3 }' /root/sr-passt-update/v0.txt)"
+  b="$(sudo awk -v k="$k:" '$1 == "pasta" && $2 == k { print $3 }' /root/sr-passt-update/v3.txt)"
+  if [ -n "$a" ] && [ -n "$b" ] && [ $(( 0x$b & ~0x$a )) -eq 0 ]; then echo "caps $k ok"; else echo "caps $k CHECK v0=${a:-none} v3=${b:-none}"; fi
+done
+pasta --version | head -n 1
+```
+
+Then D-3 (§4.6) as written: the rules, `jail-check`, `getent hosts github.com` in the jail, and the four `DNS_ADDR`
+lines.
+
+The `diff` may show **only** these lines (anything else is a failure):
+- `pkg passt 0.0~git20260120.386b5f5-1 ii` and `held yes`;
+- the `file` lines: `/usr/bin/passt` sha256 `a10789852407f65160c4abfac002efe511b254e6ab2cbfc658e807575db44832`,
+  `passt.avx2` `e02708849808156f0c7f92f39b7d970b01f2d5c392fc559eeb294dbda72abed7`, the same `root:root 755 links=2`,
+  and `passt-repair` now present (`root:root 755 links=1`);
+- `aa` lines: changed hashes of `abstractions/passt`, `abstractions/pasta`, `usr.bin.passt`; new `usr.bin.pasta` and
+  `local/usr.bin.pasta` (the empty file's hash `e3b0c442…b855`); cache lines only if AppArmor is active (then A-9 may
+  apply);
+- `claude disabled/inactive` and the `jail-units` line (Claude stopped).
+
+- `pasta Cap*` lines that **lost** bits (fewer capabilities). Whether a changed `Cap*` line is acceptable is decided by
+  the capability loop, not by the `diff`: it must print `ok` five times (no bit that V-0 did not have); a decrease is
+  fine;
+- `pasta Seccomp_filters`: report the value. It must be ≥ V-0's (pasta installs its own filter at start; a new build may
+  stack one more). A lower value, or `Seccomp` other than 2, is a failure;
+- new `dpkg-verify … missing` lines **only** under `/usr/share/doc` or `/usr/share/man`, for example
+  `/usr/share/man/man1/passt-repair.1.gz` on a minimized image (the same dpkg path-excludes as in V-0). Any other new
+  `dpkg-verify` line is a failure.
+
+Everything else must be identical: the other `dpkg-verify` lines, `rdepends`, `other-users`, `processes`, `lsm`,
+`aa-enabled`, `unit-sha` and the `unit` lines, `jail-files`, every `rule` line, `net active`, `pasta-exe` (no
+`(deleted)`), `pasta Uid`, `Gid`, `NoNewPrivs` and `Seccomp 2`, `python`, `timers`. `pasta --version` prints `pasta 0.0~git20260120.386b5f5-1` (this build embeds its version; noble's
+printed `pasta unknown version`).
+
+**V-3b — 24b-v2 in the jail and on the host (A-6).** The two 24b-v2 commands in `design-image-poc.md` §"HUMAN-024",
+24b-v2 and 24b-v2-host, unchanged. (24b itself also works, but cannot show that the probes are answered.)
+
+**Success, failure and stop criteria:**
+
+| result | decision |
+|---|---|
+| V-3a as expected, D-3 as expected for the chosen A-3 option (with A-3: four `EACCES` lines; without A-3: UDP lines `NOT_REFUSED`, TCP lines `EACCES`), 24b-v2 in the jail: A, B and C `end=OPEN idle_s=100` with A and B `ack_age_max_s` ≤ 20; 24b-v2-host: all `OPEN` as before | **success**: V-2b, keep the hold, then A-8 (one Codex run, separately approved) |
+| `sr-jail-net` not active; `jail-check` not `JAIL_OK`; a capability bit that V-0 did not have; `Seccomp` not 2; `NoNewPrivs` or `Uid` changed; `Seccomp_filters` lower than V-0; `unit-sha`, a `unit` line, `jail-files` or a `rule` changed; a new `dpkg-verify` line outside `/usr/share/doc` and `/usr/share/man`; `getent` fails in the jail; a `DNS_ADDR` line not `EACCES` although A-3 is deployed; any unexpected `diff` line | **roll back now** (R-1 → R-3), as approved with A-5. Report the lines |
+| AppArmor active and pasta denied (journal shows `apparmor="DENIED"` for `pasta`) | roll back, unless A-9 is approved; never remove a jail limit to make pasta start |
+| 24b-v2 in the jail: A or B still `end=LOCAL_TIMEOUT` | **stop and report.** The fix did not take effect, or something else drops the ACKs. Rollback is recommended (a hand-installed package with no benefit), the human decides. No Codex run |
+| 24b-v2-host changed (a cut on the host), or `PEER_RST` / `PEER_FIN` on all three, or `setup_failed` | stop and report; not a reason by itself to keep or remove the new pasta |
+
+**V-2b — restore Claude to its V-0 state (success path, after V-3a and, if approved together, V-3b).** The hold set in
+V-2 is the one intended change (§6.2), so it stays.
 
 ```bash
 CLAUDE_ENABLED="$(sudo sed -n 's/^claude_enabled=//p' /root/sr-passt-update/v0-state)"
@@ -339,32 +785,12 @@ systemctl is-enabled sr-jail-claude.service; systemctl is-active sr-jail-claude.
 ```
 
 The last line must show the V-0 values (`claude_enabled` / `claude_active` in `v0-state`). If V-0 had Claude enabled but
-not active, `claude-start` leaves it active: note that difference and do not stop it again on your own.
+not active, `claude-start` leaves it active: note that difference and do not stop it again on your own. If L-1 holds the
+cycle lock, release it now (Enter in its terminal).
 
-**V-3 — checks after the update (same approval as A-5):**
-- **The 24a host commands.**
-  - `dpkg-query` shows `0.0~git20260120.386b5f5-1`.
-  - The first line of `pasta --version` is now `pasta 0.0~git20260120.386b5f5-1` (pasta prints its mode name, then the
-    version). This build embeds its version; noble's printed `pasta unknown version`.
-  - `/usr/bin/passt` sha256 is `a10789852407f65160c4abfac002efe511b254e6ab2cbfc658e807575db44832`, and `passt.avx2` is
-    `e02708849808156f0c7f92f39b7d970b01f2d5c392fc559eeb294dbda72abed7`.
-  - `apt-mark showhold` lists `passt`.
-  - `dpkg --verify` (the V-0 form) prints `dpkg-verify: clean`.
-- **The rest of V-0, compared line by line.**
-  - The unit hash, `ExecStart`, `IPAddressAllow/Deny` and `ip -n srjail rule show` are **identical**.
-  - In `/proc/<pid>/status`: `Uid` is the same; `CapEff/CapPrm/CapBnd` are not larger; `NoNewPrivs` is the same;
-    `Seccomp` is `2` (filter) as before.
-  - `/sys/kernel/security/lsm` and `aa-enabled` are unchanged. If AppArmor is active, see A-9.
-- **The jail and DNS.**
-  - `admin.sh jail-check` → `JAIL_OK`.
-  - `sudo bash …/admin.sh run sr-designgen -- getent hosts github.com` resolves.
-  - If A-3 was applied, its new check passes.
-- **24b in the jail and 24b-host again** (A-6). Expected in the jail: **A no longer cut at about 27 s, all three
-  `OPEN`**, and the host unchanged. If A is still cut in the jail, the keep-alive fix did not take effect, or something
-  else drops the ACKs. Stop and report; do not go on to Codex.
-- **The in-jail tests, optional** (A-7, after the resource preflight). `design-wsl-isolation.md` §5 ran
-  `tests/unit/design-agent/sandbox.test.ts` (real bubblewrap attacks) and `worker.test.ts` (Chromium) in the jail
-  (73 pass). Run the same two through `admin.sh run sr-designgen -- …` from the requester's checkout.
+**The in-jail tests, optional** (A-7, after the resource preflight). `design-wsl-isolation.md` §5 ran
+`tests/unit/design-agent/sandbox.test.ts` (real bubblewrap attacks) and `worker.test.ts` (Chromium) in the jail
+(73 pass). Run the same two through `admin.sh run sr-designgen -- …` from the requester's checkout.
 
 **V-4 — one Codex run (A-8, separately approved).** Only after V-3 passes: HUMAN-021b's v1 command once, as 24c.
 Expected:
@@ -372,20 +798,35 @@ Expected:
 - no `140-170s` in `img_fail_timing`;
 - ideally an image.
 
-A failure with a different timing is new evidence for H2/H3, not a reason to roll back passt.
+A failure with a different timing is new evidence for H2/H3, not a reason to roll back passt. Only this run can show
+whether the image failures had the keep-alive cause (24b cannot, §1).
 
 **Optional, container-side (not the WSL machine).** An A/B of the two pasta binaries in a scratch network namespace:
 - the jail's exact flags;
 - a local TLS server;
 - the 24b probe with `CA` pointed at the test certificate.
 
-Expected: `1e6f92b` cuts A at about 27 s, and `386b5f5` keeps it open. It was set up in this session but **not run**:
-the session's permission check stopped running the probe inside the scratch namespace. It needs the session owner's
-permission, and its result would add evidence but replace none of V-3.
+Expected: `1e6f92b` cuts A at about 27 s, and `386b5f5` keeps it open. It was set up in a DEV-086 session but **not
+run**: the session's permission check stopped running the probe inside the scratch namespace. It needs the session
+owner's permission, and its result would add evidence but replace none of V-3. DEV-087 did not retry it.
 
 ## 6. (e) Rollback and the hold policy
 
 ### 6.1 Rollback (approved together with A-5 as its abort path; run by a person)
+
+**What the update changes, and where each item is captured and restored:**
+
+| changed by A-5 | captured in | restored by |
+|---|---|---|
+| passt's files in `/usr/bin` and `/usr/share` | V-1: the verified noble deb (`de07c44d…`); V-0: `v0.txt` `file` lines | R-2: purge, then `dpkg -i` of that deb |
+| passt's conffiles in `/etc/apparmor.d` (`abstractions/passt`, `abstractions/pasta`, `usr.bin.passt`; new `usr.bin.pasta`) | V-0: `v0.txt` `aa` lines and `dpkg-verify` | R-2: purge removes all of them, the noble deb installs its own; R-1 first proves none was changed locally |
+| AppArmor side files: `local/`, `disable/`, `force-complain/` and `/var/cache/apparmor` entries for `usr.bin.pas*` (the 386b5f5 postinst creates `local/usr.bin.pasta`; its postrm on purge deletes the `local/`, `disable/`, `force-complain/` and cache entries of `usr.bin.passt` **and** `usr.bin.pasta`) | V-0: `v0-apparmor.list` + `v0-apparmor.tar` | R-2: delete what V-0 did not have, extract the tar |
+| the loaded AppArmor policy (only if AppArmor is active) | V-0: `aa-enabled`, `aa-loaded` lines | R-2: unload the `pasta` profile before the purge; noble's postinst reloads `usr.bin.passt` |
+| dpkg's record of passt, the hold | V-0: `pkg`, `held`; `v0-state` `passt_held` | R-2: purge + install; the hold as in V-0 |
+| the running pasta | V-0: `pasta-exe`, `pasta` lines | R-2: restart `sr-jail-net` |
+| Claude's enabled / active state | `v0-state` `claude_enabled` / `claude_active` | R-3 then V-2b |
+| A-3's rules and probe (if deployed) | the approved sha | not part of this rollback: they stay (they are correct for both pasta versions). Their own rollback is D-4 |
+| `/root/sr-passt-update/` (the debs, snapshots, `v0-*`) | – | kept on purpose for the record; nothing secret is in it. Removing it later is a separate, trivial decision |
 
 The rollback **purges** the hand-installed package, then installs the verified noble deb. A plain downgrade with
 `dpkg -i` is not used, for two reasons:
@@ -395,29 +836,32 @@ The rollback **purges** the hand-installed package, then installs the verified n
 - **Moving the file aside does not help.** If it is moved aside first, `dpkg --verify` then reports `missing c` for it
   indefinitely.
 
-`dpkg --purge passt` removes every passt conffile, and the 386b5f5 postrm (dh_apparmor) removes `local/` and
-`/var/cache/apparmor/*/` for `usr.bin.pasta`, `usr.bin.passt` and `usr.bin.passt-repair`. After `dpkg -i` of the old
-deb, the dpkg database and `/etc/apparmor.d` are as noble's package leaves them, which is the V-0 state, and
-`dpkg --verify` is clean.
+`dpkg --purge passt` removes every passt conffile, and the 386b5f5 postrm (dh_apparmor) removes the `local/`,
+`disable/`, `force-complain/` and `/var/cache/apparmor/*/` entries for `usr.bin.pasta`, `usr.bin.passt` and
+`usr.bin.passt-repair`. After `dpkg -i` of the old deb and the restore of V-0's side files, the dpkg database and
+`/etc/apparmor.d` are as V-0 recorded them, and `dpkg --verify` is clean.
 
 Purging is only safe when:
 - no passt conffile was changed locally (a purge would discard the change);
 - no installed package depends on passt (`dpkg --purge` would refuse).
 
-R-1 checks both. The jail is stopped during the purge, so a missing `/usr/bin/pasta` affects nothing.
+R-1 checks both (§3.1 found no package in noble that depends on passt). The jail is stopped during the purge, so a
+missing `/usr/bin/pasta` affects nothing.
 
 **R-1 — checks (read only).** Stop if:
 - `sha256sum -c` fails;
 - the verify output is not `dpkg-verify: clean` (apart from the doc and man lines V-0 allows);
-- a package depends on passt.
+- a package depends on passt;
+- `v0-state`, `v0-apparmor.list` or `v0-apparmor.tar` is missing.
 
-If either of the last two is true, use the fallback below.
+If the second or third is true, use the fallback below.
 
 ```bash
 echo "de07c44dcae84b58107cdf47e58f7d6ca2fdd466b193a10aea8a7115cf97bead  /root/sr-passt-update/passt_0.0~git20240220.1e6f92b-1_amd64.deb" | sudo sha256sum -c
 out="$(dpkg --verify passt)"; if [ -z "$out" ]; then echo "dpkg-verify: clean"; else printf '%s\n' "$out"; fi
 apt-cache rdepends --installed --no-recommends --no-suggests passt | tail -n +3 | grep . || echo "no installed package depends on passt"
 sudo cat /root/sr-passt-update/v0-state
+sudo ls -l /root/sr-passt-update/v0-apparmor.list /root/sr-passt-update/v0-apparmor.tar
 ```
 
 **R-2 — roll back.**
@@ -432,8 +876,7 @@ fi
 sudo apt-mark unhold passt
 sudo dpkg --purge passt
 sudo dpkg -i /root/sr-passt-update/passt_0.0~git20240220.1e6f92b-1_amd64.deb
-if [ "$(sudo sed -n 's/^local_pasta=//p' /root/sr-passt-update/v0-state)" = absent ]; then sudo rm -f /etc/apparmor.d/local/usr.bin.pasta; fi
-if [ "$(sudo sed -n 's/^cache_pasta=//p' /root/sr-passt-update/v0-state)" = absent ]; then sudo find /var/cache/apparmor -name usr.bin.pasta -delete 2>/dev/null || true; fi
+sudo bash -c 'cd / && { find etc/apparmor.d/local etc/apparmor.d/disable etc/apparmor.d/force-complain var/cache/apparmor -name "usr.bin.pas*" -type f 2>/dev/null || true; } | sort | comm -23 - /root/sr-passt-update/v0-apparmor.list | while IFS= read -r f; do rm -f -- "/$f"; done; tar -xpf /root/sr-passt-update/v0-apparmor.tar'
 if [ "$(sudo sed -n 's/^passt_held=//p' /root/sr-passt-update/v0-state)" = yes ]; then sudo apt-mark hold passt; fi
 sudo systemctl start sr-jail-net.service
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-check
@@ -442,34 +885,37 @@ sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-chec
 - **The profile.** The loaded `pasta` profile (if AppArmor is active) is unloaded before the purge, because the purge
   removes the file but not the policy in the kernel. A copy is kept for reference. noble's postinst reloads its own
   `usr.bin.passt`.
-- **The `local/` and cache cleanup.** It only removes what V-0 showed absent. The purge's postrm normally removes them
-  already, so these lines are a no-op then.
+- **The side files.** The `bash -c` line deletes every `usr.bin.pas*` file under `local/`, `disable/`,
+  `force-complain/` and the cache that V-0 did not have, then extracts V-0's copies. It was tested here on a scratch tree
+  (a new `local/usr.bin.pasta` and cache entry removed, a deleted `disable/usr.bin.passt` and a changed
+  `local/usr.bin.passt` put back as V-0 had them). Cache entries exist only if AppArmor is active, which is not
+  expected (§4.3).
 - **The hold.** It ends as V-0 had it: unheld, unless V-0 showed `passt_held=yes`. It is lifted before the purge
   because dpkg may refuse to remove a held package.
 - **Fallback, only if R-1 rules out the purge.**
   - Unload and move `/etc/apparmor.d/usr.bin.pasta` aside **before** the downgrade (same `if` block, `mv` instead of
     `cp`), then `sudo dpkg -i` the old deb.
-  - Clean `local/` and the cache as above.
+  - Restore the side files as above.
   - Afterwards `dpkg --verify passt` prints exactly one expected line, `missing   c /etc/apparmor.d/usr.bin.pasta` (an
     obsolete conffile); any other line is a problem.
   - Record that line, and keep any locally changed conffile as it was.
 - **Why not `apt-get install passt=0.0~git20240220.1e6f92b-1`.** The apt form also works (noble's release pocket still
   has that version), but the verified local copy works offline and pins the exact bytes.
 
-**R-3 — verify, then restore Claude to its V-0 state:**
-- `dpkg-query -W passt` → `0.0~git20240220.1e6f92b-1`;
-- the first line of `pasta --version` → `pasta unknown version`;
-- `/usr/bin/passt` sha256 `2edcf1d7…c77e048`;
-- the V-0 `dpkg --verify` form prints `dpkg-verify: clean`, or with the fallback only the one `missing c` line;
-- `ls -l /etc/apparmor.d/local/` and the cache `find` print the same as in V-0;
-- `apt-mark showhold` matches `passt_held` in `v0-state`;
-- `jail-check` → `JAIL_OK`;
-- the V-0 `/proc/<pid>/status` lines match the snapshot.
+**R-3 — verify, then restore Claude to its V-0 state.**
 
-Then run V-2b's block, which starts Claude only if V-0 had it enabled.
+```bash
+sudo bash -c "$(declare -f sr_snap); sr_snap" | sudo tee /root/sr-passt-update/r3.txt >/dev/null
+sudo diff /root/sr-passt-update/v0.txt /root/sr-passt-update/r3.txt
+pasta --version | head -n 1
+```
+
+The `diff` may show only the `claude` and `jail-units` lines (Claude is still stopped). With the fallback, it also shows
+the one `dpkg-verify missing c /etc/apparmor.d/usr.bin.pasta` line. `pasta --version` prints `pasta unknown version`.
+Then run V-2b's block, which starts Claude only if V-0 had it enabled, and the checklist in §6.4.
 
 - **On a WSL backup:** `wsl --export` before A-5 is possible, but it is a Windows-side action with its own disk cost.
-  It is not proposed; the deb copy is enough for one package.
+  It is not proposed; the deb copy and V-0's files are enough for one package.
 
 ### 6.2 Hold policy
 
@@ -486,10 +932,32 @@ Then run V-2b's block, which starts Claude only if V-0 had it enabled.
 
 ### 6.3 Who keeps it current
 
-A hand-installed package gets no automatic updates. Proposal (A-10):
+A hand-installed package gets no automatic updates (§3.1). Proposal (A-10):
 - A person, or Claude in a docs session, checks resolute's passt publishing history and the Ubuntu and Debian security
   trackers monthly, and before any jail change.
 - Return to the distro package when noble gets a fixed passt (unlikely) or when the machine moves to 26.04.
+
+### 6.4 Rollback verification checklist
+
+Tick every line after R-3 and V-2b. Any line that does not hold: stop, keep the jail stopped (`claude-stop`), report.
+
+- [ ] `pkg passt 0.0~git20240220.1e6f92b-1 ii` in `r3.txt`, and `pasta --version` → `pasta unknown version`.
+- [ ] `file` lines identical to `v0.txt` (hashes `2edcf1d7…` and `da1809a0…`, `links=2`, both `hardlinks … yes`,
+      `passt-repair absent`).
+- [ ] `dpkg-verify` lines identical to `v0.txt` (fallback: plus exactly the one `missing c …usr.bin.pasta` line).
+- [ ] `aa` lines identical to `v0.txt`: no `usr.bin.pasta` profile, `local/`, `disable/`, `force-complain/` or cache
+      entry that V-0 did not have, and the ones it had with the same hash. If AppArmor is active, the `aa-loaded`
+      lines match too.
+- [ ] `held` matches `passt_held` in `v0-state`.
+- [ ] `unit-sha`, the `unit` lines, `jail-files` and every `rule` line identical (A-3's rules stay if they were in V-0).
+- [ ] `net active`; `pasta-exe` the same path as V-0, not `(deleted)`; the `pasta` lines (`Uid`, `Gid`, `Cap*`,
+      `NoNewPrivs`, `Seccomp`) identical.
+- [ ] `jail-check` → `JAIL_OK`; `getent hosts github.com` resolves in the jail.
+- [ ] After V-2b: the `claude` line matches `v0-state`; the `diff` against `v0.txt` is empty except a `jail-units`
+      line that differs only in a transient unit.
+- [ ] L-1 released, if it was held; timers as in V-0 (`timers` line).
+- [ ] Optional: 24b (or 24b-v2) in the jail shows the pre-update pattern again (A cut at about 27 s), which shows the old
+      pasta is back in the path.
 
 ## 7. (f) If updating is undesirable
 
@@ -512,7 +980,8 @@ A hand-installed package gets no automatic updates. Proposal (A-10):
   - It does not help: its upstream socket also goes through pasta (investigation §6).
   - It would only help if it never sent keepalives, and then it would need its own idle handling.
   - Not recommended.
-- **The WSL networking mode** (`.wslconfig`). This only matters if 24b-host is cut too. It changes nothing about pasta.
+- **The WSL networking mode** (`.wslconfig`). This only mattered if 24b-host was cut too; it was not (all three
+  stayed open on the host, 2026-10-22). It changes nothing about pasta.
 - **Move the machine to Ubuntu 26.04** (`do-release-upgrade`). That gives the same passt from a supported apt source,
   but it is a whole-distro change: systemd, apparmor, kernel userspace. The jail would need re-validation from scratch.
   Possibly the right long-term answer, but not as a fix for this.
@@ -526,28 +995,35 @@ A hand-installed package gets no automatic updates. Proposal (A-10):
 
 ## 8. (g) Approvals, in order
 
-Nothing advances without the one before it. Each is a separate human decision.
+Nothing advances without the one before it. Each is a separate human decision. **Status on 2026-10-22: A-1 is done;
+nothing else is approved.** Not approved in particular: any package update, WSL setting, jail change, worker or timer
+change, and any Codex run.
 
-| # | approval | runs on | depends on |
-|---|---|---|---|
-| A-1 | **HUMAN-024b** (jail) and **24b-host**: the Codex-free probe | WSL, read-only network | – (pending) |
-| A-2 | Proceed with a passt update **and** grant a written exception to `design-wsl-isolation.md` §6 for exactly `passt 0.0~git20260120.386b5f5-1` from Ubuntu resolute, verified as in V-1 (the docs change goes in the A-3 PR or its own) | decision | A-1 shows "cut in the jail, OPEN on the host" |
-| A-3 | The jail's DNS rule: only UDP/53 to 198.51.100.53, plus a probe check and tests (§4.2), as a code PR. **Or** accept the UDP/853 residual in writing | repo PR, then `admin.sh approve <sha>` on WSL (the usual approval) | A-2 |
-| A-4 | V-0 snapshot (read only) | WSL | A-2 (and A-3 deployed, if chosen) |
-| A-5 | V-1 fetch and verify, V-2 update and hold, the immediate V-3 checks; **rollback (§6.1) approved together with A-5 as its abort path** | WSL, root | A-4 |
-| A-6 | 24b in the jail and 24b-host after the update | WSL | A-5 passes V-3 |
-| A-7 | In-jail `sandbox.test.ts` / `worker.test.ts` (optional; resource preflight first) | WSL | A-5 |
-| A-8 | One Codex image run (24c-style, HUMAN-021b's v1 command) | WSL, plan quota | A-6 shows A `OPEN` |
-| A-9 | Contingency, only if AppArmor is active and pasta is denied: complain mode → add `/run/netns/srjail r,` to the profile, or disable the pasta profile (back to today's unconfined state) | WSL | A-5 fails on AppArmor |
-| A-10 | Maintenance owner and cadence for the hand-installed package (§6.3) | process | A-5 |
-| A-11 | Optional: ask Ubuntu for a noble SRU (external post) | external | any time |
+| # | step | what it changes | reversible? | runs on | depends on | command blocks |
+|---|---|---|---|---|---|---|
+| A-1 | **HUMAN-024b** (jail) and **24b-host**: the Codex-free probe | nothing (3 unauthenticated GETs per run) | – | WSL | – | **done 2026-10-22** (`design-image-poc.md` 24b) |
+| A-1b | optional: **24b-v2** in the jail and on the host before the update, as a same-tool baseline | nothing | – | WSL | – | `design-image-poc.md` 24b-v2 |
+| A-2 | Proceed with a passt update **and** grant a written exception to `design-wsl-isolation.md` §6 for exactly `passt 0.0~git20260120.386b5f5-1` from Ubuntu resolute, verified as in V-1 (the docs change goes in the A-3 PR or its own) | policy (docs) | yes | decision | A-1 (done: "cut in the jail, OPEN on the host") | – |
+| A-3 | The jail's DNS rules: only UDP/53 to 198.51.100.53, plus the probe check and tests (§4.6), as a code PR, then deployed. **Or** accept the UDP/853 residual in writing | `sr-jail-net`'s ip rules, `probe.py`, tests; the deploy restarts the jail for seconds | yes (D-4) | repo PR, then `admin.sh approve <sha>` on WSL | A-2 | D-1 (PR), W-0, D-2, D-3, D-4 |
+| A-4 | W-0 window check and V-0 snapshot | only new files in `/root/sr-passt-update/` | yes | WSL | A-2 (and A-3 deployed, if chosen) | S-1, W-0, V-0 |
+| A-5 | V-1 fetch and verify, V-2 update and hold, V-3a immediate checks, and on success V-2b; **the rollback (R-1 → R-3, §6.4) approved together with A-5 as its abort path** | the passt package, its AppArmor files, the hold, a pasta restart, Claude stopped then restored | yes (R-1 → R-3) | WSL, root, a person at the console | A-4 | V-1, W-0, V-2, V-3a, D-3, V-2b, R-1, R-2, R-3 |
+| A-6 | 24b-v2 in the jail and on the host after the update (can be approved together with A-5 and run before V-2b) | nothing | – | WSL | A-5 passes V-3a | V-3b |
+| A-7 | In-jail `sandbox.test.ts` / `worker.test.ts` (optional; resource preflight first) | nothing | – | WSL | A-5 | §5.1 |
+| A-8 | One Codex image run (24c-style, HUMAN-021b's v1 command) | plan quota | – | WSL | A-6 shows A and B `OPEN` with answered keepalives | V-4 |
+| A-9 | Contingency, only if AppArmor is active and pasta is denied: complain mode → add `/run/netns/srjail r,` to the profile, or disable the pasta profile (back to today's unconfined state) | AppArmor config | yes | WSL | A-5 fails on AppArmor | §4.3 |
+| A-10 | Maintenance owner and cadence for the hand-installed package (§6.3) | process | yes | process | A-5 | §6.3 |
+| A-11 | Optional: ask Ubuntu for a noble SRU (external post) | external | – | external | any time | §7 |
+| A-12a | Only if a worker timer is enabled and W-0 finds no window: hold `cycle.sh`'s lock for the window | nothing (a cycle ends with `CYCLE_LOCKED`) | yes (release) | WSL | A-4 | L-1 |
+| A-12b | Only if A-12a is not acceptable: disable the worker timer for the window, then enable it again | the timer | yes | WSL | A-4 | §5.0 (`design-worker-cycle.md`) |
 
 ## 9. Confirmed vs inferred
 
 | claim | status | evidence |
 |---|---|---|
-| installed passt `1e6f92b` lacks the keep-alive ACK | CONFIRMED | 24a; `git merge-base --is-ancestor 1e6f92b 238c69f`; the `238c69f` diff |
-| H1 on our path is caused by pasta | INFERRED, pending 24b / 24b-host | investigation §3 |
+| installed passt `1e6f92b` lacks the keep-alive ACK, and sends no FIN or RST for one either | CONFIRMED | 24a; `git merge-base --is-ancestor 1e6f92b 238c69f`; the `238c69f` diff; `1e6f92b` `tcp.c` `tcp_data_from_tap()` / `tcp_send_flag()` (DEV-087) |
+| the keep-alive cut on the jail path is caused by pasta | **strongly supported** (24b: A 27 s, B 57 s, C open in the jail; all open on the host) | `design-image-poc.md` "24b result" |
+| 24b's `EOF` is the kernel's `ETIMEDOUT` abort as Python 3.12 reports it | CONFIRMED that Python 3.12.3 + OpenSSL 3.0.13 report it so (local test, CPython source, gh-115627); LIKELY that this is what happened (the errno itself was not printed) | `design-image-poc.md` "24b result"; 24b-v2 would print it |
+| the ~156 s image failures have the same cause | INFERRED, **not proven** (idle GET vs a POST waiting for its response) | A-8 |
 | noble has no newer passt in any pocket | CONFIRMED (2026-10-22) | Launchpad `getPublishedSources` |
 | resolute deb's signature chain and hashes | CONFIRMED | gpgv + Release/Packages/deb SHA256 checked here |
 | resolute deb installs on noble (libc6 ≥ 2.38 only, no symbol newer than GLIBC_2.38) | CONFIRMED (static) / install not run | `dpkg-deb -f`, `objdump -T` |
@@ -555,9 +1031,13 @@ Nothing advances without the one before it. Each is a separate human decision.
 | `/usr/bin/pasta` is unconfined by AppArmor today | CONFIRMED (package contents) | no `usr.bin.pasta` in noble's deb |
 | AppArmor inactive on this WSL kernel | INFERRED | `config-wsl` LSM order; V-0 checks |
 | resolute's pasta profile would deny `/run/netns/srjail` | INFERRED (profile text) | §4.3; A-9 |
-| `prohibit` gives `EACCES` for UDP `sendto` | UNVERIFIED | A-3's test |
-| the update makes 24b's A `OPEN` | INFERRED | the `238c69f` diff; V-3 / A-6 measure it |
-| pasta's capability / seccomp state unchanged after the update | UNVERIFIED | V-0 vs V-3 `/proc/<pid>/status` |
+| `prohibit` gives `EACCES` for UDP `sendto` | CONFIRMED from the kernel source (v6.18 `fib_rules.c`, `udp.c`); not run on the WSL kernel | §4.6; D-3 runs it |
+| 386b5f5 has no option to limit DNS forwarding to port 53 | CONFIRMED (`passt.1`, `conf.c` option table, `fwd.c` `is_dns_flow`) | §4.6 |
+| no noble package depends on passt (podman recommends it, libvirt's qemu driver suggests it) | CONFIRMED (noble + noble-updates `Packages`, 2026-10-22) | §3.1 |
+| `--netns <path>` creates no user namespace in either version | CONFIRMED (`conf.c`, `isolation.c`) | §4.2 |
+| no worker timer is enabled on the WSL machine | per the records (HUMAN-010 on hold); UNVERIFIED on the machine | W-0 checks it |
+| the update makes 24b's A `OPEN` | INFERRED | the `238c69f` diff; V-3b / A-6 measure it with 24b-v2 |
+| pasta's capability / seccomp state unchanged after the update | UNVERIFIED | V-0 vs V-3a `/proc/<pid>/status` (S-1) |
 
 ## 10. Sources
 
@@ -579,5 +1059,14 @@ Nothing advances without the one before it. Each is a separate human decision.
 - WSL kernel config: [microsoft/WSL2-Linux-Kernel `linux-msft-wsl-6.18.y` `arch/x86/configs/config-wsl`](https://github.com/microsoft/WSL2-Linux-Kernel/blob/linux-msft-wsl-6.18.y/arch/x86/configs/config-wsl).
 - systemd v255: `src/run/run.c` (`--expand-environment` default), `src/basic/env-util.c` (`replace_env_full`, `replace_env_argv`),
   `src/core/dbus-execute.c` (`UNIT_ESCAPE_SPECIFIERS`), `man/systemd-run.xml`.
-- This repository: `scripts/sales-design-capture/admin.sh:100-106, :144-228`; `scripts/sales-design-capture/jail/jail.properties:47-67`;
-  `tests/unit/design-agent/jail.test.ts`; `docs/operations/design-wsl-isolation.md` §2, §5, §6.
+- This repository: `scripts/sales-design-capture/admin.sh:100-106, :144-228, :248-254, :455-466`; `scripts/sales-design-capture/jail/jail.properties:47-67`;
+  `scripts/sales-design-capture/jail/probe.py:240-280`; `scripts/sales-design-worker/cycle.sh` (lock, `CHECK_UNIT_*`);
+  `scripts/sales-design-worker/systemd/sr-design-cycle.{service,timer}`; `tests/unit/design-agent/jail.test.ts`;
+  `docs/operations/design-wsl-isolation.md` §2, §5, §6; `docs/operations/design-worker-cycle.md`.
+- DEV-087 additions: passt `1e6f92b` `tcp.c` (:1573, :2249-2440, :2736-2790), `udp.c:856-858`; passt `386b5f5` `fwd.c:850-859`,
+  `passt.1:262-276`, `conf.c` (option table, :2122-2128), `isolation.c:180-290`, `tcp.c:1885-1905`, `udp_flow.c:20`; commits
+  `a3d142a`, `5024908`, `ff63ac9`. Linux v6.18 `net/ipv4/tcp_timer.c` (`tcp_keepalive_timer`, `tcp_write_err`),
+  `net/ipv4/fib_rules.c` (:126-127, :180-212), `net/ipv4/udp.c` (:1443-1456). CPython `v3.12.3` and `v3.13.0`
+  `Modules/_ssl.c` (`PySSL_SetError`, `_ssl__SSLSocket_read_impl`); the [3.13 changelog](https://docs.python.org/3.13/whatsnew/changelog.html)
+  (gh-115627, 3.13.0a6) and the [3.12 changelog](https://docs.python.org/3.12/whatsnew/changelog.html) (no gh-115627; gh-127257 in 3.12.9).
+  noble / noble-updates `main` and `universe` `binary-amd64/Packages.xz` (reverse dependencies).

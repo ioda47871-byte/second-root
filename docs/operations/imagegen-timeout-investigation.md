@@ -127,7 +127,9 @@ HUMAN-024b probe:
 | C (no options) | stayed open |
 
 Without the drop rule, all three stayed open for 45 s. The kernel side is therefore **confirmed** on this kernel. The WSL
-kernel was not tested.
+kernel was not tested. (DEV-087: this reproduction most likely ran on the container's default `python3`, 3.13. On
+Python 3.12, which Ubuntu 24.04 ships, the same abort prints `EOF` instead of `ERR_ETIMEDOUT`, because 3.12's ssl module
+reports it as a ragged EOF: `design-image-poc.md` "24b result".)
 
 **Where the ACK can be lost on our path.** Codex runs in the requester jail's own network namespace
 (`scripts/sales-design-capture/jail/jail.properties:47-51`). The only way out is **pasta**, a user-space TCP/IP
@@ -280,8 +282,8 @@ implemented here:
 |---|---|---|---|
 | V0 | HUMAN-022 | done, 0 | §1 |
 | V1 | **HUMAN-024a**: read only. Outside the jail: kernel, WSL networking mode, **passt version**, keepalive sysctls. Inside the jail: whether a proxy env var is *set* (no value) | 0 Codex, no network | the passt lead (older than 2024_11_21.238c69f?) and context for V2 |
-| V2 | **HUMAN-024b**: TCP probe in the jail, three TLS connections to chatgpt.com:443 with reqwest's Linux socket options vs without, idle 100 s | 0 Codex, no sign-in, no billing; about 2 min; 3 unauthenticated `GET /robots.txt` | H1 (A `ERR_ETIMEDOUT` at about 27 s) vs H2/H3 |
-| V2' | optional **24b-host**: the same probe once in the host namespace as a non-Codex user | same as V2 | pasta vs WSL NAT / upstream |
+| V2 | **HUMAN-024b**: TCP probe in the jail, three TLS connections to chatgpt.com:443 with reqwest's Linux socket options vs without, idle 100 s | 0 Codex, no sign-in, no billing; about 2 min; 3 unauthenticated `GET /robots.txt` | H1 (A `ERR_ETIMEDOUT`, or `EOF` on Python 3.12, at about 27 s) vs H2/H3. **Done 2026-10-22**: A `EOF` 27 s, B `EOF` 57 s, C open in the jail |
+| V2' | optional **24b-host**: the same probe once in the host namespace as a non-Codex user | same as V2 | pasta vs WSL NAT / upstream. **Done 2026-10-22**: all three open → pasta |
 | V3 | only if V2 is inconclusive: the same v1 PoC run (HUMAN-021b's command) after DEV-084 is merged | **1 Codex run** with image generation (plan quota) | `img_call_ms` / `img_fail_timing` per call, and the text if the script leaves it uncaught |
 
 The exact commands and how to read them are in `design-image-poc.md` §"HUMAN-024"; `.ai/blockers.md` points there. The fix options in §6 come after V2 and each needs its own approval.
@@ -299,7 +301,8 @@ The exact commands and how to read them are in `design-image-poc.md` §"HUMAN-02
 | ~156 s = 5 × ~31 s client-side TCP abort (H1) | INFERRED (strong) | arithmetic; #24323; #45381 (thliborius) |
 | Linux cuts an idle `TCP_USER_TIMEOUT` 30 s + keepalive socket at about 30 s only when the probe ACKs are lost (A 27 s, B 57 s, C open; all open with ACKs) | CONFIRMED (this container's kernel, simulated drop) | §3 local reproduction |
 | our path's TCP peer for Codex is pasta (jail netns) | CONFIRMED (repo config) | jail.properties:47-51; admin.sh:149, :160-178 |
-| keepalive probes unanswered on our path (old pasta, or WSL NAT / upstream) | INFERRED (old pasta: 24a shows passt `1e6f92b`, older than `238c69f`); not yet measured | 24b / 24b-host (pending approval) |
+| keepalive probes unanswered on our path (old pasta, or WSL NAT / upstream) | **strongly supported for the jail path, not the host path** (24b, 2026-10-22): in the jail A ended at 27 s and B at 57 s (`EOF`, which is how Python 3.12 shows the kernel's `ETIMEDOUT`), C stayed open; on the host all three stayed open | 24a (passt `1e6f92b`); 24b / 24b-host; `design-image-poc.md` "24b result" |
+| the ~156 s image failures have this cause | INFERRED (strongest explanation), **not proven**: 24b idles after a complete `GET`, Codex waits on a `POST` | a Codex run after the passt fix (`passt-update-plan.md` A-8) |
 | the server reuses or charges aborted generations | UNKNOWN | not visible locally |
 | a CLI update would change it | INFERRED no | main 61f34c3: reqwest 0.12.28, no TCP options in the two files read |
 

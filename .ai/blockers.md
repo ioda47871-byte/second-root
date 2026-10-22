@@ -33,25 +33,32 @@
   reqwest 0.12.28 は **Linux（WSL2 を含む）では既定で `TCP_USER_TIMEOUT` 30 秒・keepalive 15 秒**を socket に付け、Codex はそれを変えない。156 秒 ≒ 5 ×（約 30.5〜31 秒）+ 約 3 秒。
   公開の報告（openai/codex#24323、#45381 の Linux の comment）も Linux で「1 回約 31 秒 × 5 回・`timeout`」。最有力は H1「経路上で keepalive の probe に応答がなく、待っている間の接続が 30 秒で切られる」。対立仮説は H2「server が約 30 秒で 5xx」、H3「1 回の長い要求（約 156 秒）が再試行されない error で終わる」。
 - コマンドと読み方の正本は `docs/operations/design-image-poc.md` の「HUMAN-024」（GitHub で表示されるよう、コマンドはそこに置く）。
-- **現在地（2026-10-22）: 24a 済み。次は 24b（人の review の後の承認待ち）。** passt の更新の設計は `docs/operations/passt-update-plan.md`（DEV-086、設計だけで何も入れていない）。passt の更新・WSL の設定の変更・Codex の実行は**承認されていない**。
+- **現在地（2026-10-22）: 24a・24b・24b-host 済み（承認の A-1 は完了）。次は passt の更新の承認判断（`docs/operations/passt-update-plan.md` §0 の要約と §8 の表、DEV-087 で最終整理）。** passt の更新・WSL の設定の変更・jail の変更・worker / timer の変更・Codex の実行は**どれも承認されていない**。
+- **24b・24b-host の結果（済み、2026-10-22、人が流した）**:
+  - jail の中（pasta 経由）: `JAIL_OK`、A_reqwest_default `status=200 idle_end=EOF idle_s=27`、B_keepalive_only `status=200 idle_end=EOF idle_s=57`、C_plain `status=200 idle_end=OPEN idle_s=100`。
+  - host（jail の外、WSL の通常の network）: A・B・C とも `status=200 idle_end=OPEN idle_s=100`。
+  - 読み: keepalive を送る接続だけが、予想どおりの時刻（A は `TCP_USER_TIMEOUT` 30 秒 − 読み取り 3 秒 = 約 27 秒、B は 15 + 3 × 15 − 3 = 約 57 秒）で終わり、host では 3 本とも開いたまま。**古い pasta が jail の経路で keepalive の ACK を落としていることを強く支持する。**
+  - ただし **画像生成の約 156 秒の失敗が同じ原因だとは断定しない**。24b は応答を受け取った後の待機（GET）、Codex は応答がまだ始まらない POST の待機。確かめられるのは更新後の Codex 1 回（A-8）だけ。
+  - `ERR_ETIMEDOUT` ではなく `EOF` だった点（DEV-087 で分析、`design-image-poc.md` の「24b result」）: Ubuntu 24.04 の Python 3.12.3（+ OpenSSL 3.0.13）の ssl は、kernel が `ETIMEDOUT` で切った socket を ragged EOF として返し、既定の `suppress_ragged_eofs=True` で空の読み取りになる（noble と同じ package で手元で試験して確認。CPython は 3.13.0a6 の gh-115627 で直し、3.12 には backport されていない）。3.12 では RST と FIN も `EOF` になるので、語だけでは区別できない。pasta `1e6f92b` の source は keepalive に ACK も FIN も RST も返さない。時刻の一致と host の結果から、jail の kernel 自身が切った（`ETIMEDOUT`）と見るのが最も確からしい（errno そのものは 24b では出せない）。
+  - 任意の 24b-v2（`suppress_ragged_eofs=False`、読む前に `SO_ERROR` と `TCP_INFO` を見る。手元の 127.0.0.1 で試験済み）は、更新の判断には必須ではない。更新後の確認（A-6）では 24b の代わりに 24b-v2 を使う案。
 - **24a の結果（済み、2026-10-22、人が流した）**: kernel `6.18.33.2-microsoft-standard-WSL2`・WSL の network mode `nat`・passt `0.0~git20240220.1e6f92b-1`（Ubuntu 24.04 の標準の package。noble に -updates / -security / -backports は無い）・`pasta --version` は `pasta unknown version`（mode 名の後に版。Debian の build は git が無いので版を埋めない。版は dpkg と hash で見る）・system の keepalive の sysctl `7200 75 9`（reqwest が socket ごとに keepalive と `TCP_USER_TIMEOUT` を付けるので Codex の socket には効かない）・jail `JAIL_OK`・proxy の変数（`HTTP(S)_PROXY` / `NO_PROXY` / `ALL_PROXY`、大文字小文字とも）はすべて unset。
   → upstream の `1e6f92b`（2024-02-20）は `238c69f`（2024_11_21「tcp: Acknowledge keep-alive segments」）より前なので、入っている pasta は keep-alive に ACK を返さない。H1（pasta が keepalive の ACK を落とし、約 30 秒 × 5 回で切れる）が強まった。proxy なしなので Codex は jail から chatgpt.com へ直接つなぎ、24b はその経路を測る。
-  → 24b の手順は DEV-086 で jail の実装と突き合わせ直した（コマンドは変えていない。`design-image-poc.md` の HUMAN-024）。読み方: jail で A が約 27 秒で切れ host は OPEN → pasta、両方切れる → WSL の NAT か上流、どちらも切れない → 24a（古い pasta は keepalive に ACK しない）からは予想外なので出力をそのまま送る。その後 H2 / 24c。
+  → 24b の手順は DEV-086 で jail の実装と突き合わせ直した（コマンドは変えていない。`design-image-poc.md` の HUMAN-024）。結果は上の「24b・24b-host の結果」（jail で A が約 27 秒で切れ host は OPEN → pasta の行）。
 - 24a（読むだけ・network なし・費用 0。**済み**、手順は記録として残す）:
   - jail の外: kernel・WSL の network mode・**passt の版**（`dpkg-query -W passt` / `pasta --version`）・keepalive の sysctl。
   - jail の中: proxy の環境変数が設定されているか（値は出さない）。
   - Codex は jail の network namespace から **pasta** を通って外に出るので、keepalive に応答する相手は pasta。upstream の passt が keep-alive に ACK するのは 2024_11_21.238c69f から（keep-alive の続きの修正は 2025-02 の 472e2e9 と 2025-12 の aa809d3）。Ubuntu 24.04 の古い passt だけで H1 がそのまま起きうる。
   - Codex に渡るのは `HTTP(S)_PROXY` / `NO_PROXY` だけ（`ALL_PROXY` は sandbox.ts:79 で消える）。私設 address の proxy は jail から届かない（`IPAddressDeny`）。
-- 24b（Codex 0 回・sign-in なし・課金なし・約 2 分。network: chatgpt.com:443 へ認証なしの `GET /robots.txt` を 3 本）:
+- 24b（**済み**。Codex 0 回・sign-in なし・課金なし・約 2 分。network: chatgpt.com:443 へ認証なしの `GET /robots.txt` を 3 本。手順は記録として残す）:
   - jail の中で、reqwest の Linux の既定と同じ socket option（A）、keepalive だけ（B）、何もなし（C）の TLS 接続を開き、100 秒待つ。
   - 任意の 24b-host: 同じ probe を jail の外（人の WSL user、host の namespace）で 1 回流し、pasta と WSL の NAT を分ける。
   - 読み方:
     - `idle_s` は 3 秒の読み取りの後から数える。
-    - A が `ERR_ETIMEDOUT` で約 27 秒、B が約 57 秒（または `OPEN`）、C が `OPEN` → H1 確定。
+    - A が `ERR_ETIMEDOUT`（Python 3.12 では `EOF`）で約 27 秒、B が約 57 秒（または `OPEN`）、C が `OPEN` → keepalive の ACK が返っていない。
     - それが jail の中だけなら → pasta が原因（passt の更新の案）。
     - 3 本とも `OPEN` → H2 が有力。
   - 修正後の probe は、ACK を落とす local の再現（iptables、後で削除）で確かめた: A 27 秒・B 57 秒・C OPEN。
-- 24c（24b で結論が出ないときだけ。Codex 1 回、画像生成つき）: DEV-084 の merge の後に、HUMAN-021b と同じ v1 のコマンドを 1 回。
+- 24c（24b で結論が出ないときだけ。**24b で結論が出たので今は使わない**。Codex 1 回、画像生成つき、passt の更新の**前**）: DEV-084 の merge の後に、HUMAN-021b と同じ v1 のコマンドを 1 回。更新の**後**の Codex 1 回は別の段で、`passt-update-plan.md` の A-8（V-4）。
   `img_call_ms=` と `img_fail_timing=` で呼び出しごとの時間、cell の script が error を捕まえなかったときは `img_fail_reason=TIMEOUT`（H1）か `HTTP_5XX`（H2）が分かる。
 - 修正の案（どれも人の承認が要る。DEV-084 は実装していない）:
   (1) 自動の再試行を 0 回に: `openai` は予約された provider id で上書きできない（config_toml.rs:66-72）ので、`-c` で自前の provider（`requires_openai_auth = true`・`request_max_retries = 0`）に切り替える。model の通信も同じ provider になる挙動の変更。失敗が 1 回・約 31 秒になるだけで、原因は直らない。
@@ -60,8 +67,8 @@
   (4) H1 が確定したら: **passt の更新**（24a の版が 2024_11_21.238c69f より古く、24b が jail の中だけで切れるとき。WSL の system package の変更）、WSL の network mode（`.wslconfig`、人の承認。host でも切れるときだけ）、または upstream に報告する（外部への投稿は人の判断）。jail の中の loopback の proxy は、その上流の socket も pasta を通るので、pasta が原因なら（keepalive を送らない proxy でない限り）効かない。
   CLI の更新は効かない見込み（2026-10-22 の main も reqwest 0.12.28 で、TCP の option を付けていない）。
 - 触れないもの: HUMAN-022 と同じ。`~/.codex/config.toml`・`.wslconfig`・CLI の版・model は変えない。
-- 返してほしいもの: 24a と 24b（と、流したなら 24b-host）の出力そのまま（秘密は含まない）。
-- 解除条件: 24b の結果が届く（必要なら 24c）、または人が流さないと決める。24b で「jail だけ切れる」なら、passt の更新は `passt-update-plan.md` §8 の承認（A-1 から順に）を 1 つずつ受けてからだけ進める。
+- 返してほしいもの: 24a・24b・24b-host は受け取り済み。次は `passt-update-plan.md` §8 の承認の判断（A-2 から順に）。
+- 解除条件: 24b で「jail だけ切れる」になった（2026-10-22）ので、passt の更新は `passt-update-plan.md` §8 の承認（A-2 から順に）を 1 つずつ受けてからだけ進める。人が更新しないと決めた場合も解除（その後の案は同 §7）。画像の失敗の原因の確定は A-8（更新後の Codex 1 回）。
 
 ### HUMAN-021 — 画像ツールが使われない原因を分ける、安い順の確認（DEV-078 の merge の後。1 段ずつ別の承認）
 

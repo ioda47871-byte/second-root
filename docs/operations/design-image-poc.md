@@ -680,8 +680,8 @@ makes pasta the prime suspect. With no proxy set, Codex dials chatgpt.com direct
 24b probes. The 24a in-jail check is valid as written: `systemd-run` expands `${VAR}` in the command (systemd 255,
 `--expand-environment` defaults to on for services), but `${!v:-}` is not expanded. ExecStart expansion runs with
 flags 0, which means no `:-` syntax, so the text is left as it is (`src/basic/env-util.c` `replace_env_full`, v255).
-The design for updating passt is in [`passt-update-plan.md`](passt-update-plan.md). **Next: 24b, pending the human's
-approval.**
+The design for updating passt is in [`passt-update-plan.md`](passt-update-plan.md). **24b and 24b-host: done
+(2026-10-22), results below** ("24b result").
 
 **24b — 0 Codex calls, no sign-in, no billing, about 2 min.** The probe opens three TLS connections to chatgpt.com:443 at
 the same time:
@@ -862,6 +862,10 @@ Reading 24b. `idle_s` starts **after** the 3 s read window, so a cut 30 s after 
 locally with dropped ACKs (investigation §3).
 
 "Cut" below means A ends `ERR_ETIMEDOUT` with `idle_s` about 27 (B, if it is cut too, at about 57; C stays `OPEN`).
+**Correction after the run (DEV-087):** on Python 3.12 (Ubuntu 24.04's `python3`) the same cut prints **`EOF`**, not
+`ERR_ETIMEDOUT`: Python 3.12's ssl module reports a socket the kernel aborted as a ragged EOF, and the probe's default
+`suppress_ragged_eofs=True` turns that into an empty read. So read "cut" as `ERR_ETIMEDOUT` **or** `EOF` at about 27 s
+(A) / 57 s (B) with C `OPEN`. See "24b result" below; 24b-v2 tells the cases apart directly.
 "OPEN" means all three end `OPEN` with `idle_s` = 100. A lost keepalive ACK cuts A and B and never C, because C sends no
 probes.
 
@@ -869,21 +873,384 @@ probes.
 
 | 24b (jail) | 24b-host | decision | next |
 |---|---|---|---|
-| A cut at about 27 s | all `OPEN` | **pasta is the cause.** H1 confirmed, H3 ruled out. Fits 24a: passt `1e6f92b` predates `238c69f` | the passt update, [`passt-update-plan.md`](passt-update-plan.md); each step has its own approval |
-| A cut at about 27 s | A cut at about 27 s | **WSL's NAT or something upstream** (a middlebox, the edge). H1 confirmed, but updating passt alone will not fix it | WSL networking (`.wslconfig`, human approval) or an upstream report; not the passt plan alone |
+| A cut at about 27 s | all `OPEN` | **pasta drops the keepalive ACKs** (H1's mechanism is present on the jail path). Whether it explains the image failures, and H2 / H3 for a pending POST, stays open until A-8. Fits 24a: passt `1e6f92b` predates `238c69f` | the passt update, [`passt-update-plan.md`](passt-update-plan.md); each step has its own approval |
+| A cut at about 27 s | A cut at about 27 s | **WSL's NAT or something upstream** (a middlebox, the edge). H1's mechanism is present, but updating passt alone will not fix it | WSL networking (`.wslconfig`, human approval) or an upstream report; not the passt plan alone |
 | all `OPEN` | all `OPEN` (or not run) | **unexpected given 24a** (the installed pasta `1e6f92b` does not ACK keepalives): send the output as it is. If it holds up, keepalives are answered on Codex's path, the ~156 s is not the TCP cut, and **H2** leads (the server or edge answers 5xx at about 30 s) | send the output; then H2 / 24c (one Codex run) |
 | all `OPEN` | A cut | unexpected: the jail path answers but the host path does not | send both outputs as they are |
-| A cut at about 27 s | not run | H1 confirmed on Codex's path; pasta versus NAT is still open | run 24b-host (same approval class) before deciding on the passt update |
+| A cut at about 27 s | not run | H1's mechanism is present on Codex's path; pasta versus NAT is still open | run 24b-host (same approval class) before deciding on the passt update |
 
 Other single-run results:
 
 | result | meaning |
 |---|---|
-| A `ERR_ETIMEDOUT` at about 27 s; B `ERR_ETIMEDOUT` at about 57 s (or `OPEN`); C `OPEN` | keepalive ACKs are lost on that path. **H1 is confirmed** and H3 is ruled out |
+| A `ERR_ETIMEDOUT` at about 27 s; B `ERR_ETIMEDOUT` at about 57 s (or `OPEN`); C `OPEN` | keepalive ACKs are lost on that path: **H1's mechanism is present**. Whether it explains the image failures, and H2 / H3 for a POST still waiting for its response, stays open until A-8 (`passt-update-plan.md`); see "24b result" |
+| the same with `EOF` in place of `ERR_ETIMEDOUT` (Python 3.12, DEV-087) | read it the same way: keepalive ACKs are lost on that path (H1's mechanism is present), and the image failures' cause stays open until A-8. Python 3.12's ssl module reports the kernel's `ETIMEDOUT` abort as EOF ("24b result") |
 | `CUT_EARLY` | a quiet end before 100 s without an error. Unexpected: send it as it is |
 | `EOF` early on all three | the server closed the idle connection first. Inconclusive |
 | `setup_failed=…` / `SSL_…` | no connection (DNS, TLS, certificate). Nothing learned about H1 |
 | any other `ERR_…` (e.g. `ERR_ECONNRESET`), `DATA`, or a mix not listed above | unexpected: send the output as it is |
+
+**24b result (done, 2026-10-22, run by the human: 24b in the jail and 24b-host in the host namespace).** The output,
+as sent:
+
+| connection | 24b, in the jail (through pasta `1e6f92b`) | 24b-host (WSL `nat`, no pasta) |
+|---|---|---|
+| jail check | `JAIL_OK` | – |
+| A_reqwest_default (keepalive 15/15/3 + `TCP_USER_TIMEOUT` 30 s) | `status=200 idle_end=EOF idle_s=27` | `status=200 idle_end=OPEN idle_s=100` |
+| B_keepalive_only (keepalive 15/15/3) | `status=200 idle_end=EOF idle_s=57` | `status=200 idle_end=OPEN idle_s=100` |
+| C_plain (no options) | `status=200 idle_end=OPEN idle_s=100` | `status=200 idle_end=OPEN idle_s=100` |
+
+Reading:
+
+- **The results strongly support that the old pasta drops keep-alive ACKs on the jail path.** Only the connections that
+  send keepalive probes end, and they end at exactly the predicted times: A at about 27 s (`TCP_USER_TIMEOUT` 30 s minus
+  the 3 s read window) and B at about 57 s (15 + 3 × 15 − 3). C, which sends no probes, stays open for 100 s in the jail.
+  On the host all three stay `OPEN`, so neither the server, the edge nor WSL's NAT closes an idle connection within
+  100 s, and the keepalive probes are answered there. This is the decision table's first row ("A cut in the jail, all
+  `OPEN` on the host" → pasta). It fits 24a (passt `1e6f92b` predates `238c69f`) and the source of `1e6f92b` (see (b)
+  below).
+- **It is NOT proven that the ~156 s image-generation failures have the same cause.** 24b is an idle `GET` after a
+  complete response. Codex sends a `POST` and waits for a response that has not started. The same socket options and
+  kernel timers apply to that wait (nothing is sent or received while the server generates), so H1 is now the strongest
+  explanation, but only a Codex run after the fix (A-8 in `passt-update-plan.md`) can show it. H2 (the server answers
+  5xx at about 30 s) is not excluded by 24b for a request that is still in progress.
+- **Differs from the expectation:** A and B ended `EOF`, not `ERR_ETIMEDOUT`. Analysed next.
+
+**Why `EOF` and not `ERR_ETIMEDOUT` (DEV-087).** The probe's `wait()` returns `EOF` when the TLS socket's `recv` returns
+`b""`. Three mechanisms can produce that:
+
+- **(a) An error-reporting artefact: the kernel aborted the socket with `ETIMEDOUT`, and Python's ssl layer reported it
+  as EOF.**
+  - CPython 3.12.3 `Modules/_ssl.c`: `_ssl__SSLSocket_read_impl` calls `SSL_read_ex`, which returns **0** on any failure,
+    and passes that 0 to `PySSL_SetError`.
+  - For `SSL_ERROR_SYSCALL` with an empty OpenSSL error queue, `PySSL_SetError` tests `ret == 0` **first** and raises
+    `SSLEOFError` ("EOF occurred in violation of protocol"). The branch that would raise `OSError(errno)` from the saved
+    errno is only reached for `ret == -1`, which `SSL_read_ex` never returns.
+  - `ssl.py`'s `SSLSocket.read` turns `SSLEOFError` into `b""` when `suppress_ragged_eofs=True` (the default, as in 24b).
+  - CPython fixed this in **3.13.0a6** (gh-115627, "Fix the ssl module error handling of connection terminate by peer. It
+    now throws an OSError with the appropriate error code instead of an EOFError"). In 3.13.0 the `ret == 0` test is gone
+    and the saved errno is raised. The 3.12 changelog has no gh-115627 entry, so it was not backported. A later 3.12 fix,
+    gh-127257 (3.12.9), covers errors OpenSSL reports with `ERR_LIB_SYS`, a different path.
+- **(b) A peer FIN: pasta, or the server, closed the connection.**
+  - The timing argues against it. The server kept C open for 100 s, and on the host it kept A and B open too. If pasta
+    closed the connection when the first keepalive probe arrived, A would end at about 12 s on the idle clock (15 s after
+    the last segment), not 27 s.
+  - passt `1e6f92b` `tcp.c`: in `tcp_data_from_tap()` (:2249) a keep-alive segment (`seq = seq_from_tap − 1`, no data,
+    the same ACK number and window) only sets `retr` (:2299, a fast retransmit of nothing, since all data is acknowledged).
+    It ends in `tcp_send_flag(c, conn, ACK_IF_NEEDED)`, which returns without sending anything when nothing new is to be
+    acknowledged (:1573). `tcp_data_from_sock()` sends a FIN only after the host socket read EOF (`SOCK_FIN_RCVD`), and
+    an RST only on a host socket error other than `EAGAIN`. pasta's own timers do not fire either: no data is
+    unacknowledged, and the activity timeout is 7200 s (`ACT_TIMEOUT`). So pasta sends **no ACK, no FIN and no RST** in
+    answer to a keepalive probe (CONFIRMED from source).
+- **(c) An RST.** It would normally surface as `ECONNRESET`, but Python 3.12.3 maps it to `EOF` in the same way as (a)
+  (tested below). The direction of the RST is the other way round: Linux's keepalive timer **sends** an RST to the peer
+  when it gives up (`tcp_timer.c` v6.18 `tcp_keepalive_timer`, `tcp_send_active_reset()` before `tcp_write_err()`), and
+  `tcp_write_err()` sets the socket error to `ETIMEDOUT` (`tcp_done_with_error(sk, … ETIMEDOUT)`). pasta then sees the
+  jail's RST and closes its host socket.
+
+**Local tests (this container; unprivileged; TLS client and server on 127.0.0.1; no namespace, pasta or iptables).** The
+container is Ubuntu 24.04.5 with **noble's own packages** `python3.12 3.12.3-1ubuntu0.17` and `libssl3t64
+3.0.13-0ubuntu3.16`, kernel 6.18.44, plus a `python3.13 3.13.16` built against the same OpenSSL. The kernel abort was
+produced without privileges: `TCP_USER_TIMEOUT` 3 s on a client whose peer never reads, so its window is zero and data
+stays unacknowledged; the persist timer then gives up through the same `tcp_write_err()` → `ETIMEDOUT` as the keepalive
+timer.
+
+| how the connection ended | Python 3.12.3 (noble), `suppress_ragged_eofs` True / False | Python 3.13.16 | `tcpi_state` after |
+|---|---|---|---|
+| kernel abort, `ETIMEDOUT` | `EOF` / `SSLEOFError` | `ERR_ETIMEDOUT` | `CLOSE` |
+| peer RST (`SO_LINGER` 0) | `EOF` / `SSLEOFError` | `ERR_ECONNRESET` | `CLOSE` |
+| peer FIN without TLS `close_notify` | `EOF` / `SSLEOFError` | `EOF` / `SSLEOFError` | `CLOSE_WAIT` |
+| peer `close_notify` | `EOF` / `EOF` | `EOF` / `EOF` | `ESTABLISHED` |
+
+- **On Python 3.12.3, `EOF` cannot tell (a), (b) and (c) apart.** `SO_ERROR` read after the TLS read is `0`, because the
+  read consumed the kernel's error. Read **before** the TLS read, `SO_ERROR` is `ETIMEDOUT` for the abort on both
+  versions (tested), which is what 24b-v2 uses.
+- **Why DEV-084's local reproduction printed `ERR_ETIMEDOUT`:** this container's default `python3` is 3.13.16.
+  The investigation did not record the version; that it ran on 3.13 is INFERRED.
+- **The human's Python** was not printed by 24a or 24b. Ubuntu 24.04's `python3` is 3.12.3, and the jail runs
+  `/usr/bin/python3` (`admin.sh` `jail_python`), so 3.12.3 is likely (UNVERIFIED; 24b-v2 prints it).
+
+**Conclusion:**
+
+| | claim |
+|---|---|
+| CONFIRMED (local test + CPython source) | On noble's Python 3.12.3 + OpenSSL 3.0.13, a socket the kernel aborts with `ETIMEDOUT` reads as `EOF` in 24b. 24b's `EOF` is therefore what the predicted cut looks like on that Python. RST and FIN look the same there |
+| CONFIRMED (passt source) | pasta `1e6f92b` sends no ACK, FIN or RST in answer to a keepalive probe |
+| CONFIRMED (kernel source) | When the keepalive timer gives up, the jail kernel sets `ETIMEDOUT` and sends an RST to pasta |
+| LIKELY | A and B were aborted by the jail's own kernel (mechanism (a)), because the probes went unanswered: only the probing connections ended, at the two predicted times, and the host path keeps all three |
+| UNKNOWN | the errno itself on the human's machine (24b cannot print it on Python 3.12); whether the image failures have the same cause (needs A-8 after the fix) |
+
+**24b-v2 — optional, needs its own approval, same cost class as 24b (0 Codex calls, no sign-in, no billing, about
+2 min, the same 3 unauthenticated `GET /robots.txt`).** The same read-only probe, with three changes:
+
+- `suppress_ragged_eofs=False`, so an unclean end is never an empty read.
+- While idle it watches the socket with `select` and samples `TCP_INFO` once a second without reading. When the socket
+  becomes readable it reads **`SO_ERROR` and `TCP_INFO` first**, then does the TLS read. At the 100 s deadline it reads
+  them too, and reports `OPEN` only if `SO_ERROR` is 0 and `tcpi_state` is ESTABLISHED; otherwise the end is classified
+  like any other. `end=` is `LOCAL_TIMEOUT`
+  (`so_error=ETIMEDOUT`), `PEER_RST` (`ECONNRESET`), `PEER_FIN` (no error, `tcpi_state=CLOSE_WAIT`), `PEER_DATA`, `OPEN`
+  or `OTHER`.
+- It also prints `probes_max` (the most keepalive probes outstanding at once), `ack_age_max_s` (the longest time without
+  any ACK from the peer, from `tcpi_last_ack_recv`), and `backoff`, `retransmits` and `unacked` at the end, plus one
+  `TCP_PROBE2_ENV` line with the Python and OpenSSL versions. Codes and numbers only: no address, header, cookie or body.
+
+Tested here against the 127.0.0.1 TLS server on Python 3.12.3 (constants pointed at the local server; the text below is
+otherwise byte for byte what was run):
+
+| local case | result |
+|---|---|
+| server keeps the connection open (20 s) | all three `end=OPEN`; A and B `ack_age_max_s=15` (each keepalive probe answered), C `ack_age_max_s=23` |
+| server FIN after 8 s | all three `end=PEER_FIN so_error=0 tcpi_state=CLOSE_WAIT` |
+| server RST after 8 s | all three `end=PEER_RST so_error=ECONNRESET tcpi_state=CLOSE` |
+| kernel abort (zero window, `TCP_USER_TIMEOUT` 3 s; the probe's `idle()` / `verdict()` reused) | `end=LOCAL_TIMEOUT so_error=ETIMEDOUT tcpi_state=CLOSE` on 3.12.3 and 3.13.16 |
+| the same abort with `select` patched to never report the socket readable (only the deadline check sees it) | `end=LOCAL_TIMEOUT so_error=ETIMEDOUT tcpi_state=CLOSE` at the deadline, not `OPEN` |
+
+The `struct tcp_info` offsets read are `tcpi_state`, `tcpi_retransmits`, `tcpi_probes` and `tcpi_backoff` (bytes 0, 2,
+3, 4), `tcpi_unacked` (24) and `tcpi_last_ack_recv` (56), from `linux/tcp.h`. The `TCP_INFO` counters are not reliable
+after an abort (the local abort read back 0), which is why `probes_max` and `ack_age_max_s` are sampled while the
+connection is alive.
+
+In the jail (the same wrapper as 24b; the script has no `$`, `${` or `'`):
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc 'timeout 180 python3 -I - <<"PY"
+import socket, ssl, sys, time, threading, errno, select, struct
+HOST = sys.argv[1] if len(sys.argv) > 1 else "chatgpt.com"
+PORT = 443
+HOLD = 100
+CA = None
+STATES = {1: "ESTABLISHED", 4: "FIN_WAIT1", 5: "FIN_WAIT2", 6: "TIME_WAIT", 7: "CLOSE", 8: "CLOSE_WAIT", 9: "LAST_ACK", 11: "CLOSING"}
+def ename(n):
+    return errno.errorcode.get(n, "E%s" % n) if n else "0"
+def info(s):
+    # struct tcp_info: 8 x u8 (state, ca_state, retransmits, probes, backoff, ...), then u32 fields;
+    # unacked at byte 24, last_ack_recv (ms since the last ACK came in) at byte 56
+    b = s.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 104)
+    st, _, retr, probes, backoff = struct.unpack_from("5B", b, 0)
+    return {"state": st, "retr": retr, "probes": probes, "backoff": backoff,
+            "unacked": struct.unpack_from("I", b, 24)[0], "ack_age": struct.unpack_from("I", b, 56)[0]}
+def opts(s, keep, user):
+    if keep:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 15)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 15)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+    if user:
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, 30000)
+def read(s, sec):
+    s.settimeout(sec)
+    try:
+        b = s.recv(65536)
+        return ("EOF" if not b else "DATA"), b
+    except ssl.SSLError as e:
+        return "SSL_" + type(e).__name__, b""
+    except OSError as e:
+        if isinstance(e, TimeoutError) and e.errno is None:
+            return "QUIET", b""
+        return "ERR_" + ename(e.errno if isinstance(e.errno, int) else 0), b""
+def idle(s, hold):
+    # Watch the socket without reading it; when it becomes readable, take SO_ERROR and TCP_INFO
+    # first (the TLS read below would consume the kernel error), then read once.
+    t1 = time.monotonic()
+    ack_age = probes = 0
+    while True:
+        left = hold - (time.monotonic() - t1)
+        if left <= 0:
+            # OPEN only if the kernel holds no error and the connection is still ESTABLISHED
+            err = s.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            i = info(s)
+            ack_age, probes = max(ack_age, i["ack_age"]), max(probes, i["probes"])
+            if not err and i["state"] == 1:
+                return "OPEN", 0, i, ack_age, probes, time.monotonic() - t1
+            res, _ = read(s, 0.5)
+            return res, err, i, ack_age, probes, time.monotonic() - t1
+        r, _, _ = select.select([s], [], [], min(1.0, left))
+        i = info(s)
+        ack_age, probes = max(ack_age, i["ack_age"]), max(probes, i["probes"])
+        if r or s.pending():
+            err = s.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            i = info(s)
+            res, _ = read(s, 0.5)
+            if res == "QUIET" and not err and i["state"] == 1:
+                continue  # a TLS record without application data (e.g. a session ticket)
+            return res, err, i, ack_age, probes, time.monotonic() - t1
+def verdict(res, err, st):
+    if res == "OPEN":
+        return "OPEN"
+    if err == errno.ETIMEDOUT:
+        return "LOCAL_TIMEOUT"
+    if err == errno.ECONNRESET:
+        return "PEER_RST"
+    if not err and st == 8:
+        return "PEER_FIN"
+    if res == "DATA":
+        return "PEER_DATA"
+    return "OTHER"
+out = {}
+def run(name, keep, user):
+    t0 = time.monotonic()
+    try:
+        raw = socket.create_connection((HOST, PORT), timeout=15)
+        opts(raw, keep, user)
+        ctx = ssl.create_default_context(cafile=CA)
+        ctx.set_alpn_protocols(["http/1.1"])
+        s = ctx.wrap_socket(raw, server_hostname=HOST, suppress_ragged_eofs=False)
+        s.sendall(("GET /robots.txt HTTP/1.1\r\nHost: %s\r\nUser-Agent: sr-tcp-probe\r\nConnection: keep-alive\r\n\r\n" % HOST).encode())
+        head = b""
+        while True:
+            res, b = read(s, 3)
+            if res != "DATA":
+                break
+            head += b
+        st = head[9:12].decode("ascii", "replace") if head.startswith(b"HTTP/1.") else "none"
+        if res == "QUIET":
+            res, err, i, age, probes, t = idle(s, HOLD)
+        else:
+            err, i, age, probes, t = 0, info(s), 0, 0, 0.0
+        out[name] = "status=%s idle_end=%s idle_s=%d end=%s so_error=%s tcpi_state=%s probes_max=%d ack_age_max_s=%d backoff=%d retransmits=%d unacked=%d" % (
+            st, res, round(t), verdict(res, err, i["state"]), ename(err), STATES.get(i["state"], i["state"]),
+            probes, round(age / 1000), i["backoff"], i["retr"], i["unacked"])
+    except ssl.SSLError as e:
+        out[name] = "setup_failed=SSL_%s after_s=%d" % (type(e).__name__, round(time.monotonic() - t0))
+    except OSError as e:
+        out[name] = "setup_failed=%s after_s=%d" % (ename(e.errno) if isinstance(e.errno, int) else type(e).__name__, round(time.monotonic() - t0))
+    except Exception as e:
+        out[name] = "probe_error=%s" % type(e).__name__
+print("TCP_PROBE2_ENV py=%s openssl=%s" % (sys.version.split()[0], ssl.OPENSSL_VERSION.split()[1]))
+ts = [threading.Thread(target=run, args=a) for a in [("A_reqwest_default", True, True), ("B_keepalive_only", True, False), ("C_plain", False, False)]]
+[t.start() for t in ts]; [t.join() for t in ts]
+for k in sorted(out): print("TCP_PROBE2", k, out[k])
+PY'
+```
+
+24b-v2-host, as the human's own WSL user, outside the jail:
+
+```bash
+timeout 180 python3 -I - <<"PY"
+import socket, ssl, sys, time, threading, errno, select, struct
+HOST = sys.argv[1] if len(sys.argv) > 1 else "chatgpt.com"
+PORT = 443
+HOLD = 100
+CA = None
+STATES = {1: "ESTABLISHED", 4: "FIN_WAIT1", 5: "FIN_WAIT2", 6: "TIME_WAIT", 7: "CLOSE", 8: "CLOSE_WAIT", 9: "LAST_ACK", 11: "CLOSING"}
+def ename(n):
+    return errno.errorcode.get(n, "E%s" % n) if n else "0"
+def info(s):
+    # struct tcp_info: 8 x u8 (state, ca_state, retransmits, probes, backoff, ...), then u32 fields;
+    # unacked at byte 24, last_ack_recv (ms since the last ACK came in) at byte 56
+    b = s.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 104)
+    st, _, retr, probes, backoff = struct.unpack_from("5B", b, 0)
+    return {"state": st, "retr": retr, "probes": probes, "backoff": backoff,
+            "unacked": struct.unpack_from("I", b, 24)[0], "ack_age": struct.unpack_from("I", b, 56)[0]}
+def opts(s, keep, user):
+    if keep:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 15)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 15)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+    if user:
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, 30000)
+def read(s, sec):
+    s.settimeout(sec)
+    try:
+        b = s.recv(65536)
+        return ("EOF" if not b else "DATA"), b
+    except ssl.SSLError as e:
+        return "SSL_" + type(e).__name__, b""
+    except OSError as e:
+        if isinstance(e, TimeoutError) and e.errno is None:
+            return "QUIET", b""
+        return "ERR_" + ename(e.errno if isinstance(e.errno, int) else 0), b""
+def idle(s, hold):
+    # Watch the socket without reading it; when it becomes readable, take SO_ERROR and TCP_INFO
+    # first (the TLS read below would consume the kernel error), then read once.
+    t1 = time.monotonic()
+    ack_age = probes = 0
+    while True:
+        left = hold - (time.monotonic() - t1)
+        if left <= 0:
+            # OPEN only if the kernel holds no error and the connection is still ESTABLISHED
+            err = s.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            i = info(s)
+            ack_age, probes = max(ack_age, i["ack_age"]), max(probes, i["probes"])
+            if not err and i["state"] == 1:
+                return "OPEN", 0, i, ack_age, probes, time.monotonic() - t1
+            res, _ = read(s, 0.5)
+            return res, err, i, ack_age, probes, time.monotonic() - t1
+        r, _, _ = select.select([s], [], [], min(1.0, left))
+        i = info(s)
+        ack_age, probes = max(ack_age, i["ack_age"]), max(probes, i["probes"])
+        if r or s.pending():
+            err = s.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            i = info(s)
+            res, _ = read(s, 0.5)
+            if res == "QUIET" and not err and i["state"] == 1:
+                continue  # a TLS record without application data (e.g. a session ticket)
+            return res, err, i, ack_age, probes, time.monotonic() - t1
+def verdict(res, err, st):
+    if res == "OPEN":
+        return "OPEN"
+    if err == errno.ETIMEDOUT:
+        return "LOCAL_TIMEOUT"
+    if err == errno.ECONNRESET:
+        return "PEER_RST"
+    if not err and st == 8:
+        return "PEER_FIN"
+    if res == "DATA":
+        return "PEER_DATA"
+    return "OTHER"
+out = {}
+def run(name, keep, user):
+    t0 = time.monotonic()
+    try:
+        raw = socket.create_connection((HOST, PORT), timeout=15)
+        opts(raw, keep, user)
+        ctx = ssl.create_default_context(cafile=CA)
+        ctx.set_alpn_protocols(["http/1.1"])
+        s = ctx.wrap_socket(raw, server_hostname=HOST, suppress_ragged_eofs=False)
+        s.sendall(("GET /robots.txt HTTP/1.1\r\nHost: %s\r\nUser-Agent: sr-tcp-probe\r\nConnection: keep-alive\r\n\r\n" % HOST).encode())
+        head = b""
+        while True:
+            res, b = read(s, 3)
+            if res != "DATA":
+                break
+            head += b
+        st = head[9:12].decode("ascii", "replace") if head.startswith(b"HTTP/1.") else "none"
+        if res == "QUIET":
+            res, err, i, age, probes, t = idle(s, HOLD)
+        else:
+            err, i, age, probes, t = 0, info(s), 0, 0, 0.0
+        out[name] = "status=%s idle_end=%s idle_s=%d end=%s so_error=%s tcpi_state=%s probes_max=%d ack_age_max_s=%d backoff=%d retransmits=%d unacked=%d" % (
+            st, res, round(t), verdict(res, err, i["state"]), ename(err), STATES.get(i["state"], i["state"]),
+            probes, round(age / 1000), i["backoff"], i["retr"], i["unacked"])
+    except ssl.SSLError as e:
+        out[name] = "setup_failed=SSL_%s after_s=%d" % (type(e).__name__, round(time.monotonic() - t0))
+    except OSError as e:
+        out[name] = "setup_failed=%s after_s=%d" % (ename(e.errno) if isinstance(e.errno, int) else type(e).__name__, round(time.monotonic() - t0))
+    except Exception as e:
+        out[name] = "probe_error=%s" % type(e).__name__
+print("TCP_PROBE2_ENV py=%s openssl=%s" % (sys.version.split()[0], ssl.OPENSSL_VERSION.split()[1]))
+ts = [threading.Thread(target=run, args=a) for a in [("A_reqwest_default", True, True), ("B_keepalive_only", True, False), ("C_plain", False, False)]]
+[t.start() for t in ts]; [t.join() for t in ts]
+for k in sorted(out): print("TCP_PROBE2", k, out[k])
+PY
+```
+
+Reading 24b-v2:
+
+| result | meaning |
+|---|---|
+| jail: A `end=LOCAL_TIMEOUT so_error=ETIMEDOUT idle_s≈27 probes_max=1 ack_age_max_s≈30`, B the same at `idle_s≈57` with `probes_max=3`, C `OPEN`; host: all `OPEN` with A/B `ack_age_max_s≈15` | today's expected result: the jail kernel gave up because no keepalive ACK came back. This settles mechanism (a) |
+| A/B `end=PEER_RST` or `PEER_FIN` in the jail | something closed the connection from the far side (unexpected given the pasta source): send the output as it is |
+| jail: all three `OPEN`, A/B `ack_age_max_s` ≤ 20 | keepalive probes are answered on the jail path: **the expected result after the passt update** |
+| anything else | send the output as it is |
+
+**Is 24b-v2 needed before the update decision? No.** The A/B/C timing pattern of 24b already discriminates: only a lost
+keepalive ACK cuts A at 27 s and B at 57 s while C and the host stay open, and the passt source explains it. 24b-v2
+would only name the errno. It would, however, make the **post-update check** more conclusive: `ack_age_max_s` ≤ 20 on A
+and B shows directly that the keepalive probes are now answered, not only that nothing ended within 100 s. **Proposal:
+V-3 / A-6 in `passt-update-plan.md` runs 24b-v2 (jail and host) instead of 24b.** Running 24b-v2 once before the update
+is optional: it gives a same-tool baseline for that comparison (approval in the A-1 class).
 
 **24c — only if 24b is inconclusive.** One Codex run with image generation, using HUMAN-021b's v1 command, after DEV-084
 is merged. It records `img_call_ms=` / `img_fail_timing=` per call. If the cell's script leaves the error uncaught, it

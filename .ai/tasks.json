@@ -3878,6 +3878,51 @@
         "design-wsl-isolation.md §6「他の release の deb や自前の build は入れない」の例外",
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-087",
+      "title": "HUMAN-024b / 24b-host の結果の記録、EOF と ERR_ETIMEDOUT の違いの分析、passt の更新計画の承認判断用の最終整理（docs だけ）",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-086"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-087-passt-final",
+      "purpose": "HUMAN-024b（2026-10-22、人が流した）: jail の中で A が EOF 27 秒・B が EOF 57 秒・C が OPEN 100 秒、host では 3 本とも OPEN 100 秒。古い pasta が keepalive の ACK を落とすことを強く支持するが、画像生成の失敗が同じ原因だとは断定しない。ERR_ETIMEDOUT ではなく EOF だった理由を確認できる範囲で分析し、passt-update-plan.md を承認判断用に最終整理する（26.04 版を 24.04 に入れる影響、DNS の UDP/853 の対策、AppArmor・seccomp・jail の制限の維持、Claude と worker への影響、状態の保存と rollback、更新後の検証、作業ごとの承認）。",
+      "decision": "docs と .ai だけ。パッケージ更新・WSL の設定・jail の変更・worker / timer の変更・Codex の実行はどれもしない（人が承認していない）。この container では network namespace・pasta・iptables を使わない（手元の試験は 127.0.0.1 の TLS と getsockopt だけ）。DNS の rule は設計だけで、code は A-3 の承認の後の別 PR",
+      "acceptance_criteria": [
+        ".ai/blockers.md の HUMAN-024 に 24b と 24b-host を済みとして記録し、design-image-poc.md に結果の表を置く。断定しない書き方（画像の失敗とは別）",
+        "EOF の分析: (a) ssl の報告の仕方 (b) 相手の FIN (c) RST を、CPython の source・passt 1e6f92b の source・kernel の source と、手元の unprivileged な試験（noble と同じ python3.12 / libssl）で確かめ、確認済み・可能性が高い・不明を分ける",
+        "任意の 24b-v2（suppress_ragged_eofs=False、SO_ERROR と TCP_INFO）を設計し、127.0.0.1 の server で試験し、更新判断の前に必要かを書く",
+        "passt-update-plan.md に日本語の「承認判断のための要約」（7 点 × 事実・リスク・対策・残るリスク、承認の表）を置き、既存の確認済みの内容を保ちつつ 24b で変わる点を直す",
+        "追加・変更した command block はすべて bash -n を通す"
+      ],
+      "required_tests": [
+        "ai-tasks の unit、npm run check:secrets",
+        "抜き出した shell のコマンドに bash -n（埋め込みの Python は構文の確認）"
+      ],
+      "allowed_scope": [
+        "docs/operations/passt-update-plan.md",
+        "docs/operations/design-image-poc.md（HUMAN-024 の節）",
+        "docs/operations/imagegen-timeout-investigation.md（24b の結果の反映だけ）",
+        ".ai/**（feature branch では progress.md を除く）"
+      ],
+      "forbidden_scope": [
+        "passt / pasta の更新・install・設定の変更（どの machine でも）",
+        "WSL の設定（.wslconfig）・jail の変更・worker / timer の変更・Codex の実行",
+        "scripts/sales-design-capture/**・scripts/sales-design-worker/**（jail・admin.sh・probe・worker）の変更",
+        "この container での network namespace・pasta・iptables",
+        ".github/**"
+      ],
+      "human_approval_triggers": [
+        "passt の更新の各段（passt-update-plan.md §8 の A-2 から順に。A-1 は済み）",
+        "DNS の rule の code の PR と適用（A-3）",
+        "任意の 24b-v2（A-1b / A-6）",
+        "worker の timer の扱い（A-12a / A-12b、必要なときだけ）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }
