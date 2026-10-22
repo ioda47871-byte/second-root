@@ -3603,7 +3603,7 @@
     {
       "id": "DEV-081",
       "title": "Design image PoC: 呼ばれた画像ツールの失敗（HUMAN-021b の img_fail=OTHER）を固定の符号でさらに分け、models cache から model の tool_mode / 画像入力を記録する（Codex は流さない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-080"
