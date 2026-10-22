@@ -167,7 +167,7 @@
 - 同時に流さないもの: この PoC の間は `design-demo.ts`・`photo-poc.sh`・手動の `codex` を同じ `sr-designgen` で流さない（これらは run.lock を取らず、PoC の開始時の掃除と終了時の画像 dir の差分が、同時に動く call の session log / 画像を消しうる）。
 - 人の操作: (1) この 1 回を承認する、(2) 上のコマンドを流す、(3) runbook の「第2案 › Viewing」で `mockup.png` を Windows の Desktop に `kakuu-kaan-mockup-v2.png` として写して見る、
   (4) その PNG（と `report.json`）を Claude の session に upload する。止まったら表示された `POC_STOP: <符号>` を渡す。
-- 評価: 画像ができただけでは DEV-075 は終わらない。`docs/operations/design-image-eval-template.md` の 5 項目（各 1〜5）で Claude が採点し人が確認、**22/25 以上（人の目標）・hard fail なし**で合格。hard fail（事実の創作・店舗 / 人物の画像・表示の欠落・logo / 実物の主張・事実の崩れ）は人の決めた規則そのもの。「4 未満の項目なし」は Claude の追加の提案で、人が採用を決めるまで合格の条件ではない（評価の sheet には記録する）。
+- 評価: 画像ができただけでは DEV-075 は終わらない。`docs/operations/design-image-eval-template.md` の 5 項目（各 1〜5）で Claude が採点し人が確認、**22/25 以上（人の目標）・hard fail なし**で合格。hard fail（事実の創作・店舗 / 人物の画像・表示の欠落・logo / 実物の主張・事実の崩れ）は人の決めた規則そのもの。「4 未満の項目なし」は当初 Claude の提案だったが、2026-10-22 に人が採用した（「22/25点以上、各項目4点以上を基本方針とする」）。合格は 22/25 以上・各項目 4 以上・hard fail なし。DEV-082 の `comp-impl/bundle.ts` は合計だけを検査しているので、各項目の検査は #96 の merge の後の follow-up（DEV-083 の PR #98 に記載）。
 - 解除条件: 画像（または停止の符号）が届く、または人が流さないと決める。
 - 状況（2026-10-21）: **人が 1 回流した（develop 1effb40、direction v2）。結果は `CODEX_NO_IMAGE`**（Codex の呼び出しは始まり、`design-image-poc.ts` は exit 1、画像なし）。
   理由を分ける診断は当時なかった。調査と修正は DEV-077（診断の追加と v2 の prompt の修正、Codex は流していない）。次の 1 回は HUMAN-020。
