@@ -3646,7 +3646,7 @@
     {
       "id": "DEV-082",
       "title": "Comp to site: Codex のデザイン画像（comp）を Claude が店専用の頁として忠実に実装するための local PoC（実装 spec・頁の契約・検査の harness・synthetic fixture。Codex は流さない）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-072",
