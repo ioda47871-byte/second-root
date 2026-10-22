@@ -18,8 +18,8 @@
  *               feature (scripting, prefers-*, print …), not nested.
  *   properties  the guard's table (layout, flex, grid, spacing, colours,
  *               borders, radius, typography basics; position static /
- *               relative without offsets; transform: a small rotation only;
- *               opacity ≥ 0.85; box-shadow inset only; list-style none only;
+ *               relative without offsets — narrowed below to static, no
+ *               transform, opacity 1; box-shadow inset only; list-style none only;
  *               font-size ≥ 12px) minus `order` and the reversing flex
  *               directions, with letter-spacing ≥ 0, text-decoration none /
  *               underline only (default thickness: no style, colour or
@@ -30,7 +30,10 @@
  *               third review: no viewport or container unit (vw, vh, cq* …),
  *               grid rows sized by content only, grid-auto-flow row only,
  *               float none only, no wrapping column flex in one rule,
- *               text-transform none and font-variant-caps normal only.
+ *               text-transform none and font-variant-caps normal only;
+ *               fourth review: position static only, no z-index, opacity 1
+ *               only, no transform at all, horizontal writing only, no
+ *               multi-column layout (no stacking context can exist).
  *               Not listed, so refused: filter,
  *               backdrop-filter, mix-blend-mode, text-shadow,
  *               -webkit-text-stroke, -webkit-text-fill-color, unicode-bidi,
@@ -120,6 +123,19 @@ export const PAGE_PROPS: Readonly<Record<string, Spec>> = (() => {
   props.float = one(kw("none"));
   props["text-transform"] = one(kw("none")); // changes how Latin facts are drawn
   props["font-variant-caps"] = one(kw("normal"));
+  // fourth review of PR #96: no stacking or painting-order changes at all, so no box can be lifted over text
+  props.position = one(kw("static"));
+  delete props["z-index"];
+  props.opacity = one((t) => t.t === "num" && t.v === 1);
+  delete props.transform; // also drops the small rotation (a transform makes a stacking context)
+  delete props["transform-origin"];
+  // horizontal writing only (in vertical writing, width becomes the block size: a box shorter than its text)
+  props["writing-mode"] = one(kw("horizontal-tb"));
+  delete props["text-orientation"];
+  // no multi-column layout (a dl split into columns pairs labels with other values)
+  delete props["column-count"];
+  delete props["column-width"];
+  delete props["column-rule"];
   // rows sized by their content only: a fixed row height lets wrapped text leave its box and be painted over
   props["grid-template-rows"] = { items: [contentTrack, kw("none")], max: 12 };
   props["grid-auto-rows"] = { items: [contentTrack], max: 12 };

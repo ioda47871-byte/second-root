@@ -117,25 +117,42 @@ export const COMP_MEASURE_SCRIPT = String.raw`() => {
     }
     return Math.round(deg * 100) / 100;
   };
-  // rules that fix the height of an element holding text (height / max-height / block sizes other than auto / none),
-  // under any media: wrapped text leaves such a box at widths no breakpoint names (third review of PR #96)
-  let fixedHeightText = 0;
+  // a box shorter than its text (third and fourth reviews of PR #96): rules (under any media) that, on an element whose
+  // subtree holds text, fix the height (height / max-height / block sizes other than auto / none), tie it to the width
+  // (aspect-ratio other than auto) or let it shrink below its content (min-height / min-block-size 0); and, from the
+  // computed style, a length flex-basis on a text-holding item of a column flex
+  const holdsText = (el) => Boolean((el.textContent || "").replace(/\s+/g, ""));
+  const boxRules = { fixedHeightText: 0, aspectRatioText: 0, minHeightZeroText: 0, columnBasisText: 0 };
   const visit = (rules) => {
     for (const r of Array.from(rules)) {
       if (r.cssRules && !r.selectorText) { visit(r.cssRules); continue; }
       if (!r.style || !r.selectorText) continue;
-      const fixed = ["height", "max-height", "block-size", "max-block-size"].some((name) => {
-        const v = r.style.getPropertyValue(name).trim();
-        return v !== "" && v !== "auto" && v !== "none";
-      });
-      if (!fixed) continue;
-      for (const el of Array.from(document.querySelectorAll(r.selectorText))) if ((el.textContent || "").replace(/\s+/g, "")) fixedHeightText += 1;
+      const v = (name) => r.style.getPropertyValue(name).trim();
+      const fixed = ["height", "max-height", "block-size", "max-block-size"].some((name) => v(name) !== "" && v(name) !== "auto" && v(name) !== "none");
+      const ratio = v("aspect-ratio") !== "" && v("aspect-ratio") !== "auto";
+      const zero = ["min-height", "min-block-size"].some((name) => v(name) !== "" && parseFloat(v(name)) === 0);
+      if (!fixed && !ratio && !zero) continue;
+      for (const el of Array.from(document.querySelectorAll(r.selectorText))) {
+        if (!holdsText(el)) continue;
+        if (fixed) boxRules.fixedHeightText += 1;
+        if (ratio) boxRules.aspectRatioText += 1;
+        if (zero) boxRules.minHeightZeroText += 1;
+      }
     }
   };
   for (const sheet of Array.from(document.styleSheets)) {
-    try { visit(sheet.cssRules); } catch (e) { fixedHeightText += 1000; }
+    try { visit(sheet.cssRules); } catch (e) { boxRules.fixedHeightText += 1000; }
   }
-  const out = { fixedHeightText, listMarkers: 0, width: document.documentElement.clientWidth, height: document.documentElement.scrollHeight, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, texts: [], attrTexts: [], sections: [], types: [], colours: [], links: [], nav: [], ctas: [], slots: [], imgs: [], disclosures: [], containers: [] };
+  for (const el of Array.from(document.body.querySelectorAll("*"))) {
+    const parent = el.parentElement;
+    if (!parent || !holdsText(el)) continue;
+    const ps = getComputedStyle(parent);
+    if (!ps.display.includes("flex") || !ps.flexDirection.startsWith("column")) continue;
+    const basis = getComputedStyle(el).flexBasis;
+    if (basis !== "auto" && basis !== "content") boxRules.columnBasisText += 1;
+  }
+  const fixedHeightText = boxRules.fixedHeightText;
+  const out = { fixedHeightText, aspectRatioText: boxRules.aspectRatioText, minHeightZeroText: boxRules.minHeightZeroText, columnBasisText: boxRules.columnBasisText, listMarkers: 0, width: document.documentElement.clientWidth, height: document.documentElement.scrollHeight, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, texts: [], attrTexts: [], sections: [], types: [], colours: [], links: [], nav: [], ctas: [], slots: [], imgs: [], disclosures: [], containers: [] };
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const text = clean(n.data);
@@ -219,6 +236,9 @@ export const COMP_MEASURE_SCRIPT = String.raw`() => {
 const Box = z.strictObject({ left: z.number(), top: z.number(), width: z.number(), height: z.number() });
 export const CompMeasureSchema = z.strictObject({
   fixedHeightText: z.number().int().nonnegative(),
+  aspectRatioText: z.number().int().nonnegative(),
+  minHeightZeroText: z.number().int().nonnegative(),
+  columnBasisText: z.number().int().nonnegative(),
   listMarkers: z.number().int().nonnegative(),
   width: z.number(),
   height: z.number(),
@@ -355,10 +375,18 @@ export const PROTECTED_SCRIPT = String.raw`(arg) => {
       const mask = s.maskImage || s.webkitMaskImage || "none";
       if (s.clipPath !== "none" || mask !== "none" || s.filter !== "none" || s.mixBlendMode !== "normal" || (s.clip && s.clip !== "auto" && (s.position === "absolute" || s.position === "fixed"))) effects = true;
     }
+    // an image laid over the text (a replaced element paints in tree order: a later img can cover earlier text)
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const textRects = Array.from(range.getClientRects()).filter((r) => r.width > 0.5 && r.height > 0.5);
+    const imageOverlap = Array.from(document.images).some((img) => {
+      const ir = img.getBoundingClientRect();
+      return textRects.some((r) => Math.min(r.right, ir.right) - Math.max(r.left, ir.left) > 0.5 && Math.min(r.bottom, ir.bottom) - Math.max(r.top, ir.top) > 0.5);
+    });
     const s = getComputedStyle(el);
     const colour = rgba(s.color);
     const fill = rgba(s.webkitTextFillColor || s.color);
-    out.owners.push({ owner: Number(el.getAttribute("data-sr-i")), disclosure, facts, zoom, colourAlpha: colour[3], fillDiffers: fill.join(",") !== colour.join(","), effects, decorated });
+    out.owners.push({ owner: Number(el.getAttribute("data-sr-i")), disclosure, facts, zoom, colourAlpha: colour[3], fillDiffers: fill.join(",") !== colour.join(","), effects, decorated, imageOverlap });
   }
   return out;
 }`;
@@ -368,60 +396,97 @@ export const ProtectedSchema = z.strictObject({
   unmeasuredDisclosure: z.number().int().nonnegative(),
   disclosures: z.number().int().nonnegative(),
   owners: z
-    .array(z.strictObject({ owner: z.number().int().nonnegative(), disclosure: z.boolean(), facts: z.array(z.number().int().nonnegative()).max(40), zoom: z.number(), colourAlpha: z.number(), fillDiffers: z.boolean(), effects: z.boolean(), decorated: z.boolean() }))
+    .array(z.strictObject({ owner: z.number().int().nonnegative(), disclosure: z.boolean(), facts: z.array(z.number().int().nonnegative()).max(40), zoom: z.number(), colourAlpha: z.number(), fillDiffers: z.boolean(), effects: z.boolean(), decorated: z.boolean(), imageOverlap: z.boolean() }))
     .max(500),
 });
 export type ProtectedScan = z.infer<typeof ProtectedSchema>;
 
 
 /**
- * Label and value pairs (third review of PR #96): every info label (営業時間,
- * 定休日 …) must be the text of a dt inside a dl, every dt must be followed by
- * a dd before the next dt, and the dt / dd of each dl must keep their DOM order
- * in reading order (by line, then left to right; in vertical writing, by
- * column right to left, then top to bottom) — so no layout can set a label
- * beside another value. Argument: { labels } (the info labels).
+ * Label and value pairs, and boxes shorter than their text (third and fourth
+ * reviews of PR #96). Argument: { pairs: [{ label, fact }] (each info label
+ * with its fact's whitespace-free text, "" when the shop has none), facts (every
+ * fact, whitespace-free), separators (a regex source of the separators to strip) }.
+ *
+ *   outside      a text node outside a dt whose text, with the facts and the
+ *                separators taken out, still contains an info label
+ *                (「電話：9:00〜18:00」 in a paragraph)
+ *   unknownDt    a dt whose text is not an info label
+ *   dtWithoutDd  a dt not followed by a dd (DOM order inside its dl)
+ *   wrongFact    a dd whose text is not the fact of its dt's label
+ *   misordered   consecutive dt / dd out of reading order (same line: left to
+ *                right; else top to bottom)
+ *   offLine      a dd whose first line starts above its dt's line or not above
+ *                the next dt's
+ *   boxOverflow  an element (not inline) whose subtree holds text and whose
+ *                content is taller than its box (scrollHeight > clientHeight + 1)
  */
 export const PAIRS_SCRIPT = String.raw`(arg) => {
   const flat = (s) => (s || "").replace(/\s+/g, "");
-  const out = { outside: 0, dtWithoutDd: 0, misordered: 0, pairs: 0 };
+  const sep = new RegExp(arg.separators, "g");
+  const labels = arg.pairs.map((p) => p.label);
+  const factOf = (label) => { const p = arg.pairs.find((x) => x.label === label); return p ? p.fact : null; };
+  const byLength = arg.facts.slice().sort((a, b) => b.length - a.length);
+  const out = { outside: 0, unknownDt: 0, dtWithoutDd: 0, wrongFact: 0, misordered: 0, offLine: 0, boxOverflow: 0, pairs: 0 };
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if (!arg.labels.includes(flat(n.data))) continue;
     const el = n.parentElement;
-    if (!el || el.tagName !== "DT" || !el.closest("dl")) out.outside += 1;
+    if (!el || el.closest("style, script") || el.closest("dt")) continue;
+    let rest = flat(n.data);
+    for (const f of byLength) if (f) rest = rest.split(f).join("");
+    rest = rest.replace(sep, "");
+    if (labels.some((l) => rest.includes(l))) out.outside += 1;
   }
+  const first = (el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const r = Array.from(range.getClientRects()).find((x) => x.width > 0.5 && x.height > 0.5);
+    return r ? { left: r.left, top: r.top + scrollY, bottom: r.bottom + scrollY } : null;
+  };
   for (const dl of Array.from(document.querySelectorAll("dl"))) {
     const items = Array.from(dl.querySelectorAll("dt, dd"));
     items.forEach((el, i) => {
       if (el.tagName !== "DT") return;
+      const label = flat(el.textContent);
+      if (!labels.includes(label)) out.unknownDt += 1;
       const next = items[i + 1];
-      if (!next || next.tagName !== "DD") out.dtWithoutDd += 1;
-      else out.pairs += 1;
+      if (!next || next.tagName !== "DD") { out.dtWithoutDd += 1; return; }
+      out.pairs += 1;
+      const fact = factOf(label);
+      if (fact === null || fact === "" || flat(next.textContent) !== fact) out.wrongFact += 1;
+      // the dd's first line starts at or below its dt's line, and above the next dt
+      const a = first(el);
+      const b = first(next);
+      const nextDt = items.slice(i + 2).find((x) => x.tagName === "DT");
+      const c = nextDt ? first(nextDt) : null;
+      if (a && b && (b.top < a.top - 0.5 * (a.bottom - a.top) || (c && b.top >= c.top))) out.offLine += 1;
     });
-    const first = (el) => {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      const r = Array.from(range.getClientRects()).find((x) => x.width > 0.5 && x.height > 0.5);
-      return r ? { left: r.left, right: r.right, top: r.top + scrollY, bottom: r.bottom + scrollY, vertical: getComputedStyle(el).writingMode.startsWith("vertical") } : null;
-    };
     const boxes = items.map(first).filter(Boolean);
     for (let i = 1; i < boxes.length; i++) {
       const a = boxes[i - 1];
       const b = boxes[i];
-      if (a.vertical || b.vertical) {
-        const overlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-        const same = overlap > 0.5 * Math.min(a.right - a.left, b.right - b.left);
-        if (same ? b.top < a.top - 1 : b.right > a.left + 0.5 * (a.right - a.left)) out.misordered += 1;
-      } else {
-        const overlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-        const same = overlap > 0.5 * Math.min(a.bottom - a.top, b.bottom - b.top);
-        if (same ? b.left < a.left - 1 : b.top < a.top + 0.5 * (a.bottom - a.top)) out.misordered += 1;
-      }
+      const overlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      const same = overlap > 0.5 * Math.min(a.bottom - a.top, b.bottom - b.top);
+      if (same ? b.left < a.left - 1 : b.top < a.top + 0.5 * (a.bottom - a.top)) out.misordered += 1;
     }
+  }
+  for (const el of Array.from(document.body.querySelectorAll("*"))) {
+    if (!flat(el.textContent)) continue;
+    const s = getComputedStyle(el);
+    if (s.display === "inline" || s.display === "contents" || s.display === "none") continue;
+    if (el.scrollHeight > el.clientHeight + 1) out.boxOverflow += 1;
   }
   return out;
 }`;
 
-export const PairsSchema = z.strictObject({ outside: z.number().int().nonnegative(), dtWithoutDd: z.number().int().nonnegative(), misordered: z.number().int().nonnegative(), pairs: z.number().int().nonnegative() });
+export const PairsSchema = z.strictObject({
+  outside: z.number().int().nonnegative(),
+  unknownDt: z.number().int().nonnegative(),
+  dtWithoutDd: z.number().int().nonnegative(),
+  wrongFact: z.number().int().nonnegative(),
+  misordered: z.number().int().nonnegative(),
+  offLine: z.number().int().nonnegative(),
+  boxOverflow: z.number().int().nonnegative(),
+  pairs: z.number().int().nonnegative(),
+});
 export type Pairs = z.infer<typeof PairsSchema>;

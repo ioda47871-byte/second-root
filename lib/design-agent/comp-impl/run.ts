@@ -41,7 +41,7 @@ import {
 } from "./checks";
 import { cssProblems, htmlSourceProblems, loadCompPage, type CompPage } from "./page";
 import { FingerprintSchema } from "./page-scripts";
-import { factValues } from "./spec";
+import { factValues, infoPairs } from "./spec";
 import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, inBatches, legibilityPass, legibilitySweep, MOBILE, openCompPage, overflowSweep, pageWidths, type Viewport } from "./render";
 import { compSimilarity, type Similarity } from "./similarity";
 
@@ -118,8 +118,9 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const fingerprint = await fingerprintOf(o.browser, page.html);
   const disclosure = requiredDisclosure(page.assets, desktop.measure);
   const factsInput = { spec, demo: bundle.demo, disclosure };
-  const passes = await inBatches(widths, (width) => legibilityPass(o.browser, page, width, facts, required));
-  const sweepRun = await legibilitySweep(o.browser, page, facts, required);
+  const plan = { pairs: infoPairs(bundle.demo), facts };
+  const passes = await inBatches(widths, (width) => legibilityPass(o.browser, page, width, facts, required, plan));
+  const sweepRun = await legibilitySweep(o.browser, page, facts, required, plan);
   const blocked = desktop.blocked + mobile.blocked + sweep.reduce((s, w) => s + w.blocked, 0) + passes.reduce((s, p) => s + p.blocked, 0) + sweepRun.blocked;
 
   const checks: Record<string, CheckResult> = {

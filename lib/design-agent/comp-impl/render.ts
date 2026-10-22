@@ -13,7 +13,7 @@ import { decodePng } from "../worker/png-paint";
 import { SHOT_VIEWPORTS } from "../shot-viewports";
 import type { CompPage } from "./page";
 import { pageBreakpointsPx } from "./page-css";
-import { COMP_INFO_LABELS } from "./spec";
+import { SEPARATORS } from "./checks";
 import {
   COMP_MEASURE_SCRIPT,
   CompMeasureSchema,
@@ -179,8 +179,11 @@ export type Legibility = {
   blocked: number;
 };
 
-async function pairsOf(page: Page): Promise<Pairs> {
-  return PairsSchema.parse(await page.evaluate(`(${PAIRS_SCRIPT})(${JSON.stringify({ labels: COMP_INFO_LABELS })})`));
+/** What the pair check needs: each info label with its fact (spec.ts infoPairs) and every fact, whitespace-free. */
+export type PairPlan = { pairs: ReadonlyArray<{ label: string; fact: string }>; facts: readonly string[] };
+
+async function pairsOf(page: Page, plan: PairPlan): Promise<Pairs> {
+  return PairsSchema.parse(await page.evaluate(`(${PAIRS_SCRIPT})(${JSON.stringify({ pairs: plan.pairs, facts: plan.facts, separators: SEPARATORS.source })})`));
 }
 
 /** The largest ratio of a character's ink on the page to its ink in the reference (characters too small to measure are left out). */
@@ -206,13 +209,13 @@ export function maxInkRatio(page: Picture, reference: Picture, node: Measure["no
  * colour on that ground). Transparent text, a transparent text fill, text in
  * the ground's colour, a cover or a mask leaves no ink or no contrast.
  */
-export async function legibilityPass(browser: Browser, compPage: CompPage, width: number, facts: readonly string[], required: readonly string[]): Promise<Legibility> {
+export async function legibilityPass(browser: Browser, compPage: CompPage, width: number, facts: readonly string[], required: readonly string[], plan: PairPlan): Promise<Legibility> {
   const mobile = width <= MOBILE.width;
   const o = await openCompPage(browser, compPage, { width, height: 900, scale: 1, mobile });
   try {
     const page = o.page;
     const measure = await textMeasure(page, facts);
-    const pairs = await pairsOf(page);
+    const pairs = await pairsOf(page, plan);
     const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
     const owners = new Set(scan.owners.map((x) => x.owner));
     const nodes = measure.nodes.map((n, i) => ({ n, i })).filter(({ n }) => (n.kind === "fact" || n.kind === "label") && owners.has(n.owner));
@@ -260,7 +263,7 @@ export type SweepWidth = { width: number; measure: Measure; scan: ProtectedScan;
  * decoration, label order. The pixel proofs (contrast, ink) run at the
  * checked widths only. Desktop emulation at every width.
  */
-export async function legibilitySweep(browser: Browser, compPage: CompPage, facts: readonly string[], required: readonly string[], widths: readonly number[] = sweepWidths()): Promise<{ widths: SweepWidth[]; blocked: number }> {
+export async function legibilitySweep(browser: Browser, compPage: CompPage, facts: readonly string[], required: readonly string[], plan: PairPlan, widths: readonly number[] = sweepWidths()): Promise<{ widths: SweepWidth[]; blocked: number }> {
   const o = await openCompPage(browser, compPage, { width: widths[0] ?? 320, height: 900, scale: 1, mobile: false });
   try {
     const page = o.page;
@@ -270,7 +273,7 @@ export async function legibilitySweep(browser: Browser, compPage: CompPage, fact
       await page.setViewportSize({ width, height: 900 });
       const measure = MeasureSchema.parse(await page.evaluate(`(${MEASURE_SCRIPT})(${JSON.stringify({ facts })})`));
       const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
-      out.push({ width, measure, scan, pairs: await pairsOf(page) });
+      out.push({ width, measure, scan, pairs: await pairsOf(page, plan) });
     }
     return { widths: out, blocked: o.blocked() };
   } finally {

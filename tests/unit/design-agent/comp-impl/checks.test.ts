@@ -41,6 +41,9 @@ function good(): CompMeasure {
   const H = 2050;
   return {
     fixedHeightText: 0,
+    aspectRatioText: 0,
+    minHeightZeroText: 0,
+    columnBasisText: 0,
     listMarkers: 0,
     width: 1440,
     height: H,
@@ -271,10 +274,10 @@ describe("page source", () => {
     // bidi and mirroring
     ["unicode-bidi", "dd { unicode-bidi: bidi-override; }", "CSS_PROPERTY"],
     ["direction", "dd { direction: rtl; }", "CSS_PROPERTY"],
-    ["scaleX(-1)", "dd { transform: scaleX(-1); }", "CSS_VALUE"],
-    ["scale(-1, 1)", "dd { transform: scale(-1, 1); }", "CSS_VALUE"],
-    ["rotate(180deg)", "dd { transform: rotate(180deg); }", "CSS_VALUE"],
-    ["translate", "dd { transform: translateX(-9999px); }", "CSS_VALUE"],
+    ["scaleX(-1)", "dd { transform: scaleX(-1); }", "CSS_PROPERTY"],
+    ["scale(-1, 1)", "dd { transform: scale(-1, 1); }", "CSS_PROPERTY"],
+    ["rotate(180deg)", "dd { transform: rotate(180deg); }", "CSS_PROPERTY"],
+    ["translate", "dd { transform: translateX(-9999px); }", "CSS_PROPERTY"],
     // decoration, shadow, stroke, spacing
     ["text-decoration line-through", "dd { text-decoration: line-through; }", "CSS_VALUE"],
     ["text-decoration overline", "dd { text-decoration: overline; }", "CSS_VALUE"],
@@ -326,6 +329,17 @@ describe("page source", () => {
     ["text-transform", "dd { text-transform: uppercase; }", "CSS_VALUE"],
     ["font-variant-caps", "dd { font-variant-caps: small-caps; }", "CSS_VALUE"],
     ["an ol selector (ol is no longer an allowed element)", "ol { margin: 0; }", "CSS_SELECTOR"],
+    // fourth review of PR #96 (0301171): no stacking or painting-order change, no vertical writing, no columns
+    ["position: relative (lifts a later box over earlier text)", ".cover { position: relative; }", "CSS_VALUE"],
+    ["z-index", ".cover { z-index: 1; }", "CSS_PROPERTY"],
+    ["opacity below 1 (a stacking context)", ".cover { opacity: 0.9; }", "CSS_VALUE"],
+    ["any transform, a small rotation too", ".cover { transform: rotate(2deg); }", "CSS_PROPERTY"],
+    ["transform-origin", ".cover { transform-origin: center; }", "CSS_PROPERTY"],
+    ["vertical writing", "dd { writing-mode: vertical-rl; }", "CSS_VALUE"],
+    ["text-orientation", "dd { text-orientation: upright; }", "CSS_PROPERTY"],
+    ["column-count", ".facts-list { column-count: 2; }", "CSS_PROPERTY"],
+    ["column-width", ".facts-list { column-width: 200px; }", "CSS_PROPERTY"],
+    ["columns", ".facts-list { columns: 2; }", "CSS_PROPERTY"],
     ["!important", "dd { color: #000 !important; }", "CSS_IMPORTANT"],
     ["a custom property", "dd { --x: 1px; }", "CSS_PROPERTY"],
     // media: width only, 320 … 1920
@@ -364,7 +378,7 @@ describe("page source", () => {
       "img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 4px; }",
       "@media (min-width: 760px) and (max-width: 1200px) { .g { grid-template-columns: 1fr; } }",
       "a { text-decoration: underline; letter-spacing: 0.1em; } ul { list-style: none; }",
-      "#hero { padding: 80px 0; transform: rotate(-2deg); opacity: 0.9; }",
+      "#hero { padding: 80px 0; opacity: 1; position: static; }",
       ".wide { grid-column: span 2; grid-row: auto; } p { text-indent: 1em; }",
       ".g { grid-template-rows: auto 1fr; grid-auto-rows: minmax(120px, auto); } dl { display: flex; flex-direction: column; }",
     ])
@@ -455,6 +469,9 @@ describe("structure and label pairs (third review of PR #96)", () => {
     expect(structureCheck(good())).toMatchObject({ ok: true, codes: [] });
     expect(structureCheck({ ...good(), fixedHeightText: 1 }).codes).toEqual(["FIXED_HEIGHT_TEXT"]);
     expect(structureCheck({ ...good(), listMarkers: 3 }).codes).toEqual(["LIST_MARKER"]);
+    expect(structureCheck({ ...good(), aspectRatioText: 1 }).codes).toEqual(["ASPECT_RATIO_TEXT"]);
+    expect(structureCheck({ ...good(), minHeightZeroText: 1 }).codes).toEqual(["MIN_HEIGHT_ZERO_TEXT"]);
+    expect(structureCheck({ ...good(), columnBasisText: 1 }).codes).toEqual(["COLUMN_FLEX_BASIS_TEXT"]);
     const turned = good();
     turned.texts[0]!.angle = 16;
     expect(structureCheck(turned).codes).toEqual(["TEXT_ROTATED"]);
@@ -462,10 +479,15 @@ describe("structure and label pairs (third review of PR #96)", () => {
     expect(structureCheck(turned).ok).toBe(true);
   });
   it("fails a label outside a dl, a dt without its dd, and pairs out of reading order", () => {
-    const ok = { outside: 0, dtWithoutDd: 0, misordered: 0, pairs: 5 };
+    const ok = { outside: 0, unknownDt: 0, dtWithoutDd: 0, wrongFact: 0, misordered: 0, offLine: 0, boxOverflow: 0, pairs: 5 };
     expect(pairsCheck(ok).ok).toBe(true);
     expect(pairsCheck({ ...ok, outside: 1 }).codes).toEqual(["LABEL_OUTSIDE_DL"]);
     expect(pairsCheck({ ...ok, dtWithoutDd: 1 }).codes).toEqual(["DT_WITHOUT_DD"]);
     expect(pairsCheck({ ...ok, misordered: 2 }).codes).toEqual(["PAIR_ORDER"]);
+    // fourth review: labels mapped to their facts, the dd line, boxes shorter than their text
+    expect(pairsCheck({ ...ok, wrongFact: 1 }).codes).toEqual(["PAIR_WRONG_FACT"]);
+    expect(pairsCheck({ ...ok, unknownDt: 1 }).codes).toEqual(["DT_NOT_A_LABEL"]);
+    expect(pairsCheck({ ...ok, offLine: 1 }).codes).toEqual(["PAIR_LINE"]);
+    expect(pairsCheck({ ...ok, boxOverflow: 1 }).codes).toEqual(["TEXT_BOX_OVERFLOW"]);
   });
 });

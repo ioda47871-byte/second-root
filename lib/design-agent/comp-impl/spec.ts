@@ -25,8 +25,15 @@ export const COMP_SPEC_VERSION = 1;
  * plus アクセス / メニュー); never a claim (no おすすめ, 人気, 予約, 購入 …).
  */
 export const COMP_UI_LABELS = ["商品・こだわり", "店舗情報", "店舗情報を見る", "営業時間", "定休日", "住所", "電話", "アクセス", "メニュー", "お店について", "ページの先頭へ"] as const;
-/** The labels of shop information: each must be a dt of a dl, paired with its value (render.ts PAIRS_SCRIPT). */
-export const COMP_INFO_LABELS = ["営業時間", "定休日", "住所", "電話", "アクセス"] as const;
+/** The labels of shop information and the fact each one names: each must be a dt of a dl whose dd is exactly that fact. */
+export const COMP_INFO_LABEL_FACTS = { 営業時間: "hours", 定休日: "closed_days", 住所: "address", 電話: "phone", アクセス: "access" } as const;
+export const COMP_INFO_LABELS = Object.keys(COMP_INFO_LABEL_FACTS) as Array<keyof typeof COMP_INFO_LABEL_FACTS>;
+
+/** Each info label with its fact's whitespace-free text ("" when the shop has none) — the argument of PAIRS_SCRIPT. */
+export function infoPairs(demo: DemoView): Array<{ label: string; fact: string }> {
+  const facts = factValues(demo);
+  return COMP_INFO_LABELS.map((label) => ({ label, fact: (facts.get(COMP_INFO_LABEL_FACTS[label]) ?? "").replace(/\s+/g, "") }));
+}
 /** The only alt texts an image slot may carry (an AI concept image is always named as one). */
 export const COMP_ALT_TEXTS = ["和菓子のイメージ（AI生成）", "どら焼きの断面と粒あんのイメージ（AI生成）", "上生菓子のイメージ（AI生成）", "粒あんの接写のイメージ（AI生成）"] as const;
 /** Words that would claim a shop, an order or a reservation the facts do not hold (same list as the PoC's art direction check). */

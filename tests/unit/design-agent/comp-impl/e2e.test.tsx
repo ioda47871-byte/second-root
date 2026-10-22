@@ -13,6 +13,7 @@ import { domProblems, legibilityCheck, pairsCheck, structureCheck, sweepCheck } 
 import { loadCompPage } from "@/lib/design-agent/comp-impl/page";
 import { compMeasure, DESKTOP, domAudit, legibilityPass, legibilitySweep, openCompPage } from "@/lib/design-agent/comp-impl/render";
 import { factStrings } from "@/lib/design-agent/compare/shops";
+import { infoPairs } from "@/lib/design-agent/comp-impl/spec";
 import { POC_DISCLOSURE, POC_DISCLOSURE_V2 } from "@/lib/design-agent/design-image/prompt";
 import { FACTS_SOURCE, FIXTURE, flatPng, launch, pageCopy, privateTemp, removeDir, REPO } from "./support";
 
@@ -145,7 +146,7 @@ describe("probes: the disclosure and the required facts must be readable", () =>
     const dir = await pageCopy("probe-");
     temps.push(dir);
     await edit(dir);
-    const pass = await legibilityPass(browser, await loadCompPage(dir), 1440, all, required);
+    const pass = await legibilityPass(browser, await loadCompPage(dir), 1440, all, required, { pairs: infoPairs(demo), facts: all });
     return legibilityCheck(pass, { required, disclosure });
   }
   const css = (rule: string) => (d: string) => editFile(d, "style.css", (s) => `${s}\n${rule}\n`);
@@ -210,7 +211,7 @@ describe("probes: the disclosure and the required facts must be readable", () =>
     ["bidi override on a fact", ".facts-row dd { unicode-bidi: bidi-override; direction: rtl; }", "CSS_PROPERTY"],
     ["::first-letter shrinking a fact", ".facts-row dd::first-letter { font-size: 1px; }", "CSS_PSEUDO_ELEMENT"],
     ["::first-letter hiding the disclosure", ".colophon-note::first-letter { color: transparent; }", "CSS_PSEUDO_ELEMENT"],
-    ["a mirrored fact", ".facts-row dd { transform: scaleX(-1); }", "CSS_VALUE"],
+    ["a mirrored fact", ".facts-row dd { transform: scaleX(-1); }", "CSS_PROPERTY"], // no transform at all since the fourth review
     ["a filter on the hero visual", ".lead-visual { filter: contrast(40); }", "CSS_PROPERTY"],
     ["a print-only rule", "@media print { .colophon-note { color: #F4EEE3; } }", "CSS_MEDIA"],
     ["a scripting-only rule", "@media (scripting: none) { .colophon-note { color: #F4EEE3; } }", "CSS_MEDIA"],
@@ -295,7 +296,7 @@ describe("probes: third review", () => {
     }
   }
   async function at(edit: (dir: string) => Promise<void>, width = 1440) {
-    const pass = await legibilityPass(browser, await copy(edit), width, all, required);
+    const pass = await legibilityPass(browser, await copy(edit), width, all, required, { pairs: infoPairs(demo), facts: all });
     return { legibility: legibilityCheck(pass, { required, disclosure: POC_DISCLOSURE }), pairs: pairsCheck(pass.pairs) };
   }
 
@@ -315,7 +316,7 @@ describe("probes: third review", () => {
 
   it("the coarse sweep re-measures protected text at each width in one context", async () => {
     const page = await copy(css("@media (min-width: 600px) and (max-width: 620px) { .colophon-note { opacity: 0.5; } }"));
-    const run = await legibilitySweep(browser, page, all, required, [320, 576, 608, 640, 1920]);
+    const run = await legibilitySweep(browser, page, all, required, { pairs: infoPairs(demo), facts: all }, [320, 576, 608, 640, 1920]);
     const r = sweepCheck(run.widths, { required, disclosure: POC_DISCLOSURE });
     expect(r.ok).toBe(false);
     expect(r.failing_widths).toEqual([608]);
@@ -382,5 +383,112 @@ describe("probes: third review", () => {
     );
     expect(error?.code).toBe("PAGE_SOURCE_REFUSED");
     expect(error?.problems).toContain(code);
+  });
+});
+
+// fourth review of PR #96 (0301171): close the causes — no box above earlier text, no box shorter than its text, labels
+// mapped to their facts
+describe("probes: fourth review", () => {
+  const demo = parseShop(JSON.parse(readFileSync(FACTS_SOURCE, "utf8")) as unknown)!.demo;
+  const all = factStrings(demo).map((f) => f.text.replace(/\s+/g, ""));
+  const required = [demo.name, demo.hours!, demo.closedDays!, demo.address!, demo.access!, demo.phone!, demo.description!].map((f) => f.replace(/\s+/g, ""));
+  const plan = { pairs: infoPairs(demo), facts: all };
+  const css = (rule: string) => (d: string) => editFile(d, "style.css", (s) => `${s}\n${rule}\n`);
+  const html = (from: string | RegExp, to: string) => (d: string) => editFile(d, "index.html", (s) => s.replace(from, to));
+  const HOURS = '<dd data-comp-type="body">9:00〜18:00（売り切れ次第終了）</dd>';
+  const PHONE = '<dd data-comp-type="body">052-000-0731</dd>';
+  async function copy(edit: (dir: string) => Promise<void>) {
+    const dir = await pageCopy("fourth-");
+    temps.push(dir);
+    await edit(dir);
+    return loadCompPage(dir);
+  }
+  async function structure(edit: (dir: string) => Promise<void>) {
+    const o = await openCompPage(browser, await copy(edit), DESKTOP);
+    try {
+      return structureCheck(await compMeasure(o.page));
+    } finally {
+      await o.context.close();
+    }
+  }
+  async function at(edit: (dir: string) => Promise<void>, width = 1440) {
+    const pass = await legibilityPass(browser, await copy(edit), width, all, required, plan);
+    return { legibility: legibilityCheck(pass, { required, disclosure: POC_DISCLOSURE }), pairs: pairsCheck(pass.pairs) };
+  }
+
+  it("the synthetic page passes the label-to-fact map and the box checks", async () => {
+    const r = await at(async () => {});
+    expect(r.pairs).toMatchObject({ ok: true, codes: [], pairs: 5 });
+    expect((await structure(async () => {})).ok).toBe(true);
+  });
+
+  // F1, as the reviewer wrote it: aspect-ratio + min-height:0 in a wrapping flex row, covered by a later relative sibling
+  it("never renders the reviewer's F1 page (a positioned sibling)", async () => {
+    const error = await changed(async (d) => {
+      await html('<p class="colophon-note" data-comp-disclosure>架空店舗のデザイン提案</p>', '<p class="colophon-note" data-comp-disclosure>架空店舗のデザイン提案</p><div class="cover"></div>')(d);
+      await css(".colophon-inner { flex-wrap: wrap; } .colophon-note { flex: 0 0 30%; aspect-ratio: 10 / 1; min-height: 0; } .cover { position: relative; flex: 0 0 100%; min-height: 40px; margin-top: 0; background: #F4EEE3; }")(d);
+    }).then(
+      () => null,
+      (e: unknown) => e as { code?: string; problems?: string[] },
+    );
+    expect(error?.code).toBe("PAGE_SOURCE_REFUSED");
+    expect(error?.problems).toContain("CSS_VALUE");
+  });
+  it.each([
+    ["aspect-ratio on text", ".colophon-note { aspect-ratio: 10 / 1; }", "ASPECT_RATIO_TEXT"],
+    ["min-height: 0 on text", ".colophon-note { min-height: 0; }", "MIN_HEIGHT_ZERO_TEXT"],
+    ["min-block-size: 0 on text", ".facts-row { min-block-size: 0px; }", "MIN_HEIGHT_ZERO_TEXT"],
+    ["a length flex-basis in a column flex", ".colophon-inner { flex-direction: column; } .colophon-note { flex: 0 0 4px; }", "COLUMN_FLEX_BASIS_TEXT"],
+  ])("fails a box that can be shorter than its text: %s", async (_n, rule, code) => {
+    expect((await structure(css(rule))).codes).toContain(code);
+  });
+  it("fails any text box whose content is taller than the box (measured directly, past the stylesheet check)", async () => {
+    expect((await at(css(".colophon-note { height: 4px; }"))).pairs.codes).toContain("TEXT_BOX_OVERFLOW");
+  });
+  it("the sweep sees the F1 cover between sampled widths (measured directly, past the stylesheet check)", async () => {
+    const page = await copy(async (d) => {
+      await html('<p class="colophon-note" data-comp-disclosure>架空店舗のデザイン提案</p>', '<p class="colophon-note" data-comp-disclosure>架空店舗のデザイン提案</p><div class="cover"></div>')(d);
+      await css(".colophon-inner { flex-wrap: wrap; } .colophon-note { flex: 0 0 30%; aspect-ratio: 10 / 1; min-height: 0; } .cover { position: relative; flex: 0 0 100%; min-height: 40px; margin-top: -20px; background: #F4EEE3; }")(d);
+    });
+    const run = await legibilitySweep(browser, page, all, required, plan, [640, 656]);
+    const r = sweepCheck(run.widths, { required, disclosure: POC_DISCLOSURE });
+    expect(r.ok).toBe(false);
+    expect(r.codes).toEqual(expect.arrayContaining(["TEXT_BOX_OVERFLOW"]));
+  });
+  it("fails an image laid over protected text (measured directly, past the stylesheet check)", async () => {
+    const png = flatPng(200, 60, [234, 225, 210]);
+    const r = await at(async (d) => {
+      await mkdir(join(d, "assets"));
+      await writeFile(join(d, "assets/cover.png"), png);
+      await writeFile(join(d, "assets.json"), JSON.stringify({ version: 1, assets: [{ id: "cover", file: "assets/cover.png", sha256: sha256(png), kind: "placeholder", approval: null, published: false }] }));
+      await html('<p class="colophon-note" data-comp-disclosure>架空店舗のデザイン提案</p>', '<p class="colophon-note" data-comp-disclosure>架空店舗のデザイン提案</p><img class="cover" src="assets/cover.png" alt="">')(d);
+      await css(".colophon-inner { display: block; } .cover { display: block; width: 100%; height: 40px; margin-top: -24px; }")(d);
+    });
+    // the shop-CSS hit-test treats an img without a painted ground as a transparent decoration (it does NOT report this
+    // cover); the ink proof does, and so does the rectangle check added for images
+    expect(r.legibility.codes).toEqual(expect.arrayContaining(["DISCLOSURE_IMAGE_OVERLAP", "DISCLOSURE_NO_INK"]));
+    expect(r.legibility.codes).not.toContain("DISCLOSURE_COVERED");
+  });
+
+  // F2 / F3: labels paired with the wrong values
+  it("fails a label written into a paragraph (「電話：9:00〜18:00」)", async () => {
+    expect((await at(html('<p class="colophon-name"', '<p>電話：9:00〜18:00（売り切れ次第終了）</p><p class="colophon-name"'))).pairs.codes).toContain("LABEL_OUTSIDE_DL");
+  });
+  it("fails swapped dd values (each dd must be its label's fact)", async () => {
+    const r = await at(async (d) => {
+      await html(HOURS, "<dd data-comp-type=\"body\">SWAP</dd>")(d);
+      await html(PHONE, HOURS)(d);
+      await html("<dd data-comp-type=\"body\">SWAP</dd>", PHONE)(d);
+    });
+    expect(r.pairs.codes).toContain("PAIR_WRONG_FACT");
+  });
+  it("a whole run fails the reviewer's F2 page", async () => {
+    const r = await changed(html('<p class="colophon-name"', '<p>電話：9:00〜18:00（売り切れ次第終了）</p><p class="colophon-name"'));
+    expect(r.report.mechanical_ok).toBe(false);
+    expect(r.report.checks.pairs_1440!.codes).toContain("LABEL_OUTSIDE_DL");
+  });
+  // N1: a dd above its dt
+  it("fails a dd whose line starts above its dt (measured directly, past the stylesheet check)", async () => {
+    expect((await at(css(".facts-row { display: flex; flex-direction: column-reverse; }"))).pairs.codes).toContain("PAIR_LINE");
   });
 });

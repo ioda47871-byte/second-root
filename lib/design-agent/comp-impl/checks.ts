@@ -24,7 +24,7 @@ const flat = (s: string) => s.replace(/\s+/g, "");
 const byLength = (a: string, b: string) => b.length - a.length;
 const strip = (text: string, phrases: readonly string[]) => [...phrases].map(flat).filter(Boolean).sort(byLength).reduce((s, p) => s.split(p).join(""), text);
 /** Separators a label line may use between allowed parts (the disclosure's ｜, list dots). */
-const SEPARATORS = /[｜|・／/、。:：\-–—]/g;
+export const SEPARATORS = /[｜|・／/、。:：\-–—]/g;
 
 // ---------------------------------------------------------------- tolerances
 
@@ -378,6 +378,7 @@ export function legibilityCheck(l: LegibilityInput, o: { required: readonly stri
     if (owner.effects) p.add("EFFECT");
     // a decoration line over protected text is refused up front (the reference has none, so the ink bound would fail it anyway)
     if (owner.decorated) p.add("DECORATED");
+    if (owner.imageOverlap) p.add("IMAGE_OVERLAP");
     ownerProblems.set(owner.owner, [...p]);
     for (const code of p) codes.push(`${owner.disclosure ? "DISCLOSURE" : "FACT"}_${code}`);
   }
@@ -405,19 +406,31 @@ export const MAX_TEXT_ANGLE = 8;
 export function structureCheck(m: CompMeasure): CheckResult {
   const codes: string[] = [];
   if (m.fixedHeightText > 0) codes.push("FIXED_HEIGHT_TEXT");
+  if (m.aspectRatioText > 0) codes.push("ASPECT_RATIO_TEXT");
+  if (m.minHeightZeroText > 0) codes.push("MIN_HEIGHT_ZERO_TEXT");
+  if (m.columnBasisText > 0) codes.push("COLUMN_FLEX_BASIS_TEXT");
   if (m.listMarkers > 0) codes.push("LIST_MARKER");
   const turned = m.texts.filter((t) => t.shown && Math.abs(t.angle) > MAX_TEXT_ANGLE);
   if (turned.length > 0) codes.push("TEXT_ROTATED");
   return result(codes, { fixed_height_text: m.fixedHeightText, list_markers: m.listMarkers, max_angle: Math.max(0, ...m.texts.map((t) => Math.abs(t.angle))) });
 }
 
-/** Info labels stay in dt / dd pairs of a dl, and the pairs keep their DOM order in reading order (at this width). */
+/**
+ * Labels and their facts (fourth review of PR #96): every info label is a dt
+ * whose dd holds exactly that label's fact, no label appears anywhere else, the
+ * pairs keep reading order and each dd starts on its dt's line or below it,
+ * above the next dt; no text-holding box is shorter than its content.
+ */
 export function pairsCheck(p: Pairs): CheckResult {
   const codes: string[] = [];
   if (p.outside > 0) codes.push("LABEL_OUTSIDE_DL");
+  if (p.unknownDt > 0) codes.push("DT_NOT_A_LABEL");
   if (p.dtWithoutDd > 0) codes.push("DT_WITHOUT_DD");
+  if (p.wrongFact > 0) codes.push("PAIR_WRONG_FACT");
   if (p.misordered > 0) codes.push("PAIR_ORDER");
-  return result(codes, { pairs: p.pairs, misordered: p.misordered });
+  if (p.offLine > 0) codes.push("PAIR_LINE");
+  if (p.boxOverflow > 0) codes.push("TEXT_BOX_OVERFLOW");
+  return result(codes, { pairs: p.pairs, misordered: p.misordered, box_overflow: p.boxOverflow });
 }
 
 /** The coarse sweep: protected text and label order at every 32px (no pixel proofs); the failing widths are listed. */
