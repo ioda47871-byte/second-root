@@ -2123,7 +2123,10 @@ describe("isolation of the PoC's output", () => {
   it("only the PoC itself names ~/sr-design-image-poc or imports lib/design-agent/design-image (renderer, worker, preview, assets never read it)", () => {
     const grep = spawnSync("grep", ["-rlE", "--exclude-dir=design-image", "sr-design-image-poc|design-agent/design-image|from \"\\./design-image|from \"\\.\\./design-image", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
     const files = grep.stdout.trim().split("\n").filter(Boolean).sort();
-    expect(files).toEqual(["scripts/sales-design-worker/design-image-poc.ts"]);
+    // DEV-082: the comp-to-site PoC (local, reads the PoC's output bundle) reuses png.ts and prompt.ts; it is itself
+    // kept out of the renderer, worker, preview, assets and the web app (tests/unit/design-agent/comp-impl/isolation.test.ts)
+    const compImpl = files.filter((f) => f.startsWith("lib/design-agent/comp-impl/") || f === "scripts/sales-design-worker/comp-impl-poc.ts");
+    expect(files.filter((f) => !compImpl.includes(f))).toEqual(["scripts/sales-design-worker/design-image-poc.ts"]);
   });
 
   it("the v2 direction, the direction files and the AI food-visual policy stay inside the PoC (worker, demo, presets, renderer, asset store never read them)", () => {

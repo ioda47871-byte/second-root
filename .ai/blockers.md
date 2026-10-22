@@ -17,6 +17,14 @@
   - 人の判断が要る: review の notes を次の round に渡す（DEV-034 の方針の変更）／ 初期候補を 2〜3 個にする（Codex の時間とコスト）／ Instagram の写真を使う（権利・同意の判断）
 - 次の実走: efb4bdb2 は attempts 2/3 で blocked（再 reset は未承認）。改善の効果は新しい controlled run（人の承認: 対象 demo・DB の reset・W・C）で測る
 
+### HUMAN-023 — comp to site（DEV-082）の人の判断: 実物の comp での最初の実装と、Claude の実装の段の将来の自動化（非ブロッキング）
+
+- 背景: DEV-082 は Codex の comp を Claude が頁として実装するための local PoC（`docs/operations/comp-to-site.md`）。synthetic の comp でだけ確かめた（report は `synthetic_only`、類似度は決して pass にならない）。画像生成は止まっている（HUMAN-022 の結果を受けて、次は HUMAN-024 / DEV-084）。
+- 判断 1（実物の comp が出たら）: rubric の合格（≥ 22、人の確認）の後、Claude Code の session で `layout-spec.json` と頁を書き、`comp-impl-poc.ts --bundle … --page …` を流して、comp と screenshot を並べて人が見る。そのときに、検査の許容（節の位置 ±0.05〜0.06・palette の各 channel 10・type ±20 %・anti-template の距離 0.35）が実物で妥当かを人が確かめる。数字の変更は品質基準なので人の承認の後だけ。
+- 判断 2（将来）: Claude の実装の段を無人で動かすか、どう動かすか。このリポジトリの自動化は人がサインインした CLI（Codex は ChatGPT のサインイン、API key は使わない）で、リポジトリのコードは model の API を呼ばない（Anthropic の API も呼ばない）。自動化するなら (a) 人の WSL で Claude Code を worker と同じ形で動かす か (b) API を使う（key の扱い・課金・規約）のどちらかで、どちらも人の判断。DEV-082 はどちらも作らない。
+- AI の concept 画像を頁で使う場合（DEV-076 の後）: 1 枚ずつ人の review の記録（`assets.json` の `approval`）、local preview だけ、`published: false`、頁には「架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです」。asset store への取り込みは DEV-070 の一部を戻すので別の判断（`docs/operations/design-image-assets.md`）。
+- 触れないもの: 営業 demo・worker・timer・asset store の規則・品質ゲート・Production / Staging / DB。
+
 ### HUMAN-024 — imagegen の約 156 秒の失敗の原因を分ける、Codex を呼ばない確認（DEV-084。1 段ずつ別の承認）
 
 - 背景（HUMAN-022 の結果、2026-10-22）: 4 回の PoC（HUMAN-018 / 019 / 020 / 21b、model `gpt-6.1-sol`・CLI 0.159.0・paginated）の**最初の imagegen はすべて 155.6〜157.8 秒で `failed/none`**。HUMAN-018 だけ、モデルが 2 回目を呼び 32.6 秒で成功した。

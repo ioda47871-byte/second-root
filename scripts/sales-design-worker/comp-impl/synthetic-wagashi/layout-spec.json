@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "comp_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "authored_by": "claude_session",
+  "artboard": { "width_px": 720, "height_px": 1025 },
+  "page_width_px": 1440,
+  "sections": [
+    { "id": "header", "role": "header", "box": { "x": 0, "y": 0, "w": 1, "h": 0.039 } },
+    { "id": "hero", "role": "hero", "box": { "x": 0, "y": 0.039, "w": 1, "h": 0.293 } },
+    { "id": "products", "role": "products", "box": { "x": 0, "y": 0.332, "w": 1, "h": 0.361 } },
+    { "id": "info", "role": "info", "box": { "x": 0, "y": 0.693, "w": 1, "h": 0.263 } },
+    { "id": "footer", "role": "footer", "box": { "x": 0, "y": 0.956, "w": 1, "h": 0.044 } }
+  ],
+  "palette": [
+    { "name": "kinari", "hex": "#F4EEE3", "role": "background" },
+    { "name": "pale kinari", "hex": "#EAE1D2", "role": "surface" },
+    { "name": "sumi", "hex": "#1F1D1B", "role": "text" },
+    { "name": "warm grey", "hex": "#8C8379", "role": "muted" },
+    { "name": "muted vermilion", "hex": "#B4472E", "role": "accent" }
+  ],
+  "type_scale": { "display_px": 56, "heading_px": 32, "caption_px": 18, "body_px": 16, "label_px": 14 },
+  "spacing": { "unit_px": 8, "section_padding_px": 80, "content_max_width_px": 1200 },
+  "nav": { "items": [{ "label": "商品・こだわり", "target": "products" }, { "label": "店舗情報", "target": "info" }] },
+  "cta": { "label": "店舗情報を見る", "target": "info" },
+  "image_slots": [
+    { "id": "hero-visual", "section": "hero", "kind": "placeholder", "aspect_w_per_h": 1.5, "box": { "x": 0.1, "y": 0.078, "w": 0.453, "h": 0.212 } },
+    { "id": "card-namagashi", "section": "products", "kind": "placeholder", "aspect_w_per_h": 1, "box": { "x": 0.1, "y": 0.41, "w": 0.251, "h": 0.177 } },
+    { "id": "card-dorayaki", "section": "products", "kind": "placeholder", "aspect_w_per_h": 1, "box": { "x": 0.374, "y": 0.41, "w": 0.251, "h": 0.177 } },
+    { "id": "card-macro", "section": "products", "kind": "placeholder", "aspect_w_per_h": 1, "box": { "x": 0.648, "y": 0.41, "w": 0.251, "h": 0.177 } }
+  ],
+  "disclosure": { "section": "footer", "text": "架空店舗のデザイン提案" },
+  "required_facts": ["name", "hours", "closed_days", "address", "access", "phone", "description"],
+  "fact_phrases": ["季節の上生菓子と、毎朝炊く粒あんのどら焼き", "季節の上生菓子", "粒あんのどら焼き"],
+  "mobile": { "order": ["header", "hero", "products", "info", "footer"] }
+}
