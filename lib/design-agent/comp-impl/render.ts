@@ -188,6 +188,8 @@ export type Legibility = {
   layers: LayerScan;
   /** DEV-083 phase A (V3b): per measured node of a protected element, the ground structure under its glyphs. */
   ground: Map<number, GroundStructure>;
+  /** How many measured nodes belong to protected elements (V3b measured all of them only when ground.size equals this). */
+  groundExpected: number;
   blocked: number;
 };
 
@@ -195,8 +197,9 @@ export type Legibility = {
 export type PairPlan = { pairs: ReadonlyArray<{ label: string; fact: string }>; facts: readonly string[] };
 
 /** The phase A layer scan at the current viewport (layers.ts LAYER_SCRIPT). */
-export async function layerScan(page: Page, required: readonly string[], o: { pairs?: boolean; mark?: boolean } = {}): Promise<LayerScan> {
-  return LayerSchema.parse(await page.evaluate(`(${LAYER_SCRIPT})(${JSON.stringify({ facts: required, pairs: o.pairs === true, mark: o.mark === true })})`));
+export async function layerScan(page: Page, required: readonly string[], o: { pairs?: boolean; mark?: boolean; declared?: boolean } = {}): Promise<LayerScan> {
+  // `declared` (reading data-comp-role) is the test path only: the run never sets it, and the DOM allowlist refuses the attribute
+  return LayerSchema.parse(await page.evaluate(`(${LAYER_SCRIPT})(${JSON.stringify({ facts: required, pairs: o.pairs === true, mark: o.mark === true, declared: o.declared === true })})`));
 }
 
 async function pairsOf(page: Page, plan: PairPlan): Promise<Pairs> {
@@ -262,7 +265,7 @@ export async function legibilityPass(browser: Browser, compPage: CompPage, width
         ground.set(i, groundStructure(without, n.chars));
       }
     }
-    return { width, measure, scan, lowContrast, ink, inkExcess, pairs, layers, ground, blocked: o.blocked() };
+    return { width, measure, scan, lowContrast, ink, inkExcess, pairs, layers, ground, groundExpected: nodes.length + (scan.owners.length > 0 && nodes.length === 0 ? 1 : 0), blocked: o.blocked() };
   } finally {
     await o.context.close();
   }
@@ -549,7 +552,7 @@ export async function layeredInkPass(browser: Browser, compPage: CompPage, width
     const page = o.page;
     const measure = await textMeasure(page, facts);
     const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
-    const layers = await layerScan(page, required, { mark: true });
+    const layers = await layerScan(page, required, { mark: true, declared: true });
     const owners = [...new Set(scan.owners.map((x) => x.owner))];
     const nodes = measure.nodes.map((n, i) => ({ n, i })).filter(({ n }) => (n.kind === "fact" || n.kind === "label") && owners.includes(n.owner));
     const shot = async () => decodePng(await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" }));
@@ -574,7 +577,7 @@ export async function layeredInkPass(browser: Browser, compPage: CompPage, width
   }
 }
 
-export type PaintVerdict = { text: number; node: number; box: number; kind: "bg" | "replaced" | "outline"; model: "text" | "box"; chromium: "text" | "box" | "unclear"; glyphPixels: number };
+export type PaintVerdict = { text: number; node: number; box: number; kind: "bg" | "replaced" | "outline"; model: "text" | "box"; chromium: "text" | "box" | "unclear"; glyphPixels: number; changedShare: number };
 
 /**
  * V2's own test (§2): the model's predicted order against Chromium's actual painting. For every intersecting pair of a
@@ -597,23 +600,35 @@ export async function paintCrossCheck(page: Page, required: readonly string[]): 
     if (seen.has(key)) continue;
     seen.add(key);
     await page.evaluate(`(() => { const all = document.querySelectorAll("*"); all[${p.text}].setAttribute("data-pc-t", ""); all[${p.box}].setAttribute("data-pc-b", ""); })()`);
-    const clip = { x: Math.floor(p.rect.left), y: Math.floor(p.rect.top), width: Math.max(1, Math.ceil(p.rect.right) - Math.floor(p.rect.left)), height: Math.max(1, Math.ceil(p.rect.bottom) - Math.floor(p.rect.top)) };
+    // a 2 px margin around the intersection, so the erosion below can see the neighbours of its edge pixels
+    const x0 = Math.max(0, Math.floor(p.rect.left) - 2);
+    const y0 = Math.max(0, Math.floor(p.rect.top) - 2);
+    const clip = { x: x0, y: y0, width: Math.max(1, Math.ceil(p.rect.right) + 2 - x0), height: Math.max(1, Math.ceil(p.rect.bottom) + 2 - y0) };
+    const inside = (x: number, y: number) => x + x0 >= Math.floor(p.rect.left) && x + x0 < Math.ceil(p.rect.right) && y + y0 >= Math.floor(p.rect.top) && y + y0 < Math.ceil(p.rect.bottom);
     const a = decodePng(await page.screenshot({ clip, animations: "disabled", caret: "hide" }));
     const on = p.kind === "bg" ? "[data-pc-b] { background: #00f !important; }" : p.kind === "outline" ? "[data-pc-b] { outline-color: #00f !important; }" : "img[data-pc-b] { object-position: 50% 50% !important; }";
     await tail("pc-on", on);
     const b = decodePng(await page.screenshot({ clip, animations: "disabled", caret: "hide" }));
     await page.evaluate(`(() => { document.getElementById("pc-on").remove(); for (const el of Array.from(document.querySelectorAll("[data-pc-t], [data-pc-b]"))) { el.removeAttribute("data-pc-t"); el.removeAttribute("data-pc-b"); } })()`);
+    // the glyph mask, eroded: a pixel counts only when it is opaque red and its four neighbours are clearly red too (it
+    // lies inside a stroke). Edge pixels blend with whatever lies under the glyph, and how much depends on the rasterizer
+    // (CI and this container differ); the inside of an opaque glyph does not change when something is painted under it,
+    // and changes when something paints over it
+    const px = (x: number, y: number) => (x < 0 || y < 0 || x >= a.width || y >= a.height ? null : (y * a.width + x) * a.channels);
+    const pure = (k: number | null) => k !== null && a.data[k]! >= 247 && a.data[k + 1]! <= 8 && a.data[k + 2]! <= 8;
+    const reddish = (k: number | null) => k !== null && a.data[k]! >= 200 && a.data[k + 1]! <= 60 && a.data[k + 2]! <= 60;
     let glyph = 0;
     let changed = 0;
-    for (let i = 0; i < a.width * a.height; i++) {
-      const k = i * a.channels;
-      if (a.data[k]! >= 247 && a.data[k + 1]! <= 8 && a.data[k + 2]! <= 8) {
+    for (let y = 0; y < a.height; y++)
+      for (let x = 0; x < a.width; x++) {
+        if (!inside(x, y)) continue;
+        if (!pure(px(x, y)) || ![px(x - 1, y), px(x + 1, y), px(x, y - 1), px(x, y + 1)].every(reddish)) continue;
+        const k = (y * a.width + x) * a.channels;
         glyph += 1;
         if ([0, 1, 2].some((c) => Math.abs(a.data[k + c]! - b.data[k + c]!) > 8)) changed += 1;
       }
-    }
     const chromium = glyph < 3 ? "unclear" : changed / glyph >= 0.5 ? "box" : changed / glyph <= 0.05 ? "text" : "unclear";
-    out.push({ text: p.text, node: p.node, box: p.box, kind: p.kind, model: p.after ? "box" : "text", chromium, glyphPixels: glyph });
+    out.push({ text: p.text, node: p.node, box: p.box, kind: p.kind, model: p.after ? "box" : "text", chromium, glyphPixels: glyph, changedShare: glyph === 0 ? 0 : Math.round((changed / glyph) * 1000) / 1000 });
   }
   await page.evaluate(`document.getElementById("pc-base").remove()`);
   return out;

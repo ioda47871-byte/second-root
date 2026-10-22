@@ -47,8 +47,9 @@ export const FACT_KEYS = ["name", "address", "hours", "closed_days", "access", "
 /**
  * The capabilities a page may declare (DEV-083 V7, docs/design/dev-083-expressive-safe-reproduction.md §2, §3). Each
  * one, once a human approves it, widens the page CSS allowlist by its own property set and brings its own checks. In
- * phase A (verification only) none is approved: the list is empty and any declared capability is refused
- * (SPEC_CAPABILITY_NOT_APPROVED). Rollback of a later approval is removing it from this list.
+ * phase A (verification only) none is approved, and the spec schema is unchanged: a `capabilities` key in
+ * layout-spec.json is refused as before (SPEC_SHAPE). The field and SPEC_CAPABILITY_NOT_APPROVED come with the first
+ * approved capability; rollback of a later approval is removing it from this list.
  */
 export const APPROVED_CAPABILITIES = [] as const satisfies readonly string[];
 
@@ -81,8 +82,6 @@ export const CompSpecSchema = z.strictObject({
   fact_phrases: z.array(z.string().min(2).max(40)).max(12),
   /** The section order on a phone (a permutation of the section ids). */
   mobile: z.strictObject({ order: z.array(Id).min(2).max(12) }),
-  /** DEV-083 V7: the capabilities this page uses (omitted or empty: the DEV-082 base only). */
-  capabilities: z.array(z.string().regex(/^[a-z][a-z_]{1,39}$/)).max(16).optional(),
 });
 export type CompSpec = z.infer<typeof CompSpecSchema>;
 
@@ -130,7 +129,6 @@ export function checkCompSpec(raw: unknown): SpecCheck {
   for (const phrase of spec.fact_phrases) if (SALES_UI.test(phrase)) p.add("SPEC_PHRASE_SALES");
   const order = spec.mobile.order;
   if (order.length !== ids.length || new Set(order).size !== order.length || order.some((id) => !ids.includes(id))) p.add("SPEC_MOBILE_ORDER");
-  for (const c of spec.capabilities ?? []) if (!(APPROVED_CAPABILITIES as readonly string[]).includes(c)) p.add("SPEC_CAPABILITY_NOT_APPROVED");
   return p.size === 0 ? { ok: true, spec } : { ok: false, problems: [...p].sort() };
 }
 

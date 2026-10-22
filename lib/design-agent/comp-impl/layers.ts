@@ -15,7 +15,8 @@ export type CompRole = (typeof COMP_ROLES)[number];
  * V1 roles, V2 paint order, V4 ink-overflow extents and V9 computed writing mode, at the current viewport.
  * Argument: { facts (required facts, whitespace-free), pairs (true: also return every intersecting text / box pair with
  * the model's verdict, for the Chromium comparison), mark (true: mark every non-content element with data-pa-role, on a
- * throwaway page only) }.
+ * throwaway page only), declared (true: read data-comp-role — the test path only; the run never sets it, and the DOM
+ * allowlist refuses the attribute on a page) }.
  *
  * V1 roles. Every element in the body gets a derived role: content when its subtree holds a text node or an aria-label;
  * else media for an img or a placeholder image slot (data-comp-placeholder); else decoration (a text-free box). A declared
@@ -86,7 +87,9 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
     const text = textInside(el);
     const derived = text ? "content" : isMediaBox(el) ? "media" : "decoration";
     let eff = derived;
-    if (el.hasAttribute("data-comp-role")) {
+    // declared roles are read only on the test path (arg.declared): pages may not carry data-comp-role (the DOM
+    // allowlist refuses it until phase B is approved), so in the run every role is derived from the DOM
+    if (arg.declared && el.hasAttribute("data-comp-role")) {
       roles.declared += 1;
       const d = el.getAttribute("data-comp-role");
       if (!ROLES.includes(d)) roles.unknown += 1;
@@ -126,7 +129,9 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
     const zSet = s.zIndex !== "auto" && (positioned(s) || flexItem(el, s));
     const contain = s.contain || "none";
     const mask = s.maskImage || s.webkitMaskImage || "none";
-    return zSet || s.position === "fixed" || s.position === "sticky" || Number(s.opacity) < 1 || (s.transform && s.transform !== "none") || (s.translate && s.translate !== "none") || (s.rotate && s.rotate !== "none") || (s.scale && s.scale !== "none") || (s.perspective && s.perspective !== "none") || (s.filter && s.filter !== "none") || (s.backdropFilter && s.backdropFilter !== "none") || s.isolation === "isolate" || (s.mixBlendMode && s.mixBlendMode !== "normal") || (s.clipPath && s.clipPath !== "none") || mask !== "none" || (s.webkitMaskBoxImageSource && s.webkitMaskBoxImageSource !== "none") || /paint|layout|strict|content/.test(contain) || (s.containerType && /size/.test(s.containerType)) || STACKING_WILL_CHANGE.test(s.willChange || "auto");
+    return zSet || s.position === "fixed" || s.position === "sticky" || Number(s.opacity) < 1 || (s.transform && s.transform !== "none") || (s.translate && s.translate !== "none") || (s.rotate && s.rotate !== "none") || (s.scale && s.scale !== "none") || (s.perspective && s.perspective !== "none") || (s.filter && s.filter !== "none") || (s.backdropFilter && s.backdropFilter !== "none") || s.isolation === "isolate" || (s.mixBlendMode && s.mixBlendMode !== "normal") || (s.clipPath && s.clipPath !== "none") || mask !== "none" || (s.webkitMaskBoxImageSource && s.webkitMaskBoxImageSource !== "none") || /paint|layout|strict|content/.test(contain) || (s.containerType && /size/.test(s.containerType)) || STACKING_WILL_CHANGE.test(s.willChange || "auto")
+      // fail closed: any non-initial value of a property that can create a context, listed or not above
+      || (s.willChange && s.willChange !== "auto") || contain !== "none" || (s.contentVisibility && s.contentVisibility !== "visible") || (s.webkitBoxReflect && s.webkitBoxReflect !== "none") || (s.viewTransitionName && s.viewTransitionName !== "none") || (s.offsetPath && s.offsetPath !== "none") || (s.maskBorderSource && s.maskBorderSource !== "none") || (s.containerType && s.containerType !== "normal");
   };
   const blockLevel = (s) => /^(block|list-item|flex|grid|table|flow-root)/.test(s.display);
   const atomic = (el, s) => /^inline-(block|flex|grid|table)$/.test(s.display) || flexItem(el, s) || (el.tagName === "IMG" && !blockLevel(s));
@@ -209,7 +214,18 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
     return out;
   };
   const grow = (r, d) => ({ left: r.left - d, top: r.top - d, right: r.right + d, bottom: r.bottom + d });
-  const bgPaints = (s) => alpha(s.backgroundColor) > 0 || (s.backgroundImage && s.backgroundImage !== "none") || ["Top", "Right", "Bottom", "Left"].some((side) => parseFloat(s["border" + side + "Width"]) > 0 && s["border" + side + "Style"] !== "none" && s["border" + side + "Style"] !== "hidden" && alpha(s["border" + side + "Color"]) > 0);
+  // fail closed: a box paints when any paint-affecting property is off its inert initial value — grounds, borders,
+  // every box-shadow (an inset one paints over the whole border box), border images, column rules, scrollbars
+  const bgPaints = (s) =>
+    alpha(s.backgroundColor) > 0 ||
+    (s.backgroundImage && s.backgroundImage !== "none") ||
+    ["Top", "Right", "Bottom", "Left"].some((side) => parseFloat(s["border" + side + "Width"]) > 0 && s["border" + side + "Style"] !== "none" && s["border" + side + "Style"] !== "hidden" && alpha(s["border" + side + "Color"]) > 0) ||
+    (s.boxShadow && s.boxShadow !== "none") ||
+    (s.borderImageSource && s.borderImageSource !== "none") ||
+    (s.columnRuleStyle && s.columnRuleStyle !== "none" && parseFloat(s.columnRuleWidth) > 0) ||
+    ["scroll", "auto"].includes(s.overflowX) || ["scroll", "auto"].includes(s.overflowY);
+  // paint whose extent the model does not compute (filters, reflections, masks): treated as covering everything after it
+  const unboundedPaint = (s) => (s.filter && s.filter !== "none") || (s.backdropFilter && s.backdropFilter !== "none") || (s.webkitBoxReflect && s.webkitBoxReflect !== "none");
   const extents = (e) => {
     const s = st(e.el);
     const r = rectOf(e.el.getBoundingClientRect());
@@ -223,8 +239,9 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
       const i = grow(r, off);
       return [{ left: o.left, top: o.top, right: o.right, bottom: i.top }, { left: o.left, top: i.bottom, right: o.right, bottom: o.bottom }, { left: o.left, top: i.top, right: i.left, bottom: i.bottom }, { left: i.right, top: i.top, right: o.right, bottom: i.bottom }];
     }
+    if (unboundedPaint(s)) return [grow(r, 1e6)];
     const sh = shadowOut(s);
-    if (!bgPaints(s) && sh < 0) return [];
+    if (!bgPaints(s)) return [];
     return [sh > 0 ? grow(r, sh) : r];
   };
   const textEvents = [];
@@ -266,6 +283,7 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
     let r = rectOf(el.getBoundingClientRect());
     const sh = shadowOut(s);
     if (sh > 0) r = grow(r, sh);
+    if (unboundedPaint(s)) r = grow(r, 1e6);
     const ow = s.outlineStyle !== "none" ? (parseFloat(s.outlineWidth) || 0) + Math.max(0, parseFloat(s.outlineOffset) || 0) : 0;
     if (ow > 0) r = grow(r, ow);
     for (const t of protectedRects) if (t.rects.some((x) => meets(x, r))) v4[t.prot] += 1;

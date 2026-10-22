@@ -61,9 +61,14 @@ export type CompImplReport = {
   failed: string[];
   bundle: { shop: string; comp_sha256: string; comp_kind: string; comp_approved: boolean; width: number; height: number; direction_version: string; eval_total: number | null; eval_human_confirmed: boolean };
   page: { html_sha256: string; css_sha256: string; assets: number; ai_assets: number; network_blocked: number };
-  /** DEV-083 V7: the capabilities the spec declares (phase A approves none, so always empty on an accepted bundle). */
+  /** DEV-083 V7: the capabilities the page uses (phase A: none, and the spec cannot declare any). */
   capabilities: string[];
   checks: Record<string, CheckResult>;
+  /**
+   * DEV-083 phase A advisory findings: measured and reported, never in `failed` (they could refuse a page that passes
+   * today, which needs the human's approval as a gate first; design doc §10).
+   */
+  advisory: Record<string, CheckResult>;
   anti_template: AntiTemplateResult;
   similarity: Similarity;
   screenshots: { desktop: string; mobile: string; desktop_px: [number, number]; mobile_css_px: [number, number] };
@@ -133,6 +138,8 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const geometry = await protectedGeometryPass(o.browser, page, required);
   const blocked = desktop.blocked + mobile.blocked + sweep.reduce((s, w) => s + w.blocked, 0) + passes.reduce((s, p) => s + p.blocked, 0) + sweepRun.blocked;
 
+  const layerResults = passes.map((p) => ({ width: p.width, ...layersCheck(p.layers, p.ground, p.groundExpected) }));
+  const sweepLayers = layersSweepCheck(sweepRun.widths);
   const checks: Record<string, CheckResult> = {
     source: { ok: true, codes: [] },
     network: { ok: blocked === 0, codes: blocked === 0 ? [] : ["NETWORK_REQUEST_BLOCKED"], blocked },
@@ -161,11 +168,15 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
     structure_mobile: structureCheck(mobile.measure),
     legibility_sweep: sweepCheck(sweepRun.widths, { required, disclosure }),
     protected_1px: protectedGeometryCheck(geometry),
-    // DEV-083 phase A (verification only: these add refusals; docs/design/dev-083-expressive-safe-reproduction.md §7)
-    ...Object.fromEntries(passes.map((p) => [`layers_${p.width}`, layersCheck(p.layers, p.ground)])),
-    layers_sweep: layersSweepCheck(sweepRun.widths),
+    // DEV-083 phase A: only codes that refuse nothing the allowlist and the existing checks accept (design doc §10)
+    ...Object.fromEntries(layerResults.map((l) => [`layers_${l.width}`, l.check])),
+    layers_sweep: sweepLayers.check,
     visibility_matrix: visibilityMatrixCheck(passes),
-    capabilities: capabilitiesCheck(spec),
+    capabilities: capabilitiesCheck(),
+  };
+  const advisory: Record<string, CheckResult> = {
+    ...Object.fromEntries(layerResults.map((l) => [`layers_${l.width}`, l.advisory])),
+    layers_sweep: sweepLayers.advisory,
   };
   const anti = antiTemplateCheck({ html: page.html, css: page.css, fingerprint, references, templateCss: await templateCss(o.repoDir) });
   const similarity = compSimilarity(bundle.comp, bundle.compApproved, { bytes: desktop.shot, width: desktop.measure.width, height: desktop.measure.height });
@@ -189,8 +200,9 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
       eval_human_confirmed: bundle.evaluation.human_confirmed,
     },
     page: { html_sha256: page.htmlSha256, css_sha256: page.cssSha256, assets: page.assets.length, ai_assets: page.assets.filter((a) => a.kind === "ai_concept_local").length, network_blocked: blocked },
-    capabilities: spec.capabilities ?? [],
+    capabilities: [],
     checks,
+    advisory,
     anti_template: anti,
     similarity,
     screenshots: { desktop: "desktop.png", mobile: "mobile.png", desktop_px: [desktop.measure.width, desktop.measure.height], mobile_css_px: [mobile.measure.width, mobile.measure.height] },

@@ -8,7 +8,7 @@ import type { CheckResult } from "./checks";
 import { widthRanges } from "./checks";
 import type { LayerScan } from "./layers";
 import type { GeometryPass } from "./render";
-import { APPROVED_CAPABILITIES, type CompSpec } from "./spec";
+import { APPROVED_CAPABILITIES } from "./spec";
 
 const result = (codes: Iterable<string>, extra: Record<string, unknown> = {}): CheckResult => {
   const list = [...new Set(codes)].sort();
@@ -17,7 +17,16 @@ const result = (codes: Iterable<string>, extra: Record<string, unknown> = {}): C
 
 // ---------------------------------------------------------------- V1, V2, V4, V9 (one scan per width)
 
-/** The codes of one layer scan (layers.ts LAYER_SCRIPT). */
+/**
+ * Which new codes may refuse a page (go into `failed`) and which are advisory (report.advisory only). A code is blocking
+ * only where the DEV-082 allowlist and the existing checks already refuse every page it refuses (so no outcome changes);
+ * the argument for each is in docs/design/dev-083-expressive-safe-reproduction.md §10. Everything else is advisory until
+ * the human approves it as a gate.
+ */
+export const BLOCKING_LAYER_CODES = ["ROLE_UNKNOWN", "ROLE_MISMATCH", "ROLE_DECORATION_HAS_TEXT", "ROLE_GROUND_HAS_TEXT", "ROLE_MEDIA_HAS_TEXT", "PSEUDO_GEOMETRY_UNKNOWN", "STACKING_CONTEXT", "PROTECTED_VERTICAL"] as const;
+export const ADVISORY_LAYER_CODES = ["PAINT_ORDER_COVER", "DISCLOSURE_NONCONTENT_OVERLAP", "FACT_NONCONTENT_OVERLAP", "GROUND_NOT_FLAT", "GROUND_UNMEASURED"] as const;
+
+/** The codes of one layer scan (layers.ts LAYER_SCRIPT), blocking and advisory together. */
 export function layerCodes(scan: LayerScan): string[] {
   const codes: string[] = [];
   // V1
@@ -49,29 +58,41 @@ export type GroundStructure = { maxDev: number; lumStd: number; sobel: number };
  */
 export const GROUND_FLAT_TOLERANCE = 6;
 
-/** One checked width: the layer scan (V1, V2, V4, V9) and, when the pixel pass ran, the ground under protected glyphs (V3b). */
-export function layersCheck(scan: LayerScan, ground?: ReadonlyMap<number, GroundStructure>): CheckResult {
+const blocking = (codes: readonly string[]) => codes.filter((c) => (BLOCKING_LAYER_CODES as readonly string[]).includes(c));
+const advisory = (codes: readonly string[]) => codes.filter((c) => !(BLOCKING_LAYER_CODES as readonly string[]).includes(c));
+
+/**
+ * One checked width: the layer scan (V1, V2, V4, V9) and, when the pixel pass ran, the ground under protected glyphs
+ * (V3b; `expected` is the number of protected nodes, so a pass that measured fewer is GROUND_UNMEASURED). Returns the
+ * blocking check (run.ts `checks`) and the advisory one (run.ts `advisory`, never in `failed`).
+ */
+export function layersCheck(scan: LayerScan, ground?: ReadonlyMap<number, GroundStructure>, expected?: number): { check: CheckResult; advisory: CheckResult } {
   const codes = layerCodes(scan);
   const g = [...(ground?.values() ?? [])];
   const maxDev = Math.max(0, ...g.map((x) => x.maxDev));
   if (maxDev > GROUND_FLAT_TOLERANCE) codes.push("GROUND_NOT_FLAT");
-  return result(codes, {
+  if (expected !== undefined && g.length < expected) codes.push("GROUND_UNMEASURED");
+  const details = {
     roles: scan.roles.counts,
     declared_roles: scan.roles.declared,
     paint_events: scan.events,
     covers: scan.covers.list.slice(0, 8),
     stacking_contexts: scan.stacking,
-    ground: { nodes: g.length, max_deviation: maxDev, max_luminance_std: Math.max(0, ...g.map((x) => x.lumStd)), max_sobel: Math.max(0, ...g.map((x) => x.sobel)) },
-  });
+    ground: { nodes: g.length, expected: expected ?? null, max_deviation: maxDev, max_luminance_std: Math.max(0, ...g.map((x) => x.lumStd)), max_sobel: Math.max(0, ...g.map((x) => x.sobel)) },
+  };
+  return { check: result(blocking(codes), details), advisory: result(advisory(codes), details) };
 }
 
-/** The coarse sweep (every 32 px) with the layer scan at each width; the failing widths are listed. */
-export function layersSweepCheck(widths: ReadonlyArray<{ width: number; layers: LayerScan }>): CheckResult {
-  const failing = widths.map((w) => ({ width: w.width, codes: layerCodes(w.layers) })).filter((w) => w.codes.length > 0);
-  return result(
-    failing.flatMap((w) => w.codes),
-    { widths: widths.length, failing_widths: failing.map((w) => w.width) },
-  );
+/** The coarse sweep (every 32 px) with the layer scan at each width; the failing widths are listed (blocking and advisory apart). */
+export function layersSweepCheck(widths: ReadonlyArray<{ width: number; layers: LayerScan }>): { check: CheckResult; advisory: CheckResult } {
+  const split = (pick: (c: readonly string[]) => string[]) => {
+    const failing = widths.map((w) => ({ width: w.width, codes: pick(layerCodes(w.layers)) })).filter((w) => w.codes.length > 0);
+    return result(
+      failing.flatMap((w) => w.codes),
+      { widths: widths.length, failing_widths: failing.map((w) => w.width) },
+    );
+  };
+  return { check: split(blocking), advisory: split(advisory) };
 }
 
 // ---------------------------------------------------------------- V9 visibility matrix
@@ -86,9 +107,11 @@ export function visibilityMatrixCheck(passes: ReadonlyArray<{ width: number; mea
 
 // ---------------------------------------------------------------- V7 capabilities
 
-/** The capabilities a spec declares (V7). Phase A approves none, so the list must be empty (checkCompSpec refuses others). */
-export function capabilitiesCheck(spec: CompSpec): CheckResult {
-  const declared = spec.capabilities ?? [];
+/**
+ * The capabilities a page uses (V7). Phase A leaves the spec schema as it was — a `capabilities` key in layout-spec.json
+ * is still refused (SPEC_SHAPE) — so the declared list is always empty here; the check exists so the report shows it.
+ */
+export function capabilitiesCheck(declared: readonly string[] = []): CheckResult {
   const refused = declared.filter((c) => !(APPROVED_CAPABILITIES as readonly string[]).includes(c));
   return result(refused.length > 0 ? ["CAPABILITY_NOT_APPROVED"] : [], { declared, approved: [...APPROVED_CAPABILITIES] });
 }
@@ -124,10 +147,12 @@ export function groundStructure(without: Pixels, chars: readonly Box[]): GroundS
   const at = (x: number, y: number, c: number) => without.data[(y * without.width + x) * without.channels + c]!;
   const lum = (x: number, y: number) => 0.2126 * at(x, y, 0) + 0.7152 * at(x, y, 1) + 0.0722 * at(x, y, 2);
   for (const r of chars) {
-    const x0 = Math.max(0, Math.floor(r.left) - 1);
-    const x1 = Math.min(without.width - 1, Math.ceil(r.left + r.width));
-    const y0 = Math.max(0, Math.floor(r.top) - 1);
-    const y1 = Math.min(without.height - 1, Math.ceil(r.top + r.height));
+    // the glyph box grown by 1 px on all four sides, then every pixel it touches (render-check's charBox convention)
+    const g = { left: r.left - 1, top: r.top - 1, right: r.left + r.width + 1, bottom: r.top + r.height + 1 };
+    const x0 = Math.max(0, Math.floor(g.left));
+    const x1 = Math.min(without.width - 1, Math.ceil(g.right) - 1);
+    const y0 = Math.max(0, Math.floor(g.top));
+    const y1 = Math.min(without.height - 1, Math.ceil(g.bottom) - 1);
     if (x1 < x0 || y1 < y0) continue;
     const ch: number[][] = [[], [], []];
     const ls: number[] = [];

@@ -1,16 +1,20 @@
 import { readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { protectedGeometryCheck } from "@/lib/design-agent/comp-impl/checks";
 import { layerCodes } from "@/lib/design-agent/comp-impl/verify";
 import { cssProblems, loadCompPage, type CompPage } from "@/lib/design-agent/comp-impl/page";
-import { gatedGeometryPass, layeredInkPass, layerScan, layoutHashPass, legibilityPass, paintCrossCheck, perturbedGeometryPass, protectedGeometryPass } from "@/lib/design-agent/comp-impl/render";
+import { DESKTOP, domAudit, gatedGeometryPass, layeredInkPass, layerScan, layoutHashPass, legibilityPass, openCompPage, paintCrossCheck, perturbedGeometryPass, protectedGeometryPass } from "@/lib/design-agent/comp-impl/render";
 import { capabilitiesCheck, contrastRatio, gradientStopProblems, groundStructure, layersCheck, luminance, metricsCheck, scrimBound, visibilityMatrixCheck } from "@/lib/design-agent/comp-impl/verify";
 import { checkCompSpec, infoPairs, type CompSpec } from "@/lib/design-agent/comp-impl/spec";
 import { factStrings, parseShop } from "@/lib/design-agent/compare/shops";
 import type { Measure } from "@/lib/design-agent/shop-css/page-scripts";
-import { FACTS_SOURCE, FIXTURE, launch } from "./support";
+import { runCompImpl } from "@/lib/design-agent/comp-impl/run";
+import { buildSyntheticBundle } from "@/lib/design-agent/comp-impl/synthetic";
+import { domProblems } from "@/lib/design-agent/comp-impl/checks";
+import { FACTS_SOURCE, FIXTURE, launch, pageCopy, privateTemp, removeDir, REPO } from "./support";
 
 // DEV-083 phase A: verification only (docs/design/dev-083-expressive-safe-reproduction.md §7). Nothing here relaxes the
 // DEV-082 allowlist: constructs it refuses are rendered from raw test HTML (a CompPage object built here, never through
@@ -49,8 +53,22 @@ beforeAll(async () => {
   raw = await browser.newContext({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
   await raw.route("**/*", (route) => route.abort());
   rawTab = await raw.newPage();
+  // the V2 comparison reads glyph pixels: its face must really be installed (fails clearly instead of a vague 'unclear')
+  await rawTab.setContent("<p>x</p>");
+  const installed = await rawTab.evaluate(`(() => { const c = document.createElement("canvas").getContext("2d"); const w = (f) => { c.font = "700 24px " + f; return c.measureText("0520000731").width; }; return ["monospace", "serif", "sans-serif"].some((g) => Math.abs(w('"IPAGothic", ' + g) - w(g)) > 0.01); })()`);
+  if (!installed) throw new Error("the V2 fixtures need the IPAGothic face (fonts-ipafont-gothic); it is not installed");
 });
+let bundleDir: string | undefined;
+/** The synthetic comp bundle, built once on first use (only the full-run test needs it). */
+async function bundle(): Promise<string> {
+  if (!bundleDir) {
+    bundleDir = await privateTemp("pa-bundle-");
+    await buildSyntheticBundle(browser, REPO, bundleDir);
+  }
+  return bundleDir;
+}
 afterAll(async () => {
+  if (bundleDir) await removeDir(bundleDir);
   await raw?.close();
   await browser?.close();
 });
@@ -68,13 +86,14 @@ type Fixture = { name: string; body: string; css: string; expect: "box" | "text"
 const T = "0520000731";
 const FIXTURES: Fixture[] = [
   // inside today's allowlist (the cover is measured, never refused): atomic flex / grid / inline-block painting
-  { name: "a later flex item over an earlier item's sideways overflow (probe A's class)", allowlisted: true, expect: "box", body: `<div class="row"><div class="t">${T}</div><div class="cover"></div></div>`, css: ".row { display: flex; width: 300px; } .t { flex: 0 0 100px; min-width: 0; } .cover { flex: 0 0 150px; height: 40px; background: #333333; }" },
+  { name: "a later flex item over an earlier item's sideways overflow (probe A's class)", allowlisted: true, expect: "box", body: `<div class="row"><div class="t">${T}</div><div class="cover"></div></div>`, css: ".row { display: flex; width: 300px; } .t { flex: 0 0 100px; min-width: 0; font-size: 40px; } .cover { flex: 0 0 150px; height: 48px; background: #333333; }" },
+  { name: "an inset box-shadow on a later flex item (a ground drawn by the shadow, not the background)", allowlisted: true, expect: "box", body: `<div class="row"><div class="t">${T}</div><div class="cover">x</div></div>`, css: ".row { display: flex; width: 300px; } .t { flex: 0 0 100px; min-width: 0; font-size: 40px; } .cover { flex: 0 0 150px; height: 32px; box-shadow: inset 0 0 0 16px #333333; }" },
   { name: "a later inline-block over an earlier inline-block's overflow (probe B's class)", allowlisted: true, expect: "box", body: `<div class="cell"><span class="t">05200007</span><span class="cover"></span></div>`, css: ".cell { width: 220px; } .t { display: inline-block; width: 80px; letter-spacing: 6px; } .cover { display: inline-block; width: 100px; height: 30px; background: #333333; }" },
-  { name: "a later grid item over an earlier item's sideways overflow", allowlisted: true, expect: "box", body: `<div class="g"><div class="t">${T}</div><div class="cover"></div></div>`, css: ".g { display: grid; grid-template-columns: 100px 150px; width: 250px; } .t { min-width: 0; } .cover { height: 30px; background: #333333; }" },
-  { name: "text overflowing a block onto a later block's ground stays on top (step 4 before step 7)", allowlisted: true, expect: "text", body: `<div class="t">05<br>2000</div><div class="cover"></div>`, css: ".t { height: 20px; } .cover { height: 40px; background: #333333; }" },
-  { name: "a later inline-block on the next line over the previous line's glyphs (line-height below 1: refused, raw)", expect: "box", body: `<div class="p"><span class="t">0520</span> <span class="cover"></span></div>`, css: ".p { width: 120px; line-height: 0.6; } .cover { display: inline-block; width: 100px; height: 30px; background: #333333; }" },
+  { name: "a later grid item over an earlier item's sideways overflow", allowlisted: true, expect: "box", body: `<div class="g"><div class="t">${T}</div><div class="cover"></div></div>`, css: ".g { display: grid; grid-template-columns: 100px 150px; width: 250px; } .t { min-width: 0; font-size: 40px; } .cover { height: 48px; background: #333333; }" },
+  { name: "text overflowing a block onto a later block's ground stays on top (step 4 before step 7)", allowlisted: true, expect: "text", body: `<div class="t">05<br>2000</div><div class="cover"></div>`, css: ".t { height: 20px; font-size: 40px; } .cover { height: 60px; background: #333333; }" },
+  { name: "a later inline-block on the next line over the previous line's descenders (line-height below 1: refused, raw)", expect: "box", body: `<div class="p"><span class="t">gjpy</span> <span class="cover"></span></div>`, css: ".p { width: 160px; font-size: 48px; line-height: 0.6; } .cover { display: inline-block; width: 100px; height: 30px; background: #333333; }" },
   // refused by the allowlist: the model only (raw HTML)
-  { name: "order: 1 moves an earlier flex cover later in painting", expect: "box", body: `<div class="row"><div class="cover"></div><div class="t">${T}</div></div>`, css: ".row { display: flex; width: 300px; } .cover { order: 1; flex: 0 0 150px; height: 40px; background: #333333; } .t { flex: 0 0 100px; min-width: 0; }" },
+  { name: "order: 1 moves an earlier flex cover later in painting", expect: "box", body: `<div class="row"><div class="cover"></div><div class="t">${T}</div></div>`, css: ".row { display: flex; width: 300px; } .cover { order: 1; flex: 0 0 150px; height: 48px; background: #333333; } .t { flex: 0 0 100px; min-width: 0; font-size: 40px; }" },
   { name: "order: -1 moves a later grid cover earlier (passes)", expect: "text", body: `<div class="g"><div class="t">0520</div><div class="cover"></div></div>`, css: ".g { display: grid; } .g > * { grid-area: 1 / 1; } .cover { order: -1; height: 40px; background: #333333; }" },
   { name: "a later grid item stacked on the same cell", expect: "box", body: `<div class="g"><div class="t">0520</div><div class="cover"></div></div>`, css: ".g { display: grid; } .g > * { grid-area: 1 / 1; } .cover { height: 40px; background: #333333; }" },
   { name: "an earlier grid item on the same cell (passes)", expect: "text", body: `<div class="g"><div class="cover"></div><div class="t">0520</div></div>`, css: ".g { display: grid; } .g > * { grid-area: 1 / 1; } .cover { height: 40px; background: #333333; }" },
@@ -106,7 +125,9 @@ describe("V2: the paint-order model agrees with Chromium's painting", () => {
     const key = verdicts.find((v) => v.text === t && v.box === c);
     expect(key, "the text and the cover intersect").toBeDefined();
     expect(key!.model, "model").toBe(f.expect);
-    expect(key!.chromium, `Chromium (${key!.glyphPixels} glyph pixels)`).toBe(f.expect);
+    expect(key!.chromium, `Chromium (${key!.glyphPixels} glyph pixels, ${key!.changedShare} changed)`).toBe(f.expect);
+    // enough glyph interior to read (69+ here at the time of writing); fewer means the face or the fixture changed
+    expect(key!.glyphPixels, "glyph interior pixels in the intersection").toBeGreaterThanOrEqual(20);
     // every other conclusive pair agrees too; a disagreement fails the build (§2 V2)
     for (const v of verdicts.filter((x) => x.chromium !== "unclear")) expect(v.model, JSON.stringify(v)).toBe(v.chromium);
     expect(layerCodes(scan).includes("PAINT_ORDER_COVER")).toBe(f.expect === "box");
@@ -116,7 +137,8 @@ describe("V2: the paint-order model agrees with Chromium's painting", () => {
 // ---------------------------------------------------------------- V1 roles, V4 extents, V9 writing mode
 
 describe("V1 roles, V4 non-content extents, V9 computed writing mode", () => {
-  const codes = async (body: string, css = "") => layerCodes(await layerScan(await show(body, css), ["0520"]));
+  // declared roles: the test path only (pages may not carry data-comp-role; the run never reads it)
+  const codes = async (body: string, css = "") => layerCodes(await layerScan(await show(body, css), ["0520"], { declared: true }));
   it.each<[string, string, string]>([
     ["an unknown role", '<div data-comp-role="overlay">0520</div>', "ROLE_UNKNOWN"],
     ["decoration over text", '<div data-comp-role="decoration"><p>0520</p></div>', "ROLE_DECORATION_HAS_TEXT"],
@@ -136,9 +158,22 @@ describe("V1 roles, V4 non-content extents, V9 computed writing mode", () => {
 
   it("accepts consistent declarations: ground and decoration on text-free boxes, media on an img and a placeholder slot, content on text", async () => {
     const body = '<div data-comp-role="ground" class="g"></div><div data-comp-role="decoration"></div><img data-comp-role="media" alt="和菓子のイメージ（AI生成）" width="10" height="10"><div data-comp-role="media" data-comp-slot="x" data-comp-placeholder></div><p data-comp-role="content">0520</p>';
-    const scan = await layerScan(await show(body, ".g { height: 10px; background: #eeeeee; }"), ["0520"]);
+    const scan = await layerScan(await show(body, ".g { height: 10px; background: #eeeeee; }"), ["0520"], { declared: true });
     expect(layerCodes(scan)).toEqual([]);
     expect(scan.roles).toMatchObject({ declared: 5, counts: { ground: 1, decoration: 1, media: 2 } });
+  });
+
+  it("a page may not carry data-comp-role (the DOM allowlist refuses it, as before), and the run never reads it", async () => {
+    const page = synthetic({ html: (s) => s.replace('<p class="lead-text"', '<p data-comp-role="decoration" class="lead-text"') });
+    const o = await openCompPage(browser, page, DESKTOP);
+    try {
+      expect(domProblems(await domAudit(o.page)).codes).toContain("DOM_ATTRIBUTE_NOT_ALLOWED");
+      const scan = await layerScan(o.page, required);
+      expect(scan.roles.declared).toBe(0);
+      expect(layerCodes(scan)).toEqual([]);
+    } finally {
+      await o.context.close();
+    }
   });
 });
 
@@ -147,10 +182,12 @@ describe("V1 roles, V4 non-content extents, V9 computed writing mode", () => {
 describe("phase A on the synthetic page and the DEV-082 probes", () => {
   it("the synthetic page passes every phase A check at a checked width, with a flat ground under every protected glyph", async () => {
     const p = await legibilityPass(browser, await loadCompPage(join(FIXTURE, "page")), 1440, all, required, plan);
-    const r = layersCheck(p.layers, p.ground);
-    expect(r).toMatchObject({ ok: true, codes: [], stacking_contexts: 0, declared_roles: 0 });
-    expect((r.ground as { nodes: number; max_deviation: number }).nodes).toBeGreaterThan(0);
-    expect((r.ground as { max_deviation: number }).max_deviation).toBe(0);
+    const { check, advisory } = layersCheck(p.layers, p.ground, p.groundExpected);
+    expect(check).toMatchObject({ ok: true, codes: [], stacking_contexts: 0, declared_roles: 0 });
+    expect(advisory).toMatchObject({ ok: true, codes: [] });
+    expect((check.ground as { nodes: number; expected: number }).nodes).toBe(p.groundExpected);
+    expect(p.groundExpected).toBeGreaterThan(0);
+    expect((check.ground as { max_deviation: number }).max_deviation).toBe(0);
   });
 
   it("the fifth review's class fails V2 and V4 at a width inside its window, from the same pass (probes A and B)", async () => {
@@ -158,7 +195,10 @@ describe("phase A on the synthetic page and the DEV-082 probes", () => {
       const page = withProbe(probe);
       expect(cssProblems(page.css)).toEqual([]);
       const p = await legibilityPass(browser, page, width, all, required, plan);
-      expect(layersCheck(p.layers, p.ground).codes).toEqual(expect.arrayContaining(["PAINT_ORDER_COVER", "FACT_NONCONTENT_OVERLAP"]));
+      const r = layersCheck(p.layers, p.ground, p.groundExpected);
+      // advisory: the existing 1 px pass is what refuses these pages; V2 / V4 see the same class from the checked widths
+      expect(r.advisory.codes).toEqual(expect.arrayContaining(["PAINT_ORDER_COVER", "FACT_NONCONTENT_OVERLAP"]));
+      expect(r.check.codes).toEqual([]);
       expect(p.layers.covers.list.some((c) => c.protected)).toBe(true);
     }
   });
@@ -167,9 +207,38 @@ describe("phase A on the synthetic page and the DEV-082 probes", () => {
     const page = synthetic({ html: (s) => s.replace(ROW, '<div class="facts-row"><dt data-comp-type="label">電話</dt><dd class="tel" data-comp-type="body">052-000-0731</dd></div>'), css: ".tel { background: linear-gradient(90deg, transparent 0 20px, #1F1D1B 20px 23px, transparent 23px); }" });
     expect(cssProblems(page.css).length).toBeGreaterThan(0);
     const p = await legibilityPass(browser, page, 1440, all, required, plan);
-    const r = layersCheck(p.layers, p.ground);
-    expect(r.codes).toContain("GROUND_NOT_FLAT");
-    expect((r.ground as { max_deviation: number }).max_deviation).toBeGreaterThan(100);
+    const r = layersCheck(p.layers, p.ground, p.groundExpected);
+    expect(r.advisory.codes).toContain("GROUND_NOT_FLAT");
+    expect(r.check.codes).toEqual([]);
+    expect((r.advisory.ground as { max_deviation: number }).max_deviation).toBeGreaterThan(100);
+  });
+
+  it("GROUND_NOT_FLAT is advisory: three allowlisted pages that pass today still pass (the reviewer's highlight span, border-left, dark badge)", async () => {
+    const variants = {
+      highlight: { html: (s: string) => s.replace('<dd data-comp-type="body">052-000-0731</dd>', '<dd data-comp-type="body"><span class="hl">052-000-0731</span></dd>'), css: ".hl { background: #F4EEE3; }" },
+      border: { html: (s: string) => s.replace('<dd data-comp-type="body">9:00', '<dd class="rule" data-comp-type="body">9:00'), css: ".facts-row dd.rule { border-left: 3px solid #B4472E; }" },
+      badge: { html: (s: string) => s.replace('<dd data-comp-type="body">水曜', '<dd class="badge" data-comp-type="body">水曜'), css: ".facts-row dd.badge { background: #1F1D1B; color: #F4EEE3; }" },
+    };
+    for (const [name, v] of Object.entries(variants)) {
+      const page = synthetic(v);
+      expect(cssProblems(page.css), name).toEqual([]);
+      const p = await legibilityPass(browser, page, 1440, all, required, plan);
+      const r = layersCheck(p.layers, p.ground, p.groundExpected);
+      expect(r.advisory.codes, name).toContain("GROUND_NOT_FLAT");
+      expect(r.check.codes, name).toEqual([]);
+    }
+    // the three together, through the whole run: nothing in `failed` (as without phase A), the finding in `advisory`
+    const dir = await pageCopy("ground-");
+    try {
+      await writeFile(join(dir, "index.html"), Object.values(variants).reduce((h, v) => v.html(h), HTML));
+      await writeFile(join(dir, "style.css"), `${CSS}\n${Object.values(variants).map((v) => v.css).join("\n")}\n`);
+      const r = (await runCompImpl({ bundleDir: await bundle(), pageDir: dir, repoDir: REPO, factsSourcePath: FACTS_SOURCE, browser })).report;
+      expect(r.failed).toEqual([]);
+      expect(r.mechanical_ok).toBe(true);
+      expect(Object.values(r.advisory).some((a) => a.codes.includes("GROUND_NOT_FLAT"))).toBe(true);
+    } finally {
+      await removeDir(dir);
+    }
   });
 
   it("V3 layered reference: ink holds on a smooth gradient ground and fails under a translucent decoration (raw HTML)", async () => {
@@ -246,8 +315,8 @@ describe("V10: the metric perturbation harness", () => {
 
 // ---------------------------------------------------------------- pure functions: V3b maths, V7, V9 matrix
 
+const flatPixels = (w: number, h: number, rgb: number[]) => ({ width: w, height: h, channels: 3, data: Buffer.from(Array.from({ length: w * h }, () => rgb).flat()) });
 describe("V3b maths, V7 capabilities, V9 visibility matrix", () => {
-  const flatPixels = (w: number, h: number, rgb: number[]) => ({ width: w, height: h, channels: 3, data: Buffer.from(Array.from({ length: w * h }, () => rgb).flat()) });
   it("ground structure: zero on a flat ground; a text-coloured stroke and a stroke just above the tolerance are seen", () => {
     const px = flatPixels(40, 20, [234, 225, 210]);
     expect(groundStructure(px, [{ left: 10, top: 5, width: 10, height: 10 }])).toEqual({ maxDev: 0, lumStd: 0, sobel: 0 });
@@ -271,14 +340,27 @@ describe("V3b maths, V7 capabilities, V9 visibility matrix", () => {
     expect(gradientStopProblems([{ at: 0, rgb: [234, 225, 210] }, { at: 300, rgb: [217, 207, 190] }], 300)).toEqual([]);
   });
 
-  it("V7: the spec may declare no capability (phase A approves none); an omitted or empty list is the DEV-082 base", () => {
+  it("V7: the spec schema is unchanged — any capabilities key is refused as before (SPEC_SHAPE); the report lists none", () => {
     const spec = JSON.parse(readFileSync(join(FIXTURE, "layout-spec.json"), "utf8")) as CompSpec;
     expect(checkCompSpec(spec).ok).toBe(true);
-    expect(checkCompSpec({ ...spec, capabilities: [] }).ok).toBe(true);
-    for (const c of ["hero_overlay", "web_font", "anything"]) expect(checkCompSpec({ ...spec, capabilities: [c] })).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_NOT_APPROVED"] });
-    expect(checkCompSpec({ ...spec, capabilities: ["Hero Overlay"] })).toEqual({ ok: false, problems: ["SPEC_SHAPE"] });
-    expect(capabilitiesCheck(spec)).toMatchObject({ ok: true, declared: [], approved: [] });
-    expect(capabilitiesCheck({ ...spec, capabilities: ["hero_overlay"] }).codes).toEqual(["CAPABILITY_NOT_APPROVED"]);
+    for (const c of [[], ["hero_overlay"], ["Hero Overlay"]]) expect(checkCompSpec({ ...spec, capabilities: c })).toEqual({ ok: false, problems: ["SPEC_SHAPE"] });
+    expect(capabilitiesCheck()).toMatchObject({ ok: true, declared: [], approved: [] });
+    expect(capabilitiesCheck(["hero_overlay"]).codes).toEqual(["CAPABILITY_NOT_APPROVED"]);
+  });
+
+  it("V3b grows each glyph box by 1 px on all four sides, and no further", () => {
+    const box = [{ left: 10, top: 5, width: 10, height: 10 }];
+    const stroke = (pos: { x?: number; y?: number }) => {
+      const px = flatPixels(40, 30, [200, 200, 200]);
+      for (let i = 0; i < 40; i++) for (const c of [0, 1, 2]) {
+        if (pos.x !== undefined && i < 30) px.data[(i * 40 + pos.x) * 3 + c] = 30;
+        if (pos.y !== undefined) px.data[(pos.y * 40 + i) * 3 + c] = 30;
+      }
+      return groundStructure(px, box).maxDev;
+    };
+    // the box covers pixels 10–19 × 5–14; grown by 1 px: 9–20 × 4–15
+    for (const pos of [{ x: 9 }, { x: 20 }, { y: 4 }, { y: 15 }]) expect(stroke(pos), JSON.stringify(pos)).toBeGreaterThan(100);
+    for (const pos of [{ x: 8 }, { x: 21 }, { y: 3 }, { y: 16 }]) expect(stroke(pos), JSON.stringify(pos)).toBe(0);
   });
 
   it("V9: a fact shown at one checked width and hidden at another fails the visibility matrix", () => {

@@ -95,13 +95,16 @@ describe("comp-to-site on the synthetic fixture", () => {
     expect(r.checks.protected_1px).toMatchObject({ ok: true, widths: 1601, failing_widths: 0 });
   });
 
-  it("DEV-083 phase A: the added checks ran at every checked width and on the sweep, and pass (no outcome changed)", () => {
+  it("DEV-083 phase A: the added checks ran at every checked width and on the sweep, and pass (blocking and advisory)", () => {
     const r = result.report;
     const layers = Object.keys(r.checks).filter((k) => /^layers_\d+$/.test(k));
     expect(layers.length).toBe((r.checks.overflow!.widths as number[]).length);
     for (const k of [...layers, "layers_sweep", "visibility_matrix", "capabilities"]) expect(r.checks[k], k).toMatchObject({ ok: true, codes: [] });
     expect(r.checks.layers_sweep).toMatchObject({ widths: 51 });
     expect(r.capabilities).toEqual([]);
+    // the advisory findings (never in `failed`) are empty on the synthetic page too
+    for (const [k, a] of Object.entries(r.advisory)) expect(a, k).toMatchObject({ ok: true, codes: [] });
+    expect(Object.keys(r.advisory)).toContain("layers_sweep");
   });
 
   it("writes report.json and both screenshots privately, outside the repository", async () => {

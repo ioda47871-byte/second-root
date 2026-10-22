@@ -586,44 +586,127 @@ rubric policy of 2026-10-22 — every criterion ≥ 4 — in the rubric document
 
 ## 10. Phase A as built (2026-10-22)
 
-The human approved starting phase A on 2026-10-22 with these conditions: strengthen checks only; do not relax the CSS
-allowlist; connect nothing to operations (worker, real Codex, Next.js app routes, sales); later phases may be designed here,
-but any implemented relaxation needs its own approval. Phase A relaxes nothing: `page-css.ts`, every existing check in
-`checks.ts` / `render.ts`, every tolerance and threshold are unchanged, and **every existing comp-impl test passes unchanged**
-(302 of 302 before the new tests were added). The synthetic fixture passes every new check at every checked width and on the
-32 px sweep. The one schema change is that `layout-spec.json` may now carry `capabilities` (omitted or `[]`); every value is
-refused (the enum is empty).
+The human approved starting phase A on 2026-10-22 with these conditions:
+- strengthen checks only;
+- do not relax the CSS allowlist;
+- connect nothing to operations (worker, real Codex, Next.js app routes, sales);
+- later phases may be designed here, but any implemented relaxation needs its own approval.
+
+Phase A leaves these unchanged:
+- `page-css.ts`, the DOM allowlist, the spec schema, every existing check in `checks.ts` / `render.ts`, every tolerance and
+  threshold.
+- Every existing comp-impl test passes without modification.
+
+**The guarantee, precisely.** A new code may enter `failed` only when the DEV-082 allowlist and the existing checks
+already refuse every page it refuses (the argument per code is in the table below). Every other new finding goes to
+`report.advisory`, which never enters `failed` and never changes `mechanical_ok`. So **`failed` / `mechanical_ok` are the same
+as before phase A for every page**, not only for the synthetic fixture. This is shown, not assumed, for:
+- the synthetic fixture;
+- the review's three allowlisted pages that a flat-ground gate would have refused: a highlight span, a `border-left` with 0
+  padding, a dark badge `dd` (`phase-a.test.ts`, one whole run: `failed` is empty, `GROUND_NOT_FLAT` is in `advisory`).
+
+**No widening.**
+- `data-comp-role` is **not** accepted on a page. The DOM allowlist still refuses it (`DOM_ATTRIBUTE_NOT_ALLOWED`).
+- In the run every role is derived from the DOM. Declared roles are read only on a test path (`layerScan({ declared: true })`).
+- Accepting the attribute is deferred to phase B and needs the human's approval.
+- A `capabilities` key in `layout-spec.json` is still refused (`SPEC_SHAPE`), present or absent, empty or not.
+- The report's `capabilities: []` is derived internally.
+
+### Each new code: blocking or advisory
+
+| code | where | blocking? | why |
+|---|---|---|---|
+| `PSEUDO_GEOMETRY_UNKNOWN` | `layers_<w>`, `layers_sweep` | **blocking** | a generated `::before` / `::after` needs a pseudo-element selector (refused, `CSS_PSEUDO_ELEMENT`) and `content` (not in the property table); none of the allowed elements has UA-generated content; any other element fails `DOM_ELEMENT_NOT_ALLOWED`. Every page it refuses is refused before rendering |
+| `STACKING_CONTEXT` | same | **blocking** | of the allowlisted properties only `position` (static only) and `opacity` (1 only) can create a context; no UA style of an allowed element creates one. The trigger list fails closed (any non-initial `will-change`, `contain`, `content-visibility`, `container-type`, `offset-path`, reflection, mask border, plus the §2 list), and none of those properties is allowlisted. Every page it refuses is refused before rendering |
+| `PROTECTED_VERTICAL` | same | **blocking** | `writing-mode` is `horizontal-tb` only, and no allowed element has a vertical UA style |
+| `ROLE_UNKNOWN`, `ROLE_MISMATCH`, `ROLE_*_HAS_TEXT` | same | **blocking**, but **never produced by the run** | the run never reads `data-comp-role` (derived roles only); a page carrying the attribute already fails `dom` |
+| `FACT_VISIBILITY_CHANGES` | `visibility_matrix` | **blocking** | `MEASURE_SCRIPT` measures every text node at every checked width (only `aria-hidden` text is skipped, which fails `TEXT_ARIA_HIDDEN`); a fact node hidden at one checked width fails `TEXT_FACT_HIDDEN` in `text_<width>` there. It only re-reports a refusal that exists. It uses the **checked widths only** (not the sweep, not the 1 px pass) |
+| `CAPABILITY_NOT_APPROVED` | `capabilities` | **blocking**, never produced | the declared list is always empty (the schema refuses the key) |
+| `PAINT_ORDER_COVER` | `advisory` | advisory | its geometry (a box meeting a text's range rect by > 0.5 px) is stricter than the existing hit-test (15 points across the middle of each protected line) and covers all text, so an allowlisted page that passes today can trip it |
+| `DISCLOSURE_NONCONTENT_OVERLAP`, `FACT_NONCONTENT_OVERLAP` | `advisory` | advisory | a text-free box meeting a protected line box by > 0.5 px is not refused today unless it hides glyphs; and the split is **evadable by one character**: give the covering box one character of text and it is `content`, outside V4. Coverage of protected text rests on V2 (any later painting box, content or not) plus the existing checks (1 px hit-test pass, `IMAGE_OVERLAP`, ink proof), not on V4 |
+| `GROUND_NOT_FLAT` | `advisory` | advisory | refuses allowlisted pages that pass today (the review's highlight span: deviation 11; `border-left` with 0 padding: 203; a dark badge `dd` with 0 padding: 203). Both the threshold (*t* = 6) and the semantics (glyph box + 1 px on all four sides) need the human's approval as a gate |
+| `GROUND_UNMEASURED` | `advisory` | advisory | V3b measured fewer protected nodes than exist (e.g. a page over the screenshot height cap) |
 
 ### What was built
 
-| block | where | what it does in phase A | gate? |
-|---|---|---|---|
-| V1 roles | `layers.ts` `LAYER_SCRIPT`; `data-comp-role` added to the DOM allowlist's shared attributes | derived role per element (content when the subtree holds text or an aria-label; media for an img or a placeholder slot; decoration for any other text-free box); a declared role only confirms it: `ROLE_UNKNOWN`, `ROLE_MISMATCH`, `ROLE_{DECORATION,GROUND,MEDIA}_HAS_TEXT`. Any generated `::before` / `::after` fails `PSEUDO_GEOMETRY_UNKNOWN` | yes (`layers_<width>`, `layers_sweep`) |
-| V2 paint order | `LAYER_SCRIPT` | CSS 2.1 Appendix E with order-modified document order, atomic painting of inline-blocks / flex / grid items / inline replaced elements and floats, escape of positioned descendants and real contexts to the parent context, the stacking-context triggers of §2 V2, outlines last. `PAINT_ORDER_COVER` for any painting box (ground, border, outset shadow, img content, outline ring) that paints after a text node and meets one of its line boxes (> 0.5 px both ways), whatever its colour or alpha; `STACKING_CONTEXT` when the model finds one (the allowlist forbids them, so this is defence in depth) | yes |
-| V2 Chromium comparison | `render.ts` `paintCrossCheck`; `phase-a.test.ts` | per intersecting text / box pair: the text pure red and everything else transparent, the box painted or not; where the text's opaque glyph pixels change, the box is on top. 22 fixtures (5 inside today's allowlist, 17 raw HTML for constructs the allowlist refuses): **the model agrees with Chromium on every conclusive pair**, and every fixture's key pair is conclusive | test |
-| V3 layered reference | `render.ts` `layeredInkPass` | reference keeps ground and media, hides decoration (by V1 role) and every non-protected text. Tested on raw HTML: ink ratio > 0.95 on a smooth gradient ground; < 0.8 under a translucent decoration. Not used by `run.ts` (it matters only once an overlap capability exists) | no (harness) |
-| V3b ground structure | `verify.ts` `groundStructure`, inside `legibilityPass` on the existing text-hidden picture | per protected glyph box + 1 px: max channel deviation from the box median, luminance deviation, Sobel energy. `GROUND_NOT_FLAT` above 6 levels (the doc's provisional *t*; every current page measures **0**). Busyness is reported only. `scrimBound` (both analytic conditions) and `gradientStopProblems` are pure functions with the §2 probes as tests (a = 0.9 fails structure, straddling corners fail contrast, hard stop and 1 px soft edge fail) | GROUND_NOT_FLAT yes; the rest report / tests |
-| V4 extents | `LAYER_SCRIPT` | border box + outset shadows + outline, bounding box of any transform, of every non-content element vs every line box of the disclosure and required facts: `DISCLOSURE_NONCONTENT_OVERLAP` / `FACT_NONCONTENT_OVERLAP` (no exception: `hero_overlay` is not approved) | yes |
-| V6 layout hash | `layers.ts` `LAYOUT_HASH_SCRIPT`; `render.ts` `layoutHashPass`, `gatedGeometryPass` | per width, a signature of every protected line's geometry relative to its box, its page-edge overflow, image overlap, and every other element within 2 px of the line (rect relative to the line, ¼ px). The gated pass runs `GEOMETRY_SCRIPT` only where the signature changes (and both neighbours, segment ends). **Equivalence-tested against the full 1 px pass, width by width**, on the synthetic page, both fifth-review probes (320–1920), the sixth review's real-resize probe and the seventh review's centred root. Not wired into `run.ts`: it saves too little (below) | no (measured alternative) |
-| V7 capabilities | `spec.ts` `APPROVED_CAPABILITIES = []`; `verify.ts` `capabilitiesCheck`; `report.capabilities` | any declared capability: `SPEC_CAPABILITY_NOT_APPROVED` (bundle refused); the report lists the declared list (always empty) | yes |
-| V9 | `LAYER_SCRIPT`, `verify.ts` `visibilityMatrixCheck` | computed `writing-mode` of dt, dd, the disclosure and protected text (inherited too): `PROTECTED_VERTICAL`; visibility matrix across the checked widths: `FACT_VISIBILITY_CHANGES` | yes (`visibility_matrix`) |
-| V10 perturbation | `render.ts` `perturbedGeometryPass`, `layers.ts` `PERTURB_SCRIPT`, `WIDEST_FACE_SCRIPT`; `verify.ts` `metricsCheck` | the 1 px pass with the widest installed allowlisted face (on this machine DejaVu Serif — no wider CJK face is installed) or ±0.05 em tracking; `METRICS_FRAGILE` when a variant fails widths the base passes. Tested on a probe that fits only at the exact metrics; the synthetic page finds nothing new under all three variants | no (harness; runs only for declared overlap capabilities) |
+**V1 roles** (`layers.ts` `LAYER_SCRIPT`)
+- Every element gets a derived role:
+  - content: the subtree holds text or an aria-label;
+  - media: an img or a placeholder slot;
+  - decoration: any other text-free box.
+- On the test path only, a declared role must confirm the derived one.
+- Any generated pseudo-element fails closed.
+
+**V2 paint order** (`LAYER_SCRIPT`)
+- CSS 2.1 Appendix E, with:
+  - order-modified document order;
+  - atomic painting of inline-blocks, flex and grid items, inline replaced elements and floats;
+  - escape of positioned descendants and real contexts to the parent context;
+  - outlines last.
+- Painting is **fail-closed**. A box paints when any of these is off its inert initial value: ground colour or image, a
+  visible border, **any** box-shadow (an inset shadow paints over the border box: the review's probe is a fixture),
+  border image, column rule, scrollbars.
+- Filters, backdrop filters and reflections are treated as painting over everything after them.
+- A box event after a text event whose extent meets one of its line boxes is `PAINT_ORDER_COVER`, whatever the colour or
+  alpha.
+- Not modelled: text-on-text, which `overprinted` owns.
+
+**V2 Chromium comparison** (`render.ts` `paintCrossCheck`; `phase-a.test.ts`)
+- 23 fixtures: 6 inside today's allowlist, including the inset-shadow probe, and 17 raw HTML.
+- For each text / box pair, the text is drawn pure red and everything else transparent; the box is then painted or not.
+- Only the glyph's interior pixels are read: opaque red pixels whose four neighbours are red too.
+- Each fixture's key pair must be conclusive (≥ 20 interior pixels; 69+ at the time of writing), and every conclusive pair
+  must agree with the model.
+- Locally the changed share is 0 for "text on top" and ≥ 0.88 for "box on top"; CI runs the same assertions.
+- History: the first version read edge pixels too. On CI's rasterizer, 4 "text on top" fixtures read as unclear (5–50 %
+  changed) while they passed locally.
+- The fixture face (IPAGothic, CI's `fonts-ipafont-gothic`) is checked at start: missing, the file fails with that message.
+
+**V3 layered reference** (`render.ts` `layeredInkPass`)
+- The reference keeps ground and media, hides decoration and every non-protected text.
+- Tested on raw HTML (a smooth gradient ground passes; a translucent decoration fails).
+- Not used by `run.ts`.
+
+**V3b ground structure** (`verify.ts` `groundStructure`)
+- Per protected glyph box grown by 1 px on all four sides (pixels the grown box touches): max channel deviation from the
+  median, luminance deviation, Sobel energy.
+- `scrimBound` and `gradientStopProblems` are pure functions with the §2 probes.
+- Advisory (above).
+
+**V4 extents** (`LAYER_SCRIPT`)
+- Border box + outset shadows + outline, the bounding box of any transform, unbounded for filters.
+- Checked for non-content elements against protected line boxes.
+- Advisory, and evadable by one character (above).
+
+**V6** (`LAYOUT_HASH_SCRIPT`, `layoutHashPass`, `gatedGeometryPass`)
+- The layout signature around every protected line.
+- The gated 1 px pass is equivalence-tested width by width against the full pass on the synthetic page, the fifth-review
+  probes A and B (320–1920), the sixth review's real-resize probe and the seventh review's centred root.
+- Not wired into `run.ts`.
+
+**V7** (`spec.ts` `APPROVED_CAPABILITIES = []`, `verify.ts` `capabilitiesCheck`, `report.capabilities`)
+- The schema is unchanged (above).
+
+**V9** (`LAYER_SCRIPT`, `verify.ts`)
+- Computed writing mode of dt, dd, the disclosure and protected text.
+- Visibility matrix over the checked widths.
+
+**V10** (`perturbedGeometryPass`, `PERTURB_SCRIPT`, `WIDEST_FACE_SCRIPT`, `metricsCheck`)
+- The widest installed allowlisted face (here DejaVu Serif; no wider CJK face is installed) or ±0.05 em tracking.
+- `METRICS_FRAGILE`. A harness only.
 
 ### Skipped or deferred, and why (no rule weakened)
 
-- **Pseudo-element geometry proof** (V1): pseudo-elements are refused by the allowlist and first allowed in phase B
-  (`ornament`). Phase A fails closed instead: any generated `::before` / `::after` is `PSEUDO_GEOMETRY_UNKNOWN`. The geometry
-  proof belongs with the phase B proposal.
-- **V9 reading order against a spec-declared order per section and width**: the spec has no such field; adding one is a
-  schema decision for phase C (fixed grid placement) / E (re-layout). Today the allowlist refuses every placement, and
+- **Accepting `data-comp-role` on a page, and the pseudo-element geometry proof** (V1): phase B, with approval.
+- **The `capabilities` field in the spec**: comes with the first approved capability.
+- **V9 reading order against a spec-declared order per section and width**: needs a spec field (phase C / E).
   `PAIR_ORDER`, `PAIR_LINE` and `mobileOrderCheck` are unchanged.
-- **`position: sticky` probe**: sticky is refused and its cover depends on the scroll position, which the harness never
-  changes; it belongs with any capability that would allow it.
-- **Budget (V7)**: its values are provisional gate values for the human; with no capability approved there is nothing to count.
-- **WebKit runs, viewport-height sweep, analytic image contrast, hover / focus states**: not built (a new browser needs the
-  human's approval; the others belong to phases C and F), so their §6 rows stay estimates.
+- **`position: sticky` probe**: sticky is refused, and its cover depends on scrolling, which the harness never does.
+- **Budget (V7)**: provisional values for the human; nothing to count.
+- **WebKit runs, viewport-height sweep, analytic image contrast, hover / focus states**: not built (a new browser needs
+  approval; the rest belong to phases C and F), so their §6 rows stay estimates.
 
-### Measured costs (local container, Chromium 1194, best of 3 unless noted)
+### Measured costs (local container, Chromium 1194, best of 3 unless noted; before the review fixes, which add no work to the run)
 
 | §6 row | measured |
 |---|---|
@@ -638,17 +721,19 @@ refused (the enum is empty).
 | layout hash alone, stepped / with real resizes | 0.97 s / 13.0 s |
 | gated 1 px pass (hash + `GEOMETRY_SCRIPT` at change points) | 1.13 s synthetic (65 widths measured fully, 30 signature changes); 1.29 s probe A (105 widths, 67 changes); same findings as the full pass |
 | V10 perturbation, one variant over 320–1920 | 1.7–2.2 s |
-| V2 Chromium comparison | ~85–130 ms per fixture (two clipped screenshots per pair) |
+| V2 Chromium comparison | ~85–130 ms per fixture |
 
-**What the numbers say for V6.** The doc's 50–200 ms per width was pessimistic: a real resize plus the structural script is
-about 8 ms, so a naive 1 px pass over 1,601 widths costs **~12.5 s** per page, not 80–320 s. The cost is the **resize
-itself**: hashing at every width costs as much as measuring when the viewport has to be really resized, so layout-change
-detection saves nothing there; where the root's width can be stepped (no viewport units, no fixed positioning), the full pass
-is already ~1.5 s and the hash saves ~0.3 s. Phase A therefore keeps the full 1 px pass in `run.ts`; the gated pass stays an
-equivalence-tested tool. Capabilities that need real resizes (viewport units, `vh` heroes, fixed positioning) should budget
-**~12.5 s per page per variant**, and the V10 perturbation multiplies that by 3.
+**What the numbers say for V6.** The doc's 50–200 ms per width was pessimistic. A real resize plus the structural script
+costs about 8 ms, so a naive 1 px pass over 1,601 widths costs **~12.5 s** per page, not 80–320 s.
 
-**CI.** The new test file (`tests/unit/design-agent/comp-impl/phase-a.test.ts`, 51 tests) takes ~26 s of test time and runs
-in parallel with `e2e.test.tsx`; the comp-impl suite's wall time stayed at ~88–94 s locally (92 s before), and its summed
-test time rose from ~100 s to ~119 s. Run inside the sharded unit job (DEV-085).
+The cost is the **resize itself**:
+- Where the viewport has to be resized for real, hashing every width costs as much as measuring, so layout-change
+  detection saves nothing.
+- Where the root's width can be stepped, the full pass is already ~1.5 s and the hash saves ~0.3 s.
 
+So phase A keeps the full 1 px pass in `run.ts`, and the gated pass stays an equivalence-tested tool. Capabilities that need
+real resizes (viewport units, `vh` heroes, fixed positioning) should budget **~12.5 s per page per variant**. V10 multiplies
+that by 3.
+
+**CI.** The new test file (`tests/unit/design-agent/comp-impl/phase-a.test.ts`) takes ~37 s of test time, including one
+whole run. It runs in the sharded unit jobs (DEV-085).
