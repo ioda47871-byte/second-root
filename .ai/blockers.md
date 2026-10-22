@@ -58,7 +58,7 @@
     - それが jail の中だけなら → pasta が原因（passt の更新の案）。
     - 3 本とも `OPEN` → H2 が有力。
   - 修正後の probe は、ACK を落とす local の再現（iptables、後で削除）で確かめた: A 27 秒・B 57 秒・C OPEN。
-- 24c（24b で結論が出ないときだけ。Codex 1 回、画像生成つき）: DEV-084 の merge の後に、HUMAN-021b と同じ v1 のコマンドを 1 回。
+- 24c（24b で結論が出ないときだけ。**24b で結論が出たので今は使わない**。Codex 1 回、画像生成つき、passt の更新の**前**）: DEV-084 の merge の後に、HUMAN-021b と同じ v1 のコマンドを 1 回。更新の**後**の Codex 1 回は別の段で、`passt-update-plan.md` の A-8（V-4）。
   `img_call_ms=` と `img_fail_timing=` で呼び出しごとの時間、cell の script が error を捕まえなかったときは `img_fail_reason=TIMEOUT`（H1）か `HTTP_5XX`（H2）が分かる。
 - 修正の案（どれも人の承認が要る。DEV-084 は実装していない）:
   (1) 自動の再試行を 0 回に: `openai` は予約された provider id で上書きできない（config_toml.rs:66-72）ので、`-c` で自前の provider（`requires_openai_auth = true`・`request_max_retries = 0`）に切り替える。model の通信も同じ provider になる挙動の変更。失敗が 1 回・約 31 秒になるだけで、原因は直らない。

@@ -79,7 +79,7 @@ EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python
 - 残るリスク: 更新と rollback は root の手作業（1 行ずつ人が実行）。WSL 全体の backup（`wsl --export`）は提案しない。
 
 **6. 更新後の通信検証とセキュリティ確認（§5 V-3）**
-- 直後（A-5 の中）: S-1 の比較（上の 3）、`pasta --version`、hash、hold、`dpkg --verify`、JAIL_OK、jail の中で `getent hosts github.com`、UDP/853 の確認（A-3 を入れていれば `EACCES`）、TCP/53 と TCP/853 が `EACCES`。
+- 直後（A-5 の中）: S-1 の比較（上の 3）、`pasta --version`、hash、hold、`dpkg --verify`、JAIL_OK、jail の中で `getent hosts github.com`、UDP/853 の確認（A-3 を入れていれば `EACCES`、入れていなければ UDP は `NOT_REFUSED`）、TCP/53 と TCP/853 が `EACCES`。capability は減るのは可、増えれば rollback。`Seccomp_filters` は V-0 以上。
 - 通信（A-6）: 24b の代わりに **24b-v2** を jail と host で 1 回ずつ。期待: jail で A・B・C とも `end=OPEN`、A と B の `ack_age_max_s` が 20 以下（keepalive に ACK が返っている）、host は今と同じく 3 本とも `OPEN`。
 - 成功: 上のすべて → Claude を V-0 の状態に戻す（V-2b）。その後に Codex 1 回（A-8、別の承認）。
 - rollback する: jail-net が動かない、JAIL_OK でない、capability が増えた・`Seccomp` が 2 でない・unit / rule / 設定の hash が変わった、`dpkg --verify` が clean でない、jail で DNS が引けない、A-3 があるのに UDP/853 が通る、AppArmor の拒否（A-9 を承認していなければ）。
@@ -748,10 +748,18 @@ The `diff` may show **only** these lines (anything else is a failure):
   apply);
 - `claude disabled/inactive` and the `jail-units` line (Claude stopped).
 
-Everything else must be identical: `dpkg-verify`, `rdepends`, `other-users`, `processes`, `lsm`, `aa-enabled`,
-`unit-sha` and the `unit` lines, `jail-files`, every `rule` line, `net active`, `pasta-exe` (no `(deleted)`), `pasta Uid`,
-`Gid`, `NoNewPrivs` and `Seccomp 2`, `python`, `timers`. The capability loop must print `ok` five times (no bit that V-0
-did not have). `pasta --version` prints `pasta 0.0~git20260120.386b5f5-1` (this build embeds its version; noble's
+- `pasta Cap*` lines that **lost** bits (fewer capabilities). Whether a changed `Cap*` line is acceptable is decided by
+  the capability loop, not by the `diff`: it must print `ok` five times (no bit that V-0 did not have); a decrease is
+  fine;
+- `pasta Seccomp_filters`: report the value. It must be ≥ V-0's (pasta installs its own filter at start; a new build may
+  stack one more). A lower value, or `Seccomp` other than 2, is a failure;
+- new `dpkg-verify … missing` lines **only** under `/usr/share/doc` or `/usr/share/man`, for example
+  `/usr/share/man/man1/passt-repair.1.gz` on a minimized image (the same dpkg path-excludes as in V-0). Any other new
+  `dpkg-verify` line is a failure.
+
+Everything else must be identical: the other `dpkg-verify` lines, `rdepends`, `other-users`, `processes`, `lsm`,
+`aa-enabled`, `unit-sha` and the `unit` lines, `jail-files`, every `rule` line, `net active`, `pasta-exe` (no
+`(deleted)`), `pasta Uid`, `Gid`, `NoNewPrivs` and `Seccomp 2`, `python`, `timers`. `pasta --version` prints `pasta 0.0~git20260120.386b5f5-1` (this build embeds its version; noble's
 printed `pasta unknown version`).
 
 **V-3b — 24b-v2 in the jail and on the host (A-6).** The two 24b-v2 commands in `design-image-poc.md` §"HUMAN-024",
@@ -761,8 +769,8 @@ printed `pasta unknown version`).
 
 | result | decision |
 |---|---|
-| V-3a as expected, D-3 as expected, 24b-v2 in the jail: A, B and C `end=OPEN idle_s=100` with A and B `ack_age_max_s` ≤ 20; 24b-v2-host: all `OPEN` as before | **success**: V-2b, keep the hold, then A-8 (one Codex run, separately approved) |
-| `sr-jail-net` not active; `jail-check` not `JAIL_OK`; a capability bit that V-0 did not have; `Seccomp` not 2; `NoNewPrivs` or `Uid` changed; `unit-sha`, a `unit` line, `jail-files` or a `rule` changed; `dpkg-verify` not clean (as in V-0); `getent` fails in the jail; a `DNS_ADDR` line not `EACCES` although A-3 is deployed; any unexpected `diff` line | **roll back now** (R-1 → R-3), as approved with A-5. Report the lines |
+| V-3a as expected, D-3 as expected for the chosen A-3 option (with A-3: four `EACCES` lines; without A-3: UDP lines `NOT_REFUSED`, TCP lines `EACCES`), 24b-v2 in the jail: A, B and C `end=OPEN idle_s=100` with A and B `ack_age_max_s` ≤ 20; 24b-v2-host: all `OPEN` as before | **success**: V-2b, keep the hold, then A-8 (one Codex run, separately approved) |
+| `sr-jail-net` not active; `jail-check` not `JAIL_OK`; a capability bit that V-0 did not have; `Seccomp` not 2; `NoNewPrivs` or `Uid` changed; `Seccomp_filters` lower than V-0; `unit-sha`, a `unit` line, `jail-files` or a `rule` changed; a new `dpkg-verify` line outside `/usr/share/doc` and `/usr/share/man`; `getent` fails in the jail; a `DNS_ADDR` line not `EACCES` although A-3 is deployed; any unexpected `diff` line | **roll back now** (R-1 → R-3), as approved with A-5. Report the lines |
 | AppArmor active and pasta denied (journal shows `apparmor="DENIED"` for `pasta`) | roll back, unless A-9 is approved; never remove a jail limit to make pasta start |
 | 24b-v2 in the jail: A or B still `end=LOCAL_TIMEOUT` | **stop and report.** The fix did not take effect, or something else drops the ACKs. Rollback is recommended (a hand-installed package with no benefit), the human decides. No Codex run |
 | 24b-v2-host changed (a cut on the host), or `PEER_RST` / `PEER_FIN` on all three, or `setup_failed` | stop and report; not a reason by itself to keep or remove the new pasta |

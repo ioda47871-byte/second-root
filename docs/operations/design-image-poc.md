@@ -873,18 +873,18 @@ probes.
 
 | 24b (jail) | 24b-host | decision | next |
 |---|---|---|---|
-| A cut at about 27 s | all `OPEN` | **pasta is the cause.** H1 confirmed, H3 ruled out. Fits 24a: passt `1e6f92b` predates `238c69f` | the passt update, [`passt-update-plan.md`](passt-update-plan.md); each step has its own approval |
-| A cut at about 27 s | A cut at about 27 s | **WSL's NAT or something upstream** (a middlebox, the edge). H1 confirmed, but updating passt alone will not fix it | WSL networking (`.wslconfig`, human approval) or an upstream report; not the passt plan alone |
+| A cut at about 27 s | all `OPEN` | **pasta drops the keepalive ACKs** (H1's mechanism is present on the jail path). Whether it explains the image failures, and H2 / H3 for a pending POST, stays open until A-8. Fits 24a: passt `1e6f92b` predates `238c69f` | the passt update, [`passt-update-plan.md`](passt-update-plan.md); each step has its own approval |
+| A cut at about 27 s | A cut at about 27 s | **WSL's NAT or something upstream** (a middlebox, the edge). H1's mechanism is present, but updating passt alone will not fix it | WSL networking (`.wslconfig`, human approval) or an upstream report; not the passt plan alone |
 | all `OPEN` | all `OPEN` (or not run) | **unexpected given 24a** (the installed pasta `1e6f92b` does not ACK keepalives): send the output as it is. If it holds up, keepalives are answered on Codex's path, the ~156 s is not the TCP cut, and **H2** leads (the server or edge answers 5xx at about 30 s) | send the output; then H2 / 24c (one Codex run) |
 | all `OPEN` | A cut | unexpected: the jail path answers but the host path does not | send both outputs as they are |
-| A cut at about 27 s | not run | H1 confirmed on Codex's path; pasta versus NAT is still open | run 24b-host (same approval class) before deciding on the passt update |
+| A cut at about 27 s | not run | H1's mechanism is present on Codex's path; pasta versus NAT is still open | run 24b-host (same approval class) before deciding on the passt update |
 
 Other single-run results:
 
 | result | meaning |
 |---|---|
-| A `ERR_ETIMEDOUT` at about 27 s; B `ERR_ETIMEDOUT` at about 57 s (or `OPEN`); C `OPEN` | keepalive ACKs are lost on that path. **H1 is confirmed** and H3 is ruled out (for an idle connection; see "24b result" for what this does and does not show about the image failures) |
-| the same with `EOF` in place of `ERR_ETIMEDOUT` (Python 3.12, DEV-087) | the same reading: Python 3.12's ssl module reports the kernel's `ETIMEDOUT` abort as EOF ("24b result") |
+| A `ERR_ETIMEDOUT` at about 27 s; B `ERR_ETIMEDOUT` at about 57 s (or `OPEN`); C `OPEN` | keepalive ACKs are lost on that path: **H1's mechanism is present**. Whether it explains the image failures, and H2 / H3 for a POST still waiting for its response, stays open until A-8 (`passt-update-plan.md`); see "24b result" |
+| the same with `EOF` in place of `ERR_ETIMEDOUT` (Python 3.12, DEV-087) | read it the same way: keepalive ACKs are lost on that path (H1's mechanism is present), and the image failures' cause stays open until A-8. Python 3.12's ssl module reports the kernel's `ETIMEDOUT` abort as EOF ("24b result") |
 | `CUT_EARLY` | a quiet end before 100 s without an error. Unexpected: send it as it is |
 | `EOF` early on all three | the server closed the idle connection first. Inconclusive |
 | `setup_failed=…` / `SSL_…` | no connection (DNS, TLS, certificate). Nothing learned about H1 |
@@ -985,7 +985,9 @@ timer.
 
 - `suppress_ragged_eofs=False`, so an unclean end is never an empty read.
 - While idle it watches the socket with `select` and samples `TCP_INFO` once a second without reading. When the socket
-  becomes readable it reads **`SO_ERROR` and `TCP_INFO` first**, then does the TLS read. `end=` is `LOCAL_TIMEOUT`
+  becomes readable it reads **`SO_ERROR` and `TCP_INFO` first**, then does the TLS read. At the 100 s deadline it reads
+  them too, and reports `OPEN` only if `SO_ERROR` is 0 and `tcpi_state` is ESTABLISHED; otherwise the end is classified
+  like any other. `end=` is `LOCAL_TIMEOUT`
   (`so_error=ETIMEDOUT`), `PEER_RST` (`ECONNRESET`), `PEER_FIN` (no error, `tcpi_state=CLOSE_WAIT`), `PEER_DATA`, `OPEN`
   or `OTHER`.
 - It also prints `probes_max` (the most keepalive probes outstanding at once), `ack_age_max_s` (the longest time without
@@ -1001,6 +1003,7 @@ otherwise byte for byte what was run):
 | server FIN after 8 s | all three `end=PEER_FIN so_error=0 tcpi_state=CLOSE_WAIT` |
 | server RST after 8 s | all three `end=PEER_RST so_error=ECONNRESET tcpi_state=CLOSE` |
 | kernel abort (zero window, `TCP_USER_TIMEOUT` 3 s; the probe's `idle()` / `verdict()` reused) | `end=LOCAL_TIMEOUT so_error=ETIMEDOUT tcpi_state=CLOSE` on 3.12.3 and 3.13.16 |
+| the same abort with `select` patched to never report the socket readable (only the deadline check sees it) | `end=LOCAL_TIMEOUT so_error=ETIMEDOUT tcpi_state=CLOSE` at the deadline, not `OPEN` |
 
 The `struct tcp_info` offsets read are `tcpi_state`, `tcpi_retransmits`, `tcpi_probes` and `tcpi_backoff` (bytes 0, 2,
 3, 4), `tcpi_unacked` (24) and `tcpi_last_ack_recv` (56), from `linux/tcp.h`. The `TCP_INFO` counters are not reliable
@@ -1053,8 +1056,14 @@ def idle(s, hold):
     while True:
         left = hold - (time.monotonic() - t1)
         if left <= 0:
+            # OPEN only if the kernel holds no error and the connection is still ESTABLISHED
+            err = s.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
             i = info(s)
-            return "OPEN", 0, i, max(ack_age, i["ack_age"]), max(probes, i["probes"]), time.monotonic() - t1
+            ack_age, probes = max(ack_age, i["ack_age"]), max(probes, i["probes"])
+            if not err and i["state"] == 1:
+                return "OPEN", 0, i, ack_age, probes, time.monotonic() - t1
+            res, _ = read(s, 0.5)
+            return res, err, i, ack_age, probes, time.monotonic() - t1
         r, _, _ = select.select([s], [], [], min(1.0, left))
         i = info(s)
         ack_age, probes = max(ack_age, i["ack_age"]), max(probes, i["probes"])
@@ -1160,8 +1169,14 @@ def idle(s, hold):
     while True:
         left = hold - (time.monotonic() - t1)
         if left <= 0:
+            # OPEN only if the kernel holds no error and the connection is still ESTABLISHED
+            err = s.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
             i = info(s)
-            return "OPEN", 0, i, max(ack_age, i["ack_age"]), max(probes, i["probes"]), time.monotonic() - t1
+            ack_age, probes = max(ack_age, i["ack_age"]), max(probes, i["probes"])
+            if not err and i["state"] == 1:
+                return "OPEN", 0, i, ack_age, probes, time.monotonic() - t1
+            res, _ = read(s, 0.5)
+            return res, err, i, ack_age, probes, time.monotonic() - t1
         r, _, _ = select.select([s], [], [], min(1.0, left))
         i = info(s)
         ack_age, probes = max(ack_age, i["ack_age"]), max(probes, i["probes"])
