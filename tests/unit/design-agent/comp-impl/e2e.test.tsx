@@ -659,17 +659,19 @@ describe("probes: sixth review (html with a box of its own)", () => {
     return w >= a! && w <= (b ?? a!);
   });
 
-  it.each([
-    ["the reviewer's probe: html { margin-right: 100px } under 760 px", "@media (max-width: 760px) { html { margin-right: 100px; } }", 370],
-    ["html { padding-right: 100px }", "@media (max-width: 760px) { html { padding-right: 100px; } }", 370],
-    ["html { border-right: 16px } (the dt wider, so the window lands above 320 px)", "@media (max-width: 760px) { html { border-right: 16px solid #1F1D1B; } } .tel-row dt { flex: 0 0 140px; }", 372],
-    ["a percentage html width", "@media (max-width: 760px) { html { width: 75%; } }", 360],
-    ["a percentage html max-width", "@media (max-width: 760px) { html { max-width: 75%; } }", 360],
-    ["a percentage html margin", "@media (max-width: 760px) { html { margin-right: 25%; } }", 360],
-  ])("fails %s: the segment falls back to real resizes and the cover is found", async (_n, extra, width) => {
+  // the reviewer's probe runs the whole pass (320–1920); the variants measure 340–400, which holds their windows — the
+  // html box check runs at the ends of that range too, so the fallback is the same (CI time: ~440 real resizes each saved)
+  it.each<[string, string, number, [number, number] | undefined]>([
+    ["the reviewer's probe: html { margin-right: 100px } under 760 px", "@media (max-width: 760px) { html { margin-right: 100px; } }", 370, undefined],
+    ["html { padding-right: 100px }", "@media (max-width: 760px) { html { padding-right: 100px; } }", 370, [340, 400]],
+    ["html { border-right: 16px } (the dt wider, so the window lands above 320 px)", "@media (max-width: 760px) { html { border-right: 16px solid #1F1D1B; } } .tel-row dt { flex: 0 0 140px; }", 372, [340, 400]],
+    ["a percentage html width", "@media (max-width: 760px) { html { width: 75%; } }", 360, [340, 400]],
+    ["a percentage html max-width", "@media (max-width: 760px) { html { max-width: 75%; } }", 360, [340, 400]],
+    ["a percentage html margin", "@media (max-width: 760px) { html { margin-right: 25%; } }", 360, [340, 400]],
+  ])("fails %s: the segment falls back to real resizes and the cover is found", async (_n, extra, width, range) => {
     const page = await pageWith(extra);
     expect(cssProblems(page.css)).toEqual([]); // inside the allowlist: measured, not refused
-    const r = protectedGeometryCheck(await protectedGeometryPass(browser, page, required));
+    const r = protectedGeometryCheck(await protectedGeometryPass(browser, page, required, range ? { range } : {}));
     expect(r.ok).toBe(false);
     expect(r.segments_real).toBeGreaterThan(0);
     expect(inRanges(r.real_widths as string, width)).toBe(true);
