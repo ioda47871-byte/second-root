@@ -3644,6 +3644,64 @@
       ]
     },
     {
+      "id": "DEV-082",
+      "title": "Comp to site: Codex のデザイン画像（comp）を Claude が店専用の頁として忠実に実装するための local PoC（実装 spec・頁の契約・検査の harness・synthetic fixture。Codex は流さない）",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-072",
+        "DEV-073",
+        "DEV-074"
+      ],
+      "attempts": 6,
+      "last_failure": "Sixth review FAIL at 9d8de8e (PR #96): the 1px pass stepped the root's width as a stand-in for the viewport, but allowed CSS can give html a box (margin / padding / border / % width, max-width or margin): a real viewport then lays out a different content width, and the phone read 052-/000-/073 at 362–381 px unmeasured (the equivalence test applied the same override on its 'real' side). Fixed by measuring: both ends of each media segment are checked with real resizes (no override); stepping only where html has no box, real 1px resizes otherwise; the equivalence test now uses true resizes; 15 hit points per line, no line cap",
+      "branch": "feature/dev-082-comp-to-site",
+      "purpose": "最終目標は既存 template の色や配置の調整ではなく、Codex が作った店ごとの original なデザイン画像を Claude が Web サイトとして忠実に実装すること。画像生成（HUMAN-022 で止まっている）が動いたらすぐ実装に入れるよう、comp bundle（PoC の出力 + 評価 + layout spec + asset の一覧）→ Claude の実装（standalone HTML / CSS）→ Chromium の検査 → report・PC / mobile の screenshot、の道筋を先に作る。comp の中の文字は事実の出典にしない。設計は docs/operations/comp-to-site.md",
+      "acceptance_criteria": [
+        "bundle の loader: comp を png.ts で検査、事実は facts の正本（DEV-073 の fixture、worker の fact filter）からだけ読み bundle の shop-facts.json と一致しなければ止める、art direction・評価（hard fail・合計・人の確認）・layout spec を検査し、実物の comp は人が確認した rubric の合格（≥ 22）の後だけ",
+        "実装 spec（layout-spec.json）の schema と validator: 節の順と box・palette・type scale・spacing・nav・CTA・image slot・disclosure の位置・必須の事実・事実の逐語の抜粋。語は固定の label か事実の抜粋か 2 つの disclosure だけ",
+        "頁の契約: index.html + style.css + assets.json + assets/ だけ、script・event handler・inline style・外部 URL なし、CSS は shop-css の tokenizer と never の一覧（guardShopCss は頁全体には狭すぎることを文書化）。Chromium で network を route で塞ぎ JavaScript を切って 1440 / 390 で描く",
+        "検査（固定の符号と数）: 事実の allowlist（作った価格などは失敗）・AI 画像を使うときの disclosure・節の順と位置・palette・type の階層・spacing・nav / CTA / dead link・image slot と歪み・320〜1920 の横 overflow・文字の clip / 被り / 重なり（shop-css の MEASURE_SCRIPT と overprinted を再利用）・anti-template の構造の距離と CSS の再利用・comp との類似度（報告だけ、決して pass にしない、synthetic は synthetic_only）",
+        "synthetic fixture（架空菓庵、AI 画像も写真も使わない、synthetic と明記）で end to end。report は synthetic_only・faithful_reproduction_claimed=false",
+        "既存の営業 demo の生成・worker・timer・asset store の規則・品質ゲートと閾値・components/demo・workflow・依存は変えない",
+        "review fixes: no CSS string except font family / grid area names, no counter-* property; no aria-hidden over text; the disclosure and every required fact pass the legibility check (Stage 3 contrast + ink proof, zoom, opacity, fill, effects) at 320 / 390 / 1440 / 1920; placeholder PNGs flat; output root checked before creation, an existing one must be a private 0700 directory of the user",
+        "re-review fixes: style.css is an allowlist (page-css.ts: the shop-css guard's tokenizer and value grammar, its own selectors and width-only @media in 320–1920, no pseudo-elements); protected text ink ≤ 1.15 × the reference; legibility and overflow at render-check checkWidths of the page's breakpoints; placeholder PNGs exactly one colour; the output root created alone (EEXIST → private-dir check) and chmod-ed through its descriptor",
+        "third-review fixes: CSS_VIEWPORT_UNIT; grid rows by content; grid-auto-flow row, float none, no column+wrap; FIXED_HEIGHT_TEXT; legibility_sweep every 32px 320–1920 in one resized context; LABEL_OUTSIDE_DL / DT_WITHOUT_DD / PAIR_ORDER at every checked width; TEXT_ROTATED from the composed chain; ol removed and LIST_MARKER; DISCLOSURE_/FACT_DECORATED; text-transform none, font-variant-caps normal",
+        "fourth-review fixes: position static only, no z-index / transform, opacity 1, horizontal writing only, no multi-column; ASPECT_RATIO_TEXT, MIN_HEIGHT_ZERO_TEXT, COLUMN_FLEX_BASIS_TEXT, TEXT_BOX_OVERFLOW; IMAGE_OVERLAP for protected text at every checked width and in the sweep; info labels mapped to facts (PAIR_WRONG_FACT, DT_NOT_A_LABEL, LABEL_OUTSIDE_DL by containment, PAIR_LINE); no 16px pass (CI time), documented",
+        "the human's guidance of 2026-10-22: a strict safety base (no rule relaxed to pass review; conflicts written down); doc §6a lists every expressive capability the allowlist forbids and why, as input for DEV-083 (not designed here); comp-impl test cost cut without skipping tests (shared runs, targeted measurements)",
+        "fifth-review fixes: protected_1px — every width 320–1920 for the disclosure and required facts: out of box (both axes), off the page, covered (elementFromPoint), image overlap, reported as ranges; ~1–2 s per page; TEXT_BOX_OVERFLOW on the inline axis too; probes A, B and the img variant fail; no new CSS restriction",
+        "sixth-review fixes: protected_1px checks html's box (zero margin / border / padding, margin box = innerWidth) at both ends of every media segment with real resizes; steps the root only where both pass, real 1px resizes otherwise (segments_stepped / segments_real reported); equivalence tested against true resizes; the reviewer's probe and the padding / border / % width / % max-width / % margin variants fail; the synthetic page stays fully stepped"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/comp-impl/*（spec・各検査の pass / fail・bundle と頁の loader・Chromium の end to end・reference fingerprint の再生成との一致）",
+        "guardrails・ai-tasks の unit、npm run typecheck、eslint（変更した file）、check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/comp-impl/**",
+        "scripts/sales-design-worker/comp-impl-poc.ts",
+        "scripts/sales-design-worker/comp-impl/**",
+        "tests/unit/design-agent/comp-impl/**",
+        "tests/unit/design-agent/design-image-poc.test.ts（隔離の検査に comp-impl の PoC だけを名指しで足す。renderer・worker・preview・assets の除外は不変）",
+        "tests/unit/design-agent/shop-css/scope.test.tsx（shop stylesheet の隔離の検査から comp-impl の PoC だけを除く。公開・admin の頁の検査は不変）",
+        "lib/design-agent/shop-css/render-check.ts（inkMass と Picture の export だけ。挙動・閾値は不変）",
+        "docs/operations/comp-to-site.md",
+        ".ai/**（feature branch では progress.md を除く）"
+      ],
+      "forbidden_scope": [
+        "Codex の実行・model / API の呼び出し・CLI の変更・WSL での操作",
+        "components/demo/*（PR #41 の範囲）・営業 demo の生成・worker・timer・asset store の規則・品質ゲートと閾値",
+        "Production・Staging・DB・Vercel の設定・.github/workflows・package.json の依存",
+        "AI 画像の公開・asset store への AI 画像の取り込み",
+        "synthetic の成功を実物の comp の忠実な再現として扱うこと"
+      ],
+      "human_approval_triggers": [
+        "実物の comp（HUMAN-022 の後の画像生成、rubric の合格と人の確認）での最初の実装と、comp と頁を並べた人の判断",
+        "AI の concept 画像（DEV-076）を local preview で使うこと（1 枚ずつの人の review の記録）",
+        "Claude の実装の段を自動化すること（HUMAN-023）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
+    },
+    {
       "id": "DEV-084",
       "title": "Design image PoC: imagegen の最初の呼び出しが毎回約 156 秒で失敗する原因の調査（rust-v0.159.0 と reqwest の source を data として読む）と、呼び出しごとの時間の診断（Codex は流さない）",
       "status": "done",
