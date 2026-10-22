@@ -1,6 +1,7 @@
 # DEV-083: high-quality design, reproduced safely
 
-> **Design and plan only.** No code, no Codex, no model or API call, no WSL run. Nothing in this document is in force.
+> **Design and plan only**, except phase A (verification only), which is built: see §10 for what it added, what it skipped
+> and the measured costs. No Codex, no model or API call, no WSL run. No relaxation in this document is in force.
 > DEV-083 starts after DEV-082 (PR #96, `docs/operations/comp-to-site.md`, `lib/design-agent/comp-impl/`) is merged.
 >
 > **Approval rule.** Phase A (§7) only **adds** checks and relaxes nothing: it follows the normal `docs/AI_WORKFLOW.md` §4
@@ -218,7 +219,7 @@ text and the info pairs (no screenshots: rectangles and computed style). Pixel p
 390, 768, 1024, 1440, 1920 and ±1 px of every breakpoint), except for the analytic image contrast of §3.1(a), which is cheap
 enough to run at every width.
 
-**Cost: unmeasured.** A realistic per-width cost for a resize plus the structural scripts is **50–200 ms**, which gives
+**Cost: measured in phase A (§10)** — the naive real-resize pass is 12.4 s, the layout hash alone ~0.9 s stepped. The estimate was: a realistic per-width cost for a resize plus the structural scripts is **50–200 ms**, which gives
 **80–320 s** for 1601 widths — not affordable in CI per test, and possibly not per run. Phase A must measure it. Proposal:
 **layout-change detection** — at every 1 px width run only a cheap script that hashes the layout state the checks depend on
 (line-break positions per text node, rounded rects of text lines and of every positioned / stacked / overlapping box, the
@@ -475,7 +476,7 @@ and cannot, answer *is this page good* or *is this page the comp*.
 
 ## 6. Costs, CI time, risks
 
-**Run time (estimates, unmeasured; phase A measures them before any relaxation phase is proposed).** A DEV-082 full run takes
+**Run time (estimates; phase A measured the rows that exist — §10 has the numbers).** A DEV-082 full run takes
 about 13 s.
 
 | added work | per run, estimate | when |
@@ -582,3 +583,72 @@ Nothing in the harness. This is a plan. `lib/design-agent/comp-impl/**`, `docs/o
 `lib/design-agent/shop-css/**`, the sales demo, the worker and its timer, the asset store rules, the quality gates and thresholds,
 `.github/workflows`, `package.json`, Production, Staging and the database are untouched. (The same PR records the human's
 rubric policy of 2026-10-22 — every criterion ≥ 4 — in the rubric documents; see the roadmap §2, stage 1.)
+
+## 10. Phase A as built (2026-10-22)
+
+The human approved starting phase A on 2026-10-22 with these conditions: strengthen checks only; do not relax the CSS
+allowlist; connect nothing to operations (worker, real Codex, Next.js app routes, sales); later phases may be designed here,
+but any implemented relaxation needs its own approval. Phase A relaxes nothing: `page-css.ts`, every existing check in
+`checks.ts` / `render.ts`, every tolerance and threshold are unchanged, and **every existing comp-impl test passes unchanged**
+(302 of 302 before the new tests were added). The synthetic fixture passes every new check at every checked width and on the
+32 px sweep. The one schema change is that `layout-spec.json` may now carry `capabilities` (omitted or `[]`); every value is
+refused (the enum is empty).
+
+### What was built
+
+| block | where | what it does in phase A | gate? |
+|---|---|---|---|
+| V1 roles | `layers.ts` `LAYER_SCRIPT`; `data-comp-role` added to the DOM allowlist's shared attributes | derived role per element (content when the subtree holds text or an aria-label; media for an img or a placeholder slot; decoration for any other text-free box); a declared role only confirms it: `ROLE_UNKNOWN`, `ROLE_MISMATCH`, `ROLE_{DECORATION,GROUND,MEDIA}_HAS_TEXT`. Any generated `::before` / `::after` fails `PSEUDO_GEOMETRY_UNKNOWN` | yes (`layers_<width>`, `layers_sweep`) |
+| V2 paint order | `LAYER_SCRIPT` | CSS 2.1 Appendix E with order-modified document order, atomic painting of inline-blocks / flex / grid items / inline replaced elements and floats, escape of positioned descendants and real contexts to the parent context, the stacking-context triggers of §2 V2, outlines last. `PAINT_ORDER_COVER` for any painting box (ground, border, outset shadow, img content, outline ring) that paints after a text node and meets one of its line boxes (> 0.5 px both ways), whatever its colour or alpha; `STACKING_CONTEXT` when the model finds one (the allowlist forbids them, so this is defence in depth) | yes |
+| V2 Chromium comparison | `render.ts` `paintCrossCheck`; `phase-a.test.ts` | per intersecting text / box pair: the text pure red and everything else transparent, the box painted or not; where the text's opaque glyph pixels change, the box is on top. 22 fixtures (5 inside today's allowlist, 17 raw HTML for constructs the allowlist refuses): **the model agrees with Chromium on every conclusive pair**, and every fixture's key pair is conclusive | test |
+| V3 layered reference | `render.ts` `layeredInkPass` | reference keeps ground and media, hides decoration (by V1 role) and every non-protected text. Tested on raw HTML: ink ratio > 0.95 on a smooth gradient ground; < 0.8 under a translucent decoration. Not used by `run.ts` (it matters only once an overlap capability exists) | no (harness) |
+| V3b ground structure | `verify.ts` `groundStructure`, inside `legibilityPass` on the existing text-hidden picture | per protected glyph box + 1 px: max channel deviation from the box median, luminance deviation, Sobel energy. `GROUND_NOT_FLAT` above 6 levels (the doc's provisional *t*; every current page measures **0**). Busyness is reported only. `scrimBound` (both analytic conditions) and `gradientStopProblems` are pure functions with the §2 probes as tests (a = 0.9 fails structure, straddling corners fail contrast, hard stop and 1 px soft edge fail) | GROUND_NOT_FLAT yes; the rest report / tests |
+| V4 extents | `LAYER_SCRIPT` | border box + outset shadows + outline, bounding box of any transform, of every non-content element vs every line box of the disclosure and required facts: `DISCLOSURE_NONCONTENT_OVERLAP` / `FACT_NONCONTENT_OVERLAP` (no exception: `hero_overlay` is not approved) | yes |
+| V6 layout hash | `layers.ts` `LAYOUT_HASH_SCRIPT`; `render.ts` `layoutHashPass`, `gatedGeometryPass` | per width, a signature of every protected line's geometry relative to its box, its page-edge overflow, image overlap, and every other element within 2 px of the line (rect relative to the line, ¼ px). The gated pass runs `GEOMETRY_SCRIPT` only where the signature changes (and both neighbours, segment ends). **Equivalence-tested against the full 1 px pass, width by width**, on the synthetic page, both fifth-review probes (320–1920), the sixth review's real-resize probe and the seventh review's centred root. Not wired into `run.ts`: it saves too little (below) | no (measured alternative) |
+| V7 capabilities | `spec.ts` `APPROVED_CAPABILITIES = []`; `verify.ts` `capabilitiesCheck`; `report.capabilities` | any declared capability: `SPEC_CAPABILITY_NOT_APPROVED` (bundle refused); the report lists the declared list (always empty) | yes |
+| V9 | `LAYER_SCRIPT`, `verify.ts` `visibilityMatrixCheck` | computed `writing-mode` of dt, dd, the disclosure and protected text (inherited too): `PROTECTED_VERTICAL`; visibility matrix across the checked widths: `FACT_VISIBILITY_CHANGES` | yes (`visibility_matrix`) |
+| V10 perturbation | `render.ts` `perturbedGeometryPass`, `layers.ts` `PERTURB_SCRIPT`, `WIDEST_FACE_SCRIPT`; `verify.ts` `metricsCheck` | the 1 px pass with the widest installed allowlisted face (on this machine DejaVu Serif — no wider CJK face is installed) or ±0.05 em tracking; `METRICS_FRAGILE` when a variant fails widths the base passes. Tested on a probe that fits only at the exact metrics; the synthetic page finds nothing new under all three variants | no (harness; runs only for declared overlap capabilities) |
+
+### Skipped or deferred, and why (no rule weakened)
+
+- **Pseudo-element geometry proof** (V1): pseudo-elements are refused by the allowlist and first allowed in phase B
+  (`ornament`). Phase A fails closed instead: any generated `::before` / `::after` is `PSEUDO_GEOMETRY_UNKNOWN`. The geometry
+  proof belongs with the phase B proposal.
+- **V9 reading order against a spec-declared order per section and width**: the spec has no such field; adding one is a
+  schema decision for phase C (fixed grid placement) / E (re-layout). Today the allowlist refuses every placement, and
+  `PAIR_ORDER`, `PAIR_LINE` and `mobileOrderCheck` are unchanged.
+- **`position: sticky` probe**: sticky is refused and its cover depends on the scroll position, which the harness never
+  changes; it belongs with any capability that would allow it.
+- **Budget (V7)**: its values are provisional gate values for the human; with no capability approved there is nothing to count.
+- **WebKit runs, viewport-height sweep, analytic image contrast, hover / focus states**: not built (a new browser needs the
+  human's approval; the others belong to phases C and F), so their §6 rows stay estimates.
+
+### Measured costs (local container, Chromium 1194, best of 3 unless noted)
+
+| §6 row | measured |
+|---|---|
+| V1 + V2 + V4 + V9 (`LAYER_SCRIPT`, one call per width, synthetic page) | **6.8 ms per width** (51 sweep widths); 6–23 ms at the checked widths |
+| V3b on the existing pictures | **33 ms per checked width** (165 protected glyphs) |
+| one checked width (`legibilityPass` with the layer scan and V3b) | 949 ms |
+| coarse sweep, 51 widths, with the layer scan | 2.3 s |
+| **whole run, synthetic page** | **10.8 s → 11.7 s (+0.94 s)** |
+| V3 layered reference, one width (4 screenshots) | 0.94 s |
+| 1 px pass, current (root width stepped) | 1.58 s synthetic, 1.49 s probe A |
+| 1 px pass, naive (real resize at all 1,601 widths) | **12.4 s** synthetic, 12.6 s probe A (≈ 7.8 ms a width) |
+| layout hash alone, stepped / with real resizes | 0.97 s / 13.0 s |
+| gated 1 px pass (hash + `GEOMETRY_SCRIPT` at change points) | 1.13 s synthetic (65 widths measured fully, 30 signature changes); 1.29 s probe A (105 widths, 67 changes); same findings as the full pass |
+| V10 perturbation, one variant over 320–1920 | 1.7–2.2 s |
+| V2 Chromium comparison | ~85–130 ms per fixture (two clipped screenshots per pair) |
+
+**What the numbers say for V6.** The doc's 50–200 ms per width was pessimistic: a real resize plus the structural script is
+about 8 ms, so a naive 1 px pass over 1,601 widths costs **~12.5 s** per page, not 80–320 s. The cost is the **resize
+itself**: hashing at every width costs as much as measuring when the viewport has to be really resized, so layout-change
+detection saves nothing there; where the root's width can be stepped (no viewport units, no fixed positioning), the full pass
+is already ~1.5 s and the hash saves ~0.3 s. Phase A therefore keeps the full 1 px pass in `run.ts`; the gated pass stays an
+equivalence-tested tool. Capabilities that need real resizes (viewport units, `vh` heroes, fixed positioning) should budget
+**~12.5 s per page per variant**, and the V10 perturbation multiplies that by 3.
+
+**CI.** The new test file (`tests/unit/design-agent/comp-impl/phase-a.test.ts`, 51 tests) takes ~26 s of test time and runs
+in parallel with `e2e.test.tsx`; the comp-impl suite's wall time stayed at ~88–94 s locally (92 s before), and its summed
+test time rose from ~100 s to ~119 s. Run inside the sharded unit job (DEV-085).
+

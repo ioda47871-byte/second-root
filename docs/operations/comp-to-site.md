@@ -349,6 +349,32 @@ vertical Japanese type, mobile re-layout and textured / photographic grounds are
 each is forbidden above. A real comp that relies on one of them cannot be implemented faithfully in DEV-082; the
 implementation would have to approximate it, and the person comparing the screenshots would see the difference.
 
+## 6b. DEV-083 phase A: verification added, nothing relaxed (2026-10-22)
+
+Phase A of DEV-083 (`docs/design/dev-083-expressive-safe-reproduction.md` §7, built as §10 there) adds checks to the run and
+changes no existing one: the allowlist above, every check of §6 and every tolerance are as they were, and every page that
+passed before still passes (the synthetic fixture included). New in `report.json`:
+
+| check | measured | codes |
+|---|---|---|
+| `layers_<width>` (every checked width) | `LAYER_SCRIPT` (`layers.ts`): roles, paint order, non-content extents, computed writing mode; the ground under protected glyphs from the existing text-hidden picture | `ROLE_UNKNOWN`, `ROLE_MISMATCH`, `ROLE_*_HAS_TEXT`, `PSEUDO_GEOMETRY_UNKNOWN`, `STACKING_CONTEXT`, `PAINT_ORDER_COVER`, `DISCLOSURE_NONCONTENT_OVERLAP`, `FACT_NONCONTENT_OVERLAP`, `PROTECTED_VERTICAL`, `GROUND_NOT_FLAT` (protected glyph box + 1 px deviates > 6 levels from its median) |
+| `layers_sweep` | the same scan at each of the 51 sweep widths (no pixels) | as above, without `GROUND_NOT_FLAT` |
+| `visibility_matrix` | facts shown per checked width | `FACT_VISIBILITY_CHANGES` |
+| `capabilities` (and `report.capabilities`) | `layout-spec.json` `capabilities` | none approved: any entry is refused before rendering (`SPEC_CAPABILITY_NOT_APPROVED`) |
+
+- **`data-comp-role`** (`content` / `decoration` / `ground` / `media`) is now an allowed attribute. It grants nothing: the
+  role is derived from the subtree (text → content; img or placeholder slot → media; any other text-free box → decoration)
+  and a declared role must agree with it.
+- **Paint order** follows CSS 2.1 Appendix E (atomic painting of flex / grid items and inline-blocks, order-modified document
+  order, stacking-context triggers). On a page the allowlist accepts, the only covers it can find are the fifth review's class
+  (a later atomic item over an earlier item's sideways overflow) — which now fails `PAINT_ORDER_COVER` and
+  `FACT_NONCONTENT_OVERLAP` at the checked and sweep widths, besides the 1 px pass. The model is compared with Chromium's
+  painting pixel by pixel on 22 fixtures in `tests/unit/design-agent/comp-impl/phase-a.test.ts`.
+- **Harnesses, not gates in the run** (they matter once an overlap capability is approved): the layered ink reference (V3),
+  the layout-change hash and gated 1 px pass (V6; equivalence-tested against the full pass on every DEV-082 probe), the metric
+  perturbation pass (V10: widest installed face, ±0.05 em tracking).
+- **Cost:** +0.94 s per run on the synthetic page (10.8 → 11.7 s). The measured numbers for every block are in the design doc §10.
+
 ## 7. Comp similarity and the anti-template guard
 
 **Similarity (`similarity.ts`).** The comp and the desktop full-page screenshot are box-filtered onto the same 96 × n grid
