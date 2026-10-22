@@ -17,6 +17,19 @@
   - 人の判断が要る: review の notes を次の round に渡す（DEV-034 の方針の変更）／ 初期候補を 2〜3 個にする（Codex の時間とコスト）／ Instagram の写真を使う（権利・同意の判断）
 - 次の実走: efb4bdb2 は attempts 2/3 で blocked（再 reset は未承認）。改善の効果は新しい controlled run（人の承認: 対象 demo・DB の reset・W・C）で測る
 
+### HUMAN-022 — HUMAN-018 と HUMAN-021b が CODEX_HOME に残したものを読む（Codex を呼ばない・費用 0。DEV-081）
+
+- 背景: HUMAN-021b は code mode で imagegen を呼び、images の要求そのものが失敗した（`img_fail=OTHER`）。rust-v0.159.0 の source（DEV-081、`docs/operations/design-image-poc.md` の「Why a called image tool failed」）では、
+  構造化された `failure` は limit id が `image_gen` の usage limit のときだけで、他の失敗（別の limit id の 429・4xx・5xx・timeout・接続・認証）はすべて `failure: null`。HTTP の状態は session log に残らない（cell の script が表示したときだけ）。
+  一方、PoC の掃除は `sessions/**/rollout-*.jsonl` しか消さず、Codex の `state_5.sqlite`（threads: model・reasoning_effort・cli_version・history_mode・作成時刻）と
+  `thread_history_1.sqlite`（paginated の item: `imageGeneration` の status・failure・開始と終了の時刻）と `models_cache.json`（最新の catalog）は残る。
+- 何: runbook の「HUMAN-022」のコマンド（jail の中の `sr-designgen`、run.lock の中、SQLite は `mode=ro`、network・model・`codex` の process なし）。印字は固定の欄だけ（thread id・cwd・題・最初の message・prompt・結果・path・identity・ETag は出さない）。
+- 費用: なし（Codex 0 回）。
+- 分かること: HUMAN-018 と HUMAN-021b の model が違うか（違えば server 側の既定の model の変更が最有力 → `-m` の案）、21b の失敗が即座か（4xx）長くかかったか（5xx / timeout）、HUMAN-019 / 020 が画像ツールを呼んだか、catalog の先頭の model と `tool_mode`・画像入力。
+- 触れないもの: HUMAN-021 と同じ。CODEX_HOME の file は読むだけ（書かない・消さない）。`codex` を起動しない。
+- 返してほしいもの: 出力そのまま（秘密は含まない）。
+- 解除条件: 出力が届く、または人が流さないと決める。
+
 ### HUMAN-021 — 画像ツールが使われない原因を分ける、安い順の確認（DEV-078 の merge の後。1 段ずつ別の承認）
 
 - 背景: HUMAN-019（1effb40）と HUMAN-020（cae33e8）の v2 は、どちらも `CODEX_NO_IMAGE`。HUMAN-020 の診断: exit 0・`image_tool=0/0`・`agent_msgs=1`・`agent_chars=32`・`errors=0`・`turn=completed`・`thread_dir=0`・画像 0、Codex 約 183 秒（HUMAN-019 には診断がなかった）。
@@ -50,7 +63,10 @@
      分かること: `.env` の有無（あれば DEV-078 は `CODEX_DOTENV_PRESENT` で止まる。中身は見ない・貼らない。人が jail の中で消すか移す。その後もう一度 21a）、版（0.163.0 か、もっと古いか）、config.toml が `image_generation = false` にしていないか、使う model が画像の入力に対応しているか（`image_generation_available` の条件）。`--bundled` は binary の中の一覧だけを読む（network なし）。
      返してほしいもの: 出力そのまま（秘密は含まない）。
      任意（同じ `admin.sh run sr-designgen -- /bin/bash -lc '…'` の中で、`.env` が無いと確かめた後に）: `codex features list | grep -E "^image_generation"`（model の呼び出しはないが、cloud の設定を取りに network に出うる。利用枠は使わない）。
-  2. **21b — v1 の再走（実績のある prompt、Codex 1 回）**。HUMAN-020 から少なくとも数時間（できれば翌日）空けて、画像の利用枠の窓が戻ってから:
+  2. **21b — v1 の再走（実績のある prompt、Codex 1 回）。済み（2026-10-22、人が develop c3fa813 で流した）**: CLI 0.159.0・model `gpt-6.1-sol`・prompt 4 754 字・
+     `hist=paginated tool_mode=unknown cm_cells=1 cm_ref=1 img_calls=1 img_ok=0 img_failed=1 img_fail=OTHER` → `outcome=TOOL_FAILED`・`class=capability`・stop `CODEX_IMAGE_TOOL_FAILED`、画像なし。
+     → model は code mode の cell から imagegen を呼び、images の要求そのものが失敗した（`image_gen` の usage limit ではない）。理由の切り分けは DEV-081（`img_fail_type=` `img_fail_reason=` `img_http=` `img_err=` と models cache の欄）、次の確認は HUMAN-022（Codex を呼ばない）。以下は記録として残す手順:
+     HUMAN-020 から少なくとも数時間（できれば翌日）空けて、画像の利用枠の窓が戻ってから:HUMAN-020 から少なくとも数時間（できれば翌日）空けて、画像の利用枠の窓が戻ってから:
 
      ```bash
      sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
@@ -65,7 +81,7 @@
      `outcome=TOOL_FAILED_USAGE_LIMIT` / `POC_STOP: CODEX_QUOTA` なら画像の利用枠（Extension item の構造化された失敗）。`TOOL_FAILED*` / `CODEX_IMAGE_TOOL_FAILED` ならツールは呼ばれて失敗した（`img_fail`。code mode では `cm_ref=1`・`img_calls≥1` で `function_call` が無いのが普通）。
      `TOOL_NOT_SEEN_CODE_MODE`（class `inconclusive`）なら、code mode（`cm_cells>0` か `tool_mode=code_mode_only`）で呼び出しが見えないだけで、**試みたかどうかは分からない**（引数の検査で始まる前に断られた呼び出しは何も残さない。0.159.0 の log にはツールの一覧も無い）。prompt の問題とは読まない。次の一手は runbook の提案「`-m gpt-5.5` で imagegen を direct のツールにする」（挙動の変更なので人の承認と別の PR が要る）。
      `TOOL_NOT_CALLED` を信じてよいのは `tool_mode=direct`（か `unknown`）**かつ** `cm_cells=0` のときだけ（+ `answer=TEXT_TOOL_UNAVAILABLE` ならツールが出ていない、`TEXT_OTHER` / `TEXT_REFUSAL` ならモデルが文章を選んだ）。
-  3. **21c — v2（DEV-078 の版、prompt は HUMAN-020 と同じ）、Codex 1 回**。21b で v1 が画像を出した後だけ。コマンドは 21b から `SR_DESIGN_IMAGE_POC_DIRECTION=v1 ` を外したもの（HUMAN-020 と同じ）。
+  3. **21c — v2（DEV-078 の版、prompt は HUMAN-020 と同じ）、Codex 1 回。保留（2026-10-22、人の判断）**: 21b の v1 が画像を出さなかったので流さない。v1 が再び画像を出すまで保留。21b で v1 が画像を出した後だけ。コマンドは 21b から `SR_DESIGN_IMAGE_POC_DIRECTION=v1 ` を外したもの（HUMAN-020 と同じ）。
      分かること: `outcome=` と `answer=` で、呼んで失敗した（`TOOL_FAILED*`）か、呼ばなかった（`TOOL_NOT_CALLED`、direct mode で `cm_cells=0` のときだけ）か、code mode で分からない（`TOOL_NOT_SEEN_CODE_MODE`、`inconclusive`）かが分かる。
      `TOOL_NOT_CALLED` + `TEXT_OTHER` / `TEXT_REFUSAL` のときだけ、v2 の prompt を v1 の実績のある指示の書き方に寄せる修正（別 Task、根拠つき）を提案する。`TOOL_NOT_SEEN_CODE_MODE` では prompt を直さず、21b と同じく direct mode の model の提案（人の承認）へ。
   - 最小の画像 probe（1 行の prompt で「赤い丸を 1 枚」）は、21b の v1 が（direct mode で）`TOOL_NOT_CALLED` + `TEXT_OTHER` で曖昧なときだけ提案する（今は作っていない。作るなら PoC の 3 つ目の direction として別の小さい PR と別の承認）。
