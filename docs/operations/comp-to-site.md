@@ -282,6 +282,42 @@ between sweep widths (aspect-ratio + `min-height: 0`, a later `position: relativ
 values in HTML — and asked to close the causes: no stacking context can exist, no box can be shorter than its text, and labels
 are mapped to their facts.
 
+## 6a. Expressive capabilities the allowlist forbids today (input for DEV-083)
+
+> **The human's decision (2026-10-22):** DEV-082 is finished as a **strict safety base**; no safety rule is relaxed to pass a
+> review. These restrictions also block things a high-quality design needs. Making them possible is a later task (DEV-083),
+> which must pair each allowed expression with its own verification. This section only **lists** what is forbidden now and
+> why; it does not design DEV-083.
+
+| capability a comp may show | forbidden by | why (the risk it was closing) |
+|---|---|---|
+| text over a hero image (overlay title, caption on a photo) | no offsets / `position` other than static / negative margins; `IMAGE_OVERLAP` for protected text | covering is not measurable once boxes can overlap; contrast of text on an image is not proven by the Stage 3 ground model |
+| decorative overlap, layered cards, offset frames | `position` static only, no `z-index`, no negative margins, no offsets | any stacking context lets a later box paint over earlier text (fourth review F1) |
+| tilted, scaled or mirrored elements; parallax-like shifts | no `transform` at all (the ≤ 8° rotation was dropped in the fourth review) | mirroring redrew facts; nested rotations reached 96°; a transform creates a stacking context |
+| fades, translucency, blend modes, frosted glass, duotone images | `opacity: 1` only; no `filter`, `backdrop-filter`, `mix-blend-mode`, `mask`, `clip-path` | faded / blended / clipped text, and images whose hidden content a filter can reveal |
+| gradients and background images (textures, washi paper grounds, photo bands) | `background` is a plain colour only; no `url()` (tokenizer) | an image or gradient ground defeats the contrast proof; a background image is an unreviewed asset outside the asset list |
+| ornaments from pseudo-elements, drop caps, quote marks | no pseudo-elements (`::before`, `::after`, `::first-letter` …) | `::first-letter` shrank / hid the first character of facts; pseudo-element text is outside the facts check |
+| outlined or shadowed display type, decorative underlines | no `text-shadow`, `-webkit-text-stroke`; `text-decoration` none / underline only, never on protected text | shadows and strokes add ink in the text colour (an invisible line-through, duplicated text) |
+| tight display tracking, Latin capitals, small caps | `letter-spacing` ≥ 0; `text-transform: none`; `font-variant-caps: normal` | negative tracking overprints; case transforms change how Latin facts are drawn |
+| 縦書き (vertical Japanese headings or copy) | `writing-mode: horizontal-tb` only | in vertical writing `width` becomes the block size, so a box can be shorter than its text |
+| multi-column text, magazine flows | no `column-*` | columns split a `dl` and pair labels with other values |
+| asymmetric magazine grids (named areas, explicit lines, items spanning into each other, dense packing, column flow) | grid placement by `span` only; `grid-auto-flow: row`; content-sized rows | explicit placement and column flow set labels beside other values; fixed rows let text leave its box |
+| mobile re-layout (moving the image below the copy, reordering sections, hiding the nav behind a menu) | no `order`, no reversed flex directions, no `float`, no `display: none`, no column + wrap flex | reordering moves labels beside other values; hidden text is skipped by the facts and legibility checks |
+| full-bleed heroes and equal-height cards with fixed heights, line clamping, ellipsis | no fixed height, `aspect-ratio` or `min-height: 0` on text-holding elements; no `overflow`, no `text-overflow` | a box shorter than its text lets wrapped text leave it (and be covered) at widths no check samples |
+| fluid type and spacing (`clamp(…vw)`), container queries | no viewport or container units; `@media` width only | text wrapped at widths no breakpoint names (third review) |
+| hover / focus states, motion, transitions | no state pseudo-classes; no animation properties | never visible in a screenshot, so never checked |
+| brand web fonts (a specific Mincho), icon fonts | no `@font-face`; `font-family` from a fixed list of installed text faces | a font fetch is network; a symbol font redraws a fact's digits |
+| custom list markers, numbered steps | no `ol`; `list-style: none` only | markers are drawn text outside the facts check (numbers from counters) |
+| inline SVG icons, video, canvas | not allowed elements | content outside the DOM text the checks read |
+| richer colour (hsl, oklch, named colours) | the guard's colour grammar (hex, `rgb()`, `transparent`, `currentcolor`, `white`, `black`) | inherited from the Stage 3 guard; not a safety finding of this PoC |
+| any `dl` other than the shop information (a menu with prices as a `dl`) | every `dt` must be one of the five info labels with its fact | labels are mapped to facts; other pairs have no source of truth |
+| captions or copy beyond verbatim fact excerpts and fixed labels | the facts allowlist | invented text (prices, claims) — not an expressiveness limit to relax |
+
+**Remaining conflicts between safety and needed function** (written down, not resolved here): text over a hero image,
+vertical Japanese type, mobile re-layout and textured / photographic grounds are each common in a high-end wagashi comp and
+each is forbidden above. A real comp that relies on one of them cannot be implemented faithfully in DEV-082; the
+implementation would have to approximate it, and the person comparing the screenshots would see the difference.
+
 ## 7. Comp similarity and the anti-template guard
 
 **Similarity (`similarity.ts`).** The comp and the desktop full-page screenshot are box-filtered onto the same 96 × n grid

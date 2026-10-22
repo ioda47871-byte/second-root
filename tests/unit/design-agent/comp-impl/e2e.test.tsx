@@ -6,14 +6,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import { CompImplError, sha256 } from "@/lib/design-agent/comp-impl/bundle";
-import { runCompImpl, writeCompImplOutputs, type RunResult } from "@/lib/design-agent/comp-impl/run";
+import { antiTemplateCheck, templateCss } from "@/lib/design-agent/comp-impl/anti-template";
+import { failedChecks, loadReferences, runCompImpl, writeCompImplOutputs, type RunResult } from "@/lib/design-agent/comp-impl/run";
 import { buildSyntheticBundle } from "@/lib/design-agent/comp-impl/synthetic";
 import { loadHandWritten, parseShop } from "@/lib/design-agent/compare/shops";
-import { domProblems, legibilityCheck, pairsCheck, structureCheck, sweepCheck } from "@/lib/design-agent/comp-impl/checks";
+import { disclosureCheck, domProblems, factsCheck, imagesCheck, legibilityCheck, pairsCheck, requiredDisclosure, structureCheck, sweepCheck } from "@/lib/design-agent/comp-impl/checks";
 import { loadCompPage } from "@/lib/design-agent/comp-impl/page";
-import { compMeasure, DESKTOP, domAudit, legibilityPass, legibilitySweep, openCompPage } from "@/lib/design-agent/comp-impl/render";
+import { compMeasure, DESKTOP, domAudit, fingerprintOf, legibilityPass, legibilitySweep, openCompPage, pageWidths } from "@/lib/design-agent/comp-impl/render";
 import { factStrings } from "@/lib/design-agent/compare/shops";
-import { infoPairs } from "@/lib/design-agent/comp-impl/spec";
+import { infoPairs, type CompSpec } from "@/lib/design-agent/comp-impl/spec";
 import { POC_DISCLOSURE, POC_DISCLOSURE_V2 } from "@/lib/design-agent/design-image/prompt";
 import { FACTS_SOURCE, FIXTURE, flatPng, launch, pageCopy, privateTemp, removeDir, REPO } from "./support";
 
@@ -33,6 +34,7 @@ beforeAll(async () => {
   bundle = await privateTemp("bundle-");
   temps.push(bundle);
   await buildSyntheticBundle(browser, REPO, bundle);
+  defects = await defectsRun();
 });
 afterAll(async () => {
   await browser?.close();
@@ -40,6 +42,30 @@ afterAll(async () => {
 });
 
 const run = (pageDir: string) => runCompImpl({ bundleDir: bundle, pageDir, repoDir: REPO, factsSourcePath: FACTS_SOURCE, browser });
+
+/**
+ * One full run of a page with several independent defects at once (CI time: one run instead of seven; each check
+ * is asserted on its own code below). Each defect touches a different part of the page:
+ *   an invented price in a caption · a rule wider than a phone · a request for a file the page lacks · the phone
+ *   number under aria-hidden · a fixed height on the footer · a label written into a paragraph · an underline on the
+ *   disclosure
+ */
+let defects: RunResult;
+const spec = () => JSON.parse(readFileSync(join(FIXTURE, "layout-spec.json"), "utf8")) as CompSpec;
+const demo = () => parseShop(JSON.parse(readFileSync(FACTS_SOURCE, "utf8")) as unknown)!.demo;
+const PHONE_DD = '<dd data-comp-type="body">052-000-0731</dd>';
+async function defectsRun(): Promise<RunResult> {
+  return changed(async (d) => {
+    await editFile(d, "index.html", (s) =>
+      s
+        .replace('<p class="goods-caption" data-comp-type="caption">季節の上生菓子</p>', '<p class="goods-caption" data-comp-type="caption">季節の上生菓子 350円</p>')
+        .replace('<span class="lead-visual-disc"></span>', '<span class="lead-visual-disc"></span><img src="assets/missing.png" alt="">')
+        .replace(PHONE_DD, '<dd data-comp-type="body" aria-hidden="true">052-000-0731</dd>')
+        .replace('<p class="colophon-name"', '<p>電話：9:00〜18:00（売り切れ次第終了）</p><p class="colophon-name"'),
+    );
+    await editFile(d, "style.css", (s) => `${s}\n.lead-rule { width: 700px; }\n.colophon { height: 60px; }\n.colophon-note { text-decoration: underline; }\n`);
+  });
+}
 async function changed(edit: (dir: string) => Promise<void>): Promise<RunResult> {
   const dir = await pageCopy("page-");
   temps.push(dir);
@@ -82,10 +108,9 @@ describe("comp-to-site on the synthetic fixture", () => {
     expect(await refuse("relative/out")).toBe("OUTPUT_UNSAFE");
   });
 
-  it("fails an invented price", async () => {
-    const r = await changed((d) => editFile(d, "index.html", (s) => s.replace("<p class=\"goods-caption\" data-comp-type=\"caption\">季節の上生菓子</p>", "<p class=\"goods-caption\" data-comp-type=\"caption\">季節の上生菓子 350円</p>")));
-    expect(r.report.mechanical_ok).toBe(false);
-    expect(r.report.checks.facts_desktop!.codes).toContain("FACTS_UNKNOWN_TEXT");
+  it("fails an invented price", () => {
+    expect(defects.report.mechanical_ok).toBe(false);
+    expect(defects.report.checks.facts_desktop!.codes).toContain("FACTS_UNKNOWN_TEXT");
   });
 
   it("fails an AI concept image shown without the AI disclosure, and passes the disclosure once it is there", async () => {
@@ -97,22 +122,36 @@ describe("comp-to-site on the synthetic fixture", () => {
       await editFile(d, "index.html", (s) => s.replace(/<div class="lead-visual" data-comp-slot="hero-visual" data-comp-placeholder>\s*<span class="lead-visual-disc"><\/span>\s*<\/div>/, '<img class="lead-visual" data-comp-slot="hero-visual" src="assets/hero.png" alt="どら焼きの断面と粒あんのイメージ（AI生成）">'));
       await editFile(d, "style.css", (s) => `${s}\nimg.lead-visual { display: block; width: 100%; height: auto; object-fit: cover; }\n`);
     };
-    const r = await changed(withAi);
-    expect(r.report.page.ai_assets).toBe(1);
-    expect(r.report.checks.disclosure_desktop!.codes).toContain("DISCLOSURE_TEXT");
-    const fixed = await changed(async (d) => {
+    // the desktop measurement and the same checks run.ts applies to it (one page load instead of a full run)
+    const desktopChecks = async (edit: (d: string) => Promise<void>) => {
+      const dir = await pageCopy("ai-");
+      temps.push(dir);
+      await edit(dir);
+      const page = await loadCompPage(dir);
+      const o = await openCompPage(browser, page, DESKTOP);
+      try {
+        const m = await compMeasure(o.page);
+        const disclosure = requiredDisclosure(page.assets, m);
+        return { page, disclosure: disclosureCheck(m, spec(), disclosure), images: imagesCheck(m, spec(), page.assets), facts: factsCheck(m, { spec: spec(), demo: demo(), disclosure }) };
+      } finally {
+        await o.context.close();
+      }
+    };
+    const r = await desktopChecks(withAi);
+    expect(r.page.assets.filter((a) => a.kind === "ai_concept_local")).toHaveLength(1);
+    expect(r.disclosure.codes).toContain("DISCLOSURE_TEXT");
+    const fixed = await desktopChecks(async (d) => {
       await withAi(d);
       await editFile(d, "index.html", (s) => s.replace('data-comp-disclosure>架空店舗のデザイン提案<', `data-comp-disclosure>${POC_DISCLOSURE_V2}<`));
     });
-    expect(fixed.report.checks.disclosure_desktop!.codes).toEqual(["DISCLOSURE_SPEC_MISMATCH"]); // the spec was written for placeholders
-    expect(fixed.report.checks.images_desktop!.codes).toEqual(["SLOT_KIND"]);
-    expect(fixed.report.checks.facts_desktop!.ok).toBe(true);
+    expect(fixed.disclosure.codes).toEqual(["DISCLOSURE_SPEC_MISMATCH"]); // the spec was written for placeholders
+    expect(fixed.images.codes).toEqual(["SLOT_KIND"]);
+    expect(fixed.facts.ok).toBe(true);
   });
 
-  it("fails horizontal overflow at the narrow widths", async () => {
-    const r = await changed((d) => editFile(d, "style.css", (s) => `${s}\n.lead-rule { width: 700px; }\n`));
-    expect(r.report.checks.overflow!.codes).toEqual(["OVERFLOW_HORIZONTAL"]);
-    expect(r.report.checks.overflow!.overflowing).toContain(320);
+  it("fails horizontal overflow at the narrow widths", () => {
+    expect(defects.report.checks.overflow!.codes).toEqual(["OVERFLOW_HORIZONTAL"]);
+    expect(defects.report.checks.overflow!.overflowing).toContain(320);
   });
 
   it("fails the renderer's markup as a page (template reuse)", async () => {
@@ -122,20 +161,20 @@ describe("comp-to-site on the synthetic fixture", () => {
       .replace(/<svg[\s\S]*?<\/svg>/g, "")
       .replace(/\sstyle="[^"]*"/g, "")
       .replace(/https?:\/\/[^"'\s<>]*/g, "#"); // a copier would strip what the source check refuses
-    const r = await changed((d) => writeFile(join(d, "index.html"), `<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head><body>${body}</body></html>`));
-    expect(r.report.anti_template.ok).toBe(false);
-    expect(r.report.anti_template.codes).toEqual(expect.arrayContaining(["TEMPLATE_RENDERER_MARKER", "TEMPLATE_STRUCTURE_TOO_CLOSE"]));
-    expect(r.report.mechanical_ok).toBe(false);
+    const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head><body>${body}</body></html>`;
+    // the guard as run.ts applies it (the page's structure is parsed, not rendered)
+    const anti = antiTemplateCheck({ html, css: readFileSync(join(FIXTURE, "page/style.css"), "utf8"), fingerprint: await fingerprintOf(browser, html), references: await loadReferences(REPO), templateCss: await templateCss(REPO) });
+    expect(anti.ok).toBe(false);
+    expect(anti.codes).toEqual(expect.arrayContaining(["TEMPLATE_RENDERER_MARKER", "TEMPLATE_STRUCTURE_TOO_CLOSE"]));
+    expect(failedChecks({ facts: { ok: true, codes: [] } }, anti)).toEqual(["anti_template"]); // and the run is not mechanically ok
   });
 
   it("counts a request for a file the page does not have, and never renders a page with a script", async () => {
-    const r = await changed((d) => editFile(d, "index.html", (s) => s.replace("<span class=\"lead-visual-disc\"></span>", '<span class="lead-visual-disc"></span><img src="assets/missing.png" alt="">')));
-    expect(r.report.checks.network!.codes).toEqual(["NETWORK_REQUEST_BLOCKED"]);
+    expect(defects.report.checks.network!.codes).toEqual(["NETWORK_REQUEST_BLOCKED"]);
     await expect(changed((d) => editFile(d, "index.html", (s) => s.replace("</body>", "<script>fetch('https://example.com')</script></body>")))).rejects.toMatchObject({ code: "PAGE_SOURCE_REFUSED" });
   });
 });
 
-// review of PR #96 (Fresh Review FAIL at 9daac92): each probe below passed before; each must fail now
 describe("probes: the disclosure and the required facts must be readable", () => {
   const demo = parseShop(JSON.parse(readFileSync(FACTS_SOURCE, "utf8")) as unknown)!.demo;
   const all = factStrings(demo).map((f) => f.text.replace(/\s+/g, ""));
@@ -196,9 +235,9 @@ describe("probes: the disclosure and the required facts must be readable", () =>
     expect(r.codes).toEqual(expect.arrayContaining(["DISCLOSURE_COLOUR_ALPHA", "DISCLOSURE_LOW_CONTRAST"]));
   });
 
-  it("a hidden required fact fails the whole run, at every width checked", async () => {
-    // off-screen placement is refused by the stylesheet allowlist now, so aria-hidden alone is the probe here
-    const r = await changed(html(PHONE, '<dd data-comp-type="body" aria-hidden="true">052-000-0731</dd>'));
+  it("a hidden required fact fails the whole run, at every width checked", () => {
+    // the shared defects run hides the phone number under aria-hidden
+    const r = defects;
     expect(r.report.mechanical_ok).toBe(false);
     const widths = Object.keys(r.report.checks).filter((k) => /^legibility_\d+$/.test(k));
     expect(widths).toEqual(["legibility_320", "legibility_360", "legibility_390", "legibility_759", "legibility_760", "legibility_761", "legibility_768", "legibility_1024", "legibility_1440", "legibility_1920"]);
@@ -225,17 +264,24 @@ describe("probes: the disclosure and the required facts must be readable", () =>
   });
 
   it("checks every width around a breakpoint: text hidden only at tablet widths fails", async () => {
-    const r = await changed(css("@media (min-width: 761px) and (max-width: 767px) { .colophon-note { color: #F4EEE3; } }"));
-    expect(r.report.mechanical_ok).toBe(false);
-    const failing = Object.entries(r.report.checks).filter(([k, c]) => k.startsWith("legibility_") && !c.ok).map(([k]) => k);
-    expect(failing).toEqual(expect.arrayContaining(["legibility_761", "legibility_767"]));
-    expect(r.report.checks.legibility_1440!.ok).toBe(true);
+    const rule = "@media (min-width: 761px) and (max-width: 767px) { .colophon-note { color: #F4EEE3; } }";
+    const dir = await pageCopy("tablet-");
+    temps.push(dir);
+    await css(rule)(dir);
+    const page = await loadCompPage(dir);
+    // the widths run.ts checks for this stylesheet include both edges of the rule; the pixel proof fails there only
+    const widths = pageWidths(page.css);
+    expect(widths).toEqual(expect.arrayContaining([760, 761, 762, 766, 767, 768]));
+    const at = async (w: number) => legibilityCheck(await legibilityPass(browser, page, w, all, required, { pairs: infoPairs(demo), facts: all }), { required, disclosure: POC_DISCLOSURE });
+    expect((await at(761)).codes).toContain("DISCLOSURE_LOW_CONTRAST");
+    expect((await at(767)).codes).toContain("DISCLOSURE_LOW_CONTRAST");
+    expect((await at(1440)).ok).toBe(true);
   });
 
-  it("refuses extra ink on protected text (an underline, allowed elsewhere, over the disclosure)", async () => {
-    const r = await changed(css(".colophon-note { text-decoration: underline; }"));
-    expect(r.report.checks.legibility_1440!.codes).toContain("DISCLOSURE_INK_EXCESS");
-    expect(r.report.mechanical_ok).toBe(false);
+  it("refuses extra ink on protected text (an underline, allowed elsewhere, over the disclosure)", () => {
+    // the shared defects run underlines the disclosure
+    expect(defects.report.checks.legibility_1440!.codes).toEqual(expect.arrayContaining(["DISCLOSURE_DECORATED", "DISCLOSURE_INK_EXCESS"]));
+    expect(defects.report.mechanical_ok).toBe(false);
   });
 
   it("the ink bound holds even past the stylesheet check (a line-through, measured directly)", async () => {
@@ -363,8 +409,9 @@ describe("probes: third review", () => {
   });
 
   // the whole run carries the new checks
-  it("a full run reports structure, pairs at every checked width and the coarse sweep", async () => {
-    const r = await changed(css(".colophon { height: 60px; }"));
+  it("a full run reports structure, pairs at every checked width and the coarse sweep", () => {
+    // the shared defects run fixes the footer's height
+    const r = defects;
     expect(r.report.mechanical_ok).toBe(false);
     expect(r.report.checks.structure_desktop!.codes).toContain("FIXED_HEIGHT_TEXT");
     expect(Object.keys(r.report.checks).filter((k) => k.startsWith("pairs_")).length).toBe(10);
@@ -482,11 +529,12 @@ describe("probes: fourth review", () => {
     });
     expect(r.pairs.codes).toContain("PAIR_WRONG_FACT");
   });
-  it("a whole run fails the reviewer's F2 page", async () => {
-    const r = await changed(html('<p class="colophon-name"', '<p>電話：9:00〜18:00（売り切れ次第終了）</p><p class="colophon-name"'));
-    expect(r.report.mechanical_ok).toBe(false);
-    expect(r.report.checks.pairs_1440!.codes).toContain("LABEL_OUTSIDE_DL");
+  it("a whole run fails the reviewer's F2 page", () => {
+    // the shared defects run writes 「電話：9:00〜18:00」 into a paragraph
+    expect(defects.report.mechanical_ok).toBe(false);
+    expect(defects.report.checks.pairs_1440!.codes).toContain("LABEL_OUTSIDE_DL");
   });
+
   // N1: a dd above its dt
   it("fails a dd whose line starts above its dt (measured directly, past the stylesheet check)", async () => {
     expect((await at(css(".facts-row { display: flex; flex-direction: column-reverse; }"))).pairs.codes).toContain("PAIR_LINE");

@@ -98,6 +98,11 @@ async function atViewport(browser: Browser, page: CompPage, v: Viewport, audit: 
   }
 }
 
+/** The names of the failed checks (the anti-template guard included); the run is mechanically ok only when this is empty. */
+export function failedChecks(checks: Record<string, CheckResult>, anti: Pick<AntiTemplateResult, "ok">): string[] {
+  return [...Object.entries(checks).filter(([, c]) => !c.ok).map(([k]) => k), ...(anti.ok ? [] : ["anti_template"])];
+}
+
 /** Runs every check; throws CompImplError (a fixed code) when the bundle or the page is refused. */
 export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const bundle: CompBundle = await loadCompBundle(o.bundleDir, { repoDir: o.repoDir, factsSourcePath: o.factsSourcePath, ...(o.pngLimits ? { pngLimits: o.pngLimits } : {}) });
@@ -153,7 +158,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   };
   const anti = antiTemplateCheck({ html: page.html, css: page.css, fingerprint, references, templateCss: await templateCss(o.repoDir) });
   const similarity = compSimilarity(bundle.comp, bundle.compApproved, { bytes: desktop.shot, width: desktop.measure.width, height: desktop.measure.height });
-  const failed = [...Object.entries(checks).filter(([, c]) => !c.ok).map(([k]) => k), ...(anti.ok ? [] : ["anti_template"])];
+  const failed = failedChecks(checks, anti);
   const synthetic = bundle.comp.kind === "synthetic";
   const report: CompImplReport = {
     schema: REPORT_SCHEMA,
