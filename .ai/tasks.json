@@ -3873,7 +3873,7 @@
       ],
       "human_approval_triggers": [
         "HUMAN-024b（Codex なしの TCP probe）",
-        "passt の更新の各段（passt-update-plan.md §7 の A-1 から順に）",
+        "passt の更新の各段（passt-update-plan.md §8 の A-1 から順に）",
         "design-wsl-isolation.md §6「他の release の deb や自前の build は入れない」の例外",
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]

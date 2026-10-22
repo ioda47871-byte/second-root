@@ -33,7 +33,11 @@
   reqwest 0.12.28 は **Linux（WSL2 を含む）では既定で `TCP_USER_TIMEOUT` 30 秒・keepalive 15 秒**を socket に付け、Codex はそれを変えない。156 秒 ≒ 5 ×（約 30.5〜31 秒）+ 約 3 秒。
   公開の報告（openai/codex#24323、#45381 の Linux の comment）も Linux で「1 回約 31 秒 × 5 回・`timeout`」。最有力は H1「経路上で keepalive の probe に応答がなく、待っている間の接続が 30 秒で切られる」。対立仮説は H2「server が約 30 秒で 5xx」、H3「1 回の長い要求（約 156 秒）が再試行されない error で終わる」。
 - コマンドと読み方の正本は `docs/operations/design-image-poc.md` の「HUMAN-024」（GitHub で表示されるよう、コマンドはそこに置く）。
-- 24a（読むだけ・network なし・費用 0）:
+- **現在地（2026-10-22）: 24a 済み。次は 24b（人の review の後の承認待ち）。** passt の更新の設計は `docs/operations/passt-update-plan.md`（DEV-086、設計だけで何も入れていない）。passt の更新・WSL の設定の変更・Codex の実行は**承認されていない**。
+- **24a の結果（済み、2026-10-22、人が流した）**: kernel `6.18.33.2-microsoft-standard-WSL2`・WSL の network mode `nat`・passt `0.0~git20240220.1e6f92b-1`（Ubuntu 24.04 の標準の package。noble に -updates / -security / -backports は無い）・`pasta --version` は `unknown version`（Debian の build は git が無いので版を埋めない。版は dpkg と hash で見る）・system の keepalive の sysctl `7200 75 9`（reqwest が socket ごとに keepalive と `TCP_USER_TIMEOUT` を付けるので Codex の socket には効かない）・jail `JAIL_OK`・proxy の変数（`HTTP(S)_PROXY` / `NO_PROXY` / `ALL_PROXY`、大文字小文字とも）はすべて unset。
+  → upstream の `1e6f92b`（2024-02-20）は `238c69f`（2024_11_21「tcp: Acknowledge keep-alive segments」）より前なので、入っている pasta は keep-alive に ACK を返さない。H1（pasta が keepalive の ACK を落とし、約 30 秒 × 5 回で切れる）が強まった。proxy なしなので Codex は jail から chatgpt.com へ直接つなぎ、24b はその経路を測る。
+  → 24b の手順は DEV-086 で jail の実装と突き合わせ直した（コマンドは変えていない。`design-image-poc.md` の HUMAN-024）。読み方: jail で A が約 27 秒で切れ host は OPEN → pasta、両方切れる → WSL の NAT か上流、どちらも切れない → H2。
+- 24a（読むだけ・network なし・費用 0。**済み**、手順は記録として残す）:
   - jail の外: kernel・WSL の network mode・**passt の版**（`dpkg-query -W passt` / `pasta --version`）・keepalive の sysctl。
   - jail の中: proxy の環境変数が設定されているか（値は出さない）。
   - Codex は jail の network namespace から **pasta** を通って外に出るので、keepalive に応答する相手は pasta。upstream の passt が keep-alive に ACK するのは 2024_11_21.238c69f から（keep-alive の続きの修正は 2025-02 の 472e2e9 と 2025-12 の aa809d3）。Ubuntu 24.04 の古い passt だけで H1 がそのまま起きうる。
@@ -57,7 +61,7 @@
   CLI の更新は効かない見込み（2026-10-22 の main も reqwest 0.12.28 で、TCP の option を付けていない）。
 - 触れないもの: HUMAN-022 と同じ。`~/.codex/config.toml`・`.wslconfig`・CLI の版・model は変えない。
 - 返してほしいもの: 24a と 24b（と、流したなら 24b-host）の出力そのまま（秘密は含まない）。
-- 解除条件: 24b の結果が届く（必要なら 24c）、または人が流さないと決める。
+- 解除条件: 24b の結果が届く（必要なら 24c）、または人が流さないと決める。24b で「jail だけ切れる」なら、passt の更新は `passt-update-plan.md` §8 の承認（A-1 から順に）を 1 つずつ受けてからだけ進める。
 
 ### HUMAN-021 — 画像ツールが使われない原因を分ける、安い順の確認（DEV-078 の merge の後。1 段ずつ別の承認）
 
