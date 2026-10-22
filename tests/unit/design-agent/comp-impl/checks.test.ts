@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { crc32, deflateSync, inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { parseShop } from "@/lib/design-agent/compare/shops";
 import { antiTemplateCheck, fingerprintDistance, ruleBodies } from "@/lib/design-agent/comp-impl/anti-template";
@@ -18,7 +19,7 @@ import {
   typeCheck,
 } from "@/lib/design-agent/comp-impl/checks";
 import type { PageAsset } from "@/lib/design-agent/comp-impl/page";
-import { cssProblems, htmlSourceProblems } from "@/lib/design-agent/comp-impl/page";
+import { cssProblems, htmlSourceProblems, isFlatPng } from "@/lib/design-agent/comp-impl/page";
 import type { CompMeasure, Fingerprint } from "@/lib/design-agent/comp-impl/page-scripts";
 import { compSimilarity, similarityStatus } from "@/lib/design-agent/comp-impl/similarity";
 import type { CompSpec } from "@/lib/design-agent/comp-impl/spec";
@@ -220,7 +221,7 @@ describe("page source", () => {
   it("applies the shop-CSS tokenizer and its never list to the stylesheet", () => {
     expect(cssProblems(readFileSync(join(FIXTURE, "page/style.css"), "utf8"))).toEqual([]);
     expect(cssProblems("a { background: url(https://example.com/x.png); }")).toEqual(["CSS_SYNTAX_URL"]);
-    expect(cssProblems('@import "x.css";')).toEqual(["CSS_AT_RULE"]);
+    expect(cssProblems('@import "x.css";')).toEqual(["CSS_AT_RULE", "CSS_STRING"]);
     expect(cssProblems("@font-face { font-family: x; }")).toEqual(["CSS_AT_RULE"]);
     expect(cssProblems('p::after { content: "人気"; }')).toEqual(["CSS_SYNTAX_NON_ASCII"]);
     expect(cssProblems('p::after { content: "Best seller"; }')).toEqual(["CSS_CONTENT_TEXT"]);
@@ -228,6 +229,33 @@ describe("page source", () => {
     expect(cssProblems('p::after { content: ""; }')).toEqual([]);
     expect(cssProblems("a { color: red; } }")).toEqual(["CSS_SYNTAX_UNBALANCED"]);
     expect(cssProblems("a { color: \\72 ed; }")).toEqual(["CSS_SYNTAX_ESCAPE"]);
+  });
+
+  // review of PR #96: any string the browser could draw is refused, wherever it is
+  it.each<[string, string, string]>([
+    ["list-style with a string marker", 'li { display: list-item; list-style: "SALE 50% OFF" inside; }', "CSS_STRING"],
+    ["list-style-type with a string", 'li { list-style-type: "$9.80"; }', "CSS_STRING"],
+    ["quotes", 'q { quotes: "BEST" "SELLER"; }', "CSS_STRING"],
+    ["hyphenate-character", 'p { hyphens: manual; hyphenate-character: "$9.80"; }', "CSS_STRING"],
+    ["text-overflow", 'p { overflow: hidden; text-overflow: " - 50% OFF"; }', "CSS_STRING"],
+    ["a string in a selector", 'a[href="#info"] { color: red; }', "CSS_STRING"],
+    ["counter-reset (shifts list numbers)", "ol { counter-reset: list-item 279; }", "CSS_PROPERTY"],
+    ["counter-set", "li { counter-set: list-item 280; }", "CSS_PROPERTY"],
+    ["counter-increment", "li { counter-increment: list-item 100; }", "CSS_PROPERTY"],
+    ["-webkit-text-security (masks the glyphs)", "dd { -webkit-text-security: disc; }", "CSS_PROPERTY"],
+    ["@counter-style", "@counter-style price { system: cyclic; symbols: a; }", "CSS_AT_RULE"],
+    ["counter()", "li::after { content: counter(list-item); }", "CSS_FUNCTION"],
+    ["counters()", "li::after { content: counters(list-item, x); }", "CSS_FUNCTION"],
+    ["attr()", "a::after { content: attr(href); }", "CSS_FUNCTION"],
+    ["symbols()", "ol { list-style-type: symbols(cyclic x); }", "CSS_FUNCTION"],
+  ])("refuses %s", (_n, css, code) => {
+    expect(cssProblems(css)).toContain(code);
+  });
+  it("allows strings only in font family and grid area names, and an empty content", () => {
+    expect(cssProblems('body { font-family: "Noto Serif JP", serif; } h1 { font: 400 56px "Noto Serif JP"; }')).toEqual([]);
+    expect(cssProblems('.g { display: grid; grid-template-areas: "a b" "c d"; }')).toEqual([]);
+    expect(cssProblems('.x::before { content: ""; display: block; }')).toEqual([]);
+    expect(cssProblems("ol { list-style-type: decimal; } ul { list-style: none; }")).toEqual([]);
   });
 });
 
@@ -276,5 +304,26 @@ describe("comp similarity", () => {
   it("reports an undecodable image instead of guessing", () => {
     const s = compSimilarity({ bytes: Buffer.from("not a png"), width: 720, height: 1024, kind: "synthetic" }, false, { bytes: png, width: 720, height: 1024 });
     expect(s).toMatchObject({ code: "SIMILARITY_DECODE_UNSUPPORTED", passing: false, ssim: null });
+  });
+});
+
+describe("placeholder images", () => {
+  it("a placeholder must be one flat colour; anything else (text, a photo, a gradient) is not", () => {
+    expect(isFlatPng(flatPng(40, 30, [234, 225, 210]))).toBe(true);
+    const marked = flatPng(40, 30, [234, 225, 210]);
+    // a placeholder with one dark pixel in it (a drawn mark) is no longer flat
+    const idatAt = marked.indexOf(Buffer.from("IDAT"));
+    const len = marked.readUInt32BE(idatAt - 4);
+    const raw = inflateSync(marked.subarray(idatAt + 4, idatAt + 4 + len));
+    raw[1 + 3 * 20] = 0;
+    const data = deflateSync(raw);
+    const chunk = Buffer.alloc(12 + data.length);
+    chunk.writeUInt32BE(data.length, 0);
+    chunk.write("IDAT", 4, "latin1");
+    data.copy(chunk, 8);
+    chunk.writeUInt32BE(crc32(Buffer.concat([Buffer.from("IDAT"), data])) >>> 0, 8 + data.length);
+    const changed = Buffer.concat([marked.subarray(0, idatAt - 4), chunk, marked.subarray(idatAt + 8 + len)]);
+    expect(isFlatPng(changed)).toBe(false);
+    expect(isFlatPng(Buffer.from("not a png"))).toBe(false);
   });
 });

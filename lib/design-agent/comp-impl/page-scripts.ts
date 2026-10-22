@@ -265,3 +265,71 @@ export const FINGERPRINT_SCRIPT = String.raw`(html) => {
 
 export const FingerprintSchema = z.strictObject({ features: z.record(z.string().max(200), z.number().int().nonnegative()), blocks: z.array(z.string().max(400)).max(60) });
 export type Fingerprint = z.infer<typeof FingerprintSchema>;
+
+/**
+ * Protected text (review of PR #96): the disclosure and the required facts.
+ * Runs after the shop-CSS MEASURE_SCRIPT (it reads the data-sr-i marks that
+ * script leaves on every measured element). Returns, for every measured
+ * element inside [data-comp-disclosure] or whose own text holds a required
+ * fact: its owner index, which facts it holds, the zoom product of its chain
+ * (font sizes in MEASURE_SCRIPT include transforms but not zoom), the colour's
+ * alpha, whether -webkit-text-fill-color differs from color, and whether a
+ * clip-path, mask, filter, blend mode or clip rect sits on it or an ancestor.
+ * Also counts elements that carry aria-hidden over text (forbidden: such text
+ * is skipped by every text measurement) and the disclosure's text nodes that
+ * were not measured. Argument: { facts } (whitespace-free fact strings).
+ */
+export const PROTECTED_SCRIPT = String.raw`(arg) => {
+  const flat = (s) => (s || "").replace(/\s+/g, "");
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const rgba = (css) => {
+    ctx.clearRect(0, 0, 1, 1);
+    ctx.fillStyle = "rgba(0, 0, 0, 0)";
+    ctx.fillStyle = css;
+    ctx.fillRect(0, 0, 1, 1);
+    const d = ctx.getImageData(0, 0, 1, 1).data;
+    return [d[0], d[1], d[2], d[3]];
+  };
+  const out = { ariaHiddenText: 0, unmeasuredDisclosure: 0, disclosures: document.querySelectorAll("[data-comp-disclosure]").length, owners: [] };
+  for (const el of Array.from(document.querySelectorAll("[aria-hidden]"))) {
+    if (el.getAttribute("aria-hidden") !== "false" && flat(el.textContent)) out.ariaHiddenText += 1;
+  }
+  for (const d of Array.from(document.querySelectorAll("[data-comp-disclosure]"))) {
+    const walker = document.createTreeWalker(d, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (flat(n.data) && !(n.parentElement && n.parentElement.hasAttribute("data-sr-i"))) out.unmeasuredDisclosure += 1;
+  }
+  for (const el of Array.from(document.querySelectorAll("[data-sr-i]"))) {
+    const own = flat(Array.from(el.childNodes).filter((c) => c.nodeType === 3).map((c) => c.data).join(""));
+    const disclosure = Boolean(el.closest("[data-comp-disclosure]"));
+    const facts = [];
+    arg.facts.forEach((f, i) => { if (own.includes(f)) facts.push(i); });
+    if (!disclosure && facts.length === 0) continue;
+    let zoom = 1;
+    let effects = false;
+    for (let a = el; a; a = a.parentElement) {
+      const s = getComputedStyle(a);
+      const z = parseFloat(s.zoom);
+      if (Number.isFinite(z) && z > 0) zoom *= z;
+      const mask = s.maskImage || s.webkitMaskImage || "none";
+      if (s.clipPath !== "none" || mask !== "none" || s.filter !== "none" || s.mixBlendMode !== "normal" || (s.clip && s.clip !== "auto" && (s.position === "absolute" || s.position === "fixed"))) effects = true;
+    }
+    const s = getComputedStyle(el);
+    const colour = rgba(s.color);
+    const fill = rgba(s.webkitTextFillColor || s.color);
+    out.owners.push({ owner: Number(el.getAttribute("data-sr-i")), disclosure, facts, zoom, colourAlpha: colour[3], fillDiffers: fill.join(",") !== colour.join(","), effects });
+  }
+  return out;
+}`;
+
+export const ProtectedSchema = z.strictObject({
+  ariaHiddenText: z.number().int().nonnegative(),
+  unmeasuredDisclosure: z.number().int().nonnegative(),
+  disclosures: z.number().int().nonnegative(),
+  owners: z
+    .array(z.strictObject({ owner: z.number().int().nonnegative(), disclosure: z.boolean(), facts: z.array(z.number().int().nonnegative()).max(40), zoom: z.number(), colourAlpha: z.number(), fillDiffers: z.boolean(), effects: z.boolean() }))
+    .max(500),
+});
+export type ProtectedScan = z.infer<typeof ProtectedSchema>;

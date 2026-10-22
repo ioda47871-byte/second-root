@@ -7,11 +7,27 @@
  * evaluate still runs). Fonts are the machine's own (no @font-face is allowed).
  */
 import type { Browser, BrowserContext, Page } from "playwright";
-import { SHOP_CSS_BASE_WIDTHS } from "../shop-css/render-check";
-import { MEASURE_SCRIPT, MeasureSchema, type Measure } from "../shop-css/page-scripts";
+import { groundColour, inkOf, lowContrastShare, SHOP_CSS_BASE_WIDTHS, type Ink } from "../shop-css/render-check";
+import { CLEAN_CSS, HIDE_TEXT_CSS, MEASURE_SCRIPT, MeasureSchema, REFERENCE_SCRIPT, type Measure } from "../shop-css/page-scripts";
+import { decodePng } from "../worker/png-paint";
 import { SHOT_VIEWPORTS } from "../shot-viewports";
 import type { CompPage } from "./page";
-import { COMP_MEASURE_SCRIPT, CompMeasureSchema, DOM_AUDIT_SCRIPT, DomAuditSchema, FINGERPRINT_SCRIPT, FingerprintSchema, PAGE_ELEMENTS, SHARED_ATTRIBUTES, type CompMeasure, type DomAudit, type Fingerprint } from "./page-scripts";
+import {
+  COMP_MEASURE_SCRIPT,
+  CompMeasureSchema,
+  DOM_AUDIT_SCRIPT,
+  DomAuditSchema,
+  FINGERPRINT_SCRIPT,
+  FingerprintSchema,
+  PAGE_ELEMENTS,
+  PROTECTED_SCRIPT,
+  ProtectedSchema,
+  SHARED_ATTRIBUTES,
+  type CompMeasure,
+  type DomAudit,
+  type Fingerprint,
+  type ProtectedScan,
+} from "./page-scripts";
 
 export const PAGE_ORIGIN = "http://comp-impl.invalid";
 /** The widths of the horizontal overflow sweep: the shop-CSS check's (320 … 1920). */
@@ -120,4 +136,68 @@ export async function overflowSweep(browser: Browser, compPage: CompPage): Promi
     }
   }
   return out;
+}
+
+/** Adds a style element (page.addStyleTag waits for a script-side load event, which never fires with JavaScript off). */
+async function addStyle(page: Page, id: string, css: string): Promise<void> {
+  await page.evaluate(`(() => { const s = document.createElement("style"); s.id = ${JSON.stringify(id)}; s.textContent = ${JSON.stringify(css)}; document.head.appendChild(s); })()`);
+}
+
+/** The widths of the text and legibility pass (scale 1, so screenshot pixels are CSS px): the narrowest, the phone, the PC, the widest. */
+export const LEGIBILITY_WIDTHS = [320, 390, 1440, 1920] as const;
+
+export type Legibility = {
+  width: number;
+  measure: Measure;
+  scan: ProtectedScan;
+  /** Per measured node of a protected element: the Stage 3 contrast share and ink proof. */
+  lowContrast: Map<number, number>;
+  ink: Map<number, Ink>;
+  blocked: number;
+};
+
+/**
+ * The shop-CSS render check's measurement and pixel proof at one width, for
+ * the whole body: MEASURE_SCRIPT (every text node), PROTECTED_SCRIPT (the
+ * disclosure and the required facts), then for the protected elements the
+ * Stage 3 contrast share on the ground actually painted under them
+ * (lowContrastShare, the page without text) and the ink proof (inkOf: the
+ * page against the same boxes with nothing painted but the text, in its own
+ * colour on that ground). Transparent text, a transparent text fill, text in
+ * the ground's colour, a cover or a mask leaves no ink or no contrast.
+ */
+export async function legibilityPass(browser: Browser, compPage: CompPage, width: number, facts: readonly string[], required: readonly string[]): Promise<Legibility> {
+  const mobile = width <= MOBILE.width;
+  const o = await openCompPage(browser, compPage, { width, height: 900, scale: 1, mobile });
+  try {
+    const page = o.page;
+    const measure = await textMeasure(page, facts);
+    const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
+    const owners = new Set(scan.owners.map((x) => x.owner));
+    const nodes = measure.nodes.map((n, i) => ({ n, i })).filter(({ n }) => (n.kind === "fact" || n.kind === "label") && owners.has(n.owner));
+    const lowContrast = new Map<number, number>();
+    const ink = new Map<number, Ink>();
+    if (nodes.length > 0 && measure.height <= MAX_PAGE_HEIGHT) {
+      const shot = async () => decodePng(await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" }));
+      const withText = await shot();
+      await addStyle(page, "sr-hide", HIDE_TEXT_CSS);
+      const without = await shot();
+      await page.evaluate(`document.getElementById("sr-hide").remove()`);
+      const firstOf = new Map<number, Measure["nodes"][number]>();
+      for (const { n } of nodes) if (!firstOf.has(n.owner)) firstOf.set(n.owner, measure.nodes[n.owner] ?? n);
+      const style = (fill: string) => [...firstOf.entries()].map(([i, n]) => ({ i, bg: groundColour(without, n), fill }));
+      await addStyle(page, "sr-clean", CLEAN_CSS);
+      await page.evaluate(`(${REFERENCE_SCRIPT})(${JSON.stringify(style("currentcolor"))})`);
+      const cleanWith = await shot();
+      await page.evaluate(`(${REFERENCE_SCRIPT})(${JSON.stringify(style("transparent"))})`);
+      const cleanWithout = await shot();
+      for (const { n, i } of nodes) {
+        lowContrast.set(i, lowContrastShare(without, n));
+        ink.set(i, inkOf({ withText, without }, { withText: cleanWith, without: cleanWithout }, n));
+      }
+    }
+    return { width, measure, scan, lowContrast, ink, blocked: o.blocked() };
+  } finally {
+    await o.context.close();
+  }
 }

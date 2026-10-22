@@ -3653,8 +3653,8 @@
         "DEV-073",
         "DEV-074"
       ],
-      "attempts": 0,
-      "last_failure": null,
+      "attempts": 1,
+      "last_failure": "Fresh Review FAIL at 9daac92 (PR #96): CSS strings drew invented text (list-style, hyphenate-character); the disclosure's visibility could be defeated (transparent colour / fill, ground colour, zoom, clip-path, scale+opacity, aria-hidden + off-screen); required facts could be hidden; placeholder kind self-declared; output root checked after mkdir. Fixed with tests for each probe",
       "branch": "feature/dev-082-comp-to-site",
       "purpose": "最終目標は既存 template の色や配置の調整ではなく、Codex が作った店ごとの original なデザイン画像を Claude が Web サイトとして忠実に実装すること。画像生成（HUMAN-022 で止まっている）が動いたらすぐ実装に入れるよう、comp bundle（PoC の出力 + 評価 + layout spec + asset の一覧）→ Claude の実装（standalone HTML / CSS）→ Chromium の検査 → report・PC / mobile の screenshot、の道筋を先に作る。comp の中の文字は事実の出典にしない。設計は docs/operations/comp-to-site.md",
       "acceptance_criteria": [
@@ -3663,7 +3663,8 @@
         "頁の契約: index.html + style.css + assets.json + assets/ だけ、script・event handler・inline style・外部 URL なし、CSS は shop-css の tokenizer と never の一覧（guardShopCss は頁全体には狭すぎることを文書化）。Chromium で network を route で塞ぎ JavaScript を切って 1440 / 390 で描く",
         "検査（固定の符号と数）: 事実の allowlist（作った価格などは失敗）・AI 画像を使うときの disclosure・節の順と位置・palette・type の階層・spacing・nav / CTA / dead link・image slot と歪み・320〜1920 の横 overflow・文字の clip / 被り / 重なり（shop-css の MEASURE_SCRIPT と overprinted を再利用）・anti-template の構造の距離と CSS の再利用・comp との類似度（報告だけ、決して pass にしない、synthetic は synthetic_only）",
         "synthetic fixture（架空菓庵、AI 画像も写真も使わない、synthetic と明記）で end to end。report は synthetic_only・faithful_reproduction_claimed=false",
-        "既存の営業 demo の生成・worker・timer・asset store の規則・品質ゲートと閾値・components/demo・workflow・依存は変えない"
+        "既存の営業 demo の生成・worker・timer・asset store の規則・品質ゲートと閾値・components/demo・workflow・依存は変えない",
+        "review fixes: no CSS string except font family / grid area names, no counter-* property; no aria-hidden over text; the disclosure and every required fact pass the legibility check (Stage 3 contrast + ink proof, zoom, opacity, fill, effects) at 320 / 390 / 1440 / 1920; placeholder PNGs flat; output root checked before creation, an existing one must be a private 0700 directory of the user"
       ],
       "required_tests": [
         "tests/unit/design-agent/comp-impl/*（spec・各検査の pass / fail・bundle と頁の loader・Chromium の end to end・reference fingerprint の再生成との一致）",

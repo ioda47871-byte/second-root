@@ -13,7 +13,7 @@
  */
 import { constants } from "node:fs";
 import { chmod, lstat, mkdir, mkdtemp, open, readFile, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Browser } from "playwright";
 import { factStrings } from "../compare/shops";
 import { assetStoreRoot } from "../assets/store-root";
@@ -25,6 +25,7 @@ import {
   factsCheck,
   geometryCheck,
   imagesCheck,
+  legibilityCheck,
   linksCheck,
   mobileOrderCheck,
   overflowCheck,
@@ -37,7 +38,8 @@ import {
 } from "./checks";
 import { cssProblems, htmlSourceProblems, loadCompPage, type CompPage } from "./page";
 import { FingerprintSchema } from "./page-scripts";
-import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, MOBILE, openCompPage, overflowSweep, textMeasure, type Viewport } from "./render";
+import { factValues } from "./spec";
+import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, LEGIBILITY_WIDTHS, legibilityPass, MOBILE, openCompPage, overflowSweep, type Viewport } from "./render";
 import { compSimilarity, type Similarity } from "./similarity";
 
 export const REPORT_SCHEMA = "comp-impl-report/1";
@@ -79,29 +81,18 @@ export async function loadReferences(repoDir: string): Promise<ReferenceFingerpr
   return raw.references.map((r) => ({ id: String(r.id), fingerprint: FingerprintSchema.parse(r.fingerprint) }));
 }
 
-type AtWidth = { measure: Awaited<ReturnType<typeof compMeasure>>; text: CheckResult; shot: Buffer; blocked: number; dom?: CheckResult };
+type AtWidth = { measure: Awaited<ReturnType<typeof compMeasure>>; shot: Buffer; blocked: number; dom?: CheckResult };
 
-async function atViewport(browser: Browser, page: CompPage, v: Viewport, facts: string[], audit: boolean): Promise<AtWidth> {
-  // one load for the measurements and the screenshot, a second for the text measurement (it marks the DOM)
+async function atViewport(browser: Browser, page: CompPage, v: Viewport, audit: boolean): Promise<AtWidth> {
   const a = await openCompPage(browser, page, v);
-  let measure;
-  let shot;
-  let dom: CheckResult | undefined;
   try {
-    if (audit) dom = domProblems(await domAudit(a.page));
-    measure = await compMeasure(a.page);
-    shot = await fullPageShot(a.page);
+    const dom = audit ? domProblems(await domAudit(a.page)) : undefined;
+    const measure = await compMeasure(a.page);
+    const shot = await fullPageShot(a.page);
+    return { measure, shot, blocked: a.blocked(), ...(dom ? { dom } : {}) };
   } finally {
     await a.context.close();
   }
-  const b = await openCompPage(browser, page, v);
-  let text;
-  try {
-    text = textCheck(await textMeasure(b.page, facts));
-  } finally {
-    await b.context.close();
-  }
-  return { measure, text, shot, blocked: a.blocked() + b.blocked(), ...(dom ? { dom } : {}) };
 }
 
 /** Runs every check; throws CompImplError (a fixed code) when the bundle or the page is refused. */
@@ -115,13 +106,17 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const facts = factStrings(bundle.demo).map((f) => f.text.replace(/\s+/g, ""));
   const spec = bundle.spec;
 
-  const desktop = await atViewport(o.browser, page, DESKTOP, facts, true);
-  const mobile = await atViewport(o.browser, page, MOBILE, facts, false);
+  const desktop = await atViewport(o.browser, page, DESKTOP, true);
+  const mobile = await atViewport(o.browser, page, MOBILE, false);
   const sweep = await overflowSweep(o.browser, page);
+  const values = factValues(bundle.demo);
+  const required = spec.required_facts.map((k) => (values.get(k) ?? "").replace(/\s+/g, ""));
   const fingerprint = await fingerprintOf(o.browser, page.html);
-  const required = requiredDisclosure(page.assets, desktop.measure);
-  const factsInput = { spec, demo: bundle.demo, disclosure: required };
-  const blocked = desktop.blocked + mobile.blocked + sweep.reduce((s, w) => s + w.blocked, 0);
+  const disclosure = requiredDisclosure(page.assets, desktop.measure);
+  const factsInput = { spec, demo: bundle.demo, disclosure };
+  const passes = [];
+  for (const width of LEGIBILITY_WIDTHS) passes.push(await legibilityPass(o.browser, page, width, facts, required));
+  const blocked = desktop.blocked + mobile.blocked + sweep.reduce((s, w) => s + w.blocked, 0) + passes.reduce((s, p) => s + p.blocked, 0);
 
   const checks: Record<string, CheckResult> = {
     source: { ok: true, codes: [] },
@@ -129,7 +124,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
     dom: desktop.dom!,
     facts_desktop: factsCheck(desktop.measure, factsInput),
     facts_mobile: factsCheck(mobile.measure, factsInput),
-    disclosure_desktop: disclosureCheck(desktop.measure, spec, required),
+    disclosure_desktop: disclosureCheck(desktop.measure, spec, disclosure),
     disclosure_mobile: disclosureCheck(mobile.measure, spec, requiredDisclosure(page.assets, mobile.measure)),
     geometry_desktop: geometryCheck(desktop.measure, spec),
     order_mobile: mobileOrderCheck(mobile.measure, spec),
@@ -142,8 +137,10 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
     images_desktop: imagesCheck(desktop.measure, spec, page.assets),
     images_mobile: imagesCheck(mobile.measure, spec, page.assets),
     overflow: overflowCheck(sweep),
-    text_desktop: desktop.text,
-    text_mobile: mobile.text,
+    ...Object.fromEntries(passes.flatMap((p) => [
+      [`text_${p.width}`, textCheck(p.measure)],
+      [`legibility_${p.width}`, legibilityCheck(p, { required, disclosure: disclosure })],
+    ])),
   };
   const anti = antiTemplateCheck({ html: page.html, css: page.css, fingerprint, references, templateCss: await templateCss(o.repoDir) });
   const similarity = compSimilarity(bundle.comp, bundle.compApproved, { bytes: desktop.shot, width: desktop.measure.width, height: desktop.measure.height });
@@ -197,28 +194,59 @@ async function writeNew(path: string, data: string | Buffer): Promise<void> {
   }
 }
 
+/** The real path a (possibly missing) path would have: the nearest existing ancestor resolved, the rest appended. */
+async function resolvedPath(path: string): Promise<string> {
+  const rest: string[] = [];
+  let at = resolve(path);
+  for (;;) {
+    try {
+      return join(await realpath(at), ...rest.reverse());
+    } catch {
+      const parent = dirname(at);
+      if (parent === at) return resolve(path);
+      rest.push(basename(at));
+      at = parent;
+    }
+  }
+}
+
+/** An existing output root must be this user's own private directory: a real directory (no link), owned by us, mode 0700. */
+async function privateDirectory(path: string): Promise<boolean> {
+  const info = await lstat(path);
+  const uid = process.getuid?.();
+  return info.isDirectory() && !info.isSymbolicLink() && (uid === undefined || info.uid === uid) && (info.mode & 0o777) === 0o700;
+}
+
 /**
  * Writes the outputs to a new <shop>-XXXXXX directory under outRoot (0700,
- * files 0600, never overwriting). The root must be absolute, not a link and
- * outside the repository, the asset store and the bundle / page directories.
+ * files 0600, never overwriting). The root must be absolute and outside the
+ * repository, the asset store and the bundle / page directories — checked on
+ * its resolved path BEFORE anything is created. An existing root is used only
+ * when it is already this user's private directory (it is never chmod-ed); a
+ * missing one is created here, 0700.
  */
 export async function writeCompImplOutputs(outRoot: string, result: RunResult, o: { repoDir: string; env: Record<string, string | undefined>; inputs: string[] }): Promise<string> {
   if (!isAbsolute(outRoot)) throw new CompImplError("OUTPUT_UNSAFE");
-  await mkdir(outRoot, { recursive: true, mode: 0o700 });
-  const info = await lstat(outRoot);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new CompImplError("OUTPUT_UNSAFE");
-  const root = await realpath(outRoot);
-  const forbidden = [await realpath(o.repoDir), assetStoreRoot(o.env), ...o.inputs];
+  const root = await resolvedPath(outRoot);
+  const forbidden = [o.repoDir, assetStoreRoot(o.env), ...o.inputs];
   for (const f of forbidden) {
-    let real = f;
-    try {
-      real = await realpath(f);
-    } catch {
-      /* a missing store root is compared as given */
-    }
+    const real = await resolvedPath(f);
     if (inside(root, real) || inside(real, root)) throw new CompImplError("OUTPUT_UNSAFE");
   }
-  await chmod(root, 0o700);
+  let exists = true;
+  try {
+    await lstat(outRoot);
+  } catch {
+    exists = false;
+  }
+  if (exists) {
+    if (!(await privateDirectory(outRoot))) throw new CompImplError("OUTPUT_UNSAFE");
+  } else {
+    await mkdir(outRoot, { recursive: true, mode: 0o700 });
+    await chmod(outRoot, 0o700); // created here (the umask may have taken bits away)
+    if (!(await privateDirectory(outRoot))) throw new CompImplError("OUTPUT_UNSAFE");
+  }
+  if ((await realpath(outRoot)) !== root) throw new CompImplError("OUTPUT_UNSAFE"); // changed under us
   const dest = await mkdtemp(join(root, `${result.report.bundle.shop}-`));
   await chmod(dest, 0o700);
   await writeNew(join(dest, "report.json"), `${JSON.stringify(result.report, null, 2)}\n`);

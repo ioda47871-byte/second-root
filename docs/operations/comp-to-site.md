@@ -36,7 +36,7 @@ As soon as a real comp passes the rubric, the same harness runs on it unchanged 
 | shop facts | `lib/design-agent/compare/shops.ts` (`parseShop`, `factStrings`) → `worker/queue.ts` `pickFacts` (the worker's fact filter) → `preview.ts` `factsToDemoView` → `lib/sales/demo-content.ts` `toDemoView` (DemoView) | facts are read **only** from the facts source of truth (default: the DEV-073 fixture `scripts/sales-design-worker/compare/shops/wagashi.json`) through the same filter; the bundle's copy must be identical |
 | fact-only text rule | `tests/unit/sales/demo-templates.test.tsx` (strip facts, then the allowed copy; nothing may be left) | `checks.ts` `factsCheck` applies the same allowlist method to every text node of the rendered page (hidden ones too), plus alt / aria-label / title |
 | CSS safety | `lib/design-agent/shop-css/tokenize.ts` (strict tokenizer), `guard.ts` (Stage 3 guard) | the tokenizer and the guard's "never" list are applied to `style.css`. **Gap:** `guardShopCss` cannot take a whole page: selectors must start at `#shop-css`, use the renderer's data attributes and a fixed element list (no `a`, `img`, `nav`, `footer`, `figure`), and its property allowlist is the renderer's subset. See §6 |
-| render checks | `shop-css/page-scripts.ts` `MEASURE_SCRIPT` + `MeasureSchema`, `shop-css/render-check.ts` `overprinted`, `MIN_FONT_PX`, `MIN_OPACITY`, `SHOP_CSS_BASE_WIDTHS` | the text soundness check runs the shop-CSS measurement with the whole body as its scope (clipped, offscreen, covered, out of its own box, too small, faded, squeezed) and its text-on-text test; the overflow sweep uses the same 320…1920 widths |
+| render checks | `shop-css/page-scripts.ts` `MEASURE_SCRIPT` + `MeasureSchema`, `HIDE_TEXT_CSS`, `CLEAN_CSS`, `REFERENCE_SCRIPT`; `shop-css/render-check.ts` `overprinted`, `lowContrastShare`, `inkOf`, `groundColour`, `MIN_FONT_PX`, `MIN_OPACITY`, `CONTRAST_TOLERANCE`, `INK_RATIO`, `SHOP_CSS_BASE_WIDTHS` | the text soundness check runs the shop-CSS measurement with the whole body as its scope (clipped, offscreen, covered, out of its own box, too small, faded, squeezed) and its text-on-text test; the disclosure and required facts get the Stage 3 contrast and ink proof; the overflow sweep uses the same 320…1920 widths |
 | screenshot sizes | `lib/design-agent/shot-viewports.ts` (`SHOT_VIEWPORTS`: 1440 × 900 @1, 390 × 844 @2) | the PC and mobile screenshots and measurements |
 | Chromium in tests | `tests/unit/design-agent/shop-css/support.tsx` `launch()` (`PLAYWRIGHT_CHROMIUM_EXECUTABLE`), un-gated in CI like the other renderer tests | same launch pattern; runs in CI |
 | PNG decoding | `lib/design-agent/worker/png-paint.ts` `decodePng` | similarity metric |
@@ -60,6 +60,12 @@ One directory (the design-image PoC's output dir, plus two files):
 
 And beside the page: `assets.json` (§5). Anything else in a bundle is ignored; anything inconsistent stops the run with a fixed code.
 
+**Process gates, not technical ones.** `evaluation.json` (`human_confirmed`, `confirmed_by`, the scores) and the synthetic / real
+label (`report.json` `synthetic`, `evaluation.json` `comp_kind`) are written by people and Claude; the loader checks that they are
+consistent (same comp sha, total = sum, kind matches the report), but nothing can prove that a human really confirmed the sheet or
+that a comp labelled `real` came from Codex. They keep an honest run honest and make a careless one fail loudly; they do not stop a
+dishonest author. The same holds for an asset's `kind` (§5).
+
 ## 4. Claude's implementation step
 
 **What Claude receives:** the comp PNG (to look at), the facts (`shop-facts.json`, the only source of words), the art direction,
@@ -79,9 +85,14 @@ wrong phone number, it is simply not implemented.
   handler, no `style` attribute or element, no form / iframe / svg / video, no external or `data:` URL; exactly one
   `<link rel="stylesheet" href="style.css">`; links are in-page anchors only;
 - `style.css` — the whole stylesheet: the shop-CSS tokenizer (no escapes, no `<`, no non-ASCII outside comments, no url
-  tokens), only `@media` at-rules, no `attr()` / `env()` / `image-set()` / `counter()`, no `content` text;
-  local font stacks only (no `@font-face`);
-- `assets.json` + `assets/*.png` — only listed, hash-checked images;
+  tokens), only `@media` at-rules (so no `@counter-style`), no `attr()` / `env()` / `image-set()` / `counter()` / `counters()` /
+  `symbols()`, no `content` other than `""` / `none` / `normal`, **no string anywhere** except font family and grid area names
+  (`font-family`, `font`, `grid-template-areas`, `grid-template`, `grid`) — so no `list-style: "…"`, `list-style-type: "…"`,
+  `quotes`, `hyphenate-character`, `text-overflow: "…"` or string in a selector — and no `counter-reset` / `counter-set` /
+  `counter-increment` / `-webkit-text-security` (CSS can draw text outside the DOM; the review of PR #96 drew
+  「SALE 50% OFF」 with `list-style` and 「$9.80」 with `hyphenate-character` before this rule); local font stacks only (no `@font-face`);
+- `assets.json` + `assets/*.png` — only listed, hash-checked images; a `placeholder` must be one flat colour;
+- no `aria-hidden` on any element that holds text (such text is skipped by every text measurement);
 - harness hooks: `data-comp-section` on each section, `data-comp-type` (display / heading / caption / body / label),
   `data-comp-slot` (+ `data-comp-placeholder` for a flat placeholder), `data-comp-nav`, `data-comp-cta`,
   `data-comp-disclosure`, `data-comp-container`;
@@ -96,16 +107,20 @@ the web app (AGENTS.md: this Next.js differs from training data; nothing here to
 - **Facts** come only from the facts source of truth. The page's visible text (and alt, aria-label, the title) must be made of
   facts, declared verbatim fact excerpts, `COMP_UI_LABELS` and the disclosure; anything else is `FACTS_UNKNOWN_TEXT`
   (an invented price, award, history, rating or a changed phone number fails). Sales words (`予約`, `購入`, `人気`, `おすすめ` …) fail.
-  Required facts must be shown verbatim in one displayed text node at both widths.
+  Required facts must be shown verbatim in one text node that passes the legibility check (§6) at 320, 390, 1440 and 1920.
 - **AI-generated images.** AI concept images are **not** in the asset store (DEV-070 removed `generated_concept`; DEV-076 is
   backlog and its store intake needs a separate human decision). The PoC may reference a **local, unpublished** concept image
   only as `kind: "ai_concept_local"` in `assets.json`, with a person's review record (`approved_by`, `approved_at`,
   `record_id`) and `published: false` (the literal). Such an image may only sit in an `ai_concept` slot with an allowed alt
   (「…のイメージ（AI生成）」), and then the page must show exactly
-  **「架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです」**, displayed, ≥ 12 px, where the spec says.
+  **「架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです」**, legible (§6 legibility), where the spec says.
   Without an AI image the page shows 「架空店舗のデザイン提案」. Unapproved AI images are never published; nothing is.
 - The synthetic fixture uses **no AI image and no photo**: CSS placeholders only. The AI-disclosure rule is tested with a flat
   PNG flagged as an AI concept asset.
+- **Images are not read.** No check reads text inside an image (no OCR, by design). An asset's `kind` is the author's declaration:
+  the only technical check is that a `placeholder` PNG is one flat colour (every pixel within 6 levels of the first, so it cannot
+  carry text or a photo; `PAGE_ASSET_PLACEHOLDER_NOT_FLAT`). An `ai_concept_local` image could contain invented text and nothing
+  here would see it — that is what the person's per-image review record is for.
 
 ## 6. The validation harness and the fidelity checks
 
@@ -123,15 +138,26 @@ listed assets are served under an unresolvable origin, everything else is aborte
 | product image placement | `data-comp-slot`: present once, in its section, aspect vs spec; img loaded; `object-fit: fill` keeps its own aspect | ±10 % aspect, ±2 % distortion; slot kind ↔ asset kind |
 | nav and buttons | nav labels and anchors in order; one CTA `<a>` with the label and target; every link an in-page anchor with a target | exact |
 | responsiveness | `scrollWidth − clientWidth` at 320, 360, 390, 768, 1024, 1440, 1920 | 0 |
-| missing / clipped / overlapping text | the shop-CSS `MEASURE_SCRIPT` on the whole body + `overprinted` | no displayed text clipped, offscreen, covered, out of its box, < 12 px, faded or overprinted; no hidden fact |
+| missing / clipped / overlapping text | the shop-CSS `MEASURE_SCRIPT` on the whole body + `overprinted`, at **320, 390, 1440 and 1920** (scale 1) | no displayed text clipped, offscreen, covered, out of its box, < 12 px, faded or overprinted; no hidden fact |
+| legibility of the disclosure and every required fact | at the same four widths: `MEASURE_SCRIPT` + `PROTECTED_SCRIPT` + the **Stage 3 pixel proof** (`lowContrastShare` on the ground actually painted under the text, `inkOf` against the same boxes with nothing but the text) | every node of a protected element shown with no TEXT_* problem; size × transform × zoom ≥ 12 px; opacity product ≥ 0.85; colour alpha 1 and no different `-webkit-text-fill-color`; no clip-path / mask / filter / blend / clip on its chain; ≤ 10 % of its ground below 4.5:1; ink ratio ≥ 0.8; no `aria-hidden` over any text |
 | fact accuracy | §5 | exact |
-| AI disclosure | §5 | exact text, displayed, placement |
+| AI disclosure | §5 | exact text, one element, placement, legibility |
 | anti-template | §7 | distance > 0.35, CSS reuse ≤ 20 %, no renderer markers |
 | comp similarity | §7 | reported, never passes |
 
-**Not checked (honest gaps):** colour contrast and ink (the Stage 3 pixel proof `inkOf` / `lowContrastShare` needs a baseline page
-and was not adapted), font identity (local stacks differ by machine), image quality, and anything aesthetic. A page that passes
-every check can still look nothing like the comp; that is why a person compares them (§9).
+**Section placement, colours, spacing and type are compared against Claude's own spec**, which Claude wrote from the comp.
+They show that the page keeps to the spec, not that the spec (or the page) matches the comp: they are **not fidelity evidence**.
+
+**Not checked (honest gaps):** contrast and ink of text other than the disclosure and the required facts (labels, captions,
+CTA: the warm-grey labels of the synthetic page are below 4.5:1, which the pixel proof would flag), text inside images (§5),
+font identity (local stacks differ by machine), image quality, and anything aesthetic. A page that passes every check can still
+look nothing like the comp; that is why a person compares them (§9).
+
+**Correction (review of PR #96 at 9daac92).** The first version of this document claimed that the facts check, the disclosure
+check and the stylesheet rules made invented text and a hidden disclosure impossible. A Fresh Review disproved that: CSS strings
+(`list-style`, `hyphenate-character`) drew invented text; the disclosure passed with `color: transparent`, a transparent text fill,
+the ground's colour, `zoom: 0.1`, `clip-path`, `scale` + `opacity`, or `aria-hidden` with off-screen placement; and a required fact
+under `aria-hidden` off screen passed. Each of these probes is now a test that must fail (`tests/unit/design-agent/comp-impl/`).
 
 ## 7. Comp similarity and the anti-template guard
 
@@ -187,7 +213,9 @@ from the comp and its spec in a reviewed session, and a person looks at it next 
 ## 10. Outputs and running it
 
 `$SR_COMP_IMPL_POC_ROOT` (absolute) or `~/sr-comp-impl-poc/`, a new `<shop>-XXXXXX/` (0700) with `report.json`, `desktop.png`,
-`mobile.png` (0600, never overwritten). The root may not be inside the repository, the asset store, the bundle or the page.
+`mobile.png` (0600, never overwritten). The root may not be inside the repository, the asset store, the bundle or the page; this
+is checked on its resolved path **before** anything is created. An existing root is used only when it is a real directory (not a
+link) owned by the user with mode 0700, and its mode is never changed; a missing root is created 0700.
 `report.json`: `fidelity_status`, `faithful_reproduction_claimed: false`, `mechanical_ok`, `failed`, bundle and page digests,
 every check's codes and numbers, `anti_template`, `similarity`, notes.
 

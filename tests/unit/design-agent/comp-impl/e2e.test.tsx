@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Browser } from "playwright";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -9,7 +9,11 @@ import { CompImplError, sha256 } from "@/lib/design-agent/comp-impl/bundle";
 import { runCompImpl, writeCompImplOutputs, type RunResult } from "@/lib/design-agent/comp-impl/run";
 import { buildSyntheticBundle } from "@/lib/design-agent/comp-impl/synthetic";
 import { loadHandWritten, parseShop } from "@/lib/design-agent/compare/shops";
-import { POC_DISCLOSURE_V2 } from "@/lib/design-agent/design-image/prompt";
+import { legibilityCheck } from "@/lib/design-agent/comp-impl/checks";
+import { loadCompPage } from "@/lib/design-agent/comp-impl/page";
+import { legibilityPass } from "@/lib/design-agent/comp-impl/render";
+import { factStrings } from "@/lib/design-agent/compare/shops";
+import { POC_DISCLOSURE, POC_DISCLOSURE_V2 } from "@/lib/design-agent/design-image/prompt";
 import { FACTS_SOURCE, FIXTURE, flatPng, launch, pageCopy, privateTemp, removeDir, REPO } from "./support";
 
 // DEV-082 end to end in Chromium: the synthetic comp is rendered to a bundle,
@@ -127,5 +131,114 @@ describe("comp-to-site on the synthetic fixture", () => {
     const r = await changed((d) => editFile(d, "index.html", (s) => s.replace("<span class=\"lead-visual-disc\"></span>", '<span class="lead-visual-disc"></span><img src="assets/missing.png" alt="">')));
     expect(r.report.checks.network!.codes).toEqual(["NETWORK_REQUEST_BLOCKED"]);
     await expect(changed((d) => editFile(d, "index.html", (s) => s.replace("</body>", "<script>fetch('https://example.com')</script></body>")))).rejects.toMatchObject({ code: "PAGE_SOURCE_REFUSED" });
+  });
+});
+
+// review of PR #96 (Fresh Review FAIL at 9daac92): each probe below passed before; each must fail now
+describe("probes: the disclosure and the required facts must be readable", () => {
+  const demo = parseShop(JSON.parse(readFileSync(FACTS_SOURCE, "utf8")) as unknown)!.demo;
+  const all = factStrings(demo).map((f) => f.text.replace(/\s+/g, ""));
+  const required = [demo.name, demo.hours!, demo.closedDays!, demo.address!, demo.access!, demo.phone!, demo.description!].map((f) => f.replace(/\s+/g, ""));
+  const DISCLOSURE = 'class="colophon-note" data-comp-disclosure';
+  const PHONE = '<dd data-comp-type="body">052-000-0731</dd>';
+  async function legibility(edit: (dir: string) => Promise<void>, disclosure = POC_DISCLOSURE) {
+    const dir = await pageCopy("probe-");
+    temps.push(dir);
+    await edit(dir);
+    const pass = await legibilityPass(browser, await loadCompPage(dir), 1440, all, required);
+    return legibilityCheck(pass, { required, disclosure });
+  }
+  const css = (rule: string) => (d: string) => editFile(d, "style.css", (s) => `${s}\n${rule}\n`);
+  const html = (from: string, to: string) => (d: string) => editFile(d, "index.html", (s) => s.replace(from, to));
+
+  it("the synthetic page's disclosure and facts are readable", async () => {
+    expect(await legibility(async () => {})).toMatchObject({ ok: true, codes: [] });
+  });
+
+  it.each<[string, (d: string) => Promise<void>, string[]]>([
+    ["color: transparent", css(".colophon-note { color: transparent; }"), ["DISCLOSURE_COLOUR_ALPHA", "DISCLOSURE_LOW_CONTRAST"]],
+    ["-webkit-text-fill-color: transparent", css(".colophon-note { -webkit-text-fill-color: transparent; }"), ["DISCLOSURE_TEXT_FILL", "DISCLOSURE_NO_INK"]],
+    ["the ground's own colour", css(".colophon-note { color: #F4EEE3; }"), ["DISCLOSURE_LOW_CONTRAST"]],
+    ["zoom: 0.1", css(".colophon-note { zoom: 0.1; }"), ["DISCLOSURE_TOO_SMALL"]],
+    ["clip-path: inset(50%)", css(".colophon-note { clip-path: inset(50%); }"), ["DISCLOSURE_EFFECT"]],
+    ["scale(.05) with opacity .05", css(".colophon-note { transform: scale(.05); opacity: .05; }"), ["DISCLOSURE_TOO_SMALL", "DISCLOSURE_FADED"]],
+    ["filter: opacity(.05)", css(".colophon-note { filter: opacity(.05); }"), ["DISCLOSURE_EFFECT"]],
+    ["aria-hidden and off-screen", async (d) => {
+      await html(DISCLOSURE, `${DISCLOSURE} aria-hidden="true"`)(d);
+      await css(".colophon-note { position: absolute; left: -9999px; }")(d);
+    }, ["TEXT_ARIA_HIDDEN", "DISCLOSURE_NOT_MEASURED", "DISCLOSURE_NOT_LEGIBLE"]],
+    ["aria-hidden with clip-path", async (d) => {
+      await html(DISCLOSURE, `${DISCLOSURE} aria-hidden="true"`)(d);
+      await css(".colophon-note { clip-path: inset(50%); }")(d);
+    }, ["TEXT_ARIA_HIDDEN", "DISCLOSURE_NOT_LEGIBLE"]],
+    ["aria-hidden with scale and opacity", async (d) => {
+      await html(DISCLOSURE, `${DISCLOSURE} aria-hidden="true"`)(d);
+      await css(".colophon-note { transform: scale(.05); opacity: .05; }")(d);
+    }, ["TEXT_ARIA_HIDDEN", "DISCLOSURE_NOT_LEGIBLE"]],
+    ["a required fact under aria-hidden, off-screen", async (d) => {
+      await html(PHONE, '<dd data-comp-type="body" aria-hidden="true" class="gone">052-000-0731</dd>')(d);
+      await css(".gone { position: absolute; left: -9999px; }")(d);
+    }, ["TEXT_ARIA_HIDDEN", "FACTS_REQUIRED_NOT_LEGIBLE"]],
+    ["a required fact in the ground's colour", css(".facts-row dd { color: #EAE1D2; }"), ["FACT_LOW_CONTRAST", "FACTS_REQUIRED_NOT_LEGIBLE"]],
+    ["a required fact with a transparent fill", css(".facts-row dd { -webkit-text-fill-color: transparent; }"), ["FACT_TEXT_FILL", "FACTS_REQUIRED_NOT_LEGIBLE"]],
+  ])("fails %s", async (_n, edit, codes) => {
+    const r = await legibility(edit);
+    expect(r.ok).toBe(false);
+    expect(r.codes).toEqual(expect.arrayContaining(codes));
+  });
+
+  it("applies the same rules to the AI disclosure", async () => {
+    const r = await legibility(async (d) => {
+      await html("data-comp-disclosure>架空店舗のデザイン提案<", `data-comp-disclosure>${POC_DISCLOSURE_V2}<`)(d);
+      await css(".colophon-note { color: transparent; }")(d);
+    }, POC_DISCLOSURE_V2);
+    expect(r.codes).toEqual(expect.arrayContaining(["DISCLOSURE_COLOUR_ALPHA", "DISCLOSURE_LOW_CONTRAST"]));
+  });
+
+  it("a hidden required fact fails the whole run (with every width checked)", async () => {
+    const r = await changed(async (d) => {
+      await html(PHONE, '<dd data-comp-type="body" aria-hidden="true" class="gone">052-000-0731</dd>')(d);
+      await css(".gone { position: absolute; left: -9999px; }")(d);
+    });
+    expect(r.report.mechanical_ok).toBe(false);
+    expect(Object.keys(r.report.checks).filter((k) => k.startsWith("legibility_"))).toEqual(["legibility_320", "legibility_390", "legibility_1440", "legibility_1920"]);
+    expect(r.report.checks.legibility_390!.codes).toContain("FACTS_REQUIRED_NOT_LEGIBLE");
+  });
+
+  it.each([
+    ["list-style with a string", 'li.goods-card { display: list-item; list-style: "SALE 50% OFF" inside; }'],
+    ["hyphenate-character", '.goods-copy { hyphens: manual; hyphenate-character: "$9.80"; }'],
+  ])("never renders a stylesheet that draws invented text (%s)", async (_n, rule) => {
+    await expect(changed(css(rule))).rejects.toMatchObject({ code: "PAGE_SOURCE_REFUSED", problems: ["CSS_STRING"] });
+  });
+});
+
+describe("output root", () => {
+  const fake = (): RunResult => ({ report: { bundle: { shop: "wagashi" } } as RunResult["report"], desktop: Buffer.from("d"), mobile: Buffer.from("m") });
+  const write = (root: string, inputs: string[] = []) => writeCompImplOutputs(root, fake(), { repoDir: REPO, env: { HOME: "/nonexistent-home" }, inputs }).then(() => "WRITTEN", (e: unknown) => (e instanceof CompImplError ? e.code : String(e)));
+
+  it("refuses a forbidden root before creating anything", async () => {
+    const target = join(REPO, "tmp-comp-impl-out", "deeper");
+    expect(await write(target)).toBe("OUTPUT_UNSAFE");
+    await expect(stat(join(REPO, "tmp-comp-impl-out"))).rejects.toThrow();
+  });
+
+  it("uses an existing root only when it is this user's private directory, and never changes its mode", async () => {
+    const base = await privateTemp("root-");
+    temps.push(base);
+    const open = join(base, "open");
+    await mkdir(open, { mode: 0o755 });
+    await chmod(open, 0o755);
+    expect(await write(open)).toBe("OUTPUT_UNSAFE");
+    expect((await stat(open)).mode & 0o777).toBe(0o755);
+    const link = join(base, "link");
+    const target = join(base, "target");
+    await mkdir(target, { mode: 0o700 });
+    await symlink(target, link);
+    expect(await write(link)).toBe("OUTPUT_UNSAFE");
+    expect(await write(target)).toBe("WRITTEN");
+    const fresh = join(base, "new", "root");
+    expect(await write(fresh)).toBe("WRITTEN");
+    expect((await stat(fresh)).mode & 0o777).toBe(0o700);
   });
 });

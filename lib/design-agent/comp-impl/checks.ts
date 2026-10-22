@@ -8,8 +8,8 @@
  */
 import type { DemoView } from "@/lib/sales/demo-content";
 import type { Measure } from "../shop-css/page-scripts";
-import { MIN_FONT_PX, MIN_OPACITY, overprinted } from "../shop-css/render-check";
-import type { CompMeasure, DomAudit } from "./page-scripts";
+import { CONTRAST_TOLERANCE, INK_RATIO, MIN_FONT_PX, MIN_OPACITY, overprinted, type Ink } from "../shop-css/render-check";
+import type { CompMeasure, DomAudit, ProtectedScan } from "./page-scripts";
 import { PAGE_ELEMENTS } from "./page-scripts";
 import type { PageAsset } from "./page";
 import { COMP_ALT_TEXTS, COMP_UI_LABELS, factValues, SALES_UI, type CompSpec } from "./spec";
@@ -315,4 +315,68 @@ export function textCheck(measure: Measure): CheckResult {
   });
   if (measure.scripts > 0) codes.push("PAGE_HAS_SCRIPT");
   return result(codes, { nodes: nodes.length, nodes_with_problems: bad });
+}
+
+// ---------------------------------------------------------------- protected text (disclosure, required facts)
+
+export type LegibilityInput = {
+  measure: Measure;
+  scan: ProtectedScan;
+  lowContrast: ReadonlyMap<number, number>;
+  ink: ReadonlyMap<number, Ink>;
+};
+
+/**
+ * The disclosure and every required fact must be really readable at this
+ * width (review of PR #96: transparent colour or fill, the ground's colour,
+ * zoom, clip-path, aria-hidden with off-screen placement, scale + opacity all
+ * passed before). For each element that holds protected text, every measured
+ * node of it must be shown and free of every TEXT_* problem, its size times
+ * the zoom chain at least MIN_FONT_PX, its opacity product at least
+ * MIN_OPACITY, its colour fully opaque with no different text fill, no
+ * clip-path / mask / filter / blend / clip on its chain, at most
+ * CONTRAST_TOLERANCE of its ground below 4.5:1 (lowContrastShare) and its ink
+ * kept (inkOf, INK_RATIO). aria-hidden over any text is refused outright: such
+ * text is skipped by every measurement.
+ */
+export function legibilityCheck(l: LegibilityInput, o: { required: readonly string[]; disclosure: string }): CheckResult {
+  const codes: string[] = [];
+  if (l.scan.ariaHiddenText > 0) codes.push("TEXT_ARIA_HIDDEN");
+  if (l.scan.unmeasuredDisclosure > 0) codes.push("DISCLOSURE_NOT_MEASURED");
+  const nodes = l.measure.nodes;
+  const scoped = nodes.map((n) => (n.kind === "fact" || n.kind === "label" ? n : { ...n, hidden: true, chars: [] }));
+  const over = overprinted({ ...l.measure, nodes: scoped });
+  const ownerProblems = new Map<number, string[]>();
+  for (const owner of l.scan.owners) {
+    const p = new Set<string>();
+    const mine = nodes.map((n, i) => ({ n, i })).filter(({ n }) => (n.kind === "fact" || n.kind === "label") && n.owner === owner.owner);
+    if (mine.length === 0) p.add("NOT_MEASURED");
+    for (const { n, i } of mine) {
+      if (n.hidden) p.add("HIDDEN");
+      if (n.clipped) p.add("CLIPPED");
+      if (n.offscreen) p.add("OFFSCREEN");
+      if (n.covered) p.add("COVERED");
+      if (n.overflow) p.add("OUT_OF_BOX");
+      if (n.squeezed) p.add("SQUEEZED");
+      if (over[i]) p.add("OVERLAP");
+      if (n.fontSize * owner.zoom < MIN_FONT_PX) p.add("TOO_SMALL");
+      if (n.opacity < MIN_OPACITY) p.add("FADED");
+      if ((l.lowContrast.get(i) ?? 1) > CONTRAST_TOLERANCE) p.add("LOW_CONTRAST");
+      const ink = l.ink.get(i);
+      if (!ink || ink.missing > 0 || ink.ratio < INK_RATIO) p.add("NO_INK");
+    }
+    if (owner.colourAlpha < 255) p.add("COLOUR_ALPHA");
+    if (owner.fillDiffers) p.add("TEXT_FILL");
+    if (owner.effects) p.add("EFFECT");
+    ownerProblems.set(owner.owner, [...p]);
+    for (const code of p) codes.push(`${owner.disclosure ? "DISCLOSURE" : "FACT"}_${code}`);
+  }
+  // the disclosure: its measured, clean text is exactly the required line
+  const disclosureOwners = l.scan.owners.filter((x) => x.disclosure);
+  const disclosureText = disclosureOwners.flatMap((x) => nodes.filter((n) => (n.kind === "fact" || n.kind === "label") && n.owner === x.owner && !n.hidden).map((n) => n.text)).join("").replace(/\s+/g, "");
+  if (l.scan.disclosures !== 1 || disclosureOwners.length === 0 || disclosureText !== o.disclosure.replace(/\s+/g, "")) codes.push("DISCLOSURE_NOT_LEGIBLE");
+  // every required fact: in at least one element whose text is clean
+  const unreadable = o.required.filter((_f, r) => !l.scan.owners.some((x) => x.facts.includes(r) && (ownerProblems.get(x.owner) ?? ["?"]).length === 0));
+  if (unreadable.length > 0) codes.push("FACTS_REQUIRED_NOT_LEGIBLE");
+  return result(codes, { protected_elements: l.scan.owners.length, unreadable_facts: unreadable.length });
 }

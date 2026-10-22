@@ -6,7 +6,7 @@ import { CompImplError, loadCompBundle, sha256 } from "@/lib/design-agent/comp-i
 import { loadCompPage } from "@/lib/design-agent/comp-impl/page";
 import { parseShop } from "@/lib/design-agent/compare/shops";
 import { loadPocInputs } from "@/lib/design-agent/design-image/prompt";
-import { FACTS_SOURCE, FIXTURE, flatPng, pageCopy, privateTemp, removeDir, REPO } from "./support";
+import { FACTS_SOURCE, FIXTURE, flatPng, pageCopy, privateTemp, removeDir, REPO, stripedPng } from "./support";
 
 // DEV-082: the comp bundle and page loaders refuse anything unsafe or
 // inconsistent, and take facts only from the source of truth.
@@ -129,6 +129,8 @@ describe("loadCompPage", () => {
     ["an asset marked as published", () => withAsset(asset({ published: true })), "PAGE_ASSETS_INVALID"],
     ["a listed asset whose file is missing", () => writeFile(join(page, "assets.json"), json({ version: 1, assets: [asset()] })), "PAGE_ASSET_MISSING"],
     ["an asset that is no PNG", () => withAsset(asset(), Buffer.from("GIF89a")), "PAGE_ASSET_INVALID"],
+    // review of PR #96: the kind is the author's word; a "placeholder" with anything drawn in it is refused
+    ["a placeholder that is not one flat colour", () => withAsset(asset({ sha256: sha256(stripedPng(30, 20, [234, 225, 210], [31, 29, 27])) }), stripedPng(30, 20, [234, 225, 210], [31, 29, 27])), "PAGE_ASSET_PLACEHOLDER_NOT_FLAT"],
     ["a linked stylesheet", async () => {
       await rm(join(page, "style.css"));
       await symlink(join(FIXTURE, "page/style.css"), join(page, "style.css"));
