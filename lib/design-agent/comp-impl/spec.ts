@@ -25,6 +25,8 @@ export const COMP_SPEC_VERSION = 1;
  * plus アクセス / メニュー); never a claim (no おすすめ, 人気, 予約, 購入 …).
  */
 export const COMP_UI_LABELS = ["商品・こだわり", "店舗情報", "店舗情報を見る", "営業時間", "定休日", "住所", "電話", "アクセス", "メニュー", "お店について", "ページの先頭へ"] as const;
+/** The labels of shop information: each must be a dt of a dl, paired with its value (render.ts PAIRS_SCRIPT). */
+export const COMP_INFO_LABELS = ["営業時間", "定休日", "住所", "電話", "アクセス"] as const;
 /** The only alt texts an image slot may carry (an AI concept image is always named as one). */
 export const COMP_ALT_TEXTS = ["和菓子のイメージ（AI生成）", "どら焼きの断面と粒あんのイメージ（AI生成）", "上生菓子のイメージ（AI生成）", "粒あんの接写のイメージ（AI生成）"] as const;
 /** Words that would claim a shop, an order or a reservation the facts do not hold (same list as the PoC's art direction check). */

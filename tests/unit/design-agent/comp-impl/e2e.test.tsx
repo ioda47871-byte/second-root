@@ -9,9 +9,9 @@ import { CompImplError, sha256 } from "@/lib/design-agent/comp-impl/bundle";
 import { runCompImpl, writeCompImplOutputs, type RunResult } from "@/lib/design-agent/comp-impl/run";
 import { buildSyntheticBundle } from "@/lib/design-agent/comp-impl/synthetic";
 import { loadHandWritten, parseShop } from "@/lib/design-agent/compare/shops";
-import { legibilityCheck } from "@/lib/design-agent/comp-impl/checks";
+import { domProblems, legibilityCheck, pairsCheck, structureCheck, sweepCheck } from "@/lib/design-agent/comp-impl/checks";
 import { loadCompPage } from "@/lib/design-agent/comp-impl/page";
-import { legibilityPass } from "@/lib/design-agent/comp-impl/render";
+import { compMeasure, DESKTOP, domAudit, legibilityPass, legibilitySweep, openCompPage } from "@/lib/design-agent/comp-impl/render";
 import { factStrings } from "@/lib/design-agent/compare/shops";
 import { POC_DISCLOSURE, POC_DISCLOSURE_V2 } from "@/lib/design-agent/design-image/prompt";
 import { FACTS_SOURCE, FIXTURE, flatPng, launch, pageCopy, privateTemp, removeDir, REPO } from "./support";
@@ -199,7 +199,7 @@ describe("probes: the disclosure and the required facts must be readable", () =>
     // off-screen placement is refused by the stylesheet allowlist now, so aria-hidden alone is the probe here
     const r = await changed(html(PHONE, '<dd data-comp-type="body" aria-hidden="true">052-000-0731</dd>'));
     expect(r.report.mechanical_ok).toBe(false);
-    const widths = Object.keys(r.report.checks).filter((k) => k.startsWith("legibility_"));
+    const widths = Object.keys(r.report.checks).filter((k) => /^legibility_\d+$/.test(k));
     expect(widths).toEqual(["legibility_320", "legibility_360", "legibility_390", "legibility_759", "legibility_760", "legibility_761", "legibility_768", "legibility_1024", "legibility_1440", "legibility_1920"]);
     for (const k of widths) expect(r.report.checks[k]!.codes).toEqual(expect.arrayContaining(["TEXT_ARIA_HIDDEN", "FACTS_REQUIRED_NOT_LEGIBLE"]));
   });
@@ -270,5 +270,117 @@ describe("output root", () => {
     const fresh = join(base, "new", "root");
     expect(await write(fresh)).toBe("WRITTEN");
     expect((await stat(fresh)).mode & 0o777).toBe(0o700);
+  });
+});
+
+// third review of PR #96 (7b612c1): combinations of allowed properties that passed the whole run
+describe("probes: third review", () => {
+  const demo = parseShop(JSON.parse(readFileSync(FACTS_SOURCE, "utf8")) as unknown)!.demo;
+  const all = factStrings(demo).map((f) => f.text.replace(/\s+/g, ""));
+  const required = [demo.name, demo.hours!, demo.closedDays!, demo.address!, demo.access!, demo.phone!, demo.description!].map((f) => f.replace(/\s+/g, ""));
+  const css = (rule: string) => (d: string) => editFile(d, "style.css", (s) => `${s}\n${rule}\n`);
+  const html = (from: string | RegExp, to: string) => (d: string) => editFile(d, "index.html", (s) => s.replace(from, to));
+  async function copy(edit: (dir: string) => Promise<void>) {
+    const dir = await pageCopy("third-");
+    temps.push(dir);
+    await edit(dir);
+    return loadCompPage(dir);
+  }
+  async function structure(edit: (dir: string) => Promise<void>) {
+    const o = await openCompPage(browser, await copy(edit), DESKTOP);
+    try {
+      return { dom: domProblems(await domAudit(o.page)), structure: structureCheck(await compMeasure(o.page)) };
+    } finally {
+      await o.context.close();
+    }
+  }
+  async function at(edit: (dir: string) => Promise<void>, width = 1440) {
+    const pass = await legibilityPass(browser, await copy(edit), width, all, required);
+    return { legibility: legibilityCheck(pass, { required, disclosure: POC_DISCLOSURE }), pairs: pairsCheck(pass.pairs) };
+  }
+
+  it("the synthetic page passes the new structure and pair checks", async () => {
+    expect((await structure(async () => {})).structure).toMatchObject({ ok: true, codes: [] });
+    expect((await at(async () => {})).pairs).toMatchObject({ ok: true, codes: [] });
+  });
+
+  // 1: a fixed-height box around wrapping text (the reviewer's disclosure was covered at 576–660 px)
+  it.each([
+    ["height on the footer", ".colophon { height: 60px; }"],
+    ["max-height on the facts list", ".facts-list { max-height: 100px; }"],
+    ["block-size inside a media rule", "@media (min-width: 900px) { .colophon-inner { block-size: 40px; } }"],
+  ])("fails a fixed height on an element holding text (%s)", async (_n, rule) => {
+    expect((await structure(css(rule))).structure.codes).toContain("FIXED_HEIGHT_TEXT");
+  });
+
+  it("the coarse sweep re-measures protected text at each width in one context", async () => {
+    const page = await copy(css("@media (min-width: 600px) and (max-width: 620px) { .colophon-note { opacity: 0.5; } }"));
+    const run = await legibilitySweep(browser, page, all, required, [320, 576, 608, 640, 1920]);
+    const r = sweepCheck(run.widths, { required, disclosure: POC_DISCLOSURE });
+    expect(r.ok).toBe(false);
+    expect(r.failing_widths).toEqual([608]);
+    expect(r.codes).toContain("DISCLOSURE_FADED");
+  });
+
+  // 2: labels beside other values
+  it("fails a label outside a dl and a dt without its dd", async () => {
+    expect((await at(html('<p class="colophon-name"', '<p>電話</p><p class="colophon-name"'))).pairs.codes).toContain("LABEL_OUTSIDE_DL");
+    expect((await at(html('<dd data-comp-type="body">052-000-0731</dd>', '<dt data-comp-type="body">052-000-0731</dt>'))).pairs.codes).toContain("DT_WITHOUT_DD");
+  });
+  it.each([
+    ["grid order (measured directly; order is refused by the stylesheet check)", ".facts-row dt { order: 2; }"],
+    ["a wrapping column flex across rules (measured directly)", ".facts-list { display: flex; flex-direction: column; } .facts-list { flex-wrap: wrap; max-height: 160px; }"],
+  ])("fails label / value pairs out of reading order: %s", async (_n, rule) => {
+    expect((await at(css(rule))).pairs.codes).toContain("PAIR_ORDER");
+  });
+
+  // 3: nested rotations add up
+  it("fails a disclosure turned 96 degrees by twelve nested 8-degree rotations", async () => {
+    const nested = `${'<span class="r">'.repeat(12)}架空店舗のデザイン提案${"</span>".repeat(12)}`;
+    const r = await structure(async (d) => {
+      await html("data-comp-disclosure>架空店舗のデザイン提案<", `data-comp-disclosure>${nested}<`)(d);
+      await css(".r { display: inline-block; transform: rotate(8deg); }")(d);
+    });
+    expect(r.structure.codes).toContain("TEXT_ROTATED");
+  });
+
+  // 4: list markers draw digits or discs
+  it("fails an ol (not an allowed element) and the default ul disc", async () => {
+    const ol = await structure(html(/<ul class="masthead-links">([\s\S]*?)<\/ul>/, '<ol class="masthead-links">$1</ol>'));
+    expect(ol.dom.codes).toContain("DOM_ELEMENT_NOT_ALLOWED");
+    expect(ol.structure.codes).toContain("LIST_MARKER");
+    const disc = await structure((d) => editFile(d, "style.css", (s) => s.replace("ul { list-style: none; }", "")));
+    expect(disc.structure.codes).toContain("LIST_MARKER");
+  });
+
+  // 5: an underline on protected text is refused up front, with its own code
+  it.each([
+    ["on the disclosure", ".colophon-note { text-decoration: underline; }"],
+    ["inherited from an ancestor", ".colophon { text-decoration: underline; }"],
+  ])("refuses an underline %s (DISCLOSURE_DECORATED)", async (_n, rule) => {
+    expect((await at(css(rule))).legibility.codes).toContain("DISCLOSURE_DECORATED");
+  });
+
+  // the whole run carries the new checks
+  it("a full run reports structure, pairs at every checked width and the coarse sweep", async () => {
+    const r = await changed(css(".colophon { height: 60px; }"));
+    expect(r.report.mechanical_ok).toBe(false);
+    expect(r.report.checks.structure_desktop!.codes).toContain("FIXED_HEIGHT_TEXT");
+    expect(Object.keys(r.report.checks).filter((k) => k.startsWith("pairs_")).length).toBe(10);
+    expect(r.report.checks.legibility_sweep).toMatchObject({ widths: 51 });
+  });
+
+  it.each([
+    ["the reviewer's clamp() with vw", ".colophon-note { font-size: clamp(12px, 2.6vw, 16px); }", "CSS_VIEWPORT_UNIT"],
+    ["text-transform on a fact", ".facts-row dd { text-transform: uppercase; }", "CSS_VALUE"],
+    ["grid-auto-flow: column", ".facts-list { display: grid; grid-auto-flow: column; }", "CSS_VALUE"],
+    ["float", ".facts-row dt { float: right; }", "CSS_VALUE"],
+  ])("never renders %s", async (_n, rule, code) => {
+    const error = await changed(css(rule)).then(
+      () => null,
+      (e: unknown) => e as { code?: string; problems?: string[] },
+    );
+    expect(error?.code).toBe("PAGE_SOURCE_REFUSED");
+    expect(error?.problems).toContain(code);
   });
 });

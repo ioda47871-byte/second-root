@@ -13,6 +13,7 @@ import { decodePng } from "../worker/png-paint";
 import { SHOT_VIEWPORTS } from "../shot-viewports";
 import type { CompPage } from "./page";
 import { pageBreakpointsPx } from "./page-css";
+import { COMP_INFO_LABELS } from "./spec";
 import {
   COMP_MEASURE_SCRIPT,
   CompMeasureSchema,
@@ -21,8 +22,11 @@ import {
   FINGERPRINT_SCRIPT,
   FingerprintSchema,
   PAGE_ELEMENTS,
+  PAIRS_SCRIPT,
+  PairsSchema,
   PROTECTED_SCRIPT,
   ProtectedSchema,
+  type Pairs,
   SHARED_ATTRIBUTES,
   type CompMeasure,
   type DomAudit,
@@ -171,8 +175,13 @@ export type Legibility = {
   ink: Map<number, Ink>;
   /** Per measured node of a protected element: the largest ink ratio of any character, page over reference (extra ink: a bar, a shadow, overprint). */
   inkExcess: Map<number, number>;
+  pairs: Pairs;
   blocked: number;
 };
+
+async function pairsOf(page: Page): Promise<Pairs> {
+  return PairsSchema.parse(await page.evaluate(`(${PAIRS_SCRIPT})(${JSON.stringify({ labels: COMP_INFO_LABELS })})`));
+}
 
 /** The largest ratio of a character's ink on the page to its ink in the reference (characters too small to measure are left out). */
 export function maxInkRatio(page: Picture, reference: Picture, node: Measure["nodes"][number]): number {
@@ -203,6 +212,7 @@ export async function legibilityPass(browser: Browser, compPage: CompPage, width
   try {
     const page = o.page;
     const measure = await textMeasure(page, facts);
+    const pairs = await pairsOf(page);
     const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
     const owners = new Set(scan.owners.map((x) => x.owner));
     const nodes = measure.nodes.map((n, i) => ({ n, i })).filter(({ n }) => (n.kind === "fact" || n.kind === "label") && owners.has(n.owner));
@@ -229,7 +239,40 @@ export async function legibilityPass(browser: Browser, compPage: CompPage, width
         inkExcess.set(i, maxInkRatio({ withText, without }, { withText: cleanWith, without: cleanWithout }, n));
       }
     }
-    return { width, measure, scan, lowContrast, ink, inkExcess, blocked: o.blocked() };
+    return { width, measure, scan, lowContrast, ink, inkExcess, pairs, blocked: o.blocked() };
+  } finally {
+    await o.context.close();
+  }
+}
+
+/** The coarse sweep's step and range (on top of the checked widths): every 32px from 320 to 1920. */
+export const SWEEP_STEP = 32;
+export const sweepWidths = (): number[] => Array.from({ length: Math.floor((1920 - 320) / SWEEP_STEP) + 1 }, (_, i) => 320 + i * SWEEP_STEP);
+
+export type SweepWidth = { width: number; measure: Measure; scan: ProtectedScan; pairs: Pairs };
+
+/**
+ * The coarse sweep of protected text (third review of PR #96: text wrapped
+ * between two checked widths and was painted over). One page context, the
+ * viewport resized to each width (no reload, as the shop-css container scan
+ * does), re-measuring with MEASURE_SCRIPT, PROTECTED_SCRIPT and PAIRS_SCRIPT:
+ * clipped, covered, out of its box, overprinted, too small, faded, effects,
+ * decoration, label order. The pixel proofs (contrast, ink) run at the
+ * checked widths only. Desktop emulation at every width.
+ */
+export async function legibilitySweep(browser: Browser, compPage: CompPage, facts: readonly string[], required: readonly string[], widths: readonly number[] = sweepWidths()): Promise<{ widths: SweepWidth[]; blocked: number }> {
+  const o = await openCompPage(browser, compPage, { width: widths[0] ?? 320, height: 900, scale: 1, mobile: false });
+  try {
+    const page = o.page;
+    await textMeasure(page, facts); // marks the scope and the measured elements once
+    const out: SweepWidth[] = [];
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: 900 });
+      const measure = MeasureSchema.parse(await page.evaluate(`(${MEASURE_SCRIPT})(${JSON.stringify({ facts })})`));
+      const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
+      out.push({ width, measure, scan, pairs: await pairsOf(page) });
+    }
+    return { widths: out, blocked: o.blocked() };
   } finally {
     await o.context.close();
   }

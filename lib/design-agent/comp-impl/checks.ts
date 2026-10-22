@@ -9,7 +9,7 @@
 import type { DemoView } from "@/lib/sales/demo-content";
 import type { Measure } from "../shop-css/page-scripts";
 import { CONTRAST_TOLERANCE, INK_RATIO, MIN_FONT_PX, MIN_OPACITY, overprinted, type Ink } from "../shop-css/render-check";
-import type { CompMeasure, DomAudit, ProtectedScan } from "./page-scripts";
+import type { CompMeasure, DomAudit, Pairs, ProtectedScan } from "./page-scripts";
 import { PAGE_ELEMENTS } from "./page-scripts";
 import type { PageAsset } from "./page";
 import { COMP_ALT_TEXTS, COMP_UI_LABELS, factValues, SALES_UI, type CompSpec } from "./spec";
@@ -325,6 +325,8 @@ export type LegibilityInput = {
   lowContrast: ReadonlyMap<number, number>;
   ink: ReadonlyMap<number, Ink>;
   inkExcess: ReadonlyMap<number, number>;
+  /** false for the coarse sweep: the pixel proofs (contrast, ink) ran at the full widths only. */
+  pixels?: boolean;
 };
 
 /** Protected text may carry at most this much more ink than the same glyphs alone (antialiasing differs a little; a bar, a shadow or overprint adds far more). */
@@ -365,6 +367,7 @@ export function legibilityCheck(l: LegibilityInput, o: { required: readonly stri
       if (over[i]) p.add("OVERLAP");
       if (n.fontSize * owner.zoom < MIN_FONT_PX) p.add("TOO_SMALL");
       if (n.opacity < MIN_OPACITY) p.add("FADED");
+      if (l.pixels === false) continue;
       if ((l.lowContrast.get(i) ?? 1) > CONTRAST_TOLERANCE) p.add("LOW_CONTRAST");
       const ink = l.ink.get(i);
       if (!ink || ink.missing > 0 || ink.ratio < INK_RATIO) p.add("NO_INK");
@@ -373,6 +376,8 @@ export function legibilityCheck(l: LegibilityInput, o: { required: readonly stri
     if (owner.colourAlpha < 255) p.add("COLOUR_ALPHA");
     if (owner.fillDiffers) p.add("TEXT_FILL");
     if (owner.effects) p.add("EFFECT");
+    // a decoration line over protected text is refused up front (the reference has none, so the ink bound would fail it anyway)
+    if (owner.decorated) p.add("DECORATED");
     ownerProblems.set(owner.owner, [...p]);
     for (const code of p) codes.push(`${owner.disclosure ? "DISCLOSURE" : "FACT"}_${code}`);
   }
@@ -384,4 +389,44 @@ export function legibilityCheck(l: LegibilityInput, o: { required: readonly stri
   const unreadable = o.required.filter((_f, r) => !l.scan.owners.some((x) => x.facts.includes(r) && (ownerProblems.get(x.owner) ?? ["?"]).length === 0));
   if (unreadable.length > 0) codes.push("FACTS_REQUIRED_NOT_LEGIBLE");
   return result(codes, { protected_elements: l.scan.owners.length, unreadable_facts: unreadable.length });
+}
+
+// ---------------------------------------------------------------- structure (third review of PR #96)
+
+/** No text drawn more than this many degrees off the horizontal (or vertical) axis, all transforms of its chain composed. */
+export const MAX_TEXT_ANGLE = 8;
+
+/**
+ * Page structure that the stylesheet allowlist cannot see alone: a fixed
+ * height on an element holding text (wrapped text leaves the box between the
+ * checked widths), a drawn list marker (ul disc, ol numbers), and text turned
+ * past MAX_TEXT_ANGLE by nested rotations.
+ */
+export function structureCheck(m: CompMeasure): CheckResult {
+  const codes: string[] = [];
+  if (m.fixedHeightText > 0) codes.push("FIXED_HEIGHT_TEXT");
+  if (m.listMarkers > 0) codes.push("LIST_MARKER");
+  const turned = m.texts.filter((t) => t.shown && Math.abs(t.angle) > MAX_TEXT_ANGLE);
+  if (turned.length > 0) codes.push("TEXT_ROTATED");
+  return result(codes, { fixed_height_text: m.fixedHeightText, list_markers: m.listMarkers, max_angle: Math.max(0, ...m.texts.map((t) => Math.abs(t.angle))) });
+}
+
+/** Info labels stay in dt / dd pairs of a dl, and the pairs keep their DOM order in reading order (at this width). */
+export function pairsCheck(p: Pairs): CheckResult {
+  const codes: string[] = [];
+  if (p.outside > 0) codes.push("LABEL_OUTSIDE_DL");
+  if (p.dtWithoutDd > 0) codes.push("DT_WITHOUT_DD");
+  if (p.misordered > 0) codes.push("PAIR_ORDER");
+  return result(codes, { pairs: p.pairs, misordered: p.misordered });
+}
+
+/** The coarse sweep: protected text and label order at every 32px (no pixel proofs); the failing widths are listed. */
+export function sweepCheck(widths: ReadonlyArray<{ width: number; measure: Measure; scan: ProtectedScan; pairs: Pairs }>, o: { required: readonly string[]; disclosure: string }): CheckResult {
+  const failing = widths
+    .map((w) => ({ width: w.width, codes: [...legibilityCheck({ measure: w.measure, scan: w.scan, lowContrast: new Map(), ink: new Map(), inkExcess: new Map(), pixels: false }, o).codes, ...pairsCheck(w.pairs).codes] }))
+    .filter((w) => w.codes.length > 0);
+  return result(
+    failing.flatMap((w) => w.codes),
+    { widths: widths.length, failing_widths: failing.map((w) => w.width) },
+  );
 }

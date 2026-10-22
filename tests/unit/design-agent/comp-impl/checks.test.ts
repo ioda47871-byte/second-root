@@ -12,9 +12,11 @@ import {
   linksCheck,
   mobileOrderCheck,
   overflowCheck,
+  pairsCheck,
   paletteCheck,
   requiredDisclosure,
   spacingCheck,
+  structureCheck,
   textCheck,
   typeCheck,
 } from "@/lib/design-agent/comp-impl/checks";
@@ -38,21 +40,23 @@ const box = (left: number, top: number, width: number, height: number) => ({ lef
 function good(): CompMeasure {
   const H = 2050;
   return {
+    fixedHeightText: 0,
+    listMarkers: 0,
     width: 1440,
     height: H,
     overflow: 0,
     texts: [
-      { text: "架空菓庵", shown: true, fontSize: 56 },
-      { text: "季節の上生菓子と、毎朝炊く粒あんのどら焼き", shown: true, fontSize: 16 },
-      { text: "店舗情報を見る", shown: true, fontSize: 14 },
-      { text: "営業時間", shown: true, fontSize: 14 },
-      { text: demo.hours!, shown: true, fontSize: 16 },
-      { text: demo.closedDays!, shown: true, fontSize: 16 },
-      { text: demo.address!, shown: true, fontSize: 16 },
-      { text: demo.access!, shown: true, fontSize: 16 },
-      { text: demo.phone!, shown: true, fontSize: 16 },
-      { text: demo.description!, shown: true, fontSize: 16 },
-      { text: POC_DISCLOSURE, shown: true, fontSize: 13 },
+      { text: "架空菓庵", shown: true, fontSize: 56, angle: 0 },
+      { text: "季節の上生菓子と、毎朝炊く粒あんのどら焼き", shown: true, fontSize: 16, angle: 0 },
+      { text: "店舗情報を見る", shown: true, fontSize: 14, angle: 0 },
+      { text: "営業時間", shown: true, fontSize: 14, angle: 0 },
+      { text: demo.hours!, shown: true, fontSize: 16, angle: 0 },
+      { text: demo.closedDays!, shown: true, fontSize: 16, angle: 0 },
+      { text: demo.address!, shown: true, fontSize: 16, angle: 0 },
+      { text: demo.access!, shown: true, fontSize: 16, angle: 0 },
+      { text: demo.phone!, shown: true, fontSize: 16, angle: 0 },
+      { text: demo.description!, shown: true, fontSize: 16, angle: 0 },
+      { text: POC_DISCLOSURE, shown: true, fontSize: 13, angle: 0 },
     ],
     attrTexts: [{ kind: "title", text: `架空菓庵｜${POC_DISCLOSURE}` }],
     sections: spec.sections.map((s) => ({ id: s.id, shown: true, box: box(s.box.x * 1440, s.box.y * H, s.box.w * 1440, s.box.h * H), paddingTop: s.role === "header" || s.role === "footer" ? 0 : 80, paddingBottom: s.role === "header" || s.role === "footer" ? 0 : 80 })),
@@ -95,9 +99,9 @@ describe("facts", () => {
     expect(facts(good())).toMatchObject({ ok: true, codes: [] });
   });
   it.each<[string, (m: CompMeasure) => void, string]>([
-    ["an invented price", (m) => m.texts.push({ text: "どら焼き 280円", shown: true, fontSize: 16 }), "FACTS_UNKNOWN_TEXT"],
-    ["an invented claim hidden from view", (m) => m.texts.push({ text: "創業百年", shown: false, fontSize: 16 }), "FACTS_UNKNOWN_TEXT"],
-    ["a sales word", (m) => m.texts.push({ text: "予約", shown: true, fontSize: 16 }), "FACTS_SALES_WORD"],
+    ["an invented price", (m) => m.texts.push({ text: "どら焼き 280円", shown: true, fontSize: 16, angle: 0 }), "FACTS_UNKNOWN_TEXT"],
+    ["an invented claim hidden from view", (m) => m.texts.push({ text: "創業百年", shown: false, fontSize: 16, angle: 0 }), "FACTS_UNKNOWN_TEXT"],
+    ["a sales word", (m) => m.texts.push({ text: "予約", shown: true, fontSize: 16, angle: 0 }), "FACTS_SALES_WORD"],
     ["a changed phone number", (m) => (m.texts[8]!.text = "052-000-0732"), "FACTS_UNKNOWN_TEXT"],
     ["a required fact missing", (m) => m.texts.splice(8, 1), "FACTS_REQUIRED_MISSING"],
     ["a required fact only in hidden text", (m) => (m.texts[8]!.shown = false), "FACTS_REQUIRED_MISSING"],
@@ -304,6 +308,24 @@ describe("page source", () => {
     ["a grid line range", "dt { grid-column: 1 / 3; }", "CSS_VALUE"],
     ["dense grid packing", "dl { grid-auto-flow: dense; }", "CSS_VALUE"],
     ["a large text-indent", "p { text-indent: 200px; }", "CSS_VALUE"],
+    // third review of PR #96 (7b612c1): allowed properties in combination
+    ["vw in clamp() (wraps where no width is sampled)", "p { font-size: clamp(12px, 2.5vw, 16px); }", "CSS_VIEWPORT_UNIT"],
+    ["vw in a width", ".x { width: 40vw; }", "CSS_VIEWPORT_UNIT"],
+    ["vw inside calc()", ".x { padding: calc(10px + 2vw); }", "CSS_VIEWPORT_UNIT"],
+    ["vw in a grid track", ".x { grid-template-columns: 30vw 1fr; }", "CSS_VIEWPORT_UNIT"],
+    ["vh", ".x { min-height: 50vh; }", "CSS_VIEWPORT_UNIT"],
+    ["vmin", ".x { margin: 2vmin; }", "CSS_VIEWPORT_UNIT"],
+    ["dvw", ".x { width: 50dvw; }", "CSS_VIEWPORT_UNIT"],
+    ["cqi", ".x { width: 50cqi; }", "CSS_VIEWPORT_UNIT"],
+    ["a fixed grid row height", ".x { grid-template-rows: 40px 1fr; }", "CSS_VALUE"],
+    ["a fixed auto row height", ".x { grid-auto-rows: 24px; }", "CSS_VALUE"],
+    ["grid-auto-flow: column", "dl { grid-auto-flow: column; }", "CSS_VALUE"],
+    ["float", "dt { float: left; }", "CSS_VALUE"],
+    ["a wrapping column flex (flex-flow)", "dl { display: flex; flex-flow: column wrap; }", "CSS_FLEX_COLUMN_WRAP"],
+    ["a wrapping column flex (two properties)", "dl { display: flex; flex-direction: column; flex-wrap: wrap; }", "CSS_FLEX_COLUMN_WRAP"],
+    ["text-transform", "dd { text-transform: uppercase; }", "CSS_VALUE"],
+    ["font-variant-caps", "dd { font-variant-caps: small-caps; }", "CSS_VALUE"],
+    ["an ol selector (ol is no longer an allowed element)", "ol { margin: 0; }", "CSS_SELECTOR"],
     ["!important", "dd { color: #000 !important; }", "CSS_IMPORTANT"],
     ["a custom property", "dd { --x: 1px; }", "CSS_PROPERTY"],
     // media: width only, 320 … 1920
@@ -344,6 +366,7 @@ describe("page source", () => {
       "a { text-decoration: underline; letter-spacing: 0.1em; } ul { list-style: none; }",
       "#hero { padding: 80px 0; transform: rotate(-2deg); opacity: 0.9; }",
       ".wide { grid-column: span 2; grid-row: auto; } p { text-indent: 1em; }",
+      ".g { grid-template-rows: auto 1fr; grid-auto-rows: minmax(120px, auto); } dl { display: flex; flex-direction: column; }",
     ])
       expect(cssProblems(css), css).toEqual([]);
   });
@@ -424,5 +447,25 @@ describe("placeholder images", () => {
     chunk1.writeUInt32BE(crc32(Buffer.concat([Buffer.from("IDAT"), data1])) >>> 0, 8 + data1.length);
     expect(isFlatPng(Buffer.concat([marked.subarray(0, idatAt - 4), chunk1, marked.subarray(idatAt + 8 + len)]))).toBe(false);
     expect(isFlatPng(Buffer.from("not a png"))).toBe(false);
+  });
+});
+
+describe("structure and label pairs (third review of PR #96)", () => {
+  it("fails a fixed height on text, a drawn list marker, and text turned past 8 degrees", () => {
+    expect(structureCheck(good())).toMatchObject({ ok: true, codes: [] });
+    expect(structureCheck({ ...good(), fixedHeightText: 1 }).codes).toEqual(["FIXED_HEIGHT_TEXT"]);
+    expect(structureCheck({ ...good(), listMarkers: 3 }).codes).toEqual(["LIST_MARKER"]);
+    const turned = good();
+    turned.texts[0]!.angle = 16;
+    expect(structureCheck(turned).codes).toEqual(["TEXT_ROTATED"]);
+    turned.texts[0]!.angle = -8;
+    expect(structureCheck(turned).ok).toBe(true);
+  });
+  it("fails a label outside a dl, a dt without its dd, and pairs out of reading order", () => {
+    const ok = { outside: 0, dtWithoutDd: 0, misordered: 0, pairs: 5 };
+    expect(pairsCheck(ok).ok).toBe(true);
+    expect(pairsCheck({ ...ok, outside: 1 }).codes).toEqual(["LABEL_OUTSIDE_DL"]);
+    expect(pairsCheck({ ...ok, dtWithoutDd: 1 }).codes).toEqual(["DT_WITHOUT_DD"]);
+    expect(pairsCheck({ ...ok, misordered: 2 }).codes).toEqual(["PAIR_ORDER"]);
   });
 });

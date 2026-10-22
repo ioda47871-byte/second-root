@@ -3653,8 +3653,8 @@
         "DEV-073",
         "DEV-074"
       ],
-      "attempts": 2,
-      "last_failure": "Re-review FAIL at b94c61b (PR #96): the CSS defence was a deny-list; 38 further probes passed (bidi override, ::first-letter, scaleX(-1), ink-adding decoration / shadows, print / scripting media, tablet-only rules, filters on images, list markers). Fixed: page CSS allowlist (Stage 3 guard model and value grammar), ink upper bound, checks at checkWidths widths, exact-flat placeholders, output-root race; a 101-probe sweep found no pass",
+      "attempts": 3,
+      "last_failure": "Third review FAIL at 7b612c1 (PR #96): combinations of allowed properties passed — text wrapping between sampled widths (clamp with vw) into a fixed-height box and painted over; labels beside other values (column flow, float, column + wrap flex); nested rotations to 96°; plus list markers, underline on protected text, text-transform. Fixed: no viewport / container units, content-sized grid rows, no fixed height on text (render rule), 32px coarse sweep of protected text, dt/dd pair order at every width, composed rotation, no ol and no list markers, decoration refused up front, text-transform / font-variant-caps refused",
       "branch": "feature/dev-082-comp-to-site",
       "purpose": "最終目標は既存 template の色や配置の調整ではなく、Codex が作った店ごとの original なデザイン画像を Claude が Web サイトとして忠実に実装すること。画像生成（HUMAN-022 で止まっている）が動いたらすぐ実装に入れるよう、comp bundle（PoC の出力 + 評価 + layout spec + asset の一覧）→ Claude の実装（standalone HTML / CSS）→ Chromium の検査 → report・PC / mobile の screenshot、の道筋を先に作る。comp の中の文字は事実の出典にしない。設計は docs/operations/comp-to-site.md",
       "acceptance_criteria": [
@@ -3665,7 +3665,8 @@
         "synthetic fixture（架空菓庵、AI 画像も写真も使わない、synthetic と明記）で end to end。report は synthetic_only・faithful_reproduction_claimed=false",
         "既存の営業 demo の生成・worker・timer・asset store の規則・品質ゲートと閾値・components/demo・workflow・依存は変えない",
         "review fixes: no CSS string except font family / grid area names, no counter-* property; no aria-hidden over text; the disclosure and every required fact pass the legibility check (Stage 3 contrast + ink proof, zoom, opacity, fill, effects) at 320 / 390 / 1440 / 1920; placeholder PNGs flat; output root checked before creation, an existing one must be a private 0700 directory of the user",
-        "re-review fixes: style.css is an allowlist (page-css.ts: the shop-css guard's tokenizer and value grammar, its own selectors and width-only @media in 320–1920, no pseudo-elements); protected text ink ≤ 1.15 × the reference; legibility and overflow at render-check checkWidths of the page's breakpoints; placeholder PNGs exactly one colour; the output root created alone (EEXIST → private-dir check) and chmod-ed through its descriptor"
+        "re-review fixes: style.css is an allowlist (page-css.ts: the shop-css guard's tokenizer and value grammar, its own selectors and width-only @media in 320–1920, no pseudo-elements); protected text ink ≤ 1.15 × the reference; legibility and overflow at render-check checkWidths of the page's breakpoints; placeholder PNGs exactly one colour; the output root created alone (EEXIST → private-dir check) and chmod-ed through its descriptor",
+        "third-review fixes: CSS_VIEWPORT_UNIT; grid rows by content; grid-auto-flow row, float none, no column+wrap; FIXED_HEIGHT_TEXT; legibility_sweep every 32px 320–1920 in one resized context; LABEL_OUTSIDE_DL / DT_WITHOUT_DD / PAIR_ORDER at every checked width; TEXT_ROTATED from the composed chain; ol removed and LIST_MARKER; DISCLOSURE_/FACT_DECORATED; text-transform none, font-variant-caps normal"
       ],
       "required_tests": [
         "tests/unit/design-agent/comp-impl/*（spec・各検査の pass / fail・bundle と頁の loader・Chromium の end to end・reference fingerprint の再生成との一致）",

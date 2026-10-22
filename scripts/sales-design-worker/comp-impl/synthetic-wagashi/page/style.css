@@ -7,8 +7,8 @@ h1, h2, p, ul, dl, dd { margin: 0; padding: 0; }
 ul { list-style: none; }
 a { color: #1F1D1B; text-decoration: none; }
 
-.masthead { height: 80px; border-bottom: 1px solid #8C8379; }
-.masthead-inner { max-width: 1200px; height: 100%; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.masthead { min-height: 80px; border-bottom: 1px solid #8C8379; }
+.masthead-inner { max-width: 1200px; min-height: 80px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .masthead-name { font-family: "Noto Serif JP", "IPAMincho", serif; font-size: 16px; letter-spacing: 0.2em; }
 .masthead-links { display: flex; gap: 32px; }
 .masthead-links a { font-size: 14px; letter-spacing: 0.1em; padding-bottom: 4px; border-bottom: 2px solid #B4472E; }
@@ -47,8 +47,7 @@ a { color: #1F1D1B; text-decoration: none; }
 .colophon-note { font-size: 13px; color: #1F1D1B; }
 
 @media (max-width: 760px) {
-  .masthead { height: auto; }
-  .masthead-inner { padding: 16px 20px; }
+  .masthead-inner { min-height: 0; padding: 16px 20px; }
   .masthead-links { gap: 20px; }
   .lead { padding: 40px 0; }
   .lead-inner { grid-template-columns: 1fr; gap: 32px; padding: 0 20px; }

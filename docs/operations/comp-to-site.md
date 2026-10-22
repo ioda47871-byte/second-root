@@ -155,19 +155,56 @@ whole page (its selectors start at the renderer's `#shop-css` scope), so this mo
   `screen`), no other feature (`scripting`, `prefers-*`, `orientation`, `hover`, resolution …), no range syntax, not nested.
   No other at-rule (`@import`, `@font-face`, `@counter-style`, `@supports`, `@layer` …).
 - **Properties:** layout (`display` without `none` / `list-item` / `contents`, `position` static / relative **without
-  offsets**, sizes, `aspect-ratio`, `box-sizing`, `float`), spacing (`margin` / `padding` / `gap`, no negatives), flex
-  (no reversed directions, no `order`), grid (track lists; **placement by `span` only**, no line numbers, no `dense`: the
-  visual order is the source order), alignment, columns, colours (`color`, `background` / `background-color` as a plain
+  offsets**, sizes, `aspect-ratio`, `box-sizing`, `float: none` only), spacing (`margin` / `padding` / `gap`, no negatives),
+  flex (no reversed directions, no `order`, no `column` + `wrap` in one rule), grid (column tracks; **rows sized by content
+  only** — `auto`, `min-content`, `max-content`, `fr`, `minmax(…, auto)`; **placement by `span` only**, no line numbers,
+  `grid-auto-flow: row` only: the visual order is the source order), alignment, columns, colours (`color`, `background` / `background-color` as a plain
   colour: hex, `rgb()`, `transparent`, `currentcolor`, `white`, `black`), borders and radius, inset `box-shadow` only,
   `opacity` ≥ 0.85, `transform: rotate()` ≤ 8° only, `object-fit` / `object-position`, typography basics (`font-family` from a
   fixed list of text faces, `font-size` ≥ 12 px, weight, style, `line-height`, `letter-spacing` ≥ 0, `word-spacing`,
-  `text-align`, `text-transform`, `text-indent` ≤ 2em / 32 px, `writing-mode`, wrapping), `list-style` / `list-style-type`
+  `text-align`, `text-transform: none`, `font-variant-caps: normal`, `text-indent` ≤ 2em / 32 px, `writing-mode`, wrapping), `list-style` / `list-style-type`
   **`none` only**, `text-decoration` / `text-decoration-line` **`none` / `underline` only** (no style, colour, thickness or
   offset property).
 - **Not listed, so refused** (the reviewers' probes among them): `content`, counters, `quotes`, `hyphenate-character`,
   `text-overflow`, `unicode-bidi`, `direction`, `filter`, `backdrop-filter`, `mix-blend-mode`, `text-shadow`,
   `-webkit-text-stroke`, `-webkit-text-fill-color`, `-webkit-text-security`, `text-emphasis`, `zoom`, `clip-path`, `mask`,
   `visibility`, `overflow`, offsets (`top` / `left` …), backgrounds with images or gradients, `!important`, custom properties.
+- **No viewport or container units** (`vw`, `vh`, `vmin`, `vmax`, `svw` / `lvw` / `dvw` …, `cq*`) anywhere, also inside
+  `calc()` / `clamp()` (`CSS_VIEWPORT_UNIT`): text then wraps only where an `@media` breakpoint says, which the checked widths
+  sample. Percentages and `fr` still make wrapping width-dependent; that is what the coarse sweep and the fixed-height rule are for.
+
+### Render-time rules the stylesheet alone cannot see (third review)
+
+The allowlist judges each declaration; some defects come from combining allowed ones with the page's HTML. These are
+measured in the browser:
+
+- **No fixed height on text** (`FIXED_HEIGHT_TEXT`): any style rule (under any media) that sets `height`, `max-height`,
+  `block-size` or `max-block-size` to something other than `auto` / `none` on an element that contains text. Wrapped text
+  would leave such a box between two checked widths and be painted over (the reviewer's disclosure at 576–660 px).
+- **Coarse sweep of protected text** (`legibility_sweep`): on top of the checked widths, every **32 px from 320 to 1920**
+  (51 widths) in one page context, the viewport resized (no reload), re-measuring the disclosure, the required facts and
+  the label pairs with `MEASURE_SCRIPT`, `PROTECTED_SCRIPT` and `PAIRS_SCRIPT` (shown, not clipped / covered / out of its box /
+  overprinted / too small / faded / decorated, no effects). The pixel proofs (contrast, ink) run at the checked widths only;
+  the sweep uses desktop emulation at every width. A full run now takes about 13 s.
+- **Label ↔ value pairs** (`pairs_<width>`, and in the sweep): every info label (営業時間, 定休日, 住所, 電話, アクセス)
+  must be a `dt` inside a `dl` (`LABEL_OUTSIDE_DL`), every `dt` must be followed by a `dd` (`DT_WITHOUT_DD`), and the
+  `dt` / `dd` of each `dl` must keep their DOM order in reading order — same line left to right, else top to bottom
+  (vertical writing: same column top to bottom, else right to left) — at every checked width (`PAIR_ORDER`).
+- **Rotation** (`TEXT_ROTATED`): every transform of a text's ancestor chain composed; more than 8° off axis fails (twelve
+  nested `rotate(8deg)` turned the disclosure 96° before).
+- **List markers** (`LIST_MARKER`): `ol` is no longer an allowed element, and any shown element displayed as a list item with
+  a `list-style-type` other than `none` fails (the default `ul` disc, the `ol` numbers).
+- **Decoration on protected text** (`DISCLOSURE_DECORATED` / `FACT_DECORATED`): a decoration line declared on the element or
+  any ancestor (they propagate) is refused up front, with its own code, before the ink bound would fail it.
+
+**Adversarial sweep, third round (local, after the review of 7b612c1).** 62 probes: the earlier categories again plus the
+six combinations of this review (vw-driven wrapping into a fixed-height footer, fixed / max / block heights under media,
+rotated neighbours and sections, nested rotation, `grid-auto-flow: column`, `float`, column + wrap flex in one and two
+rules, labels outside a `dl`, a `dt` without its `dd`, `ol`, the default `ul` disc, underline on the disclosure, on an
+ancestor and on a fact, `text-transform`, `font-variant-caps`, fixed grid rows, an opacity chain). 42 refused before
+rendering, 16 rendered and failed, 4 passed — and those 4 are harmless controls whose screenshot is right (text wrapping at a
+% width with no fixed height; a column flex that never wraps without a height; a span with other column widths; the nested
+spans without the rotation CSS).
 
 **Adversarial sweep (local, after the re-review of b94c61b).** 101 probes over every pseudo-element (both spellings), bidi (CSS, the
 `dir` attribute, control characters and entities), `text-decoration` / `text-shadow` / stroke / emphasis, `letter-spacing`,
@@ -178,9 +215,10 @@ unit and Chromium tests in `tests/unit/design-agent/comp-impl/`.
 
 ### Remaining limits (honest list)
 
-- **Label ↔ value pairing is not checked.** The facts check proves every word is a fact or a label, and the allowlist keeps
-  the visual order equal to the source order, but the HTML itself could set 「電話」 next to the opening hours. Only a person
-  reading the screenshot sees that.
+- **Which value belongs to which label is not checked.** Labels must sit in `dt` / `dd` pairs that keep their order on screen,
+  but the HTML itself could pair 「電話」 with the opening hours. Only a person reading the screenshot sees that.
+- **Between the sweep's 32 px steps** a width-dependent defect in protected text could still hide; the fixed-height rule and the
+  absence of viewport units make that unlikely, not impossible. Pixel proofs run at the checked widths only.
 - **Contrast and ink are proven only for the disclosure and the required facts.** Labels, captions, the CTA and other text
   can be faint or invisible without failing (the warm-grey labels of the synthetic page are below 4.5:1). Underlined
   protected text fails the ink upper bound by design.
@@ -207,7 +245,10 @@ under `aria-hidden` off screen passed. Each of these probes is now a test that m
 The re-review at b94c61b showed the deny-list approach itself was the problem: 38 further probes (bidi override,
 `::first-letter`, `scaleX(-1)`, line-through and shadows that only add ink, print / scripting media, tablet-only rules,
 filters on images, list markers …) passed. The stylesheet is now an allowlist, the ink proof has an upper bound, and the
-checks run at every width around every breakpoint.
+checks run at every width around every breakpoint. The third review (7b612c1) passed three combinations of allowed
+properties: text wrapping between sampled widths into a fixed-height box, labels moved beside other values (column flow,
+float, column + wrap flex), and nested rotations adding up to 96°; and noted list markers, underline on protected text and
+`text-transform`. The render-time rules above close them.
 
 ## 7. Comp similarity and the anti-template guard
 

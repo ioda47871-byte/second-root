@@ -26,7 +26,11 @@
  *               thickness property), `background` as a plain colour,
  *               object-fit / object-position for images, and font-family
  *               names from a fixed list of text faces, grid placement by span
- *               only (visual order = source order), text-indent ≤ 2em / 32px.
+ *               only (visual order = source order), text-indent ≤ 2em / 32px;
+ *               third review: no viewport or container unit (vw, vh, cq* …),
+ *               grid rows sized by content only, grid-auto-flow row only,
+ *               float none only, no wrapping column flex in one rule,
+ *               text-transform none and font-variant-caps normal only.
  *               Not listed, so refused: filter,
  *               backdrop-filter, mix-blend-mode, text-shadow,
  *               -webkit-text-stroke, -webkit-text-fill-color, unicode-bidi,
@@ -73,6 +77,32 @@ const fontFamilyItem = (t: Term): boolean => {
   return false;
 };
 
+/** Viewport and container units: they make text wrap at widths no breakpoint names, so the checked widths would miss them. */
+export const VIEWPORT_UNITS = new Set(["vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh", "svi", "svb", "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw", "dvh", "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax"]);
+const usesViewportUnit = (list: readonly CV[]): boolean =>
+  list.some((c) => (c.t === "dim" && VIEWPORT_UNITS.has(c.unit)) || (c.t === "fn" && usesViewportUnit(c.args)) || (c.t === "block" && usesViewportUnit(c.items)));
+
+/** A grid row sized by content: auto, min-content, max-content, Nfr, minmax(<length>|auto, auto|max-content|Nfr), repeat(n, those). */
+function contentTrack(t: Term, depth = 0): boolean {
+  if (kw("auto", "min-content", "max-content")(t)) return true;
+  if (t.t === "dim" && t.unit === "fr") return t.v > 0 && t.v <= 24;
+  if (t.t !== "fn" || depth > 1) return false;
+  const args = terms(t.args);
+  const groups: Term[][] = [[]];
+  for (const a of args) {
+    if (a.t === ",") groups.push([]);
+    else groups[groups.length - 1]!.push(a);
+  }
+  if (t.name === "minmax") {
+    if (groups.length !== 2 || groups.some((g) => g.length !== 1)) return false;
+    const [min, max] = [groups[0]![0]!, groups[1]![0]!];
+    const minOk = kw("auto", "min-content")(min) || (min.t === "num" && min.v === 0) || (min.t === "dim" && ["px", "rem", "em"].includes(min.unit) && min.v >= 0 && min.v <= 2400);
+    return minOk && (kw("auto", "max-content")(max) || (max.t === "dim" && max.unit === "fr" && max.v > 0 && max.v <= 24));
+  }
+  if (t.name === "repeat") return groups.length === 2 && groups[0]!.length === 1 && groups[0]![0]!.t === "num" && Number.isInteger(groups[0]![0]!.v) && groups[0]![0]!.v >= 1 && groups[0]![0]!.v <= 12 && groups[1]!.every((x) => contentTrack(x, depth + 1));
+  return false;
+}
+
 /** The page's property table: the guard's, with the changes listed in the header. */
 export const PAGE_PROPS: Readonly<Record<string, Spec>> = (() => {
   const props: Record<string, Spec> = { ...ELEMENT_PROPS };
@@ -85,11 +115,19 @@ export const PAGE_PROPS: Readonly<Record<string, Spec>> = (() => {
   props["text-decoration"] = one(kw("none", "underline"));
   props["text-decoration-line"] = one(kw("none", "underline"));
   props.background = ELEMENT_PROPS["background-color"]!;
+  // third review of PR #96: allowed properties combined to move labels, wrap text where no width is sampled, or redraw facts
+  props["grid-auto-flow"] = one(kw("row")); // column flow fills down then across: labels beside other values
+  props.float = one(kw("none"));
+  props["text-transform"] = one(kw("none")); // changes how Latin facts are drawn
+  props["font-variant-caps"] = one(kw("normal"));
+  // rows sized by their content only: a fixed row height lets wrapped text leave its box and be painted over
+  props["grid-template-rows"] = { items: [contentTrack, kw("none")], max: 12 };
+  props["grid-auto-rows"] = { items: [contentTrack], max: 12 };
   // grid items follow the source order: span only, no line numbers, no dense packing (a line number put a label
   // beside another value in the review sweep); the visual order of labels and values is the HTML's
   const spanOnly: Spec = { items: [() => true], max: 2, whole: (list) => (list.length === 1 && kw("auto")(list[0]!)) || (list.length === 2 && kw("span")(list[0]!) && list[1]!.t === "num" && Number.isInteger(list[1]!.v) && list[1]!.v >= 1 && list[1]!.v <= 12) };
   for (const name of ["grid-column", "grid-row", "grid-column-start", "grid-column-end", "grid-row-start", "grid-row-end"]) props[name] = spanOnly;
-  props["grid-auto-flow"] = one(kw("row", "column"));
+  // (grid-auto-flow: row only, above)
   props["text-indent"] = one((t) => (t.t === "num" && t.v === 0) || (t.t === "dim" && ((t.unit === "em" && t.v >= 0 && t.v <= 2) || (t.unit === "px" && t.v >= 0 && t.v <= 32))));
   props["object-fit"] = one(kw("cover", "contain", "fill", "none", "scale-down"));
   props["object-position"] = { items: [kw("center", "top", "bottom", "left", "right"), (t) => t.t === "pct" && t.v >= 0 && t.v <= 100], max: 2 };
@@ -218,6 +256,8 @@ function declarationProblems(items: CV[]): string[] {
     else segments[segments.length - 1]!.push(c);
   }
   let count = 0;
+  let column = false;
+  let wrap = false;
   for (const seg of segments) {
     const list = seg.filter((c) => c.t !== "ws");
     if (list.length === 0) continue;
@@ -239,9 +279,14 @@ function declarationProblems(items: CV[]): string[] {
       p.add("CSS_PROPERTY");
       continue;
     }
+    if (usesViewportUnit(value)) p.add("CSS_VIEWPORT_UNIT");
     if (value.length === 0 || !valueMatches(spec, value)) p.add("CSS_VALUE");
+    if (prop === "flex-direction" || prop === "flex-flow") if (value.some((t) => kw("column")(t))) column = true;
+    if (prop === "flex-wrap" || prop === "flex-flow") if (value.some((t) => kw("wrap")(t))) wrap = true;
   }
   if (count > PAGE_CSS_LIMITS.declarationsPerRule) p.add("CSS_DECLARATION");
+  // a wrapping column flex fills down then across (labels beside other values); the render check catches it across rules
+  if (column && wrap) p.add("CSS_FLEX_COLUMN_WRAP");
   return [...p];
 }
 

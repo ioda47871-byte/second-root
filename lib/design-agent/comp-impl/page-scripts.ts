@@ -30,7 +30,6 @@ export const PAGE_ELEMENTS: Readonly<Record<string, readonly string[]>> = {
   h3: [],
   h4: [],
   ul: [],
-  ol: [],
   li: [],
   dl: [],
   dt: [],
@@ -106,7 +105,37 @@ export const COMP_MEASURE_SCRIPT = String.raw`() => {
     return { left: r.left + scrollX, top: r.top + scrollY, width: r.width, height: r.height };
   };
   const clean = (s) => (s || "").replace(/\s+/g, " ").trim().slice(0, 400);
-  const out = { width: document.documentElement.clientWidth, height: document.documentElement.scrollHeight, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, texts: [], attrTexts: [], sections: [], types: [], colours: [], links: [], nav: [], ctas: [], slots: [], imgs: [], disclosures: [], containers: [] };
+  // the rotation a text is drawn at: every transform of its chain composed (each may rotate a little; together they add up)
+  const angleOf = (el) => {
+    let deg = 0;
+    for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
+      const t = getComputedStyle(a).transform;
+      if (t && t !== "none") {
+        const m = new DOMMatrixReadOnly(t);
+        deg += (Math.atan2(m.b, m.a) * 180) / Math.PI;
+      }
+    }
+    return Math.round(deg * 100) / 100;
+  };
+  // rules that fix the height of an element holding text (height / max-height / block sizes other than auto / none),
+  // under any media: wrapped text leaves such a box at widths no breakpoint names (third review of PR #96)
+  let fixedHeightText = 0;
+  const visit = (rules) => {
+    for (const r of Array.from(rules)) {
+      if (r.cssRules && !r.selectorText) { visit(r.cssRules); continue; }
+      if (!r.style || !r.selectorText) continue;
+      const fixed = ["height", "max-height", "block-size", "max-block-size"].some((name) => {
+        const v = r.style.getPropertyValue(name).trim();
+        return v !== "" && v !== "auto" && v !== "none";
+      });
+      if (!fixed) continue;
+      for (const el of Array.from(document.querySelectorAll(r.selectorText))) if ((el.textContent || "").replace(/\s+/g, "")) fixedHeightText += 1;
+    }
+  };
+  for (const sheet of Array.from(document.styleSheets)) {
+    try { visit(sheet.cssRules); } catch (e) { fixedHeightText += 1000; }
+  }
+  const out = { fixedHeightText, listMarkers: 0, width: document.documentElement.clientWidth, height: document.documentElement.scrollHeight, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, texts: [], attrTexts: [], sections: [], types: [], colours: [], links: [], nav: [], ctas: [], slots: [], imgs: [], disclosures: [], containers: [] };
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const text = clean(n.data);
@@ -115,7 +144,7 @@ export const COMP_MEASURE_SCRIPT = String.raw`() => {
     const range = document.createRange();
     range.selectNodeContents(n);
     const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0.5 && r.height > 0.5);
-    out.texts.push({ text, shown: rects.length > 0 && shown(el), fontSize: parseFloat(getComputedStyle(el).fontSize) });
+    out.texts.push({ text, shown: rects.length > 0 && shown(el), fontSize: parseFloat(getComputedStyle(el).fontSize), angle: angleOf(el) });
   }
   if (clean(document.title)) out.attrTexts.push({ kind: "title", text: clean(document.title) });
   for (const el of Array.from(document.querySelectorAll("[alt]"))) out.attrTexts.push({ kind: "alt", text: clean(el.getAttribute("alt")) });
@@ -146,6 +175,11 @@ export const COMP_MEASURE_SCRIPT = String.raw`() => {
     if (s.backgroundImage !== "none") addColour("image", "rgb(1, 2, 3)");
   }
   out.colours = Array.from(seen.values()).slice(0, 200);
+  // a list marker (the default disc of ul, the numbers of ol) is drawn text outside the DOM
+  for (const el of Array.from(document.body.querySelectorAll("*"))) {
+    const st = getComputedStyle(el);
+    if (st.display.includes("list-item") && st.listStyleType !== "none" && shown(el)) out.listMarkers += 1;
+  }
   for (const a of Array.from(document.querySelectorAll("a"))) {
     const href = a.getAttribute("href");
     let target = false;
@@ -184,10 +218,12 @@ export const COMP_MEASURE_SCRIPT = String.raw`() => {
 
 const Box = z.strictObject({ left: z.number(), top: z.number(), width: z.number(), height: z.number() });
 export const CompMeasureSchema = z.strictObject({
+  fixedHeightText: z.number().int().nonnegative(),
+  listMarkers: z.number().int().nonnegative(),
   width: z.number(),
   height: z.number(),
   overflow: z.number(),
-  texts: z.array(z.strictObject({ text: z.string().max(400), shown: z.boolean(), fontSize: z.number() })).max(2000),
+  texts: z.array(z.strictObject({ text: z.string().max(400), shown: z.boolean(), fontSize: z.number(), angle: z.number() })).max(2000),
   attrTexts: z.array(z.strictObject({ kind: z.enum(["title", "alt", "aria"]), text: z.string().max(400) })).max(200),
   sections: z.array(z.strictObject({ id: z.string().max(40), shown: z.boolean(), box: Box, paddingTop: z.number(), paddingBottom: z.number() })).max(50),
   types: z.array(z.strictObject({ role: z.string().max(20), fontSize: z.number(), fontWeight: z.number() })).max(500),
@@ -309,17 +345,20 @@ export const PROTECTED_SCRIPT = String.raw`(arg) => {
     if (!disclosure && facts.length === 0) continue;
     let zoom = 1;
     let effects = false;
+    let decorated = false;
     for (let a = el; a; a = a.parentElement) {
       const s = getComputedStyle(a);
       const z = parseFloat(s.zoom);
       if (Number.isFinite(z) && z > 0) zoom *= z;
+      // decoration lines are drawn by the element that declares them, over all its text (they propagate)
+      if ((s.textDecorationLine || "none") !== "none") decorated = true;
       const mask = s.maskImage || s.webkitMaskImage || "none";
       if (s.clipPath !== "none" || mask !== "none" || s.filter !== "none" || s.mixBlendMode !== "normal" || (s.clip && s.clip !== "auto" && (s.position === "absolute" || s.position === "fixed"))) effects = true;
     }
     const s = getComputedStyle(el);
     const colour = rgba(s.color);
     const fill = rgba(s.webkitTextFillColor || s.color);
-    out.owners.push({ owner: Number(el.getAttribute("data-sr-i")), disclosure, facts, zoom, colourAlpha: colour[3], fillDiffers: fill.join(",") !== colour.join(","), effects });
+    out.owners.push({ owner: Number(el.getAttribute("data-sr-i")), disclosure, facts, zoom, colourAlpha: colour[3], fillDiffers: fill.join(",") !== colour.join(","), effects, decorated });
   }
   return out;
 }`;
@@ -329,7 +368,60 @@ export const ProtectedSchema = z.strictObject({
   unmeasuredDisclosure: z.number().int().nonnegative(),
   disclosures: z.number().int().nonnegative(),
   owners: z
-    .array(z.strictObject({ owner: z.number().int().nonnegative(), disclosure: z.boolean(), facts: z.array(z.number().int().nonnegative()).max(40), zoom: z.number(), colourAlpha: z.number(), fillDiffers: z.boolean(), effects: z.boolean() }))
+    .array(z.strictObject({ owner: z.number().int().nonnegative(), disclosure: z.boolean(), facts: z.array(z.number().int().nonnegative()).max(40), zoom: z.number(), colourAlpha: z.number(), fillDiffers: z.boolean(), effects: z.boolean(), decorated: z.boolean() }))
     .max(500),
 });
 export type ProtectedScan = z.infer<typeof ProtectedSchema>;
+
+
+/**
+ * Label and value pairs (third review of PR #96): every info label (営業時間,
+ * 定休日 …) must be the text of a dt inside a dl, every dt must be followed by
+ * a dd before the next dt, and the dt / dd of each dl must keep their DOM order
+ * in reading order (by line, then left to right; in vertical writing, by
+ * column right to left, then top to bottom) — so no layout can set a label
+ * beside another value. Argument: { labels } (the info labels).
+ */
+export const PAIRS_SCRIPT = String.raw`(arg) => {
+  const flat = (s) => (s || "").replace(/\s+/g, "");
+  const out = { outside: 0, dtWithoutDd: 0, misordered: 0, pairs: 0 };
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!arg.labels.includes(flat(n.data))) continue;
+    const el = n.parentElement;
+    if (!el || el.tagName !== "DT" || !el.closest("dl")) out.outside += 1;
+  }
+  for (const dl of Array.from(document.querySelectorAll("dl"))) {
+    const items = Array.from(dl.querySelectorAll("dt, dd"));
+    items.forEach((el, i) => {
+      if (el.tagName !== "DT") return;
+      const next = items[i + 1];
+      if (!next || next.tagName !== "DD") out.dtWithoutDd += 1;
+      else out.pairs += 1;
+    });
+    const first = (el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const r = Array.from(range.getClientRects()).find((x) => x.width > 0.5 && x.height > 0.5);
+      return r ? { left: r.left, right: r.right, top: r.top + scrollY, bottom: r.bottom + scrollY, vertical: getComputedStyle(el).writingMode.startsWith("vertical") } : null;
+    };
+    const boxes = items.map(first).filter(Boolean);
+    for (let i = 1; i < boxes.length; i++) {
+      const a = boxes[i - 1];
+      const b = boxes[i];
+      if (a.vertical || b.vertical) {
+        const overlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const same = overlap > 0.5 * Math.min(a.right - a.left, b.right - b.left);
+        if (same ? b.top < a.top - 1 : b.right > a.left + 0.5 * (a.right - a.left)) out.misordered += 1;
+      } else {
+        const overlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        const same = overlap > 0.5 * Math.min(a.bottom - a.top, b.bottom - b.top);
+        if (same ? b.left < a.left - 1 : b.top < a.top + 0.5 * (a.bottom - a.top)) out.misordered += 1;
+      }
+    }
+  }
+  return out;
+}`;
+
+export const PairsSchema = z.strictObject({ outside: z.number().int().nonnegative(), dtWithoutDd: z.number().int().nonnegative(), misordered: z.number().int().nonnegative(), pairs: z.number().int().nonnegative() });
+export type Pairs = z.infer<typeof PairsSchema>;
