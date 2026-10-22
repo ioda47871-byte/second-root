@@ -605,12 +605,35 @@ Cost: none (no Codex, no model, no network). Returns: the printed lines (no secr
 - **models cache**: which model is first and listed, and whether `gpt-6.1-sol` is `code_mode_only` with image input.
 - `design-agent threads: 0` / `state_5.sqlite: absent` → the state DB is elsewhere (`sqlite_home`) or disabled; nothing to learn here.
 
+#### HUMAN-022 result and DEV-084: every first call failed at about 156 s
+
+HUMAN-022 (2026-10-22) printed the four PoC runs:
+
+| run | model, CLI, history | image items |
+|---|---|---|
+| HUMAN-018 (v1) | `gpt-6.1-sol`, 0.159.0, paginated | `failed/none/155584ms`, then `completed/none/32648ms` |
+| HUMAN-019 (v2) | same | `failed/none/157760ms` |
+| HUMAN-020 (v2) | same | `failed/none/155770ms` |
+| HUMAN-021b (v1) | same | `failed/none/157684ms` |
+
+Neither the model nor the prompt explains it. HUMAN-019 and HUMAN-020 did call the tool. The cause is investigated in
+[`imagegen-timeout-investigation.md`](imagegen-timeout-investigation.md). In short, one tool call makes up to 5 HTTP
+attempts. reqwest's Linux default `TCP_USER_TIMEOUT` (30 s) most likely ends each one, which gives 5 × about 31 s + about
+3 s of backoff. That is inferred, and HUMAN-024 checks it without Codex.
+
+DEV-084 adds two fields at the end of the summary (schema `/5`):
+
+- `img_call_ms=`: each image call's duration from the rollout's ItemCompleted `started_at_ms` / `completed_at_ms`.
+- `img_fail_timing=`: one bucket per failed call: `<5s`, `5-60s`, `60-140s`, `140-170s`, `>170s` or `unknown`.
+
+Nothing else changes: the command line, prompts, jail, cleanup and retries are untouched.
+
 #### Larger options (each needs its own human approval; not applied)
 
 - **`-m gpt-5.5`** (a model in the 0.159.0 bundled catalog with direct tools): only if HUMAN-022 shows HUMAN-018 ran on a
   different model than HUMAN-021b, or the next failure's `img_fail_reason` points at the model (`NOT_SUPPORTED`). Changes which
   model runs and its plan usage.
-- **Update the CLI** (0.159.0 → current): only if the reason is `BAD_RESPONSE` / `BAD_REQUEST` / `NOT_SUPPORTED` against the
+- **Update the CLI** (0.159.0 → current; not expected to change the ~156 s failure, DEV-084: upstream main still uses reqwest 0.12.28 with no TCP option override): only if the reason is `BAD_RESPONSE` / `BAD_REQUEST` / `NOT_SUPPORTED` against the
   image endpoint (a client / server contract drift). The files read here were the same in 0.163.0 (DEV-080).
 - **HUMAN-021c (v2)** stays on hold until v1 makes an image again.
 
