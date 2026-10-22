@@ -59,6 +59,12 @@ Every element gets a role, declared in HTML and **checked against the DOM**, nev
 | `media` | no (an `img` slot) | yes, as ground under content, never above it | before content |
 
 A `content` element can never be declared `decoration` (the role comes from the subtree; the attribute only confirms it).
+**Containers that hold text are `content`.** A hero, a card or a section that contains text is a `content` element even when its
+main visual is an image; its **own** background (colour, gradient or a `url()` texture) is painted below its own descendants by
+definition (CSS 2.1 Appendix E, step 1 of its context) and is treated as the ground under its text (V3b applies to it). A `ground`
+element is always a **text-free** box — a scrim, a band, a backdrop — that text overlaps as a sibling or a later box, never by
+containing it. So "ground may not contain text" holds without exception: the hero container is `content`, the image inside it is
+`media`, a scrim inside it is `ground`.
 **Pseudo-elements (`::before`, `::after`, and any later-approved `::first-letter`) are always `decoration`**; they have no DOM
 rect, so their geometry is computed from computed style (`getComputedStyle(el, '::before')`: display, position, offsets,
 size, margins, transform) and checked against a probe that their computed box equals the box measured by rendering them alone
@@ -73,14 +79,21 @@ check must be **exact**, not a heuristic — it is the line that catches a faint
 
 V2 implements the painting order of **CSS 2.1 Appendix E**, with the CSS Display / Flexbox / Grid amendments:
 
-- the stacking-context tree (positioned elements with `z-index`, `opacity` < 1, `transform`, `filter`, `isolation`,
-  `mix-blend-mode`, `backdrop-filter`, `clip-path`, `mask`, …) and, inside each context, the seven layers (backgrounds and
+- the stacking-context tree. Triggers: positioned elements with `z-index` ≠ `auto`; **flex and grid items with `z-index` ≠
+  `auto` even when `position: static`**; `position: fixed` and `position: sticky` (always); `opacity` < 1; `transform`,
+  `translate` / `rotate` / `scale`, `perspective`; `filter`, `backdrop-filter`; `isolation: isolate`; `mix-blend-mode` other than
+  `normal`; `clip-path`, `mask` / `mask-image` / `mask-border`; `contain: paint` / `layout` / `strict` / `content`;
+  `container-type: size` / `inline-size`; `will-change` naming any property that would create one; anything not in this list is
+  refused before rendering if it can create a stacking context. Inside each context, inside each context, the seven layers (backgrounds and
   borders; negative-z contexts; in-flow non-positioned blocks; floats; inline content; `z-index: auto` / 0 positioned and
   pseudo-stacking descendants; positive-z contexts);
 - **order-modified document order** for flex and grid items (`order` changes painting order, not just placement);
 - **atomic painting** of flex items, grid items and inline-blocks: each paints as if it were a stacking context (its
   background, then its content, all at once), so a **later** flex / grid / inline-block sibling that overflows sideways paints
-  completely above an earlier one's text — the class DEV-082's fifth review round found (L1, below);
+  completely above an earlier one's text — the class DEV-082's fifth review round found (§6, risk 1). Atomic painting is
+  only "as if": **positioned descendants and real stacking contexts inside such an item escape to the parent stacking context**
+  and are ordered there (by `z-index`, then tree order), not inside the item — so a `position: relative` child of an earlier
+  flex item paints above a later item's in-flow text;
 - a grid item in a **later** DOM position stacked on the same cells paints above an earlier one;
 - an `opacity < 1` element (e.g. a translucent scrim) forms a stacking context painted in the z-index 0 layer, i.e. **above
   every in-flow non-positioned text** in its parent context, even when it comes earlier in the DOM.
@@ -102,7 +115,11 @@ V2); a flex / grid cover that is earlier in the DOM but later in **order-modifie
 and so paints above the text (and the reverse case, which must pass); a positioned
 `z-index: auto` box after the text; a `z-index: -1` child escaping a parent's background; a float over inline text; `isolation:
 isolate` plus `mix-blend-mode`; a transformed earlier sibling (transform → stacking context → paints above in-flow text); a
-negative-margin card pulled over the previous section's text.
+negative-margin card pulled over the previous section's text; a **static** grid / flex item with `z-index: 1` laid over an
+earlier item's text (a stacking context without `position`); a `position: relative` (z-index auto) child of an **earlier** flex
+item overflowing onto a later item's text (escapes atomic painting, paints above); a `position: sticky` header scrolled over a
+fact in a full-page screenshot; `contain: paint` and `will-change: transform` on a cover (stacking contexts without the usual
+properties).
 
 **Deterministic. Cost: small (one script per width) plus the fixture comparison test.**
 
@@ -132,26 +149,30 @@ Over any ground that is not one flat colour:
 
 - **Protected text** (the disclosure never sits on a non-flat ground at all — §3.1(a)): inside each glyph box (expanded by
   1 px), the ground picture with the text hidden must be **flat within a tolerance** — every channel within *t* of the glyph
-  box's median, provisional *t* = 6/255 (`GROUND_NOT_FLAT`) — **or** the text sits on a declared **scrim** (a `ground` element
+  box's median, where channels are on the 0–255 scale and the provisional *t* = 6 (`GROUND_NOT_FLAT`) — **or** the text sits on a declared **scrim** (a `ground` element
   of one colour *S* with alpha *a*) whose worst case is proven **analytically**: for any pixel *g* under the scrim, the composite
-  is *a·S + (1 − a)·g*. (1) Contrast: the text colour against the composite over every *g* in [0, 255]³ (relative luminance is
-  monotonic per channel, so the extremes at the cube's corners bound it) is ≥ 4.5:1. (2) Structure: the scrim attenuates any
-  stroke under it to at most *(1 − a)·255* per channel; that must be ≤ *t*, i.e. *a* ≥ 1 − *t*/255 (≈ 0.976 at *t* = 6). In
+  is *a·S + (1 − a)·g*. (1) Contrast: the composite is monotonic in each channel of *g* and relative luminance is monotonic per
+  channel, so over every *g* in [0, 255]³ the composite's luminance fills the interval [*L*min, *L*max] between the two corner
+  composites (*g* = black and *g* = white). Contrast against the text luminance *L*t is not monotonic over an interval that
+  contains *L*t, so the rule is: **both** *L*min and *L*max lie on the **same side** of *L*t (both lighter or both darker), and the
+  **nearer** of the two gives ≥ 4.5:1 against the text colour. (2) Structure: the scrim attenuates any
+  stroke under it to at most *(1 − a)·255* per channel (0–255 scale); that must be ≤ *t*, i.e. *a* ≥ 1 − *t*/255 (≈ 0.976 at *t* = 6). In
   other words, over a busy image a protected fact needs a near-opaque scrim or a flat area of the image; a semi-transparent
   scrim is enough for non-protected text (next point) but not for facts.
 - **Gradients**: no hard stops. Adjacent colour stops must be at least a minimum distance apart (provisional ≥ 24 px **and**
-  ≥ 10 % of the gradient line), and the colour change per px along the line is bounded (provisional ≤ 2/255 per channel);
+  ≥ 10 % of the gradient line), and the colour change per px along the line is bounded (provisional ≤ 2 per channel per px, 0–255 scale);
   `repeating-*-gradient`, `conic-gradient`, `border-image` and stacked gradient layers stay refused.
 - **Other `content` text** over a non-flat ground: **ground busyness** — luminance standard deviation and Sobel edge energy
   inside each glyph box of the text-hidden picture — is a **gate** (`GROUND_TOO_BUSY` above the cap), not a report. Caps are
   provisional gate values, calibrated on real comps and approved by the human.
-- **`background-clip: text`** (and `-webkit-background-clip: text`) **stays refused** (L10): it paints a ground image *as* the
+- **`background-clip: text`** (and `-webkit-background-clip: text`) **stays refused**: it paints a ground image *as* the
   glyphs, so the visible letters would come from an image.
 
 **Probes (each must fail):** a hard-stop `linear-gradient` drawing a vertical bar in the text colour under 「1」 of the phone
 number; the same with a 1 px soft edge (stop distance); `repeating-linear-gradient` stripes under hours; a texture asset with a
-stroke placed under one digit; a cropped photo whose crop puts an edge under a digit at one width only (M3, §3.1(a)); a scrim
-at *a* = 0.9 over a text-coloured stroke (passes contrast, fails structure); a near-text-colour stroke (Δ just above *t*);
+stroke placed under one digit; a cropped photo whose crop puts an edge under a digit at one width only (§3.1(a)); a scrim
+at *a* = 0.9 over a text-coloured stroke (passes contrast, fails structure); a near-text-colour stroke (Δ just above *t*); a scrim whose two corner composites straddle the text luminance (each corner
+passes 4.5:1, a mid-grey ground under it does not);
 `background-clip: text` with a photo; `border-image` with a gradient; a `::before` decoration with a gradient under a fact
 (V4 must already refuse it).
 
@@ -163,10 +184,12 @@ At every width of the sweep, the **ink-overflow extent** of every non-content bo
 `outline-offset`, `border-image` outset and filter spread, transformed to its bounding quad, pseudo-elements included (V1) —
 must not intersect any line box of the disclosure or a required fact.
 
-The one exception is the **hero overlay** of §3.1(a), and only for required facts:
+The one exception is **text over media or ground** (§3.1(a), capability `hero_overlay`), and only for required facts. It is
+named after the hero, its main case, but it is **not limited to the hero**: it covers any `media` or `ground` element in any
+section that meets all of the conditions below. The container holding the fact is `content` (V1):
 
 - `FACT_IMAGE_OVERLAP` is relaxed **only** for a `media` (or `ground`) element that V2 proves paints **below** the fact **at
-  every 1 px width** (V6), whose pixels under the fact pass V3b and the analytic contrast of §3.1(a) (M3);
+  every 1 px width** (V6), whose pixels under the fact pass V3b and the analytic contrast of §3.1(a);
 - `DISCLOSURE_IMAGE_OVERLAP` is **unchanged**: nothing intersects the disclosure, ever;
 - `decoration` never intersects protected text, whatever its paint order.
 
@@ -280,14 +303,14 @@ facts. Every row also keeps I1–I7, and every overlap-capable row needs pinned 
 
 **(a) Text over photos or images in a hero — readable overlays.**
 
-- Allowed: the hero `ground` holds a `media` image; `content` text sits on it. Overlap built **preferably with grid stacking**
+- Allowed: the hero (a `content` container, V1) holds a `media` image; its text sits on it. Overlap built **preferably with grid stacking**
   (one named area shared by the media and the text block, media **first** in DOM so it paints first — V2), or with
   `position: relative` on the hero and `position: absolute` on the media (media first in DOM, never a `z-index` above content).
   A scrim (`ground` of one colour with alpha, or a gradient obeying V3b) between them is allowed.
 - Protected text over an image: **allowed for required facts** such as the shop name (a vertical shop name over the hero is the
   most common high-end wagashi motif), **never for the disclosure**, which stays on a flat ground. Allowing the disclosure over an
   image would be a separate human decision (roadmap A-list).
-- **Contrast and structure on a cropped image (M3).** The visible part of the image changes with every width (`object-fit:
+- **Contrast and structure on a cropped image.** The visible part of the image changes with every width (`object-fit:
   cover` crops differently), so screenshots at the checked widths are not enough. Either:
   1. **analytic**: decode the asset (the harness already has the bytes and `decodePng`), and at **every 1 px width** compute the
      image's rendered rect and the `object-fit` / `object-position` mapping (only `cover`, `contain`, `fill` and `object-position`
@@ -296,6 +319,12 @@ facts. Every row also keeps I1–I7, and every overlap-capable row needs pinned 
   2. **scrim**: the text sits on a scrim whose bound is proven analytically (V3b), which makes the image's content irrelevant.
   Protected facts need (1) with the flat-ground rule, or (2) with the near-opaque scrim; other text may use either with the
   busyness gate.
+- **The same for `url()` grounds** (textures and background images, §3.1(g)): under protected text, the analytic mapping at
+  every 1 px width must also model `background-size` (`cover`, `contain`, lengths, %), `background-position` (lengths, %) and
+  `background-repeat` (`repeat`, `no-repeat`, `round`, `space` — tiling and rounding computed exactly, `background-origin` /
+  `background-attachment` fixed at their defaults), mapping each glyph box to the asset's source pixels. Until that mapping exists
+  and is proven against Chromium on fixtures, **protected text over a texture or background image is allowed only on the
+  near-opaque scrim** of V3b.
 - Further verification: V1 roles; V2 media below content at every 1 px width (V6); V3 layered ink proof at the checked widths;
   V4 (only proven-below media may meet a fact); `TEXT_BOX_OVERFLOW`; V10. The image is never read as text (I6): an AI image
   could carry text under the overlay — that stays with the person's per-image review (`assets.json` approval record).
@@ -331,7 +360,7 @@ facts. Every row also keeps I1–I7, and every overlap-capable row needs pinned 
   stays refused, I1) are **phase B when they do not overlap text** (in-flow, no positioning) and phase C when positioned.
 - Verification: V1 (a decoration with text fails; pseudo-elements are decoration), V2 exact paint order, V3 on every content node a
   positioned box reaches, V4 (never touches protected text, ink-overflow extents), V6, V10. The fourth review's F1 (a later
-  `position: relative` sibling covering text between sweep widths) and the fifth round's class (L1, §6) are regression probes
+  `position: relative` sibling covering text between sweep widths) and the fifth round's class (§6, risk 1) are regression probes
   that must keep failing.
 - D. Phase C.
 
@@ -353,7 +382,8 @@ text** (image rows, spacer rows), checked by mapping row tracks to the elements 
 
 - Allowed: `linear-gradient` / `radial-gradient` with stops from the spec palette (± the palette tolerance) and the V3b stop
   rule; `background-image: url(…)` only to an asset in `assets.json` of kind `texture` or `ai_concept_local`, hash-checked,
-  served by the same router; `background-size / position / repeat`; on `ground` and `decoration` elements.
+  served by the same router; `background-size / position / repeat`; on `ground` and `decoration` elements and as a `content` container's own background
+  (V1).
   `background-clip: text` stays refused.
 - New asset kind `texture` (a washi or paper scan, a pattern): a human-approved local asset like `ai_concept_local`, with licence
   and provenance recorded; never in the asset store without the separate DEV-070 / DEV-076 decision.
@@ -477,11 +507,11 @@ runs between tests (as DEV-082's last round did) and must not skip tests.
    capability multiplies combinations. Mitigations: verification first, then relaxation; per-capability **and cross-capability**
    probe sets; the budget (V7); a Fresh Review per phase whose brief is bypass hunting; an exact paint-order model (V2) rather
    than tolerances.
-   **Regression set (L1).** Every bypass class of DEV-082's rounds stays in the probe set, including the **fifth round's**: a
+   **Regression set.** Every bypass class of DEV-082's rounds stays in the probe set, including the **fifth round's**: a
    required fact covered between sweep widths by a **later flex, grid or inline-block item through sideways overflow** (atomic
    painting puts the later item's background above the earlier item's text). V2's atomic-painting rule and V6 must both fail it.
-2. **Ground-drawn glyph strokes** (H1). Closed by V3b; its tolerances need real-comp calibration.
-3. **Engine and font divergence** (H2). Proofs are Chromium-on-Linux facts. Pinned fonts, the perturbation pass and (if approved)
+2. **Ground-drawn glyph strokes.** Closed by V3b; its tolerances need real-comp calibration.
+3. **Engine and font divergence.** Proofs are Chromium-on-Linux facts. Pinned fonts, the perturbation pass and (if approved)
    WebKit narrow the gap; a real-device check by a person remains.
 4. **Paint-model drift.** V2 re-implements the spec; its fixture comparison with Chromium's painting is what keeps it honest.
 5. **Pixel-proof noise on photos.** Antialiasing over photographic grounds may give ink ratios outside [0.8, 1.15] for honest
@@ -504,11 +534,20 @@ phase never starts before the earlier one is merged. **Approval:** phase A follo
 | phase | content | relaxes anything? | approval | depends on |
 |---|---|---|---|---|
 | **A — verification only** | V1 roles (incl. pseudo-element geometry), V2 exact paint-order model with its Chromium fixture comparison, V3 layered reference and V3b ground structure (on raw test HTML, not through the page allowlist), V4 with ink-overflow extents, V9 incl. computed writing mode, V7 capability schema with an **empty** enum, layout-change hashing for V6, the perturbation harness of V10; **measured** timings for every row of §6 | **no** | AI_WORKFLOW §4 | DEV-082 merged; ideally the CI split |
-| **B — fonts and low-risk grounds** | **pinned web fonts** (`web_font`; prerequisite for C–E) and the V10 perturbation pass; gradients and textures **under no text**; richer colour syntax; `opacity` and the fixed filter list on decoration and media **not under text**; in-flow `::before` / `::after` ornaments with `content: ""` (not overlapping text); equal heights via stretch, `min-height` in px on ground; label-vocabulary / section-role proposal | yes (`web_font`, `gradient_ground`, `translucent_decoration`, `ornament`) | human, before merge | A |
+| **B — fonts and low-risk grounds** | **pinned web fonts** (`web_font`; prerequisite for C–E) and the V10 perturbation pass; gradients and textures **under no text**; **scale contrast** (`type_scale`: display sizes beyond ±20 %); **richer colour syntax** (`colour_syntax`: `hsl`, `oklch`, named
+colours); `opacity` and the **fixed filter list** (`image_filters`) on decoration and media **not under text**; in-flow `::before` / `::after` ornaments with `content: ""` (not overlapping text); equal heights via stretch, `min-height` in px on ground; label-vocabulary / section-role proposal | yes (`web_font`, `type_scale`, `colour_syntax`, `gradient_ground`, `translucent_decoration`, `image_filters`, `ornament`) | human, before merge | A |
 | **C — overlap and composition** | positioning and `z-index` for decoration and cards (incl. positioned ornaments); grid areas / explicit lines (one placement for all widths); text over media in the hero (required facts included, never the disclosure) with the analytic image contrast; gradients / textures / translucency under text; V6 1 px pass; viewport-height sweep if `vh` is wanted | yes (`hero_overlay`, `layered_decoration`, `magazine_grid`) | human, before merge | B, CI split |
 | **D — typography and effects** | vertical writing (name, headings, description), tracking, label-only caps, drop caps, shadows, small rotations of non-protected text, blend / backdrop / clip on non-text | yes (`vertical_type`, `display_type`, `transformed_decoration`, `blend_effects`) | human, before merge | C |
 | **E — responsive freedom** | per-width re-layout and **reordering** (`order`, reversed directions, per-width areas, details nav), fluid type with V6 on all text, multi-column body text | yes (`mobile_relayout`, `fluid_type`, `columns`) | human, before merge | C (D optional) |
 | **F — states and icons** | hover / focus states, `ol` markers, SVG icons, text stroke | yes | human, before merge | E |
+
+**How phase A is wired.** Phase A's checks are added to `run.ts` as gates that **only add refusals**: no existing check,
+tolerance or threshold is relaxed, and with the capability enum empty no page gains an expression. The existing synthetic fixture
+(`scripts/sales-design-worker/comp-impl/synthetic-wagashi/`) and every page that passes today **must still pass**: a stricter gate
+that changes the outcome for existing pages is itself a quality-gate change needing the human's approval
+(`claude-autonomy.md` §3). So if a phase A check would fail the existing synthetic fixture (or any existing passing test page),
+the work **stops and asks the human** — it does not change the fixture or loosen the new check to make it pass, and it does not
+merge under AI_WORKFLOW §4.
 
 Reordering is therefore only in phase E; phase C allows a fixed grid placement whose reading order V9 checks, and nothing ever
 places the info pairs. The first real comp (roadmap stages 1–5) should be implemented **after phase A**: it tells which
@@ -519,7 +558,7 @@ evidence (a human decision), except that **font pinning stays before any overlap
 
 A relaxation is any change that lets a page do something the allowlist refused. It is a **quality-gate change** and follows
 this process, stricter than the autonomous feature → develop merge (`claude-autonomy.md` §1). (Phase A is not a relaxation; it
-follows AI_WORKFLOW §4.)
+follows AI_WORKFLOW §4 — as long as it changes no outcome for existing pages, §7.)
 
 1. **Proposal row** (in this document or its successor): capability name, exact property / value grammar, roles it applies to,
    the V-blocks and new rules that verify it, D/H, cost, probes.
