@@ -24,89 +24,31 @@
   画像の要求は `POST https://chatgpt.com/backend-api/codex/images/generations`（stream なし）。Codex は request / connect の timeout を付けず、**1 回のツール呼び出しの中で HTTP を最大 5 回**（再試行 4 回、5xx と transport error、backoff 計約 3 秒）送る。
   reqwest 0.12.28 は **Linux（WSL2 を含む）では既定で `TCP_USER_TIMEOUT` 30 秒・keepalive 15 秒**を socket に付け、Codex はそれを変えない。156 秒 ≒ 5 ×（約 30.5〜31 秒）+ 約 3 秒。
   公開の報告（openai/codex#24323、#45381 の Linux の comment）も Linux で「1 回約 31 秒 × 5 回・`timeout`」。最有力は H1「経路上で keepalive の probe に応答がなく、待っている間の接続が 30 秒で切られる」。対立仮説は H2「server が約 30 秒で 5xx」、H3「1 回の長い要求（約 156 秒）が再試行されない error で終わる」。
-- 24a（読むだけ・network なし・費用 0）: jail の中の `sr-designgen` で、kernel・WSL の network mode・proxy の環境変数が**設定されているか**（値は出さない）・kernel の keepalive の既定。
-  proxy が設定されていれば、Codex の TCP は proxy までになり、24b の読み方が変わる。
-
-  ```bash
-  sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
-  uname -r
-  (wslinfo --networking-mode 2>/dev/null || echo "wslinfo: unavailable")
-  for v in HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy NO_PROXY no_proxy; do if [ -n "${!v:-}" ]; then echo "$v: set"; else echo "$v: unset"; fi; done
-  sysctl -n net.ipv4.tcp_keepalive_time net.ipv4.tcp_keepalive_intvl net.ipv4.tcp_keepalive_probes 2>/dev/null | paste -sd" "'
-  ```
-
-- 24b（Codex 0 回・sign-in なし・課金なし・約 2 分。network: chatgpt.com:443 へ認証なしの `GET /robots.txt` を 3 本）: reqwest の Linux の既定と同じ socket option（A: keepalive 15/15/3 + `TCP_USER_TIMEOUT` 30 秒）、keepalive だけ（B）、何もなし（C）の TLS 接続を同時に開き、応答の後 100 秒何も送らずに待つ。
-  印字は `TCP_PROBE <名前> status=<HTTP の数字> idle_end=<OPEN|EOF|DATA|ERR_xxx> idle_s=<秒>` だけ（cookie・本文・header・address は出さない）。CODEX_HOME・run.lock・worker には触れない。
-
-  ```bash
-  sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc 'timeout 180 python3 -I - <<"PY"
-import socket, ssl, sys, time, threading, errno
-HOST = sys.argv[1] if len(sys.argv) > 1 else "chatgpt.com"
-PORT = 443
-HOLD = 100
-CA = None
-def opts(s, keep, user):
-    if keep:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 15)
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 15)
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
-    if user:
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, 30000)
-out = {}
-def run(name, keep, user):
-    t0 = time.monotonic()
-    try:
-        raw = socket.create_connection((HOST, PORT), timeout=15)
-        opts(raw, keep, user)
-        ctx = ssl.create_default_context(cafile=CA)
-        ctx.set_alpn_protocols(["http/1.1"])
-        s = ctx.wrap_socket(raw, server_hostname=HOST)
-        s.sendall(("GET /robots.txt HTTP/1.1\r\nHost: %s\r\nUser-Agent: sr-tcp-probe\r\nConnection: keep-alive\r\n\r\n" % HOST).encode())
-        s.settimeout(3)
-        head = b""
-        try:
-            while True:
-                b = s.recv(65536)
-                if not b:
-                    break
-                head += b
-        except socket.timeout:
-            pass
-        st = head[9:12].decode("ascii", "replace") if head.startswith(b"HTTP/1.") else "none"
-        t1 = time.monotonic()
-        s.settimeout(HOLD)
-        try:
-            b = s.recv(1)
-            res = "EOF" if not b else "DATA"
-        except socket.timeout:
-            res = "OPEN"
-        except OSError as e:
-            res = "ERR_%s" % (errno.errorcode.get(e.errno, "other") if e.errno else type(e).__name__)
-        out[name] = "status=%s idle_end=%s idle_s=%d" % (st, res, round(time.monotonic() - t1))
-    except OSError as e:
-        out[name] = "setup_failed=%s after_s=%d" % (errno.errorcode.get(e.errno, type(e).__name__) if getattr(e, "errno", None) else type(e).__name__, round(time.monotonic() - t0))
-ts = [threading.Thread(target=run, args=a) for a in [("A_reqwest_default", True, True), ("B_keepalive_only", True, False), ("C_plain", False, False)]]
-[t.start() for t in ts]; [t.join() for t in ts]
-for k in sorted(out): print("TCP_PROBE", k, out[k])
-PY'
-  ```
-
-  読み方:
-  - A が `ERR_ETIMEDOUT` で約 30 秒、B と C が `OPEN`（または B が約 60 秒で `ERR_ETIMEDOUT`）の場合: この経路では keepalive の probe に応答がない。**H1 が確定**し、H3 は否定される。次は修正の案（下）の承認。
-  - 3 本とも `OPEN` の場合: 待っている間の接続はこの経路では切れない。H1 は否定され、H2（server 側の約 30 秒）が有力になる。次は 24c。
-  - 3 本とも 30 秒より前に `EOF` の場合: server が空いた接続を先に閉じたので、結論は出ない。人と相談する。
-  - 24a で proxy が `set` の場合: Codex は proxy 経由なので、この直接の probe は Codex の経路と同じではない（proxy の設定を人と確かめる）。
+- コマンドと読み方の正本は `docs/operations/design-image-poc.md` の「HUMAN-024」（GitHub で表示されるよう、コマンドはそこに置く）。
+- 24a（読むだけ・network なし・費用 0）:
+  - jail の外: kernel・WSL の network mode・**passt の版**（`dpkg-query -W passt` / `pasta --version`）・keepalive の sysctl。
+  - jail の中: proxy の環境変数が設定されているか（値は出さない）。
+  - Codex は jail の network namespace から **pasta** を通って外に出るので、keepalive に応答する相手は pasta。upstream の passt が keep-alive に ACK するのは 2024_11_21.238c69f から（2025-02 と 2025-12 に続きの修正）。Ubuntu 24.04 の古い passt だけで H1 がそのまま起きうる。
+  - Codex に渡るのは `HTTP(S)_PROXY` / `NO_PROXY` だけ（`ALL_PROXY` は sandbox.ts:79 で消える）。私設 address の proxy は jail から届かない（`IPAddressDeny`）。
+- 24b（Codex 0 回・sign-in なし・課金なし・約 2 分。network: chatgpt.com:443 へ認証なしの `GET /robots.txt` を 3 本）:
+  - jail の中で、reqwest の Linux の既定と同じ socket option（A）、keepalive だけ（B）、何もなし（C）の TLS 接続を開き、100 秒待つ。
+  - 任意の 24b-host: 同じ probe を jail の外（人の WSL user、host の namespace）で 1 回流し、pasta と WSL の NAT を分ける。
+  - 読み方:
+    - `idle_s` は 3 秒の読み取りの後から数える。
+    - A が `ERR_ETIMEDOUT` で約 27 秒、B が約 57 秒（または `OPEN`）、C が `OPEN` → H1 確定。
+    - それが jail の中だけなら → pasta が原因（passt の更新の案）。
+    - 3 本とも `OPEN` → H2 が有力。
+  - 修正後の probe は、ACK を落とす local の再現（iptables、後で削除）で確かめた: A 27 秒・B 57 秒・C OPEN。
 - 24c（24b で結論が出ないときだけ。Codex 1 回、画像生成つき）: DEV-084 の merge の後に、HUMAN-021b と同じ v1 のコマンドを 1 回。
   `img_call_ms=` と `img_fail_timing=` で呼び出しごとの時間、cell の script が error を捕まえなかったときは `img_fail_reason=TIMEOUT`（H1）か `HTTP_5XX`（H2）が分かる。
 - 修正の案（どれも人の承認が要る。DEV-084 は実装していない）:
   (1) 自動の再試行を 0 回に: `openai` は予約された provider id で上書きできない（config_toml.rs:66-72）ので、`-c` で自前の provider（`requires_openai_auth = true`・`request_max_retries = 0`）に切り替える。model の通信も同じ provider になる挙動の変更。失敗が 1 回・約 31 秒になるだけで、原因は直らない。
   (2) ツールを 1 回だけ呼び、失敗したら error 文を表示して止まる、と prompt に書く: 強制ではない。prompt は byte 単位で固定なので別の PR。
   (3) 最初の失敗で PoC が Codex を止める（run.ts が session log を見る）。
-  (4) H1 が確定したら: loopback の proxy（keepalive に必ず応答がある）経由にする、WSL の network mode（`.wslconfig`、人の承認）、または upstream に報告する（外部への投稿は人の判断）。
+  (4) H1 が確定したら: **passt の更新**（24a の版が 2024_11_21.238c69f より古く、24b が jail の中だけで切れるとき。WSL の system package の変更）、WSL の network mode（`.wslconfig`、人の承認。host でも切れるときだけ）、または upstream に報告する（外部への投稿は人の判断）。jail の中の loopback の proxy は、その上流の socket も pasta を通るので、pasta が原因なら（keepalive を送らない proxy でない限り）効かない。
   CLI の更新は効かない見込み（2026-10-22 の main も reqwest 0.12.28 で、TCP の option を付けていない）。
 - 触れないもの: HUMAN-022 と同じ。`~/.codex/config.toml`・`.wslconfig`・CLI の版・model は変えない。
-- 返してほしいもの: 24a と 24b の出力そのまま（秘密は含まない）。
+- 返してほしいもの: 24a と 24b（と、流したなら 24b-host）の出力そのまま（秘密は含まない）。
 - 解除条件: 24b の結果が届く（必要なら 24c）、または人が流さないと決める。
 
 ### HUMAN-021 — 画像ツールが使われない原因を分ける、安い順の確認（DEV-078 の merge の後。1 段ずつ別の承認）

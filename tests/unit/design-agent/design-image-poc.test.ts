@@ -1921,10 +1921,11 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
         expect(text + summary).not.toContain(String(T0));
       });
 
-      it("no usable timestamps → no duration and `unknown` (legacy end record, missing / non-numeric / negative / over a day); in_progress is not an end", async () => {
+      it("no usable timestamps → no duration and `unknown` (legacy end record, missing / non-numeric / negative / zero / over a day); in_progress is not an end", async () => {
         const legacy = { timestamp: "t", type: "event_msg", payload: { type: "image_generation_end", call_id: "call_1", status: "failed", result: "" } };
         expect(await facts([call(), legacy, failedOutput("image generation failed: timeout")])).toMatchObject({ image_tool_failed: 1, image_call_ms: [], image_fail_timings: ["unknown"], image_failure_reasons: ["TIMEOUT"] });
-        for (const [ms, started] of [[undefined, undefined], ["155584", T0], [-1, T0], [24 * 3600 * 1000 + 1, T0], [1000, -5], [1.5, T0]] as const) {
+        // 0: Codex's fallback started_at_ms = completed_at_ms when no start was recorded (session/mod.rs:2618-2630)
+        for (const [ms, started] of [[undefined, undefined], ["155584", T0], [-1, T0], [0, T0], [24 * 3600 * 1000 + 1, T0], [1000, -5], [1.5, T0]] as const) {
           const f = await facts([imagegenCell(), timed("failed", ms, "ig_1", started), cellOutput()]);
           expect(f, `${String(ms)} ${String(started)}`).toMatchObject({ image_tool_failed: 1, image_call_ms: [], image_fail_timings: ["unknown"] });
         }
@@ -1944,7 +1945,7 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
 
       it("failTimingOf: fixed buckets with the boundaries on the lower side", () => {
         expect(IMAGE_FAIL_TIMINGS).toEqual(["<5s", "5-60s", "60-140s", "140-170s", ">170s", "unknown"]);
-        const cases: Array<[unknown, string]> = [[0, "<5s"], [4_999, "<5s"], [5_000, "5-60s"], [59_999, "5-60s"], [60_000, "60-140s"], [139_999, "60-140s"], [140_000, "140-170s"], [155_584, "140-170s"], [157_760, "140-170s"], [169_999, "140-170s"], [170_000, ">170s"], [305_000, ">170s"], [null, "unknown"], [undefined, "unknown"], [-1, "unknown"], [Number.NaN, "unknown"], [2.5, "unknown"], [24 * 3600 * 1000 + 1, "unknown"]];
+        const cases: Array<[unknown, string]> = [[0, "unknown"], [1, "<5s"], [4_999, "<5s"], [5_000, "5-60s"], [59_999, "5-60s"], [60_000, "60-140s"], [139_999, "60-140s"], [140_000, "140-170s"], [155_584, "140-170s"], [157_760, "140-170s"], [169_999, "140-170s"], [170_000, ">170s"], [305_000, ">170s"], [null, "unknown"], [undefined, "unknown"], [-1, "unknown"], [Number.NaN, "unknown"], [2.5, "unknown"], [24 * 3600 * 1000 + 1, "unknown"]];
         for (const [ms, bucket] of cases) expect(failTimingOf(ms as number), String(ms)).toBe(bucket);
       });
     });

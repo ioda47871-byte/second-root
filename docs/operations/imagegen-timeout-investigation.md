@@ -111,30 +111,58 @@ attempt counts give other per-attempt times:
 
 Only the 5-attempt case lines up with a known constant: reqwest's 30 s `TCP_USER_TIMEOUT`.
 
-**How the 30 s cut works (INFERRED: Linux kernel behaviour, not read here).** While the server generates, the socket sits
-idle. The keepalive timer sends its first probe at 15 s idle. At 30 s idle, if no ACK has arrived since, the kernel aborts
-the connection with ETIMEDOUT, because `TCP_USER_TIMEOUT` overrides the keepalive count once it is set. reqwest reports
-`is_timeout()`, Codex reports `timeout` and retries, and five times that is about 2 min 36 s.
-This fires only if the probe or its ACK is lost on the path, for example at a NAT, a middlebox or the edge. Whether that
-happens on *our* path is **the** open question, and the probe in HUMAN-024b answers it.
+**How the 30 s cut works.** While the server generates, the socket sits idle. The keepalive timer sends its first probe at
+15 s idle. At 30 s idle, if no ACK has arrived since, the kernel aborts the connection with ETIMEDOUT, because
+`TCP_USER_TIMEOUT` overrides the keepalive count once it is set. reqwest reports `is_timeout()`, Codex reports `timeout`
+and retries, and five times that is about 2 min 36 s. This fires **only when the probe's ACK never comes back**.
+
+**Reproduced locally** (DEV-084, Linux 6.18 container, loopback TLS server, no Codex, no external network). A temporary
+iptables rule dropped the server's ACKs after the response and was removed afterwards (INPUT back to `ACCEPT`). With the
+HUMAN-024b probe:
+
+| socket | result |
+|---|---|
+| A (reqwest's Linux options) | cut with `ETIMEDOUT` at 27 s of idle (30 s after the last received segment; the probe's idle clock starts after its 3 s read window) |
+| B (keepalive only) | cut at 57 s (15 + 3 × 15 = 60 s) |
+| C (no options) | stayed open |
+
+Without the drop rule, all three stayed open for 45 s. The kernel side is therefore **confirmed** on this kernel. The WSL
+kernel was not tested.
+
+**Where the ACK can be lost on our path.** Codex runs in the requester jail's own network namespace
+(`scripts/sales-design-capture/jail/jail.properties:47-51`). The only way out is **pasta**, a user-space TCP/IP
+translator run by root (`scripts/sales-design-capture/admin.sh:149`, :160-178). So the jail kernel's TCP peer, for every
+segment including keepalive probes, is **pasta**, not chatgpt.com. pasta opens its own host-side socket, which then goes
+through WSL's NAT to the internet. Upstream passt only began answering keep-alive segments in **2024_11_21.238c69f**
+"tcp: Acknowledge keep-alive segments, ignore them for the rest". Follow-ups came in 2025-02 (`472e2e9` "Don't discard
+window information on keep-alive segments", `90f91fe`) and 2025-12 (`aa809d3` "Enable SO_KEEPALIVE if we see keep-alive
+segments from container / guest", `28f413d`) ([passt log](https://passt.top/passt/log/?qt=grep&q=keep-alive);
+[passt-dev thread](https://archives.passt.top/passt-dev/20241121102312.156af880@elisabeth/)). The jail was set up with
+Ubuntu 24.04's `passt` package (`admin.sh:149` "sudo apt install -y passt"; the DNS note at `admin.sh:100`). **A distro
+passt older than 238c69f alone would produce exactly H1.** Its version is not known here; HUMAN-024a prints it. Other
+places the ACK could be lost: WSL's NAT, a middlebox, or the edge. HUMAN-024b (in the jail) and the optional 24b-host (the
+same probe in the host namespace) separate pasta from the rest.
 
 **Public evidence for the same signature on Linux:**
 
 - **openai/codex#24323** (Linux, CLI 0.133.0): a unary `/responses/compact` request. Every attempt failed at
-  30.87–31.33 s with `error.message="timeout"`, `os error 110`, and the call failed at about 2 min 37 s. That is 5 ×
+  30.87–31.33 s with `error.message="timeout"`, and the call failed at about 2 min 37 s. A later comment by zaid-marji
+  reproduced it independently with `os error 110` (ETIMEDOUT). That is 5 ×
   about 31 s, even though a 20-minute request timeout was configured. Changing **only** reqwest's `TCP_USER_TIMEOUT` to
   600 s made the same request succeed in 42.7 s. The maintainer closed the issue by moving compaction to a different path,
   not by changing the TCP setting.
 - **openai/codex#45381**, comment by thliborius (Linux Mint, CLI 0.162.1, no proxy): an `images/edits` call failed after
   159.7 s, 160.0 s and 160.9 s, with five attempts of 31.7–33.3 s each, `image generation failed: timeout`,
   `is_timeout=true`, `is_connect=false`.
+- **openai/codex#45381**, comment by dreampuf (the issue's author): simple prompts generate successfully, and the timeouts
+  come with more complex prompts, especially with reference images. This fits a cut that only slow generations hit.
 - Upstream `main` (`61f34c3`, 2026-10-22) still locks reqwest 0.12.28, and `client_builder.rs` / `default_client.rs` there
   set no TCP options. **A CLI update is not expected to change this** (INFERRED: only those files were checked).
 
 **Ranked hypotheses for the ~156 s:**
 
 1. **H1 — client-side TCP abort at about 30 s × 5 attempts** (reqwest Linux `TCP_USER_TIMEOUT` 30 s plus keepalive 15/15,
-   probes unanswered on the WSL → chatgpt.com path). Text: `image generation failed: timeout`. Fits the arithmetic,
+   probes unanswered on the jail → pasta → WSL NAT → chatgpt.com path; an old pasta alone would do it). Text: `image generation failed: timeout`. Fits the arithmetic,
    matches two independent Linux reports to the second, and explains why fast generations (HUMAN-018's 32.6 s call, which
    started answering before 30 s of silence) succeed while slow ones fail. Most likely.
 2. **H2 — the server or edge answers 5xx at about 30 s, 5 times.** Same arithmetic, because 5xx is retried. Text:
@@ -151,17 +179,19 @@ happens on *our* path is **the** open question, and the probe in HUMAN-024b answ
    - **A Codex-side request timeout.** There is none.
    - **Cancellation.** It leaves no `failed` item.
 
-Not the same cause: the macOS and Windows reports in **#32297, #33050, #40233** and the original **#45381** report show
-about **60 s** per attempt and about **305 s** in total, with `network error: error sending request for url (…)`. Those
-platforms have no reqwest `TCP_USER_TIMEOUT` default, so that is a different cut (a proxy, an edge or the server). Do not
-merge the two patterns.
+Probably a different cause (proxied), but not excluded: the macOS and Windows reports in **#32297, #33050, #40233** and
+the original **#45381** report show about **60 s** per attempt and about **305 s** in total, with `network error: error
+sending request for url (…)`. Those platforms have no reqwest `TCP_USER_TIMEOUT` default. The original #45381 went
+through a local proxy (FlClash) with a stalled upload. Note one coincidence, though: reqwest's keepalive (15 s, then 3
+probes 15 s apart) gives up after **15 + 3 × 15 = 60 s on every OS** when probes go unanswered. So those reports may share
+the unanswered-keepalive family with a longer limit. Do not merge the two patterns without evidence.
 
 ## 4. Issue #45381 compared with our runs
 
 | | #45381 body | #45381, thliborius | ours |
 |---|---|---|---|
 | CLI | 0.154.0 | 0.162.1 | 0.159.0 |
-| OS | macOS 26.5.1, arm64, via the FlClash proxy | Linux Mint, no proxy | WSL2 (Linux kernel), no proxy known (HUMAN-024a prints it) |
+| OS | macOS 26.5.1, arm64, via the FlClash proxy | Linux Mint, no proxy | WSL2 (Linux kernel), Codex in the jail's netns behind **pasta**; proxy env not known (HUMAN-024a prints it) |
 | request | **edit** (`images/edits`, two JPEG references) | **edit** (three PNG references) | **generate** (`images/generations`, no references) |
 | per attempt | about 60 s (upload 682 KB, then stall) | 31.7–33.3 s | 30.5–31.0 s (derived) |
 | total | 304.6–304.7 s | 159.7–160.9 s | 155.6–157.8 s |
@@ -216,9 +246,14 @@ implemented here:
 - **Stop on the first failure (hard).** The PoC could watch the session log while Codex runs and terminate it when an
   image Extension item ends `failed`. This changes run.ts behaviour, so it needs approval.
 - **No timeout key exists.** Codex has no `tcp_user_timeout` or request-timeout key for images, so a workaround for H1 is
-  outside Codex config. One option is a loopback HTTPS proxy, whose keepalives are always answered, with its own
-  upstream socket carrying no user timeout. Another is the WSL networking mode, which is `.wslconfig` and needs human
-  approval. Another is an upstream fix. All are proposals, and only if HUMAN-024b confirms H1.
+  outside Codex config. All of the options below are proposals, and only if HUMAN-024b confirms H1:
+  - **Update passt** (if 24a shows a version older than 2024_11_21.238c69f and 24b cuts in the jail but not on the host).
+    This is a system-package change on the WSL machine. It is the direct fix when pasta is the culprit.
+  - A **loopback HTTPS proxy inside the jail** does not remove a pasta problem. Its own upstream socket also goes through
+    pasta, so it only helps if that socket sends no keepalive probes at all.
+  - The **WSL networking mode** (`.wslconfig`, needs human approval). This is only relevant if the host-side probe is
+    cut too.
+  - An **upstream fix**.
 
 ## 7. Diagnostics added (DEV-084, schema `sr-design-image-poc-diagnostics/5`)
 
@@ -244,11 +279,12 @@ implemented here:
 | # | what | cost | decides |
 |---|---|---|---|
 | V0 | HUMAN-022 | done, 0 | §1 |
-| V1 | **HUMAN-024a**: WSL facts, read only (kernel, WSL networking mode, whether a proxy env var is *set*, no value) | 0 Codex, no network | context for V2 |
-| V2 | **HUMAN-024b**: TCP probe, three TLS connections to chatgpt.com:443 with reqwest's Linux socket options vs without, idle 100 s | 0 Codex, no sign-in, no billing; about 2 min; 3 unauthenticated `GET /robots.txt` | H1 (ETIMEDOUT ≈ 30 s on the reqwest-default socket) vs H2/H3 |
+| V1 | **HUMAN-024a**: read only. Outside the jail: kernel, WSL networking mode, **passt version**, keepalive sysctls. Inside the jail: whether a proxy env var is *set* (no value) | 0 Codex, no network | the passt lead (older than 2024_11_21.238c69f?) and context for V2 |
+| V2 | **HUMAN-024b**: TCP probe in the jail, three TLS connections to chatgpt.com:443 with reqwest's Linux socket options vs without, idle 100 s | 0 Codex, no sign-in, no billing; about 2 min; 3 unauthenticated `GET /robots.txt` | H1 (A `ERR_ETIMEDOUT` at about 27 s) vs H2/H3 |
+| V2' | optional **24b-host**: the same probe once in the host namespace as a non-Codex user | same as V2 | pasta vs WSL NAT / upstream |
 | V3 | only if V2 is inconclusive: the same v1 PoC run (HUMAN-021b's command) after DEV-084 is merged | **1 Codex run** with image generation (plan quota) | `img_call_ms` / `img_fail_timing` per call, and the text if the script leaves it uncaught |
 
-Exact commands are in `.ai/blockers.md` HUMAN-024. The fix options in §6 come after V2 and each needs its own approval.
+The exact commands and how to read them are in `design-image-poc.md` §"HUMAN-024"; `.ai/blockers.md` points there. The fix options in §6 come after V2 and each needs its own approval.
 
 ## 9. Confirmed vs inferred
 
@@ -261,7 +297,9 @@ Exact commands are in `.ai/blockers.md` HUMAN-024. The fix options in §6 come a
 | item duration = HTTP time of the call | CONFIRMED | session/mod.rs:2584-2640; tool.rs:153-221 |
 | HUMAN-018 = two model-level calls, not internal retries | CONFIRMED | two item ids; tool.rs one request per call |
 | ~156 s = 5 × ~31 s client-side TCP abort (H1) | INFERRED (strong) | arithmetic; #24323; #45381 (thliborius) |
-| keepalive probes unanswered on our WSL path | UNKNOWN | HUMAN-024b |
+| Linux cuts an idle `TCP_USER_TIMEOUT` 30 s + keepalive socket at about 30 s only when the probe ACKs are lost (A 27 s, B 57 s, C open; all open with ACKs) | CONFIRMED (this container's kernel, simulated drop) | §3 local reproduction |
+| our path's TCP peer for Codex is pasta (jail netns) | CONFIRMED (repo config) | jail.properties:47-51; admin.sh:149, :160-178 |
+| keepalive probes unanswered on our path (old pasta, or WSL NAT / upstream) | UNKNOWN | HUMAN-024a (passt version), 24b / 24b-host |
 | the server reuses or charges aborted generations | UNKNOWN | not visible locally |
 | a CLI update would change it | INFERRED no | main 61f34c3: reqwest 0.12.28, no TCP options in the two files read |
 

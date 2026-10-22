@@ -149,7 +149,8 @@ export type ImageFailureSource = (typeof IMAGE_FAILURE_SOURCES)[number];
  * ext/image-generation/src/tool.rs:153-181; completed = when the request returned or failed). `140-170s` is the band of
  * HUMAN-018/019/020/21b's failures (155.6-157.8 s): five HTTP attempts (request_max_retries 4, model-provider-info/src/lib.rs:65,
  * :446-452) of about 30-31 s each plus about 3 s of backoff (codex-client/src/retry.rs:43-52) — see
- * docs/operations/imagegen-timeout-investigation.md. `unknown`: no usable timestamps (a legacy log, or out of range).
+ * docs/operations/imagegen-timeout-investigation.md. `unknown`: no usable timestamps (a legacy log, out of range, or exactly 0 —
+ * Codex writes `started_at_ms = completed_at_ms` when it has no recorded start, core/src/session/mod.rs:2618-2630).
  */
 export const IMAGE_FAIL_TIMINGS = ["<5s", "5-60s", "60-140s", "140-170s", ">170s", "unknown"] as const;
 export type ImageFailTiming = (typeof IMAGE_FAIL_TIMINGS)[number];
@@ -159,7 +160,7 @@ const MAX_CALL_MS = 24 * 60 * 60 * 1000;
 export const MAX_IMAGE_CALL_TIMINGS = 16;
 
 export function failTimingOf(ms: number | null | undefined): ImageFailTiming {
-  if (typeof ms !== "number" || !Number.isInteger(ms) || ms < 0 || ms > MAX_CALL_MS) return "unknown";
+  if (typeof ms !== "number" || !Number.isInteger(ms) || ms <= 0 || ms > MAX_CALL_MS) return "unknown";
   if (ms < 5_000) return "<5s";
   if (ms < 60_000) return "5-60s";
   if (ms < 140_000) return "60-140s";
@@ -173,7 +174,8 @@ function callMs(payload: Json): number | undefined {
   const b = payload.completed_at_ms;
   if (typeof a !== "number" || typeof b !== "number" || !Number.isSafeInteger(a) || !Number.isSafeInteger(b) || a <= 0 || b <= 0) return undefined;
   const ms = b - a;
-  return ms >= 0 && ms <= MAX_CALL_MS ? ms : undefined;
+  // 0: Codex's fallback when the start was not recorded (started_at_ms = completed_at_ms), not a measured duration
+  return ms > 0 && ms <= MAX_CALL_MS ? ms : undefined;
 }
 
 /** API error codes / types that may be recorded (anything else found is "other"; none found: not recorded). */

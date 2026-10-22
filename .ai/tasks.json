@@ -3657,7 +3657,7 @@
       "purpose": "HUMAN-022（2026-10-22、人が流した）: 4 回の PoC（HUMAN-018 / 019 / 020 / 21b、gpt-6.1-sol・CLI 0.159.0・paginated）の最初の imagegen はすべて 155.6〜157.8 秒で failed/none、HUMAN-018 だけモデルの 2 回目の呼び出しが 32.6 秒で成功。source から要求の経路（chatgpt.com/backend-api/codex/images/generations、stream なし）、timeout（Codex はなし、reqwest 0.12.28 の Linux の既定 TCP_USER_TIMEOUT 30 秒・keepalive 15 秒）、再試行（1 回の呼び出しで HTTP 最大 5 回、5xx と transport、backoff 約 3 秒）を確かめ、156 秒 ≒ 5 × 約 31 秒 + 3 秒を説明する。公開の issue（#45381・#24323 ほか）と比べる。呼び出しごとの時間（rollout の ItemCompleted の started_at_ms / completed_at_ms）と固定の時間帯を診断に足し、Codex を呼ばない次の確認（HUMAN-024）を用意する",
       "acceptance_criteria": [
         "docs/operations/imagegen-timeout-investigation.md: rust-v0.159.0 の file:line つきで、endpoint・timeout・再試行・エラー文と DEV-081 の分類、確定と推測の表、仮説の順位、#45381 の比較（生成と編集の違い）、HUMAN-018 の説明、数え方と制御の案（承認待ち）、安い順の次の確認",
-        "session に image_call_ms（呼び出しごとの ms、整数・0〜1 日・最大 16）と image_fail_timings（失敗ごとに <5s / 5-60s / 60-140s / 140-170s / >170s / unknown）を足す。summary の末尾に img_call_ms= img_fail_timing=（既存の並びは変えない、schema /5）",
+        "session に image_call_ms（呼び出しごとの ms、整数・0 より大きく 1 日以下・最大 16。0 は Codex の開始時刻の代用なので unknown）と image_fail_timings（失敗ごとに <5s / 5-60s / 60-140s / 140-170s / >170s / unknown）を足す。summary の末尾に img_call_ms= img_fail_timing=（既存の並びは変えない、schema /5）",
         "時間は ItemCompleted の payload の started_at_ms / completed_at_ms からだけ。legacy の image_generation_end と不正な値は unknown。in_progress は数えない。文・id・時刻そのものは残さない",
         "HUMAN-022 を解除済みに（結果つき）、HUMAN-024（24a 読むだけ・24b Codex なしの TCP probe・24c 必要なときだけ Codex 1 回）を追加",
         "jail・sign-in・run.lock・env allowlist・cleanup・PNG の検査・model の呼び出し 1 回・prompt（byte 単位）・command line・-m / -c なしは変えない。再試行はどこにも足さない"
