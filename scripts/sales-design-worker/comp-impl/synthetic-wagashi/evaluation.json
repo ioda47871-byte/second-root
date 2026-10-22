@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "comp_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "comp_kind": "synthetic",
+  "hard_fails": { "invented_facts": false, "store_or_people": false, "disclosure": false, "logo_or_realism": false, "shop_facts": false },
+  "scores": null,
+  "total": null,
+  "human_confirmed": false,
+  "confirmed_by": null,
+  "confirmed_at": null
+}

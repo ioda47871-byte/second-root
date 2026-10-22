@@ -1,0 +1,62 @@
+/* 架空菓庵 (SYNTHETIC fixture, DEV-082): hand-written by Claude from the synthetic comp (comp.html).
+   No template, no renderer markup; local fonts only; no url(), no @import. */
+*, *::before, *::after { box-sizing: border-box; }
+html { background: #F4EEE3; }
+body { margin: 0; background: #F4EEE3; color: #1F1D1B; font-family: "IPAGothic", "Noto Sans JP", sans-serif; font-size: 16px; line-height: 1.8; }
+h1, h2, p, ul, dl, dd { margin: 0; padding: 0; }
+ul { list-style: none; }
+a { color: #1F1D1B; text-decoration: none; }
+
+.masthead { height: 80px; border-bottom: 1px solid #8C8379; }
+.masthead-inner { max-width: 1200px; height: 100%; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.masthead-name { font-family: "Noto Serif JP", "IPAMincho", serif; font-size: 16px; letter-spacing: 0.2em; }
+.masthead-links { display: flex; gap: 32px; }
+.masthead-links a { font-size: 14px; letter-spacing: 0.1em; padding-bottom: 4px; border-bottom: 2px solid #B4472E; }
+
+.lead { padding: 80px 0; }
+.lead-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; display: grid; grid-template-columns: 3fr 2fr; gap: 64px; align-items: center; }
+.lead-visual { aspect-ratio: 3 / 2; background: #EAE1D2; position: relative; }
+.lead-visual-disc { position: absolute; left: 30%; top: 22%; width: 40%; aspect-ratio: 1 / 1; border-radius: 50%; background: #B4472E; opacity: 0.9; }
+.lead-name { font-family: "Noto Serif JP", "IPAMincho", serif; font-weight: 400; font-size: 56px; line-height: 1.3; letter-spacing: 0.12em; }
+.lead-rule { width: 64px; margin: 24px 0; border: 0; border-top: 2px solid #B4472E; }
+.lead-text { font-size: 16px; color: #1F1D1B; }
+.lead-cta { display: inline-block; margin-top: 32px; padding: 12px 28px; font-size: 14px; letter-spacing: 0.1em; color: #F4EEE3; background: #B4472E; }
+
+.goods { padding: 80px 0; }
+.goods-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+.goods-title { font-family: "Noto Serif JP", "IPAMincho", serif; font-weight: 400; font-size: 32px; line-height: 1.4; letter-spacing: 0.12em; padding-left: 16px; border-left: 3px solid #B4472E; }
+.goods-row { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+.goods-visual { aspect-ratio: 1 / 1; background: #EAE1D2; }
+.goods-visual-a { border-bottom: 8px solid #B4472E; }
+.goods-visual-b { border-bottom: 8px solid #8C8379; }
+.goods-visual-c { border-bottom: 8px solid #1F1D1B; }
+.goods-caption { margin-top: 12px; font-family: "Noto Serif JP", "IPAMincho", serif; font-size: 18px; letter-spacing: 0.08em; }
+.goods-copy { margin-top: 32px; max-width: 760px; font-size: 16px; }
+
+.facts { padding: 80px 0; background: #EAE1D2; }
+.facts-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+.facts-title { font-family: "Noto Serif JP", "IPAMincho", serif; font-weight: 400; font-size: 32px; line-height: 1.4; letter-spacing: 0.12em; padding-left: 16px; border-left: 3px solid #B4472E; }
+.facts-list { margin-top: 32px; max-width: 760px; border-top: 1px solid #8C8379; }
+.facts-row { display: grid; grid-template-columns: 160px 1fr; gap: 24px; padding: 16px 0; border-bottom: 1px solid #8C8379; }
+.facts-row dt { font-size: 14px; color: #8C8379; letter-spacing: 0.1em; }
+.facts-row dd { font-size: 16px; }
+
+.colophon { padding: 32px 0; border-top: 1px solid #8C8379; }
+.colophon-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.colophon-name { font-family: "Noto Serif JP", "IPAMincho", serif; font-size: 14px; letter-spacing: 0.2em; }
+.colophon-note { font-size: 13px; color: #1F1D1B; }
+
+@media (max-width: 760px) {
+  .masthead { height: auto; }
+  .masthead-inner { padding: 16px 20px; }
+  .masthead-links { gap: 20px; }
+  .lead { padding: 40px 0; }
+  .lead-inner { grid-template-columns: 1fr; gap: 32px; padding: 0 20px; }
+  .lead-name { font-size: 40px; }
+  .goods, .facts { padding: 56px 0; }
+  .goods-inner, .facts-inner { padding: 0 20px; }
+  .goods-title, .facts-title { font-size: 26px; }
+  .goods-row { grid-template-columns: 1fr; gap: 24px; }
+  .facts-row { grid-template-columns: 1fr; gap: 4px; }
+  .colophon-inner { padding: 0 20px; }
+}
