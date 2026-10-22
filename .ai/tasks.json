@@ -3795,7 +3795,7 @@
     {
       "id": "DEV-085",
       "title": "CI: unit を 2 つの shard に分け（集約 check `unit` は残す）、Playwright の browser install に timeout を付ける（CI の安定化だけ）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
