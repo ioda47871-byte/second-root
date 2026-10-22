@@ -3840,7 +3840,7 @@
     {
       "id": "DEV-086",
       "title": "passt / pasta の更新の設計（読むだけ・docs だけ）と HUMAN-024a の結果の記録、24b の手順の再確認",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-084"
