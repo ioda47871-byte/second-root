@@ -358,7 +358,8 @@ changes no outcome:
   argument per code is in the design doc §10).
 - Everything else goes to `report.advisory`, which never enters `failed`.
 
-So `failed` and `mechanical_ok` are the same as before for every page. This is shown on the synthetic fixture and on three
+So `mechanical_ok` and pass / fail are the same as before for every page (a page that already fails because a fact is
+hidden at some checked widths may additionally list `visibility_matrix`, a re-report). This is shown on the synthetic fixture and on three
 allowlisted pages a flat-ground gate would have refused.
 
 | report entry | measured | codes |

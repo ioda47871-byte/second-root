@@ -599,8 +599,9 @@ Phase A leaves these unchanged:
 
 **The guarantee, precisely.** A new code may enter `failed` only when the DEV-082 allowlist and the existing checks
 already refuse every page it refuses (the argument per code is in the table below). Every other new finding goes to
-`report.advisory`, which never enters `failed` and never changes `mechanical_ok`. So **`failed` / `mechanical_ok` are the same
-as before phase A for every page**, not only for the synthetic fixture. This is shown, not assumed, for:
+`report.advisory`, which never enters `failed` and never changes `mechanical_ok`. So **`mechanical_ok` and pass / fail are
+the same as before phase A for every page**, not only for the synthetic fixture. A page that already fails because a fact is
+hidden at some checked widths may additionally list `visibility_matrix` in `failed` (a re-report of `text_<w>`). This is shown, not assumed, for:
 - the synthetic fixture;
 - the review's three allowlisted pages that a flat-ground gate would have refused: a highlight span, a `border-left` with 0
   padding, a dark badge `dd` (`phase-a.test.ts`, one whole run: `failed` is empty, `GROUND_NOT_FLAT` is in `advisory`).
@@ -652,7 +653,7 @@ as before phase A for every page**, not only for the synthetic fixture. This is 
 - Not modelled: text-on-text, which `overprinted` owns.
 
 **V2 Chromium comparison** (`render.ts` `paintCrossCheck`; `phase-a.test.ts`)
-- 23 fixtures: 6 inside today's allowlist, including the inset-shadow probe, and 17 raw HTML.
+- 23 fixtures: 5 inside today's allowlist, including the inset-shadow probe, and 18 raw HTML.
 - For each text / box pair, the text is drawn pure red and everything else transparent; the box is then painted or not.
 - Only the glyph's interior pixels are read: opaque red pixels whose four neighbours are red too.
 - Each fixture's key pair must be conclusive (≥ 20 interior pixels; 69+ at the time of writing), and every conclusive pair

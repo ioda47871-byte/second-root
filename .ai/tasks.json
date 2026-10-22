@@ -3774,7 +3774,7 @@
       ],
       "allowed_scope": [
         "（DEV-082 の merge の後、各段の着手のときに人が決める。設計の文書は docs/design/dev-083-expressive-safe-reproduction.md）",
-        "phase A（2026-10-22 人が着手を承認: 検査を強めるだけ・CSS allowlist は緩めない・運用（worker・実 Codex・Next.js の route・営業）に繋がない・B 以降は docs の設計だけ）: lib/design-agent/comp-impl/**（layers.ts・verify.ts 新規、render.ts・run.ts・spec.ts・page-scripts.ts に追加）、tests/unit/design-agent/comp-impl/**、docs/operations/comp-to-site.md、docs/design/dev-083-expressive-safe-reproduction.md"
+        "phase A（2026-10-22 人が着手を承認: 検査を強めるだけ・CSS allowlist は緩めない・運用（worker・実 Codex・Next.js の route・営業）に繋がない・B 以降は docs の設計だけ）: lib/design-agent/comp-impl/**（layers.ts・verify.ts 新規、render.ts・run.ts・spec.ts に追加）、tests/unit/design-agent/comp-impl/**、docs/operations/comp-to-site.md、docs/design/dev-083-expressive-safe-reproduction.md"
       ],
       "forbidden_scope": [
         "対応する検査の無い allowlist の緩和、人の承認の無い品質ゲート・閾値の変更",
