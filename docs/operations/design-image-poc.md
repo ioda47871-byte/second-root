@@ -662,6 +662,27 @@ Reading 24a:
   If `HTTPS_PROXY` is set to a reachable address, Codex's TCP goes to that proxy, and 24b, which dials directly, does not
   mirror Codex's path.
 
+**24a result (done, 2026-10-22, run by the human):**
+
+| item | value |
+|---|---|
+| kernel | `6.18.33.2-microsoft-standard-WSL2` |
+| WSL networking mode | `nat` |
+| passt (dpkg) | `0.0~git20240220.1e6f92b-1`: Ubuntu 24.04's own package (noble release pocket; noble has no `-updates`, `-security` or `-backports` build of passt) |
+| `pasta --version` | `pasta unknown version` (pasta prints its mode name, then the version). The Debian/Ubuntu build has no git tree, so the Makefile's `VERSION` falls back to `unknown version`. Identify the binary by its dpkg version and hash, not by `--version` |
+| system keepalive sysctls | `7200 75 9`. They do not apply to Codex's sockets: reqwest sets keepalive 15/15/3 and `TCP_USER_TIMEOUT` 30 s per socket |
+| jail | `JAIL_OK` |
+| proxy variables in the jail | all unset (`HTTP(S)_PROXY`, `NO_PROXY`, `ALL_PROXY`, upper and lower case) |
+
+Reading: upstream commit `1e6f92b` (2024-02-20) is an ancestor of `238c69f` (2024-11-21) "tcp: Acknowledge keep-alive
+segments", so the installed pasta does **not** ACK keep-alive probes. That alone predicts H1 on the jail path, and it
+makes pasta the prime suspect. With no proxy set, Codex dials chatgpt.com directly from the jail, and that is the path
+24b probes. The 24a in-jail check is valid as written: `systemd-run` expands `${VAR}` in the command (systemd 255,
+`--expand-environment` defaults to on for services), but `${!v:-}` is not expanded. ExecStart expansion runs with
+flags 0, which means no `:-` syntax, so the text is left as it is (`src/basic/env-util.c` `replace_env_full`, v255).
+The design for updating passt is in [`passt-update-plan.md`](passt-update-plan.md). **Next: 24b, pending the human's
+approval.**
+
 **24b — 0 Codex calls, no sign-in, no billing, about 2 min.** The probe opens three TLS connections to chatgpt.com:443 at
 the same time:
 
@@ -672,6 +693,39 @@ the same time:
 Each sends one unauthenticated `GET /robots.txt`, reads for up to 3 s, then sends nothing for up to 100 s. It prints only
 `TCP_PROBE <name> status=<HTTP code> idle_end=<OPEN|CUT_EARLY|EOF|DATA|ERR_xxx|SSL_xxx> idle_s=<s>` (or
 `setup_failed=…`). No cookie, body, header or address is printed. It does not touch CODEX_HOME, run.lock or the worker.
+
+Re-checked against the jail implementation (DEV-086, read only; the commands below are unchanged):
+
+- **Same path as Codex.** `admin.sh run` starts a transient unit with every `jail.properties` line, including
+  `NetworkNamespacePath=/run/netns/srjail`. Codex's image request is sent by the Codex process itself, not by a sandboxed
+  tool. That process runs in this namespace, and bubblewrap does not unshare the network (`sandbox.ts:161`). So the
+  probe's sockets and Codex's sockets have the same TCP peer: pasta's tap side in `sr-jail-net.service`. Remaining
+  differences, none of which touch the TCP keepalive path:
+  - Codex POSTs and waits for an answer that has not started; the probe idles after a complete answer.
+  - ALPN: the probe asks for `http/1.1`, while Codex may negotiate h2. h2 PINGs are off by default in hyper.
+  - Address choice: `getaddrinfo` order versus hyper's happy-eyeballs. The probe does not print the address family.
+    Under WSL `nat` without IPv6 both use IPv4. If the jail run and the host run might differ here, compare with
+    `getent ahosts chatgpt.com` in each.
+- **`IPAddressDeny`.** The jail denies 10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, fc00::/7, fe80::/10 and the
+  default gateway. chatgpt.com resolves to public Cloudflare addresses (104.18.32.47 and 172.64.155.209 when this was
+  checked; 172.64/13 is **not** inside 172.16/12), so the probe is allowed, exactly as Codex is. pasta's own unit denies
+  the same private ranges and allows only 10.255.255.254 (the DNS tunnel).
+- **DNS.** The jail's `resolv.conf` is `nameserver 198.51.100.53` + `options edns0`. pasta forwards that address over
+  UDP/53 to the host resolver. TCP to it is refused by the ip rule, which is fine because `getaddrinfo` uses UDP.
+- **Port forwarding.** There is none. The unit runs pasta with `-t none -u none -T none -U none --no-map-gw`. Outbound
+  connections from the jail are not port forwards: pasta terminates each jail-side TCP connection and opens its own
+  host-side socket to the same destination. That is why its handling of keep-alive segments decides H1.
+- **`systemd-run` expansion.** The service manager expands `${VAR}` and collapses `$$` in the command line. The 24b
+  script has no `$` and no `${`. `%` is safe because transient ExecStart lines are written with specifiers escaped
+  (`dbus-execute.c`, `UNIT_ESCAPE_SPECIFIERS`).
+- **No writes, no config.**
+  - `python3 -I -` reads the script from stdin: no `.pyc` is written, and no site or user directories are used.
+  - `bash -lc` is non-interactive, so there is no history file.
+  - The transient unit (`--collect`) exists only in `/run` while it runs, and journald logs its start and stop lines.
+  - `jail_args` runs `systemctl start sr-jail-net`, which does nothing when it is already running.
+  - The host run writes nothing either.
+  - Nothing touches CODEX_HOME, `~/.codex/config.toml`, `.wslconfig`, the passt package or any unit file.
+
 Run it inside the jail, which is Codex's path:
 
 ```bash
@@ -807,12 +861,25 @@ Reading 24b. `idle_s` starts **after** the 3 s read window, so a cut 30 s after 
 **27 s**, and the keepalive-only give-up at 15 + 3 × 15 = 60 s shows as about **57 s**. These timings were reproduced
 locally with dropped ACKs (investigation §3).
 
+"Cut" below means A ends `ERR_ETIMEDOUT` with `idle_s` about 27 (B, if it is cut too, at about 57; C stays `OPEN`).
+"OPEN" means all three end `OPEN` with `idle_s` = 100. A lost keepalive ACK cuts A and B and never C, because C sends no
+probes.
+
+**The decision (jail run × host run):**
+
+| 24b (jail) | 24b-host | decision | next |
+|---|---|---|---|
+| A cut at about 27 s | all `OPEN` | **pasta is the cause.** H1 confirmed, H3 ruled out. Fits 24a: passt `1e6f92b` predates `238c69f` | the passt update, [`passt-update-plan.md`](passt-update-plan.md); each step has its own approval |
+| A cut at about 27 s | A cut at about 27 s | **WSL's NAT or something upstream** (a middlebox, the edge). H1 confirmed, but updating passt alone will not fix it | WSL networking (`.wslconfig`, human approval) or an upstream report; not the passt plan alone |
+| all `OPEN` | all `OPEN` (or not run) | **unexpected given 24a** (the installed pasta `1e6f92b` does not ACK keepalives): send the output as it is. If it holds up, keepalives are answered on Codex's path, the ~156 s is not the TCP cut, and **H2** leads (the server or edge answers 5xx at about 30 s) | send the output; then H2 / 24c (one Codex run) |
+| all `OPEN` | A cut | unexpected: the jail path answers but the host path does not | send both outputs as they are |
+| A cut at about 27 s | not run | H1 confirmed on Codex's path; pasta versus NAT is still open | run 24b-host (same approval class) before deciding on the passt update |
+
+Other single-run results:
+
 | result | meaning |
 |---|---|
 | A `ERR_ETIMEDOUT` at about 27 s; B `ERR_ETIMEDOUT` at about 57 s (or `OPEN`); C `OPEN` | keepalive ACKs are lost on that path. **H1 is confirmed** and H3 is ruled out |
-| that result in the jail, and all `OPEN` in 24b-host | **pasta is the culprit** (check the passt version from 24a). Fix proposal: update passt |
-| cut in both | WSL's NAT or something upstream |
-| all three `OPEN` (idle_s = 100) | the path answers keepalives. H1 is false there, H2 (server about 30 s) leads, next is 24c |
 | `CUT_EARLY` | a quiet end before 100 s without an error. Unexpected: send it as it is |
 | `EOF` early on all three | the server closed the idle connection first. Inconclusive |
 | `setup_failed=…` / `SSL_…` | no connection (DNS, TLS, certificate). Nothing learned about H1 |

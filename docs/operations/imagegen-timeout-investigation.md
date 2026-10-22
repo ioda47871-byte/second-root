@@ -139,7 +139,7 @@ window information on keep-alive segments") and 2025-12 (`aa809d3` "Enable SO_KE
 segments from container / guest"); `90f91fe` and `28f413d` near them in the log are related zero-window / ACK-timeout fixes, not keep-alive fixes ([passt log](https://passt.top/passt/log/?qt=grep&q=keep-alive);
 [passt-dev thread](https://archives.passt.top/passt-dev/20241121102312.156af880@elisabeth/)). The jail was set up with
 Ubuntu 24.04's `passt` package (`admin.sh:149` "sudo apt install -y passt"; the DNS note at `admin.sh:100`). **A distro
-passt older than 238c69f alone would produce exactly H1.** Its version is not known here; HUMAN-024a prints it. Other
+passt older than 238c69f alone would produce exactly H1.** HUMAN-024a (2026-10-22) printed `0.0~git20240220.1e6f92b-1`, Ubuntu 24.04's own package. Upstream `1e6f92b` is an ancestor of `238c69f`, so the installed pasta does not ACK keep-alive segments (DEV-086, `passt-update-plan.md`). Other
 places the ACK could be lost: WSL's NAT, a middlebox, or the edge. HUMAN-024b (in the jail) and the optional 24b-host (the
 same probe in the host namespace) separate pasta from the rest.
 
@@ -299,7 +299,7 @@ The exact commands and how to read them are in `design-image-poc.md` §"HUMAN-02
 | ~156 s = 5 × ~31 s client-side TCP abort (H1) | INFERRED (strong) | arithmetic; #24323; #45381 (thliborius) |
 | Linux cuts an idle `TCP_USER_TIMEOUT` 30 s + keepalive socket at about 30 s only when the probe ACKs are lost (A 27 s, B 57 s, C open; all open with ACKs) | CONFIRMED (this container's kernel, simulated drop) | §3 local reproduction |
 | our path's TCP peer for Codex is pasta (jail netns) | CONFIRMED (repo config) | jail.properties:47-51; admin.sh:149, :160-178 |
-| keepalive probes unanswered on our path (old pasta, or WSL NAT / upstream) | UNKNOWN | HUMAN-024a (passt version), 24b / 24b-host |
+| keepalive probes unanswered on our path (old pasta, or WSL NAT / upstream) | INFERRED (old pasta: 24a shows passt `1e6f92b`, older than `238c69f`); not yet measured | 24b / 24b-host (pending approval) |
 | the server reuses or charges aborted generations | UNKNOWN | not visible locally |
 | a CLI update would change it | INFERRED no | main 61f34c3: reqwest 0.12.28, no TCP options in the two files read |
 
