@@ -135,8 +135,8 @@ translator run by root (`scripts/sales-design-capture/admin.sh:149`, :160-178). 
 segment including keepalive probes, is **pasta**, not chatgpt.com. pasta opens its own host-side socket, which then goes
 through WSL's NAT to the internet. Upstream passt only began answering keep-alive segments in **2024_11_21.238c69f**
 "tcp: Acknowledge keep-alive segments, ignore them for the rest". Follow-ups came in 2025-02 (`472e2e9` "Don't discard
-window information on keep-alive segments", `90f91fe`) and 2025-12 (`aa809d3` "Enable SO_KEEPALIVE if we see keep-alive
-segments from container / guest", `28f413d`) ([passt log](https://passt.top/passt/log/?qt=grep&q=keep-alive);
+window information on keep-alive segments") and 2025-12 (`aa809d3` "Enable SO_KEEPALIVE if we see keep-alive
+segments from container / guest"); `90f91fe` and `28f413d` near them in the log are related zero-window / ACK-timeout fixes, not keep-alive fixes ([passt log](https://passt.top/passt/log/?qt=grep&q=keep-alive);
 [passt-dev thread](https://archives.passt.top/passt-dev/20241121102312.156af880@elisabeth/)). The jail was set up with
 Ubuntu 24.04's `passt` package (`admin.sh:149` "sudo apt install -y passt"; the DNS note at `admin.sh:100`). **A distro
 passt older than 238c69f alone would produce exactly H1.** Its version is not known here; HUMAN-024a prints it. Other

@@ -641,7 +641,7 @@ own network namespace, and an old passt does not ACK keep-alive segments.
 uname -r
 wslinfo --networking-mode 2>/dev/null || echo "wslinfo: unavailable"
 dpkg-query -W -f='${Package} ${Version}\n' passt 2>/dev/null || echo "passt: no dpkg entry"
-pasta --version 2>/dev/null | head -n 1
+command -v pasta >/dev/null && pasta --version 2>/dev/null | head -n 1 || echo "pasta: unavailable"
 sysctl -n net.ipv4.tcp_keepalive_time net.ipv4.tcp_keepalive_intvl net.ipv4.tcp_keepalive_probes | paste -sd" "
 ```
 
@@ -816,6 +816,7 @@ locally with dropped ACKs (investigation §3).
 | `CUT_EARLY` | a quiet end before 100 s without an error. Unexpected: send it as it is |
 | `EOF` early on all three | the server closed the idle connection first. Inconclusive |
 | `setup_failed=…` / `SSL_…` | no connection (DNS, TLS, certificate). Nothing learned about H1 |
+| any other `ERR_…` (e.g. `ERR_ECONNRESET`), `DATA`, or a mix not listed above | unexpected: send the output as it is |
 
 **24c — only if 24b is inconclusive.** One Codex run with image generation, using HUMAN-021b's v1 command, after DEV-084
 is merged. It records `img_call_ms=` / `img_fail_timing=` per call. If the cell's script leaves the error uncaught, it

@@ -28,7 +28,7 @@
 - 24a（読むだけ・network なし・費用 0）:
   - jail の外: kernel・WSL の network mode・**passt の版**（`dpkg-query -W passt` / `pasta --version`）・keepalive の sysctl。
   - jail の中: proxy の環境変数が設定されているか（値は出さない）。
-  - Codex は jail の network namespace から **pasta** を通って外に出るので、keepalive に応答する相手は pasta。upstream の passt が keep-alive に ACK するのは 2024_11_21.238c69f から（2025-02 と 2025-12 に続きの修正）。Ubuntu 24.04 の古い passt だけで H1 がそのまま起きうる。
+  - Codex は jail の network namespace から **pasta** を通って外に出るので、keepalive に応答する相手は pasta。upstream の passt が keep-alive に ACK するのは 2024_11_21.238c69f から（keep-alive の続きの修正は 2025-02 の 472e2e9 と 2025-12 の aa809d3）。Ubuntu 24.04 の古い passt だけで H1 がそのまま起きうる。
   - Codex に渡るのは `HTTP(S)_PROXY` / `NO_PROXY` だけ（`ALL_PROXY` は sandbox.ts:79 で消える）。私設 address の proxy は jail から届かない（`IPAddressDeny`）。
 - 24b（Codex 0 回・sign-in なし・課金なし・約 2 分。network: chatgpt.com:443 へ認証なしの `GET /robots.txt` を 3 本）:
   - jail の中で、reqwest の Linux の既定と同じ socket option（A）、keepalive だけ（B）、何もなし（C）の TLS 接続を開き、100 秒待つ。
