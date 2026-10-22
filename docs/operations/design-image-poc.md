@@ -605,12 +605,231 @@ Cost: none (no Codex, no model, no network). Returns: the printed lines (no secr
 - **models cache**: which model is first and listed, and whether `gpt-6.1-sol` is `code_mode_only` with image input.
 - `design-agent threads: 0` / `state_5.sqlite: absent` → the state DB is elsewhere (`sqlite_home`) or disabled; nothing to learn here.
 
+#### HUMAN-022 result and DEV-084: every first call failed at about 156 s
+
+HUMAN-022 (2026-10-22) printed the four PoC runs:
+
+| run | model, CLI, history | image items |
+|---|---|---|
+| HUMAN-018 (v1) | `gpt-6.1-sol`, 0.159.0, paginated | `failed/none/155584ms`, then `completed/none/32648ms` |
+| HUMAN-019 (v2) | same | `failed/none/157760ms` |
+| HUMAN-020 (v2) | same | `failed/none/155770ms` |
+| HUMAN-021b (v1) | same | `failed/none/157684ms` |
+
+Neither the model nor the prompt explains it. HUMAN-019 and HUMAN-020 did call the tool. The cause is investigated in
+[`imagegen-timeout-investigation.md`](imagegen-timeout-investigation.md). In short, one tool call makes up to 5 HTTP
+attempts. reqwest's Linux default `TCP_USER_TIMEOUT` (30 s) most likely ends each one, which gives 5 × about 31 s + about
+3 s of backoff. That is inferred, and HUMAN-024 checks it without Codex.
+
+DEV-084 adds two fields at the end of the summary (schema `/5`):
+
+- `img_call_ms=`: each image call's duration from the rollout's ItemCompleted `started_at_ms` / `completed_at_ms`.
+- `img_fail_timing=`: one bucket per failed call: `<5s`, `5-60s`, `60-140s`, `140-170s`, `>170s` or `unknown`.
+
+Nothing else changes: the command line, prompts, jail, cleanup and retries are untouched.
+
+#### HUMAN-024 — separate the causes of the ~156 s failure without Codex (DEV-084; each step needs its own approval)
+
+Background: [`imagegen-timeout-investigation.md`](imagegen-timeout-investigation.md) §3. The leading hypothesis (H1) is
+that the jail's kernel cuts each idle images request at about 30 s. That happens because reqwest sets `TCP_USER_TIMEOUT`
+30 s and keepalive 15 s on Linux, and the keepalive ACKs never come back. Codex's TCP peer is **pasta**: the jail has its
+own network namespace, and an old passt does not ACK keep-alive segments.
+
+**24a — read only, no network, no Codex.** First, in the human's own WSL shell, outside the jail:
+
+```bash
+uname -r
+wslinfo --networking-mode 2>/dev/null || echo "wslinfo: unavailable"
+dpkg-query -W -f='${Package} ${Version}\n' passt 2>/dev/null || echo "passt: no dpkg entry"
+command -v pasta >/dev/null && pasta --version 2>/dev/null | head -n 1 || echo "pasta: unavailable"
+sysctl -n net.ipv4.tcp_keepalive_time net.ipv4.tcp_keepalive_intvl net.ipv4.tcp_keepalive_probes | paste -sd" "
+```
+
+Then, inside the jail as `sr-designgen`, check the environment Codex inherits (whether each variable is set, never the value):
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+for v in HTTPS_PROXY https_proxy HTTP_PROXY http_proxy NO_PROXY no_proxy ALL_PROXY all_proxy; do if [ -n "${!v:-}" ]; then echo "$v: set"; else echo "$v: unset"; fi; done'
+```
+
+Reading 24a:
+
+- **passt version.** A version older than upstream `2024_11_21.238c69f` ("tcp: Acknowledge keep-alive segments") makes
+  pasta the prime suspect. Ubuntu packages use a date-based version such as `0.0~git2024MMDD…`.
+- **Proxy variables.** Codex receives only `HTTP(S)_PROXY` / `NO_PROXY`. `ALL_PROXY` is cleared by the sandbox's env
+  allowlist (`lib/design-agent/sandbox.ts:79`). A proxy at a private address (10/8, 172.16/12, 192.168/16, 169.254/16,
+  100.64/10) is unreachable from the jail (`IPAddressDeny`, `scripts/sales-design-capture/jail/jail.properties:66-67`).
+  If `HTTPS_PROXY` is set to a reachable address, Codex's TCP goes to that proxy, and 24b, which dials directly, does not
+  mirror Codex's path.
+
+**24b — 0 Codex calls, no sign-in, no billing, about 2 min.** The probe opens three TLS connections to chatgpt.com:443 at
+the same time:
+
+- **A**: reqwest's Linux socket options (keepalive 15/15/3 + `TCP_USER_TIMEOUT` 30 s);
+- **B**: keepalive only;
+- **C**: no options.
+
+Each sends one unauthenticated `GET /robots.txt`, reads for up to 3 s, then sends nothing for up to 100 s. It prints only
+`TCP_PROBE <name> status=<HTTP code> idle_end=<OPEN|CUT_EARLY|EOF|DATA|ERR_xxx|SSL_xxx> idle_s=<s>` (or
+`setup_failed=…`). No cookie, body, header or address is printed. It does not touch CODEX_HOME, run.lock or the worker.
+Run it inside the jail, which is Codex's path:
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc 'timeout 180 python3 -I - <<"PY"
+import socket, ssl, sys, time, threading, errno
+HOST = sys.argv[1] if len(sys.argv) > 1 else "chatgpt.com"
+PORT = 443
+HOLD = 100
+CA = None
+def ename(e):
+    return errno.errorcode.get(e.errno, "E%s" % e.errno) if isinstance(getattr(e, "errno", None), int) else type(e).__name__
+def opts(s, keep, user):
+    if keep:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 15)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 15)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+    if user:
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, 30000)
+def wait(s, sec):
+    s.settimeout(sec)
+    try:
+        b = s.recv(65536)
+        return ("EOF" if not b else "DATA"), b
+    except ssl.SSLError as e:
+        return "SSL_" + type(e).__name__, b""
+    except OSError as e:
+        if isinstance(e, TimeoutError) and e.errno is None:
+            return "QUIET", b""
+        return "ERR_" + ename(e), b""
+out = {}
+def run(name, keep, user):
+    t0 = time.monotonic()
+    try:
+        raw = socket.create_connection((HOST, PORT), timeout=15)
+        opts(raw, keep, user)
+        ctx = ssl.create_default_context(cafile=CA)
+        ctx.set_alpn_protocols(["http/1.1"])
+        s = ctx.wrap_socket(raw, server_hostname=HOST)
+        s.sendall(("GET /robots.txt HTTP/1.1\r\nHost: %s\r\nUser-Agent: sr-tcp-probe\r\nConnection: keep-alive\r\n\r\n" % HOST).encode())
+        head = b""
+        res = "QUIET"
+        while True:
+            res, b = wait(s, 3)
+            if res != "DATA":
+                break
+            head += b
+        st = head[9:12].decode("ascii", "replace") if head.startswith(b"HTTP/1.") else "none"
+        t1 = time.monotonic()
+        if res == "QUIET":
+            res, _ = wait(s, HOLD)
+        idle = time.monotonic() - t1
+        if res == "QUIET":
+            res = "OPEN" if idle >= HOLD - 1 else "CUT_EARLY"
+        out[name] = "status=%s idle_end=%s idle_s=%d" % (st, res, round(idle))
+    except ssl.SSLError as e:
+        out[name] = "setup_failed=SSL_%s after_s=%d" % (type(e).__name__, round(time.monotonic() - t0))
+    except OSError as e:
+        out[name] = "setup_failed=%s after_s=%d" % (ename(e), round(time.monotonic() - t0))
+ts = [threading.Thread(target=run, args=a) for a in [("A_reqwest_default", True, True), ("B_keepalive_only", True, False), ("C_plain", False, False)]]
+[t.start() for t in ts]; [t.join() for t in ts]
+for k in sorted(out): print("TCP_PROBE", k, out[k])
+PY'
+```
+
+**24b-host (optional, same cost).** Run the same probe once in the host network namespace, as the human's own WSL user
+(not `sr-designgen`, outside the jail). This separates pasta from WSL's NAT and anything beyond it:
+
+```bash
+timeout 180 python3 -I - <<"PY"
+import socket, ssl, sys, time, threading, errno
+HOST = sys.argv[1] if len(sys.argv) > 1 else "chatgpt.com"
+PORT = 443
+HOLD = 100
+CA = None
+def ename(e):
+    return errno.errorcode.get(e.errno, "E%s" % e.errno) if isinstance(getattr(e, "errno", None), int) else type(e).__name__
+def opts(s, keep, user):
+    if keep:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 15)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 15)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+    if user:
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, 30000)
+def wait(s, sec):
+    s.settimeout(sec)
+    try:
+        b = s.recv(65536)
+        return ("EOF" if not b else "DATA"), b
+    except ssl.SSLError as e:
+        return "SSL_" + type(e).__name__, b""
+    except OSError as e:
+        if isinstance(e, TimeoutError) and e.errno is None:
+            return "QUIET", b""
+        return "ERR_" + ename(e), b""
+out = {}
+def run(name, keep, user):
+    t0 = time.monotonic()
+    try:
+        raw = socket.create_connection((HOST, PORT), timeout=15)
+        opts(raw, keep, user)
+        ctx = ssl.create_default_context(cafile=CA)
+        ctx.set_alpn_protocols(["http/1.1"])
+        s = ctx.wrap_socket(raw, server_hostname=HOST)
+        s.sendall(("GET /robots.txt HTTP/1.1\r\nHost: %s\r\nUser-Agent: sr-tcp-probe\r\nConnection: keep-alive\r\n\r\n" % HOST).encode())
+        head = b""
+        res = "QUIET"
+        while True:
+            res, b = wait(s, 3)
+            if res != "DATA":
+                break
+            head += b
+        st = head[9:12].decode("ascii", "replace") if head.startswith(b"HTTP/1.") else "none"
+        t1 = time.monotonic()
+        if res == "QUIET":
+            res, _ = wait(s, HOLD)
+        idle = time.monotonic() - t1
+        if res == "QUIET":
+            res = "OPEN" if idle >= HOLD - 1 else "CUT_EARLY"
+        out[name] = "status=%s idle_end=%s idle_s=%d" % (st, res, round(idle))
+    except ssl.SSLError as e:
+        out[name] = "setup_failed=SSL_%s after_s=%d" % (type(e).__name__, round(time.monotonic() - t0))
+    except OSError as e:
+        out[name] = "setup_failed=%s after_s=%d" % (ename(e), round(time.monotonic() - t0))
+ts = [threading.Thread(target=run, args=a) for a in [("A_reqwest_default", True, True), ("B_keepalive_only", True, False), ("C_plain", False, False)]]
+[t.start() for t in ts]; [t.join() for t in ts]
+for k in sorted(out): print("TCP_PROBE", k, out[k])
+PY
+```
+
+Reading 24b. `idle_s` starts **after** the 3 s read window, so a cut 30 s after the last received segment shows as about
+**27 s**, and the keepalive-only give-up at 15 + 3 × 15 = 60 s shows as about **57 s**. These timings were reproduced
+locally with dropped ACKs (investigation §3).
+
+| result | meaning |
+|---|---|
+| A `ERR_ETIMEDOUT` at about 27 s; B `ERR_ETIMEDOUT` at about 57 s (or `OPEN`); C `OPEN` | keepalive ACKs are lost on that path. **H1 is confirmed** and H3 is ruled out |
+| that result in the jail, and all `OPEN` in 24b-host | **pasta is the culprit** (check the passt version from 24a). Fix proposal: update passt |
+| cut in both | WSL's NAT or something upstream |
+| all three `OPEN` (idle_s = 100) | the path answers keepalives. H1 is false there, H2 (server about 30 s) leads, next is 24c |
+| `CUT_EARLY` | a quiet end before 100 s without an error. Unexpected: send it as it is |
+| `EOF` early on all three | the server closed the idle connection first. Inconclusive |
+| `setup_failed=…` / `SSL_…` | no connection (DNS, TLS, certificate). Nothing learned about H1 |
+| any other `ERR_…` (e.g. `ERR_ECONNRESET`), `DATA`, or a mix not listed above | unexpected: send the output as it is |
+
+**24c — only if 24b is inconclusive.** One Codex run with image generation, using HUMAN-021b's v1 command, after DEV-084
+is merged. It records `img_call_ms=` / `img_fail_timing=` per call. If the cell's script leaves the error uncaught, it
+also records `img_fail_reason=TIMEOUT` (H1) or `HTTP_5XX` (H2).
+
+To send back: the printed lines as they are (no secrets inside).
+
 #### Larger options (each needs its own human approval; not applied)
 
 - **`-m gpt-5.5`** (a model in the 0.159.0 bundled catalog with direct tools): only if HUMAN-022 shows HUMAN-018 ran on a
   different model than HUMAN-021b, or the next failure's `img_fail_reason` points at the model (`NOT_SUPPORTED`). Changes which
   model runs and its plan usage.
-- **Update the CLI** (0.159.0 → current): only if the reason is `BAD_RESPONSE` / `BAD_REQUEST` / `NOT_SUPPORTED` against the
+- **Update the CLI** (0.159.0 → current; not expected to change the ~156 s failure, DEV-084: upstream main still uses reqwest 0.12.28 with no TCP option override): only if the reason is `BAD_RESPONSE` / `BAD_REQUEST` / `NOT_SUPPORTED` against the
   image endpoint (a client / server contract drift). The files read here were the same in 0.163.0 (DEV-080).
 - **HUMAN-021c (v2)** stays on hold until v1 makes an image again.
 

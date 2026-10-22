@@ -17,18 +17,39 @@
   - 人の判断が要る: review の notes を次の round に渡す（DEV-034 の方針の変更）／ 初期候補を 2〜3 個にする（Codex の時間とコスト）／ Instagram の写真を使う（権利・同意の判断）
 - 次の実走: efb4bdb2 は attempts 2/3 で blocked（再 reset は未承認）。改善の効果は新しい controlled run（人の承認: 対象 demo・DB の reset・W・C）で測る
 
-### HUMAN-022 — HUMAN-018 と HUMAN-021b が CODEX_HOME に残したものを読む（Codex を呼ばない・費用 0。DEV-081）
+### HUMAN-024 — imagegen の約 156 秒の失敗の原因を分ける、Codex を呼ばない確認（DEV-084。1 段ずつ別の承認）
 
-- 背景: HUMAN-021b は code mode で imagegen を呼び、images の要求そのものが失敗した（`img_fail=OTHER`）。rust-v0.159.0 の source（DEV-081、`docs/operations/design-image-poc.md` の「Why a called image tool failed」）では、
-  構造化された `failure` は limit id が `image_gen` の usage limit のときだけで、他の失敗（別の limit id の 429・4xx・5xx・timeout・接続・認証）はすべて `failure: null`。HTTP の状態は session log に残らない（cell の script が表示したときだけ）。
-  一方、PoC の掃除は `sessions/**/rollout-*.jsonl` しか消さず、Codex の `state_5.sqlite`（threads: model・reasoning_effort・cli_version・history_mode・作成時刻）と
-  `thread_history_1.sqlite`（paginated の item: `imageGeneration` の status・failure・開始と終了の時刻）と `models_cache.json`（最新の catalog）は残る。
-- 何: runbook の「HUMAN-022」のコマンド（jail の中の `sr-designgen`、run.lock の中、SQLite は `mode=ro`、network・model・`codex` の process なし）。印字は固定の欄だけ（thread id・cwd・題・最初の message・prompt・結果・path・identity・ETag は出さない）。
-- 費用: なし（Codex 0 回）。
-- 分かること: HUMAN-018 と HUMAN-021b の model が違うか（違えば server 側の既定の model の変更が最有力 → `-m` の案）、21b の失敗が即座か（4xx）長くかかったか（5xx / timeout）、HUMAN-019 / 020 が画像ツールを呼んだか、catalog の先頭の model と `tool_mode`・画像入力。
-- 触れないもの: HUMAN-021 と同じ。CODEX_HOME の行・既存の file は変えない（SQLite は `mode=ro` で開く。WAL の DB では SQLite が空の `-wal` / `-shm` を作ることがあるので「何も書かない」とは言わない。`immutable=1` は使わない）。`codex` を起動しない。
-- 返してほしいもの: 出力そのまま（秘密は含まない）。
-- 解除条件: 出力が届く、または人が流さないと決める。
+- 背景（HUMAN-022 の結果、2026-10-22）: 4 回の PoC（HUMAN-018 / 019 / 020 / 21b、model `gpt-6.1-sol`・CLI 0.159.0・paginated）の**最初の imagegen はすべて 155.6〜157.8 秒で `failed/none`**。HUMAN-018 だけ、モデルが 2 回目を呼び 32.6 秒で成功した。
+  DEV-084 の調査（`docs/operations/imagegen-timeout-investigation.md`、rust-v0.159.0 の source と reqwest 0.12.28 を data として読んだ。Codex は流していない）:
+  画像の要求は `POST https://chatgpt.com/backend-api/codex/images/generations`（stream なし）。Codex は request / connect の timeout を付けず、**1 回のツール呼び出しの中で HTTP を最大 5 回**（再試行 4 回、5xx と transport error、backoff 計約 3 秒）送る。
+  reqwest 0.12.28 は **Linux（WSL2 を含む）では既定で `TCP_USER_TIMEOUT` 30 秒・keepalive 15 秒**を socket に付け、Codex はそれを変えない。156 秒 ≒ 5 ×（約 30.5〜31 秒）+ 約 3 秒。
+  公開の報告（openai/codex#24323、#45381 の Linux の comment）も Linux で「1 回約 31 秒 × 5 回・`timeout`」。最有力は H1「経路上で keepalive の probe に応答がなく、待っている間の接続が 30 秒で切られる」。対立仮説は H2「server が約 30 秒で 5xx」、H3「1 回の長い要求（約 156 秒）が再試行されない error で終わる」。
+- コマンドと読み方の正本は `docs/operations/design-image-poc.md` の「HUMAN-024」（GitHub で表示されるよう、コマンドはそこに置く）。
+- 24a（読むだけ・network なし・費用 0）:
+  - jail の外: kernel・WSL の network mode・**passt の版**（`dpkg-query -W passt` / `pasta --version`）・keepalive の sysctl。
+  - jail の中: proxy の環境変数が設定されているか（値は出さない）。
+  - Codex は jail の network namespace から **pasta** を通って外に出るので、keepalive に応答する相手は pasta。upstream の passt が keep-alive に ACK するのは 2024_11_21.238c69f から（keep-alive の続きの修正は 2025-02 の 472e2e9 と 2025-12 の aa809d3）。Ubuntu 24.04 の古い passt だけで H1 がそのまま起きうる。
+  - Codex に渡るのは `HTTP(S)_PROXY` / `NO_PROXY` だけ（`ALL_PROXY` は sandbox.ts:79 で消える）。私設 address の proxy は jail から届かない（`IPAddressDeny`）。
+- 24b（Codex 0 回・sign-in なし・課金なし・約 2 分。network: chatgpt.com:443 へ認証なしの `GET /robots.txt` を 3 本）:
+  - jail の中で、reqwest の Linux の既定と同じ socket option（A）、keepalive だけ（B）、何もなし（C）の TLS 接続を開き、100 秒待つ。
+  - 任意の 24b-host: 同じ probe を jail の外（人の WSL user、host の namespace）で 1 回流し、pasta と WSL の NAT を分ける。
+  - 読み方:
+    - `idle_s` は 3 秒の読み取りの後から数える。
+    - A が `ERR_ETIMEDOUT` で約 27 秒、B が約 57 秒（または `OPEN`）、C が `OPEN` → H1 確定。
+    - それが jail の中だけなら → pasta が原因（passt の更新の案）。
+    - 3 本とも `OPEN` → H2 が有力。
+  - 修正後の probe は、ACK を落とす local の再現（iptables、後で削除）で確かめた: A 27 秒・B 57 秒・C OPEN。
+- 24c（24b で結論が出ないときだけ。Codex 1 回、画像生成つき）: DEV-084 の merge の後に、HUMAN-021b と同じ v1 のコマンドを 1 回。
+  `img_call_ms=` と `img_fail_timing=` で呼び出しごとの時間、cell の script が error を捕まえなかったときは `img_fail_reason=TIMEOUT`（H1）か `HTTP_5XX`（H2）が分かる。
+- 修正の案（どれも人の承認が要る。DEV-084 は実装していない）:
+  (1) 自動の再試行を 0 回に: `openai` は予約された provider id で上書きできない（config_toml.rs:66-72）ので、`-c` で自前の provider（`requires_openai_auth = true`・`request_max_retries = 0`）に切り替える。model の通信も同じ provider になる挙動の変更。失敗が 1 回・約 31 秒になるだけで、原因は直らない。
+  (2) ツールを 1 回だけ呼び、失敗したら error 文を表示して止まる、と prompt に書く: 強制ではない。prompt は byte 単位で固定なので別の PR。
+  (3) 最初の失敗で PoC が Codex を止める（run.ts が session log を見る）。
+  (4) H1 が確定したら: **passt の更新**（24a の版が 2024_11_21.238c69f より古く、24b が jail の中だけで切れるとき。WSL の system package の変更）、WSL の network mode（`.wslconfig`、人の承認。host でも切れるときだけ）、または upstream に報告する（外部への投稿は人の判断）。jail の中の loopback の proxy は、その上流の socket も pasta を通るので、pasta が原因なら（keepalive を送らない proxy でない限り）効かない。
+  CLI の更新は効かない見込み（2026-10-22 の main も reqwest 0.12.28 で、TCP の option を付けていない）。
+- 触れないもの: HUMAN-022 と同じ。`~/.codex/config.toml`・`.wslconfig`・CLI の版・model は変えない。
+- 返してほしいもの: 24a と 24b（と、流したなら 24b-host）の出力そのまま（秘密は含まない）。
+- 解除条件: 24b の結果が届く（必要なら 24c）、または人が流さないと決める。
 
 ### HUMAN-021 — 画像ツールが使われない原因を分ける、安い順の確認（DEV-078 の merge の後。1 段ずつ別の承認）
 
@@ -301,6 +322,30 @@
 - DEV-004 で Claude が allowed_scope を拡張（GA を /demo・/admin で無効化、noindex / no-referrer ヘッダ、e2e 分割）。既存ページの挙動は不変とレビュー確認済み。異論があれば PR #12 を参照。
 
 ## 解除済み
+
+### HUMAN-022 — HUMAN-018 と HUMAN-021b が CODEX_HOME に残したものを読む（Codex を呼ばない・費用 0。DEV-081）（解除: 2026-10-22）
+
+- 結果（人が流した）: design-agent の thread は 79。画像の PoC の 4 回はどれも model `gpt-6.1-sol`・CLI 0.159.0・`hist=paginated`。`image_items` は次のとおり。
+  - HUMAN-018（v1）: `failed/none/155584ms`、続けて `completed/none/32648ms`（画像あり）
+  - HUMAN-019（v2）: `failed/none/157760ms`
+  - HUMAN-020（v2）: `failed/none/155770ms`
+  - HUMAN-021b（v1）: `failed/none/157684ms`
+- 読み:
+  - model の変更は原因ではない（4 回とも同じ）。v2 の prompt も原因ではない（v1 も失敗）。
+  - HUMAN-019 / 020 は画像ツールを**呼んでいた**（`image_tool=0/0` は `--json` に item が無いため）。HUMAN-018 も最初の 1 回は同じ失敗。
+  - 4 回とも最初の呼び出しが約 156 秒で失敗している → 調査は DEV-084、次は HUMAN-024。
+- 当時の手順（記録）:
+
+- 背景: HUMAN-021b は code mode で imagegen を呼び、images の要求そのものが失敗した（`img_fail=OTHER`）。rust-v0.159.0 の source（DEV-081、`docs/operations/design-image-poc.md` の「Why a called image tool failed」）では、
+  構造化された `failure` は limit id が `image_gen` の usage limit のときだけで、他の失敗（別の limit id の 429・4xx・5xx・timeout・接続・認証）はすべて `failure: null`。HTTP の状態は session log に残らない（cell の script が表示したときだけ）。
+  一方、PoC の掃除は `sessions/**/rollout-*.jsonl` しか消さず、Codex の `state_5.sqlite`（threads: model・reasoning_effort・cli_version・history_mode・作成時刻）と
+  `thread_history_1.sqlite`（paginated の item: `imageGeneration` の status・failure・開始と終了の時刻）と `models_cache.json`（最新の catalog）は残る。
+- 何: runbook の「HUMAN-022」のコマンド（jail の中の `sr-designgen`、run.lock の中、SQLite は `mode=ro`、network・model・`codex` の process なし）。印字は固定の欄だけ（thread id・cwd・題・最初の message・prompt・結果・path・identity・ETag は出さない）。
+- 費用: なし（Codex 0 回）。
+- 分かること: HUMAN-018 と HUMAN-021b の model が違うか（違えば server 側の既定の model の変更が最有力 → `-m` の案）、21b の失敗が即座か（4xx）長くかかったか（5xx / timeout）、HUMAN-019 / 020 が画像ツールを呼んだか、catalog の先頭の model と `tool_mode`・画像入力。
+- 触れないもの: HUMAN-021 と同じ。CODEX_HOME の行・既存の file は変えない（SQLite は `mode=ro` で開く。WAL の DB では SQLite が空の `-wal` / `-shm` を作ることがあるので「何も書かない」とは言わない。`immutable=1` は使わない）。`codex` を起動しない。
+- 返してほしいもの: 出力そのまま（秘密は含まない）。
+- 解除条件: 出力が届く、または人が流さないと決める。
 
 ### HUMAN-014 — cycle の install と dry-run（timer なし、HUMAN-010 の一部）（解除: 2026-10-20）
 

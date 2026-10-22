@@ -30,6 +30,9 @@ import {
   classifyImageFailureText,
   deriveImageOutcome,
   emptySessionFacts,
+  failTimingOf,
+  IMAGE_FAIL_TIMINGS,
+  MAX_IMAGE_CALL_TIMINGS,
   MAX_MODELS_CACHE_BYTES,
   MAX_SESSION_LOG_BYTES,
   parseCodexVersion,
@@ -738,7 +741,7 @@ describe("diagnostics (DEV-077): fixed codes and numbers that tell (a)-(d) apart
     }));
     expect(result).toEqual({ status: "stopped", code: "CODEX_NO_IMAGE" });
     const { d, text, summary } = diagOf();
-    expect(d).toMatchObject({ schema: "sr-design-image-poc-diagnostics/4", outcome: "stopped", stop_code: "CODEX_NO_IMAGE", direction_version: "v2", codex: { invoked: true, exit_code: 0, signal: null, timed_out: false, thread_id_present: true } });
+    expect(d).toMatchObject({ schema: "sr-design-image-poc-diagnostics/5", outcome: "stopped", stop_code: "CODEX_NO_IMAGE", direction_version: "v2", codex: { invoked: true, exit_code: 0, signal: null, timed_out: false, thread_id_present: true } });
     // DEV-078: the session log has no image call; the answer is a description (TEXT_OTHER), a request stop
     expect(d.preflight).toEqual({ cli_version: "0.163.0", dotenv_present: false });
     expect(d.session).toMatchObject({ log_found: true, image_tool_calls: 0, image_tool_failed: 0 });
@@ -1882,6 +1885,68 @@ describe("DEV-078: preflight, the CLI's session log and fixed classification cod
         expect(pocStopClass("CODEX_IMAGE_TOOL_FAILED", "TOOL_FAILED_UNSUPPORTED")).toBe("capability");
         expect(pocStopClass("CODEX_IMAGE_TOOL_FAILED", "TOOL_FAILED")).toBe("capability");
         expect(pocStopClass("CODEX_NO_IMAGE", "TOOL_FAILED_TRANSIENT")).toBe("request");
+      });
+    });
+
+    describe("DEV-084: each image call's duration (ItemCompleted timestamps) and a fixed timing bucket per failed call", () => {
+      /** HUMAN-018 started at about this time (any epoch ms works; only the difference is recorded). */
+      const T0 = 1_761_100_000_000;
+      /** ext() with the ItemCompleted event's own started_at_ms / completed_at_ms (protocol.rs:1948-1960: on the payload, not the item). */
+      const timed = (status: string, ms: unknown, id: string, started: unknown = T0) => {
+        const r = ext(status, null, id);
+        return { ...r, payload: { ...r.payload, started_at_ms: started, completed_at_ms: typeof ms === "number" && typeof started === "number" ? started + ms : ms } };
+      };
+      const facts = async (records: unknown[]) => {
+        leaveLog(join(root, "cwd-84"), records, META_159);
+        return readSessionFacts(codexHome, THREAD);
+      };
+
+      it("HUMAN-018's shape: a failed call at 155 584 ms, then a second call by the model that completed in 32 648 ms", async () => {
+        const f = await facts([imagegenCell(), timed("failed", 155_584, "ig_1"), cellOutput(), cell(`await tools.image_gen__imagegen({ prompt: "${CANARY}" })`, "cell_2"), timed("completed", 32_648, "ig_2", T0 + 170_000), cellOutput("cell_2")]);
+        expect(f).toMatchObject({ image_tool_calls: 2, image_tool_completed: 1, image_tool_failed: 1, image_call_ms: [155_584, 32_648], image_fail_timings: ["140-170s"] });
+      });
+
+      it("HUMAN-021b's shape through the run: one failed call at 157 684 ms → img_call_ms and img_fail_timing in the summary; nothing else changes", async () => {
+        const result = await runDesignImagePoc(options(({ cwd }) => {
+          leaveLog(cwd, [imagegenCell(), timed("failed", 157_684, "ig_call_1"), cellOutput()], META_159);
+          return ok(answer(`${CANARY} the tool failed`));
+        }));
+        expect(result).toEqual({ status: "stopped", code: "CODEX_IMAGE_TOOL_FAILED" });
+        const { d, text, summary } = diag();
+        expect(d.schema).toBe("sr-design-image-poc-diagnostics/5");
+        expect(d.session).toMatchObject({ image_tool_failed: 1, image_failure_codes: ["OTHER"], image_call_ms: [157_684], image_fail_timings: ["140-170s"] });
+        expect(d.classification).toMatchObject({ image_outcome: "TOOL_FAILED", stop_class: "capability" });
+        expect(summary).toMatch(/ img_call_ms=157684 img_fail_timing=140-170s$/);
+        clean(text, summary);
+        expect(text + summary).not.toContain(String(T0));
+      });
+
+      it("no usable timestamps → no duration and `unknown` (legacy end record, missing / non-numeric / negative / zero / over a day); in_progress is not an end", async () => {
+        const legacy = { timestamp: "t", type: "event_msg", payload: { type: "image_generation_end", call_id: "call_1", status: "failed", result: "" } };
+        expect(await facts([call(), legacy, failedOutput("image generation failed: timeout")])).toMatchObject({ image_tool_failed: 1, image_call_ms: [], image_fail_timings: ["unknown"], image_failure_reasons: ["TIMEOUT"] });
+        // 0: Codex's fallback started_at_ms = completed_at_ms when no start was recorded (session/mod.rs:2618-2630)
+        for (const [ms, started] of [[undefined, undefined], ["155584", T0], [-1, T0], [0, T0], [24 * 3600 * 1000 + 1, T0], [1000, -5], [1.5, T0]] as const) {
+          const f = await facts([imagegenCell(), timed("failed", ms, "ig_1", started), cellOutput()]);
+          expect(f, `${String(ms)} ${String(started)}`).toMatchObject({ image_tool_failed: 1, image_call_ms: [], image_fail_timings: ["unknown"] });
+        }
+        const pending = await facts([imagegenCell(), timed("in_progress", 5_000, "ig_1"), cellOutput()]);
+        expect(pending.image_call_ms).toEqual([]);
+        expect(pending.image_fail_timings).toEqual([]);
+        expect((await facts([imagegenCell(), timed("completed", 20_000, "ig_1"), cellOutput()])).image_fail_timings).toEqual([]);
+      });
+
+      it("at most MAX_IMAGE_CALL_TIMINGS durations are kept", async () => {
+        const many = Array.from({ length: MAX_IMAGE_CALL_TIMINGS + 4 }, (_, i) => timed("failed", 1_000 + i, `ig_${i}`));
+        const f = await facts([imagegenCell(), ...many, cellOutput()]);
+        expect(f.image_tool_failed).toBe(MAX_IMAGE_CALL_TIMINGS + 4);
+        expect(f.image_call_ms).toHaveLength(MAX_IMAGE_CALL_TIMINGS);
+        expect(f.image_fail_timings).toHaveLength(MAX_IMAGE_CALL_TIMINGS);
+      });
+
+      it("failTimingOf: fixed buckets with the boundaries on the lower side", () => {
+        expect(IMAGE_FAIL_TIMINGS).toEqual(["<5s", "5-60s", "60-140s", "140-170s", ">170s", "unknown"]);
+        const cases: Array<[unknown, string]> = [[0, "unknown"], [1, "<5s"], [4_999, "<5s"], [5_000, "5-60s"], [59_999, "5-60s"], [60_000, "60-140s"], [139_999, "60-140s"], [140_000, "140-170s"], [155_584, "140-170s"], [157_760, "140-170s"], [169_999, "140-170s"], [170_000, ">170s"], [305_000, ">170s"], [null, "unknown"], [undefined, "unknown"], [-1, "unknown"], [Number.NaN, "unknown"], [2.5, "unknown"], [24 * 3600 * 1000 + 1, "unknown"]];
+        for (const [ms, bucket] of cases) expect(failTimingOf(ms as number), String(ms)).toBe(bucket);
       });
     });
   });
