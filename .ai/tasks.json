@@ -3836,6 +3836,47 @@
         "required check 名の変更",
         "test の除外"
       ]
+    },
+    {
+      "id": "DEV-086",
+      "title": "passt / pasta の更新の設計（読むだけ・docs だけ）と HUMAN-024a の結果の記録、24b の手順の再確認",
+      "status": "in_progress",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-084"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-086-passt-plan",
+      "purpose": "HUMAN-024a（2026-10-22、人が流した）: kernel 6.18.33.2-microsoft-standard-WSL2・WSL の network mode nat・passt 0.0~git20240220.1e6f92b-1（Ubuntu 24.04 の標準の package、upstream 2024_11_21.238c69f「tcp: Acknowledge keep-alive segments」より前）・pasta --version は unknown version・keepalive の sysctl 7200 75 9・JAIL_OK・proxy の変数はすべて unset。H1（pasta が keepalive の ACK を返さず、約 30 秒 × 5 回で切れる）が強まった。jail の隔離を弱めずに passt を更新する方法を、一次資料（passt.top の git・Launchpad・Debian の archive・Ubuntu の AppArmor の profile）で調べて設計し、承認の順番を並べる。何も入れない・変えない",
+      "decision": "設計だけ。passt の更新・WSL の設定・Codex の実行・24b の実行はどれもしない（24b は人が review の後に決める）",
+      "acceptance_criteria": [
+        ".ai/blockers.md の HUMAN-024 に 24a の結果（済み）と次の段（24b、人の承認待ち）を書く",
+        "design-image-poc.md の 24b のコマンドを jail の実装（admin.sh run の systemd-run・IPAddressDeny・DNS・pasta の port 転送なし）と突き合わせ、読み方に「jail だけ切れて host は OPEN → pasta」「両方切れる → WSL の NAT か上流」「どちらも切れない → H2」を明示する。コマンドは byte 単位で変えない（変えるなら local の TLS server と ACK を落とす iptables で再試験）",
+        "docs/operations/passt-update-plan.md: 修正の入った版（最低と推奨）、入手元ごとの版・出所・署名・入れ方・保守、推奨と理由、jail の pasta の起動と flag の意味の変化、AppArmor・seccomp・capability、IPAddressDeny・DNS・netns の不変、確認の手順（前の snapshot・24a・24b・jail-check・既存の試験・Codex 1 回は別承認）、rollback と apt-mark hold、代わりの案、承認の一覧。確かめていないことは明示し、出典を付ける"
+      ],
+      "required_tests": [
+        "ai-tasks の unit、npm run check:secrets",
+        "抜き出した shell のコマンドに bash -n"
+      ],
+      "allowed_scope": [
+        "docs/operations/passt-update-plan.md",
+        "docs/operations/design-image-poc.md（HUMAN-024 の節）",
+        "docs/operations/imagegen-timeout-investigation.md（24a の結果の反映だけ）",
+        ".ai/**（feature branch では progress.md を除く）"
+      ],
+      "forbidden_scope": [
+        "passt / pasta の更新・install・設定の変更（どの machine でも）",
+        "WSL の設定（.wslconfig）・Codex の実行・24b の実行",
+        "scripts/sales-design-capture/**（jail・admin.sh・probe）の変更",
+        ".github/**・lib/design-agent/comp-impl/**"
+      ],
+      "human_approval_triggers": [
+        "HUMAN-024b（Codex なしの TCP probe）",
+        "passt の更新の各段（passt-update-plan.md §7 の A-1 から順に）",
+        "design-wsl-isolation.md §6「他の release の deb や自前の build は入れない」の例外",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }
