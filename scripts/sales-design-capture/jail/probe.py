@@ -127,6 +127,8 @@ def describe_rule(payload):
             raise ValueError("repeated attribute")
         attrs[atype] = payload[off + 4 : off + alen]
         off += (alen + 3) & ~3
+    if off != len(payload):
+        raise ValueError("trailing bytes")
     words = []
     words.append("%d:" % (struct.unpack("=I", attrs.pop(FRA_PRIORITY))[0] if FRA_PRIORITY in attrs else 0))
     if family != socket.AF_INET:

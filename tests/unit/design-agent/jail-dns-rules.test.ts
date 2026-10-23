@@ -171,6 +171,10 @@ bad = {
     "short_attr": [struct.pack("=IHHII", 16 + 12 + 4, 32, 2, SEQ, 0) + struct.pack("=8BI", 2, 0, 0, 0, 254, 0, 0, 1, 0) + struct.pack("=HH", 2, 15) + DONE],
     "repeated_attr": [rule(99, 254, 1, D, 17, (53, 53), extra=attr(24, struct.pack("=HH", 1, 65535))) + DONE],
 }
+# 1 to 3 bytes after the last attribute (too short for another one) inside the message: refused, not ignored
+for n in (1, 2, 3):
+    r = rule(100, 0, 8, D)
+    bad["trailing_%d" % n] = [struct.pack("=I", len(r) + n) + r[4:] + b"\0" * n + b"\0" * ((4 - n) % 4) + DONE]
 out["bad"] = {}
 for name, chunks in bad.items():
     try:
@@ -213,7 +217,17 @@ print(json.dumps(out))
     expect(out["98_blackhole"]!.rules).toContain("98: to 198.51.100.53/32 ipproto 17 dport 853 action6");
     expect(out["99_from_iif"]!.rules).toContain("99: to 198.51.100.53/32 ipproto 17 dport 53 attr3 lookup 254");
     expect(out["99_port_range"]!.rules).toContain("99: to 198.51.100.53/32 ipproto 17 dport 53-853 lookup 254");
-    expect(out.bad).toEqual({ no_done: "REFUSED", wrong_seq: "REFUSED", truncated: "REFUSED", nlmsg_error: "REFUSED", short_attr: "REFUSED", repeated_attr: "REFUSED" });
+    expect(out.bad).toEqual({
+      no_done: "REFUSED",
+      wrong_seq: "REFUSED",
+      truncated: "REFUSED",
+      nlmsg_error: "REFUSED",
+      short_attr: "REFUSED",
+      repeated_attr: "REFUSED",
+      trailing_1: "REFUSED",
+      trailing_2: "REFUSED",
+      trailing_3: "REFUSED",
+    });
   }, 30_000);
 
   it("the probe's netlink reader reads this machine's real rules (read only) and they are not the jail's", () => {
