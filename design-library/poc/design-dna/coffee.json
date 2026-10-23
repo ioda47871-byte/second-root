@@ -18,50 +18,35 @@
       "source_label": "DEV-073 coffee.json: hours and closed_days"
     }
   ],
-  "references": [
-    {
-      "id": "DR-027",
-      "url": "https://bake-jp.com/info/abitecoffee_202609launch/",
-      "scope": "public_visual_only",
-      "observed_principle": "An official brand graphic balances assertive dark lettering with limited cream space.",
-      "transferable_idea": "Use type weight and rhythm rather than its specific dots, logo or coffee branding.",
-      "rights": "analysis_only"
-    }
-  ],
+  "references": [],
   "decisions": [
     {
       "part": "hero",
       "choice": "Horizontal wordmark sits as a crisp mid-size masthead over a slim grid of opening-time information.",
-      "rationale": "Early opening (8:00) is the most useful verified fact for a stand, so it sits next to the name instead of below the fold.",
+      "rationale": "Early opening (8:00) is the most useful verified fact for a stand, so it sits beside the name instead of below the fold.",
       "evidence_ids": [
         "brand",
         "hours"
       ],
-      "reference_ids": [
-        "DR-027"
-      ]
+      "reference_ids": []
     },
     {
       "part": "typography",
       "choice": "Condensed, architectural sans hierarchy with compact uppercase name, few typographic sizes and clear breathing room.",
-      "rationale": "A Latin all-caps name and a short fact set suit a compact sans hierarchy with few sizes.",
+      "rationale": "The fixture name is Latin all-caps and the fact set is short, which suits a compact sans hierarchy with few sizes.",
       "evidence_ids": [
         "brand"
       ],
-      "reference_ids": [
-        "DR-027"
-      ]
+      "reference_ids": []
     },
     {
       "part": "palette",
       "choice": "Ink-black over almost-white with one restrained cool sage rule; no borrowed coffee-brand browns.",
-      "rationale": "Nothing in the fixture states a colour; a neutral ink/paper base with one cool rule avoids importing a reference brand's browns.",
+      "rationale": "Nothing in the fixture states a colour; a neutral ink/paper base with one cool rule avoids borrowing any coffee brand's browns.",
       "evidence_ids": [
         "brand"
       ],
-      "reference_ids": [
-        "DR-027"
-      ]
+      "reference_ids": []
     },
     {
       "part": "product_visual",

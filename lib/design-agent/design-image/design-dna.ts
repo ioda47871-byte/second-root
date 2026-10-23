@@ -19,6 +19,11 @@ export type DesignDnaPart = (typeof DESIGN_DNA_PARTS)[number];
 export const DESIGN_DNA_FIXTURE_DIR = "design-library/poc/design-dna";
 export type DesignDnaEvidence = {
   id: string;
+  /**
+   * "verified_shop_fact": a fact from an approved facts source. For the DEV-073
+   * fictional fixtures it only means "taken verbatim from the fixture JSON";
+   * nothing about a real shop has been verified.
+   */
   origin: "verified_shop_fact" | "owner_direction";
   observation: string;
   source_label: string;
@@ -123,7 +128,8 @@ export function parseDesignDna(value: unknown): DesignDnaBrief {
     if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname)
       fail("reference_url:unsafe");
     return {
-      id: id(r.id, "reference_id"), url,
+      // The canonical form, so one page is one string however it was typed.
+      id: id(r.id, "reference_id"), url: parsed.href,
       scope: choose(r.scope, ["public_visual_only", "site_structure_only", "desktop_reviewed"] as const, "reference_scope"),
       observed_principle: str(r.observed_principle, "observed_principle"),
       transferable_idea: str(r.transferable_idea, "transferable_idea"),
@@ -147,6 +153,10 @@ export function parseDesignDna(value: unknown): DesignDnaBrief {
   });
   if (new Set(decisions.map((d) => d.part)).size !== DESIGN_DNA_PARTS.length)
     fail("decisions:coverage");
+  // A declared reference that no decision cites is an observation with no use;
+  // remove it rather than let it look like support. Zero references is allowed.
+  const cited = new Set(decisions.flatMap((d) => d.reference_ids));
+  if (references.some((r) => !cited.has(r.id))) fail("references:uncited");
   // A rationale is the per-decision reason. One sentence pasted under all
   // eight decisions explains none of them.
   if (new Set(decisions.map((d) => normalizeText(d.rationale))).size !== decisions.length)
@@ -156,7 +166,7 @@ export function parseDesignDna(value: unknown): DesignDnaBrief {
 
 /** Case, width, whitespace and punctuation are ignored; wording is not. */
 const normalizeText = (text: string): string =>
-  text.normalize("NFKC").toLocaleLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/g, " ").trim();
+  text.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/g, " ").trim();
 
 /**
  * Parts whose creative choice is the same text in both briefs, compared part by

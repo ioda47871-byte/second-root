@@ -15,15 +15,15 @@ const valid = () => ({
     { id: "fact01", origin: "verified_shop_fact", observation: "The shop offers handcrafted sweets.", source_label: "verified shop facts" },
   ],
   references: [
-    { id: "DR-027", url: "https://bake-jp.com/info/abitecoffee_202609launch/", scope: "public_visual_only",
-      observed_principle: "Strong typographic identity, limited colours, abstract shapes.",
-      transferable_idea: "Explain a memorable graphic decision without copying its shapes.",
+    { id: "ref01", url: "https://happo-en-patisserie.com/", scope: "site_structure_only",
+      observed_principle: "Separate sections for selections and shop information.",
+      transferable_idea: "Keep a scannable factual area apart from the identity area.",
       rights: "analysis_only" },
   ],
   decisions: DESIGN_DNA_PARTS.map((part) => ({
     part, choice: `Unique ${part} decision built from the shop evidence.`,
     rationale: `Design reasoning for ${part} connected to a verified store trait.`,
-    evidence_ids: ["fact01"], reference_ids: ["DR-027"],
+    evidence_ids: ["fact01"], reference_ids: ["ref01"],
   })),
 });
 
@@ -52,19 +52,28 @@ describe("Design DNA: research-only, no template selection", () => {
       [{ ...v, asset_policy: "scraped_instagram_images" }, "asset_policy:enum"],
       [{ ...v, references: [{ ...v.references[0], rights: "reuse_allowed" }] }, "rights:enum"],
       [{ ...v, references: [{ ...v.references[0], url: "file:///etc/passwd" }] }, "reference_url:unsafe"],
-      [{ ...v, references: [{ ...v.references[0], url: "http://bake-jp.com/" }] }, "reference_url:unsafe"],
-      [{ ...v, references: [{ ...v.references[0], url: "https://user:pw@bake-jp.com/" }] }, "reference_url:unsafe"],
+      [{ ...v, references: [{ ...v.references[0], url: "http://happo-en-patisserie.com/" }] }, "reference_url:unsafe"],
+      [{ ...v, references: [{ ...v.references[0], url: "https://user:pw@happo-en-patisserie.com/" }] }, "reference_url:unsafe"],
       [{ ...v, references: [{ ...v.references[0], scope: "full_site_audited" }] }, "reference_scope:enum"],
       [{ ...v, references: [{ ...v.references[0], image_url: "https://other.site/photo.jpg" }] }, "reference:fields"],
       [{ ...v, evidence: [{ ...v.evidence[0], image_url: "https://other.site/photo.jpg" }] }, "evidence:fields"],
       [{ ...v, evidence: [{ ...v.evidence[0], origin: "reference_site" }] }, "origin:enum"],
       [{ ...v, evidence: [v.evidence[0], v.evidence[0]] }, "duplicate_ids"],
       [{ ...v, evidence: [] }, "evidence:count"],
+      [{ ...v, references: [...v.references, { ...v.references[0], id: "ref02" }] }, "references:uncited"],
+      [{ ...v, decisions: v.decisions.map((x) => ({ ...x, reference_ids: [] })) }, "references:uncited"],
       [{ ...v, status: "published" }, "status:enum"],
       [{ ...v, schema_version: 2 }, "brief:version"],
       [{ ...v, industry: "cafe" }, "brief:fields"],
     ];
     for (const [input, reason] of cases) expect(() => parseDesignDna(input), reason).toThrow(new DesignDnaError(reason));
+  });
+
+  it("allows zero references, and stores each reference URL in canonical form", () => {
+    const v = valid();
+    expect(parseDesignDna({ ...v, references: [], decisions: v.decisions.map((x) => ({ ...x, reference_ids: [] })) }).references).toEqual([]);
+    const parsed = parseDesignDna({ ...v, references: [{ ...v.references[0], url: "HTTPS://Happo-EN-patisserie.com" }] });
+    expect(parsed.references[0]!.url).toBe("https://happo-en-patisserie.com/");
   });
 
   it("flags copy/paste visual directions even if shop and references differ", () => {
@@ -84,6 +93,14 @@ describe("Design DNA: research-only, no template selection", () => {
       decisions: [...valid().decisions].reverse().map((x) => ({ ...x, choice: `  ${x.choice.toUpperCase().replace(".", "!")}  ` })),
     });
     expect(sameDesignDna(a, b)).toBe(true);
+    // Full-width Latin and Japanese punctuation: only NFKC makes these equal.
+    const wide = (t: string) => t.replace(/[!-~]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 0xfee0)).replace(/ /g, "\u3000");
+    const d = parseDesignDna({
+      ...valid(),
+      decisions: valid().decisions.map((x) => ({ ...x, choice: `「${wide(x.choice.replace(".", ""))}」、。` })),
+    });
+    expect(d.decisions[0]!.choice).toMatch(/^「Ｕｎｉｑｕｅ/);
+    expect(sameDesignDna(a, d)).toBe(true);
     // Its limit, stated rather than hidden: a reworded choice is not detected.
     b.decisions.find((d) => d.part === "hero")!.choice = "A shop-evidence-built hero decision that is unique.";
     expect(sharedDesignDnaParts(a, b)).not.toContain("hero");
