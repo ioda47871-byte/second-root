@@ -3970,7 +3970,7 @@
     {
       "id": "DEV-089",
       "title": "CI: Chromium install（playwright install --with-deps）の遅延の調査と改善案の設計（docs だけ、CI 設定は変えない）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-085"
