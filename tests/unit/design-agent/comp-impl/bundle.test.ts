@@ -1,8 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CompImplError, loadCompBundle, sha256 } from "@/lib/design-agent/comp-impl/bundle";
+import { CompImplError, EVAL_CRITERIA, EVAL_MIN_CRITERION, EVAL_PASS_TOTAL, EvaluationSchema, evaluationVerdict, loadCompBundle, loadCompIntake, sha256, type CompNotApprovedError } from "@/lib/design-agent/comp-impl/bundle";
 import { loadCompPage } from "@/lib/design-agent/comp-impl/page";
 import { parseShop } from "@/lib/design-agent/compare/shops";
 import { loadPocInputs } from "@/lib/design-agent/design-image/prompt";
@@ -27,6 +28,7 @@ async function writeBundle(over: { report?: Record<string, unknown>; facts?: unk
   await writeFile(join(dir, "layout-spec.json"), json({ ...fixtureJson("layout-spec.json"), comp_sha256: SHA, ...over.spec }));
 }
 const load = () => loadCompBundle(dir, { repoDir: REPO, factsSourcePath: FACTS_SOURCE });
+const intake = () => loadCompIntake(dir, { repoDir: REPO, factsSourcePath: FACTS_SOURCE });
 const code = async (p: Promise<unknown>) => {
   try {
     await p;
@@ -36,6 +38,18 @@ const code = async (p: Promise<unknown>) => {
     throw error;
   }
 };
+/** The refusal's code with the verdict attached to a COMP_NOT_APPROVED. */
+const refusal = async (p: Promise<unknown>) => {
+  try {
+    await p;
+    return { code: "LOADED" };
+  } catch (error) {
+    if (!(error instanceof CompImplError)) throw error;
+    const e = error as Partial<CompNotApprovedError>;
+    return { code: error.code, problems: e.problems, low: e.low_criteria };
+  }
+};
+const scores = (beauty: number, fit: number, originality: number, structure: number, implementability: number) => ({ beauty, fit, originality, structure, implementability });
 
 beforeEach(async () => {
   dir = await privateTemp("bundle-");
@@ -81,6 +95,28 @@ describe("loadCompBundle", () => {
     expect(await code(load())).toBe(expected);
   });
 
+  // DEV-094: the human's policy (2026-10-22) 「22/25点以上、各項目4点以上を基本方針とする」
+  it.each<[number[], number, string, string[], string[]]>([
+    [[5, 5, 5, 5, 3], 23, "COMP_NOT_APPROVED", ["EVAL_CRITERION_BELOW_MIN"], ["implementability"]],
+    [[5, 5, 5, 4, 3], 22, "COMP_NOT_APPROVED", ["EVAL_CRITERION_BELOW_MIN"], ["implementability"]],
+    [[4, 4, 4, 5, 5], 22, "LOADED", [], []],
+    [[4, 4, 4, 4, 5], 21, "COMP_NOT_APPROVED", ["EVAL_TOTAL_BELOW_PASS"], []],
+  ])("a real comp scored %j (total %i): %s", async (s5, total, expected, problems, low) => {
+    await writeBundle({ report: { synthetic: undefined }, evaluation: { ...REAL_EVAL, scores: scores(...(s5 as [number, number, number, number, number])), total } });
+    if (expected === "LOADED") {
+      expect((await load()).compApproved).toBe(true);
+      expect((await intake()).compApproved).toBe(true);
+    } else {
+      expect(await refusal(load())).toEqual({ code: expected, problems, low });
+      expect(await refusal(intake())).toEqual({ code: expected, problems, low });
+    }
+  });
+
+  it("refuses an unconfirmed real comp with the verdict's reasons attached", async () => {
+    await writeBundle({ report: { synthetic: undefined }, evaluation: { ...REAL_EVAL, human_confirmed: false } });
+    expect(await refusal(load())).toEqual({ code: "COMP_NOT_APPROVED", problems: ["EVAL_NOT_CONFIRMED"], low: [] });
+  });
+
   it("refuses a broken PNG, a linked PNG, a missing directory and a facts source for another shop", async () => {
     await writeBundle();
     await writeFile(join(dir, "mockup.png"), PNG.subarray(0, PNG.length - 4));
@@ -94,6 +130,123 @@ describe("loadCompBundle", () => {
     await writeFile(join(dir, "mockup.png"), PNG);
     expect(await code(loadCompBundle(dir, { repoDir: REPO, factsSourcePath: join(REPO, "scripts/sales-design-worker/compare/shops/coffee.json") }))).toBe("FACTS_SOURCE_INVALID");
   });
+});
+
+describe("evaluationVerdict (DEV-094)", () => {
+  const real = { comp_kind: "real" as const, human_confirmed: true };
+  it("keeps the policy's numbers", () => {
+    expect([EVAL_PASS_TOTAL, EVAL_MIN_CRITERION]).toEqual([22, 4]);
+  });
+  it("checks every criterion the schema scores, in the rubric's order", () => {
+    expect(EVAL_CRITERIA).toEqual(Object.keys(EvaluationSchema.shape.scores.unwrap().shape));
+    expect(EVAL_CRITERIA).toEqual(["beauty", "fit", "originality", "structure", "implementability"]);
+    // a criterion the schema adds is held to the minimum: drop each one in turn below it
+    for (const k of EVAL_CRITERIA) {
+      const s = { ...scores(5, 5, 5, 5, 5), [k]: 3 };
+      expect(evaluationVerdict({ comp_kind: "real", human_confirmed: true, scores: s, total: 23 }).low_criteria).toEqual([k]);
+    }
+  });
+  it.each<[string, Parameters<typeof evaluationVerdict>[0], ReturnType<typeof evaluationVerdict>]>([
+    ["the existing real sheet", { ...real, scores: scores(5, 5, 4, 5, 4), total: 23 }, { pass: true, reasons: [], low_criteria: [] }],
+    ["all fives", { ...real, scores: scores(5, 5, 5, 5, 5), total: 25 }, { pass: true, reasons: [], low_criteria: [] }],
+    ["the boundary 4,4,4,5,5", { ...real, scores: scores(4, 4, 4, 5, 5), total: 22 }, { pass: true, reasons: [], low_criteria: [] }],
+    ["5,5,5,5,3 (total 23)", { ...real, scores: scores(5, 5, 5, 5, 3), total: 23 }, { pass: false, reasons: ["EVAL_CRITERION_BELOW_MIN"], low_criteria: ["implementability"] }],
+    ["5,5,5,4,3 (total 22)", { ...real, scores: scores(5, 5, 5, 4, 3), total: 22 }, { pass: false, reasons: ["EVAL_CRITERION_BELOW_MIN"], low_criteria: ["implementability"] }],
+    ["4,4,4,4,5 (total 21)", { ...real, scores: scores(4, 4, 4, 4, 5), total: 21 }, { pass: false, reasons: ["EVAL_TOTAL_BELOW_PASS"], low_criteria: [] }],
+    ["3,5,5,5,3 (two weak criteria, total 21)", { ...real, scores: scores(3, 5, 5, 5, 3), total: 21 }, { pass: false, reasons: ["EVAL_CRITERION_BELOW_MIN", "EVAL_TOTAL_BELOW_PASS"], low_criteria: ["beauty", "implementability"] }],
+    ["a missing total", { ...real, scores: scores(5, 5, 5, 5, 5), total: null }, { pass: false, reasons: ["EVAL_TOTAL_BELOW_PASS"], low_criteria: [] }],
+    ["an unconfirmed sheet", { ...real, human_confirmed: false, scores: scores(5, 5, 5, 5, 5), total: 25 }, { pass: false, reasons: ["EVAL_NOT_CONFIRMED"], low_criteria: [] }],
+    ["no scores", { ...real, human_confirmed: false, scores: null, total: null }, { pass: false, reasons: ["EVAL_NOT_CONFIRMED", "EVAL_NO_SCORES"], low_criteria: [] }],
+    ["a synthetic comp, however scored", { comp_kind: "synthetic", human_confirmed: false, scores: scores(5, 5, 5, 5, 5), total: 25 }, { pass: false, reasons: ["EVAL_NOT_CONFIRMED", "EVAL_NOT_REAL"], low_criteria: [] }],
+  ])("%s", (_n, ev, expected) => {
+    expect(evaluationVerdict(ev)).toEqual(expected);
+  });
+});
+
+describe("loadCompIntake (DEV-094)", () => {
+  it("loads a bundle without layout-spec.json; loadCompBundle still refuses it with the existing code", async () => {
+    await writeBundle({ report: { synthetic: undefined }, evaluation: REAL_EVAL });
+    await rm(join(dir, "layout-spec.json"));
+    const i = await intake();
+    expect(i).toMatchObject({ compApproved: true, layoutSpecPresent: false, verdict: { pass: true, reasons: [], low_criteria: [] }, comp: { kind: "real", sha256: SHA } });
+    expect(await code(load())).toBe("SPEC_INVALID");
+  });
+
+  it("loads the synthetic bundle as never approved and reports the spec as present", async () => {
+    await writeBundle();
+    expect(await intake()).toMatchObject({ compApproved: false, layoutSpecPresent: true, comp: { kind: "synthetic" } });
+  });
+
+  it("surfaces the provenance of report.json and refuses nothing for a missing or malformed field", async () => {
+    await writeBundle({ report: { worker_commit: "25af489", prompt_chars: 4321 } });
+    expect((await intake()).provenance).toEqual({ worker_commit: "25af489", prompt_chars: 4321, direction_version: "v2" });
+    await writeBundle({ report: { worker_commit: "not a commit", prompt_chars: -1 } });
+    expect((await intake()).provenance).toEqual({ worker_commit: null, prompt_chars: null, direction_version: "v2" });
+    await writeBundle();
+    expect((await intake()).provenance).toEqual({ worker_commit: null, prompt_chars: null, direction_version: "v2" });
+  });
+
+  it("keeps the refusal order of loadCompBundle up to the evaluation", async () => {
+    await writeBundle({ facts: { ...shop.facts, phone: "052-000-0000" }, evaluation: { comp_sha256: "c".repeat(64) } });
+    expect(await code(intake())).toBe("BUNDLE_FACTS_MISMATCH");
+    expect(await code(load())).toBe("BUNDLE_FACTS_MISMATCH");
+    await writeBundle({ evaluation: { comp_sha256: "c".repeat(64) }, spec: { version: 2 } });
+    expect(await code(intake())).toBe("EVAL_COMP_MISMATCH");
+    expect(await code(load())).toBe("EVAL_COMP_MISMATCH");
+  });
+});
+
+describe("comp-impl-poc.ts --intake (DEV-094)", () => {
+  /** Every entry under a directory: path, type, mode and bytes. */
+  async function snapshot(root: string): Promise<string[]> {
+    const out: string[] = [];
+    const walk = async (d: string) => {
+      for (const name of (await readdir(d)).sort()) {
+        const p = join(d, name);
+        const st = await lstat(p);
+        out.push(`${p} ${st.mode.toString(8)} ${st.isFile() ? sha256(await readFile(p)) : st.isDirectory() ? "dir" : "other"}`);
+        if (st.isDirectory()) await walk(p);
+      }
+    };
+    await walk(root);
+    return out;
+  }
+  const cli = (...argv: string[]) => {
+    const r = spawnSync("npx", ["tsx", join(REPO, "scripts/sales-design-worker/comp-impl-poc.ts"), ...argv], {
+      cwd: REPO,
+      encoding: "utf8",
+      // an output root that must never appear, and a Chromium that does not exist: --intake needs neither
+      env: { ...process.env, SR_COMP_IMPL_POC_ROOT: join(dir, "out-root"), PLAYWRIGHT_CHROMIUM_EXECUTABLE: join(dir, "no-chromium") },
+      timeout: 60_000,
+    });
+    return { status: r.status, stdout: r.stdout.trim() };
+  };
+
+  it("prints one fixed-code line, exits 0 / 1 / 2, and writes nothing", async () => {
+    await writeBundle({ report: { synthetic: undefined, worker_commit: "25af489" }, evaluation: REAL_EVAL });
+    await rm(join(dir, "layout-spec.json"));
+    const before = await snapshot(dir);
+    expect(cli("--intake", dir)).toEqual({ status: 0, stdout: `COMP_INTAKE ok=true comp_kind=real comp_approved=true reasons=none low=none sha=${SHA} size=720x1025 direction=v2 worker_commit=25af489 layout_spec_present=false` });
+    expect(await snapshot(dir)).toEqual(before);
+
+    await writeBundle();
+    const beforeS = await snapshot(dir);
+    expect(cli("--intake", dir)).toEqual({ status: 0, stdout: `COMP_INTAKE ok=true comp_kind=synthetic comp_approved=false reasons=EVAL_NOT_CONFIRMED,EVAL_NOT_REAL,EVAL_NO_SCORES low=none sha=${SHA} size=720x1025 direction=v2 worker_commit=none layout_spec_present=true` });
+    expect(await snapshot(dir)).toEqual(beforeS);
+
+    await writeBundle({ report: { synthetic: undefined }, evaluation: { ...REAL_EVAL, scores: scores(5, 5, 5, 5, 3), total: 23 } });
+    const before1 = await snapshot(dir);
+    expect(cli("--intake", dir, "--facts", FACTS_SOURCE)).toEqual({ status: 1, stdout: "COMP_INTAKE ok=false refused=COMP_NOT_APPROVED comp_kind=real comp_approved=false reasons=EVAL_CRITERION_BELOW_MIN low=implementability" });
+    expect(await snapshot(dir)).toEqual(before1);
+
+    await writeBundle({ evaluation: { hard_fails: { invented_facts: true, store_or_people: false, disclosure: false, logo_or_realism: false, shop_facts: false } } });
+    const before2 = await snapshot(dir);
+    expect(cli("--intake", dir)).toEqual({ status: 2, stdout: "COMP_INTAKE ok=false refused=EVAL_HARD_FAIL" });
+    expect(cli("--intake", dir, "--synthetic").status).toBe(2);
+    expect(cli("--intake", dir, "--page", dir).status).toBe(2);
+    expect(await snapshot(dir)).toEqual(before2);
+    await expect(lstat(join(dir, "out-root"))).rejects.toThrow();
+  }, 180_000);
 });
 
 describe("loadCompPage", () => {
