@@ -33,6 +33,11 @@
   reqwest 0.12.28 は **Linux（WSL2 を含む）では既定で `TCP_USER_TIMEOUT` 30 秒・keepalive 15 秒**を socket に付け、Codex はそれを変えない。156 秒 ≒ 5 ×（約 30.5〜31 秒）+ 約 3 秒。
   公開の報告（openai/codex#24323、#45381 の Linux の comment）も Linux で「1 回約 31 秒 × 5 回・`timeout`」。最有力は H1「経路上で keepalive の probe に応答がなく、待っている間の接続が 30 秒で切られる」。対立仮説は H2「server が約 30 秒で 5xx」、H3「1 回の長い要求（約 156 秒）が再試行されない error で終わる」。
 - コマンドと読み方の正本は `docs/operations/design-image-poc.md` の「HUMAN-024」（GitHub で表示されるよう、コマンドはそこに置く）。
+- **人の判断（2026-10-23）**:
+  - **A-2 方針として承認**: 修正版 passt の導入へ進める。対象は Ubuntu 26.04 の `passt 0.0~git20260120.386b5f5-1` に限る。`design-wsl-isolation.md` §6 の例外は、この package について、配布元の署名・hash・依存関係を確かめ、既存の jail の隔離水準を保つ場合に限る。**実際の package の導入と WSL の変更はまだ許可されていない。**
+  - **A-3 方針として採用**: 198.51.100.53 へは UDP/53 だけを許し、UDP/853 を含む残りは拒否。独立 branch で最小の code・検査・test・設計書の修正 → 独立 review と CI → merge まで可。条件: jail の隔離を弱めない／DNS の名前解決が動く／UDP/853 を確実に拒否／TCP/53・TCP/853 の拒否を保つ／private address への制限を保つ／変更前後の差分を確認できる／worker・timer・Codex・認証設定を変えない。**実 WSL への適用は別の承認。**
+  - 更新の準備: A-3 の後に、worker の停止確認・更新前の記録・旧 package の確保・新 package の署名と hash・DNS 制限の適用・更新・jail の安全性検査・通信検証・rollback を実行できる形に整理する。**既存の timer は勝手に止めない。A-4・A-5 を含む実機作業は段階ごとに承認。** 手動導入した package の security update を月 1 回確認する運用と管理担当を、更新の前に確定する（A-10）。
+  - EOF の調査結果は維持。24b-v2 の更新前の検証は必須にしない。更新後は 24b-v2 で接続の維持を確認する。**通信 test の成功だけで画像生成の問題が解決したとは判定しない。実 Codex（A-8）は別の承認。**
 - **現在地（2026-10-22）: 24a・24b・24b-host 済み（承認の A-1 は完了）。次は passt の更新の承認判断（`docs/operations/passt-update-plan.md` §0 の要約と §8 の表、DEV-087 で最終整理）。** passt の更新・WSL の設定の変更・jail の変更・worker / timer の変更・Codex の実行は**どれも承認されていない**。
 - **24b・24b-host の結果（済み、2026-10-22、人が流した）**:
   - jail の中（pasta 経由）: `JAIL_OK`、A_reqwest_default `status=200 idle_end=EOF idle_s=27`、B_keepalive_only `status=200 idle_end=EOF idle_s=57`、C_plain `status=200 idle_end=OPEN idle_s=100`。
