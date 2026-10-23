@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DESIGN_DNA_PARTS, DesignDnaError, parseDesignDna, sameDesignDna } from "@/lib/design-agent/design-image/design-dna";
 
@@ -51,5 +53,21 @@ describe("Design DNA: research-only, no template selection", () => {
     expect(sameDesignDna(a, b)).toBe(true);
     b.decisions[0]!.choice = "Entirely different visual hierarchy and original hero focal point.";
     expect(sameDesignDna(a, b)).toBe(false);
+  });
+  it("loads three factual fixtures with distinct creative choices, without automatic publication", () => {
+    const keys = ["wagashi", "coffee", "patisserie"] as const;
+    const briefs = keys.map((key) => {
+      const path = join(process.cwd(), "design-library/poc/design-dna", `${key}.json`);
+      const brief = parseDesignDna(JSON.parse(readFileSync(path, "utf8")));
+      expect(brief.shop_key).toBe(key);
+      expect(brief.status).toBe("research_only");
+      expect(brief.factual_copy).toBe("verified_facts_only");
+      expect(brief.references.every((r) => r.rights === "analysis_only")).toBe(true);
+      return brief;
+    });
+    for (let i = 0; i < briefs.length; i++)
+      for (let j = i + 1; j < briefs.length; j++)
+        expect(sameDesignDna(briefs[i]!, briefs[j]!)).toBe(false);
+    expect(briefs.map((b) => b.asset_policy)).toEqual(["ai_concept_review_required", "none", "none"]);
   });
 });
