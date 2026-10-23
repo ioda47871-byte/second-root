@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "shop_key": "coffee",
+  "status": "research_only",
+  "factual_copy": "verified_facts_only",
+  "asset_policy": "none",
+  "evidence": [
+    {
+      "id": "brand",
+      "origin": "verified_shop_fact",
+      "observation": "EXAMPLE BREW STAND is a fictional modern specialty coffee stand.",
+      "source_label": "DEV-073 coffee.json: name and industry"
+    },
+    {
+      "id": "hours",
+      "origin": "verified_shop_fact",
+      "observation": "The listed hours are 8:00–17:00 and closed days are irregular.",
+      "source_label": "DEV-073 coffee.json: hours and closed_days"
+    }
+  ],
+  "references": [],
+  "decisions": [
+    {
+      "part": "hero",
+      "choice": "Horizontal wordmark sits as a crisp mid-size masthead over a slim grid of opening-time information.",
+      "rationale": "Early opening (8:00) is the most useful verified fact for a stand, so it sits beside the name instead of below the fold.",
+      "evidence_ids": [
+        "brand",
+        "hours"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "typography",
+      "choice": "Condensed, architectural sans hierarchy with compact uppercase name, few typographic sizes and clear breathing room.",
+      "rationale": "The fixture name is Latin all-caps and the fact set is short, which suits a compact sans hierarchy with few sizes.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "palette",
+      "choice": "Ink-black over almost-white with one restrained cool sage rule; no borrowed coffee-brand browns.",
+      "rationale": "Nothing in the fixture states a colour; a neutral ink/paper base with one cool rule avoids borrowing any coffee brand's browns.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "product_visual",
+      "choice": "No fabricated bean or shop photos; use real typographic contrast as the sole visual focus.",
+      "rationale": "The menu names exist but no approved images do, so contrast in type replaces any invented drink or bean photo.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "section_rhythm",
+      "choice": "One highly ordered headline area, then staggered information blocks with visible baseline offsets.",
+      "rationale": "With a medium fact set (hours, irregular closing, address, four menu names), short staggered blocks fit better than long sections.",
+      "evidence_ids": [
+        "hours"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "navigation",
+      "choice": "Two factual anchors: identity and operating hours; no invented product promises or transaction controls.",
+      "rationale": "Irregular closed days make hours the fact a visitor checks first, so it gets one of only two anchors.",
+      "evidence_ids": [
+        "hours"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "mobile",
+      "choice": "Stack labels above hours, preserve unbroken readable Latin name and generous tap targets.",
+      "rationale": "The English name breaks badly if wrapped mid-word, and hours must remain tappable-sized on a phone.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "implementation",
+      "choice": "Sharp CSS grid, hairline borders and a deliberate white-on-ink interaction state, no image assets.",
+      "rationale": "With no assets, grid lines and borders carry the structure; this keeps the build to HTML/CSS checked by existing gates.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    }
+  ]
+}

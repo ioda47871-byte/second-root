@@ -4219,6 +4219,54 @@
       ]
     },
     {
+      "id": "DEV-093",
+      "title": "Design DNA: 店ごとの研究用ブリーフの契約（8 項目の判断を店の根拠へ結ぶ parseDesignDna、使い回しの検出 sharedDesignDnaParts / sameDesignDna、DEV-073 の架空 3 店の fixture）。worker・PoC には未接続（offline・研究用）",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-073",
+        "DEV-074"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/design-dna-brief-foundation",
+      "purpose": "人の依頼（Issue #110、2026-10-23）: 店の検証済みの特徴 → 参考サイトの原則の分析 → 独創的な Web の構成判断 → Web デザイン画像 → Claude の忠実実装、という流れの最初の段を、業種の template ではなく店ごとの判断として offline で記録できるようにする。PR #109。v2 の実画像の評価・Codex の呼び出しは含まない",
+      "acceptance_criteria": [
+        "parseDesignDna は 8 項目（hero・typography・palette・product_visual・section_rhythm・navigation・mobile・implementation）を 1 つずつ必須にし、各判断が 1 つ以上の店の evidence を引く。未知の field・未知の enum・HTTPS 以外・認証情報入りの URL・画像の payload を拒否する（fail closed）",
+        "参考は rights=analysis_only・scope は限定のラベル。参考先の事実・文言・画像を店の事実にしない。業種の preset id や自動の preset 選択を作らない",
+        "rationale は判断ごと（同じ文の貼り回しは拒否）",
+        "sharedDesignDnaParts / sameDesignDna は項目ごとの同一文の検出だけ（順序・大小・幅・空白・記号は無視）。言い換えは検出しないことと、独創性の点数ではないことを docs と test に書く",
+        "3 店の fixture は DEV-073 の架空の店（scripts/sales-design-worker/compare/shops/）の field だけを根拠にし、架空であることを brand の evidence に書く。どの項目も 3 店の間で同じ選択でない",
+        "参考 URL は実在の HTTPS で、brief の観察はその頁で読める内容に限る（読めなかったものは docs に未確認と書く）",
+        "worker・PoC・prompt・品質の閾値・gate を変えない。既存の 40 事例・9 技法カードを取り込まない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-design-dna.test.ts（正例・負例ごとの拒否理由・provenance・使い回しの検出と限界）",
+        "tests/unit/ai-tasks.test.ts、npm run check:secrets",
+        "eslint（変更 file）・tsc・CI"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/design-dna.ts",
+        "tests/unit/design-agent/design-image-design-dna.test.ts",
+        "design-library/poc/design-dna/",
+        "docs/operations/design-dna-foundation.md",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "worker・bridge・queue・timer・DB・Staging・Production・実営業送信",
+        "WSL・jail・passt の変更、Codex / imagegen の実行、v2 の art direction・prompt の変更",
+        "品質の閾値・gate・review の prompt の変更、.github/**",
+        "店舗の事実・価格・口コミ・実績の創作、他者の写真・ロゴの転載、業種固定の template 規則",
+        "DEV-083 の範囲（comp 実装の表現と検査）"
+      ],
+      "human_approval_triggers": [
+        "worker・PoC・画像の prompt への接続",
+        "v2 の Codex の 1 回の呼び出し（DEV-075 / HUMAN の承認）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件（Fresh Review PASS・最新 SHA の必須 CI）"
+      ],
+      "decision": "2026-10-23: PR #109（draft）の引き継ぎ。自己レビューで直したもの: wagashi の参考（xd.5star.co.jp/work/1649、SONICJAM の お茶のはまだ）の観察が頁に無い「余白と和文の組版」を書いていた → 頁が述べる「白を基調」だけに。A Bite Coffee の頁は 503 で再確認できず docs に未確認と記載。24 の rationale が同じ定型文だった → 判断ごとの理由に書き直し、貼り回しを拒否。sameDesignDna は 8 項目すべて一致のときだけ真で、7 項目を貼っても通った → 項目ごとの sharedDesignDnaParts を足し、fixture の test は共有 0 を要求。記号・順序の変更で逃げないことと、言い換えは検出しない限界を test に固定。負例は拒否理由まで照合。fixture の evidence が DEV-073 の field を指し、架空と書くことを test。40 事例・9 技法カードは repo に無く、DR-0xx は brief 内のラベルと docs に記載"
+    },
+    {
       "id": "DEV-097",
       "title": "comp-to-site Stage 5(b): comp と 1440 desktop screenshot を section ごとに比べる report-only の数値（mean / dominant 色の CIELAB ΔE・edge 密度・高さの割合・aspect）を report.similarity.sections に足す（閾値・gate なし）",
       "status": "review",
