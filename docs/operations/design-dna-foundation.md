@@ -27,13 +27,15 @@ The user's goal is: inspect verified store facts and mood, study inspiring websi
 
 `parseDesignDna(input)` validates a manually composed JSON document. Every decision must cite one or more store evidence IDs. References are HTTPS links tagged `analysis_only`; no image payload fields are accepted. All eight areas must have choices, not fixed preset identifiers; any unrecognised field is rejected. `sameDesignDna(a,b)` flags identical per-area choices across shops even if shop keys differ, but **does not** certify originality.
 
+Three illustrative, **research-only** briefs in `design-library/poc/design-dna/` now use the DEV-073 fictional wagashi, coffee, and patisserie evidence. Their compositions differ, and a unit test rejects wholesale reuse. They are not industry templates, do not contain image assets, and must not become live output without review.
+
 There is deliberately **no automatic preset picker** and **no function connecting this brief to the current PoC**. The next implementation must create a bounded, evidence-preserving selector and have its choice reviewed before using it to create imagery. The eight decision names are a checklist, not eight allowed layouts.
 
 ## Next gated experiments and acceptance
 
 1. **Next: untouched v2 on the fictional wagashi fixture** using the existing `design-image-poc.sh`, one human-approved Codex image call. Score with `docs/operations/design-image-eval-template.md`: no hard fails, total >=22/25, each dimension >=4, human-confirmed. Record SHA and image without committing pixels. Reject poster composition even if imagegen succeeds.
 2. If v2 does not pass, revise **only** v2 art direction/prompt in a separate PR using visible failure evidence; preserve v1 as the connectivity control. Respect current prompt length limit and source-of-truth restrictions. No unapproved rerun.
-3. Produce three genuinely different Design DNA briefs from verified fictional wagashi, coffee and patisserie facts, then manually review composition/fingerprints before **separately approved** image calls. Reference principles are sampled differently based on unique shop evidence, never chosen by a hard-coded industry preset.
+3. Three research-only Design DNA fixtures now exist for fictional wagashi, coffee and patisserie. **Review them manually against the fixture facts** (and correct creative choices if necessary); only then consider separate, human-approved image calls. Do not mistake deterministic distinctness for aesthetic originality. Reference principles are sampled differently based on unique shop evidence, never chosen by a hard-coded industry preset.
 4. Only after a real comp passes human review, use the existing `comp-impl-poc.ts` harness with Claude and compare real screenshots at 1440/390; synthetic fixture results are not fidelity proof. Any automatic Claude execution, worker integration or concept-asset ingestion needs separate review/approval.
 
 **Stop conditions:** Unverified facts, unapproved photo/assets, duplicated directions, poster-like page, illegible shop name / invented price, missing disclosure where concept images are used, weak mobile handoff or inability to reproduce the comp with permitted HTML/CSS. Do not relax the existing security / quality gates.
