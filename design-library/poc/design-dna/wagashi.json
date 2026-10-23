@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "shop_key": "wagashi",
+  "status": "research_only",
+  "factual_copy": "verified_facts_only",
+  "asset_policy": "ai_concept_review_required",
+  "evidence": [
+    {
+      "id": "brand",
+      "origin": "verified_shop_fact",
+      "observation": "架空菓庵 is a fictional traditional wagashi shop.",
+      "source_label": "DEV-073 wagashi.json: name and industry"
+    },
+    {
+      "id": "making",
+      "origin": "verified_shop_fact",
+      "observation": "Seasonal jō-namagashi and dorayaki made with tsubu-an cooked every morning.",
+      "source_label": "DEV-073 wagashi.json: description"
+    }
+  ],
+  "references": [
+    {
+      "id": "DR-021",
+      "url": "https://xd.5star.co.jp/work/1649/",
+      "scope": "public_visual_only",
+      "observed_principle": "A public agency showcase uses restrained white space and concentrated Japanese typography.",
+      "transferable_idea": "Use deliberate negative space around a product-led story without copying the arrangement.",
+      "rights": "analysis_only"
+    }
+  ],
+  "decisions": [
+    {
+      "part": "hero",
+      "choice": "An offset split: a small two-line wordmark at left and one conceptual confection detail at right, divided by asymmetrical open space.",
+      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "making"
+      ],
+      "reference_ids": [
+        "DR-021"
+      ]
+    },
+    {
+      "part": "typography",
+      "choice": "Fine Mincho for named craft details, deliberately quiet nav and short horizontal facts in modern sans.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": [
+        "DR-021"
+      ]
+    },
+    {
+      "part": "palette",
+      "choice": "Warm stone and subdued charcoal; a single dark plum marker derives from the idea of the azuki filling.",
+      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "making"
+      ],
+      "reference_ids": [
+        "DR-021"
+      ]
+    },
+    {
+      "part": "product_visual",
+      "choice": "One locally generated, explicitly disclosed concept cross-section of dorayaki; never claim an actual shop photo.",
+      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "making"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "section_rhythm",
+      "choice": "Quiet opening, sensory detail second, a narrow factual information ledger last; each section uses a different axis.",
+      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "making"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "navigation",
+      "choice": "Small anchored header; link to details and verified shop info, not purchase or order.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "mobile",
+      "choice": "On mobile the concept visual follows a complete readable name; details become a one-column sequence.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "implementation",
+      "choice": "CSS grid, typography, one isolated concept-image crop; preserve verified fact text from JSON only.",
+      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "making"
+      ],
+      "reference_ids": []
+    }
+  ]
+}
