@@ -4221,7 +4221,7 @@
     {
       "id": "DEV-093",
       "title": "Design DNA: 店ごとの研究用ブリーフの契約（8 項目の判断を店の根拠へ結ぶ parseDesignDna、使い回しの検出 sharedDesignDnaParts / sameDesignDna、DEV-073 の架空 3 店の fixture）。worker・PoC には未接続（offline・研究用）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-073",
