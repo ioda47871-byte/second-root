@@ -3941,7 +3941,9 @@
         "直近 ~30 run の install step の所要時間を job ごとに median・p90・max・失敗数で示し、apt と browser の取得を分ける（数値に CI logs / measured here / estimated の別を付ける）",
         "Playwright 1.62.1 の ubuntu24.04 の依存一覧、runner image に既にあるもの、test が実際に依存するフォントを示す",
         "選択肢 (a)〜(g) を時間・リスク・複雑さ・セキュリティ・忠実度で比較し、第一案と代替案、ci.yml の diff（適用しない）、検証手順、rollback を書く",
-        "提案の制約（test・検査を省略しない、install の失敗は job を失敗させる、required check 名は不変、continue-on-error なし、third-party action は SHA 固定、secret 不要）を満たす"
+        "提案の制約（test・検査を省略しない、install の失敗は job を失敗させる、required check 名は不変、continue-on-error なし、third-party action は SHA 固定、secret 不要）を満たす",
+        "Fresh Review の nit（数値の訂正、timeout の選択肢 (h)、版の扱いと保存の絞り込み、cache の前提と contract test、TOCTOU の順序、DEV-085 前の timeout）に対応する",
+        "人の 2026-10-23 の依頼に沿い、§6「実装案と検証方法（承認判断用、日本語の要約付き）」に file ごとの diff・contract test・条件ごとの検証方法・成功の基準・rollback を置く（適用はしない）"
       ],
       "required_tests": [
         "ai-tasks の unit、npm run check:secrets",
