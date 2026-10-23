@@ -4269,7 +4269,7 @@
     {
       "id": "DEV-096",
       "title": "test の一時 dir の後片付け: sandbox（21 MB の参照画像）・browser（Chromium の profile）・capture-helper が毎回 temp に残す → 消す（test だけ）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [],
       "attempts": 0,
