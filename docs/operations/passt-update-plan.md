@@ -3,7 +3,8 @@
 Status: **final plan for the approval decision (DEV-087, 2026-10-22). Nothing has been installed, changed or run on the
 WSL machine.** No Codex run, no passt update, no WSL config change, no jail change, no worker or timer change. Every step
 in §4.6 and §5–§6 is a proposal, and each needs the human approval named in §8, in that order. **Only A-1 (HUMAN-024b
-and 24b-host) is done; nothing else is approved.** Related: [`imagegen-timeout-investigation.md`](imagegen-timeout-investigation.md)
+and 24b-host) is done.** 2026-10-23: A-2 and A-3 adopted as policy (`.ai/blockers.md` HUMAN-024); A-3's code is
+implemented in DEV-088 (§4.6) and **not applied on WSL**; applying it, and every WSL step, still needs its own approval. Related: [`imagegen-timeout-investigation.md`](imagegen-timeout-investigation.md)
 (H1), [`design-image-poc.md`](design-image-poc.md) §"HUMAN-024" (24a and 24b results, the EOF analysis, 24b-v2),
 [`design-wsl-isolation.md`](design-wsl-isolation.md) (the jail), `.ai/blockers.md` HUMAN-024.
 
@@ -46,8 +47,8 @@ EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python
 - リスク: jail から WSL VM の loopback 上の `10.255.255.254:853/udp` に届く（そこで何かが聞いていれば）。小さいが、今より広い。
 - 対策（安全性を緩めない方式）: jail の namespace の ip rule を「`198.51.100.53` へは UDP/53 だけ、他はすべて `prohibit`」に変え、853 は明示の `prohibit` も置く（3 行、§4.6 D-1）。
   probe に「UDP/853 と他の port が即座に `EACCES`」の確認を足す。**更新の前に**入れる（古い pasta では、届かない文書用 address へ出ていた UDP が止まるだけなので、何も壊れないことを JAIL_OK と `getent` で示せる）。更新の後もそのまま。
-  jail の変更なので別の承認（A-3）。この PR では設計だけ、code は承認後の別 PR。
-- 残るリスク: UDP/53 で host の resolver に届くのは今と同じ。kernel が UDP の `prohibit` に `EACCES` を返すことは kernel の source で確認したが、WSL の kernel での実測は A-3 の後の D-3 で行う。
+  jail の変更なので別の承認（A-3）。**A-3 は方針として採用済み（2026-10-23）、code は DEV-088 で実装済み。実 WSL への適用（§4.6 D-0〜D-4、`jail-install` を使い `approve` は使わない。root clone ごと動くので、D-0 が出す commit と file の一覧ごと承認する）は別の承認。**
+- 残るリスク: UDP/53 で host の resolver に届くのは今と同じ。kernel が UDP の `prohibit` に `EACCES` を返すことは kernel の source で確認したが、WSL の kernel での実測は A-3 の適用の後の D-3 で行う。
 
 **3. AppArmor・seccomp・jail のネットワーク制限の維持（§4.3〜§4.7）**
 - 事実: jail の制限（`jail.properties` の seccomp・`IPAddressDeny`、pasta の unit の `IPAddressAllow/Deny`、namespace の ip rule、probe）は systemd と kernel が持ち、package の更新では変わらない。
@@ -93,7 +94,7 @@ EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python
 | A-1 | 24b・24b-host | なし（読むだけの通信） | – | **済み（2026-10-22）** | `design-image-poc.md` 24b |
 | A-1b | 任意: 更新前の 24b-v2（jail・host） | なし | – | 要（A-1 と同じ種類）。必須ではない | `design-image-poc.md` 24b-v2 |
 | A-2 | passt を更新すると決める + `design-wsl-isolation.md` §6 の例外（resolute の `386b5f5-1` だけ） | 方針（docs） | はい | 要（人の判断） | – |
-| A-3 | DNS の rule を UDP/53 だけにする（code の PR → merge → `admin.sh approve <sha>`） | jail-net の unit の ip rule・probe・test。適用時に jail が数秒止まる | はい（前の sha を approve し直す、D-4） | 要。**または** UDP/853 の残りを書面で受け入れる | §4.6 D-1〜D-4、W-0 |
+| A-3 | DNS の rule を UDP/53 だけにする（方針は採用済み、code は DEV-088 で実装済み → 適用は root clone を merge の commit にして `admin.sh jail-install`） | jail-net の unit の ip rule・probe・`jail-check`・test。適用時に jail が数秒止まる。timer・helper は触らない。**root clone ごと動くので、前の commit からの develop の変更（`cycle.sh`・`admin.sh` を含む）も一緒に入る。D-0 が出す commit と file の一覧を承認する** | はい（D-0 で記録した前の commit で `jail-install`、D-4） | **適用は要（別の承認）** | §4.6 D-0〜D-4（D-0 に W-0） |
 | A-4 | 窓の確認と V-0 の snapshot | `/root/sr-passt-update/` に記録の file だけ | はい（消すだけ） | 要 | S-1、W-0、V-0 |
 | A-5 | V-1 取得と検証、V-2 更新と hold、V-3a 直後の確認、成功なら V-2b。**失敗時の rollback（R-1〜R-3）を中止の手順として同時に承認** | passt の package・AppArmor の file・dpkg の hold・pasta の再起動・Claude の停止 | はい（R-1〜R-3） | 要（root、人がその場で実行） | V-1、V-2、V-3a、V-2b、R-1〜R-3 |
 | A-6 | 更新後の 24b-v2（jail・host） | なし | – | 要 | V-3b |
@@ -254,7 +255,8 @@ history monthly and before any jail change. No CVE for passt was listed in eithe
 - **The binary.** `pasta_bin="$(command -v pasta)"` must be root-owned all the way up (:149). The path is resolved
   **when `jail-install` runs** and written into the unit.
 - **The unit.** `sr-jail-net.service` (:163-190):
-  - `ExecStartPre`: `ip netns add srjail`; an ip rule `to 198.51.100.53/32 ipproto tcp prohibit` inside the namespace;
+  - `ExecStartPre`: `ip netns add srjail`; the ip rules for the DNS address inside the namespace (before DEV-088: `to
+    198.51.100.53/32 ipproto tcp prohibit`; from DEV-088: UDP/53 only, §4.6);
     the jail's `resolv.conf` and the netns id.
   - `ExecStart=/usr/bin/pasta -f -q --runas 0 --config-net --no-map-gw -t none -u none -T none -U none --dns-forward
     198.51.100.53 --netns /run/netns/srjail`.
@@ -389,7 +391,12 @@ dpkg does not touch `/etc/systemd/system/sr-jail-*.service`. The only behaviour 
 - `SO_KEEPALIVE` on its host-side sockets when the jail sends keepalives;
 - the DNS mapping in §4.2.
 
-### 4.6 DNS: allow only UDP/53 to the jail's DNS address (A-3, design only; nothing here is implemented)
+### 4.6 DNS: allow only UDP/53 to the jail's DNS address (A-3; code implemented in DEV-088, not applied on WSL)
+
+**Status (2026-10-23).** The human adopted A-3 as policy (`.ai/blockers.md` HUMAN-024). DEV-088 implements it in the
+repository: the three rules, the probe's checks, `admin.sh jail-rules`, the `getent` step in `jail-check`, tests and
+docs. **Nothing has been applied on the WSL machine. Applying it (D-2) needs the human's separate approval**, and so does
+each later step below that is marked so.
 
 **Goal.** After the update the jail must reach no more of the host resolver than today: UDP/53 only. The change must
 not loosen anything, must be deployable **before** the update as a provable no-op on the old pasta, and stays after it.
@@ -404,70 +411,215 @@ not loosen anything, must be deployable **before** the update as a provable no-o
 | (4) systemd `IPAddressDeny=` | cannot filter by port | – | not possible |
 | (5) accept the residual in writing | keeps a small widening | none | allowed by A-3 as the alternative, not recommended |
 
-**D-1 — the change** (in a later code PR after A-3 is approved; not in this PR). In `admin.sh` `jail_install`, today's
-line 176 becomes three rules, still inside the namespace, still before `ExecStart` (pasta):
+**D-1 — the change (implemented, DEV-088).** In `admin.sh` `jail_install`, the old single rule
+(`to $JAIL_DNS/32 ipproto tcp prohibit priority 100`) became three rules, still inside the namespace, still before
+`ExecStart` (pasta) and before the netns id / `resolv.conf` that a jail unit needs:
 
 ```diff
 -    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto tcp prohibit priority 100"
++    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 prohibit priority 100"
 +    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto udp dport 853 prohibit priority 98"
 +    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto udp dport 53 lookup main priority 99"
-+    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 prohibit priority 100"
 ```
 
-- Priority 100 now refuses **every** protocol and port to 198.51.100.53 (today: TCP only). TCP/53 and TCP/853 stay
-  refused exactly as today.
-- Priority 99 lets UDP/53 through to the normal route (through pasta's tap). Priority 98 states the 853 refusal
-  explicitly; it is redundant with 100 and is there so `ip rule show` documents it and a later edit of 99 cannot open 853.
-- The kernel matches `ipproto` and `dport` in rules (`net/ipv4/fib_rules.c` `fib4_rule_match`, v6.18 :204-212), a
-  `prohibit` rule returns `-EACCES` (:126-127), and `udp_sendmsg()` returns that error from the route lookup to the
-  caller (`net/ipv4/udp.c` :1450-1456). So a UDP `sendto` to a refused port fails at once with `EACCES`, like TCP's
-  `connect` today (CONFIRMED from the kernel source; not run on the WSL kernel, D-3 does that). iproute2 on noble
-  (6.1) accepts `ipproto` / `dport` in rules (INFERRED from the version).
-- The same PR changes the comments that say "DNS is UDP-only … Ubuntu 24.04's passt does not forward DNS over TCP"
-  (`admin.sh:100-103`, `jail.properties:60-63`, `probe.py` docstring) to "the DNS address takes UDP/53 only, whatever
-  pasta forwards".
-- `probe.py` gets one more check, next to `DNS_TCP_NOT_REFUSED` (failing closed like the others):
+- Priority 100 refuses **every** protocol and port to 198.51.100.53 (before: TCP only). TCP/53 and TCP/853 stay refused
+  exactly as before. Priority 99 is the one allowance: UDP/53 to the main table (through pasta's tap). Priority 98 states
+  the 853 refusal explicitly; it is redundant with 100 and keeps 853 shut if 99 is ever edited.
+- **No window, idempotent.** Every start of `sr-jail-net` deletes the namespace, makes a new one and adds the rules to its
+  empty rule table before pasta runs and before any jail unit can join (they are `After=`/`BindsTo=` the net unit, which
+  is not active until every `ExecStartPre` has finished). The refusals are added first and the allowance last, so the
+  set is never wider than the final one even inside that start. A failing `ip rule add` fails the unit (no `-` prefix),
+  so no namespace runs without the rules. Re-running `jail-install` rewrites the same unit and restarts it: the same set.
+  Nothing edits the rules of a running namespace; there is no `ip rule del` anywhere.
+- **Kernel behaviour.** The kernel matches `ipproto` and `dport` in rules (`net/ipv4/fib_rules.c` `fib4_rule_match`,
+  v6.18), a `prohibit` rule returns `-EACCES`, and `udp_sendmsg()` / `connect()` return that error from the route lookup.
+  So a UDP `sendto` to a refused port fails at once with `EACCES`, like TCP's `connect` (CONFIRMED from the kernel source;
+  D-3 runs it on the WSL kernel). iproute2 6.1 (noble) prints rules as `<prio>:\tfrom all to <addr> ipproto udp dport
+  853 prohibit` (`ip/iprule.c` v6.1.0: ipproto, then sport, dport, then the action; `proto` only when not 0/kernel).
+- **Replies.** pasta answers a UDP/53 query from 198.51.100.53 port 53. With any rule that has `ipproto` or a port in the
+  namespace, `__fib_validate_source()` (`net/ipv4/fib_frontend.c` v6.18) dissects the incoming packet and **swaps the
+  ports** before its reverse lookup, so the reply is looked up as "UDP to 198.51.100.53 dport 53" and matches rule 99
+  (main): it is accepted under strict or loose rp_filter. Custom rules force that full check even with rp_filter 0
+  (`fib4_has_custom_rules`); with rp_filter 0 a failed reverse lookup is accepted anyway (`last_resort`), with 1 or 2 it
+  is dropped. **Expect rp_filter to be on in the jail's namespace:** with `net.core.devconf_inherit_init_net=0` (the
+  default) a new namespace's IPv4 `conf/{all,default}` settings are copied from the initial namespace, and Ubuntu sets
+  `rp_filter=2` there (`/usr/lib/sysctl.d/10-network-security.conf`). D-0 prints the value (read only). So the swap is
+  what keeps UDP/53 replies working (CONFIRMED from the source; the D-3 `getent` proves it on WSL).
+  **Caveat (availability only, not safety):** with rp_filter on, packets **from** 198.51.100.53 that carry no UDP/53
+  ports fail the reverse check at rule 100 and are dropped: ICMP errors (e.g. a port-unreachable for a query) and IP
+  fragments (only the first fragment has ports, and the check runs per fragment before reassembly). A lookup that would
+  have failed fast on an ICMP error then waits for the resolver's timeout (5 s × 2 attempts). Fragmented DNS replies are
+  not expected: pasta hands packets over its tap with a 65520-byte MTU, so it does not fragment a UDP reply.
+- **IPv6.** There is nothing to change: `--dns-forward` is given only the IPv4 address, the jail's `resolv.conf` names
+  only it, and pasta maps an IPv6 resolver only when the host's is loopback or the mapped gateway, which `--no-map-gw`
+  leaves unset (`386b5f5` `conf.c` `add_dns_resolv6()`; WSL's resolver is IPv4 `10.255.255.254`). Whether the jail has
+  IPv6 at all follows the host (`--config-net`); WSL NAT mode normally has none beyond link-local. `jail-rules` prints the
+  IPv6 rules too, so a stray one would show.
+- **The probe** (`probe.py`, every jail start and `jail-check`), failing closed:
+  - the namespace's IPv4 rules, read over netlink (no `ip` text parsing), equal `EXPECTED_RULES` line for line: the
+    kernel's `0: lookup 255`, `32766: lookup 254`, `32767: lookup 253` plus the three above. One more, one less, a
+    different selector, action, table, flag (`not`) or any attribute it does not know → `DNS_RULES_NOT_EXACT`; an
+    unreadable or malformed answer (including bytes left after the last attribute) → `DNS_RULES_UNCHECKED`.
+    **The reader has been validated on this container's kernel (6.18.44, the real default rules, read only) and against
+    built kernel-format dumps, not on the WSL kernel (6.18.33.2-microsoft-standard-WSL2).** If D-2 prints
+    `DNS_RULES_UNCHECKED` or `DNS_RULES_NOT_EXACT`, the jail fails closed (no jail unit starts) and you go to D-4;
+  - TCP to 53 and 853: `EACCES` within 1 s (`DNS_TCP_NOT_REFUSED` / `DNS_TCP_REFUSED_SLOWLY`);
+  - UDP to 853 and 9: `EACCES` (`DNS_UDP_PORT_NOT_REFUSED`);
+  - unchanged: the private ranges, the gateway, the WSL DNS tunnel on UDP and TCP, IPv6 private ranges.
+- **`admin.sh jail-check`** runs the probe, then (only after `JAIL_OK`) `getent hosts github.com` in the jail with the
+  same settings, and fails with `JAIL_DNS_FAILED` if it does not resolve. The per-start probe keeps DNS as a warning
+  (`JAIL_WARN DNS_NOT_WORKING`) so that a host DNS outage cannot keep Claude from starting.
+- **`admin.sh jail-rules`** (read only) prints the namespace's IPv4 and IPv6 rules, blanks squeezed, for the before/after
+  comparison. `admin.sh status` prints the same.
+- Tests: `tests/unit/design-agent/jail-dns-rules.test.ts` (the rendered unit's rule lines and order, the probe's expected
+  set derived from the unit, the netlink reader against built dumps for the designed set and 17 deviations plus 9
+  malformed answers, this machine's real rules read only, `jail_check` with stand-ins for `systemd-run`, `jail_rules` with
+  a stand-in `ip`) and `jail.test.ts` (the probe outside a jail fails with the new codes). No test makes a namespace or a
+  rule.
 
-```python
-    # The DNS address takes UDP/53 and nothing else: newer pasta also maps UDP/853 to the host resolver.
-    for port in (853, 9):
-        u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            u.sendto(b"x", (JAIL_DNS, port))
-            fail("DNS_UDP_PORT_NOT_REFUSED")
-        except OSError as e:
-            if e.errno != errno.EACCES:
-                fail("DNS_UDP_PORT_NOT_REFUSED")
-        finally:
-            u.close()
+**Expected rules, before and after** (`admin.sh jail-rules`; before D-2 the root clone's older `admin.sh` has no
+`jail-rules`, so D-0 takes the same form by hand):
+
+```text
+# before (today)                                    # after D-2
+inet:                                               inet:
+0: from all lookup local                            0: from all lookup local
+100: from all to 198.51.100.53 ipproto tcp prohibit 98: from all to 198.51.100.53 ipproto udp dport 853 prohibit
+32766: from all lookup main                         99: from all to 198.51.100.53 ipproto udp dport 53 lookup main
+32767: from all lookup default                      100: from all to 198.51.100.53 prohibit
+inet6:                                              32766: from all lookup main
+0: from all lookup local                            32767: from all lookup default
+32766: from all lookup main                         inet6:
+                                                    0: from all lookup local
+                                                    32766: from all lookup main
 ```
 
-- `tests/unit/design-agent/jail.test.ts` pins the three rule lines and their order (after `netns add`, before `ExecStart`),
-  pins the probe check, and expects `JAIL_UNSAFE DNS_UDP_PORT_NOT_REFUSED` when the probe runs outside a jail (no rule).
-- `design-wsl-isolation.md` §6's DNS paragraph is updated in the same PR (the A-2 exception may go in it too).
+So `diff` of the two files prints exactly:
 
-**D-2 — deploy (the usual approval, after the PR is merged; before A-4).** First W-0 (§5.0): `approve` re-runs
-`jail_install`, which restarts `sr-jail-net`, so every jail unit stops for a few seconds and Claude comes back on its own
-if it is enabled (`ExecStartPost`).
+```text
+3c3,5
+< 100: from all to 198.51.100.53 ipproto tcp prohibit
+---
+> 98: from all to 198.51.100.53 ipproto udp dport 853 prohibit
+> 99: from all to 198.51.100.53 ipproto udp dport 53 lookup main
+> 100: from all to 198.51.100.53 prohibit
+```
+
+(the `inet6:` part may be empty if the WSL kernel has no IPv6 rules; it is the same before and after).
+
+#### Applying A-3 on WSL (each step needs the human's approval; none has been run)
+
+Run by a person in the WSL shell, outside the jail, as the human's own user with `sudo`. Nothing here touches a timer,
+the worker's units, Codex, authentication, the capture helper's checkout or units, or `.wslconfig`.
+
+**What moves, and why it is approved as a list.** D-2 checks out the whole root-only clone `/root/sr-capture-admin` at
+the A-3 merge commit `$SHA`. That clone is not only the jail's source: it also supplies `admin.sh` itself (`run`,
+`login`, `claude-start`, …), `host-check.sh` and **the code the design cycle runs** (`sr-design-cycle.service` runs
+`/root/sr-capture-admin/scripts/sales-design-worker/cycle.sh`, which runs the worker through `admin.sh run`). So
+**every develop change between the clone's current commit (`previous-sha`) and `$SHA` ships with A-3**, not only the
+DNS rules. And `jail-install` rewrites more than `sr-jail-net.service`: also `sr-jail-claude.service` and
+`/usr/local/lib/sr-jail/{jail.properties,probe.py}`. D-0 therefore prints the exact commit list and file list between
+the two commits, and backs up every file `jail-install` writes; **the human's D-2 approval is an approval of that
+printed list**. D-3 diffs every one of those files.
+
+**Two ways to deploy, compared.**
+
+| | (A) move the root clone to `$SHA`, then `jail-install` (recommended) | (B) a second root-only clone at `$SHA`, `jail-install` from it, the main clone stays |
+|---|---|---|
+| what changes on the machine | the jail files and units from `$SHA`, **and** every later run of `admin.sh` / `cycle.sh` uses `$SHA` | only the jail files and units from `$SHA`; `cycle.sh` and `admin.sh` stay at `previous-sha` |
+| repository mechanism | the existing one (`design-bridge.md` §4, `SECURITY.md`: install only from `/root/sr-capture-admin` at a reviewed commit, clean) | none: `admin.sh` would accept it (`trusted_path` only checks root ownership), but nothing in the repository documents or tests a second admin clone |
+| durability | the deployed jail and its source are the same commit | **drift**: the next `jail-install` or `approve` from the main clone (e.g. the design-bridge runbook) silently writes the old single TCP rule and the old probe back, and that old probe accepts it, so A-3 is undone without any failure |
+| review burden | the human approves the D-0 list (it may contain unrelated reviewed develop changes) | only the jail files' diff |
+
+**Recommendation: (A).** (B) avoids shipping unrelated changes but leaves the machine in a state that any routine jail
+re-install reverts without notice, and it invents a second admin clone the repository does not have. If the D-0 list
+contains a change the human does not want on the machine yet, do not approve D-2: stop and ask for a narrower plan
+(for example, waiting until that change is wanted, or a reviewed change that lets `jail-install` run from a pinned
+second clone). Do not improvise (B) at the console.
+
+| step | what it does | what it stops | approval |
+|---|---|---|---|
+| W-0 + D-0 | window check, then fetch (does not move the checkout), print what would move, record the current state and back up every file D-2 writes (read only, plus new files in `/root/sr-a3/`) | nothing | **approval 1**: run W-0/D-0 (read only). Its output is what approval 2 approves |
+| D-2 | moves the root clone to `$SHA` and runs `jail-install` (ends with `jail-check`) | every jail unit for a few seconds (`sr-jail-net` restarts; Claude comes back by itself if enabled; a running `admin.sh run` worker job would be cut, which is why W-0 checks first). From then on `cycle.sh` and `admin.sh` run at `$SHA` | **approval 2 (required)**: A-3 apply, approving the exact D-0 commit and file list, together with D-4 as its abort path |
+| D-3 | verify: diffs, `JAIL_OK`, `JAIL_DNS_OK`, `getent`, refusals (read only, plus 1-byte UDP sends and TCP connects that must be refused) | nothing | included in approval 2 |
+| D-4 | rollback: clone back to `previous-sha`, `jail-install` | the same few seconds | included in approval 2 (abort path) |
+
+**W-0 + D-0 — the window and the current state (approval 1; read only).** First W-0 (§5.0); go on only under its
+conditions (no `sr-jail-run-*` / `sr-jail-shell-*` unit, no worker / PoC / Codex process, the cycle lock free, no `sr-*`
+timer due within 30 minutes). Ask the jailed Claude to commit, push and stop at a clean point. Then, with `$SHA` set to
+the A-3 merge commit:
 
 ```bash
 SHA=PASTE_THE_40_HEX_A3_MERGE_SHA
 if [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  sudo install -d -m 0700 /root/sr-a3 /root/sr-a3/before
   sudo git -C /root/sr-capture-admin fetch -q origin
-  sudo git -C /root/sr-capture-admin checkout -q --detach "$SHA"
-  sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh approve "$SHA"
+  PREV="$(sudo git -C /root/sr-capture-admin rev-parse HEAD)"
+  echo "$PREV" | sudo tee /root/sr-a3/previous-sha
+  echo "$SHA" | sudo tee /root/sr-a3/target-sha
+  sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal | sed 's/^/DIRTY /'
+  sudo git -C /root/sr-capture-admin merge-base --is-ancestor "$PREV" "$SHA" && echo "D0: target is ahead of the clone" || echo "D0_STOP: $SHA does not contain the clone's commit"
+  echo "== commits that move with A-3 =="; sudo git -C /root/sr-capture-admin --no-pager log --oneline "$PREV..$SHA"
+  echo "== files that move with A-3 ==";   sudo git -C /root/sr-capture-admin --no-pager diff --stat "$PREV" "$SHA"
+  echo "== of which the admin, jail and cycle code =="
+  sudo git -C /root/sr-capture-admin --no-pager diff --stat "$PREV" "$SHA" -- scripts/sales-design-capture scripts/sales-design-worker
+  sudo cp -p /etc/systemd/system/sr-jail-net.service /etc/systemd/system/sr-jail-claude.service /root/sr-a3/before/
+  sudo cp -p /usr/local/lib/sr-jail/jail.properties /usr/local/lib/sr-jail/probe.py /root/sr-a3/before/
+  sudo sh -c '{ echo "inet:"; ip -n srjail -4 rule show | sed -E "s/[[:space:]]+/ /g; s/ \$//"; echo "inet6:"; ip -n srjail -6 rule show 2>/dev/null | sed -E "s/[[:space:]]+/ /g; s/ \$//"; } > /root/sr-a3/rules.before'
+  sudo cat /root/sr-a3/rules.before
+  echo "rp_filter all/default in the jail namespace: $(sudo ip netns exec srjail cat /proc/sys/net/ipv4/conf/all/rp_filter /proc/sys/net/ipv4/conf/default/rp_filter | tr '\n' ' ')"
+  systemctl is-enabled sr-jail-claude; systemctl is-active sr-jail-net sr-jail-claude
 else
   echo "set SHA to the full A-3 merge commit first"
 fi
 ```
 
-**D-3 — verify (read only, plus three 1-byte UDP sends that must be refused).**
+Go on to D-2 only when: no `DIRTY` line; `D0: target is ahead of the clone`; `rules.before` matches the "before" column
+above (otherwise the machine is not in the state this plan assumes: stop and report); and the human has read the
+commit and file lists and approves exactly them. The `rp_filter` line is information (expected `2 2` on Ubuntu; see
+"Replies" above). Note whether `sr-jail-claude` is enabled and active: D-3 compares against it.
+
+**D-2 — deploy (approval 2).** **This moves the whole root clone, so from now on the design cycle (`cycle.sh`) and
+every `admin.sh` command run the code at `$SHA`, i.e. everything in the D-0 lists, not only A-3.** One `&&` chain,
+so nothing installs unless the clone is at `$SHA` and clean (`jail-install` does not check that itself). It ends with
+`jail-check` (`JAIL_OK`, then `JAIL_DNS_OK`):
 
 ```bash
-sudo ip -n srjail rule show
-sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-check
-sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- getent hosts github.com
-sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /usr/bin/python3 -I -c 'import socket, errno
+SHA="$(sudo cat /root/sr-a3/target-sha)"
+if [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  sudo git -C /root/sr-capture-admin checkout -q --detach "$SHA" \
+    && test -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" \
+    && sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-install
+else
+  echo "no recorded target commit: run D-0 first"
+fi
+```
+
+What it stops: `sr-jail-net` restarts, so `sr-jail-claude` and any other jail unit stop and the namespace is made again
+(a few seconds). `ExecStartPost` starts Claude again if it is enabled. It does not touch `sr-capture.*`, the helper's
+checkout, `sr-design-*` units or any timer.
+
+What its last lines mean:
+- `JAIL_UNSAFE …` (for example `DNS_RULES_UNCHECKED` or `DNS_RULES_NOT_EXACT`): the same probe runs before every jail
+  unit, so the jail units do not start (fail closed). Go to D-4.
+- `JAIL_OK` then `JAIL_DNS_FAILED`: **the jail units keep running with DNS broken.** `sr-jail-net` has already
+  restarted, `ExecStartPost` has already started Claude again, and Claude's own start-up probe only warns on DNS
+  (`JAIL_WARN DNS_NOT_WORKING`). Go to D-4.
+- `JAIL_OK` then `JAIL_DNS_OK`: go on to D-3.
+
+**D-3 — verify (included in approval 2; read only, plus sends that must be refused).**
+
+```bash
+A=/root/sr-capture-admin/scripts/sales-design-capture/admin.sh
+sudo bash "$A" jail-rules | sudo tee /root/sr-a3/rules.after
+echo "== rules =="; sudo diff /root/sr-a3/rules.before /root/sr-a3/rules.after
+echo "== sr-jail-net.service =="; sudo diff /root/sr-a3/before/sr-jail-net.service /etc/systemd/system/sr-jail-net.service
+echo "== sr-jail-claude.service =="; sudo diff /root/sr-a3/before/sr-jail-claude.service /etc/systemd/system/sr-jail-claude.service && echo SAME
+echo "== jail.properties, settings only =="; sudo diff <(sudo grep -Ev '^[[:space:]]*(#|$)' /root/sr-a3/before/jail.properties) <(sudo grep -Ev '^[[:space:]]*(#|$)' /usr/local/lib/sr-jail/jail.properties) && echo SAME
+echo "== probe.py =="; sudo cmp -s /root/sr-a3/before/probe.py /usr/local/lib/sr-jail/probe.py && echo SAME || echo CHANGED
+sudo bash "$A" jail-check
+sudo bash "$A" run sr-designgen -- getent hosts github.com
+sudo bash "$A" run sr-designgen -- /usr/bin/python3 -I -c 'import socket, errno
 for proto, port in (("udp", 853), ("udp", 9), ("tcp", 853), ("tcp", 53)):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM if proto == "udp" else socket.SOCK_STREAM)
     s.settimeout(2)
@@ -481,36 +633,54 @@ for proto, port in (("udp", 853), ("udp", 9), ("tcp", 853), ("tcp", 53)):
         print("DNS_ADDR", proto, port, errno.errorcode.get(e.errno, e.errno))
     finally:
         s.close()'
+systemctl is-active sr-jail-net sr-jail-claude
 ```
 
-Expected:
-- `ip rule show` lists `98: … to 198.51.100.53 ipproto udp dport 853 prohibit`, `99: … ipproto udp dport 53 lookup
-  main`, `100: … to 198.51.100.53 prohibit` between `0: … lookup local` and `32766: … lookup main` (exact spacing
-  INFERRED);
-- `JAIL_OK`; `getent` prints github.com's addresses;
-- four lines `DNS_ADDR … EACCES`.
+Expected, when D-0's file list under `scripts/sales-design-capture` showed only DEV-088's files (`admin.sh`,
+`jail/probe.py`, `jail/jail.properties`):
+- **rules:** exactly the 5 lines above (`3c3,5` …);
+- **`sr-jail-net.service`:** only the one old `ExecStartPre=… ipproto tcp prohibit priority 100` line replaced by the
+  three new `ExecStartPre` lines, plus its comment lines if any (`ExecStart`, `IPAddressAllow/Deny` and everything
+  else unchanged);
+- **`sr-jail-claude.service`:** `SAME` (its settings come from `jail.properties`, whose settings did not change; a
+  different line means the default gateway changed or D-0's list contained another jail change: stop and report);
+- **`jail.properties`, settings only:** `SAME` (DEV-088 changes comment lines only);
+- **`probe.py`:** `CHANGED` (DEV-088's new checks), the only installed jail file whose content is meant to change;
+- `JAIL_OK` and `JAIL_DNS_OK`; `getent` prints github.com's addresses;
+- four lines `DNS_ADDR … EACCES`;
+- `sr-jail-net` `active`; `sr-jail-claude` as in D-0 (`active` if it was enabled).
+
+If D-0's list contained other changes under `scripts/sales-design-capture`, the human compares these diffs with that
+list instead; anything the list does not explain is a failure. On any unexpected line: D-4, and report the lines.
 
 On the old pasta this is the no-op proof: DNS still resolves, TCP is refused as before, and the only traffic now refused
-is UDP to non-53 ports of a documentation address that nothing answers. The same D-3 runs again in V-3a after the update.
-Before A-3 (today) the UDP lines print `NOT_REFUSED`, which is harmless with the old pasta (the byte goes to the
-documentation address); after an update without A-3, `udp 853` would reach the host resolver.
+is UDP to non-53 ports (and other protocols such as ICMP) to a documentation address that nothing answers. The same D-3
+runs again in V-3a after the update. Before A-3 (today) the UDP lines print `NOT_REFUSED`, which is harmless with the
+old pasta (the byte goes to the documentation address); after an update without A-3, `udp 853` would reach the host
+resolver.
 
-**D-4 — rollback of A-3.** Approve the previous sha again (the commit approved before D-2, from the helper's
-`approved-sha` file, which `approve` prints as "Changes since the approved commit …"):
+**D-4 — rollback (included in approval 2 as its abort path).** The clone back to the commit recorded in D-0, then
+`jail-install`, which restarts the jail the same way and ends with that version's `jail-check`. Then every file
+`jail-install` writes must equal its D-0 backup:
 
 ```bash
-SHA=PASTE_THE_40_HEX_PREVIOUSLY_APPROVED_SHA
-if [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
-  sudo git -C /root/sr-capture-admin checkout -q --detach "$SHA"
-  sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh approve "$SHA"
+PREV="$(sudo cat /root/sr-a3/previous-sha)"
+if [[ "$PREV" =~ ^[0-9a-f]{40}$ ]]; then
+  sudo git -C /root/sr-capture-admin checkout -q --detach "$PREV" \
+    && test -z "$(sudo git -C /root/sr-capture-admin status --porcelain --untracked-files=normal)" \
+    && sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh jail-install
   sudo ip -n srjail rule show
+  for f in sr-jail-net.service sr-jail-claude.service; do sudo cmp /root/sr-a3/before/$f /etc/systemd/system/$f && echo "SAME $f"; done
+  for f in jail.properties probe.py; do sudo cmp /root/sr-a3/before/$f /usr/local/lib/sr-jail/$f && echo "SAME $f"; done
+  systemctl is-active sr-jail-net sr-jail-claude
 else
-  echo "set SHA to the full previously approved commit first"
+  echo "no recorded previous commit: stop and report"
 fi
 ```
 
-That rewrites the unit with today's single TCP rule and the old probe. Do not delete rules by hand with `ip rule del`:
-the unit re-creates its rules on every start, so hand edits are not durable and are not tested.
+Expected: the old single `100: from all to 198.51.100.53 ipproto tcp prohibit` rule, `JAIL_OK`, and four `SAME` lines;
+`cycle.sh` and `admin.sh` are back at `previous-sha`. Do not delete rules by hand with `ip rule del`: the unit re-creates
+its rules on every start, so hand edits are not durable and are not tested.
 
 **Residual after A-3:** UDP/53 to the host resolver, exactly as today (DNS can still carry data out, as today; the jail
 can reach public addresses anyway).
@@ -735,8 +905,9 @@ done
 pasta --version | head -n 1
 ```
 
-Then D-3 (§4.6) as written: the rules, `jail-check`, `getent hosts github.com` in the jail, and the four `DNS_ADDR`
-lines.
+Then D-3 (§4.6) as written: the rules (`jail-rules`, now the same as `/root/sr-a3/rules.after`; the two `diff`s against
+the pre-A-3 files show the A-3 change again and nothing else), `jail-check`, `getent hosts github.com` in the jail, and
+the four `DNS_ADDR` lines.
 
 The `diff` may show **only** these lines (anything else is a failure):
 - `pkg passt 0.0~git20260120.386b5f5-1 ii` and `held yes`;
@@ -825,7 +996,7 @@ owner's permission, and its result would add evidence but replace none of V-3. D
 | dpkg's record of passt, the hold | V-0: `pkg`, `held`; `v0-state` `passt_held` | R-2: purge + install; the hold as in V-0 |
 | the running pasta | V-0: `pasta-exe`, `pasta` lines | R-2: restart `sr-jail-net` |
 | Claude's enabled / active state | `v0-state` `claude_enabled` / `claude_active` | R-3 then V-2b |
-| A-3's rules and probe (if deployed) | the approved sha | not part of this rollback: they stay (they are correct for both pasta versions). Their own rollback is D-4 |
+| A-3's rules and probe (if deployed) | the root clone's commit | not part of this rollback: they stay (they are correct for both pasta versions). Their own rollback is D-4 |
 | `/root/sr-passt-update/` (the debs, snapshots, `v0-*`) | – | kept on purpose for the record; nothing secret is in it. Removing it later is a separate, trivial decision |
 
 The rollback **purges** the hand-installed package, then installs the verified noble deb. A plain downgrade with
@@ -1004,7 +1175,7 @@ change, and any Codex run.
 | A-1 | **HUMAN-024b** (jail) and **24b-host**: the Codex-free probe | nothing (3 unauthenticated GETs per run) | – | WSL | – | **done 2026-10-22** (`design-image-poc.md` 24b) |
 | A-1b | optional: **24b-v2** in the jail and on the host before the update, as a same-tool baseline | nothing | – | WSL | – | `design-image-poc.md` 24b-v2 |
 | A-2 | Proceed with a passt update **and** grant a written exception to `design-wsl-isolation.md` §6 for exactly `passt 0.0~git20260120.386b5f5-1` from Ubuntu resolute, verified as in V-1 (the docs change goes in the A-3 PR or its own) | policy (docs) | yes | decision | A-1 (done: "cut in the jail, OPEN on the host") | – |
-| A-3 | The jail's DNS rules: only UDP/53 to 198.51.100.53, plus the probe check and tests (§4.6), as a code PR, then deployed. **Or** accept the UDP/853 residual in writing | `sr-jail-net`'s ip rules, `probe.py`, tests; the deploy restarts the jail for seconds | yes (D-4) | repo PR, then `admin.sh approve <sha>` on WSL | A-2 | D-1 (PR), W-0, D-2, D-3, D-4 |
+| A-3 | The jail's DNS rules: only UDP/53 to 198.51.100.53, plus the probe checks and tests (§4.6). **Policy adopted 2026-10-23; code implemented in DEV-088; applying it on WSL is a separate approval** | `sr-jail-net`'s ip rules, `probe.py`, `jail-check`, tests; the deploy restarts the jail for seconds | yes (D-4) | repo PR (DEV-088), then `admin.sh jail-install` from the root clone at the merge commit on WSL | A-2 | D-1 (PR), D-0 (W-0), D-2, D-3, D-4 |
 | A-4 | W-0 window check and V-0 snapshot | only new files in `/root/sr-passt-update/` | yes | WSL | A-2 (and A-3 deployed, if chosen) | S-1, W-0, V-0 |
 | A-5 | V-1 fetch and verify, V-2 update and hold, V-3a immediate checks, and on success V-2b; **the rollback (R-1 → R-3, §6.4) approved together with A-5 as its abort path** | the passt package, its AppArmor files, the hold, a pasta restart, Claude stopped then restored | yes (R-1 → R-3) | WSL, root, a person at the console | A-4 | V-1, W-0, V-2, V-3a, D-3, V-2b, R-1, R-2, R-3 |
 | A-6 | 24b-v2 in the jail and on the host after the update (can be approved together with A-5 and run before V-2b) | nothing | – | WSL | A-5 passes V-3a | V-3b |

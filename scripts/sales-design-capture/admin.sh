@@ -6,6 +6,7 @@
 #   sudo bash admin.sh approve <commit-sha>                     # each new helper version
 #   sudo bash admin.sh login                                    # headed Instagram sign-in (a person types)
 #   sudo bash admin.sh jail-check                               # prove the requester jail on this machine
+#   sudo bash admin.sh jail-rules                               # the jail namespace's ip rules (read only)
 #   sudo bash admin.sh shell                                    # a jailed shell as the requester
 #   sudo bash admin.sh claude-start | claude-stop               # Claude Remote Control, jailed
 #   sudo bash admin.sh status
@@ -97,10 +98,12 @@ host_safe() {
 JAIL_LIB=/usr/local/lib/sr-jail
 JAIL_CLAUDE=sr-jail-claude.service
 JAIL_NET=sr-jail-net.service
-# The only DNS server the jail knows: pasta answers it on UDP/53 only (Ubuntu 24.04's passt
-# forwards DNS over UDP, not TCP) with the host's resolver. DNS in the jail is UDP-only, by design:
-# TCP to this address is refused at once inside the jail's namespace (an ip rule in sr-jail-net), so a
-# truncated answer fails the lookup instead of hanging ~2 minutes on a TCP connect nobody answers.
+# The only DNS server the jail knows: pasta forwards it to the host's resolver. The address takes UDP/53
+# and nothing else, whatever pasta forwards (DEV-088 / A-3: Ubuntu 24.04's passt maps UDP/53 only, newer
+# passt also UDP/853, TCP/53 and TCP/853). Inside the jail's namespace ip rules in sr-jail-net send UDP/53
+# to the main table and refuse everything else to this address at once (EACCES): a truncated answer fails
+# the lookup instead of hanging ~2 minutes on TCP, and UDP/853 never reaches the host resolver.
+# probe.py's EXPECTED_RULES pins the resulting rule set; `jail-rules` prints it.
 JAIL_DNS=198.51.100.53
 # Every jail unit needs the jail's network namespace and goes away with it.
 JAIL_UNIT_DEPS=("Requires=$JAIL_NET" "BindsTo=$JAIL_NET" "After=$JAIL_NET")
@@ -172,8 +175,13 @@ jail_install() {
     echo "RuntimeDirectoryMode=0755"
     echo "ExecStartPre=-$ip_bin netns delete srjail"
     echo "ExecStartPre=$ip_bin netns add srjail"
-    # inside the jail's namespace only, before pasta and any jail unit: TCP to the DNS address is refused (EACCES)
-    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto tcp prohibit priority 100"
+    # inside the jail's namespace only, in a namespace just made, before pasta and any jail unit: the DNS address
+    # takes UDP/53 only. The refusals first, the one allowance last: everything else to it (TCP/53, TCP/853, other
+    # protocols) prohibit at 100, UDP/853 prohibit at 98 (also refused by 100; it keeps 853 shut if 99 is ever
+    # edited), then UDP/53 to the main table at 99. A failing line fails the unit before pasta starts.
+    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 prohibit priority 100"
+    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto udp dport 853 prohibit priority 98"
+    echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto udp dport 53 lookup main priority 99"
     echo "ExecStartPre=/bin/sh -c 'stat -L -c %%i /run/netns/srjail > /run/sr-jail/netns-id && printf \"nameserver $JAIL_DNS\\\\noptions edns0\\\\n\" > /run/sr-jail/resolv.conf && chmod 0644 /run/sr-jail/netns-id /run/sr-jail/resolv.conf'"
     echo "ExecStart=$pasta_bin -f -q --runas 0 --config-net --no-map-gw -t none -u none -T none -U none --dns-forward $JAIL_DNS --netns /run/netns/srjail"
     # pasta's own sockets: the same private ranges refused (only the WSL DNS tunnel, for the forwarded UDP queries)
@@ -242,7 +250,25 @@ jail_check() {
     fi
     args+=("${JAIL_ARGS[$i]}")
   done
-  systemd-run --quiet --wait --collect --pipe --unit="sr-jail-check-$$" "${args[@]}" -- "$py" -I "$JAIL_LIB/probe.py" "$req"
+  systemd-run --quiet --wait --collect --pipe --unit="sr-jail-check-$$" "${args[@]}" -- "$py" -I "$JAIL_LIB/probe.py" "$req" || return 1
+  # Name resolution through pasta (UDP/53) must work as well. Only after JAIL_OK: TCP to the DNS address is then
+  # proven refused at once, so a truncated answer cannot hang this (the resolver itself gives up after 2 x 5 s).
+  if systemd-run --quiet --wait --collect --pipe --unit="sr-jail-dns-$$" "${args[@]}" -- getent hosts github.com >/dev/null; then
+    echo "JAIL_DNS_OK"
+  else
+    echo "JAIL_DNS_FAILED: getent hosts github.com did not resolve inside the jail (UDP/53 through pasta)"
+    return 1
+  fi
+}
+
+# The jail namespace's ip rules, one per line, blanks squeezed: compare before and after a change (read only).
+jail_rules() {
+  local v4
+  v4="$(ip -n srjail -4 rule show 2>/dev/null)" || { echo "NO_JAIL_NETNS: sr-jail-net is not running"; return 1; }
+  echo "inet:"
+  sed -E 's/[[:space:]]+/ /g; s/ $//' <<<"$v4"
+  echo "inet6:"
+  ip -n srjail -6 rule show 2>/dev/null | sed -E 's/[[:space:]]+/ /g; s/ $//' || true
 }
 
 # Every requester process (the network namespace stays: it holds no process of the requester).
@@ -430,6 +456,9 @@ case "$CMD" in
     REQUESTER="${2:-sr-designgen}"
     jail_check "$REQUESTER"
     ;;
+  jail-rules)
+    jail_rules
+    ;;
   jail-install)
     # Re-writes the jail unit from this (approved) checkout, e.g. after the default gateway changed.
     REQUESTER="${2:-sr-designgen}"
@@ -470,8 +499,8 @@ case "$CMD" in
     echo "node: $(cat "$CONF/node-dir" 2>/dev/null || echo none)"
     systemctl is-enabled sr-capture.path sr-capture.timer || true
     echo "jail: $(systemctl is-enabled "$JAIL_CLAUDE" 2>/dev/null || echo none) / $(systemctl is-active "$JAIL_CLAUDE" 2>/dev/null || echo inactive)"
-    echo "jail network rules:"; ip -n srjail rule show 2>/dev/null || echo "  (no jail network namespace)"
+    echo "jail network rules:"; jail_rules || true
     ;;
   *)
-    echo "usage: sudo bash admin.sh install <sha> [requester] | approve <sha> | login | jail-check | jail-install | shell | run <requester> -- <cmd> | claude-start | claude-stop | status"; exit 2 ;;
+    echo "usage: sudo bash admin.sh install <sha> [requester] | approve <sha> | login | jail-check | jail-rules | jail-install | shell | run <requester> -- <cmd> | claude-start | claude-stop | status"; exit 2 ;;
 esac
