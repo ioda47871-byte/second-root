@@ -606,6 +606,16 @@ describe("the prompt", () => {
     expect(V1_PROMPT_CHARS).toBe(4754);
     expect(V2_PROMPT_MAX_CHARS).toBe(7131);
     expect(prompt.length).toBeLessThanOrEqual(V2_PROMPT_MAX_CHARS);
+    // DEV-095: the exact v2 prompt the human approves for the next v2 Codex call, pinned as the v1 prompt is.
+    // It depends only on prompt.ts, the v2 direction file and the wagashi fixture (no time, env or path);
+    // the human sees the same sha256 on WSL with the read-only command in design-image-poc.md (第2案, "Pinned prompt").
+    // Any change to the prompt, the v2 direction or the fixture fails here and needs a new approval.
+    // The sha covers only the text sent to Codex on stdin: not the Codex CLI's built-in instructions, model or config,
+    // nor anything loaded from CODEX_HOME (report.json records cli_version).
+    expect(createHash("sha256").update(prompt).digest("hex")).toBe("7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa");
+    expect(prompt.length).toBe(6801);
+    expect(buildMockupPrompt(await loadPocInputs(REPO, "v2"))).toBe(prompt);
+    expect(buildMockupPrompt(await loadPocInputs(REPO))).toBe(prompt);
     // the very first instruction is the built-in image tool (as curiosity-media's image prompts), and a substitute is ruled out
     const lines = prompt.split("\n");
     expect(lines[0]).toBe("TASK");
