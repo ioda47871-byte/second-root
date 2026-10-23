@@ -4137,7 +4137,7 @@
     },
     {
       "id": "DEV-096",
-      "title": "sandbox.test.ts の参照画像の test が毎回 21 MB の一時 file を残す → finally で消す（test だけ）",
+      "title": "test の一時 dir の後片付け: sandbox（21 MB の参照画像）・browser（Chromium の profile）・capture-helper が毎回 temp に残す → 消す（test だけ）",
       "status": "review",
       "priority": "P2",
       "depends_on": [],
@@ -4145,16 +4145,21 @@
       "last_failure": null,
       "branch": "feature/dev-096-sandbox-test-tmp",
       "purpose": "container の disk が満杯になった（2026-10-23）。原因は tests/unit/design-agent/sandbox.test.ts の「reference images reach Codex only as checked copies」が mkdtemp した dir（21 MB の big.png を含む）を消さず、実行ごとに約 22 MB を temp に残していたこと（/tmp に 548 個）。",
-      "decision": "test が作った dir を配列に集め、finally で rmSync する。assertion・入力・stageInputs は不変。",
+      "decision": "test が作った dir を配列に集め、finally で rmSync する。assertion・入力・stageInputs は不変。 review で見つかった大きい漏れ 2 つも同じ PR で: browser.test.ts の sandbox()（srdw-home-*、Chromium の profile、6,811 個・約 23 GB）と capture-helper.test.ts の layout()（sr-helper-*、867 個・約 2.6 GB）を module の配列に集め afterAll で消す（失敗しても test を赤にしない）。小さい漏れ（worker-support・bridge など）は対象外。",
       "acceptance_criteria": [
         "test が通り、実行後に TMPDIR に sr-stage-* が残らない",
-        "assertion と本番 code は不変"
+        "assertion と本番 code は不変",
+        "browser.test.ts と capture-helper.test.ts が作る dir も afterAll で消える（assertion は不変）"
       ],
       "required_tests": [
-        "tests/unit/design-agent/sandbox.test.ts"
+        "tests/unit/design-agent/sandbox.test.ts",
+        "tests/unit/design-agent/browser.test.ts",
+        "tests/unit/design-agent/capture-helper.test.ts"
       ],
       "allowed_scope": [
         "tests/unit/design-agent/sandbox.test.ts",
+        "tests/unit/design-agent/browser.test.ts",
+        "tests/unit/design-agent/capture-helper.test.ts",
         ".ai/tasks.json"
       ],
       "forbidden_scope": [

@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -25,10 +25,22 @@ let site: MockSite;
 beforeAll(async () => {
   site = await startMockSite();
 });
-afterAll(() => site.server.close());
+// every temp dir made by a test is removed at the end (a Chromium profile is a few MB, and each run used to leave them all)
+const made: string[] = [];
+afterAll(() => {
+  site.server.close();
+  for (const d of made) {
+    try {
+      rmSync(d, { recursive: true, force: true });
+    } catch {
+      // cleanup only: a dir a test made unreadable must not turn a passing file red
+    }
+  }
+});
 
 function sandbox() {
   const home = mkdtempSync(join(tmpdir(), "srdw-home-"));
+  made.push(home);
   chmodSync(home, 0o700);
   const env: ProfileEnv = { repoDir: REPO, home, uid: process.getuid?.(), user: userInfo().username, expectedUser: userInfo().username };
   return { home, env, profile: join(home, ".local", "share", "sr-instagram-browser"), state: join(home, "state"), out: join(home, "out") };
