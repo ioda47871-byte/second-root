@@ -72,6 +72,12 @@ npx tsx scripts/sales-design-worker/comp-impl-poc.ts --intake ~/sr-design-image-
 Exit 0 the intake loaded (an approved `real` comp, or a `synthetic` one, which is never approved), 1 `COMP_NOT_APPROVED`
 (`reasons=` and `low=` name the codes and the weak criteria), 2 any other refusal (`refused=<code>`) or bad usage.
 `worker_commit` comes from the PoC's `report.json` and is report-only: a missing or malformed one prints `none` and refuses nothing.
+`--bundle` refuses the same comp too (nothing is rendered or written), and its refusal line carries the reasons after the code:
+`COMP_IMPL_REFUSED COMP_NOT_APPROVED EVAL_CRITERION_BELOW_MIN` (several reasons comma-separated, sorted, e.g.
+`COMP_IMPL_REFUSED COMP_NOT_APPROVED EVAL_CRITERION_BELOW_MIN,EVAL_TOTAL_BELOW_PASS`), exit 2. It does not print the weak criteria;
+`--intake` does (`low=`). Every other `--bundle` refusal prints the code alone (`COMP_IMPL_REFUSED <code>`), except
+`PAGE_SOURCE_REFUSED`, which likewise lists its page-source codes.
+The path is the human's private copy of the bundle, not `sr-designgen`'s home: see `design-image-poc.md`, *Viewing the result*.
 
 **Process gates, not technical ones.** `evaluation.json` (`human_confirmed`, `confirmed_by`, the scores) and the synthetic / real
 label (`report.json` `synthetic`, `evaluation.json` `comp_kind`) are written by people and Claude; the loader checks that they are

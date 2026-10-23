@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CompImplError, EVAL_MIN_CRITERION, EVAL_PASS_TOTAL, evaluationVerdict, loadCompBundle, loadCompIntake, sha256, type CompNotApprovedError } from "@/lib/design-agent/comp-impl/bundle";
+import { CompImplError, EVAL_CRITERIA, EVAL_MIN_CRITERION, EVAL_PASS_TOTAL, EvaluationSchema, evaluationVerdict, loadCompBundle, loadCompIntake, sha256, type CompNotApprovedError } from "@/lib/design-agent/comp-impl/bundle";
 import { loadCompPage } from "@/lib/design-agent/comp-impl/page";
 import { parseShop } from "@/lib/design-agent/compare/shops";
 import { loadPocInputs } from "@/lib/design-agent/design-image/prompt";
@@ -136,6 +136,15 @@ describe("evaluationVerdict (DEV-094)", () => {
   const real = { comp_kind: "real" as const, human_confirmed: true };
   it("keeps the policy's numbers", () => {
     expect([EVAL_PASS_TOTAL, EVAL_MIN_CRITERION]).toEqual([22, 4]);
+  });
+  it("checks every criterion the schema scores, in the rubric's order", () => {
+    expect(EVAL_CRITERIA).toEqual(Object.keys(EvaluationSchema.shape.scores.unwrap().shape));
+    expect(EVAL_CRITERIA).toEqual(["beauty", "fit", "originality", "structure", "implementability"]);
+    // a criterion the schema adds is held to the minimum: drop each one in turn below it
+    for (const k of EVAL_CRITERIA) {
+      const s = { ...scores(5, 5, 5, 5, 5), [k]: 3 };
+      expect(evaluationVerdict({ comp_kind: "real", human_confirmed: true, scores: s, total: 23 }).low_criteria).toEqual([k]);
+    }
   });
   it.each<[string, Parameters<typeof evaluationVerdict>[0], ReturnType<typeof evaluationVerdict>]>([
     ["the existing real sheet", { ...real, scores: scores(5, 5, 4, 5, 4), total: 23 }, { pass: true, reasons: [], low_criteria: [] }],

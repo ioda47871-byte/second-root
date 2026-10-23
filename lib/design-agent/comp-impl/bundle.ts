@@ -89,10 +89,6 @@ export const EVAL_PASS_TOTAL = 22;
  * 「22/25点以上、各項目4点以上を基本方針とする」 — a high total cannot hide one weak area.
  */
 export const EVAL_MIN_CRITERION = 4;
-/** The rubric's five criteria, in the rubric's order (the keys of `scores`). */
-export const EVAL_CRITERIA = ["beauty", "fit", "originality", "structure", "implementability"] as const;
-export type EvalCriterion = (typeof EVAL_CRITERIA)[number];
-
 const Score = z.number().int().min(1).max(5);
 export const EvaluationSchema = z.strictObject({
   version: z.literal(1),
@@ -108,6 +104,12 @@ export const EvaluationSchema = z.strictObject({
   confirmed_at: z.string().datetime({ offset: true }).nullable(),
 });
 export type Evaluation = z.infer<typeof EvaluationSchema>;
+/**
+ * The rubric's criteria, in the rubric's order: derived from the keys of `EvaluationSchema.scores`, so a criterion
+ * added to the schema is always held to `EVAL_MIN_CRITERION` too (never a hand-kept copy).
+ */
+export const EVAL_CRITERIA: readonly EvalCriterion[] = EvaluationSchema.shape.scores.unwrap().keyof().options;
+export type EvalCriterion = keyof NonNullable<Evaluation["scores"]>;
 
 /** Why an evaluation does not approve its comp (fixed codes). */
 export const EVAL_VERDICT_REASONS = ["EVAL_CRITERION_BELOW_MIN", "EVAL_NOT_CONFIRMED", "EVAL_NOT_REAL", "EVAL_NO_SCORES", "EVAL_TOTAL_BELOW_PASS"] as const;
