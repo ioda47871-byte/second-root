@@ -23,7 +23,7 @@ review), **Designed-only** (written down, no code), **Not started**.
 
 | # | stage | status | where | what remains |
 |---|---|---|---|---|
-| 1 | comp validation | **PoC** (in review, PR #96); PNG checks Implemented | `lib/design-agent/comp-impl/bundle.ts` (bundle loader, evaluation sheet, facts equality), `lib/design-agent/design-image/png.ts` (`readPngNoFollow`, `checkPng`), `docs/operations/design-image-eval-template.md` (rubric) | a real comp (HUMAN-024 → image generation); the per-criterion "each ≥ 4" check in `bundle.ts` (the human adopted it on 2026-10-22; follow-up after #96 merges); provenance link from the comp to its design-image run |
+| 1 | comp validation | **PoC** (in review, PR #96); PNG checks Implemented | `lib/design-agent/comp-impl/bundle.ts` (bundle loader, evaluation sheet, facts equality), `lib/design-agent/design-image/png.ts` (`readPngNoFollow`, `checkPng`), `docs/operations/design-image-eval-template.md` (rubric) | a real comp (HUMAN-024 → image generation); ~~the per-criterion "each ≥ 4" check in `bundle.ts`~~ done in DEV-094 (`evaluationVerdict`, `EVAL_MIN_CRITERION`, plus `--intake`); provenance link from the comp to its design-image run |
 | 2 | comp → implementation spec (`layout-spec.json`) | **PoC** (in review) | `lib/design-agent/comp-impl/spec.ts` (`CompSpecSchema`, `checkCompSpec`, `specFactProblems`, `COMP_UI_LABELS`) | tried on a synthetic comp only; spec lacks capabilities, layers / roles, per-width layouts and vertical type (DEV-083 V1, V7, V9); written by Claude in a session, no automated extraction |
 | 3 | Claude generates HTML/CSS or Next.js | HTML/CSS: **PoC** (manual Claude Code session, synthetic fixture); Next.js: **Not started**; automation: **Not started** | `lib/design-agent/comp-impl/page.ts` (page contract), `page-css.ts` (allowlist), `scripts/sales-design-worker/comp-impl/synthetic-wagashi/` | first real implementation (HUMAN-023 判断 1); expressive capabilities (DEV-083); Next.js serving (§7); an unattended Claude step (HUMAN-023 判断 2) |
 | 4 | browser verification | **PoC** (in review), built on **Implemented** Stage 3 checks | `comp-impl/render.ts`, `checks.ts`, `page-scripts.ts`, `run.ts`; reused `lib/design-agent/shop-css/render-check.ts`, `shop-css/page-scripts.ts` (DEV-072), `lib/design-agent/shot-viewports.ts` | the DEV-083 verification blocks; CI time (§8) |
@@ -42,12 +42,12 @@ Shop analysis for the existing profile designer (facts, reference screenshots, m
 What exists: the bundle loader reads the comp with O_NOFOLLOW and the full PNG chunk / CRC walk; checks `report.json`
 (sha, size, `synthetic`), that `shop-facts.json` equals the facts source of truth after the worker's fact filter, that
 `design-spec.json` equals the repository's art direction, and the evaluation sheet (no hard fail, total = sum, a `real` comp
-needs `human_confirmed` and ≥ 22/25, else `COMP_NOT_APPROVED`).
+needs `human_confirmed`, ≥ 22/25 and — since DEV-094 — every criterion ≥ 4, else `COMP_NOT_APPROVED`).
 **Rubric policy (the human, 2026-10-22): 「22/25点以上、各項目4点以上を基本方針とする」** — pass = no hard fail, total ≥ 22/25 and
 every criterion ≥ 4. This PR records it in `docs/operations/design-image-eval-template.md`, `design-image-poc.md`, the DEV-075
 criterion and `.ai/blockers.md` (HUMAN-019's evaluation note).
-Remains: (a) a real comp; (b) **follow-up after #96 merges**: `comp-impl/bundle.ts` checks only the total (`EVAL_PASS_TOTAL`);
-it must also refuse a `real` comp with any criterion below 4 (not edited here — the file belongs to PR #96); (c) the human-confirmed sheet and the `real` label are **process gates**
+Remains: (a) a real comp; (b) ~~follow-up after #96 merges: the per-criterion check~~ **done (DEV-094)**: `comp-impl/bundle.ts`
+`evaluationVerdict` refuses a `real` comp with a total below 22 or any criterion below 4 (`COMP_NOT_APPROVED`); (c) the human-confirmed sheet and the `real` label are **process gates**
 (`comp-to-site.md` §3) — a hash link from the comp to the design-image run's `report.json` would make "this came from Codex"
 checkable, not just declared; (d) the implementability anchor of the rubric discourages overlays and text on images
 (DEV-083 doc §6 risk 8).
@@ -223,7 +223,7 @@ Everything below is a **proposal** for the human to accept, reorder or drop.
 | 4 | **Implementation review sheet + per-section comparison report** (docs template like `design-image-eval-template.md`, and a report-only per-section diff in `similarity.ts` — **the report is in, DEV-097**; the sheet remains) | DEV-082 | A5 for the thresholds to become a gate | gives stage 5 something the fix loop and the human can act on |
 | 5 | **Fix-loop harness, local and manual** (frozen spec hash, round records, stop conditions, cap, regression revert; Claude edits in a session; no model call by code) | 4 | its cap and stop values (A4/A5); automation stays A7 | makes stage 6 reproducible before anyone automates it |
 
-Also, after #96 merges: the per-criterion "each ≥ 4" check in `comp-impl/bundle.ts` (follow-up of the human's rubric policy, §2 stage 1; a small fix aligning code with an adopted policy).
+Also, after #96 merges: the per-criterion "each ≥ 4" check in `comp-impl/bundle.ts` (follow-up of the human's rubric policy, §2 stage 1; a small fix aligning code with an adopted policy) — **done in DEV-094** (`evaluationVerdict`, and `comp-impl-poc.ts --intake` to check a comp before the spec is written).
 
 After these: DEV-083 phases B–F (fonts first) in the order the first real comp suggests; the local Next.js preview (A9); automation (A7, A8).
 

@@ -19,7 +19,7 @@ verified facts and produces an **original web design image** (the design-image P
 ```
 design-image PoC (Codex, HUMAN-018…022)        this PoC (DEV-082)
   mockup.png + report.json                ┐
-  shop-facts.json + design-spec.json      ├─► comp bundle ─► Claude: layout-spec.json ─► Claude: page/ ─► harness ─► report.json
+  shop-facts.json + design-spec.json      ├─► comp bundle ─► --intake ─► Claude: layout-spec.json ─► Claude: page/ ─► harness ─► report.json
   evaluation (human-confirmed rubric)     ┘                  (from the comp)              (HTML+CSS)       (Chromium)   desktop.png
   approved image assets (DEV-076, later)  ──────────────────────────────────────────────►  assets/                     mobile.png
 ```
@@ -40,7 +40,7 @@ As soon as a real comp passes the rubric, the same harness runs on it unchanged 
 | screenshot sizes | `lib/design-agent/shot-viewports.ts` (`SHOT_VIEWPORTS`: 1440 × 900 @1, 390 × 844 @2) | the PC and mobile screenshots and measurements |
 | Chromium in tests | `tests/unit/design-agent/shop-css/support.tsx` `launch()` (`PLAYWRIGHT_CHROMIUM_EXECUTABLE`), un-gated in CI like the other renderer tests | same launch pattern; runs in CI |
 | PNG decoding | `lib/design-agent/worker/png-paint.ts` `decodePng` | similarity metric |
-| evaluation | `docs/operations/design-image-eval-template.md` (hard fails, 5 × 1–5, pass = no hard fail and ≥ 22/25, human-confirmed) | `evaluation.json` records that sheet; a real comp is implemented only when it passed and the human confirmed it |
+| evaluation | `docs/operations/design-image-eval-template.md` (hard fails, 5 × 1–5, pass = no hard fail, ≥ 22/25 and every criterion ≥ 4, human-confirmed) | `evaluation.json` records that sheet; a real comp is implemented only when it passed and the human confirmed it |
 | demo templates / renderer | `components/demo/*` (3 templates), `components/demo/profile/ProfileRenderer.tsx`, `lib/design-agent/defaults.ts`, `profile.ts` `DIRECTIONS`, `compare/hand-written/*.json` | **never imported by an implementation**; rendered only in a test to build the anti-template reference fingerprints (§7) |
 | asset store | `lib/design-agent/assets/manifest.ts` (`approved_real` only, DEV-070), `intake.ts`, `store-root.ts` | **not changed, not written.** AI concept images are not in the store (§5); the output root may not lie inside the store |
 | Codex hooks | `lib/design-agent/codex.ts` (`runCodexJson`, jail, ChatGPT sign-in only), `pipeline.ts` | **not used.** The implementation step is Claude's, in a Claude Code session (§8) |
@@ -55,10 +55,29 @@ One directory (the design-image PoC's output dir, plus two files):
 | `report.json` | the PoC | `status`, `shop`, `direction_version`, size and `png_sha256` match the PNG; `synthetic: true` only for the synthetic fixture |
 | `shop-facts.json` | the PoC | **must equal** the facts source of truth after the worker's fact filter, or `BUNDLE_FACTS_MISMATCH` |
 | `design-spec.json` | the PoC | must equal the repository's art direction of that version |
-| `evaluation.json` | the human + Claude (rubric) | same comp sha; no hard fail; total = sum; a `real` comp needs `human_confirmed` and ≥ 22, else `COMP_NOT_APPROVED`; `synthetic` must match the report |
+| `evaluation.json` | the human + Claude (rubric) | same comp sha; no hard fail; total = sum; a `real` comp needs `human_confirmed`, a total ≥ 22 **and every criterion ≥ 4** (`evaluationVerdict`, `EVAL_PASS_TOTAL` / `EVAL_MIN_CRITERION`, DEV-094), else `COMP_NOT_APPROVED` with the reasons (`EVAL_NOT_CONFIRMED`, `EVAL_NO_SCORES`, `EVAL_TOTAL_BELOW_PASS`, `EVAL_CRITERION_BELOW_MIN`); `synthetic` must match the report |
 | `layout-spec.json` | **Claude, from the comp** (§4) | schema + consistency (`spec.ts`), same comp sha and artboard size, phrases verbatim inside a fact |
 
 And beside the page: `assets.json` (§5). Anything else in a bundle is ignored; anything inconsistent stops the run with a fixed code.
+
+**Intake first (DEV-094).** Every row above except `layout-spec.json` is checked by `loadCompIntake` (`bundle.ts`), in the same
+order as the full loader. Run it once the evaluation sheet is confirmed and **before Claude writes the spec**; it starts no
+browser, creates no output directory and writes nothing:
+
+```bash
+npx tsx scripts/sales-design-worker/comp-impl-poc.ts --intake ~/sr-design-image-poc/wagashi-XXXXXX [--facts <shop fixture>]
+# COMP_INTAKE ok=true comp_kind=real comp_approved=true reasons=none low=none sha=<…> size=1024x1536 direction=v2 worker_commit=<…> layout_spec_present=false
+```
+
+Exit 0 the intake loaded (an approved `real` comp, or a `synthetic` one, which is never approved), 1 `COMP_NOT_APPROVED`
+(`reasons=` and `low=` name the codes and the weak criteria), 2 any other refusal (`refused=<code>`) or bad usage.
+`worker_commit` comes from the PoC's `report.json` and is report-only: a missing or malformed one prints `none` and refuses nothing.
+`--bundle` refuses the same comp too (nothing is rendered or written), and its refusal line carries the reasons after the code:
+`COMP_IMPL_REFUSED COMP_NOT_APPROVED EVAL_CRITERION_BELOW_MIN` (several reasons comma-separated, sorted, e.g.
+`COMP_IMPL_REFUSED COMP_NOT_APPROVED EVAL_CRITERION_BELOW_MIN,EVAL_TOTAL_BELOW_PASS`), exit 2. It does not print the weak criteria;
+`--intake` does (`low=`). Every other `--bundle` refusal prints the code alone (`COMP_IMPL_REFUSED <code>`), except
+`PAGE_SOURCE_REFUSED`, which likewise lists its page-source codes.
+The path is the human's private copy of the bundle, not `sr-designgen`'s home: see `design-image-poc.md`, *Viewing the result*.
 
 **Process gates, not technical ones.** `evaluation.json` (`human_confirmed`, `confirmed_by`, the scores) and the synthetic / real
 label (`report.json` `synthetic`, `evaluation.json` `comp_kind`) are written by people and Claude; the loader checks that they are
@@ -454,7 +473,7 @@ from the comp and its spec in a reviewed session, and a person looks at it next 
 ## 8. Claude's step, now and later
 
 - **Now:** a Claude Code session (a human-approved developer step). The human uploads the bundle (or points at it); Claude
-  writes `layout-spec.json` from the comp, writes `page/`, runs
+  runs `--intake` (§3) and stops unless it prints `ok=true`, then writes `layout-spec.json` from the comp, writes `page/`, runs
   `npx tsx scripts/sales-design-worker/comp-impl-poc.ts --bundle <dir> --page <dir>`, fixes failures, and shows the
   screenshots next to the comp. The human judges likeness.
 - **Later (automated):** an unattended "Claude implements the comp" step would need its own human approval. This repository's
@@ -487,6 +506,8 @@ every check's codes and numbers, `anti_template`, `similarity` (with the per-sec
 ```bash
 # synthetic fixture (renders the synthetic comp into a private scratch bundle, removed afterwards)
 npx tsx scripts/sales-design-worker/comp-impl-poc.ts --synthetic
+# a bundle's intake (before layout-spec.json is written; no Chromium, nothing written; §3)
+npx tsx scripts/sales-design-worker/comp-impl-poc.ts --intake ~/sr-design-image-poc/wagashi-XXXXXX
 # a real bundle (after the rubric passed and the human confirmed it)
 npx tsx scripts/sales-design-worker/comp-impl-poc.ts --bundle ~/sr-design-image-poc/wagashi-XXXXXX --page <page dir>
 ```

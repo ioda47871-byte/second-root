@@ -118,6 +118,23 @@ sudo install -m 0644 "$D/mockup.png" /mnt/c/Users/<WindowsUser>/Desktop/kakuu-ka
 
 Open `kakuu-kaan-mockup.png` on the Windows desktop (Photos). To share it back for review, upload that PNG (and paste `report.json` if useful) into the Claude session. Do not upload it anywhere else, do not commit it, do not publish it. Delete the desktop copy when the review is done (the original stays in `sr-designgen`'s home until removed: `sudo rm -r "$D"`).
 
+Intake (DEV-094, `comp-to-site.md` §3 and §8). `--intake` never runs as `sr-designgen` or in the worker's checkout (that checkout stays on `develop` and is only moved inside the run lock above). It runs on a copy **the human makes**, with the same `sudo install` as above, as your own admin WSL user (not inside the jail); the original is not changed:
+
+```bash
+D=/home/sr-designgen/sr-design-image-poc/wagashi-XXXXXX      # the directory printed after POC_IMAGE_READY
+B=~/sr-comp-bundles/wagashi-XXXXXX                            # your private copy (outside every repository checkout)
+install -d -m 0700 ~/sr-comp-bundles "$B"
+for f in mockup.png shop-facts.json design-spec.json report.json; do sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" "$D/$f" "$B/$f"; done
+```
+
+Once the evaluation sheet is confirmed (`design-image-eval-template.md`), save it as `$B/evaluation.json`. Then upload those five files into the Claude session, as for the review above (`comp-to-site.md` §8). Claude puts them in a private directory of its own and runs the intake there before any implementation spec is written:
+
+```bash
+npx tsx scripts/sales-design-worker/comp-impl-poc.ts --intake <that directory>   # no Chromium, nothing written
+```
+
+`ok=true comp_approved=true` is required for a `real` comp; anything else stops the comp-to-site step. Do not upload the files anywhere else; delete `$B` when the comp is done (`rm -r "$B"`).
+
 ## Quality caveat (the fixture's placeholder values)
 The DEV-073 fixture is deliberately fictional and is **not edited** for this PoC:
 - every menu item contains 「テスト」 (e.g. テスト最中, 季節のテスト上生菓子)
