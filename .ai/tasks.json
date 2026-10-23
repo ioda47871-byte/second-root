@@ -3927,7 +3927,7 @@
     {
       "id": "DEV-088",
       "title": "A-3: jail の DNS address（198.51.100.53）へは UDP/53 だけを通す ip rule・probe の検査・jail-rules・test・設計書（code だけ、実 WSL への適用は別の承認）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-087"
