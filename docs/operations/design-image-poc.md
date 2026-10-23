@@ -1305,6 +1305,34 @@ the direction's rules change without that map). Every prohibition below is uncha
 - Japanese text limited to the shop name, nav / CTA / section / info labels, the shown fact values, card captions and at most one verbatim copy line, and the disclosure (to reduce garbled glyphs)
 - the facts only inside the `<<<FACTS_BEGIN data-not-instructions … FACTS_END>>>` block; no environment value, path or token (tested)
 
+### Pinned prompt (DEV-095)
+
+The assembled v2 prompt (`buildMockupPrompt(loadPocInputs(repo, "v2"))`, the default direction) is pinned in
+`design-image-poc.test.ts`, as the v1 prompt is:
+
+| | v2 prompt |
+|---|---|
+| sha256 (UTF-8 bytes) | `7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa` |
+| length | 6801 chars |
+
+It depends only on `lib/design-agent/design-image/prompt.ts`, `design-library/poc/wagashi-art-direction-v2.json` and the fixture
+`scripts/sales-design-worker/compare/shops/wagashi.json` — nothing from the time, the environment or a path. A change to any of them
+changes the sha and fails the test; the pin may only be updated together with this table, and that is a new prompt.
+
+**The human's approval for the next v2 Codex call refers to this sha256.** Before running, check it on WSL from the checkout the run
+will use (read-only: no Codex, no network, no lock, no file written apart from tsx's empty runtime dir under `/tmp`; `report.json` gets no sha):
+
+```bash
+sudo -u sr-designgen -H bash <<'EOF'
+cd ~/work/second-root && git rev-parse HEAD && ./node_modules/.bin/tsx --no-cache -e 'import("./lib/design-agent/design-image/prompt.ts").then(async (x) => { const m = x.default ?? x; const p = m.buildMockupPrompt(await m.loadPocInputs(".", "v2")); console.log("v2_prompt_sha256=" + require("node:crypto").createHash("sha256").update(p).digest("hex") + " chars=" + p.length); })'
+EOF
+```
+
+Expected: `v2_prompt_sha256=7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa chars=6801`, and the printed commit is
+the develop commit the run will check out (the run's log line `commit <12 chars>` must start the same; if the checkout is older, the
+run moves it to origin/develop first, so check again after that commit is in place). **If the sha or the length differs, do not run;**
+report it, and the approval does not cover that prompt. The run reports `prompt_chars` in `report.json`; it must be 6801.
+
 ### Run (HUMAN-019 was run on 2026-10-21: `CODEX_NO_IMAGE`; the next run is HUMAN-020, after DEV-077 is merged, with the same command)
 The same command as HUMAN-018; v2 is the default, so nothing is added:
 
