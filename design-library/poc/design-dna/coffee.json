@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "shop_key": "coffee",
+  "status": "research_only",
+  "factual_copy": "verified_facts_only",
+  "asset_policy": "none",
+  "evidence": [
+    {
+      "id": "brand",
+      "origin": "verified_shop_fact",
+      "observation": "EXAMPLE BREW STAND is a fictional modern specialty coffee stand.",
+      "source_label": "DEV-073 coffee.json: name and industry"
+    },
+    {
+      "id": "hours",
+      "origin": "verified_shop_fact",
+      "observation": "The listed hours are 8:00–17:00 and closed days are irregular.",
+      "source_label": "DEV-073 coffee.json: hours and closed_days"
+    }
+  ],
+  "references": [
+    {
+      "id": "DR-027",
+      "url": "https://bake-jp.com/info/abitecoffee_202609launch/",
+      "scope": "public_visual_only",
+      "observed_principle": "An official brand graphic balances assertive dark lettering with limited cream space.",
+      "transferable_idea": "Use type weight and rhythm rather than its specific dots, logo or coffee branding.",
+      "rights": "analysis_only"
+    }
+  ],
+  "decisions": [
+    {
+      "part": "hero",
+      "choice": "Horizontal wordmark sits as a crisp mid-size masthead over a slim grid of opening-time information.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": [
+        "DR-027"
+      ]
+    },
+    {
+      "part": "typography",
+      "choice": "Condensed, architectural sans hierarchy with compact uppercase name, few typographic sizes and clear breathing room.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": [
+        "DR-027"
+      ]
+    },
+    {
+      "part": "palette",
+      "choice": "Ink-black over almost-white with one restrained cool sage rule; no borrowed coffee-brand browns.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": [
+        "DR-027"
+      ]
+    },
+    {
+      "part": "product_visual",
+      "choice": "No fabricated bean or shop photos; use real typographic contrast as the sole visual focus.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "section_rhythm",
+      "choice": "One highly ordered headline area, then staggered information blocks with visible baseline offsets.",
+      "rationale": "A store-specific design hypothesis supported by hours, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "hours"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "navigation",
+      "choice": "Two factual anchors: identity and operating hours; no invented product promises or transaction controls.",
+      "rationale": "A store-specific design hypothesis supported by hours, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "hours"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "mobile",
+      "choice": "Stack labels above hours, preserve unbroken readable Latin name and generous tap targets.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "implementation",
+      "choice": "Sharp CSS grid, hairline borders and a deliberate white-on-ink interaction state, no image assets.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    }
+  ]
+}
