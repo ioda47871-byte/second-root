@@ -4088,6 +4088,52 @@
         "D-2b と D-3・D-4（承認 2b）",
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-092",
+      "title": "probe.py: Linux 6.15+ が単一 port の rule に付ける FRA_DPORT_MASK=0xffff を、単一 port のときだけ受け入れる（A-3 の jail-install が WSL 6.18 で DNS_RULES_NOT_EXACT）と、backport の新 commit X2・手順の更新",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-091"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-092-probe-dport-mask",
+      "purpose": "人の報告（2026-10-23）: D-2b で fbfce3c へ移動し jail-install が JAIL_UNSAFE DNS_RULES_NOT_EXACT。D-3 の ip rule show は設計どおり、D-4 で c066618 に戻した（JAIL_OK、4×SAME）。kernel 6.18.33.2-microsoft-standard-WSL2。人の指示: netlink の属性を確かめ、他の不一致も確かめ、原因を確定し、probe.py の検証だけを最小修正（正常な 0xffff と危険な非完全 mask を区別、緩めない）、6.18 の実際の属性構造の回帰 test、独立レビュー、新 commit SHA と checksum で手順を更新、fbfce3c は再適用しない、D-0 backup と復旧済みの環境はそのまま。WSL の設定変更・jail-install・pasta 更新・Codex 実行はまだ許可されていない。",
+      "decision": "原因は Linux 6.15 の port mask（v6.18 net/core/fib_rules.c:716-718 で単一 port に dport_mask=U16_MAX、:1212-1213 で FRA_DPORT_MASK=29 を送る）。この container（6.18.44）の使い捨て namespace（unshare -rn）で、98/99 に DPORT_MASK=0xffff が付き、他に新しい属性が無いことを観測。describe_rule は FRA_DPORT_MASK を 0xffff（2 byte）かつ単一 port の FRA_DPORT_RANGE のときだけ落とし、他は dport_mask=0x…/? と書いて完全一致を失敗させる。FRA_SPORT_MASK と他の属性は未知のまま失敗。EXPECTED_RULES は不変。X2 = 679c3c214c03d0b88515e2396bd6831705e5e2d1（branch hotfix/a3-dns-on-c066618-v2、親は c066618 だけ、3 path、admin.sh・jail.properties は fbfce3c と同じ blob、probe.py は 1c310048646af9bd9a8e5caa4903d81007579c9e / sha256 4c93df7b527ace790eed81ce09da84ae09c889cd22361083e905fc9f821f29cd）。hotfix/a3-dns-on-c066618（fbfce3c）は履歴として残し、D-0b・D-2b は fbfce3c を拒む。",
+      "acceptance_criteria": [
+        "v6.18 の source（file:line）で FRA_SPORT_MASK / FRA_DPORT_MASK がいつ送られるか、他の属性（PROTOCOL・SUPPRESS_PREFIXLEN・L3MDEV・UID_RANGE・TUN_ID・FLOW・DSCP・FLOWLABEL）が jail の rule に付かないことを示す",
+        "読むだけの netlink 診断（N-1）と、承認が要る使い捨て namespace の診断（N-2、unshare --user の拒否時は sudo unshare --net）を §4.6 に置き、bash -n と stand-in で確かめる",
+        "probe.py だけを最小修正: 0xffff かつ単一 port のときだけ受け入れ、他の mask・range なし・range 上・長さ違い・SPORT_MASK は失敗",
+        "jail-dns-rules.test.ts に 6.18.44 の実 dump と組み立てた 6.18 形式の dump の回帰 test。既存 test は不変で通る",
+        "X2 が c066618 の上の 1 commit・3 path、admin.sh・jail.properties の blob が fbfce3c と同一、probe.py が dev-092 の head と同一。X2 で c066618 の test（期待どおりの 1 件の失敗）と DEV-088/092 の test を流す",
+        "§4.6 の D-0b・D-2b・D-3・D-4 を X2 の pin に更新。fbfce3c を拒み、target-sha が e525371 / fbfce3c / X2 の再実行を受け入れ、D-0 backup を保持。模擬環境で D-0b・D-2b・D-4 を流す",
+        "独立レビュー（.ai/reviews/DEV-092.md）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/jail-dns-rules.test.ts・jail.test.ts",
+        "tests/unit/ai-tasks.test.ts、npm run check:secrets",
+        "手順の block の bash -n と模擬の D-0b / D-2b / D-4"
+      ],
+      "allowed_scope": [
+        "scripts/sales-design-capture/jail/probe.py（describe_rule だけ）",
+        "tests/unit/design-agent/jail-dns-rules.test.ts（test の追加だけ）",
+        "docs/operations/passt-update-plan.md §4.6（と §0・§8 の A-3 の行）",
+        ".ai/tasks.json・.ai/blockers.md・.ai/reviews/DEV-092.md",
+        "hotfix/a3-dns-on-c066618-v2（新規、3 file だけ）"
+      ],
+      "forbidden_scope": [
+        "WSL への適用・WSL の設定変更・jail-install・pasta の更新・Codex の実行",
+        "admin.sh・jail.properties の変更、EXPECTED_RULES の意味の変更、他の検査の緩和",
+        ".github/**",
+        "force push、hotfix/a3-dns-on-c066618（fbfce3c）の変更"
+      ],
+      "human_approval_triggers": [
+        "N-2（使い捨て namespace の診断、任意）",
+        "D-0b（承認 2a）、D-2b と D-3・D-4（承認 2b）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }

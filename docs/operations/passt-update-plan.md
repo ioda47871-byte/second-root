@@ -49,7 +49,7 @@ EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python
 - リスク: jail から WSL VM の loopback 上の `10.255.255.254:853/udp` に届く（そこで何かが聞いていれば）。小さいが、今より広い。
 - 対策（安全性を緩めない方式）: jail の namespace の ip rule を「`198.51.100.53` へは UDP/53 だけ、他はすべて `prohibit`」に変え、853 は明示の `prohibit` も置く（3 行、§4.6 D-1）。
   probe に「UDP/853 と他の port が即座に `EACCES`」の確認を足す。**更新の前に**入れる（古い pasta では、届かない文書用 address へ出ていた UDP が止まるだけなので、何も壊れないことを JAIL_OK と `getent` で示せる）。更新の後もそのまま。
-  jail の変更なので別の承認（A-3）。**A-3 は方針として採用済み（2026-10-23）、code は DEV-088 で実装済み。実 WSL への適用は DEV-091 の backport（root clone の commit `c066618` に DEV-088 の 3 file だけを足した 1 commit `fbfce3c` を `jail-install`。clone を `e525371` へは動かさない。`approve` は使わない。§4.6「A-3 by backport onto `c066618`」の W-0・AW-1・D-0b・D-2b・D-3・D-4。D-0 は済み）で、別の承認。**
+  jail の変更なので別の承認（A-3）。**A-3 は方針として採用済み（2026-10-23）、code は DEV-088 で実装済み。実 WSL への適用は DEV-091 の backport（root clone の commit `c066618` に DEV-088 の 3 file だけを足した 1 commit を `jail-install`。DEV-092 以降は `X2` = `679c3c2`（probe を Linux 6.15+ の dport mask に対応）。`fbfce3c` は Linux 6.18 で `DNS_RULES_NOT_EXACT` になったので二度と適用しない。clone を `e525371` へは動かさない。`approve` は使わない。§4.6「A-3 by backport onto `c066618`」の W-0・AW-1・D-0b・D-2b・D-3・D-4。D-0 は済み）で、別の承認。**
 - 残るリスク: UDP/53 で host の resolver に届くのは今と同じ。kernel が UDP の `prohibit` に `EACCES` を返すことは kernel の source で確認したが、WSL の kernel での実測は A-3 の適用の後の D-3 で行う。
 
 **3. AppArmor・seccomp・jail のネットワーク制限の維持（§4.3〜§4.7）**
@@ -97,7 +97,7 @@ EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python
 | A-1 | 24b・24b-host | なし（読むだけの通信） | – | **済み（2026-10-22）** | `design-image-poc.md` 24b |
 | A-1b | 任意: 更新前の 24b-v2（jail・host） | なし | – | 要（A-1 と同じ種類）。必須ではない | `design-image-poc.md` 24b-v2 |
 | A-2 | passt を更新すると決める + `design-wsl-isolation.md` §6 の例外（resolute の `386b5f5-1` だけ） | 方針（docs） | はい | 要（人の判断） | – |
-| A-3 | DNS の rule を UDP/53 だけにする（方針は採用済み、code は DEV-088 で実装済み → **適用は DEV-091 の backport**: root clone の commit `c066618` に DEV-088 の 3 file だけを足した 1 commit `fbfce3c` で `admin.sh jail-install`。clone を `e525371` へ動かす D-2 は行わない） | jail-net の unit の ip rule・probe・`jail-check`。適用時に jail が数秒止まる。timer・helper・worker・cycle・Codex の code と設定は変わらない（`sr-jail-claude.service` は byte 単位で同じ） | はい（`c066618` で `jail-install`、D-4） | **適用は要（別の承認）** | §4.6「A-3 by backport onto `c066618`」（W-0・AW-1・D-0b・D-2b・D-3・D-4。D-0 は済み） |
+| A-3 | DNS の rule を UDP/53 だけにする（方針は採用済み、code は DEV-088 で実装済み → **適用は DEV-091 の backport**: root clone の commit `c066618` に DEV-088 の 3 file だけを足した 1 commit で `admin.sh jail-install`。DEV-092 以降は `X2` = `679c3c2`、`fbfce3c` は使わない。clone を `e525371` へ動かす D-2 は行わない） | jail-net の unit の ip rule・probe・`jail-check`。適用時に jail が数秒止まる。timer・helper・worker・cycle・Codex の code と設定は変わらない（`sr-jail-claude.service` は byte 単位で同じ） | はい（`c066618` で `jail-install`、D-4） | **適用は要（別の承認）** | §4.6「A-3 by backport onto `c066618`」（W-0・AW-1・D-0b・D-2b・D-3・D-4。D-0 は済み） |
 | A-4 | 窓の確認と V-0 の snapshot | `/root/sr-passt-update/` に記録の file だけ | はい（消すだけ） | 要 | S-1、W-0、V-0 |
 | A-5 | V-1 取得と検証、V-2 更新と hold、V-3a 直後の確認、成功なら V-2b。**失敗時の rollback（R-1〜R-3）を中止の手順として同時に承認** | passt の package・AppArmor の file・dpkg の hold・pasta の再起動・Claude の停止 | はい（R-1〜R-3） | 要（root、人がその場で実行） | V-1、V-2、V-3a、V-2b、R-1〜R-3 |
 | A-6 | 更新後の 24b-v2（jail・host） | なし | – | 要 | V-3b |
@@ -693,7 +693,7 @@ its rules on every start, so hand edits are not durable and are not tested.
 **Residual after A-3:** UDP/53 to the host resolver, exactly as today (DNS can still carry data out, as today; the jail
 can reach public addresses anyway).
 
-#### A-3 by backport onto `c066618` (DEV-091; replaces D-2 and D-4 above; none of it has been run)
+#### A-3 by backport onto `c066618` (DEV-091, revised by DEV-092: apply `X2`, never `fbfce3c`; replaces D-2 and D-4 above)
 
 **Decision (human, 2026-10-23).** D-0 above has been run. Its backups in `/root/sr-a3/` are kept, and the files it
 recorded are `previous-sha` = `c066618` and `target-sha` = `e525371`. **D-2 above is not run.** It would move the root
@@ -703,23 +703,200 @@ No other worker, Codex, cycle or capture-helper code, and no setting, changes. T
 working again, so this repairs the machine safely and does not redesign anything. WSL code changes, `jail-install`,
 the pasta update, stopping timers and Codex runs all need approval first. The approval points are marked below.
 
-**The backport commit `X`.**
-- `X` = `fbfce3c87abb185a4cc59d28f2a842a838ddeac0` on branch `hotfix/a3-dns-on-c066618`.
-- It is exactly one commit, and its only parent is `c066618cd6a40fe1cef57f75a71b755eea4157e8`.
-- It changes exactly these three paths. For each one, `git diff c066618 e525371 -- <file>` is byte-identical to the
-  DEV-088 diff `e525371^1..e525371`, because no other commit after `c066618` touched `scripts/sales-design-capture`.
-  The blobs at `X` therefore equal those at `e525371`:
+**What happened on WSL (human, 2026-10-23) and the fix (DEV-092).**
+- The human ran D-2b with DEV-091's commit `fbfce3c`. W-0 printed `W0_OK`, the clone moved to `fbfce3c` and the
+  sha256 pins passed. `jail-install` then failed: `JAIL_UNSAFE DNS_RULES_NOT_EXACT`.
+- In D-3, `ip rule show` listed rules 98/99/100 exactly as designed. The net unit diff was as expected, the claude unit
+  and the settings were `SAME`, the installed files were `PINNED` and the other units `UNTOUCHED`.
+- D-4 restored `c066618`: `JAIL_OK`, four `SAME`, the units active. The kernel is `6.18.33.2-microsoft-standard-WSL2`.
+- **Cause (confirmed).** Linux 6.15 added port masks to fib rules. Since then the kernel gives a **single-port** rule
+  (`dport 53`, i.e. range 53-53) the mask `0xffff` and sends it back in every dump as `FRA_DPORT_MASK` (attribute 29).
+  `probe.py` (DEV-088) did not know attribute 29, wrote it as `attr29`, and the exact-set check failed (fail closed).
+  The old rule set (no port) carries no mask, which is why `c066618`'s probe passed on the same kernel. `ip rule show`
+  of iproute2 6.1 does not print the mask, so D-3 could not show it.
+- **Source, Linux v6.18** (git.kernel.org, tag `v6.18`):
+  - `include/uapi/linux/fib_rules.h:73-74`: `FRA_SPORT_MASK` = 28, `FRA_DPORT_MASK` = 29 (`:70-72` `FRA_DSCP` 25,
+    `FRA_FLOWLABEL` 26, `FRA_FLOWLABEL_MASK` 27; `:75` `FRA_DSCP_MASK` 30). Not in v6.14's header; present in v6.15's.
+  - `net/core/fib_rules.c:716-718` (`fib_nl2rule`): with `FRA_DPORT_RANGE` and start == end, `dport_mask = U16_MAX`.
+    A range (start != end) gets no mask. `:697-699` does the same for the source port.
+  - `net/core/fib_rules.c:542-567` (`fib_nl2rule_port_mask`): an explicit mask needs a single, valid port, and the port
+    may not have bits outside the mask. So `dport 53` can only carry `0xffff`, but for example `dport 48` with mask
+    `0xfff0` (ports 48-63, which include 53 and 55) is accepted.
+  - `net/core/fib_rules.c:1206-1214` (`fib_nl_fill_rule`): `FRA_SPORT_RANGE`, `FRA_SPORT_MASK` (if non-zero),
+    `FRA_DPORT_RANGE`, `FRA_DPORT_MASK` (if non-zero), `FRA_IP_PROTO`. `:1162-1172`: `FRA_TABLE`,
+    `FRA_SUPPRESS_PREFIXLEN` and `FRA_PROTOCOL` always. `:1192-1205`: `FRA_PRIORITY`, `FRA_FWMARK`/`FWMASK`,
+    `FRA_GOTO`, `FRA_TUN_ID`, `FRA_L3MDEV` and `FRA_UID_RANGE` only when set. `:1217-1218`: `FRA_SUPPRESS_IFGROUP` only
+    when not -1.
+  - `include/net/fib_rules.h:153-162` (`fib_rule_port_match`): with a mask, a port matches when
+    `(start ^ port) & mask == 0`. So `0xffff` on 53-53 is exactly "port 53", the same match as before 6.15.
+  - `net/ipv4/fib_rules.c:421-454` (`fib4_rule_fill`): `FRA_DSCP` and `FRA_DSCP_MASK` only for a rule made with
+    `FRA_DSCP`, `FRA_DST`/`FRA_SRC` only with a prefix length, and `FRA_FLOW` only when set. `:278`: IPv4 refuses
+    `FRA_FLOWLABEL*` (IPv6 only).
+  - So the jail's six rules on 6.18 carry nothing new but `FRA_DPORT_MASK` = `0xffff` on 98 and 99.
+- **Observed here** (Linux 6.18.44, a throw-away `unshare -rn` namespace with the three `ip rule add` lines): rules 98
+  and 99 carry `DPORT_RANGE` 853-853 / 53-53 followed by `DPORT_MASK`=`0xffff`. Rules 0, 100, 32766 and 32767, and the
+  old TCP rule, carry only `TABLE`, `SUPPRESS_PREFIXLEN`=-1, `PROTOCOL`, `PRIORITY` (not for 0), `IP_PROTO` and `DST`
+  as before. No other attribute appears. A `dport 53-853` rule carries no mask; a `sport 53` rule carries
+  `SPORT_MASK`. The kernel refused masks `0xfff0`, `0xff00` and `0x0000` on port 53 (`EINVAL`) and accepted
+  `dport 48` with mask `0xfff0`. The DEV-088 probe failed the designed set with `attr29`, and the DEV-092 probe passes it.
+- **The fix, in `probe.py` only.** `describe_rule` drops `FRA_DPORT_MASK` **only** when it is exactly `0xffff` (2
+  bytes) and comes with a single-port `FRA_DPORT_RANGE` (start == end). The rule then reads exactly as before 6.15. Any
+  other mask, a mask without a port, a mask on a range, or a mask of the wrong size is written out
+  (`dport_mask=0x…` / `dport_mask=?`), so the exact-set check fails.
+  - `FRA_SPORT_MASK`, and every other attribute, stays unknown and fails. The jail's rules have no source port.
+  - `EXPECTED_RULES` and every other check are unchanged.
+  - `jail-dns-rules.test.ts` adds the real 6.18.44 dump (designed set and the old set) and built 6.18-format dumps:
+    masks `0xfff0`, `0x0000`, `0xff00` and 48/`0xfff0`, a mask without a range, a mask on 53-853, a short or long mask,
+    a repeated mask, and `SPORT_MASK`. The old-format dumps (before 6.15) keep passing.
 
-| file (`scripts/sales-design-capture/…`) | blob at `X` = at `e525371` | sha256 at `X` | blob at `c066618` |
-|---|---|---|---|
-| `admin.sh` (mode 100755) | `f02a416e78a223dd65935cb0bcd8e61370474812` | `097494c4654dec2a68470db793d3a72f03875021f99fba1627107e03f5435551` | `414ed1fb17554ad3b4638ad674fcac9b872cf2ed` |
-| `jail/jail.properties` | `1b932502dffe9446be1f9bbb1caaf09d4f9ae7b4` | `9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9` | `ed780fbb0862255b4b45a0f82307ebd9cf43e209` |
-| `jail/probe.py` | `7de02da28637134a7c5999f7d8350af131dd3755` | `411b53e433512628ba18fad1b3b011e35669044ed60d753b32b28a9d4e971b54` | `fe4a08bea7ddf8f7c1294c0550529d50fe17e904` |
+**N-1 (read only; optional).** It prints the jail namespace's rules as the kernel sends them: every header field and
+every attribute, with an `UNKNOWN(type,len)` line for anything it does not name. Run it any time, for example after
+D-2b or D-4. While the jail is at `c066618` it can only show the old rule set (no port, so no mask):
+
+```bash
+# N-1 (DEV-092): read only. The jail namespace's IPv4 ip rules exactly as the kernel sends them over netlink
+# (header fields and every attribute). Changes nothing; rule attributes are not secret.
+sudo ip netns exec srjail python3 -I - <<'PY'
+import socket, struct, time
+NAMES = {1: "DST", 2: "SRC", 3: "IIFNAME", 4: "GOTO", 6: "PRIORITY", 10: "FWMARK", 11: "FLOW", 12: "TUN_ID",
+         13: "SUPPRESS_IFGROUP", 14: "SUPPRESS_PREFIXLEN", 15: "TABLE", 16: "FWMASK", 17: "OIFNAME", 19: "L3MDEV",
+         20: "UID_RANGE", 21: "PROTOCOL", 22: "IP_PROTO", 23: "SPORT_RANGE", 24: "DPORT_RANGE", 25: "DSCP",
+         26: "FLOWLABEL", 27: "FLOWLABEL_MASK", 28: "SPORT_MASK", 29: "DPORT_MASK", 30: "DSCP_MASK"}
+def value(t, v):
+    if t in (6, 15) and len(v) == 4: return "%d" % struct.unpack("=I", v)[0]
+    if t == 14 and len(v) == 4: return "%d" % struct.unpack("=i", v)[0]
+    if t in (19, 21, 22, 25) and len(v) == 1: return "%d" % v[0]
+    if t in (23, 24) and len(v) == 4: return "%d-%d" % struct.unpack("=HH", v)
+    if t in (28, 29) and len(v) == 2: return "0x%04x" % struct.unpack("=H", v)[0]
+    if t in (1, 2) and len(v) == 4: return socket.inet_ntoa(v)
+    return "len%d" % len(v)
+s = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 0)
+s.settimeout(2)
+s.bind((0, 0))
+seq = int(time.time()) & 0x7FFFFFFF
+s.sendto(struct.pack("=IHHII", 28, 34, 0x301, seq, 0) + struct.pack("=8BI", socket.AF_INET, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0))
+done = False
+while not done:
+    data = s.recv(65536)
+    off = 0
+    while off + 16 <= len(data):
+        length, mtype, _f, mseq, _p = struct.unpack_from("=IHHII", data, off)
+        if length < 16 or mseq != seq: raise SystemExit("NL_BAD_MESSAGE")
+        if mtype == 3: done = True; break
+        if mtype != 32: raise SystemExit("NL_UNEXPECTED type=%d" % mtype)
+        p = data[off + 16: off + length]
+        fam, dl, sl, tos, tbl, _r1, _r2, act, flg = struct.unpack_from("=8BI", p, 0)
+        attrs, a = [], 12
+        while a + 4 <= len(p):
+            alen, at = struct.unpack_from("=HH", p, a)
+            if alen < 4: raise SystemExit("NL_BAD_ATTRIBUTE")
+            t, v = at & 0x3FFF, p[a + 4: a + alen]
+            attrs.append("%s(%d,len=%d)=%s" % (NAMES[t], t, len(v), value(t, v)) if t in NAMES else "UNKNOWN(%d,len=%d)" % (t, len(v)))
+            a += (alen + 3) & ~3
+        prio = next((x.rsplit("=", 1)[1] for x in attrs if x.startswith("PRIORITY(")), "0")
+        print("RULE prio=%s family=%d dst_len=%d src_len=%d tos=%d table=%d action=%d flags=0x%x" % (prio, fam, dl, sl, tos, tbl, act, flg))
+        for x in attrs: print("    " + x)
+        off += (length + 3) & ~3
+s.close()
+print("NL_DONE")
+PY
+```
+
+**N-2 (OPTIONAL; needs the human's approval; makes no change on the machine).** This shows the new rules' attributes
+without touching the jail. It runs the same dump in a **throw-away** network namespace that holds the three DEV-088
+rules:
+- First it tries `unshare --user --map-root-user --net`, which needs no sudo.
+- On Ubuntu 24.04, AppArmor's `kernel.apparmor_restrict_unprivileged_userns=1` (if AppArmor runs on this WSL) can
+  refuse that, or refuse the `ip rule add` inside it. The block then falls back to `sudo unshare --net`.
+- Either namespace has only `lo`, is not `srjail`, is not saved under `/run/netns`, and ends with the command.
+
+```bash
+# N-2 (DEV-092, OPTIONAL: run only with the human's approval). The same dump in a THROW-AWAY network namespace
+# holding the three DEV-088 rules. The namespace has no interface but lo, is not the jail's (srjail is not touched),
+# is not saved under /run/netns and disappears when the command ends. Nothing on the machine changes.
+echo "info apparmor_restrict_unprivileged_userns=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo absent) unprivileged_userns_clone=$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo absent)"
+N2_PY="$(cat <<'PY'
+import socket, struct, time
+NAMES = {1: "DST", 2: "SRC", 3: "IIFNAME", 4: "GOTO", 6: "PRIORITY", 10: "FWMARK", 11: "FLOW", 12: "TUN_ID",
+         13: "SUPPRESS_IFGROUP", 14: "SUPPRESS_PREFIXLEN", 15: "TABLE", 16: "FWMASK", 17: "OIFNAME", 19: "L3MDEV",
+         20: "UID_RANGE", 21: "PROTOCOL", 22: "IP_PROTO", 23: "SPORT_RANGE", 24: "DPORT_RANGE", 25: "DSCP",
+         26: "FLOWLABEL", 27: "FLOWLABEL_MASK", 28: "SPORT_MASK", 29: "DPORT_MASK", 30: "DSCP_MASK"}
+def value(t, v):
+    if t in (6, 15) and len(v) == 4: return "%d" % struct.unpack("=I", v)[0]
+    if t == 14 and len(v) == 4: return "%d" % struct.unpack("=i", v)[0]
+    if t in (19, 21, 22, 25) and len(v) == 1: return "%d" % v[0]
+    if t in (23, 24) and len(v) == 4: return "%d-%d" % struct.unpack("=HH", v)
+    if t in (28, 29) and len(v) == 2: return "0x%04x" % struct.unpack("=H", v)[0]
+    if t in (1, 2) and len(v) == 4: return socket.inet_ntoa(v)
+    return "len%d" % len(v)
+s = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 0)
+s.settimeout(2)
+s.bind((0, 0))
+seq = int(time.time()) & 0x7FFFFFFF
+s.sendto(struct.pack("=IHHII", 28, 34, 0x301, seq, 0) + struct.pack("=8BI", socket.AF_INET, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0))
+done = False
+while not done:
+    data = s.recv(65536)
+    off = 0
+    while off + 16 <= len(data):
+        length, mtype, _f, mseq, _p = struct.unpack_from("=IHHII", data, off)
+        if length < 16 or mseq != seq: raise SystemExit("NL_BAD_MESSAGE")
+        if mtype == 3: done = True; break
+        if mtype != 32: raise SystemExit("NL_UNEXPECTED type=%d" % mtype)
+        p = data[off + 16: off + length]
+        fam, dl, sl, tos, tbl, _r1, _r2, act, flg = struct.unpack_from("=8BI", p, 0)
+        attrs, a = [], 12
+        while a + 4 <= len(p):
+            alen, at = struct.unpack_from("=HH", p, a)
+            if alen < 4: raise SystemExit("NL_BAD_ATTRIBUTE")
+            t, v = at & 0x3FFF, p[a + 4: a + alen]
+            attrs.append("%s(%d,len=%d)=%s" % (NAMES[t], t, len(v), value(t, v)) if t in NAMES else "UNKNOWN(%d,len=%d)" % (t, len(v)))
+            a += (alen + 3) & ~3
+        prio = next((x.rsplit("=", 1)[1] for x in attrs if x.startswith("PRIORITY(")), "0")
+        print("RULE prio=%s family=%d dst_len=%d src_len=%d tos=%d table=%d action=%d flags=0x%x" % (prio, fam, dl, sl, tos, tbl, act, flg))
+        for x in attrs: print("    " + x)
+        off += (length + 3) & ~3
+s.close()
+print("NL_DONE")
+PY
+)"
+N2_RUN='ip rule add to 198.51.100.53/32 prohibit priority 100 && ip rule add to 198.51.100.53/32 ipproto udp dport 853 prohibit priority 98 && ip rule add to 198.51.100.53/32 ipproto udp dport 53 lookup main priority 99 && echo "N2 namespace=$(readlink /proc/self/ns/net)" && python3 -I -c "$N2_PY"'
+# 1st try: an unprivileged user + network namespace owned by this user (no sudo at all)
+if ! N2_PY="$N2_PY" unshare --user --map-root-user --net sh -c "$N2_RUN"; then
+  # AppArmor (kernel.apparmor_restrict_unprivileged_userns=1, Ubuntu 24.04's default) or the kernel can refuse that:
+  # then a network namespace made by root, equally throw-away (not bind-mounted, gone when sh exits)
+  echo "N2: the unprivileged namespace was refused; using sudo unshare --net (also throw-away)"
+  sudo env N2_PY="$N2_PY" unshare --net sh -c "$N2_RUN"
+fi
+echo "N2 host namespace=$(readlink /proc/self/ns/net) (must differ from the N2 namespace line above)"
+unset N2_PY N2_RUN
+```
+
+Expected from N-2 on the WSL kernel: the same as observed here on 6.18.44. Rules 98 and 99 carry `DPORT_RANGE(24,len=4)`
+853-853 / 53-53 and `DPORT_MASK(29,len=2)=0xffff`; no line is `UNKNOWN`; and the `N2 namespace` differs from the
+`N2 host namespace`. Any other attribute on rules 0, 98, 99, 100, 32766 or 32767 means a further mismatch: **stop and
+paste the output.** Both blocks were checked with `bash -n` and run here: N-2 directly, and with a stand-in
+`unshare` that refuses `--user` (the sudo fallback); N-1 with a stand-in for `sudo ip netns exec`.
+
+**The backport commit `X2` (DEV-092). `fbfce3c` (DEV-091's `X`) must never be applied again.**
+- `X2` = `679c3c214c03d0b88515e2396bd6831705e5e2d1` on branch `hotfix/a3-dns-on-c066618-v2`.
+- It is exactly one commit, and its only parent is `c066618cd6a40fe1cef57f75a71b755eea4157e8`.
+- It changes exactly the same three paths as `fbfce3c`. `admin.sh` and `jail.properties` are DEV-088's blobs,
+  unchanged (the same at `fbfce3c` and `e525371`). `probe.py` is DEV-092's, byte-identical to `develop`'s after
+  DEV-092 (feature branch commit `c7715fa`). `git diff --stat c066618 X2`: 3 files, 202 insertions, 30 deletions.
+
+| file (`scripts/sales-design-capture/…`) | blob at `X2` | sha256 at `X2` | blob at `fbfce3c` / `e525371` | blob at `c066618` |
+|---|---|---|---|---|
+| `admin.sh` (mode 100755) | `f02a416e78a223dd65935cb0bcd8e61370474812` | `097494c4654dec2a68470db793d3a72f03875021f99fba1627107e03f5435551` | the same | `414ed1fb17554ad3b4638ad674fcac9b872cf2ed` |
+| `jail/jail.properties` | `1b932502dffe9446be1f9bbb1caaf09d4f9ae7b4` | `9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9` | the same | `ed780fbb0862255b4b45a0f82307ebd9cf43e209` |
+| `jail/probe.py` | `1c310048646af9bd9a8e5caa4903d81007579c9e` | `4c93df7b527ace790eed81ce09da84ae09c889cd22361083e905fc9f821f29cd` | `7de02da28637134a7c5999f7d8350af131dd3755` (sha256 `411b53e4…1b54`, fails on Linux ≥ 6.15) | `fe4a08bea7ddf8f7c1294c0550529d50fe17e904` |
 
 The target is pinned by the commit id, the three blob ids and the sha256 of each file, and D-0b checks all three.
-`.gitattributes` (`eol=lf`) makes the checked-out bytes equal the blob. The commit is not GPG-signed. Keep the branch:
-it is not reachable from `develop`, and the WSL clone fetches it from there. Draft PR #106 (`base/wsl-c066618` ←
-the hotfix branch, **never merged**) exists only so that CI runs on `X` with `c066618`'s own workflow and tests.
+`.gitattributes` (`eol=lf`) makes the checked-out bytes equal the blob. The commit is not GPG-signed. Keep both
+branches: `hotfix/a3-dns-on-c066618` (`fbfce3c`) stays as history and is never checked out again. D-0b stops if `X` is
+`fbfce3c`, and D-2b only checks out the commit D-0b recorded. Neither branch is reachable from `develop`; the WSL
+clone fetches `hotfix/a3-dns-on-c066618-v2` only. Draft PR #106 (`base/wsl-c066618` ← the old hotfix branch,
+**never merged**) ran CI on `fbfce3c`.
 
 **Compatibility with the old code (checked here; nothing run on WSL).**
 - Tests at `X`, against `c066618`'s own tests, cover every test that reads `admin.sh`, `probe.py` or
@@ -730,6 +907,10 @@ the hotfix branch, **never merged**) exists only so that CI runs on `X` with `c0
 - DEV-088's tests, copied from `develop` without being committed, pass against `X`: `jail-dns-rules.test.ts` 6/6 and
   the updated `jail.test.ts` 8/8. All of `tests/unit/design-agent/` with `design-worker-cycle.test.ts` gives 42 files,
   649 passed and 16 skipped.
+- **At `X2` (DEV-092), the same runs:** `c066618`'s `jail.test.ts`, `design-worker-cycle.test.ts`, `host-check.test.ts`
+  and `cross-user.test.ts` give 95 passed, 6 skipped (cross-user, no root) and the same single expected failure.
+  DEV-092's `jail-dns-rules.test.ts` (7/7) and DEV-088's `jail.test.ts` (8/8), copied without being committed, pass.
+  The two units are as at `fbfce3c`, since `admin.sh` and `jail.properties` are the same blobs.
 - **The units.** Each commit's `jail_install` was run with stand-ins and both units diffed:
   - `sr-jail-claude.service` is **byte-identical** between `c066618` and `X`. Its settings come from
     `jail.properties` without comment lines, and DEV-088 changed comments only there.
@@ -760,8 +941,9 @@ the hotfix branch, **never merged**) exists only so that CI runs on `X` with `c0
 - **Drift warning.** While the clone is at `X`:
   - Do not run `approve` or `install`. `approve <sha>` needs the clone at `<sha>` and then re-runs `jail_install`, so
     approving any commit without DEV-088 (for example `c066618`) silently restores the old rule and the old probe.
-  - Any later commit that contains DEV-088 (on `develop`, at or after `e525371`) has the same three blobs, so a later
-    reviewed move of the clone keeps A-3.
+  - Any later commit on `develop` that contains DEV-092 has the same three blobs as `X2`, so a later reviewed move of
+    the clone keeps A-3. Commits from `e525371` up to before DEV-092 carry the old probe (`7de02da…`), which fails on
+    Linux ≥ 6.15 just as `fbfce3c` did.
 
 **`sr-claude-auth-watch.timer`.** No file in this repository defines it. The human's read-only check found that its
 script mentions the design user, `admin.sh` and shell delegation. W-0 treats it as BLOCKING by name (§5.0, DEV-090):
@@ -880,7 +1062,7 @@ output.
 |---|---|---|---|
 | W-0 | the canonical window check in §5.0 (DEV-090, PR #105); go on only when the last line is `W0_OK` | nothing | read only |
 | AW-1 | what `sr-claude-auth-watch` runs, as tokens | nothing | read only |
-| D-0b | fetches only the hotfix branch and verifies `X`, its parent, the three paths, the blobs and the sha256. Checks that the machine is still in `c066618`'s installed state and matches the D-0 backups, records `target-sha` = `X` (the old target is kept in `target-sha.e525371`) and snapshots the helper, design and auth-watch units | nothing (new files only in `/root/sr-a3/`) | **approval 2a**: run D-0b. The human approves its printed 3-file diff stat |
+| D-0b | fetches only the `-v2` hotfix branch and verifies `X2`, its parent, the three paths, the blobs and the sha256. Checks that the machine is still in `c066618`'s installed state (true again after D-4) and matches the D-0 backups, records `target-sha` = `X2` (earlier targets are kept in `target-sha.e525371` and `target-sha.fbfce3c`) and snapshots the helper, design and auth-watch units | nothing (new files only in `/root/sr-a3/`) | **approval 2a**: run D-0b. The human approves its printed 3-file diff stat |
 | D-2b | W-0 again (`W0_OK`), then checks out `X` (clean, exactly the 3 paths against `c066618`) and runs `jail-install` | `sr-jail-net` restarts, so every jail unit stops for a few seconds. `sr-jail-claude` starts again by itself if enabled. A running `sr-jail-run-*` job would be cut, which is why W-0 checks first. `cycle.sh` and all worker, helper and Codex code stay at `c066618`'s content | **approval 2b (required)**, together with D-3 and D-4 |
 | D-3 | verify | nothing | included in 2b |
 | D-4 | the clone back to `c066618`, `jail-install`, `cmp` against the D-0 backups | the same few seconds | included in 2b (abort path) |
@@ -891,43 +1073,57 @@ D-2b runs W-0 itself as its first step and stops on anything other than `W0_OK`,
 shell first (that defines `sr_w0`).
 
 **D-0b (approval 2a; read only, plus new files in `/root/sr-a3/`).** It reuses the D-0 backups and does not redo
-them:
+them. **Revised by DEV-092; run this version, not DEV-091's.** On WSL today `target-sha` holds `fbfce3c`, from
+DEV-091's D-0b, and the clone is back at `c066618` after D-4. This D-0b accepts `e525371`, `fbfce3c` or `X2` as the
+previous `target-sha` and then records `X2`. It keeps `fbfce3c` in `target-sha.fbfce3c` and the first `untouched`
+snapshot in `untouched.before.fbfce3c`. The D-0 backups (`previous-sha`, `rules.before`, `before/*`,
+`target-sha.e525371`) are only read. After D-4's four `SAME`, its installed-state checks hold again: the four files
+are `c066618`'s, the net unit has the single old rule, and the clone is at `c066618` and clean:
 
 ```bash
-# D-0b (DEV-091): read only, plus files in /root/sr-a3/. Reuses the D-0 backups; does not redo them.
-X=fbfce3c87abb185a4cc59d28f2a842a838ddeac0
+# D-0b (DEV-091, revised by DEV-092): read only, plus files in /root/sr-a3/. Reuses the D-0 backups; does not redo them.
+X=679c3c214c03d0b88515e2396bd6831705e5e2d1
 BASE=c066618cd6a40fe1cef57f75a71b755eea4157e8
 OLD_TARGET=e525371c4f768e24889954652d3f01241d8a6627
+BAD_X=fbfce3c87abb185a4cc59d28f2a842a838ddeac0   # DEV-091's X: failed on Linux >= 6.15 (DNS_RULES_NOT_EXACT). Never apply it.
+BR=hotfix/a3-dns-on-c066618-v2
 C=/root/sr-capture-admin
 P=scripts/sales-design-capture
 D0B=OK
 d0b_stop() { echo "D0B_STOP: $*"; D0B=STOP; }
+[ "$X" != "$BAD_X" ] || d0b_stop "X is $BAD_X, which must never be applied"
 for f in previous-sha target-sha rules.before before/sr-jail-net.service before/sr-jail-claude.service before/jail.properties before/probe.py; do
   sudo test -s "/root/sr-a3/$f" || d0b_stop "missing D-0 file /root/sr-a3/$f"
 done
 [ "$(sudo cat /root/sr-a3/previous-sha 2>/dev/null)" = "$BASE" ] || d0b_stop "previous-sha is not $BASE"
-case "$(sudo cat /root/sr-a3/target-sha 2>/dev/null)" in "$OLD_TARGET"|"$X") ;; *) d0b_stop "target-sha is neither $OLD_TARGET nor $X" ;; esac
-# the fetch writes the remote-tracking ref origin/hotfix/a3-dns-on-c066618 and its objects into the clone's .git (not the working tree)
-sudo git -C "$C" fetch -q origin refs/heads/hotfix/a3-dns-on-c066618:refs/remotes/origin/hotfix/a3-dns-on-c066618 || d0b_stop "fetch of the hotfix branch failed"
+# a previous run: D-0 wrote e525371; DEV-091's D-0b wrote fbfce3c (then D-2b failed and D-4 restored c066618); a re-run of this block wrote X
+PREV_TARGET="$(sudo cat /root/sr-a3/target-sha 2>/dev/null)"
+case "$PREV_TARGET" in "$OLD_TARGET"|"$BAD_X"|"$X") echo "info previous target-sha=$PREV_TARGET" ;; *) d0b_stop "target-sha is none of $OLD_TARGET, $BAD_X, $X" ;; esac
+# the fetch writes the remote-tracking ref origin/$BR and its objects into the clone's .git (not the working tree)
+sudo git -C "$C" fetch -q origin "refs/heads/$BR:refs/remotes/origin/$BR" || d0b_stop "fetch of $BR failed"
 echo "info core.autocrlf=$(sudo git -C "$C" config --get core.autocrlf || echo unset)"
 [ "$(sudo git -C "$C" rev-parse HEAD)" = "$BASE" ] || d0b_stop "the clone is not at $BASE"
 [ -z "$(sudo git -C "$C" status --porcelain --untracked-files=normal)" ] || d0b_stop "the clone is not clean"
-[ "$(sudo git -C "$C" rev-parse -q --verify refs/remotes/origin/hotfix/a3-dns-on-c066618)" = "$X" ] || d0b_stop "the hotfix branch is not at $X"
+[ "$(sudo git -C "$C" rev-parse -q --verify "refs/remotes/origin/$BR")" = "$X" ] || d0b_stop "$BR is not at $X"
 [ "$(sudo git -C "$C" rev-parse "$X^@" 2>/dev/null)" = "$BASE" ] || d0b_stop "X's only parent is not $BASE"
 [ "$(sudo git -C "$C" diff --name-only "$BASE" "$X")" = "$(printf '%s\n' "$P/admin.sh" "$P/jail/jail.properties" "$P/jail/probe.py")" ] || d0b_stop "X changes other files than the three"
-for e in "admin.sh f02a416e78a223dd65935cb0bcd8e61370474812 097494c4654dec2a68470db793d3a72f03875021f99fba1627107e03f5435551" \
-         "jail/jail.properties 1b932502dffe9446be1f9bbb1caaf09d4f9ae7b4 9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9" \
-         "jail/probe.py 7de02da28637134a7c5999f7d8350af131dd3755 411b53e433512628ba18fad1b3b011e35669044ed60d753b32b28a9d4e971b54"; do
+# <file> <blob at X> <sha256 at X> <same blob at e525371: yes|no>
+for e in "admin.sh f02a416e78a223dd65935cb0bcd8e61370474812 097494c4654dec2a68470db793d3a72f03875021f99fba1627107e03f5435551 yes" \
+         "jail/jail.properties 1b932502dffe9446be1f9bbb1caaf09d4f9ae7b4 9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9 yes" \
+         "jail/probe.py 1c310048646af9bd9a8e5caa4903d81007579c9e 4c93df7b527ace790eed81ce09da84ae09c889cd22361083e905fc9f821f29cd no"; do
   set -- $e
   [ "$(sudo git -C "$C" rev-parse "$X:$P/$1")" = "$2" ] || d0b_stop "$1: blob at X is not $2"
-  [ "$(sudo git -C "$C" rev-parse "$OLD_TARGET:$P/$1" 2>/dev/null)" = "$2" ] || d0b_stop "$1: blob at $OLD_TARGET is not $2"
+  if [ "$4" = yes ]; then
+    [ "$(sudo git -C "$C" rev-parse "$OLD_TARGET:$P/$1" 2>/dev/null)" = "$2" ] || d0b_stop "$1: blob at $OLD_TARGET is not $2"
+  fi
   [ "$(sudo git -C "$C" show "$X:$P/$1" | sha256sum | cut -d' ' -f1)" = "$3" ] || d0b_stop "$1: sha256 is not $3"
 done
 set --
-# the machine is in the state c066618 installs (so D-4 restores it exactly)
+# the machine is in the state c066618 installs (so D-4 restores it exactly); D-4 of 2026-10-23 restored it (four SAME)
 [ "$(sudo git -C "$C" hash-object --no-filters /usr/local/lib/sr-jail/probe.py)" = fe4a08bea7ddf8f7c1294c0550529d50fe17e904 ] || d0b_stop "installed probe.py is not c066618's"
 [ "$(sudo git -C "$C" hash-object --no-filters /usr/local/lib/sr-jail/jail.properties)" = ed780fbb0862255b4b45a0f82307ebd9cf43e209 ] || d0b_stop "installed jail.properties is not c066618's"
 sudo cmp -s /root/sr-a3/before/probe.py /usr/local/lib/sr-jail/probe.py || d0b_stop "probe.py changed since D-0"
+sudo cmp -s /root/sr-a3/before/jail.properties /usr/local/lib/sr-jail/jail.properties || d0b_stop "jail.properties changed since D-0"
 for u in sr-jail-net.service sr-jail-claude.service; do sudo cmp -s "/root/sr-a3/before/$u" "/etc/systemd/system/$u" || d0b_stop "$u changed since D-0"; done
 [ "$(sudo grep -c ' rule add ' /etc/systemd/system/sr-jail-net.service)" = 1 ] && sudo grep -qE ' rule add to 198\.51\.100\.53/32 ipproto tcp prohibit priority 100$' /etc/systemd/system/sr-jail-net.service || d0b_stop "sr-jail-net.service does not have exactly the old single rule"
 # the default gateway, derived exactly as jail_props does (identical at c066618 and X), must still be the one in the
@@ -936,10 +1132,14 @@ GW_NOW="$(for gw in $(awk 'NR > 1 && $2 == "00000000" { print $3 }' /proc/net/ro
 GW_UNIT="$(sudo grep -E '^IPAddressDeny=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/32$' /etc/systemd/system/sr-jail-claude.service | sort)"
 [ "$GW_NOW" = "$GW_UNIT" ] || d0b_stop "gateway changed since the last jail-install (now: ${GW_NOW:-none}; unit: ${GW_UNIT:-none}) - a separate decision is needed, do not go on"
 [ "$(sudo sed -n 3p /root/sr-a3/rules.before)" = "100: from all to 198.51.100.53 ipproto tcp prohibit" ] || d0b_stop "rules.before is not the expected 'before' set"
-echo "== the backport, X against the clone's commit =="
+echo "== the backport, X2 against the clone's commit =="
 sudo git -C "$C" --no-pager diff --stat "$BASE" "$X"
 if [ "$D0B" = OK ]; then
   sudo test -e /root/sr-a3/target-sha.e525371 || echo "$OLD_TARGET" | sudo tee /root/sr-a3/target-sha.e525371 >/dev/null
+  if [ "$PREV_TARGET" = "$BAD_X" ]; then
+    sudo test -e /root/sr-a3/target-sha.fbfce3c || echo "$BAD_X" | sudo tee /root/sr-a3/target-sha.fbfce3c >/dev/null
+    sudo test -e /root/sr-a3/untouched.before && ! sudo test -e /root/sr-a3/untouched.before.fbfce3c && sudo cp -p /root/sr-a3/untouched.before /root/sr-a3/untouched.before.fbfce3c
+  fi
   echo "$X" | sudo tee /root/sr-a3/target-sha >/dev/null
   sr_a3_untouched() {
     local u p
@@ -953,6 +1153,7 @@ if [ "$D0B" = OK ]; then
     echo "approved-sha $(sudo cat /home/sr-igcapture/.config/sr-capture/approved-sha 2>/dev/null || echo none)"
   }
   sr_a3_untouched | sudo tee /root/sr-a3/untouched.before
+  sudo test -e /root/sr-a3/untouched.before.fbfce3c && { sudo diff /root/sr-a3/untouched.before.fbfce3c /root/sr-a3/untouched.before >/dev/null && echo "info untouched: same as before the fbfce3c attempt" || echo "info untouched: differs from before the fbfce3c attempt (report the lines above)"; }
   echo "D0B_OK target-sha=$(sudo cat /root/sr-a3/target-sha) previous-sha=$(sudo cat /root/sr-a3/previous-sha)"
 else
   echo "D0B_STOP: nothing recorded; report the lines above"
@@ -966,11 +1167,12 @@ can change after a reboot. D-0b derives it the same way and requires it to equal
 in D-4, at `c066618`) would then change `sr-jail-claude.service` as well, so neither D-3's `SAME` nor D-4's `cmp`
 would hold. That needs a separate decision (for example, a reviewed re-install with the new gateway); do not run
 D-2b. `info core.autocrlf=…` is information only (expected `unset`; `.gitattributes` pins LF anyway, and the sha256
-checks catch any difference). The fetch writes only the remote-tracking ref `origin/hotfix/a3-dns-on-c066618` and its
+checks catch any difference). The fetch writes only the remote-tracking ref `origin/hotfix/a3-dns-on-c066618-v2` and its
 objects into the clone's `.git`; the working tree does not move.
 
-Go on only when the output has no `D0B_STOP` line and ends with `D0B_OK target-sha=fbfce3c… previous-sha=c066618…`.
-The diff stat must list exactly the three files, with 194 insertions and 30 deletions. The human approves exactly
+Go on only when the output has no `D0B_STOP` line and ends with `D0B_OK target-sha=679c3c2… previous-sha=c066618…`.
+The diff stat must list exactly the three files, with 202 insertions and 30 deletions. `info untouched: same as before
+the fbfce3c attempt` is expected; on `differs`, report the lines. The human approves exactly
 this. Re-running D-0b before D-2b is safe. **If the machine rebooted between D-0b and D-2b, run D-0b again** (the
 gateway check).
 
@@ -981,8 +1183,9 @@ gateway check).
    unless that run's last line is `W0_OK`:
 
 ```bash
-# D-2b (DEV-091, approval 2b): only right after W-0 printed W0_OK. Moves the root clone to X (the 3 files only) and installs the jail.
-X=fbfce3c87abb185a4cc59d28f2a842a838ddeac0
+# D-2b (DEV-091, revised by DEV-092, approval 2b): only right after W-0 printed W0_OK. Moves the root clone to X2 (the 3 files only) and installs the jail.
+X=679c3c214c03d0b88515e2396bd6831705e5e2d1
+BAD_X=fbfce3c87abb185a4cc59d28f2a842a838ddeac0   # never apply
 BASE=c066618cd6a40fe1cef57f75a71b755eea4157e8
 C=/root/sr-capture-admin
 P=scripts/sales-design-capture
@@ -990,13 +1193,15 @@ D2B_INSTALL=no
 W0_LAST="$(declare -f sr_w0 >/dev/null && sudo bash -c "$(declare -f sr_w0); sr_w0" | tee /dev/stderr | tail -n 1)"
 if [ "$W0_LAST" != W0_OK ]; then
   echo "D2B_STOP: W-0 did not print W0_OK right before D-2b (paste the W-0 block from §5.0 first; on W0_HOLD wait)"
+elif [ "$X" = "$BAD_X" ] || [ "$(sudo cat /root/sr-a3/target-sha 2>/dev/null)" = "$BAD_X" ]; then
+  echo "D2B_STOP: $BAD_X must never be applied; run the DEV-092 D-0b first (it records X2)"
 elif [ "$(sudo cat /root/sr-a3/target-sha 2>/dev/null)" = "$X" ] && [ "$(sudo git -C "$C" rev-parse HEAD)" = "$BASE" ]; then
   sudo git -C "$C" checkout -q --detach "$X" \
     && [ "$(sudo git -C "$C" rev-parse HEAD)" = "$X" ] \
     && [ -z "$(sudo git -C "$C" status --porcelain --untracked-files=normal)" ] \
     && [ "$(sudo git -C "$C" diff --name-only "$BASE" HEAD)" = "$(printf '%s\n' "$P/admin.sh" "$P/jail/jail.properties" "$P/jail/probe.py")" ] \
-    && [ "$(sudo sha256sum "$C/$P/admin.sh" "$C/$P/jail/jail.properties" "$C/$P/jail/probe.py" | cut -d' ' -f1 | paste -sd' ' -)" = "097494c4654dec2a68470db793d3a72f03875021f99fba1627107e03f5435551 9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9 411b53e433512628ba18fad1b3b011e35669044ed60d753b32b28a9d4e971b54" ] \
-    && echo "D2B: clone at X, clean, 3 files, sha256 pinned; installing the jail" \
+    && [ "$(sudo sha256sum "$C/$P/admin.sh" "$C/$P/jail/jail.properties" "$C/$P/jail/probe.py" | cut -d' ' -f1 | paste -sd' ' -)" = "097494c4654dec2a68470db793d3a72f03875021f99fba1627107e03f5435551 9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9 4c93df7b527ace790eed81ce09da84ae09c889cd22361083e905fc9f821f29cd" ] \
+    && echo "D2B: clone at X2, clean, 3 files, sha256 pinned; installing the jail" \
     && D2B_INSTALL=started \
     && sudo bash "$C/$P/admin.sh" jail-install \
     && echo "D2B_DONE" \
@@ -1008,7 +1213,7 @@ elif [ "$(sudo cat /root/sr-a3/target-sha 2>/dev/null)" = "$X" ] && [ "$(sudo gi
          echo "D2B_FAILED before jail-install, nothing changed (the clone is still at $BASE): report the lines above"
        fi
 else
-  echo "D2B_STOP: run D-0b first (target-sha must be X and the clone at $BASE)"
+  echo "D2B_STOP: run D-0b first (target-sha must be X2 and the clone at $BASE)"
 fi
 ```
 
@@ -1020,14 +1225,14 @@ The last lines:
   all four files from `c066618`.
 - `D2B_FAILED before jail-install`: nothing was installed. If it says so, put the clone back with the printed
   command (it is printed only when the clone moved off `c066618`); otherwise nothing changed. Report the lines.
-- `D2B_STOP …`: nothing was done.
+- `D2B_STOP …`: nothing was done. That includes `target-sha` still being `fbfce3c` (run the DEV-092 D-0b first).
 
 The block checks the sha256 of the three checked-out files against the pins before `jail-install`.
 
 **D-3 (included in approval 2b; read only, plus sends that must be refused).**
 
 ```bash
-# D-3 (DEV-091, included in approval 2b): verify. Read only, plus 1-byte UDP sends and TCP connects that must be refused.
+# D-3 (DEV-091, revised by DEV-092, included in approval 2b): verify. Read only, plus 1-byte UDP sends and TCP connects that must be refused.
 C=/root/sr-capture-admin
 A="$C/scripts/sales-design-capture/admin.sh"
 echo "clone: $(sudo git -C "$C" rev-parse HEAD) dirty-lines=$(sudo git -C "$C" status --porcelain --untracked-files=normal | wc -l)"
@@ -1037,7 +1242,7 @@ echo "== sr-jail-net.service =="; sudo diff /root/sr-a3/before/sr-jail-net.servi
 echo "== sr-jail-claude.service =="; sudo diff /root/sr-a3/before/sr-jail-claude.service /etc/systemd/system/sr-jail-claude.service && echo SAME
 echo "== jail.properties, settings only =="; diff <(sudo grep -Ev '^[[:space:]]*(#|$)' /root/sr-a3/before/jail.properties) <(sudo grep -Ev '^[[:space:]]*(#|$)' /usr/local/lib/sr-jail/jail.properties) && echo SAME
 echo "== installed jail files, pinned =="
-[ "$(sudo sha256sum /usr/local/lib/sr-jail/probe.py | cut -d' ' -f1)" = 411b53e433512628ba18fad1b3b011e35669044ed60d753b32b28a9d4e971b54 ] && echo "PINNED probe.py" || echo "NOT_PINNED probe.py"
+[ "$(sudo sha256sum /usr/local/lib/sr-jail/probe.py | cut -d' ' -f1)" = 4c93df7b527ace790eed81ce09da84ae09c889cd22361083e905fc9f821f29cd ] && echo "PINNED probe.py" || echo "NOT_PINNED probe.py"
 [ "$(sudo sha256sum /usr/local/lib/sr-jail/jail.properties | cut -d' ' -f1)" = 9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9 ] && echo "PINNED jail.properties" || echo "NOT_PINNED jail.properties"
 sr_a3_untouched() {
   local u p
@@ -1071,7 +1276,7 @@ systemctl is-active sr-jail-net sr-jail-claude
 ```
 
 Expected:
-- `clone: fbfce3c87abb185a4cc59d28f2a842a838ddeac0 dirty-lines=0`.
+- `clone: 679c3c214c03d0b88515e2396bd6831705e5e2d1 dirty-lines=0`.
 - **rules:** exactly `3c3,5`: `< 100: from all to 198.51.100.53 ipproto tcp prohibit` →
   `> 98: … ipproto udp dport 853 prohibit`, `> 99: … ipproto udp dport 53 lookup main`, `> 100: … prohibit`.
 - **`sr-jail-net.service`:** exactly one hunk, `12c12,14`: the old `ipproto tcp prohibit priority 100` line replaced by
@@ -1080,7 +1285,7 @@ Expected:
   A difference only in an `IPAddressDeny=…/32` (gateway) line cannot happen after D-0b passed, as long as D-2b ran
   promptly with no reboot in between (D-0b checked the gateway); if a reboot happened, D-0b had to be re-run.
 - **`jail.properties`, settings only:** `SAME`.
-- **installed jail files:** `PINNED probe.py` and `PINNED jail.properties` (sha256 `411b53e4…1b54` and
+- **installed jail files:** `PINNED probe.py` and `PINNED jail.properties` (sha256 `4c93df7b…29cd` and
   `9b432f8a…d0a9`, the pinned values).
 - **untouched:** no diff lines, then `UNTOUCHED`. This covers the helper's units and checkout, `approved-sha`, the
   design units and the auth-watch units.
@@ -1092,7 +1297,7 @@ On any other line, go to D-4 and report the lines.
 **D-4 (the abort path, included in approval 2b).**
 
 ```bash
-# D-4 (DEV-091, the abort path, included in approval 2b): the clone back to c066618, jail-install, compare with the D-0 backups.
+# D-4 (DEV-091, unchanged by DEV-092, the abort path, included in approval 2b): the clone back to c066618, jail-install, compare with the D-0 backups.
 BASE=c066618cd6a40fe1cef57f75a71b755eea4157e8
 C=/root/sr-capture-admin
 if [ "$(sudo cat /root/sr-a3/previous-sha 2>/dev/null)" = "$BASE" ]; then
@@ -1125,6 +1330,8 @@ D-0b checked that the installed files were `c066618`'s and that the gateway had 
 rebooted after D-0b). `D4_FAILED: the clone is not at … and clean`: do not retry and do not reset or clean the clone by
 hand; report the lines. `D4_FAILED in jail-install`: do not retry; report the lines (the jail stays closed). Do not
 delete rules by hand.
+
+D-4 does not name `X` or `X2`: it returns the clone to `c066618` and compares with the D-0 backups, as on 2026-10-23.
 
 The blocks above were checked with `bash -n`. D-0b, D-2b and D-4 were also run here (again after the Fresh Review fixes) against a simulated
 `/root/sr-a3`, a clone, and stand-ins for `sudo`, `systemctl` and `admin.sh`. That covered the success path and the
@@ -2002,7 +2209,7 @@ change, and any Codex run.
 | A-1 | **HUMAN-024b** (jail) and **24b-host**: the Codex-free probe | nothing (3 unauthenticated GETs per run) | – | WSL | – | **done 2026-10-22** (`design-image-poc.md` 24b) |
 | A-1b | optional: **24b-v2** in the jail and on the host before the update, as a same-tool baseline | nothing | – | WSL | – | `design-image-poc.md` 24b-v2 |
 | A-2 | Proceed with a passt update **and** grant a written exception to `design-wsl-isolation.md` §6 for exactly `passt 0.0~git20260120.386b5f5-1` from Ubuntu resolute, verified as in V-1 (the docs change goes in the A-3 PR or its own) | policy (docs) | yes | decision | A-1 (done: "cut in the jail, OPEN on the host") | – |
-| A-3 | The jail's DNS rules: only UDP/53 to 198.51.100.53, plus the probe checks and tests (§4.6). **Policy adopted 2026-10-23; code implemented in DEV-088; applying it on WSL is a separate approval** | `sr-jail-net`'s ip rules, `probe.py`, `jail-check`, tests; the deploy restarts the jail for seconds | yes (D-4) | repo PR (DEV-088); on WSL `admin.sh jail-install` from the root clone at the DEV-091 backport commit `fbfce3c` (`c066618` + the three DEV-088 files), not at the merge commit | A-2 | D-1 (PR), D-0 (done), W-0, AW-1, D-0b, D-2b, D-3, D-4 (§4.6, backport variant) |
+| A-3 | The jail's DNS rules: only UDP/53 to 198.51.100.53, plus the probe checks and tests (§4.6). **Policy adopted 2026-10-23; code implemented in DEV-088; applying it on WSL is a separate approval** | `sr-jail-net`'s ip rules, `probe.py`, `jail-check`, tests; the deploy restarts the jail for seconds | yes (D-4) | repo PR (DEV-088); on WSL `admin.sh jail-install` from the root clone at the backport commit `X2` = `679c3c2` (DEV-092: `c066618` + the three DEV-088 files, probe fixed for Linux 6.15+; never `fbfce3c`), not at the merge commit | A-2 | D-1 (PR), D-0 (done), W-0, AW-1, D-0b, D-2b, D-3, D-4 (§4.6, backport variant) |
 | A-4 | W-0 window check and V-0 snapshot | only new files in `/root/sr-passt-update/` | yes | WSL | A-2 (and A-3 deployed, if chosen) | S-1, W-0, V-0 |
 | A-5 | V-1 fetch and verify, V-2 update and hold, V-3a immediate checks, and on success V-2b; **the rollback (R-1 → R-3, §6.4) approved together with A-5 as its abort path** | the passt package, its AppArmor files, the hold, a pasta restart, Claude stopped then restored | yes (R-1 → R-3) | WSL, root, a person at the console | A-4 | V-1, W-0, V-2, V-3a, D-3, V-2b, R-1, R-2, R-3 |
 | A-6 | 24b-v2 in the jail and on the host after the update (can be approved together with A-5 and run before V-2b) | nothing | – | WSL | A-5 passes V-3a | V-3b |
