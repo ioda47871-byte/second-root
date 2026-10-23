@@ -36,6 +36,7 @@
 - **人の判断（2026-10-23）**:
   - **A-2 方針として承認**: 修正版 passt の導入へ進める。対象は Ubuntu 26.04 の `passt 0.0~git20260120.386b5f5-1` に限る。`design-wsl-isolation.md` §6 の例外は、この package について、配布元の署名・hash・依存関係を確かめ、既存の jail の隔離水準を保つ場合に限る。**実際の package の導入と WSL の変更はまだ許可されていない。**
   - **A-3 方針として採用**: 198.51.100.53 へは UDP/53 だけを許し、UDP/853 を含む残りは拒否。独立 branch で最小の code・検査・test・設計書の修正 → 独立 review と CI → merge まで可。条件: jail の隔離を弱めない／DNS の名前解決が動く／UDP/853 を確実に拒否／TCP/53・TCP/853 の拒否を保つ／private address への制限を保つ／変更前後の差分を確認できる／worker・timer・Codex・認証設定を変えない。**実 WSL への適用は別の承認。**
+    - **A-3 code: PR #104（DEV-088、`feature/dev-088-jail-dns-udp53`）、適用は承認待ち。** ip rule 3 行（98: UDP/853 prohibit・99: UDP/53 lookup main・100: 他すべて prohibit）、probe の完全一致と拒否の検査、`jail-check` の `getent`、読むだけの `jail-rules`。適用手順は `passt-update-plan.md` §4.6 D-0〜D-4（`approve` ではなく root clone の `jail-install`。jail が数秒止まる。timer・helper は触らない）。
   - 更新の準備: A-3 の後に、worker の停止確認・更新前の記録・旧 package の確保・新 package の署名と hash・DNS 制限の適用・更新・jail の安全性検査・通信検証・rollback を実行できる形に整理する。**既存の timer は勝手に止めない。A-4・A-5 を含む実機作業は段階ごとに承認。** 手動導入した package の security update を月 1 回確認する運用と管理担当を、更新の前に確定する（A-10）。
   - EOF の調査結果は維持。24b-v2 の更新前の検証は必須にしない。更新後は 24b-v2 で接続の維持を確認する。**通信 test の成功だけで画像生成の問題が解決したとは判定しない。実 Codex（A-8）は別の承認。**
 - **現在地（2026-10-22）: 24a・24b・24b-host 済み（承認の A-1 は完了）。次は passt の更新の承認判断（`docs/operations/passt-update-plan.md` §0 の要約と §8 の表、DEV-087 で最終整理）。** passt の更新・WSL の設定の変更・jail の変更・worker / timer の変更・Codex の実行は**どれも承認されていない**。
