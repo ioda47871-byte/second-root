@@ -44,7 +44,7 @@ import { cssProblems, htmlSourceProblems, loadCompPage, type CompPage } from "./
 import { FingerprintSchema } from "./page-scripts";
 import { factValues, infoPairs } from "./spec";
 import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, inBatches, legibilityPass, legibilitySweep, protectedGeometryPass, MOBILE, openCompPage, overflowSweep, pageWidths, type Viewport } from "./render";
-import { compSimilarity, sectionComparison, type SectionReport, type Similarity } from "./similarity";
+import { compSimilarity, emptySectionReport, sectionComparison, type SectionReport, type Similarity } from "./similarity";
 import { capabilitiesCheck, layersCheck, layersSweepCheck, visibilityMatrixCheck } from "./verify";
 
 export const REPORT_SCHEMA = "comp-impl-report/1";
@@ -105,6 +105,15 @@ async function atViewport(browser: Browser, page: CompPage, v: Viewport, audit: 
     return { measure, shot, blocked: a.blocked(), ...(dom ? { dom } : {}) };
   } finally {
     await a.context.close();
+  }
+}
+
+/** The per-section report (DEV-097) is report-only, so it can never stop or fail a run: any error is reported as a code. */
+export function guardedSectionComparison(...args: Parameters<typeof sectionComparison>): SectionReport {
+  try {
+    return sectionComparison(...args);
+  } catch {
+    return emptySectionReport("SECTION_COMPARE_ERROR");
   }
 }
 
@@ -182,7 +191,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const anti = antiTemplateCheck({ html: page.html, css: page.css, fingerprint, references, templateCss: await templateCss(o.repoDir) });
   const similarity = {
     ...compSimilarity(bundle.comp, bundle.compApproved, { bytes: desktop.shot, width: desktop.measure.width, height: desktop.measure.height }),
-    sections: sectionComparison(bundle.comp.bytes, desktop.shot, spec.sections, desktop.measure),
+    sections: guardedSectionComparison(bundle.comp.bytes, desktop.shot, spec.sections, desktop.measure),
   };
   const failed = failedChecks(checks, anti);
   const synthetic = bundle.comp.kind === "synthetic";

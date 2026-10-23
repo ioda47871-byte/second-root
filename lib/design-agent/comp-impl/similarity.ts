@@ -208,7 +208,10 @@ export function compSimilarity(comp: { bytes: Buffer; width: number; height: num
 
 // ---------------------------------------------------------------- per section (DEV-097)
 
-/** Columns of each section's grid (fewer when the crop is narrower): a cell is ~11 CSS px of a 1440 page, on the comp and on the page alike. */
+/**
+ * Columns of each section's grid (fewer when the crop is narrower): a cell is ≈ section width / 128 — 11 CSS px for a
+ * full-width section of the 1440 page — on the comp and on the page alike.
+ */
 export const SECTION_GRID_COLUMNS = 128;
 /**
  * A grid cell is an edge when its Sobel magnitude on luminance exceeds this (a fixed level, so the comp's and the page's
@@ -320,13 +323,16 @@ export type SectionCompare = {
   role: string;
   /** null, SECTION_NOT_RENDERED (no shown [data-comp-section] with this id) or SECTION_CROP_EMPTY (a box outside its image). */
   code: string | null;
-  /** The crops: comp in comp-image px, page in CSS px of the 1440 page; [left, top, width, height]. */
+  /**
+   * The crops: comp in comp-image px, page in CSS px of the 1440 page; [left, top, width, height]. The page box is the
+   * crop actually compared (the measured box clamped to the screenshot, in whole device px, divided by the scale).
+   */
   comp_box_px: [number, number, number, number] | null;
   page_box_css_px: [number, number, number, number] | null;
   colour: SectionColour | null;
   /** Share of edge cells on each grid; delta = page − comp (positive: the page's section is busier). */
   edges: { comp_density: number; page_density: number; delta: number } | null;
-  /** The section's share of the whole height (comp: the spec box; page: the measured box over the page height); ratio = page / comp. */
+  /** The section's share of the whole height (comp: the spec box; page: the cropped box over the page height); ratio = page / comp. */
   height_share: { comp: number; page: number; ratio: number } | null;
   /** Height over width of each crop; ratio = page / comp. */
   aspect_h_per_w: { comp: number; page: number; ratio: number } | null;
@@ -343,6 +349,11 @@ export type SectionReport = {
   code: string | null;
   items: SectionCompare[];
 };
+
+/** A report with no items and a code: an undecodable PNG, or (run.ts) any error while comparing. */
+export function emptySectionReport(code: string): SectionReport {
+  return { viewport: "desktop_1440", mobile: "not_compared_no_mobile_comp", passing: false, grid_columns: SECTION_GRID_COLUMNS, edge_magnitude: EDGE_MAGNITUDE, code, items: [] };
+}
 
 /** Puts the statistics of a comp crop and a page crop side by side. Identical crops give zero distances and deltas. */
 export function compareCrops(comp: CropStats, page: CropStats): { colour: SectionColour; edges: NonNullable<SectionCompare["edges"]> } {
@@ -372,14 +383,13 @@ const ratio = (comp: number, page: number) => ({ comp: r3(comp), page: r3(page),
  * screenshot's width over the page's). Never passes; a missing or empty section is reported with a code, not failed.
  */
 export function sectionComparison(compPng: Buffer, shotPng: Buffer, sections: CompSpec["sections"], measure: Pick<CompMeasure, "sections" | "width" | "height">): SectionReport {
-  const base = { viewport: "desktop_1440", mobile: "not_compared_no_mobile_comp", passing: false, grid_columns: SECTION_GRID_COLUMNS, edge_magnitude: EDGE_MAGNITUDE } as const;
   let comp: Pixels;
   let shot: Pixels;
   try {
     comp = decodePng(compPng);
     shot = decodePng(shotPng);
   } catch {
-    return { ...base, code: "SIMILARITY_DECODE_UNSUPPORTED", items: [] };
+    return emptySectionReport("SIMILARITY_DECODE_UNSUPPORTED");
   }
   const scale = measure.width > 0 ? shot.width / measure.width : 1;
   const items = sections.map((s): SectionCompare => {
@@ -395,12 +405,12 @@ export function sectionComparison(compPng: Buffer, shotPng: Buffer, sections: Co
       role: s.role,
       code: null,
       comp_box_px: [c.left, c.top, c.width, c.height],
-      page_box_css_px: [r1(got.box.left), r1(got.box.top), r1(got.box.width), r1(got.box.height)],
+      page_box_css_px: [r1(p.left / scale), r1(p.top / scale), r1(p.width / scale), r1(p.height / scale)],
       colour,
       edges,
-      height_share: ratio(s.box.h, measure.height > 0 ? got.box.height / measure.height : 0),
-      aspect_h_per_w: ratio(c.height / c.width, got.box.width > 0 ? got.box.height / got.box.width : 0),
+      height_share: ratio(s.box.h, measure.height > 0 ? p.height / scale / measure.height : 0),
+      aspect_h_per_w: ratio(c.height / c.width, p.height / p.width),
     };
   });
-  return { ...base, code: null, items };
+  return { ...emptySectionReport(""), code: null, items };
 }

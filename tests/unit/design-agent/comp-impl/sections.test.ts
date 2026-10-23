@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CompMeasure } from "@/lib/design-agent/comp-impl/page-scripts";
 import type { CompSpec } from "@/lib/design-agent/comp-impl/spec";
-import { compareCrops, cropStats, deltaE, edgeDensity, gridOf, resample, rgbToLab, sectionComparison, sectionGrid } from "@/lib/design-agent/comp-impl/similarity";
+import { guardedSectionComparison } from "@/lib/design-agent/comp-impl/run";
+import { compareCrops, cropStats, deltaE, dominantColour, edgeDensity, gridOf, resample, rgbToLab, sectionComparison, sectionGrid } from "@/lib/design-agent/comp-impl/similarity";
 import { decodePng } from "@/lib/design-agent/worker/png-paint";
 import { flatPng, paintedPng } from "./support";
 
@@ -36,6 +37,30 @@ describe("colour metrics", () => {
     expect(rgbToLab([0, 0, 0])[0]).toBeCloseTo(0, 5);
     expect(deltaE(rgbToLab(VERMILION), rgbToLab(VERMILION))).toBe(0);
     expect(deltaE(rgbToLab(KINARI), rgbToLab(SUMI))).toBeGreaterThan(80);
+  });
+});
+
+describe("dominant colour", () => {
+  const gridOfPng = (png: Buffer) => {
+    const p = decodePng(png);
+    return sectionGrid(p, { left: 0, top: 0, width: p.width, height: p.height });
+  };
+  const RED: Rgb = [200, 0, 0];
+  const BLUE: Rgb = [0, 0, 200];
+
+  it("a 70 / 30 grid: the 70 % colour, with its share", () => {
+    const d = dominantColour(gridOfPng(paintedPng(10, 10, (x) => (x < 7 ? RED : BLUE))));
+    expect(d.rgb).toEqual(RED);
+    expect(d.share).toBeCloseTo(0.7, 10);
+  });
+
+  it("a tie goes to the lower bin key (blue, key 0x00c, before red, key 0xc00), whichever comes first", () => {
+    for (const first of [RED, BLUE]) {
+      const second = first === RED ? BLUE : RED;
+      const d = dominantColour(gridOfPng(paintedPng(10, 10, (x) => (x < 5 ? first : second))));
+      expect(d.rgb).toEqual(BLUE);
+      expect(d.share).toBeCloseTo(0.5, 10);
+    }
   });
 });
 
@@ -115,6 +140,30 @@ describe("sectionComparison", () => {
     expect(rest!.colour?.lightness_delta).toBeLessThan(0);
     expect(rest!.edges?.delta).toBe(0);
     expect(r.passing).toBe(false);
+  });
+
+  it("reads the page box in CSS px when the screenshot is at 2× (shot width = 2 × the CSS width)", () => {
+    const r = sectionComparison(bands(200, 300, 100), bands(800, 1200, 400), sections, measured(400, 600, [["top", 0, 200], ["rest", 200, 400]]));
+    expect(r.items.map((i) => i.page_box_css_px)).toEqual([[0, 0, 400, 200], [0, 200, 400, 400]]);
+    for (const item of r.items) {
+      expect(item.colour).toMatchObject({ mean_delta_e: 0, dominant_delta_e: 0 });
+      expect(item.height_share?.ratio).toBe(1);
+      expect(item.aspect_h_per_w?.ratio).toBe(1);
+    }
+  });
+
+  it("the page box is the crop compared: a box past the screenshot's bottom is clamped, and so are its share and aspect", () => {
+    // "rest" is measured 400 px tall from 200, but the screenshot ends at 500
+    const r = sectionComparison(bands(200, 300, 100), bands(400, 500, 200), sections, measured(400, 600, [["top", 0, 200], ["rest", 200, 400]]));
+    const rest = r.items[1]!;
+    expect(rest.page_box_css_px).toEqual([0, 200, 400, 300]);
+    expect(rest.height_share).toMatchObject({ page: 0.5 });
+    expect(rest.aspect_h_per_w).toMatchObject({ page: 0.75 });
+  });
+
+  it("the guarded call reports any error as SECTION_COMPARE_ERROR instead of throwing", () => {
+    const r = guardedSectionComparison(bands(200, 300, 100), bands(400, 600, 200), null as unknown as CompSpec["sections"], measured(400, 600, []));
+    expect(r).toMatchObject({ code: "SECTION_COMPARE_ERROR", items: [], passing: false, viewport: "desktop_1440" });
   });
 
   it("reports a section that is missing or hidden, and an undecodable image, with a code (never a failure)", () => {

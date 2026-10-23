@@ -419,8 +419,8 @@ numbers above stretch a 1440-wide page onto the comp's aspect; a real comp (~102
 height, so one number cannot say *where* they differ. The section report compares like with like: for every section of
 `layout-spec.json`, its box (fractions of the artboard) is cropped from the comp, and the first shown `[data-comp-section]` with
 the same id is cropped from the **1440 desktop** full-page screenshot (its measured box, CSS px). Each crop is box-filtered onto
-its own grid, 128 columns wide with square cells (about 11 CSS px of the page on both sides, since the comp shows the same
-1440 page at its own scale), and four kinds of numbers are put side by side:
+its own grid, 128 columns wide with square cells (≈ section width / 128 — 11 CSS px for a full-width section — on both
+sides, since the comp shows the same 1440 page at its own scale), and four kinds of numbers are put side by side:
 
 | field | what it is | how to read it |
 |---|---|---|
@@ -431,15 +431,18 @@ its own grid, 128 columns wide with square cells (about 11 CSS px of the page on
 | `height_share.comp` / `page`, `ratio` | the section's height over the whole height (comp: the spec box; page: measured box over the page height); ratio = page / comp | ratio > 1: the section takes more of the page than in the comp |
 | `aspect_h_per_w.comp` / `page`, `ratio` | each crop's height over its width; ratio = page / comp | ratio > 1: the section is taller for its width than in the comp |
 
-`comp_box_px` (comp image px) and `page_box_css_px` (CSS px) give the crops, so a person can find them in the images. A section
+`comp_box_px` (comp image px) and `page_box_css_px` (CSS px) give the crops, so a person can find them in the images; the
+page box is the crop actually compared (the measured box clamped to the screenshot in whole pixels), and the page's height share
+and aspect are taken from it. A section
 with no shown element is reported as `SECTION_NOT_RENDERED`, a box outside its image as `SECTION_CROP_EMPTY`, an undecodable PNG
-as `SIMILARITY_DECODE_UNSUPPORTED` (with no items); **none of these fails the run** (`geometry_desktop` already fails a missing
+as `SIMILARITY_DECODE_UNSUPPORTED` and any other error while comparing as `SECTION_COMPARE_ERROR` (both with no items);
+**none of these fails the run** (`geometry_desktop` already fails a missing
 section).
 
 **It is not a pass / fail.** `sections.passing` is the literal false; there is no threshold, no code in `failed`, no change to
 `mechanical_ok` or to `fidelity_status`. What counts as "close" per number is unknown until real comps are measured, and making
 any of it a gate is the human's decision (roadmap A5). On the synthetic fixture (comp and page drawn to the same plan) every
-section reads ΔE ≤ 0.3, dominant ΔE 0, height-share and aspect ratios 0.99–1.01 and edge-density deltas within ±0.03 — which only
+section reads ΔE ≤ 0.3, dominant ΔE 0, height-share and aspect ratios ≈0.99–1.01 and edge-density deltas within ±0.03 — which only
 shows the measurement runs end to end.
 
 **How a person uses it.** Next to the side-by-side sheet (the comp and `desktop.png`), the report points at the section to look
