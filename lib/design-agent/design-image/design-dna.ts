@@ -61,12 +61,12 @@ const str = (value: unknown, context: string, max = 360): string => {
   if (typeof value !== "string" || value.trim().length < 2 || value.length > max ||
       /[\u0000-\u001f\u007f]/.test(value) || value.includes("<<<") || value.includes(">>>"))
     fail(`${context}:text`);
-  return value;
+  return value as string;
 };
 const id = (value: unknown, context: string): string => {
   if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$/.test(value))
     fail(`${context}:id`);
-  return value;
+  return value as string;
 };
 const choose = <T extends string>(value: unknown, choices: readonly T[], context: string): T => {
   if (typeof value !== "string" || !choices.includes(value as T)) fail(`${context}:enum`);
@@ -74,7 +74,7 @@ const choose = <T extends string>(value: unknown, choices: readonly T[], context
 };
 const list = (value: unknown, min: number, max: number, context: string): unknown[] => {
   if (!Array.isArray(value) || value.length < min || value.length > max) fail(`${context}:count`);
-  return value;
+  return value as unknown[];
 };
 const ids = (value: unknown, context: string): string[] => {
   const found = list(value, 0, 8, context).map((v) => id(v, context));
@@ -83,7 +83,7 @@ const ids = (value: unknown, context: string): string[] => {
 };
 const dict = (value: unknown, context: string): Dict => {
   if (!isDict(value)) fail(`${context}:object`);
-  return value;
+  return value as Dict;
 };
 
 /**
