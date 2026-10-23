@@ -3925,6 +3925,49 @@
       ]
     },
     {
+      "id": "DEV-088",
+      "title": "A-3: jail の DNS address（198.51.100.53）へは UDP/53 だけを通す ip rule・probe の検査・jail-rules・test・設計書（code だけ、実 WSL への適用は別の承認）",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-087"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-088-jail-dns-udp53",
+      "purpose": "人の判断（2026-10-23、HUMAN-024 の A-3）: 更新後の pasta（386b5f5）で新たに転送される UDP/853 を遮断する。198.51.100.53 へは UDP/53 だけを許し、他（TCP/53・TCP/853・UDP/853 を含む）は拒否する。passt-update-plan.md §4.6 の D-1 を実装し、検査・test・設計書と、実 WSL への適用手順（D-0〜D-4）を整える。",
+      "decision": "sr-jail-net の ExecStartPre の ip rule を 1 行（TCP だけ prohibit、prio 100）から 3 行（100: すべて prohibit、98: UDP/853 prohibit、99: UDP/53 lookup main、拒否を先に追加）へ。namespace は起動ごとに作り直すので冪等で窓はない。probe は rule の組を netlink で読み完全一致（DNS_RULES_NOT_EXACT / DNS_RULES_UNCHECKED）、TCP/53・TCP/853 と UDP/853・UDP/9 の EACCES を確かめる。jail-check は JAIL_OK の後に getent（JAIL_DNS_FAILED）。jail-rules（読むだけ）で前後を比べる。IPv6 には対応する address が無いので rule を足さない。適用は approve ではなく root clone の jail-install（helper の checkout・timer を触らない）。この container では namespace・ip rule・iptables を作らない・変えない",
+      "acceptance_criteria": [
+        "admin.sh の rule が設計どおりの 3 行で、netns add の後・pasta の前、古い TCP だけの rule が無い",
+        "probe が rule の組の完全一致・TCP/53・TCP/853・UDP/853 の拒否を確かめ、どれが欠けても JAIL_UNSAFE（fail closed）",
+        "jail-check が名前解決（getent）も確かめる。jail-rules で前後の差分が見える",
+        "jail のその他の設定（jail.properties の設定行、pasta の flag と address の filter、私設 address の拒否）は変えない",
+        "design-wsl-isolation.md・passt-update-plan.md §4.6 / A-3・SECURITY.md を更新し、適用手順（D-0〜D-4、止まるもの、承認の点）を書く",
+        "独立 review と CI"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/jail-dns-rules.test.ts と jail.test.ts",
+        "typecheck、変更した file の lint、npm run check:secrets、bash -n（shellcheck があれば）"
+      ],
+      "allowed_scope": [
+        "scripts/sales-design-capture/admin.sh（jail の network の unit・jail_check・jail_rules・status）",
+        "scripts/sales-design-capture/jail/probe.py・jail.properties（comment だけ）",
+        "tests/unit/design-agent/jail*.test.ts",
+        "docs/operations/design-wsl-isolation.md・docs/operations/passt-update-plan.md・docs/SECURITY.md",
+        ".ai/**（feature branch では progress.md を除く）"
+      ],
+      "forbidden_scope": [
+        "実 WSL への適用（jail-install / approve）・passt の更新・.wslconfig",
+        "worker / timer の unit、Codex の設定、認証の設定",
+        "この container での network namespace・ip rule・iptables",
+        ".github/**"
+      ],
+      "human_approval_triggers": [
+        "実 WSL への適用（passt-update-plan.md §4.6 D-0〜D-4、D-4 は中止の手順として同時に）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
+    },
+    {
       "id": "DEV-089",
       "title": "CI: Chromium install（playwright install --with-deps）の遅延の調査と改善案の設計（docs だけ、CI 設定は変えない）",
       "status": "review",

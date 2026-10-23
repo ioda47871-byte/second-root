@@ -158,11 +158,12 @@ WSL の専用利用者で動く無人の local worker（`scripts/sales-design-wo
 - **root だけの install**
   - `admin.sh`・systemd の unit・jail の設定は、root だけの clone（`/root/sr-capture-admin`、承認した commit・clean）からだけ動かし、入れる。
   - requester の repo や helper の checkout からは入れない。読み込まれた unit の設定を確かめ、違えば止まる。
-- **jail の DNS は UDP だけ**（明示的な制約）
-  - Ubuntu 24.04 標準の passt の `--dns-forward` は UDP/53 だけを転送する。
-  - jail の namespace の中だけで、jail の resolver 宛ての TCP を即座に拒否する。
-  - probe は、TCP の拒否（1 秒以内）と `10.255.255.254` の拒否を確かめる。
-  - 他の release の passt・自前 build・TCP の DNS の proxy / DNAT は入れない。
+- **jail の DNS は UDP/53 だけ**（明示的な制約、pasta の版によらない。DEV-088）
+  - Ubuntu 24.04 標準の passt の `--dns-forward` は UDP/53 だけを、新しい passt（`386b5f5`）は UDP と TCP の 53 と 853 を転送する。
+  - jail の namespace の中だけで、jail の resolver の address へは UDP/53 だけを通し、他（TCP/53・TCP/853・UDP/853 を含む）は即座に拒否する（ip rule 3 行）。
+  - probe は、rule の組が設計どおりであること（netlink で完全一致）、TCP/53・TCP/853 の拒否（1 秒以内）、UDP/853 と他の port の拒否、`10.255.255.254` の拒否を確かめる。`admin.sh jail-check` は名前解決（`getent`）も確かめる。
+  - 他の release の passt は人の例外（`passt-update-plan.md` の A-2）に限る。自前 build・TCP の DNS の proxy / DNAT は入れない。
+  - code は DEV-088 で実装。実 WSL への適用は別の承認（`passt-update-plan.md` §4.6）。
 
 ## 11. Sales Design Bridge（DEV-030）
 
