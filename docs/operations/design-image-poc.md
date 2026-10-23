@@ -118,6 +118,8 @@ sudo install -m 0644 "$D/mockup.png" /mnt/c/Users/<WindowsUser>/Desktop/kakuu-ka
 
 Open `kakuu-kaan-mockup.png` on the Windows desktop (Photos). To share it back for review, upload that PNG (and paste `report.json` if useful) into the Claude session. Do not upload it anywhere else, do not commit it, do not publish it. Delete the desktop copy when the review is done (the original stays in `sr-designgen`'s home until removed: `sudo rm -r "$D"`).
 
+Once the evaluation sheet is confirmed (`design-image-eval-template.md`) and saved as `evaluation.json` in the bundle directory, run `npx tsx scripts/sales-design-worker/comp-impl-poc.ts --intake <bundle dir>` before any implementation spec is written (DEV-094, `comp-to-site.md` §3: no Chromium, nothing written; `ok=true comp_approved=true` is required for a `real` comp).
+
 ## Quality caveat (the fixture's placeholder values)
 The DEV-073 fixture is deliberately fictional and is **not edited** for this PoC:
 - every menu item contains 「テスト」 (e.g. テスト最中, 季節のテスト上生菓子)
