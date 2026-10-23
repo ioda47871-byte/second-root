@@ -4,7 +4,9 @@ Status: **final plan for the approval decision (DEV-087, 2026-10-22). Nothing ha
 WSL machine.** No Codex run, no passt update, no WSL config change, no jail change, no worker or timer change. Every step
 in §4.6 and §5–§6 is a proposal, and each needs the human approval named in §8, in that order. **Only A-1 (HUMAN-024b
 and 24b-host) is done.** 2026-10-23: A-2 and A-3 adopted as policy (`.ai/blockers.md` HUMAN-024); A-3's code is
-implemented in DEV-088 (§4.6) and **not applied on WSL**; applying it, and every WSL step, still needs its own approval. Related: [`imagegen-timeout-investigation.md`](imagegen-timeout-investigation.md)
+implemented in DEV-088 (§4.6) and **not applied on WSL**; applying it, and every WSL step, still needs its own approval.
+2026-10-23 (DEV-090): the window check W-0 (§5.0) now looks only at timers that can affect the jail, the worker, Codex
+or the design cycle, and holds on any timer it cannot classify; one block serves A-3 and the passt update. Related: [`imagegen-timeout-investigation.md`](imagegen-timeout-investigation.md)
 (H1), [`design-image-poc.md`](design-image-poc.md) §"HUMAN-024" (24a and 24b results, the EOF analysis, 24b-v2),
 [`design-wsl-isolation.md`](design-wsl-isolation.md) (the jail), `.ai/blockers.md` HUMAN-024.
 
@@ -64,8 +66,9 @@ EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python
   `claude-stop` は `sr-jail-*` をすべて止めるので、**動いている worker の job も途中で止める**。jail の外の capture helper・bridge は pasta を通らないので影響なし。
   記録では cycle の timer は有効化されていない（HUMAN-010 は保留）。
 - リスク: 作業中の worker の job や Codex を途中で切ること。Claude の作業中の turn が失われること。
-- 対策: timer を変えずに、作業の前に読むだけの確認（W-0）をする: timer の一覧と次の実行、`sr-jail-run-*` などの unit、worker / Codex の process、cycle の lock。何か動いていれば待つ。
-  timer が有効なら、次の実行まで 30 分以上ある時間を選ぶ。それができないときだけ、cycle 自身の lock を作業の間持つ（A-12a）か、timer を止める（A-12b、別の承認）。jail の Claude には事前に commit と push を済ませて止まってもらう。
+- 対策: timer を変えずに、作業の前に読むだけの確認（W-0、§5.0 の 1 つの block、DEV-090 で改訂）をする: `sr-jail-run-*` などの unit、worker / PoC / Codex の process、cycle の lock、そして `sr-*` の timer を 3 つに分ける。
+  BLOCKING（jail・worker・Codex・design cycle に関わる timer）は次の実行が 30 分以内なら待つ。KNOWN-UNRELATED（許可リストと完全一致するものだけ。今は capture helper の `sr-capture.timer`）は表示だけで止めない。UNKNOWN（それ以外。今は `sr-claude-auth-watch.timer`）は予定に関係なく適用を保留し、読むだけの fact sheet で人が確認してから docs の PR で分類する。
+  最後の行が `W0_OK` のときだけ進む。BLOCKING の窓が取れないときだけ、cycle 自身の lock を作業の間持つ（A-12a）か、timer を止める（A-12b、別の承認）。jail の Claude には事前に commit と push を済ませて止まってもらう。
 - 停止時間の見込み: Claude と jail の中のもの 5〜10 分（更新と直後の確認、24b-v2 を含む）。rollback すると +5〜10 分。jail の外と cloud の Claude Code の session は影響なし。
 - 残るリスク: 人が窓の間に手で worker や PoC を始めないこと（運用の約束）。
 
@@ -103,7 +106,7 @@ EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python
 | A-9 | AppArmor が動いていて pasta が拒否されたときだけ: complain → profile の調整、または pasta の profile を無効化 | AppArmor の設定 | はい | 要 | §4.3 |
 | A-10 | 手で入れた package の保守の担当と頻度 | 運用 | はい | 要 | §6.3 |
 | A-11 | 任意: noble への SRU の依頼（外部への投稿） | 外部 | – | 要 | §7 |
-| A-12a | timer が有効で窓が取れないときだけ: 作業の間 cycle の lock を持つ | なし（cycle は `CYCLE_LOCKED` で何もせず終わる） | はい（lock を離す） | 要 | L-1 |
+| A-12a | `sr-design-cycle.timer` が有効で窓が取れないときだけ: 作業の間 cycle の lock を持つ | なし（cycle は `CYCLE_LOCKED` で何もせず終わる） | はい（lock を離す） | 要 | L-1 |
 | A-12b | A-12a でも足りないときだけ: worker の timer を止めて戻す | timer | はい | 要（worker / timer の変更） | §5.0 |
 
 ## 1. Where we are
@@ -544,10 +547,22 @@ second clone). Do not improvise (B) at the console.
 | D-3 | verify: diffs, `JAIL_OK`, `JAIL_DNS_OK`, `getent`, refusals (read only, plus 1-byte UDP sends and TCP connects that must be refused) | nothing | included in approval 2 |
 | D-4 | rollback: clone back to `previous-sha`, `jail-install` | the same few seconds | included in approval 2 (abort path) |
 
-**W-0 + D-0 — the window and the current state (approval 1; read only).** First W-0 (§5.0); go on only under its
-conditions (no `sr-jail-run-*` / `sr-jail-shell-*` unit, no worker / PoC / Codex process, the cycle lock free, no `sr-*`
-timer due within 30 minutes). Ask the jailed Claude to commit, push and stop at a clean point. Then, with `$SHA` set to
-the A-3 merge commit:
+**W-0 + D-0 — the window and the current state (approval 1; read only).** First W-0, the canonical block in §5.0
+(not repeated here). **D-0 runs only after W-0 printed `W0_OK` as its last line**; on `W0_HOLD` follow §5.0 (wait, or
+stop for an `unknown:` / `unparseable:` reason; today `sr-claude-auth-watch.timer` is UNKNOWN, so W-0 holds until it is
+classified). Ask the jailed Claude to commit, push and stop at a clean point. Then D-0, with `$SHA` set to the A-3 merge
+commit **`e525371c4f768e24889954652d3f01241d8a6627`** (recommended), or to a newer develop commit if the human prefers:
+
+- `e525371` (recommended): the commit A-3 was reviewed and named by; D-2 and D-4 then deploy and roll back exactly that.
+  The develop commits after it (DEV-089, DEV-090) change only docs, `.ai/` and tests: nothing under `scripts/`, so a
+  newer commit would put nothing different on the machine, only a longer D-0 list to read, and a target that keeps
+  moving.
+- a newer develop head: the root clone's copy of this plan would then contain the current W-0 text. That has no effect on
+  the machine (W-0 is pasted from the reviewed plan, not run from the clone). If chosen, the D-0 section "of which the
+  admin, jail and cycle code" must still list only DEV-088's files; anything else there is a reason to stop.
+
+Whichever is chosen, moving the clone ships everything between `PREV` and `SHA`, which D-0 lists, and the human's D-2
+approval is of that list.
 
 ```bash
 SHA=PASTE_THE_40_HEX_A3_MERGE_SHA
@@ -579,7 +594,7 @@ above (otherwise the machine is not in the state this plan assumes: stop and rep
 commit and file lists and approves exactly them. The `rp_filter` line is information (expected `2 2` on Ubuntu; see
 "Replies" above). Note whether `sr-jail-claude` is enabled and active: D-3 compares against it.
 
-**D-2 — deploy (approval 2).** **This moves the whole root clone, so from now on the design cycle (`cycle.sh`) and
+**D-2 — deploy (approval 2).** Run W-0 (§5.0) again right before it; go on only on `W0_OK`. **This moves the whole root clone, so from now on the design cycle (`cycle.sh`) and
 every `admin.sh` command run the code at `$SHA`, i.e. everything in the D-0 lists, not only A-3.** One `&&` chain,
 so nothing installs unless the clone is at `$SHA` and clean (`jail-install` does not check that itself). It ends with
 `jail-check` (`JAIL_OK`, then `JAIL_DNS_OK`):
@@ -720,11 +735,14 @@ repository, and the records say it has not been enabled (HUMAN-010 is on hold, 2
 `CHECK_UNIT_ENABLED`). W-0 checks all of them instead of trusting the records.
 
 **How to keep a job from running mid-update without touching a timer:**
-1. **W-0 (read only), right before D-2 and again before V-2:** no `sr-jail-run-*` / `sr-jail-shell-*` unit, no worker or
-   Codex process, the cycle lock free, and no timer due within 30 minutes. If something runs, wait for it to end. Do not
-   stop it.
-2. If a worker timer **is** enabled: pick a window right after a cycle ended (the lock is free and the next start is more
-   than 30 minutes away; a cycle can run up to 75 minutes). That needs no extra approval.
+1. **W-0 (read only, below), before D-0 and again right before D-2 (A-3), and before V-0 and again right before V-2
+   (the passt update):** it must print `W0_OK`. W-0 looks only at what can actually affect the jail, the worker, Codex
+   or the design cycle: no `sr-jail-run-*` / `sr-jail-shell-*` (or any other jail job) unit, no worker / PoC / Codex
+   process, no process of `sr-designgen` outside Claude's own jail unit, the cycle lock free, no BLOCKING timer due
+   within 30 minutes, and **no UNKNOWN timer at all**. If something runs, wait for it to end. Do not stop it.
+2. If a BLOCKING timer (for example `sr-design-cycle.timer`) **is** enabled: pick a window right after a cycle ended
+   (the lock is free and the next start is more than 30 minutes away; a cycle can run up to 75 minutes). That needs no
+   extra approval. An enabled BLOCKING timer whose next start is further away does not hold W-0 by itself.
 3. Only if no such window can be found: **L-1 (A-12a)** holds `cycle.sh`'s own lock for the window. A cycle the timer
    starts then ends at once with `CYCLE_LOCKED` (exit 11, a success status for the unit) before its preflight, claim or
    worker, and the timer stays as it is. A person's manual `run.sh` takes a different lock, which is why the window is
@@ -732,6 +750,9 @@ repository, and the records say it has not been enabled (HUMAN-010 is on hold, 2
 4. Only if L-1 is not acceptable either: **A-12b** disables the timer for the window and enables it again afterwards
    (`systemctl disable --now` / `enable --now`, `design-worker-cycle.md`). That is a worker / timer change and needs its
    own approval.
+
+A KNOWN-UNRELATED timer (today only the capture helper's `sr-capture.timer`) is listed for information and is **never
+stopped or disabled** for a window (human decision 2026-10-23).
 
 **Claude in the jail.** Before the window, ask the jailed Claude to commit and push its work and to stop at a clean
 point. `claude-stop` ends its tmux server: the Remote Control session disconnects, and a running turn and its in-memory
@@ -742,18 +763,325 @@ Claude Code sessions (like the one that wrote this plan) and Claude outside the 
 about 2 minutes if A-6 is approved together and run before V-2b), plus 5–10 minutes for a rollback. A-3's deploy (D-2)
 interrupts the jail for a few seconds on its own.
 
-**W-0 — the window check (read only).** Run as a person in the WSL shell, outside the jail:
+**W-0 — the window check (read only; the one canonical block, DEV-090).** A-3 (before D-0 and right before D-2) and the
+passt update (A-4 before V-0, and right before V-2) use this same block; every other step refers here. It replaces the
+earlier rule "no `sr-*` timer due within 30 minutes", which could never pass while the capture helper is enabled
+(`sr-capture.timer` is `OnUnitInactiveSec=2min`). Revised on the human's decision of 2026-10-23 (`.ai/blockers.md`
+HUMAN-024).
 
-```bash
-systemctl list-timers --all --no-pager 'sr-*'
-systemctl list-unit-files --no-legend 'sr-*.timer' 'sr-*.path' 'sr-*.service'
-systemctl list-units --all --plain --no-legend 'sr-jail-*' 'sr-design-*'
-if pgrep -u sr-designgen -f 'scripts/sales-design-worker/|sales-design-bridge/|design-image-poc|codex' >/dev/null; then echo "W0_STOP: a worker, PoC or Codex process of sr-designgen is running"; else echo "W0: no worker, PoC or Codex process"; fi
-if sudo test -e /var/lib/sr-design-cycle/cycle.lock; then sudo flock -n /var/lib/sr-design-cycle/cycle.lock true && echo "W0: cycle lock free" || echo "W0_STOP: a cycle is running"; else echo "W0: no cycle state (the cycle never ran)"; fi
+*The timers.* W-0 takes every `sr-*` timer, enabled or not (`systemctl list-unit-files 'sr-*.timer'`, plus every loaded
+one from `systemctl list-timers --all`), and puts each into exactly one class. Classification is by positive
+identification only; nothing is assumed safe because it looks harmless.
+
+| class | a timer is in it when | effect on W-0 |
+|---|---|---|
+| **KNOWN-UNRELATED** | its name is on the allowlist below **and** its service, user, namespace and exec path all equal that entry exactly (the service has exactly one `ExecStart`, without arguments, and no other `Exec*` line) | listed for information only; never holds, never stopped |
+| **BLOCKING** | (not an allowlist name, and) any of: the name is `sr-design-cycle.timer`, `sr-design-worker.timer` or `sr-design-bridge.timer`; the timer or its service is named `sr-jail-*` or `sr-design-*`; the service's `User` is `sr-designgen`; the service has any `NetworkNamespacePath` or `JoinsNamespaceOf`; the path or an argument of any of its `Exec*` commands contains `admin.sh`, `cycle.sh`, `sales-design-worker`, `sales-design-bridge`, `design-image-poc`, `codex` or `sr-jail` | holds only when its next run is due within 30 minutes (or overdue), or its service is running. Merely enabled with a later next run does not hold (step 2 above) |
+| **UNKNOWN** | every other `sr-*` timer, and an allowlist name that deviates from its entry in anything (another user, a namespace, another path, an argument, an extra `Exec*` line, a unit that does not load) | **holds, whatever its schedule** (human decision 2026-10-23, point 4) |
+
+The BLOCKING rules are applied to every other timer on the machine too (for example a root timer named otherwise that
+runs `admin.sh`); such a timer is listed as BLOCKING. Other timers that match no rule (`apt-daily`, `fstrim`, …) are only
+counted.
+
+*The allowlist* (KNOWN-UNRELATED). An entry is changed only by a reviewed docs PR, after the human has read the facts.
+
+| timer | service | user | netns / JoinsNamespaceOf | ExecStart (the only `Exec*`) | why it cannot affect the jail, the worker, Codex or the cycle |
+|---|---|---|---|---|---|
+| `sr-capture.timer` | `sr-capture.service` | `sr-igcapture` | none / none | `/home/sr-igcapture/second-root/scripts/sales-design-capture/run.sh` | it runs as `sr-igcapture` in the host's network namespace (no `NetworkNamespacePath`), so it does not use pasta; from its own checkout `/home/sr-igcapture/second-root`, pinned by `approved-sha`; `jail-install` (D-2) does not touch it (in `admin.sh` only `approve`, also run by `install`, writes and enables its units, `login` stops and restarts them, and `status` reads them; there is no uninstall subcommand); it only serves the requests the worker drops into `/srv/sr-capture/requests` (`scripts/sales-design-capture/systemd/`, `admin.sh`) |
+
+*The rest (unchanged in substance from the earlier W-0).* No active jail unit other than `sr-jail-net` and
+`sr-jail-claude` (`sr-jail-run-*` from `admin.sh run` carries a worker or PoC run; `sr-jail-shell-*`, `sr-jail-check-*`,
+`sr-jail-dns-*` are a person's shell and `jail-check`); no running `sr-design-*` service; no worker, PoC or Codex process
+of `sr-designgen`; **every** process of `sr-designgen` inside `sr-jail-claude.service` (anything else is a job in another
+jail unit, or a process outside the jail, which must never exist); the cycle lock free.
+
+*Output.* One line per timer, then the checks, then one verdict as the last line:
+
+```
+W0_TIMER <class> <timer> -> <service> user=<user> netns=<path|none> exec=<path only> enabled=<state> next=<time(in Ns)|none>
+W0_CHECK OK|HOLD …
+W0_OK                         only if there is no UNKNOWN, no BLOCKING due within 30 minutes or running, and every check passed
+W0_HOLD <reason> <reason> …   unknown:<timer>, due:<timer>, running:<service>, unit:<unit>, worker-process,
+                              process-outside-claude:<unit>, cycle-lock-held, unparseable:<what>
 ```
 
-Go on only when: no `sr-jail-run-*` or `sr-jail-shell-*` unit is active, both checks print `W0:`, and no `sr-*` timer
-is enabled with a next run within 30 minutes. Otherwise wait and run W-0 again.
+It prints no environment variable, no argument of an `Exec*` command (only its path), and nothing from any file. Any
+output it cannot parse (an older or newer `systemctl`, a failed call) is `W0_HOLD unparseable:…`, never a pass. The
+timer schedule comes from `systemctl list-timers --all --output=json`, whose `next` is the next elapse in microseconds,
+monotonic timers converted to wall-clock time and the randomized delay included (systemd v255
+`systemctl-list-units.c`, `format-table.c`; read here, **not run on the WSL machine**: if this systemd prints something
+else, W-0 holds with `unparseable:list-timers` and the plan stops for a fix).
+
+Run it as a person in the WSL shell, outside the jail (it uses `sudo` for the lock and other users' processes):
+
+<!-- W0:BEGIN -->
+```bash
+sr_w0() {
+  # W-0 (DEV-090): read only. Prints one W0_TIMER line per sr-* timer, W0_CHECK lines, and last W0_OK or W0_HOLD.
+  local LOCK=/var/lib/sr-design-cycle/cycle.lock WINDOW=1800
+  local KW="admin.sh cycle.sh sales-design-worker sales-design-bridge design-image-poc codex sr-jail"
+  local ALLOW_TIMER=sr-capture.timer ALLOW_SVC=sr-capture.service ALLOW_USER=sr-igcapture
+  local ALLOW_EXEC=/home/sr-igcapture/second-root/scripts/sales-design-capture/run.sh
+  local RE_NEXT='"next":(null|[0-9]+)[,}]' RE_UNIT='"unit":"([A-Za-z0-9:_.@-]+\.timer)"' RE_NAME='^[A-Za-z0-9:_.@-]+$'
+  local hold=() now out rc line obj t n_obj n_unit others=0 k
+  local -A NEXT=() SR=()
+  now="$(date +%s)"
+  [[ "$now" =~ ^[0-9]{9,}$ ]] || { hold+=("unparseable:date"); now=0; }
+
+  # every timer systemd has loaded, with its next run (realtime microseconds; null or 0 = none)
+  rc=0; out="$(systemctl list-timers --all --no-pager --output=json 2>/dev/null)" || rc=$?
+  if [ "$rc" = 0 ] && [[ "$out" =~ ^\[.*\]$ ]]; then
+    n_obj=0; n_unit="$(grep -o '"unit":' <<<"$out" | wc -l)"
+    while IFS= read -r obj; do
+      n_obj=$((n_obj + 1))
+      if [[ "$obj" =~ $RE_NEXT ]] && k="${BASH_REMATCH[1]}" && [[ "$obj" =~ $RE_UNIT ]]; then
+        NEXT["${BASH_REMATCH[1]}"]="$k"
+      else
+        hold+=("unparseable:list-timers")
+      fi
+    done < <(grep -o '{[^{}]*}' <<<"$out")
+    [ "$n_obj" = "$n_unit" ] || hold+=("unparseable:list-timers")
+  else
+    hold+=("unparseable:list-timers")
+  fi
+  # every sr-* timer unit file, enabled or not
+  rc=0; out="$(systemctl list-unit-files --no-legend --no-pager 'sr-*.timer' 2>/dev/null)" || rc=$?
+  if [ "$rc" = 0 ]; then
+    while read -r t k _; do
+      [ -n "$t" ] || continue
+      if [[ "$t" =~ ^sr-[A-Za-z0-9:_.@-]+\.timer$ && "$k" =~ ^[a-z-]+$ ]]; then SR["$t"]=1; else hold+=("unparseable:list-unit-files"); fi
+    done <<<"$out"
+  else
+    hold+=("unparseable:list-unit-files")
+  fi
+  for t in "${!NEXT[@]}"; do [[ "$t" == sr-* ]] && SR["$t"]=1; done
+
+  # one timer: its service, user, namespace, exec paths; then the class
+  local svc en act tload sload suser netns joins exec_main exec_args execs kws bad sact cls next due p a
+  for t in $(printf '%s\n' "${!NEXT[@]}" "${!SR[@]}" | sort -u); do
+    svc="" en="" act="" tload="" sload="" suser="" netns="" joins="" exec_main="" exec_args=0 execs=0 kws="" bad=0 sact=""
+    while IFS= read -r line; do
+      case "$line" in
+        Unit=*) svc="${line#*=}" ;;
+        UnitFileState=*) en="${line#*=}" ;;
+        ActiveState=*) act="${line#*=}" ;;
+        LoadState=*) tload="${line#*=}" ;;
+      esac
+    done < <(systemctl show "$t" -p Unit -p UnitFileState -p ActiveState -p LoadState 2>/dev/null)
+    [[ "$svc" =~ $RE_NAME ]] || { svc=""; bad=1; }
+    if [ -n "$svc" ]; then
+      while IFS= read -r line; do
+        case "$line" in
+          LoadState=*) sload="${line#*=}" ;;
+          ActiveState=*) sact="${line#*=}" ;;
+          User=*) suser="${line#*=}" ;;
+          NetworkNamespacePath=*) netns="${line#*=}" ;;
+          JoinsNamespaceOf=*) joins="${line#*=}" ;;
+          Exec*=)
+            ;;
+          Exec*=*)
+            if [[ "$line" == *"path="*" ; argv[]="*" ; "* ]]; then
+              p="${line#*path=}"; p="${p%% ;*}"
+              a="${line#*argv\[\]=}"; a="${a%% ; *}"
+              execs=$((execs + 1))
+              if [[ "$line" == ExecStart=* ]] && [ -z "$exec_main" ]; then
+                exec_main="$p"
+                [ "$a" = "$p" ] || exec_args=1
+              fi
+              for k in $KW; do [[ "$p $a" == *"$k"* ]] && kws="$kws $k"; done
+            else
+              bad=1
+            fi
+            ;;
+        esac
+      done < <(systemctl show "$svc" -p LoadState -p ActiveState -p User -p NetworkNamespacePath -p JoinsNamespaceOf \
+        -p ExecCondition -p ExecStartPre -p ExecStart -p ExecStartPost -p ExecReload -p ExecStop -p ExecStopPost 2>/dev/null)
+    fi
+    if [ "$t" = "$ALLOW_TIMER" ]; then
+      # KNOWN-UNRELATED only when every field is exactly the allowlist entry; anything else is UNKNOWN
+      if [ "$bad" = 0 ] && [ "$tload" = loaded ] && [ "$sload" = loaded ] && [ "$svc" = "$ALLOW_SVC" ] &&
+        [ "$suser" = "$ALLOW_USER" ] && [ -z "$netns" ] && [ -z "$joins" ] && [ "$exec_main" = "$ALLOW_EXEC" ] &&
+        [ "$exec_args" = 0 ] && [ "$execs" = 1 ] && [ -z "$kws" ]; then
+        cls=KNOWN-UNRELATED
+      else
+        cls=UNKNOWN
+      fi
+    elif [[ "$t" == sr-design-* || "$t" == sr-jail-* || "$svc" == sr-design-* || "$svc" == sr-jail-* ]] ||
+      [ "$suser" = sr-designgen ] || [ -n "$netns" ] || [ -n "$joins" ] || [ -n "$kws" ]; then
+      cls=BLOCKING
+    elif [[ "$t" == sr-* ]]; then
+      cls=UNKNOWN
+    elif [ "$bad" = 1 ] || [ -z "$tload" ]; then
+      hold+=("unparseable:$t")
+      cls=UNPARSEABLE
+    else
+      others=$((others + 1))
+      continue
+    fi
+    next="${NEXT[$t]:-null}"
+    if [ "$next" = null ] || [ "$next" = 0 ]; then
+      next=none due=0
+    else
+      due=$((next / 1000000 - now))
+      next="$(date -d "@$((next / 1000000))" +%FT%T%z 2>/dev/null || echo "@$((next / 1000000))")(in ${due}s)"
+      if [ "$due" -lt "$WINDOW" ]; then due=1; else due=0; fi
+    fi
+    case "$cls" in
+      UNKNOWN) hold+=("unknown:$t") ;;
+      BLOCKING)
+        [ "$due" = 1 ] && hold+=("due:$t")
+        case "$sact" in active | activating | deactivating | reloading | refreshing) hold+=("running:$svc") ;; esac
+        ;;
+    esac
+    echo "W0_TIMER $cls $t -> ${svc:-?} user=${suser:-root} netns=${netns:-none}${joins:+ joins=$joins} exec=${exec_main:-none} enabled=${en:-?} next=$next"
+  done
+  echo "W0_INFO other timers (not sr-*, no BLOCKING rule): $others"
+
+  # nothing of the jail but its network and Claude; no design unit running
+  local u l a s claude=?
+  local net=?
+  rc=0; out="$(systemctl list-units --all --plain --no-legend --no-pager 'sr-jail-*' 'sr-design-*' 2>/dev/null)" || rc=$?
+  if [ "$rc" = 0 ]; then
+    k=0
+    while read -r u l a s _; do
+      [ -n "$u" ] || continue
+      if [ "$u" = "●" ]; then u="$l"; l="$a"; a="$s"; fi
+      if ! [[ "$u" =~ ^sr-(jail|design)-[A-Za-z0-9:_.@-]+$ && "$a" =~ ^(active|inactive|failed|activating|deactivating|reloading|refreshing|maintenance)$ ]]; then
+        hold+=("unparseable:list-units"); continue
+      fi
+      case "$u" in
+        sr-jail-net.service) net="$a" ;;
+        sr-jail-claude.service) claude="$a" ;;
+        *.timer) ;;
+        *) if [ "$a" != inactive ] && [ "$a" != failed ]; then hold+=("unit:$u"); k=1; echo "W0_CHECK HOLD $u is $a"; fi ;;
+      esac
+    done <<<"$out"
+    [ "$k" = 1 ] || echo "W0_CHECK OK no jail job unit (sr-jail-run-*, sr-jail-shell-*, ...) and no sr-design-* unit running"
+  else
+    hold+=("unparseable:list-units")
+  fi
+  echo "W0_INFO jail sr-jail-net=$net sr-jail-claude=$claude"
+
+  # no worker, PoC or Codex process; every process of sr-designgen inside Claude's own jail unit
+  rc=0; pgrep -u sr-designgen -f 'scripts/sales-design-worker/|sales-design-bridge/|design-image-poc|codex' >/dev/null 2>&1 || rc=$?
+  case "$rc" in
+    0) hold+=("worker-process"); echo "W0_CHECK HOLD a worker, PoC or Codex process of sr-designgen is running" ;;
+    1) echo "W0_CHECK OK no worker, PoC or Codex process" ;;
+    *) hold+=("unparseable:pgrep") ;;
+  esac
+  local pids n=0 pid
+  rc=0; pids="$(pgrep -u sr-designgen 2>/dev/null)" || rc=$?
+  if [ "$rc" = 0 ]; then
+    k=0
+    while read -r pid u; do
+      [ -n "$pid" ] || continue
+      if ! [[ "$pid" =~ ^[0-9]+$ ]]; then hold+=("unparseable:ps"); continue; fi
+      if [ "$u" = sr-jail-claude.service ]; then n=$((n + 1)); else hold+=("process-outside-claude:${u:--}"); k=1; fi
+    done < <(ps -o pid=,unit= -p "$(paste -sd, <<<"$pids")" 2>/dev/null)
+    [ "$k" = 1 ] && echo "W0_CHECK HOLD a process of sr-designgen runs outside sr-jail-claude.service" ||
+      echo "W0_CHECK OK every process of sr-designgen is in sr-jail-claude.service ($n)"
+  elif [ "$rc" = 1 ]; then
+    echo "W0_CHECK OK no process of sr-designgen"
+  else
+    hold+=("unparseable:pgrep")
+  fi
+
+  # the cycle lock (flock -n: a cycle starting in that same instant ends at once with CYCLE_LOCKED)
+  if [ -e "$LOCK" ]; then
+    rc=0; flock -n -E 75 "$LOCK" true || rc=$?
+    case "$rc" in
+      0) echo "W0_CHECK OK cycle lock free" ;;
+      75) hold+=("cycle-lock-held"); echo "W0_CHECK HOLD a cycle holds the lock" ;;
+      *) hold+=("unparseable:flock") ;;
+    esac
+  else
+    echo "W0_CHECK OK no cycle state (the cycle never ran)"
+  fi
+
+  if [ "${#hold[@]}" = 0 ]; then
+    echo "W0_OK"
+  else
+    echo "W0_HOLD $(printf '%s\n' "${hold[@]}" | awk '!seen[$0]++' | paste -sd' ')"
+    return 1
+  fi
+}
+sudo bash -c "$(declare -f sr_w0); sr_w0"
+```
+<!-- W0:END -->
+
+Go on only when the last line is `W0_OK`. On `W0_HOLD`: for `due:`, `running:`, `unit:`, `worker-process`,
+`process-outside-claude:` or `cycle-lock-held`, wait and run W-0 again (or, for `due:sr-design-cycle.timer` only, use
+L-1 if A-12a is approved: run W-0, then take L-1, then go on; do not run W-0 again while L-1 holds the lock, it would
+print `cycle-lock-held`). For `unknown:` and `unparseable:`, stop: the apply step is held until the timer is classified.
+
+*Why a pasted block, not an `admin.sh` subcommand.* W-0 runs **before** D-2 moves the root clone, so the `admin.sh` on
+the machine is the old one and could not have a new subcommand; the human pastes this block (as with S-1). The test
+`tests/unit/design-agent/w0-window-check.test.ts` runs exactly this block from this file, with stand-ins for
+`systemctl`, `pgrep`, `ps`, `flock` and `sudo`, and also checks that it changes nothing.
+
+**An UNKNOWN timer: the read-only fact sheet.** For an UNKNOWN timer (now `sr-claude-auth-watch.timer`, which no file in
+this repository defines), the human runs this and pastes the output back. It prints the timer's and the service's unit
+settings (`Unit`, `User`, `Group`, `NetworkNamespacePath`, `JoinsNamespaceOf`, `WorkingDirectory`, the schedule,
+`FragmentPath`), the **path** of each `Exec*` command (never its arguments), owner / mode / sha256 of each file it runs,
+and, for those files and the unit files, only **how many times** each keyword (`srjail`, `sr-designgen`, `sr-jail`,
+`admin.sh`, `cycle.sh`, `codex`, `netns`, `pasta`, `systemd-run`) occurs, **never a line** of any file, because the
+script may handle authentication. It does not print `Environment=`. **Do not paste anything else from that script or
+its configuration, and never a credential or token.** If the output shows anything you would not share, do not paste
+it; say so instead.
+
+<!-- W0-FACTS:BEGIN -->
+```bash
+sr_w0_facts() {
+  # Read only. Facts about one timer and its service, safe to paste back: unit settings, exec PATHS (never their
+  # arguments), owner / mode / sha256 of the files they run, and keyword COUNTS (never a line of any file).
+  local t="$1" s line k p a f n w hits
+  local KWS="srjail sr-designgen sr-jail admin.sh cycle.sh codex netns pasta systemd-run"
+  local RE_NAME='^[A-Za-z0-9:_.@-]+$'
+  [[ "$t" =~ $RE_NAME && "$t" == *.timer ]] || { echo "FACTS_USAGE: sr_w0_facts <name>.timer"; return 2; }
+  facts_file() { # $1 = label, $2 = file: owner, mode, sha256, keyword counts
+    [ -f "$2" ] || { echo "FILE $1 $2 missing-or-not-a-regular-file"; return 0; }
+    hits=""
+    for w in $KWS; do
+      n="$(grep -a -o -F -e "$w" -- "$2" 2>/dev/null | wc -l)"
+      hits="$hits $w=$n"
+    done
+    echo "FILE $1 $2 $(stat -c '%U:%G %a %s bytes' -- "$2") sha256=$(sha256sum -- "$2" | cut -d' ' -f1)"
+    echo "HITS $1$hits"
+  }
+  echo "== timer $t"
+  systemctl show "$t" -p Id -p LoadState -p UnitFileState -p ActiveState -p Unit -p FragmentPath -p DropInPaths \
+    -p TimersCalendar -p TimersMonotonic -p RandomizedDelayUSec -p Persistent -p NextElapseUSecRealtime -p LastTriggerUSec
+  s="$(systemctl show "$t" -p Unit --value 2>/dev/null)"
+  [[ "$s" =~ $RE_NAME ]] || { echo "FACTS_NO_SERVICE: the timer names no unit"; return 1; }
+  echo "== service $s"
+  systemctl show "$s" -p Id -p LoadState -p UnitFileState -p ActiveState -p Type -p User -p Group -p DynamicUser \
+    -p SupplementaryGroups -p NetworkNamespacePath -p JoinsNamespaceOf -p PrivateNetwork -p WorkingDirectory \
+    -p RootDirectory -p FragmentPath -p DropInPaths
+  echo "== exec paths (arguments are not printed; files named by an absolute argument are listed below)"
+  while IFS= read -r line; do
+    [[ "$line" == Exec*=*"path="*" ; argv[]="*" ; "* ]] || continue
+    k="${line%%=*}"; p="${line#*path=}"; p="${p%% ;*}"
+    a="${line#*argv\[\]=}"; a="${a%% ; *}"
+    echo "EXEC $k path=$p argc=$(wc -w <<<"$a")"
+    facts_file "$k" "$p"
+    for f in $a; do
+      [ "$f" != "$p" ] && [[ "$f" == /* ]] && [ -f "$f" ] && facts_file "$k-arg" "$f"
+    done
+  done < <(systemctl show "$s" -p ExecCondition -p ExecStartPre -p ExecStart -p ExecStartPost -p ExecReload -p ExecStop -p ExecStopPost 2>/dev/null)
+  echo "== unit files"
+  for k in "$t" "$s"; do
+    for f in $(systemctl show "$k" -p FragmentPath -p DropInPaths --value 2>/dev/null); do facts_file "unit:$k" "$f"; done
+  done
+  echo "FACTS_END $t"
+}
+sudo bash -c "$(declare -f sr_w0_facts); sr_w0_facts sr-claude-auth-watch.timer"
+```
+<!-- W0-FACTS:END -->
+
+How it is resolved: the timer stays UNKNOWN (W-0 holds) until either a reviewed docs PR adds an allowlist entry for it
+here, with these facts as the justification and after the human has reviewed them, or it is classified BLOCKING (a
+BLOCKING rule matches, or the docs PR says so). Until then no apply step (D-2, V-2) runs. Nothing is stopped or disabled
+for it.
 
 **L-1 — hold the cycle lock (A-12a, only if approved).** In a second root terminal, before V-2; it prints
 `CYCLE_LOCK_HELD` and holds the lock until Enter is pressed after V-3 / R-3:
@@ -871,7 +1199,8 @@ The old deb kept here is the rollback copy (§6). `apt-get download` into a root
 `W: Download is performed unsandboxed as root` warning. The script was run end to end in a scratch directory
 on 2026-10-22: every check passed and the stanza matched. DEV-087 downloaded both debs again: the hashes still match.
 
-**V-2 — the update (A-5).** Run it as a person, at the console, right after W-0 passed:
+**V-2 — the update (A-5).** Run it as a person, at the console, right after W-0 (§5.0) printed `W0_OK` (or, with L-1,
+as §5.0 says):
 
 ```bash
 sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh claude-stop
@@ -1184,7 +1513,7 @@ change, and any Codex run.
 | A-9 | Contingency, only if AppArmor is active and pasta is denied: complain mode → add `/run/netns/srjail r,` to the profile, or disable the pasta profile (back to today's unconfined state) | AppArmor config | yes | WSL | A-5 fails on AppArmor | §4.3 |
 | A-10 | Maintenance owner and cadence for the hand-installed package (§6.3) | process | yes | process | A-5 | §6.3 |
 | A-11 | Optional: ask Ubuntu for a noble SRU (external post) | external | – | external | any time | §7 |
-| A-12a | Only if a worker timer is enabled and W-0 finds no window: hold `cycle.sh`'s lock for the window | nothing (a cycle ends with `CYCLE_LOCKED`) | yes (release) | WSL | A-4 | L-1 |
+| A-12a | Only if `sr-design-cycle.timer` is enabled and W-0 finds no window (`due:sr-design-cycle.timer`): hold `cycle.sh`'s lock for the window | nothing (a cycle ends with `CYCLE_LOCKED`) | yes (release) | WSL | A-4 | L-1 |
 | A-12b | Only if A-12a is not acceptable: disable the worker timer for the window, then enable it again | the timer | yes | WSL | A-4 | §5.0 (`design-worker-cycle.md`) |
 
 ## 9. Confirmed vs inferred
@@ -1207,6 +1536,9 @@ change, and any Codex run.
 | no noble package depends on passt (podman recommends it, libvirt's qemu driver suggests it) | CONFIRMED (noble + noble-updates `Packages`, 2026-10-22) | §3.1 |
 | `--netns <path>` creates no user namespace in either version | CONFIRMED (`conf.c`, `isolation.c`) | §4.2 |
 | no worker timer is enabled on the WSL machine | per the records (HUMAN-010 on hold); UNVERIFIED on the machine | W-0 checks it |
+| the capture helper (`sr-capture.*`) cannot affect the jail, the worker, Codex or the cycle | CONFIRMED from the code (`sr-capture.service`: `User=sr-igcapture`, no `NetworkNamespacePath`, its own checkout pinned by `approved-sha`; `jail-install` does not touch it) | §5.0 W-0 allowlist; W-0 re-checks the unit on every run |
+| `systemctl list-timers --all --output=json` gives `next` in microseconds with monotonic timers converted (systemd 255) | CONFIRMED from the v255 source; not run on the WSL machine | §5.0 W-0 (holds with `unparseable:list-timers` if not) |
+| `sr-claude-auth-watch.timer` (seen on WSL 2026-10-23) is unrelated to the jail | UNVERIFIED: not defined in this repository; UNKNOWN, so W-0 holds | §5.0 fact sheet, then a docs PR |
 | the update makes 24b's A `OPEN` | INFERRED | the `238c69f` diff; V-3b / A-6 measure it with 24b-v2 |
 | pasta's capability / seccomp state unchanged after the update | UNVERIFIED | V-0 vs V-3a `/proc/<pid>/status` (S-1) |
 
