@@ -302,14 +302,17 @@ Not recommended now: (a) (no gain on the measured bottleneck; revisit if CDN sta
   4. `save-apt-cache.sh` が、いま install されている版の `.deb` だけを次回用に残す。
 - **変えないもの**: すべての test・`check:secrets`・bubblewrap（`SR_REQUIRE_BWRAP=1`）・
   cross-user の sudo test・job 名（required checks）・8 分の step timeout。
-  `continue-on-error` や `|| true` で失敗を隠さない。secret は不要。
+  `continue-on-error` を使わず、install に `|| true` を付けない。secret は不要。
 - **固定する仕組み**: 新しい contract test（`tests/unit/ci-browser-install-contract.test.ts`）が、
   required check 名、`continue-on-error` が無いこと、install step と 8 分の timeout、
   security step、action の SHA 固定、危険な trigger（`pull_request_target` /
   `workflow_run` / `issue_comment`）が無いこと、照合の順序を検査する。
-  この container で、提案どおりの変更に対して 7/7 通り、6 種類の改悪（trigger の追加、
-  timeout 13 分、check:secrets の削除、job 名の変更、continue-on-error、`|| true`）を
-  それぞれ検出することを確認した。
+  この container で、提案どおりの変更に対して 7/7 通り、13 種類の改悪（危険な trigger を
+  block・flow sequence・scalar の各形で追加、timeout 13 分、check:secrets の削除、job 名の
+  変更、continue-on-error、action や ci.yml での `|| true`、ci.yml での直接の install、
+  cache の復元の timeout の削除や 10 分への変更）をそれぞれ検出することを確認した。
+- **cache の復元が詰まった場合**: cache の step に `SEGMENT_DOWNLOAD_TIMEOUT_MINS: "2"` を付け、
+  2 分で諦めて cache miss として続ける（既定は 10 分で、8 分の step を超えてしまう）。
 - **検証**（§6.4）: 検証用の一時 commit で、①セキュリティ検査が同じ、②`fc-list` と
   `dpkg-query` の hash が今の install と同一、③shard ごとの test file 数・test 数・skip 数が
   base run と同一、④required checks が同じ名前で緑、を確かめる。成功の基準は
@@ -326,10 +329,11 @@ Not recommended now: (a) (no gain on the measured bottleneck; revisit if CDN sta
        - run: npm ci
        # The design worker tests capture a local mock page with headless Chromium.
 -      # Normally 20-40 s; the slowest seen was 6m47s on a slow apt mirror (still progressing).
-+      # Normally 20-40 s; on a slow apt mirror it took up to 12 min (DEV-089). The .deb files
-+      # come from a cache checked against the signed apt index; the install command is unchanged.
-       # The limit stops a hung install; a timeout fails the step and the job.
+-      # The limit stops a hung install; a timeout fails the step and the job.
 -      - run: npx playwright install --with-deps chromium
++      # Normally 20-40 s; on a slow apt mirror successes took up to 12m18s; some never finished
++      # (DEV-089). The .deb files come from a cache checked against the signed apt index; the
++      # install command is unchanged. The limit stops a hung install; a timeout fails the step and the job.
 +      - uses: ./.github/actions/playwright-chromium
          timeout-minutes: 8
        # The Codex sandbox tests run against real bubblewrap, unprivileged (as on the WSL worker).
@@ -381,6 +385,10 @@ runs:
       shell: bash
       run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
     - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      env:
+        # A stalled restore gives up after 2 min (default 10) and counts as a cache miss,
+        # leaving the rest of the 8-minute step for the normal download.
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "2"
       with:
         path: ~/.cache/sr-apt-debs
         key: pw-apt-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.id }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
@@ -409,7 +417,16 @@ set -euo pipefail
 src="$HOME/.cache/sr-apt-debs"
 dest=/var/cache/apt/archives
 shopt -s nullglob
-debs=("$src"/*.deb)
+# only strict package_version_arch.deb names (no newline, slash or space can slip through)
+re='^[a-z0-9][a-z0-9+.-]*_[^_/[:space:]]+_[a-z0-9]+\.deb$'
+debs=()
+for f in "$src"/*.deb; do
+  if [[ "${f##*/}" =~ $re ]]; then
+    debs+=("$f")
+  else
+    echo "apt .deb cache: ignored a file with an unexpected name"
+  fi
+done
 if [ "${#debs[@]}" -eq 0 ]; then
   echo "apt .deb cache: empty (cache miss); apt downloads everything"
   exit 0
@@ -454,7 +471,9 @@ set -euo pipefail
 out="$HOME/.cache/sr-apt-debs"
 rm -rf "$out"
 mkdir -p "$out"
-installed=$(dpkg-query -W -f='${Package} ${Version} ${Architecture}\n')
+# fully installed packages only (status "ii")
+installed=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package} ${Version} ${Architecture}\n' |
+  awk '$1 == "ii" {print $2, $3, $4}')
 shopt -s nullglob
 kept=0
 for f in /var/cache/apt/archives/*.deb; do
@@ -480,8 +499,15 @@ Notes:
 - **Versions**: the index lists every version the archive still has (release and `-updates`
   pockets). A cached version other than apt's candidate can pass the hash check but is never
   installed — apt installs only the candidate and downloads it when its file is missing. The save
-  step drops such files: it keeps only files matching
-  `dpkg-query -W -f='${Package} ${Version} ${Architecture}\n'`.
+  step drops such files: it keeps only files whose package, version and architecture are
+  fully installed (`${db:Status-Abbrev}` = `ii` in `dpkg-query -W`).
+- **Names**: only strict `package_version_arch.deb` basenames
+  (`^[a-z0-9][a-z0-9+.-]*_[^_/[:space:]]+_[a-z0-9]+\.deb$`) are considered at all, so a name with
+  a newline, slash or space cannot slip into the `apt-cache` query or the match.
+- **Stalled restore**: the restore now runs inside the 8-minute step. `actions/cache` waits up to
+  `SEGMENT_DOWNLOAD_TIMEOUT_MINS` (default 10) for a stalled download segment; the action sets it
+  to 2, after which the restore is abandoned as a cache miss and the install downloads as today
+  with ~6 min left. A 26 MB restore normally takes seconds, so 2 min is ample.
 - `apt-cache show` exits non-zero when one name is unknown (e.g. a junk file); `|| true` keeps
   the lines it did print. A missing or wrong entry can only lead to "dropped". This is the only
   `|| true`, and it is not on the install.
@@ -493,10 +519,12 @@ Notes:
   new key start from the previous files. `actions/cache` saves in its post step only when the job
   succeeds, and only for a key not saved yet.
 - [measured here] Both scripts pass `bash -n`. With apt redirected to an isolated root:
-  seed — a tampered `xvfb` (same size) and a junk `evil_1.0_amd64.deb` were both removed from the
-  archive, the other 19 placed and byte-identical to the mirror's; save — of 18 files, the 9 whose
-  version is installed in this container were kept and the newer `xvfb`/`libnss3` (not installed
-  here) were not.
+  seed — three files with bad names (a newline in the name, an upper-case name, a space in the
+  version) were ignored, a tampered `xvfb` (same size) and a junk `evil_1.0_amd64.deb` were removed
+  from the archive, the other 19 placed and byte-identical to the mirror's; save — of 18 files, the
+  9 whose version is installed in this container were kept and the newer `xvfb`/`libnss3` (not
+  installed here) were not; with a stub `dpkg-query` reporting `rc`, `ii` and `iU`, only the `ii`
+  package's file was kept.
 
 ### 6.3 New `tests/unit/ci-browser-install-contract.test.ts`
 
@@ -520,6 +548,31 @@ const save = read(`${ACTION_DIR}/save-apt-cache.sh`);
 const workflows = readdirSync(join(root, ".github/workflows"))
   .filter((f) => /\.ya?ml$/.test(f))
   .map((f) => ({ f, text: read(`.github/workflows/${f}`) }));
+
+/**
+ * The event names under a workflow's top-level `on:` key, in any of its forms:
+ * scalar (`on: push`), flow sequence (`on: [push, pull_request]`), flow map
+ * (`on: { push: {} }`) or block (`on:` followed by indented keys or `- items`).
+ */
+function triggers(text: string): string[] {
+  const lines = text.split("\n");
+  const i = lines.findIndex((l) => /^["']?on["']?\s*:/.test(l));
+  if (i < 0) return [];
+  const words = (s: string) => [...s.replace(/#.*$/, "").matchAll(/[A-Za-z_][A-Za-z0-9_-]*/g)].map((m) => m[0]);
+  const inline = lines[i].replace(/^["']?on["']?\s*:/, "").trim();
+  if (inline && !inline.startsWith("#")) {
+    // flow forms: keep the event names, not the values inside a flow map
+    const flow = inline.replace(/:\s*(\{[^}]*\}|\[[^\]]*\]|[^,}\]]*)/g, "");
+    return words(flow);
+  }
+  const names: string[] = [];
+  for (const l of lines.slice(i + 1)) {
+    if (/^\S/.test(l)) break;
+    const m = /^ {2}(?:- )?["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*(?::|$)/.exec(l);
+    if (m) names.push(m[1]);
+  }
+  return names;
+}
 
 /** The text of one job in ci.yml: from "  <id>:" to the next job header. */
 function job(id: string): string {
@@ -556,6 +609,11 @@ describe("CI browser install contract (DEV-089)", () => {
       expect(job(id)).toMatch(/- uses: \.\/\.github\/actions\/playwright-chromium\n\s+timeout-minutes: 8\n/);
     expect(action).toMatch(/\n\s+run: npx playwright install --with-deps chromium\n/);
     expect(action).not.toMatch(/\|\|\s*(true|:)/);
+    // the install happens only in the action: no direct (unchecked) install, nothing swallowed in ci.yml
+    expect(ci).not.toMatch(/npx playwright install/);
+    expect(ci).not.toMatch(/\|\|\s*(true|:)/);
+    // a stalled cache restore must give up well inside the 8-minute step (default is 10 min)
+    expect(action).toMatch(/uses: actions\/cache@[0-9a-f]{40}[^\n]*\n\s+env:\n(?:\s+#[^\n]*\n)*\s+SEGMENT_DOWNLOAD_TIMEOUT_MINS: "2"\n/);
   });
 
   it("keeps the security steps", () => {
@@ -576,25 +634,40 @@ describe("CI browser install contract (DEV-089)", () => {
   });
 
   it("runs on no trigger that would let untrusted code write a cache the base branch reads", () => {
-    for (const { f, text } of workflows)
-      expect(text, f).not.toMatch(/^\s*(pull_request_target|workflow_run|issue_comment)\s*:/m);
+    for (const { f, text } of workflows) {
+      const on = triggers(text);
+      expect(on.length, `${f} has an on: key`).toBeGreaterThan(0);
+      for (const bad of ["pull_request_target", "workflow_run", "issue_comment"]) expect(on, f).not.toContain(bad);
+    }
+    // the parser itself, on every form
+    expect(triggers("on: pull_request_target\n")).toEqual(["pull_request_target"]);
+    expect(triggers("on: [pull_request_target, push]\n")).toEqual(["pull_request_target", "push"]);
+    expect(triggers("on: { workflow_run: { workflows: [CI] }, push: {} }\n")).toEqual(["workflow_run", "push"]);
+    expect(triggers("on:\n  - issue_comment\n  - push\njobs:\n")).toEqual(["issue_comment", "push"]);
+    expect(triggers("on:\n  pull_request:\n  push:\n    branches: [main]\n\npermissions:\n")).toEqual(["pull_request", "push"]);
   });
 
   it("checks each cached .deb against the signed index, on the root-owned copy", () => {
     expect(seed).toMatch(/^set -euo pipefail$/m);
+    expect(seed).toContain("re='^[a-z0-9][a-z0-9+.-]*_[^_/[:space:]]+_[a-z0-9]+\\.deb$'");
     expect(seed).toContain("sudo apt-get update");
     expect(seed).toMatch(/sudo install -m 0644 -o root -g root "\$f" "\$target"\n\s+have=\$\(sha256sum "\$target"/);
     expect(seed).toContain('sudo rm -f -- "$target"');
     expect(save).toMatch(/^set -euo pipefail$/m);
-    expect(save).toContain("dpkg-query -W");
+    expect(save).toContain("dpkg-query -W -f='${db:Status-Abbrev} ${Package} ${Version} ${Architecture}\\n'");
+    expect(save).toContain('$1 == "ii"');
   });
 });
 ```
 
 [measured here] In a scratch worktree with §6.1 and §6.2 applied: 7/7 pass, eslint clean. Against
-today's `ci.yml` the install test fails, as it should. Each of these mutations makes exactly one
-test fail: `pull_request` → `pull_request_target`; one `timeout-minutes: 8` → `13`; `check:secrets`
-removed; `e2e-sales` renamed; `continue-on-error: true` on a job; `|| true` after the install.
+today's `ci.yml` the install test fails, as it should. Each of these 13 mutations makes exactly one
+test fail: block `pull_request` → `pull_request_target`; `on: [pull_request_target, push]`;
+`on: pull_request_target`; a block `workflow_run:` added; one `timeout-minutes: 8` → `13`;
+`check:secrets` removed; `e2e-sales` renamed; `continue-on-error: true` on a job; `|| true` after the
+install in the action; a direct `npx playwright install … || true` step in `ci.yml`; `|| true` on
+another `ci.yml` step; `SEGMENT_DOWNLOAD_TIMEOUT_MINS` removed; set to `"10"`. The trigger parser is
+also unit-tested on the scalar, flow-sequence, flow-map and both block forms.
 
 ### 6.4 How each condition is verified
 
