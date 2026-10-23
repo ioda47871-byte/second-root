@@ -4136,6 +4136,89 @@
       ]
     },
     {
+      "id": "DEV-095",
+      "title": "Design image PoC 第2案: 組み立てた v2 prompt を sha256 と文字数で test に固定し、人が WSL で同じ sha を読むだけで確かめる手順を置く（test と docs だけ）",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-077"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-095-v2-prompt-pin",
+      "purpose": "次の v2 の実 Codex 画像呼び出し 1 回を人が承認するとき、承認が厳密な prompt を指せるようにする。v1 の prompt は sha256 で固定済みだが、v2（buildMockupPrompt(loadPocInputs(REPO, \"v2\"))）は長さの上限と toContain だけで、後の編集で実行内容が黙って変わり得た。",
+      "decision": "v2 prompt = sha256 7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa・6801 chars（入力は prompt.ts・wagashi-art-direction-v2.json・wagashi.json だけで、時刻・env・path に依らない）。人の確認は design-image-poc.md 第2案「Pinned prompt」の読むだけの tsx --no-cache -e 1 行（案 a）。design-image-poc.ts に flag は足さない（isolation と承認 flag 先頭の順を変えない）。report.json の key は不変。",
+      "acceptance_criteria": [
+        "design-image-poc.test.ts の v2 (DEV-077) test が v2 prompt の sha256 と文字数 6801 を固定し、既定の direction でも同じ prompt であることを確かめる",
+        "design-image-poc.md の第2案に sha と長さ、人の承認がこの sha を指すこと、WSL で違えば実行しないこと、読むだけの確認コマンドを書く",
+        "prompt の文・direction JSON・fixture・prompt.ts・run.ts・閾値・report の key は不変"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/ai-tasks.test.ts、npm run typecheck、eslint（変更 file）、npm run check:secrets"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/design-image-poc.test.ts（test の追加だけ）",
+        "docs/operations/design-image-poc.md（第2案）",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "v1 / v2 の prompt の文・direction JSON・prompt.ts の動作・run.ts・閾値の変更",
+        "report.json への prompt_sha256 の追加（PocReport の key は固定）",
+        "design-dna.ts・design-library/poc/design-dna/**・bundle.ts・comp-impl-poc.ts",
+        "Codex・WSL・worker の実行、.github/**、.ai/progress.md"
+      ],
+      "human_approval_triggers": [
+        "次の v2 の実 Codex 画像呼び出し（この sha を指す個別承認）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
+    },
+    {
+      "id": "DEV-094",
+      "title": "comp bundle: 実 comp の評価に「各項目4点以上」を強制する（evaluationVerdict）と、spec を書く前の intake 専用の確認（comp-impl-poc.ts --intake）",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-082"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-094-comp-intake",
+      "purpose": "人が 2026-10-22 に採用した方針「22/25点以上、各項目4点以上を基本方針とする」に code を合わせる。bundle.ts は合計だけを見ていたため、5,5,5,5,3（合計 23）の real comp が承認されていた。あわせて、Claude が layout-spec.json を書く前に comp bundle を確認できる intake 専用の mode を CLI に置く。",
+      "decision": "閾値は変えない（EVAL_PASS_TOTAL=22 のまま、EVAL_MIN_CRITERION=4 は採用済みの方針の写し）。合計と各項目の和の不一致は既存の EVAL_TOTAL_MISMATCH が扱うので新しい拒否は足さない。拒否コードは COMP_NOT_APPROVED のままで、理由を problems（と low_criteria）に付ける。loadCompBundle = loadCompIntake + 既存の spec の検査で、拒否の順番と戻り値の形は不変。provenance（worker_commit・prompt_chars・direction_version）は報告だけで拒否しない。--intake は Chromium を起動せず、出力 root もファイルも作らない。",
+      "acceptance_criteria": [
+        "evaluationVerdict(ev) が純粋関数として { pass, reasons（固定コード・sorted）, low_criteria（固定キー） } を返し、compApproved = real && pass",
+        "5,5,5,5,3（23）と 5,5,5,4,3（22）は COMP_NOT_APPROVED（EVAL_CRITERION_BELOW_MIN, low=implementability）、4,4,4,5,5（22）は承認、4,4,4,4,5（21）は EVAL_TOTAL_BELOW_PASS だけ",
+        "既存の REAL_EVAL は承認のまま、synthetic は compApproved=false で読め、既存の拒否コードと順番は不変",
+        "loadCompIntake は layout-spec.json 無しで読め、loadCompBundle は同じ bundle を既存のコード（SPEC_INVALID）で拒む",
+        "comp-impl-poc.ts --intake は 1 行の COMP_INTAKE を出し、exit 0 / 1（COMP_NOT_APPROVED）/ 2、bundle と出力 root を変えない（spawnSync の test）",
+        "comp-to-site.md §3・§8・§10、design-image-eval-template.md、roadmap、design-image-poc.md を更新"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/comp-impl/*.test.ts（synthetic e2e を含め変更なしで通る）",
+        "npm run typecheck、変更ファイルの eslint、npm run check:secrets",
+        "tests/unit/ai-tasks.test.ts、tests/unit/guardrails.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/comp-impl/bundle.ts",
+        "scripts/sales-design-worker/comp-impl-poc.ts",
+        "tests/unit/design-agent/comp-impl/bundle.test.ts",
+        "docs/operations/comp-to-site.md・design-image-eval-template.md・design-image-poc.md（after-run の 1 行）",
+        "docs/design/claude-auto-implementation-roadmap.md",
+        ".ai/tasks.json（DEV-094 だけ）・.ai/reviews/DEV-094.md"
+      ],
+      "forbidden_scope": [
+        "EVAL_PASS_TOTAL・similarity.ts・tolerance・allowlist・fidelity status・DEV-083 の検査の変更",
+        "PR #109 のファイル、design-dna.ts、prompt.ts、v1/v2 prompt、direction JSON、design-image の run.ts",
+        "Codex・WSL・worker の実行",
+        ".github/**、.ai/progress.md（feature branch）"
+      ],
+      "human_approval_triggers": [
+        "方針（22/25・各項目4以上）自体の変更は新しい承認",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
+    },
+    {
       "id": "DEV-093",
       "title": "Design DNA: 店ごとの研究用ブリーフの契約（8 項目の判断を店の根拠へ結ぶ parseDesignDna、使い回しの検出 sharedDesignDnaParts / sameDesignDna、DEV-073 の架空 3 店の fixture）。worker・PoC には未接続（offline・研究用）",
       "status": "review",

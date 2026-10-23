@@ -12,10 +12,14 @@
  * shop-facts.json is the same; a bundle whose copy differs is refused. Every
  * file is opened without following a link, as a regular file within a size cap.
  * Failures are fixed codes.
+ *
+ * loadCompIntake (DEV-094) runs every check up to the evaluation, so a comp can
+ * be checked before Claude writes layout-spec.json; loadCompBundle is that
+ * intake plus the spec checks, with the same refusal order.
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, readFile, realpath } from "node:fs/promises";
+import { lstat, open, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { DemoView } from "@/lib/sales/demo-content";
@@ -80,7 +84,11 @@ export const COMP_KINDS = ["real", "synthetic"] as const;
 export type CompKind = (typeof COMP_KINDS)[number];
 /** The rubric's pass mark (design-image-eval-template.md): no hard fail and a total of at least 22/25. */
 export const EVAL_PASS_TOTAL = 22;
-
+/**
+ * The lowest score any one criterion may have for a pass (DEV-094). The human's policy, 2026-10-22:
+ * 「22/25点以上、各項目4点以上を基本方針とする」 — a high total cannot hide one weak area.
+ */
+export const EVAL_MIN_CRITERION = 4;
 const Score = z.number().int().min(1).max(5);
 export const EvaluationSchema = z.strictObject({
   version: z.literal(1),
@@ -96,6 +104,44 @@ export const EvaluationSchema = z.strictObject({
   confirmed_at: z.string().datetime({ offset: true }).nullable(),
 });
 export type Evaluation = z.infer<typeof EvaluationSchema>;
+/**
+ * The rubric's criteria, in the rubric's order: derived from the keys of `EvaluationSchema.scores`, so a criterion
+ * added to the schema is always held to `EVAL_MIN_CRITERION` too (never a hand-kept copy).
+ */
+export const EVAL_CRITERIA: readonly EvalCriterion[] = EvaluationSchema.shape.scores.unwrap().keyof().options;
+export type EvalCriterion = keyof NonNullable<Evaluation["scores"]>;
+
+/** Why an evaluation does not approve its comp (fixed codes). */
+export const EVAL_VERDICT_REASONS = ["EVAL_CRITERION_BELOW_MIN", "EVAL_NOT_CONFIRMED", "EVAL_NOT_REAL", "EVAL_NO_SCORES", "EVAL_TOTAL_BELOW_PASS"] as const;
+export type EvalVerdictReason = (typeof EVAL_VERDICT_REASONS)[number];
+export type EvalVerdict = {
+  /** The comp may be implemented as a design result. */
+  pass: boolean;
+  /** Fixed codes, sorted; empty exactly when `pass`. */
+  reasons: EvalVerdictReason[];
+  /** The criteria scored below EVAL_MIN_CRITERION, in the rubric's order (keys only). */
+  low_criteria: EvalCriterion[];
+};
+
+/**
+ * The rubric's verdict on an evaluation (pure): a pass needs a `real` comp, the human's confirmation, scores,
+ * a total of at least EVAL_PASS_TOTAL and every criterion at least EVAL_MIN_CRITERION. The hard fails and
+ * the sheet's consistency (comp sha, kind, total = sum, a complete confirmation) are the loader's refusals.
+ */
+export function evaluationVerdict(ev: Pick<Evaluation, "comp_kind" | "human_confirmed" | "scores" | "total">): EvalVerdict {
+  const reasons: EvalVerdictReason[] = [];
+  if (ev.comp_kind !== "real") reasons.push("EVAL_NOT_REAL");
+  if (!ev.human_confirmed) reasons.push("EVAL_NOT_CONFIRMED");
+  const low_criteria: EvalCriterion[] = [];
+  if (!ev.scores) reasons.push("EVAL_NO_SCORES");
+  else {
+    if (ev.total === null || ev.total < EVAL_PASS_TOTAL) reasons.push("EVAL_TOTAL_BELOW_PASS");
+    for (const k of EVAL_CRITERIA) if (ev.scores[k] < EVAL_MIN_CRITERION) low_criteria.push(k);
+    if (low_criteria.length > 0) reasons.push("EVAL_CRITERION_BELOW_MIN");
+  }
+  reasons.sort();
+  return { pass: reasons.length === 0, reasons, low_criteria };
+}
 
 /** The PoC's report.json fields the loader relies on (the rest is ignored). */
 const PocReportSchema = z.looseObject({
@@ -131,8 +177,33 @@ export type LoadBundleOptions = {
   pngLimits?: PngLimits;
 };
 
-/** Loads and checks a bundle; throws CompImplError with a fixed code when anything is unsafe or inconsistent. */
-export async function loadCompBundle(bundleDir: string, o: LoadBundleOptions): Promise<CompBundle> {
+/** Where the comp came from: report-only fields of the PoC's report.json (never a reason to refuse). */
+export type CompProvenance = {
+  /** The repository commit the design-image run used, when the report has a well-formed one. */
+  worker_commit: string | null;
+  prompt_chars: number | null;
+  direction_version: DirectionVersion;
+};
+
+/** Everything checked before the implementation spec exists (DEV-094): the comp, the report, the facts, the direction and the evaluation. */
+export type CompIntake = Omit<CompBundle, "spec"> & {
+  verdict: EvalVerdict;
+  provenance: CompProvenance;
+  /** Whether layout-spec.json is present as a regular file (report-only; it is not read here). */
+  layoutSpecPresent: boolean;
+};
+
+/** Thrown for a real comp the rubric did not pass: `problems` holds the verdict's reasons, `low_criteria` the weak criteria. */
+export type CompNotApprovedError = CompImplError & { problems: EvalVerdictReason[]; low_criteria: EvalCriterion[] };
+
+const pickWorkerCommit = (v: unknown) => (typeof v === "string" && /^[0-9a-f]{7,40}$/.test(v) ? v : null);
+const pickCount = (v: unknown) => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null);
+
+/**
+ * Loads and checks a bundle up to (not including) the implementation spec; throws CompImplError with a fixed code
+ * when anything is unsafe or inconsistent, in the same order as loadCompBundle. Run it before writing layout-spec.json.
+ */
+export async function loadCompIntake(bundleDir: string, o: LoadBundleOptions): Promise<CompIntake> {
   let dir: string;
   try {
     dir = await realpath(bundleDir);
@@ -184,18 +255,18 @@ export async function loadCompBundle(bundleDir: string, o: LoadBundleOptions): P
   if (Object.values(ev.hard_fails).some(Boolean)) refuse("EVAL_HARD_FAIL");
   if (ev.scores && ev.total !== Object.values(ev.scores).reduce((a, b) => a + b, 0)) refuse("EVAL_TOTAL_MISMATCH");
   if (ev.human_confirmed && (!ev.confirmed_by || !ev.confirmed_at || !ev.scores)) refuse("EVAL_CONFIRMATION_INCOMPLETE");
-  const compApproved = ev.comp_kind === "real" && ev.human_confirmed && ev.total !== null && ev.total >= EVAL_PASS_TOTAL;
-  // A real comp is implemented only after the human-confirmed rubric passed it.
-  if (ev.comp_kind === "real" && !compApproved) refuse("COMP_NOT_APPROVED");
+  const verdict = evaluationVerdict(ev);
+  const compApproved = ev.comp_kind === "real" && verdict.pass;
+  // A real comp is implemented only after the human-confirmed rubric passed it (total and every criterion).
+  if (ev.comp_kind === "real" && !compApproved) throw Object.assign(new CompImplError("COMP_NOT_APPROVED"), { problems: verdict.reasons, low_criteria: verdict.low_criteria });
 
-  const specCheck = checkCompSpec(await readJson(join(dir, "layout-spec.json"), "SPEC_INVALID"));
-  if (!specCheck.ok) return refuse(specCheck.problems[0] ?? "SPEC_INVALID");
-  const spec = specCheck.spec;
-  if (spec.comp_sha256 !== compSha) refuse("SPEC_COMP_MISMATCH");
-  if (spec.artboard.width_px !== png.width || spec.artboard.height_px !== png.height) refuse("SPEC_ARTBOARD_MISMATCH");
-  const factProblems = specFactProblems(spec, shop.demo);
-  if (factProblems.length > 0) refuse(factProblems[0]!);
-
+  let layoutSpecPresent = false;
+  try {
+    layoutSpecPresent = (await lstat(join(dir, "layout-spec.json"))).isFile();
+  } catch {
+    layoutSpecPresent = false;
+  }
+  const r = report.data as Record<string, unknown>;
   return {
     dir,
     comp: { bytes: png.bytes, width: png.width, height: png.height, sha256: compSha, kind: ev.comp_kind },
@@ -205,6 +276,34 @@ export async function loadCompBundle(bundleDir: string, o: LoadBundleOptions): P
     shopKey: shop.key,
     facts: shop.facts,
     demo: shop.demo,
+    verdict,
+    provenance: { worker_commit: pickWorkerCommit(r.worker_commit), prompt_chars: pickCount(r.prompt_chars), direction_version: report.data.direction_version },
+    layoutSpecPresent,
+  };
+}
+
+/** Loads and checks a bundle; throws CompImplError with a fixed code when anything is unsafe or inconsistent. */
+export async function loadCompBundle(bundleDir: string, o: LoadBundleOptions): Promise<CompBundle> {
+  const intake = await loadCompIntake(bundleDir, o);
+  const { dir, comp, demo } = intake;
+  const compSha = comp.sha256;
+  const specCheck = checkCompSpec(await readJson(join(dir, "layout-spec.json"), "SPEC_INVALID"));
+  if (!specCheck.ok) return refuse(specCheck.problems[0] ?? "SPEC_INVALID");
+  const spec = specCheck.spec;
+  if (spec.comp_sha256 !== compSha) refuse("SPEC_COMP_MISMATCH");
+  if (spec.artboard.width_px !== comp.width || spec.artboard.height_px !== comp.height) refuse("SPEC_ARTBOARD_MISMATCH");
+  const factProblems = specFactProblems(spec, demo);
+  if (factProblems.length > 0) refuse(factProblems[0]!);
+
+  return {
+    dir,
+    comp,
+    compApproved: intake.compApproved,
+    evaluation: intake.evaluation,
+    directionVersion: intake.directionVersion,
+    shopKey: intake.shopKey,
+    facts: intake.facts,
+    demo,
     spec,
   };
 }
