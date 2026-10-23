@@ -4005,6 +4005,46 @@
         "ci.yml と .github/actions/** の実変更（案の review の後）",
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-090",
+      "title": "W-0 の窓の確認を jail・worker・Codex・design cycle に実際に影響する timer に絞る（docs と test だけ、実 WSL では何も変えない）",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-088"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-090-w0-timer-scope",
+      "purpose": "人が WSL で W-0 を流したところ sr-capture.timer（OnUnitInactiveSec=2min）が常に 30 分以内に動くため、旧 W-0 の「sr-* の timer が 30 分以内に無い」は helper が有効な限り満たせなかった。人の判断（2026-10-23）: W-0 を jail・worker・Codex・design cycle に影響する timer に限る、sr-capture.timer は表示だけで止めない、sr-claude-auth-watch.timer は読むだけで確認、未確認の timer は適用を保留、worker・PoC・Codex・cycle lock・jail の job の検出は維持、passt-update-plan.md を独立 PR で直す（A-3 と passt 更新の両方の W-0）。承認は文書の修正と読むだけの確認だけ。",
+      "decision": "W-0 は passt-update-plan.md §5.0 の 1 つの bash block（sr_w0）。sr-* の timer を BLOCKING（名前・User=sr-designgen・netns・Exec* の keyword）/ KNOWN-UNRELATED（許可リストと完全一致、今は sr-capture.timer だけ）/ UNKNOWN（それ以外の sr-*、/usr/lib 以外の unit file や drop-in を持つ timer。予定に関係なく HOLD）。sr-claude-auth-watch.timer は人の確認により名前で BLOCKING。apt-daily(-upgrade)・unattended-upgrade も BLOCKING。Exec* 行全体を大文字小文字を区別せず探す、ExecStartEx の flags も許可リストで確かめる、ps の欠落・linger も HOLDに分ける。BLOCKING は 30 分以内の実行か service の稼働でだけ HOLD。jail の job unit・sr-design-* の稼働・worker/PoC/Codex の process・Claude の unit の外の sr-designgen の process・cycle lock を検出。解析できない出力は HOLD。最後の行は W0_OK か W0_HOLD <理由>。admin.sh の subcommand にはしない（W-0 は D-2 で root clone が動く前に流すので古い admin.sh に無い）。UNKNOWN 用の読むだけの fact sheet（sr_w0_facts、引数・環境変数・file の行は出さず keyword の数だけ）。D-0 は W0_OK の後だけ。§4.6 は D-0 の入口の文だけ変え、D-2・D-4 は変えない（A-3 の backport の PR と衝突させない）。",
+      "acceptance_criteria": [
+        "§4.6（D-0・D-2）と §5.0（V-0・V-2）と §0・§8・§9 が 1 つの W-0 を参照し、旧 30 分 rule が残らない",
+        "W-0 の block が doc から取り出され、stub の systemctl / pgrep / ps / flock / sudo で test される（capture は KNOWN-UNRELATED、user・netns・path などが違えば UNKNOWN、auth-watch は UNKNOWN で HOLD、cycle が 10 分後で HOLD・2 時間後で OK、worker の process・lock・sr-jail-run・解析できない出力で HOLD）",
+        "W-0 と fact sheet が読むだけで、引数・環境変数・file の中身を出さないことを test が確かめる",
+        "Fresh Review の指摘（ps の fail-open、keyword の行全体と大小、非 sr の timer、Ex の flags、fact sheet の引数の file、L-1 の文言、情報の注記）に対応し、auth-watch を名前で BLOCKING にする",
+        "独立 review と CI"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/w0-window-check.test.ts（bash -n を含む）",
+        "ai-tasks の unit、typecheck、変更した file の lint、npm run check:secrets"
+      ],
+      "allowed_scope": [
+        "docs/operations/passt-update-plan.md",
+        "tests/unit/design-agent/w0-window-check.test.ts",
+        ".ai/**（feature branch では progress.md を除く）"
+      ],
+      "forbidden_scope": [
+        "timer・worker・jail の unit、admin.sh・cycle.sh",
+        "実 WSL での実行・適用（W-0・fact sheet は人が流す）",
+        ".github/**",
+        "この container での network namespace・rule"
+      ],
+      "human_approval_triggers": [
+        "D-0・D-2 の実行（A-3 の承認 1・2）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }
