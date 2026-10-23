@@ -16,8 +16,11 @@ requester's processes to Windows (and so to root and the Instagram profile):
 - the Windows host and every private / link-local address are refused at
   once (cgroup BPF: IPAddressDeny), the WSL DNS tunnel address
   (10.255.255.254) included: the jail's DNS goes only through pasta;
-- DNS is UDP-only (Ubuntu 24.04's pasta forwards UDP/53 only): TCP to the
-  jail's DNS address must be refused at once, never left to hang;
+- the jail's DNS address takes UDP/53 and nothing else, whatever pasta
+  forwards (newer pasta also maps UDP/853 and TCP/53, TCP/853): the jail's
+  namespace holds exactly the designed ip rules (read over netlink), and
+  UDP to other ports and TCP to 53 / 853 are refused at once (EACCES),
+  never left to hang;
 - no new privileges, a seccomp filter, no other user's process visible, no
   other home, the helper's profile out of reach.
 
@@ -29,11 +32,24 @@ import ctypes
 import errno
 import os
 import socket
+import struct
 import sys
 import time
 
 # The jail's only DNS server (admin.sh JAIL_DNS; /run/sr-jail/resolv.conf). pasta answers it on UDP/53.
 JAIL_DNS = "198.51.100.53"
+# The IPv4 ip rules of the jail's namespace, exactly (admin.sh jail_install, sr-jail-net's ExecStartPre; DEV-088 / A-3):
+# the kernel's three default rules and, for the DNS address, UDP/53 to the main table and everything else refused.
+# Read from the kernel over netlink (the format of `ip rule show` does not matter). A rule more, less or different
+# fails the jail. Written as "<priority>: [to <addr>/<len>] [ipproto <n>] [dport <port>] <action>" (17 = UDP).
+EXPECTED_RULES = (
+    "0: lookup 255",
+    "98: to 198.51.100.53/32 ipproto 17 dport 853 prohibit",
+    "99: to 198.51.100.53/32 ipproto 17 dport 53 lookup 254",
+    "100: to 198.51.100.53/32 prohibit",
+    "32766: lookup 254",
+    "32767: lookup 253",
+)
 # The WSL DNS tunnel: on the VM's loopback, where every 0.0.0.0 service answers too. Never reachable.
 WSL_DNS_TUNNEL = "10.255.255.254"
 
@@ -86,6 +102,113 @@ def status_field(name):
             if line.startswith(name + ":"):
                 return line.split(":", 1)[1].strip()
     return ""
+
+
+# rtnetlink (linux/netlink.h, linux/rtnetlink.h, linux/fib_rules.h)
+NLMSG_ERROR, NLMSG_DONE, RTM_NEWRULE, RTM_GETRULE = 2, 3, 32, 34
+NLM_F_REQUEST, NLM_F_DUMP = 0x1, 0x300
+FRA_DST, FRA_PRIORITY, FRA_SUPPRESS_PREFIXLEN, FRA_TABLE, FRA_PROTOCOL, FRA_IP_PROTO, FRA_DPORT_RANGE = 1, 6, 14, 15, 21, 22, 24
+FRA_DPORT_MASK = 29
+FR_ACT_TO_TBL, FR_ACT_PROHIBIT = 1, 8
+
+
+def describe_rule(payload):
+    """One RTM_NEWRULE payload (struct fib_rule_hdr + attributes) as the text EXPECTED_RULES uses. Anything the
+    text cannot say (a source, an interface, a mark, a uid range, a source port, a TOS, a flag such as "not")
+    is written as a marker that matches nothing, so such a rule can never pass for an expected one."""
+    family, dst_len, src_len, tos, table, _res1, _res2, action, flags = struct.unpack_from("=8BI", payload, 0)
+    attrs = {}
+    off = 12
+    while off + 4 <= len(payload):
+        alen, atype = struct.unpack_from("=HH", payload, off)
+        if alen < 4 or off + alen > len(payload):
+            raise ValueError("bad attribute")
+        atype &= 0x3FFF
+        if atype in attrs:
+            raise ValueError("repeated attribute")
+        attrs[atype] = payload[off + 4 : off + alen]
+        off += (alen + 3) & ~3
+    if off != len(payload):
+        raise ValueError("trailing bytes")
+    words = []
+    words.append("%d:" % (struct.unpack("=I", attrs.pop(FRA_PRIORITY))[0] if FRA_PRIORITY in attrs else 0))
+    if family != socket.AF_INET:
+        words.append("family=%d" % family)
+    if src_len or tos or flags:
+        words.append("other=%d/%d/%d" % (src_len, tos, flags))
+    dst = attrs.pop(FRA_DST, None)
+    if dst_len or dst is not None:
+        words.append("to %s/%d" % (socket.inet_ntoa(dst) if dst is not None and len(dst) == 4 else "?", dst_len))
+    if FRA_IP_PROTO in attrs:
+        words.append("ipproto %d" % attrs.pop(FRA_IP_PROTO)[0])
+    if FRA_DPORT_RANGE in attrs:
+        start, end = struct.unpack("=HH", attrs.pop(FRA_DPORT_RANGE))
+        words.append("dport %d" % start if start == end else "dport %d-%d" % (start, end))
+        # Linux 6.15 and later give a single port the mask 0xffff (fib_nl2rule) and send it back (FRA_DPORT_MASK):
+        # the same exact-port match, so it says nothing more. Any other mask, or one without a single port, is shown.
+        if start == end and attrs.get(FRA_DPORT_MASK) == struct.pack("=H", 0xFFFF):
+            del attrs[FRA_DPORT_MASK]
+    if FRA_DPORT_MASK in attrs:
+        mask = attrs.pop(FRA_DPORT_MASK)
+        words.append("dport_mask=0x%04x" % struct.unpack("=H", mask)[0] if len(mask) == 2 else "dport_mask=?")
+    # always sent by the kernel: the table (also for prohibit, then 0), "no suppress_prefixlen" (-1), and the
+    # rule's protocol, a label of who added it (kernel / unspec) that changes nothing in the lookup
+    if FRA_TABLE in attrs:
+        table = struct.unpack("=I", attrs.pop(FRA_TABLE))[0]
+    if attrs.pop(FRA_SUPPRESS_PREFIXLEN, struct.pack("=i", -1)) != struct.pack("=i", -1):
+        words.append("suppress_prefixlen")
+    attrs.pop(FRA_PROTOCOL, None)
+    for atype in sorted(attrs):
+        words.append("attr%d" % atype)
+    if action == FR_ACT_TO_TBL:
+        words.append("lookup %d" % table)
+    elif action == FR_ACT_PROHIBIT:
+        words.append("prohibit")
+    else:
+        words.append("action%d" % action)
+    return " ".join(words)
+
+
+def parse_rule_dump(chunks, seq):
+    """The rules of an RTM_GETRULE dump, in the kernel's order (by priority), from the datagrams received.
+    Raises ValueError on anything but a complete, well-formed answer to this request."""
+    rules = []
+    for data in chunks:
+        off = 0
+        while off < len(data):
+            if off + 16 > len(data):
+                raise ValueError("short message")
+            length, mtype, _flags, mseq, _pid = struct.unpack_from("=IHHII", data, off)
+            if length < 16 or off + length > len(data) or mseq != seq:
+                raise ValueError("bad message")
+            if mtype == NLMSG_DONE:
+                return rules
+            if mtype == NLMSG_ERROR or mtype != RTM_NEWRULE:
+                raise ValueError("unexpected message")
+            rules.append(describe_rule(data[off + 16 : off + length]))
+            off += (length + 3) & ~3
+    raise ValueError("no end of dump")
+
+
+def ipv4_rules():
+    """The IPv4 ip rules of this process's network namespace, read from the kernel (a dump needs no privilege)."""
+    s = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 0)  # NETLINK_ROUTE
+    s.settimeout(2)
+    try:
+        s.bind((0, 0))
+        seq = int(time.time()) & 0x7FFFFFFF
+        hdr = struct.pack("=8BI", socket.AF_INET, 0, 0, 0, 0, 0, 0, 0, 0)
+        s.sendto(struct.pack("=IHHII", 16 + len(hdr), RTM_GETRULE, NLM_F_REQUEST | NLM_F_DUMP, seq, 0) + hdr, (0, 0))
+        chunks = []
+        while True:
+            chunks.append(s.recv(65536))
+            try:
+                return parse_rule_dump(chunks, seq)
+            except ValueError as e:
+                if str(e) != "no end of dump" or len(chunks) > 64:
+                    raise
+    finally:
+        s.close()
 
 
 def main():
@@ -263,21 +386,40 @@ def main():
     finally:
         t.close()
 
-    # DNS is UDP-only: TCP to the jail's DNS address is refused inside the jail's namespace (ip rule
-    # "prohibit", EACCES) at once. Without it a truncated answer would hang a lookup ~2 minutes.
-    t = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    t.settimeout(1.5)
-    started = time.monotonic()
+    # The jail's DNS address takes UDP/53 and nothing else, whatever pasta forwards (DEV-088 / A-3): newer pasta
+    # also maps UDP/853, TCP/53 and TCP/853 to the host resolver. Inside the jail's namespace the ip rules refuse
+    # the rest ("prohibit", EACCES) at once, before a packet reaches pasta. First the rules themselves, exactly.
     try:
-        t.connect((JAIL_DNS, 53))
-        fail("DNS_TCP_NOT_REFUSED")
-    except OSError as e:
-        if e.errno != errno.EACCES:
+        if tuple(ipv4_rules()) != EXPECTED_RULES:
+            fail("DNS_RULES_NOT_EXACT")
+    except (OSError, ValueError, IndexError, struct.error):
+        fail("DNS_RULES_UNCHECKED")
+    # TCP to 53 and 853: refused at once (without it a truncated answer would hang a lookup ~2 minutes).
+    for port in (53, 853):
+        t = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        t.settimeout(1.5)
+        started = time.monotonic()
+        try:
+            t.connect((JAIL_DNS, port))
             fail("DNS_TCP_NOT_REFUSED")
-        elif time.monotonic() - started > 1.0:
-            fail("DNS_TCP_REFUSED_SLOWLY")
-    finally:
-        t.close()
+        except OSError as e:
+            if e.errno != errno.EACCES:
+                fail("DNS_TCP_NOT_REFUSED")
+            elif time.monotonic() - started > 1.0:
+                fail("DNS_TCP_REFUSED_SLOWLY")
+        finally:
+            t.close()
+    # UDP to any port but 53: refused (853 is DNS over QUIC/DTLS, which newer pasta forwards; 9 stands for the rest).
+    for port in (853, 9):
+        u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            u.sendto(b"x", (JAIL_DNS, port))
+            fail("DNS_UDP_PORT_NOT_REFUSED")
+        except OSError as e:
+            if e.errno != errno.EACCES:
+                fail("DNS_UDP_PORT_NOT_REFUSED")
+        finally:
+            u.close()
 
     for ip in ("fd00::1", "fe80::1%1"):
         try:
@@ -349,9 +491,9 @@ def main():
     except OSError:
         pass
 
-    # Not a boundary, but without it nothing works: say so instead of failing later. Only once every
-    # check passed: then TCP to the DNS address is proven refused at once, so a truncated answer
-    # cannot make this lookup hang (without the rule it would wait ~2 minutes).
+    # Not a boundary, but without it nothing works: say so instead of failing later (admin.sh jail-check
+    # fails on it, with getent). Only once every check passed: then TCP to the DNS address is proven refused
+    # at once, so a truncated answer cannot make this lookup hang (without the rule it would wait ~2 minutes).
     if not problems:
         try:
             socket.getaddrinfo("github.com", 443, proto=socket.IPPROTO_TCP)
