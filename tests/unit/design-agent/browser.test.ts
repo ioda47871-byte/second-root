@@ -100,6 +100,7 @@ describe("profile location and permissions", () => {
   it("resolves a linked ancestor that exists before creating anything", async () => {
     const s = sandbox();
     const elsewhere = mkdtempSync(join(tmpdir(), "srdw-elsewhere-"));
+    made.push(elsewhere);
     symlinkSync(elsewhere, join(s.home, ".local"));
     await expect(prepareProfileDir(s.profile, s.env)).rejects.toMatchObject({ code: "PROFILE_OUTSIDE_HOME" });
     expect(readdirSync(elsewhere)).toEqual([]);
@@ -1018,6 +1019,7 @@ describe("closeBrowser", () => {
   it("kills the Chromium of exactly this profile when the graceful close never ends it, and no other", { timeout: 30_000 }, async () => {
     const { spawn } = await import("node:child_process");
     const dir = mkdtempSync(join(tmpdir(), "sr-kill-"));
+    made.push(dir);
     const profile = join(dir, "profile");
     const hold = "setInterval(() => undefined, 1000)";
     const mine = spawn(process.execPath, ["-e", hold, "--", `--user-data-dir=${profile}`], { stdio: "ignore" });
