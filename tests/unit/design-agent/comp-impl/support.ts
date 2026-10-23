@@ -45,6 +45,18 @@ export function stripedPng(width: number, height: number, a: [number, number, nu
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
+/** An RGB PNG painted pixel by pixel (8-bit, non-interlaced): small built images for the metric tests. */
+export function paintedPng(width: number, height: number, paint: (x: number, y: number) => [number, number, number]): Buffer {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const raw = Buffer.alloc((1 + width * 3) * height);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) raw.set(paint(x, y), y * (1 + width * 3) + 1 + x * 3);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
 export async function privateTemp(prefix: string): Promise<string> {
   const base = process.env.TMPDIR || tmpdir();
   await mkdir(base, { recursive: true });

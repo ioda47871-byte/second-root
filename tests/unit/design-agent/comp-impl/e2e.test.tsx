@@ -95,6 +95,21 @@ describe("comp-to-site on the synthetic fixture", () => {
     expect(r.checks.protected_1px).toMatchObject({ ok: true, widths: 1601, failing_widths: 0 });
   });
 
+  it("DEV-097: reports a per-section comparison for every spec section, desktop only, never a pass", () => {
+    const s = result.report.similarity.sections;
+    expect(s).toMatchObject({ viewport: "desktop_1440", mobile: "not_compared_no_mobile_comp", passing: false, code: null });
+    expect(s.items.map((i) => i.id)).toEqual(["header", "hero", "products", "info", "footer"]);
+    for (const item of s.items) {
+      expect(item.code).toBeNull();
+      // the synthetic page was drawn to the same plan as its comp: the numbers only show the measurement runs end to end
+      expect(item.colour!.dominant_delta_e).toBeLessThan(5);
+      expect(Math.abs(item.height_share!.ratio - 1)).toBeLessThan(0.1);
+      expect(item.edges!.comp_density).toBeGreaterThanOrEqual(0);
+    }
+    // the section report is an added field; the run's verdict is the mechanical checks alone
+    expect(result.report.failed).toEqual([]);
+  });
+
   it("DEV-083 phase A: the added checks ran at every checked width and on the sweep, and pass (blocking and advisory)", () => {
     const r = result.report;
     const layers = Object.keys(r.checks).filter((k) => /^layers_\d+$/.test(k));

@@ -414,6 +414,47 @@ The result carries `passing: false` (a literal) and a status: `synthetic_only` (
 judge typography, image quality or feel, and on the synthetic fixture the comp and the page were drawn by the same hand
 (synthetic run: SSIM 0.90, colour blocks 0.996, edges IoU 0.71 — meaningless as a fidelity claim).
 
+**Per-section comparison (DEV-097, `similarity.ts` `sectionComparison`, `report.similarity.sections`).** The whole-page
+numbers above stretch a 1440-wide page onto the comp's aspect; a real comp (~1024 × 1536) and its page rarely have the same
+height, so one number cannot say *where* they differ. The section report compares like with like: for every section of
+`layout-spec.json`, its box (fractions of the artboard) is cropped from the comp, and the first shown `[data-comp-section]` with
+the same id is cropped from the **1440 desktop** full-page screenshot (its measured box, CSS px). Each crop is box-filtered onto
+its own grid, 128 columns wide with square cells (≈ section width / 128 — 11 CSS px for a full-width section — on both
+sides, since the comp shows the same 1440 page at its own scale), and four kinds of numbers are put side by side:
+
+| field | what it is | how to read it |
+|---|---|---|
+| `colour.comp_mean` / `page_mean`, `mean_delta_e` | the crop's mean colour; CIE76 ΔE (CIELAB) between them | ~2.3 is just noticeable; a large value means the section's overall tone differs |
+| `colour.lightness_delta` | L* of the page's mean minus the comp's | negative: the page's section is darker ("the hero is darker than the comp") |
+| `colour.comp_dominant` / `page_dominant` (+ `_share`), `dominant_delta_e` | the most-filled colour bin (16 levels per channel) of each crop, usually the section's ground | a wrong background or surface colour shows here even when text and images average it away |
+| `edges.comp_density` / `page_density`, `delta` | share of grid cells whose Sobel magnitude on luminance exceeds a fixed 96 (of 1020) | positive delta: the page's section is busier (more or larger marks, borders, text); negative: emptier |
+| `height_share.comp` / `page`, `ratio` | the section's height over the whole height (comp: the spec box; page: measured box over the page height); ratio = page / comp | ratio > 1: the section takes more of the page than in the comp |
+| `aspect_h_per_w.comp` / `page`, `ratio` | each crop's height over its width; ratio = page / comp | ratio > 1: the section is taller for its width than in the comp |
+
+`comp_box_px` (comp image px) and `page_box_css_px` (CSS px) give the crops, so a person can find them in the images; the
+page box is the crop actually compared (the measured box clamped to the screenshot in whole pixels), and the page's height share
+and aspect are taken from it. A section
+with no shown element is reported as `SECTION_NOT_RENDERED`, a box outside its image as `SECTION_CROP_EMPTY`, an undecodable PNG
+as `SIMILARITY_DECODE_UNSUPPORTED` and any other error while comparing as `SECTION_COMPARE_ERROR` (both with no items);
+**none of these fails the run** (`geometry_desktop` already fails a missing
+section).
+
+**It is not a pass / fail.** `sections.passing` is the literal false; there is no threshold, no code in `failed`, no change to
+`mechanical_ok` or to `fidelity_status`. What counts as "close" per number is unknown until real comps are measured, and making
+any of it a gate is the human's decision (roadmap A5). On the synthetic fixture (comp and page drawn to the same plan) every
+section reads ΔE ≤ 0.3, dominant ΔE 0, height-share and aspect ratios ≈0.99–1.01 and edge-density deltas within ±0.03 — which only
+shows the measurement runs end to end.
+
+**How a person uses it.** Next to the side-by-side sheet (the comp and `desktop.png`), the report points at the section to look
+at first and says what kind of difference to look for: tone (`mean_delta_e`, `lightness_delta`), ground colour
+(`dominant_delta_e`), density of content (`edges.delta`), or proportion (`height_share.ratio`, `aspect_h_per_w.ratio`). The
+person still judges likeness from the images; typography, image quality and feel are not in any number. The same fields are
+what a future fix loop (roadmap §5) can quote as "the info section is 28 % taller and emptier than the comp".
+
+**Mobile is not compared.** The comp shows one 1440 page; there is no mobile comp to crop. The 390 page keeps the spec's
+mobile order check (`order_mobile`) and the person's review of `mobile.png`; `sections.mobile` says
+`not_compared_no_mobile_comp`.
+
 **Anti-template guard (`anti-template.ts`).** Prevents "a slightly modified existing template":
 
 1. no renderer markers in the page (`#shop-css`, `data-shop-css`, `data-kind`, `data-variant`, … in HTML or CSS) and no demo
@@ -450,7 +491,8 @@ from the comp and its spec in a reviewed session, and a person looks at it next 
   drawn to a plan;
 - whether the tolerances are right (real comps are ~1024 × 1536 images of a 1440 page: the page's height rarely matches the
   comp's aspect; `geometry_desktop` reports both aspects);
-- whether the similarity numbers mean anything (what a "good" SSIM / edge IoU looks like on a real pair);
+- whether the similarity numbers mean anything (what a "good" SSIM / edge IoU, or a per-section ΔE / edge-density delta,
+  looks like on a real pair);
 - image slots with real, reviewed AI concept assets (DEV-076) and their crops;
 - fonts: a Mincho face in the comp vs the local stacks (no web fonts are allowed in this PoC);
 - anything aesthetic — the human's side-by-side review.
@@ -462,7 +504,7 @@ from the comp and its spec in a reviewed session, and a person looks at it next 
 is checked on its resolved path **before** anything is created. An existing root is used only when it is a real directory (not a
 link) owned by the user with mode 0700, and its mode is never changed; a missing root is created 0700.
 `report.json`: `fidelity_status`, `faithful_reproduction_claimed: false`, `mechanical_ok`, `failed`, bundle and page digests,
-every check's codes and numbers, `anti_template`, `similarity`, notes.
+every check's codes and numbers, `anti_template`, `similarity` (with the per-section report `similarity.sections`, §7), notes.
 
 ```bash
 # synthetic fixture (renders the synthetic comp into a private scratch bundle, removed afterwards)

@@ -4299,6 +4299,45 @@
         "CI 設定"
       ],
       "human_approval_triggers": []
+    },
+    {
+      "id": "DEV-097",
+      "title": "comp-to-site Stage 5(b): comp と 1440 desktop screenshot を section ごとに比べる report-only の数値（mean / dominant 色の CIELAB ΔE・edge 密度・高さの割合・aspect）を report.similarity.sections に足す（閾値・gate なし）",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-082"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-097-section-compare",
+      "purpose": "issue #110 item 4（人）: store facts → design principles → comp 1 枚 → Claude が忠実に実装 → PC/mobile 比較。1024×1536 の comp と 1440 幅の page は高さが大きく違い、全体の pixel 類似度では比べられない。roadmap Stage 5(b) / §8 #4 の per-section 比較を report-only で置き、fix loop と人の side-by-side が「どの section の何が違うか」を読めるようにする。",
+      "decision": "layout-spec の section box（comp の割合）で comp を、同じ id の最初の shown [data-comp-section] の box で desktop full-page screenshot を切り、各 crop を 128 列（約 11 CSS px の正方 cell）の grid に box-filter して、mean 色・dominant 色（16 段の bin）の CIE76 ΔE と L* 差、Sobel 強度 > 96 の edge 密度、page 高に対する割合と aspect（page/comp 比）を出す。passing は literal false、閾値・code による失敗・新しい fidelity status なし。mobile は比べない（mobile の comp が無い）: order check と人の目視のまま。既存の report の値と screenshot は変わらない（synthetic run で sections と時間の ms 以外の report.json と PNG が同一）。",
+      "acceptance_criteria": [
+        "report.similarity.sections に viewport desktop_1440・mobile not_compared_no_mobile_comp・passing false・spec の各 section の数値（欠けた section は SECTION_NOT_RENDERED、空の crop は SECTION_CROP_EMPTY、読めない PNG は SIMILARITY_DECODE_UNSUPPORTED で、どれも失敗にしない）",
+        "mechanical_ok・failed・既存の check・ssim / colour_blocks / edges_iou・fidelity_status は不変（synthetic run で確かめる）",
+        "組み立てた小さな画像で: 同じ crop は距離 0、色だけの変化は色の数値だけ動く、印の追加は edge 密度だけ動く、高さの違いは height_share と aspect だけ動く",
+        "comp-to-site.md §7 に意味・pass/fail でないこと・side-by-side との使い方、roadmap Stage 5(b) を部分実施（report only）に更新"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/comp-impl/sections.test.ts・e2e.test.tsx・checks.test.ts（comp-impl 全体）",
+        "tests/unit/ai-tasks.test.ts、npm run typecheck、eslint（変更 file）、npm run check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/comp-impl/similarity.ts・run.ts（report の組み立てだけ）",
+        "tests/unit/design-agent/comp-impl/sections.test.ts（新規）・e2e.test.tsx・support.ts（test の追加だけ）",
+        "docs/operations/comp-to-site.md・docs/design/claude-auto-implementation-roadmap.md",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "閾値・gate・新しい fidelity status・passing を true にし得る経路",
+        "bundle.ts・comp-impl-poc.ts（PR #112）、DEV-083 の check・allowlist・tolerance",
+        "依存の追加（package.json / pnpm-lock）、.github/**、.ai/progress.md"
+      ],
+      "human_approval_triggers": [
+        "section の数値を gate にする閾値（roadmap A5）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }
