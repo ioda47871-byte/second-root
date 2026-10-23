@@ -4005,6 +4005,49 @@
         "ci.yml と .github/actions/** の実変更（案の review の後）",
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-091",
+      "title": "A-3 の WSL 適用を backport で: root clone の commit c066618 に DEV-088 の 3 file だけを足した 1 commit と、その適用・検証・rollback の手順（docs だけ、WSL では未実行）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-088"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-091-a3-backport-procedure",
+      "purpose": "人の判断（2026-10-23）: 現行の D-2（root clone を e525371 へ移動。230 file・うち jail と worker の file が 24）は実行しない。root clone の c066618 を基準に、DEV-088 の DNS 制限（admin.sh・jail/probe.py・jail/jail.properties）だけを最小限に backport し、旧 code との互換性を検証し、対象の固定・test・実機の適用手順・rollback を用意する。目的は画像生成の復旧で、設計のやり直しではない。",
+      "decision": "hotfix/a3-dns-on-c066618 = fbfce3c87abb185a4cc59d28f2a842a838ddeac0（c066618 の上の 1 commit、3 path だけ、blob は e525371 と同一）。CI は draft PR #106（base/wsl-c066618 向け、merge しない、c066618 の workflow と test）。sr-jail-claude.service は c066618 と byte 単位で同じ、sr-jail-net.service は rule の 1 行 → 3 行だけ（両方の commit から stand-in で render して diff）。手順は passt-update-plan.md §4.6 の backport 版（W-0 → AW-1 → D-0b → W-0 → D-2b → D-3 → D-4）。sr-claude-auth-watch は W-0 で名前により BLOCKING（DEV-090）、AW-1 で何を走らせるかを token だけで確かめる",
+      "acceptance_criteria": [
+        "hotfix branch が c066618 の上の 1 commit で、git diff --name-only c066618 X が 3 path だけ、3 つの blob が e525371 と同一、sha256 を記録",
+        "c066618 の jail 関係の test を X で流し、失敗は旧い TCP だけの rule を前提にした 1 件だけ（理由を記録）。DEV-088 の test（commit しない）は X で通る",
+        "jail-install が書く file と unit を両方の commit から render して diff: sr-jail-claude.service は同一、sr-jail-net.service は rule の行だけ",
+        "timer・capture helper・cycle.sh・worker・Codex を触らないことを静的に確認し、D-3 で snapshot を比べる",
+        "W-0・AW-1・D-0b・D-2b・D-3・D-4 がそのまま貼れて bash -n を通り、承認の点が書いてある"
+      ],
+      "required_tests": [
+        "npm run check:secrets",
+        "tests/unit/ai-tasks.test.ts",
+        "手順の block の bash -n と、模擬の /root/sr-a3・clone・stand-in での D-0b / D-2b / D-4 の実行"
+      ],
+      "allowed_scope": [
+        "docs/operations/passt-update-plan.md §4.6（と §0・§8 の A-3 の行）",
+        ".ai/tasks.json・.ai/blockers.md",
+        "hotfix/a3-dns-on-c066618（3 file だけ）と base/wsl-c066618（c066618 そのまま）"
+      ],
+      "forbidden_scope": [
+        "WSL への適用（D-0b 以降）・passt の更新・timer の停止・Codex の実行",
+        ".github/**",
+        "develop の code の変更",
+        "force push",
+        "DEV-090 の branch（PR #105）の編集"
+      ],
+      "human_approval_triggers": [
+        "D-0b（承認 2a）",
+        "D-2b と D-3・D-4（承認 2b）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }
