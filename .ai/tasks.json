@@ -4049,7 +4049,7 @@
     {
       "id": "DEV-091",
       "title": "A-3 の WSL 適用を backport で: root clone の commit c066618 に DEV-088 の 3 file だけを足した 1 commit と、その適用・検証・rollback の手順（docs だけ、WSL では未実行）",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-088"
