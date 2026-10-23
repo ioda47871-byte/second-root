@@ -4303,7 +4303,7 @@
     {
       "id": "DEV-097",
       "title": "comp-to-site Stage 5(b): comp と 1440 desktop screenshot を section ごとに比べる report-only の数値（mean / dominant 色の CIELAB ΔE・edge 密度・高さの割合・aspect）を report.similarity.sections に足す（閾値・gate なし）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-082"
