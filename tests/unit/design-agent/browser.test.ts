@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -25,10 +25,22 @@ let site: MockSite;
 beforeAll(async () => {
   site = await startMockSite();
 });
-afterAll(() => site.server.close());
+// every temp dir made by a test is removed at the end (a Chromium profile is a few MB, and each run used to leave them all)
+const made: string[] = [];
+afterAll(() => {
+  site.server.close();
+  for (const d of made) {
+    try {
+      rmSync(d, { recursive: true, force: true });
+    } catch {
+      // cleanup only: a dir a test made unreadable must not turn a passing file red
+    }
+  }
+});
 
 function sandbox() {
   const home = mkdtempSync(join(tmpdir(), "srdw-home-"));
+  made.push(home);
   chmodSync(home, 0o700);
   const env: ProfileEnv = { repoDir: REPO, home, uid: process.getuid?.(), user: userInfo().username, expectedUser: userInfo().username };
   return { home, env, profile: join(home, ".local", "share", "sr-instagram-browser"), state: join(home, "state"), out: join(home, "out") };
@@ -88,6 +100,7 @@ describe("profile location and permissions", () => {
   it("resolves a linked ancestor that exists before creating anything", async () => {
     const s = sandbox();
     const elsewhere = mkdtempSync(join(tmpdir(), "srdw-elsewhere-"));
+    made.push(elsewhere);
     symlinkSync(elsewhere, join(s.home, ".local"));
     await expect(prepareProfileDir(s.profile, s.env)).rejects.toMatchObject({ code: "PROFILE_OUTSIDE_HOME" });
     expect(readdirSync(elsewhere)).toEqual([]);
@@ -1006,6 +1019,7 @@ describe("closeBrowser", () => {
   it("kills the Chromium of exactly this profile when the graceful close never ends it, and no other", { timeout: 30_000 }, async () => {
     const { spawn } = await import("node:child_process");
     const dir = mkdtempSync(join(tmpdir(), "sr-kill-"));
+    made.push(dir);
     const profile = join(dir, "profile");
     const hold = "setInterval(() => undefined, 1000)";
     const mine = spawn(process.execPath, ["-e", hold, "--", `--user-data-dir=${profile}`], { stdio: "ignore" });
