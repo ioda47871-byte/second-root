@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "shop_key": "patisserie",
+  "status": "research_only",
+  "factual_copy": "verified_facts_only",
+  "asset_policy": "none",
+  "evidence": [
+    {
+      "id": "brand",
+      "origin": "verified_shop_fact",
+      "observation": "Boulangerie Pâtisserie Exemple is a fictional French boulangerie-pâtisserie.",
+      "source_label": "DEV-073 patisserie.json: name and industry"
+    },
+    {
+      "id": "hours",
+      "origin": "verified_shop_fact",
+      "observation": "The only contact-like detail supplied is the address and the listed hours are 10:00–18:00.",
+      "source_label": "DEV-073 patisserie.json: address and hours"
+    }
+  ],
+  "references": [
+    {
+      "id": "DR-017",
+      "url": "https://happo-en-patisserie.com/",
+      "scope": "site_structure_only",
+      "observed_principle": "An official patisserie website has separate selections and shop information sections.",
+      "transferable_idea": "Separate emotional identity from a scannable factual area without reusing its wording, imagery or sections verbatim.",
+      "rights": "analysis_only"
+    }
+  ],
+  "decisions": [
+    {
+      "part": "hero",
+      "choice": "An airy type-led opening: a refined small French name framed by a single overscale outlined numeral-like abstract curve.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": [
+        "DR-017"
+      ]
+    },
+    {
+      "part": "typography",
+      "choice": "Elegant high-contrast Latin serif paired with pragmatic horizontal Japanese text for address and hours.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": [
+        "DR-017"
+      ]
+    },
+    {
+      "part": "palette",
+      "choice": "Dusty lilac paper and graphite with a thin ivory highlight; avoid the obvious cafe cream-and-brown pairing.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": [
+        "DR-017"
+      ]
+    },
+    {
+      "part": "product_visual",
+      "choice": "No invented pastries or interior photos: an abstract typographic sculpture substitutes for absent approved imagery.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "section_rhythm",
+      "choice": "Hero is mostly air, a short editorial title area follows, then a denser strict address-and-hours footer.",
+      "rationale": "A store-specific design hypothesis supported by hours, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "hours"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "navigation",
+      "choice": "Understated sticky-like top label with anchors to verified location and hours; no product menu promise.",
+      "rationale": "A store-specific design hypothesis supported by hours, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "hours"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "mobile",
+      "choice": "Keep the complete long French name on two intentional lines; collapse visual curve behind no text.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "implementation",
+      "choice": "Implement entirely with CSS lines and pseudo-elements, responsive typography and verified fact-only text.",
+      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    }
+  ]
+}
