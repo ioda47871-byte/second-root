@@ -610,6 +610,8 @@ describe("the prompt", () => {
     // It depends only on prompt.ts, the v2 direction file and the wagashi fixture (no time, env or path);
     // the human sees the same sha256 on WSL with the read-only command in design-image-poc.md (第2案, "Pinned prompt").
     // Any change to the prompt, the v2 direction or the fixture fails here and needs a new approval.
+    // The sha covers only the text sent to Codex on stdin: not the Codex CLI's built-in instructions, model or config,
+    // nor anything loaded from CODEX_HOME (report.json records cli_version).
     expect(createHash("sha256").update(prompt).digest("hex")).toBe("7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa");
     expect(prompt.length).toBe(6801);
     expect(buildMockupPrompt(await loadPocInputs(REPO, "v2"))).toBe(prompt);
