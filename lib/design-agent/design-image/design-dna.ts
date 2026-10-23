@@ -11,6 +11,12 @@ export const DESIGN_DNA_PARTS = [
   "navigation", "mobile", "implementation",
 ] as const;
 export type DesignDnaPart = (typeof DESIGN_DNA_PARTS)[number];
+/**
+ * Where the research-only example briefs live. Like the PoC's DIRECTION_PATHS,
+ * the path is owned here: the PoC isolation test forbids the worker, demo and
+ * renderer from naming design-library/poc, and nothing outside tests reads it.
+ */
+export const DESIGN_DNA_FIXTURE_DIR = "design-library/poc/design-dna";
 export type DesignDnaEvidence = {
   id: string;
   origin: "verified_shop_fact" | "owner_direction";

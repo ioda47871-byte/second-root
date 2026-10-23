@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  DESIGN_DNA_PARTS, DesignDnaError, parseDesignDna, sameDesignDna, sharedDesignDnaParts,
+  DESIGN_DNA_FIXTURE_DIR, DESIGN_DNA_PARTS, DesignDnaError, parseDesignDna, sameDesignDna, sharedDesignDnaParts,
 } from "@/lib/design-agent/design-image/design-dna";
 
 const valid = () => ({
@@ -92,7 +92,7 @@ describe("Design DNA: research-only, no template selection", () => {
   it("loads three fictional DEV-073 fixtures with distinct creative choices, without automatic publication", () => {
     const keys = ["wagashi", "coffee", "patisserie"] as const;
     const briefs = keys.map((key) => {
-      const path = join(process.cwd(), "design-library/poc/design-dna", `${key}.json`);
+      const path = join(process.cwd(), DESIGN_DNA_FIXTURE_DIR, `${key}.json`);
       const brief = parseDesignDna(JSON.parse(readFileSync(path, "utf8")));
       expect(brief.shop_key).toBe(key);
       expect(brief.status).toBe("research_only");
