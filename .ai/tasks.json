@@ -4265,6 +4265,40 @@
         "feature → develop の merge は AI_WORKFLOW §4 の条件（Fresh Review PASS・最新 SHA の必須 CI）"
       ],
       "decision": "2026-10-23: PR #109（draft）の引き継ぎ。自己レビューで直したもの: wagashi の参考（xd.5star.co.jp/work/1649、SONICJAM の お茶のはまだ）の観察が頁に無い「余白と和文の組版」を書いていた → 頁が述べる「白を基調」だけに。A Bite Coffee の頁は 503 で再確認できず docs に未確認と記載。24 の rationale が同じ定型文だった → 判断ごとの理由に書き直し、貼り回しを拒否。sameDesignDna は 8 項目すべて一致のときだけ真で、7 項目を貼っても通った → 項目ごとの sharedDesignDnaParts を足し、fixture の test は共有 0 を要求。記号・順序の変更で逃げないことと、言い換えは検出しない限界を test に固定。負例は拒否理由まで照合。fixture の evidence が DEV-073 の field を指し、架空と書くことを test。40 事例・9 技法カードは repo に無く、DR-0xx は brief 内のラベルと docs に記載"
+    },
+    {
+      "id": "DEV-096",
+      "title": "test の一時 dir の後片付け: sandbox（21 MB の参照画像）・browser（Chromium の profile）・capture-helper が毎回 temp に残す → 消す（test だけ）",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-096-sandbox-test-tmp",
+      "purpose": "container の disk が満杯になった（2026-10-23）。原因は tests/unit/design-agent/sandbox.test.ts の「reference images reach Codex only as checked copies」が mkdtemp した dir（21 MB の big.png を含む）を消さず、実行ごとに約 22 MB を temp に残していたこと（/tmp に 548 個）。",
+      "decision": "test が作った dir を配列に集め、finally で rmSync する。assertion・入力・stageInputs は不変。 review で見つかった大きい漏れ 2 つも同じ PR で: browser.test.ts の sandbox()（srdw-home-*、Chromium の profile、6,811 個・約 23 GB）と capture-helper.test.ts の layout()（sr-helper-*、867 個・約 2.6 GB）を module の配列に集め afterAll で消す（失敗しても test を赤にしない）。小さい漏れ（worker-support・bridge など）は対象外。",
+      "acceptance_criteria": [
+        "test が通り、実行後に TMPDIR に sr-stage-* が残らない",
+        "assertion と本番 code は不変",
+        "browser.test.ts と capture-helper.test.ts が作る dir も afterAll で消える（assertion は不変）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/sandbox.test.ts",
+        "tests/unit/design-agent/browser.test.ts",
+        "tests/unit/design-agent/capture-helper.test.ts"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/sandbox.test.ts",
+        "tests/unit/design-agent/browser.test.ts",
+        "tests/unit/design-agent/capture-helper.test.ts",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "本番 code（lib/**・scripts/**・app/**）",
+        "他の test の assertion",
+        "CI 設定"
+      ],
+      "human_approval_triggers": []
     }
   ]
 }
