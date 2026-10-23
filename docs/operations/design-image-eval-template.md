@@ -9,7 +9,7 @@
 2. Claude checks the hard fails first, then scores the 5 criteria with the anchors below, citing what is visible (never Codex's words).
 3. The human confirms or corrects the score. The confirmed sheet goes into the PR / `.ai/reviews/DEV-075.md` (scores and short notes only; the PNG is not committed).
 4. **Pass = no hard fail AND total ≥ 22/25 AND no criterion below 4** (the human's policy, 2026-10-22: 「22/25点以上、各項目4点以上を基本方針とする」 — a high total cannot hide one weak area). DEV-075 is done only after a pass on a human-run image.
-   (Until 2026-10-22, "no criterion below 4" was a Claude proposal awaiting the human; the human has since adopted it. The DEV-082 bundle loader (`comp-impl/bundle.ts`, PR #96) checks only the total; adding the per-criterion check is a follow-up after #96 merges.)
+   (Until 2026-10-22, "no criterion below 4" was a Claude proposal awaiting the human; the human has since adopted it. The comp bundle loader enforces it since DEV-094: `evaluationVerdict` in `lib/design-agent/comp-impl/bundle.ts` (`EVAL_PASS_TOTAL` = 22, `EVAL_MIN_CRITERION` = 4) refuses a `real` comp below either with `COMP_NOT_APPROVED` (`EVAL_TOTAL_BELOW_PASS` / `EVAL_CRITERION_BELOW_MIN`); `comp-impl-poc.ts --intake` shows the verdict before any spec is written.)
    The hard fails are not a Claude addition: they enforce the human's own rules for this PoC (no invented facts, no store or people imagery, the disclosure, no logo or realism claim, the shop facts as given).
 
 ## Hard fails (independent of the score; any one fails the image)
