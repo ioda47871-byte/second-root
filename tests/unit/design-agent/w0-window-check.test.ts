@@ -18,13 +18,21 @@ const block = (name: string): string => {
 const W0 = block("W0");
 const FACTS = block("W0-FACTS");
 const LOCK = "/var/lib/sr-design-cycle/cycle.lock";
+const LINGER = "/var/lib/systemd/linger";
 
 const roots: string[] = [];
 afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })));
 
 const CAPTURE_RUN = "/home/sr-igcapture/second-root/scripts/sales-design-capture/run.sh";
-const exec = (key: string, path: string, args: string[] = []) =>
-  `${key}={ path=${path} ; argv[]=${[path, ...args].join(" ")} ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }`;
+// one command as `systemctl show` (v255) prints it: the plain property and its Ex twin with the flags
+const cmd = (key: string, path: string, args: string[] = [], flags = ""): string[] => {
+  const argv = [path, ...args].join(" ");
+  const tail = "start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }";
+  return [
+    `${key}={ path=${path} ; argv[]=${argv} ; ignore_errors=${flags.includes("ignore-failure") ? "yes" : "no"} ; ${tail}`,
+    `${key}Ex={ path=${path} ; argv[]=${argv} ; flags=${flags} ; ${tail}`,
+  ];
+};
 
 type Timer = {
   name: string;
@@ -33,7 +41,11 @@ type Timer = {
   enabled?: string; // UnitFileState
   unitFile?: boolean; // listed by list-unit-files (sr-* only)
   loaded?: boolean; // listed by list-timers
-  svc: string[]; // the service's `systemctl show` lines
+  frag?: string; // the timer's FragmentPath
+  drop?: string; // the timer's DropInPaths
+  svcFrag?: string;
+  svcDrop?: string;
+  svc: string[]; // the service's other `systemctl show` lines
   svcActive?: string;
 };
 type World = {
@@ -43,56 +55,52 @@ type World = {
   unitFilesRaw?: string;
   unitFilesRc?: number;
   units: string[];
-  workerProcess?: boolean;
+  pgrepFRc?: number; // pgrep -f (worker / PoC / Codex): 0 found, 1 none, 2 error
+  pgrepRc?: number; // pgrep -u sr-designgen (all): default 0 with pids, 1 without
   pids: string[];
   ps: string[];
+  psRc?: number;
+  linger?: string[];
   lock: "free" | "held" | "none";
 };
 
-const capture = (svc: Partial<Record<"user" | "netns" | "exec", string>> & { extra?: string[]; args?: string[] } = {}): Timer => ({
+const capture = (o: { user?: string; netns?: string; exec?: string; args?: string[]; flags?: string; extra?: string[] } = {}): Timer => ({
   name: "sr-capture.timer",
   next: 53,
   service: "sr-capture.service",
   enabled: "enabled",
-  svc: [
-    `User=${svc.user ?? "sr-igcapture"}`,
-    `NetworkNamespacePath=${svc.netns ?? ""}`,
-    "JoinsNamespaceOf=",
-    exec("ExecStart", svc.exec ?? CAPTURE_RUN, svc.args ?? []),
-    ...(svc.extra ?? []),
-  ],
+  svc: [`User=${o.user ?? "sr-igcapture"}`, `NetworkNamespacePath=${o.netns ?? ""}`, "JoinsNamespaceOf=", ...cmd("ExecStart", o.exec ?? CAPTURE_RUN, o.args ?? [], o.flags ?? ""), ...(o.extra ?? [])],
 });
 const cycle = (next: number | null): Timer => ({
   name: "sr-design-cycle.timer",
   next,
   service: "sr-design-cycle.service",
   enabled: next === null ? "disabled" : "enabled",
-  svc: ["User=", "NetworkNamespacePath=", "JoinsNamespaceOf=", exec("ExecStart", "/usr/bin/bash", ["/root/sr-capture-admin/scripts/sales-design-worker/cycle.sh"])],
+  svc: ["User=", "NetworkNamespacePath=", "JoinsNamespaceOf=", ...cmd("ExecStart", "/usr/bin/bash", ["/root/sr-capture-admin/scripts/sales-design-worker/cycle.sh"])],
 });
-const authWatch = (): Timer => ({
+const authWatch = (next: number | null = 20 * 3600): Timer => ({
   name: "sr-claude-auth-watch.timer",
-  next: 20 * 3600,
+  next,
   service: "sr-claude-auth-watch.service",
   enabled: "enabled",
-  svc: [
-    "User=someone",
-    "NetworkNamespacePath=",
-    "JoinsNamespaceOf=",
-    "Environment=SR_AUTH_TOKEN=s3cretENV",
-    exec("ExecStart", "/usr/local/bin/sr-claude-auth-watch", ["--token=s3cretARG"]),
-  ],
+  svc: ["User=someone", "NetworkNamespacePath=", "JoinsNamespaceOf=", "Environment=SR_AUTH_TOKEN=s3cretENV", ...cmd("ExecStart", "/usr/local/bin/sr-claude-auth-watch", ["--token=s3cretARG"])],
 });
-const aptDaily = (): Timer => ({
-  name: "apt-daily.timer",
-  next: 5 * 3600,
-  service: "apt-daily.service",
+// an sr-* timer nothing classifies
+const otherSr = (next: number | null = 20 * 3600): Timer => ({ ...authWatch(next), name: "sr-other-watch.timer", service: "sr-other-watch.service" });
+const distro = (name: string, next: number, exec: string[]): Timer => ({
+  name,
+  next,
+  service: name.replace(/\.timer$/, ".service"),
   enabled: "enabled",
   unitFile: false,
-  svc: ["User=", "NetworkNamespacePath=", "JoinsNamespaceOf=", exec("ExecStart", "/usr/lib/apt/apt.systemd.daily", ["update"])],
+  frag: `/usr/lib/systemd/system/${name}`,
+  svcFrag: `/usr/lib/systemd/system/${name.replace(/\.timer$/, ".service")}`,
+  svc: ["User=", "NetworkNamespacePath=", "JoinsNamespaceOf=", ...cmd("ExecStart", exec[0]!, exec.slice(1))],
 });
+const fstrim = () => distro("fstrim.timer", 5 * 3600, ["/sbin/fstrim", "--listed-in", "/etc/fstab"]);
 
 const base = (): World => ({
-  timers: [capture(), aptDaily()],
+  timers: [capture(), fstrim()],
   units: [
     "sr-jail-claude.service loaded active running Claude Code Remote Control (sr-designgen, jailed)",
     "sr-jail-net.service loaded active running Requester jail network (pasta)",
@@ -132,10 +140,10 @@ W="$SR_TEST_WORLD"
 printf 'pgrep %s\\n' "$*" >> "$W/calls"
 case "$*" in
   *" -f "*) exit "$(cat "$W/pgrep-f.rc")" ;;
-  *) [ -s "$W/pids" ] || exit 1; cat "$W/pids" ;;
+  *) rc="$(cat "$W/pgrep.rc")"; [ "$rc" = 0 ] && cat "$W/pids"; exit "$rc" ;;
 esac
 `,
-  ps: '#!/bin/bash\nprintf "ps %s\\n" "$*" >> "$SR_TEST_WORLD/calls"\ncat "$SR_TEST_WORLD/ps"\n',
+  ps: '#!/bin/bash\nprintf "ps %s\\n" "$*" >> "$SR_TEST_WORLD/calls"\ncat "$SR_TEST_WORLD/ps"\nexit "$(cat "$SR_TEST_WORLD/ps.rc")"\n',
   flock: '#!/bin/bash\nprintf "flock %s\\n" "$*" >> "$SR_TEST_WORLD/calls"\n[ "$(cat "$SR_TEST_WORLD/lock")" = held ] && exit 75\nexit 0\n',
 };
 
@@ -143,8 +151,7 @@ const run = (w: World) => {
   const d = mkdtempSync(join(tmpdir(), "sr-w0-"));
   roots.push(d);
   const bin = join(d, "bin");
-  mkdirSync(bin);
-  mkdirSync(join(d, "show"));
+  for (const sub of ["bin", "show", "linger"]) mkdirSync(join(d, sub));
   for (const [name, text] of Object.entries(STUBS)) {
     writeFileSync(join(bin, name), text);
     chmodSync(join(bin, name), 0o755);
@@ -157,28 +164,35 @@ const run = (w: World) => {
       return `{"next":${next},"left":${next},"last":null,"passed":null,"unit":"${t.name}","activates":"${t.service}"}`;
     })
     .join(",")}]`;
-  writeFileSync(join(d, "timers.json"), (w.timersJson ?? json) + "\n");
-  writeFileSync(join(d, "timers.rc"), String(w.timersRc ?? 0));
+  const put = (f: string, text: string) => writeFileSync(join(d, f), text);
+  put("timers.json", (w.timersJson ?? json) + "\n");
+  put("timers.rc", String(w.timersRc ?? 0));
   const files = w.timers.filter((t) => t.name.startsWith("sr-") && t.unitFile !== false).map((t) => `${t.name} ${t.enabled ?? "enabled"} enabled`);
-  writeFileSync(join(d, "unit-files"), w.unitFilesRaw ?? files.map((l) => `${l}\n`).join(""));
-  writeFileSync(join(d, "unit-files.rc"), String(w.unitFilesRc ?? 0));
-  writeFileSync(join(d, "units"), w.units.map((l) => `${l}\n`).join(""));
-  writeFileSync(join(d, "pgrep-f.rc"), w.workerProcess ? "0" : "1");
-  writeFileSync(join(d, "pids"), w.pids.map((l) => `${l}\n`).join(""));
-  writeFileSync(join(d, "ps"), w.ps.map((l) => `${l}\n`).join(""));
-  writeFileSync(join(d, "lock"), w.lock);
-  writeFileSync(join(d, "calls"), "");
-  writeFileSync(join(d, "show", ".not-found"), "LoadState=not-found\nActiveState=inactive\n");
+  put("unit-files", w.unitFilesRaw ?? files.map((l) => `${l}\n`).join(""));
+  put("unit-files.rc", String(w.unitFilesRc ?? 0));
+  put("units", w.units.map((l) => `${l}\n`).join(""));
+  put("pgrep-f.rc", String(w.pgrepFRc ?? 1));
+  put("pgrep.rc", String(w.pgrepRc ?? (w.pids.length ? 0 : 1)));
+  put("pids", w.pids.map((l) => `${l}\n`).join(""));
+  put("ps", w.ps.map((l) => `${l}\n`).join(""));
+  put("ps.rc", String(w.psRc ?? 0));
+  put("lock", w.lock);
+  put("calls", "");
+  for (const u of w.linger ?? []) put(join("linger", u), "");
+  put(join("show", ".not-found"), "LoadState=not-found\nActiveState=inactive\n");
   for (const t of w.timers) {
-    writeFileSync(
-      join(d, "show", t.name),
-      [`Unit=${t.service}`, `UnitFileState=${t.enabled ?? "enabled"}`, `ActiveState=${t.next === null ? "inactive" : "active"}`, "LoadState=loaded", ""].join("\n"),
+    put(
+      join("show", t.name),
+      [`Unit=${t.service}`, `UnitFileState=${t.enabled ?? "enabled"}`, "LoadState=loaded", `FragmentPath=${t.frag ?? `/etc/systemd/system/${t.name}`}`, `DropInPaths=${t.drop ?? ""}`, ""].join("\n"),
     );
-    writeFileSync(join(d, "show", t.service), ["LoadState=loaded", `ActiveState=${t.svcActive ?? "inactive"}`, ...t.svc, ""].join("\n"));
+    put(
+      join("show", t.service),
+      ["LoadState=loaded", `ActiveState=${t.svcActive ?? "inactive"}`, `FragmentPath=${t.svcFrag ?? `/etc/systemd/system/${t.service}`}`, `DropInPaths=${t.svcDrop ?? ""}`, ...t.svc, ""].join("\n"),
+    );
   }
   const lock = join(d, "cycle.lock");
   if (w.lock !== "none") writeFileSync(lock, "");
-  const script = W0.split(LOCK).join(lock);
+  const script = W0.split(LOCK).join(lock).split(LINGER).join(join(d, "linger"));
   const r = spawnSync("bash", ["-c", script], {
     encoding: "utf8",
     env: { PATH: `${bin}:/usr/bin:/bin`, SR_TEST_WORLD: d, LANG: "C.UTF-8" } as unknown as NodeJS.ProcessEnv,
@@ -187,6 +201,7 @@ const run = (w: World) => {
   return { out: r.stdout, err: r.stderr, status: r.status, last: lines[lines.length - 1]!, lines, calls: readFileSync(join(d, "calls"), "utf8") };
 };
 const timerLine = (r: ReturnType<typeof run>, t: string) => r.lines.find((l) => l.split(" ")[2] === t);
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
   it("is valid bash, defines one function and runs it under sudo; the doc has exactly one W-0 and one fact sheet", () => {
@@ -202,18 +217,17 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
     // the old rule that could never pass while the capture helper is enabled is gone everywhere
     expect(PLAN).not.toMatch(/no `sr-\*`\s+timer\s+due within 30 minutes\)/);
     expect(PLAN).not.toMatch(/no `sr-\*` timer\s+is enabled with a next run within 30 minutes/);
-    // D-0 and D-2 and V-2 point at W-0 and require W0_OK
+    // D-0 and V-2 point at W-0 and require W0_OK
     const d0 = PLAN.slice(PLAN.indexOf("**W-0 + D-0 —"), PLAN.indexOf("**D-2 — deploy"));
     expect(d0).toContain("**D-0 runs only after W-0 printed `W0_OK` as its last line**");
-    expect(d0).toContain("e525371c4f768e24889954652d3f01241d8a6627");
-    expect(PLAN).toContain("**D-2 — deploy (approval 2).** Run W-0 (§5.0) again right before it; go on only on `W0_OK`.");
     expect(PLAN).toContain("right after W-0 (§5.0) printed `W0_OK`");
+    expect(PLAN).toContain("only when it is the only reason in `W0_HOLD`, use L-1");
   });
 
   it("is read only: it only lists and shows, never starts, stops, enables, masks, kills or writes", () => {
     const code = W0.split("\n").filter((l) => !l.trimStart().startsWith("#")).join("\n");
     expect(code).not.toMatch(/systemctl\s+(start|stop|restart|reload|enable|disable|mask|unmask|kill|daemon-reload|set-property|edit|reset-failed)/);
-    expect(code).not.toMatch(/\b(pkill|kill|rm|mv|cp|tee|install|chmod|chown|ip|nsenter|systemd-run|usermod)\b\s/);
+    expect(code).not.toMatch(/\b(pkill|kill|rm|mv|cp|tee|install|chmod|chown|ip|nsenter|systemd-run|usermod|loginctl)\b\s/);
     // no redirection into a file: only to /dev/null (the "->" in the W0_TIMER line is text)
     expect(code).not.toMatch(/(?<![-\w])\d?>>?\s*(?!\/dev\/null|&\d)/);
     const r = run(base());
@@ -222,20 +236,20 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
       .filter(Boolean)
       .map((l) => l.split(" ")[0]);
     expect(new Set(verbs)).toEqual(new Set(["sudo", "list-timers", "list-unit-files", "show", "list-units", "pgrep", "ps", "flock"]));
-    // the lock is only tried (-n): the stand-in would have been called with exactly this
     expect(r.calls).toMatch(/^flock -n -E 75 \S+cycle\.lock true$/m);
   });
 
-  it("the capture timer as installed is KNOWN-UNRELATED, an unrelated system timer is only counted: W0_OK", () => {
+  it("the capture timer as installed is KNOWN-UNRELATED, a distribution timer is only counted: W0_OK", () => {
     const r = run(base());
     expect(r.err).toBe("");
     expect(r.status).toBe(0);
     expect(timerLine(r, "sr-capture.timer")).toMatch(
       /^W0_TIMER KNOWN-UNRELATED sr-capture\.timer -> sr-capture\.service user=sr-igcapture netns=none exec=\/home\/sr-igcapture\/second-root\/scripts\/sales-design-capture\/run\.sh enabled=enabled next=\S+\(in 5[0-3]s\)$/,
     );
-    expect(timerLine(r, "apt-daily.timer")).toBeUndefined();
-    expect(r.out).toContain("W0_INFO other timers (not sr-*, no BLOCKING rule): 1\n");
+    expect(timerLine(r, "fstrim.timer")).toBeUndefined();
+    expect(r.out).toContain("W0_INFO other timers (distribution unit files, no local drop-in, no BLOCKING rule): 1\n");
     expect(r.out).toContain("W0_INFO jail sr-jail-net=active sr-jail-claude=active\n");
+    expect(r.out).toContain("W0_CHECK OK no linger for sr-designgen or sr-designbridge\n");
     expect(r.out).toContain("W0_CHECK OK every process of sr-designgen is in sr-jail-claude.service (2)\n");
     expect(r.out).toContain("W0_CHECK OK cycle lock free\n");
     expect(r.last).toBe("W0_OK");
@@ -246,50 +260,99 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
     ["a network namespace", capture({ netns: "/run/netns/srjail" })],
     ["another path", capture({ exec: "/home/sr-igcapture/other/run.sh" })],
     ["an argument", capture({ args: ["--all"] })],
-    ["an extra ExecStartPre", capture({ extra: [exec("ExecStartPre", "/usr/bin/true")] })],
+    ["an argument that hides behind ' ; '", capture({ args: [";", "ignore_errors=no"] })],
+    ["an extra ExecStartPre", capture({ extra: cmd("ExecStartPre", "/usr/bin/true") })],
     ["root (no User=)", capture({ user: "" })],
+    ["the + (privileged) flag", capture({ flags: "privileged" })],
+    ["the ! flag", capture({ flags: "no-setuid" })],
+    ["no ExecStartEx line", { ...capture(), svc: capture().svc.filter((l) => !l.startsWith("ExecStartEx=")) }],
   ])("the capture timer with %s is UNKNOWN: W0_HOLD whatever its schedule", (_, t) => {
     const w = base();
-    w.timers = [{ ...t, next: 6 * 3600 }, aptDaily()];
+    w.timers = [{ ...t, next: 6 * 3600 }, fstrim()];
     const r = run(w);
     expect(timerLine(r, "sr-capture.timer")).toMatch(/^W0_TIMER UNKNOWN sr-capture\.timer -> sr-capture\.service /);
     expect(r.last).toBe("W0_HOLD unknown:sr-capture.timer");
     expect(r.status).toBe(1);
   });
 
-  it("the capture timer whose service does not load, or that triggers another service, is UNKNOWN", () => {
+  it("the capture timer that triggers another service is UNKNOWN", () => {
     const w = base();
     w.timers = [{ ...capture(), service: "sr-capture-other.service" }];
     expect(run(w).last).toBe("W0_HOLD unknown:sr-capture.timer");
   });
 
-  it("sr-claude-auth-watch.timer (not defined in this repository) is UNKNOWN: W0_HOLD although it is due only tomorrow; no secret printed", () => {
+  it("sr-claude-auth-watch.timer is BLOCKING by name: OK while not due, HOLD when due or running; no secret printed", () => {
     const w = base();
     w.timers.push(authWatch());
     const r = run(w);
     expect(timerLine(r, "sr-claude-auth-watch.timer")).toMatch(
-      /^W0_TIMER UNKNOWN sr-claude-auth-watch\.timer -> sr-claude-auth-watch\.service user=someone netns=none exec=\/usr\/local\/bin\/sr-claude-auth-watch enabled=enabled next=\S+\(in 7\d{4}s\)$/,
+      /^W0_TIMER BLOCKING sr-claude-auth-watch\.timer -> sr-claude-auth-watch\.service user=someone netns=none exec=\/usr\/local\/bin\/sr-claude-auth-watch enabled=enabled next=\S+\(in 7\d{4}s\)$/,
     );
-    expect(timerLine(r, "sr-capture.timer")).toMatch(/^W0_TIMER KNOWN-UNRELATED /);
-    expect(r.last).toBe("W0_HOLD unknown:sr-claude-auth-watch.timer");
-    // only the exec path: never an argument, never the environment
+    expect(r.last).toBe("W0_OK");
     expect(r.out).not.toContain("s3cret");
     expect(r.out).not.toContain("--token");
     expect(r.calls).not.toMatch(/-p Environment/);
+    const due = base();
+    due.timers.push(authWatch(900));
+    expect(run(due).last).toBe("W0_HOLD due:sr-claude-auth-watch.timer");
+    const running = base();
+    running.timers.push({ ...authWatch(), svcActive: "active" });
+    expect(run(running).last).toBe("W0_HOLD running:sr-claude-auth-watch.service");
   });
 
-  it("an UNKNOWN sr-* timer with no unit file loaded (e.g. a transient one) is UNKNOWN too", () => {
+  it("any other sr-* timer is UNKNOWN: W0_HOLD although it is due only tomorrow; no secret printed", () => {
     const w = base();
-    w.timers.push({ ...authWatch(), name: "sr-transient.timer", service: "sr-transient.service", unitFile: false });
-    expect(run(w).last).toBe("W0_HOLD unknown:sr-transient.timer");
-  });
-
-  it("an UNKNOWN sr-* timer that is disabled and not loaded still holds", () => {
-    const w = base();
-    w.timers.push({ ...authWatch(), next: null, enabled: "disabled", loaded: false });
+    w.timers.push(otherSr());
     const r = run(w);
-    expect(timerLine(r, "sr-claude-auth-watch.timer")).toMatch(/ enabled=disabled next=none$/);
-    expect(r.last).toBe("W0_HOLD unknown:sr-claude-auth-watch.timer");
+    expect(timerLine(r, "sr-other-watch.timer")).toMatch(/^W0_TIMER UNKNOWN sr-other-watch\.timer -> sr-other-watch\.service user=someone /);
+    expect(r.last).toBe("W0_HOLD unknown:sr-other-watch.timer");
+    expect(r.out).not.toContain("s3cret");
+  });
+
+  it("an UNKNOWN sr-* timer that is transient (no unit file), or disabled and not loaded, still holds", () => {
+    const w = base();
+    w.timers.push({ ...otherSr(), unitFile: false });
+    expect(run(w).last).toBe("W0_HOLD unknown:sr-other-watch.timer");
+    const off = base();
+    off.timers.push({ ...otherSr(null), enabled: "disabled", loaded: false });
+    const r = run(off);
+    expect(timerLine(r, "sr-other-watch.timer")).toMatch(/ enabled=disabled next=none$/);
+    expect(r.last).toBe("W0_HOLD unknown:sr-other-watch.timer");
+  });
+
+  it("a non-sr timer made by an administrator (/etc or /run), or a distribution timer with a local drop-in, is UNKNOWN", () => {
+    for (const t of [
+      { ...fstrim(), name: "backup.timer", service: "backup.service", frag: "/etc/systemd/system/backup.timer", svcFrag: "/etc/systemd/system/backup.service" },
+      { ...fstrim(), name: "run-x.timer", service: "run-x.service", frag: "/run/systemd/transient/run-x.timer", svcFrag: "/run/systemd/transient/run-x.service" },
+      { ...fstrim(), svcFrag: "/etc/systemd/system/fstrim.service" },
+      { ...fstrim(), drop: "/etc/systemd/system/fstrim.timer.d/override.conf" },
+      { ...fstrim(), svcDrop: "/usr/lib/systemd/system/fstrim.service.d/a.conf /etc/systemd/system/fstrim.service.d/b.conf" },
+    ]) {
+      const w = base();
+      w.timers = [capture(), t];
+      const r = run(w);
+      expect(timerLine(r, t.name), t.name).toMatch(new RegExp(`^W0_TIMER UNKNOWN ${esc(t.name)} `));
+      expect(r.last, JSON.stringify(t)).toBe(`W0_HOLD unknown:${t.name}`);
+    }
+    // a distribution drop-in under /usr/lib keeps it info only, as does /lib/systemd
+    const w = base();
+    w.timers = [capture(), { ...fstrim(), drop: "/usr/lib/systemd/system/fstrim.timer.d/x.conf", svcFrag: "/lib/systemd/system/fstrim.service" }];
+    expect(run(w).last).toBe("W0_OK");
+  });
+
+  it("apt-daily-upgrade / apt-daily / unattended-upgrade are BLOCKING: held when due, info otherwise", () => {
+    const up = distro("apt-daily-upgrade.timer", 600, ["/usr/lib/apt/apt.systemd.daily", "install"]);
+    const w = base();
+    w.timers.push(up);
+    expect(run(w).last).toBe("W0_HOLD due:apt-daily-upgrade.timer");
+    const later = base();
+    later.timers.push({ ...up, next: 5 * 3600 }, distro("apt-daily.timer", 6 * 3600, ["/usr/lib/apt/apt.systemd.daily", "update"]));
+    const r = run(later);
+    expect(timerLine(r, "apt-daily.timer")).toMatch(/^W0_TIMER BLOCKING apt-daily\.timer /);
+    expect(r.last).toBe("W0_OK");
+    const ua = base();
+    ua.timers.push(distro("my-upgrade.timer", 300, ["/usr/bin/Unattended-Upgrade", "-d"]));
+    expect(run(ua).last).toBe("W0_HOLD due:my-upgrade.timer");
   });
 
   it("the cycle timer due in 10 minutes is BLOCKING: W0_HOLD due", () => {
@@ -329,29 +392,31 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
       ...cycle(null),
       name: "sr-design-bridge.timer",
       service: "sr-design-bridge.service",
-      svc: ["User=sr-designbridge", exec("ExecStart", "/home/sr-designbridge/second-root/scripts/sales-design-bridge/run.sh", ["--once"])],
+      svc: ["User=sr-designbridge", ...cmd("ExecStart", "/home/sr-designbridge/second-root/scripts/sales-design-bridge/run.sh", ["--once"])],
     });
     const r = run(w);
     for (const t of ["sr-design-cycle.timer", "sr-design-worker.timer", "sr-design-bridge.timer"]) {
-      expect(timerLine(r, t), t).toMatch(new RegExp(`^W0_TIMER BLOCKING ${t.replace(/\./g, "\\.")} .* enabled=disabled next=none$`));
+      expect(timerLine(r, t), t).toMatch(new RegExp(`^W0_TIMER BLOCKING ${esc(t)} .* enabled=disabled next=none$`));
     }
     expect(r.last).toBe("W0_OK");
   });
 
   it.each([
-    ["User=sr-designgen", { name: "sr-foo.timer", svc: ["User=sr-designgen", exec("ExecStart", "/usr/bin/true")] }],
-    ["a NetworkNamespacePath", { name: "sr-foo.timer", svc: ["NetworkNamespacePath=/run/netns/srjail", exec("ExecStart", "/usr/bin/true")] }],
-    ["JoinsNamespaceOf", { name: "sr-foo.timer", svc: ["JoinsNamespaceOf=sr-jail-net.service", exec("ExecStart", "/usr/bin/true")] }],
-    ["admin.sh in an argument", { name: "sr-foo.timer", svc: [exec("ExecStart", "/usr/bin/bash", ["/root/sr-capture-admin/scripts/sales-design-capture/admin.sh", "run"])] }],
-    ["codex in an ExecStartPre path", { name: "sr-foo.timer", svc: [exec("ExecStartPre", "/usr/local/bin/codex"), exec("ExecStart", "/usr/bin/true")] }],
-    ["an sr-jail-* name", { name: "sr-jail-probe.timer", svc: [exec("ExecStart", "/usr/bin/true")] }],
-    ["a non-sr timer that runs cycle.sh", { name: "nightly.timer", unitFile: false, svc: [exec("ExecStart", "/usr/bin/bash", ["/root/sr-capture-admin/scripts/sales-design-worker/cycle.sh"])] }],
+    ["User=sr-designgen", { name: "sr-foo.timer", svc: ["User=sr-designgen", ...cmd("ExecStart", "/usr/bin/true")] }],
+    ["a NetworkNamespacePath", { name: "sr-foo.timer", svc: ["NetworkNamespacePath=/run/netns/srjail", ...cmd("ExecStart", "/usr/bin/true")] }],
+    ["JoinsNamespaceOf", { name: "sr-foo.timer", svc: ["JoinsNamespaceOf=sr-jail-net.service", ...cmd("ExecStart", "/usr/bin/true")] }],
+    ["admin.sh in an argument", { name: "sr-foo.timer", svc: cmd("ExecStart", "/usr/bin/bash", ["/root/sr-capture-admin/scripts/sales-design-capture/admin.sh", "run"]) }],
+    ["codex in an ExecStartPre path", { name: "sr-foo.timer", svc: [...cmd("ExecStartPre", "/usr/local/bin/codex"), ...cmd("ExecStart", "/usr/bin/true")] }],
+    ["Codex in another case", { name: "sr-foo.timer", svc: cmd("ExecStart", "/opt/Codex/BIN") }],
+    ["admin.sh after an argument with ' ; '", { name: "sr-foo.timer", svc: cmd("ExecStart", "/usr/bin/bash", ["-c", "true ; bash /root/x/admin.sh run"]) }],
+    ["an sr-jail-* name", { name: "sr-jail-probe.timer", svc: cmd("ExecStart", "/usr/bin/true") }],
+    ["a non-sr timer that runs cycle.sh", { name: "nightly.timer", unitFile: false, svc: cmd("ExecStart", "/usr/bin/bash", ["/root/sr-capture-admin/scripts/sales-design-worker/cycle.sh"]) }],
   ])("a timer with %s is BLOCKING (held only when due)", (_, t) => {
     const mk = (next: number): Timer => ({ service: t.name.replace(/\.timer$/, ".service"), enabled: "enabled", ...t, next });
     const w = base();
     w.timers.push(mk(300));
     const r = run(w);
-    expect(timerLine(r, t.name)).toMatch(new RegExp(`^W0_TIMER BLOCKING ${t.name.replace(/\./g, "\\.")} `));
+    expect(timerLine(r, t.name)).toMatch(new RegExp(`^W0_TIMER BLOCKING ${esc(t.name)} `));
     expect(r.last).toBe(`W0_HOLD due:${t.name}`);
     const later = base();
     later.timers.push(mk(4 * 3600));
@@ -364,11 +429,21 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
     expect(run(w).last).toBe("W0_HOLD running:sr-design-cycle.service");
   });
 
-  it("a worker, PoC or Codex process of sr-designgen: W0_HOLD", () => {
-    const r = run({ ...base(), workerProcess: true });
+  it("linger on for sr-designgen or sr-designbridge: W0_HOLD; for another user: nothing", () => {
+    const r = run({ ...base(), linger: ["sr-designgen"] });
+    expect(r.out).toContain("W0_CHECK HOLD sr-designgen has linger on (its own systemd --user could run timers)\n");
+    expect(r.last).toBe("W0_HOLD linger:sr-designgen");
+    expect(run({ ...base(), linger: ["sr-designbridge"] }).last).toBe("W0_HOLD linger:sr-designbridge");
+    expect(run({ ...base(), linger: ["ioda"] }).last).toBe("W0_OK");
+  });
+
+  it("a worker, PoC or Codex process of sr-designgen: W0_HOLD; pgrep failing: W0_HOLD", () => {
+    const r = run({ ...base(), pgrepFRc: 0 });
     expect(r.out).toContain("W0_CHECK HOLD a worker, PoC or Codex process of sr-designgen is running\n");
     expect(r.last).toBe("W0_HOLD worker-process");
     expect(r.calls).toContain("pgrep -u sr-designgen -f scripts/sales-design-worker/|sales-design-bridge/|design-image-poc|codex");
+    expect(run({ ...base(), pgrepFRc: 2 }).last).toBe("W0_HOLD unparseable:pgrep");
+    expect(run({ ...base(), pgrepRc: 2 }).last).toBe("W0_HOLD unparseable:pgrep");
   });
 
   it("a process of sr-designgen outside Claude's own jail unit: W0_HOLD", () => {
@@ -376,8 +451,17 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
     w.pids.push("103", "104");
     w.ps.push("  103 sr-jail-shell-4242.service", "  104 -");
     const r = run(w);
-    expect(r.out).toContain("W0_CHECK HOLD a process of sr-designgen runs outside sr-jail-claude.service\n");
     expect(r.last).toBe("W0_HOLD process-outside-claude:sr-jail-shell-4242.service process-outside-claude:-");
+  });
+
+  it("ps failing, or ps showing fewer processes than pgrep found: W0_HOLD unparseable:ps (fail closed)", () => {
+    const failed = run({ ...base(), psRc: 1, ps: [] });
+    expect(failed.out).toContain("W0_CHECK HOLD ps did not account for every process of sr-designgen (0 of 2)\n");
+    expect(failed.last).toBe("W0_HOLD unparseable:ps");
+    const fewer = run({ ...base(), ps: ["  101 sr-jail-claude.service"] });
+    expect(fewer.last).toBe("W0_HOLD unparseable:ps");
+    // even with a zero exit and the right count, a line ps could not have printed holds
+    expect(run({ ...base(), ps: ["  101 sr-jail-claude.service", "  x y"] }).last).toBe("W0_HOLD unparseable:ps");
   });
 
   it("no process of sr-designgen at all (Claude stopped) is fine", () => {
@@ -404,8 +488,7 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
   ])("%s: W0_HOLD", (_, unit, last) => {
     const w = base();
     w.units.push(unit);
-    const r = run(w);
-    expect(r.last).toBe(last);
+    expect(run(w).last).toBe(last);
   });
 
   it("a finished (inactive or failed) jail check unit does not hold", () => {
@@ -418,6 +501,9 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
     ["list-timers prints its text table (no JSON)", { timersJson: "NEXT LEFT LAST PASSED UNIT ACTIVATES\nFri 2026-10-23 12:17:00 JST 53s - - sr-capture.timer sr-capture.service" }, "unparseable:list-timers"],
     ["list-timers fails", { timersRc: 1, timersJson: "" }, "unparseable:list-timers"],
     ["a list-timers object without next", { timersJson: '[{"left":1,"unit":"sr-capture.timer","activates":"sr-capture.service"}]' }, "unparseable:list-timers"],
+    ["a list-timers object without unit", { timersJson: '[{"next":1,"left":1,"activates":"x.service"}]' }, "unparseable:list-timers"],
+    // a "unit" outside any object W-0 can read: only the object / unit count catches it
+    ["a unit key outside the objects", { timersJson: '[{"next":1,"unit":"fstrim.timer"},"unit":"sr-x.timer"]' }, "unparseable:list-timers"],
     ["a list-timers object with a strange unit name", { timersJson: '[{"next":1,"unit":"sr-capture\\\\x2dold.timer"}]' }, "unparseable:list-timers"],
     ["list-unit-files fails", { unitFilesRc: 1, unitFilesRaw: "" }, "unparseable:list-unit-files"],
     ["list-unit-files prints garbage", { unitFilesRaw: "Failed to connect to bus: No such file or directory\n" }, "unparseable:list-unit-files"],
@@ -425,7 +511,6 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
     const r = run({ ...base(), ...over });
     expect(r.last.startsWith("W0_HOLD ")).toBe(true);
     expect(r.last.split(" ")).toContain(reason);
-    expect(r.last).not.toBe("W0_OK");
   });
 
   it("an unparseable list-units line holds too", () => {
@@ -436,7 +521,7 @@ describe("W-0 (DEV-090): the block in passt-update-plan.md §5.0", () => {
 });
 
 describe("the read-only fact sheet for an UNKNOWN timer (§5.0)", () => {
-  it("prints unit settings, exec paths, owner / mode / sha256 and keyword counts, never a line of the script or an argument", () => {
+  it("prints unit settings, exec paths and flags, owner / mode / sha256 and keyword counts; never an argument, an argument's file or a line", () => {
     const d = mkdtempSync(join(tmpdir(), "sr-w0-facts-"));
     roots.push(d);
     const bin = join(d, "bin");
@@ -447,13 +532,16 @@ describe("the read-only fact sheet for an UNKNOWN timer (§5.0)", () => {
     chmodSync(join(bin, "systemctl"), 0o755);
     chmodSync(join(bin, "sudo"), 0o755);
     writeFileSync(join(d, "calls"), "");
-    const script = join(d, "auth-watch.sh");
-    writeFileSync(script, "#!/bin/bash\nTOKEN=s3cretLINE\ncodex login status\ncodex --version # codex\nexec systemd-run --pipe true\n");
+    const script = join(d, "auth-watch-SECRETNAME.sh");
+    writeFileSync(script, "#!/bin/bash\nTOKEN=s3cretLINE\ncodex login status\n");
+    const runner = join(d, "runner");
+    writeFileSync(runner, "#!/bin/bash\n# codex Codex sr-jail admin.sh\nexec systemd-run --pipe true # s3cretRUNNER\n");
+    chmodSync(runner, 0o750);
     const unitFile = join(d, "sr-claude-auth-watch.service");
-    writeFileSync(unitFile, "[Service]\nEnvironment=SR_TOKEN=s3cretUNIT\nExecStart=/usr/bin/bash " + script + "\n");
+    writeFileSync(unitFile, "[Service]\nEnvironment=SR_TOKEN=s3cretUNIT\nExecStart=" + runner + " " + script + "\n");
     writeFileSync(
       join(d, "show", "sr-claude-auth-watch.timer"),
-      ["Id=sr-claude-auth-watch.timer", "LoadState=loaded", "UnitFileState=enabled", "ActiveState=active", "Unit=sr-claude-auth-watch.service", "TimersCalendar={ OnCalendar=*-*-* 06:00:00 ; next_elapse=Sat 2026-10-24 06:00:00 JST }", "FragmentPath=/etc/systemd/system/sr-claude-auth-watch.timer", ""].join("\n"),
+      ["Id=sr-claude-auth-watch.timer", "LoadState=loaded", "UnitFileState=enabled", "ActiveState=active", "Unit=sr-claude-auth-watch.service", "TimersCalendar={ OnCalendar=*-*-* 06:00:00 ; next_elapse=Sat 2026-10-24 06:00:00 JST }", ""].join("\n"),
     );
     writeFileSync(
       join(d, "show", "sr-claude-auth-watch.service"),
@@ -466,7 +554,7 @@ describe("the read-only fact sheet for an UNKNOWN timer (§5.0)", () => {
         "JoinsNamespaceOf=",
         "WorkingDirectory=/home/someone",
         "Environment=SR_TOKEN=s3cretENV",
-        exec("ExecStart", "/usr/bin/bash", [script, "--token=s3cretARG"]),
+        ...cmd("ExecStart", runner, [script, "--token=s3cretARG"], "privileged"),
         `FragmentPath=${unitFile}`,
         "DropInPaths=",
         "",
@@ -478,15 +566,16 @@ describe("the read-only fact sheet for an UNKNOWN timer (§5.0)", () => {
     expect(out).toContain("== timer sr-claude-auth-watch.timer\n");
     expect(out).toContain("TimersCalendar={ OnCalendar=*-*-* 06:00:00 ;");
     expect(out).toContain("User=someone\n");
-    expect(out).toContain("NetworkNamespacePath=\n");
-    expect(out).toContain("EXEC ExecStart path=/usr/bin/bash argc=3\n");
-    expect(out).toMatch(new RegExp(`FILE ExecStart-arg ${script.replace(/[.]/g, "\\.")} \\S+:\\S+ 6\\d\\d \\d+ bytes sha256=[0-9a-f]{64}\\n`));
-    expect(out).toContain("HITS ExecStart-arg srjail=0 sr-designgen=0 sr-jail=0 admin.sh=0 cycle.sh=0 codex=3 netns=0 pasta=0 systemd-run=1\n");
+    expect(out).toContain(`EXEC ExecStart path=${runner} argc=3 absolute-file-args=1\n`);
+    expect(out).toContain("EXECFLAGS ExecStartEx flags=privileged\n");
+    expect(out).toMatch(new RegExp(`FILE ExecStart ${esc(runner)} \\S+:\\S+ 750 \\d+ bytes sha256=[0-9a-f]{64}\\n`));
+    expect(out).toContain("HITS ExecStart srjail=0 sr-designgen=0 sr-jail=1 admin.sh=1 cycle.sh=0 codex=1 netns=0 pasta=0 systemd-run=1\n");
     expect(out).toMatch(/HITS unit:sr-claude-auth-watch\.service srjail=0 /);
     expect(out.trimEnd().split("\n").pop()).toBe("FACTS_END sr-claude-auth-watch.timer");
-    // nothing from inside a file, no argument, no environment
+    // nothing from inside a file, no argument, no argument's file, no environment
     expect(out).not.toContain("s3cret");
     expect(out).not.toContain("--token");
+    expect(out).not.toContain("SECRETNAME");
     expect(out).not.toContain("login status");
     expect(r.stderr).not.toContain("s3cret");
     const calls = readFileSync(join(d, "calls"), "utf8");
