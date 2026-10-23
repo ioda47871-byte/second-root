@@ -4342,7 +4342,7 @@
     {
       "id": "DEV-098",
       "title": "CI の間欠 Chromium「Unable to capture screenshot」: 新しい page を setContent した直後の最初の capture が compositor の frame より先に走る。最初の capture の前に frame を待つ（assertion・retry・閾値は変えない）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [],
       "attempts": 0,
