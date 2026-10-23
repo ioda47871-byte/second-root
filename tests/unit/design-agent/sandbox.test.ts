@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -224,15 +224,26 @@ describe.skipIf(!bwrapWorks)("the Codex sandbox (real bubblewrap)", () => {
 
 describe("reference images reach Codex only as checked copies", () => {
   it("refuses links, non-images, directories, relative paths and oversized files", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "sr-stage-"));
-    const work = mkdtempSync(join(tmpdir(), "sr-stage-work-"));
-    writeFileSync(join(dir, "ok.png"), PNG);
-    writeFileSync(join(dir, "secret.txt"), "sessionid=x");
-    symlinkSync(join(dir, "ok.png"), join(dir, "link.png"));
-    writeFileSync(join(dir, "big.png"), Buffer.concat([PNG, Buffer.alloc(21 * 1024 * 1024)]));
-    expect((await stageInputs(work, [join(dir, "ok.png")])).map((p) => p.slice(work.length))).toEqual(["/inputs/ref-1.png"]);
-    for (const bad of [join(dir, "link.png"), join(dir, "secret.txt"), dir, "relative.png", join(dir, "big.png")]) {
-      await expect(stageInputs(mkdtempSync(join(tmpdir(), "sr-stage-w-")), [bad]), bad).rejects.toMatchObject({ code: "CODEX_INPUT_REJECTED" });
+    // every directory made here is removed afterwards: big.png alone is 21 MB, and each run used to leave it in the temp dir
+    const made: string[] = [];
+    const temp = (prefix: string) => {
+      const d = mkdtempSync(join(tmpdir(), prefix));
+      made.push(d);
+      return d;
+    };
+    try {
+      const dir = temp("sr-stage-");
+      const work = temp("sr-stage-work-");
+      writeFileSync(join(dir, "ok.png"), PNG);
+      writeFileSync(join(dir, "secret.txt"), "sessionid=x");
+      symlinkSync(join(dir, "ok.png"), join(dir, "link.png"));
+      writeFileSync(join(dir, "big.png"), Buffer.concat([PNG, Buffer.alloc(21 * 1024 * 1024)]));
+      expect((await stageInputs(work, [join(dir, "ok.png")])).map((p) => p.slice(work.length))).toEqual(["/inputs/ref-1.png"]);
+      for (const bad of [join(dir, "link.png"), join(dir, "secret.txt"), dir, "relative.png", join(dir, "big.png")]) {
+        await expect(stageInputs(temp("sr-stage-w-"), [bad]), bad).rejects.toMatchObject({ code: "CODEX_INPUT_REJECTED" });
+      }
+    } finally {
+      for (const d of made) rmSync(d, { recursive: true, force: true });
     }
   });
 
