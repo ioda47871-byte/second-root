@@ -230,6 +230,109 @@ print(json.dumps(out))
     });
   }, 30_000);
 
+  it("the probe's netlink reader on Linux 6.15+ (DEV-092): a single port's implicit dport mask 0xffff passes; any other mask fails", () => {
+    // Linux 6.15 added FRA_SPORT_MASK (28) / FRA_DPORT_MASK (29). In v6.18 fib_nl2rule sets the mask to 0xffff for a
+    // single port (net/core/fib_rules.c:716-718) and fib_nl_fill_rule sends it whenever it is set, right after
+    // FRA_DPORT_RANGE (:1210-1213); a range (start != end) gets no mask. The WSL kernel 6.18.33 failed the jail with
+    // DNS_RULES_NOT_EXACT on exactly this. V618 below are the payloads (struct fib_rule_hdr + attributes, the kernel's
+    // order and padding, little-endian) of an RTM_GETRULE dump on Linux 6.18.44, read from a throw-away namespace
+    // (`unshare -rn`) after the three `ip rule add` lines of sr-jail-net.service; V618_OLD is the same for the rule
+    // before A-3 (no port, so no mask).
+    const harness = String.raw`
+import importlib.util, json, socket, struct, sys
+spec = importlib.util.spec_from_file_location("probe", sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+SEQ = 7
+V618 = [bytes.fromhex(h) for h in (
+    "02000000ff0000010000000008000f00ff00000008000e00ffffffff0500150002000000",
+    "02200000000000080000000008000f000000000008000e00ffffffff05001500000000000800060062000000080018005503550306001d00ffff0000050016001100000008000100c6336435",
+    "02200000fe0000010000000008000f00fe00000008000e00ffffffff05001500000000000800060063000000080018003500350006001d00ffff0000050016001100000008000100c6336435",
+    "02200000000000080000000008000f000000000008000e00ffffffff0500150000000000080006006400000008000100c6336435",
+    "02000000fe0000010000000008000f00fe00000008000e00ffffffff050015000200000008000600fe7f0000",
+    "02000000fd0000010000000008000f00fd00000008000e00ffffffff050015000200000008000600ff7f0000",
+)]
+V618_OLD = V618[:1] + [bytes.fromhex("02200000000000080000000008000f000000000008000e00ffffffff05001500000000000800060064000000050016000600000008000100c6336435")] + V618[4:]
+D = socket.inet_aton("198.51.100.53")
+def attr(t, data):
+    a = struct.pack("=HH", 4 + len(data), t) + data
+    return a + b"\0" * ((4 - len(a) % 4) % 4)
+def rule(prio, table, action=1, ports=(), proto=None):
+    # a 6.18-format IPv4 rule to 198.51.100.53/32: the attributes in fib_nl_fill_rule's order, then fib4_rule_fill's
+    body = struct.pack("=8BI", socket.AF_INET, 32, 0, 0, table, 0, 0, action, 0)
+    body += attr(15, struct.pack("=I", table)) + attr(14, struct.pack("=i", -1)) + attr(21, b"\0") + attr(6, struct.pack("=I", prio))
+    for t, data in ports:
+        body += attr(t, data)
+    if proto:
+        body += attr(22, bytes([proto]))
+    return body + attr(1, D)
+rng = lambda a, b: (24, struct.pack("=HH", a, b))
+srng = lambda a, b: (23, struct.pack("=HH", a, b))
+dmask = lambda v: (29, struct.pack("=H", v))
+smask = lambda v: (28, struct.pack("=H", v))
+def msg(payload):
+    return struct.pack("=IHHII", 16 + len(payload), 32, 2, SEQ, 0) + payload
+DONE = struct.pack("=IHHII", 20, 3, 2, SEQ, 0) + b"\0\0\0\0"
+K0, R98, R99, R100, KMAIN, KDEF = V618
+with99 = lambda r: [K0, R98, r, R100, KMAIN, KDEF]
+cases = {
+    "v618_designed": V618,
+    "v618_before_a3": V618_OLD,
+    "built_designed": [K0, rule(98, 0, 8, [rng(853, 853), dmask(0xFFFF)], 17), rule(99, 254, 1, [rng(53, 53), dmask(0xFFFF)], 17), R100, KMAIN, KDEF],
+    "mask_fff0": with99(rule(99, 254, 1, [rng(53, 53), dmask(0xFFF0)], 17)),
+    "mask_0000": with99(rule(99, 254, 1, [rng(53, 53), dmask(0x0000)], 17)),
+    "mask_ff00": with99(rule(99, 254, 1, [rng(53, 53), dmask(0xFF00)], 17)),
+    "mask_48_fff0": with99(rule(99, 254, 1, [rng(48, 48), dmask(0xFFF0)], 17)),
+    "mask_no_range": with99(rule(99, 254, 1, [dmask(0xFFFF)], 17)),
+    "mask_on_range": with99(rule(99, 254, 1, [rng(53, 853), dmask(0xFFFF)], 17)),
+    "mask_short": with99(rule(99, 254, 1, [rng(53, 53), (29, b"\xff")], 17)),
+    "mask_long": with99(rule(99, 254, 1, [rng(53, 53), (29, b"\xff\xff\0\0")], 17)),
+    "98_mask_fff0": [K0, rule(98, 0, 8, [rng(853, 853), dmask(0xFFF0)], 17), R99, R100, KMAIN, KDEF],
+    "sport_mask": with99(rule(99, 254, 1, [smask(0xFFFF), rng(53, 53), dmask(0xFFFF)], 17)),
+    "sport_single": with99(rule(99, 254, 1, [srng(53, 53), smask(0xFFFF), rng(53, 53), dmask(0xFFFF)], 17)),
+}
+out = {}
+for name, payloads in cases.items():
+    rules = m.parse_rule_dump([b"".join(msg(p) for p in payloads) + DONE], SEQ)
+    out[name] = {"rules": rules, "exact": tuple(rules) == m.EXPECTED_RULES}
+try:
+    m.parse_rule_dump([b"".join(msg(p) for p in with99(rule(99, 254, 1, [rng(53, 53), dmask(0xFFFF), dmask(0xFFFF)], 17))) + DONE], SEQ)
+    out["mask_repeated"] = "PARSED"
+except (ValueError, IndexError, struct.error):
+    out["mask_repeated"] = "REFUSED"
+print(json.dumps(out))
+`;
+    const r = spawnSync("python3", ["-I", "-c", harness, PROBE_PATH], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    const out = JSON.parse(r.stdout) as Record<string, { rules: string[]; exact: boolean }> & { mask_repeated: string };
+    // the real 6.18 dump of the designed rules passes, read as the same text as before 6.15; so does a built one
+    expect(out.v618_designed).toEqual({ rules: expectedRules(), exact: true });
+    expect(out.built_designed).toEqual({ rules: expectedRules(), exact: true });
+    // the real 6.18 dump of the rule before A-3 (the state D-4 restores) is read as before and still refused
+    expect(out.v618_before_a3).toEqual({
+      rules: ["0: lookup 255", "100: to 198.51.100.53/32 ipproto 6 prohibit", "32766: lookup 254", "32767: lookup 253"],
+      exact: false,
+    });
+    // any mask but 0xffff on a single port, a mask without a port, on a range, of the wrong size, a source port mask:
+    // written out, so the set is never exact
+    const line99 = (rules: string[]) => rules.find((l) => l.startsWith("99: "));
+    expect(line99(out.mask_fff0!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport 53 dport_mask=0xfff0 lookup 254");
+    expect(line99(out.mask_0000!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport 53 dport_mask=0x0000 lookup 254");
+    expect(line99(out.mask_ff00!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport 53 dport_mask=0xff00 lookup 254");
+    expect(line99(out.mask_48_fff0!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport 48 dport_mask=0xfff0 lookup 254");
+    expect(line99(out.mask_no_range!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport_mask=0xffff lookup 254");
+    expect(line99(out.mask_on_range!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport 53-853 dport_mask=0xffff lookup 254");
+    expect(line99(out.mask_short!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport 53 dport_mask=? lookup 254");
+    expect(line99(out.mask_long!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport 53 dport_mask=? lookup 254");
+    expect(out["98_mask_fff0"]!.rules).toContain("98: to 198.51.100.53/32 ipproto 17 dport 853 dport_mask=0xfff0 prohibit");
+    expect(line99(out.sport_mask!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport 53 attr28 lookup 254");
+    expect(line99(out.sport_single!.rules)).toBe("99: to 198.51.100.53/32 ipproto 17 dport 53 attr23 attr28 lookup 254");
+    for (const name of ["mask_fff0", "mask_0000", "mask_ff00", "mask_48_fff0", "mask_no_range", "mask_on_range", "mask_short", "mask_long", "98_mask_fff0", "sport_mask", "sport_single"]) {
+      expect(out[name]!.exact, name).toBe(false);
+    }
+    expect(out.mask_repeated).toBe("REFUSED");
+  }, 30_000);
+
   it("the probe's netlink reader reads this machine's real rules (read only) and they are not the jail's", () => {
     const r = spawnSync(
       "python3",

@@ -108,6 +108,7 @@ def status_field(name):
 NLMSG_ERROR, NLMSG_DONE, RTM_NEWRULE, RTM_GETRULE = 2, 3, 32, 34
 NLM_F_REQUEST, NLM_F_DUMP = 0x1, 0x300
 FRA_DST, FRA_PRIORITY, FRA_SUPPRESS_PREFIXLEN, FRA_TABLE, FRA_PROTOCOL, FRA_IP_PROTO, FRA_DPORT_RANGE = 1, 6, 14, 15, 21, 22, 24
+FRA_DPORT_MASK = 29
 FR_ACT_TO_TBL, FR_ACT_PROHIBIT = 1, 8
 
 
@@ -143,6 +144,13 @@ def describe_rule(payload):
     if FRA_DPORT_RANGE in attrs:
         start, end = struct.unpack("=HH", attrs.pop(FRA_DPORT_RANGE))
         words.append("dport %d" % start if start == end else "dport %d-%d" % (start, end))
+        # Linux 6.15 and later give a single port the mask 0xffff (fib_nl2rule) and send it back (FRA_DPORT_MASK):
+        # the same exact-port match, so it says nothing more. Any other mask, or one without a single port, is shown.
+        if start == end and attrs.get(FRA_DPORT_MASK) == struct.pack("=H", 0xFFFF):
+            del attrs[FRA_DPORT_MASK]
+    if FRA_DPORT_MASK in attrs:
+        mask = attrs.pop(FRA_DPORT_MASK)
+        words.append("dport_mask=0x%04x" % struct.unpack("=H", mask)[0] if len(mask) == 2 else "dport_mask=?")
     # always sent by the kernel: the table (also for prohibit, then 0), "no suppress_prefixlen" (-1), and the
     # rule's protocol, a label of who added it (kernel / unspec) that changes nothing in the lookup
     if FRA_TABLE in attrs:
