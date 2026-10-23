@@ -14,7 +14,7 @@
     {
       "id": "making",
       "origin": "verified_shop_fact",
-      "observation": "Seasonal jō-namagashi and dorayaki made with tsubu-an cooked every morning.",
+      "observation": "Seasonal jō-namagashi and dorayaki with tsubu-an cooked every morning, wrapped one at a time at a small counter.",
       "source_label": "DEV-073 wagashi.json: description"
     }
   ],
@@ -23,8 +23,8 @@
       "id": "DR-021",
       "url": "https://xd.5star.co.jp/work/1649/",
       "scope": "public_visual_only",
-      "observed_principle": "A public agency showcase uses restrained white space and concentrated Japanese typography.",
-      "transferable_idea": "Use deliberate negative space around a product-led story without copying the arrangement.",
+      "observed_principle": "An agency case study (SONICJAM) for a Kagoshima tea retailer states that its brand site is white-based.",
+      "transferable_idea": "A white ground can carry a craft product story; spacing and layout come from this shop's own evidence, not that site.",
       "rights": "analysis_only"
     }
   ],
@@ -32,7 +32,7 @@
     {
       "part": "hero",
       "choice": "An offset split: a small two-line wordmark at left and one conceptual confection detail at right, divided by asymmetrical open space.",
-      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "rationale": "The making fact (tsubu-an cooked each morning, sweets wrapped one at a time) suggests one quiet focal detail, not an assortment.",
       "evidence_ids": [
         "making"
       ],
@@ -43,7 +43,7 @@
     {
       "part": "typography",
       "choice": "Fine Mincho for named craft details, deliberately quiet nav and short horizontal facts in modern sans.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "A traditional shop name and named craft items read as calligraphic detail; plain facts stay in a neutral sans so they scan.",
       "evidence_ids": [
         "brand"
       ],
@@ -54,7 +54,7 @@
     {
       "part": "palette",
       "choice": "Warm stone and subdued charcoal; a single dark plum marker derives from the idea of the azuki filling.",
-      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "rationale": "The colour accent is taken from the shop's own stated filling (azuki tsubu-an), not from a generic wagashi palette.",
       "evidence_ids": [
         "making"
       ],
@@ -65,7 +65,7 @@
     {
       "part": "product_visual",
       "choice": "One locally generated, explicitly disclosed concept cross-section of dorayaki; never claim an actual shop photo.",
-      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "rationale": "No approved shop photos exist and the fixture is fictional, so only a disclosed AI concept image is allowed by the asset policy.",
       "evidence_ids": [
         "making"
       ],
@@ -74,7 +74,7 @@
     {
       "part": "section_rhythm",
       "choice": "Quiet opening, sensory detail second, a narrow factual information ledger last; each section uses a different axis.",
-      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "rationale": "The description moves from season to craft to the counter; the page follows that order before a separate factual ledger.",
       "evidence_ids": [
         "making"
       ],
@@ -83,7 +83,7 @@
     {
       "part": "navigation",
       "choice": "Small anchored header; link to details and verified shop info, not purchase or order.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "The fixture offers no ordering or reservation, so the header must not imply one; it only reaches facts the fixture states.",
       "evidence_ids": [
         "brand"
       ],
@@ -92,7 +92,7 @@
     {
       "part": "mobile",
       "choice": "On mobile the concept visual follows a complete readable name; details become a one-column sequence.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "The four-character shop name is the identity proof; on a narrow screen it must be read whole before any decorative image.",
       "evidence_ids": [
         "brand"
       ],
@@ -101,7 +101,7 @@
     {
       "part": "implementation",
       "choice": "CSS grid, typography, one isolated concept-image crop; preserve verified fact text from JSON only.",
-      "rationale": "A store-specific design hypothesis supported by making, not a preset or a copied site layout.",
+      "rationale": "Fact text must come from the fixture JSON, never from comp pixels; one cropped concept image keeps the asset audit small.",
       "evidence_ids": [
         "making"
       ],

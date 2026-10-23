@@ -141,14 +141,30 @@ export function parseDesignDna(value: unknown): DesignDnaBrief {
   });
   if (new Set(decisions.map((d) => d.part)).size !== DESIGN_DNA_PARTS.length)
     fail("decisions:coverage");
+  // A rationale is the per-decision reason. One sentence pasted under all
+  // eight decisions explains none of them.
+  if (new Set(decisions.map((d) => normalizeText(d.rationale))).size !== decisions.length)
+    fail("decisions:boilerplate_rationale");
   return { schema_version: 1, shop_key, status, factual_copy, asset_policy, evidence, references, decisions };
 }
 
-/** Coarse collision test: catches wholesale reuse, NOT conceptual similarity. */
+/** Case, width, whitespace and punctuation are ignored; wording is not. */
+const normalizeText = (text: string): string =>
+  text.normalize("NFKC").toLocaleLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * Parts whose creative choice is the same text in both briefs, compared part by
+ * part (decision order does not matter). This is a copy/paste signal only:
+ * a reworded or translated choice is NOT detected, and an empty result says
+ * nothing about originality or quality.
+ */
+export function sharedDesignDnaParts(a: DesignDnaBrief, b: DesignDnaBrief): DesignDnaPart[] {
+  const choiceOf = (brief: DesignDnaBrief, part: DesignDnaPart) =>
+    normalizeText(brief.decisions.find((d) => d.part === part)!.choice);
+  return DESIGN_DNA_PARTS.filter((part) => choiceOf(a, part) === choiceOf(b, part));
+}
+
+/** Wholesale reuse: every one of the eight choices is shared. Not an originality score. */
 export function sameDesignDna(a: DesignDnaBrief, b: DesignDnaBrief): boolean {
-  const fingerprint = (brief: DesignDnaBrief) =>
-    DESIGN_DNA_PARTS.map((part) =>
-      brief.decisions.find((d) => d.part === part)!.choice.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase(),
-    ).join("\u241e");
-  return fingerprint(a) === fingerprint(b);
+  return sharedDesignDnaParts(a, b).length === DESIGN_DNA_PARTS.length;
 }

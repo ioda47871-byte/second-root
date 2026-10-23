@@ -14,7 +14,7 @@
     {
       "id": "hours",
       "origin": "verified_shop_fact",
-      "observation": "The only contact-like detail supplied is the address and the listed hours are 10:00–18:00.",
+      "observation": "The fixture lists an address and hours 10:00〜18:00; it has no phone, access or closed days.",
       "source_label": "DEV-073 patisserie.json: address and hours"
     }
   ],
@@ -32,7 +32,7 @@
     {
       "part": "hero",
       "choice": "An airy type-led opening: a refined small French name framed by a single overscale outlined numeral-like abstract curve.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "A long French name and a sparse fact set leave space to be part of the identity rather than filler.",
       "evidence_ids": [
         "brand"
       ],
@@ -43,7 +43,7 @@
     {
       "part": "typography",
       "choice": "Elegant high-contrast Latin serif paired with pragmatic horizontal Japanese text for address and hours.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "The name is French and the facts are Japanese, so each script gets its own face instead of one compromise font.",
       "evidence_ids": [
         "brand"
       ],
@@ -54,7 +54,7 @@
     {
       "part": "palette",
       "choice": "Dusty lilac paper and graphite with a thin ivory highlight; avoid the obvious cafe cream-and-brown pairing.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "No colour is stated in the fixture; a non-default lilac/graphite pairing is a hypothesis to test, not a bakery rule.",
       "evidence_ids": [
         "brand"
       ],
@@ -65,7 +65,7 @@
     {
       "part": "product_visual",
       "choice": "No invented pastries or interior photos: an abstract typographic sculpture substitutes for absent approved imagery.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "Only two menu names and no images are supplied, so an abstract type form stands in rather than invented pastries.",
       "evidence_ids": [
         "brand"
       ],
@@ -74,7 +74,7 @@
     {
       "part": "section_rhythm",
       "choice": "Hero is mostly air, a short editorial title area follows, then a denser strict address-and-hours footer.",
-      "rationale": "A store-specific design hypothesis supported by hours, not a preset or a copied site layout.",
+      "rationale": "With only name, address, hours and two items, a dense factual footer avoids padding the page with invented copy.",
       "evidence_ids": [
         "hours"
       ],
@@ -83,7 +83,7 @@
     {
       "part": "navigation",
       "choice": "Understated sticky-like top label with anchors to verified location and hours; no product menu promise.",
-      "rationale": "A store-specific design hypothesis supported by hours, not a preset or a copied site layout.",
+      "rationale": "Location and hours are the only actionable facts, so the label anchors to them and does not promise a full menu.",
       "evidence_ids": [
         "hours"
       ],
@@ -92,7 +92,7 @@
     {
       "part": "mobile",
       "choice": "Keep the complete long French name on two intentional lines; collapse visual curve behind no text.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "Breaking the long name at a chosen point keeps it legible; the decoration must never sit behind text on small screens.",
       "evidence_ids": [
         "brand"
       ],
@@ -101,7 +101,7 @@
     {
       "part": "implementation",
       "choice": "Implement entirely with CSS lines and pseudo-elements, responsive typography and verified fact-only text.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "No approved images exist, so the decorative curve is CSS only and every visible word is fixture fact text.",
       "evidence_ids": [
         "brand"
       ],

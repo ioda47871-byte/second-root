@@ -32,9 +32,10 @@
     {
       "part": "hero",
       "choice": "Horizontal wordmark sits as a crisp mid-size masthead over a slim grid of opening-time information.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "Early opening (8:00) is the most useful verified fact for a stand, so it sits next to the name instead of below the fold.",
       "evidence_ids": [
-        "brand"
+        "brand",
+        "hours"
       ],
       "reference_ids": [
         "DR-027"
@@ -43,7 +44,7 @@
     {
       "part": "typography",
       "choice": "Condensed, architectural sans hierarchy with compact uppercase name, few typographic sizes and clear breathing room.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "A Latin all-caps name and a short fact set suit a compact sans hierarchy with few sizes.",
       "evidence_ids": [
         "brand"
       ],
@@ -54,7 +55,7 @@
     {
       "part": "palette",
       "choice": "Ink-black over almost-white with one restrained cool sage rule; no borrowed coffee-brand browns.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "Nothing in the fixture states a colour; a neutral ink/paper base with one cool rule avoids importing a reference brand's browns.",
       "evidence_ids": [
         "brand"
       ],
@@ -65,7 +66,7 @@
     {
       "part": "product_visual",
       "choice": "No fabricated bean or shop photos; use real typographic contrast as the sole visual focus.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "The menu names exist but no approved images do, so contrast in type replaces any invented drink or bean photo.",
       "evidence_ids": [
         "brand"
       ],
@@ -74,7 +75,7 @@
     {
       "part": "section_rhythm",
       "choice": "One highly ordered headline area, then staggered information blocks with visible baseline offsets.",
-      "rationale": "A store-specific design hypothesis supported by hours, not a preset or a copied site layout.",
+      "rationale": "With a medium fact set (hours, irregular closing, address, four menu names), short staggered blocks fit better than long sections.",
       "evidence_ids": [
         "hours"
       ],
@@ -83,7 +84,7 @@
     {
       "part": "navigation",
       "choice": "Two factual anchors: identity and operating hours; no invented product promises or transaction controls.",
-      "rationale": "A store-specific design hypothesis supported by hours, not a preset or a copied site layout.",
+      "rationale": "Irregular closed days make hours the fact a visitor checks first, so it gets one of only two anchors.",
       "evidence_ids": [
         "hours"
       ],
@@ -92,7 +93,7 @@
     {
       "part": "mobile",
       "choice": "Stack labels above hours, preserve unbroken readable Latin name and generous tap targets.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "The English name breaks badly if wrapped mid-word, and hours must remain tappable-sized on a phone.",
       "evidence_ids": [
         "brand"
       ],
@@ -101,7 +102,7 @@
     {
       "part": "implementation",
       "choice": "Sharp CSS grid, hairline borders and a deliberate white-on-ink interaction state, no image assets.",
-      "rationale": "A store-specific design hypothesis supported by brand, not a preset or a copied site layout.",
+      "rationale": "With no assets, grid lines and borders carry the structure; this keeps the build to HTML/CSS checked by existing gates.",
       "evidence_ids": [
         "brand"
       ],
