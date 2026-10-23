@@ -4092,7 +4092,7 @@
     {
       "id": "DEV-092",
       "title": "probe.py: Linux 6.15+ が単一 port の rule に付ける FRA_DPORT_MASK=0xffff を、単一 port のときだけ受け入れる（A-3 の jail-install が WSL 6.18 で DNS_RULES_NOT_EXACT）と、backport の新 commit X2・手順の更新",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-091"

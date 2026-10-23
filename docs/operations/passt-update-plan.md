@@ -862,14 +862,15 @@ PY
 )"
 N2_RUN='ip rule add to 198.51.100.53/32 prohibit priority 100 && ip rule add to 198.51.100.53/32 ipproto udp dport 853 prohibit priority 98 && ip rule add to 198.51.100.53/32 ipproto udp dport 53 lookup main priority 99 && echo "N2 namespace=$(readlink /proc/self/ns/net)" && python3 -I -c "$N2_PY"'
 # 1st try: an unprivileged user + network namespace owned by this user (no sudo at all)
-if ! N2_PY="$N2_PY" unshare --user --map-root-user --net sh -c "$N2_RUN"; then
+N2_PY="$N2_PY" unshare --user --map-root-user --net sh -c "$N2_RUN"; N2_RC=$?
+if [ "$N2_RC" != 0 ]; then
   # AppArmor (kernel.apparmor_restrict_unprivileged_userns=1, Ubuntu 24.04's default) or the kernel can refuse that:
   # then a network namespace made by root, equally throw-away (not bind-mounted, gone when sh exits)
-  echo "N2: the unprivileged namespace was refused; using sudo unshare --net (also throw-away)"
+  echo "N2: the unprivileged run failed (exit $N2_RC, lines above); using sudo unshare --net (also throw-away)"
   sudo env N2_PY="$N2_PY" unshare --net sh -c "$N2_RUN"
 fi
 echo "N2 host namespace=$(readlink /proc/self/ns/net) (must differ from the N2 namespace line above)"
-unset N2_PY N2_RUN
+unset N2_PY N2_RUN N2_RC
 ```
 
 Expected from N-2 on the WSL kernel: the same as observed here on 6.18.44. Rules 98 and 99 carry `DPORT_RANGE(24,len=4)`
