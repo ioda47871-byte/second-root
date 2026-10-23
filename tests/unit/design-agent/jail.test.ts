@@ -131,31 +131,44 @@ describe("the requester jail", () => {
     }
   });
 
-  it("DNS is UDP-only: TCP to the jail's DNS address is refused in the jail's namespace before pasta starts; edns0; the WSL DNS tunnel stays unreachable", () => {
-    // the rule: inside the jail's namespace only (ip -n srjail), right after the namespace is made, before pasta
-    const rule = 'echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto tcp prohibit priority 100"';
-    expect(ADMIN).toContain(rule);
+  it("the jail's DNS address takes UDP/53 only: three rules in the jail's namespace before pasta starts; edns0; the WSL DNS tunnel stays unreachable (DEV-088)", () => {
+    // the rules: inside the jail's namespace only (ip -n srjail), right after the namespace is made, before pasta;
+    // the refusals first, the one allowance (UDP/53 to the main table) last
+    const rules = [
+      'echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 prohibit priority 100"',
+      'echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto udp dport 853 prohibit priority 98"',
+      'echo "ExecStartPre=$ip_bin -n srjail rule add to $JAIL_DNS/32 ipproto udp dport 53 lookup main priority 99"',
+    ];
     const netns = ADMIN.indexOf('echo "ExecStartPre=$ip_bin netns add srjail"');
     expect(netns).toBeGreaterThan(0);
-    expect(ADMIN.indexOf(rule)).toBeGreaterThan(netns);
-    expect(ADMIN.indexOf(rule)).toBeLessThan(ADMIN.indexOf('echo "ExecStart=$pasta_bin'));
+    let last = netns;
+    for (const rule of rules) {
+      expect(ADMIN.split(rule).length - 1, rule).toBe(1);
+      expect(ADMIN.indexOf(rule), rule).toBeGreaterThan(last);
+      last = ADMIN.indexOf(rule);
+    }
+    expect(last).toBeLessThan(ADMIN.indexOf('echo "ExecStart=$pasta_bin'));
     // UDP/53 still forwarded by pasta; the jail's resolv.conf asks for EDNS0 (fewer truncated answers)
     expect(ADMIN).toContain("--dns-forward $JAIL_DNS --netns /run/netns/srjail");
     expect(ADMIN).toMatch(/printf \\"nameserver \$JAIL_DNS\\\\\\\\noptions edns0\\\\\\\\n\\" > \/run\/sr-jail\/resolv\.conf/);
     // the jail never reaches the WSL DNS tunnel (10.0.0.0/8 denied; only pasta's own unit may)
     expect(settings.find((l) => l.startsWith("IPAddressAllow="))).not.toContain("10.255.255.254");
     expect(settings.find((l) => l.startsWith("IPAddressDeny="))).toContain("10.0.0.0/8");
-    // the probe checks both, with the same address admin.sh uses, and fails closed
+    // the probe checks all of it, with the same address admin.sh uses, and fails closed
     const probe = readFileSync(join(DIR, "jail", "probe.py"), "utf8");
     expect(probe).toContain('JAIL_DNS = "198.51.100.53"');
     expect(probe).toContain('WSL_DNS_TUNNEL = "10.255.255.254"');
-    for (const code of ["DNS_TCP_NOT_REFUSED", "DNS_TCP_REFUSED_SLOWLY", "DNS_TUNNEL_REACHABLE", "DNS_TUNNEL_NOT_FILTERED"]) expect(probe).toContain(`fail("${code}")`);
-    expect(probe).toMatch(/if e\.errno != errno\.EACCES:\n\s+fail\("DNS_TCP_NOT_REFUSED"\)/);
+    for (const code of ["DNS_RULES_NOT_EXACT", "DNS_RULES_UNCHECKED", "DNS_TCP_NOT_REFUSED", "DNS_TCP_REFUSED_SLOWLY", "DNS_UDP_PORT_NOT_REFUSED", "DNS_TUNNEL_REACHABLE", "DNS_TUNNEL_NOT_FILTERED"]) expect(probe).toContain(`fail("${code}")`);
+    // TCP to 53 and 853, UDP to 853 and another port: each must be EACCES (the prohibit route), nothing else passes
+    expect(probe).toMatch(/for port in \(53, 853\):\n\s+t = socket\.socket\(socket\.AF_INET, socket\.SOCK_STREAM\)[\s\S]*?if e\.errno != errno\.EACCES:\n\s+fail\("DNS_TCP_NOT_REFUSED"\)/);
+    expect(probe).toMatch(/for port in \(853, 9\):\n\s+u = socket\.socket\(socket\.AF_INET, socket\.SOCK_DGRAM\)[\s\S]*?if e\.errno != errno\.EACCES:\n\s+fail\("DNS_UDP_PORT_NOT_REFUSED"\)/);
     expect(probe).not.toMatch(/ip in \("0\.0\.0\.0", "10\.255\.255\.254"\)/); // no longer skipped
-    // outside a jail (no rule): TCP to the DNS address is not refused, so the probe fails
+    // outside a jail (none of the rules): the probe fails on every one of these
     const r = spawnSync("python3", ["-I", join(DIR, "jail", "probe.py"), userInfo().username], { encoding: "utf8" });
     expect(r.status).toBe(1);
     expect(r.stdout).toMatch(/JAIL_UNSAFE DNS_TCP_(NOT_REFUSED|REFUSED_SLOWLY)/);
+    expect(r.stdout).toContain("JAIL_UNSAFE DNS_RULES_NOT_EXACT");
+    expect(r.stdout).toContain("JAIL_UNSAFE DNS_UDP_PORT_NOT_REFUSED");
   }, 30_000);
 
   it("the probe refuses to run outside the jail's own network namespace", () => {

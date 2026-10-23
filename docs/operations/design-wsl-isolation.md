@@ -43,8 +43,8 @@ Windows へ届く経路と、それぞれの塞ぎ方:
 | WSLg の display（`/mnt/wslg`・`/tmp/.X11-unix`） | `/mnt` は空、`/tmp` は private |
 | WSL の VM の abstract Unix socket（WSLg の X server、systemd の bus など）と localhost（他の利用者・他の distro の service） | jail **専用の network namespace**（`sr-jail-net.service`）。abstract socket と loopback は network namespace ごとに別なので、jail からは見えない。外への通信は root が動かす pasta（user-space の NAT）だけを通り、port の転送は双方向とも無し、gateway を host に写さない |
 | Windows host への network（NAT の gateway）、LAN、cloud metadata | `IPAddressDeny`（cgroup BPF）。私設・link-local の範囲すべてと、その時点の default gateway |
-| WSL の DNS tunnel の address（10.255.255.254。VM の loopback にあり、`0.0.0.0` で待ち受ける service はすべてここでも応える） | jail からは拒否する（probe が UDP・TCP の両方で確かめる）。jail の DNS は文書用の address `198.51.100.53` だけで、pasta がその **UDP/53 だけ**を host の resolver へ転送する（`--dns-forward`）。pasta 自身の socket にも同じ私設の範囲の拒否を掛ける（DNS tunnel への UDP の転送だけ許す） |
-| DNS の TCP（大きな答えで TC が立ったときの切り替え） | **jail の DNS は UDP だけ（明示的な制約）。**Ubuntu 24.04 の passt（`0.0~git20240220`）の `--dns-forward` は UDP/53 しか転送しない。そこで jail の namespace の中だけに `ip rule … to 198.51.100.53/32 ipproto tcp prohibit` を置き、TCP は即座に `EACCES` で断る（無いと TCP の接続が誰にも答えられず、名前解決が約 2 分止まる）。UDP の答えを大きくできるよう jail の `resolv.conf` に `options edns0`。それでも UDP に収まらない答えの名前は、即座に解決に失敗する |
+| WSL の DNS tunnel の address（10.255.255.254。VM の loopback にあり、`0.0.0.0` で待ち受ける service はすべてここでも応える） | jail からは拒否する（probe が UDP・TCP の両方で確かめる）。jail の DNS は文書用の address `198.51.100.53` だけで、pasta がそれを host の resolver へ転送する（`--dns-forward`）。jail の namespace の ip rule で、この address へは **UDP/53 だけ**を通す（下の行、DEV-088）。pasta 自身の socket にも同じ私設の範囲の拒否を掛ける（DNS tunnel への UDP の転送だけ許す） |
+| DNS の address への UDP/53 以外（TCP/53・TCP/853・UDP/853・他の port と protocol） | **jail の DNS address は UDP/53 だけを受ける（明示的な制約、pasta の版によらない）。**Ubuntu 24.04 の passt（`1e6f92b`）の `--dns-forward` は UDP/53 だけを転送するが、新しい passt（`386b5f5`）は UDP と TCP の 53 と 853 を転送する。そこで jail の namespace の中だけに 3 行の ip rule を置く（`sr-jail-net` の `ExecStartPre`、pasta より前、新しく作った namespace に）: `100: to 198.51.100.53 prohibit`（他のすべて）、`98: to 198.51.100.53 ipproto udp dport 853 prohibit`（853 を明示。100 と重複するが、99 を誤って変えても 853 が開かない）、`99: to 198.51.100.53 ipproto udp dport 53 lookup main`（唯一の許可）。拒否は即座の `EACCES`（無いと TCP の接続が誰にも答えられず、名前解決が約 2 分止まる）。UDP/53 の答え（送り元 port 53）は、kernel の送り元の確認（`__fib_validate_source`）で port を入れ替えて引くので rule 99 に当たり、落ちない（v6.18 の source で確認。rp_filter が 0 なら確認自体が結果を問わず通す）。UDP の答えを大きくできるよう jail の `resolv.conf` に `options edns0`。それでも UDP に収まらない答えの名前は、即座に解決に失敗する。IPv6 には対応する address が無い（`--dns-forward` は IPv4 の address だけ。pasta は IPv6 の DNS を写さない: `386b5f5` `conf.c` `add_dns_resolv6()` は `--no-map-gw` で写し先が無い）ので、IPv6 の rule は足さない |
 | 他の利用者の process（`/proc/<pid>/root` など） | `ProtectProc=invisible`、別 uid |
 | 新しい権限（setuid・sudo） | `NoNewPrivileges`、`RestrictSUIDSGID` |
 | jail の外の process の乗っ取り（ptrace・`process_vm_*`） | system call の filter で拒否（kernel の `ptrace_scope` によらない）。root の確認は requester として何も動かさない（書けるかは所有者と mode から root が判定） |
@@ -97,7 +97,7 @@ Windows（人）── WSL2 VM ── Ubuntu distro
   `kernelCommandLine = cgroup_no_v1=all`）。address の拒否（cgroup BPF）が効かなければ probe が止める。
   `.wslconfig` を変えたら Windows で `wsl --shutdown`。
   DNS は WSL の dnsTunneling（10.255.255.254、Windows 11 の WSL 2.x の既定）を前提にする。dnsTunneling を切った構成（nameserver が
-  gateway）と systemd-resolved の stub（127.0.0.53）は使えない。引けなければ probe が `JAIL_WARN DNS_NOT_WORKING` を出す
+  gateway）と systemd-resolved の stub（127.0.0.53）は使えない。引けなければ probe が `JAIL_WARN DNS_NOT_WORKING` を出す（`admin.sh jail-check` は `JAIL_DNS_FAILED` で失敗する、DEV-088）
 - **復旧**: pasta が落ちたり、起動直後に順序が競合したりして jail の Claude が止まっても、network の unit が起動し直すときに
   Claude の unit が有効なら起動し直す（`claude-stop` で止めたものは止まったまま）。Claude が 1 時間に 10 回落ちると
   systemd が諦める。直したら `sudo systemctl reset-failed sr-jail-claude` の後に `admin.sh claude-start`。
@@ -128,14 +128,14 @@ WSL の状況は fixture で再現した（`/run/WSL/2_interop` を `root:root 0
 | jail の DNS（198.51.100.53 → pasta → host の 10.255.255.254:53 の DNS、UDP） | — | 名前が引ける（0.003 秒）。jail の `resolv.conf` は `nameserver 198.51.100.53` と `options edns0` |
 | jail から TCP で 198.51.100.53:53 へ（Ubuntu 24.04 の passt） | rule が無いと timeout（4 秒で打ち切り）、TC の答えで `getaddrinfo` が **134 秒**止まる | `EACCES` で即座に拒否（0.000 秒、3 回とも）。TC の答えでも `getaddrinfo` は即座に失敗（0.004 秒）。host 側の TCP の resolver には 1 件も届かない |
 | jail から 10.255.255.254:53 へ直接 | — | UDP は `EPERM`（0.000 秒）、TCP は届かない（SYN が落とされ timeout）。host 側の TCP の resolver には 1 件も届かない |
-| 実際の unit が作る jail の namespace の `ip rule show`（host 側 `ip -n srjail rule show` と jail の中の `ip rule show` が同じ） | — | `100: from all to 198.51.100.53 ipproto tcp prohibit` |
-| その rule を手で消して `admin.sh jail-check` | — | `JAIL_UNSAFE DNS_TCP_NOT_REFUSED` で止まる（2.8 秒）。`systemctl restart sr-jail-net` で rule が戻り `JAIL_OK` |
+| 実際の unit が作る jail の namespace の `ip rule show`（host 側 `ip -n srjail rule show` と jail の中の `ip rule show` が同じ） | — | `100: from all to 198.51.100.53 ipproto tcp prohibit`（DEV-088 の前の版。DEV-088 の 3 行は WSL ではまだ動かしていない。適用と確認は `passt-update-plan.md` §4.6） |
+| その rule を手で消して `admin.sh jail-check` | — | `JAIL_UNSAFE DNS_TCP_NOT_REFUSED` で止まる（2.8 秒）。`systemctl restart sr-jail-net` で rule が戻り `JAIL_OK`（DEV-088 の版では `DNS_RULES_NOT_EXACT` も出る） |
 | jail から他の network namespace へ（`/proc/*/ns/net`・`/run/netns` を開いて `setns`） | — | 見えるのは自分の jail の namespace だけ。`setns` も `EPERM` |
 
 実機で一度確かめること（container では再現できない、または実機の WSL に依存する）:
 - `sudo bash …/admin.sh jail-check` が `JAIL_OK` を出す（`JAIL_UNSAFE` の符号が出たらそれを Claude に伝える）
 - `sudo bash …/admin.sh run sr-designgen -- getent hosts github.com` で名前が引ける（pasta 経由の UDP の DNS）
-- `sudo ip -n srjail rule show` に `from all to 198.51.100.53 ipproto tcp prohibit` がある（`admin.sh status` にも出る）
+- `sudo bash …/admin.sh jail-rules`（DEV-088 の版から。読むだけ）に `98: … ipproto udp dport 853 prohibit`・`99: … ipproto udp dport 53 lookup main`・`100: … to 198.51.100.53 prohibit` がある（`admin.sh status` にも出る。DEV-088 の前の版では `100: from all to 198.51.100.53 ipproto tcp prohibit` の 1 行）
 - `wsl --shutdown` → 開き直す を 2〜3 回して、`systemctl status sr-jail-claude` が active（起動直後の順序の競合からの復旧）
 - `stat -fc %T /sys/fs/cgroup` が `cgroup2fs`
 - 実際に使う名前（github.com・registry.npmjs.org・api.anthropic.com・OpenAI・instagram.com とその CDN・Playwright の CDN）が
@@ -149,15 +149,24 @@ WSL の状況は fixture で再現した（`/run/WSL/2_interop` を `root:root 0
 - Ubuntu 24.04 の passt は DNS を UDP でしか転送しない。glibc の TCP の接続には短い timeout が無いので、TC の答えが来ると
   名前解決が約 2 分止まる。jail の namespace の中の `prohibit` の rule で即座の失敗にした。probe はこれを `EACCES` と 1 秒以内で確かめ、
   DNS の確認（`getaddrinfo`）は他の確認がすべて通ったときだけ行う（rule が無いときに probe 自身が止まらないように）
+- DEV-088（A-3）: probe は jail の namespace の IPv4 の ip rule を netlink で読み、`EXPECTED_RULES`（kernel の既定 3 行 + 上の 3 行）と
+  1 行ずつ完全に一致することを確かめる（多い・少ない・違う → `DNS_RULES_NOT_EXACT`、読めない → `DNS_RULES_UNCHECKED`）。
+  さらに TCP/53・TCP/853 が 1 秒以内に `EACCES`（`DNS_TCP_NOT_REFUSED` / `DNS_TCP_REFUSED_SLOWLY`）、UDP/853 と UDP/9 が `EACCES`
+  （`DNS_UDP_PORT_NOT_REFUSED`）。`admin.sh jail-check` は `JAIL_OK` の後に jail の中で `getent hosts github.com` を流し、
+  引けなければ `JAIL_DNS_FAILED` で失敗する（起動ごとの probe は従来どおり `JAIL_WARN DNS_NOT_WORKING` だけ。host の DNS の
+  一時的な障害で Claude を起動できなくしないため）。`admin.sh jail-rules` は jail の namespace の rule を空白をそろえて出す（読むだけ、
+  変更の前後の比較用）。**code は DEV-088 で実装済み。実 WSL への適用は別の承認（`passt-update-plan.md` §4.6 D-2〜D-4）**
 - `systemd-run --pipe` は `ExecStartPre` の出力を渡さないので、`admin.sh jail-check` は probe を unit の本体として、同じ設定で動かす
 - requester 自身の home は jail の中から見える。Phase 2 の profile（`~/.local/share/sr-instagram-browser`）が残っていれば
   Claude が読めるため、probe は `BROWSER_PROFILE_IN_HOME` で止める（**古い profile の削除は必須**）
 
 ## 6. 残るリスク
 
-- **DNS は UDP だけ**: UDP（EDNS0）に収まらない答えの名前は、jail の中では解決できない（即座に失敗する）。TCP の DNS を
+- **DNS は UDP/53 だけ**: UDP（EDNS0）に収まらない答えの名前は、jail の中では解決できない（即座に失敗する）。TCP の DNS を
   可能にする案（jail の namespace の TCP を host 側の proxy や nftables の DNAT で resolver へつなぐ）は、host 側に新しい
-  攻撃面を足すので採らない。Ubuntu 24.04 が TCP の DNS を転送する passt を出したら見直す。他の release の deb や自前の build は入れない
+  攻撃面を足すので採らない。新しい passt が TCP/53・TCP/853・UDP/853 を転送しても、jail の namespace の ip rule（DEV-088）が
+  UDP/53 以外を pasta に届く前に拒否するので、jail から届く範囲は今と同じ（host の resolver の UDP/53 だけ）。他の release の
+  passt は `passt-update-plan.md` の A-2 の例外（`386b5f5-1` だけ、条件付き）に限る。自前の build は入れない
 
 - **kernel・WSL の不具合**: namespace / seccomp / BPF を越える kernel の脆弱性、または WSL の未知の経路。
   特に jail の中では user namespace を許している（Codex の bubblewrap に必要）。user namespace を使う kernel の権限昇格の脆弱性があれば
