@@ -873,9 +873,10 @@ output.
 | D-3 | verify | nothing | included in 2b |
 | D-4 | the clone back to `c066618`, `jail-install`, `cmp` against the D-0 backups | the same few seconds | included in 2b (abort path) |
 
-**W-0** is the canonical block in §5.0 as merged with DEV-090 (PR #105). It prints `W0_OK` or `W0_HOLD` as its last
-line. Run it before D-0b, and again right before D-2b. Until PR #105 is merged, `develop` has no `W0_OK` block, so do
-not run D-2b.
+**W-0** is the canonical block in §5.0 (DEV-090, PR #105, merged). It defines `sr_w0`, runs it, and prints `W0_OK` or
+`W0_HOLD` as its last line. Run it before D-0b. **Run it again right before D-2b; D-2b continues only on `W0_OK`.**
+D-2b runs W-0 itself as its first step and stops on anything other than `W0_OK`, so paste §5.0's block into the same
+shell first (that defines `sr_w0`).
 
 **D-0b (approval 2a; read only, plus new files in `/root/sr-a3/`).** It reuses the D-0 backups and does not redo
 them:
@@ -943,7 +944,11 @@ Go on only when the output has no `D0B_STOP` line and ends with `D0B_OK target-s
 The diff stat must list exactly the three files, with 194 insertions and 30 deletions. The human approves exactly
 this. Re-running D-0b before D-2b is safe.
 
-**D-2b (approval 2b).** First run W-0 again, and go on only on `W0_OK`. Then:
+**D-2b (approval 2b).**
+1. **Run W-0 again, right before D-2b.** Paste §5.0's W-0 block in this shell; it defines `sr_w0` and prints
+   `W0_OK` or `W0_HOLD` as its last line. On `W0_HOLD`, stop and wait (§5.0). Do not go on.
+2. Only on `W0_OK`, and within a few minutes, run the block below. It runs W-0 once more itself, and installs nothing
+   unless that run's last line is `W0_OK`:
 
 ```bash
 # D-2b (DEV-091, approval 2b): only right after W-0 printed W0_OK. Moves the root clone to X (the 3 files only) and installs the jail.
@@ -951,7 +956,10 @@ X=fbfce3c87abb185a4cc59d28f2a842a838ddeac0
 BASE=c066618cd6a40fe1cef57f75a71b755eea4157e8
 C=/root/sr-capture-admin
 P=scripts/sales-design-capture
-if [ "$(sudo cat /root/sr-a3/target-sha 2>/dev/null)" = "$X" ] && [ "$(sudo git -C "$C" rev-parse HEAD)" = "$BASE" ]; then
+W0_LAST="$(declare -f sr_w0 >/dev/null && sudo bash -c "$(declare -f sr_w0); sr_w0" | tee /dev/stderr | tail -n 1)"
+if [ "$W0_LAST" != W0_OK ]; then
+  echo "D2B_STOP: W-0 did not print W0_OK right before D-2b (paste the W-0 block from §5.0 first; on W0_HOLD wait)"
+elif [ "$(sudo cat /root/sr-a3/target-sha 2>/dev/null)" = "$X" ] && [ "$(sudo git -C "$C" rev-parse HEAD)" = "$BASE" ]; then
   sudo git -C "$C" checkout -q --detach "$X" \
     && [ "$(sudo git -C "$C" rev-parse HEAD)" = "$X" ] \
     && [ -z "$(sudo git -C "$C" status --porcelain --untracked-files=normal)" ] \
