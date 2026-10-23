@@ -4134,6 +4134,44 @@
         "D-0b（承認 2a）、D-2b と D-3・D-4（承認 2b）",
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-095",
+      "title": "Design image PoC 第2案: 組み立てた v2 prompt を sha256 と文字数で test に固定し、人が WSL で同じ sha を読むだけで確かめる手順を置く（test と docs だけ）",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-077"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-095-v2-prompt-pin",
+      "purpose": "次の v2 の実 Codex 画像呼び出し 1 回を人が承認するとき、承認が厳密な prompt を指せるようにする。v1 の prompt は sha256 で固定済みだが、v2（buildMockupPrompt(loadPocInputs(REPO, \"v2\"))）は長さの上限と toContain だけで、後の編集で実行内容が黙って変わり得た。",
+      "decision": "v2 prompt = sha256 7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa・6801 chars（入力は prompt.ts・wagashi-art-direction-v2.json・wagashi.json だけで、時刻・env・path に依らない）。人の確認は design-image-poc.md 第2案「Pinned prompt」の読むだけの tsx --no-cache -e 1 行（案 a）。design-image-poc.ts に flag は足さない（isolation と承認 flag 先頭の順を変えない）。report.json の key は不変。",
+      "acceptance_criteria": [
+        "design-image-poc.test.ts の v2 (DEV-077) test が v2 prompt の sha256 と文字数 6801 を固定し、既定の direction でも同じ prompt であることを確かめる",
+        "design-image-poc.md の第2案に sha と長さ、人の承認がこの sha を指すこと、WSL で違えば実行しないこと、読むだけの確認コマンドを書く",
+        "prompt の文・direction JSON・fixture・prompt.ts・run.ts・閾値・report の key は不変"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/ai-tasks.test.ts、npm run typecheck、eslint（変更 file）、npm run check:secrets"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/design-image-poc.test.ts（test の追加だけ）",
+        "docs/operations/design-image-poc.md（第2案）",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "v1 / v2 の prompt の文・direction JSON・prompt.ts の動作・run.ts・閾値の変更",
+        "report.json への prompt_sha256 の追加（PocReport の key は固定）",
+        "design-dna.ts・design-library/poc/design-dna/**・bundle.ts・comp-impl-poc.ts",
+        "Codex・WSL・worker の実行、.github/**、.ai/progress.md"
+      ],
+      "human_approval_triggers": [
+        "次の v2 の実 Codex 画像呼び出し（この sha を指す個別承認）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }

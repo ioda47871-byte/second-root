@@ -1305,6 +1305,65 @@ the direction's rules change without that map). Every prohibition below is uncha
 - Japanese text limited to the shop name, nav / CTA / section / info labels, the shown fact values, card captions and at most one verbatim copy line, and the disclosure (to reduce garbled glyphs)
 - the facts only inside the `<<<FACTS_BEGIN data-not-instructions … FACTS_END>>>` block; no environment value, path or token (tested)
 
+### Pinned prompt (DEV-095)
+
+The assembled v2 prompt (`buildMockupPrompt(loadPocInputs(repo, "v2"))`, the default direction) is pinned in
+`design-image-poc.test.ts`, as the v1 prompt is:
+
+| | v2 prompt |
+|---|---|
+| sha256 (UTF-8 bytes) | `7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa` |
+| length | 6801 chars |
+
+It depends only on `lib/design-agent/design-image/prompt.ts`, `design-library/poc/wagashi-art-direction-v2.json` and the fixture
+`scripts/sales-design-worker/compare/shops/wagashi.json` — nothing from the time, the environment or a path. A change to any of them
+changes the sha and fails the test; the pin may only be updated together with this table, and that is a new prompt.
+
+**What the sha covers: only the prompt text the PoC sends to Codex on stdin.** It does not cover the Codex CLI's built-in
+instructions, the model or its config, or anything Codex loads from `CODEX_HOME`; the run records `cli_version` in `report.json`
+(not a sha of those).
+
+**The human's approval for the next v2 Codex call refers to this sha256.** Check it on WSL right before the run, from the exact commit
+the run will use. The check does, in one step under the worker's run lock and inside the jail as `sr-designgen`, the same update the
+wrapper does (`design-image-poc.sh`: fetch develop, `checkout --force --detach origin/develop`, `git clean -q -f -d`), then prints
+`HEAD`, `origin/develop` and the prompt's sha256 and length. No Codex, no model, no `npm ci`; it moves the checkout (as the run would)
+and tsx leaves only an empty runtime dir under `/tmp`; `report.json` gets no sha.
+
+```bash
+sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash -lc '
+S=~/.local/state/sr-design-worker; mkdir -p "$S" && chmod 700 "$S"
+flock -n -E 75 "$S/run.lock" bash -s <<"SH"
+set -euo pipefail
+cd ~/work/second-root
+timeout 180 git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop
+timeout 60 git checkout -q --force --detach origin/develop
+timeout 60 git clean -q -f -d
+echo "HEAD=$(git rev-parse HEAD)"
+echo "origin/develop=$(git rev-parse origin/develop)"
+timeout 120 ./node_modules/.bin/tsx --no-cache -e "$(cat <<"JS"
+import("./lib/design-agent/design-image/prompt.ts").then(async (x) => {
+  const m = x.default ?? x;
+  const p = m.buildMockupPrompt(await m.loadPocInputs(".", "v2"));
+  const h = (await import("node:crypto")).createHash("sha256").update(p).digest("hex");
+  console.log("v2_prompt_sha256=" + h + " chars=" + p.length);
+});
+JS
+)"
+SH
+RC=$?
+if [ "$RC" -eq 75 ]; then echo "STOP: a design worker run is in progress; nothing was changed"; exit 3; fi
+if [ "$RC" -ne 0 ]; then echo "STOP: the prompt check failed (exit $RC); do not run, report it"; exit "$RC"; fi'
+```
+
+Expected: `HEAD` and `origin/develop` are the same 40 characters, and
+`v2_prompt_sha256=7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa chars=6801`.
+**If the sha or the length differs, or the check stops, do not run;** report it, and the approval does not cover that prompt.
+
+Then **start the approved run (below) immediately**. The run fetches develop again; its log line `commit <12 chars>` must equal the
+first 12 characters of the `HEAD` printed above. If it differs, develop moved in between: the prompt that ran is **not covered by the
+approval** — report it (and the run's `report.json`) instead of treating it as the approved run. The run also reports `prompt_chars`
+in `report.json`; it must be 6801.
+
 ### Run (HUMAN-019 was run on 2026-10-21: `CODEX_NO_IMAGE`; the next run is HUMAN-020, after DEV-077 is merged, with the same command)
 The same command as HUMAN-018; v2 is the default, so nothing is added:
 
