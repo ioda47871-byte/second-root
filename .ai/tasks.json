@@ -4176,7 +4176,7 @@
     {
       "id": "DEV-094",
       "title": "comp bundle: 実 comp の評価に「各項目4点以上」を強制する（evaluationVerdict）と、spec を書く前の intake 専用の確認（comp-impl-poc.ts --intake）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-082"
