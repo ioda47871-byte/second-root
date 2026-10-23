@@ -49,7 +49,7 @@ EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python
 - リスク: jail から WSL VM の loopback 上の `10.255.255.254:853/udp` に届く（そこで何かが聞いていれば）。小さいが、今より広い。
 - 対策（安全性を緩めない方式）: jail の namespace の ip rule を「`198.51.100.53` へは UDP/53 だけ、他はすべて `prohibit`」に変え、853 は明示の `prohibit` も置く（3 行、§4.6 D-1）。
   probe に「UDP/853 と他の port が即座に `EACCES`」の確認を足す。**更新の前に**入れる（古い pasta では、届かない文書用 address へ出ていた UDP が止まるだけなので、何も壊れないことを JAIL_OK と `getent` で示せる）。更新の後もそのまま。
-  jail の変更なので別の承認（A-3）。**A-3 は方針として採用済み（2026-10-23）、code は DEV-088 で実装済み。実 WSL への適用（§4.6 D-0〜D-4、`jail-install` を使い `approve` は使わない。root clone ごと動くので、D-0 が出す commit と file の一覧ごと承認する）は別の承認。**
+  jail の変更なので別の承認（A-3）。**A-3 は方針として採用済み（2026-10-23）、code は DEV-088 で実装済み。実 WSL への適用は DEV-091 の backport（root clone の commit `c066618` に DEV-088 の 3 file だけを足した 1 commit `fbfce3c` を `jail-install`。clone を `e525371` へは動かさない。`approve` は使わない。§4.6「A-3 by backport onto `c066618`」の W-0・AW-1・D-0b・D-2b・D-3・D-4。D-0 は済み）で、別の承認。**
 - 残るリスク: UDP/53 で host の resolver に届くのは今と同じ。kernel が UDP の `prohibit` に `EACCES` を返すことは kernel の source で確認したが、WSL の kernel での実測は A-3 の適用の後の D-3 で行う。
 
 **3. AppArmor・seccomp・jail のネットワーク制限の維持（§4.3〜§4.7）**
@@ -97,7 +97,7 @@ EOF（`ERR_ETIMEDOUT` ではなかった）について: Ubuntu 24.04 の Python
 | A-1 | 24b・24b-host | なし（読むだけの通信） | – | **済み（2026-10-22）** | `design-image-poc.md` 24b |
 | A-1b | 任意: 更新前の 24b-v2（jail・host） | なし | – | 要（A-1 と同じ種類）。必須ではない | `design-image-poc.md` 24b-v2 |
 | A-2 | passt を更新すると決める + `design-wsl-isolation.md` §6 の例外（resolute の `386b5f5-1` だけ） | 方針（docs） | はい | 要（人の判断） | – |
-| A-3 | DNS の rule を UDP/53 だけにする（方針は採用済み、code は DEV-088 で実装済み → 適用は root clone を merge の commit にして `admin.sh jail-install`） | jail-net の unit の ip rule・probe・`jail-check`・test。適用時に jail が数秒止まる。timer・helper は触らない。**root clone ごと動くので、前の commit からの develop の変更（`cycle.sh`・`admin.sh` を含む）も一緒に入る。D-0 が出す commit と file の一覧を承認する** | はい（D-0 で記録した前の commit で `jail-install`、D-4） | **適用は要（別の承認）** | §4.6 D-0〜D-4（D-0 に W-0） |
+| A-3 | DNS の rule を UDP/53 だけにする（方針は採用済み、code は DEV-088 で実装済み → **適用は DEV-091 の backport**: root clone の commit `c066618` に DEV-088 の 3 file だけを足した 1 commit `fbfce3c` で `admin.sh jail-install`。clone を `e525371` へ動かす D-2 は行わない） | jail-net の unit の ip rule・probe・`jail-check`。適用時に jail が数秒止まる。timer・helper・worker・cycle・Codex の code と設定は変わらない（`sr-jail-claude.service` は byte 単位で同じ） | はい（`c066618` で `jail-install`、D-4） | **適用は要（別の承認）** | §4.6「A-3 by backport onto `c066618`」（W-0・AW-1・D-0b・D-2b・D-3・D-4。D-0 は済み） |
 | A-4 | 窓の確認と V-0 の snapshot | `/root/sr-passt-update/` に記録の file だけ | はい（消すだけ） | 要 | S-1、W-0、V-0 |
 | A-5 | V-1 取得と検証、V-2 更新と hold、V-3a 直後の確認、成功なら V-2b。**失敗時の rollback（R-1〜R-3）を中止の手順として同時に承認** | passt の package・AppArmor の file・dpkg の hold・pasta の再起動・Claude の停止 | はい（R-1〜R-3） | 要（root、人がその場で実行） | V-1、V-2、V-3a、V-2b、R-1〜R-3 |
 | A-6 | 更新後の 24b-v2（jail・host） | なし | – | 要 | V-3b |
@@ -512,6 +512,12 @@ So `diff` of the two files prints exactly:
 
 #### Applying A-3 on WSL (each step needs the human's approval; none has been run)
 
+**Superseded in part (human, 2026-10-23; DEV-091).** W-0 and D-0 below have been run, and D-0's backups in
+`/root/sr-a3/` are kept. **D-2 and D-4 below are not run.** The clone is not moved to the A-3 merge commit. Instead, the
+three DEV-088 files are backported onto the clone's commit `c066618`: see "A-3 by backport onto `c066618`" after D-4,
+which replaces D-2 with D-0b/D-2b and D-4 with its own D-4. D-3 is replaced by the D-3 below. The (A)/(B) comparison below
+is kept as the record of the earlier plan.
+
 Run by a person in the WSL shell, outside the jail, as the human's own user with `sudo`. Nothing here touches a timer,
 the worker's units, Codex, authentication, the capture helper's checkout or units, or `.wslconfig`.
 
@@ -617,7 +623,7 @@ sudo bash "$A" jail-rules | sudo tee /root/sr-a3/rules.after
 echo "== rules =="; sudo diff /root/sr-a3/rules.before /root/sr-a3/rules.after
 echo "== sr-jail-net.service =="; sudo diff /root/sr-a3/before/sr-jail-net.service /etc/systemd/system/sr-jail-net.service
 echo "== sr-jail-claude.service =="; sudo diff /root/sr-a3/before/sr-jail-claude.service /etc/systemd/system/sr-jail-claude.service && echo SAME
-echo "== jail.properties, settings only =="; sudo diff <(sudo grep -Ev '^[[:space:]]*(#|$)' /root/sr-a3/before/jail.properties) <(sudo grep -Ev '^[[:space:]]*(#|$)' /usr/local/lib/sr-jail/jail.properties) && echo SAME
+echo "== jail.properties, settings only =="; diff <(sudo grep -Ev '^[[:space:]]*(#|$)' /root/sr-a3/before/jail.properties) <(sudo grep -Ev '^[[:space:]]*(#|$)' /usr/local/lib/sr-jail/jail.properties) && echo SAME
 echo "== probe.py =="; sudo cmp -s /root/sr-a3/before/probe.py /usr/local/lib/sr-jail/probe.py && echo SAME || echo CHANGED
 sudo bash "$A" jail-check
 sudo bash "$A" run sr-designgen -- getent hosts github.com
@@ -686,6 +692,444 @@ its rules on every start, so hand edits are not durable and are not tested.
 
 **Residual after A-3:** UDP/53 to the host resolver, exactly as today (DNS can still carry data out, as today; the jail
 can reach public addresses anyway).
+
+#### A-3 by backport onto `c066618` (DEV-091; replaces D-2 and D-4 above; none of it has been run)
+
+**Decision (human, 2026-10-23).** D-0 above has been run. Its backups in `/root/sr-a3/` are kept, and the files it
+recorded are `previous-sha` = `c066618` and `target-sha` = `e525371`. **D-2 above is not run.** It would move the root
+clone across 230 files, and 24 of them are jail or worker files. The clone stays based on `c066618`, the commit it is at
+(the PR #76 merge). Only the three files DEV-088 changed are added on top of it. The clone is not moved to `e525371`.
+No other worker, Codex, cycle or capture-helper code, and no setting, changes. The goal is to get image generation
+working again, so this repairs the machine safely and does not redesign anything. WSL code changes, `jail-install`,
+the pasta update, stopping timers and Codex runs all need approval first. The approval points are marked below.
+
+**The backport commit `X`.**
+- `X` = `fbfce3c87abb185a4cc59d28f2a842a838ddeac0` on branch `hotfix/a3-dns-on-c066618`.
+- It is exactly one commit, and its only parent is `c066618cd6a40fe1cef57f75a71b755eea4157e8`.
+- It changes exactly these three paths. For each one, `git diff c066618 e525371 -- <file>` is byte-identical to the
+  DEV-088 diff `e525371^1..e525371`, because no other commit after `c066618` touched `scripts/sales-design-capture`.
+  The blobs at `X` therefore equal those at `e525371`:
+
+| file (`scripts/sales-design-capture/…`) | blob at `X` = at `e525371` | sha256 at `X` | blob at `c066618` |
+|---|---|---|---|
+| `admin.sh` (mode 100755) | `f02a416e78a223dd65935cb0bcd8e61370474812` | `097494c4654dec2a68470db793d3a72f03875021f99fba1627107e03f5435551` | `414ed1fb17554ad3b4638ad674fcac9b872cf2ed` |
+| `jail/jail.properties` | `1b932502dffe9446be1f9bbb1caaf09d4f9ae7b4` | `9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9` | `ed780fbb0862255b4b45a0f82307ebd9cf43e209` |
+| `jail/probe.py` | `7de02da28637134a7c5999f7d8350af131dd3755` | `411b53e433512628ba18fad1b3b011e35669044ed60d753b32b28a9d4e971b54` | `fe4a08bea7ddf8f7c1294c0550529d50fe17e904` |
+
+The target is pinned by the commit id, the three blob ids and the sha256 of each file, and D-0b checks all three.
+`.gitattributes` (`eol=lf`) makes the checked-out bytes equal the blob. The commit is not GPG-signed. Keep the branch:
+it is not reachable from `develop`, and the WSL clone fetches it from there. Draft PR #106 (`base/wsl-c066618` ←
+the hotfix branch, **never merged**) exists only so that CI runs on `X` with `c066618`'s own workflow and tests.
+
+**Compatibility with the old code (checked here; nothing run on WSL).**
+- Tests at `X`, against `c066618`'s own tests, cover every test that reads `admin.sh`, `probe.py` or
+  `jail.properties`: `jail.test.ts`, `design-worker-cycle.test.ts`, `host-check.test.ts` and `cross-user.test.ts`.
+  All pass except **one expected failure**: `jail.test.ts` › "DNS is UDP-only …", which asserts the old single
+  `ipproto tcp prohibit priority 100` line that this change replaces. At `c066618` that file passes 8/8; at `X` it
+  passes 7/8. `cross-user.test.ts` skips without root, as at `c066618` (CI runs it with `sudo`).
+- DEV-088's tests, copied from `develop` without being committed, pass against `X`: `jail-dns-rules.test.ts` 6/6 and
+  the updated `jail.test.ts` 8/8. All of `tests/unit/design-agent/` with `design-worker-cycle.test.ts` gives 42 files,
+  649 passed and 16 skipped.
+- **The units.** Each commit's `jail_install` was run with stand-ins and both units diffed:
+  - `sr-jail-claude.service` is **byte-identical** between `c066618` and `X`. Its settings come from
+    `jail.properties` without comment lines, and DEV-088 changed comments only there.
+  - `sr-jail-net.service` differs by exactly one hunk, and nothing else in the unit changes:
+    `12c12,14`: `ExecStartPre=<ip> -n srjail rule add to 198.51.100.53/32 ipproto tcp prohibit priority 100` →
+    the three lines `… prohibit priority 100`, `… ipproto udp dport 853 prohibit priority 98` and
+    `… ipproto udp dport 53 lookup main priority 99`.
+  - Both units at `X` are byte-identical to those at `e525371`.
+- **What `jail-install` touches.** It is the same at `c066618` and at `X`, apart from the three rule lines:
+  - It writes `/etc/systemd/system/sr-jail-net.service`, `/etc/systemd/system/sr-jail-claude.service`,
+    `/usr/local/lib/sr-jail/jail.properties` and `/usr/local/lib/sr-jail/probe.py`.
+  - It runs `usermod -s /usr/sbin/nologin sr-designgen` (already set), `daemon-reload`,
+    `systemctl enable sr-jail-net` (already enabled) and `restart sr-jail-net`.
+  - It then runs `jail-check`. At `X`, `jail-check` also runs `getent hosts github.com` in a throw-away
+    `sr-jail-dns-*` unit.
+  - It does not touch a timer, `sr-capture.*`, `/home/sr-igcapture`, `approved-sha`, `cycle.sh`, the worker,
+    `sr-design-*` units or Codex. Only `approve` / `install` write the helper's units and checkout, and they are not
+    run here.
+- **Static dependencies.**
+  - The new lines use only `ip`, `sed`, `getent`, `systemd-run` and the existing `JAIL_ARGS`.
+  - The new probe uses only Python's standard library (`struct`) and an `AF_NETLINK` socket, which the jail's
+    `RestrictAddressFamilies` already allows (unchanged).
+  - Of the other files `admin.sh` reads (`host-check.sh` and `systemd/sr-capture.*`), none differs between
+    `c066618` and `develop`.
+  - `cycle.sh` at `c066618` (unchanged by `X`) only runs `admin.sh run` and checks that the clone is clean. It does
+    not pin the clone's commit, and its `STOP_CODES` already contain `JAIL_UNSAFE`, which every new probe failure
+    prints, so it fails closed.
+- **Drift warning.** While the clone is at `X`:
+  - Do not run `approve` or `install`. `approve <sha>` needs the clone at `<sha>` and then re-runs `jail_install`, so
+    approving any commit without DEV-088 (for example `c066618`) silently restores the old rule and the old probe.
+  - Any later commit that contains DEV-088 (on `develop`, at or after `e525371`) has the same three blobs, so a later
+    reviewed move of the clone keeps A-3.
+
+**`sr-claude-auth-watch.timer`.** No file in this repository defines it. The human's read-only check found that its
+script mentions the design user, `admin.sh` and shell delegation. W-0 treats it as BLOCKING by name (§5.0, DEV-090):
+it holds W-0 when it is due within 30 minutes or its service is running. **AW-1** (read only) shows what it runs as
+fixed tokens only. It prints no script line, no argument, no environment and no credential. Unknown words are mapped
+to `OTHER`. Paste the output back:
+
+```bash
+# AW-1: what sr-claude-auth-watch runs, as fixed tokens only (read only; prints no script line, no value, no secret)
+AW_T=sr-claude-auth-watch.timer
+echo "AW timer_enabled=$(systemctl is-enabled "$AW_T" 2>/dev/null | head -n1 | grep -xE '[a-z-]+' || echo none) timer_active=$(systemctl is-active "$AW_T" 2>/dev/null | head -n1 | grep -xE '[a-z-]+' || echo unknown)"
+systemctl show "$AW_T" -p TimersCalendar -p TimersMonotonic -p NextElapseUSecRealtime -p LastTriggerUSec --no-pager | sed -E 's/^/AW timer /'
+AW_S="$(systemctl show "$AW_T" -p Unit --value)"
+case "$AW_S" in sr-*.service) ;; *) AW_S=UNKNOWN ;; esac
+echo "AW service=$AW_S service_active=$(systemctl is-active "$AW_S" 2>/dev/null | head -n1 | grep -xE '[a-z-]+' || echo unknown) user=$(systemctl show "$AW_S" -p User --value 2>/dev/null | grep -xE '[a-z_][a-z0-9_-]{0,31}' || echo root_or_unset)"
+AW_FILES="$(systemctl show "$AW_S" -p ExecStartPre -p ExecStart -p ExecStartPost -p ExecStop -p ExecStopPost --value 2>/dev/null \
+  | grep -oE 'argv\[\]=[^;]*' | sed 's/^argv\[\]=//' | tr ' ' '\n' | grep -E '^/' | while IFS= read -r f; do sudo test -f "$f" && [ "$(sudo head -c 4 "$f" | od -An -c | tr -d ' \n')" != '177ELF' ] && echo "$f"; done | sort -u)"
+echo "AW script_files=$(printf '%s\n' "$AW_FILES" | grep -c .)"
+printf '%s\n' "$AW_FILES" | grep . | while IFS= read -r f; do
+  AW_BODY="$(sudo cat "$f" | grep -vE '^[[:space:]]*#')"
+  AW_VARS="$(printf '%s\n' "$AW_BODY" | grep -oE '^[[:space:]]*(export[[:space:]]+|readonly[[:space:]]+|local[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*admin\.sh' | sed -E 's/^[[:space:]]*(export|readonly|local)?[[:space:]]*//; s/=.*//' | sort -u | paste -sd'|' -)"
+  AW_CALL='admin\.sh["'"'"']?'; [ -n "$AW_VARS" ] && AW_CALL="(admin\.sh|\\\$\{?($AW_VARS)\}?)[\"']?"
+  printf '%s\n' "$AW_BODY" | grep -oE "${AW_CALL}[[:space:]]+[\"']?[A-Za-z0-9_-]+[\"']?([[:space:]]+[\"']?[A-Za-z0-9_.-]+)?" \
+    | sed -E "s/[\"']//g; s/^[^[:space:]]+[[:space:]]+//" | while read -r sub u _; do
+      case "$sub" in run|jail-check|jail-install|install|approve|login|shell|status|claude-start|claude-stop|jail-rules) ;; *) sub=OTHER ;; esac
+      case "$u" in sr-designgen) u=sr-designgen ;; "") u=none ;; *) u=OTHER ;; esac
+      echo "AW admin_call sub=$sub target=$u"
+    done | sort | uniq -c | awk '{c=$1; $1=""; sub(/^ /, ""); print $0 " count=" c}'
+  AW_M=$(printf '%s\n' "$AW_BODY" | grep -cE "admin\.sh${AW_VARS:+|\\\$\{?($AW_VARS)\}?}")
+  AW_C=$(printf '%s\n' "$AW_BODY" | grep -cE "${AW_CALL}[[:space:]]+[\"']?[A-Za-z0-9_-]+")
+  AW_A=$(printf '%s\n' "$AW_BODY" | grep -cE '^[[:space:]]*(export[[:space:]]+|readonly[[:space:]]+|local[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*admin\.sh')
+  echo "AW admin_unparsed_lines=$(( AW_M - AW_C - AW_A > 0 ? AW_M - AW_C - AW_A : 0 ))"
+  printf '%s\n' "$AW_BODY" | grep -E '(^|[^A-Za-z0-9_-])systemctl([^A-Za-z0-9_-]|$)' | while IFS= read -r l; do
+      v="$(printf '%s\n' "$l" | grep -oE 'systemctl([[:space:]]+(-[-A-Za-z]+(=[^[:space:]]*)?|--[a-z-]+))*[[:space:]]+[a-z-]+' | head -n1 | awk '{print $NF}')"
+      case "$v" in start|stop|restart|enable|disable|mask) ;; is-active|is-enabled|is-failed|status|show|cat|list-timers|list-units|list-unit-files) v=READ ;; *) v=OTHER ;; esac
+      units="$(printf '%s\n' "$l" | grep -oE 'sr-[A-Za-z0-9@_.-]*\.(service|timer|path|socket|target)' | sort -u | paste -sd, -)"
+      [ -z "$units" ] && { printf '%s\n' "$l" | grep -q '\$' && units=UNRESOLVED || units=none_sr; }
+      echo "AW systemctl verb=$v units=$units"
+    done | sort | uniq -c | awk '{c=$1; $1=""; sub(/^ /, ""); print $0 " count=" c}'
+  for pat in '/etc/systemd' '/usr/local/lib/sr-jail' '/run/netns'; do
+    printf '%s\n' "$AW_BODY" | grep -qF "$pat" && echo "AW mentions $pat=yes" || echo "AW mentions $pat=no"
+  done
+  for k in 'ip_rule:(^|[^A-Za-z0-9_-])ip([[:space:]]+-[A-Za-z0-9]+([[:space:]]+[A-Za-z0-9_-]+)?)*[[:space:]]+(rule|ru)([^A-Za-z]|$)' \
+           'ip_netns:(^|[^A-Za-z0-9_-])ip([[:space:]]+-[A-Za-z0-9]+([[:space:]]+[A-Za-z0-9_-]+)?)*[[:space:]]+netns([^A-Za-z]|$)|(^|[^A-Za-z0-9_-])ip[[:space:]]+-n[[:space:]]' \
+           'pasta:(^|[^A-Za-z0-9_-])(pasta|passt)([^A-Za-z0-9_-]|$)' \
+           'nsenter:(^|[^A-Za-z0-9_-])nsenter([^A-Za-z0-9_-]|$)' \
+           'systemd_run:(^|[^A-Za-z0-9_-])systemd-run([^A-Za-z0-9_-]|$)' \
+           'sudo_su_runuser:(^|[^A-Za-z0-9_-])(sudo|su|runuser|machinectl)([^A-Za-z0-9_-]|$)' \
+           'sh_c:(^|[^A-Za-z0-9_-])(ba)?sh[[:space:]]+-[a-z]*c' \
+           'eval_or_source:(^|[^A-Za-z0-9_-])(eval|source|\.)[[:space:]]+[^=]' \
+           'kill:(^|[^A-Za-z0-9_-])(kill|pkill|killall)([^A-Za-z0-9_-]|$)' \
+           'codex:(^|[^A-Za-z0-9_-])codex([^A-Za-z0-9_-]|$)' \
+           'cycle_or_worker:cycle\.sh|sales-design-worker|sr-design-' \
+           'capture_helper:sr-capture\.(service|timer|path)|sr-igcapture|sales-design-capture/run\.sh'; do
+    printf '%s\n' "$AW_BODY" | grep -qE "${k#*:}" && echo "AW uses ${k%%:*}=yes" || echo "AW uses ${k%%:*}=no"
+  done
+  # executing anything but admin.sh: a variable ("$X", $X ...) or an absolute path (/abs/path ...) at a command position
+  AW_REST="$(printf '%s\n' "$AW_BODY" | grep -vE "admin\.sh${AW_VARS:+|\\\$\{?($AW_VARS)\}?}")"
+  AW_POS='(^|[;&|(]|(^|[[:space:]])(then|do|else|if|while|until|!|exec|sudo|bash|sh|env|nohup|command|xargs|python3?|node))[[:space:]]*["'"'"']?'
+  printf '%s\n' "$AW_REST" | grep -qE "${AW_POS}\\\$\{?[A-Za-z_]" && echo "AW uses exec_variable=yes" || echo "AW uses exec_variable=no"
+  printf '%s\n' "$AW_REST" | grep -qE "${AW_POS}/[A-Za-z0-9_./-]+" && echo "AW uses exec_abs_path=yes" || echo "AW uses exec_abs_path=no"
+done
+echo "AW_DONE"
+unset AW_T AW_S AW_FILES AW_BODY AW_VARS AW_CALL AW_M AW_C AW_A AW_REST AW_POS
+```
+
+AW-1's output:
+- `AW timer …`: the schedule and the next run.
+- `AW service=… user=…`: the service and its user.
+- `AW admin_call sub=<run|jail-check|jail-install|install|approve|login|shell|status|claude-start|claude-stop|jail-rules|OTHER> target=<sr-designgen|none|OTHER> count=N`:
+  one line per kind of call.
+- `AW admin_unparsed_lines=N`: mentions of `admin.sh` that are not a call AW-1 can read.
+- `AW systemctl verb=<start|stop|restart|enable|disable|mask|READ|OTHER> units=<sr-* names|UNRESOLVED|none_sr>`.
+  `READ` stands for `is-active`, `status`, `show`, `list-*` and similar.
+- `AW mentions /etc/systemd|/usr/local/lib/sr-jail|/run/netns=yes|no`.
+- `AW uses ip_rule|ip_netns|pasta|nsenter|systemd_run|sudo_su_runuser|sh_c|eval_or_source|kill|codex|cycle_or_worker|capture_helper=yes|no`.
+- `AW uses exec_variable|exec_abs_path=yes|no`: a line that does not call `admin.sh` runs a variable (`"$X"`, `$X …`)
+  or an absolute path (`/abs/path …`) as a command (after `;`, `|`, `&`, `(`, `then`, `do`, `if`, `exec`, `sudo`,
+  `bash`, `env`, … or at the start of a line).
+
+**The next run** of `sr-claude-auth-watch.timer` is taken from W-0's `W0_TIMER BLOCKING sr-claude-auth-watch.timer … next=`
+line (W-0 computes it from `systemctl list-timers`); AW-1's `AW timer` lines are only a cross-check.
+
+Tested here against synthetic scripts (stand-ins for `systemctl` and `sudo`), including `H=/usr/local/bin/other.sh; "$H"`
+(→ `exec_variable=yes`), a `pkill` (→ `kill=yes`) and a bare `/usr/local/bin/…` call (→ `exec_abs_path=yes`). A script holding a token, a
+`--token=` argument and a commented-out `claude-stop` printed none of them, and no line of any script appeared in the
+output.
+
+**Decision rule for AW-1:**
+1. **Related but not conflicting:** go on, with W-0 holding it by name. This applies when **all** of these hold:
+   - every `admin_call` is `sub=run target=sr-designgen`, `sub=status` or `sub=jail-check`;
+   - `admin_unparsed_lines=0`;
+   - every `systemctl` verb is `READ`;
+   - every `mentions` and `uses ip_rule|ip_netns|pasta|nsenter|eval_or_source|kill|exec_variable|exec_abs_path` is `no`.
+
+   Its `admin.sh run` job is a transient `sr-jail-run-*` unit that does not change the jail. Its DNS goes over UDP/53,
+   which stays allowed, and HTTPS is unchanged. W-0 holds it only when it is due within 30 minutes or running.
+   `sudo_su_runuser=yes` and `sh_c=yes` alone are expected (`sudo bash admin.sh …`) and are accepted only together
+   with the conditions above. A `run` or `jail-check` that happens to run during D-2b is cut by the restart of
+   `sr-jail-net`, which is why W-0 holds a running or due service.
+2. **Conflicting:** this applies to any `sub=claude-start`, `claude-stop`, `login`, `jail-install`, `install` or
+   `approve`; any `systemctl` verb `start`, `stop`, `restart`, `enable`, `disable` or `mask` on an `sr-jail-*` unit
+   (or `UNRESOLVED`); `mentions … =yes`; or `uses ip_rule`, `ip_netns` or `pasta` `=yes`.
+   - The D-2b → D-3 (→ D-4) window must end before the timer's next run, and start at least 30 minutes before it.
+   - Before D-2b, its `next=` in W-0's `W0_TIMER` line must be more than 45 minutes away (the window plus a margin), and the
+     service must be `inactive`. Otherwise wait for the next gap.
+   - If it runs during the window anyway, stop at once. Run D-3, and on any unexpected line go to D-4.
+   - Neither the timer nor the service is stopped or disabled. That would be a separate approval.
+3. **Anything else** (`OTHER`, `UNKNOWN`, `script_files=0`, `admin_unparsed_lines>0`, `eval_or_source=yes`,
+   `kill=yes`, `exec_variable=yes`, `exec_abs_path=yes`, a target that is not `sr-designgen`): **hold and ask.** Paste the AW-1 output and do not run
+   D-2b.
+
+**The steps (backport variant).** Run them as a person in the WSL shell, outside the jail, with `sudo`.
+
+| step | what it does | what it stops | approval |
+|---|---|---|---|
+| W-0 | the canonical window check in §5.0 (DEV-090, PR #105); go on only when the last line is `W0_OK` | nothing | read only |
+| AW-1 | what `sr-claude-auth-watch` runs, as tokens | nothing | read only |
+| D-0b | fetches only the hotfix branch and verifies `X`, its parent, the three paths, the blobs and the sha256. Checks that the machine is still in `c066618`'s installed state and matches the D-0 backups, records `target-sha` = `X` (the old target is kept in `target-sha.e525371`) and snapshots the helper, design and auth-watch units | nothing (new files only in `/root/sr-a3/`) | **approval 2a**: run D-0b. The human approves its printed 3-file diff stat |
+| D-2b | W-0 again (`W0_OK`), then checks out `X` (clean, exactly the 3 paths against `c066618`) and runs `jail-install` | `sr-jail-net` restarts, so every jail unit stops for a few seconds. `sr-jail-claude` starts again by itself if enabled. A running `sr-jail-run-*` job would be cut, which is why W-0 checks first. `cycle.sh` and all worker, helper and Codex code stay at `c066618`'s content | **approval 2b (required)**, together with D-3 and D-4 |
+| D-3 | verify | nothing | included in 2b |
+| D-4 | the clone back to `c066618`, `jail-install`, `cmp` against the D-0 backups | the same few seconds | included in 2b (abort path) |
+
+**W-0** is the canonical block in §5.0 (DEV-090, PR #105, merged). It defines `sr_w0`, runs it, and prints `W0_OK` or
+`W0_HOLD` as its last line. Run it before D-0b. **Run it again right before D-2b; D-2b continues only on `W0_OK`.**
+D-2b runs W-0 itself as its first step and stops on anything other than `W0_OK`, so paste §5.0's block into the same
+shell first (that defines `sr_w0`).
+
+**D-0b (approval 2a; read only, plus new files in `/root/sr-a3/`).** It reuses the D-0 backups and does not redo
+them:
+
+```bash
+# D-0b (DEV-091): read only, plus files in /root/sr-a3/. Reuses the D-0 backups; does not redo them.
+X=fbfce3c87abb185a4cc59d28f2a842a838ddeac0
+BASE=c066618cd6a40fe1cef57f75a71b755eea4157e8
+OLD_TARGET=e525371c4f768e24889954652d3f01241d8a6627
+C=/root/sr-capture-admin
+P=scripts/sales-design-capture
+D0B=OK
+d0b_stop() { echo "D0B_STOP: $*"; D0B=STOP; }
+for f in previous-sha target-sha rules.before before/sr-jail-net.service before/sr-jail-claude.service before/jail.properties before/probe.py; do
+  sudo test -s "/root/sr-a3/$f" || d0b_stop "missing D-0 file /root/sr-a3/$f"
+done
+[ "$(sudo cat /root/sr-a3/previous-sha 2>/dev/null)" = "$BASE" ] || d0b_stop "previous-sha is not $BASE"
+case "$(sudo cat /root/sr-a3/target-sha 2>/dev/null)" in "$OLD_TARGET"|"$X") ;; *) d0b_stop "target-sha is neither $OLD_TARGET nor $X" ;; esac
+# the fetch writes the remote-tracking ref origin/hotfix/a3-dns-on-c066618 and its objects into the clone's .git (not the working tree)
+sudo git -C "$C" fetch -q origin refs/heads/hotfix/a3-dns-on-c066618:refs/remotes/origin/hotfix/a3-dns-on-c066618 || d0b_stop "fetch of the hotfix branch failed"
+echo "info core.autocrlf=$(sudo git -C "$C" config --get core.autocrlf || echo unset)"
+[ "$(sudo git -C "$C" rev-parse HEAD)" = "$BASE" ] || d0b_stop "the clone is not at $BASE"
+[ -z "$(sudo git -C "$C" status --porcelain --untracked-files=normal)" ] || d0b_stop "the clone is not clean"
+[ "$(sudo git -C "$C" rev-parse -q --verify refs/remotes/origin/hotfix/a3-dns-on-c066618)" = "$X" ] || d0b_stop "the hotfix branch is not at $X"
+[ "$(sudo git -C "$C" rev-parse "$X^@" 2>/dev/null)" = "$BASE" ] || d0b_stop "X's only parent is not $BASE"
+[ "$(sudo git -C "$C" diff --name-only "$BASE" "$X")" = "$(printf '%s\n' "$P/admin.sh" "$P/jail/jail.properties" "$P/jail/probe.py")" ] || d0b_stop "X changes other files than the three"
+for e in "admin.sh f02a416e78a223dd65935cb0bcd8e61370474812 097494c4654dec2a68470db793d3a72f03875021f99fba1627107e03f5435551" \
+         "jail/jail.properties 1b932502dffe9446be1f9bbb1caaf09d4f9ae7b4 9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9" \
+         "jail/probe.py 7de02da28637134a7c5999f7d8350af131dd3755 411b53e433512628ba18fad1b3b011e35669044ed60d753b32b28a9d4e971b54"; do
+  set -- $e
+  [ "$(sudo git -C "$C" rev-parse "$X:$P/$1")" = "$2" ] || d0b_stop "$1: blob at X is not $2"
+  [ "$(sudo git -C "$C" rev-parse "$OLD_TARGET:$P/$1" 2>/dev/null)" = "$2" ] || d0b_stop "$1: blob at $OLD_TARGET is not $2"
+  [ "$(sudo git -C "$C" show "$X:$P/$1" | sha256sum | cut -d' ' -f1)" = "$3" ] || d0b_stop "$1: sha256 is not $3"
+done
+set --
+# the machine is in the state c066618 installs (so D-4 restores it exactly)
+[ "$(sudo git -C "$C" hash-object --no-filters /usr/local/lib/sr-jail/probe.py)" = fe4a08bea7ddf8f7c1294c0550529d50fe17e904 ] || d0b_stop "installed probe.py is not c066618's"
+[ "$(sudo git -C "$C" hash-object --no-filters /usr/local/lib/sr-jail/jail.properties)" = ed780fbb0862255b4b45a0f82307ebd9cf43e209 ] || d0b_stop "installed jail.properties is not c066618's"
+sudo cmp -s /root/sr-a3/before/probe.py /usr/local/lib/sr-jail/probe.py || d0b_stop "probe.py changed since D-0"
+for u in sr-jail-net.service sr-jail-claude.service; do sudo cmp -s "/root/sr-a3/before/$u" "/etc/systemd/system/$u" || d0b_stop "$u changed since D-0"; done
+[ "$(sudo grep -c ' rule add ' /etc/systemd/system/sr-jail-net.service)" = 1 ] && sudo grep -qE ' rule add to 198\.51\.100\.53/32 ipproto tcp prohibit priority 100$' /etc/systemd/system/sr-jail-net.service || d0b_stop "sr-jail-net.service does not have exactly the old single rule"
+# the default gateway, derived exactly as jail_props does (identical at c066618 and X), must still be the one in the
+# installed sr-jail-claude.service: otherwise jail-install would write a different IPAddressDeny line (a reboot can change it)
+GW_NOW="$(for gw in $(awk 'NR > 1 && $2 == "00000000" { print $3 }' /proc/net/route); do [[ "$gw" =~ ^[0-9A-Fa-f]{8}$ ]] || continue; printf 'IPAddressDeny=%d.%d.%d.%d/32\n' "0x${gw:6:2}" "0x${gw:4:2}" "0x${gw:2:2}" "0x${gw:0:2}"; done | sort)"
+GW_UNIT="$(sudo grep -E '^IPAddressDeny=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/32$' /etc/systemd/system/sr-jail-claude.service | sort)"
+[ "$GW_NOW" = "$GW_UNIT" ] || d0b_stop "gateway changed since the last jail-install (now: ${GW_NOW:-none}; unit: ${GW_UNIT:-none}) - a separate decision is needed, do not go on"
+[ "$(sudo sed -n 3p /root/sr-a3/rules.before)" = "100: from all to 198.51.100.53 ipproto tcp prohibit" ] || d0b_stop "rules.before is not the expected 'before' set"
+echo "== the backport, X against the clone's commit =="
+sudo git -C "$C" --no-pager diff --stat "$BASE" "$X"
+if [ "$D0B" = OK ]; then
+  sudo test -e /root/sr-a3/target-sha.e525371 || echo "$OLD_TARGET" | sudo tee /root/sr-a3/target-sha.e525371 >/dev/null
+  echo "$X" | sudo tee /root/sr-a3/target-sha >/dev/null
+  sr_a3_untouched() {
+    local u p
+    for u in sr-capture.service sr-capture.path sr-capture.timer sr-design-cycle.service sr-design-cycle.timer \
+             sr-design-worker.service sr-design-worker.timer sr-design-bridge.service sr-design-bridge.timer \
+             sr-claude-auth-watch.service sr-claude-auth-watch.timer; do
+      p="$(systemctl show "$u" -p FragmentPath --value 2>/dev/null)"
+      if [ -n "$p" ] && sudo test -f "$p"; then echo "unit $u $(systemctl is-enabled "$u" 2>/dev/null | head -n1) $(sudo sha256sum "$p" | cut -d' ' -f1)"; else echo "unit $u absent"; fi
+    done
+    echo "helper-head $(sudo git -C /home/sr-igcapture/second-root rev-parse HEAD 2>/dev/null || echo none)"
+    echo "approved-sha $(sudo cat /home/sr-igcapture/.config/sr-capture/approved-sha 2>/dev/null || echo none)"
+  }
+  sr_a3_untouched | sudo tee /root/sr-a3/untouched.before
+  echo "D0B_OK target-sha=$(sudo cat /root/sr-a3/target-sha) previous-sha=$(sudo cat /root/sr-a3/previous-sha)"
+else
+  echo "D0B_STOP: nothing recorded; report the lines above"
+fi
+```
+
+Besides the pins, D-0b checks the **default gateway**. `jail_props` (identical code at `c066618` and `X`) writes
+`IPAddressDeny=<gateway>/32` into `sr-jail-claude.service` from `/proc/net/route` at install time, and the WSL NAT gateway
+can change after a reboot. D-0b derives it the same way and requires it to equal the installed unit's
+`IPAddressDeny=…/32` lines. On `D0B_STOP: gateway changed since the last jail-install`, stop: `jail-install` (at `X` or,
+in D-4, at `c066618`) would then change `sr-jail-claude.service` as well, so neither D-3's `SAME` nor D-4's `cmp`
+would hold. That needs a separate decision (for example, a reviewed re-install with the new gateway); do not run
+D-2b. `info core.autocrlf=…` is information only (expected `unset`; `.gitattributes` pins LF anyway, and the sha256
+checks catch any difference). The fetch writes only the remote-tracking ref `origin/hotfix/a3-dns-on-c066618` and its
+objects into the clone's `.git`; the working tree does not move.
+
+Go on only when the output has no `D0B_STOP` line and ends with `D0B_OK target-sha=fbfce3c… previous-sha=c066618…`.
+The diff stat must list exactly the three files, with 194 insertions and 30 deletions. The human approves exactly
+this. Re-running D-0b before D-2b is safe. **If the machine rebooted between D-0b and D-2b, run D-0b again** (the
+gateway check).
+
+**D-2b (approval 2b).**
+1. **Run W-0 again, right before D-2b.** Paste §5.0's W-0 block in this shell; it defines `sr_w0` and prints
+   `W0_OK` or `W0_HOLD` as its last line. On `W0_HOLD`, stop and wait (§5.0). Do not go on.
+2. Only on `W0_OK`, and within a few minutes, run the block below. It runs W-0 once more itself, and installs nothing
+   unless that run's last line is `W0_OK`:
+
+```bash
+# D-2b (DEV-091, approval 2b): only right after W-0 printed W0_OK. Moves the root clone to X (the 3 files only) and installs the jail.
+X=fbfce3c87abb185a4cc59d28f2a842a838ddeac0
+BASE=c066618cd6a40fe1cef57f75a71b755eea4157e8
+C=/root/sr-capture-admin
+P=scripts/sales-design-capture
+D2B_INSTALL=no
+W0_LAST="$(declare -f sr_w0 >/dev/null && sudo bash -c "$(declare -f sr_w0); sr_w0" | tee /dev/stderr | tail -n 1)"
+if [ "$W0_LAST" != W0_OK ]; then
+  echo "D2B_STOP: W-0 did not print W0_OK right before D-2b (paste the W-0 block from §5.0 first; on W0_HOLD wait)"
+elif [ "$(sudo cat /root/sr-a3/target-sha 2>/dev/null)" = "$X" ] && [ "$(sudo git -C "$C" rev-parse HEAD)" = "$BASE" ]; then
+  sudo git -C "$C" checkout -q --detach "$X" \
+    && [ "$(sudo git -C "$C" rev-parse HEAD)" = "$X" ] \
+    && [ -z "$(sudo git -C "$C" status --porcelain --untracked-files=normal)" ] \
+    && [ "$(sudo git -C "$C" diff --name-only "$BASE" HEAD)" = "$(printf '%s\n' "$P/admin.sh" "$P/jail/jail.properties" "$P/jail/probe.py")" ] \
+    && [ "$(sudo sha256sum "$C/$P/admin.sh" "$C/$P/jail/jail.properties" "$C/$P/jail/probe.py" | cut -d' ' -f1 | paste -sd' ' -)" = "097494c4654dec2a68470db793d3a72f03875021f99fba1627107e03f5435551 9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9 411b53e433512628ba18fad1b3b011e35669044ed60d753b32b28a9d4e971b54" ] \
+    && echo "D2B: clone at X, clean, 3 files, sha256 pinned; installing the jail" \
+    && D2B_INSTALL=started \
+    && sudo bash "$C/$P/admin.sh" jail-install \
+    && echo "D2B_DONE" \
+    || if [ "$D2B_INSTALL" = started ]; then
+         echo "D2B_FAILED in jail-install: the jail stays closed (no Claude, no worker run) until D-4; go to D-4"
+       elif [ "$(sudo git -C "$C" rev-parse HEAD)" != "$BASE" ]; then
+         echo "D2B_FAILED before jail-install, nothing installed: put the clone back with: sudo git -C $C checkout -q --detach $BASE"
+       else
+         echo "D2B_FAILED before jail-install, nothing changed (the clone is still at $BASE): report the lines above"
+       fi
+else
+  echo "D2B_STOP: run D-0b first (target-sha must be X and the clone at $BASE)"
+fi
+```
+
+The last lines:
+- `JAIL_OK`, then `JAIL_DNS_OK`, then `D2B_DONE`: go to D-3.
+- `D2B_FAILED in jail-install` (after `JAIL_UNSAFE …` such as `DNS_RULES_UNCHECKED` / `DNS_RULES_NOT_EXACT`,
+  `JAIL_DNS_FAILED` or `JAIL_UNIT_REJECTED`): go to D-4. **A `jail-install` that fails partway leaves the jail closed**
+  (fail closed: the probe runs before every jail unit, so Claude and worker runs stay down) until D-4, which rewrites
+  all four files from `c066618`.
+- `D2B_FAILED before jail-install`: nothing was installed. If it says so, put the clone back with the printed
+  command (it is printed only when the clone moved off `c066618`); otherwise nothing changed. Report the lines.
+- `D2B_STOP …`: nothing was done.
+
+The block checks the sha256 of the three checked-out files against the pins before `jail-install`.
+
+**D-3 (included in approval 2b; read only, plus sends that must be refused).**
+
+```bash
+# D-3 (DEV-091, included in approval 2b): verify. Read only, plus 1-byte UDP sends and TCP connects that must be refused.
+C=/root/sr-capture-admin
+A="$C/scripts/sales-design-capture/admin.sh"
+echo "clone: $(sudo git -C "$C" rev-parse HEAD) dirty-lines=$(sudo git -C "$C" status --porcelain --untracked-files=normal | wc -l)"
+sudo bash "$A" jail-rules | sudo tee /root/sr-a3/rules.after
+echo "== rules =="; sudo diff /root/sr-a3/rules.before /root/sr-a3/rules.after
+echo "== sr-jail-net.service =="; sudo diff /root/sr-a3/before/sr-jail-net.service /etc/systemd/system/sr-jail-net.service
+echo "== sr-jail-claude.service =="; sudo diff /root/sr-a3/before/sr-jail-claude.service /etc/systemd/system/sr-jail-claude.service && echo SAME
+echo "== jail.properties, settings only =="; diff <(sudo grep -Ev '^[[:space:]]*(#|$)' /root/sr-a3/before/jail.properties) <(sudo grep -Ev '^[[:space:]]*(#|$)' /usr/local/lib/sr-jail/jail.properties) && echo SAME
+echo "== installed jail files, pinned =="
+[ "$(sudo sha256sum /usr/local/lib/sr-jail/probe.py | cut -d' ' -f1)" = 411b53e433512628ba18fad1b3b011e35669044ed60d753b32b28a9d4e971b54 ] && echo "PINNED probe.py" || echo "NOT_PINNED probe.py"
+[ "$(sudo sha256sum /usr/local/lib/sr-jail/jail.properties | cut -d' ' -f1)" = 9b432f8ad26c913dec12f2e14b066503aa1dc61ede017d0c86777cc80f24d0a9 ] && echo "PINNED jail.properties" || echo "NOT_PINNED jail.properties"
+sr_a3_untouched() {
+  local u p
+  for u in sr-capture.service sr-capture.path sr-capture.timer sr-design-cycle.service sr-design-cycle.timer \
+           sr-design-worker.service sr-design-worker.timer sr-design-bridge.service sr-design-bridge.timer \
+           sr-claude-auth-watch.service sr-claude-auth-watch.timer; do
+    p="$(systemctl show "$u" -p FragmentPath --value 2>/dev/null)"
+    if [ -n "$p" ] && sudo test -f "$p"; then echo "unit $u $(systemctl is-enabled "$u" 2>/dev/null | head -n1) $(sudo sha256sum "$p" | cut -d' ' -f1)"; else echo "unit $u absent"; fi
+  done
+  echo "helper-head $(sudo git -C /home/sr-igcapture/second-root rev-parse HEAD 2>/dev/null || echo none)"
+  echo "approved-sha $(sudo cat /home/sr-igcapture/.config/sr-capture/approved-sha 2>/dev/null || echo none)"
+}
+echo "== timers, helper, design and auth-watch units (expect no lines) =="; sr_a3_untouched | sudo diff /root/sr-a3/untouched.before - && echo UNTOUCHED
+sudo bash "$A" jail-check
+sudo bash "$A" run sr-designgen -- getent hosts github.com
+sudo bash "$A" run sr-designgen -- /usr/bin/python3 -I -c 'import socket, errno
+for proto, port in (("udp", 853), ("udp", 9), ("tcp", 853), ("tcp", 53)):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM if proto == "udp" else socket.SOCK_STREAM)
+    s.settimeout(2)
+    try:
+        if proto == "udp":
+            s.sendto(b"x", ("198.51.100.53", port))
+        else:
+            s.connect(("198.51.100.53", port))
+        print("DNS_ADDR", proto, port, "NOT_REFUSED")
+    except OSError as e:
+        print("DNS_ADDR", proto, port, errno.errorcode.get(e.errno, e.errno))
+    finally:
+        s.close()'
+systemctl is-active sr-jail-net sr-jail-claude
+```
+
+Expected:
+- `clone: fbfce3c87abb185a4cc59d28f2a842a838ddeac0 dirty-lines=0`.
+- **rules:** exactly `3c3,5`: `< 100: from all to 198.51.100.53 ipproto tcp prohibit` →
+  `> 98: … ipproto udp dport 853 prohibit`, `> 99: … ipproto udp dport 53 lookup main`, `> 100: … prohibit`.
+- **`sr-jail-net.service`:** exactly one hunk, `12c12,14`: the old `ipproto tcp prohibit priority 100` line replaced by
+  the three new `ExecStartPre` lines.
+- **`sr-jail-claude.service`:** `SAME`. DEV-088 does not change it; this was proven by rendering it from both commits.
+  A difference only in an `IPAddressDeny=…/32` (gateway) line cannot happen after D-0b passed, as long as D-2b ran
+  promptly with no reboot in between (D-0b checked the gateway); if a reboot happened, D-0b had to be re-run.
+- **`jail.properties`, settings only:** `SAME`.
+- **installed jail files:** `PINNED probe.py` and `PINNED jail.properties` (sha256 `411b53e4…1b54` and
+  `9b432f8a…d0a9`, the pinned values).
+- **untouched:** no diff lines, then `UNTOUCHED`. This covers the helper's units and checkout, `approved-sha`, the
+  design units and the auth-watch units.
+- `JAIL_OK` and `JAIL_DNS_OK`. `getent` prints github.com's addresses. There are four `DNS_ADDR … EACCES` lines.
+  `sr-jail-net` is `active`, and `sr-jail-claude` is as in D-0.
+
+On any other line, go to D-4 and report the lines.
+
+**D-4 (the abort path, included in approval 2b).**
+
+```bash
+# D-4 (DEV-091, the abort path, included in approval 2b): the clone back to c066618, jail-install, compare with the D-0 backups.
+BASE=c066618cd6a40fe1cef57f75a71b755eea4157e8
+C=/root/sr-capture-admin
+if [ "$(sudo cat /root/sr-a3/previous-sha 2>/dev/null)" = "$BASE" ]; then
+  if sudo git -C "$C" checkout -q --detach "$BASE" \
+    && [ "$(sudo git -C "$C" rev-parse HEAD)" = "$BASE" ] \
+    && [ -z "$(sudo git -C "$C" status --porcelain --untracked-files=normal)" ]; then
+    sudo bash "$C/scripts/sales-design-capture/admin.sh" jail-install \
+      || echo "D4_FAILED in jail-install at $BASE: do not retry; report the lines above (the jail stays closed: no Claude, no worker run)"
+  else
+    echo "D4_FAILED: the clone is not at $BASE and clean (HEAD=$(sudo git -C "$C" rev-parse HEAD), dirty-lines=$(sudo git -C "$C" status --porcelain --untracked-files=normal | wc -l)): do not retry, do not reset or clean it by hand; report these lines"
+  fi
+  sudo ip -n srjail rule show
+  for f in sr-jail-net.service sr-jail-claude.service; do sudo cmp "/root/sr-a3/before/$f" "/etc/systemd/system/$f" && echo "SAME $f"; done
+  for f in jail.properties probe.py; do sudo cmp "/root/sr-a3/before/$f" "/usr/local/lib/sr-jail/$f" && echo "SAME $f"; done
+  echo "clone: $(sudo git -C "$C" rev-parse HEAD)"
+  systemctl is-active sr-jail-net sr-jail-claude
+else
+  echo "D4_STOP: previous-sha is not $BASE: stop and report"
+fi
+```
+
+Expected:
+- the old single `100: from all to 198.51.100.53 ipproto tcp prohibit` rule;
+- `JAIL_OK` from `c066618`'s `jail-check` (it has no `JAIL_DNS_OK` step);
+- four `SAME` lines;
+- `clone: c066618…`.
+
+D-0b checked that the installed files were `c066618`'s and that the gateway had not changed, so `jail-install` at
+`c066618` writes all four files back byte for byte (a gateway-only difference cannot happen unless the machine
+rebooted after D-0b). `D4_FAILED: the clone is not at … and clean`: do not retry and do not reset or clean the clone by
+hand; report the lines. `D4_FAILED in jail-install`: do not retry; report the lines (the jail stays closed). Do not
+delete rules by hand.
+
+The blocks above were checked with `bash -n`. D-0b, D-2b and D-4 were also run here (again after the Fresh Review fixes) against a simulated
+`/root/sr-a3`, a clone, and stand-ins for `sudo`, `systemctl` and `admin.sh`. That covered the success path and the
+stop paths for a dirty clone, a changed installed probe, the wrong commit, a changed gateway, a pinned-hash
+mismatch in D-0b and in D-2b, a failing `jail-install` and a dirty clone in D-4.
 
 ### 4.7 What fails closed
 
@@ -1558,7 +2002,7 @@ change, and any Codex run.
 | A-1 | **HUMAN-024b** (jail) and **24b-host**: the Codex-free probe | nothing (3 unauthenticated GETs per run) | – | WSL | – | **done 2026-10-22** (`design-image-poc.md` 24b) |
 | A-1b | optional: **24b-v2** in the jail and on the host before the update, as a same-tool baseline | nothing | – | WSL | – | `design-image-poc.md` 24b-v2 |
 | A-2 | Proceed with a passt update **and** grant a written exception to `design-wsl-isolation.md` §6 for exactly `passt 0.0~git20260120.386b5f5-1` from Ubuntu resolute, verified as in V-1 (the docs change goes in the A-3 PR or its own) | policy (docs) | yes | decision | A-1 (done: "cut in the jail, OPEN on the host") | – |
-| A-3 | The jail's DNS rules: only UDP/53 to 198.51.100.53, plus the probe checks and tests (§4.6). **Policy adopted 2026-10-23; code implemented in DEV-088; applying it on WSL is a separate approval** | `sr-jail-net`'s ip rules, `probe.py`, `jail-check`, tests; the deploy restarts the jail for seconds | yes (D-4) | repo PR (DEV-088), then `admin.sh jail-install` from the root clone at the merge commit on WSL | A-2 | D-1 (PR), D-0 (W-0), D-2, D-3, D-4 |
+| A-3 | The jail's DNS rules: only UDP/53 to 198.51.100.53, plus the probe checks and tests (§4.6). **Policy adopted 2026-10-23; code implemented in DEV-088; applying it on WSL is a separate approval** | `sr-jail-net`'s ip rules, `probe.py`, `jail-check`, tests; the deploy restarts the jail for seconds | yes (D-4) | repo PR (DEV-088); on WSL `admin.sh jail-install` from the root clone at the DEV-091 backport commit `fbfce3c` (`c066618` + the three DEV-088 files), not at the merge commit | A-2 | D-1 (PR), D-0 (done), W-0, AW-1, D-0b, D-2b, D-3, D-4 (§4.6, backport variant) |
 | A-4 | W-0 window check and V-0 snapshot | only new files in `/root/sr-passt-update/` | yes | WSL | A-2 (and A-3 deployed, if chosen) | S-1, W-0, V-0 |
 | A-5 | V-1 fetch and verify, V-2 update and hold, V-3a immediate checks, and on success V-2b; **the rollback (R-1 → R-3, §6.4) approved together with A-5 as its abort path** | the passt package, its AppArmor files, the hold, a pasta restart, Claude stopped then restored | yes (R-1 → R-3) | WSL, root, a person at the console | A-4 | V-1, W-0, V-2, V-3a, D-3, V-2b, R-1, R-2, R-3 |
 | A-6 | 24b-v2 in the jail and on the host after the update (can be approved together with A-5 and run before V-2b) | nothing | – | WSL | A-5 passes V-3a | V-3b |
