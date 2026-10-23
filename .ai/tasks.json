@@ -4138,7 +4138,7 @@
     {
       "id": "DEV-095",
       "title": "Design image PoC 第2案: 組み立てた v2 prompt を sha256 と文字数で test に固定し、人が WSL で同じ sha を読むだけで確かめる手順を置く（test と docs だけ）",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-077"
