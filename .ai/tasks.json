@@ -4338,6 +4338,40 @@
         "section の数値を gate にする閾値（roadmap A5）",
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-098",
+      "title": "CI の間欠 Chromium「Unable to capture screenshot」: 新しい page を setContent した直後の最初の capture が compositor の frame より先に走る。最初の capture の前に frame を待つ（assertion・retry・閾値は変えない）",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-098-screenshot-flake",
+      "purpose": "unit shard が `page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot` で間欠的に落ち、re-run で通る（10/21〜10/23 に 6 回: renderer-direction.test.tsx の regionPixels 3 回、synthetic.ts の renderSyntheticComp 3 回）。re-run 頼みをやめ、根本原因を直す。",
+      "decision": "message は Chromium の CDP Page.captureScreenshot の失敗をそのまま返したもの（Playwright 1.62.1 は扱わない）。大きさは原因ではない（page 高 ≤ 2442 CSS px・DSF 1、synthetic は 720×1025 device px。上限 16384 の遥か下）。CI と同じ chrome-headless-shell 151（rev 1234）で、負荷下（8 browser 並列 + CPU hog）に新しい context → setContent → 即 capture を再現（800 回中 3、1200 回中 2）。失敗した同じ page は 200 ms 後には撮れる（直後の再試行は 1/2 でまだ失敗）。失敗するのは『新しい page を setContent した直後に何も測らず撮る』2 箇所だけで、goto 後に fonts.ready と測定を挟む render.ts や page を使い回す renderer-visibility は一度も落ちていない。修正: lib/design-agent/frame-ready.ts の waitForFrame（CDP の isolated world で requestAnimationFrame を 2 回。javaScriptEnabled: false でも動き、page 自身の script は動かない。15 s で FRAME_WAIT_TIMEOUT）を synthetic.ts と regionPixels の最初の capture の前に呼ぶ。retry・skip・vitest retry・閾値・assertion の変更なし。",
+      "acceptance_criteria": [
+        "renderSyntheticComp と regionPixels は最初の capture の前に page の frame を待つ。clip・options・assert は不変",
+        "waitForFrame: JS on で page の rAF が 2 回以上進む、JS off でも resolve し page の script は動かず window に何も残らない、描かない page は FRAME_WAIT_TIMEOUT、評価の失敗は FRAME_WAIT_FAILED（どちらも CDP session を detach）",
+        "renderSyntheticComp の呼び出し順: setContent → frame wait → screenshot（同じ clip と options）",
+        "PR に発生一覧・原因の根拠・負荷下の A/B を書く"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/frame-ready.test.ts（新規）、renderer-direction.test.tsx、comp-impl/phase-a.test.ts",
+        "tests/unit/ai-tasks.test.ts、npm run typecheck、eslint（変更 file）、npm run check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/frame-ready.ts（新規）・lib/design-agent/comp-impl/synthetic.ts（capture 前の待ちだけ）",
+        "tests/unit/design-agent/frame-ready.test.ts（新規）・renderer-direction.test.tsx（regionPixels の待ちだけ）",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "assertion・閾値・tolerance の緩和、skip・quarantine・vitest retry、test の削除",
+        "DEV-083 の check・allowlist、.github/**、依存の追加（package.json / pnpm-lock）、.ai/progress.md"
+      ],
+      "human_approval_triggers": [
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     }
   ]
 }

@@ -7,6 +7,7 @@ import demoStyles from "@/components/demo/demo.module.css";
 import ProfileRenderer from "@/components/demo/profile/ProfileRenderer";
 import profileStyles from "@/components/demo/profile/profile.module.css";
 import { checkProfile, DIRECTIONS, type DesignProfile } from "@/lib/design-agent/profile";
+import { waitForFrame } from "@/lib/design-agent/frame-ready";
 import { decodePng } from "@/lib/design-agent/worker/png-paint";
 import type { DemoView } from "@/lib/sales/demo-content";
 import { AMERICAN_EDITORIAL, SHOP } from "./fixtures";
@@ -91,6 +92,8 @@ async function signature(page: Page): Promise<string> {
 
 /** The pixels of the hero or of the main sections below it. */
 async function regionPixels(page: Page, region: "hero" | "main"): Promise<{ width: number; height: number; data: Buffer; channels: number }> {
+  // DEV-098: the page is brand new (open() just set its content); let it draw before the first capture
+  await waitForFrame(page);
   const box = await page.locator(cls(region)).boundingBox();
   const png = await page.screenshot({ fullPage: true, clip: { x: 0, y: box!.y, width: box!.width, height: Math.min(box!.height, 1200) } });
   return decodePng(png);

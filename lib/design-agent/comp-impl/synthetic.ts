@@ -17,6 +17,7 @@ import type { Browser } from "playwright";
 import { parseShop } from "../compare/shops";
 import { FIXTURE_PATH, loadPocInputs } from "../design-image/prompt";
 import { checkPng } from "../design-image/png";
+import { waitForFrame } from "../frame-ready";
 import { sha256 } from "./bundle";
 
 export const SYNTHETIC_FIXTURE_DIR = "scripts/sales-design-worker/comp-impl/synthetic-wagashi";
@@ -39,6 +40,8 @@ export async function renderSyntheticComp(browser: Browser, html: string): Promi
     await context.route("**/*", (route) => route.abort());
     const page = await context.newPage();
     await page.setContent(html, { waitUntil: "load" });
+    // DEV-098: a brand-new page may have no frame to copy yet ("Unable to capture screenshot" on a loaded machine)
+    await waitForFrame(page);
     return await page.screenshot({ clip: { x: 0, y: 0, width: a.width, height: a.height }, animations: "disabled", caret: "hide" });
   } finally {
     await context.close();
