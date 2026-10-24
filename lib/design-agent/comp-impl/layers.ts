@@ -302,7 +302,8 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
   // ------------------------------------------------------------ DEV-102 vertical text: only the name, glyphs apart, in order, in the box
   const vert = { elements: 0, notName: 0, overlap: 0, disorder: 0, overflow: 0 };
   let nameElements = 0;
-  for (const el of body) {
+  // html and body too: a vertical root lays every block out as right-to-left columns
+  for (const el of [document.documentElement, document.body].concat(body)) {
     if (!isVertical(el)) continue;
     vert.elements += 1;
     // any vertical element but the bare name counts, with or without text of its own: a vertical container lays its

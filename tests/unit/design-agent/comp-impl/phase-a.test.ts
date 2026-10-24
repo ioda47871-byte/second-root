@@ -407,6 +407,8 @@ describe("DEV-102 vertical_name: the allowlist and the vertical-text checks", ()
   it.each<[string, string, string, string]>([
     ["other text set vertically", '<p class="v">季節の上生菓子</p>', VERTICAL, "VERTICAL_NOT_NAME"],
     ["a vertical container of horizontal blocks", '<div class="v"><p class="h">0520</p><p class="h">季節の上生菓子</p></div>', `${VERTICAL} .h { writing-mode: horizontal-tb; }`, "VERTICAL_NOT_NAME"],
+    ["a vertical body with horizontal blocks", '<p class="h">0520</p><p class="h">季節の上生菓子</p>', "body { writing-mode: vertical-rl; } .h { writing-mode: horizontal-tb; }", "VERTICAL_NOT_NAME"],
+    ["a vertical html with horizontal blocks", '<p class="h">0520</p><p class="h">季節の上生菓子</p>', "html { writing-mode: vertical-rl; } .h { writing-mode: horizontal-tb; }", "VERTICAL_NOT_NAME"],
     ["the name set vertically twice", `<h1 class="v">${NAME}</h1><p class="v">${NAME}</p>`, VERTICAL, "VERTICAL_NOT_NAME"],
     ["columns running left to right (detector)", `<h1 class="v">${NAME}</h1>`, ".v { writing-mode: vertical-lr; font-size: 48px; height: 110px; }", "VERTICAL_GLYPHS_ORDER"],
     ["the name with more inside it", `<h1 class="v">${NAME}<span>0520</span></h1>`, VERTICAL, "VERTICAL_NOT_NAME"],
