@@ -9,17 +9,19 @@ import { z } from "zod";
 import { DESIGN_DNA_PARTS, parseDesignDna, type DesignDnaPart } from "./design-dna";
 
 const Identifier = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{1,59}$/);
+/** Phrases that address a model rather than describe a design (study text is data, never instructions). */
+const INSTRUCTION_LIKE = /\b(?:ignore|disregard|forget|override)\b[^.]{0,40}\b(?:instructions?|rules?|prompts?|guidelines?)\b|\bsystem prompt\b|\byou are now\b|\b(?:reveal|print|output|show)\b[^.]{0,30}\b(?:secrets?|tokens?|keys?|passwords?|credentials?|env(?:ironment)?)\b|これまでの指示|指示を無視|秘密情報を/i;
 const StudyText = z.string().min(8).max(300).refine(
-  (s) => !/[\u0000-\u001f\u007f]|<<<|>>>|<\s*\/?\s*(script|iframe|img)|\b(?:javascript|data|file):/i.test(s),
+  (s) => !/[\u0000-\u001f\u007f]|<<<|>>>|<\s*\/?\s*[a-z!]|\]\(|\b(?:javascript|data|file|vbscript):/i.test(s) && !INSTRUCTION_LIKE.test(s),
   "unsafe study text",
 );
 const HTTPS = z.string().min(9).max(600).transform((s, ctx) => {
   try {
     const url = new URL(s);
-    if (url.protocol !== "https:" || url.username || url.password ||
-        !url.hostname || url.hostname === "localhost" ||
-        url.hostname.endsWith(".local") || url.hash ||
-        /^\d+(?:\.\d+){3}$/.test(url.hostname)) throw new Error("unsafe URL");
+    const host = url.hostname.replace(/\.$/, "");
+    if (url.protocol !== "https:" || url.username || url.password || !host || url.hash ||
+        host.startsWith("[") || /^\d+(?:\.\d+){3}$/.test(host) || !host.includes(".") ||
+        /(?:^|\.)(?:localhost|local|internal|localdomain|home|lan|corp|intranet)$/.test(host)) throw new Error("unsafe URL");
     return url.href;
   } catch {
     ctx.addIssue({ code: "custom", message: "unsafe source URL" });
@@ -75,7 +77,9 @@ export function parseDesignResearchSnapshot(input: unknown): DesignResearchSnaps
     if (new Set(c.source_ids).size !== c.source_ids.length || c.source_ids.some((s) => !sources.has(s)))
       throw new DesignResearchError("card:unknown_or_duplicate_source");
   }
-  if (new Set(data.sources.map((s) => s.url)).size !== data.sources.length)
+  // one page counts once: /a, /a/ and /a?utm=1 are the same source
+  const page = (u: string) => { const x = new URL(u); return x.origin + x.pathname.replace(/\/+$/, ""); };
+  if (new Set(data.sources.map((s) => page(s.url))).size !== data.sources.length)
     throw new DesignResearchError("snapshot:duplicate_urls");
   return data;
 }
@@ -138,7 +142,7 @@ export function selectDesignResearch(
       return s.review.status === "human_reviewed" && ref &&
         decision.reference_ids.includes(ref.id) && ref.scope === s.scope ? [s.url] : [];
     });
-    if (!urls.length || parts.has(part)) continue;
+    if (!urls.length) continue;
     parts.add(part);
     urls.forEach((u) => sourcesUsed.add(u));
     picked.push({
