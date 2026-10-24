@@ -26,7 +26,7 @@ const SourceURL = z.string().min(12).max(600).superRefine((value, ctx) => {
   }
 });
 
-const CATEGORIES = ["bakery", "pastry", "cafe", "salon", "wellness", "editorial"] as const;
+const CATEGORIES = ["bakery", "pastry", "cafe", "restaurant", "salon", "beauty", "wellness", "editorial"] as const;
 const Source = z.strictObject({
   id: z.string().regex(/^DX-\d{3}$/),
   name: z.string().trim().min(2).max(100),
@@ -88,7 +88,7 @@ export function parseResearchCandidates(input: unknown, previousUrls: readonly s
 export function researchCandidateCounts(input: unknown, previousUrls: readonly string[]) {
   const batch = parseResearchCandidates(input, previousUrls);
   const counts: Record<(typeof CATEGORIES)[number], number> = {
-    bakery: 0, pastry: 0, cafe: 0, salon: 0, wellness: 0, editorial: 0,
+    bakery: 0, pastry: 0, cafe: 0, restaurant: 0, salon: 0, beauty: 0, wellness: 0, editorial: 0,
   };
   for (const row of batch.references) counts[row.industry] += 1;
   return {
