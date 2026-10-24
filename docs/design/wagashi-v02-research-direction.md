@@ -38,7 +38,7 @@ the name turns horizontal above the image, then everything in one column.
 | accent | red-brown | vermilion CTA block | azuki-plum dots + active nav only |
 | shop-specific mark | none | none | dot row from the tsubu-an fact |
 | research link | A01/A02/A06/A07 by hand | B01–B05 written for v2 | A02/A03/A04/A07 chosen from the shop's inputs, with cited, labelled references |
-| the human verdict | "poster-like, not a web page" (issue #110 record in `.ai/progress.md`) | 23/25 (the v2 bundle's human-confirmed `evaluation.json`, issue #117); after the build: "lacks premium feel and originality" (owner, Issue #117 session) | not yet judged |
+| the human verdict | poster-like rather than a web structure (paraphrase of the issue #110 record in `.ai/progress.md`) | 23/25 in the human-confirmed `evaluation.json` of the v2 bundle (reported in an Issue #117 comment; the bundle is not in the repo); after the build the owner asked for more premium feel and originality (Issue #117 session) | not yet judged |
 
 **Expected improvements (hypotheses, not results):** the hero stops reading as a stock split; each section
 has its own lead, so the page has rhythm instead of image–image–table; the accent and the mark come from the
