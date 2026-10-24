@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "kind": "design_comparison_advisory",
+  "confirmation": "assistant_provisional",
+  "original_source": "human_supplied_images",
+  "images": [
+    {
+      "direction": "v2",
+      "original_report_sha256": "101c1c04eaef8ff957eae910c6ab1b72b6444645a4a3952aed0156ce60da91ac",
+      "viewed_sha256": "ef7799232b84c0bdaf1010b63c862c788c3ba62894671c98a067387f22e65f55",
+      "viewed_kind": "uploaded_preview",
+      "viewed_size": {
+        "width": 1024,
+        "height": 1536
+      }
+    },
+    {
+      "direction": "v3",
+      "original_report_sha256": "edc7af3dc8ac9aab371a09bc9dbf3cb196d0acf42f4ad99508a3c3274afcf87f",
+      "viewed_sha256": "80118235673f7a66ddee4fd2e42d35422e51129eb623d969bfca345632e293de",
+      "viewed_kind": "uploaded_preview",
+      "viewed_size": {
+        "width": 1024,
+        "height": 1536
+      }
+    }
+  ],
+  "dimensions": [
+    {
+      "dimension": "hero",
+      "preference": "mixed",
+      "v2": {
+        "basis": "desktop_comp",
+        "evidence": "Left product photograph has a gradual, natural cream-toned transition into the right-side shop name and filled vermilion information CTA.",
+        "render_ref": null
+      },
+      "v3": {
+        "basis": "desktop_comp",
+        "evidence": "Large framed dorayaki image has a clean hard edge and a large four-character vertical title to its right, with a smaller underlined text link.",
+        "render_ref": null
+      },
+      "rationale": "The v3 wordmark is more memorable, but the v2 photo integration feels less like a disconnected image block; neither is unambiguously superior."
+    },
+    {
+      "dimension": "product_presentation",
+      "preference": "v2",
+      "v2": {
+        "basis": "desktop_comp",
+        "evidence": "Two generous and separately captioned product photographs show both seasonal namagashi and tsubu-an dorayaki as the central merchandise.",
+        "render_ref": null
+      },
+      "v3": {
+        "basis": "desktop_comp",
+        "evidence": "A single smaller namagashi photograph follows a large description sentence, while three thin horizontal strokes occupy otherwise unused space.",
+        "render_ref": null
+      },
+      "rationale": "The v2 makes both foods easier to browse; the v3 sentence-led editorial intention is promising but sacrifices product visibility."
+    },
+    {
+      "dimension": "brand_identity",
+      "preference": "v3",
+      "v2": {
+        "basis": "desktop_comp",
+        "evidence": "Elegant neutral Mincho name and a warm accent button, but the same two-column pattern could be reused across many shop types.",
+        "render_ref": null
+      },
+      "v3": {
+        "basis": "desktop_comp",
+        "evidence": "The vertical Japanese name takes up an unusually strong single column and the near-monochrome palette creates a more distinctive first impression.",
+        "render_ref": null
+      },
+      "rationale": "The v3 uses the specific four-kanji identity more assertively, while still needing verification that vertical writing is attractive in actual CSS."
+    },
+    {
+      "dimension": "section_rhythm",
+      "preference": "v3",
+      "v2": {
+        "basis": "desktop_comp",
+        "evidence": "The page repeats a hero image, an equal two-product-photo row, and a straightforward factual ledger without much change in editorial pace.",
+        "render_ref": null
+      },
+      "v3": {
+        "basis": "desktop_comp",
+        "evidence": "The page leads with a tall title and photo, changes to sentence plus inset photo, then ends with the information ledger.",
+        "render_ref": null
+      },
+      "rationale": "The second image is de-emphasised too much, but the deliberate variation between sections is a useful improvement over uniformly sized cards."
+    },
+    {
+      "dimension": "information_readability",
+      "preference": "mixed",
+      "v2": {
+        "basis": "desktop_comp",
+        "evidence": "Four rows of hours, closed days, address and phone are aligned clearly; the table occupies a soft background block.",
+        "render_ref": null
+      },
+      "v3": {
+        "basis": "desktop_comp",
+        "evidence": "The same four business facts are in an orderly narrow ledger on a pale surface, with clear thin dividers.",
+        "render_ref": null
+      },
+      "rationale": "Both pages make operational facts legible; neither transforms this necessary factual section into an unusually distinctive visual ending."
+    },
+    {
+      "dimension": "mobile",
+      "preference": "unknown",
+      "v2": {
+        "basis": "not_checked",
+        "evidence": null,
+        "render_ref": null
+      },
+      "v3": {
+        "basis": "not_checked",
+        "evidence": null,
+        "render_ref": null
+      },
+      "rationale": "Only tall 1024-by-1536 desktop design comps were examined; there is no evidence of a responsive 390px implementation for either candidate."
+    },
+    {
+      "dimension": "implementation",
+      "preference": "unknown",
+      "v2": {
+        "basis": "not_checked",
+        "evidence": null,
+        "render_ref": null
+      },
+      "v3": {
+        "basis": "not_checked",
+        "evidence": null,
+        "render_ref": null
+      },
+      "rationale": "No rendered v3 page or font-metrics verification was supplied here; desktop comp pixels cannot prove reproducibility or CSS quality at target widths."
+    }
+  ],
+  "unresolved_risks": [
+    {
+      "issue": "Vertical Mincho glyph metrics may collapse on the real implementation target.",
+      "proposed_remedy": "Keep title layout distinctive but require a vetted Japanese vertical-font stack; do not substitute artificial single-character boxes.",
+      "how_to_verify": "Run 1440px and 390px browser captures and blocking glyph-order, overlap and overflow tests after the narrow vertical_name capability is approved.",
+      "state": "open"
+    },
+    {
+      "issue": "The v3 products section is visually sparse and does not feature both confection categories equally.",
+      "proposed_remedy": "Combine v3's editorial caption rhythm with two distinct high-quality confection visuals of unequal size and fact-grounded labels.",
+      "how_to_verify": "On a single screen capture, review whether both products can be identified visually without invented product names or empty filler.",
+      "state": "open"
+    },
+    {
+      "issue": "Neither preview demonstrates the future site's mobile composition or visual fidelity.",
+      "proposed_remedy": "Specify a deliberately recomposed 390px layout before commissioning the next image, and avoid treating desktop aspect scaling as responsive design.",
+      "how_to_verify": "Review actual Playwright 390px/1440px screenshots against the approved mockup and a documented mobile order.",
+      "state": "open"
+    },
+    {
+      "issue": "The preview PNG bytes differ from the original local WSL report hashes.",
+      "proposed_remedy": "Use previews for visual critique only; use the original Codex WSL PNG and matching report and facts for formal comp intake.",
+      "how_to_verify": "Compare original file sha256 to each WSL report before any signed bundle intake; never label a chat PNG as verified_original.",
+      "state": "open"
+    }
+  ],
+  "next_art_direction": {
+    "keep_from_v2": [
+      "Product-first visual appetite: two concept confection photos should each have a meaningful clear role.",
+      "Maintain the calm soft photo-to-paper transition where it strengthens hierarchy, not as an imitation of any reference website.",
+      "Keep readable, factual captions so browsing the product offer is effortless."
+    ],
+    "keep_from_v3": [
+      "Use expressive Japanese Mincho typography and a shop-specific name treatment instead of a generic heading.",
+      "Use editorial variation between hero, storytelling and business-information sections rather than three rigid repeat blocks.",
+      "Keep the restrained cream/ink/azuki palette and a quieter but obvious information link."
+    ],
+    "improve": [
+      "Hero needs integrated photographic and type composition, not a giant name automatically occupying a third of the page.",
+      "Use two differing image scales and one evidence-grounded large description sentence; no fake products, meaningless placeholder strokes or filler.",
+      "End the page with intentional typographic organisation of verified business facts, rather than extra decorative effects.",
+      "Describe a 390px mobile reflow independently from the desktop comp before implementation or an additional image call.",
+      "Separate aesthetic judgment from hard-fail fact verification and measured HTML/CSS fidelity; 23/25 alone cannot establish improvement."
+    ],
+    "proof_before_implementation": [
+      "Original WSL PNG/report SHA pair checked for the selected comp, with image asset approvals tracked separately.",
+      "Formal five-criterion evaluation with original ≥22/25 and every item ≥4, plus no hard fails, owner confirmed.",
+      "Independent actual 1440px and 390px render checks, including vertical Japanese font metrics and protected facts.",
+      "Owner visually confirms the trade-off between brand impression and product browsing before publication."
+    ]
+  }
+}
