@@ -14,7 +14,7 @@
     {
       "id": "making",
       "origin": "verified_shop_fact",
-      "observation": "Seasonal jō-namagashi and dorayaki with tsubu-an cooked every morning, wrapped one at a time at a small counter.",
+      "observation": "Seasonal jō-namagashi and dorayaki with tsubu-an cooked every morning, wrapped one at a time at a small shopfront (小さな店頭).",
       "source_label": "DEV-073 wagashi.json: description"
     },
     {
@@ -67,19 +67,17 @@
         "brand",
         "owner_premium"
       ],
-      "reference_ids": [
-        "DR-022"
-      ]
+      "reference_ids": []
     },
     {
       "part": "typography",
-      "choice": "A large Mincho name against small horizontal sans facts: the size step is dramatic, the facts stay at a readable body size.",
-      "rationale": "The premium request is met by contrast and restraint, not ornament; facts must stay legible, so only the name grows.",
+      "choice": "The four-kanji name set vertically in a large Mincho as the one vertical accent; nav and facts stay small horizontal sans at a readable body size.",
+      "rationale": "A short kanji name reads well top to bottom, while hours, address and phone must stay horizontal; only the name changes axis and grows.",
       "evidence_ids": [
         "owner_premium"
       ],
       "reference_ids": [
-        "DR-032"
+        "DR-022"
       ]
     },
     {
@@ -108,7 +106,7 @@
     {
       "part": "section_rhythm",
       "choice": "Each section has a different lead: the vertical name in the hero, one verbatim description sentence set large in the middle, a narrow factual ledger last.",
-      "rationale": "The description moves from the morning's tsubu-an to wrapping at the counter, so the middle section is led by words, not a second image row.",
+      "rationale": "The description moves from the morning's tsubu-an to wrapping each sweet at the small shopfront, so the middle section is led by words, not a second image row.",
       "evidence_ids": [
         "making"
       ],

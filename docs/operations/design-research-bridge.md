@@ -11,7 +11,7 @@
   `visual_reference_partially_inspected`; one `content_reviewed_visual_pending`, two
   `discovered_needs_visual_review`). None names a reviewer or a date, and the cards have no review field.
   `toResearchSnapshot` therefore makes every source and card a bridge `candidate` and keeps the original
-  label in `provenance.original_review_status`. The bridge cannot report `review_ready` on them.
+  label in `provenance.original_review_status`; the two `discovered_needs_visual_review` entries (nothing observed) stay in the file but are not offered as sources. The bridge cannot report `review_ready` on them.
 - **The Design DNA part of each card** (`V02_CARD_PART`) was assigned by a Claude session at import; it is
   marked `claude_session_unreviewed` on every card.
 - **Shop-specific choice:** `exploreV02Techniques` picks 2–4 cards from a shop's verified inputs (name,

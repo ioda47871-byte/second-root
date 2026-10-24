@@ -19,7 +19,7 @@
 Picked (each with its reason in the output): **A02** vertical Japanese accent, **A03** one fact-grounded mark,
 **A04** quiet, few elements, **A07** a different lead for each section. Not picked: A01 (the shop has approved
 imagery, so a photo-free name-only hero is not supported), A05/A08 (no owner tone for them), A06/A09 (limit of
-four). Cited references, visually observed only: DR-022, DR-027, DR-032, DR-021 — principles only.
+four). Cited references, visually observed only, each under the part its card is assigned to: DR-022 (A02, typography), DR-032 (A04, palette), DR-027 (A03, product_visual), DR-021 (A07, section_rhythm) — principles only.
 
 ## The direction in one paragraph
 
@@ -38,7 +38,7 @@ the name turns horizontal above the image, then everything in one column.
 | accent | red-brown | vermilion CTA block | azuki-plum dots + active nav only |
 | shop-specific mark | none | none | dot row from the tsubu-an fact |
 | research link | A01/A02/A06/A07 by hand | B01–B05 written for v2 | A02/A03/A04/A07 chosen from the shop's inputs, with cited, labelled references |
-| the human verdict | "poster-like, not a web page" | 23/25; "lacks premium feel and originality" | not yet judged |
+| the human verdict | "poster-like, not a web page" (issue #110 record in `.ai/progress.md`) | 23/25 (the v2 bundle's human-confirmed `evaluation.json`, issue #117); after the build: "lacks premium feel and originality" (owner, Issue #117 session) | not yet judged |
 
 **Expected improvements (hypotheses, not results):** the hero stops reading as a stock split; each section
 has its own lead, so the page has rhythm instead of image–image–table; the accent and the mark come from the

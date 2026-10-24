@@ -125,13 +125,14 @@ export function toResearchSnapshot(lib: ResearchLibraryV02): DesignResearchSnaps
   return parseDesignResearchSnapshot({
     schema_version: 1,
     status: "research_only",
-    sources: lib.references.map((r) => ({
+    // a reference nobody has looked at (no observation at all) is kept in the library file but not offered as a source
+    sources: lib.references.filter((r) => r.review_status !== "discovered_needs_visual_review").map((r) => ({
       id: r.id,
       url: r.reference_url,
       scope: r.review_status === "content_reviewed_visual_pending" ? "site_structure_only" : "public_visual_only",
       rights: "analysis_only",
       // what was observed, or the original's own note that nothing was
-      observed_principle: (r.observed_visual_traits || r.notes).slice(0, 300),
+      observed_principle: [...(r.observed_visual_traits || r.notes)].slice(0, 300).join(""),
       review: candidate,
       provenance: { library: "design_research_v02", original_id: r.id, original_review_status: r.review_status },
     })),
@@ -188,7 +189,10 @@ export type V02Exploration = {
 };
 
 const MAX_PICKS = 4;
-/** Cards that rest on a specific shop input come first; the general structure cards fill what is left. */
+/**
+ * Cards that rest on a specific shop input come first; then the structure cards, A07 (section rhythm) before
+ * A09 and A06, so a concept always keeps a rhythm across its sections before it adds a layout refinement.
+ */
 const ORDER = ["A02", "A03", "A01", "A04", "A05", "A08", "A07", "A09", "A06"] as const;
 
 /**

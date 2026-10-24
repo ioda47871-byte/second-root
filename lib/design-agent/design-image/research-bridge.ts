@@ -2,8 +2,9 @@
  * Offline bridge from a *reviewed* site-study snapshot to a store-specific
  * design-direction candidate. It never fetches websites, runs Codex, chooses
  * a category template, reads customer/worker data, or modifies the pinned v2
- * PoC prompt. The historical 40-source/9-technique raw files are NOT assumed
- * to exist; a human must map and review them before passing this contract.
+ * PoC prompt. The v0.2 library (40 sources, 9 cards) is imported by
+ * research-v02.ts as candidates only; a person must review them before the
+ * bridge can call a selection review_ready.
  */
 import { z } from "zod";
 import { DESIGN_DNA_PARTS, parseDesignDna, type DesignDnaPart } from "./design-dna";

@@ -51,10 +51,11 @@ describe("design research v0.2 import", () => {
   it("turns every record into a bridge candidate and keeps the original review label", () => {
     const lib = library();
     const snap = toResearchSnapshot(lib);
-    expect(snap.sources).toHaveLength(40);
+    expect(snap.sources).toHaveLength(38); // DR-015 and DR-019: nothing observed, kept in the file only
+    expect(snap.sources.map((x) => x.id)).not.toContain("DR-015");
     expect(snap.technique_cards).toHaveLength(9);
     expect([...snap.sources, ...snap.technique_cards].every((x) => x.review.status === "candidate" && x.review.reviewer === null)).toBe(true);
-    for (const r of lib.references) expect(snap.sources.find((s) => s.id === r.id)!.provenance!.original_review_status).toBe(r.review_status);
+    for (const src of snap.sources) expect(src.provenance!.original_review_status).toBe(lib.references.find((r) => r.id === src.id)!.review_status);
     expect(snap.technique_cards.every((c) => c.provenance!.part_assigned_by === "claude_session_unreviewed")).toBe(true);
   });
 
@@ -105,7 +106,31 @@ describe("the experimental wagashi direction (v0.2 research)", () => {
     }
   });
 
-  it("shares no decision with the existing wagashi brief", () => {
+  it("cites each reference under the part its picked card is assigned to (the bridge links all four once a person reviews them)", () => {
+    const brief = parseDesignDna(experiment());
+    const picks = exploreV02Techniques(library(), wagashi).picks;
+    for (const d of brief.decisions)
+      for (const ref of d.reference_ids) {
+        const card = picks.find((p) => p.part === d.part);
+        expect(card, `${d.part} cites ${ref}`).toBeDefined();
+        expect(card!.references.map((r) => r.id), `${d.part} cites ${ref}`).toContain(ref);
+      }
+    // only to prove the links: a hypothetical review of exactly the picked cards and their sources
+    const snap = toResearchSnapshot(library());
+    const reviewed = { status: "human_reviewed" as const, reviewer: "hypothetical_test_reviewer", reviewed_at: "2026-10-24T00:00:00Z" };
+    const pickedCards = new Set(picks.map((p) => p.card_id));
+    const pickedRefs = new Set(picks.flatMap((p) => p.references.map((r) => r.id)));
+    for (const c of snap.technique_cards) if (pickedCards.has(c.id)) c.review = reviewed;
+    for (const src of snap.sources) if (pickedRefs.has(src.id)) src.review = reviewed;
+    const plan = selectDesignResearch(experiment(), snap);
+    expect(plan.selected.map((x) => [x.part, x.technique_id])).toEqual([
+      ["typography", "A02"], ["palette", "A04"], ["product_visual", "A03"], ["section_rhythm", "A07"],
+    ]);
+    expect(plan.status).toBe("review_ready");
+  });
+
+  it("shares no decision with the existing wagashi brief, and keeps the fixture's wording (店頭, not a counter)", () => {
+    expect(JSON.stringify(experiment())).not.toMatch(/counter/i);
     const current = parseDesignDna(JSON.parse(read(join(DESIGN_DNA_FIXTURE_DIR, "wagashi.json")).toString("utf8")));
     expect(sharedDesignDnaParts(parseDesignDna(experiment()), current)).toEqual([]);
   });
