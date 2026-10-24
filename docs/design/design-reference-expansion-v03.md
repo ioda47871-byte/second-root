@@ -1,4 +1,4 @@
-# Design reference expansion v0.3 — first candidate batch (DEV-105)
+# Design reference expansion v0.3 — two candidate batches (DEV-105)
 
 **Purpose:** Broaden Second Root's research beyond the original 40 entries and nine technique cards, especially across pastries/bakeries, cafés, salons and wellness clinics. The historical `v02` JSON/Markdown remain **byte-for-byte fixed** and their SHA-pinned loader retains `references.length===40`. This is a separate **additive candidate pool**, not a fake v0.2 update, and not Supabase.
 
@@ -7,10 +7,11 @@
 | Research set | Records | Source verification | Usable automatically by image PoC? |
 |---|---:|---|---|
 | Original `v02` | 40 | historical mixed partial/visual review labels, **no attributable human signoff**; several misattributed URLs corrected via overlay | No |
-| New `v03/candidates-20261025-01.json` | 15 | **only specific page text / gallery tags retrieved and checked**; not full visual screenshot audits | **No** |
-| Total saved reference leads | **55** | not the same as 55 fully reviewed/approved designs | No |
+| New `v03/candidates-20261025-01.json` | 15 | **specific page text / gallery tags checked**, no screenshot audit | **No** |
+| New `v03/candidates-20261025-02.json` | 25 | **live pages or specific gallery detail pages text-checked**, no screenshot audit | **No** |
+| Total saved reference leads | **80** | not the same as 80 fully reviewed/approved designs | No |
 
-The new categories: **3 pastry + 3 cafe + 2 bakery + 4 wellness + 2 salon + 1 editorial**.
+The first batch includes **3 pastry + 3 cafe + 2 bakery + 4 wellness + 2 salon + 1 editorial**. The second adds **11 restaurant + 4 pastry + 2 cafe + 4 salon + 3 wellness + 1 beauty**. Across both new batches there are 40 candidates, none human-reviewed.
 
 ## Actual candidate sources
 
@@ -34,12 +35,46 @@ The new categories: **3 pastry + 3 cafe + 2 bakery + 4 wellness + 2 salon + 1 ed
 
 The `text_confirmed` field in the JSON contains a **brief, source-grounded paraphrase**, and `technique_hypothesis_unreviewed` is **our proposal to test**, not an observed website layout. Portfolio/gallery listings are NOT equivalent to reviewing the original live site's 1440px/390px appearance. No extracted text, images, HTML, assets, full-page screenshots, owner claims, or third-party marks are copied to this repository.
 
+## Second candidate batch: live shops + source-traceable gallery entries (DX-016–040)
+
+The entries below were checked as **public page content / gallery metadata**, not photographed desktop/mobile pages. Local Nagoya examples are included for realistic information hierarchy; award-gallery examples are included for *potential* higher-end typographic composition. Gallery labels are not treated as observed responsive layouts.
+
+| ID | Source page | Source type | Proposed learning target (unreviewed) |
+|---|---|---|---|
+| DX-016 | [PHASE ONE 名古屋新栄](https://phaseone.jp/) | official_brand_site | navigation |
+| DX-017 | [cafe MELS 名古屋](https://cafe-mels.com/) | official_brand_site | product |
+| DX-018 | [味処 風雅 名古屋](https://huga-hongo.jp/) | official_brand_site | section |
+| DX-019 | [DINING BAR Torta due 名古屋](https://tortadue.jp/) | official_brand_site | information |
+| DX-020 | [お食事の店 おぐら 長久手](https://ogura-nagakute.city/) | official_brand_site | photography |
+| DX-021 | [period 名古屋プライベートサロン](https://period-nagoya.jp/) | official_brand_site | cta |
+| DX-022 | [日之出整骨院 福井](https://baboibu.com/) | official_brand_site | trust |
+| DX-023 | [NELU 高麗橋](https://muuuuu.org/industry/restaurant/19240.html) | design_gallery | typography |
+| DX-024 | [peace put](https://muuuuu.org/industry/restaurant/23611.html) | design_gallery | hero |
+| DX-025 | [Cartapani](https://muuuuu.org/industry/restaurant/18797.html) | design_gallery | palette |
+| DX-026 | [日本料理店 宝善亭](https://muuuuu.org/industry/restaurant/18828.html) | design_gallery | section |
+| DX-027 | [SOLES GAUFRETTE](https://muuuuu.org/industry/restaurant/13585.html) | design_gallery | brand |
+| DX-028 | [HAIR ICI](https://muuuuu.org/industry/beauty/16581.html) | design_gallery | photography |
+| DX-029 | [SPA NOIR](https://muuuuu.org/industry/beauty/18999.html) | design_gallery | typography |
+| DX-030 | [SEE/SAW](https://muuuuu.org/industry/beauty/19057.html) | design_gallery | product |
+| DX-031 | [NANEA HAIR](https://muuuuu.org/industry/beauty/17007.html) | design_gallery | palette |
+| DX-032 | [Cellato](https://muuuuu.org/industry/restaurant/16681.html) | design_gallery | typography |
+| DX-033 | [MAISON CACAO](https://muuuuu.org/industry/restaurant/13421.html) | design_gallery | product |
+| DX-034 | [BLUE YARD](https://muuuuu.org/industry/restaurant/18232.html) | design_gallery | section |
+| DX-035 | [SWISS洋菓子店](https://muuuuu.org/industry/restaurant/16832.html) | design_gallery | palette |
+| DX-036 | [Kariomons Coffee Roaster](https://muuuuu.org/industry/restaurant/13499.html) | design_gallery | hero |
+| DX-037 | [hōsa](https://muuuuu.org/industry/restaurant/18282.html) | design_gallery | typography |
+| DX-038 | [Karaoke Bar BLOOD 藤が丘](https://bloodfujigaoka.jp/) | official_brand_site | trust |
+| DX-039 | [美・れい 藤が丘](https://birei-fujigaoka.jp/) | official_brand_site | navigation |
+| DX-040 | [重原整骨院・整体院 旭川](https://tukina.net/) | official_brand_site | information |
+
+**One important difference:** `official_brand_site` denotes the actual current source page; `design_gallery` denotes someone else's listing/tag classification. Neither means a human reviewed the original layout visually. Even in the official sites, the `technique_hypothesis_unreviewed` remains an idea for an art-director to verify, not a machine-proven design trait.
+
 ## How this batch is protected
 
 `lib/design-agent/design-image/research-candidates.ts` is **offline only** and validates:
 - exact required fields, sources as specific public HTTPS pages without credentials, tracking, localhost or private IP literals;
 - count and distinct IDs;
-- URL deduplication within the new batch **and against every historical v0.2 reference URL**;
+- URL deduplication within each new batch **and against every historical v0.2 URL plus prior v0.3 batch URLs**;
 - every item permanently marked `candidate_text_checked_visual_pending` with no authority to present itself as human-reviewed;
 - a mandatory 1440px + 390px visual, interaction and license/purpose check before any candidate is upgraded;
 - no screenshot/media/assets stored and an explicit **analysis-only, do-not-copy** rights boundary.
@@ -54,4 +89,4 @@ This validation prevents accidental status changes but is NOT proof that page te
 4. **Use a shop-specific blend:** infer the shop's distinctive evidence and image permissions first; choose 3–5 complementary **reviewed transferable techniques**, not a genre template. Record why other visually tempting references are rejected. Original designs must not reuse logos, product imagery, copy or site composition.
 5. **Evaluate before generating again:** use the independent v2-v3 critique (Issue #124) to require a written tradeoff note on what gets worse, not just what looks striking. The existing formal 22/25 and each ≥4 gate remain unchanged.
 
-No automatic scraping/recurring bot, no API charges, no production user data, no `main` merge. The reviewed visual database is a **future human-assisted phase**, not falsely completed by this seed. See Issue #126 for the scope.
+No automatic scraping/recurring bot, no API charges, no production user data, no `main` merge. The reviewed visual database is a **future human-assisted phase**, not falsely completed by these two seeds. See Issue #126 for the scope.
