@@ -52,7 +52,10 @@ subject; an unchecked reference does not count, in the selection or in the bridg
 
 The result is **A02** (vertical accent), **A07** (a different lead per section) and **A09** (a steep size contrast in the hero).
 A04 is dropped because none of its references passed the URL check, and A03 has no input to support it. A09 (a typography
-card) is an idea for the hero's size contrast without a cited reference: its only matching references are subject-only.
+card) is an idea for the hero's size contrast without a cited reference: none of its references has page text that confirms
+its observation, and the typography part is already cited for A02. Note that the selection counts a subject-only match
+(`subject_matches_observation_not_in_text`) as enough to pick a card, so A09 is picked without any reference that confirms
+the observation, and A07's DR-037 is likewise subject-only (A07 also cites DR-021, which matches).
 Even if a person reviewed every cited source and card, the bridge would link two parts (typography A02, section rhythm A07)
 and stay `insufficient_reviewed_sources`; the research supports this direction in part, not as a whole.
 
