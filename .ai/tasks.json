@@ -4566,6 +4566,54 @@
         "v3 の実 Codex 画像生成",
         "研究記録を human_reviewed にすること"
       ]
+    },
+    {
+      "id": "DEV-105",
+      "title": "40件の旧デザイン研究を改変せず、実在・出典確認済みの参考候補を業種横断で追加し、レビューの境界を守る",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-100"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-105-design-reference-expansion",
+      "purpose": "Second Rootのデザイン参考資料が40件に偏り、URL誤帰属と美容・整体などの参考不足がある。人が後で目視審査できる根拠付きの候補を複数業種で増やし、未審査なのに即座に画像生成へ使う誤実装を防ぐ。",
+      "acceptance_criteria": [
+        "v0.2原本の40件・9技法・固定SHAおよび既存画像プロンプトを変更しない",
+        "別ファイルに15件の新しい具体的な参考候補を保存し、種類・URL・実際に本文で確認したこと・未確認の仮説を分ける",
+        "サイトのPC/モバイルを見ていない間はcandidateかつhuman_reviewedゼロ、即時の画像生成入力対象外を維持",
+        "旧40件とのURL重複や同一バッチ重複、未許可URL、画像転載・偽レビュー昇格を拒否するテストを実装",
+        "次の拡充計画は累計120件規模の目標で、120件のレビュー済みを既成事実にしない",
+        "CIと独立Fresh Reviewの従来条件を満たし、worker・DB・Staging・Production・mainは未変更"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-research-candidates.test.ts",
+        "tests/unit/design-agent/design-image-research-v02.test.ts",
+        "tests/unit/design-agent/design-image-design-comparison.test.ts",
+        "npm run typecheck",
+        "npm run check:secrets",
+        "required CI and Fresh Review"
+      ],
+      "allowed_scope": [
+        "design-library/research/v03/candidates-20261025-01.json",
+        "lib/design-agent/design-image/research-candidates.ts",
+        "tests/unit/design-agent/design-image-research-candidates.test.ts",
+        "docs/design/design-reference-expansion-v03.md",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "design-library/research/v02/ 元ファイル, 固定SHAと既存v2/v3プロンプト",
+        "人間未承認の研究元をhuman_reviewedに昇格",
+        "他社の画像・ロゴ・CSSの保存・再利用、勝手なWeb収集bot",
+        "実Codex、WSL、worker、sales/CRM、Supabase、Production、main",
+        "CIや品質評価閾値の弱体化"
+      ],
+      "human_approval_triggers": [
+        "原本サイトの1440/390px視覚レビューを実行し人間審査済みにする際の実際の人間による確認",
+        "画像生成に組み込むことや実Codex1回は別途承認",
+        "自動巡回/新規外部API費用/本番DB変更は別途承認"
+      ]
     }
   ]
 }
