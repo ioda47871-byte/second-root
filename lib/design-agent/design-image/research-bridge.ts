@@ -48,6 +48,15 @@ const Review = z.strictObject({
   if (r.status === "candidate" && (r.reviewer !== null || r.reviewed_at !== null))
     ctx.addIssue({ code: "custom", message: "candidate is not reviewed" });
 });
+/**
+ * Where an imported record came from (optional). It keeps the original library's own review label verbatim
+ * (e.g. "partial_visual_review_of_public_reference"); that label is NOT a human review and never sets `review`.
+ */
+const SourceProvenance = z.strictObject({
+  library: z.literal("design_research_v02"),
+  original_id: Identifier,
+  original_review_status: z.string().regex(/^[a-z][a-z_]{2,59}$/),
+});
 const Source = z.strictObject({
   id: Identifier,
   url: HTTPS,
@@ -55,6 +64,7 @@ const Source = z.strictObject({
   rights: z.literal("analysis_only"),
   observed_principle: StudyText,
   review: Review,
+  provenance: SourceProvenance.optional(),
 });
 const Card = z.strictObject({
   id: Identifier,
@@ -64,6 +74,12 @@ const Card = z.strictObject({
   use: StudyText,
   avoid: StudyText,
   review: Review,
+  /** An imported card: its original id, and that its Design DNA part was assigned by a Claude session (unreviewed). */
+  provenance: z.strictObject({
+    library: z.literal("design_research_v02"),
+    original_id: Identifier,
+    part_assigned_by: z.literal("claude_session_unreviewed"),
+  }).optional(),
 });
 const Snapshot = z.strictObject({
   schema_version: z.literal(1),

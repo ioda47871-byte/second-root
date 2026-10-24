@@ -1,0 +1,34 @@
+{
+  "import_version": 1,
+  "imported_at": "2026-10-24",
+  "imported_by": "claude_session",
+  "source": "Owner-supplied package secondroot_design_v02_package_20261021.zip (uploaded to the Development Claude session, 2026-10-24)",
+  "package_sha256": "98e3a6aa2618105cb8e6cb91211c6c6ba5ac2ece54781c06046477f9f3583348",
+  "files": [
+    {
+      "path": "secondroot_design_library_v02_20261021.json",
+      "sha256": "ed4b79dcace883ca1796c11b9817ac4e0f2cbd7c2bd0d60b183bb0f8193bf0d0",
+      "imported": true,
+      "verbatim": true
+    },
+    {
+      "path": "secondroot_design_research_v02_20261021.md",
+      "sha256": "f5458ebcca1f49785ed68eb1d3a741352ffe3acde2f3a09cb690e89bba08f0ec",
+      "imported": true,
+      "verbatim": true
+    },
+    {
+      "path": "secondroot_codex_wagashi_design_pack_20261021.json",
+      "sha256": "649b9e5382e44173117861f314f78e6d49a871c31a304d9387d9dbb41bd3549b",
+      "imported": false,
+      "reason": "Codex input pack; already realised as the PoC's v1 wagashi art direction. Not needed to select techniques."
+    },
+    {
+      "path": "secondroot_claude_handoff_v02_20261021.md",
+      "sha256": "067183fb455379ee9c18ae3da68b34c7a247c6be4eaf7c27d9a84681a2fcdec1",
+      "imported": false,
+      "reason": "2026-10-21 hand-off note; superseded by later issues and runbooks."
+    }
+  ],
+  "review_status_note": "The originals record model-made observations of public images (review_status per reference). No entry carries a human reviewer or review date, and the nine technique cards carry no review status. Nothing here is human-reviewed until a person records it."
+}

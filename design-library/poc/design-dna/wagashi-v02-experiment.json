@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "shop_key": "wagashi",
+  "status": "research_only",
+  "factual_copy": "verified_facts_only",
+  "asset_policy": "ai_concept_review_required",
+  "evidence": [
+    {
+      "id": "brand",
+      "origin": "verified_shop_fact",
+      "observation": "架空菓庵 is a fictional traditional wagashi shop; its name is four kanji.",
+      "source_label": "DEV-073 wagashi.json: name and industry"
+    },
+    {
+      "id": "making",
+      "origin": "verified_shop_fact",
+      "observation": "Seasonal jō-namagashi and dorayaki with tsubu-an cooked every morning, wrapped one at a time at a small counter.",
+      "source_label": "DEV-073 wagashi.json: description"
+    },
+    {
+      "id": "owner_premium",
+      "origin": "owner_direction",
+      "observation": "After the faithful v2 build the owner asked for a more premium feel and originality than a plain left-right split hero and two equal product cards.",
+      "source_label": "Owner instruction in the Issue #117 session, 2026-10-24"
+    }
+  ],
+  "references": [
+    {
+      "id": "DR-022",
+      "url": "https://soine.jp/works/detail/works001",
+      "scope": "public_visual_only",
+      "observed_principle": "複数の縦長ページが、和文縦組み・小さな説明文・茶器の写真・余白の繰り返しを使う。",
+      "transferable_idea": "Only the principle: a short Japanese heading set vertically beside horizontal facts changes the reading axis; no page, image or copy is reused.",
+      "rights": "analysis_only"
+    },
+    {
+      "id": "DR-027",
+      "url": "https://bake-jp.com/info/abitecoffee_202609launch/",
+      "scope": "public_visual_only",
+      "observed_principle": "生成りの地色、濃茶の太いロゴタイプ、粒子を思わせるドット模様の抽象図形。",
+      "transferable_idea": "Only the principle: a simple dot rhythm can be a brand's memory point when a fact supports it; that brand's logo and pattern are not imitated.",
+      "rights": "analysis_only"
+    },
+    {
+      "id": "DR-032",
+      "url": "https://note.com/mexce/n/nccbf8d44a745",
+      "scope": "public_visual_only",
+      "observed_principle": "ごく淡いオフホワイト地、中央の大きなセリフ体ロゴと左寄りの小さな和文説明、点のようなスクロール指示。",
+      "transferable_idea": "Only the principle: a near-white ground, one large serif name and small grouped facts read as quiet and premium without decoration.",
+      "rights": "analysis_only"
+    },
+    {
+      "id": "DR-021",
+      "url": "https://xd.5star.co.jp/work/1649/",
+      "scope": "public_visual_only",
+      "observed_principle": "白い面と薄い緑、中央の縦方向の日本語説明、下部の茶葉・茶碗と小さな説明を整列した構図。",
+      "transferable_idea": "Only the principle: a loud opening, a calm middle and a precise information part give a short page its rhythm.",
+      "rights": "analysis_only"
+    }
+  ],
+  "decisions": [
+    {
+      "part": "hero",
+      "choice": "The four-kanji name stands as one tall vertical column on the right third; the approved dorayaki concept crop sits in a framed window on the left half with open ground between them; no button block, one hairline text link.",
+      "rationale": "A four-kanji name is short enough to read top to bottom, and the owner asked for more than a left-right photo split, so the name becomes the vertical axis.",
+      "evidence_ids": [
+        "brand",
+        "owner_premium"
+      ],
+      "reference_ids": [
+        "DR-022"
+      ]
+    },
+    {
+      "part": "typography",
+      "choice": "A large Mincho name against small horizontal sans facts: the size step is dramatic, the facts stay at a readable body size.",
+      "rationale": "The premium request is met by contrast and restraint, not ornament; facts must stay legible, so only the name grows.",
+      "evidence_ids": [
+        "owner_premium"
+      ],
+      "reference_ids": [
+        "DR-032"
+      ]
+    },
+    {
+      "part": "palette",
+      "choice": "Kinari ground on most of the page, sumi text, and one deep azuki-plum used only for the dot mark and the active nav item; no filled red button.",
+      "rationale": "The single accent comes from the azuki of the shop's own tsubu-an, and keeping it off large fills keeps the page quiet as the owner asked.",
+      "evidence_ids": [
+        "making",
+        "owner_premium"
+      ],
+      "reference_ids": [
+        "DR-032"
+      ]
+    },
+    {
+      "part": "product_visual",
+      "choice": "At most two approved concept crops, never as equal cards: one large in the hero window, one small inset beside a verbatim description line; a short row of small round dots is the photo-free memory point.",
+      "rationale": "The dots stand for the azuki grains of tsubu-an cooked every morning, a mark that exists only because of this shop's fact.",
+      "evidence_ids": [
+        "making"
+      ],
+      "reference_ids": [
+        "DR-027"
+      ]
+    },
+    {
+      "part": "section_rhythm",
+      "choice": "Each section has a different lead: the vertical name in the hero, one verbatim description sentence set large in the middle, a narrow factual ledger last.",
+      "rationale": "The description moves from the morning's tsubu-an to wrapping at the counter, so the middle section is led by words, not a second image row.",
+      "evidence_ids": [
+        "making"
+      ],
+      "reference_ids": [
+        "DR-021"
+      ]
+    },
+    {
+      "part": "navigation",
+      "choice": "A thin horizontal header with the name and two anchors to the details and the shop information; nothing about ordering or reservations.",
+      "rationale": "The fixture offers no ordering, so the header only reaches verified content and stays small beside a large vertical name.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "mobile",
+      "choice": "On a phone the name turns horizontal and large above the hero image; the dot mark, the description sentence and the ledger follow in one column.",
+      "rationale": "A vertical name in a 390px column would crowd the image, and the whole four-kanji name has to be read before anything decorative.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": []
+    },
+    {
+      "part": "implementation",
+      "choice": "Within the current comp-impl CSS allowlist: the vertical name as a one-character-wide box (no writing-mode), dots as small rounded boxes, no gradients or overlapping layers; keep a header, three sections and a ledger.",
+      "rationale": "v1 (photo-free, poster-like) failed as a web page; keeping a real header, sections and ledger avoids that, and the allowlist needs no new approval.",
+      "evidence_ids": [
+        "making"
+      ],
+      "reference_ids": []
+    }
+  ]
+}
