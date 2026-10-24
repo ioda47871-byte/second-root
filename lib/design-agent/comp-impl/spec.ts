@@ -59,7 +59,11 @@ export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
  * stay horizontal — are in layers.ts. NOT approved: declaring it is refused (SPEC_CAPABILITY_NOT_APPROVED) until a
  * person adds it to this list.
  */
-export const APPROVED_CAPABILITIES: readonly CapabilityName[] = [];
+/** Owner-approved on 2026-10-24 for the local, unpublished comp-implementation PoC only.
+ * This module is not wired to the design worker or deployed site.
+ * Rollback: return to [] to fail closed for specs declaring vertical_name.
+ */
+export const APPROVED_CAPABILITIES: readonly CapabilityName[] = ["vertical_name"];
 
 const Id = z.string().regex(/^[a-z][a-z0-9-]{1,31}$/);
 const Frac = z.number().min(0).max(1);
