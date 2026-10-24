@@ -67,12 +67,12 @@ describe("offline design research bridge", () => {
 
   it("does not use candidate cards or candidate sources as reviewed research", () => {
     const s = snapshot();
-    s.technique_cards[0]!.review = candidate as typeof reviewed;
+    s.technique_cards[0]!.review = candidate as unknown as typeof reviewed;
     const p = selectDesignResearch(brief(), s);
     expect(p.selected.map((x) => x.part)).not.toContain("hero");
     expect(p.status).toBe("insufficient_reviewed_sources");
     const s2 = snapshot();
-    s2.sources[0]!.review = candidate as typeof reviewed;
+    s2.sources[0]!.review = candidate as unknown as typeof reviewed;
     expect(selectDesignResearch(brief(), s2).selected.map((x) => x.part)).not.toContain("hero");
   });
 
