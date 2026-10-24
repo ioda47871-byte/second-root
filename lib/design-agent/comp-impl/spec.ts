@@ -46,20 +46,23 @@ export const SLOT_KINDS = ["ai_concept", "placeholder"] as const;
 export const FACT_KEYS = ["name", "address", "hours", "closed_days", "access", "phone", "description"] as const;
 /**
  * The capabilities a page may declare (DEV-083 V7, docs/design/dev-083-expressive-safe-reproduction.md §2, §3). Each
- * one, once a human approves it, widens the page CSS allowlist by its own property set and brings its own checks. In
- * phase A (verification only) none is approved, and the spec schema is unchanged: a `capabilities` key in
- * layout-spec.json is refused as before (SPEC_SHAPE). The field and SPEC_CAPABILITY_NOT_APPROVED come with the first
- * approved capability; rollback of a later approval is removing it from this list.
+ * one, once a human approves it, widens the page CSS allowlist by its own property set and brings its own checks.
+ * The initial verification-only phase approved none. For this offline comp implementation PoC, the human approved
+ * only vertical_name on 2026-10-24. Other names/fields remain rejected; rollback is removing it from the list.
  */
 export const CAPABILITY_NAMES = ["vertical_name"] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 /**
  * vertical_name (DEV-102): the shop name alone may be set vertically (writing-mode: vertical-rl). Its checks — only the
  * name is vertical, its glyphs do not overlap, run in reading order and stay in their box, facts / pairs / the disclosure
- * stay horizontal — are in layers.ts. NOT approved: declaring it is refused (SPEC_CAPABILITY_NOT_APPROVED) until a
- * person adds it to this list.
+ * stay horizontal — are in layers.ts. Owner approved for local, unpublished PoC only.
+ * No production/worker integration is authorized.
  */
-export const APPROVED_CAPABILITIES: readonly CapabilityName[] = [];
+/** Owner-approved on 2026-10-24 for the local, unpublished comp-implementation PoC only.
+ * This module is not wired to the design worker or deployed site.
+ * Rollback: return to [] to fail closed for specs declaring vertical_name.
+ */
+export const APPROVED_CAPABILITIES: readonly CapabilityName[] = ["vertical_name"];
 
 const Id = z.string().regex(/^[a-z][a-z0-9-]{1,31}$/);
 const Frac = z.number().min(0).max(1);

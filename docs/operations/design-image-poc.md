@@ -1405,9 +1405,13 @@ the sha, and that makes it a new prompt. **The approval of a v3 run names this s
 `SR_DESIGN_IMAGE_POC_DIRECTION=v3 ` before `./scripts/…`. Everything else is the same: 1 Codex image call, the wrapper, the jail,
 the budget and the stop codes. The log line must say `direction v3`.
 
-**Implementing a v3 comp:** a vertical shop name needs the `vertical_name` capability (comp-impl, DEV-102), which is **not
-approved**. Until a person approves it, the build sets the name horizontally. With it, the name needs a face with vertical
-metrics: the fallback face in the dev container had none, and its glyphs piled up (`VERTICAL_GLYPHS_OVERLAP`).
+**Implementing a v3 comp:** the owner approved `vertical_name` for the **local, unpublished comp implementation PoC**
+only (2026-10-24; DEV-103). This capability is enabled in `APPROVED_CAPABILITIES` only after PR verification and merge;
+no worker, production, shared site or publication path may use it. The shop name alone may be vertical. It still needs a
+font with proper vertical glyph metrics: IPAGothic passed locally, whereas a Mincho fallback piled up and is rejected by
+`VERTICAL_GLYPHS_OVERLAP`. If any font, glyph-order, width-sweep, factual-copy or disclosure check fails, **stop**;
+do not fake vertical writing by one-character-wide boxes or weaken the checks. Rollback is restoring the empty approved
+capability list, which refuses specs declaring `vertical_name`.
 
 ### Run (HUMAN-019 was run on 2026-10-21: `CODEX_NO_IMAGE`; the next run is HUMAN-020, after DEV-077 is merged, with the same command)
 The same command as HUMAN-018; v2 is the default, so nothing is added:

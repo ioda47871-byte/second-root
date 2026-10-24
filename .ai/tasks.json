@@ -4566,6 +4566,51 @@
         "v3 の実 Codex 画像生成",
         "研究記録を human_reviewed にすること"
       ]
+    },
+    {
+      "id": "DEV-103",
+      "title": "Owner-approved offline comp-impl vertical_name enablement (shop name only; preserve all blocking checks)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-102"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-103-vertical-name-local-poc",
+      "purpose": "Owner explicitly approved 2026-10-24 a narrow, local unpublished comp implementation PoC capability for a true vertical shop name. DEV-102 already implemented V9 glyph-overlap, order, overflow and other-text restrictions; enable the approved entry without weakening checks, production, worker or original v2. This is an independently gated narrow continuation of the unfinished DEV-083 roadmap.",
+      "acceptance_criteria": [
+        "APPROVED_CAPABILITIES allows exactly vertical_name, no other expressive capability",
+        "layout-spec must declare vertical_name and all existing font/visible text checks still block violations",
+        "unsupported capabilities and unapproved/duplicate declarations remain rejected; explicit [] check continues to stop",
+        "existing v2 baseline and pinned v3/v2 image prompts unchanged",
+        "local unpublished comp PoC only, no worker, DB, staging, production, main or image generation triggered",
+        "Fresh Review Critical/High=0 and all CI required checks pass before merge"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/comp-impl/phase-a.test.ts",
+        "tests/unit/design-agent/comp-impl/spec.test.ts",
+        "comp-impl full unit test suite",
+        "npm run typecheck",
+        "npm run check:secrets",
+        "required CI and independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/comp-impl/spec.ts",
+        "tests/unit/design-agent/comp-impl/phase-a.test.ts",
+        "docs/operations/design-image-poc.md",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "altering any existing safety threshold, allowlist property grammar or V9 check",
+        "v1/v2/v3 design image prompt/sha",
+        "worker, bridge, timer, WSL, Staging, Production, Supabase, main, API calls",
+        "enabling another expressive capability or changing web app pages"
+      ],
+      "human_approval_triggers": [
+        "local PoC vertical_name already explicitly approved in Issue #118; this does not approve production/publication",
+        "any change to additional capabilities, gate thresholds or production still needs separate human approval"
+      ]
     }
   ]
 }
