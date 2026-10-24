@@ -23,6 +23,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { buildExperimentPrompt, parseExperimentDirection, type ExperimentDirection } from "./prompt-research-exp";
 import type { DemoView } from "@/lib/sales/demo-content";
 import { parseShop } from "../compare/shops";
 
@@ -34,12 +35,14 @@ export const DIRECTION_PATH = "design-library/poc/wagashi-art-direction.json";
 export const SECTION_NAMES = ["Hero", "Concept", "Information"] as const;
 
 /** The directions that can be chosen (SR_DESIGN_IMAGE_POC_DIRECTION); nothing else is ever read. */
-export const DIRECTION_VERSIONS = ["v1", "v2"] as const;
+export const DIRECTION_VERSIONS = ["v1", "v2", "v3"] as const;
 export type DirectionVersion = (typeof DIRECTION_VERSIONS)[number];
 export const DEFAULT_DIRECTION_VERSION: DirectionVersion = "v2";
 export const DIRECTION_PATHS: Readonly<Record<DirectionVersion, string>> = {
   v1: DIRECTION_PATH,
   v2: "design-library/poc/wagashi-art-direction-v2.json",
+  // DEV-102: the research-informed experiment (prompt-research-exp.ts); its own builder, independent of v2
+  v3: "design-library/poc/wagashi-art-direction-v3-research.json",
 };
 export const POC_DISCLOSURE_V2 = "架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです";
 export const SECTION_IDS_V2 = ["Hero", "Products", "ShopInfo"] as const;
@@ -129,7 +132,8 @@ interface PocInputsBase {
   facts: Record<string, unknown>;
   demo: DemoView;
 }
-export type PocInputs = PocInputsBase & ({ version: "v1"; direction: ArtDirection } | { version: "v2"; direction: ArtDirectionV2 });
+export type PocInputs = PocInputsBase &
+  ({ version: "v1"; direction: ArtDirection } | { version: "v2"; direction: ArtDirectionV2 } | { version: "v3"; direction: ExperimentDirection });
 
 /** Reads and checks the fixture and the chosen art direction (default v2) from the repository. */
 export async function loadPocInputs(repoDir: string, version: DirectionVersion = DEFAULT_DIRECTION_VERSION): Promise<PocInputs> {
@@ -138,6 +142,8 @@ export async function loadPocInputs(repoDir: string, version: DirectionVersion =
     const shop = parseShop(JSON.parse(await readFile(join(repoDir, FIXTURE_PATH), "utf8")) as unknown);
     if (!shop || shop.key !== POC_SHOP_KEY || shop.demo.name !== POC_SHOP_NAME) throw new PocInputError();
     const raw = JSON.parse(await readFile(join(repoDir, DIRECTION_PATHS[version]), "utf8")) as unknown;
+    // v3: its own schema (prompt-research-exp.ts); a refusal there is a refused input like any other
+    if (version === "v3") return { facts: shop.facts, demo: shop.demo, version, direction: parseExperimentDirection(raw) };
     if (version === "v2") {
       const direction = DirectionV2Schema.safeParse(raw);
       if (!direction.success) throw new PocInputError();
@@ -179,6 +185,7 @@ export function factLines(demo: DemoView): string[] {
 
 /** The whole request (sent on stdin) for the chosen direction. */
 export function buildMockupPrompt(inputs: PocInputs): string {
+  if (inputs.version === "v3") return buildExperimentPrompt(inputs.demo, inputs.direction);
   return inputs.version === "v2" ? buildV2Prompt(inputs.demo, inputs.direction) : buildV1Prompt(inputs.demo, inputs.direction);
 }
 

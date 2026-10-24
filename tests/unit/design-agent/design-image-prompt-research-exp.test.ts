@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DIRECTION_VERSIONS, V2_PROMPT_MAX_CHARS, buildMockupPrompt, loadPocInputs } from "@/lib/design-agent/design-image/prompt";
+import { DEFAULT_DIRECTION_VERSION, DIRECTION_VERSIONS, POC_SHOP_KEY, V2_PROMPT_MAX_CHARS, buildMockupPrompt, loadPocInputs, parseDirectionVersion } from "@/lib/design-agent/design-image/prompt";
 import {
-  EXPERIMENT_DIRECTION_PATH, ExperimentDirectionError, SHARED_V2_SAFETY_LINES, buildExperimentPrompt, parseExperimentDirection,
+  EXPERIMENT_DIRECTION_PATH, ExperimentDirectionError, buildExperimentPrompt, parseExperimentDirection, sharedV2SafetyLines,
 } from "@/lib/design-agent/design-image/prompt-research-exp";
 import { RESEARCH_V02_DIR, RESEARCH_V02_LIBRARY_SHA256 } from "@/lib/design-agent/design-image/research-v02";
 
@@ -18,17 +18,35 @@ const promptInDoc = () => {
   return m ? m[1]! : null;
 };
 
-describe("the prepared experimental prompt (DEV-101, not runnable)", () => {
-  it("is not a selectable PoC direction: the CLI can still only run v1 and v2", () => {
-    expect([...DIRECTION_VERSIONS]).toEqual(["v1", "v2"]);
-    expect(readFileSync(join(REPO, "lib/design-agent/design-image/prompt.ts"), "utf8")).not.toContain(EXPERIMENT_DIRECTION_PATH);
+/** The v3 prompt the owner reviews and a run approval names (DEV-102); a change to the direction or the builder changes it. */
+const V3_PROMPT_SHA256 = "15d38b844702b9c0e3d32820ad1f526ac5a43b273e6f87083430e4eaf805c4fd";
+
+describe("the v3 experimental prompt (DEV-101 prepared, DEV-102 selectable)", () => {
+  it("is selectable as v3 beside v1 and v2 (v2 stays the default) and is the prompt the PoC builds for v3", async () => {
+    expect([...DIRECTION_VERSIONS]).toEqual(["v1", "v2", "v3"]);
+    expect(DEFAULT_DIRECTION_VERSION).toBe("v2");
+    expect(parseDirectionVersion("v3")).toBe("v3");
+    const inputs = await loadPocInputs(REPO, "v3");
+    expect(inputs.version).toBe("v3");
+    const built = buildMockupPrompt(inputs);
+    expect(built).toBe(buildExperimentPrompt(inputs.demo, parseExperimentDirection(rawDirection())));
+    expect(createHash("sha256").update(built, "utf8").digest("hex")).toBe(V3_PROMPT_SHA256);
+    // the v3 loader reads the file this module names, and its fixture literal is the PoC's shop
+    expect(readFileSync(join(REPO, "lib/design-agent/design-image/prompt.ts"), "utf8")).toContain(`v3: "${EXPERIMENT_DIRECTION_PATH}"`);
+    expect(parseExperimentDirection(rawDirection()).fixture).toBe(POC_SHOP_KEY);
+  });
+
+  it("refuses a v3 direction file that fails its schema as a refused input (POC_INPUT_INVALID), like v1 and v2", () => {
+    const bad = rawDirection();
+    (bad.web_ui as { link: string }).link = "購入する";
+    expect(() => parseExperimentDirection(bad)).toThrow(ExperimentDirectionError);
   });
 
   it("keeps every v2 safety line word for word, stays within the v2 length budget, and differs from v2 in the page", async () => {
     const inputs = await loadPocInputs(REPO, "v2");
     const v2 = buildMockupPrompt(inputs);
     const exp = buildExperimentPrompt(inputs.demo, parseExperimentDirection(rawDirection()));
-    for (const line of SHARED_V2_SAFETY_LINES) {
+    for (const line of sharedV2SafetyLines()) {
       expect(v2, line).toContain(line);
       expect(exp, line).toContain(line);
     }

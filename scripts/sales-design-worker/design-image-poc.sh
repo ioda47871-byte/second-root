@@ -9,7 +9,7 @@
 #   ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed
 #   SR_DESIGN_IMAGE_POC_DIRECTION=v1 ./scripts/sales-design-worker/design-image-poc.sh --human-approval-confirmed
 #
-# SR_DESIGN_IMAGE_POC_DIRECTION: unset / v2 / v1 only; anything else stops
+# SR_DESIGN_IMAGE_POC_DIRECTION: unset / v2 / v1 / v3 only; anything else stops (v3: the DEV-102 research experiment)
 # (POC_DIRECTION_INVALID, exit 2) before the preflight, the lock or git.
 #
 # Running it is the human's operation and needs the human's explicit approval
@@ -59,8 +59,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$APPROVED" ] || { echo "STOP: --human-approval-confirmed is missing. The PoC runs one real Codex image call (ChatGPT plan usage) on this machine and needs the human's explicit approval of this run (HUMAN-018 / HUMAN-019). Nothing was started."; exit 2; }
 case "${SR_DESIGN_IMAGE_POC_DIRECTION:-}" in
-  "" | v1 | v2) ;;
-  *) echo "STOP: POC_DIRECTION_INVALID (SR_DESIGN_IMAGE_POC_DIRECTION: v1 or v2; unset means v2). Nothing was started."; exit 2 ;;
+  "" | v1 | v2 | v3) ;;
+  *) echo "STOP: POC_DIRECTION_INVALID (SR_DESIGN_IMAGE_POC_DIRECTION: v1, v2 or v3; unset means v2). Nothing was started."; exit 2 ;;
 esac
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"

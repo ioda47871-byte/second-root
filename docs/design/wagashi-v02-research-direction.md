@@ -1,12 +1,13 @@
 # Experimental art direction for the wagashi fixture from design research v0.2 (DEV-100, corrected in DEV-101)
 
 **Status: research only, exploratory, unreviewed. No image was generated.** The pinned v2 prompt
-(`7334ea19…12aa`, 6801 characters), the v1/v2 direction files, the PoC CLI and the worker are unchanged.
+(`7334ea19…12aa`, 6801 characters), the v1/v2 direction files and the worker are unchanged; DEV-102 made this direction
+selectable as PoC direction v3 (its own builder and pinned sha), and v2 stays the default.
 
 - Design DNA brief: `design-library/poc/design-dna/wagashi-v02-experiment.json`
 - Image direction: `design-library/poc/wagashi-art-direction-v3-research.json`
-- Prompt builder: `lib/design-agent/design-image/prompt-research-exp.ts`. It is **not** a selectable PoC direction
-  (`DIRECTION_VERSIONS` is still v1 and v2), so nothing can run it without a code change and the owner's approval.
+- Prompt builder: `lib/design-agent/design-image/prompt-research-exp.ts`. Since DEV-102 it is selectable as PoC direction **v3**
+  (`SR_DESIGN_IMAGE_POC_DIRECTION=v3`). A run still needs the owner's approval of that run on WSL.
 
 ## DEV-101 correction (2026-10-24)
 
@@ -86,16 +87,18 @@ and stay `insufficient_reviewed_sources`; the research supports this direction i
 - The accent is a hairline, which is quieter.
 - v2's web structure is kept, so v1's poster problem should not return.
 
-## Review sheet (owner acceptance pending for every row)
+## Review sheet (4 rows; owner acceptance pending for every row, none approved)
+
+URL checks by assistants (this one included) are not the owner's acceptance. No row is `human_reviewed`.
 
 | Card | Reference | Observed at the URL (text only) | Used for | Owner accepts? |
 |---|---|---|---|---|
 | A02 | DR-022 | vertical Japanese with photos and whitespace | vertical name | pending |
 | A02 | DR-023 | vertical Japanese between cake photos | vertical name beside an image | pending |
-| A07 | DR-021 | calm white-ground tea site (not premium) | section rhythm | pending |
-| A07 | DR-037 | salon site renewal case | quiet image block, thin divider | pending |
+| A07 | DR-021 | calm white-ground tea site (not premium; WebGL hover) | calm organisation and whitespace only | pending |
+| A07 | DR-037 | salon site renewal: white base, subtle divider lines, fonts | subtle white base and thin dividers only (not a section-rhythm audit) | pending |
 
-## The prepared prompt (not run)
+## The v3 prompt (selectable, not run)
 
 - 6279 characters, within the v2 budget of 7131.
 - sha256 `15d38b844702b9c0e3d32820ad1f526ac5a43b273e6f87083430e4eaf805c4fd`.
@@ -181,8 +184,12 @@ Now call the image generation tool once and generate the image.
 ```
 <!-- prompt:end -->
 
-## To run it (not done; each step needs the owner)
+## To run it (each step needs the owner)
 
-1. The owner accepts the review-sheet rows (or strikes them).
-2. A small PR adds the experiment to the PoC CLI as a separate direction, with its own pinned sha. v2 stays as it is.
-3. The owner approves one real Codex image run on WSL (HUMAN-017/018 rules).
+1. **Review sheet:** the owner accepts or strikes the four rows. This is optional for an experiment, but no row counts as
+   reviewed until then.
+2. **Selectable as v3 (DEV-102, done):** `SR_DESIGN_IMAGE_POC_DIRECTION=v3`. It has its own builder and its own pinned sha
+   (`15d38b84…c4fd`, 6279 chars), and v2 is unchanged. See `docs/operations/design-image-poc.md` "Direction v3".
+3. **The image run:** the owner approves one real Codex image run on WSL that names that sha (HUMAN-017/018 rules). Not done.
+4. **Implementing the comp:** a vertical name needs the `vertical_name` capability (prepared, not approved). Until it is
+   approved, the name is built horizontally.

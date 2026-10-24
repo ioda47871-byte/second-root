@@ -161,7 +161,7 @@ If Codex is not signed in, sandbox probe fails, API-key authentication is detect
 | `POC_NOT_ON_REF` | develop does not have the PoC yet (merge first) |
 | `POC_RUN_TIME_BUDGET` | not enough time left; Codex not started (or stopped by the watchdog) |
 | `POC_INPUT_INVALID` | fixture / art direction did not pass the checks |
-| `POC_DIRECTION_INVALID` | `SR_DESIGN_IMAGE_POC_DIRECTION` is not `v1` / `v2` (or unset); nothing started |
+| `POC_DIRECTION_INVALID` | `SR_DESIGN_IMAGE_POC_DIRECTION` is not `v1` / `v2` / `v3` (or unset); nothing started |
 | `POC_OUTPUT_UNSAFE` | output root inside the repo / worker dirs / CODEX_HOME, a link, or not ours |
 | `CODEX_NOT_INSTALLED`, `CODEX_SANDBOX_UNAVAILABLE`, `CODEX_SANDBOX_LEAK`, `CODEX_SANDBOX_CONFIG` | the jail could not be set up safely; Codex not started |
 | `CODEX_NOT_SIGNED_IN` | `codex login status` is not ChatGPT, or the CLI reported a signed-out / 401 (stderr or its error events only): sign in again as `sr-designgen` (`codex login --device-auth`) |
@@ -1380,6 +1380,34 @@ Then **start the approved run (below) immediately**. The run fetches develop aga
 first 12 characters of the `HEAD` printed above. If it differs, develop moved in between: the prompt that ran is **not covered by the
 approval** — report it (and the run's `report.json`) instead of treating it as the approved run. The run also reports `prompt_chars`
 in `report.json`; it must be 6801.
+
+### Direction v3: the research experiment (DEV-102)
+
+`SR_DESIGN_IMAGE_POC_DIRECTION=v3` selects the research-informed wagashi experiment
+(`design-library/poc/wagashi-art-direction-v3-research.json`, built by `prompt-research-exp.ts`; the background is in
+`docs/design/wagashi-v02-research-direction.md`).
+
+- v3 is **independent of v2**. v2 stays the default, and the v2 prompt and its pin are unchanged.
+- v3 keeps every line of the v2 HARD RULES block word for word.
+- The research behind v3 is only partly checked and **not human-reviewed**.
+
+| | v3 prompt |
+|---|---|
+| sha256 (UTF-8 bytes) | `15d38b844702b9c0e3d32820ad1f526ac5a43b273e6f87083430e4eaf805c4fd` |
+| length | 6279 chars |
+
+It is pinned in `design-image-prompt-research-exp.test.ts`. A change to the v3 direction file, its builder or the fixture changes
+the sha, and that makes it a new prompt. **The approval of a v3 run names this sha.**
+
+**Before the run:** check the sha with the command above, changing `"v2"` to `"v3"` in the `loadPocInputs` call.
+
+**The run (only after the owner approves this one run):** the same command as v2, with
+`SR_DESIGN_IMAGE_POC_DIRECTION=v3 ` before `./scripts/…`. Everything else is the same: 1 Codex image call, the wrapper, the jail,
+the budget and the stop codes. The log line must say `direction v3`.
+
+**Implementing a v3 comp:** a vertical shop name needs the `vertical_name` capability (comp-impl, DEV-102), which is **not
+approved**. Until a person approves it, the build sets the name horizontally. With it, the name needs a face with vertical
+metrics: the fallback face in the dev container had none, and its glyphs piled up (`VERTICAL_GLYPHS_OVERLAP`).
 
 ### Run (HUMAN-019 was run on 2026-10-21: `CODEX_NO_IMAGE`; the next run is HUMAN-020, after DEV-077 is merged, with the same command)
 The same command as HUMAN-018; v2 is the default, so nothing is added:

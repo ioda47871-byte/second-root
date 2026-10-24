@@ -123,7 +123,7 @@
     },
     {
       "part": "mobile",
-      "choice": "On a phone the name turns horizontal and large above the hero image; the dot mark, the description sentence and the ledger follow in one column.",
+      "choice": "On a phone the name turns horizontal and large above the hero image; the description sentence, the small namagashi image and the ledger follow in one column.",
       "rationale": "A vertical name in a 390px column would crowd the image, and the whole four-kanji name has to be read before anything decorative.",
       "evidence_ids": [
         "brand"
@@ -132,8 +132,8 @@
     },
     {
       "part": "implementation",
-      "choice": "The comp shows true vertical type; the build either gets the writing-mode capability approved (DEV-083) or keeps the name horizontal. A one-character-wide box is not used to fake vertical type.",
-      "rationale": "Real vertical setting is outside the current page CSS allowlist, and a stacked one-character box breaks spacing and polish, so the build must not pretend it is the same.",
+      "choice": "The comp shows true vertical type; the build uses the vertical_name capability (prepared in DEV-102, not approved) or keeps the name horizontal. A one-character-wide box is not used to fake vertical type.",
+      "rationale": "Real vertical setting needs writing-mode, which the page allowlist admits only with that approved capability and its glyph checks; a stacked one-character box breaks spacing and polish.",
       "evidence_ids": [
         "brand"
       ],

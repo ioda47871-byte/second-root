@@ -4514,6 +4514,58 @@
         "実験方向を PoC CLI に追加すること",
         "研究記録を human_reviewed にすること"
       ]
+    },
+    {
+      "id": "DEV-102",
+      "title": "v3（研究を一部参考にした和菓子実験案）を v2 と独立した画像生成方向として選べるようにし、縦書き店名の capability（未承認）と検査を最小限で用意する",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-101"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-102-v3-direction",
+      "purpose": "次の画像生成を安全に 1 回試せる直前まで準備する。v3 の縦書き店名を Claude が忠実に実装できるよう、必要な CSS と検査を capability として用意する（承認は人）。",
+      "acceptance_criteria": [
+        "DNA のスマホ仕様からドット記述を除く",
+        "レビュー表は実際の 4 行、すべて未承認",
+        "vertical_name は APPROVED_CAPABILITIES が空のままで、宣言は拒否",
+        "縦書きは店名だけ、文字の重なり・順序・はみ出しを検査（Chromium の probe で各 code）",
+        "v3 は SR_DESIGN_IMAGE_POC_DIRECTION=v3 で選べ、v2 が既定のまま、v2 の pinned sha 不変、v3 の sha を pin",
+        "実 Codex・worker・本番なし"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-prompt-research-exp.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/design-agent/comp-impl/phase-a.test.ts",
+        "tests/unit/design-agent/comp-impl/"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/comp-impl/**",
+        "lib/design-agent/design-image/prompt.ts",
+        "lib/design-agent/design-image/prompt-research-exp.ts",
+        "lib/design-agent/design-image/run.ts",
+        "scripts/sales-design-worker/design-image-poc.*",
+        "design-library/poc/design-dna/wagashi-v02-experiment.json",
+        "tests/unit/design-agent/**",
+        "docs/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "design-library/poc/wagashi-art-direction-v2.json",
+        "design-library/research/v02/secondroot_*",
+        "worker",
+        "Production",
+        "Staging",
+        "DB",
+        ".github/**"
+      ],
+      "human_approval_triggers": [
+        "vertical_name を APPROVED_CAPABILITIES に加えること",
+        "v3 の実 Codex 画像生成",
+        "研究記録を human_reviewed にすること"
+      ]
     }
   ]
 }
