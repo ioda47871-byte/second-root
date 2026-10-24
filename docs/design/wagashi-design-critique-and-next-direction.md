@@ -25,6 +25,8 @@ The machine-readable `design-library/poc/wagashi-v2-v3-review-provisional.json` 
 | Mobile | No actual 390px rendering compared | No actual 390px rendering compared | **Unknown** |
 | Implementation | v2 previously implemented separately, not measured against THIS original in this exercise | No implementation reviewed here | **Unknown** |
 
+**Important rubric-specific tension:** The existing formal website-structure anchor for a 5/5 expressly calls for **2–3 product visual cards**; v3 has only one small product inset alongside a large description, not two or three cards. This is a concrete reason NOT to assume v3 can receive 5/5 for structure or automatically meet the existing **each-criterion ≥4** intake rule. A new direction should preserve at least two legible product-visual units without falling back to identical template cards. We do not reinterpret, change or weaken that anchor here.
+
 **Do not assign 23/25 to this comparison.** Our earlier assistant's 23/25 claim for v3 was optimistic and was withdrawn when the user challenged it. In particular: a distinctive font treatment is not proof of better total art direction. The existing `docs/operations/design-image-eval-template.md` remains the sole formal PoC rubric: no hard fails, human-confirmed, total ≥22/25, every criterion ≥4. This report does not supply an approval to `evaluationVerdict`.
 
 ## A better experimental direction: "食べたくなる和菓子 × 編集的な余白"
