@@ -4372,6 +4372,51 @@
       "human_approval_triggers": [
         "feature → develop の merge は AI_WORKFLOW §4 の条件"
       ]
+    },
+    {
+      "id": "DEV-099",
+      "title": "既存のWebデザイン研究40件・技法カード9件を、店舗根拠と結びついたオリジナルのデザイン方針へ接続するための研究用ブリッジ（オフラインのみ）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-093"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-099-design-research-bridge",
+      "purpose": "デザイン研究v0.2は40サイトと9技法を持つと記録されているがGitHubには原本未収録で、Design DNAもv2画像プロンプトと未接続。安易に模倣や捏造にせず、原本を検証してから選択する最小の安全なオフライン連携契約を先に用意する。",
+      "acceptance_criteria": [
+        "実の40サイトと9技法の原本はGitHubにないことを明記し、存在しない資料やレビュー結果を捏造しない",
+        "研究ソースの出典・権利・レビュー状態と技法カードを検査し、未レビュー、偽造URL、不明出典、重複を拒否",
+        "Design DNAの店舗固有の根拠・参考元・適用技法を結び、必要な裏付けが無ければreadyにしない",
+        "実Codexなし、v1/v2画像プロンプト・pinned sha・WSL・worker・DB・Production等には変更なし",
+        "品質・安全検査・Fresh Review・CIを変更せず、既存の正式基準に従う"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-research-bridge.test.ts",
+        "tests/unit/design-agent/design-image-design-dna.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts (v2 SHA pin)",
+        "npm run typecheck",
+        "npm run check:secrets",
+        "CI required checks"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/research-bridge.ts",
+        "tests/unit/design-agent/design-image-research-bridge.test.ts",
+        "docs/operations/design-research-bridge.md",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "lib/design-agent/design-image/prompt.ts および既存画像PoCの入力・固定SHA・実行",
+        "design worker / automation / GitHub Actions / DB / staging / production / main",
+        "既存の評価スコア・セキュリティルール弱体化・第三者素材の無承認コピー",
+        "参考サイトの捏造・旧v0.2の原本を仮データで代用",
+        "実Codex画像生成・外部API課金"
+      ],
+      "human_approval_triggers": [
+        "旧v0.2原本と候補研究の人間による根拠確認",
+        "実画像生成・既存v2固定プロンプトの変更・公開は別途明示承認"
+      ]
     }
   ]
 }
