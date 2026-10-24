@@ -51,7 +51,15 @@ export const FACT_KEYS = ["name", "address", "hours", "closed_days", "access", "
  * layout-spec.json is refused as before (SPEC_SHAPE). The field and SPEC_CAPABILITY_NOT_APPROVED come with the first
  * approved capability; rollback of a later approval is removing it from this list.
  */
-export const APPROVED_CAPABILITIES = [] as const satisfies readonly string[];
+export const CAPABILITY_NAMES = ["vertical_name"] as const;
+export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
+/**
+ * vertical_name (DEV-102): the shop name alone may be set vertically (writing-mode: vertical-rl). Its checks — only the
+ * name is vertical, its glyphs do not overlap, run in reading order and stay in their box, facts / pairs / the disclosure
+ * stay horizontal — are in layers.ts. NOT approved: declaring it is refused (SPEC_CAPABILITY_NOT_APPROVED) until a
+ * person adds it to this list.
+ */
+export const APPROVED_CAPABILITIES: readonly CapabilityName[] = [];
 
 const Id = z.string().regex(/^[a-z][a-z0-9-]{1,31}$/);
 const Frac = z.number().min(0).max(1);
@@ -82,8 +90,15 @@ export const CompSpecSchema = z.strictObject({
   fact_phrases: z.array(z.string().min(2).max(40)).max(12),
   /** The section order on a phone (a permutation of the section ids). */
   mobile: z.strictObject({ order: z.array(Id).min(2).max(12) }),
+  /** DEV-083 V7 / DEV-102: the capabilities the page uses; each must be approved (APPROVED_CAPABILITIES). */
+  capabilities: z.array(z.enum(CAPABILITY_NAMES)).min(1).max(5).optional(),
 });
 export type CompSpec = z.infer<typeof CompSpecSchema>;
+
+/** The shop name that may be vertical: only when the spec declares vertical_name (which checkCompSpec admits only if approved). */
+export function verticalNameOf(spec: CompSpec, shopName: string): string | null {
+  return (spec.capabilities ?? []).includes("vertical_name") ? shopName : null;
+}
 
 export type SpecCheck = { ok: true; spec: CompSpec } | { ok: false; problems: string[] };
 
@@ -92,7 +107,7 @@ const EPS = 0.005;
 export const SECTION_OVERLAP_TOLERANCE = 0.02;
 
 /** Checks the shape and the internal consistency of a spec; problems are fixed codes. */
-export function checkCompSpec(raw: unknown): SpecCheck {
+export function checkCompSpec(raw: unknown, approved: readonly CapabilityName[] = APPROVED_CAPABILITIES): SpecCheck {
   const parsed = CompSpecSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, problems: ["SPEC_SHAPE"] };
   const spec = parsed.data;
@@ -127,6 +142,9 @@ export function checkCompSpec(raw: unknown): SpecCheck {
   if (!spec.required_facts.includes("name")) p.add("SPEC_NAME_NOT_REQUIRED");
   if (new Set(spec.required_facts).size !== spec.required_facts.length) p.add("SPEC_FACT_REPEAT");
   for (const phrase of spec.fact_phrases) if (SALES_UI.test(phrase)) p.add("SPEC_PHRASE_SALES");
+  const caps = spec.capabilities ?? [];
+  if (new Set(caps).size !== caps.length) p.add("SPEC_CAPABILITY_REPEAT");
+  if (caps.some((c) => !approved.includes(c))) p.add("SPEC_CAPABILITY_NOT_APPROVED");
   const order = spec.mobile.order;
   if (order.length !== ids.length || new Set(order).size !== order.length || order.some((id) => !ids.includes(id))) p.add("SPEC_MOBILE_ORDER");
   return p.size === 0 ? { ok: true, spec } : { ok: false, problems: [...p].sort() };

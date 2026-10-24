@@ -230,7 +230,8 @@ export const REPORT_NOTES = [
  */
 export const REPORT_NOTES_V2 = [...REPORT_NOTES, "AI_FOOD_VISUALS_CONCEPT_ONLY", "EVALUATION_REQUIRED"] as const;
 
-export const reportNotes = (version: DirectionVersion): readonly string[] => (version === "v2" ? REPORT_NOTES_V2 : REPORT_NOTES);
+/** v2 and v3 both ask for AI concept images of the sweets, so both carry the v2 notes. */
+export const reportNotes = (version: DirectionVersion): readonly string[] => (version === "v1" ? REPORT_NOTES : REPORT_NOTES_V2);
 
 export type PocResult = { status: "done"; dir: string; report: PocReport } | { status: "refused" | "stopped"; code: PocCode };
 

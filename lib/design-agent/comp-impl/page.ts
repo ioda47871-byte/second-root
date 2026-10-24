@@ -25,7 +25,7 @@ import { z } from "zod";
 import { MOCKUP_PNG_LIMITS, PngError, readPngNoFollow, type PngLimits } from "../design-image/png";
 import { decodePng } from "../worker/png-paint";
 import { CompImplError, readSmallFile, sha256 } from "./bundle";
-import { pageCssProblems } from "./page-css";
+import { pageCssProblems, type PageCssOptions } from "./page-css";
 
 export const PAGE_LIMITS = { htmlBytes: 64 * 1024, cssBytes: 64 * 1024, assets: 6 } as const;
 /** An asset is a real image file of a sane size (the comp's own limits, with a smaller minimum side). */
@@ -155,6 +155,6 @@ export function htmlSourceProblems(html: string): string[] {
  * The stylesheet's safety: the page CSS allowlist (page-css.ts, the Stage 3
  * guard's model and value grammar). Problem codes; empty when accepted.
  */
-export function cssProblems(css: string): string[] {
-  return pageCssProblems(css);
+export function cssProblems(css: string, opts: PageCssOptions = {}): string[] {
+  return pageCssProblems(css, opts);
 }

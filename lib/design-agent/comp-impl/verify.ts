@@ -23,7 +23,7 @@ const result = (codes: Iterable<string>, extra: Record<string, unknown> = {}): C
  * the argument for each is in docs/design/dev-083-expressive-safe-reproduction.md §10. Everything else is advisory until
  * the human approves it as a gate.
  */
-export const BLOCKING_LAYER_CODES = ["ROLE_UNKNOWN", "ROLE_MISMATCH", "ROLE_DECORATION_HAS_TEXT", "ROLE_GROUND_HAS_TEXT", "ROLE_MEDIA_HAS_TEXT", "PSEUDO_GEOMETRY_UNKNOWN", "STACKING_CONTEXT", "PROTECTED_VERTICAL"] as const;
+export const BLOCKING_LAYER_CODES = ["ROLE_UNKNOWN", "ROLE_MISMATCH", "ROLE_DECORATION_HAS_TEXT", "ROLE_GROUND_HAS_TEXT", "ROLE_MEDIA_HAS_TEXT", "PSEUDO_GEOMETRY_UNKNOWN", "STACKING_CONTEXT", "PROTECTED_VERTICAL", "VERTICAL_NOT_NAME", "VERTICAL_GLYPHS_OVERLAP", "VERTICAL_GLYPHS_ORDER", "VERTICAL_TEXT_OVERFLOW"] as const;
 export const ADVISORY_LAYER_CODES = ["PAINT_ORDER_COVER", "DISCLOSURE_NONCONTENT_OVERLAP", "FACT_NONCONTENT_OVERLAP", "GROUND_NOT_FLAT", "GROUND_UNMEASURED"] as const;
 
 /** The codes of one layer scan (layers.ts LAYER_SCRIPT), blocking and advisory together. */
@@ -45,6 +45,12 @@ export function layerCodes(scan: LayerScan): string[] {
   if (scan.nonContentOverlap.fact > 0) codes.push("FACT_NONCONTENT_OVERLAP");
   // V9
   if (scan.protectedVertical > 0) codes.push("PROTECTED_VERTICAL");
+  // DEV-102 vertical_name: the allowlist admits vertical writing only with the approved capability, so without it these
+  // never fire; with it, only the bare shop name may be vertical, its glyphs apart, in reading order and inside its box
+  if (scan.vertical.notName > 0) codes.push("VERTICAL_NOT_NAME");
+  if (scan.vertical.overlap > 0) codes.push("VERTICAL_GLYPHS_OVERLAP");
+  if (scan.vertical.disorder > 0) codes.push("VERTICAL_GLYPHS_ORDER");
+  if (scan.vertical.overflow > 0) codes.push("VERTICAL_TEXT_OVERFLOW");
   return codes;
 }
 
