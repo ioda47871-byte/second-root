@@ -129,6 +129,7 @@ describe("offline design research bridge", () => {
       (x) => { x.sources[0]!.url = "https://foo.localhost/"; },
       (x) => { x.sources[0]!.url = "https://db.internal/"; },
       (x) => { x.sources[0]!.url = "https://intranet/"; },
+      (x) => { x.sources[0]!.url = "https://10.0.0.1/"; },
       (x) => { x.sources[1]!.url = x.sources[0]!.url + "/?utm=1"; },
       (x) => { (x.sources[0] as object as Record<string, unknown>).image_url = "https://example.com/photo.png"; },
       (x) => { x.sources.push({ ...x.sources[0]!, id: "S4" }); },
