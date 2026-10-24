@@ -69,6 +69,38 @@ The entries below were checked as **public page content / gallery metadata**, no
 
 **One important difference:** `official_brand_site` denotes the actual current source page; `design_gallery` denotes someone else's listing/tag classification. Neither means a human reviewed the original layout visually. Even in the official sites, the `technique_hypothesis_unreviewed` remains an idea for an art-director to verify, not a machine-proven design trait.
 
+## DEV-105 follow-up: first visual-audit shortlist (2026-10-25, not approvals)
+
+The following 10 cases are a **balanced inspection queue**, not a top-ten design ranking or ten reviewed references. Selection is based on distinct research questions and source traceability. The page-text evidence and occasional third-party preview images do **not** constitute a desktop 1440px/mobile 390px verification.
+
+| Order | Candidate | Specific reason to inspect at 1440px and 390px | Preliminary evidence limit |
+|---|---|---|---|
+| 1 | DX-005 パン屋SUNtoF | Test whether the in-store bread scene actually helps product discovery and practical hours/access | Agency shows a desktop/mobile *device mockup*, not verified live viewport captures |
+| 2 | DX-002 harebare | Assess how origin story, signature cookie, other sweets and purchase links share the first two screens | Live page text checked; no viewport audit |
+| 3 | DX-006 ON THE WAY ケーキ特設 | Test focused single-product landing-page hierarchy against full-shop information | Agency description only |
+| 4 | DX-033 MAISON CACAO | Examine premium product grouping, editorial rhythm and retail CTA without losing product legibility | Gallery classification only |
+| 5 | DX-027 SOLES GAUFRETTE | Test the balance of typographic impact, product scale and sale information across breakpoints | Public gallery *partial preview* visually inspected; no full live viewport audit |
+| 6 | DX-036 Kariomons Coffee Roaster | Examine atmospheric café introduction versus location/menu visibility | Gallery classification only |
+| 7 | DX-008 TAKE整体院 | Test clean-space/organic-divider claims, staff trust and appointment clarity | Agency's own explanation, not independent page-layout verification |
+| 8 | DX-011 aoはり治療院 | Examine how first-visit explanations, facility images and booking affordances work on mobile | Agency description only |
+| 9 | DX-013 DAN BRISE | Test service/menu/staff/pricing navigation and booking CTA placement | Live link structure/page text; no breakpoint audit |
+| 10 | DX-023 NELU 高麗橋 | Examine premium typography legibility and food prominence on small screens | Gallery classification only |
+
+### Required per-site audit record (human-assisted, evidence attached)
+
+1. Identify the actual source URL, source type, observation date, and whether the page remains live; distinguish a gallery or agency *case page* from the final shop website.
+2. Capture or inspect the **actual** 1440px and 390px viewport states with the viewport width, page state, capture provenance and observed URL recorded. A monitor-and-phone composite or gallery card **cannot** satisfy either viewport.
+3. Record concrete observations for hero hierarchy, real product/service prominence, photo-text overlap, typography readability, section rhythm, menu/navigation, and CTA/access/hours visibility. Include mobile overflow, button tapping and interaction where possible.
+4. Record at least one **trade-off** and what should **not** transfer (e.g. decorative text obscuring product images, weak contrast, missing hours or inaccessible navigation).
+5. Treat the original's imagery, copy, logo, CSS, and distinctive composition as non-transferable. Technique inspiration is allowed only at the abstract level. Check whether a proposed Second Root use has client-owned or licensed assets.
+6. Record reviewer identity and explicit review decision separately. No inspection by a model, browser tool, or agency screenshot automatically sets `human_reviewed` or authorizes an image prompt.
+
+**Pilot acceptance bar:** Ten review records with clear evidence labels; no fabricated 1440px or 390px screenshot observations; at least one documented mobile limitation/trade-off per reviewed case. Only actual verified and human-accepted observations may be considered for a later Design DNA extraction task. For this PR, **approved technique cards = 0** and **candidate records ready for the image worker = 0**.
+
+### Data integrity note
+
+The additive v0.3 batches use consecutive immutable `DX-001` through `DX-040` IDs, after the historical 40 v0.2 rows. The offline parser rejects intra-batch duplicates, and now also rejects cross-batch ID reuse, gaps or reordering using the previous-source count. Pass the entire historical v0.2 and preceding v0.3 URL list in order; incomplete source histories must not be used to claim a valid candidate sequence.
+
 ## How this batch is protected
 
 `lib/design-agent/design-image/research-candidates.ts` is **offline only** and validates:
