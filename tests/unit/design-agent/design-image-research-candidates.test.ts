@@ -15,6 +15,11 @@ const batch = (): ResearchCandidateBatch => JSON.parse(
   readFileSync(path("design-library/research/v03/candidates-20261025-01.json"), "utf8"),
 ) as ResearchCandidateBatch;
 
+const batch2 = (): ResearchCandidateBatch => JSON.parse(
+  readFileSync(path("design-library/research/v03/candidates-20261025-02.json"), "utf8"),
+) as ResearchCandidateBatch;
+const previousAndFirst = () => [...previous, ...batch().references.map((r) => r.source_url)];
+
 describe("DEV-105: additive candidate research batch", () => {
   it("preserves old forty and adds fifteen distinctly cited text-only candidates", () => {
     expect(previous).toHaveLength(40);
@@ -78,4 +83,42 @@ describe("DEV-105: additive candidate research batch", () => {
     (z as unknown as Record<string, unknown>).owner_approved = true;
     expect(() => parseResearchCandidates(z, previous)).toThrow(ResearchCandidateError);
   });
+  it("adds a second evidence-labelled 25-reference batch, reaching eighty saved leads", () => {
+    const prior = previousAndFirst();
+    expect(prior).toHaveLength(55);
+    const b = parseResearchCandidates(batch2(), prior);
+    expect(b.record_count).toBe(25);
+    expect(b.references[0]?.id).toBe("DX-016");
+    expect(b.references.at(-1)?.id).toBe("DX-040");
+    expect(new Set(b.references.map((r) => r.source_url)).size).toBe(25);
+    expect(b.references.every((r) => r.review_status === "candidate_text_checked_visual_pending")).toBe(true);
+    expect(b.references.every((r) => r.evidence_scope === "page_text_or_gallery_tags_only")).toBe(true);
+    const sum = researchCandidateCounts(b, prior);
+    expect(sum.existing_count + sum.new_candidates).toBe(80);
+    expect(sum.counted_as_human_reviewed).toBe(0);
+    expect(sum.ready_for_design_prompt).toBe(false);
+    expect(sum.new_source_counts.restaurant).toBeGreaterThan(5);
+    expect(sum.new_source_counts.salon).toBeGreaterThan(2);
+  });
+
+  it("rejects a second batch reusing a URL from either earlier batch", () => {
+    const b = batch2();
+    b.references[0]!.source_url = batch().references[3]!.source_url;
+    expect(() => parseResearchCandidates(b, previousAndFirst())).toThrow(new ResearchCandidateError("duplicate_url"));
+    const c = batch2();
+    c.references[0]!.source_url = previous[2]!;
+    expect(() => parseResearchCandidates(c, previousAndFirst())).toThrow(new ResearchCandidateError("duplicate_url"));
+  });
+
+  it("does not let a gallery tag become an audited 390px screenshot or licensed asset", () => {
+    const b = batch2();
+    const gallery = b.references.find((r) => r.source_kind === "design_gallery")!;
+    gallery.review_status = "human_reviewed" as typeof gallery.review_status;
+    expect(() => parseResearchCandidates(b, previousAndFirst())).toThrow(ResearchCandidateError);
+    const c = batch2();
+    const source = c.references.find((r) => r.source_kind === "design_gallery")!;
+    source.evidence_scope = "mobile_390_approved" as typeof source.evidence_scope;
+    expect(() => parseResearchCandidates(c, previousAndFirst())).toThrow(ResearchCandidateError);
+  });
+
 });
