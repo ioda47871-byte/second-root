@@ -110,6 +110,29 @@ describe("DEV-105: additive candidate research batch", () => {
     expect(() => parseResearchCandidates(c, previousAndFirst())).toThrow(new ResearchCandidateError("duplicate_url"));
   });
 
+  it("rejects ID reuse, gaps or reordering across candidate batches", () => {
+    const earlier = previousAndFirst();
+    const reused = batch2();
+    reused.references[8]!.id = batch().references[3]!.id;
+    expect(() => parseResearchCandidates(reused, earlier))
+      .toThrow(new ResearchCandidateError("nonsequential_candidate_id"));
+
+    const skipped = batch2();
+    skipped.references[8]!.id = "DX-041";
+    expect(() => parseResearchCandidates(skipped, earlier))
+      .toThrow(new ResearchCandidateError("nonsequential_candidate_id"));
+
+    const reordered = batch2();
+    const firstId = reordered.references[0]!.id;
+    reordered.references[0]!.id = reordered.references[1]!.id;
+    reordered.references[1]!.id = firstId;
+    expect(() => parseResearchCandidates(reordered, earlier))
+      .toThrow(new ResearchCandidateError("nonsequential_candidate_id"));
+
+    expect(() => parseResearchCandidates(batch(), []))
+      .toThrow(new ResearchCandidateError("missing_v02_baseline"));
+  });
+
   it("does not let a gallery tag become an audited 390px screenshot or licensed asset", () => {
     const b = batch2();
     const gallery = b.references.find((r) => r.source_kind === "design_gallery")!;
