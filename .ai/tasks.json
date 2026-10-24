@@ -4573,13 +4573,12 @@
       "status": "review",
       "priority": "P1",
       "depends_on": [
-        "DEV-083",
         "DEV-102"
       ],
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-103-vertical-name-local-poc",
-      "purpose": "Owner explicitly approved 2026-10-24 a narrow, local unpublished comp implementation PoC capability for a true vertical shop name. DEV-102 already implemented V9 glyph-overlap, order, overflow and other-text restrictions; enable the approved entry without weakening checks, production, worker or original v2.",
+      "purpose": "Owner explicitly approved 2026-10-24 a narrow, local unpublished comp implementation PoC capability for a true vertical shop name. DEV-102 already implemented V9 glyph-overlap, order, overflow and other-text restrictions; enable the approved entry without weakening checks, production, worker or original v2. This is an independently gated narrow continuation of the unfinished DEV-083 roadmap.",
       "acceptance_criteria": [
         "APPROVED_CAPABILITIES allows exactly vertical_name, no other expressive capability",
         "layout-spec must declare vertical_name and all existing font/visible text checks still block violations",
