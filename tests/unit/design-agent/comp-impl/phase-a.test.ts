@@ -8,7 +8,8 @@ import { layerCodes } from "@/lib/design-agent/comp-impl/verify";
 import { cssProblems, loadCompPage, type CompPage } from "@/lib/design-agent/comp-impl/page";
 import { DESKTOP, domAudit, gatedGeometryPass, layeredInkPass, layerScan, layoutHashPass, legibilityPass, openCompPage, paintCrossCheck, perturbedGeometryPass, protectedGeometryPass } from "@/lib/design-agent/comp-impl/render";
 import { capabilitiesCheck, contrastRatio, gradientStopProblems, groundStructure, layersCheck, luminance, metricsCheck, scrimBound, visibilityMatrixCheck } from "@/lib/design-agent/comp-impl/verify";
-import { checkCompSpec, infoPairs, type CompSpec } from "@/lib/design-agent/comp-impl/spec";
+import { APPROVED_CAPABILITIES, checkCompSpec, infoPairs, type CompSpec } from "@/lib/design-agent/comp-impl/spec";
+import { pageCssProblems } from "@/lib/design-agent/comp-impl/page-css";
 import { factStrings, parseShop } from "@/lib/design-agent/compare/shops";
 import type { Measure } from "@/lib/design-agent/shop-css/page-scripts";
 import { runCompImpl } from "@/lib/design-agent/comp-impl/run";
@@ -340,10 +341,15 @@ describe("V3b maths, V7 capabilities, V9 visibility matrix", () => {
     expect(gradientStopProblems([{ at: 0, rgb: [234, 225, 210] }, { at: 300, rgb: [217, 207, 190] }], 300)).toEqual([]);
   });
 
-  it("V7: the spec schema is unchanged — any capabilities key is refused as before (SPEC_SHAPE); the report lists none", () => {
+  it("V7: an unknown or empty capabilities key is refused (SPEC_SHAPE); vertical_name is refused until approved; the report lists none", () => {
     const spec = JSON.parse(readFileSync(join(FIXTURE, "layout-spec.json"), "utf8")) as CompSpec;
     expect(checkCompSpec(spec).ok).toBe(true);
-    for (const c of [[], ["hero_overlay"], ["Hero Overlay"]]) expect(checkCompSpec({ ...spec, capabilities: c })).toEqual({ ok: false, problems: ["SPEC_SHAPE"] });
+    for (const c of [[], ["hero_overlay"], ["Hero Overlay"]]) expect(checkCompSpec({ ...spec, capabilities: c } as unknown)).toEqual({ ok: false, problems: ["SPEC_SHAPE"] });
+    // DEV-102: known, but not approved (APPROVED_CAPABILITIES is empty)
+    expect(APPROVED_CAPABILITIES).toEqual([]);
+    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name"] })).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_NOT_APPROVED"] });
+    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name"] }, ["vertical_name"]).ok).toBe(true);
+    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name", "vertical_name"] }, ["vertical_name"])).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_REPEAT"] });
     expect(capabilitiesCheck()).toMatchObject({ ok: true, declared: [], approved: [] });
     expect(capabilitiesCheck(["hero_overlay"]).codes).toEqual(["CAPABILITY_NOT_APPROVED"]);
   });
@@ -367,5 +373,41 @@ describe("V3b maths, V7 capabilities, V9 visibility matrix", () => {
     const m = (hidden: boolean) => ({ nodes: [{ kind: "fact", text: "052-000-0731", hidden }] }) as unknown as Measure;
     expect(visibilityMatrixCheck([{ width: 390, measure: m(false) }, { width: 1440, measure: m(false) }]).ok).toBe(true);
     expect(visibilityMatrixCheck([{ width: 390, measure: m(true) }, { width: 1440, measure: m(false) }])).toMatchObject({ codes: ["FACT_VISIBILITY_CHANGES"], dropped_at: [390] });
+  });
+});
+
+// ---------------------------------------------------------------- DEV-102 vertical_name (not approved; the checks it would bring)
+
+describe("DEV-102 vertical_name: the allowlist and the vertical-text checks", () => {
+  const NAME = "架空菓庵";
+  const scan = async (body: string, css: string, verticalName: string | null) => layerCodes(await layerScan(await show(body, css), [NAME, "0520"], { verticalName }));
+  const VERTICAL = ".v { writing-mode: vertical-rl; font-size: 48px; }";
+
+  it("the page CSS refuses vertical writing unless the capability is on, and then admits vertical-rl only", () => {
+    const css = ".v { writing-mode: vertical-rl; }";
+    expect(pageCssProblems(css)).toContain("CSS_VALUE");
+    expect(pageCssProblems(css, { verticalName: true })).toEqual([]);
+    for (const other of ["vertical-lr", "sideways-rl", "sideways-lr"]) expect(pageCssProblems(`.v { writing-mode: ${other}; }`, { verticalName: true })).toContain("CSS_VALUE");
+    expect(pageCssProblems(".v { text-orientation: upright; }", { verticalName: true })).toContain("CSS_PROPERTY");
+  });
+
+  it("the bare shop name set vertically, glyphs apart and in order, passes", async () => {
+    expect(await scan(`<h1 class="v">${NAME}</h1><dl><dt>電話</dt><dd>0520</dd></dl>`, VERTICAL, NAME)).toEqual([]);
+  });
+
+  it("without the capability the vertical name is protected text set vertically", async () => {
+    const codes = await scan(`<h1 class="v">${NAME}</h1>`, VERTICAL, null);
+    expect(codes).toContain("PROTECTED_VERTICAL");
+    expect(codes).toContain("VERTICAL_NOT_NAME");
+  });
+
+  it.each<[string, string, string, string]>([
+    ["other text set vertically", '<p class="v">季節の上生菓子</p>', VERTICAL, "VERTICAL_NOT_NAME"],
+    ["the name with more inside it", `<h1 class="v">${NAME}<span>0520</span></h1>`, VERTICAL, "VERTICAL_NOT_NAME"],
+    ["a fact (dd) set vertically", `<h1>${NAME}</h1><dl><dt>電話</dt><dd class="v">0520</dd></dl>`, VERTICAL, "PROTECTED_VERTICAL"],
+    ["glyphs piled up (advance far below 1 em)", `<h1 class="v">${NAME}</h1>`, `${VERTICAL} .v { letter-spacing: -0.9em; }`, "VERTICAL_GLYPHS_OVERLAP"],
+    ["the name cut by its box", `<h1 class="v">${NAME}</h1>`, `${VERTICAL} .v { height: 60px; white-space: nowrap; overflow: hidden; }`, "VERTICAL_TEXT_OVERFLOW"],
+  ])("refuses %s", async (_name, body, css, code) => {
+    expect(await scan(body, css, NAME)).toContain(code);
   });
 });

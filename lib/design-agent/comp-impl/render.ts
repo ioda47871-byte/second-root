@@ -194,12 +194,17 @@ export type Legibility = {
 };
 
 /** What the pair check needs: each info label with its fact (spec.ts infoPairs) and every fact, whitespace-free. */
-export type PairPlan = { pairs: ReadonlyArray<{ label: string; fact: string }>; facts: readonly string[] };
+export type PairPlan = {
+  pairs: ReadonlyArray<{ label: string; fact: string }>;
+  facts: readonly string[];
+  /** DEV-102 vertical_name: the shop name that may be vertical (only with the approved, declared capability); else absent. */
+  verticalName?: string | null;
+};
 
 /** The phase A layer scan at the current viewport (layers.ts LAYER_SCRIPT). */
-export async function layerScan(page: Page, required: readonly string[], o: { pairs?: boolean; mark?: boolean; declared?: boolean } = {}): Promise<LayerScan> {
+export async function layerScan(page: Page, required: readonly string[], o: { pairs?: boolean; mark?: boolean; declared?: boolean; verticalName?: string | null } = {}): Promise<LayerScan> {
   // `declared` (reading data-comp-role) is the test path only: the run never sets it, and the DOM allowlist refuses the attribute
-  return LayerSchema.parse(await page.evaluate(`(${LAYER_SCRIPT})(${JSON.stringify({ facts: required, pairs: o.pairs === true, mark: o.mark === true, declared: o.declared === true })})`));
+  return LayerSchema.parse(await page.evaluate(`(${LAYER_SCRIPT})(${JSON.stringify({ facts: required, pairs: o.pairs === true, mark: o.mark === true, declared: o.declared === true, verticalName: o.verticalName ?? null })})`));
 }
 
 async function pairsOf(page: Page, plan: PairPlan): Promise<Pairs> {
@@ -237,7 +242,7 @@ export async function legibilityPass(browser: Browser, compPage: CompPage, width
     const measure = await textMeasure(page, facts);
     const pairs = await pairsOf(page, plan);
     const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
-    const layers = await layerScan(page, required);
+    const layers = await layerScan(page, required, { verticalName: plan.verticalName ?? null });
     const ground = new Map<number, GroundStructure>();
     const owners = new Set(scan.owners.map((x) => x.owner));
     const nodes = measure.nodes.map((n, i) => ({ n, i })).filter(({ n }) => (n.kind === "fact" || n.kind === "label") && owners.has(n.owner));
@@ -296,7 +301,7 @@ export async function legibilitySweep(browser: Browser, compPage: CompPage, fact
       await page.setViewportSize({ width, height: 900 });
       const measure = MeasureSchema.parse(await page.evaluate(`(${MEASURE_SCRIPT})(${JSON.stringify({ facts })})`));
       const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
-      out.push({ width, measure, scan, pairs: await pairsOf(page, plan), layers: await layerScan(page, required) });
+      out.push({ width, measure, scan, pairs: await pairsOf(page, plan), layers: await layerScan(page, required, { verticalName: plan.verticalName ?? null }) });
     }
     return { widths: out, blocked: o.blocked() };
   } finally {

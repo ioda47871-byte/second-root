@@ -42,7 +42,7 @@ import {
 } from "./checks";
 import { cssProblems, htmlSourceProblems, loadCompPage, type CompPage } from "./page";
 import { FingerprintSchema } from "./page-scripts";
-import { factValues, infoPairs } from "./spec";
+import { factValues, infoPairs, verticalNameOf } from "./spec";
 import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, inBatches, legibilityPass, legibilitySweep, protectedGeometryPass, MOBILE, openCompPage, overflowSweep, pageWidths, type Viewport } from "./render";
 import { compSimilarity, emptySectionReport, sectionComparison, type SectionReport, type Similarity } from "./similarity";
 import { capabilitiesCheck, layersCheck, layersSweepCheck, visibilityMatrixCheck } from "./verify";
@@ -126,7 +126,10 @@ export function failedChecks(checks: Record<string, CheckResult>, anti: Pick<Ant
 export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const bundle: CompBundle = await loadCompBundle(o.bundleDir, { repoDir: o.repoDir, factsSourcePath: o.factsSourcePath, ...(o.pngLimits ? { pngLimits: o.pngLimits } : {}) });
   const page = await loadCompPage(o.pageDir);
-  const source = [...htmlSourceProblems(page.html), ...cssProblems(page.css)];
+  // DEV-102: the spec may declare vertical_name only when it is approved (checkCompSpec); then, and only then, the
+  // allowlist admits vertical writing and the render lets the shop name alone be vertical
+  const verticalName = verticalNameOf(bundle.spec, bundle.demo.name);
+  const source = [...htmlSourceProblems(page.html), ...cssProblems(page.css, { verticalName: verticalName !== null })];
   // a page whose source is refused is never rendered
   if (source.length > 0) throw Object.assign(new CompImplError("PAGE_SOURCE_REFUSED"), { problems: source });
   const references = o.references ?? (await loadReferences(o.repoDir));
@@ -142,7 +145,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const fingerprint = await fingerprintOf(o.browser, page.html);
   const disclosure = requiredDisclosure(page.assets, desktop.measure);
   const factsInput = { spec, demo: bundle.demo, disclosure };
-  const plan = { pairs: infoPairs(bundle.demo), facts };
+  const plan = { pairs: infoPairs(bundle.demo), facts, verticalName };
   const passes = await inBatches(widths, (width) => legibilityPass(o.browser, page, width, facts, required, plan));
   const sweepRun = await legibilitySweep(o.browser, page, facts, required, plan);
   const geometry = await protectedGeometryPass(o.browser, page, required);
@@ -182,7 +185,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
     ...Object.fromEntries(layerResults.map((l) => [`layers_${l.width}`, l.check])),
     layers_sweep: sweepLayers.check,
     visibility_matrix: visibilityMatrixCheck(passes),
-    capabilities: capabilitiesCheck(),
+    capabilities: capabilitiesCheck(spec.capabilities ?? []),
   };
   const advisory: Record<string, CheckResult> = {
     ...Object.fromEntries(layerResults.map((l) => [`layers_${l.width}`, l.advisory])),
@@ -213,7 +216,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
       eval_human_confirmed: bundle.evaluation.human_confirmed,
     },
     page: { html_sha256: page.htmlSha256, css_sha256: page.cssSha256, assets: page.assets.length, ai_assets: page.assets.filter((a) => a.kind === "ai_concept_local").length, network_blocked: blocked },
-    capabilities: [],
+    capabilities: [...(spec.capabilities ?? [])],
     checks,
     advisory,
     anti_template: anti,

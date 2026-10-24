@@ -290,9 +290,56 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
   }
 
   // ------------------------------------------------------------ V9 computed writing mode
+  // DEV-102 vertical_name: with the approved, declared capability the run passes the shop name; an element whose whole
+  // text is exactly that name and that holds no other element may be vertical. Everything else protected stays horizontal.
+  const vName = typeof arg.verticalName === "string" ? flat(arg.verticalName) : null;
+  const isVertical = (el) => st(el).writingMode !== "horizontal-tb";
+  const isVerticalName = (el) => vName !== null && el.children.length === 0 && flat(el.textContent) === vName && !el.matches("dt, dd, [data-comp-disclosure]") && !el.closest("dt, dd, [data-comp-disclosure]");
   const vertical = new Set();
   const protectedEls = Array.from(document.querySelectorAll("dt, dd, [data-comp-disclosure]")).concat(textEvents.filter((t) => t.prot !== null).map((t) => t.el));
-  for (const el of protectedEls) for (const d of [el].concat(Array.from(el.querySelectorAll("*")))) if (st(d).writingMode !== "horizontal-tb") vertical.add(d);
+  for (const el of protectedEls) for (const d of [el].concat(Array.from(el.querySelectorAll("*")))) if (isVertical(d) && !isVerticalName(d)) vertical.add(d);
+
+  // ------------------------------------------------------------ DEV-102 vertical text: only the name, glyphs apart, in order, in the box
+  const vert = { elements: 0, notName: 0, overlap: 0, disorder: 0, overflow: 0 };
+  for (const el of body) {
+    if (!isVertical(el)) continue;
+    const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3 && flat(n.textContent) !== "");
+    if (own.length === 0) continue;
+    vert.elements += 1;
+    if (!isVerticalName(el)) vert.notName += 1;
+    const rects = [];
+    let chars = 0;
+    for (const n of own) {
+      const t = n.textContent;
+      for (let i = 0; i < t.length; i++) {
+        if (/\s/.test(t[i])) continue;
+        chars += 1;
+        const r = document.createRange();
+        r.setStart(n, i);
+        r.setEnd(n, i + 1);
+        const b = Array.from(r.getClientRects()).find((x) => x.width > 0.5 && x.height > 0.5);
+        if (b) rects.push(b);
+      }
+    }
+    // a glyph with no box is not drawn where it reads
+    if (rects.length !== chars) vert.disorder += 1;
+    // a glyph advanced by less than 0.4 em down the column is drawn over its neighbour even when the boxes do not meet
+    // (seen: a vertical name in a column flex box got 9 px advances at 76 px type, all four glyphs piled up)
+    const em = parseFloat(st(el).fontSize) || 16;
+    for (const r of rects) if (r.height < 0.4 * em) vert.overlap += 1;
+    for (let a = 0; a < rects.length; a++)
+      for (let b = a + 1; b < rects.length; b++) {
+        const A = rects[a], B = rects[b];
+        if (Math.min(A.right, B.right) - Math.max(A.left, B.left) > 1 && Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top) > 1) vert.overlap += 1;
+      }
+    // vertical-rl: down a column, then the next column to the left
+    for (let a = 1; a < rects.length; a++) {
+      const P = rects[a - 1], C = rects[a];
+      const sameColumn = Math.abs((P.left + P.right) / 2 - (C.left + C.right) / 2) < Math.max(P.width, C.width) / 2;
+      if (sameColumn ? C.top < P.bottom - 1 : C.right > P.left + 1) vert.disorder += 1;
+    }
+    if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) vert.overflow += 1;
+  }
 
   return {
     roles,
@@ -304,12 +351,14 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
     covers: { count: coverCount, list: covers },
     nonContentOverlap: { disclosure: v4.DISCLOSURE, fact: v4.FACT },
     protectedVertical: vertical.size,
+    vertical: vert,
     ...(arg.pairs ? { pairs } : {}),
   };
 }`;
 
 const Rect = z.strictObject({ left: z.number(), top: z.number(), right: z.number(), bottom: z.number() });
 export const LayerSchema = z.strictObject({
+  vertical: z.strictObject({ elements: z.number().int().nonnegative(), notName: z.number().int().nonnegative(), overlap: z.number().int().nonnegative(), disorder: z.number().int().nonnegative(), overflow: z.number().int().nonnegative() }),
   roles: z.strictObject({
     declared: z.number().int().nonnegative(),
     unknown: z.number().int().nonnegative(),

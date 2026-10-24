@@ -263,8 +263,16 @@ function selectorProblems(css: string, prelude: CV[]): string[] {
   return [...p];
 }
 
+/** What an approved, declared capability adds to the allowlist (DEV-102). Default: nothing. */
+export type PageCssOptions = { verticalName?: boolean };
+/**
+ * vertical_name (DEV-102): writing-mode may also be vertical-rl. Only the shop name may then be vertical; that, the
+ * glyph order and overlap, and horizontal facts are checked in the render (layers.ts V9 and the vertical scan).
+ */
+const VERTICAL_WRITING_MODE: Spec = one(kw("horizontal-tb", "vertical-rl"));
+
 /** The declarations of one style rule's block; problem codes. */
-function declarationProblems(items: CV[]): string[] {
+function declarationProblems(items: CV[], opts: PageCssOptions): string[] {
   const p = new Set<string>();
   const segments: CV[][] = [[]];
   for (const c of items) {
@@ -290,7 +298,7 @@ function declarationProblems(items: CV[]): string[] {
       p.add("CSS_IMPORTANT");
       value = value.slice(0, bang);
     }
-    const spec = PAGE_PROPS[prop];
+    const spec = prop === "writing-mode" && opts.verticalName === true ? VERTICAL_WRITING_MODE : PAGE_PROPS[prop];
     if (!spec) {
       p.add("CSS_PROPERTY");
       continue;
@@ -307,7 +315,7 @@ function declarationProblems(items: CV[]): string[] {
 }
 
 /** Checks a page stylesheet against the allowlist; problem codes (empty: accepted). */
-export function pageCssProblems(css: string): string[] {
+export function pageCssProblems(css: string, opts: PageCssOptions = {}): string[] {
   let values: CV[];
   try {
     values = componentValues(tokenize(css));
@@ -335,7 +343,7 @@ export function pageCssProblems(css: string): string[] {
           rules += 1;
           for (const code of selectorProblems(css, prelude)) p.add(code);
           if (c.items.some((x) => x.t === "block" && x.open === "{")) p.add("CSS_NESTING");
-          for (const code of declarationProblems(c.items)) p.add(code);
+          for (const code of declarationProblems(c.items, opts)) p.add(code);
         }
         prelude = [];
       } else if (c.t === ";") {
