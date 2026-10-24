@@ -116,7 +116,7 @@ export function parseResearchLibraryV02(raw: unknown): ResearchLibraryV02 {
  */
 export const V02_CARD_PART: Readonly<Record<string, DesignDnaPart>> = {
   A01: "hero", A02: "typography", A03: "product_visual", A04: "palette", A05: "palette",
-  A06: "hero", A07: "section_rhythm", A08: "product_visual", A09: "hero",
+  A06: "hero", A07: "section_rhythm", A08: "product_visual", A09: "typography",
 };
 
 /**
@@ -153,21 +153,19 @@ export function parseV02UrlChecks(raw: unknown, lib: ResearchLibraryV02): V02Url
   }
   return out;
 }
-const rejectedByCheck = (checks: V02UrlChecks | undefined, id: string) => {
-  const r = checks?.get(id);
-  return r !== undefined && !USABLE.has(r);
-};
+/** With checks given, only a reference whose URL was checked and shows the recorded subject is usable (unchecked does not count). */
+const failsCheck = (checks: V02UrlChecks | undefined, id: string) => checks !== undefined && !USABLE.has(checks.get(id) ?? "unreachable");
 
 /** The original library as a DEV-099 bridge snapshot: every source and card a `candidate`, original labels kept. */
 export function toResearchSnapshot(lib: ResearchLibraryV02, checks?: V02UrlChecks): DesignResearchSnapshot {
   const candidate = { status: "candidate" as const, reviewer: null, reviewed_at: null };
-  const offered = lib.references.filter((r) => r.review_status !== "discovered_needs_visual_review" && !rejectedByCheck(checks, r.id));
+  const offered = lib.references.filter((r) => r.review_status !== "discovered_needs_visual_review" && !failsCheck(checks, r.id));
   const offeredIds = new Set(offered.map((r) => r.id));
   return parseDesignResearchSnapshot({
     schema_version: 1,
     status: "research_only",
     // a reference nobody has looked at (no observation at all) is kept in the library file but not offered as a source
-    // nor is a reference whose URL check found it does not support the record
+    // with checks, nor is a reference that was not checked or whose check found it does not support the record
     sources: offered.map((r) => ({
       id: r.id,
       url: r.reference_url,
@@ -283,7 +281,7 @@ export function exploreV02Techniques(lib: ResearchLibraryV02, profile: V02ShopPr
       .map((r) => refById.get(r)!)
       .filter((r) => VISUALLY_OBSERVED.has(r.review_status))
       // with checks, an unchecked reference does not count: only a URL seen to show the recorded subject does
-      .filter((r) => !checks || USABLE.has(checks.get(r.id) ?? "unreachable"))
+      .filter((r) => !failsCheck(checks, r.id))
       .map((r) => ({ id: r.id, url: new URL(r.reference_url).href, original_review_status: r.review_status, url_check: checks?.get(r.id) ?? ("not_checked" as const) }));
     if (!references.length) {
       notPicked.push({ card_id: id, reason: checks ? "no reference whose URL was checked and shows the recorded subject" : "no visually observed reference" });

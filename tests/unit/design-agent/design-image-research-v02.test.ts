@@ -86,6 +86,9 @@ describe("shop-specific exploration of v0.2 cards", () => {
     const snap = toResearchSnapshot(library(), checks());
     for (const gone of ["DR-020", "DR-027", "DR-028", "DR-031", "DR-032", "DR-034"]) expect(snap.sources.map((s) => s.id)).not.toContain(gone);
     expect(snap.technique_cards.map((c) => c.id)).not.toContain("A04");
+    // unchecked references are not offered either, so A03 (never URL-checked) is not offered
+    expect(snap.technique_cards.map((c) => c.id)).not.toContain("A03");
+    expect(snap.sources.map((s) => s.id).sort()).toEqual(["DR-021", "DR-022", "DR-023", "DR-024", "DR-025", "DR-030", "DR-037"]);
     expect(snap.technique_cards.find((c) => c.id === "A01")!.source_ids).toEqual(["DR-030"]);
     // the library itself is unchanged: DR-032 is still recorded there as the original says
     expect(library().references.find((r) => r.id === "DR-032")!.name).toBe("CALLOSUM");
@@ -124,7 +127,7 @@ describe("the experimental wagashi direction (v0.2 research)", () => {
     }
   });
 
-  it("cites each reference under the part its picked card is assigned to (the bridge links all three once a person reviews them)", () => {
+  it("cites each reference under the part its picked card is assigned to; even reviewed, only two parts link, so the bridge stays insufficient", () => {
     const brief = parseDesignDna(experiment());
     const picks = exploreV02Techniques(library(), wagashi, checks()).picks;
     for (const d of brief.decisions)
@@ -142,9 +145,10 @@ describe("the experimental wagashi direction (v0.2 research)", () => {
     for (const src of snap.sources) if (pickedRefs.has(src.id)) src.review = reviewed;
     const plan = selectDesignResearch(experiment(), snap);
     expect(plan.selected.map((x) => [x.part, x.technique_id])).toEqual([
-      ["hero", "A09"], ["typography", "A02"], ["section_rhythm", "A07"],
+      ["typography", "A02"], ["section_rhythm", "A07"],
     ]);
-    expect(plan.status).toBe("review_ready");
+    // the research robustly supports two parts only; the bridge needs three, and says so
+    expect(plan.status).toBe("insufficient_reviewed_sources");
   });
 
   it("shares no decision with the existing wagashi brief, and keeps the fixture's wording (店頭, not a counter)", () => {

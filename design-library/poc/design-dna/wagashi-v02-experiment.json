@@ -26,14 +26,6 @@
   ],
   "references": [
     {
-      "id": "DR-024",
-      "url": "https://brik.co.jp/gallery/detail/4719",
-      "scope": "public_visual_only",
-      "observed_principle": "左上の黒い店名ロゴ、右上の小さなナビ、木目の写真を白い額縁のような周囲の余白で際立たせる。",
-      "transferable_idea": "Only the principle: one food image held inside generous margins, like a frame, under a rigid small header; no layout, image or wording is reused.",
-      "rights": "analysis_only"
-    },
-    {
       "id": "DR-022",
       "url": "https://soine.jp/works/detail/works001",
       "scope": "public_visual_only",
@@ -75,9 +67,7 @@
         "brand",
         "owner_premium"
       ],
-      "reference_ids": [
-        "DR-024"
-      ]
+      "reference_ids": []
     },
     {
       "part": "typography",

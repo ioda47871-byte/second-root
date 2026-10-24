@@ -32,6 +32,10 @@ describe("the prepared experimental prompt (DEV-101, not runnable)", () => {
       expect(v2, line).toContain(line);
       expect(exp, line).toContain(line);
     }
+    // every line of the v2 HARD RULES block, word for word
+    const block = v2.slice(v2.indexOf("HARD RULES"), v2.indexOf("YOU MAY LEAVE OUT")).split("\n").slice(1).filter((l) => l.trim());
+    expect(block.length).toBeGreaterThanOrEqual(9);
+    for (const line of block) expect(exp, line).toContain(line);
     expect(exp.length).toBeLessThanOrEqual(V2_PROMPT_MAX_CHARS);
     expect(exp).toContain("VERTICALLY");
     expect(exp).not.toMatch(/product visual cards/);

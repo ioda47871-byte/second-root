@@ -37,7 +37,7 @@
       "url": "https://note.com/mexce/n/nccbf8d44a745",
       "result": "url_points_elsewhere",
       "checked_by": "owner-side assistant check posted in Issue #118 (comment 6383210026); not the owner's personal acceptance",
-      "note": "The URL serves an unrelated 2023 article about Looker Studio agencies, not CALLOSUM. The recorded observation has no source."
+      "note": "The URL serves a 2023 article listing Looker Studio agencies; CALLOSUM appears only as one vendor in that list, so the page is not a study of CALLOSUM's design and the recorded observation has no source."
     },
     {
       "id": "DR-023",
@@ -56,16 +56,16 @@
     {
       "id": "DR-037",
       "url": "https://junni.co.jp/works/vita/",
-      "result": "subject_matches",
+      "result": "subject_matches_observation_not_in_text",
       "checked_by": "Claude session, page text fetched and summarised; images not viewed",
-      "note": "JUNNI WORKS entry for the vi-ta hair design site renewal (2021)."
+      "note": "JUNNI WORKS entry for the vi-ta hair design site renewal (2021); the recorded layout is not described in the page text."
     },
     {
       "id": "DR-024",
       "url": "https://brik.co.jp/gallery/detail/4719",
-      "result": "subject_matches",
+      "result": "subject_matches_observation_not_in_text",
       "checked_by": "Claude session, page text fetched and summarised; images not viewed",
-      "note": "BRIK GALLERY entry for MISOJYU, a miso soup shop in Asakusa (misojyu.jp)."
+      "note": "BRIK GALLERY entry for MISOJYU, a miso soup shop in Asakusa (misojyu.jp); the page text tags a large photo but does not describe the framed-photo observation."
     },
     {
       "id": "DR-030",

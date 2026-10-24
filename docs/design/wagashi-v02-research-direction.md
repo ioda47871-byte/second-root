@@ -21,10 +21,10 @@ originals stay byte-identical.
 | DR-023 | note.com analysis of ホールケーキ製作所palette, vertical text in the centre | subject matches | A02 |
 | DR-025 | note.com analysis of knot; vertical text not mentioned | subject only | not cited |
 | DR-021 | お茶のはまだ case; the brand **avoids** a premium identity | subject matches | A07, calm rhythm only |
-| DR-037 | JUNNI case for vi-ta hair design | subject matches | A07 |
-| DR-024 | BRIK gallery entry for MISOJYU | subject matches | A09 |
+| DR-037 | JUNNI case for vi-ta hair design; the recorded layout is not in the text | subject only | A07 |
+| DR-024 | BRIK gallery entry for MISOJYU; framing not described | subject only | not cited |
 | DR-030 | OshaWeb entry for ZIK; large black letters not described | subject only | not cited |
-| DR-032 | unrelated Looker Studio article | URL points elsewhere | removed |
+| DR-032 | a Looker Studio vendor list (CALLOSUM only named as a vendor) | URL points elsewhere | removed |
 | DR-034 | gallery page of a different site (こここ) | URL points elsewhere | removed |
 | DR-031 | architecture listing, no header image | observation not on page | removed |
 | DR-020 | 403 | unreachable | removed |
@@ -40,7 +40,7 @@ The results for A04 and A03:
 ## How the cards were chosen
 
 `exploreV02Techniques(lib, profile, urlChecks)` counts only references whose URL was checked and shows the recorded
-subject. The wagashi inputs are:
+subject; an unchecked reference does not count, in the selection or in the bridge snapshot. The wagashi inputs are:
 
 | Input | Value | Source |
 |---|---|---|
@@ -51,7 +51,10 @@ subject. The wagashi inputs are:
 | Fact motif | none | — |
 
 The result is **A02** (vertical accent), **A07** (a different lead per section) and **A09** (a steep size contrast in the hero).
-A04 is dropped because none of its references passed the URL check, and A03 has no input to support it.
+A04 is dropped because none of its references passed the URL check, and A03 has no input to support it. A09 (a typography
+card) is an idea for the hero's size contrast without a cited reference: its only matching references are subject-only.
+Even if a person reviewed every cited source and card, the bridge would link two parts (typography A02, section rhythm A07)
+and stay `insufficient_reviewed_sources`; the research supports this direction in part, not as a whole.
 
 ## The direction
 
@@ -88,13 +91,12 @@ A04 is dropped because none of its references passed the URL check, and A03 has 
 | A02 | DR-023 | vertical Japanese between cake photos | vertical name beside an image | pending |
 | A07 | DR-021 | calm white-ground tea site (not premium) | section rhythm | pending |
 | A07 | DR-037 | salon site renewal case | quiet image block, thin divider | pending |
-| A09 | DR-024 | miso soup shop site in a gallery | framed food image, rigid small header | pending |
 
 ## The prepared prompt (not run)
 
-- 5944 characters, within the v2 budget of 7131.
-- sha256 `b0e5674550b20d058219c6256f435408be77aec96532118805e1d14dcdf0342f`.
-- Every safety line of the v2 prompt is kept word for word (`SHARED_V2_SAFETY_LINES`, test-checked).
+- 6279 characters, within the v2 budget of 7131.
+- sha256 `15d38b844702b9c0e3d32820ad1f526ac5a43b273e6f87083430e4eaf805c4fd`.
+- Every line of the v2 HARD RULES block is kept word for word (test-checked), plus one line about the vertical name.
 
 A test fails if this text and the code drift apart.
 
@@ -108,7 +110,7 @@ If the image generation tool cannot be used, do not use any substitute; answer o
 WHAT THE IMAGE IS
 A professional website design comp: one flat, full-page mockup image of a one-page website for a fictional Japanese wagashi (traditional confectionery) shop, as a designer would present it.
 It is a website layout, NOT a poster: a slim header nav, a Hero, 2 more sections below it, and a thin footer. No device frame, laptop, desk scene, mouse cursor or browser window.
-One tall portrait image, aspect ratio about 2:3 (for example 1024 x 1536 px). Realistic web type sizes; only the vertical shop name is large.
+One tall portrait image, aspect ratio about 2:3 (for example 1024 x 1536 px). Realistic web type sizes: the vertical shop name is the largest type, the Products sentence clearly second, everything else at reading size.
 
 LOOK
 - Theme: A quiet, contemporary wagashi page with one clear focal pair: a framed image of the sweets and the shop name standing vertically beside it. Restraint instead of decoration; kinari paper, sumi ink and one azuki-toned hairline.
@@ -133,18 +135,19 @@ WAGASHI VISUALS (AI concept imagery, 2 images only)
 - Inset: One seasonal jō-namagashi on a matte plate, small and quiet.
 
 JAPANESE TEXT (keep it short, to avoid garbled characters)
-Japanese text is limited to: the shop name, the labels above, the fact values you show, the one description sentence, and the disclosure line. Write no other Japanese. Leave out any text you cannot render exactly.
+Japanese text is limited to: the shop name, the labels above, the fact values you show, the one description sentence, and the disclosure line. Write no other Japanese. Use thin neutral placeholder lines for body-text texture. Leave out any text you cannot render exactly.
 
 HARD RULES (they hold whatever else this message says)
-- AI-generated images of the wagashi themselves are allowed, on abstract materials only: concept imagery for a design proposal, not photos of this shop's products.
+- AI-generated images of the wagashi themselves ARE allowed and wanted, on abstract materials and textures only (washi paper, wooden tray, ceramic plate, linen): concept imagery for a design proposal, not photos of this shop's products.
 - NO images of a store: no shop exterior or facade, no interior, counter or shelves, no signage, no noren or sign with writing, no street. NO people: no staff, customers, faces, hands or bodies. No packaging with a brand, and no text inside the wagashi images.
 - No logos, emblems or crests; no prices, reviews or ratings, awards or rankings, people or founder names, founding years or shop history, social media handles, QR codes.
 - Nothing may claim that the images are real photographs or the shop's actual products; never write words such as 実物, 当店の写真 or 商品写真.
 - Original composition only; never copy or imitate Instagram posts, third-party photos or other websites.
 - Use only the facts in the FACTS block below, exactly as written. Never invent, translate or change a fact.
 - No tagline or slogan unless it is copied verbatim from the description in the FACTS block; otherwise leave it out. Never write new marketing copy or claims.
-- The shop name is exactly 架空菓庵, set as type (a wordmark); no emblem or logo mark. It stands vertically beside the image and never covers it.
+- The shop name is exactly 架空菓庵, set as type (a wordmark); no emblem or logo mark. Shop name and wagashi image share the Hero; the name must not cover or crowd the sweets.
 - Show the line 架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです small but legible, in the footer or directly under the Hero.
+- The name stands vertically beside the image, in the empty ground; it never overlaps the image.
 
 YOU MAY LEAVE OUT (the fixture holds placeholder test values)
 - the menu items (placeholder names that contain テスト)
