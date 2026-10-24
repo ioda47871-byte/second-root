@@ -341,16 +341,18 @@ describe("V3b maths, V7 capabilities, V9 visibility matrix", () => {
     expect(gradientStopProblems([{ at: 0, rgb: [234, 225, 210] }, { at: 300, rgb: [217, 207, 190] }], 300)).toEqual([]);
   });
 
-  it("V7: an unknown or empty capabilities key is refused (SPEC_SHAPE); vertical_name is refused until approved; the report lists none", () => {
+  it("V7: only owner-approved vertical_name may be declared in offline PoC; explicit denied approvals still fail closed", () => {
     const spec = JSON.parse(readFileSync(join(FIXTURE, "layout-spec.json"), "utf8")) as CompSpec;
     expect(checkCompSpec(spec).ok).toBe(true);
     for (const c of [[], ["hero_overlay"], ["Hero Overlay"]]) expect(checkCompSpec({ ...spec, capabilities: c } as unknown)).toEqual({ ok: false, problems: ["SPEC_SHAPE"] });
-    // DEV-102: known, but not approved (APPROVED_CAPABILITIES is empty)
-    expect(APPROVED_CAPABILITIES).toEqual([]);
-    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name"] })).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_NOT_APPROVED"] });
-    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name"] }, ["vertical_name"]).ok).toBe(true);
-    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name", "vertical_name"] }, ["vertical_name"])).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_REPEAT"] });
-    expect(capabilitiesCheck()).toMatchObject({ ok: true, declared: [], approved: [] });
+    // DEV-103: owner-approved only in offline comp-implementation PoC. No new role, no worker/site integration.
+    expect(APPROVED_CAPABILITIES).toEqual(["vertical_name"]);
+    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name"] }).ok).toBe(true);
+    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name"] }, []).ok).toBe(false);
+    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name"] }, [])).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_NOT_APPROVED"] });
+    expect(checkCompSpec({ ...spec, capabilities: ["vertical_name", "vertical_name"] })).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_REPEAT"] });
+    expect(capabilitiesCheck()).toMatchObject({ ok: true, declared: [], approved: ["vertical_name"] });
+    expect(capabilitiesCheck(["vertical_name"]).ok).toBe(true);
     expect(capabilitiesCheck(["hero_overlay"]).codes).toEqual(["CAPABILITY_NOT_APPROVED"]);
   });
 
@@ -376,7 +378,7 @@ describe("V3b maths, V7 capabilities, V9 visibility matrix", () => {
   });
 });
 
-// ---------------------------------------------------------------- DEV-102 vertical_name (not approved; the checks it would bring)
+// ---------------------------------------------------------------- DEV-102/103 vertical_name (approved for offline PoC; blocking checks)
 
 describe("DEV-102 vertical_name: the allowlist and the vertical-text checks", () => {
   const NAME = "架空菓庵";
