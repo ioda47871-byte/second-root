@@ -4417,6 +4417,53 @@
         "旧v0.2原本と候補研究の人間による根拠確認",
         "実画像生成・既存v2固定プロンプトの変更・公開は別途明示承認"
       ]
+    },
+    {
+      "id": "DEV-100",
+      "title": "デザイン研究v0.2の原本（40件・技法9枚）を元のレビュー状況のまま取り込み、店舗の入力から技法を選んで実験的アートディレクション案を作る（オフライン）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-099"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-100-research-v02-import",
+      "purpose": "オーナー提供の原本ZIPを検証して取り込み、DEV-099のbridgeと接続し、架空和菓子店の実験案をv1/v2と比較できる形にする。",
+      "acceptance_criteria": [
+        "原本2ファイルを改変せず保存し、sha256をMANIFESTとtestで固定",
+        "元のreview_statusを保持し、人のレビューの無い記録をhuman_reviewedにしない",
+        "店舗の入力（業種名ではない）から2〜4枚を選び、理由と視覚観察済みの参照だけを示す",
+        "実験案はDesign DNAとして検証され、既存の和菓子briefと決定を共有しない",
+        "v2 prompt・worker・品質/安全検査・workflowは変更しない。実Codexなし"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-research-v02.test.ts",
+        "tests/unit/design-agent/design-image-research-bridge.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/v02/**",
+        "design-library/poc/design-dna/wagashi-v02-experiment.json",
+        "lib/design-agent/design-image/research-v02.ts",
+        "lib/design-agent/design-image/research-bridge.ts",
+        "tests/unit/design-agent/design-image-research-v02.test.ts",
+        "docs/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "lib/design-agent/design-image/prompt.ts",
+        "worker",
+        "Production",
+        "Staging",
+        "DB",
+        ".github/**"
+      ],
+      "human_approval_triggers": [
+        "実Codex画像生成",
+        "v2 prompt の変更",
+        "研究記録を human_reviewed にすること"
+      ]
     }
   ]
 }
