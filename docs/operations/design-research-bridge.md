@@ -33,3 +33,5 @@ No image, photograph, website, brand text, HTML, CSS or asset is ever copied fro
 No modification to Codex, browser worker, jail, bridge, timers, Supabase, Staging, Production or live sales. No model calls, scraping or billable services. No weakening tests, quality gates or security. The existing v2 pin and its tests remain authoritative.
 
 Tracked in [Issue #118](https://github.com/ioda47871-byte/second-root/issues/118).
+
+The study-text check (markup, links, instruction-like phrases) is a narrow heuristic: it keeps ordinary design prose and can be evaded. A person's review of every source and card is the control; the check only catches obvious cases.

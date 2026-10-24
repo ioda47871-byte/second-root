@@ -9,12 +9,22 @@ import { z } from "zod";
 import { DESIGN_DNA_PARTS, parseDesignDna, type DesignDnaPart } from "./design-dna";
 
 const Identifier = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{1,59}$/);
-/** Phrases that address a model rather than describe a design (study text is data, never instructions). */
-const INSTRUCTION_LIKE = /\b(?:ignore|disregard|forget|override)\b[^.]{0,40}\b(?:instructions?|rules?|prompts?|guidelines?)\b|\bsystem prompt\b|\byou are now\b|\b(?:reveal|print|output|show)\b[^.]{0,30}\b(?:secrets?|tokens?|keys?|passwords?|credentials?|env(?:ironment)?)\b|これまでの指示|指示を無視|秘密情報を/i;
-const StudyText = z.string().min(8).max(300).refine(
-  (s) => !/[\u0000-\u001f\u007f]|<<<|>>>|<\s*\/?\s*[a-z!]|\]\(|\b(?:javascript|data|file|vbscript):/i.test(s) && !INSTRUCTION_LIKE.test(s),
-  "unsafe study text",
-);
+/**
+ * Phrases that address a model rather than describe a design (study text is data, never instructions).
+ * A heuristic only: it is narrow so ordinary design prose ("show the key visual", "ignore strict grid
+ * rules", "顧客の秘密情報を表示しない") passes, and it can be evaded. The person's review is the control.
+ */
+const INSTRUCTION_LIKE = new RegExp([
+  String.raw`\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:the\s+|your\s+)?(?:previous|prior|above|earlier|preceding|system)\b`,
+  String.raw`\bsystem\s+prompt\b`,
+  String.raw`\b(?:reveal|dump|exfiltrate|leak)\b[^.]{0,30}\b(?:secrets?|passwords?|credentials?|api\s+keys?|tokens?)\b`,
+  String.raw`(?:前|これまで|上記|以前)の指示`,
+  String.raw`指示を無視`,
+  String.raw`秘密情報を(?:表示|出力|送信|教え)(?!しない|せず|しません)`,
+].join("|"), "i");
+/** Markup or a link that could be rendered or followed: a tag start, a markdown link, a script/data URL. */
+const MARKUP_LIKE = /[\u0000-\u001f\u007f]|<<<|>>>|<\/?[a-z][a-z0-9-]*(?:[\s/>]|$)|<!|\]\(|\b(?:javascript|vbscript|file):|\bdata:\s*[a-z]+\//i;
+const StudyText = z.string().min(8).max(300).refine((s) => !MARKUP_LIKE.test(s) && !INSTRUCTION_LIKE.test(s), "unsafe study text");
 const HTTPS = z.string().min(9).max(600).transform((s, ctx) => {
   try {
     const url = new URL(s);
