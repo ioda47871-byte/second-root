@@ -77,11 +77,18 @@ describe("offline design research bridge", () => {
   });
 
   it("does not borrow uncited references, even from a reviewed card", () => {
+    // The hero decision cites R2 only; R1 (the hero card's source) stays cited by
+    // a later decision, so the brief is valid but R1 cannot support the hero.
     const b = brief();
     b.decisions[0]!.reference_ids = ["R2"];
+    b.decisions[3]!.reference_ids = ["R1"];
     const p = selectDesignResearch(b, snapshot());
     expect(p.selected.map((x) => x.part)).not.toContain("hero");
     expect(p.status).toBe("insufficient_reviewed_sources");
+    // a reference no decision cites is refused by the Design DNA contract itself
+    const u = brief();
+    u.decisions[0]!.reference_ids = ["R2"];
+    expect(() => selectDesignResearch(u, snapshot())).toThrow(/references:uncited/);
   });
 
   it("rejects corrupted provenance, unsafe URLs, unsafe payloads and fake review attribution", () => {
