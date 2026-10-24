@@ -1,0 +1,106 @@
+{
+  "check_version": 1,
+  "checked_on": "2026-10-24",
+  "scope": "Whether each reference URL actually shows the recorded subject. Page text only (no images viewed, no human review). It neither upgrades nor rewrites the original library, which stays byte-identical.",
+  "results": [
+    "subject_matches",
+    "subject_matches_observation_not_in_text",
+    "not_web_design",
+    "url_points_elsewhere",
+    "observation_not_on_page",
+    "unreachable"
+  ],
+  "checks": [
+    {
+      "id": "DR-021",
+      "url": "https://xd.5star.co.jp/work/1649/",
+      "result": "subject_matches",
+      "checked_by": "owner-side assistant check posted in Issue #118 (comment 6383210026); not the owner's personal acceptance",
+      "note": "SONICJAM case study for お茶のはまだ. The case says the brand deliberately avoids a premium identity and uses WebGL hover: cite for calm section rhythm only, not for luxury or animation."
+    },
+    {
+      "id": "DR-022",
+      "url": "https://soine.jp/works/detail/works001",
+      "result": "subject_matches",
+      "checked_by": "owner-side assistant check posted in Issue #118 (comment 6383210026); not the owner's personal acceptance",
+      "note": "Matsuoen / なべしま銘茶 web design case; a public overview image pairs vertical Japanese text with photos, captions and whitespace. Visual principle only."
+    },
+    {
+      "id": "DR-027",
+      "url": "https://bake-jp.com/info/abitecoffee_202609launch/",
+      "result": "not_web_design",
+      "checked_by": "owner-side assistant check posted in Issue #118 (comment 6383210026); not the owner's personal acceptance",
+      "note": "BAKE press announcement for A Bite Coffee (2026-06-10): a branding case, not evidence of website design. Its dot identity must not be imitated."
+    },
+    {
+      "id": "DR-032",
+      "url": "https://note.com/mexce/n/nccbf8d44a745",
+      "result": "url_points_elsewhere",
+      "checked_by": "owner-side assistant check posted in Issue #118 (comment 6383210026); not the owner's personal acceptance",
+      "note": "The URL serves a 2023 article listing Looker Studio agencies; CALLOSUM appears only as one vendor in that list, so the page is not a study of CALLOSUM's design and the recorded observation has no source."
+    },
+    {
+      "id": "DR-023",
+      "url": "https://note.com/__108ko/n/nd7b482f192c3",
+      "result": "subject_matches",
+      "checked_by": "Claude session, page text fetched and summarised; images not viewed",
+      "note": "note.com article analysing the PC first view of ホールケーキ製作所palette; it mentions cake photos left and right and vertical Japanese text in the centre."
+    },
+    {
+      "id": "DR-025",
+      "url": "https://note.com/fair_gnu130/n/n1f3391e68dfe",
+      "result": "subject_matches_observation_not_in_text",
+      "checked_by": "Claude session, page text fetched and summarised; images not viewed",
+      "note": "note.com article analysing the knot web media design; the text mentions wide margins but not vertical Japanese text."
+    },
+    {
+      "id": "DR-037",
+      "url": "https://junni.co.jp/works/vita/",
+      "result": "subject_matches_observation_not_in_text",
+      "checked_by": "Claude session, page text fetched and summarised; images not viewed",
+      "note": "JUNNI WORKS entry for the vi-ta hair design site renewal (2021); the recorded layout is not described in the page text."
+    },
+    {
+      "id": "DR-024",
+      "url": "https://brik.co.jp/gallery/detail/4719",
+      "result": "subject_matches_observation_not_in_text",
+      "checked_by": "Claude session, page text fetched and summarised; images not viewed",
+      "note": "BRIK GALLERY entry for MISOJYU, a miso soup shop in Asakusa (misojyu.jp); the page text tags a large photo but does not describe the framed-photo observation."
+    },
+    {
+      "id": "DR-030",
+      "url": "https://pxd.co.jp/oshaWeb/beautiful-website/zik",
+      "result": "subject_matches_observation_not_in_text",
+      "checked_by": "Claude session, page text fetched and summarised; images not viewed",
+      "note": "OshaWeb gallery entry for the ZIK corporate site; the text describes a muted grey-green ground, accent colours and present typography, not specifically large black letterforms."
+    },
+    {
+      "id": "DR-034",
+      "url": "https://choooodoii.com/gallery/2622/",
+      "result": "url_points_elsewhere",
+      "checked_by": "Claude session, page text fetched and summarised; images not viewed",
+      "note": "The gallery page is for a different site (こここ, a web magazine); UNITBASE is not mentioned. The recorded observation has no source."
+    },
+    {
+      "id": "DR-031",
+      "url": "https://kenchikuka.com/architects/korogaro-associationkengo-sato-architecture-office/",
+      "result": "observation_not_on_page",
+      "checked_by": "Claude session, page text fetched and summarised; images not viewed",
+      "note": "A PocketNavi architecture listing for コロガロウ／佐藤研吾建築設計事務所 with no header image; the recorded large titles and hand-drawn circle are not on this page."
+    },
+    {
+      "id": "DR-020",
+      "url": "https://sankoudesign.com/web/paquetmonte/",
+      "result": "unreachable",
+      "checked_by": "Claude session, page text fetched and summarised; images not viewed",
+      "note": "HTTP 403 on the gallery page; the recorded visual-evidence page (a Coloso course) does not mention PAQUET MONTÉ in its text."
+    },
+    {
+      "id": "DR-028",
+      "url": "https://coloso.jp/products/artdirector-obana2-jp",
+      "result": "url_points_elsewhere",
+      "checked_by": "Claude session, page text fetched and summarised; images not viewed",
+      "note": "The reference page is a Coloso course page that does not mention listude in its text."
+    }
+  ]
+}

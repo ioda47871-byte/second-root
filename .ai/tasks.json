@@ -4464,6 +4464,56 @@
         "v2 prompt の変更",
         "研究記録を human_reviewed にすること"
       ]
+    },
+    {
+      "id": "DEV-101",
+      "title": "研究参照先の不整合（DR-032 ほか）を確認記録で訂正し、A02・A07・A09 中心の和菓子実験方針と生成用プロンプト（未実行）を用意する",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-100"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-101-research-corrections",
+      "purpose": "Issue #118 の指摘（DR-032 が無関係の記事）を受け、参照 URL を確認し、裏付けのない参照を選択から外す。原本は無改変で保持し、確認状況を偽らない。",
+      "acceptance_criteria": [
+        "原本 2 file は無改変",
+        "URL 確認は別 file に記録し、人の review とは呼ばない",
+        "確認で一致した参照だけを選択に使い、A04 は裏付けなしとして外す",
+        "A03 は強制しない",
+        "生成用プロンプトは v2 の安全文を逐語で保持し、CLI からは選べない",
+        "v2 prompt・worker・gate・workflow の変更なし、実 Codex なし"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-research-v02.test.ts",
+        "tests/unit/design-agent/design-image-prompt-research-exp.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/v02/url-checks-20261024.json",
+        "design-library/poc/design-dna/wagashi-v02-experiment.json",
+        "design-library/poc/wagashi-art-direction-v3-research.json",
+        "lib/design-agent/design-image/research-v02.ts",
+        "lib/design-agent/design-image/prompt-research-exp.ts",
+        "tests/unit/design-agent/**",
+        "docs/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "lib/design-agent/design-image/prompt.ts",
+        "design-library/research/v02/secondroot_*",
+        "worker",
+        "Production",
+        "Staging",
+        "DB",
+        ".github/**"
+      ],
+      "human_approval_triggers": [
+        "実Codex画像生成",
+        "実験方向を PoC CLI に追加すること",
+        "研究記録を human_reviewed にすること"
+      ]
     }
   ]
 }
