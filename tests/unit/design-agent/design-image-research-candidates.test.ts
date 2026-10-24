@@ -113,11 +113,11 @@ describe("DEV-105: additive candidate research batch", () => {
   it("does not let a gallery tag become an audited 390px screenshot or licensed asset", () => {
     const b = batch2();
     const gallery = b.references.find((r) => r.source_kind === "design_gallery")!;
-    gallery.review_status = "human_reviewed" as typeof gallery.review_status;
+    gallery.review_status = "human_reviewed" as unknown as typeof gallery.review_status;
     expect(() => parseResearchCandidates(b, previousAndFirst())).toThrow(ResearchCandidateError);
     const c = batch2();
     const source = c.references.find((r) => r.source_kind === "design_gallery")!;
-    source.evidence_scope = "mobile_390_approved" as typeof source.evidence_scope;
+    source.evidence_scope = "mobile_390_approved" as unknown as typeof source.evidence_scope;
     expect(() => parseResearchCandidates(c, previousAndFirst())).toThrow(ResearchCandidateError);
   });
 
