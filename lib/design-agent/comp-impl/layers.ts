@@ -301,12 +301,18 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
 
   // ------------------------------------------------------------ DEV-102 vertical text: only the name, glyphs apart, in order, in the box
   const vert = { elements: 0, notName: 0, overlap: 0, disorder: 0, overflow: 0 };
+  let nameElements = 0;
   for (const el of body) {
     if (!isVertical(el)) continue;
-    const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3 && flat(n.textContent) !== "");
-    if (own.length === 0) continue;
     vert.elements += 1;
-    if (!isVerticalName(el)) vert.notName += 1;
+    // any vertical element but the bare name counts, with or without text of its own: a vertical container lays its
+    // horizontal children out as right-to-left columns, which reorders blocks no text check would see
+    if (!isVerticalName(el)) {
+      vert.notName += 1;
+      continue;
+    }
+    nameElements += 1;
+    const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3 && flat(n.textContent) !== "");
     const rects = [];
     let chars = 0;
     for (const n of own) {
@@ -340,6 +346,8 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
     }
     if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) vert.overflow += 1;
   }
+  // one vertical name only: a second copy is decoration made of the name
+  if (nameElements > 1) vert.notName += nameElements - 1;
 
   return {
     roles,

@@ -2082,7 +2082,7 @@ describe("entry points refuse", () => {
     expect(existsSync(record)).toBe(false);
     expect(await run("bash", [script, "--human-approval-confirmed", "--extra"], { env }).catch((e: { code: number }) => e)).toMatchObject({ code: 2 });
     expect(existsSync(record)).toBe(false);
-    // a direction outside v1 / v2: STOP before the preflight, the lock, git or tsx
+    // a direction outside v1 / v2 / v3: STOP before the preflight, the lock, git or tsx
     for (const bad of ["v4", "V2", "../v1", "v2;id"]) {
       const wrong = await run("bash", [script, "--human-approval-confirmed"], { env: { ...env, SR_DESIGN_IMAGE_POC_DIRECTION: bad } as unknown as NodeJS.ProcessEnv }).catch((e: { code: number; stdout: string }) => e);
       expect(wrong).toMatchObject({ code: 2 });

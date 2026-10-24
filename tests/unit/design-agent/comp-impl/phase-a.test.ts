@@ -401,8 +401,14 @@ describe("DEV-102 vertical_name: the allowlist and the vertical-text checks", ()
     expect(codes).toContain("VERTICAL_NOT_NAME");
   });
 
+  // Some probes below use CSS the allowlist itself refuses (negative letter-spacing, height, overflow, vertical-lr): they
+  // test the detector, as a second line behind the allowlist. The reachable cases (other text, a container, two names,
+  // a fact) use only what the capability admits.
   it.each<[string, string, string, string]>([
     ["other text set vertically", '<p class="v">季節の上生菓子</p>', VERTICAL, "VERTICAL_NOT_NAME"],
+    ["a vertical container of horizontal blocks", '<div class="v"><p class="h">0520</p><p class="h">季節の上生菓子</p></div>', `${VERTICAL} .h { writing-mode: horizontal-tb; }`, "VERTICAL_NOT_NAME"],
+    ["the name set vertically twice", `<h1 class="v">${NAME}</h1><p class="v">${NAME}</p>`, VERTICAL, "VERTICAL_NOT_NAME"],
+    ["columns running left to right (detector)", `<h1 class="v">${NAME}</h1>`, ".v { writing-mode: vertical-lr; font-size: 48px; height: 110px; }", "VERTICAL_GLYPHS_ORDER"],
     ["the name with more inside it", `<h1 class="v">${NAME}<span>0520</span></h1>`, VERTICAL, "VERTICAL_NOT_NAME"],
     ["a fact (dd) set vertically", `<h1>${NAME}</h1><dl><dt>電話</dt><dd class="v">0520</dd></dl>`, VERTICAL, "PROTECTED_VERTICAL"],
     ["glyphs piled up (advance far below 1 em)", `<h1 class="v">${NAME}</h1>`, `${VERTICAL} .v { letter-spacing: -0.9em; }`, "VERTICAL_GLYPHS_OVERLAP"],
