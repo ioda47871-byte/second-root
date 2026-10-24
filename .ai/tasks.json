@@ -4566,6 +4566,50 @@
         "v3 の実 Codex 画像生成",
         "研究記録を human_reviewed にすること"
       ]
+    },
+    {
+      "id": "DEV-104",
+      "title": "生成画像の評価で主観点数だけを断定せず、v2/v3の根拠ある比較と次のオリジナルデザイン方針を研究専用で記録する",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-102"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-104-design-critique",
+      "purpose": "v3を見ただけで23/25点・明確にv2より上と断定した誤判断を再発させない。観察可能な見た目と未確認のmobile/CSS fidelityを分け、両方の長所を活かす次のアートディレクションをCodex再実行前に整理する。",
+      "acceptance_criteria": [
+        "確認したdesktop compのみを根拠に、v2/v3の7観点の得失と未確認事項を明示する",
+        "プレビューPNGのshaを実WSL原本のshaと混同せず、formal bundle intake/owner acceptanceと分離",
+        "未確認のmobile/実装品質から優劣を出すことを拒否し、本人承認や新画像実行を偽造不可にする",
+        "空の装飾線や商品画像弱化などv3の後退を明記し、店の事実から構成を改善する研究用デザイン方針を作る",
+        "既存の25点・22点合格・各項目4点以上・禁止事項・v1/v2/v3固定promptと全CIを無変更で維持"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-design-comparison.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/design-agent/comp-impl/phase-a.test.ts",
+        "npm run typecheck",
+        "npm run check:secrets",
+        "CI required checks and independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/design-comparison.ts",
+        "tests/unit/design-agent/design-image-design-comparison.test.ts",
+        "design-library/poc/wagashi-v2-v3-review-provisional.json",
+        "docs/design/wagashi-design-critique-and-next-direction.md",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "既存のeval rubric・evaluationVerdict・品質閾値やhard failの変更",
+        "画像生成実行、pinned v1/v2/v3 prompt、実WSL、worker、bridge、timer、DB、Staging、Production、main",
+        "デザイン研究をhuman_reviewedへ昇格、参考画像の転載、事実・価格の捏造"
+      ],
+      "human_approval_triggers": [
+        "新たな実Codex画像生成・v4生成プロンプト実行には別途明示承認",
+        "このレポートは暫定であり、正式評価・実装・公開には従来の人間確認と承認が必要"
+      ]
     }
   ]
 }
