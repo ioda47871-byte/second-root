@@ -4468,7 +4468,7 @@
     {
       "id": "DEV-101",
       "title": "研究参照先の不整合（DR-032 ほか）を確認記録で訂正し、A02・A07・A09 中心の和菓子実験方針と生成用プロンプト（未実行）を用意する",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-100"
