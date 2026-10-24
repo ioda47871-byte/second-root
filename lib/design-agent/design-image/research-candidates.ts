@@ -75,6 +75,15 @@ export function parseResearchCandidates(input: unknown, previousUrls: readonly s
   if (batch.references.length !== batch.record_count) throw new ResearchCandidateError("count_mismatch");
   const ids = batch.references.map((r) => r.id);
   if (new Set(ids).size !== ids.length) throw new ResearchCandidateError("duplicate_id");
+  // v0.3 is append-only: DX-001 starts after the immutable 40-item v0.2 baseline.
+  // Enforcing the next expected range prevents ID reuse across separately parsed batches,
+  // even though previousUrls (which also includes v0.2) contains no DX IDs.
+  if (previousUrls.length < 40) throw new ResearchCandidateError("missing_v02_baseline");
+  const candidateOffset = previousUrls.length - 40;
+  for (const [index, id] of ids.entries()) {
+    const expected = `DX-${String(candidateOffset + index + 1).padStart(3, "0")}`;
+    if (id !== expected) throw new ResearchCandidateError("nonsequential_candidate_id");
+  }
   const prior = new Set(previousUrls.map(referenceUrlKey));
   const within = new Set<string>();
   for (const source of batch.references) {
