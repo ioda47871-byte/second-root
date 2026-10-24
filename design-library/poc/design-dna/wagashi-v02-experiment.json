@@ -26,6 +26,14 @@
   ],
   "references": [
     {
+      "id": "DR-024",
+      "url": "https://brik.co.jp/gallery/detail/4719",
+      "scope": "public_visual_only",
+      "observed_principle": "左上の黒い店名ロゴ、右上の小さなナビ、木目の写真を白い額縁のような周囲の余白で際立たせる。",
+      "transferable_idea": "Only the principle: one food image held inside generous margins, like a frame, under a rigid small header; no layout, image or wording is reused.",
+      "rights": "analysis_only"
+    },
+    {
       "id": "DR-022",
       "url": "https://soine.jp/works/detail/works001",
       "scope": "public_visual_only",
@@ -34,19 +42,11 @@
       "rights": "analysis_only"
     },
     {
-      "id": "DR-027",
-      "url": "https://bake-jp.com/info/abitecoffee_202609launch/",
+      "id": "DR-023",
+      "url": "https://note.com/__108ko/n/nd7b482f192c3",
       "scope": "public_visual_only",
-      "observed_principle": "生成りの地色、濃茶の太いロゴタイプ、粒子を思わせるドット模様の抽象図形。",
-      "transferable_idea": "Only the principle: a simple dot rhythm can be a brand's memory point when a fact supports it; that brand's logo and pattern are not imitated.",
-      "rights": "analysis_only"
-    },
-    {
-      "id": "DR-032",
-      "url": "https://note.com/mexce/n/nccbf8d44a745",
-      "scope": "public_visual_only",
-      "observed_principle": "ごく淡いオフホワイト地、中央の大きなセリフ体ロゴと左寄りの小さな和文説明、点のようなスクロール指示。",
-      "transferable_idea": "Only the principle: a near-white ground, one large serif name and small grouped facts read as quiet and premium without decoration.",
+      "observed_principle": "広い淡色の余白の中、ケーキ写真を島のように置き、右端に日本語縦書きを入れる。",
+      "transferable_idea": "Only the principle: vertical Japanese type can sit beside product imagery in pale open space; the cake site's composition is not reused.",
       "rights": "analysis_only"
     },
     {
@@ -54,64 +54,72 @@
       "url": "https://xd.5star.co.jp/work/1649/",
       "scope": "public_visual_only",
       "observed_principle": "白い面と薄い緑、中央の縦方向の日本語説明、下部の茶葉・茶碗と小さな説明を整列した構図。",
-      "transferable_idea": "Only the principle: a loud opening, a calm middle and a precise information part give a short page its rhythm.",
+      "transferable_idea": "Only the principle of a calm section rhythm (that brand avoids a premium identity, so it is not cited for luxury or for its animation).",
+      "rights": "analysis_only"
+    },
+    {
+      "id": "DR-037",
+      "url": "https://junni.co.jp/works/vita/",
+      "scope": "public_visual_only",
+      "observed_principle": "白い画面の上端に小さなタイプロゴ、中心に横長の店内写真、その下に非常に細い情報の区切り。",
+      "transferable_idea": "Only the principle: a small type logo above one quiet image block and a very thin information divider keep a page calm.",
       "rights": "analysis_only"
     }
   ],
   "decisions": [
     {
       "part": "hero",
-      "choice": "The four-kanji name stands as one tall vertical column on the right third; the approved dorayaki concept crop sits in a framed window on the left half with open ground between them; no button block, one hairline text link.",
-      "rationale": "A four-kanji name is short enough to read top to bottom, and the owner asked for more than a left-right photo split, so the name becomes the vertical axis.",
+      "choice": "An asymmetric hero, not a left-right split: the approved dorayaki crop in a framed window on the left with wide paper ground around it, the four-kanji name as one tall vertical column on the right, and a steep size drop to a small header and a quiet text link.",
+      "rationale": "The owner asked for more than a plain split and two equal cards; a framed image plus a vertical name gives one clear focal pair instead of two halves.",
       "evidence_ids": [
         "brand",
+        "owner_premium"
+      ],
+      "reference_ids": [
+        "DR-024"
+      ]
+    },
+    {
+      "part": "typography",
+      "choice": "The name alone is set vertically in a large refined Mincho; nav, section headings, the description line and every fact stay horizontal at reading size.",
+      "rationale": "A four-kanji name reads well top to bottom, while hours, address and phone must stay horizontal to be read; only the name changes axis.",
+      "evidence_ids": [
+        "brand"
+      ],
+      "reference_ids": [
+        "DR-022",
+        "DR-023"
+      ]
+    },
+    {
+      "part": "palette",
+      "choice": "Kinari ground over most of the page, sumi text, and a deep azuki tone used only as one thin rule under the active nav and a hairline above the ledger; no filled button and no decorative mark.",
+      "rationale": "The one accent takes its hue from the shop's own tsubu-an, and keeping it to hairlines answers the owner's request for a quieter, more premium page.",
+      "evidence_ids": [
+        "making",
         "owner_premium"
       ],
       "reference_ids": []
     },
     {
-      "part": "typography",
-      "choice": "The four-kanji name set vertically in a large Mincho as the one vertical accent; nav and facts stay small horizontal sans at a readable body size.",
-      "rationale": "A short kanji name reads well top to bottom, while hours, address and phone must stay horizontal; only the name changes axis and grows.",
-      "evidence_ids": [
-        "owner_premium"
-      ],
-      "reference_ids": [
-        "DR-022"
-      ]
-    },
-    {
-      "part": "palette",
-      "choice": "Kinari ground on most of the page, sumi text, and one deep azuki-plum used only for the dot mark and the active nav item; no filled red button.",
-      "rationale": "The single accent comes from the azuki of the shop's own tsubu-an, and keeping it off large fills keeps the page quiet as the owner asked.",
-      "evidence_ids": [
-        "making",
-        "owner_premium"
-      ],
-      "reference_ids": [
-        "DR-032"
-      ]
-    },
-    {
       "part": "product_visual",
-      "choice": "At most two approved concept crops, never as equal cards: one large in the hero window, one small inset beside a verbatim description line; a short row of small round dots is the photo-free memory point.",
-      "rationale": "The dots stand for the azuki grains of tsubu-an cooked every morning, a mark that exists only because of this shop's fact.",
+      "choice": "Two approved concept crops of clearly different sizes, never a row of equal cards: the dorayaki large in the hero frame, the seasonal namagashi small beside the description line; no dots or other invented marks.",
+      "rationale": "The description names exactly two things, seasonal namagashi and tsubu-an dorayaki, so two images of unequal weight carry it without filler.",
       "evidence_ids": [
         "making"
       ],
-      "reference_ids": [
-        "DR-027"
-      ]
+      "reference_ids": []
     },
     {
       "part": "section_rhythm",
-      "choice": "Each section has a different lead: the vertical name in the hero, one verbatim description sentence set large in the middle, a narrow factual ledger last.",
+      "choice": "Each section has a different lead: the framed image and vertical name in the hero, one verbatim description sentence set large in the middle, a narrow factual ledger last.",
       "rationale": "The description moves from the morning's tsubu-an to wrapping each sweet at the small shopfront, so the middle section is led by words, not a second image row.",
       "evidence_ids": [
         "making"
       ],
       "reference_ids": [
-        "DR-021"
+        "DR-021",
+        "DR-037"
       ]
     },
     {
@@ -134,10 +142,10 @@
     },
     {
       "part": "implementation",
-      "choice": "Within the current comp-impl CSS allowlist: the vertical name as a one-character-wide box (no writing-mode), dots as small rounded boxes, no gradients or overlapping layers; keep a header, three sections and a ledger.",
-      "rationale": "v1 (photo-free, poster-like) failed as a web page; keeping a real header, sections and ledger avoids that, and the allowlist needs no new approval.",
+      "choice": "The comp shows true vertical type; the build either gets the writing-mode capability approved (DEV-083) or keeps the name horizontal. A one-character-wide box is not used to fake vertical type.",
+      "rationale": "Real vertical setting is outside the current page CSS allowlist, and a stacked one-character box breaks spacing and polish, so the build must not pretend it is the same.",
       "evidence_ids": [
-        "making"
+        "brand"
       ],
       "reference_ids": []
     }

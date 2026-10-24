@@ -6,7 +6,7 @@ import { DESIGN_DNA_FIXTURE_DIR, parseDesignDna, sharedDesignDnaParts } from "@/
 import { selectDesignResearch } from "@/lib/design-agent/design-image/research-bridge";
 import {
   RESEARCH_V02_DIR, RESEARCH_V02_LIBRARY_FILE, RESEARCH_V02_LIBRARY_SHA256, ResearchV02Error,
-  exploreV02Techniques, parseResearchLibraryV02, toResearchSnapshot, type V02ShopProfile,
+  RESEARCH_V02_URL_CHECKS_FILE, exploreV02Techniques, parseResearchLibraryV02, parseV02UrlChecks, toResearchSnapshot, type V02ShopProfile,
 } from "@/lib/design-agent/design-image/research-v02";
 
 const read = (path: string) => readFileSync(join(process.cwd(), path));
@@ -15,8 +15,10 @@ const rawLibrary = () => JSON.parse(read(join(RESEARCH_V02_DIR, RESEARCH_V02_LIB
 const library = () => parseResearchLibraryV02(rawLibrary());
 const wagashi: V02ShopProfile = {
   shop_key: "wagashi", name: "架空菓庵", fact_count: 5, imagery: "ai_concept_local", owner_tones: ["luxury"],
-  fact_motif: { evidence_id: "making", motif: "a short row of small round dots read as the azuki grains of the tsubu-an cooked every morning" },
+  // DEV-101: no decorative motif is forced on this shop (the dot mark was judged weak)
+  fact_motif: null,
 };
+const checks = () => parseV02UrlChecks(JSON.parse(read(join(RESEARCH_V02_DIR, RESEARCH_V02_URL_CHECKS_FILE)).toString("utf8")), library());
 const experiment = () => JSON.parse(read(join(DESIGN_DNA_FIXTURE_DIR, "wagashi-v02-experiment.json")).toString("utf8")) as unknown;
 
 describe("design research v0.2 import", () => {
@@ -60,7 +62,7 @@ describe("design research v0.2 import", () => {
   });
 
   it("cannot make the bridge call v0.2 research reviewed: the experimental brief stays insufficient", () => {
-    const plan = selectDesignResearch(experiment(), toResearchSnapshot(library()));
+    const plan = selectDesignResearch(experiment(), toResearchSnapshot(library(), checks()));
     expect(plan.status).toBe("insufficient_reviewed_sources");
     expect(plan.selected).toEqual([]);
     expect(plan.image_generation_approved).toBe(false);
@@ -68,15 +70,31 @@ describe("design research v0.2 import", () => {
 });
 
 describe("shop-specific exploration of v0.2 cards", () => {
-  it("picks 2–4 cards for the wagashi shop from its own inputs, with visually observed references only", () => {
-    const x = exploreV02Techniques(library(), wagashi);
+  it("picks A02, A07 and A09 for the wagashi shop: A04 has no reference that survived the URL check, A03 is not forced", () => {
+    const x = exploreV02Techniques(library(), wagashi, checks());
     expect(x.status).toBe("exploratory_unreviewed");
     expect(x.image_generation_approved).toBe(false);
-    expect(x.picks.map((p) => p.card_id)).toEqual(["A02", "A03", "A04", "A07"]);
+    expect(x.picks.map((p) => p.card_id)).toEqual(["A02", "A07", "A09"]);
     const refs = x.picks.flatMap((p) => p.references);
-    expect(refs.every((r) => !["discovered_needs_visual_review", "content_reviewed_visual_pending"].includes(r.original_review_status))).toBe(true);
-    expect(x.picks.every((p) => p.reasons.length > 0)).toBe(true);
-    expect(x.not_picked.find((n) => n.card_id === "A01")!.reason).toMatch(/no verified input/);
+    expect(refs.every((r) => r.url_check === "subject_matches" || r.url_check === "subject_matches_observation_not_in_text")).toBe(true);
+    expect(refs.map((r) => r.id)).not.toEqual(expect.arrayContaining(["DR-032"]));
+    expect(x.not_picked.find((n) => n.card_id === "A04")!.reason).toMatch(/URL was checked/);
+    expect(x.not_picked.find((n) => n.card_id === "A03")!.reason).toMatch(/no verified input/);
+  });
+
+  it("drops references whose URL shows something else, and cards left with none, from the bridge snapshot", () => {
+    const snap = toResearchSnapshot(library(), checks());
+    for (const gone of ["DR-020", "DR-027", "DR-028", "DR-031", "DR-032", "DR-034"]) expect(snap.sources.map((s) => s.id)).not.toContain(gone);
+    expect(snap.technique_cards.map((c) => c.id)).not.toContain("A04");
+    expect(snap.technique_cards.find((c) => c.id === "A01")!.source_ids).toEqual(["DR-030"]);
+    // the library itself is unchanged: DR-032 is still recorded there as the original says
+    expect(library().references.find((r) => r.id === "DR-032")!.name).toBe("CALLOSUM");
+  });
+
+  it("refuses a URL-check file that names an unknown reference or another URL", () => {
+    const raw = JSON.parse(read(join(RESEARCH_V02_DIR, RESEARCH_V02_URL_CHECKS_FILE)).toString("utf8")) as { checks: { id: string; url: string }[] };
+    raw.checks[0]!.url = "https://example.com/elsewhere";
+    expect(() => parseV02UrlChecks(raw, library())).toThrow(ResearchV02Error);
   });
 
   it("chooses differently for a different shop, never from the industry name, and never mixes A04 with A05", () => {
@@ -98,7 +116,7 @@ describe("the experimental wagashi direction (v0.2 research)", () => {
   it("is a valid Design DNA brief citing only visually observed v0.2 references that match the picks", () => {
     const brief = parseDesignDna(experiment());
     const lib = library();
-    const picked = new Set(exploreV02Techniques(lib, wagashi).picks.flatMap((p) => p.references.map((r) => r.id)));
+    const picked = new Set(exploreV02Techniques(lib, wagashi, checks()).picks.flatMap((p) => p.references.map((r) => r.id)));
     for (const r of brief.references) {
       const original = lib.references.find((o) => new URL(o.reference_url).href === r.url && o.id === r.id);
       expect(original, r.id).toBeDefined();
@@ -106,9 +124,9 @@ describe("the experimental wagashi direction (v0.2 research)", () => {
     }
   });
 
-  it("cites each reference under the part its picked card is assigned to (the bridge links all four once a person reviews them)", () => {
+  it("cites each reference under the part its picked card is assigned to (the bridge links all three once a person reviews them)", () => {
     const brief = parseDesignDna(experiment());
-    const picks = exploreV02Techniques(library(), wagashi).picks;
+    const picks = exploreV02Techniques(library(), wagashi, checks()).picks;
     for (const d of brief.decisions)
       for (const ref of d.reference_ids) {
         const card = picks.find((p) => p.part === d.part);
@@ -116,7 +134,7 @@ describe("the experimental wagashi direction (v0.2 research)", () => {
         expect(card!.references.map((r) => r.id), `${d.part} cites ${ref}`).toContain(ref);
       }
     // only to prove the links: a hypothetical review of exactly the picked cards and their sources
-    const snap = toResearchSnapshot(library());
+    const snap = toResearchSnapshot(library(), checks());
     const reviewed = { status: "human_reviewed" as const, reviewer: "hypothetical_test_reviewer", reviewed_at: "2026-10-24T00:00:00Z" };
     const pickedCards = new Set(picks.map((p) => p.card_id));
     const pickedRefs = new Set(picks.flatMap((p) => p.references.map((r) => r.id)));
@@ -124,13 +142,14 @@ describe("the experimental wagashi direction (v0.2 research)", () => {
     for (const src of snap.sources) if (pickedRefs.has(src.id)) src.review = reviewed;
     const plan = selectDesignResearch(experiment(), snap);
     expect(plan.selected.map((x) => [x.part, x.technique_id])).toEqual([
-      ["typography", "A02"], ["palette", "A04"], ["product_visual", "A03"], ["section_rhythm", "A07"],
+      ["hero", "A09"], ["typography", "A02"], ["section_rhythm", "A07"],
     ]);
     expect(plan.status).toBe("review_ready");
   });
 
   it("shares no decision with the existing wagashi brief, and keeps the fixture's wording (店頭, not a counter)", () => {
     expect(JSON.stringify(experiment())).not.toMatch(/counter/i);
+    expect(JSON.stringify(experiment())).not.toMatch(/DR-032|DR-027/);
     const current = parseDesignDna(JSON.parse(read(join(DESIGN_DNA_FIXTURE_DIR, "wagashi.json")).toString("utf8")));
     expect(sharedDesignDnaParts(parseDesignDna(experiment()), current)).toEqual([]);
   });

@@ -1,0 +1,78 @@
+{
+  "version": "0.4-research-exp",
+  "status": "experimental_unreviewed",
+  "fixture": "wagashi",
+  "based_on": {
+    "design_dna": "wagashi-v02-experiment.json",
+    "research_library_sha256": "ed4b79dcace883ca1796c11b9817ac4e0f2cbd7c2bd0d60b183bb0f8193bf0d0",
+    "url_checks": "url-checks-20261024.json",
+    "cards": [
+      "A02",
+      "A07",
+      "A09"
+    ],
+    "not_used": "A03 (a decorative mark judged weak), A04 (no reference survived the URL check), A01/A05/A06/A08 (no supporting input or reference)"
+  },
+  "policy_note": "Same image policy as v2 (owner, 2026-10-21): AI concept images of the wagashi are allowed; a store, people, logos, copied designs and realism claims are not.",
+  "theme": "A quiet, contemporary wagashi page with one clear focal pair: a framed image of the sweets and the shop name standing vertically beside it. Restraint instead of decoration; kinari paper, sumi ink and one azuki-toned hairline.",
+  "palette": [
+    {
+      "name": "kinari 生成り",
+      "hex": "#F4EEE3",
+      "use": "page background, most of the page"
+    },
+    {
+      "name": "pale kinari",
+      "hex": "#EAE1D2",
+      "use": "the information ledger band only"
+    },
+    {
+      "name": "sumi 墨黒",
+      "hex": "#1F1D1B",
+      "use": "the shop name, headings, body and fact text"
+    },
+    {
+      "name": "warm grey 灰茶",
+      "hex": "#8C8379",
+      "use": "labels and hairline dividers"
+    },
+    {
+      "name": "azuki 小豆",
+      "hex": "#6B2F2A",
+      "use": "one thin rule under the active nav and one hairline above the ledger; never a fill, never a button"
+    }
+  ],
+  "sections": [
+    {
+      "id": "Hero",
+      "layout": "Asymmetric, not a left-right split. Left: the AI concept image of a dorayaki cut in half, in a framed window with wide kinari ground around it. Right: the shop name 架空菓庵 set VERTICALLY (縦書き, top to bottom) in a large refined Mincho as one tall column. A steep size drop to the small horizontal header and to one quiet text link (no filled button)."
+    },
+    {
+      "id": "Products",
+      "layout": "Led by words, not by cards. The heading, then one sentence copied verbatim from the description set large in Mincho, horizontally; beside it one small framed AI concept image of a seasonal jō-namagashi. Never a row of equal product cards."
+    },
+    {
+      "id": "ShopInfo",
+      "layout": "A narrow, precise ledger on the pale kinari band: a definition list (label, value) with hairline rules, all horizontal."
+    }
+  ],
+  "visuals": {
+    "lighting": "Soft directional daylight from one side, gentle shadows, warm but natural colour.",
+    "surfaces": "Abstract materials only: washi paper, a pale wooden tray, a matte ceramic plate, linen. No room, counter or shop setting.",
+    "hero": "The dorayaki cut cleanly in half: golden-brown castella layers and glossy tsubu-an with whole azuki beans.",
+    "inset": "One seasonal jō-namagashi on a matte plate, small and quiet."
+  },
+  "web_ui": {
+    "nav": [
+      "商品・こだわり",
+      "店舗情報"
+    ],
+    "link": "店舗情報を見る",
+    "info_labels": [
+      "営業時間",
+      "定休日",
+      "住所",
+      "電話"
+    ]
+  }
+}

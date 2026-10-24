@@ -116,17 +116,59 @@ export function parseResearchLibraryV02(raw: unknown): ResearchLibraryV02 {
  */
 export const V02_CARD_PART: Readonly<Record<string, DesignDnaPart>> = {
   A01: "hero", A02: "typography", A03: "product_visual", A04: "palette", A05: "palette",
-  A06: "hero", A07: "section_rhythm", A08: "product_visual", A09: "typography",
+  A06: "hero", A07: "section_rhythm", A08: "product_visual", A09: "hero",
+};
+
+/**
+ * A later check of whether each reference URL actually shows what the library
+ * says (design-library/research/v02/url-checks-*.json). It is not a human
+ * review and never rewrites the library: it only removes references whose URL
+ * shows something else, does not show the observation, cannot be opened, or is
+ * not web design, and marks the rest with what was found.
+ */
+export const URL_CHECK_RESULTS = [
+  "subject_matches", "subject_matches_observation_not_in_text",
+  "not_web_design", "url_points_elsewhere", "observation_not_on_page", "unreachable",
+] as const;
+export type UrlCheckResult = (typeof URL_CHECK_RESULTS)[number];
+const USABLE: ReadonlySet<UrlCheckResult> = new Set(["subject_matches", "subject_matches_observation_not_in_text"]);
+const UrlChecks = z.object({
+  check_version: z.literal(1),
+  checked_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  checks: z.array(z.object({ id: z.string().regex(/^DR-\d{3}$/), url: z.string(), result: z.enum(URL_CHECK_RESULTS), checked_by: z.string().min(3).max(200), note: z.string().min(3).max(400) })).min(1).max(40),
+});
+export type V02UrlChecks = ReadonlyMap<string, UrlCheckResult>;
+export const RESEARCH_V02_URL_CHECKS_FILE = "url-checks-20261024.json";
+
+/** Parses a URL-check file against the library: every id exists once and names the library's own URL. */
+export function parseV02UrlChecks(raw: unknown, lib: ResearchLibraryV02): V02UrlChecks {
+  const parsed = UrlChecks.safeParse(raw);
+  if (!parsed.success) throw new ResearchV02Error("url_checks:schema");
+  const byId = new Map(lib.references.map((r) => [r.id, r]));
+  const out = new Map<string, UrlCheckResult>();
+  for (const c of parsed.data.checks) {
+    const ref = byId.get(c.id);
+    if (!ref || ref.reference_url !== c.url || out.has(c.id)) throw new ResearchV02Error("url_checks:mismatch");
+    out.set(c.id, c.result);
+  }
+  return out;
+}
+const rejectedByCheck = (checks: V02UrlChecks | undefined, id: string) => {
+  const r = checks?.get(id);
+  return r !== undefined && !USABLE.has(r);
 };
 
 /** The original library as a DEV-099 bridge snapshot: every source and card a `candidate`, original labels kept. */
-export function toResearchSnapshot(lib: ResearchLibraryV02): DesignResearchSnapshot {
+export function toResearchSnapshot(lib: ResearchLibraryV02, checks?: V02UrlChecks): DesignResearchSnapshot {
   const candidate = { status: "candidate" as const, reviewer: null, reviewed_at: null };
+  const offered = lib.references.filter((r) => r.review_status !== "discovered_needs_visual_review" && !rejectedByCheck(checks, r.id));
+  const offeredIds = new Set(offered.map((r) => r.id));
   return parseDesignResearchSnapshot({
     schema_version: 1,
     status: "research_only",
     // a reference nobody has looked at (no observation at all) is kept in the library file but not offered as a source
-    sources: lib.references.filter((r) => r.review_status !== "discovered_needs_visual_review").map((r) => ({
+    // nor is a reference whose URL check found it does not support the record
+    sources: offered.map((r) => ({
       id: r.id,
       url: r.reference_url,
       scope: r.review_status === "content_reviewed_visual_pending" ? "site_structure_only" : "public_visual_only",
@@ -136,13 +178,14 @@ export function toResearchSnapshot(lib: ResearchLibraryV02): DesignResearchSnaps
       review: candidate,
       provenance: { library: "design_research_v02", original_id: r.id, original_review_status: r.review_status },
     })),
-    technique_cards: lib.design_techniques_v02.map((c) => {
+    // a card keeps only the sources still offered; a card left with none is not offered either
+    technique_cards: lib.design_techniques_v02.filter((c) => c.observed_reference_ids.some((r) => offeredIds.has(r))).map((c) => {
       const part = V02_CARD_PART[c.id];
       if (!part) throw new ResearchV02Error("library:card_without_part");
       return {
         id: c.id,
         part,
-        source_ids: c.observed_reference_ids,
+        source_ids: c.observed_reference_ids.filter((r) => offeredIds.has(r)),
         transferable_principle: c.technique,
         use: `${c.label}：${c.when_to_use}`,
         avoid: c.avoid,
@@ -176,7 +219,8 @@ export type V02Pick = {
   /** Why this shop: each reason names the input it rests on. */
   reasons: string[];
   /** Only references whose visuals were observed; each keeps the original review label. */
-  references: { id: string; url: string; original_review_status: V02ReviewStatus }[];
+  /** With URL checks given: only references whose URL was checked and shows the recorded subject. */
+  references: { id: string; url: string; original_review_status: V02ReviewStatus; url_check: UrlCheckResult | "not_checked" }[];
 };
 export type V02Exploration = {
   kind: "v02_technique_exploration";
@@ -201,7 +245,7 @@ const ORDER = ["A02", "A03", "A01", "A04", "A05", "A08", "A07", "A09", "A06"] as
  * industry name; A04 (quiet black-white) and A05 (loud colour stripe) are never
  * mixed. Fewer than two eligible cards is an error, not a padded answer.
  */
-export function exploreV02Techniques(lib: ResearchLibraryV02, profile: V02ShopProfile): V02Exploration {
+export function exploreV02Techniques(lib: ResearchLibraryV02, profile: V02ShopProfile, checks?: V02UrlChecks): V02Exploration {
   const name = profile.name.trim();
   const chars = [...name].length;
   const tones = new Set(profile.owner_tones);
@@ -238,8 +282,13 @@ export function exploreV02Techniques(lib: ResearchLibraryV02, profile: V02ShopPr
     const references = card.observed_reference_ids
       .map((r) => refById.get(r)!)
       .filter((r) => VISUALLY_OBSERVED.has(r.review_status))
-      .map((r) => ({ id: r.id, url: new URL(r.reference_url).href, original_review_status: r.review_status }));
-    if (!references.length) { notPicked.push({ card_id: id, reason: "no visually observed reference" }); continue; }
+      // with checks, an unchecked reference does not count: only a URL seen to show the recorded subject does
+      .filter((r) => !checks || USABLE.has(checks.get(r.id) ?? "unreachable"))
+      .map((r) => ({ id: r.id, url: new URL(r.reference_url).href, original_review_status: r.review_status, url_check: checks?.get(r.id) ?? ("not_checked" as const) }));
+    if (!references.length) {
+      notPicked.push({ card_id: id, reason: checks ? "no reference whose URL was checked and shows the recorded subject" : "no visually observed reference" });
+      continue;
+    }
     picks.push({ card_id: id, key: card.key, label: card.label, part: V02_CARD_PART[id]!, reasons: [reason], references });
   }
   if (picks.length < 2) throw new ResearchV02Error("exploration:too_few_cards");

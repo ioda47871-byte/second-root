@@ -19,6 +19,11 @@
   name — and labels the result `exploratory_unreviewed`. Only references whose visuals were observed are
   cited. Example: `docs/design/wagashi-v02-research-direction.md`.
 - For a `review_ready` bridge report a person must review the cited sources and cards and record it.
+- **URL check (DEV-101, 2026-10-24):** `url-checks-20261024.json` records, for 13 references, whether the URL shows the
+  recorded subject (page text only; not a human review). With it, `toResearchSnapshot` and `exploreV02Techniques`
+  drop references whose URL shows something else, does not show the observation, cannot be opened or is not web
+  design (DR-020, 027, 028, 031, 032, 034), and count only checked, matching references. A04 loses all three of its
+  references. The originals are unchanged.
 
 The existing `design-library/poc/design-dna/*.json` briefs are research-only and are not a live input to `buildMockupPrompt`. The earlier wagashi v2 real image (SHA256 `101c1c04eaef8ff957eae910c6ab1b72b6444645a4a3952aed0156ce60da91ac`) and the local faithful implementation are the baseline. The **pinned v2 prompt** remains unchanged: SHA256 `7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa` (6801 characters).
 
