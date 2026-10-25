@@ -59,7 +59,7 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
       timeout: 5000,
     });
     expect(run.status).not.toBe(0);
-    expect(run.stdout).toMatch(/sr-designgen jail required/);
+    expect(run.stdout).toMatch(/sr-designgen user required/);
   });
 
   it("pin check precedes approval consumption, which precedes the existing one-call PoC", () => {
