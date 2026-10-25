@@ -21,9 +21,10 @@ if ! grep -qx '0::/system.slice/sr-jail-claude.service' /proc/self/cgroup; then
   exit 2
 fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-exec env SR_DESIGN_WORKER_REF=develop SR_DESIGN_WORKER_NO_UPDATE=0 SR_DESIGN_IMAGE_POC_DIRECTION=v4 \
+exec env SR_DESIGN_WORKER_REF=develop SR_DESIGN_WORKER_NO_UPDATE=1 SR_DESIGN_IMAGE_POC_DIRECTION=v4 \
   bash "$HERE/design-image-poc.sh" \
   --human-approval-confirmed \
   --expected-prompt-sha256 4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9 \
   --expected-prompt-chars 4714 \
+  --expected-commit 9b79163825368d53bc066693b03cc21f7702b67d \
   --approval-id wagashi-a-v4-20261025-01
