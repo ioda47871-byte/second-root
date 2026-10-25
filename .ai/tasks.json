@@ -4566,6 +4566,56 @@
         "v3 の実 Codex 画像生成",
         "研究記録を human_reviewed にすること"
       ]
+    },
+    {
+      "id": "DEV-105",
+      "title": "旧40件を改変せず、美容・整体・飲食など40件の出典付き追加候補を2バッチで収集・検査する",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-100"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-105-design-reference-expansion",
+      "purpose": "40件の過去のデザイン研究の偏りを補うため、ページ本文と掲載ギャラリーを個別に確認した40件の候補を追加する。過去に存在した誤帰属を防ぎ、情報源と仮説、審査前/後を分離する。",
+      "acceptance_criteria": [
+        "v0.2原本40件・9技法・固定SHAおよび既存画像プロンプトを変更しない",
+        "v03別ファイル2つに15+25=40件の追加候補を保存し、合計80件の参考候補として正確に数える",
+        "公式サイトと第三者ギャラリーの出典種別、ページ本文/タグで確認したこと、未確認の応用仮説を分離",
+        "1440/390pxと相互作用・権利を人が確認しない限り候補のまま、human_reviewed=0で画像生成に未接続",
+        "旧40・新15・新25をまたいだURL重複やID重複、不正URL・資料転載・根拠なき審査昇格を拒否するテスト",
+        "新たな実Codex、WSL、worker、DB、Staging、Production、main、既存CI/安全閾値に変更がない",
+        "CIと独立Fresh Reviewの従来条件を満たすまでfeature→developへマージしない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-research-candidates.test.ts",
+        "tests/unit/design-agent/design-image-research-v02.test.ts",
+        "tests/unit/design-agent/design-image-design-comparison.test.ts",
+        "npm run typecheck",
+        "npm run check:secrets",
+        "required CI and Fresh Review"
+      ],
+      "allowed_scope": [
+        "design-library/research/v03/candidates-20261025-01.json",
+        "design-library/research/v03/candidates-20261025-02.json",
+        "lib/design-agent/design-image/research-candidates.ts",
+        "tests/unit/design-agent/design-image-research-candidates.test.ts",
+        "docs/design/design-reference-expansion-v03.md",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "design-library/research/v02/ 元ファイル, 固定SHAと既存v2/v3プロンプト",
+        "人間未承認の研究元をhuman_reviewedに昇格",
+        "他社の画像・ロゴ・CSSの保存・再利用、勝手なWeb収集bot",
+        "実Codex、WSL、worker、sales/CRM、Supabase、Production、main",
+        "CIや品質評価閾値の弱体化"
+      ],
+      "human_approval_triggers": [
+        "原本サイトの1440/390px視覚レビューを実行し人間審査済みにする際の実際の人間による確認",
+        "画像生成に組み込むことや実Codex1回は別途承認",
+        "自動巡回/新規外部API費用/本番DB変更は別途承認"
+      ]
     }
   ]
 }
