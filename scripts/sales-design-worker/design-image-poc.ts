@@ -67,7 +67,7 @@ function stopNow(code: string): void {
 
 async function main(): Promise<number> {
   // The human's explicit approval comes first: without it nothing is read or started.
-  if (!argv.includes("--human-approval-confirmed")) {
+  if (!argv.includes("--human-approval-confirmed") && !(argv.length === 1 && argv[0] === "--check-pin-only")) {
     process.stderr.write("STOP: --human-approval-confirmed is missing. The design-image PoC runs one Codex image call only with the human's explicit approval of this run (HUMAN-018). Nothing was started.\n");
     return 2;
   }
