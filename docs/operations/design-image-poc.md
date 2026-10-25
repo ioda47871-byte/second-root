@@ -1409,6 +1409,24 @@ the budget and the stop codes. The log line must say `direction v3`.
 approved**. Until a person approves it, the build sets the name horizontally. With it, the name needs a face with vertical
 metrics: the fallback face in the dev container had none, and its glyphs piled up (`VERTICAL_GLYPHS_OVERLAP`).
 
+### Direction v4: wagashi A, "The morning batch" (DEV-109)
+`SR_DESIGN_IMAGE_POC_DIRECTION=v4` selects DEV-107's wagashi direction A (`design-library/poc/wagashi-art-direction-v4-wagashi-a.json`,
+built by `prompt-wagashi-a.ts`; the review doc with the full prompt is `docs/design/wagashi-a-image-prompt.md`).
+
+- v4 is **independent** of v1-v3. v2 stays the default; the v1, v2 and v3 prompts and pins are unchanged.
+- v4 keeps every line of the v2 HARD RULES block word for word and is **no longer than the v1 prompt** (4754 chars, the one that produced an image).
+- Its FACTS block holds only verbatim quotes of the fixture that the page shows (no `テスト` items, no placeholder station or town).
+- The 390 px layout is specified in the direction file (`mobile_390`) and is **not** sent: the call draws the 1440 desktop comp only.
+
+| | v4 prompt |
+|---|---|
+| sha256 (UTF-8 bytes) | `4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9` |
+| length | 4714 chars |
+
+It is pinned in `design-image-prompt-wagashi-a.test.ts`. **The approval of a v4 run names this sha.** Before the run, check it with the
+command above, changing both `"v2"` (the `loadPocInputs` argument and the printed `v2_prompt_sha256=` label) to `"v4"`; the run itself is the v2 command with `SR_DESIGN_IMAGE_POC_DIRECTION=v4 ` before `./scripts/…`
+(1 Codex image call; the log line must say `direction v4` and `report.json` `prompt_chars` must be 4714). Not approved by preparing it.
+
 ### Run (HUMAN-019 was run on 2026-10-21: `CODEX_NO_IMAGE`; the next run is HUMAN-020, after DEV-077 is merged, with the same command)
 The same command as HUMAN-018; v2 is the default, so nothing is added:
 

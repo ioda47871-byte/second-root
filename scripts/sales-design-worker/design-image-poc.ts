@@ -14,8 +14,8 @@
  * Output (outside the repository): $SR_DESIGN_IMAGE_POC_ROOT or
  * ~/sr-design-image-poc/wagashi-XXXXXX/ (mockup.png, shop-facts.json,
  * design-spec.json, report.json). Printed: codes, numbers and that path only.
- * Direction: SR_DESIGN_IMAGE_POC_DIRECTION=v1|v2|v3 (unset: v2, the 第2案 of
- * DEV-075; v3 is the DEV-102 research experiment); any other value is refused (POC_DIRECTION_INVALID, exit 2). The
+ * Direction: SR_DESIGN_IMAGE_POC_DIRECTION=v1|v2|v3|v4 (unset: v2, the 第2案 of
+ * DEV-075; v3 is the DEV-102 research experiment, v4 the DEV-109 wagashi A prompt); any other value is refused (POC_DIRECTION_INVALID, exit 2). The
  * v2 direction is read by this PoC only, never by the worker or the site.
  * Diagnostics (DEV-077): after a run that got as far as the output root,
  * `POC_DIAG: <root>/diag-XXXXXX/diagnostics.json` and one line

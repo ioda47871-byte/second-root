@@ -24,7 +24,7 @@ const V3_PROMPT_SHA256 = "15d38b844702b9c0e3d32820ad1f526ac5a43b273e6f87083430e4
 
 describe("the v3 experimental prompt (DEV-101 prepared, DEV-102 selectable)", () => {
   it("is selectable as v3 beside v1 and v2 (v2 stays the default) and is the prompt the PoC builds for v3", async () => {
-    expect([...DIRECTION_VERSIONS]).toEqual(["v1", "v2", "v3"]);
+    expect([...DIRECTION_VERSIONS]).toEqual(["v1", "v2", "v3", "v4"]); // DEV-109 added v4 (prompt-wagashi-a.ts)
     expect(DEFAULT_DIRECTION_VERSION).toBe("v2");
     expect(parseDirectionVersion("v3")).toBe("v3");
     const inputs = await loadPocInputs(REPO, "v3");
