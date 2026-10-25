@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # DEV-110: one-command entry point for the owner's already-approved single
 # wagashi-A v4 local Codex image PoC. Run ONLY as sr-designgen inside admin.sh
-# jail ("admin.sh run sr-designgen -- /bin/bash <this file> --human-approval-confirmed").
+# jail, as the existing sr-jail-claude.service's browser-controlled Claude.
+# Not directly from ioda0, root, an unjailed shell, or an admin.sh run unit.
 # This script deliberately has no dry-run that might silently use an approval.
 set -euo pipefail
 if [ "$#" -ne 1 ] || [ "$1" != "--human-approval-confirmed" ]; then
