@@ -52,8 +52,14 @@ actually supported, which a shop-specific original design can then use.
 - **Capture problems.** Problem codes also record what the headless run did not show, for example
   `OPENING_SCREEN_NOT_CLEARED` (the page stayed on its opening animation), `FULLPAGE_DARK_BELOW_FOLD`,
   `SCROLL_REVEAL_NOT_RENDERED`, `LAZY_IMAGES_MISSING`, `TEXT_FADE_IN_PARTIAL`, `POSSIBLE_SLIDE_IN_MID_STATE` and
-  `HERO_CAROUSEL_ROTATES` (the first screen and the full page showed different slides). An aspect hidden this way is
-  `unknown`; a capture gap is not counted as a weakness of the design.
+  `HERO_CAROUSEL_ROTATES` (the first screen and the full page showed different slides). Where the design is seen only
+  indirectly: `DESIGN_SEEN_AS_REDUCED_IMAGE` (an agency's image of it), `DESIGN_SEEN_AS_GALLERY_THUMBNAIL`,
+  `GALLERY_SHOWS_OLDER_DESIGN`. An aspect hidden this way is `unknown`; a capture gap is not counted as a weakness of
+  the design.
+- **Fold shots.** `image_sha256` is the full-page screenshot. `FOLD_SHOT_USED` marks a capture whose observations come
+  from the first-screen shot instead. This applies to the DX-013 desktop retake: its full-page image stayed one solid
+  colour (`FULLPAGE_BLANK`), byte-identical to the first attempt, so its hash cannot tell the two runs apart. The
+  observations come from the retake's first-screen shot and page text.
 - **Capture method.** The first three cases were captured without scrolling. From DX-005 on, and for the one DX-013
   desktop retake the owner allowed, the page is scrolled through first so lazy and scroll-revealed content renders.
   Viewport screenshots at each step are kept locally (`STEP_SHOTS_USED` when an observation relies on them), and a

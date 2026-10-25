@@ -440,7 +440,9 @@
               "loaded_url": "https://design-kom.com/design/w048ontheway_cake/",
               "http_status": 200,
               "outcome": "loaded",
-              "problems": [],
+              "problems": [
+                "DESIGN_SEEN_AS_REDUCED_IMAGE"
+              ],
               "captured_at": "2026-10-25T03:27:06.772Z",
               "image_committed": false,
               "image_sha256": "fc53d9df6f6d9f6c29f120b60d1c8a55cf051d1554fe2515fc8c44bbce716354"
@@ -604,8 +606,7 @@
         }
       ],
       "weaknesses": [
-        "Seen only as the agency's reduced image of the desktop design; small text could not be read.",
-        "The brand site could not be opened over HTTPS, so the live design and its phone layout are unconfirmed."
+        "Each order type adds several sub-blocks, so the single column grows long before the store information appears."
       ],
       "desktop_vs_mobile": [],
       "do_not_transfer": [
@@ -641,7 +642,9 @@
               "loaded_url": "https://muuuuu.org/industry/restaurant/13421.html",
               "http_status": 200,
               "outcome": "loaded",
-              "problems": [],
+              "problems": [
+                "GALLERY_SHOWS_OLDER_DESIGN"
+              ],
               "captured_at": "2026-10-25T02:36:38.343Z",
               "image_committed": false,
               "image_sha256": "21167932d614bfa86726739f71d4195a2cde4a632027973930cab80cc6241d33"
@@ -654,7 +657,9 @@
               "loaded_url": "https://muuuuu.org/industry/restaurant/13421.html",
               "http_status": 200,
               "outcome": "loaded",
-              "problems": [],
+              "problems": [
+                "GALLERY_SHOWS_OLDER_DESIGN"
+              ],
               "captured_at": "2026-10-25T02:36:47.731Z",
               "image_committed": false,
               "image_sha256": "c2b1bf4a75393344f0a31056a4cef5c9497237cfdce8e283f27bb21b3dc5e6e8"
@@ -739,7 +744,7 @@
           "mobile_390": {
             "status": "observed",
             "page": "first_party_brand_site",
-            "note": "Same families; the five one-kanji value rows run past the right edge and are clipped on a phone."
+            "note": "Same families; in this capture the five one-kanji value rows ran past the right edge, possibly a slide-in caught mid-way (not confirmed)."
           }
         },
         "section_rhythm": {
@@ -804,11 +809,9 @@
         }
       },
       "design_features": [
-        "The gallery entry shows an older hero (a large English slogan) than the live site, so the gallery alone would have misled about the current design.",
         "A brand-values index: five one-kanji words, each with a thin leader line to short sub-topics.",
         "A store list grouped by brand, with a tiny region label above each Latin store name.",
-        "Action buttons pair an English label with a small Japanese label underneath.",
-        "On the phone capture the value rows ran past the right edge; whether that is a slide-in animation caught mid-way or a real overflow was not confirmed."
+        "Action buttons pair an English label with a small Japanese label underneath."
       ],
       "transferable_techniques": [
         {
@@ -875,7 +878,9 @@
               "loaded_url": "https://muuuuu.org/industry/restaurant/13585.html",
               "http_status": 200,
               "outcome": "loaded",
-              "problems": [],
+              "problems": [
+                "DESIGN_SEEN_AS_GALLERY_THUMBNAIL"
+              ],
               "captured_at": "2026-10-25T03:29:34.991Z",
               "image_committed": false,
               "image_sha256": "3e7f8df27afdefc3bbf1805ae3ca4686e6126034c09329f08142078d8b81e7e3"
@@ -888,7 +893,9 @@
               "loaded_url": "https://muuuuu.org/industry/restaurant/13585.html",
               "http_status": 200,
               "outcome": "loaded",
-              "problems": [],
+              "problems": [
+                "DESIGN_SEEN_AS_GALLERY_THUMBNAIL"
+              ],
               "captured_at": "2026-10-25T03:29:49.191Z",
               "image_committed": false,
               "image_sha256": "aa4151c9cc0504a33fd1320e468aea603f4631c0dca26ef86ca4952df620d9ee"
@@ -910,7 +917,7 @@
               "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
               "loaded_url": null,
               "http_status": 503,
-              "outcome": "blocked",
+              "outcome": "error",
               "problems": [
                 "HTTP_503"
               ],
@@ -925,7 +932,7 @@
               "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
               "loaded_url": null,
               "http_status": 503,
-              "outcome": "blocked",
+              "outcome": "error",
               "problems": [
                 "HTTP_503"
               ],
@@ -1034,8 +1041,7 @@
         }
       ],
       "weaknesses": [
-        "Only a gallery thumbnail could be seen; the brand site returned an error (503), so this record is thin.",
-        "Whether the business still operates is unknown from what was seen."
+        "No design weakness could be judged from the gallery thumbnail alone."
       ],
       "desktop_vs_mobile": [],
       "do_not_transfer": [
@@ -1683,7 +1689,7 @@
       "transferable_techniques": [
         {
           "technique": "Bottom-fixed booking bar on the phone",
-          "why_it_works": "The booking action stays under the thumb at every scroll position.",
+          "why_it_works": "The booking action stays under the thumb while scrolling (confirmed fixed at mid-page).",
           "where_it_fits": "Appointment businesses with online or phone booking.",
           "risk": "Covers content and needs a real booking route; two or more buttons must be clearly labelled."
         },
@@ -1739,7 +1745,8 @@
               "problems": [
                 "PAGE_TALLER_THAN_12000",
                 "LOADER_WAIT_15S_RETAKE",
-                "FULLPAGE_DARK_BELOW_FOLD"
+                "FULLPAGE_BLANK",
+                "FOLD_SHOT_USED"
               ],
               "captured_at": "2026-10-25T03:25:21.847Z",
               "image_committed": false,
@@ -1831,7 +1838,7 @@
           },
           "mobile_390": {
             "status": "unknown",
-            "reason": "Hours and phone appear only as text inside a photo of the shop sign; any address or hours block further down did not render in this capture."
+            "reason": "Not seen in this unscrolled phone capture; only the shop sign photo showing hours was visible. The page text of the desktop capture does list hours."
           }
         },
         "navigation": {
@@ -1862,7 +1869,7 @@
       "design_features": [
         "A dark, nearly monochrome page where black-and-white photography keeps every section in one tone.",
         "Bilingual staff cards: Japanese name, small English name, a short profile and a link to their own work.",
-        "Booking and phone links fixed in the mobile header from the first screen."
+        "Booking and phone links in the mobile header from the first screen."
       ],
       "transferable_techniques": [
         {
@@ -1880,7 +1887,7 @@
       ],
       "weaknesses": [
         "Body text is small and light on a dark ground, which is harder to read on a phone outdoors.",
-        "A long opening animation delays the first screen on desktop (about 15 seconds in this run before it cleared)."
+        "An opening animation stands between the visitor and the first screen on desktop."
       ],
       "desktop_vs_mobile": [
         "Desktop puts the headline over the photo at the bottom of the first screen; the phone sets it above the photo on the dark ground.",
@@ -2039,7 +2046,7 @@
           "desktop_1440": {
             "status": "observed",
             "page": "first_party_brand_site",
-            "note": "The three outlined buttons (restaurant booking, banquets, weddings) stay at the lower right in every scroll step."
+            "note": "The three outlined buttons (restaurant booking, banquets, weddings) stay at the lower right in most scroll steps (7 of 9), but not near the access and footer area; how they are kept there was not confirmed."
           },
           "mobile_390": {
             "status": "observed",
@@ -2087,7 +2094,7 @@
       "design_features": [
         "The building itself is the hero and the brand story; the opening photo shows the lit entrance at night.",
         "One frame shape (cut corners) is shared by photos and buttons, tying the page together.",
-        "The main actions stay visible as a small group of buttons in every scroll position on desktop."
+        "On desktop the main actions stay visible as a small group of buttons through most of the page."
       ],
       "transferable_techniques": [
         {
@@ -2105,11 +2112,10 @@
       ],
       "weaknesses": [
         "Body text is small and light on a near-black ground.",
-        "The desktop page uses a scroll effect that a full-page capture could not record; content relies on scripted scrolling.",
         "The nav sits below the opening photos, so on desktop there is no top navigation at first."
       ],
       "desktop_vs_mobile": [
-        "Desktop keeps the three buttons at the lower right while scrolling; on the phone they sit at the bottom of the first screen and repeat near the end.",
+        "Desktop keeps the three buttons at the lower right through most of the scroll; on the phone they sit at the bottom of the first screen and repeat near the end.",
         "The desktop photo collage becomes a sequence of full-width photos on the phone."
       ],
       "do_not_transfer": [

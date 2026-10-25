@@ -22,7 +22,8 @@ Claude が実装する CSS は `lib/design-agent/comp-impl/page-css.ts` の許�
 ### T1. 予約・電話への常時導線
 
 - **根拠:** DX-013（スマホのヘッダーに電話と予約）、DX-008（スマホの固定ヘッダーに営業時間と予約、中ほどで固定を確認）、
-  DX-011（スマホ下部に院ごとの予約バーを固定）、DX-023（PC で3つのボタンがどのスクロール位置でも右下に残る）。
+  DX-011（スマホ下部に院ごとの予約バーを固定）、DX-023（PC で3つのボタンがスクロールの大半（9段階中7）で右下に残る。ページ末尾では消え、仕組みは未確認）。
+  DX-013 のスマホのヘッダーがスクロール中も残るかは未確認。
 - **優れている点:** 予約制の店で来訪者が最も探す2つの行動が、スクロールなしで常に届く。
 - **適する店:** 理容・美容室、整体・鍼灸、クリニック、予約制の飲食。実在する電話番号か予約手段があること。
 - **使うべきでない場合:** 予約を取らない店（パン屋・持ち帰り中心）、予約手段が未確定の店。ボタンが3つを超える場合。
@@ -40,6 +41,8 @@ Claude が実装する CSS は `lib/design-agent/comp-impl/page-css.ts` の許�
 - **PC とスマホ:** PC は第一画面の下に横一列。スマホは2×2の格子。
 - **Claude の実装の難しさ:** 低い。ただし事実は店舗の入力からだけ取り、作らない。
 - **既存技術:** **一部**。文字と枠（角丸）での列は可。線画アイコンは image slot を使うか、アイコンなしの文字だけにする。
+  入力側にも制約がある: 店舗の入力項目（`design-bridge-schema.ts` の `DESIGN_FACT_KEYS`）に駐車場・個室などの欄は無く、
+  自由記述の説明文からしか取れない。確実に使うには入力項目の追加が要る。
 
 ### T3. 文字で読める店舗情報と営業日の表
 
@@ -114,9 +117,10 @@ Claude が実装する CSS は `lib/design-agent/comp-impl/page-css.ts` の許�
 
 ## 撮影の失敗とデザインの欠点の区別
 
-`OPENING_SCREEN_NOT_CLEARED`・`FULLPAGE_DARK_BELOW_FOLD`・`SCROLL_REVEAL_NOT_RENDERED`・`LAZY_IMAGES_MISSING`・
+`OPENING_SCREEN_NOT_CLEARED`・`FULLPAGE_BLANK`・`FULLPAGE_DARK_BELOW_FOLD`・`SCROLL_REVEAL_NOT_RENDERED`・`LAZY_IMAGES_MISSING`・
 `POSSIBLE_SLIDE_IN_MID_STATE` などは撮影側の問題として記録し、弱点に数えない。見えなかった項目は `unknown`。
-DX-013 の PC は許可された1回の再撮影（15秒待ち）で第一画面だけ確認でき、それより下は `unknown` のまま。
+DX-013 の PC は許可された1回の再撮影（15秒待ち）で、第一画面の画像（fold）とページの文字だけ確認できた。全ページ画像は
+再撮影でも一色のままで、その sha256 は再撮影前と同じ。それより下は `unknown` のまま。
 
 ## 次の判断（オーナー）
 
