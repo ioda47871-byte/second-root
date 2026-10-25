@@ -4766,6 +4766,62 @@
         "worker/DB/公開/営業への接続"
       ],
       "note": "Owner decision explicitly ratified 2026-10-25. Strategy/offline preparation only; separate human approvals for image use/calls and real systems. Issue #131."
+    },
+    {
+      "id": "DEV-109",
+      "title": "和菓子A「朝の一つ包み」のデザイン画像用指示文（v4）を準備し、SHA256 を固定する（準備と検証のみ）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-108"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-109-wagashi-a-image-prompt",
+      "purpose": "DEV-108 の手順1（オーナー承認 2026-10-25）: DEV-107 の和菓子A案を、プロの Web デザイン画像を得るための簡潔な指示文にし、独立した実験方向 v4 として固定する。実際の画像生成は別承認。",
+      "acceptance_criteria": [
+        "v1・v2・v3 の指示文と sha を変えない",
+        "v4 は独立した方向で既定は v2 のまま",
+        "v2 の HARD RULES を逐語で保ち、長さは v1（4754 文字）以下",
+        "FACTS は fixture の逐語の引用だけで、テスト品名・架空の駅や町・架空の断り書きを含まない",
+        "予約・購入・価格・縦書き・テンプレート構図を禁止",
+        "390px の順・文字・写真配置を別に定義し、画像には送らない",
+        "画像評価の基準は不変",
+        "実 Codex・WSL・worker・DB・本番に触れない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-prompt-wagashi-a.test.ts",
+        "tests/unit/design-agent/design-image-prompt-research-exp.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/poc/wagashi-art-direction-v4-wagashi-a.json",
+        "lib/design-agent/design-image/prompt.ts",
+        "lib/design-agent/design-image/prompt-wagashi-a.ts",
+        "lib/design-agent/design-image/run.ts（コメントのみ）",
+        "scripts/sales-design-worker/design-image-poc.sh（方向の許可値）",
+        "scripts/sales-design-worker/design-image-poc.ts（コメントのみ）",
+        "tests/unit/design-agent/**",
+        "docs/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "実 Codex / imagegen / WSL",
+        "Production / Staging / Supabase / DB",
+        "worker / timer",
+        "v1・v2・v3 の指示文と sha",
+        "画像評価の基準",
+        "CSS 許可表",
+        ".github/**",
+        "develop→main"
+      ],
+      "human_approval_triggers": [
+        "v4 sha を名指しした WSL での画像生成1回",
+        "comp→site の実装の着手",
+        "390px 画像・単独素材の生成",
+        "CSS の機能追加"
+      ],
+      "note": "オーナーが手順1を承認（2026-10-25）。実画像生成・Codex 実行は不許可。"
     }
   ]
 }

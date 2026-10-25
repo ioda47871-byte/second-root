@@ -24,6 +24,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { buildExperimentPrompt, parseExperimentDirection, type ExperimentDirection } from "./prompt-research-exp";
+import { buildWagashiAPrompt, parseWagashiADirection, type WagashiADirection } from "./prompt-wagashi-a";
 import type { DemoView } from "@/lib/sales/demo-content";
 import { parseShop } from "../compare/shops";
 
@@ -35,7 +36,7 @@ export const DIRECTION_PATH = "design-library/poc/wagashi-art-direction.json";
 export const SECTION_NAMES = ["Hero", "Concept", "Information"] as const;
 
 /** The directions that can be chosen (SR_DESIGN_IMAGE_POC_DIRECTION); nothing else is ever read. */
-export const DIRECTION_VERSIONS = ["v1", "v2", "v3"] as const;
+export const DIRECTION_VERSIONS = ["v1", "v2", "v3", "v4"] as const;
 export type DirectionVersion = (typeof DIRECTION_VERSIONS)[number];
 export const DEFAULT_DIRECTION_VERSION: DirectionVersion = "v2";
 export const DIRECTION_PATHS: Readonly<Record<DirectionVersion, string>> = {
@@ -43,6 +44,8 @@ export const DIRECTION_PATHS: Readonly<Record<DirectionVersion, string>> = {
   v2: "design-library/poc/wagashi-art-direction-v2.json",
   // DEV-102: the research-informed experiment (prompt-research-exp.ts); its own builder, independent of v2
   v3: "design-library/poc/wagashi-art-direction-v3-research.json",
+  // DEV-109: DEV-107's wagashi direction A, "The morning batch" (prompt-wagashi-a.ts); independent of v1-v3
+  v4: "design-library/poc/wagashi-art-direction-v4-wagashi-a.json",
 };
 export const POC_DISCLOSURE_V2 = "架空店舗のデザイン提案｜和菓子の画像はAI生成のイメージです";
 export const SECTION_IDS_V2 = ["Hero", "Products", "ShopInfo"] as const;
@@ -58,7 +61,7 @@ export class PocDirectionError extends Error {
   }
 }
 
-/** The direction from SR_DESIGN_IMAGE_POC_DIRECTION: unset or empty is the default (v2); anything but v1 / v2 is refused. */
+/** The direction from SR_DESIGN_IMAGE_POC_DIRECTION: unset or empty is the default (v2); anything but v1 / v2 / v3 / v4 is refused. */
 export function parseDirectionVersion(raw: string | undefined): DirectionVersion {
   if (raw === undefined || raw === "") return DEFAULT_DIRECTION_VERSION;
   const hit = DIRECTION_VERSIONS.find((v) => v === raw);
@@ -133,7 +136,7 @@ interface PocInputsBase {
   demo: DemoView;
 }
 export type PocInputs = PocInputsBase &
-  ({ version: "v1"; direction: ArtDirection } | { version: "v2"; direction: ArtDirectionV2 } | { version: "v3"; direction: ExperimentDirection });
+  ({ version: "v1"; direction: ArtDirection } | { version: "v2"; direction: ArtDirectionV2 } | { version: "v3"; direction: ExperimentDirection } | { version: "v4"; direction: WagashiADirection });
 
 /** Reads and checks the fixture and the chosen art direction (default v2) from the repository. */
 export async function loadPocInputs(repoDir: string, version: DirectionVersion = DEFAULT_DIRECTION_VERSION): Promise<PocInputs> {
@@ -144,6 +147,8 @@ export async function loadPocInputs(repoDir: string, version: DirectionVersion =
     const raw = JSON.parse(await readFile(join(repoDir, DIRECTION_PATHS[version]), "utf8")) as unknown;
     // v3: its own schema (prompt-research-exp.ts); a refusal there is a refused input like any other
     if (version === "v3") return { facts: shop.facts, demo: shop.demo, version, direction: parseExperimentDirection(raw) };
+    // v4: its own schema, checked against the fixture's facts (prompt-wagashi-a.ts)
+    if (version === "v4") return { facts: shop.facts, demo: shop.demo, version, direction: parseWagashiADirection(raw, shop.demo) };
     if (version === "v2") {
       const direction = DirectionV2Schema.safeParse(raw);
       if (!direction.success) throw new PocInputError();
@@ -186,6 +191,7 @@ export function factLines(demo: DemoView): string[] {
 /** The whole request (sent on stdin) for the chosen direction. */
 export function buildMockupPrompt(inputs: PocInputs): string {
   if (inputs.version === "v3") return buildExperimentPrompt(inputs.demo, inputs.direction);
+  if (inputs.version === "v4") return buildWagashiAPrompt(inputs.direction);
   return inputs.version === "v2" ? buildV2Prompt(inputs.demo, inputs.direction) : buildV1Prompt(inputs.demo, inputs.direction);
 }
 

@@ -230,7 +230,7 @@ export const REPORT_NOTES = [
  */
 export const REPORT_NOTES_V2 = [...REPORT_NOTES, "AI_FOOD_VISUALS_CONCEPT_ONLY", "EVALUATION_REQUIRED"] as const;
 
-/** v2 and v3 both ask for AI concept images of the sweets, so both carry the v2 notes. */
+/** v2, v3 and v4 all ask for AI concept images of the sweets, so all carry the v2 notes. */
 export const reportNotes = (version: DirectionVersion): readonly string[] => (version === "v1" ? REPORT_NOTES : REPORT_NOTES_V2);
 
 export type PocResult = { status: "done"; dir: string; report: PocReport } | { status: "refused" | "stopped"; code: PocCode };
@@ -239,7 +239,7 @@ export interface PocOptions {
   /** The human's explicit approval of this one run (--human-approval-confirmed). */
   humanApprovalConfirmed: boolean;
   repoDir: string;
-  /** The art direction (v1 / v2; default v2). Anything else is refused before any file is read. */
+  /** The art direction (v1 / v2 / v3 / v4; default v2). Anything else is refused before any file is read. */
   directionVersion?: DirectionVersion;
   /** Where results go (outside the repository): ~/sr-design-image-poc by default. */
   outRoot: string;

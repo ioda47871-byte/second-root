@@ -260,7 +260,7 @@ describe("runDesignImagePoc: the one image call", () => {
   });
 
   it("POC_DIRECTION_INVALID: a direction outside the fixed list is refused before any file, directory or sandbox", async () => {
-    for (const bad of ["v4", "V2", "../v2", "", " v2"]) {
+    for (const bad of ["v5", "V2", "../v2", "", " v2"]) {
       prepared = [];
       const result = await runDesignImagePoc(options(happy, { directionVersion: bad as never }));
       expect(result).toEqual({ status: "refused", code: "POC_DIRECTION_INVALID" });
@@ -456,7 +456,7 @@ describe("the direction choice", () => {
     expect(parseDirectionVersion("")).toBe("v2");
     expect(parseDirectionVersion("v1")).toBe("v1");
     expect(parseDirectionVersion("v2")).toBe("v2");
-    for (const bad of ["v4", "V1", "v1 ", "1", "../../etc/passwd", "wagashi-art-direction-v2.json"]) {
+    for (const bad of ["v5", "V1", "v1 ", "1", "../../etc/passwd", "wagashi-art-direction-v2.json"]) {
       expect(() => parseDirectionVersion(bad)).toThrow(PocDirectionError);
       try {
         parseDirectionVersion(bad);
@@ -469,7 +469,7 @@ describe("the direction choice", () => {
   it("loadPocInputs: default v2, v1 on request, an unknown version refused", async () => {
     expect((await loadPocInputs(REPO)).version).toBe("v2");
     expect((await loadPocInputs(REPO, "v1")).version).toBe("v1");
-    await expect(loadPocInputs(REPO, "v4" as never)).rejects.toBeInstanceOf(PocDirectionError);
+    await expect(loadPocInputs(REPO, "v5" as never)).rejects.toBeInstanceOf(PocDirectionError);
   });
 
   it("the v2 direction: version 0.3-poc, the exact disclosure, 3 sections, no purchase / reservation UI", async () => {
@@ -2049,7 +2049,7 @@ describe("entry points refuse", () => {
     expect(direct).toMatchObject({ code: 2 });
     expect((direct as { stderr: string }).stderr).toContain("STOP: start the PoC with scripts/sales-design-worker/design-image-poc.sh");
     // under the shell's token, a direction outside the fixed list: exit 2, POC_DIRECTION_INVALID, nothing started
-    const badDirection = await run(tsx, [entry, "--human-approval-confirmed"], { cwd: REPO, env: { ...env, SR_DESIGN_IMAGE_POC_LOCKED: "run.lock", SR_DESIGN_IMAGE_POC_DIRECTION: "v4", SR_DESIGN_IMAGE_POC_ROOT: join(h, "out") } as unknown as NodeJS.ProcessEnv }).catch((e: { code: number; stdout: string }) => e);
+    const badDirection = await run(tsx, [entry, "--human-approval-confirmed"], { cwd: REPO, env: { ...env, SR_DESIGN_IMAGE_POC_LOCKED: "run.lock", SR_DESIGN_IMAGE_POC_DIRECTION: "v5", SR_DESIGN_IMAGE_POC_ROOT: join(h, "out") } as unknown as NodeJS.ProcessEnv }).catch((e: { code: number; stdout: string }) => e);
     expect(badDirection).toMatchObject({ code: 2 });
     expect((badDirection as { stdout: string }).stdout).toContain("POC_STOP: POC_DIRECTION_INVALID");
     expect(readdirSync(h)).toEqual([]);
@@ -2082,8 +2082,8 @@ describe("entry points refuse", () => {
     expect(existsSync(record)).toBe(false);
     expect(await run("bash", [script, "--human-approval-confirmed", "--extra"], { env }).catch((e: { code: number }) => e)).toMatchObject({ code: 2 });
     expect(existsSync(record)).toBe(false);
-    // a direction outside v1 / v2 / v3: STOP before the preflight, the lock, git or tsx
-    for (const bad of ["v4", "V2", "../v1", "v2;id"]) {
+    // a direction outside v1 / v2 / v3 / v4: STOP before the preflight, the lock, git or tsx
+    for (const bad of ["v5", "V2", "../v1", "v2;id"]) {
       const wrong = await run("bash", [script, "--human-approval-confirmed"], { env: { ...env, SR_DESIGN_IMAGE_POC_DIRECTION: bad } as unknown as NodeJS.ProcessEnv }).catch((e: { code: number; stdout: string }) => e);
       expect(wrong).toMatchObject({ code: 2 });
       expect((wrong as { stdout: string }).stdout).toContain("STOP: POC_DIRECTION_INVALID");

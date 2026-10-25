@@ -1,0 +1,130 @@
+{
+  "version": "0.5-wagashi-a",
+  "status": "experimental_unreviewed",
+  "fixture": "wagashi",
+  "based_on": {
+    "proposal": "design-dna/proposals/wagashi.json",
+    "direction_id": "morning_batch",
+    "policy": "docs/design/design-first-workflow-decision.md"
+  },
+  "concept": "The morning batch: the shop is defined by two acts it states itself, tsubu-an cooked every morning and each sweet wrapped one at a time, and by the one item that carries them, the dorayaki.",
+  "palette": [
+    {
+      "name": "kinari",
+      "hex": "#F4EFE4",
+      "use": "page ground"
+    },
+    {
+      "name": "sumi",
+      "hex": "#2B2622",
+      "use": "all text"
+    },
+    {
+      "name": "kinari band",
+      "hex": "#E2D6C0",
+      "use": "the band behind the two reasons"
+    },
+    {
+      "name": "azuki",
+      "hex": "#6B2E2E",
+      "use": "only the numerals 1 and 2 and one hairline above the shop information"
+    }
+  ],
+  "web_ui": {
+    "nav": [
+      "こだわり",
+      "店舗情報"
+    ],
+    "hero_link": "店舗情報へ",
+    "headings": [
+      "こだわり",
+      "商品",
+      "店舗情報"
+    ],
+    "info_labels": [
+      "営業時間",
+      "定休日",
+      "所在地",
+      "電話"
+    ]
+  },
+  "facts": [
+    {
+      "label": "shop name",
+      "fact_key": "name",
+      "quote": "架空菓庵"
+    },
+    {
+      "label": "reason 1",
+      "fact_key": "description",
+      "quote": "毎朝炊く粒あん"
+    },
+    {
+      "label": "reason 2",
+      "fact_key": "description",
+      "quote": "一つずつお包みしています"
+    },
+    {
+      "label": "product 1",
+      "fact_key": "description",
+      "quote": "季節の上生菓子"
+    },
+    {
+      "label": "product 2",
+      "fact_key": "description",
+      "quote": "粒あんのどら焼き"
+    },
+    {
+      "label": "description",
+      "fact_key": "description",
+      "quote": "季節の上生菓子と、毎朝炊く粒あんのどら焼きを、小さな店頭で一つずつお包みしています。"
+    },
+    {
+      "label": "営業時間",
+      "fact_key": "hours",
+      "quote": "9:00〜18:00（売り切れ次第終了）"
+    },
+    {
+      "label": "定休日",
+      "fact_key": "closed_days",
+      "quote": "水曜・第2火曜"
+    },
+    {
+      "label": "所在地",
+      "fact_key": "address",
+      "quote": "名古屋市東区"
+    },
+    {
+      "label": "電話",
+      "fact_key": "phone",
+      "quote": "052-000-0731"
+    }
+  ],
+  "left_out": "The fixture's menu items (placeholder names with テスト), the access line and the rest of the address (placeholder station and town names), and the description sentences saying the shop is fictional (the disclosure line says so).",
+  "mobile_390": {
+    "status": "design specification for G3; not sent to the image call, which draws the 1440 desktop comp only",
+    "order": [
+      "header: shop name at left, the two anchors at right on the same line",
+      "shop name in Mincho with 毎朝炊く粒あん beneath it, before the image",
+      "the dorayaki image at full content width, cropped 4:3 around the cross-section",
+      "こだわり: numeral 1 and its line, then numeral 2 and its line, stacked",
+      "商品: the two product names stacked, then the description sentence",
+      "店舗情報: each label above its value",
+      "footer: shop name and the disclosure line"
+    ],
+    "type_px": {
+      "shop_name": 34,
+      "reason": 22,
+      "numeral": 40,
+      "heading": 20,
+      "body": 16,
+      "label": 13
+    },
+    "spacing": "20 px side margins; 56 px between sections; the image without a frame margin on phones"
+  },
+  "css_notes": [
+    "Everything in the page is reachable with the current allowlist: grid, hairline borders, a framed image slot with object-fit, solid colour bands, horizontal Mincho and Gothic.",
+    "Not reproducible today and refused in the prompt: text over the image, gradients, drop shadows, textures, vertical text, fixed headers.",
+    "If the comp shows any of these anyway, the implementation records the gap instead of changing the allowlist."
+  ]
+}

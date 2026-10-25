@@ -59,8 +59,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$APPROVED" ] || { echo "STOP: --human-approval-confirmed is missing. The PoC runs one real Codex image call (ChatGPT plan usage) on this machine and needs the human's explicit approval of this run (HUMAN-018 / HUMAN-019). Nothing was started."; exit 2; }
 case "${SR_DESIGN_IMAGE_POC_DIRECTION:-}" in
-  "" | v1 | v2 | v3) ;;
-  *) echo "STOP: POC_DIRECTION_INVALID (SR_DESIGN_IMAGE_POC_DIRECTION: v1, v2 or v3; unset means v2). Nothing was started."; exit 2 ;;
+  "" | v1 | v2 | v3 | v4) ;;
+  *) echo "STOP: POC_DIRECTION_INVALID (SR_DESIGN_IMAGE_POC_DIRECTION: v1, v2, v3 or v4; unset means v2). Nothing was started."; exit 2 ;;
 esac
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
