@@ -4878,6 +4878,58 @@
         "jail/workerの設定変更",
         "CSSや画像資産取込み・comp→site・公開"
       ]
+    },
+    {
+      "id": "DEV-111",
+      "title": "店舗スクショ分析・写真ディレクション・権利管理をDesign DNAへ渡す1店舗PoCの手順書と分析JSON雛形（準備のみ）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-108",
+        "DEV-110"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-111-screenshot-led-store-poc",
+      "purpose": "オーナーが2026-10-26に指示した『店舗のスクショから雰囲気・撮影方法を分析し、画像加工を含む高品質なデモサイトにつなぐ』をG0–G6の既存ルールを弱めず準備する。最初は文書と空の権利・画像分析フォーマットだけを追加する。実店舗スクショ取得・AI画像生成・実装・営業・公開は本タスクでは行わない。",
+      "acceptance_criteria": [
+        "写真分析（光・角度・画角・背景・被写界深度・余白・PC/390crop）を独立した記録項目にする。スクショ観察は正本G0の作業の一部であり新しいゲートではない。観察と提案を分ける",
+        "ショップの事実・画像出典・SHA・AI加工/非公開デモ/公開それぞれの使用権限を混同しない",
+        "スクショの公開可視性をAI入力や加工・転載の許可とみなさない。analyzeは人の目視と人が書いたテキスト観察のみ。画像ピクセルのAIモデル入力（Claudeを含む）は権利根拠に加え、対象SHA・モデル・目的を特定したオーナー承認が必要（権利確認だけでは不可）",
+        "構図A/Bは色替えだけでなくHero・撮影・本文のリズム・CTAに差があり、店舗固有の根拠へ紐づく",
+        "既存G0–G6/評価基準（重大欠陥なし22/25・各4以上・オーナー確認）とcomp→siteの承認境界を変更しない",
+        "店舗候補はBrot Yanagiとしても素材/写真の使用権限を既成事実化しない。欠損ならG0で停止",
+        "JSON雛形は構文的に有効で、素材と承認を空またはunknownに固定した状態から開始",
+        "実店舗へのブラウザ取得、画像のAI加工・生成、WSL・worker・DB・Production・実営業への操作は行わない"
+      ],
+      "required_tests": [
+        "JSON.parse(design-library/poc/store-screenshot-demo/visual-analysis.template.json)",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/operations/store-screenshot-led-demo-poc.md",
+        "design-library/poc/store-screenshot-demo/visual-analysis.template.json",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-111.md（独立reviewによる記録のみ）"
+      ],
+      "forbidden_scope": [
+        "画像生成/実Codex/WSL/実Instagram/スクショ取得/写真AI編集",
+        "Production/Staging/Supabase/DB/既存のworker・timer・bridge・capture設定",
+        "実店舗・第三者の画像ピクセルをAIモデル（Claudeを含む）や外部サービスへ入力・アップロードすること（権利根拠と用途ごとのオーナー承認があっても本タスクでは行わない）",
+        "画像や実店舗素材をrepo/Issue/PRへcommitすること",
+        "画像評価閾値・CSS許可表・既存事実・参考資料のhuman_reviewを変更すること",
+        "develop→main/営業DM・メール送信"
+      ],
+      "human_approval_triggers": [
+        "実店舗の情報・スクショの取得（公開ページを含む）・認証済みソースへのアクセス・素材収集範囲。店舗への連絡・素材依頼はオーナーが行い、Claudeは連絡しない",
+        "画像ピクセルをAIモデル（Claudeによる画像解析を含む）へ入力する、AI加工する、非公開Preview・公開に掲載する際の権利根拠と用途ごとのオーナー承認（対象SHA・モデル/加工内容・範囲を特定）",
+        "画像生成ごとのモデルと回数・出力範囲",
+        "comp→site実装着手・非公開Preview発行・公開",
+        "営業DM/メール送信・運用DB連携"
+      ],
+      "note": "Owner explicitly directed to proceed on screenshot-based single-shop PoC runbook. Docs/template only; rights and actual operational approvals separate."
     }
   ]
 }
