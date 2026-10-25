@@ -93,7 +93,7 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     const body = readFileSync(worker, "utf8");
     const check = body.indexOf('design-image-poc.ts" --check-pin-only');
     const marker = body.indexOf('mkdir -m 0700 "$LEDGER/$APPROVAL_ID"');
-    const codex = body.indexOf('SR_DESIGN_IMAGE_POC_LOCKED=run.lock timeout');
+    const codex = body.indexOf('SR_DESIGN_IMAGE_POC_LOCKED=run.lock timeout --kill-after');
     expect(check).toBeGreaterThan(0);
     expect(marker).toBeGreaterThan(check);
     expect(codex).toBeGreaterThan(marker);
