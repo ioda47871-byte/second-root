@@ -4930,6 +4930,58 @@
         "営業DM/メール送信・運用DB連携"
       ],
       "note": "Owner explicitly directed to proceed on screenshot-based single-shop PoC runbook. Docs/template only; rights and actual operational approvals separate."
+    },
+    {
+      "id": "DEV-112",
+      "title": "既存Bridge worker jobの事実と出典をDesign-first G0へ安全に引き渡す純粋アダプタ（offline）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-030",
+        "DEV-082",
+        "DEV-107",
+        "DEV-111"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-112-bridge-g0-facts-handoff",
+      "purpose": "完全自動化の既存正本はSales Agent+Bridge+worker+G0–G6。DesignProfile workerとは別に存在するDesign DNA研究入力へ、worker job事実の出典追跡結果を明示的な否認フラグつきで渡す最小のオフラインコード。Issue #139の新しい設計を正本にしない。",
+      "acceptance_criteria": [
+        "worker JobSchema と Bridge DesignFactsSchema を再利用し、新規 queue / DB statusを足さない",
+        "fact_key、引用文字列、ジョブ内の出典URLを内部整合で照合。menu_items各インデックスと重複を厳格検査",
+        "間違ったsource URL・不足証拠・未知フィールド・画像やモデル許可の自己申告を拒否する",
+        "traceable_not_verifiedは実在サイトにその文言が掲載されている証明・G1合格・権利/モデルの承認とみなさない",
+        "研究入力からcategoryを排除し、店舗特有の事実のみ引き渡す",
+        "既存worker, bridge, timer, DB, Staging/Production, preview, sendingに実行時の変化を与えない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/design-first-bridge-g0.test.ts",
+        "npm run typecheck",
+        "npx vitest run tests/unit/ai-tasks.test.ts",
+        "all latest-head required CI",
+        "independent Fresh Review Critical/High=0"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-first/bridge-g0.ts",
+        "tests/unit/design-agent/design-first-bridge-g0.test.ts",
+        "docs/operations/design-first-bridge-g0.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-112.md（independent review only）"
+      ],
+      "forbidden_scope": [
+        "existing Bridge API and design_status schema changes",
+        "real Instagram captures or external website requests",
+        "Codex or Claude model calls, photos / image generation",
+        "new or enabled systemd timers or changes to worker, bridge, jail, runtime, Supabase or Vercel flags",
+        "comp-to-site execution, deployments, outreach / DM / email"
+      ],
+      "human_approval_triggers": [
+        "actual WSL worker, bridge, Staging or Production usage",
+        "image generation or per-campaign model budget policy",
+        "copyrighted or third-party image to AI model/photo edit/private preview",
+        "automatic outreach or publish"
+      ],
+      "note": "Implementation of first safe G0 seam after owner explicitly requested completing prior Sales Agent automation plan; documentation + code + offline unit tests only. Do not claim full automation."
     }
   ]
 }
