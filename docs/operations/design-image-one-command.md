@@ -12,6 +12,8 @@
 4. privateな `~/.local/state/sr-design-worker/poc-approval-used/wagashi-a-v4-20261025-01` をatomic `mkdir` で作成。**既にあれば即停止**（前回の成否に関わらず同じ承認は二度使えない）。この時点以降は、起動に失敗・中断・タイムアウトしても**再実行禁止**。誤った結果を「生成未実施」と断定しない。
 5. 既存のPoCで許された1回のCodex image generationを試行し、`POC_IMAGE_READY` か `POC_STOP`・`POC_DIAG_SUMMARY` を表示する。55分・15分の既存制限を維持し、自動リトライはしない。
 
+**重要:** SHA不一致なら同一ロック内で実行を拒否し、さらに`run.ts`が**Codexに実際に渡すプロンプト**のSHA/文字数を再確認する。パスワードや認証データをログに書かず、worker/timerも変更しない。モデル呼出後の結果不明は承認消費扱いとして再試行しない。
+
 **重要:** 従来のv1〜v3実行手順は変更しない。v4を旧方式でpinなしに実行することはブロックする。これで「承認済みSHAと違うのに実行された」「1回の承認を間違えて繰り返す」を防ぐ。ただしローカルのroot権限保有者が状態ディレクトリを削除する等の悪意ある操作まで技術的に防ぐものではない。
 
 ## 1. 一度だけセットアップ
@@ -35,10 +37,24 @@ SHA pinは、wrapperが自分でworkerロックを取得し、**チェックア�
 `bash -n`とオフラインテスト・reviewを通していないコードでは絶対に実行しない。
 
 ```bash
-# Claudeがブラウザから隔離版セッション内で、オーナーの既存の個別承認に
-# 限って一度だけ呼び出す。root/admin.sh/個別のsudoは不要。
-bash /home/sr-designgen/work/second-root/scripts/sales-design-worker/run-wagashi-a-v4-once.sh --human-approval-confirmed --expected-commit <独立レビュー後のdevelopコミット40文字SHA>
+# ブラウザの隔離版Claudeに頼む「一度だけ」の実行手順。
+# <reviewed-commit> をレビュー済みdevelopの40文字SHAで置き換える。
+# foregroundで起動しない。ClaudeのBashコマンド時間切れが
+# Codexを停止させ、1回だけの承認を失う可能性があるため。
+set -euo pipefail
+umask 077
+LOG_DIR="$HOME/sr-design-poc-launch-logs"
+install -d -m 0700 "$LOG_DIR"
+LOG="$(mktemp "$LOG_DIR/wagashi-a-v4.XXXXXXXX.log")"
+nohup setsid bash "$HOME/work/second-root/scripts/sales-design-worker/run-wagashi-a-v4-once.sh" \
+  --human-approval-confirmed --expected-commit <reviewed-commit> \
+  >"$LOG" 2>&1 </dev/null &
+echo "POC_LAUNCHED_PID=$! LOG=$LOG"
 ```
+
+数分おきに**別の短いコマンド**で `tail -n 35 <LOGの実際のパス>` とプロセスの生存を確認する。最初の短い起動コマンドが返っただけでは生成成功でも失敗でもない。終了したら `POC_IMAGE_READY`／`POC_STOP`／`POC_APPROVAL_RESERVED` の有無とプロセス終了状態を記録する。**ログは0600、保存先は0700、Gitへ追加しない**。画面共有・ログの全文貼付で認証情報を漏らさない。
+
+**開始後は `sr-jail-claude.service`、`sr-jail-net.service`を停止・再起動・更新しない**。同じcheckoutでGit更新・ファイル変更・別のCodex/workerを行わない。WSLやPCをシャットダウンしない。起動プロセスは独立したsessionになっても**同じsystemd cgroupに属する**ため、service再起動で終了する。この残余リスクは残る。タイムアウト／再起動／クラッシュで承認レシートが存在した場合、画像がなくても勝手に再試行・レシート削除しない。
 
 ここで起動するのはroot権限のない `sr-jail-claude.service` に属するプロセスだけ。
 スクリプトは実効ユーザー、HOME、cgroupを確認してから既存のworker wrapperを呼ぶ。
@@ -57,10 +73,10 @@ root運用の`admin.sh run`には別にsystemdの`RuntimeMaxSec=3500`がある�
 
 ## 4. 結果
 
-- `POC_PIN_OK`: 送信予定プロンプトを照合。**生成成功ではない**。
+- `POC_PIN_OK`: 送信予定プロンプトをモデル無しで照合（さらにCodex実行時も同一SHAを検査）。**生成成功ではない**。
 - `POC_APPROVAL_RESERVED`: 1回分を消費扱いにした。**画像生成が成功したという意味ではない**。
 - `POC_IMAGE_READY: .../mockup.png`: 画像あり。原本は非公開/リポジトリ外。
-- `STOP: POC_PIN_MISMATCH`: Codex未実行、承認未使用。新しいpromptで再承認するか検証。
+- `STOP: POC_PIN_MISMATCH` / `POC_PIN_MISMATCH_OR_CHECK_ERROR`: Codex未実行、承認未使用。新しいpromptで再承認するか検証。
 - `STOP: POC_APPROVAL_ALREADY_USED`: この承認IDは既に使われた。**勝手に消して再試行しない**。
 - `POC_STOP` / `POC_DIAG_SUMMARY`: 結果・原因を報告し、再試行しない。
 - 上記以外の停止は、`POC_APPROVAL_RESERVED` の有無を確認。予約後なら実際に画像呼出が行われたか不明でも再実行しない。
