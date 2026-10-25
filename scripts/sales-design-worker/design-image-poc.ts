@@ -25,6 +25,7 @@
  */
 import { homedir, tmpdir } from "node:os";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { buildMockupPrompt, loadPocInputs } from "../../lib/design-agent/design-image/prompt";
 import { join, resolve } from "node:path";
 import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
@@ -118,6 +119,20 @@ async function main(): Promise<number> {
     process.stdout.write("STOP: POC_PIN_CHECK_ERROR\n");
     return 23;
   }
+  // The public TypeScript entry also refuses unpinned v4, even when called
+  // directly with a forged SR_DESIGN_IMAGE_POC_LOCKED environment value.
+  // This is additional accident prevention: a malicious same-uid process can
+  // still tamper with its own private approval state.
+  if (directionVersion === "v4" && (
+    process.env.SR_POC_EXPECTED_SHA !== "4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9" ||
+    process.env.SR_POC_EXPECTED_CHARS !== "4714" ||
+    process.env.SR_DESIGN_WORKER_NO_UPDATE !== "1" ||
+    process.env.HOME !== "/home/sr-designgen"
+  )) {
+    process.stdout.write("STOP: POC_V4_APPROVAL_PIN_REQUIRED\n");
+    return 2;
+  }
+
   const budgetMs = Math.min(MAX_BUDGET_SECONDS, Number(budgetText ?? MAX_BUDGET_SECONDS)) * 1000;
 
   const outRoot = expand(process.env.SR_DESIGN_IMAGE_POC_ROOT ?? "~/sr-design-image-poc");
@@ -135,6 +150,18 @@ async function main(): Promise<number> {
 
   const head = await runBounded("git", ["rev-parse", "HEAD"], { cwd: REPO, env: childEnvironment(process.env), timeoutMs: 60_000 }).catch(() => null);
   const commit = head?.code === 0 ? head.stdout.trim() : null;
+  if (directionVersion === "v4") {
+    // A direct TS invocation is not an authorized attempt. The shell wrapper
+    // must already have atomically reserved the fixed approval in its private
+    // canonical state, while holding the worker lock and verifying this commit.
+    const path = "/home/sr-designgen/.local/state/sr-design-worker/poc-approval-used/wagashi-a-v4-20261025-01/receipt";
+    const text = await readFile(path, "utf8").catch(() => "");
+    if (!commit || !/^[a-f0-9]{40}$/.test(commit) || text !==
+      "direction=v4\nsha256=4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9\ncommit=" + commit + "\n") {
+      process.stdout.write("STOP: POC_V4_APPROVAL_NOT_RESERVED\n");
+      return 2;
+    }
+  }
   setTimeout(() => stopNow("POC_RUN_TIME_BUDGET"), budgetMs + WATCHDOG_GRACE_MS).unref();
   const say = (line: string) => process.stdout.write(`${new Date().toISOString()} ${line}\n`);
   say(`design-image PoC (wagashi, direction ${directionVersion}, commit ${(commit ?? "unknown").slice(0, 12)}, budget ${Math.round(budgetMs / 60000)} min)`);
