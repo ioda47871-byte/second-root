@@ -1,0 +1,120 @@
+{
+  "schema_version": "store_visual_analysis_v0_1",
+  "status": "empty_template_not_reviewed",
+  "shop": {
+    "key": null,
+    "display_name": null,
+    "real_shop": true,
+    "candidate_only": true,
+    "verified_facts_source": null,
+    "collected_at_jst": null
+  },
+  "evidence_sources": [],
+  "fact_claims": [],
+  "assets": [
+    {
+      "asset_id": "TEMPLATE_ONLY_DO_NOT_USE",
+      "source_id": null,
+      "kind": "photo_or_screenshot",
+      "original_local_path": null,
+      "sha256": null,
+      "rights": "unknown",
+      "allowed_uses": [
+        "analyze"
+      ],
+      "license_or_consent_evidence": null,
+      "expires_at": null,
+      "human_approved": false,
+      "notes": "Public visibility is not a license; do not send image pixels to external AI, edit, display in a demo or publish until rights allow that use."
+    }
+  ],
+  "visual_observations": [
+    {
+      "source_id": null,
+      "observation": "replace with directly visible characteristic",
+      "category": "photography",
+      "confidence": "unknown",
+      "fact_or_inference": "observation",
+      "instruction_like_text_ignored": true
+    }
+  ],
+  "brand": {
+    "observed_keywords": [],
+    "inferred_keywords": [],
+    "palette_candidates": [],
+    "actual_packaging_motifs": [],
+    "avoid_assumptions": []
+  },
+  "photo_direction": {
+    "purpose": null,
+    "hero_subject_verified": null,
+    "source_asset_ids": [],
+    "current_photo_observations": {
+      "camera_angle": "unknown",
+      "framing": "unknown",
+      "lighting": "unknown",
+      "shadows": "unknown",
+      "background": "unknown",
+      "color_temperature": "unknown",
+      "depth_of_field": "unknown",
+      "negative_space": "unknown"
+    },
+    "proposed_shot": {
+      "visual_goal": null,
+      "angle_and_camera_height": null,
+      "crop_and_subject_position": null,
+      "lighting_and_shadow": null,
+      "background_props": null,
+      "depth_of_field": null,
+      "color_processing": null,
+      "desktop_1440_crop": null,
+      "mobile_390_crop": null,
+      "alt_text_basis": null
+    },
+    "edit_mode": "analysis_only",
+    "ai_processing_consent_verified": false,
+    "generated_concept_disclosure_required": true
+  },
+  "direction_options": [
+    {
+      "id": "A",
+      "primary_subject": null,
+      "hero_structure": null,
+      "page_rhythm": null,
+      "typography": null,
+      "photo_direction_difference": null,
+      "verified_cta": null,
+      "mobile_390_outline": null,
+      "references_to_observations": [],
+      "forbidden_unlicensed_content": []
+    },
+    {
+      "id": "B",
+      "primary_subject": null,
+      "hero_structure": null,
+      "page_rhythm": null,
+      "typography": null,
+      "photo_direction_difference": null,
+      "verified_cta": null,
+      "mobile_390_outline": null,
+      "references_to_observations": [],
+      "forbidden_unlicensed_content": []
+    }
+  ],
+  "handoff": {
+    "chosen_direction": null,
+    "owner_selected": false,
+    "facts_verified": false,
+    "approved_assets_sha256": [],
+    "prompt_reviewed": false,
+    "image_generation_approval": null,
+    "mockup_sha256": null,
+    "original_rubric_score": null,
+    "original_rubric_hard_fail_status": "not_evaluated",
+    "separately_approved_comp_to_site": false,
+    "separately_approved_public_preview": false,
+    "separately_approved_sales_send": false
+  },
+  "known_unknowns": [],
+  "next_gate": "G0"
+}
