@@ -34,6 +34,7 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
         SR_DESIGN_IMAGE_POC_DIRECTION: "v4",
         SR_POC_EXPECTED_SHA: sha,
         SR_POC_EXPECTED_CHARS: "4714",
+        SR_DESIGN_IMAGE_POC_LOCKED: "run.lock",
       },
     });
     const good = run(pin);
