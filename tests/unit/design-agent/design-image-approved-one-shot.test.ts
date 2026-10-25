@@ -55,7 +55,7 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     expect(body).toContain("REVIEWED_COMMIT");
     expect(body).toContain("SR_CLAUDE_JAIL_REQUIRED");
     expect(body).toContain("0::/system.slice/sr-jail-claude.service");
-    const run = spawnSync("bash", [entry, "--human-approval-confirmed"], {
+    const run = spawnSync("bash", [entry, "--human-approval-confirmed", "--expected-commit", "9b79163825368d53bc066693b03cc21f7702b67d"], {
       cwd: repo,
       encoding: "utf8",
       env: { ...process.env, USER: "not-sr-designgen", HOME: "/tmp" },
@@ -67,21 +67,22 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
 
   it("pin check precedes approval consumption, which precedes the existing one-call PoC", () => {
     const body = readFileSync(worker, "utf8");
-    const check = body.indexOf("SR_POC_EXPECTED_SHA=");
+    const check = body.indexOf('design-image-poc.ts" --check-pin-only');
     const marker = body.indexOf('mkdir -m 0700 "$LEDGER/$APPROVAL_ID"');
     const codex = body.indexOf('SR_DESIGN_IMAGE_POC_LOCKED=run.lock timeout');
     expect(check).toBeGreaterThan(0);
     expect(marker).toBeGreaterThan(check);
     expect(codex).toBeGreaterThan(marker);
     expect(body).toContain('POC_APPROVAL_ALREADY_USED');
-    expect(body).toContain('POC_PIN_MISMATCH');
+    expect(body).toContain('POC_PIN_MISMATCH_OR_CHECK_ERROR');
     expect(body).toContain('POC_COMMIT_PIN_MISMATCH');
     expect(body).toContain('git status --porcelain --untracked-files=all');
-    const verification = body.slice(check, marker);
-    expect(verification).toContain('loadPocInputs(".", v)');
+    expect(body).toContain('POC_NO_UPDATE_REQUIRED');
+    const verification = readFileSync(join(repo, "scripts/sales-design-worker/design-image-poc.ts"), "utf8");
+    expect(verification).toContain('loadPocInputs(REPO, directionVersion)');
     expect(verification).toContain('buildMockupPrompt');
     expect(verification).toContain('createHash("sha256")');
-    expect(verification).toContain('process.exit(23)');
-    expect(verification).not.toContain("codex exec");
+    expect(verification).toContain('POC_PIN_OK');
+    expect(verification).not.toContain('codex exec');
   });
 });
