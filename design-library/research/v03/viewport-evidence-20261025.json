@@ -1,0 +1,2134 @@
+{
+  "schema_version": 1,
+  "task": "DEV-106",
+  "status": "ai_analysis_pending_owner_review",
+  "method": "Headless Chromium at 1440x900 and 390x844 (mobile emulation), public pages only, no login or paywall. From DX-005 on, and for the one DX-013 desktop retake, the page was scrolled through first, with step screenshots kept locally. Screenshots never committed; observations in own words.",
+  "records": [
+    {
+      "id": "DX-005",
+      "case_name": "パン屋SUNtoF",
+      "candidate_source_url": "https://design-kom.com/design/w139panyasun/",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://design-kom.com/design/w139panyasun/",
+          "source_kind": "agency_case_study",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://design-kom.com/design/w139panyasun/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "PAGE_TALLER_THAN_12000"
+              ],
+              "captured_at": "2026-10-25T03:26:20.696Z",
+              "image_committed": false,
+              "image_sha256": "0be5156884c86f6dd4c64fbe4c852235ecfa0129634f70322109d7d40d42d0a6"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://design-kom.com/design/w139panyasun/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:26:44.965Z",
+              "image_committed": false,
+              "image_sha256": "c97e5db08ff5d25c9327f12b5c9c66ad781db370355fcbc3cae6b49a9bef0f39"
+            }
+          ]
+        },
+        {
+          "role": "first_party_brand_site",
+          "link_evidence": "The agency case page lists this URL under its website heading and links to it.",
+          "url": "https://panyasuntof.com/",
+          "source_kind": "official_brand_site",
+          "operating_status": "live_first_party_site",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://panyasuntof.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:31:41.093Z",
+              "image_committed": false,
+              "image_sha256": "4a9033cf0de7bcf3d2ac27f360563c9702a2bef6d72e5c941bf8b2b84e478f85"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://panyasuntof.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:32:02.820Z",
+              "image_committed": false,
+              "image_sha256": "fd54f70ecde3bba382d1af8245fb84b8a3b4fc5444070656d2aefa8783afbe93"
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A full-screen close-up of bread whose lower edge is a soft wave; the logo (a sun over a bread-like mark) sits on the wave, with a tiny one-line description at the top."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same close-up fills the phone screen with the wave and logo at the bottom; a round orange menu button stays at the top right."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Bread is shown in almost every section: a story band with a loaf photo, three numbered commitments with round-cornered photos, an eat-in space and a photo strip by the shop details."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The numbered commitments stack one per screen with large orange numerals; bread photos lead each block."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Gothic body text at about 14 px, orange spaced Latin headings with a small Japanese line, and very large white Latin letters over the story photo."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Headings scale up well; body text stays around 14 px with generous line height."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Peach, white and dark-brown bands alternate, separated by wavy or scalloped edges; small hand-drawn baker characters and sparkle marks recur at section openings."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same bands and wave edges, one column, with the characters kept at small size."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "No booking or order action; orange pill buttons lead to more pages, and each store has a map button."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The phone numbers are tap-to-call links in the shop details; there is no fixed action bar."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Two stores, each with address, phone, hours and closing days written as text beside a store photo."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same store details stack under a store photo and stay readable at phone width."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Under the hero, a row of five small icon links with English and Japanese labels; a fixed header with the same links appears while scrolling."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A round orange menu button fixed at the top right."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Warm, close food photography plus store interiors, an Instagram grid and simple line characters; colours limited to peach, orange and dark brown."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Same photography; round and blob-shaped photo crops keep a soft feel."
+          }
+        }
+      },
+      "design_features": [
+        "Wavy and scalloped section edges and a recurring baker character give the shop a friendly, local identity.",
+        "Three numbered commitments with large orange numerals and round photos explain why the bread is special.",
+        "Each store has a complete text block with address, phone, hours and closing days."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "Numbered commitments with large numerals and one photo each",
+          "why_it_works": "Visitors read the shop's reasons in a fixed order, and the numerals make the list easy to scan.",
+          "where_it_fits": "Shops with two to four real, specific commitments stated by the owner.",
+          "risk": "With vague or invented claims it becomes generic marketing; more than four dilutes it."
+        },
+        {
+          "technique": "Complete text shop details per location",
+          "why_it_works": "Hours, closing days and phone are readable and copyable, not hidden in images.",
+          "where_it_fits": "Any shop; essential for multi-store or irregular hours.",
+          "risk": "Low risk; only the layout must stay plain enough to read on a phone."
+        }
+      ],
+      "weaknesses": [
+        "Desktop body text is small for the width, and the story band's white text sits over a busy photo.",
+        "A banner about a media appearance interrupts the flow near the news.",
+        "No direct way to order or reserve, which suits walk-in only."
+      ],
+      "desktop_vs_mobile": [
+        "Desktop shows an icon link row under the hero; the phone hides it behind a round menu button.",
+        "Numbered commitments sit beside their photos on desktop and stack photo-first on the phone."
+      ],
+      "do_not_transfer": [
+        "Its logo, characters, photographs and wording.",
+        "Its exact wave shapes, palette values and section order."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": null
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "DX-002",
+      "case_name": "harebare",
+      "candidate_source_url": "https://harebare.org/",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://harebare.org/",
+          "source_kind": "official_brand_site",
+          "operating_status": "live_first_party_site",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://harebare.org/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "HERO_CAROUSEL_ROTATES",
+                "LAZY_IMAGES_MISSING"
+              ],
+              "captured_at": "2026-10-25T02:35:55.993Z",
+              "image_committed": false,
+              "image_sha256": "2244f1eebe797bc352c729a15494dec1435e9f60f929e067fa3d550ca018ff8d"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://harebare.org/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "HERO_CAROUSEL_ROTATES",
+                "LAZY_IMAGES_MISSING"
+              ],
+              "captured_at": "2026-10-25T02:36:04.808Z",
+              "image_committed": false,
+              "image_sha256": "75f013f73910bbdd6747bbb55bfde871aff3a994f2fd3373df19c0fa26d56b2b"
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Centred round house-shaped logo with a lowercase wordmark, a centred one-line nav, then a three-slide photo carousel held inside the content width rather than full bleed. The first screen showed a kitchen lunch photo; the full-page capture showed cookies, so the opening image changes."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Logo centred with a MENU button at the right, the same carousel cropped to a wide strip, then a large vertical-set (tategaki) statement in two columns before any body text."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "The signature cookie is named in the intro paragraph; a lineup band shows three product cards (photo, name, one or two lines of description) in a row with one shared see-more button."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "The three product cards stack in one column with the same name and description; in this capture their photos had not loaded, leaving tall empty boxes."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Rounded Gothic throughout; section titles pair a Japanese heading with a small italic English subtitle. Body text is small for a 1440 screen and set in a narrow centred column."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Body text is comfortable at phone width with generous line height; the vertical statement is the largest type on the page and only appears in the mobile capture."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Sections alternate between a cream ground and a beige band with no rules or borders; each section ends with the same small dark-brown button, giving a steady beat."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "The same cream and beige alternation, with long gaps where lazy images did not render in this capture; the online-store photo moves above its text."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "No single main action. Each section has a small dark-brown see-more button; the online store button carries an outbound-link icon."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "The same buttons become wider centred pills; still no fixed or repeated main action such as a call or visit button."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Café days and hours sit inside the kitchen section; the footer area lists postcode, address, phone, shop hours and the closing day in small type above a dark-brown footer."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "The same address block appears near the end, readable but only after a long scroll; café hours and shop hours are given in two different places."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Eight centred text links, two with dropdown markers; the footer repeats the links in two short columns."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "A MENU button replaces the links; the dark-brown footer lists all links centred one per line."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Warm natural-light food photography of the baked goods, gift boxes and the café lunch; colours limited to cream, beige and dark brown so the photos carry the warmth."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "The same photography, cropped to wide strips; social icons are dark-brown circles that match the buttons."
+          }
+        }
+      },
+      "design_features": [
+        "A three-colour system of cream ground, beige bands and dark brown for logo, buttons and footer, with no other accent colour except a red notice line.",
+        "Section headings pair Japanese with a small italic English subtitle, so every section reads the same way.",
+        "On a phone, a large vertical-set statement sits between the hero and the body text as a pause."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "Two alternating ground tones instead of rules between sections",
+          "why_it_works": "Sections separate clearly while the page stays calm and warm; no borders compete with the photos.",
+          "where_it_fits": "Small food or craft shops with warm photography and a limited palette.",
+          "risk": "With weak photos the page becomes flat beige blocks; the tones need enough contrast to read as separate bands."
+        },
+        {
+          "technique": "Vertical-set statement as a pause after the hero on mobile",
+          "why_it_works": "It gives one sentence of brand voice its own screen and slows the scroll before the details.",
+          "where_it_fits": "Japanese shops whose own wording supplies a short statement. Second Root's vertical_name allows only the shop name to be vertical, so a vertical statement would need a separate approval.",
+          "risk": "Takes a full screen on a phone; with long or invented text it delays the practical information."
+        },
+        {
+          "technique": "Product trio cards with name and one-line description",
+          "why_it_works": "Visitors see what the shop sells and its signature item without leaving the top page.",
+          "where_it_fits": "Shops with three or so clearly named products backed by real facts.",
+          "risk": "Needs approved product images; forcing exactly three equal cards hides a signature item that deserves a bigger slot, and stock images look worse than a text list."
+        }
+      ],
+      "weaknesses": [
+        "The opening image rotates, so a first-time visitor may see the café lunch instead of the signature cookie.",
+        "On a 1440 screen the body text is small and the content column narrow, leaving wide empty margins.",
+        "Café hours and shop hours are in different sections, which can confuse a visitor checking when to come.",
+        "No visible main action such as call or visit; all buttons are equal see-more links."
+      ],
+      "desktop_vs_mobile": [
+        "The vertical statement was visible only in the mobile capture; on desktop the intro starts directly with a small paragraph.",
+        "Desktop nav is a centred link row; on a phone it collapses into a MENU button.",
+        "The online-store block is side by side on desktop and stacks image-first on a phone."
+      ],
+      "do_not_transfer": [
+        "Its logo, photographs, product names and wording.",
+        "Its exact palette values and its exact section order and layout."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": {
+          "by": "chatgpt_via_owner",
+          "summary": "ChatGPT (from the PR records, not the screenshots): palette, spacing and consistent product cards are useful; section separation by ground colour suits small shops. Do not force three equal cards; a signature item may deserve a larger slot."
+        }
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "DX-006",
+      "case_name": "ON THE WAY ケーキ特設サイト",
+      "candidate_source_url": "https://design-kom.com/design/w048ontheway_cake/",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://design-kom.com/design/w048ontheway_cake/",
+          "source_kind": "agency_case_study",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://design-kom.com/design/w048ontheway_cake/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "DESIGN_SEEN_AS_REDUCED_IMAGE"
+              ],
+              "captured_at": "2026-10-25T03:27:06.772Z",
+              "image_committed": false,
+              "image_sha256": "fc53d9df6f6d9f6c29f120b60d1c8a55cf051d1554fe2515fc8c44bbce716354"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://design-kom.com/design/w048ontheway_cake/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:27:25.447Z",
+              "image_committed": false,
+              "image_sha256": "074c7029b57c97c85c849f0014cf82dd2c83b4c652e8b67d7e30b475122d05f8"
+            }
+          ]
+        },
+        {
+          "role": "first_party_brand_site",
+          "link_evidence": "The agency case page lists this address under its website heading (written as plain http) and links to it.",
+          "url": "https://cake.on-the-way.jp/",
+          "source_kind": "official_brand_site",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": null,
+              "http_status": null,
+              "outcome": "unreachable",
+              "problems": [
+                "NAV_ERROR",
+                "HTTPS_CONNECTION_RESET"
+              ],
+              "captured_at": "2026-10-25T03:32:22.008Z",
+              "image_committed": false,
+              "image_sha256": null
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": null,
+              "http_status": null,
+              "outcome": "unreachable",
+              "problems": [
+                "NAV_ERROR",
+                "HTTPS_CONNECTION_RESET"
+              ],
+              "captured_at": "2026-10-25T03:32:41.921Z",
+              "image_committed": false,
+              "image_sha256": null
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "In the agency's full-page image of the design: an illustrated cake logo, then a decorated cake photo on pale blue diagonal stripes with a short handwritten-style message."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The agency page shows only the desktop design; the brand site's own phone layout could not be opened over HTTPS."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Three order types are numbered No.01 to No.03 (full order, semi order, cupcake tower), each with photos, type variants and a price band."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The phone layout of the design was not shown."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Small Gothic body text, number labels in a framed badge, and a playful script logo; prices sit in dark ribbon bars."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The phone layout of the design was not shown."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Long single column: each numbered order type is a block separated by a wavy line, followed by decoration options and store information on a pale teal band."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The phone layout of the design was not shown."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "unknown",
+            "reason": "No ordering button could be identified in the reduced image of the design."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The phone layout of the design was not shown."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "A store block at the end with a map illustration and a store photo; the text was too small in the image to read reliably."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The phone layout of the design was not shown."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "unknown",
+            "reason": "Navigation of the design itself was not distinguishable in the agency's image."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The phone layout of the design was not shown."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Bright cake photos on pastel stripes, simple step pictograms showing how a full order works, and photos of cake toppers as options."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The phone layout of the design was not shown."
+          }
+        }
+      },
+      "design_features": [
+        "An ordering process explained as a row of simple step pictograms before the cake examples.",
+        "Order types numbered and priced, so a visitor can compare effort and cost at a glance."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "Step pictograms for how ordering works",
+          "why_it_works": "A custom order feels less risky when each step is drawn in order before the visitor contacts the shop.",
+          "where_it_fits": "Shops selling made-to-order items: cakes, flowers, tailoring, printing.",
+          "risk": "Steps must match the shop's real process; extra illustration work, and pictograms with text inside are hard to keep accurate."
+        }
+      ],
+      "weaknesses": [
+        "Each order type adds several sub-blocks, so the single column grows long before the store information appears."
+      ],
+      "desktop_vs_mobile": [],
+      "do_not_transfer": [
+        "Its logo, illustrations, cake photos and wording.",
+        "Its exact page structure and stripe pattern."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": null
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "DX-033",
+      "case_name": "MAISON CACAO",
+      "candidate_source_url": "https://muuuuu.org/industry/restaurant/13421.html",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://muuuuu.org/industry/restaurant/13421.html",
+          "source_kind": "design_gallery",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://muuuuu.org/industry/restaurant/13421.html",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "GALLERY_SHOWS_OLDER_DESIGN"
+              ],
+              "captured_at": "2026-10-25T02:36:38.343Z",
+              "image_committed": false,
+              "image_sha256": "21167932d614bfa86726739f71d4195a2cde4a632027973930cab80cc6241d33"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://muuuuu.org/industry/restaurant/13421.html",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "GALLERY_SHOWS_OLDER_DESIGN"
+              ],
+              "captured_at": "2026-10-25T02:36:47.731Z",
+              "image_committed": false,
+              "image_sha256": "c2b1bf4a75393344f0a31056a4cef5c9497237cfdce8e283f27bb21b3dc5e6e8"
+            }
+          ]
+        },
+        {
+          "role": "first_party_brand_site",
+          "link_evidence": "The gallery entry lists this URL as the site address and links to it from the entry title MAISON CACAO.",
+          "url": "https://maisoncacao.com/",
+          "source_kind": "official_brand_site",
+          "operating_status": "live_first_party_site",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://maisoncacao.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "HERO_CAROUSEL_ROTATES",
+                "LAZY_IMAGES_MISSING"
+              ],
+              "captured_at": "2026-10-25T02:37:10.499Z",
+              "image_committed": false,
+              "image_sha256": "780132acbc30b85fe127e15db3e0cfedc170574681d5a026908ff3f6e478a453"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://maisoncacao.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "HERO_CAROUSEL_ROTATES",
+                "TEXT_FADE_IN_PARTIAL",
+                "POSSIBLE_SLIDE_IN_MID_STATE"
+              ],
+              "captured_at": "2026-10-25T02:37:18.834Z",
+              "image_committed": false,
+              "image_sha256": "394643066728c81f96a0665d75a189486c7bd2bf9502e9442c4acac6d6c7d9bf"
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A close-up chocolate photo fills about four fifths of the width, cut by thin white vertical bars into slats; the right column holds a short vertical-set Japanese announcement and a slide index of about fourteen dots."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Header sits above the hero; a different slide (painted gift boxes against sky) fills the screen in tall slats, followed by the announcement set horizontally with a character fade-in."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Products appear mainly through the hero slides and an online-shop card with a product photo; the top page leads with brand values, news and stores rather than a product list."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The online-shop card stacks full width; products are visible in the hero slide and that card only."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Thin geometric Latin capitals for the wordmark and section titles, Mincho for Japanese text, small grey labels; a large thin English slogan with its Japanese version beneath."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Same families; in this capture the five one-kanji value rows ran past the right edge, possibly a slide-in caught mid-way (not confirmed)."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Very generous white space on a pale grey ground; sections are marked only by a small Latin title at the left edge, then a value index, news list, store list, online shop, newsletters, recruit and journal."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same order in one column; long sections such as the store list and newsletter forms make the page long."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Three grey pill buttons in the bar under the hero: two restaurant bookings and the online shop, each with an English label over a small Japanese one."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Two pills (restaurant booking and online shop) and a menu icon in the top header from the first screen."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Stores are listed by brand, each with a small region label above a Latin store name; no addresses or hours on the top page."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same store list in one column; addresses and hours are not on the top page."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Wordmark and buttons sit in a bar placed below the hero, not above it; a two-line menu icon at the right; the footer has grouped link columns and social links."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Header moves to the top of the screen above the hero; footer links stack in two columns."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Saturated close-up product photography, an interior photo of a white store; journal thumbnails did not load in this capture."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A different hero slide of painted packaging; the store interior photo crops to a short strip."
+          }
+        }
+      },
+      "design_features": [
+        "A brand-values index: five one-kanji words, each with a thin leader line to short sub-topics.",
+        "A store list grouped by brand, with a tiny region label above each Latin store name.",
+        "Action buttons pair an English label with a small Japanese label underneath."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "Vertical-set announcement in a side column beside a large photo",
+          "why_it_works": "The photo keeps full impact while a short message reads in its own quiet column.",
+          "where_it_fits": "Japanese shops with one strong approved image and one short factual announcement. Vertical text other than the shop name is outside the approved vertical_name scope and needs its own approval.",
+          "risk": "Built for a multi-store brand; on a small single shop it can feel borrowed. Needs real text, and on a phone it must fall back to horizontal text."
+        },
+        {
+          "technique": "Small region label above each store or location name",
+          "why_it_works": "A long list of places stays scannable because the location is read first and the name second.",
+          "where_it_fits": "Businesses with two or more locations.",
+          "risk": "Pointless for a single-location shop; tiny grey labels can fall below readable contrast."
+        },
+        {
+          "technique": "Action buttons with a main label and a small plain-language sublabel",
+          "why_it_works": "A stylish label stays while the sublabel says plainly what the button does.",
+          "where_it_fits": "Shops with one or two real actions (booking, online shop).",
+          "risk": "Three or more such buttons in one bar split attention; grey-on-grey buttons are low contrast."
+        }
+      ],
+      "weaknesses": [
+        "The restaurant booking, cafe booking and online shop buttons compete; no single main action.",
+        "Light grey text and grey buttons on a pale grey ground give low contrast."
+      ],
+      "desktop_vs_mobile": [
+        "Desktop places the header bar under the hero; on a phone it moves to the top above the hero.",
+        "The vertical announcement on desktop becomes horizontal text on a phone.",
+        "Desktop shows three action buttons, the phone header shows two."
+      ],
+      "do_not_transfer": [
+        "Its slatted photo treatment, wordmark, photographs and wording.",
+        "Its exact layout, value words and store-list design as a whole."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": {
+          "by": "chatgpt_via_owner",
+          "summary": "ChatGPT (from the PR records, not the screenshots): the split of roles between large photo and typography is useful, but a multi-store brand expression should not be moved onto a small single shop. Clipped rows and fade-in need checking after animations finish."
+        }
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "DX-027",
+      "case_name": "SOLES GAUFRETTE",
+      "candidate_source_url": "https://muuuuu.org/industry/restaurant/13585.html",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://muuuuu.org/industry/restaurant/13585.html",
+          "source_kind": "design_gallery",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://muuuuu.org/industry/restaurant/13585.html",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "DESIGN_SEEN_AS_GALLERY_THUMBNAIL"
+              ],
+              "captured_at": "2026-10-25T03:29:34.991Z",
+              "image_committed": false,
+              "image_sha256": "3e7f8df27afdefc3bbf1805ae3ca4686e6126034c09329f08142078d8b81e7e3"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://muuuuu.org/industry/restaurant/13585.html",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "DESIGN_SEEN_AS_GALLERY_THUMBNAIL"
+              ],
+              "captured_at": "2026-10-25T03:29:49.191Z",
+              "image_committed": false,
+              "image_sha256": "aa4151c9cc0504a33fd1320e468aea603f4631c0dca26ef86ca4952df620d9ee"
+            }
+          ]
+        },
+        {
+          "role": "first_party_brand_site",
+          "link_evidence": "The gallery entry's URL field links to this address.",
+          "url": "https://soles-gaufrette.com/",
+          "source_kind": "official_brand_site",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": null,
+              "http_status": 503,
+              "outcome": "error",
+              "problems": [
+                "HTTP_503"
+              ],
+              "captured_at": "2026-10-25T03:34:35.555Z",
+              "image_committed": false,
+              "image_sha256": null
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": null,
+              "http_status": 503,
+              "outcome": "error",
+              "problems": [
+                "HTTP_503"
+              ],
+              "captured_at": "2026-10-25T03:34:41.990Z",
+              "image_committed": false,
+              "image_sha256": null
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Only the gallery's screenshot of the site: a split first screen, warm beige on the left with a large Latin serif line, deep navy on the right with a single biscuit photo."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The brand site returned an error (503); the gallery shows only a desktop screenshot."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "In the gallery's screenshot, one product photographed alone on navy carries the first screen."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The brand site returned an error (503); the phone layout was not seen."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "In the gallery's screenshot, a high-contrast Latin serif in white set large over the beige panel."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The brand site returned an error (503); the phone layout was not seen."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "unknown",
+            "reason": "Only the first screen appears in the gallery's screenshot; the brand site returned an error (503)."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The brand site returned an error (503); the phone layout was not seen."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "unknown",
+            "reason": "Not readable in the gallery's reduced screenshot; the brand site returned an error (503)."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The brand site returned an error (503); the phone layout was not seen."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "unknown",
+            "reason": "Not shown in the gallery's screenshot; the brand site returned an error (503)."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The brand site returned an error (503); the phone layout was not seen."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "unknown",
+            "reason": "Not readable in the gallery's reduced screenshot; the brand site returned an error (503)."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The brand site returned an error (503); the phone layout was not seen."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "In the gallery's screenshot, a muted two-colour scheme (beige and navy) with one product photo and no other decoration."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "The brand site returned an error (503); the phone layout was not seen."
+          }
+        }
+      },
+      "design_features": [
+        "A two-panel first screen in two muted brand colours with one product photographed alone (seen only in the gallery's screenshot)."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "Two-colour split first screen with one product alone",
+          "why_it_works": "A single product on a strong colour field reads as premium and makes the product the brand.",
+          "where_it_fits": "Shops with one signature product and a defined two-colour palette.",
+          "risk": "Seen only in a gallery thumbnail; the live site could not be checked. Weak if the product photo is not excellent."
+        }
+      ],
+      "weaknesses": [
+        "No design weakness could be judged from the gallery thumbnail alone."
+      ],
+      "desktop_vs_mobile": [],
+      "do_not_transfer": [
+        "Its product photograph, wordmark and wording.",
+        "Its exact colour pair and split layout."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": null
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "DX-036",
+      "case_name": "Kariomons Coffee Roaster",
+      "candidate_source_url": "https://muuuuu.org/industry/restaurant/13499.html",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://muuuuu.org/industry/restaurant/13499.html",
+          "source_kind": "design_gallery",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://muuuuu.org/industry/restaurant/13499.html",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:30:03.350Z",
+              "image_committed": false,
+              "image_sha256": "bb4ce7d8b5bfacde938a45137284677c5c4eb697eb3899fcf63058681671f2f0"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://muuuuu.org/industry/restaurant/13499.html",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:30:17.953Z",
+              "image_committed": false,
+              "image_sha256": "251845a520b262f833f7a984fa66e0a4770245cfea97c1c498a754b2dc652062"
+            }
+          ]
+        },
+        {
+          "role": "first_party_brand_site",
+          "link_evidence": "The gallery entry's URL field links to this address.",
+          "url": "https://kariomons.com/",
+          "source_kind": "official_brand_site",
+          "operating_status": "live_first_party_site",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://kariomons.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:34:48.685Z",
+              "image_committed": false,
+              "image_sha256": "2cb7b1b904c638c28a99df90e6cf5fe9316e91c735803359ada1004ee5a16bfa"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://kariomons.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:35:07.207Z",
+              "image_committed": false,
+              "image_sha256": "1f261d3162549105aa99c6bbb4312972e7e0e77e3ada81dbfbd0c3fbb174bae1"
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Two photos side by side (coffee being poured, beans in a roaster), a circular Latin logotype at the top right, orange new-arrival labels at the top left, and a dark teal sidebar with menu and social icons."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A single pouring photo fills the screen with the new-arrival labels and a menu button; the one-line serif slogan follows below."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Category tiles (subscription, beans, pastries, gifts, goods) with photo and label, then a recommended list where each coffee shows lot number, roast badge, origin, process, flavour notes and price or sold out."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Tiles stack one per row; the coffee list keeps all its details in a compact row per item."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Small-caps Latin over photos, a light serif for the slogan, small Gothic for details; roast badges as tiny coloured tags."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Same families; detail text around 12 px is small."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Content sits in a narrow centred column on a pale ground; sections are short and separated by white space."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "One column; the list and calendar sections are long but evenly spaced."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Two dark buttons after the list: all products and access to the shops; no fixed action."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same two buttons side by side; the menu button stays at the top right."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A monthly calendar marks closing days separately for each of two shops; a monthly special day is announced beside it."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same calendar at full width, readable but with small labels."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A dark teal sidebar at the left holds the menu button and social links."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A menu button at the top right."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Natural-light photos of brewing, roasting and producers; a roast-level scale drawn from light to dark."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Same photos; the roast scale scales down with small labels."
+          }
+        }
+      },
+      "design_features": [
+        "Each coffee is listed with the facts a buyer compares: lot, roast level, origin, process, flavour notes, price, sold out.",
+        "A roast-level scale from light to dark explains the badges used in the list.",
+        "A per-shop closing-day calendar on the top page."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "Product list with comparable facts per item",
+          "why_it_works": "Specialist buyers decide by comparing details; a consistent row makes that fast.",
+          "where_it_fits": "Shops whose products differ by specific attributes: coffee, tea, sake, bread flour, cosmetics.",
+          "risk": "Only with facts the shop supplies; too many attributes make rows unreadable on a phone."
+        },
+        {
+          "technique": "A simple scale graphic explaining a product attribute",
+          "why_it_works": "A visual scale lets beginners read the tags without knowing the jargon.",
+          "where_it_fits": "Products with one main ordered attribute (roast, sweetness, firmness, spice).",
+          "risk": "Must match the shop's own scale; decorative scales with no real meaning mislead."
+        }
+      ],
+      "weaknesses": [
+        "On desktop the content stays in a narrow centred column, leaving the wide screen mostly empty.",
+        "Detail and calendar text is very small on the phone.",
+        "The new-arrival labels sit over the first photo and compete with it."
+      ],
+      "desktop_vs_mobile": [
+        "Desktop shows two hero photos side by side; the phone shows only one.",
+        "Desktop has a left sidebar for the menu; the phone uses a top-right menu button.",
+        "The two action buttons stay side by side on both."
+      ],
+      "do_not_transfer": [
+        "Its circular logotype, photographs and wording.",
+        "Its exact list design, colours and sidebar layout."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": null
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "DX-008",
+      "case_name": "TAKE整体院",
+      "candidate_source_url": "https://usagi-design.jp/works/takeseitaiin",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://usagi-design.jp/works/takeseitaiin",
+          "source_kind": "agency_case_study",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://usagi-design.jp/works/takeseitaiin",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:27:42.326Z",
+              "image_committed": false,
+              "image_sha256": "f975eb1f394365b9fac8411b0145b372eb1e8f191638dbf0d8466ffdd1c5820e"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://usagi-design.jp/works/takeseitaiin",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:28:03.564Z",
+              "image_committed": false,
+              "image_sha256": "e468b530a28946275c9ebfc7ee0e344d354df85a09fa9aa44e63fbfc334c95dc"
+            }
+          ]
+        },
+        {
+          "role": "first_party_brand_site",
+          "link_evidence": "The agency case page prints this URL in its project summary as the site that was made.",
+          "url": "https://take-seitai.studio.site/",
+          "source_kind": "official_brand_site",
+          "operating_status": "live_first_party_site",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://take-seitai.studio.site/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "PAGE_TALLER_THAN_12000"
+              ],
+              "captured_at": "2026-10-25T03:36:11.585Z",
+              "image_committed": false,
+              "image_sha256": "058ddac5280c76471d1e6725dfa09d84566574edcc36c74c158abf6d0a1e0d6d"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://take-seitai.studio.site/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:36:34.543Z",
+              "image_committed": false,
+              "image_sha256": "f1dd4b5a6c8cf2f77336b75fdc4ee92b4541f7bc3eb5e875ebe072c4f2d1b786"
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A large blob-shaped photo of a consultation with a small round inset photo and a speech-bubble badge for free childcare; a vertical teal tagline at the right with a small English line; a large yellow round booking button at the lower right."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The blob photo goes full width; the vertical tagline sits beside a two-by-two grid of icon facts below it."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Menus appear as rounded cards with target label, course name, length, a short description and prices for first and later visits."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The menu cards scroll sideways, with a small note saying the row can be scrolled."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Rounded Gothic in teal for headings, small grey body text, small English section labels; the tagline is the only vertical text."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Larger heading sizes; body around 14 px; the vertical tagline is the largest type on the first screen."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "White and very pale teal areas meet in soft wave curves, with small drawn breath marks; sections run about, three reasons, menu, voices, message, news, column, access, contact."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same order in one column; the contact block ends in a solid teal area with a large yellow booking button."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A large yellow round booking button in the first screen and again in the contact block."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A yellow booking button and a teal menu button sit in a header that stays fixed while scrolling (checked at mid-page)."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Station access and opening days and hours sit in tinted labels at the very top; an access table lists address, hours, closing days, payment and parking."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Opening days and hours are printed in the header next to the booking button from the first screen."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Seven text links in one row under the access and hours labels."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A MENU button in the fixed header; the footer repeats the links."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Bright, clean photos of the practitioner with clients and a child play area; four line icons for weekend opening, station walk, parking and private rooms."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Same photos and icons; the blob crops keep the soft look at phone width."
+          }
+        }
+      },
+      "design_features": [
+        "The first screen answers the four practical worries of the target client with line icons: weekend opening, distance from the station, parking, privacy.",
+        "Hours and booking are visible from the first screen on both widths.",
+        "Menu cards show price for the first visit and for later visits side by side."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "Icon fact row answering the target client's practical worries",
+          "why_it_works": "A parent or busy visitor sees at once whether the shop fits their constraints before reading anything.",
+          "where_it_fits": "Service businesses with clear practical facts: hours, access, parking, childcare, private rooms.",
+          "risk": "Facts must be real and current; more than four icons becomes noise."
+        },
+        {
+          "technique": "Hours and booking in the fixed phone header",
+          "why_it_works": "The two things a returning client looks for never need a scroll.",
+          "where_it_fits": "Appointment businesses with a real booking route.",
+          "risk": "A crowded header on small phones; hours text must be kept short and correct."
+        },
+        {
+          "technique": "Menu cards with first-visit and repeat prices",
+          "why_it_works": "Visitors judge the real cost of trying the shop without asking.",
+          "where_it_fits": "Clinics, salons and classes with a trial price.",
+          "risk": "Only with prices the owner supplies; never invent prices."
+        }
+      ],
+      "weaknesses": [
+        "Body text is small and pale grey on white.",
+        "The column area shows empty placeholder cards (no posts yet).",
+        "A badge of the site builder sits in the lower left corner of the first screen."
+      ],
+      "desktop_vs_mobile": [
+        "Desktop lays the four icon facts in a row under the hero; the phone puts them in a two-by-two grid beside the vertical tagline.",
+        "Desktop puts hours in a small label at the top; the phone puts them in the fixed header beside the booking button.",
+        "Menu cards sit in a grid on desktop and scroll sideways on the phone."
+      ],
+      "do_not_transfer": [
+        "Its photographs, tagline wording and character illustration.",
+        "Its exact blob shapes, colours and layout."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": null
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "DX-011",
+      "case_name": "aoはり治療院",
+      "candidate_source_url": "https://design-kom.com/design/w068ao/",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://design-kom.com/design/w068ao/",
+          "source_kind": "agency_case_study",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://design-kom.com/design/w068ao/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "PAGE_TALLER_THAN_12000"
+              ],
+              "captured_at": "2026-10-25T03:28:20.302Z",
+              "image_committed": false,
+              "image_sha256": "98257e27843ae2c7cf5191af98157a808a4427cf64f42343b2b7666db4da9f40"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://design-kom.com/design/w068ao/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:28:45.158Z",
+              "image_committed": false,
+              "image_sha256": "bc3463077aab91c7716fa9375ee6c185b52e944cbf4e3bb56214c6c1cb69da37"
+            }
+          ]
+        },
+        {
+          "role": "first_party_brand_site",
+          "link_evidence": "The agency case page lists this address under its website heading (written as plain http) and links to it.",
+          "url": "https://ao-beauty-labo.com/",
+          "source_kind": "official_brand_site",
+          "operating_status": "live_first_party_site",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://ao-beauty-labo.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "HORIZONTAL_CAROUSEL"
+              ],
+              "captured_at": "2026-10-25T03:33:02.552Z",
+              "image_committed": false,
+              "image_sha256": "b9370f256d09f53cc4935aea71c611393fec8685006d155947eaac7a411dd932"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://ao-beauty-labo.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "PAGE_TALLER_THAN_12000",
+                "HORIZONTAL_CAROUSEL"
+              ],
+              "captured_at": "2026-10-25T03:33:22.152Z",
+              "image_committed": false,
+              "image_sha256": "1867a5c03535f5399e10174f0e31ab502364194f6dbfe96d8af5ec10ce2d4725"
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A wide close-up photo of a facial acupuncture treatment with a short vertical message at the right; the logo overlaps the photo's lower edge and a green round badge links to the main clinic."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The photo fills the top; the logo and a short horizontal message follow, centred, with letter spacing."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Six numbered points with line icons, then a menu grid of photos with short descriptions and more buttons."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Points stack one per block with large thin numerals; the menu becomes a two-column grid."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Blue Latin capitals with small Japanese under each nav item; thin numerals for the points; small body text."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Spaced, light headings; body around 14 px."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "White page with framed boxes, a mid-blue band for first-time visitors and a blue information footer; many award medal graphics near the top."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same order in one column; the award medals take more than a full screen."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Top right: the phone number in large type with reception hours under it, a mail link, and buttons for today's availability and the shop."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A fixed bar at the bottom with one online-booking button per location, always visible."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Reception hours under the phone number; both locations with address and access; a monthly calendar marks open and closed days."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Location details and the open-day calendar stack near the end; the phone number is a tap-to-call link."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Nine nav items under the hero, each an English word with a small Japanese label, separated by slashes."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A round blue menu button at the top right."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Treatment close-ups, staff portraits with a simple availability label per person, and store exterior photos."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Same photos; staff cards move in a sideways carousel."
+          }
+        }
+      },
+      "design_features": [
+        "A bottom-fixed bar on the phone with one booking button per location.",
+        "A monthly calendar showing open and closed days directly on the top page.",
+        "Staff cards that state whether each person currently has availability."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "Bottom-fixed booking bar on the phone",
+          "why_it_works": "The booking action stays under the thumb while scrolling (confirmed fixed at mid-page).",
+          "where_it_fits": "Appointment businesses with online or phone booking.",
+          "risk": "Covers content and needs a real booking route; two or more buttons must be clearly labelled."
+        },
+        {
+          "technique": "Open-day calendar on the top page",
+          "why_it_works": "Irregular closing days become clear without a phone call.",
+          "where_it_fits": "Shops with irregular or rotating days off.",
+          "risk": "Needs the owner to keep it current; a stale calendar misleads."
+        }
+      ],
+      "weaknesses": [
+        "Award medals and ranking claims take a large area near the top and push the content down.",
+        "Desktop crowds many small labels, badges and buttons into the header area.",
+        "Body text is small on desktop."
+      ],
+      "desktop_vs_mobile": [
+        "Desktop shows phone and reception hours in the top right; the phone moves booking to a fixed bottom bar.",
+        "The vertical message on desktop becomes a centred horizontal message on the phone."
+      ],
+      "do_not_transfer": [
+        "Its logo, photographs, award graphics and wording.",
+        "Its exact layout and colour scheme."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": null
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "DX-013",
+      "case_name": "DAN BRISE",
+      "candidate_source_url": "https://www.danbrise-barber.com/",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://www.danbrise-barber.com/",
+          "source_kind": "official_brand_site",
+          "operating_status": "live_first_party_site",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://www.danbrise-barber.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "PAGE_TALLER_THAN_12000",
+                "LOADER_WAIT_15S_RETAKE",
+                "FULLPAGE_BLANK",
+                "FOLD_SHOT_USED"
+              ],
+              "captured_at": "2026-10-25T03:25:21.847Z",
+              "image_committed": false,
+              "image_sha256": "ecba5d8d3ddc9c7290d932063500c49a5bbdf5ec3be92bc212bac771c42a38f7"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://www.danbrise-barber.com/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "PAGE_TALLER_THAN_12000",
+                "SCROLL_REVEAL_NOT_RENDERED"
+              ],
+              "captured_at": "2026-10-25T02:36:24.756Z",
+              "image_committed": false,
+              "image_sha256": "210ebdf3b52053e093589be8d16257600d27ed3aeb61d81b9419738d4a165976"
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "After the opening screen: a full-bleed colour photo or video still of a cut in progress, with a very large English serif headline across the bottom edge and a small vertical English label at the right."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Dark charcoal ground, a large two-line English serif headline at the left with a small English label set vertically at the right, then a full-width photo or video still of a cut in progress."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "unknown",
+            "reason": "The one retake (15 s wait) showed the first screen, but the full-page image stayed dark below it, so this part was not seen."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Services appear as numbered blocks, each with a black-and-white photo, a two-line Japanese heading, a short paragraph and a View More link: fade cuts, head spa, eyebrows, shaving, thinning-hair care."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "The English serif headline spans almost the full width at the bottom of the first screen; header text is a condensed sans in light grey."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "English serif display for the headline, Mincho-style Japanese headings, small light body text on dark; small vertical English labels mark section numbers."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "unknown",
+            "reason": "The one retake (15 s wait) showed the first screen, but the full-page image stayed dark below it, so this part was not seen."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Long dark page of repeated photo, heading, text, link units; long blank stretches in this capture where scroll-triggered content did not render."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "The header shows the phone number as text and an outlined booking button from the first screen; whether the header stays while scrolling was not confirmed."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Tel and a booking link sit in the header next to the menu button from the first screen, so the main actions are visible without scrolling."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Not visible in the screenshot, but the page text of the same capture lists opening hours, regular closing days and a note that same-day booking is taken."
+          },
+          "mobile_390": {
+            "status": "unknown",
+            "reason": "Not seen in this unscrolled phone capture; only the shop sign photo showing hours was visible. The page text of the desktop capture does list hours."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Logo at the top left; phone number, booking button, a menu icon and a four-language switch at the top right."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Logo at the left, a two-line menu icon and the Tel and booking links at the right of the header."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "The first screen is a colour close-up of a cut, unlike the mostly black-and-white photography seen further down on the phone."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "recorded_candidate_page",
+            "note": "Almost all photography is black and white (service close-ups and staff portraits), with one colour photo of the shop sign and one of a cut in progress."
+          }
+        }
+      },
+      "design_features": [
+        "A dark, nearly monochrome page where black-and-white photography keeps every section in one tone.",
+        "Bilingual staff cards: Japanese name, small English name, a short profile and a link to their own work.",
+        "Booking and phone links in the mobile header from the first screen."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "Booking and phone links in the mobile header from the first screen",
+          "why_it_works": "The two actions a salon visitor most needs never require scrolling.",
+          "where_it_fits": "Appointment businesses such as barbers, salons, body-care and clinics with a real phone number and booking route.",
+          "risk": "Showing a booking link without a real booking route, or crowding the header on small phones. Whether it stays fixed on scroll was not confirmed here."
+        },
+        {
+          "technique": "Numbered service blocks with one consistent photo treatment",
+          "why_it_works": "A long service list reads as one system when every block has the same structure and photo tone.",
+          "where_it_fits": "Service businesses with several distinct menus and enough approved photos for each.",
+          "risk": "With fewer than three services or mixed photo quality the repetition looks empty."
+        }
+      ],
+      "weaknesses": [
+        "Body text is small and light on a dark ground, which is harder to read on a phone outdoors.",
+        "An opening animation stands between the visitor and the first screen on desktop."
+      ],
+      "desktop_vs_mobile": [
+        "Desktop puts the headline over the photo at the bottom of the first screen; the phone sets it above the photo on the dark ground.",
+        "Desktop adds a four-language switch in the header; the phone header keeps only phone, booking and menu.",
+        "Below the first screen the desktop layout was not seen, so the rest cannot be compared."
+      ],
+      "do_not_transfer": [
+        "Its logo, English headline, photographs and staff names.",
+        "Its dark colour scheme as a template for unrelated shops, and its exact layout."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": {
+          "by": "chatgpt_via_owner",
+          "summary": "ChatGPT (from the PR records, not the screenshots): the clear phone and booking route suits salons and body-care shops; whether it stays fixed while scrolling needs checking. The site does list hours as text, so the hours-only-in-a-photo weakness must be corrected."
+        }
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "DX-023",
+      "case_name": "NELU 高麗橋",
+      "candidate_source_url": "https://muuuuu.org/industry/restaurant/19240.html",
+      "pages": [
+        {
+          "role": "recorded_candidate_page",
+          "link_evidence": null,
+          "url": "https://muuuuu.org/industry/restaurant/19240.html",
+          "source_kind": "design_gallery",
+          "operating_status": "unknown",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://muuuuu.org/industry/restaurant/19240.html",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:29:04.469Z",
+              "image_committed": false,
+              "image_sha256": "71ea27a9269b9c433b8a824c08eb15fd4112daf67ee914d741a74955007f7426"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://muuuuu.org/industry/restaurant/19240.html",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [],
+              "captured_at": "2026-10-25T03:29:20.065Z",
+              "image_committed": false,
+              "image_sha256": "c6acfabf630c02f5532eb3e7642c02e7548d42d08b28e19b9556aa209af94445"
+            }
+          ]
+        },
+        {
+          "role": "first_party_brand_site",
+          "link_evidence": "The gallery entry's URL field links to this address.",
+          "url": "https://restaurant.nelu.osaka/",
+          "source_kind": "official_brand_site",
+          "operating_status": "live_first_party_site",
+          "operating_note": null,
+          "captures": [
+            {
+              "viewport": "desktop_1440",
+              "width": 1440,
+              "height": 900,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36",
+              "loaded_url": "https://restaurant.nelu.osaka/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "PAGE_TALLER_THAN_12000",
+                "FULLPAGE_DARK_BELOW_FOLD",
+                "STEP_SHOTS_USED"
+              ],
+              "captured_at": "2026-10-25T03:33:45.535Z",
+              "image_committed": false,
+              "image_sha256": "421b56b1d0f195e9921766a38438b3b1721d09d8bee5de6ecc16c025a0d2cada"
+            },
+            {
+              "viewport": "mobile_390",
+              "width": 390,
+              "height": 844,
+              "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+              "loaded_url": "https://restaurant.nelu.osaka/",
+              "http_status": 200,
+              "outcome": "loaded",
+              "problems": [
+                "PAGE_TALLER_THAN_12000"
+              ],
+              "captured_at": "2026-10-25T03:34:09.876Z",
+              "image_committed": false,
+              "image_sha256": "35b365924246b53c5434e9844a84928d81292e725d8fae706b7083042741260f"
+            }
+          ]
+        }
+      ],
+      "observations": {
+        "hero": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A full-screen night photo of a historic brick building's lit doorway, a thin condensed Latin wordmark at the left, a one-line Japanese description at the right, and three outlined buttons at the lower right."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The doorway photo fills the phone screen; the description sits top left, a menu button top right, and the three buttons run along the bottom."
+          }
+        },
+        "product_or_service_visibility": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Dishes appear in a scattered collage of framed photos; a menu section lists lunch, dinner and afternoon tea with starting prices."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The collage becomes a sequence of full-width photos with short captions; the same price lines follow the menu heading."
+          }
+        },
+        "typography": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A Mincho-style serif for Japanese headings, thin condensed Latin for section titles that overlap photos, small body text on a near-black ground."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Same families; headings two lines, body text small."
+          }
+        },
+        "section_rhythm": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A dark page where each section opens with a Latin title over a photo, then a serif heading and short text; photos with cut corners are staggered."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Single column of photo, heading, text and an outlined button, repeated; an FAQ uses open-close rows."
+          }
+        },
+        "primary_cta": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The three outlined buttons (restaurant booking, banquets, weddings) stay at the lower right in most scroll steps (7 of 9), but not near the access and footer area; how they are kept there was not confirmed."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The three buttons sit at the bottom of the first screen; later the booking and contact buttons repeat near the end."
+          }
+        },
+        "practical_info": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Access with a map and address, and a contact block with phone number, reception hours and closing day as text."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "The same access and contact details as text near the end."
+          }
+        },
+        "navigation": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A nav row with a centred monogram appears below the opening photos rather than at the top."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "A square menu button at the top right."
+          }
+        },
+        "visual_material": {
+          "desktop_1440": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Low-key, warm photography of the building, dishes, wine and events; photo frames with cut corners match the button shape."
+          },
+          "mobile_390": {
+            "status": "observed",
+            "page": "first_party_brand_site",
+            "note": "Same photography at full width."
+          }
+        }
+      },
+      "design_features": [
+        "The building itself is the hero and the brand story; the opening photo shows the lit entrance at night.",
+        "One frame shape (cut corners) is shared by photos and buttons, tying the page together.",
+        "On desktop the main actions stay visible as a small group of buttons through most of the page."
+      ],
+      "transferable_techniques": [
+        {
+          "technique": "A persistent small group of action buttons",
+          "why_it_works": "Booking and the other two purposes stay within reach without a heavy header.",
+          "where_it_fits": "Restaurants or venues with two or three distinct reasons to contact them.",
+          "risk": "More than three buttons clutters; on a phone they cover content if kept fixed."
+        },
+        {
+          "technique": "One shape motif shared by photos and buttons",
+          "why_it_works": "A single repeated shape makes a page feel designed rather than assembled.",
+          "where_it_fits": "Any shop whose identity suggests a simple shape.",
+          "risk": "Copying this site's cut-corner shape would imitate it; the shape must come from the shop's own identity."
+        }
+      ],
+      "weaknesses": [
+        "Body text is small and light on a near-black ground.",
+        "The nav sits below the opening photos, so on desktop there is no top navigation at first."
+      ],
+      "desktop_vs_mobile": [
+        "Desktop keeps the three buttons at the lower right through most of the scroll; on the phone they sit at the bottom of the first screen and repeat near the end.",
+        "The desktop photo collage becomes a sequence of full-width photos on the phone."
+      ],
+      "do_not_transfer": [
+        "Its building photography, wordmark, monogram and wording.",
+        "Its cut-corner frames and exact layout."
+      ],
+      "analysis": {
+        "primary": "claude_session",
+        "second_opinion": null
+      },
+      "human_review": {
+        "status": "pending"
+      }
+    }
+  ]
+}
