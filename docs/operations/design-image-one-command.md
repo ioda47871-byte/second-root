@@ -6,9 +6,9 @@
 
 以前はメモリ確認、worker run.lock、fetch+checkout、prompt SHA確認、Codex実行を複数コマンドで操作していた。新しい `run-wagashi-a-v4-once.sh` は1回の命令で**既存wrapper**を呼び、その中で以下を順番に行う。
 
-1. 明示された承認フラグと固定値（direction v4, prompt SHA256 `4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9`, 4714文字、承認ID `wagashi-a-v4-20261025-01`）を照合する。これ以外には使えない。
+1. 明示された承認フラグと固定値（direction v4, commit `9b79163825368d53bc066693b03cc21f7702b67d`, prompt SHA256 `4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9`, 4714文字、承認ID `wagashi-a-v4-20261025-01`）を照合する。これ以外には使えない。
 2. WSLメモリを計測し、STOPなら中止。workerの同時実行は共有 `run.lock` で排他。workerのtimerは**変更しない**（途中で起動されたworkerも既存lockにより同時実行できない）。ほかのmanual Codexなどlockを使わない重い作業はユーザーが避ける必要がある。
-3. checkoutを `origin/develop` へ同期。現在のlockを保持したまま、**実際に送るv4プロンプト**を再組立てしてSHA256・文字数を照合。不一致なら画像生成せず、承認も消費しない。
+3. 今回の承認済みcheckout `9b79163825368d53bc066693b03cc21f7702b67d` を**変更せず**、同じworker lockの下で HEAD・origin/develop・クリーンな作業ツリーを検証する。Git fetch / checkout / clean / npm ciはしない。そのままv4プロンプトを再組立てしてSHA256・4714文字を照合する。不一致ならCodex呼び出しも承認消費もせずSTOPする。
 4. privateな `~/.local/state/sr-design-worker/poc-approval-used/wagashi-a-v4-20261025-01` をatomic `mkdir` で作成。**既にあれば即停止**（前回の成否に関わらず同じ承認は二度使えない）。この時点以降は、起動に失敗・中断・タイムアウトしても**再実行禁止**。誤った結果を「生成未実施」と断定しない。
 5. 既存のPoCで許された1回のCodex image generationを試行し、`POC_IMAGE_READY` か `POC_STOP`・`POC_DIAG_SUMMARY` を表示する。55分・15分の既存制限を維持し、自動リトライはしない。
 
@@ -16,7 +16,7 @@
 
 ## 1. 一度だけセットアップ
 
-PRが**review+CI greenでdevelopに統合された後**、オーナーがWSL管理者で `sr-designgen` のworker checkoutがそのdevelopを参照することを確認する。worker実行中はcheckoutを変更しない。既存runbookの「SHA確認」（lockを取得してfetch/checkoutするコマンド）を**初回セットアップに限り**実施する。初回は新ファイルをworker checkoutへ置くために必要。すでに現在の実checkoutのHEADが`9b79163825368d53bc066693b03cc21f7702b67d`まで更新されたことはオーナーのread-only確認で既知だが、DEV-110新ファイルを使うには**レビュー後にマージされた新しいdevelopへ更新**が必要。
+PRが**review+CI greenでdevelopに統合された後**、オーナーがWSL管理者で `sr-designgen` のworker checkoutがそのdevelopを参照することを確認する。worker実行中はcheckoutを変更しない。既存runbookの「SHA確認」（lockを取得してfetch/checkoutするコマンド）で一度だけ更新する。初回は新ファイルをworker checkoutへ置くために必要。**ただし、この特定のv4ワンショット入口は承認済みのHEADが`9b791638...`に固定されるため、マージ後のHEADに更新すると使えない。** 事前に独立レビューで、安全な方法（既存checkoutを汚さない形でreview済みの入口を供給し、同じ実行中にこの固定SHAとpromptを検査できるか）を確立するまでは実行しない。すでに現在の実checkoutのHEADが`9b79163825368d53bc066693b03cc21f7702b67d`まで更新されたことはオーナーのread-only確認で既知だが、DEV-110新ファイルを使うには**レビュー後にマージされた新しいdevelopへ更新**が必要。
 
 セットアップ時に画像生成やCodexを実行してはいけない。既存のWSL/runbook、`admin.sh` の実パスが想定と異なれば停止。
 
@@ -31,7 +31,7 @@ PRが**review+CI greenでdevelopに統合された後**、オーナーがWSL管�
 既存セッション内では `git status --short` が空であること、`HEAD`が想定の承認済み`develop`であること、
 メモリpreflightがSTOPでないこと、ほかの重い作業が同時に走っていないこと、
 前回の承認IDのレシートが存在しないことを先に確認する。
-SHA pinは、wrapperが自分でworkerロックを取得し、`origin/develop`を更新・checkoutしてから**そのロック保持中**に再検証する。途中で`develop`が進みpromptが違えばCodexは起動せず、承認IDも消費されない。
+SHA pinは、wrapperが自分でworkerロックを取得し、**チェックアウトを更新せず**、承認済みコミット・クリーンな作業ツリーと実際のプロンプトを**同じロック保持中**に再検証する。コミットやプロンプトが違えばCodexは起動せず、承認IDも消費されない。
 `bash -n`とオフラインテスト・reviewを通していないコードでは絶対に実行しない。
 
 ```bash
@@ -51,15 +51,9 @@ root運用の`admin.sh run`には別にsystemdの`RuntimeMaxSec=3500`がある�
 なお、これは **v4 / 4714 chars / 承認済みのSHAに限る one-time entrypoint** である。
 承認記録フォルダを消して再利用することも、画像や資産を転用することも禁止。
 
-## 3. （代替）Windows PowerShellのワンコマンド
+## 3. 代替経路について
 
-（ユーザーの明示承認済みの一回分だけ。実行時に本当に使う意図があることを確認する。）
-
-```powershell
-wsl -u root --exec /bin/bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- /bin/bash /home/sr-designgen/work/second-root/scripts/sales-design-worker/run-wagashi-a-v4-once.sh --human-approval-confirmed
-```
-
-PowerShell内でさらに細かい4コマンドを打つ必要はない。rootがリポジトリの新スクリプトを直接実行するのではなく、**既存の管理用admin.sh**から `sr-designgen` の制限環境で実行する。実PCのsystemd/adminの状態をこのクラウドセッションから確認したわけではない。
+今回のワンショット入口は、ブラウザから接続済みの `sr-jail-claude.service` 専用。`admin.sh run` は別のcgroupで動くため、この入口はそこで実行するとSTOPする。rootの既存runbookを用いる場合は専用の手順と事前承認条件を別途確認すること。root権限の拡張や新しいsudoersは行わない。
 
 ## 4. 結果
 
