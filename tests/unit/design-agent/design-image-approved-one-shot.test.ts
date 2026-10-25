@@ -99,7 +99,11 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     const dir = mkdtempSync(join(tmpdir(), "sr-v4-cgroup-"));
     try {
       const fakeId = join(dir, "id");
-      writeFileSync(fakeId, "#!/bin/bash\\nif [ \"$1\" = \"-un\" ]; then echo sr-designgen; else /usr/bin/id \"$@\"; fi\\n");
+      writeFileSync(fakeId, [
+        "#!/bin/bash",
+        'if [ "$1" = "-un" ]; then echo sr-designgen; else /usr/bin/id "$@"; fi',
+        "",
+      ].join("\n"));
       chmodSync(fakeId, 0o755);
       const call = spawnSync("bash", [entry,
         "--human-approval-confirmed", "--expected-commit", "9b79163825368d53bc066693b03cc21f7702b67d",
