@@ -9,7 +9,7 @@ if [ "$#" -ne 1 ] || [ "$1" != "--human-approval-confirmed" ]; then
   exit 2
 fi
 if [ "$(id -un)" != "sr-designgen" ] || [ "${HOME:-}" != "/home/sr-designgen" ]; then
-  echo "STOP: sr-designgen jail required; do not run this directly as root."
+  echo "STOP: sr-designgen user required; invoke through the admin jail."
   exit 2
 fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
