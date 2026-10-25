@@ -4663,6 +4663,56 @@
         "実 Codex 画像生成"
       ],
       "note": "10 件の証拠と技法 8 件の提案まで（PR #129）。採用はオーナーの判断待ちで、Design DNA への反映は採用後に別 Task。"
+    },
+    {
+      "id": "DEV-107",
+      "title": "採用技法から店舗固有の Design DNA を作る仕組み（架空和菓子店・架空パン屋で各 2 案、オフライン）",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-106"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-107-shop-design-dna-proposals",
+      "purpose": "オーナーが 2026-10-25 に採用（T3・T4・T8）と条件付き採用（T1・T2・T5・T6・T7）を決めた技法を、店舗の確認済み事実に基づいて選び、店舗ごとに異なる Design DNA を作る。業種別の固定テンプレートは作らない。",
+      "acceptance_criteria": [
+        "店舗の特徴は fixture の事実からの逐語の引用だけで、プレースホルダーや架空の断り書きを特徴にしない",
+        "技法は採用・条件付き採用のものだけ、条件（必要な事実・変形の制限）を満たさない選択を拒否する",
+        "固定表示・clip-path 等の形・店名以外の縦書き・横スクロール・アニメーションを使う案を拒否する",
+        "選択は industry / category の文字列に依存しない（test で固定）",
+        "各店 2 案は互いに、既存の brief と、他店の案と、8 項目の選択が重ならない",
+        "各案に 8 つの観点（特徴と事実・技法と理由・Hero・文字と配色・節と視線・PC/スマホ・実装可否・既存との比較）",
+        "参考サイトの human_review は pending のまま、画像生成・Codex・worker・DB に未接続"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-shop-proposals.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/poc/design-dna/**",
+        "lib/design-agent/design-image/**（offline のみ）",
+        "tests/unit/design-agent/**",
+        "docs/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "Production",
+        "Staging",
+        "DB",
+        "worker",
+        "Codex",
+        "画像生成",
+        "prompt.ts の pinned prompt",
+        "page-css.ts の許可表",
+        ".github/**"
+      ],
+      "human_approval_triggers": [
+        "CSS 制約の変更（固定表示・形・店名以外の縦書き）",
+        "実 Codex 画像生成",
+        "worker への接続",
+        "参考サイトの human_reviewed への昇格"
+      ],
+      "note": "オーナーの判断（2026-10-25）: T1・T7 の CSS 制限の変更と店名以外の縦書きは未承認。"
     }
   ]
 }
