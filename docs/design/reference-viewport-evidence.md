@@ -23,6 +23,8 @@ actually supported, which a shop-specific original design can then use.
 - **Pages.** The recorded candidate page comes first.
   - A second page is optional. It must be the brand's own site (`official_brand_site`), at a different URL, with
     `link_evidence` saying where its link to the case was found. It is only allowed if the case page itself loaded.
+  - `link_evidence` is the writer's own statement. Nothing offline can prove the link exists, and the screenshot that
+    showed it is not committed. A reviewer who doubts the link should open the case page and check it.
   - **Operating status:**
     - `live_first_party_site` needs an official site that loaded on its own host.
     - `closed_per_public_notice` needs the notice recorded in `operating_note`.
@@ -47,6 +49,10 @@ actually supported, which a shop-specific original design can then use.
   is the record. Neither the analysis nor the second opinion is a human review.
 - **Human review** is `pending` in schema v1. The owner alone accepts or rejects techniques; that decision is recorded in
   a later version, and only from the owner's own message.
+- **Capture problems.** Problem codes also record what the headless run did not show, for example
+  `OPENING_SCREEN_NOT_CLEARED` (the page stayed on its opening animation), `SCROLL_REVEAL_NOT_RENDERED`,
+  `LAZY_IMAGES_MISSING`, `TEXT_FADE_IN_PARTIAL` and `HERO_CAROUSEL_ROTATES` (the first screen and the full page showed
+  different slides). An aspect hidden this way is `unknown`; a capture gap is not counted as a weakness of the design.
 
 ## Order
 
