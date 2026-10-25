@@ -42,7 +42,8 @@ else
     XDG_DATA_HOME XDG_STATE_HOME CODEX_HOME \
     HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_EXTRA_CA_CERTS SSL_CERT_FILE \
     SR_DESIGN_WORKER_REF SR_DESIGN_WORKER_NO_UPDATE SR_DESIGN_JOBS SR_DESIGN_ASSETS_ROOT \
-    SR_DESIGN_IMAGE_POC_ROOT SR_DESIGN_IMAGE_POC_BUDGET_SECONDS SR_DESIGN_IMAGE_POC_DIRECTION; do
+    SR_DESIGN_IMAGE_POC_ROOT SR_DESIGN_IMAGE_POC_BUDGET_SECONDS SR_DESIGN_IMAGE_POC_DIRECTION \
+    SR_POC_EXPECTED_SHA SR_POC_EXPECTED_CHARS; do
     if [ -n "${!name+x}" ]; then keep+=("$name=${!name}"); fi
   done
   exec env -i "${keep[@]}" bash "$0" --sr-clean-env "$@"
@@ -74,6 +75,11 @@ if [ "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" = "v4" ] || [ -n "$EXPECTED_SHA$EXPE
   [[ "$EXPECTED_COMMIT" =~ ^[a-f0-9]{40}$ ]] &&
   [[ "$APPROVAL_ID" =~ ^[a-z0-9][a-z0-9._-]{3,95}$ ]] ||
     { echo "STOP: POC_APPROVAL_PIN_REQUIRED. No Codex call was started."; exit 2; }
+fi
+# A reviewed one-use pin must NEVER run the checkout-mutating update path.
+if [ -n "$EXPECTED_SHA" ] && [ "${SR_DESIGN_WORKER_NO_UPDATE:-0}" != "1" ]; then
+  echo "STOP: POC_NO_UPDATE_REQUIRED. No checkout or approval was changed."
+  exit 26
 fi
 case "${SR_DESIGN_IMAGE_POC_DIRECTION:-}" in
   "" | v1 | v2 | v3 | v4) ;;
@@ -144,25 +150,13 @@ if [ "$REMAINING" -lt "$MIN_POC_SECONDS" ]; then
 fi
 
 if [ -n "$EXPECTED_SHA" ]; then
-  # Check after checkout and while holding this SAME run.lock. A previous SHA check
-  # in a separate jail run is insufficient because develop may have changed.
-  echo "== 4a. verify owner-approved prompt pin under run.lock"
-  # Independent model-free check. This uses the same public prompt builder as
-  # the PoC but performs no Codex call. The sha + length are checked while the
-  # original worker run.lock is held, AFTER the wrapper checked out the ref.
-  SR_POC_EXPECTED_SHA="$EXPECTED_SHA" SR_POC_EXPECTED_CHARS="$EXPECTED_CHARS" \
-  timeout 120 "$REPO/node_modules/.bin/tsx" --no-cache -e '
-    import("./lib/design-agent/design-image/prompt.ts").then(async (x) => {
-      const m = x.default ?? x;
-      const v = m.parseDirectionVersion(process.env.SR_DESIGN_IMAGE_POC_DIRECTION);
-      const prompt = m.buildMockupPrompt(await m.loadPocInputs(".", v));
-      const h = (await import("node:crypto")).createHash("sha256").update(prompt).digest("hex");
-      if (h !== process.env.SR_POC_EXPECTED_SHA ||
-          prompt.length !== Number(process.env.SR_POC_EXPECTED_CHARS)) process.exit(23);
-      console.log("POC_PIN_OK direction=" + v + " sha256=" + h + " chars=" + prompt.length);
-    }).catch(() => process.exit(23));
-  ' ||
-    { echo "STOP: POC_PIN_MISMATCH. The authorization was NOT consumed."; exit 23; }
+  # Use the *existing* PoC entrypoint for offline pin checks, so the
+  # isolation contract has only design-image-poc.ts importing design-image.
+  export SR_POC_EXPECTED_SHA="$EXPECTED_SHA" SR_POC_EXPECTED_CHARS="$EXPECTED_CHARS"
+  echo "== 4a. check v4 prompt pin under the worker lock (no Codex)"
+  timeout 120 "$REPO/node_modules/.bin/tsx" --no-cache \
+    "$REPO/scripts/sales-design-worker/design-image-poc.ts" --check-pin-only ||
+    { echo "STOP: POC_PIN_MISMATCH_OR_CHECK_ERROR. Approval not consumed."; exit 23; }
 
   # Atomic marker in the worker's private state, outside git/output. This is
   # intentionally consumed BEFORE Codex may start, including uncertain failure
@@ -178,6 +172,14 @@ if [ -n "$EXPECTED_SHA" ]; then
     "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" "$EXPECTED_SHA" "$(git rev-parse HEAD)" \
     > "$LEDGER/$APPROVAL_ID/receipt"
   echo "POC_APPROVAL_RESERVED id=$APPROVAL_ID (no retry even if result is uncertain)"
+fi
+
+# Include prompt preflight in the total time budget, to preserve 18min for
+# the sign-in check, sandbox verification, and bounded Codex call.
+REMAINING=$((BUDGET - (SECONDS - START)))
+if [ "$REMAINING" -lt "$MIN_POC_SECONDS" ]; then
+  echo "STOP: POC_RUN_TIME_BUDGET; no Codex call started."
+  exit 1
 fi
 
 set +e
