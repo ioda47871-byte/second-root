@@ -24,6 +24,8 @@
  * Exit: 0 done, 1 stopped, 2 refused / usage.
  */
 import { homedir, tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { buildMockupPrompt, loadPocInputs } from "../../lib/design-agent/design-image/prompt";
 import { join, resolve } from "node:path";
 import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
 import { parseDirectionVersion, PocDirectionError, type DirectionVersion } from "../../lib/design-agent/design-image/prompt";
@@ -88,6 +90,33 @@ async function main(): Promise<number> {
     process.stdout.write(`${JSON.stringify({ status: "refused", code: error.code })}\n`);
     process.stdout.write(`POC_STOP: ${error.code}\n`);
     return 2;
+  }
+  // Offline-only pin probe used by the single-use shell wrapper while it
+  // holds run.lock. Never constructs the sandbox or calls Codex.
+  if (argv.length === 1 && argv[0] === "--check-pin-only") {
+    const expectedSha = process.env.SR_POC_EXPECTED_SHA;
+    const expectedChars = process.env.SR_POC_EXPECTED_CHARS;
+    if (!/^[a-f0-9]{64}$/.test(expectedSha ?? "") || !/^[1-9][0-9]{0,5}$/.test(expectedChars ?? "")) {
+      process.stdout.write("STOP: POC_PIN_CHECK_ERROR\\n");
+      return 23;
+    }
+    try {
+      const prompt = buildMockupPrompt(await loadPocInputs(REPO, directionVersion));
+      const sha = createHash("sha256").update(prompt, "utf8").digest("hex");
+      if (sha !== expectedSha || prompt.length !== Number(expectedChars)) {
+        process.stdout.write("STOP: POC_PIN_MISMATCH\\n");
+        return 23;
+      }
+      process.stdout.write("POC_PIN_OK direction=" + directionVersion + " sha256=" + sha + " chars=" + prompt.length + "\\n");
+      return 0;
+    } catch {
+      process.stdout.write("STOP: POC_PIN_CHECK_ERROR\\n");
+      return 23;
+    }
+  }
+  if (argv.includes("--check-pin-only")) {
+    process.stdout.write("STOP: POC_PIN_CHECK_ERROR\\n");
+    return 23;
   }
   const budgetMs = Math.min(MAX_BUDGET_SECONDS, Number(budgetText ?? MAX_BUDGET_SECONDS)) * 1000;
 
