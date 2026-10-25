@@ -154,7 +154,7 @@ if [ -n "$EXPECTED_SHA" ]; then
   # isolation contract has only design-image-poc.ts importing design-image.
   export SR_POC_EXPECTED_SHA="$EXPECTED_SHA" SR_POC_EXPECTED_CHARS="$EXPECTED_CHARS"
   echo "== 4a. check v4 prompt pin under the worker lock (no Codex)"
-  timeout 120 "$REPO/node_modules/.bin/tsx" --no-cache \
+  SR_DESIGN_IMAGE_POC_LOCKED=run.lock timeout 120 "$REPO/node_modules/.bin/tsx" --no-cache \
     "$REPO/scripts/sales-design-worker/design-image-poc.ts" --check-pin-only ||
     { echo "STOP: POC_PIN_MISMATCH_OR_CHECK_ERROR. Approval not consumed."; exit 23; }
 
