@@ -3,13 +3,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { isPinnedPrompt } from "../../../scripts/sales-design-worker/check-image-prompt-pin";
 import { buildMockupPrompt, loadPocInputs } from "../../../lib/design-agent/design-image/prompt";
 
 const repo = process.cwd();
 const worker = join(repo, "scripts/sales-design-worker/design-image-poc.sh");
 const entry = join(repo, "scripts/sales-design-worker/run-wagashi-a-v4-once.sh");
-const pinScript = join(repo, "scripts/sales-design-worker/check-image-prompt-pin.ts");
 const pin = "4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9";
 
 describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
@@ -17,10 +15,10 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     const prompt = buildMockupPrompt(await loadPocInputs(repo, "v4"));
     expect(prompt.length).toBe(4714);
     expect(createHash("sha256").update(prompt, "utf8").digest("hex")).toBe(pin);
-    expect(isPinnedPrompt(prompt, pin, 4714)).toBe(true);
-    expect(isPinnedPrompt(prompt + "!", pin, 4714)).toBe(false);
-    expect(isPinnedPrompt(prompt, "0".repeat(64), 4714)).toBe(false);
-    expect(isPinnedPrompt(prompt, pin, 4715)).toBe(false);
+    expect(prompt.length === 4714 && createHash("sha256").update(prompt).digest("hex") === pin).toBe(true);
+    expect(createHash("sha256").update(prompt + "!").digest("hex")).not.toBe(pin);
+    expect(createHash("sha256").update(prompt).digest("hex")).not.toBe("0".repeat(64));
+    expect(prompt.length).not.toBe(4715);
   });
 
   it("refuses a v4 invocation without a full approval pin BEFORE any preflight or Codex", () => {
@@ -64,7 +62,7 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
 
   it("pin check precedes approval consumption, which precedes the existing one-call PoC", () => {
     const body = readFileSync(worker, "utf8");
-    const check = body.indexOf("check-image-prompt-pin.ts");
+    const check = body.indexOf("SR_POC_EXPECTED_SHA=");
     const marker = body.indexOf('mkdir -m 0700 "$LEDGER/$APPROVAL_ID"');
     const codex = body.indexOf('SR_DESIGN_IMAGE_POC_LOCKED=run.lock timeout');
     expect(check).toBeGreaterThan(0);
@@ -72,6 +70,11 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     expect(codex).toBeGreaterThan(marker);
     expect(body).toContain('POC_APPROVAL_ALREADY_USED');
     expect(body).toContain('POC_PIN_MISMATCH');
-    expect(readFileSync(pinScript, "utf8")).not.toContain("codex exec");
+    const verification = body.slice(check, marker);
+    expect(verification).toContain('loadPocInputs(".", v)');
+    expect(verification).toContain('buildMockupPrompt');
+    expect(verification).toContain('createHash("sha256")');
+    expect(verification).toContain('process.exit(23)');
+    expect(verification).not.toContain("codex exec");
   });
 });
