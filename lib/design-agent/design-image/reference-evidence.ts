@@ -41,13 +41,18 @@ const PageUrl = z.string().max(600).superRefine((value, ctx) => {
   }
 });
 
+const PAGE_ROLES = ["recorded_candidate_page", "first_party_brand_site"] as const;
+
 const Capture = z.strictObject({
   viewport: z.enum(VIEWPORT_KEYS as [ViewportKey, ...ViewportKey[]]),
   width: z.number().int(),
   height: z.number().int().min(480).max(20000),
-  user_agent: z.string().min(10).max(300).refine((s) => !/[\u0000-\u001f\u007f]/.test(s)),
-  /** The URL the browser ended on (after redirects); may differ from the page URL. */
-  loaded_url: PageUrl.nullable(),
+  user_agent: z.string().min(10).max(300).refine(clean),
+  /** The URL the browser ended on (after redirects); null unless loaded. Never an image file, no long query. */
+  loaded_url: PageUrl.refine((v) => {
+    const u = new URL(v);
+    return !/\.(png|jpe?g|gif|webp|svg|avif|bmp|ico|tiff?)$/i.test(u.pathname) && u.search.length <= 100;
+  }).nullable(),
   http_status: z.number().int().min(100).max(599).nullable(),
   outcome: z.enum(["loaded", "blocked", "error", "unreachable"]),
   /** Fixed codes for what went wrong or was dismissed (e.g. COOKIE_BANNER_DISMISSED, NAV_TIMEOUT). */
@@ -60,7 +65,9 @@ const Capture = z.strictObject({
 export type ReferenceCapture = z.infer<typeof Capture>;
 
 const Page = z.strictObject({
-  role: z.enum(["recorded_candidate_page", "first_party_brand_site"]),
+  role: z.enum(PAGE_ROLES),
+  /** For a first-party site: where its link to this case was found (e.g. the case page's own link). Null for the candidate page. */
+  link_evidence: Note.nullable(),
   url: PageUrl,
   source_kind: z.enum(["official_brand_site", "agency_case_study", "design_gallery", "portfolio_page"]),
   /** Whether the business shown is operating; `unknown` unless a public notice or the live first-party site says so. */
@@ -70,7 +77,8 @@ const Page = z.strictObject({
 });
 
 const Observation = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("observed"), note: Note }),
+  /** `page`: the page whose capture at this viewport shows it (that capture must have loaded). */
+  z.strictObject({ status: z.literal("observed"), page: z.enum(PAGE_ROLES), note: Note }),
   z.strictObject({ status: z.literal("unknown"), reason: Note }),
 ]);
 export const OBSERVATION_ASPECTS = ["hero", "product_or_service_visibility", "typography", "section_rhythm", "primary_cta", "practical_info", "navigation", "visual_material"] as const;
@@ -96,7 +104,10 @@ const EvidenceRecord = z.strictObject({
   do_not_transfer: z.array(Note).min(1).max(6),
   analysis: z.strictObject({
     primary: z.literal("claude_session"),
-    /** A second opinion the owner pasted from a ChatGPT session; null until then. Still not a human review. */
+    /**
+     * A second opinion the owner pasted from a ChatGPT session; null until then. Still not a human review. The label is
+     * the writer's word — nothing here can prove the owner pasted it; the PR history is the record.
+     */
     second_opinion: z.strictObject({ by: z.literal("chatgpt_via_owner"), summary: Note }).nullable(),
   }),
   /** v1: always pending. Accepting or rejecting is the owner's own decision, recorded in a later version. */
@@ -133,20 +144,45 @@ export function parseReferenceEvidence(input: unknown, candidateUrls: ReadonlyMa
     if (candidateUrls.get(r.id) !== r.candidate_source_url) throw new ReferenceEvidenceError("candidate_url_mismatch");
     if (r.pages.filter((p) => p.role === "recorded_candidate_page").length !== 1 || r.pages[0]!.role !== "recorded_candidate_page" || r.pages[0]!.url !== r.candidate_source_url)
       throw new ReferenceEvidenceError("candidate_page_missing");
+    const host = (u: string) => new URL(u).hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+    const hashes = new Set<string>();
     for (const p of r.pages) {
       const seen = p.captures.map((c) => c.viewport).sort().join("|");
       if (seen !== [...VIEWPORT_KEYS].sort().join("|")) throw new ReferenceEvidenceError("viewport_missing_or_doubled");
       for (const c of p.captures) {
         if (c.width !== VIEWPORTS[c.viewport]) throw new ReferenceEvidenceError("width_not_viewport");
-        // a loaded capture has a screenshot hash and an end URL; anything else has none to point to
+        // a loaded capture has a screenshot hash, an end URL and a non-error status; anything else has none of them
         if (c.outcome === "loaded" && (c.image_sha256 === null || c.loaded_url === null)) throw new ReferenceEvidenceError("loaded_without_capture");
-        if (c.outcome !== "loaded" && c.image_sha256 !== null) throw new ReferenceEvidenceError("image_without_load");
+        if (c.outcome === "loaded" && c.http_status !== null && (c.http_status < 200 || c.http_status >= 400)) throw new ReferenceEvidenceError("loaded_with_error_status");
+        if (c.outcome !== "loaded" && (c.image_sha256 !== null || c.loaded_url !== null)) throw new ReferenceEvidenceError("image_without_load");
+        if (c.image_sha256 !== null) {
+          if (hashes.has(c.image_sha256)) throw new ReferenceEvidenceError("screenshot_reused");
+          hashes.add(c.image_sha256);
+        }
       }
+      // operating status rests on something: a live first-party site that loaded on its own host, or a noted notice
+      if (p.operating_status === "live_first_party_site" &&
+          (p.source_kind !== "official_brand_site" || !p.captures.some((c) => c.outcome === "loaded" && c.loaded_url !== null && host(c.loaded_url) === host(p.url))))
+        throw new ReferenceEvidenceError("operating_status_unsupported");
+      if (p.operating_status === "closed_per_public_notice" && p.operating_note === null) throw new ReferenceEvidenceError("operating_status_unsupported");
     }
-    for (const v of VIEWPORT_KEYS) {
-      const loaded = r.pages.some((p) => p.captures.some((c) => c.viewport === v && c.outcome === "loaded"));
-      for (const a of OBSERVATION_ASPECTS) if (!loaded && r.observations[a][v].status === "observed") throw new ReferenceEvidenceError("observed_without_loaded_capture");
+    // the second page belongs to the case: the brand's own site, a different URL, found through the case page
+    const second = r.pages[1];
+    if (second) {
+      const candidateLoaded = r.pages[0]!.captures.some((c) => c.outcome === "loaded");
+      if (second.role !== "first_party_brand_site" || second.source_kind !== "official_brand_site" || second.link_evidence === null || !candidateLoaded ||
+          host(second.url) + new URL(second.url).pathname === host(r.pages[0]!.url) + new URL(r.pages[0]!.url).pathname)
+        throw new ReferenceEvidenceError("second_page_not_tied");
     }
+    if (r.pages[0]!.link_evidence !== null) throw new ReferenceEvidenceError("candidate_page_missing");
+    // an observation names the page whose capture at that viewport loaded
+    for (const v of VIEWPORT_KEYS)
+      for (const a of OBSERVATION_ASPECTS) {
+        const o = r.observations[a][v];
+        if (o.status !== "observed") continue;
+        const page = r.pages.find((p) => p.role === o.page);
+        if (!page || !page.captures.some((c) => c.viewport === v && c.outcome === "loaded")) throw new ReferenceEvidenceError("observed_without_loaded_capture");
+      }
     // a technique is only offered from a case someone could actually see
     const anyLoaded = r.pages.some((p) => p.captures.some((c) => c.outcome === "loaded"));
     if (!anyLoaded && r.transferable_techniques.length > 0) throw new ReferenceEvidenceError("technique_without_evidence");

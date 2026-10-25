@@ -20,15 +20,22 @@ actually supported, which a shop-specific original design can then use.
 
 ## What a record says
 
-- **Pages.** The recorded candidate page comes first; the brand's own site is optional.
-  - Each page records its source kind and its operating status. The status is `closed_per_public_notice` only when there
-    is a public notice, and otherwise `unknown` unless the first-party site is live.
-  - Each page has exactly one 1440 capture and one 390 capture, with outcome, end URL, HTTP status, problem codes and the
-    screenshot's sha256.
+- **Pages.** The recorded candidate page comes first.
+  - A second page is optional. It must be the brand's own site (`official_brand_site`), at a different URL, with
+    `link_evidence` saying where its link to the case was found. It is only allowed if the case page itself loaded.
+  - **Operating status:**
+    - `live_first_party_site` needs an official site that loaded on its own host.
+    - `closed_per_public_notice` needs the notice recorded in `operating_note`.
+    - Otherwise the status is `unknown`.
+  - **Captures:** each page has exactly one 1440 capture and one 390 capture, each with its outcome, end URL, HTTP status,
+    problem codes and the screenshot's sha256.
+    - A loaded capture needs a hash, an end URL and a status below 400.
+    - The end URL is never an image file and has no long query.
+    - One screenshot cannot back two captures.
 - **Observations** cover eight aspects per viewport: hero, product or service visibility, typography, section rhythm,
   primary CTA, practical information, navigation and visual material.
-  - Each one is `observed`, with a note in our own words, or `unknown`, with the reason.
-  - `observed` needs a loaded capture of that viewport. There is no `pass`.
+  - Each one is `observed`, with a note in our own words and the page it comes from, or `unknown`, with the reason.
+  - `observed` needs a loaded capture of that page at that viewport. There is no `pass`.
 - **Analysis fields:**
   - design features;
   - up to 5 transferable techniques, each with why it works, where it fits and its risk;
@@ -36,7 +43,8 @@ actually supported, which a shop-specific original design can then use.
   - desktop-vs-mobile differences;
   - what not to transfer.
 - **Analysis** comes from a Claude session. A ChatGPT second opinion may be added only as text the owner pastes in
-  (`chatgpt_via_owner`). Neither is a human review.
+  (`chatgpt_via_owner`). The label is the writer's own claim: the schema cannot prove the owner pasted it, so the PR history
+  is the record. Neither the analysis nor the second opinion is a human review.
 - **Human review** is `pending` in schema v1. The owner alone accepts or rejects techniques; that decision is recorded in
   a later version, and only from the owner's own message.
 
