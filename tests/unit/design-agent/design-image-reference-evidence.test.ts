@@ -62,6 +62,13 @@ describe("DEV-106 reference evidence (offline schema)", () => {
     for (const r of f.records) expect(r.human_review.status).toBe("pending");
   });
 
+  it("the committed file records all ten cases once, and second opinions only where the owner pasted one", () => {
+    const f = parseReferenceEvidence(JSON.parse(readFileSync(join(REPO, EVIDENCE), "utf8")), candidateUrls);
+    expect(f.records.map((r) => r.id).sort()).toEqual([...DEV106_QUEUE].sort());
+    // owner-pasted ChatGPT opinions of 2026-10-25 (Issue #128): DX-002, DX-013, DX-033 only
+    expect(f.records.filter((r) => r.analysis.second_opinion !== null).map((r) => r.id).sort()).toEqual(["DX-002", "DX-013", "DX-033"]);
+  });
+
   it("accepts a record whose observations are backed by loaded captures and whose unseen parts are unknown", () => {
     const f = parseReferenceEvidence(file(), candidateUrls);
     const s = referenceEvidenceSummary(f);

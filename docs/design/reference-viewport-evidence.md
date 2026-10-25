@@ -50,9 +50,16 @@ actually supported, which a shop-specific original design can then use.
 - **Human review** is `pending` in schema v1. The owner alone accepts or rejects techniques; that decision is recorded in
   a later version, and only from the owner's own message.
 - **Capture problems.** Problem codes also record what the headless run did not show, for example
-  `OPENING_SCREEN_NOT_CLEARED` (the page stayed on its opening animation), `SCROLL_REVEAL_NOT_RENDERED`,
-  `LAZY_IMAGES_MISSING`, `TEXT_FADE_IN_PARTIAL` and `HERO_CAROUSEL_ROTATES` (the first screen and the full page showed
-  different slides). An aspect hidden this way is `unknown`; a capture gap is not counted as a weakness of the design.
+  `OPENING_SCREEN_NOT_CLEARED` (the page stayed on its opening animation), `FULLPAGE_DARK_BELOW_FOLD`,
+  `SCROLL_REVEAL_NOT_RENDERED`, `LAZY_IMAGES_MISSING`, `TEXT_FADE_IN_PARTIAL`, `POSSIBLE_SLIDE_IN_MID_STATE` and
+  `HERO_CAROUSEL_ROTATES` (the first screen and the full page showed different slides). An aspect hidden this way is
+  `unknown`; a capture gap is not counted as a weakness of the design.
+- **Capture method.** The first three cases were captured without scrolling. From DX-005 on, and for the one DX-013
+  desktop retake the owner allowed, the page is scrolled through first so lazy and scroll-revealed content renders.
+  Viewport screenshots at each step are kept locally (`STEP_SHOTS_USED` when an observation relies on them), and a
+  read-only DOM check records fixed headers or bars at mid-page and text such as opening hours.
+- **Second opinions** exist only where the owner pasted one (DX-002, DX-013 and DX-033, 2026-10-25). They were written
+  from the PR records, not from the screenshots.
 
 ## Order
 
@@ -61,5 +68,7 @@ actually supported, which a shop-specific original design can then use.
 3. After the owner confirms the method, capture the remaining seven.
 4. The owner decides which techniques to adopt.
 5. The adopted techniques go into Design DNA in a separate step.
+
+The shortlist proposed to the owner after all ten cases is `docs/design/reference-technique-shortlist.md`.
 
 Production, Staging, Supabase, the image worker, real Codex and develop→main are not touched.
