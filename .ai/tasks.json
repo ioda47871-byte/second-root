@@ -4855,7 +4855,6 @@
       ],
       "allowed_scope": [
         "scripts/sales-design-worker/design-image-poc.sh",
-        "scripts/sales-design-worker/check-image-prompt-pin.ts",
         "scripts/sales-design-worker/run-wagashi-a-v4-once.sh",
         "tests/unit/design-agent/design-image-approved-one-shot.test.ts",
         "docs/operations/design-image-one-command.md",
