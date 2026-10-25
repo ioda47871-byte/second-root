@@ -4882,7 +4882,7 @@
     {
       "id": "DEV-111",
       "title": "店舗スクショ分析・写真ディレクション・権利管理をDesign DNAへ渡す1店舗PoCの手順書と分析JSON雛形（準備のみ）",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-108",
