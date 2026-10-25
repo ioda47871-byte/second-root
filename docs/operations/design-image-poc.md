@@ -1424,8 +1424,12 @@ built by `prompt-wagashi-a.ts`; the review doc with the full prompt is `docs/des
 | length | 4714 chars |
 
 It is pinned in `design-image-prompt-wagashi-a.test.ts`. **The approval of a v4 run names this sha.** Before the run, check it with the
-command above, changing both `"v2"` (the `loadPocInputs` argument and the printed `v2_prompt_sha256=` label) to `"v4"`; the run itself is the v2 command with `SR_DESIGN_IMAGE_POC_DIRECTION=v4 ` before `./scripts/…`
-(1 Codex image call; the log line must say `direction v4` and `report.json` `prompt_chars` must be 4714). Not approved by preparing it.
+command above, changing both `"v2"` (the `loadPocInputs` argument and the printed `v2_prompt_sha256=` label) to `"v4"`.
+**DEV-110 の one-use v4 経路が develop に導入された後は、この古いv2用runコマンドを流用しないこと**（pin無しのv4は `POC_APPROVAL_PIN_REQUIRED` で停止）。
+ブラウザの既存隔離版Claudeからの起動手順は [design-image-one-command.md](design-image-one-command.md) §2 を優先する。review済み40文字commit、
+SHA256、4714文字、共有run.lock、バックグラウンド起動とone-use承認記録を満たす場合のみ1回実行可能。
+ログには `direction v4` が出て、`report.json` の `prompt_chars` は4714でなければならない。
+Codexの実行前準備だけでは承認を消費しない。
 
 ### Run (HUMAN-019 was run on 2026-10-21: `CODEX_NO_IMAGE`; the next run is HUMAN-020, after DEV-077 is merged, with the same command)
 The same command as HUMAN-018; v2 is the default, so nothing is added:

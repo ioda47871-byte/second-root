@@ -4822,6 +4822,62 @@
         "CSS の機能追加"
       ],
       "note": "オーナーが手順1を承認（2026-10-25）。実画像生成・Codex 実行は不許可。 v4 sha256 4e34f760…157d9（4714 文字）。実行は v4 sha を名指しした別承認。"
+    },
+    {
+      "id": "DEV-110",
+      "title": "承認済みの和菓子A v4画像PoCをWSLでワンコマンド起動しSHA照合と承認1回限りの再実行防止を追加する",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-109"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-110-one-command-poc-run",
+      "purpose": "オーナーの2026-10-25要望『これ毎回やらなきゃいけないの？→やろう』に基づき、手動の複数ステップを省く。ただし今回の開発承認は実Codex実行・追加画像生成の承認ではない。以前のv4指定SHA 1回の許可は未使用。",
+      "acceptance_criteria": [
+        "既存design-image-poc.shのメモリ前検査・worker排他・JAIL・時間上限・env制限・画像検査を再利用して弱めない",
+        "v4は同一worker lock中に承認済みHEADとorigin/developを照合し、checkoutを一切更新せず、実際のCodex入力プロンプトのSHA256と文字数を送信直前に再検証する",
+        "指定SHAと文字数が違う/承認フラグがない/承認IDが無い場合はCodex呼び出し前にSTOPする",
+        "承認IDをgit外のprivate stateにatomic mkdirで消費記録。繰り返しや不明結果の再試行はSTOPする。preflight/hash不一致では消費しない",
+        "特定のv4 SHA 4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9,4714 charsを固定した1コマンド入口がある",
+        "既存のv1-v3のprompt/固定SHAと品質基準を変更しない。画像生成を行わないオフライン拒否testがある",
+        "browser既存隔離版からのバックグラウンド起動、承認済みコミット指定、定期的ログ照会、停止時の取り扱いをdocsに残す。実PCの画像生成はこのPRの範囲外",
+        "独立Fresh Review・最新HEAD CI before merge; この作業は画像生成/WSL操作を含まない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/design-image-approved-one-shot.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "npx tsc --noEmit -p .",
+        "bash -n scripts/sales-design-worker/design-image-poc.sh scripts/sales-design-worker/run-wagashi-a-v4-once.sh",
+        "required CI and independent Fresh Review latest HEAD",
+        "offline executed wrong-commit/dirty-tree/no-update/reused approval gate tests"
+      ],
+      "allowed_scope": [
+        "scripts/sales-design-worker/design-image-poc.sh",
+        "scripts/sales-design-worker/run-wagashi-a-v4-once.sh",
+        "tests/unit/design-agent/design-image-approved-one-shot.test.ts",
+        "docs/operations/design-image-one-command.md",
+        ".ai/tasks.json",
+        "scripts/sales-design-worker/design-image-poc.ts",
+        "lib/design-agent/design-image/run.ts",
+        "docs/operations/design-image-poc.md"
+      ],
+      "forbidden_scope": [
+        "WSL上の実Codex/画像生成実行",
+        "Production/Staging/Supabase/DB",
+        "Worker timer/queue/bridgeの変更",
+        "Secrets/認証の転送",
+        "画像のコミット・アセットの転用",
+        "CSS許可表/品質基準の変更",
+        "develop→main"
+      ],
+      "human_approval_triggers": [
+        "WSLでの実行は既存和菓子A v4指定SHAの1回承認のみ。追加試行・別方向は再承認",
+        "jail/workerの設定変更",
+        "CSSや画像資産取込み・comp→site・公開"
+      ]
     }
   ]
 }

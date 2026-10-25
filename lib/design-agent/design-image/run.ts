@@ -113,6 +113,7 @@ export type PocCode =
   | "POC_NOT_APPROVED"
   | "POC_INPUT_INVALID"
   | "POC_DIRECTION_INVALID"
+  | "POC_PIN_MISMATCH"
   | "POC_OUTPUT_UNSAFE"
   | "POC_UNEXPECTED"
   | "CODEX_NOT_INSTALLED"
@@ -155,6 +156,7 @@ const STOP_CLASSES: Readonly<Record<string, PocStopClass>> = {
   POC_NOT_APPROVED: "approval",
   POC_INPUT_INVALID: "input",
   POC_DIRECTION_INVALID: "input",
+  POC_PIN_MISMATCH: "input",
   POC_OUTPUT_UNSAFE: "environment",
   CODEX_NOT_INSTALLED: "environment",
   CODEX_NOT_SIGNED_IN: "environment",
@@ -570,6 +572,23 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     const inputs = await loadPocInputs(o.repoDir, version);
     const prompt = buildMockupPrompt(inputs);
     diag.promptChars = prompt.length;
+    // Recheck the EXACT string sent to Codex, not a separate reconstruction
+    // from a potentially changed checkout. This takes place before the sandbox
+    // and any Codex subprocess. Existing unpinned v1-v3 calls are unaffected.
+    const expectedSha = o.env.SR_POC_EXPECTED_SHA;
+    const expectedChars = o.env.SR_POC_EXPECTED_CHARS;
+    if (version === "v4" || expectedSha !== undefined || expectedChars !== undefined) {
+      const actualSha = createHash("sha256").update(prompt, "utf8").digest("hex");
+      if (!/^[a-f0-9]{64}$/.test(expectedSha ?? "") ||
+          !/^[1-9][0-9]{0,5}$/.test(expectedChars ?? "") ||
+          (version === "v4" && (
+            expectedSha !== "4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9" ||
+            expectedChars !== "4714"
+          )) ||
+          actualSha !== expectedSha || prompt.length !== Number(expectedChars)) {
+        throw new PocError("POC_PIN_MISMATCH");
+      }
+    }
     const outRoot = await prepareOutRoot(o, o.env.CODEX_HOME || (o.env.HOME ? join(o.env.HOME, ".codex") : undefined));
     diag.outRoot = outRoot;
     const protectedPaths = [...new Set([...workerProtectedPaths({ ...o.workerPaths, env: o.env }), outRoot])];
@@ -681,7 +700,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   } catch (error) {
     const code = codeOf(error);
     diag.stopCode = code;
-    return { status: code === "POC_INPUT_INVALID" || code === "POC_DIRECTION_INVALID" ? "refused" : "stopped", code };
+    return { status: code === "POC_INPUT_INVALID" || code === "POC_DIRECTION_INVALID" || code === "POC_PIN_MISMATCH" ? "refused" : "stopped", code };
   } finally {
     await cleanup();
     activeCleanups.delete(cleanup);
