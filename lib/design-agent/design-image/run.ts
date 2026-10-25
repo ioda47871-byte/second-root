@@ -696,7 +696,7 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
   } catch (error) {
     const code = codeOf(error);
     diag.stopCode = code;
-    return { status: code === "POC_INPUT_INVALID" || code === "POC_DIRECTION_INVALID" ? "refused" : "stopped", code };
+    return { status: code === "POC_INPUT_INVALID" || code === "POC_DIRECTION_INVALID" || code === "POC_PIN_MISMATCH" ? "refused" : "stopped", code };
   } finally {
     await cleanup();
     activeCleanups.delete(cleanup);
