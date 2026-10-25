@@ -97,25 +97,25 @@ async function main(): Promise<number> {
     const expectedSha = process.env.SR_POC_EXPECTED_SHA;
     const expectedChars = process.env.SR_POC_EXPECTED_CHARS;
     if (!/^[a-f0-9]{64}$/.test(expectedSha ?? "") || !/^[1-9][0-9]{0,5}$/.test(expectedChars ?? "")) {
-      process.stdout.write("STOP: POC_PIN_CHECK_ERROR\\n");
+      process.stdout.write("STOP: POC_PIN_CHECK_ERROR\n");
       return 23;
     }
     try {
       const prompt = buildMockupPrompt(await loadPocInputs(REPO, directionVersion));
       const sha = createHash("sha256").update(prompt, "utf8").digest("hex");
       if (sha !== expectedSha || prompt.length !== Number(expectedChars)) {
-        process.stdout.write("STOP: POC_PIN_MISMATCH\\n");
+        process.stdout.write("STOP: POC_PIN_MISMATCH\n");
         return 23;
       }
-      process.stdout.write("POC_PIN_OK direction=" + directionVersion + " sha256=" + sha + " chars=" + prompt.length + "\\n");
+      process.stdout.write("POC_PIN_OK direction=" + directionVersion + " sha256=" + sha + " chars=" + prompt.length + "\n");
       return 0;
     } catch {
-      process.stdout.write("STOP: POC_PIN_CHECK_ERROR\\n");
+      process.stdout.write("STOP: POC_PIN_CHECK_ERROR\n");
       return 23;
     }
   }
   if (argv.includes("--check-pin-only")) {
-    process.stdout.write("STOP: POC_PIN_CHECK_ERROR\\n");
+    process.stdout.write("STOP: POC_PIN_CHECK_ERROR\n");
     return 23;
   }
   const budgetMs = Math.min(MAX_BUDGET_SECONDS, Number(budgetText ?? MAX_BUDGET_SECONDS)) * 1000;
