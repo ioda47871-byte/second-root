@@ -1420,12 +1420,12 @@ built by `prompt-wagashi-a.ts`; the review doc with the full prompt is `docs/des
 
 | | v4 prompt |
 |---|---|
-| sha256 (UTF-8 bytes) | `78c0004f8bb9577fe0f59902c68a58a066c7861f2fbcf1319c7af5633feb027e` |
-| length | 4747 chars |
+| sha256 (UTF-8 bytes) | `4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9` |
+| length | 4714 chars |
 
 It is pinned in `design-image-prompt-wagashi-a.test.ts`. **The approval of a v4 run names this sha.** Before the run, check it with the
-command above, changing `"v2"` to `"v4"`; the run itself is the v2 command with `SR_DESIGN_IMAGE_POC_DIRECTION=v4 ` before `./scripts/…`
-(1 Codex image call; the log line must say `direction v4` and `report.json` `prompt_chars` must be 4747). Not approved by preparing it.
+command above, changing both `"v2"` (the `loadPocInputs` argument and the printed `v2_prompt_sha256=` label) to `"v4"`; the run itself is the v2 command with `SR_DESIGN_IMAGE_POC_DIRECTION=v4 ` before `./scripts/…`
+(1 Codex image call; the log line must say `direction v4` and `report.json` `prompt_chars` must be 4714). Not approved by preparing it.
 
 ### Run (HUMAN-019 was run on 2026-10-21: `CODEX_NO_IMAGE`; the next run is HUMAN-020, after DEV-077 is merged, with the same command)
 The same command as HUMAN-018; v2 is the default, so nothing is added:

@@ -32,22 +32,30 @@ const SALES_UI = /購入|予約|注文|通販|カート|買う|お取り寄せ/;
 const PLACEHOLDER = /テスト|架空|実在|比較用/;
 const clean = (s: string) => !/[\r\n\t]|<<<|>>>/.test(s);
 const Text = z.string().min(3).max(600).refine(clean);
-const Label = z.string().min(1).max(20).refine((s) => clean(s) && !SALES_UI.test(s) && !/[「」]/.test(s));
 const FACT_KEYS = ["name", "description", "hours", "closed_days", "address", "phone"] as const;
-const FACT_LABELS = ["shop name", "reason 1", "reason 2", "product 1", "product 2", "description", "営業時間", "定休日", "所在地", "電話"] as const;
+/** Each fact the page shows and the one fixture field it may quote. */
+const FACT_SOURCES = {
+  "shop name": "name", "reason 1": "description", "reason 2": "description", "product 1": "description", "product 2": "description",
+  営業時間: "hours", 定休日: "closed_days", 所在地: "address", 電話: "phone",
+} as const satisfies Record<string, (typeof FACT_KEYS)[number]>;
+const FACT_LABELS = Object.keys(FACT_SOURCES) as [keyof typeof FACT_SOURCES, ...(keyof typeof FACT_SOURCES)[]];
+/** The palette by role, in this order (the builder reads it by position). */
+const PALETTE_NAMES = ["kinari", "sumi", "kinari band", "azuki"] as const;
 
+const colour = <N extends string>(name: N) => z.strictObject({ name: z.literal(name), hex: z.string().regex(/^#[0-9A-F]{6}$/), use: Text });
 const DirectionSchema = z.strictObject({
   version: z.literal("0.5-wagashi-a"),
   status: z.literal("experimental_unreviewed"),
   fixture: z.literal("wagashi"),
   based_on: z.strictObject({ proposal: z.literal("design-dna/proposals/wagashi.json"), direction_id: z.literal("morning_batch"), policy: z.literal("docs/design/design-first-workflow-decision.md") }),
   concept: Text,
-  palette: z.array(z.strictObject({ name: z.string().min(1).max(40).refine(clean), hex: z.string().regex(/^#[0-9A-F]{6}$/), use: Text })).length(4),
+  palette: z.tuple([colour(PALETTE_NAMES[0]), colour(PALETTE_NAMES[1]), colour(PALETTE_NAMES[2]), colour(PALETTE_NAMES[3])]),
+  // the page's own labels are fixed: they are on-page text, and only facts and these may appear (no placeholder, no claim)
   web_ui: z.strictObject({
-    nav: z.array(Label).length(2),
-    hero_link: Label,
-    headings: z.array(Label).length(3),
-    info_labels: z.array(Label).length(4),
+    nav: z.tuple([z.literal("こだわり"), z.literal("店舗情報")]),
+    hero_link: z.literal("店舗情報へ"),
+    headings: z.tuple([z.literal("こだわり"), z.literal("商品"), z.literal("店舗情報")]),
+    info_labels: z.tuple([z.literal("営業時間"), z.literal("定休日"), z.literal("所在地"), z.literal("電話")]),
   }),
   facts: z.array(z.strictObject({ label: z.enum(FACT_LABELS), fact_key: z.enum(FACT_KEYS), quote: z.string().min(2).max(200).refine(clean) })).length(FACT_LABELS.length),
   left_out: Text,
@@ -79,12 +87,13 @@ export function parseWagashiADirection(raw: unknown, demo: DemoView): WagashiADi
   const d = parsed.data;
   if (new Set(d.facts.map((f) => f.label)).size !== FACT_LABELS.length) throw new WagashiADirectionError("fact_labels");
   for (const f of d.facts) {
+    if (FACT_SOURCES[f.label] !== f.fact_key) throw new WagashiADirectionError("fact_source");
     const value = valueOf(demo, f.fact_key);
     if (value === null || !value.includes(f.quote)) throw new WagashiADirectionError("fact_not_in_fixture");
     if (f.fact_key !== "name" && PLACEHOLDER.test(f.quote)) throw new WagashiADirectionError("fact_placeholder");
+    if (SALES_UI.test(f.quote)) throw new WagashiADirectionError("fact_sales");
   }
   if (d.facts.find((f) => f.label === "shop name")!.quote !== POC_SHOP_NAME) throw new WagashiADirectionError("shop_name");
-  if (d.web_ui.info_labels.join("|") !== "営業時間|定休日|所在地|電話") throw new WagashiADirectionError("info_labels");
   return d;
 }
 
@@ -109,15 +118,15 @@ export function buildWagashiAPrompt(direction: WagashiADirection): string {
     "One tall portrait image, about 2:3 (for example 1024 x 1536 px).",
     "",
     "LOOK",
-    `- Colours: ${ground!.hex} ground, ${text!.hex} all text, ${band!.hex} band behind the reasons, ${accent!.hex} only for the numerals 1 and 2 and one hairline above the shop information. No other colours outside the photo.`,
-    "- Type: refined Mincho (明朝) for the shop name, the reasons and headings; clean Gothic (ゴシック) at reading size for nav, labels and facts. Only the name and the reasons are large.",
+    `- Colours: ${ground!.hex} ground, ${text!.hex} all text, ${band!.hex} band behind the reasons, ${accent!.hex} only for the numerals 1 and 2 and one hairline above the shop information. No other colours outside the food image.`,
+    "- Type: refined Mincho (明朝) for the shop name, the reasons and headings; clean Gothic (ゴシック) at reading size for nav, labels and facts. Large type only for the shop name and the two numbered reasons.",
     "- Asymmetric grid, left-aligned text, hairlines instead of boxes. No gradients, shadows, textures or icons.",
     "",
     "PAGE (top to bottom)",
     `1. Header: the shop name small at the left; at the right two text anchors, exactly ${quote(ui.nav)}.`,
     `2. Hero: left two thirds, one framed dorayaki concept image (FOOD VISUAL) with an even margin. Right third: the shop name large in horizontal Mincho, ${fact("reason 1")} small under it, one quiet text link ${quote([ui.hero_link])}. No text on the image.`,
     `3. On the band: heading ${quote([hReasons])}; two numbered items side by side, a large numeral 1 with ${fact("reason 1")} and a large numeral 2 with ${fact("reason 2")}.`,
-    `4. Heading ${quote([hProducts])}: ${fact("product 1")} and ${fact("product 2")} as a Mincho list with a hairline between, no pictures, no prices; then the description.`,
+    `4. Heading ${quote([hProducts])}: ${fact("product 1")} and ${fact("product 2")} as a Mincho list with a hairline between, no pictures, no prices.`,
     `5. The hairline, heading ${quote([hInfo])}, a two-column ledger (label left, value right): ${quote(ui.info_labels)}.`,
     "6. Footer: the shop name small and the disclosure line.",
     "",
@@ -126,7 +135,7 @@ export function buildWagashiAPrompt(direction: WagashiADirection): string {
     "- Soft side daylight, warm true colour, shallow depth of field, a matte ceramic plate on washi paper. No hands, room, packaging or text.",
     "",
     "JAPANESE TEXT",
-    "Only the texts named above and the FACTS values; placeholder lines for anything else. Leave out text you cannot render exactly.",
+    "Only the texts named above and the FACTS values; no dummy text blocks, let white space carry the page. Leave out text you cannot render exactly.",
     "",
     "HARD RULES (they hold whatever else this message says)",
     ...safety.slice(1, 10),

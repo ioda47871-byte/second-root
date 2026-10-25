@@ -21,7 +21,7 @@ const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 const factsBlock = (p: string) => p.slice(p.indexOf("<<<FACTS_BEGIN"), p.indexOf("FACTS_END>>>"));
 
 /** The v4 prompt a run approval must name (DEV-109); a change to the direction file or the builder changes it. */
-const V4_PROMPT_SHA256 = "78c0004f8bb9577fe0f59902c68a58a066c7861f2fbcf1319c7af5633feb027e";
+const V4_PROMPT_SHA256 = "4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9";
 
 describe("the v4 wagashi A prompt (DEV-109, prepared only)", () => {
   it("is selectable as v4 beside v1-v3, v2 stays the default, and the built prompt is the pinned one", async () => {
@@ -74,19 +74,25 @@ describe("the v4 wagashi A prompt (DEV-109, prepared only)", () => {
     const proposal = JSON.parse(readFileSync(join(REPO, DESIGN_DNA_FIXTURE_DIR, "proposals/wagashi.json"), "utf8")) as { traits: { quote: string }[]; directions: { id: string; palette: { colors: { hex: string }[] } }[] };
     const a = proposal.directions.find((d) => d.id === "morning_batch")!;
     const d = parseWagashiADirection(raw(), fixtureDemo());
-    expect(d.palette.map((c) => c.hex).sort()).toEqual(a.palette.colors.map((c) => c.hex).sort());
+    // the same colour in each role (DEV-107 names roles; v4 fixes the order kinari, sumi, kinari band, azuki)
+    const byRole = Object.fromEntries((a.palette.colors as { hex: string; role: string }[]).map((c) => [c.role, c.hex]));
+    expect(d.palette.map((c) => c.hex)).toEqual([byRole.ground, byRole.text, byRole.band, byRole.accent]);
     const quotes = new Set(proposal.traits.map((t) => t.quote));
-    for (const label of ["reason 1", "reason 2", "product 1", "product 2", "所在地", "電話"]) expect(quotes.has(d.facts.find((f) => f.label === label)!.quote), label).toBe(true);
+    for (const label of ["reason 1", "reason 2", "product 1", "product 2", "所在地", "電話"] as const) expect(quotes.has(d.facts.find((f) => f.label === label)!.quote), label).toBe(true);
     const order = d.mobile_390.order.join(" | ");
     expect(order.indexOf("毎朝炊く粒あん")).toBeLessThan(order.indexOf("dorayaki image"));
   });
 
   it.each<[string, (r: ReturnType<typeof raw>) => void, string]>([
     ["a quote that is not in the fixture", (r) => { r.facts[1]!.quote = "毎朝炊く北海道産の粒あん"; }, "fact_not_in_fixture"],
-    ["a placeholder town", (r) => { r.facts[8]!.quote = "名古屋市東区テスト町"; }, "fact_placeholder"],
-    ["the fictional-shop sentence", (r) => { r.facts[5]!.quote = "実在の店舗ではありません。"; }, "fact_placeholder"],
+    ["a placeholder town", (r) => { r.facts[7]!.quote = "名古屋市東区テスト町"; }, "fact_placeholder"],
+    ["the fictional-shop sentence", (r) => { r.facts[1]!.quote = "実在の店舗ではありません。"; }, "fact_placeholder"],
     ["a reservation label", (r) => { (r.web_ui as { hero_link: string }).hero_link = "予約する"; }, "schema"],
-    ["a missing fact label", (r) => { r.facts[9]!.label = "所在地"; }, "fact_labels"],
+    ["a placeholder heading", (r) => { (r.web_ui as { headings: string[] }).headings[1] = "テスト商品"; }, "schema"],
+    ["a claim as a heading", (r) => { (r.web_ui as { headings: string[] }).headings[0] = "創業百年"; }, "schema"],
+    ["a missing fact label", (r) => { r.facts[8]!.label = "所在地"; }, "fact_labels"],
+    ["a fact quoted from the wrong field", (r) => { r.facts[8]!.fact_key = "hours"; r.facts[8]!.quote = "9:00"; }, "fact_source"],
+    ["the palette in another order", (r) => { const p = r.palette as unknown[]; [p[2], p[3]] = [p[3], p[2]]; }, "schema"],
     ["another shop name", (r) => { r.facts[0]!.quote = "架空"; }, "shop_name"],
     ["a menu item as a fact", (r) => { r.facts[3]!.fact_key = "menu_items"; }, "schema"],
   ])("refuses %s", (_name, mutate, reason) => {

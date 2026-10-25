@@ -75,11 +75,6 @@
       "quote": "粒あんのどら焼き"
     },
     {
-      "label": "description",
-      "fact_key": "description",
-      "quote": "季節の上生菓子と、毎朝炊く粒あんのどら焼きを、小さな店頭で一つずつお包みしています。"
-    },
-    {
       "label": "営業時間",
       "fact_key": "hours",
       "quote": "9:00〜18:00（売り切れ次第終了）"
@@ -100,7 +95,7 @@
       "quote": "052-000-0731"
     }
   ],
-  "left_out": "The fixture's menu items (placeholder names with テスト), the access line and the rest of the address (placeholder station and town names), and the description sentences saying the shop is fictional (the disclosure line says so).",
+  "left_out": "The fixture's menu items (placeholder names with テスト), the access line and the rest of the address (placeholder station and town names), the description sentence (its phrases already appear as the reasons and the product names), and the sentences saying the shop is fictional (the disclosure line says so).",
   "mobile_390": {
     "status": "design specification for G3; not sent to the image call, which draws the 1440 desktop comp only",
     "order": [
@@ -108,7 +103,7 @@
       "shop name in Mincho with 毎朝炊く粒あん beneath it, before the image",
       "the dorayaki image at full content width, cropped 4:3 around the cross-section",
       "こだわり: numeral 1 and its line, then numeral 2 and its line, stacked",
-      "商品: the two product names stacked, then the description sentence",
+      "商品: the two product names stacked",
       "店舗情報: each label above its value",
       "footer: shop name and the disclosure line"
     ],
