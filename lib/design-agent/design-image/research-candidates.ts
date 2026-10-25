@@ -81,12 +81,22 @@ export function parseResearchCandidates(input: unknown, previousUrls: readonly s
   // Enforcing the next expected range prevents ID reuse across separately parsed batches,
   // even though previousUrls (which also includes v0.2) contains no DX IDs.
   if (previousUrls.length < 40) throw new ResearchCandidateError("missing_v02_baseline");
+  // Duplicate or malformed history makes the next DX number and the reported
+  // 40 + N count untrustworthy. The caller must provide distinct recorded URLs.
+  let historicalKeys: string[];
+  try {
+    historicalKeys = previousUrls.map((url) => referenceUrlKey(url));
+  } catch {
+    throw new ResearchCandidateError("invalid_previous_url");
+  }
+  if (new Set(historicalKeys).size !== historicalKeys.length)
+    throw new ResearchCandidateError("duplicate_previous_url");
   const candidateOffset = previousUrls.length - 40;
   for (const [index, id] of ids.entries()) {
     const expected = `DX-${String(candidateOffset + index + 1).padStart(3, "0")}`;
     if (id !== expected) throw new ResearchCandidateError("nonsequential_candidate_id");
   }
-  const prior = new Set(previousUrls.map(referenceUrlKey));
+  const prior = new Set(historicalKeys);
   const within = new Set<string>();
   for (const source of batch.references) {
     const url = referenceUrlKey(source.source_url);
