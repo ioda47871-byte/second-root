@@ -6,18 +6,22 @@
  * writes the database, or marks a candidate as human-reviewed.
  */
 import { z } from "zod";
+import { studyTextIsUnsafe } from "./research-bridge";
 
+// the same markup / link / model-addressed-phrase check as the research bridge (one heuristic, kept in one place)
 const SafeNote = z.string().trim().min(20).max(440).refine(
-  (s) => !/[\u0000-\u001f\u007f]|<<<|>>>|<\s*\/?\s*(script|iframe)/i.test(s),
+  (s) => !/[\u0000-\u001f\u007f]|<<<|>>>|<\s*\/?\s*(script|iframe)/i.test(s) && !studyTextIsUnsafe(s),
 );
+const SafeName = z.string().trim().min(2).max(100).refine((s) => !/[\u0000-\u001f\u007f]/.test(s) && !studyTextIsUnsafe(s));
 const SourceURL = z.string().min(12).max(600).superRefine((value, ctx) => {
   try {
     const u = new URL(value);
     // DNS hosts can carry a trailing dot; normalize it for safety and dedupe.
     const h = u.hostname.toLowerCase().replace(/\.$/, "");
-    const reserved = ["localhost", "local", "internal", "test", "invalid", "example", "onion"];
+    // the research bridge's internal suffixes too (localdomain, home, lan, corp, intranet)
+    const reserved = ["localhost", "local", "internal", "test", "invalid", "example", "onion", "localdomain", "home", "lan", "corp", "intranet"];
     if (
-      u.protocol !== "https:" || u.username || u.password || !h || u.hash ||
+      u.protocol !== "https:" || u.username || u.password || !h || u.hash || !h.includes(".") ||
       reserved.some((suffix) => h === suffix || h.endsWith("." + suffix)) ||
       h === "example.com" || h.endsWith(".example.com") || h === "0.0.0.0" ||
       /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || h.includes(":") ||
@@ -31,7 +35,7 @@ const SourceURL = z.string().min(12).max(600).superRefine((value, ctx) => {
 const CATEGORIES = ["bakery", "pastry", "cafe", "restaurant", "salon", "beauty", "wellness", "editorial"] as const;
 const Source = z.strictObject({
   id: z.string().regex(/^DX-\d{3}$/),
-  name: z.string().trim().min(2).max(100),
+  name: SafeName,
   industry: z.enum(CATEGORIES),
   source_kind: z.enum(["official_brand_site", "agency_case_study", "design_gallery", "portfolio_page"]),
   source_url: SourceURL,

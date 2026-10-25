@@ -25,7 +25,9 @@ const INSTRUCTION_LIKE = new RegExp([
 ].join("|"), "i");
 /** Markup or a link that could be rendered or followed: a tag start, a markdown link, a script/data URL. */
 const MARKUP_LIKE = /[\u0000-\u001f\u007f]|<<<|>>>|<\/?[a-z][a-z0-9-]*(?:[\s/>]|$)|<!|\]\(|\b(?:javascript|vbscript|file):|\bdata:\s*[a-z]+\//i;
-const StudyText = z.string().min(8).max(300).refine((s) => !MARKUP_LIKE.test(s) && !INSTRUCTION_LIKE.test(s), "unsafe study text");
+/** Markup, a link or a model-addressed phrase in research text (a heuristic; the person's review is the control). */
+export const studyTextIsUnsafe = (s: string): boolean => MARKUP_LIKE.test(s) || INSTRUCTION_LIKE.test(s);
+const StudyText = z.string().min(8).max(300).refine((s) => !studyTextIsUnsafe(s), "unsafe study text");
 const HTTPS = z.string().min(9).max(600).transform((s, ctx) => {
   try {
     const url = new URL(s);
