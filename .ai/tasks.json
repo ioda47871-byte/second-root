@@ -4826,7 +4826,7 @@
     {
       "id": "DEV-110",
       "title": "承認済みの和菓子A v4画像PoCをWSLでワンコマンド起動しSHA照合と承認1回限りの再実行防止を追加する",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-109"
