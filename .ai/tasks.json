@@ -4745,7 +4745,9 @@
       ],
       "allowed_scope": [
         "docs/design/design-first-workflow-decision.md",
-        ".ai/tasks.json"
+        ".ai/tasks.json",
+        ".ai/progress.md",
+        ".ai/reviews/DEV-108.md"
       ],
       "forbidden_scope": [
         "実Codex/imagegen/WSLと外部有料API",
