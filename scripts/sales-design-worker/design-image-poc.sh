@@ -135,9 +135,21 @@ if [ -n "$EXPECTED_SHA" ]; then
   # Check after checkout and while holding this SAME run.lock. A previous SHA check
   # in a separate jail run is insufficient because develop may have changed.
   echo "== 4a. verify owner-approved prompt pin under run.lock"
-  timeout 120 "$REPO/node_modules/.bin/tsx" --no-cache \
-    "$REPO/scripts/sales-design-worker/check-image-prompt-pin.ts" \
-    "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" "$EXPECTED_SHA" "$EXPECTED_CHARS" ||
+  # Independent model-free check. This uses the same public prompt builder as
+  # the PoC but performs no Codex call. The sha + length are checked while the
+  # original worker run.lock is held, AFTER the wrapper checked out the ref.
+  SR_POC_EXPECTED_SHA="$EXPECTED_SHA" SR_POC_EXPECTED_CHARS="$EXPECTED_CHARS" \
+  timeout 120 "$REPO/node_modules/.bin/tsx" --no-cache -e '
+    import("./lib/design-agent/design-image/prompt.ts").then(async (x) => {
+      const m = x.default ?? x;
+      const v = m.parseDirectionVersion(process.env.SR_DESIGN_IMAGE_POC_DIRECTION);
+      const prompt = m.buildMockupPrompt(await m.loadPocInputs(".", v));
+      const h = (await import("node:crypto")).createHash("sha256").update(prompt).digest("hex");
+      if (h !== process.env.SR_POC_EXPECTED_SHA ||
+          prompt.length !== Number(process.env.SR_POC_EXPECTED_CHARS)) process.exit(23);
+      console.log("POC_PIN_OK direction=" + v + " sha256=" + h + " chars=" + prompt.length);
+    }).catch(() => process.exit(23));
+  ' ||
     { echo "STOP: POC_PIN_MISMATCH. The authorization was NOT consumed."; exit 23; }
 
   # Atomic marker in the worker's private state, outside git/output. This is
