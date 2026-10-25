@@ -52,13 +52,15 @@ umask 077
 APPROVED=""
 EXPECTED_SHA=""
 EXPECTED_CHARS=""
+EXPECTED_COMMIT=""
 APPROVAL_ID=""
-USAGE="usage: design-image-poc.sh --human-approval-confirmed [--expected-prompt-sha256 HEX --expected-prompt-chars N --approval-id ID]"
+USAGE="usage: design-image-poc.sh --human-approval-confirmed [--expected-prompt-sha256 HEX --expected-prompt-chars N --expected-commit SHA --approval-id ID]"
 while [ $# -gt 0 ]; do
   case "$1" in
     --human-approval-confirmed) APPROVED=1; shift ;;
     --expected-prompt-sha256) [ $# -ge 2 ] || { echo "$USAGE"; exit 2; }; EXPECTED_SHA="$2"; shift 2 ;;
     --expected-prompt-chars) [ $# -ge 2 ] || { echo "$USAGE"; exit 2; }; EXPECTED_CHARS="$2"; shift 2 ;;
+    --expected-commit) [ $# -ge 2 ] || { echo "$USAGE"; exit 2; }; EXPECTED_COMMIT="$2"; shift 2 ;;
     --approval-id) [ $# -ge 2 ] || { echo "$USAGE"; exit 2; }; APPROVAL_ID="$2"; shift 2 ;;
     *) echo "$USAGE"; exit 2 ;;
   esac
@@ -66,9 +68,10 @@ done
 [ -n "$APPROVED" ] || { echo "STOP: --human-approval-confirmed is missing. The PoC runs one real Codex image call (ChatGPT plan usage) on this machine and needs the human's explicit approval of this run (HUMAN-018 / HUMAN-019). Nothing was started."; exit 2; }
 # An id identifies a particular owner approval, never a blanket permission.
 # v4 requires the new pinned, one-use gate. Older directions keep their historical entrypoints.
-if [ "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" = "v4" ] || [ -n "$EXPECTED_SHA$EXPECTED_CHARS$APPROVAL_ID" ]; then
+if [ "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" = "v4" ] || [ -n "$EXPECTED_SHA$EXPECTED_CHARS$EXPECTED_COMMIT$APPROVAL_ID" ]; then
   [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{64}$ ]] &&
   [[ "$EXPECTED_CHARS" =~ ^[1-9][0-9]{0,5}$ ]] &&
+  [[ "$EXPECTED_COMMIT" =~ ^[a-f0-9]{40}$ ]] &&
   [[ "$APPROVAL_ID" =~ ^[a-z0-9][a-z0-9._-]{3,95}$ ]] ||
     { echo "STOP: POC_APPROVAL_PIN_REQUIRED. No Codex call was started."; exit 2; }
 fi
@@ -122,6 +125,15 @@ if [ "${SR_DESIGN_WORKER_NO_UPDATE:-0}" != "1" ]; then
   fi
 fi
 echo "commit $(git rev-parse --short=12 HEAD)"
+if [ -n "$EXPECTED_COMMIT" ]; then
+  # The approved one-use call must use the EXACT reviewed code commit. No
+  # fetch/checkout/clean/npm ci, including if develop moved on the remote.
+  [ "${SR_DESIGN_WORKER_NO_UPDATE:-0}" = "1" ] &&
+  [ "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT" ] &&
+  [ "$(git rev-parse origin/develop)" = "$EXPECTED_COMMIT" ] &&
+  [ -z "$(git status --porcelain --untracked-files=all)" ] ||
+    { echo "STOP: POC_COMMIT_PIN_MISMATCH. The authorization was NOT consumed."; exit 26; }
+fi
 [ -f "$REPO/scripts/sales-design-worker/design-image-poc.ts" ] || { echo "STOP: POC_NOT_ON_REF (design-image-poc.ts is not on origin/$REF yet; it runs only after the PR is merged)"; exit 2; }
 
 echo "== 4. design-image PoC (one Codex image call, direction ${SR_DESIGN_IMAGE_POC_DIRECTION:-v2})"
