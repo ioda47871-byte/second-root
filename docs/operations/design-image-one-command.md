@@ -6,7 +6,7 @@
 
 以前はメモリ確認、worker run.lock、fetch+checkout、prompt SHA確認、Codex実行を複数コマンドで操作していた。新しい `run-wagashi-a-v4-once.sh` は1回の命令で**既存wrapper**を呼び、その中で以下を順番に行う。
 
-1. 明示された承認フラグと固定値（direction v4, commit `9b79163825368d53bc066693b03cc21f7702b67d`, prompt SHA256 `4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9`, 4714文字、承認ID `wagashi-a-v4-20261025-01`）を照合する。これ以外には使えない。
+1. 明示された承認フラグと固定値（direction v4, **独立Fresh Reviewを通ったマージ後のdevelopコミットSHAを実行時に明示指定**, prompt SHA256 `4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9`, 4714文字、承認ID `wagashi-a-v4-20261025-01`）を照合する。これ以外には使えない。
 2. WSLメモリを計測し、STOPなら中止。workerの同時実行は共有 `run.lock` で排他。workerのtimerは**変更しない**（途中で起動されたworkerも既存lockにより同時実行できない）。ほかのmanual Codexなどlockを使わない重い作業はユーザーが避ける必要がある。
 3. 今回のオーナーから**明示されたreview済みdevelopのコミットSHA**を使い、checkoutを変更せず、同じworker lockの下で HEAD・origin/develop・クリーンな作業ツリーを検証する。Git fetch / checkout / clean / npm ciはしない。そのままv4プロンプトを再組立てしてSHA256・4714文字を照合する。不一致ならCodex呼び出しも承認消費もせずSTOPする。
 4. privateな `~/.local/state/sr-design-worker/poc-approval-used/wagashi-a-v4-20261025-01` をatomic `mkdir` で作成。**既にあれば即停止**（前回の成否に関わらず同じ承認は二度使えない）。この時点以降は、起動に失敗・中断・タイムアウトしても**再実行禁止**。誤った結果を「生成未実施」と断定しない。
