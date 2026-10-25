@@ -13,10 +13,12 @@ const SafeNote = z.string().trim().min(20).max(440).refine(
 const SourceURL = z.string().min(12).max(600).superRefine((value, ctx) => {
   try {
     const u = new URL(value);
-    const h = u.hostname.toLowerCase();
+    // DNS hosts can carry a trailing dot; normalize it for safety and dedupe.
+    const h = u.hostname.toLowerCase().replace(/\.$/, "");
+    const reserved = ["localhost", "local", "internal", "test", "invalid", "example", "onion"];
     if (
       u.protocol !== "https:" || u.username || u.password || !h || u.hash ||
-      h === "localhost" || h.endsWith(".local") || h.endsWith(".internal") ||
+      reserved.some((suffix) => h === suffix || h.endsWith("." + suffix)) ||
       h === "example.com" || h.endsWith(".example.com") || h === "0.0.0.0" ||
       /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || h.includes(":") ||
       u.port || u.search
@@ -60,7 +62,7 @@ export class ResearchCandidateError extends Error {
 /** Canonical comparison key for duplicates; never used to modify a recorded URL. */
 export function referenceUrlKey(input: string): string {
   const u = new URL(input);
-  return u.hostname.toLowerCase().replace(/^www\./, "") + (u.pathname.replace(/\/+$/, "") || "/");
+  return u.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "") + (u.pathname.replace(/\/+$/, "") || "/");
 }
 
 /**
