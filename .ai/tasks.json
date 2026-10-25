@@ -4713,6 +4713,57 @@
         "参考サイトの human_reviewed への昇格"
       ],
       "note": "オーナーの判断（2026-10-25）: T1・T7 の CSS 制限の変更と店名以外の縦書きは未承認。 4 案は owner の判断待ち（実装の検証に進める案の選択）。"
+    },
+    {
+      "id": "DEV-108",
+      "title": "デザイン先行の制作方針を正本化し、和菓子Aの画像→実装縦断PoCのゲートを準備する（方針/オフラインのみ）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-107"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-108-design-first-pilot-policy",
+      "purpose": "2026-10-25オーナーが確定した「店舗事実→Design DNAの異なる2方向→ChatGPTのWebデザイン画像→Claudeが忠実に実装→1440/390実画面比較」の制作方針を永続化し、和菓子Aを最初の品質実証とする。画像生成や実機操作を承認されたとは扱わない。",
+      "acceptance_criteria": [
+        "デザイン画像先行の明確な役割分担とG0〜G6の停止/承認条件がdocsにある",
+        "事実に基づく技法適格性と業種による創作方向の探索を区別し、業種から事実を捏造しない",
+        "2案は配色違いではなく構図差を要求し、正式な画像評価（hard failなし、22/25以上・各4以上・人の確認）は変えない",
+        "和菓子Aを本命、和菓子Bを写真なし比較、パン屋Aを情報不足テスト、パン屋Bを保留と記録",
+        "画像からの切り抜きを再利用しない。素材SHAと利用承認範囲を結びつけ、未承認ならplaceholderか未評価",
+        "PC1440とmobile390の違いを別に設計し、PCコンプだけでmobile再現性が証明されたとしない",
+        "店名以外の縦書き、固定CTA、clip-path等の未承認CSSを勝手に許可しない",
+        "本Taskで実画像生成・Codex・WSL・worker・DB・本番の操作はせず、後続の個別承認として明示する"
+      ],
+      "required_tests": [
+        "tests/unit/ai-tasks.test.ts",
+        "npm run typecheck",
+        "npm run check:secrets",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/design/design-first-workflow-decision.md",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "実Codex/imagegen/WSLと外部有料API",
+        "Production/Staging/Supabase/DB",
+        "worker/queue/bridge/timers/実営業",
+        "develop→main",
+        "CSS allowlist/品質閾値/pinned image prompt の変更",
+        "参考サイトのhuman_review昇格",
+        "未承認のアセット導入"
+      ],
+      "human_approval_triggers": [
+        "画像生成（各回の実行・利用枠）",
+        "単独の商品画像の利用承認とSHA確認",
+        "CSSのcapability追加",
+        "本物のcomp→Claude実装の着手",
+        "worker/DB/公開/営業への接続"
+      ],
+      "note": "Owner decision explicitly ratified 2026-10-25. Strategy/offline preparation only; separate human approvals for image use/calls and real systems. Issue #131."
     }
   ]
 }
