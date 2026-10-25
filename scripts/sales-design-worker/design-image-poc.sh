@@ -76,6 +76,16 @@ if [ "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" = "v4" ] || [ -n "$EXPECTED_SHA$EXPE
   [[ "$APPROVAL_ID" =~ ^[a-z0-9][a-z0-9._-]{3,95}$ ]] ||
     { echo "STOP: POC_APPROVAL_PIN_REQUIRED. No Codex call was started."; exit 2; }
 fi
+# This approval covers exactly one fixed v4 image prompt and one fixed
+# one-use ID. An arbitrary second --approval-id may not bypass the receipt.
+if [ "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" = "v4" ] && {
+     [ "$EXPECTED_SHA" != "4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9" ] ||
+     [ "$EXPECTED_CHARS" != "4714" ] ||
+     [ "$APPROVAL_ID" != "wagashi-a-v4-20261025-01" ];
+   }; then
+  echo "STOP: POC_V4_APPROVAL_SCOPE_MISMATCH. No Codex call was started."
+  exit 2
+fi
 # A reviewed one-use pin must NEVER run the checkout-mutating update path.
 if [ -n "$EXPECTED_SHA" ] && [ "${SR_DESIGN_WORKER_NO_UPDATE:-0}" != "1" ]; then
   echo "STOP: POC_NO_UPDATE_REQUIRED. No checkout or approval was changed."
