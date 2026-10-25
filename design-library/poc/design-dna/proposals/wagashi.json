@@ -5,18 +5,78 @@
   "shop_key": "wagashi",
   "fixture": "scripts/sales-design-worker/compare/shops/wagashi.json",
   "traits": [
-    { "id": "name", "kind": "identity", "fact_key": "name", "quote": "架空菓庵" },
-    { "id": "counter", "kind": "identity", "fact_key": "description", "quote": "小さな店頭" },
-    { "id": "namagashi", "kind": "signature_item", "fact_key": "description", "quote": "季節の上生菓子" },
-    { "id": "dorayaki", "kind": "signature_item", "fact_key": "description", "quote": "粒あんのどら焼き" },
-    { "id": "every_morning", "kind": "making_commitment", "fact_key": "description", "quote": "毎朝炊く粒あん" },
-    { "id": "one_by_one", "kind": "making_commitment", "fact_key": "description", "quote": "一つずつお包みしています" },
-    { "id": "hours", "kind": "practical_fact", "fact_key": "hours", "quote": "9:00〜18:00（売り切れ次第終了）" },
-    { "id": "sold_out", "kind": "practical_fact", "fact_key": "hours", "quote": "売り切れ次第終了" },
-    { "id": "closed", "kind": "practical_fact", "fact_key": "closed_days", "quote": "水曜・第2火曜" },
-    { "id": "walk", "kind": "practical_fact", "fact_key": "access", "quote": "1番出口から徒歩4分" },
-    { "id": "phone", "kind": "practical_fact", "fact_key": "phone", "quote": "052-000-0731" },
-    { "id": "ward", "kind": "practical_fact", "fact_key": "address", "quote": "名古屋市東区" }
+    {
+      "id": "name",
+      "kind": "identity",
+      "fact_key": "name",
+      "quote": "架空菓庵"
+    },
+    {
+      "id": "counter",
+      "kind": "identity",
+      "fact_key": "description",
+      "quote": "小さな店頭"
+    },
+    {
+      "id": "namagashi",
+      "kind": "signature_item",
+      "fact_key": "description",
+      "quote": "季節の上生菓子"
+    },
+    {
+      "id": "dorayaki",
+      "kind": "signature_item",
+      "fact_key": "description",
+      "quote": "粒あんのどら焼き"
+    },
+    {
+      "id": "every_morning",
+      "kind": "making_commitment",
+      "fact_key": "description",
+      "quote": "毎朝炊く粒あん"
+    },
+    {
+      "id": "one_by_one",
+      "kind": "making_commitment",
+      "fact_key": "description",
+      "quote": "一つずつお包みしています"
+    },
+    {
+      "id": "hours",
+      "kind": "practical_fact",
+      "fact_key": "hours",
+      "quote": "9:00〜18:00（売り切れ次第終了）"
+    },
+    {
+      "id": "sold_out",
+      "kind": "practical_fact",
+      "fact_key": "hours",
+      "quote": "売り切れ次第終了"
+    },
+    {
+      "id": "closed",
+      "kind": "practical_fact",
+      "fact_key": "closed_days",
+      "quote": "水曜・第2火曜"
+    },
+    {
+      "id": "walk",
+      "kind": "practical_fact",
+      "fact_key": "access",
+      "quote": "1番出口から徒歩4分"
+    },
+    {
+      "id": "phone",
+      "kind": "practical_fact",
+      "fact_key": "phone",
+      "quote": "052-000-0731"
+    },
+    {
+      "id": "ward",
+      "kind": "practical_fact",
+      "fact_key": "address",
+      "quote": "名古屋市東区"
+    }
   ],
   "directions": [
     {
@@ -25,48 +85,186 @@
       "identity": "A shop defined by two acts it states itself: tsubu-an cooked every morning and each sweet wrapped one at a time. The page is built around those two acts and the one item that carries them, the dorayaki.",
       "asset_policy": "ai_concept_review_required",
       "techniques": [
-        { "id": "T8", "variant": "concept_image", "trait_ids": ["dorayaki"], "why": "The description names the dorayaki with tsubu-an as the item tied to the morning cooking, so it is the one item that can carry the first screen." },
-        { "id": "T4", "variant": "numbered_text", "trait_ids": ["every_morning", "one_by_one"], "why": "The shop states exactly two concrete making facts; numbering them 1 and 2 shows them as its reasons without inventing a third." },
-        { "id": "T3", "variant": "text_ledger", "trait_ids": ["hours", "closed", "walk"], "why": "Hours end when sold out and the days off include the second Tuesday; both must be readable text a visitor can check." },
-        { "id": "T7", "variant": "colour_bands", "trait_ids": [], "why": "Two ground tones separate image, reasons and ledger without rules, which keeps the page as quiet as one wrapped sweet." }
+        {
+          "id": "T8",
+          "variant": "concept_image",
+          "trait_ids": [
+            "dorayaki"
+          ],
+          "why": "The description names the dorayaki with tsubu-an as the item tied to the morning cooking, so it is the one item that can carry the first screen."
+        },
+        {
+          "id": "T4",
+          "variant": "numbered_text",
+          "trait_ids": [
+            "every_morning",
+            "one_by_one"
+          ],
+          "why": "The shop states exactly two concrete making facts; numbering them 1 and 2 shows them as its reasons without inventing a third."
+        },
+        {
+          "id": "T3",
+          "variant": "text_ledger",
+          "trait_ids": [
+            "hours",
+            "closed",
+            "walk"
+          ],
+          "why": "Hours end when sold out and the days off include the second Tuesday; both must be readable text a visitor can check."
+        },
+        {
+          "id": "T7",
+          "variant": "colour_bands",
+          "trait_ids": [],
+          "why": "Two ground tones separate image, reasons and ledger without rules, which keeps the page as quiet as one wrapped sweet."
+        }
       ],
       "not_used": [
-        { "id": "T2", "why": "The first screen is kept for the dorayaki alone; the practical facts appear once, in the ledger, rather than twice." }
+        {
+          "id": "T2",
+          "why": "The first screen is kept for the dorayaki alone; the practical facts appear once, in the ledger, rather than twice."
+        }
       ],
-      "hero": { "choice": "A framed concept image of one dorayaki cut to show the tsubu-an takes the left two thirds; the name stands in the right third in horizontal Mincho with the phrase 毎朝炊く粒あん small beneath it.", "why": "One item, one act: the image shows the filling the shop cooks each morning, and the phrase under the name says it in the shop's own words.", "trait_ids": ["dorayaki", "every_morning", "name"] },
-      "product_visual": { "choice": "Only one image on the whole page, the disclosed AI concept of the dorayaki; the seasonal namagashi is named in text in the products line, never pictured.", "why": "No approved photos exist, so each image needs its own review; one image keeps that review small and keeps the dorayaki as the clear lead.", "trait_ids": ["dorayaki", "namagashi"] },
-      "typography": { "choice": "Refined Mincho for the name and the two numbered reasons, with the numerals 1 and 2 set large in the accent colour; Gothic at reading size for the ledger and navigation.", "why": "The reasons are the shop's craft in its own words and deserve the display face; the facts below must scan quickly, so they stay in plain Gothic.", "trait_ids": ["every_morning", "one_by_one"] },
+      "hero": {
+        "choice": "A framed concept image of one dorayaki cut to show the tsubu-an takes the left two thirds; the name stands in the right third in horizontal Mincho with the phrase 毎朝炊く粒あん small beneath it.",
+        "why": "One item, one act: the image shows the filling the shop cooks each morning, and the phrase under the name says it in the shop's own words.",
+        "trait_ids": [
+          "dorayaki",
+          "every_morning",
+          "name"
+        ]
+      },
+      "product_visual": {
+        "choice": "Only one image on the whole page, a disclosed AI concept of the dorayaki, such as the crop the owner approved for private local PoC use; the seasonal namagashi is named in text in the products line, never pictured.",
+        "why": "Each concept image needs its own approval and stays local; one image keeps that to a single decision and keeps the dorayaki as the clear lead.",
+        "trait_ids": [
+          "dorayaki",
+          "namagashi"
+        ]
+      },
+      "typography": {
+        "choice": "Refined Mincho for the name and the two numbered reasons, with the numerals 1 and 2 set large in the accent colour; Gothic at reading size for the ledger and navigation.",
+        "why": "The reasons are the shop's craft in its own words and deserve the display face; the facts below must scan quickly, so they stay in plain Gothic.",
+        "trait_ids": [
+          "every_morning",
+          "one_by_one"
+        ]
+      },
       "palette": {
         "choice": "Kinari ground with sumi text, a slightly darker kinari band behind the reasons, and azuki used only for the two numerals and one hairline above the ledger.",
         "why": "The only colour taken from the shop is azuki, from the tsubu-an it cooks; everything else stays neutral so the concept image carries the warmth.",
-        "trait_ids": ["every_morning"],
+        "trait_ids": [
+          "every_morning"
+        ],
         "colors": [
-          { "name": "kinari", "hex": "#F4EFE4", "role": "ground" },
-          { "name": "sumi", "hex": "#2B2622", "role": "text" },
-          { "name": "azuki", "hex": "#6B2E2E", "role": "accent" },
-          { "name": "kinari band", "hex": "#E9E1D1", "role": "band" }
+          {
+            "name": "kinari",
+            "hex": "#F4EFE4",
+            "role": "ground"
+          },
+          {
+            "name": "sumi",
+            "hex": "#2B2622",
+            "role": "text"
+          },
+          {
+            "name": "azuki",
+            "hex": "#6B2E2E",
+            "role": "accent"
+          },
+          {
+            "name": "kinari band",
+            "hex": "#E2D6C0",
+            "role": "band"
+          }
         ]
       },
       "section_rhythm": {
         "choice": "Image and name, then the two numbered reasons on the darker band, then a one-line products mention, then the ledger and footer; the eye goes image, name, 1, 2, facts.",
         "why": "The order follows the description itself: what is made, how it is made, then where and when to buy it.",
-        "trait_ids": ["dorayaki", "every_morning", "one_by_one", "hours"],
+        "trait_ids": [
+          "dorayaki",
+          "every_morning",
+          "one_by_one",
+          "hours"
+        ],
         "sections": [
-          { "id": "header", "role": "header", "purpose": "Name and two anchors to the reasons and the shop information." },
-          { "id": "hero", "role": "hero", "purpose": "The framed dorayaki concept image and the name with the morning phrase." },
-          { "id": "reasons", "role": "other", "purpose": "Two numbered reasons quoted from the description: 毎朝炊く粒あん, 一つずつお包みしています." },
-          { "id": "items", "role": "products", "purpose": "One line naming 季節の上生菓子 and 粒あんのどら焼き, no prices and no order wording." },
-          { "id": "ledger", "role": "info", "purpose": "Hours with the sold-out note, days off, access and phone as label and value rows." },
-          { "id": "footer", "role": "footer", "purpose": "Name and the disclosure that the image is an AI concept." }
+          {
+            "id": "header",
+            "role": "header",
+            "purpose": "Name and two anchors to the reasons and the shop information."
+          },
+          {
+            "id": "hero",
+            "role": "hero",
+            "purpose": "The framed dorayaki concept image and the name with the morning phrase."
+          },
+          {
+            "id": "reasons",
+            "role": "other",
+            "purpose": "Two numbered reasons quoted from the description: 毎朝炊く粒あん, 一つずつお包みしています."
+          },
+          {
+            "id": "items",
+            "role": "products",
+            "purpose": "One line naming 季節の上生菓子 and 粒あんのどら焼き, no prices and no order wording."
+          },
+          {
+            "id": "ledger",
+            "role": "info",
+            "purpose": "Hours with the sold-out note, days off, access and phone as label and value rows."
+          },
+          {
+            "id": "footer",
+            "role": "footer",
+            "purpose": "Name and the disclosure that the image is an AI concept."
+          }
         ]
       },
-      "navigation": { "choice": "A thin header with the name at left and two text anchors at right, to the reasons and to the shop information; no order or booking link.", "why": "The facts give a phone number but no booking route, so the page links only to what it shows.", "trait_ids": ["name", "phone"] },
-      "mobile": { "choice": "On a phone the name and morning phrase come first, the image follows at full width, the reasons stack 1 then 2, and the ledger becomes label-above-value rows.", "why": "On a narrow screen the name must be readable before the image takes the height; the reasons keep their numbered order.", "trait_ids": ["name", "every_morning"], "desktop": "Image and name side by side at about two to one; the two reasons sit in two columns on the band; the ledger is a two-column grid." },
-      "implementation": { "choice": "Grid for hero, reasons and ledger, solid colour bands, one image slot, horizontal text only, two breakpoints.", "why": "Every part is inside the current CSS allowlist; the one image needs its own review before any use.", "trait_ids": ["dorayaki"], "status": "existing_css", "css": ["grid", "flex", "solid_colour_bands", "image_slot", "horizontal_text", "media_queries"], "needs": [] },
+      "navigation": {
+        "choice": "A thin header with the name at left and two text anchors at right, to the reasons and to the shop information; no order or booking link.",
+        "why": "The facts give a phone number but no booking route, so the page links only to what it shows.",
+        "trait_ids": [
+          "name",
+          "phone"
+        ]
+      },
+      "mobile": {
+        "choice": "On a phone the name and morning phrase come first, the image follows at full width, the reasons stack 1 then 2, and the ledger becomes label-above-value rows.",
+        "why": "On a narrow screen the name must be readable before the image takes the height; the reasons keep their numbered order.",
+        "trait_ids": [
+          "name",
+          "every_morning"
+        ],
+        "desktop": "Image and name side by side at about two to one; the two reasons sit in two columns on the band; the ledger is a two-column grid."
+      },
+      "implementation": {
+        "choice": "Grid for hero, reasons and ledger, solid colour bands, one image slot, horizontal text only, two breakpoints.",
+        "why": "Every part is inside the current CSS allowlist; the one image needs its own review before any use.",
+        "trait_ids": [
+          "dorayaki"
+        ],
+        "status": "existing_css",
+        "css": [
+          "grid",
+          "flex",
+          "solid_colour_bands",
+          "image_slot",
+          "horizontal_text",
+          "media_queries"
+        ],
+        "needs": []
+      },
       "comparison": {
         "baseline": "wagashi.json",
-        "strengths": ["Shows the two making facts as numbered reasons; the existing brief used them only as mood for the hero.", "One image instead of a cross-section plus separate details keeps the image review to a single approval."],
-        "weaknesses": ["Without an approved concept image the hero is empty; it cannot launch type-only.", "Less still and spacious than the existing offset split; the numbered reasons add a more explanatory tone."]
+        "strengths": [
+          "Shows the two making facts as numbered reasons; the existing brief used them only as mood for the hero.",
+          "One image instead of a cross-section plus separate details keeps the image review to a single approval."
+        ],
+        "weaknesses": [
+          "Without an approved concept image the hero is empty; it cannot launch type-only.",
+          "Less still and spacious than the existing offset split; the numbered reasons add a more explanatory tone."
+        ]
       }
     },
     {
@@ -75,47 +273,187 @@
       "identity": "A small counter that sells until it runs out. This direction leads with when and how to get there, and names the seasonal namagashi as the reason to come, with no picture at all.",
       "asset_policy": "none",
       "techniques": [
-        { "id": "T8", "variant": "type_led", "trait_ids": ["namagashi"], "why": "Seasonal namagashi change through the year, so a name set in large type stays true where a single picture would go out of date." },
-        { "id": "T2", "variant": "text_badges", "trait_ids": ["sold_out", "closed", "walk"], "why": "Selling until sold out, two kinds of days off and a four-minute walk are exactly what a first visitor needs before setting out." },
-        { "id": "T3", "variant": "text_ledger", "trait_ids": ["hours", "ward", "phone"], "why": "The full hours, the area and the phone number still need one complete, readable place near the end." },
-        { "id": "T7", "variant": "radius_motif", "trait_ids": ["counter"], "why": "The shape comes from the small counter and the one-at-a-time wrapping: small rounded tags, used only for the badges and the item names." }
+        {
+          "id": "T8",
+          "variant": "type_led",
+          "trait_ids": [
+            "namagashi"
+          ],
+          "why": "Seasonal namagashi change through the year, so a name set in large type stays true where a single picture would go out of date."
+        },
+        {
+          "id": "T2",
+          "variant": "text_badges",
+          "trait_ids": [
+            "sold_out",
+            "closed",
+            "walk"
+          ],
+          "why": "Selling until sold out, two kinds of days off and a four-minute walk are exactly what a first visitor needs before setting out."
+        },
+        {
+          "id": "T3",
+          "variant": "text_ledger",
+          "trait_ids": [
+            "hours",
+            "ward",
+            "phone"
+          ],
+          "why": "The full hours, the area and the phone number still need one complete, readable place near the end."
+        },
+        {
+          "id": "T7",
+          "variant": "radius_motif",
+          "trait_ids": [
+            "counter"
+          ],
+          "why": "The shape comes from the small counter and the one-at-a-time wrapping: small rounded tags, used only for the badges and the item names."
+        }
       ],
       "not_used": [
-        { "id": "T4", "why": "Here the making is said once, inside the products line, so the page stays short and practical instead of listing reasons." }
+        {
+          "id": "T4",
+          "why": "Here the making is said once, inside the products line, so the page stays short and practical instead of listing reasons."
+        }
       ],
-      "hero": { "choice": "No picture: the shop name sits small above a large Mincho line 季節の上生菓子, and directly beneath are three rounded badges for 売り切れ次第終了, 水曜・第2火曜 and 1番出口から徒歩4分.", "why": "A visitor learns what to come for and whether they can come today in one glance, which suits a small counter that may sell out.", "trait_ids": ["namagashi", "sold_out", "closed", "walk", "name"] },
-      "product_visual": { "choice": "Products are type only: two rounded name tags, 季節の上生菓子 and 粒あんのどら焼き, the second followed by 毎朝炊く粒あん in small text.", "why": "With no approved image, named items in the shop's own words are more honest than a placeholder picture.", "trait_ids": ["namagashi", "dorayaki", "every_morning"] },
-      "typography": { "choice": "One large Mincho line for the seasonal lead, everything else in a single Gothic at two sizes; badge text in Gothic medium weight.", "why": "Only the reason to visit is set as display type; the practical badges must read at a glance on a phone.", "trait_ids": ["namagashi", "sold_out"] },
+      "hero": {
+        "choice": "No picture: the shop name sits small above a large Mincho line 季節の上生菓子, and directly beneath are three rounded badges for 売り切れ次第終了, 水曜・第2火曜 and 1番出口から徒歩4分.",
+        "why": "A visitor learns what to come for and whether they can come today in one glance, which suits a small counter that may sell out.",
+        "trait_ids": [
+          "namagashi",
+          "sold_out",
+          "closed",
+          "walk",
+          "name"
+        ]
+      },
+      "product_visual": {
+        "choice": "Products are type only: two rounded name tags, 季節の上生菓子 and 粒あんのどら焼き, the second followed by 毎朝炊く粒あん in small text.",
+        "why": "With no approved image, named items in the shop's own words are more honest than a placeholder picture.",
+        "trait_ids": [
+          "namagashi",
+          "dorayaki",
+          "every_morning"
+        ]
+      },
+      "typography": {
+        "choice": "One large Mincho line for the seasonal lead, everything else in a single Gothic at two sizes; badge text in Gothic medium weight.",
+        "why": "Only the reason to visit is set as display type; the practical badges must read at a glance on a phone.",
+        "trait_ids": [
+          "namagashi",
+          "sold_out"
+        ]
+      },
       "palette": {
         "choice": "Near-white ground and deep indigo text, a pale green band behind the badges, and a leaf green accent for the badge borders only.",
         "why": "A season-neutral leaf tone sits under sweets that change by season; indigo text keeps the practical facts strongly readable.",
-        "trait_ids": ["namagashi"],
+        "trait_ids": [
+          "namagashi"
+        ],
         "colors": [
-          { "name": "shiro", "hex": "#FBFAF7", "role": "ground" },
-          { "name": "ai", "hex": "#1F2A44", "role": "text" },
-          { "name": "leaf", "hex": "#3F6B5C", "role": "accent" },
-          { "name": "pale leaf", "hex": "#EAF0EA", "role": "band" }
+          {
+            "name": "shiro",
+            "hex": "#FBFAF7",
+            "role": "ground"
+          },
+          {
+            "name": "ai",
+            "hex": "#1F2A44",
+            "role": "text"
+          },
+          {
+            "name": "leaf",
+            "hex": "#3F6B5C",
+            "role": "accent"
+          },
+          {
+            "name": "pale leaf",
+            "hex": "#DCE6DC",
+            "role": "band"
+          }
         ]
       },
       "section_rhythm": {
         "choice": "Lead line and badges, then the two item tags, then the ledger; three short sections with the strongest contrast at the top.",
         "why": "The page answers come or not first, then what to buy, then the details; it ends early because the facts are few.",
-        "trait_ids": ["namagashi", "sold_out", "hours"],
+        "trait_ids": [
+          "namagashi",
+          "sold_out",
+          "hours"
+        ],
         "sections": [
-          { "id": "header", "role": "header", "purpose": "Name and the phone number as plain text." },
-          { "id": "hero", "role": "hero", "purpose": "The seasonal lead line and the three practical badges." },
-          { "id": "items", "role": "products", "purpose": "Two rounded item tags with the morning note on the dorayaki." },
-          { "id": "ledger", "role": "info", "purpose": "Full hours, days off, access, area and phone." },
-          { "id": "footer", "role": "footer", "purpose": "Name only." }
+          {
+            "id": "header",
+            "role": "header",
+            "purpose": "Name and the phone number as plain text."
+          },
+          {
+            "id": "hero",
+            "role": "hero",
+            "purpose": "The seasonal lead line and the three practical badges."
+          },
+          {
+            "id": "items",
+            "role": "products",
+            "purpose": "Two rounded item tags with the morning note on the dorayaki."
+          },
+          {
+            "id": "ledger",
+            "role": "info",
+            "purpose": "Full hours, days off, access, area and phone."
+          },
+          {
+            "id": "footer",
+            "role": "footer",
+            "purpose": "Name only."
+          }
         ]
       },
-      "navigation": { "choice": "The header carries the name at left and the phone number as plain text at right, with no buttons and no booking wording.", "why": "A phone call is the only contact the facts give, and asking whether sweets remain is a natural use of it for a shop that sells out.", "trait_ids": ["phone", "sold_out"] },
-      "mobile": { "choice": "On a phone the badges wrap to two rows under the lead line and the item tags stack; the ledger keeps label and value on one line each.", "why": "The badges are the point of this direction and must stay in the first screen even when they wrap.", "trait_ids": ["sold_out", "closed", "walk"], "desktop": "The lead line sits left and the badge column right in the first screen; item tags run in one row; the ledger is a narrow centred grid." },
-      "implementation": { "choice": "Flex rows for badges and tags, rounded corners, solid bands, horizontal text, two breakpoints; no image slot.", "why": "Uses nothing outside the allowlist and needs no image approval, so it is the lowest-risk build of the four.", "trait_ids": ["counter"], "status": "existing_css", "css": ["flex", "grid", "border_radius", "solid_colour_bands", "horizontal_text", "media_queries"], "needs": [] },
+      "navigation": {
+        "choice": "The header carries the name at left and the phone number as plain text at right, with no buttons and no booking wording.",
+        "why": "A phone call is the only contact the facts give, and asking whether sweets remain is a natural use of it for a shop that sells out.",
+        "trait_ids": [
+          "phone",
+          "sold_out"
+        ]
+      },
+      "mobile": {
+        "choice": "On a phone the badges wrap to two rows under the lead line and the item tags stack; the ledger keeps label and value on one line each.",
+        "why": "The badges are the point of this direction and must stay in the first screen even when they wrap.",
+        "trait_ids": [
+          "sold_out",
+          "closed",
+          "walk"
+        ],
+        "desktop": "The lead line sits left and the badge column right in the first screen; item tags run in one row; the ledger is a narrow centred grid."
+      },
+      "implementation": {
+        "choice": "Flex rows for badges and tags, rounded corners, solid bands, horizontal text, two breakpoints; no image slot.",
+        "why": "Uses nothing outside the allowlist and needs no image approval, so it is the lowest-risk build of the four.",
+        "trait_ids": [
+          "counter"
+        ],
+        "status": "existing_css",
+        "css": [
+          "flex",
+          "grid",
+          "border_radius",
+          "solid_colour_bands",
+          "horizontal_text",
+          "media_queries"
+        ],
+        "needs": []
+      },
       "comparison": {
         "baseline": "wagashi-v02-experiment.json",
-        "strengths": ["Buildable today: no vertical_name, no image approval, nothing outside the CSS allowlist.", "The practical facts a first visitor needs are in the first screen; the v02 experiment kept them in a ledger at the end."],
-        "weaknesses": ["Far less atmospheric than the framed image and vertical name of the v02 experiment.", "Risks reading as a notice board if the lead line is set too small or the badges too loud."]
+        "strengths": [
+          "Buildable today: no vertical_name, no image approval, nothing outside the CSS allowlist.",
+          "The practical facts a first visitor needs are in the first screen; the v02 experiment kept them in a ledger at the end."
+        ],
+        "weaknesses": [
+          "Far less atmospheric than the framed image and vertical name of the v02 experiment.",
+          "Risks reading as a notice board if the lead line is set too small or the badges too loud."
+        ]
       }
     }
   ]

@@ -51,9 +51,9 @@ describe("DEV-107 shop-specific Design DNA proposals (offline)", () => {
     expect(overlappingChoices([...briefs, ...baselines])).toEqual([]);
     // and the check does catch a copied choice
     const copy = structuredClone(raw("wagashi"));
-    copy.directions[1]!.hero.choice = copy.directions[0]!.hero.choice;
+    copy.directions[1]!.typography.choice = copy.directions[0]!.typography.choice;
     const f = parseShopProposals(copy, facts("wagashi"));
-    expect(overlappingChoices(f.directions.map((d) => ({ label: d.id, brief: toDesignDnaBrief(f, d, urls) })))[0]!.parts).toEqual(["hero"]);
+    expect(overlappingChoices(f.directions.map((d) => ({ label: d.id, brief: toDesignDnaBrief(f, d, urls) })))[0]!.parts).toEqual(["typography"]);
   });
 
   it("every baseline a direction compares against exists, and the reference sites stay pending", () => {
@@ -72,7 +72,7 @@ describe("DEV-107 shop-specific Design DNA proposals (offline)", () => {
   const B = (f: ShopProposalFile) => f.directions[1]!;
   it.each<[string, "wagashi" | "patisserie", Mut, string]>([
     ["a trait that is not in the facts", "wagashi", (f) => { f.traits[2]!.quote = "季節の練り切り"; }, "trait_not_in_facts"],
-    ["a placeholder menu name as a trait", "wagashi", (f) => { f.traits[3] = { id: "dorayaki", kind: "signature_item", fact_key: "menu_items", quote: "テストどら焼き" }; }, "trait_placeholder"],
+    ["a placeholder menu name as a trait", "wagashi", (f) => { f.traits.push({ id: "placeholder", kind: "product", fact_key: "menu_items", quote: "テストどら焼き" }); f.traits.splice(0, 1); }, "trait_placeholder"],
     ["the fictional disclaimer as a trait", "wagashi", (f) => { f.traits[1] = { id: "counter", kind: "identity", fact_key: "description", quote: "実在の店舗ではありません" }; }, "trait_placeholder"],
     ["a trait quoting the wrong kind of fact", "wagashi", (f) => { f.traits[4]!.fact_key = "hours"; }, "trait_wrong_fact_key"],
     ["numbered commitments from one commitment", "wagashi", (f) => { A(f).techniques[1]!.trait_ids = ["every_morning"]; }, "technique_condition_unmet"],
@@ -87,9 +87,20 @@ describe("DEV-107 shop-specific Design DNA proposals (offline)", () => {
     ["the vertical name while claiming the existing CSS suffices", "wagashi", (f) => { A(f).implementation.css.push("vertical_name"); }, "implementation_status_mismatch"],
     ["a concept image under a no-image policy", "wagashi", (f) => { A(f).asset_policy = "none"; }, "asset_policy_conflict"],
     ["a technique whose CSS is not in the build", "wagashi", (f) => { A(f).implementation.css = A(f).implementation.css.filter((c) => c !== "image_slot"); }, "css_missing_for_technique"],
-    ["unreadable text on its ground", "patisserie", (f) => { B(f).palette.colors[1]!.hex = "#3A4A50"; }, "palette_contrast"],
+    ["unreadable text on its ground", "patisserie", (f) => { B(f).palette.colors[1]!.hex = "#5A6A70"; }, "palette_contrast"],
     ["an eligible technique left out without a reason", "wagashi", (f) => { A(f).not_used = []; }, "unused_eligible_unexplained"],
-    ["a signature item the bakery never named", "patisserie", (f) => { A(f).techniques.push({ id: "T8", variant: "type_led", trait_ids: ["croissant"], why: "Make the croissant the signature item of the shop." }); }, "technique_condition_unmet"],
+    ["a signature item taken from a bare menu list", "wagashi", (f) => { f.traits[3] = { id: "dorayaki", kind: "signature_item", fact_key: "menu_items", quote: "どら焼き（粒あん）" }; }, "trait_wrong_fact_key"],
+    ["a placeholder item without its テスト prefix", "patisserie", (f) => { f.traits.splice(0, 1, { id: "croissant", kind: "product", fact_key: "menu_items", quote: "クロワッサン" }); }, "trait_placeholder"],
+    ["a quote from the disclaimer sentence", "wagashi", (f) => { f.traits[1] = { id: "counter", kind: "identity", fact_key: "description", quote: "和菓子屋です" }; }, "trait_placeholder"],
+    ["a fixed bar written into a choice", "wagashi", (f) => { B(f).navigation.choice = "A fixed bar at the bottom keeps the phone number on screen while scrolling."; }, "prose_refused_feature"],
+    ["a clip-path wave written into a choice", "wagashi", (f) => { A(f).hero.choice = "The image has a wave-shaped clip-path edge cut into the kinari ground beside the name."; }, "prose_refused_feature"],
+    ["vertical text written into a choice", "wagashi", (f) => { A(f).typography.choice = "The phrase 毎朝炊く粒あん is set vertically beside the image in large Mincho."; }, "prose_refused_feature"],
+    ["a photo written into a no-image direction", "patisserie", (f) => { A(f).hero.choice = "A large AI-generated photo of a croissant fills the left half of the first screen."; }, "prose_asset_conflict"],
+    ["an invented price", "wagashi", (f) => { A(f).section_rhythm.sections[3]!.purpose = "The dorayaki at 380円 and the seasonal namagashi."; }, "prose_invented_fact"],
+    ["an invented booking button", "patisserie", (f) => { B(f).navigation.choice = "An online reservation button sits at the right of the header."; }, "prose_invented_fact"],
+    ["a concept image under the real-photo policy", "wagashi", (f) => { A(f).asset_policy = "approved_real_only"; }, "asset_policy_conflict"],
+    ["a second text colour that is unreadable", "wagashi", (f) => { A(f).palette.colors.push({ name: "pale text", hex: "#D8D0C0", role: "text" }); }, "palette_contrast"],
+    ["a band too close to the ground to separate anything", "wagashi", (f) => { A(f).palette.colors[3]!.hex = "#EFE9DC"; }, "palette_band_invisible"],
     ["two directions with the same techniques", "patisserie", (f) => { B(f).techniques[1]!.variant = "radius_motif"; B(f).techniques[1]!.trait_ids = ["boulangerie"]; B(f).implementation.css.push("border_radius"); }, "directions_same_techniques"],
     ["a part citing an unknown trait", "patisserie", (f) => { A(f).hero.trait_ids = ["signature_bread"]; }, "trait_unknown"],
     ["an owner approval claimed by the AI", "wagashi", (f) => { (f as unknown as { status: string }).status = "owner_approved"; }, "schema"],

@@ -26,12 +26,17 @@ export const TECHNIQUE_DECISION_DATE = "2026-10-25";
 export const TRAIT_KINDS = {
   identity: ["name", "description"],
   product: ["menu_items", "description"],
-  signature_item: ["description", "menu_items"],
+  // Kinds that claim something about the shop (what it leads with, how it makes things, how to order or book) must
+  // come from the shop's own description, not from a bare list of item names. The kind is still the analysis's claim;
+  // the owner reviews it.
+  signature_item: ["description"],
   making_commitment: ["description"],
   practical_fact: ["hours", "closed_days", "access", "address", "phone"],
-  product_attribute: ["description", "menu_items"],
+  product_attribute: ["description"],
   order_process: ["description"],
-  booking_route: ["booking"],
+  // No fixture or design input has a booking field yet (DESIGN_FACT_KEYS); a description that states appointments or
+  // reservations is the only source today, so T1 stays unavailable until such a fact exists.
+  booking_route: ["booking", "description"],
 } as const;
 export type TraitKind = keyof typeof TRAIT_KINDS;
 const TRAIT_KIND_NAMES = Object.keys(TRAIT_KINDS) as TraitKind[];
@@ -42,7 +47,7 @@ export const REFUSED_CSS = ["fixed_position", "sticky_position", "clip_path", "p
 type AllowedCss = (typeof ALLOWED_CSS)[number];
 
 type Need = { kind: TraitKind; min: number; keys?: readonly string[]; distinctKeys?: boolean };
-type Variant = { css: readonly AllowedCss[]; needs: readonly Need[]; asset?: "image" | "none"; input?: string };
+type Variant = { css: readonly AllowedCss[]; needs: readonly Need[]; asset?: "concept_image" | "none" };
 export type Technique = {
   owner: "adopted" | "conditional";
   name: string;
@@ -106,7 +111,7 @@ export const TECHNIQUES: Record<string, Technique> = {
     owner: "adopted", name: "one signature item leads", principle: "The first screen decides what the shop is by one item.",
     sources: ["DX-027", "DX-033"], parts: ["hero", "product_visual"], maxTraits: 2,
     variants: {
-      concept_image: { css: ["image_slot"], needs: [{ kind: "signature_item", min: 1 }], asset: "image" },
+      concept_image: { css: ["image_slot"], needs: [{ kind: "signature_item", min: 1 }], asset: "concept_image" },
       type_led: { css: ["horizontal_text"], needs: [{ kind: "signature_item", min: 1 }], asset: "none" },
     },
     refused: {},
@@ -181,18 +186,64 @@ export function shopFactsFromFixture(fixture: { facts: Record<string, unknown> }
 const PLACEHOLDER = /テスト|架空|実在|比較用/;
 
 type Trait = ShopProposalFile["traits"][number];
+/**
+ * Where a quote sits in a fact value: it may not be part of a placeholder word (a token starting with テスト, such as a
+ * fixture menu item "テストクロワッサン") or inside a sentence of the fictional-shop disclaimer.
+ */
+function quoteIsPlaceholder(value: string, quote: string): boolean {
+  for (let at = value.indexOf(quote); at >= 0; at = value.indexOf(quote, at + 1)) {
+    const tokenStart = Math.max(...[" ", "　", "、", "・", "「", "（", "(", "。"].map((c) => value.lastIndexOf(c, at - 1) + 1), 0);
+    const token = value.slice(tokenStart, at + quote.length);
+    // the disclaimer is a sentence of the description; a one-line fact (an address) is judged by its token alone
+    const sentence = value.includes("。") ? value.slice(value.lastIndexOf("。", at - 1) + 1, value.indexOf("。", at + quote.length) + 1 || value.length) : "";
+    if (!/テスト/.test(token) && !PLACEHOLDER.test(sentence) && !PLACEHOLDER.test(quote)) return false;
+  }
+  return true;
+}
+
 function checkTraits(traits: Trait[], facts: ShopFacts): Map<string, Trait> {
   const byId = new Map<string, Trait>();
   for (const t of traits) {
     if (byId.has(t.id)) fail("duplicate_trait");
     if (!(TRAIT_KINDS[t.kind] as readonly string[]).includes(t.fact_key)) fail("trait_wrong_fact_key");
-    if ((t.fact_key !== "name" && PLACEHOLDER.test(t.quote)) || t.quote.trim().length < 2) fail("trait_placeholder");
+    if (t.quote.trim().length < 2) fail("trait_placeholder");
     const value = facts[t.fact_key];
-    const values = value === undefined ? [] : typeof value === "string" ? [value] : value;
-    if (!values.some((v) => v.includes(t.quote))) fail("trait_not_in_facts");
+    const values = (value === undefined ? [] : typeof value === "string" ? [value] : value).filter((v) => v.includes(t.quote));
+    if (!values.length) fail("trait_not_in_facts");
+    if (t.fact_key !== "name" && values.every((v) => quoteIsPlaceholder(v, t.quote))) fail("trait_placeholder");
     byId.set(t.id, t);
   }
   return byId;
+}
+
+/**
+ * The written choices are read too, sentence by sentence: a sentence that proposes something the owner has not
+ * approved, an image under a no-image policy, or a price or booking the facts do not give is refused. A sentence that
+ * negates it ("no fixed bar", "with no picture") is fine. This is a keyword screen, not understanding: the owner still
+ * reads every choice.
+ */
+const NEGATION = /\b(no|not|never|without|nothing|none|instead of)\b|ない|無し|なし/i;
+const PROSE_RULES: Array<{ re: RegExp; reason: string; unless?: (d: ProposalDirection) => boolean }> = [
+  { re: /position:\s*(fixed|sticky)|\bfixed (bar|header|footer|button)|\bsticky\b|stays on screen|while scrolling/i, reason: "prose_refused_feature" },
+  { re: /clip-?path|wave[- ]shaped|\bwav(e|y) (edge|border)|cut[- ]corner|\bblob\b/i, reason: "prose_refused_feature" },
+  { re: /carousel|slideshow|\banimat|fade[- ]in|parallax/i, reason: "prose_refused_feature" },
+  { re: /\bvertical(ly)?\b|縦書き|縦組|vertical-rl/i, reason: "prose_refused_feature", unless: (d) => d.implementation.css.includes("vertical_name") },
+  { re: /\b(photo|photograph|picture|image|illustration)s? of\b|AI[- ]generated|concept image|写真|イラスト/i, reason: "prose_asset_conflict", unless: (d) => d.asset_policy !== "none" },
+  { re: /\bbook(ing)?\b|\breservations?\b|\breserve\b|予約/i, reason: "prose_invented_fact", unless: (d) => d.techniques.some((t) => t.id === "T1") },
+  { re: /\bprices?\b|\bonline (shop|store|order)|\bcart\b|購入|通販|注文/i, reason: "prose_invented_fact" },
+];
+const PRICE = /\d\s*円|¥\s*\d|\d\s*yen/i;
+function proseOf(d: ProposalDirection): string[] {
+  const texts = [d.identity, ...d.techniques.map((t) => t.why), ...d.not_used.map((n) => n.why), ...d.section_rhythm.sections.map((x) => x.purpose), d.mobile.desktop,
+    ...PART_KEYS.flatMap((k) => [d[k].choice, d[k].why])];
+  return texts.flatMap((t) => t.split(/(?<=[.;。])\s*|:\s/));
+}
+function checkProse(d: ProposalDirection): void {
+  for (const sentence of proseOf(d)) {
+    if (PRICE.test(sentence)) fail("prose_invented_fact");
+    if (NEGATION.test(sentence)) continue;
+    for (const r of PROSE_RULES) if (r.re.test(sentence) && !(r.unless?.(d))) fail(r.reason);
+  }
 }
 
 function needMet(need: Need, cited: Trait[]): boolean {
@@ -206,7 +257,7 @@ export function techniqueEligibility(traits: readonly Trait[], assetPolicy: z.in
   return Object.fromEntries(TECHNIQUE_IDS.map((id) => {
     const t = TECHNIQUES[id]!;
     const variants = Object.entries(t.variants).filter(([, v]) =>
-      v.needs.every((n) => needMet(n, [...traits])) && !(v.asset === "image" && assetPolicy === "none")).map(([name]) => name);
+      v.needs.every((n) => needMet(n, [...traits])) && !(v.asset === "concept_image" && assetPolicy !== "ai_concept_review_required")).map(([name]) => name);
     return [id, { eligible: variants.length > 0, variants }];
   })) as Record<string, { eligible: boolean; variants: string[] }>;
 }
@@ -239,19 +290,25 @@ function checkDirection(d: ProposalDirection, traits: Map<string, Trait>): void 
     if (u.trait_ids.length > t!.maxTraits) fail("technique_too_many_traits");
     const cited = u.trait_ids.map((id) => traits.get(id) ?? fail("trait_unknown"));
     if (!v!.needs.every((n) => needMet(n, cited))) fail("technique_condition_unmet");
-    if (v!.asset === "image" && d.asset_policy === "none") fail("asset_policy_conflict");
+    if (v!.asset === "concept_image" && d.asset_policy !== "ai_concept_review_required") fail("asset_policy_conflict");
     for (const c of v!.css) css.add(c);
   }
   // every technique this shop could use but this direction does not is explained
   const notUsed = new Set(d.not_used.map((n) => n.id));
   if (d.not_used.some((n) => !TECHNIQUES[n.id] || used.has(n.id))) fail("not_used_invalid");
   for (const [id, e] of Object.entries(eligibility)) if (e.eligible && !used.has(id) && !notUsed.has(id)) fail("unused_eligible_unexplained");
+  checkProse(d);
   // parts cite real traits
   for (const k of PART_KEYS) for (const id of d[k].trait_ids) if (!traits.has(id)) fail("trait_unknown");
   // palette: a ground, a text colour, readable contrast
-  const ground = d.palette.colors.find((c) => c.role === "ground"), text = d.palette.colors.find((c) => c.role === "text");
-  if (!ground || !text) fail("palette_roles");
-  if (contrastRatio(ground!.hex, text!.hex) < 4.5) fail("palette_contrast");
+  const of = (role: string) => d.palette.colors.filter((c) => c.role === role);
+  const grounds = of("ground"), texts = of("text"), bands = of("band"), accents = of("accent");
+  if (grounds.length !== 1 || !texts.length) fail("palette_roles");
+  const surfaces = [...grounds, ...bands];
+  for (const t of texts) for (const s of surfaces) if (contrastRatio(t.hex, s.hex) < 4.5) fail("palette_contrast");
+  for (const a of accents) for (const s of surfaces) if (contrastRatio(a.hex, s.hex) < 3) fail("palette_contrast");
+  // a band must read as a different ground, or "sections separated by ground colour" separates nothing
+  for (const b of bands) if (contrastRatio(b.hex, grounds[0]!.hex) < 1.2) fail("palette_band_invisible");
   // implementation: only allowed CSS; the status follows from what is used
   for (const c of d.implementation.css) {
     if ((REFUSED_CSS as readonly string[]).includes(c)) fail("css_refused");
