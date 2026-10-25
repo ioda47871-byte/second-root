@@ -217,32 +217,41 @@ function checkTraits(traits: Trait[], facts: ShopFacts): Map<string, Trait> {
 }
 
 /**
- * The written choices are read too, sentence by sentence: a sentence that proposes something the owner has not
- * approved, an image under a no-image policy, or a price or booking the facts do not give is refused. A sentence that
- * negates it ("no fixed bar", "with no picture") is fine. This is a keyword screen, not understanding: the owner still
- * reads every choice.
+ * The written choices are read too, clause by clause: wording that proposes something the owner has not approved, an
+ * image under a no-image policy, or a price or booking the facts do not give is refused, in English or Japanese. A
+ * mention negated right next to it ("no fixed bar", "固定しない") is fine. This is a keyword screen, not understanding:
+ * the owner still reads every choice.
  */
-const NEGATION = /\b(no|not|never|without|nothing|none|instead of)\b|ない|無し|なし/i;
+const NEGATION_BEFORE = /\b(no|not|never|without|nothing|none|instead of)\b/i;
+/** Japanese negates after the verb: 固定しない, 写真は無し. */
+const NEGATION_AFTER = /^.{0,4}?(しない|ない|無し|なし|不要)/;
 const PROSE_RULES: Array<{ re: RegExp; reason: string; unless?: (d: ProposalDirection) => boolean }> = [
-  { re: /position:\s*(fixed|sticky)|\bfixed (bar|header|footer|button)|\bsticky\b|stays on screen|while scrolling/i, reason: "prose_refused_feature" },
-  { re: /clip-?path|wave[- ]shaped|\bwav(e|y) (edge|border)|cut[- ]corner|\bblob\b/i, reason: "prose_refused_feature" },
-  { re: /carousel|slideshow|\banimat|fade[- ]in|parallax/i, reason: "prose_refused_feature" },
-  { re: /\bvertical(ly)?\b|縦書き|縦組|vertical-rl/i, reason: "prose_refused_feature", unless: (d) => d.implementation.css.includes("vertical_name") },
-  { re: /\b(photo|photograph|picture|image|illustration)s? of\b|AI[- ]generated|concept image|写真|イラスト/i, reason: "prose_asset_conflict", unless: (d) => d.asset_policy !== "none" },
+  { re: /position:\s*(fixed|sticky)|\bfixed (bar|header|footer|button)|\bsticky\b|stays on screen|while scrolling|固定|追従/i, reason: "prose_refused_feature" },
+  { re: /clip-?path|wave[- ]shaped|\bwav(e|y) (edge|border)|cut[- ]corner|\bblob\b|波形|切り欠き/i, reason: "prose_refused_feature" },
+  { re: /carousel|slideshow|\banimat|fade[- ]in|parallax|カルーセル|スライド|アニメーション|フェード/i, reason: "prose_refused_feature" },
+  { re: /\bvertical(ly)?\b|縦書き|縦組|縦に|vertical-rl/i, reason: "prose_refused_feature", unless: (d) => d.implementation.css.includes("vertical_name") },
+  { re: /\b(photo|photograph|picture|image|illustration)s? of\b|AI[- ]generated|concept image|写真|画像|イラスト/i, reason: "prose_asset_conflict", unless: (d) => d.asset_policy !== "none" },
   { re: /\bbook(ing)?\b|\breservations?\b|\breserve\b|予約/i, reason: "prose_invented_fact", unless: (d) => d.techniques.some((t) => t.id === "T1") },
-  { re: /\bprices?\b|\bonline (shop|store|order)|\bcart\b|購入|通販|注文/i, reason: "prose_invented_fact" },
+  { re: /\bprices?\b|\bonline (shop|store|order)|\bcart\b|価格|値段|購入|通販|注文/i, reason: "prose_invented_fact" },
 ];
 const PRICE = /\d\s*円|¥\s*\d|\d\s*yen/i;
 function proseOf(d: ProposalDirection): string[] {
   const texts = [d.identity, ...d.techniques.map((t) => t.why), ...d.not_used.map((n) => n.why), ...d.section_rhythm.sections.map((x) => x.purpose), d.mobile.desktop,
     ...PART_KEYS.flatMap((k) => [d[k].choice, d[k].why])];
-  return texts.flatMap((t) => t.split(/(?<=[.;。])\s*|:\s/));
+  return texts.flatMap((t) => t.split(/(?<=[.;。、,])\s*|:\s/));
+}
+/** A match counts as negated only when a negation sits right next to it: up to three words before, or 〜ない after. */
+function negated(clause: string, at: number, length: number): boolean {
+  const before = clause.slice(0, at).trim().split(/\s+/).slice(-3).join(" ");
+  return NEGATION_BEFORE.test(before) || NEGATION_AFTER.test(clause.slice(at + length));
 }
 function checkProse(d: ProposalDirection): void {
-  for (const sentence of proseOf(d)) {
-    if (PRICE.test(sentence)) fail("prose_invented_fact");
-    if (NEGATION.test(sentence)) continue;
-    for (const r of PROSE_RULES) if (r.re.test(sentence) && !(r.unless?.(d))) fail(r.reason);
+  for (const clause of proseOf(d)) {
+    if (PRICE.test(clause)) fail("prose_invented_fact");
+    for (const r of PROSE_RULES) {
+      if (r.unless?.(d)) continue;
+      for (const m of clause.matchAll(new RegExp(r.re.source, "gi"))) if (!negated(clause, m.index, m[0].length)) fail(r.reason);
+    }
   }
 }
 
