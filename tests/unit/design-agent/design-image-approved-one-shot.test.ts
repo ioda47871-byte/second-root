@@ -50,6 +50,8 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     expect(body).toContain("--expected-prompt-sha256 " + pin);
     expect(body).toContain("--expected-prompt-chars 4714");
     expect(body).toContain("SR_DESIGN_WORKER_NO_UPDATE=0");
+    expect(body).toContain("SR_CLAUDE_JAIL_REQUIRED");
+    expect(body).toContain("0::/system.slice/sr-jail-claude.service");
     const run = spawnSync("bash", [entry, "--human-approval-confirmed"], {
       cwd: repo,
       encoding: "utf8",
