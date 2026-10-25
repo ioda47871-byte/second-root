@@ -577,10 +577,14 @@ export async function runDesignImagePoc(o: PocOptions): Promise<PocResult> {
     // and any Codex subprocess. Existing unpinned v1-v3 calls are unaffected.
     const expectedSha = o.env.SR_POC_EXPECTED_SHA;
     const expectedChars = o.env.SR_POC_EXPECTED_CHARS;
-    if (expectedSha !== undefined || expectedChars !== undefined) {
+    if (version === "v4" || expectedSha !== undefined || expectedChars !== undefined) {
       const actualSha = createHash("sha256").update(prompt, "utf8").digest("hex");
       if (!/^[a-f0-9]{64}$/.test(expectedSha ?? "") ||
           !/^[1-9][0-9]{0,5}$/.test(expectedChars ?? "") ||
+          (version === "v4" && (
+            expectedSha !== "4e34f760ccde3f28df58316e9b55e6d21d6ac78d397bf770f6295fb1699157d9" ||
+            expectedChars !== "4714"
+          )) ||
           actualSha !== expectedSha || prompt.length !== Number(expectedChars)) {
         throw new PocError("POC_PIN_MISMATCH");
       }
