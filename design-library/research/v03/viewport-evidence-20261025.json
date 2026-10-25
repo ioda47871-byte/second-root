@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "task": "DEV-106",
+  "status": "ai_analysis_pending_owner_review",
+  "method": "Headless Chromium at 1440x900 and 390x844 (mobile emulation), public pages only, no login or paywall; screenshots kept in a temporary local directory for the analysis and never committed; observations in own words.",
+  "records": []
+}

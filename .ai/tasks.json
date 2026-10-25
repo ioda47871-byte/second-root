@@ -4620,7 +4620,7 @@
     {
       "id": "DEV-106",
       "title": "参考サイト10件を実際の 1440px / 390px で検証し、使える Design DNA を抽出する（Issue #128）",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-105"
