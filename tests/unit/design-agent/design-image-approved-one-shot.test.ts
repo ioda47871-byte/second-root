@@ -199,7 +199,8 @@ describe("DEV-110 safety gate with fake Git and zero Codex calls", () => {
           SR_DESIGN_IMAGE_POC_DIRECTION: "v4", SR_DESIGN_WORKER_NO_UPDATE: "1",
         },
       });
-      expect(run.status, run.stdout + run.stderr).toBe(23);
+      expect(run.status, run.stdout + run.stderr).toBe(2);
+      expect(run.stdout).toContain("POC_V4_APPROVAL_SCOPE_MISMATCH");
       expect(existsSync(receipt)).toBe(false);
     } finally { f.cleanup(); }
   });
