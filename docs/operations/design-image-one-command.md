@@ -16,11 +16,42 @@
 
 ## 1. 一度だけセットアップ
 
-PRが**review+CI greenでdevelopに統合された後**、オーナーがWSL管理者で `sr-designgen` のworker checkoutがそのdevelopを参照することを確認する。worker実行中はcheckoutを変更しない。既存runbookの「SHA確認」（lockを取得してfetch/checkoutするコマンド）を**初回セットアップに限り**実施する。初回は新ファイルをworker checkoutへ置くために必要。
+PRが**review+CI greenでdevelopに統合された後**、オーナーがWSL管理者で `sr-designgen` のworker checkoutがそのdevelopを参照することを確認する。worker実行中はcheckoutを変更しない。既存runbookの「SHA確認」（lockを取得してfetch/checkoutするコマンド）を**初回セットアップに限り**実施する。初回は新ファイルをworker checkoutへ置くために必要。すでに現在の実checkoutのHEADが`9b79163825368d53bc066693b03cc21f7702b67d`まで更新されたことはオーナーのread-only確認で既知だが、DEV-110新ファイルを使うには**レビュー後にマージされた新しいdevelopへ更新**が必要。
 
 セットアップ時に画像生成やCodexを実行してはいけない。既存のWSL/runbook、`admin.sh` の実パスが想定と異なれば停止。
 
-## 2. 次回からはWindows PowerShellのワンコマンド
+## 2. ブラウザのClaude Remote Controlから実行する（既存の隔離版のみ）
+
+2026-10-25、オーナーがブラウザから操作する**既存の**`sr-jail-claude.service` の Claude を確認済み：
+`whoami=sr-designgen`、`pwd=/home/sr-designgen/work/second-root`、
+`/proc/self/cgroup=0::/system.slice/sr-jail-claude.service`。
+通常の `ioda0` ユーザーで作成したテスト用 Remote Control からは起動しない。
+
+**実行する前**：最新HEADの必要CIと独立Fresh Review PASSの後にこのPRを`develop`へマージすること。
+既存セッション内では `git status --short` が空であること、`HEAD`が想定の承認済み`develop`であること、
+メモリpreflightがSTOPでないこと、ほかの重い作業が同時に走っていないこと、
+前回の承認IDのレシートが存在しないことを先に確認する。
+SHA pinは、wrapperが自分でworkerロックを取得し、`origin/develop`を更新・checkoutしてから**そのロック保持中**に再検証する。途中で`develop`が進みpromptが違えばCodexは起動せず、承認IDも消費されない。
+`bash -n`とオフラインテスト・reviewを通していないコードでは絶対に実行しない。
+
+```bash
+# Claudeがブラウザから隔離版セッション内で、オーナーの既存の個別承認に
+# 限って一度だけ呼び出す。root/admin.sh/個別のsudoは不要。
+bash /home/sr-designgen/work/second-root/scripts/sales-design-worker/run-wagashi-a-v4-once.sh --human-approval-confirmed
+```
+
+ここで起動するのはroot権限のない `sr-jail-claude.service` に属するプロセスだけ。
+スクリプトは実効ユーザー、HOME、cgroupを確認してから既存のworker wrapperを呼ぶ。
+Codexには既存のbubblewrap、env allowlist、image-toolの検証、最大15分の制限を適用。
+whole-PoCはwrapper独自の最大3300秒budgetで終了する。
+root運用の`admin.sh run`には別にsystemdの`RuntimeMaxSec=3500`があるため、
+**両経路が完全に同一というわけではない**（Remote Control経路は同じ既設jailのcgroupに入る）。
+期限・途中停止・異常結果では追加呼び出しは行わず報告する。
+
+なお、これは **v4 / 4714 chars / 承認済みのSHAに限る one-time entrypoint** である。
+承認記録フォルダを消して再利用することも、画像や資産を転用することも禁止。
+
+## 3. （代替）Windows PowerShellのワンコマンド
 
 （ユーザーの明示承認済みの一回分だけ。実行時に本当に使う意図があることを確認する。）
 
@@ -30,7 +61,7 @@ wsl -u root --exec /bin/bash /root/sr-capture-admin/scripts/sales-design-capture
 
 PowerShell内でさらに細かい4コマンドを打つ必要はない。rootがリポジトリの新スクリプトを直接実行するのではなく、**既存の管理用admin.sh**から `sr-designgen` の制限環境で実行する。実PCのsystemd/adminの状態をこのクラウドセッションから確認したわけではない。
 
-## 3. 結果
+## 4. 結果
 
 - `POC_PIN_OK`: 送信予定プロンプトを照合。**生成成功ではない**。
 - `POC_APPROVAL_RESERVED`: 1回分を消費扱いにした。**画像生成が成功したという意味ではない**。
@@ -42,7 +73,7 @@ PowerShell内でさらに細かい4コマンドを打つ必要はない。root�
 
 生成した場合、既存runbookの「Viewing」を用いて**原本を変更せず**、`mockup.png` と `report.json` を管理者経由でWindowsの私用ディレクトリへコピーして確認する。Gitへcommitしない。実画像に人の評価（hard failなし、22/25点以上、各4点以上）が付くまではcomp→siteを実装しない。390px別画像、どら焼き単独素材、公開は別の承認が必要。
 
-## 4. 今回の承認境界と将来の拡張
+## 5. 今回の承認境界と将来の拡張
 
 この入口は**和菓子A v4専用**であり、別店舗・別モデル・別SHAに流用しない。将来のワンコマンド生成には各画像の承認IDとpinを新規で作り、オーナーが**その1回を承認**してから使う。店舗分析・デザイン作成までの自動化を理由に画像利用枠や課金を勝手に使わない。
 
