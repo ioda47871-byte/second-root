@@ -38,6 +38,7 @@ describe("DEV-105: additive candidate research batch", () => {
   it("canonicalizes common URL spelling variants, but not different paths", () => {
     expect(referenceUrlKey("https://www.example.jp/sweets/")).toBe(referenceUrlKey("https://example.jp/sweets"));
     expect(referenceUrlKey("https://example.jp/sweets")).not.toBe(referenceUrlKey("https://example.jp/another"));
+    expect(referenceUrlKey("https://example.jp./sweets/")).toBe(referenceUrlKey("https://www.example.jp/sweets"));
   });
 
   it("fails if a candidate is already in the immutable original reference list", () => {
@@ -62,7 +63,10 @@ describe("DEV-105: additive candidate research batch", () => {
     for (const bad of ["http://brand.example.org", "https://localhost/admin",
       "https://127.0.0.1/secret", "https://[::1]/secret",
       "https://person:password@example.org", "https://example.com/page",
-      "https://valid-site.jp/example?utm_source=a"]) {
+      "https://valid-site.jp/example?utm_source=a",
+      "https://localhost./secret", "https://service.localhost/path",
+      "https://service.test/path", "https://service.invalid/path",
+      "https://service.onion/path", "https://example.com./path"]) {
       const b = batch();
       b.references[0]!.source_url = bad;
       expect(() => parseResearchCandidates(b, previous), bad).toThrow(ResearchCandidateError);
