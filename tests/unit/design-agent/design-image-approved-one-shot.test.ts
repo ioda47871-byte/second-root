@@ -118,7 +118,7 @@ describe("DEV-110 safety gate with fake Git and zero Codex calls", () => {
   const args = [
     "--human-approval-confirmed", "--expected-prompt-sha256", pin,
     "--expected-prompt-chars", "4714", "--expected-commit", commit,
-    "--approval-id", "test-once",
+    "--approval-id", "wagashi-a-v4-20261025-01",
   ];
   function fixture() {
     const root = mkdtempSync(join(tmpdir(), "sr-dev110-"));
@@ -177,7 +177,7 @@ describe("DEV-110 safety gate with fake Git and zero Codex calls", () => {
   it("wrong commit, dirty checkout, NO_UPDATE=0 and wrong SHA refuse before reserving approval", () => {
     const f = fixture();
     try {
-      const receipt = join(f.home, ".local/state/sr-design-worker/poc-approval-used/test-once");
+      const receipt = join(f.home, ".local/state/sr-design-worker/poc-approval-used/wagashi-a-v4-20261025-01");
       writeFileSync(join(f.repoDir, "git-head"), "f".repeat(40) + "\n");
       expect(f.exec().status).toBe(26);
       expect(existsSync(receipt)).toBe(false);
