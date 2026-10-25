@@ -22,6 +22,28 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     expect(prompt.length).not.toBe(4715);
   });
 
+  it("runs the actual model-free PoC pin probe without approval, and refuses an incorrect pin", () => {
+    const tsx = join(repo, "node_modules/.bin/tsx");
+    const args = ["--no-cache", join(repo, "scripts/sales-design-worker/design-image-poc.ts"), "--check-pin-only"];
+    const run = (sha: string) => spawnSync(tsx, args, {
+      cwd: repo,
+      encoding: "utf8",
+      timeout: 15_000,
+      env: {
+        ...process.env,
+        SR_DESIGN_IMAGE_POC_DIRECTION: "v4",
+        SR_POC_EXPECTED_SHA: sha,
+        SR_POC_EXPECTED_CHARS: "4714",
+      },
+    });
+    const good = run(pin);
+    expect(good.status, good.stdout + good.stderr).toBe(0);
+    expect(good.stdout).toContain("POC_PIN_OK");
+    const bad = run("0".repeat(64));
+    expect(bad.status, bad.stdout + bad.stderr).toBe(23);
+    expect(bad.stdout).toContain("POC_PIN_MISMATCH");
+  });
+
   it("refuses a v4 invocation without a full approval pin BEFORE any preflight or Codex", () => {
     const test = (args: string[], env: Record<string, string>) =>
       spawnSync("bash", [worker, ...args], {
