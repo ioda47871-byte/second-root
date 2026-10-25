@@ -34,6 +34,7 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
       ["--human-approval-confirmed"],
       ["--human-approval-confirmed", "--expected-prompt-sha256", pin],
       ["--human-approval-confirmed", "--expected-prompt-sha256", pin, "--expected-prompt-chars", "4714"],
+      ["--human-approval-confirmed", "--expected-prompt-sha256", pin, "--expected-prompt-chars", "4714", "--approval-id", "once-123"],
       ["--human-approval-confirmed", "--expected-prompt-sha256", "wrong", "--expected-prompt-chars", "4714", "--approval-id", "once-123"],
       ["--human-approval-confirmed", "--expected-prompt-sha256", pin, "--expected-prompt-chars", "4714", "--approval-id", "../escape"],
     ]) {
@@ -49,7 +50,8 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     expect(body).toContain("--approval-id wagashi-a-v4-20261025-01");
     expect(body).toContain("--expected-prompt-sha256 " + pin);
     expect(body).toContain("--expected-prompt-chars 4714");
-    expect(body).toContain("SR_DESIGN_WORKER_NO_UPDATE=0");
+    expect(body).toContain("SR_DESIGN_WORKER_NO_UPDATE=1");
+    expect(body).toContain("--expected-commit 9b79163825368d53bc066693b03cc21f7702b67d");
     expect(body).toContain("SR_CLAUDE_JAIL_REQUIRED");
     expect(body).toContain("0::/system.slice/sr-jail-claude.service");
     const run = spawnSync("bash", [entry, "--human-approval-confirmed"], {
@@ -72,6 +74,8 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     expect(codex).toBeGreaterThan(marker);
     expect(body).toContain('POC_APPROVAL_ALREADY_USED');
     expect(body).toContain('POC_PIN_MISMATCH');
+    expect(body).toContain('POC_COMMIT_PIN_MISMATCH');
+    expect(body).toContain('git status --porcelain --untracked-files=all');
     const verification = body.slice(check, marker);
     expect(verification).toContain('loadPocInputs(".", v)');
     expect(verification).toContain('buildMockupPrompt');
