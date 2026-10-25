@@ -146,6 +146,26 @@ describe("DEV-110 safety gate with fake Git and zero Codex calls", () => {
       "",
     ].join("\n"));
     chmodSync(git, 0o755);
+    // The fixture owns its own "passwd home"; changing only HOME must not
+    // redirect the one-shot ledger into a second approval namespace.
+    const fakeId = join(tools, "id");
+    writeFileSync(fakeId, [
+      "#!/bin/bash",
+      'case "$1" in',
+      '  -u) echo 1001 ;;',
+      '  -un) echo sr-designgen ;;',
+      '  *) /usr/bin/id "$@" ;;',
+      'esac',
+      "",
+    ].join("\n"));
+    chmodSync(fakeId, 0o755);
+    const fakeGetent = join(tools, "getent");
+    writeFileSync(fakeGetent, [
+      "#!/bin/bash",
+      'printf "sr-designgen:x:1001:1001::%s/home:/bin/bash\\n" "$(dirname "$PWD")"',
+      "",
+    ].join("\n"));
+    chmodSync(fakeGetent, 0o755);
     writeFileSync(join(repoDir, "git-head"), commit + "\n");
     writeFileSync(join(repoDir, "git-origin"), commit + "\n");
     const fakeTsx = join(repoDir, "node_modules/.bin/tsx");
@@ -204,6 +224,24 @@ describe("DEV-110 safety gate with fake Git and zero Codex calls", () => {
       expect(existsSync(receipt)).toBe(false);
     } finally { f.cleanup(); }
   });
+  it("changing HOME or XDG_STATE_HOME cannot reserve a second v4 approval", () => {
+    const f = fixture();
+    try {
+      const first = f.exec();
+      expect(first.status, first.stdout + first.stderr).toBe(0);
+      const alternate = join(f.root, "other-home");
+      mkdirSync(alternate);
+      const second = f.exec([], { HOME: alternate });
+      expect(second.status, second.stdout + second.stderr).toBe(27);
+      expect(second.stdout).toContain("POC_V4_CANONICAL_IDENTITY_REQUIRED");
+      const state = f.exec([], { XDG_STATE_HOME: join(f.root, "alt-state") });
+      expect(state.status, state.stdout + state.stderr).toBe(27);
+      const counter = join(f.home, "fake-count");
+      expect(readFileSync(counter, "utf8").trim().split("\n")).toHaveLength(1);
+      expect(existsSync(join(alternate, ".local/state/sr-design-worker/poc-approval-used"))).toBe(false);
+    } finally { f.cleanup(); }
+  });
+
   it("one completed offline fake can reserve only once; replay never reaches the fake model", () => {
     const f = fixture();
     try {
