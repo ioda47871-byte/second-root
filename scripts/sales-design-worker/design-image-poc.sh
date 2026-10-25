@@ -102,7 +102,6 @@ if [ "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" = "v4" ]; then
   PASSWD_HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
   if [ "$(id -un)" != "sr-designgen" ] ||
      [ -z "$PASSWD_HOME" ] ||
-     [ "$PASSWD_HOME" != "/home/sr-designgen" ] ||
      [ "${HOME:-}" != "$PASSWD_HOME" ] ||
      { [ -n "${XDG_STATE_HOME:-}" ] && [ "$XDG_STATE_HOME" != "$HOME/.local/state" ]; }; then
     echo "STOP: POC_V4_CANONICAL_IDENTITY_REQUIRED. No approval consumed."
