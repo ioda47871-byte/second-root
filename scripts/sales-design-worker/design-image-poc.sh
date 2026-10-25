@@ -95,10 +95,28 @@ case "${SR_DESIGN_IMAGE_POC_DIRECTION:-}" in
   "" | v1 | v2 | v3 | v4) ;;
   *) echo "STOP: POC_DIRECTION_INVALID (SR_DESIGN_IMAGE_POC_DIRECTION: v1, v2, v3 or v4; unset means v2). Nothing was started."; exit 2 ;;
 esac
+# A one-shot approval is bound to the installed sr-designgen identity and
+# canonical state directory. An attacker must not redirect the one-use marker
+# by selecting a new HOME or XDG_STATE_HOME while retaining the same worker.
+if [ "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" = "v4" ]; then
+  PASSWD_HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
+  if [ "$(id -un)" != "sr-designgen" ] ||
+     [ -z "$PASSWD_HOME" ] ||
+     [ "$PASSWD_HOME" != "/home/sr-designgen" ] ||
+     [ "${HOME:-}" != "$PASSWD_HOME" ] ||
+     { [ -n "${XDG_STATE_HOME:-}" ] && [ "$XDG_STATE_HOME" != "$HOME/.local/state" ]; }; then
+    echo "STOP: POC_V4_CANONICAL_IDENTITY_REQUIRED. No approval consumed."
+    exit 27
+  fi
+fi
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 REF="${SR_DESIGN_WORKER_REF:-develop}"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/sr-design-worker"
+if [ "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" = "v4" ]; then
+  # Also anchors run.lock and the approval ledger to the same directory.
+  STATE="$HOME/.local/state/sr-design-worker"
+fi
 # The jail's one run (admin.sh run) ends at RuntimeMaxSec=3500: the whole PoC fits in 3300 s, as run.sh.
 BUDGET="${SR_DESIGN_IMAGE_POC_BUDGET_SECONDS:-3300}"
 [[ "$BUDGET" =~ ^[1-9][0-9]{2,4}$ ]] || { echo "SR_DESIGN_IMAGE_POC_BUDGET_SECONDS: 100-99999"; exit 2; }
@@ -168,11 +186,18 @@ if [ -n "$EXPECTED_SHA" ]; then
     "$REPO/scripts/sales-design-worker/design-image-poc.ts" --check-pin-only ||
     { echo "STOP: POC_PIN_MISMATCH_OR_CHECK_ERROR. Approval not consumed."; exit 23; }
 
-  # Atomic marker in the worker's private state, outside git/output. This is
-  # intentionally consumed BEFORE Codex may start, including uncertain failure
-  # after this point. Never auto-clear or reuse an authorization ID.
-  LEDGER="$HOME/.local/state/sr-design-worker/poc-approval-used"
-  [ ! -L "$LEDGER" ] || { echo "STOP: POC_APPROVAL_LEDGER_INVALID"; exit 24; }
+  # Never consume an approval when the remaining budget is already unsafe.
+  REMAINING=$((BUDGET - (SECONDS - START)))
+  if [ "$REMAINING" -lt "$MIN_POC_SECONDS" ]; then
+    echo "STOP: POC_RUN_TIME_BUDGET. Approval not consumed."
+    exit 1
+  fi
+  # The lock and approval must reside together in a fixed private state dir.
+  # Same-user deletion remains possible; this is replay protection for
+  # accidental duplicate calls, not a malicious-user security boundary.
+  LEDGER="$STATE/poc-approval-used"
+  [ ! -L "$STATE" ] && [ ! -L "$LEDGER" ] ||
+    { echo "STOP: POC_APPROVAL_LEDGER_INVALID"; exit 24; }
   mkdir -p -m 0700 "$LEDGER"
   if ! mkdir -m 0700 "$LEDGER/$APPROVAL_ID" 2>/dev/null; then
     echo "STOP: POC_APPROVAL_ALREADY_USED; no Codex call was started."
