@@ -38,16 +38,18 @@ SHA pinは、wrapperが自分でworkerロックを取得し、**チェックア�
 
 ```bash
 # ブラウザの隔離版Claudeに頼む「一度だけ」の実行手順。
-# <reviewed-commit> をレビュー済みdevelopの40文字SHAで置き換える。
+# EXPECTED_COMMITの右側を、独立レビュー後のdevelopコミット40文字SHAへ変更する。
 # foregroundで起動しない。ClaudeのBashコマンド時間切れが
 # Codexを停止させ、1回だけの承認を失う可能性があるため。
 set -euo pipefail
 umask 077
+EXPECTED_COMMIT="REPLACE_WITH_REVIEWED_40_CHARACTER_SHA"
+[[ "$EXPECTED_COMMIT" =~ ^[a-f0-9]{40}$ ]] || { echo "STOP: REVIEWED_COMMIT_REQUIRED"; exit 2; }
 LOG_DIR="$HOME/sr-design-poc-launch-logs"
 install -d -m 0700 "$LOG_DIR"
 LOG="$(mktemp "$LOG_DIR/wagashi-a-v4.XXXXXXXX.log")"
 nohup setsid bash "$HOME/work/second-root/scripts/sales-design-worker/run-wagashi-a-v4-once.sh" \
-  --human-approval-confirmed --expected-commit <reviewed-commit> \
+  --human-approval-confirmed --expected-commit "$EXPECTED_COMMIT" \
   >"$LOG" 2>&1 </dev/null &
 echo "POC_LAUNCHED_PID=$! LOG=$LOG"
 ```
