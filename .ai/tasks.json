@@ -4620,7 +4620,7 @@
     {
       "id": "DEV-106",
       "title": "参考サイト10件を実際の 1440px / 390px で検証し、使える Design DNA を抽出する（Issue #128）",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-105"
@@ -4661,7 +4661,8 @@
         "human_reviewed への昇格",
         "Phase 2（店舗別の原案比較）の開始",
         "実 Codex 画像生成"
-      ]
+      ],
+      "note": "10 件の証拠と技法 8 件の提案まで（PR #129）。採用はオーナーの判断待ちで、Design DNA への反映は採用後に別 Task。"
     }
   ]
 }
