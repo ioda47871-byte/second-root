@@ -1,0 +1,355 @@
+{
+  "schema_version": 1,
+  "task": "DEV-107",
+  "status": "ai_proposal_pending_owner_review",
+  "shop_key": "patisserie",
+  "fixture": "scripts/sales-design-worker/compare/shops/patisserie.json",
+  "traits": [
+    {
+      "id": "name",
+      "kind": "identity",
+      "fact_key": "name",
+      "quote": "Boulangerie Pâtisserie Exemple"
+    },
+    {
+      "id": "boulangerie",
+      "kind": "identity",
+      "fact_key": "name",
+      "quote": "Boulangerie"
+    },
+    {
+      "id": "patisserie",
+      "kind": "identity",
+      "fact_key": "name",
+      "quote": "Pâtisserie"
+    },
+    {
+      "id": "hours",
+      "kind": "practical_fact",
+      "fact_key": "hours",
+      "quote": "10:00〜18:00"
+    },
+    {
+      "id": "ward",
+      "kind": "practical_fact",
+      "fact_key": "address",
+      "quote": "名古屋市千種区"
+    }
+  ],
+  "directions": [
+    {
+      "id": "two_halves",
+      "name": "Two halves of one name",
+      "identity": "The name says the shop is two things, a boulangerie and a pâtisserie. Its listed items are placeholders, so the design works from the name, the hours and the area alone, and gives each half of the name the same weight.",
+      "asset_policy": "none",
+      "techniques": [
+        {
+          "id": "T7",
+          "variant": "radius_motif",
+          "trait_ids": [
+            "boulangerie",
+            "patisserie"
+          ],
+          "why": "The shape comes from the name's two halves: two tall panels with fully rounded tops, one per half, repeated small for the ledger labels."
+        },
+        {
+          "id": "T3",
+          "variant": "text_ledger",
+          "trait_ids": [
+            "hours",
+            "ward"
+          ],
+          "why": "Hours and area are the only practical facts, so they must be complete and readable rather than decorative."
+        }
+      ],
+      "not_used": [],
+      "hero": {
+        "choice": "Two tall round-topped panels side by side under the full name: the left reads Boulangerie with the hours 10:00〜18:00 beneath, the right reads Pâtisserie with 名古屋市千種区 beneath.",
+        "why": "The first screen states the shop's two sides and pairs each with one of the two real facts, so the panels hold information rather than decoration.",
+        "trait_ids": [
+          "boulangerie",
+          "patisserie",
+          "hours",
+          "ward"
+        ]
+      },
+      "product_visual": {
+        "choice": "No product is named or shown: the fixture's two item names are placeholders, so the panels carry the name's two words and the facts until real items are supplied.",
+        "why": "Showing placeholder names as products would present test values as the shop's offer.",
+        "trait_ids": [
+          "name"
+        ]
+      },
+      "typography": {
+        "choice": "A high-contrast Latin serif for Boulangerie and Pâtisserie at display size, Japanese Gothic for the two item names and the ledger.",
+        "why": "The French words are the shop's identity and carry the display face; the item names and facts must stay plain to read.",
+        "trait_ids": [
+          "boulangerie",
+          "patisserie"
+        ]
+      },
+      "palette": {
+        "choice": "Pale sage-grey ground, near-black text, one warm panel and one cool panel, and a baked-crust brown accent for the two French words.",
+        "why": "Two panel tones mark the two halves of the name; the crust accent belongs to both bread and tart without using the usual cream and brown.",
+        "trait_ids": [
+          "boulangerie",
+          "patisserie"
+        ],
+        "colors": [
+          {
+            "name": "sage paper",
+            "hex": "#F3F5F2",
+            "role": "ground"
+          },
+          {
+            "name": "ink",
+            "hex": "#22262A",
+            "role": "text"
+          },
+          {
+            "name": "crust",
+            "hex": "#9B4A2F",
+            "role": "accent"
+          },
+          {
+            "name": "warm panel",
+            "hex": "#E7DACB",
+            "role": "band"
+          },
+          {
+            "name": "cool panel",
+            "hex": "#D5DED2",
+            "role": "band"
+          }
+        ]
+      },
+      "section_rhythm": {
+        "choice": "Name, then the two panels as the hero, then a short ledger and footer; the eye moves left panel, right panel, then down to hours.",
+        "why": "With four facts the honest page is short; the pairing is the one idea, so it gets the whole first screen.",
+        "trait_ids": [
+          "name",
+          "hours"
+        ],
+        "sections": [
+          {
+            "id": "header",
+            "role": "header",
+            "purpose": "Full name and one anchor to the hours and area."
+          },
+          {
+            "id": "hero",
+            "role": "hero",
+            "purpose": "The two round-topped panels, each with one French word and one fact."
+          },
+          {
+            "id": "ledger",
+            "role": "info",
+            "purpose": "Hours and address as label and value rows."
+          },
+          {
+            "id": "footer",
+            "role": "footer",
+            "purpose": "Name only."
+          }
+        ]
+      },
+      "navigation": {
+        "choice": "One anchor from the header to the hours and area; nothing else, because nothing else exists to link to.",
+        "why": "A menu or contact link would promise content the facts do not have.",
+        "trait_ids": [
+          "hours"
+        ]
+      },
+      "mobile": {
+        "choice": "On a phone the two panels stack, Boulangerie first, each full width and shorter; the ledger follows as two rows.",
+        "why": "Side-by-side panels would squeeze the French words; stacking keeps them at display size.",
+        "trait_ids": [
+          "boulangerie",
+          "patisserie"
+        ],
+        "desktop": "The two panels stand side by side at equal width under the name, filling the first screen."
+      },
+      "implementation": {
+        "choice": "Grid for the two panels and ledger, large border-radius for the round tops, solid colour bands, horizontal text.",
+        "why": "Round tops are border-radius, which the allowlist permits; no pseudo-element or clip-path is needed.",
+        "trait_ids": [
+          "boulangerie"
+        ],
+        "status": "existing_css",
+        "css": [
+          "grid",
+          "border_radius",
+          "solid_colour_bands",
+          "horizontal_text",
+          "media_queries"
+        ],
+        "needs": []
+      },
+      "comparison": {
+        "baseline": "patisserie.json",
+        "strengths": [
+          "Buildable with the current CSS; the existing brief relies on pseudo-elements and a sticky-like label, both refused by the allowlist.",
+          "Its idea comes from the shop's own name instead of an abstract curve."
+        ],
+        "weaknesses": [
+          "A very short page with no products and no pictures; it can feel thin until real items are supplied.",
+          "Two equal panels risk reading as a menu board rather than a shop identity."
+        ]
+      }
+    },
+    {
+      "id": "open_hours_first",
+      "name": "When and where, first",
+      "identity": "A shop known so far only by its name, its hours and its area; its item names are placeholders. This direction treats the hours as the strongest fact and builds a calm, dark page around when the shop is open.",
+      "asset_policy": "none",
+      "techniques": [
+        {
+          "id": "T3",
+          "variant": "text_ledger",
+          "trait_ids": [
+            "hours",
+            "ward"
+          ],
+          "why": "The hours are the one fact every visitor needs; here the ledger is promoted into the first screen instead of closing the page."
+        },
+        {
+          "id": "T7",
+          "variant": "colour_bands",
+          "trait_ids": [],
+          "why": "A dark ground with one lighter band separates the opening facts from the items without any lines or shapes."
+        }
+      ],
+      "not_used": [],
+      "hero": {
+        "choice": "Information first: 10:00〜18:00 set as the largest element on a dark ground, the name above it in small Latin serif, and 名古屋市千種区 beneath it.",
+        "why": "For a shop with so few facts, being clear about when and where it is open is the most useful first impression.",
+        "trait_ids": [
+          "hours",
+          "ward",
+          "name"
+        ]
+      },
+      "product_visual": {
+        "choice": "The lighter band under the hours is left as a reserved slot for real items and holds only the shop name in small Latin serif until they exist.",
+        "why": "The band keeps the page's structure ready for products without presenting the fixture's placeholder items as an offer.",
+        "trait_ids": [
+          "name",
+          "hours"
+        ]
+      },
+      "typography": {
+        "choice": "Tabular Gothic numerals at display size for the hours, a small Latin serif for the name, Gothic for everything else.",
+        "why": "The hours are numbers, so the display type is a clear numeral; the French name stays small so it does not compete.",
+        "trait_ids": [
+          "hours",
+          "name"
+        ]
+      },
+      "palette": {
+        "choice": "Deep ink-teal ground with warm off-white text, a lighter slate band for the items, and a muted gold accent only on the hours.",
+        "why": "A dark ground sets this direction apart from pastry clichés and from the existing lilac brief; gold marks only the hours, the page's one emphasis.",
+        "trait_ids": [
+          "hours"
+        ],
+        "colors": [
+          {
+            "name": "ink teal",
+            "hex": "#1E2B2F",
+            "role": "ground"
+          },
+          {
+            "name": "warm white",
+            "hex": "#F2EFE8",
+            "role": "text"
+          },
+          {
+            "name": "muted gold",
+            "hex": "#D9A441",
+            "role": "accent"
+          },
+          {
+            "name": "slate band",
+            "hex": "#3A4F56",
+            "role": "band"
+          }
+        ]
+      },
+      "section_rhythm": {
+        "choice": "Hours and area in the first screen, then the reserved band, then the full address and footer; the eye drops straight down a single centred column.",
+        "why": "A single column with one emphasis fits a page this short and keeps the hours as the anchor.",
+        "trait_ids": [
+          "hours",
+          "ward"
+        ],
+        "sections": [
+          {
+            "id": "header",
+            "role": "header",
+            "purpose": "Name in small Latin serif."
+          },
+          {
+            "id": "hero",
+            "role": "hero",
+            "purpose": "The hours at display size with the area beneath."
+          },
+          {
+            "id": "reserved",
+            "role": "other",
+            "purpose": "A lighter band reserved for real items, holding only the name for now."
+          },
+          {
+            "id": "address",
+            "role": "info",
+            "purpose": "The full address and hours as a short ledger."
+          },
+          {
+            "id": "footer",
+            "role": "footer",
+            "purpose": "Name only."
+          }
+        ]
+      },
+      "navigation": {
+        "choice": "No navigation links at all: the page is one short column and every fact is visible within two screens.",
+        "why": "Anchors would only point a few hundred pixels down; leaving them out keeps the header to the name.",
+        "trait_ids": [
+          "name"
+        ]
+      },
+      "mobile": {
+        "choice": "On a phone the hours are set at a size chosen to fit one line at 390 px, with the area beneath; the reserved band shrinks to a thin strip.",
+        "why": "The hours should read as one figure; a font-size step per breakpoint aims at one line, though the CSS cannot guarantee it.",
+        "trait_ids": [
+          "hours"
+        ],
+        "desktop": "A centred column about 640 px wide on the dark ground, with generous space above and below the hours."
+      },
+      "implementation": {
+        "choice": "One centred grid column, solid bands, horizontal text, a font size step for the hours at each breakpoint.",
+        "why": "Nothing beyond the allowlist is used; fitting the hours on one phone line is done with breakpoints, not viewport units.",
+        "trait_ids": [
+          "hours"
+        ],
+        "status": "existing_css",
+        "css": [
+          "grid",
+          "solid_colour_bands",
+          "horizontal_text",
+          "media_queries"
+        ],
+        "needs": []
+      },
+      "comparison": {
+        "baseline": "patisserie.json",
+        "strengths": [
+          "Puts the two facts a visitor needs in the first screen; the existing brief left them in a footer.",
+          "Buildable today, without pseudo-elements or sticky positioning."
+        ],
+        "weaknesses": [
+          "Little brand character beyond the dark palette and the French name; no products until real items are supplied.",
+          "Leading with hours is unusual and may read as a notice rather than a shop."
+        ]
+      }
+    }
+  ]
+}
