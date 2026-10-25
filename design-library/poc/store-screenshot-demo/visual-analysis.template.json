@@ -10,16 +10,39 @@
     "collected_at_jst": null,
     "relationship_to_owner": null
   },
-  "evidence_sources": [],
-  "fact_claims": [],
+  "evidence_sources": [
+    {
+      "source_id": null,
+      "kind": "unknown",
+      "url": null,
+      "approved_capture_ref": null,
+      "captured_at_jst": null,
+      "personal_data_masked": false,
+      "notes": "TEMPLATE_ONLY_DO_NOT_USE"
+    }
+  ],
+  "fact_claims": [
+    {
+      "fact_key": null,
+      "value": null,
+      "source_id": null,
+      "quote": null,
+      "checked_at_jst": null,
+      "status": "unknown"
+    }
+  ],
   "assets": [
     {
       "asset_id": "TEMPLATE_ONLY_DO_NOT_USE",
       "source_id": null,
+      "rights_holder": null,
+      "acquisition_method": null,
+      "approved_capture_ref": null,
       "kind": "photo_or_screenshot",
       "original_local_path": null,
       "sha256": null,
       "dimensions_px": null,
+      "personal_data_masked": false,
       "rights": "unknown",
       "allowed_uses": [
         "analyze"
@@ -87,7 +110,6 @@
       "crop_tolerance": null
     },
     "edit_mode": "analysis_only",
-    "ai_processing_consent_verified": false,
     "generated_concept_disclosure_required": true
   },
   "direction_options": [
@@ -99,6 +121,7 @@
       "typography": null,
       "photo_direction_difference": null,
       "verified_cta": null,
+      "desktop_1440_outline": null,
       "mobile_390_outline": null,
       "references_to_observations": [],
       "forbidden_unlicensed_content": [],
@@ -115,6 +138,7 @@
       "typography": null,
       "photo_direction_difference": null,
       "verified_cta": null,
+      "desktop_1440_outline": null,
       "mobile_390_outline": null,
       "references_to_observations": [],
       "forbidden_unlicensed_content": [],
@@ -135,10 +159,11 @@
     "original_rubric_score": null,
     "original_rubric_hard_fail_status": "not_evaluated",
     "separately_approved_comp_to_site": false,
-    "separately_approved_public_preview": false,
+    "separately_approved_private_preview": false,
     "separately_approved_sales_send": false,
     "evaluation_rubric": "existing_fictional_shop_rubric_unchanged",
-    "real_shop_rubric_approved": false
+    "real_shop_rubric_approved": false,
+    "separately_approved_publish": false
   },
   "known_unknowns": [],
   "next_gate": "G0"
