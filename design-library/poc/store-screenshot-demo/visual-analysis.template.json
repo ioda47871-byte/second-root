@@ -1,5 +1,5 @@
 {
-  "schema_version": "store_visual_analysis_v0_1",
+  "schema_version": "store_visual_analysis_v0_2",
   "status": "empty_template_not_reviewed",
   "shop": {
     "key": null,
@@ -7,7 +7,8 @@
     "real_shop": true,
     "candidate_only": true,
     "verified_facts_source": null,
-    "collected_at_jst": null
+    "collected_at_jst": null,
+    "relationship_to_owner": null
   },
   "evidence_sources": [],
   "fact_claims": [],
@@ -18,14 +19,21 @@
       "kind": "photo_or_screenshot",
       "original_local_path": null,
       "sha256": null,
+      "dimensions_px": null,
       "rights": "unknown",
       "allowed_uses": [
         "analyze"
       ],
       "license_or_consent_evidence": null,
+      "use_approvals": {
+        "model_input": null,
+        "ai_edit": null,
+        "private_preview": null,
+        "publish": null
+      },
       "expires_at": null,
       "human_approved": false,
-      "notes": "Public visibility is not a license; do not send image pixels to external AI, edit, display in a demo or publish until rights allow that use."
+      "notes": "Public visibility is not a license. 'analyze' means human viewing or human-written text notes only. Image pixels go to any AI model (Claude included) only as 'model_input' with license evidence and an owner approval naming the SHA and model; edit, preview and publish likewise need per-use owner approval."
     }
   ],
   "visual_observations": [
@@ -50,6 +58,7 @@
     "hero_subject_verified": null,
     "source_asset_ids": [],
     "current_photo_observations": {
+      "subject_count": "unknown",
       "camera_angle": "unknown",
       "framing": "unknown",
       "lighting": "unknown",
@@ -57,7 +66,9 @@
       "background": "unknown",
       "color_temperature": "unknown",
       "depth_of_field": "unknown",
-      "negative_space": "unknown"
+      "negative_space": "unknown",
+      "visual_weight": "unknown",
+      "text_safe_area": "unknown"
     },
     "proposed_shot": {
       "visual_goal": null,
@@ -69,7 +80,11 @@
       "color_processing": null,
       "desktop_1440_crop": null,
       "mobile_390_crop": null,
-      "alt_text_basis": null
+      "alt_text_basis": null,
+      "forbidden_staging": [],
+      "source_dimensions_px": null,
+      "object_position": null,
+      "crop_tolerance": null
     },
     "edit_mode": "analysis_only",
     "ai_processing_consent_verified": false,
@@ -86,7 +101,11 @@
       "verified_cta": null,
       "mobile_390_outline": null,
       "references_to_observations": [],
-      "forbidden_unlicensed_content": []
+      "forbidden_unlicensed_content": [],
+      "design_dna_8_items": null,
+      "techniques_used": [],
+      "techniques_not_used_reasons": [],
+      "rejected_alternative": null
     },
     {
       "id": "B",
@@ -98,7 +117,11 @@
       "verified_cta": null,
       "mobile_390_outline": null,
       "references_to_observations": [],
-      "forbidden_unlicensed_content": []
+      "forbidden_unlicensed_content": [],
+      "design_dna_8_items": null,
+      "techniques_used": [],
+      "techniques_not_used_reasons": [],
+      "rejected_alternative": null
     }
   ],
   "handoff": {
@@ -113,7 +136,9 @@
     "original_rubric_hard_fail_status": "not_evaluated",
     "separately_approved_comp_to_site": false,
     "separately_approved_public_preview": false,
-    "separately_approved_sales_send": false
+    "separately_approved_sales_send": false,
+    "evaluation_rubric": "existing_fictional_shop_rubric_unchanged",
+    "real_shop_rubric_approved": false
   },
   "known_unknowns": [],
   "next_gate": "G0"
