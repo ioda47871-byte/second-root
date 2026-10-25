@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { buildMockupPrompt, loadPocInputs } from "../../../lib/design-agent/design-image/prompt";
+import { runDesignImagePoc } from "../../../lib/design-agent/design-image/run";
 
 const repo = process.cwd();
 const worker = join(repo, "scripts/sales-design-worker/design-image-poc.sh");
@@ -43,6 +44,72 @@ describe("DEV-110 owner-approved v4 entrypoint (offline)", () => {
     const bad = run("0".repeat(64));
     expect(bad.status, bad.stdout + bad.stderr).toBe(23);
     expect(bad.stdout).toContain("POC_PIN_MISMATCH");
+  });
+
+  it("direct TS v4 CLI cannot proceed without pin and reserved approval", () => {
+    const cli = join(repo, "node_modules/.bin/tsx");
+    const run = spawnSync(cli, [
+      "--no-cache", join(repo, "scripts/sales-design-worker/design-image-poc.ts"),
+      "--human-approval-confirmed",
+    ], {
+      cwd: repo, encoding: "utf8", timeout: 15_000,
+      env: {
+        ...process.env,
+        SR_DESIGN_IMAGE_POC_LOCKED: "run.lock",
+        SR_DESIGN_IMAGE_POC_DIRECTION: "v4",
+        SR_POC_EXPECTED_SHA: "",
+        SR_POC_EXPECTED_CHARS: "",
+      },
+    });
+    expect(run.status, run.stdout + run.stderr).toBe(2);
+    expect(run.stdout).toContain("POC_V4_APPROVAL_PIN_REQUIRED");
+  });
+
+  it("the v4 TypeScript runner rejects absent or wrong prompt pins BEFORE preparing any Codex sandbox", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sr-v4-run-pin-"));
+    let prepareCount = 0;
+    try {
+      const config = (env: Record<string, string>) => ({
+        humanApprovalConfirmed: true,
+        directionVersion: "v4" as const,
+        repoDir: repo,
+        outRoot: join(root, "outputs"),
+        workerPaths: {
+          stateDir: join(root, "state"),
+          queueRoot: join(root, "queue"),
+          outRoot: join(root, "worker-out"),
+        },
+        tmpBase: root,
+        env: { HOME: join(root, "home"), ...env },
+        prepareSandbox: async () => {
+          prepareCount++;
+          throw new Error("must not reach a Codex sandbox");
+        },
+      });
+      const absent = await runDesignImagePoc(config({}));
+      expect(absent).toMatchObject({ status: "refused", code: "POC_PIN_MISMATCH" });
+      const invalid = await runDesignImagePoc(config({ SR_POC_EXPECTED_SHA: "0".repeat(64), SR_POC_EXPECTED_CHARS: "4714" }));
+      expect(invalid).toMatchObject({ status: "refused", code: "POC_PIN_MISMATCH" });
+      expect(prepareCount).toBe(0);
+      expect(existsSync(join(root, "outputs"))).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("the entry script rejects forged sr-designgen user when cgroup is not the jailed service", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sr-v4-cgroup-"));
+    try {
+      const fakeId = join(dir, "id");
+      writeFileSync(fakeId, "#!/bin/bash\\nif [ \"$1\" = \"-un\" ]; then echo sr-designgen; else /usr/bin/id \"$@\"; fi\\n");
+      chmodSync(fakeId, 0o755);
+      const call = spawnSync("bash", [entry,
+        "--human-approval-confirmed", "--expected-commit", "9b79163825368d53bc066693b03cc21f7702b67d",
+      ], {
+        cwd: repo, encoding: "utf8", timeout: 5000,
+        env: { ...process.env, PATH: dir + ":" + (process.env.PATH ?? "/usr/bin:/bin"), HOME: "/home/sr-designgen" },
+      });
+      expect(call.status, call.stdout + call.stderr).toBe(2);
+      expect(call.stdout).toContain("SR_CLAUDE_JAIL_REQUIRED");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it("refuses a v4 invocation without a full approval pin BEFORE any preflight or Codex", () => {
