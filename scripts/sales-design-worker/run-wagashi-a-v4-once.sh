@@ -8,7 +8,7 @@ if [ "$#" -ne 1 ] || [ "$1" != "--human-approval-confirmed" ]; then
   echo "STOP: owner must explicitly invoke --human-approval-confirmed (one approved call only)."
   exit 2
 fi
-if [ "${USER:-}" != "sr-designgen" ] || [ "${HOME:-}" != "/home/sr-designgen" ]; then
+if [ "$(id -un)" != "sr-designgen" ] || [ "${HOME:-}" != "/home/sr-designgen" ]; then
   echo "STOP: sr-designgen jail required; do not run this directly as root."
   exit 2
 fi
