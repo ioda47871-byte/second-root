@@ -137,6 +137,23 @@ describe("DEV-105: additive candidate research batch", () => {
       .toThrow(new ResearchCandidateError("missing_v02_baseline"));
   });
 
+  it("rejects duplicate or malformed previous references before trusting 40 + N counts", () => {
+    const repeated = [...previousAndFirst()];
+    repeated[1] = repeated[0]!;
+    expect(() => parseResearchCandidates(batch2(), repeated))
+      .toThrow(new ResearchCandidateError("duplicate_previous_url"));
+
+    const alias = [...previousAndFirst()];
+    alias[1] = previous[0]!.replace("https://", "https://www.");
+    expect(() => parseResearchCandidates(batch2(), alias))
+      .toThrow(new ResearchCandidateError("duplicate_previous_url"));
+
+    const malformed = [...previousAndFirst()];
+    malformed[2] = "not a url";
+    expect(() => parseResearchCandidates(batch2(), malformed))
+      .toThrow(new ResearchCandidateError("invalid_previous_url"));
+  });
+
   it("does not let a gallery tag become an audited 390px screenshot or licensed asset", () => {
     const b = batch2();
     const gallery = b.references.find((r) => r.source_kind === "design_gallery")!;
