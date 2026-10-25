@@ -50,14 +50,28 @@ fi
 
 umask 077
 APPROVED=""
-USAGE="usage: design-image-poc.sh --human-approval-confirmed"
+EXPECTED_SHA=""
+EXPECTED_CHARS=""
+APPROVAL_ID=""
+USAGE="usage: design-image-poc.sh --human-approval-confirmed [--expected-prompt-sha256 HEX --expected-prompt-chars N --approval-id ID]"
 while [ $# -gt 0 ]; do
   case "$1" in
     --human-approval-confirmed) APPROVED=1; shift ;;
+    --expected-prompt-sha256) [ $# -ge 2 ] || { echo "$USAGE"; exit 2; }; EXPECTED_SHA="$2"; shift 2 ;;
+    --expected-prompt-chars) [ $# -ge 2 ] || { echo "$USAGE"; exit 2; }; EXPECTED_CHARS="$2"; shift 2 ;;
+    --approval-id) [ $# -ge 2 ] || { echo "$USAGE"; exit 2; }; APPROVAL_ID="$2"; shift 2 ;;
     *) echo "$USAGE"; exit 2 ;;
   esac
 done
 [ -n "$APPROVED" ] || { echo "STOP: --human-approval-confirmed is missing. The PoC runs one real Codex image call (ChatGPT plan usage) on this machine and needs the human's explicit approval of this run (HUMAN-018 / HUMAN-019). Nothing was started."; exit 2; }
+# An id identifies a particular owner approval, never a blanket permission.
+# v4 requires the new pinned, one-use gate. Older directions keep their historical entrypoints.
+if [ "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" = "v4" ] || [ -n "$EXPECTED_SHA$EXPECTED_CHARS$APPROVAL_ID" ]; then
+  [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{64}$ ]] &&
+  [[ "$EXPECTED_CHARS" =~ ^[1-9][0-9]{0,5}$ ]] &&
+  [[ "$APPROVAL_ID" =~ ^[a-z0-9][a-z0-9._-]{3,95}$ ]] ||
+    { echo "STOP: POC_APPROVAL_PIN_REQUIRED. No Codex call was started."; exit 2; }
+fi
 case "${SR_DESIGN_IMAGE_POC_DIRECTION:-}" in
   "" | v1 | v2 | v3 | v4) ;;
   *) echo "STOP: POC_DIRECTION_INVALID (SR_DESIGN_IMAGE_POC_DIRECTION: v1, v2, v3 or v4; unset means v2). Nothing was started."; exit 2 ;;
@@ -116,6 +130,32 @@ if [ "$REMAINING" -lt "$MIN_POC_SECONDS" ]; then
   echo "STOP: POC_RUN_TIME_BUDGET (only ${REMAINING}s left after the checkout; Codex was not started)"
   exit 1
 fi
+
+if [ -n "$EXPECTED_SHA" ]; then
+  # Check after checkout and while holding this SAME run.lock. A previous SHA check
+  # in a separate jail run is insufficient because develop may have changed.
+  echo "== 4a. verify owner-approved prompt pin under run.lock"
+  timeout 120 "$REPO/node_modules/.bin/tsx" --no-cache \
+    "$REPO/scripts/sales-design-worker/check-image-prompt-pin.ts" \
+    "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" "$EXPECTED_SHA" "$EXPECTED_CHARS" ||
+    { echo "STOP: POC_PIN_MISMATCH. The authorization was NOT consumed."; exit 23; }
+
+  # Atomic marker in the worker's private state, outside git/output. This is
+  # intentionally consumed BEFORE Codex may start, including uncertain failure
+  # after this point. Never auto-clear or reuse an authorization ID.
+  LEDGER="$HOME/.local/state/sr-design-worker/poc-approval-used"
+  [ ! -L "$LEDGER" ] || { echo "STOP: POC_APPROVAL_LEDGER_INVALID"; exit 24; }
+  mkdir -p -m 0700 "$LEDGER"
+  if ! mkdir -m 0700 "$LEDGER/$APPROVAL_ID" 2>/dev/null; then
+    echo "STOP: POC_APPROVAL_ALREADY_USED; no Codex call was started."
+    exit 25
+  fi
+  printf 'direction=%s\nsha256=%s\ncommit=%s\n' \
+    "${SR_DESIGN_IMAGE_POC_DIRECTION:-v2}" "$EXPECTED_SHA" "$(git rev-parse HEAD)" \
+    > "$LEDGER/$APPROVAL_ID/receipt"
+  echo "POC_APPROVAL_RESERVED id=$APPROVAL_ID (no retry even if result is uncertain)"
+fi
+
 set +e
 # SR_DESIGN_IMAGE_POC_LOCKED: design-image-poc.ts runs only under this script (the lock above is held)
 SR_DESIGN_IMAGE_POC_LOCKED=run.lock timeout --kill-after="$KILL_AFTER" "$REMAINING" \
