@@ -4570,7 +4570,7 @@
     {
       "id": "DEV-105",
       "title": "旧40件を改変せず、美容・整体・飲食など40件の出典付き追加候補を2バッチで収集・検査する",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-100"
@@ -4615,6 +4615,52 @@
         "原本サイトの1440/390px視覚レビューを実行し人間審査済みにする際の実際の人間による確認",
         "画像生成に組み込むことや実Codex1回は別途承認",
         "自動巡回/新規外部API費用/本番DB変更は別途承認"
+      ]
+    },
+    {
+      "id": "DEV-106",
+      "title": "参考サイト10件を実際の 1440px / 390px で検証し、使える Design DNA を抽出する（Issue #128）",
+      "status": "todo",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-105"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-106-reference-viewport-evidence",
+      "purpose": "80 件の参考候補はどれも人のレビューや実画面の確認を受けていない。数を増やす前に、多様な 10 件（DX-005, DX-002, DX-006, DX-033, DX-027, DX-036, DX-008, DX-011, DX-013, DX-023）で実画面の証拠を取り、本当に使える 3〜5 の原則を見つける。",
+      "acceptance_criteria": [
+        "10 件それぞれに source-kind、公式か gallery か、計測した幅、観察日時、限界、trade-off、出典を記録",
+        "未観察のものは unknown（pass にしない）",
+        "owner review・画面サイズ・撮影・商品写真・権利・現在の営業状態を捏造しない",
+        "第三者のスクリーンショットは commit しない",
+        "human_reviewed への昇格は人の帰属付き記録だけ",
+        "Design DNA は店舗固有で参考の複製にしない、worker へ自動で流さない"
+      ],
+      "required_tests": [
+        "evidence schema の negative test（偽の review・未計測の幅・pass の水増し・画像の同梱）"
+      ],
+      "allowed_scope": [
+        "design-library/research/**（画像なし）",
+        "lib/design-agent/design-image/**（offline の schema のみ）",
+        "tests/unit/design-agent/**",
+        "docs/**",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "Production",
+        "Staging",
+        "DB",
+        "worker",
+        "Codex",
+        "prompt.ts の pinned prompt",
+        ".github/**"
+      ],
+      "human_approval_triggers": [
+        "第三者サイトの実際の 1440/390 撮影（新しい収集・自動化）を始めること",
+        "human_reviewed への昇格",
+        "Phase 2（店舗別の原案比較）の開始",
+        "実 Codex 画像生成"
       ]
     }
   ]
