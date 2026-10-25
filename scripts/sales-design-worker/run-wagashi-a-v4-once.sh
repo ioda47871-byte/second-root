@@ -9,7 +9,14 @@ if [ "$#" -ne 1 ] || [ "$1" != "--human-approval-confirmed" ]; then
   exit 2
 fi
 if [ "$(id -un)" != "sr-designgen" ] || [ "${HOME:-}" != "/home/sr-designgen" ]; then
-  echo "STOP: sr-designgen user required; invoke through the admin jail."
+  echo "STOP: sr-designgen user required inside the isolated Claude service."
+  exit 2
+fi
+# This specific entrypoint is for the existing remote-controlled Claude session.
+# The root-managed service must already have launched it with the installed
+# cgroup/namespace restrictions; NEVER escalate uid or create another session.
+if ! grep -qx '0::/system.slice/sr-jail-claude.service' /proc/self/cgroup; then
+  echo "STOP: SR_CLAUDE_JAIL_REQUIRED; no Codex call was started."
   exit 2
 fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
