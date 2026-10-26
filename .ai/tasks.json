@@ -4930,6 +4930,55 @@
         "営業DM/メール送信・運用DB連携"
       ],
       "note": "Owner explicitly directed to proceed on screenshot-based single-shop PoC runbook. Docs/template only; rights and actual operational approvals separate."
+    },
+    {
+      "id": "DEV-113",
+      "title": "G1で店舗固有の構図を選び、参照技法と結果の因果・入替テストを必須にする制作方針（オフライン文書）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-107",
+        "DEV-108",
+        "DEV-111"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-113-originality-first-g1-policy",
+      "purpose": "2026-10-26オーナー決定: Mondの汎用カフェ構図を反省し、既存Design-first G0–G6のG1で先に独自性と構図差を検査する方針を正式文書に固定。参考DBのID列挙を成果にせず、実際の構図と店舗事実への因果を示す。既存Design DNAとsecurityは保持。",
+      "acceptance_criteria": [
+        "既存docs/design/design-first-workflow-decision.mdに追加決定を記録し、新設チェックリストにリンクする",
+        "参考DR/DX/T/Aの検証状態を区別し、店舗固有の出典・技法→構図への因果を画像生成前に確認する",
+        "G1の2案はHeroの主役/比率とセクションリズムの実質的差を要し、名前・写真入替テストと定番骨格の理由を記録する",
+        "成功画像への参考ID後付け禁止、画像生成後に構図遵守・事実・権利・独自性と既存25点基準を別審査する",
+        "Mond The Cup Archiveは店舗固有の探索候補でありテンプレ・実店舗素材の使用許可・画像生成済み実績として扱わない",
+        "既存DEV-107 T1–T8適格性、CSS許可表、G0–G6・個別承認、worker/DB/タイマー/生成経路は一切変更しない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review with Critical/High 0"
+      ],
+      "allowed_scope": [
+        "docs/design/design-first-workflow-decision.md",
+        "docs/design/originality-first-g1-policy.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-113.md（独立レビュー記録のみ）"
+      ],
+      "forbidden_scope": [
+        "CODEX prompt builder / worker / Bridge runtime changes",
+        "actual image generation or third-party photo input",
+        "CSS allowlist modification",
+        "Supabase/Vercel/WSL/service/timer changes",
+        "external publishing or outbound sales"
+      ],
+      "human_approval_triggers": [
+        "real-store photo/model input or edits",
+        "a real image generation or Codex run",
+        "comp-to-site using real generated comp",
+        "timer/DB/Staging/Production operations",
+        "publication or outbound messages"
+      ],
+      "note": "Documentation of an owner-approved decision; not automated G1 evaluation code. Fresh review and CI required before develop merge."
     }
   ]
 }
