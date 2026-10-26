@@ -76,7 +76,7 @@ Mondの探索画像で、参考資料を3件列挙しただけでは、一般的
 1. 引用可能な事実とrights ledger
 2. 参照IDとレビュー状態、採用理由
 3. 非類似の2案と入替/構図検査の結果
-4. 選定案の厳密な版付きアートディレクションと1400/390の仕様（デスクトップは**1440px**が正式基準）
+4. 選定案の厳密な版付きアートディレクションと1440/390の仕様
 5. 明示承認を受けた場合のみ、CODEXでの1回実行（prompt hash / quota / asset SHA /出力/reportを記録）
 6. G2人間評価、別承認後のみG4実装
 
@@ -84,4 +84,4 @@ Mondの探索画像で、参考資料を3件列挙しただけでは、一般的
 
 ## 禁止される副作用
 
-この決定はG0–G6承認、`DesignProfile` worker・Bridge・timer、`shop-proposals.ts` の適格判定、CSS許可表、Supabase/Vercel、画像AI入力、CODEx CLI呼出し、公開、営業送信を自動で許可/変更しない。
+この決定はG0–G6承認、`DesignProfile` worker・Bridge・timer、`shop-proposals.ts` の適格判定、CSS許可表、Supabase/Vercel、画像AI入力、Codex CLI呼出し、公開、営業送信を自動で許可/変更しない。
