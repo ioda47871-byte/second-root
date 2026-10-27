@@ -144,6 +144,27 @@
       "preview_webp_sha256": "62d4c0b2cfdf883ecaa38bacc006038657fb94a9148ef525e3d67a40f64bd5d2",
       "source_archive_sha256": "d79c46d38e046410cecc65d2cac2995af92344eaa9b7df6d2a72c5f87c844a46",
       "success_case_archive_sha256": "b393331cd5e63efb1c59b3470016fedb1b61f4e30d9166830db68855252b69d2"
+    },
+    {
+      "id": "CP-010",
+      "title": "ぺいぱばっくらいたー — PT-02 本棚が地図になる v3",
+      "status": "owner_selected_research_success_example",
+      "source_kind": "chat_generated_visual_concept_and_local_html_poc",
+      "view": "html_css_js_local_poc",
+      "category": "bookshop_and_kamishibai",
+      "design_approval_scope": "second_root_research_success_case_only",
+      "official_client_work": false,
+      "merchant_authorized": false,
+      "website_deployed": false,
+      "nextjs_build_verified": false,
+      "html_css_impl_verified": "local_chromium_browser_only",
+      "image_asset_uploaded_to_github": false,
+      "owner_approved_version": "PT02_texture_v3_20261027",
+      "visual_reference_sha256": "2d81c51b7d7a16a58949d26cc525ddba738f61da0db3795e518a96dee17644dc",
+      "desktop_original_png_sha256": "6341c869f931810e449a3406ff87c5c9abf9e05bf5b5d56e87cc93a3f41983ce",
+      "mobile_original_png_sha256": "a9594cda129bf903fd3a5978eb063b2c7a597dc13b2edd884f089d6b2f714ed1",
+      "source_archive_sha256": "6e1b31dd6174f198e7547baa4e38642ee291f471b5885affb01187f9d1df447a",
+      "success_case_archive_sha256": "a438dfce1434de4b6973283edcfd696c1a1e0b6a10850cb60b4918f21e59eecc"
     }
   ],
   "policy": {
@@ -152,6 +173,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original PNG/ZIP archived in ChatGPT conversation with SHA-256; GitHub has CP-001..003 preview WebP and CP-004..009 metadata only, no CP-009 images."
+    "source_master_assets": "Original PNG/ZIP archived in ChatGPT conversation with SHA-256; GitHub has CP-001..003 preview WebPs and CP-004..010 metadata only, not image binaries."
   }
 }
