@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "experiment_id": "PAPER_THEATER_20261027",
+  "status": "design_structure_proposals_not_visual_art_or_website",
+  "research_only": true,
+  "subject": {
+    "display_name": "ぺいぱばっくらいたー",
+    "category": "kamishibai_and_books_store",
+    "town": "名古屋・覚王山",
+    "facts_status": "previously_reported_not_reverified_for_publication",
+    "features_to_verify": [
+      "紙芝居を扱う店",
+      "本の販売",
+      "畳敷きの空間と古い木箱を使った本棚"
+    ],
+    "rights_status": "no authorization or store photography supplied"
+  },
+  "goal": "Avoid reproducing the left-copy/right-photo scroll-section template; preserve useful store, access and enquiry information in original structures.",
+  "protected_constraints": [
+    "three distinct page-level grammars, not just palettes",
+    "do not imitate any of CP-001..009",
+    "no invented schedule, phone, address, book inventory or programme",
+    "images and labels are conceptual; verify merchant facts before sales or publishing",
+    "usable mobile layout cannot require hover or drag",
+    "readable real text and visible access/contact if officially verified"
+  ],
+  "comparison_basis": {
+    "ref": "design-library/intelligence/v01/success-patterns.json",
+    "cases": "CP-001..009",
+    "qualitative_only": true,
+    "reason": "Prior case notes describe composition but lack standardized section-level layout maps; cannot defensibly assign numeric similarity scores to them."
+  },
+  "proposals": [
+    {
+      "id": "PT-01",
+      "name": "引き出す舞台 / The Pulling Stage",
+      "core_device": "紙芝居の木枠から絵を引き出し物語を開く",
+      "hero_structure": "center_stage_window",
+      "navigation_model": "scene_tabs",
+      "reading_path": "frame_to_scene_to_pause_to_ticket",
+      "interaction_model": "explicit_next_scene_button",
+      "first_screen": {
+        "composition": "中央に木製の舞台一つ。左上は店名と短い案内。画面の主役は枠の中の一枚の絵。通常の左右文章＋写真Heroにはしない",
+        "position_of_type": "舞台の左右・上下に小さく配置。主張するのは店名より中央の舞台"
+      },
+      "sections": [
+        {
+          "id": "intro",
+          "layout": "center_stage_window",
+          "role": "theater_intro",
+          "density": "high",
+          "info": "店の位置づけ・入口となる選択肢"
+        },
+        {
+          "id": "pull",
+          "layout": "drawer_sequence",
+          "role": "how_kamishibai_works",
+          "density": "medium",
+          "info": "一枚ずつ引き出すような体験の説明"
+        },
+        {
+          "id": "books",
+          "layout": "spine_shelf_index",
+          "role": "book_curation",
+          "density": "high",
+          "info": "本棚の索引をモチーフにしたジャンル紹介。実在情報は要確認"
+        },
+        {
+          "id": "silence",
+          "layout": "blank_page_interlude",
+          "role": "reading_space",
+          "density": "low",
+          "info": "店で過ごす時間を短文で伝える"
+        },
+        {
+          "id": "visit",
+          "layout": "folded_ticket",
+          "role": "access_and_contact",
+          "density": "medium",
+          "info": "公式情報確認後の店舗情報・連絡方法"
+        }
+      ],
+      "desktop_strategy": "横長の舞台の右へ絵をずらす。次へ／前へボタンと文章を別DOM要素で出す",
+      "mobile_strategy": "舞台の枠を縦方向に組み替え、次の絵はボタンで進める。ドラッグ操作専用にしない",
+      "accessibility": "Scene navigation as buttons, keyboard and reduced-motion fallback; real text separate from pictures",
+      "no_go": [
+        "alternating split photo-text blocks",
+        "wavy separators",
+        "large brand wordmark with photo overlapped like Mond"
+      ],
+      "main_risk": "舞台演出が重いと店の情報が分かりづらい。アクセスは独立した見やすい面にする"
+    },
+    {
+      "id": "PT-02",
+      "name": "本棚が地図になる / Shelf Atlas",
+      "core_device": "大小の背表紙が店を探索する索引と道順になる",
+      "hero_structure": "floor_to_ceiling_shelf_index",
+      "navigation_model": "book_spine_index",
+      "reading_path": "catalog_to_detail_to_stage_to_receipt",
+      "interaction_model": "choose_shelf_category",
+      "first_screen": {
+        "composition": "画面いっぱいの異なる幅の背表紙。店名は棚板の上に小さく。本のジャンルを案内として読ませ、中心Hero写真は置かない",
+        "position_of_type": "見出しは縦の背表紙文字と棚のラベルで形成"
+      },
+      "sections": [
+        {
+          "id": "intro",
+          "layout": "floor_to_ceiling_shelf_index",
+          "role": "book_curation",
+          "density": "high",
+          "info": "探索しやすい本のカテゴリ"
+        },
+        {
+          "id": "detail",
+          "layout": "margin_annotation",
+          "role": "one_book_story",
+          "density": "medium",
+          "info": "選んだジャンルを余白の注釈で説明"
+        },
+        {
+          "id": "theater",
+          "layout": "inset_theater_panel",
+          "role": "how_kamishibai_works",
+          "density": "high",
+          "info": "本棚の奥に紙芝居舞台が現れる"
+        },
+        {
+          "id": "space",
+          "layout": "open_reading_page",
+          "role": "reading_space",
+          "density": "low",
+          "info": "畳の落ち着きを空白で伝える"
+        },
+        {
+          "id": "visit",
+          "layout": "library_checkout_slip",
+          "role": "access_and_contact",
+          "density": "medium",
+          "info": "貸出カード風に店舗情報を整理。貸出サービスを示唆しない"
+        }
+      ],
+      "desktop_strategy": "画面に背表紙の索引を広げ、選択中のカテゴリーだけ隣の注釈へつなぐ",
+      "mobile_strategy": "背表紙が読みにくい場合は縦の見出し付き目次へ置き換える。小さい文字を回転縮小しない",
+      "accessibility": "Index as list of buttons/links; large tap targets; do not require horizontal scroll to locate access",
+      "no_go": [
+        "symmetric 3-column product cards",
+        "generic left-text right-image",
+        "the exact Mond triptych"
+      ],
+      "main_risk": "情報が多すぎると読みづらい。ページ冒頭に閲覧方法と店の説明を短く示す"
+    },
+    {
+      "id": "PT-03",
+      "name": "畳の間を歩く / The Quiet Rooms",
+      "core_device": "畳の間取りと襖の開閉をページの探索順にする",
+      "hero_structure": "overhead_room_plan",
+      "navigation_model": "room_portals",
+      "reading_path": "entrance_to_rooms_to_theater_to_visit",
+      "interaction_model": "open_room_panels",
+      "first_screen": {
+        "composition": "俯瞰の畳の間を一つの地図として表示。床に配置した三つの入口から「紙芝居・本・時間」を選ぶ",
+        "position_of_type": "部屋の名前が案内であり、単一の巨大見出しを主役にしない"
+      },
+      "sections": [
+        {
+          "id": "intro",
+          "layout": "overhead_room_plan",
+          "role": "reading_space",
+          "density": "medium",
+          "info": "店の世界と3つの入り口"
+        },
+        {
+          "id": "theater",
+          "layout": "sliding_door_scene",
+          "role": "how_kamishibai_works",
+          "density": "high",
+          "info": "襖を開けた先に舞台を発見"
+        },
+        {
+          "id": "books",
+          "layout": "open_book_spread",
+          "role": "book_curation",
+          "density": "medium",
+          "info": "見開きに選書の考え方と店舗固有の題材"
+        },
+        {
+          "id": "pause",
+          "layout": "silent_tatami_view",
+          "role": "quiet_atmosphere",
+          "density": "low",
+          "info": "余白を中心に本を読む時間を伝える"
+        },
+        {
+          "id": "visit",
+          "layout": "entrance_floorplan_key",
+          "role": "access_and_contact",
+          "density": "medium",
+          "info": "入口に戻り、情報欄としてアクセスを示す"
+        }
+      ],
+      "desktop_strategy": "俯瞰図の扉を選んで各内容へジャンプ。普通の縦スクロールでも全情報へアクセス可能",
+      "mobile_strategy": "平面図をそのまま縮小せず、部屋を縦に並べた探索リストへ変換",
+      "accessibility": "Clickable room names as real buttons/links; no reliance on hover; non-animated contents remain usable",
+      "no_go": [
+        "arch-shaped food hero",
+        "round quilt motif as section decoration",
+        "wavy white papers"
+      ],
+      "main_risk": "畳・間取りは実店舗の実際の寸法や構造を示す図ではないと明記する"
+    }
+  ],
+  "selection_status": "pending_owner_review",
+  "chosen_proposal_id": null
+}
