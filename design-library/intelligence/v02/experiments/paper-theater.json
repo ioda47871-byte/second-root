@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "PAPER_THEATER_20261027",
-  "status": "grayscale_html_wireframes_rendered_pending_owner_review",
+  "status": "PT02_interactive_html_prototype_verified_not_client_or_owner_final_approved",
   "research_only": true,
   "subject": {
     "display_name": "ぺいぱばっくらいたー",
@@ -240,5 +240,53 @@
     "github_image_or_html_uploaded": false,
     "source_note": "Images/working HTML retained as ChatGPT conversation ZIP; GitHub stores research metadata, not wireframe binaries or HTML source",
     "scope": "structure_only_not_visual_quality_or_real_store_information"
+  },
+  "direction_decision": {
+    "selected_for_prototyping": "PT-02",
+    "selection_basis": "user explicitly said PT-02がいいな",
+    "revision_trigger": "User rejected the subsequent illustrated static mock as worsening structure; requested to proceed with a functioning interactive bookshelf Hero",
+    "type": "prototype_direction_only_not_final_website_approval"
+  },
+  "interactive_prototype": {
+    "title": "PT-02 — Bookshelf is the Navigation / HTML CSS JS v1",
+    "created_at": "2026-10-27",
+    "status": "browser_tested_research_prototype_awaiting_visual_owner_review",
+    "source_kind": "self_contained_html_css_js_no_external_assets",
+    "hero_structure": "seven_working_book_spine_buttons_and_contextual_open_page",
+    "interactions": [
+      "choose any spine to move it and update the text leaf",
+      "change chapter destination based on selected book",
+      "accessible arrow/home/end spine keyboard navigation",
+      "open and close paper-theater curtains",
+      "browse handwritten note, negative-space interlude and visit slip"
+    ],
+    "viewport_checks_px": [
+      320,
+      375,
+      390,
+      430,
+      768,
+      1024,
+      1280,
+      1440,
+      1920
+    ],
+    "browser_checks": 9,
+    "horizontal_overflow_detected": false,
+    "js_page_exceptions": 0,
+    "library_or_image_network_requests": false,
+    "offline_browsers_tested": [
+      "chromium"
+    ],
+    "source_sha256": "5e216a94889fd03f9eeb56d4ae598d7f5cd0389cb169c79118bff5e2ee57fbc7",
+    "desktop_png_sha256": "755adc513dac53bed1e437cb4dd60a7de0580ec57bd9b300fd7909dd9a9ad645",
+    "mobile_png_sha256": "b66081b4957499a98859b9eb4822f85d859324bca7a693d28ab0f6b3d320906e",
+    "verification_sha256": "d101f5fe42c738cb2adbed4611ca5882c1df422071dce70b3980181c545ad644",
+    "archive_name": "secondroot_PT02_interactive_bookshelf_poc_v1.zip",
+    "archive_sha256": "843edd428735a4f76ea89adce2d8b10964682e38c352278e5b4c486cee4615eb",
+    "github_html_source_uploaded": false,
+    "owner_visual_acceptance": "pending",
+    "website_deployment": "not_done",
+    "real_shop_authorization": false
   }
 }
