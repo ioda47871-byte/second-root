@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "PAPER_THEATER_20261027",
-  "status": "PT02_v3_texture_refinement_locally_verified_pending_owner_review",
+  "status": "CP010_PT02_v3_owner_approved_research_success_not_deployed",
   "research_only": true,
   "subject": {
     "display_name": "ぺいぱばっくらいたー",
@@ -209,8 +209,8 @@
       "main_risk": "畳・間取りは実店舗の実際の寸法や構造を示す図ではないと明記する"
     }
   ],
-  "selection_status": "pending_owner_review",
-  "chosen_proposal_id": null,
+  "selection_status": "owner_selected_research_success",
+  "chosen_proposal_id": "PT-02",
   "wireframe_evidence": {
     "made_on": "2026-10-27",
     "type": "real_html_css_js_noncommercial_local_wireframes",
@@ -380,9 +380,20 @@
     ],
     "provenance_doc": "design-library/intelligence/v02/experiments/PT02-texture-v3-review.md",
     "archive_sha256": "6e1b31dd6174f198e7547baa4e38642ee291f471b5885affb01187f9d1df447a",
-    "owner_design_approval": "pending",
-    "cp010_registered": false,
+    "owner_design_approval": "owner_approved_research_success",
+    "cp010_registered": true,
     "production_connected": false,
-    "source_assets_note": "Cropped AI study art, not independent high-resolution merchant photography; image resolution limits remain"
+    "source_assets_note": "Cropped AI study art, not independent high-resolution merchant photography; image resolution limits remain",
+    "success_case_record": "design-library/success-cases/CP-010-PaperTheater-PT02.md"
+  },
+  "owner_approval_evidence": {
+    "owner_quote": "これを成功例とします",
+    "date": "2026-10-27",
+    "proposal_id": "PT-02",
+    "selected_version": "PT02_texture_v3_20261027",
+    "success_case_id": "CP-010",
+    "success_case_record": "design-library/success-cases/CP-010-PaperTheater-PT02.md",
+    "scope": "Second Root research success example only; not a merchant contract or public deployment",
+    "asset_archive_sha256": "a438dfce1434de4b6973283edcfd696c1a1e0b6a10850cb60b4918f21e59eecc"
   }
 }
