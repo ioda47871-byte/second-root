@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "dataset": "second-root-design-intelligence-pilot",
+  "as_of": "2026-10-27",
+  "scope": "research_only_not_auto_prompt_input",
+  "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
+  "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
+  "provenance": {
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-006-Melon-de-Mille.md",
+    "case_registry": "design-library/success-cases/manifest.json",
+    "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
+  },
+  "reuse_policy": {
+    "allow": "Reason about how shop-specific verified facts could inspire an original composition; require human selection",
+    "deny": [
+      "copy_specific_composition",
+      "copy_or_reuse_brand_logo_or_photography",
+      "copy_specific_text_or_color_recipe",
+      "claim_client_approval_or_website_launch",
+      "feed_into_production_generators_without_separate_review"
+    ],
+    "design_principles_are_not_templates": true,
+    "quality_gates": [
+      "verified_shop_facts",
+      "source_rights_checked",
+      "shop_specific_original_composition",
+      "pc_and_mobile_independently_reviewed",
+      "human_signoff_before_promotion"
+    ]
+  },
+  "cases": [
+    {
+      "id": "CP-001",
+      "name": "Mond — The Living Archive",
+      "category": "coffee_shop",
+      "owner_selection": "reference_success",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "vintage cups",
+        "hand-dripped coffee",
+        "butter toast",
+        "quiet interior"
+      ],
+      "structural_translation": "Use typography as a structural plane; balance narrow/dense photography panels and quiet text areas in an uneven editorial layout",
+      "visual_mechanisms": [
+        "oversized serif logotype embedded across image boundaries",
+        "unequal panels and overhanging imagery",
+        "fine rules, vertical captions, restrained neutral space"
+      ],
+      "why_selected": [
+        {
+          "statement": "User submitted Mond as an exemplary design",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Overlaps across panel boundaries and oversized lettering make an editorial identity distinct from generic cards",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Replacing overlapping panels with repeatable left-text/right-image modules"
+      ],
+      "not_to_copy": [
+        "MOND logotype",
+        "exact triptych proportions",
+        "original photos and copy"
+      ],
+      "implementation_gap": "No HTML PoC approved for this design",
+      "evidence_ref": "design-library/success-cases/CP-001-Mond.md"
+    },
+    {
+      "id": "CP-002",
+      "name": "Sissi — Flower is Art",
+      "category": "florist",
+      "owner_selection": "reference_success_A_over_B",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "branch geometry",
+        "petals",
+        "asymmetric flower arrangements",
+        "color harmony"
+      ],
+      "structural_translation": "Let irregular branch paths determine the reading direction and whitespace shapes without imitating literal branch positions",
+      "visual_mechanisms": [
+        "floating blossom imagery intersects logotype",
+        "organic trajectories and scale hierarchy",
+        "small editorial text on negative space"
+      ],
+      "why_selected": [
+        {
+          "statement": "A was favored over B in previous comparisons",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "The motif actively shapes the structure instead of remaining a decorative photograph",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Turning flowers into isolated grid cards",
+        "Using decorative curves unrelated to actual merchandise"
+      ],
+      "not_to_copy": [
+        "Sissi logo",
+        "flower photo assets",
+        "specific branch paths"
+      ],
+      "implementation_gap": "No HTML PoC approved for this design",
+      "evidence_ref": "design-library/success-cases/CP-002-Sissi.md"
+    },
+    {
+      "id": "CP-003",
+      "name": "なごやビーンズ — Editorial Roast Atlas v4",
+      "category": "coffee_roaster",
+      "owner_selection": "design_v4_approved",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "nine roast intensities",
+        "roast spectrum",
+        "coffee bean textures",
+        "brew as a result"
+      ],
+      "structural_translation": "Turn nine gradations of roast into an ascending visual atlas, then vary section rhythm instead of repeating the scale",
+      "visual_mechanisms": [
+        "diagonal nine-bean spectrum",
+        "large type crosses material images",
+        "DEPTH/ROAST/YOUR CUP treated as separate visual beats"
+      ],
+      "why_selected": [
+        {
+          "statement": "User explicitly approved v4 after rejecting more generic earlier full-page versions",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Making the degree of roast a composition, not a card list, gives shop specificity",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Repeating the nine-roast guide twice",
+        "Shrinking distinctive hero into conventional full-page product catalog",
+        "Generic symmetrical text/image alternation"
+      ],
+      "not_to_copy": [
+        "exact bean diagonal",
+        "ROAST ATLAS copy as a brand slogan",
+        "generated coffee imagery"
+      ],
+      "implementation_gap": "Local browser PoC only; no Next.js verification or deployment",
+      "evidence_ref": "design-library/success-cases/CP-003-NagoyaBeans-v4.md"
+    },
+    {
+      "id": "CP-004",
+      "name": "harebare — Spinning Beigoma Editorial",
+      "category": "baked_goods",
+      "owner_selection": "positive_save_instruction",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "spinning beigoma cookies",
+        "local cast-iron heritage",
+        "golden pastry",
+        "crisp texture"
+      ],
+      "structural_translation": "Translate spinning-top motion into orbital paths connecting typography, textures and product photography",
+      "visual_mechanisms": [
+        "orbital trajectories across boundaries",
+        "oversized name colliding with cookie silhouettes",
+        "contrast of dark cast iron against warm baked goods"
+      ],
+      "why_selected": [
+        {
+          "statement": "User positively evaluated and requested saving the result",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "A shop-specific physical motion helps the full-page composition stay expressive",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Forcing the revolving-orbit motif on products with no relationship to rotation"
+      ],
+      "not_to_copy": [
+        "beigoma photos",
+        "exact orbital lines",
+        "name treatment and orange/navy palette"
+      ],
+      "implementation_gap": "Local browser PoC only, client clearance and production not verified",
+      "evidence_ref": "design-library/success-cases/CP-004-Harebare.md"
+    },
+    {
+      "id": "CP-005",
+      "name": "Hamsa — Rice Koji / Shared Loaf Editorial",
+      "category": "bakery",
+      "owner_selection": "research_success_saved",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "round campagne bread",
+        "crumb structure",
+        "rice koji fermentation",
+        "shared table",
+        "renovated kominka"
+      ],
+      "structural_translation": "A split loaf opens a window into place; irregular bread cross-sections and shared fragments become the shapes of editorial transitions",
+      "visual_mechanisms": [
+        "large bread cross-section intersects name",
+        "circular architectural inset",
+        "torn paper outlines and overlapping food scenes"
+      ],
+      "why_selected": [
+        {
+          "statement": "User selected the first concept's hero but the second concept's lower composition",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "User accepted refined hybrid and requested success storage",
+          "basis": "owner_selection"
+        }
+      ],
+      "known_failure_modes": [
+        "Re-generating the first draft unchanged instead of hybridizing",
+        "Repeating panoramic horizontal photo strips under a strong hero",
+        "Using low-resolution crops from a text-embedded composite as production photography"
+      ],
+      "not_to_copy": [
+        "exact bread + kominka collage",
+        "text, logo and sourced images",
+        "specific paper-cut boundaries"
+      ],
+      "implementation_gap": "Local PoC rendered; imagery resolution weaker than design reference, no Next.js build/deployment",
+      "evidence_ref": "design-library/success-cases/CP-005-Hamsa.md"
+    },
+    {
+      "id": "CP-006",
+      "name": "Melon de Mille — CUT & STACK",
+      "category": "fruit_tart",
+      "owner_selection": "refined_B_concept_saved",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "melon-tart cross-section",
+        "layered pastry",
+        "bright fruit palette",
+        "seasonal offerings"
+      ],
+      "structural_translation": "Use literal cut and stacking of fruit and pastry layers to inspire angled high-contrast graphic planes",
+      "visual_mechanisms": [
+        "colossal cobalt sans typography",
+        "angled cutouts showing tart layers",
+        "green melon versus red berry and blue geometry"
+      ],
+      "why_selected": [
+        {
+          "statement": "User selected B as the second of four directions and requested saving its refinement",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Graphic collision of tart cross-section and oversized typography provides a different design family",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Softening bold structure into conventional patisserie cards",
+        "Letting intense blue reduce readability or misrepresent a shop's actual character"
+      ],
+      "not_to_copy": [
+        "generated tart photos",
+        "literal color-block proportions",
+        "specific title typography and invented product details"
+      ],
+      "implementation_gap": "No HTML/CSS PoC; mobile composition and real product validation pending",
+      "evidence_ref": "design-library/success-cases/CP-006-Melon-de-Mille.md"
+    }
+  ],
+  "limitations": [
+    "These cases are concentrated in food and floral categories",
+    "Only three cases have local HTML PoCs; none are verified live production websites",
+    "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
+    "Store photos and speculative text are research only; must not be sent as official representations"
+  ]
+}
