@@ -105,3 +105,18 @@ node --test design-library/intelligence/v02/structure-audit.test.mjs
 ## CP-014｜CAN BUY RECORDS：初稿v1を優先、改良v2は不採用（2026-10-28）
 
 [比較評価と元画像の照合記録](experiments/CP014-CAN-BUY-RECORDS-v1-restoration-review.md)。オーナーが最初のレコード棚Hero・写真の奥行き・余白と手書きコメントのバランスを好み、密度が高くなったv2に「前の方がよかった」と評価。**v1に戻す**ことを確認。成功事例としての正式承認ではないためCP-014は**未確定**、成功例は依然として13件（ローカルHTML PoC7件＋画像のみ6件）。この反例では「構造変化が大きい＝品質向上ではない」ことを学習する。どちらの画像もHTML実装・店舗公認・商用公開ではない。
+
+## CP-015｜画像が別店舗に化ける問題とIdentity Lock（2026-10-28）
+
+[Identity Lock 研究手順](../../../docs/design/identity-lock-research-policy.md)を導入。画像生成の前に正式店名／許容表記／業種／出典を固定し、出力後は**実画像のSHAと人またはアシスタントによる目視観測**により、店名・業種・別店舗の混入を確認する研究用のfail-closed監査 `identity-audit.mjs` を追加（画像自体のOCR機能ではない）。
+
+- [CP-015 imairo. 初稿（identity PASSのみ）](experiments/CP015-imairo-v1-identity.json)：屋号・業種の一致。美的評価は未承認。
+- [CP-015 cobaco画像（identity REJECT）](experiments/CP015-cobaco-identity-rejected.json)：店名も業種も不一致。別店舗として成功数に含めない。
+- [実行テスト](identity-audit.test.mjs)：CP-014 KOALAのようなすり替わり、未確認画像、画像ハッシュ相違、別店舗名混入を検出する9回帰テスト。ローカルNode 22にて9/9 PASS（本番CIの結果ではない）。
+
+```bash
+node --test design-library/intelligence/v02/identity-audit.test.mjs
+node design-library/intelligence/v02/identity-audit.mjs design-library/intelligence/v02/experiments/CP015-imairo-v1-identity.json
+```
+
+これは**研究運用上のチェックの固定**であり、画像生成モデルやClaude/Codex生成器を自動的に制御しているわけではない。研究成功例は引き続き13件。
