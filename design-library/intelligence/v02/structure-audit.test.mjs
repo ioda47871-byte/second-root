@@ -5,10 +5,12 @@ import { audit, structuralSimilarity, multisetOverlap, DEFAULT_EXPERIMENT } from
 
 const specimen = JSON.parse(readFileSync(DEFAULT_EXPERIMENT, "utf8"));
 
-test("three paper-theater proposals have distinct authored structures and no automatic approval", () => {
+test("three paper-theater proposals remain structurally distinct after documented owner selection", () => {
   const result = audit(specimen);
   assert.equal(result.errors.length, 0, result.errors.join("; "));
-  assert.equal(specimen.selection_status, "pending_owner_review");
+  assert.equal(specimen.selection_status, "owner_selected_research_success");
+  assert.equal(specimen.chosen_proposal_id, "PT-02");
+  assert.equal(specimen.owner_approval_evidence.success_case_id, "CP-010");
   assert.equal(result.comparisons.length, 3);
   assert.ok(result.comparisons.every(p => p.score < 0.5), JSON.stringify(result.comparisons));
   assert.equal(result.outcome, "structure_stage_pass");
@@ -60,4 +62,13 @@ test("malformed proposal yields an error rather than terminating audit", () => {
   const check = audit(bad);
   assert.equal(check.outcome, "invalid");
   assert.ok(check.errors.some(x => x.includes("fewer than four structural scenes")));
+});
+
+test("owner selection cannot be accepted without documented matching research evidence", () => {
+  const bad = structuredClone(specimen);
+  bad.chosen_proposal_id = "PT-03";
+  assert.equal(audit(bad).outcome, "invalid");
+  const missing = structuredClone(specimen);
+  delete missing.owner_approval_evidence;
+  assert.equal(audit(missing).outcome, "invalid");
 });
