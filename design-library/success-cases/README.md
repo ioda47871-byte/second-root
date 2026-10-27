@@ -1,6 +1,6 @@
 # Second Root | 成功デザイン研究事例
 
-**2026-10-27 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 とharebareの4例を登録しました。
+**2026-10-27 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa の5例を登録しました。
 
 > **画像をテンプレートとして使い回さない。** 学習対象は、各店舗の特徴を視覚構造へ変換する考え方、画像・文字・余白・重なりの分析と実装・レビュー手順です。
 
@@ -10,11 +10,12 @@
 | [CP-002](CP-002-Sissi.md) | Sissi / Flower is Art | A案が好評価だった成功参考案。実装承認ではない | [WebP](assets/CP-002_Sissi.webp) |
 | [CP-003](CP-003-NagoyaBeans-v4.md) | なごやビーンズ / Editorial Roast Atlas v4 | **2026-10-27にデザインv4を承認**。公開・店舗承認ではない | [PC](assets/CP-003_NagoyaBeans_v4_desktop.webp) / [スマホ](assets/CP-003_NagoyaBeans_v4_mobile.webp) |
 | [CP-004](CP-004-Harebare.md) | harebare / Spinning Beigoma Editorial v1 | **研究用成功事例としてユーザーが保存を指示**。公開・制作依頼の承認ではない。画像原本は会話内保管、GitHubはメタデータとSHA-256を保存。 | [記録](CP-004-Harebare.md) |
+| [CP-005](CP-005-Hamsa.md) | Hamsa / Rice Koji & Shared Loaf Editorial | **研究用の成功事例としてオーナーが採用**。生成デザイン画像とローカルWeb実装の成果。実店舗の承認・公開承認ではない | [研究記録](CP-005-Hamsa.md) |
 
 ## 境界と検証
 - このフォルダは**研究事例（採用済みの構図研究）**。既存の `design-library/research/v02`（40件）や `v03`（40候補）は変更せず、80件の参考候補件数にも足さない。
-- ここに置くのは**GitHubで閲覧するための圧縮WebP画像**。元のPNG、v4ソースZIPのSHA-256とファイル名は `manifest.json` に記載し、元データと縮小プレビューを混同しない。
-- Mond/Sissiはコンセプト画像。harebareはHTML/CSS/JS実装済みの研究用PoCで、実店舗公認ではない。なごやビーンズv4はHTML/CSS/JSのPoCを以前制作したが、**Next.js移植、実公開、実店舗による許諾は未実施**。
+- CP-001〜003は閲覧用WebP画像をGitHubに保存。CP-004〜005は研究記録とSHA-256をGitHubに保存し、元画像・ソースZIPはChatGPT会話側のアーカイブに保管。GitHubに画像をアップロード済みとは扱わない。
+- Mond/Sissiはコンセプト画像。harebareとHamsaはHTML/CSS/JS実装済みの研究用PoCで、実店舗公認ではない。なごやビーンズv4はHTML/CSS/JSのPoCを以前制作したが、**Next.js移植、実公開、実店舗による許諾は未実施**。
 - 実店舗の商標、写真、営業時間、価格などの事実が正しいか、公開前に確認すること。
 - 他店へ写真・ロゴ・文章・具体的な構図を転用しない。使用する技法は、その店の特徴に合わせて再設計する。
 - 本PRは研究ライブラリへの追加のみ。**main、Vercel、本番DB、営業AI、CSS許可表には変更なし**。
