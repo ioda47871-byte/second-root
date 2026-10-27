@@ -50,7 +50,9 @@ export function auditIdentity(a) {
     }
     if (check.category_code !== target.category_code) errors.push('VISUAL_WRONG_CATEGORY');
     if (check.unreadable_site_identity === true) pending.push('BRAND_TEXT_UNREADABLE');
+    else if (check.unreadable_site_identity !== false) pending.push('BRAND_READABILITY_NOT_RECORDED');
     if (check.image_looks_like_unrelated_shop === true) errors.push('VISUAL_UNRELATED_SHOP');
+    else if (check.image_looks_like_unrelated_shop !== false) pending.push('UNRELATED_SHOP_CHECK_MISSING');
   }
   const status = errors.length ? 'REJECT' : pending.length ? 'HOLD' : 'PASS_IDENTITY_ONLY';
   return {
