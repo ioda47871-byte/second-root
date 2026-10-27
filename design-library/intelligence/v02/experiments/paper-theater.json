@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "PAPER_THEATER_20261027",
-  "status": "design_structure_proposals_not_visual_art_or_website",
+  "status": "grayscale_html_wireframes_rendered_pending_owner_review",
   "research_only": true,
   "subject": {
     "display_name": "ぺいぱばっくらいたー",
@@ -210,5 +210,35 @@
     }
   ],
   "selection_status": "pending_owner_review",
-  "chosen_proposal_id": null
+  "chosen_proposal_id": null,
+  "wireframe_evidence": {
+    "made_on": "2026-10-27",
+    "type": "real_html_css_js_noncommercial_local_wireframes",
+    "rendered": true,
+    "desktop_px": 1440,
+    "mobile_px": 390,
+    "viewport_checks_px": [
+      320,
+      390,
+      768,
+      1024,
+      1440,
+      1920
+    ],
+    "total_browser_render_checks": 18,
+    "browser": "headless_chromium_with_playwright_set_content",
+    "no_horizontal_overflow": true,
+    "no_js_page_errors": true,
+    "interactive_checks": [
+      "PT-01 scene number increments",
+      "PT-02 spine link scrolls to note section",
+      "PT-03 room link scrolls to room section"
+    ],
+    "offline_html_sha256": "0cffec779b94478c496f67bb8ba212d91bb49f2dbc260520e7608f0f577cb637",
+    "conversation_archive": "secondroot_PT_three_structure_wireframes_v02.zip",
+    "archive_sha256": "c2209e473a78e65b94dceef85390bc09a3c3c5f097ee9afb4d0028d1677ec3b8",
+    "github_image_or_html_uploaded": false,
+    "source_note": "Images/working HTML retained as ChatGPT conversation ZIP; GitHub stores research metadata, not wireframe binaries or HTML source",
+    "scope": "structure_only_not_visual_quality_or_real_store_information"
+  }
 }
