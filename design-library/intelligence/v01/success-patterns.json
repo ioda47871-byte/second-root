@@ -313,11 +313,60 @@
       ],
       "implementation_gap": "Local HTML/CSS/JS PoC only; browser checks on six widths reported, but Next.js, public deployment, real photography, accessibility and merchant review remain pending",
       "evidence_ref": "design-library/success-cases/CP-007-ORGN-SEAM-CUT.md"
+    },
+    {
+      "id": "CP-008",
+      "name": "整体院 Go. — PAUSE / GO",
+      "category": "wellness_bodywork",
+      "owner_selection": "owner_approved_revised_A_recovery_design",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "the clinic name Go",
+        "daily tension and pauses",
+        "quiet private treatment",
+        "bodywork and head spa"
+      ],
+      "structural_translation": "Build a visual transition from compressed/dense typography and dark photographs into open cream space; keep the oversized GO. and fine yellow route-line as structure rather than using a generic wellness landing page.",
+      "visual_mechanisms": [
+        "colossal GO. typography in charcoal-navy",
+        "cream/ink contrast with a single vivid yellow visual path",
+        "overlap between treatment imagery and graphic panels",
+        "varied editorial densities instead of repeating equal wave-photo bands"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner initially liked the A concept but rejected a generic cream-and-green revision because it erased the huge GO. and yellow line",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner said 成功例とします after a revision restored the accepted hero visual language and adjusted lower composition",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Explicit protection of earlier accepted features improves iteration discipline; not proof of broader design outcomes",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Removing the giant GO. typographic anchor during polishing",
+        "Replacing the distinctive yellow line and navy/cream contrast with generic wellness greens",
+        "Repeating wavy panoramic photo strips through lower sections",
+        "Mistaking a mobile mockup included in a static poster for a responsive website",
+        "Treating generated treatment or interior photos as authentic evidence of a real provider"
+      ],
+      "not_to_copy": [
+        "the GO. logo and exact typographic placement",
+        "the specific yellow path",
+        "the generated therapy imagery and invented copy",
+        "the exact palette / collage"
+      ],
+      "implementation_gap": "One owner-selected static editorial poster, containing a phone preview; no independent responsive HTML/CSS/JS PoC, build or public deployment",
+      "evidence_ref": "design-library/success-cases/CP-008-Seitai-Go-PAUSE.md"
     }
   ],
   "limitations": [
-    "Six initial cases are concentrated in food and floral categories; the seventh ORGN. is the first accepted non-food salon/fashion study",
-    "Four cases have local HTML PoCs; none are verified live production websites",
+    "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
+    "Four cases have local HTML PoCs; four remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
