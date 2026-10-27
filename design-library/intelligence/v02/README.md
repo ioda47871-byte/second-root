@@ -87,3 +87,9 @@ node --test design-library/intelligence/v02/structure-audit.test.mjs
 ## CP-010｜採用済みPT-02 v3（研究限定）
 
 [CP-010成功事例記録](../../success-cases/CP-010-PaperTheater-PT02.md) に、B案の評価から静止画・操作PoCの不採用、v2への「チープだけどデザインはいい」、そして**v3の明示的な成功承認**まで保存。構造チェックは根拠ある研究承認と未承認を区別するが、クライアント承認や公開を自動許可しない。
+
+## CP-011｜BAR N 構図を守ったHTML再設計 v2（2026-10-27承認）
+
+ユーザーが元のB案で評価した**巨大なグラス・黒から生成りへの境界・屈折光**を保護し、v1 HTML実装の「ありきたり」という評価を受けて**弱い下層だけ**を非対称に再設計。v2は「これを成功例とします」と明示的に研究採用された。構成を独創的にすることと、最初に選ばれたデザインの魅力を維持することを別々に検証する。
+
+[CP-011 研究成功記録](../../success-cases/CP-011-BAR-N-GLASS-SILENCE.md) / [v2実装の構図比較と検査記録](experiments/CP011-BARN-structure-recovery-v2.md)。画像とHTMLの原本はChatGPT会話側ZIPに保管。商用公開・実店舗の公認・生成器への投入ではない。
