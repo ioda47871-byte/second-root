@@ -69,3 +69,7 @@ node --test design-library/intelligence/v02/structure-audit.test.mjs
 ## ブラウザで検証した3つの白黒ワイヤーフレーム（追加）
 
 [2026-10-27 PC・スマホ構造比較と18画面幅検証記録](experiments/paper-theater-wireframe-review.md) を追加。元の操作可能なHTML、PC/スマホ画像計6枚、比較画像、QAログは会話側の `secondroot_PT_three_structure_wireframes_v02.zip` に保管。**GitHub上は研究記録とハッシュのみ。まだ案の承認はなくCP-010にはしない。**
+
+## PT-02 インタラクティブ本棚 v1（オーナー完成承認待ち）
+
+[背表紙の7つの実ボタン＋引き出される紙面＋開閉する紙芝居舞台の実装研究](experiments/PT02-interactive-bookshelf-review.md)。ユーザーはPT-02の**方向性**を選定したが、最新の試作を成功デザインと承認したわけではない。HTML/PNG/検証記録は会話側ZIPに保存し、GitHubには研究記録とSHA-256のみ格納。CP-010として登録しない。
