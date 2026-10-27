@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "dataset": "second-root-design-success-cases",
+  "catalog_date": "2026-10-27",
+  "records": [
+    {
+      "id": "CP-001",
+      "title": "Mond — The Living Archive",
+      "status": "owner_selected_research_success_example",
+      "preview": "assets/CP-001_Mond.webp",
+      "webp_sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82",
+      "original_png_sha256": "99316fb40d71a0081bd5e9b892acf69d386a472722fb7d0bb1638ad0a2557d95",
+      "source_kind": "user_supplied_chat_image",
+      "view": "concept_art",
+      "not_impl_approved": true
+    },
+    {
+      "id": "CP-002",
+      "title": "Sissi — Flower is Art",
+      "status": "owner_selected_research_success_example",
+      "preview": "assets/CP-002_Sissi.webp",
+      "webp_sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef",
+      "original_png_sha256": "9376f4eb7e24cb881627956d331d9d5f97c405ac197f051128352d0db1b4814d",
+      "source_kind": "user_supplied_chat_image",
+      "view": "concept_art",
+      "not_impl_approved": true
+    },
+    {
+      "id": "CP-003",
+      "title": "なごやビーンズ — Editorial Roast Atlas v4",
+      "status": "owner_design_approved_v4",
+      "preview": "assets/CP-003_NagoyaBeans_v4_desktop.webp",
+      "mobile_preview": "assets/CP-003_NagoyaBeans_v4_mobile.webp",
+      "webp_sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6",
+      "mobile_webp_sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0",
+      "original_png_sha256": "c1e42ba20375f2b990f05c43086504fae23fdd9030359d9e9565dda87fa13d24",
+      "original_mobile_png_sha256": "f8050aaf2b629d805fa338cad0c46edc7d3df2c8a7111f918f645da451169a1b",
+      "source_kind": "chat_generated_poc_screenshot",
+      "view": "html_css_js_poc",
+      "original_source_archive_sha256": "7f2f14769d196311d22e629097371c67aa2dd1c2b205561b0178279cebe6ff9b"
+    }
+  ],
+  "policy": {
+    "not_templates": true,
+    "never_reuse_generated_photos_or_logos_for_other_shops": true,
+    "not_official_client_work": true,
+    "release_or_deployment_approval": false,
+    "do_not_mix_with_v02_v03_reference_candidate_counts": true,
+    "source_master_assets": "Conversation-side originals and approval archive, identified by SHA-256. Compressed WebP previews are committed in this repository."
+  }
+}
