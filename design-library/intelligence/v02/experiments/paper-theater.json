@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "PAPER_THEATER_20261027",
-  "status": "PT02_original_B_fidelity_html_v2_locally_verified_awaiting_owner_review",
+  "status": "PT02_v3_texture_refinement_locally_verified_pending_owner_review",
   "research_only": true,
   "subject": {
     "display_name": "ぺいぱばっくらいたー",
@@ -365,5 +365,24 @@
     "user_approval": "not_yet_evaluated",
     "cp010": "not_registered",
     "production_integration": false
+  },
+  "v3_texture_refinement": {
+    "version": "PT-02 texture refinement v3",
+    "created_at": "2026-10-27",
+    "owner_response_to_v2": "チープだけどデザインはいいです",
+    "status": "local_browser_poc_ready_for_owner_review",
+    "reference_maintained": "preferred original color B panel composition",
+    "changes": [
+      "warmth and paper texture refined",
+      "uniform rectangular CSS book spines replaced with photographic art-strip and 9 real interaction hit zones",
+      "mobile shelf horizontal scroll and hero photo focal point",
+      "real-text paper overlays, preserved theater curtain interaction"
+    ],
+    "provenance_doc": "design-library/intelligence/v02/experiments/PT02-texture-v3-review.md",
+    "archive_sha256": "6e1b31dd6174f198e7547baa4e38642ee291f471b5885affb01187f9d1df447a",
+    "owner_design_approval": "pending",
+    "cp010_registered": false,
+    "production_connected": false,
+    "source_assets_note": "Cropped AI study art, not independent high-resolution merchant photography; image resolution limits remain"
   }
 }
