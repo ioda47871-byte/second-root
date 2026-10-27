@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "PAPER_THEATER_20261027",
-  "status": "PT02_interactive_html_prototype_verified_not_client_or_owner_final_approved",
+  "status": "PT02_preferred_original_B_visual_reference_interactive_poc_visually_rejected",
   "research_only": true,
   "subject": {
     "display_name": "ぺいぱばっくらいたー",
@@ -245,7 +245,8 @@
     "selected_for_prototyping": "PT-02",
     "selection_basis": "user explicitly said PT-02がいいな",
     "revision_trigger": "User rejected the subsequent illustrated static mock as worsening structure; requested to proceed with a functioning interactive bookshelf Hero",
-    "type": "prototype_direction_only_not_final_website_approval"
+    "type": "prototype_direction_only_not_final_website_approval",
+    "revised_interpretation": "The user chose the visual composition of panel B, not a requirement to make the entire bookshelf into a literal mechanical navigation UI."
   },
   "interactive_prototype": {
     "title": "PT-02 — Bookshelf is the Navigation / HTML CSS JS v1",
@@ -285,9 +286,33 @@
     "archive_name": "secondroot_PT02_interactive_bookshelf_poc_v1.zip",
     "archive_sha256": "407512d9f9551369f3a5354ce21fda72e513e4a7cdcfeacc82fdda0d936a27d0",
     "github_html_source_uploaded": false,
-    "owner_visual_acceptance": "pending",
+    "owner_visual_acceptance": "rejected_as_design_after_user_comparison",
     "website_deployment": "not_done",
     "real_shop_authorization": false,
-    "book_selection_verified": "all_7_spines_plus_destination_anchors_at_9_viewports"
+    "book_selection_verified": "all_7_spines_plus_destination_anchors_at_9_viewports",
+    "technical_verification_kept": true
+  },
+  "visual_preference_20261027": {
+    "owner_feedback": "悪くなったな、これがよかった",
+    "selected_reference": "Original full-color three-way comparative board, panel B: 本棚が地図になる, including adjacent desktop and smartphone visual mockups",
+    "user_uploaded_thumbnail": {
+      "name": "image(20261027-104455).png",
+      "width": 332,
+      "height": 672,
+      "sha256": "a41d96ff58c8f1d2c626ca6cdce829b00431bd316072c3b3b844a0901cea8917",
+      "storage": "current ChatGPT user upload; image binary is not committed to GitHub"
+    },
+    "accepted_visual_features": [
+      "Full-bleed warm, atmospheric photographic bookshelf hero, with the shop identity integrated into the environment",
+      "Asymmetric floating cream paper annotation over the hero, not a bare schematic shelf-control panel",
+      "Distinct second beat featuring an aligned row of varied book spines with tactile colors and print",
+      "Further editorial chapters with intimate bookstore and kamishibai photography; readable paper notes and strongly varied scale",
+      "Warm amber lighting, dark natural wood and paper grain contrasted with restrained cream negative space",
+      "Mobile layout with the same recognizable atmosphere and chapter rhythm; not merely a wireframe"
+    ],
+    "rejected_outcome": "The later seven-clickable-spine research HTML prototype passed basic interaction/browser checks but was aesthetically judged worse than the original panel B. Do not treat technical structure originality as evidence of visual superiority.",
+    "future_implementation_policy": "Restore the preferred visual composition first. Add real interaction to selected spines and/or annotations only where it does not distort the photographed shelf, book row, typographic hierarchy or editorial chapter rhythm. Produce a side-by-side visual fidelity comparison with uploaded reference on desktop/mobile before considering approval.",
+    "approval_scope": "visual direction/reference preference only, not acceptance of implemented website or client/publication approval",
+    "cp010_status": "not_approved"
   }
 }
