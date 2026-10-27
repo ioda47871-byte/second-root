@@ -51,6 +51,23 @@
       "source_archive_sha256": "889d6fba877520eb1a78ee14da05e9d0a0d444f692eb38895b4273311e05a3b6",
       "official_client_work": false,
       "design_approval_scope": "research_selection_only"
+    },
+    {
+      "id": "CP-005",
+      "title": "Hamsa — Rice Koji / Shared Loaf Editorial",
+      "status": "owner_selected_research_success_example",
+      "source_kind": "chat_generated_design_and_poc",
+      "view": "concept_art_and_html_css_js_poc",
+      "design_approval_scope": "second_root_research_success_case_only",
+      "official_client_work": false,
+      "website_deployed": false,
+      "nextjs_build_verified": false,
+      "image_asset_uploaded_to_github": false,
+      "original_design_png_sha256": "54b4eddecdd053e1a4796779910798afba4d8f93218227000b3d41eab9a306aa",
+      "desktop_original_png_sha256": "e1a0ac1ff9ff3db820094ef5c1a4127e1a634e09f10bf451b9b1a0dc615d1fc0",
+      "mobile_original_png_sha256": "6494351672ebaee545d53c85f5aae0a70ab3357656a30528d7e4929a9c31e9e2",
+      "source_archive_sha256": "141e8827aadf2368224065faa5669f44f35c7b71abebcf9348a7d25065dbf413",
+      "success_case_archive_sha256": "7f0cfa59d092faea785a425bdb1c7a088b6e72d676d0aa242291eb494f14b0ca"
     }
   ],
   "policy": {
@@ -59,6 +76,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Conversation-side originals and approval archive, identified by SHA-256. Compressed WebP previews are committed in this repository."
+    "source_master_assets": "Original PNG/ZIP preserved in ChatGPT conversation archives with SHA-256; GitHub has CP-001..003 preview WebP and CP-004..005 metadata only; do not treat metadata as uploaded image."
   }
 }
