@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "PAPER_THEATER_20261027",
-  "status": "PT02_preferred_original_B_visual_reference_interactive_poc_visually_rejected",
+  "status": "PT02_original_B_fidelity_html_v2_locally_verified_awaiting_owner_review",
   "research_only": true,
   "subject": {
     "display_name": "ぺいぱばっくらいたー",
@@ -314,5 +314,56 @@
     "future_implementation_policy": "Restore the preferred visual composition first. Add real interaction to selected spines and/or annotations only where it does not distort the photographed shelf, book row, typographic hierarchy or editorial chapter rhythm. Produce a side-by-side visual fidelity comparison with uploaded reference on desktop/mobile before considering approval.",
     "approval_scope": "visual direction/reference preference only, not acceptance of implemented website or client/publication approval",
     "cp010_status": "not_approved"
+  },
+  "visual_fidelity_v2": {
+    "created_at": "2026-10-27",
+    "version": "PT-02_B_reference_visual_fidelity_v2",
+    "status": "locally_rendered_but_owner_acceptance_pending",
+    "reference": "user-selected original colored three-way comparison panel B, not rejected poster or over-mechanical bookshelf implementation",
+    "method": "Photo crops from earlier AI-generated concept, independent HTML/CSS paper overlays, live 9-spine annotation selector, paper-theater curtain. PC/mobile responsive CSS. Not a full screenshot embedded as the website.",
+    "fidelity_evaluation": "Qualitatively closer to the original B in warm bookshelves, floating paper note, colored spine strip, bookstore and kamishibai section progression, and visit-note ending. Not pixel-accurate and some photographs are upscaled concept crops.",
+    "limitations": [
+      "Some photos are low-resolution extracted AI-generated composition material and cannot represent real store",
+      "Some original generated visual text remains within photographic crops",
+      "Chrome/Chromium only, 9 sizes, no Safari/Firefox or physical devices",
+      "No Next.js, public deployment, copyright/client approval",
+      "B-proposal beauty is a user-selected reference, not approval of v2 outcome"
+    ],
+    "qa": {
+      "engine": "headless Chromium + Playwright, content loaded from self-contained offline HTML",
+      "viewport_widths": [
+        320,
+        375,
+        390,
+        430,
+        768,
+        1024,
+        1280,
+        1440,
+        1920
+      ],
+      "horizontal_overflow_count": 0,
+      "missing_image_count": 0,
+      "page_errors": 0,
+      "validated_operations": [
+        "nine book spine selection and annotations at 390/1440",
+        "spine arrow keyboard selection at 390/1440",
+        "paper theater curtains at 390/1440",
+        "mobile menu open/Esc close at 390"
+      ],
+      "notes": "Computed QA results in ChatGPT conversation artifact, not CI"
+    },
+    "artifacts": {
+      "zip": "secondroot_PT02_reference_B_visual_fidelity_v2.zip",
+      "archive_sha256": "f83a3a241b057ad610bf64d97adcd325ba943d5be38dfee76180978ad72ec8dc",
+      "index_html_sha256": "b2db788fab57fbf43f565246300491d19416c17d87523d3b542d651ad22bdf03",
+      "desktop_full_png_sha256": "f9edcd87816b55923001ebe222d943f3aaebf4eb401caf1dc7e54a44df07fee9",
+      "mobile_full_png_sha256": "634a8f4e97931e8b77471c87bc82dbbde0ff34eb3f02ae04164c1b85dbd6a8f5",
+      "comparison_sha256": "88246c85782c1e30d5aae31d061f2d9515bcdb45c98cff14e79584cf6c28785d",
+      "files_stored": "In ChatGPT conversation runtime archive; original PNGs/HTML not uploaded to GitHub"
+    },
+    "user_approval": "not_yet_evaluated",
+    "cp010": "not_registered",
+    "production_integration": false
   }
 }
