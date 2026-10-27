@@ -65,3 +65,7 @@ node --test design-library/intelligence/v02/structure-audit.test.mjs
 - ブランドのロゴ・画像・既存レイアウトの模倣や流用をしない。
 - ユーザー選定前に`chosen_proposal_id`を勝手に記入しない。今回の案はすべて**提案段階**。
 - 先に新規構成のワイヤーを3つ見比べ、その後にビジュアル制作へ進む。
+
+## ブラウザで検証した3つの白黒ワイヤーフレーム（追加）
+
+[2026-10-27 PC・スマホ構造比較と18画面幅検証記録](experiments/paper-theater-wireframe-review.md) を追加。元の操作可能なHTML、PC/スマホ画像計6枚、比較画像、QAログは会話側の `secondroot_PT_three_structure_wireframes_v02.zip` に保管。**GitHub上は研究記録とハッシュのみ。まだ案の承認はなくCP-010にはしない。**
