@@ -362,11 +362,61 @@
       ],
       "implementation_gap": "One owner-selected static editorial poster, containing a phone preview; no independent responsive HTML/CSS/JS PoC, build or public deployment",
       "evidence_ref": "design-library/success-cases/CP-008-Seitai-Go-PAUSE.md"
+    },
+    {
+      "id": "CP-009",
+      "name": "豆＊豆 — STITCH / TOGETHER editorial craft shop",
+      "category": "handmade_craft_fabric_goods",
+      "owner_selection": "owner_approved_research_success_after_local_html_poc",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "colorful round yo-yo quilting fabrics",
+        "hand sewing and red connecting threads",
+        "distinct handmade fabric objects",
+        "vivid red shop door"
+      ],
+      "structural_translation": "Translate round textile elements into a nonuniform constellation and stitched connections across the page; a red doorway anchors the visual arrival, while making and merchandise chapters use different photo sizes and visual rhythms.",
+      "visual_mechanisms": [
+        "large Japanese typography on warm paper in a strong initial hero",
+        "unequal yo-yo circles integrated with shop-door photography",
+        "dotted red seam paths connecting distinct sections",
+        "close-up making process versus collage product details versus quilt mass",
+        "large red entrance as closing visual climax"
+      ],
+      "why_selected": [
+        {
+          "statement": "User said いいと思います about first design, then requested refinement and HTML implementation that protects its hero",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "User explicitly approved the completed PC/mobile local PoC with 成功例として扱います",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Craft-specific joining, fabric geometry and doorway create a readable page-wide principle distinct from bakery or salon layouts",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Repeating identical round fabric collage in every chapter rather than changing image scale and information density",
+        "Discarding the already selected hero while polishing later sections",
+        "Using low-resolution crops from one generated poster in a finished production website",
+        "Presenting generated storefront, logo or products as certified real-store documentation",
+        "Calling an offline Chromium PoC fully deployed or cross-browser tested"
+      ],
+      "not_to_copy": [
+        "shop name/logos and slogan",
+        "exact yo-yo fabric cutouts or thread trajectory",
+        "red-door or atelier generated photographs",
+        "specific poster structure and asset colors"
+      ],
+      "implementation_gap": "Local HTML/CSS/JS PoC checked at six viewport widths; no live deployment, Next.js build, true merchant images/approval, or high-resolution replacement for all crops.",
+      "evidence_ref": "design-library/success-cases/CP-009-MameMame-STITCH.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Four cases have local HTML PoCs; four remain concept/image-only; none are verified live production websites",
+    "Five cases have local HTML PoCs; four remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
