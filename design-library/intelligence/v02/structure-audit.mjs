@@ -44,11 +44,25 @@ const GENERIC_HERO = new Set(["copy_left_photo_right", "photo_left_copy_right", 
 export function audit(experiment) {
   const errors = [], warnings = [], comparisons = [];
   if (experiment.schema_version !== 1) errors.push("schema_version must be 1");
-  if (!experiment.research_only || experiment.selection_status !== "pending_owner_review" || experiment.chosen_proposal_id !== null) {
-    errors.push("Experimental proposals must remain research-only and unapproved");
+  // Historical draft experiments may be pending; a finished *research* case
+  // may be selected only with a matching, source-traceable owner decision.
+  const evidence = experiment.owner_approval_evidence;
+  const pending = experiment.selection_status === "pending_owner_review" && experiment.chosen_proposal_id === null;
+  const approvedResearch =
+    experiment.selection_status === "owner_selected_research_success" &&
+    typeof experiment.chosen_proposal_id === "string" &&
+    Array.isArray(experiment.proposals) &&
+    experiment.proposals.some(p => p?.id === experiment.chosen_proposal_id) &&
+    evidence?.proposal_id === experiment.chosen_proposal_id &&
+    typeof evidence?.owner_quote === "string" && evidence.owner_quote.trim().length > 0 &&
+    typeof evidence?.selected_version === "string" && evidence.selected_version.trim().length > 0 &&
+    /^CP-\\d{3}$/.test(evidence?.success_case_id || "") &&
+    typeof evidence?.success_case_record === "string" && evidence.success_case_record.startsWith("design-library/success-cases/" + evidence.success_case_id + "-") && evidence.success_case_record.endsWith(".md");
+  if (!experiment.research_only || !(pending || approvedResearch)) {
+    errors.push("Experimental proposals must remain research-only and need recorded owner approval evidence before selection");
   }
   if (experiment.comparison_basis?.qualitative_only !== true) {
-    errors.push("Previous 9 cases cannot be assigned numeric structural similarity without section maps");
+    errors.push("Earlier cases cannot be assigned numeric structural similarity without section maps");
   }
   const options = Array.isArray(experiment.proposals) ? experiment.proposals : [];
   if (options.length < 3) errors.push("At least 3 alternatives required before image generation");
@@ -90,7 +104,7 @@ export function audit(experiment) {
     experiment:experiment.experiment_id,
     outcome:errors.length?"invalid":warnings.length?"review_warnings":"structure_stage_pass",
     errors,warnings,comparisons,
-    caveat:"Scores compare author-declared tokens only. Zero is not proof of novel design; photographs, wireframes, navigation and responsive screenshots require human review. Previous CP-001..009 are qualitative comparisons only."
+    caveat:"Scores compare author-declared tokens only. Zero is not proof of novel design; photographs, wireframes, navigation and responsive screenshots require human review. Earlier CP-001..009 comparisons are qualitative only; approval evidence records do not prove visual similarity."
   };
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
