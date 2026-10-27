@@ -35,3 +35,10 @@ Heroは保護したため、元の写真切り抜きの解像度限界は残る�
 | `screenshots/v1_vs_v2_desktop.jpg` | `d04c63d8aaba56eaf2fec9e92f6669cde3516e87523c58df2f5bcc56b15c93ce` |
 
 **研究成果の登録のみ。** main・Vercel・Supabase・Claude/Codex生成ワーカー・営業AIは変更していない。
+
+
+## 採用結果（2026-10-27 JST）
+
+ユーザーがv2のPC/スマホHTML試作を確認した後、**「これを成功例とします」**と明示。v1の「ちょっとありきたりかな」という不採用評価は維持し、**v2のみをSecond Rootの研究成功例 CP-011として採用**した。製作中に記載した「オーナー評価待ち」は当時の状態を示す履歴であり、現在の最終承認状態ではない。
+
+個別の正式な研究記録・SHA-256：[CP-011](../../../success-cases/CP-011-BAR-N-GLASS-SILENCE.md)。HTML/画像原本はChatGPT会話の保存ZIPにあり、GitHubはテキストの研究記録のみ。実店舗の許諾や本番公開は引き続き未実施。
