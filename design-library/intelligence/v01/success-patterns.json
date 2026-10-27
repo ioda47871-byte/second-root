@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "dataset": "second-root-design-intelligence-pilot",
-  "as_of": "2026-10-27",
+  "as_of": "2026-10-28",
   "scope": "research_only_not_auto_prompt_input",
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-006-Melon-de-Mille.md",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-013-SpaceTanoshii-TOY-PACKAGING.md",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -573,6 +573,53 @@
       ],
       "implementation_gap": "One owner-approved 793x1983 static FULL image. No HTML/CSS/JS implementation, interactive controls, responsive mobile design, browser rendering, shop permissions or public deployment.",
       "evidence_ref": "design-library/success-cases/CP-012-Admy-ONE-OF-A-KIND.md"
+    },
+    {
+      "id": "CP-013",
+      "name": "スペースたのしい — TOY PACKAGING / SCRAPBOOK v2",
+      "category": "toy_and_variety_goods_creative_space",
+      "owner_selection": "research_success_v2_approved",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "assorted small toys and retro objects",
+        "physical toy blister packaging",
+        "workshops and making things together",
+        "playful irregular paper collage"
+      ],
+      "structural_translation": "Translate the physical packaging and discovery of small objects into a dense blister-pack hero, then guide visitors through finding, playing, gathering and finding the shop, without adopting a standard split-hero or alternating columns",
+      "visual_mechanisms": [
+        "yellow packaging card with transparent toy pockets and punch hole",
+        "torn paper and stickers carry headings across section boundaries",
+        "red discovery labels, blue workshop section, light gathering section and dark social footer"
+      ],
+      "why_selected": [
+        {
+          "statement": "User liked the first concept and requested a small refinement",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "User explicitly accepted the refined second image as a success example on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Packaging morphology creates a page structure independent of the earlier editorial hero families",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Converting the toy-packaging hero to a generic photography split layout",
+        "Using unrelated toy pictures as official inventory or copying recognizable character IP",
+        "Reducing tactility and collage to flat uniform product cards",
+        "Assuming generated Japanese copy and location drawing are verified"
+      ],
+      "not_to_copy": [
+        "shop name or visual identity",
+        "AI generated toy/character imagery or photos",
+        "exact yellow-red-blue color recipe and blister layout",
+        "specific sticker and paper positions"
+      ],
+      "implementation_gap": "One 1024x1536 research concept image approved; no HTML/CSS/JS, standalone mobile design, merchant permission or production verification",
+      "evidence_ref": "design-library/success-cases/CP-013-SpaceTanoshii-TOY-PACKAGING.md"
     }
   ],
   "limitations": [
