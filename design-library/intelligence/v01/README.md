@@ -2,13 +2,13 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **eleven owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **twelve owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
 | Path | Role | Current status |
 | --- | --- | --- |
-| [success-patterns.json](success-patterns.json) | CP-001–011: shop characteristics → composition principles → what was selected/rejected → implementation gaps | Eleven documented study cases; analysis interpretation, not scientific proof |
+| [success-patterns.json](success-patterns.json) | CP-001–012: shop characteristics → composition principles → what was selected/rejected → implementation gaps | Twelve documented study cases; analysis interpretation, not scientific proof |
 | [review-queue.json](review-queue.json) | Source-traceable priority list of 10 existing AI-reviewed screenshots and 10 new audits | **Not** 20 completed human reviews |
 | [validate.mjs](validate.mjs) | Offline, read-only cross-check against case registry, original v03 candidate source URLs and pending owner review status | May be run with `node design-library/intelligence/v01/validate.mjs` |
 
@@ -17,7 +17,7 @@ This folder organizes **eleven owner-selected design study cases** and **a queue
 - v02 reference library: **40** historical entries with mixed review labels, **none attributable to a human review**.
 - v03 additive candidate set: **40** entries, page text or gallery metadata checked; text alone does not establish how a page looks.
 - v03 AI viewport evidence: **10** specific references, 1440px + 390px notes, recorded as AI observations; **owner decision pending**.
-- Second Root study successes: **11** case IDs, **7 with local HTML/CSS/JS PoCs** (CP-003/004/005/007/009/010/011), **4 concept/image only** (CP-001/002/006/008); **no production deployment is implied**.
+- Second Root study successes: **12** case IDs, **7 with local HTML/CSS/JS PoCs** (CP-003/004/005/007/009/010/011), **5 concept/image only** (CP-001/002/006/008/012); **no production deployment is implied**.
 - This v0.1 pilot prioritizes **20 depth reviews**, but it does **not** automatically accept or score any design reference.
 
 ## How to use this in a new design experiment
@@ -51,8 +51,12 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 
 ## v0.2 — Structure First（新規研究）
 
-[構造を先に3案発明する手順と、静的な重複チェック](../v02/README.md) を試験導入。従来の研究事例11件は参照資料であり、自動的に構図を再利用するわけではない。v0.2は研究専用・未承認で、制作・営業・公開の生成器にはまだつながっていない。
+[構造を先に3案発明する手順と、静的な重複チェック](../v02/README.md) を試験導入。従来の研究事例12件は参照資料であり、自動的に構図を再利用するわけではない。v0.2は研究専用・未承認で、制作・営業・公開の生成器にはまだつながっていない。
 
 ### CP-011 BAR N（2026-10-27研究採用）
 
 [CP-011研究記録](../../success-cases/CP-011-BAR-N-GLASS-SILENCE.md)：HTML v1でありきたりになった中盤の横長写真帯を改善したv2が採用された。巨大グラスと屈折光の構図は保護し、静かなバーの世界観を写真・余白・レイヤーの非対称なリズムに変換。承認は研究デザインのみに限定され、公式サイトの公開・店の許諾ではない。
+
+### CP-012 Admy（2026-10-27研究採用）
+
+[Admyの鉱物標本型エディトリアル研究](../../success-cases/CP-012-Admy-ONE-OF-A-KIND.md)を12件目として追加。ユーザーが初期FULLデザインを採用したが、**画像1枚のみの研究成功**。HTML/CSS/JS・PC/スマホ実ブラウザ検証や実店舗による許諾は未実施。
