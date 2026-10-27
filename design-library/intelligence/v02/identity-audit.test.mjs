@@ -91,3 +91,13 @@ test('missing source, empty category and no research flag are blocked', () => {
   assert.ok(r.errors.includes('TARGET_IDENTITY_INCOMPLETE'));
   assert.ok(r.errors.includes('NOT_MARKED_RESEARCH_ONLY'));
 });
+
+test('missing explicit visibility/other-shop determinations must remain on hold', () => {
+  const a = base();
+  delete a.visual_inspection.unreadable_site_identity;
+  delete a.visual_inspection.image_looks_like_unrelated_shop;
+  const r = auditIdentity(a);
+  assert.equal(r.status, 'HOLD');
+  assert.ok(r.pending.includes('BRAND_READABILITY_NOT_RECORDED'));
+  assert.ok(r.pending.includes('UNRELATED_SHOP_CHECK_MISSING'));
+});
