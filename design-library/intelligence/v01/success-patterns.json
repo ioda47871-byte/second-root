@@ -467,11 +467,66 @@
       ],
       "implementation_gap": "Local HTML/CSS/JS PoC v3 approved as a research success. Nine Chromium viewport checks reported; materials still rely on cropped AI-generated imagery; no merchant license, real shop facts, Next.js build, public deployment or live-device/browser QA.",
       "evidence_ref": "design-library/success-cases/CP-010-PaperTheater-PT02.md"
+    },
+    {
+      "id": "CP-011",
+      "name": "BAR N — GLASS / SILENCE Structure Recovery v2",
+      "category": "bar_cocktail_hospitality",
+      "owner_selection": "owner_approved_structure_recovery_v2_html_poc",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "label-free glass bottle display reported for the bar",
+        "light refraction through glass",
+        "quiet counter and intimate atmosphere",
+        "single glass as narrative focal point"
+      ],
+      "structural_translation": "Express physical glass refraction as a photographic composition crossing the dark hero and bright cream surface, then let uneven photo sizes, negative space and diagonal counter layers shape the subsequent editorial scenes rather than repeating standard photo/text horizontal bands.",
+      "visual_mechanisms": [
+        "large cutout coupe glass crossing dark-to-cream section boundaries",
+        "caustic-like light across textured light surface and amber darkness",
+        "angled editorial counter photography that overlaps adjacent scenes",
+        "asymmetric wide images plus smaller cocktail/bottle fragments in QUIET LIGHT and A MOMENT",
+        "nonuniform entrance-led access composition and independently reworked mobile layout"
+      ],
+      "why_selected": [
+        {
+          "statement": "The owner selected the original B direction (２枚目の方がいいね), then rejected an overhauled full mock for losing the glass and refracted-light hierarchy",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "A revised concept preserving the hero received 良いです, but first HTML attempt was called ちょっとありきたりかな",
+          "basis": "owner_feedback"
+        },
+        {
+          "statement": "After v2 rewrote only the repetitive lower structure, owner explicitly said これを成功例とします",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Protecting original bold hero geometry while redesigning just weak lower sections illustrates a repeatable art-direction review workflow, not a transferable template",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Changing the hero glass position and refracted light while polishing the page, despite positive owner feedback",
+        "Converting irregular editorial layers to generic left-right or horizontal photo bands",
+        "Claiming technical QA means aesthetic fidelity",
+        "Flattening intersecting cutout photos into ordinary background panels during HTML implementation",
+        "Using cropped AI-generated site imagery as authentic, high-resolution photographs of a real business",
+        "Reusing the original black-amber-cream/glass scene as a generic luxury-bar template"
+      ],
+      "not_to_copy": [
+        "BAR N name, generated images, signs and unverified physical details",
+        "specific giant coupe-glass pose and refraction pattern",
+        "exact collage coordinates, typography and color palette",
+        "unverified navigation/map/venue copy"
+      ],
+      "implementation_gap": "Approved Second Root study from local HTML/CSS/JS v2, tested in Chromium at nine widths; no real merchant imagery or permissions, commercial content verification, Next.js deployment, Safari/Firefox, or accessibility/performance testing.",
+      "evidence_ref": "design-library/success-cases/CP-011-BAR-N-GLASS-SILENCE.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Six cases have local HTML PoCs; four remain concept/image-only; none are verified live production websites",
+    "Seven cases have local HTML PoCs; four remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
