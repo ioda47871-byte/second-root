@@ -189,6 +189,26 @@
       "mobile_full_png_sha256": "dd4b1cf113c1b09ab45514b36f6bcd7fa11cf675f5464741f9640b3ac88038d5",
       "local_poc_archive_sha256": "e47e79fb882f3d5caec9de153552a56f85392020508f163f1d72ab803a36cb55",
       "success_case_archive_sha256": "db741840c31b79b8e1582d99b7c39797a6a9d260f6718eabba89541c58dd873d"
+    },
+    {
+      "id": "CP-012",
+      "title": "Admy — ONE OF A KIND / Mineral Specimen Editorial",
+      "status": "owner_selected_research_design_success",
+      "source_kind": "chat_generated_design_concept_image",
+      "category": "natural_stone_handmade_accessories",
+      "view": "static_desktop_style_full_page_concept_only",
+      "owner_selected_at": "2026-10-27",
+      "design_approval_scope": "second_root_research_concept_only",
+      "official_client_work": false,
+      "merchant_authorized": false,
+      "website_deployed": false,
+      "nextjs_build_verified": false,
+      "html_css_impl_verified": false,
+      "mobile_web_impl_verified": false,
+      "image_asset_uploaded_to_github": false,
+      "concept_png_sha256": "b9309e3d4d4226abd3b2400fb079c6ecdd592874679f592d1b5e91ecfe672176",
+      "concept_dimensions_px": "793x1983",
+      "success_case_archive_sha256": "7fa174c2e341c009c82124208ec8624981e84b14df7e21970a25fadb5d9323f8"
     }
   ],
   "policy": {
@@ -197,6 +217,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original PNG/ZIP stored in ChatGPT conversation with SHA-256; GitHub has CP-001..003 preview WebP assets and CP-004..011 research metadata only, not image/HTML binaries."
+    "source_master_assets": "Original approved images and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..012 research metadata only, not the latter cases' image/source binaries."
   }
 }
