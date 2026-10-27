@@ -1,6 +1,6 @@
 # Second Root | 成功デザイン研究事例
 
-**2026-10-27 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. の7例を登録しました。
+**2026-10-27 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. / 整体院 Go. の8例を登録しました。
 
 > **画像をテンプレートとして使い回さない。** 学習対象は、各店舗の特徴を視覚構造へ変換する考え方、画像・文字・余白・重なりの分析と実装・レビュー手順です。
 
@@ -14,11 +14,12 @@
 | [CP-006](CP-006-Melon-de-Mille.md) | Melon de Mille / CUT & STACK | **B案のブラッシュアップ版を研究成功デザインとして承認**。画像のみ（HTML実装未実施）、実店舗公認ではない。画像原本は会話側保管。 | [研究記録](CP-006-Melon-de-Mille.md) |
 
 | [CP-007](CP-007-ORGN-SEAM-CUT.md) | ORGN. / SEAM / CUT Editorial v1 | **ヘアサロン×古着リメイクの初の非飲食系研究成功例として採用**。ローカルHTML PoC、実店舗の公認・公開ではない。原本は会話アーカイブで保管。 | [研究記録](CP-007-ORGN-SEAM-CUT.md) |
+| [CP-008](CP-008-Seitai-Go-PAUSE.md) | 整体院 Go. / PAUSE / GO | **研究用のデザイン画像として選定**。初稿・失敗した緑基調案・承認案を保存。HTML/CSS実装は未実施、店舗公認ではない。 | [研究記録](CP-008-Seitai-Go-PAUSE.md) |
 
 ## 境界と検証
 - このフォルダは**研究事例（採用済みの構図研究）**。既存の `design-library/research/v02`（40件）や `v03`（40候補）は変更せず、80件の参考候補件数にも足さない。
-- CP-001〜003は閲覧用WebP画像をGitHubに保存。CP-004〜007は研究記録とSHA-256をGitHubに保存し、元画像・ソースZIPはChatGPT会話側のアーカイブに保管。GitHubに画像をアップロード済みとは扱わない。
-- Mond/Sissiはコンセプト画像。harebare・Hamsa・ORGN.はHTML/CSS/JS実装済みの研究用PoCで、実店舗公認ではない。Melon de Milleは**画像コンセプトのみ採用**で、Web実装は未着手。なごやビーンズv4はHTML/CSS/JSのPoCを以前制作したが、**Next.js移植、実公開、実店舗による許諾は未実施**。
+- CP-001〜003は閲覧用WebP画像をGitHubに保存。CP-004〜008は研究記録とSHA-256をGitHubに保存し、元画像・ソースZIPはChatGPT会話側のアーカイブに保管。GitHubに画像をアップロード済みとは扱わない。
+- Mond/Sissiはコンセプト画像。harebare・Hamsa・ORGN.はHTML/CSS/JS実装済みの研究用PoCで、実店舗公認ではない。Melon de Milleと整体院 Go.は**画像コンセプトのみ採用**で、Web実装は未着手。なごやビーンズv4はHTML/CSS/JSのPoCを以前制作したが、**Next.js移植、実公開、実店舗による許諾は未実施**。
 - 実店舗の商標、写真、営業時間、価格などの事実が正しいか、公開前に確認すること。
 - 他店へ写真・ロゴ・文章・具体的な構図を転用しない。使用する技法は、その店の特徴に合わせて再設計する。
 - 本PRは研究ライブラリへの追加のみ。**main、Vercel、本番DB、営業AI、CSS許可表には変更なし**。
