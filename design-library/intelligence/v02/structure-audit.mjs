@@ -50,10 +50,11 @@ export function audit(experiment) {
   if (experiment.comparison_basis?.qualitative_only !== true) {
     errors.push("Previous 9 cases cannot be assigned numeric structural similarity without section maps");
   }
-  const options = experiment.proposals || [];
+  const options = Array.isArray(experiment.proposals) ? experiment.proposals : [];
   if (options.length < 3) errors.push("At least 3 alternatives required before image generation");
   if (new Set(options.map(p => p.id)).size !== options.length) errors.push("duplicate proposal IDs");
   for (const p of options) {
+    if (!p || typeof p !== "object") { errors.push("invalid proposal entry"); continue; }
     if (!p.id || !p.core_device || !p.first_screen?.composition || !p.accessibility || !p.mobile_strategy) {
       errors.push((p.id || "unknown") + ": missing core concept or mobile/a11y planning");
       continue;
@@ -79,6 +80,7 @@ export function audit(experiment) {
     }
   }
   for (let i = 0; i < options.length; i++) for (let j = i + 1; j < options.length; j++) {
+    if (!Array.isArray(options[i]?.sections) || !Array.isArray(options[j]?.sections) || !options[i].hero_structure || !options[j].hero_structure) continue;
     const score = structuralSimilarity(options[i], options[j]);
     const verdict = score >= 0.75 ? "probable_structural_repeat" : score >= 0.5 ? "needs_human_comparison" : "distinct_by_declared_structure";
     comparisons.push({a:options[i].id,b:options[j].id,score,verdict});
