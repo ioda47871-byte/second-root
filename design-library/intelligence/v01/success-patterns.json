@@ -522,11 +522,62 @@
       ],
       "implementation_gap": "Approved Second Root study from local HTML/CSS/JS v2, tested in Chromium at nine widths; no real merchant imagery or permissions, commercial content verification, Next.js deployment, Safari/Firefox, or accessibility/performance testing.",
       "evidence_ref": "design-library/success-cases/CP-011-BAR-N-GLASS-SILENCE.md"
+    },
+    {
+      "id": "CP-012",
+      "name": "Admy — ONE OF A KIND / Mineral Specimen Editorial",
+      "category": "natural_stone_handmade_accessories",
+      "owner_selection": "owner_approved_initial_full_image_concept_only",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "natural stones with uneven crystalline facets",
+        "delicate metal findings and handmade accessories",
+        "ametrine-like violet and amber transparent mineral tones",
+        "mineral specimen study and macro closeups"
+      ],
+      "structural_translation": "Translate the irregular geometry, translucence and chromatic facets of a handmade stone accessory into an editorial page with an oversized jewelry hero, specimen-like annotations, macro mineral photographs, precision craft imagery and asymmetrical collection collage instead of generic alternating product cards.",
+      "visual_mechanisms": [
+        "oversized pendant overlapping a luminous mineral background and airy logo zone",
+        "large unpolished rock macro and specimen labels as visual anchors",
+        "fine observation lines and crystal schematic near irregular purple mineral collage",
+        "warm craft process close-up contrasted with open paper space",
+        "high/low visual density between jewel macro images and understated brand story"
+      ],
+      "why_selected": [
+        {
+          "statement": "User viewed the initial Admy full-length static concept image and said 成功でいいと思います",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Natural stones' irregular light and crystalline geometry organize the visual narrative across product, material and craft scenes",
+          "basis": "design_analysis"
+        },
+        {
+          "statement": "One owner-approved static image does not establish mobile responsiveness or functioning HTML quality",
+          "basis": "implementation_limit"
+        }
+      ],
+      "known_failure_modes": [
+        "Flattening the oversized gem hero into an ordinary centered e-commerce product listing",
+        "Turning material sketches and natural crystal irregularity into ornamental overlays on standard side-by-side photo/text sections",
+        "Claiming a tall generated mockup constitutes a working mobile/desktop website",
+        "Presenting generated jewelry pieces as genuine Admy product inventory",
+        "Using study image crops as high-resolution original product photography",
+        "Transplanting purple-and-gold gemstones or precise collage geometry into another shop"
+      ],
+      "not_to_copy": [
+        "Admy name, slogan, logos and generated jewelry design",
+        "exact gemstone silhouette, purple/gold colors and glints",
+        "identical photo collage, diagram positions, hero layout and writing",
+        "unverified product and brand claims"
+      ],
+      "implementation_gap": "One owner-approved 793x1983 static FULL image. No HTML/CSS/JS implementation, interactive controls, responsive mobile design, browser rendering, shop permissions or public deployment.",
+      "evidence_ref": "design-library/success-cases/CP-012-Admy-ONE-OF-A-KIND.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Seven cases have local HTML PoCs; four remain concept/image-only; none are verified live production websites",
+    "Seven cases have local HTML PoCs; five remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
