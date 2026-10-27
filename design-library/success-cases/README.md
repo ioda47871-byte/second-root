@@ -9,7 +9,6 @@
 | [CP-001](CP-001-Mond.md) | Mond / The Living Archive | チャットで高評価だった成功参考案。実装承認ではない | [WebP](assets/CP-001_Mond.webp) |
 | [CP-002](CP-002-Sissi.md) | Sissi / Flower is Art | A案が好評価だった成功参考案。実装承認ではない | [WebP](assets/CP-002_Sissi.webp) |
 | [CP-003](CP-003-NagoyaBeans-v4.md) | なごやビーンズ / Editorial Roast Atlas v4 | **2026-10-27にデザインv4を承認**。公開・店舗承認ではない | [PC](assets/CP-003_NagoyaBeans_v4_desktop.webp) / [スマホ](assets/CP-003_NagoyaBeans_v4_mobile.webp) |
-
 | [CP-004](CP-004-Harebare.md) | harebare / Spinning Beigoma Editorial v1 | **研究用成功事例としてユーザーが保存を指示**。公開・制作依頼の承認ではない。画像原本は会話内保管、GitHubはメタデータとSHA-256を保存。 | [記録](CP-004-Harebare.md) |
 
 ## 境界と検証
