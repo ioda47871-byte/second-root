@@ -281,12 +281,13 @@
     "source_sha256": "5e216a94889fd03f9eeb56d4ae598d7f5cd0389cb169c79118bff5e2ee57fbc7",
     "desktop_png_sha256": "755adc513dac53bed1e437cb4dd60a7de0580ec57bd9b300fd7909dd9a9ad645",
     "mobile_png_sha256": "b66081b4957499a98859b9eb4822f85d859324bca7a693d28ab0f6b3d320906e",
-    "verification_sha256": "d101f5fe42c738cb2adbed4611ca5882c1df422071dce70b3980181c545ad644",
+    "verification_sha256": "b9ea15d5d63c32b6f041faeffe9c05446b11e709a5f193ea4f601c33716e1893",
     "archive_name": "secondroot_PT02_interactive_bookshelf_poc_v1.zip",
-    "archive_sha256": "843edd428735a4f76ea89adce2d8b10964682e38c352278e5b4c486cee4615eb",
+    "archive_sha256": "407512d9f9551369f3a5354ce21fda72e513e4a7cdcfeacc82fdda0d936a27d0",
     "github_html_source_uploaded": false,
     "owner_visual_acceptance": "pending",
     "website_deployment": "not_done",
-    "real_shop_authorization": false
+    "real_shop_authorization": false,
+    "book_selection_verified": "all_7_spines_plus_destination_anchors_at_9_viewports"
   }
 }
