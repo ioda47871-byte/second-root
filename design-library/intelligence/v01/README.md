@@ -2,13 +2,13 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **nine owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **ten owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
 | Path | Role | Current status |
 | --- | --- | --- |
-| [success-patterns.json](success-patterns.json) | CP-001–009: shop characteristics → composition principles → what was selected/rejected → implementation gaps | Nine documented study cases; analysis interpretation, not scientific proof |
+| [success-patterns.json](success-patterns.json) | CP-001–010: shop characteristics → composition principles → what was selected/rejected → implementation gaps | Ten documented study cases; analysis interpretation, not scientific proof |
 | [review-queue.json](review-queue.json) | Source-traceable priority list of 10 existing AI-reviewed screenshots and 10 new audits | **Not** 20 completed human reviews |
 | [validate.mjs](validate.mjs) | Offline, read-only cross-check against case registry, original v03 candidate source URLs and pending owner review status | May be run with `node design-library/intelligence/v01/validate.mjs` |
 
@@ -17,7 +17,7 @@ This folder organizes **nine owner-selected design study cases** and **a queue o
 - v02 reference library: **40** historical entries with mixed review labels, **none attributable to a human review**.
 - v03 additive candidate set: **40** entries, page text or gallery metadata checked; text alone does not establish how a page looks.
 - v03 AI viewport evidence: **10** specific references, 1440px + 390px notes, recorded as AI observations; **owner decision pending**.
-- Second Root study successes: **9** case IDs, **5 with local HTML/CSS/JS PoCs** (CP-003/004/005/007/009), **4 concept/image only** (CP-001/002/006/008); **no production deployment is implied**.
+- Second Root study successes: **10** case IDs, **6 with local HTML/CSS/JS PoCs** (CP-003/004/005/007/009/010), **4 concept/image only** (CP-001/002/006/008); **no production deployment is implied**.
 - This v0.1 pilot prioritizes **20 depth reviews**, but it does **not** automatically accept or score any design reference.
 
 ## How to use this in a new design experiment
@@ -51,4 +51,4 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 
 ## v0.2 — Structure First（新規研究）
 
-[構造を先に3案発明する手順と、静的な重複チェック](../v02/README.md) を試験導入。従来の研究事例9件は参照資料であり、自動的に構図を再利用するわけではない。v0.2は研究専用・未承認で、制作・営業・公開の生成器にはまだつながっていない。
+[構造を先に3案発明する手順と、静的な重複チェック](../v02/README.md) を試験導入。従来の研究事例10件は参照資料であり、自動的に構図を再利用するわけではない。v0.2は研究専用・未承認で、制作・営業・公開の生成器にはまだつながっていない。
