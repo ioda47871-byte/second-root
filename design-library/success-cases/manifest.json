@@ -84,6 +84,24 @@
       "selected_polished_png_sha256": "996b4671da84b7a1a9fe69b5322f7652ff73aa69ec215c7958413805e6ca1921",
       "preview_webp_sha256": "523611be45708f09ec7dd216abd49346826d93c275494e82b965b69f3f73f0cc",
       "source_archive_sha256": "09070c9c7957eca876d9eebfe737bf021613d92161d5db4e8df474841b9737f7"
+    },
+    {
+      "id": "CP-007",
+      "title": "ORGN. — SEAM / CUT Editorial v1",
+      "status": "owner_selected_research_success_example",
+      "source_kind": "chat_generated_design_and_poc",
+      "view": "html_css_js_poc",
+      "design_approval_scope": "second_root_research_success_case_only",
+      "official_client_work": false,
+      "website_deployed": false,
+      "nextjs_build_verified": false,
+      "image_asset_uploaded_to_github": false,
+      "desktop_original_png_sha256": "2d3083780691b00fb73127ee74370d34b34faa7e8d46b997da36a276b4c69d93",
+      "mobile_original_png_sha256": "c61bdfb84f5c399927364bad2493768d8b48808a0a2481cf63f422f296ea5e72",
+      "hero_comparison_sha256": "49667349420b83d19bbe9f29fd5bce86fb586a4fb90b8a67fdba920ae2db07c2",
+      "preview_webp_sha256": "1290db9a80a19a18d47fafa0707727f2c22942973958f9de8d1e80883540051b",
+      "source_archive_sha256": "424294a50e7f54f5e0096be9a9f6b6cbdf733f19fe5efd0af81902bf35e0a16f",
+      "success_case_archive_sha256": "094aa62835123dc60918b62bda785b21ae53f65abd6bb44fe4784f249cbf338e"
     }
   ],
   "policy": {
@@ -92,6 +110,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original PNG/ZIP preserved in ChatGPT conversation archives with SHA-256; GitHub currently contains CP-001..003 preview WebP and CP-004..006 metadata only."
+    "source_master_assets": "Original PNG/ZIP archived in the ChatGPT conversation with SHA-256; GitHub has CP-001..003 preview WebPs and CP-004..007 research metadata only (not image binaries)."
   }
 }
