@@ -53,3 +53,11 @@ test("multiset ratio handles repeated scene types without treating it as a set",
   assert.equal(multisetOverlap(["a","a","b"],["a","b","b"]), 0.5);
   assert.equal(multisetOverlap([],[]),1);
 });
+
+test("malformed proposal yields an error rather than terminating audit", () => {
+  const bad = structuredClone(specimen);
+  bad.proposals[0].sections = undefined;
+  const check = audit(bad);
+  assert.equal(check.outcome, "invalid");
+  assert.ok(check.errors.some(x => x.includes("fewer than four structural scenes")));
+});
