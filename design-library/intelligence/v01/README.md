@@ -48,3 +48,7 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 - Do not promote the selected cases to templates. Stored descriptions are **design research data**, not instructions or evidence of a client contract.
 - No changes to `main`, Supabase, Vercel, sales automations, or `lib/design-agent` in this work.
 - This is version 0.1 **in a review branch**, not a connected Supabase or production generation database.
+
+## v0.2 — Structure First（新規研究）
+
+[構造を先に3案発明する手順と、静的な重複チェック](../v02/README.md) を試験導入。従来の研究事例9件は参照資料であり、自動的に構図を再利用するわけではない。v0.2は研究専用・未承認で、制作・営業・公開の生成器にはまだつながっていない。
