@@ -56,7 +56,7 @@ export function audit(experiment) {
     evidence?.proposal_id === experiment.chosen_proposal_id &&
     typeof evidence?.owner_quote === "string" && evidence.owner_quote.trim().length > 0 &&
     typeof evidence?.selected_version === "string" && evidence.selected_version.trim().length > 0 &&
-    /^CP-\\d{3}$/.test(evidence?.success_case_id || "") &&
+    /^CP-[0-9]{3}$/.test(evidence?.success_case_id || "") &&
     typeof evidence?.success_case_record === "string" && evidence.success_case_record.startsWith("design-library/success-cases/" + evidence.success_case_id + "-") && evidence.success_case_record.endsWith(".md");
   if (!experiment.research_only || !(pending || approvedResearch)) {
     errors.push("Experimental proposals must remain research-only and need recorded owner approval evidence before selection");
