@@ -412,11 +412,66 @@
       ],
       "implementation_gap": "Local HTML/CSS/JS PoC checked at six viewport widths; no live deployment, Next.js build, true merchant images/approval, or high-resolution replacement for all crops.",
       "evidence_ref": "design-library/success-cases/CP-009-MameMame-STITCH.md"
+    },
+    {
+      "id": "CP-010",
+      "name": "ぺいぱばっくらいたー — 本棚が地図になる PT-02 v3",
+      "category": "bookshop_kamishibai",
+      "owner_selection": "owner_approved_v3_after_v2_visual_quality_feedback",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "bookshelves and physical book spines",
+        "kamishibai theater",
+        "quiet reading spaces",
+        "bookstore paper annotations"
+      ],
+      "structural_translation": "Treat a bookshelf as the editorial entrance and visual navigation cue; let spines, notes, kamishibai scene and open quiet space produce varied page chapters. Protect the preferred visual grammar even when adding interactive affordances.",
+      "visual_mechanisms": [
+        "warm atmospheric photographic bookshelf hero",
+        "floating textured paper annotations over rich wood and amber light",
+        "tactile varied book-cover photo strip with independent clickable hotspots",
+        "distinct kamishibai and reading-room scenes",
+        "separate responsive mobile photo focus, readable copy and navigable bookshelf"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner chose panel B from the three-concept comparison as the desired visual structure",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner rejected a changed one-page illustration and later a functional yet aesthetically worse bookshelf-control PoC",
+          "basis": "owner_rejection"
+        },
+        {
+          "statement": "Owner considered v2 design good but materials cheap, and later approved texture-adjusted v3 as a success",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Successful changes protected overall design while improving separate assets, paper texture, spine realism, and interactions",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Overemphasizing mechanical novelty so that original photo atmosphere and typography disappear",
+        "Changing the visual reference into a generic photograph-and-title full page LP",
+        "Promoting an interaction test to design success without owner feedback",
+        "Uniform rectangular CSS book-spine cards creating an artificial flat aesthetic",
+        "Claiming cropped generative design art has become independent licensed high-resolution shop photography",
+        "Treating static mobile mockups as proof of fully responsive implementation"
+      ],
+      "not_to_copy": [
+        "original shop name or fictional/generated photographs and iconography",
+        "exact bookshelf/photo/cat/paper-note arrangement",
+        "literal book-spine artwork and overlay positions",
+        "specific warm palette and copy as a universal template"
+      ],
+      "implementation_gap": "Local HTML/CSS/JS PoC v3 approved as a research success. Nine Chromium viewport checks reported; materials still rely on cropped AI-generated imagery; no merchant license, real shop facts, Next.js build, public deployment or live-device/browser QA.",
+      "evidence_ref": "design-library/success-cases/CP-010-PaperTheater-PT02.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Five cases have local HTML PoCs; four remain concept/image-only; none are verified live production websites",
+    "Six cases have local HTML PoCs; four remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
