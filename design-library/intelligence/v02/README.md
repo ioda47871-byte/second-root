@@ -112,7 +112,7 @@ node --test design-library/intelligence/v02/structure-audit.test.mjs
 
 - [CP-015 imairo. 初稿（identity PASSのみ）](experiments/CP015-imairo-v1-identity.json)：屋号・業種の一致。美的評価は未承認。
 - [CP-015 cobaco画像（identity REJECT）](experiments/CP015-cobaco-identity-rejected.json)：店名も業種も不一致。別店舗として成功数に含めない。
-- [実行テスト](identity-audit.test.mjs)：CP-014 KOALAのようなすり替わり、未確認画像、画像ハッシュ相違、別店舗名混入を検出する9回帰テスト。ローカルNode 22にて9/9 PASS（本番CIの結果ではない）。
+- [実行テスト](identity-audit.test.mjs)：CP-014 KOALAのようなすり替わり、未確認画像、画像ハッシュ相違、別店舗名混入を検出する10回帰テスト。ローカルNode 22にて10/10 PASS（本番CIの結果ではない）。
 
 ```bash
 node --test design-library/intelligence/v02/identity-audit.test.mjs
