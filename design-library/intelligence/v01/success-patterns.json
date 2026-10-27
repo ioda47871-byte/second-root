@@ -269,11 +269,55 @@
       ],
       "implementation_gap": "No HTML/CSS PoC; mobile composition and real product validation pending",
       "evidence_ref": "design-library/success-cases/CP-006-Melon-de-Mille.md"
+    },
+    {
+      "id": "CP-007",
+      "name": "ORGN. — SEAM / CUT Editorial",
+      "category": "salon_vintage_remake",
+      "owner_selection": "owner_approved_research_success",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "hair cutting lines",
+        "garment stitching and remake seams",
+        "reworked vintage fabric",
+        "salon-fashion crossover"
+      ],
+      "structural_translation": "Translate the shared notion of cutting and sewing into visual strokes and editorial seams linking distinct hair portraits, fabric details and shop sections; derive a unique layout rather than copying another brand",
+      "visual_mechanisms": [
+        "separate hair and garment photo planes connected by fine graphic seams",
+        "angular patchwork and asymmetrical collage",
+        "real independent HTML typography and layered SVG strokes",
+        "different density of HAIR, REMAKE, STYLE and BOOK sections"
+      ],
+      "why_selected": [
+        {
+          "statement": "User explicitly said 成功例とします about the ORGN. SEAM/CUT v1 local HTML PoC",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Shop-specific actions (haircut and apparel remake) provide a coherent structural motif, not an unrelated visual decoration",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Reusing giant brand-name typography from the Mond concept as the primary pattern instead of finding this salon's own visual principle",
+        "Substituting generic two-column salon image + text sections for the cut-and-stitch editorial structure",
+        "Mistaking AI-generated portraits or atelier interiors for authentic store/client photography",
+        "Assuming experimental CSS overlays work in the constrained production generator without verification"
+      ],
+      "not_to_copy": [
+        "ORGN. name, original branding and copy",
+        "exact thread paths or patchwork collage",
+        "AI-generated fashion model images or salon interiors",
+        "distinctive colors and typographic arrangement"
+      ],
+      "implementation_gap": "Local HTML/CSS/JS PoC only; browser checks on six widths reported, but Next.js, public deployment, real photography, accessibility and merchant review remain pending",
+      "evidence_ref": "design-library/success-cases/CP-007-ORGN-SEAM-CUT.md"
     }
   ],
   "limitations": [
-    "These cases are concentrated in food and floral categories",
-    "Only three cases have local HTML PoCs; none are verified live production websites",
+    "Six initial cases are concentrated in food and floral categories; the seventh ORGN. is the first accepted non-food salon/fashion study",
+    "Four cases have local HTML PoCs; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
