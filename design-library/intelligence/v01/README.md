@@ -2,13 +2,13 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **eight owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **nine owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
 | Path | Role | Current status |
 | --- | --- | --- |
-| [success-patterns.json](success-patterns.json) | CP-001–008: shop characteristics → composition principles → what was selected/rejected → implementation gaps | Eight documented study cases; analysis interpretation, not scientific proof |
+| [success-patterns.json](success-patterns.json) | CP-001–009: shop characteristics → composition principles → what was selected/rejected → implementation gaps | Nine documented study cases; analysis interpretation, not scientific proof |
 | [review-queue.json](review-queue.json) | Source-traceable priority list of 10 existing AI-reviewed screenshots and 10 new audits | **Not** 20 completed human reviews |
 | [validate.mjs](validate.mjs) | Offline, read-only cross-check against case registry, original v03 candidate source URLs and pending owner review status | May be run with `node design-library/intelligence/v01/validate.mjs` |
 
@@ -17,7 +17,7 @@ This folder organizes **eight owner-selected design study cases** and **a queue 
 - v02 reference library: **40** historical entries with mixed review labels, **none attributable to a human review**.
 - v03 additive candidate set: **40** entries, page text or gallery metadata checked; text alone does not establish how a page looks.
 - v03 AI viewport evidence: **10** specific references, 1440px + 390px notes, recorded as AI observations; **owner decision pending**.
-- Second Root study successes: **8** case IDs, **4 with local HTML/CSS/JS PoCs** (CP-003/004/005/007), **4 concept/image only** (CP-001/002/006/008); **no production deployment is implied**.
+- Second Root study successes: **9** case IDs, **5 with local HTML/CSS/JS PoCs** (CP-003/004/005/007/009), **4 concept/image only** (CP-001/002/006/008); **no production deployment is implied**.
 - This v0.1 pilot prioritizes **20 depth reviews**, but it does **not** automatically accept or score any design reference.
 
 ## How to use this in a new design experiment
@@ -39,7 +39,7 @@ If a shop has a verified signature material with linear grain, try generating a 
 
 **Phase B (next 10):** perform source-specific 1440/390 visual captures and explicit strengths, weaknesses, mobile differences and rights notes for new candidates. Concentrates on salons, wellness, beauty and restaurant material to address the current overemphasis on food.
 
-The first **non-food salon/fashion shop ORGN.** has an owner-selected concept and local browser PoC (CP-007); the wellness study Seitai Go (CP-008) has an owner-selected static design, but no functioning site. Next test the Go design in an independently rendered browser and repeat the workflow in a second non-food shop before claiming transferability. Only after comparing with owner feedback should any generalized design process be proposed for production.
+Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, salon/fashion) and 豆＊豆 (CP-009, handmade crafts). The wellness study Seitai Go (CP-008) has a selected static design but no functioning site. More businesses and live, owner-approved implementations are needed before generalizing this design workflow. Only after comparing with owner feedback should any generalized design process be proposed for production.
 
 ## Immutable safety boundaries
 
