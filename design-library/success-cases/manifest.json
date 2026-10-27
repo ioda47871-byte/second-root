@@ -38,6 +38,19 @@
       "source_kind": "chat_generated_poc_screenshot",
       "view": "html_css_js_poc",
       "original_source_archive_sha256": "7f2f14769d196311d22e629097371c67aa2dd1c2b205561b0178279cebe6ff9b"
+    },
+    {
+      "id": "CP-004",
+      "title": "harebare — Spinning Beigoma Editorial v1",
+      "status": "owner_selected_research_success_example",
+      "source_kind": "chat_generated_poc_screenshot",
+      "view": "html_css_js_poc",
+      "image_asset_uploaded_to_github": false,
+      "desktop_original_png_sha256": "eb41b8a59a217259ef9010cf604616f63f765a6c22fbbca180cab0e8c7246849",
+      "mobile_original_png_sha256": "55701641e04f290086efb0d79eb246228b4de1424d529eabe09122ed510a9df5",
+      "source_archive_sha256": "889d6fba877520eb1a78ee14da05e9d0a0d444f692eb38895b4273311e05a3b6",
+      "official_client_work": false,
+      "design_approval_scope": "research_selection_only"
     }
   ],
   "policy": {
