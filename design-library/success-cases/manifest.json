@@ -102,6 +102,25 @@
       "preview_webp_sha256": "1290db9a80a19a18d47fafa0707727f2c22942973958f9de8d1e80883540051b",
       "source_archive_sha256": "424294a50e7f54f5e0096be9a9f6b6cbdf733f19fe5efd0af81902bf35e0a16f",
       "success_case_archive_sha256": "094aa62835123dc60918b62bda785b21ae53f65abd6bb44fe4784f249cbf338e"
+    },
+    {
+      "id": "CP-008",
+      "title": "整体院 Go. — PAUSE / GO Editorial (revised approved concept)",
+      "status": "owner_selected_research_design_success",
+      "source_kind": "chat_generated_concept_image",
+      "view": "concept_art_desktop_mobile_mockup_only",
+      "category": "wellness_bodywork",
+      "official_client_work": false,
+      "website_deployed": false,
+      "html_css_impl_verified": false,
+      "nextjs_build_verified": false,
+      "design_approval_scope": "owner_selected_research_concept_only",
+      "image_asset_uploaded_to_github": false,
+      "first_approved_direction_png_sha256": "0530a7bb4971fab84562dbc3160e88eb2b03d1ed389bd46e3d6cc3f027a54651",
+      "rejected_green_revision_png_sha256": "016cdd7c05c224fc95e7370e46ff429800a28f61422f239587fa8c59b649dbb0",
+      "selected_revised_png_sha256": "bb861c745f45b7cac87b1c74b59e05adbbf069e7c70cdbbf149e3c3c8346d63f",
+      "preview_webp_sha256": "af7cadf314888551bc16dee3204904b29b3654b672b5c51029390bc0615d25d3",
+      "success_case_archive_sha256": "bd2a12763c0b02964339b8539fae9bf62f6b5868143e16305bd494f0c965efb9"
     }
   ],
   "policy": {
@@ -110,6 +129,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original PNG/ZIP archived in the ChatGPT conversation with SHA-256; GitHub has CP-001..003 preview WebPs and CP-004..007 research metadata only (not image binaries)."
+    "source_master_assets": "Original PNG/ZIP archived in ChatGPT conversation with SHA-256; GitHub contains CP-001..003 preview WebP and CP-004..008 only research metadata, not image binaries."
   }
 }
