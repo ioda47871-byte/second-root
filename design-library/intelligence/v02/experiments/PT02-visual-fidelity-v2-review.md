@@ -29,3 +29,8 @@
 - スマホ FULL PNG SHA-256: `634a8f4e97931e8b77471c87bc82dbbde0ff34eb3f02ae04164c1b85dbd6a8f5`
 
 原本HTML/画像/検証ログはChatGPT会話側のZIPで保管し、GitHubには研究記録とハッシュ値のみ記録。**CP-010未登録**、`main`・本番Vercel・Supabase・営業AI・CSS許可表・生成器に変更なし。
+
+
+## 後日判定（2026-10-27）
+
+v2の見た目は「チープだけどデザインはいい」と評価され、構図を保ったv3質感改善へ進んだ。そのv3は**CP-010として研究成功承認**された。v2単独をCP-010と誤認せず、[v3採用記録](../../../success-cases/CP-010-PaperTheater-PT02.md)を正式版とする。
