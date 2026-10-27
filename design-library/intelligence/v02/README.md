@@ -63,5 +63,5 @@ node --test design-library/intelligence/v02/structure-audit.test.mjs
 - 本ファイル群は専用研究ブランチの実験ファイル。既存参考候補80件、成功研究9件、審査待ち20件のラベルは変更しない。
 - 既存の`lib/design-agent`、プロンプト、CSS許可表、ワーカー・営業AI・Supabase・Vercel・本番サイトに**接続しない**。
 - ブランドのロゴ・画像・既存レイアウトの模倣や流用をしない。
-- ユーザー選定前に`selected_proposal_id`を勝手に記入しない。今回の案はすべて**提案段階**。
+- ユーザー選定前に`chosen_proposal_id`を勝手に記入しない。今回の案はすべて**提案段階**。
 - 先に新規構成のワイヤーを3つ見比べ、その後にビジュアル制作へ進む。
