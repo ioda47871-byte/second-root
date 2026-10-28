@@ -164,3 +164,9 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-021｜TERACE PICK / COMPOSE v1（2026-10-28研究成功）
 
 [成功記録](../../success-cases/CP-021-TERACE-PICK-COMPOSE-v1.md)／[改良v2と初稿比較・不採用原因](experiments/CP021-TERACE-ACRYLIC-COMPOSE-v1.md)。ユーザーから「失敗したら初稿を成功例に」と事前指示あり。v2は彩度・反射の変化が中心で情報設計の改善に至らず**不採用**、v1を**20件目の研究成功例**に登録。**20件＝HTML PoC9件＋静止画像11件**。TERACEの実店舗/公式サイト未発見の最終判定はSNSプロフィール外部リンク未確認のため保留。
+
+## CP-022｜Harissy — CRUMB / FRACTURE v1（2026-10-28初稿・評価待ち）
+
+[初稿研究記録](experiments/CP022-Harissy-CRUMB-MAP-v1.md)。名古屋名東区のオールドファッションドーナツ専門店Harissyを題材に、生地の亀裂と破片を情報の流れとして描く1536×1024の非公式静止デザイン画像。**初稿・オーナー評価待ち、成功数は20件のまま**。公式独立Web/本人ECは複数検索で未発見だが**Instagramプロフィール外部リンクは未検証**なので、正式なWebなし営業候補はHOLD。写真・商品・コピーはAI生成研究用、本人承認や公開なし。
+
+**候補選定の反例:** Instagramしか掲載されていないと見えたCRUISE PLANTSに本人名義のメルカリShopsが見つかったため、公式ネットショップなし条件に従い除外。maminにはBASEが存在するため除外。この確認を省いて「Webなし」と認定しない。研究成功20件、参考候補80件、CP-014未採用は維持。
