@@ -170,3 +170,11 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 [初稿研究記録](experiments/CP022-Harissy-CRUMB-MAP-v1.md)。名古屋名東区のオールドファッションドーナツ専門店Harissyを題材に、生地の亀裂と破片を情報の流れとして描く1536×1024の非公式静止デザイン画像。**初稿・オーナー評価待ち、成功数は20件のまま**。公式独立Web/本人ECは複数検索で未発見だが**Instagramプロフィール外部リンクは未検証**なので、正式なWebなし営業候補はHOLD。写真・商品・コピーはAI生成研究用、本人承認や公開なし。
 
 **候補選定の反例:** Instagramしか掲載されていないと見えたCRUISE PLANTSに本人名義のメルカリShopsが見つかったため、公式ネットショップなし条件に従い除外。maminにはBASEが存在するため除外。この確認を省いて「Webなし」と認定しない。研究成功20件、参考候補80件、CP-014未採用は維持。
+
+## CP-022｜Harissy CRUMB / FRACTURE v1（2026-10-28研究成功）
+
+[採用事例](../../success-cases/CP-022-Harissy-CRUMB-FRACTURE-v1.md)／[初稿研究・身元調査](experiments/CP022-Harissy-CRUMB-MAP-v1.md)。ユーザー「成功例にする」により21件目の研究成功。ドーナツ断面の亀裂・クラムの散乱を構図にした静止画像。サイトなしの営業適格性はInstagramプロフィール未確認でHOLD。**成功21件（Web PoC9・画像のみ12）**。
+
+## CP-023｜BURGERS,INC FLIP THE SIGN v1（2026-10-28初稿、未採用）
+
+[研究初稿・サイト調査](experiments/CP023-BURGERS-INC-FLIP-SIGN-v1.md)。昼のバーガーと夜の80sバーの切替を、回転式両面看板として設計。写真を帯状に重ねず、中央のヒンジを2つの表情の境界にする。研究画像1枚のみで操作不能、ユーザー評価待ち。公式Web未発見だがリンク先未確認のため正式営業候補はHOLD。
