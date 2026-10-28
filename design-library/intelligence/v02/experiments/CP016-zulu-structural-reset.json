@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "experiment_id": "CP016_ZULU_STRUCTURAL_ALTERNATIVES_20261028",
+  "status": "research_only_owner_rejected_first_image_no_new_image_generated",
+  "research_only": true,
+  "subject": {
+    "display_name": "ズールー工作所",
+    "category": "metal_mobile_workshop",
+    "fact_scope": "Event-related mobile making activity previously researched; no permanent shop location, catalog, prices or rights inferred",
+    "rights_status": "AI generated conceptual image only; not merchant authorization"
+  },
+  "original_image_status": {
+    "owner_quote": "同じような構成になってきた",
+    "verdict": "REJECT_GENERIC_COMPOSITION",
+    "problem": "The opening resembles other projects despite a metal mobile: top horizontal nav, copy at left, full image with annotations, wavy scene divider, second photo band; changing object or palette did not change the skeleton."
+  },
+  "goal": "Invent completely different first-screen geometry, information movement and responsive strategy rather than decorate the common image hero and photo section.",
+  "protected_constraints": [
+    "not a template selected by color",
+    "no inferred permanent shop address, workshop schedule or product prices",
+    "reference image not promoted to success",
+    "physical balance, making process and material identity are inspiration, not actual inventory",
+    "visible how-to-contact only when source verified",
+    "full functional fallback without animation",
+    "do not imitate CP-015 table/notes interaction",
+    "must inspect desktop and mobile wireframes BEFORE image generation"
+  ],
+  "comparison_basis": {
+    "ref": "design-library/intelligence/v01/success-patterns.json",
+    "cases": "CP-001..015 excluding CP-014 pending",
+    "qualitative_only": true,
+    "reason": "Other cases lack a standardized common section map. This experiment only compares declared proposal structures, not visual similarity to each past design."
+  },
+  "proposals": [
+    {
+      "id": "ZK-01",
+      "name": "重さがレイアウトを決める / Counterweight Interface",
+      "core_device": "A central balance pivot spans the page; selecting an object changes how small content masses are positioned in the blank canvas, with stable non-moving text alternative.",
+      "hero_structure": "center_pivot_beam",
+      "navigation_model": "weight_balance_controls",
+      "reading_path": "pivot_to_counterweights_to_detail_to_materials_to_contact",
+      "interaction_model": "discrete_buttons_with_scroll_fallback",
+      "first_screen": {
+        "composition": "Not a photograph: an almost empty warm-white field with one long horizontal fine line, a single hanging dark disk on one side, and an offset small gold plate on the other; micro labels around the pivot, no left-copy/right-image split.",
+        "position_of_type": "The title and captions are subordinate to the structural device, not a large headline beside a hero photograph"
+      },
+      "sections": [
+        {
+          "id": "pivot",
+          "layout": "center_pivot_beam",
+          "role": "intro_and_choice",
+          "density": "low",
+          "info": "The visitor understands the studio premise through one balanced assembly, not a banner"
+        },
+        {
+          "id": "counterweight",
+          "layout": "differential_mass_positioning",
+          "role": "object_relations",
+          "density": "high",
+          "info": "Three distinct scale relationships; user may select a metal shape"
+        },
+        {
+          "id": "detail",
+          "layout": "single_selected_specimen",
+          "role": "object_look",
+          "density": "medium",
+          "info": "The selected piece gains a close-up and verified interpretation"
+        },
+        {
+          "id": "materials",
+          "layout": "material_weight_annotation",
+          "role": "materials_and_process",
+          "density": "high",
+          "info": "Material and craftsmanship notes, conditional on verified facts"
+        },
+        {
+          "id": "visit",
+          "layout": "quiet_horizontal_fact_sheet",
+          "role": "access_and_contact",
+          "density": "low",
+          "info": "Verified workshop/contact information, otherwise only official social link"
+        }
+      ],
+      "desktop_strategy": "A central balance pivot spans the page; selecting an object changes how small content masses are positioned in the blank canvas, with stable non-moving text alternative.",
+      "mobile_strategy": "Pivot becomes vertical with two touch-safe choices and a static equivalent; no tiny interactive suspended rods required on phones.",
+      "accessibility": "Operable buttons and optional reduced-motion mode; semantic headings; no information exclusive to motion.",
+      "no_go": [
+        "large full-bleed photograph with left headline",
+        "wavy transitions or torn-paper collage",
+        "three conventional photo-text product bands",
+        "borrowed table-map interaction from CP-015"
+      ],
+      "main_risk": "Can feel like an art experiment rather than a useful shop site; preserve straightforward contact access."
+    },
+    {
+      "id": "ZK-02",
+      "name": "影の展示室 / Shadow Gallery",
+      "core_device": "Products and their shadows are curated as a sparse asymmetric museum wall, with navigation based on numbered exhibit labels and generous periods of silence.",
+      "hero_structure": "empty_exhibition_wall",
+      "navigation_model": "perimeter_exhibit_numbers",
+      "reading_path": "entry_to_negative_space_to_shadow_detail_to_gallery_to_info",
+      "interaction_model": "discrete_buttons_with_scroll_fallback",
+      "first_screen": {
+        "composition": "A near-empty wall, one tiny metal mobile at the upper off-center, its disproportionately large shadow reaching the opposite corner; shop name small at bottom edge, numbered exhibit index on perimeter.",
+        "position_of_type": "The title and captions are subordinate to the structural device, not a large headline beside a hero photograph"
+      },
+      "sections": [
+        {
+          "id": "wall",
+          "layout": "empty_exhibition_wall",
+          "role": "exhibition_intro",
+          "density": "low",
+          "info": "Material and ambient shadow create hierarchy without giant photo"
+        },
+        {
+          "id": "shadow",
+          "layout": "light_shadow_interpretation",
+          "role": "shadow_object_relationship",
+          "density": "high",
+          "info": "Object close-up and cast shadow shown as independent spatial objects"
+        },
+        {
+          "id": "sequence",
+          "layout": "numbered_perimeter_exhibits",
+          "role": "selected_works",
+          "density": "medium",
+          "info": "A few labeled works only if factual inventory confirmed"
+        },
+        {
+          "id": "pause",
+          "layout": "single_light_interlude",
+          "role": "studio_philosophy",
+          "density": "low",
+          "info": "A nearly blank wall as a breathing pause"
+        },
+        {
+          "id": "visit",
+          "layout": "gallery_label_info_sheet",
+          "role": "access_and_contact",
+          "density": "high",
+          "info": "Clearly typeset verified access, workshop link, contact"
+        }
+      ],
+      "desktop_strategy": "Products and their shadows are curated as a sparse asymmetric museum wall, with navigation based on numbered exhibit labels and generous periods of silence.",
+      "mobile_strategy": "Uses tall photographic wall and separate large-tap exhibit labels; shadows remain present without tiny text or hover.",
+      "accessibility": "Exhibit names are links/buttons; readable alternative list; visual effects are decorative.",
+      "no_go": [
+        "large full-bleed photograph with left headline",
+        "wavy transitions or torn-paper collage",
+        "three conventional photo-text product bands",
+        "borrowed table-map interaction from CP-015"
+      ],
+      "main_risk": "Minimalism may become empty rather than intentional, or generic portfolio gallery; typography and shadow must do real work."
+    },
+    {
+      "id": "ZK-03",
+      "name": "金属の組立図 / Exploded Assembly Atlas",
+      "core_device": "An exploded mechanical assembly drawing becomes the site navigation, where parts, manufacturing steps and dimensions are spatially annotated only with confirmed shop facts.",
+      "hero_structure": "exploded_assembly_drawing",
+      "navigation_model": "technical_number_index",
+      "reading_path": "parts_to_fabrication_to_assembly_to_motion_to_contact",
+      "interaction_model": "discrete_buttons_with_scroll_fallback",
+      "first_screen": {
+        "composition": "An enormous deconstructed mobile with suspended components at different vertical levels, line-numbered parts and a small technical title block; no hero image and no standard horizontal navbar.",
+        "position_of_type": "The title and captions are subordinate to the structural device, not a large headline beside a hero photograph"
+      },
+      "sections": [
+        {
+          "id": "explode",
+          "layout": "exploded_assembly_drawing",
+          "role": "assembly_intro",
+          "density": "high",
+          "info": "Parts are separated like an engineering diagram"
+        },
+        {
+          "id": "process",
+          "layout": "numbered_process_ribbon",
+          "role": "making_process",
+          "density": "medium",
+          "info": "Explain process only with verified steps; no invented metallurgy"
+        },
+        {
+          "id": "materials",
+          "layout": "material_specimen_table",
+          "role": "materials",
+          "density": "high",
+          "info": "Label samples and textures in an experimental ledger"
+        },
+        {
+          "id": "movement",
+          "layout": "oscillation_notation",
+          "role": "concept_of_balance",
+          "density": "low",
+          "info": "Still or animated diagram of balance; no invented product functionality"
+        },
+        {
+          "id": "contact",
+          "layout": "blueprint_title_block",
+          "role": "access_and_contact",
+          "density": "medium",
+          "info": "A clear technical footer block with known contact info"
+        }
+      ],
+      "desktop_strategy": "An exploded mechanical assembly drawing becomes the site navigation, where parts, manufacturing steps and dimensions are spatially annotated only with confirmed shop facts.",
+      "mobile_strategy": "Parts become a single-column numbered sequence; the original exploded composition is preserved as a simplified accessible schematic.",
+      "accessibility": "Every part number is focusable; reduced motion support and full text equivalent.",
+      "no_go": [
+        "large full-bleed photograph with left headline",
+        "wavy transitions or torn-paper collage",
+        "three conventional photo-text product bands",
+        "borrowed table-map interaction from CP-015"
+      ],
+      "main_risk": "A technical motif may falsely imply manufacture specifications; mark all invented diagrams as concepts and verify statements."
+    }
+  ],
+  "selection_status": "pending_owner_review",
+  "chosen_proposal_id": null,
+  "current_recommendation": {
+    "proposal_id": "ZK-01",
+    "rationale": "Most different from recent editorial/photo-led pages and CP-015's table-navigation; needs whitespace and dynamic counterweight rather than another illustrated index."
+  },
+  "no_asset_generation_authorization": "No new image, site implementation, official shop endorsement or publishing is implied by this research record."
+}
