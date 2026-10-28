@@ -14,6 +14,6 @@
 - **不採用の防止条件:** Heroの下を一般的な商品カード・写真帯で埋めてページ構造をリセットしない。CP-009の縫い目と赤い扉、CP-015の食卓マップ、CP-016の重力バランスをテンプレートとして使わない。
 
 ## 原本
-- `a_detailed_artistic_website_like_editorial_layout.png`（1024×1536の静止画像、ChatGPT会話上で生成）SHA-256 `1d3499f457499da4a5b92f774ea86efb3f6bdc703446f417ce732e81e854dc7f`。
+- `a_detailed_artistic_website_like_editorial_layout.png`（1536×1024の静止画像、ChatGPT会話上で生成）SHA-256 `1d3499f457499da4a5b92f774ea86efb3f6bdc703446f417ce732e81e854dc7f`。
 - 画像を含む本番用の素材、実店舗商品写真、商用利用許可、HTML/CSS、Next.js、公開、顧客承認はなし。
 - **現在の研究成功例は15件（ローカルPoC9件・画像のみ6件）、目標30件まで15件。** 参考候補80件は不変。画像原本はGitHubには入れず研究記録とSHAのみ保存する。
