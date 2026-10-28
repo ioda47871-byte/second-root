@@ -183,6 +183,10 @@ describe("verification states (never approvals)", () => {
       ["a fallback where the image was essential (re-generate or ask the owner)", () => fallbackB({ image_essential: true }), "ARTIFACT_SCHEMA_INVALID"],
       ["a fallback not decided by the runner", () => fallbackB({ decided_by: "codex" }), "ARTIFACT_SCHEMA_INVALID"],
       ["a fallback whose outcome differs from the run's (history rewritten)", () => fallbackB({}, "not_applicable"), "ARTIFACT_ROUTE_INCONSISTENT"],
+      ["a fallback after a policy refusal (a safety stop goes to the owner)", () => fallbackB({ image_outcome: "TOOL_FAILED_POLICY" }, "TOOL_FAILED_POLICY"), "ARTIFACT_SCHEMA_INVALID"],
+      ["a fallback on route A", () => edit(routeA, (p) => (p.artifact.observed.fallback = { from_route: "C_hybrid", image_outcome: "TOOL_FAILED", image_stop_code: "CODEX_IMAGE_TOOL_FAILED", image_approval_id: null, image_essential: false, decided_by: "runner" })), "ARTIFACT_ROUTE_INCONSISTENT"],
+      ["a fallback reusing the run's approval ID for the image attempt", () => fallbackB({ image_approval_id: "fictional-run-20261028-01" }), "ARTIFACT_ROUTE_INCONSISTENT"],
+      ["a fallback without the failed attempt's stop code", () => fallbackB({ image_stop_code: null }), "ARTIFACT_ROUTE_INCONSISTENT"],
       ["a fallback on route C", () => edit(routeC, (p) => (p.artifact.observed.fallback = { from_route: "C_hybrid", image_outcome: "TOOL_FAILED", image_stop_code: null, image_approval_id: null, image_essential: false, decided_by: "runner" })), "ARTIFACT_ROUTE_INCONSISTENT"],
       ["a fallback B that still carries a generated asset", () => edit(() => fallbackB(), (p) => {
         p.files["assets/a1.png"] = makePng(64, 64);

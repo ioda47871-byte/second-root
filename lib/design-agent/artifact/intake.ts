@@ -348,6 +348,12 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
     // an upload is not a Codex run: no Codex run facts may be claimed for it
     route(o.generation.tool === null && o.generation.image_outcome === "not_applicable" && o.generation.prompt_sha256 === null, "an owner upload claims Codex run facts");
   }
+  if (a.route !== "B_html_prototype") route(!o.fallback, "only a route B artifact can record a fallback");
+  if (o.fallback) {
+    // the failed image attempt is its own run: its own approval ID, and its stop code is kept
+    route(o.fallback.image_approval_id === null || o.fallback.image_approval_id !== o.generation.approval_id, "fallback: the image attempt's approval ID is the run's");
+    route(o.fallback.image_stop_code !== null, "fallback: the failed image attempt's stop code is missing");
+  }
   if (a.route === "A_image") {
     route(o.prototype === null && o.render === null && o.assets.length === 0, "route A carries no prototype, render or assets");
     if (a.source_kind === "codex_generated" && presents.some(([, og]) => og.state === "present")) route(o.generation.image_outcome === "IMAGE_SAVED", "route A image without IMAGE_SAVED");
@@ -357,8 +363,6 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
       route(o.assets.every((s) => s.kind === "placeholder"), "route B generates no images");
       // a plain B run used no image tool; a B delivered as a fallback from C keeps the failed image outcome as it was
       route(o.generation.image_outcome === (o.fallback ? o.fallback.image_outcome : "not_applicable"), "route B: image outcome does not match its fallback record");
-    } else {
-      route(!o.fallback, "only a route B artifact can record a fallback");
     }
     if (a.route === "C_hybrid") {
       const generated = o.assets.filter((s) => s.kind === "ai_concept");

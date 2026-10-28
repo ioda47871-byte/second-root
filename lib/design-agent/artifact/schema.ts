@@ -219,7 +219,8 @@ export const DesignArtifact = z.strictObject({
     fallback: z
       .strictObject({
         from_route: z.literal("C_hybrid"),
-        image_outcome: z.enum(IMAGE_OUTCOMES.filter((o) => o !== "IMAGE_SAVED" && o !== "not_applicable") as [string, ...string[]]),
+        // a policy refusal is a safety stop, never a reason to switch routes: it goes to the owner, not to a fallback
+        image_outcome: z.enum(IMAGE_OUTCOMES.filter((o) => o !== "IMAGE_SAVED" && o !== "not_applicable" && o !== "TOOL_FAILED_POLICY") as [string, ...string[]]),
         image_stop_code: Code.nullable(),
         image_approval_id: z.string().regex(/^[a-z0-9][a-z0-9._-]{3,95}$/).nullable(),
         image_essential: z.literal(false),
