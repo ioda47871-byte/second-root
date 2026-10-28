@@ -413,6 +413,31 @@
       "concept_dimensions_px": "1536x1024",
       "web_presence_status": "WEB_NOT_FOUND_AFTER_SEARCHES__LINK_IN_BIO_UNVERIFIED",
       "sales_qualification": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK"
+    },
+    {
+      "id": "CP-023",
+      "title": "BURGERS,INC — NEON FLIP / DAY × AFTER DARK v4",
+      "status": "owner_selected_research_design_success",
+      "source_kind": "chat_generated_concept_image_only",
+      "category": "daytime_burger_shop_nighttime_80s_music_bar",
+      "view": "concept_art_only",
+      "owner_selected_at": "2026-10-28",
+      "design_approval_scope": "second_root_research_concept_only",
+      "official_client_work": false,
+      "merchant_authorized": false,
+      "website_deployed": false,
+      "nextjs_build_verified": false,
+      "html_css_impl_verified": false,
+      "mobile_web_impl_verified": false,
+      "image_asset_uploaded_to_github": false,
+      "approved_version": "NEON_FLIP_v4_day_night_sign",
+      "concept_png_sha256": "7f3ced52f3d22d09b6c6775a950619e28cbc5283b8102805bcd9362f364d194b",
+      "concept_dimensions_px": "1536x1024",
+      "v1_rejected_sha256": "f6c14027041929500d0ce449e6da94a6d4d83d6436e8134255c682fb0e1e367b",
+      "v5_not_preferred_sha256": "48484f1df9c74c36048a1032158c4bcdd59cbd92838f899fcf7724537c24e897",
+      "alternative_v3_record_ui_not_selected": true,
+      "web_presence_status": "WEB_NOT_FOUND_AFTER_SEARCHES__LINK_IN_BIO_UNVERIFIED",
+      "sales_qualification": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK"
     }
   ],
   "policy": {
@@ -421,6 +446,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original approved images, HTML sources and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..022 research metadata (CP-014 excluded: pending, unapproved), not those studies' original HTML/image/archive binaries."
+    "source_master_assets": "Original approved images, HTML sources and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..023 research metadata (CP-014 excluded: pending, unapproved), not those studies' original HTML/image/archive binaries."
   }
 }
