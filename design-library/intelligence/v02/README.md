@@ -136,3 +136,7 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-016｜ズールー工作所 COUNTERWEIGHT ZK-01 v1（2026-10-28研究採用）
 
 [研究成功記録](../../success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md)・[構造案/PoC/オーナー承認の証跡](experiments/CP016-zulu-structural-reset.json)。画像生成の初稿はユーザー「同じような構成になってきた」で却下。3つの別構造を発明したうえでZK-01の操作可能なHTML/CSS/JS/SVGを直接試作し、ユーザー「成功例でいいと思います」により**15件目の研究成功例**として採用。9画面幅でローカルChromium QA。**研究成功15件＝ローカルPoC9件＋画像のみ6件**。初稿・他案は不採用/未選択、CP-014未採用。実店舗の正式案件/許諾/公開ではない。
+
+## CP-017｜Rurikoyarn UNWIND v1.1（2026-10-28研究成功採用）
+
+[成功記録](../../success-cases/CP-017-Rurikoyarn-UNWIND-v1.1.md)／[初稿・不採用3案・局所改良の記録](experiments/CP017-Rurikoyarn-UNWIND-v1-review.md)。ユーザーの「成功例とします、次へ進んで」により、暗い背景と太い糸ループを保護した画像v1.1を**16件目の研究成功例**として採用。従来のループを失う明るいコラージュ型再生成は不採用。研究成功**16件（HTML PoC9件・画像のみ7件）**、CP-014未承認。公式サイト化・商用素材の利用・本番公開なし。
