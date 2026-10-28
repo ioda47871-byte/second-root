@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-022-Harissy-CRUMB-FRACTURE-v1.md (CP-014 pending and excluded)",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-023-BURGERS-INC-NEON-FLIP-v4.md (CP-014 pending and excluded)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -994,11 +994,62 @@
       ],
       "implementation_gap": "Single approved 1536x1024 static concept; no HTML/CSS/JS, responsive design, verified photos, local website absence, shop permission, or production site.",
       "evidence_ref": "design-library/success-cases/CP-022-Harissy-CRUMB-FRACTURE-v1.md"
+    },
+    {
+      "id": "CP-023",
+      "name": "BURGERS,INC — NEON FLIP / DAY × AFTER DARK v4",
+      "category": "daytime_burger_shop_nighttime_80s_music_bar",
+      "owner_selection": "owner_approved_neon_sign_concept_v4_after_v5_comparison",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "two different time-of-day identities in one location",
+        "daytime hamburger restaurant",
+        "nighttime 1980s music-themed bar",
+        "flippable metal sign"
+      ],
+      "structural_translation": "Make one large three-dimensional double-sided metal sign the shared screen structure: warm day burger face and dark magenta nighttime 80s-bar face. Visual hierarchy, lighting and minimal supporting objects follow the sign, rather than two photo hero sections.",
+      "visual_mechanisms": [
+        "dominant pivoting chrome sign centered and framed as the main interface metaphor",
+        "warm amber burger side counterbalanced with dark magenta after-dark side",
+        "sparse small supporting burger, glass and record imagery",
+        "metalwork, sign lettering and reflections provide depth without rows of cards"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner clarified that their preferred early image was the original neon sign, not the record SIDE A screenshot; the initial v1 alone was not yet sufficient",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner requested refinement specifically from neon v4, agreed that v4 was better than the cluttered v5, and then explicitly said '成功例として扱います'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "The v4 foregrounds one physical sign and two time-of-day identities; v5 diluted that dominance with standard photo cards",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Original v1 crowded neon illustration was rejected before the later relative preference clarification",
+        "v2 collapsed into generic large burger and photo collage rather than record-driven architecture",
+        "v3 working vinyl SIDE A/B interaction was not the visual direction the owner preferred",
+        "v5 inserted redundant large captions and three photo cards, reducing sign focus",
+        "Static drawn flip control is not a real interactive site",
+        "AI-generated hamburger, drinks and décor cannot be claimed to be verified real photos",
+        "Official website absence remains unverified until Instagram profile links are checked"
+      ],
+      "not_to_copy": [
+        "BURGERS,INC name and identity",
+        "exact fabricated metal sign, layout, slogan and magenta-to-amber light arrangement",
+        "AI-generated shop imagery, menu plates, bar interiors and objects",
+        "sign-as-interface formulation as a universal template for unrelated shops"
+      ],
+      "implementation_gap": "Selected v4 is only one 1536x1024 concept image. A different v3 record-site HTML prototype was locally tested but is not the selected design. No v4 responsive Web implementation, real photos, shop consent, verified site-less qualification, or production deployment.",
+      "evidence_ref": "design-library/success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Nine cases have local HTML PoCs; twelve remain concept/image-only; none are verified live production websites",
+    "Nine cases have local HTML PoCs; thirteen remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
