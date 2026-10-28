@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-021-TERACE-PICK-COMPOSE-v1.md (CP-014 remains pending and excluded)",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-022-Harissy-CRUMB-FRACTURE-v1.md (CP-014 pending and excluded)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -950,11 +950,55 @@
       ],
       "implementation_gap": "Single approved v1 1536x1024 concept image. No functioning parts picker, responsive mobile UI, standalone HTML/CSS/JS, browser QA, verified official site absence, merchant permission or production deployment.",
       "evidence_ref": "design-library/success-cases/CP-021-TERACE-PICK-COMPOSE-v1.md"
+    },
+    {
+      "id": "CP-022",
+      "name": "Harissy — CRUMB / FRACTURE v1",
+      "category": "old_fashioned_donut_shop",
+      "owner_selection": "approved_research_concept_v1",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "rustic old fashioned donuts",
+        "craggy crispy exterior and moist crumb",
+        "cracks, broken donut segments and scattered crumbs",
+        "coffee and simple shop ritual"
+      ],
+      "structural_translation": "Turn crunchy surface fractures and flying pastry crumbs into a sweeping visual reading path with small annotation points DONUTS/TEXTURE/COFFEE/INFO, rather than a neat product-card row.",
+      "visual_mechanisms": [
+        "giant jagged donut fractures and crumbs across orange chocolate backdrop",
+        "macro interior and crust contrast",
+        "cream editorial copy area at left",
+        "small topical labels attached to the broken forms"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner liked the original design with 'いいと思います' and then explicitly selected it with '成功例にする'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Food texture itself is made the visual rhythm, distinct from shelf or printing plate motifs",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Left headline beside big visual may still resemble repeated hero layouts",
+        "Artistic donut photos are generated; presenting as real menu is misleading",
+        "Crumb flow on the static image is not a real interactive navigation",
+        "Shop's official Web absence unverified due inaccessible Instagram bio"
+      ],
+      "not_to_copy": [
+        "Harissy branding and exact crumb positioning",
+        "specific AI generated product photos and ingredients",
+        "exact editorial layout and handwritten labels as a universal template",
+        "unverified actual menu/prices or store interior"
+      ],
+      "implementation_gap": "Single approved 1536x1024 static concept; no HTML/CSS/JS, responsive design, verified photos, local website absence, shop permission, or production site.",
+      "evidence_ref": "design-library/success-cases/CP-022-Harissy-CRUMB-FRACTURE-v1.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Nine cases have local HTML PoCs; eleven remain concept/image-only; none are verified live production websites",
+    "Nine cases have local HTML PoCs; twelve remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
