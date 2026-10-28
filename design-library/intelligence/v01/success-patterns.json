@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-023-BURGERS-INC-NEON-FLIP-v4.md (CP-014 pending and excluded)",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md (CP-014 pending and excluded)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -1045,11 +1045,60 @@
       ],
       "implementation_gap": "Selected v4 is only one 1536x1024 concept image. A different v3 record-site HTML prototype was locally tested but is not the selected design. No v4 responsive Web implementation, real photos, shop consent, verified site-less qualification, or production deployment.",
       "evidence_ref": "design-library/success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md"
+    },
+    {
+      "id": "CP-024",
+      "name": "Boheme. — FLORAL FITTING ROOM Full-page v2",
+      "category": "florist_flower_styling",
+      "owner_selection": "owner_approved_full_page_poc_after_pc_mobile_overview",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "flowers styled as fashion",
+        "vintage mirror as fitting area",
+        "hanger rail for flowers and styling labels",
+        "color silhouette and texture of floral arrangements"
+      ],
+      "structural_translation": "Turn '花を着崩す' into a continuous fitting-room journey: preservation of a single arched-mirror hero, Introduction, interactive look switching, rail tags for color/silhouette/texture, concept note and shop visit. Full desktop/mobile browsing flow rather than hero-only mockup.",
+      "visual_mechanisms": [
+        "large asymmetric arrangement photographed as a fashion look in an arch mirror",
+        "styling LOOK 01/02/03 actually switches text and visual filters",
+        "three hanging tags on a rail continue the dressing metaphor in lower content",
+        "full-page desktop and mobile scroll structure and contextual visit area"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner liked the original Hero but explicitly identified missing full-page site structure",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "After viewing PC/mobile full-page screenshots and interactive local PoC, owner said 'いいじゃん毎回これで出して'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner explicitly selected the whole v2 with 'これを成功例として、次にいこう'",
+          "basis": "owner_selection"
+        }
+      ],
+      "known_failure_modes": [
+        "Great first screen does not guarantee good complete web experience",
+        "Overlaid Hero copy remains baked into image rather than independent accessible text",
+        "Three LOOKs alter one study photograph rather than represent three verified shop products",
+        "HTML local Chromium responsive checks do not prove published or cross-browser readiness",
+        "Website-less sales eligibility remains unverified because social bio and namesake BASE shop ownership are unresolved"
+      ],
+      "not_to_copy": [
+        "Boheme. identity and shop concept slogan",
+        "specific floral styling, mirror proportions and invented shop interior",
+        "exact hanger rail design and artificial LOOK variations as a template",
+        "AI flower photographs as if real merchandise"
+      ],
+      "implementation_gap": "Local full-page HTML/CSS/JS PoC and 9 widths on Chromium. No client authorization, true multi-photo catalog, real mobile devices, Safari/Firefox, accessibility audit, Next.js build or production release.",
+      "evidence_ref": "design-library/success-cases/CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Nine cases have local HTML PoCs; thirteen remain concept/image-only; none are verified live production websites",
+    "Ten cases have local HTML PoCs; thirteen remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
