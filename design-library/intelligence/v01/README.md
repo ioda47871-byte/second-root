@@ -2,7 +2,7 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **twenty-two owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **twenty-three owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
@@ -100,3 +100,7 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 ### CP-023 BURGERS,INC — NEON FLIP v4（2026-10-28研究採用）
 
 [22件目の研究成功記録](../../success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md)。オーナーが重厚な金属製の両面回転看板を中心にした静止画v4を採用。レコードUI v3のHTML検証はv4の実装実績ではない。成功**22件（ローカルPoC9・静止画13）**、CP-014未採用、店舗公認/公開なし。
+
+### CP-024 Boheme. — FLORAL FITTING ROOM v2（2026-10-28研究採用）
+
+[23件目の全ページ研究成功例](../../success-cases/CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md)。PC/スマホのフルページと操作可能なLOOKを持つローカルHTML/CSS/JSを正式研究採用。**23件＝HTML研究PoC10＋静止画像13**。実店舗公認・本番は未承認。CP-025は試作評価待ち。
