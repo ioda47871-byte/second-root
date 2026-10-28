@@ -1,6 +1,6 @@
 # Second Root | 成功デザイン研究事例
 
-**2026-10-28 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. / 整体院 Go. / 豆＊豆 / ぺいぱばっくらいたー / BAR N / Admy / スペースたのしい / imairo. / ズールー工作所 / Rurikoyarn / MOLE FACTORY の17例を登録しました。
+**2026-10-28 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. / 整体院 Go. / 豆＊豆 / ぺいぱばっくらいたー / BAR N / Admy / スペースたのしい / imairo. / ズールー工作所 / Rurikoyarn / MOLE FACTORY / 浦田杏梨 の18例を登録しました。
 
 > **画像をテンプレートとして使い回さない。** 学習対象は、各店舗の特徴を視覚構造へ変換する考え方、画像・文字・余白・重なりの分析と実装・レビュー手順です。
 
@@ -30,12 +30,18 @@
 
 | [CP-018](CP-018-MOLE-FACTORY-OVERPRINT-v1.md) | MOLE FACTORY / OVERPRINT — MISREGISTER v1 | **青・橙・黒の色版／印刷トンボ／網点の重なりをページ構造にした初稿を、研究成功例として採用**。HTML・スマホ未実装、公式BASEショップは既存。 | [研究記録](CP-018-MOLE-FACTORY-OVERPRINT-v1.md) |
 
+| [CP-019](CP-019-Anna-Urata-WAX-TIME-v1.md) | 浦田杏梨 / WAX — TIME v1 | **半透明の蝋が溶けて空洞になる時間変化を読み順にした研究用静止画像をユーザー承認**。HTML/実スマホ未実装、作家本人の公式制作物ではない。 | [研究記録](CP-019-Anna-Urata-WAX-TIME-v1.md) |
+
 ## 境界と検証
 - このフォルダは**研究事例（採用済みの構図研究）**。既存の `design-library/research/v02`（40件）や `v03`（40候補）は変更せず、80件の参考候補件数にも足さない。
-- CP-001〜003は閲覧用WebP画像をGitHubに保存。CP-004〜018（CP-014は採用保留）は研究記録とSHA-256をGitHubに保存し、元画像・ソースZIPはChatGPT会話側のアーカイブに保管。GitHubに画像をアップロード済みとは扱わない。
-- Mond/Sissiはコンセプト画像。harebare・Hamsa・ORGN.・豆＊豆・ぺいぱばっくらいたー PT-02 v3・BAR N v2・imairo. TABLE JOURNAL v2・ズールー工作所 COUNTERWEIGHT v1はHTML/CSS/JS実装済みの研究用PoCで、実店舗公認ではない。Melon de Mille・整体院 Go.・Admy・スペースたのしい・Rurikoyarn・MOLE FACTORYは**画像コンセプトのみ採用**で、Web実装は未着手。なごやビーンズv4はHTML/CSS/JSのPoCを以前制作したが、**Next.js移植、実公開、実店舗による許諾は未実施**。
+- CP-001〜003は閲覧用WebP画像をGitHubに保存。CP-004〜019（CP-014は採用保留）は研究記録とSHA-256をGitHubに保存し、元画像・ソースZIPはChatGPT会話側のアーカイブに保管。GitHubに画像をアップロード済みとは扱わない。
+- Mond/Sissiはコンセプト画像。harebare・Hamsa・ORGN.・豆＊豆・ぺいぱばっくらいたー PT-02 v3・BAR N v2・imairo. TABLE JOURNAL v2・ズールー工作所 COUNTERWEIGHT v1はHTML/CSS/JS実装済みの研究用PoCで、実店舗公認ではない。Melon de Mille・整体院 Go.・Admy・スペースたのしい・Rurikoyarn・MOLE FACTORY・浦田杏梨は**画像コンセプトのみ採用**で、Web実装は未着手。なごやビーンズv4はHTML/CSS/JSのPoCを以前制作したが、**Next.js移植、実公開、実店舗による許諾は未実施**。
 - 実店舗の商標、写真、営業時間、価格などの事実が正しいか、公開前に確認すること。
 - 他店へ写真・ロゴ・文章・具体的な構図を転用しない。使用する技法は、その店の特徴に合わせて再設計する。
 - 本PRは研究ライブラリへの追加のみ。**main、Vercel、本番DB、営業AI、CSS許可表には変更なし**。
 
 個別の再現実験は `CP-003` を基準に続け、制作プロセスの標準化は実装評価を経て別途判断する。
+
+## 2026-10-28以降の新規店舗選定条件
+
+ユーザー指示により**CP-020以降の研究新規候補は独立したWebサイトも公式ネットショップも確認できない店舗に限定**。SNS・Google/食べログなど第三者案内のみは選定可。ただし「検索で未発見」は「存在しない証明」とは異なるため、公式SNSプロフィールの外部リンク等を再確認する。BASE、STORES、Shopifyも公式サイトありとして除外する。[詳細な選定ゲート](../../docs/design/no-website-shop-intake-policy.md)。過去に承認されたMOLE FACTORY等の成功研究は遡及取消ししない。
