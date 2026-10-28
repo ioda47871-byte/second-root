@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-019-Anna-Urata-WAX-TIME-v1.md (CP-014 pending and excluded)",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-020-Kissa-ITALICO-SHOWCASE-v1.md (CP-014 not approved)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -857,11 +857,55 @@
       ],
       "implementation_gap": "Only a single 1536x1024 concept image. No responsive mobile, HTML/CSS/JS, browser tests, authentic artwork, artist permission, Next.js, or production validation.",
       "evidence_ref": "design-library/success-cases/CP-019-Anna-Urata-WAX-TIME-v1.md"
+    },
+    {
+      "id": "CP-020",
+      "name": "喫茶 ITALICO — SHOWCASE / GLASS CABINET v1",
+      "category": "retro_kissa_and_italian_cafe",
+      "owner_selection": "approved_research_concept_image_v1",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "traditional kissa food display glass cabinet",
+        "custard pudding and omurice as illustrative cafe motifs",
+        "dark green cabinet framing and warm brass trim",
+        "glass reflections and warm backlit shelves"
+      ],
+      "structural_translation": "The physical compartment structure of a vintage display cabinet becomes the information grid, with product-category labels attached to different glass shelves rather than a conventional full-width cafe hero plus repeating photo bands.",
+      "visual_mechanisms": [
+        "dark green and brass cabinet borders divide the entire picture",
+        "food-themed AI illustrations sit in distinct compartments at different heights",
+        "paper plaques serve as simulated navigation labels",
+        "lighting reflections form depth across glass"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner explicitly approved the first glass cabinet image with '成功例にしたい' and requested continuation",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Uses compartment geometry of a display cabinet instead of a typical photo hero",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "AI generated case and food may be mistaken for actual premises or menu",
+        "No clickable interaction exists despite painted labels",
+        "Social profile external links were inaccessible for verification, so eligibility as site-less sales lead is pending",
+        "Static concept cannot validate responsive site design or independent semantic HTML"
+      ],
+      "not_to_copy": [
+        "喫茶 ITALICO identity and logo",
+        "exact cabinet framing and AI-generated food photographs",
+        "invented copy, menu wording, shop interior, product availability",
+        "the specific design as a one-size-fits-all template"
+      ],
+      "implementation_gap": "Only a static 1536x1024 concept image. No HTML, responsive phone version, factual photos, verified social external link, shop permission, or production deployment.",
+      "evidence_ref": "design-library/success-cases/CP-020-Kissa-ITALICO-SHOWCASE-v1.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Nine cases have local HTML PoCs; nine remain concept/image-only; none are verified live production websites",
+    "Nine cases have local HTML PoCs; ten remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
