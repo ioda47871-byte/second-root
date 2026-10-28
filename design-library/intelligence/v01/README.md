@@ -2,13 +2,13 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **fourteen owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **fifteen owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
 | Path | Role | Current status |
 | --- | --- | --- |
-| [success-patterns.json](success-patterns.json) | CP-001–013: shop characteristics → composition principles → what was selected/rejected → implementation gaps | Fourteen documented study cases; analysis interpretation, not scientific proof |
+| [success-patterns.json](success-patterns.json) | CP-001–013: shop characteristics → composition principles → what was selected/rejected → implementation gaps | Fifteen documented study cases; analysis interpretation, not scientific proof |
 | [review-queue.json](review-queue.json) | Source-traceable priority list of 10 existing AI-reviewed screenshots and 10 new audits | **Not** 20 completed human reviews |
 | [validate.mjs](validate.mjs) | Offline, read-only cross-check against case registry, original v03 candidate source URLs and pending owner review status | May be run with `node design-library/intelligence/v01/validate.mjs` |
 
@@ -68,3 +68,7 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 ### CP-015 imairo. — TABLE JOURNAL v2（2026-10-28研究採用）
 
 [採用事例の正式研究記録](../../success-cases/CP-015-imairo-TABLE-JOURNAL-v2.md)。ユーザー「成功例とします」により食卓マップのワイドHeroを保護した紙片ノート型ローカルHTML/CSS/JS PoCを採用。**現在の成功事例は14件（ローカルHTML PoC 8件・画像のみ6件）**。生成画像中に焼き込まれた文字と研究用画像の切り出しは実店舗サイトに再利用できず、商用公開や生成器投入の許可ではない。CP-014は引き続き審査保留。
+
+### CP-016 ズールー工作所 — COUNTERWEIGHT ZK-01 v1（2026-10-28採用）
+
+[15件目の正式研究成功記録](../../success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md)／[3構造比較とブラウザPoCの履歴](../v02/experiments/CP016-zulu-structural-reset.json)。写真＋見出し＋波型境界の初稿を不採用にし、支点・重り・余白の実操作をHTML/SVGで構築。ユーザー「成功例でいいと思います」により研究採用。**現時点で15件（ローカルPoC9件・画像のみ6件）**。CP-014は未採用。本番/実店舗許諾なし。
