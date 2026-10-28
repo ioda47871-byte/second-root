@@ -210,3 +210,9 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 [全ページv2：THE SPICE CABINET](experiments/CP025-HOTEL-AUTHENTIC-SPICE-CABINET-v2.md)は、4つの引き出しを選ぶと地域編集ノートが実際に開くHTML/CSS/JS構造。料理写真はNORTHに1回のみ、ほかは別々のSVG資料図。Field Notesは文書台帳、Visitは最後の封筒として制作。PC/スマホ全ページ画面・比較JPG・操作可能な自己完結HTML・ZIPを提出し、**320〜1920pxの9幅、横はみ出し0、画像読込、4地域×PC/スマホ切替、JS例外0**を検証。
 
 **v2のオーナー評価は未了。研究成功は23件（ローカルWeb PoC成功10＋静止画13）のまま。** 店舗の公式サイト不在はSNSプロフィール外部リンク未確認でHOLD。生成画像は実店舗料理写真ではなく、商用使用/本番公開/営業送信なし。
+
+## CP-025｜店らしくないSPICE CABINET v2を不採用→実店舗の色と月替わり案内を使うv3
+
+ユーザーがv1「凡庸だな」に続きv2へ「**この店っぽくないな**」と評価。**v1/v2とも不採用**。v2の暗いスパイス棚は、[内装施工写真](https://www.tenpodesign.com/work/detail/39839)にある**白い大理石・青い鉄格子/タイル・ワインレッドの外看板**と異なっていた。また、[公式LINE](https://page.line.me/202svvgd)では地域テーマを毎月変える提供形態が確認されるため、見た目の雰囲気だけではなく店舗独自のメニュー変化を情報の骨格にする。[v2不採用原因](experiments/CP025-HOTEL-AUTHENTIC-SPICE-CABINET-v2.md)。
+
+[新規研究v3 THE MONTHLY MENU WALL](experiments/CP025-HOTEL-AUTHENTIC-ACTUAL-SHOP-v3.md)は入口看板→青い鉄格子/白タイル→3種の実際に切り替えられる黄色い掲示紙（月替わり/チャイ/タンドール）→店舗の素材と料理→VisitをPC/スマホ全ページで設計。外部施工/商品写真を無断収録せず、建築はオリジナルCSS近似、食品はAI研究画像。**Chromium 9幅で横はみ出し0、画像読込PASS、紙の切替3種類、モバイルナビ、JS例外0**。初回の768px崩れを修正済み。比較画像、操作可能HTML、ZIPを会話側に作成。**v3オーナー評価待ち、成功数23件のまま**。独立公式サイト未発見だがInstagram外部リンクは未確認、営業候補HOLD。
