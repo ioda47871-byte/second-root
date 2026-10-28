@@ -281,6 +281,29 @@
       "concept_image_replaced_by_html_schematic": true,
       "prior_image_rejected_as_generic_structure": true,
       "photo_assets_in_final_poc": false
+    },
+    {
+      "id": "CP-017",
+      "title": "Rurikoyarn — UNWIND v1.1",
+      "status": "owner_selected_research_design_success",
+      "source_kind": "chat_generated_concept_image_with_local_tonal_refinement",
+      "category": "mixed_and_dyed_yarn",
+      "view": "concept_art_only",
+      "owner_selected_at": "2026-10-28",
+      "design_approval_scope": "second_root_research_concept_only",
+      "official_client_work": false,
+      "merchant_authorized": false,
+      "website_deployed": false,
+      "nextjs_build_verified": false,
+      "html_css_impl_verified": false,
+      "mobile_web_impl_verified": false,
+      "image_asset_uploaded_to_github": false,
+      "approved_version": "UNWIND_v1_1_refined",
+      "first_concept_png_sha256": "1d3499f457499da4a5b92f774ea86efb3f6bdc703446f417ce732e81e854dc7f",
+      "approved_v1_1_png_sha256": "4e70e70425d71a2ffe38ac702121e399817255493fac29e40c166d2850b21b28",
+      "before_after_png_sha256": "909ac0976b9a38b7abf4880c140eba6bac9ea6d1b97063a2f4a40bbf7c47375a",
+      "concept_dimensions_px": "1536x1024",
+      "success_case_archive_sha256": "e7fdffe2e939d7aa7a4c0045e7ad8ef488a722b3b3ae17584e3f088836f8f293"
     }
   ],
   "policy": {
@@ -289,6 +312,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original approved images, HTML sources and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..016 research metadata (CP-014 excluded: pending, unapproved), not those studies' original HTML/image/archive binaries."
+    "source_master_assets": "Original approved images, HTML sources and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..017 research metadata (CP-014 excluded: pending, unapproved), not those studies' original HTML/image/archive binaries."
   }
 }
