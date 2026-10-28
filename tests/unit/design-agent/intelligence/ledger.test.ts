@@ -139,6 +139,7 @@ describe("stop codes", () => {
     ["LEDGER_UNKNOWN_STATUS", "an unknown status", (l) => (ver(l, "CP-901", "CP901_L1").selection_status = "owner_approved")],
     ["LEDGER_DUPLICATE_CASE", "the same case twice", (l) => l.records.push(structuredClone(l.records[2]!))],
     ["LEDGER_DUPLICATE_VERSION", "the same version twice", (l) => (ver(l, "CP-902", "RAIL_v3").version_label = "RAIL_v1")],
+    ["LEDGER_DUPLICATE_VERSION", "labels differing only in case", (l) => (ver(l, "CP-902", "RAIL_v3").version_label = "rail_v1")],
     ["LEDGER_CONTRADICTS_MANIFEST", "a selected version of a case the manifest does not hold", (l) => {
       const v = ver(l, "CP-950", "CP950_L1");
       v.selection_status = "owner_selected";
@@ -173,14 +174,34 @@ describe("stop codes", () => {
     ["VERSION_LABEL_MISMATCH", "the ledger replacing the manifest's label with its own", (l) => (ver(l, "CP-902", "RAIL_v2").version_label_source = "ledger_assigned")],
     ["VERSION_LABEL_MISMATCH", "a manifest label source on a non-selected version", (l) => (ver(l, "CP-902", "RAIL_v1").version_label_source = "manifest_approved_version")],
     ["VERSION_LABEL_MISMATCH", "a manifest label the manifest does not have", (l) => (ver(l, "CP-901", "CP901_L1").version_label_source = "manifest_owner_approved_version")],
+    ["VERSION_LABEL_MISMATCH", "a manifest label source on a case the manifest does not hold", (l) => (ver(l, "CP-950", "CP950_L1").version_label_source = "manifest_approved_version")],
   ])("%s: %s", (expected, _name, mutate) => {
     expect(code(() => partial(edit(mutate)))).toBe(expected);
   });
 
-  it("LEDGER_CONTRADICTS_MANIFEST: the manifest's other approved label on a non-selected version", () => {
+  it("LEDGER_CONTRADICTS_MANIFEST: the manifest's two label fields disagree", () => {
     const files = ledgerManifestFiles();
     (files.manifest.records[1] as Record<string, unknown>).owner_approved_version = "RAIL_v1";
     expect(code(() => partial(fictionalLedger(), files))).toBe("LEDGER_CONTRADICTS_MANIFEST");
+  });
+
+  it("accepts two manifest label fields that agree", () => {
+    const files = ledgerManifestFiles();
+    (files.manifest.records[1] as Record<string, unknown>).owner_approved_version = "RAIL_v2";
+    expect(code(() => partial(fictionalLedger(), files))).toBe("OK");
+  });
+
+  it.each([[2], [""], [null], [["RAIL_v2"]]])("VERSION_LABEL_MISMATCH: a manifest label field that is not a label (%j) fails closed", (value) => {
+    const files = ledgerManifestFiles();
+    (files.manifest.records[0] as Record<string, unknown>).approved_version = value;
+    expect(code(() => partial(fictionalLedger(), files))).toBe("VERSION_LABEL_MISMATCH");
+  });
+
+  it("LEDGER_ANCHOR_UNSUPPORTED: the same bytes under two fields cannot anchor two versions", () => {
+    const files = ledgerManifestFiles();
+    (files.manifest.records[1] as Record<string, unknown>).approved_rejected_v1_png_sha256 = SHA.firstConcept;
+    const l = edit((x) => (ver(x, "CP-902", "RAIL_v1").anchor!.sha256 = SHA.firstConcept));
+    expect(code(() => partial(l, files))).toBe("LEDGER_ANCHOR_UNSUPPORTED");
   });
 
   it("LEDGER_CONTRADICTS_MANIFEST: a conditional manifest success recorded as a plain selection", () => {
@@ -269,5 +290,12 @@ describe("files and CLI", () => {
     expect(cli(["--summary", "--mode", "partial"]).stderr).toContain("LEDGER_MISSING");
     expect(cli(["--summary", "--ledger", ledgerPath()]).status).toBe(2);
     expect(cli(["--summary", "--mode", "loose"]).status).toBe(2);
+    // argument mistakes never fall back to phase1_compat
+    for (const bad of [["--summary", "--mode"], ["--summary", "--mode=partial", "--ledger=x"], ["--summary", "--mode", "partial", "--mode", "phase1_compat", "--ledger", ledgerPath()], ["--summary", "--verbose"], ["--summary", "--summary"], ["--summary", "--ledger"]]) {
+      const r = cli(bad);
+      expect(r.status, bad.join(" ")).toBe(2);
+      expect(r.stdout, bad.join(" ")).toBe("");
+      expect(r.stderr, bad.join(" ")).toContain("usage:");
+    }
   }, 60_000);
 });

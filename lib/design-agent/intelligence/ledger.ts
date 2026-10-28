@@ -23,10 +23,13 @@
  * - A quote is kept verbatim as the record of what the owner said. It is not
  *   new approval evidence either.
  * - The analyst's classification is kept in its own field, apart from the owner's words.
- * - An anchor ties a version to one manifest SHA field, chosen because a cited
- *   record says so (`evidence_ref`), never from the field's name. The anchor is
- *   only a recorded value: no state here says an image file was verified, so an
- *   image without its original is never a verified asset.
+ * - An anchor ties a version to one manifest SHA field and must cite the record
+ *   it rests on (`evidence_ref`). Nothing is inferred from the field's name.
+ *   This module checks only that the value matches the manifest and the cited
+ *   path is well formed; whether the cited record supports the choice is not
+ *   verified here (a later PR). The anchor is only a recorded value: no state
+ *   here says an image file was verified, so an image without its original is
+ *   never a verified asset.
  *
  * Pure: imports only zod; corpus.ts passes the manifest cases in. No file
  * access, network, model or Codex.
@@ -202,12 +205,14 @@ export function validateLedger(input: { ledger: unknown; ledgerSha256: string; m
 
     const labels = new Set<string>();
     const anchorFields = new Set<string>();
+    const anchorValues = new Set<string>();
     for (const v of rec.versions) {
       const where = `${rec.case_id}/${v.version_label}`;
       if (!(SELECTION_STATUSES as readonly string[]).includes(v.selection_status)) throw new LedgerError("LEDGER_UNKNOWN_STATUS", where);
       const status = v.selection_status as SelectionStatus;
-      if (labels.has(v.version_label)) throw new LedgerError("LEDGER_DUPLICATE_VERSION", where);
-      labels.add(v.version_label);
+      // labels differing only in case are the same version
+      if (labels.has(v.version_label.toLowerCase())) throw new LedgerError("LEDGER_DUPLICATE_VERSION", where);
+      labels.add(v.version_label.toLowerCase());
 
       // the owner's words: a status that rests on a statement needs one, of a kind that supports it
       const allowed = QUOTE_FOR_STATUS[status];
@@ -226,7 +231,9 @@ export function validateLedger(input: { ledger: unknown; ledgerSha256: string; m
         if (!m) throw new LedgerError("LEDGER_ANCHOR_UNSUPPORTED", `${where}: case not in manifest`);
         if (m.fields[v.anchor.manifest_field] !== v.anchor.sha256) throw new LedgerError("LEDGER_ANCHOR_UNSUPPORTED", `${where}: ${v.anchor.manifest_field}`);
         if (anchorFields.has(v.anchor.manifest_field)) throw new LedgerError("LEDGER_ANCHOR_UNSUPPORTED", `${where}: field anchors two versions`);
+        if (anchorValues.has(v.anchor.sha256)) throw new LedgerError("LEDGER_ANCHOR_UNSUPPORTED", `${where}: the same bytes anchor two versions`);
         anchorFields.add(v.anchor.manifest_field);
+        anchorValues.add(v.anchor.sha256);
       }
     }
 
@@ -234,15 +241,26 @@ export function validateLedger(input: { ledger: unknown; ledgerSha256: string; m
     const selected = rec.versions.filter((v) => SELECTED.includes(v.selection_status as SelectionStatus));
     if (!m) {
       if (selected.length) throw new LedgerError("LEDGER_CONTRADICTS_MANIFEST", `${rec.case_id}: selected but not an owner success in the manifest`);
+      // a case the manifest does not hold has no manifest label to cite
+      const cited = rec.versions.find((v) => v.version_label_source !== "ledger_assigned");
+      if (cited) throw new LedgerError("VERSION_LABEL_MISMATCH", `${rec.case_id}/${cited.version_label}: case not in manifest`);
     } else {
       if (selected.length !== 1) throw new LedgerError("LEDGER_CONTRADICTS_MANIFEST", `${rec.case_id}: ${selected.length} selected versions for one manifest success`);
       const sel = selected[0]!;
       const want = m.conditional ? "owner_conditionally_selected" : "owner_selected";
       if (sel.selection_status !== want) throw new LedgerError("LEDGER_CONTRADICTS_MANIFEST", `${rec.case_id}: manifest says ${want}`);
 
+      // a label field that exists must be a non-empty string, and two label fields must agree (fail closed)
+      for (const field of Object.values(MANIFEST_LABEL_FIELDS)) {
+        const value = m.fields[field];
+        if (value !== undefined && (typeof value !== "string" || value.trim() === ""))
+          throw new LedgerError("VERSION_LABEL_MISMATCH", `${rec.case_id}: manifest ${field} is not a label`);
+      }
       const manifestLabels = Object.entries(MANIFEST_LABEL_FIELDS)
         .map(([source, field]) => [source, m.fields[field]] as const)
         .filter((e): e is readonly [string, string] => typeof e[1] === "string");
+      if (new Set(manifestLabels.map((e) => e[1])).size > 1)
+        throw new LedgerError("LEDGER_CONTRADICTS_MANIFEST", `${rec.case_id}: the manifest's approved_version and owner_approved_version disagree`);
       for (const v of rec.versions) {
         const isSel = v === sel;
         if (v.version_label_source !== "ledger_assigned") {

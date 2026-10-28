@@ -23,19 +23,41 @@ import { buildResearchBrief, ShopResearchInput } from "../../lib/design-agent/in
 import { CorpusError, loadResearchCorpus, type CorpusOptions } from "../../lib/design-agent/intelligence/corpus";
 import { LEDGER_MODES, LedgerError, type LedgerMode } from "../../lib/design-agent/intelligence/ledger";
 
-function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+const VALUE_FLAGS = ["--research-root", "--shop", "--mode", "--ledger"] as const;
+type Args = { flags: Partial<Record<(typeof VALUE_FLAGS)[number], string>>; summary: boolean };
+
+/** Strict parsing: an unknown or repeated flag, a missing value or a --flag=value form is refused, never defaulted. */
+function parseArgs(argv: string[]): Args | null {
+  const out: Args = { flags: {}, summary: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--summary") {
+      if (out.summary) return null;
+      out.summary = true;
+    } else if ((VALUE_FLAGS as readonly string[]).includes(a)) {
+      const name = a as (typeof VALUE_FLAGS)[number];
+      const value = argv[i + 1];
+      if (name in out.flags || value === undefined || value.startsWith("--") || value === "") return null;
+      out.flags[name] = value;
+      i++;
+    } else {
+      return null;
+    }
+  }
+  return out;
 }
 
 async function main(): Promise<number> {
-  const root = arg("--research-root");
-  const shopPath = arg("--shop");
-  const summary = process.argv.includes("--summary");
-  const modeArg = arg("--mode") ?? "phase1_compat";
-  const ledgerPath = arg("--ledger");
-  const usage = "usage: --research-root <dir> (--summary | --shop <shop-input.json>) [--mode phase1_compat|partial|strict] [--ledger <ledger.json>]";
-  if (!root || summary === Boolean(shopPath) || !(LEDGER_MODES as readonly string[]).includes(modeArg) || (modeArg === "phase1_compat" && process.argv.includes("--ledger"))) {
+  const usage =
+    "usage: --research-root <dir> (--summary | --shop <shop-input.json>) [--mode phase1_compat|partial|strict] [--ledger <ledger.json>]\n" +
+    "  phase1_compat (default) reads no ledger; partial needs --ledger; strict needs --ledger and always stops (not implemented yet)";
+  const args = parseArgs(process.argv.slice(2));
+  const root = args?.flags["--research-root"];
+  const shopPath = args?.flags["--shop"];
+  const summary = args?.summary ?? false;
+  const modeArg = args?.flags["--mode"] ?? "phase1_compat";
+  const ledgerPath = args?.flags["--ledger"];
+  if (!args || !root || summary === Boolean(shopPath) || !(LEDGER_MODES as readonly string[]).includes(modeArg) || (modeArg === "phase1_compat" && ledgerPath !== undefined)) {
     console.error(usage);
     return 2;
   }
