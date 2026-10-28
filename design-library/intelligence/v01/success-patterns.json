@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-020-Kissa-ITALICO-SHOWCASE-v1.md (CP-014 not approved)",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-021-TERACE-PICK-COMPOSE-v1.md (CP-014 remains pending and excluded)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -901,11 +901,60 @@
       ],
       "implementation_gap": "Only a static 1536x1024 concept image. No HTML, responsive phone version, factual photos, verified social external link, shop permission, or production deployment.",
       "evidence_ref": "design-library/success-cases/CP-020-Kissa-ITALICO-SHOWCASE-v1.md"
+    },
+    {
+      "id": "CP-021",
+      "name": "TERACE — PICK / COMPOSE v1 (original)",
+      "category": "acrylic_accessories_personal_composition",
+      "owner_selection": "conditional_fallback_to_v1_after_refinement_v2_failed",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "choose colorful transparent acrylic components",
+        "assemble unique charms on small metal rings",
+        "shapes and colors cast refracted shadows",
+        "preview the combined accessory before making it"
+      ],
+      "structural_translation": "Use a workshop assembly flow as the interface map: left trays contain selectable colors/shapes, the center stages the chained pieces and the right side displays an illustrative completed piece. Labels SHAPE/COLOR/COMPOSE follow that physical making process.",
+      "visual_mechanisms": [
+        "bright near-white tabletop with colorful translucent acrylic shadows",
+        "large central flower-like purple acrylic connected to smaller pieces",
+        "left stacked trays of transparent colored parts",
+        "right frosted preview mini-stage and delicate numbered guides"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner liked the initial design with 'いいと思います'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner explicitly requested that the initial version be used as a success case if the brush-up fails",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "v2 heightened glints and saturation but delivered no clear improvement in hierarchy or usability; initial v1 is selected under the prior conditional instruction",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Global regeneration changed highlights/colors without meaningfully improving layout or function",
+        "Over-bright reflections may overwhelm natural acrylic transparency",
+        "Believing painted preview buttons imply actual working functionality",
+        "TERACE official ecommerce or website cannot be ruled out until Instagram bio links are reviewed",
+        "AI-generated products and company imagery cannot be used as verified inventory or merchant-owned photography"
+      ],
+      "not_to_copy": [
+        "TERACE identity and unrelated merchants' storefronts",
+        "exact acrylic kit, colors, shape arrangement and manufactured object imagery",
+        "AI generated products, names, pricing and workshop claims",
+        "exact white tabletop composition as a general template"
+      ],
+      "implementation_gap": "Single approved v1 1536x1024 concept image. No functioning parts picker, responsive mobile UI, standalone HTML/CSS/JS, browser QA, verified official site absence, merchant permission or production deployment.",
+      "evidence_ref": "design-library/success-cases/CP-021-TERACE-PICK-COMPOSE-v1.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Nine cases have local HTML PoCs; ten remain concept/image-only; none are verified live production websites",
+    "Nine cases have local HTML PoCs; eleven remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
