@@ -194,3 +194,11 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-024｜全ページ構造の不足を修正（2026-10-28）
 
 ユーザー「いいと思いますが全体像がさっきからなくないですか？」により、CP-020〜024までの**Hero偏重**を正式な研究上の課題として記録。[全ページ評価ゲート](../../../docs/design/research-full-page-review-gate.md)を追加。Boheme.で気に入られたHero v1を原本保持し、[全ページHTML研究v2](experiments/CP024-Boheme-FLORAL-FITTING-ROOM-v1.md)を作成。Concept → LOOKを切り替えるフィッティングルーム → スタイリングレール（色/線/質感） → Story → Visitという一貫した体験をPC/スマホ両方で提示する。Chromium 9画面幅にて横はみ出し0・LOOK切替・JS例外0を確認。**本番サイトでも実店舗公認でもなく、全ページv2のオーナー評価待ち**。成功事例は22件のまま。以後は「Hero好評価」と「全ページ採用」を区別する。
+
+## CP-024｜Boheme. FLORAL FITTING ROOM Full-page v2（2026-10-28正式研究成功）
+
+[成功記録](../../success-cases/CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md)／[研究・実装・QA](experiments/CP024-Boheme-FLORAL-FITTING-ROOM-v1.md)。HeroだけではなくPC/スマホ全ページ・LOOK切替と下層までコンセプトが続くHTMLをユーザー採用。**累計23件＝HTML研究PoC10＋静止画13**。本人公認・Web公開なし。
+
+## CP-025｜HOTEL AUTHENTIC 食のアトラス全ページv1（2026-10-28初稿・評価待ち）
+
+[食の図鑑の全ページ研究記録](experiments/CP025-HOTEL-AUTHENTIC-EDIBLE-ATLAS-v1.md)。地域ごとの料理という店舗個性を図鑑のページ・コンパス・実際に切り替えられる4章に変換。PC1440/スマホ390の全ページ、俯瞰比較、HTML/CSS/JS、ZIPを提出、Chromium9幅QA。生成写真は公式の料理写真ではない。**成功数には未計上（23件のまま）**。公式サイト/ECは検索未発見だがSNSプロフィールリンク未確認で営業HOLD。
