@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-016-Zulu-COUNTERWEIGHT-ZK01.md (CP-014 remains pending and is not a success)",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-017-Rurikoyarn-UNWIND-v1.1.md (CP-014 pending, not a success)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -717,11 +717,59 @@
       ],
       "implementation_gap": "Local HTML/CSS/JS/SVG PoC only, 9 viewport widths tested in Chromium. No real mobile devices, Firefox/Safari, accessibility full audit, shop authorization, official product photos, Next.js or production verification.",
       "evidence_ref": "design-library/success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md"
+    },
+    {
+      "id": "CP-017",
+      "name": "Rurikoyarn — UNWIND v1.1",
+      "category": "mixed_and_dyed_yarn",
+      "owner_selection": "approved_v1_1_research_image_only",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "factory-surplus yarn and mixed fiber colors",
+        "thick intertwined loops of yarn",
+        "tactile wool, mohair and blended fibers",
+        "one-off yarn combinations"
+      ],
+      "structural_translation": "Interlacing multicolored fibers form a central large loop around which the visitor reads brand story and material labels, turning knotting and unspooling into spatial editorial hierarchy rather than a standard photo hero and product cards",
+      "visual_mechanisms": [
+        "nearly black ground makes bright chunky yarn strands pop",
+        "large warm orange/violet/blue interwoven yarn loop frames centered UNWIND title",
+        "small peripheral text between strands makes depth and movement",
+        "subtle local light and texture refinement preserves original composition"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner liked initial yarn-loop image and requested polish rather than fundamental restructure",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner liked the faithful v1.1 subtle refinement",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner explicitly accepted the version with '成功例とします、次へ進んで' on 2026-10-28",
+          "basis": "owner_selection"
+        }
+      ],
+      "known_failure_modes": [
+        "Repeated text-to-image regeneration changed the dark loop to generic light collage and lost the approved core",
+        "Improving texture should not imply changing the key layout geometry",
+        "Generated yarn/product images and embedded on-image typography are not commercial-ready or editable HTML",
+        "Static visual success alone does not validate responsive Web behavior"
+      ],
+      "not_to_copy": [
+        "Rurikoyarn identity and any literal shop names",
+        "specific multicolor yarn loop arrangement and photos",
+        "precise typography, color recipe and tag copy",
+        "AI invented product labels as if true inventory"
+      ],
+      "implementation_gap": "Approved v1.1 concept image only. No independent HTML/CSS/JS, mobile design, verified material photos, merchant authorization, Next.js or production validation.",
+      "evidence_ref": "design-library/success-cases/CP-017-Rurikoyarn-UNWIND-v1.1.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Nine cases have local HTML PoCs; six remain concept/image-only; none are verified live production websites",
+    "Nine cases have local HTML PoCs; seven remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
