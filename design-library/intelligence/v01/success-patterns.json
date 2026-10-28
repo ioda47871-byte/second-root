@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-018-MOLE-FACTORY-OVERPRINT-v1.md (CP-014 pending and excluded)",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-019-Anna-Urata-WAX-TIME-v1.md (CP-014 pending and excluded)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -813,11 +813,55 @@
       ],
       "implementation_gap": "Single 1536x1024 research concept image; no HTML/CSS/JS, responsive mobile, verified brand-owned product media, formal shop permission, browser QA or public deployment; official BASE shop already exists.",
       "evidence_ref": "design-library/success-cases/CP-018-MOLE-FACTORY-OVERPRINT-v1.md"
+    },
+    {
+      "id": "CP-019",
+      "name": "浦田杏梨 — WAX / TIME v1",
+      "category": "wax_sculpture_candles_artist",
+      "owner_selection": "approved_research_concept_image_v1",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "translucent wax sculpture and candle forms",
+        "wax phase change and melting drips",
+        "light passing through amber wax",
+        "negative cavities of a partially melted object"
+      ],
+      "structural_translation": "Turn the physical passage of wax from whole shape through melting to transformed remains into three spatially placed reading points BEFORE, MELTING, AFTER on a continuous translucent sculptural arch.",
+      "visual_mechanisms": [
+        "translucent massive molten wax arch and irregular inner void",
+        "Japanese headline in the central dark negative space",
+        "time labels anchored to different points on the wax rather than stacked photo content bands",
+        "minimal vertical right-hand navigation with dark gallery-like backdrop"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner accepted the initial wide wax-sculpture image explicitly as success with '成功例とします' on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "The study turns material translucency and chronological change into a single large image-space composition, distinct from color-plate printing and counterweight balance",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "A static wax hero can be mistaken for a working temporal navigation without implementation",
+        "On-image typography is baked into an image, not an independently editable text layer",
+        "Fictional sculpture photography may be mistaken as the artist's real object or merchandise",
+        "No mobile/browser QA, source rights, artist approval or web deployment"
+      ],
+      "not_to_copy": [
+        "浦田杏梨 name and artist branding",
+        "AI-generated wax sculpture and the exact arch shape",
+        "specific before/melting/after graphic coordinates and headline",
+        "research copy or fictional artwork represented as verified artist statement"
+      ],
+      "implementation_gap": "Only a single 1536x1024 concept image. No responsive mobile, HTML/CSS/JS, browser tests, authentic artwork, artist permission, Next.js, or production validation.",
+      "evidence_ref": "design-library/success-cases/CP-019-Anna-Urata-WAX-TIME-v1.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Nine cases have local HTML PoCs; eight remain concept/image-only; none are verified live production websites",
+    "Nine cases have local HTML PoCs; nine remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
