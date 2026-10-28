@@ -59,11 +59,11 @@ export function fictionalFiles() {
         }),
       ],
     },
-    queue: { schema_version: 1, status: "prioritized_research_queue_not_a_completed_audit", queue: [{ id: "DX-002", human_review: "pending", approval_for_generation: false }] },
-    referencesV02: { references: [{ id: "DX-001" }, { id: "DX-002" }] },
+    queue: { schema_version: 1, status: "prioritized_research_queue_not_a_completed_audit", batch_a: { count: 1 }, batch_b: { count: 0 }, queue: [{ id: "DX-002", human_review: "pending", approval_for_generation: false }] },
+    referencesV02: { counts: { total_research_references: 2 }, references: [{ id: "DX-001" }, { id: "DX-002" }] },
     candidatesV03: [
-      { status: "research_candidates_not_approved", references: [{ id: "DX-003" }] },
-      { status: "research_candidates_not_approved", references: [{ id: "DX-004" }] },
+      { status: "research_candidates_not_approved", record_count: 1, references: [{ id: "DX-003" }] },
+      { status: "research_candidates_not_approved", record_count: 1, references: [{ id: "DX-004" }] },
     ],
     sha256: {},
   };

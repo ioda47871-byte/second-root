@@ -12,7 +12,7 @@ const grep = (args: string[]) => spawnSync("grep", args, { cwd: REPO, encoding: 
 
 describe("isolation of the Design Intelligence adapter", () => {
   it("is imported only by its own CLI", () => {
-    expect(grep(["-rlE", "--exclude-dir=intelligence", "design-agent/intelligence|from \"\\./intelligence|from \"\\.\\./intelligence", "lib", "app", "components", "scripts"])).toEqual([
+    expect(grep(["-rlE", "--exclude-dir=intelligence", "design-agent/intelligence|[\"']\\./intelligence|[\"']\\.\\./intelligence", "lib", "app", "components", "scripts"])).toEqual([
       "scripts/design-intelligence/brief.ts",
     ]);
   });
@@ -21,7 +21,7 @@ describe("isolation of the Design Intelligence adapter", () => {
     expect(
       grep([
         "-rlE",
-        "from \"(@/|\\.\\./)+(lib/)?(sales|admin|supabase)|design-agent/(worker|pipeline|codex|bridge|assets|design-image|comp-impl|shop-css|preview)|from \"\\.\\./(worker|pipeline|codex|bridge|assets|design-image|comp-impl|shop-css|preview)|components/|app/",
+        "(from|import|require)\\s*\\(?\\s*[\"'](@/|(\\.\\./)+)(lib/)?(sales|admin|supabase|instagram)|design-agent/(worker|pipeline|codex|bridge|assets|design-image|comp-impl|shop-css|preview|sandbox|bounded-process|review|prompts)|(from|import|require)\\s*\\(?\\s*[\"']\\.\\./(worker|pipeline|codex|bridge|assets|design-image|comp-impl|shop-css|preview|sandbox|bounded-process|review|prompts)|components/|app/",
         "lib/design-agent/intelligence",
         "scripts/design-intelligence",
       ]),

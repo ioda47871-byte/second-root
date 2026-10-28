@@ -10,9 +10,12 @@
  *   research category label, or an analyst keyword that is tied to a cited
  *   trait and appears in the case's own analysis text. Every match names the
  *   field and the trait ids it rests on.
- * - Related cases contribute PRINCIPLES (structural translation, mechanisms,
- *   failure modes, what not to copy). Their compositions, logos, photos, copy
- *   and colour recipes are never offered for reuse.
+ * - Related cases contribute a PRINCIPLE (their structural translation),
+ *   failure modes and what not to copy. Each case's own visual mechanisms are
+ *   passed on separately as `case_specific_mechanisms_do_not_reproduce`: the
+ *   research's analysis of that case (they can name its composition, colours
+ *   or labels), shown so a session can recognise and avoid them, never to reuse.
+ * - Conditional selections stay marked as conditional.
  * - Design DNA parts are left undecided (null): choosing them is the session's
  *   and the owner's work, from this shop's facts.
  */
@@ -53,7 +56,7 @@ export type ResearchBrief = ReturnType<typeof buildResearchBrief>;
 
 export function buildResearchBrief(corpus: ResearchCorpus, shop: ShopResearchInput, opts: { maxRelated?: number } = {}) {
   const maxRelated = opts.maxRelated ?? 5;
-  const related = corpus.successes
+  const matched = corpus.successes
     .map((c) => {
       const matches: Match[] = [];
       if (shop.category && shop.category === c.category) matches.push({ basis: "category_exact" });
@@ -68,18 +71,20 @@ export function buildResearchBrief(corpus: ResearchCorpus, shop: ShopResearchInp
       return { c, matches };
     })
     .filter((x) => x.matches.length > 0)
-    .sort((a, b) => b.matches.length - a.matches.length || a.c.id.localeCompare(b.c.id))
+    .sort((a, b) => b.matches.length - a.matches.length || a.c.id.localeCompare(b.c.id));
+  const related = matched
     .slice(0, maxRelated)
     .map(({ c, matches }) => ({
       case_id: c.id,
       tier: c.tier,
+      manifest_status: c.manifest_status,
+      owner_selection: c.owner_selection,
+      conditional: c.conditional,
       implementation: c.implementation,
       evidence_ref: c.evidence_ref,
       matches,
-      principle: {
-        structural_translation: c.structural_translation,
-        visual_mechanisms: [...c.visual_mechanisms],
-      },
+      principle: { structural_translation: c.structural_translation },
+      case_specific_mechanisms_do_not_reproduce: [...c.visual_mechanisms],
       known_failure_modes: [...c.known_failure_modes],
       not_to_copy: [...c.not_to_copy],
     }));
@@ -98,7 +103,9 @@ export function buildResearchBrief(corpus: ResearchCorpus, shop: ShopResearchInp
   return {
     schema: "design_intelligence_research_brief_v1" as const,
     status: "research_only_not_prompt_input_not_approved" as const,
-    gate: shop.facts_verified && shop.traits.length > 0 ? ("G1_input_for_session_review" as const) : ("G0_hold" as const),
+    // Only part of G0 is checked here (verified, cited traits). The rest of the canonical G0 stays for the session and the owner.
+    gate: shop.facts_verified && shop.traits.length > 0 ? ("G0_partially_checked" as const) : ("G0_hold" as const),
+    g0_not_checked_here: ["usable_product_names", "shop_strengths", "cta_is_true", "approved_asset_list"],
     corpus: {
       as_of: corpus.as_of,
       source_sha256: corpus.source_sha256,
@@ -113,6 +120,7 @@ export function buildResearchBrief(corpus: ResearchCorpus, shop: ShopResearchInp
       facts_verified: shop.facts_verified,
       traits: shop.traits.map((t) => ({ ...t })),
     },
+    related_total: matched.length,
     related_principles: related,
     failure_library: [...failures].map(([failure_mode, case_ids]) => ({ failure_mode, case_ids })).sort((a, b) => a.failure_mode.localeCompare(b.failure_mode)),
     not_to_copy: [...new Set(related.flatMap((r) => r.not_to_copy))].sort(),

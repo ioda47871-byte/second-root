@@ -8,8 +8,11 @@
  * - Keeps three tiers apart: the owner-selected research successes, the
  *   unreviewed reference candidates and the pending review queue. Only the
  *   first may inform principles; the others are counted, never promoted.
- * - Fails closed: a missing file, a schema drift, a count mismatch or a
- *   policy string that changed stops the load with a fixed code.
+ * - Fails closed: a missing file, a schema drift, a file whose declared count
+ *   differs from its records, a case whose status is not an explicit owner
+ *   success, or a policy string that changed stops the load with a fixed code.
+ *   The totals (23 / 80 / 20 today) are not pinned: the research keeps growing,
+ *   so the brief reports them with each file's SHA-256 for a person to compare.
  *
  * The research documents say nothing in them is auto-injected into a
  * generator. This module only produces a research brief for a Claude
@@ -37,6 +40,22 @@ export const TIERS = {
 
 export type Implementation = "local_html_css_js_poc" | "concept_image_only";
 
+/**
+ * The manifest statuses that mean "the owner selected this as a research success".
+ * Any other status (a new one, a pending, held or rejected one) stops the load:
+ * a case is a principle source only when the owner's selection is explicit.
+ */
+export const SUCCESS_STATUSES = [
+  "owner_selected_research_success_example",
+  "owner_selected_research_design_success",
+  "owner_design_approved_v4",
+  "owner_conditionally_authorized_fallback_research_success",
+] as const;
+/** Selections that were approved only on a condition stay visible as conditional in every brief. */
+export const CONDITIONAL_STATUSES: readonly string[] = ["owner_conditionally_authorized_fallback_research_success"];
+/** Words that mark a selection as not (yet) a success, whatever the status says. */
+const NOT_SUCCESS = /reject|pending|unapproved|hold|awaiting|not_selected|withdrawn/i;
+
 export class CorpusError extends Error {
   readonly code: string;
   constructor(code: string, readonly detail = "") {
@@ -46,7 +65,11 @@ export class CorpusError extends Error {
   }
 }
 
-/** Research text is data, never instructions: no control characters, no prompt fences, no markup tags, bounded. */
+/**
+ * Research text is data, never instructions. This refuses control characters,
+ * prompt fences and markup tags, bounded in length; it does not detect plain-text
+ * instructions, which is why the output is marked research-only and never wired to a generator.
+ */
 const Text = (max: number) =>
   z.string().trim().min(1).max(max).refine((s) => !/[\u0000-\u0009\u000b-\u001f\u007f]|<<<|>>>|<\s*\/?\s*[a-z!]/i.test(s), "unsafe_text");
 const CaseId = z.string().regex(/^CP-\d{3}$/);
@@ -92,7 +115,7 @@ const Patterns = z.object({
 
 /** The manifest carries per-case ad-hoc *_sha256 keys; only the fields the adapter relies on are checked. */
 const ManifestRecord = z
-  .object({ id: CaseId, status: z.string().regex(/^owner_[a-z0-9_]+$/), view: z.string().regex(/^[a-z0-9_]{2,80}$/) })
+  .object({ id: CaseId, status: z.string().regex(/^[a-z0-9_]{2,100}$/), view: z.string().regex(/^[a-z0-9_]{2,80}$/) })
   .passthrough();
 const Manifest = z.object({
   schema_version: z.literal(1),
@@ -110,6 +133,8 @@ const Manifest = z.object({
 const Queue = z.object({
   schema_version: z.literal(1),
   status: z.literal("prioritized_research_queue_not_a_completed_audit"),
+  batch_a: z.object({ count: z.number().int().nonnegative() }).passthrough(),
+  batch_b: z.object({ count: z.number().int().nonnegative() }).passthrough(),
   queue: z.array(
     z
       .object({
@@ -121,9 +146,15 @@ const Queue = z.object({
   ),
 });
 
-const RefsV02 = z.object({ references: z.array(z.object({ id: z.string().min(1) }).passthrough()).min(1) }).passthrough();
+const RefsV02 = z
+  .object({
+    counts: z.object({ total_research_references: z.number().int().positive() }).passthrough(),
+    references: z.array(z.object({ id: z.string().min(1) }).passthrough()).min(1),
+  })
+  .passthrough();
 const CandV03 = z.object({
   status: z.literal("research_candidates_not_approved"),
+  record_count: z.number().int().positive(),
   references: z.array(z.object({ id: z.string().regex(/^DX-\d{3}$/) }).passthrough()).min(1),
 }).passthrough();
 
@@ -136,7 +167,7 @@ export type ResearchCorpus = {
   as_of: string;
   source_sha256: Record<string, string>;
   /** Owner-selected research successes. Research only: not client work, not a template, not prompt input. */
-  successes: (PatternCase & { tier: typeof TIERS.success; manifest_status: string; manifest_view: string })[];
+  successes: (PatternCase & { tier: typeof TIERS.success; manifest_status: string; manifest_view: string; conditional: boolean })[];
   counts: {
     success_cases: number;
     local_html_css_js_poc: number;
@@ -185,9 +216,18 @@ export function buildCorpus(files: {
   const byId = new Map(manifest.records.map((r) => [r.id, r]));
   const successes = patterns.cases.map((c) => {
     const rec = byId.get(c.id)!;
+    if (!(SUCCESS_STATUSES as readonly string[]).includes(rec.status) || NOT_SUCCESS.test(c.owner_selection))
+      throw new CorpusError("CORPUS_NOT_AN_OWNER_SUCCESS", c.id);
     if (implementationFromView(rec.view) !== c.implementation) throw new CorpusError("CORPUS_IMPLEMENTATION_MISMATCH", c.id);
-    return { ...c, tier: TIERS.success, manifest_status: rec.status, manifest_view: rec.view };
+    return { ...c, tier: TIERS.success, manifest_status: rec.status, manifest_view: rec.view, conditional: CONDITIONAL_STATUSES.includes(rec.status) };
   });
+
+  // each file's own declared count must match its records (a dropped or added record is visible, not silent)
+  if (v02.counts.total_research_references !== v02.references.length) throw new CorpusError("CORPUS_COUNT_MISMATCH", RESEARCH_FILES.referencesV02);
+  v03.forEach((c, i) => {
+    if (c.record_count !== c.references.length) throw new CorpusError("CORPUS_COUNT_MISMATCH", RESEARCH_FILES.candidatesV03[i] ?? "candidates");
+  });
+  if (queue.batch_a.count + queue.batch_b.count !== queue.queue.length) throw new CorpusError("CORPUS_COUNT_MISMATCH", RESEARCH_FILES.queue);
 
   const candidateIds = [...ids(v02.references), ...v03.flatMap((c) => ids(c.references))];
   const d2 = dup(candidateIds);

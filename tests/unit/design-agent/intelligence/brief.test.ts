@@ -46,6 +46,7 @@ describe("research brief", () => {
 
   it("never fills gaps: no traits, no category and unverified facts are listed and the gate holds at G0", () => {
     const b = buildResearchBrief(corpus(), shop({ facts_verified: false, traits: [] }));
+    expect(b.g0_not_checked_here).toEqual(["usable_product_names", "shop_strengths", "cta_is_true", "approved_asset_list"]);
     expect(b.gate).toBe("G0_hold");
     expect(b.missing_inputs).toEqual([
       "facts_not_verified_by_a_person",
@@ -77,8 +78,27 @@ describe("research brief", () => {
   it("does not offer the case's composition, only its principle", () => {
     const b = buildResearchBrief(corpus(), shop({ category: "bakery" }));
     const r = b.related_principles[0]!;
-    expect(Object.keys(r).sort()).toEqual(["case_id", "evidence_ref", "implementation", "known_failure_modes", "matches", "not_to_copy", "principle", "tier"]);
-    expect(Object.keys(r.principle).sort()).toEqual(["structural_translation", "visual_mechanisms"]);
+    expect(Object.keys(r).sort()).toEqual([
+      "case_id", "case_specific_mechanisms_do_not_reproduce", "conditional", "evidence_ref", "implementation",
+      "known_failure_modes", "manifest_status", "matches", "not_to_copy", "owner_selection", "principle", "tier",
+    ]);
+    // only the structural translation is offered as a principle; the case's own mechanisms are marked do-not-reproduce
+    expect(Object.keys(r.principle)).toEqual(["structural_translation"]);
+    expect(r.case_specific_mechanisms_do_not_reproduce).toEqual(["ledges as section dividers"]);
+  });
+
+  it("keeps a conditional owner selection visible as conditional", () => {
+    const f = fictionalFiles();
+    f.manifest.records[0]!.status = "owner_conditionally_authorized_fallback_research_success";
+    const b = buildResearchBrief(buildCorpus(f), shop({ category: "bakery" }));
+    expect(b.related_principles[0]).toMatchObject({ case_id: "CP-901", conditional: true, manifest_status: "owner_conditionally_authorized_fallback_research_success" });
+  });
+
+  it("reports how many cases matched when the list is cut", () => {
+    const b = buildResearchBrief(corpus(), shop({ category: "bakery", keywords: [{ term: "rail", trait_ids: ["T2"] }] }), { maxRelated: 1 });
+    expect(b.related_total).toBe(2);
+    expect(b.related_principles).toHaveLength(1);
+    expect(b.gate).toBe("G0_partially_checked");
   });
 
   it.each<[string, Record<string, unknown>]>([
