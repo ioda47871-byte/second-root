@@ -4930,6 +4930,61 @@
         "営業DM/メール送信・運用DB連携"
       ],
       "note": "Owner explicitly directed to proceed on screenshot-based single-shop PoC runbook. Docs/template only; rights and actual operational approvals separate."
+    },
+    {
+      "id": "DEV-112",
+      "title": "Design Intelligence Phase 1：研究データ（PR #142）の読み取り専用Adapter・統合計画・テスト",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-108",
+        "DEV-111"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-112-design-intelligence-adapter",
+      "purpose": "オーナーが2026-10-28に指示した研究成果の段階的統合のPhase 1。既存環境と研究PR #142を調査し、統合計画を文書化し、研究データを承認層別に読む読み取り専用Adapterとテストを追加する。Phase 2以降と本番接続は個別承認。",
+      "acceptance_criteria": [
+        "研究のowner選択成功例・未審査の参考候補80件・審査キュー20件を別層として扱い、原理の根拠は成功例だけに限る",
+        "台帳と分析のID・実装種別・再利用禁止方針・候補件数の不一致は固定コードで停止する",
+        "店舗入力は出典付きの確認済み事実だけ。業種推測で補完せず、欠けた入力はmissing_inputsとG0_holdで示す",
+        "関連付けは根拠（カテゴリ一致または特徴に紐づくキーワードの単語一致）と欄・特徴IDを必ず出力する",
+        "具体的な構図・ロゴ・写真・文言・配色を出さず、not_to_copyと再利用禁止を同梱する。Design DNAは全項目未決定",
+        "AdapterはCLIからだけimportされ、営業・worker・pipeline・Codex・PoC・ネットワーク・書き込みに触れない",
+        "PR #142をマージせず、研究データをコピーしない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/intelligence/*.test.ts",
+        "tests/unit/guardrails.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/design-agent/comp-impl/isolation.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/intelligence/**",
+        "scripts/design-intelligence/**",
+        "tests/unit/design-agent/intelligence/**",
+        "docs/design/design-intelligence-integration-plan.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-112.md（独立reviewによる記録のみ）"
+      ],
+      "forbidden_scope": [
+        "PR #142のマージ・研究データの改変やコピー",
+        "営業demo・components/demo・worker・timer・bridge・pipeline・asset store・design-image・comp-implの変更",
+        "品質ゲート・CSS許可表・評価閾値の変更",
+        "Codex・モデル・APIの呼び出し、実店舗情報の取得",
+        "Production/Staging/Supabase/DB/Vercel・main・営業送信・公開",
+        ".github/workflows・package.jsonの依存"
+      ],
+      "human_approval_triggers": [
+        "Phase 2以降（不採用台帳・構図重複チェック・Identity Lock本体化・ChatGPTデザイン取り込み）の着手",
+        "研究データを生成プロンプトや本番経路へ渡すこと",
+        "PR #142のマージと実店舗情報のリポジトリ保持",
+        "3〜5店舗の縦断テスト（店舗・素材・生成ごと）"
+      ],
+      "note": "Phase 1 only. Adapter reads a research checkout path at run time; production path does not import it."
     }
   ]
 }
