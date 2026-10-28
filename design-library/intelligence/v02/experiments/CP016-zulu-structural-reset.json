@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "CP016_ZULU_STRUCTURAL_ALTERNATIVES_20261028",
-  "status": "research_only_owner_rejected_first_image_no_new_image_generated",
+  "status": "CP016_ZK01_v1_OWNER_SELECTED_RESEARCH_SUCCESS_not_deployed",
   "research_only": true,
   "subject": {
     "display_name": "ズールー工作所",
@@ -213,8 +213,8 @@
       "main_risk": "A technical motif may falsely imply manufacture specifications; mark all invented diagrams as concepts and verify statements."
     }
   ],
-  "selection_status": "pending_owner_review",
-  "chosen_proposal_id": null,
+  "selection_status": "owner_selected_research_success",
+  "chosen_proposal_id": "ZK-01",
   "current_recommendation": {
     "proposal_id": "ZK-01",
     "rationale": "Most different from recent editorial/photo-led pages and CP-015's table-navigation; needs whitespace and dynamic counterweight rather than another illustrated index."
@@ -223,7 +223,7 @@
   "local_research_poc": {
     "version": "ZK-01-COUNTERWEIGHT-v1",
     "date": "2026-10-28",
-    "status": "built_browser_checked_awaiting_owner_visual_review",
+    "status": "local_chromium_tested_owner_selected_research_success_not_deployed",
     "project_type": "unofficial_research_only",
     "design_route": "after image generated a familiar hero + bottom photo strip, instead implemented the counterweight grammar directly with SVG/CSS/JavaScript",
     "identity_target": "ズールー工作所",
@@ -256,7 +256,16 @@
     "desktop_screenshot_sha256": "9ea42fe1cc87056d2810069343aa937468048917650897fe69780f1e7e08107e",
     "mobile_screenshot_sha256": "3b67d554b68e36aaf98fcebc8e45f960a267f3d2f80fcba51cd988b9e37c2e58",
     "files_location": "ChatGPT conversation ZIP; GitHub stores only metadata and hashes, no HTML/screenshots",
-    "owner_approval": "not_yet_asked",
+    "owner_approval": "accepted_research_success_2026-10-28",
     "commercial_deployment": "not_authorized"
+  },
+  "owner_approval_evidence": {
+    "success_case_id": "CP-016",
+    "proposal_id": "ZK-01",
+    "owner_quote": "成功例でいいと思います",
+    "selected_version": "COUNTERWEIGHT / ZK-01 v1 — offline HTML CSS JS SVG interactive local PoC",
+    "success_case_record": "design-library/success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md",
+    "date": "2026-10-28",
+    "approval_scope": "Second Root research design example only; no shop endorsement or production approval"
   }
 }
