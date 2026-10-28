@@ -21,7 +21,7 @@ const unique = (values) => values.length === new Set(values).size;
 assert(knowledge.schema_version === 1 && queue.schema_version === 1, "unexpected schema version");
 assert(knowledge.scope === "research_only_not_auto_prompt_input", "unsafe knowledge scope");
 assert(knowledge.reuse_policy.design_principles_are_not_templates === true, "anti-template policy missing");
-assert(unique(cases.map(x => x.id)) && cases.length === 20, "case count/IDs do not match pilot");
+assert(unique(cases.map(x => x.id)) && cases.length === 21, "case count/IDs do not match pilot");
 assert(cases.every(x => x.evidence_ref && x.structural_translation && x.shop_motifs.length >= 2 && x.known_failure_modes.length >= 1 && x.not_to_copy.length >= 1 && x.implementation_gap), "case incomplete");
 assert(cases.every(x => manifest.records.some(y => y.id === x.id)), "case missing from source registry");
 assert(cases.filter(x => x.implementation === "local_html_css_js_poc").length === 9, "PoC counts ambiguous");
@@ -42,4 +42,4 @@ for (const row of rows) {
     assert(!audits.has(row.id) && row.existing_evidence === "text_checked_only_no_viewport_audit", "new case claimed audited: " + row.id);
   }
 }
-console.log("PASS: 20 research success patterns; 20 source-traced review queue items; no auto-approved research.");
+console.log("PASS: 21 research success patterns; 20 source-traced review queue items; no auto-approved research.");
