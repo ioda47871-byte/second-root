@@ -128,3 +128,9 @@
 - スマホ390ノート表示 PNG SHA-256 `4e997de75939d51145a098711d57076b59580a5a1263b1e1329d879df1d27d2f`
 - 原本ZIP、画像、HTML/CSS/JSはChatGPT会話側のみ保存。GitHubへは研究記録とSHAのみ追加。
 - 既存成功13件／参考候補80件は変更せず、本番Vercel、Supabase、main、営業AI、画像生成ワーカーは変更なし。
+
+## 2026-10-28｜オーナーによるTABLE JOURNAL v2の最終研究採用
+
+**新しい状態：`OWNER_SELECTED_RESEARCH_SUCCESS`。** 直前の`RESEARCH_TABLE_JOURNAL_V2_AWAITING_OWNER_REVIEW`は**採用前の履歴**であり、その後ユーザーが**「成功例とします」**と明示。CP-015の研究正本は[成功事例文書](../../../success-cases/CP-015-imairo-TABLE-JOURNAL-v2.md)。研究成功例は**14件（ローカルHTML PoC8件＋画像コンセプト6件）**。CP-014は未採用。
+
+採用したのは、評価済みワイドHeroのバイナリを保持した「TABLE JOURNAL v2」ローカルHTMLと、料理・菓子・コーヒーなどの位置に対応する紙片ノートUI。途中の横帯型フル画像、ラベルを詰めすぎた案、一般的なサイドドロワーは不採用として保持。**公式店舗許諾や本番公開の承認ではない**。
