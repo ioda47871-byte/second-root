@@ -10,11 +10,13 @@
  *   research category label, or an analyst keyword that is tied to a cited
  *   trait and appears in the case's own analysis text. Every match names the
  *   field and the trait ids it rests on.
- * - Related cases contribute a PRINCIPLE (their structural translation),
- *   failure modes and what not to copy. Each case's own visual mechanisms are
- *   passed on separately as `case_specific_mechanisms_do_not_reproduce`: the
- *   research's analysis of that case (they can name its composition, colours
- *   or labels), shown so a session can recognise and avoid them, never to reuse.
+ * - The research holds per-case analysis, not abstract principles: a case's
+ *   structural translation and visual mechanisms often name its own layout,
+ *   colours and labels. They are relayed together as
+ *   `case_analysis_do_not_reproduce`, with the case's failure modes and
+ *   `not_to_copy`, so a session can see how that shop's facts became a
+ *   structure and then invent a different one from this shop's facts. Nothing
+ *   is offered as a reusable composition or principle.
  * - Conditional selections stay marked as conditional.
  * - Design DNA parts are left undecided (null): choosing them is the session's
  *   and the owner's work, from this shop's facts.
@@ -83,8 +85,7 @@ export function buildResearchBrief(corpus: ResearchCorpus, shop: ShopResearchInp
       implementation: c.implementation,
       evidence_ref: c.evidence_ref,
       matches,
-      principle: { structural_translation: c.structural_translation },
-      case_specific_mechanisms_do_not_reproduce: [...c.visual_mechanisms],
+      case_analysis_do_not_reproduce: { structural_translation: c.structural_translation, visual_mechanisms: [...c.visual_mechanisms] },
       known_failure_modes: [...c.known_failure_modes],
       not_to_copy: [...c.not_to_copy],
     }));
@@ -110,7 +111,7 @@ export function buildResearchBrief(corpus: ResearchCorpus, shop: ShopResearchInp
       as_of: corpus.as_of,
       source_sha256: corpus.source_sha256,
       counts: corpus.counts,
-      tiers_used_for_principles: [TIERS.success],
+      tiers_used_for_case_analysis: [TIERS.success],
       tiers_counted_only: [TIERS.candidate, TIERS.queue],
     },
     shop: {
@@ -120,8 +121,14 @@ export function buildResearchBrief(corpus: ResearchCorpus, shop: ShopResearchInp
       facts_verified: shop.facts_verified,
       traits: shop.traits.map((t) => ({ ...t })),
     },
+    how_to_use: {
+      research_allow: corpus.reuse_policy.allow,
+      research_basis: corpus.provenance_basis,
+      research_limitations: corpus.limitations,
+      rule: "Each related case shows how that shop's own facts became that shop's own structure. Learn the reasoning, not the result: invent a different structure from this shop's facts.",
+    },
     related_total: matched.length,
-    related_principles: related,
+    related_cases: related,
     failure_library: [...failures].map(([failure_mode, case_ids]) => ({ failure_mode, case_ids })).sort((a, b) => a.failure_mode.localeCompare(b.failure_mode)),
     not_to_copy: [...new Set(related.flatMap((r) => r.not_to_copy))].sort(),
     reuse_policy_deny: corpus.reuse_policy.deny,

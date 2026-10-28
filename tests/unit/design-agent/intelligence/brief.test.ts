@@ -3,7 +3,7 @@ import { buildResearchBrief, DNA_PARTS, ShopResearchInput } from "@/lib/design-a
 import { buildCorpus, TIERS } from "@/lib/design-agent/intelligence/corpus";
 import { fictionalFiles } from "./fixtures";
 
-// DEV-112: the brief only relays research principles with an explainable basis; it never fills gaps.
+// DEV-112: the brief relays owner-selected case analysis with an explainable basis, never as a template; it never fills gaps.
 
 const corpus = () => buildCorpus(fictionalFiles());
 const shop = (over: Record<string, unknown> = {}) =>
@@ -22,25 +22,26 @@ const shop = (over: Record<string, unknown> = {}) =>
   });
 
 describe("research brief", () => {
+  // the brief carries the research's own caveats
   it("relates a case only with a stated basis, naming the field and the cited traits", () => {
     const b = buildResearchBrief(corpus(), shop({ keywords: [{ term: "shelf", trait_ids: ["T1"] }] }));
-    expect(b.related_principles.map((r) => r.case_id)).toEqual(["CP-901"]);
-    expect(b.related_principles[0]!.matches).toEqual([
+    expect(b.related_cases.map((r) => r.case_id)).toEqual(["CP-901"]);
+    expect(b.related_cases[0]!.matches).toEqual([
       { basis: "keyword", term: "shelf", field: "shop_motifs", trait_ids: ["T1"] },
       { basis: "keyword", term: "shelf", field: "structural_translation", trait_ids: ["T1"] },
     ]);
-    expect(b.related_principles[0]!.tier).toBe(TIERS.success);
+    expect(b.related_cases[0]!.tier).toBe(TIERS.success);
   });
 
   it("uses the category label only as a stated basis", () => {
     const b = buildResearchBrief(corpus(), shop({ category: "florist" }));
-    expect(b.related_principles.map((r) => [r.case_id, r.matches])).toEqual([["CP-902", [{ basis: "category_exact" }]]]);
+    expect(b.related_cases.map((r) => [r.case_id, r.matches])).toEqual([["CP-902", [{ basis: "category_exact" }]]]);
   });
 
   it("matches whole words only (no partial hits)", () => {
     const b = buildResearchBrief(corpus(), shop({ keywords: [{ term: "art", trait_ids: ["T2"] }] }));
     // "partial" contains "art" but is not the word
-    expect(b.related_principles).toEqual([]);
+    expect(b.related_cases).toEqual([]);
     expect(b.missing_inputs).toContain("no_research_case_related_with_evidence");
   });
 
@@ -55,7 +56,7 @@ describe("research brief", () => {
       "no_analyst_keywords_tied_to_traits",
       "no_research_case_related_with_evidence",
     ]);
-    expect(b.related_principles).toEqual([]);
+    expect(b.related_cases).toEqual([]);
   });
 
   it("leaves every Design DNA part undecided and marks the brief as research only", () => {
@@ -63,7 +64,7 @@ describe("research brief", () => {
     expect(Object.keys(b.design_dna)).toEqual([...DNA_PARTS]);
     for (const part of Object.values(b.design_dna)) expect(part.choice).toBeNull();
     expect(b.status).toBe("research_only_not_prompt_input_not_approved");
-    expect(b.corpus.tiers_used_for_principles).toEqual([TIERS.success]);
+    expect(b.corpus.tiers_used_for_case_analysis).toEqual([TIERS.success]);
     expect(b.corpus.tiers_counted_only).toEqual([TIERS.candidate, TIERS.queue]);
   });
 
@@ -75,29 +76,34 @@ describe("research brief", () => {
     expect(b.failure_library.map((f) => f.failure_mode)).toEqual(["Falling back to a left-text right-image module", "Generic photo cards"]);
   });
 
-  it("does not offer the case's composition, only its principle", () => {
+  it("relays a case's structure only as analysis not to reproduce", () => {
     const b = buildResearchBrief(corpus(), shop({ category: "bakery" }));
-    const r = b.related_principles[0]!;
+    const r = b.related_cases[0]!;
     expect(Object.keys(r).sort()).toEqual([
-      "case_id", "case_specific_mechanisms_do_not_reproduce", "conditional", "evidence_ref", "implementation",
-      "known_failure_modes", "manifest_status", "matches", "not_to_copy", "owner_selection", "principle", "tier",
+      "case_analysis_do_not_reproduce", "case_id", "conditional", "evidence_ref", "implementation",
+      "known_failure_modes", "manifest_status", "matches", "not_to_copy", "owner_selection", "tier",
     ]);
-    // only the structural translation is offered as a principle; the case's own mechanisms are marked do-not-reproduce
-    expect(Object.keys(r.principle)).toEqual(["structural_translation"]);
-    expect(r.case_specific_mechanisms_do_not_reproduce).toEqual(["ledges as section dividers"]);
+    // the case's own structure is relayed only as analysis not to reproduce; nothing is called a principle
+    expect(r.case_analysis_do_not_reproduce).toEqual({
+      structural_translation: "Turn the shelf into the page grid so each product sits on its own ledge",
+      visual_mechanisms: ["ledges as section dividers"],
+    });
+    expect(JSON.stringify(b)).not.toMatch(/principle/);
+    expect(b.how_to_use.research_allow).toMatch(/human selection/);
+    expect(b.how_to_use.research_basis).toMatch(/not measured causal facts/);
   });
 
   it("keeps a conditional owner selection visible as conditional", () => {
     const f = fictionalFiles();
     f.manifest.records[0]!.status = "owner_conditionally_authorized_fallback_research_success";
     const b = buildResearchBrief(buildCorpus(f), shop({ category: "bakery" }));
-    expect(b.related_principles[0]).toMatchObject({ case_id: "CP-901", conditional: true, manifest_status: "owner_conditionally_authorized_fallback_research_success" });
+    expect(b.related_cases[0]).toMatchObject({ case_id: "CP-901", conditional: true, manifest_status: "owner_conditionally_authorized_fallback_research_success" });
   });
 
   it("reports how many cases matched when the list is cut", () => {
     const b = buildResearchBrief(corpus(), shop({ category: "bakery", keywords: [{ term: "rail", trait_ids: ["T2"] }] }), { maxRelated: 1 });
     expect(b.related_total).toBe(2);
-    expect(b.related_principles).toHaveLength(1);
+    expect(b.related_cases).toHaveLength(1);
     expect(b.gate).toBe("G0_partially_checked");
   });
 

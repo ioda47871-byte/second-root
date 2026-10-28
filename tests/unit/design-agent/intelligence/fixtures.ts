@@ -45,7 +45,14 @@ export function fictionalFiles() {
       as_of: "2026-10-28",
       scope: "research_only_not_auto_prompt_input",
       status: "owner_selected_case_analysis_not_approved_for_automatic_reuse",
-      reuse_policy: { deny: [...DENY], design_principles_are_not_templates: true, quality_gates: ["verified_shop_facts", "human_signoff_before_promotion"] },
+      provenance: { basis: "Owner preferences; composition mappings are analysis, not measured causal facts" },
+      limitations: ["User acceptance of a design is not confirmation of the causal mechanism inferred by analysis"],
+      reuse_policy: {
+        allow: "Reason about how shop-specific verified facts could inspire an original composition; require human selection",
+        deny: [...DENY],
+        design_principles_are_not_templates: true,
+        quality_gates: ["verified_shop_facts", "human_signoff_before_promotion"],
+      },
       cases: [
         fictionalCase("CP-901"),
         fictionalCase("CP-902", {

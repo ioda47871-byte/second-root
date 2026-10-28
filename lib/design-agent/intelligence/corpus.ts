@@ -7,7 +7,7 @@
  *   writes, calls a model or Codex, or touches the worker / DB / sales code.
  * - Keeps three tiers apart: the owner-selected research successes, the
  *   unreviewed reference candidates and the pending review queue. Only the
- *   first may inform principles; the others are counted, never promoted.
+ *   first may be relayed as case analysis; the others are counted, never promoted.
  * - Fails closed: a missing file, a schema drift, a file whose declared count
  *   differs from its records, a case whose status is not an explicit owner
  *   success, or a policy string that changed stops the load with a fixed code.
@@ -43,7 +43,7 @@ export type Implementation = "local_html_css_js_poc" | "concept_image_only";
 /**
  * The manifest statuses that mean "the owner selected this as a research success".
  * Any other status (a new one, a pending, held or rejected one) stops the load:
- * a case is a principle source only when the owner's selection is explicit.
+ * a case is relayed as case analysis only when the owner's selection is explicit.
  */
 export const SUCCESS_STATUSES = [
   "owner_selected_research_success_example",
@@ -54,7 +54,7 @@ export const SUCCESS_STATUSES = [
 /** Selections that were approved only on a condition stay visible as conditional in every brief. */
 export const CONDITIONAL_STATUSES: readonly string[] = ["owner_conditionally_authorized_fallback_research_success"];
 /** Words that mark a selection as not (yet) a success, whatever the status says. */
-const NOT_SUCCESS = /reject|pending|unapproved|hold|awaiting|not_selected|withdrawn/i;
+const NOT_SUCCESS = /reject|pending|unapproved|not_approved|hold|awaiting|not_selected|withdrawn|unreview|under_review|needs_[a-z_]*review|draft|declin|supersed|revok/i;
 
 export class CorpusError extends Error {
   readonly code: string;
@@ -105,7 +105,10 @@ const Patterns = z.object({
   as_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   scope: z.literal("research_only_not_auto_prompt_input"),
   status: z.literal("owner_selected_case_analysis_not_approved_for_automatic_reuse"),
+  provenance: z.object({ basis: Text(600) }).passthrough(),
+  limitations: z.array(Text(400)),
   reuse_policy: z.object({
+    allow: Text(600),
     deny: z.array(z.string()),
     design_principles_are_not_templates: z.literal(true),
     quality_gates: z.array(z.string().regex(/^[a-z_]{2,60}$/)).min(1),
@@ -175,7 +178,10 @@ export type ResearchCorpus = {
     unreviewed_reference_candidates: number;
     review_queue_pending: number;
   };
-  reuse_policy: { deny: string[]; quality_gates: string[] };
+  reuse_policy: { allow: string; deny: string[]; quality_gates: string[] };
+  /** The research's own caveats: its composition mappings are analysis, not measured causes. */
+  provenance_basis: string;
+  limitations: string[];
 };
 
 function parseOrThrow<T>(schema: z.ZodType<T>, value: unknown, file: string): T {
@@ -250,7 +256,9 @@ export function buildCorpus(files: {
       unreviewed_reference_candidates: candidateIds.length,
       review_queue_pending: queueIds.length,
     },
-    reuse_policy: { deny: [...patterns.reuse_policy.deny], quality_gates: [...patterns.reuse_policy.quality_gates] },
+    reuse_policy: { allow: patterns.reuse_policy.allow, deny: [...patterns.reuse_policy.deny], quality_gates: [...patterns.reuse_policy.quality_gates] },
+    provenance_basis: patterns.provenance.basis,
+    limitations: [...patterns.limitations],
   };
 }
 
