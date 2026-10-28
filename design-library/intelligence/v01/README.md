@@ -2,7 +2,7 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **sixteen owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **seventeen owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
@@ -76,3 +76,7 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 ### CP-017 Rurikoyarn — UNWIND v1.1（2026-10-28研究採用）
 
 [研究成功記録](../../success-cases/CP-017-Rurikoyarn-UNWIND-v1.1.md)。暗色の大きな糸ループを全面再生成せず画像処理で微調整した静止画が採用。研究成功**16件（ローカルPoC9件、画像7件）**、CP-014未採用。写真は生成物で実店舗のものではない。
+
+### CP-018 MOLE FACTORY — OVERPRINT v1（2026-10-28研究採用）
+
+[正式研究成功記録](../../success-cases/CP-018-MOLE-FACTORY-OVERPRINT-v1.md)。青版・橙版・網点・版ズレを紙面構造に組み込んだ画像初稿が採用された。現在の**研究成功17件（ローカルPoC9件＋画像のみ8件）**、CP-014未採用、参考候補80件。本番や公式サイト開発は未承認。
