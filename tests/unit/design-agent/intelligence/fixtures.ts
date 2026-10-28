@@ -75,3 +75,64 @@ export function fictionalFiles() {
     sha256: {},
   };
 }
+
+// DEV-113: a fictional selection ledger and the manifest fields it is checked against.
+export const SHA = { html: "a".repeat(64), firstConcept: "c".repeat(64), rejected: "d".repeat(64), ledger: "e".repeat(64) };
+
+/** The fictional manifest with a version label and per-case SHA fields on CP-902 (CP-901 has none, like 11 real cases). */
+export function ledgerManifestFiles() {
+  const f = fictionalFiles();
+  Object.assign(f.manifest.records[1] as Record<string, unknown>, {
+    approved_version: "RAIL_v2",
+    first_concept_png_sha256: SHA.firstConcept,
+    approved_rejected_v1_png_sha256: SHA.rejected,
+  });
+  return f;
+}
+
+const quote = (quote_kind: string, text = "架空のオーナー発言") => ({ quote_verbatim: text, quote_kind, source_ref: "design-library/success-cases/CP-902-Fictional.md" });
+
+export function fictionalLedger() {
+  return {
+    schema: "selection_ledger_v1",
+    as_of: "2026-10-29",
+    records: [
+      {
+        case_id: "CP-901",
+        versions: [
+          { version_label: "CP901_L1", version_label_source: "ledger_assigned", selection_status: "owner_selected", owner_decision_evidence: quote("explicit_selection"), anchor: null },
+          { version_label: "CP901_L0", version_label_source: "ledger_assigned", selection_status: "owner_rejected_explicit", owner_decision_evidence: quote("explicit_rejection"), anchor: null },
+        ],
+        analyst_classification: null,
+      },
+      {
+        case_id: "CP-902",
+        versions: [
+          {
+            version_label: "RAIL_v2",
+            version_label_source: "manifest_approved_version",
+            selection_status: "owner_selected",
+            owner_decision_evidence: quote("explicit_selection"),
+            // a field named first_* can be the selected version's anchor when a cited record says so: no name-based inference
+            anchor: { manifest_field: "first_concept_png_sha256", sha256: SHA.firstConcept, evidence_ref: "design-library/success-cases/CP-902-Fictional.md", verification: "recorded_unverified" },
+          },
+          {
+            version_label: "RAIL_v1",
+            version_label_source: "ledger_assigned",
+            selection_status: "not_selected_in_relative_comparison",
+            owner_decision_evidence: quote("relative_preference"),
+            anchor: { manifest_field: "approved_rejected_v1_png_sha256", sha256: SHA.rejected, evidence_ref: "design-library/success-cases/CP-902-Fictional.md", verification: "original_unavailable" },
+          },
+          { version_label: "RAIL_v3", version_label_source: "ledger_assigned", selection_status: "awaiting_owner_review", owner_decision_evidence: null, anchor: null },
+        ],
+        analyst_classification: null,
+      },
+      {
+        // a case the owner rejected outright: not in the manifest, so never a success
+        case_id: "CP-950",
+        versions: [{ version_label: "CP950_L1", version_label_source: "ledger_assigned", selection_status: "owner_rejected_explicit", owner_decision_evidence: quote("explicit_rejection"), anchor: null }],
+        analyst_classification: { failure_reason_codes: ["generic_split_hero"], classified_by: "analyst_not_owner" },
+      },
+    ],
+  };
+}

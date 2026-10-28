@@ -1,0 +1,569 @@
+{
+  "corpus": {
+    "as_of": "2026-10-28",
+    "source_sha256": {},
+    "successes": [
+      {
+        "id": "CP-901",
+        "name": "Fictional CP-901",
+        "category": "bakery",
+        "owner_selection": "owner_approved_research_success",
+        "implementation": "concept_image_only",
+        "shop_motifs": [
+          "wooden shelf of loaves",
+          "morning bake"
+        ],
+        "structural_translation": "Turn the shelf into the page grid so each product sits on its own ledge",
+        "visual_mechanisms": [
+          "ledges as section dividers"
+        ],
+        "why_selected": [
+          {
+            "statement": "Owner selected the shelf structure",
+            "basis": "owner_selection"
+          }
+        ],
+        "known_failure_modes": [
+          "Falling back to a left-text right-image module"
+        ],
+        "not_to_copy": [
+          "exact ledge proportions"
+        ],
+        "implementation_gap": "No HTML PoC",
+        "evidence_ref": "design-library/success-cases/CP-901-Fictional.md",
+        "tier": "owner_selected_research_success",
+        "manifest_status": "owner_selected_research_success_example",
+        "manifest_view": "concept_art",
+        "conditional": false
+      },
+      {
+        "id": "CP-902",
+        "name": "Fictional CP-902",
+        "category": "florist",
+        "owner_selection": "owner_approved_research_success",
+        "implementation": "local_html_css_js_poc",
+        "shop_motifs": [
+          "fitting room mirror",
+          "seasonal stems"
+        ],
+        "structural_translation": "A fitting-room rail becomes the navigation between looks",
+        "visual_mechanisms": [
+          "rail navigation",
+          "partial mirror crops"
+        ],
+        "why_selected": [
+          {
+            "statement": "Owner selected the shelf structure",
+            "basis": "owner_selection"
+          }
+        ],
+        "known_failure_modes": [
+          "Generic photo cards"
+        ],
+        "not_to_copy": [
+          "LOOK labels"
+        ],
+        "implementation_gap": "No HTML PoC",
+        "evidence_ref": "design-library/success-cases/CP-902-Fictional.md",
+        "tier": "owner_selected_research_success",
+        "manifest_status": "owner_selected_research_design_success",
+        "manifest_view": "interactive_html_css_js_local_poc",
+        "conditional": false
+      }
+    ],
+    "counts": {
+      "success_cases": 2,
+      "local_html_css_js_poc": 1,
+      "concept_image_only": 1,
+      "unreviewed_reference_candidates": 4,
+      "review_queue_pending": 1
+    },
+    "reuse_policy": {
+      "allow": "Reason about how shop-specific verified facts could inspire an original composition; require human selection",
+      "deny": [
+        "copy_specific_composition",
+        "copy_or_reuse_brand_logo_or_photography",
+        "copy_specific_text_or_color_recipe",
+        "claim_client_approval_or_website_launch",
+        "feed_into_production_generators_without_separate_review"
+      ],
+      "quality_gates": [
+        "verified_shop_facts",
+        "human_signoff_before_promotion"
+      ]
+    },
+    "provenance_basis": "Owner preferences; composition mappings are analysis, not measured causal facts",
+    "limitations": [
+      "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis"
+    ]
+  },
+  "briefs": [
+    {
+      "schema": "design_intelligence_research_brief_v1",
+      "status": "research_only_not_prompt_input_not_approved",
+      "gate": "G0_partially_checked",
+      "g0_not_checked_here": [
+        "usable_product_names",
+        "shop_strengths",
+        "cta_is_true",
+        "approved_asset_list"
+      ],
+      "corpus": {
+        "as_of": "2026-10-28",
+        "source_sha256": {},
+        "counts": {
+          "success_cases": 2,
+          "local_html_css_js_poc": 1,
+          "concept_image_only": 1,
+          "unreviewed_reference_candidates": 4,
+          "review_queue_pending": 1
+        },
+        "tiers_used_for_case_analysis": [
+          "owner_selected_research_success"
+        ],
+        "tiers_counted_only": [
+          "unreviewed_reference_candidate",
+          "review_queue_pending"
+        ]
+      },
+      "shop": {
+        "shop_key": "fictional-bakery",
+        "display_name": "架空ベーカリー",
+        "category": "bakery",
+        "facts_verified": true,
+        "traits": [
+          {
+            "id": "T1",
+            "quote": "木の棚に毎朝のパンを並べる",
+            "source_id": "S1"
+          },
+          {
+            "id": "T2",
+            "quote": "季節の枝物を入口に飾る",
+            "source_id": "S2"
+          }
+        ]
+      },
+      "how_to_use": {
+        "research_allow": "Reason about how shop-specific verified facts could inspire an original composition; require human selection",
+        "research_basis": "Owner preferences; composition mappings are analysis, not measured causal facts",
+        "research_limitations": [
+          "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis"
+        ],
+        "rule": "Each related case shows how that shop's own facts became that shop's own structure. Learn the reasoning, not the result: invent a different structure from this shop's facts."
+      },
+      "related_total": 2,
+      "related_cases": [
+        {
+          "case_id": "CP-901",
+          "tier": "owner_selected_research_success",
+          "manifest_status": "owner_selected_research_success_example",
+          "owner_selection": "owner_approved_research_success",
+          "conditional": false,
+          "implementation": "concept_image_only",
+          "evidence_ref": "design-library/success-cases/CP-901-Fictional.md",
+          "matches": [
+            {
+              "basis": "category_exact"
+            },
+            {
+              "basis": "keyword",
+              "term": "shelf",
+              "field": "shop_motifs",
+              "trait_ids": [
+                "T1"
+              ]
+            },
+            {
+              "basis": "keyword",
+              "term": "shelf",
+              "field": "structural_translation",
+              "trait_ids": [
+                "T1"
+              ]
+            }
+          ],
+          "case_analysis_do_not_reproduce": {
+            "structural_translation": "Turn the shelf into the page grid so each product sits on its own ledge",
+            "visual_mechanisms": [
+              "ledges as section dividers"
+            ]
+          },
+          "known_failure_modes": [
+            "Falling back to a left-text right-image module"
+          ],
+          "not_to_copy": [
+            "exact ledge proportions"
+          ]
+        },
+        {
+          "case_id": "CP-902",
+          "tier": "owner_selected_research_success",
+          "manifest_status": "owner_selected_research_design_success",
+          "owner_selection": "owner_approved_research_success",
+          "conditional": false,
+          "implementation": "local_html_css_js_poc",
+          "evidence_ref": "design-library/success-cases/CP-902-Fictional.md",
+          "matches": [
+            {
+              "basis": "keyword",
+              "term": "rail",
+              "field": "visual_mechanisms",
+              "trait_ids": [
+                "T2"
+              ]
+            },
+            {
+              "basis": "keyword",
+              "term": "rail",
+              "field": "structural_translation",
+              "trait_ids": [
+                "T2"
+              ]
+            }
+          ],
+          "case_analysis_do_not_reproduce": {
+            "structural_translation": "A fitting-room rail becomes the navigation between looks",
+            "visual_mechanisms": [
+              "rail navigation",
+              "partial mirror crops"
+            ]
+          },
+          "known_failure_modes": [
+            "Generic photo cards"
+          ],
+          "not_to_copy": [
+            "LOOK labels"
+          ]
+        }
+      ],
+      "failure_library": [
+        {
+          "failure_mode": "Falling back to a left-text right-image module",
+          "case_ids": [
+            "CP-901"
+          ]
+        },
+        {
+          "failure_mode": "Generic photo cards",
+          "case_ids": [
+            "CP-902"
+          ]
+        }
+      ],
+      "not_to_copy": [
+        "LOOK labels",
+        "exact ledge proportions"
+      ],
+      "reuse_policy_deny": [
+        "copy_specific_composition",
+        "copy_or_reuse_brand_logo_or_photography",
+        "copy_specific_text_or_color_recipe",
+        "claim_client_approval_or_website_launch",
+        "feed_into_production_generators_without_separate_review"
+      ],
+      "quality_gates": [
+        "verified_shop_facts",
+        "human_signoff_before_promotion"
+      ],
+      "design_dna": {
+        "hero": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "typography": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "palette": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "product_visual": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "section_rhythm": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "navigation": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "mobile": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "implementation": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        }
+      },
+      "missing_inputs": []
+    },
+    {
+      "schema": "design_intelligence_research_brief_v1",
+      "status": "research_only_not_prompt_input_not_approved",
+      "gate": "G0_partially_checked",
+      "g0_not_checked_here": [
+        "usable_product_names",
+        "shop_strengths",
+        "cta_is_true",
+        "approved_asset_list"
+      ],
+      "corpus": {
+        "as_of": "2026-10-28",
+        "source_sha256": {},
+        "counts": {
+          "success_cases": 2,
+          "local_html_css_js_poc": 1,
+          "concept_image_only": 1,
+          "unreviewed_reference_candidates": 4,
+          "review_queue_pending": 1
+        },
+        "tiers_used_for_case_analysis": [
+          "owner_selected_research_success"
+        ],
+        "tiers_counted_only": [
+          "unreviewed_reference_candidate",
+          "review_queue_pending"
+        ]
+      },
+      "shop": {
+        "shop_key": "fictional-bakery",
+        "display_name": "架空ベーカリー",
+        "category": "florist",
+        "facts_verified": true,
+        "traits": [
+          {
+            "id": "T1",
+            "quote": "木の棚に毎朝のパンを並べる",
+            "source_id": "S1"
+          },
+          {
+            "id": "T2",
+            "quote": "季節の枝物を入口に飾る",
+            "source_id": "S2"
+          }
+        ]
+      },
+      "how_to_use": {
+        "research_allow": "Reason about how shop-specific verified facts could inspire an original composition; require human selection",
+        "research_basis": "Owner preferences; composition mappings are analysis, not measured causal facts",
+        "research_limitations": [
+          "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis"
+        ],
+        "rule": "Each related case shows how that shop's own facts became that shop's own structure. Learn the reasoning, not the result: invent a different structure from this shop's facts."
+      },
+      "related_total": 1,
+      "related_cases": [
+        {
+          "case_id": "CP-902",
+          "tier": "owner_selected_research_success",
+          "manifest_status": "owner_selected_research_design_success",
+          "owner_selection": "owner_approved_research_success",
+          "conditional": false,
+          "implementation": "local_html_css_js_poc",
+          "evidence_ref": "design-library/success-cases/CP-902-Fictional.md",
+          "matches": [
+            {
+              "basis": "category_exact"
+            }
+          ],
+          "case_analysis_do_not_reproduce": {
+            "structural_translation": "A fitting-room rail becomes the navigation between looks",
+            "visual_mechanisms": [
+              "rail navigation",
+              "partial mirror crops"
+            ]
+          },
+          "known_failure_modes": [
+            "Generic photo cards"
+          ],
+          "not_to_copy": [
+            "LOOK labels"
+          ]
+        }
+      ],
+      "failure_library": [
+        {
+          "failure_mode": "Falling back to a left-text right-image module",
+          "case_ids": [
+            "CP-901"
+          ]
+        },
+        {
+          "failure_mode": "Generic photo cards",
+          "case_ids": [
+            "CP-902"
+          ]
+        }
+      ],
+      "not_to_copy": [
+        "LOOK labels"
+      ],
+      "reuse_policy_deny": [
+        "copy_specific_composition",
+        "copy_or_reuse_brand_logo_or_photography",
+        "copy_specific_text_or_color_recipe",
+        "claim_client_approval_or_website_launch",
+        "feed_into_production_generators_without_separate_review"
+      ],
+      "quality_gates": [
+        "verified_shop_facts",
+        "human_signoff_before_promotion"
+      ],
+      "design_dna": {
+        "hero": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "typography": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "palette": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "product_visual": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "section_rhythm": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "navigation": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "mobile": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "implementation": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        }
+      },
+      "missing_inputs": [
+        "no_analyst_keywords_tied_to_traits"
+      ]
+    },
+    {
+      "schema": "design_intelligence_research_brief_v1",
+      "status": "research_only_not_prompt_input_not_approved",
+      "gate": "G0_hold",
+      "g0_not_checked_here": [
+        "usable_product_names",
+        "shop_strengths",
+        "cta_is_true",
+        "approved_asset_list"
+      ],
+      "corpus": {
+        "as_of": "2026-10-28",
+        "source_sha256": {},
+        "counts": {
+          "success_cases": 2,
+          "local_html_css_js_poc": 1,
+          "concept_image_only": 1,
+          "unreviewed_reference_candidates": 4,
+          "review_queue_pending": 1
+        },
+        "tiers_used_for_case_analysis": [
+          "owner_selected_research_success"
+        ],
+        "tiers_counted_only": [
+          "unreviewed_reference_candidate",
+          "review_queue_pending"
+        ]
+      },
+      "shop": {
+        "shop_key": "fictional-bakery",
+        "display_name": "架空ベーカリー",
+        "category": null,
+        "facts_verified": false,
+        "traits": []
+      },
+      "how_to_use": {
+        "research_allow": "Reason about how shop-specific verified facts could inspire an original composition; require human selection",
+        "research_basis": "Owner preferences; composition mappings are analysis, not measured causal facts",
+        "research_limitations": [
+          "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis"
+        ],
+        "rule": "Each related case shows how that shop's own facts became that shop's own structure. Learn the reasoning, not the result: invent a different structure from this shop's facts."
+      },
+      "related_total": 0,
+      "related_cases": [],
+      "failure_library": [
+        {
+          "failure_mode": "Falling back to a left-text right-image module",
+          "case_ids": [
+            "CP-901"
+          ]
+        },
+        {
+          "failure_mode": "Generic photo cards",
+          "case_ids": [
+            "CP-902"
+          ]
+        }
+      ],
+      "not_to_copy": [],
+      "reuse_policy_deny": [
+        "copy_specific_composition",
+        "copy_or_reuse_brand_logo_or_photography",
+        "copy_specific_text_or_color_recipe",
+        "claim_client_approval_or_website_launch",
+        "feed_into_production_generators_without_separate_review"
+      ],
+      "quality_gates": [
+        "verified_shop_facts",
+        "human_signoff_before_promotion"
+      ],
+      "design_dna": {
+        "hero": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "typography": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "palette": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "product_visual": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "section_rhythm": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "navigation": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "mobile": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        },
+        "implementation": {
+          "choice": null,
+          "decided_by": "session_from_shop_facts_then_owner"
+        }
+      },
+      "missing_inputs": [
+        "facts_not_verified_by_a_person",
+        "no_cited_traits",
+        "no_research_category_label",
+        "no_analyst_keywords_tied_to_traits",
+        "no_research_case_related_with_evidence"
+      ]
+    }
+  ]
+}

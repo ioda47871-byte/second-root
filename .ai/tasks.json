@@ -4934,7 +4934,7 @@
     {
       "id": "DEV-112",
       "title": "Design Intelligence Phase 1：研究データ（PR #142）の読み取り専用Adapter・統合計画・テスト",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-108",
@@ -4985,6 +4985,63 @@
         "3〜5店舗の縦断テスト（店舗・素材・生成ごと）"
       ],
       "note": "Phase 1 only. Adapter reads a research checkout path at run time; production path does not import it."
+    },
+    {
+      "id": "DEV-113",
+      "title": "Design Intelligence Phase 2a：選定台帳 selection_ledger_v1 と3モード（phase1_compat / partial / strict の安全な未実装停止）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-112"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-113-selection-ledger",
+      "purpose": "オーナーが2026-10-28に承認したPhase 2a。研究案件の選定・不採用・保留を版ごとに機械可読で記録する台帳のスキーマと検証器を作り、Adapterに3モードを加える。台帳は成功や承認を作らない。研究セット・承認記録の検証・電子署名・鍵管理は後続PR。",
+      "acceptance_criteria": [
+        "selection_ledger_v1のZodスキーマ（状態6種・quote_kind・版ラベルの出所・anchor・分析者分類を別欄）",
+        "状態・版・引用・anchorの矛盾を固定コードで停止する（停止コードごとにテスト）",
+        "phase1_compat（既定）はPhase 1とバイト単位で同じ出力。台帳を渡すと拒否する",
+        "partialは台帳必須で、台帳のない成功案件をunledgered_success_casesとして列挙する",
+        "strictは台帳必須・全件記録必須で、全検査を通っても必ずSTRICT_APPROVAL_NOT_IMPLEMENTEDで停止する（安全な未実装状態。稼働とは呼ばない）",
+        "台帳は成功を作らず、ledger_assignedラベルと引用は承認の証拠にならず、SHA欄は名前から推測せず、検証済み素材を表す値を持たない",
+        "ledger.tsはzodだけに依存し、AdapterモジュールのあいだにImportの循環がない",
+        "CLIに--modeと--ledgerを追加。研究ブランチ・実店舗データは変更しない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/intelligence/*.test.ts",
+        "tests/unit/guardrails.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/design-agent/comp-impl/isolation.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/intelligence/**",
+        "scripts/design-intelligence/**",
+        "tests/unit/design-agent/intelligence/**",
+        "docs/design/design-intelligence-integration-plan.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-113.md（独立reviewによる記録のみ）"
+      ],
+      "forbidden_scope": [
+        "PR #142のマージ・研究データの改変やコピー、実店舗データ",
+        "研究セット・承認記録の検証・電子署名・鍵管理（後続PR）、DEV-114以降の先行実装",
+        "営業demo・components/demo・worker・timer・bridge・pipeline・asset store・design-image・comp-implの変更",
+        "品質ゲート・CSS許可表・評価閾値・正本の変更",
+        "Codex・モデル・APIの呼び出し、画像生成",
+        "Production/Staging/Supabase/DB/Vercel・main・営業送信・公開",
+        ".github/workflows・package.jsonの依存",
+        "DEV-113の自動マージ"
+      ],
+      "human_approval_triggers": [
+        "DEV-113のdevelopへのマージ",
+        "研究ブランチへの実データ台帳の追加",
+        "strictを稼働させること（研究セットと承認記録の方式の承認が前提）",
+        "2d-min・2f以降の着手"
+      ],
+      "note": "strict is a safe not-yet-implemented state: it always stops. The ledger never creates a success or an approval."
     }
   ]
 }

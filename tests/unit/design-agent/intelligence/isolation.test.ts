@@ -25,9 +25,17 @@ function specifiers(source: string): string[] {
 
 /** The only modules the adapter and its CLI may name. */
 const ALLOWED: Record<string, string[]> = {
-  [`${ADAPTER}/corpus.ts`]: ["node:crypto", "node:fs/promises", "node:path", "zod"],
+  [`${ADAPTER}/corpus.ts`]: ["node:crypto", "node:fs/promises", "node:path", "zod", "./ledger"],
   [`${ADAPTER}/brief.ts`]: ["zod", "./corpus"],
-  [CLI]: ["node:fs/promises", "node:path", "../../lib/design-agent/intelligence/brief", "../../lib/design-agent/intelligence/corpus"],
+  // DEV-113: the ledger validator is pure; corpus.ts hands it the manifest cases, so it imports nothing of the adapter
+  [`${ADAPTER}/ledger.ts`]: ["zod"],
+  [CLI]: [
+    "node:fs/promises",
+    "node:path",
+    "../../lib/design-agent/intelligence/brief",
+    "../../lib/design-agent/intelligence/corpus",
+    "../../lib/design-agent/intelligence/ledger",
+  ],
 };
 
 describe("isolation of the Design Intelligence adapter", () => {
@@ -48,6 +56,20 @@ describe("isolation of the Design Intelligence adapter", () => {
       }
       expect(source, file).not.toMatch(/\b(writeFile|appendFile|mkdir|rmSync|rm\(|rename|copyFile|cp\(|unlink|createWriteStream|open\(|fetch\(|spawn|exec)\w*/);
     }
+  });
+
+  it("has no import cycle between its modules (type-only imports included)", () => {
+    const local = (file: string) =>
+      specifiers(readFileSync(resolve(REPO, file), "utf8"))
+        .filter((s) => s.startsWith("."))
+        .map((s) => resolve(REPO, file, "..", s).slice(REPO.length + 1) + ".ts");
+    const graph = new Map(Object.keys(ALLOWED).map((f) => [f, local(f)]));
+    const visit = (f: string, path: string[]): void => {
+      expect(path, `cycle: ${[...path, f].join(" -> ")}`).not.toContain(f);
+      for (const next of graph.get(f) ?? []) visit(next, [...path, f]);
+    };
+    for (const f of graph.keys()) visit(f, []);
+    expect(graph.get(`${ADAPTER}/ledger.ts`)).toEqual([]);
   });
 
   it("is imported only by its own CLI (nothing else in lib, app, components or scripts names it)", () => {
