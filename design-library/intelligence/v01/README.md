@@ -2,7 +2,7 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **nineteen owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **twenty owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
@@ -88,3 +88,7 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 ### CP-020 喫茶 ITALICO — SHOWCASE v1（2026-10-28研究採用）
 
 [19件目採用](../../success-cases/CP-020-Kissa-ITALICO-SHOWCASE-v1.md)。ガラス棚にメニュー写真と案内を一体化した静止コンセプト。**累積19件（ローカルPoC9件、画像10件）**。公式SNSリンク先未確認のため営業候補としては保留。
+
+### CP-021 TERACE — PICK / COMPOSE v1（2026-10-28条件付き採用）
+
+[研究成功記録](../../success-cases/CP-021-TERACE-PICK-COMPOSE-v1.md)。v1をユーザーが好評価。v2は全体のハイライト増幅に留まり、明確な設計改善を示せなかったため、条件付き事前承認に従い初稿v1を採用。**20件（ローカルPoC9・静止画像11）**、CP-014未採用。公式Web有無・権利/公開承認は未確認。
