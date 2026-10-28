@@ -27,3 +27,7 @@
 - 初稿画像原本：`a_wide_graphic_poster_like_website_landing_page.png`。SHA-256 `69a4275c1e5adaac43199f4f825c5d43366702c69ac4ca7fd9bf15df970aacfa`（2026-10-28、実画像を確認）。
 - 画像原本はChatGPT会話側。GitHubには研究記録とハッシュのみ保管。画像やコード、工房素材をアップロードしていない。
 - **採用はオーナーによる今後の明示的評価が必要**。16件の研究成功台帳、80件の参考候補、20件の審査キュー、公式サイトや営業AIに変更なし。
+
+## 2026-10-28｜初稿OVERPRINTを17件目として正式研究採用
+
+ユーザーが「すごくいいと思います」と評価した直後、**「成功例とします、次へ進んで」**と明示。**状態：`OWNER_SELECTED_RESEARCH_SUCCESS`**。正式採用対象は静止コンセプト初稿（SHA-256 `69a4275c1e5adaac43199f4f825c5d43366702c69ac4ca7fd9bf15df970aacfa`）。[成功例本体](../../../success-cases/CP-018-MOLE-FACTORY-OVERPRINT-v1.md)。研究成功例**17件（ローカルPoC9件＋画像のみ8件）**。静止画以外のWeb実装、ブランドの公式許諾、公開・営業データ利用は未承認。
