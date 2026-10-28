@@ -186,3 +186,7 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-023｜BURGERS,INC NEON FLIP v4（2026-10-28研究成功）
 
 [採用研究記録](../../success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md)／[初稿v1〜改良v5と失敗原因](experiments/CP023-BURGERS-INC-FLIP-SIGN-v1.md)。以前の「一枚目」評価はレコード画面ではなく元のネオン看板画像を意味するとの本人訂正があった。v4を正式採用し、派手な写真コラージュv2、レコード型v3、下部の一般的な3写真カードなどを増やしたv5は採用物ではない。**累積22件（HTML研究PoC9＋静止画13）**、参考80件、CP-014未採用。Instagram外部リンクの未確認により公式サイト不在の営業候補はHOLD。
+
+## CP-024｜Boheme. FLORAL FITTING ROOM v1（2026-10-28初稿）
+
+[CP-024研究記録](experiments/CP024-Boheme-FLORAL-FITTING-ROOM-v1.md)。名古屋市中村区十王町の生花店Boheme.の公式に紹介された「花を着崩す。」から、花をファッションのLOOKとして選びスタイリングする**中央の鏡＋左右の花材ラック**の静止デザインを試作。**初稿・オーナー評価待ち、研究成功は22件のまま**。2026年10月のイベントと百貨店公式企画で実店舗活動を確認。本人の独立公式サイト/ECは検索では未発見だが、Instagram外部リンクは直接取得できず、同名アクセサリーBASE店舗との事業主体同一性も未確認のため**正式なサイトなし営業候補は保留**。生成花/店内は研究用AI画像、商用利用・実店舗の公式許諾なし。
