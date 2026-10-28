@@ -120,3 +120,7 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ```
 
 これは**研究運用上のチェックの固定**であり、画像生成モデルやClaude/Codex生成器を自動的に制御しているわけではない。研究成功例は引き続き13件。
+
+## CP-015｜imairo. TABLE JOURNAL v2（2026-10-28研究成功採用）
+
+[採用事例](../../success-cases/CP-015-imairo-TABLE-JOURNAL-v2.md)／[採用までの失敗・対照研究](experiments/CP015-imairo-structure-study-20261028.md)。ユーザーの「成功例とします」により採用。標準的な飲食店LPへ戻る複数の失敗を経て、好評価だった食卓Heroをそのまま保護し、スライド式ドロワーを**傾いた紙のノート型UI**へ置換した研究ローカルHTML/CSS/JS。10画面幅でブラウザ動作を確認。ただしHero内の文字は画像焼き込みで独立素材ではなく、実店舗許諾・公開なし。**現在14件（HTML PoC8件、コンセプトのみ6件）、CP-014は未採用**。
