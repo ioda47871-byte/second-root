@@ -144,3 +144,11 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-018｜MOLE FACTORY OVERPRINT v1（2026-10-28研究成功）
 
 [採用記録](../../success-cases/CP-018-MOLE-FACTORY-OVERPRINT-v1.md)／[初稿記録](experiments/CP018-MOLE-FACTORY-OVERPRINT-v1.md)。ユーザー「成功例とします、次へ進んで」により静止画像初稿を正式に研究採用。色版の位置ズレと印刷工程を画面構造へ変換する。**研究成功17件（HTMLローカルPoC9件・画像のみ8件）**。CP-014は採用保留。実店舗の公式BASEショップは存在し、当該画像は非公式・未許諾の研究用。
+
+## CP-019｜浦田杏梨 WAX / TIME v1（2026-10-28研究採用）
+
+[成功例](../../success-cases/CP-019-Anna-Urata-WAX-TIME-v1.md)／[初稿・同一性・権利の記録](experiments/CP019-Anna-Urata-WAX-TIME-v1.md)。ユーザーが「成功例とします」と承認。透明な蝋のアーチを時間軸にした画像1枚のみ（HTMLなし）。**研究成功18件＝ローカルPoC9＋画像9、参考80、目標まで12件**。CP-014は未採用。
+
+### 新規店舗の選定条件（2026-10-28ユーザー指示）
+
+[Webサイトなし店舗の選定ゲート](../../../docs/design/no-website-shop-intake-policy.md)。以降のCP-020以降の研究選定では、独立サイト・BASE/STORES/Shopifyなどの本人オンラインショップを持つ店舗を除外。見つからない場合も存在しないと断言せず、公式SNSの外部リンクを確認できないなら保留。今回の調査ではenneおよび青空日記は公式Webありで**除外**、喫茶 ITALICOは**公式サイト未発見・プロフィールリンク先未確認の暫定候補**。マージ/本番連携なし。
