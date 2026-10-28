@@ -152,3 +152,11 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ### 新規店舗の選定条件（2026-10-28ユーザー指示）
 
 [Webサイトなし店舗の選定ゲート](../../../docs/design/no-website-shop-intake-policy.md)。以降のCP-020以降の研究選定では、独立サイト・BASE/STORES/Shopifyなどの本人オンラインショップを持つ店舗を除外。見つからない場合も存在しないと断言せず、公式SNSの外部リンクを確認できないなら保留。今回の調査ではenneおよび青空日記は公式Webありで**除外**、喫茶 ITALICOは**公式サイト未発見・プロフィールリンク先未確認の暫定候補**。マージ/本番連携なし。
+
+## CP-020｜喫茶 ITALICO SHOWCASE（2026-10-28研究成功登録）
+
+[成功研究](../../success-cases/CP-020-Kissa-ITALICO-SHOWCASE-v1.md)／[初稿とサイト有無の保留](experiments/CP020-Kissa-ITALICO-SHOWCASE-v1.md)。ユーザー「成功例にしたい」により**19件目の研究成功**。静止画像のみ。実店舗写真ではなく、公式Web有無の外部リンク確認は未解決。
+
+## CP-021｜TERACE PICK / COMPOSE（2026-10-28初稿・評価待ち）
+
+[研究記録](experiments/CP021-TERACE-ACRYLIC-COMPOSE-v1.md)。公式イベント紹介でInstagramのみ確認できるアクリルアクセサリーブランドを題材に、パーツを選択し組み合わせる体験を明るいアクリルの作業面に翻訳。画像静止画1枚、HTML/操作/Webの有無の最終確認は未実施。**成功19件のまま**。
