@@ -256,6 +256,31 @@
       "success_case_archive_sha256": "b580f3612d5ba36987adf39cd379f68424801676365a2fb01b9589750f74d696",
       "original_hero_typography_editable": false,
       "generated_photo_crops_research_only": true
+    },
+    {
+      "id": "CP-016",
+      "title": "ズールー工作所 — COUNTERWEIGHT ZK-01 v1",
+      "status": "owner_selected_research_success_example",
+      "source_kind": "locally_authored_svg_css_js_interactive_html_poc",
+      "category": "metal_mobiles_and_workshop",
+      "view": "interactive_html_css_js_svg_local_poc",
+      "owner_selected_at": "2026-10-28",
+      "design_approval_scope": "second_root_research_success_only",
+      "official_client_work": false,
+      "merchant_authorized": false,
+      "website_deployed": false,
+      "nextjs_build_verified": false,
+      "html_css_impl_verified": "local_chromium_offline_only",
+      "mobile_web_impl_verified": "local_chromium_offline_only",
+      "image_asset_uploaded_to_github": false,
+      "approved_version": "COUNTERWEIGHT_ZK01_v1_20261028",
+      "approved_html_sha256": "ae7671dfd14caaf99ccfd97f36169ba43e99b545c069fb2472e34bd9ae36cc7f",
+      "desktop_1440_png_sha256": "9ea42fe1cc87056d2810069343aa937468048917650897fe69780f1e7e08107e",
+      "mobile_390_png_sha256": "3b67d554b68e36aaf98fcebc8e45f960a267f3d2f80fcba51cd988b9e37c2e58",
+      "success_case_archive_sha256": "18e78a159b2d7f91fafc21c4cfde58c59e7ce57e232d79df1ed742be2966eab5",
+      "concept_image_replaced_by_html_schematic": true,
+      "prior_image_rejected_as_generic_structure": true,
+      "photo_assets_in_final_poc": false
     }
   ],
   "policy": {
@@ -264,6 +289,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original approved images and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..015 (excluding unapproved CP-014) research metadata only, not the latter cases' image/source binaries."
+    "source_master_assets": "Original approved images, HTML sources and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..016 research metadata (CP-014 excluded: pending, unapproved), not those studies' original HTML/image/archive binaries."
   }
 }
