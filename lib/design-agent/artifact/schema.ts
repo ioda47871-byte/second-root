@@ -82,7 +82,8 @@ const Px = z.number().int().nonnegative().max(MAX_RENDER_HEIGHT);
 export const RelPath = z
   .string()
   .max(160)
-  .regex(/^(?:[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}\/){0,2}[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$/)
+  // a segment starts with a letter, digit or underscore: never "-" (option injection when a later tool gets the path)
+  .regex(/^(?:[A-Za-z0-9_][A-Za-z0-9._-]{0,63}\/){0,2}[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/)
   .refine((p) => p.split("/").every((s) => s !== "." && s !== ".." && !s.endsWith(".")), "path_segment");
 
 // ---- facts pack (input; its SHA-256 is pinned in the artifact) ---------------------------------

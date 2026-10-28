@@ -7,23 +7,35 @@ import { crc32, deflateSync } from "node:zlib";
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 
-/** A valid 8-bit greyscale PNG of the given size (blank). */
-export function makePng(width: number, height: number): Buffer {
-  const chunk = (type: string, data: Buffer) => {
-    const t = Buffer.from(type, "latin1");
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32BE(crc32(Buffer.concat([t, data])) >>> 0);
-    return Buffer.concat([len, t, data, crc]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 0;
-  const raw = Buffer.alloc((width + 1) * height);
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+export const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** One PNG chunk with a correct CRC (type is written as given, even when invalid). */
+export function pngChunk(type: string, data: Buffer): Buffer {
+  const t = Buffer.from(type, "latin1");
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([t, data])) >>> 0);
+  return Buffer.concat([len, t, data, crc]);
+}
+
+export function ihdr(width: number, height: number, over: { depth?: number; colour?: number; interlace?: number } = {}): Buffer {
+  const d = Buffer.alloc(13);
+  d.writeUInt32BE(width, 0);
+  d.writeUInt32BE(height, 4);
+  d[8] = over.depth ?? 8;
+  d[9] = over.colour ?? 0;
+  d[12] = over.interlace ?? 0;
+  return d;
+}
+
+/**
+ * An 8-bit greyscale PNG of the given size (blank). The IDAT is a valid stream only for small images; for very
+ * large sizes it is a short placeholder (the structural check never decodes pixels). `extra` chunks go before IEND.
+ */
+export function makePng(width: number, height: number, extra: Buffer[] = []): Buffer {
+  const idat = width * height <= 40_000_000 ? deflateSync(Buffer.alloc((width + 1) * height)) : deflateSync(Buffer.alloc(16));
+  return Buffer.concat([PNG_SIG, pngChunk("IHDR", ihdr(width, height)), pngChunk("IDAT", idat), ...extra, pngChunk("IEND", Buffer.alloc(0))]);
 }
 
 export const FACTS = {

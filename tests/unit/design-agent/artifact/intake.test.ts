@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { appendFileSync, linkSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { checkArtifactPng, checkCodexDesign, IntakeError, intakeArtifact } from "@/lib/design-agent/artifact/intake";
-import { CODEX_ANSWER_MAX_BYTES, IMAGE_OUTCOMES, MAX_RENDER_HEIGHT, PNG_LIMITS, PROTOTYPE_LIMITS, STOP_CLASSES } from "@/lib/design-agent/artifact/schema";
+import { CODEX_ANSWER_MAX_BYTES, IMAGE_OUTCOMES, MAX_RENDER_HEIGHT, PNG_LIMITS, PROTOTYPE_LIMITS, RelPath, STOP_CLASSES } from "@/lib/design-agent/artifact/schema";
 import { IMAGE_OUTCOMES as CAPABILITY_OUTCOMES } from "@/lib/design-agent/design-image/capability";
 import { checkPng, MOCKUP_PNG_LIMITS } from "@/lib/design-agent/design-image/png";
-import { CSS, declared, FACTS, HTML, makePng, routeA, routeB, routeC, writePackage, type Pkg } from "./fixtures";
+import { CSS, declared, FACTS, HTML, ihdr, makePng, PNG_SIG, pngChunk, routeA, routeB, routeC, writePackage, type Pkg } from "./fixtures";
 
 // DEV-114: intake of a Design Artifact package. Fictional data only.
 
@@ -29,6 +29,15 @@ const code = async (p: Promise<unknown>) => {
     return "OK";
   } catch (e) {
     if (e instanceof IntakeError) return e.code;
+    throw e;
+  }
+};
+const detail = async (p: Promise<unknown>) => {
+  try {
+    await p;
+    return "OK";
+  } catch (e) {
+    if (e instanceof IntakeError) return `${e.code} ${e.detail}`;
     throw e;
   }
 };
@@ -101,8 +110,33 @@ describe("verification states (never approvals)", () => {
       Object.assign(p.artifact.observed.generation, { tool: null, tool_version: null, approval_id: null, prompt_sha256: null, run_id: null, image_outcome: "not_applicable" });
     }));
     expect(r.verification_state).toBe("incomplete");
-    expect(r.reasons.join(" ")).toContain("generation_unverified");
+    expect(r.reasons).toContain("owner_upload_provenance_not_implemented");
+    expect(r.implementation_handoff_allowed).toBe(false);
   });
+
+  it.each<[string, (p: Pkg) => void]>([
+    ["claims IMAGE_SAVED", (p) => (p.artifact.observed.generation.image_outcome = "IMAGE_SAVED")],
+    ["claims a Codex tool", (p) => (p.artifact.observed.generation.tool = "codex_cli")],
+    ["claims a prompt SHA", (p) => (p.artifact.observed.generation.prompt_sha256 = "b".repeat(64))],
+  ])("an owner upload that %s is refused (ARTIFACT_ROUTE_INCONSISTENT)", async (_n, mutate) => {
+    const upload = edit(routeA, (p) => {
+      p.artifact.source_kind = "chatgpt_owner_upload_compat";
+      p.artifact.observed.originals.desktop_1440.rendered_from = "owner_upload";
+      p.artifact.observed.originals.mobile_390.rendered_from = "owner_upload";
+      Object.assign(p.artifact.observed.generation, { tool: null, prompt_sha256: null, image_outcome: "not_applicable" });
+      mutate(p);
+    });
+    expect(await code(run(upload))).toBe("ARTIFACT_ROUTE_INCONSISTENT");
+  });
+
+  it.each(["tool", "tool_version", "approval_id", "prompt_sha256", "worker_commit", "run_id", "started_at", "finished_at"])(
+    "an unknown %s alone makes route B incomplete",
+    async (field) => {
+      const r = await run(edit(routeB, (p) => (p.artifact.observed.generation[field] = null)));
+      expect(r.verification_state).toBe("incomplete");
+      expect(r.reasons).toContain(`generation_unverified:${field}`);
+    },
+  );
 
   it("reports every human gate as not_done, whatever the state", async () => {
     for (const make of [routeA, routeB, routeC]) {
@@ -196,6 +230,32 @@ describe("file safety", () => {
     expect(await pkg(routeB(), (dir) => appendFileSync(join(dir, "quarantine/index.html"), " "))).toBe("ARTIFACT_SHA_MISMATCH");
   });
 
+  describe("swaps between the walk and the read (each check by its own reason)", () => {
+    const swapped = async (swap: (dir: string) => void) => {
+      const w = write(routeB());
+      return detail(intakeArtifact({ packageDir: w.dir, factsPath: w.factsPath }, { afterInventory: async () => swap(w.dir) }));
+    };
+    it("a file replaced by another file (new inode) → changed", async () => {
+      expect(await swapped((dir) => {
+        const f = join(dir, "originals/desktop_1440.png");
+        writeFileSync(`${f}.new`, readFileSync(f));
+        renameSync(`${f}.new`, f);
+      })).toBe("ARTIFACT_PATH_UNSAFE changed: originals/desktop_1440.png");
+    });
+    it("a file grown in place → changed", async () => {
+      expect(await swapped((dir) => appendFileSync(join(dir, "quarantine/styles.css"), "a"))).toBe("ARTIFACT_PATH_UNSAFE changed: quarantine/styles.css");
+    });
+    it("a parent directory replaced by a link to the very same files → escaped", async () => {
+      expect(await swapped((dir) => {
+        renameSync(join(dir, "originals"), join(dir, "..", "originals_real"));
+        symlinkSync(join(dir, "..", "originals_real"), join(dir, "originals"));
+      })).toBe("ARTIFACT_PATH_UNSAFE escaped: originals/desktop_1440.png");
+    });
+    it("a file removed → refused, nothing read", async () => {
+      expect(await swapped((dir) => rmSync(join(dir, "originals/mobile_390.png")))).toBe("ARTIFACT_PATH_UNSAFE originals/mobile_390.png");
+    });
+  });
+
   it("accepts a package reached through a link to its directory (resolved once)", async () => {
     const w = write(routeB());
     symlinkSync(w.dir, join(w.base, "alias"));
@@ -208,6 +268,29 @@ describe("file safety", () => {
     ["a backslash path", (p) => (p.artifact.observed.prototype.css_path = "quarantine\\styles.css"), "ARTIFACT_SCHEMA_INVALID"],
   ])("refuses %s", async (_n, mutate, expected) => {
     expect(await code(run(edit(routeB, mutate)))).toBe(expected);
+  });
+
+  it("refuses an original whose name is not .png, even with PNG bytes", async () => {
+    expect(await code(run(edit(routeB, (p) => {
+      p.files["originals/desktop_1440.webp"] = p.files["originals/desktop_1440.png"]!;
+      delete p.files["originals/desktop_1440.png"];
+      p.artifact.observed.originals.desktop_1440.path = "originals/desktop_1440.webp";
+    })))).toBe("ARTIFACT_FILE_ROLE_MISMATCH");
+  });
+
+  it("refuses path segments starting with - (option injection later)", () => {
+    expect(RelPath.safeParse("originals/-rf.png").success).toBe(false);
+    expect(RelPath.safeParse("-x/a.png").success).toBe(false);
+    expect(RelPath.safeParse("originals/a-b.png").success).toBe(true);
+  });
+
+  it("keeps file names out of error text unescaped (no terminal or log injection)", async () => {
+    const w = write(routeB());
+    writeFileSync(join(w.dir, "evil\u001b[31m\nname"), "x");
+    const d = await detail(intakeArtifact({ packageDir: w.dir, factsPath: w.factsPath }));
+    expect(d.startsWith("ARTIFACT_PATH_UNSAFE")).toBe(true);
+    expect(d).not.toMatch(/[\u0000-\u001f\u007f]/);
+    expect(new IntakeError("X", "a\u0007\u001b\u00e9".padEnd(500, "z")).message).toMatch(/^X: a\?\?\?z{196}$/);
   });
 
   it("refuses files outside their role's directory, unreferenced files and double references", async () => {
@@ -258,7 +341,21 @@ describe("image sizes and limits", () => {
     crcBroken[good.length - 20] = crcBroken[good.length - 20]! ^ 0xff;
     const depthBad = Buffer.from(good);
     depthBad[8 + 8 + 8] = 3; // IHDR bit depth 3
+    const IEND = pngChunk("IEND", Buffer.alloc(0));
+    const IDAT = pngChunk("IDAT", Buffer.from([0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01]));
+    const build = (...chunks: Buffer[]) => Buffer.concat([PNG_SIG, ...chunks]);
+    const hugeLength = Buffer.from(good);
+    hugeLength.writeUInt32BE(0x7ffffff0, 33); // the IDAT length field
     const cases: Buffer[] = [
+      build(pngChunk("IHDR", ihdr(600, 700)), pngChunk("IHDR", ihdr(600, 700)), IDAT, IEND), // a second IHDR
+      build(pngChunk("IHDR", ihdr(600, 700)), pngChunk("tEXt", Buffer.alloc(32)), IEND), // no IDAT (long enough to reach the IDAT rule)
+      build(pngChunk("IHDR", ihdr(600, 700, { interlace: 2 })), IDAT, IEND), // bad interlace
+      build(pngChunk("IHDR", ihdr(600, 700, { interlace: 1 })), IDAT, IEND), // Adam7 is allowed
+      build(pngChunk("IHDR", ihdr(600, 700, { colour: 6, depth: 4 })), IDAT, IEND), // bad colour/depth pair
+      build(pngChunk("IHDR", ihdr(600, 700)), IDAT, pngChunk("IEND", Buffer.from([1]))), // non-empty IEND
+      build(pngChunk("IHDR", ihdr(600, 700)), pngChunk("ID@T", Buffer.alloc(1)), IDAT, IEND), // bad chunk name
+      build(pngChunk("IDAT", Buffer.alloc(13)), IEND), // IDAT before IHDR
+      hugeLength,
       good,
       good.subarray(0, good.length - 12), // no IEND
       Buffer.concat([good, Buffer.from([0])]), // trailing data
@@ -275,14 +372,26 @@ describe("image sizes and limits", () => {
         return "invalid";
       }
     };
-    for (const b of cases) {
-      const ours = verdict(() => checkArtifactPng(b, PNG_LIMITS.concept_image));
-      const theirs = verdict(() => {
-        const { width, height } = checkPng(b, MOCKUP_PNG_LIMITS);
-        return { width, height };
-      });
-      expect(ours).toBe(theirs);
+    const limitsSets = [
+      PNG_LIMITS.concept_image,
+      PNG_LIMITS.viewport_render_mobile_390,
+      PNG_LIMITS.viewport_render_desktop_1440,
+      { maxBytes: good.length - 1, minSide: 1, maxSide: 8192, maxPixels: 40_000_000 }, // byte cap
+      { maxBytes: 1 << 24, minSide: 1, maxSide: 8192, maxPixels: 600 * 700 - 1 }, // pixel cap
+    ];
+    let invalid = 0;
+    for (const limits of limitsSets) {
+      for (const b of [...cases, makePng(390, 16000), makePng(390, 16001)]) {
+        const ours = verdict(() => checkArtifactPng(b, limits));
+        const theirs = verdict(() => {
+          const { width, height } = checkPng(b, limits);
+          return { width, height };
+        });
+        expect(ours).toBe(theirs);
+        if (ours === "invalid") invalid += 1;
+      }
     }
+    expect(invalid).toBeGreaterThan(40);
     expect(verdict(() => checkArtifactPng(good, PNG_LIMITS.concept_image))).toBe(JSON.stringify({ width: 600, height: 700 }));
   });
 
@@ -291,6 +400,29 @@ describe("image sizes and limits", () => {
     const run = readFileSync(resolve(REPO, "lib/design-agent/design-image/run.ts"), "utf8");
     const m = run.match(/export type PocStopClass = ([^;]+);/)!;
     expect([...m[1]!.matchAll(/"([a-z]+)"/g)].map((x) => x[1]).sort()).toEqual([...STOP_CLASSES].sort());
+  });
+
+  it("refuses a concept image above the pixel cap (7000 × 6000 = 42 M pixels)", async () => {
+    expect(await code(run(edit(routeA, (p) => {
+      p.files["originals/desktop_concept.png"] = makePng(7000, 6000);
+      Object.assign(p.artifact.observed.originals.desktop_1440, { width: 7000, height: 6000 });
+    })))).toBe("ARTIFACT_PNG_INVALID");
+  });
+
+  it("refuses a render above its file size cap, before reading it", async () => {
+    const padded = makePng(390, 3000, [pngChunk("tEXt", Buffer.alloc(PNG_LIMITS.viewport_render_mobile_390.maxBytes))]);
+    expect(padded.length).toBeGreaterThan(PNG_LIMITS.viewport_render_mobile_390.maxBytes);
+    expect(await detail(run(edit(routeB, (p) => (p.files["originals/mobile_390.png"] = padded))))).toBe("ARTIFACT_TOO_LARGE originals/mobile_390.png");
+    // and the PNG check itself refuses it too (defence in depth)
+    expect(() => checkArtifactPng(padded, PNG_LIMITS.viewport_render_mobile_390)).toThrow(IntakeError);
+    expect(checkArtifactPng(makePng(390, 3000), PNG_LIMITS.viewport_render_mobile_390)).toEqual({ width: 390, height: 3000 });
+  });
+
+  it("refuses a package above the total cap (tests may only lower it)", async () => {
+    const w = write(routeB());
+    expect(await detail(intakeArtifact({ packageDir: w.dir, factsPath: w.factsPath }, { totalBytesCap: 1_000 }))).toBe("ARTIFACT_TOO_LARGE package");
+    // a higher cap cannot raise the real one
+    expect((await intakeArtifact({ packageDir: w.dir, factsPath: w.factsPath }, { totalBytesCap: Number.MAX_SAFE_INTEGER })).verification_state).toBe("render_pair_complete");
   });
 
   it("accepts a 390 × 16000 render and refuses 16001", async () => {
@@ -313,7 +445,12 @@ describe("image sizes and limits", () => {
       p.files["originals/mobile_390.png"] = makePng(780, 6000);
       Object.assign(p.artifact.observed.originals.mobile_390, { width: 780, height: 6000 });
     }, "ARTIFACT_VIEWPORT_MISMATCH"],
-    ["a declared size that is not the file's", (p) => (p.artifact.observed.originals.desktop_1440.height = 1999), "ARTIFACT_VIEWPORT_MISMATCH"],
+    ["a declared size that is not the file's", (p) => {
+      // the spec's page agrees with the declared height, so only the declared-vs-file check can stop it
+      p.artifact.observed.originals.mobile_390.height = 2999;
+      p.artifact.declared.structure_spec.page_height.mobile_390 = 2999;
+      p.artifact.declared.structure_spec.sections[3].boxes.mobile_390.h = 199;
+    }, "ARTIFACT_VIEWPORT_MISMATCH"],
     ["a render shorter than the spec's page", (p) => (p.artifact.declared.structure_spec.page_height.desktop_1440 = 2100), "ARTIFACT_VIEWPORT_MISMATCH"],
     ["a truncated PNG", (p) => (p.files["originals/desktop_1440.png"] = (p.files["originals/desktop_1440.png"] as Buffer).subarray(0, 60)), "ARTIFACT_PNG_INVALID"],
     ["a non-PNG original", (p) => (p.files["originals/desktop_1440.png"] = "not a png"), "ARTIFACT_PNG_INVALID"],
@@ -338,6 +475,15 @@ describe("routes A/B/C are consistent", () => {
       p.artifact.observed.prototype = null;
     }],
     ["B without render conditions", routeB, (p) => (p.artifact.observed.render = null)],
+    ["B with a render said to come from the image tool", routeB, (p) => (p.artifact.observed.originals.mobile_390.rendered_from = "image_tool")],
+    ["A (Codex) with a concept image said to be an owner upload", routeA, (p) => (p.artifact.observed.originals.mobile_390.rendered_from = "owner_upload")],
+    ["C with two assets sharing one approval ID", routeC, (p) => {
+      p.files["assets/a2.png"] = makePng(400, 300);
+      p.artifact.observed.assets.push({ id: "A2", path: "assets/a2.png", kind: "ai_concept", approval_id: "fictional-asset-20261028-01", use: "design_only" });
+      p.artifact.declared.structure_spec.sections[2].asset_refs = ["A2"];
+    }],
+    ["C with an asset approved under the run's own ID", routeC, (p) => (p.artifact.observed.assets[0].approval_id = p.artifact.observed.generation.approval_id)],
+    ["C with generated assets but no IMAGE_SAVED", routeC, (p) => (p.artifact.observed.generation.image_outcome = "TOOL_NOT_CALLED")],
     ["B with a generated image", routeB, (p) => (p.artifact.observed.generation.image_outcome = "IMAGE_SAVED")],
     ["C with a generated asset lacking its own approval", routeC, (p) => (p.artifact.observed.assets[0].approval_id = null)],
     ["an owner upload on route B", routeB, (p) => (p.artifact.source_kind = "chatgpt_owner_upload_compat")],
@@ -356,6 +502,7 @@ describe("the declared design resolves", () => {
     ["a box wider than the mobile viewport", (p) => (p.artifact.declared.structure_spec.sections[0].boxes.mobile_390.w = 400), "ARTIFACT_STRUCTURE_INVALID"],
     ["a box below the page", (p) => (p.artifact.declared.structure_spec.sections[3].boxes.desktop_1440.h = 500), "ARTIFACT_STRUCTURE_INVALID"],
     ["an asset reference with no asset", (p) => (p.artifact.declared.structure_spec.sections[1].asset_refs = ["A2"]), "ARTIFACT_ASSET_UNRESOLVED"],
+    ["an asset no section uses", (p) => (p.artifact.declared.structure_spec.sections[1].asset_refs = []), "ARTIFACT_ASSET_UNRESOLVED"],
     ["a Design DNA part without a fact", (p) => (p.artifact.declared.design_dna.mobile.fact_refs = []), "ARTIFACT_SCHEMA_INVALID"],
     ["a missing Design DNA part", (p) => delete p.artifact.declared.design_dna.navigation, "ARTIFACT_SCHEMA_INVALID"],
   ])("refuses %s", async (_n, mutate, expected) => {

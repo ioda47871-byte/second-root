@@ -57,12 +57,22 @@ import {
 
 export class IntakeError extends Error {
   readonly code: string;
-  constructor(code: string, readonly detail = "") {
-    super(detail ? `${code}: ${detail}` : code);
+  readonly detail: string;
+  constructor(code: string, detail = "") {
+    // details can carry file names from the package: printable ASCII only, bounded (no terminal or log injection)
+    const safe = detail.replace(/[^\x20-\x7e]/g, "?").slice(0, 200);
+    super(safe ? `${code}: ${safe}` : code);
     this.name = "IntakeError";
     this.code = code;
+    this.detail = safe;
   }
 }
+
+/**
+ * Options for tests only. They can only make intake stricter (a lower total cap) or reproduce a race
+ * (a callback after the walk, before any file is read). The CLI passes none.
+ */
+export type IntakeOptions = { totalBytesCap?: number; afterInventory?: () => Promise<void> };
 
 export type VerificationState = "render_pair_complete" | "concept_only" | "incomplete";
 
@@ -150,8 +160,16 @@ async function readJsonInput(path: string, maxBytes: number, code: string): Prom
   try {
     const st = await handle.stat();
     if (!st.isFile() || st.size > maxBytes) fail(code, "not a regular file within the cap");
-    bytes = await handle.readFile();
-    if (bytes.length > maxBytes) fail(code, "too large");
+    // read at most the checked size plus one byte: a file that grows while being read is refused, never read unbounded
+    const buf = Buffer.alloc(st.size + 1);
+    let got = 0;
+    while (got < buf.length) {
+      const { bytesRead } = await handle.read(buf, got, buf.length - got, got);
+      if (bytesRead === 0) break;
+      got += bytesRead;
+    }
+    if (got !== st.size) fail(code, "size changed while reading");
+    bytes = buf.subarray(0, got);
   } finally {
     await handle.close();
   }
@@ -240,18 +258,26 @@ function buildRecord(a: DesignArtifact, x: {
       files: allowed ? [{ path: "artifact.json", role: "artifact", sha256: x.artifactSha }, ...x.files.filter((f) => f.role !== "prototype").map((f) => ({ path: f.path, role: f.role, sha256: f.sha256 }))] : [],
       excluded_roles: ["prototype"] as const,
     },
-    runner_reported: { generation: a.observed.generation, stops: a.observed.stops, missing: a.observed.missing },
+    // the runner's claims: relayed, never verified here and never an approval (asset approval IDs included)
+    runner_reported: {
+      generation: a.observed.generation,
+      asset_approval_ids: a.observed.assets.map((s) => ({ asset: s.id, approval_id: s.approval_id })),
+      stops: a.observed.stops,
+      missing: a.observed.missing,
+    },
     human_gates: { identity_visual_check: "not_done", g2_design: "not_done", g3_responsive: "not_done", g5_final_comparison: "not_done" } as const,
     notes: [...INTAKE_NOTES],
   };
 }
 
 /** Intake of the package at `packageDir`, against the facts pack at `factsPath`. Throws IntakeError on anything unsafe or inconsistent. */
-export async function intakeArtifact(input: { packageDir: string; factsPath: string }) {
+export async function intakeArtifact(input: { packageDir: string; factsPath: string }, opts: IntakeOptions = {}) {
+  const totalCap = Math.min(PACKAGE_LIMITS.totalBytes, opts.totalBytesCap ?? PACKAGE_LIMITS.totalBytes);
   const root = await realpath(input.packageDir).catch(() => fail("ARTIFACT_PATH_UNSAFE", "package not found"));
   const rootSt = await lstat(root);
   if (!rootSt.isDirectory()) fail("ARTIFACT_PATH_UNSAFE", "package is not a directory");
   const entries = await inventory(root);
+  await opts.afterInventory?.();
 
   const artifactBytes = await readChecked(root, entries, "artifact.json", PACKAGE_LIMITS.artifactJsonBytes);
   let raw: unknown;
@@ -303,14 +329,24 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
       route(og.rendered_from === (a.source_kind === "chatgpt_owner_upload_compat" ? "owner_upload" : "image_tool"), `${k}: concept image source`);
     }
   }
-  if (a.source_kind === "chatgpt_owner_upload_compat") route(a.route === "A_image", "an owner upload is a concept image (route A)");
+  if (a.source_kind === "chatgpt_owner_upload_compat") {
+    route(a.route === "A_image", "an owner upload is a concept image (route A)");
+    // an upload is not a Codex run: no Codex run facts may be claimed for it
+    route(o.generation.tool === null && o.generation.image_outcome === "not_applicable" && o.generation.prompt_sha256 === null, "an owner upload claims Codex run facts");
+  }
   if (a.route === "A_image") {
     route(o.prototype === null && o.render === null && o.assets.length === 0, "route A carries no prototype, render or assets");
     if (a.source_kind === "codex_generated" && presents.some(([, og]) => og.state === "present")) route(o.generation.image_outcome === "IMAGE_SAVED", "route A image without IMAGE_SAVED");
   } else {
     route(o.prototype !== null, `${a.route} needs the prototype`);
     if (a.route === "B_html_prototype") route(o.assets.every((s) => s.kind === "placeholder") && o.generation.image_outcome === "not_applicable", "route B generates no images");
-    if (a.route === "C_hybrid") route(o.assets.every((s) => s.kind !== "ai_concept" || s.approval_id !== null), "route C: each generated asset needs its own approval ID");
+    if (a.route === "C_hybrid") {
+      const generated = o.assets.filter((s) => s.kind === "ai_concept");
+      const ids = generated.map((s) => s.approval_id);
+      route(ids.every((id) => id !== null), "route C: each generated asset needs its own approval ID");
+      route(new Set(ids).size === ids.length && !ids.includes(o.generation.approval_id), "route C: asset approval IDs must differ from each other and from the run's");
+      route(generated.length === 0 || o.generation.image_outcome === "IMAGE_SAVED", "route C: generated assets without IMAGE_SAVED");
+    }
   }
 
   // files: re-read, re-hash, re-measure
@@ -334,7 +370,7 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
     if (f.role === "prototype" && !(f.path === o.prototype?.html_path ? f.path.endsWith(".html") : f.path.endsWith(".css"))) fail("ARTIFACT_FILE_ROLE_MISMATCH", f.path);
     const bytes = await readChecked(root, entries, f.path, cap);
     total += bytes.length;
-    if (total > PACKAGE_LIMITS.totalBytes) fail("ARTIFACT_TOO_LARGE", "package");
+    if (total > totalCap) fail("ARTIFACT_TOO_LARGE", "package");
     if (bytes.length !== f.bytes || sha256(bytes) !== f.sha256) fail("ARTIFACT_SHA_MISMATCH", f.path);
     const rec: (typeof files)[number] = { path: f.path, role: f.role, sha256: f.sha256, bytes: f.bytes };
     if (limits) {
@@ -381,6 +417,8 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
     for (const t of s.live_text) if ("fact_ref" in t && !factIds.has(t.fact_ref)) fail("ARTIFACT_FACT_UNRESOLVED", t.fact_ref);
     for (const id of s.asset_refs) if (!assetIds.has(id)) fail("ARTIFACT_ASSET_UNRESOLVED", id);
   }
+  const used = new Set(spec.sections.flatMap((s) => s.asset_refs));
+  for (const id of assetIds) if (!used.has(id)) fail("ARTIFACT_ASSET_UNRESOLVED", `unused asset: ${id}`);
 
   // state: derived here every time, never read from anywhere
   const reasons: string[] = [];
@@ -392,6 +430,8 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
   if (g.started_at && g.finished_at && Date.parse(g.started_at) > Date.parse(g.finished_at)) reasons.push("generation_unverified:time_order");
   if (o.stops.length) reasons.push(`run_stopped:${o.stops.map((s) => s.code).join(",")}`);
   for (const m of o.missing) reasons.push(`declared_missing:${m.item}`);
+  // the provenance record of an owner upload (where and when it was made, by whom) is not designed yet
+  if (a.source_kind === "chatgpt_owner_upload_compat") reasons.push("owner_upload_provenance_not_implemented");
   const allRender = presents.every(([, og]) => og.state === "present" && og.kind === "viewport_render");
   const state: VerificationState = reasons.length ? "incomplete" : allRender ? "render_pair_complete" : "concept_only";
   if (state === "concept_only") reasons.push("concept_images_are_not_pc_sp_renders");
