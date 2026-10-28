@@ -2,7 +2,7 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **eighteen owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **nineteen owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
@@ -84,3 +84,7 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 ### CP-019 浦田杏梨 — WAX / TIME v1（2026-10-28採用）
 
 [静止画研究成功記録](../../success-cases/CP-019-Anna-Urata-WAX-TIME-v1.md)。蝋の溶解・透明度・空洞でBEFORE→MELTING→AFTERの視線を構成。ユーザーが「成功例とします」と採用し**現時点で18件（ローカルPoC9件・静止画像9件）**。画像は想像上の作品で本人の許諾はない。なおCP-020以降の新規研究対象は[Webサイト・公式ネットショップなしの店だけ](../../../docs/design/no-website-shop-intake-policy.md)を調査する。
+
+### CP-020 喫茶 ITALICO — SHOWCASE v1（2026-10-28研究採用）
+
+[19件目採用](../../success-cases/CP-020-Kissa-ITALICO-SHOWCASE-v1.md)。ガラス棚にメニュー写真と案内を一体化した静止コンセプト。**累積19件（ローカルPoC9件、画像10件）**。公式SNSリンク先未確認のため営業候補としては保留。
