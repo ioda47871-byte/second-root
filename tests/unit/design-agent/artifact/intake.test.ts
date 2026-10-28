@@ -129,6 +129,23 @@ describe("verification states (never approvals)", () => {
     expect(await code(run(upload))).toBe("ARTIFACT_ROUTE_INCONSISTENT");
   });
 
+  it("an owner upload on route B is refused for its route even without Codex facts", async () => {
+    const d = await detail(run(edit(routeB, (p) => {
+      p.artifact.source_kind = "chatgpt_owner_upload_compat";
+      Object.assign(p.artifact.observed.generation, { tool: null, prompt_sha256: null, image_outcome: "not_applicable" });
+    })));
+    expect(d).toBe("ARTIFACT_ROUTE_INCONSISTENT an owner upload is a concept image (route A)");
+  });
+
+  it("route A carries no assets", async () => {
+    const d = await detail(run(edit(routeA, (p) => {
+      p.files["assets/a1.png"] = makePng(64, 64);
+      p.artifact.observed.assets = [{ id: "A1", path: "assets/a1.png", kind: "placeholder", approval_id: null, use: "design_only" }];
+      p.artifact.declared.structure_spec.sections[1].asset_refs = ["A1"];
+    })));
+    expect(d).toBe("ARTIFACT_ROUTE_INCONSISTENT route A carries no prototype, render or assets");
+  });
+
   it.each(["tool", "tool_version", "approval_id", "prompt_sha256", "worker_commit", "run_id", "started_at", "finished_at"])(
     "an unknown %s alone makes route B incomplete",
     async (field) => {
@@ -251,6 +268,16 @@ describe("file safety", () => {
         symlinkSync(join(dir, "..", "originals_real"), join(dir, "originals"));
       })).toBe("ARTIFACT_PATH_UNSAFE escaped: originals/desktop_1440.png");
     });
+    it("a hard link added to a file → changed (the read re-checks the link count)", async () => {
+      expect(await swapped((dir) => linkSync(join(dir, "quarantine/styles.css"), join(dir, "..", "styles-link.css")))).toBe("ARTIFACT_PATH_UNSAFE changed: quarantine/styles.css");
+    });
+    it("a parent directory replaced by a real directory holding the same files → parent changed", async () => {
+      expect(await swapped((dir) => {
+        renameSync(join(dir, "originals"), join(dir, "..", "originals_old"));
+        mkdirSync(join(dir, "originals"));
+        for (const f of ["desktop_1440.png", "mobile_390.png"]) renameSync(join(dir, "..", "originals_old", f), join(dir, "originals", f));
+      })).toBe("ARTIFACT_PATH_UNSAFE parent changed: originals");
+    });
     it("a file removed → refused, nothing read", async () => {
       expect(await swapped((dir) => rmSync(join(dir, "originals/mobile_390.png")))).toBe("ARTIFACT_PATH_UNSAFE originals/mobile_390.png");
     });
@@ -268,6 +295,24 @@ describe("file safety", () => {
     ["a backslash path", (p) => (p.artifact.observed.prototype.css_path = "quarantine\\styles.css"), "ARTIFACT_SCHEMA_INVALID"],
   ])("refuses %s", async (_n, mutate, expected) => {
     expect(await code(run(edit(routeB, mutate)))).toBe(expected);
+  });
+
+  it("refuses a file declared under another role's directory, and a prototype with the wrong extension", async () => {
+    const w = write(edit(routeB, (p) => {
+      p.files["originals/styles.css"] = CSS;
+      delete p.files["quarantine/styles.css"];
+      p.artifact.observed.prototype.css_path = "originals/styles.css";
+    }));
+    // declare it as the prototype it is, but under originals/
+    const a = JSON.parse(readFileSync(join(w.dir, "artifact.json"), "utf8"));
+    a.observed.files.find((f: { path: string }) => f.path === "originals/styles.css").role = "prototype";
+    writeFileSync(join(w.dir, "artifact.json"), JSON.stringify(a));
+    expect(await detail(intakeArtifact({ packageDir: w.dir, factsPath: w.factsPath }))).toBe("ARTIFACT_FILE_ROLE_MISMATCH outside its role directory: originals/styles.css");
+    expect(await detail(run(edit(routeB, (p) => {
+      p.files["quarantine/styles.txt"] = CSS;
+      delete p.files["quarantine/styles.css"];
+      p.artifact.observed.prototype.css_path = "quarantine/styles.txt";
+    })))).toBe("ARTIFACT_FILE_ROLE_MISMATCH prototype extension: quarantine/styles.txt");
   });
 
   it("refuses an original whose name is not .png, even with PNG bytes", async () => {
@@ -421,8 +466,18 @@ describe("image sizes and limits", () => {
   it("refuses a package above the total cap (tests may only lower it)", async () => {
     const w = write(routeB());
     expect(await detail(intakeArtifact({ packageDir: w.dir, factsPath: w.factsPath }, { totalBytesCap: 1_000 }))).toBe("ARTIFACT_TOO_LARGE package");
-    // a higher cap cannot raise the real one
-    expect((await intakeArtifact({ packageDir: w.dir, factsPath: w.factsPath }, { totalBytesCap: Number.MAX_SAFE_INTEGER })).verification_state).toBe("render_pair_complete");
+    // a higher cap cannot raise the real one: a package over the real cap is refused even when a huge cap is asked for
+    const big = write(edit(routeC, (p) => {
+      for (let i = 2; i <= 8; i++) {
+        p.files[`assets/a${i}.png`] = makePng(64, 64, [pngChunk("tEXt", Buffer.alloc(15 * 1024 * 1024))]);
+        p.artifact.observed.assets.push({ id: `A${i}`, path: `assets/a${i}.png`, kind: "ai_concept", approval_id: `fictional-asset-20261028-0${i}`, use: "design_only" });
+        p.artifact.declared.structure_spec.sections[2].asset_refs.push(`A${i}`);
+      }
+    }));
+    expect(await detail(intakeArtifact({ packageDir: big.dir, factsPath: big.factsPath }, { totalBytesCap: Number.MAX_SAFE_INTEGER }))).toBe("ARTIFACT_TOO_LARGE package");
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      expect(await detail(intakeArtifact({ packageDir: w.dir, factsPath: w.factsPath }, { totalBytesCap: bad }))).toBe("ARTIFACT_TOO_LARGE invalid total cap");
+    }
   });
 
   it("accepts a 390 × 16000 render and refuses 16001", async () => {

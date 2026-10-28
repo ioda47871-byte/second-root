@@ -23,8 +23,9 @@
  *
  * Verification states (never approvals):
  *   render_pair_complete  both originals are browser renders (1440 and 390 wide) and every check passed
- *   concept_only          the originals are concept images (route A / owner upload): not exact PC/SP renders
- *   incomplete            something needed is missing, the run stopped, or the generation facts are unknown
+ *   concept_only          the originals are Codex image-tool concept images (route A): not exact PC/SP renders
+ *   incomplete            something needed is missing, the run stopped, the generation facts are unknown, or it is
+ *                         an owner upload (its provenance record is not designed yet)
  * Only render_pair_complete allows a handoff to implementation, and even it is
  * not G2, G3 or G5 quality approval. Human gates are always reported not_done:
  * nothing here can set them.
@@ -146,6 +147,7 @@ async function readChecked(root: string, entries: Map<string, Entry>, rel: strin
       if (bytesRead === 0) break;
       got += bytesRead;
     }
+    // defence in depth: fstat already pinned the size; this catches growth during the read itself (not reproducible in a test)
     if (got !== e.size) fail("ARTIFACT_PATH_UNSAFE", `size changed while reading: ${rel}`);
     return buf.subarray(0, e.size);
   } finally {
@@ -168,6 +170,7 @@ async function readJsonInput(path: string, maxBytes: number, code: string): Prom
       if (bytesRead === 0) break;
       got += bytesRead;
     }
+    // defence in depth, as in readChecked (growth during the read itself)
     if (got !== st.size) fail(code, "size changed while reading");
     bytes = buf.subarray(0, got);
   } finally {
@@ -272,7 +275,9 @@ function buildRecord(a: DesignArtifact, x: {
 
 /** Intake of the package at `packageDir`, against the facts pack at `factsPath`. Throws IntakeError on anything unsafe or inconsistent. */
 export async function intakeArtifact(input: { packageDir: string; factsPath: string }, opts: IntakeOptions = {}) {
-  const totalCap = Math.min(PACKAGE_LIMITS.totalBytes, opts.totalBytesCap ?? PACKAGE_LIMITS.totalBytes);
+  const asked = opts.totalBytesCap ?? PACKAGE_LIMITS.totalBytes;
+  if (!Number.isFinite(asked) || asked < 0) fail("ARTIFACT_TOO_LARGE", "invalid total cap");
+  const totalCap = Math.min(PACKAGE_LIMITS.totalBytes, asked);
   const root = await realpath(input.packageDir).catch(() => fail("ARTIFACT_PATH_UNSAFE", "package not found"));
   const rootSt = await lstat(root);
   if (!rootSt.isDirectory()) fail("ARTIFACT_PATH_UNSAFE", "package is not a directory");
@@ -300,7 +305,7 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
   const o = a.observed;
   const declared = new Map(o.files.map((f) => [f.path, f]));
   if (declared.size !== o.files.length) fail("ARTIFACT_FILE_ROLE_MISMATCH", "duplicate path");
-  for (const f of o.files) if (!f.path.startsWith(ROLE_DIR[f.role])) fail("ARTIFACT_FILE_ROLE_MISMATCH", f.path);
+  for (const f of o.files) if (!f.path.startsWith(ROLE_DIR[f.role])) fail("ARTIFACT_FILE_ROLE_MISMATCH", `outside its role directory: ${f.path}`);
   const onDisk = [...entries.values()].filter((e) => e.kind === "file").map((e) => e.rel);
   for (const rel of onDisk) if (rel !== "artifact.json" && !declared.has(rel)) fail("ARTIFACT_UNDECLARED_FILE", rel);
   const refs: [string, "original" | "asset" | "prototype"][] = [];
@@ -367,7 +372,7 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
       cap = PROTOTYPE_LIMITS.css;
     }
     if (limits && !f.path.endsWith(".png")) fail("ARTIFACT_FILE_ROLE_MISMATCH", f.path);
-    if (f.role === "prototype" && !(f.path === o.prototype?.html_path ? f.path.endsWith(".html") : f.path.endsWith(".css"))) fail("ARTIFACT_FILE_ROLE_MISMATCH", f.path);
+    if (f.role === "prototype" && !(f.path === o.prototype?.html_path ? f.path.endsWith(".html") : f.path.endsWith(".css"))) fail("ARTIFACT_FILE_ROLE_MISMATCH", `prototype extension: ${f.path}`);
     const bytes = await readChecked(root, entries, f.path, cap);
     total += bytes.length;
     if (total > totalCap) fail("ARTIFACT_TOO_LARGE", "package");
