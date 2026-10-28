@@ -5042,6 +5042,66 @@
         "2d-min・2f以降の着手"
       ],
       "note": "Merged to develop (2917293, PR #145). phase1_compat is byte-identical to Phase 1; partial validates the ledger; strict is a safe not-yet-implemented state (always STRICT_APPROVAL_NOT_IMPLEMENTED). Research originals and owner approval records are not verified yet. The ledger never creates a success or an approval."
+    },
+    {
+      "id": "DEV-114",
+      "title": "Design Intelligence Phase 2d-min：Codex→Claude Code の共通 Design Artifact（design_artifact_v1）のスキーマと Intake 検査",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-113"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-114-design-artifact-intake",
+      "purpose": "オーナーが2026-10-28に承認したPhase 2d-min。Codexのデザイン成果物（A画像・B HTML試作・C併用）を共通の形式で受け取り、ファイルの安全性・SHA-256・寸法・参照・経路の整合を毎回検査して検証状態を導く最小基盤。承認・描画・Codex実行は含まない。",
+      "acceptance_criteria": [
+        "Codexが出せるデザインデータ（codex_design_v1）を厳格に固定し、状態・承認・検証・ファイル・SHAの欄を持たない。判定は型・許可欄・出所で行い、文字列の単語検索に依存しない",
+        "実行プログラムの観測（observed）とCodexの宣言（declared）を欄で分け、ファイルの事実はIntakeが再計算する",
+        "検証状態はrender_pair_complete / concept_only / incompleteで、承認と分離する。render_pair_completeでもG2・G3・G5は常にnot_done。Aの構想画像は実装へ渡さない",
+        "viewport_renderは幅1440/390ちょうど・高さ16000px以下（comp-implと同値）。画素数・ファイルサイズ・パッケージ全体の上限をテストで検証し、2fの描画条件にdeviceScaleFactor=1を固定する",
+        "相対パス・通常ファイル・サイズ上限・SHA-256再計算を必須とし、リンク・親ディレクトリ経由の脱出・ハードリンク・特殊ファイル・未宣言ファイル・確認と読み込みの間の差し替えを拒否する",
+        "quarantineの試作HTML/CSSをhandoff一覧に含めない（OSレベルの分離はPhase 2eで、実装済みとは表現しない）",
+        "保存された記録を読み込んで検証や承認が成立することはなく、人の承認を作る処理を持たない",
+        "png.ts・comp-impl・design-image・codex.tsの1MiB上限を変更しない",
+        "必須でない情報の欠落（実行モデル名）は警告にとどめ、正常なファイルを止めない。生成素材の無いC_hybridは拒否し、画像生成が失敗した場合は実行プログラムが明示的にBへ切り替えた記録（失敗の履歴を保持、画像が主役でないこと）だけを受け入れる。PNGの構造検査は画素の復号・撮影・生成実行の証明ではなく、それらはPhase 2fで検証する"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/artifact/*.test.ts",
+        "tests/unit/design-agent/intelligence/*.test.ts",
+        "tests/unit/guardrails.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/design-agent/comp-impl/isolation.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/artifact/schema.ts",
+        "lib/design-agent/artifact/intake.ts",
+        "scripts/design-artifact/intake.ts",
+        "tests/unit/design-agent/artifact/**",
+        "docs/design/design-artifact-v1.md",
+        "docs/design/design-intelligence-integration-plan.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-114.md（独立reviewによる記録のみ）"
+      ],
+      "forbidden_scope": [
+        "Codexの実行・画像生成・Phase 2fの実証・ブラウザ描画",
+        "Claudeの実装レーンの新設（2e）、人の承認記録の生成・確定",
+        "comp-impl・design-image・png.ts・codex.ts・worker・pipeline・G0〜G6・CSS許可範囲・品質閾値の変更",
+        "PR #142のマージ・研究データの変更",
+        "本番環境・worker・timer・bridge・営業AI・Supabase・Vercelの変更",
+        ".github/workflows・package.jsonの依存",
+        "DEV-114の自動マージ"
+      ],
+      "human_approval_triggers": [
+        "DEV-114のdevelopへのマージ",
+        "Phase 2f（A/B/Cの実証、Codex実行・描画）の着手",
+        "Phase 2e（表現実装レーン、OSレベルの分離）の着手",
+        "人の承認記録の方式の確定"
+      ],
+      "note": "Verification states are file checks, not approvals. Human gates are always not_done. OS-level Codex/Claude separation is Phase 2e."
     }
   ]
 }
