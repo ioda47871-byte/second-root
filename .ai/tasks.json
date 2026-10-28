@@ -4989,7 +4989,7 @@
     {
       "id": "DEV-113",
       "title": "Design Intelligence Phase 2a：選定台帳 selection_ledger_v1 と3モード（phase1_compat / partial / strict の安全な未実装停止）",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-112"
@@ -5041,7 +5041,7 @@
         "strictを稼働させること（研究セットと承認記録の方式の承認が前提）",
         "2d-min・2f以降の着手"
       ],
-      "note": "strict is a safe not-yet-implemented state: it always stops. The ledger never creates a success or an approval."
+      "note": "Merged to develop (2917293, PR #145). phase1_compat is byte-identical to Phase 1; partial validates the ledger; strict is a safe not-yet-implemented state (always STRICT_APPROVAL_NOT_IMPLEMENTED). Research originals and owner approval records are not verified yet. The ledger never creates a success or an approval."
     }
   ]
 }
