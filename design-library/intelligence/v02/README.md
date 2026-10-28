@@ -202,3 +202,11 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-025｜HOTEL AUTHENTIC 食のアトラス全ページv1（2026-10-28初稿・評価待ち）
 
 [食の図鑑の全ページ研究記録](experiments/CP025-HOTEL-AUTHENTIC-EDIBLE-ATLAS-v1.md)。地域ごとの料理という店舗個性を図鑑のページ・コンパス・実際に切り替えられる4章に変換。PC1440/スマホ390の全ページ、俯瞰比較、HTML/CSS/JS、ZIPを提出、Chromium9幅QA。生成写真は公式の料理写真ではない。**成功数には未計上（23件のまま）**。公式サイト/ECは検索未発見だがSNSプロフィールリンク未確認で営業HOLD。
+
+## CP-025｜THE EDIBLE ATLAS v1を不採用、SPICE CABINET全ページv2（2026-10-28）
+
+ユーザーから全ページv1に「**凡庸だな**」という不採用評価。v1の左タイトル/右料理画像Hero、地域の汎用タブ、交互の写真帯/案内カードは**店舗固有の物理的体験をUIへ変換できていない**として原因を記録。[不採用v1](experiments/CP025-HOTEL-AUTHENTIC-EDIBLE-ATLAS-v1.md)。
+
+[全ページv2：THE SPICE CABINET](experiments/CP025-HOTEL-AUTHENTIC-SPICE-CABINET-v2.md)は、4つの引き出しを選ぶと地域編集ノートが実際に開くHTML/CSS/JS構造。料理写真はNORTHに1回のみ、ほかは別々のSVG資料図。Field Notesは文書台帳、Visitは最後の封筒として制作。PC/スマホ全ページ画面・比較JPG・操作可能な自己完結HTML・ZIPを提出し、**320〜1920pxの9幅、横はみ出し0、画像読込、4地域×PC/スマホ切替、JS例外0**を検証。
+
+**v2のオーナー評価は未了。研究成功は23件（ローカルWeb PoC成功10＋静止画13）のまま。** 店舗の公式サイト不在はSNSプロフィール外部リンク未確認でHOLD。生成画像は実店舗料理写真ではなく、商用使用/本番公開/営業送信なし。
