@@ -190,3 +190,7 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-024｜Boheme. FLORAL FITTING ROOM v1（2026-10-28初稿）
 
 [CP-024研究記録](experiments/CP024-Boheme-FLORAL-FITTING-ROOM-v1.md)。名古屋市中村区十王町の生花店Boheme.の公式に紹介された「花を着崩す。」から、花をファッションのLOOKとして選びスタイリングする**中央の鏡＋左右の花材ラック**の静止デザインを試作。**初稿・オーナー評価待ち、研究成功は22件のまま**。2026年10月のイベントと百貨店公式企画で実店舗活動を確認。本人の独立公式サイト/ECは検索では未発見だが、Instagram外部リンクは直接取得できず、同名アクセサリーBASE店舗との事業主体同一性も未確認のため**正式なサイトなし営業候補は保留**。生成花/店内は研究用AI画像、商用利用・実店舗の公式許諾なし。
+
+## CP-024｜全ページ構造の不足を修正（2026-10-28）
+
+ユーザー「いいと思いますが全体像がさっきからなくないですか？」により、CP-020〜024までの**Hero偏重**を正式な研究上の課題として記録。[全ページ評価ゲート](../../../docs/design/research-full-page-review-gate.md)を追加。Boheme.で気に入られたHero v1を原本保持し、[全ページHTML研究v2](experiments/CP024-Boheme-FLORAL-FITTING-ROOM-v1.md)を作成。Concept → LOOKを切り替えるフィッティングルーム → スタイリングレール（色/線/質感） → Story → Visitという一貫した体験をPC/スマホ両方で提示する。Chromium 9画面幅にて横はみ出し0・LOOK切替・JS例外0を確認。**本番サイトでも実店舗公認でもなく、全ページv2のオーナー評価待ち**。成功事例は22件のまま。以後は「Hero好評価」と「全ページ採用」を区別する。
