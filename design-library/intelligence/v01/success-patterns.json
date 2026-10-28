@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-017-Rurikoyarn-UNWIND-v1.1.md (CP-014 pending, not a success)",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-018-MOLE-FACTORY-OVERPRINT-v1.md (CP-014 pending and excluded)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -765,11 +765,59 @@
       ],
       "implementation_gap": "Approved v1.1 concept image only. No independent HTML/CSS/JS, mobile design, verified material photos, merchant authorization, Next.js or production validation.",
       "evidence_ref": "design-library/success-cases/CP-017-Rurikoyarn-UNWIND-v1.1.md"
+    },
+    {
+      "id": "CP-018",
+      "name": "MOLE FACTORY — OVERPRINT / MISREGISTER v1",
+      "category": "silkscreen_risograph_print_studio",
+      "owner_selection": "approved_research_concept_image_v1",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "risograph registration error and color layer offset",
+        "silkscreen layered graphic printing",
+        "halftone ink, fine paper fibers and crop marks",
+        "small print objects, ZINEs and handmade posters"
+      ],
+      "structural_translation": "Use the print studio's layered color plates and deliberate misregistration as the navigable composition of a flat editorial print sheet rather than a standard split photo hero and alternating section strips",
+      "visual_mechanisms": [
+        "large distressed MOLE FACTORY title sits beside overlapping blue and orange overprints",
+        "paper surface and halftone grain act as visual field",
+        "crop registration marks and colored nodes direct attention to process annotations",
+        "small print and production vignettes reinforce the central overprint narrative"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner praised the first full-screen overprint concept with 'すごくいいと思います'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner explicitly approved that initial image with '成功例とします、次へ進んで' on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Process-derived color plate overlaps produce a layout distinct from recent fiber-loop, counterweight and table-map studies",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "A printing-themed collage can still become a typical poster LP if the print plate logic does not govern information movement",
+        "Typography is image-baked, not selectable real web text",
+        "Fake print samples or pricing may be mistaken for the actual workshop inventory",
+        "Riso layer switching and mobile responsive layout remain untested"
+      ],
+      "not_to_copy": [
+        "MOLE FACTORY name and brand identity",
+        "AI generated mole illustration, purported product photos and copy",
+        "exact blue-orange plates and registration mark positions",
+        "static completed composition as a fixed template for another merchant"
+      ],
+      "implementation_gap": "Single 1536x1024 research concept image; no HTML/CSS/JS, responsive mobile, verified brand-owned product media, formal shop permission, browser QA or public deployment; official BASE shop already exists.",
+      "evidence_ref": "design-library/success-cases/CP-018-MOLE-FACTORY-OVERPRINT-v1.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Nine cases have local HTML PoCs; seven remain concept/image-only; none are verified live production websites",
+    "Nine cases have local HTML PoCs; eight remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
