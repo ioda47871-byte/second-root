@@ -182,3 +182,7 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-023｜初稿・再生成画像を不採用、レコードSIDE A/B構造PoC（2026-10-28）
 
 ユーザー評価「これは良くない」により、BURGER昼と80s BAR夜を二分割したネオン看板v1は**不採用**。写真中心への逆戻りが起きた画像再生成v2も不採用。画像生成では画面構造の条件を守れず、[CP-023の研究比較とローカルPoC](experiments/CP023-BURGERS-INC-FLIP-SIGN-v1.md)に転換。SIDE A/Bを選ぶと同一レコード盤のラベル・色・文章が変わる独立HTML/CSS/JSを作成し、9画面幅で基本動作・横はみ出し・JavaScriptエラーを検証。**オーナーの新案評価待ち、研究成功は21件のまま**。公式Webなし条件はSNSリンク確認保留、本番や営業AIは未変更。
+
+## CP-023｜BURGERS,INC NEON FLIP v4（2026-10-28研究成功）
+
+[採用研究記録](../../success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md)／[初稿v1〜改良v5と失敗原因](experiments/CP023-BURGERS-INC-FLIP-SIGN-v1.md)。以前の「一枚目」評価はレコード画面ではなく元のネオン看板画像を意味するとの本人訂正があった。v4を正式採用し、派手な写真コラージュv2、レコード型v3、下部の一般的な3写真カードなどを増やしたv5は採用物ではない。**累積22件（HTML研究PoC9＋静止画13）**、参考80件、CP-014未採用。Instagram外部リンクの未確認により公式サイト不在の営業候補はHOLD。
