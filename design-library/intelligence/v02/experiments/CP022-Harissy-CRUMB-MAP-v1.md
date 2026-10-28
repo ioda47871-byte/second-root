@@ -37,3 +37,7 @@
 - 静止画像`wide_cinematic_editorial_website_poster_style_ima.png`、**1536×1024px**、SHA-256 `c6816c02d7d102c554b292fe9142567e25deba0b03fac575c06cb30f6a696abc`（2026-10-28、ローカル実ファイルのハッシュを確認）。
 - GitHubは研究分析とSHAだけを保管し、AI生成画像のバイナリ、実店舗の画像、HTMLソースはアップロードしない。
 - **選定未確定／初稿のオーナー評価待ち。** 研究成功20件／30件、参考候補80件・CP-014未承認を維持。本番自動営業AI、Supabase、Vercel、デプロイ等に変更なし。
+
+## 2026-10-28｜オーナーが初稿を21件目の研究成功例に採用
+
+ユーザー「いいと思います」後、明示的な「成功例にする」により `OWNER_SELECTED_RESEARCH_SUCCESS`。採用画像は初稿v1、SHA-256 `c6816c02d7d102c554b292fe9142567e25deba0b03fac575c06cb30f6a696abc`。正式記録：[CP-022成功事例](../../../success-cases/CP-022-Harissy-CRUMB-FRACTURE-v1.md)。公式ホームページ/ECは検索未発見だがSNSプロフィール外部リンク未確認のため営業資格は保留。現在21件（HTML研究PoC9＋画像12）、CP-014は保留。
