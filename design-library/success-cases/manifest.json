@@ -230,6 +230,32 @@
       "approved_v2_png_sha256": "6b52cdc05537d740cd61e4cbee042f86aa73c3b1cb8806059611979dfc6e031b",
       "concept_dimensions_px": "1024x1536",
       "success_case_archive_sha256": "ea3587b138cf42c54e0ae0e34ba3e1a792d8d6105cb52cca5ad973af2c5da0cb"
+    },
+    {
+      "id": "CP-015",
+      "title": "imairo. — TABLE AS A MAP / TABLE JOURNAL v2",
+      "status": "owner_selected_research_success_example",
+      "source_kind": "chat_generated_design_image_and_local_html_poc",
+      "category": "spice_cafe_patisserie",
+      "view": "interactive_html_css_js_local_poc",
+      "owner_selected_at": "2026-10-28",
+      "design_approval_scope": "second_root_research_success_only",
+      "official_client_work": false,
+      "merchant_authorized": false,
+      "website_deployed": false,
+      "nextjs_build_verified": false,
+      "html_css_impl_verified": "local_chromium_offline_only",
+      "mobile_web_impl_verified": "local_chromium_offline_only",
+      "image_asset_uploaded_to_github": false,
+      "approved_version": "TABLE_JOURNAL_v2_20261028",
+      "approved_hero_sha256": "49f24706a8b114ca346f1c7ae3cf2c120a12c49e5adff55ee7e75b2b82c66b41",
+      "approved_html_sha256": "834e97f57e672aa12176f411cb092686663317acd70be9f26b33280b5f721a5c",
+      "approved_offline_preview_sha256": "0eed134bc266f9e9aa3ca994e229b81aeb5fbcee9882c7c252428f83a1494fc1",
+      "desktop_note_png_sha256": "39615184f7b78e139f18f91761e2d630c1762661ec5b5f8bcb28aa1dfdb0bba2",
+      "mobile_note_png_sha256": "4e997de75939d51145a098711d57076b59580a5a1263b1e1329d879df1d27d2f",
+      "success_case_archive_sha256": "b580f3612d5ba36987adf39cd379f68424801676365a2fb01b9589750f74d696",
+      "original_hero_typography_editable": false,
+      "generated_photo_crops_research_only": true
     }
   ],
   "policy": {
@@ -238,6 +264,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original approved images and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..013 research metadata only, not the latter cases' image/source binaries."
+    "source_master_assets": "Original approved images and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..015 (excluding unapproved CP-014) research metadata only, not the latter cases' image/source binaries."
   }
 }
