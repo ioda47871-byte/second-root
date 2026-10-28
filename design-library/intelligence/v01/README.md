@@ -2,7 +2,7 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **fifteen owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **sixteen owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
@@ -72,3 +72,7 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 ### CP-016 ズールー工作所 — COUNTERWEIGHT ZK-01 v1（2026-10-28採用）
 
 [15件目の正式研究成功記録](../../success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md)／[3構造比較とブラウザPoCの履歴](../v02/experiments/CP016-zulu-structural-reset.json)。写真＋見出し＋波型境界の初稿を不採用にし、支点・重り・余白の実操作をHTML/SVGで構築。ユーザー「成功例でいいと思います」により研究採用。**現時点で15件（ローカルPoC9件・画像のみ6件）**。CP-014は未採用。本番/実店舗許諾なし。
+
+### CP-017 Rurikoyarn — UNWIND v1.1（2026-10-28研究採用）
+
+[研究成功記録](../../success-cases/CP-017-Rurikoyarn-UNWIND-v1.1.md)。暗色の大きな糸ループを全面再生成せず画像処理で微調整した静止画が採用。研究成功**16件（ローカルPoC9件、画像7件）**、CP-014未採用。写真は生成物で実店舗のものではない。
