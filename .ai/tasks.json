@@ -5046,7 +5046,7 @@
     {
       "id": "DEV-114",
       "title": "Design Intelligence Phase 2d-min：Codex→Claude Code の共通 Design Artifact（design_artifact_v1）のスキーマと Intake 検査",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-113"
@@ -5101,7 +5101,7 @@
         "Phase 2e（表現実装レーン、OSレベルの分離）の着手",
         "人の承認記録の方式の確定"
       ],
-      "note": "Verification states are file checks, not approvals. Human gates are always not_done. OS-level Codex/Claude separation is Phase 2e."
+      "note": "Merged to develop (a29c12f, PR #146). Verification states are file checks, not approvals; human gates always not_done. Unknown model is a warning; route C needs a generated image; an explicit runner fallback C→B is accepted with the failure kept (not after a policy refusal). PNG checks are structural only: decode, real capture and binding to a Codex run are Phase 2f. OS-level Codex/Claude separation is Phase 2e."
     }
   ]
 }

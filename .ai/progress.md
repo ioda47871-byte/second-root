@@ -251,3 +251,8 @@
   - **strict は安全な未実装状態:** 台帳の検査をすべて通っても必ず `STRICT_APPROVAL_NOT_IMPLEMENTED` で止まる。稼働する strict ではない。
   - **未完成のもの:** 研究原本の実ファイルの検証（anchor は `recorded_unverified` / `original_unavailable` だけで、検証済みを表す値は無い）、`evidence_ref` が指す記録の中身の照合、オーナー承認記録の検証。研究ブランチに実データの台帳はまだ無く、実データで partial を実行すると `LEDGER_MISSING` で止まる（正しい動作）。
   - **次の開発に残す課題:** 研究セット `research_set_v1`（commit・SHA・対象案件・利用範囲・選定根拠の固定、変更時は fail-closed）／人の承認記録の方式（秘密鍵に AI が触れない、検証コードと公開鍵を AI が変えられない、鍵の紛失・更新・失効、HUMAN-xxx との整合、オーナーの操作負担）／実データ台帳の追加（研究ブランチ、別承認）／DEV-112 の残る Low 4（import 検出の強化など）。次は Phase 2d-min（Codex → Claude Code の共通 Design Artifact）の設計提案（実装は別承認）。PR #142 は未マージのまま。
+- 2026-10-28: DEV-114（PR #146、Phase 2d-min）を develop へ merge（a29c12f、CI green on d859a8b、Fresh Review 4 回（1回目 FAIL：上限が未テスト → 修正、2〜4回目 PASS）、オーナーのコードレビュー2点を反映、記録 `.ai/reviews/DEV-114.md`）。Codex → Claude Code の共通 Design Artifact（`design_artifact_v1`、`lib/design-agent/artifact/`）と、毎回やり直すオフラインの Intake 検査と CLI。完了時点の状態:
+  - **検証状態は承認ではない:** `render_pair_complete`（1440/390 の描画が両方そろい全検査通過、実装への受け渡しはこれだけ。G2・G3・G5 の承認ではない）／`concept_only`（A の構想画像、受け渡し不可）／`incomplete`。人のゲートは常に `not_done`。
+  - **過剰な停止を防ぐ方針（オーナー決定）:** 実行モデル名の不明は警告。生成画像の無い C は拒否し、画像生成が失敗した場合は実行プログラムが明示的に B へ切り替えた記録（失敗の履歴を保持、画像が主役でない）だけを受け入れる。`TOOL_FAILED_POLICY` は同じ実行内で B へ切り替えず、オーナー確認に回す（誤判定なら確認のうえ新しい実行を承認して再開できる設計にする）。
+  - **未完成:** PNG は構造の検査だけで、画素の復号・実際のブラウザ撮影・Codex の実行との結びつきは Phase 2f で確かめる。Codex と Claude の OS レベルの分離は Phase 2e。オーナーのアップロードの出所記録と人の承認記録の方式は未設計。
+  - **次:** Phase 2f（A/B/C の実証）の最小限の設計と実証計画を提出する（Codex 実行・実装は別承認）。PR #142 は未マージのまま。
