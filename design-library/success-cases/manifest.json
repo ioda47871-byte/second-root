@@ -367,6 +367,30 @@
       "concept_dimensions_px": "1536x1024",
       "web_presence_status": "WEB_NOT_FOUND_AFTER_SEARCHES__LINK_IN_BIO_UNVERIFIED",
       "sales_qualification": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK"
+    },
+    {
+      "id": "CP-021",
+      "title": "TERACE — PICK / COMPOSE v1",
+      "status": "owner_conditionally_authorized_fallback_research_success",
+      "source_kind": "chat_generated_concept_image_only",
+      "category": "acrylic_accessories_personal_composition",
+      "view": "concept_art_only",
+      "owner_selected_at": "2026-10-28",
+      "design_approval_scope": "second_root_research_concept_only",
+      "approval_evidence": "Owner liked v1 and explicitly instructed that v1 should become the success case if the attempted refinement was unsatisfactory; v2 deemed insufficiently improved",
+      "official_client_work": false,
+      "merchant_authorized": false,
+      "website_deployed": false,
+      "nextjs_build_verified": false,
+      "html_css_impl_verified": false,
+      "mobile_web_impl_verified": false,
+      "image_asset_uploaded_to_github": false,
+      "approved_version": "PICK_COMPOSE_v1_original",
+      "concept_png_sha256": "c8675baaa39c9c04bab28a68ecc8ffe790b0d135187475340143b258daec94eb",
+      "rejected_v2_png_sha256": "f87e11f024aa9d2793394b0d57dbe44ba62132ad18cb2c19d01150f0f679b6c3",
+      "concept_dimensions_px": "1536x1024",
+      "web_presence_status": "WEB_NOT_FOUND_AFTER_SEARCHES__LINK_IN_BIO_UNVERIFIED",
+      "sales_qualification": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK"
     }
   ],
   "policy": {
@@ -375,6 +399,6 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original approved images, HTML sources and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..020 research metadata (CP-014 excluded: pending, unapproved), not those studies' original HTML/image/archive binaries."
+    "source_master_assets": "Original approved images, HTML sources and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..021 research metadata (CP-014 excluded: pending, unapproved), not those studies' original HTML/image/archive binaries."
   }
 }
