@@ -2,7 +2,7 @@
 
 **Research-only / 2026-10-27 / proposal pending review.**
 
-This folder organizes **twenty-one owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
+This folder organizes **twenty-two owner-selected design study cases** and **a queue of 20 detailed reference reviews** as *structured evidence*, not templates or approved model prompts. It complements, but does not mutate, the existing reference collections.
 
 ## Files
 
@@ -96,3 +96,7 @@ Two **non-food shop studies** now have owner-selected HTML PoCs: ORGN. (CP-007, 
 ### CP-022 Harissy — CRUMB / FRACTURE v1（2026-10-28研究成功）
 
 [採用記録](../../success-cases/CP-022-Harissy-CRUMB-FRACTURE-v1.md)。巨大なドーナツ断面と飛散クラムの静止研究デザインをオーナーが採用。成功**21件（ローカル研究PoC9＋静止画像12）**、CP-014未採用、商用公開なし。
+
+### CP-023 BURGERS,INC — NEON FLIP v4（2026-10-28研究採用）
+
+[22件目の研究成功記録](../../success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md)。オーナーが重厚な金属製の両面回転看板を中心にした静止画v4を採用。レコードUI v3のHTML検証はv4の実装実績ではない。成功**22件（ローカルPoC9・静止画13）**、CP-014未採用、店舗公認/公開なし。
