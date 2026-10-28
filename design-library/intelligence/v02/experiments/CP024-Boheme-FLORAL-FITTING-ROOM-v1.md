@@ -34,3 +34,31 @@
 - 本デザインは単一静止画のみ。**HTML/CSS/JavaScript、画面操作、スマホ独立レイアウト、画像/文字素材分離、ブラウザQA、Next.js、公開は未実施**。公式HPを代作した/店の承認を得たとは扱わない。
 - **原本:** `wide_elegant_editorial_website_hero_scene_a_styli.png`（**1586×992 px**）、SHA-256 **`8bd0bc176b1e2e5043536aba5e97c556c426b2651679c8f274d1d971ac5f13ce`**（会話内ファイルから算出）。GitHubは**研究記録と原本ハッシュだけ**保存。画像バイナリはChatGPT会話側にのみ保存。
 - 今回は**採用前の研究評価対象**であり、成功事例台帳・参考80件・営業AI・Supabase・Vercel・生成ワーカー・mainは変更しない。
+
+## 2026-10-28｜Heroのみだった問題の指摘と全ページ研究v2
+
+**ユーザーからの構造上の指摘:** 「いいと思いますが全体像がさっきからなくないですか？」。直近のCP-020〜024は、サイト全体の構成・下層ページ・スマホの情報設計ではなく**Heroの1枚画像だけで評価を求めていた**。初稿の高評価は**Heroの好評価**として保持するが、これを「サイト全体の完成」とは扱わない。
+
+**対策：** 好評価のBoheme. Hero v1を1ピクセルも変更せず、下層をHTML/CSS/JSで設計する**全ページ研究v2**を作成。Webサイトのページ構造を、店の「花を着崩す。」というコンセプトから統一する。通常LPの「写真Hero→ABOUT→商品カード→CONTACT」型の連結ではなく、フィッティングルームと衣服のラックをモチーフに編集。
+
+**実装構成:**
+1. v1の写真Hero（元画像をバイナリ保持）。スマホでは中央をトリミングし、編集可能なDOMで店名・見出しを別に追加。PCの元Heroの文字/ナビは**まだ画像に焼き込み**。PCでは画像に合わせた透明な近似クリック領域で各セクションへ飛ぶ研究実装。完全に分離したアクセシブルなHeroの完成ではない。
+2. Introduction — `Wear your flowers.` と日本語の世界観紹介。
+3. `The Fitting` — 大きなアーチ鏡と研究用LOOK 01/02/03（Untamed / Soft Lines / After Hours）。クリックすると説明・色の組み合わせ・写真のフィルタや構図が実際に切り替わる。**元のAI研究画像1枚に対して色調補正とクロップを変えているだけ**で、実店舗の3商品や独立のLOOK写真を捏造していない。
+4. `Styling Rail` — COLOR / SILHOUETTE / TEXTUREを**ハンガーレールにつるした3枚のタグ**として見せる。単純な写真カードの横並びとは区別する。
+5. Concept note / Visit — 研究写真を利用した編集的な章と、SNS・第三者掲載住所への導線。価格・営業日・予約枠は創作していない。実店舗公認ではない注記を表示。
+
+**ローカル確認:** Chromium（システム`/usr/bin/chromium`）+ Playwright `page.set_content`で、**320,375,390,430,768,1024,1280,1440,1920 px の9幅でPASS**。Hero画像読込、意図しない横はみ出しなし、LOOK 03→LOOK 01の切替、JS例外0。PC1440全体スクリーンショットと下層抜粋、スマホ390全体スクリーンショットを保存。ただしSafari/Firefox/実端末/支援技術監査/Next.js/公開サイトのテストではない。file://直接ブラウザテストは管理ポリシーでブロックされたため、テストは**画像をdata URL化したローカルのHTML内容**で行った。自己完結型`preview_offline.html`も生成。
+
+**原本照合（SHA-256）:**
+- v1原本・v2コピーHero: `8bd0bc176b1e2e5043536aba5e97c556c426b2651679c8f274d1d971ac5f13ce`（同一）。
+- `index.html`: `71eb17c7e330b43a49379afe601f2e29230a7024065ea4f8afe80e400f8bfc49`
+- `preview_offline.html`: `d9593eaef6241ca67b92321f948cc85846f59e286de59b739b539bade474708f`
+- `screenshots/1440_full_page.png`: `5c81a615ed3bfec4c1d27ee1729bf80d56112a5df62d92b69b4274de673d0de9`
+- `screenshots/390_full_page.png`: `4e3af11e5f04646e890d8a14dc1143ea3b937e78b5928d2d8b2fcfd2ed634c68`
+- `screenshots/desktop_mobile_overview.jpg`: `33c4cef00cee2e90a9a47484982cec7b57cb124a01e8f9af7b2803d8b2e800fd`
+- **研究ZIP:** `SecondRoot_CP024_Boheme_FullPage_Research_v2.zip` SHA-256 `ed83a5fa210b3847dbd95ce703f0799db7d148e6a55659bc47db999a90efc50a`. HTML/PNG/ZIPのバイナリはGitHubへ未追加、ChatGPT会話添付側のみ保管。
+
+**採用の境界:** ユーザーはv1のHero方向を「いい」と評価したが**全ページ版v2の採用判断はまだない**。ステータスは`RESEARCH_FULL_PAGE_HTML_V2_AWAITING_OWNER_VISUAL_REVIEW`。CP-024を研究成功例に加算せず**成功事例22件（HTML研究PoC9件・静止画像13件）**のまま。店舗の公式サイト有無はSNSプロフィール外部リンク未確認のためHOLD、顧客許可・商用写真利用・本番公開なし。
+
+**今後の研究ゲート:** 次の成功例は**Heroの評価と全ページの評価を分けて記録**し、PC/スマホの下層構造まで検証する。画像だけで全ページ制作に成功したと断定しない。
