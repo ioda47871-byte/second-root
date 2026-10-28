@@ -14,6 +14,10 @@
  *   The totals (23 / 80 / 20 today) are not pinned: the research keeps growing,
  *   so the brief reports them with each file's SHA-256 for a person to compare.
  *
+ * DEV-113 adds the selection ledger (ledger.ts) behind an explicit mode. The
+ * default, phase1_compat, reads no ledger and returns exactly the Phase 1
+ * result; partial adds a `ledger` report; strict always stops for now.
+ *
  * The research documents say nothing in them is auto-injected into a
  * generator. This module only produces a research brief for a Claude
  * session and the owner to read (docs/design/design-intelligence-integration-plan.md).
@@ -22,6 +26,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { LedgerError, validateLedger, type LedgerMode, type LedgerReport } from "./ledger";
 
 /** Files read from the research root (a checkout that contains the research branch's data). */
 export const RESEARCH_FILES = {
@@ -182,7 +187,12 @@ export type ResearchCorpus = {
   /** The research's own caveats: its composition mappings are analysis, not measured causes. */
   provenance_basis: string;
   limitations: string[];
+  /** DEV-113: present only in partial mode (strict always stops). Absent in phase1_compat, whose output is unchanged. */
+  ledger?: LedgerReport;
 };
+
+/** How the corpus is read. phase1_compat reads no ledger; partial and strict require one (ledger.ts). */
+export type CorpusOptions = { mode: "phase1_compat" } | { mode: Exclude<LedgerMode, "phase1_compat">; ledgerPath?: string };
 
 function parseOrThrow<T>(schema: z.ZodType<T>, value: unknown, file: string): T {
   const r = schema.safeParse(value);
@@ -201,7 +211,9 @@ export function buildCorpus(files: {
   referencesV02: unknown;
   candidatesV03: unknown[];
   sha256: Record<string, string>;
-}): ResearchCorpus {
+  /** DEV-113: the selection ledger, read only in partial and strict mode. */
+  ledger?: { json: unknown; sha256: string } | null;
+}, mode: LedgerMode = "phase1_compat"): ResearchCorpus {
   const manifest = parseOrThrow(Manifest, files.manifest, RESEARCH_FILES.manifest);
   const patterns = parseOrThrow(Patterns, files.patterns, RESEARCH_FILES.patterns);
   const queue = parseOrThrow(Queue, files.queue, RESEARCH_FILES.queue);
@@ -245,7 +257,7 @@ export function buildCorpus(files: {
   if (strayQueue.length) throw new CorpusError("CORPUS_QUEUE_NOT_A_CANDIDATE", strayQueue.join(","));
 
   const poc = successes.filter((c) => c.implementation === "local_html_css_js_poc").length;
-  return {
+  const corpus: ResearchCorpus = {
     as_of: patterns.as_of,
     source_sha256: files.sha256,
     successes: [...successes].sort((a, b) => a.id.localeCompare(b.id)),
@@ -260,17 +272,30 @@ export function buildCorpus(files: {
     provenance_basis: patterns.provenance.basis,
     limitations: [...patterns.limitations],
   };
+  if (mode === "phase1_compat") {
+    if (files.ledger) throw new CorpusError("CORPUS_MODE_INVALID", "a ledger is never read in phase1_compat");
+    return corpus;
+  }
+  if (mode !== "partial" && mode !== "strict") throw new CorpusError("CORPUS_MODE_INVALID", String(mode));
+  if (!files.ledger) throw new LedgerError("LEDGER_MISSING", mode);
+  // the ledger is checked against the raw manifest records (labels and *_sha256 fields), which the Phase 1 output does not carry
+  const manifestCases = successes.map((c) => ({ id: c.id, conditional: c.conditional, fields: { ...byId.get(c.id)! } as Record<string, unknown> }));
+  corpus.ledger = validateLedger({ ledger: files.ledger.json, ledgerSha256: files.ledger.sha256, manifestCases, mode });
+  return corpus;
 }
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
-async function readJson(root: string, rel: string, sha: Record<string, string>): Promise<unknown> {
-  let buf: Buffer;
+async function readBytes(path: string, missing: () => Error): Promise<Buffer> {
   try {
-    buf = await readFile(join(root, rel));
+    return await readFile(path);
   } catch {
-    throw new CorpusError("CORPUS_FILE_MISSING", rel);
+    throw missing();
   }
+}
+
+async function readJson(root: string, rel: string, sha: Record<string, string>): Promise<unknown> {
+  const buf = await readBytes(join(root, rel), () => new CorpusError("CORPUS_FILE_MISSING", rel));
   if (buf.length > MAX_FILE_BYTES) throw new CorpusError("CORPUS_FILE_TOO_LARGE", rel);
   sha[rel] = createHash("sha256").update(buf).digest("hex");
   try {
@@ -280,8 +305,22 @@ async function readJson(root: string, rel: string, sha: Record<string, string>):
   }
 }
 
-/** Reads and cross-checks the research corpus under `root`. Read-only. */
-export async function loadResearchCorpus(root: string): Promise<ResearchCorpus> {
+/** DEV-113: reads the ledger file named by the caller (outside the research file list, so the Phase 1 SHA list is unchanged). */
+async function readLedger(path: string | undefined): Promise<{ json: unknown; sha256: string } | null> {
+  if (!path) return null;
+  const buf = await readBytes(path, () => new LedgerError("LEDGER_MISSING", "file not found"));
+  if (buf.length > MAX_FILE_BYTES) throw new LedgerError("LEDGER_SCHEMA_INVALID", "file too large");
+  let json: unknown;
+  try {
+    json = JSON.parse(buf.toString("utf8"));
+  } catch {
+    throw new LedgerError("LEDGER_SCHEMA_INVALID", "not JSON");
+  }
+  return { json, sha256: createHash("sha256").update(buf).digest("hex") };
+}
+
+/** Reads and cross-checks the research corpus under `root`. Read-only. The default mode is phase1_compat (no ledger). */
+export async function loadResearchCorpus(root: string, opts: CorpusOptions = { mode: "phase1_compat" }): Promise<ResearchCorpus> {
   const sha: Record<string, string> = {};
   const manifest = await readJson(root, RESEARCH_FILES.manifest, sha);
   const patterns = await readJson(root, RESEARCH_FILES.patterns, sha);
@@ -290,5 +329,7 @@ export async function loadResearchCorpus(root: string): Promise<ResearchCorpus> 
   const candidatesV03: unknown[] = [];
   for (const f of RESEARCH_FILES.candidatesV03) candidatesV03.push(await readJson(root, f, sha));
   for (const v of Object.values(sha)) Sha.parse(v);
-  return buildCorpus({ manifest, patterns, queue, referencesV02, candidatesV03, sha256: sha });
+  if (opts.mode === "phase1_compat" && "ledgerPath" in opts) throw new CorpusError("CORPUS_MODE_INVALID", "a ledger is never read in phase1_compat");
+  const ledger = opts.mode === "phase1_compat" ? null : await readLedger(opts.ledgerPath);
+  return buildCorpus({ manifest, patterns, queue, referencesV02, candidatesV03, sha256: sha, ledger }, opts.mode);
 }

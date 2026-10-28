@@ -18,6 +18,8 @@
  *   structure and then invent a different one from this shop's facts. Nothing
  *   is offered as a reusable composition or principle.
  * - Conditional selections stay marked as conditional.
+ * - DEV-113: in partial mode the brief also carries the ledger report
+ *   (`ledger`). It never changes which cases count as successes.
  * - Design DNA parts are left undecided (null): choosing them is the session's
  *   and the owner's work, from this shop's facts.
  */
@@ -135,5 +137,7 @@ export function buildResearchBrief(corpus: ResearchCorpus, shop: ShopResearchInp
     quality_gates: corpus.reuse_policy.quality_gates,
     design_dna: Object.fromEntries(DNA_PARTS.map((p) => [p, { choice: null, decided_by: "session_from_shop_facts_then_owner" }])),
     missing_inputs: missing,
+    // DEV-113: only in partial mode. Absent in phase1_compat, so the Phase 1 brief is byte-for-byte unchanged.
+    ...(corpus.ledger ? { ledger: corpus.ledger } : {}),
   };
 }
