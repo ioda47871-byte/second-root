@@ -211,6 +211,22 @@ export const DesignArtifact = z.strictObject({
       )
       .max(8),
     prototype: z.strictObject({ html_path: RelPath, css_path: RelPath }).nullable(),
+    /**
+     * Set by the runner when a route C run's image generation failed and it explicitly delivered the route B
+     * artifact instead. The failed attempt is kept, never turned into a success. Allowed only when the image was
+     * not essential to the design (the runner decides; an essential image means re-generate or ask the owner).
+     */
+    fallback: z
+      .strictObject({
+        from_route: z.literal("C_hybrid"),
+        image_outcome: z.enum(IMAGE_OUTCOMES.filter((o) => o !== "IMAGE_SAVED" && o !== "not_applicable") as [string, ...string[]]),
+        image_stop_code: Code.nullable(),
+        image_approval_id: z.string().regex(/^[a-z0-9][a-z0-9._-]{3,95}$/).nullable(),
+        image_essential: z.literal(false),
+        decided_by: z.literal("runner"),
+      })
+      .nullable()
+      .optional(),
     generation: Generation,
     stops: z.array(Stop).max(20),
     missing: z.array(z.strictObject({ item: z.string().regex(/^[a-z][a-z0-9_]{1,60}$/), reason: Text(200) })).max(40),

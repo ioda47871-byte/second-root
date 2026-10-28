@@ -234,6 +234,11 @@ export function checkArtifactPng(bytes: Buffer, limits: FileLimits, rel = ""): {
 }
 
 const ROLE_DIR = { original: "originals/", asset: "assets/", prototype: "quarantine/" } as const;
+/**
+ * Generation facts a successful run must report; a null one means the run is not verified (incomplete).
+ * model_reported is not among them: an unknown model does not make the files wrong. It is a warning, and only a
+ * step that needs the model must ask for it.
+ */
 const GENERATION_REQUIRED = ["tool", "tool_version", "approval_id", "prompt_sha256", "worker_commit", "run_id", "started_at", "finished_at"] as const;
 
 export type IntakeRecord = ReturnType<typeof buildRecord>;
@@ -242,6 +247,7 @@ function buildRecord(a: DesignArtifact, x: {
   artifactSha: string;
   state: VerificationState;
   reasons: string[];
+  warnings: string[];
   files: { path: string; role: string; sha256: string; bytes: number; width?: number; height?: number }[];
 }) {
   const allowed = x.state === "render_pair_complete";
@@ -255,6 +261,8 @@ function buildRecord(a: DesignArtifact, x: {
     verification_state: x.state,
     implementation_handoff_allowed: allowed,
     reasons: x.reasons,
+    // not failures: unconfirmed or degraded information to show to whoever uses the artifact
+    warnings: x.warnings,
     files: x.files,
     handoff: {
       // only design originals, assets and the artifact itself; the prototype role is never listed
@@ -265,6 +273,7 @@ function buildRecord(a: DesignArtifact, x: {
     runner_reported: {
       generation: a.observed.generation,
       asset_approval_ids: a.observed.assets.map((s) => ({ asset: s.id, approval_id: s.approval_id })),
+      fallback: a.observed.fallback ?? null,
       stops: a.observed.stops,
       missing: a.observed.missing,
     },
@@ -344,13 +353,21 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
     if (a.source_kind === "codex_generated" && presents.some(([, og]) => og.state === "present")) route(o.generation.image_outcome === "IMAGE_SAVED", "route A image without IMAGE_SAVED");
   } else {
     route(o.prototype !== null, `${a.route} needs the prototype`);
-    if (a.route === "B_html_prototype") route(o.assets.every((s) => s.kind === "placeholder") && o.generation.image_outcome === "not_applicable", "route B generates no images");
+    if (a.route === "B_html_prototype") {
+      route(o.assets.every((s) => s.kind === "placeholder"), "route B generates no images");
+      // a plain B run used no image tool; a B delivered as a fallback from C keeps the failed image outcome as it was
+      route(o.generation.image_outcome === (o.fallback ? o.fallback.image_outcome : "not_applicable"), "route B: image outcome does not match its fallback record");
+    } else {
+      route(!o.fallback, "only a route B artifact can record a fallback");
+    }
     if (a.route === "C_hybrid") {
       const generated = o.assets.filter((s) => s.kind === "ai_concept");
       const ids = generated.map((s) => s.approval_id);
       route(ids.every((id) => id !== null), "route C: each generated asset needs its own approval ID");
       route(new Set(ids).size === ids.length && !ids.includes(o.generation.approval_id), "route C: asset approval IDs must differ from each other and from the run's");
-      route(generated.length === 0 || o.generation.image_outcome === "IMAGE_SAVED", "route C: generated assets without IMAGE_SAVED");
+      // route C means "B plus generated images": without a generated asset it is route B, and a failed or missing image run is never a success
+      route(generated.length > 0, "route C needs at least one generated asset (otherwise it is route B)");
+      route(o.generation.image_outcome === "IMAGE_SAVED", "route C: generated assets without IMAGE_SAVED");
     }
   }
 
@@ -441,7 +458,10 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
   const state: VerificationState = reasons.length ? "incomplete" : allRender ? "render_pair_complete" : "concept_only";
   if (state === "concept_only") reasons.push("concept_images_are_not_pc_sp_renders");
 
-  return buildRecord(a, { artifactSha: sha256(artifactBytes), state, reasons, files });
+  const warnings: string[] = [];
+  if (g.model_reported === null) warnings.push("generation_model_unknown");
+  if (o.fallback) warnings.push(`fallback_from_c_hybrid:image_${o.fallback.image_outcome}`);
+  return buildRecord(a, { artifactSha: sha256(artifactBytes), state, reasons, warnings, files });
 }
 
 /** The answer Codex may give (routes A/B/C): exactly CodexDesign, checked before a runner writes anything. */

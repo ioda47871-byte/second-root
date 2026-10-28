@@ -137,6 +137,85 @@ describe("verification states (never approvals)", () => {
     expect(d).toBe("ARTIFACT_ROUTE_INCONSISTENT an owner upload is a concept image (route A)");
   });
 
+  it("an unknown model does not fail valid files: still render_pair_complete, with a warning (no false stop)", async () => {
+    for (const make of [routeB, routeC]) {
+      const r = await run(edit(make, (p) => (p.artifact.observed.generation.model_reported = null)));
+      expect(r.verification_state).toBe("render_pair_complete");
+      expect(r.reasons).toEqual([]);
+      expect(r.warnings).toEqual(["generation_model_unknown"]);
+      expect(r.handoff.files.length).toBeGreaterThan(0);
+      // the unknown model stays visible to any step that needs it
+      expect(r.runner_reported.generation.model_reported).toBeNull();
+    }
+    expect((await run(routeB())).warnings).toEqual([]);
+  });
+
+  describe("route C → B fallback made explicitly by the runner", () => {
+    const fallbackB = (over: Record<string, unknown> = {}, outcome = "TOOL_FAILED") =>
+      edit(routeB, (p) => {
+        p.artifact.observed.generation.image_outcome = outcome;
+        p.artifact.observed.fallback = {
+          from_route: "C_hybrid",
+          image_outcome: "TOOL_FAILED",
+          image_stop_code: "CODEX_IMAGE_TOOL_FAILED",
+          image_approval_id: "fictional-asset-20261028-01",
+          image_essential: false,
+          decided_by: "runner",
+          ...over,
+        };
+      });
+
+    it("is accepted when the prototype and renders are valid (recoverable case, no false stop), keeping the failure visible", async () => {
+      const r = await run(fallbackB());
+      expect(r.verification_state).toBe("render_pair_complete");
+      expect(r.route).toBe("B_html_prototype");
+      expect(r.warnings).toEqual(["fallback_from_c_hybrid:image_TOOL_FAILED"]);
+      expect(r.runner_reported.fallback).toMatchObject({ from_route: "C_hybrid", image_outcome: "TOOL_FAILED", image_stop_code: "CODEX_IMAGE_TOOL_FAILED" });
+      expect(r.runner_reported.generation.image_outcome).toBe("TOOL_FAILED");
+    });
+
+    it.each(["TOOL_NOT_CALLED", "TOOL_FAILED_TRANSIENT", "TOOL_CALLED_NO_FILE"])("accepts the failed outcome %s as recorded", async (outcome) => {
+      expect((await run(fallbackB({ image_outcome: outcome }, outcome))).verification_state).toBe("render_pair_complete");
+    });
+
+    it.each<[string, () => Pkg, string]>([
+      ["a fallback that claims the image was saved", () => fallbackB({ image_outcome: "IMAGE_SAVED" }, "IMAGE_SAVED"), "ARTIFACT_SCHEMA_INVALID"],
+      ["a fallback where the image was essential (re-generate or ask the owner)", () => fallbackB({ image_essential: true }), "ARTIFACT_SCHEMA_INVALID"],
+      ["a fallback not decided by the runner", () => fallbackB({ decided_by: "codex" }), "ARTIFACT_SCHEMA_INVALID"],
+      ["a fallback whose outcome differs from the run's (history rewritten)", () => fallbackB({}, "not_applicable"), "ARTIFACT_ROUTE_INCONSISTENT"],
+      ["a fallback on route C", () => edit(routeC, (p) => (p.artifact.observed.fallback = { from_route: "C_hybrid", image_outcome: "TOOL_FAILED", image_stop_code: null, image_approval_id: null, image_essential: false, decided_by: "runner" })), "ARTIFACT_ROUTE_INCONSISTENT"],
+      ["a fallback B that still carries a generated asset", () => edit(() => fallbackB(), (p) => {
+        p.files["assets/a1.png"] = makePng(64, 64);
+        p.artifact.observed.assets = [{ id: "A1", path: "assets/a1.png", kind: "ai_concept", approval_id: "fictional-asset-20261028-09", use: "design_only" }];
+        p.artifact.declared.structure_spec.sections[1].asset_refs = ["A1"];
+      }), "ARTIFACT_ROUTE_INCONSISTENT"],
+      ["a plain B with a failed image outcome but no fallback record", () => edit(routeB, (p) => (p.artifact.observed.generation.image_outcome = "TOOL_FAILED")), "ARTIFACT_ROUTE_INCONSISTENT"],
+    ])("refuses %s", async (_n, make, expected) => {
+      expect(await code(run(make()))).toBe(expected);
+    });
+  });
+
+  it.each<[string, (p: Pkg) => void]>([
+    ["no generated asset and a failed image tool", (p) => {
+      delete p.files["assets/a1.png"];
+      p.artifact.observed.assets = [];
+      p.artifact.declared.structure_spec.sections[1].asset_refs = [];
+      p.artifact.observed.generation.image_outcome = "TOOL_FAILED";
+    }],
+    ["no generated asset even with IMAGE_SAVED", (p) => {
+      delete p.files["assets/a1.png"];
+      p.artifact.observed.assets = [];
+      p.artifact.declared.structure_spec.sections[1].asset_refs = [];
+    }],
+    ["only a placeholder asset", (p) => (p.artifact.observed.assets[0].kind = "placeholder")],
+  ])("route C with %s is refused, never a success (regression)", async (_n, mutate) => {
+    expect(await detail(run(edit(routeC, mutate)))).toBe("ARTIFACT_ROUTE_INCONSISTENT route C needs at least one generated asset (otherwise it is route B)");
+  });
+
+  it.each(["TOOL_FAILED", "TOOL_NOT_CALLED", "TOOL_CALLED_NO_FILE", "not_applicable"])("route C with a generated asset but image outcome %s is refused", async (outcome) => {
+    expect(await detail(run(edit(routeC, (p) => (p.artifact.observed.generation.image_outcome = outcome))))).toBe("ARTIFACT_ROUTE_INCONSISTENT route C: generated assets without IMAGE_SAVED");
+  });
+
   it("route A carries no assets", async () => {
     const d = await detail(run(edit(routeA, (p) => {
       p.files["assets/a1.png"] = makePng(64, 64);

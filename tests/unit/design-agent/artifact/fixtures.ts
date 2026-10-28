@@ -80,7 +80,7 @@ const GEN = {
   status: "succeeded",
   tool: "codex_cli",
   tool_version: "0.200.0",
-  model_reported: null,
+  model_reported: "fictional-model-1",
   approval_id: "fictional-run-20261028-01",
   prompt_sha256: "b".repeat(64),
   worker_commit: "c".repeat(40),
