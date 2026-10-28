@@ -219,5 +219,44 @@
     "proposal_id": "ZK-01",
     "rationale": "Most different from recent editorial/photo-led pages and CP-015's table-navigation; needs whitespace and dynamic counterweight rather than another illustrated index."
   },
-  "no_asset_generation_authorization": "No new image, site implementation, official shop endorsement or publishing is implied by this research record."
+  "no_asset_generation_authorization": "No new image, site implementation, official shop endorsement or publishing is implied by this research record.",
+  "local_research_poc": {
+    "version": "ZK-01-COUNTERWEIGHT-v1",
+    "date": "2026-10-28",
+    "status": "built_browser_checked_awaiting_owner_visual_review",
+    "project_type": "unofficial_research_only",
+    "design_route": "after image generated a familiar hero + bottom photo strip, instead implemented the counterweight grammar directly with SVG/CSS/JavaScript",
+    "identity_target": "ズールー工作所",
+    "structure_description": "A single sculptural suspension defines the whole screen. Weight, pivot and large empty walls compose the page; no full-bleed photograph, wavy separator or alternating content bands.",
+    "interaction": "Three choices (iron, brass, balance) change conceptual mobile tilt and corresponding real-HTML notes. Reduced-motion respected.",
+    "preview_media": "local screenshots: 1440_initial.png / 390_initial.png / 1440_brass_selected.png / 390_brass_selected.png",
+    "verified_browser": "Chromium local page.set_content with Playwright",
+    "viewport_widths_px": [
+      320,
+      375,
+      390,
+      430,
+      768,
+      1024,
+      1280,
+      1440,
+      1920
+    ],
+    "responsive_qc": {
+      "unexpected_horizontal_overflow": 0,
+      "js_page_errors": 0,
+      "all_three_choices_operable": true,
+      "real_devices_tested": false,
+      "safari_firefox_tested": false
+    },
+    "implementation": "single self-contained index.html (SVG, CSS, JS) with editable real HTML text and no external shop photos",
+    "archive_name": "SecondRoot_CP016_Zulu_Counterweight_ZK01_study.zip",
+    "archive_sha256": "18e78a159b2d7f91fafc21c4cfde58c59e7ce57e232d79df1ed742be2966eab5",
+    "source_html_sha256": "ae7671dfd14caaf99ccfd97f36169ba43e99b545c069fb2472e34bd9ae36cc7f",
+    "desktop_screenshot_sha256": "9ea42fe1cc87056d2810069343aa937468048917650897fe69780f1e7e08107e",
+    "mobile_screenshot_sha256": "3b67d554b68e36aaf98fcebc8e45f960a267f3d2f80fcba51cd988b9e37c2e58",
+    "files_location": "ChatGPT conversation ZIP; GitHub stores only metadata and hashes, no HTML/screenshots",
+    "owner_approval": "not_yet_asked",
+    "commercial_deployment": "not_authorized"
+  }
 }
