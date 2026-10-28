@@ -1,6 +1,6 @@
 # Second Root | 成功デザイン研究事例
 
-**2026-10-28 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. / 整体院 Go. / 豆＊豆 / ぺいぱばっくらいたー / BAR N / Admy / スペースたのしい / imairo. / ズールー工作所 / Rurikoyarn / MOLE FACTORY / 浦田杏梨 / 喫茶 ITALICO の19例を登録しました。
+**2026-10-28 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. / 整体院 Go. / 豆＊豆 / ぺいぱばっくらいたー / BAR N / Admy / スペースたのしい / imairo. / ズールー工作所 / Rurikoyarn / MOLE FACTORY / 浦田杏梨 / 喫茶 ITALICO / TERACE の20例を登録しました。
 
 > **画像をテンプレートとして使い回さない。** 学習対象は、各店舗の特徴を視覚構造へ変換する考え方、画像・文字・余白・重なりの分析と実装・レビュー手順です。
 
@@ -34,10 +34,12 @@
 
 | [CP-020](CP-020-Kissa-ITALICO-SHOWCASE-v1.md) | 喫茶 ITALICO / SHOWCASE v1 | **ガラスショーケースの棚を画面構造に変えた静止コンセプトを正式研究採用**。ただしInstagram外部リンクの未確認により、Webなし店舗としての営業候補選定は保留。 | [研究記録](CP-020-Kissa-ITALICO-SHOWCASE-v1.md) |
 
+| [CP-021](CP-021-TERACE-PICK-COMPOSE-v1.md) | TERACE / PICK — COMPOSE v1 | **初稿を高評価、再生成v2は反射/彩度の変化のみで改善不足として不採用。ユーザーの事前条件に従い初稿を20件目の研究成功例に登録**。公式サイト有無はSNSプロフィール外部リンク未検証で営業候補保留。 | [研究記録](CP-021-TERACE-PICK-COMPOSE-v1.md) |
+
 ## 境界と検証
 - このフォルダは**研究事例（採用済みの構図研究）**。既存の `design-library/research/v02`（40件）や `v03`（40候補）は変更せず、80件の参考候補件数にも足さない。
-- CP-001〜003は閲覧用WebP画像をGitHubに保存。CP-004〜020（CP-014は採用保留）は研究記録とSHA-256をGitHubに保存し、元画像・ソースZIPはChatGPT会話側のアーカイブに保管。GitHubに画像をアップロード済みとは扱わない。
-- Mond/Sissiはコンセプト画像。harebare・Hamsa・ORGN.・豆＊豆・ぺいぱばっくらいたー PT-02 v3・BAR N v2・imairo. TABLE JOURNAL v2・ズールー工作所 COUNTERWEIGHT v1はHTML/CSS/JS実装済みの研究用PoCで、実店舗公認ではない。Melon de Mille・整体院 Go.・Admy・スペースたのしい・Rurikoyarn・MOLE FACTORY・浦田杏梨・喫茶 ITALICOは**画像コンセプトのみ採用**で、Web実装は未着手。なごやビーンズv4はHTML/CSS/JSのPoCを以前制作したが、**Next.js移植、実公開、実店舗による許諾は未実施**。
+- CP-001〜003は閲覧用WebP画像をGitHubに保存。CP-004〜021（CP-014は採用保留）は研究記録とSHA-256をGitHubに保存し、元画像・ソースZIPはChatGPT会話側のアーカイブに保管。GitHubに画像をアップロード済みとは扱わない。
+- Mond/Sissiはコンセプト画像。harebare・Hamsa・ORGN.・豆＊豆・ぺいぱばっくらいたー PT-02 v3・BAR N v2・imairo. TABLE JOURNAL v2・ズールー工作所 COUNTERWEIGHT v1はHTML/CSS/JS実装済みの研究用PoCで、実店舗公認ではない。Melon de Mille・整体院 Go.・Admy・スペースたのしい・Rurikoyarn・MOLE FACTORY・浦田杏梨・喫茶 ITALICO・TERACEは**画像コンセプトのみ採用**で、Web実装は未着手。なごやビーンズv4はHTML/CSS/JSのPoCを以前制作したが、**Next.js移植、実公開、実店舗による許諾は未実施**。
 - 実店舗の商標、写真、営業時間、価格などの事実が正しいか、公開前に確認すること。
 - 他店へ写真・ロゴ・文章・具体的な構図を転用しない。使用する技法は、その店の特徴に合わせて再設計する。
 - 本PRは研究ライブラリへの追加のみ。**main、Vercel、本番DB、営業AI、CSS許可表には変更なし**。
