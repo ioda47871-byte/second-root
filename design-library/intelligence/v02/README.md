@@ -140,3 +140,7 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-017｜Rurikoyarn UNWIND v1.1（2026-10-28研究成功採用）
 
 [成功記録](../../success-cases/CP-017-Rurikoyarn-UNWIND-v1.1.md)／[初稿・不採用3案・局所改良の記録](experiments/CP017-Rurikoyarn-UNWIND-v1-review.md)。ユーザーの「成功例とします、次へ進んで」により、暗い背景と太い糸ループを保護した画像v1.1を**16件目の研究成功例**として採用。従来のループを失う明るいコラージュ型再生成は不採用。研究成功**16件（HTML PoC9件・画像のみ7件）**、CP-014未承認。公式サイト化・商用素材の利用・本番公開なし。
+
+## CP-018｜MOLE FACTORY OVERPRINT v1（2026-10-28研究成功）
+
+[採用記録](../../success-cases/CP-018-MOLE-FACTORY-OVERPRINT-v1.md)／[初稿記録](experiments/CP018-MOLE-FACTORY-OVERPRINT-v1.md)。ユーザー「成功例とします、次へ進んで」により静止画像初稿を正式に研究採用。色版の位置ズレと印刷工程を画面構造へ変換する。**研究成功17件（HTMLローカルPoC9件・画像のみ8件）**。CP-014は採用保留。実店舗の公式BASEショップは存在し、当該画像は非公式・未許諾の研究用。
