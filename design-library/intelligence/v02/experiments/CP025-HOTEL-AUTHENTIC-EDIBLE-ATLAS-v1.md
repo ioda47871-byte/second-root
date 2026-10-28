@@ -1,0 +1,50 @@
+# CP-025｜HOTEL AUTHENTIC — THE EDIBLE ATLAS / Full-page v1
+
+**調査・制作：2026-10-28 JST。** `RESEARCH_FULL_PAGE_POC_V1_AWAITING_OWNER_REVIEW__WEB_LINK_HOLD`。CP-024の全ページ採用を受け、以後のPC全ページ＋スマホ全ページ＋操作可能なHTML＋ソースZIPという標準提出形式に沿って制作。**CP-025は研究候補であり、成功例23件には未計上。**
+
+## 題材と調査の根拠
+
+**HOTEL AUTHENTIC（ホテル オーセンティック）**：名古屋市昭和区山里町70-2 山手アベニュー1Fのインド料理店。2023年8月10日オープンという第三者情報。2026年SOCIAL CASTLE MARKET出店紹介では「インドの南北東西の料理を提供する」と本人紹介が掲載され、案内先は **Instagram `https://www.instagram.com/hotel.authentic/` のみ**。
+- 出店情報： https://socialtower.jp/2026/08/
+- 第三者店舗掲載： https://tabelog.com/aichi/A2301/A230108/23085894/
+- 公式Instagram： https://www.instagram.com/hotel.authentic/
+
+**Webなし候補の判定：** 店名・Instagram ID＋公式HP／ホームページ／EC／オンラインショップなどの検索では本人の独立公式サイト・本人公式ECを発見できなかった。ただしInstagramプロフィールのリンク先を直接確認できていないため、**`WEB_NOT_FOUND_AFTER_SEARCHES__LINK_IN_BIO_UNVERIFIED`**。Webサイトが存在しないと確定しておらず**営業候補の資格はHOLD**。旧情報の営業時間・値段・メニューを未検証で使用しない。
+
+## 原案・構造と操作
+
+**THE EDIBLE ATLAS — 皿の向こうに、まだ知らないインド。**
+
+同店の「インド各地の料理」という特徴を、**一冊の料理地図／旅の図鑑のような全ページ閲覧体験**として翻訳。前のBoheme.フィッティングルーム、ネオン回転看板、印刷版、食卓UIとは異なる。
+
+1. **COVER**：大きなタイポグラフィと、額縁に収めたAI生成ターリー写真を、旅の本の表紙に構成。通常の写真Hero＋写真帯ではなく本を開く導入。
+2. **CHAPTER 01 / REGIONS**：NORTH/SOUTH/EAST/WESTの4つの**実ボタン**が説明・見出し・ピン表示を切り替える。コンパスと形状は**概念上の図示で、実際の地形/地理的分類を保証するものではない**。各地域の説明は一般的な食文化の編集用イメージであり、本人が現在提供する確定メニューではない。
+3. **CHAPTER 02 / FIELD NOTES**：一枚の料理写真と「香り・食感・調和」の編集メモを組み、スパイスの味覚情報を紙面として表現。
+4. **CHAPTER 03 / POSTCARD**：本日のメニューを勝手に創作せず、公式Instagramで新しい案内を確認する導線。手紙の裏面のような情報構造。
+5. **CHAPTER 04 / VISIT**：第三者情報から確認した住所、InstagramとGoogleマップへの明示的リンク、非公式研究注記。価格・営業日・予約は確定した情報として記載していない。
+
+使用写真は**完全なAI生成研究画像**であり、実際の料理・店舗の写真や提供メニューの証拠ではない。コピー・ブランド装飾は当該店舗から依頼されたものではない。
+
+## 全ページ検証
+
+- **HTML/CSS/JS研究用Webページをローカルで作成。** PC1440フルページPNG、スマホ390フルページPNG、両者の俯瞰比較JPG、アトラス部分画像、自己完結HTMLプレビュー、ソース・画像・QAをまとめたZIPを出力。
+- Chromium + Playwrightローカル `page.set_content`。**320,375,390,430,768,1024,1280,1440,1920pxの9幅を検証**。意図しない横はみ出し0、画像読み込み成功、NORTH→SOUTH→EAST→NORTHが動作、JavaScriptページ例外0。**本番、実機、Safari/Firefox、アクセシビリティ総合監査、Next.jsは未検証**。
+- 外部Google Fontsの読み込みを行わない自己完結型のHTMLにした。ローカル描画のためシステムの標準フォントを使用。HTML/画像データを埋め込む自己完結型 `preview_offline.html` でも開ける。
+- 事実・商用境界：公式サイト未発見の調査はSNSプロフィール未確認で保留、価格や予約可否の表示なし、営業送信なし、著作権や店舗の承認なし。
+
+## 原本のSHA-256
+
+| アセット | SHA-256 |
+| --- | --- |
+| `assets/study_thali.png` (AI生成) | `31dd053411d6b5dae5af64dadb3cf572f18a80b2a42300f0745653761794ef24` |
+| `index.html` | `465419b1d498f6acb1e21e0ea18139dcfb9d6ef56a79d14a3dc8b49fba8853e3` |
+| `preview_offline.html` | `82bb920139135526552a410fe0774016f89fd4373b12421542ed573f7b1e43c9` |
+| `screenshots/1440_full_page.png` | `2dfa5f383e571901eda57ecf71b390c30296149ab3f4c5fea9b3dcb181a63189` |
+| `screenshots/390_full_page.png` | `2efa68beb3b54c82fd60d2be283febb90884d990e41a2522dcd7ce44c830f8f0` |
+| `screenshots/desktop_mobile_overview.jpg` | `6eb39dbd4246d729ce73821b57474bd3f33044bac0d1425eb3a597a198db77df` |
+| `qa.json` | `d6cf5e7b491757e85317495afc8e385aff4580ff60c62312e873e539866cc24f` |
+| ZIP `SecondRoot_CP025_HOTEL_AUTHENTIC_FoodAtlas_v1.zip` | `74fbda3542edccac36e7a738c40dc50e7b81fbacfd160681ad54452b2ee6f48e` |
+
+原本HTML/PNG/ZIPはChatGPT会話側に保存。GitHubにバイナリは登録せず**本研究メモとSHAの照合情報のみ**を追加。
+
+**研究成功累計23件（ローカル研究Web PoC10件＋静止画像13件）。CP-025は承認待ち。参考候補80件、30件まで残り7件、CP-014保留。** main、Vercel、Supabase、営業AI、作業ワーカーには反映していない。
