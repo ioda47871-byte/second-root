@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-015-imairo-TABLE-JOURNAL-v2.md (CP-014 pending, not a success case)",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-016-Zulu-COUNTERWEIGHT-ZK01.md (CP-014 remains pending and is not a success)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -669,11 +669,59 @@
       ],
       "implementation_gap": "Research-only local HTML/CSS/JS PoC validated in Chromium at 10 viewport widths. Hero still has baked-in text and images are generated/cropped unapproved assets; no Next.js, Safari/Firefox, real device, production deployment, or shop permission.",
       "evidence_ref": "design-library/success-cases/CP-015-imairo-TABLE-JOURNAL-v2.md"
+    },
+    {
+      "id": "CP-016",
+      "name": "ズールー工作所 — COUNTERWEIGHT ZK-01 v1",
+      "category": "metal_mobiles_and_workshop",
+      "owner_selection": "research_success_zk01_interactive_poc_owner_approved",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "metal mobile suspension",
+        "asymmetrical balance around a pivot",
+        "brass and iron contrasting mass",
+        "moving shadow and empty wall"
+      ],
+      "structural_translation": "Turn the physical relationship between fulcrum, mass and negative space into a full-screen interaction: selecting a material changes the conceptual hanging balance and an independent readable note, without resorting to a giant hero photo followed by content strips.",
+      "visual_mechanisms": [
+        "single centered suspension rail and counterweights are the actual page structure",
+        "large empty gallery wall and low-density type convey weight and light",
+        "three real buttons select iron, brass or balance and adjust SVG tilt plus text",
+        "responsive phone view preserves central kinetic sculpture while relocating choices for tapping"
+      ],
+      "why_selected": [
+        {
+          "statement": "The user found the initial metal mobile image too similar to previous compositions; it remained rejected",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "User approved the alternative counterweight HTML/SVG/CSS/JS study with '成功例でいいと思います' on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Replacing photo-heavy editorial sequence with one mass-balance interaction avoids the repeated left-copy-photo and wavy-divider skeleton",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Changing product images but retaining top navbar, left copy, giant hero photo and photo strip",
+        "A nice sculpture photo cannot prove a distinctive page skeleton",
+        "Technical browser QA alone is not a beauty score or shop acceptance",
+        "Abstract metal parts cannot be advertised as actual works, stock, dimensions or material specifications"
+      ],
+      "not_to_copy": [
+        "name and logo of ズールー工作所",
+        "exact mobile sculpture, balance-object geometry and composition",
+        "metal palette, typographic placements, specific interaction recipe",
+        "any generated depiction of shop products without their verification"
+      ],
+      "implementation_gap": "Local HTML/CSS/JS/SVG PoC only, 9 viewport widths tested in Chromium. No real mobile devices, Firefox/Safari, accessibility full audit, shop authorization, official product photos, Next.js or production verification.",
+      "evidence_ref": "design-library/success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Eight cases have local HTML PoCs; six remain concept/image-only; none are verified live production websites",
+    "Nine cases have local HTML PoCs; six remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
