@@ -160,3 +160,7 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-021｜TERACE PICK / COMPOSE（2026-10-28初稿・評価待ち）
 
 [研究記録](experiments/CP021-TERACE-ACRYLIC-COMPOSE-v1.md)。公式イベント紹介でInstagramのみ確認できるアクリルアクセサリーブランドを題材に、パーツを選択し組み合わせる体験を明るいアクリルの作業面に翻訳。画像静止画1枚、HTML/操作/Webの有無の最終確認は未実施。**成功19件のまま**。
+
+## CP-021｜TERACE PICK / COMPOSE v1（2026-10-28研究成功）
+
+[成功記録](../../success-cases/CP-021-TERACE-PICK-COMPOSE-v1.md)／[改良v2と初稿比較・不採用原因](experiments/CP021-TERACE-ACRYLIC-COMPOSE-v1.md)。ユーザーから「失敗したら初稿を成功例に」と事前指示あり。v2は彩度・反射の変化が中心で情報設計の改善に至らず**不採用**、v1を**20件目の研究成功例**に登録。**20件＝HTML PoC9件＋静止画像11件**。TERACEの実店舗/公式サイト未発見の最終判定はSNSプロフィール外部リンク未確認のため保留。
