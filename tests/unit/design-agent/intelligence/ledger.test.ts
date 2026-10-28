@@ -181,7 +181,8 @@ describe("stop codes", () => {
 
   it("LEDGER_CONTRADICTS_MANIFEST: the manifest's two label fields disagree", () => {
     const files = ledgerManifestFiles();
-    (files.manifest.records[1] as Record<string, unknown>).owner_approved_version = "RAIL_v1";
+    // a label no ledger version uses, so only the disagreement check can stop it
+    (files.manifest.records[1] as Record<string, unknown>).owner_approved_version = "RAIL_vX";
     expect(code(() => partial(fictionalLedger(), files))).toBe("LEDGER_CONTRADICTS_MANIFEST");
   });
 
