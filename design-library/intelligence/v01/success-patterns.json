@@ -6,7 +6,7 @@
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-013-SpaceTanoshii-TOY-PACKAGING.md",
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-015-imairo-TABLE-JOURNAL-v2.md (CP-014 pending, not a success case)",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -620,11 +620,60 @@
       ],
       "implementation_gap": "One 1024x1536 research concept image approved; no HTML/CSS/JS, standalone mobile design, merchant permission or production verification",
       "evidence_ref": "design-library/success-cases/CP-013-SpaceTanoshii-TOY-PACKAGING.md"
+    },
+    {
+      "id": "CP-015",
+      "name": "imairo. — TABLE AS A MAP / TABLE JOURNAL v2",
+      "category": "spice_cafe_patisserie",
+      "owner_selection": "interactive_research_poc_success_approved",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "South Indian spice dishes",
+        "French patisserie",
+        "coffee shared on the same table",
+        "handwritten field notes and paper"
+      ],
+      "structural_translation": "One shared restaurant table becomes the navigable site space: choose food, pastry or coffee by plate position and reveal a paper research note in place, rather than separating categories into horizontal full-width content bands.",
+      "visual_mechanisms": [
+        "preserved cinematic round tabletop hero with food at center, pastry at right and coffee above",
+        "quiet left-side headline with high contrast against wooden table",
+        "small discreet location-attached plus markers and handmade paper note reveal",
+        "mobile pans across same spatial arrangement and shows context note near viewport bottom"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner positively evaluated the wide one-table hero; repeated full-page banded and cluttered variations were rejected",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner approved the interactive Table Journal v2 explicitly with '成功例とします' on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Research case shows how a shop-specific physical relationship can become a navigable spatial interaction, while preserving the favored image rather than wholly regenerating it",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Regenerating a full page repeatedly turns a table-as-map concept into generic FOOD/PÂTISSERIE/DRINKS horizontal strips",
+        "Adding too many labels and arcs reduces photographic depth, calm and visual hierarchy",
+        "Generic side drawer feels detached from food-table experience",
+        "AI generated on-image text and research photo crops cannot be treated as editable deployable assets",
+        "Wrong-shop generation must be rejected by Identity Lock"
+      ],
+      "not_to_copy": [
+        "imairo. name, logo and trademarks",
+        "precise table placement and hero photograph",
+        "generated spices, pastries, coffee, interior or dish imagery",
+        "specific handwritten notes, color recipe and card composition"
+      ],
+      "implementation_gap": "Research-only local HTML/CSS/JS PoC validated in Chromium at 10 viewport widths. Hero still has baked-in text and images are generated/cropped unapproved assets; no Next.js, Safari/Firefox, real device, production deployment, or shop permission.",
+      "evidence_ref": "design-library/success-cases/CP-015-imairo-TABLE-JOURNAL-v2.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Seven cases have local HTML PoCs; five remain concept/image-only; none are verified live production websites",
+    "Eight cases have local HTML PoCs; six remain concept/image-only; none are verified live production websites",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ]
