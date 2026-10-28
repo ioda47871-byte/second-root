@@ -178,3 +178,7 @@ node design-library/intelligence/v02/identity-audit.mjs design-library/intellige
 ## CP-023｜BURGERS,INC FLIP THE SIGN v1（2026-10-28初稿、未採用）
 
 [研究初稿・サイト調査](experiments/CP023-BURGERS-INC-FLIP-SIGN-v1.md)。昼のバーガーと夜の80sバーの切替を、回転式両面看板として設計。写真を帯状に重ねず、中央のヒンジを2つの表情の境界にする。研究画像1枚のみで操作不能、ユーザー評価待ち。公式Web未発見だがリンク先未確認のため正式営業候補はHOLD。
+
+## CP-023｜初稿・再生成画像を不採用、レコードSIDE A/B構造PoC（2026-10-28）
+
+ユーザー評価「これは良くない」により、BURGER昼と80s BAR夜を二分割したネオン看板v1は**不採用**。写真中心への逆戻りが起きた画像再生成v2も不採用。画像生成では画面構造の条件を守れず、[CP-023の研究比較とローカルPoC](experiments/CP023-BURGERS-INC-FLIP-SIGN-v1.md)に転換。SIDE A/Bを選ぶと同一レコード盤のラベル・色・文章が変わる独立HTML/CSS/JSを作成し、9画面幅で基本動作・横はみ出し・JavaScriptエラーを検証。**オーナーの新案評価待ち、研究成功は21件のまま**。公式Webなし条件はSNSリンク確認保留、本番や営業AIは未変更。
