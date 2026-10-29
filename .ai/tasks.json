@@ -5408,7 +5408,7 @@
     {
       "id": "DEV-120",
       "title": "研究30件統合の準備：追加7件（CP-026〜032）の監査台帳・intake・統合方針（資料と検証コードのみ）",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-113"
@@ -5423,7 +5423,7 @@
         "validate.mjs の固定値（23・PoC10）の最小修正案",
         "Adapter 経由で生成器へ直接渡さない方法",
         "B方式ベースライン記録の計画",
-        "intake の検査：数えない・生成に使わない・Adapter が読まない・『確認済み』を持たない・既存IDとの重複拒否"
+        "intake の検査：登録件数に加えない・生成に使わない・Adapter が読まない・『確認済み』を持たない・既存IDとの重複拒否"
       ],
       "required_tests": [
         "tests/unit/design-agent/intelligence/*.test.ts",
@@ -5454,7 +5454,8 @@
         "マージ",
         "7件の原本の受け取りと昇格"
       ],
-      "note": "Intake only; nothing counted, nothing promoted."
+      "note": "Intake only; nothing counted, nothing promoted.",
+      "merged": "#152 → e81d4c6 (squash, 2026-10-29)"
     }
   ]
 }
