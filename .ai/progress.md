@@ -264,3 +264,8 @@
   - **できたこと:** `runBounded`・`sandbox.run`・`runCodexJson` に省略できる中止の合図を追加（未指定なら従来と同じ）。`runCodexJsonWithMeta`、設計 CLI（`scripts/design-artifact/phase2f-design.ts`）、一回限りの承認台帳（初回4回・再試行2回・1回15分・計画2時間）、架空菓庵の事実パックと v4 brief。
   - **オーナーの決定:** 架空菓庵の v4 brief（8項目と avoid）を A/B/C 比較実証の入力として承認。架空菓庵専用であり、Second Root 全体の固定テンプレートにはしない。実店舗では店舗ごとに構造・視覚表現・配色・タイポグラフィを考える。古い comp-impl の CSS 制約は Codex の試作へ持ち込まない。
   - **次:** DEV-117（画像の実証専用入口、A の接続、事前描画、画像1回ごとの個別承認、出力・台帳・実行記録の照合、Artifact 化、比較シート）。tool_version が無いだけで render_pair_complete になれない問題もここで直す。実際の Codex 実行と画像生成は別承認。PR #142 は未マージのまま。
+- 2026-10-29: DEV-117（PR #149、Phase 2f-2 の画像工程）を develop へ merge（8108f67、CI green on b5e89d2、Fresh Review 3 回（いずれも PASS。Medium 4・Low 17 に対応、L-2 は方針として残し理由を記録）、記録 `.ai/reviews/DEV-117.md`）。完了時点の状態:
+  - **できたこと:** 事前描画（`phase2f-steps.ts --prerender`。画像1枚ごとの承認依頼 `prerender.md`）、画像の実証専用入口（`phase2f-image.ts`。A は v4 と同じ指示文を新しい承認 ID で、C は依頼ファイルで1回）、出力フォルダーと台帳の照合（`readStep`）、Artifact 化と比較シート（JSON・Markdown）。CLI の版の不明は警告に（オーナー決定）。停止した A は concept_pass にならない（オーナー指摘）。画像 PoC の run.ts と v4 の承認・SHA・使用済み記録は変えていない。
+  - **残る注意:** CI で一度だけ、steps テストの B への切り替えが「停止」になった（再現せず、b5e89d2 で停止コードをログに出すようにした）。再発したらコードを見て直す。
+  - **次:** B 方式の実証準備（WSL の読み取り確認と実行手順の最終報告）。実際の Codex 実行はオーナーの個別承認の後。A/C の画像生成はまだ許可されていない。PR #142 は未マージのまま。
+

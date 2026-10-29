@@ -5234,7 +5234,7 @@
     {
       "id": "DEV-117",
       "title": "Phase 2f-2：事前描画・画像の実証専用入口（A/C）・画像1回ごとの個別承認・記録の照合・Artifact化・比較シート出力、CLIの版の不明を警告に",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-116"
@@ -5301,7 +5301,7 @@
         "実行環境の再確認",
         "呼び出しごとの承認ID（A・B設計・C設計・C画像）"
       ],
-      "note": "Fake tools and fictional data only. The fictional wagashi v4 brief is for this A/B/C test only, never a Second Root template."
+      "note": "Merged to develop (8108f67, PR #149). Fake tools and fictional data only; no real Codex call or image generation. A stopped route A is never a concept pass. The fictional wagashi v4 brief is for this A/B/C test only, never a Second Root template. Next: route B readiness on WSL (read-only), then one B design call after the owner approves it."
     }
   ]
 }
