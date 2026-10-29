@@ -28,7 +28,7 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/prototype-safety.ts`]: ["playwright"],
   [`${LIB}/render-prototype.ts`]: ["playwright", "../comp-impl/page", "../comp-impl/render"],
   [`${LIB}/decode-check.ts`]: ["../worker/png-paint"],
-  [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema"],
+  [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile"],
   [`${LIB}/runner.ts`]: ["node:crypto", "node:fs/promises", "node:path", "node:zlib", "playwright", "../artifact/intake", "../artifact/schema", "./decode-check", "./prompt", "./prototype-safety", "./render-prototype"],
   [`${LIB}/compare-sheet.ts`]: ["../artifact/intake", "./runner"],
   [CLI]: ["node:fs/promises", "node:path", "playwright", "zod", "../../lib/design-agent/artifact/schema", "../../lib/design-agent/phase2f/prompt", "../../lib/design-agent/phase2f/runner"],
