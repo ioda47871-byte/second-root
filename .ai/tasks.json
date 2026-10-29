@@ -5490,6 +5490,7 @@
         "lib/design-agent/phase2f/baseline.ts",
         "tests/unit/design-agent/phase2f/baseline.test.ts",
         "tests/unit/design-agent/phase2f/isolation.test.ts（baseline.ts を許可に追加のみ）",
+        "tests/unit/design-agent/artifact/isolation.test.ts（baseline.ts を許可に追加のみ）",
         "docs/design/phase2f-b-research-comparison-proposal.md",
         ".ai/tasks.json",
         ".ai/reviews/DEV-121.md"
