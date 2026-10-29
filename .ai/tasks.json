@@ -5509,6 +5509,66 @@
       ],
       "note": "Values from the owner's report; not rechecked in the repository.",
       "merged": "#153 → 2879d00 (squash, 2026-10-29)"
+    },
+    {
+      "id": "DEV-122",
+      "title": "架空菓庵 B v1.1（研究なし / 研究あり）比較実験の準備：プロンプト版の選択、研究の区画、入力の固定と検査",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-121"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-122-b-v11-research-prompt",
+      "purpose": "オーナー承認（2026-10-29）の比較方針の準備。研究の区画を明示的に選べる安全なプロンプト生成、両プロンプトの固定、設計から Artifact 化までの同一入力の検査。Codex の実行は別承認。",
+      "acceptance_criteria": [
+        "B v1 のプロンプト SHA（a2fdd003…/5706）が不変",
+        "v1.1 = v1 + 技術上の2行（asset_refs は空、連絡先はプレーンテキストで tel:/mailto: なし）",
+        "v1.1 研究あり = v1.1 研究なし + 研究の区画のみ",
+        "研究の区画は CP-016・CP-009・CP-003 に限り、店名・写真・構図・ブランドを含まない。出典 SHA を記録",
+        "区画の文章がオーナー承認されるまで、研究ありの実行を拒否",
+        "設計と Artifact 化で同じプロンプト版を使い、違えば RECORD_PROMPT_MISMATCH",
+        "Prototype Safety は変更しない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f/prompt-v11.test.ts",
+        "tests/unit/design-agent/phase2f-live/steps.test.ts",
+        "tests/unit/design-agent/phase2f-live/inputs.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts",
+        "full unit suite",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/phase2f/prompt.ts（版の選択の追加。v1 は不変）",
+        "lib/design-agent/phase2f/research-section.ts",
+        "lib/design-agent/phase2f/runner.ts（Artifact 化に版を渡すのみ）",
+        "scripts/design-artifact/phase2f-design.ts（--prompt-version / --research と承認前の拒否）",
+        "scripts/design-artifact/phase2f-steps.ts（--package に同じフラグ）",
+        "design-library/phase2f/research/wagashi-b-research-v1.json",
+        "tests/unit/design-agent/phase2f/prompt-v11.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts（許可の追加のみ）",
+        "tests/unit/design-agent/phase2f-live/steps.test.ts",
+        "tests/unit/design-agent/phase2f-live/inputs.test.ts（print-pin の出力の項目追加のみ）",
+        "docs/design/phase2f-b-v11-experiment-plan.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-122.md"
+      ],
+      "forbidden_scope": [
+        "実際の Codex 実行・画像生成",
+        "Prototype Safety・承認台帳・回数制限・jail・worker の変更",
+        "旧 B v1 の記録・プロンプトの変更",
+        "PR #142 の変更・マージ",
+        "本番の変更",
+        "自動マージ"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "研究の区画の文章の承認",
+        "Codex 実行（各回の承認 ID）"
+      ],
+      "note": "Preparation only; 0 Codex calls."
     }
   ]
 }

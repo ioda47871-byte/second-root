@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { CodexDesign, DNA_PARTS, type FactsPack } from "../artifact/schema";
 import { withoutMeta } from "../profile";
+import { ResearchSection, researchBlock } from "./research-section";
 
 const sha256 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 
@@ -60,7 +61,42 @@ function forCodexOutput(node: unknown): unknown {
 
 export type BuiltPrompt = { prompt: string; sha256: string; chars: number };
 
-export function buildDesignPrompt(o: { route: "B_html_prototype" | "C_hybrid"; facts: FactsPack; brief: DesignBrief; maxAssets: number }): BuiltPrompt {
+/**
+ * DEV-122: which version of the design prompt. `v1` (the default, also when omitted) is the prompt as it has been,
+ * unchanged byte for byte. `v1.1` exists for route B only and adds two technical rules learned from the first B run
+ * (asset_refs always empty; contact details as plain text, no tel: / mailto: or other links); with `research`, it also
+ * adds the owner-approved research block at the end. The two v1.1 prompts differ only in that block.
+ */
+export type PromptVariant = { version: "v1" } | { version: "v1.1"; research: ResearchSection | null };
+export const B_V11_RULES = [
+  "- On this route every section's asset_refs is an empty list [] (there are no images).",
+  "- Show the phone number, the address and the hours as plain text. Add no link other than the stylesheet link required above: no tel:, mailto:, sms: or other URL; in-page navigation may use only #anchors such as #info.",
+] as const;
+
+/**
+ * The variant the CLIs were asked for: `--prompt-version` (absent = v1) and an optional `--research` section file
+ * (already read as JSON). The research section needs v1.1 and route B. Never reads a file itself.
+ */
+export function promptVariantOf(o: { route: "B_html_prototype" | "C_hybrid"; version: string | undefined; research: unknown }): { ok: true; variant: PromptVariant } | { ok: false; code: string } {
+  const version = o.version ?? "v1";
+  if (version !== "v1" && version !== "v1.1") return { ok: false, code: "PROMPT_VERSION_UNKNOWN" };
+  if (version === "v1") return o.research === undefined ? { ok: true, variant: { version: "v1" } } : { ok: false, code: "RESEARCH_NEEDS_V1_1" };
+  if (o.route !== "B_html_prototype") return { ok: false, code: "PROMPT_VARIANT_ROUTE" };
+  if (o.research === undefined) return { ok: true, variant: { version: "v1.1", research: null } };
+  const r = ResearchSection.safeParse(o.research);
+  return r.success ? { ok: true, variant: { version: "v1.1", research: r.data } } : { ok: false, code: "RESEARCH_SECTION_INVALID" };
+}
+
+export class PromptVariantError extends Error {
+  constructor(readonly code: "PROMPT_VARIANT_ROUTE") {
+    super(code);
+    this.name = "PromptVariantError";
+  }
+}
+
+export function buildDesignPrompt(o: { route: "B_html_prototype" | "C_hybrid"; facts: FactsPack; brief: DesignBrief; maxAssets: number; variant?: PromptVariant }): BuiltPrompt {
+  const variant = o.variant ?? { version: "v1" };
+  if (variant.version === "v1.1" && o.route !== "B_html_prototype") throw new PromptVariantError("PROMPT_VARIANT_ROUTE");
   const assetRule =
     o.route === "C_hybrid"
       ? `- You may use up to ${o.maxAssets} generated image(s). Reference each as <img src="assets/A1.png" alt="..."> (A1, A2 ...). The alt text must describe the picture to be generated in one or two sentences: it becomes the image request. List each id in the asset_refs of the section that shows it. A picture in the hero section, or covering at least half of itself or half of the first screen (1440 × 900 or 390 × 844), is treated as essential: if it cannot be generated, the run stops for the owner. Any other picture may be replaced by a neutral placeholder if it fails, so keep the page complete without it.`
@@ -87,6 +123,7 @@ export function buildDesignPrompt(o: { route: "B_html_prototype" | "C_hybrid"; f
     "- no <script>, no event attributes, no iframe / object / embed / form, no external URL, no web fonts, no @import, no data: URLs.",
     assetRule,
     "- Text shown must be facts (verbatim) or short neutral UI labels.",
+    ...(variant.version === "v1.1" ? [...B_V11_RULES, ...(variant.research ? researchBlock(variant.research) : [])] : []),
   ].join("\n");
   return { prompt, sha256: sha256(prompt), chars: prompt.length };
 }

@@ -28,7 +28,9 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/prototype-safety.ts`]: ["playwright"],
   [`${LIB}/render-prototype.ts`]: ["playwright", "../comp-impl/page", "../comp-impl/render"],
   [`${LIB}/decode-check.ts`]: ["../worker/png-paint"],
-  [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile"],
+  [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile", "./research-section"],
+  // DEV-122: the owner-approved research section of the B v1.1 prompt (pure)
+  [`${LIB}/research-section.ts`]: ["node:crypto", "zod"],
   [`${LIB}/runner.ts`]: ["node:crypto", "node:fs/promises", "node:path", "node:zlib", "playwright", "../artifact/intake", "../artifact/schema", "./decode-check", "./prompt", "./prototype-safety", "./render-prototype"],
   [`${LIB}/compare-sheet.ts`]: ["../artifact/intake", "./runner"],
   // DEV-121: the comparison baseline record checker (pure)
@@ -71,7 +73,8 @@ describe("isolation of the Phase 2f runner", () => {
     expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS].sort());
     const source = readFileSync(resolve(REPO, DESIGN_STEP), "utf8");
     const fromPhase2f = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
-    expect(fromPhase2f).toEqual([["../../lib/design-agent/phase2f/prompt", ["DesignBrief", "buildDesignPrompt", "codexDesignJsonSchema"]]]);
+    // DEV-122: plus the prompt-version check (pure; no file access)
+    expect(fromPhase2f).toEqual([["../../lib/design-agent/phase2f/prompt", ["DesignBrief", "buildDesignPrompt", "codexDesignJsonSchema", "promptVariantOf"]]]);
     expect(specifiers(source).filter((s) => s.includes("/phase2f/"))).toEqual(["../../lib/design-agent/phase2f/prompt"]);
   });
 
@@ -80,7 +83,8 @@ describe("isolation of the Phase 2f runner", () => {
     const fromPhase2f = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
     expect(fromPhase2f).toEqual([
       ["../../lib/design-agent/phase2f/compare-sheet", ["sheetEntry", "sheetMarkdown", "type SheetCall", "type SheetEntry"]],
-      ["../../lib/design-agent/phase2f/prompt", ["DesignBrief"]],
+      // DEV-122: plus the prompt-version check, so packaging rebuilds the same prompt the design step used
+      ["../../lib/design-agent/phase2f/prompt", ["DesignBrief", "promptVariantOf"]],
       ["../../lib/design-agent/phase2f/runner", ["PortStop", "packageConceptRun", "prerenderRoute", "runPrototypeRoute", "type AssetPort", "type DesignPort", "type RunResult"]],
     ]);
   });

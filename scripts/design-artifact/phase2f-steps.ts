@@ -11,6 +11,7 @@
  *
  *   --package --route A|B|C --facts <pack.json> --artifact-id <id> --shop-id <id> --shop-name <name> --out <new dir>
  *   --result <new file> [--brief <brief.json>] [--design <design-dir>] [--image <image-dir>] [--expected-prompt-sha256 <sha> (route A)]
+ *   [--prompt-version v1|v1.1] [--research <section.json>] (routes B/C, DEV-122: the same as the design step was given)
  *       Builds the Design Artifact with the 2f-1 runner from the recorded steps, then the DEV-114 intake. The design
  *       prompt rebuilt from the facts and brief, and each image prompt rebuilt by the pre-render checks, must be the
  *       recorded ones. Route C without a picture (not approved, or failed) goes through the runner's own rules: a
@@ -27,7 +28,7 @@ import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 import { FactsPack } from "../../lib/design-agent/artifact/schema";
 import { sheetEntry, sheetMarkdown, type SheetCall, type SheetEntry } from "../../lib/design-agent/phase2f/compare-sheet";
-import { DesignBrief } from "../../lib/design-agent/phase2f/prompt";
+import { DesignBrief, promptVariantOf } from "../../lib/design-agent/phase2f/prompt";
 import { packageConceptRun, PortStop, prerenderRoute, runPrototypeRoute, type AssetPort, type DesignPort, type RunResult } from "../../lib/design-agent/phase2f/runner";
 import type { ImageRequest } from "../../lib/design-agent/phase2f-live/image-call";
 import { defaultLedgerDir, LIVE_LIMITS, openLedger, type Ledger } from "../../lib/design-agent/phase2f-live/ledger";
@@ -35,7 +36,7 @@ import { readStep, sha256, StepStop, type Step } from "../../lib/design-agent/ph
 
 process.umask(0o077);
 const FLAGS = new Set(["--prerender", "--package", "--sheet"]);
-const VALUES = new Set(["--route", "--design", "--image", "--facts", "--brief", "--out", "--result", "--results", "--artifact-id", "--shop-id", "--shop-name", "--expected-prompt-sha256"]);
+const VALUES = new Set(["--route", "--design", "--image", "--facts", "--brief", "--out", "--result", "--results", "--artifact-id", "--shop-id", "--shop-name", "--expected-prompt-sha256", "--prompt-version", "--research"]);
 /** Stops that come before the image tool can be called: the call never reached it. */
 const BEFORE_THE_TOOL = new Set(["CODEX_NOT_INSTALLED", "CODEX_NOT_SIGNED_IN", "CODEX_API_KEY_AUTH", "CODEX_DOTENV_PRESENT", "CODEX_SANDBOX_UNAVAILABLE", "CODEX_SANDBOX_LEAK", "CODEX_SANDBOX_CONFIG", "OUT_DIR_UNWRITABLE"]);
 const IMAGE_OUTCOMES = new Set(["IMAGE_SAVED", "NO_SESSION_LOG", "TOOL_NOT_CALLED", "TOOL_NOT_SEEN_CODE_MODE", "TOOL_FAILED_USAGE_LIMIT", "TOOL_FAILED_POLICY", "TOOL_FAILED_UNSUPPORTED", "TOOL_FAILED", "TOOL_FAILED_TRANSIENT", "TOOL_CALLED_NO_FILE"]);
@@ -141,7 +142,7 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
   if (route === "A_image") {
     const imageDir = args.get("--image");
     const expectedSha = args.get("--expected-prompt-sha256");
-    if (!imageDir || !expectedSha || args.has("--design")) return refuse("USAGE");
+    if (!imageDir || !expectedSha || args.has("--design") || args.has("--prompt-version") || args.has("--research")) return refuse("USAGE");
     const image = await readStep(resolve(imageDir), ledger, { kind: "concept_image", route: "A_image" });
     calls.push(callOf(image));
     // the concept image was made from the approved concept prompt (the image step pinned it; checked again here)
@@ -154,6 +155,11 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
     if (!designDir || !briefPath || (route === "B_html_prototype" && args.has("--image"))) return refuse("USAGE");
     const brief = DesignBrief.safeParse(await json(briefPath));
     if (!brief.success) return refuse("BRIEF_INVALID");
+    // DEV-122: the prompt version (and research section) the design was made with; the prompt is rebuilt from them
+    // and must give the recorded SHA (RECORD_PROMPT_MISMATCH otherwise)
+    const researchPath = args.get("--research");
+    const variant = promptVariantOf({ route, version: args.get("--prompt-version"), research: researchPath === undefined ? undefined : await json(researchPath) });
+    if (!variant.ok) return refuse(variant.code);
     const { step, answer } = await designStep(designDir, ledger, route);
     calls.push(callOf(step));
     const generation = step.generation!;
@@ -202,7 +208,7 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
     };
     const browser = await launch();
     try {
-      result = await runPrototypeRoute({ ...common, route, browser, brief: brief.data, designPort, ...(route === "C_hybrid" ? { assetPort } : {}) });
+      result = await runPrototypeRoute({ ...common, route, browser, brief: brief.data, designPort, promptVariant: variant.variant, ...(route === "C_hybrid" ? { assetPort } : {}) });
     } finally {
       await browser.close();
     }
