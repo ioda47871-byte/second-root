@@ -48,6 +48,31 @@ export function cssUrls(css: string): string[] {
 /** A url() target a prototype may use: a declared asset, or an in-page reference (#id, e.g. an inline SVG filter). */
 const allowedUrl = (target: string, assets: ReadonlySet<string>) => assets.has(target) || /^#[A-Za-z0-9_-]+$/.test(target);
 
+const decodeEscapes = (css: string) =>
+  css.replace(/\\([0-9a-fA-F]{1,6})\s?|\\([^\n0-9a-fA-F])/g, (_m, hex: string | undefined, ch: string | undefined) =>
+    hex ? String.fromCodePoint(Math.min(parseInt(hex, 16) || 0xfffd, 0x10ffff)) : (ch ?? ""),
+  );
+
+/** The CSS as written with its strings and comments removed (CSS tokenisation: escapes, quotes, newline-ended strings). */
+export function outsideStringsAndComments(css: string): string {
+  let out = "";
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i]!;
+    if (c === "\\") {
+      out += css.slice(i, i + 2);
+      i++;
+    } else if (c === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      out += " ";
+      i = end === -1 ? css.length : end + 1;
+    } else if (c === '"' || c === "'") {
+      for (i++; i < css.length && css[i] !== c && css[i] !== "\n"; i++) if (css[i] === "\\") i++;
+      out += " ";
+    } else out += c;
+  }
+  return out;
+}
+
 /** CSS problems in one stylesheet text: forbidden at-rules or functions, and url() to anything but a declared asset or #id. */
 export function cssProblems(css: string, assets: ReadonlySet<string>, o: { canonical?: boolean } = {}): string[] {
   const out: string[] = [];
@@ -60,13 +85,12 @@ export function cssProblems(css: string, assets: ReadonlySet<string>, o: { canon
     return out;
   }
   // escapes are decoded first (so "u\\72l(" cannot hide a url() and "\\201C" in content stays allowed), then comments dropped
-  const decoded = css.replace(/\\([0-9a-fA-F]{1,6})\s?|\\([^\n0-9a-fA-F])/g, (_m, hex: string | undefined, ch: string | undefined) =>
-    hex ? String.fromCodePoint(Math.min(parseInt(hex, 16) || 0xfffd, 0x10ffff)) : (ch ?? ""),
-  );
+  const decoded = decodeEscapes(css);
   const flat = decoded.replace(/\/\*[\s\S]*?\*\//g, " ");
-  // @import is looked for before comments are dropped too: a "/*" inside a string must not hide it
-  // (Chromium's re-serialisation drops @import, so this raw check is the one that sees it)
-  if (/@import/i.test(flat) || /@import/i.test(decoded)) out.push("css @import");
+  // @import is looked for in the CSS outside strings and comments, tokenised as written (so a "/*" inside a string
+  // cannot hide it and a comment that mentions it does not count); Chromium's re-serialisation drops @import,
+  // so this check is the one that sees it
+  if (/@import/i.test(decodeEscapes(outsideStringsAndComments(css)))) out.push("css @import");
   if (/expression\s*\(|behavior\s*:|-moz-binding|javascript:/i.test(flat)) out.push("css code execution");
   for (const target of cssUrls(flat)) if (!allowedUrl(target, assets)) out.push(`css url: ${target.slice(0, 80)}`);
   if (/image-set\(|image\(|src\(/i.test(flat)) out.push("css image function other than url()");

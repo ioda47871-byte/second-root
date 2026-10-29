@@ -62,7 +62,10 @@ const MEASURE = (ids: readonly string[], assetPaths: readonly string[]) => `((id
   const uses = (el, cs, p) => {
     if (el.localName === "img" && (el.getAttribute("src") || "").trim() === p) return true;
     if (el.localName === "image" && ((el.getAttribute("href") || el.getAttribute("xlink:href") || "").trim() === p)) return true;
-    for (const style of [cs, getComputedStyle(el, "::before"), getComputedStyle(el, "::after")])
+    const paints = (pseudo) => { const c = getComputedStyle(el, pseudo).content; return c !== "none" && c !== "normal"; };
+    // a ::before / ::after with no content is not generated at all, so its image is never painted
+    const styles = [cs, ...["::before", "::after"].filter(paints).map((ps) => getComputedStyle(el, ps))];
+    for (const style of styles)
       for (const prop of IMAGE_PROPS) if (String(style[prop] || "").includes("/" + p + '"')) return true;
     return false;
   };
@@ -77,10 +80,11 @@ const MEASURE = (ids: readonly string[], assetPaths: readonly string[]) => `((id
       if (host) { const id = host.getAttribute("data-section"); if (!a.sections.includes(id)) a.sections.push(id); } else a.outsideSections = true;
       if (visible) {
         a.shown = true;
-        // in the first screen: at least half of the picture is inside the first viewport
+        // in the first screen: at least half of the picture, or of the first screen, is covered by it
+        // (measured on the painting element's box: a picture taller than the screen that fills it counts)
         const top = r.top + scrollY, bottom = top + r.height;
         const overlap = Math.max(0, Math.min(bottom, innerHeight) - Math.max(top, 0));
-        if (overlap >= r.height / 2) a.firstScreen = true;
+        if (overlap > 0 && overlap >= Math.min(r.height, innerHeight) / 2) a.firstScreen = true;
       }
     }
   }
@@ -91,7 +95,10 @@ const MEASURE = (ids: readonly string[], assetPaths: readonly string[]) => `((id
     if (cs.display === "none" || cs.visibility === "hidden") { out[id] = { x: 0, y: 0, w: 0, h: 0 }; continue; }
     let r = el.getBoundingClientRect();
     let box = { l: r.left, t: r.top, r: r.right, b: r.bottom };
-    // a root that measures 0 (all content absolutely positioned, display: contents ...) is measured by what it paints
+    // a root that measures 0 (all content absolutely positioned, display: contents ...) is measured by what it paints;
+    // a 0-size root that clips its content (overflow, paint containment, clip-path) paints nothing and stays hidden
+    const clips = cs.overflowX !== "visible" || cs.overflowY !== "visible" || /paint|strict|content/.test(cs.contain) || cs.clipPath !== "none";
+    if ((r.width === 0 || r.height === 0) && clips && cs.display !== "contents") { out[id] = { x: 0, y: 0, w: 0, h: 0 }; continue; }
     if (r.width === 0 || r.height === 0) {
       box = null;
       const add = (dr) => {

@@ -248,6 +248,35 @@ describe("Fresh Review 2 fixes", () => {
   });
 });
 
+describe("Fresh Review 3 fixes", () => {
+  const BASE = "body{margin:0;background:#f4efe6;color:#222}section{min-height:300px}";
+  it.each(["overflow:hidden", "contain:paint", "clip-path:inset(0)"])("a 0-high section root that clips its content (%s) paints nothing and stays hidden", async (clip) => {
+    const r = await run("B_html_prototype", designPort(answer({ css: `${BASE}header{height:0;${clip}}` })));
+    expect(r.status === "done" && r.record.reasons).toEqual(["section_hidden_everywhere:header"]);
+  });
+  it("a 0-high section holding bare text (no child element) is measured by its glyphs (no false stop)", async () => {
+    const a = answer({ css: `${BASE}footer{height:0;line-height:24px}` });
+    a.prototype.html = a.prototype.html.replace('<footer data-section="footer"><p>架空菓庵</p></footer>', '<footer data-section="footer">架空菓庵</footer>');
+    const r = await run("B_html_prototype", designPort(a));
+    expect(r.status === "done" && r.record.verification_state).toBe("render_pair_complete");
+  });
+  it("a ::before with a background but no content paints nothing: the picture is not placed, and no image call is spent", async () => {
+    const a = answer({ asset: "story" });
+    a.prototype.html = a.prototype.html.replace(/<img [^>]*>/, "").replace("</footer>", '</footer><img src="assets/A1.png" alt="A wrapped dorayaki" style="display:none">');
+    a.prototype.css += "[data-section=story]::before{display:block;width:200px;height:100px;background:url(assets/A1.png)}";
+    let called = 0;
+    const r = await run("C_hybrid", designPort(a), async () => ((called += 1), SAVED));
+    expect(r).toMatchObject({ status: "stopped", code: "CODEX_ASSET_PLACEMENT_MISMATCH" });
+    expect(called).toBe(0);
+  });
+  it("a picture taller than the screen that fills most of the first screen is essential", async () => {
+    // header 100 + hero 200: the 3000 px story picture covers 600 of the 900 px PC screen (less than half of itself)
+    const css = "body{margin:0;background:#f4efe6;color:#222}header{height:100px;overflow:hidden}header h1{margin:0}[data-section=hero]{height:200px;overflow:hidden}section{padding:0;margin:0}[data-section=story] p{display:none}[data-section=story] img{display:block;height:3000px!important}";
+    const r = await run("C_hybrid", designPort(answer({ asset: "story", css })), assetPort({ png: null, image_outcome: "TOOL_FAILED", stop_code: "CODEX_IMAGE_TOOL_FAILED", approval_id: "a-2f-11" }));
+    expect(r).toMatchObject({ status: "stopped", code: "IMAGE_ESSENTIAL_FAILED" });
+  });
+});
+
 describe("limits and recovery are never automatic", () => {
   it("makes exactly one design call per run and never retries", async () => {
     calls.design = 0;
@@ -307,6 +336,13 @@ describe("route A (existing image PoC output wrapped as a concept)", () => {
     const png = palettePng(600, 600);
     const r = await packageConceptRun({ facts, shop, artifactId: "DA-20261029-concp4", outDir: ws.out("a4"), pocDir: poc(png, { png_sha256: sha(png), width: 600, height: 600 }), generation: gen });
     expect(r.status === "done" && r.record.reasons).toContain("declared_missing:concept_pixels_not_decoded");
+    expect(r.log.stops.map((x) => x.code)).toContain("CONCEPT_DECODE_UNSUPPORTED_FORMAT");
+  });
+
+  it("refuses a report whose width is not the image's", async () => {
+    const png = colourPng(1024, 1536);
+    const r = await packageConceptRun({ facts, shop, artifactId: "DA-20261029-concp5", outDir: ws.out("a5"), pocDir: poc(png, { png_sha256: sha(png), width: 1000, height: 1536 }), generation: gen });
+    expect(r).toMatchObject({ status: "stopped", code: "CONCEPT_REPORT_INVALID" });
   });
 
   it("refuses an image whose SHA does not match its report", async () => {

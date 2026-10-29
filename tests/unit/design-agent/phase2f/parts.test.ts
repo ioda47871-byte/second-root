@@ -106,6 +106,9 @@ h1{writing-mode:vertical-rl;font-feature-settings:"palt"}.mark::before{content:"
 
   it("cssProblems: comments do not hide anything and do not count", () => {
     expect(cssProblems("/* url(https://x) */ body{color:red}", new Set())).toEqual([]);
+    // a comment or a string that mentions @import is not one; an escaped one outside them still is
+    expect(cssProblems('/* no @import here */ a::before{content:"@import"} body{color:red}', new Set())).toEqual([]);
+    expect(cssProblems("@\\69mport url(assets/A1.png);", new Set(["assets/A1.png"]))).toEqual(["css @import"]);
     expect(cssProblems("body{background:/**/url(https://x/a.png)}", new Set())).toEqual(["css url: https://x/a.png"]);
   });
 });

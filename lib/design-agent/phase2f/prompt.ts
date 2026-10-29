@@ -35,7 +35,7 @@ export type BuiltPrompt = { prompt: string; sha256: string; chars: number };
 export function buildDesignPrompt(o: { route: "B_html_prototype" | "C_hybrid"; facts: FactsPack; brief: DesignBrief; maxAssets: number }): BuiltPrompt {
   const assetRule =
     o.route === "C_hybrid"
-      ? `- You may use up to ${o.maxAssets} generated image(s). Reference each as <img src="assets/A1.png" alt="..."> (A1, A2 ...). The alt text must describe the picture to be generated in one or two sentences: it becomes the image request. List each id in the asset_refs of the section that shows it. A picture in the hero section, or with at least half of it in the first screen (1440 × 900 or 390 × 844), is treated as essential: if it cannot be generated, the run stops for the owner. Any other picture may be replaced by a neutral placeholder if it fails, so keep the page complete without it.`
+      ? `- You may use up to ${o.maxAssets} generated image(s). Reference each as <img src="assets/A1.png" alt="..."> (A1, A2 ...). The alt text must describe the picture to be generated in one or two sentences: it becomes the image request. List each id in the asset_refs of the section that shows it. A picture in the hero section, or covering at least half of itself or half of the first screen (1440 × 900 or 390 × 844), is treated as essential: if it cannot be generated, the run stops for the owner. Any other picture may be replaced by a neutral placeholder if it fails, so keep the page complete without it.`
       : "- Use no images at all: build the visual idea with type, colour, layout, CSS shapes and inline SVG.";
   const prompt = [
     "You are the art director and front-end designer of a small shop's website. Design ONE original page for the shop below.",
