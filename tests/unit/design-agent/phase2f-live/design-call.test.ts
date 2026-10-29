@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { CodexAbortedError, CodexError, runCodexJsonWithMeta, type CodexRunMeta } from "@/lib/design-agent/codex";
-import { runDesignCall, type DesignCallInput, type DesignCodex } from "@/lib/design-agent/phase2f-live/design-call";
+import { runDesignCall, type CommitState, type DesignCallInput, type DesignCodex } from "@/lib/design-agent/phase2f-live/design-call";
 import { LIVE_LIMITS, openLedger } from "@/lib/design-agent/phase2f-live/ledger";
 import { passthroughSandbox } from "../../../support/passthrough-sandbox";
 
@@ -36,7 +36,7 @@ const input = (o: Partial<DesignCallInput> = {}): DesignCallInput => ({
   outDir: join(base, `out-${n}`),
   ...o,
 });
-const clean = async () => ({ head: COMMIT, base: COMMIT, clean: true });
+const clean = async (): Promise<CommitState> => ({ head: COMMIT, base: COMMIT, clean: true });
 const deps = (codex: DesignCodex, o: { commit?: typeof clean; now?: () => number } = {}) => ({ ledger: openLedger(join(base, "state"), o.now), codex, commit: o.commit ?? clean, ...(o.now ? { now: o.now } : {}) });
 const counting = (impl: DesignCodex = async () => ({ answer: ANSWER, meta: META })) => {
   const f = Object.assign(async (o: Parameters<DesignCodex>[0]) => ((f.calls += 1), impl(o)), { calls: 0 });

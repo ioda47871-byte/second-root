@@ -30,7 +30,7 @@ const waitFor = async (check: () => boolean, ms = 5_000) => {
   return check();
 };
 const pidFrom = async (path: string) => (await waitFor(() => existsSync(path)) ? Number(await readFile(path, "utf8")) : NaN);
-const env = { PATH: process.env.PATH ?? "/usr/bin:/bin" } as NodeJS.ProcessEnv;
+const env = { PATH: process.env.PATH ?? "/usr/bin:/bin" } as unknown as NodeJS.ProcessEnv;
 
 describe("runBounded with an AbortSignal", () => {
   it("without a signal: unchanged (exit code, output, no abort field)", async () => {

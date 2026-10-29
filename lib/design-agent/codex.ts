@@ -309,7 +309,7 @@ export async function removeCodexSessionsOf(env: Record<string, string | undefin
 }
 
 /** The answer file Codex wrote in its work dir: not a link, a regular file of ours, at most 1 MiB. */
-async function readAnswerFile(path: string, maxBytes = 1024 * 1024): Promise<string | undefined> {
+async function readAnswerFile(path: string): Promise<string | undefined> {
   let handle;
   try {
     handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -318,7 +318,7 @@ async function readAnswerFile(path: string, maxBytes = 1024 * 1024): Promise<str
   }
   try {
     const info = await handle.stat();
-    if (!info.isFile() || info.size > maxBytes || info.uid !== process.getuid?.()) return undefined;
+    if (!info.isFile() || info.size > 1024 * 1024 || info.uid !== process.getuid?.()) return undefined;
     return (await handle.readFile()).toString("utf8");
   } finally {
     await handle.close();
@@ -427,6 +427,18 @@ export function parseCliVersion(stdout: string): string | null {
   return CLI_VERSION.test(token) && /\d/.test(token) ? token : null;
 }
 
+/** A session log of ours (not a link, a regular file, at most 64 MiB), read only to find the model's name. */
+async function readSessionLog(path: string): Promise<string | undefined> {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > 64 * 1024 * 1024 || info.uid !== process.getuid?.()) return undefined;
+    return (await handle.readFile()).toString("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
 /** The model named in a thread's session log (turn_context / session_meta payload); only that field is read. */
 export async function readSessionModel(threadId: string, env: Record<string, string | undefined>): Promise<string | null> {
   if (!THREAD_ID.test(threadId)) return null;
@@ -437,7 +449,7 @@ export async function readSessionModel(threadId: string, env: Record<string, str
     for (const name of names) {
       const base = name.split("/").pop() ?? "";
       if (!base.startsWith("rollout-") || !base.endsWith(`${threadId}.jsonl`)) continue;
-      const text = await readAnswerFile(join(root, name), 64 * 1024 * 1024).catch(() => undefined);
+      const text = await readSessionLog(join(root, name)).catch(() => undefined);
       for (const line of (text ?? "").split("\n")) {
         let event: { type?: unknown; payload?: { model?: unknown } } | null;
         try {
