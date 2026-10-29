@@ -260,3 +260,7 @@
   - **できたこと:** 試作の安全検査（Chromium のパーサー＋正規化した CSS の2段、実装用 CSS 許可リストはかけない）、PC1440／SP390・dsf 1・ネットワーク遮断・JS 無効の描画、区画と素材の置き場所の実測、PNG の実復号、C→B の明示的な切り替え、比較シート（22/25 はデザイン採用の判断にだけ使う）。comp-impl の描画部品は `render-prototype.ts` の1ファイルだけが正確なパスの例外で読む。
   - **未完成:** 本物のポート（`runCodexJson` の DesignPort、画像生成 PoC の AssetPort、中止時のプロセス停止）、実行ごとの1回限りの承認 ID と実行をまたぐ上限の台帳、架空菓庵の事実パックと DNA v4 の brief。Codex と Claude の OS レベルの分離は Phase 2e。
   - **次:** Phase 2f-2 の実機接続準備の最小実装計画を提出する（実装・Codex 実行・画像生成は別承認）。PR #142 は未マージのまま。
+- 2026-10-29: DEV-116（PR #148、Phase 2f-2 の接続準備）を develop へ merge（74396de、CI green on cd86914、Fresh Review 2 回（どちらも PASS、Medium 2・Low 14 はすべて対応）、記録 `.ai/reviews/DEV-116.md`）。完了時点の状態:
+  - **できたこと:** `runBounded`・`sandbox.run`・`runCodexJson` に省略できる中止の合図を追加（未指定なら従来と同じ）。`runCodexJsonWithMeta`、設計 CLI（`scripts/design-artifact/phase2f-design.ts`）、一回限りの承認台帳（初回4回・再試行2回・1回15分・計画2時間）、架空菓庵の事実パックと v4 brief。
+  - **オーナーの決定:** 架空菓庵の v4 brief（8項目と avoid）を A/B/C 比較実証の入力として承認。架空菓庵専用であり、Second Root 全体の固定テンプレートにはしない。実店舗では店舗ごとに構造・視覚表現・配色・タイポグラフィを考える。古い comp-impl の CSS 制約は Codex の試作へ持ち込まない。
+  - **次:** DEV-117（画像の実証専用入口、A の接続、事前描画、画像1回ごとの個別承認、出力・台帳・実行記録の照合、Artifact 化、比較シート）。tool_version が無いだけで render_pair_complete になれない問題もここで直す。実際の Codex 実行と画像生成は別承認。PR #142 は未マージのまま。

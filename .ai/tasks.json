@@ -5165,7 +5165,7 @@
     {
       "id": "DEV-116",
       "title": "Phase 2f-2 接続準備：中止の合図と実行情報（共通部品）、設計CLI、一回限りの承認台帳と回数・時間の上限、架空菓庵の共通入力",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-115"
@@ -5229,7 +5229,7 @@
         "変換したv4 briefの確認",
         "経路ごと・呼び出しごとの承認ID（プロンプトSHA・文字数・コミット）と実行環境の再確認"
       ],
-      "note": "Offline tests only (fake processes, fictional data). Real Codex calls start only after the owner approves each call's ID with its prompt SHA and commit."
+      "note": "Merged to develop (74396de, PR #148). Fake processes and fictional data only; no real Codex call. The owner approved the fictional wagashi v4 brief (8 parts + avoid) as the A/B/C test input only, not as a Second Root template. Next: DEV-117 (image entry, pre-render, per-image approval, packaging, comparison sheet)."
     }
   ]
 }
