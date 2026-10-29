@@ -69,6 +69,9 @@ export type SheetVerdict = "pending" | "pass" | "fail" | "concept_pass" | "conce
 
 /** Applies the owner's policy to a filled-in entry. Anything not filled in is pending, never a pass. */
 export function sheetVerdict(e: SheetEntry): SheetVerdict {
+  // route A is judged as a concept only when a concept image really exists: a run that stopped (or packaged no image)
+  // has nothing to judge, whatever the scores. Its state is "incomplete" by design (no 390 render), which is not a reason.
+  if (e.kind === "concept_image" && (e.verification_state === "stopped" || e.delivered_route !== "A_image" || !e.images.desktop_1440)) return "concept_fail";
   const scores = RUBRIC.map((k) => e.scores[k]);
   if (!e.owner.confirmed || e.hard_fails === null || scores.some((s) => s === null) || e.owner.not_generic === null) return "pending";
   const total = (scores as number[]).reduce((a, b) => a + b, 0);
