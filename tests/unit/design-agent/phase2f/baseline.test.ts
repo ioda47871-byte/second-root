@@ -76,6 +76,35 @@ describe("the wagashi route B baseline (no research)", () => {
     expect(codeOf(set(["research_used"], true))).toBe("BASELINE_INVALID");
     expect(codeOf(set(["generation", "prompt_sha256"], "b".repeat(64)))).toBe("BASELINE_INVALID");
     expect(codeOf(set(["quality", "provisional_evaluation", "issues"], ["vertical_text_overlap"]))).toBe("BASELINE_INVALID");
+    // a formal pass needs a packaged artifact AND its own render (each condition alone is caught)
+    const passWith = (pkg: Json, preview: unknown) => {
+      const j = baseline();
+      j.formal_artifact_passed = true;
+      j.package = pkg;
+      j.preview = preview;
+      return j;
+    };
+    const packaged = { status: "succeeded", code: null, class: null, artifact_created: true };
+    const render = { ...baseline().preview, kind: "artifact_render" };
+    expect(codeOf(passWith(packaged, render))).toBe("ok");
+    expect(codeOf(passWith(packaged, null))).toBe("BASELINE_INVALID");
+    expect(codeOf(passWith(packaged, baseline().preview))).toBe("BASELINE_INVALID");
+    expect(codeOf(passWith(baseline().package, render))).toBe("BASELINE_INVALID");
+    // a succeeded package has no code, made an artifact, and came from a succeeded generation
+    expect(codeOf(passWith({ ...packaged, code: "X_CODE" }, render))).toBe("BASELINE_INVALID");
+    const stoppedGen = passWith(packaged, render);
+    stoppedGen.generation.status = "stopped";
+    expect(codeOf(stoppedGen)).toBe("BASELINE_INVALID");
+    // research is recorded exactly when it was used
+    const withResearch = baseline();
+    withResearch.research_used = true;
+    withResearch.role = "comparison_run_with_research";
+    expect(codeOf(withResearch)).toBe("BASELINE_INVALID");
+    withResearch.research_brief = { research_pr_head: "e".repeat(40), manifest_sha256: "a".repeat(64), patterns_sha256: "b".repeat(64), case_ids: ["CP-016"] };
+    expect(codeOf(withResearch)).toBe("ok");
+    expect(codeOf(set(["research_brief"], withResearch.research_brief))).toBe("BASELINE_INVALID");
+    // a desktop overflow must be among the issues too
+    expect(codeOf(set(["preview", "images", "desktop_1440", "scroll_width"], 1500))).toBe("BASELINE_INVALID");
     // the viewports are the artifact's 1440 / 390
     expect(codeOf(set(["preview", "images", "mobile_390", "width"], 375))).toBe("BASELINE_INVALID");
   });

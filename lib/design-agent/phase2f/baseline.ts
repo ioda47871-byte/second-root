@@ -45,6 +45,10 @@ export const Phase2fBaseline = z
     role: z.enum(["comparison_baseline_without_research", "comparison_run_with_research"]),
     inputs: z.strictObject({ facts_pack: RepoPath, brief: RepoPath, prompt_sha256: Sha, prompt_chars: z.number().int().positive() }),
     generation: Generation,
+    /** The research the prompt was built with (null without research): PR #142's head and the two files' SHA-256. */
+    research_brief: z
+      .strictObject({ research_pr_head: z.string().regex(/^[0-9a-f]{40}$/), manifest_sha256: Sha, patterns_sha256: Sha, case_ids: z.array(z.string().regex(/^CP-\d{3}$/)).min(1).max(10) })
+      .nullable(),
     retry_of: z.string().regex(/^[a-z0-9][a-z0-9._-]{3,95}$/).nullable(),
     package: z.strictObject({
       status: z.enum(["succeeded", "stopped"]),
@@ -67,24 +71,29 @@ export const Phase2fBaseline = z
       owner_final_decision: OwnerDecision,
     }),
     source_of_values: z.string().regex(/^[a-z0-9_]{4,120}$/),
+    notes: z.array(Text(300)).max(10),
   })
   .superRefine((b, ctx) => {
     const bad = (message: string, path: (string | number)[]) => ctx.addIssue({ code: "custom", message, path });
     // the role and the research flag say the same thing
     if (b.research_used !== (b.role === "comparison_run_with_research")) bad("role_and_research_disagree", ["research_used"]);
+    // research is recorded exactly when it was used
+    if (b.research_used !== (b.research_brief !== null)) bad("research_brief_and_flag_disagree", ["research_brief"]);
     // the run was made from the recorded prompt
     if (b.generation.prompt_sha256 !== b.inputs.prompt_sha256) bad("prompt_sha_mismatch", ["generation", "prompt_sha256"]);
     // a stopped package has its code and made no artifact; only a passing artifact may say it passed
     if (b.package.status === "stopped" && (!b.package.code || b.package.artifact_created)) bad("stopped_package_inconsistent", ["package"]);
-    if (b.package.status === "succeeded" && (b.package.code !== null || !b.package.artifact_created)) bad("succeeded_package_inconsistent", ["package"]);
-    if (b.formal_artifact_passed && (b.package.status !== "succeeded" || b.generation.status !== "succeeded")) bad("artifact_pass_without_artifact", ["formal_artifact_passed"]);
+    if (b.package.status === "succeeded" && (b.package.code !== null || !b.package.artifact_created || b.generation.status !== "succeeded")) bad("succeeded_package_inconsistent", ["package"]);
+    // a formal pass needs a packaged artifact and its own render
+    if (b.formal_artifact_passed && (b.package.status !== "succeeded" || b.preview?.kind !== "artifact_render")) bad("artifact_pass_without_artifact", ["formal_artifact_passed"]);
     // a hand-made preview is never the artifact's render, and a render exists only with an artifact
     if (b.preview?.kind === "artifact_render" && !b.package.artifact_created) bad("artifact_render_without_artifact", ["preview", "kind"]);
     if (b.preview?.kind === "manual_preview_not_an_artifact_render" && b.formal_artifact_passed) bad("manual_preview_cannot_pass", ["preview", "kind"]);
-    // a horizontal overflow seen in the preview is in the provisional issues
-    const sp = b.preview?.images.mobile_390;
-    if (sp?.scroll_width && sp.scroll_width > sp.width && !b.quality.provisional_evaluation?.issues.includes("mobile_horizontal_overflow"))
-      bad("overflow_not_recorded", ["quality", "provisional_evaluation"]);
+    // a horizontal overflow seen in the preview is in the provisional issues (each width)
+    for (const [key, issue] of [["mobile_390", "mobile_horizontal_overflow"], ["desktop_1440", "desktop_horizontal_overflow"]] as const) {
+      const img = b.preview?.images[key];
+      if (img?.scroll_width && img.scroll_width > img.width && !b.quality.provisional_evaluation?.issues.includes(issue)) bad("overflow_not_recorded", ["quality", "provisional_evaluation"]);
+    }
   });
 export type Phase2fBaseline = z.infer<typeof Phase2fBaseline>;
 

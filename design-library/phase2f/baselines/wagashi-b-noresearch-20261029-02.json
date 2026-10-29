@@ -2,7 +2,10 @@
   "schema": "phase2f_baseline_v1",
   "baseline_id": "wagashi-b-noresearch-20261029-02",
   "recorded_on": "2026-10-29",
-  "shop": { "shop_id": "fictional-wagashi", "display_name": "架空菓庵" },
+  "shop": {
+    "shop_id": "fictional-wagashi",
+    "display_name": "架空菓庵"
+  },
   "route": "B_html_prototype",
   "research_used": false,
   "role": "comparison_baseline_without_research",
@@ -25,6 +28,7 @@
     "finished_at": null,
     "image_outcome": "not_applicable"
   },
+  "research_brief": null,
   "retry_of": "wagashi-b-design-20261029-01",
   "package": {
     "status": "stopped",
@@ -36,10 +40,24 @@
   "preview": {
     "kind": "manual_preview_not_an_artifact_render",
     "answer_modified": false,
-    "preview_only_changes": ["tel_links_disabled"],
+    "preview_only_changes": [
+      "tel_links_disabled"
+    ],
     "images": {
-      "desktop_1440": { "width": 1440, "height": 2240, "bytes": 129373, "sha256": "2e1c3da2a9acad767657e839310f50027a18385154c6487d9cf9af13102c1b61", "scroll_width": null },
-      "mobile_390": { "width": 390, "height": 2590, "bytes": 86618, "sha256": "ec79cca85148f0388223f6d96b677204757e5d91e16a2dc3ea6c4666e6774cae", "scroll_width": 413 }
+      "desktop_1440": {
+        "width": 1440,
+        "height": 2240,
+        "bytes": 129373,
+        "sha256": "2e1c3da2a9acad767657e839310f50027a18385154c6487d9cf9af13102c1b61",
+        "scroll_width": null
+      },
+      "mobile_390": {
+        "width": 390,
+        "height": 2590,
+        "bytes": 86618,
+        "sha256": "ec79cca85148f0388223f6d96b677204757e5d91e16a2dc3ea6c4666e6774cae",
+        "scroll_width": 413
+      }
     },
     "images_in_repository": false
   },
@@ -47,9 +65,20 @@
     "provisional_evaluation": {
       "by": "chatgpt",
       "verdict": "fail",
-      "issues": ["vertical_text_overlap", "insufficient_product_expression", "mobile_horizontal_overflow"]
+      "issues": [
+        "vertical_text_overlap",
+        "insufficient_product_expression",
+        "mobile_horizontal_overflow"
+      ]
     },
-    "owner_final_decision": { "status": "pending", "quote_verbatim": null, "decided_on": null }
+    "owner_final_decision": {
+      "status": "pending",
+      "quote_verbatim": null,
+      "decided_on": null
+    }
   },
-  "source_of_values": "owner_report_20261029_from_wsl_outputs_not_rechecked_in_repository"
+  "source_of_values": "owner_report_20261029_from_wsl_outputs_not_rechecked_in_repository",
+  "notes": [
+    "worker_commit was reported as the develop commit f8ebaf7 and recorded as its full 40-character SHA from the repository"
+  ]
 }
