@@ -108,7 +108,16 @@ describe("the CP-026..032 intake", () => {
     expect(checkIntake(form("local_web_poc", "mobile_full_page_capture"), { registeredCaseIds: REGISTERED }).records[0]!.not_implemented).toEqual(["mobile_full_page_capture"]);
     expect(codeOf(() => checkIntake(form("local_web_poc", "html_source"), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
     // the adopted image itself is never "not implemented"
-    expect(codeOf(() => checkIntake(withEvidence("adopted_image", { state: "not_implemented" }), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
+    // refused by the adopted image's own type (the error names that field), not only by the form rules
+    const typeError = (() => {
+      try {
+        checkIntake(withEvidence("adopted_image", { state: "not_implemented" }), { registeredCaseIds: REGISTERED });
+        return "ok";
+      } catch (e) {
+        return e instanceof IntakeError ? e.message : String(e);
+      }
+    })();
+    expect(typeError).toBe("INTAKE_SCHEMA_INVALID: records.0.evidence.adopted_image");
     const noImage = form("static_image_study", "html_source");
     noImage.records[0].evidence.adopted_image = { state: "not_implemented" };
     expect(codeOf(() => checkIntake(noImage, { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
