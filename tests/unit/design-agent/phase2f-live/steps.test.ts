@@ -49,10 +49,10 @@ function world() {
     const r = cli(["--prerender", "--route", route, "--design", designDir, "--facts", factsPath, "--out", out]);
     return { ...r, dir: out };
   };
-  const image = async (request: ImageRequest, tool: ImageTool, o: { approvalId?: string; planId?: string } = {}) => {
+  const image = async (request: ImageRequest, tool: ImageTool, o: { approvalId?: string; planId?: string; retryOf?: string } = {}) => {
     const outDir = join(runs, `image-${++n}`);
     const r = await runImageCall(
-      { route: "C_hybrid", request, common: { humanApprovalConfirmed: true, approvalId: o.approvalId ?? `fictional-image-${n}`, planId: o.planId ?? request.design.plan_id, retryOf: null, expected: { promptSha256: request.prompt_sha256, promptChars: request.prompt_chars, commit: COMMIT }, outDir } },
+      { route: "C_hybrid", request, common: { humanApprovalConfirmed: true, approvalId: o.approvalId ?? `fictional-image-${n}`, planId: o.planId ?? request.design.plan_id, retryOf: o.retryOf ?? null, expected: { promptSha256: request.prompt_sha256, promptChars: request.prompt_chars, commit: COMMIT }, outDir } },
       { ledger, commit: clean, image: tool },
     );
     return { outDir, r };
@@ -323,6 +323,58 @@ describe("Fresh Review 1 fixes", () => {
     expect(w.pkg("A", ["--image", outDir]).status).toBe(2);
     expect(w.pkg("A", ["--image", outDir, "--expected-prompt-sha256", "0".repeat(64)]).out).toMatchObject({ status: "stopped", code: "RECORD_PROMPT_MISMATCH" });
     expect(w.pkg("A", ["--image", outDir, "--expected-prompt-sha256", sha256(Buffer.from(prompt))]).out).toMatchObject({ status: "done", record: { route: "A_image" } });
+  }, 60_000);
+});
+
+describe("Fresh Review 2 fixes", () => {
+  it("a .env found after Codex ran: never 'not called' — the package stops", async () => {
+    const w = world();
+    const d = await w.design("C_hybrid", answer({ asset: "story" }));
+    const img = await w.image(readRequest(w.prerender(d.outDir).dir), failed("not_applicable", "CODEX_RESULT_DISCARDED_DOTENV"));
+    expect(img.r).toMatchObject({ code: "CODEX_RESULT_DISCARDED_DOTENV" });
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", img.outDir]).out).toMatchObject({ status: "stopped", code: "RUN_ASSET_PORT_FAILED" });
+  }, 60_000);
+
+  it("a usage limit waits: never a fallback to B", async () => {
+    const w = world();
+    const d = await w.design("C_hybrid", answer({ asset: "story" }));
+    const img = await w.image(readRequest(w.prerender(d.outDir).dir), failed("TOOL_NOT_CALLED", "CODEX_QUOTA"));
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", img.outDir]).out).toMatchObject({ status: "stopped", code: "CODEX_QUOTA" });
+  }, 60_000);
+
+  it("a failed image whose retry succeeded: the successful call must be the one given", async () => {
+    const w = world();
+    const d = await w.design("C_hybrid", answer({ asset: "story" }));
+    const req = readRequest(w.prerender(d.outDir).dir);
+    const first = await w.image(req, failed("TOOL_FAILED", "CODEX_IMAGE_TOOL_FAILED"), { approvalId: "fictional-img-first" });
+    const retry = await w.image(req, saved, { approvalId: "fictional-img-retry", retryOf: "fictional-img-first" });
+    expect(retry.r).toMatchObject({ status: "succeeded", receipt: { slot: "retry-1" } });
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", first.outDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_SUCCEEDED_CALL_NOT_GIVEN" });
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", retry.outDir]).out).toMatchObject({ status: "done", record: { route: "C_hybrid" } });
+  }, 120_000);
+
+  it("an image call for another picture (another prompt) does not block a design that had none", async () => {
+    const w = world();
+    const one = await w.design("C_hybrid", answer({ asset: "story" }));
+    await w.image(readRequest(w.prerender(one.outDir).dir), failed("TOOL_FAILED", "CODEX_IMAGE_TOOL_FAILED"));
+    const other = answer({ asset: "story" });
+    other.prototype.html = other.prototype.html.replace("A wrapped dorayaki on rice paper, morning light", "Two wrapped sweets side by side in soft evening light");
+    const two = await w.design("C_hybrid", other);
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", two.outDir]).out).toMatchObject({ status: "done", record: { route: "B_html_prototype" } });
+  }, 120_000);
+
+  it("an image recorded under another plan than its design is not packaged", async () => {
+    const w = world();
+    const d = await w.design("C_hybrid", answer({ asset: "story" }));
+    const img = await w.image(readRequest(w.prerender(d.outDir).dir), saved);
+    const id = (img.r as { receipt: { approval_id: string } }).receipt.approval_id;
+    for (const f of [join(img.outDir, "call.json"), join(w.state, "approvals", id, "receipt.json")]) {
+      const j = JSON.parse(readFileSync(f, "utf8"));
+      if (j.receipt) j.receipt.plan_id = "plan-elsewhere";
+      else j.plan_id = "plan-elsewhere";
+      writeFileSync(f, JSON.stringify(j));
+    }
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", img.outDir]).out).toMatchObject({ status: "stopped", code: "RECORD_MISMATCH" });
   }, 60_000);
 });
 

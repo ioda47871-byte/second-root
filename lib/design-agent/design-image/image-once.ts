@@ -139,6 +139,8 @@ export async function generateImageOnce(o: { sandbox: CodexSandbox; prompt: stri
         ...withSignal,
       });
     } catch (error) {
+      // a .env found after Codex ran (DEV-079): Codex DID run and its result is thrown away; never "not called"
+      if (error instanceof SandboxError && error.started) return result({ outcome: "not_applicable", stopCode: "CODEX_RESULT_DISCARDED_DOTENV", cliVersion });
       return result({ outcome: "not_applicable", stopCode: error instanceof SandboxError ? error.code : "CODEX_SANDBOX_UNAVAILABLE", cliVersion });
     }
     const codexMs = now() - started;
@@ -165,7 +167,7 @@ export async function generateImageOnce(o: { sandbox: CodexSandbox; prompt: stri
     return result({ ...base, png: image.bytes, width: image.width, height: image.height, outcome: "IMAGE_SAVED", stopCode: null });
   } catch (error) {
     if (error instanceof CodexAbortedError || error instanceof CodexError) throw error;
-    if (error instanceof SandboxError) return result({ outcome: "not_applicable", stopCode: error.code });
+    if (error instanceof SandboxError) return result({ outcome: "not_applicable", stopCode: error.started ? "CODEX_RESULT_DISCARDED_DOTENV" : error.code });
     throw error;
   } finally {
     await cleanup();

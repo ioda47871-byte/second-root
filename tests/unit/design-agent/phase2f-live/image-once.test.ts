@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { BoundedResult } from "@/lib/design-agent/bounded-process";
 import { CodexAbortedError } from "@/lib/design-agent/codex";
-import { generateImageOnce, imageStopCode } from "@/lib/design-agent/design-image/image-once";
-import type { CodexSandbox } from "@/lib/design-agent/sandbox";
+import { cleanupActiveImageCalls, generateImageOnce, imageStopCode } from "@/lib/design-agent/design-image/image-once";
+import { SandboxError, type CodexSandbox } from "@/lib/design-agent/sandbox";
 import { colourPng } from "../phase2f/fixtures";
 
 // DEV-117: the research test's one image call for an arbitrary approved prompt, against an in-process fake sandbox
@@ -164,6 +164,33 @@ describe("generateImageOnce: one call, every outcome as observed", () => {
     await once(({ cwd }) => (leave(cwd, [], { "ig_1.png": colourPng(1024, 1024) }), ok(thread)));
     expect(leftovers().images).toEqual([OTHER]);
     expect(leftovers().logs).toEqual([join("2026", "10", "28", `rollout-2026-10-28T11-00-00-${OTHER}.jsonl`)]);
+  });
+
+  it("a .env found after Codex ran: the result is discarded with its own code (Codex did run: never 'not called')", async () => {
+    const r = await once(({ cwd }) => {
+      leave(cwd, [], { "ig_1.png": colourPng(1024, 1024) });
+      throw new SandboxError("CODEX_DOTENV_PRESENT", true);
+    });
+    expect(r).toMatchObject({ png: null, stopCode: "CODEX_RESULT_DISCARDED_DOTENV" });
+    expect(leftovers().work).toEqual([]);
+  });
+
+  it("a hard stop can clean up a running call (its image dir and logs) before the CLI exits", async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const running = new Promise<void>((r) => (started = r));
+    const call = once(async ({ cwd }) => {
+      leave(cwd, [], { "ig_1.png": colourPng(1024, 1024) });
+      started();
+      await new Promise<void>((r) => (release = r));
+      return ok(thread);
+    });
+    await running;
+    // the thread is not known yet (no stdout): the call's own work dir and new image dirs are what it can find
+    await cleanupActiveImageCalls();
+    expect(leftovers()).toEqual({ images: [], logs: [], work: [] });
+    release();
+    await call;
   });
 
   it("maps outcomes to fixed stop codes", () => {

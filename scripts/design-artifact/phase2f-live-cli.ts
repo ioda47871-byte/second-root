@@ -71,10 +71,11 @@ export const say = (o: object) => process.stdout.write(`${JSON.stringify(o)}\n`)
 export function stopSignals(o: { cleanup?: () => Promise<void> } = {}): { controller: AbortController; stop: () => void } {
   const controller = new AbortController();
   let stopping = false;
-  // a hard stop still removes what a running call left (its session log and image dirs), for at most 15 s
+  // a hard stop still removes what a running call left (its session log and image dirs), for at most 10 s
+  // (watchdog + 20 s + 10 s stays inside what the plan clock counts for a call without a result)
   const hardExit = (): void => {
     killAllBoundedChildren();
-    const done = o.cleanup ? Promise.race([o.cleanup().catch(() => undefined), new Promise((r) => setTimeout(r, 15_000).unref())]) : Promise.resolve();
+    const done = o.cleanup ? Promise.race([o.cleanup().catch(() => undefined), new Promise((r) => setTimeout(r, 10_000).unref())]) : Promise.resolve();
     void done.then(() => process.exit(1));
   };
   const stop = (): void => {

@@ -181,6 +181,11 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
       // the picture belongs to this design run and this asset, and was made from the prompt the checks rebuild now
       if (link.design_run_id !== step.receipt.run_id || link.asset_id !== req.assetId || image.receipt.prompt_sha256 !== req.promptSha256) throw new PortStop("RECORD_MISMATCH", "input");
       if (image.call.status === "aborted") throw new PortStop("CODEX_IMAGE_ABORTED", "interrupted");
+      // a later call for the same picture that succeeded (a retry) must be the one given, never hidden behind a failure
+      if (image.call.status !== "succeeded") {
+        const better = (await ledger.calls(step.receipt.plan_id)).some((c) => c.receipt.approval_id !== image!.receipt.approval_id && c.receipt.kind === "image" && c.receipt.prompt_sha256 === req.promptSha256 && c.result?.status === "succeeded");
+        if (better) throw new PortStop("IMAGE_SUCCEEDED_CALL_NOT_GIVEN", "input");
+      }
       if (image.call.status === "succeeded") {
         const png = await readFile(join(image.dir, "image.png"));
         if (sha256(png) !== image.call.png_sha256) throw new PortStop("RECORD_MISMATCH", "input");
@@ -189,6 +194,8 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
       // a failure as recorded. Without a recorded image outcome: "not called" only for a stop that comes before the
       // image tool can run (sign-in, sandbox, .env); anything else is an unknown outcome, which the runner stops on
       const stopCode = (image.call.stop_code as string | null) ?? image.call.code;
+      // a usage limit waits for the limit to come back (as any other step): never a fallback to B
+      if (stopCode === "CODEX_QUOTA") throw new PortStop("CODEX_QUOTA", "environment");
       const recorded = typeof image.call.outcome === "string" && IMAGE_OUTCOMES.has(image.call.outcome) ? image.call.outcome : null;
       const outcome = recorded ?? (stopCode !== null && BEFORE_THE_TOOL.has(stopCode) ? "TOOL_NOT_CALLED" : "not_applicable");
       return { png: null, image_outcome: outcome as "TOOL_NOT_CALLED", stop_code: stopCode, approval_id: image.receipt.approval_id };
