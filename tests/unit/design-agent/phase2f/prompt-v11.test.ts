@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FactsPack } from "@/lib/design-agent/artifact/schema";
 import { B_V11_RULES, buildDesignPrompt, DesignBrief, PromptVariantError, promptVariantOf } from "@/lib/design-agent/phase2f/prompt";
-import { ResearchSection, researchBlock } from "@/lib/design-agent/phase2f/research-section";
+import { ResearchSection, researchBlock, researchBlockSha256 } from "@/lib/design-agent/phase2f/research-section";
 
 // DEV-122: route B v1.1 prompts for the research comparison. Offline: no Codex, no image tool.
 
@@ -29,11 +29,12 @@ describe("the B v1.1 prompts", () => {
     const research = build({ version: "v1.1", research: section });
     expect(plain.prompt).toBe([v1, ...B_V11_RULES].join("\n"));
     expect(research.prompt).toBe([plain.prompt, ...researchBlock(section)].join("\n"));
-    expect([plain.sha256, plain.chars]).toEqual(["085dc50be4dafa1c6cf2480d30d30716703aa71822fa161f8b7a640587138889", 5965]);
-    expect([research.sha256, research.chars]).toEqual(["e3ab3e241c92249916de65bb33f4bdae90898a173fafae08f6537e61482a1e95", 7684]);
+    expect([plain.sha256, plain.chars]).toEqual(["c5973afbdc87b750cb12f05438c6a2b328407b3d226ad0c89fe44107bbada243", 6010]);
+    expect([research.sha256, research.chars]).toEqual(["a0dbb48c1b85629e1ddedaed2a6015e781adb3696c01b824f360ae74c5c1a0c2", 7741]);
     // the two rules the first B run needed: no asset_refs on route B, contact details as plain text (no tel: or mailto:)
     expect(B_V11_RULES.join(" ")).toMatch(/asset_refs is an empty list \[\]/);
     expect(B_V11_RULES.join(" ")).toMatch(/tel:, mailto:/);
+    expect(B_V11_RULES.join(" ")).toMatch(/other than the stylesheet link required above/);
   });
 
   it("v1.1 exists for route B only; the CLI's variant check gives fixed codes", () => {
@@ -85,7 +86,16 @@ describe("the research section (owner text approval pending)", () => {
     expect(bad((x) => (x.principles[1]!.from_case = "CP-011"))).toBe(false);
     expect(bad((x) => (x.avoid[0]!.from_case = "CP-011"))).toBe(false);
     expect(bad((x) => (x.owner_text_approval = { status: "approved" }))).toBe(false);
-    expect(bad((x) => (x.owner_text_approval = { status: "approved", quote_verbatim: "承認します", decided_on: "2026-10-30" }))).toBe(true);
+    // an approval names the exact block it approved; any other text (even one word) no longer matches
+    expect(researchBlockSha256(section)).toBe("444bc6a24042fc6b60ea7ec707bd8c74c4e4a41fc005e0f9f8d179b0b37315c2");
+    expect(bad((x) => (x.owner_text_approval = { status: "approved", quote_verbatim: "承認します", decided_on: "2026-10-30" }))).toBe(false);
+    expect(bad((x) => (x.owner_text_approval = { status: "approved", quote_verbatim: "承認します", decided_on: "2026-10-30", block_sha256: researchBlockSha256(section) }))).toBe(true);
+    expect(
+      bad((x) => {
+        x.owner_text_approval = { status: "approved", quote_verbatim: "承認します", decided_on: "2026-10-30", block_sha256: researchBlockSha256(section) };
+        x.principles[0]!.text += " Also use a large photo.";
+      }),
+    ).toBe(false);
   });
 });
 
@@ -100,11 +110,11 @@ describe("the design CLI with v1.1", () => {
   it("prints each pin (offline) with its version and the research text's approval state", () => {
     const state = mkdtempSync(join(tmpdir(), "dev122-pin-"));
     expect(run(["--print-pin", ...base], state).out).toMatchObject({ prompt_version: "v1", research_section: null, prompt_sha256: "a2fdd00365087046c44f03b4c3ea43530046af658b017ae5229fd7577c817954" });
-    expect(run(["--print-pin", ...base, "--prompt-version", "v1.1"], state).out).toMatchObject({ prompt_version: "v1.1", research_section: null, prompt_chars: 5965 });
+    expect(run(["--print-pin", ...base, "--prompt-version", "v1.1"], state).out).toMatchObject({ prompt_version: "v1.1", research_section: null, prompt_chars: 6010 });
     expect(run(["--print-pin", ...base, "--prompt-version", "v1.1", "--research", resolve(REPO, RESEARCH)], state).out).toMatchObject({
       prompt_version: "v1.1",
       research_section: { section_id: "wagashi-b-research-v1", case_ids: ["CP-016", "CP-009", "CP-003"], owner_text_approval: "pending" },
-      prompt_chars: 7684,
+      prompt_chars: 7741,
     });
     expect(readdirSync(state)).toEqual([]);
   }, 60_000);
@@ -114,7 +124,7 @@ describe("the design CLI with v1.1", () => {
     const runs = mkdtempSync(join(tmpdir(), "dev122-out-"));
     const r = run(
       [...base, "--prompt-version", "v1.1", "--research", resolve(REPO, RESEARCH), "--out", join(runs, "d1"), "--plan-id", "plan-fictional-1", "--approval-id", "fictional-r-1",
-        "--expected-prompt-sha256", "e3ab3e241c92249916de65bb33f4bdae90898a173fafae08f6537e61482a1e95", "--expected-prompt-chars", "7684", "--expected-commit", "d".repeat(40), "--human-approval-confirmed"],
+        "--expected-prompt-sha256", "a0dbb48c1b85629e1ddedaed2a6015e781adb3696c01b824f360ae74c5c1a0c2", "--expected-prompt-chars", "7741", "--expected-commit", "d".repeat(40), "--human-approval-confirmed"],
       state,
     );
     expect(r).toMatchObject({ status: 2, out: { status: "refused", code: "RESEARCH_TEXT_NOT_APPROVED" } });

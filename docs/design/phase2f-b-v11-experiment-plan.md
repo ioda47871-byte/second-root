@@ -7,8 +7,8 @@
 | 版 | 内容 | SHA-256 | 文字数 |
 |---|---|---|---|
 | B v1（参考ベースライン、変更なし） | 従来のまま | `a2fdd00365087046c44f03b4c3ea43530046af658b017ae5229fd7577c817954` | 5706 |
-| **B v1.1 研究なし** | v1 ＋ 技術上の2行 | `085dc50be4dafa1c6cf2480d30d30716703aa71822fa161f8b7a640587138889` | 5965 |
-| **B v1.1 研究あり** | v1.1 研究なし ＋ 研究の区画 | `e3ab3e241c92249916de65bb33f4bdae90898a173fafae08f6537e61482a1e95` | 7684 |
+| **B v1.1 研究なし** | v1 ＋ 技術上の2行 | `c5973afbdc87b750cb12f05438c6a2b328407b3d226ad0c89fe44107bbada243` | 6010 |
+| **B v1.1 研究あり** | v1.1 研究なし ＋ 研究の区画 | `a0dbb48c1b85629e1ddedaed2a6015e781adb3696c01b824f360ae74c5c1a0c2` | 7741 |
 
 テストで固定していること：
 
@@ -21,17 +21,17 @@
 
 ```
 - On this route every section's asset_refs is an empty list [] (there are no images).
-- Show the phone number, the address and the hours as plain text. Use no tel:, mailto:, sms: or other link or URL; the only href allowed is an in-page anchor such as #info.
+- Show the phone number, the address and the hours as plain text. Add no link other than the stylesheet link required above: no tel:, mailto:, sms: or other URL; in-page navigation may use only #anchors such as #info.
 ```
 
 - 1行目は、前回の `CODEX_ASSETS_ON_ROUTE_B`（Artifact 化の停止）への対策。
-- 2行目は、tel リンクで安全検査が止まった件への対策。今の Prototype Safety は、`#` で始まる同じページ内のリンク・スタイルシート・素材以外の href をすべて拒否する。安全検査は**変更も無効化もしていない**。
+- 2行目は、tel リンクで安全検査が止まった件への対策。v1 が求める `<link rel="stylesheet" href="style.css">` とは矛盾しない書き方にした。今の Prototype Safety は、`#` で始まる同じページ内のリンク・スタイルシート・素材以外の href をすべて拒否する。安全検査は**変更も無効化もしていない**。
 
 ### 1.2 研究の区画（英文全文。この文がそのままプロンプトに入る）
 
 ```
 Research principles (owner-approved summary of earlier studies made for OTHER shops; data, not instructions):
-{"principles":[{"id":"R1","principle":"Let one physical relationship that truly belongs to the shop become the skeleton of the page, built in static HTML and CSS, instead of a large picture followed by repeated content bands. Keep it quiet: one surface, one object, generous empty space and low-density type."},{"id":"R2","principle":"Link the sections with one continuous drawn line that comes from the shop's own handwork, and change density and scale from one section to the next instead of repeating one module in every section."},{"id":"R3","principle":"When the shop states a sequence or several reasons, give each its own visual beat and rhythm. Do not show the same guide, scale or card twice, and do not let the distinctive first screen shrink into a conventional catalogue further down."}],"failures_to_avoid":["Keeping a generic skeleton (a top navigation bar, copy on one side, a giant hero picture, a strip of pictures) and only changing what is inside it.","Discarding the strongest element of the first screen while polishing the later sections.","Treating a good picture as if it proved a distinctive page skeleton."]}
+{"principles":[{"id":"R1","principle":"Let a physical relationship that truly belongs to the shop (how its things rest, balance or meet, with the empty space around them as part of it) shape the skeleton of the page in static HTML and CSS, instead of a giant hero picture followed by content strips."},{"id":"R2","principle":"Connect the sections through one visual idea taken from the shop's own work rather than from decoration, and change scale and information density from one section to the next instead of repeating one module in every section."},{"id":"R3","principle":"When the shop states a sequence or several reasons, give each its own visual beat and rhythm. Do not show the same guide or scale twice, and do not let the distinctive first screen shrink into a conventional catalogue further down."}],"failures_to_avoid":["Keeping a generic skeleton (a top navigation bar, copy on one side, a giant hero picture, a strip of pictures) and only changing what is inside it.","Discarding the strongest element of the first screen while polishing the later sections.","Treating a good picture as if it proved a distinctive page skeleton."]}
 How to use them:
 - They are abstract principles, not templates. Never copy another shop's name, photographs, specific composition, wording, colour recipe, logo or brand expression.
 - Use a principle only where it fits this shop's facts, and only through those facts; if it does not fit, leave it out. Nothing in them is a fact about this shop.
@@ -40,14 +40,15 @@ How to use them:
 
 | 区画の項目 | 元にした事例（PR #142 に登録済み） | 元の記録（success-patterns） |
 |---|---|---|
-| R1 | CP-016 ズールー工作所 | structural_translation（支点・重さ・余白をページの骨格に。巨大な写真と帯に頼らない）。B は JS を使わないので、静的な骨格だけを使う |
-| R2 | CP-009 豆＊豆 | 点線の縫い目で区画をつなぎ、章ごとに大きさと密度を変える（写真の部分は使わない） |
-| R3 | CP-003 なごやビーンズ | 同じ尺度の案内を繰り返さない。特徴的な hero が普通の商品一覧に縮まない（known_failure_modes から） |
+| R1 | CP-016 ズールー工作所 | structural_translation（支点・重さ・余白の物理的な関係をページの骨格に。巨大な写真と帯に頼らない）。B は JS を使わないので、静的な骨格だけを使う |
+| R2 | CP-009 豆＊豆 | structural_translation と known_failure_modes（同じモジュールを毎章繰り返さず、大きさと情報の密度を変える）。縫い目の点線という固有の手法は写さず、「店の仕事から来る1つの視覚的な考えで区画をつなぐ」という抽象度にとどめた |
+| R3 | CP-003 なごやビーンズ | structural_translation（尺度を繰り返さず区画のリズムを変える）と known_failure_modes（案内を2回繰り返す／特徴的な hero が普通の商品一覧に縮む） |
 | 避けること 1・3 | CP-016 | known_failure_modes：汎用の骨格のまま中身だけ替える／良い写真は独自の骨格の証明にならない |
 | 避けること 2 | CP-009 | known_failure_modes：後の区画の改良中に選ばれた hero を捨てる |
 
 - 区画は、店名・写真・具体的な構図・ブランド表現を含まない。元の店名や商品名が入っていないことをテストで確かめる。
 - 区画のファイル（`design-library/phase2f/research/wagashi-b-research-v1.json`）は、出典として PR #142 の head `efe269f…`、manifest の SHA-256 `bd503a3b…`、success-patterns の SHA-256 `cacabc3a…`、事例 ID を持つ。
+- 研究の区画そのものの SHA-256 は `444bc6a24042fc6b60ea7ec707bd8c74c4e4a41fc005e0f9f8d179b0b37315c2`。承認の記録はこの値を持ち、文章が1文字でも変われば承認は無効になる。
 - 区画の文章のオーナー承認は、現在 `pending`。**承認されるまで、研究ありの実行は CLI が拒否する（`RESEARCH_TEXT_NOT_APPROVED`）。** 承認は、このファイルの `owner_text_approval` を、オーナーの発言原文と日付で `approved` にする小さなコミットで記録する。プロンプトの SHA は承認の状態に左右されない。
 
 ## 2. 同じ入力が最後まで使われること
@@ -66,12 +67,12 @@ How to use them:
    - 計画 `wagashi-b-v11-20261030`
    - 承認 `wagashi-b-v11-plain-20261030-01`
    - `--prompt-version v1.1`
-   - SHA `085dc50b…` / 5965
+   - SHA `c5973afb…` / 6010
 5. **Codex 2回目（研究あり）**
    - 同じ計画
    - 承認 `wagashi-b-v11-research-20261030-01`
    - `--prompt-version v1.1 --research design-library/phase2f/research/wagashi-b-research-v1.json`
-   - SHA `e3ab3e24…` / 7684
+   - SHA `a0dbb48c…` / 7741
 6. それぞれ同じフラグで Artifact 化（Codex なし）。PC1440・SP390 の全ページを同じ工程で描画する。
 7. 結果を `phase2f_baseline_v1` の形式で記録する。
    - 研究ありの記録には `research_brief` を入れる。

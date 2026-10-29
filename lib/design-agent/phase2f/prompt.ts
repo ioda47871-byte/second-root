@@ -70,7 +70,7 @@ export type BuiltPrompt = { prompt: string; sha256: string; chars: number };
 export type PromptVariant = { version: "v1" } | { version: "v1.1"; research: ResearchSection | null };
 export const B_V11_RULES = [
   "- On this route every section's asset_refs is an empty list [] (there are no images).",
-  "- Show the phone number, the address and the hours as plain text. Use no tel:, mailto:, sms: or other link or URL; the only href allowed is an in-page anchor such as #info.",
+  "- Show the phone number, the address and the hours as plain text. Add no link other than the stylesheet link required above: no tel:, mailto:, sms: or other URL; in-page navigation may use only #anchors such as #info.",
 ] as const;
 
 /**

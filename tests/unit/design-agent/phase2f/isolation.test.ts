@@ -30,7 +30,7 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/decode-check.ts`]: ["../worker/png-paint"],
   [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile", "./research-section"],
   // DEV-122: the owner-approved research section of the B v1.1 prompt (pure)
-  [`${LIB}/research-section.ts`]: ["zod"],
+  [`${LIB}/research-section.ts`]: ["node:crypto", "zod"],
   [`${LIB}/runner.ts`]: ["node:crypto", "node:fs/promises", "node:path", "node:zlib", "playwright", "../artifact/intake", "../artifact/schema", "./decode-check", "./prompt", "./prototype-safety", "./render-prototype"],
   [`${LIB}/compare-sheet.ts`]: ["../artifact/intake", "./runner"],
   // DEV-121: the comparison baseline record checker (pure)
