@@ -5106,7 +5106,7 @@
     {
       "id": "DEV-115",
       "title": "Phase 2f-1：A/B/C実証の最小実行プログラム（擬似Codexのみ）、試作の安全検査・描画・実復号・比較シート",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-114"
@@ -5160,7 +5160,7 @@
         "2f-2の本物のポート（Codexのjail・承認ID台帳）への接続",
         "A/B/Cそれぞれの実行（承認ID・回数・時間・環境）"
       ],
-      "note": "Pseudo ports only. The real Codex/image ports and the approval ledger come with 2f-2 under separate approval."
+      "note": "Merged to develop (f75c97a, PR #147). Offline only: pseudo ports; no real Codex run or image generation. Real ports (runCodexJson design port, image PoC asset port, abort that kills the process, one-time approval ledger counting cross-run limits), the fictional wagashi facts pack and DNA v4 brief are Phase 2f-2 preparation, each separately approved."
     }
   ]
 }
