@@ -5574,7 +5574,7 @@
     {
       "id": "DEV-123",
       "title": "Prototype Safety の誤検知の解消（scroll-behavior・日本語の #アンカー）と停止理由の記録",
-      "status": "in_review",
+      "status": "review",
       "priority": "P0",
       "depends_on": [
         "DEV-122"
