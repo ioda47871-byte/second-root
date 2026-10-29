@@ -5392,7 +5392,17 @@
         "マージ（レビュー結果を見てオーナーが判断）",
         "B方式の再試行（新しい承認ID、retry-1）"
       ],
-      "note": "Diagnostics are a fixed class and the exit code only."
+      "note": "Diagnostics are a fixed class and the exit code only.",
+      "required_tests": [
+        "tests/unit/design-agent/codex.test.ts",
+        "tests/unit/design-agent/phase2f/*.test.ts",
+        "tests/unit/design-agent/phase2f-live/*.test.ts",
+        "worker regression (sandbox, pipeline, photo-worker, photo-pipeline, worker-run-sh, design-image-poc, design-image-approved-one-shot, artifact, comp-impl, profile)",
+        "tests/unit/guardrails.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ]
     }
   ]
 }
