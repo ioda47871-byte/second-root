@@ -130,10 +130,88 @@ npx tsx scripts/design-artifact/phase2f-design.ts --route B|C --facts <pack> --b
 - text, letters or logos inside a generated image
 - order, booking or cart buttons
 
-## 6. 実際の生成を始めるまでに必要な承認
+## 6. 事前描画・画像・Artifact 化・比較シート（DEV-117）
 
-1. DEV-116 のマージ
-2. brief の確認（必要なら修正）
-3. 各呼び出しの承認 ID。指示文の SHA・文字数（`--print-pin` で出す）、コミット、計画 ID と組にする。
-4. 実行環境の再確認（WSL の jail、Codex のサインイン、ネットワーク）
-5. C と A の画像は DEV-117 の入口で、1回ごとに個別承認する。
+オーナーは 2026-10-29 に、DEV-116 のマージと、架空菓庵の v4 brief を A/B/C 比較実証の入力として承認した。この brief は架空菓庵専用で、Second Root 全体の固定テンプレートにはしない。実店舗では、店舗の分析とデザイン研究を踏まえて、構造・視覚表現・配色・タイポグラフィを店舗ごとに考える。
+
+### 6.1 入口（すべて新規。既存の画像 PoC の入口と、その v4 の承認・SHA・使用済み記録は変えていない）
+
+| 工程 | 入口 | Codex / 画像 |
+|---|---|---|
+| ① 設計 | `scripts/design-artifact/phase2f-design.ts`（DEV-116） | Codex 1回 |
+| ② 事前描画 | `scripts/design-artifact/phase2f-steps.ts --prerender` | 呼ばない |
+| ③ 画像 | `scripts/design-artifact/phase2f-image.ts`（C は `--request`、A は `--concept-v4`） | 画像ツール 1回 |
+| ④ Artifact 化 | `scripts/design-artifact/phase2f-steps.ts --package` | 呼ばない |
+| ⑤ 比較シート | `scripts/design-artifact/phase2f-steps.ts --sheet` | 呼ばない |
+
+- ③の画像処理は、画像 PoC の共通部分（同じ jail とコマンド、セッションログの読み取りと結果の分類、PNG の検査）だけを `lib/design-agent/design-image/image-once.ts` で再利用する。PoC の `run.ts` には触れていない。
+- A の指示文は、画像 PoC の v4 の指示文をそのコードで組み立てたもの（SHA `4e34f760…157d9`、4714文字）。新しい承認 ID で、この実証の台帳を使って1回だけ実行する。
+
+### 6.2 C の流れ（画像1回ごとの個別承認）
+
+1. ①で Codex の HTML/CSS を生成する。
+2. ②で、記録済みの答えを検査し、安全検査とプレースホルダーでの描画を行う。画像ごとに次を確定して `image-request-<素材>.json` に書き、`prerender.md` にまとめる。
+   - 使用位置（PC・SP の区画、最初の画面に入るか）
+   - 主役画像か（hero にある、どちらかの画面で半分以上が最初の画面に入る、どの区画にも属さない）
+   - 画像の指示文の全文、SHA-256、文字数
+   - 設計の実行 ID・承認 ID・指示文の SHA・コミット・計画
+   - この計画の呼び出し回数と使った時間
+3. オーナーが `prerender.md` を見て、その画像1回の承認 ID を決める。
+4. ③は、依頼ファイルが②のときのまま（指示文の SHA）で、設計の実行が出力フォルダーと台帳の両方で成功していることを確かめてから、承認を使って画像を1回だけ生成する。承認は成功・失敗・結果不明のどれでも再利用しない。
+5. ④は、設計と画像の記録を照合してから Artifact にする。
+   - 設計: 事実と brief から組み立て直した指示文の SHA が、記録と同じであること
+   - 画像: 描画前の検査で組み立て直した画像の指示文の SHA、設計の実行 ID、素材 ID、画像ファイルの SHA が、記録と同じであること
+   - 違えば止まる（`RECORD_MISMATCH`）。
+
+### 6.3 記録の照合（後の工程は、両方が成功のときだけ使う）
+
+`lib/design-agent/phase2f-live/steps.ts` の `readStep` だけを通して、前の工程の出力を読む。
+
+- 出力フォルダーの `call.json` にある受け取りが、台帳の受け取りと項目ごとに同じ（承認・計画・経路・種類・枠・再試行・指示文の SHA と文字数・コミット・実行 ID）
+- 台帳に結果がある。無ければ使わない（`RECORD_UNFINISHED`。異常終了・実行中）
+- 終わり方（状態とコード）が両方で同じ
+- 成功なら、`generation.json` の承認・実行・SHA・コミットが受け取りと同じ
+
+### 6.4 画像が無い・失敗したとき（2f-1 の規則のまま）
+
+- 主役でない画像が、承認されなかった（`IMAGE_NOT_RUN`）か失敗した場合は、失敗を記録したまま明示的に B へ切り替える。
+- 主役の画像の失敗は、オーナー確認で止まる。勝手に削除しない。
+- ポリシーによる拒否は止まり、自動では回避しない。
+- 中止した画像は止まる。
+- 「保存した」と言いながらファイルが無い結果は、ツールの不具合として止まる。成功にはしない。
+
+### 6.5 Intake の変更（オーナー決定）
+
+CLI の版が取れないことは、モデル名と同じく警告（`generation_tool_version_unknown`）にした。正常なデザインは `render_pair_complete` になれる。承認 ID・指示文の SHA・実行コミット・実行 ID・時刻は、引き続き必須。モデル名と版が必要な工程は `generationFactsReported(record)` で確かめる。
+
+### 6.6 比較シート
+
+`--sheet` は、④の結果から `sheet.json` と `sheet.md` を書く。各経路について次を示す。
+
+- 種類（A は構想画像、B/C はブラウザ描画）
+- 届いた経路（切り替えの有無）
+- 検証の状態
+- 停止と警告（オーナーが「正しかったか」を記入）
+- 実際の呼び出し（承認 ID・実行 ID・SHA・枠・結果）
+- 空の採点欄
+
+22/25 はデザイン採用の判断にだけ使い、生成の前の制限には使わない。
+
+### 6.7 実行前に止めるもの（承認を使う前）
+
+- オーナーの確認、指示文の SHA と文字数、コミット
+- 出力先（リポジトリの外、親フォルダーが実在し、jail に必要な場所を含まない）
+- Codex のホームの `.env`
+- jail の準備（bubblewrap や Codex が無いと準備の時点で止まる。Codex も bubblewrap も起動しない）
+- 承認 ID・回数・時間
+
+承認を使った後の失敗は、成功に書き換えず、原因のコードを記録する。
+
+## 7. 実際の生成を始めるまでに必要な承認
+
+1. DEV-117 のマージ
+2. 実行環境の再確認（WSL の jail、Codex のサインイン、ネットワーク、画像ツール）
+3. 呼び出しごとの承認 ID（計画 ID、指示文の SHA と文字数、コミットと組にする）
+   - A: `phase2f-image.ts --print-pin --concept-v4`
+   - B/C の設計: `phase2f-design.ts --print-pin`
+   - C の画像: ②の `prerender.md` を見て、1枚ずつ承認する

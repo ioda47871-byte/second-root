@@ -18,15 +18,16 @@
  * Codex is reached only through the injected `codex` function (the CLI passes the sandboxed JSON call of codex.ts);
  * this module starts no process and opens no network connection.
  */
-import { createHash, randomBytes } from "node:crypto";
-import { constants } from "node:fs";
-import { lstat, mkdir, open } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { CodexAbortedError, CodexError, type CodexRunMeta } from "../codex";
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
+import { checkBeforeApproval, writeOnce, type CommitState, type Generation } from "./steps";
+
+export type { CommitState, Generation } from "./steps";
 
 export type DesignCodex = (o: { prompt: string; schema: object; timeoutMs: number; signal?: AbortSignal }) => Promise<{ answer: unknown; meta: CodexRunMeta }>;
-export type CommitState = { head: string | null; base: string | null; clean: boolean };
 
 export type DesignCallInput = {
   route: "B_html_prototype" | "C_hybrid";
@@ -54,66 +55,18 @@ export type DesignCallDeps = {
   now?: () => number;
 };
 
-export type Generation = {
-  status: "succeeded";
-  tool: "codex_cli";
-  tool_version: string | null;
-  model_reported: string | null;
-  approval_id: string;
-  prompt_sha256: string;
-  worker_commit: string;
-  run_id: string;
-  started_at: string;
-  finished_at: string;
-};
-
 export type DesignCallResult =
   | { status: "succeeded"; outDir: string; generation: Generation; warnings: string[]; receipt: Receipt }
   /** precheck: nothing was used. call: the approval was used and the call did not succeed (never retried here). */
   | { status: "stopped"; code: string; stage: "precheck" | "call"; aborted: boolean };
 
-const sha256 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
-const COMMIT = /^[0-9a-f]{40}$/;
-
-async function writeOnce(path: string, data: unknown): Promise<void> {
-  const h = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  try {
-    await h.writeFile(`${JSON.stringify(data, null, 2)}\n`);
-  } finally {
-    await h.close();
-  }
-}
-
 export async function runDesignCall(i: DesignCallInput, d: DesignCallDeps): Promise<DesignCallResult> {
   const now = d.now ?? Date.now;
-  const refuse = (code: string): DesignCallResult => ({ status: "stopped", code, stage: "precheck", aborted: false });
 
-  // ---- before the approval is used -----------------------------------------------------------
-  if (!i.humanApprovalConfirmed) return refuse("HUMAN_APPROVAL_REQUIRED");
-  if (sha256(i.prompt) !== i.expected.promptSha256 || i.prompt.length !== i.expected.promptChars) return refuse("PROMPT_PIN_MISMATCH");
-  if (!isAbsolute(i.outDir)) return refuse("OUT_DIR_INVALID");
-  if (await lstat(i.outDir).then(() => true, () => false)) return refuse("OUT_DIR_EXISTS");
-  // the output dir is created after the approval is used: its parent must already be a real directory
-  // (the CLI passes it under its parent's real path, so a linked parent is resolved before this)
-  const parent = await lstat(dirname(i.outDir)).catch(() => null);
-  if (!parent || !parent.isDirectory() || parent.isSymbolicLink()) return refuse("OUT_DIR_PARENT_MISSING");
-  if (!COMMIT.test(i.expected.commit)) return refuse("COMMIT_PIN_MISMATCH");
-  const commit = await d.commit().catch(() => null);
-  if (!commit || commit.head !== i.expected.commit || commit.base !== i.expected.commit || !commit.clean) return refuse("COMMIT_PIN_MISMATCH");
-  if (i.signal?.aborted) return { status: "stopped", code: "CODEX_ABORTED", stage: "precheck", aborted: true };
-  if (d.preflight) {
-    const problem = await d.preflight().catch(() => "PREFLIGHT_FAILED");
-    if (problem !== null) return refuse(problem);
-  }
-  let timeoutMs: number;
-  try {
-    ({ timeoutMs } = await d.ledger.precheck({ approvalId: i.approvalId, planId: i.planId, route: i.route, kind: "design", retryOf: i.retryOf }));
-  } catch (error) {
-    return refuse(error instanceof LedgerStop ? error.code : "LEDGER_UNREADABLE");
-  }
-
-  // stopped while the checks ran: nothing is used
-  if (i.signal?.aborted) return { status: "stopped", code: "CODEX_ABORTED", stage: "precheck", aborted: true };
+  // ---- before the approval is used: shared with the image step (steps.ts) --------------------
+  const checked = await checkBeforeApproval(i, "design", d);
+  if (!checked.ok) return { status: "stopped", code: checked.code, stage: "precheck", aborted: checked.aborted };
+  const { timeoutMs } = checked;
 
   // ---- the approval is used from here on ------------------------------------------------------
   const runId = `p2f-${randomBytes(8).toString("hex")}`;

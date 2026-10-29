@@ -18,66 +18,24 @@
  * next steps (pre-render, image approval, packaging: DEV-117), which never call Codex for this design again.
  * Exit: 0 succeeded, 2 refused before anything was used, 1 the call was made (approval used) and did not succeed.
  */
-import { readFile, realpath } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { FactsPack } from "../../lib/design-agent/artifact/schema";
-import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
-import { codexDotenvPresent, runCodexJsonWithMeta } from "../../lib/design-agent/codex";
+import { runCodexJsonWithMeta } from "../../lib/design-agent/codex";
 import { buildDesignPrompt, codexDesignJsonSchema, DesignBrief } from "../../lib/design-agent/phase2f/prompt";
 import { runDesignCall } from "../../lib/design-agent/phase2f-live/design-call";
-import { openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
-import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
-import { prepareCodexSandbox, SandboxError, type CodexSandbox } from "../../lib/design-agent/sandbox";
-import { childEnvironment } from "../../lib/design-agent/worker/env";
+import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
+import { liveContext, parseArgs, runMain, say, stopSignals } from "./phase2f-live-cli";
 
-const REPO = resolve(__dirname, "../..");
 process.umask(0o077);
-const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
-const within = (child: string, parent: string) => {
-  const rel = relative(parent, child);
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
-};
-/** A path with links resolved as far as it exists (the part that does not exist yet is kept as written). */
-async function real(p: string): Promise<string> {
-  const abs = resolve(p);
-  const r = await realpath(abs).catch(() => null);
-  if (r !== null) return r;
-  const up = dirname(abs);
-  return up === abs ? abs : join(await real(up), abs.slice(up.length + (up.endsWith("/") ? 0 : 1)));
-}
-const insideRepo = async (p: string) => within(await real(p), await real(REPO));
+// first, so a signal that arrives during the checks is never lost
+const { controller, stop } = stopSignals();
 
-/**
- * The output dir's parent is hidden from Codex (it holds every run's results). Hiding it must not hide what the
- * sandbox needs (Codex's home, the temp dir its work dir is made in, the home dir) or the repository: such a
- * parent is refused before the approval is used.
- */
-async function outParentProblem(out: string): Promise<string | null> {
-  const parent = await realpath(dirname(resolve(out))).catch(() => null);
-  if (parent === null) return "OUT_DIR_PARENT_MISSING";
-  const codexHome = process.env.CODEX_HOME ? expand(process.env.CODEX_HOME) : join(homedir(), ".codex");
-  for (const needed of [await real(REPO), await real(tmpdir()), await real(homedir()), await real(codexHome)]) {
-    if (within(needed, parent)) return "OUT_DIR_PARENT_UNSAFE";
-  }
-  return null;
-}
 /** The design prompt asks for at most this many generated images on route C (each needs its own approval later). */
 const MAX_ASSETS = 1;
 
 const FLAGS = new Set(["--human-approval-confirmed", "--print-pin"]);
 const VALUES = new Set(["--route", "--facts", "--brief", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of"]);
-
-function parseArgs(argv: string[]): Map<string, string> | null {
-  const out = new Map<string, string>();
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (FLAGS.has(a) && !out.has(a)) out.set(a, "1");
-    else if (VALUES.has(a) && !out.has(a) && argv[i + 1] !== undefined && !argv[i + 1]!.startsWith("--")) out.set(a, argv[++i]!);
-    else return null;
-  }
-  return out;
-}
 
 const routeOf = (r: string | undefined): "B_html_prototype" | "C_hybrid" | null => (r === "B" ? "B_html_prototype" : r === "C" ? "C_hybrid" : null);
 
@@ -92,28 +50,8 @@ async function promptFor(args: Map<string, string>) {
   return { route, built: buildDesignPrompt({ route, facts: facts.data, brief: brief.data, maxAssets: MAX_ASSETS }) };
 }
 
-const say = (o: object) => process.stdout.write(`${JSON.stringify(o)}\n`);
-
-// created first, so a signal that arrives during the checks is never lost (the call then does not start)
-const controller = new AbortController();
-let stopping = false;
-function stop(): void {
-  if (stopping) {
-    // a second signal: end every process now
-    killAllBoundedChildren();
-    process.exit(1);
-  }
-  stopping = true;
-  controller.abort();
-  // the call records itself as aborted; if it does not end soon, end it hard
-  setTimeout(() => {
-    killAllBoundedChildren();
-    process.exit(1);
-  }, 20_000).unref();
-}
-
 async function main(): Promise<number> {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2), FLAGS, VALUES);
   const p = args ? await promptFor(args).catch(() => null) : null;
   if (!args || !p) {
     say({ status: "refused", code: "USAGE" });
@@ -126,26 +64,9 @@ async function main(): Promise<number> {
   }
   const out = args.get("--out");
   const chars = Number(args.get("--expected-prompt-chars"));
-  if (!out || !isAbsolute(out) || !Number.isInteger(chars)) return (say({ status: "refused", code: "USAGE" }), 2);
-  if (await insideRepo(out)) return (say({ status: "refused", code: "OUT_DIR_INSIDE_REPO" }), 2);
-  const parentProblem = await outParentProblem(out);
-  if (parentProblem) return (say({ status: "refused", code: parentProblem }), 2);
-
-  const stateDir = join(expand(process.env.XDG_STATE_HOME ?? "~/.local/state"), "sr-design-worker");
-  const ledgerDir = expand(process.env.SR_PHASE2F_STATE ?? join(stateDir, "phase2f-live"));
-  if (await insideRepo(ledgerDir)) return (say({ status: "refused", code: "LEDGER_INSIDE_REPO" }), 2);
-  const workerPaths = { stateDir, queueRoot: expand(process.env.SR_DESIGN_JOBS ?? "~/sr-design-jobs"), outRoot: expand("~/.local/share/second-root-design") };
-  const env = childEnvironment(process.env);
-
-  // the call's own 15 minutes are enforced by the process runner around Codex; this only ends a run that does not
-  // stop by itself (it also covers the sign-in check, the version and the sandbox probes before the call)
-  setTimeout(() => stop(), WATCHDOG_MS).unref();
-  // the output dir under its parent's real path (a linked parent such as ~/runs -> /mnt/d/runs is fine)
-  const outDir = join(await realpath(dirname(resolve(out))), basename(resolve(out)));
-  // Codex never sees the worker's directories, the ledger or where the results go
-  const protectedPaths = [...new Set([...workerProtectedPaths({ ...workerPaths, env: process.env }), ledgerDir, dirname(outDir)])];
-  const codexHome = process.env.CODEX_HOME ? expand(process.env.CODEX_HOME) : join(homedir(), ".codex");
-  let sandbox: CodexSandbox | null = null;
+  if (!out || !Number.isInteger(chars)) return (say({ status: "refused", code: "USAGE" }), 2);
+  const ctx = await liveContext(out, stop);
+  if ("code" in ctx) return (say({ status: "refused", code: ctx.code }), 2);
   const result = await runDesignCall(
     {
       route: p.route,
@@ -156,28 +77,15 @@ async function main(): Promise<number> {
       planId: args.get("--plan-id") ?? "",
       retryOf: args.get("--retry-of") ?? null,
       expected: { promptSha256: args.get("--expected-prompt-sha256") ?? "", promptChars: chars, commit: args.get("--expected-commit") ?? "" },
-      outDir,
+      outDir: ctx.outDir,
       signal: controller.signal,
     },
     {
-      ledger: openLedger(ledgerDir),
-      commit: async () => {
-        const git = (a: string[]) => runBounded("git", a, { cwd: REPO, env, timeoutMs: 60_000 }).then((r) => (r.code === 0 ? r.stdout : null), () => null);
-        const [head, base, status] = await Promise.all([git(["rev-parse", "HEAD"]), git(["rev-parse", "origin/develop"]), git(["status", "--porcelain", "--untracked-files=all"])]);
-        return { head: head?.trim() ?? null, base: base?.trim() ?? null, clean: status === "" };
-      },
-      // before the approval is used: the sandbox's set-up (no Codex, no bubblewrap started) and the .env rule.
-      // The bubblewrap probe itself runs right before the call (sandbox.ts), as for every Codex call.
-      preflight: async () => {
-        if (await codexDotenvPresent(codexHome)) return "CODEX_DOTENV_PRESENT";
-        try {
-          sandbox = await prepareCodexSandbox({ env, protectedPaths });
-          return null;
-        } catch (error) {
-          return error instanceof SandboxError ? error.code : "CODEX_SANDBOX_UNAVAILABLE";
-        }
-      },
+      ledger: openLedger(ctx.ledgerDir),
+      commit: ctx.commit,
+      preflight: ctx.preflight,
       codex: async (o) => {
+        const sandbox = ctx.sandbox();
         if (sandbox === null) throw new Error("no sandbox");
         return runCodexJsonWithMeta({ sandbox, ...o });
       },
@@ -191,13 +99,4 @@ async function main(): Promise<number> {
   return result.stage === "precheck" ? 2 : 1;
 }
 
-for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal, stop);
-
-main().then(
-  (code) => process.exit(code),
-  () => {
-    say({ status: "stopped", code: "UNEXPECTED" });
-    killAllBoundedChildren();
-    process.exit(1);
-  },
-);
+runMain(main);

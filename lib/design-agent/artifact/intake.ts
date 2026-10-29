@@ -235,11 +235,19 @@ export function checkArtifactPng(bytes: Buffer, limits: FileLimits, rel = ""): {
 
 const ROLE_DIR = { original: "originals/", asset: "assets/", prototype: "quarantine/" } as const;
 /**
- * Generation facts a successful run must report; a null one means the run is not verified (incomplete).
- * model_reported is not among them: an unknown model does not make the files wrong. It is a warning, and only a
- * step that needs the model must ask for it.
+ * Generation facts a successful run must report; a null one means the run is not verified (incomplete): what ties
+ * the files to one approved run (approval, prompt, commit, run, times).
+ * The model and the CLI version are not among them (DEV-117, owner decision): a metadata read that failed does not
+ * make the files wrong. Each is a warning, and a later step that needs them checks generationFactsReported().
  */
-const GENERATION_REQUIRED = ["tool", "tool_version", "approval_id", "prompt_sha256", "worker_commit", "run_id", "started_at", "finished_at"] as const;
+const GENERATION_REQUIRED = ["tool", "approval_id", "prompt_sha256", "worker_commit", "run_id", "started_at", "finished_at"] as const;
+/** Warnings of generation facts that could not be read (not failures). */
+export const GENERATION_FACT_WARNINGS = ["generation_model_unknown", "generation_tool_version_unknown"] as const;
+
+/** For a step that needs the model and the CLI version: both were reported for this run. */
+export function generationFactsReported(record: { warnings: readonly string[] }): boolean {
+  return !record.warnings.some((w) => (GENERATION_FACT_WARNINGS as readonly string[]).includes(w));
+}
 
 export type IntakeRecord = ReturnType<typeof buildRecord>;
 
@@ -470,6 +478,7 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
 
   const warnings: string[] = [];
   if (g.model_reported === null) warnings.push("generation_model_unknown");
+  if (g.tool_version === null) warnings.push("generation_tool_version_unknown");
   if (o.fallback) warnings.push(`fallback_from_c_hybrid:image_${o.fallback.image_outcome}`);
   return buildRecord(a, { artifactSha: sha256(artifactBytes), state, reasons, warnings, files });
 }

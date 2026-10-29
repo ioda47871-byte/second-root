@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { checkArtifactPng, checkCodexDesign, IntakeError, intakeArtifact } from "@/lib/design-agent/artifact/intake";
+import { checkArtifactPng, checkCodexDesign, generationFactsReported, IntakeError, intakeArtifact } from "@/lib/design-agent/artifact/intake";
 import { CODEX_ANSWER_MAX_BYTES, IMAGE_OUTCOMES, MAX_RENDER_HEIGHT, PNG_LIMITS, PROTOTYPE_LIMITS, RelPath, STOP_CLASSES } from "@/lib/design-agent/artifact/schema";
 import { IMAGE_OUTCOMES as CAPABILITY_OUTCOMES } from "@/lib/design-agent/design-image/capability";
 import { checkPng, MOCKUP_PNG_LIMITS } from "@/lib/design-agent/design-image/png";
@@ -86,7 +86,7 @@ describe("verification states (never approvals)", () => {
       p.artifact.observed.originals.desktop_1440 = { state: "generation_failed" };
     }, "original_generation_failed:desktop_1440"],
     ["an unknown approval ID", (p) => (p.artifact.observed.generation.approval_id = null), "generation_unverified:approval_id"],
-    ["unknown tool version and commit", (p) => Object.assign(p.artifact.observed.generation, { tool_version: null, worker_commit: null }), "generation_unverified:tool_version,worker_commit"],
+    ["unknown tool version and commit", (p) => Object.assign(p.artifact.observed.generation, { tool_version: null, worker_commit: null }), "generation_unverified:worker_commit"],
     ["a run of unknown outcome", (p) => (p.artifact.observed.generation.status = "unknown"), "generation_unknown"],
     ["a stopped run", (p) => {
       p.artifact.observed.generation.status = "stopped";
@@ -247,7 +247,17 @@ describe("verification states (never approvals)", () => {
     expect(d).toBe("ARTIFACT_ROUTE_INCONSISTENT route A carries no prototype, render or assets");
   });
 
-  it.each(["tool", "tool_version", "approval_id", "prompt_sha256", "worker_commit", "run_id", "started_at", "finished_at"])(
+  it("an unknown CLI version or model alone is a warning: a normal route B stays render_pair_complete (DEV-117)", async () => {
+    const r = await run(edit(routeB, (p) => Object.assign(p.artifact.observed.generation, { tool_version: null, model_reported: null })));
+    expect(r.verification_state).toBe("render_pair_complete");
+    expect(r.implementation_handoff_allowed).toBe(true);
+    expect(r.warnings).toEqual(expect.arrayContaining(["generation_model_unknown", "generation_tool_version_unknown"]));
+    // a later step that needs them can still tell
+    expect(generationFactsReported(r)).toBe(false);
+    expect(generationFactsReported(await run(routeB()))).toBe(true);
+  });
+
+  it.each(["tool", "approval_id", "prompt_sha256", "worker_commit", "run_id", "started_at", "finished_at"])(
     "an unknown %s alone makes route B incomplete",
     async (field) => {
       const r = await run(edit(routeB, (p) => (p.artifact.observed.generation[field] = null)));

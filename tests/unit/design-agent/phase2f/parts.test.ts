@@ -185,6 +185,7 @@ describe("comparison sheet: a technical pass is not a design success", () => {
     pc_sp_completeness: 4,
     owner: { not_generic: true, adopt: null, confirmed: true, notes: "" },
     stops_and_warnings: [],
+    calls: [],
     ...over,
   });
   it("uses the owner's existing policy numbers (same as comp-impl)", () => {
