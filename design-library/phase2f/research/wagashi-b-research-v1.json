@@ -44,6 +44,9 @@
     }
   ],
   "owner_text_approval": {
-    "status": "pending"
+    "status": "approved",
+    "quote_verbatim": "Second Rootの研究区画 SHA-256 444bc6a24042fc6b60ea7ec707bd8c74c4e4a41fc005e0f9f8d179b0b37315c2 の英文全文を、架空菓庵B v1.1比較実験に限って正式承認します。承認記録の作成と検証を進めてください。Codex実行は別途承認します。",
+    "decided_on": "2026-10-30",
+    "block_sha256": "444bc6a24042fc6b60ea7ec707bd8c74c4e4a41fc005e0f9f8d179b0b37315c2"
   }
 }
