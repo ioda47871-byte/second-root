@@ -7,9 +7,13 @@
 //   FAKE_CODEX_LOGIN   chatgpt (default) | apikey | none
 //   FAKE_CODEX_STEPS   JSON file: array of steps, one per `exec` call:
 //                        { "answer": {...} } | { "text": "..." } | { "exit": 1, "stderr": "..." } | { "sleepMs": 5000 }
+//                        (+ "childPidFile": path, "ignoreTerm": true; see below)
 //   FAKE_CODEX_STATE   file holding the index of the next step
 //   FAKE_CODEX_RECORD  JSONL file: one line per call (args, stdin size, which API-key variables were visible)
 //   FAKE_CODEX_PROMPTS JSONL file (optional): the full stdin of each exec, and the attached images (path, sha256)
+//   FAKE_CODEX_VERSION what `codex --version` prints (default "codex-cli 0.0.0-fake")
+//   FAKE_CODEX_MODEL   the model named in the session log (optional; absent = the log names none)
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -35,6 +39,12 @@ if (args[0] === "login" && args[1] === "status") {
   }
   process.stderr.write("Not logged in\n");
   process.exit(1);
+}
+
+if (args[0] === "--version") {
+  record({});
+  process.stdout.write(`${process.env.FAKE_CODEX_VERSION ?? "codex-cli 0.0.0-fake"}\n`);
+  process.exit(0);
 }
 
 if (args[0] !== "exec") {
@@ -64,9 +74,15 @@ process.stdin.on("end", async () => {
     const dir = join(process.env.CODEX_HOME, "sessions", "2026", "09", "29");
     mkdirSync(dir, { recursive: true });
     const images = args.filter((a) => a.startsWith("--image=")).length;
-    writeFileSync(join(dir, `rollout-2026-09-29T10-00-00-${THREAD}.jsonl`), JSON.stringify({ type: "session_meta", payload: { cwd: process.cwd() } }) + "\n" + JSON.stringify({ images }) + "\n");
+    // FAKE_CODEX_MODEL: the model named in the log's turn context, as the real CLI writes it
+    const model = process.env.FAKE_CODEX_MODEL ? JSON.stringify({ type: "turn_context", payload: { model: process.env.FAKE_CODEX_MODEL } }) + "\n" : "";
+    writeFileSync(join(dir, `rollout-2026-09-29T10-00-00-${THREAD}.jsonl`), JSON.stringify({ type: "session_meta", payload: { cwd: process.cwd() } }) + "\n" + model + JSON.stringify({ images }) + "\n");
     writeFileSync(join(dir, "rollout-2026-09-29T09-00-00-11111111-1111-4111-8111-111111111111.jsonl"), "{}\n");
   }
+  // childPidFile: start a child (same process group) and write its pid, so a test can see it is stopped too.
+  // ignoreTerm: ignore SIGTERM, so only the SIGKILL that follows stops this process.
+  if (step.childPidFile) writeFileSync(step.childPidFile, String(spawn("sleep", ["60"], { stdio: "ignore" }).pid));
+  if (step.ignoreTerm) process.on("SIGTERM", () => undefined);
   if (step.sleepMs) await new Promise((r) => setTimeout(r, step.sleepMs));
   if (step.exit) {
     process.stderr.write(step.stderr ?? "");
