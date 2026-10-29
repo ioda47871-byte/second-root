@@ -11,8 +11,8 @@
  * dirs this call created are removed before it returns (the picture is handed back in memory).
  */
 import { lstat, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { CodexAbortedError, CodexError, assertChatGptSignIn, codexDotenvPresent, codexLooksRateLimited, codexLooksSignedOut, readCodexEvents, removeCodexSession, removeCodexSessionsOf } from "../codex";
+import { basename, join } from "node:path";
+import { CodexAbortedError, CodexError, assertChatGptSignIn, codexDotenvPresent, codexLooksRateLimited, codexLooksSignedOut, listDesignAgentSessions, readCodexEvents, removeCodexSession, removeCodexSessionsOf, removeStaleCodexSessions } from "../codex";
 import { SandboxError, type CodexSandbox } from "../sandbox";
 import { deriveImageOutcome, parseCodexVersion, readSessionFacts, type ImageOutcome } from "./capability";
 import { PngError, readPngNoFollow } from "./png";
@@ -67,6 +67,24 @@ async function takeImage(dir: string): Promise<{ bytes: Buffer; width: number; h
   }
 }
 
+/**
+ * Before the call (as the PoC does): the session logs a cut-off design-agent call left behind (its work dir was
+ * sr-design-codex-…) and those threads' image dirs. Other Codex sessions of the user are not touched.
+ */
+async function removeStaleDesignAgentState(env: Record<string, string | undefined>, codexHome: string): Promise<void> {
+  for (const path of await listDesignAgentSessions(env).catch(() => [] as string[])) {
+    const thread = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/.exec(basename(path))?.[1];
+    if (thread) await rm(join(codexHome, "generated_images", thread), { recursive: true, force: true }).catch(() => undefined);
+  }
+  await removeStaleCodexSessions(env).catch(() => 0);
+}
+
+/** The cleanups of calls still running, so a CLI that is stopped hard can still remove what they left (as the PoC). */
+const activeCleanups = new Set<() => Promise<void>>();
+export async function cleanupActiveImageCalls(): Promise<void> {
+  await Promise.all([...activeCleanups].map((c) => c().catch(() => undefined)));
+}
+
 /** The fixed stop code for an image outcome without a saved picture. */
 export function imageStopCode(outcome: ImageOutcome): string {
   if (outcome === "TOOL_FAILED_USAGE_LIMIT") return "CODEX_QUOTA";
@@ -83,10 +101,26 @@ export async function generateImageOnce(o: { sandbox: CodexSandbox; prompt: stri
   const result = (r: Partial<ImageOnceResult> & Pick<ImageOnceResult, "outcome" | "stopCode">): ImageOnceResult => ({ png: null, width: null, height: null, threadId: null, cliVersion: null, model: null, codexMs: 0, ...r });
   // before any Codex process: Codex would load $CODEX_HOME/.env past the cleared environment (DEV-078)
   if (await codexDotenvPresent(codexHome)) return result({ outcome: "not_applicable", stopCode: "CODEX_DOTENV_PRESENT" });
+  await removeStaleDesignAgentState(sandbox.env, codexHome);
   await assertChatGptSignIn({ sandbox, ...withSignal });
   let cwd: string | undefined;
   let threadId: string | null = null;
   let before: Set<string> | undefined;
+  // the picture is in memory by the time this runs: the thread's image dir, any image dir this call created, and its
+  // session logs go (also when the CLI is stopped hard: cleanupActiveImageCalls)
+  let pending: Promise<void> | undefined;
+  const cleanup = (): Promise<void> =>
+    (pending ??= (async () => {
+      const images = join(codexHome, "generated_images");
+      if (threadId) await rm(join(images, threadId), { recursive: true, force: true }).catch(() => undefined);
+      if (before) for (const name of (await imageThreads(codexHome)) ?? []) if (!before.has(name)) await rm(join(images, name), { recursive: true, force: true }).catch(() => undefined);
+      if (threadId) await removeCodexSession(threadId, sandbox.env).catch(() => 0);
+      if (cwd) {
+        await removeCodexSessionsOf(sandbox.env, new Set([cwd, await realpath(cwd).catch(() => cwd!)])).catch(() => undefined);
+        await rm(cwd, { recursive: true, force: true }).catch(() => undefined);
+      }
+    })());
+  activeCleanups.add(cleanup);
   try {
     cwd = await mkdtemp(join(o.tmpBase, "sr-design-codex-"));
     // the version, in the same jail (no config, no model); unknown is a warning for the caller, never a failure
@@ -123,6 +157,8 @@ export async function generateImageOnce(o: { sandbox: CodexSandbox; prompt: stri
     const image = await takeImage(join(codexHome, "generated_images", threadId));
     if ("code" in image) {
       const outcome = deriveImageOutcome(facts, false);
+      // as the PoC: no picture and the CLI's own rate-limit words is a usage limit
+      if (image.code === "CODEX_NO_IMAGE" && codexLooksRateLimited(run.stdout, run.stderr)) return result({ ...base, outcome, stopCode: "CODEX_QUOTA" });
       // the image tool's own failure decides the code; otherwise the file problem as found
       return result({ ...base, outcome, stopCode: image.code === "CODEX_NO_IMAGE" ? imageStopCode(outcome) : image.code });
     }
@@ -132,14 +168,7 @@ export async function generateImageOnce(o: { sandbox: CodexSandbox; prompt: stri
     if (error instanceof SandboxError) return result({ outcome: "not_applicable", stopCode: error.code });
     throw error;
   } finally {
-    // the picture is in memory: the thread's image dir, any image dir this call created, and its session logs go
-    const images = join(codexHome, "generated_images");
-    if (threadId) await rm(join(images, threadId), { recursive: true, force: true }).catch(() => undefined);
-    if (before) for (const name of (await imageThreads(codexHome)) ?? []) if (!before.has(name)) await rm(join(images, name), { recursive: true, force: true }).catch(() => undefined);
-    if (threadId) await removeCodexSession(threadId, sandbox.env).catch(() => 0);
-    if (cwd) {
-      await removeCodexSessionsOf(sandbox.env, new Set([cwd, await realpath(cwd).catch(() => cwd!)])).catch(() => undefined);
-      await rm(cwd, { recursive: true, force: true }).catch(() => undefined);
-    }
+    await cleanup();
+    activeCleanups.delete(cleanup);
   }
 }

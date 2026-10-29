@@ -68,20 +68,20 @@ export const say = (o: object) => process.stdout.write(`${JSON.stringify(o)}\n`)
  * does not start): the first aborts the call (it records itself as aborted), a second one or 20 s later kills
  * every process and exits.
  */
-export function stopSignals(): { controller: AbortController; stop: () => void } {
+export function stopSignals(o: { cleanup?: () => Promise<void> } = {}): { controller: AbortController; stop: () => void } {
   const controller = new AbortController();
   let stopping = false;
+  // a hard stop still removes what a running call left (its session log and image dirs), for at most 15 s
+  const hardExit = (): void => {
+    killAllBoundedChildren();
+    const done = o.cleanup ? Promise.race([o.cleanup().catch(() => undefined), new Promise((r) => setTimeout(r, 15_000).unref())]) : Promise.resolve();
+    void done.then(() => process.exit(1));
+  };
   const stop = (): void => {
-    if (stopping) {
-      killAllBoundedChildren();
-      process.exit(1);
-    }
+    if (stopping) return hardExit();
     stopping = true;
     controller.abort();
-    setTimeout(() => {
-      killAllBoundedChildren();
-      process.exit(1);
-    }, 20_000).unref();
+    setTimeout(hardExit, 20_000).unref();
   };
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal, stop);
   return { controller, stop };

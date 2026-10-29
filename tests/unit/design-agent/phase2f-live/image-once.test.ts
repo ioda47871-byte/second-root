@@ -149,6 +149,23 @@ describe("generateImageOnce: one call, every outcome as observed", () => {
     expect(calls).toEqual([]);
   });
 
+  it("no picture and the CLI's own usage-limit words: CODEX_QUOTA (as the PoC)", async () => {
+    const r = await once(({ cwd }) => (leave(cwd), { ...ok(`${thread}${line({ type: "error", message: "You've hit your usage limit" })}`) }));
+    expect(r).toMatchObject({ png: null, stopCode: "CODEX_QUOTA" });
+  });
+
+  it("a cut-off earlier call's leftovers (its session log and image dir) are removed before the call; others are kept", async () => {
+    const STALE = "99999999-8888-4777-8666-555555555555";
+    const sessions = mkdirP(join(codexHome, "sessions", "2026", "10", "28"));
+    writeFileSync(join(sessions, `rollout-2026-10-28T10-00-00-${STALE}.jsonl`), line({ type: "session_meta", payload: { cwd: join(tmpBase, "sr-design-codex-AbCdEf") } }));
+    writeFileSync(join(mkdirP(join(codexHome, "generated_images", STALE)), "old.png"), colourPng(600, 600));
+    writeFileSync(join(sessions, `rollout-2026-10-28T11-00-00-${OTHER}.jsonl`), line({ type: "session_meta", payload: { cwd: "/home/someone/project" } }));
+    writeFileSync(join(mkdirP(join(codexHome, "generated_images", OTHER)), "keep.png"), colourPng(600, 600));
+    await once(({ cwd }) => (leave(cwd, [], { "ig_1.png": colourPng(1024, 1024) }), ok(thread)));
+    expect(leftovers().images).toEqual([OTHER]);
+    expect(leftovers().logs).toEqual([join("2026", "10", "28", `rollout-2026-10-28T11-00-00-${OTHER}.jsonl`)]);
+  });
+
   it("maps outcomes to fixed stop codes", () => {
     expect(imageStopCode("TOOL_FAILED_USAGE_LIMIT")).toBe("CODEX_QUOTA");
     expect(imageStopCode("TOOL_FAILED_POLICY")).toBe("CODEX_IMAGE_TOOL_FAILED");

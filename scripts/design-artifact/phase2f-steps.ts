@@ -10,7 +10,7 @@
  *       is for (design run, prompt in full, SHA, commit, placement, essential, the plan's calls so far).
  *
  *   --package --route A|B|C --facts <pack.json> --artifact-id <id> --shop-id <id> --shop-name <name> --out <new dir>
- *   --result <new file> [--brief <brief.json>] [--design <design-dir>] [--image <image-dir>]
+ *   --result <new file> [--brief <brief.json>] [--design <design-dir>] [--image <image-dir>] [--expected-prompt-sha256 <sha> (route A)]
  *       Builds the Design Artifact with the 2f-1 runner from the recorded steps, then the DEV-114 intake. The design
  *       prompt rebuilt from the facts and brief, and each image prompt rebuilt by the pre-render checks, must be the
  *       recorded ones. Route C without a picture (not approved, or failed) goes through the runner's own rules: a
@@ -35,7 +35,9 @@ import { readStep, sha256, StepStop, type Step } from "../../lib/design-agent/ph
 
 process.umask(0o077);
 const FLAGS = new Set(["--prerender", "--package", "--sheet"]);
-const VALUES = new Set(["--route", "--design", "--image", "--facts", "--brief", "--out", "--result", "--results", "--artifact-id", "--shop-id", "--shop-name"]);
+const VALUES = new Set(["--route", "--design", "--image", "--facts", "--brief", "--out", "--result", "--results", "--artifact-id", "--shop-id", "--shop-name", "--expected-prompt-sha256"]);
+/** Stops that come before the image tool can be called: the call never reached it. */
+const BEFORE_THE_TOOL = new Set(["CODEX_NOT_INSTALLED", "CODEX_NOT_SIGNED_IN", "CODEX_API_KEY_AUTH", "CODEX_DOTENV_PRESENT", "CODEX_SANDBOX_UNAVAILABLE", "CODEX_SANDBOX_LEAK", "CODEX_SANDBOX_CONFIG", "OUT_DIR_UNWRITABLE"]);
 const IMAGE_OUTCOMES = new Set(["IMAGE_SAVED", "NO_SESSION_LOG", "TOOL_NOT_CALLED", "TOOL_NOT_SEEN_CODE_MODE", "TOOL_FAILED_USAGE_LIMIT", "TOOL_FAILED_POLICY", "TOOL_FAILED_UNSUPPORTED", "TOOL_FAILED", "TOOL_FAILED_TRANSIENT", "TOOL_CALLED_NO_FILE"]);
 
 function parseArgs(argv: string[]): Map<string, string> | null {
@@ -97,6 +99,7 @@ async function prerender(args: Map<string, string>, ledger: Ledger): Promise<num
     `- 設計の実行ID: ${design.run_id}（承認ID ${design.approval_id}、計画 ${design.plan_id}）`,
     `- 設計の指示文SHA: ${design.prompt_sha256}`,
     `- 対象コミット（設計の実行時）: ${design.commit}`,
+    "- 画像の実行時のコミット: 実行の時点の origin/develop（承認のときに `--expected-commit` で指定。作業ツリーが空であること）",
     `- この計画の呼び出し: 初回 ${used.first_calls}/${LIVE_LIMITS.firstCalls}、再試行 ${used.retries}/${LIVE_LIMITS.retries}、使った時間 約${used.minutes}分/120分`,
     "",
     ...(pre.requests.length === 0 ? ["この設計に画像はありません（画像の承認は不要）。"] : []),
@@ -137,9 +140,12 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
   let result: RunResult;
   if (route === "A_image") {
     const imageDir = args.get("--image");
-    if (!imageDir || args.has("--design")) return refuse("USAGE");
+    const expectedSha = args.get("--expected-prompt-sha256");
+    if (!imageDir || !expectedSha || args.has("--design")) return refuse("USAGE");
     const image = await readStep(resolve(imageDir), ledger, { kind: "concept_image", route: "A_image" });
     calls.push(callOf(image));
+    // the concept image was made from the approved concept prompt (the image step pinned it; checked again here)
+    if (image.receipt.prompt_sha256 !== expectedSha) return (say({ status: "stopped", code: "RECORD_PROMPT_MISMATCH" }), 2);
     if (image.call.status !== "succeeded" || !image.generation) return (say({ status: "stopped", code: "IMAGE_RUN_NOT_SUCCEEDED", image_code: image.call.code }), 2);
     result = await packageConceptRun({ ...common, pocDir: image.dir, generation: image.generation });
   } else {
@@ -160,10 +166,17 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
     if (args.get("--image")) {
       image = await readStep(resolve(args.get("--image")!), ledger, { kind: "image", route: "C_hybrid" });
       calls.push(callOf(image));
+      // the picture was made under the design run's plan (its limits and its time)
+      if (image.receipt.plan_id !== step.receipt.plan_id) throw new StepStop("RECORD_MISMATCH");
     }
     const assetPort: AssetPort = async (req) => {
-      // no image step: the picture was not approved or not run; the runner decides (B fallback or an owner stop)
-      if (!image) return { png: null, image_outcome: "TOOL_NOT_CALLED", stop_code: "IMAGE_NOT_RUN", approval_id: null };
+      if (!image) {
+        // an image call for this very picture that the ledger knows of must be given (never packaged as "not run")
+        const ran = (await ledger.calls(step.receipt.plan_id)).some((c) => c.receipt.kind === "image" && c.receipt.route === "C_hybrid" && c.receipt.prompt_sha256 === req.promptSha256);
+        if (ran) throw new PortStop("IMAGE_RUN_NOT_GIVEN", "input");
+        // no image step: the picture was not approved or not run; the runner decides (B fallback or an owner stop)
+        return { png: null, image_outcome: "TOOL_NOT_CALLED", stop_code: "IMAGE_NOT_RUN", approval_id: null };
+      }
       const link = (image.call.request ?? {}) as { design_run_id?: string; asset_id?: string };
       // the picture belongs to this design run and this asset, and was made from the prompt the checks rebuild now
       if (link.design_run_id !== step.receipt.run_id || link.asset_id !== req.assetId || image.receipt.prompt_sha256 !== req.promptSha256) throw new PortStop("RECORD_MISMATCH", "input");
@@ -173,9 +186,12 @@ async function packageRun(args: Map<string, string>, ledger: Ledger): Promise<nu
         if (sha256(png) !== image.call.png_sha256) throw new PortStop("RECORD_MISMATCH", "input");
         return { png, image_outcome: "IMAGE_SAVED", stop_code: null, approval_id: image.receipt.approval_id };
       }
-      // a failure as recorded; a call that never reached the image tool is "not called", its stop code kept
-      const outcome = typeof image.call.outcome === "string" && IMAGE_OUTCOMES.has(image.call.outcome) ? image.call.outcome : "TOOL_NOT_CALLED";
-      return { png: null, image_outcome: outcome as "TOOL_NOT_CALLED", stop_code: (image.call.stop_code as string | null) ?? image.call.code, approval_id: image.receipt.approval_id };
+      // a failure as recorded. Without a recorded image outcome: "not called" only for a stop that comes before the
+      // image tool can run (sign-in, sandbox, .env); anything else is an unknown outcome, which the runner stops on
+      const stopCode = (image.call.stop_code as string | null) ?? image.call.code;
+      const recorded = typeof image.call.outcome === "string" && IMAGE_OUTCOMES.has(image.call.outcome) ? image.call.outcome : null;
+      const outcome = recorded ?? (stopCode !== null && BEFORE_THE_TOOL.has(stopCode) ? "TOOL_NOT_CALLED" : "not_applicable");
+      return { png: null, image_outcome: outcome as "TOOL_NOT_CALLED", stop_code: stopCode, approval_id: image.receipt.approval_id };
     };
     const browser = await launch();
     try {

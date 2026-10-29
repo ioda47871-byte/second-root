@@ -10,7 +10,7 @@
  *   --out <dir> --plan-id <id> --approval-id <id> --expected-prompt-sha256 <sha> --expected-prompt-chars <n>
  *   --expected-commit <sha> --human-approval-confirmed [--retry-of <approval id>]
  *       One real image call (lib/design-agent/phase2f-live/image-call.ts). Route C's request comes from the
- *       pre-render step (scripts/design-artifact/phase2f.ts --prerender) and is checked against its design run
+ *       pre-render step (scripts/design-artifact/phase2f-steps.ts --prerender) and is checked against its design run
  *       (output folder and ledger both "succeeded"). Everything else as the design step: checked before the approval
  *       is used, the approval used once, at most 15 minutes, the plan's limits kept, never retried; SIGTERM / SIGINT /
  *       SIGHUP stop the call and record it as aborted.
@@ -20,7 +20,7 @@
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { generateImageOnce } from "../../lib/design-agent/design-image/image-once";
+import { cleanupActiveImageCalls, generateImageOnce } from "../../lib/design-agent/design-image/image-once";
 import { buildMockupPrompt, loadPocInputs } from "../../lib/design-agent/design-image/prompt";
 import { runImageCall, type ImageRequest } from "../../lib/design-agent/phase2f-live/image-call";
 import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
@@ -29,7 +29,7 @@ import { liveContext, parseArgs, REPO, runMain, say, stopSignals } from "./phase
 
 process.umask(0o077);
 // first, so a signal that arrives during the checks is never lost
-const { controller, stop } = stopSignals();
+const { controller, stop } = stopSignals({ cleanup: cleanupActiveImageCalls });
 
 const FLAGS = new Set(["--human-approval-confirmed", "--print-pin", "--concept-v4"]);
 const VALUES = new Set(["--route", "--request", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of"]);

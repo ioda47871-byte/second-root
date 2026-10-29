@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CodexError } from "@/lib/design-agent/codex";
+import { CodexAbortedError, CodexError } from "@/lib/design-agent/codex";
 import { buildDesignPrompt } from "@/lib/design-agent/phase2f/prompt";
 import { runDesignCall } from "@/lib/design-agent/phase2f-live/design-call";
 import { runImageCall, type ImageRequest, type ImageTool } from "@/lib/design-agent/phase2f-live/image-call";
@@ -49,10 +49,10 @@ function world() {
     const r = cli(["--prerender", "--route", route, "--design", designDir, "--facts", factsPath, "--out", out]);
     return { ...r, dir: out };
   };
-  const image = async (request: ImageRequest, tool: ImageTool, o: { approvalId?: string; prompt?: string } = {}) => {
+  const image = async (request: ImageRequest, tool: ImageTool, o: { approvalId?: string; planId?: string } = {}) => {
     const outDir = join(runs, `image-${++n}`);
     const r = await runImageCall(
-      { route: "C_hybrid", request, common: { humanApprovalConfirmed: true, approvalId: o.approvalId ?? `fictional-image-${n}`, planId: request.design.plan_id, retryOf: null, expected: { promptSha256: request.prompt_sha256, promptChars: request.prompt_chars, commit: COMMIT }, outDir } },
+      { route: "C_hybrid", request, common: { humanApprovalConfirmed: true, approvalId: o.approvalId ?? `fictional-image-${n}`, planId: o.planId ?? request.design.plan_id, retryOf: null, expected: { promptSha256: request.prompt_sha256, promptChars: request.prompt_chars, commit: COMMIT }, outDir } },
       { ledger, commit: clean, image: tool },
     );
     return { outDir, r };
@@ -219,7 +219,10 @@ describe("image failures follow the owner's rules (never rewritten as a success)
     expect(readFileSync(join(w.runs, readdirSync(w.runs).filter((f) => f.startsWith("pre-")).at(-1)!, "prerender.md"), "utf8")).toContain("主役画像: はい");
     const img = await w.image(req, failed("TOOL_FAILED", "CODEX_IMAGE_TOOL_FAILED"));
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", hero.outDir, "--image", img.outDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_ESSENTIAL_FAILED", ownerCheck: true });
-    expect(w.pkg("C", ["--brief", w.briefPath, "--design", hero.outDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_ESSENTIAL_FAILED" });
+    // the image call that ran must be given; an essential picture that was never run stops for the owner too
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", hero.outDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_RUN_NOT_GIVEN" });
+    const hero2 = await w.design("C_hybrid", answer({ asset: "hero" }), { plan: "plan-fictional-3" });
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", hero2.outDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_ESSENTIAL_FAILED" });
 
     const story = await w.design("C_hybrid", answer({ asset: "story" }), { plan: "plan-fictional-2" });
     const policy = await w.image(readRequest(w.prerender(story.outDir).dir), failed("TOOL_FAILED_POLICY", "CODEX_IMAGE_TOOL_FAILED"));
@@ -261,7 +264,65 @@ describe("each image is its own approval, inside the plan's limits", () => {
     expect(called).toBe(0);
 
     // route A packages as a concept image, never a browser render
-    const pa = w.pkg("A", ["--image", join(w.runs, "concept-1")]);
+    const pa = w.pkg("A", ["--image", join(w.runs, "concept-1"), "--expected-prompt-sha256", sha256(Buffer.from("concept"))]);
     expect(pa.out).toMatchObject({ status: "done", record: { route: "A_image", implementation_handoff_allowed: false } });
   }, 120_000);
 });
+
+describe("Fresh Review 1 fixes", () => {
+  it("an image call the ledger knows of must be given to the package: never packaged as 'not run'", async () => {
+    const w = world();
+    const d = await w.design("C_hybrid", answer({ asset: "story" }));
+    await w.image(readRequest(w.prerender(d.outDir).dir), failed("TOOL_FAILED_POLICY", "CODEX_IMAGE_TOOL_FAILED"));
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_RUN_NOT_GIVEN" });
+  }, 60_000);
+
+  it("an image request for a design run that did not succeed, or under another plan, is refused before anything is used", async () => {
+    const w = world();
+    const d = await w.design("C_hybrid", answer({ asset: "story" }));
+    const req = readRequest(w.prerender(d.outDir).dir);
+    let called = 0;
+    const tool: ImageTool = async (o) => ((called += 1), saved(o));
+    expect((await w.image(req, tool, { planId: "plan-fictional-9" })).r).toMatchObject({ code: "IMAGE_REQUEST_OTHER_PLAN", stage: "precheck" });
+    const bad = await w.design("C_hybrid", answer({ asset: "story" }), { fail: true });
+    const call = JSON.parse(readFileSync(join(bad.outDir, "call.json"), "utf8")) as { receipt: { approval_id: string; run_id: string; prompt_sha256: string; commit: string } };
+    const toFailed = { ...req, design: { ...req.design, dir: bad.outDir, approval_id: call.receipt.approval_id, run_id: call.receipt.run_id } };
+    expect((await w.image(toFailed, tool)).r).toMatchObject({ code: "DESIGN_RUN_NOT_SUCCEEDED", stage: "precheck" });
+    expect(called).toBe(0);
+  }, 60_000);
+
+  it("an aborted image is never a fallback: the package stops", async () => {
+    const w = world();
+    const d = await w.design("C_hybrid", answer({ asset: "story" }));
+    const img = await w.image(readRequest(w.prerender(d.outDir).dir), async () => Promise.reject(new CodexAbortedError()));
+    expect(img.r).toMatchObject({ status: "stopped", code: "CODEX_ABORTED", aborted: true });
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", img.outDir]).out).toMatchObject({ status: "stopped", code: "CODEX_IMAGE_ABORTED" });
+  }, 60_000);
+
+  it("a failure without an image outcome: 'not called' only when it stopped before the tool; otherwise the run stops", async () => {
+    const w = world();
+    const d = await w.design("C_hybrid", answer({ asset: "story" }));
+    const req = readRequest(w.prerender(d.outDir).dir);
+    const signIn = await w.image(req, async () => Promise.reject(new CodexError("CODEX_NOT_SIGNED_IN", "x")));
+    const fell = w.pkg("C", ["--brief", w.briefPath, "--design", d.outDir, "--image", signIn.outDir]);
+    expect(fell.out).toMatchObject({ status: "done", record: { route: "B_html_prototype" } });
+    const d2 = await w.design("C_hybrid", answer({ asset: "story" }), { plan: "plan-fictional-2" });
+    const odd = await w.image(readRequest(w.prerender(d2.outDir).dir), async () => Promise.reject(new Error("boom")));
+    expect(odd.r).toMatchObject({ code: "CODEX_UNEXPECTED" });
+    expect(w.pkg("C", ["--brief", w.briefPath, "--design", d2.outDir, "--image", odd.outDir]).out).toMatchObject({ status: "stopped", code: "RUN_ASSET_PORT_FAILED" });
+  }, 120_000);
+
+  it("route A is packaged only for the approved concept prompt", async () => {
+    const w = world();
+    const prompt = "concept";
+    const outDir = join(w.runs, "concept-a");
+    await runImageCall(
+      { route: "A_image", prompt, common: { humanApprovalConfirmed: true, approvalId: "fictional-concept-2", planId: "plan-fictional-1", retryOf: null, expected: { promptSha256: sha256(Buffer.from(prompt)), promptChars: prompt.length, commit: COMMIT }, outDir } },
+      { ledger: w.ledger, commit: clean, image: saved },
+    );
+    expect(w.pkg("A", ["--image", outDir]).status).toBe(2);
+    expect(w.pkg("A", ["--image", outDir, "--expected-prompt-sha256", "0".repeat(64)]).out).toMatchObject({ status: "stopped", code: "RECORD_PROMPT_MISMATCH" });
+    expect(w.pkg("A", ["--image", outDir, "--expected-prompt-sha256", sha256(Buffer.from(prompt))]).out).toMatchObject({ status: "done", record: { route: "A_image" } });
+  }, 60_000);
+});
+

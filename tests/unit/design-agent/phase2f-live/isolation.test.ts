@@ -62,7 +62,7 @@ describe("isolation of the Phase 2f-2 steps", () => {
     expect(design).not.toMatch(/image_generation|generateImageOnce|design-image|\bfetch\(|anthropic|openai|child_process|spawn\(|execFile/);
     const image = readFileSync(resolve(REPO, IMAGE_CLI), "utf8");
     expect(image).not.toMatch(/runCodexJson|\bfetch\(|anthropic|openai|child_process|spawn\(|execFile|SR_POC_|poc-approval-used|run-wagashi/);
-    expect(named(image, `${L}/design-image/image-once`)).toEqual(["generateImageOnce"]);
+    expect(named(image, `${L}/design-image/image-once`)).toEqual(["cleanupActiveImageCalls", "generateImageOnce"]);
     expect(named(image, `${L}/design-image/prompt`)).toEqual(["buildMockupPrompt", "loadPocInputs"]);
     expect(readFileSync(resolve(REPO, CLI_SHARED), "utf8")).toMatch(/prepareCodexSandbox\(\{ env, protectedPaths \}\)/);
   });
