@@ -5306,7 +5306,7 @@
     {
       "id": "DEV-118",
       "title": "Phase 2f-2：Codex に渡す設計の答えの JSON Schema からルートの $schema を除く（本番 worker と同じ withoutMeta）",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-117"
@@ -5348,7 +5348,8 @@
       "human_approval_triggers": [
         "B方式の実際のCodex実行"
       ],
-      "note": "Schema only; prompt text, SHA and length unchanged."
+      "note": "Schema only; prompt text, SHA and length unchanged.",
+      "merged": "#150 → 32bbce2 (squash, 2026-10-29)"
     }
   ]
 }
