@@ -86,12 +86,19 @@ describe("the CP-026..032 intake", () => {
     ])
       expect(codeOf(() => checkIntake(withEvidence("html_source", bad), { registeredCaseIds: REGISTERED })), JSON.stringify(bad)).toBe("INTAKE_SCHEMA_INVALID");
     expect(codeOf(() => checkIntake(withEvidence("design_analysis", { state: "recorded_unverified", ref: "design-library/success-cases/CP-026-x.md" }), { registeredCaseIds: REGISTERED }))).toBe("ok");
+    expect(codeOf(() => checkIntake(withEvidence("design_analysis", { state: "recorded_unverified", ref: "design-library/../x.md" }), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
+    expect(codeOf(() => checkIntake(withEvidence("design_analysis", { state: "recorded_unverified", sha256: sha }), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
     // a deliverable the study never had is "not_implemented", said only once the form is known
     const form = (f: string, kind: string) => {
       const j = withEvidence(kind, { state: "not_implemented" });
       j.records[0].research_form = f;
+      j.records[0].evidence.adopted_image = { state: "recorded_unverified", sha256: sha };
       return j;
     };
+    // the form is set only once the adopted image is on record (never from a guess)
+    const guessed = intake();
+    guessed.records[0].research_form = "static_image_study";
+    expect(codeOf(() => checkIntake(guessed, { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
     expect(codeOf(() => checkIntake(withEvidence("html_source", { state: "not_implemented" }), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
     const still = checkIntake(form("static_image_study", "html_source"), { registeredCaseIds: REGISTERED });
     expect(still.records[0]!.not_implemented).toEqual(["html_source"]);
@@ -100,7 +107,10 @@ describe("the CP-026..032 intake", () => {
     expect(checkIntake(form("static_image_study", "mobile_full_page_capture"), { registeredCaseIds: REGISTERED }).records[0]!.not_implemented).toEqual(["mobile_full_page_capture"]);
     expect(checkIntake(form("local_web_poc", "mobile_full_page_capture"), { registeredCaseIds: REGISTERED }).records[0]!.not_implemented).toEqual(["mobile_full_page_capture"]);
     expect(codeOf(() => checkIntake(form("local_web_poc", "html_source"), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
-    expect(codeOf(() => checkIntake(form("static_image_study", "adopted_image"), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
+    // the adopted image itself is never "not implemented"
+    const noImage = form("static_image_study", "html_source");
+    noImage.records[0].evidence.adopted_image = { state: "not_implemented" };
+    expect(codeOf(() => checkIntake(noImage, { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
     expect(codeOf(() => checkIntake(form("static_image_study", "design_analysis"), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
   });
 

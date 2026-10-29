@@ -119,6 +119,8 @@ export const ResearchIntake = z
             const notImpl = MAY_NOT_EXIST.filter((k) => ev[k].state === "not_implemented");
             // "not implemented" is said only once the form is known, and a web prototype always has its HTML
             if (notImpl.length && rec.research_form === "unknown") ctx.addIssue({ code: "custom", message: "not_implemented_needs_known_form", path: ["research_form"] });
+            // the form is read from the originals: it is set only once the adopted image is on record
+            if (rec.research_form !== "unknown" && ev.adopted_image.state !== "recorded_unverified") ctx.addIssue({ code: "custom", message: "form_without_adopted_image", path: ["research_form"] });
             if (rec.research_form === "local_web_poc" && ev.html_source.state === "not_implemented") ctx.addIssue({ code: "custom", message: "web_poc_without_html", path: ["evidence", "html_source"] });
           }),
       )
