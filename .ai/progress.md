@@ -270,3 +270,5 @@
   - **次:** B 方式の実証準備（WSL の読み取り確認と実行手順の最終報告）。実際の Codex 実行はオーナーの個別承認の後。A/C の画像生成はまだ許可されていない。PR #142 は未マージのまま。
 
 - 2026-10-29: DEV-118 done（PR #150 → develop 32bbce2、squash）。`codexDesignJsonSchema()` からルートの `$schema` を除いた（本番 worker と同じ `withoutMeta`）。構造・Zod の検証・B/C のプロンプト（B `a2fdd003…7954`/5706、C `20b6ec35…8845`/6200）は不変。独立 Fresh Review PASS（Low 2件のみ、対応不要）、CI 11/11 緑。実際の Codex 実行・画像生成は無し。次は B 方式の実証（オーナーの別承認待ち）。
+- 2026-10-29: B方式の初回（承認 `wagashi-b-design-20261029-01`、first-1、5965ms）は `CODEX_EXEC_FAILED`。終了コード・原因は未記録。承認は使用済みのまま（再利用しない）。
+- 2026-10-29: DEV-119 done（PR #151 → develop bb369ac、squash）。Codex 向け設計スキーマから `not`（interaction_spec の items）と `minLength` を除き、本番 worker のスキーマが使うキーワードだけにした（Zod の回答検査は不変）。`codex exec` の失敗時は `diagnostic: {exit_code, class}` だけを call.json と CLI 出力に残す。独立 Fresh Review PASS（Low 5件）、CI 11/11 緑。原因は未確定で、次の B retry-1（新しい承認 ID、`--retry-of wagashi-b-design-20261029-01`）で確かめる。研究なしの B を比較基準として維持。実際の Codex 実行・画像生成は無し（オーナーの別承認待ち）。

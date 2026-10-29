@@ -5354,7 +5354,7 @@
     {
       "id": "DEV-119",
       "title": "Phase 2f-2：B方式の初回失敗（CODEX_EXEC_FAILED）を受けた、設計スキーマの Structured Outputs 互換化と、失敗時の終了コード・固定分類の記録",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-118"
@@ -5402,7 +5402,8 @@
         "tests/unit/ai-tasks.test.ts",
         "latest-head required CI",
         "independent Fresh Review"
-      ]
+      ],
+      "merged": "#151 → bb369ac (squash, 2026-10-29)"
     }
   ]
 }
