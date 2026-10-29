@@ -79,7 +79,7 @@ export function cssProblems(css: string, assets: ReadonlySet<string>, o: { canon
   // Chromium's re-serialised text has no comments and no escapes left: read it as is (a "/*" inside a string stays text)
   if (o.canonical) {
     if (/@import/i.test(css)) out.push("css @import");
-    if (/expression\s*\(|(?<![\w-])behavior\s*:|-moz-binding|javascript:/i.test(css)) out.push("css code execution");
+    if (/expression\s*\(|(?<!scroll-)behavior\s*:|-moz-binding|javascript:/i.test(css)) out.push("css code execution");
     for (const target of cssUrls(css)) if (!allowedUrl(target, assets)) out.push(`css url: ${target.slice(0, 80)}`);
     if (/image-set\(|image\(|src\(/i.test(css)) out.push("css image function other than url()");
     return out;
@@ -91,7 +91,7 @@ export function cssProblems(css: string, assets: ReadonlySet<string>, o: { canon
   // cannot hide it and a comment that mentions it does not count); Chromium's re-serialisation drops @import,
   // so this check is the one that sees it
   if (/@import/i.test(decodeEscapes(outsideStringsAndComments(css)))) out.push("css @import");
-  if (/expression\s*\(|(?<![\w-])behavior\s*:|-moz-binding|javascript:/i.test(flat)) out.push("css code execution");
+  if (/expression\s*\(|(?<!scroll-)behavior\s*:|-moz-binding|javascript:/i.test(flat)) out.push("css code execution");
   for (const target of cssUrls(flat)) if (!allowedUrl(target, assets)) out.push(`css url: ${target.slice(0, 80)}`);
   if (/image-set\(|image\(|src\(/i.test(flat)) out.push("css image function other than url()");
   return out;
@@ -160,7 +160,9 @@ export async function checkPrototype(browser: Browser, proto: { html: string; cs
       if (p.length) throw new PrototypeUnsafe(`style attribute: ${p[0]}`);
     }
     if (URL_ATTRIBUTES.includes(a.name)) {
-      const values = a.name === "srcset" ? a.value.split(",").map((s) => s.trim().split(/\s+/)[0] ?? "") : [a.value.trim()];
+      // only ASCII whitespace is stripped, as the URL parser does (a U+3000 before "#" makes a path, not a fragment)
+      const trim = (v: string) => v.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
+      const values = a.name === "srcset" ? a.value.split(",").map((s) => trim(s).split(/[\t\n\f\r ]+/)[0] ?? "") : [trim(a.value)];
       for (const v of values) {
         // a fragment-only URL always stays in this page (ids may be Japanese)
         if (/^#\S*$/u.test(v)) continue;

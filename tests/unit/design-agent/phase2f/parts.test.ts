@@ -120,6 +120,8 @@ h1{writing-mode:vertical-rl;font-feature-settings:"palt"}.mark::before{content:"
     ["spaced and upper-case", "a{color:red; BEHAVIOR : url(#x)}"],
     ["first in a block", "a{behavior:url(#x)}"],
     ["escaped", "a{color:red;\\62 ehavior:url(#x)}"],
+    ["IE6 _behavior", "a{_behavior:url(#x)}"],
+    ["IE8 -ms-behavior", "a{-ms-behavior:url(#x)}"],
   ])("DEV-123: the old IE behavior property is still refused (%s)", async (_n, css) => {
     expect(await check(page("x"), css)).toBe("UNSAFE css code execution");
     expect(await check(page(`<div style="${css.slice(2, -1)}">x</div>`))).toBe("UNSAFE style attribute: css code execution");
@@ -128,6 +130,9 @@ h1{writing-mode:vertical-rl;font-feature-settings:"palt"}.mark::before{content:"
   it("DEV-123: a #fragment link stays allowed only as a fragment", async () => {
     expect(await check(page('<a href="https://example.com/#お知らせ">x</a>'))).toBe("UNSAFE a href: https://example.com/#お知らせ");
     expect(await check(page('<a href="#info">x</a><svg><use href="#お">x</use></svg>'))).toBe("OK");
+    // whitespace after "#", or a non-ASCII space before it, is not a plain fragment
+    expect(await check(page('<a href="#\nhttps://example.com">x</a>'))).toMatch(/^UNSAFE a href: #/);
+    expect(await check(page('<a href="\u3000#x">x</a>'))).toMatch(/^UNSAFE a href: /);
   });
 
   it("returns each shown asset's alt text (the image request on route C)", async () => {
