@@ -435,6 +435,9 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
     const path = spec.reading_path[k];
     if (new Set(path).size !== path.length || path.some((id) => !sectionSet.has(id))) fail("ARTIFACT_STRUCTURE_INVALID", `reading_path.${k}`);
   }
+  // a section may be hidden at one viewport (w or h 0), but each viewport shows at least one section
+  for (const k of Object.keys(VIEWPORTS) as ViewportKey[])
+    if (!spec.sections.some((s) => s.boxes[k].w > 0 && s.boxes[k].h > 0)) fail("ARTIFACT_STRUCTURE_INVALID", `no section shown at ${k}`);
   for (const s of spec.sections) {
     for (const k of Object.keys(VIEWPORTS) as ViewportKey[]) {
       const b = s.boxes[k];
@@ -456,6 +459,9 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
   if (g.started_at && g.finished_at && Date.parse(g.started_at) > Date.parse(g.finished_at)) reasons.push("generation_unverified:time_order");
   if (o.stops.length) reasons.push(`run_stopped:${o.stops.map((s) => s.code).join(",")}`);
   for (const m of o.missing) reasons.push(`declared_missing:${m.item}`);
+  // hidden at one width is a design choice; hidden at every width means the section (and its facts) never shows
+  for (const s of spec.sections)
+    if ((Object.keys(VIEWPORTS) as ViewportKey[]).every((k) => s.boxes[k].w === 0 || s.boxes[k].h === 0)) reasons.push(`section_hidden_everywhere:${s.id}`);
   // the provenance record of an owner upload (where and when it was made, by whom) is not designed yet
   if (a.source_kind === "chatgpt_owner_upload_compat") reasons.push("owner_upload_provenance_not_implemented");
   const allRender = presents.every(([, og]) => og.state === "present" && og.kind === "viewport_render");

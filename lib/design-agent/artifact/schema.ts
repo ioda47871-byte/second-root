@@ -100,7 +100,8 @@ export type FactsPack = z.infer<typeof FactsPack>;
 
 // ---- what Codex declares (the only shape Codex's answer may have) -------------------------------
 
-const Box = z.strictObject({ x: Px, y: Px, w: Px.refine((n) => n > 0, "empty_box"), h: Px.refine((n) => n > 0, "empty_box") });
+/** A section's box at one viewport. w = 0 or h = 0 means the section is not shown at that viewport (a legitimate design choice). */
+const Box = z.strictObject({ x: Px, y: Px, w: Px, h: Px });
 const LiveText = z.union([z.strictObject({ fact_ref: FactId }), z.strictObject({ ui_label: Text(40) })]);
 
 export const StructureSpec = z.strictObject({

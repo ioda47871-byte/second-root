@@ -12,7 +12,7 @@ const LIB = "lib/design-agent/artifact";
 const CLI = "scripts/design-artifact/intake.ts";
 
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
-const files = git(["ls-files", "--cached", "--others", "--exclude-standard", "--", LIB, "scripts/design-artifact"]).filter((f) => /\.(ts|tsx|mts|cts|js|mjs)$/.test(f));
+const files = git(["ls-files", "--cached", "--others", "--exclude-standard", "--", LIB, CLI]).filter((f) => /\.(ts|tsx|mts|cts|js|mjs)$/.test(f));
 
 function specifiers(source: string): string[] {
   const out: string[] = [];
@@ -48,8 +48,16 @@ describe("isolation of the Design Artifact intake", () => {
     }
   });
 
-  it("is imported only by its own CLI", () => {
+  it("is imported only by its own CLI and the Phase 2f runner files (exact paths)", () => {
     const hits = git(["grep", "--untracked", "-lE", "design-agent/artifact|[\"'`]\\.{1,2}/artifact[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`]);
-    expect(hits).toEqual([CLI]);
+    expect(hits).toEqual(
+      [
+        CLI,
+        "scripts/design-artifact/phase2f.ts",
+        "lib/design-agent/phase2f/compare-sheet.ts",
+        "lib/design-agent/phase2f/prompt.ts",
+        "lib/design-agent/phase2f/runner.ts",
+      ].sort(),
+    );
   });
 });

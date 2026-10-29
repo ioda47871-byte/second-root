@@ -5102,6 +5102,65 @@
         "人の承認記録の方式の確定"
       ],
       "note": "Merged to develop (a29c12f, PR #146). Verification states are file checks, not approvals; human gates always not_done. Unknown model is a warning; route C needs a generated image; an explicit runner fallback C→B is accepted with the failure kept (not after a policy refusal). PNG checks are structural only: decode, real capture and binding to a Codex run are Phase 2f. OS-level Codex/Claude separation is Phase 2e."
+    },
+    {
+      "id": "DEV-115",
+      "title": "Phase 2f-1：A/B/C実証の最小実行プログラム（擬似Codexのみ）、試作の安全検査・描画・実復号・比較シート",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-114"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-115-phase2f-runner",
+      "purpose": "オーナーが2026-10-29に承認したPhase 2f-1。Codexの設計（B/C）や既存の画像PoC出力（A）を、同じ架空店舗で比べられる共通のDesign Artifactへ変換する実行プログラム。CodexとAIの画像生成はポート経由で、2f-1は擬似ポートだけ。実際のCodex実行・画像生成・2f-2の実証は別承認。",
+      "acceptance_criteria": [
+        "comp-implの描画部品は、lib/design-agent/phase2f/render-prototype.tsの1ファイルだけが読み込み、読み込む名前も隔離テストで固定する。comp-impl本体・CSS許可リスト・品質基準は変えない",
+        "描画前に試作の安全検査（script・外部通信・イベント属性・危険なCSS）を行い、実装用CSS許可リストや固定構造は試作にかけない",
+        "PC1440・SP390をdeviceScaleFactor=1、JS無効・ネットワーク遮断で全ページ撮影し、PNGを実際に復号して幅と真っ白でないことを確かめる",
+        "画像が主役でない失敗は失敗履歴を保ったBへの切り替え、主役の失敗とポリシー拒否はオーナー確認、失敗の書き換え・自動再試行・上限の自動増加はしない",
+        "正常な入力（モデル名不明、区画のスマホ非表示、凝ったCSS、横はみ出しの記録）が不必要に止まらないことをテストする",
+        "比較シートは既存の22/25・各4以上の方針とPC/SP完成度・凡庸でない判断を使い、技術的な合格をデザインの成功としない。Aは構想として区別する",
+        "停止と警告ごとにオーナーが正誤を付けられ、不必要な停止の率を測れる"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f/*.test.ts",
+        "tests/unit/design-agent/artifact/*.test.ts",
+        "tests/unit/design-agent/comp-impl/isolation.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/guardrails.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/phase2f/**",
+        "scripts/design-artifact/phase2f.ts",
+        "tests/unit/design-agent/phase2f/**",
+        "tests/unit/design-agent/comp-impl/isolation.test.ts（正確なパスの例外のみ）",
+        "lib/design-agent/artifact/**（区画の非表示の受け入れのみ）",
+        "tests/unit/design-agent/artifact/**",
+        "docs/design/phase2f-runner.md",
+        "docs/design/design-artifact-v1.md",
+        "docs/design/design-intelligence-integration-plan.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-115.md（独立reviewによる記録のみ）"
+      ],
+      "forbidden_scope": [
+        "実際のCodex実行・画像生成・Phase 2f-2の実証",
+        "comp-impl本体・design-image・png.ts・codex.ts・worker・pipeline・G0〜G6・CSS許可範囲・品質閾値・安全基準の変更",
+        "PR #142のマージ・研究データの変更",
+        "本番worker・timer・bridge・営業送信・公開・Supabase・Vercel",
+        ".github/workflows・package.jsonの依存",
+        "PRの自動マージ"
+      ],
+      "human_approval_triggers": [
+        "DEV-115のdevelopへのマージ",
+        "2f-2の本物のポート（Codexのjail・承認ID台帳）への接続",
+        "A/B/Cそれぞれの実行（承認ID・回数・時間・環境）"
+      ],
+      "note": "Pseudo ports only. The real Codex/image ports and the approval ledger come with 2f-2 under separate approval."
     }
   ]
 }
