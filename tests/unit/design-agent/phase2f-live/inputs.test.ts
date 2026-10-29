@@ -71,7 +71,8 @@ describe("the design step's CLI (offline paths only)", () => {
     expect(r.status, r.stderr).toBe(0);
     const out = JSON.parse(r.stdout);
     const expected = buildDesignPrompt({ route: "B_html_prototype", facts: FactsPack.parse(json(PACK)), brief: DesignBrief.parse(json(BRIEF)), maxAssets: 1 });
-    expect(out).toEqual({ mode: "print_pin", route: "B_html_prototype", prompt_sha256: expected.sha256, prompt_chars: expected.chars });
+    // DEV-122: the pin also names the prompt version (v1 when none is asked for) and the research section (none)
+    expect(out).toEqual({ mode: "print_pin", route: "B_html_prototype", prompt_version: "v1", research_section: null, prompt_sha256: expected.sha256, prompt_chars: expected.chars });
   }, 30_000);
 
   it("refuses bad usage and a call without the owner's confirmation, before the ledger is touched", () => {

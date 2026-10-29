@@ -1,0 +1,49 @@
+{
+  "schema": "phase2f_research_section_v1",
+  "section_id": "wagashi-b-research-v1",
+  "source": {
+    "research_pr": 142,
+    "research_pr_head": "efe269f4b4a13f3c05bfb799891c8157c9be4c0b",
+    "manifest_sha256": "bd503a3b014e47219ca5acaf3100ea16e280b1950130470e06c9f083dbd638da",
+    "patterns_sha256": "cacabc3a0a15c8481b0462eed9d38c4f2b571e253ab031e9d5eccd756fac37a4",
+    "case_ids": [
+      "CP-016",
+      "CP-009",
+      "CP-003"
+    ]
+  },
+  "principles": [
+    {
+      "id": "R1",
+      "from_case": "CP-016",
+      "text": "Let one physical relationship that truly belongs to the shop become the skeleton of the page, built in static HTML and CSS, instead of a large picture followed by repeated content bands. Keep it quiet: one surface, one object, generous empty space and low-density type."
+    },
+    {
+      "id": "R2",
+      "from_case": "CP-009",
+      "text": "Link the sections with one continuous drawn line that comes from the shop's own handwork, and change density and scale from one section to the next instead of repeating one module in every section."
+    },
+    {
+      "id": "R3",
+      "from_case": "CP-003",
+      "text": "When the shop states a sequence or several reasons, give each its own visual beat and rhythm. Do not show the same guide, scale or card twice, and do not let the distinctive first screen shrink into a conventional catalogue further down."
+    }
+  ],
+  "avoid": [
+    {
+      "from_case": "CP-016",
+      "text": "Keeping a generic skeleton (a top navigation bar, copy on one side, a giant hero picture, a strip of pictures) and only changing what is inside it."
+    },
+    {
+      "from_case": "CP-009",
+      "text": "Discarding the strongest element of the first screen while polishing the later sections."
+    },
+    {
+      "from_case": "CP-016",
+      "text": "Treating a good picture as if it proved a distinctive page skeleton."
+    }
+  ],
+  "owner_text_approval": {
+    "status": "pending"
+  }
+}
