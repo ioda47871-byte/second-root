@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -154,6 +154,51 @@ describe("route C (prototype + one generated asset, each its own call)", () => {
     const a = answer({ asset: "story" });
     a.prototype.html = a.prototype.html.replace(/alt="[^"]*"/, 'alt=""');
     expect(await run("C_hybrid", designPort(a), assetPort(SAVED))).toMatchObject({ status: "stopped", code: "ASSET_DESCRIPTION_MISSING" });
+  });
+});
+
+describe("Fresh Review 1 fixes", () => {
+  type R = Awaited<ReturnType<NonNullable<Parameters<typeof runPrototypeRoute>[0]["render"]>>>;
+  const blockedRender = async (): Promise<R> => {
+    const one = { png: colourPng(1440, 900), blocked: 1, scrollHeight: 900, scrollWidth: 1440, sections: {}, assets: {} };
+    return { desktop_1440: one, mobile_390: { ...one, png: colourPng(390, 844), scrollWidth: 390 } };
+  };
+  it("an outside request in the render stops route B for the owner", async () => {
+    expect(await run("B_html_prototype", designPort(answer()), undefined, { render: blockedRender })).toMatchObject({ status: "stopped", code: "PROTOTYPE_NETWORK_ATTEMPT", ownerCheck: true });
+  });
+  it("on route C the preflight render stops it BEFORE any image call is spent", async () => {
+    calls.asset = 0;
+    const r = await run("C_hybrid", designPort(answer({ asset: "story" })), assetPort(SAVED), { render: blockedRender });
+    expect(r).toMatchObject({ status: "stopped", code: "PROTOTYPE_NETWORK_ATTEMPT", ownerCheck: true });
+    expect(calls.asset).toBe(0);
+  });
+  it("a picture really shown in the hero but declared elsewhere stops (the declaration must match the page)", async () => {
+    const a = answer({ asset: "hero" });
+    a.structure_spec.sections[1]!.asset_refs = [];
+    a.structure_spec.sections[2]!.asset_refs = ["A1"];
+    expect(await run("C_hybrid", designPort(a), assetPort(SAVED))).toMatchObject({ status: "stopped", code: "CODEX_ASSET_PLACEMENT_MISMATCH" });
+  });
+  it("a failed picture in the first screen is essential: no silent fallback", async () => {
+    // a short hero puts the story picture in the first screen
+    const a = answer({ asset: "story", css: "body{margin:0;background:#f4efe6;color:#222}section{min-height:200px;padding:20px}" });
+    const r = await run("C_hybrid", designPort(a), assetPort({ png: null, image_outcome: "TOOL_FAILED", stop_code: "CODEX_IMAGE_TOOL_FAILED", approval_id: "a-2f-08" }));
+    expect(r).toMatchObject({ status: "stopped", code: "IMAGE_ESSENTIAL_FAILED", ownerCheck: true });
+  });
+  it("the runner enforces the per-call time limit even if a port ignores it", async () => {
+    const r = await run("B_html_prototype", () => new Promise(() => undefined), undefined, { limits: { ...PLAN_LIMITS, callTimeoutMs: 30 } });
+    expect(r).toMatchObject({ status: "stopped", code: "CODEX_TIMEOUT" });
+  });
+  it("a box sticking out on the left keeps only its visible part", async () => {
+    const r = await run("B_html_prototype", designPort(answer({ css: "html,body{overflow-x:clip}body{margin:0}section{min-height:300px}[data-section=hero]{margin-left:-200px;width:600px;background:#8c2f39}" })));
+    expect(r.status).toBe("done");
+    if (r.status !== "done") return;
+    const a = JSON.parse(readFileSync(join(r.packageDir, "artifact.json"), "utf8"));
+    const hero = a.declared.structure_spec.sections.find((s: { id: string }) => s.id === "hero").boxes.desktop_1440;
+    expect([hero.x, hero.w]).toEqual([0, 400]);
+  });
+  it("a section hidden at every width is recorded (incomplete)", async () => {
+    const r = await run("B_html_prototype", designPort(answer({ css: "body{margin:0;background:#f4efe6;color:#222}section{min-height:300px}[data-section=story]{display:none}" })));
+    expect(r.status === "done" && r.record.reasons).toEqual(["section_hidden_everywhere:story"]);
   });
 });
 

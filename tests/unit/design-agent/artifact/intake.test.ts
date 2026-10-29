@@ -224,6 +224,15 @@ describe("verification states (never approvals)", () => {
     expect(await detail(run(edit(routeC, (p) => (p.artifact.observed.generation.image_outcome = outcome))))).toBe("ARTIFACT_ROUTE_INCONSISTENT route C: generated assets without IMAGE_SAVED");
   });
 
+  it("a section hidden at every width is recorded (incomplete): it and its facts never show", async () => {
+    const r = await run(edit(routeB, (p) => {
+      p.artifact.declared.structure_spec.sections[2].boxes.mobile_390 = { x: 0, y: 0, w: 0, h: 0 };
+      p.artifact.declared.structure_spec.sections[2].boxes.desktop_1440 = { x: 0, y: 0, w: 0, h: 0 };
+    }));
+    expect(r.verification_state).toBe("incomplete");
+    expect(r.reasons).toEqual(["section_hidden_everywhere:info"]);
+  });
+
   it("accepts a section hidden on mobile (w 0): a legitimate design, not a stop", async () => {
     const r = await run(edit(routeB, (p) => (p.artifact.declared.structure_spec.sections[2].boxes.mobile_390 = { x: 0, y: 0, w: 0, h: 0 })));
     expect(r.verification_state).toBe("render_pair_complete");

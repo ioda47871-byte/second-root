@@ -27,7 +27,7 @@ import { STOP_CLASSES, type DesignArtifact, type FactsPack, type IMAGE_OUTCOMES 
 import { decodeCheck } from "./decode-check";
 import { buildAssetPrompt, buildDesignPrompt, codexDesignJsonSchema, type DesignBrief } from "./prompt";
 import { checkPrototype, PrototypeUnsafe } from "./prototype-safety";
-import { RENDER_VIEWPORTS, renderPrototype, RenderError, type MeasuredBox, type RenderKey } from "./render-prototype";
+import { RENDER_VIEWPORTS, renderPrototype, RenderError, type MeasuredBox, type RenderKey, type RenderPrototype } from "./render-prototype";
 
 type ImageOutcome = (typeof IMAGE_OUTCOMES)[number];
 type StopClass = (typeof STOP_CLASSES)[number];
@@ -76,6 +76,16 @@ export const RECOVERY = {
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 
+/** The per-call time limit, enforced by the runner itself (a port that ignores its timeoutMs still stops the run). */
+async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([p, new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new PortStop("CODEX_TIMEOUT", "interrupted")), Math.max(0, ms))))]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** A neutral placeholder PNG (16 × 16, one mid grey) for an asset that could not be generated in a fallback. */
 export function placeholderPng(): Buffer {
   const chunk = (type: string, data: Buffer) => {
@@ -120,7 +130,9 @@ async function writeAndIntake(c: Common, files: Record<string, Buffer>, artifact
 }
 
 /** Routes B and C. */
-export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" | "C_hybrid"; browser: Browser; brief: DesignBrief; designPort: DesignPort; assetPort?: AssetPort }): Promise<RunResult> {
+export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" | "C_hybrid"; browser: Browser; brief: DesignBrief; designPort: DesignPort; assetPort?: AssetPort; render?: RenderPrototype }): Promise<RunResult> {
+  // tests may substitute the renderer (to reproduce a blocked request); the CLI never does
+  const render = c.render ?? renderPrototype;
   const limits = c.limits ?? PLAN_LIMITS;
   const now = c.now ?? Date.now;
   const started = now();
@@ -140,7 +152,8 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
   let generation: Omit<Generation, "image_outcome">;
   try {
     log.design_calls += 1;
-    ({ answer, generation } = await c.designPort({ prompt: built.prompt, promptSha256: built.sha256, schema: codexDesignJsonSchema(), timeoutMs: Math.min(limits.callTimeoutMs, budgetLeft()) }));
+    const ms = Math.min(limits.callTimeoutMs, budgetLeft());
+    ({ answer, generation } = await withTimeout(c.designPort({ prompt: built.prompt, promptSha256: built.sha256, schema: codexDesignJsonSchema(), timeoutMs: ms }), ms));
   } catch (e) {
     if (e instanceof PortStop) return stop(e.code, e.stopClass, e.stopClass === "environment" ? RECOVERY.wait : RECOVERY.new_run);
     return stop("RUN_DESIGN_PORT_FAILED", "request", RECOVERY.new_run);
@@ -180,7 +193,29 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
     if (!assetIds.length) return stop("CODEX_NO_ASSET_ON_ROUTE_C", "output", RECOVERY.fix_input);
     if (assetIds.length > limits.maxAssetCalls) return stop("RUN_LIMIT_ASSET_CALLS", "approval", RECOVERY.new_run, true);
     if (!c.assetPort) return stop("RUN_NO_ASSET_PORT", "input", RECOVERY.fix_input);
-    const essential = new Set(spec.sections.filter((s) => s.role === "hero").flatMap((s) => s.asset_refs));
+    // a preflight render with placeholders BEFORE any image call: no approved image call is spent on a page that
+    // would be stopped, and where each picture really sits is measured, not taken from Codex's declaration
+    const placeholders = new Map(assetPaths.map((p) => [p, placeholderPng()] as const));
+    let pre;
+    try {
+      pre = await render(c.browser, proto, placeholders, spec.sections.map((s) => s.id));
+    } catch (e) {
+      if (e instanceof RenderError) return stop(e.code, "output", RECOVERY.fix_input);
+      throw e;
+    }
+    if (pre.desktop_1440.blocked + pre.mobile_390.blocked > 0) return stop("PROTOTYPE_NETWORK_ATTEMPT", "output", RECOVERY.fix_input, true);
+    const heroIds = new Set(spec.sections.filter((s) => s.role === "hero").map((s) => s.id));
+    const essential = new Set<string>();
+    for (const id of assetIds) {
+      const path = `assets/${id}.png`;
+      const placed = [pre.desktop_1440.assets[path], pre.mobile_390.assets[path]];
+      const where = new Set(placed.flatMap((p) => p?.sections ?? []));
+      const declared = spec.sections.filter((s) => s.asset_refs.includes(id)).map((s) => s.id);
+      // the declaration must match the page: a picture shown nowhere, or not in the section that declares it, stops
+      if (!placed.some((p) => p?.shown) || declared.some((d) => !where.has(d))) return stop("CODEX_ASSET_PLACEMENT_MISMATCH", "output", RECOVERY.fix_input);
+      // essential: in the hero, in the first screen at either width, or outside every section (its role is unknown)
+      if ([...where].some((w) => heroIds.has(w)) || placed.some((p) => p?.firstScreen || p?.outsideSections)) essential.add(id);
+    }
     for (const id of assetIds) {
       const path = `assets/${id}.png`;
       const alt = alts[path];
@@ -190,7 +225,8 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
       let res;
       try {
         log.asset_calls += 1;
-        res = await c.assetPort({ assetId: id, prompt: req.prompt, promptSha256: req.sha256, timeoutMs: Math.min(limits.callTimeoutMs, budgetLeft()) });
+        const ms = Math.min(limits.callTimeoutMs, budgetLeft());
+        res = await withTimeout(c.assetPort({ assetId: id, prompt: req.prompt, promptSha256: req.sha256, timeoutMs: ms }), ms);
       } catch (e) {
         if (e instanceof PortStop) return stop(e.code, e.stopClass, e.stopClass === "environment" ? RECOVERY.wait : RECOVERY.new_run);
         return stop("RUN_ASSET_PORT_FAILED", "request", RECOVERY.new_run);
@@ -225,7 +261,7 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
   // 5. render both widths; any blocked request is a safety stop
   let rendered;
   try {
-    rendered = await renderPrototype(c.browser, proto, assetFiles, spec.sections.map((s) => s.id));
+    rendered = await render(c.browser, proto, assetFiles, spec.sections.map((s) => s.id));
   } catch (e) {
     if (e instanceof RenderError) return stop(e.code, "output", RECOVERY.fix_input);
     throw e;
@@ -253,10 +289,16 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
       if (!m) missing.push({ item: `section_not_marked_${k}_${s.id}`.slice(0, 61).replace(/[^a-z0-9_]/g, "_"), reason: "no element carries this data-section in the render" });
       const box = m ?? { x: 0, y: 0, w: 0, h: 0 };
       // page coordinates, clipped to the page (an overflow is recorded above, never hidden)
-      const x = Math.max(0, Math.min(width, Math.floor(box.x)));
-      const y = Math.max(0, Math.min(height, Math.floor(box.y)));
-      const w = box.w > 0 ? Math.max(0, Math.min(width - x, Math.ceil(box.w))) : 0;
-      const h = box.h > 0 ? Math.max(0, Math.min(height - y, Math.ceil(box.h))) : 0;
+      // the part of the box inside the page (a box sticking out on any side keeps only its visible part)
+      const x1 = Math.max(0, Math.floor(box.x));
+      const y1 = Math.max(0, Math.floor(box.y));
+      const x2 = Math.min(width, Math.ceil(box.x + box.w));
+      const y2 = Math.min(height, Math.ceil(box.y + box.h));
+      const visible = box.w > 0 && box.h > 0 && x2 > x1 && y2 > y1;
+      const x = Math.min(x1, width);
+      const y = Math.min(y1, height);
+      const w = visible ? x2 - x1 : 0;
+      const h = visible ? y2 - y1 : 0;
       (boxes[s.id] ??= {} as Record<RenderKey, MeasuredBox>)[k] = { x, y, w, h };
     }
   }
@@ -319,8 +361,10 @@ export async function packageConceptRun(c: Common & { pocDir: string; generation
   if (typeof report.width !== "number" || typeof report.height !== "number") return stop("CONCEPT_REPORT_INVALID");
   const decoded = decodeCheck(png, report.width);
   // a valid PNG in a format the reader does not decode is noted, not stopped (intake still checks its structure)
-  if (!decoded.ok && decoded.code === "RENDER_UNSUPPORTED_FORMAT") log.stops.push({ code: "CONCEPT_DECODE_UNSUPPORTED_FORMAT", class: "inconclusive", stage: "intake" });
+  const unsupported = !decoded.ok && decoded.code === "RENDER_UNSUPPORTED_FORMAT";
+  if (unsupported) log.stops.push({ code: "CONCEPT_DECODE_UNSUPPORTED_FORMAT", class: "inconclusive", stage: "intake" });
   else if (!decoded.ok) return stop(decoded.code === "RENDER_BLANK" ? "CONCEPT_IMAGE_BLANK" : "CONCEPT_IMAGE_UNDECODABLE");
+  if (decoded.ok && decoded.height !== report.height) return stop("CONCEPT_REPORT_INVALID");
   const size = decoded.ok ? { width: decoded.width, height: decoded.height } : { width: report.width, height: report.height };
   const design = {
     schema: "codex_design_v1" as const,
@@ -349,7 +393,10 @@ export async function packageConceptRun(c: Common & { pocDir: string; generation
         prototype: null,
         generation: { ...c.generation, image_outcome: "IMAGE_SAVED" },
         stops: [],
-        missing: [{ item: "mobile_concept_image", reason: "route A produced one concept image; a separate 390 design was not generated" }],
+        missing: [
+          { item: "mobile_concept_image", reason: "route A produced one concept image; a separate 390 design was not generated" },
+          ...(unsupported ? [{ item: "concept_pixels_not_decoded", reason: "the PNG format is not one the runner decodes; only its structure was checked" }] : []),
+        ],
         fallback: null,
       },
     });

@@ -9,8 +9,9 @@ import { REPO } from "./support";
 // and it never names a model API, an API key or the asset store's writer.
 //
 // Phase 2f-1 (owner-approved): exactly ONE other file may import it, to reuse the
-// safe page opener and full-page screenshot for Codex prototypes. Nothing else of
-// comp-impl is reachable from it (no implementation CSS allowlist, no comp spec).
+// safe page opener (network shut, JS off) and the page height cap for Codex
+// prototypes. Nothing else of comp-impl is reachable from it (no implementation
+// CSS allowlist, no comp spec).
 const PHASE2F_RENDER = "lib/design-agent/phase2f/render-prototype.ts";
 
 describe("isolation of the comp-to-site PoC", () => {

@@ -36,9 +36,29 @@ export class PrototypeUnsafe extends Error {
 const FORBIDDEN_ELEMENTS = ["script", "iframe", "frame", "frameset", "object", "embed", "applet", "form", "base", "portal", "foreignobject", "animate", "set", "animatemotion", "animatetransform", "noscript"];
 const URL_ATTRIBUTES = ["href", "src", "srcset", "poster", "data", "action", "formaction", "background", "xlink:href", "ping", "cite", "longdesc", "manifest", "icon", "lowsrc", "dynsrc", "codebase", "archive"];
 
-/** CSS problems in one stylesheet text: forbidden at-rules or functions, and url() to anything but a declared asset. */
-export function cssProblems(css: string, assets: ReadonlySet<string>): string[] {
+/** url() targets in a CSS text, quoted strings understood (a ")" inside quotes does not end the url). */
+export function cssUrls(css: string): string[] {
   const out: string[] = [];
+  for (const m of css.matchAll(/url\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^"')\s]*))\s*\)/gi)) {
+    out.push((m[1] ?? m[2] ?? m[3] ?? "").replace(/\\(.)/g, "$1").trim());
+  }
+  return out;
+}
+
+/** A url() target a prototype may use: a declared asset, or an in-page reference (#id, e.g. an inline SVG filter). */
+const allowedUrl = (target: string, assets: ReadonlySet<string>) => assets.has(target) || /^#[A-Za-z0-9_-]+$/.test(target);
+
+/** CSS problems in one stylesheet text: forbidden at-rules or functions, and url() to anything but a declared asset or #id. */
+export function cssProblems(css: string, assets: ReadonlySet<string>, o: { canonical?: boolean } = {}): string[] {
+  const out: string[] = [];
+  // Chromium's re-serialised text has no comments and no escapes left: read it as is (a "/*" inside a string stays text)
+  if (o.canonical) {
+    if (/@import/i.test(css)) out.push("css @import");
+    if (/expression\s*\(|behavior\s*:|-moz-binding|javascript:/i.test(css)) out.push("css code execution");
+    for (const target of cssUrls(css)) if (!allowedUrl(target, assets)) out.push(`css url: ${target.slice(0, 80)}`);
+    if (/image-set\(|image\(|src\(/i.test(css)) out.push("css image function other than url()");
+    return out;
+  }
   // escapes are decoded first (so "u\\72l(" cannot hide a url() and "\\201C" in content stays allowed), then comments dropped
   const decoded = css.replace(/\\([0-9a-fA-F]{1,6})\s?|\\([^\n0-9a-fA-F])/g, (_m, hex: string | undefined, ch: string | undefined) =>
     hex ? String.fromCodePoint(Math.min(parseInt(hex, 16) || 0xfffd, 0x10ffff)) : (ch ?? ""),
@@ -46,37 +66,45 @@ export function cssProblems(css: string, assets: ReadonlySet<string>): string[] 
   const flat = decoded.replace(/\/\*[\s\S]*?\*\//g, " ");
   if (/@import/i.test(flat)) out.push("css @import");
   if (/expression\s*\(|behavior\s*:|-moz-binding|javascript:/i.test(flat)) out.push("css code execution");
-  for (const m of flat.matchAll(/url\(\s*(['"]?)([^'")]*)\1\s*\)/gi)) {
-    const target = m[2]!.trim();
-    if (!assets.has(target)) out.push(`css url: ${target.slice(0, 80)}`);
-  }
+  for (const target of cssUrls(flat)) if (!allowedUrl(target, assets)) out.push(`css url: ${target.slice(0, 80)}`);
   if (/image-set\(|image\(|src\(/i.test(flat)) out.push("css image function other than url()");
   return out;
 }
 
-type Parsed = { elements: string[]; attributes: { el: string; name: string; value: string }[]; styles: string[]; images: { src: string; alt: string }[] };
+type Parsed = {
+  elements: string[];
+  attributes: { el: string; name: string; value: string }[];
+  styles: string[];
+  images: { src: string; alt: string }[];
+  /** Every stylesheet text (style.css, <style> blocks, style attributes) as Chromium parsed and re-serialised it; null if it could not. */
+  canonical: (string | null)[];
+};
 
 /** Parses the HTML with Chromium's parser on a blank page (JS off, every request aborted) and lists what the check needs. */
-async function parseHtml(browser: Browser, html: string): Promise<Parsed> {
+async function parseHtml(browser: Browser, html: string, css: string): Promise<Parsed> {
   const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block" });
   try {
     await context.route("**/*", (route) => route.abort());
     const page = await context.newPage();
-    const script = `((html) => {
+    const script = `((html, css) => {
       const doc = new DOMParser().parseFromString(html, "text/html");
-      const elements = [], attributes = [], styles = [], images = [];
+      const elements = [], attributes = [], styles = [], images = [], canonical = [];
+      // Chromium's own CSS parser: comments, escapes and strings resolved exactly as the renderer would
+      const canon = (text) => { try { const sh = new CSSStyleSheet(); sh.replaceSync(text); return [...sh.cssRules].map((r) => r.cssText).join("\\n"); } catch (e) { return null; } };
+      canonical.push(canon(css));
       const walk = (root) => {
         for (const el of root.querySelectorAll("*")) {
           elements.push(el.localName.toLowerCase());
           for (const a of el.attributes) attributes.push({ el: el.localName.toLowerCase(), name: a.name.toLowerCase(), value: a.value });
-          if (el.localName.toLowerCase() === "style") styles.push(el.textContent || "");
+          if (el.localName.toLowerCase() === "style") { styles.push(el.textContent || ""); canonical.push(canon(el.textContent || "")); }
+          if (el.hasAttribute("style")) canonical.push(el.style ? el.style.cssText : null);
           if (el.localName.toLowerCase() === "img") images.push({ src: (el.getAttribute("src") || "").trim(), alt: (el.getAttribute("alt") || "").trim() });
           if (el.localName.toLowerCase() === "template" && el.content) walk(el.content);
         }
       };
       walk(doc);
-      return { elements, attributes, styles, images };
-    })(${JSON.stringify(html)})`;
+      return { elements, attributes, styles, images, canonical };
+    })(${JSON.stringify(html)}, ${JSON.stringify(css)})`;
     return (await page.evaluate(script)) as Parsed;
   } finally {
     await context.close();
@@ -90,11 +118,17 @@ async function parseHtml(browser: Browser, html: string): Promise<Parsed> {
 export async function checkPrototype(browser: Browser, proto: { html: string; css: string }, assetPaths: readonly string[]): Promise<{ alts: Record<string, string> }> {
   const assets = new Set(assetPaths);
   for (const p of assets) if (!ASSET_PATH.test(p)) throw new PrototypeUnsafe(`asset path: ${p}`);
-  const parsed = await parseHtml(browser, proto.html);
+  const parsed = await parseHtml(browser, proto.html, proto.css);
   for (const el of parsed.elements) if (FORBIDDEN_ELEMENTS.includes(el)) throw new PrototypeUnsafe(`element <${el}>`);
   for (const a of parsed.attributes) {
     if (a.name.startsWith("on")) throw new PrototypeUnsafe(`event attribute ${a.name}`);
-    if (a.el === "meta" && a.name === "http-equiv") throw new PrototypeUnsafe("meta http-equiv");
+    // harmless boilerplate is fine; refresh, cookies and anything else are not
+    if (a.el === "meta" && a.name === "http-equiv" && !["content-type", "x-ua-compatible", "content-language"].includes(a.value.trim().toLowerCase())) throw new PrototypeUnsafe(`meta http-equiv ${a.value.slice(0, 40)}`);
+    // any attribute holding a url() (SVG fill, mask, filter, clip-path, marker ...) follows the CSS url rule
+    if (a.name !== "style" && /url\s*\(/i.test(a.value)) {
+      if (a.value.includes("\\")) throw new PrototypeUnsafe(`${a.el} ${a.name}: escaped url`);
+      for (const t of cssUrls(a.value)) if (!allowedUrl(t, assets)) throw new PrototypeUnsafe(`${a.el} ${a.name}: url ${t.slice(0, 80)}`);
+    }
     if (a.name === "style") {
       const p = cssProblems(a.value, assets);
       if (p.length) throw new PrototypeUnsafe(`style attribute: ${p[0]}`);
@@ -114,6 +148,12 @@ export async function checkPrototype(browser: Browser, proto: { html: string; cs
   }
   for (const css of [...parsed.styles, proto.css]) {
     const p = cssProblems(css, assets);
+    if (p.length) throw new PrototypeUnsafe(p[0]!);
+  }
+  // the same rules on Chromium's own reading of every stylesheet (catches comment, string and escape tricks)
+  for (const css of parsed.canonical) {
+    if (css === null) throw new PrototypeUnsafe("css not parseable");
+    const p = cssProblems(css, assets, { canonical: true });
     if (p.length) throw new PrototypeUnsafe(p[0]!);
   }
   const alts: Record<string, string> = {};

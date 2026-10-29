@@ -43,7 +43,8 @@ export function sheetEntry(route: SheetEntry["route"], result: RunResult): Sheet
   for (const s of result.log.stops) list.push({ code: s.code, source: "run", stop_was_correct: null });
   if (done) {
     for (const w of done.record.warnings) list.push({ code: w, source: "intake_warning", stop_was_correct: null });
-    for (const r of done.record.reasons) list.push({ code: r, source: "intake_reason", stop_was_correct: null });
+    // a run stop already listed from the run log is not counted twice
+    for (const r of done.record.reasons) if (!r.startsWith("run_stopped:")) list.push({ code: r, source: "intake_reason", stop_was_correct: null });
   }
   const original = (k: "desktop_1440" | "mobile_390") => done?.record.files.find((f) => f.role === "original" && f.path.includes(k === "desktop_1440" ? "desktop" : "mobile"))?.path ?? null;
   return {
@@ -71,7 +72,9 @@ export function sheetVerdict(e: SheetEntry): SheetVerdict {
   // a concept image is judged as a concept: it never passes as an implementation-ready page
   if (e.kind === "concept_image") return rubricOk ? "concept_pass" : "concept_fail";
   if (e.pc_sp_completeness === null) return "pending";
-  // a browser render that is technically complete is still not a success unless the design itself passes
+  // a browser render that is technically complete is still not a success unless the design itself passes;
+  // a run that fell back (C delivered as B) never passes as the route it did not deliver
+  if (e.delivered_route !== e.route) return "fail";
   return rubricOk && e.pc_sp_completeness >= MIN_CRITERION && e.verification_state === "render_pair_complete" ? "pass" : "fail";
 }
 

@@ -39,6 +39,11 @@ export type RenderedViewport = {
   scrollWidth: number;
   /** Section id → its box in CSS px (page coordinates); absent when no element carries the marker. */
   sections: Record<string, MeasuredBox | null>;
+  /**
+   * Where each asset really shows in the rendered page (as <img> or a CSS background): the sections that contain it
+   * and whether it is visible within the first screen. Measured, not taken from Codex's declaration.
+   */
+  assets: Record<string, { sections: string[]; outsideSections: boolean; firstScreen: boolean; shown: boolean }>;
 };
 
 export class RenderError extends Error {
@@ -48,8 +53,23 @@ export class RenderError extends Error {
   }
 }
 
-const MEASURE = (ids: readonly string[]) => `((ids) => {
+const MEASURE = (ids: readonly string[], assetPaths: readonly string[]) => `((ids, assetPaths) => {
   const out = {};
+  const assets = {};
+  for (const p of assetPaths) assets[p] = { sections: [], outsideSections: false, firstScreen: false, shown: false };
+  for (const el of document.querySelectorAll("*")) {
+    const cs = getComputedStyle(el);
+    const src = el.localName === "img" ? (el.getAttribute("src") || "").trim() : "";
+    for (const p of assetPaths) {
+      if (src !== p && !cs.backgroundImage.includes("/" + p + '"')) continue;
+      const r = el.getBoundingClientRect();
+      const visible = cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 && r.height > 0;
+      const host = el.closest("[data-section]");
+      const a = assets[p];
+      if (host) { const id = host.getAttribute("data-section"); if (!a.sections.includes(id)) a.sections.push(id); } else a.outsideSections = true;
+      if (visible) { a.shown = true; if (r.top + scrollY < innerHeight) a.firstScreen = true; }
+    }
+  }
   for (const id of ids) {
     const el = document.querySelector('[data-section="' + CSS.escape(id) + '"]');
     if (!el) { out[id] = null; continue; }
@@ -57,8 +77,8 @@ const MEASURE = (ids: readonly string[]) => `((ids) => {
     const shown = getComputedStyle(el).display !== "none" && getComputedStyle(el).visibility !== "hidden";
     out[id] = shown ? { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height } : { x: 0, y: 0, w: 0, h: 0 };
   }
-  return { sections: out, scrollHeight: document.documentElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth };
-})(${JSON.stringify(ids)})`;
+  return { sections: out, assets, scrollHeight: document.documentElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth };
+})(${JSON.stringify(ids)}, ${JSON.stringify(assetPaths)})`;
 
 /** Renders one viewport; the page serves only index.html, style.css and the given assets. */
 async function renderAt(browser: Browser, proto: { html: string; css: string }, assets: ReadonlyMap<string, Buffer>, key: RenderKey, sectionIds: readonly string[]): Promise<RenderedViewport> {
@@ -78,7 +98,7 @@ async function renderAt(browser: Browser, proto: { html: string; css: string }, 
     throw new RenderError("RENDER_FAILED");
   }
   try {
-    const m = (await opened.page.evaluate(MEASURE(sectionIds))) as { sections: Record<string, MeasuredBox | null>; scrollHeight: number; scrollWidth: number };
+    const m = (await opened.page.evaluate(MEASURE(sectionIds, [...assets.keys()]))) as Pick<RenderedViewport, "sections" | "assets" | "scrollHeight" | "scrollWidth">;
     const width = RENDER_VIEWPORTS[key].width;
     const height = Math.max(m.scrollHeight, RENDER_VIEWPORTS[key].height);
     if (!(height > 0 && height <= MAX_PAGE_HEIGHT)) throw new RenderError("RENDER_PAGE_TOO_TALL");
@@ -88,13 +108,14 @@ async function renderAt(browser: Browser, proto: { html: string; css: string }, 
     } catch {
       throw new RenderError("RENDER_FAILED");
     }
-    return { png, blocked: opened.blocked(), scrollHeight: m.scrollHeight, scrollWidth: m.scrollWidth, sections: m.sections };
+    return { png, blocked: opened.blocked(), scrollHeight: m.scrollHeight, scrollWidth: m.scrollWidth, sections: m.sections, assets: m.assets };
   } finally {
     await opened.context.close();
   }
 }
 
 /** Renders PC 1440 and SP 390. The prototype must link its CSS as style.css; assets are served at assets/<id>.png. */
+export type RenderPrototype = typeof renderPrototype;
 export async function renderPrototype(browser: Browser, proto: { html: string; css: string }, assets: ReadonlyMap<string, Buffer>, sectionIds: readonly string[]) {
   return {
     desktop_1440: await renderAt(browser, proto, assets, "desktop_1440", sectionIds),

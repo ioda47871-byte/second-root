@@ -45,7 +45,7 @@ export function answer(o: { asset?: "hero" | "story" | null; css?: string; html?
   const css =
     o.css ??
     `body{margin:0;background:#f4efe6;color:#2b1d14;font-family:serif}header{padding:24px 48px;border-bottom:4px solid #8c2f39}
-section{min-height:420px;padding:48px}[data-section=hero]{background:#8c2f39;color:#fff}footer{background:#2b1d14;color:#f4efe6;padding:32px}
+section{min-height:420px;padding:48px}[data-section=hero]{background:#8c2f39;color:#fff;min-height:1000px}footer{background:#2b1d14;color:#f4efe6;padding:32px}
 @media (max-width:600px){section{padding:24px;min-height:300px}}`;
   const box = (y: number, h: number, w: number) => ({ x: 0, y, w, h });
   const sections = [

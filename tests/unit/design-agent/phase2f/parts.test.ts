@@ -41,7 +41,7 @@ describe("prototype safety: refuses what could run or reach out", () => {
     ["svg script", page('<svg><script>1</script></svg>'), "element <script>"],
     ["svg foreignObject", page("<svg><foreignObject><div>x</div></foreignObject></svg>"), "element <foreignobject>"],
     ["svg external href", page('<svg><use href="https://example.com/s.svg#a"/></svg>'), "use href: https://example.com/s.svg#a"],
-    ["meta refresh", page("x", '<meta http-equiv="refresh" content="0;url=https://example.com">'), "meta http-equiv"],
+    ["meta refresh", page("x", '<meta http-equiv="refresh" content="0;url=https://example.com">'), "meta http-equiv refresh"],
     ["base", page("x", '<base href="https://example.com/">'), "element <base>"],
     ["other stylesheet", page("x", '<link rel="stylesheet" href="https://example.com/a.css">'), "link href: https://example.com/a.css"],
     ["preload link", page("x", '<link rel="preload" href="style.css">'), "link rel preload"],
@@ -61,6 +61,22 @@ describe("prototype safety: refuses what could run or reach out", () => {
     expect(await check(page("x"), css)).toBe(`UNSAFE ${detail}`);
     // the same rules apply inside <style> and style attributes
     expect(await check(page(`<style>${css}</style>`))).toBe(`UNSAFE ${detail}`);
+  });
+
+  it.each<[string, string, string, string]>([
+    ["a quoted url holding a )", page("x"), 'body{background:url("http://evil/a)")}', "css url: http://evil/a)"],
+    ["an escape forming a fake comment around a url", page("x"), "a{color:red} /\\2a b{} */ body{background:url(http://evil/x.png)} /* */", "css url: http://evil/x.png"],
+    ["a /* inside a string hiding a url", page("x"), 'a::before{content:"/*"} body{background:url(http://evil/y.png)} b{content:"*/"}', "css url: http://evil/y.png"],
+    ["an SVG fill url", page('<svg><rect fill="url(http://evil/f)"/></svg>'), "", "rect fill: url http://evil/f"],
+    ["an SVG mask url", page('<svg><rect mask="url(http://evil/m)"/></svg>'), "", "rect mask: url http://evil/m"],
+  ])("refuses %s (the reviewer's bypasses)", async (_n, html, css, detail) => {
+    expect(await check(html, css)).toBe(`UNSAFE ${detail}`);
+  });
+
+  it("allows in-page url(#id) references (SVG filters, gradients, clip paths) and harmless meta boilerplate", async () => {
+    const html = `<!doctype html><html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><link rel="stylesheet" href="style.css"></head><body>
+<svg><filter id="grain"/><linearGradient id="g"/><rect fill="url(#g)"/></svg><div style="clip-path:url(#c)">x</div></body></html>`;
+    expect(await check(html, "body{filter:url(#grain)} rect{fill:url('#g')}")).toBe("OK");
   });
 
   it("does not over-constrain the design: unusual CSS, inline SVG, anchors, buttons and escapes are fine", async () => {
@@ -171,6 +187,7 @@ describe("comparison sheet: a technical pass is not a design success", () => {
     ["a hard fail", { hard_fails: ["invented fact"] }, "fail"],
     ["weak PC/SP completeness", { pc_sp_completeness: 3 }, "fail"],
     ["a technically incomplete render, however well scored", { verification_state: "incomplete" }, "fail"],
+    ["a route C run delivered as a B fallback", { route: "C_hybrid", delivered_route: "B_html_prototype" }, "fail"],
     ["a concept image (route A) that scores well", { route: "A_image", kind: "concept_image", pc_sp_completeness: null }, "concept_pass"],
     ["scores missing", { scores: { beauty: null, shop_fit: 5, originality: 5, web_structure: 5, implementability: 5 } }, "pending"],
   ])("%s → %s", (_n, over, verdict) => {
