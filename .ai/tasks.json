@@ -5404,6 +5404,57 @@
         "independent Fresh Review"
       ],
       "merged": "#151 → bb369ac (squash, 2026-10-29)"
+    },
+    {
+      "id": "DEV-120",
+      "title": "研究30件統合の準備：追加7件（CP-026〜032）の監査台帳・intake・統合方針（資料と検証コードのみ）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-113"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-120-research-30-intake-audit",
+      "purpose": "オーナー指示（2026-10-29）。PR #142 の既存23件を保護しつつ、オーナー採用済みだが原本未照合の7件を、研究セットとは別の intake に安全に記録し、昇格の条件と不足を明確にする。",
+      "acceptance_criteria": [
+        "7件の監査台帳（確認済み0、不足の一覧）と原本から受け取る項目",
+        "既存データを壊さない統合方針（1件ずつ昇格、未照合は manifest に入れない）",
+        "validate.mjs の固定値（23・PoC10）の最小修正案",
+        "Adapter 経由で生成器へ直接渡さない方法",
+        "B方式ベースライン記録の計画",
+        "intake の検査：数えない・生成に使わない・Adapter が読まない・『確認済み』を持たない・既存IDとの重複拒否"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/intelligence/*.test.ts",
+        "tests/unit/guardrails.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/design/research-30-intake-audit.md",
+        "design-library/research-intake/cp-026-032.json",
+        "lib/design-agent/intelligence/intake.ts",
+        "tests/unit/design-agent/intelligence/intake.test.ts",
+        "tests/unit/design-agent/intelligence/isolation.test.ts（intake.ts を許可に追加のみ）",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-120.md"
+      ],
+      "forbidden_scope": [
+        "PR #142 の変更・マージ（validate.mjs を含む）",
+        "既存23件・参考80件・審査待ち20件の変更",
+        "Adapter（corpus/brief/ledger）の挙動変更",
+        "main・Vercel・Supabase・営業AI・worker・bridge・jail",
+        "Codex・画像生成",
+        "B方式の承認台帳・失敗記録・成果物の書き換え",
+        "自動マージ"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "7件の原本の受け取りと昇格"
+      ],
+      "note": "Intake only; nothing counted, nothing promoted."
     }
   ]
 }

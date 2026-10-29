@@ -29,6 +29,8 @@ const ALLOWED: Record<string, string[]> = {
   [`${ADAPTER}/brief.ts`]: ["zod", "./corpus"],
   // DEV-113: the ledger validator is pure; corpus.ts hands it the manifest cases, so it imports nothing of the adapter
   [`${ADAPTER}/ledger.ts`]: ["zod"],
+  // DEV-120: the intake of owner-reported, unchecked cases is pure and read by no part of the adapter
+  [`${ADAPTER}/intake.ts`]: ["zod"],
   [CLI]: [
     "node:fs/promises",
     "node:path",
