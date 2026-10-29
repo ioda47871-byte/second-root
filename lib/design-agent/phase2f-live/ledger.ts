@@ -12,7 +12,7 @@
  * An approval, once reserved, is never used again, whatever the call's outcome (success, failure, abort, crash).
  * A retry is a new approval that names the failed call it replaces; nothing here retries by itself and nothing
  * raises a limit. Time: each call gets at most 15 minutes, and the plan's calls together at most 2 hours, counted by the
- * time each call really took (a call without a result counts as a full 15 minutes). The owner's waits between steps are not counted.
+ * time each call really took (a call without a result counts as the longest a step can run, about 20 minutes). The owner's waits between steps are not counted.
  *
  * This is accident prevention, like the v4 image PoC's ledger: a process of the same user can still edit its own
  * state. It is a separate ledger: the image PoC's own one, and its v4 approval, stay as they are.
@@ -22,6 +22,10 @@ import { lstat, mkdir, open, readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 export const LIVE_LIMITS = { firstCalls: 4, retries: 2, callTimeoutMs: 15 * 60 * 1000, planBudgetMs: 2 * 60 * 60 * 1000 } as const;
+/** The design step's own watchdog (the call's 15 minutes plus the checks before it). */
+export const WATCHDOG_MS = LIVE_LIMITS.callTimeoutMs + 5 * 60_000;
+/** A call without a result (crashed, killed) counts as the longest a step can run: the watchdog plus its hard exit. */
+export const UNFINISHED_CALL_MS = WATCHDOG_MS + 30_000;
 /** Less than this left in the plan: no call is started. */
 export const MIN_CALL_MS = 60_000;
 
@@ -108,7 +112,7 @@ export function openLedger(stateDir: string, now: () => number = Date.now) {
 
   /** Plan time used so far: a finished call by the time it really took, a call without a result (running, crashed) as a full call. */
   async function usedMs(planId: string): Promise<number> {
-    return (await calls(planId)).reduce((sum, c) => sum + (c.result ? Math.max(0, Number(c.result.elapsed_ms) || 0) : LIVE_LIMITS.callTimeoutMs), 0);
+    return (await calls(planId)).reduce((sum, c) => sum + (c.result ? Math.max(0, Number(c.result.elapsed_ms) || 0) : UNFINISHED_CALL_MS), 0);
   }
 
   return {
@@ -141,6 +145,9 @@ export function openLedger(stateDir: string, now: () => number = Date.now) {
 
     /** Uses the approval (atomic mkdir; never twice), then takes a slot. A refused slot still uses the approval. */
     async reserve(r: Omit<Receipt, "schema" | "slot" | "reserved_at">): Promise<Receipt> {
+      // every ID becomes a path segment: checked here too, not only by precheck
+      if (!APPROVAL_ID.test(r.approval_id) || (r.retry_of !== null && !APPROVAL_ID.test(r.retry_of))) throw new LedgerStop("APPROVAL_ID_INVALID");
+      if (!PLAN_ID.test(r.plan_id)) throw new LedgerStop("PLAN_ID_INVALID");
       await ownDir(stateDir);
       await ownDir(approvals);
       await ownDir(planDir(r.plan_id));

@@ -175,6 +175,8 @@ describe("runCodexJsonWithMeta: the call's own facts (unknown = null, a warning 
     expect(findRedactions({ a: ["x", long] })).toEqual([{ path: "a.1", count: 1 }]);
     // a key that is not a plain name is quoted, so the path stays unambiguous
     expect(findRedactions({ "a.b": long })).toEqual([{ path: '["a.b"]', count: 1 }]);
+    // a key that looks like a token is scrubbed before it is written into the path
+    expect(findRedactions({ [long]: long })).toEqual([{ path: '["[removed]"]', count: 1 }]);
   });
 
   it("parses `codex --version`", () => {

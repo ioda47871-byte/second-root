@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -95,6 +95,22 @@ describe("the design step's CLI (offline paths only)", () => {
     expect(run(join(state, "missing", "run"))).toMatchObject({ code: "OUT_DIR_PARENT_MISSING" });
     const out = join(mkdtempSync(join(tmpdir(), "dev116-out-")), "run");
     expect(run(out, { SR_PHASE2F_STATE: join(REPO, "tmp-dev116-ledger") })).toMatchObject({ code: "LEDGER_INSIDE_REPO" });
+    expect(spawnSync("ls", ["-A", state], { encoding: "utf8" }).stdout).toBe("");
+  }, 60_000);
+
+  it("links are resolved: a linked parent outside the repo is accepted, a link into the repo or around Codex's home is refused", () => {
+    const state = mkdtempSync(join(tmpdir(), "dev116-cli-"));
+    const pinOut = JSON.parse(cli(["--print-pin", "--route", "B", ...inputs]).stdout) as { prompt_sha256: string; prompt_chars: number };
+    const args = (out: string) => ["--route", "B", ...inputs, "--out", out, "--plan-id", "plan-fictional-1", "--approval-id", "fictional-2f-b-03", "--expected-prompt-sha256", pinOut.prompt_sha256, "--expected-prompt-chars", String(pinOut.prompt_chars), "--expected-commit", "a".repeat(40), "--human-approval-confirmed"];
+    const run = (out: string, env: Record<string, string> = {}) => JSON.parse(cli(args(out), { SR_PHASE2F_STATE: state, ...env }).stdout) as { code: string };
+    const box = mkdtempSync(join(tmpdir(), "dev116-links-"));
+    mkdirSync(join(box, "real-runs"));
+    symlinkSync(join(box, "real-runs"), join(box, "runs"));
+    symlinkSync(REPO, join(box, "repo-link"));
+    // the linked parent passes every place check; the call then stops at the (fictional) commit pin, nothing used
+    expect(run(join(box, "runs", "run1"))).toMatchObject({ code: "COMMIT_PIN_MISMATCH" });
+    expect(run(join(box, "repo-link", "run1"))).toMatchObject({ code: "OUT_DIR_INSIDE_REPO" });
+    expect(run(join(box, "real-runs", "run2"), { CODEX_HOME: join(box, "real-runs", ".codex") })).toMatchObject({ code: "OUT_DIR_PARENT_UNSAFE" });
     expect(spawnSync("ls", ["-A", state], { encoding: "utf8" }).stdout).toBe("");
   }, 60_000);
 });

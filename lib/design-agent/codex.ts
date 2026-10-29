@@ -342,7 +342,8 @@ export function findRedactions(value: unknown, path = ""): { path: string; count
     return count > 0 ? [{ path: path || "(root)", count }] : [];
   }
   // a key that is not a plain name (a dot, a quote, very long) is written as ["..."], cut to 40 characters
-  const seg = (k: string) => (/^[A-Za-z0-9_-]{1,40}$/.test(k) ? k : `[${JSON.stringify(k.slice(0, 40))}]`);
+  // (a key is scrubbed like a value before it is written, so a token cannot travel in a key either)
+  const seg = (k: string) => (/^[A-Za-z0-9_-]{1,39}$/.test(k) ? k : `[${JSON.stringify(k.replace(TOKEN_LIKE, "[removed]").slice(0, 40))}]`);
   const at = (k: string) => (path ? `${path}.${k}` : k).slice(0, 300);
   if (Array.isArray(value)) return value.flatMap((v, i) => findRedactions(v, at(String(i))));
   if (value && typeof value === "object") return Object.entries(value).flatMap(([k, v]) => findRedactions(v, at(seg(k))));

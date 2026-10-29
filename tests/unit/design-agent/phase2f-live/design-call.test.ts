@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { CodexAbortedError, CodexError, runCodexJsonWithMeta, type CodexRunMeta } from "@/lib/design-agent/codex";
 import { runDesignCall, type CommitState, type DesignCallInput, type DesignCodex } from "@/lib/design-agent/phase2f-live/design-call";
-import { LIVE_LIMITS, openLedger } from "@/lib/design-agent/phase2f-live/ledger";
+import { openLedger, UNFINISHED_CALL_MS } from "@/lib/design-agent/phase2f-live/ledger";
 import { passthroughSandbox } from "../../../support/passthrough-sandbox";
 
 // DEV-116: one real design call per owner approval. Fake Codex only (an injected function, or the fake CLI through
@@ -70,7 +70,7 @@ describe("a normal call is not stopped by anything unnecessary", () => {
   it("the call gets the plan's time limit (15 minutes at most)", async () => {
     let timeout = 0;
     await runDesignCall(input(), deps(counting(async (o) => ((timeout = o.timeoutMs), { answer: ANSWER, meta: META }))));
-    expect(timeout).toBe(LIVE_LIMITS.callTimeoutMs);
+    expect(timeout).toBe(15 * 60_000);
   });
 });
 
@@ -227,10 +227,11 @@ describe("the plan's limits: 4 first calls, 2 retries, 15 minutes each, 2 hours 
     expect(await runDesignCall(input(), deps(codex, { now }))).toMatchObject({ code: "RUN_TIME_BUDGET", stage: "precheck" });
     expect(codex.calls).toBe(0);
 
-    // a crashed call (receipt, no result) counts as a full call
+    // a crashed call (receipt, no result) counts as the longest a step can run (watchdog + hard exit)
     const crashed = await ledger.reserve({ approval_id: "fictional-crashed", plan_id: "plan-fictional-3", route: "B_html_prototype", kind: "design", retry_of: null, prompt_sha256: SHA, prompt_chars: 1, commit: COMMIT, run_id: "p2f-crashed" });
     expect(crashed.slot).toBe("first-1");
-    expect(await ledger.usedMs("plan-fictional-3")).toBe(LIVE_LIMITS.callTimeoutMs);
+    expect(await ledger.usedMs("plan-fictional-3")).toBe(UNFINISHED_CALL_MS);
+    expect(UNFINISHED_CALL_MS).toBeGreaterThan(20 * 60_000);
   });
 });
 
@@ -257,6 +258,14 @@ describe("Fresh Review 1 fixes", () => {
     const retries = await Promise.allSettled(ok.slice(0, 3).map((id, k) => ledger.reserve(receipt(`fictional-retry-${k}`, { retryOf: id }))));
     expect(retries.filter((r) => r.status === "fulfilled")).toHaveLength(2);
     expect(retries.find((r) => r.status === "rejected")).toMatchObject({ reason: { code: "RUN_LIMIT_RETRIES" } });
+  });
+
+  it("reserve checks every ID that becomes a path (a direct caller cannot skip it)", async () => {
+    const ledger = openLedger(join(base, "state"));
+    await expect(ledger.reserve(receipt("../escape"))).rejects.toMatchObject({ code: "APPROVAL_ID_INVALID" });
+    await expect(ledger.reserve(receipt("fictional-ok-1", { retryOf: "../../x" }))).rejects.toMatchObject({ code: "APPROVAL_ID_INVALID" });
+    await expect(ledger.reserve(receipt("fictional-ok-2", { plan: "../p" }))).rejects.toMatchObject({ code: "PLAN_ID_INVALID" });
+    expect(ledgerFiles()).toEqual([]);
   });
 
   it("two retries of the same failed call at the same moment: only one is made", async () => {

@@ -91,14 +91,15 @@ export async function runDesignCall(i: DesignCallInput, d: DesignCallDeps): Prom
   // ---- before the approval is used -----------------------------------------------------------
   if (!i.humanApprovalConfirmed) return refuse("HUMAN_APPROVAL_REQUIRED");
   if (sha256(i.prompt) !== i.expected.promptSha256 || i.prompt.length !== i.expected.promptChars) return refuse("PROMPT_PIN_MISMATCH");
-  if (!COMMIT.test(i.expected.commit)) return refuse("COMMIT_PIN_MISMATCH");
-  const commit = await d.commit().catch(() => null);
-  if (!commit || commit.head !== i.expected.commit || commit.base !== i.expected.commit || !commit.clean) return refuse("COMMIT_PIN_MISMATCH");
   if (!isAbsolute(i.outDir)) return refuse("OUT_DIR_INVALID");
   if (await lstat(i.outDir).then(() => true, () => false)) return refuse("OUT_DIR_EXISTS");
   // the output dir is created after the approval is used: its parent must already be a real directory
+  // (the CLI passes it under its parent's real path, so a linked parent is resolved before this)
   const parent = await lstat(dirname(i.outDir)).catch(() => null);
   if (!parent || !parent.isDirectory() || parent.isSymbolicLink()) return refuse("OUT_DIR_PARENT_MISSING");
+  if (!COMMIT.test(i.expected.commit)) return refuse("COMMIT_PIN_MISMATCH");
+  const commit = await d.commit().catch(() => null);
+  if (!commit || commit.head !== i.expected.commit || commit.base !== i.expected.commit || !commit.clean) return refuse("COMMIT_PIN_MISMATCH");
   if (i.signal?.aborted) return { status: "stopped", code: "CODEX_ABORTED", stage: "precheck", aborted: true };
   if (d.preflight) {
     const problem = await d.preflight().catch(() => "PREFLIGHT_FAILED");

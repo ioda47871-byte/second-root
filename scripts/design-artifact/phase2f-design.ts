@@ -20,15 +20,15 @@
  */
 import { readFile, realpath } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { FactsPack } from "../../lib/design-agent/artifact/schema";
 import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
-import { runCodexJsonWithMeta } from "../../lib/design-agent/codex";
+import { codexDotenvPresent, runCodexJsonWithMeta } from "../../lib/design-agent/codex";
 import { buildDesignPrompt, codexDesignJsonSchema, DesignBrief } from "../../lib/design-agent/phase2f/prompt";
 import { runDesignCall } from "../../lib/design-agent/phase2f-live/design-call";
-import { LIVE_LIMITS, openLedger } from "../../lib/design-agent/phase2f-live/ledger";
+import { openLedger, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
-import { prepareCodexSandbox, type CodexSandbox } from "../../lib/design-agent/sandbox";
+import { prepareCodexSandbox, SandboxError, type CodexSandbox } from "../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 
 const REPO = resolve(__dirname, "../..");
@@ -139,9 +139,12 @@ async function main(): Promise<number> {
 
   // the call's own 15 minutes are enforced by the process runner around Codex; this only ends a run that does not
   // stop by itself (it also covers the sign-in check, the version and the sandbox probes before the call)
-  setTimeout(() => stop(), LIVE_LIMITS.callTimeoutMs + 5 * 60_000).unref();
+  setTimeout(() => stop(), WATCHDOG_MS).unref();
+  // the output dir under its parent's real path (a linked parent such as ~/runs -> /mnt/d/runs is fine)
+  const outDir = join(await realpath(dirname(resolve(out))), basename(resolve(out)));
   // Codex never sees the worker's directories, the ledger or where the results go
-  const protectedPaths = [...new Set([...workerProtectedPaths({ ...workerPaths, env: process.env }), ledgerDir, dirname(resolve(out))])];
+  const protectedPaths = [...new Set([...workerProtectedPaths({ ...workerPaths, env: process.env }), ledgerDir, dirname(outDir)])];
+  const codexHome = process.env.CODEX_HOME ? expand(process.env.CODEX_HOME) : join(homedir(), ".codex");
   let sandbox: CodexSandbox | null = null;
   const result = await runDesignCall(
     {
@@ -153,7 +156,7 @@ async function main(): Promise<number> {
       planId: args.get("--plan-id") ?? "",
       retryOf: args.get("--retry-of") ?? null,
       expected: { promptSha256: args.get("--expected-prompt-sha256") ?? "", promptChars: chars, commit: args.get("--expected-commit") ?? "" },
-      outDir: resolve(out),
+      outDir,
       signal: controller.signal,
     },
     {
@@ -163,10 +166,16 @@ async function main(): Promise<number> {
         const [head, base, status] = await Promise.all([git(["rev-parse", "HEAD"]), git(["rev-parse", "origin/develop"]), git(["status", "--porcelain", "--untracked-files=all"])]);
         return { head: head?.trim() ?? null, base: base?.trim() ?? null, clean: status === "" };
       },
-      // the sandbox is prepared (no Codex started) before the approval is used: a refusal there uses nothing
+      // before the approval is used: the sandbox's set-up (no Codex, no bubblewrap started) and the .env rule.
+      // The bubblewrap probe itself runs right before the call (sandbox.ts), as for every Codex call.
       preflight: async () => {
-        sandbox = await prepareCodexSandbox({ env, protectedPaths }).catch(() => null);
-        return sandbox === null ? "CODEX_SANDBOX_UNAVAILABLE" : null;
+        if (await codexDotenvPresent(codexHome)) return "CODEX_DOTENV_PRESENT";
+        try {
+          sandbox = await prepareCodexSandbox({ env, protectedPaths });
+          return null;
+        } catch (error) {
+          return error instanceof SandboxError ? error.code : "CODEX_SANDBOX_UNAVAILABLE";
+        }
       },
       codex: async (o) => {
         if (sandbox === null) throw new Error("no sandbox");
