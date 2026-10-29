@@ -4,10 +4,15 @@ import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { checkCodexDesign } from "@/lib/design-agent/artifact/intake";
+import { photoAnalysesJsonSchema } from "@/lib/design-agent/assets/analysis";
+import { imageDirectionJsonSchema } from "@/lib/design-agent/assets/direction";
 import { CodexDesign, FactsPack } from "@/lib/design-agent/artifact/schema";
 import { EVAL_MIN_CRITERION, EVAL_PASS_TOTAL } from "@/lib/design-agent/comp-impl/bundle";
 import { MIN_CRITERION, PASS_TOTAL, sheetEntry, sheetMarkdown, sheetVerdict, unnecessaryStopRate, type SheetEntry } from "@/lib/design-agent/phase2f/compare-sheet";
 import { decodeCheck } from "@/lib/design-agent/phase2f/decode-check";
+import { photoReviewJsonSchema } from "@/lib/design-agent/photo-review";
+import { designProfileJsonSchema } from "@/lib/design-agent/profile";
+import { visualReviewJsonSchema } from "@/lib/design-agent/review";
 import { buildAssetPrompt, buildDesignPrompt, codexDesignJsonSchema, DesignBrief } from "@/lib/design-agent/phase2f/prompt";
 import { checkPrototype, cssProblems, PrototypeUnsafe } from "@/lib/design-agent/phase2f/prototype-safety";
 import { RENDER_VIEWPORTS, renderPrototype } from "@/lib/design-agent/phase2f/render-prototype";
@@ -148,17 +153,62 @@ describe("prompt", () => {
     expect(JSON.stringify(s)).not.toMatch(/"(approved|verified|verification_state|sha256|files)"/);
   });
 
-  it("carries no root $schema (as the worker's schemas); otherwise exactly zod's schema, and the answer check is unchanged", () => {
+  it("carries no root $schema (as the worker's schemas); otherwise zod's schema with only the two DEV-119 changes", () => {
     const s = codexDesignJsonSchema() as Record<string, unknown>;
     expect("$schema" in s).toBe(false);
     const full = z.toJSONSchema(CodexDesign, { unrepresentable: "any" }) as Record<string, unknown>;
     expect(full.$schema).toBeDefined();
+    // expected: zod's schema, without $schema and minLength, and interaction_spec's items a plain string type
     const { $schema: _meta, ...rest } = full;
     void _meta;
-    expect(s).toEqual(rest);
+    const expected = JSON.parse(JSON.stringify(rest).replace(/,?"minLength":\d+/g, "").replace(/\{,/g, "{")) as { properties: { interaction_spec: { items: unknown } } };
+    expect(expected.properties.interaction_spec.items).toEqual({ not: {} });
+    expected.properties.interaction_spec.items = { type: "string" };
+    expect(s).toEqual(expected);
     // the runner still checks Codex's answer with the same zod schema
     expect(checkCodexDesign(answer())).toMatchObject({ schema: "codex_design_v1" });
     expect(() => checkCodexDesign({ ...answer(), extra: 1 })).toThrow();
+  });
+
+  it("DEV-119: only keywords the production worker's Codex schemas already use; interaction_spec stays empty-only", () => {
+    // every keyword (never a property name) of a schema
+    const keywords = (node: unknown, out = new Set<string>()): Set<string> => {
+      if (Array.isArray(node)) for (const n of node) keywords(n, out);
+      else if (node !== null && typeof node === "object")
+        for (const [k, v] of Object.entries(node)) {
+          out.add(k);
+          if (k === "properties") for (const child of Object.values(v as object)) keywords(child, out);
+          else keywords(v, out);
+        }
+      return out;
+    };
+    const worker = new Set([designProfileJsonSchema(), visualReviewJsonSchema(), photoReviewJsonSchema(), photoAnalysesJsonSchema(), imageDirectionJsonSchema()].flatMap((w) => [...keywords(w)]));
+    const ours = keywords(codexDesignJsonSchema());
+    expect([...ours].filter((k) => !worker.has(k))).toEqual([]);
+    expect(ours.has("not")).toBe(false);
+    expect(ours.has("minLength")).toBe(false);
+    // every node that names a type is one of the ordinary JSON types; objects stay closed and fully required
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (node === null || typeof node !== "object") return;
+      const n = node as Record<string, unknown>;
+      if (n.type === "object") {
+        expect(n.additionalProperties).toBe(false);
+        expect([...(n.required as string[])].sort()).toEqual(Object.keys(n.properties as object).sort());
+      }
+      for (const [k, v] of Object.entries(n)) {
+        if (k === "properties") Object.values(v as object).forEach(walk);
+        else walk(v);
+      }
+    };
+    walk(codexDesignJsonSchema());
+    const spec = (codexDesignJsonSchema() as { properties: { interaction_spec: unknown } }).properties.interaction_spec;
+    expect(spec).toEqual({ type: "array", maxItems: 0, items: { type: "string" } });
+    // zod's final check is unchanged: a non-empty interaction_spec, an empty html or an empty DNA choice is refused
+    const a = answer();
+    expect(() => checkCodexDesign({ ...a, interaction_spec: ["x"] })).toThrow();
+    expect(() => checkCodexDesign({ ...a, prototype: { html: "", css: "" } })).toThrow();
+    expect(() => checkCodexDesign({ ...a, design_dna: { ...a.design_dna, hero: { ...a.design_dna.hero, choice: "" } } })).toThrow();
   });
 
   it("the B and C prompts for the fictional wagashi shop are unchanged by the schema fix", () => {

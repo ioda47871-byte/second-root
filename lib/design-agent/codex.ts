@@ -56,12 +56,29 @@ export type CodexFailureCode =
   | "CODEX_ANSWER_REJECTED"
   | "CODEX_DOTENV_PRESENT";
 
+/**
+ * Why `codex exec` ended with a non-zero exit, as one fixed word (DEV-119). Only the number and this word are kept:
+ * never the CLI's output, which can carry the request, the answer or account details.
+ */
+export type CodexExitClass =
+  | "network_or_transport"
+  | "schema_or_arguments"
+  | "authentication"
+  | "model_unavailable"
+  | "quota_or_rate_limit"
+  | "other_nonzero_exit"
+  | "unknown";
+export type CodexExitDiagnostic = { exit_code: number | null; class: CodexExitClass };
+
 export class CodexError extends Error {
   readonly code: CodexFailureCode;
-  constructor(code: CodexFailureCode, message: string) {
+  /** Set only for CODEX_EXEC_FAILED: the exit code and a fixed class (classifyCodexExit). */
+  readonly diagnostic?: CodexExitDiagnostic;
+  constructor(code: CodexFailureCode, message: string, diagnostic?: CodexExitDiagnostic) {
     super(message);
     this.code = code;
     this.name = "CodexError";
+    if (diagnostic !== undefined) this.diagnostic = diagnostic;
   }
 }
 
@@ -175,6 +192,40 @@ export function codexLooksSignedOut(stdout: string, stderr: string): boolean {
     if (SIGNED_OUT_SIGN.test(`${String(event.message ?? "")} ${String(event.error?.message ?? "")}`)) return true;
   }
   return false;
+}
+
+/**
+ * The CLI's own error wording: stderr and the messages of its `error` / `turn.failed` events. Never the model's
+ * answer. Used in memory only, to pick a class; never stored.
+ */
+function cliErrorText(stdout: string, stderr: string): string {
+  const parts = [stderr];
+  for (const line of stdout.split("\n")) {
+    let event: { type?: unknown; message?: unknown; error?: { message?: unknown } };
+    try {
+      event = JSON.parse(line) as typeof event;
+    } catch {
+      continue;
+    }
+    if (event.type === "error" || event.type === "turn.failed") parts.push(`${String(event.message ?? "")} ${String(event.error?.message ?? "")}`);
+  }
+  return parts.join("\n");
+}
+
+// Checked in this order; the first that matches wins. Anything else is other_nonzero_exit (an exit code) or unknown.
+const EXIT_SIGNS: readonly [Exclude<CodexExitClass, "other_nonzero_exit" | "unknown">, RegExp][] = [
+  ["authentication", new RegExp(`${SIGNED_OUT_SIGN.source}|unauthori[sz]ed|forbidden|authentication (?:failed|error|required)`, "i")],
+  ["quota_or_rate_limit", QUOTA_SIGN],
+  ["model_unavailable", /model_not_found|unknown model|model\b[^\n]{0,80}\b(?:not found|does not exist|not supported|unsupported|not available|unavailable)/i],
+  ["schema_or_arguments", /invalid_json_schema|invalid schema|json schema|output[-_ ]schema|response_format|text\.format|invalid_request_error|bad request|unexpected argument|unrecognized (?:option|argument|subcommand)|usage: codex/i],
+  ["network_or_transport", /stream disconnected|error sending request|connection (?:refused|reset|closed|error)|timed out|\bdns\b|failed to lookup|name resolution|\btls\b|certificate|network (?:error|is unreachable|unreachable)|internal server error|bad gateway|service unavailable|gateway timeout|\beconn\w*|\benotfound\b|\beai_again\b/i],
+];
+
+/** The exit code and one fixed class for a failed `codex exec` (DEV-119). Nothing of the text is returned. */
+export function classifyCodexExit(code: number | null, stdout: string, stderr: string): CodexExitDiagnostic {
+  const text = cliErrorText(stdout, stderr);
+  const hit = EXIT_SIGNS.find(([, sign]) => sign.test(text));
+  return { exit_code: code, class: hit ? hit[0] : code !== null && code !== 0 ? "other_nonzero_exit" : "unknown" };
 }
 
 /** The thread id and the last agent message from `--json` output. */
@@ -560,7 +611,7 @@ async function callCodexJson(options: CodexJsonOptions, withMeta: boolean): Prom
     if (result.code !== 0 && codexLooksRateLimited(result.stdout, result.stderr)) {
       throw new CodexError("CODEX_QUOTA", "Codex usage limit reached or the service is busy.");
     }
-    if (result.code !== 0) throw new CodexError("CODEX_EXEC_FAILED", `Codex failed (exit ${String(result.code)}).`);
+    if (result.code !== 0) throw new CodexError("CODEX_EXEC_FAILED", `Codex failed (exit ${String(result.code)}).`, classifyCodexExit(result.code, result.stdout, result.stderr));
     const answer = (await readAnswerFile(answerPath)) ?? readCodexEvents(result.stdout).lastMessage;
     if (answer === undefined || answer.trim() === "") throw new CodexError("CODEX_NO_JSON", "Codex returned no answer.");
     // An answer that carries any piece of Codex's own sign-in tokens (forwards or backwards, split or not) is thrown away.

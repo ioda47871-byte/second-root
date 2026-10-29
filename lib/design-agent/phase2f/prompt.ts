@@ -32,7 +32,30 @@ export type DesignBrief = z.infer<typeof DesignBrief>;
  * withoutMeta); the structure and the zod check of the answer are unchanged.
  */
 export function codexDesignJsonSchema(): object {
-  return withoutMeta(z.toJSONSchema(CodexDesign, { unrepresentable: "any" }));
+  return forCodexOutput(withoutMeta(z.toJSONSchema(CodexDesign, { unrepresentable: "any" }))) as object;
+}
+
+/**
+ * DEV-119: keeps the schema Codex is given to the keywords the production worker's schemas already use with
+ * `--output-schema`. Two things zod writes are outside that set:
+ * - `items: {"not": {}}` for `interaction_spec` (an array that must stay empty): the items become a plain string
+ *   type and `maxItems: 0` stays, so Codex can still only give an empty array;
+ * - `minLength`: dropped here only. Zod's check of the answer still requires the text (an empty one is refused there).
+ * Zod's check of the answer is unchanged.
+ */
+function forCodexOutput(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(forCodexOutput);
+  if (node === null || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "minLength") continue;
+    // property names are names, not keywords
+    out[key] = key === "properties" && value !== null && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([name, s]) => [name, forCodexOutput(s)])) : forCodexOutput(value);
+  }
+  const items = out.items as Record<string, unknown> | undefined;
+  const never = items !== undefined && Object.keys(items).length === 1 && JSON.stringify(items.not) === "{}";
+  if (out.type === "array" && out.maxItems === 0 && never) out.items = { type: "string" };
+  return out;
 }
 
 export type BuiltPrompt = { prompt: string; sha256: string; chars: number };

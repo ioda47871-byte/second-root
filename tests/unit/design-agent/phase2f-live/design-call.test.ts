@@ -119,6 +119,19 @@ describe("checked before the approval is used (a refusal uses nothing)", () => {
   });
 });
 
+describe("DEV-119: a failed exec leaves its exit code and class, nothing more", () => {
+  it("call.json and the result carry the diagnostic; the ledger's result is unchanged in shape", async () => {
+    const i = input();
+    const err = new CodexError("CODEX_EXEC_FAILED", "Codex failed (exit 1).", { exit_code: 1, class: "schema_or_arguments" });
+    const r = await runDesignCall(i, deps(counting(async () => Promise.reject(err))));
+    expect(r).toEqual({ status: "stopped", code: "CODEX_EXEC_FAILED", stage: "call", aborted: false, diagnostic: { exit_code: 1, class: "schema_or_arguments" } });
+    const call = JSON.parse(readFileSync(join(i.outDir, "call.json"), "utf8")) as Record<string, unknown>;
+    expect(call).toMatchObject({ status: "failed", code: "CODEX_EXEC_FAILED", diagnostic: { exit_code: 1, class: "schema_or_arguments" } });
+    expect(Object.keys(call).sort()).toEqual(["code", "diagnostic", "receipt", "schema", "status", "warnings"]);
+    expect(existsSync(join(i.outDir, "answer.json"))).toBe(false);
+  });
+});
+
 describe("one approval, one call: never reused, never retried by itself", () => {
   it("an approval ID is used at most once, whatever the outcome", async () => {
     const i = input();

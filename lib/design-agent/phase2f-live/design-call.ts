@@ -58,7 +58,7 @@ export type DesignCallDeps = {
 export type DesignCallResult =
   | { status: "succeeded"; outDir: string; generation: Generation; warnings: string[]; receipt: Receipt }
   /** precheck: nothing was used. call: the approval was used and the call did not succeed (never retried here). */
-  | { status: "stopped"; code: string; stage: "precheck" | "call"; aborted: boolean };
+  | { status: "stopped"; code: string; stage: "precheck" | "call"; aborted: boolean; diagnostic?: { exit_code: number | null; class: string } };
 
 export async function runDesignCall(i: DesignCallInput, d: DesignCallDeps): Promise<DesignCallResult> {
   const now = d.now ?? Date.now;
@@ -95,9 +95,11 @@ export async function runDesignCall(i: DesignCallInput, d: DesignCallDeps): Prom
   } catch (error) {
     const aborted = error instanceof CodexAbortedError;
     const code = aborted ? "CODEX_ABORTED" : error instanceof CodexError ? error.code : "CODEX_UNEXPECTED";
-    await writeOnce(join(i.outDir, "call.json"), { schema: "phase2f_live_call_v1", status: aborted ? "aborted" : "failed", code, receipt, warnings: [] }).catch(() => undefined);
+    // DEV-119: a failed `codex exec` leaves only its exit code and a fixed class (never the CLI's output)
+    const diag = !aborted && error instanceof CodexError && error.diagnostic ? { diagnostic: { exit_code: error.diagnostic.exit_code, class: error.diagnostic.class } } : {};
+    await writeOnce(join(i.outDir, "call.json"), { schema: "phase2f_live_call_v1", status: aborted ? "aborted" : "failed", code, receipt, warnings: [], ...diag }).catch(() => undefined);
     await end(aborted ? "aborted" : "failed", code).catch(() => undefined);
-    return { status: "stopped", code, stage: "call", aborted };
+    return { status: "stopped", code, stage: "call", aborted, ...diag };
   }
 
   const finished = now();
