@@ -108,6 +108,28 @@ h1{writing-mode:vertical-rl;font-feature-settings:"palt"}.mark::before{content:"
     expect(await check(html, css, ["assets/A1.png"])).toBe("OK");
   });
 
+  it("DEV-123: scroll-behavior, overscroll-behavior and Japanese #anchors are not mistaken for unsafe (B v1.1 Run 1)", async () => {
+    const css = "html{scroll-behavior:smooth}body{overscroll-behavior:none;overscroll-behavior-y:contain}@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}";
+    const html = page('<nav><a href="#お知らせ">お知らせ</a><a href="#info">info</a></nav><section id="お知らせ" style="scroll-behavior:smooth"></section>');
+    expect(await check(html, css)).toBe("OK");
+    expect(await check(page(`<style>${css}</style>`))).toBe("OK");
+  });
+
+  it.each<[string, string]>([
+    ["behavior:url()", "a{behavior:url(x.htc)}"],
+    ["spaced and upper-case", "a{color:red; BEHAVIOR : url(#x)}"],
+    ["first in a block", "a{behavior:url(#x)}"],
+    ["escaped", "a{color:red;\\62 ehavior:url(#x)}"],
+  ])("DEV-123: the old IE behavior property is still refused (%s)", async (_n, css) => {
+    expect(await check(page("x"), css)).toBe("UNSAFE css code execution");
+    expect(await check(page(`<div style="${css.slice(2, -1)}">x</div>`))).toBe("UNSAFE style attribute: css code execution");
+  });
+
+  it("DEV-123: a #fragment link stays allowed only as a fragment", async () => {
+    expect(await check(page('<a href="https://example.com/#お知らせ">x</a>'))).toBe("UNSAFE a href: https://example.com/#お知らせ");
+    expect(await check(page('<a href="#info">x</a><svg><use href="#お">x</use></svg>'))).toBe("OK");
+  });
+
   it("returns each shown asset's alt text (the image request on route C)", async () => {
     const r = await checkPrototype(browser, { html: page('<img src="assets/A1.png" alt="a wrapped sweet">'), css: "" }, ["assets/A1.png"]);
     expect(r.alts).toEqual({ "assets/A1.png": "a wrapped sweet" });

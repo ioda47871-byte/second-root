@@ -79,7 +79,7 @@ export function cssProblems(css: string, assets: ReadonlySet<string>, o: { canon
   // Chromium's re-serialised text has no comments and no escapes left: read it as is (a "/*" inside a string stays text)
   if (o.canonical) {
     if (/@import/i.test(css)) out.push("css @import");
-    if (/expression\s*\(|behavior\s*:|-moz-binding|javascript:/i.test(css)) out.push("css code execution");
+    if (/expression\s*\(|(?<![\w-])behavior\s*:|-moz-binding|javascript:/i.test(css)) out.push("css code execution");
     for (const target of cssUrls(css)) if (!allowedUrl(target, assets)) out.push(`css url: ${target.slice(0, 80)}`);
     if (/image-set\(|image\(|src\(/i.test(css)) out.push("css image function other than url()");
     return out;
@@ -91,7 +91,7 @@ export function cssProblems(css: string, assets: ReadonlySet<string>, o: { canon
   // cannot hide it and a comment that mentions it does not count); Chromium's re-serialisation drops @import,
   // so this check is the one that sees it
   if (/@import/i.test(decodeEscapes(outsideStringsAndComments(css)))) out.push("css @import");
-  if (/expression\s*\(|behavior\s*:|-moz-binding|javascript:/i.test(flat)) out.push("css code execution");
+  if (/expression\s*\(|(?<![\w-])behavior\s*:|-moz-binding|javascript:/i.test(flat)) out.push("css code execution");
   for (const target of cssUrls(flat)) if (!allowedUrl(target, assets)) out.push(`css url: ${target.slice(0, 80)}`);
   if (/image-set\(|image\(|src\(/i.test(flat)) out.push("css image function other than url()");
   return out;
@@ -162,7 +162,8 @@ export async function checkPrototype(browser: Browser, proto: { html: string; cs
     if (URL_ATTRIBUTES.includes(a.name)) {
       const values = a.name === "srcset" ? a.value.split(",").map((s) => s.trim().split(/\s+/)[0] ?? "") : [a.value.trim()];
       for (const v of values) {
-        if (v.startsWith("#") && /^#[A-Za-z0-9_-]*$/.test(v)) continue;
+        // a fragment-only URL always stays in this page (ids may be Japanese)
+        if (/^#\S*$/u.test(v)) continue;
         if (a.el === "link" && v === PROTOTYPE_STYLESHEET) continue;
         if ((a.name === "src" || a.name === "srcset" || a.name === "href" || a.name === "xlink:href") && assets.has(v)) continue;
         throw new PrototypeUnsafe(`${a.el} ${a.name}: ${v.slice(0, 80)}`);

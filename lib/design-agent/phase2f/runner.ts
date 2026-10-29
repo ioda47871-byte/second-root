@@ -65,7 +65,7 @@ export type RunLog = {
 
 export type RunResult =
   | { status: "done"; packageDir: string; record: IntakeRecord; log: RunLog }
-  | { status: "stopped"; code: string; stopClass: StopClass; ownerCheck: boolean; recovery: string; log: RunLog };
+  | { status: "stopped"; code: string; stopClass: StopClass; ownerCheck: boolean; recovery: string; log: RunLog; /** which safety rule refused the prototype (PROTOTYPE_UNSAFE) */ detail?: string };
 
 /** Recovery suggestions (never automatic). */
 export const RECOVERY = {
@@ -157,7 +157,7 @@ export type AssetRequest = {
 };
 
 type Preflight =
-  | { status: "stopped"; code: string; stopClass: StopClass; recovery: string; ownerCheck: boolean }
+  | { status: "stopped"; code: string; stopClass: StopClass; recovery: string; ownerCheck: boolean; detail?: string }
   | {
       status: "ready";
       design: ReturnType<typeof checkCodexDesign>;
@@ -175,7 +175,7 @@ type Preflight =
  * each picture really is, whether it is essential, and gives each one's image request. Nothing is generated here.
  */
 async function preflightRoute(o: { route: "B_html_prototype" | "C_hybrid"; browser: Browser; answer: unknown; render: RenderPrototype; facts: FactsPack; maxAssetCalls: number; requireAssetPort: boolean }): Promise<Preflight> {
-  const stopped = (code: string, stopClass: StopClass, recovery: string, ownerCheck = false): Preflight => ({ status: "stopped", code, stopClass, recovery, ownerCheck });
+  const stopped = (code: string, stopClass: StopClass, recovery: string, ownerCheck = false, detail?: string): Preflight => ({ status: "stopped", code, stopClass, recovery, ownerCheck, ...(detail ? { detail } : {}) });
   // 2. the answer: exactly codex_design_v1, with a prototype
   let design;
   try {
@@ -195,7 +195,7 @@ async function preflightRoute(o: { route: "B_html_prototype" | "C_hybrid"; brows
   try {
     ({ alts } = await checkPrototype(o.browser, proto, assetPaths));
   } catch (e) {
-    if (e instanceof PrototypeUnsafe) return stopped("PROTOTYPE_UNSAFE", "output", RECOVERY.fix_input, true);
+    if (e instanceof PrototypeUnsafe) return stopped("PROTOTYPE_UNSAFE", "output", RECOVERY.fix_input, true, e.message.slice("PROTOTYPE_UNSAFE: ".length));
     throw e;
   }
   const essential = new Set<string>();
@@ -283,7 +283,7 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
 
   // 2–4a. the answer, the safety check and (route C) the preflight render with placeholders
   const pre = await preflightRoute({ route: c.route, browser: c.browser, answer, render, facts: c.facts.pack, maxAssetCalls: limits.maxAssetCalls, requireAssetPort: !c.assetPort });
-  if (pre.status === "stopped") return stop(pre.code, pre.stopClass, pre.recovery, pre.ownerCheck);
+  if (pre.status === "stopped") return { ...stop(pre.code, pre.stopClass, pre.recovery, pre.ownerCheck), ...(pre.detail ? { detail: pre.detail } : {}) };
   const { design, proto, spec, assetIds, alts, essential } = pre;
   log.declared_geometry = { page_height: spec.page_height, boxes: Object.fromEntries(spec.sections.map((s) => [s.id, s.boxes])) };
 
