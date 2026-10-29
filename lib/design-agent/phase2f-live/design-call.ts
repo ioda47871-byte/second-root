@@ -11,7 +11,9 @@
  *   answer.json      Codex's answer as received (after the usual secret redaction), not yet checked
  *   generation.json  the call's facts for the Design Artifact (CLI version, model, approval, prompt SHA, commit, run, times)
  *   call.json        how the call ended, warnings (unknown model, redactions with their JSON paths), the ledger receipt
- * A stopped call writes call.json only: no answer, never a success.
+ * A stopped call writes call.json only: no answer, never a success. call.json is written last, and the ledger's result
+ * after it: a later step uses an answer only when call.json AND the ledger both say "succeeded" (a crash in between
+ * leaves the ledger without a result, which is never a success).
  *
  * Codex is reached only through the injected `codex` function (the CLI passes the sandboxed JSON call of codex.ts);
  * this module starts no process and opens no network connection.
@@ -19,7 +21,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { CodexAbortedError, CodexError, type CodexRunMeta } from "../codex";
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
 
@@ -43,6 +45,12 @@ export type DesignCallDeps = {
   ledger: Ledger;
   codex: DesignCodex;
   commit: () => Promise<CommitState>;
+  /**
+   * Optional checks that need the machine (the CLI prepares the OS sandbox here, which starts no Codex): a stop
+   * code, or null when the call can go ahead. Runs before the approval is used, so a predictable refusal of the
+   * sandbox never uses up an approval.
+   */
+  preflight?: () => Promise<string | null>;
   now?: () => number;
 };
 
@@ -88,13 +96,23 @@ export async function runDesignCall(i: DesignCallInput, d: DesignCallDeps): Prom
   if (!commit || commit.head !== i.expected.commit || commit.base !== i.expected.commit || !commit.clean) return refuse("COMMIT_PIN_MISMATCH");
   if (!isAbsolute(i.outDir)) return refuse("OUT_DIR_INVALID");
   if (await lstat(i.outDir).then(() => true, () => false)) return refuse("OUT_DIR_EXISTS");
+  // the output dir is created after the approval is used: its parent must already be a real directory
+  const parent = await lstat(dirname(i.outDir)).catch(() => null);
+  if (!parent || !parent.isDirectory() || parent.isSymbolicLink()) return refuse("OUT_DIR_PARENT_MISSING");
   if (i.signal?.aborted) return { status: "stopped", code: "CODEX_ABORTED", stage: "precheck", aborted: true };
+  if (d.preflight) {
+    const problem = await d.preflight().catch(() => "PREFLIGHT_FAILED");
+    if (problem !== null) return refuse(problem);
+  }
   let timeoutMs: number;
   try {
     ({ timeoutMs } = await d.ledger.precheck({ approvalId: i.approvalId, planId: i.planId, route: i.route, kind: "design", retryOf: i.retryOf }));
   } catch (error) {
     return refuse(error instanceof LedgerStop ? error.code : "LEDGER_UNREADABLE");
   }
+
+  // stopped while the checks ran: nothing is used
+  if (i.signal?.aborted) return { status: "stopped", code: "CODEX_ABORTED", stage: "precheck", aborted: true };
 
   // ---- the approval is used from here on ------------------------------------------------------
   const runId = `p2f-${randomBytes(8).toString("hex")}`;

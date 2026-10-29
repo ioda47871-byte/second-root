@@ -154,17 +154,26 @@ export function openLedger(stateDir: string, now: () => number = Date.now) {
       }
       const kind = r.retry_of === null ? "first" : "retry";
       const max = kind === "first" ? LIVE_LIMITS.firstCalls : LIVE_LIMITS.retries;
+      const take = (path: string) => mkdir(path, { mode: 0o700 }).then(() => true, () => false);
+      let refused: string | null = null;
+      // a failed call is replaced at most once, even by two retries started at the same moment (atomic mkdir)
+      if (r.retry_of !== null) {
+        await ownDir(join(planDir(r.plan_id), "retried"));
+        if (!(await take(join(planDir(r.plan_id), "retried", r.retry_of)))) refused = "RETRY_ALREADY_MADE";
+      }
       await ownDir(join(planDir(r.plan_id), "slots"));
       let slot: string | null = null;
-      for (let i = 1; i <= max && slot === null; i++) {
+      for (let i = 1; i <= max && slot === null && refused === null; i++) {
         const name = `${kind}-${i}`;
-        if (await mkdir(join(planDir(r.plan_id), "slots", name), { mode: 0o700 }).then(() => true, () => false)) slot = name;
+        if (await take(join(planDir(r.plan_id), "slots", name))) slot = name;
       }
+      if (slot === null && refused === null) refused = kind === "first" ? "RUN_LIMIT_FIRST_CALLS" : "RUN_LIMIT_RETRIES";
       const receipt: Receipt = { schema: "phase2f_live_receipt_v1", ...r, slot: slot ?? "none", reserved_at: new Date(now()).toISOString() };
       await writeOnce(join(dir, "receipt.json"), receipt);
-      if (slot === null) {
-        await writeOnce(join(dir, "result.json"), { schema: "phase2f_live_result_v1", status: "refused", code: kind === "first" ? "RUN_LIMIT_FIRST_CALLS" : "RUN_LIMIT_RETRIES", finished_at: new Date(now()).toISOString(), elapsed_ms: 0 } satisfies CallResult);
-        throw new LedgerStop(kind === "first" ? "RUN_LIMIT_FIRST_CALLS" : "RUN_LIMIT_RETRIES");
+      if (refused !== null) {
+        // the approval stays used (never reusable), but no call was made and it counts toward no limit
+        await writeOnce(join(dir, "result.json"), { schema: "phase2f_live_result_v1", status: "refused", code: refused, finished_at: new Date(now()).toISOString(), elapsed_ms: 0 } satisfies CallResult);
+        throw new LedgerStop(refused);
       }
       return receipt;
     },

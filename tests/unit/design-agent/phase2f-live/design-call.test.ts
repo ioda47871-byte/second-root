@@ -233,3 +233,58 @@ describe("the plan's limits: 4 first calls, 2 retries, 15 minutes each, 2 hours 
     expect(await ledger.usedMs("plan-fictional-3")).toBe(LIVE_LIMITS.callTimeoutMs);
   });
 });
+
+describe("Fresh Review 1 fixes", () => {
+  const receipt = (id: string, o: { retryOf?: string | null; plan?: string } = {}) => ({ approval_id: id, plan_id: o.plan ?? "plan-fictional-1", route: "B_html_prototype" as const, kind: "design" as const, retry_of: o.retryOf ?? null, prompt_sha256: SHA, prompt_chars: 1, commit: COMMIT, run_id: `p2f-${id}` });
+  const result = (id: string) => json(join(base, "state", "approvals", id, "result.json"));
+
+  it("reserve itself holds 4 first calls: a fifth uses its approval, is recorded as refused and counts toward nothing", async () => {
+    const ledger = openLedger(join(base, "state"));
+    for (let k = 1; k <= 4; k++) expect((await ledger.reserve(receipt(`fictional-first-${k}`))).slot).toBe(`first-${k}`);
+    await expect(ledger.reserve(receipt("fictional-first-5"))).rejects.toMatchObject({ code: "RUN_LIMIT_FIRST_CALLS" });
+    expect(result("fictional-first-5")).toMatchObject({ status: "refused", code: "RUN_LIMIT_FIRST_CALLS" });
+    expect((await ledger.calls("plan-fictional-1")).map((c) => c.receipt.approval_id).sort()).toEqual(["fictional-first-1", "fictional-first-2", "fictional-first-3", "fictional-first-4"]);
+    // used is used: the refused ID can never be tried again
+    await expect(ledger.reserve(receipt("fictional-first-5"))).rejects.toMatchObject({ code: "APPROVAL_ALREADY_USED" });
+  });
+
+  it("calls started at the same moment still get at most 4 first calls and 2 retries", async () => {
+    const ledger = openLedger(join(base, "state"));
+    const firsts = await Promise.allSettled(Array.from({ length: 8 }, (_, k) => ledger.reserve(receipt(`fictional-par-${k}`))));
+    expect(firsts.filter((r) => r.status === "fulfilled")).toHaveLength(4);
+    const ok = firsts.map((r, k) => (r.status === "fulfilled" ? `fictional-par-${k}` : null)).filter((x): x is string => x !== null);
+    for (const id of ok.slice(0, 3)) await ledger.finish(id, { status: "failed", code: "CODEX_EXEC_FAILED", finished_at: new Date().toISOString(), elapsed_ms: 1 });
+    const retries = await Promise.allSettled(ok.slice(0, 3).map((id, k) => ledger.reserve(receipt(`fictional-retry-${k}`, { retryOf: id }))));
+    expect(retries.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    expect(retries.find((r) => r.status === "rejected")).toMatchObject({ reason: { code: "RUN_LIMIT_RETRIES" } });
+  });
+
+  it("two retries of the same failed call at the same moment: only one is made", async () => {
+    const ledger = openLedger(join(base, "state"));
+    await ledger.reserve(receipt("fictional-orig"));
+    await ledger.finish("fictional-orig", { status: "failed", code: "CODEX_EXEC_FAILED", finished_at: new Date().toISOString(), elapsed_ms: 1 });
+    const both = await Promise.allSettled([ledger.reserve(receipt("fictional-r-a", { retryOf: "fictional-orig" })), ledger.reserve(receipt("fictional-r-b", { retryOf: "fictional-orig" }))]);
+    expect(both.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(both.find((r) => r.status === "rejected")).toMatchObject({ reason: { code: "RETRY_ALREADY_MADE" } });
+  });
+
+  it("a sandbox that would refuse, or a missing output parent, stops before the approval is used", async () => {
+    const codex = counting();
+    expect(await runDesignCall(input(), { ...deps(codex), preflight: async () => "CODEX_SANDBOX_CONFIG" })).toMatchObject({ code: "CODEX_SANDBOX_CONFIG", stage: "precheck" });
+    expect(await runDesignCall(input(), { ...deps(codex), preflight: async () => Promise.reject(new Error("x")) })).toMatchObject({ code: "PREFLIGHT_FAILED", stage: "precheck" });
+    expect(await runDesignCall(input({ outDir: join(base, "no-such-parent", "run") }), deps(codex))).toMatchObject({ code: "OUT_DIR_PARENT_MISSING", stage: "precheck" });
+    expect(codex.calls).toBe(0);
+    expect(ledgerFiles()).toEqual([]);
+    // a preflight that passes: the call goes ahead normally
+    expect((await runDesignCall(input(), { ...deps(codex), preflight: async () => null })).status).toBe("succeeded");
+  });
+
+  it("stopped while the checks run: nothing is used", async () => {
+    const c = new AbortController();
+    const codex = counting();
+    expect(await runDesignCall(input({ signal: c.signal }), { ...deps(codex), preflight: async () => (c.abort(), null) })).toEqual({ status: "stopped", code: "CODEX_ABORTED", stage: "precheck", aborted: true });
+    expect(codex.calls).toBe(0);
+    expect(ledgerFiles()).toEqual([]);
+  });
+});
+

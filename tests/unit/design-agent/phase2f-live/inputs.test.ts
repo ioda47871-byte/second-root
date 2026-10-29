@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FactsPack } from "@/lib/design-agent/artifact/schema";
@@ -83,4 +83,18 @@ describe("the design step's CLI (offline paths only)", () => {
     expect(JSON.parse(r.stdout)).toMatchObject({ status: "stopped", code: "HUMAN_APPROVAL_REQUIRED", approval_used: false });
     expect(spawnSync("ls", ["-A", state], { encoding: "utf8" }).stdout).toBe("");
   }, 30_000);
+
+  it("refuses output and ledger places that would break the sandbox or sit in the repository, before anything is used", () => {
+    const state = mkdtempSync(join(tmpdir(), "dev116-cli-"));
+    const pin = ["--route", "B", ...inputs, "--plan-id", "plan-fictional-1", "--approval-id", "fictional-2f-b-02", "--expected-prompt-sha256", "0".repeat(64), "--expected-prompt-chars", "10", "--expected-commit", "a".repeat(40), "--human-approval-confirmed"];
+    const run = (out: string, env: Record<string, string> = { SR_PHASE2F_STATE: state }) => JSON.parse(cli([...pin, "--out", out], env).stdout) as { code: string };
+    expect(run(join(tmpdir(), "dev116-run"))).toMatchObject({ code: "OUT_DIR_PARENT_UNSAFE" });
+    expect(run(join(homedir(), "dev116-run"))).toMatchObject({ code: "OUT_DIR_PARENT_UNSAFE" });
+    expect(run("/dev116-run")).toMatchObject({ code: "OUT_DIR_PARENT_UNSAFE" });
+    expect(run(join(REPO, "tmp-dev116-run"))).toMatchObject({ code: "OUT_DIR_INSIDE_REPO" });
+    expect(run(join(state, "missing", "run"))).toMatchObject({ code: "OUT_DIR_PARENT_MISSING" });
+    const out = join(mkdtempSync(join(tmpdir(), "dev116-out-")), "run");
+    expect(run(out, { SR_PHASE2F_STATE: join(REPO, "tmp-dev116-ledger") })).toMatchObject({ code: "LEDGER_INSIDE_REPO" });
+    expect(spawnSync("ls", ["-A", state], { encoding: "utf8" }).stdout).toBe("");
+  }, 60_000);
 });

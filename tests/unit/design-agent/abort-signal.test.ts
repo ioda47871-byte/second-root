@@ -173,6 +173,8 @@ describe("runCodexJsonWithMeta: the call's own facts (unknown = null, a warning 
     expect((r.answer as typeof answer).prototype.html).toBe(answer.prototype.html);
     expect(r.meta.redactions).toEqual([{ path: "prototype.css", count: 1 }]);
     expect(findRedactions({ a: ["x", long] })).toEqual([{ path: "a.1", count: 1 }]);
+    // a key that is not a plain name is quoted, so the path stays unambiguous
+    expect(findRedactions({ "a.b": long })).toEqual([{ path: '["a.b"]', count: 1 }]);
   });
 
   it("parses `codex --version`", () => {

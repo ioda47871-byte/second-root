@@ -41,7 +41,9 @@ npx tsx scripts/design-artifact/phase2f-design.ts --route B|C --facts <pack> --b
 - オーナーの確認
 - 指示文の SHA-256 と文字数が承認値と同じこと
 - HEAD・origin/develop・承認したコミットが同じで、作業ツリーが空であること
-- 出力先が新しく、リポジトリの外にあること
+- 出力先が新しく、リポジトリの外にあり、その親フォルダーが実在すること
+- 出力先の親フォルダーが、Codex のホーム・一時フォルダー・ホームフォルダー・リポジトリを含まないこと（親フォルダーは jail から隠すので、含むと jail を作れない）
+- jail を実際に準備できること（Codex は起動しない）
 - 承認 ID の形式と未使用であること
 - 回数と時間の上限
 
@@ -53,6 +55,7 @@ npx tsx scripts/design-artifact/phase2f-design.ts --route B|C --facts <pack> --b
    - `generation.json`：CLI の版・モデル・承認・SHA・コミット・実行 ID・時刻。
    - `call.json`：終わり方・警告・台帳の受け取り。
 4. 止まった呼び出しは `call.json` だけを残す。答えは書かず、成功にもしない。
+5. `call.json` は最後に書き、台帳の結果はその後に書く。後の工程は、`call.json` と台帳の**両方**が成功と言うときだけ答えを使う（DEV-117）。
 
 **Codex に見せないもの:** worker の作業フォルダー、承認台帳、出力先の親フォルダー（保護パスとして jail から隠す）。
 
@@ -72,7 +75,8 @@ npx tsx scripts/design-artifact/phase2f-design.ts --route B|C --facts <pack> --b
 
 **回数:**
 - 計画（`--plan-id`）ごとに、初回は最大4回、再試行は最大2回。`slots/first-N`・`slots/retry-N` を原子的な mkdir で取る。
-- 再試行は、同じ計画・経路・種類の、**成功していない**呼び出しを `--retry-of` で指名する新しい承認でだけ通る。1つの呼び出しにつき再試行は1回まで。
+- 再試行は、同じ計画・経路・種類の、**成功していない**呼び出しを `--retry-of` で指名する新しい承認でだけ通る。1つの呼び出しにつき再試行は1回まで（`retried/<承認ID>` の原子的な mkdir。同時に始めても1回）。
+- 枠が無くて断られた承認も使用済みになる（`refused` と記録）。呼び出しは無く、回数にも時間にも数えない。
 - 上限を増やす処理も、自動の再試行もない。
 
 **時間:**
@@ -110,9 +114,9 @@ npx tsx scripts/design-artifact/phase2f-design.ts --route B|C --facts <pack> --b
 |---|---|---|
 | hero | The morning batch. The first screen belongs to one sweet, the dorayaki with tsubu-an, and to the shop's own words 毎朝炊く粒あん beside the name 架空菓庵. Quiet and close, like one sweet wrapped on a small counter (小さな店頭). The name and the sweet may overlap, stand vertically or sit off-centre if that makes the screen feel like this shop rather than a template. | v4 `concept`（the morning batch）、提案 morning_batch の `hero`（どら焼きと名前、毎朝炊く粒あん）、事実の「小さな店頭」 |
 | typography | A refined Mincho for the name and for the two acts the shop states itself, 毎朝炊く粒あん and 一つずつお包みしています, shown as its reasons 1 and 2 with large numerals in azuki. A calm Gothic at reading size for hours, days off, address and phone. Vertical or horizontal setting, mixed directions and strong size contrast are all open. | 提案の `typography`（明朝で名前と二つの理由、数字1・2を小豆色で大きく、店舗情報はゴシック）。v4 の「横組みのみ」は引き継がない |
-| palette | Kinari #F4EFE4 ground, sumi #2B2622 text, a slightly darker kinari band #E2D6C0 behind the two reasons, and azuki #6B2E2E kept scarce: the numerals 1 and 2, one hairline, the colour of the tsubu-an. The warmth comes from the sweet itself, not from added colour. | v4 `palette` の4色（生成り・墨・生成りの帯・小豆）と用途。小豆は控えめに使う |
+| palette | Kinari #F4EFE4 ground, sumi #2B2622 for all text, a slightly darker kinari band #E2D6C0 behind the two reasons, and azuki #6B2E2E used only for the numerals 1 and 2 and one hairline above the shop information. Azuki is the one colour taken from the shop, from the tsubu-an it cooks; the warmth comes from the sweet itself, not from added colour. | v4 `palette` の4色と用途（小豆は数字1・2と店舗情報の上の細線1本だけ）。小豆は店が炊く粒あんから取った唯一の色 |
 | product_visual | The dorayaki, cut to show the tsubu-an cooked that morning, is the one lead; 季節の上生菓子 is named in text, not pictured. If a generated image is allowed, use one image of that dorayaki, labelled as a concept image, never presented as a photograph of the shop. Without images, evoke the sweet with colour, layered shapes or inline SVG, never a photo imitation. | 提案の `product_visual`（画像はどら焼き1枚、構想画像と明示、上生菓子は文字で示す）。画像を使えない B のための代わりの表現を追加 |
-| section_rhythm | Follow the shop's own story: what is made (the dorayaki), how it is made (1 毎朝炊く粒あん, 2 一つずつお包みしています), what else is offered (季節の上生菓子), then when and where to buy it (hours with 売り切れ次第終了, days off 水曜・第2火曜, 名古屋市東区, phone). Slow and generous; sections may overlap, shift off-axis or break the grid. | 提案の `section_rhythm`（作るもの→作り方→品書き→いつ・どこで）と、v4 `facts` の引用（売り切れ次第終了、水曜・第2火曜、名古屋市東区） |
+| section_rhythm | Follow the shop's own story: what is made (the dorayaki), how it is made (1 毎朝炊く粒あん, 2 一つずつお包みしています), what else is offered (季節の上生菓子), then when and where to buy it (hours with 売り切れ次第終了, days off 水曜・第2火曜, 名古屋市東区, phone), and a footer with the name and a short disclosure that this is a fictional shop (実在の店舗ではありません) and, where one is shown, that the image is a concept. Slow and generous; sections may overlap, shift off-axis or break the grid. | 提案の `section_rhythm`（作るもの→作り方→品書き→いつ・どこで→フッター）、v4 `facts` の引用、v4 と提案の、架空の店であること・構想画像であることを示すフッター |
 | navigation | Minimal text navigation to the reasons and to the shop information; no order, booking or cart wording, since the facts give none. The shop name stays readable at all times. | v4 `web_ui.nav` と提案の `navigation`（理由と店舗情報への文字のリンク、注文・予約の文言なし） |
 | mobile | Designed for the phone, not a shrunken desktop: the name and 毎朝炊く粒あん come before anything else, then the sweet, then reasons 1 and 2 stacked, then the shop information as label-above-value rows. Phone-specific layouts, vertical text and overlaps are welcome where they stay readable. | v4 `mobile_390.order`（名前と毎朝炊く粒あん → どら焼き → 理由1・2 → 見出しの下に値を置く店舗情報） |
 | implementation | One static page: semantic HTML and one stylesheet, rendered with no script and no external resource. Any CSS is welcome, including grid, absolute layering, writing-mode, clip-path, transforms, blend modes and inline SVG; nothing is limited to an implementation allowlist at this stage. | v4 `css_notes`・提案の `implementation` の CSS 許可範囲の制約は**引き継がない**。どんな CSS でもよく、条件はスクリプトなし・外部資源なしだけ |

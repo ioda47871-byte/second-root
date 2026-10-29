@@ -341,8 +341,11 @@ export function findRedactions(value: unknown, path = ""): { path: string; count
     const count = value.match(TOKEN_LIKE)?.length ?? 0;
     return count > 0 ? [{ path: path || "(root)", count }] : [];
   }
-  if (Array.isArray(value)) return value.flatMap((v, i) => findRedactions(v, path ? `${path}.${i}` : String(i)));
-  if (value && typeof value === "object") return Object.entries(value).flatMap(([k, v]) => findRedactions(v, path ? `${path}.${k}` : k));
+  // a key that is not a plain name (a dot, a quote, very long) is written as ["..."], cut to 40 characters
+  const seg = (k: string) => (/^[A-Za-z0-9_-]{1,40}$/.test(k) ? k : `[${JSON.stringify(k.slice(0, 40))}]`);
+  const at = (k: string) => (path ? `${path}.${k}` : k).slice(0, 300);
+  if (Array.isArray(value)) return value.flatMap((v, i) => findRedactions(v, at(String(i))));
+  if (value && typeof value === "object") return Object.entries(value).flatMap(([k, v]) => findRedactions(v, at(seg(k))));
   return [];
 }
 

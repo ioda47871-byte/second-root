@@ -18,8 +18,8 @@
  * next steps (pre-render, image approval, packaging: DEV-117), which never call Codex for this design again.
  * Exit: 0 succeeded, 2 refused before anything was used, 1 the call was made (approval used) and did not succeed.
  */
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { readFile, realpath } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { FactsPack } from "../../lib/design-agent/artifact/schema";
 import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
@@ -28,16 +28,40 @@ import { buildDesignPrompt, codexDesignJsonSchema, DesignBrief } from "../../lib
 import { runDesignCall } from "../../lib/design-agent/phase2f-live/design-call";
 import { LIVE_LIMITS, openLedger } from "../../lib/design-agent/phase2f-live/ledger";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
-import { prepareCodexSandbox } from "../../lib/design-agent/sandbox";
+import { prepareCodexSandbox, type CodexSandbox } from "../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
 
 const REPO = resolve(__dirname, "../..");
 process.umask(0o077);
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
-const insideRepo = (p: string) => {
-  const rel = relative(REPO, p);
+const within = (child: string, parent: string) => {
+  const rel = relative(parent, child);
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
+/** A path with links resolved as far as it exists (the part that does not exist yet is kept as written). */
+async function real(p: string): Promise<string> {
+  const abs = resolve(p);
+  const r = await realpath(abs).catch(() => null);
+  if (r !== null) return r;
+  const up = dirname(abs);
+  return up === abs ? abs : join(await real(up), abs.slice(up.length + (up.endsWith("/") ? 0 : 1)));
+}
+const insideRepo = async (p: string) => within(await real(p), await real(REPO));
+
+/**
+ * The output dir's parent is hidden from Codex (it holds every run's results). Hiding it must not hide what the
+ * sandbox needs (Codex's home, the temp dir its work dir is made in, the home dir) or the repository: such a
+ * parent is refused before the approval is used.
+ */
+async function outParentProblem(out: string): Promise<string | null> {
+  const parent = await realpath(dirname(resolve(out))).catch(() => null);
+  if (parent === null) return "OUT_DIR_PARENT_MISSING";
+  const codexHome = process.env.CODEX_HOME ? expand(process.env.CODEX_HOME) : join(homedir(), ".codex");
+  for (const needed of [await real(REPO), await real(tmpdir()), await real(homedir()), await real(codexHome)]) {
+    if (within(needed, parent)) return "OUT_DIR_PARENT_UNSAFE";
+  }
+  return null;
+}
 /** The design prompt asks for at most this many generated images on route C (each needs its own approval later). */
 const MAX_ASSETS = 1;
 
@@ -70,7 +94,8 @@ async function promptFor(args: Map<string, string>) {
 
 const say = (o: object) => process.stdout.write(`${JSON.stringify(o)}\n`);
 
-let controller: AbortController | null = null;
+// created first, so a signal that arrives during the checks is never lost (the call then does not start)
+const controller = new AbortController();
 let stopping = false;
 function stop(): void {
   if (stopping) {
@@ -79,7 +104,7 @@ function stop(): void {
     process.exit(1);
   }
   stopping = true;
-  controller?.abort();
+  controller.abort();
   // the call records itself as aborted; if it does not end soon, end it hard
   setTimeout(() => {
     killAllBoundedChildren();
@@ -101,17 +126,23 @@ async function main(): Promise<number> {
   }
   const out = args.get("--out");
   const chars = Number(args.get("--expected-prompt-chars"));
-  if (!out || !isAbsolute(out) || insideRepo(expand(out)) || !Number.isInteger(chars)) return (say({ status: "refused", code: "USAGE" }), 2);
+  if (!out || !isAbsolute(out) || !Number.isInteger(chars)) return (say({ status: "refused", code: "USAGE" }), 2);
+  if (await insideRepo(out)) return (say({ status: "refused", code: "OUT_DIR_INSIDE_REPO" }), 2);
+  const parentProblem = await outParentProblem(out);
+  if (parentProblem) return (say({ status: "refused", code: parentProblem }), 2);
 
   const stateDir = join(expand(process.env.XDG_STATE_HOME ?? "~/.local/state"), "sr-design-worker");
   const ledgerDir = expand(process.env.SR_PHASE2F_STATE ?? join(stateDir, "phase2f-live"));
-  if (insideRepo(ledgerDir)) return (say({ status: "refused", code: "LEDGER_INSIDE_REPO" }), 2);
+  if (await insideRepo(ledgerDir)) return (say({ status: "refused", code: "LEDGER_INSIDE_REPO" }), 2);
   const workerPaths = { stateDir, queueRoot: expand(process.env.SR_DESIGN_JOBS ?? "~/sr-design-jobs"), outRoot: expand("~/.local/share/second-root-design") };
   const env = childEnvironment(process.env);
 
-  controller = new AbortController();
-  // the call's own limit is enforced by the process runner; this only ends a call that does not stop by itself
-  setTimeout(() => stop(), LIVE_LIMITS.callTimeoutMs + 60_000).unref();
+  // the call's own 15 minutes are enforced by the process runner around Codex; this only ends a run that does not
+  // stop by itself (it also covers the sign-in check, the version and the sandbox probes before the call)
+  setTimeout(() => stop(), LIVE_LIMITS.callTimeoutMs + 5 * 60_000).unref();
+  // Codex never sees the worker's directories, the ledger or where the results go
+  const protectedPaths = [...new Set([...workerProtectedPaths({ ...workerPaths, env: process.env }), ledgerDir, dirname(resolve(out))])];
+  let sandbox: CodexSandbox | null = null;
   const result = await runDesignCall(
     {
       route: p.route,
@@ -132,10 +163,13 @@ async function main(): Promise<number> {
         const [head, base, status] = await Promise.all([git(["rev-parse", "HEAD"]), git(["rev-parse", "origin/develop"]), git(["status", "--porcelain", "--untracked-files=all"])]);
         return { head: head?.trim() ?? null, base: base?.trim() ?? null, clean: status === "" };
       },
+      // the sandbox is prepared (no Codex started) before the approval is used: a refusal there uses nothing
+      preflight: async () => {
+        sandbox = await prepareCodexSandbox({ env, protectedPaths }).catch(() => null);
+        return sandbox === null ? "CODEX_SANDBOX_UNAVAILABLE" : null;
+      },
       codex: async (o) => {
-        // Codex never sees the worker's directories, the ledger or where the results go
-        const protectedPaths = [...new Set([...workerProtectedPaths({ ...workerPaths, env: process.env }), ledgerDir, dirname(resolve(out))])];
-        const sandbox = await prepareCodexSandbox({ env, protectedPaths });
+        if (sandbox === null) throw new Error("no sandbox");
         return runCodexJsonWithMeta({ sandbox, ...o });
       },
     },
