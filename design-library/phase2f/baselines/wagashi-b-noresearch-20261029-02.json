@@ -1,0 +1,55 @@
+{
+  "schema": "phase2f_baseline_v1",
+  "baseline_id": "wagashi-b-noresearch-20261029-02",
+  "recorded_on": "2026-10-29",
+  "shop": { "shop_id": "fictional-wagashi", "display_name": "架空菓庵" },
+  "route": "B_html_prototype",
+  "research_used": false,
+  "role": "comparison_baseline_without_research",
+  "inputs": {
+    "facts_pack": "design-library/phase2f/wagashi-facts-pack.json",
+    "brief": "design-library/phase2f/wagashi-brief-v4.json",
+    "prompt_sha256": "a2fdd00365087046c44f03b4c3ea43530046af658b017ae5229fd7577c817954",
+    "prompt_chars": 5706
+  },
+  "generation": {
+    "status": "succeeded",
+    "tool": "codex_cli",
+    "tool_version": "0.159.0",
+    "model_reported": "gpt-6.1-sol",
+    "approval_id": "wagashi-b-design-20261029-02",
+    "prompt_sha256": "a2fdd00365087046c44f03b4c3ea43530046af658b017ae5229fd7577c817954",
+    "worker_commit": "f8ebaf734522e31305b138748ed381fc91c9f983",
+    "run_id": "p2f-6976521272bcf864",
+    "started_at": null,
+    "finished_at": null,
+    "image_outcome": "not_applicable"
+  },
+  "retry_of": "wagashi-b-design-20261029-01",
+  "package": {
+    "status": "stopped",
+    "code": "CODEX_ASSETS_ON_ROUTE_B",
+    "class": "output",
+    "artifact_created": false
+  },
+  "formal_artifact_passed": false,
+  "preview": {
+    "kind": "manual_preview_not_an_artifact_render",
+    "answer_modified": false,
+    "preview_only_changes": ["tel_links_disabled"],
+    "images": {
+      "desktop_1440": { "width": 1440, "height": 2240, "bytes": 129373, "sha256": "2e1c3da2a9acad767657e839310f50027a18385154c6487d9cf9af13102c1b61", "scroll_width": null },
+      "mobile_390": { "width": 390, "height": 2590, "bytes": 86618, "sha256": "ec79cca85148f0388223f6d96b677204757e5d91e16a2dc3ea6c4666e6774cae", "scroll_width": 413 }
+    },
+    "images_in_repository": false
+  },
+  "quality": {
+    "provisional_evaluation": {
+      "by": "chatgpt",
+      "verdict": "fail",
+      "issues": ["vertical_text_overlap", "insufficient_product_expression", "mobile_horizontal_overflow"]
+    },
+    "owner_final_decision": { "status": "pending", "quote_verbatim": null, "decided_on": null }
+  },
+  "source_of_values": "owner_report_20261029_from_wsl_outputs_not_rechecked_in_repository"
+}
