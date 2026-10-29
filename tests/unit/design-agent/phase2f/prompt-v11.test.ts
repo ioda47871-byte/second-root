@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -53,8 +53,8 @@ describe("the B v1.1 prompts", () => {
   });
 });
 
-describe("the research section (owner text approval pending)", () => {
-  it("is tied to PR #142's registered cases CP-016, CP-009, CP-003 and its files' SHA-256; text not yet approved", () => {
+describe("the research section (owner text approved, immutable block)", () => {
+  it("is tied to PR #142's registered cases CP-016, CP-009, CP-003 and its files' SHA-256; exact text approved", () => {
     expect(section.source).toEqual({
       research_pr: 142,
       research_pr_head: "efe269f4b4a13f3c05bfb799891c8157c9be4c0b",
@@ -63,7 +63,12 @@ describe("the research section (owner text approval pending)", () => {
       case_ids: ["CP-016", "CP-009", "CP-003"],
     });
     expect(section.principles.map((p) => [p.id, p.from_case])).toEqual([["R1", "CP-016"], ["R2", "CP-009"], ["R3", "CP-003"]]);
-    expect(section.owner_text_approval).toEqual({ status: "pending" });
+    expect(section.owner_text_approval).toEqual({
+      status: "approved",
+      quote_verbatim: "Second Rootの研究区画 SHA-256 444bc6a24042fc6b60ea7ec707bd8c74c4e4a41fc005e0f9f8d179b0b37315c2 の英文全文を、架空菓庵B v1.1比較実験に限って正式承認します。承認記録の作成と検証を進めてください。Codex実行は別途承認します。",
+      decided_on: "2026-10-30",
+      block_sha256: "444bc6a24042fc6b60ea7ec707bd8c74c4e4a41fc005e0f9f8d179b0b37315c2",
+    });
   });
 
   it("copies no shop name, photograph or brand of the source cases (abstract principles only)", () => {
@@ -113,17 +118,20 @@ describe("the design CLI with v1.1", () => {
     expect(run(["--print-pin", ...base, "--prompt-version", "v1.1"], state).out).toMatchObject({ prompt_version: "v1.1", research_section: null, prompt_chars: 6010 });
     expect(run(["--print-pin", ...base, "--prompt-version", "v1.1", "--research", resolve(REPO, RESEARCH)], state).out).toMatchObject({
       prompt_version: "v1.1",
-      research_section: { section_id: "wagashi-b-research-v1", case_ids: ["CP-016", "CP-009", "CP-003"], owner_text_approval: "pending" },
+      research_section: { section_id: "wagashi-b-research-v1", case_ids: ["CP-016", "CP-009", "CP-003"], owner_text_approval: "approved" },
       prompt_chars: 7741,
     });
     expect(readdirSync(state)).toEqual([]);
   }, 60_000);
 
-  it("refuses a real run with research while the text is not owner-approved, before anything is used", () => {
+  it("still refuses a real run when research text is pending (isolated fixture), before anything is used", () => {
     const state = mkdtempSync(join(tmpdir(), "dev122-run-"));
     const runs = mkdtempSync(join(tmpdir(), "dev122-out-"));
+    const fixtureDir = mkdtempSync(join(tmpdir(), "dev122-pending-"));
+    const pendingResearch = join(fixtureDir, "research-pending.json");
+    writeFileSync(pendingResearch, JSON.stringify({ ...read(RESEARCH), owner_text_approval: { status: "pending" } }));
     const r = run(
-      [...base, "--prompt-version", "v1.1", "--research", resolve(REPO, RESEARCH), "--out", join(runs, "d1"), "--plan-id", "plan-fictional-1", "--approval-id", "fictional-r-1",
+      [...base, "--prompt-version", "v1.1", "--research", pendingResearch, "--out", join(runs, "d1"), "--plan-id", "plan-fictional-1", "--approval-id", "fictional-r-1",
         "--expected-prompt-sha256", "a0dbb48c1b85629e1ddedaed2a6015e781adb3696c01b824f360ae74c5c1a0c2", "--expected-prompt-chars", "7741", "--expected-commit", "d".repeat(40), "--human-approval-confirmed"],
       state,
     );
