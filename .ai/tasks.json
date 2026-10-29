@@ -5350,6 +5350,49 @@
       ],
       "note": "Schema only; prompt text, SHA and length unchanged.",
       "merged": "#150 → 32bbce2 (squash, 2026-10-29)"
+    },
+    {
+      "id": "DEV-119",
+      "title": "Phase 2f-2：B方式の初回失敗（CODEX_EXEC_FAILED）を受けた、設計スキーマの Structured Outputs 互換化と、失敗時の終了コード・固定分類の記録",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-118"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-119-codex-schema-compat-diagnostics",
+      "purpose": "オーナー承認（2026-10-29）。B方式の初回（wagashi-b-design-20261029-01、first-1、5965ms）は原因不明の CODEX_EXEC_FAILED。最有力候補は Codex に渡したスキーマの非対応キーワード not。原因を絞る最短経路として、スキーマ互換化と最小限の診断だけを入れる。",
+      "acceptance_criteria": [
+        "Codex 向けスキーマのキーワードが本番 worker のスキーマで使っているものだけ（not・minLength なし）",
+        "interaction_spec は空配列のみ（maxItems 0）、Zod の回答検査は不変",
+        "B/C のプロンプトの SHA と文字数が不変",
+        "CODEX_EXEC_FAILED に数値の終了コードと固定分類だけを付け、call.json と CLI の出力に記録。分類不能は other_nonzero_exit / unknown",
+        "stdout・stderr・認証情報・回答・セッションログを保存しない",
+        "擬似 Codex で分類・非漏洩、worker の回帰テストが通る"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/codex.ts（CodexError の diagnostic、classifyCodexExit、CODEX_EXEC_FAILED の1行）",
+        "lib/design-agent/phase2f/prompt.ts（codexDesignJsonSchema のみ）",
+        "lib/design-agent/phase2f-live/design-call.ts（失敗時の diagnostic）",
+        "scripts/design-artifact/phase2f-design.ts（出力に diagnostic）",
+        "tests/unit/design-agent/{codex,phase2f/parts,phase2f-live/design-call}.test.ts",
+        "docs/design/phase2f-live.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-119.md"
+      ],
+      "forbidden_scope": [
+        "worker・jail・承認台帳・回数制限・画像PoC・プロンプト本文の挙動変更",
+        "実際の Codex 実行・画像生成",
+        "使用済み承認IDの再利用、台帳や失敗記録の消去",
+        "PR #142・main・Vercel・Supabase・営業AIの変更",
+        "オーナー確認前のマージ"
+      ],
+      "human_approval_triggers": [
+        "マージ（レビュー結果を見てオーナーが判断）",
+        "B方式の再試行（新しい承認ID、retry-1）"
+      ],
+      "note": "Diagnostics are a fixed class and the exit code only."
     }
   ]
 }

@@ -95,7 +95,7 @@ async function main(): Promise<number> {
     say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, warnings: result.warnings });
     return 0;
   }
-  say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call" });
+  say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call", ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}) });
   return result.stage === "precheck" ? 2 : 1;
 }
 

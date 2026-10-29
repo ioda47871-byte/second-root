@@ -216,6 +216,10 @@ CLI の版が取れないことは、モデル名と同じく警告（`generatio
 
 承認を使った後の失敗は、成功に書き換えず、原因のコードを記録する。
 
+`codex exec` が 0 以外で終わった（`CODEX_EXEC_FAILED`）ときは、`call.json` と CLI の出力に `diagnostic: { exit_code, class }` だけを残す（DEV-119）。分類は CLI 自身のエラー文（stderr と `error` / `turn.failed` イベント）を固定の規則で照合して決め、`authentication` → `quota_or_rate_limit` → `model_unavailable` → `schema_or_arguments` → `network_or_transport` の順で最初に当たったものになる。当たらなければ `other_nonzero_exit`（終了コードがある）か `unknown`。stdout・stderr の全文、認証情報、モデルの回答、セッションログは保存しない。
+
+Codex に渡す設計のスキーマ（`codexDesignJsonSchema`）は、本番 worker のスキーマが `--output-schema` で使っているキーワードだけにする（DEV-119）。Zod が書く `interaction_spec` の `items: {"not": {}}` は文字列型に置き換え（`maxItems: 0` は残すので空配列のみ）、`minLength` は Codex 向けからだけ外す。回答の Zod による検査は変わらない。
+
 ## 7. 実際の生成を始めるまでに必要な承認
 
 実行は1回ずつ行い、その間は本番 worker と画像 PoC を止めておく。各呼び出しは、途中で切れた design-agent の呼び出しの残り（セッションログと画像フォルダー）を最初に消すので、同時に動いている別の呼び出しの記録まで消えることがある（PoC と worker も同じ動き）。

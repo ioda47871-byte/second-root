@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { codexEnvironment, CodexError, runCodexJson } from "@/lib/design-agent/codex";
+import { classifyCodexExit, codexEnvironment, CodexError, runCodexJson } from "@/lib/design-agent/codex";
 import { designProfileJsonSchema } from "@/lib/design-agent/profile";
 import { passthroughSandbox } from "../../support/passthrough-sandbox";
 import { PNG } from "./worker-support";
@@ -86,6 +86,43 @@ describe("runCodexJson", () => {
     expect((failed as CodexError).message).not.toContain("secret-looking");
     expect(await codeOf(runCodexJson({ prompt: "p", schema: {}, sandbox: passthroughSandbox(FAKE, env) }))).toBe("CODEX_QUOTA");
     expect(await codeOf(runCodexJson({ prompt: "p", schema: {}, sandbox: passthroughSandbox(FAKE, env) }))).toBe("CODEX_NO_JSON");
+  });
+
+  it("DEV-119: a failed exec carries only its exit code and a fixed class, never Codex's words", async () => {
+    const SECRET = "sk-proj-SECRETSECRET user@example.com answer-text-xyz";
+    const env = await setup([
+      { exit: 1, stderr: `${SECRET}\n`, eventMessage: `invalid_json_schema: 'not' is not permitted ${SECRET}` },
+      { exit: 2, stderr: `${SECRET} plain failure` },
+      { exit: 1, stderr: "", eventMessage: "stream disconnected before completion: error sending request" },
+    ]);
+    const fail = (): Promise<CodexError> => runCodexJson({ prompt: "p", schema: {}, sandbox: passthroughSandbox(FAKE, env) }).then(() => { throw new Error("must fail"); }, (e: unknown) => e as CodexError);
+    const results = [await fail(), await fail(), await fail()];
+    expect(results.map((e) => [e.code, e.diagnostic])).toEqual([
+      ["CODEX_EXEC_FAILED", { exit_code: 1, class: "schema_or_arguments" }],
+      ["CODEX_EXEC_FAILED", { exit_code: 2, class: "other_nonzero_exit" }],
+      ["CODEX_EXEC_FAILED", { exit_code: 1, class: "network_or_transport" }],
+    ]);
+    for (const e of results) {
+      expect(Object.keys(e.diagnostic!).sort()).toEqual(["class", "exit_code"]);
+      expect(JSON.stringify({ ...e, message: e.message, diagnostic: e.diagnostic })).not.toMatch(/SECRET|example\.com|answer-text|not permitted|stream/);
+    }
+  });
+
+  it("DEV-119: the classes, in a fixed order; nothing recognised stays other_nonzero_exit or unknown", () => {
+    const ev = (m: string) => JSON.stringify({ type: "turn.failed", error: { message: m } });
+    const c = (code: number | null, stderr: string, stdout = "") => classifyCodexExit(code, stdout, stderr).class;
+    expect(c(1, "401 Unauthorized: refresh token has expired")).toBe("authentication");
+    expect(c(1, "", ev("unexpected status 403 Forbidden"))).toBe("authentication");
+    expect(c(1, "You've hit your usage limit")).toBe("quota_or_rate_limit");
+    expect(c(1, "", ev("The model `gpt-x` does not exist or you do not have access to it."))).toBe("model_unavailable");
+    expect(c(1, "error: unexpected argument '--foo' found")).toBe("schema_or_arguments");
+    expect(c(1, "", ev("Invalid schema for response_format 'codex_output_schema'"))).toBe("schema_or_arguments");
+    expect(c(1, "error sending request for url")).toBe("network_or_transport");
+    expect(c(1, "something else went wrong")).toBe("other_nonzero_exit");
+    expect(c(null, "")).toBe("unknown");
+    // the model's own answer (an agent message) is never read for this
+    expect(c(1, "", JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "401 Unauthorized usage limit" } }))).toBe("other_nonzero_exit");
+    expect(classifyCodexExit(7, "", "x")).toEqual({ exit_code: 7, class: "other_nonzero_exit" });
   });
 
   it("times out and removes its temporary directory", async () => {
