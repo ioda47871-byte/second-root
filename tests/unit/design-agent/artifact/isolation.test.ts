@@ -54,6 +54,8 @@ describe("isolation of the Design Artifact intake", () => {
       [
         CLI,
         "scripts/design-artifact/phase2f.ts",
+        // DEV-116 (owner-approved exact path): the design step reads the facts pack with its schema
+        "scripts/design-artifact/phase2f-design.ts",
         "lib/design-agent/phase2f/compare-sheet.ts",
         "lib/design-agent/phase2f/prompt.ts",
         "lib/design-agent/phase2f/runner.ts",

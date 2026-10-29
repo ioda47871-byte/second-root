@@ -90,7 +90,8 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 export interface CodexSandbox {
   /** Runs Codex with `args` inside the sandbox; the work dir is visible at its own path. */
   /** `onStdout` only observes stdout as it arrives (bounded-process; synchronous, read-only); it changes nothing in the jail or the run. */
-  run(args: readonly string[], options: { workDir: string; input?: string; timeoutMs: number; onStdout?: (chunk: string) => void }): Promise<BoundedResult>;
+  /** `signal` (optional) stops the run like a timeout (bounded-process); without it nothing changes. */
+  run(args: readonly string[], options: { workDir: string; input?: string; timeoutMs: number; onStdout?: (chunk: string) => void; signal?: AbortSignal }): Promise<BoundedResult>;
   /** CODEX_HOME / HOME on the host (for cleaning up the CLI's session logs). */
   readonly env: Readonly<Record<string, string>>;
 }
@@ -351,6 +352,7 @@ export async function prepareCodexSandbox(options: SandboxOptions): Promise<Code
         timeoutMs: runOptions.timeoutMs,
         ...(runOptions.input === undefined ? {} : { input: runOptions.input }),
         ...(runOptions.onStdout === undefined ? {} : { onStdout: runOptions.onStdout }),
+        ...(runOptions.signal === undefined ? {} : { signal: runOptions.signal }),
       });
       // and once more after it ended: a .env that appeared between the last check and the spawn (a lost race)
       // is detected, and the result of a Codex that may have loaded it is thrown away

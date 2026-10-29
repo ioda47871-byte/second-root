@@ -17,6 +17,8 @@ export interface BoundedResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  /** Set (true) only when the caller's AbortSignal stopped the run, or it was aborted before the start (nothing ran). */
+  aborted?: boolean;
 }
 
 export interface BoundedOptions {
@@ -35,6 +37,11 @@ export interface BoundedOptions {
    * captured stdout: once MAX_CAPTURE is reached it is not called any more.
    */
   onStdout?: (chunk: string) => void;
+  /**
+   * Optional: aborting it stops the run exactly like a timeout (the whole group gets SIGTERM, then SIGKILL after
+   * the grace period). Already aborted: nothing is started. Without it the behaviour is unchanged.
+   */
+  signal?: AbortSignal;
 }
 
 /** Grace between SIGTERM and SIGKILL (and between exit and cutting the pipes). */
@@ -69,6 +76,10 @@ export function runBounded(
   options: BoundedOptions,
 ): Promise<BoundedResult> {
   const graceMs = options.graceMs ?? KILL_GRACE_MS;
+  const { signal } = options;
+  if (signal?.aborted) {
+    return Promise.resolve({ code: null, signal: null, stdout: "", stderr: "", timedOut: false, aborted: true });
+  }
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       env: options.env,
@@ -80,6 +91,8 @@ export function runBounded(
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let aborted = false;
+    let stopping = false;
     let exit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
     let settled = false;
     let killTimer: NodeJS.Timeout | undefined;
@@ -93,30 +106,44 @@ export function runBounded(
       clearTimeout(timer);
       clearTimeout(killTimer);
       clearTimeout(drainTimer);
+      signal?.removeEventListener("abort", onAbort);
       if (pid !== undefined) {
-        /* On timeout, end the whole group including grandchildren. */
-        if (timedOut) {
+        /* On timeout or abort, end the whole group including grandchildren. */
+        if (timedOut || aborted) {
           signalGroup(pid, "SIGKILL");
         }
         liveGroups.delete(pid);
       }
       child.stdout?.destroy();
       child.stderr?.destroy();
-      resolve({ code: exit?.code ?? null, signal: exit?.signal ?? null, stdout, stderr, timedOut });
+      resolve({ code: exit?.code ?? null, signal: exit?.signal ?? null, stdout, stderr, timedOut, ...(aborted ? { aborted: true } : {}) });
     };
 
-    const timer = setTimeout(() => {
-      timedOut = true;
-      if (pid === undefined) {
+    /* Timeout and abort stop the group the same way: SIGTERM, then SIGKILL after the grace period. */
+    const stop = (): void => {
+      if (stopping || pid === undefined) {
         return;
       }
+      stopping = true;
       signalGroup(pid, "SIGTERM");
       killTimer = setTimeout(() => {
         signalGroup(pid, "SIGKILL");
         /* If the pipes still do not close (a grandchild left the group), cut them. */
         drainTimer = setTimeout(finish, graceMs);
       }, graceMs);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stop();
     }, options.timeoutMs);
+    function onAbort(): void {
+      if (settled) {
+        return;
+      }
+      aborted = true;
+      stop();
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     if (pid !== undefined) {
       liveGroups.add(pid);
@@ -151,6 +178,7 @@ export function runBounded(
       clearTimeout(timer);
       clearTimeout(killTimer);
       clearTimeout(drainTimer);
+      signal?.removeEventListener("abort", onAbort);
       if (pid !== undefined) {
         liveGroups.delete(pid);
       }

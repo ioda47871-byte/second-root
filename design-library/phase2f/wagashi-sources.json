@@ -1,0 +1,11 @@
+{
+  "schema": "phase2f_facts_sources_v1",
+  "pack": "wagashi-facts-pack.json",
+  "sources": {
+    "S1": {
+      "path": "scripts/sales-design-worker/compare/shops/wagashi.json",
+      "what": "DEV-073 fictional comparison fixture (架空菓庵; not a real shop)",
+      "mapping": "one fact per fixture key, in fixture order; menu_items[i] -> menu_item_<i+1>; values copied verbatim"
+    }
+  }
+}

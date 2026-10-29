@@ -100,17 +100,31 @@ export function codexEnvironment(base: Record<string, string | undefined>): Node
   return env;
 }
 
-export async function assertChatGptSignIn(options: { sandbox: CodexSandbox }): Promise<void> {
+/**
+ * The caller's AbortSignal stopped the call: never an answer, never retried here. Its own class (not a
+ * CodexFailureCode), so callers that never pass a signal (the worker, the image PoC) see exactly what they saw before.
+ */
+export class CodexAbortedError extends Error {
+  readonly code = "CODEX_ABORTED" as const;
+  constructor() {
+    super("The Codex call was stopped by its caller.");
+    this.name = "CodexAbortedError";
+  }
+}
+
+export async function assertChatGptSignIn(options: { sandbox: CodexSandbox; signal?: AbortSignal }): Promise<void> {
+  if (options.signal?.aborted) throw new CodexAbortedError();
   const workDir = await mkdtemp(join(tmpdir(), "sr-design-codex-"));
   let result: BoundedResult;
   try {
-    result = await options.sandbox.run(["login", "status"], { workDir, timeoutMs: 30_000 });
+    result = await options.sandbox.run(["login", "status"], { workDir, timeoutMs: 30_000, ...(options.signal === undefined ? {} : { signal: options.signal }) });
   } catch (error) {
     if (error instanceof SandboxError) throw fromSandboxError(error);
     throw new CodexError("CODEX_SANDBOX_UNAVAILABLE", SANDBOX_MESSAGES.CODEX_SANDBOX_UNAVAILABLE);
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
+  if (result.aborted) throw new CodexAbortedError();
   const status = `${result.stdout}\n${result.stderr}`;
   if (/api key/i.test(status)) {
     throw new CodexError("CODEX_API_KEY_AUTH", "Codex is signed in with an API key. Sign in with ChatGPT instead.");
@@ -317,6 +331,25 @@ async function readAnswerFile(path: string): Promise<string | undefined> {
  * model to copy its own sign-in token (readable in CODEX_HOME) into the JSON.
  */
 const TOKEN_LIKE = /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_.-]*|\b(?:sk|rt|ghp|gho|github_pat|xox[abp])[-_][A-Za-z0-9_-]{8,}|[A-Za-z0-9+/_-]{40,}={0,2}/g;
+/**
+ * Where redactSecrets would change an answer: each string's JSON path and how many pieces it removes there.
+ * Read only (the answer is redacted as before); lets a caller record that a prototype's HTML / CSS / SVG was
+ * changed, so later checks can see whether it still renders as designed.
+ */
+export function findRedactions(value: unknown, path = ""): { path: string; count: number }[] {
+  if (typeof value === "string") {
+    const count = value.match(TOKEN_LIKE)?.length ?? 0;
+    return count > 0 ? [{ path: path || "(root)", count }] : [];
+  }
+  // a key that is not a plain name (a dot, a quote, very long) is written as ["..."], cut to 40 characters
+  // (a key is scrubbed like a value before it is written, so a token cannot travel in a key either)
+  const seg = (k: string) => (/^[A-Za-z0-9_-]{1,39}$/.test(k) ? k : `[${JSON.stringify(k.replace(TOKEN_LIKE, "[removed]").slice(0, 40))}]`);
+  const at = (k: string) => (path ? `${path}.${k}` : k).slice(0, 300);
+  if (Array.isArray(value)) return value.flatMap((v, i) => findRedactions(v, at(String(i))));
+  if (value && typeof value === "object") return Object.entries(value).flatMap(([k, v]) => findRedactions(v, at(seg(k))));
+  return [];
+}
+
 export function redactSecrets(value: unknown): unknown {
   if (typeof value === "string") return value.replace(TOKEN_LIKE, "[removed]");
   if (Array.isArray(value)) return value.map(redactSecrets);
@@ -371,6 +404,69 @@ export interface CodexJsonOptions {
   /** DEV-029: checked PNG bytes of design assets, staged after `images` as copies (no path is passed on). */
   imageBytes?: readonly Buffer[];
   timeoutMs?: number;
+  /**
+   * Optional: aborting it stops the call at once. A running Codex (and every process it started) gets SIGTERM, then
+   * SIGKILL; the call throws CODEX_ABORTED (never an answer) and is not retried. Without it nothing changes.
+   */
+  signal?: AbortSignal;
+}
+
+/** What a call can tell about itself (runCodexJsonWithMeta); null when it could not be read (a warning, not a failure). */
+export interface CodexRunMeta {
+  threadId: string | null;
+  /** `codex --version`, run in the same sandbox before the call. */
+  cliVersion: string | null;
+  /** The model named in the thread's session log, read before the log is deleted. */
+  modelReported: string | null;
+  /** Strings changed by redactSecrets (path, pieces removed); empty when the answer is untouched. */
+  redactions: { path: string; count: number }[];
+}
+
+const CLI_VERSION = /^[0-9A-Za-z.+-]{1,40}$/;
+const MODEL_NAME = /^[0-9A-Za-z._-]{1,60}$/;
+
+/** The version from `codex --version` ("codex-cli 0.200.0" -> "0.200.0"); null when it does not look like one. */
+export function parseCliVersion(stdout: string): string | null {
+  const token = stdout.trim().split("\n")[0]?.trim().split(/\s+/).at(-1) ?? "";
+  return CLI_VERSION.test(token) && /\d/.test(token) ? token : null;
+}
+
+/** A session log of ours (not a link, a regular file, at most 64 MiB), read only to find the model's name. */
+async function readSessionLog(path: string): Promise<string | undefined> {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > 64 * 1024 * 1024 || info.uid !== process.getuid?.()) return undefined;
+    return (await handle.readFile()).toString("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+/** The model named in a thread's session log (turn_context / session_meta payload); only that field is read. */
+export async function readSessionModel(threadId: string, env: Record<string, string | undefined>): Promise<string | null> {
+  if (!THREAD_ID.test(threadId)) return null;
+  const home = env.CODEX_HOME || join(env.HOME || homedir(), ".codex");
+  for (const dir of ["sessions", "archived_sessions"]) {
+    const root = join(home, dir);
+    const names = await readdir(root, { recursive: true }).catch(() => [] as string[]);
+    for (const name of names) {
+      const base = name.split("/").pop() ?? "";
+      if (!base.startsWith("rollout-") || !base.endsWith(`${threadId}.jsonl`)) continue;
+      const text = await readSessionLog(join(root, name)).catch(() => undefined);
+      for (const line of (text ?? "").split("\n")) {
+        let event: { type?: unknown; payload?: { model?: unknown } } | null;
+        try {
+          event = JSON.parse(line) as typeof event;
+        } catch {
+          continue;
+        }
+        const model = event?.type === "turn_context" || event?.type === "session_meta" ? event.payload?.model : undefined;
+        if (typeof model === "string" && MODEL_NAME.test(model)) return model;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -378,10 +474,37 @@ export interface CodexJsonOptions {
  * the caller checks it against its zod schema).
  */
 export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> {
-  const { sandbox } = options;
+  return (await callCodexJson(options, false)).answer;
+}
+
+/**
+ * runCodexJson plus what the call can tell about itself (CLI version, reported model, thread id, redactions).
+ * Same safety: same sandbox, same checks, same redaction; the version is one more sandboxed `codex --version`.
+ * A fact that cannot be read is null (the caller records a warning), never a failure.
+ */
+export async function runCodexJsonWithMeta(options: CodexJsonOptions): Promise<{ answer: unknown; meta: CodexRunMeta }> {
+  const { answer, meta } = await callCodexJson(options, true);
+  return { answer, meta: meta! };
+}
+
+async function callCodexJson(options: CodexJsonOptions, withMeta: boolean): Promise<{ answer: unknown; meta: CodexRunMeta | null }> {
+  const { sandbox, signal } = options;
+  const abortIfAsked = (): void => {
+    if (signal?.aborted) throw new CodexAbortedError();
+  };
+  abortIfAsked();
+  const withSignal = signal === undefined ? {} : { signal };
   const cwd = await mkdtemp(join(tmpdir(), "sr-design-codex-"));
   try {
-    await assertChatGptSignIn({ sandbox });
+    await assertChatGptSignIn({ sandbox, ...withSignal });
+    let cliVersion: string | null = null;
+    if (withMeta) {
+      abortIfAsked();
+      const version = await sandbox.run(["--version"], { workDir: cwd, timeoutMs: 30_000, ...withSignal }).catch(() => null);
+      abortIfAsked();
+      if (version && version.code === 0 && !version.timedOut) cliVersion = parseCliVersion(version.stdout);
+    }
+    abortIfAsked();
     const images = [
       ...(await stageInputs(cwd, options.images ?? []).catch((error: unknown) => {
         throw fromSandboxError(error);
@@ -413,7 +536,7 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
     ];
     let result: BoundedResult;
     try {
-      result = await sandbox.run(args, { workDir: cwd, input: options.prompt, timeoutMs: options.timeoutMs ?? 900_000 });
+      result = await sandbox.run(args, { workDir: cwd, input: options.prompt, timeoutMs: options.timeoutMs ?? 900_000, ...withSignal });
     } catch (error) {
       // DEV-079: Codex ran and its result was thrown away (a .env found after it ended): its session log goes now,
       // found by this call's own work dir (as given and resolved), never another call's
@@ -425,7 +548,14 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
       throw new CodexError("CODEX_SANDBOX_UNAVAILABLE", SANDBOX_MESSAGES.CODEX_SANDBOX_UNAVAILABLE);
     }
     const threadId = readCodexEvents(result.stdout).threadId;
+    const modelReported = withMeta && threadId !== undefined ? await readSessionModel(threadId, sandbox.env).catch(() => null) : null;
     if (threadId !== undefined) await removeCodexSession(threadId, sandbox.env).catch(() => 0);
+    // stopped by the caller: whatever Codex wrote is not an answer. Stopped early, Codex may not have named its
+    // thread yet: its session log is then found by this call's own work dir (never another call's)
+    if (result.aborted || signal?.aborted) {
+      if (threadId === undefined) await removeCodexSessionsOf(sandbox.env, new Set([cwd, await realpath(cwd).catch(() => cwd)])).catch(() => undefined);
+      throw new CodexAbortedError();
+    }
     if (result.timedOut) throw new CodexError("CODEX_TIMEOUT", "Codex did not finish in time.");
     if (result.code !== 0 && codexLooksRateLimited(result.stdout, result.stderr)) {
       throw new CodexError("CODEX_QUOTA", "Codex usage limit reached or the service is busy.");
@@ -437,7 +567,9 @@ export async function runCodexJson(options: CodexJsonOptions): Promise<unknown> 
     if (leaksTokens(answer, await signInTokens(sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? homedir(), ".codex")))) {
       throw new CodexError("CODEX_ANSWER_REJECTED", "Codex's answer was rejected.");
     }
-    return redactSecrets(extractJsonObject(answer));
+    const parsed = extractJsonObject(answer);
+    const redacted = redactSecrets(parsed);
+    return withMeta ? { answer: redacted, meta: { threadId: threadId ?? null, cliVersion, modelReported, redactions: findRedactions(parsed) } } : { answer: redacted, meta: null };
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

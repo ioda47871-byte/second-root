@@ -12,6 +12,6 @@ export function passthroughSandbox(codexBin: string, env: Record<string, string 
   const childEnv = codexEnvironment(env);
   return {
     env: { HOME: env.HOME ?? "/nonexistent", ...(env.CODEX_HOME ? { CODEX_HOME: env.CODEX_HOME } : {}) },
-    run: (args, o) => runBounded(codexBin, args, { cwd: o.workDir, env: childEnv, timeoutMs: o.timeoutMs, ...(o.input === undefined ? {} : { input: o.input }) }),
+    run: (args, o) => runBounded(codexBin, args, { cwd: o.workDir, env: childEnv, timeoutMs: o.timeoutMs, ...(o.input === undefined ? {} : { input: o.input }), ...(o.signal === undefined ? {} : { signal: o.signal }) }),
   };
 }

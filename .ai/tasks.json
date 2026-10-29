@@ -5161,6 +5161,75 @@
         "A/B/Cそれぞれの実行（承認ID・回数・時間・環境）"
       ],
       "note": "Merged to develop (f75c97a, PR #147). Offline only: pseudo ports; no real Codex run or image generation. Real ports (runCodexJson design port, image PoC asset port, abort that kills the process, one-time approval ledger counting cross-run limits), the fictional wagashi facts pack and DNA v4 brief are Phase 2f-2 preparation, each separately approved."
+    },
+    {
+      "id": "DEV-116",
+      "title": "Phase 2f-2 接続準備：中止の合図と実行情報（共通部品）、設計CLI、一回限りの承認台帳と回数・時間の上限、架空菓庵の共通入力",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-115"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-116-phase2f-live-base",
+      "purpose": "オーナーが2026-10-29に限定承認したDEV-116。設計生成・事前描画・画像生成・Artifact化を分ける構成の、設計生成の工程と共通基盤。phase2f/はオフライン専用のまま。実際のCodex実行・画像生成・DEV-117の先行実装は別承認。",
+      "acceptance_criteria": [
+        "runBounded・sandbox.run・runCodexJsonに省略可能なAbortSignalを足し、未指定時は従来と同じ。起動前の中止・起動中のCodexと子プロセスの中止・SIGTERM後のSIGKILL・中止が成功にならないこと・勝手に再実行しないことをテストする",
+        "モデル名・CLIの版・スレッドIDを返す版（runCodexJsonWithMeta）を足し、取れないものは警告にして正常な成果物を拒否しない。秘密情報の除去は緩めず、除去が起きたJSONの場所を記録する",
+        "設計CLIは承認を使う前に、オーナーの確認・プロンプトのSHAと文字数・コミット（HEAD=origin/develop=承認値、作業ツリーが空）・出力先・承認ID・回数・時間を検査し、1回だけCodexを呼んで記録済み成果物を残す",
+        "承認台帳は承認IDを1回だけ使い（成功・失敗・中止・結果不明のいずれでも再利用しない）、初回は最大4回・再試行は最大2回・1回15分・計画全体2時間を工程をまたいで数える。既存の和菓子v4のPoCの承認・台帳は変えない",
+        "架空菓庵の事実は既存fixtureの値をそのまま使い出典を示す。Design DNA v4を8項目のbriefへ移し、旧CSS許可範囲の制約は引き継がない（briefはオーナー確認まで実際の生成に使わない）",
+        "ガードの例外は新しいCLIの正確なパスだけ。phase2fからは指示文の部品だけを読み込む"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/abort-signal.test.ts",
+        "tests/unit/design-agent/phase2f-live/*.test.ts",
+        "tests/unit/design-agent/phase2f/*.test.ts",
+        "tests/unit/design-agent/artifact/*.test.ts",
+        "tests/unit/design-agent/codex.test.ts",
+        "tests/unit/design-agent/sandbox.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/design-agent/design-image-approved-one-shot.test.ts",
+        "tests/unit/design-agent/photo-worker.test.ts",
+        "tests/unit/design-agent/pipeline.test.ts",
+        "tests/unit/guardrails.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/bounded-process.ts（省略可能なsignalのみ）",
+        "lib/design-agent/sandbox.ts（signalの受け渡しのみ）",
+        "lib/design-agent/codex.ts（省略可能なsignal、中止のエラー、実行情報を返す版）",
+        "lib/design-agent/phase2f-live/**",
+        "scripts/design-artifact/phase2f-design.ts",
+        "design-library/phase2f/**",
+        "tests/unit/design-agent/abort-signal.test.ts",
+        "tests/unit/design-agent/phase2f-live/**",
+        "tests/unit/design-agent/phase2f/isolation.test.ts（正確なパスの例外のみ）",
+        "tests/unit/design-agent/artifact/isolation.test.ts（正確なパスの例外のみ）",
+        "tests/support/fake-codex.mjs・tests/support/passthrough-sandbox.ts（テスト用の偽プロセス）",
+        "docs/design/phase2f-live.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-116.md（独立reviewによる記録のみ）"
+      ],
+      "forbidden_scope": [
+        "実際のCodex実行・画像生成・画像利用枠の消費",
+        "DEV-117（画像の新しい入口・画像の個別承認・比較シート出力）の先行実装",
+        "design-image（画像PoC）・和菓子v4の承認ID・SHA・文字数・コミット固定・使用済み記録の変更",
+        "worker・pipeline・本番の時間制限・G0〜G6・CSS許可範囲・品質閾値・安全基準の変更",
+        "PR #142のマージ・研究データの変更",
+        "本番worker・timer・bridge・営業送信・公開・Supabase・Vercel",
+        ".github/workflows・package.jsonの依存",
+        "PRの自動マージ"
+      ],
+      "human_approval_triggers": [
+        "DEV-116のdevelopへのマージ",
+        "変換したv4 briefの確認",
+        "経路ごと・呼び出しごとの承認ID（プロンプトSHA・文字数・コミット）と実行環境の再確認"
+      ],
+      "note": "Offline tests only (fake processes, fictional data). Real Codex calls start only after the owner approves each call's ID with its prompt SHA and commit."
     }
   ]
 }
