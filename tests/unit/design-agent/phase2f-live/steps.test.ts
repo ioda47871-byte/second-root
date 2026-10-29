@@ -33,7 +33,10 @@ function world() {
   const ledger = openLedger(state);
   const cli = (args: string[]) => {
     const r = spawnSync(process.execPath, ["--import", "tsx", STEPS, ...args], { encoding: "utf8", env: { ...process.env, SR_PHASE2F_STATE: state } });
-    return { status: r.status, out: JSON.parse(r.stdout || "{}") as Record<string, unknown>, stderr: r.stderr };
+    const out = JSON.parse(r.stdout || "{}") as Record<string, unknown>;
+    // a stop's fixed code (never any content) goes to the test log, so an unexpected stop on CI says why
+    if (out.status === "stopped" || out.status === "refused") console.log(`steps CLI ${args[0]}: ${String(out.status)} ${String(out.code)}`);
+    return { status: r.status, out, stderr: r.stderr };
   };
   const design = async (route: "B_html_prototype" | "C_hybrid", ans: unknown, o: { meta?: typeof META; plan?: string; fail?: boolean } = {}) => {
     const built = buildDesignPrompt({ route, facts: FACTS as never, brief: BRIEF as never, maxAssets: 1 });
