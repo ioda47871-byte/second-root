@@ -38,6 +38,7 @@ describe("the CP-026..032 intake", () => {
     for (const r of report.records) {
       expect(r.promotable).toBe(false);
       expect(r.recorded_unverified).toEqual([]);
+      expect(r.not_applicable).toEqual([]);
       expect(r.missing).toEqual([...EVIDENCE_KINDS]);
       expect(r.blockers).toContain("originals_not_checked_by_a_person");
     }
@@ -80,6 +81,13 @@ describe("the CP-026..032 intake", () => {
     ])
       expect(codeOf(() => checkIntake(withEvidence("html_source", bad), { registeredCaseIds: REGISTERED })), JSON.stringify(bad)).toBe("INTAKE_SCHEMA_INVALID");
     expect(codeOf(() => checkIntake(withEvidence("design_analysis", { state: "recorded_unverified", ref: "design-library/success-cases/CP-026-x.md" }), { registeredCaseIds: REGISTERED }))).toBe("ok");
+    // an image-only study records "no HTML / ZIP" for those two only
+    const img = checkIntake(withEvidence("html_source", { state: "not_applicable_image_only" }), { registeredCaseIds: REGISTERED });
+    expect(img.records[0]!.not_applicable).toEqual(["html_source"]);
+    expect(img.records[0]!.missing).not.toContain("html_source");
+    expect(img.records[0]!.promotable).toBe(false);
+    expect(codeOf(() => checkIntake(withEvidence("approved_desktop_full_page_image", { state: "not_applicable_image_only" }), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
+    expect(codeOf(() => checkIntake(withEvidence("design_analysis", { state: "not_applicable_image_only" }), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
     expect(codeOf(() => checkIntake(withEvidence("design_analysis", { state: "recorded_unverified", ref: "design-library/../x.md" }), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
     expect(codeOf(() => checkIntake(withEvidence("design_analysis", { state: "recorded_unverified", sha256: sha }), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SCHEMA_INVALID");
   });

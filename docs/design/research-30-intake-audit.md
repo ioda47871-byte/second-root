@@ -61,7 +61,7 @@
 8. **権利**：生成写真か、店の素材か、利用許可の有無。
 9. **Identity Lock**：店名と業種のすり替わりが無いことの目視結果（REJECT / HOLD / PASS_IDENTITY_ONLY）。
 
-1・2・5・6 が揃えば、既存の23件と同じ形式で研究成功として登録できる。7〜9 は営業や本番への利用の条件で、研究成功の登録には不足として記録すればよい（既存の多くの事例も HOLD のまま登録されている）。
+1・2・5・6 が揃えば、既存の23件と同じ形式で研究成功として登録できる。7〜9 は営業や本番への利用の条件なので、研究成功の登録では「不足」として記録すればよい。既存の事例でも、5/23件は営業の条件（SNS のリンク未確認）が HOLD のまま登録されている。ただし、Identity Lock や権利の欄を持つ既存事例は無い。
 
 ## 4. 既存データを壊さない統合方針
 
@@ -75,7 +75,7 @@
   1. `success-cases/CP-0xx-*.md`（採用記録）
   2. manifest のレコード（成功の状態と SHA-256）
   3. success-patterns の分析
-- **昇格したら intake から外す。** 同じ ID が両方にあると、intake 側の検査が拒否する。
+- **昇格したら intake から外す。** intake の検査は、呼び出し側が渡した「登録済みの ID」と重なる ID を拒否する。今はテストが固定の一覧（CP-001〜024、CP-014 を除く）を渡しているだけなので、外し忘れを自動で見つけるには、昇格の PR で PR #142 の manifest の ID を渡す検査を足す必要がある（次のタスク1）。
 - 30件になるのは、7件すべてが昇格したときだけ。途中は「23 + n件（照合済み）、残りは intake」と報告する。
 - 選択台帳（Selection Ledger）への記録（版ごとの採用・不採用と発言原文）は、昇格した後に partial モードで追加できる。台帳は manifest にある事例しか受け付けないので、昇格前には使わない。
 
@@ -91,17 +91,24 @@
 30件に対応する最小修正の案（研究 PR 側で、7件の昇格と同じ PR に入れる）：
 
 ```js
-// 件数は固定しない。manifest と success-patterns が同じ ID を同じ数だけ持つことを確かめ、
-// PoC の数は manifest の view から数えて success-patterns の implementation と一致させる。
-assert(unique(cases.map(x => x.id)) && cases.length === manifest.records.length && cases.length >= 23, "case count/IDs do not match registry");
+// 件数は固定しない。既存の23件が ID ごとに残っていること、manifest と success-patterns が
+// 同じ ID を持つこと、事例ごとに view と implementation が一致することを確かめる。
+const BASELINE_23 = ["CP-001","CP-002","CP-003","CP-004","CP-005","CP-006","CP-007","CP-008","CP-009","CP-010","CP-011","CP-012","CP-013",
+  "CP-015","CP-016","CP-017","CP-018","CP-019","CP-020","CP-021","CP-022","CP-023","CP-024"];
+const byId = new Map(manifest.records.map(r => [r.id, r]));
+assert(unique(cases.map(x => x.id)) && unique(manifest.records.map(r => r.id)), "duplicate case IDs");
+assert(cases.length === manifest.records.length && cases.every(x => byId.has(x.id)), "case count/IDs do not match registry");
+assert(BASELINE_23.every(id => byId.has(id)), "a baseline case was removed or renamed");
+assert(!byId.has("CP-014") && !byId.has("CP-025"), "CP-014 / CP-025 are not successes");
 const pocView = (v) => /html_css_js/.test(v); // Adapter の implementationFromView と同じ規則
-const pocFromManifest = manifest.records.filter(r => pocView(r.view)).length;
-assert(cases.filter(x => x.implementation === "local_html_css_js_poc").length === pocFromManifest, "PoC counts ambiguous");
-console.log(`PASS: ${cases.length} research success patterns (${pocFromManifest} PoC); ...`);
+assert(cases.every(x => pocView(byId.get(x.id).view) === (x.implementation === "local_html_css_js_poc")), "implementation does not match the manifest view");
+const poc = cases.filter(x => x.implementation === "local_html_css_js_poc").length;
+console.log(`PASS: ${cases.length} research success patterns (${poc} PoC, ${cases.length - poc} image only); ...`);
 ```
 
-- `>= 23` にすることで、既存の23件が減れば失敗する（既存データの保護）。
-- view の判定は Adapter の `implementationFromView` と同じ規則にした。既存の23件で PoC 10件・画像のみ13件になることを確認済み（manifest の view は10種類）。
+- 既存の23件は ID の一覧で守る。件数の下限だけだと、既存の1件を新しい ID に置き換えても通ってしまう（レビューで再現）。この案では、CP-024 を CP-026 に置き換えると "a baseline case was removed or renamed" で止まることを確認した。
+- 23件の中身（各フィールド）の改変は、この案では検出しない。必要なら、既存の23件の manifest レコードの SHA-256 を固定する検査を別に足す。
+- PoC の判定は事例ごとに、Adapter の `implementationFromView` と同じ規則（`/html_css_js/`）で view と implementation を照合する。既存の23件で PoC 10件・画像のみ13件になり、PASS することを PR #142 のファイルで確認した（manifest の view は10種類）。
 
 ## 6. 研究データを生成器へ直接渡さない方法
 
@@ -110,7 +117,7 @@ console.log(`PASS: ${cases.length} research success patterns (${pocFromManifest}
   - 件数を固定せず、各ファイルの SHA-256 を出す。
   - 成功の状態・ID の一致・方針の文言を照合する。
   - 研究の文章は「データ」として扱い、制御文字や指示の囲みを拒否する。
-- intake（今回）は Adapter の外に置く。昇格した事例だけが Adapter を通る。
+- intake（今回）は Adapter のディレクトリにあるが、Adapter のどのモジュールも CLI も読まない（テストで固定）。昇格した事例だけが Adapter を通る。
 - 研究ありの B 方式で比較するときは、次の手順を踏む。
   1. Adapter のブリーフから、使う事例と項目（構造への翻訳、コピー禁止事項など）を人が選ぶ。
   2. 選んだ内容を、プロンプトの別の版として SHA-256 と文字数を固定する。
@@ -124,7 +131,7 @@ console.log(`PASS: ${cases.length} research success patterns (${pocFromManifest}
 
 記録する項目：
 
-- 承認 ID：`wagashi-b-design-20261029-02`
+- 承認 ID：`wagashi-b-design-20261029-02`（オーナーの申告値。リポジトリでは未照合）
 - retry-of：`-01`
 - 枠：retry-1
 - run_id

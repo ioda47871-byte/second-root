@@ -8,7 +8,8 @@
  *   always says the case is not promotable.
  * - Evidence is either `missing` or `recorded_unverified` (a SHA-256 or a cited research record). There is
  *   deliberately no "verified" state: nothing here checks a file, so nothing here can claim one was checked.
- * - An intake ID must not already be a registered research case (its manifest IDs are passed in).
+ * - An intake ID must not already be a registered research case. The caller passes the registered IDs: this check
+ *   is only as good as that list (the promotion step should pass the research manifest's IDs).
  *
  * Pure: imports only zod. No file access, network, model or Codex.
  */
@@ -46,12 +47,15 @@ const ResearchRef = z.string().regex(/^design-library\/[A-Za-z0-9._/-]+\.md(#[A-
 
 const Missing = z.object({ state: z.literal("missing") }).strict();
 const FileRecorded = z.object({ state: z.literal("recorded_unverified"), sha256: Sha }).strict();
+/** An image-only study has no HTML or ZIP: that is recorded, not left as missing for ever. */
+const NotApplicable = z.object({ state: z.literal("not_applicable_image_only") }).strict();
+const POC_ONLY: readonly EvidenceKind[] = ["html_source", "research_zip"];
 const RefRecorded = z.object({ state: z.literal("recorded_unverified"), ref: ResearchRef }).strict();
 const ValueRecorded = z.object({ state: z.literal("recorded_unverified"), value: z.string().regex(/^[a-z0-9_]{2,80}$/) }).strict();
 
 const Evidence = z
   .object({
-    ...Object.fromEntries(FILE_EVIDENCE.map((k) => [k, z.union([Missing, FileRecorded])])),
+    ...Object.fromEntries(FILE_EVIDENCE.map((k) => [k, POC_ONLY.includes(k) ? z.union([Missing, FileRecorded, NotApplicable]) : z.union([Missing, FileRecorded])])),
     ...Object.fromEntries(RECORD_EVIDENCE.map((k) => [k, z.union([Missing, RefRecorded])])),
     ...Object.fromEntries(VALUE_EVIDENCE.map((k) => [k, z.union([Missing, ValueRecorded])])),
   } as unknown as Record<EvidenceKind, z.ZodTypeAny>)
@@ -103,7 +107,7 @@ export const ResearchIntake = z
 export type IntakeReport = {
   as_of: string;
   counts: { intake_records: number; counts_toward_success: 0; promotable: 0 };
-  records: { id: string; title: string; version_label: string; recorded_unverified: EvidenceKind[]; missing: EvidenceKind[]; promotable: false; blockers: string[] }[];
+  records: { id: string; title: string; version_label: string; recorded_unverified: EvidenceKind[]; not_applicable: EvidenceKind[]; missing: EvidenceKind[]; promotable: false; blockers: string[] }[];
 };
 
 /**
@@ -134,6 +138,7 @@ export function checkIntake(json: unknown, o: { registeredCaseIds: readonly stri
         title: rec.title,
         version_label: rec.version_label,
         recorded_unverified: EVIDENCE_KINDS.filter((k) => ev[k].state === "recorded_unverified"),
+        not_applicable: EVIDENCE_KINDS.filter((k) => ev[k].state === "not_applicable_image_only"),
         missing,
         promotable: false as const,
         blockers: [...missing.map((k) => `missing:${k}`), "originals_not_checked_by_a_person", "not_in_research_manifest_and_success_patterns"],
