@@ -2,7 +2,7 @@ import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CodexDesign, FactsPack } from "@/lib/design-agent/artifact/schema";
 import { EVAL_MIN_CRITERION, EVAL_PASS_TOTAL } from "@/lib/design-agent/comp-impl/bundle";
-import { MIN_CRITERION, PASS_TOTAL, sheetEntry, sheetVerdict, unnecessaryStopRate, type SheetEntry } from "@/lib/design-agent/phase2f/compare-sheet";
+import { MIN_CRITERION, PASS_TOTAL, sheetEntry, sheetMarkdown, sheetVerdict, unnecessaryStopRate, type SheetEntry } from "@/lib/design-agent/phase2f/compare-sheet";
 import { decodeCheck } from "@/lib/design-agent/phase2f/decode-check";
 import { buildAssetPrompt, buildDesignPrompt, codexDesignJsonSchema, DesignBrief } from "@/lib/design-agent/phase2f/prompt";
 import { checkPrototype, cssProblems, PrototypeUnsafe } from "@/lib/design-agent/phase2f/prototype-safety";
@@ -217,6 +217,11 @@ describe("comparison sheet: a technical pass is not a design success", () => {
     const done = sheetEntry("A_image", { status: "done", packageDir: "", record: record as never, log: { ...log, route_delivered: "A_image" } });
     expect(done.images.desktop_1440).toBe("originals/desktop_concept.png");
     expect(sheetVerdict(owner(done))).toBe("concept_pass");
+    // the sheet the owner reads says the same
+    const md = sheetMarkdown([owner(stopped), owner(done)]);
+    expect(md.split("## A_image")[1]).toContain("判定: concept_fail");
+    expect(md.split("## A_image")[2]).toContain("判定: concept_pass");
+    expect(md).toContain("構想画像（実装へは渡さない）");
   });
 
   it("does not count a run stop twice (run log and intake reason)", () => {

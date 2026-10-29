@@ -67,7 +67,10 @@ export function sheetEntry(route: SheetEntry["route"], result: RunResult, calls:
 
 export type SheetVerdict = "pending" | "pass" | "fail" | "concept_pass" | "concept_fail";
 
-/** Applies the owner's policy to a filled-in entry. Anything not filled in is pending, never a pass. */
+/**
+ * Applies the owner's policy to a filled-in entry. Anything not filled in is pending, never a pass — except a route A
+ * entry without a concept image (the run stopped): it is concept_fail at once, since there is nothing to judge.
+ */
 export function sheetVerdict(e: SheetEntry): SheetVerdict {
   // route A is judged as a concept only when a concept image really exists: a run that stopped (or packaged no image)
   // has nothing to judge, whatever the scores. Its state is "incomplete" by design (no 390 render), which is not a reason.
