@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
+import { checkCodexDesign } from "@/lib/design-agent/artifact/intake";
 import { CodexDesign, FactsPack } from "@/lib/design-agent/artifact/schema";
 import { EVAL_MIN_CRITERION, EVAL_PASS_TOTAL } from "@/lib/design-agent/comp-impl/bundle";
 import { MIN_CRITERION, PASS_TOTAL, sheetEntry, sheetMarkdown, sheetVerdict, unnecessaryStopRate, type SheetEntry } from "@/lib/design-agent/phase2f/compare-sheet";
@@ -8,7 +12,7 @@ import { buildAssetPrompt, buildDesignPrompt, codexDesignJsonSchema, DesignBrief
 import { checkPrototype, cssProblems, PrototypeUnsafe } from "@/lib/design-agent/phase2f/prototype-safety";
 import { RENDER_VIEWPORTS, renderPrototype } from "@/lib/design-agent/phase2f/render-prototype";
 import { placeholderPng } from "@/lib/design-agent/phase2f/runner";
-import { BRIEF, colourPng, FACTS } from "./fixtures";
+import { answer, BRIEF, colourPng, FACTS } from "./fixtures";
 
 // Phase 2f-1: the parts of the runner, one by one. Fictional data only.
 
@@ -142,6 +146,29 @@ describe("prompt", () => {
     expect(s.additionalProperties).toBe(false);
     expect(s.required).toEqual(Object.keys(CodexDesign.shape));
     expect(JSON.stringify(s)).not.toMatch(/"(approved|verified|verification_state|sha256|files)"/);
+  });
+
+  it("carries no root $schema (as the worker's schemas); otherwise exactly zod's schema, and the answer check is unchanged", () => {
+    const s = codexDesignJsonSchema() as Record<string, unknown>;
+    expect("$schema" in s).toBe(false);
+    const full = z.toJSONSchema(CodexDesign, { unrepresentable: "any" }) as Record<string, unknown>;
+    expect(full.$schema).toBeDefined();
+    const { $schema: _meta, ...rest } = full;
+    void _meta;
+    expect(s).toEqual(rest);
+    // the runner still checks Codex's answer with the same zod schema
+    expect(checkCodexDesign(answer())).toMatchObject({ schema: "codex_design_v1" });
+    expect(() => checkCodexDesign({ ...answer(), extra: 1 })).toThrow();
+  });
+
+  it("the B and C prompts for the fictional wagashi shop are unchanged by the schema fix", () => {
+    const read = (p: string) => JSON.parse(readFileSync(resolve(__dirname, "../../../..", p), "utf8"));
+    const facts = FactsPack.parse(read("design-library/phase2f/wagashi-facts-pack.json"));
+    const brief = DesignBrief.parse(read("design-library/phase2f/wagashi-brief-v4.json"));
+    const b = buildDesignPrompt({ route: "B_html_prototype", facts, brief, maxAssets: 1 });
+    const c = buildDesignPrompt({ route: "C_hybrid", facts, brief, maxAssets: 1 });
+    expect([b.sha256, b.chars]).toEqual(["a2fdd00365087046c44f03b4c3ea43530046af658b017ae5229fd7577c817954", 5706]);
+    expect([c.sha256, c.chars]).toEqual(["20b6ec350c583c072f6c3bd466e8ce9ccf988d22645520742834137e64aa8845", 6200]);
   });
 });
 

@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { CodexDesign, DNA_PARTS, type FactsPack } from "../artifact/schema";
+import { withoutMeta } from "../profile";
 
 const sha256 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 
@@ -25,9 +26,13 @@ export const DesignBrief = z.strictObject({
 });
 export type DesignBrief = z.infer<typeof DesignBrief>;
 
-/** JSON Schema of Codex's answer (codex --output-schema), from the same zod schema the runner checks it with. */
+/**
+ * JSON Schema of Codex's answer (codex --output-schema), from the same zod schema the runner checks it with.
+ * The root `$schema` is removed, as the production worker does for every schema it gives Codex (profile.ts
+ * withoutMeta); the structure and the zod check of the answer are unchanged.
+ */
 export function codexDesignJsonSchema(): object {
-  return z.toJSONSchema(CodexDesign, { unrepresentable: "any" });
+  return withoutMeta(z.toJSONSchema(CodexDesign, { unrepresentable: "any" }));
 }
 
 export type BuiltPrompt = { prompt: string; sha256: string; chars: number };

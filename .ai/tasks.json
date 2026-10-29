@@ -5302,6 +5302,53 @@
         "呼び出しごとの承認ID（A・B設計・C設計・C画像）"
       ],
       "note": "Merged to develop (8108f67, PR #149). Fake tools and fictional data only; no real Codex call or image generation. A stopped route A is never a concept pass. The fictional wagashi v4 brief is for this A/B/C test only, never a Second Root template. Next: route B readiness on WSL (read-only), then one B design call after the owner approves it."
+    },
+    {
+      "id": "DEV-118",
+      "title": "Phase 2f-2：Codex に渡す設計の答えの JSON Schema からルートの $schema を除く（本番 worker と同じ withoutMeta）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-117"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-118-codex-design-schema-meta",
+      "purpose": "オーナーが2026-10-29に承認した小規模修正。B方式の実際のCodex実行で、--output-schema の不整合による不要なエラーで承認IDを消費する可能性を減らす。",
+      "acceptance_criteria": [
+        "codexDesignJsonSchema() はルートの $schema を含まない（profile.ts の withoutMeta を使う）",
+        "スキーマの必須フィールドと構造、Zod による回答の検証は変わらない",
+        "B/C のプロンプトの SHA と文字数は変わらない",
+        "既存 worker の回帰テストが通る"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f/*.test.ts",
+        "tests/unit/design-agent/phase2f-live/*.test.ts",
+        "tests/unit/design-agent/codex.test.ts",
+        "tests/unit/design-agent/pipeline.test.ts",
+        "tests/unit/design-agent/photo-worker.test.ts",
+        "tests/unit/guardrails.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/phase2f/prompt.ts（codexDesignJsonSchema のみ）",
+        "tests/unit/design-agent/phase2f/parts.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts（prompt.ts の読み込みに ../profile を追加するのみ）",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-118.md（独立reviewによる記録のみ）"
+      ],
+      "forbidden_scope": [
+        "Codexの実行コマンド・既存workerのスキーマ処理・Design DNA v4・プロンプト本文・承認台帳・回数制限・画像生成機構・本番workerの変更",
+        "実際のCodex実行・画像生成",
+        "PR #142のマージ",
+        "PRの自動マージ（オーナーの承認条件を満たした場合のみ）"
+      ],
+      "human_approval_triggers": [
+        "B方式の実際のCodex実行"
+      ],
+      "note": "Schema only; prompt text, SHA and length unchanged."
     }
   ]
 }
