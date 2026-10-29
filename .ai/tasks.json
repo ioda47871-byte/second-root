@@ -5513,7 +5513,7 @@
     {
       "id": "DEV-122",
       "title": "架空菓庵 B v1.1（研究なし / 研究あり）比較実験の準備：プロンプト版の選択、研究の区画、入力の固定と検査",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-121"
@@ -5568,7 +5568,8 @@
         "研究の区画の文章の承認",
         "Codex 実行（各回の承認 ID）"
       ],
-      "note": "Preparation only; 0 Codex calls."
+      "note": "Preparation only; 0 Codex calls.",
+      "merged": "#154 → 11704e2 (squash, 2026-10-29)"
     }
   ]
 }
