@@ -224,6 +224,11 @@ describe("verification states (never approvals)", () => {
     expect(await detail(run(edit(routeC, (p) => (p.artifact.observed.generation.image_outcome = outcome))))).toBe("ARTIFACT_ROUTE_INCONSISTENT route C: generated assets without IMAGE_SAVED");
   });
 
+  it("accepts a section hidden on mobile (w 0): a legitimate design, not a stop", async () => {
+    const r = await run(edit(routeB, (p) => (p.artifact.declared.structure_spec.sections[2].boxes.mobile_390 = { x: 0, y: 0, w: 0, h: 0 })));
+    expect(r.verification_state).toBe("render_pair_complete");
+  });
+
   it("route A carries no assets", async () => {
     const d = await detail(run(edit(routeA, (p) => {
       p.files["assets/a1.png"] = makePng(64, 64);
@@ -642,6 +647,7 @@ describe("the declared design resolves", () => {
     ["a reading path naming an unknown section", (p) => p.artifact.declared.structure_spec.reading_path.desktop_1440.push("ghost"), "ARTIFACT_STRUCTURE_INVALID"],
     ["a duplicate section id", (p) => (p.artifact.declared.structure_spec.sections[3].id = "info"), "ARTIFACT_STRUCTURE_INVALID"],
     ["a box wider than the mobile viewport", (p) => (p.artifact.declared.structure_spec.sections[0].boxes.mobile_390.w = 400), "ARTIFACT_STRUCTURE_INVALID"],
+    ["no section shown on mobile", (p) => p.artifact.declared.structure_spec.sections.forEach((s: { boxes: { mobile_390: { h: number } } }) => (s.boxes.mobile_390.h = 0)), "ARTIFACT_STRUCTURE_INVALID"],
     ["a box below the page", (p) => (p.artifact.declared.structure_spec.sections[3].boxes.desktop_1440.h = 500), "ARTIFACT_STRUCTURE_INVALID"],
     ["an asset reference with no asset", (p) => (p.artifact.declared.structure_spec.sections[1].asset_refs = ["A2"]), "ARTIFACT_ASSET_UNRESOLVED"],
     ["an asset no section uses", (p) => (p.artifact.declared.structure_spec.sections[1].asset_refs = []), "ARTIFACT_ASSET_UNRESOLVED"],

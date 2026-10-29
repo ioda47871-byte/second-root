@@ -118,7 +118,7 @@
 |---|---|---|
 | 2a（DEV-113） | 選定台帳 `selection_ledger_v1` と3モード（下記 3.1） | 承認済み（2026-10-28）。実データの台帳追加は別承認 |
 | 2d-min（DEV-114） | Design Artifact の最小スキーマと Intake の検査（SHA の再計算・停止・欠落・生成情報 unknown を成功にしない）。検証状態は `render_pair_complete` / `concept_only` / `incomplete` で、承認ではない（`docs/design/design-artifact-v1.md`） | 承認済み（2026-10-28）。マージは別承認 |
-| 2f | 生成経路 A（画像）/ B（HTML 試作）/ C（併用）の比較。架空店舗で、本番の自動生成経路から隔離した研究 PoC として行う。`CODEX_NO_IMAGE` は「ツールを呼んでいない」「呼んだが失敗」「成功したが取り出せていない」「出力が不正」に分けて記録する | 店舗・入力・回数・費用・環境と、Codex 実行1回ごと |
+| 2f（2f-1 は DEV-115） | 生成経路 A（画像）/ B（HTML 試作）/ C（併用）の比較。2f-1 は擬似 Codex による実行プログラム（`docs/design/phase2f-runner.md`）。架空店舗で、本番の自動生成経路から隔離した研究 PoC として行う。`CODEX_NO_IMAGE` は「ツールを呼んでいない」「呼んだが失敗」「成功したが取り出せていない」「出力が不正」に分けて記録する | 店舗・入力・回数・費用・環境と、Codex 実行1回ごと |
 | 2b | 構造記述子と構造の重複検査（8側面）。実装はブラウザの画面と幾何でも検証する | 語彙の承認 |
 | 2c | Identity Lock の TypeScript 化 | 移植の承認 |
 | 2d 完成 | Artifact と Intake の完成形 | スキーマの承認 |

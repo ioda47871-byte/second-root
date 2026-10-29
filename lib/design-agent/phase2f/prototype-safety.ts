@@ -1,0 +1,122 @@
+/**
+ * Phase 2f-1: the safety check a Codex HTML/CSS prototype must pass BEFORE it
+ * is rendered. It refuses what could run code or reach outside the page; it
+ * does NOT apply comp-impl's implementation CSS allowlist or any fixed page
+ * structure: a research prototype may use any layout, any CSS property, inline
+ * SVG and any visual idea, because over-constraining it would make it generic.
+ *
+ * Refused:
+ * - elements that run code, embed other documents or submit anywhere
+ *   (script, iframe, frame, object, embed, applet, form, base, portal, meta refresh,
+ *   SVG foreignObject / script / animation of href)
+ * - any `on*` event attribute, `javascript:` / `data:` / `vbscript:` URLs
+ * - any URL that is not the page's own stylesheet (style.css), one of its declared
+ *   assets (assets/<id>.png) or an in-page anchor (#...)
+ * - CSS @import, url() to anything but a declared asset, expression(), behavior,
+ *   -moz-binding (in style.css, <style> elements and style attributes)
+ *
+ * The HTML is parsed by Chromium's own parser (DOMParser on a blank page with
+ * JavaScript off and every request aborted), not by regular expressions. The
+ * renderer then still runs with JavaScript off and the network shut: this check
+ * is the first of two independent barriers.
+ */
+import type { Browser } from "playwright";
+
+export const PROTOTYPE_STYLESHEET = "style.css";
+export const ASSET_PATH = /^assets\/A\d{1,2}\.png$/;
+
+export class PrototypeUnsafe extends Error {
+  readonly code = "PROTOTYPE_UNSAFE";
+  constructor(readonly detail: string) {
+    super(`PROTOTYPE_UNSAFE: ${detail.replace(/[^\x20-\x7e]/g, "?").slice(0, 200)}`);
+    this.name = "PrototypeUnsafe";
+  }
+}
+
+const FORBIDDEN_ELEMENTS = ["script", "iframe", "frame", "frameset", "object", "embed", "applet", "form", "base", "portal", "foreignobject", "animate", "set", "animatemotion", "animatetransform", "noscript"];
+const URL_ATTRIBUTES = ["href", "src", "srcset", "poster", "data", "action", "formaction", "background", "xlink:href", "ping", "cite", "longdesc", "manifest", "icon", "lowsrc", "dynsrc", "codebase", "archive"];
+
+/** CSS problems in one stylesheet text: forbidden at-rules or functions, and url() to anything but a declared asset. */
+export function cssProblems(css: string, assets: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  // escapes are decoded first (so "u\\72l(" cannot hide a url() and "\\201C" in content stays allowed), then comments dropped
+  const decoded = css.replace(/\\([0-9a-fA-F]{1,6})\s?|\\([^\n0-9a-fA-F])/g, (_m, hex: string | undefined, ch: string | undefined) =>
+    hex ? String.fromCodePoint(Math.min(parseInt(hex, 16) || 0xfffd, 0x10ffff)) : (ch ?? ""),
+  );
+  const flat = decoded.replace(/\/\*[\s\S]*?\*\//g, " ");
+  if (/@import/i.test(flat)) out.push("css @import");
+  if (/expression\s*\(|behavior\s*:|-moz-binding|javascript:/i.test(flat)) out.push("css code execution");
+  for (const m of flat.matchAll(/url\(\s*(['"]?)([^'")]*)\1\s*\)/gi)) {
+    const target = m[2]!.trim();
+    if (!assets.has(target)) out.push(`css url: ${target.slice(0, 80)}`);
+  }
+  if (/image-set\(|image\(|src\(/i.test(flat)) out.push("css image function other than url()");
+  return out;
+}
+
+type Parsed = { elements: string[]; attributes: { el: string; name: string; value: string }[]; styles: string[]; images: { src: string; alt: string }[] };
+
+/** Parses the HTML with Chromium's parser on a blank page (JS off, every request aborted) and lists what the check needs. */
+async function parseHtml(browser: Browser, html: string): Promise<Parsed> {
+  const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block" });
+  try {
+    await context.route("**/*", (route) => route.abort());
+    const page = await context.newPage();
+    const script = `((html) => {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const elements = [], attributes = [], styles = [], images = [];
+      const walk = (root) => {
+        for (const el of root.querySelectorAll("*")) {
+          elements.push(el.localName.toLowerCase());
+          for (const a of el.attributes) attributes.push({ el: el.localName.toLowerCase(), name: a.name.toLowerCase(), value: a.value });
+          if (el.localName.toLowerCase() === "style") styles.push(el.textContent || "");
+          if (el.localName.toLowerCase() === "img") images.push({ src: (el.getAttribute("src") || "").trim(), alt: (el.getAttribute("alt") || "").trim() });
+          if (el.localName.toLowerCase() === "template" && el.content) walk(el.content);
+        }
+      };
+      walk(doc);
+      return { elements, attributes, styles, images };
+    })(${JSON.stringify(html)})`;
+    return (await page.evaluate(script)) as Parsed;
+  } finally {
+    await context.close();
+  }
+}
+
+/**
+ * Throws PrototypeUnsafe on the first problem. Otherwise returns, for each declared asset shown by an <img>, its alt
+ * text (route C uses it as the image request; Codex wrote it, the facts stay the source of truth).
+ */
+export async function checkPrototype(browser: Browser, proto: { html: string; css: string }, assetPaths: readonly string[]): Promise<{ alts: Record<string, string> }> {
+  const assets = new Set(assetPaths);
+  for (const p of assets) if (!ASSET_PATH.test(p)) throw new PrototypeUnsafe(`asset path: ${p}`);
+  const parsed = await parseHtml(browser, proto.html);
+  for (const el of parsed.elements) if (FORBIDDEN_ELEMENTS.includes(el)) throw new PrototypeUnsafe(`element <${el}>`);
+  for (const a of parsed.attributes) {
+    if (a.name.startsWith("on")) throw new PrototypeUnsafe(`event attribute ${a.name}`);
+    if (a.el === "meta" && a.name === "http-equiv") throw new PrototypeUnsafe("meta http-equiv");
+    if (a.name === "style") {
+      const p = cssProblems(a.value, assets);
+      if (p.length) throw new PrototypeUnsafe(`style attribute: ${p[0]}`);
+    }
+    if (URL_ATTRIBUTES.includes(a.name)) {
+      const values = a.name === "srcset" ? a.value.split(",").map((s) => s.trim().split(/\s+/)[0] ?? "") : [a.value.trim()];
+      for (const v of values) {
+        if (v.startsWith("#") && /^#[A-Za-z0-9_-]*$/.test(v)) continue;
+        if (a.el === "link" && v === PROTOTYPE_STYLESHEET) continue;
+        if ((a.name === "src" || a.name === "srcset" || a.name === "href" || a.name === "xlink:href") && assets.has(v)) continue;
+        throw new PrototypeUnsafe(`${a.el} ${a.name}: ${v.slice(0, 80)}`);
+      }
+    }
+  }
+  for (const a of parsed.attributes) {
+    if (a.el === "link" && a.name === "rel" && a.value.trim().toLowerCase() !== "stylesheet") throw new PrototypeUnsafe(`link rel ${a.value}`);
+  }
+  for (const css of [...parsed.styles, proto.css]) {
+    const p = cssProblems(css, assets);
+    if (p.length) throw new PrototypeUnsafe(p[0]!);
+  }
+  const alts: Record<string, string> = {};
+  for (const img of parsed.images) if (assets.has(img.src) && img.alt && !(img.src in alts)) alts[img.src] = img.alt.slice(0, 400);
+  return { alts };
+}

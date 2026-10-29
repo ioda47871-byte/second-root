@@ -435,6 +435,9 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
     const path = spec.reading_path[k];
     if (new Set(path).size !== path.length || path.some((id) => !sectionSet.has(id))) fail("ARTIFACT_STRUCTURE_INVALID", `reading_path.${k}`);
   }
+  // a section may be hidden at one viewport (w or h 0), but each viewport shows at least one section
+  for (const k of Object.keys(VIEWPORTS) as ViewportKey[])
+    if (!spec.sections.some((s) => s.boxes[k].w > 0 && s.boxes[k].h > 0)) fail("ARTIFACT_STRUCTURE_INVALID", `no section shown at ${k}`);
   for (const s of spec.sections) {
     for (const k of Object.keys(VIEWPORTS) as ViewportKey[]) {
       const b = s.boxes[k];
