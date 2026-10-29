@@ -5456,6 +5456,58 @@
       ],
       "note": "Intake only; nothing counted, nothing promoted.",
       "merged": "#152 → e81d4c6 (squash, 2026-10-29)"
+    },
+    {
+      "id": "DEV-121",
+      "title": "架空菓庵 B方式（研究なし）のベースライン記録と、研究ありの比較実験の提案",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-120"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-121-wagashi-b-baseline",
+      "purpose": "オーナー指示（2026-10-29）。retry-1 の実行結果を、Design Artifact と矛盾しない独立したベースラインとして記録し、研究ありの B 方式と比べる基準にする。",
+      "acceptance_criteria": [
+        "ベースラインの記録（生成の事実は Artifact の Generation スキーマで読める）",
+        "Artifact 化の停止・手作業のプレビュー・暫定評価が、それ以上のものとして扱われない検査",
+        "オーナーの最終判断は pending か、原文つきの判断",
+        "プロンプト SHA が今の facts と brief から組み立てた値と一致",
+        "研究ありの比較実験の提案（事例の選定・設計原理・プロンプト固定・安全確認・予算）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f/baseline.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts",
+        "tests/unit/design-agent/phase2f/*.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "tests/unit/guardrails.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "design-library/phase2f/baselines/wagashi-b-noresearch-20261029-02.json",
+        "lib/design-agent/phase2f/baseline.ts",
+        "tests/unit/design-agent/phase2f/baseline.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts（baseline.ts を許可に追加のみ）",
+        "tests/unit/design-agent/artifact/isolation.test.ts（baseline.ts を許可に追加のみ）",
+        "docs/design/phase2f-b-research-comparison-proposal.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-121.md"
+      ],
+      "forbidden_scope": [
+        "既存の失敗記録・承認台帳・answer.json・画像の変更",
+        "実際の Codex 実行・画像生成",
+        "PR #142 の変更",
+        "本番の変更",
+        "自動マージ",
+        "研究ありの Codex 実行（オーナーの別承認まで）"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "研究ありの比較実験の実行"
+      ],
+      "note": "Values from the owner's report; not rechecked in the repository."
     }
   ]
 }

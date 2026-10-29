@@ -31,6 +31,8 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile"],
   [`${LIB}/runner.ts`]: ["node:crypto", "node:fs/promises", "node:path", "node:zlib", "playwright", "../artifact/intake", "../artifact/schema", "./decode-check", "./prompt", "./prototype-safety", "./render-prototype"],
   [`${LIB}/compare-sheet.ts`]: ["../artifact/intake", "./runner"],
+  // DEV-121: the comparison baseline record checker (pure)
+  [`${LIB}/baseline.ts`]: ["zod", "../artifact/schema"],
   [CLI]: ["node:fs/promises", "node:path", "playwright", "zod", "../../lib/design-agent/artifact/schema", "../../lib/design-agent/phase2f/prompt", "../../lib/design-agent/phase2f/runner"],
 };
 
