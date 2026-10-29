@@ -1,0 +1,340 @@
+{
+  "schema": "research_intake_v1",
+  "as_of": "2026-10-29",
+  "scope": "intake_unverified_not_a_research_set",
+  "policy": {
+    "counts_toward_success": false,
+    "approval_for_generation": false,
+    "not_templates": true,
+    "read_by_design_intelligence_adapter": false
+  },
+  "baseline": {
+    "research_pr": 142,
+    "research_pr_head": "efe269f4b4a13f3c05bfb799891c8157c9be4c0b",
+    "develop": "f8ebaf734522e31305b138748ed381fc91c9f983",
+    "success_cases": 23,
+    "local_html_css_js_poc": 10,
+    "concept_image_only": 13,
+    "not_success": [
+      "CP-014",
+      "CP-025"
+    ]
+  },
+  "records": [
+    {
+      "id": "CP-026",
+      "title": "Sawaddee Chao",
+      "version_label": "v5",
+      "adoption": {
+        "state": "owner_adoption_reported_unverified",
+        "reported_in": "owner_instruction_20261029"
+      },
+      "evidence": {
+        "owner_adoption_quote": {
+          "state": "missing"
+        },
+        "approved_desktop_full_page_image": {
+          "state": "missing"
+        },
+        "approved_mobile_full_page_image": {
+          "state": "missing"
+        },
+        "html_source": {
+          "state": "missing"
+        },
+        "research_zip": {
+          "state": "missing"
+        },
+        "design_analysis": {
+          "state": "missing"
+        },
+        "rejected_versions_history": {
+          "state": "missing"
+        },
+        "shop_category": {
+          "state": "missing"
+        },
+        "web_presence_and_source": {
+          "state": "missing"
+        },
+        "image_and_material_rights": {
+          "state": "missing"
+        },
+        "identity_lock_check": {
+          "state": "missing"
+        }
+      },
+      "counts_toward_success": false
+    },
+    {
+      "id": "CP-027",
+      "title": "MATO OBJECTS STORE",
+      "version_label": "v2",
+      "adoption": {
+        "state": "owner_adoption_reported_unverified",
+        "reported_in": "owner_instruction_20261029"
+      },
+      "evidence": {
+        "owner_adoption_quote": {
+          "state": "missing"
+        },
+        "approved_desktop_full_page_image": {
+          "state": "missing"
+        },
+        "approved_mobile_full_page_image": {
+          "state": "missing"
+        },
+        "html_source": {
+          "state": "missing"
+        },
+        "research_zip": {
+          "state": "missing"
+        },
+        "design_analysis": {
+          "state": "missing"
+        },
+        "rejected_versions_history": {
+          "state": "missing"
+        },
+        "shop_category": {
+          "state": "missing"
+        },
+        "web_presence_and_source": {
+          "state": "missing"
+        },
+        "image_and_material_rights": {
+          "state": "missing"
+        },
+        "identity_lock_check": {
+          "state": "missing"
+        }
+      },
+      "counts_toward_success": false
+    },
+    {
+      "id": "CP-028",
+      "title": "ユメツナベース",
+      "version_label": "v1",
+      "adoption": {
+        "state": "owner_adoption_reported_unverified",
+        "reported_in": "owner_instruction_20261029"
+      },
+      "evidence": {
+        "owner_adoption_quote": {
+          "state": "missing"
+        },
+        "approved_desktop_full_page_image": {
+          "state": "missing"
+        },
+        "approved_mobile_full_page_image": {
+          "state": "missing"
+        },
+        "html_source": {
+          "state": "missing"
+        },
+        "research_zip": {
+          "state": "missing"
+        },
+        "design_analysis": {
+          "state": "missing"
+        },
+        "rejected_versions_history": {
+          "state": "missing"
+        },
+        "shop_category": {
+          "state": "missing"
+        },
+        "web_presence_and_source": {
+          "state": "missing"
+        },
+        "image_and_material_rights": {
+          "state": "missing"
+        },
+        "identity_lock_check": {
+          "state": "missing"
+        }
+      },
+      "counts_toward_success": false
+    },
+    {
+      "id": "CP-029",
+      "title": "SNOWMY",
+      "version_label": "v4",
+      "adoption": {
+        "state": "owner_adoption_reported_unverified",
+        "reported_in": "owner_instruction_20261029"
+      },
+      "evidence": {
+        "owner_adoption_quote": {
+          "state": "missing"
+        },
+        "approved_desktop_full_page_image": {
+          "state": "missing"
+        },
+        "approved_mobile_full_page_image": {
+          "state": "missing"
+        },
+        "html_source": {
+          "state": "missing"
+        },
+        "research_zip": {
+          "state": "missing"
+        },
+        "design_analysis": {
+          "state": "missing"
+        },
+        "rejected_versions_history": {
+          "state": "missing"
+        },
+        "shop_category": {
+          "state": "missing"
+        },
+        "web_presence_and_source": {
+          "state": "missing"
+        },
+        "image_and_material_rights": {
+          "state": "missing"
+        },
+        "identity_lock_check": {
+          "state": "missing"
+        }
+      },
+      "counts_toward_success": false
+    },
+    {
+      "id": "CP-030",
+      "title": "高田時計店",
+      "version_label": "v2",
+      "adoption": {
+        "state": "owner_adoption_reported_unverified",
+        "reported_in": "owner_instruction_20261029"
+      },
+      "evidence": {
+        "owner_adoption_quote": {
+          "state": "missing"
+        },
+        "approved_desktop_full_page_image": {
+          "state": "missing"
+        },
+        "approved_mobile_full_page_image": {
+          "state": "missing"
+        },
+        "html_source": {
+          "state": "missing"
+        },
+        "research_zip": {
+          "state": "missing"
+        },
+        "design_analysis": {
+          "state": "missing"
+        },
+        "rejected_versions_history": {
+          "state": "missing"
+        },
+        "shop_category": {
+          "state": "missing"
+        },
+        "web_presence_and_source": {
+          "state": "missing"
+        },
+        "image_and_material_rights": {
+          "state": "missing"
+        },
+        "identity_lock_check": {
+          "state": "missing"
+        }
+      },
+      "counts_toward_success": false
+    },
+    {
+      "id": "CP-031",
+      "title": "リフォーム 中村",
+      "version_label": "v3",
+      "adoption": {
+        "state": "owner_adoption_reported_unverified",
+        "reported_in": "owner_instruction_20261029"
+      },
+      "evidence": {
+        "owner_adoption_quote": {
+          "state": "missing"
+        },
+        "approved_desktop_full_page_image": {
+          "state": "missing"
+        },
+        "approved_mobile_full_page_image": {
+          "state": "missing"
+        },
+        "html_source": {
+          "state": "missing"
+        },
+        "research_zip": {
+          "state": "missing"
+        },
+        "design_analysis": {
+          "state": "missing"
+        },
+        "rejected_versions_history": {
+          "state": "missing"
+        },
+        "shop_category": {
+          "state": "missing"
+        },
+        "web_presence_and_source": {
+          "state": "missing"
+        },
+        "image_and_material_rights": {
+          "state": "missing"
+        },
+        "identity_lock_check": {
+          "state": "missing"
+        }
+      },
+      "counts_toward_success": false
+    },
+    {
+      "id": "CP-032",
+      "title": "幸せを呼ぶ玉虫屋",
+      "version_label": "v1",
+      "adoption": {
+        "state": "owner_adoption_reported_unverified",
+        "reported_in": "owner_instruction_20261029"
+      },
+      "evidence": {
+        "owner_adoption_quote": {
+          "state": "missing"
+        },
+        "approved_desktop_full_page_image": {
+          "state": "missing"
+        },
+        "approved_mobile_full_page_image": {
+          "state": "missing"
+        },
+        "html_source": {
+          "state": "missing"
+        },
+        "research_zip": {
+          "state": "missing"
+        },
+        "design_analysis": {
+          "state": "missing"
+        },
+        "rejected_versions_history": {
+          "state": "missing"
+        },
+        "shop_category": {
+          "state": "missing"
+        },
+        "web_presence_and_source": {
+          "state": "missing"
+        },
+        "image_and_material_rights": {
+          "state": "missing"
+        },
+        "identity_lock_check": {
+          "state": "missing"
+        }
+      },
+      "counts_toward_success": false
+    }
+  ]
+}
