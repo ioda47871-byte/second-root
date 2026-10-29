@@ -57,25 +57,65 @@ const MEASURE = (ids: readonly string[], assetPaths: readonly string[]) => `((id
   const out = {};
   const assets = {};
   for (const p of assetPaths) assets[p] = { sections: [], outsideSections: false, firstScreen: false, shown: false };
+  // every way an asset can be painted: <img src>, SVG <image href>, and the image properties of the element and its ::before / ::after
+  const IMAGE_PROPS = ["backgroundImage", "maskImage", "webkitMaskImage", "borderImageSource", "listStyleImage", "content"];
+  const uses = (el, cs, p) => {
+    if (el.localName === "img" && (el.getAttribute("src") || "").trim() === p) return true;
+    if (el.localName === "image" && ((el.getAttribute("href") || el.getAttribute("xlink:href") || "").trim() === p)) return true;
+    for (const style of [cs, getComputedStyle(el, "::before"), getComputedStyle(el, "::after")])
+      for (const prop of IMAGE_PROPS) if (String(style[prop] || "").includes("/" + p + '"')) return true;
+    return false;
+  };
   for (const el of document.querySelectorAll("*")) {
     const cs = getComputedStyle(el);
-    const src = el.localName === "img" ? (el.getAttribute("src") || "").trim() : "";
     for (const p of assetPaths) {
-      if (src !== p && !cs.backgroundImage.includes("/" + p + '"')) continue;
+      if (!uses(el, cs, p)) continue;
       const r = el.getBoundingClientRect();
       const visible = cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 && r.height > 0;
       const host = el.closest("[data-section]");
       const a = assets[p];
       if (host) { const id = host.getAttribute("data-section"); if (!a.sections.includes(id)) a.sections.push(id); } else a.outsideSections = true;
-      if (visible) { a.shown = true; if (r.top + scrollY < innerHeight) a.firstScreen = true; }
+      if (visible) {
+        a.shown = true;
+        // in the first screen: at least half of the picture is inside the first viewport
+        const top = r.top + scrollY, bottom = top + r.height;
+        const overlap = Math.max(0, Math.min(bottom, innerHeight) - Math.max(top, 0));
+        if (overlap >= r.height / 2) a.firstScreen = true;
+      }
     }
   }
   for (const id of ids) {
     const el = document.querySelector('[data-section="' + CSS.escape(id) + '"]');
     if (!el) { out[id] = null; continue; }
-    const r = el.getBoundingClientRect();
-    const shown = getComputedStyle(el).display !== "none" && getComputedStyle(el).visibility !== "hidden";
-    out[id] = shown ? { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height } : { x: 0, y: 0, w: 0, h: 0 };
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") { out[id] = { x: 0, y: 0, w: 0, h: 0 }; continue; }
+    let r = el.getBoundingClientRect();
+    let box = { l: r.left, t: r.top, r: r.right, b: r.bottom };
+    // a root that measures 0 (all content absolutely positioned, display: contents ...) is measured by what it paints
+    if (r.width === 0 || r.height === 0) {
+      box = null;
+      const add = (dr) => {
+        if (dr.width === 0 || dr.height === 0) return;
+        box = box ? { l: Math.min(box.l, dr.left), t: Math.min(box.t, dr.top), r: Math.max(box.r, dr.right), b: Math.max(box.b, dr.bottom) } : { l: dr.left, t: dr.top, r: dr.right, b: dr.bottom };
+      };
+      for (const d of el.querySelectorAll("*")) {
+        const dcs = getComputedStyle(d);
+        if (dcs.display === "none" || dcs.visibility === "hidden") continue;
+        add(d.getBoundingClientRect());
+      }
+      // text that overflows a zero-size box (e.g. vertical text in a 0-height container) is still painted: measure the glyphs
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+        if (!t.textContent || !t.textContent.trim()) continue;
+        const pcs = t.parentElement ? getComputedStyle(t.parentElement) : null;
+        if (pcs && (pcs.display === "none" || pcs.visibility === "hidden")) continue;
+        const range = document.createRange();
+        range.selectNodeContents(t);
+        for (const cr of range.getClientRects()) add(cr);
+      }
+      if (!box) { out[id] = { x: 0, y: 0, w: 0, h: 0 }; continue; }
+    }
+    out[id] = { x: box.l + scrollX, y: box.t + scrollY, w: box.r - box.l, h: box.b - box.t };
   }
   return { sections: out, assets, scrollHeight: document.documentElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth };
 })(${JSON.stringify(ids)}, ${JSON.stringify(assetPaths)})`;

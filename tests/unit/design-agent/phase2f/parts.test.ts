@@ -69,8 +69,17 @@ describe("prototype safety: refuses what could run or reach out", () => {
     ["a /* inside a string hiding a url", page("x"), 'a::before{content:"/*"} body{background:url(http://evil/y.png)} b{content:"*/"}', "css url: http://evil/y.png"],
     ["an SVG fill url", page('<svg><rect fill="url(http://evil/f)"/></svg>'), "", "rect fill: url http://evil/f"],
     ["an SVG mask url", page('<svg><rect mask="url(http://evil/m)"/></svg>'), "", "rect mask: url http://evil/m"],
+    ["an @import hidden by a /* inside an @charset string", page("x"), '@charset "/*"; @import url(http://evil/i.css); /* */', "css @import"],
   ])("refuses %s (the reviewer's bypasses)", async (_n, html, css, detail) => {
     expect(await check(html, css)).toBe(`UNSAFE ${detail}`);
+  });
+
+  it("Review 1's exact escape vector is refused only by the second (Chromium-parsed) pass", async () => {
+    const css = "a{x:/\\2a} body{background:url(http://evil/z.png)} /* */";
+    // the as-written pass alone does not see it ...
+    expect(cssProblems(css, new Set())).toEqual([]);
+    // ... the whole check does
+    expect(await check(page("x"), css)).toBe("UNSAFE css url: http://evil/z.png");
   });
 
   it("allows in-page url(#id) references (SVG filters, gradients, clip paths) and harmless meta boilerplate", async () => {
@@ -193,6 +202,12 @@ describe("comparison sheet: a technical pass is not a design success", () => {
   ])("%s → %s", (_n, over, verdict) => {
     expect(sheetVerdict(filled(over))).toBe(verdict);
   });
+  it("does not count a run stop twice (run log and intake reason)", () => {
+    const record = { route: "B_html_prototype", verification_state: "incomplete", warnings: [], reasons: ["run_stopped:RENDER_BLANK", "declared_missing:x"], files: [] };
+    const e = sheetEntry("B_html_prototype", { status: "done", packageDir: "", record: record as never, log: { route_requested: "B_html_prototype", route_delivered: "B_html_prototype", design_calls: 1, asset_calls: 0, prompt_sha256: null, declared_geometry: null, stops: [{ code: "RENDER_BLANK", class: "output", stage: "render" }], ms: 1 } });
+    expect(e.stops_and_warnings.map((s) => s.code)).toEqual(["RENDER_BLANK", "declared_missing:x"]);
+  });
+
   it("lists every stop and warning for the owner to mark, and measures the unnecessary-stop rate", () => {
     const e = sheetEntry("C_hybrid", { status: "stopped", code: "IMAGE_POLICY_REFUSAL", stopClass: "capability", ownerCheck: true, recovery: "", log: { route_requested: "C_hybrid", route_delivered: null, design_calls: 1, asset_calls: 1, prompt_sha256: null, declared_geometry: null, stops: [], ms: 1 } });
     expect(e.stops_and_warnings).toEqual([{ code: "IMAGE_POLICY_REFUSAL", source: "run", stop_was_correct: null }]);

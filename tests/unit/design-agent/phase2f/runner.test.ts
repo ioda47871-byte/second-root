@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FactsPack } from "@/lib/design-agent/artifact/schema";
 import { DesignBrief } from "@/lib/design-agent/phase2f/prompt";
 import { packageConceptRun, PLAN_LIMITS, PortStop, runPrototypeRoute, type AssetPort, type DesignPort } from "@/lib/design-agent/phase2f/runner";
-import { answer, BRIEF, colourPng, FACTS, GENERATION, workspace } from "./fixtures";
+import { answer, BRIEF, colourPng, FACTS, GENERATION, palettePng, workspace } from "./fixtures";
 
 // Phase 2f-1: the runner with pseudo ports only (no Codex, no image generation).
 
@@ -202,6 +202,52 @@ describe("Fresh Review 1 fixes", () => {
   });
 });
 
+describe("Fresh Review 2 fixes", () => {
+  it("a section whose root measures 0 but whose content is absolutely positioned (a vertical shop name) is measured by its content (no false stop)", async () => {
+    // the header box itself is 0 high; the vertical name inside it has a real size
+    const css = "body{margin:0;background:#f4efe6;color:#222}header{position:relative;height:0}header h1{position:absolute;top:0;left:20px;height:320px;writing-mode:vertical-rl;margin:0}section{min-height:300px}";
+    const r = await run("B_html_prototype", designPort(answer({ css })));
+    expect(r.status === "done" && r.record.verification_state).toBe("render_pair_complete");
+  });
+  it("a display: contents section is measured by what it paints (no false stop)", async () => {
+    const css = "body{margin:0;background:#f4efe6;color:#222}footer{display:contents}section{min-height:300px}";
+    const r = await run("B_html_prototype", designPort(answer({ css })));
+    expect(r.status === "done" && r.record.verification_state).toBe("render_pair_complete");
+  });
+  it.each<[string, (h: string) => string, string]>([
+    ["a ::before background", (h) => h.replace(/<img [^>]*>/, ""), "[data-section=story]::before{content:'';display:block;width:200px;height:100px;background:url(assets/A1.png)}"],
+    ["an SVG <image>", (h) => h.replace(/<img [^>]*>/, '<svg width="200" height="100" aria-label="A wrapped dorayaki on rice paper"><image href="assets/A1.png" width="200" height="100"/></svg>'), ""],
+  ])("an asset painted by %s is found in its section (no placement false stop)", async (_n, html, extraCss) => {
+    const a = answer({ asset: "story" });
+    a.prototype.html = html(a.prototype.html);
+    a.prototype.css += extraCss;
+    // the alt text request still needs an <img>; keep a hidden described one for the request only when absent
+    if (!a.prototype.html.includes("<img")) a.prototype.html = a.prototype.html.replace("</footer>", '</footer><img src="assets/A1.png" alt="A wrapped dorayaki" style="display:none">');
+    const r = await run("C_hybrid", designPort(a), assetPort(SAVED));
+    expect(r.status === "done" && r.record.route).toBe("C_hybrid");
+  });
+  it("a picture that only grazes the first screen is not essential: its failure falls back to B", async () => {
+    // the story picture starts 40 px above the fold (most of it below)
+    // header 100 + hero 760 = 860: on the 900-high PC screen 40 px of the 200 px picture are in view (less than half)
+    const css = "body{margin:0;background:#f4efe6;color:#222}header{height:100px;overflow:hidden}header h1{margin:0}[data-section=hero]{height:760px;overflow:hidden}section{padding:0;margin:0}[data-section=story] p{display:none}[data-section=story] img{display:block;height:200px!important}";
+    const r = await run("C_hybrid", designPort(answer({ asset: "story", css })), assetPort({ png: null, image_outcome: "TOOL_FAILED", stop_code: "CODEX_IMAGE_TOOL_FAILED", approval_id: "a-2f-09" }));
+    expect(r.status === "done" && r.record.route).toBe("B_html_prototype");
+  });
+  it("a hero picture is essential even below the first screen", async () => {
+    const css = "body{margin:0;background:#f4efe6;color:#222}header{height:2000px}section{min-height:300px}";
+    const r = await run("C_hybrid", designPort(answer({ asset: "hero", css })), assetPort({ png: null, image_outcome: "TOOL_FAILED", stop_code: "CODEX_IMAGE_TOOL_FAILED", approval_id: "a-2f-10" }));
+    expect(r).toMatchObject({ status: "stopped", code: "IMAGE_ESSENTIAL_FAILED" });
+  });
+  it("a timeout aborts the port's signal (a real port must stop its process) and names the call", async () => {
+    let signal: AbortSignal | undefined;
+    const r = await run("B_html_prototype", (req) => ((signal = req.signal), new Promise(() => undefined)), undefined, { limits: { ...PLAN_LIMITS, callTimeoutMs: 30 } });
+    expect(r).toMatchObject({ code: "CODEX_TIMEOUT" });
+    expect(signal?.aborted).toBe(true);
+    const c = await run("C_hybrid", designPort(answer({ asset: "story" })), () => new Promise(() => undefined), { limits: { ...PLAN_LIMITS, callTimeoutMs: 30 } });
+    expect(c).toMatchObject({ code: "CODEX_IMAGE_TIMEOUT" });
+  });
+});
+
 describe("limits and recovery are never automatic", () => {
   it("makes exactly one design call per run and never retries", async () => {
     calls.design = 0;
@@ -249,6 +295,18 @@ describe("route A (existing image PoC output wrapped as a concept)", () => {
     expect(r.record.verification_state).toBe("incomplete");
     expect(r.record.reasons).toContain("original_missing:mobile_390");
     expect(r.record.implementation_handoff_allowed).toBe(false);
+  });
+
+  it("refuses a report whose height is not the image's", async () => {
+    const png = colourPng(1024, 1536);
+    const r = await packageConceptRun({ facts, shop, artifactId: "DA-20261029-concp3", outDir: ws.out("a3"), pocDir: poc(png, { png_sha256: sha(png), width: 1024, height: 1000 }), generation: gen });
+    expect(r).toMatchObject({ status: "stopped", code: "CONCEPT_REPORT_INVALID" });
+  });
+
+  it("a valid PNG in a format the runner does not decode is recorded, not stopped", async () => {
+    const png = palettePng(600, 600);
+    const r = await packageConceptRun({ facts, shop, artifactId: "DA-20261029-concp4", outDir: ws.out("a4"), pocDir: poc(png, { png_sha256: sha(png), width: 600, height: 600 }), generation: gen });
+    expect(r.status === "done" && r.record.reasons).toContain("declared_missing:concept_pixels_not_decoded");
   });
 
   it("refuses an image whose SHA does not match its report", async () => {

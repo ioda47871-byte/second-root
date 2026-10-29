@@ -64,7 +64,9 @@ export function cssProblems(css: string, assets: ReadonlySet<string>, o: { canon
     hex ? String.fromCodePoint(Math.min(parseInt(hex, 16) || 0xfffd, 0x10ffff)) : (ch ?? ""),
   );
   const flat = decoded.replace(/\/\*[\s\S]*?\*\//g, " ");
-  if (/@import/i.test(flat)) out.push("css @import");
+  // @import is looked for before comments are dropped too: a "/*" inside a string must not hide it
+  // (Chromium's re-serialisation drops @import, so this raw check is the one that sees it)
+  if (/@import/i.test(flat) || /@import/i.test(decoded)) out.push("css @import");
   if (/expression\s*\(|behavior\s*:|-moz-binding|javascript:/i.test(flat)) out.push("css code execution");
   for (const target of cssUrls(flat)) if (!allowedUrl(target, assets)) out.push(`css url: ${target.slice(0, 80)}`);
   if (/image-set\(|image\(|src\(/i.test(flat)) out.push("css image function other than url()");

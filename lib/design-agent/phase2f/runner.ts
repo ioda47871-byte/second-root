@@ -46,9 +46,10 @@ export class PortStop extends Error {
 }
 
 /** One Codex design call. `generation` is what the port observed (never Codex's words); image_outcome is set by the runner. */
-export type DesignPort = (req: { prompt: string; promptSha256: string; schema: object; timeoutMs: number }) => Promise<{ answer: unknown; generation: Omit<Generation, "image_outcome"> }>;
+/** `signal` aborts when the runner's time limit passes: a real port must stop its process then (a 2f-2 duty). */
+export type DesignPort = (req: { prompt: string; promptSha256: string; schema: object; timeoutMs: number; signal: AbortSignal }) => Promise<{ answer: unknown; generation: Omit<Generation, "image_outcome"> }>;
 /** One image-tool call for one asset (route C). */
-export type AssetPort = (req: { assetId: string; prompt: string; promptSha256: string; timeoutMs: number }) => Promise<{ png: Buffer | null; image_outcome: ImageOutcome; stop_code: string | null; approval_id: string | null }>;
+export type AssetPort = (req: { assetId: string; prompt: string; promptSha256: string; timeoutMs: number; signal: AbortSignal }) => Promise<{ png: Buffer | null; image_outcome: ImageOutcome; stop_code: string | null; approval_id: string | null }>;
 
 export type RunLog = {
   route_requested: string;
@@ -76,11 +77,23 @@ export const RECOVERY = {
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 
-/** The per-call time limit, enforced by the runner itself (a port that ignores its timeoutMs still stops the run). */
-async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+/**
+ * The per-call time limit, enforced by the runner itself: when it passes, the port's signal aborts (a real port must
+ * stop its process then) and the run stops with `code`, even if the port ignores the signal.
+ */
+async function withTimeout<T>(call: (signal: AbortSignal) => Promise<T>, ms: number, code: string): Promise<T> {
+  const controller = new AbortController();
   let timer: NodeJS.Timeout | undefined;
   try {
-    return await Promise.race([p, new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new PortStop("CODEX_TIMEOUT", "interrupted")), Math.max(0, ms))))]);
+    return await Promise.race([
+      call(controller.signal),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new PortStop(code, "interrupted"));
+        }, Math.max(0, ms));
+      }),
+    ]);
   } finally {
     clearTimeout(timer);
   }
@@ -153,7 +166,7 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
   try {
     log.design_calls += 1;
     const ms = Math.min(limits.callTimeoutMs, budgetLeft());
-    ({ answer, generation } = await withTimeout(c.designPort({ prompt: built.prompt, promptSha256: built.sha256, schema: codexDesignJsonSchema(), timeoutMs: ms }), ms));
+    ({ answer, generation } = await withTimeout((signal) => c.designPort({ prompt: built.prompt, promptSha256: built.sha256, schema: codexDesignJsonSchema(), timeoutMs: ms, signal }), ms, "CODEX_TIMEOUT"));
   } catch (e) {
     if (e instanceof PortStop) return stop(e.code, e.stopClass, e.stopClass === "environment" ? RECOVERY.wait : RECOVERY.new_run);
     return stop("RUN_DESIGN_PORT_FAILED", "request", RECOVERY.new_run);
@@ -226,7 +239,7 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
       try {
         log.asset_calls += 1;
         const ms = Math.min(limits.callTimeoutMs, budgetLeft());
-        res = await withTimeout(c.assetPort({ assetId: id, prompt: req.prompt, promptSha256: req.sha256, timeoutMs: ms }), ms);
+        res = await withTimeout((signal) => c.assetPort!({ assetId: id, prompt: req.prompt, promptSha256: req.sha256, timeoutMs: ms, signal }), ms, "CODEX_IMAGE_TIMEOUT");
       } catch (e) {
         if (e instanceof PortStop) return stop(e.code, e.stopClass, e.stopClass === "environment" ? RECOVERY.wait : RECOVERY.new_run);
         return stop("RUN_ASSET_PORT_FAILED", "request", RECOVERY.new_run);
@@ -363,7 +376,7 @@ export async function packageConceptRun(c: Common & { pocDir: string; generation
   // a valid PNG in a format the reader does not decode is noted, not stopped (intake still checks its structure)
   const unsupported = !decoded.ok && decoded.code === "RENDER_UNSUPPORTED_FORMAT";
   if (unsupported) log.stops.push({ code: "CONCEPT_DECODE_UNSUPPORTED_FORMAT", class: "inconclusive", stage: "intake" });
-  else if (!decoded.ok) return stop(decoded.code === "RENDER_BLANK" ? "CONCEPT_IMAGE_BLANK" : "CONCEPT_IMAGE_UNDECODABLE");
+  else if (!decoded.ok) return stop(decoded.code === "RENDER_BLANK" ? "CONCEPT_IMAGE_BLANK" : decoded.code === "RENDER_SIZE_MISMATCH" ? "CONCEPT_REPORT_INVALID" : "CONCEPT_IMAGE_UNDECODABLE");
   if (decoded.ok && decoded.height !== report.height) return stop("CONCEPT_REPORT_INVALID");
   const size = decoded.ok ? { width: decoded.width, height: decoded.height } : { width: report.width, height: report.height };
   const design = {
