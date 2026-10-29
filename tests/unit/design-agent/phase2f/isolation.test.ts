@@ -12,6 +12,8 @@ const LIB = "lib/design-agent/phase2f";
 const CLI = "scripts/design-artifact/phase2f.ts";
 /** The Phase 2f-2 design step (DEV-116): the one other file allowed to import from phase2f, and only the prompt. */
 const DESIGN_STEP = "scripts/design-artifact/phase2f-design.ts";
+/** The Phase 2f-2 offline steps (DEV-117): pre-render, packaging from recorded steps, the comparison sheet. */
+const STEPS = "scripts/design-artifact/phase2f-steps.ts";
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
 function specifiers(source: string): string[] {
@@ -64,11 +66,21 @@ describe("isolation of the Phase 2f runner", () => {
 
   it("is imported only by its offline CLI, and by the Phase 2f-2 design step for its prompt only (DEV-116, owner-approved exact path)", () => {
     // the design step's own modules (phase2f-live) never import the runner
-    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP].sort());
+    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS].sort());
     const source = readFileSync(resolve(REPO, DESIGN_STEP), "utf8");
     const fromPhase2f = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
     expect(fromPhase2f).toEqual([["../../lib/design-agent/phase2f/prompt", ["DesignBrief", "buildDesignPrompt", "codexDesignJsonSchema"]]]);
     expect(specifiers(source).filter((s) => s.includes("/phase2f/"))).toEqual(["../../lib/design-agent/phase2f/prompt"]);
+  });
+
+  it("the offline steps CLI (DEV-117, owner-approved exact path) takes only these names from phase2f", () => {
+    const source = readFileSync(resolve(REPO, STEPS), "utf8");
+    const fromPhase2f = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
+    expect(fromPhase2f).toEqual([
+      ["../../lib/design-agent/phase2f/compare-sheet", ["sheetEntry", "sheetMarkdown", "type SheetCall", "type SheetEntry"]],
+      ["../../lib/design-agent/phase2f/prompt", ["DesignBrief"]],
+      ["../../lib/design-agent/phase2f/runner", ["PortStop", "packageConceptRun", "prerenderRoute", "runPrototypeRoute", "type AssetPort", "type DesignPort", "type RunResult"]],
+    ]);
   });
 });
 

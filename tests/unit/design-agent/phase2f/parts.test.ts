@@ -2,7 +2,7 @@ import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CodexDesign, FactsPack } from "@/lib/design-agent/artifact/schema";
 import { EVAL_MIN_CRITERION, EVAL_PASS_TOTAL } from "@/lib/design-agent/comp-impl/bundle";
-import { MIN_CRITERION, PASS_TOTAL, sheetEntry, sheetVerdict, unnecessaryStopRate, type SheetEntry } from "@/lib/design-agent/phase2f/compare-sheet";
+import { MIN_CRITERION, PASS_TOTAL, sheetEntry, sheetMarkdown, sheetVerdict, unnecessaryStopRate, type SheetEntry } from "@/lib/design-agent/phase2f/compare-sheet";
 import { decodeCheck } from "@/lib/design-agent/phase2f/decode-check";
 import { buildAssetPrompt, buildDesignPrompt, codexDesignJsonSchema, DesignBrief } from "@/lib/design-agent/phase2f/prompt";
 import { checkPrototype, cssProblems, PrototypeUnsafe } from "@/lib/design-agent/phase2f/prototype-safety";
@@ -185,6 +185,7 @@ describe("comparison sheet: a technical pass is not a design success", () => {
     pc_sp_completeness: 4,
     owner: { not_generic: true, adopt: null, confirmed: true, notes: "" },
     stops_and_warnings: [],
+    calls: [],
     ...over,
   });
   it("uses the owner's existing policy numbers (same as comp-impl)", () => {
@@ -200,11 +201,29 @@ describe("comparison sheet: a technical pass is not a design success", () => {
     ["weak PC/SP completeness", { pc_sp_completeness: 3 }, "fail"],
     ["a technically incomplete render, however well scored", { verification_state: "incomplete" }, "fail"],
     ["a route C run delivered as a B fallback", { route: "C_hybrid", delivered_route: "B_html_prototype" }, "fail"],
-    ["a concept image (route A) that scores well", { route: "A_image", kind: "concept_image", pc_sp_completeness: null }, "concept_pass"],
+    ["a concept image (route A) that scores well", { route: "A_image", delivered_route: "A_image", kind: "concept_image", verification_state: "incomplete", images: { desktop_1440: "originals/desktop_concept.png", mobile_390: null }, pc_sp_completeness: null }, "concept_pass"],
+    ["a route A run that stopped, however well scored", { route: "A_image", delivered_route: null, kind: "concept_image", verification_state: "stopped", images: { desktop_1440: null, mobile_390: null }, pc_sp_completeness: null }, "concept_fail"],
+    ["a route A entry without its concept image", { route: "A_image", delivered_route: "A_image", kind: "concept_image", verification_state: "incomplete", images: { desktop_1440: null, mobile_390: null }, pc_sp_completeness: null }, "concept_fail"],
     ["scores missing", { scores: { beauty: null, shop_fit: 5, originality: 5, web_structure: 5, implementability: 5 } }, "pending"],
   ])("%s → %s", (_n, over, verdict) => {
     expect(sheetVerdict(filled(over))).toBe(verdict);
   });
+  it("route A from real run results: a stopped run is never a concept pass; a generated concept image is judged as a concept", () => {
+    const owner = (e: SheetEntry): SheetEntry => ({ ...e, hard_fails: [], scores: { beauty: 5, shop_fit: 5, originality: 5, web_structure: 5, implementability: 5 }, owner: { not_generic: true, adopt: null, confirmed: true, notes: "" } });
+    const log = { route_requested: "A_image", route_delivered: null, design_calls: 0, asset_calls: 0, prompt_sha256: null, declared_geometry: null, stops: [], ms: 1 };
+    const stopped = sheetEntry("A_image", { status: "stopped", code: "CONCEPT_SHA_MISMATCH", stopClass: "input", ownerCheck: false, recovery: "", log });
+    expect(sheetVerdict(owner(stopped))).toBe("concept_fail");
+    const record = { route: "A_image", verification_state: "incomplete", warnings: [], reasons: ["original_missing:mobile_390"], files: [{ path: "originals/desktop_concept.png", role: "original", sha256: "a".repeat(64), bytes: 1 }] };
+    const done = sheetEntry("A_image", { status: "done", packageDir: "", record: record as never, log: { ...log, route_delivered: "A_image" } });
+    expect(done.images.desktop_1440).toBe("originals/desktop_concept.png");
+    expect(sheetVerdict(owner(done))).toBe("concept_pass");
+    // the sheet the owner reads says the same
+    const md = sheetMarkdown([owner(stopped), owner(done)]);
+    expect(md.split("## A_image")[1]).toContain("判定: concept_fail");
+    expect(md.split("## A_image")[2]).toContain("判定: concept_pass");
+    expect(md).toContain("構想画像（実装へは渡さない）");
+  });
+
   it("does not count a run stop twice (run log and intake reason)", () => {
     const record = { route: "B_html_prototype", verification_state: "incomplete", warnings: [], reasons: ["run_stopped:RENDER_BLANK", "declared_missing:x"], files: [] };
     const e = sheetEntry("B_html_prototype", { status: "done", packageDir: "", record: record as never, log: { route_requested: "B_html_prototype", route_delivered: "B_html_prototype", design_calls: 1, asset_calls: 0, prompt_sha256: null, declared_geometry: null, stops: [{ code: "RENDER_BLANK", class: "output", stage: "render" }], ms: 1 } });

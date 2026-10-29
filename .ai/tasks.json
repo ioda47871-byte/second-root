@@ -5230,6 +5230,78 @@
         "経路ごと・呼び出しごとの承認ID（プロンプトSHA・文字数・コミット）と実行環境の再確認"
       ],
       "note": "Merged to develop (74396de, PR #148). Fake processes and fictional data only; no real Codex call. The owner approved the fictional wagashi v4 brief (8 parts + avoid) as the A/B/C test input only, not as a Second Root template. Next: DEV-117 (image entry, pre-render, per-image approval, packaging, comparison sheet)."
+    },
+    {
+      "id": "DEV-117",
+      "title": "Phase 2f-2：事前描画・画像の実証専用入口（A/C）・画像1回ごとの個別承認・記録の照合・Artifact化・比較シート出力、CLIの版の不明を警告に",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-116"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-117-phase2f-image-steps",
+      "purpose": "オーナーが2026-10-29に承認したDEV-117。架空菓庵のA/B/Cを実際に生成して比べるための残りの工程（事前描画・画像・Artifact化・比較シート）。実際のCodex実行・画像生成は別承認。",
+      "acceptance_criteria": [
+        "画像の実証専用入口は既存の画像PoCの共通部分（jail・コマンド・セッションログの分類・PNG検査）だけを再利用し、PoCのv4の承認ID・SHA・文字数・使用済み記録は変えない",
+        "Cは設計→事前描画（安全検査・プレースホルダー描画・位置・主役性・必要性）→画像の依頼（設計の実行ID・指示文全文・SHA・コミット・位置・主役か・回数）→オーナーの個別承認→画像1回、の順でだけ進む",
+        "後の工程は、出力フォルダーと台帳の両方が成功を示し、承認・実行・指示文・コミットが一致するときだけ成果物を使う。指示文は組み立て直して照合する",
+        "承認を使う前に判断できる環境問題（bubblewrapやCodexが無い、.env）は承認を使う前に止め、使った後の失敗は原因を記録して成功に書き換えない",
+        "主役でない画像の失敗・未承認はBへ明示的に切り替え、主役の失敗とポリシー拒否はオーナー確認で止め、自動回避・自動再試行はしない",
+        "CLIの版の不明は警告にし、承認ID・指示文のSHA・実行コミット・実行ID・時刻は必須のまま。モデル名と版が必要な工程は別に確認できる",
+        "比較シートをJSONとMarkdownで出し、Aは構想画像・B/Cはブラウザ描画として区別し、停止と警告と実際の呼び出しを示す。22/25は生成前の制限にしない",
+        "縦書き・重なり・SVG・clip-pathなどの表現を事前描画で不必要に拒否しない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f-live/*.test.ts",
+        "tests/unit/design-agent/phase2f/*.test.ts",
+        "tests/unit/design-agent/artifact/*.test.ts",
+        "tests/unit/design-agent/abort-signal.test.ts",
+        "tests/unit/design-agent/codex.test.ts",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/design-agent/design-image-approved-one-shot.test.ts",
+        "tests/unit/design-agent/photo-worker.test.ts",
+        "tests/unit/design-agent/pipeline.test.ts",
+        "tests/unit/guardrails.test.ts",
+        "tests/unit/ai-tasks.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/image-once.ts（新規。PoCの既存ファイルは変えない）",
+        "lib/design-agent/phase2f-live/**",
+        "lib/design-agent/phase2f/runner.ts（事前描画の共通化のみ）",
+        "lib/design-agent/phase2f/compare-sheet.ts（呼び出しの表示とMarkdown）",
+        "lib/design-agent/artifact/intake.ts（CLIの版の不明を警告に）",
+        "scripts/design-artifact/phase2f-image.ts",
+        "scripts/design-artifact/phase2f-steps.ts",
+        "scripts/design-artifact/phase2f-live-cli.ts",
+        "scripts/design-artifact/phase2f-design.ts（共通部品への移動のみ）",
+        "tests/unit/design-agent/phase2f-live/**",
+        "tests/unit/design-agent/phase2f/**（正確なパスの例外と比較シート）",
+        "tests/unit/design-agent/artifact/**",
+        "tests/unit/design-agent/design-image-poc.test.ts（新しい画像入口の正確なパスの例外のみ）",
+        "docs/design/phase2f-live.md",
+        "docs/design/design-artifact-v1.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-117.md（独立reviewによる記録のみ）"
+      ],
+      "forbidden_scope": [
+        "本物のCodex実行・画像生成・画像利用枠の消費",
+        "画像PoCの入口・run.ts・v4の承認ID・SHA・文字数・コミット固定・使用済み記録の変更",
+        "本番worker・timer・bridge・pipeline・G0〜G6・CSS許可範囲・品質閾値・安全基準の変更",
+        "PR #142のマージ・研究データの変更",
+        "営業送信・公開・Supabase・Vercel",
+        ".github/workflows・package.jsonの依存",
+        "DEV-117の自動マージ"
+      ],
+      "human_approval_triggers": [
+        "DEV-117のdevelopへのマージ",
+        "実行環境の再確認",
+        "呼び出しごとの承認ID（A・B設計・C設計・C画像）"
+      ],
+      "note": "Fake tools and fictional data only. The fictional wagashi v4 brief is for this A/B/C test only, never a Second Root template."
     }
   ]
 }

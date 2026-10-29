@@ -142,6 +142,115 @@ async function writeAndIntake(c: Common, files: Record<string, Buffer>, artifact
   return intakeArtifact({ packageDir: c.outDir, factsPath: c.facts.path });
 }
 
+/** Where one asset really sits in the preflight render, and what the image request for it is (route C). */
+export type AssetRequest = {
+  asset_id: string;
+  /** The prototype's own alt text: the description the image request is built from. */
+  alt: string;
+  prompt: string;
+  prompt_sha256: string;
+  prompt_chars: number;
+  /** Measured in the preflight render with a placeholder (never Codex's declaration). */
+  placement: Record<RenderKey, { sections: string[]; outside_sections: boolean; first_screen: boolean; shown: boolean }>;
+  /** In the hero, at least half in the first screen at either width, or outside every section: a failure stops for the owner. */
+  essential: boolean;
+};
+
+type Preflight =
+  | { status: "stopped"; code: string; stopClass: StopClass; recovery: string; ownerCheck: boolean }
+  | {
+      status: "ready";
+      design: ReturnType<typeof checkCodexDesign>;
+      proto: { html: string; css: string };
+      spec: ReturnType<typeof checkCodexDesign>["structure_spec"];
+      assetIds: string[];
+      alts: Record<string, string>;
+      essential: Set<string>;
+      requests: AssetRequest[];
+    };
+
+/**
+ * The checks before any image call, shared by the run and the separate pre-render step (Phase 2f-2): the answer is
+ * exactly codex_design_v1 with a prototype; the prototype is safe; on route C a render with placeholders shows where
+ * each picture really is, whether it is essential, and gives each one's image request. Nothing is generated here.
+ */
+async function preflightRoute(o: { route: "B_html_prototype" | "C_hybrid"; browser: Browser; answer: unknown; render: RenderPrototype; facts: FactsPack; maxAssetCalls: number; requireAssetPort: boolean }): Promise<Preflight> {
+  const stopped = (code: string, stopClass: StopClass, recovery: string, ownerCheck = false): Preflight => ({ status: "stopped", code, stopClass, recovery, ownerCheck });
+  // 2. the answer: exactly codex_design_v1, with a prototype
+  let design;
+  try {
+    design = checkCodexDesign(o.answer);
+  } catch {
+    return stopped("CODEX_DESIGN_INVALID", "output", RECOVERY.fix_input);
+  }
+  if (!design.prototype) return stopped("CODEX_NO_PROTOTYPE", "output", RECOVERY.fix_input);
+  const proto = design.prototype;
+  const spec = design.structure_spec;
+  const assetIds = [...new Set(spec.sections.flatMap((s) => s.asset_refs))].sort();
+  if (o.route === "B_html_prototype" && assetIds.length) return stopped("CODEX_ASSETS_ON_ROUTE_B", "output", RECOVERY.fix_input);
+  const assetPaths = assetIds.map((id) => `assets/${id}.png`);
+
+  // 3. safety before anything is rendered or generated
+  let alts: Record<string, string>;
+  try {
+    ({ alts } = await checkPrototype(o.browser, proto, assetPaths));
+  } catch (e) {
+    if (e instanceof PrototypeUnsafe) return stopped("PROTOTYPE_UNSAFE", "output", RECOVERY.fix_input, true);
+    throw e;
+  }
+  const essential = new Set<string>();
+  const requests: AssetRequest[] = [];
+  if (o.route === "C_hybrid") {
+    if (!assetIds.length) return stopped("CODEX_NO_ASSET_ON_ROUTE_C", "output", RECOVERY.fix_input);
+    if (assetIds.length > o.maxAssetCalls) return stopped("RUN_LIMIT_ASSET_CALLS", "approval", RECOVERY.new_run, true);
+    if (o.requireAssetPort) return stopped("RUN_NO_ASSET_PORT", "input", RECOVERY.fix_input);
+    // a preflight render with placeholders BEFORE any image call: no approved image call is spent on a page that
+    // would be stopped, and where each picture really sits is measured, not taken from Codex's declaration
+    const placeholders = new Map(assetPaths.map((p) => [p, placeholderPng()] as const));
+    let pre;
+    try {
+      pre = await o.render(o.browser, proto, placeholders, spec.sections.map((s) => s.id));
+    } catch (e) {
+      if (e instanceof RenderError) return stopped(e.code, "output", RECOVERY.fix_input);
+      throw e;
+    }
+    if (pre.desktop_1440.blocked + pre.mobile_390.blocked > 0) return stopped("PROTOTYPE_NETWORK_ATTEMPT", "output", RECOVERY.fix_input, true);
+    const heroIds = new Set(spec.sections.filter((s) => s.role === "hero").map((s) => s.id));
+    for (const id of assetIds) {
+      const path = `assets/${id}.png`;
+      const placed = [pre.desktop_1440.assets[path], pre.mobile_390.assets[path]];
+      const where = new Set(placed.flatMap((p) => p?.sections ?? []));
+      const declared = spec.sections.filter((s) => s.asset_refs.includes(id)).map((s) => s.id);
+      // the declaration must match the page: a picture shown nowhere, or not in the section that declares it, stops
+      if (!placed.some((p) => p?.shown) || declared.some((d) => !where.has(d))) return stopped("CODEX_ASSET_PLACEMENT_MISMATCH", "output", RECOVERY.fix_input);
+      // essential: in the hero, in the first screen at either width, or outside every section (its role is unknown)
+      if ([...where].some((w) => heroIds.has(w)) || placed.some((p) => p?.firstScreen || p?.outsideSections)) essential.add(id);
+    }
+    for (const id of assetIds) {
+      const path = `assets/${id}.png`;
+      const alt = alts[path];
+      if (!alt) return stopped("ASSET_DESCRIPTION_MISSING", "output", RECOVERY.fix_input);
+      const req = buildAssetPrompt({ facts: o.facts, alt, assetId: id });
+      const at = (k: RenderKey) => {
+        const p = pre[k].assets[path];
+        return { sections: [...(p?.sections ?? [])].sort(), outside_sections: p?.outsideSections ?? false, first_screen: p?.firstScreen ?? false, shown: p?.shown ?? false };
+      };
+      requests.push({ asset_id: id, alt, prompt: req.prompt, prompt_sha256: req.sha256, prompt_chars: req.chars, placement: { desktop_1440: at("desktop_1440"), mobile_390: at("mobile_390") }, essential: essential.has(id) });
+    }
+  }
+  return { status: "ready", design, proto, spec, assetIds, alts, essential, requests };
+}
+
+/**
+ * The separate pre-render step (Phase 2f-2, DEV-117): a recorded design answer is checked and, on route C, rendered
+ * with placeholders; the result is each picture's image request (for the owner to approve one by one). Offline:
+ * no Codex, no image call; the same checks as a run.
+ */
+export async function prerenderRoute(c: { route: "B_html_prototype" | "C_hybrid"; browser: Browser; answer: unknown; facts: FactsPack; maxAssetCalls?: number; render?: RenderPrototype }): Promise<{ status: "ready"; requests: AssetRequest[] } | { status: "stopped"; code: string; stopClass: StopClass; ownerCheck: boolean; recovery: string }> {
+  const pre = await preflightRoute({ route: c.route, browser: c.browser, answer: c.answer, render: c.render ?? renderPrototype, facts: c.facts, maxAssetCalls: c.maxAssetCalls ?? PLAN_LIMITS.maxAssetCalls, requireAssetPort: false });
+  return pre.status === "stopped" ? pre : { status: "ready", requests: pre.requests };
+}
+
 /** Routes B and C. */
 export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" | "C_hybrid"; browser: Browser; brief: DesignBrief; designPort: DesignPort; assetPort?: AssetPort; render?: RenderPrototype }): Promise<RunResult> {
   // tests may substitute the renderer (to reproduce a blocked request); the CLI never does
@@ -172,29 +281,11 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
     return stop("RUN_DESIGN_PORT_FAILED", "request", RECOVERY.new_run);
   }
 
-  // 2. the answer: exactly codex_design_v1, with a prototype
-  let design;
-  try {
-    design = checkCodexDesign(answer);
-  } catch {
-    return stop("CODEX_DESIGN_INVALID", "output", RECOVERY.fix_input);
-  }
-  if (!design.prototype) return stop("CODEX_NO_PROTOTYPE", "output", RECOVERY.fix_input);
-  const proto = design.prototype;
-  const spec = design.structure_spec;
+  // 2–4a. the answer, the safety check and (route C) the preflight render with placeholders
+  const pre = await preflightRoute({ route: c.route, browser: c.browser, answer, render, facts: c.facts.pack, maxAssetCalls: limits.maxAssetCalls, requireAssetPort: !c.assetPort });
+  if (pre.status === "stopped") return stop(pre.code, pre.stopClass, pre.recovery, pre.ownerCheck);
+  const { design, proto, spec, assetIds, alts, essential } = pre;
   log.declared_geometry = { page_height: spec.page_height, boxes: Object.fromEntries(spec.sections.map((s) => [s.id, s.boxes])) };
-  const assetIds = [...new Set(spec.sections.flatMap((s) => s.asset_refs))].sort();
-  if (c.route === "B_html_prototype" && assetIds.length) return stop("CODEX_ASSETS_ON_ROUTE_B", "output", RECOVERY.fix_input);
-  const assetPaths = assetIds.map((id) => `assets/${id}.png`);
-
-  // 3. safety before anything is rendered or generated
-  let alts: Record<string, string>;
-  try {
-    ({ alts } = await checkPrototype(c.browser, proto, assetPaths));
-  } catch (e) {
-    if (e instanceof PrototypeUnsafe) return stop("PROTOTYPE_UNSAFE", "output", RECOVERY.fix_input, true);
-    throw e;
-  }
 
   // 4. route C: one image per asset, each its own approved call; a failure is recorded as it is
   let route: "B_html_prototype" | "C_hybrid" = c.route;
@@ -203,32 +294,6 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
   const assetFiles = new Map<string, Buffer>();
   let fallback: DesignArtifact["observed"]["fallback"] = null;
   if (c.route === "C_hybrid") {
-    if (!assetIds.length) return stop("CODEX_NO_ASSET_ON_ROUTE_C", "output", RECOVERY.fix_input);
-    if (assetIds.length > limits.maxAssetCalls) return stop("RUN_LIMIT_ASSET_CALLS", "approval", RECOVERY.new_run, true);
-    if (!c.assetPort) return stop("RUN_NO_ASSET_PORT", "input", RECOVERY.fix_input);
-    // a preflight render with placeholders BEFORE any image call: no approved image call is spent on a page that
-    // would be stopped, and where each picture really sits is measured, not taken from Codex's declaration
-    const placeholders = new Map(assetPaths.map((p) => [p, placeholderPng()] as const));
-    let pre;
-    try {
-      pre = await render(c.browser, proto, placeholders, spec.sections.map((s) => s.id));
-    } catch (e) {
-      if (e instanceof RenderError) return stop(e.code, "output", RECOVERY.fix_input);
-      throw e;
-    }
-    if (pre.desktop_1440.blocked + pre.mobile_390.blocked > 0) return stop("PROTOTYPE_NETWORK_ATTEMPT", "output", RECOVERY.fix_input, true);
-    const heroIds = new Set(spec.sections.filter((s) => s.role === "hero").map((s) => s.id));
-    const essential = new Set<string>();
-    for (const id of assetIds) {
-      const path = `assets/${id}.png`;
-      const placed = [pre.desktop_1440.assets[path], pre.mobile_390.assets[path]];
-      const where = new Set(placed.flatMap((p) => p?.sections ?? []));
-      const declared = spec.sections.filter((s) => s.asset_refs.includes(id)).map((s) => s.id);
-      // the declaration must match the page: a picture shown nowhere, or not in the section that declares it, stops
-      if (!placed.some((p) => p?.shown) || declared.some((d) => !where.has(d))) return stop("CODEX_ASSET_PLACEMENT_MISMATCH", "output", RECOVERY.fix_input);
-      // essential: in the hero, in the first screen at either width, or outside every section (its role is unknown)
-      if ([...where].some((w) => heroIds.has(w)) || placed.some((p) => p?.firstScreen || p?.outsideSections)) essential.add(id);
-    }
     for (const id of assetIds) {
       const path = `assets/${id}.png`;
       const alt = alts[path];

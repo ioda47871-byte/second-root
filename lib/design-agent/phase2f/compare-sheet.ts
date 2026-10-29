@@ -34,9 +34,12 @@ export type SheetEntry = {
   pc_sp_completeness: number | null;
   owner: { not_generic: boolean | null; adopt: boolean | null; confirmed: boolean; notes: string };
   stops_and_warnings: { code: string; source: "run" | "intake_warning" | "intake_reason"; stop_was_correct: boolean | null }[];
+  /** The real calls behind the entry (Phase 2f-2): each approval, its run, prompt SHA and how it ended, as the ledger says. */
+  calls: SheetCall[];
 };
+export type SheetCall = { kind: string; approval_id: string; run_id: string; prompt_sha256: string; slot: string; status: string; code: string | null };
 
-export function sheetEntry(route: SheetEntry["route"], result: RunResult): SheetEntry {
+export function sheetEntry(route: SheetEntry["route"], result: RunResult, calls: SheetCall[] = []): SheetEntry {
   const done = result.status === "done" ? result : null;
   const list: SheetEntry["stops_and_warnings"] = [];
   if (result.status === "stopped") list.push({ code: result.code, source: "run", stop_was_correct: null });
@@ -58,13 +61,20 @@ export function sheetEntry(route: SheetEntry["route"], result: RunResult): Sheet
     pc_sp_completeness: null,
     owner: { not_generic: null, adopt: null, confirmed: false, notes: "" },
     stops_and_warnings: list,
+    calls,
   };
 }
 
 export type SheetVerdict = "pending" | "pass" | "fail" | "concept_pass" | "concept_fail";
 
-/** Applies the owner's policy to a filled-in entry. Anything not filled in is pending, never a pass. */
+/**
+ * Applies the owner's policy to a filled-in entry. Anything not filled in is pending, never a pass — except a route A
+ * entry without a concept image (the run stopped): it is concept_fail at once, since there is nothing to judge.
+ */
 export function sheetVerdict(e: SheetEntry): SheetVerdict {
+  // route A is judged as a concept only when a concept image really exists: a run that stopped (or packaged no image)
+  // has nothing to judge, whatever the scores. Its state is "incomplete" by design (no 390 render), which is not a reason.
+  if (e.kind === "concept_image" && (e.verification_state === "stopped" || e.delivered_route !== "A_image" || !e.images.desktop_1440)) return "concept_fail";
   const scores = RUBRIC.map((k) => e.scores[k]);
   if (!e.owner.confirmed || e.hard_fails === null || scores.some((s) => s === null) || e.owner.not_generic === null) return "pending";
   const total = (scores as number[]).reduce((a, b) => a + b, 0);
@@ -83,4 +93,41 @@ export function unnecessaryStopRate(entries: readonly SheetEntry[]): { judged: n
   const judged = entries.flatMap((e) => e.stops_and_warnings).filter((s) => s.stop_was_correct !== null);
   const unnecessary = judged.filter((s) => s.stop_was_correct === false).length;
   return { judged: judged.length, unnecessary, rate: judged.length ? unnecessary / judged.length : null };
+}
+
+const cell = (v: unknown) => String(v ?? "—").replace(/\|/g, "\\|").replace(/\n/g, " ");
+
+/**
+ * The sheet as Markdown for the owner: per route what it is (a concept image, or a real browser render at 1440 and
+ * 390), how far it got, every stop and warning (to be marked necessary or not), the real calls behind it, and the
+ * blank score lines the owner fills in. Nothing here scores or judges a design.
+ */
+export function sheetMarkdown(entries: readonly SheetEntry[]): string {
+  const lines: string[] = ["# A/B/C 比較シート（架空菓庵）", "", "点数・凡庸でないかの判断・採用はオーナーが記入する。技術的に通ったことは、デザインの合格ではない。", ""];
+  const label = { concept_image: "構想画像（実装へは渡さない）", browser_render: "ブラウザ描画（PC1440・SP390）" } as const;
+  for (const e of entries) {
+    lines.push(`## ${e.route}`, "");
+    lines.push(`- 種類: ${label[e.kind]}`);
+    lines.push(`- 届いた経路: ${cell(e.delivered_route)}${e.delivered_route && e.delivered_route !== e.route ? "（依頼と違う: 切り替えあり）" : ""}`);
+    lines.push(`- 検証の状態: ${e.verification_state}`);
+    lines.push(`- 画像: PC ${cell(e.images.desktop_1440)} ／ SP ${cell(e.images.mobile_390)}`);
+    lines.push("", "### 停止と警告（オーナーが正誤を記入）", "");
+    if (e.stops_and_warnings.length === 0) lines.push("なし");
+    else {
+      lines.push("| コード | 出どころ | 止めたのは正しかったか |", "|---|---|---|");
+      for (const s of e.stops_and_warnings) lines.push(`| ${cell(s.code)} | ${s.source} | ${s.stop_was_correct === null ? "（未記入）" : s.stop_was_correct ? "正しい" : "不要だった"} |`);
+    }
+    lines.push("", "### 実際の呼び出し", "");
+    if (e.calls.length === 0) lines.push("なし");
+    else {
+      lines.push("| 種類 | 承認ID | 実行ID | 指示文SHA | 枠 | 結果 |", "|---|---|---|---|---|---|");
+      for (const c of e.calls) lines.push(`| ${cell(c.kind)} | ${cell(c.approval_id)} | ${cell(c.run_id)} | ${cell(c.prompt_sha256.slice(0, 12))}… | ${cell(c.slot)} | ${cell(c.status)}${c.code ? ` (${cell(c.code)})` : ""} |`);
+    }
+    lines.push("", "### 採点（オーナーが記入、各1〜5）", "");
+    for (const k of RUBRIC) lines.push(`- ${k}: ${e.scores[k] ?? "（未記入）"}`);
+    lines.push(`- pc_sp_completeness: ${e.kind === "concept_image" ? "（構想画像のため対象外）" : (e.pc_sp_completeness ?? "（未記入）")}`);
+    lines.push(`- 凡庸ではない: ${e.owner.not_generic === null ? "（未記入）" : e.owner.not_generic ? "はい" : "いいえ"}`);
+    lines.push(`- 判定: ${sheetVerdict(e)}`, "");
+  }
+  return `${lines.join("\n")}\n`;
 }

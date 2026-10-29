@@ -29,6 +29,13 @@ export const UNFINISHED_CALL_MS = WATCHDOG_MS + 30_000;
 /** Less than this left in the plan: no call is started. */
 export const MIN_CALL_MS = 60_000;
 
+/** Where the ledger lives: SR_PHASE2F_STATE, else the worker user's state directory (never inside the repository; the CLIs check). */
+export function defaultLedgerDir(env: Record<string, string | undefined>, home: string): string {
+  const expand = (p: string) => (p.startsWith("~/") ? join(home, p.slice(2)) : p === "~" ? home : p);
+  if (env.SR_PHASE2F_STATE) return expand(env.SR_PHASE2F_STATE);
+  return join(expand(env.XDG_STATE_HOME ?? "~/.local/state"), "sr-design-worker", "phase2f-live");
+}
+
 export const APPROVAL_ID = /^[a-z0-9][a-z0-9._-]{3,95}$/;
 export const PLAN_ID = /^[a-z0-9][a-z0-9._-]{3,63}$/;
 export type CallKind = "design" | "image" | "concept_image";
@@ -183,6 +190,14 @@ export function openLedger(stateDir: string, now: () => number = Date.now) {
         throw new LedgerStop(refused);
       }
       return receipt;
+    },
+
+    /** One approval's receipt and result as the ledger has them (null: never reserved; result null: no result yet). */
+    async get(approvalId: string): Promise<{ receipt: Receipt; result: CallResult | null } | null> {
+      if (!APPROVAL_ID.test(approvalId)) return null;
+      const receipt = await readJson<Receipt>(join(approvals, approvalId, "receipt.json"));
+      if (!receipt || receipt.approval_id !== approvalId) return null;
+      return { receipt, result: await readJson<CallResult>(join(approvals, approvalId, "result.json")) };
     },
 
     /** Records how a reserved call ended (once). */
