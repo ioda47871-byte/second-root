@@ -11,6 +11,13 @@ export function verifyCaseSafety(manifest, patterns) {
  ok(new Set(r.map(x=>x.id)).size===r.length&&new Set(c.map(x=>x.id)).size===c.length,"DUPLICATE_ID");
  ok(r.every(x=>c.some(y=>y.id===x.id))&&c.every(x=>r.some(y=>y.id===x.id)),"CASE_ID_MISMATCH");
  ok(r.every(x=>x.id!=="CP-014"&&x.id!=="CP-025"),"UNAPPROVED_CASE");
+ const allowedSelections=new Set([
+  "owner_selected_research_success_example",
+  "owner_design_approved_v4",
+  "owner_selected_research_design_success",
+  "owner_conditionally_authorized_fallback_research_success",
+ ]);
+ ok(r.every(x=>allowedSelections.has(x.status)),"NOT_OWNER_SELECTED_STATUS");
  ok(manifest.policy.not_templates===true&&manifest.policy.not_official_client_work===true&&manifest.policy.never_reuse_generated_photos_or_logos_for_other_shops===true&&manifest.policy.release_or_deployment_approval===false,"MANIFEST_POLICY");
  ok(patterns.scope==="research_only_not_auto_prompt_input"&&patterns.status==="owner_selected_case_analysis_not_approved_for_automatic_reuse"&&patterns.reuse_policy.design_principles_are_not_templates===true,"PATTERN_POLICY");
  const deny=["copy_specific_composition","copy_or_reuse_brand_logo_or_photography","copy_specific_text_or_color_recipe","claim_client_approval_or_website_launch","feed_into_production_generators_without_separate_review"];
