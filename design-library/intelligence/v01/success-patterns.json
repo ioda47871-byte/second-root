@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "dataset": "second-root-design-intelligence-pilot",
-  "as_of": "2026-10-28",
+  "as_of": "2026-10-31",
   "scope": "research_only_not_auto_prompt_input",
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md (CP-014 pending and excluded)",
+    "case_docs": "CP-001..024: existing design-library/success-cases research notes, excluding CP-014 and CP-025. CP-026..032: newly staged review-draft notes, with original image/ZIP/HTML bytes not yet independently verified.",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -1374,7 +1374,7 @@
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Ten cases have local HTML PoCs; thirteen remain concept/image-only; none are verified live production websites",
+    "Seventeen cases are recorded as local HTML/CSS/JS research PoCs and thirteen as concept/image only. The seven newly staged PoCs have not had their original ZIP/HTML/PNG bytes replayed or verified here; no case is a verified live production website.",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
   ],
