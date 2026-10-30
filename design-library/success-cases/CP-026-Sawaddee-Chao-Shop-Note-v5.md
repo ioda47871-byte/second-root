@@ -1,8 +1,14 @@
 # CP-026 | Sawaddee Chao — CHIANG MAI SHOP NOTE v5 — 研究記録（ドラフト審査待ち）
 
+## 採用判断の証拠区分（2026-10-31独立レビュー指摘への対応）
+- 採用判断の証拠レベル：positive_then_continued_plus_group_adoption
+- 研究採用判断の参照：2026-10-29 00:57–00:59 JST の好評価と次へ進む発言、および同日22:38 JSTの追加7件一括採用報告。元メッセージへの恒久リンクは未記録。
+- 個別逐語の採用引用：未確認（ほかの採用文言を創作しない）
+- 一次証拠の確認状態：GitHubの原メッセージURL・原本ZIP/HTML/PNGバイトは未照合。研究分析の採用と商用/生成器承認は別。
+
 - 採用版：CHIANG_MAI_SHOP_NOTE_v5
-- 採用判断の証拠レベル：positive_then_proceeded_owner_adoption_reported
-- 判断の扱い：肯定評価に続き次のケースへ進んだという会話記録であり、明示的な『成功例とします』とは区別。
+- 採用判断の証拠レベル：positive_then_continued_plus_group_adoption
+- 判断の扱い：個別の好評価と次へ進む記録、および一括採用の報告。逐語の成功例宣言とは区別。
 - Web試作：ローカルHTML/CSS/JSとして報告あり。**原本バイト未検証**
 - 原本候補：`SecondRoot_CP026_SawaddeeChao_ChiangMaiShopNote_v5.zip`（実体／SHA未照合）
 - **GitHub成功データセットへの正式採用はこのドラフトPRの審査・マージ後。**
