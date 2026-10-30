@@ -5,7 +5,7 @@
  * router from a closed origin (pictures as given, else a 4:3 placeholder); every other routed request is refused and
  * counted. Some browser features open connections before or outside the router (prerender, frames, objects, meta
  * refresh); the page is refused if it contains them (MeasureRefused), so measurePage expects a page that also passed
- * the prototype safety check (lib/design-agent/phase2f/prototype-safety.ts), as every Phase 2f prototype does. Only
+ * the Phase 2f prototype safety check (prototype-safety.ts), as every Phase 2f prototype does. Only
  * geometry and computed styles are read: the boxes of the sections (elements marked data-section, else the body's
  * top-level blocks), their blocks, where pictures and drawings sit, the navigation, and the writing mode of the text.
  *
