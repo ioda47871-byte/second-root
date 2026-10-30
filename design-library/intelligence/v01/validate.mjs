@@ -21,10 +21,25 @@ const unique = (values) => values.length === new Set(values).size;
 assert(knowledge.schema_version === 1 && queue.schema_version === 1, "unexpected schema version");
 assert(knowledge.scope === "research_only_not_auto_prompt_input", "unsafe knowledge scope");
 assert(knowledge.reuse_policy.design_principles_are_not_templates === true, "anti-template policy missing");
-assert(unique(cases.map(x => x.id)) && cases.length === 23, "case count/IDs do not match pilot");
+assert(unique(cases.map(x => x.id)), "duplicate case ID");
+assert(unique(manifest.records.map(x => x.id)), "duplicate manifest ID");
+assert(knowledge.registered_case_count === cases.length, "declared analysis count mismatch");
+assert(manifest.registered_case_count === manifest.records.length, "declared registry count mismatch");
+assert(cases.length === manifest.records.length, "manifest and analysis count mismatch");
+assert(cases.every(x => manifest.records.some(y => y.id === x.id)), "analysis ID absent from registry");
+assert(manifest.records.every(x => cases.some(y => y.id === x.id)), "registry ID absent from analysis");
+assert(manifest.policy.release_or_deployment_approval === false, "unsafe release approval");
+assert(manifest.policy.not_templates === true, "unsafe template policy");
+assert(manifest.policy.never_reuse_generated_photos_or_logos_for_other_shops === true, "unsafe image reuse policy");
 assert(cases.every(x => x.evidence_ref && x.structural_translation && x.shop_motifs.length >= 2 && x.known_failure_modes.length >= 1 && x.not_to_copy.length >= 1 && x.implementation_gap), "case incomplete");
 assert(cases.every(x => manifest.records.some(y => y.id === x.id)), "case missing from source registry");
-assert(cases.filter(x => x.implementation === "local_html_css_js_poc").length === 10, "PoC counts ambiguous");
+const localPocCount = cases.filter(x => x.implementation === "local_html_css_js_poc").length;
+assert(localPocCount === knowledge.registered_local_poc_count, "analysis local PoC count mismatch");
+assert(localPocCount === manifest.registered_local_poc_count, "registry local PoC count mismatch");
+assert(manifest.records.every(x => {
+ const impl = /html_css_js/.test(x.view) ? "local_html_css_js_poc" : "concept_image_only";
+ return cases.some(y => y.id === x.id && y.implementation === impl);
+}), "case implementation form mismatch");
 const rows = queue.queue;
 const audits = new Map(evidence.records.map(x => [x.id,x]));
 const sources = new Map([...c1.references,...c2.references].map(x => [x.id,x]));
@@ -42,4 +57,4 @@ for (const row of rows) {
     assert(!audits.has(row.id) && row.existing_evidence === "text_checked_only_no_viewport_audit", "new case claimed audited: " + row.id);
   }
 }
-console.log("PASS: 23 research success patterns; 20 source-traced review queue items; no auto-approved research.");
+console.log(`PASS: ${cases.length} research success patterns (${localPocCount} local Web PoCs); 20 source-traced review queue items; no auto-approved research.`);
