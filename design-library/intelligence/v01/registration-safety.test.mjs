@@ -10,7 +10,7 @@ const originalManifest=JSON.parse(readFileSync(resolve(root,"design-library/succ
 const originalPatterns=JSON.parse(readFileSync(resolve(root,"design-library/intelligence/v01/success-patterns.json"),"utf8"));
 const clone=x=>JSON.parse(JSON.stringify(x));
 test("research-only staged 30-case corpus",()=>assert.deepEqual(verifyCaseSafety(originalManifest,originalPatterns),{cases:30,local_poc:17,unverified_additions:7}));
-const mutations=["generation","sales","production","official-client","merchant-authority","binary-verified","owner-quote-replay","review-unneeded","cp026-explicit","fake-sha","html-verified","web-qualified","bad-status","missing-last","duplicate-id","insert-cp025","bad-declared-count","unsafe-policy","remove-deny","promote-source-scope","spoof-cp026-analysis","invalid-evidence","no-reuse-ban","poc-count"];
+const mutations=["generation","sales","production","official-client","merchant-authority","binary-verified","owner-quote-replay","review-unneeded","cp026-explicit","fake-sha","html-verified","web-qualified","bad-status","missing-last","duplicate-id","insert-cp025","bad-declared-count","unsafe-policy","remove-deny","promote-source-scope","spoof-cp026-analysis","invalid-evidence","no-reuse-ban","poc-count","legacy-status-pending","legacy-status-rejected"];
 const mutators={
 "generation":m=>m.records[23].approved_for_generation=true,
 "sales":m=>m.records[24].approved_for_sales=true,
@@ -36,5 +36,7 @@ const mutators={
 "invalid-evidence":(_,k)=>k.cases[23].evidence_ref="design-library/success-cases/CP-031-foo.md",
 "no-reuse-ban":(_,k)=>k.cases[29].not_to_copy=[],
 "poc-count":(_,k)=>k.registered_local_poc_count=16,
+"legacy-status-pending":m=>m.records[0].status="awaiting_owner_review",
+"legacy-status-rejected":m=>m.records[0].status="owner_rejected_explicit",
 };
 for(const name of mutations)test("reject "+name,()=>{const m=clone(originalManifest),k=clone(originalPatterns);mutators[name](m,k);assert.throws(()=>verifyCaseSafety(m,k),/RESEARCH_GUARD_/);});
