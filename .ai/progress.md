@@ -283,3 +283,9 @@
 - Prototype Safety: scroll-behavior / overscroll-behavior and Japanese #anchors no longer refused; IE behavior still refused; PROTOTYPE_UNSAFE stops carry `detail`.
 - Next (WSL Remote Control session): package saved B v1.1 Run 1 without re-running Codex; PC1440 / SP390 full-page images.
 - Follow-up (not started): `--prerender` does not print `detail` (Low-3).
+
+## 2026-10-30 DEV-124 merged
+
+- PR #157 → develop . CI 11/11 on 747fd5a, Fresh Review PASS (re-review PASS at 3ed3bbc).
+- Usable now: success-case reference images (CP-003 PC/SP, SHA-pinned manifest) as Codex image input; v2 open-direction prompt (no brief); two wagashi directions (A morning axis, B small counter).
+- Next: owner approval for the first v2 Codex call (direction A, route B); 0 Codex calls / 0 image generations so far.

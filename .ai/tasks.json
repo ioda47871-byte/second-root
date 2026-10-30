@@ -5619,7 +5619,7 @@
     {
       "id": "DEV-124",
       "title": "成功例の実画像を参照できる最小経路と、Brief に依存しない開放型の設計指示（v2）、構図の異なる2案",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-123"
@@ -5673,7 +5673,8 @@
         "Codex 実行（各回の承認 ID）",
         "画像生成（各回の承認 ID）"
       ],
-      "note": "0 Codex calls, 0 image generations."
+      "note": "0 Codex calls, 0 image generations.",
+      "merged": "#157 →  (squash, 2026-10-30)"
     }
   ]
 }
