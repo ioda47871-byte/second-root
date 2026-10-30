@@ -10,7 +10,7 @@ const originalManifest=JSON.parse(readFileSync(resolve(root,"design-library/succ
 const originalPatterns=JSON.parse(readFileSync(resolve(root,"design-library/intelligence/v01/success-patterns.json"),"utf8"));
 const clone=x=>JSON.parse(JSON.stringify(x));
 test("research-only staged 30-case corpus",()=>assert.deepEqual(verifyCaseSafety(originalManifest,originalPatterns),{cases:30,local_poc:17,unverified_additions:7}));
-const mutations=["generation","sales","production","official-client","merchant-authority","binary-verified","owner-quote-replay","review-unneeded","cp026-explicit","fake-sha","html-verified","web-qualified","bad-status","missing-last","duplicate-id","insert-cp025","bad-declared-count","unsafe-policy","remove-deny","promote-source-scope","spoof-cp026-analysis","invalid-evidence","no-reuse-ban","poc-count","legacy-status-pending","legacy-status-rejected"];
+const mutations=["generation","sales","production","official-client","merchant-authority","binary-verified","owner-quote-replay","review-unneeded","cp026-explicit","fake-sha","html-verified","web-qualified","bad-status","missing-last","duplicate-id","insert-cp025","bad-declared-count","unsafe-policy","remove-deny","promote-source-scope","spoof-cp026-analysis","invalid-evidence","no-reuse-ban","poc-count","legacy-status-pending","legacy-status-rejected","legacy-generation-grant","legacy-client-grant"];
 const mutators={
 "generation":m=>m.records[23].approved_for_generation=true,
 "sales":m=>m.records[24].approved_for_sales=true,
@@ -38,5 +38,7 @@ const mutators={
 "poc-count":(_,k)=>k.registered_local_poc_count=16,
 "legacy-status-pending":m=>m.records[0].status="awaiting_owner_review",
 "legacy-status-rejected":m=>m.records[0].status="owner_rejected_explicit",
+"legacy-generation-grant":m=>m.records[0].approved_for_generation=true,
+"legacy-client-grant":m=>m.records[0].merchant_authorized=true,
 };
 for(const name of mutations)test("reject "+name,()=>{const m=clone(originalManifest),k=clone(originalPatterns);mutators[name](m,k);assert.throws(()=>verifyCaseSafety(m,k),/RESEARCH_GUARD_/);});
