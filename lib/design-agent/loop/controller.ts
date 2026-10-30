@@ -57,23 +57,35 @@ export const LIMITS = { implementationAttempts: 3, fixesPerCause: 2 } as const;
 const CAUSE = /^[A-Z][A-Z0-9_]{0,60}$/;
 
 export function runLoop(runId: string, ports: Ports): LoopResult {
+  const log = { events: [] as string[], attempts: 0 };
   try {
-    return run(runId, ports);
+    return run(runId, ports, log);
   } catch {
-    // a port that throws is recorded as a stop for the owner, never retried
-    return { status: "stopped", code: "PORT_THREW", owner_check: true, events: ["end:stopped:PORT_THREW"], implementation_attempts: 0, design_approved: false };
+    // a port that throws is recorded as a stop for the owner (with everything recorded so far), never retried
+    log.events.push("end:stopped:PORT_THREW");
+    return { status: "stopped", code: "PORT_THREW", owner_check: true, events: log.events, implementation_attempts: log.attempts, design_approved: false };
   }
 }
 
-const isResult = (r: unknown): r is PortResult<unknown> =>
-  r !== null && typeof r === "object" && (((r as { ok: unknown }).ok === true && "value" in r) || ((r as { ok: unknown }).ok === false && typeof (r as { code: unknown }).code === "string"));
+/** IDs a port returns are names, never free text (no separators, no line breaks). */
+const ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
+const STOP_CLASSES = new Set<StopClass>(["environment", "output", "safety", "policy", "unknown"]);
+const STATES = new Set(["render_pair_complete", "concept_only", "incomplete"]);
+const IDENTITY = new Set(["PASS_IDENTITY_ONLY", "HOLD", "REJECT"]);
+const obj = (v: unknown): Record<string, unknown> => (v !== null && typeof v === "object" ? (v as Record<string, unknown>) : {});
+const id = (v: unknown) => typeof v === "string" && ID.test(v);
 
-function run(runId: string, ports: Ports): LoopResult {
-  const events: string[] = [];
-  let attempts = 0;
+const isResult = (r: unknown): r is PortResult<unknown> =>
+  r !== null &&
+  typeof r === "object" &&
+  (((r as { ok: unknown }).ok === true && "value" in r) ||
+    ((r as { ok: unknown }).ok === false && typeof (r as { code: unknown }).code === "string" && CAUSE.test((r as { code: string }).code) && STOP_CLASSES.has((r as { stopClass: StopClass }).stopClass)));
+
+function run(runId: string, ports: Ports, log: { events: string[]; attempts: number }): LoopResult {
+  const events = log.events;
   const end = (status: LoopStatus, code: string | null, ownerCheck = false): LoopResult => {
     events.push(`end:${status}${code ? `:${code}` : ""}`);
-    return { status, code, owner_check: ownerCheck, events, implementation_attempts: attempts, design_approved: false };
+    return { status, code, owner_check: ownerCheck, events, implementation_attempts: log.attempts, design_approved: false };
   };
   const malformed = (step: string) => {
     events.push(`${step}:malformed`);
@@ -93,17 +105,20 @@ function run(runId: string, ports: Ports): LoopResult {
   const design = ports.design(runId);
   if (!isResult(design)) return malformed("design");
   if (!design.ok) return failed("design", design);
+  if (!id(obj(design.value).design_id)) return malformed("design");
   events.push(`design:ok:${design.value.design_id}`);
 
   // 2. package + checks (offline)
   const pkg = ports.package(design.value.design_id);
   if (!isResult(pkg)) return malformed("package");
   if (!pkg.ok) return failed("package", pkg);
+  if (!id(obj(pkg.value).artifact_id) || !STATES.has(obj(pkg.value).state as string)) return malformed("package");
   events.push(`package:${pkg.value.state}`);
   if (pkg.value.state !== "render_pair_complete") return end("stopped", `ARTIFACT_${pkg.value.state.toUpperCase()}`, true);
   const identity = ports.identity(pkg.value.artifact_id);
   if (!isResult(identity)) return malformed("identity");
   if (!identity.ok) return failed("identity", identity);
+  if (!IDENTITY.has(identity.value as string)) return malformed("identity");
   events.push(`identity:${identity.value}`);
   if (identity.value !== "PASS_IDENTITY_ONLY") return end("stopped", `IDENTITY_${identity.value}`, true);
   const structure = ports.structure(pkg.value.artifact_id);
@@ -125,14 +140,16 @@ function run(runId: string, ports: Ports): LoopResult {
   const fixes = new Map<string, number>();
   let fixFor: string | null = null;
   for (;;) {
-    attempts++;
+    log.attempts++;
+    const attempts = log.attempts;
     const build = ports.implement(pkg.value.artifact_id, fixFor);
     if (!isResult(build)) return malformed("implement");
     if (!build.ok) return failed("implement", build);
+    if (!id(obj(build.value).build_id)) return malformed("implement");
     const cmp = ports.compare(build.value.build_id);
     if (!isResult(cmp)) return malformed("compare");
     if (!cmp.ok) return failed("compare", cmp);
-    if (!Array.isArray(cmp.value.differences) || !cmp.value.differences.every((c) => typeof c === "string" && CAUSE.test(c))) return malformed("compare");
+    if (!Array.isArray(obj(cmp.value).differences) || !cmp.value.differences.every((c) => typeof c === "string" && CAUSE.test(c))) return malformed("compare");
     const diffs = [...new Set(cmp.value.differences)].sort();
     events.push(`compare:${attempts}:${diffs.length ? diffs.join(",") : "match"}`);
     if (!diffs.length) return end("owner_review", null);

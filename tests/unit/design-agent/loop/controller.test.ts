@@ -108,7 +108,10 @@ describe("review fixes (DEV-129 Fresh Review)", () => {
     expect(runLoop("run-1", mocks({ design: () => ({ ok: "no" }) as never }).ports)).toMatchObject({ code: "PORT_ANSWER_INVALID" });
     const t = runLoop("run-1", mocks({ compare: () => { throw new Error("boom"); } }).ports);
     expect(t).toMatchObject({ status: "stopped", code: "PORT_THREW", owner_check: true, design_approved: false });
-    expect(t.events).toEqual(["end:stopped:PORT_THREW"]);
+    // everything recorded before the throw is kept (round 2, L1)
+    expect(t.events[0]).toBe("approval:design_call:approved");
+    expect(t.events.at(-1)).toBe("end:stopped:PORT_THREW");
+    expect(t.implementation_attempts).toBe(1);
   });
 
   it("L5: a denied approval stops (not waiting); a policy stop goes to the owner; a failed implement or compare is not repaired", () => {
@@ -123,13 +126,38 @@ describe("review fixes (DEV-129 Fresh Review)", () => {
   });
 });
 
+describe("re-review fixes (DEV-129 round 2)", () => {
+  it("M1: IDs, states and identity values outside their forms stop the run before anything uses them", () => {
+    const bad: Partial<Ports>[] = [
+      { design: () => ok({}) as never },
+      { design: () => ok({ design_id: "D1\nend:owner_review" }) },
+      { package: () => ok({ state: "render_pair_complete" }) as never },
+      { package: () => ok({ artifact_id: "DA-1", state: "done" }) as never },
+      { identity: () => ok({}) as never },
+      { implement: () => ok({ build_id: "" }) },
+    ];
+    for (const o of bad) {
+      const m = mocks(o);
+      const r = runLoop("run-1", m.ports);
+      expect(r, JSON.stringify(Object.keys(o))).toMatchObject({ status: "stopped", code: "PORT_ANSWER_INVALID", owner_check: true });
+      expect(r.events.some((e) => e.includes("\n"))).toBe(false);
+    }
+  });
+
+  it("L3: a failure without a proper code or class is malformed (never a nameless stop)", () => {
+    expect(runLoop("run-1", mocks({ design: () => fail("", "environment") }).ports)).toMatchObject({ code: "PORT_ANSWER_INVALID", owner_check: true });
+    expect(runLoop("run-1", mocks({ design: () => ({ ok: false, code: "X", stopClass: "later" }) as never }).ports)).toMatchObject({ code: "PORT_ANSWER_INVALID" });
+  });
+});
+
 describe("isolation (mock only)", () => {
   it("imports nothing and is imported by no code: real ports are a separate approval", () => {
     const repo = resolve(__dirname, "../../../..");
     const src = readFileSync(resolve(repo, "lib/design-agent/loop/controller.ts"), "utf8");
     // the directory holds this one file (M1), and it imports, re-exports and loads nothing
     expect(readdirSync(resolve(repo, "lib/design-agent/loop"))).toEqual(["controller.ts"]);
-    expect(src).not.toMatch(/^\s*import\s|^\s*export\s[^\n]*\sfrom\s|\bimport\(/m);
+    // the file has no reason to say these words at all (round 2, L2: any spelling of an import or re-export)
+    expect(src).not.toMatch(/\bimport\b|\brequire\b|\bfrom\s*["'`]/);
     expect(src).not.toMatch(/require\(|\bfetch\(|process\.|child_process/);
     const g = spawnSync("git", ["grep", "--untracked", "-lE", "loop/controller|from [\"'`]\\./controller[\"'`]", "--", "lib", "app", "components", "scripts", "proxy.ts", "supabase", ":!lib/design-agent/loop/**"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
