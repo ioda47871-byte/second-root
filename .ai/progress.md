@@ -286,6 +286,6 @@
 
 ## 2026-10-30 DEV-124 merged
 
-- PR #157 → develop . CI 11/11 on 747fd5a, Fresh Review PASS (re-review PASS at 3ed3bbc).
+- PR #157 → develop 25fe069 (merge commit). CI 11/11 on 747fd5a, Fresh Review PASS (re-review PASS at 3ed3bbc).
 - Usable now: success-case reference images (CP-003 PC/SP, SHA-pinned manifest) as Codex image input; v2 open-direction prompt (no brief); two wagashi directions (A morning axis, B small counter).
 - Next: owner approval for the first v2 Codex call (direction A, route B); 0 Codex calls / 0 image generations so far.

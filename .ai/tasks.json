@@ -5674,7 +5674,7 @@
         "画像生成（各回の承認 ID）"
       ],
       "note": "0 Codex calls, 0 image generations.",
-      "merged": "#157 →  (squash, 2026-10-30)"
+      "merged": "#157 → 25fe069 (merge commit, 2026-10-30)"
     }
   ]
 }
