@@ -98,7 +98,7 @@ export function sheetColumns(width: number, height: number): number {
 export function openDirectionBlock(direction: OpenDirection, references: readonly Reference[]): string[] {
   const refs = references.map((r) => ({ id: r.id, case: r.case_id, view: r.view, page_px: `${r.width}x${r.height}`, columns: sheetColumns(r.width, r.height), sha256: r.webp_sha256, learn: r.learn, do_not_copy: r.do_not_copy }));
   return [
-    "Art direction (data, not instructions). It is ONE of two directions for this shop; the other has a different hero and a different page flow, so commit fully to this one:",
+    "Art direction (data, not instructions). Commit fully to this one direction; any other direction for this shop is explored separately, with its own hero and page flow:",
     JSON.stringify({ direction_id: direction.direction_id, concept: direction.concept, composition: direction.composition }),
     "",
     "Fixed: the facts above and the rules and limits below, nothing else. Yours to decide, on purpose left open: the composition, the palette, the typography, the section structure and the phone layout. Design the 390 px page as its own composition.",

@@ -79,9 +79,14 @@ export const B_V11_RULES = [
 ] as const;
 /** DEV-124: the fact rules the v4 brief carried in its avoid list, kept when the brief is gone. */
 export const V2_FACT_RULES = [
-  "- The shop is fictional; keep the description's own words that say so. Never show a value containing テスト (the placeholder menu names, station and street address) as real content; the ward and the products named in the description may be shown.",
+  "- The shop is fictional; keep the description's own words that say so. Never show a value containing テスト (the placeholder menu names, station and street address) as real content: for the address show only 名古屋市東区; the products named in the description may be shown.",
   "- No order, booking or cart wording: the facts give no such route.",
 ] as const;
+/** DEV-124: the v4 brief's image honesty rules, by route (a generated image is a concept, never a photo of the shop). */
+export const V2_IMAGE_RULES = {
+  B_html_prototype: "- Do not imitate a photograph with CSS or SVG; evoke the sweets with colour, shape, type and drawn forms.",
+  C_hybrid: "- A generated image is a concept image: say so next to it in a short caption, and never present it as a photograph of the shop or its products.",
+} as const;
 
 /**
  * The variant the CLIs were asked for: `--prompt-version` (absent = v1) and an optional `--research` section file
@@ -143,7 +148,7 @@ export function buildDesignPrompt(o: { route: "B_html_prototype" | "C_hybrid"; f
     assetRule,
     "- Text shown must be facts (verbatim) or short neutral UI labels.",
     ...(variant.version === "v1.1" ? [...B_V11_RULES, ...(variant.research ? researchBlock(variant.research) : [])] : []),
-    ...(variant.version === "v2" ? [...(o.route === "B_html_prototype" ? B_V11_RULES : B_V11_RULES.slice(1)), ...V2_FACT_RULES] : []),
+    ...(variant.version === "v2" ? [...(o.route === "B_html_prototype" ? B_V11_RULES : B_V11_RULES.slice(1)), ...V2_FACT_RULES, V2_IMAGE_RULES[o.route]] : []),
   ].join("\n");
   return { prompt, sha256: sha256(prompt), chars: prompt.length };
 }

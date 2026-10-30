@@ -27,7 +27,7 @@
  * next steps (pre-render, image approval, packaging: DEV-117), which never call Codex for this design again.
  * Exit: 0 succeeded, 2 refused before anything was used, 1 the call was made (approval used) and did not succeed.
  */
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { chromium } from "playwright";
@@ -72,8 +72,8 @@ async function promptFor(args: Map<string, string>) {
  * DEV-124: the reference sheets of a v2 run, made before the approval is used: each named WebP from --reference-dir,
  * checked against the manifest's SHA-256, cut into one PNG sheet in a new private temporary directory.
  */
-async function referenceImages(variant: PromptVariant, dir: string | undefined): Promise<{ paths: string[]; record: object[] } | { code: string }> {
-  if (variant.version !== "v2" || variant.references.length === 0) return dir === undefined ? { paths: [], record: [] } : { code: "USAGE" };
+async function referenceImages(variant: PromptVariant, dir: string | undefined): Promise<{ paths: string[]; record: object[]; tmp: string | null } | { code: string }> {
+  if (variant.version !== "v2" || variant.references.length === 0) return dir === undefined ? { paths: [], record: [], tmp: null } : { code: "USAGE" };
   if (dir === undefined) return { code: "REFERENCE_DIR_REQUIRED" };
   const out = await mkdtemp(join(tmpdir(), "sr-p2f-refs-"));
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
@@ -82,15 +82,16 @@ async function referenceImages(variant: PromptVariant, dir: string | undefined):
     const record: object[] = [];
     for (const ref of variant.references) {
       const bytes = await readFile(join(resolve(dir), basename(ref.source.path))).catch(() => null);
-      if (!bytes) return { code: "REFERENCE_FILE_MISSING" };
+      if (!bytes) return (await rm(out, { recursive: true, force: true }), { code: "REFERENCE_FILE_MISSING" });
       const sheet = await referenceSheet(browser, bytes, ref);
       const path = join(out, `${ref.id}.png`);
       await writeFile(path, sheet.png, { mode: 0o600, flag: "wx" });
       paths.push(path);
       record.push({ id: ref.id, webp_sha256: ref.webp_sha256, png_sha256: sheet.png_sha256, columns: sheet.columns, sheet: sheet.sheet });
     }
-    return { paths, record };
+    return { paths, record, tmp: out };
   } catch (e) {
+    await rm(out, { recursive: true, force: true });
     if (e instanceof ReferenceStop) return { code: e.code };
     throw e;
   } finally {
@@ -130,8 +131,10 @@ async function main(): Promise<number> {
   // the reference images are checked (and their sheets made) first: a wrong file never reaches the approval
   const refs = await referenceImages(p.variant, args.get("--reference-dir"));
   if ("code" in refs) return (say({ status: "refused", code: refs.code }), 2);
+  // the sheets are copies Codex was given; they are not kept (their SHA-256 is printed with the result)
+  const cleanup = () => (refs.tmp ? rm(refs.tmp, { recursive: true, force: true }) : Promise.resolve());
   const ctx = await liveContext(out, stop);
-  if ("code" in ctx) return (say({ status: "refused", code: ctx.code }), 2);
+  if ("code" in ctx) return (await cleanup(), say({ status: "refused", code: ctx.code }), 2);
   const result = await runDesignCall(
     {
       route: p.route,
@@ -156,12 +159,12 @@ async function main(): Promise<number> {
         return runCodexJsonWithMeta({ sandbox, ...o });
       },
     },
-  );
+  ).finally(cleanup);
   if (result.status === "succeeded") {
     say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, warnings: result.warnings, references: refs.record });
     return 0;
   }
-  say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call", ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}) });
+  say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call", ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}), references: refs.record });
   return result.stage === "precheck" ? 2 : 1;
 }
 

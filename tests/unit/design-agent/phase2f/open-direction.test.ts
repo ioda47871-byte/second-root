@@ -35,10 +35,10 @@ const codeOf = (f: () => unknown) => {
 describe("the v2 prompt: open direction, no brief", () => {
   it("is pinned for both directions on routes B and C", () => {
     expect([build("B_html_prototype", DIRS[0]!), build("C_hybrid", DIRS[0]!), build("B_html_prototype", DIRS[1]!), build("C_hybrid", DIRS[1]!)].map((b) => [b.sha256, b.chars])).toEqual([
-      ["644643841c12a3a49602ee4147d792a12cbbdd69b67cf29d9f4fe98ee5e2c3c3", 6872],
-      ["81d2cbfc00dc7dd5d30e47ec36dbb7b7f319e549cca39e34046869645dead35b", 7280],
-      ["897767359dabe1efc900cf2146ad06e41dcba9e0f92f1668bee3655a78c009f8", 6754],
-      ["01a7db8279ce08251fa3d74ecb9df3847728690a56bae3320afc15b747cb08ca", 7162],
+      ["0ad56d85df1c713047d638664fa4872f710003c841f2f96db0fd5f397fc46070", 6996],
+      ["9318345da131ef3bfab6531b0a06b1b702c8dbb11a61ef9e1fb2114a7fcdeb9d", 7442],
+      ["20a2b19cba16486bcbc6695d5b207a2a805bbb438709ad46e9685c3257e31a23", 6878],
+      ["0b64529c445c824d03a0d0f719a4038c4fb0facc48a0cf99dbb2881e2c27e647", 7324],
     ]);
   });
 
@@ -55,6 +55,12 @@ describe("the v2 prompt: open direction, no brief", () => {
     const c = build("C_hybrid", DIRS[0]!).prompt;
     expect(c).not.toContain("asset_refs is an empty list []");
     expect(c).toContain("no tel:, mailto:");
+    // the v4 brief's image honesty, kept per route: a generated picture is a captioned concept; no photo imitation on B
+    expect(c).toContain("A generated image is a concept image: say so next to it in a short caption");
+    expect(p).toContain("Do not imitate a photograph with CSS or SVG");
+    expect(p).not.toContain("A generated image is a concept image");
+    // the placeholder street is never shown: the address is the ward only
+    expect(p).toContain("for the address show only 名古屋市東区");
   });
 
   it("the two wagashi directions are a real alternative (hero and flow both differ); a recolour is not", () => {
@@ -143,8 +149,8 @@ describe("the design CLI with v2", () => {
       prompt_version: "v2",
       direction: { direction_id: "wagashi-open-a-morning-axis", composition: { hero: "object_led", flow: "single_axis_scroll" } },
       references: [{ id: "CP-003-pc" }, { id: "CP-003-sp" }],
-      prompt_sha256: "644643841c12a3a49602ee4147d792a12cbbdd69b67cf29d9f4fe98ee5e2c3c3",
-      prompt_chars: 6872,
+      prompt_sha256: "0ad56d85df1c713047d638664fa4872f710003c841f2f96db0fd5f397fc46070",
+      prompt_chars: 6996,
     });
     expect(run(["--print-pin", ...base, "--brief", resolve(REPO, "design-library/phase2f/wagashi-brief-v4.json")], state).out).toMatchObject({ status: "refused", code: "USAGE" });
     expect(readdirSync(state)).toEqual([]);
@@ -154,7 +160,8 @@ describe("the design CLI with v2", () => {
     const state = mkdtempSync(join(tmpdir(), "dev124-run-"));
     const runs = mkdtempSync(join(tmpdir(), "dev124-out-"));
     const refDir = mkdtempSync(join(tmpdir(), "dev124-refs-"));
-    const real = [...base, "--plan-id", "plan-fictional-1", "--approval-id", "fictional-v2-1", "--expected-prompt-sha256", "644643841c12a3a49602ee4147d792a12cbbdd69b67cf29d9f4fe98ee5e2c3c3", "--expected-prompt-chars", "6872", "--expected-commit", "d".repeat(40), "--human-approval-confirmed"];
+    const before = readdirSync(tmpdir()).filter((n) => n.startsWith("sr-p2f-refs-"));
+    const real = [...base, "--plan-id", "plan-fictional-1", "--approval-id", "fictional-v2-1", "--expected-prompt-sha256", "0ad56d85df1c713047d638664fa4872f710003c841f2f96db0fd5f397fc46070", "--expected-prompt-chars", "6996", "--expected-commit", "d".repeat(40), "--human-approval-confirmed"];
     expect(run([...real, "--out", join(runs, "d1")], state)).toMatchObject({ status: 2, out: { status: "refused", code: "REFERENCE_DIR_REQUIRED" } });
     expect(run([...real, "--out", join(runs, "d2"), "--reference-dir", refDir], state)).toMatchObject({ status: 2, out: { status: "refused", code: "REFERENCE_FILE_MISSING" } });
     mkdirSync(join(refDir, "x"));
@@ -162,5 +169,7 @@ describe("the design CLI with v2", () => {
     expect(run([...real, "--out", join(runs, "d3"), "--reference-dir", refDir], state)).toMatchObject({ status: 2, out: { status: "refused", code: "REFERENCE_SHA_MISMATCH" } });
     expect(readdirSync(state)).toEqual([]);
     expect(readdirSync(runs)).toEqual([]);
+    // the sheets' temporary directory is removed on every refusal
+    expect(readdirSync(tmpdir()).filter((n) => n.startsWith("sr-p2f-refs-")).filter((n) => !before.includes(n))).toEqual([]);
   }, 120_000);
 });
