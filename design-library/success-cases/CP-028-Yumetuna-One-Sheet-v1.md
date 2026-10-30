@@ -1,8 +1,14 @@
 # CP-028 | ユメツナベース — ONE SHEET, MANY VOICES v1 — 研究記録（ドラフト審査待ち）
 
+## 採用判断の証拠区分（2026-10-31独立レビュー指摘への対応）
+- 採用判断の証拠レベル：group_adoption_reported_no_individual_quote
+- 研究採用判断の参照：2026-10-29 22:38 JST の追加7件の一括採用報告（対象IDと採用版を列挙）。この作品単独の逐語「成功例とします」は未確認。元メッセージへの恒久リンクは未記録。
+- 個別逐語の採用引用：未確認（ほかの採用文言を創作しない）
+- 一次証拠の確認状態：GitHubの原メッセージURL・原本ZIP/HTML/PNGバイトは未照合。研究分析の採用と商用/生成器承認は別。
+
 - 採用版：ONE_SHEET_MANY_VOICES_v1
-- 採用判断の証拠レベル：owner_explicit_selected_reported
-- 判断の扱い：研究採用を明示した記録があるとの報告。逐語引用の独立検証と原本照合は未完了。
+- 採用判断の証拠レベル：group_adoption_reported_no_individual_quote
+- 判断の扱い：7件の一括採用報告が根拠。個別の逐語引用は未取得。明示採用の逐語引用があると主張しない。
 - Web試作：ローカルHTML/CSS/JSとして報告あり。**原本バイト未検証**
 - 原本候補：`SecondRoot_CP028_Yumetuna_OneSheet_v1_Approved.zip`（実体／SHA未照合）
 - **GitHub成功データセットへの正式採用はこのドラフトPRの審査・マージ後。**
