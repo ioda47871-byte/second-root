@@ -1,6 +1,6 @@
 # Second Root | 成功デザイン研究事例
 
-**2026-10-28 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. / 整体院 Go. / 豆＊豆 / ぺいぱばっくらいたー / BAR N / Admy / スペースたのしい / imairo. / ズールー工作所 / Rurikoyarn / MOLE FACTORY / 浦田杏梨 / 喫茶 ITALICO / TERACE / Harissy / BURGERS,INC / Boheme. の23例を登録しました。
+**2026-10-28 JST / 23件の旧登録一覧（2026-10-31の7件追加案は末尾に別記）** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. / 整体院 Go. / 豆＊豆 / ぺいぱばっくらいたー / BAR N / Admy / スペースたのしい / imairo. / ズールー工作所 / Rurikoyarn / MOLE FACTORY / 浦田杏梨 / 喫茶 ITALICO / TERACE / Harissy / BURGERS,INC / Boheme. の23例を登録しました。
 
 > **画像をテンプレートとして使い回さない。** 学習対象は、各店舗の特徴を視覚構造へ変換する考え方、画像・文字・余白・重なりの分析と実装・レビュー手順です。
 
