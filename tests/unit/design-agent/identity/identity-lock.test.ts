@@ -13,7 +13,7 @@ const base = () => ({
   schema_version: 1,
   case_id: "CP-015",
   attempt_id: "cp015-imairo-v1",
-  target: { official_name: "imairo.", allowed_aliases: ["spice & cafe imairo", "imairo"], category_code: "spice_cafe_patisserie", official_source_url: "https://www.instagram.com/imairo.spice.cafe/" },
+  target: { official_name: "imairo.", allowed_aliases: ["spice & cafe imairo", "imairo"], category_code: "spice_cafe_patisserie", official_source_url: "https://example.invalid/research/cp-015" },
   prompt: { shop_name: "imairo.", category_code: "spice_cafe_patisserie", is_research_only: true },
   output: { image_sha256: sha },
   visual_inspection: {
@@ -41,7 +41,7 @@ describe("generated images (the research script's cases, same verdicts)", () => 
     expect(auditIdentity(a)).toMatchObject({ status: "REJECT", errors: expect.arrayContaining(["VISIBLE_WRONG_OR_EXTRA_SHOP_NAME", "VISUAL_WRONG_CATEGORY"]) });
     const b = base();
     b.case_id = "CP-014";
-    b.target = { official_name: "CAN BUY RECORDS", allowed_aliases: [], category_code: "record_shop", official_source_url: "https://www.instagram.com/canbuyrecords2023/" };
+    b.target = { official_name: "CAN BUY RECORDS", allowed_aliases: [], category_code: "record_shop", official_source_url: "https://example.invalid/research/cp-014" };
     b.prompt = { shop_name: "CAN BUY RECORDS", category_code: "record_shop", is_research_only: true };
     b.visual_inspection.visible_site_identity_labels = ["KOALA"];
     b.visual_inspection.category_code = "bakery_cafe";
