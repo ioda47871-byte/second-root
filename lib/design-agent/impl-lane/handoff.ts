@@ -114,6 +114,12 @@ export async function prepareImplementationLane(o: { packageDir: string; factsPa
     // rename refuses a lane that appeared meanwhile only for a non-empty directory; check again just before
     if (await lstat(laneDir).then(() => true, () => false)) throw new LaneStop("LANE_EXISTS");
     await rename(tmp, laneDir);
+    // the parent may have been swapped for a link after the first check: the lane's real place is checked once more
+    const placed = await realpath(laneDir);
+    if (placed === packageDir || placed.startsWith(packageDir + sep)) {
+      await rm(laneDir, { recursive: true, force: true });
+      throw new LaneStop("LANE_UNEXPECTED_CONTENT", "lane inside the package");
+    }
     return manifest;
   } catch (e) {
     await rm(tmp, { recursive: true, force: true });

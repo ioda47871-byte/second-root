@@ -105,6 +105,9 @@ describe("isolation", () => {
     const src = readFileSync(resolve(repo, "lib/design-agent/impl-lane/handoff.ts"), "utf8");
     const imports = [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]).sort();
     expect(imports).toEqual(["../artifact/intake", "node:crypto", "node:fs", "node:fs/promises", "node:path"]);
+    // exactly these five static imports, and no other way to load a module (re-review L2)
+    expect(src.match(/\bimport\b/g)).toHaveLength(5);
+    expect(src).not.toMatch(/\brequire\b|\bimport\s*\(/);
     expect(src).not.toMatch(/child_process|\bfetch\(|codex|anthropic|openai|quarantine\/["']\s*\+/);
     const g = spawnSync("git", ["grep", "--untracked", "-lE", "impl-lane/handoff|from [\"'`]\\./handoff[\"'`]", "--", "lib", "app", "components", "scripts", "proxy.ts", "supabase", ":!lib/design-agent/impl-lane/**"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
