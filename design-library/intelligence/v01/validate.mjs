@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { verifyCaseSafety } from "./registration-safety.mjs";
+import { verifyCaseSafety, verifyEvidenceNotes } from "./registration-safety.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../..");
 const read = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
@@ -14,6 +14,10 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
 const knowledge = read("design-library/intelligence/v01/success-patterns.json");
 const queue = read("design-library/intelligence/v01/review-queue.json");
 const manifest = read("design-library/success-cases/manifest.json");
+const frozen = {
+  manifest: readFileSync(resolve(root, "design-library/intelligence/v01/frozen-23/manifest-23.original.json"), "utf8"),
+  patterns: readFileSync(resolve(root, "design-library/intelligence/v01/frozen-23/patterns-23.original.json"), "utf8"),
+};
 const c1 = read("design-library/research/v03/candidates-20261025-01.json");
 const c2 = read("design-library/research/v03/candidates-20261025-02.json");
 const evidence = read("design-library/research/v03/viewport-evidence-20261025.json");
@@ -58,7 +62,8 @@ for (const row of rows) {
     assert(!audits.has(row.id) && row.existing_evidence === "text_checked_only_no_viewport_audit", "new case claimed audited: " + row.id);
   }
 }
-verifyCaseSafety(manifest, knowledge);
+verifyCaseSafety(manifest, knowledge, frozen);
+verifyEvidenceNotes(manifest, knowledge, (path) => readFileSync(resolve(root, path), "utf8"));
 for (const c of cases.filter(x => /^CP-0(26|27|28|29|30|31|32)$/.test(x.id))) {
   const note = readFileSync(resolve(root, c.evidence_ref), "utf8");
   assert(note.startsWith("# " + c.id + " | "), "evidence note identity mismatch: " + c.id);
