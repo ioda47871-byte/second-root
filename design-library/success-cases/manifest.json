@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "dataset": "second-root-design-success-cases",
-  "catalog_date": "2026-10-28",
+  "catalog_date": "2026-10-31",
   "records": [
     {
       "id": "CP-001",
@@ -675,7 +675,7 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "Original approved images, HTML sources and archives are stored in ChatGPT conversation with SHA-256. GitHub has CP-001..003 preview WebPs and CP-004..024 research metadata (CP-014 excluded: pending, unapproved), not those studies' original HTML/image/archive binaries."
+    "source_master_assets": "CP-001..024 research records predate this extension; original approved images/HTML/ZIP are not present as GitHub binary artifacts (except CP-001..003 preview WebP). CP-026..032 are newly staged research records with original candidate ZIP filenames only; original binary bytes/SHA verification is unavailable. CP-024 pseudo reconstruction v3 remains separate from the approved v2 research original. No record implies license, client approval, generator approval or production deployment."
   },
   "registered_case_count": 30,
   "registered_local_poc_count": 17
