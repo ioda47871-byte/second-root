@@ -276,3 +276,10 @@
 - 2026-10-29: DEV-121 done（PR #153 → develop 2879d00、squash）。架空菓庵 B 方式（研究なし v1）の retry-1 を独立したベースラインとして記録（`design-library/phase2f/baselines/wagashi-b-noresearch-20261029-02.json`、検査 `lib/design-agent/phase2f/baseline.ts`）。生成 succeeded、Artifact 化 stopped / CODEX_ASSETS_ON_ROUTE_B、手作業プレビュー（tel をプレビュー内だけ無効化）、ChatGPT 暫定評価は不合格、オーナー最終判断 pending。研究ありの比較の提案（`docs/design/phase2f-b-research-comparison-proposal.md`）。オーナー承認（2026-10-29）：B v1.1 研究なし / 研究あり の対、CP-016・CP-009・CP-003。次は DEV-122（プロンプト v1.1 と研究の区画の準備。Codex 実行は別承認）。
 - 2026-10-29: DEV-122 done（PR #154 → develop 11704e2、squash）。B v1.1 の比較の準備：`--prompt-version v1.1`（route B 専用：asset_refs は空配列、連絡先はプレーンテキストでスタイルシート以外のリンクなし）と `--research`（研究の区画 `design-library/phase2f/research/wagashi-b-research-v1.json`、CP-016・CP-009・CP-003）。固定値：v1 `a2fdd003…`/5706（不変）、v1.1 研究なし `c5973afb…`/6010、v1.1 研究あり `a0dbb48c…`/7741、区画 `444bc6a2…`。区画の文章のオーナー承認は pending（承認まで研究ありの実行は RESEARCH_TEXT_NOT_APPROVED で拒否）。設計と Artifact 化に同じフラグを渡し、違えば RECORD_PROMPT_MISMATCH。Fresh Review PASS（M2 を修正し再レビュー PASS）、CI 11/11。Codex 実行・画像生成は無し。
 - 2026-10-29: PR #155 merged（develop 606b461、squash）。研究区画（SHA-256 `444bc6a2…`）の英文全文のオーナー承認（2026-10-30）を記録、承認後のテスト更新（pending の拒否テストは fixture で維持）、`docs/operations/claude-autonomy.md` §7（目標達成型・低トークン運用）を追加。独立 Fresh Review PASS（`.ai/reviews/PR-155.md`、Low 5件）、CI 11/11。テキスト承認は Codex 実行の許可ではない。残り：`docs/design/phase2f-b-v11-experiment-plan.md` の「現在 pending」という古い記述（Low-1、次の docs 変更で直す）。次は B v1.1 研究なし／研究ありの実行前確認（Codex は各回の個別承認まで実行しない）。
+
+## 2026-10-30 DEV-123 merged
+
+- PR #156 → develop 8e2d342 (squash). Owner-approved; CI 11/11 on 6b25afb, Fresh Review PASS (re-review at 3271969).
+- Prototype Safety: scroll-behavior / overscroll-behavior and Japanese #anchors no longer refused; IE behavior still refused; PROTOTYPE_UNSAFE stops carry `detail`.
+- Next (WSL Remote Control session): package saved B v1.1 Run 1 without re-running Codex; PC1440 / SP390 full-page images.
+- Follow-up (not started): `--prerender` does not print `detail` (Low-3).

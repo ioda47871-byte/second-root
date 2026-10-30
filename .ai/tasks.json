@@ -5574,7 +5574,7 @@
     {
       "id": "DEV-123",
       "title": "Prototype Safety の誤検知の解消（scroll-behavior・日本語の #アンカー）と停止理由の記録",
-      "status": "review",
+      "status": "done",
       "priority": "P0",
       "depends_on": [
         "DEV-122"
@@ -5613,7 +5613,8 @@
       "human_approval_triggers": [
         "マージ（安全検査の変更のため）"
       ],
-      "note": "0 Codex calls."
+      "note": "0 Codex calls.",
+      "merged": "#156 → 8e2d342 (squash, 2026-10-30)"
     }
   ]
 }
