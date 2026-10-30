@@ -5675,6 +5675,49 @@
       ],
       "note": "0 Codex calls, 0 image generations.",
       "merged": "#157 → 25fe069 (merge commit, 2026-10-30)"
+    },
+    {
+      "id": "DEV-129",
+      "title": "Phase 2g（模擬版）：決定論的な制御（承認要求・停止・回数上限のある実装修正ループ）を mock のポートだけで",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-114"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-129-phase2g-mock-loop",
+      "purpose": "Issue #159 の一括承認（2g 模擬版：決定論的な停止・承認要求・最小修正ループのオフライン実装とテスト。mock ポートのみ。再試行は既存ルール以下、実課金 API への自動再試行・自動生成は許可しない）。",
+      "acceptance_criteria": [
+        "有料の設計呼び出しは、その実行に対する承認がある時だけ。無ければ awaiting_approval で何も呼ばない",
+        "失敗した有料呼び出しは再試行しない（環境は待機、それ以外はオーナーへ）",
+        "店舗違い・未確認・不完全な Artifact は実装前にオーナーへ",
+        "オーナーの選定前は実装しない",
+        "実装の修正はオフラインで、1タスク3回まで・同じ原因2回まで",
+        "通った実行も owner_review で終わり、デザインの承認にはならない",
+        "実ポートへの接続なし（import なし・どこからも参照されない）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/loop/controller.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/loop/**",
+        "tests/unit/design-agent/loop/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-129.md"
+      ],
+      "forbidden_scope": [
+        "実ポート（Codex・画像・Claude 実行）への接続",
+        "自動生成・有料 API の自動再試行",
+        "worker・本番"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "実ポートへの接続（ループ設計の承認）"
+      ],
+      "note": "Issue #159 offline batch approval; mock ports only."
     }
   ]
 }
