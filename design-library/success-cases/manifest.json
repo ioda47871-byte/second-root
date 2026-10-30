@@ -474,7 +474,7 @@
       "view": "interactive_html_css_js_local_poc_full_page",
       "owner_selected_at": "2026-10-29",
       "design_approval_scope": "second_root_research_success_full_page_only",
-      "owner_decision_evidence_level": "positive_then_proceeded_owner_adoption_reported",
+      "owner_decision_evidence_level": "positive_then_continued_plus_group_adoption",
       "owner_decision_quote_primary_replay_verified": false,
       "analysis_requires_independent_review": true,
       "binary_original_verification": "original_unavailable",
@@ -492,7 +492,9 @@
       "web_presence_status": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK",
       "sales_qualification": "HOLD_UNVERIFIED_WEBSITE_ABSENCE",
       "approved_version": "CHIANG_MAI_SHOP_NOTE_v5",
-      "analysis_evidence_ref": "design-library/success-cases/CP-026-Sawaddee-Chao-Shop-Note-v5.md"
+      "analysis_evidence_ref": "design-library/success-cases/CP-026-Sawaddee-Chao-Shop-Note-v5.md",
+      "owner_evidence_source": "2026-10-29T00:57:51+09:00 and 00:59:11 JST / user positive and next; 2026-10-29T22:38:51+09:00 / user grouped adoption of CP-026..032; prior-chat retrieval, primary permalink not archived in repo",
+      "evidence_note_git_blob_sha": "28e5a677eddee728ea11ff9d08a7d0abe15a6a05"
     },
     {
       "id": "CP-027",
@@ -503,7 +505,7 @@
       "view": "interactive_html_css_js_local_poc_full_page",
       "owner_selected_at": "2026-10-29",
       "design_approval_scope": "second_root_research_success_full_page_only",
-      "owner_decision_evidence_level": "owner_explicit_selected_reported",
+      "owner_decision_evidence_level": "verbatim_quote_retrieved_not_repo_archived",
       "owner_decision_quote_primary_replay_verified": false,
       "analysis_requires_independent_review": true,
       "binary_original_verification": "original_unavailable",
@@ -521,7 +523,9 @@
       "web_presence_status": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK",
       "sales_qualification": "HOLD_UNVERIFIED_WEBSITE_ABSENCE",
       "approved_version": "BETWEEN_FLOORS_v2",
-      "analysis_evidence_ref": "design-library/success-cases/CP-027-MATO-Between-Floors-v2.md"
+      "analysis_evidence_ref": "design-library/success-cases/CP-027-MATO-Between-Floors-v2.md",
+      "owner_evidence_source": "2026-10-29T01:43:54+09:00 / user exact phrase 成功例とします; prior-chat retrieval, primary permalink not archived in repo",
+      "evidence_note_git_blob_sha": "ea46ba25aea41d60dcf7f217a6aff92f50ef7470"
     },
     {
       "id": "CP-028",
@@ -532,7 +536,7 @@
       "view": "interactive_html_css_js_local_poc_full_page",
       "owner_selected_at": "2026-10-29",
       "design_approval_scope": "second_root_research_success_full_page_only",
-      "owner_decision_evidence_level": "owner_explicit_selected_reported",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote",
       "owner_decision_quote_primary_replay_verified": false,
       "analysis_requires_independent_review": true,
       "binary_original_verification": "original_unavailable",
@@ -550,7 +554,9 @@
       "web_presence_status": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK",
       "sales_qualification": "HOLD_UNVERIFIED_WEBSITE_ABSENCE",
       "approved_version": "ONE_SHEET_MANY_VOICES_v1",
-      "analysis_evidence_ref": "design-library/success-cases/CP-028-Yumetuna-One-Sheet-v1.md"
+      "analysis_evidence_ref": "design-library/success-cases/CP-028-Yumetuna-One-Sheet-v1.md",
+      "owner_evidence_source": "2026-10-29T22:38:51+09:00 / user grouped adoption of CP-026..032; prior-chat retrieval, primary permalink not archived in repo",
+      "evidence_note_git_blob_sha": "63e510aead66ff4f8ebd1b4730561c18a858bfd2"
     },
     {
       "id": "CP-029",
@@ -561,7 +567,7 @@
       "view": "interactive_html_css_js_local_poc_full_page",
       "owner_selected_at": "2026-10-29",
       "design_approval_scope": "second_root_research_success_full_page_only",
-      "owner_decision_evidence_level": "owner_explicit_selected_reported",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote",
       "owner_decision_quote_primary_replay_verified": false,
       "analysis_requires_independent_review": true,
       "binary_original_verification": "original_unavailable",
@@ -579,7 +585,9 @@
       "web_presence_status": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK",
       "sales_qualification": "HOLD_UNVERIFIED_WEBSITE_ABSENCE",
       "approved_version": "SOFT_POP_v4",
-      "analysis_evidence_ref": "design-library/success-cases/CP-029-SNOWMY-Soft-Pop-v4.md"
+      "analysis_evidence_ref": "design-library/success-cases/CP-029-SNOWMY-Soft-Pop-v4.md",
+      "owner_evidence_source": "2026-10-29T22:38:51+09:00 / user grouped adoption of CP-026..032; prior-chat retrieval, primary permalink not archived in repo",
+      "evidence_note_git_blob_sha": "4b058d5d7ec8359873c45b20a3fe9bb95507da71"
     },
     {
       "id": "CP-030",
@@ -590,7 +598,7 @@
       "view": "interactive_html_css_js_local_poc_full_page",
       "owner_selected_at": "2026-10-29",
       "design_approval_scope": "second_root_research_success_full_page_only",
-      "owner_decision_evidence_level": "owner_explicit_selected_reported",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote",
       "owner_decision_quote_primary_replay_verified": false,
       "analysis_requires_independent_review": true,
       "binary_original_verification": "original_unavailable",
@@ -608,7 +616,9 @@
       "web_presence_status": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK",
       "sales_qualification": "HOLD_UNVERIFIED_WEBSITE_ABSENCE",
       "approved_version": "OSU_SERVICE_COUNTER_v2",
-      "analysis_evidence_ref": "design-library/success-cases/CP-030-Takada-Service-Counter-v2.md"
+      "analysis_evidence_ref": "design-library/success-cases/CP-030-Takada-Service-Counter-v2.md",
+      "owner_evidence_source": "2026-10-29T22:38:51+09:00 / user grouped adoption of CP-026..032; prior-chat retrieval, primary permalink not archived in repo",
+      "evidence_note_git_blob_sha": "69039c46b89b85afa8defb703ed8c9bd7f4b7ece"
     },
     {
       "id": "CP-031",
@@ -619,7 +629,7 @@
       "view": "interactive_html_css_js_local_poc_full_page",
       "owner_selected_at": "2026-10-29",
       "design_approval_scope": "second_root_research_success_full_page_only",
-      "owner_decision_evidence_level": "owner_explicit_selected_reported",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote",
       "owner_decision_quote_primary_replay_verified": false,
       "analysis_requires_independent_review": true,
       "binary_original_verification": "original_unavailable",
@@ -637,7 +647,9 @@
       "web_presence_status": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK",
       "sales_qualification": "HOLD_UNVERIFIED_WEBSITE_ABSENCE",
       "approved_version": "REFORM_NAKAMURA_HYBRID_v3",
-      "analysis_evidence_ref": "design-library/success-cases/CP-031-Reform-Nakamura-Hybrid-v3.md"
+      "analysis_evidence_ref": "design-library/success-cases/CP-031-Reform-Nakamura-Hybrid-v3.md",
+      "owner_evidence_source": "2026-10-29T22:38:51+09:00 / user grouped adoption of CP-026..032; prior-chat retrieval, primary permalink not archived in repo",
+      "evidence_note_git_blob_sha": "2b0cb0f57299a01afa4f861f9eaa3bcea24a55ee"
     },
     {
       "id": "CP-032",
@@ -648,7 +660,7 @@
       "view": "interactive_html_css_js_local_poc_full_page",
       "owner_selected_at": "2026-10-29",
       "design_approval_scope": "second_root_research_success_full_page_only",
-      "owner_decision_evidence_level": "owner_explicit_selected_reported",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote",
       "owner_decision_quote_primary_replay_verified": false,
       "analysis_requires_independent_review": true,
       "binary_original_verification": "original_unavailable",
@@ -666,7 +678,9 @@
       "web_presence_status": "HOLD_UNCONFIRMED_SOCIAL_BIO_LINK",
       "sales_qualification": "HOLD_UNVERIFIED_WEBSITE_ABSENCE",
       "approved_version": "IRIDESCENT_LIGHT_v1",
-      "analysis_evidence_ref": "design-library/success-cases/CP-032-Tamamushiya-Iridescent-Light-v1.md"
+      "analysis_evidence_ref": "design-library/success-cases/CP-032-Tamamushiya-Iridescent-Light-v1.md",
+      "owner_evidence_source": "2026-10-29T22:38:51+09:00 / user grouped adoption of CP-026..032; prior-chat retrieval, primary permalink not archived in repo",
+      "evidence_note_git_blob_sha": "0c2c6788f0051f0553b5a681a5191c0ed09ad25e"
     }
   ],
   "policy": {
