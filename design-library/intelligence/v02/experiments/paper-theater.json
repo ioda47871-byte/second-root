@@ -1,0 +1,399 @@
+{
+  "schema_version": 1,
+  "experiment_id": "PAPER_THEATER_20261027",
+  "status": "CP010_PT02_v3_owner_approved_research_success_not_deployed",
+  "research_only": true,
+  "subject": {
+    "display_name": "ぺいぱばっくらいたー",
+    "category": "kamishibai_and_books_store",
+    "town": "名古屋・覚王山",
+    "facts_status": "previously_reported_not_reverified_for_publication",
+    "features_to_verify": [
+      "紙芝居を扱う店",
+      "本の販売",
+      "畳敷きの空間と古い木箱を使った本棚"
+    ],
+    "rights_status": "no authorization or store photography supplied"
+  },
+  "goal": "Avoid reproducing the left-copy/right-photo scroll-section template; preserve useful store, access and enquiry information in original structures.",
+  "protected_constraints": [
+    "three distinct page-level grammars, not just palettes",
+    "do not imitate any of CP-001..009",
+    "no invented schedule, phone, address, book inventory or programme",
+    "images and labels are conceptual; verify merchant facts before sales or publishing",
+    "usable mobile layout cannot require hover or drag",
+    "readable real text and visible access/contact if officially verified"
+  ],
+  "comparison_basis": {
+    "ref": "design-library/intelligence/v01/success-patterns.json",
+    "cases": "CP-001..009",
+    "qualitative_only": true,
+    "reason": "Prior case notes describe composition but lack standardized section-level layout maps; cannot defensibly assign numeric similarity scores to them."
+  },
+  "proposals": [
+    {
+      "id": "PT-01",
+      "name": "引き出す舞台 / The Pulling Stage",
+      "core_device": "紙芝居の木枠から絵を引き出し物語を開く",
+      "hero_structure": "center_stage_window",
+      "navigation_model": "scene_tabs",
+      "reading_path": "frame_to_scene_to_pause_to_ticket",
+      "interaction_model": "explicit_next_scene_button",
+      "first_screen": {
+        "composition": "中央に木製の舞台一つ。左上は店名と短い案内。画面の主役は枠の中の一枚の絵。通常の左右文章＋写真Heroにはしない",
+        "position_of_type": "舞台の左右・上下に小さく配置。主張するのは店名より中央の舞台"
+      },
+      "sections": [
+        {
+          "id": "intro",
+          "layout": "center_stage_window",
+          "role": "theater_intro",
+          "density": "high",
+          "info": "店の位置づけ・入口となる選択肢"
+        },
+        {
+          "id": "pull",
+          "layout": "drawer_sequence",
+          "role": "how_kamishibai_works",
+          "density": "medium",
+          "info": "一枚ずつ引き出すような体験の説明"
+        },
+        {
+          "id": "books",
+          "layout": "spine_shelf_index",
+          "role": "book_curation",
+          "density": "high",
+          "info": "本棚の索引をモチーフにしたジャンル紹介。実在情報は要確認"
+        },
+        {
+          "id": "silence",
+          "layout": "blank_page_interlude",
+          "role": "reading_space",
+          "density": "low",
+          "info": "店で過ごす時間を短文で伝える"
+        },
+        {
+          "id": "visit",
+          "layout": "folded_ticket",
+          "role": "access_and_contact",
+          "density": "medium",
+          "info": "公式情報確認後の店舗情報・連絡方法"
+        }
+      ],
+      "desktop_strategy": "横長の舞台の右へ絵をずらす。次へ／前へボタンと文章を別DOM要素で出す",
+      "mobile_strategy": "舞台の枠を縦方向に組み替え、次の絵はボタンで進める。ドラッグ操作専用にしない",
+      "accessibility": "Scene navigation as buttons, keyboard and reduced-motion fallback; real text separate from pictures",
+      "no_go": [
+        "alternating split photo-text blocks",
+        "wavy separators",
+        "large brand wordmark with photo overlapped like Mond"
+      ],
+      "main_risk": "舞台演出が重いと店の情報が分かりづらい。アクセスは独立した見やすい面にする"
+    },
+    {
+      "id": "PT-02",
+      "name": "本棚が地図になる / Shelf Atlas",
+      "core_device": "大小の背表紙が店を探索する索引と道順になる",
+      "hero_structure": "floor_to_ceiling_shelf_index",
+      "navigation_model": "book_spine_index",
+      "reading_path": "catalog_to_detail_to_stage_to_receipt",
+      "interaction_model": "choose_shelf_category",
+      "first_screen": {
+        "composition": "画面いっぱいの異なる幅の背表紙。店名は棚板の上に小さく。本のジャンルを案内として読ませ、中心Hero写真は置かない",
+        "position_of_type": "見出しは縦の背表紙文字と棚のラベルで形成"
+      },
+      "sections": [
+        {
+          "id": "intro",
+          "layout": "floor_to_ceiling_shelf_index",
+          "role": "book_curation",
+          "density": "high",
+          "info": "探索しやすい本のカテゴリ"
+        },
+        {
+          "id": "detail",
+          "layout": "margin_annotation",
+          "role": "one_book_story",
+          "density": "medium",
+          "info": "選んだジャンルを余白の注釈で説明"
+        },
+        {
+          "id": "theater",
+          "layout": "inset_theater_panel",
+          "role": "how_kamishibai_works",
+          "density": "high",
+          "info": "本棚の奥に紙芝居舞台が現れる"
+        },
+        {
+          "id": "space",
+          "layout": "open_reading_page",
+          "role": "reading_space",
+          "density": "low",
+          "info": "畳の落ち着きを空白で伝える"
+        },
+        {
+          "id": "visit",
+          "layout": "library_checkout_slip",
+          "role": "access_and_contact",
+          "density": "medium",
+          "info": "貸出カード風に店舗情報を整理。貸出サービスを示唆しない"
+        }
+      ],
+      "desktop_strategy": "画面に背表紙の索引を広げ、選択中のカテゴリーだけ隣の注釈へつなぐ",
+      "mobile_strategy": "背表紙が読みにくい場合は縦の見出し付き目次へ置き換える。小さい文字を回転縮小しない",
+      "accessibility": "Index as list of buttons/links; large tap targets; do not require horizontal scroll to locate access",
+      "no_go": [
+        "symmetric 3-column product cards",
+        "generic left-text right-image",
+        "the exact Mond triptych"
+      ],
+      "main_risk": "情報が多すぎると読みづらい。ページ冒頭に閲覧方法と店の説明を短く示す"
+    },
+    {
+      "id": "PT-03",
+      "name": "畳の間を歩く / The Quiet Rooms",
+      "core_device": "畳の間取りと襖の開閉をページの探索順にする",
+      "hero_structure": "overhead_room_plan",
+      "navigation_model": "room_portals",
+      "reading_path": "entrance_to_rooms_to_theater_to_visit",
+      "interaction_model": "open_room_panels",
+      "first_screen": {
+        "composition": "俯瞰の畳の間を一つの地図として表示。床に配置した三つの入口から「紙芝居・本・時間」を選ぶ",
+        "position_of_type": "部屋の名前が案内であり、単一の巨大見出しを主役にしない"
+      },
+      "sections": [
+        {
+          "id": "intro",
+          "layout": "overhead_room_plan",
+          "role": "reading_space",
+          "density": "medium",
+          "info": "店の世界と3つの入り口"
+        },
+        {
+          "id": "theater",
+          "layout": "sliding_door_scene",
+          "role": "how_kamishibai_works",
+          "density": "high",
+          "info": "襖を開けた先に舞台を発見"
+        },
+        {
+          "id": "books",
+          "layout": "open_book_spread",
+          "role": "book_curation",
+          "density": "medium",
+          "info": "見開きに選書の考え方と店舗固有の題材"
+        },
+        {
+          "id": "pause",
+          "layout": "silent_tatami_view",
+          "role": "quiet_atmosphere",
+          "density": "low",
+          "info": "余白を中心に本を読む時間を伝える"
+        },
+        {
+          "id": "visit",
+          "layout": "entrance_floorplan_key",
+          "role": "access_and_contact",
+          "density": "medium",
+          "info": "入口に戻り、情報欄としてアクセスを示す"
+        }
+      ],
+      "desktop_strategy": "俯瞰図の扉を選んで各内容へジャンプ。普通の縦スクロールでも全情報へアクセス可能",
+      "mobile_strategy": "平面図をそのまま縮小せず、部屋を縦に並べた探索リストへ変換",
+      "accessibility": "Clickable room names as real buttons/links; no reliance on hover; non-animated contents remain usable",
+      "no_go": [
+        "arch-shaped food hero",
+        "round quilt motif as section decoration",
+        "wavy white papers"
+      ],
+      "main_risk": "畳・間取りは実店舗の実際の寸法や構造を示す図ではないと明記する"
+    }
+  ],
+  "selection_status": "owner_selected_research_success",
+  "chosen_proposal_id": "PT-02",
+  "wireframe_evidence": {
+    "made_on": "2026-10-27",
+    "type": "real_html_css_js_noncommercial_local_wireframes",
+    "rendered": true,
+    "desktop_px": 1440,
+    "mobile_px": 390,
+    "viewport_checks_px": [
+      320,
+      390,
+      768,
+      1024,
+      1440,
+      1920
+    ],
+    "total_browser_render_checks": 18,
+    "browser": "headless_chromium_with_playwright_set_content",
+    "no_horizontal_overflow": true,
+    "no_js_page_errors": true,
+    "interactive_checks": [
+      "PT-01 scene number increments",
+      "PT-02 spine link scrolls to note section",
+      "PT-03 room link scrolls to room section"
+    ],
+    "offline_html_sha256": "0cffec779b94478c496f67bb8ba212d91bb49f2dbc260520e7608f0f577cb637",
+    "conversation_archive": "secondroot_PT_three_structure_wireframes_v02.zip",
+    "archive_sha256": "c2209e473a78e65b94dceef85390bc09a3c3c5f097ee9afb4d0028d1677ec3b8",
+    "github_image_or_html_uploaded": false,
+    "source_note": "Images/working HTML retained as ChatGPT conversation ZIP; GitHub stores research metadata, not wireframe binaries or HTML source",
+    "scope": "structure_only_not_visual_quality_or_real_store_information"
+  },
+  "direction_decision": {
+    "selected_for_prototyping": "PT-02",
+    "selection_basis": "user explicitly said PT-02がいいな",
+    "revision_trigger": "User rejected the subsequent illustrated static mock as worsening structure; requested to proceed with a functioning interactive bookshelf Hero",
+    "type": "prototype_direction_only_not_final_website_approval",
+    "revised_interpretation": "The user chose the visual composition of panel B, not a requirement to make the entire bookshelf into a literal mechanical navigation UI."
+  },
+  "interactive_prototype": {
+    "title": "PT-02 — Bookshelf is the Navigation / HTML CSS JS v1",
+    "created_at": "2026-10-27",
+    "status": "browser_tested_research_prototype_awaiting_visual_owner_review",
+    "source_kind": "self_contained_html_css_js_no_external_assets",
+    "hero_structure": "seven_working_book_spine_buttons_and_contextual_open_page",
+    "interactions": [
+      "choose any spine to move it and update the text leaf",
+      "change chapter destination based on selected book",
+      "accessible arrow/home/end spine keyboard navigation",
+      "open and close paper-theater curtains",
+      "browse handwritten note, negative-space interlude and visit slip"
+    ],
+    "viewport_checks_px": [
+      320,
+      375,
+      390,
+      430,
+      768,
+      1024,
+      1280,
+      1440,
+      1920
+    ],
+    "browser_checks": 9,
+    "horizontal_overflow_detected": false,
+    "js_page_exceptions": 0,
+    "library_or_image_network_requests": false,
+    "offline_browsers_tested": [
+      "chromium"
+    ],
+    "source_sha256": "5e216a94889fd03f9eeb56d4ae598d7f5cd0389cb169c79118bff5e2ee57fbc7",
+    "desktop_png_sha256": "755adc513dac53bed1e437cb4dd60a7de0580ec57bd9b300fd7909dd9a9ad645",
+    "mobile_png_sha256": "b66081b4957499a98859b9eb4822f85d859324bca7a693d28ab0f6b3d320906e",
+    "verification_sha256": "b9ea15d5d63c32b6f041faeffe9c05446b11e709a5f193ea4f601c33716e1893",
+    "archive_name": "secondroot_PT02_interactive_bookshelf_poc_v1.zip",
+    "archive_sha256": "407512d9f9551369f3a5354ce21fda72e513e4a7cdcfeacc82fdda0d936a27d0",
+    "github_html_source_uploaded": false,
+    "owner_visual_acceptance": "rejected_as_design_after_user_comparison",
+    "website_deployment": "not_done",
+    "real_shop_authorization": false,
+    "book_selection_verified": "all_7_spines_plus_destination_anchors_at_9_viewports",
+    "technical_verification_kept": true
+  },
+  "visual_preference_20261027": {
+    "owner_feedback": "悪くなったな、これがよかった",
+    "selected_reference": "Original full-color three-way comparative board, panel B: 本棚が地図になる, including adjacent desktop and smartphone visual mockups",
+    "user_uploaded_thumbnail": {
+      "name": "image(20261027-104455).png",
+      "width": 332,
+      "height": 672,
+      "sha256": "a41d96ff58c8f1d2c626ca6cdce829b00431bd316072c3b3b844a0901cea8917",
+      "storage": "current ChatGPT user upload; image binary is not committed to GitHub"
+    },
+    "accepted_visual_features": [
+      "Full-bleed warm, atmospheric photographic bookshelf hero, with the shop identity integrated into the environment",
+      "Asymmetric floating cream paper annotation over the hero, not a bare schematic shelf-control panel",
+      "Distinct second beat featuring an aligned row of varied book spines with tactile colors and print",
+      "Further editorial chapters with intimate bookstore and kamishibai photography; readable paper notes and strongly varied scale",
+      "Warm amber lighting, dark natural wood and paper grain contrasted with restrained cream negative space",
+      "Mobile layout with the same recognizable atmosphere and chapter rhythm; not merely a wireframe"
+    ],
+    "rejected_outcome": "The later seven-clickable-spine research HTML prototype passed basic interaction/browser checks but was aesthetically judged worse than the original panel B. Do not treat technical structure originality as evidence of visual superiority.",
+    "future_implementation_policy": "Restore the preferred visual composition first. Add real interaction to selected spines and/or annotations only where it does not distort the photographed shelf, book row, typographic hierarchy or editorial chapter rhythm. Produce a side-by-side visual fidelity comparison with uploaded reference on desktop/mobile before considering approval.",
+    "approval_scope": "visual direction/reference preference only, not acceptance of implemented website or client/publication approval",
+    "cp010_status": "not_approved"
+  },
+  "visual_fidelity_v2": {
+    "created_at": "2026-10-27",
+    "version": "PT-02_B_reference_visual_fidelity_v2",
+    "status": "locally_rendered_but_owner_acceptance_pending",
+    "reference": "user-selected original colored three-way comparison panel B, not rejected poster or over-mechanical bookshelf implementation",
+    "method": "Photo crops from earlier AI-generated concept, independent HTML/CSS paper overlays, live 9-spine annotation selector, paper-theater curtain. PC/mobile responsive CSS. Not a full screenshot embedded as the website.",
+    "fidelity_evaluation": "Qualitatively closer to the original B in warm bookshelves, floating paper note, colored spine strip, bookstore and kamishibai section progression, and visit-note ending. Not pixel-accurate and some photographs are upscaled concept crops.",
+    "limitations": [
+      "Some photos are low-resolution extracted AI-generated composition material and cannot represent real store",
+      "Some original generated visual text remains within photographic crops",
+      "Chrome/Chromium only, 9 sizes, no Safari/Firefox or physical devices",
+      "No Next.js, public deployment, copyright/client approval",
+      "B-proposal beauty is a user-selected reference, not approval of v2 outcome"
+    ],
+    "qa": {
+      "engine": "headless Chromium + Playwright, content loaded from self-contained offline HTML",
+      "viewport_widths": [
+        320,
+        375,
+        390,
+        430,
+        768,
+        1024,
+        1280,
+        1440,
+        1920
+      ],
+      "horizontal_overflow_count": 0,
+      "missing_image_count": 0,
+      "page_errors": 0,
+      "validated_operations": [
+        "nine book spine selection and annotations at 390/1440",
+        "spine arrow keyboard selection at 390/1440",
+        "paper theater curtains at 390/1440",
+        "mobile menu open/Esc close at 390"
+      ],
+      "notes": "Computed QA results in ChatGPT conversation artifact, not CI"
+    },
+    "artifacts": {
+      "zip": "secondroot_PT02_reference_B_visual_fidelity_v2.zip",
+      "archive_sha256": "f83a3a241b057ad610bf64d97adcd325ba943d5be38dfee76180978ad72ec8dc",
+      "index_html_sha256": "b2db788fab57fbf43f565246300491d19416c17d87523d3b542d651ad22bdf03",
+      "desktop_full_png_sha256": "f9edcd87816b55923001ebe222d943f3aaebf4eb401caf1dc7e54a44df07fee9",
+      "mobile_full_png_sha256": "634a8f4e97931e8b77471c87bc82dbbde0ff34eb3f02ae04164c1b85dbd6a8f5",
+      "comparison_sha256": "88246c85782c1e30d5aae31d061f2d9515bcdb45c98cff14e79584cf6c28785d",
+      "files_stored": "In ChatGPT conversation runtime archive; original PNGs/HTML not uploaded to GitHub"
+    },
+    "user_approval": "not_yet_evaluated",
+    "cp010": "not_registered",
+    "production_integration": false
+  },
+  "v3_texture_refinement": {
+    "version": "PT-02 texture refinement v3",
+    "created_at": "2026-10-27",
+    "owner_response_to_v2": "チープだけどデザインはいいです",
+    "status": "local_browser_poc_ready_for_owner_review",
+    "reference_maintained": "preferred original color B panel composition",
+    "changes": [
+      "warmth and paper texture refined",
+      "uniform rectangular CSS book spines replaced with photographic art-strip and 9 real interaction hit zones",
+      "mobile shelf horizontal scroll and hero photo focal point",
+      "real-text paper overlays, preserved theater curtain interaction"
+    ],
+    "provenance_doc": "design-library/intelligence/v02/experiments/PT02-texture-v3-review.md",
+    "archive_sha256": "6e1b31dd6174f198e7547baa4e38642ee291f471b5885affb01187f9d1df447a",
+    "owner_design_approval": "owner_approved_research_success",
+    "cp010_registered": true,
+    "production_connected": false,
+    "source_assets_note": "Cropped AI study art, not independent high-resolution merchant photography; image resolution limits remain",
+    "success_case_record": "design-library/success-cases/CP-010-PaperTheater-PT02.md"
+  },
+  "owner_approval_evidence": {
+    "owner_quote": "これを成功例とします",
+    "date": "2026-10-27",
+    "proposal_id": "PT-02",
+    "selected_version": "PT02_texture_v3_20261027",
+    "success_case_id": "CP-010",
+    "success_case_record": "design-library/success-cases/CP-010-PaperTheater-PT02.md",
+    "scope": "Second Root research success example only; not a merchant contract or public deployment",
+    "asset_archive_sha256": "a438dfce1434de4b6973283edcfd696c1a1e0b6a10850cb60b4918f21e59eecc"
+  }
+}

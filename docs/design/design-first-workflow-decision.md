@@ -100,3 +100,9 @@
 - 同じ文章を使わないことは美しさ・独創性の証明にならない。実画面とオーナー判断を優先する。
 
 関連文書: `docs/design/shop-design-dna-proposals.md`、`docs/design/reference-technique-shortlist.md`、`docs/design/wagashi-design-critique-and-next-direction.md`（未マージ: `origin/feature/dev-104-design-critique` の ac0ab15 時点。develop には無く、マージされるまで正本ではない参考）、`docs/operations/design-dna-foundation.md`、`docs/operations/design-image-eval-template.md`、`docs/operations/comp-to-site.md`、`docs/operations/design-image-assets.md`。
+
+## 2026-10-28｜追加の研究運用ルール：Identity Lock
+
+CP-014/015の画像生成で、対象の店名・業種が別店舗（KOALA／cobaco）にすり替わったケースを受け、[店舗同一性監査の研究手順](identity-lock-research-policy.md)を追加した。G0時に店名・業種・出典を固定し、G2の画像を**対象店の画像として扱う前**に出力物の屋号・業種を画像ごとに検査する。不一致はREJECT、未検証はHOLD、店名業種のみ一致はPASS_IDENTITY_ONLYで、デザインの採用とは別判定。
+
+`design-library/intelligence/v02/identity-audit.mjs` は目視結果の構造化記録を検証する研究用ツールであり、OCR/画像生成器の自動検証ゲートではない。本番システム、画像生成の権限や個別承認、既存G0–G6の審査を変更しない。

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "case_id": "CP-015",
+  "attempt_id": "CP015-imairo-original-first-image-20261028",
+  "target": {
+    "official_name": "imairo.",
+    "allowed_aliases": [
+      "spice & cafe imairo",
+      "imairo"
+    ],
+    "category_code": "spice_cafe_patisserie",
+    "official_source_url": "https://www.instagram.com/imairo.spice.cafe/"
+  },
+  "prompt": {
+    "shop_name": "imairo.",
+    "category_code": "spice_cafe_patisserie",
+    "is_research_only": true
+  },
+  "output": {
+    "image_sha256": "b8a9929ce0d5d232c7ba171a4b9b0327e730d09565b14e185043d1a4015bccf7"
+  },
+  "visual_inspection": {
+    "status": "completed",
+    "method": "assistant_visual",
+    "inspected_image_sha256": "b8a9929ce0d5d232c7ba171a4b9b0327e730d09565b14e185043d1a4015bccf7",
+    "visible_site_identity_labels": [
+      "imairo."
+    ],
+    "category_code": "spice_cafe_patisserie",
+    "unreadable_site_identity": false,
+    "image_looks_like_unrelated_shop": false,
+    "reviewer_note": "The visible header says imairo., with spice dish, pastry, and coffee sections. Identity only appears consistent; photography, products and text remain unverified. No owner design approval."
+  }
+}

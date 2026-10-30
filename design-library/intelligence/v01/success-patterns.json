@@ -1,0 +1,1105 @@
+{
+  "schema_version": 1,
+  "dataset": "second-root-design-intelligence-pilot",
+  "as_of": "2026-10-28",
+  "scope": "research_only_not_auto_prompt_input",
+  "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
+  "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
+  "provenance": {
+    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md (CP-014 pending and excluded)",
+    "case_registry": "design-library/success-cases/manifest.json",
+    "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
+  },
+  "reuse_policy": {
+    "allow": "Reason about how shop-specific verified facts could inspire an original composition; require human selection",
+    "deny": [
+      "copy_specific_composition",
+      "copy_or_reuse_brand_logo_or_photography",
+      "copy_specific_text_or_color_recipe",
+      "claim_client_approval_or_website_launch",
+      "feed_into_production_generators_without_separate_review"
+    ],
+    "design_principles_are_not_templates": true,
+    "quality_gates": [
+      "verified_shop_facts",
+      "source_rights_checked",
+      "shop_specific_original_composition",
+      "pc_and_mobile_independently_reviewed",
+      "human_signoff_before_promotion"
+    ]
+  },
+  "cases": [
+    {
+      "id": "CP-001",
+      "name": "Mond — The Living Archive",
+      "category": "coffee_shop",
+      "owner_selection": "reference_success",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "vintage cups",
+        "hand-dripped coffee",
+        "butter toast",
+        "quiet interior"
+      ],
+      "structural_translation": "Use typography as a structural plane; balance narrow/dense photography panels and quiet text areas in an uneven editorial layout",
+      "visual_mechanisms": [
+        "oversized serif logotype embedded across image boundaries",
+        "unequal panels and overhanging imagery",
+        "fine rules, vertical captions, restrained neutral space"
+      ],
+      "why_selected": [
+        {
+          "statement": "User submitted Mond as an exemplary design",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Overlaps across panel boundaries and oversized lettering make an editorial identity distinct from generic cards",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Replacing overlapping panels with repeatable left-text/right-image modules"
+      ],
+      "not_to_copy": [
+        "MOND logotype",
+        "exact triptych proportions",
+        "original photos and copy"
+      ],
+      "implementation_gap": "No HTML PoC approved for this design",
+      "evidence_ref": "design-library/success-cases/CP-001-Mond.md"
+    },
+    {
+      "id": "CP-002",
+      "name": "Sissi — Flower is Art",
+      "category": "florist",
+      "owner_selection": "reference_success_A_over_B",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "branch geometry",
+        "petals",
+        "asymmetric flower arrangements",
+        "color harmony"
+      ],
+      "structural_translation": "Let irregular branch paths determine the reading direction and whitespace shapes without imitating literal branch positions",
+      "visual_mechanisms": [
+        "floating blossom imagery intersects logotype",
+        "organic trajectories and scale hierarchy",
+        "small editorial text on negative space"
+      ],
+      "why_selected": [
+        {
+          "statement": "A was favored over B in previous comparisons",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "The motif actively shapes the structure instead of remaining a decorative photograph",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Turning flowers into isolated grid cards",
+        "Using decorative curves unrelated to actual merchandise"
+      ],
+      "not_to_copy": [
+        "Sissi logo",
+        "flower photo assets",
+        "specific branch paths"
+      ],
+      "implementation_gap": "No HTML PoC approved for this design",
+      "evidence_ref": "design-library/success-cases/CP-002-Sissi.md"
+    },
+    {
+      "id": "CP-003",
+      "name": "なごやビーンズ — Editorial Roast Atlas v4",
+      "category": "coffee_roaster",
+      "owner_selection": "design_v4_approved",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "nine roast intensities",
+        "roast spectrum",
+        "coffee bean textures",
+        "brew as a result"
+      ],
+      "structural_translation": "Turn nine gradations of roast into an ascending visual atlas, then vary section rhythm instead of repeating the scale",
+      "visual_mechanisms": [
+        "diagonal nine-bean spectrum",
+        "large type crosses material images",
+        "DEPTH/ROAST/YOUR CUP treated as separate visual beats"
+      ],
+      "why_selected": [
+        {
+          "statement": "User explicitly approved v4 after rejecting more generic earlier full-page versions",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Making the degree of roast a composition, not a card list, gives shop specificity",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Repeating the nine-roast guide twice",
+        "Shrinking distinctive hero into conventional full-page product catalog",
+        "Generic symmetrical text/image alternation"
+      ],
+      "not_to_copy": [
+        "exact bean diagonal",
+        "ROAST ATLAS copy as a brand slogan",
+        "generated coffee imagery"
+      ],
+      "implementation_gap": "Local browser PoC only; no Next.js verification or deployment",
+      "evidence_ref": "design-library/success-cases/CP-003-NagoyaBeans-v4.md"
+    },
+    {
+      "id": "CP-004",
+      "name": "harebare — Spinning Beigoma Editorial",
+      "category": "baked_goods",
+      "owner_selection": "positive_save_instruction",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "spinning beigoma cookies",
+        "local cast-iron heritage",
+        "golden pastry",
+        "crisp texture"
+      ],
+      "structural_translation": "Translate spinning-top motion into orbital paths connecting typography, textures and product photography",
+      "visual_mechanisms": [
+        "orbital trajectories across boundaries",
+        "oversized name colliding with cookie silhouettes",
+        "contrast of dark cast iron against warm baked goods"
+      ],
+      "why_selected": [
+        {
+          "statement": "User positively evaluated and requested saving the result",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "A shop-specific physical motion helps the full-page composition stay expressive",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Forcing the revolving-orbit motif on products with no relationship to rotation"
+      ],
+      "not_to_copy": [
+        "beigoma photos",
+        "exact orbital lines",
+        "name treatment and orange/navy palette"
+      ],
+      "implementation_gap": "Local browser PoC only, client clearance and production not verified",
+      "evidence_ref": "design-library/success-cases/CP-004-Harebare.md"
+    },
+    {
+      "id": "CP-005",
+      "name": "Hamsa — Rice Koji / Shared Loaf Editorial",
+      "category": "bakery",
+      "owner_selection": "research_success_saved",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "round campagne bread",
+        "crumb structure",
+        "rice koji fermentation",
+        "shared table",
+        "renovated kominka"
+      ],
+      "structural_translation": "A split loaf opens a window into place; irregular bread cross-sections and shared fragments become the shapes of editorial transitions",
+      "visual_mechanisms": [
+        "large bread cross-section intersects name",
+        "circular architectural inset",
+        "torn paper outlines and overlapping food scenes"
+      ],
+      "why_selected": [
+        {
+          "statement": "User selected the first concept's hero but the second concept's lower composition",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "User accepted refined hybrid and requested success storage",
+          "basis": "owner_selection"
+        }
+      ],
+      "known_failure_modes": [
+        "Re-generating the first draft unchanged instead of hybridizing",
+        "Repeating panoramic horizontal photo strips under a strong hero",
+        "Using low-resolution crops from a text-embedded composite as production photography"
+      ],
+      "not_to_copy": [
+        "exact bread + kominka collage",
+        "text, logo and sourced images",
+        "specific paper-cut boundaries"
+      ],
+      "implementation_gap": "Local PoC rendered; imagery resolution weaker than design reference, no Next.js build/deployment",
+      "evidence_ref": "design-library/success-cases/CP-005-Hamsa.md"
+    },
+    {
+      "id": "CP-006",
+      "name": "Melon de Mille — CUT & STACK",
+      "category": "fruit_tart",
+      "owner_selection": "refined_B_concept_saved",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "melon-tart cross-section",
+        "layered pastry",
+        "bright fruit palette",
+        "seasonal offerings"
+      ],
+      "structural_translation": "Use literal cut and stacking of fruit and pastry layers to inspire angled high-contrast graphic planes",
+      "visual_mechanisms": [
+        "colossal cobalt sans typography",
+        "angled cutouts showing tart layers",
+        "green melon versus red berry and blue geometry"
+      ],
+      "why_selected": [
+        {
+          "statement": "User selected B as the second of four directions and requested saving its refinement",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Graphic collision of tart cross-section and oversized typography provides a different design family",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Softening bold structure into conventional patisserie cards",
+        "Letting intense blue reduce readability or misrepresent a shop's actual character"
+      ],
+      "not_to_copy": [
+        "generated tart photos",
+        "literal color-block proportions",
+        "specific title typography and invented product details"
+      ],
+      "implementation_gap": "No HTML/CSS PoC; mobile composition and real product validation pending",
+      "evidence_ref": "design-library/success-cases/CP-006-Melon-de-Mille.md"
+    },
+    {
+      "id": "CP-007",
+      "name": "ORGN. — SEAM / CUT Editorial",
+      "category": "salon_vintage_remake",
+      "owner_selection": "owner_approved_research_success",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "hair cutting lines",
+        "garment stitching and remake seams",
+        "reworked vintage fabric",
+        "salon-fashion crossover"
+      ],
+      "structural_translation": "Translate the shared notion of cutting and sewing into visual strokes and editorial seams linking distinct hair portraits, fabric details and shop sections; derive a unique layout rather than copying another brand",
+      "visual_mechanisms": [
+        "separate hair and garment photo planes connected by fine graphic seams",
+        "angular patchwork and asymmetrical collage",
+        "real independent HTML typography and layered SVG strokes",
+        "different density of HAIR, REMAKE, STYLE and BOOK sections"
+      ],
+      "why_selected": [
+        {
+          "statement": "User explicitly said 成功例とします about the ORGN. SEAM/CUT v1 local HTML PoC",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Shop-specific actions (haircut and apparel remake) provide a coherent structural motif, not an unrelated visual decoration",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Reusing giant brand-name typography from the Mond concept as the primary pattern instead of finding this salon's own visual principle",
+        "Substituting generic two-column salon image + text sections for the cut-and-stitch editorial structure",
+        "Mistaking AI-generated portraits or atelier interiors for authentic store/client photography",
+        "Assuming experimental CSS overlays work in the constrained production generator without verification"
+      ],
+      "not_to_copy": [
+        "ORGN. name, original branding and copy",
+        "exact thread paths or patchwork collage",
+        "AI-generated fashion model images or salon interiors",
+        "distinctive colors and typographic arrangement"
+      ],
+      "implementation_gap": "Local HTML/CSS/JS PoC only; browser checks on six widths reported, but Next.js, public deployment, real photography, accessibility and merchant review remain pending",
+      "evidence_ref": "design-library/success-cases/CP-007-ORGN-SEAM-CUT.md"
+    },
+    {
+      "id": "CP-008",
+      "name": "整体院 Go. — PAUSE / GO",
+      "category": "wellness_bodywork",
+      "owner_selection": "owner_approved_revised_A_recovery_design",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "the clinic name Go",
+        "daily tension and pauses",
+        "quiet private treatment",
+        "bodywork and head spa"
+      ],
+      "structural_translation": "Build a visual transition from compressed/dense typography and dark photographs into open cream space; keep the oversized GO. and fine yellow route-line as structure rather than using a generic wellness landing page.",
+      "visual_mechanisms": [
+        "colossal GO. typography in charcoal-navy",
+        "cream/ink contrast with a single vivid yellow visual path",
+        "overlap between treatment imagery and graphic panels",
+        "varied editorial densities instead of repeating equal wave-photo bands"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner initially liked the A concept but rejected a generic cream-and-green revision because it erased the huge GO. and yellow line",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner said 成功例とします after a revision restored the accepted hero visual language and adjusted lower composition",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Explicit protection of earlier accepted features improves iteration discipline; not proof of broader design outcomes",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Removing the giant GO. typographic anchor during polishing",
+        "Replacing the distinctive yellow line and navy/cream contrast with generic wellness greens",
+        "Repeating wavy panoramic photo strips through lower sections",
+        "Mistaking a mobile mockup included in a static poster for a responsive website",
+        "Treating generated treatment or interior photos as authentic evidence of a real provider"
+      ],
+      "not_to_copy": [
+        "the GO. logo and exact typographic placement",
+        "the specific yellow path",
+        "the generated therapy imagery and invented copy",
+        "the exact palette / collage"
+      ],
+      "implementation_gap": "One owner-selected static editorial poster, containing a phone preview; no independent responsive HTML/CSS/JS PoC, build or public deployment",
+      "evidence_ref": "design-library/success-cases/CP-008-Seitai-Go-PAUSE.md"
+    },
+    {
+      "id": "CP-009",
+      "name": "豆＊豆 — STITCH / TOGETHER editorial craft shop",
+      "category": "handmade_craft_fabric_goods",
+      "owner_selection": "owner_approved_research_success_after_local_html_poc",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "colorful round yo-yo quilting fabrics",
+        "hand sewing and red connecting threads",
+        "distinct handmade fabric objects",
+        "vivid red shop door"
+      ],
+      "structural_translation": "Translate round textile elements into a nonuniform constellation and stitched connections across the page; a red doorway anchors the visual arrival, while making and merchandise chapters use different photo sizes and visual rhythms.",
+      "visual_mechanisms": [
+        "large Japanese typography on warm paper in a strong initial hero",
+        "unequal yo-yo circles integrated with shop-door photography",
+        "dotted red seam paths connecting distinct sections",
+        "close-up making process versus collage product details versus quilt mass",
+        "large red entrance as closing visual climax"
+      ],
+      "why_selected": [
+        {
+          "statement": "User said いいと思います about first design, then requested refinement and HTML implementation that protects its hero",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "User explicitly approved the completed PC/mobile local PoC with 成功例として扱います",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Craft-specific joining, fabric geometry and doorway create a readable page-wide principle distinct from bakery or salon layouts",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Repeating identical round fabric collage in every chapter rather than changing image scale and information density",
+        "Discarding the already selected hero while polishing later sections",
+        "Using low-resolution crops from one generated poster in a finished production website",
+        "Presenting generated storefront, logo or products as certified real-store documentation",
+        "Calling an offline Chromium PoC fully deployed or cross-browser tested"
+      ],
+      "not_to_copy": [
+        "shop name/logos and slogan",
+        "exact yo-yo fabric cutouts or thread trajectory",
+        "red-door or atelier generated photographs",
+        "specific poster structure and asset colors"
+      ],
+      "implementation_gap": "Local HTML/CSS/JS PoC checked at six viewport widths; no live deployment, Next.js build, true merchant images/approval, or high-resolution replacement for all crops.",
+      "evidence_ref": "design-library/success-cases/CP-009-MameMame-STITCH.md"
+    },
+    {
+      "id": "CP-010",
+      "name": "ぺいぱばっくらいたー — 本棚が地図になる PT-02 v3",
+      "category": "bookshop_kamishibai",
+      "owner_selection": "owner_approved_v3_after_v2_visual_quality_feedback",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "bookshelves and physical book spines",
+        "kamishibai theater",
+        "quiet reading spaces",
+        "bookstore paper annotations"
+      ],
+      "structural_translation": "Treat a bookshelf as the editorial entrance and visual navigation cue; let spines, notes, kamishibai scene and open quiet space produce varied page chapters. Protect the preferred visual grammar even when adding interactive affordances.",
+      "visual_mechanisms": [
+        "warm atmospheric photographic bookshelf hero",
+        "floating textured paper annotations over rich wood and amber light",
+        "tactile varied book-cover photo strip with independent clickable hotspots",
+        "distinct kamishibai and reading-room scenes",
+        "separate responsive mobile photo focus, readable copy and navigable bookshelf"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner chose panel B from the three-concept comparison as the desired visual structure",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner rejected a changed one-page illustration and later a functional yet aesthetically worse bookshelf-control PoC",
+          "basis": "owner_rejection"
+        },
+        {
+          "statement": "Owner considered v2 design good but materials cheap, and later approved texture-adjusted v3 as a success",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Successful changes protected overall design while improving separate assets, paper texture, spine realism, and interactions",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Overemphasizing mechanical novelty so that original photo atmosphere and typography disappear",
+        "Changing the visual reference into a generic photograph-and-title full page LP",
+        "Promoting an interaction test to design success without owner feedback",
+        "Uniform rectangular CSS book-spine cards creating an artificial flat aesthetic",
+        "Claiming cropped generative design art has become independent licensed high-resolution shop photography",
+        "Treating static mobile mockups as proof of fully responsive implementation"
+      ],
+      "not_to_copy": [
+        "original shop name or fictional/generated photographs and iconography",
+        "exact bookshelf/photo/cat/paper-note arrangement",
+        "literal book-spine artwork and overlay positions",
+        "specific warm palette and copy as a universal template"
+      ],
+      "implementation_gap": "Local HTML/CSS/JS PoC v3 approved as a research success. Nine Chromium viewport checks reported; materials still rely on cropped AI-generated imagery; no merchant license, real shop facts, Next.js build, public deployment or live-device/browser QA.",
+      "evidence_ref": "design-library/success-cases/CP-010-PaperTheater-PT02.md"
+    },
+    {
+      "id": "CP-011",
+      "name": "BAR N — GLASS / SILENCE Structure Recovery v2",
+      "category": "bar_cocktail_hospitality",
+      "owner_selection": "owner_approved_structure_recovery_v2_html_poc",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "label-free glass bottle display reported for the bar",
+        "light refraction through glass",
+        "quiet counter and intimate atmosphere",
+        "single glass as narrative focal point"
+      ],
+      "structural_translation": "Express physical glass refraction as a photographic composition crossing the dark hero and bright cream surface, then let uneven photo sizes, negative space and diagonal counter layers shape the subsequent editorial scenes rather than repeating standard photo/text horizontal bands.",
+      "visual_mechanisms": [
+        "large cutout coupe glass crossing dark-to-cream section boundaries",
+        "caustic-like light across textured light surface and amber darkness",
+        "angled editorial counter photography that overlaps adjacent scenes",
+        "asymmetric wide images plus smaller cocktail/bottle fragments in QUIET LIGHT and A MOMENT",
+        "nonuniform entrance-led access composition and independently reworked mobile layout"
+      ],
+      "why_selected": [
+        {
+          "statement": "The owner selected the original B direction (２枚目の方がいいね), then rejected an overhauled full mock for losing the glass and refracted-light hierarchy",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "A revised concept preserving the hero received 良いです, but first HTML attempt was called ちょっとありきたりかな",
+          "basis": "owner_feedback"
+        },
+        {
+          "statement": "After v2 rewrote only the repetitive lower structure, owner explicitly said これを成功例とします",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Protecting original bold hero geometry while redesigning just weak lower sections illustrates a repeatable art-direction review workflow, not a transferable template",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Changing the hero glass position and refracted light while polishing the page, despite positive owner feedback",
+        "Converting irregular editorial layers to generic left-right or horizontal photo bands",
+        "Claiming technical QA means aesthetic fidelity",
+        "Flattening intersecting cutout photos into ordinary background panels during HTML implementation",
+        "Using cropped AI-generated site imagery as authentic, high-resolution photographs of a real business",
+        "Reusing the original black-amber-cream/glass scene as a generic luxury-bar template"
+      ],
+      "not_to_copy": [
+        "BAR N name, generated images, signs and unverified physical details",
+        "specific giant coupe-glass pose and refraction pattern",
+        "exact collage coordinates, typography and color palette",
+        "unverified navigation/map/venue copy"
+      ],
+      "implementation_gap": "Approved Second Root study from local HTML/CSS/JS v2, tested in Chromium at nine widths; no real merchant imagery or permissions, commercial content verification, Next.js deployment, Safari/Firefox, or accessibility/performance testing.",
+      "evidence_ref": "design-library/success-cases/CP-011-BAR-N-GLASS-SILENCE.md"
+    },
+    {
+      "id": "CP-012",
+      "name": "Admy — ONE OF A KIND / Mineral Specimen Editorial",
+      "category": "natural_stone_handmade_accessories",
+      "owner_selection": "owner_approved_initial_full_image_concept_only",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "natural stones with uneven crystalline facets",
+        "delicate metal findings and handmade accessories",
+        "ametrine-like violet and amber transparent mineral tones",
+        "mineral specimen study and macro closeups"
+      ],
+      "structural_translation": "Translate the irregular geometry, translucence and chromatic facets of a handmade stone accessory into an editorial page with an oversized jewelry hero, specimen-like annotations, macro mineral photographs, precision craft imagery and asymmetrical collection collage instead of generic alternating product cards.",
+      "visual_mechanisms": [
+        "oversized pendant overlapping a luminous mineral background and airy logo zone",
+        "large unpolished rock macro and specimen labels as visual anchors",
+        "fine observation lines and crystal schematic near irregular purple mineral collage",
+        "warm craft process close-up contrasted with open paper space",
+        "high/low visual density between jewel macro images and understated brand story"
+      ],
+      "why_selected": [
+        {
+          "statement": "User viewed the initial Admy full-length static concept image and said 成功でいいと思います",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Natural stones' irregular light and crystalline geometry organize the visual narrative across product, material and craft scenes",
+          "basis": "design_analysis"
+        },
+        {
+          "statement": "One owner-approved static image does not establish mobile responsiveness or functioning HTML quality",
+          "basis": "implementation_limit"
+        }
+      ],
+      "known_failure_modes": [
+        "Flattening the oversized gem hero into an ordinary centered e-commerce product listing",
+        "Turning material sketches and natural crystal irregularity into ornamental overlays on standard side-by-side photo/text sections",
+        "Claiming a tall generated mockup constitutes a working mobile/desktop website",
+        "Presenting generated jewelry pieces as genuine Admy product inventory",
+        "Using study image crops as high-resolution original product photography",
+        "Transplanting purple-and-gold gemstones or precise collage geometry into another shop"
+      ],
+      "not_to_copy": [
+        "Admy name, slogan, logos and generated jewelry design",
+        "exact gemstone silhouette, purple/gold colors and glints",
+        "identical photo collage, diagram positions, hero layout and writing",
+        "unverified product and brand claims"
+      ],
+      "implementation_gap": "One owner-approved 793x1983 static FULL image. No HTML/CSS/JS implementation, interactive controls, responsive mobile design, browser rendering, shop permissions or public deployment.",
+      "evidence_ref": "design-library/success-cases/CP-012-Admy-ONE-OF-A-KIND.md"
+    },
+    {
+      "id": "CP-013",
+      "name": "スペースたのしい — TOY PACKAGING / SCRAPBOOK v2",
+      "category": "toy_and_variety_goods_creative_space",
+      "owner_selection": "research_success_v2_approved",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "assorted small toys and retro objects",
+        "physical toy blister packaging",
+        "workshops and making things together",
+        "playful irregular paper collage"
+      ],
+      "structural_translation": "Translate the physical packaging and discovery of small objects into a dense blister-pack hero, then guide visitors through finding, playing, gathering and finding the shop, without adopting a standard split-hero or alternating columns",
+      "visual_mechanisms": [
+        "yellow packaging card with transparent toy pockets and punch hole",
+        "torn paper and stickers carry headings across section boundaries",
+        "red discovery labels, blue workshop section, light gathering section and dark social footer"
+      ],
+      "why_selected": [
+        {
+          "statement": "User liked the first concept and requested a small refinement",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "User explicitly accepted the refined second image as a success example on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Packaging morphology creates a page structure independent of the earlier editorial hero families",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Converting the toy-packaging hero to a generic photography split layout",
+        "Using unrelated toy pictures as official inventory or copying recognizable character IP",
+        "Reducing tactility and collage to flat uniform product cards",
+        "Assuming generated Japanese copy and location drawing are verified"
+      ],
+      "not_to_copy": [
+        "shop name or visual identity",
+        "AI generated toy/character imagery or photos",
+        "exact yellow-red-blue color recipe and blister layout",
+        "specific sticker and paper positions"
+      ],
+      "implementation_gap": "One 1024x1536 research concept image approved; no HTML/CSS/JS, standalone mobile design, merchant permission or production verification",
+      "evidence_ref": "design-library/success-cases/CP-013-SpaceTanoshii-TOY-PACKAGING.md"
+    },
+    {
+      "id": "CP-015",
+      "name": "imairo. — TABLE AS A MAP / TABLE JOURNAL v2",
+      "category": "spice_cafe_patisserie",
+      "owner_selection": "interactive_research_poc_success_approved",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "South Indian spice dishes",
+        "French patisserie",
+        "coffee shared on the same table",
+        "handwritten field notes and paper"
+      ],
+      "structural_translation": "One shared restaurant table becomes the navigable site space: choose food, pastry or coffee by plate position and reveal a paper research note in place, rather than separating categories into horizontal full-width content bands.",
+      "visual_mechanisms": [
+        "preserved cinematic round tabletop hero with food at center, pastry at right and coffee above",
+        "quiet left-side headline with high contrast against wooden table",
+        "small discreet location-attached plus markers and handmade paper note reveal",
+        "mobile pans across same spatial arrangement and shows context note near viewport bottom"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner positively evaluated the wide one-table hero; repeated full-page banded and cluttered variations were rejected",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner approved the interactive Table Journal v2 explicitly with '成功例とします' on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Research case shows how a shop-specific physical relationship can become a navigable spatial interaction, while preserving the favored image rather than wholly regenerating it",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Regenerating a full page repeatedly turns a table-as-map concept into generic FOOD/PÂTISSERIE/DRINKS horizontal strips",
+        "Adding too many labels and arcs reduces photographic depth, calm and visual hierarchy",
+        "Generic side drawer feels detached from food-table experience",
+        "AI generated on-image text and research photo crops cannot be treated as editable deployable assets",
+        "Wrong-shop generation must be rejected by Identity Lock"
+      ],
+      "not_to_copy": [
+        "imairo. name, logo and trademarks",
+        "precise table placement and hero photograph",
+        "generated spices, pastries, coffee, interior or dish imagery",
+        "specific handwritten notes, color recipe and card composition"
+      ],
+      "implementation_gap": "Research-only local HTML/CSS/JS PoC validated in Chromium at 10 viewport widths. Hero still has baked-in text and images are generated/cropped unapproved assets; no Next.js, Safari/Firefox, real device, production deployment, or shop permission.",
+      "evidence_ref": "design-library/success-cases/CP-015-imairo-TABLE-JOURNAL-v2.md"
+    },
+    {
+      "id": "CP-016",
+      "name": "ズールー工作所 — COUNTERWEIGHT ZK-01 v1",
+      "category": "metal_mobiles_and_workshop",
+      "owner_selection": "research_success_zk01_interactive_poc_owner_approved",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "metal mobile suspension",
+        "asymmetrical balance around a pivot",
+        "brass and iron contrasting mass",
+        "moving shadow and empty wall"
+      ],
+      "structural_translation": "Turn the physical relationship between fulcrum, mass and negative space into a full-screen interaction: selecting a material changes the conceptual hanging balance and an independent readable note, without resorting to a giant hero photo followed by content strips.",
+      "visual_mechanisms": [
+        "single centered suspension rail and counterweights are the actual page structure",
+        "large empty gallery wall and low-density type convey weight and light",
+        "three real buttons select iron, brass or balance and adjust SVG tilt plus text",
+        "responsive phone view preserves central kinetic sculpture while relocating choices for tapping"
+      ],
+      "why_selected": [
+        {
+          "statement": "The user found the initial metal mobile image too similar to previous compositions; it remained rejected",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "User approved the alternative counterweight HTML/SVG/CSS/JS study with '成功例でいいと思います' on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Replacing photo-heavy editorial sequence with one mass-balance interaction avoids the repeated left-copy-photo and wavy-divider skeleton",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Changing product images but retaining top navbar, left copy, giant hero photo and photo strip",
+        "A nice sculpture photo cannot prove a distinctive page skeleton",
+        "Technical browser QA alone is not a beauty score or shop acceptance",
+        "Abstract metal parts cannot be advertised as actual works, stock, dimensions or material specifications"
+      ],
+      "not_to_copy": [
+        "name and logo of ズールー工作所",
+        "exact mobile sculpture, balance-object geometry and composition",
+        "metal palette, typographic placements, specific interaction recipe",
+        "any generated depiction of shop products without their verification"
+      ],
+      "implementation_gap": "Local HTML/CSS/JS/SVG PoC only, 9 viewport widths tested in Chromium. No real mobile devices, Firefox/Safari, accessibility full audit, shop authorization, official product photos, Next.js or production verification.",
+      "evidence_ref": "design-library/success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md"
+    },
+    {
+      "id": "CP-017",
+      "name": "Rurikoyarn — UNWIND v1.1",
+      "category": "mixed_and_dyed_yarn",
+      "owner_selection": "approved_v1_1_research_image_only",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "factory-surplus yarn and mixed fiber colors",
+        "thick intertwined loops of yarn",
+        "tactile wool, mohair and blended fibers",
+        "one-off yarn combinations"
+      ],
+      "structural_translation": "Interlacing multicolored fibers form a central large loop around which the visitor reads brand story and material labels, turning knotting and unspooling into spatial editorial hierarchy rather than a standard photo hero and product cards",
+      "visual_mechanisms": [
+        "nearly black ground makes bright chunky yarn strands pop",
+        "large warm orange/violet/blue interwoven yarn loop frames centered UNWIND title",
+        "small peripheral text between strands makes depth and movement",
+        "subtle local light and texture refinement preserves original composition"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner liked initial yarn-loop image and requested polish rather than fundamental restructure",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner liked the faithful v1.1 subtle refinement",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner explicitly accepted the version with '成功例とします、次へ進んで' on 2026-10-28",
+          "basis": "owner_selection"
+        }
+      ],
+      "known_failure_modes": [
+        "Repeated text-to-image regeneration changed the dark loop to generic light collage and lost the approved core",
+        "Improving texture should not imply changing the key layout geometry",
+        "Generated yarn/product images and embedded on-image typography are not commercial-ready or editable HTML",
+        "Static visual success alone does not validate responsive Web behavior"
+      ],
+      "not_to_copy": [
+        "Rurikoyarn identity and any literal shop names",
+        "specific multicolor yarn loop arrangement and photos",
+        "precise typography, color recipe and tag copy",
+        "AI invented product labels as if true inventory"
+      ],
+      "implementation_gap": "Approved v1.1 concept image only. No independent HTML/CSS/JS, mobile design, verified material photos, merchant authorization, Next.js or production validation.",
+      "evidence_ref": "design-library/success-cases/CP-017-Rurikoyarn-UNWIND-v1.1.md"
+    },
+    {
+      "id": "CP-018",
+      "name": "MOLE FACTORY — OVERPRINT / MISREGISTER v1",
+      "category": "silkscreen_risograph_print_studio",
+      "owner_selection": "approved_research_concept_image_v1",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "risograph registration error and color layer offset",
+        "silkscreen layered graphic printing",
+        "halftone ink, fine paper fibers and crop marks",
+        "small print objects, ZINEs and handmade posters"
+      ],
+      "structural_translation": "Use the print studio's layered color plates and deliberate misregistration as the navigable composition of a flat editorial print sheet rather than a standard split photo hero and alternating section strips",
+      "visual_mechanisms": [
+        "large distressed MOLE FACTORY title sits beside overlapping blue and orange overprints",
+        "paper surface and halftone grain act as visual field",
+        "crop registration marks and colored nodes direct attention to process annotations",
+        "small print and production vignettes reinforce the central overprint narrative"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner praised the first full-screen overprint concept with 'すごくいいと思います'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner explicitly approved that initial image with '成功例とします、次へ進んで' on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Process-derived color plate overlaps produce a layout distinct from recent fiber-loop, counterweight and table-map studies",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "A printing-themed collage can still become a typical poster LP if the print plate logic does not govern information movement",
+        "Typography is image-baked, not selectable real web text",
+        "Fake print samples or pricing may be mistaken for the actual workshop inventory",
+        "Riso layer switching and mobile responsive layout remain untested"
+      ],
+      "not_to_copy": [
+        "MOLE FACTORY name and brand identity",
+        "AI generated mole illustration, purported product photos and copy",
+        "exact blue-orange plates and registration mark positions",
+        "static completed composition as a fixed template for another merchant"
+      ],
+      "implementation_gap": "Single 1536x1024 research concept image; no HTML/CSS/JS, responsive mobile, verified brand-owned product media, formal shop permission, browser QA or public deployment; official BASE shop already exists.",
+      "evidence_ref": "design-library/success-cases/CP-018-MOLE-FACTORY-OVERPRINT-v1.md"
+    },
+    {
+      "id": "CP-019",
+      "name": "浦田杏梨 — WAX / TIME v1",
+      "category": "wax_sculpture_candles_artist",
+      "owner_selection": "approved_research_concept_image_v1",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "translucent wax sculpture and candle forms",
+        "wax phase change and melting drips",
+        "light passing through amber wax",
+        "negative cavities of a partially melted object"
+      ],
+      "structural_translation": "Turn the physical passage of wax from whole shape through melting to transformed remains into three spatially placed reading points BEFORE, MELTING, AFTER on a continuous translucent sculptural arch.",
+      "visual_mechanisms": [
+        "translucent massive molten wax arch and irregular inner void",
+        "Japanese headline in the central dark negative space",
+        "time labels anchored to different points on the wax rather than stacked photo content bands",
+        "minimal vertical right-hand navigation with dark gallery-like backdrop"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner accepted the initial wide wax-sculpture image explicitly as success with '成功例とします' on 2026-10-28",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "The study turns material translucency and chronological change into a single large image-space composition, distinct from color-plate printing and counterweight balance",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "A static wax hero can be mistaken for a working temporal navigation without implementation",
+        "On-image typography is baked into an image, not an independently editable text layer",
+        "Fictional sculpture photography may be mistaken as the artist's real object or merchandise",
+        "No mobile/browser QA, source rights, artist approval or web deployment"
+      ],
+      "not_to_copy": [
+        "浦田杏梨 name and artist branding",
+        "AI-generated wax sculpture and the exact arch shape",
+        "specific before/melting/after graphic coordinates and headline",
+        "research copy or fictional artwork represented as verified artist statement"
+      ],
+      "implementation_gap": "Only a single 1536x1024 concept image. No responsive mobile, HTML/CSS/JS, browser tests, authentic artwork, artist permission, Next.js, or production validation.",
+      "evidence_ref": "design-library/success-cases/CP-019-Anna-Urata-WAX-TIME-v1.md"
+    },
+    {
+      "id": "CP-020",
+      "name": "喫茶 ITALICO — SHOWCASE / GLASS CABINET v1",
+      "category": "retro_kissa_and_italian_cafe",
+      "owner_selection": "approved_research_concept_image_v1",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "traditional kissa food display glass cabinet",
+        "custard pudding and omurice as illustrative cafe motifs",
+        "dark green cabinet framing and warm brass trim",
+        "glass reflections and warm backlit shelves"
+      ],
+      "structural_translation": "The physical compartment structure of a vintage display cabinet becomes the information grid, with product-category labels attached to different glass shelves rather than a conventional full-width cafe hero plus repeating photo bands.",
+      "visual_mechanisms": [
+        "dark green and brass cabinet borders divide the entire picture",
+        "food-themed AI illustrations sit in distinct compartments at different heights",
+        "paper plaques serve as simulated navigation labels",
+        "lighting reflections form depth across glass"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner explicitly approved the first glass cabinet image with '成功例にしたい' and requested continuation",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Uses compartment geometry of a display cabinet instead of a typical photo hero",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "AI generated case and food may be mistaken for actual premises or menu",
+        "No clickable interaction exists despite painted labels",
+        "Social profile external links were inaccessible for verification, so eligibility as site-less sales lead is pending",
+        "Static concept cannot validate responsive site design or independent semantic HTML"
+      ],
+      "not_to_copy": [
+        "喫茶 ITALICO identity and logo",
+        "exact cabinet framing and AI-generated food photographs",
+        "invented copy, menu wording, shop interior, product availability",
+        "the specific design as a one-size-fits-all template"
+      ],
+      "implementation_gap": "Only a static 1536x1024 concept image. No HTML, responsive phone version, factual photos, verified social external link, shop permission, or production deployment.",
+      "evidence_ref": "design-library/success-cases/CP-020-Kissa-ITALICO-SHOWCASE-v1.md"
+    },
+    {
+      "id": "CP-021",
+      "name": "TERACE — PICK / COMPOSE v1 (original)",
+      "category": "acrylic_accessories_personal_composition",
+      "owner_selection": "conditional_fallback_to_v1_after_refinement_v2_failed",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "choose colorful transparent acrylic components",
+        "assemble unique charms on small metal rings",
+        "shapes and colors cast refracted shadows",
+        "preview the combined accessory before making it"
+      ],
+      "structural_translation": "Use a workshop assembly flow as the interface map: left trays contain selectable colors/shapes, the center stages the chained pieces and the right side displays an illustrative completed piece. Labels SHAPE/COLOR/COMPOSE follow that physical making process.",
+      "visual_mechanisms": [
+        "bright near-white tabletop with colorful translucent acrylic shadows",
+        "large central flower-like purple acrylic connected to smaller pieces",
+        "left stacked trays of transparent colored parts",
+        "right frosted preview mini-stage and delicate numbered guides"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner liked the initial design with 'いいと思います'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner explicitly requested that the initial version be used as a success case if the brush-up fails",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "v2 heightened glints and saturation but delivered no clear improvement in hierarchy or usability; initial v1 is selected under the prior conditional instruction",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Global regeneration changed highlights/colors without meaningfully improving layout or function",
+        "Over-bright reflections may overwhelm natural acrylic transparency",
+        "Believing painted preview buttons imply actual working functionality",
+        "TERACE official ecommerce or website cannot be ruled out until Instagram bio links are reviewed",
+        "AI-generated products and company imagery cannot be used as verified inventory or merchant-owned photography"
+      ],
+      "not_to_copy": [
+        "TERACE identity and unrelated merchants' storefronts",
+        "exact acrylic kit, colors, shape arrangement and manufactured object imagery",
+        "AI generated products, names, pricing and workshop claims",
+        "exact white tabletop composition as a general template"
+      ],
+      "implementation_gap": "Single approved v1 1536x1024 concept image. No functioning parts picker, responsive mobile UI, standalone HTML/CSS/JS, browser QA, verified official site absence, merchant permission or production deployment.",
+      "evidence_ref": "design-library/success-cases/CP-021-TERACE-PICK-COMPOSE-v1.md"
+    },
+    {
+      "id": "CP-022",
+      "name": "Harissy — CRUMB / FRACTURE v1",
+      "category": "old_fashioned_donut_shop",
+      "owner_selection": "approved_research_concept_v1",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "rustic old fashioned donuts",
+        "craggy crispy exterior and moist crumb",
+        "cracks, broken donut segments and scattered crumbs",
+        "coffee and simple shop ritual"
+      ],
+      "structural_translation": "Turn crunchy surface fractures and flying pastry crumbs into a sweeping visual reading path with small annotation points DONUTS/TEXTURE/COFFEE/INFO, rather than a neat product-card row.",
+      "visual_mechanisms": [
+        "giant jagged donut fractures and crumbs across orange chocolate backdrop",
+        "macro interior and crust contrast",
+        "cream editorial copy area at left",
+        "small topical labels attached to the broken forms"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner liked the original design with 'いいと思います' and then explicitly selected it with '成功例にする'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Food texture itself is made the visual rhythm, distinct from shelf or printing plate motifs",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Left headline beside big visual may still resemble repeated hero layouts",
+        "Artistic donut photos are generated; presenting as real menu is misleading",
+        "Crumb flow on the static image is not a real interactive navigation",
+        "Shop's official Web absence unverified due inaccessible Instagram bio"
+      ],
+      "not_to_copy": [
+        "Harissy branding and exact crumb positioning",
+        "specific AI generated product photos and ingredients",
+        "exact editorial layout and handwritten labels as a universal template",
+        "unverified actual menu/prices or store interior"
+      ],
+      "implementation_gap": "Single approved 1536x1024 static concept; no HTML/CSS/JS, responsive design, verified photos, local website absence, shop permission, or production site.",
+      "evidence_ref": "design-library/success-cases/CP-022-Harissy-CRUMB-FRACTURE-v1.md"
+    },
+    {
+      "id": "CP-023",
+      "name": "BURGERS,INC — NEON FLIP / DAY × AFTER DARK v4",
+      "category": "daytime_burger_shop_nighttime_80s_music_bar",
+      "owner_selection": "owner_approved_neon_sign_concept_v4_after_v5_comparison",
+      "implementation": "concept_image_only",
+      "shop_motifs": [
+        "two different time-of-day identities in one location",
+        "daytime hamburger restaurant",
+        "nighttime 1980s music-themed bar",
+        "flippable metal sign"
+      ],
+      "structural_translation": "Make one large three-dimensional double-sided metal sign the shared screen structure: warm day burger face and dark magenta nighttime 80s-bar face. Visual hierarchy, lighting and minimal supporting objects follow the sign, rather than two photo hero sections.",
+      "visual_mechanisms": [
+        "dominant pivoting chrome sign centered and framed as the main interface metaphor",
+        "warm amber burger side counterbalanced with dark magenta after-dark side",
+        "sparse small supporting burger, glass and record imagery",
+        "metalwork, sign lettering and reflections provide depth without rows of cards"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner clarified that their preferred early image was the original neon sign, not the record SIDE A screenshot; the initial v1 alone was not yet sufficient",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner requested refinement specifically from neon v4, agreed that v4 was better than the cluttered v5, and then explicitly said '成功例として扱います'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "The v4 foregrounds one physical sign and two time-of-day identities; v5 diluted that dominance with standard photo cards",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "Original v1 crowded neon illustration was rejected before the later relative preference clarification",
+        "v2 collapsed into generic large burger and photo collage rather than record-driven architecture",
+        "v3 working vinyl SIDE A/B interaction was not the visual direction the owner preferred",
+        "v5 inserted redundant large captions and three photo cards, reducing sign focus",
+        "Static drawn flip control is not a real interactive site",
+        "AI-generated hamburger, drinks and décor cannot be claimed to be verified real photos",
+        "Official website absence remains unverified until Instagram profile links are checked"
+      ],
+      "not_to_copy": [
+        "BURGERS,INC name and identity",
+        "exact fabricated metal sign, layout, slogan and magenta-to-amber light arrangement",
+        "AI-generated shop imagery, menu plates, bar interiors and objects",
+        "sign-as-interface formulation as a universal template for unrelated shops"
+      ],
+      "implementation_gap": "Selected v4 is only one 1536x1024 concept image. A different v3 record-site HTML prototype was locally tested but is not the selected design. No v4 responsive Web implementation, real photos, shop consent, verified site-less qualification, or production deployment.",
+      "evidence_ref": "design-library/success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md"
+    },
+    {
+      "id": "CP-024",
+      "name": "Boheme. — FLORAL FITTING ROOM Full-page v2",
+      "category": "florist_flower_styling",
+      "owner_selection": "owner_approved_full_page_poc_after_pc_mobile_overview",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "flowers styled as fashion",
+        "vintage mirror as fitting area",
+        "hanger rail for flowers and styling labels",
+        "color silhouette and texture of floral arrangements"
+      ],
+      "structural_translation": "Turn '花を着崩す' into a continuous fitting-room journey: preservation of a single arched-mirror hero, Introduction, interactive look switching, rail tags for color/silhouette/texture, concept note and shop visit. Full desktop/mobile browsing flow rather than hero-only mockup.",
+      "visual_mechanisms": [
+        "large asymmetric arrangement photographed as a fashion look in an arch mirror",
+        "styling LOOK 01/02/03 actually switches text and visual filters",
+        "three hanging tags on a rail continue the dressing metaphor in lower content",
+        "full-page desktop and mobile scroll structure and contextual visit area"
+      ],
+      "why_selected": [
+        {
+          "statement": "Owner liked the original Hero but explicitly identified missing full-page site structure",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "After viewing PC/mobile full-page screenshots and interactive local PoC, owner said 'いいじゃん毎回これで出して'",
+          "basis": "owner_selection"
+        },
+        {
+          "statement": "Owner explicitly selected the whole v2 with 'これを成功例として、次にいこう'",
+          "basis": "owner_selection"
+        }
+      ],
+      "known_failure_modes": [
+        "Great first screen does not guarantee good complete web experience",
+        "Overlaid Hero copy remains baked into image rather than independent accessible text",
+        "Three LOOKs alter one study photograph rather than represent three verified shop products",
+        "HTML local Chromium responsive checks do not prove published or cross-browser readiness",
+        "Website-less sales eligibility remains unverified because social bio and namesake BASE shop ownership are unresolved"
+      ],
+      "not_to_copy": [
+        "Boheme. identity and shop concept slogan",
+        "specific floral styling, mirror proportions and invented shop interior",
+        "exact hanger rail design and artificial LOOK variations as a template",
+        "AI flower photographs as if real merchandise"
+      ],
+      "implementation_gap": "Local full-page HTML/CSS/JS PoC and 9 widths on Chromium. No client authorization, true multi-photo catalog, real mobile devices, Safari/Firefox, accessibility audit, Next.js build or production release.",
+      "evidence_ref": "design-library/success-cases/CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md"
+    }
+  ],
+  "limitations": [
+    "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
+    "Ten cases have local HTML PoCs; thirteen remain concept/image-only; none are verified live production websites",
+    "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
+    "Store photos and speculative text are research only; must not be sent as official representations"
+  ]
+}
