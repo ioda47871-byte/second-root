@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { verifyCaseSafety } from "./registration-safety.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../..");
 const read = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
@@ -56,5 +57,10 @@ for (const row of rows) {
   } else {
     assert(!audits.has(row.id) && row.existing_evidence === "text_checked_only_no_viewport_audit", "new case claimed audited: " + row.id);
   }
+}
+verifyCaseSafety(manifest, knowledge);
+for (const c of cases.filter(x => /^CP-0(26|27|28|29|30|31|32)$/.test(x.id))) {
+  const note = readFileSync(resolve(root, c.evidence_ref), "utf8");
+  assert(note.startsWith("# " + c.id + " | "), "evidence note identity mismatch: " + c.id);
 }
 console.log(`PASS: ${cases.length} research success patterns (${localPocCount} local Web PoCs); 20 source-traced review queue items; no auto-approved research.`);
