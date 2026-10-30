@@ -20,7 +20,7 @@ const valid = (m = originalManifest, p = originalPatterns, baseline = frozen) =>
 const deny = (m = () => {}, p = () => {}, base = () => {}) => {
   const mm = copy(originalManifest), pp = copy(originalPatterns), ff = { ...frozen };
   m(mm); p(pp); base(ff);
-  assert.throws(() => valid(mm, pp, ff), /RESEARCH_GUARD_/);
+  assert.throws(() => { valid(mm, pp, ff); verifyEvidenceNotes(mm, pp, read); }, /RESEARCH_GUARD_/);
 };
 
 test("base 23 remains intact and additions are research-only", () => {
