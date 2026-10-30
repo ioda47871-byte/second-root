@@ -222,6 +222,20 @@ describe("re-review fixes (DEV-125 round 2)", () => {
   }, 60_000);
 });
 
+describe("final review fix (DEV-125 round 3, M-1)", () => {
+  it("a section whose only content is one full picture or drawing (wrapped or not) is a picture, not plain text", async () => {
+    const m = await measurePage(
+      browser,
+      {
+        html: doc(`<section data-section="a"><img class="full" src="assets/A1.png" alt=""></section><section data-section="b"><div class="inner"><svg class="full" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg></div></section><section data-section="c"><picture><img class="full" src="assets/A1.png" alt=""></picture></section>`),
+        css: `body{margin:0}.full{display:block;width:100%;height:700px}section{height:700px}`,
+      },
+      VIEWPORTS.desktop,
+    );
+    expect(m.sections.map(sectionLayout)).toEqual(["full_bleed_media", "diagram", "full_bleed_media"]);
+  }, 60_000);
+});
+
 describe("isolation (provisional vocabulary: never used by a generator without a separate approval)", () => {
   it("is imported by nothing outside its own module and tests, and reaches no network, process or model", async () => {
     const { spawnSync } = await import("node:child_process");

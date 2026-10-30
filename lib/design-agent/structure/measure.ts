@@ -78,7 +78,8 @@ const MEASURE = `(() => {
     // descend through single wrappers (a max-width container, an inner padding box): the layout is inside them
     for (let i = 0; i < 4; i++) {
       const kids = kidsOf(parent).filter(visible);
-      if (kids.length !== 1) break;
+      // never into a picture or drawing itself (a section that is one full picture stays a picture)
+      if (kids.length !== 1 || isMediaEl(kids[0])) break;
       parent = kids[0];
     }
     const sb = box(root);
