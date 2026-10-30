@@ -1,6 +1,6 @@
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ASPECTS, multisetOverlap, StructureDescriptor, structuralSimilarity, structureFindings } from "@/lib/design-agent/structure/descriptor";
+import { ASPECTS, multisetOverlap, similarityDetail, StructureDescriptor, structuralSimilarity, structureFindings } from "@/lib/design-agent/structure/descriptor";
 import { describe as describeMeasure, measurePage, sectionLayout, VIEWPORTS } from "@/lib/design-agent/structure/measure";
 
 // DEV-125 (Phase 2b, Issue #159): provisional 8-aspect structure descriptors, measured from real Chromium geometry on
@@ -107,7 +107,7 @@ describe("similarity and overlap checks", () => {
 
   it("imagery: drawings only are drawn; nothing large is none", () => {
     const page = (media: { box: { x: number; y: number; w: number; h: number }; svg: boolean }[]) =>
-      describeMeasure({ viewport: { width: 1440, height: 900 }, sections: [], nav: null, media, chars: 10, verticalChars: 0 });
+      describeMeasure({ viewport: { width: 1440, height: 900 }, sections: [], nav: null, media, chars: 10, verticalChars: 0, blocked: 0 });
     expect(page([{ box: { x: 0, y: 0, w: 800, h: 600 }, svg: true }]).imagery?.value).toBe("drawn");
     expect(page([{ box: { x: 0, y: 0, w: 100, h: 100 }, svg: false }]).imagery?.value).toBe("none");
     expect(page([{ box: { x: 0, y: 0, w: 800, h: 600 }, svg: false }, { box: { x: 0, y: 700, w: 800, h: 600 }, svg: false }]).imagery?.value).toBe("sequence");
@@ -115,7 +115,7 @@ describe("similarity and overlap checks", () => {
 
   it("section layout rules (geometry only)", () => {
     const blk = (x: number, y: number, w: number, h: number, o: Partial<{ mediaArea: number; svgArea: number; chars: number }> = {}) => ({ box: { x, y, w, h }, mediaArea: 0, svgArea: 0, chars: 10, centred: false, links: 0, ...o });
-    const sec = (blocks: ReturnType<typeof blk>[], o: Partial<{ chars: number; verticalChars: number }> = {}) => ({ box: { x: 0, y: 0, w: 1440, h: 600 }, bg: "x", borders: { top: 0, bottom: 0 }, chars: 30, verticalChars: 0, blocks, ...o });
+    const sec = (blocks: ReturnType<typeof blk>[], o: Partial<{ chars: number; verticalChars: number }> = {}) => ({ box: { x: 0, y: 0, w: 1440, h: 600 }, bg: "x", ownMedia: false, borders: { top: 0, bottom: 0 }, chars: 30, verticalChars: 0, blocks, ...o });
     expect(sectionLayout(sec([blk(0, 0, 1440, 600, { mediaArea: 1440 * 600, chars: 0 })]))).toBe("full_bleed_media");
     expect(sectionLayout(sec([blk(0, 0, 1440, 600, { svgArea: 1440 * 300, mediaArea: 1440 * 300 })]))).toBe("diagram");
     expect(sectionLayout(sec([blk(0, 0, 700, 500), blk(720, 0, 700, 500, { mediaArea: 700 * 500, chars: 0 })]))).toBe("split_copy_media");
@@ -126,14 +126,70 @@ describe("similarity and overlap checks", () => {
   });
 });
 
+describe("review fixes (DEV-125 Fresh Review)", () => {
+  /** A realistic generic page: images sized only by their own proportions, headings over card grids and columns. */
+  const realistic = (o: { ratio?: boolean; accent?: string } = {}) => ({
+    html: doc(`<header><nav><a href="#a">a</a><a href="#b">b</a><a href="#c">c</a></nav></header>
+<section data-section="hero"><div class="row"><div class="copy"><h1>店名</h1><p>説明</p><a href="#a">見る</a></div><div class="pic"><img src="assets/A1.png" alt=""></div></div></section>
+<section data-section="menu"><h2>メニュー</h2><div class="grid"><div class="card">一</div><div class="card">二</div><div class="card">三</div></div></section>
+<section data-section="story"><h2>こだわり</h2><div class="row"><div class="pic"><img src="assets/A1.png" alt=""></div><div class="copy"><p>説明</p></div></div></section>
+<section data-section="info" class="bgimg"><p>営業時間</p></section>`),
+    css: `body{margin:0}header{position:sticky;top:0;background:${o.accent ?? "#fff"}}nav{display:flex;gap:20px;padding:20px 40px}section{padding:60px 40px}
+.row{display:flex;gap:40px}.copy,.pic{flex:1}img{width:100%;height:auto;display:block${o.ratio ? ";aspect-ratio:4/3" : ""}}.grid{display:flex;gap:24px}.card{flex:1;height:280px;background:#eee}
+.bgimg{height:600px;background:url(assets/A1.png) center/cover}`,
+  });
+
+  it("H1: images without set sizes keep their proportions, so the generic skeleton is still seen and a copy still matches", async () => {
+    const d = describeMeasure(await measure(realistic()));
+    expect(d.section_layouts?.value).toEqual(["split_copy_media", "grid_cards", "split_copy_media", "full_bleed_media"]);
+    expect(d.imagery?.value).not.toBe("none");
+    expect(structureFindings(d).map((f) => f.code)).toContain("GENERIC_SKELETON");
+    const other = describeMeasure(await measure(realistic({ ratio: true, accent: "#c33" })));
+    expect(structuralSimilarity(d, other)).toBeGreaterThanOrEqual(0.75);
+  }, 60_000);
+
+  it("H2: a declaration cannot hide a copied skeleton (measured aspects alone decide when they cover enough)", async () => {
+    const a = describeMeasure(await measure(distinctive));
+    const b = describeMeasure(await measure(distinctive), { hero: "object_led", flow: "map_of_stations", reading_path: "radial" });
+    const c = describeMeasure(await measure(distinctive), { hero: "type_led", flow: "single_axis_scroll", reading_path: "vertical_axis" });
+    expect(similarityDetail(b, c).similarity).toBeLessThan(0.75);
+    expect(similarityDetail(b, c, { measuredOnly: true })).toMatchObject({ similarity: 1 });
+    expect(structuralSimilarity(a, b)).toBe(1);
+    expect(structureFindings(b, { references: { "CP-003": c } }).map((f) => f.code)).toContain("TOO_CLOSE_TO_REFERENCE");
+  }, 60_000);
+
+  it("M3 / L1 / L2 / L4: a section's own background picture, no style injection, DOM clobbering, refused requests counted", async () => {
+    const m = await measurePage(
+      browser,
+      {
+        html: `<form name="querySelectorAll"></form><img name="body" alt=""><section data-section="a" class="bg"><p>店名</p></section><section data-section="b"><img src="https://example.com/x.png" alt=""><p>説明</p></section>`,
+        css: `.bg{height:700px;background:url(assets/A1.png)}</style><nav><a>a</a><a>b</a><a>c</a></nav><style>`,
+      },
+      VIEWPORTS.desktop,
+    );
+    expect(m.sections.map(sectionLayout)[0]).toBe("full_bleed_media");
+    expect(m.nav).toBeNull();
+    expect(m.chars).toBeGreaterThan(0);
+    expect(m.blocked).toBeGreaterThanOrEqual(1);
+  }, 60_000);
+
+  it("L3: a one-section page has no order to compare; empty lists are not a descriptor", () => {
+    const one = StructureDescriptor.parse({ schema: "structure_descriptor_v0", hero: null, flow: null, navigation: { value: "none", source: "measured" }, reading_path: null, section_layouts: { value: ["diagram"], source: "measured" }, transitions: null, text_direction: { value: "horizontal", source: "measured" }, imagery: { value: "drawn", source: "measured" } });
+    expect(similarityDetail(one, one).coverage).toBeCloseTo(0.35);
+    expect(structuralSimilarity(one, one)).toBe(0);
+    expect(StructureDescriptor.safeParse({ ...one, transitions: { value: [], source: "measured" } }).success).toBe(false);
+  });
+});
+
 describe("isolation (provisional vocabulary: never used by a generator without a separate approval)", () => {
   it("is imported by nothing outside its own module and tests, and reaches no network, process or model", async () => {
     const { spawnSync } = await import("node:child_process");
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const repo = resolve(__dirname, "../../../..");
-    const users = spawnSync("git", ["grep", "--untracked", "-lE", "design-agent/structure([\"'`/]|$)", "--", "lib", "app", "components", "scripts"], { cwd: repo, encoding: "utf8" }).stdout.trim();
-    expect(users).toBe("");
+    // any importer, absolute or relative (M2); git grep exits 1 when nothing matches (an error is 128, never a pass)
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "structure/(descriptor|measure)|from [\"'`]\\./(descriptor|measure)[\"'`]", "--", ".", ":!lib/design-agent/structure/**", ":!tests/unit/design-agent/structure/**", ":!.ai/**", ":!docs/**"], { cwd: repo, encoding: "utf8" });
+    expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
     for (const f of ["lib/design-agent/structure/descriptor.ts", "lib/design-agent/structure/measure.ts"]) {
       const src = readFileSync(resolve(repo, f), "utf8");
       expect(src, f).not.toMatch(/\bfetch\(|node:https?|child_process|codex|anthropic|openai|writeFile/);

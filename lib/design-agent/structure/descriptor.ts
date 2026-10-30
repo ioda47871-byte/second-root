@@ -33,7 +33,7 @@ export const GENERIC = {
 
 const Source = z.enum(["declared", "measured"]);
 const one = <T extends readonly [string, ...string[]]>(values: T) => z.strictObject({ value: z.enum(values), source: Source });
-const many = <T extends readonly [string, ...string[]]>(values: T) => z.strictObject({ value: z.array(z.enum(values)).max(40), source: Source });
+const many = <T extends readonly [string, ...string[]]>(values: T) => z.strictObject({ value: z.array(z.enum(values)).min(1).max(40), source: Source });
 
 /** One aspect is null when it was neither declared nor measurable (it then counts as "different", never as a match). */
 export const StructureDescriptor = z.strictObject({
@@ -69,24 +69,45 @@ export function multisetOverlap(a: readonly string[], b: readonly string[]): num
 
 const edges = (xs: readonly string[]) => xs.slice(1).map((x, i) => `${xs[i]}>${x}`);
 
-/** 0 (nothing shared) .. 1 (same skeleton). An aspect unknown on either side contributes 0. */
+/**
+ * Similarity over the aspects known on BOTH sides (an unknown aspect is left out, not counted as a match or a
+ * difference), with how much of the total weight that covered. `measuredOnly` uses only aspects measured on both
+ * sides: a declaration (written by the designer itself) can then neither hide nor fake a shared skeleton.
+ */
+export function similarityDetail(a: StructureDescriptor, b: StructureDescriptor, o: { measuredOnly?: boolean } = {}): { similarity: number; coverage: number } {
+  const ok = <K extends Aspect>(k: K) => {
+    const x = a[k];
+    const y = b[k];
+    return x !== null && y !== null && (!o.measuredOnly || (x.source === "measured" && y.source === "measured")) ? ([x, y] as const) : null;
+  };
+  const terms: [number, number | null][] = [];
+  for (const k of ["hero", "flow", "navigation", "reading_path", "text_direction", "imagery"] as const) {
+    const p = ok(k);
+    terms.push([WEIGHTS[k], p ? (p[0].value === p[1].value ? 1 : 0) : null]);
+  }
+  const l = ok("section_layouts");
+  terms.push([WEIGHTS.section_layouts, l ? multisetOverlap(l[0].value, l[1].value) : null]);
+  // a sequence of one section has no edges: then the order says nothing (not a match)
+  const ea = l ? edges(l[0].value) : [];
+  const eb = l ? edges(l[1].value) : [];
+  terms.push([WEIGHTS.layout_sequence, l && ea.length && eb.length ? multisetOverlap(ea, eb) : null]);
+  const t = ok("transitions");
+  terms.push([WEIGHTS.transitions, t ? multisetOverlap(t[0].value, t[1].value) : null]);
+  const coverage = terms.reduce((n, [w, v]) => n + (v === null ? 0 : w), 0);
+  const sum = terms.reduce((n, [w, v]) => n + (v === null ? 0 : w * v), 0);
+  return { similarity: coverage ? Math.round((sum / coverage) * 1000) / 1000 : 0, coverage: Math.round(coverage * 1000) / 1000 };
+}
+
+/** Below this share of the weight known on both sides, a similarity decides nothing. */
+export const MIN_COVERAGE = 0.5;
+
+/**
+ * 0 (nothing shared) .. 1 (same skeleton): the higher of the similarity over all known aspects and over measured
+ * aspects only, each counted only when it covers at least MIN_COVERAGE of the weight; 0 when neither does.
+ */
 export function structuralSimilarity(a: StructureDescriptor, b: StructureDescriptor): number {
-  const eq = (k: Exclude<Aspect, "section_layouts" | "transitions">) => (a[k] && b[k] && a[k]!.value === b[k]!.value ? 1 : 0);
-  const la = a.section_layouts?.value;
-  const lb = b.section_layouts?.value;
-  const ta = a.transitions?.value;
-  const tb = b.transitions?.value;
-  const s =
-    WEIGHTS.hero * eq("hero") +
-    WEIGHTS.flow * eq("flow") +
-    WEIGHTS.navigation * eq("navigation") +
-    WEIGHTS.reading_path * eq("reading_path") +
-    WEIGHTS.section_layouts * (la && lb ? multisetOverlap(la, lb) : 0) +
-    WEIGHTS.layout_sequence * (la && lb ? multisetOverlap(edges(la), edges(lb)) : 0) +
-    WEIGHTS.transitions * (ta && tb ? multisetOverlap(ta, tb) : 0) +
-    WEIGHTS.text_direction * eq("text_direction") +
-    WEIGHTS.imagery * eq("imagery");
-  return Math.round(s * 1000) / 1000;
+  const scores = [similarityDetail(a, b), similarityDetail(a, b, { measuredOnly: true })].filter((d) => d.coverage >= MIN_COVERAGE).map((d) => d.similarity);
+  return scores.length ? Math.max(...scores) : 0;
 }
 
 /** Provisional thresholds (Issue #159: to be fixed with the vocabulary). */

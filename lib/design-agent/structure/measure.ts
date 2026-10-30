@@ -10,12 +10,13 @@
  * generic skeleton signs of hero and flow) are measured; the others come only from a declaration (the design's own
  * direction). A measured value always wins over a declared one.
  */
+import { crc32, deflateSync } from "node:zlib";
 import type { Browser } from "playwright";
 import { GENERIC, type StructureDescriptor, type VOCABULARY } from "./descriptor";
 
 type Box = { x: number; y: number; w: number; h: number };
 type Block = { box: Box; mediaArea: number; svgArea: number; chars: number; centred: boolean; links: number };
-type Section = { box: Box; bg: string; borders: { top: number; bottom: number }; chars: number; verticalChars: number; blocks: Block[] };
+type Section = { box: Box; bg: string; ownMedia: boolean; borders: { top: number; bottom: number }; chars: number; verticalChars: number; blocks: Block[] };
 export type PageMeasure = {
   viewport: { width: number; height: number };
   sections: Section[];
@@ -23,11 +24,17 @@ export type PageMeasure = {
   media: { box: Box; svg: boolean }[];
   chars: number;
   verticalChars: number;
+  /** Requests the page made that were not its own page, stylesheet or pictures (refused; reported, never followed). */
+  blocked: number;
 };
 
 export const VIEWPORTS = { desktop: { width: 1440, height: 900 }, mobile: { width: 390, height: 844 } } as const;
 
 const MEASURE = `(() => {
+  // the page's own elements may shadow document / element methods by name (DOM clobbering): call the prototypes
+  const qsa = (root, sel) => (root === document ? Document.prototype.querySelectorAll : Element.prototype.querySelectorAll).call(root, sel);
+  const kidsOf = (el) => [...Object.getOwnPropertyDescriptor(Element.prototype, "children").get.call(el)];
+  const body = Object.getOwnPropertyDescriptor(Document.prototype, "body").get.call(document);
   const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height }; };
   const visible = (el) => { const s = getComputedStyle(el); const r = el.getBoundingClientRect(); return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0; };
   const area = (b) => b.w * b.h;
@@ -35,65 +42,105 @@ const MEASURE = `(() => {
   const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join("").length;
   const vertical = (el) => /^vertical|^sideways/.test(getComputedStyle(el).writingMode);
   let chars = 0, verticalChars = 0;
-  for (const el of document.body.querySelectorAll("*")) { if (!visible(el)) continue; const n = ownText(el); chars += n; if (vertical(el)) verticalChars += n; }
+  for (const el of qsa(body, "*")) { if (!visible(el)) continue; const n = ownText(el); chars += n; if (vertical(el)) verticalChars += n; }
   const media = [];
-  for (const el of document.body.querySelectorAll("*")) {
+  for (const el of qsa(body, "*")) {
     if (!visible(el) || !isMediaEl(el) || el.closest("svg") !== el && el.closest("svg")) continue;
     media.push({ box: box(el), svg: el.localName === "svg" });
   }
-  let roots = [...document.querySelectorAll("[data-section]")].filter((el) => !el.parentElement.closest("[data-section]") && visible(el));
-  if (!roots.length) roots = [...document.body.children].filter((el) => visible(el) && el.getBoundingClientRect().height > 40);
+  let roots = [...qsa(document, "[data-section]")].filter((el) => !el.parentElement.closest("[data-section]") && visible(el));
+  if (!roots.length) roots = kidsOf(body).filter((el) => visible(el) && el.getBoundingClientRect().height > 40);
   const blockOf = (el) => {
     const b = box(el);
     let mediaArea = 0, svgArea = 0;
-    for (const m of [el, ...el.querySelectorAll("*")]) {
+    for (const m of [el, ...qsa(el, "*")]) {
       if (!visible(m) || !isMediaEl(m)) continue;
       const mb = box(m);
       mediaArea += area(mb);
       if (m.localName === "svg") svgArea += area(mb);
       if (m.localName === "svg") break;
     }
-    let c = 0; for (const t of [el, ...el.querySelectorAll("*")]) if (visible(t)) c += ownText(t);
+    let c = 0; for (const t of [el, ...qsa(el, "*")]) if (visible(t)) c += ownText(t);
     const s = getComputedStyle(el);
-    return { box: b, mediaArea: Math.min(mediaArea, area(b)), svgArea: Math.min(svgArea, area(b)), chars: c, centred: s.textAlign === "center", links: el.querySelectorAll("a, button").length };
+    return { box: b, mediaArea: Math.min(mediaArea, area(b)), svgArea: Math.min(svgArea, area(b)), chars: c, centred: s.textAlign === "center", links: qsa(el, "a, button").length };
   };
   const sections = roots.map((root) => {
     let parent = root;
     // descend through single wrappers that fill the section
     for (let i = 0; i < 3; i++) {
-      const kids = [...parent.children].filter(visible);
+      const kids = kidsOf(parent).filter(visible);
       if (kids.length !== 1) break;
       const kb = box(kids[0]), pb = box(parent);
       if (kb.w * kb.h < 0.6 * pb.w * pb.h) break;
       parent = kids[0];
     }
     const sb = box(root);
-    const blocks = [...parent.children].filter((el) => visible(el) && area(box(el)) >= 0.02 * area(sb)).map(blockOf);
-    let c = 0, v = 0; for (const t of [root, ...root.querySelectorAll("*")]) { if (!visible(t)) continue; const n = ownText(t); c += n; if (vertical(t)) v += n; }
+    const big = (el) => visible(el) && area(box(el)) >= 0.02 * area(sb);
+    let els = kidsOf(parent).filter(big);
+    // a heading over a container that holds the section's real layout (cards, two columns): look inside the container
+    const main = els.reduce((m, el) => (!m || area(box(el)) > area(box(m)) ? el : m), null);
+    if (main && area(box(main)) >= 0.5 * area(sb) && kidsOf(main).filter(big).length >= 2) els = [...els.filter((el) => el !== main), ...kidsOf(main).filter(big)];
+    const blocks = els.map(blockOf);
+    let c = 0, v = 0; for (const t of [root, ...qsa(root, "*")]) { if (!visible(t)) continue; const n = ownText(t); c += n; if (vertical(t)) v += n; }
     const st = getComputedStyle(root);
-    return { box: sb, bg: st.backgroundColor, borders: { top: parseFloat(st.borderTopWidth) || 0, bottom: parseFloat(st.borderBottomWidth) || 0 }, chars: c, verticalChars: v, blocks };
+    return { box: sb, bg: st.backgroundColor, ownMedia: /url\\(/.test(st.backgroundImage), borders: { top: parseFloat(st.borderTopWidth) || 0, bottom: parseFloat(st.borderBottomWidth) || 0 }, chars: c, verticalChars: v, blocks };
   });
   let nav = null;
-  for (const el of document.querySelectorAll("nav, [role=navigation], header")) {
+  for (const el of qsa(document, "nav, [role=navigation], header")) {
     if (!visible(el)) continue;
-    const links = el.querySelectorAll("a").length;
+    const links = qsa(el, "a").length;
     if (el.localName === "header" && links < 3) continue;
     nav = { box: box(el), links }; break;
   }
-  return { viewport: { width: innerWidth, height: innerHeight }, sections, nav, media, chars, verticalChars };
+  return { viewport: { width: innerWidth, height: innerHeight }, sections, nav, media, chars, verticalChars, blocked: 0 };
 })()`;
 
-/** Draws the page at one viewport (JS off, no network) and reads its geometry. */
-export async function measurePage(browser: Browser, page: { html: string; css: string }, viewport: { width: number; height: number }): Promise<PageMeasure> {
+/** A tiny grey PNG of 4:3, served for every picture the page asks for when its bytes are not given (keeps its proportions). */
+function placeholderPng(): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(4, 0);
+  ihdr.writeUInt32BE(3, 4);
+  ihdr.set([8, 0, 0, 0, 0], 8);
+  const raw = Buffer.alloc(3 * (1 + 4), 0x99);
+  for (let r = 0; r < 3; r++) raw[r * 5] = 0;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+/** The page is served from this closed origin; nothing else is ever reached. */
+const ORIGIN = "http://structure.invalid";
+
+/**
+ * Draws the page at one viewport (JS off) and reads its geometry. The page, its stylesheet and its pictures are served
+ * from a closed origin by the test harness itself (pictures as given, else as a 4:3 placeholder, so an image sized by
+ * its own proportions keeps a real box); every other request is refused and counted.
+ */
+export async function measurePage(browser: Browser, page: { html: string; css: string; assets?: Record<string, Buffer> }, viewport: { width: number; height: number }): Promise<PageMeasure> {
   const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block", viewport, deviceScaleFactor: 1 });
+  let blocked = 0;
   try {
-    await context.route("**/*", (route) => route.abort());
+    const placeholder = placeholderPng();
+    await context.route("**/*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.origin !== ORIGIN) return (blocked++, route.abort());
+      const path = url.pathname;
+      // a page that links no stylesheet still gets its CSS, as a link (the CSS text never enters the HTML)
+      if (path === "/" || path === "/index.html") return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: /<link\b[^>]*stylesheet/i.test(page.html) ? page.html : `<link rel="stylesheet" href="/style.css">${page.html}` });
+      if (path.endsWith(".css")) return route.fulfill({ status: 200, contentType: "text/css; charset=utf-8", body: page.css });
+      if (/\.(png|jpe?g|webp|gif|avif)$/i.test(path)) return route.fulfill({ status: 200, contentType: "image/png", body: page.assets?.[path.slice(1)] ?? placeholder });
+      blocked++;
+      return route.abort();
+    });
     const p = await context.newPage();
-    // the stylesheet link is replaced by the CSS inline; nothing is fetched
-    const html = page.html.replace(/<link\b[^>]*rel=["']?stylesheet["']?[^>]*>/gi, "");
-    const withCss = /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `<style>${page.css.replace(/<\/style/gi, "<\\/style")}</style></head>`) : `<style>${page.css}</style>${html}`;
-    await p.setContent(withCss, { waitUntil: "load" });
-    return (await p.evaluate(MEASURE)) as PageMeasure;
+    await p.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    return { ...((await p.evaluate(MEASURE)) as PageMeasure), blocked };
   } finally {
     await context.close();
   }
@@ -109,18 +156,22 @@ export function sectionLayout(s: Section): Layout {
   const sa = area(s.box);
   const media = s.blocks.reduce((n, b) => n + b.mediaArea, 0);
   const svg = s.blocks.reduce((n, b) => n + b.svgArea, 0);
-  if (media >= 0.6 * sa && svg < 0.3 * sa) return "full_bleed_media";
+  if ((s.ownMedia || media >= 0.6 * sa) && svg < 0.3 * sa) return "full_bleed_media";
   if (svg >= 0.3 * sa) return "diagram";
   const bs = s.blocks;
   for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) if (overlap(bs[i]!.box, bs[j]!.box) >= 0.15 * Math.min(area(bs[i]!.box), area(bs[j]!.box))) return "overlap_collage";
   if (s.chars > 0 && s.verticalChars / s.chars >= 0.5) return "vertical_text";
   const m = bs.filter(isMedia);
   const t = bs.filter(isText);
-  if (m.length === 1 && t.length === 1 && bs.length <= 3) {
-    const [a, b] = [m[0]!.box, t[0]!.box];
-    const xDisjoint = a.x + a.w <= b.x + 1 || b.x + b.w <= a.x + 1;
-    const yShared = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 0.5 * Math.min(a.h, b.h);
-    if (xDisjoint && yShared) return "split_copy_media";
+  // one picture with text beside it is a split, whatever headings sit above them
+  if (m.length === 1) {
+    const a = m[0]!.box;
+    const beside = t.some(({ box: b }) => {
+      const xDisjoint = a.x + a.w <= b.x + 1 || b.x + b.w <= a.x + 1;
+      const yShared = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 0.5 * Math.min(a.h, b.h);
+      return xDisjoint && yShared;
+    });
+    if (beside) return "split_copy_media";
   }
   const rows = new Map<number, Block[]>();
   for (const b of bs) rows.set(Math.round(b.box.y / 20), [...(rows.get(Math.round(b.box.y / 20)) ?? []), b]);
