@@ -106,8 +106,18 @@ export const MIN_COVERAGE = 0.5;
  * aspects only, each counted only when it covers at least MIN_COVERAGE of the weight; 0 when neither does.
  */
 export function structuralSimilarity(a: StructureDescriptor, b: StructureDescriptor): number {
-  const scores = [similarityDetail(a, b), similarityDetail(a, b, { measuredOnly: true })].filter((d) => d.coverage >= MIN_COVERAGE).map((d) => d.similarity);
-  return scores.length ? Math.max(...scores) : 0;
+  const scores = [similarityDetail(a, b)];
+  // the measured-only score speaks only when the measurement carries the skeleton itself: a measured hero or flow on
+  // both sides, or at least two sections on each side classified as something other than plain text. Otherwise a few
+  // aspects shared by most pages (a top bar, horizontal text, plain-text sections) would look like a copy.
+  if (measuredSkeleton(a) && measuredSkeleton(b)) scores.push(similarityDetail(a, b, { measuredOnly: true }));
+  const counted = scores.filter((d) => d.coverage >= MIN_COVERAGE).map((d) => d.similarity);
+  return counted.length ? Math.max(...counted) : 0;
+}
+
+function measuredSkeleton(d: StructureDescriptor): boolean {
+  if (d.hero?.source === "measured" || d.flow?.source === "measured") return true;
+  return d.section_layouts?.source === "measured" && d.section_layouts.value.filter((l) => l !== "single_column_text").length >= 2;
 }
 
 /** Provisional thresholds (Issue #159: to be fixed with the vocabulary). */

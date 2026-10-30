@@ -1,7 +1,7 @@
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ASPECTS, multisetOverlap, similarityDetail, StructureDescriptor, structuralSimilarity, structureFindings } from "@/lib/design-agent/structure/descriptor";
-import { describe as describeMeasure, measurePage, sectionLayout, VIEWPORTS } from "@/lib/design-agent/structure/measure";
+import { describe as describeMeasure, measurePage, outsideRouterMarkup, sectionLayout, VIEWPORTS } from "@/lib/design-agent/structure/measure";
 
 // DEV-125 (Phase 2b, Issue #159): provisional 8-aspect structure descriptors, measured from real Chromium geometry on
 // synthetic fixture pages. Offline: no Codex, no network (every request is aborted), JavaScript off.
@@ -179,6 +179,47 @@ describe("review fixes (DEV-125 Fresh Review)", () => {
     expect(structuralSimilarity(one, one)).toBe(0);
     expect(StructureDescriptor.safeParse({ ...one, transitions: { value: [], source: "measured" } }).success).toBe(false);
   });
+});
+
+describe("re-review fixes (DEV-125 round 2)", () => {
+  /** A text-led page: a top bar and sections of plain text (layouts all fall back to single_column_text). */
+  const textPage = (cls: string) => ({
+    html: doc(`<nav><a href="#a">a</a><a href="#b">b</a><a href="#c">c</a></nav><section data-section="a" class="${cls}"><p>一</p></section><section data-section="b" class="${cls}"><p>二</p></section><section data-section="c" class="${cls}"><p>三</p></section>`),
+    css: `nav{display:flex;gap:20px;height:60px}section{height:400px;padding:40px}.cut{border-top:2px solid #000}.run{margin-top:-60px}`,
+  });
+
+  it("H-A: two text-led pages that differ in every declared aspect are not a copy of each other", async () => {
+    const a = describeMeasure(await measure(textPage("cut")), { hero: "type_led", flow: "single_axis_scroll", reading_path: "vertical_axis" });
+    const b = describeMeasure(await measure(textPage("run")), { hero: "diagram_led", flow: "map_of_stations", reading_path: "radial" });
+    expect(structuralSimilarity(a, b)).toBeLessThan(0.6);
+    expect(structureFindings(a, { references: { ref: b }, siblings: { sib: b } }).map((f) => f.code)).not.toContain("TOO_CLOSE_TO_REFERENCE");
+  }, 60_000);
+
+  it("H-B: the textbook generic page inside max-width containers is still the generic skeleton", async () => {
+    const page = {
+      html: doc(`<header><nav><a href="#a">a</a><a href="#b">b</a><a href="#c">c</a></nav></header>
+<section data-section="hero"><div class="inner"><div class="row"><div class="copy"><h1>店名</h1><a href="#a">見る</a></div><div class="pic"><img src="assets/A1.png" alt=""></div></div></div></section>
+<section data-section="menu"><div class="inner"><h2>メニュー</h2><div class="grid"><div class="card">一</div><div class="card">二</div><div class="card">三</div></div></div></section>
+<section data-section="story"><div class="inner"><h2>こだわり</h2><div class="row"><div class="pic"><img src="assets/A1.png" alt=""></div><div class="copy"><p>説明</p></div></div></div></section>
+<section data-section="info"><div class="inner"><h2>店舗情報</h2><div class="row"><div class="copy"><p>営業時間</p></div><div class="pic"><img src="assets/A1.png" alt=""></div></div></div></section>`),
+      css: `body{margin:0}header{position:sticky;top:0}nav{display:flex;gap:20px;padding:20px}section{border-top:1px solid #ddd}.inner{max-width:1120px;margin:0 auto;padding:80px}
+.row{display:flex;gap:40px}.copy,.pic{flex:1}img{width:100%;height:auto;display:block}.grid{display:flex;gap:24px}.card{flex:1;height:260px;background:#eee}`,
+    };
+    const d = describeMeasure(await measure(page));
+    expect(d.section_layouts?.value).toEqual(["split_copy_media", "grid_cards", "split_copy_media", "split_copy_media"]);
+    expect(structureFindings(d).map((f) => f.code)).toContain("GENERIC_SKELETON");
+  }, 60_000);
+
+  it("M-A: markup that can reach out before the request router is refused before anything is drawn", async () => {
+    for (const bad of ['<link rel="prerender" href="http://127.0.0.1/">', '<iframe src="http://127.0.0.1/"></iframe>', '<object data="x"></object>', '<embed src="x">', '<meta http-equiv="refresh" content="0;url=http://127.0.0.1/">', "<link rel=preconnect href=//x>"])
+      await expect(measurePage(browser, { html: doc(bad), css: "" }, VIEWPORTS.desktop)).rejects.toMatchObject({ code: "MEASURE_PAGE_REFUSED" });
+    expect(outsideRouterMarkup(doc("<p>x</p>"))).toBeNull();
+  }, 60_000);
+
+  it("L-A: names that shadow DOM methods on a form do not break measuring", async () => {
+    const m = await measurePage(browser, { html: `<form><input name="getBoundingClientRect"><input name="childNodes"><input name="localName"></form><section data-section="a"><p>店名</p></section>`, css: "" }, VIEWPORTS.desktop);
+    expect(m.sections.length).toBeGreaterThanOrEqual(1);
+  }, 60_000);
 });
 
 describe("isolation (provisional vocabulary: never used by a generator without a separate approval)", () => {

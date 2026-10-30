@@ -1,10 +1,13 @@
 /**
  * Phase 2b (DEV-125): measuring a rendered page for the structure descriptor (descriptor.ts).
  *
- * The page is drawn by Chromium with JavaScript off and every request aborted (the HTML and CSS are given inline;
- * an image a page refers to simply does not load, its box still counts). Only geometry and computed styles are read:
- * the boxes of the sections (elements marked data-section, else the body's top-level blocks), their direct blocks,
- * where pictures and drawings sit, the navigation, and the writing mode of the text.
+ * The page is drawn by Chromium with JavaScript off. Its HTML, stylesheet and pictures are served by the request
+ * router from a closed origin (pictures as given, else a 4:3 placeholder); every other routed request is refused and
+ * counted. Some browser features open connections before or outside the router (prerender, frames, objects, meta
+ * refresh); the page is refused if it contains them (MeasureRefused), so measurePage expects a page that also passed
+ * the prototype safety check (lib/design-agent/phase2f/prototype-safety.ts), as every Phase 2f prototype does. Only
+ * geometry and computed styles are read: the boxes of the sections (elements marked data-section, else the body's
+ * top-level blocks), their blocks, where pictures and drawings sit, the navigation, and the writing mode of the text.
  *
  * The aspects that geometry can tell (navigation, section layouts, transitions, text direction, imagery, and the two
  * generic skeleton signs of hero and flow) are measured; the others come only from a declaration (the design's own
@@ -32,24 +35,30 @@ export const VIEWPORTS = { desktop: { width: 1440, height: 900 }, mobile: { widt
 
 const MEASURE = `(() => {
   // the page's own elements may shadow document / element methods by name (DOM clobbering): call the prototypes
+  const getter = (proto, name) => Object.getOwnPropertyDescriptor(proto, name).get;
+  const rectOf = (el) => Element.prototype.getBoundingClientRect.call(el);
+  const nodesOf = (el) => [...getter(Node.prototype, "childNodes").call(el)];
+  const nameOf = (el) => getter(Element.prototype, "localName").call(el);
+  const parentOf = (el) => getter(Node.prototype, "parentElement").call(el);
+  const closestOf = (el, sel) => Element.prototype.closest.call(el, sel);
   const qsa = (root, sel) => (root === document ? Document.prototype.querySelectorAll : Element.prototype.querySelectorAll).call(root, sel);
   const kidsOf = (el) => [...Object.getOwnPropertyDescriptor(Element.prototype, "children").get.call(el)];
   const body = Object.getOwnPropertyDescriptor(Document.prototype, "body").get.call(document);
-  const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height }; };
-  const visible = (el) => { const s = getComputedStyle(el); const r = el.getBoundingClientRect(); return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0; };
+  const box = (el) => { const r = rectOf(el); return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height }; };
+  const visible = (el) => { const s = getComputedStyle(el); const r = rectOf(el); return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0; };
   const area = (b) => b.w * b.h;
-  const isMediaEl = (el) => ["img", "svg", "picture", "video", "canvas"].includes(el.localName) || /url\\(/.test(getComputedStyle(el).backgroundImage);
-  const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join("").length;
+  const isMediaEl = (el) => ["img", "svg", "picture", "video", "canvas"].includes(nameOf(el)) || /url\\(/.test(getComputedStyle(el).backgroundImage);
+  const ownText = (el) => nodesOf(el).filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join("").length;
   const vertical = (el) => /^vertical|^sideways/.test(getComputedStyle(el).writingMode);
   let chars = 0, verticalChars = 0;
   for (const el of qsa(body, "*")) { if (!visible(el)) continue; const n = ownText(el); chars += n; if (vertical(el)) verticalChars += n; }
   const media = [];
   for (const el of qsa(body, "*")) {
-    if (!visible(el) || !isMediaEl(el) || el.closest("svg") !== el && el.closest("svg")) continue;
-    media.push({ box: box(el), svg: el.localName === "svg" });
+    if (!visible(el) || !isMediaEl(el) || closestOf(el, "svg") !== el && closestOf(el, "svg")) continue;
+    media.push({ box: box(el), svg: nameOf(el) === "svg" });
   }
-  let roots = [...qsa(document, "[data-section]")].filter((el) => !el.parentElement.closest("[data-section]") && visible(el));
-  if (!roots.length) roots = kidsOf(body).filter((el) => visible(el) && el.getBoundingClientRect().height > 40);
+  let roots = [...qsa(document, "[data-section]")].filter((el) => !closestOf(parentOf(el), "[data-section]") && visible(el));
+  if (!roots.length) roots = kidsOf(body).filter((el) => visible(el) && rectOf(el).height > 40);
   const blockOf = (el) => {
     const b = box(el);
     let mediaArea = 0, svgArea = 0;
@@ -57,8 +66,8 @@ const MEASURE = `(() => {
       if (!visible(m) || !isMediaEl(m)) continue;
       const mb = box(m);
       mediaArea += area(mb);
-      if (m.localName === "svg") svgArea += area(mb);
-      if (m.localName === "svg") break;
+      if (nameOf(m) === "svg") svgArea += area(mb);
+      if (nameOf(m) === "svg") break;
     }
     let c = 0; for (const t of [el, ...qsa(el, "*")]) if (visible(t)) c += ownText(t);
     const s = getComputedStyle(el);
@@ -66,12 +75,10 @@ const MEASURE = `(() => {
   };
   const sections = roots.map((root) => {
     let parent = root;
-    // descend through single wrappers that fill the section
-    for (let i = 0; i < 3; i++) {
+    // descend through single wrappers (a max-width container, an inner padding box): the layout is inside them
+    for (let i = 0; i < 4; i++) {
       const kids = kidsOf(parent).filter(visible);
       if (kids.length !== 1) break;
-      const kb = box(kids[0]), pb = box(parent);
-      if (kb.w * kb.h < 0.6 * pb.w * pb.h) break;
       parent = kids[0];
     }
     const sb = box(root);
@@ -79,7 +86,9 @@ const MEASURE = `(() => {
     let els = kidsOf(parent).filter(big);
     // a heading over a container that holds the section's real layout (cards, two columns): look inside the container
     const main = els.reduce((m, el) => (!m || area(box(el)) > area(box(m)) ? el : m), null);
-    if (main && area(box(main)) >= 0.5 * area(sb) && kidsOf(main).filter(big).length >= 2) els = [...els.filter((el) => el !== main), ...kidsOf(main).filter(big)];
+    // measured against the content beside it (not the padded section)
+    const content = els.reduce((n, el) => n + area(box(el)), 0);
+    if (main && area(box(main)) >= 0.5 * content && kidsOf(main).filter(big).length >= 2) els = [...els.filter((el) => el !== main), ...kidsOf(main).filter(big)];
     const blocks = els.map(blockOf);
     let c = 0, v = 0; for (const t of [root, ...qsa(root, "*")]) { if (!visible(t)) continue; const n = ownText(t); c += n; if (vertical(t)) v += n; }
     const st = getComputedStyle(root);
@@ -89,7 +98,7 @@ const MEASURE = `(() => {
   for (const el of qsa(document, "nav, [role=navigation], header")) {
     if (!visible(el)) continue;
     const links = qsa(el, "a").length;
-    if (el.localName === "header" && links < 3) continue;
+    if (nameOf(el) === "header" && links < 3) continue;
     nav = { box: box(el), links }; break;
   }
   return { viewport: { width: innerWidth, height: innerHeight }, sections, nav, media, chars, verticalChars, blocked: 0 };
@@ -114,7 +123,32 @@ function placeholderPng(): Buffer {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-/** The page is served from this closed origin; nothing else is ever reached. */
+export class MeasureRefused extends Error {
+  readonly code = "MEASURE_PAGE_REFUSED";
+  constructor(readonly detail: string) {
+    super(`MEASURE_PAGE_REFUSED: ${detail}`);
+    this.name = "MeasureRefused";
+  }
+}
+
+/**
+ * Markup that can open a connection outside the request router: frames and embedded documents, meta refresh, and any
+ * <link> other than a stylesheet (prerender and its relatives). Checked on the raw HTML before anything is drawn
+ * (fail closed: a false match only refuses the page).
+ */
+export function outsideRouterMarkup(html: string): string | null {
+  const el = html.match(/<\s*(iframe|frame|frameset|object|embed|applet|portal)\b/i);
+  if (el) return `element <${el[1]!.toLowerCase()}>`;
+  if (/<\s*meta\b[^>]*http-equiv\s*=\s*["']?\s*refresh/i.test(html)) return "meta refresh";
+  for (const m of html.matchAll(/<\s*link\b([^>]*)>/gi)) {
+    const rel = m[1]!.match(/\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const value = (rel?.[1] ?? rel?.[2] ?? rel?.[3] ?? "").trim().toLowerCase();
+    if (value !== "stylesheet") return `link rel ${value || "(none)"}`;
+  }
+  return null;
+}
+
+/** The page is served from this closed origin through the request router. */
 const ORIGIN = "http://structure.invalid";
 
 /**
@@ -123,6 +157,8 @@ const ORIGIN = "http://structure.invalid";
  * its own proportions keeps a real box); every other request is refused and counted.
  */
 export async function measurePage(browser: Browser, page: { html: string; css: string; assets?: Record<string, Buffer> }, viewport: { width: number; height: number }): Promise<PageMeasure> {
+  const outside = outsideRouterMarkup(page.html);
+  if (outside) throw new MeasureRefused(outside);
   const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block", viewport, deviceScaleFactor: 1 });
   let blocked = 0;
   try {
