@@ -1099,7 +1099,7 @@
       "id": "CP-026",
       "name": "Sawaddee Chao — CHIANG MAI SHOP NOTE v5",
       "category": "thai_cafe_and_craft_shop",
-      "owner_selection": "positive_then_proceeded_research_adoption_reported",
+      "owner_selection": "positive_then_continued_plus_group_adoption",
       "implementation": "local_html_css_js_poc",
       "shop_motifs": [
         "自然光と白壁・木の家具の明るい店内",
@@ -1141,7 +1141,7 @@
       "id": "CP-027",
       "name": "MATO OBJECTS STORE — BETWEEN FLOORS v2",
       "category": "two_floor_craft_objects_store",
-      "owner_selection": "owner_selected_research_reported",
+      "owner_selection": "verbatim_quote_retrieved_not_repo_archived",
       "implementation": "local_html_css_js_poc",
       "shop_motifs": [
         "1階に現代作家の器・木工品",
@@ -1180,7 +1180,7 @@
       "id": "CP-028",
       "name": "ユメツナベース — ONE SHEET, MANY VOICES v1",
       "category": "community_zine_workspace",
-      "owner_selection": "owner_selected_research_reported",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
       "implementation": "local_html_css_js_poc",
       "shop_motifs": [
         "A4用紙から8ページのZINEをつくる行為",
@@ -1219,7 +1219,7 @@
       "id": "CP-029",
       "name": "SNOWMY — SOFT POP v4",
       "category": "korean_shaved_ice_sweets",
-      "owner_selection": "owner_selected_research_reported",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
       "implementation": "local_html_css_js_poc",
       "shop_motifs": [
         "糸ピンスの軽さ・溶ける口当たり",
@@ -1259,7 +1259,7 @@
       "id": "CP-030",
       "name": "高田時計店 — OSU SERVICE COUNTER v2",
       "category": "local_watch_and_repair_shop",
-      "owner_selection": "owner_selected_research_reported",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
       "implementation": "local_html_css_js_poc",
       "shop_motifs": [
         "掛け時計の壁・時計バンド棚・ガラスショーケース",
@@ -1297,7 +1297,7 @@
       "id": "CP-031",
       "name": "リフォーム 中村 — HYBRID v3",
       "category": "kimono_textile_remake_atelier",
-      "owner_selection": "owner_selected_research_reported",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
       "implementation": "local_html_css_js_poc",
       "shop_motifs": [
         "和布の裁断台・布の重ねと切替",
@@ -1330,14 +1330,14 @@
         "古布や作品を公式商品・実物素材として使う",
         "ユーザーが支持したv2骨格を勝手に捨てる"
       ],
-      "implementation_gap": "個別OWNER_APPROVAL MDはライブラリから未発見。一次発言の会話日時は追跡できるが外部検証記録・元ZIPのハッシュ照合・権利確認なし。",
+      "implementation_gap": "個別OWNER_APPROVAL MDはライブラリから未発見。2026-10-29の一括採用記録のみ追跡できるが外部検証記録・元ZIPのハッシュ照合・権利確認なし。",
       "evidence_ref": "design-library/success-cases/CP-031-Reform-Nakamura-Hybrid-v3.md"
     },
     {
       "id": "CP-032",
       "name": "幸せを呼ぶ玉虫屋 — IRIDESCENT LIGHT v1",
       "category": "iridescent_beetle_wing_accessories",
-      "owner_selection": "owner_selected_research_reported",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
       "implementation": "local_html_css_js_poc",
       "shop_motifs": [
         "玉虫の翅に光が当たる角度による色変化",
