@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LIMITS, runLoop, type Ports } from "@/lib/design-agent/loop/controller";
@@ -88,11 +88,48 @@ describe("the mock run controller", () => {
   });
 });
 
+describe("review fixes (DEV-129 Fresh Review)", () => {
+  it("H1: only an explicit selection starts implementation; any other answer stops for the owner", () => {
+    for (const v of [undefined, "", "approved", "SELECTED"]) {
+      const m = mocks({ ownerSelection: () => v as never });
+      expect(runLoop("run-1", m.ports)).toMatchObject({ status: "stopped", code: "OWNER_SELECTION_INVALID", owner_check: true });
+      expect(m.calls.some((c) => c.startsWith("implement"))).toBe(false);
+    }
+  });
+
+  it("L1: a fix that would not be tried is never recorded", () => {
+    const r = runLoop("run-1", mocks({ diffs: [["A"], ["B"], ["C"]] }).ports);
+    expect(r.events.filter((e) => e.startsWith("fix:"))).toEqual(["fix:A:1", "fix:B:1"]);
+    expect(r.code).toBe("RETRY_BUDGET_EXHAUSTED");
+  });
+
+  it("L3 / L4: invalid cause codes, malformed answers and throwing ports stop for the owner, with a record", () => {
+    for (const d of [[""], ["X,Y"], ["lower"]]) expect(runLoop("run-1", mocks({ diffs: [d] }).ports)).toMatchObject({ status: "stopped", code: "PORT_ANSWER_INVALID", owner_check: true });
+    expect(runLoop("run-1", mocks({ design: () => ({ ok: "no" }) as never }).ports)).toMatchObject({ code: "PORT_ANSWER_INVALID" });
+    const t = runLoop("run-1", mocks({ compare: () => { throw new Error("boom"); } }).ports);
+    expect(t).toMatchObject({ status: "stopped", code: "PORT_THREW", owner_check: true, design_approved: false });
+    expect(t.events).toEqual(["end:stopped:PORT_THREW"]);
+  });
+
+  it("L5: a denied approval stops (not waiting); a policy stop goes to the owner; a failed implement or compare is not repaired", () => {
+    const d = mocks({ approval: () => "denied" });
+    expect(runLoop("run-1", d.ports)).toMatchObject({ status: "stopped", code: "DESIGN_CALL_DENIED" });
+    expect(d.calls).toEqual([]);
+    expect(runLoop("run-1", mocks({ design: () => fail("TOOL_FAILED_POLICY", "policy") }).ports)).toMatchObject({ status: "stopped", owner_check: true });
+    const i = mocks({ implement: () => fail("BUILD_FAILED", "output") });
+    expect(runLoop("run-1", i.ports)).toMatchObject({ status: "stopped", code: "BUILD_FAILED", implementation_attempts: 1 });
+    expect(i.calls.filter((c) => c.startsWith("implement"))).toHaveLength(1);
+    expect(runLoop("run-1", mocks({ compare: () => fail("RENDER_FAILED", "environment") }).ports)).toMatchObject({ status: "stopped", owner_check: false, implementation_attempts: 1 });
+  });
+});
+
 describe("isolation (mock only)", () => {
   it("imports nothing and is imported by no code: real ports are a separate approval", () => {
     const repo = resolve(__dirname, "../../../..");
     const src = readFileSync(resolve(repo, "lib/design-agent/loop/controller.ts"), "utf8");
-    expect(src).not.toMatch(/^\s*import\s/m);
+    // the directory holds this one file (M1), and it imports, re-exports and loads nothing
+    expect(readdirSync(resolve(repo, "lib/design-agent/loop"))).toEqual(["controller.ts"]);
+    expect(src).not.toMatch(/^\s*import\s|^\s*export\s[^\n]*\sfrom\s|\bimport\(/m);
     expect(src).not.toMatch(/require\(|\bfetch\(|process\.|child_process/);
     const g = spawnSync("git", ["grep", "--untracked", "-lE", "loop/controller|from [\"'`]\\./controller[\"'`]", "--", "lib", "app", "components", "scripts", "proxy.ts", "supabase", ":!lib/design-agent/loop/**"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);

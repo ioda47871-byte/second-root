@@ -13,7 +13,10 @@
  * - Only the implementation is repaired, offline: at most 3 implementation attempts per task, and at most 2 fixes for
  *   the same cause; then the run stops (`retry_budget_exhausted`).
  * - A run that gets through ends at `owner_review`: a passing comparison is never a design approval.
- * Deterministic: the same port answers give the same events.
+ * - Anything a port answers outside its expected values (or a port that throws) stops the run for the owner: every
+ *   gate is "expected value or stop", never "known bad value or go".
+ * Deterministic: the same port answers give the same events. Cost: in this mock, the only cost limit is one paid call
+ * per approval; the plan's money limits belong to the real ports (a separate approval).
  */
 
 export type StopClass = "environment" | "output" | "safety" | "policy" | "unknown";
@@ -22,7 +25,7 @@ export type PortResult<T> = { ok: true; value: T } | { ok: false; code: string; 
 export type ApprovalRequest = { kind: "design_call"; run_id: string; summary: string };
 export type Ports = {
   /** Grants an approval for exactly this request, or leaves it pending. Never inferred by the controller. */
-  approval: (r: ApprovalRequest) => "approved" | "pending";
+  approval: (r: ApprovalRequest) => "approved" | "pending" | "denied";
   design: (approvalRunId: string) => PortResult<{ design_id: string }>;
   package: (designId: string) => PortResult<{ artifact_id: string; state: "render_pair_complete" | "concept_only" | "incomplete" }>;
   identity: (artifactId: string) => PortResult<"PASS_IDENTITY_ONLY" | "HOLD" | "REJECT">;
@@ -45,14 +48,36 @@ export type LoopResult = {
   design_approved: false;
 };
 
+/**
+ * 3 implementation attempts per task (the first and two fixes), at most 2 fixes for one cause (AI_WORKFLOW: 3 failures
+ * → blocked; same problem → 2 proposals). Under 3 attempts there can be only 2 fixes in all, so the per-cause limit only
+ * names the stop when the third result shows the same cause again: kept as a second guard.
+ */
 export const LIMITS = { implementationAttempts: 3, fixesPerCause: 2 } as const;
+const CAUSE = /^[A-Z][A-Z0-9_]{0,60}$/;
 
 export function runLoop(runId: string, ports: Ports): LoopResult {
+  try {
+    return run(runId, ports);
+  } catch {
+    // a port that throws is recorded as a stop for the owner, never retried
+    return { status: "stopped", code: "PORT_THREW", owner_check: true, events: ["end:stopped:PORT_THREW"], implementation_attempts: 0, design_approved: false };
+  }
+}
+
+const isResult = (r: unknown): r is PortResult<unknown> =>
+  r !== null && typeof r === "object" && (((r as { ok: unknown }).ok === true && "value" in r) || ((r as { ok: unknown }).ok === false && typeof (r as { code: unknown }).code === "string"));
+
+function run(runId: string, ports: Ports): LoopResult {
   const events: string[] = [];
   let attempts = 0;
   const end = (status: LoopStatus, code: string | null, ownerCheck = false): LoopResult => {
     events.push(`end:${status}${code ? `:${code}` : ""}`);
     return { status, code, owner_check: ownerCheck, events, implementation_attempts: attempts, design_approved: false };
+  };
+  const malformed = (step: string) => {
+    events.push(`${step}:malformed`);
+    return end("stopped", "PORT_ANSWER_INVALID", true);
   };
   const failed = (step: string, r: { code: string; stopClass: StopClass }) => {
     events.push(`${step}:failed:${r.code}:${r.stopClass}`);
@@ -62,42 +87,52 @@ export function runLoop(runId: string, ports: Ports): LoopResult {
 
   // 1. the paid design call: only with an approval for exactly this run
   const decision = ports.approval({ kind: "design_call", run_id: runId, summary: "one design call (Codex), counted against the plan's limits" });
-  events.push(`approval:design_call:${decision}`);
+  events.push(`approval:design_call:${String(decision)}`);
+  if (decision === "denied") return end("stopped", "DESIGN_CALL_DENIED", true);
   if (decision !== "approved") return end("awaiting_approval", "DESIGN_CALL_NOT_APPROVED");
   const design = ports.design(runId);
+  if (!isResult(design)) return malformed("design");
   if (!design.ok) return failed("design", design);
   events.push(`design:ok:${design.value.design_id}`);
 
   // 2. package + checks (offline)
   const pkg = ports.package(design.value.design_id);
+  if (!isResult(pkg)) return malformed("package");
   if (!pkg.ok) return failed("package", pkg);
   events.push(`package:${pkg.value.state}`);
   if (pkg.value.state !== "render_pair_complete") return end("stopped", `ARTIFACT_${pkg.value.state.toUpperCase()}`, true);
   const identity = ports.identity(pkg.value.artifact_id);
+  if (!isResult(identity)) return malformed("identity");
   if (!identity.ok) return failed("identity", identity);
   events.push(`identity:${identity.value}`);
   if (identity.value !== "PASS_IDENTITY_ONLY") return end("stopped", `IDENTITY_${identity.value}`, true);
   const structure = ports.structure(pkg.value.artifact_id);
+  if (!isResult(structure)) return malformed("structure");
   if (!structure.ok) return failed("structure", structure);
+  if (!Array.isArray(structure.value) || !structure.value.every((c) => typeof c === "string" && CAUSE.test(c))) return malformed("structure");
   // advisory: shown to the owner with the design, never a stop and never a pass
   events.push(`structure:${structure.value.length ? structure.value.join(",") : "none"}`);
 
   // 3. a person selects the design before anything is implemented
   const selection = ports.ownerSelection(pkg.value.artifact_id);
-  events.push(`owner_selection:${selection}`);
+  events.push(`owner_selection:${String(selection)}`);
   if (selection === "pending") return end("awaiting_owner_selection", null);
   if (selection === "rejected") return end("stopped", "DESIGN_NOT_SELECTED", true);
+  // only an explicit selection lets implementation start
+  if (selection !== "selected") return end("stopped", "OWNER_SELECTION_INVALID", true);
 
   // 4. implement → compare → bounded repair (offline only)
   const fixes = new Map<string, number>();
   let fixFor: string | null = null;
   for (;;) {
-    if (attempts >= LIMITS.implementationAttempts) return end("stopped", "RETRY_BUDGET_EXHAUSTED", true);
     attempts++;
     const build = ports.implement(pkg.value.artifact_id, fixFor);
+    if (!isResult(build)) return malformed("implement");
     if (!build.ok) return failed("implement", build);
     const cmp = ports.compare(build.value.build_id);
+    if (!isResult(cmp)) return malformed("compare");
     if (!cmp.ok) return failed("compare", cmp);
+    if (!Array.isArray(cmp.value.differences) || !cmp.value.differences.every((c) => typeof c === "string" && CAUSE.test(c))) return malformed("compare");
     const diffs = [...new Set(cmp.value.differences)].sort();
     events.push(`compare:${attempts}:${diffs.length ? diffs.join(",") : "match"}`);
     if (!diffs.length) return end("owner_review", null);
@@ -105,6 +140,8 @@ export function runLoop(runId: string, ports: Ports): LoopResult {
     const cause = diffs[0]!;
     const n = (fixes.get(cause) ?? 0) + 1;
     if (n > LIMITS.fixesPerCause) return end("stopped", "SAME_CAUSE_FIX_LIMIT", true);
+    // a fix that would not be tried is never recorded as one
+    if (attempts >= LIMITS.implementationAttempts) return end("stopped", "RETRY_BUDGET_EXHAUSTED", true);
     fixes.set(cause, n);
     fixFor = cause;
     events.push(`fix:${cause}:${n}`);
