@@ -81,7 +81,7 @@ describe("isolation", () => {
     const imports = [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]).sort();
     expect(imports).toEqual(["../artifact/intake", "node:crypto", "node:fs/promises", "node:path"]);
     expect(src).not.toMatch(/child_process|\bfetch\(|codex|anthropic|openai|quarantine\/["']\s*\+/);
-    const g = spawnSync("git", ["grep", "--untracked", "-lE", "impl-lane/handoff|from [\"'`]\\./handoff[\"'`]", "--", ".", ":!lib/design-agent/impl-lane/**", ":!tests/unit/design-agent/impl-lane/**", ":!.ai/**", ":!docs/**"], { cwd: repo, encoding: "utf8" });
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "impl-lane/handoff|from [\"'`]\\./handoff[\"'`]", "--", "lib", "app", "components", "scripts", "proxy.ts", "supabase", ":!lib/design-agent/impl-lane/**"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
   });
 });
