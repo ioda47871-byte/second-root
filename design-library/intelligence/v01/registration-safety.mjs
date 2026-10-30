@@ -25,6 +25,8 @@ const EXTRA_LEVELS = [
 const RECORD_FIELDS = "id title status source_kind category view owner_selected_at design_approval_scope owner_decision_evidence_level owner_decision_quote_primary_replay_verified analysis_requires_independent_review binary_original_verification research_original_candidate_filename official_client_work merchant_authorized website_deployed nextjs_build_verified html_css_impl_verified mobile_web_impl_verified image_asset_uploaded_to_github approved_for_generation approved_for_sales approved_for_production web_presence_status sales_qualification approved_version analysis_evidence_ref owner_evidence_source evidence_note_git_blob_sha".split(" ");
 const PATTERN_FIELDS = "id name category owner_selection implementation shop_motifs structural_translation visual_mechanisms why_selected known_failure_modes not_to_copy implementation_gap evidence_ref".split(" ");
 const MANIFEST_FIELDS = "schema_version dataset catalog_date records policy registered_case_count registered_local_poc_count".split(" ");
+const MANIFEST_POLICY_FIELDS = "not_templates never_reuse_generated_photos_or_logos_for_other_shops not_official_client_work release_or_deployment_approval do_not_mix_with_v02_v03_reference_candidate_counts source_master_assets".split(" ");
+const PROVENANCE_FIELDS = "case_docs case_registry basis".split(" ");
 const PATTERNS_FIELDS = "schema_version dataset as_of scope status owner_acceptance provenance reuse_policy cases limitations registered_case_count registered_local_poc_count".split(" ");
 const REQUIRED_DENY = ["copy_specific_composition","copy_or_reuse_brand_logo_or_photography","copy_specific_text_or_color_recipe","claim_client_approval_or_website_launch","feed_into_production_generators_without_separate_review"];
 const fail = (code) => { throw new Error("RESEARCH_GUARD_" + code); };
@@ -69,6 +71,7 @@ export function verifyCaseSafety(manifest, patterns, originals) {
   const expected = [...frozenManifest.records.map(x => x.id), ...EXTRA_IDS];
   assert(same(records.map(x => x.id), expected) && same(cases.map(x => x.id), expected), "EXACT_ID_ORDER");
   assert(expected.every(x => /^CP-\d{3}$/.test(x)), "ID_FORMAT");
+  assert(keysEqual(manifest.policy, MANIFEST_POLICY_FIELDS) && keysEqual(patterns.provenance, PROVENANCE_FIELDS), "POLICY_AND_PROVENANCE_KEYS");
   assert(manifest.policy?.not_templates === true &&
     manifest.policy?.never_reuse_generated_photos_or_logos_for_other_shops === true &&
     manifest.policy?.not_official_client_work === true &&
@@ -127,6 +130,8 @@ export function verifyCaseSafety(manifest, patterns, originals) {
       /^design-library\/success-cases\/CP-\d{3}-[A-Za-z0-9-]+\.md$/.test(y.evidence_ref) &&
       y.evidence_ref.startsWith("design-library/success-cases/" + id + "-") &&
       y.evidence_ref === x.analysis_evidence_ref, "EVIDENCE_REF_" + id);
+    assert(Array.isArray(y.why_selected) && y.why_selected.length >= 1 &&
+      y.why_selected.every(z => keysEqual(z, ["statement", "basis"])), "WHY_SELECTED_KEYS_" + id);
     assert(Array.isArray(y.shop_motifs) && y.shop_motifs.length >= 2 &&
       Array.isArray(y.visual_mechanisms) && y.visual_mechanisms.length >= 1 &&
       Array.isArray(y.known_failure_modes) && y.known_failure_modes.length >= 1 &&
