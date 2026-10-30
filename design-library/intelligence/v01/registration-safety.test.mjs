@@ -19,7 +19,7 @@ const valid = (m = originalManifest, p = originalPatterns, baseline = frozen) =>
   verifyCaseSafety(m, p, baseline);
 const deny = (m = () => {}, p = () => {}, base = () => {}) => {
   const mm = copy(originalManifest), pp = copy(originalPatterns), ff = { ...frozen };
-  m(mm); p(pp); base(ff);
+  m?.(mm); p?.(pp); base?.(ff);
   assert.throws(() => { valid(mm, pp, ff); verifyEvidenceNotes(mm, pp, read); }, /RESEARCH_GUARD_/);
 };
 
