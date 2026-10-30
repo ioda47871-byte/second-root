@@ -5675,6 +5675,48 @@
       ],
       "note": "0 Codex calls, 0 image generations.",
       "merged": "#157 → 25fe069 (merge commit, 2026-10-30)"
+    },
+    {
+      "id": "DEV-128",
+      "title": "Phase 2e（研究隔離版）：実装レーンの入力。許可済み Artifact の受け渡しだけを新しいレーンへ写し、Codex の試作ソースを渡さない",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-114"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-128-phase2e-impl-lane",
+      "purpose": "Issue #159 の一括承認（2e 研究版：Codex の試作ソースを実装レーンへ見せず、許可済み Artifact のみ渡すことをテスト）。既存の WSL jail・OS 権限・worker は変更・起動しない。",
+      "acceptance_criteria": [
+        "Intake をその場でやり直し、render_pair_complete（受け渡し許可）のときだけレーンを作る",
+        "受け渡し一覧のファイルだけを SHA を再確認しながら新しいディレクトリへ写す（上書きなし・リンク拒否・0700/0600）",
+        "レーンに試作の HTML/CSS（同じバイトも含む）が無いことを事後に確認",
+        "OS レベルの分離ではないことを明記（jail での実行は別承認）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/impl-lane/handoff.test.ts",
+        "tests/unit/design-agent/artifact/isolation.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/impl-lane/**",
+        "tests/unit/design-agent/impl-lane/**",
+        "tests/unit/design-agent/artifact/isolation.test.ts（許可の追加のみ）",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-128.md"
+      ],
+      "forbidden_scope": [
+        "WSL jail・OS 権限・worker の変更や起動",
+        "Codex 実行・画像生成",
+        "既存のゲートの緩和"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "実装レーンを別ユーザー・jail で動かすこと"
+      ],
+      "note": "Issue #159 offline batch approval."
     }
   ]
 }
