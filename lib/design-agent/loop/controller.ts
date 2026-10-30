@@ -57,12 +57,12 @@ export const LIMITS = { implementationAttempts: 3, fixesPerCause: 2 } as const;
 const CAUSE = /^[A-Z][A-Z0-9_]{0,60}$/;
 
 export function runLoop(runId: string, ports: Ports): LoopResult {
-  const log = { events: [] as string[], attempts: 0 };
+  const log = { events: [] as string[], attempts: 0, step: "start" };
   try {
     return run(runId, ports, log);
   } catch {
     // a port that throws is recorded as a stop for the owner (with everything recorded so far), never retried
-    log.events.push("end:stopped:PORT_THREW");
+    log.events.push(`${log.step}:threw`, "end:stopped:PORT_THREW");
     return { status: "stopped", code: "PORT_THREW", owner_check: true, events: log.events, implementation_attempts: log.attempts, design_approved: false };
   }
 }
@@ -73,7 +73,7 @@ const STOP_CLASSES = new Set<StopClass>(["environment", "output", "safety", "pol
 const STATES = new Set(["render_pair_complete", "concept_only", "incomplete"]);
 const IDENTITY = new Set(["PASS_IDENTITY_ONLY", "HOLD", "REJECT"]);
 const obj = (v: unknown): Record<string, unknown> => (v !== null && typeof v === "object" ? (v as Record<string, unknown>) : {});
-const id = (v: unknown) => typeof v === "string" && ID.test(v);
+const id = (v: unknown): v is string => typeof v === "string" && ID.test(v);
 
 const isResult = (r: unknown): r is PortResult<unknown> =>
   r !== null &&
@@ -81,7 +81,10 @@ const isResult = (r: unknown): r is PortResult<unknown> =>
   (((r as { ok: unknown }).ok === true && "value" in r) ||
     ((r as { ok: unknown }).ok === false && typeof (r as { code: unknown }).code === "string" && CAUSE.test((r as { code: string }).code) && STOP_CLASSES.has((r as { stopClass: StopClass }).stopClass)));
 
-function run(runId: string, ports: Ports, log: { events: string[]; attempts: number }): LoopResult {
+/** Answers are recorded only as one of the expected words, else as "invalid" (no free text in the record). */
+const word = (v: unknown, allowed: readonly string[]) => (typeof v === "string" && allowed.includes(v) ? v : "invalid");
+
+function run(runId: string, ports: Ports, log: { events: string[]; attempts: number; step: string }): LoopResult {
   const events = log.events;
   const end = (status: LoopStatus, code: string | null, ownerCheck = false): LoopResult => {
     events.push(`end:${status}${code ? `:${code}` : ""}`);
@@ -98,39 +101,53 @@ function run(runId: string, ports: Ports, log: { events: string[]; attempts: num
   };
 
   // 1. the paid design call: only with an approval for exactly this run
+  log.step = "approval";
   const decision = ports.approval({ kind: "design_call", run_id: runId, summary: "one design call (Codex), counted against the plan's limits" });
-  events.push(`approval:design_call:${String(decision)}`);
+  events.push(`approval:design_call:${word(decision, ["approved", "pending", "denied"])}`);
   if (decision === "denied") return end("stopped", "DESIGN_CALL_DENIED", true);
   if (decision !== "approved") return end("awaiting_approval", "DESIGN_CALL_NOT_APPROVED");
+  log.step = "design";
   const design = ports.design(runId);
   if (!isResult(design)) return malformed("design");
   if (!design.ok) return failed("design", design);
-  if (!id(obj(design.value).design_id)) return malformed("design");
-  events.push(`design:ok:${design.value.design_id}`);
+  // every value is read once and only the checked copy is used (a getter cannot answer differently later)
+  const designId: unknown = obj(design.value).design_id;
+  if (!id(designId)) return malformed("design");
+  events.push(`design:ok:${designId}`);
 
   // 2. package + checks (offline)
-  const pkg = ports.package(design.value.design_id);
+  log.step = "package";
+  const pkg = ports.package(designId);
   if (!isResult(pkg)) return malformed("package");
   if (!pkg.ok) return failed("package", pkg);
-  if (!id(obj(pkg.value).artifact_id) || !STATES.has(obj(pkg.value).state as string)) return malformed("package");
-  events.push(`package:${pkg.value.state}`);
-  if (pkg.value.state !== "render_pair_complete") return end("stopped", `ARTIFACT_${pkg.value.state.toUpperCase()}`, true);
-  const identity = ports.identity(pkg.value.artifact_id);
+  const artifactId: unknown = obj(pkg.value).artifact_id;
+  const state: unknown = obj(pkg.value).state;
+  if (!id(artifactId) || typeof state !== "string" || !STATES.has(state)) return malformed("package");
+  events.push(`package:${state}`);
+  if (state !== "render_pair_complete") return end("stopped", `ARTIFACT_${state.toUpperCase()}`, true);
+  log.step = "identity";
+  const identity = ports.identity(artifactId);
   if (!isResult(identity)) return malformed("identity");
   if (!identity.ok) return failed("identity", identity);
-  if (!IDENTITY.has(identity.value as string)) return malformed("identity");
-  events.push(`identity:${identity.value}`);
-  if (identity.value !== "PASS_IDENTITY_ONLY") return end("stopped", `IDENTITY_${identity.value}`, true);
-  const structure = ports.structure(pkg.value.artifact_id);
+  const verdict: unknown = identity.value;
+  if (typeof verdict !== "string" || !IDENTITY.has(verdict)) return malformed("identity");
+  events.push(`identity:${verdict}`);
+  if (verdict !== "PASS_IDENTITY_ONLY") return end("stopped", `IDENTITY_${verdict}`, true);
+  log.step = "structure";
+  const structure = ports.structure(artifactId);
   if (!isResult(structure)) return malformed("structure");
   if (!structure.ok) return failed("structure", structure);
-  if (!Array.isArray(structure.value) || !structure.value.every((c) => typeof c === "string" && CAUSE.test(c))) return malformed("structure");
+  const findings: unknown = structure.value;
+  if (!Array.isArray(findings)) return malformed("structure");
+  const found = [...(findings as unknown[])];
+  if (!found.every((c) => typeof c === "string" && CAUSE.test(c))) return malformed("structure");
   // advisory: shown to the owner with the design, never a stop and never a pass
-  events.push(`structure:${structure.value.length ? structure.value.join(",") : "none"}`);
+  events.push(`structure:${found.length ? found.join(",") : "none"}`);
 
   // 3. a person selects the design before anything is implemented
-  const selection = ports.ownerSelection(pkg.value.artifact_id);
-  events.push(`owner_selection:${String(selection)}`);
+  log.step = "owner_selection";
+  const selection = ports.ownerSelection(artifactId);
+  events.push(`owner_selection:${word(selection, ["selected", "rejected", "pending"])}`);
   if (selection === "pending") return end("awaiting_owner_selection", null);
   if (selection === "rejected") return end("stopped", "DESIGN_NOT_SELECTED", true);
   // only an explicit selection lets implementation start
@@ -142,15 +159,21 @@ function run(runId: string, ports: Ports, log: { events: string[]; attempts: num
   for (;;) {
     log.attempts++;
     const attempts = log.attempts;
-    const build = ports.implement(pkg.value.artifact_id, fixFor);
+    log.step = "implement";
+    const build = ports.implement(artifactId, fixFor);
     if (!isResult(build)) return malformed("implement");
     if (!build.ok) return failed("implement", build);
-    if (!id(obj(build.value).build_id)) return malformed("implement");
-    const cmp = ports.compare(build.value.build_id);
+    const buildId: unknown = obj(build.value).build_id;
+    if (!id(buildId)) return malformed("implement");
+    log.step = "compare";
+    const cmp = ports.compare(buildId);
     if (!isResult(cmp)) return malformed("compare");
     if (!cmp.ok) return failed("compare", cmp);
-    if (!Array.isArray(obj(cmp.value).differences) || !cmp.value.differences.every((c) => typeof c === "string" && CAUSE.test(c))) return malformed("compare");
-    const diffs = [...new Set(cmp.value.differences)].sort();
+    const raw: unknown = obj(cmp.value).differences;
+    if (!Array.isArray(raw)) return malformed("compare");
+    const list = [...(raw as unknown[])];
+    if (!list.every((c) => typeof c === "string" && CAUSE.test(c))) return malformed("compare");
+    const diffs = [...new Set(list as string[])].sort();
     events.push(`compare:${attempts}:${diffs.length ? diffs.join(",") : "match"}`);
     if (!diffs.length) return end("owner_review", null);
     // one cause per attempt, in a fixed order; a cause fixed twice already stops the run

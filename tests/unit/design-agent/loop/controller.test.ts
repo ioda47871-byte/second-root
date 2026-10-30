@@ -110,7 +110,7 @@ describe("review fixes (DEV-129 Fresh Review)", () => {
     expect(t).toMatchObject({ status: "stopped", code: "PORT_THREW", owner_check: true, design_approved: false });
     // everything recorded before the throw is kept (round 2, L1)
     expect(t.events[0]).toBe("approval:design_call:approved");
-    expect(t.events.at(-1)).toBe("end:stopped:PORT_THREW");
+    expect(t.events.slice(-2)).toEqual(["compare:threw", "end:stopped:PORT_THREW"]);
     expect(t.implementation_attempts).toBe(1);
   });
 
@@ -147,6 +147,21 @@ describe("re-review fixes (DEV-129 round 2)", () => {
   it("L3: a failure without a proper code or class is malformed (never a nameless stop)", () => {
     expect(runLoop("run-1", mocks({ design: () => fail("", "environment") }).ports)).toMatchObject({ code: "PORT_ANSWER_INVALID", owner_check: true });
     expect(runLoop("run-1", mocks({ design: () => ({ ok: false, code: "X", stopClass: "later" }) as never }).ports)).toMatchObject({ code: "PORT_ANSWER_INVALID" });
+  });
+});
+
+describe("final review Lows (DEV-129 round 3)", () => {
+  it("a value is read once: a getter cannot pass the check and then answer differently", () => {
+    let reads = 0;
+    const tricky = { artifact_id: "DA-1", get state() { return reads++ === 0 ? "concept_only" : "render_pair_complete"; } };
+    const r = runLoop("run-1", mocks({ package: () => ok(tricky) as never }).ports);
+    expect(r).toMatchObject({ status: "stopped", code: "ARTIFACT_CONCEPT_ONLY" });
+  });
+
+  it("answers outside the expected words are recorded as invalid, never as free text", () => {
+    const r = runLoop("run-1", mocks({ approval: () => "x\nend:owner_review" as never }).ports);
+    expect(r.events[0]).toBe("approval:design_call:invalid");
+    expect(r.events.some((e) => e.includes("\n"))).toBe(false);
   });
 });
 
