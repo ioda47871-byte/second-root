@@ -18,11 +18,11 @@ describe("staged 30-case research registration (not approved for generation)", (
     expect(r.status, [r.stdout, r.stderr].join("\n")).toBe(0);
     expect(r.stdout).toContain("PASS: 30 research success patterns (17 local Web PoCs)");
   });
-  it("rejects twenty-four unsafe research registry mutations", () => {
+  it("rejects twenty-six unsafe research registry mutations", () => {
     const r = run(["--test", resolve(root, "design-library/intelligence/v01/registration-safety.test.mjs")]);
     expect(r.error).toBeUndefined();
     expect(r.status, [r.stdout, r.stderr].join("\n")).toBe(0);
-    expect(r.stdout).toContain("# pass 25");
+    expect(r.stdout).toContain("# pass 27");
     expect(r.stdout).toContain("# fail 0");
   });
 });
