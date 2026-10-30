@@ -103,7 +103,7 @@ describe("route B (HTML prototype rendered by the runner)", () => {
 
   it("an unsafe prototype goes to the owner, with no render and nothing written", async () => {
     const r = await run("B_html_prototype", designPort(answer({ css: "body{background:url(https://example.com/x.png)}" })));
-    expect(r).toMatchObject({ status: "stopped", code: "PROTOTYPE_UNSAFE", ownerCheck: true });
+    expect(r).toMatchObject({ status: "stopped", code: "PROTOTYPE_UNSAFE", ownerCheck: true, detail: "css url: https://example.com/x.png" });
   });
 });
 

@@ -5570,6 +5570,50 @@
       ],
       "note": "Preparation only; 0 Codex calls.",
       "merged": "#154 → 11704e2 (squash, 2026-10-29)"
+    },
+    {
+      "id": "DEV-123",
+      "title": "Prototype Safety の誤検知の解消（scroll-behavior・日本語の #アンカー）と停止理由の記録",
+      "status": "review",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-122"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-123-prototype-safety-false-positives",
+      "purpose": "オーナー指示（2026-10-30）：B v1.1 Run 1 の Artifact 化を止めた PROTOTYPE_UNSAFE の誤検知を解消し、保存済みの Codex 結果を再利用して PC/SP の完成画面まで進める。",
+      "acceptance_criteria": [
+        "scroll-behavior / overscroll-behavior を IE の behavior と取り違えない（style.css・<style>・style 属性）",
+        "旧 IE の behavior プロパティ・expression()・外部 URL などの拒否は維持（大文字・空白・エスケープを含む）",
+        "# だけで始まるページ内リンクは日本語の id でも許可。外部 URL の # 付きは引き続き拒否",
+        "PROTOTYPE_UNSAFE の停止に、どの規則で止まったか（detail）を残す"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f/parts.test.ts",
+        "tests/unit/design-agent/phase2f/runner.test.ts",
+        "full unit suite",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/phase2f/prototype-safety.ts",
+        "lib/design-agent/phase2f/runner.ts（停止理由の detail のみ）",
+        "tests/unit/design-agent/phase2f/parts.test.ts",
+        "tests/unit/design-agent/phase2f/runner.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-123.md"
+      ],
+      "forbidden_scope": [
+        "Codex の再実行・画像生成",
+        "承認台帳・回数制限・jail・worker の変更",
+        "既存の実行記録・answer.json・画像の変更",
+        "本番の変更"
+      ],
+      "human_approval_triggers": [
+        "マージ（安全検査の変更のため）"
+      ],
+      "note": "0 Codex calls."
     }
   ]
 }
