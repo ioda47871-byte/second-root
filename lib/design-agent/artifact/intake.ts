@@ -472,12 +472,18 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
     if ((Object.keys(VIEWPORTS) as ViewportKey[]).every((k) => s.boxes[k].w === 0 || s.boxes[k].h === 0)) reasons.push(`section_hidden_everywhere:${s.id}`);
   // the provenance record of an owner upload (where and when it was made, by whom) is not designed yet
   if (a.source_kind === "chatgpt_owner_upload_compat") reasons.push("owner_upload_provenance_not_implemented");
+  // DEV-127: a page that is not confirmed to be this shop is never complete (the result can only lower the state)
+  const identity = o.checks?.identity;
+  if (identity && identity.status !== "PASS_IDENTITY_ONLY") reasons.push(`identity_${identity.status.toLowerCase()}:${[...identity.errors, ...identity.pending].join(",")}`);
   const allRender = presents.every(([, og]) => og.state === "present" && og.kind === "viewport_render");
   const state: VerificationState = reasons.length ? "incomplete" : allRender ? "render_pair_complete" : "concept_only";
   if (state === "concept_only") reasons.push("concept_images_are_not_pc_sp_renders");
 
   const warnings: string[] = [];
   if (g.model_reported === null) warnings.push("generation_model_unknown");
+  // structure findings are advisory: shown, never a stop and never a pass
+  const structure = o.checks?.structure;
+  if (structure?.findings.length) warnings.push(`structure_findings:${structure.findings.join(",")}`);
   if (g.tool_version === null) warnings.push("generation_tool_version_unknown");
   if (o.fallback) warnings.push(`fallback_from_c_hybrid:image_${o.fallback.image_outcome}`);
   return buildRecord(a, { artifactSha: sha256(artifactBytes), state, reasons, warnings, files });

@@ -5675,6 +5675,49 @@
       ],
       "note": "0 Codex calls, 0 image generations.",
       "merged": "#157 → 25fe069 (merge commit, 2026-10-30)"
+    },
+    {
+      "id": "DEV-127",
+      "title": "Phase 2d 完成（研究隔離版）：Artifact に検査結果（構造・Identity Lock）を記録する任意の欄と、Intake の互換性・状態を上げない規則",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-114"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-127-phase2d-checks",
+      "purpose": "Issue #159 の一括承認（2d 完成・研究隔離版：Artifact/Intake の追加スキーマと互換性テスト、自己宣言の承認を許さない）。2b・2c の結果を Artifact に残せるようにし、店が違う／未確認なら incomplete にする。",
+      "acceptance_criteria": [
+        "observed.checks は任意で、v1 の既存記録はそのまま受理",
+        "structure は助言（advisory: true）で warning だけ",
+        "identity は PASS_IDENTITY_ONLY 以外なら incomplete（状態を上げることはない）",
+        "counts_as_owner_success:true・署名・承認のキー・コードと矛盾する status は拒否",
+        "Production・worker の受け入れ形式は変えない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/artifact/intake.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/artifact/schema.ts（任意の checks 欄のみ）",
+        "lib/design-agent/artifact/intake.ts（checks の扱いのみ）",
+        "tests/unit/design-agent/artifact/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-127.md"
+      ],
+      "forbidden_scope": [
+        "CodexDesign（Codex の回答スキーマ）・interaction_spec の変更",
+        "既存の状態判定の緩和",
+        "worker・本番の受け入れ形式",
+        "Codex 実行・画像生成"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "interaction_spec のスキーマ（Codex の回答形式の変更）"
+      ],
+      "note": "Issue #159 offline batch approval; interaction spec left for a separate schema approval."
     }
   ]
 }
