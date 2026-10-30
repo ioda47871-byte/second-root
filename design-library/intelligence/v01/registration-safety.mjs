@@ -11,6 +11,12 @@ export function verifyCaseSafety(manifest, patterns) {
  ok(new Set(r.map(x=>x.id)).size===r.length&&new Set(c.map(x=>x.id)).size===c.length,"DUPLICATE_ID");
  ok(r.every(x=>c.some(y=>y.id===x.id))&&c.every(x=>r.some(y=>y.id===x.id)),"CASE_ID_MISMATCH");
  ok(r.every(x=>x.id!=="CP-014"&&x.id!=="CP-025"),"UNAPPROVED_CASE");
+ // Legacy records sometimes predate per-case permission fields. Any explicit
+ // true flag on ANY research record must still be refused, not just CP-026..032.
+ for (const record of r) {
+  ok(record.approved_for_generation !== true && record.approved_for_sales !== true && record.approved_for_production !== true, "RESEARCH_PERMISSION_" + record.id);
+  ok(record.official_client_work !== true && record.merchant_authorized !== true && record.website_deployed !== true, "COMMERCIAL_PERMISSION_" + record.id);
+ }
  const allowedSelections=new Set([
   "owner_selected_research_success_example",
   "owner_design_approved_v4",
