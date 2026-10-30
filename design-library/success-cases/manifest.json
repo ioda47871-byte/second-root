@@ -525,7 +525,7 @@
       "approved_version": "BETWEEN_FLOORS_v2",
       "analysis_evidence_ref": "design-library/success-cases/CP-027-MATO-Between-Floors-v2.md",
       "owner_evidence_source": "2026-10-29T01:43:54+09:00 / user exact phrase 成功例とします; prior-chat retrieval, primary permalink not archived in repo",
-      "evidence_note_git_blob_sha": "ea46ba25aea41d60dcf7f217a6aff92f50ef7470"
+      "evidence_note_git_blob_sha": "96f3b5f70f186c0d69c334a7d5fc35bf368bbc53"
     },
     {
       "id": "CP-028",
@@ -587,7 +587,7 @@
       "approved_version": "SOFT_POP_v4",
       "analysis_evidence_ref": "design-library/success-cases/CP-029-SNOWMY-Soft-Pop-v4.md",
       "owner_evidence_source": "2026-10-29T22:38:51+09:00 / user grouped adoption of CP-026..032; prior-chat retrieval, primary permalink not archived in repo",
-      "evidence_note_git_blob_sha": "4b058d5d7ec8359873c45b20a3fe9bb95507da71"
+      "evidence_note_git_blob_sha": "645c3dd419454905af3d5cfd46776a1a395d1d65"
     },
     {
       "id": "CP-030",
@@ -618,7 +618,7 @@
       "approved_version": "OSU_SERVICE_COUNTER_v2",
       "analysis_evidence_ref": "design-library/success-cases/CP-030-Takada-Service-Counter-v2.md",
       "owner_evidence_source": "2026-10-29T22:38:51+09:00 / user grouped adoption of CP-026..032; prior-chat retrieval, primary permalink not archived in repo",
-      "evidence_note_git_blob_sha": "69039c46b89b85afa8defb703ed8c9bd7f4b7ece"
+      "evidence_note_git_blob_sha": "a6094f1215057f6222ffcaeae0ad0ce5485b8255"
     },
     {
       "id": "CP-031",
@@ -680,7 +680,7 @@
       "approved_version": "IRIDESCENT_LIGHT_v1",
       "analysis_evidence_ref": "design-library/success-cases/CP-032-Tamamushiya-Iridescent-Light-v1.md",
       "owner_evidence_source": "2026-10-29T22:38:51+09:00 / user grouped adoption of CP-026..032; prior-chat retrieval, primary permalink not archived in repo",
-      "evidence_note_git_blob_sha": "0c2c6788f0051f0553b5a681a5191c0ed09ad25e"
+      "evidence_note_git_blob_sha": "01434eb31b764fe96ee194180891de1f49504399"
     }
   ],
   "policy": {
@@ -689,7 +689,7 @@
     "not_official_client_work": true,
     "release_or_deployment_approval": false,
     "do_not_mix_with_v02_v03_reference_candidate_counts": true,
-    "source_master_assets": "CP-001..024 research records predate this extension; original approved images/HTML/ZIP are not present as GitHub binary artifacts (except CP-001..003 preview WebP). CP-026..032 are newly staged research records with original candidate ZIP filenames only; original binary bytes/SHA verification is unavailable. CP-024 pseudo reconstruction v3 remains separate from the approved v2 research original. No record implies license, client approval, generator approval or production deployment."
+    "source_master_assets": "Prior research notes report that original study PNG/HTML/ZIP and some hashes were saved in ChatGPT conversations. This PR has not independently recovered or verified those original bytes or hashes. CP-001..003 preview WebPs are in GitHub; the rest of the source binaries are not present in this research branch. CP-024 pseudo-reconstruction v3 is not the approved original v2. Neither research adoption nor prior SHA notes imply merchant/client authorization, asset reuse rights, model generation approval, sales approval or production deployment."
   },
   "registered_case_count": 30,
   "registered_local_poc_count": 17
