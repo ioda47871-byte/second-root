@@ -1,0 +1,130 @@
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+import { auditIdentity, auditPageText, cleanName } from "@/lib/design-agent/identity/identity-lock";
+
+// DEV-126 (Phase 2c, Issue #159): Identity Lock ported from the research script identity-audit.mjs (PR #142).
+// The image cases are the research script's own tests, with the same verdicts and codes. Offline, fictional or
+// research-recorded names only.
+
+const sha = "a".repeat(64);
+const base = () => ({
+  schema_version: 1,
+  case_id: "CP-015",
+  attempt_id: "cp015-imairo-v1",
+  target: { official_name: "imairo.", allowed_aliases: ["spice & cafe imairo", "imairo"], category_code: "spice_cafe_patisserie", official_source_url: "https://www.instagram.com/imairo.spice.cafe/" },
+  prompt: { shop_name: "imairo.", category_code: "spice_cafe_patisserie", is_research_only: true },
+  output: { image_sha256: sha },
+  visual_inspection: {
+    status: "completed",
+    method: "assistant_visual",
+    inspected_image_sha256: sha,
+    visible_site_identity_labels: ["imairo."],
+    category_code: "spice_cafe_patisserie",
+    unreadable_site_identity: false,
+    image_looks_like_unrelated_shop: false,
+    reviewer_note: "Site header imairo.; spice, cake, coffee sections visible.",
+  } as Record<string, unknown>,
+});
+
+describe("generated images (the research script's cases, same verdicts)", () => {
+  it("a matching output passes identity only, and never counts as owner success", () => {
+    const r = auditIdentity(base());
+    expect([r.status, r.can_show_as_target_design, r.counts_as_owner_success]).toEqual(["PASS_IDENTITY_ONLY", true, false]);
+  });
+
+  it("CP-015: the cobaco bookshop swap fails name AND category; CP-014: the KOALA bakery swap is rejected", () => {
+    const a = base();
+    a.visual_inspection.visible_site_identity_labels = ["cobaco"];
+    a.visual_inspection.category_code = "bookshop_zine";
+    expect(auditIdentity(a)).toMatchObject({ status: "REJECT", errors: expect.arrayContaining(["VISIBLE_WRONG_OR_EXTRA_SHOP_NAME", "VISUAL_WRONG_CATEGORY"]) });
+    const b = base();
+    b.case_id = "CP-014";
+    b.target = { official_name: "CAN BUY RECORDS", allowed_aliases: [], category_code: "record_shop", official_source_url: "https://www.instagram.com/canbuyrecords2023/" };
+    b.prompt = { shop_name: "CAN BUY RECORDS", category_code: "record_shop", is_research_only: true };
+    b.visual_inspection.visible_site_identity_labels = ["KOALA"];
+    b.visual_inspection.category_code = "bakery_cafe";
+    expect(auditIdentity(b).status).toBe("REJECT");
+  });
+
+  it("blocks prompt contamination, an uninspected image, another image's inspection, a second name, an unreadable brand", () => {
+    const p = base();
+    p.prompt.shop_name = "cobaco";
+    expect(auditIdentity(p).errors).toContain("PROMPT_WRONG_SHOP");
+    const u = base();
+    u.visual_inspection = { status: "pending" };
+    expect(auditIdentity(u)).toMatchObject({ status: "HOLD", can_show_as_target_design: false });
+    const o = base();
+    o.visual_inspection.inspected_image_sha256 = "b".repeat(64);
+    expect(auditIdentity(o)).toMatchObject({ status: "REJECT", errors: expect.arrayContaining(["INSPECTION_IMAGE_NOT_MATCHED"]) });
+    const two = base();
+    two.visual_inspection.visible_site_identity_labels = ["imairo.", "cobaco"];
+    expect(auditIdentity(two).status).toBe("REJECT");
+    const unreadable = base();
+    unreadable.visual_inspection.unreadable_site_identity = true;
+    expect(auditIdentity(unreadable).status).toBe("HOLD");
+  });
+
+  it("a missing source, an empty category, no research flag, or missing determinations never pass", () => {
+    const a = base() as Record<string, unknown> & ReturnType<typeof base>;
+    delete (a.target as Record<string, unknown>).official_source_url;
+    a.prompt.is_research_only = false as never;
+    a.target.category_code = "";
+    expect(auditIdentity(a)).toMatchObject({ status: "REJECT", errors: expect.arrayContaining(["TARGET_IDENTITY_INCOMPLETE", "NOT_MARKED_RESEARCH_ONLY"]) });
+    const m = base();
+    delete m.visual_inspection.unreadable_site_identity;
+    delete m.visual_inspection.image_looks_like_unrelated_shop;
+    expect(auditIdentity(m)).toMatchObject({ status: "HOLD", pending: expect.arrayContaining(["BRAND_READABILITY_NOT_RECORDED", "UNRELATED_SHOP_CHECK_MISSING"]) });
+    // anything that is not an object fails closed, without throwing
+    for (const bad of [null, undefined, 42, "x", []]) expect(auditIdentity(bad).status).toBe("REJECT");
+  });
+});
+
+describe("generated HTML pages (visible text)", () => {
+  // the fictional wagashi shop, with the shops of the references it is shown (they must never appear on its page)
+  const wagashi = (o: Record<string, unknown> = {}) => ({
+    schema_version: 1,
+    case_id: "CP-900",
+    attempt_id: "fictional-wagashi-v2-a",
+    target: { official_name: "架空菓庵", allowed_aliases: [], category_code: "wagashi", official_source_url: "design-library/phase2f/wagashi-facts-pack.json" },
+    prompt: { shop_name: "架空菓庵", category_code: "wagashi", is_research_only: true },
+    other_shop_names: ["NAGOYA BEANS", "なごやビーンズ", "豆＊豆", "ズールー工作所"],
+    ...o,
+  });
+
+  it("the target's name on the page and no other shop passes identity only", () => {
+    expect(auditPageText(wagashi(), "架空菓庵　毎朝炊く粒あん　実在の店舗ではありません").status).toBe("PASS_IDENTITY_ONLY");
+  });
+
+  it("a reference shop's name copied into the page is rejected, in any width or case", () => {
+    expect(auditPageText(wagashi(), "架空菓庵 ／ Ｎａｇｏｙａ　Ｂｅａｎｓ").errors).toContain("VISIBLE_WRONG_OR_EXTRA_SHOP_NAME");
+    expect(auditPageText(wagashi(), "架空菓庵 豆*豆").errors).toContain("VISIBLE_WRONG_OR_EXTRA_SHOP_NAME");
+  });
+
+  it("a page without the target's name, an empty page, or no list of other shops never passes", () => {
+    expect(auditPageText(wagashi(), "毎朝炊く粒あん").errors).toContain("TARGET_NAME_NOT_ON_PAGE");
+    expect(auditPageText(wagashi(), "").status).toBe("HOLD");
+    expect(auditPageText(wagashi({ other_shop_names: undefined }), "架空菓庵").pending).toContain("OTHER_SHOP_NAMES_NOT_GIVEN");
+  });
+
+  it("names too short to search for, or overlapping the target, are refused as input", () => {
+    expect(auditPageText(wagashi({ other_shop_names: ["豆"] }), "架空菓庵").errors).toContain("OTHER_NAME_TOO_SHORT");
+    expect(auditPageText(wagashi({ other_shop_names: ["菓庵"] }), "架空菓庵").errors).toContain("OTHER_NAME_OVERLAPS_TARGET");
+    expect(auditPageText(wagashi({ target: { official_name: "庵", allowed_aliases: [], category_code: "wagashi", official_source_url: "x" }, prompt: { shop_name: "庵", category_code: "wagashi", is_research_only: true } }), "庵").errors).toContain("TARGET_NAME_TOO_SHORT");
+  });
+
+  it("names compare after NFKC and without punctuation", () => {
+    expect([cleanName("imairo."), cleanName("ＩＭＡＩＲＯ"), cleanName("豆＊豆")]).toEqual(["imairo", "imairo", "豆豆"]);
+  });
+});
+
+describe("isolation", () => {
+  it("is pure (no I/O) and imported only by its tests until a separate approval wires it in", () => {
+    const repo = resolve(__dirname, "../../../..");
+    const src = readFileSync(resolve(repo, "lib/design-agent/identity/identity-lock.ts"), "utf8");
+    expect(src).not.toMatch(/\bimport\b|require\(|\bfetch\(|process\./);
+    const users = spawnSync("git", ["grep", "--untracked", "-lE", "design-agent/identity([\"'`/]|$)", "--", "lib", "app", "components", "scripts"], { cwd: repo, encoding: "utf8" }).stdout.trim();
+    expect(users).toBe("");
+  });
+});

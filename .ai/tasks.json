@@ -5675,6 +5675,47 @@
       ],
       "note": "0 Codex calls, 0 image generations.",
       "merged": "#157 → 25fe069 (merge commit, 2026-10-30)"
+    },
+    {
+      "id": "DEV-126",
+      "title": "Phase 2c（研究隔離）：Identity Lock の TypeScript 移植（画像の目視記録の照合）と HTML 試作の表示文字による店舗名検査",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-124"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-126-phase2c-identity-lock",
+      "purpose": "Issue #159 の一括承認（2c：Identity Lock の TypeScript への隔離移植と一致/不一致テスト）。研究の identity-audit.mjs（PR #142）と同じ判定・コードを TS で持ち、HTML 試作では表示文字から対象店名の有無と他店名（参照に使った成功例など）の混入を機械的に検査する。",
+      "acceptance_criteria": [
+        "研究スクリプトのテストケースと同じ判定（REJECT/HOLD/PASS_IDENTITY_ONLY）とコード",
+        "PASS_IDENTITY_ONLY は品質・承認・公開ゲートではない（counts_as_owner_success は常に false）",
+        "HTML の表示文字：対象名が無ければ拒否、他店名があれば拒否、他店名一覧が無ければ保留",
+        "既存の店舗・品質ゲートは変更しない。純粋関数で、生成器・本番から参照しない（テストで固定）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/identity/identity-lock.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/identity/**",
+        "tests/unit/design-agent/identity/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-126.md"
+      ],
+      "forbidden_scope": [
+        "既存ゲートの緩和",
+        "生成器・worker への組み込み",
+        "Codex 実行・画像生成",
+        "実店舗への連絡・新たな取得"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "生成経路への組み込み"
+      ],
+      "note": "Issue #159 offline batch approval; 0 Codex calls."
     }
   ]
 }
