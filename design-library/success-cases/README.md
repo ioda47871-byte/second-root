@@ -1,6 +1,6 @@
 # Second Root | 成功デザイン研究事例
 
-**2026-10-28 JST / v1 catalog** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. / 整体院 Go. / 豆＊豆 / ぺいぱばっくらいたー / BAR N / Admy / スペースたのしい / imairo. / ズールー工作所 / Rurikoyarn / MOLE FACTORY / 浦田杏梨 / 喫茶 ITALICO / TERACE / Harissy / BURGERS,INC / Boheme. の23例を登録しました。
+**2026-10-28 JST / 23件の旧登録一覧（2026-10-31の7件追加案は末尾に別記）** — Mond / Sissi / なごやビーンズv4 / harebare / Hamsa / Melon de Mille / ORGN. / 整体院 Go. / 豆＊豆 / ぺいぱばっくらいたー / BAR N / Admy / スペースたのしい / imairo. / ズールー工作所 / Rurikoyarn / MOLE FACTORY / 浦田杏梨 / 喫茶 ITALICO / TERACE / Harissy / BURGERS,INC / Boheme. の23例を登録しました。
 
 > **画像をテンプレートとして使い回さない。** 学習対象は、各店舗の特徴を視覚構造へ変換する考え方、画像・文字・余白・重なりの分析と実装・レビュー手順です。
 
@@ -55,3 +55,19 @@
 ## 2026-10-28以降の新規店舗選定条件
 
 ユーザー指示により**CP-020以降の研究新規候補は独立したWebサイトも公式ネットショップも確認できない店舗に限定**。SNS・Google/食べログなど第三者案内のみは選定可。ただし「検索で未発見」は「存在しない証明」とは異なるため、公式SNSプロフィールの外部リンク等を再確認する。BASE、STORES、Shopifyも公式サイトありとして除外する。[詳細な選定ゲート](../../docs/design/no-website-shop-intake-policy.md)。過去に承認されたMOLE FACTORY等の成功研究は遡及取消ししない。
+
+## 2026-10-31 CP-026〜032追加提案（ドラフトPRでレビュー待ち）
+
+この節は研究成功例の**登録差分案**であり、develop/mainへは未反映。採用は店舗公認・商品写真の実物保証・営業送信・自動生成・公開の承認を含まない。CP-026は「いいと思います→次へ」と追加7件一括採用、CP-027のみ過去会話で個別の「成功例とします」を確認。CP-028〜032は一括採用の報告であり、個別逐語の採用句は未確認。一次メッセージへの恒久参照なし。7件とも原本バイト未照合、独立レビュー未実施。
+
+| ID | 研究名 | 採用記録の証拠 |
+| --- | --- | --- |
+| [CP-026](CP-026-Sawaddee-Chao-Shop-Note-v5.md) | Sawaddee Chao — CHIANG MAI SHOP NOTE v5 | 個別肯定＋一括採用記録 |
+| [CP-027](CP-027-MATO-Between-Floors-v2.md) | MATO OBJECTS STORE — BETWEEN FLOORS v2 | 個別採用句（原文リンク未確保） |
+| [CP-028](CP-028-Yumetuna-One-Sheet-v1.md) | ユメツナベース — ONE SHEET, MANY VOICES v1 | 一括採用記録のみ（個別逐語未確認） |
+| [CP-029](CP-029-SNOWMY-Soft-Pop-v4.md) | SNOWMY — SOFT POP v4 | 一括採用記録のみ（個別逐語未確認） |
+| [CP-030](CP-030-Takada-Service-Counter-v2.md) | 高田時計店 — OSU SERVICE COUNTER v2 | 一括採用記録のみ（個別逐語未確認） |
+| [CP-031](CP-031-Reform-Nakamura-Hybrid-v3.md) | リフォーム 中村 — HYBRID v3 | 一括採用記録のみ（個別逐語未確認） |
+| [CP-032](CP-032-Tamamushiya-Iridescent-Light-v1.md) | 幸せを呼ぶ玉虫屋 — IRIDESCENT LIGHT v1 | 一括採用記録のみ（個別逐語未確認） |
+
+レビュー後の登録件数案：30件（HTML/CSS/JS研究PoC17、静止画13）。参考80・審査キュー20は変更なし。CP-014/CP-025は含めない。CP-024疑似復元v3は採用原本v2とは別、成功数に追加しない。研究成果を生成器へ自動投入しない。

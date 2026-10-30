@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "dataset": "second-root-design-intelligence-pilot",
-  "as_of": "2026-10-28",
+  "as_of": "2026-10-31",
   "scope": "research_only_not_auto_prompt_input",
   "status": "owner_selected_case_analysis_not_approved_for_automatic_reuse",
   "owner_acceptance": "Design research selections by Second Root owner; not merchant/client authorization",
   "provenance": {
-    "case_docs": "design-library/success-cases/CP-001-Mond.md through CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md (CP-014 pending and excluded)",
+    "case_docs": "CP-001..024: existing design-library/success-cases research notes, excluding CP-014 and CP-025. CP-026..032: newly staged review-draft notes, with original image/ZIP/HTML bytes not yet independently verified.",
     "case_registry": "design-library/success-cases/manifest.json",
     "basis": "Source case descriptions and prior recorded owner preferences; composition mappings are analysis, not measured causal facts"
   },
@@ -1094,12 +1094,290 @@
       ],
       "implementation_gap": "Local full-page HTML/CSS/JS PoC and 9 widths on Chromium. No client authorization, true multi-photo catalog, real mobile devices, Safari/Firefox, accessibility audit, Next.js build or production release.",
       "evidence_ref": "design-library/success-cases/CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md"
+    },
+    {
+      "id": "CP-026",
+      "name": "Sawaddee Chao — CHIANG MAI SHOP NOTE v5",
+      "category": "thai_cafe_and_craft_shop",
+      "owner_selection": "positive_then_continued_plus_group_adoption",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "自然光と白壁・木の家具の明るい店内",
+        "チェンマイを紹介するスイーツ・ドリンクと独立した雑貨売場",
+        "植物や花の挿絵が入った手づくり感のある案内紙"
+      ],
+      "structural_translation": "実店舗の明るいカフェ兼雑貨売場と案内紙を手がかりに、席につく・品物を見つける行き来を開く案内帳の閲覧体験へ変換した研究案。店内の正確な平面図ではない。",
+      "visual_mechanisms": [
+        "光と白壁の余白に小さく多色の商品の見どころを配置",
+        "案内紙が開いて店の飲み物・スイーツ・手工芸を巡る編集面",
+        "雑貨棚と飲食席で視覚密度を変える"
+      ],
+      "why_selected": [
+        {
+          "statement": "v4の暗い異国風の演出と違い、調査で得た明るい店の空気を反映する方向へ修正した",
+          "basis": "design_analysis"
+        },
+        {
+          "statement": "ユーザーがv5を肯定し、次の研究へ進む流れになった（明示的な「成功例」発言とは区別）",
+          "basis": "owner_selection"
+        }
+      ],
+      "known_failure_modes": [
+        "v1/v2: 写真や店の実像不足によりチープと評価",
+        "v3: 写真を増やしても凡庸な構成",
+        "v4 RUBY & ROAM: 暗色の外国的演出と実際の明るい店舗が不一致",
+        "v4: タイ北部の店に他文化の装飾を混在させ、架空のスイーツを過大に表現"
+      ],
+      "not_to_copy": [
+        "案内帳の具体的な罫線・配色・写真・店名の転用",
+        "取材先のメニュー印刷物・写真の無断複製",
+        "他地域文化の柄をタイの証拠のように扱う",
+        "写真生成の器・商品を実販売品と偽る"
+      ],
+      "implementation_gap": "v5原本ZIP/画像/HTMLの生バイト未取得。承認の逐語的な「成功例」発言はない。現行営業時間・価格・サイトなし判定・使用権は未確認。",
+      "evidence_ref": "design-library/success-cases/CP-026-Sawaddee-Chao-Shop-Note-v5.md"
+    },
+    {
+      "id": "CP-027",
+      "name": "MATO OBJECTS STORE — BETWEEN FLOORS v2",
+      "category": "two_floor_craft_objects_store",
+      "owner_selection": "verbatim_quote_retrieved_not_repo_archived",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "1階に現代作家の器・木工品",
+        "階段を上がった2階に古い民芸と書籍",
+        "自然光・木・生成りの静かな展示"
+      ],
+      "structural_translation": "実際の1Fと2Fの品物・空気の差異を、段差と上下移動で読み進める全ページ構造と閲覧順に翻訳した研究案。",
+      "visual_mechanisms": [
+        "写真の大小と段差を伴う非対称の建築断面",
+        "視線を上下へ導く階層の連続",
+        "素材別CLAY/WOOD/FOLKの観察切替"
+      ],
+      "why_selected": [
+        {
+          "statement": "v1の静かな素材感を残したまま、一般的な左右分割Heroを避けた",
+          "basis": "design_analysis"
+        },
+        {
+          "statement": "1階から2階へ歩く店固有の体験が下層・モバイルにも続く",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "v1 A QUIET ASCENT: 入口Heroが左右分割の既視感に近い",
+        "v2のAI生成商品/内観画像は実在店舗の写真ではない"
+      ],
+      "not_to_copy": [
+        "MATOの文字・ロゴと階段ラインの具体位置",
+        "段差Heroの形状や配色を他店へコピー",
+        "架空商品の写真を在庫や内観の証拠とする"
+      ],
+      "implementation_gap": "元ZIPにSHAの記載があるという先行資料の報告はあるが、本PRにSHAの記載・照合対象の原本バイトなし。Safari等実機・店舗公認は未確認。",
+      "evidence_ref": "design-library/success-cases/CP-027-MATO-Between-Floors-v2.md"
+    },
+    {
+      "id": "CP-028",
+      "name": "ユメツナベース — ONE SHEET, MANY VOICES v1",
+      "category": "community_zine_workspace",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "A4用紙から8ページのZINEをつくる行為",
+        "紙を折って表裏を読む体験",
+        "商店街の活動場所と階段のある入口"
+      ],
+      "structural_translation": "A4紙を折り8ページZINEにする実際の活動を、8つの面を選択し「見る・つくる・つながる」へ進む操作と全ページの骨格に翻訳した。",
+      "visual_mechanisms": [
+        "8分割した紙面と大きなタイポグラフィ",
+        "クリックで紙片の説明が切り替わる",
+        "スマホでは紙面の順序を再構成"
+      ],
+      "why_selected": [
+        {
+          "statement": "活動の固有性が一般的な画像と見出しのHeroより強い情報構造になった",
+          "basis": "design_analysis"
+        },
+        {
+          "statement": "来店導線まで一連のZINE体験でつながった",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "生成物に別店舗KOALA/カリーぴろが混入しIdentity Lock違反で拒否",
+        "A4構造の具体形を他店に適用するとテンプレート化する"
+      ],
+      "not_to_copy": [
+        "8分割A4の座標やタイポ配置を他店で再利用",
+        "生成した制作机画像や展示物を実際の店舗の証拠として使う",
+        "急な階段・営業情報を現在も正しいと断定"
+      ],
+      "implementation_gap": "採用記録はあるが原本バイト/SHAを未照合。一般公開・営業素材への利用権、実機テスト、公式Web不在は未確認。",
+      "evidence_ref": "design-library/success-cases/CP-028-Yumetuna-One-Sheet-v1.md"
+    },
+    {
+      "id": "CP-029",
+      "name": "SNOWMY — SOFT POP v4",
+      "category": "korean_shaved_ice_sweets",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "糸ピンスの軽さ・溶ける口当たり",
+        "ベースとトッピングを選ぶ楽しさ",
+        "かき氷に必要なポップさと食欲を刺激する写真"
+      ],
+      "structural_translation": "氷の軽さとベース・トッピング選択の体験を、柔らかい境界・大きい商品・選択操作が一貫する全ページへ翻訳した。",
+      "visual_mechanisms": [
+        "雲のような境界と軽やかな余白",
+        "商品写真・曲線・文字の動きを連携",
+        "ベースとトッピングの選択UI"
+      ],
+      "why_selected": [
+        {
+          "statement": "高級感より糸ピンスらしい楽しさ・口どけを主役に戻した",
+          "basis": "design_analysis"
+        },
+        {
+          "statement": "v1〜v3の失敗を踏まえ、ページ構造を表面的な配色以外で変えた",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "v1 THREAD THEORY: CP-028と構造が類似",
+        "v2 THE NOREN: のれんが商品より目立った",
+        "v3 FOLD / MELT: 静かすぎてかき氷らしさが弱かった"
+      ],
+      "not_to_copy": [
+        "雲形境界・色彩・構図の無断転用",
+        "画像6点を公式商品・設備の写真と偽る",
+        "選択UIを公式注文機能と称する"
+      ],
+      "implementation_gap": "元v4 ZIPと承認後ZIPは別バイトという先行資料の報告あり。本PRにSHA・原本ZIPのバイトはなく、WebとUIのQAは先行記録への参照のみ。",
+      "evidence_ref": "design-library/success-cases/CP-029-SNOWMY-Soft-Pop-v4.md"
+    },
+    {
+      "id": "CP-030",
+      "name": "高田時計店 — OSU SERVICE COUNTER v2",
+      "category": "local_watch_and_repair_shop",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "掛け時計の壁・時計バンド棚・ガラスショーケース",
+        "時計を持ち込んで修理や状態を相談する行為",
+        "商店街から店に入り相談し帰る体験"
+      ],
+      "structural_translation": "店の陳列と来店相談の手順を「街→展示→相談票→修理の手→Visit」に連ね、4種類の相談内容を操作できる研究UIへ翻訳した。",
+      "visual_mechanisms": [
+        "時計壁やバンド棚の物量を情報密度に置換",
+        "電池・バンド・古い時計・その他の相談票を切替",
+        "店の写真が連続しすぎないよう手元と街の素材を挿入"
+      ],
+      "why_selected": [
+        {
+          "statement": "時計店一般の針や歯車より、実際の陳列・接客体験から構造を作った",
+          "basis": "design_analysis"
+        },
+        {
+          "statement": "PC・スマホで相談から来店までの順序を保った",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "v1 CLOCK WALL: 巨大文字盤や歯車で時計店一般の記号に留まった"
+      ],
+      "not_to_copy": [
+        "4種類の相談票の具体的デザインを他店に複製",
+        "研究UIを実際のオンライン修理診断・予約と称する",
+        "生成した店内/人/商品写真を本物と偽る"
+      ],
+      "implementation_gap": "個別採用資料に各ファイルのSHA記載との報告があるが、本PRには原本バイト/SHAなし。料金・修理保証・公式店舗承認・実機未確認。",
+      "evidence_ref": "design-library/success-cases/CP-030-Takada-Service-Counter-v2.md"
+    },
+    {
+      "id": "CP-031",
+      "name": "リフォーム 中村 — HYBRID v3",
+      "category": "kimono_textile_remake_atelier",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "和布の裁断台・布の重ねと切替",
+        "古い布地を新しい品へ再構成するリメイクの工程",
+        "手仕事の質感と裁断線の動き"
+      ],
+      "structural_translation": "和布リメイクの布を広げ、裁ち、組み合わせて再構成する工程を、裁断台のような構造と視線の重なりへ変換。v2の構造を守り、v3はHeroの質感を高めた。",
+      "visual_mechanisms": [
+        "裁断台や布片の重なりを起点とする非対称の面構成",
+        "布地の質感を伝えるHero、後続の工程へ視線を接続",
+        "作品を完成形だけでなく過程から見せる"
+      ],
+      "why_selected": [
+        {
+          "statement": "v2の裁断台を中心にした構造的な強みを失わずに、Heroだけを質感面でブラッシュアップした",
+          "basis": "design_analysis"
+        },
+        {
+          "statement": "店舗の和布リメイクという行為が全体構造と対応した",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "v1 CLOTH MEMORY: 最終採用には至らなかった",
+        "v2 UNFOLDING TABLE: 構造は良いが単体では最終採用にならなかった",
+        "v3でv2の骨格まで作り直してしまうと評価された核を失う危険"
+      ],
+      "not_to_copy": [
+        "裁断台型Heroの特定座標・色・布画像の複製",
+        "古布や作品を公式商品・実物素材として使う",
+        "ユーザーが支持したv2骨格を勝手に捨てる"
+      ],
+      "implementation_gap": "個別OWNER_APPROVAL MDはライブラリから未発見。2026-10-29の一括採用記録のみ追跡できるが外部検証記録・元ZIPのハッシュ照合・権利確認なし。",
+      "evidence_ref": "design-library/success-cases/CP-031-Reform-Nakamura-Hybrid-v3.md"
+    },
+    {
+      "id": "CP-032",
+      "name": "幸せを呼ぶ玉虫屋 — IRIDESCENT LIGHT v1",
+      "category": "iridescent_beetle_wing_accessories",
+      "owner_selection": "group_adoption_reported_no_individual_quote",
+      "implementation": "local_html_css_js_poc",
+      "shop_motifs": [
+        "玉虫の翅に光が当たる角度による色変化",
+        "手作りのペンダント・イヤリング・ブローチ",
+        "固定店舗ではなくマルシェで出会う手仕事"
+      ],
+      "structural_translation": "玉虫の翅が角度によって違う色を見せる性質を、閲覧角度と展示を選ぶ操作・読み順・マルシェへの導線に翻訳した。",
+      "visual_mechanisms": [
+        "光の角度を切り替えるHero",
+        "標本セクションの光学的スライダー",
+        "アクセサリーの種類の表示切替"
+      ],
+      "why_selected": [
+        {
+          "statement": "単なる虹色配色ではなく光の変化自体をサイトの行為へ置き換えた",
+          "basis": "design_analysis"
+        },
+        {
+          "statement": "マルシェに出会いに行く導線までコンセプトを維持",
+          "basis": "design_analysis"
+        }
+      ],
+      "known_failure_modes": [
+        "以前の標本帳・ZINE・相談票構造をコピーしないという制約を守る必要があった"
+      ],
+      "not_to_copy": [
+        "翅のCG画像と架空アクセサリーSVGを実物商品と誤認させる",
+        "角度スライダーの具体配置を他店で複製",
+        "最新マルシェ出店先・在庫・本人EC未確認を断定"
+      ],
+      "implementation_gap": "個別採用資料にはSHA記載との報告があるが、本PRは原本ZIP/PNG/HTMLのSHA・バイト未照合。実商品・出店予定・権利・実機も未確認。",
+      "evidence_ref": "design-library/success-cases/CP-032-Tamamushiya-Iridescent-Light-v1.md"
     }
   ],
   "limitations": [
     "Six initial cases were concentrated in food and floral categories; ORGN. and Seitai Go add salon/fashion and bodywork study examples",
-    "Ten cases have local HTML PoCs; thirteen remain concept/image-only; none are verified live production websites",
+    "Seventeen cases are recorded as local HTML/CSS/JS research PoCs and thirteen as concept/image only. The seven newly staged PoCs have not had their original ZIP/HTML/PNG bytes replayed or verified here; no case is a verified live production website.",
     "User acceptance of a design is not confirmation of the causal mechanism inferred by analysis",
     "Store photos and speculative text are research only; must not be sent as official representations"
-  ]
+  ],
+  "registered_case_count": 30,
+  "registered_local_poc_count": 17
 }
