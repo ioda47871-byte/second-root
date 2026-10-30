@@ -1173,7 +1173,7 @@
         "段差Heroの形状や配色を他店へコピー",
         "架空商品の写真を在庫や内観の証拠とする"
       ],
-      "implementation_gap": "採用記録と原本ZIPのSHA記録はあるが、原本ZIPのバイト取得/照合は未実施。Safari等実機・店舗公認は未確認。",
+      "implementation_gap": "元ZIPにSHAの記載があるという先行資料の報告はあるが、本PRにSHAの記載・照合対象の原本バイトなし。Safari等実機・店舗公認は未確認。",
       "evidence_ref": "design-library/success-cases/CP-027-MATO-Between-Floors-v2.md"
     },
     {
@@ -1252,7 +1252,7 @@
         "画像6点を公式商品・設備の写真と偽る",
         "選択UIを公式注文機能と称する"
       ],
-      "implementation_gap": "元v4 ZIPと承認記録追加後ZIPは別ハッシュ。元素材は未取得、Webと各UIのQA記録は参照のみ。",
+      "implementation_gap": "元v4 ZIPと承認後ZIPは別バイトという先行資料の報告あり。本PRにSHA・原本ZIPのバイトはなく、WebとUIのQAは先行記録への参照のみ。",
       "evidence_ref": "design-library/success-cases/CP-029-SNOWMY-Soft-Pop-v4.md"
     },
     {
@@ -1290,7 +1290,7 @@
         "研究UIを実際のオンライン修理診断・予約と称する",
         "生成した店内/人/商品写真を本物と偽る"
       ],
-      "implementation_gap": "採用記録に各ファイルのSHA記載があるが原本バイトは未取得。料金・修理保証・公式店舗承認・実機は未確認。",
+      "implementation_gap": "個別採用資料に各ファイルのSHA記載との報告があるが、本PRには原本バイト/SHAなし。料金・修理保証・公式店舗承認・実機未確認。",
       "evidence_ref": "design-library/success-cases/CP-030-Takada-Service-Counter-v2.md"
     },
     {
@@ -1368,7 +1368,7 @@
         "角度スライダーの具体配置を他店で複製",
         "最新マルシェ出店先・在庫・本人EC未確認を断定"
       ],
-      "implementation_gap": "採用記録とファイルSHA記録はあるが原本ZIPは未照合。実物商品/現行出店予定・権利・本番/実機は未確認。",
+      "implementation_gap": "個別採用資料にはSHA記載との報告があるが、本PRは原本ZIP/PNG/HTMLのSHA・バイト未照合。実商品・出店予定・権利・実機も未確認。",
       "evidence_ref": "design-library/success-cases/CP-032-Tamamushiya-Iridescent-Light-v1.md"
     }
   ],
