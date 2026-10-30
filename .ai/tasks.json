@@ -5615,6 +5615,65 @@
       ],
       "note": "0 Codex calls.",
       "merged": "#156 → 8e2d342 (squash, 2026-10-30)"
+    },
+    {
+      "id": "DEV-124",
+      "title": "成功例の実画像を参照できる最小経路と、Brief に依存しない開放型の設計指示（v2）、構図の異なる2案",
+      "status": "review",
+      "priority": "P0",
+      "depends_on": [
+        "DEV-123"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-124-open-direction-references",
+      "purpose": "オーナー指示（2026-10-30）：研究成功例と同等のデザインを架空菓庵で1案完成させるための最小開発。CP-003 の PC/SP 原本を出所・SHA-256・利用範囲とともに制作 AI へ渡し、構図・配色・書体・セクション構成を固定しない設計指示で、構図の異なる2案を作れるようにする。",
+      "acceptance_criteria": [
+        "成功例の画像はマニフェスト（出所コミット・パス・SHA-256・オーナーの利用範囲・1回あたりの上限）に載ったものだけを使い、SHA が違えば承認を使う前に止まる",
+        "縦長の全ページ画像は列に分けた PNG にして Codex の画像入力（--image）へ渡す",
+        "v2 プロンプトは事実・事実の規則・技術上の制限だけを固定し、配色・順序・レイアウトを含まない。Brief を受け付けない",
+        "2案は Hero の型とページの流れの両方が違うときだけ別案と認める",
+        "設計と Artifact 化で同じ方向とマニフェストを使い、違えば RECORD_PROMPT_MISMATCH",
+        "v1・v1.1 のプロンプトは不変"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f/open-direction.test.ts",
+        "tests/unit/design-agent/phase2f/prompt-v11.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts",
+        "tests/unit/design-agent/phase2f-live/steps.test.ts",
+        "tests/unit/design-agent/phase2f-live/isolation.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/phase2f/open-direction.ts",
+        "lib/design-agent/phase2f/reference-sheet.ts",
+        "lib/design-agent/phase2f/prompt.ts",
+        "lib/design-agent/phase2f/research-section.ts（Line と Sha の export のみ）",
+        "lib/design-agent/phase2f/runner.ts（brief を任意に）",
+        "lib/design-agent/phase2f-live/design-call.ts（画像の受け渡しのみ）",
+        "scripts/design-artifact/phase2f-design.ts",
+        "scripts/design-artifact/phase2f-steps.ts",
+        "design-library/phase2f/references/**",
+        "design-library/phase2f/directions/**",
+        "tests/unit/design-agent/phase2f/**",
+        "tests/unit/design-agent/phase2f-live/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-124.md"
+      ],
+      "forbidden_scope": [
+        "Codex の実行・画像生成",
+        "PR #142 の変更・マージ",
+        "研究原本の画像ファイルの追加",
+        "承認台帳・回数制限・jail・worker・安全検査の緩和",
+        "本番の変更"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "Codex 実行（各回の承認 ID）",
+        "画像生成（各回の承認 ID）"
+      ],
+      "note": "0 Codex calls, 0 image generations."
     }
   ]
 }

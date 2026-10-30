@@ -33,7 +33,8 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/design-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "./ledger", "./steps"],
   [`${LIB}/image-call.ts`]: ["node:crypto", "node:fs/promises", "node:path", "../codex", "./ledger", "./steps"],
   [CLI_SHARED]: ["node:fs/promises", "node:os", "node:path", `${L}/bounded-process`, `${L}/codex`, `${L}/phase2f-live/ledger`, `${L}/phase2f-live/steps`, `${L}/protected-paths`, `${L}/sandbox`, `${L}/worker/env`],
-  [DESIGN_CLI]: ["node:fs/promises", "node:path", `${L}/artifact/schema`, `${L}/codex`, `${L}/phase2f/prompt`, `${L}/phase2f-live/design-call`, `${L}/phase2f-live/ledger`, "./phase2f-live-cli"],
+  // DEV-124: node:os, playwright and the reference sheet make the v2 reference images before the approval is used
+  [DESIGN_CLI]: ["node:fs/promises", "node:os", "node:path", "playwright", `${L}/artifact/schema`, `${L}/codex`, `${L}/phase2f/prompt`, `${L}/phase2f/reference-sheet`, `${L}/phase2f-live/design-call`, `${L}/phase2f-live/ledger`, "./phase2f-live-cli"],
   [IMAGE_CLI]: ["node:fs/promises", "node:os", "node:path", `${L}/design-image/image-once`, `${L}/design-image/prompt`, `${L}/phase2f-live/image-call`, `${L}/phase2f-live/ledger`, `${L}/phase2f-live/steps`, "./phase2f-live-cli"],
   [STEPS_CLI]: ["node:fs/promises", "node:os", "node:path", "playwright", `${L}/artifact/schema`, `${L}/phase2f/compare-sheet`, `${L}/phase2f/prompt`, `${L}/phase2f/runner`, `${L}/phase2f-live/image-call`, `${L}/phase2f-live/ledger`, `${L}/phase2f-live/steps`],
 };

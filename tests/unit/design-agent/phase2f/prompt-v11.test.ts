@@ -46,7 +46,7 @@ describe("the B v1.1 prompts", () => {
     expect(of("B_html_prototype", undefined, undefined)).toBe("v1");
     expect(of("B_html_prototype", "v1.1", undefined)).toBe("v1.1");
     expect(of("B_html_prototype", "v1.1", read(RESEARCH))).toBe("v1.1+research");
-    expect(of("B_html_prototype", "v2", undefined)).toBe("PROMPT_VERSION_UNKNOWN");
+    expect(of("B_html_prototype", "v9", undefined)).toBe("PROMPT_VERSION_UNKNOWN");
     expect(of("B_html_prototype", undefined, read(RESEARCH))).toBe("RESEARCH_NEEDS_V1_1");
     expect(of("C_hybrid", "v1.1", undefined)).toBe("PROMPT_VARIANT_ROUTE");
     expect(of("B_html_prototype", "v1.1", { ...read(RESEARCH), extra: 1 })).toBe("RESEARCH_SECTION_INVALID");

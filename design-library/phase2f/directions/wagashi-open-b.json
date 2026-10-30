@@ -1,0 +1,21 @@
+{
+  "schema": "phase2f_open_direction_v1",
+  "direction_id": "wagashi-open-b-small-counter",
+  "concept": "The small shop front (小さな店頭) itself, seen from where a customer stands: the page is laid out like the counter and the signs around it, with large Japanese type working as the shop's signage and the empty space as the counter. The seasonal sweets, the dorayaki, the place where each sweet is wrapped, and the hours and days off are stations on that counter that the eye visits, not stacked sections.",
+  "composition": { "hero": "type_led", "flow": "map_of_stations" },
+  "research": [
+    {
+      "case_id": "CP-016",
+      "adopted_for": "A physical relationship that truly belongs to the shop (a pivot, weights and the empty space around them) became the skeleton of the page.",
+      "lost_or_rejected": "The first, photo-led version fell back to a generic skeleton (top bar, headline on one side, big picture, strips) and was rejected as the same composition again.",
+      "translate_to_this_shop": "Use how a small counter is actually arranged (what sits where, what is in reach, the space between) as the plan of the page."
+    },
+    {
+      "case_id": "CP-003",
+      "adopted_for": "The phone page was composed again for a narrow screen, keeping large type and overlaps.",
+      "lost_or_rejected": "A distinctive first screen shrinking into a conventional list further down was avoided.",
+      "translate_to_this_shop": "Keep the counter idea all the way to the shop information and the footer, and recompose it for the phone."
+    }
+  ],
+  "reference_ids": ["CP-003-pc", "CP-003-sp"]
+}

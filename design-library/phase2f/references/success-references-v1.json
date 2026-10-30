@@ -1,0 +1,33 @@
+{
+  "schema": "phase2f_references_v1",
+  "owner_scope": {
+    "quote_verbatim": "まず利用可能なCP-003のPC・スマホ原本を使い、必要に応じてCP-009、CP-024等を追加する段階的な方式にします。",
+    "decided_on": "2026-10-30",
+    "use": "visual_reference_for_design_generation",
+    "max_refs_per_call": 2
+  },
+  "refs": [
+    {
+      "id": "CP-003-pc",
+      "case_id": "CP-003",
+      "view": "desktop",
+      "source": { "commit": "efe269f4b4a13f3c05bfb799891c8157c9be4c0b", "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp" },
+      "webp_sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6",
+      "width": 1080,
+      "height": 3308,
+      "learn": "Photograph, very large type and empty space overlap across section boundaries; the story sections each take a different visual rhythm instead of a stack of equal product cards; the finish holds from the first screen to the footer.",
+      "do_not_copy": ["its diagonal roast-stage map", "its coffee photographs and its section words", "its colours, typefaces and grid", "the shop name and brand of なごやビーンズ"]
+    },
+    {
+      "id": "CP-003-sp",
+      "case_id": "CP-003",
+      "view": "mobile",
+      "source": { "commit": "efe269f4b4a13f3c05bfb799891c8157c9be4c0b", "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp" },
+      "webp_sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0",
+      "width": 390,
+      "height": 4502,
+      "learn": "The phone page is composed again for a narrow screen (its own order, scale and overlaps), not the desktop shrunk; large type and images still cross section edges.",
+      "do_not_copy": ["its diagonal roast-stage map", "its coffee photographs and its section words", "its colours, typefaces and grid", "the shop name and brand of なごやビーンズ"]
+    }
+  ]
+}

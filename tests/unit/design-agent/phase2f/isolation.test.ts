@@ -28,7 +28,10 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/prototype-safety.ts`]: ["playwright"],
   [`${LIB}/render-prototype.ts`]: ["playwright", "../comp-impl/page", "../comp-impl/render"],
   [`${LIB}/decode-check.ts`]: ["../worker/png-paint"],
-  [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile", "./research-section"],
+  [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile", "./open-direction", "./research-section"],
+  // DEV-124: the open direction and the success-case reference manifest (pure), and the reference sheet (Chromium)
+  [`${LIB}/open-direction.ts`]: ["zod", "./research-section"],
+  [`${LIB}/reference-sheet.ts`]: ["node:crypto", "playwright", "./open-direction"],
   // DEV-122: the owner-approved research section of the B v1.1 prompt (pure)
   [`${LIB}/research-section.ts`]: ["node:crypto", "zod"],
   [`${LIB}/runner.ts`]: ["node:crypto", "node:fs/promises", "node:path", "node:zlib", "playwright", "../artifact/intake", "../artifact/schema", "./decode-check", "./prompt", "./prototype-safety", "./render-prototype"],
@@ -74,8 +77,12 @@ describe("isolation of the Phase 2f runner", () => {
     const source = readFileSync(resolve(REPO, DESIGN_STEP), "utf8");
     const fromPhase2f = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
     // DEV-122: plus the prompt-version check (pure; no file access)
-    expect(fromPhase2f).toEqual([["../../lib/design-agent/phase2f/prompt", ["DesignBrief", "buildDesignPrompt", "codexDesignJsonSchema", "promptVariantOf"]]]);
-    expect(specifiers(source).filter((s) => s.includes("/phase2f/"))).toEqual(["../../lib/design-agent/phase2f/prompt"]);
+    // DEV-124: plus the reference sheets of the v2 prompt (checked bytes, drawn by Chromium before the approval is used)
+    expect(fromPhase2f).toEqual([
+      ["../../lib/design-agent/phase2f/prompt", ["DesignBrief", "buildDesignPrompt", "codexDesignJsonSchema", "promptVariantOf", "type PromptVariant"]],
+      ["../../lib/design-agent/phase2f/reference-sheet", ["ReferenceStop", "referenceSheet"]],
+    ]);
+    expect(specifiers(source).filter((s) => s.includes("/phase2f/"))).toEqual(["../../lib/design-agent/phase2f/prompt", "../../lib/design-agent/phase2f/reference-sheet"]);
   });
 
   it("the offline steps CLI (DEV-117, owner-approved exact path) takes only these names from phase2f", () => {
