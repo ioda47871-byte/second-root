@@ -1,8 +1,14 @@
 # CP-027 | MATO OBJECTS STORE — BETWEEN FLOORS v2 — 研究記録（ドラフト審査待ち）
 
+## 採用判断の証拠区分（2026-10-31独立レビュー指摘への対応）
+- 採用判断の証拠レベル：verbatim_quote_retrieved_not_repo_archived
+- 研究採用判断の参照：2026-10-29 01:43 JST の発言「成功例とします」を過去会話の検索結果で確認。元メッセージへの恒久リンクは未記録。
+- 個別逐語の採用引用：「成功例とします」（過去会話の検索結果。GitHub原典リンクなし）
+- 一次証拠の確認状態：GitHubの原メッセージURL・原本ZIP/HTML/PNGバイトは未照合。研究分析の採用と商用/生成器承認は別。
+
 - 採用版：BETWEEN_FLOORS_v2
-- 採用判断の証拠レベル：owner_explicit_selected_reported
-- 判断の扱い：研究採用を明示した記録があるとの報告。逐語引用の独立検証と原本照合は未完了。
+- 採用判断の証拠レベル：verbatim_quote_retrieved_not_repo_archived
+- 判断の扱い：個別の採用引用を検索上で確認。ただし元メッセージへの恒久リンク未照合。
 - Web試作：ローカルHTML/CSS/JSとして報告あり。**原本バイト未検証**
 - 原本候補：`SecondRoot_CP027_MATO_BetweenFloors_v2_Approved.zip`（実体／SHA未照合）
 - **GitHub成功データセットへの正式採用はこのドラフトPRの審査・マージ後。**
