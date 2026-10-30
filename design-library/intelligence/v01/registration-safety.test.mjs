@@ -79,6 +79,9 @@ const mutations = {
   "wrong new evidence path": [m => m.records[28].analysis_evidence_ref = "design-library/success-cases/CP-027-wrong.md"],
   "shop motifs missing": [null,p => p.cases[24].shop_motifs=[]],
   "owner source changed": [m => m.records[24].owner_evidence_source = "2026-10-29 unsupported"],
+  "unknown manifest policy key": [m => m.policy.auto_allow = false],
+  "unknown pattern provenance key": [null, p => p.provenance.owner_approval = "granted"],
+  "hidden permission inside selection reasoning": [null, p => p.cases[28].why_selected[0].approved_for_generation = "true"],
 };
 for (const [name, mods] of Object.entries(mutations)) {
   test("reject " + name, () => deny(...mods));
