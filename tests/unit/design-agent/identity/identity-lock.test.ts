@@ -81,6 +81,29 @@ describe("generated images (the research script's cases, same verdicts)", () => 
   });
 });
 
+describe("review fixes (DEV-126 Fresh Review)", () => {
+  it("M1: only the exact method strings count as a completed inspection (as in the research script)", () => {
+    for (const method of [["assistant_visual"], { toString: () => "assistant_visual" }, Object.create(null)]) {
+      const a = base();
+      a.visual_inspection.method = method;
+      expect(auditIdentity(a).status).toBe("HOLD");
+    }
+  });
+
+  it("L1: a name that cleans to nothing never matches (missing shop name, symbol-only labels)", () => {
+    const a = base();
+    a.target.allowed_aliases = ["♪"];
+    a.prompt.shop_name = undefined as never;
+    expect(auditIdentity(a).errors).toContain("PROMPT_WRONG_SHOP");
+    for (const labels of [["☆☆"], [null]]) {
+      const b = base();
+      b.target.allowed_aliases = ["♪"];
+      b.visual_inspection.visible_site_identity_labels = labels;
+      expect(auditIdentity(b).status).toBe("REJECT");
+    }
+  });
+});
+
 describe("generated HTML pages (visible text)", () => {
   // the fictional wagashi shop, with the shops of the references it is shown (they must never appear on its page)
   const wagashi = (o: Record<string, unknown> = {}) => ({
@@ -108,6 +131,17 @@ describe("generated HTML pages (visible text)", () => {
     expect(auditPageText(wagashi({ other_shop_names: undefined }), "架空菓庵").pending).toContain("OTHER_SHOP_NAMES_NOT_GIVEN");
   });
 
+  it("M2: a malformed list of other shops is an error; an empty one leaves the page unconfirmed", () => {
+    expect(auditPageText(wagashi({ other_shop_names: [null, 42] }), "架空菓庵 NAGOYA BEANS").errors).toContain("OTHER_SHOP_NAMES_INVALID");
+    expect(auditPageText(wagashi({ other_shop_names: "NAGOYA BEANS" }), "架空菓庵").errors).toContain("OTHER_SHOP_NAMES_INVALID");
+    expect(auditPageText(wagashi({ other_shop_names: [] }), "架空菓庵")).toMatchObject({ status: "HOLD", pending: ["OTHER_SHOP_NAMES_NOT_GIVEN"] });
+  });
+
+  it("M3: hiragana and katakana spellings of a listed name are the same name", () => {
+    expect(auditPageText(wagashi(), "架空菓庵 ナゴヤビーンズ").errors).toContain("VISIBLE_WRONG_OR_EXTRA_SHOP_NAME");
+    expect(cleanName("なごや")).toBe(cleanName("ナゴヤ"));
+  });
+
   it("names too short to search for, or overlapping the target, are refused as input", () => {
     expect(auditPageText(wagashi({ other_shop_names: ["豆"] }), "架空菓庵").errors).toContain("OTHER_NAME_TOO_SHORT");
     expect(auditPageText(wagashi({ other_shop_names: ["菓庵"] }), "架空菓庵").errors).toContain("OTHER_NAME_OVERLAPS_TARGET");
@@ -124,7 +158,8 @@ describe("isolation", () => {
     const repo = resolve(__dirname, "../../../..");
     const src = readFileSync(resolve(repo, "lib/design-agent/identity/identity-lock.ts"), "utf8");
     expect(src).not.toMatch(/\bimport\b|require\(|\bfetch\(|process\./);
-    const users = spawnSync("git", ["grep", "--untracked", "-lE", "design-agent/identity([\"'`/]|$)", "--", "lib", "app", "components", "scripts"], { cwd: repo, encoding: "utf8" }).stdout.trim();
-    expect(users).toBe("");
+    // any importer, absolute or relative (L2); git grep exits 1 when nothing matches (an error is 128, never a pass)
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "identity/identity-lock|from [\"'`]\\./identity-lock", "--", ".", ":!lib/design-agent/identity/identity-lock.ts", ":!tests/unit/design-agent/identity/**", ":!.ai/**", ":!docs/**"], { cwd: repo, encoding: "utf8" });
+    expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
   });
 });

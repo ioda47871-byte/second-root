@@ -11,6 +11,12 @@
  * - auditPageText: a generated HTML page (routes B / C). Its visible text can be checked mechanically: the target's
  *   name must appear, and no other shop's name (e.g. the success cases shown as references) may appear.
  *
+ * What the page check can and cannot see: it compares against the names it is GIVEN (target, aliases, other shops),
+ * after folding width, case, punctuation, zero-width characters and hiragana/katakana. It does not know shops that are
+ * not listed, abbreviations, or variant kanji (髙/高): those still need the owner's look at the page.
+ *
+ * Deliberately stricter than the research script: a name that cleans to nothing ("♪") is never accepted.
+ *
  * PASS_IDENTITY_ONLY means only "this is the right shop": never a quality score, an owner approval, a commercial
  * clearance or a production gate. Pure: no I/O.
  */
@@ -31,11 +37,20 @@ const NOTE = "PASS_IDENTITY_ONLY is not a quality score, owner approval, commerc
 
 const shaOK = (x: unknown): x is string => typeof x === "string" && /^[a-f0-9]{64}$/i.test(x);
 /** Names compare after NFKC, lower case and dropping everything but letters and digits ("imairo." = "IMAIRO"). */
-export const cleanName = (s: unknown) => (typeof s === "string" ? s.normalize("NFKC").toLocaleLowerCase("en-US").replace(/[^\p{L}\p{N}]+/gu, "") : "");
+export const cleanName = (s: unknown) =>
+  typeof s === "string"
+    ? s
+        .normalize("NFKC")
+        .toLocaleLowerCase("en-US")
+        .replace(/[^\p{L}\p{N}]+/gu, "")
+        // hiragana → katakana (なごや = ナゴヤ)
+        .replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60))
+    : "";
 const filled = (s: unknown): s is string => typeof s === "string" && s.trim().length > 0;
 const obj = (x: unknown): Record<string, unknown> => (x !== null && typeof x === "object" && !Array.isArray(x) ? (x as Record<string, unknown>) : {});
 
-const allowedNames = (target: Record<string, unknown>) => [target.official_name, ...(Array.isArray(target.allowed_aliases) ? target.allowed_aliases : [])].filter(filled).map(cleanName);
+// a name that cleans to nothing ("♪") would match an empty label: it is dropped (and, if it was the only one, the target has no name)
+const allowedNames = (target: Record<string, unknown>) => [target.official_name, ...(Array.isArray(target.allowed_aliases) ? target.allowed_aliases : [])].filter(filled).map(cleanName).filter((n) => n.length > 0);
 
 const verdict = (a: Record<string, unknown>, errors: string[], pending: string[]): IdentityResult => {
   const status: IdentityStatus = errors.length ? "REJECT" : pending.length ? "HOLD" : "PASS_IDENTITY_ONLY";
@@ -75,14 +90,14 @@ export function auditIdentity(input: unknown): IdentityResult {
   const check = obj(a.visual_inspection);
   if (!shaOK(output.image_sha256)) pending.push("OUTPUT_IMAGE_HASH_MISSING");
   // explicitly NOT automated OCR: the observations were taken while viewing the exact output whose SHA is checked
-  if (check.status !== "completed" || !["assistant_visual", "human_visual"].includes(String(check.method))) {
+  if (check.status !== "completed" || typeof check.method !== "string" || !["assistant_visual", "human_visual"].includes(check.method)) {
     pending.push("VISUAL_INSPECTION_REQUIRED");
   } else {
     if (!shaOK(check.inspected_image_sha256) || check.inspected_image_sha256 !== output.image_sha256) errors.push("INSPECTION_IMAGE_NOT_MATCHED");
     if (!filled(check.reviewer_note)) pending.push("VISUAL_INSPECTION_NOTE_REQUIRED");
     const labels = check.visible_site_identity_labels;
     if (!Array.isArray(labels) || labels.length === 0) pending.push("VISIBLE_SITE_IDENTITY_UNCONFIRMED");
-    else if (labels.some((label) => !allowed.includes(cleanName(label)))) errors.push("VISIBLE_WRONG_OR_EXTRA_SHOP_NAME");
+    else if (labels.some((label) => !allowed.includes(cleanName(label)) || cleanName(label) === "")) errors.push("VISIBLE_WRONG_OR_EXTRA_SHOP_NAME");
     if (check.category_code !== target.category_code) errors.push("VISUAL_WRONG_CATEGORY");
     if (check.unreadable_site_identity === true) pending.push("BRAND_TEXT_UNREADABLE");
     else if (check.unreadable_site_identity !== false) pending.push("BRAND_READABILITY_NOT_RECORDED");
@@ -105,9 +120,14 @@ export function auditPageText(input: unknown, visibleText: string): IdentityResu
   const { allowed } = lockChecks(a, errors);
   const text = cleanName(visibleText);
   if (allowed.some((n) => n.length < 2)) errors.push("TARGET_NAME_TOO_SHORT");
-  const others = Array.isArray(a.other_shop_names) ? a.other_shop_names.filter(filled).map(cleanName) : null;
-  if (others === null) pending.push("OTHER_SHOP_NAMES_NOT_GIVEN");
-  else {
+  const raw = a.other_shop_names;
+  const others = Array.isArray(raw) && raw.every(filled) ? raw.map(cleanName) : null;
+  // never silently skipped: a malformed list is an error, an absent or empty one leaves the page unconfirmed
+  if (raw !== undefined && !Array.isArray(raw)) errors.push("OTHER_SHOP_NAMES_INVALID");
+  else if (Array.isArray(raw) && !raw.every(filled)) errors.push("OTHER_SHOP_NAMES_INVALID");
+  if (others === null || others.length === 0) {
+    if (raw === undefined || (Array.isArray(raw) && raw.length === 0)) pending.push("OTHER_SHOP_NAMES_NOT_GIVEN");
+  } else {
     if (others.some((n) => n.length < 2)) errors.push("OTHER_NAME_TOO_SHORT");
     // an "other" name that contains or is contained in the target's would make the check meaningless
     if (others.some((o) => allowed.some((n) => o.includes(n) || n.includes(o)))) errors.push("OTHER_NAME_OVERLAPS_TARGET");
