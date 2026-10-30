@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { auditPageText } from "@/lib/design-agent/identity/identity-lock";
 import { StructureDescriptor, structureFindings } from "@/lib/design-agent/structure/descriptor";
 import { intakeArtifact } from "@/lib/design-agent/artifact/intake";
-import { LaneStop, prepareImplementationLane } from "@/lib/design-agent/impl-lane/handoff";
+import { prepareImplementationLane } from "@/lib/design-agent/impl-lane/handoff";
 import { runLoop, type Ports } from "@/lib/design-agent/loop/controller";
 import { HTML, routeA, routeB, writePackage } from "../artifact/fixtures";
 
@@ -57,7 +57,9 @@ describe("fictional offline Phase 2 longitudinal integration", () => {
     expect(record.verification_state).toBe("render_pair_complete");
     expect(record.implementation_handoff_allowed).toBe(true);
 
-    const identity = auditPageText(fictionalIdentity, HTML);
+    const visibleText = "架空ベーカリー";
+    expect(HTML).toContain(visibleText);
+    const identity = auditPageText(fictionalIdentity, visibleText);
     expect(identity.status).toBe("PASS_IDENTITY_ONLY");
     expect(identity.counts_as_owner_success).toBe(false);
 
@@ -112,7 +114,7 @@ describe("fictional offline Phase 2 longitudinal integration", () => {
 
     const laneDir = join(files.base, "not-allowed-lane");
     await expect(prepareImplementationLane({ packageDir: files.dir, factsPath: files.factsPath, laneDir }))
-      .rejects.toMatchObject({ code: "LANE_NOT_ALLOWED" } satisfies Partial<LaneStop>);
+      .rejects.toMatchObject({ code: "LANE_NOT_ALLOWED" });
 
     let reachedImplement = false;
     const ports: Ports = {
@@ -134,7 +136,9 @@ describe("fictional offline Phase 2 longitudinal integration", () => {
     const files = writePackage(routeB());
     folders.push(files.base);
     const record = await intakeArtifact({ packageDir: files.dir, factsPath: files.factsPath });
-    const identity = auditPageText(fictionalIdentity, HTML);
+    const visibleText = "架空ベーカリー";
+    expect(HTML).toContain(visibleText);
+    const identity = auditPageText(fictionalIdentity, visibleText);
     expect(identity.status).toBe("PASS_IDENTITY_ONLY");
 
     let implemented = 0;
