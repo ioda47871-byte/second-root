@@ -113,11 +113,14 @@ export async function prepareImplementationLane(o: { packageDir: string; factsPa
     for (const p of present) if (prototypeShas.has(sha256(await readFile(join(tmp, p))))) throw new LaneStop("LANE_UNEXPECTED_CONTENT", p);
     // rename refuses a lane that appeared meanwhile only for a non-empty directory; check again just before
     if (await lstat(laneDir).then(() => true, () => false)) throw new LaneStop("LANE_EXISTS");
+    const built = await lstat(tmp);
     await rename(tmp, laneDir);
-    // the parent may have been swapped for a link after the first check: the lane's real place is checked once more
+    // the parent may have been swapped for a link after the first check: the lane's real place is checked once more.
+    // Only the very directory built here (same device and inode) is ever removed, never whatever is at that path now.
     const placed = await realpath(laneDir);
     if (placed === packageDir || placed.startsWith(packageDir + sep)) {
-      await rm(laneDir, { recursive: true, force: true });
+      const there = await lstat(placed).catch(() => null);
+      if (there && there.dev === built.dev && there.ino === built.ino) await rm(placed, { recursive: true, force: true });
       throw new LaneStop("LANE_UNEXPECTED_CONTENT", "lane inside the package");
     }
     return manifest;

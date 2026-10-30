@@ -103,7 +103,7 @@ describe("isolation", () => {
     // the whole directory: exactly this one file (L3), with exactly these imports
     expect(readdirSync(resolve(repo, "lib/design-agent/impl-lane"))).toEqual(["handoff.ts"]);
     const src = readFileSync(resolve(repo, "lib/design-agent/impl-lane/handoff.ts"), "utf8");
-    const imports = [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]).sort();
+    const imports = [...src.matchAll(/from\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]).sort();
     expect(imports).toEqual(["../artifact/intake", "node:crypto", "node:fs", "node:fs/promises", "node:path"]);
     // exactly these five static imports, and no other way to load a module (re-review L2)
     expect(src.match(/\bimport\b/g)).toHaveLength(5);
