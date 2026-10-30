@@ -1,0 +1,21 @@
+{
+  "schema": "phase2f_open_direction_v1",
+  "direction_id": "wagashi-open-a-morning-axis",
+  "concept": "One day of a small sweet shop, read from top to bottom: the tsubu-an cooked each morning (毎朝炊く粒あん) is where the page begins, and the shop's own closing condition (売り切れ次第終了) is where it ends. The dorayaki is the object everything turns around, shown large and close, and each later section is a different moment of the same day with its own scale and density, so the page feels like time passing in one shop rather than a list of blocks.",
+  "composition": { "hero": "object_led", "flow": "single_axis_scroll" },
+  "research": [
+    {
+      "case_id": "CP-003",
+      "adopted_for": "A stepped process made into the page itself, with photograph, huge type and empty space crossing section edges, and a separately composed phone page.",
+      "lost_or_rejected": "Equal product cards stacked one after another, and repeating the same guide or scale twice, were the weak points avoided.",
+      "translate_to_this_shop": "The shop states a daily sequence (cooked each morning, wrapped one at a time, until sold out); let that sequence be the axis, each step a different rhythm."
+    },
+    {
+      "case_id": "CP-009",
+      "adopted_for": "A hand act of the shop (sewing) became what connects the sections, and the hero the owner liked was kept while the lower sections were refined.",
+      "lost_or_rejected": "Polishing the lower sections must not throw away the strongest element of the first screen.",
+      "translate_to_this_shop": "Wrapping each sweet one at a time (一つずつお包みしています) may connect the sections, through this shop's own act, not decoration."
+    }
+  ],
+  "reference_ids": ["CP-003-pc", "CP-003-sp"]
+}

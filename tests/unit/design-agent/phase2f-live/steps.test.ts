@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CodexAbortedError, CodexError } from "@/lib/design-agent/codex";
+import { resolveDirection } from "@/lib/design-agent/phase2f/open-direction";
 import { buildDesignPrompt, type PromptVariant } from "@/lib/design-agent/phase2f/prompt";
 import { ResearchSection } from "@/lib/design-agent/phase2f/research-section";
 import { runDesignCall } from "@/lib/design-agent/phase2f-live/design-call";
@@ -17,6 +18,9 @@ import { answer, BRIEF, colourPng, FACTS } from "../phase2f/fixtures";
 
 const REPO = resolve(__dirname, "../../../..");
 const STEPS = resolve(REPO, "scripts/design-artifact/phase2f-steps.ts");
+const REFS = "design-library/phase2f/references/success-references-v1.json";
+const DIR_A = "design-library/phase2f/directions/wagashi-open-a.json";
+const DIR_B = "design-library/phase2f/directions/wagashi-open-b.json";
 const COMMIT = "c".repeat(40);
 const META = { threadId: "00000000-0000-4000-8000-000000000000", cliVersion: "0.200.0", modelReported: "gpt-fictional-5", redactions: [] };
 const clean = async () => ({ head: COMMIT, base: COMMIT, clean: true });
@@ -40,7 +44,7 @@ function world() {
     return { status: r.status, out, stderr: r.stderr };
   };
   const design = async (route: "B_html_prototype" | "C_hybrid", ans: unknown, o: { meta?: typeof META; plan?: string; fail?: boolean; variant?: PromptVariant } = {}) => {
-    const built = buildDesignPrompt({ route, facts: FACTS as never, brief: BRIEF as never, maxAssets: 1, ...(o.variant ? { variant: o.variant } : {}) });
+    const built = buildDesignPrompt({ route, facts: FACTS as never, ...(o.variant?.version === "v2" ? {} : { brief: BRIEF as never }), maxAssets: 1, ...(o.variant ? { variant: o.variant } : {}) });
     const outDir = join(runs, `design-${++n}`);
     const r = await runDesignCall(
       { route, prompt: built.prompt, schema: {}, humanApprovalConfirmed: true, approvalId: `fictional-design-${n}`, planId: o.plan ?? "plan-fictional-1", retryOf: null, expected: { promptSha256: built.sha256, promptChars: built.chars, commit: COMMIT }, outDir },
@@ -400,10 +404,25 @@ describe("DEV-122: the prompt version is the same from the design step to packag
     expect(w.pkg("B", ["--brief", w.briefPath, "--design", plain.outDir, "--prompt-version", "v1.1", "--research", resolve(REPO, RESEARCH)]).out).toMatchObject({ status: "stopped", code: "RECORD_PROMPT_MISMATCH" });
   }, 120_000);
 
+  it("DEV-124: a v2 design packages only with the same direction and references, and no brief", async () => {
+    const w = world();
+    const r = resolveDirection(JSON.parse(readFileSync(resolve(REPO, DIR_A), "utf8")), JSON.parse(readFileSync(resolve(REPO, REFS), "utf8")));
+    if (!r.ok) throw new Error(r.code);
+    const d = await w.design("B_html_prototype", answer(), { variant: { version: "v2", direction: r.direction, references: r.references } });
+    const v2 = ["--design", d.outDir, "--prompt-version", "v2", "--references", resolve(REPO, REFS)];
+    expect(w.pkg("B", [...v2, "--direction", resolve(REPO, DIR_A)]).out).toMatchObject({ status: "done", record: { route: "B_html_prototype", verification_state: "render_pair_complete" } });
+    // the other direction, or the v1 brief, rebuilds another prompt
+    expect(w.pkg("B", [...v2, "--direction", resolve(REPO, DIR_B)]).out).toMatchObject({ status: "stopped", code: "RECORD_PROMPT_MISMATCH" });
+    expect(w.pkg("B", ["--brief", w.briefPath, "--design", d.outDir]).out).toMatchObject({ status: "stopped", code: "RECORD_PROMPT_MISMATCH" });
+  }, 120_000);
+
   it("refuses an unknown version, research without v1.1, v1.1 on route C, and a version on route A", () => {
     const w = world();
     const d = join(w.runs, "none");
-    expect(w.pkg("B", ["--brief", w.briefPath, "--design", d, "--prompt-version", "v2"]).out).toMatchObject({ status: "refused", code: "PROMPT_VERSION_UNKNOWN" });
+    expect(w.pkg("B", ["--brief", w.briefPath, "--design", d, "--prompt-version", "v9"]).out).toMatchObject({ status: "refused", code: "PROMPT_VERSION_UNKNOWN" });
+    // DEV-124: v2 has no brief, and a direction needs v2
+    expect(w.pkg("B", ["--brief", w.briefPath, "--design", d, "--prompt-version", "v2", "--direction", resolve(REPO, DIR_A), "--references", resolve(REPO, REFS)]).out).toMatchObject({ status: "refused", code: "USAGE" });
+    expect(w.pkg("B", ["--brief", w.briefPath, "--design", d, "--direction", resolve(REPO, DIR_A), "--references", resolve(REPO, REFS)]).out).toMatchObject({ status: "refused", code: "DIRECTION_NEEDS_V2" });
     expect(w.pkg("B", ["--brief", w.briefPath, "--design", d, "--research", resolve(REPO, RESEARCH)]).out).toMatchObject({ status: "refused", code: "RESEARCH_NEEDS_V1_1" });
     expect(w.pkg("C", ["--brief", w.briefPath, "--design", d, "--prompt-version", "v1.1"]).out).toMatchObject({ status: "refused", code: "PROMPT_VARIANT_ROUTE" });
     expect(w.pkg("A", ["--image", d, "--expected-prompt-sha256", "a".repeat(64), "--prompt-version", "v1.1"]).out).toMatchObject({ status: "refused", code: "USAGE" });

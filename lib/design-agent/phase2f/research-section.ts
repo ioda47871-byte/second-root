@@ -17,8 +17,8 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-const Sha = z.string().regex(/^[0-9a-f]{64}$/);
-const Line = (max: number) =>
+export const Sha = z.string().regex(/^[0-9a-f]{64}$/);
+export const Line = (max: number) =>
   z.string().trim().min(1).max(max).refine((s) => !/[\u0000-\u001f\u007f]|<<<|>>>|```|<\s*\/?\s*[a-z!]/i.test(s), "unsafe_text");
 
 export const ResearchSection = z.strictObject({

@@ -18,15 +18,23 @@
  *       outside the repository), at most 15 minutes, the plan's limits are kept. SIGTERM / SIGINT / SIGHUP stop
  *       Codex (and every process it started) and record the call as aborted; nothing is retried.
  *
+ *   DEV-124: --prompt-version v2 --direction <direction.json> --references <manifest.json> (no --brief) builds the
+ *   open-direction prompt. A real v2 run also takes --reference-dir <dir> holding the registered WebP files the
+ *   direction names (by their file name); each must have the manifest's SHA-256 (also in the prompt). They are cut
+ *   into PNG sheets and attached as Codex image input. All of this happens before the approval is used.
+ *
  * The output directory (new, outside the repository) holds answer.json / generation.json / call.json for the
  * next steps (pre-render, image approval, packaging: DEV-117), which never call Codex for this design again.
  * Exit: 0 succeeded, 2 refused before anything was used, 1 the call was made (approval used) and did not succeed.
  */
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join, resolve } from "node:path";
+import { chromium } from "playwright";
 import { FactsPack } from "../../lib/design-agent/artifact/schema";
 import { runCodexJsonWithMeta } from "../../lib/design-agent/codex";
-import { buildDesignPrompt, codexDesignJsonSchema, DesignBrief, promptVariantOf } from "../../lib/design-agent/phase2f/prompt";
+import { buildDesignPrompt, codexDesignJsonSchema, DesignBrief, promptVariantOf, type PromptVariant } from "../../lib/design-agent/phase2f/prompt";
+import { referenceSheet, ReferenceStop } from "../../lib/design-agent/phase2f/reference-sheet";
 import { runDesignCall } from "../../lib/design-agent/phase2f-live/design-call";
 import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
 import { liveContext, parseArgs, runMain, say, stopSignals } from "./phase2f-live-cli";
@@ -39,23 +47,56 @@ const { controller, stop } = stopSignals();
 const MAX_ASSETS = 1;
 
 const FLAGS = new Set(["--human-approval-confirmed", "--print-pin"]);
-const VALUES = new Set(["--route", "--facts", "--brief", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of", "--prompt-version", "--research"]);
+const VALUES = new Set(["--route", "--facts", "--brief", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of", "--prompt-version", "--research", "--direction", "--references", "--reference-dir"]);
 
 const routeOf = (r: string | undefined): "B_html_prototype" | "C_hybrid" | null => (r === "B" ? "B_html_prototype" : r === "C" ? "C_hybrid" : null);
+
+const readJson = async (path: string | undefined): Promise<unknown> => (path === undefined ? undefined : JSON.parse(await readFile(resolve(path), "utf8")));
 
 async function promptFor(args: Map<string, string>) {
   const route = routeOf(args.get("--route"));
   const factsPath = args.get("--facts");
   const briefPath = args.get("--brief");
-  if (!route || !factsPath || !briefPath) return null;
-  const facts = FactsPack.safeParse(JSON.parse(await readFile(resolve(factsPath), "utf8")));
-  const brief = DesignBrief.safeParse(JSON.parse(await readFile(resolve(briefPath), "utf8")));
-  if (!facts.success || !brief.success) return null;
-  const researchPath = args.get("--research");
-  const research: unknown = researchPath === undefined ? undefined : JSON.parse(await readFile(resolve(researchPath), "utf8"));
-  const v = promptVariantOf({ route, version: args.get("--prompt-version"), research });
+  // DEV-124: v2 has no brief; the others need one
+  const v2 = args.get("--prompt-version") === "v2";
+  if (!route || !factsPath || (v2 ? briefPath !== undefined : !briefPath)) return null;
+  const facts = FactsPack.safeParse(await readJson(factsPath));
+  const brief = briefPath === undefined ? null : DesignBrief.safeParse(await readJson(briefPath));
+  if (!facts.success || (brief && !brief.success)) return null;
+  const v = promptVariantOf({ route, version: args.get("--prompt-version"), research: await readJson(args.get("--research")), direction: await readJson(args.get("--direction")), references: await readJson(args.get("--references")) });
   if (!v.ok) return { route, refused: v.code } as const;
-  return { route, variant: v.variant, built: buildDesignPrompt({ route, facts: facts.data, brief: brief.data, maxAssets: MAX_ASSETS, variant: v.variant }) };
+  return { route, variant: v.variant, built: buildDesignPrompt({ route, facts: facts.data, ...(brief?.success ? { brief: brief.data } : {}), maxAssets: MAX_ASSETS, variant: v.variant }) };
+}
+
+/**
+ * DEV-124: the reference sheets of a v2 run, made before the approval is used: each named WebP from --reference-dir,
+ * checked against the manifest's SHA-256, cut into one PNG sheet in a new private temporary directory.
+ */
+async function referenceImages(variant: PromptVariant, dir: string | undefined): Promise<{ paths: string[]; record: object[]; tmp: string | null } | { code: string }> {
+  if (variant.version !== "v2" || variant.references.length === 0) return dir === undefined ? { paths: [], record: [], tmp: null } : { code: "USAGE" };
+  if (dir === undefined) return { code: "REFERENCE_DIR_REQUIRED" };
+  const out = await mkdtemp(join(tmpdir(), "sr-p2f-refs-"));
+  const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
+  try {
+    const paths: string[] = [];
+    const record: object[] = [];
+    for (const ref of variant.references) {
+      const bytes = await readFile(join(resolve(dir), basename(ref.source.path))).catch(() => null);
+      if (!bytes) return (await rm(out, { recursive: true, force: true }), { code: "REFERENCE_FILE_MISSING" });
+      const sheet = await referenceSheet(browser, bytes, ref);
+      const path = join(out, `${ref.id}.png`);
+      await writeFile(path, sheet.png, { mode: 0o600, flag: "wx" });
+      paths.push(path);
+      record.push({ id: ref.id, webp_sha256: ref.webp_sha256, png_sha256: sheet.png_sha256, columns: sheet.columns, sheet: sheet.sheet });
+    }
+    return { paths, record, tmp: out };
+  } catch (e) {
+    await rm(out, { recursive: true, force: true });
+    if (e instanceof ReferenceStop) return { code: e.code };
+    throw e;
+  } finally {
+    await browser.close();
+  }
 }
 
 async function main(): Promise<number> {
@@ -68,13 +109,15 @@ async function main(): Promise<number> {
   if ("refused" in p) return (say({ status: "refused", code: p.refused }), 2);
   const research = p.variant.version === "v1.1" ? p.variant.research : null;
   if (args.has("--print-pin")) {
-    const optional = ["--prompt-version", "--research"].filter((f) => args.has(f)).length;
-    if (args.size !== 4 + optional) return (say({ status: "refused", code: "USAGE" }), 2);
+    // --route --facts and (--brief, or for v2 --direction --references), plus the optional version and research
+    const optional = ["--prompt-version", "--research", "--brief", "--direction", "--references"].filter((f) => args.has(f)).length;
+    if (args.size !== 3 + optional) return (say({ status: "refused", code: "USAGE" }), 2);
     say({
       mode: "print_pin",
       route: p.route,
       prompt_version: p.variant.version,
       research_section: research ? { section_id: research.section_id, case_ids: research.source.case_ids, owner_text_approval: research.owner_text_approval.status } : null,
+      ...(p.variant.version === "v2" ? { direction: { direction_id: p.variant.direction.direction_id, composition: p.variant.direction.composition }, references: p.variant.references.map((r) => ({ id: r.id, webp_sha256: r.webp_sha256 })) } : {}),
       prompt_sha256: p.built.sha256,
       prompt_chars: p.built.chars,
     });
@@ -85,8 +128,13 @@ async function main(): Promise<number> {
   const out = args.get("--out");
   const chars = Number(args.get("--expected-prompt-chars"));
   if (!out || !Number.isInteger(chars)) return (say({ status: "refused", code: "USAGE" }), 2);
+  // the reference images are checked (and their sheets made) first: a wrong file never reaches the approval
+  const refs = await referenceImages(p.variant, args.get("--reference-dir"));
+  if ("code" in refs) return (say({ status: "refused", code: refs.code }), 2);
+  // the sheets are copies Codex was given; they are not kept (their SHA-256 is printed with the result)
+  const cleanup = () => (refs.tmp ? rm(refs.tmp, { recursive: true, force: true }) : Promise.resolve());
   const ctx = await liveContext(out, stop);
-  if ("code" in ctx) return (say({ status: "refused", code: ctx.code }), 2);
+  if ("code" in ctx) return (await cleanup(), say({ status: "refused", code: ctx.code }), 2);
   const result = await runDesignCall(
     {
       route: p.route,
@@ -99,6 +147,7 @@ async function main(): Promise<number> {
       expected: { promptSha256: args.get("--expected-prompt-sha256") ?? "", promptChars: chars, commit: args.get("--expected-commit") ?? "" },
       outDir: ctx.outDir,
       signal: controller.signal,
+      images: refs.paths,
     },
     {
       ledger: openLedger(ctx.ledgerDir),
@@ -110,12 +159,12 @@ async function main(): Promise<number> {
         return runCodexJsonWithMeta({ sandbox, ...o });
       },
     },
-  );
+  ).finally(cleanup);
   if (result.status === "succeeded") {
-    say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, warnings: result.warnings });
+    say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, warnings: result.warnings, references: refs.record });
     return 0;
   }
-  say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call", ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}) });
+  say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call", ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}), references: refs.record });
   return result.stage === "precheck" ? 2 : 1;
 }
 

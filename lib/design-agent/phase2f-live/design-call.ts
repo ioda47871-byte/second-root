@@ -27,7 +27,7 @@ import { checkBeforeApproval, writeOnce, type CommitState, type Generation } fro
 
 export type { CommitState, Generation } from "./steps";
 
-export type DesignCodex = (o: { prompt: string; schema: object; timeoutMs: number; signal?: AbortSignal }) => Promise<{ answer: unknown; meta: CodexRunMeta }>;
+export type DesignCodex = (o: { prompt: string; schema: object; timeoutMs: number; signal?: AbortSignal; images?: readonly string[] }) => Promise<{ answer: unknown; meta: CodexRunMeta }>;
 
 export type DesignCallInput = {
   route: "B_html_prototype" | "C_hybrid";
@@ -40,6 +40,8 @@ export type DesignCallInput = {
   expected: { promptSha256: string; promptChars: number; commit: string };
   outDir: string;
   signal?: AbortSignal;
+  /** DEV-124: PNG sheets of the success-case references the prompt names (their SHA-256 is in the prompt). */
+  images?: readonly string[];
 };
 
 export type DesignCallDeps = {
@@ -89,7 +91,7 @@ export async function runDesignCall(i: DesignCallInput, d: DesignCallDeps): Prom
   let answer: unknown;
   let meta: CodexRunMeta;
   try {
-    ({ answer, meta } = await d.codex({ prompt: i.prompt, schema: i.schema, timeoutMs, ...(i.signal === undefined ? {} : { signal: i.signal }) }));
+    ({ answer, meta } = await d.codex({ prompt: i.prompt, schema: i.schema, timeoutMs, ...(i.signal === undefined ? {} : { signal: i.signal }), ...(i.images?.length ? { images: i.images } : {}) }));
     // stopped while the answer was on its way back: not an answer either
     if (i.signal?.aborted) throw new CodexAbortedError();
   } catch (error) {

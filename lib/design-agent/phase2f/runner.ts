@@ -252,7 +252,7 @@ export async function prerenderRoute(c: { route: "B_html_prototype" | "C_hybrid"
 }
 
 /** Routes B and C. */
-export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" | "C_hybrid"; browser: Browser; brief: DesignBrief; designPort: DesignPort; assetPort?: AssetPort; render?: RenderPrototype; /** DEV-122: the prompt version the design was made with (default v1). */ promptVariant?: PromptVariant }): Promise<RunResult> {
+export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" | "C_hybrid"; browser: Browser; /** absent only for the v2 prompt (DEV-124), which has no brief */ brief?: DesignBrief; designPort: DesignPort; assetPort?: AssetPort; render?: RenderPrototype; /** DEV-122: the prompt version the design was made with (default v1). */ promptVariant?: PromptVariant }): Promise<RunResult> {
   // tests may substitute the renderer (to reproduce a blocked request); the CLI never does
   const render = c.render ?? renderPrototype;
   const limits = c.limits ?? PLAN_LIMITS;
@@ -266,7 +266,7 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
   const budgetLeft = () => limits.totalBudgetMs - (now() - started);
 
   // 1. one design call
-  const built = buildDesignPrompt({ route: c.route, facts: c.facts.pack, brief: c.brief, maxAssets: limits.maxAssetCalls, ...(c.promptVariant ? { variant: c.promptVariant } : {}) });
+  const built = buildDesignPrompt({ route: c.route, facts: c.facts.pack, ...(c.brief ? { brief: c.brief } : {}), maxAssets: limits.maxAssetCalls, ...(c.promptVariant ? { variant: c.promptVariant } : {}) });
   log.prompt_sha256 = built.sha256;
   if (limits.maxDesignCalls < 1) return stop("RUN_LIMIT_DESIGN_CALLS", "approval", RECOVERY.new_run);
   if (budgetLeft() <= 0) return stop("RUN_TIME_BUDGET", "interrupted", RECOVERY.new_run);
