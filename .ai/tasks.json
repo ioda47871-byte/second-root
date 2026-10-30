@@ -5675,6 +5675,48 @@
       ],
       "note": "0 Codex calls, 0 image generations.",
       "merged": "#157 → 25fe069 (merge commit, 2026-10-30)"
+    },
+    {
+      "id": "DEV-125",
+      "title": "Phase 2b（研究隔離・仮語彙）：8側面の構造記述子、ブラウザ実測、構造の重複・汎用骨格の検査",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-124"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-125-phase2b-structure",
+      "purpose": "Issue #159 の一括承認（2b：仮の構造語彙・記述子・重複/相違検査をオフライン fixture で設計・実装・試験）。成功例や同じ店の別案と同じ骨格、汎用 LP の骨格を機械的に見つける。",
+      "acceptance_criteria": [
+        "8側面（hero・flow・navigation・reading_path・section_layouts・transitions・text_direction・imagery）の仮語彙と記述子スキーマ",
+        "幾何で分かる側面は Chromium の実描画（JS 無効・通信遮断）から測り、測った値は宣言より優先",
+        "不明な側面は一致に数えず報告",
+        "参考例への近さ・同じ店の2案の同一骨格・汎用骨格を助言として出し、デザインの合格とは扱わない",
+        "生成器・本番から参照されない（テストで固定）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/structure/structure.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/structure/**",
+        "tests/unit/design-agent/structure/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-125.md"
+      ],
+      "forbidden_scope": [
+        "語彙の確定・生成器への組み込み",
+        "Codex 実行・画像生成",
+        "実店舗データ",
+        "本番・worker の変更"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "語彙と閾値の確定"
+      ],
+      "note": "Issue #159 offline batch approval; 0 Codex calls."
     }
   ]
 }
