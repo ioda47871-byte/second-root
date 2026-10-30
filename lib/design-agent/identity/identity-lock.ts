@@ -12,7 +12,8 @@
  *   name must appear, and no other shop's name (e.g. the success cases shown as references) may appear.
  *
  * What the page check can and cannot see: it compares against the names it is GIVEN (target, aliases, other shops),
- * after folding width, case, punctuation, zero-width characters and hiragana/katakana. It does not know shops that are
+ * after folding width, case, punctuation, zero-width characters and (page check only) hiragana/katakana; the image
+ * check keeps the research script's comparison exactly. It does not know shops that are
  * not listed, abbreviations, or variant kanji (髙/高): those still need the owner's look at the page.
  *
  * Deliberately stricter than the research script: a name that cleans to nothing ("♪") is never accepted.
@@ -37,15 +38,9 @@ const NOTE = "PASS_IDENTITY_ONLY is not a quality score, owner approval, commerc
 
 const shaOK = (x: unknown): x is string => typeof x === "string" && /^[a-f0-9]{64}$/i.test(x);
 /** Names compare after NFKC, lower case and dropping everything but letters and digits ("imairo." = "IMAIRO"). */
-export const cleanName = (s: unknown) =>
-  typeof s === "string"
-    ? s
-        .normalize("NFKC")
-        .toLocaleLowerCase("en-US")
-        .replace(/[^\p{L}\p{N}]+/gu, "")
-        // hiragana → katakana (なごや = ナゴヤ)
-        .replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60))
-    : "";
+export const cleanName = (s: unknown) => (typeof s === "string" ? s.normalize("NFKC").toLocaleLowerCase("en-US").replace(/[^\p{L}\p{N}]+/gu, "") : "");
+/** For the page check only: also hiragana → katakana (なごや = ナゴヤ). The image check keeps the research script's names. */
+export const cleanPageName = (s: unknown) => cleanName(s).replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
 const filled = (s: unknown): s is string => typeof s === "string" && s.trim().length > 0;
 const obj = (x: unknown): Record<string, unknown> => (x !== null && typeof x === "object" && !Array.isArray(x) ? (x as Record<string, unknown>) : {});
 
@@ -117,14 +112,16 @@ export function auditPageText(input: unknown, visibleText: string): IdentityResu
   const a = obj(input);
   const errors: string[] = [];
   const pending: string[] = [];
-  const { allowed } = lockChecks(a, errors);
-  const text = cleanName(visibleText);
+  const allowed = lockChecks(a, errors).allowed.map(cleanPageName);
+  const text = cleanPageName(visibleText);
   if (allowed.some((n) => n.length < 2)) errors.push("TARGET_NAME_TOO_SHORT");
   const raw = a.other_shop_names;
-  const others = Array.isArray(raw) && raw.every(filled) ? raw.map(cleanName) : null;
+  // Array.from fills holes, so a sparse array is checked element by element (a hole is not a name)
+  const list = Array.isArray(raw) ? Array.from(raw as unknown[]) : null;
+  const others = list && list.every(filled) ? list.map(cleanPageName) : null;
   // never silently skipped: a malformed list is an error, an absent or empty one leaves the page unconfirmed
   if (raw !== undefined && !Array.isArray(raw)) errors.push("OTHER_SHOP_NAMES_INVALID");
-  else if (Array.isArray(raw) && !raw.every(filled)) errors.push("OTHER_SHOP_NAMES_INVALID");
+  else if (list && !list.every(filled)) errors.push("OTHER_SHOP_NAMES_INVALID");
   if (others === null || others.length === 0) {
     if (raw === undefined || (Array.isArray(raw) && raw.length === 0)) pending.push("OTHER_SHOP_NAMES_NOT_GIVEN");
   } else {

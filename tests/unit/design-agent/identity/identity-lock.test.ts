@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { auditIdentity, auditPageText, cleanName } from "@/lib/design-agent/identity/identity-lock";
+import { auditIdentity, auditPageText, cleanName, cleanPageName } from "@/lib/design-agent/identity/identity-lock";
 
 // DEV-126 (Phase 2c, Issue #159): Identity Lock ported from the research script identity-audit.mjs (PR #142).
 // The image cases are the research script's own tests, with the same verdicts and codes. Offline, fictional or
@@ -137,9 +137,20 @@ describe("generated HTML pages (visible text)", () => {
     expect(auditPageText(wagashi({ other_shop_names: [] }), "架空菓庵")).toMatchObject({ status: "HOLD", pending: ["OTHER_SHOP_NAMES_NOT_GIVEN"] });
   });
 
+  it("re-review: kana folding is for the page check only (the image check keeps the research comparison); a sparse list is invalid", () => {
+    const img = base();
+    img.target.official_name = "いまいろ";
+    img.target.allowed_aliases = [];
+    img.prompt.shop_name = "いまいろ";
+    img.visual_inspection.visible_site_identity_labels = ["イマイロ"];
+    expect(auditIdentity(img).status).toBe("REJECT");
+    expect(auditPageText(wagashi({ target: { official_name: "かくうかあん", allowed_aliases: [], category_code: "wagashi", official_source_url: "x" }, prompt: { shop_name: "かくうかあん", category_code: "wagashi", is_research_only: true } }), "カクウカアン").errors).not.toContain("TARGET_NAME_NOT_ON_PAGE");
+    expect(auditPageText(wagashi({ other_shop_names: new Array(2) }), "架空菓庵 NAGOYA BEANS").errors).toContain("OTHER_SHOP_NAMES_INVALID");
+  });
+
   it("M3: hiragana and katakana spellings of a listed name are the same name", () => {
     expect(auditPageText(wagashi(), "架空菓庵 ナゴヤビーンズ").errors).toContain("VISIBLE_WRONG_OR_EXTRA_SHOP_NAME");
-    expect(cleanName("なごや")).toBe(cleanName("ナゴヤ"));
+    expect(cleanPageName("なごや")).toBe(cleanPageName("ナゴヤ"));
   });
 
   it("names too short to search for, or overlapping the target, are refused as input", () => {
