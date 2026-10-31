@@ -5895,7 +5895,7 @@
     {
       "id": "DEV-130",
       "title": "研究30件の統合後の記録の整理：CP-026〜032 の intake を superseded にし（検査は登録済みであることへ反転）、古い文書の記述を直す",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-120"
@@ -5932,7 +5932,8 @@
       "human_approval_triggers": [
         "なし（記録の整理。研究データの変更を含まない）"
       ],
-      "note": "Records only; no research data changed."
+      "note": "Records only; no research data changed.",
+      "merged": "#166 → fb1a772 (squash, 2026-10-31)"
     }
   ]
 }
