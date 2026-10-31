@@ -700,3 +700,38 @@ describe("CLI", () => {
     }
   }, 60_000);
 });
+
+describe("DEV-127: recorded check results (Phase 2d, research-isolated)", () => {
+  const withChecks = (checks: unknown) => edit(routeB, (p) => (p.artifact.observed.checks = checks));
+  const pass = { status: "PASS_IDENTITY_ONLY", errors: [], pending: [], counts_as_owner_success: false };
+  const structure = { vocabulary: "structure_descriptor_v0", findings: ["TOO_CLOSE_TO_REFERENCE"], max_similarity: 0.82, advisory: true };
+
+  it("a v1 record without checks is unchanged; passing checks change nothing; structure findings are only warnings", async () => {
+    expect((await run(routeB())).verification_state).toBe("render_pair_complete");
+    const r = await run(withChecks({ structure, identity: pass }));
+    expect([r.verification_state, r.reasons]).toEqual(["render_pair_complete", []]);
+    expect(r.warnings).toContain("structure_findings:TOO_CLOSE_TO_REFERENCE");
+    expect((await run(withChecks({ structure: null, identity: null }))).verification_state).toBe("render_pair_complete");
+  });
+
+  it("a page that is another shop, or not yet confirmed, is incomplete (a check can only lower the state)", async () => {
+    const reject = await run(withChecks({ structure: null, identity: { status: "REJECT", errors: ["VISIBLE_WRONG_OR_EXTRA_SHOP_NAME"], pending: [], counts_as_owner_success: false } }));
+    expect([reject.verification_state, reject.implementation_handoff_allowed, reject.reasons]).toEqual(["incomplete", false, ["identity_reject:VISIBLE_WRONG_OR_EXTRA_SHOP_NAME"]]);
+    const hold = await run(withChecks({ structure: null, identity: { status: "HOLD", errors: [], pending: ["OTHER_SHOP_NAMES_NOT_GIVEN"], counts_as_owner_success: false } }));
+    expect([hold.verification_state, hold.reasons]).toEqual(["incomplete", ["identity_hold:OTHER_SHOP_NAMES_NOT_GIVEN"]]);
+  });
+
+  it("refuses a self-declared approval, a status its codes do not give, a non-advisory structure result, unknown keys", async () => {
+    const bad = [
+      { structure: null, identity: { ...pass, counts_as_owner_success: true } },
+      { structure: null, identity: { ...pass, errors: ["PROMPT_WRONG_SHOP"] } },
+      { structure: null, identity: { status: "PASS_IDENTITY_ONLY", errors: [], pending: ["VISUAL_INSPECTION_REQUIRED"], counts_as_owner_success: false } },
+      { structure: { ...structure, advisory: false }, identity: null },
+      { structure: { ...structure, max_similarity: 1.2 }, identity: null },
+      { structure: null, identity: pass, owner_approval: "approved" },
+      { structure: null, identity: { ...pass, signed: true } },
+      { structure: { ...structure, findings: ["looks great"] }, identity: null },
+    ];
+    for (const checks of bad) expect(await code(run(withChecks(checks))), JSON.stringify(checks)).toBe("ARTIFACT_SCHEMA_INVALID");
+  });
+});
