@@ -376,6 +376,7 @@ describe("DEV-137: a failed render says what the browser said", () => {
     expect(renderFailureDetail(new Error("Protocol error at /tmp/abc/def.png: Unable to capture screenshot"))).toBe("Error: Protocol error at <path>: Unable to capture screenshot");
     expect(renderFailureDetail(new Error("x".repeat(500)))).toHaveLength(160);
     expect(renderFailureDetail("")).toBe("unknown");
+    expect(renderFailureDetail(new Error("bad \x1b[31mred\x1b[0m"))).toBe("Error: bad ?[31mred?[0m");
   });
 
   it("a render on a closed browser stops with RENDER_FAILED and a detail", async () => {

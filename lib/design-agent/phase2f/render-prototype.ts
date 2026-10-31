@@ -74,7 +74,13 @@ export class RenderError extends Error {
 /** The first line of a browser error, without paths or long numbers, for the run's record (never the page's content). */
 export function renderFailureDetail(cause: unknown): string {
   const text = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
-  const first = text.split("\n")[0]!.replace(/(?:\/[^\s/:]+)+\/?/g, "<path>").replace(/\s+/g, " ").trim();
+  // POSIX paths are hidden (the renderers run on Linux); anything but printable ASCII becomes "?" (as IntakeError)
+  const first = text
+    .split("\n")[0]!
+    .replace(/(?:\/[^\s/:]+)+\/?/g, "<path>")
+    .replace(/\s+/g, " ")
+    .replace(/[^\x20-\x7e]/g, "?")
+    .trim();
   return first.slice(0, 160) || "unknown";
 }
 

@@ -65,7 +65,7 @@ export type RunLog = {
 
 export type RunResult =
   | { status: "done"; packageDir: string; record: IntakeRecord; log: RunLog }
-  | { status: "stopped"; code: string; stopClass: StopClass; ownerCheck: boolean; recovery: string; log: RunLog; /** which safety rule refused the prototype (PROTOTYPE_UNSAFE) */ detail?: string };
+  | { status: "stopped"; code: string; stopClass: StopClass; ownerCheck: boolean; recovery: string; log: RunLog; /** which safety rule refused the prototype (PROTOTYPE_UNSAFE), or the browser's first line for RENDER_FAILED (DEV-137) */ detail?: string };
 
 /** Recovery suggestions (never automatic). */
 export const RECOVERY = {
