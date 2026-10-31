@@ -6021,7 +6021,7 @@
       "human_approval_triggers": [
         "develop へのマージ"
       ],
-      "note": " develop の push CI は1回目に phase2f-live/steps.test.ts の RENDER_FAILED 2件で落ち、失敗ジョブの再実行で成功 (runner 上の Chromium の一時的な失敗。同じコードは直前の PR CI で通過)。",
+      "note": "develop の push CI は1回目に phase2f-live/steps.test.ts の RENDER_FAILED 2件で落ち、失敗ジョブの再実行で成功 (runner 上の Chromium の一時的な失敗。同じコードは直前の PR CI で通過)。",
       "merged": "#172 → 7861e3e (squash, 2026-10-31)"
     },
     {
@@ -6064,7 +6064,7 @@
     {
       "id": "DEV-133",
       "title": "Second Root 専用デザインスキル second-root-design-director の作成と評価 (架空店舗3つ、スキルあり/なし、機械の検査と盲検比較)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-132"
@@ -6100,7 +6100,8 @@
         "develop へのマージ",
         "実モデルでの評価"
       ],
-      "note": "評価は1店1回ずつの小さなもの。iteration-1 後の小修正は再実行で未確認。 DEV-132 (PR #169、公式 frontend-design の導入) と対で統合する (このスキルが優先順位でそれを参照する)。"
+      "note": "評価は1店1回ずつの小さなもの。iteration-1 後の小修正は再実行で未確認。 DEV-132 (#169) のあとに統合した。",
+      "merged": "#170 → 33e59f2 (squash, 2026-10-31)"
     },
     {
       "id": "DEV-134",
