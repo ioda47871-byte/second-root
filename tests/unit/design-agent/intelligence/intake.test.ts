@@ -10,7 +10,13 @@ const FILE = "design-library/research-intake/cp-026-032.json";
 // a mutable view of the JSON for building broken variants
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = Record<string, any>;
-const intake = () => JSON.parse(readFileSync(resolve(REPO, FILE), "utf8")) as Json;
+const stored = () => JSON.parse(readFileSync(resolve(REPO, FILE), "utf8")) as Json;
+/** The intake as it was before registration (DEV-130 marks the stored file as superseded); the rules below are about that state. */
+const intake = () => {
+  const j = stored();
+  delete j.superseded_by;
+  return j;
+};
 // the 23 owner-selected cases registered on PR #142 (CP-014 and CP-025 are not successes)
 const REGISTERED = [...Array.from({ length: 24 }, (_, i) => `CP-${String(i + 1).padStart(3, "0")}`).filter((id) => id !== "CP-014")];
 const codeOf = (f: () => unknown) => {
@@ -22,7 +28,31 @@ const codeOf = (f: () => unknown) => {
   }
 };
 
-describe("the CP-026..032 intake", () => {
+describe("DEV-130: the intake after registration (PR #158)", () => {
+  // the research manifest on develop now holds the 30 registered cases
+  const manifest = JSON.parse(readFileSync(resolve(REPO, "design-library/success-cases/manifest.json"), "utf8")) as { records: { id: string }[] };
+  const registered30 = manifest.records.map((r) => r.id);
+
+  it("is a superseded snapshot whose 7 cases are all registered now", () => {
+    expect(registered30).toHaveLength(30);
+    const report = checkIntake(stored(), { registeredCaseIds: registered30 });
+    expect(report.superseded_by).toEqual({ research_pr: 158, merged_commit: "d48993568267b446d6d5371e0058a589dc87b58c" });
+    expect(report.records.map((r) => r.id)).toEqual(["CP-026", "CP-027", "CP-028", "CP-029", "CP-030", "CP-031", "CP-032"]);
+    for (const id of ["CP-014", "CP-025"]) expect(registered30).not.toContain(id);
+  });
+
+  it("refuses a superseded snapshot whose cases are not all registered, and a non-success id among them", () => {
+    expect(codeOf(() => checkIntake(stored(), { registeredCaseIds: REGISTERED }))).toBe("INTAKE_SUPERSEDED_NOT_REGISTERED");
+    const j = stored();
+    j.records[0].id = "CP-025";
+    expect(codeOf(() => checkIntake(j, { registeredCaseIds: [...REGISTERED, "CP-025", "CP-027", "CP-028", "CP-029", "CP-030", "CP-031", "CP-032"] }))).toBe("INTAKE_SUPERSEDED_NOT_REGISTERED");
+    const bad = stored();
+    bad.superseded_by.registered_in = "design-library/elsewhere.json";
+    expect(codeOf(() => checkIntake(bad, { registeredCaseIds: registered30 }))).toBe("INTAKE_SCHEMA_INVALID");
+  });
+});
+
+describe("the CP-026..032 intake (before registration)", () => {
   it("holds the 7 adopted, unregistered cases: form unknown, none counted in the registered dataset, none promotable, all evidence missing", () => {
     const report = checkIntake(intake(), { registeredCaseIds: REGISTERED });
     expect(report.records.map((r) => `${r.id} ${r.title} ${r.version_label}`)).toEqual([

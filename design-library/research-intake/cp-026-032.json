@@ -366,5 +366,10 @@
       },
       "counted_in_registered_dataset": false
     }
-  ]
+  ],
+  "superseded_by": {
+    "research_pr": 158,
+    "merged_commit": "d48993568267b446d6d5371e0058a589dc87b58c",
+    "registered_in": "design-library/success-cases/manifest.json"
+  }
 }
