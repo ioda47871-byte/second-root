@@ -5938,7 +5938,7 @@
     {
       "id": "DEV-131",
       "title": "Phase 2e（研究隔離版）：実装と元デザインの PC1440/SP390 比較（原因コードを修正ループへ）と、架空店舗のオフライン実験（2b/2c/2e/2g を実モジュールで連結）",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-125",
@@ -5988,7 +5988,8 @@
         "閾値の確定",
         "実ポートへの接続"
       ],
-      "note": "Review: round 3 PASS (C0/H0/M0/L3); Lows recorded in .ai/reviews/DEV-131.md for threshold finalisation."
+      "note": "Review: round 3 PASS (C0/H0/M0/L3); Lows recorded in .ai/reviews/DEV-131.md for threshold finalisation.",
+      "merged": "#167 → 439cf08 (squash, 2026-10-31)"
     }
   ]
 }
