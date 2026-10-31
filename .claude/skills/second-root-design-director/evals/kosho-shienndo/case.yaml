@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: kosho-shienndo
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  紙縁堂 の事実だけを使い、Hero と全体の流れが違う2つの方向案を、B方式の制約を守る
+  index.html と style.css で作る。390px で横にはみ出さず、汎用 LP の骨格に寄らず、他店の名前を出さない。
