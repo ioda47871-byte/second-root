@@ -339,7 +339,9 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
   // 5. render both widths; any blocked request is a safety stop
   let rendered;
   try {
-    rendered = await render(c.browser, proto, assetFiles, spec.sections.map((s) => s.id));
+    // DEV-134: the SP 390 page is also checked for the phone (report-only; recorded below, never a stop)
+    const name = c.facts.pack.facts.find((f) => f.key === "name")?.value ?? null;
+    rendered = await render(c.browser, proto, assetFiles, spec.sections.map((s) => s.id), { facts: c.facts.pack.facts.map((f) => f.value), shopName: name });
   } catch (e) {
     if (e instanceof RenderError) return stop(e.code, "output", RECOVERY.fix_input);
     throw e;
@@ -409,6 +411,9 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
         stops,
         missing,
         fallback,
+        // DEV-134: only the phone checks are recorded by the runner; structure and identity are not run here (null)
+        // (the examples are for a person reading the run; the artifact keeps the codes and counts only)
+        ...(rendered.mobile_390.mobileQuality ? { checks: { structure: null, identity: null, mobile: { viewport: "mobile_390" as const, findings: rendered.mobile_390.mobileQuality.findings, counts: rendered.mobile_390.mobileQuality.counts, advisory: true as const } } } : {}),
       },
     });
     log.route_delivered = route;

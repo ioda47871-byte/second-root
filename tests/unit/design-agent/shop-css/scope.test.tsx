@@ -71,7 +71,15 @@ describe("public /demo and the admin preview cannot load a shop stylesheet", () 
     walk(join(process.cwd(), "app"));
     walk(join(process.cwd(), "components"));
     walk(join(process.cwd(), "lib"));
-    const allowed = new Set(["app/design-preview/[runId]/page.tsx", "components/demo/profile/ProfileRenderer.tsx", "lib/design-agent/preview.ts"]);
+    const allowed = new Set([
+      "app/design-preview/[runId]/page.tsx",
+      "components/demo/profile/ProfileRenderer.tsx",
+      "lib/design-agent/preview.ts",
+      // DEV-134: the Phase 2f phone checks (report-only, offline) reuse the shop-css text measurement on a prototype
+      // page, as the comp-to-site PoC does; no shop stylesheet is read or applied (exact path, imports pinned in
+      // tests/unit/design-agent/phase2f/isolation.test.ts)
+      "lib/design-agent/phase2f/mobile-quality.ts",
+    ]);
     // DEV-082: the local comp-to-site PoC reuses the shop-css tokenizer and text measurement (never a shop stylesheet);
     // it is imported only by its CLI (tests/unit/design-agent/comp-impl/isolation.test.ts)
     const users = files

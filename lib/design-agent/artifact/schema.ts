@@ -198,6 +198,25 @@ export const RecordedChecks = z.strictObject({
     // the status must be the one its codes give (REJECT with errors, HOLD with only pending codes, PASS with none)
     .refine((i) => i.status === (i.errors.length ? "REJECT" : i.pending.length ? "HOLD" : "PASS_IDENTITY_ONLY"), "identity_status_inconsistent")
     .nullable(),
+  /**
+   * DEV-134: the phone (SP 390) checks of the rendered prototype (phase2f mobile-quality, report-only). Optional, so
+   * every earlier record stays valid; intake shows its findings as a warning and never lets them change the state.
+   */
+  mobile: z
+    .strictObject({
+      viewport: z.literal("mobile_390"),
+      findings: CodeList,
+      counts: z.strictObject({
+        text_nodes: z.number().int().nonnegative(),
+        text_nodes_with_problems: z.number().int().nonnegative(),
+        tap_targets: z.number().int().nonnegative(),
+        tap_targets_below_recommended: z.number().int().nonnegative(),
+        tap_targets_below_minimum: z.number().int().nonnegative(),
+      }),
+      advisory: z.literal(true),
+    })
+    .nullable()
+    .optional(),
 });
 
 export const Generation = z.strictObject({

@@ -1,0 +1,72 @@
+{
+  "schema": "shop_facts_pack_v1",
+  "shop_id": "fictional-sento",
+  "facts": [
+    {
+      "id": "F1",
+      "key": "name",
+      "value": "月見湯",
+      "source_id": "S1"
+    },
+    {
+      "id": "F2",
+      "key": "category",
+      "value": "public_bath",
+      "source_id": "S1"
+    },
+    {
+      "id": "F3",
+      "key": "ward",
+      "value": "中村区",
+      "source_id": "S1"
+    },
+    {
+      "id": "F4",
+      "key": "address",
+      "value": "名古屋市中村区架空町三丁目4-5",
+      "source_id": "S1"
+    },
+    {
+      "id": "F5",
+      "key": "hours",
+      "value": "15:00〜23:30（最終入場23:00）",
+      "source_id": "S1"
+    },
+    {
+      "id": "F6",
+      "key": "closed_days",
+      "value": "毎週金曜",
+      "source_id": "S1"
+    },
+    {
+      "id": "F7",
+      "key": "bath_fuel",
+      "value": "薪で沸かしている",
+      "source_id": "S1"
+    },
+    {
+      "id": "F8",
+      "key": "wall_painting",
+      "value": "浴室の壁は富士山ではなく満月と池のタイル絵",
+      "source_id": "S1"
+    },
+    {
+      "id": "F9",
+      "key": "baths",
+      "value": "白湯・電気風呂・水風呂",
+      "source_id": "S1"
+    },
+    {
+      "id": "F10",
+      "key": "front_desk",
+      "value": "番台式",
+      "source_id": "S1"
+    },
+    {
+      "id": "F11",
+      "key": "founded",
+      "value": "昭和三十八年創業",
+      "source_id": "S1"
+    }
+  ]
+}
