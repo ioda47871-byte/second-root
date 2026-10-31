@@ -49,7 +49,7 @@ How to use them:
 - 区画は、店名・写真・具体的な構図・ブランド表現を含まない。元の店名や商品名が入っていないことをテストで確かめる。
 - 区画のファイル（`design-library/phase2f/research/wagashi-b-research-v1.json`）は、出典として PR #142 の head `efe269f…`、manifest の SHA-256 `bd503a3b…`、success-patterns の SHA-256 `cacabc3a…`、事例 ID を持つ。
 - 研究の区画そのものの SHA-256 は `444bc6a24042fc6b60ea7ec707bd8c74c4e4a41fc005e0f9f8d179b0b37315c2`。承認の記録はこの値を持ち、文章が1文字でも変われば承認は無効になる。
-- 区画の文章のオーナー承認は、現在 `pending`。**承認されるまで、研究ありの実行は CLI が拒否する（`RESEARCH_TEXT_NOT_APPROVED`）。** 承認は、このファイルの `owner_text_approval` を、オーナーの発言原文と日付で `approved` にする小さなコミットで記録する。プロンプトの SHA は承認の状態に左右されない。
+- 区画の文章は 2026-10-30 にオーナーが承認した（`owner_text_approval: approved`、block SHA-256 `444bc6a2…`、PR #155）。承認の無い区画では、研究ありの実行を CLI が拒否する（`RESEARCH_TEXT_NOT_APPROVED`）。プロンプトの SHA は承認の状態に左右されない。
 
 ## 2. 同じ入力が最後まで使われること
 
