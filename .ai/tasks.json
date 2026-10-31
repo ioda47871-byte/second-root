@@ -5990,6 +5990,52 @@
       ],
       "note": "Review: round 3 PASS (C0/H0/M0/L3); Lows recorded in .ai/reviews/DEV-131.md for threshold finalisation.",
       "merged": "#167 → 439cf08 (squash, 2026-10-31)"
+    },
+    {
+      "id": "DEV-134",
+      "title": "Phase 2f のスマホ (SP 390) 品質検査 — report-only で試作工程に接続",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-134-sp-quality-checks",
+      "purpose": "オーナー指示 2026-10-31 (第3段階 1: Phase 2f のスマホ品質検査を強化。最初は report-only で既存の制作工程を止めない)。既存の shop-CSS の文字検査を試作に再利用し、押す所と店名の1画面目を足す。",
+      "acceptance_criteria": [
+        "SP 390 の文字 (小さすぎ・切れ・はみ出し・覆われ・重なり・薄い・事実の非表示)、押す所、店名の1画面目を検める",
+        "止めない: artifact の observed.checks.mobile に記録し、intake は警告だけ。状態を変えない",
+        "既存の呼び出し (描画・prerender・比較表) は変わらない。SP の画像も変わらない",
+        "実際の試作12枚で誤検知を確かめ、見つかったものを直してテストに固定する"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f/mobile-quality.test.ts",
+        "tests/unit/design-agent/phase2f/runner.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/phase2f/mobile-quality.ts",
+        "lib/design-agent/phase2f/render-prototype.ts",
+        "lib/design-agent/phase2f/runner.ts",
+        "lib/design-agent/artifact/schema.ts (optional field)",
+        "lib/design-agent/artifact/intake.ts (warning only)",
+        "tests/unit/design-agent/phase2f/**",
+        "docs/design/phase2f-mobile-quality.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-134.md"
+      ],
+      "forbidden_scope": [
+        "停止条件・状態の変更",
+        "shop-CSS の検査本体の変更",
+        "Codex・画像生成の実行",
+        "comp-impl の隔離の例外の追加"
+      ],
+      "human_approval_triggers": [
+        "develop へのマージ",
+        "所見を停止や自動修正に使うこと"
+      ],
+      "note": "実試作12枚で誤検知 10→0。コントラストは未対応。"
     }
   ]
 }

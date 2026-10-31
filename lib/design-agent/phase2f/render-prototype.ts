@@ -13,10 +13,14 @@
  * It also measures, in the rendered page, the box of every section the design
  * declares (`data-section="<id>"`), so the artifact's geometry comes from the
  * render instead of Codex's estimate.
+ *
+ * DEV-134: when asked (`mobileQuality`), the SP 390 page is also checked for the phone's legibility and use
+ * (mobile-quality.ts, report-only), on the same page after its picture was taken, so the picture is unchanged.
  */
 import type { Browser } from "playwright";
 import type { PageAsset } from "../comp-impl/page";
 import { MAX_PAGE_HEIGHT, openCompPage, type Viewport } from "../comp-impl/render";
+import { measureMobileQuality, type MobileFindings } from "./mobile-quality";
 
 /**
  * Both widths are plain viewports at deviceScaleFactor 1 (CSS px = PNG px). The 390 one does not use the mobile
@@ -44,7 +48,12 @@ export type RenderedViewport = {
    * and whether it is visible within the first screen. Measured, not taken from Codex's declaration.
    */
   assets: Record<string, { sections: string[]; outsideSections: boolean; firstScreen: boolean; shown: boolean }>;
+  /** DEV-134: the SP 390 phone checks (report-only); absent when not asked for or at PC 1440. */
+  mobileQuality?: MobileFindings;
 };
+
+/** DEV-134: what the phone checks need: the facts' values (to tell a fact from a label) and the shop's name. */
+export type MobileQualityInput = { facts: readonly string[]; shopName: string | null };
 
 export class RenderError extends Error {
   constructor(readonly code: string) {
@@ -128,7 +137,7 @@ const MEASURE = (ids: readonly string[], assetPaths: readonly string[]) => `((id
 })(${JSON.stringify(ids)}, ${JSON.stringify(assetPaths)})`;
 
 /** Renders one viewport; the page serves only index.html, style.css and the given assets. */
-async function renderAt(browser: Browser, proto: { html: string; css: string }, assets: ReadonlyMap<string, Buffer>, key: RenderKey, sectionIds: readonly string[]): Promise<RenderedViewport> {
+async function renderAt(browser: Browser, proto: { html: string; css: string }, assets: ReadonlyMap<string, Buffer>, key: RenderKey, sectionIds: readonly string[], mobileQuality?: MobileQualityInput): Promise<RenderedViewport> {
   const page: Parameters<typeof openCompPage>[1] = {
     dir: "",
     html: proto.html,
@@ -155,7 +164,9 @@ async function renderAt(browser: Browser, proto: { html: string; css: string }, 
     } catch {
       throw new RenderError("RENDER_FAILED");
     }
-    return { png, blocked: opened.blocked(), scrollHeight: m.scrollHeight, scrollWidth: m.scrollWidth, sections: m.sections, assets: m.assets };
+    // after the picture: the phone checks mark elements and add a style
+    const quality = key === "mobile_390" && mobileQuality ? { mobileQuality: await measureMobileQuality(opened.page, mobileQuality) } : {};
+    return { png, blocked: opened.blocked(), scrollHeight: m.scrollHeight, scrollWidth: m.scrollWidth, sections: m.sections, assets: m.assets, ...quality };
   } finally {
     await opened.context.close();
   }
@@ -163,9 +174,9 @@ async function renderAt(browser: Browser, proto: { html: string; css: string }, 
 
 /** Renders PC 1440 and SP 390. The prototype must link its CSS as style.css; assets are served at assets/<id>.png. */
 export type RenderPrototype = typeof renderPrototype;
-export async function renderPrototype(browser: Browser, proto: { html: string; css: string }, assets: ReadonlyMap<string, Buffer>, sectionIds: readonly string[]) {
+export async function renderPrototype(browser: Browser, proto: { html: string; css: string }, assets: ReadonlyMap<string, Buffer>, sectionIds: readonly string[], mobileQuality?: MobileQualityInput) {
   return {
     desktop_1440: await renderAt(browser, proto, assets, "desktop_1440", sectionIds),
-    mobile_390: await renderAt(browser, proto, assets, "mobile_390", sectionIds),
+    mobile_390: await renderAt(browser, proto, assets, "mobile_390", sectionIds, mobileQuality),
   };
 }

@@ -26,7 +26,9 @@ function specifiers(source: string): string[] {
 
 const ALLOWED: Record<string, string[]> = {
   [`${LIB}/prototype-safety.ts`]: ["playwright"],
-  [`${LIB}/render-prototype.ts`]: ["playwright", "../comp-impl/page", "../comp-impl/render"],
+  [`${LIB}/render-prototype.ts`]: ["playwright", "../comp-impl/page", "../comp-impl/render", "./mobile-quality"],
+  // DEV-134: the phone checks (report-only) reuse the shop-CSS render check's text measure, unchanged
+  [`${LIB}/mobile-quality.ts`]: ["playwright", "../shop-css/render-check", "../shop-css/page-scripts"],
   [`${LIB}/decode-check.ts`]: ["../worker/png-paint"],
   [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile", "./open-direction", "./research-section"],
   // DEV-124: the open direction and the success-case reference manifest (pure), and the reference sheet (Chromium)
