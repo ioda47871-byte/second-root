@@ -33,7 +33,7 @@
 `lib/design-agent/shop-css/render-check.ts`。
 
 - B方式よりずっと厳しい許可一覧である。transform・擬似要素・clip-path・blend mode・vw/vh は使えず、
-  文字は横組みだけ (店名以外の縦組みは未承認。`docs/design/design-first-workflow-decision.md`)
+  文字は横組みだけ (店名の縦組み `vertical_name` も DEV-102 で未承認。`docs/design/reference-technique-shortlist.md`)
 - 文字は 12px 以上、コントラスト 4.5 以上
 - 書体は許可一覧の中から: Noto Sans/Serif JP、Noto Sans/Serif CJK JP、IPA 系、ヒラギノ系、游系、
   メイリオ、BIZ UD 系、Zen Kaku Gothic New、Zen Old Mincho、Shippori Mincho、Inter、DejaVu、
@@ -43,7 +43,9 @@
 
 ## 構造記述子の語彙
 
-正本: `lib/design-agent/structure` の `VOCABULARY`・`GENERIC`・`THRESHOLDS`。方向案の構造の宣言に使う。
+正本: `lib/design-agent/structure` の `VOCABULARY`・`GENERIC`・`THRESHOLDS`。**語彙も閾値も仮である** (Issue #159)。
+方向案の構造の宣言と、オフラインの自己点検 (助言) にだけ使う。Codex への指示文に入れてよいのは、
+Hero の型と流れの型 (`HERO_MODES` / `PAGE_FLOWS`) だけである。生成器への組み込みは別の承認が要る。
 
 | 観点 | 値 |
 | --- | --- |
@@ -56,8 +58,8 @@
 | text_direction | horizontal, vertical, mixed |
 | imagery | none, single_lead, sequence, collage, drawn |
 
-- 汎用 LP の印 (`GENERIC`): hero の split_copy_media / centered_headline、flow の stacked_bands、
-  節の split_copy_media / grid_cards。2つ以上で `GENERIC_SKELETON`
+- 汎用 LP の印 (`GENERIC`) は3つ: hero が split_copy_media か centered_headline / flow が stacked_bands /
+  節の半分以上が split_copy_media か grid_cards。このうち2つで `GENERIC_SKELETON`
 - 仮の閾値: 参照に近すぎる 0.75 (`TOO_CLOSE_TO_REFERENCE`)、兄弟案が同じ骨格 0.6 (`SIBLINGS_SAME_SKELETON`)
 - 方向案どうしは、Hero の型と流れの型の**両方**が違うこと (`lib/design-agent/phase2f` の `directionsDiffer`)
 - 計測できる観点 (navigation、節の型、transitions、text_direction、imagery、Hero と流れの汎用の印) は
@@ -67,7 +69,11 @@
 
 ### B方式の試作を Codex に頼む指示文
 
-`buildDesignPrompt` (v2) の open-direction の段と同じ分け方で書く (`lib/design-agent/phase2f/open-direction.ts`)。
+指示文は手書きの文章にしない。方向案を **`phase2f_open_direction_v1` の JSON** にし
+(`lib/design-agent/phase2f/open-direction.ts` の `OpenDirection`。例: `design-library/phase2f/directions/wagashi-open-a.json`)、
+`buildDesignPrompt` に組ませる。承認に持っていく SHA-256 と文字数は、組まれた prompt のものである。
+JSON の欄は `concept` (900字まで。配色と節の順は書かない)、`composition` (`hero` と `flow`)、`research`
+(1〜3件: 採ったもの・捨てたもの・この店への翻訳)、`reference_ids` (承認済み参照だけ)。分け方は次のとおり。
 
 - **固定**: 事実 (そのまま)、店名、Hero の型、流れの型、中心の比喩、PC と SP の組み方の要点
 - **任せる**: 構図の細部、配色の細部、書体の細部、節の内部の構成

@@ -119,8 +119,9 @@ description: Second Root の店舗サイトのデザインを方向づけるア�
 
 Hero の型は `object_led / type_led / diagram_led / scene_led`、流れの型は
 `single_axis_scroll / map_of_stations / alternating_spreads / one_continuous_surface` から選ぶ。
-`split_copy_media`・`centered_headline`・`stacked_bands`・`grid_cards` は汎用の LP の印であり、
-2つ以上重なると `GENERIC_SKELETON` になる。使うなら、その店でなければならない理由を書く。
+汎用の LP の印は3つある。Hero が `split_copy_media` か `centered_headline`、流れが `stacked_bands`、
+節の半分以上が `split_copy_media` か `grid_cards`。このうち2つが揃うと `GENERIC_SKELETON` になる。
+使うなら、その店でなければならない理由を書く。
 
 ## 5. PC1440 と SP390 を別々に設計する
 
@@ -167,6 +168,11 @@ B方式の試作を作るなら、`index.html` と `style.css` だけを作る�
 直すのは1巡に1つの原因まで、最大2巡。2巡で良くならなければ、直すのをやめて報告する。
 
 点検できる道具がこのリポジトリにある。使えるときは使い、結果をそのまま書く。
+実機 (WSL) で Chromium を動かす前は、CLAUDE.md の resource preflight を先に行う。
+
+点検のための小さな script は、**リポジトリの外** (scratchpad など) に置き、リポジトリのモジュールを絶対パスで読む。
+リポジトリの中に置かない・commit しない・テストを走らせる前に消す。下の3つは隔離テストが取り込み元を固定しており、
+置いた script はそのテストを落とす。**落ちたからといって隔離テストに例外を足さない** (人の承認が要る)。
 
 - 試作の安全検査 `checkPrototype` (`lib/design-agent/phase2f`)
 - 構造の計測と比較 `measurePage` / `describe` / `structureFindings` (`lib/design-agent/structure`)
@@ -183,7 +189,8 @@ B方式の試作を作るなら、`index.html` と `style.css` だけを作る�
 - 方向案の固定部分 (比喩、Hero の型、流れ、PC と SP の組み方) と、生成側に任せる部分を分ける
 - 参照する成功例は、承認されて SHA で固定された参照 (`design-library/phase2f/references/`) だけを渡す。
   `not_to_copy` を一緒に渡す
-- 文字数と SHA-256 を記録する。実行はしない
+- B方式の指示文は `phase2f_open_direction_v1` の JSON として出し、`buildDesignPrompt` に組ませる
+  (`references/route-constraints.md`)。組まれた prompt の文字数と SHA-256 を記録する。実行はしない
 
 ## 出力
 

@@ -40,6 +40,22 @@ describe("second-root-design-director skill", () => {
     expect(readdirSync("design-library/success-cases/assets").every((f) => /^CP-00[123]_/.test(f))).toBe(true);
   });
 
+  it("keeps its structure vocabulary table in step with the code (read as text: no import, isolation unchanged)", () => {
+    // read as text only (never imported): the structure module's isolation test pins who imports it, and this file
+    // does not; the path is joined so that test's text search for importers does not count a reader as one
+    const code = text(join("lib/design-agent/structure", "descriptor.ts"));
+    const vocab = code.slice(code.indexOf("export const VOCABULARY"), code.indexOf("} as const", code.indexOf("export const VOCABULARY")));
+    const table = text(join(DIR, "references/route-constraints.md"));
+    for (const [, aspect, values] of vocab.matchAll(/(\w+): \[([^\]]*)\]/g)) {
+      const listed = [...values!.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).join(", ");
+      // the descriptor's aspects are named in the plural where they hold a list per section
+      const name = ({ section_layout: "section_layouts", transition: "transitions" } as Record<string, string>)[aspect!] ?? aspect;
+      expect(table, aspect).toContain(`| ${name} | ${listed} |`);
+    }
+    const flows = code.match(/flow: \[([^\]]*)\]/)![1]!;
+    expect(flows.length).toBeGreaterThan(10);
+  });
+
   it("does not run models: it hands instructions to an approval, never calls Codex itself", () => {
     const skill = text(join(DIR, "SKILL.md"));
     expect(skill).toContain("実モデルを呼ばない");

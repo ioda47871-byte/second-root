@@ -48,7 +48,7 @@
 
 ## 7. 店の取り違え (Identity)
 
-- CP-014 の KOALA / cobaco、CP-015 の cobaco 書店 (`v02/experiments/CP015-cobaco-identity-rejected.json`
+- CP-014 の KOALA、CP-015 の cobaco 書店 (`v02/experiments/CP015-cobaco-identity-rejected.json`
   → REJECT)、CP-028 の KOALA / カリーぴろ
 - 教訓: 前の店の名前・prompt・画像を入力に混ぜない。Identity Lock の他店名一覧に入れて検める
 
