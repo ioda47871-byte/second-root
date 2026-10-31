@@ -295,3 +295,5 @@
 - develop now has: PR #142 (c98efca, 23 research cases), #158 (d489935, CP-026..032 → 30 cases), #160 (eabb9b6, DEV-125 Phase 2b structure descriptors), #165 (65f79cf, DEV-126..129: Identity Lock TS, Artifact checks, implementation lane, mock loop).
 - #165: CI 10/10 on f116aa1, independent Fresh Review PASS (C/H/M 0, Low 4; record `.ai/reviews/PR-165.md`). #161..#164 closed as superseded by #165 (branches kept).
 - Still not approved: real Codex / image generation, real ports, jail changes, vocabulary/threshold finalisation, interaction_spec schema.
+
+- 2026-10-31: DEV-130 done（PR #166 → fb1a772、CI success on 6f82843、Fresh Review PASS、Low 3、記録 `.ai/reviews/DEV-130.md`）。CP-026〜032 の intake を superseded にし、検査は「登録済みであること」へ反転。

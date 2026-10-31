@@ -126,12 +126,22 @@ export const ResearchIntake = z
       )
       .min(1)
       .max(50),
+    /**
+     * DEV-130: set once the cases were registered in the research manifest (PR #158). The file then stays as the
+     * historical intake snapshot, and its check turns around: every record must now BE registered.
+     */
+    superseded_by: z
+      .object({ research_pr: z.number().int().positive(), merged_commit: Commit, registered_in: z.literal("design-library/success-cases/manifest.json") })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((i) => i.records.length === i.baseline.adopted_not_registered, "adopted_not_registered_does_not_match_records");
 
 export type IntakeReport = {
   as_of: string;
+  /** The registration that replaced this intake snapshot, or null while the cases are still unregistered. */
+  superseded_by: { research_pr: number; merged_commit: string } | null;
   counts: { intake_records: number; counted_in_registered_dataset: 0; promotable: 0 };
   records: { id: string; title: string; version_label: string; research_form: "unknown" | "static_image_study" | "local_web_poc"; recorded_unverified: EvidenceKind[]; not_implemented: EvidenceKind[]; missing: EvidenceKind[]; promotable: false; blockers: string[] }[];
 };
@@ -151,10 +161,17 @@ export function checkIntake(json: unknown, o: { registeredCaseIds: readonly stri
   const ids = intake.records.map((x) => x.id);
   const dup = ids.find((x, i) => ids.indexOf(x) !== i);
   if (dup) throw new IntakeError("INTAKE_DUPLICATE_ID", dup);
-  const taken = ids.filter((id) => o.registeredCaseIds.includes(id) || intake.baseline.not_success.includes(id));
-  if (taken.length) throw new IntakeError("INTAKE_ID_ALREADY_REGISTERED", taken.join(","));
+  if (intake.superseded_by) {
+    // a superseded snapshot: its cases must all be registered now (and never a non-success id)
+    const notYet = ids.filter((id) => !o.registeredCaseIds.includes(id) || intake.baseline.not_success.includes(id));
+    if (notYet.length) throw new IntakeError("INTAKE_SUPERSEDED_NOT_REGISTERED", notYet.join(","));
+  } else {
+    const taken = ids.filter((id) => o.registeredCaseIds.includes(id) || intake.baseline.not_success.includes(id));
+    if (taken.length) throw new IntakeError("INTAKE_ID_ALREADY_REGISTERED", taken.join(","));
+  }
   return {
     as_of: intake.as_of,
+    superseded_by: intake.superseded_by ? { research_pr: intake.superseded_by.research_pr, merged_commit: intake.superseded_by.merged_commit } : null,
     counts: { intake_records: intake.records.length, counted_in_registered_dataset: 0, promotable: 0 },
     records: intake.records.map((rec) => {
       const ev = rec.evidence as Record<EvidenceKind, { state: string }>;
