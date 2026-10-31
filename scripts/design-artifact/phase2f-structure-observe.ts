@@ -44,8 +44,11 @@ const inside = (dir: string, path: string) => {
   return r === "" || !(r === ".." || r.startsWith(`..${sep}`) || isAbsolute(r));
 };
 
-/** Size caps for what is read from a package (the prototype limits of the artifact schema, and generous for pictures). */
-const MAX_BYTES = { html: 384 * 1024, css: 256 * 1024, asset: 10 * 1024 * 1024 } as const;
+/** Size caps for what is read from a package: the same numbers as the artifact schema (PROTOTYPE_LIMITS, PNG_LIMITS.asset, PACKAGE_LIMITS.artifactJsonBytes). */
+const MAX_BYTES = { artifact: 1024 * 1024, html: 384 * 1024, css: 256 * 1024, asset: 16 * 1024 * 1024 } as const;
+
+/** A real directory of the package (never a link that leads out of it). */
+const isRealDir = async (path: string) => (await lstat(path).catch(() => null))?.isDirectory() === true;
 
 /** A regular file (never a link) no larger than `max`; else null. */
 async function readRegular(path: string, max: number): Promise<Buffer | null> {
@@ -70,18 +73,25 @@ async function main(argv: string[]): Promise<number> {
   if (inside(pkgReal, outReal)) return refuse("OUT_INSIDE_PACKAGE");
   let artifact: { artifact_id?: unknown; route?: unknown };
   try {
-    artifact = JSON.parse(await readFile(join(args.pkg, "artifact.json"), "utf8")) as typeof artifact;
+    const bytes = await readRegular(join(pkgReal, "artifact.json"), MAX_BYTES.artifact);
+    if (!bytes) return refuse("PACKAGE_UNREADABLE");
+    artifact = JSON.parse(bytes.toString("utf8")) as typeof artifact;
   } catch {
     return refuse("PACKAGE_UNREADABLE");
   }
   if (artifact.route !== "B_html_prototype" && artifact.route !== "C_hybrid") return refuse("NOT_A_PROTOTYPE_PACKAGE");
+  // quarantine/ and assets/ must be the package's own directories: a linked directory would read files from elsewhere
+  if (!(await isRealDir(join(pkgReal, "quarantine")))) return refuse("PROTOTYPE_FILES_MISSING");
   const htmlBytes = await readRegular(join(pkgReal, "quarantine/index.html"), MAX_BYTES.html);
   const cssBytes = await readRegular(join(pkgReal, "quarantine/style.css"), MAX_BYTES.css);
   if (!htmlBytes || !cssBytes) return refuse("PROTOTYPE_FILES_MISSING");
   const html = htmlBytes.toString("utf8");
   const css = cssBytes.toString("utf8");
   const assets: Record<string, Buffer> = {};
-  for (const f of await readdir(join(pkgReal, "assets")).catch(() => [] as string[])) {
+  const assetDir = join(pkgReal, "assets");
+  const assetStat = await lstat(assetDir).catch(() => null);
+  if (assetStat && !assetStat.isDirectory()) return refuse("PACKAGE_ASSET_INVALID");
+  for (const f of assetStat ? await readdir(assetDir) : []) {
     if (!/^A\d{1,2}\.png$/.test(f)) continue;
     const bytes = await readRegular(join(pkgReal, "assets", f), MAX_BYTES.asset);
     if (!bytes) return refuse("PACKAGE_ASSET_INVALID");

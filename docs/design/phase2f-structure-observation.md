@@ -12,7 +12,7 @@
   SP 390 にもう一度描き、描画から測れる構造だけを、成功例と不採用例の宣言された構造と比べる
 - 報告は `--out` に書く。**package の中には書かない** (書くと intake の未申告ファイルになる)。`..` で始まる名前や、
   リンクを経由した道でも断る (実体のパスで比べる)。既存の報告も上書きしない
-- package から読むのは通常のファイルだけ (リンクは読まない)。大きさの上限は HTML 384 KiB・CSS 256 KiB・画像 10 MiB
+- package から読むのは通常のファイルだけ (リンクは読まない。`quarantine/` と `assets/` もリンクなら拒否)。大きさの上限は artifact.json 1 MiB・HTML 384 KiB・CSS 256 KiB・画像 16 MiB (artifact schema と同じ値)
 - package のファイル (画像・prototype・artifact.json) は1バイトも変えない (テストで固定)
 - runner・prompt・設計の port・intake・承認・停止条件は変えていない。参照データは prompt にも設計の入力にも入らない
   (構造モジュールの隔離テストが、取り込めるのを観察の CLI 1つだけに固定する)

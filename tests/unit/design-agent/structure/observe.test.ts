@@ -170,4 +170,29 @@ describe("the observation CLI (reads a finished package, writes one report elsew
     writeFileSync(join(dir, "quarantine/style.css"), "x".repeat(300 * 1024));
     expect(run(["--package", dir, "--out", join(outDir, "c.json")])).toMatchObject({ status: 2, out: { code: "PROTOTYPE_FILES_MISSING" } });
   }, 120_000);
+
+  it("review round 2: never reads through a linked quarantine/, assets/ or artifact.json", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "observe-out-"));
+    const elsewhere = pkg("B_html_prototype");
+    dirs.push(outDir, elsewhere);
+    // a linked quarantine/ would render a prototype from outside the package
+    const q = pkg("B_html_prototype");
+    dirs.push(q);
+    rmSync(join(q, "quarantine"), { recursive: true });
+    symlinkSync(join(elsewhere, "quarantine"), join(q, "quarantine"));
+    expect(run(["--package", q, "--out", join(outDir, "q.json")])).toMatchObject({ status: 2, out: { code: "PROTOTYPE_FILES_MISSING" } });
+    // a linked assets/ likewise
+    const a = pkg("B_html_prototype");
+    dirs.push(a);
+    mkdirSync(join(elsewhere, "assets"));
+    symlinkSync(join(elsewhere, "assets"), join(a, "assets"));
+    expect(run(["--package", a, "--out", join(outDir, "a.json")])).toMatchObject({ status: 2, out: { code: "PACKAGE_ASSET_INVALID" } });
+    // a linked artifact.json would copy another package's id into the report
+    const j = pkg("B_html_prototype");
+    dirs.push(j);
+    rmSync(join(j, "artifact.json"));
+    symlinkSync(join(elsewhere, "artifact.json"), join(j, "artifact.json"));
+    expect(run(["--package", j, "--out", join(outDir, "j.json")])).toMatchObject({ status: 2, out: { code: "PACKAGE_UNREADABLE" } });
+    for (const f of ["q.json", "a.json", "j.json"]) expect(existsSync(join(outDir, f))).toBe(false);
+  }, 120_000);
 });
