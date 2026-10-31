@@ -5916,6 +5916,7 @@
       ],
       "required_tests": [
         "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+        "tests/unit/design-agent/impl-lane/compare.test.ts",
         "tests/unit/design-agent/impl-lane/handoff.test.ts",
         "tests/unit/design-agent/comp-impl/isolation.test.ts",
         "tests/unit/design-agent/identity/identity-lock.test.ts",
@@ -5925,6 +5926,7 @@
       ],
       "allowed_scope": [
         "lib/design-agent/impl-lane/compare.ts",
+        "tests/unit/design-agent/impl-lane/compare.test.ts",
         "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
         "tests/unit/design-agent/impl-lane/handoff.test.ts（隔離の許可の追加のみ）",
         "tests/unit/design-agent/comp-impl/isolation.test.ts（正確なパスの許可の追加のみ）",
