@@ -26,8 +26,8 @@ const mockStructureFindings = ["TOO_CLOSE_TO_REFERENCE"];
 
 const ok = <T,>(value: T) => ({ ok: true as const, value });
 
-describe("fictional offline Phase 2 longitudinal integration", () => {
-  it("only an explicitly owner-selected, identity-matched, verified B artifact reaches a quarantine-free lane and bounded mock repair", async () => {
+describe("fictional offline artifact handoff and mock-only controller integration", () => {
+  it("a verified B artifact is handed off without prototypes; mock owner selection permits bounded repair", async () => {
     const files = writePackage(routeB());
     folders.push(files.base);
     const record = await intakeArtifact({ packageDir: files.dir, factsPath: files.factsPath });
@@ -39,9 +39,8 @@ describe("fictional offline Phase 2 longitudinal integration", () => {
     const findingCodes = [...mockStructureFindings];
 
     const laneDir = join(files.base, "implementation-lane");
-    // In this test, the "owner" explicitly selects the fictional fixture before the lane is prepared.
-    const ownerSelected = true;
-    expect(ownerSelected).toBe(true);
+    // Handoff validates file bytes and quarantine exclusion, not owner choice.
+    // The controller separately blocks implementation until a mock selection.
     const lane = await prepareImplementationLane({ packageDir: files.dir, factsPath: files.factsPath, laneDir });
     expect(lane.schema).toBe("implementation_lane_v1");
     expect(lane.files.map((f) => f.path).sort()).toEqual([
