@@ -68,7 +68,9 @@ async function render(page: Page, v: Viewport): Promise<RenderSide & { text: str
     })()`)) as { sections: RenderSide["sections"]; text: string; height: number };
     // DEV-135: the page is shot at its own height, not by stitching a full-page capture: under load on CI, Chromium
     // refused the tall full-page capture once ("Unable to capture screenshot", develop 1220d3e). The boxes are measured
-    // above, at the real viewport; the fixture pages size nothing by the viewport height.
+    // above, at the real viewport; the fixture pages size nothing by the viewport height (keep it so: no vh units,
+    // position: fixed or height media queries in fixtures here). If the capture still fails under load, it is an
+    // infrastructure flake to record, not a reason to add a retry.
     await p.setViewportSize({ width: WIDTH[v].width, height: Math.max(WIDTH[v].height, Math.ceil(m.height)) });
     const png = await p.screenshot({ clip: { x: 0, y: 0, width: WIDTH[v].width, height: m.height } });
     return { png, sections: m.sections, text: m.text };
