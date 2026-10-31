@@ -31,6 +31,7 @@ This is a general-purpose design skill. In this repository, Second Root's own ru
 (`CLAUDE.md`, and the `second-root-design-director` skill for shop designs):
 
 - The shop's fact pack and Identity Lock win over any copy or naming idea. Never invent shop facts.
-- Method B limits (JavaScript, network, typefaces, assets) win over the skill's suggestions about
-  motion, web fonts or imagery.
+- The B方式 prototype limits (`B_html_prototype`: no script, no network, no web fonts, no images) and
+  the implementation lane's CSS and font allowlists win over the skill's suggestions about motion,
+  web fonts or imagery.
 - The skill's advice on writing copy applies only to wording that the fact pack allows.
