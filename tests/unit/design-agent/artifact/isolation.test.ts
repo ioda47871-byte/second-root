@@ -60,6 +60,8 @@ describe("isolation of the Design Artifact intake", () => {
         "scripts/design-artifact/phase2f-steps.ts",
         // DEV-121: the comparison baseline checker reuses the artifact's Generation, Text and VIEWPORTS (pure, no I/O)
         "lib/design-agent/phase2f/baseline.ts",
+        // DEV-128 (Issue #159, Phase 2e research): the implementation lane runs the intake and copies its hand-off only
+        "lib/design-agent/impl-lane/handoff.ts",
         "lib/design-agent/phase2f/compare-sheet.ts",
         "lib/design-agent/phase2f/prompt.ts",
         "lib/design-agent/phase2f/runner.ts",

@@ -171,6 +171,35 @@ const RenderConditions = z.strictObject({
 
 const Stop = z.strictObject({ code: Code, class: z.enum(STOP_CLASSES), stage: z.enum(["preflight", "generation", "render", "write", "intake"]) });
 
+/**
+ * Phase 2d (DEV-127, research-isolated): the results of the checks the runner made on the design, recorded as data.
+ * Optional, so every v1 record stays valid. None of them is an approval: the structure check is advisory (provisional
+ * vocabulary, Phase 2b) and the identity check only says whether the page is this shop (Phase 2c). Intake never lets
+ * them raise a state; an identity result other than PASS_IDENTITY_ONLY makes the artifact incomplete.
+ */
+const CodeList = z.array(Code).max(20);
+export const RecordedChecks = z.strictObject({
+  structure: z
+    .strictObject({
+      vocabulary: z.literal("structure_descriptor_v0"),
+      findings: CodeList,
+      /** The highest similarity to a reference or sibling compared, if any (0..1). */
+      max_similarity: z.number().min(0).max(1).nullable(),
+      advisory: z.literal(true),
+    })
+    .nullable(),
+  identity: z
+    .strictObject({
+      status: z.enum(["REJECT", "HOLD", "PASS_IDENTITY_ONLY"]),
+      errors: CodeList,
+      pending: CodeList,
+      counts_as_owner_success: z.literal(false),
+    })
+    // the status must be the one its codes give (REJECT with errors, HOLD with only pending codes, PASS with none)
+    .refine((i) => i.status === (i.errors.length ? "REJECT" : i.pending.length ? "HOLD" : "PASS_IDENTITY_ONLY"), "identity_status_inconsistent")
+    .nullable(),
+});
+
 export const Generation = z.strictObject({
   /** The runner's report of how the run ended; `unknown` and null fields are never a success. */
   status: z.enum(["succeeded", "stopped", "unknown"]),
@@ -230,6 +259,7 @@ export const DesignArtifact = z.strictObject({
       .nullable()
       .optional(),
     generation: Generation,
+    checks: RecordedChecks.optional(),
     stops: z.array(Stop).max(20),
     missing: z.array(z.strictObject({ item: z.string().regex(/^[a-z][a-z0-9_]{1,60}$/), reason: Text(200) })).max(40),
   }),

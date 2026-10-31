@@ -5717,6 +5717,175 @@
         "語彙と閾値の確定"
       ],
       "note": "Issue #159 offline batch approval; 0 Codex calls."
+    },
+    {
+      "id": "DEV-126",
+      "title": "Phase 2c（研究隔離）：Identity Lock の TypeScript 移植（画像の目視記録の照合）と HTML 試作の表示文字による店舗名検査",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-124"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-126-phase2c-identity-lock",
+      "purpose": "Issue #159 の一括承認（2c：Identity Lock の TypeScript への隔離移植と一致/不一致テスト）。研究の identity-audit.mjs（PR #142）と同じ判定・コードを TS で持ち、HTML 試作では表示文字から対象店名の有無と他店名（参照に使った成功例など）の混入を機械的に検査する。",
+      "acceptance_criteria": [
+        "研究スクリプトのテストケースと同じ判定（REJECT/HOLD/PASS_IDENTITY_ONLY）とコード",
+        "PASS_IDENTITY_ONLY は品質・承認・公開ゲートではない（counts_as_owner_success は常に false）",
+        "HTML の表示文字：対象名が無ければ拒否、他店名があれば拒否、他店名一覧が無ければ保留",
+        "既存の店舗・品質ゲートは変更しない。純粋関数で、生成器・本番から参照しない（テストで固定）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/identity/identity-lock.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/identity/**",
+        "tests/unit/design-agent/identity/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-126.md"
+      ],
+      "forbidden_scope": [
+        "既存ゲートの緩和",
+        "生成器・worker への組み込み",
+        "Codex 実行・画像生成",
+        "実店舗への連絡・新たな取得"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "生成経路への組み込み"
+      ],
+      "note": "Issue #159 offline batch approval; 0 Codex calls."
+    },
+    {
+      "id": "DEV-127",
+      "title": "Phase 2d 完成（研究隔離版）：Artifact に検査結果（構造・Identity Lock）を記録する任意の欄と、Intake の互換性・状態を上げない規則",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-114"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-127-phase2d-checks",
+      "purpose": "Issue #159 の一括承認（2d 完成・研究隔離版：Artifact/Intake の追加スキーマと互換性テスト、自己宣言の承認を許さない）。2b・2c の結果を Artifact に残せるようにし、店が違う／未確認なら incomplete にする。",
+      "acceptance_criteria": [
+        "observed.checks は任意で、v1 の既存記録はそのまま受理",
+        "structure は助言（advisory: true）で warning だけ",
+        "identity は PASS_IDENTITY_ONLY 以外なら incomplete（状態を上げることはない）",
+        "counts_as_owner_success:true・署名・承認のキー・コードと矛盾する status は拒否",
+        "Production・worker の受け入れ形式は変えない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/artifact/intake.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/artifact/schema.ts（任意の checks 欄のみ）",
+        "lib/design-agent/artifact/intake.ts（checks の扱いのみ）",
+        "tests/unit/design-agent/artifact/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-127.md"
+      ],
+      "forbidden_scope": [
+        "CodexDesign（Codex の回答スキーマ）・interaction_spec の変更",
+        "既存の状態判定の緩和",
+        "worker・本番の受け入れ形式",
+        "Codex 実行・画像生成"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "interaction_spec のスキーマ（Codex の回答形式の変更）"
+      ],
+      "note": "Issue #159 offline batch approval; interaction spec left for a separate schema approval."
+    },
+    {
+      "id": "DEV-128",
+      "title": "Phase 2e（研究隔離版）：実装レーンの入力。許可済み Artifact の受け渡しだけを新しいレーンへ写し、Codex の試作ソースを渡さない",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-114"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-128-phase2e-impl-lane",
+      "purpose": "Issue #159 の一括承認（2e 研究版：Codex の試作ソースを実装レーンへ見せず、許可済み Artifact のみ渡すことをテスト）。既存の WSL jail・OS 権限・worker は変更・起動しない。",
+      "acceptance_criteria": [
+        "Intake をその場でやり直し、render_pair_complete（受け渡し許可）のときだけレーンを作る",
+        "受け渡し一覧のファイルだけを SHA を再確認しながら新しいディレクトリへ写す（上書きなし・リンク拒否・0700/0600）",
+        "レーンに試作の HTML/CSS（同じバイトも含む）が無いことを事後に確認",
+        "OS レベルの分離ではないことを明記（jail での実行は別承認）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/impl-lane/handoff.test.ts",
+        "tests/unit/design-agent/artifact/isolation.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/impl-lane/**",
+        "tests/unit/design-agent/impl-lane/**",
+        "tests/unit/design-agent/artifact/isolation.test.ts（許可の追加のみ）",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-128.md"
+      ],
+      "forbidden_scope": [
+        "WSL jail・OS 権限・worker の変更や起動",
+        "Codex 実行・画像生成",
+        "既存のゲートの緩和"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "実装レーンを別ユーザー・jail で動かすこと"
+      ],
+      "note": "Issue #159 offline batch approval."
+    },
+    {
+      "id": "DEV-129",
+      "title": "Phase 2g（模擬版）：決定論的な制御（承認要求・停止・回数上限のある実装修正ループ）を mock のポートだけで",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-114"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-129-phase2g-mock-loop",
+      "purpose": "Issue #159 の一括承認（2g 模擬版：決定論的な停止・承認要求・最小修正ループのオフライン実装とテスト。mock ポートのみ。再試行は既存ルール以下、実課金 API への自動再試行・自動生成は許可しない）。",
+      "acceptance_criteria": [
+        "有料の設計呼び出しは、その実行に対する承認がある時だけ。無ければ awaiting_approval で何も呼ばない",
+        "失敗した有料呼び出しは再試行しない（環境は待機、それ以外はオーナーへ）",
+        "店舗違い・未確認・不完全な Artifact は実装前にオーナーへ",
+        "オーナーの選定前は実装しない",
+        "実装の修正はオフラインで、1タスク3回まで・同じ原因2回まで",
+        "通った実行も owner_review で終わり、デザインの承認にはならない",
+        "実ポートへの接続なし（import なし・どこからも参照されない）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/loop/controller.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/loop/**",
+        "tests/unit/design-agent/loop/**",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-129.md"
+      ],
+      "forbidden_scope": [
+        "実ポート（Codex・画像・Claude 実行）への接続",
+        "自動生成・有料 API の自動再試行",
+        "worker・本番"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "実ポートへの接続（ループ設計の承認）"
+      ],
+      "note": "Issue #159 offline batch approval; mock ports only."
     }
   ]
 }
