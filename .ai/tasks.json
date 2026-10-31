@@ -5992,6 +5992,38 @@
       "merged": "#167 → 439cf08 (squash, 2026-10-31)"
     },
     {
+      "id": "DEV-135",
+      "title": "オフライン実験テストの全頁撮影を安定させる (develop 1220d3e の CI で Chromium が撮影を拒んだ)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": "develop 1220d3e CI: page.screenshot Protocol error (Page.captureScreenshot): Unable to capture screenshot — phase2-offline-experiment.test.ts:69 (同じコードは 439cf08 と PR の CI で成功)",
+      "branch": "feature/dev-135-offline-experiment-screenshot",
+      "purpose": "develop の CI を緑に戻す。テストの撮影方法だけを変え、判定・閾値・本体は変えない。",
+      "acceptance_criteria": [
+        "全頁を継ぎ合わせる撮影をやめ、ページの高さの viewport で1回撮る",
+        "測る箱は元の viewport で測ったまま",
+        "比較の期待値は変えない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+        "latest-head required CI"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "テストの期待値・閾値の変更",
+        "skip / retry で隠すこと"
+      ],
+      "human_approval_triggers": [
+        "develop へのマージ"
+      ],
+      "note": ""
+    },
+    {
       "id": "DEV-132",
       "title": "Anthropic 公式 frontend-design スキル v1.1.1 をリポジトリ管理のプロジェクトスキルとして導入 (無改変・Apache-2.0)",
       "status": "review",
