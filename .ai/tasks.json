@@ -6022,6 +6022,42 @@
         "develop へのマージ"
       ],
       "note": ""
+    },
+    {
+      "id": "DEV-132",
+      "title": "Anthropic 公式 frontend-design スキル v1.1.1 をリポジトリ管理のプロジェクトスキルとして導入 (無改変・Apache-2.0)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-132-frontend-design-skill",
+      "purpose": "オーナー指示 2026-10-31 (デザイン品質向上・自律開発。設計・実装・テスト・Fresh Review・PR作成まで承認、develop へのマージは別承認)。クラウドセッションで公式プラグインが有効でないため、無改変の写しを出典・版・ハッシュ付きで置き、Second Root の規則を優先させる。",
+      "acceptance_criteria": [
+        "SKILL.md と LICENSE.txt が上流 (anthropics/claude-plugins-official@a7ba5b9) とバイト単位で同じことをテストで固定",
+        "出典・版・ライセンス・優先順位を PROVENANCE.md に記録",
+        "CLAUDE.md に店舗デザインでの優先順位を明記"
+      ],
+      "required_tests": [
+        "tests/unit/skills/vendored-frontend-design.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        ".claude/skills/frontend-design/**",
+        "tests/unit/skills/vendored-frontend-design.test.ts",
+        "CLAUDE.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-132.md"
+      ],
+      "forbidden_scope": [
+        "上流ファイルの改変",
+        "アカウント設定・プラグイン設定の変更"
+      ],
+      "human_approval_triggers": [
+        "develop へのマージ"
+      ],
+      "note": "スキル一覧への表示は次のセッション開始時に確認する (このセッションでは未確認)。"
     }
   ]
 }
