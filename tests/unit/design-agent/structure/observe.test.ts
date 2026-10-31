@@ -195,4 +195,18 @@ describe("the observation CLI (reads a finished package, writes one report elsew
     expect(run(["--package", j, "--out", join(outDir, "j.json")])).toMatchObject({ status: 2, out: { code: "PACKAGE_UNREADABLE" } });
     for (const f of ["q.json", "a.json", "j.json"]) expect(existsSync(join(outDir, f))).toBe(false);
   }, 120_000);
+
+  it("review round 3: reads a real assets/ directory, and refuses an image over the intake cap (16 MiB)", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "observe-out-"));
+    const dir = pkg("B_html_prototype");
+    dirs.push(outDir, dir);
+    mkdirSync(join(dir, "assets"));
+    // a 1x1 PNG
+    writeFileSync(join(dir, "assets/A1.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+    writeFileSync(join(dir, "assets/A2.png"), Buffer.alloc(16 * 1024 * 1024));
+    expect(run(["--package", dir, "--out", join(outDir, "ok.json")])).toMatchObject({ status: 0, out: { status: "observed" } });
+    writeFileSync(join(dir, "assets/A3.png"), Buffer.alloc(16 * 1024 * 1024 + 1));
+    expect(run(["--package", dir, "--out", join(outDir, "big.json")])).toMatchObject({ status: 2, out: { code: "PACKAGE_ASSET_INVALID" } });
+    expect(existsSync(join(outDir, "big.json"))).toBe(false);
+  }, 120_000);
 });
