@@ -5934,6 +5934,61 @@
       ],
       "note": "Records only; no research data changed.",
       "merged": "#166 → fb1a772 (squash, 2026-10-31)"
+    },
+    {
+      "id": "DEV-131",
+      "title": "Phase 2e（研究隔離版）：実装と元デザインの PC1440/SP390 比較（原因コードを修正ループへ）と、架空店舗のオフライン実験（2b/2c/2e/2g を実モジュールで連結）",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-125",
+        "DEV-126",
+        "DEV-128",
+        "DEV-129"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-131-impl-compare",
+      "purpose": "Issue #159（2e 研究版：実装レーンの検査、2g 模擬版）。最終目標の『実装を元デザインと PC/SP で比べて差を直す』の比較部分を、オフラインで実際に動くものにする。生成器・本番には繋がない。",
+      "acceptance_criteria": [
+        "PC1440/SP390 の両方で、ページ全体（SSIM・色ブロック・エッジ・高さ）とセクションごと（局所の色の変化・ΔE・密度・高さの比率）を比較",
+        "差を固定順の原因コードにし、修正ループの compare ポートの答えにできる（コード形式はループの検証に合う）",
+        "passing は常に false。閾値は仮",
+        "架空店舗の実験：2方向が別骨格・塗り替えは同骨格（2b）、店名の検査（2c）、完全な実装は差なし・雑な実装は原因が出る（2e）、実比較で修正ループが1原因ずつ直して owner_review で終わる（2g）",
+        "実モジュールを繋ぐのはテスト1ファイルだけ（各隔離テストに正確なパスで例外）"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+        "tests/unit/design-agent/impl-lane/compare.test.ts",
+        "tests/unit/design-agent/impl-lane/handoff.test.ts",
+        "tests/unit/design-agent/comp-impl/isolation.test.ts",
+        "tests/unit/design-agent/identity/identity-lock.test.ts",
+        "tests/unit/design-agent/structure/structure.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/impl-lane/compare.ts",
+        "tests/unit/design-agent/impl-lane/compare.test.ts",
+        "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+        "tests/unit/design-agent/impl-lane/handoff.test.ts（隔離の許可の追加のみ）",
+        "tests/unit/design-agent/comp-impl/isolation.test.ts（正確なパスの許可の追加のみ）",
+        "tests/unit/design-agent/identity/identity-lock.test.ts（正確なパスの除外の追加のみ）",
+        "tests/unit/design-agent/structure/structure.test.ts（正確なパスの除外の追加のみ）",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-131.md"
+      ],
+      "forbidden_scope": [
+        "生成器・worker・本番への組み込み",
+        "実ポート・Codex・画像生成",
+        "comp-impl 本体と品質基準の変更"
+      ],
+      "human_approval_triggers": [
+        "マージ",
+        "閾値の確定",
+        "実ポートへの接続"
+      ],
+      "note": "Review: round 3 PASS (C0/H0/M0/L3); Lows recorded in .ai/reviews/DEV-131.md for threshold finalisation."
     }
   ]
 }

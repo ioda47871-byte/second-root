@@ -12,12 +12,24 @@ import { REPO } from "./support";
 // safe page opener (network shut, JS off) and the page height cap for Codex
 // prototypes. Nothing else of comp-impl is reachable from it (no implementation
 // CSS allowlist, no comp spec).
+/** DEV-131 (Issue #159, Phase 2e research): the implementation lane compares renders with the comp similarity primitives. */
+const IMPL_LANE_COMPARE = "lib/design-agent/impl-lane/compare.ts";
 const PHASE2F_RENDER = "lib/design-agent/phase2f/render-prototype.ts";
 
 describe("isolation of the comp-to-site PoC", () => {
   it("is imported only by its own CLI", () => {
     const grep = spawnSync("grep", ["-rlE", "--exclude-dir=comp-impl", "design-agent/comp-impl|from \"\\./comp-impl|from \"\\.\\./comp-impl", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
-    expect(grep.stdout.trim().split("\n").filter(Boolean).sort()).toEqual([PHASE2F_RENDER, "scripts/sales-design-worker/comp-impl-poc.ts"]);
+    expect(grep.stdout.trim().split("\n").filter(Boolean).sort()).toEqual([IMPL_LANE_COMPARE, PHASE2F_RENDER, "scripts/sales-design-worker/comp-impl-poc.ts"].sort());
+  });
+
+  it("DEV-131: the implementation lane's comparison imports only the pure similarity functions", () => {
+    const source = readFileSync(resolve(REPO, IMPL_LANE_COMPARE), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const imports = [...source.matchAll(/import\s+(type\s+)?\{([^}]*)\}\s*from\s*"([^"]+)"/g)].filter((m) => m[3]!.includes("comp-impl"));
+    expect(imports.map((m) => [m[3], m[2]!.split(",").map((s) => s.trim()).filter(Boolean).sort()])).toEqual([
+      ["../comp-impl/similarity", ["GRID_WIDTH", "colourBlocks", "compareCrops", "cropStats", "deltaE", "edgesIou", "gridOf", "pixelRect", "resample", "rgbToLab", "sectionGrid", "ssim"]],
+    ]);
+    expect([...source.matchAll(/["'`]([^"'`]*comp-impl[^"'`]*)["'`]/g)].map((m) => m[1])).toEqual(["../comp-impl/similarity"]);
+    expect(source).not.toMatch(/import\s*\(|require\s*\(|export\s*\*|export\s*\{[^}]*\}\s*from/);
   });
 
   it("the one Phase 2f exception imports only the page opener, the height cap and two types", () => {

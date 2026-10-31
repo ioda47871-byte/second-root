@@ -243,7 +243,9 @@ describe("isolation (provisional vocabulary: never used by a generator without a
     const { resolve } = await import("node:path");
     const repo = resolve(__dirname, "../../../..");
     // any importer, absolute or relative (M2); git grep exits 1 when nothing matches (an error is 128, never a pass)
-    const g = spawnSync("git", ["grep", "--untracked", "-lE", "structure/(descriptor|measure)|from [\"'`]\\./(descriptor|measure)[\"'`]", "--", ".", ":!lib/design-agent/structure/**", ":!tests/unit/design-agent/structure/**", ":!.ai/**", ":!docs/**"], { cwd: repo, encoding: "utf8" });
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "structure/(descriptor|measure)|from [\"'`]\\./(descriptor|measure)[\"'`]", "--", ".", ":!lib/design-agent/structure/**", ":!tests/unit/design-agent/structure/**", ":!.ai/**", ":!docs/**",
+      // DEV-131: the one offline experiment test that wires the real modules together (a test, never lib)
+      ":!tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
     for (const f of ["lib/design-agent/structure/descriptor.ts", "lib/design-agent/structure/measure.ts"]) {
       const src = readFileSync(resolve(repo, f), "utf8");

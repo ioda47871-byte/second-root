@@ -170,7 +170,9 @@ describe("isolation", () => {
     const src = readFileSync(resolve(repo, "lib/design-agent/identity/identity-lock.ts"), "utf8");
     expect(src).not.toMatch(/\bimport\b|require\(|\bfetch\(|process\./);
     // any importer, absolute or relative (L2); git grep exits 1 when nothing matches (an error is 128, never a pass)
-    const g = spawnSync("git", ["grep", "--untracked", "-lE", "identity/identity-lock|from [\"'`]\\./identity-lock", "--", ".", ":!lib/design-agent/identity/identity-lock.ts", ":!tests/unit/design-agent/identity/**", ":!.ai/**", ":!docs/**"], { cwd: repo, encoding: "utf8" });
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "identity/identity-lock|from [\"'`]\\./identity-lock", "--", ".", ":!lib/design-agent/identity/identity-lock.ts", ":!tests/unit/design-agent/identity/**", ":!.ai/**", ":!docs/**",
+      // DEV-131: the one offline experiment test that wires the real modules together (a test, never lib)
+      ":!tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
   });
 });
