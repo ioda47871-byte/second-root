@@ -1,0 +1,66 @@
+{
+  "schema": "shop_facts_pack_v1",
+  "shop_id": "fictional-kintsugi",
+  "facts": [
+    {
+      "id": "F1",
+      "key": "name",
+      "value": "ひびや継工房",
+      "source_id": "S1"
+    },
+    {
+      "id": "F2",
+      "key": "category",
+      "value": "ceramic_repair",
+      "source_id": "S1"
+    },
+    {
+      "id": "F3",
+      "key": "ward",
+      "value": "昭和区",
+      "source_id": "S1"
+    },
+    {
+      "id": "F4",
+      "key": "address",
+      "value": "名古屋市昭和区架空通一丁目8",
+      "source_id": "S1"
+    },
+    {
+      "id": "F5",
+      "key": "hours",
+      "value": "11:00〜17:00",
+      "source_id": "S1"
+    },
+    {
+      "id": "F6",
+      "key": "closed_days",
+      "value": "日曜・月曜",
+      "source_id": "S1"
+    },
+    {
+      "id": "F7",
+      "key": "service",
+      "value": "割れ・欠けた陶磁器を漆で継ぐ修理（金継ぎ）",
+      "source_id": "S1"
+    },
+    {
+      "id": "F8",
+      "key": "intake",
+      "value": "持ち込みのみ受付",
+      "source_id": "S1"
+    },
+    {
+      "id": "F9",
+      "key": "lead_time",
+      "value": "仕上がりまで約二か月",
+      "source_id": "S1"
+    },
+    {
+      "id": "F10",
+      "key": "finishes",
+      "value": "金・銀・漆のみの三種から選べる",
+      "source_id": "S1"
+    }
+  ]
+}
