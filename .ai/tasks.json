@@ -6191,6 +6191,47 @@
         "runner への組み込み"
       ],
       "note": "参照の多くは Hero と流れだけで、試作12枚では判定できる組が少ない (宣言を足しても 12/38)。"
+    },
+    {
+      "id": "DEV-137",
+      "title": "Phase 2f の描画失敗 (RENDER_FAILED) にブラウザの理由を残す — CI で断続的に落ちる原因を特定するため",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": "develop 7861e3e と PR #171 (ad19384) の CI で phase2f-live/steps.test.ts の packaging が RENDER_FAILED で止まり、どちらも失敗ジョブの再実行で成功。手元では単独3回・負荷下2回とも再現せず",
+      "branch": "feature/dev-137-render-failure-detail",
+      "purpose": "原因を推測で直さず、まず次に落ちたときに何が起きたかを記録に残す (ページを開く段の timeout か、撮影の拒否か、ブラウザが閉じたか)。挙動・停止条件は変えない。",
+      "acceptance_criteria": [
+        "RENDER_FAILED の RenderError に、ブラウザのエラーの1行目 (パスを伏せ、160字まで) を detail として持たせる",
+        "runner の停止結果と steps CLI の prerender の出力に detail を載せる",
+        "steps のテストの記録行に detail を出す (期待値は変えない)",
+        "停止コードと停止条件は変えない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f/runner.test.ts",
+        "tests/unit/design-agent/phase2f-live/steps.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/phase2f/render-prototype.ts",
+        "lib/design-agent/phase2f/runner.ts",
+        "scripts/design-artifact/phase2f-steps.ts",
+        "tests/unit/design-agent/phase2f/runner.test.ts",
+        "tests/unit/design-agent/phase2f-live/steps.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-137.md"
+      ],
+      "forbidden_scope": [
+        "retry や skip で隠すこと",
+        "停止条件・閾値の変更",
+        "Codex・画像生成"
+      ],
+      "human_approval_triggers": [
+        "develop へのマージ"
+      ],
+      "note": "原因が分かったら、別のタスクで直す (推測では直さない)。"
     }
   ]
 }

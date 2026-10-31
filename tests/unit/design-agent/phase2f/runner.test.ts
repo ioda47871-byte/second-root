@@ -5,6 +5,7 @@ import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FactsPack } from "@/lib/design-agent/artifact/schema";
 import { DesignBrief } from "@/lib/design-agent/phase2f/prompt";
+import { RenderError, renderFailureDetail, renderPrototype } from "@/lib/design-agent/phase2f/render-prototype";
 import { packageConceptRun, PLAN_LIMITS, PortStop, runPrototypeRoute, type AssetPort, type DesignPort } from "@/lib/design-agent/phase2f/runner";
 import { answer, BRIEF, colourPng, FACTS, GENERATION, palettePng, workspace } from "./fixtures";
 
@@ -365,5 +366,33 @@ describe("route A (existing image PoC output wrapped as a concept)", () => {
     const png = colourPng(1024, 1536);
     const r = await packageConceptRun({ facts, shop, artifactId: "DA-20261029-concp2", outDir: ws.out("a2"), pocDir: poc(png, { png_sha256: "0".repeat(64), width: 1024, height: 1536 }), generation: gen });
     expect(r).toMatchObject({ status: "stopped", code: "CONCEPT_SHA_MISMATCH" });
+  });
+});
+
+describe("DEV-137: a failed render says what the browser said", () => {
+  it("keeps the first line only, without paths, at most 160 characters", () => {
+    const e = new Error("page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to /home/runner/work/x/index.html");
+    expect(renderFailureDetail(e)).toBe("Error: page.goto: Timeout 30000ms exceeded.");
+    expect(renderFailureDetail(new Error("Protocol error at /tmp/abc/def.png: Unable to capture screenshot"))).toBe("Error: Protocol error at <path>: Unable to capture screenshot");
+    expect(renderFailureDetail(new Error("x".repeat(500)))).toHaveLength(160);
+    expect(renderFailureDetail("")).toBe("unknown");
+    expect(renderFailureDetail(new Error("bad \x1b[31mred\x1b[0m"))).toBe("Error: bad ?[31mred?[0m");
+  });
+
+  it("a render on a closed browser stops with RENDER_FAILED and a detail", async () => {
+    const closed = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
+    await closed.close();
+    const err = await renderPrototype(closed, { html: "<p>x</p>", css: "" }, new Map(), []).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RenderError);
+    expect((err as RenderError).code).toBe("RENDER_FAILED");
+    expect((err as RenderError).detail).toMatch(/closed/i);
+  });
+
+  it("the run's stop carries the detail (preflight and render alike)", async () => {
+    const failing = (async () => {
+      throw new RenderError("RENDER_FAILED", new Error("page.goto: Timeout 30000ms exceeded."));
+    }) as unknown as Parameters<typeof runPrototypeRoute>[0]["render"];
+    expect(await run("B_html_prototype", designPort(answer()), undefined, { render: failing })).toMatchObject({ status: "stopped", code: "RENDER_FAILED", detail: "Error: page.goto: Timeout 30000ms exceeded." });
+    expect(await run("C_hybrid", designPort(answer({ asset: "story" })), assetPort(SAVED), { render: failing })).toMatchObject({ status: "stopped", code: "RENDER_FAILED", detail: "Error: page.goto: Timeout 30000ms exceeded." });
   });
 });

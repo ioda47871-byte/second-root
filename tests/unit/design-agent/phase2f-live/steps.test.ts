@@ -39,8 +39,9 @@ function world() {
   const cli = (args: string[]) => {
     const r = spawnSync(process.execPath, ["--import", "tsx", STEPS, ...args], { encoding: "utf8", env: { ...process.env, SR_PHASE2F_STATE: state } });
     const out = JSON.parse(r.stdout || "{}") as Record<string, unknown>;
-    // a stop's fixed code (never any content) goes to the test log, so an unexpected stop on CI says why
-    if (out.status === "stopped" || out.status === "refused") console.log(`steps CLI ${args[0]}: ${String(out.status)} ${String(out.code)}`);
+    // a stop's fixed code (never any content) goes to the test log, so an unexpected stop on CI says why;
+    // DEV-137: with the browser's own first line for a failed render (intermittent RENDER_FAILED on CI)
+    if (out.status === "stopped" || out.status === "refused") console.log(`steps CLI ${args[0]}: ${String(out.status)} ${String(out.code)}${out.detail ? ` (${String(out.detail)})` : ""}`);
     return { status: r.status, out, stderr: r.stderr };
   };
   const design = async (route: "B_html_prototype" | "C_hybrid", ans: unknown, o: { meta?: typeof META; plan?: string; fail?: boolean; variant?: PromptVariant } = {}) => {
