@@ -5891,6 +5891,48 @@
       ],
       "note": "Issue #159 offline batch approval; mock ports only.",
       "merged": "#165 → 65f79cf (integration squash, 2026-10-31; #164 closed as superseded)"
+    },
+    {
+      "id": "DEV-130",
+      "title": "研究30件の統合後の記録の整理：CP-026〜032 の intake を superseded にし（検査は登録済みであることへ反転）、古い文書の記述を直す",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-120"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-130-research-30-records",
+      "purpose": "オーナー指示（2026-10-31）：研究30件の統合（#142・#158）で古くなった記録を直す。履歴は消さない。",
+      "acceptance_criteria": [
+        "intake ファイルに superseded_by（PR #158、d489935、manifest のパス）を記録",
+        "superseded の intake は、7件すべてが登録済み（develop の manifest）で CP-014/025 を含まないことを検査し、外れたら INTAKE_SUPERSEDED_NOT_REGISTERED",
+        "登録前の規則のテストはそのまま残す",
+        "research-30-intake-audit.md と phase2f-b-v11-experiment-plan.md の古い記述を更新"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/intelligence/intake.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/intelligence/intake.ts",
+        "tests/unit/design-agent/intelligence/intake.test.ts",
+        "design-library/research-intake/cp-026-032.json",
+        "docs/design/research-30-intake-audit.md",
+        "docs/design/phase2f-b-v11-experiment-plan.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-130.md"
+      ],
+      "forbidden_scope": [
+        "研究データ（manifest・patterns）の変更",
+        "Adapter が intake を読むこと",
+        "履歴の削除"
+      ],
+      "human_approval_triggers": [
+        "なし（記録の整理。研究データの変更を含まない）"
+      ],
+      "note": "Records only; no research data changed."
     }
   ]
 }
