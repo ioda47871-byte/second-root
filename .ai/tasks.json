@@ -5990,6 +5990,48 @@
       ],
       "note": "Review: round 3 PASS (C0/H0/M0/L3); Lows recorded in .ai/reviews/DEV-131.md for threshold finalisation.",
       "merged": "#167 → 439cf08 (squash, 2026-10-31)"
+    },
+    {
+      "id": "DEV-136",
+      "title": "成功例と不採用例の構造記述子 (宣言・仮) と、オフラインの比較",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-136-reference-descriptors",
+      "purpose": "オーナー指示 2026-10-31 (第3段階 2: 成功例と不採用例の構造記述子を利用できるようにする)。生成器・runner への組み込みは別の承認 (構造モジュールの隔離) なので、オフラインの助言に留める。",
+      "acceptance_criteria": [
+        "成功例30件と不採用の版の記述子を、出典と証拠の種類つきで宣言する (測っていないことを明記)",
+        "読み込みの schema と、成功例・不採用例との比較 (決められない参照は undecided)",
+        "データの自己矛盾が無いことと、汎用骨格が不採用例に近いと出ることをテストで固定",
+        "隔離テストを変えない (構造モジュールの中に置き、テストだけが読む)"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/structure/references.test.ts",
+        "tests/unit/design-agent/structure/structure.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "design-library/intelligence/v02/structure-descriptors-v0.json",
+        "lib/design-agent/structure/references.ts",
+        "tests/unit/design-agent/structure/references.test.ts",
+        "docs/design/reference-structure-descriptors.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-136.md"
+      ],
+      "forbidden_scope": [
+        "生成器・Phase 2f runner への組み込み",
+        "閾値・語彙の確定",
+        "既存の研究記録の書き換え"
+      ],
+      "human_approval_triggers": [
+        "develop へのマージ (研究データを含む)",
+        "宣言の内容の確認",
+        "runner への組み込み"
+      ],
+      "note": "参照の多くは Hero と流れだけで、試作12枚では判定できる組が少ない (宣言を足しても 12/38)。"
     }
   ]
 }

@@ -1,0 +1,1183 @@
+{
+  "schema": "reference_structure_descriptors_v0",
+  "as_of": "2026-10-31",
+  "status": "provisional_declared_from_research_records",
+  "scope": "offline_advisory_only_not_generation_input",
+  "vocabulary": "structure_descriptor_v0",
+  "note": "Every aspect here is declared (source \"declared\") by reading the research records listed in each entry's basis — success-patterns.json, the success-case records, the v0.2 experiment records — and, for CP-001..003 only, by viewing the repository preview images. Nothing was measured from a rendered page, and most originals are not in the repository (CP-026..032 originals are unverified). A null aspect means the record does not say (or does not say clearly enough), never that the page lacks it; section_layouts and transitions are listed only where a record names the sections in order. Rejected entries are limited to versions the records describe as rejected or failed and describe structurally. The vocabulary and these declarations are provisional and await owner review; they are advisory data for offline checks, not a quality judgement and not generation input.",
+  "success": [
+    {
+      "id": "CP-001",
+      "evidence": "image",
+      "basis": [
+        "design-library/success-cases/assets/CP-001_Mond.webp (viewed)",
+        "design-library/intelligence/v01/success-patterns.json#CP-001 structural_translation, known_failure_modes",
+        "design-library/success-cases/CP-001-Mond.md"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "top_bar",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "z_pattern",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "overlap_collage",
+            "overlap_collage",
+            "overlap_collage",
+            "overlap_collage"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "overlap",
+            "overlap",
+            "overlap"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-002",
+      "evidence": "image",
+      "basis": [
+        "design-library/success-cases/assets/CP-002_Sissi.webp (viewed)",
+        "design-library/intelligence/v01/success-patterns.json#CP-002 structural_translation (branch paths set reading direction)",
+        "design-library/success-cases/CP-002-Sissi.md"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "top_bar",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "free",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "overlap_collage",
+            "overlap_collage",
+            "overlap_collage",
+            "split_copy_media"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "overlap",
+            "overlap",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-003",
+      "evidence": "image",
+      "basis": [
+        "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp (viewed)",
+        "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp (viewed)",
+        "design-library/intelligence/v01/success-patterns.json#CP-003 structural_translation (roast atlas, DEPTH/ROAST/YOUR CUP beats)",
+        "design-library/success-cases/CP-003-NagoyaBeans-v4.md"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "diagram_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "top_bar",
+          "source": "declared"
+        },
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "diagram",
+            "overlap_collage",
+            "overlap_collage",
+            "overlap_collage"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "hard_cut",
+            "hard_cut",
+            "continuous"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-004",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-004 structural_translation",
+        "design-library/success-cases/CP-004-Harebare.md#独自性（構図の理由）"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": {
+          "value": "radial",
+          "source": "declared"
+        },
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-005",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-005 structural_translation",
+        "design-library/success-cases/CP-005-Hamsa.md#今回成功したデザイン方法 2-4"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-006",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-006 structural_translation",
+        "design-library/success-cases/CP-006-Melon-de-Mille.md#評価した固有の構図"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-007",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-007 structural_translation",
+        "design-library/success-cases/CP-007-ORGN-SEAM-CUT.md#今回採用された視覚構造"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": null,
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-008",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-008 structural_translation",
+        "design-library/success-cases/CP-008-Seitai-Go-PAUSE.md#承認された核となる表現"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-009",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-009 structural_translation",
+        "design-library/success-cases/CP-009-MameMame-STITCH.md#採用した独自のデザイン構造 (Hero/STITCH/THINGS/TOGETHER/ATELIER)"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "overlap_collage",
+            "full_bleed_media",
+            "overlap_collage",
+            "overlap_collage",
+            "full_bleed_media"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "continuous",
+            "continuous",
+            "continuous",
+            "continuous"
+          ],
+          "source": "declared"
+        },
+        "text_direction": null,
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-010",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-010 structural_translation",
+        "design-library/success-cases/CP-010-PaperTheater-PT02.md#保存する成功要因",
+        "design-library/intelligence/v02/experiments/PT02-texture-v3-review.md#改善"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "scene_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-011",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-011 structural_translation",
+        "design-library/success-cases/CP-011-BAR-N-GLASS-SILENCE.md#意匠の核と採用理由",
+        "design-library/intelligence/v02/experiments/CP011-BARN-structure-recovery-v2.md#v1との差分"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "overlap_collage",
+            "overlap_collage",
+            "overlap_collage",
+            "full_bleed_media"
+          ],
+          "source": "declared"
+        },
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-012",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-012 structural_translation",
+        "design-library/success-cases/CP-012-Admy-ONE-OF-A-KIND.md#採用された構図の特徴 (CONCEPT/MATERIALS/CRAFT/COLLECTION/ABOUT)"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "overlap_collage",
+            "full_bleed_media",
+            "diagram",
+            "overlap_collage",
+            "overlap_collage",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-013",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-013 structural_translation",
+        "design-library/success-cases/CP-013-SpaceTanoshii-TOY-PACKAGING.md#採用した構図原理"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "collage",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-015",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-015 structural_translation",
+        "design-library/success-cases/CP-015-imairo-TABLE-JOURNAL-v2.md#具体的に評価されたデザイン原理"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "scene_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "inline",
+          "source": "declared"
+        },
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "single_lead",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-016",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-016 structural_translation",
+        "design-library/success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md#構造的な独創性",
+        "design-library/intelligence/v02/experiments/CP016-zulu-structural-reset.json#local_research_poc.structure_description"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "diagram_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "diagram"
+          ],
+          "source": "declared"
+        },
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "drawn",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-017",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-017 structural_translation",
+        "design-library/success-cases/CP-017-Rurikoyarn-UNWIND-v1.1.md#デザイン原理・学習すべきこと",
+        "design-library/intelligence/v02/experiments/CP017-Rurikoyarn-UNWIND-v1-review.md#構図"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": {
+          "value": "radial",
+          "source": "declared"
+        },
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "single_lead",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-018",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-018 structural_translation",
+        "design-library/success-cases/CP-018-MOLE-FACTORY-OVERPRINT-v1.md#今回採用したデザイン",
+        "design-library/intelligence/v02/experiments/CP018-MOLE-FACTORY-OVERPRINT-v1.md#骨格"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "drawn",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-019",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-019 structural_translation",
+        "design-library/success-cases/CP-019-Anna-Urata-WAX-TIME-v1.md#採用した設計の核",
+        "design-library/intelligence/v02/experiments/CP019-Anna-Urata-WAX-TIME-v1.md (right vertical nav)"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "side_index",
+          "source": "declared"
+        },
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "single_lead",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-020",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-020 structural_translation",
+        "design-library/success-cases/CP-020-Kissa-ITALICO-SHOWCASE-v1.md#デザイン構造と採用の核",
+        "design-library/intelligence/v02/experiments/CP020-Kissa-ITALICO-SHOWCASE-v1.md (top name + small nav)"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "top_bar",
+          "source": "declared"
+        },
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-021",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-021 structural_translation",
+        "design-library/success-cases/CP-021-TERACE-PICK-COMPOSE-v1.md#評価されたデザインの核"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-022",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-022 structural_translation",
+        "design-library/success-cases/CP-022-Harissy-CRUMB-FRACTURE-v1.md#採用するデザインの核"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": {
+          "value": "free",
+          "source": "declared"
+        },
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-023",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-023 structural_translation",
+        "design-library/success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md#成功したアートディレクション"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": {
+          "value": "single_lead",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-024",
+      "evidence": "text_record",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-024 structural_translation",
+        "design-library/success-cases/CP-024-Boheme-FLORAL-FITTING-FullPage-v2.md#店舗コンセプトと独自の情報構造",
+        "design-library/intelligence/v02/experiments/CP024-Boheme-FLORAL-FITTING-ROOM-v1.md (vertical slogan in hero)"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "scene_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-026",
+      "evidence": "original_unavailable",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-026 structural_translation",
+        "design-library/success-cases/CP-026-Sawaddee-Chao-Shop-Note-v5.md#店舗の行為をWeb構造に翻訳した観察"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": null,
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-027",
+      "evidence": "original_unavailable",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-027 structural_translation",
+        "design-library/success-cases/CP-027-MATO-Between-Floors-v2.md#研究用視覚メカニズム"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": null,
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": {
+          "value": "vertical_axis",
+          "source": "declared"
+        },
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-028",
+      "evidence": "original_unavailable",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-028 structural_translation",
+        "design-library/success-cases/CP-028-Yumetuna-One-Sheet-v1.md#店舗の行為をWeb構造に翻訳した観察"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "diagram_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "map_of_stations",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-029",
+      "evidence": "original_unavailable",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-029 structural_translation",
+        "design-library/success-cases/CP-029-SNOWMY-Soft-Pop-v4.md#店舗の行為をWeb構造に翻訳した観察"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-030",
+      "evidence": "original_unavailable",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-030 structural_translation",
+        "design-library/success-cases/CP-030-Takada-Service-Counter-v2.md#店舗の行為をWeb構造に翻訳した観察"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": null,
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-031",
+      "evidence": "original_unavailable",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-031 structural_translation",
+        "design-library/success-cases/CP-031-Reform-Nakamura-Hybrid-v3.md#研究用視覚メカニズム"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": null,
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-032",
+      "evidence": "original_unavailable",
+      "basis": [
+        "design-library/intelligence/v01/success-patterns.json#CP-032 structural_translation",
+        "design-library/success-cases/CP-032-Tamamushiya-Iridescent-Light-v1.md#研究用視覚メカニズム"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": null,
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    }
+  ],
+  "rejected": [
+    {
+      "id": "CP-016-draft-1",
+      "case": "CP-016",
+      "verdict": "REJECT_GENERIC_COMPOSITION「同じような構成になってきた」",
+      "basis": [
+        "design-library/intelligence/v02/experiments/CP016-zulu-structural-reset.json#original_image_status",
+        "design-library/success-cases/CP-016-Zulu-COUNTERWEIGHT-ZK01.md#不採用から学んだこと",
+        "design-library/intelligence/v02/README.md#CP-016｜ズールー工作所"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "split_copy_media",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "stacked_bands",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "top_bar",
+          "source": "declared"
+        },
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "split_copy_media",
+            "full_bleed_media"
+          ],
+          "source": "declared"
+        },
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "PT-02-draft-1",
+      "case": "CP-010",
+      "verdict": "構造的に不十分: 左テキスト＋右写真の反復（最初のFULL画像）",
+      "basis": [
+        "design-library/intelligence/v02/case-comparison.md#旧案（不採用）からの教訓",
+        "design-library/intelligence/v02/experiments/paper-theater.json#goal"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": null,
+        "flow": {
+          "value": "stacked_bands",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "split_copy_media",
+            "split_copy_media",
+            "split_copy_media",
+            "split_copy_media"
+          ],
+          "source": "declared"
+        },
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-011-v1",
+      "case": "CP-011",
+      "verdict": "「ちょっとありきたりかな」(HTML PoC v1, design not adopted)",
+      "basis": [
+        "design-library/intelligence/v02/experiments/CP011-BARN-glass-silence-poc-v1.md#元B案との実画面比較に基づく分析",
+        "design-library/intelligence/v02/experiments/CP011-BARN-structure-recovery-v2.md#v1との差分"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "stacked_bands",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "overlap_collage",
+            "full_bleed_media",
+            "split_copy_media",
+            "grid_cards"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "hard_cut",
+            "hard_cut",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-015-fullpage-1",
+      "case": "CP-015",
+      "verdict": "REJECT_FULLPAGE_GENERIC_REVERSION「なんかありきたりになったな」",
+      "basis": [
+        "design-library/intelligence/v02/experiments/CP015-imairo-structure-study-20261028.md#PC・スマホ同時FULL化の失敗",
+        "design-library/intelligence/v01/success-patterns.json#CP-015 known_failure_modes"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "scene_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "stacked_bands",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "full_bleed_media",
+            "split_copy_media",
+            "split_copy_media",
+            "split_copy_media",
+            "split_copy_media"
+          ],
+          "source": "declared"
+        },
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-025-v1",
+      "case": "CP-025",
+      "verdict": "OWNER_REJECTED_FULLPAGE_V1「凡庸だな」",
+      "basis": [
+        "design-library/intelligence/v02/experiments/CP025-HOTEL-AUTHENTIC-EDIBLE-ATLAS-v1.md#ユーザー「凡庸だな」：全ページv1を不採用",
+        "design-library/intelligence/v02/experiments/CP025-HOTEL-AUTHENTIC-SPICE-CABINET-v2.md#失敗したv1との差"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "split_copy_media",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "stacked_bands",
+          "source": "declared"
+        },
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "split_copy_media",
+            "diagram",
+            "split_copy_media",
+            "grid_cards",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "hard_cut",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": null,
+        "imagery": {
+          "value": "single_lead",
+          "source": "declared"
+        }
+      }
+    },
+    {
+      "id": "CP-025-v2",
+      "case": "CP-025",
+      "verdict": "OWNER_REJECTED_V2_NOT_SHOP_SPECIFIC「この店っぽくないな」",
+      "basis": [
+        "design-library/intelligence/v02/experiments/CP025-HOTEL-AUTHENTIC-SPICE-CABINET-v2.md#失敗したv1との差",
+        "design-library/intelligence/v02/experiments/CP025-HOTEL-AUTHENTIC-SPICE-CABINET-v2.md#オーナーがv2を店らしくないと評価・不採用"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-023-v5",
+      "case": "CP-023",
+      "verdict": "v5不採用: 下部3写真カード等で看板の主役性を弱めた（v4に戻す）",
+      "basis": [
+        "design-library/intelligence/v02/experiments/CP023-BURGERS-INC-FLIP-SIGN-v1.md#v5",
+        "design-library/success-cases/CP-023-BURGERS-INC-NEON-FLIP-v4.md#採用された画像の確定"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": null,
+        "navigation": {
+          "value": "top_bar",
+          "source": "declared"
+        },
+        "reading_path": null,
+        "section_layouts": {
+          "value": [
+            "full_bleed_media",
+            "grid_cards"
+          ],
+          "source": "declared"
+        },
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    },
+    {
+      "id": "CP-027-v1",
+      "case": "CP-027",
+      "verdict": "v1 A QUIET ASCENT: 入口Heroが左右分割の既視感に近い",
+      "basis": [
+        "design-library/success-cases/CP-027-MATO-Between-Floors-v2.md#不採用版や改善失敗の学び",
+        "design-library/intelligence/v01/success-patterns.json#CP-027 known_failure_modes"
+      ],
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "split_copy_media",
+          "source": "declared"
+        },
+        "flow": null,
+        "navigation": null,
+        "reading_path": null,
+        "section_layouts": null,
+        "transitions": null,
+        "text_direction": null,
+        "imagery": null
+      }
+    }
+  ]
+}
