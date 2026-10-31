@@ -264,6 +264,8 @@ describe("isolation (provisional vocabulary: never used by a generator without a
     expect(specifiers).toEqual(["../../lib/design-agent/structure/observe", "../../lib/design-agent/structure/references", "node:crypto", "node:fs/promises", "node:path", "playwright"]);
     // no phase2f, prompt, runner, artifact intake, Codex or network: it reads a finished package and writes one report
     expect(src).not.toMatch(/phase2f\/|codex|anthropic|openai|\bfetch\(|node:https?|child_process|import\s*\(|require\s*\(/);
+    // no bare side-effect import either (review L4)
+    expect(src).not.toMatch(/^\s*import\s*["'`]/m);
     const writes = src.split("\n").filter((l) => /\b(writeFile|appendFile|mkdir|rm|rmdir|unlink|rename|copyFile)\(/.test(l));
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatch(/flag: "wx"/);

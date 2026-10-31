@@ -10,7 +10,9 @@
 
 - package の試作 (`quarantine/index.html`・`style.css`・`assets/*.png`) を、JS 無効・閉じた origin で PC 1440 と
   SP 390 にもう一度描き、描画から測れる構造だけを、成功例と不採用例の宣言された構造と比べる
-- 報告は `--out` に書く。**package の中には書かない** (書くと intake の未申告ファイルになる)。既存の報告も上書きしない
+- 報告は `--out` に書く。**package の中には書かない** (書くと intake の未申告ファイルになる)。`..` で始まる名前や、
+  リンクを経由した道でも断る (実体のパスで比べる)。既存の報告も上書きしない
+- package から読むのは通常のファイルだけ (リンクは読まない)。大きさの上限は HTML 384 KiB・CSS 256 KiB・画像 10 MiB
 - package のファイル (画像・prototype・artifact.json) は1バイトも変えない (テストで固定)
 - runner・prompt・設計の port・intake・承認・停止条件は変えていない。参照データは prompt にも設計の入力にも入らない
   (構造モジュールの隔離テストが、取り込めるのを観察の CLI 1つだけに固定する)
@@ -25,7 +27,7 @@ npx tsx scripts/design-artifact/phase2f-structure-observe.ts --package <artifact
 | 欄 | 意味 |
 | --- | --- |
 | `status` | `observed` か `check_failed` (測れなかった。結果なしであり、合格ではない) |
-| `check_failed` | `{ code: MEASURE_PAGE_REFUSED \| MEASURE_FAILED, detail }` (detail はエラーの1行目、パスを伏せ 160字まで) |
+| `check_failed` | `{ code: MEASURE_PAGE_REFUSED \| MEASURE_FAILED \| BROWSER_LAUNCH_FAILED, detail }` (detail はエラーの1行目、パスを伏せ 160字まで) |
 | `viewports.desktop_1440` / `mobile_390` | 幅ごとの観察 |
 | ・`measured` | 描画から測れた観点だけ (すべて measured) |
 | ・`unknown_aspects` | 測れなかった観点。**候補には何も宣言しない** (Hero と流れは汎用 LP の印が測れたときだけ分かる) |

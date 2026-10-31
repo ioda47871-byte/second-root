@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -95,8 +95,8 @@ describe("structure observation (offline, report-only)", () => {
 
 describe("the observation CLI (reads a finished package, writes one report elsewhere)", () => {
   const CLI = join(REPO, "scripts/design-artifact/phase2f-structure-observe.ts");
-  const run = (args: string[]) => {
-    const r = spawnSync(process.execPath, ["--import", "tsx", CLI, ...args], { cwd: REPO, encoding: "utf8" });
+  const run = (args: string[], env: Record<string, string> = {}) => {
+    const r = spawnSync(process.execPath, ["--import", "tsx", CLI, ...args], { cwd: REPO, encoding: "utf8", env: { ...process.env, ...env } });
     return { status: r.status, out: JSON.parse(r.stdout || "{}") as Record<string, unknown> };
   };
   const pkg = (route: string) => {
@@ -134,5 +134,40 @@ describe("the observation CLI (reads a finished package, writes one report elsew
     expect(run(["--package", dir, "--out", join(dir, "report.json")])).toMatchObject({ status: 2, out: { code: "OUT_INSIDE_PACKAGE" } });
     expect(run(["--package", concept, "--out", join(tmpdir(), `x-${Date.now()}.json`)])).toMatchObject({ status: 2, out: { code: "NOT_A_PROTOTYPE_PACKAGE" } });
     expect(run(["--package", dir])).toMatchObject({ status: 2, out: { code: "ARGS_INVALID" } });
+  }, 120_000);
+
+  it("review M1 / M2: never writes into the package, not by a name starting with '..' nor through a link", () => {
+    const dir = pkg("B_html_prototype");
+    const links = mkdtempSync(join(tmpdir(), "observe-links-"));
+    dirs.push(dir, links);
+    const before = hashes(dir);
+    expect(run(["--package", dir, "--out", join(dir, "..report.json")])).toMatchObject({ status: 2, out: { code: "OUT_INSIDE_PACKAGE" } });
+    symlinkSync(dir, join(links, "to-pkg"));
+    expect(run(["--package", dir, "--out", join(links, "to-pkg", "r.json")])).toMatchObject({ status: 2, out: { code: "OUT_INSIDE_PACKAGE" } });
+    expect(run(["--package", join(links, "to-pkg"), "--out", join(dir, "r.json")])).toMatchObject({ status: 2, out: { code: "OUT_INSIDE_PACKAGE" } });
+    expect(hashes(dir)).toEqual(before);
+    expect(existsSync(join(dir, "..report.json"))).toBe(false);
+  }, 120_000);
+
+  it("review L2: a browser that does not start is a written check_failed report, never a clean one", () => {
+    const dir = pkg("B_html_prototype");
+    const outDir = mkdtempSync(join(tmpdir(), "observe-out-"));
+    dirs.push(dir, outDir);
+    expect(run(["--package", dir, "--out", join(outDir, "r.json")], { PLAYWRIGHT_CHROMIUM_EXECUTABLE: "/nonexistent/chrome" })).toMatchObject({ status: 0, out: { status: "check_failed" } });
+    expect(JSON.parse(readFileSync(join(outDir, "r.json"), "utf8"))).toMatchObject({ status: "check_failed", viewports: null, check_failed: { code: "BROWSER_LAUNCH_FAILED" } });
+  }, 120_000);
+
+  it("review L1 / L3: refuses a broken reference file, and a linked or oversized prototype file", () => {
+    const dir = pkg("B_html_prototype");
+    const outDir = mkdtempSync(join(tmpdir(), "observe-out-"));
+    dirs.push(dir, outDir);
+    writeFileSync(join(outDir, "bad.json"), "{not json");
+    expect(run(["--package", dir, "--out", join(outDir, "a.json"), "--references", join(outDir, "bad.json")])).toMatchObject({ status: 2, out: { code: "REFERENCES_INVALID" } });
+    rmSync(join(dir, "quarantine/style.css"));
+    symlinkSync("/etc/hostname", join(dir, "quarantine/style.css"));
+    expect(run(["--package", dir, "--out", join(outDir, "b.json")])).toMatchObject({ status: 2, out: { code: "PROTOTYPE_FILES_MISSING" } });
+    rmSync(join(dir, "quarantine/style.css"));
+    writeFileSync(join(dir, "quarantine/style.css"), "x".repeat(300 * 1024));
+    expect(run(["--package", dir, "--out", join(outDir, "c.json")])).toMatchObject({ status: 2, out: { code: "PROTOTYPE_FILES_MISSING" } });
   }, 120_000);
 });

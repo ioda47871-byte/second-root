@@ -9,14 +9,15 @@
  * outside the package and must not exist: the package (its pictures, files and hashes) is never touched, and nothing
  * here runs before or inside the design run.
  *
- * Exit: 0 report written (observed or check_failed), 2 refused (bad arguments, not a B/C package, existing --out).
+ * Exit: 0 report written (observed or check_failed, incl. a browser that did not start), 2 refused (bad arguments,
+ * --out inside the package even through links, not a B/C package, unreadable or oversized files, existing --out).
  * Never calls Codex, a model or the network. Advisory only: no gate, no approval.
  */
 import { createHash } from "node:crypto";
-import { readdir, readFile, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { lstat, readdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { chromium } from "playwright";
-import { observeStructure } from "../../lib/design-agent/structure/observe";
+import { failedObservation, observeStructure, type StructureObservation } from "../../lib/design-agent/structure/observe";
 import { ReferenceDescriptors } from "../../lib/design-agent/structure/references";
 
 const DEFAULT_REFERENCES = "design-library/intelligence/v02/structure-descriptors-v0.json";
@@ -39,13 +40,34 @@ function parseArgs(argv: string[]): { pkg: string; out: string; references: stri
 /** Inside (or equal to) the directory: a report there would become an undeclared file of the package. */
 const inside = (dir: string, path: string) => {
   const r = relative(dir, path);
-  return r === "" || (!r.startsWith("..") && !isAbsolute(r));
+  // "..report.json" is inside; only ".." itself or "../…" leaves the directory (review M1)
+  return r === "" || !(r === ".." || r.startsWith(`..${sep}`) || isAbsolute(r));
 };
+
+/** Size caps for what is read from a package (the prototype limits of the artifact schema, and generous for pictures). */
+const MAX_BYTES = { html: 384 * 1024, css: 256 * 1024, asset: 10 * 1024 * 1024 } as const;
+
+/** A regular file (never a link) no larger than `max`; else null. */
+async function readRegular(path: string, max: number): Promise<Buffer | null> {
+  const st = await lstat(path).catch(() => null);
+  if (!st || !st.isFile() || st.size > max) return null;
+  return readFile(path);
+}
 
 async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   if (!args) return refuse("ARGS_INVALID");
   if (inside(args.pkg, args.out)) return refuse("OUT_INSIDE_PACKAGE");
+  // the same with every link resolved: a linked package or a linked directory above --out must not lead back in (M2)
+  let pkgReal: string;
+  let outReal: string;
+  try {
+    pkgReal = await realpath(args.pkg);
+    outReal = join(await realpath(dirname(args.out)), basename(args.out));
+  } catch {
+    return refuse("PATH_UNRESOLVABLE");
+  }
+  if (inside(pkgReal, outReal)) return refuse("OUT_INSIDE_PACKAGE");
   let artifact: { artifact_id?: unknown; route?: unknown };
   try {
     artifact = JSON.parse(await readFile(join(args.pkg, "artifact.json"), "utf8")) as typeof artifact;
@@ -53,31 +75,46 @@ async function main(argv: string[]): Promise<number> {
     return refuse("PACKAGE_UNREADABLE");
   }
   if (artifact.route !== "B_html_prototype" && artifact.route !== "C_hybrid") return refuse("NOT_A_PROTOTYPE_PACKAGE");
-  let html: string;
-  let css: string;
-  try {
-    html = await readFile(join(args.pkg, "quarantine/index.html"), "utf8");
-    css = await readFile(join(args.pkg, "quarantine/style.css"), "utf8");
-  } catch {
-    return refuse("PROTOTYPE_FILES_MISSING");
-  }
+  const htmlBytes = await readRegular(join(pkgReal, "quarantine/index.html"), MAX_BYTES.html);
+  const cssBytes = await readRegular(join(pkgReal, "quarantine/style.css"), MAX_BYTES.css);
+  if (!htmlBytes || !cssBytes) return refuse("PROTOTYPE_FILES_MISSING");
+  const html = htmlBytes.toString("utf8");
+  const css = cssBytes.toString("utf8");
   const assets: Record<string, Buffer> = {};
-  for (const f of await readdir(join(args.pkg, "assets")).catch(() => [] as string[])) if (/^A\d{1,2}\.png$/.test(f)) assets[`assets/${f}`] = await readFile(join(args.pkg, "assets", f));
+  for (const f of await readdir(join(pkgReal, "assets")).catch(() => [] as string[])) {
+    if (!/^A\d{1,2}\.png$/.test(f)) continue;
+    const bytes = await readRegular(join(pkgReal, "assets", f), MAX_BYTES.asset);
+    if (!bytes) return refuse("PACKAGE_ASSET_INVALID");
+    assets[`assets/${f}`] = bytes;
+  }
   let refsText: string;
   try {
     refsText = await readFile(args.references, "utf8");
   } catch {
     return refuse("REFERENCES_UNREADABLE");
   }
-  const parsed = ReferenceDescriptors.safeParse(JSON.parse(refsText));
+  let refsJson: unknown;
+  try {
+    refsJson = JSON.parse(refsText);
+  } catch {
+    return refuse("REFERENCES_INVALID");
+  }
+  const parsed = ReferenceDescriptors.safeParse(refsJson);
   if (!parsed.success) return refuse("REFERENCES_INVALID");
 
-  const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
-  let observation;
-  try {
-    observation = await observeStructure(browser, { html, css, assets }, parsed.data);
-  } finally {
-    await browser.close();
+  // a browser that does not start is a check that could not run: recorded in the report, never a clean result (L2)
+  const launched = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }).then(
+    (browser) => ({ browser, error: null }),
+    (error: unknown) => ({ browser: null, error }),
+  );
+  let observation: StructureObservation;
+  if (!launched.browser) observation = failedObservation("BROWSER_LAUNCH_FAILED", launched.error);
+  else {
+    try {
+      observation = await observeStructure(launched.browser, { html, css, assets }, parsed.data);
+    } finally {
+      await launched.browser.close().catch(() => undefined);
+    }
   }
   const report = {
     ...observation,

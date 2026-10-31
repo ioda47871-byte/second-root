@@ -42,7 +42,7 @@ export type StructureObservation = {
   advisory: true;
   status: "observed" | "check_failed";
   /** Why the check could not run (a fixed code and the first line of the cause, at most 160 characters). */
-  check_failed: { code: "MEASURE_PAGE_REFUSED" | "MEASURE_FAILED"; detail: string } | null;
+  check_failed: { code: "MEASURE_PAGE_REFUSED" | "MEASURE_FAILED" | "BROWSER_LAUNCH_FAILED"; detail: string } | null;
   viewports: { desktop_1440: ViewportObservation; mobile_390: ViewportObservation } | null;
   notes: string[];
 };
@@ -55,7 +55,7 @@ const NOTES = [
   "An undecided reference is not a negative finding.",
 ];
 
-const firstLine = (e: unknown) =>
+export const firstLine = (e: unknown) =>
   (e instanceof Error ? e.message : String(e))
     .split("\n")[0]!
     .replace(/(?:\/[^\s/:]+)+\/?/g, "<path>")
@@ -87,22 +87,28 @@ function observeOne(d: StructureDescriptor, set: ReferenceDescriptors, blocked: 
   };
 }
 
+const BASE = { schema: "structure_observation_v0", vocabulary: "structure_descriptor_v0", scope: "offline_report_only", advisory: true, notes: NOTES } as const;
+
+/** A check that could not run (e.g. the browser did not start): recorded as such, never as a clean result. */
+export function failedObservation(code: NonNullable<StructureObservation["check_failed"]>["code"], cause: unknown): StructureObservation {
+  return { ...BASE, status: "check_failed", check_failed: { code, detail: firstLine(cause) }, viewports: null };
+}
+
 /**
  * Observes one prototype at both widths. Never throws for a page that cannot be measured: the result is then
  * `check_failed` with its reason (a closed browser, a refused page, a timeout).
  */
 export async function observeStructure(browser: Browser, page: { html: string; css: string; assets?: Record<string, Buffer> }, set: ReferenceDescriptors): Promise<StructureObservation> {
-  const base = { schema: "structure_observation_v0", vocabulary: "structure_descriptor_v0", scope: "offline_report_only", advisory: true, notes: NOTES } as const;
   try {
     const pc = await measurePage(browser, page, VIEWPORTS.desktop);
     const sp = await measurePage(browser, page, VIEWPORTS.mobile);
     return {
-      ...base,
+      ...BASE,
       status: "observed",
       check_failed: null,
       viewports: { desktop_1440: observeOne(describe(pc), set, pc.blocked), mobile_390: observeOne(describe(sp), set, sp.blocked) },
     };
   } catch (e) {
-    return { ...base, status: "check_failed", check_failed: { code: e instanceof MeasureRefused ? "MEASURE_PAGE_REFUSED" : "MEASURE_FAILED", detail: firstLine(e) }, viewports: null };
+    return failedObservation(e instanceof MeasureRefused ? "MEASURE_PAGE_REFUSED" : "MEASURE_FAILED", e);
   }
 }
