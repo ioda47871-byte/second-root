@@ -66,7 +66,11 @@ async function render(page: Page, v: Viewport): Promise<RenderSide & { text: str
       const sections = [...document.querySelectorAll("[data-section]")].map((el) => { const r = el.getBoundingClientRect(); const shown = getComputedStyle(el).display !== "none" && r.width > 0 && r.height > 0; return { id: el.getAttribute("data-section"), box: shown ? { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height } : null }; });
       return { sections, text: document.body.innerText, height: document.documentElement.scrollHeight };
     })()`)) as { sections: RenderSide["sections"]; text: string; height: number };
-    const png = await p.screenshot({ fullPage: true, clip: { x: 0, y: 0, width: WIDTH[v].width, height: m.height } });
+    // DEV-135: the page is shot at its own height, not by stitching a full-page capture: under load on CI, Chromium
+    // refused the tall full-page capture once ("Unable to capture screenshot", develop 1220d3e). The boxes are measured
+    // above, at the real viewport; the fixture pages size nothing by the viewport height.
+    await p.setViewportSize({ width: WIDTH[v].width, height: Math.max(WIDTH[v].height, Math.ceil(m.height)) });
+    const png = await p.screenshot({ clip: { x: 0, y: 0, width: WIDTH[v].width, height: m.height } });
     return { png, sections: m.sections, text: m.text };
   } finally {
     await ctx.close();
