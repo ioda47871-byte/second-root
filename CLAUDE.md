@@ -21,4 +21,4 @@ HUMAN-017 / HUMAN-018、Production・Staging・DB・worker・timer・実営業�
 ## デザインのスキル (DEV-132)
 
 - `.claude/skills/frontend-design/` は Anthropic 公式 `frontend-design` v1.1.1 の無改変の写し (Apache 2.0、出典は同じ場所の `PROVENANCE.md`)。
-- 店舗サイトのデザインでは、Second Root の規則が公式スキルより優先する。事実パックと Identity Lock (店舗の事実を作らない)、B方式 (`B_html_prototype`) の JS・通信・書体・アセットの制約、実装レーンの CSS と書体の許可一覧を、公式スキルの提案 (動き、Web フォント、画像) で緩めない。店舗デザインの手順は `second-root-design-director` スキルに従う。
+- 店舗サイトのデザインでは、Second Root の規則が公式スキルより優先する。事実パックと Identity Lock (店舗の事実を作らない)、B方式 (`B_html_prototype`) の JS・通信・書体・アセットの制約、実装レーンの CSS と書体の許可一覧を、公式スキルの提案 (動き、Web フォント、画像) で緩めない。店舗デザインの手順は `second-root-design-director` スキル (DEV-133、PR #170) に従う。
