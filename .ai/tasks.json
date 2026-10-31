@@ -6106,7 +6106,7 @@
     {
       "id": "DEV-134",
       "title": "Phase 2f のスマホ (SP 390) 品質検査 — report-only で試作工程に接続",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -6147,7 +6147,8 @@
         "develop へのマージ",
         "所見を停止や自動修正に使うこと"
       ],
-      "note": "実試作12枚で誤検知 9→0 (所見 14→5)。コントラストは未対応。"
+      "note": "実試作12枚で誤検知 9→0 (所見 14→5)。コントラストは未対応。 PR の CI は1回目に phase2f-live/steps.test.ts の packaging で落ち、失敗ジョブの再実行で成功 (develop 7861e3e と同じ形。原因の調査は別タスク)。",
+      "merged": "#171 → d63850f (squash, 2026-10-31)"
     },
     {
       "id": "DEV-136",
