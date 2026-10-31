@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "case_id": "CP-900",
+  "attempt_id": "sento-tsukimiyu",
+  "target": {
+    "official_name": "月見湯",
+    "allowed_aliases": [],
+    "category_code": "public_bath",
+    "official_source_url": "https://example.invalid/fictional"
+  },
+  "prompt": {
+    "shop_name": "月見湯",
+    "category_code": "public_bath",
+    "is_research_only": true
+  },
+  "other_shop_names": [
+    "架空菓庵",
+    "なごやビーンズ",
+    "紙縁堂",
+    "ひびや継工房"
+  ]
+}

@@ -5990,6 +5990,47 @@
       ],
       "note": "Review: round 3 PASS (C0/H0/M0/L3); Lows recorded in .ai/reviews/DEV-131.md for threshold finalisation.",
       "merged": "#167 → 439cf08 (squash, 2026-10-31)"
+    },
+    {
+      "id": "DEV-133",
+      "title": "Second Root 専用デザインスキル second-root-design-director の作成と評価 (架空店舗3つ、スキルあり/なし、機械の検査と盲検比較)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-132"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-133-design-director-skill",
+      "purpose": "オーナー指示 2026-10-31 (デザイン品質向上・自律開発。設計・実装・テスト・Fresh Review・PR作成まで承認、develop へのマージは別承認)。店舗の事実の固定、成功例30件と不採用例の参照、店ごとの発想、Hero と構造が違う複数案、PC1440/SP390、反テンプレート、Identity Lock と構造記述子、自己批評、経路に合う指示文までをスキルにする。",
+      "acceptance_criteria": [
+        "スキル本体と references (証拠の強さの区別、失敗パターン、経路の制約、自己批評の点検表) がリポジトリ管理",
+        "架空店舗3つでスキルあり/なしを比較し、結果をリポジトリに残す",
+        "効果が無ければ修正 (結果: 盲検 3/0、創作の文 0 対 23、同じ骨格 0 対 2)",
+        "既存の隔離テストを緩めない (採点スクリプトは .txt で記録)"
+      ],
+      "required_tests": [
+        "tests/unit/skills/design-director-skill.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        ".claude/skills/second-root-design-director/**",
+        "docs/design/design-director-eval/**",
+        "tests/unit/skills/design-director-skill.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-133.md"
+      ],
+      "forbidden_scope": [
+        "Codex・画像生成・有料 API の実行",
+        "隔離テストの例外の追加",
+        "生成器・worker・本番への組み込み"
+      ],
+      "human_approval_triggers": [
+        "develop へのマージ",
+        "実モデルでの評価"
+      ],
+      "note": "評価は1店1回ずつの小さなもの。iteration-1 後の小修正は再実行で未確認。"
     }
   ]
 }

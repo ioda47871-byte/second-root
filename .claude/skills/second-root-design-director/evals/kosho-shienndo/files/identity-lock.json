@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "case_id": "CP-900",
+  "attempt_id": "kosho-shienndo",
+  "target": {
+    "official_name": "紙縁堂",
+    "allowed_aliases": [],
+    "category_code": "antiquarian_map_books",
+    "official_source_url": "https://example.invalid/fictional"
+  },
+  "prompt": {
+    "shop_name": "紙縁堂",
+    "category_code": "antiquarian_map_books",
+    "is_research_only": true
+  },
+  "other_shop_names": [
+    "架空菓庵",
+    "なごやビーンズ",
+    "月見湯",
+    "ひびや継工房"
+  ]
+}
