@@ -5994,7 +5994,7 @@
     {
       "id": "DEV-135",
       "title": "オフライン実験テストの全頁撮影を安定させる (develop 1220d3e の CI で Chromium が撮影を拒んだ)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -6021,12 +6021,13 @@
       "human_approval_triggers": [
         "develop へのマージ"
       ],
-      "note": ""
+      "note": " develop の push CI は1回目に phase2f-live/steps.test.ts の RENDER_FAILED 2件で落ち、失敗ジョブの再実行で成功 (runner 上の Chromium の一時的な失敗。同じコードは直前の PR CI で通過)。",
+      "merged": "#172 → 7861e3e (squash, 2026-10-31)"
     },
     {
       "id": "DEV-132",
       "title": "Anthropic 公式 frontend-design スキル v1.1.1 をリポジトリ管理のプロジェクトスキルとして導入 (無改変・Apache-2.0)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -6057,7 +6058,49 @@
       "human_approval_triggers": [
         "develop へのマージ"
       ],
-      "note": "スキル一覧への表示は次のセッション開始時に確認する (このセッションでは未確認)。"
+      "note": "スキル一覧への表示は次のセッション開始時に確認する (このセッションでは未確認)。",
+      "merged": "#169 → b98bf52 (squash, 2026-10-31)"
+    },
+    {
+      "id": "DEV-133",
+      "title": "Second Root 専用デザインスキル second-root-design-director の作成と評価 (架空店舗3つ、スキルあり/なし、機械の検査と盲検比較)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-132"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-133-design-director-skill",
+      "purpose": "オーナー指示 2026-10-31 (デザイン品質向上・自律開発。設計・実装・テスト・Fresh Review・PR作成まで承認、develop へのマージは別承認)。店舗の事実の固定、成功例30件と不採用例の参照、店ごとの発想、Hero と構造が違う複数案、PC1440/SP390、反テンプレート、Identity Lock と構造記述子、自己批評、経路に合う指示文までをスキルにする。",
+      "acceptance_criteria": [
+        "スキル本体と references (証拠の強さの区別、失敗パターン、経路の制約、自己批評の点検表) がリポジトリ管理",
+        "架空店舗3つでスキルあり/なしを比較し、結果をリポジトリに残す",
+        "効果が無ければ修正 (結果: 盲検 3/0、創作の文 0 対 23、同じ骨格 0 対 2)",
+        "既存の隔離テストを緩めない (採点スクリプトは .txt で記録)"
+      ],
+      "required_tests": [
+        "tests/unit/skills/design-director-skill.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        ".claude/skills/second-root-design-director/**",
+        "docs/design/design-director-eval/**",
+        "tests/unit/skills/design-director-skill.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-133.md"
+      ],
+      "forbidden_scope": [
+        "Codex・画像生成・有料 API の実行",
+        "隔離テストの例外の追加",
+        "生成器・worker・本番への組み込み"
+      ],
+      "human_approval_triggers": [
+        "develop へのマージ",
+        "実モデルでの評価"
+      ],
+      "note": "評価は1店1回ずつの小さなもの。iteration-1 後の小修正は再実行で未確認。 DEV-132 (PR #169、公式 frontend-design の導入) と対で統合する (このスキルが優先順位でそれを参照する)。"
     }
   ]
 }

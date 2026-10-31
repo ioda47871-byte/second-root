@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "case_id": "CP-900",
+  "attempt_id": "kintsugi-hibiya",
+  "target": {
+    "official_name": "ひびや継工房",
+    "allowed_aliases": [],
+    "category_code": "ceramic_repair",
+    "official_source_url": "https://example.invalid/fictional"
+  },
+  "prompt": {
+    "shop_name": "ひびや継工房",
+    "category_code": "ceramic_repair",
+    "is_research_only": true
+  },
+  "other_shop_names": [
+    "架空菓庵",
+    "なごやビーンズ",
+    "月見湯",
+    "紙縁堂"
+  ]
+}

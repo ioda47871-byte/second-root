@@ -1,0 +1,60 @@
+{
+  "schema": "shop_facts_pack_v1",
+  "shop_id": "fictional-mapshop",
+  "facts": [
+    {
+      "id": "F1",
+      "key": "name",
+      "value": "紙縁堂",
+      "source_id": "S1"
+    },
+    {
+      "id": "F2",
+      "key": "category",
+      "value": "antiquarian_map_books",
+      "source_id": "S1"
+    },
+    {
+      "id": "F3",
+      "key": "ward",
+      "value": "中区",
+      "source_id": "S1"
+    },
+    {
+      "id": "F4",
+      "key": "address",
+      "value": "名古屋市中区架空町二丁目1-12 2階",
+      "source_id": "S1"
+    },
+    {
+      "id": "F5",
+      "key": "hours",
+      "value": "12:00〜19:00",
+      "source_id": "S1"
+    },
+    {
+      "id": "F6",
+      "key": "closed_days",
+      "value": "月曜・火曜",
+      "source_id": "S1"
+    },
+    {
+      "id": "F7",
+      "key": "stock",
+      "value": "明治から昭和の古地図と地図帳",
+      "source_id": "S1"
+    },
+    {
+      "id": "F8",
+      "key": "floor",
+      "value": "二階が閲覧室（予約不要）",
+      "source_id": "S1"
+    },
+    {
+      "id": "F9",
+      "key": "purchase",
+      "value": "古地図の買取も行う",
+      "source_id": "S1"
+    }
+  ]
+}

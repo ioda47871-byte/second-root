@@ -1,0 +1,121 @@
+/**
+ * DEV-133: scores a design-direction run (A/ and B/ B方式 prototypes, facts.json, identity-lock.json) with the
+ * repository's own checks, so the second-root-design-director skill can be compared with a plain prompt.
+ *
+ * Offline only: Chromium with JavaScript off and every request outside the page refused. Nothing here calls a model.
+ * Report only: the numbers say whether a known failure was found, never that a design is good.
+ *
+ *   npx tsx scripts/design-agent/score-direction-prototypes.mts <run-dir> [<run-dir> ...]
+ *
+ * Prints one JSON object per run dir.
+ */
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { chromium, type Browser } from "playwright";
+import { auditPageText } from "../../lib/design-agent/identity/identity-lock";
+import { checkPrototype } from "../../lib/design-agent/phase2f/prototype-safety";
+import { structuralSimilarity, structureFindings, type StructureDescriptor } from "../../lib/design-agent/structure/descriptor";
+import { describe, measurePage, VIEWPORTS } from "../../lib/design-agent/structure/measure";
+
+type Fact = { key: string; value: string };
+
+/** Visible text, width overflow and the smallest rendered font of one prototype at one width (JS off, closed origin). */
+async function renderFacts(browser: Browser, html: string, css: string, width: number) {
+  const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block", viewport: { width, height: 900 }, deviceScaleFactor: 1 });
+  try {
+    await context.route("**/*", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/" || path === "/index.html") return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html });
+      if (path === "/style.css") return route.fulfill({ status: 200, contentType: "text/css; charset=utf-8", body: css });
+      return route.abort();
+    });
+    const page = await context.newPage();
+    await page.goto("http://prototype.invalid/index.html", { waitUntil: "load" });
+    return (await page.evaluate(`(() => {
+      const de = document.documentElement;
+      let small = 0;
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!n.textContent.trim()) continue;
+        const el = n.parentElement;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        if (parseFloat(getComputedStyle(el).fontSize) < 12) small++;
+      }
+      return { text: document.body.innerText, overflow: Math.max(0, de.scrollWidth - de.clientWidth), height: de.scrollHeight, small_text_nodes: small };
+    })()`)) as { text: string; overflow: number; height: number; small_text_nodes: number };
+  } finally {
+    await context.close();
+  }
+}
+
+/** Lines of visible text that are neither a fact value nor a short neutral label, and digits no fact contains. */
+function factDiscipline(text: string, facts: Fact[]) {
+  const norm = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
+  const values = facts.map((f) => norm(f.value));
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const unsupported = lines.filter((l) => {
+    const n = norm(l);
+    if (values.some((v) => v.includes(n) || n.includes(v))) return false;
+    return [...n].length > 40;
+  });
+  // short copy is invention too: a line that is not a fact and reads as a sentence (ends with 。！？ or holds 、)
+  const sentenceLike = lines.filter((l) => {
+    const n = norm(l);
+    if (values.some((v) => v.includes(n) || n.includes(v))) return false;
+    return /[。！？!?]$/.test(n) || n.includes("、");
+  });
+  const factDigits = new Set(values.join(" ").match(/\d+/g) ?? []);
+  const strayNumbers = [...new Set(norm(text).match(/\d+/g) ?? [])].filter((d) => !factDigits.has(d) && !["1440", "390"].includes(d));
+  return { lines: lines.length, unsupported_long_lines: unsupported, sentence_like_non_fact_lines: sentenceLike, stray_numbers: strayNumbers };
+}
+
+async function scoreRun(browser: Browser, dir: string) {
+  const facts = (JSON.parse(readFileSync(join(dir, "facts.json"), "utf8")) as { facts: Fact[] }).facts;
+  const lock = JSON.parse(readFileSync(join(dir, "identity-lock.json"), "utf8")) as unknown;
+  const out: Record<string, unknown> = { run: dir };
+  const desktop: Record<string, StructureDescriptor> = {};
+  const mobile: Record<string, StructureDescriptor> = {};
+  for (const d of ["A", "B"]) {
+    const htmlPath = join(dir, d, "index.html");
+    if (!existsSync(htmlPath)) {
+      out[d] = { missing: true };
+      continue;
+    }
+    const html = readFileSync(htmlPath, "utf8");
+    const css = existsSync(join(dir, d, "style.css")) ? readFileSync(join(dir, d, "style.css"), "utf8") : "";
+    const r: Record<string, unknown> = {};
+    try {
+      await checkPrototype(browser, { html, css }, []);
+      r.safety = "pass";
+    } catch (e) {
+      r.safety = `fail: ${(e as Error).message}`.slice(0, 200);
+    }
+    const pc = await renderFacts(browser, html, css, 1440);
+    const sp = await renderFacts(browser, html, css, 390);
+    r.overflow_px = { pc: pc.overflow, sp: sp.overflow };
+    r.height_px = { pc: pc.height, sp: sp.height };
+    r.small_text_nodes_sp = sp.small_text_nodes;
+    r.identity = auditPageText(lock, pc.text).status;
+    r.facts = factDiscipline(pc.text, facts);
+    try {
+      desktop[d] = describe(await measurePage(browser, { html, css }, VIEWPORTS.desktop));
+      mobile[d] = describe(await measurePage(browser, { html, css }, VIEWPORTS.mobile));
+      const generic = (s: StructureDescriptor) => structureFindings(s).filter((f) => f.code === "GENERIC_SKELETON").map((f) => (f.code === "GENERIC_SKELETON" ? f.reasons.join("+") : ""));
+      r.generic_skeleton = { pc: generic(desktop[d]!), sp: generic(mobile[d]!) };
+      r.measured = Object.fromEntries(Object.entries(desktop[d]!).filter(([k, v]) => k !== "schema" && v !== null).map(([k, v]) => [k, (v as { value: unknown }).value]));
+    } catch (e) {
+      r.measure_error = (e as Error).message.slice(0, 200);
+    }
+    out[d] = r;
+  }
+  if (desktop.A && desktop.B) out.sibling_similarity = { pc: Math.round(structuralSimilarity(desktop.A, desktop.B) * 1000) / 1000, sp: Math.round(structuralSimilarity(mobile.A!, mobile.B!) * 1000) / 1000 };
+  return out;
+}
+
+const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
+try {
+  for (const dir of process.argv.slice(2)) console.log(JSON.stringify(await scoreRun(browser, dir)));
+} finally {
+  await browser.close();
+}
