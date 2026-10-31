@@ -289,3 +289,9 @@
 - PR #157 → develop 25fe069 (merge commit). CI 11/11 on 747fd5a, Fresh Review PASS (re-review PASS at 3ed3bbc).
 - Usable now: success-case reference images (CP-003 PC/SP, SHA-pinned manifest) as Codex image input; v2 open-direction prompt (no brief); two wagashi directions (A morning axis, B small counter).
 - Next: owner approval for the first v2 Codex call (direction A, route B); 0 Codex calls / 0 image generations so far.
+
+## 2026-10-31 Phase 2 (Issue #159 offline) integrated
+
+- develop now has: PR #142 (c98efca, 23 research cases), #158 (d489935, CP-026..032 → 30 cases), #160 (eabb9b6, DEV-125 Phase 2b structure descriptors), #165 (65f79cf, DEV-126..129: Identity Lock TS, Artifact checks, implementation lane, mock loop).
+- #165: CI 10/10 on f116aa1, independent Fresh Review PASS (C/H/M 0, Low 4; record `.ai/reviews/PR-165.md`). #161..#164 closed as superseded by #165 (branches kept).
+- Still not approved: real Codex / image generation, real ports, jail changes, vocabulary/threshold finalisation, interaction_spec schema.

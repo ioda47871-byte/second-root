@@ -5679,7 +5679,7 @@
     {
       "id": "DEV-125",
       "title": "Phase 2b（研究隔離・仮語彙）：8側面の構造記述子、ブラウザ実測、構造の重複・汎用骨格の検査",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-124"
@@ -5716,12 +5716,13 @@
         "マージ",
         "語彙と閾値の確定"
       ],
-      "note": "Issue #159 offline batch approval; 0 Codex calls."
+      "note": "Issue #159 offline batch approval; 0 Codex calls.",
+      "merged": "#160 → eabb9b6 (2026-10-31)"
     },
     {
       "id": "DEV-126",
       "title": "Phase 2c（研究隔離）：Identity Lock の TypeScript 移植（画像の目視記録の照合）と HTML 試作の表示文字による店舗名検査",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-124"
@@ -5757,12 +5758,13 @@
         "マージ",
         "生成経路への組み込み"
       ],
-      "note": "Issue #159 offline batch approval; 0 Codex calls."
+      "note": "Issue #159 offline batch approval; 0 Codex calls.",
+      "merged": "#165 → 65f79cf (integration squash, 2026-10-31; #161 closed as superseded)"
     },
     {
       "id": "DEV-127",
       "title": "Phase 2d 完成（研究隔離版）：Artifact に検査結果（構造・Identity Lock）を記録する任意の欄と、Intake の互換性・状態を上げない規則",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-114"
@@ -5800,12 +5802,13 @@
         "マージ",
         "interaction_spec のスキーマ（Codex の回答形式の変更）"
       ],
-      "note": "Issue #159 offline batch approval; interaction spec left for a separate schema approval."
+      "note": "Issue #159 offline batch approval; interaction spec left for a separate schema approval.",
+      "merged": "#165 → 65f79cf (integration squash, 2026-10-31; #162 closed as superseded)"
     },
     {
       "id": "DEV-128",
       "title": "Phase 2e（研究隔離版）：実装レーンの入力。許可済み Artifact の受け渡しだけを新しいレーンへ写し、Codex の試作ソースを渡さない",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-114"
@@ -5842,12 +5845,13 @@
         "マージ",
         "実装レーンを別ユーザー・jail で動かすこと"
       ],
-      "note": "Issue #159 offline batch approval."
+      "note": "Issue #159 offline batch approval.",
+      "merged": "#165 → 65f79cf (integration squash, 2026-10-31; #163 closed as superseded)"
     },
     {
       "id": "DEV-129",
       "title": "Phase 2g（模擬版）：決定論的な制御（承認要求・停止・回数上限のある実装修正ループ）を mock のポートだけで",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-114"
@@ -5885,7 +5889,8 @@
         "マージ",
         "実ポートへの接続（ループ設計の承認）"
       ],
-      "note": "Issue #159 offline batch approval; mock ports only."
+      "note": "Issue #159 offline batch approval; mock ports only.",
+      "merged": "#165 → 65f79cf (integration squash, 2026-10-31; #164 closed as superseded)"
     }
   ]
 }
