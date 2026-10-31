@@ -74,7 +74,14 @@ describe("offline comparison with the references (advisory)", () => {
   });
 
   it("no success case is itself close to a rejected skeleton (the set does not contradict itself)", () => {
-    for (const e of set.success) expect(compareWithReferences(e.descriptor, set).close_to_rejected, e.id).toEqual([]);
+    let decided = 0;
+    for (const e of set.success) {
+      const r = compareWithReferences(e.descriptor, set);
+      expect(r.close_to_rejected, e.id).toEqual([]);
+      decided += set.rejected.length - r.undecided.filter((id) => set.rejected.some((x) => x.id === id)).length;
+    }
+    // the check means something only if some success / rejected pairs are actually decided
+    expect(decided).toBeGreaterThan(0);
   });
 
   it("a reference too sparse to decide is listed as undecided, never as 'not close'", () => {
