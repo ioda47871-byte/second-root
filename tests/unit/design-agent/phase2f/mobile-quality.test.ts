@@ -91,6 +91,33 @@ describe("phone checks (report-only)", () => {
     expect((await sp(body, `${BASE} div{white-space:nowrap;overflow:visible}`)).findings).toContain("SP_TEXT_OUT_OF_BOX");
   }, 60_000);
 
+  it("review M1: a menu pushed off the RIGHT of the phone under overflow-x: hidden is named, and its targets counted", async () => {
+    const body = SOUND.replace(/<nav>.*<\/nav>/, '<nav style="display:flex;white-space:nowrap"><a href="#hero" style="display:inline-block;padding:14px 20px;flex:none">営業時間</a><a href="#info" style="display:inline-block;padding:14px 20px;margin-left:400px;flex:none">所在地</a></nav>');
+    const r = await sp(body, `${BASE} html,body{overflow-x:hidden}`);
+    expect(r.findings).toContain("SP_TEXT_OFFSCREEN");
+    expect(r.counts.tap_targets).toBe(2);
+  }, 60_000);
+
+  it("review L1 / L3: a body with its own id, or a clobbered document, is not measured (never a clean report)", async () => {
+    const r = await renderPrototype(browser, { html: page(SOUND).replace("<body>", '<body id="top">'), css: `${BASE} #top p{font-size:9px}` }, new Map(), ["hero", "info"], { facts: FACTS, shopName: NAME });
+    expect(r.mobile_390.mobileQuality!.findings).toEqual(["SP_CHECK_SCOPE_CONFLICT"]);
+    // a name that shadows document.body is not trusted: the real body is found, so the page is truly measured
+    const clobbered = await sp(`<img name="body" alt="">${SOUND}`);
+    expect(clobbered.findings).toEqual([]);
+    expect(clobbered.counts.text_nodes).toBeGreaterThan(2);
+  }, 60_000);
+
+  it("review L2: a check past its budget is recorded as failed, never as a pass", async () => {
+    const opened = await browser.newPage();
+    try {
+      await opened.setContent(page(SOUND));
+      const { measureMobileQuality } = await import("@/lib/design-agent/phase2f/mobile-quality");
+      expect((await measureMobileQuality(opened, { facts: FACTS, shopName: NAME }, 0)).findings).toEqual(["SP_CHECK_FAILED"]);
+    } finally {
+      await opened.close();
+    }
+  }, 60_000);
+
   it("does not measure a page that already uses the measuring scope's id (never a silent pass)", async () => {
     const r = await sp(`<div id="shop-css">${SOUND}</div>`);
     expect(r.findings).toEqual(["SP_CHECK_SCOPE_CONFLICT"]);

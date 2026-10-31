@@ -55,8 +55,9 @@ const TAP_SCRIPT = String.raw`() => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
     if (r.width === 0 || r.height === 0 || s.visibility === "hidden" || s.display === "none") continue;
-    // wholly off the side of the page: a skip link hidden on purpose, not a target to tap
-    if (r.right <= 0 || r.left >= innerWidth) continue;
+    // wholly off the left or above the page: the skip-link convention, hidden on purpose. Off the RIGHT side is
+    // a phone breakage (a menu pushed out under overflow-x: hidden) and stays counted.
+    if (r.right <= 0 || r.bottom + scrollY <= 0) continue;
     const parent = el.parentElement;
     const own = (el.textContent || "").replace(/\s+/g, "");
     const around = parent ? (parent.textContent || "").replace(/\s+/g, "") : "";
@@ -89,17 +90,43 @@ const OUT_OF_BOX_SCRIPT = String.raw`(owners) => {
 }`;
 
 const clean = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
-/** A line box wholly outside the phone's width or above the page: a deliberately hidden label (a skip link), not cut text. */
-const outside = (r: { left: number; top: number; width: number; height: number }) => r.left + r.width <= 0 || r.left >= FIRST_SCREEN.width || r.top + r.height <= 0;
+/**
+ * A line box wholly off the left of the page or above it: the skip-link convention (a label hidden on purpose).
+ * Wholly off the RIGHT side is not exempt: that is a menu or text pushed out of the phone, a breakage.
+ */
+const outside = (r: { left: number; top: number; width: number; height: number }) => r.left + r.width <= 0 || r.top + r.height <= 0;
+
+/** The longest the phone checks may take; past it they are recorded as SP_CHECK_FAILED (never a stop). */
+export const CHECK_BUDGET_MS = 20_000;
 
 /** Measures the SP page in place. Call after the page's screenshot was taken: it adds a style and marks elements. */
-export async function measureMobileQuality(page: Page, o: { facts: readonly string[]; shopName: string | null }): Promise<MobileFindings> {
+export async function measureMobileQuality(page: Page, o: { facts: readonly string[]; shopName: string | null }, budgetMs = CHECK_BUDGET_MS): Promise<MobileFindings> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<MobileFindings>((done) => {
+    timer = setTimeout(() => done({ viewport: "mobile_390", findings: ["SP_CHECK_FAILED"], counts: { text_nodes: 0, text_nodes_with_problems: 0, tap_targets: 0, tap_targets_below_recommended: 0, tap_targets_below_minimum: 0 }, advisory: true }), budgetMs);
+  });
+  try {
+    // the caller closes the page's context afterwards, which ends an evaluate still running
+    return await Promise.race([measure(page, o), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function measure(page: Page, o: { facts: readonly string[]; shopName: string | null }): Promise<MobileFindings> {
   const empty = { text_nodes: 0, text_nodes_with_problems: 0, tap_targets: 0, tap_targets_below_recommended: 0, tap_targets_below_minimum: 0 };
   const failed = (): MobileFindings => ({ viewport: "mobile_390", findings: ["SP_CHECK_FAILED"], counts: empty, advisory: true });
   try {
     // the shop-CSS measure reads the element with id shop-css as its scope: the body here. A page that already uses
     // that id would be measured on the wrong element, so it is not measured.
-    const scoped = (await page.evaluate(`(() => { if (document.getElementById("shop-css")) return false; document.body.id = "shop-css"; return true; })()`)) as boolean;
+    // the body must be the real body (not a clobbered name) and must have no id of its own: replacing an id would
+    // drop the page's own #id rules, and the page measured would no longer be the page in the picture
+    const scoped = (await page.evaluate(`(() => {
+      const body = Document.prototype.querySelector.call(document, "body");
+      if (!(body instanceof HTMLBodyElement) || body.id !== "" || Document.prototype.getElementById.call(document, "shop-css")) return false;
+      body.id = "shop-css";
+      return true;
+    })()`)) as boolean;
     if (!scoped) return { viewport: "mobile_390", findings: ["SP_CHECK_SCOPE_CONFLICT"], counts: empty, advisory: true };
     // inserted directly: page.addStyleTag waits for a load event that a page with JavaScript off never fires
     const style = JSON.stringify(`${HIT_TEST_CSS}\n${FREEZE_MOTION_CSS}`);
@@ -119,7 +146,7 @@ export async function measureMobileQuality(page: Page, o: { facts: readonly stri
       if (examples.length < 10) examples.push({ code, text: text.replace(/\s+/g, " ").trim().slice(0, 40) });
     };
     nodes.forEach((n, i) => {
-      // a label wholly outside the phone's width is hidden on purpose (a skip link); a fact never is
+      // a label wholly off the left or above is hidden on purpose (a skip link); a fact never is
       if (n.kind === "label" && !n.hidden && n.rects.length > 0 && n.rects.every(outside)) return;
       if (n.hidden) {
         // a fact hidden here is a finding only when the page shows it nowhere else (a repeated name hidden once is fine)
@@ -147,6 +174,8 @@ export async function measureMobileQuality(page: Page, o: { facts: readonly stri
       }
     });
 
+    // a page with facts whose text could not be found was not measured (a clobbered document): never a clean report
+    if (nodes.length === 0 && o.facts.length > 0) return failed();
     const counted = taps.filter((t) => !t.inline);
     const belowRecommended = counted.filter((t) => t.w < TAP_TARGET.recommended || t.h < TAP_TARGET.recommended).length;
     const belowMinimum = counted.filter((t) => t.w < TAP_TARGET.minimum || t.h < TAP_TARGET.minimum).length;

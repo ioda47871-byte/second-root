@@ -164,9 +164,11 @@ async function renderAt(browser: Browser, proto: { html: string; css: string }, 
     } catch {
       throw new RenderError("RENDER_FAILED");
     }
+    // the page's own requests are counted before the phone checks run, so nothing they do can become a stop
+    const blocked = opened.blocked();
     // after the picture: the phone checks mark elements and add a style
     const quality = key === "mobile_390" && mobileQuality ? { mobileQuality: await measureMobileQuality(opened.page, mobileQuality) } : {};
-    return { png, blocked: opened.blocked(), scrollHeight: m.scrollHeight, scrollWidth: m.scrollWidth, sections: m.sections, assets: m.assets, ...quality };
+    return { png, blocked, scrollHeight: m.scrollHeight, scrollWidth: m.scrollWidth, sections: m.sections, assets: m.assets, ...quality };
   } finally {
     await opened.context.close();
   }
