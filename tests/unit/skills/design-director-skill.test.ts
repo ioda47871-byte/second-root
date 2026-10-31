@@ -44,16 +44,19 @@ describe("second-root-design-director skill", () => {
     // read as text only (never imported): the structure module's isolation test pins who imports it, and this file
     // does not; the path is joined so that test's text search for importers does not count a reader as one
     const code = text(join("lib/design-agent/structure", "descriptor.ts"));
-    const vocab = code.slice(code.indexOf("export const VOCABULARY"), code.indexOf("} as const", code.indexOf("export const VOCABULARY")));
+    const start = code.indexOf("export const VOCABULARY");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const vocab = code.slice(start, code.indexOf("} as const", start));
     const table = text(join(DIR, "references/route-constraints.md"));
-    for (const [, aspect, values] of vocab.matchAll(/(\w+): \[([^\]]*)\]/g)) {
+    const aspects = [...vocab.matchAll(/(\w+): \[([^\]]*)\]/g)];
+    // all eight aspects found: a renamed or reshaped vocabulary must fail here, not pass by checking nothing
+    expect(aspects.map((m) => m[1])).toEqual(["hero", "flow", "navigation", "reading_path", "section_layout", "transition", "text_direction", "imagery"]);
+    for (const [, aspect, values] of aspects) {
       const listed = [...values!.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).join(", ");
       // the descriptor's aspects are named in the plural where they hold a list per section
       const name = ({ section_layout: "section_layouts", transition: "transitions" } as Record<string, string>)[aspect!] ?? aspect;
       expect(table, aspect).toContain(`| ${name} | ${listed} |`);
     }
-    const flows = code.match(/flow: \[([^\]]*)\]/)![1]!;
-    expect(flows.length).toBeGreaterThan(10);
   });
 
   it("does not run models: it hands instructions to an approval, never calls Codex itself", () => {
