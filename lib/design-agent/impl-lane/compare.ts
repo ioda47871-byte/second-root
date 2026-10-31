@@ -25,8 +25,13 @@ export type RenderSide = { png: Buffer; sections: { id: string; box: Box | null 
 
 export type SectionDiff = {
   id: string;
-  /** SECTION_MISSING: no shown section with this id; SECTION_NOT_VISIBLE: its box lies outside the captured page; DESIGN_BOX_UNKNOWN: the design has no box for it. */
-  code: "SECTION_MISSING" | "SECTION_NOT_VISIBLE" | "DESIGN_BOX_UNKNOWN" | null;
+  /**
+   * SECTION_MISSING: shown in the design, not shown in the implementation; SECTION_EXTRA: hidden in the design at this
+   * width, shown in the implementation; SECTION_NOT_VISIBLE: its box lies outside the captured page;
+   * DESIGN_BOX_UNKNOWN: the design's box lies outside the design image. A section hidden at this width in both
+   * (a box that is null or has no width or height) is not a difference (artifact schema: a legitimate design choice).
+   */
+  code: "SECTION_MISSING" | "SECTION_EXTRA" | "SECTION_NOT_VISIBLE" | "DESIGN_BOX_UNKNOWN" | null;
   /** The section's top as a share of the page height in the implementation minus in the design. */
   top_share_delta: number | null;
   /** Share of grid cells whose colour changed visibly (CIE76 ΔE above 10): local colour, which a mean over the section hides. */
@@ -44,7 +49,7 @@ export type ViewportCompare = {
   sections: SectionDiff[];
   /** The design's sections in the order the implementation shows them (top to bottom), when it differs from the design's. */
   order_changed: boolean;
-  code: "DECODE_FAILED" | "WIDTH_MISMATCH" | null;
+  code: "DECODE_FAILED" | "WIDTH_MISMATCH" | "DUPLICATE_SECTION_ID" | null;
 };
 
 export type RenderComparison = {
@@ -61,18 +66,22 @@ export const THRESHOLDS = { pageSsim: 0.8, sectionTopShare: 0.06, pageHeightRati
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 /** A section id as part of a cause code (the loop accepts A-Z, 0-9 and _ only). */
 const codePart = (id: string) => id.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30) || "SECTION";
-/** Code parts for all section ids; two ids that would give the same part get a number (_2, _3 ...), never merged. */
+/** Code parts for all section ids, all distinct: an id whose part is taken gets the first free _2, _3 ... (never merged). */
 function codeParts(ids: readonly string[]): Map<string, string> {
   const out = new Map<string, string>();
-  const used = new Map<string, number>();
+  const taken = new Set<string>();
   for (const id of ids) {
     const base = codePart(id);
-    const n = (used.get(base) ?? 0) + 1;
-    used.set(base, n);
-    out.set(id, n === 1 ? base : `${base}_${n}`);
+    let part = base;
+    for (let n = 2; taken.has(part); n++) part = `${base}_${n}`;
+    taken.add(part);
+    out.set(id, part);
   }
   return out;
 }
+
+const shown = (b: Box | null | undefined): b is Box => !!b && b.w > 0 && b.h > 0;
+const dupIds = (side: RenderSide) => new Set(side.sections.map((s) => s.id)).size !== side.sections.length;
 
 /** The share of cells (same grid) whose colours differ by more than ΔE 10. */
 function changedCells(a: { rgb: Float64Array }, b: { rgb: Float64Array }): number {
@@ -96,6 +105,8 @@ function compareViewport(viewport: Viewport, design: RenderSide, impl: RenderSid
     return { viewport, page: null, sections: [], order_changed: false, code: "DECODE_FAILED" };
   }
   if (d.width !== WIDTHS[viewport] || i.width !== WIDTHS[viewport]) return { viewport, page: null, sections: [], order_changed: false, code: "WIDTH_MISMATCH" };
+  // one id names one section: with duplicates a section could hide behind its twin
+  if (dupIds(design) || dupIds(impl)) return { viewport, page: null, sections: [], order_changed: false, code: "DUPLICATE_SECTION_ID" };
   // the whole page, on a grid of the design's aspect (the implementation stretched to it; the height ratio says how much)
   const gh = Math.max(8, Math.round((GRID_WIDTH * d.height) / d.width));
   const gd = resample(design.png, GRID_WIDTH, gh);
@@ -104,8 +115,9 @@ function compareViewport(viewport: Viewport, design: RenderSide, impl: RenderSid
   const sections = design.sections.map((s): SectionDiff => {
     const empty = { id: s.id, top_share_delta: null, changed_cells: null, mean_delta_e: null, dominant_delta_e: null, edges_delta: null, height_share_delta: null };
     const got = impl.sections.find((x) => x.id === s.id)?.box ?? null;
-    if (!s.box) return { ...empty, code: "DESIGN_BOX_UNKNOWN" };
-    if (!got || got.w <= 0 || got.h <= 0) return { ...empty, code: "SECTION_MISSING" };
+    // hidden at this width in the design: a difference only if the implementation shows it
+    if (!shown(s.box)) return { ...empty, code: shown(got) ? "SECTION_EXTRA" : null };
+    if (!shown(got)) return { ...empty, code: "SECTION_MISSING" };
     const cd = pixelRect(d, s.box.x, s.box.y, s.box.w, s.box.h);
     const ci = pixelRect(i, got.x, got.y, got.w, got.h);
     if (!cd) return { ...empty, code: "DESIGN_BOX_UNKNOWN" };
@@ -117,9 +129,9 @@ function compareViewport(viewport: Viewport, design: RenderSide, impl: RenderSid
     return { id: s.id, code: null, top_share_delta: r3(ci.top / i.height - cd.top / d.height), changed_cells: r3(changed), mean_delta_e: colour.mean_delta_e, dominant_delta_e: colour.dominant_delta_e, edges_delta: edges.delta, height_share_delta: r3(ci.height / i.height - cd.height / d.height) };
   });
   // the order the implementation shows the design's sections in, top to bottom (only those shown on both)
-  const shown = design.sections.filter((s) => s.box && impl.sections.find((x) => x.id === s.id)?.box);
-  const designOrder = [...shown].sort((a, b) => a.box!.y - b.box!.y).map((s) => s.id);
-  const implOrder = [...shown].sort((a, b) => impl.sections.find((x) => x.id === a.id)!.box!.y - impl.sections.find((x) => x.id === b.id)!.box!.y).map((s) => s.id);
+  const both = design.sections.filter((s) => shown(s.box) && shown(impl.sections.find((x) => x.id === s.id)?.box));
+  const designOrder = [...both].sort((a, b) => a.box!.y - b.box!.y).map((s) => s.id);
+  const implOrder = [...both].sort((a, b) => impl.sections.find((x) => x.id === a.id)!.box!.y - impl.sections.find((x) => x.id === b.id)!.box!.y).map((s) => s.id);
   return { viewport, page, sections, order_changed: designOrder.join("\n") !== implOrder.join("\n"), code: null };
 }
 
@@ -140,7 +152,7 @@ export function compareRenders(pair: Record<Viewport, { design: RenderSide; impl
     if (vc.page && Math.abs(vc.page.height_ratio - 1) > THRESHOLDS.pageHeightRatio) differences.push(`${p}_PAGE_HEIGHT`);
     if (vc.page && vc.page.ssim < THRESHOLDS.pageSsim) differences.push(`${p}_PAGE_LAYOUT`);
     for (const s of vc.sections) {
-      if (s.code) continue;
+      if (s.code || s.mean_delta_e === null) continue;
       if (!vc.order_changed && Math.abs(s.top_share_delta ?? 0) > THRESHOLDS.sectionTopShare) differences.push(`${p}_SECTION_POSITION_${part.get(s.id)}`);
       if ((s.changed_cells ?? 0) > THRESHOLDS.sectionChangedCells || (s.mean_delta_e ?? 0) > THRESHOLDS.sectionMeanDeltaE || (s.dominant_delta_e ?? 0) > THRESHOLDS.sectionDominantDeltaE) differences.push(`${p}_SECTION_COLOUR_${part.get(s.id)}`);
       if (Math.abs(s.edges_delta ?? 0) > THRESHOLDS.sectionEdgesDelta) differences.push(`${p}_SECTION_DENSITY_${part.get(s.id)}`);

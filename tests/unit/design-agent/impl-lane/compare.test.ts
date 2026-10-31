@@ -55,10 +55,10 @@ describe("render comparison (report only)", () => {
     const d = await pair(design, design);
     for (const v of ["desktop_1440", "mobile_390"] as const) {
       d[v].impl.sections = d[v].impl.sections.map((s) => (s.id === "info" ? { ...s, box: { ...s.box!, y: 99_999 } } : s));
-      d[v].design.sections = d[v].design.sections.map((s) => (s.id === "menu" ? { ...s, box: null } : s));
+      d[v].design.sections = d[v].design.sections.map((s) => (s.id === "menu" ? { ...s, box: { ...s.box!, y: 99_999 } } : s));
     }
     const r = compareRenders(d);
-    expect(r.differences).toEqual(expect.arrayContaining(["PC_SECTION_NOT_VISIBLE_INFO", "SP_SECTION_NOT_VISIBLE_INFO", "PC_DESIGN_BOX_UNKNOWN_MENU"]));
+    expect(r.differences).toEqual(expect.arrayContaining(["PC_SECTION_NOT_VISIBLE_INFO", "SP_SECTION_NOT_VISIBLE_INFO", "PC_DESIGN_BOX_UNKNOWN_MENU", "SP_DESIGN_BOX_UNKNOWN_MENU"]));
   }, 60_000);
 
   it("a missing section, an undecodable image and a wrong width are named per viewport", async () => {
@@ -69,6 +69,27 @@ describe("render comparison (report only)", () => {
     expect(compareRenders(d).differences).toEqual(["SP_DECODE_FAILED"]);
     const wide = compareRenders(await pair(design, design, { desktop_1440: 1280 }));
     expect(wide.differences).toEqual(["PC_WIDTH_MISMATCH"]);
+  }, 60_000);
+
+  it("M3: a section the design hides at one width is no difference when the implementation hides it too; shown, it is named", async () => {
+    const hiddenOnPhone = `<style>@media (max-width:600px){[data-section=access]{display:none}}</style>${bands([["hero", "#c33", 600], ["access", "#3c3", 400]])}`;
+    const render2 = async (body: string) => ({ desktop_1440: await render(body, "desktop_1440"), mobile_390: await render(body, "mobile_390") });
+    const d = await render2(hiddenOnPhone);
+    // the render reports the hidden section with a zero box; null (not reported) behaves the same
+    const same = compareRenders({ desktop_1440: { design: d.desktop_1440, impl: d.desktop_1440 }, mobile_390: { design: d.mobile_390, impl: d.mobile_390 } });
+    expect(same.differences).toEqual([]);
+    const nulled = { ...d.mobile_390, sections: d.mobile_390.sections.map((s) => (s.id === "access" ? { ...s, box: null } : s)) };
+    expect(compareRenders({ desktop_1440: { design: d.desktop_1440, impl: d.desktop_1440 }, mobile_390: { design: nulled, impl: nulled } }).differences).toEqual([]);
+    const shownImpl = await render(bands([["hero", "#c33", 600], ["access", "#3c3", 400]]), "mobile_390");
+    expect(compareRenders({ desktop_1440: { design: d.desktop_1440, impl: d.desktop_1440 }, mobile_390: { design: d.mobile_390, impl: shownImpl } }).differences).toContain("SP_SECTION_EXTRA_ACCESS");
+  }, 60_000);
+
+  it("L6 / L7: code parts never collide with a suffix; duplicate ids are named, never merged", async () => {
+    const tri = bands([["hero", "#c33", 300], ["hero_", "#3c3", 300], ["hero_2", "#33c", 300]]);
+    const r = compareRenders(await pair(tri, bands([["hero", "#c33", 300]])));
+    expect(r.differences.filter((c) => c.startsWith("PC_SECTION_MISSING_"))).toHaveLength(2);
+    const dup = await pair(design, bands([["hero", "#c33", 600], ["hero", "#3c3", 400], ["info", "#33c", 300]]));
+    expect(compareRenders(dup).differences).toEqual(["PC_DUPLICATE_SECTION_ID", "SP_DUPLICATE_SECTION_ID"]);
   }, 60_000);
 
   it("L2: two ids that make the same code part stay two codes", async () => {
