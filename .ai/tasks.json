@@ -5988,7 +5988,7 @@
         "閾値の確定",
         "実ポートへの接続"
       ],
-      "note": "Issue #159 offline batch approval; fictional pages only."
+      "note": "Review: round 3 PASS (C0/H0/M0/L3); Lows recorded in .ai/reviews/DEV-131.md for threshold finalisation."
     }
   ]
 }
