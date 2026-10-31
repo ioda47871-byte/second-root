@@ -83,7 +83,7 @@ async function prerender(args: Map<string, string>, ledger: Ledger): Promise<num
   } finally {
     await browser.close();
   }
-  if (pre.status === "stopped") return (say({ status: "stopped", code: pre.code, stop_class: pre.stopClass, owner_check: pre.ownerCheck, recovery: pre.recovery }), 2);
+  if (pre.status === "stopped") return (say({ status: "stopped", code: pre.code, stop_class: pre.stopClass, owner_check: pre.ownerCheck, recovery: pre.recovery, ...(pre.detail ? { detail: pre.detail } : {}) }), 2);
   await mkdir(resolve(out), { recursive: false, mode: 0o700 });
   const design = { dir: step.dir, approval_id: step.receipt.approval_id, run_id: step.receipt.run_id, prompt_sha256: step.receipt.prompt_sha256, commit: step.receipt.commit, plan_id: step.receipt.plan_id };
   const calls = await ledger.calls(step.receipt.plan_id);

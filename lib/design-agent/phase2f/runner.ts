@@ -211,7 +211,7 @@ async function preflightRoute(o: { route: "B_html_prototype" | "C_hybrid"; brows
     try {
       pre = await o.render(o.browser, proto, placeholders, spec.sections.map((s) => s.id));
     } catch (e) {
-      if (e instanceof RenderError) return stopped(e.code, "output", RECOVERY.fix_input);
+      if (e instanceof RenderError) return stopped(e.code, "output", RECOVERY.fix_input, false, e.detail);
       throw e;
     }
     if (pre.desktop_1440.blocked + pre.mobile_390.blocked > 0) return stopped("PROTOTYPE_NETWORK_ATTEMPT", "output", RECOVERY.fix_input, true);
@@ -246,7 +246,7 @@ async function preflightRoute(o: { route: "B_html_prototype" | "C_hybrid"; brows
  * with placeholders; the result is each picture's image request (for the owner to approve one by one). Offline:
  * no Codex, no image call; the same checks as a run.
  */
-export async function prerenderRoute(c: { route: "B_html_prototype" | "C_hybrid"; browser: Browser; answer: unknown; facts: FactsPack; maxAssetCalls?: number; render?: RenderPrototype }): Promise<{ status: "ready"; requests: AssetRequest[] } | { status: "stopped"; code: string; stopClass: StopClass; ownerCheck: boolean; recovery: string }> {
+export async function prerenderRoute(c: { route: "B_html_prototype" | "C_hybrid"; browser: Browser; answer: unknown; facts: FactsPack; maxAssetCalls?: number; render?: RenderPrototype }): Promise<{ status: "ready"; requests: AssetRequest[] } | { status: "stopped"; code: string; stopClass: StopClass; ownerCheck: boolean; recovery: string; detail?: string }> {
   const pre = await preflightRoute({ route: c.route, browser: c.browser, answer: c.answer, render: c.render ?? renderPrototype, facts: c.facts, maxAssetCalls: c.maxAssetCalls ?? PLAN_LIMITS.maxAssetCalls, requireAssetPort: false });
   return pre.status === "stopped" ? pre : { status: "ready", requests: pre.requests };
 }
@@ -259,9 +259,9 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
   const now = c.now ?? Date.now;
   const started = now();
   const log: RunLog = { route_requested: c.route, route_delivered: null, design_calls: 0, asset_calls: 0, prompt_sha256: null, declared_geometry: null, stops: [], ms: 0 };
-  const stop = (code: string, stopClass: StopClass, recovery: string, ownerCheck = false): RunResult => {
+  const stop = (code: string, stopClass: StopClass, recovery: string, ownerCheck = false, detail?: string): RunResult => {
     log.ms = now() - started;
-    return { status: "stopped", code, stopClass, ownerCheck, recovery, log };
+    return { status: "stopped", code, stopClass, ownerCheck, recovery, log, ...(detail ? { detail } : {}) };
   };
   const budgetLeft = () => limits.totalBudgetMs - (now() - started);
 
@@ -343,7 +343,7 @@ export async function runPrototypeRoute(c: Common & { route: "B_html_prototype" 
     const name = c.facts.pack.facts.find((f) => f.key === "name")?.value ?? null;
     rendered = await render(c.browser, proto, assetFiles, spec.sections.map((s) => s.id), { facts: c.facts.pack.facts.map((f) => f.value), shopName: name });
   } catch (e) {
-    if (e instanceof RenderError) return stop(e.code, "output", RECOVERY.fix_input);
+    if (e instanceof RenderError) return stop(e.code, "output", RECOVERY.fix_input, false, e.detail);
     throw e;
   }
   if (rendered.desktop_1440.blocked + rendered.mobile_390.blocked > 0) return stop("PROTOTYPE_NETWORK_ATTEMPT", "output", RECOVERY.fix_input, true);

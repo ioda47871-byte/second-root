@@ -56,10 +56,26 @@ export type RenderedViewport = {
 export type MobileQualityInput = { facts: readonly string[]; shopName: string | null };
 
 export class RenderError extends Error {
-  constructor(readonly code: string) {
+  /**
+   * DEV-137: for RENDER_FAILED, what the browser said (first line, at most 160 characters, no file paths), so an
+   * intermittent failure on CI can be told apart (a navigation timeout, a refused capture, a closed browser).
+   */
+  readonly detail: string | undefined;
+  constructor(
+    readonly code: string,
+    cause?: unknown,
+  ) {
     super(code);
     this.name = "RenderError";
+    this.detail = cause === undefined ? undefined : renderFailureDetail(cause);
   }
+}
+
+/** The first line of a browser error, without paths or long numbers, for the run's record (never the page's content). */
+export function renderFailureDetail(cause: unknown): string {
+  const text = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+  const first = text.split("\n")[0]!.replace(/(?:\/[^\s/:]+)+\/?/g, "<path>").replace(/\s+/g, " ").trim();
+  return first.slice(0, 160) || "unknown";
 }
 
 const MEASURE = (ids: readonly string[], assetPaths: readonly string[]) => `((ids, assetPaths) => {
@@ -150,8 +166,8 @@ async function renderAt(browser: Browser, proto: { html: string; css: string }, 
   let opened;
   try {
     opened = await openCompPage(browser, page, RENDER_VIEWPORTS[key]);
-  } catch {
-    throw new RenderError("RENDER_FAILED");
+  } catch (e) {
+    throw new RenderError("RENDER_FAILED", e);
   }
   try {
     const m = (await opened.page.evaluate(MEASURE(sectionIds, [...assets.keys()]))) as Pick<RenderedViewport, "sections" | "assets" | "scrollHeight" | "scrollWidth">;
@@ -161,8 +177,8 @@ async function renderAt(browser: Browser, proto: { html: string; css: string }, 
     let png: Buffer;
     try {
       png = await opened.page.screenshot({ fullPage: true, clip: { x: 0, y: 0, width, height }, animations: "disabled", caret: "hide" });
-    } catch {
-      throw new RenderError("RENDER_FAILED");
+    } catch (e) {
+      throw new RenderError("RENDER_FAILED", e);
     }
     // the page's own requests are counted before the phone checks run, so nothing they do can become a stop
     const blocked = opened.blocked();
