@@ -5996,9 +5996,7 @@
       "title": "Second Root 専用デザインスキル second-root-design-director の作成と評価 (架空店舗3つ、スキルあり/なし、機械の検査と盲検比較)",
       "status": "review",
       "priority": "P1",
-      "depends_on": [
-        "DEV-132"
-      ],
+      "depends_on": [],
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-133-design-director-skill",
@@ -6030,7 +6028,7 @@
         "develop へのマージ",
         "実モデルでの評価"
       ],
-      "note": "評価は1店1回ずつの小さなもの。iteration-1 後の小修正は再実行で未確認。"
+      "note": "評価は1店1回ずつの小さなもの。iteration-1 後の小修正は再実行で未確認。 DEV-132 (PR #169、公式 frontend-design の導入) と対で統合する (このスキルが優先順位でそれを参照する)。"
     }
   ]
 }
