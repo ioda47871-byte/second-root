@@ -484,6 +484,9 @@ export async function intakeArtifact(input: { packageDir: string; factsPath: str
   // structure findings are advisory: shown, never a stop and never a pass
   const structure = o.checks?.structure;
   if (structure?.findings.length) warnings.push(`structure_findings:${structure.findings.join(",")}`);
+  // DEV-134: the phone checks are advisory too: a warning, never a stop and never a pass
+  const mobile = o.checks?.mobile;
+  if (mobile?.findings.length) warnings.push(`mobile_findings:${mobile.findings.join(",")}`);
   if (g.tool_version === null) warnings.push("generation_tool_version_unknown");
   if (o.fallback) warnings.push(`fallback_from_c_hybrid:image_${o.fallback.image_outcome}`);
   return buildRecord(a, { artifactSha: sha256(artifactBytes), state, reasons, warnings, files });

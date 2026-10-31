@@ -53,6 +53,22 @@ describe("route B (HTML prototype rendered by the runner)", () => {
     expect(r.log.declared_geometry).toMatchObject({ page_height: { desktop_1440: 1200 } });
   });
 
+  it("DEV-134: records the phone checks in the artifact and shows their findings as a warning, never a stop or a state change", async () => {
+    const clean = await run("B_html_prototype", designPort(answer()));
+    expect(clean.status === "done" && clean.record.verification_state).toBe("render_pair_complete");
+    if (clean.status !== "done") return;
+    const recorded = JSON.parse(readFileSync(join(clean.packageDir, "artifact.json"), "utf8"));
+    expect(recorded.observed.checks).toMatchObject({ structure: null, identity: null, mobile: { viewport: "mobile_390", findings: [], advisory: true } });
+    // tiny text on the phone only: the run still delivers, the state stays render_pair_complete, the finding is a warning
+    const css = `body{margin:0;font-family:serif}section{min-height:420px;padding:48px}@media (max-width:600px){p{font-size:9px}}`;
+    const small = await run("B_html_prototype", designPort(answer({ css })));
+    expect(small.status).toBe("done");
+    if (small.status !== "done") return;
+    expect(small.record.verification_state).toBe("render_pair_complete");
+    expect(small.record.warnings).toContain("mobile_findings:SP_TEXT_TOO_SMALL");
+    expect(small.log.stops).toEqual([]);
+  });
+
   it("an unknown model is a warning, not a stop (no false stop)", async () => {
     const r = await run("B_html_prototype", designPort(answer(), { model_reported: null }));
     expect(r.status === "done" && r.record.verification_state).toBe("render_pair_complete");

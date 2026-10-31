@@ -735,3 +735,30 @@ describe("DEV-127: recorded check results (Phase 2d, research-isolated)", () => 
     for (const checks of bad) expect(await code(run(withChecks(checks))), JSON.stringify(checks)).toBe("ARTIFACT_SCHEMA_INVALID");
   });
 });
+
+describe("DEV-134: the phone checks (report-only)", () => {
+  const withChecks = (checks: unknown) => edit(routeB, (p) => (p.artifact.observed.checks = checks));
+  const counts = { text_nodes: 12, text_nodes_with_problems: 1, tap_targets: 3, tap_targets_below_recommended: 1, tap_targets_below_minimum: 0 };
+  const mobile = { viewport: "mobile_390", findings: ["SP_TAP_TARGET_BELOW_44", "SP_TEXT_TOO_SMALL"], counts, advisory: true };
+
+  it("absent, null or clean changes nothing; findings are a warning only, never a reason or a state change", async () => {
+    for (const m of [undefined, null, { ...mobile, findings: [] }]) {
+      const r = await run(withChecks({ structure: null, identity: null, ...(m === undefined ? {} : { mobile: m }) }));
+      expect([r.verification_state, r.reasons, r.warnings.filter((w) => w.startsWith("mobile"))]).toEqual(["render_pair_complete", [], []]);
+    }
+    const r = await run(withChecks({ structure: null, identity: null, mobile }));
+    expect([r.verification_state, r.reasons]).toEqual(["render_pair_complete", []]);
+    expect(r.warnings).toContain("mobile_findings:SP_TAP_TARGET_BELOW_44,SP_TEXT_TOO_SMALL");
+  });
+
+  it("does not soften an identity REJECT (the phone findings sit beside it as a warning)", async () => {
+    const r = await run(withChecks({ structure: null, identity: { status: "REJECT", errors: ["VISIBLE_WRONG_OR_EXTRA_SHOP_NAME"], pending: [], counts_as_owner_success: false }, mobile }));
+    expect([r.verification_state, r.reasons]).toEqual(["incomplete", ["identity_reject:VISIBLE_WRONG_OR_EXTRA_SHOP_NAME"]]);
+    expect(r.warnings).toContain("mobile_findings:SP_TAP_TARGET_BELOW_44,SP_TEXT_TOO_SMALL");
+  });
+
+  it("refuses a non-advisory result, another viewport, free text or unknown keys", async () => {
+    const bad = [{ ...mobile, advisory: false }, { ...mobile, viewport: "desktop_1440" }, { ...mobile, findings: ["looks fine"] }, { ...mobile, examples: [] }, { ...mobile, counts: { ...counts, text_nodes: -1 } }];
+    for (const m of bad) expect(await code(run(withChecks({ structure: null, identity: null, mobile: m }))), JSON.stringify(m)).toBe("ARTIFACT_SCHEMA_INVALID");
+  });
+});
