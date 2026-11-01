@@ -6481,7 +6481,7 @@
         "VISUAL_FIRST のデザインの形 (V-B/V-A)・DIRECTION_FIRST の方向の形・回数の決定",
         "標準方式の採用"
       ],
-      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。Review: round 1 FAIL (H1・M1〜M4)、round 2 FAIL (M1: SP の所見をきっかけにしていた)、round 3 FAIL (M1: Identity を修正、M2: 事実に無い文を門と書いた)、round 4 FAIL (M1: はみ出しの修正の対象が曖昧) → それぞれ修正。"
+      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。Review: round 1 FAIL (H1・M1〜M4)、round 2 FAIL (M1: SP の所見をきっかけにしていた)、round 3 FAIL (M1: Identity を修正、M2: 事実に無い文を門と書いた)、round 4 FAIL (M1: はみ出しの修正の対象が曖昧) → それぞれ修正。 round 5 PASS (C0/H0/M0/L2、対応済み)。"
     },
     {
       "id": "DEV-142",

@@ -61,7 +61,11 @@
       "status": ""
     },
     "unsourced_lines": 0,
-    "render_stops": []
+    "render_stops": [],
+    "implementation_scroll_width": {
+      "desktop_1440": null,
+      "mobile_390": null
+    }
   },
   "stops": [
     {

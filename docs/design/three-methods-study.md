@@ -83,7 +83,7 @@ DEV-141。Issue #180 (オーナー事前承認、2026-11-01) により、Issue #
 | Identity Lock | `identity-lock.json` (研究用、`is_research_only: true`) |
 | 同じコンテンツ | ページに出してよい文は、事実の値と、40字以内の中立なラベルだけ (design-director の評価と同じ規則)。3方式とも同じ事実の集合を、全部載せる |
 | ブリーフ | 共通の店舗ブリーフ (店の意図と制約) を1つにする。**見た目の方向 (DNA) は書かない**。方向を決める担い手が、比べる変数だからである。今の design の prompt (`DesignBrief`) は DNA の8観点を必須にしているので、DNA の無いブリーフを Codex に渡すには prompt の組み立てを変える必要がある (§9 の DEV-143、オーナーの個別承認が要る) |
-| 参考資料 | 3方式で同じにする。なお、既存の v2 の prompt (DEV-124) はブリーフ無しで組めるが、前もって書いた `OpenDirection` (コンセプト・Hero・流れ) と参照の manifest (`resolveDirection`) が要る。これでは、比べる変数 (方向を決める担い手) が方式の外で決まってしまう。また、事実と画像の規則 (`V2_FACT_RULES` / `V2_IMAGE_RULES`) が和菓子の店向けに書かれている。研究ありの v1.1 の prompt は Route B だけで、Route C の画像と同時には使えない。どちらも DEV-143 で扱う。Claude は3方式とも同じスキル (成功例・不採用例を含む) を使う。Codex のデザイン・方向の呼び出しには、既存の「研究あり」の prompt の形 (`phase2f-b-v11-experiment-plan.md`) で、同じ成功例の要約を渡す。完全には揃わないので、残る差を §11 に記録する |
+| 参考資料 | 3方式で同じにする。なお、既存の v2 の prompt (DEV-124) はブリーフ無しで組めるが、前もって書いた `OpenDirection` (コンセプト・Hero・流れ・成功例の研究) と参照の manifest (`ReferenceManifest`、`resolveDirection` で検める) が要る。これでは、比べる変数 (方向を決める担い手) が方式の外で決まってしまう。また、事実と画像の規則 (`V2_FACT_RULES` / `V2_IMAGE_RULES`) が和菓子の店向けに書かれている。研究ありの v1.1 の prompt は Route B だけで、Route C の画像と同時には使えない。どちらも DEV-143 で扱う。Claude は3方式とも同じスキル (成功例・不採用例を含む) を使う。Codex のデザイン・方向の呼び出しには、既存の「研究あり」の prompt の形 (`phase2f-b-v11-experiment-plan.md`) で、同じ成功例の要約を渡す。完全には揃わないので、残る差を §11 に記録する |
 | 修正のきっかけ | 3方式で同じにする。**修正のきっかけは、Claude の実装の描画の横はみ出しだけ** (`renderPrototype` で描いて、横の大きさが幅を越えるもの。オフラインで直し、上限は `runLoop` の `LIMITS` を借りる)。`runLoop` は比較の差で修正するが、この研究は3方式を揃えるため比較の差を記録だけにし、上限だけを借りる。**Codex のデザインの描画のはみ出しは、修正しない**: 既存の描画がそれを stops に記録し (`PROTOTYPE_HORIZONTAL_OVERFLOW`)、artifact は incomplete になって引き渡されず、その回をオーナーへ止める。やり直しは §6・§7 の承認つきの枠でだけ行う。**店の取り違え (Identity Lock の REJECT / HOLD) は、修正せず、その回をオーナーへ止める** (`runLoop` と同じ。停止条件を変えない)。**SP の所見 (`measureMobileQuality`)・事実に無い文・VISUAL_FIRST の比較の差は、記録するだけで、修正のきっかけにしない** (report-only の約束。`docs/design/phase2f-mobile-quality.md`、DEV-140、Issue #177 条件4。事実に無い文は既存の門ではない)。ほかの所見をきっかけにするかは、オーナーが決める (§10) |
 | オーナーの作り直しの依頼 | 3方式とも、評価の前は0回。評価のあとの「作り直しやすさ」の測定 (§5) だけで、各方式1回 |
 | 画面 | PC 1440 / SP 390、dsf 1、JS 無効、外部通信なし (Phase 2f の描画と同じ) |
@@ -122,6 +122,8 @@ DEV-141。Issue #180 (オーナー事前承認、2026-11-01) により、Issue #
 - 「これは採れない」(事実の誤り・店の取り違え・読めない) は、点数とは別に印を付ける。
 - 盲検の点を付けたあとで、方式名と機械の検査と手間の記録を開く。
 - 評価票は `design-library/research/three-methods/review-sheet.md`。
+
+- 修正のきっかけ (Claude の実装の横はみ出し) は、`renderPrototype` の `scrollWidth` と幅を、ビューポートごとに記録する。上限 (`LIMITS`) を使い切ったら、`runLoop` と同じく、その回をオーナーへ止める。
 
 ### 費用・失敗率・作り直しやすさ
 
