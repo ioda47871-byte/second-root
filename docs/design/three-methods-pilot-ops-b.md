@@ -28,10 +28,11 @@ DEV-151。Issue #180。配線の PR #190 (DEV-150) は develop にマージさ�
 | 誰 | すること | しないこと |
 |---|---|---|
 | **オーナー** | 承認 (B、C1-a〜R、D)。WSL の管理者 (uid 1000) の端末で、`sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh run sr-designgen -- …` を打つ。**`sr-designgen` で走る手順はすべてオーナーが走らせる** (計画 §3.0): pin の確認、実の呼び出し、pre-render、Artifact 化、lane づくり、`--direction`、`--page-request` (C2 の承認のため)、台帳を読む `--check`、`--versions`。名指しした出力だけを受け渡しの場所へ写す (§5) | 評価の前に絵 (PNG) を開かない (§7)。`answer.json`・`quarantine/` を Claude に渡さない。承認を使い回さない |
-| **Claude (開発の session)** | pin を出して承認の文案を作る。ページを書く (LAYOUT_FIRST・DIRECTION_FIRST、lane からの VISUAL_FIRST の実装)。台帳を読まない手順を自分の作業場所で走らせる (`--print-pin`、`--page-request`、仮の絵での `--check`、`impl-compare.ts`)。絵の目視の記録を書く (§6)。受け取った写しのハッシュを検める。盲検の評価のための並べ替え (§7)。記録 (`three_method_run_v0`) | `sr-designgen` で何も走らせない。jail の Claude (Remote Control) を使わない (§3 の P-3)。`answer.json`・`quarantine/`・デザインの出力のフォルダー・台帳の中身を開かない。途中の絵をオーナーに見せない。実の呼び出しを起動しない (研究 §7) |
+| **Claude (開発の session)** | pin を出して承認の文案を作る。ページを書く (LAYOUT_FIRST・DIRECTION_FIRST、lane からの VISUAL_FIRST の実装)。台帳を読まない手順を自分の作業場所で走らせる (`--print-pin`、`--page-request`、仮の絵での `--check`、`impl-compare.ts`)。絵の目視の記録を書く (§6)。受け取った写しのハッシュを検める。盲検の評価のための並べ替え (§7)。記録 (`three_method_run_v0`) | `sr-designgen` で何も走らせない。jail の Claude (Remote Control) を使わない (§3 の P-3)。**WSL の管理者の利用者 (uid 1000、sudo を持ち、`~/sr-pilot-handover` の持ち主) として動かない**: その利用者は `sudo` で `answer.json`・`quarantine/`・台帳・すべての PNG を読めるので、§2 の分離が成り立たない。`answer.json`・`quarantine/`・デザインの出力のフォルダー・台帳の中身を開かない。途中の絵をオーナーに見せない。実の呼び出しを起動しない (研究 §7) |
 | **独立の Claude の検査者 (任意)** | 方式の名前を知らされずに、絵1枚と事実パック・Identity Lock だけを見て、目視の記録を書く (§6) | ほかの方式の出力、lane、ページ、`prerender.md`、方式の対応を見ない |
 
 - 手順の上の分離であって、OS の分離ではない (計画 §2.1、`lib/design-agent/impl-lane/handoff.ts` の注記)。`sr-designgen` で走る CLI は技術的には `answer.json` と `quarantine/` を読める。だから Claude を `sr-designgen` から外し、写しだけを渡す。
+- **Claude の作業場所は、クラウドの Claude Code の session に決める** (この文書を書いた session と同じ種類)。そこには `sr-designgen` のファイルも管理者のホームも無く、オーナーが渡した写しだけがある。代わりにするなら、sudo を持たず、jail の外で、オーナーのホームと `sr-designgen` のホームを読めない別の利用者だけである (その利用者を作るのは B の外)。**管理者の利用者で Claude を動かす案は認めない** (認めれば §2 の分離をあきらめることになる)。
 - **jail の Claude (`sr-jail-claude.service`) は `sr-designgen` として動く Claude である** (`docs/operations/design-wsl-autonomy.md`)。この分離のため、パイロットでは使わない (P-3)。
 
 ## 3. 事前準備 (C1 の前に1回)
@@ -52,7 +53,7 @@ rc=0; flock -n -E 75 "$S/run.lock" <コマンド> || rc=$?; echo "EXIT=$rc"'
 - **phase2f の CLI は run.lock を取らない** (run.lock を取るのは `run.sh`・`design-image-poc.sh`・`compare-local.sh` などだけ。`grep run.lock scripts lib`)。worker の run と画像の PoC は run.lock を取るので (`run.sh` は取れなければ何もせず 0 で終わる。`design-image-poc.sh` は exit 3 で止まる)、形 J でコマンドのあいだ run.lock を持てば、それらは同時に走らない。`EXIT=75` は「ほかが run.lock を持っていた。何も起動していない」。
 - run.lock を取らないもの (`design-demo.ts`・`photo-poc.sh`・手での `codex`) は、窓のあいだ起動しない (`design-image-poc.md` の Run の最後の段落と同じ理由: 実の呼び出しは途中で切れた呼び出しの残りを消す。計画 §3.0)。
 - 終了コードは CLI のまま: 0 成功、2 承認を使う前に断られた (何も使っていない)、1 承認を使い、成功しなかった (計画 §7)。
-- 出力の1行 (JSON) はオーナーの端末に出る。prompt・Codex の答え・絵は出ない。
+- 出力 (JSON) はオーナーの端末に出る。実の呼び出しの CLI は1行 (`phase2f-live-cli.ts` の `say`)、オフラインの手順 (`phase2f-steps.ts`・`three-methods-steps.ts`) は字下げした複数行である。prompt・Codex の答え・絵は出ない。
 
 ### 3.1 手順
 
@@ -61,14 +62,14 @@ rc=0; flock -n -E 75 "$S/run.lock" <コマンド> || rc=$?; echo "EXIT=$rc"'
 | P-0 | 窓を決める | パイロットの窓 (開始・終わり) をオーナーが決め、ほかの重い作業をしないと決める | 計画 §3.0 | — |
 | P-1 | 実機の resource preflight | 形 J の `<コマンド>` を `scripts/ops/wsl-resource-preflight.sh` にする (jail の中でも `/proc/meminfo` を読む。画像の PoC の wrapper も jail の中で同じものを走らせる) | `docs/operations/wsl-resource-preflight.md` §1、`design-image-poc.md` の wrapper の 2. | `STOP` (exit 20) なら始めない。数字をそのまま Claude に渡す (§5 の形)。`SERIAL` なら、窓のあいだ重い処理は1つずつ (どの手順も1つずつ走らせる) |
 | P-2 | 窓の確認 (読むだけ) | `docs/operations/passt-update-plan.md` §5.0 の **W-0** の block (`W0:BEGIN`〜`W0:END`) を、jail の外の管理者の shell で、そのまま走らせる。`W0_OK` であること。あわせて記録する: `systemctl list-timers --all 'sr-*' --no-pager` と `systemctl is-enabled sr-design-cycle.timer sr-design-worker.timer sr-design-bridge.timer` の出力 (戻すときの比べる元) | passt-update-plan §5.0 | `W0_HOLD` なら、その理由が無くなるまで待つ。止めない |
-| P-2a | 本番の worker・timer を止める | **記録では、worker の timer はどれも有効になっていない** (`sr-design-cycle.timer` は HUMAN-010 で保留、`sr-design-worker.timer`・`sr-design-bridge.timer` は 2026-10-17 の読み取りで無し・inactive。`.ai/blockers.md` HUMAN-010、`.ai/progress.md` 2026-10-17、passt-update-plan §5.0)。P-2 で有効なものが見つからなければ、**止める操作は無い**。見つかったときだけ、その timer を止め、名前を記録する: `sr-design-cycle.timer` は `design-worker-cycle.md` §5 の「止める」の4行 (`sudo systemctl disable --now sr-design-cycle.timer` → `sudo systemctl stop sr-design-cycle.service` → `sudo systemctl stop 'sr-jail-run-*'` → `systemctl list-units 'sr-jail-run-*' --no-pager` が空)。system の `sr-design-worker.timer` は `sudo systemctl disable --now sr-design-worker.timer` (`design-worker-wsl.md` §6・§7 の形) | 同左 | 動いている cycle・worker の run があれば、終わるまで待つ (切らない。cycle が claim の後なら `design-worker-cycle.md` §6 になり、パイロットを始めない) |
+| P-2a | 本番の worker・timer を止める | **記録では、worker の timer はどれも有効になっていない** (`sr-design-cycle.timer` は HUMAN-010 で保留、`sr-design-worker.timer`・`sr-design-bridge.timer` は 2026-10-17 の読み取りで無し・inactive。`.ai/blockers.md` HUMAN-010、`.ai/progress.md` 2026-10-17、passt-update-plan §5.0)。P-2 で有効なものが見つからなければ、**止める操作は無い**。見つかったときだけ、その timer を止め、名前を記録する: `sr-design-cycle.timer` は `design-worker-cycle.md` §5 の「止める」の4行 (`sudo systemctl disable --now sr-design-cycle.timer` → `sudo systemctl stop sr-design-cycle.service` → `sudo systemctl stop 'sr-jail-run-*'` → `systemctl list-units 'sr-jail-run-*' --no-pager` が空)。system の `sr-design-worker.timer` は `design-worker-wsl.md` §6 の system の timer の形で `sudo systemctl stop sr-design-worker.timer` (戻すときは `sudo systemctl start sr-design-worker.timer`)。§7 の `systemctl --user disable --now` は user の unit の形で、jail のある machine では使わない (§6) | 同左 | 動いている cycle・worker の run があれば、終わるまで待つ (切らない。cycle が claim の後なら `design-worker-cycle.md` §6 になり、パイロットを始めない) |
 | P-2b | 画像の PoC を止める | 画像の PoC には timer も unit も無い。人が打ったときだけ動く (`design-image-poc.md` の Safety、`design-image-one-command.md`)。**止める操作は無い。** 窓のあいだ起動しない。W-0 が PoC の process の無いことを確かめる | 同左 | PoC の process があれば待つ |
-| P-2c | 止めない timer | `sr-capture.timer` (KNOWN-UNRELATED、止めない)。`sr-claude-auth-watch.timer` (BLOCKING。止めない・無効にしない。W-0 は30分以内に動くときだけ待つ) | passt-update-plan §5.0 | `sr-claude-auth-watch.timer` が窓の中で何をするかは、記録に無い (§10) |
+| P-2c | 止めない timer | `sr-capture.timer` (KNOWN-UNRELATED、止めない)。`sr-claude-auth-watch.timer` (BLOCKING。止めない・無効にしない。W-0 は30分以内に動くときだけ待つ)。**この timer の script は、design の利用者・`admin.sh`・shell の委任を参照する** (人の読むだけの確認、passt-update-plan「A-3 by backport onto `c066618`」の「`sr-claude-auth-watch.timer`」の段落)。窓の中で動けば、jail の Claude を起こす・`claude-stop` で動いている呼び出しを切る・run.lock を取らない `sr-designgen` の process を起こす、のどれもありうる。だから **W-0 の `W0_TIMER BLOCKING sr-claude-auth-watch.timer … next=` の時刻を記録し、窓 (最後の呼び出しの開始 + 見張りの20分 + 余裕) がその時刻より前に終わるように組む**。何を走らせるかは、読むだけの **AW-1** (同じ段落の block) で確かめられる | passt-update-plan「A-3 by backport onto `c066618`」・§5.0 | 窓が `next=` をまたぐなら、その窓では始めない (止めない・無効にしない。窓を選び直す) |
 | P-3 | jail の Claude を止める (案) | まず jail の Claude に、作業を commit・push して止まってもらう。次に `sudo bash /root/sr-capture-admin/scripts/sales-design-capture/admin.sh status` の `jail:` の行 (enabled / active) を記録し、`sudo bash …/admin.sh claude-stop` | `design-wsl-autonomy.md` §1 の 5.、passt-update-plan §5.0「Claude in the jail」 | **`claude-stop` は `sr-jail-net` 以外の `sr-jail-*.service` をすべて止める** (`admin.sh` の `stop_jail_units`)。パイロットの run の最中には打たない。窓の始めと終わりだけ |
 | P-4 | ほかの run が無い | W-0 が、`sr-jail-run-*` の unit・worker / PoC / Codex の process・cycle の lock を見る。run.lock は形 J の `flock -n` が毎回見る | passt-update-plan §5.0 | `EXIT=75` |
-| P-5 | commit の pin (C1) | 形 J で、run.lock の中で checkout を develop に揃える。`<コマンド>` は `sh -c "timeout 180 git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && timeout 60 git checkout -q --force --detach origin/develop"` (画像の PoC の Run と同じ2行)。そのあと形 J で `git rev-parse HEAD origin/develop; git status --porcelain --untracked-files=all` を出し、HEAD = origin/develop = C1、作業ツリーが空であることを確かめる。**C1 が決まったら、C2 まで fetch しない** (CLI は HEAD を **手元の** `origin/develop` と比べる。`phase2f-live-cli.ts` の `commit`。fetch し直して develop が進んでいれば、承認した C1 と合わなくなる) | `design-image-poc.md` の Run、`phase2f-live-cli.ts` | 合わなければ呼び出さない (CLI も承認を使う前に断る) |
-| P-5a | 依存 | 前の checkout から `package-lock.json` が変わっていれば、`npm ci` が要る (画像の PoC の wrapper の 4.。形 J の Run の2行は `npm ci` をしない)。形 J で `git diff --quiet <前の HEAD> HEAD -- package-lock.json; echo $?` を見て、1 なら形 J で `npm ci` (**案**。ネットワークに出る。今の checkout の commit は記録に無い) | `design-image-poc.md` の wrapper の 4. | `npm ci` が失敗したら始めない |
-| P-6 | Codex の版・`.env`・サインイン | 形 J の `<コマンド>` の代わりに、HUMAN-021a の block の最初の4行 (`.env` の確認 → `echo ".env: absent"` → `codex --version`) と `codex login status` を走らせる (flock は要らない。model は呼ばない)。`codex --version` の最後の語 (例 `codex-cli 0.159.0` の `0.159.0`。`codex.ts` の `parseCliVersion` と同じ読み方) を **CLI_VERSION** として記録する。`codex login status` は「Logged in using ChatGPT」であること | `.ai/blockers.md` HUMAN-021a、`docs/operations/design-agent-wsl.md` §3 | `.env` があれば止まる (中身を見ない・貼らない)。サインインが切れていれば、`admin.sh shell` の中で `codex login --device-auth` (`design-agent-wsl.md` §3、`design-wsl-autonomy.md` §1 の 3.)。**サインインの確認を承認の前にするのは、呼び出しの直前でサインインの切れが見つかると、承認を使ったことになるから** (計画 §7) |
+| P-5 | commit の pin (C1) | 先に形 J で `git rev-parse HEAD; git status --porcelain --untracked-files=all` を出し、**今の HEAD (P-5a の「前の HEAD」) を記録する**。作業ツリーが空でなければ、ここで止める: Run の2行は `git clean` をしないので、追跡していないファイルはそのまま残り、CLI は承認を使う前に断る。jail の Claude の作業 (P-3 で commit・push を頼んだもの) かもしれないので、消すかどうかはオーナーが決める (消すのは B に含めない)。次に、形 J で、run.lock の中で checkout を develop に揃える。`<コマンド>` は `sh -c "timeout 180 git fetch -q --no-tags origin +refs/heads/develop:refs/remotes/origin/develop && timeout 60 git checkout -q --force --detach origin/develop"` (画像の PoC の Run と同じ2行)。そのあと形 J で `git rev-parse HEAD origin/develop; git status --porcelain --untracked-files=all` を出し、HEAD = origin/develop = C1、作業ツリーが空であることを確かめる。**C1 が決まったら、C2 まで fetch しない** (CLI は HEAD を **手元の** `origin/develop` と比べる。`phase2f-live-cli.ts` の `commit`。fetch し直して develop が進んでいれば、承認した C1 と合わなくなる) | `design-image-poc.md` の Run、`phase2f-live-cli.ts` | 合わなければ呼び出さない (CLI も承認を使う前に断る) |
+| P-5a | 依存 | 前の checkout から `package-lock.json` が変わっていれば、`npm ci` が要る (画像の PoC の wrapper の 4.。形 J の Run の2行は `npm ci` をしない)。形 J で `git diff --quiet <P-5 で記録した前の HEAD> HEAD -- package-lock.json; echo $?` を見て、1 なら形 J で `npm ci` (**案**。ネットワークに出る。今の checkout の commit は記録に無い) | `design-image-poc.md` の wrapper の 4. | `npm ci` が失敗したら始めない |
+| P-6 | Codex の版・`.env`・サインイン | 形 J の `<コマンド>` の代わりに、HUMAN-021a の block の最初の4行 (`.env` の確認 → `echo ".env: absent"` → `codex --version`) と `codex login status` を走らせる (flock は要らない。model は呼ばない)。`codex --version` の最後の語 (例 `codex-cli 0.159.0` の `0.159.0`。`codex.ts` の `parseCliVersion` と同じ読み方) を **CLI_VERSION** として記録する。`codex login status` は「Logged in using ChatGPT」であること | `.ai/blockers.md` HUMAN-021a、`docs/operations/design-agent-wsl.md` §3 | `.env` があれば止まる (中身を見ない・貼らない)。サインインが切れていれば、`admin.sh shell` の中で `codex login --device-auth` (`design-agent-wsl.md` §3、`design-wsl-autonomy.md` §1 の 3.)。**この確認は、明らかな切れを承認の前に見つけるだけである。** `codex login status` は手元の auth.json だけを読むので、取り消された token でも通る (`lib/design-agent/codex.ts` の `SIGNED_OUT_SIGN` の注記)。そのときは呼び出しで 401 になり、承認を使ったことになる (`CODEX_NOT_SIGNED_IN`。やり直しは R。計画 §7) |
 | P-6a | 版の値の扱い | **CLI 自身は、今の版を出力しない。** `--expect-cli-version` は、違えば `CODEX_CLI_VERSION_MISMATCH`、読めなければ `CODEX_CLI_VERSION_UNKNOWN` で、承認を使う前に止まるだけである (`phase2f-live-cli.ts` の `checkGeneration`)。だから P-6 の値を承認に書く。直近の記録は `0.159.0`・`gpt-6.1-sol` (計画 §5)。違う値なら、その値で承認するかをオーナーが決める | `phase2f-live-cli.ts` | — |
 | P-7 | pin を `sr-designgen` でも出す | 形 J で、C1-a と C1-b の `--print-pin` (§4 の C1-a・C1-b の 1.)。どちらも Codex を呼ばない。Claude が自分の作業場所の C1 で出した値、計画 §5 の値 (`f6632d28…e0ac`/4415、`641d01f9…d3ad`/3353) と同じであること | 計画 §5 | 違えば止める (承認しない) |
 | P-8 | 空きの容量 | (手順書に無い。オーナーが決める) **案:** 形 J で `df -h "$HOME"`。必要な量の記録は無い。画像1枚は 24 MiB まで (`design-image-poc.md` の PNG の検査)、PC/SP の描画が方式ごとに2枚 | — | — |
@@ -102,8 +103,9 @@ rc=0; flock -n -E 75 "$S/run.lock" <コマンド> || rc=$?; echo "EXIT=$rc"'
 1. P-1 の resource preflight。`STOP` なら止める。
 2. ほかの run が無い (形 J の `EXIT=75` でないこと。`systemctl list-units 'sr-jail-run-*' --no-pager` が空)。
 3. 形 J で `git rev-parse HEAD origin/develop; git status --porcelain --untracked-files=all`: HEAD = origin/develop = 承認の commit、空。
+3a. W-0 をもう一度走らせ (jail の外)、`W0_TIMER BLOCKING sr-claude-auth-watch.timer … next=` が、この呼び出しの開始 + 20分 (見張り) より後であること。前であれば起動しない (P-2c)。`W0_HOLD` の理由が jail の Claude を止めたこと以外にあれば起動しない。
 4. 2回目からは、それまでに成功したパイロットの呼び出しの**すべて** (方式をまたいで) で `npx tsx scripts/design-artifact/three-methods-steps.ts --versions --steps <dir>,<dir>,…` (計画 §7、暫定決定 5)。`GENERATION_CHANGED`・`GENERATION_FACTS_UNKNOWN` (exit 2) なら止める。`--previous-steps` は同じ plan の中しか比べないので、方式をまたぐ比べはこの手順だけが行う。
-5. その呼び出しの `--print-pin` を形 J で出し、**SHA-256 と文字数を承認の文と1文字ずつ照らす。** 違えば Enter を押さない。
+5. その呼び出しの pin を出し、**SHA-256 と文字数を承認の文と1文字ずつ照らす。** 違えば Enter を押さない。C1-a・C1-b・C2-a・C2-b は形 J の `--print-pin`。**C1-c には `--print-pin` が無い**ので、`prerender/prerender.md` の SHA-256 と文字数を照らす (§4.3 の 1.)。
 6. 出力のフォルダーが新しい (まだ無い) こと。
 7. 承認の文の approval_id・plan_id・commit・CLI_VERSION・previous steps を、打つコマンドと照らす。
 
@@ -197,10 +199,10 @@ C1-a と同じ commit C1。どちらを先にしてもよい。
 
 ### 4.9 止める規則 (どの手順でも)
 
-次のどれかなら、Enter を押さない・次の手順に進まない。何も消さず、出力の1行と終了コードだけを Claude に渡す。
+次のどれかなら、Enter を押さない・次の手順に進まない。何も消さず、出力 (JSON) と終了コードだけを Claude に渡す。
 
 - `--print-pin` の値・commit・CLI_VERSION・approval_id・plan_id・previous steps が、承認の文と1文字でも違う。
-- 形 J が `EXIT=75`、`HOST_UNSAFE`・`JAIL_NOT_INSTALLED`・`JAIL_UNSAFE` を出した (`admin.sh`)。
+- 形 J が `EXIT=75` を出した。`admin.sh run` が `HOST_UNSAFE` (exit 3) か `JAIL_NOT_INSTALLED` (exit 2) を出した。jail の unit が起動しなかった (probe は unit の `ExecStartPre` なので、通らなければ `EXIT=` の行が出ないまま `systemd-run` が失敗する)。
 - `--versions` が止まった。
 - 終了コード 2 (承認を使っていない。原因を直して**同じ** approval_id で起動し直せる)。
 - 終了コード 1、または `UNEXPECTED` (承認を使ったかを §8 で決める)。
@@ -226,21 +228,28 @@ H=~/sr-pilot-handover/<PLAN_LF>-c2a-image
 install -d -m 0700 ~/sr-pilot-handover "$H"
 for f in image.png call.json generation.json report.json; do sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" "$D/$f" "$H/$f"; done
 ( cd "$H" && sha256sum image.png call.json generation.json report.json > SHA256SUMS )
-tar -C ~/sr-pilot-handover -cf "$H.tar" "$(basename "$H")" && sha256sum "$H.tar"
+install -d -m 0700 ~/sr-pilot-tars
+T=~/sr-pilot-tars/"$(basename "$H")".tar
+tar -C ~/sr-pilot-handover --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf "$T" "$(basename "$H")" && sha256sum "$T"
+rm -r "$H"    # 写しの絵を残さない。tar とその SHA-256 だけを残す
 ```
+
+- **案:** tar は、絵の無いフォルダー `~/sr-pilot-tars/` に置き、写しのフォルダーは tar を作ったら消す。名前の順に並べ、時刻と持ち主を揃える (`--sort=name --mtime=@0 …`、GNU tar) ので、tar の中の順や時刻から、写した順は分からない。
 
 - オーナーは tar のファイルを Claude の session にアップロードし、tar の SHA-256 の1行を文で送る。**絵を1枚ずつアップロードしない** (アップロードの画面に絵が出て、盲検が崩れる。§7)。
 - Claude は、新しい空のフォルダーに tar を置き、tar の SHA-256 を照らしてから展開し、`sha256sum -c SHA256SUMS` を通す。名前の一覧が下の表と同じでなければ使わない。リンクや表に無いファイルがあれば止める。
-- 受け渡しのフォルダーは WSL の中に置き、`/mnt/c` (Windows のデスクトップなど) には置かない (Explorer のサムネイルで絵が見える)。
-- フォルダーとして `lane/` を写すときは、`lane.json` に並ぶファイルを1つずつ同じ形で写す (`sudo install` はフォルダーを写さない)。**案:** `sudo cp -a` を使わない (持ち主とリンクをそのまま写すため)。
+- 受け渡しのフォルダーは WSL の中に置き、`/mnt/c` (Windows のデスクトップなど) には置かない。WSL の中でも、Windows の Explorer で `\\wsl$` (`\\wsl.localhost`) から開かない (どちらもサムネイルで絵が見える)。
+- フォルダーとして `lane/` を写すときは、`lane.json` に並ぶファイルを1つずつ同じ形で写す (`sudo install` はフォルダーを写さない)。`lane.json` のパスに下のフォルダー (原本・素材など) があれば、先にそのフォルダーを `install -d -m 0700` で作る。**案:** `sudo cp -a` を使わない (持ち主とリンクをそのまま写すため)。
 
-**戻す向き (Claude → `sr-designgen`)、案:** Claude は、戻すファイル (目視の記録・VISUAL_FIRST の実装) を同じ形の tar にし、SHA-256 を文で示す。オーナーは tar を受け取り、SHA-256 を照らして管理者のホームで展開し、`sha256sum -c` を通してから、1つずつ `sudo install -d -o sr-designgen -g sr-designgen -m 0700 <R>/<plan_id>/in-…` と `sudo install -m 0600 -o sr-designgen -g sr-designgen <ファイル> <R>/<plan_id>/in-…/` で置く。**Claude の session からファイルをオーナーの手元へ持ち出す手段は、リポジトリに記録が無い** (§10)。
+**戻す向き (Claude → `sr-designgen`)、案:** Claude は、戻すファイル (目視の記録・VISUAL_FIRST の実装) を同じ形の tar にし、SHA-256 を文で示す。オーナーは tar を受け取り、SHA-256 を照らして管理者のホームで展開し、`sha256sum -c` を通してから、1つずつ `sudo install -d -o sr-designgen -g sr-designgen -m 0700 <R>/<plan_id>/in-…` と `sudo install -m 0600 -o sr-designgen -g sr-designgen <ファイル> <R>/<plan_id>/in-…/` で置く。VISUAL_FIRST の実装の `in-impl/assets/` のような下のフォルダーも、先に `sudo install -d -o sr-designgen -g sr-designgen -m 0700` で作る。**Claude の session からファイルをオーナーの手元へ持ち出す手段は、リポジトリに記録が無い** (§10)。
+
+**もっと小さい案 (戻す向き):** 戻すものは文字だけにできる。目視の記録 (JSON) と VISUAL_FIRST の実装の `index.html`・`style.css` は、Claude が文として示し、SHA-256 を添える。オーナーはそれを貼ってファイルにし、`sha256sum` で照らしてから上の形で置く。実装の `assets/A1.png` は Claude から戻さず、オーナーが `sudo install -m 0600 -o sr-designgen -g sr-designgen <R>/<PLAN_VF>/c1c-image/image.png <R>/<PLAN_VF>/in-impl/assets/A1.png` で直に置く (絵は一度も `sr-designgen` へ戻らない。名前 `A1.png` はページの `<img src>` と同じにする)。
 
 ### 5.3 写すもの・写さないもの
 
 | 手順 | Claude へ写す | 写さない |
 |---|---|---|
-| P-1・どの手順でも | 出力の1行 (JSON) と `EXIT=` | — |
+| P-1・どの手順でも | 出力 (JSON) と `EXIT=` | — |
 | C1-a | `c1a-design/call.json`・`generation.json` | `c1a-design/answer.json` (試作の HTML/CSS を含む) |
 | pre-render | 無し | `prerender/` のすべて (`prerender.md`・`image-request-A1.json`) |
 | C1-b | `c1b-direction/call.json`・`generation.json` | `c1b-direction/answer.json` |
@@ -283,8 +292,8 @@ tar -C ~/sr-pilot-handover -cf "$H.tar" "$(basename "$H")" && sha256sum "$H.tar"
 1. 評価に出す絵は、3方式の最後の `--check` の `pc1440.png`・`sp390.png` (Claude の実装の描画。計画 §6.1)。
 2. Claude は、3方式に X / Y / Z を無作為に割り当てる (例 `node -e` の `crypto.randomInt`)。評価の束は `review/X-pc1440.png`・`review/X-sp390.png`… と `review-sheet.md` の写しだけにする。ファイルの中に方式の名前・plan_id・approval_id が無いこと、PNG に文字の chunk が無いこと (`tEXt`・`iTXt`・`zTXt`) を確かめる。PNG の高さは方式ごとに違い、これは隠せない。
 3. 対応のファイル `mapping.json` (`{"X": "<方式>", "Y": …, "Z": …, "nonce": "<16 バイトの乱数の hex>"}`) を書き、その SHA-256 を、評価の束を渡す前に Issue #180 のコメントに書く (ハッシュだけ)。nonce は、6通りしかない対応をハッシュから当てられないようにするためである。
-4. Claude は `mapping.json` を渡さずに持つ。オーナーが点と「採れない印」を付け終えて Issue #180 に書いたあとで、`mapping.json` を渡す。オーナーは SHA-256 を照らしてから開く。点は後から直さない (`review-sheet.md`)。
-5. 評価の束は §5.2 の tar で渡す。オーナーは、点を付けるときに初めて開く (Windows で見るなら、そのときだけデスクトップへ写し、終わったら消す。`design-image-poc.md` の Viewing と同じ)。
+4. **案 (封をした写しをオーナーが持つ):** Claude の session の container は長く残るとは限らないので、Claude が持ち続けることには頼らない。Claude は `mapping.json` だけの tar (`mapping.tar`、§5.2 と同じ形) を作ってオーナーへ渡し、その SHA-256 を Issue #180 に書く (3.)。オーナーは開かずに `~/sr-pilot-tars/` に置く。オーナーが点と「採れない印」を付け終えて Issue #180 に書いたあとで、SHA-256 を照らしてから開く。封は約束であって、機械が止めるのではない。早く開けば §7.5 で記録する。点は後から直さない (`review-sheet.md`)。
+5. 評価の束は §5.2 の tar (名前の順・時刻を揃えたもの) で渡す。オーナーは、点を付けるときに初めて開く (Windows で見るなら、そのときだけデスクトップへ写し、終わったら消す。`design-image-poc.md` の Viewing と同じ)。
 
 ### 7.3 オーナーが見るもの・見ないもの
 
@@ -317,12 +326,12 @@ tar -C ~/sr-pilot-handover -cf "$H.tar" "$(basename "$H")" && sha256sum "$H.tar"
 | 失敗 | 止まるもの | 残すもの | 復旧 |
 |---|---|---|---|
 | 形 J が `EXIT=75` | その手順 | 何も使っていない | worker の run か画像の PoC が終わるまで待つ。窓の中でこれが出たら、P-2 からやり直す |
-| `HOST_UNSAFE`・`JAIL_NOT_INSTALLED`・`JAIL_UNSAFE` (`admin.sh`)、probe が通らない | その手順 | 何も使っていない | 窓を閉じる。jail の修理は B の外 (別の承認) |
-| 呼び出しを途中で止めたい | その呼び出し | 台帳に receipt と `aborted` | `sudo systemctl stop 'sr-jail-run-*'` (`design-worker-cycle.md` §5 と同じ行)。CLI は SIGTERM で Codex を止め、`aborted` と記録する (`phase2f-design.ts` などの見出し)。ほかの `sr-jail-run-*` が無い窓なので、止まるのはその手順だけ。Ctrl-C と端末が切れたときの `systemd-run --pipe --wait` の振る舞いは、リポジトリに記録が無い (§10)。端末は閉じない |
+| `admin.sh run` の `HOST_UNSAFE` (exit 3)・`JAIL_NOT_INSTALLED` (exit 2)、probe が通らず unit が起動しない (`EXIT=` の行が出ない) | その手順 | 何も使っていない | 窓を閉じる。jail の修理は B の外 (別の承認) |
+| 呼び出しを途中で止めたい | その呼び出し | 台帳に receipt と、`aborted` か `failed` (どちらになるかは決まらない) | `sudo systemctl stop 'sr-jail-run-*'` (`design-worker-cycle.md` §5 と同じ行)。systemd は unit の cgroup のすべての process に SIGTERM を送るので、CLI だけでなく Codex も同時に受け取る。CLI が先に受け取れば `aborted` と記録するが (`phase2f-design.ts` などの見出し)、Codex が先に終われば `failed` と記録されうる。**どちらでも承認は使った** (やり直しは R)。ほかの `sr-jail-run-*` が無い窓なので、止まるのはその手順だけ。Ctrl-C と端末が切れたときの `systemd-run --pipe --wait` の振る舞いは、リポジトリに記録が無い (§10)。端末は閉じない |
 | 終了コード 1・`UNEXPECTED`・端末が切れて結果が分からない | その方式 | すべて | 台帳の `approvals/<approval_id>/` があるかを、オーナーが名前だけで見る (形 J で `ls ~/.local/state/sr-design-worker/phase2f-live/approvals/<approval_id>`)。**あれば承認を使った**: その approval_id を二度と使わない。利用枠も使ったと数える。やり直すなら R の承認。無ければ使っていないので、原因を直して同じ approval_id で起動し直す (計画 §7) |
 | 突然 `Killed` (exit 137) | すべて | すべて | jail の中では kernel log が読めない (`OOM_UNKNOWN`)。オーナーが jail の外で `sudo journalctl -k --since "1 hour ago" \| grep -iE 'out of memory\|oom-kill\|killed process'` (`wsl-resource-preflight.md` §2)。OOM なら **resource failure として止まる**: 直さない・skip しない・そのまま打ち直さない。数字と kill の行を Claude に渡す。承認を使ったかは上の行で決める。`.wslconfig` は変えない (§4 の確認は人) |
 | サインインが切れた (`CODEX_NOT_SIGNED_IN`) | その呼び出し | 記録 | `admin.sh shell` の中で `codex login --device-auth`。承認を使っていれば R |
-| 窓の終わりまでに終わらない | 窓 | すべて | 動いている手順を切らない。終わってから §8.2 で戻す。続きは次の窓 (P-1・P-2・P-3 からやり直す)。C1 の commit は fetch しない限り変わらない |
+| 窓の終わりまでに終わらない | 窓 | すべて | 動いている手順を切らない。終わってから §8.2 で戻す。続きは次の窓。**次の窓では P-1 から P-7 をやり直す**: §8.2 で戻したあとは worker の `run.sh` が自分で checkout を develop に揃える (`design-worker-wsl.md` §3) ので、窓をまたぐと C1 のままとは限らない。P-5 の commit が前と違えば、残りの呼び出しは新しい commit で承認し直す (§10.2 の 4.) |
 
 ### 8.2 パイロットのあと (または中止したとき) に戻す
 
@@ -372,6 +381,9 @@ Claude が下の型を埋めて出し、オーナーが承認する。オーナ�
 | expected commit | C1 か C2 (40文字) |
 | expected CLI version | P-6 の CLI_VERSION |
 | previous steps | その plan で成功した呼び出しの出力のフォルダーすべて (無ければ「無し」) |
+| C1-c だけ | 要求のファイル (`prerender/image-request-A1.json`) のパス、名指すデザインの実行の approval_id と run_id、主役かどうか (essential)。どれも `prerender.md` にある |
+| C2-a / C2-b だけ | ページのパス (`--page-root` からの位置)、ページの html の SHA-256、`--hero` の値 |
+| plan の残り | その plan の使った枠 (最初・やり直し) と使った時間 (`prerender.md` か `--page-request` の `prerender.md`。計画 §5) |
 | `--versions` に渡すもの | パイロットで成功した呼び出しのすべて (方式をまたぐ) |
 | retry-of | R のときだけ、元の approval_id |
 | 出力のフォルダー | §3 の表の名前 (新しいもの) |
@@ -386,8 +398,8 @@ Claude が下の型を埋めて出し、オーナーが承認する。オーナ�
 - phase2f の CLI を `sr-designgen` で起動する手順 (形 J は案)。
 - phase2f の CLI が run.lock を取ること (取らない。形 J の `flock` は案)。
 - 今の Codex CLI の版を出す CLI の手順 (CLI は違えば止まるだけ。P-6 は HUMAN-021a の block を使う)。
-- 今の timer の状態 (記録は 2026-10-17〜23 のもので、どれも有効になっていない)。窓の中で `sr-claude-auth-watch.timer` が何をするか。
-- `codex login status` がネットワークに出るか。
+- 今の timer の状態 (記録は 2026-10-17〜23 のもので、どれも有効になっていない)。窓の中で `sr-claude-auth-watch.timer` が何をするか (AW-1 で読むだけで確かめられる。P-2c は `next=` の前に窓を終える形にした)。
+- サインインが取り消されていないことを、承認の前に確かめる手段 (`codex login status` は手元の auth.json だけを読む。`codex.ts`)。
 - `systemd-run --pipe --wait` (`admin.sh run`) で、Ctrl-C や端末の切断のときに中の手順がどうなるか。
 - 空きの容量の確かめ方と、要る量。
 - 今の `sr-designgen` の checkout の commit と、`npm ci` が要るか。
@@ -401,9 +413,9 @@ Claude が下の型を埋めて出し、オーナーが承認する。オーナ�
 1. **パイロットの窓** (日時と長さ)。続きを別の窓にしてよいか。
 2. **jail の Claude を窓のあいだ止めるか** (P-3。案は止める)。
 3. **有効な worker・cycle の timer が見つかったとき**、止めて戻すか (P-2a)、窓を選び直すか。
-4. **develop へのマージを窓のあいだ止めるか。** 案: C1 から最後の呼び出しまで、D のほかはマージしない。C1 の pin は fetch しなければ変わらないが、C2 (D のマージ) には、それまでに develop に入ったすべてが入る。
+4. **develop へのマージを窓のあいだ止めるか。** 案: C1 から最後の呼び出しまで、D のほかはマージしない。C1 の commit は、同じ窓の中で fetch しなければ変わらない。窓をまたぐと worker が checkout を develop に戻しうる (§8.1)。選べるのは、(a) C1 を固定する (窓のあいだも次の窓までも develop に D のほかを入れない。次の窓で P-5 が同じ C1 になる)、(b) commit が動いてよい (計画 §3.0 の前提。そのたびに新しい commit で承認し直す) のどちらか。C2 (D のマージ) には、それまでに develop に入ったすべてが入る。
 5. **形 J (`admin.sh run` + `flock -n -E 75 run.lock`) を使うか。**
-6. **受け渡しの場所と手段:** オーナーのホームの `~/sr-pilot-handover/`、tar のアップロード、戻す向きの手段。Claude の作業場所 (クラウドの session か、WSL の管理者の利用者か)。
+6. **受け渡しの場所と手段:** オーナーのホームの `~/sr-pilot-handover/`、tar のアップロード、戻す向きの手段。Claude の作業場所はクラウドの session に決めた (§2)。WSL の管理者の利用者は選べない。
 7. **独立の Claude の検査者を置くか**、置くなら誰がどう起動するか。2つの記録が違ったときにどちらを使うか。
 8. **D の承認とマージ (§7.4):** ファイルの一覧と head の SHA だけで承認し Claude がマージするか、オーナーがマージするか。
 9. **VISUAL_FIRST の実装を、戻す向きの tar で `sr-designgen` へ置くこと** (§4.7)。代わりに D の PR に入れる案もあるが、計画 §6.1 (評価の前に成果物をリポジトリに入れない) の例外を増やす。
