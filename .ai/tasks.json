@@ -6341,7 +6341,7 @@
     {
       "id": "DEV-140",
       "title": "SP 品質検査のラベル付き検証と誤検知の修正 (Issue #177 B)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-134"
@@ -6384,7 +6384,54 @@
         "所見を停止や自動修正に使うこと",
         "閾値の変更"
       ],
-      "note": "ラベル付き23件: 意図11件のうち誤検知2件、壊れ12件の見逃し0件 (既知の限界3つは文書に)。切れた文字の、切り抜きの外の字だけを重なりから外す (切っている軸だけ)。実試作12枚の所見は不変 (手動の確認)。Review: round 1 FAIL (M2)・round 2 FAIL (M1) → 修正、round 3 PASS (C0/H0/M0/L3、対応済み)。"
+      "note": "ラベル付き23件: 意図11件のうち誤検知2件、壊れ12件の見逃し0件 (既知の限界3つは文書に)。切れた文字の、切り抜きの外の字だけを重なりから外す (切っている軸だけ)。実試作12枚の所見は不変 (手動の確認)。Review: round 1 FAIL (M2)・round 2 FAIL (M1) → 修正、round 3 PASS (C0/H0/M0/L3、対応済み)。",
+      "merged": "#179 → 68b6255 (squash, 2026-11-01, Issue #177 の条件付き事前承認)"
+    },
+    {
+      "id": "DEV-141",
+      "title": "3制作方式の比較研究の設計 (VISUAL_FIRST / LAYOUT_FIRST / DIRECTION_FIRST、Issue #180、#177 Phase E への追加)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-139",
+        "DEV-140"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-141-three-methods-study",
+      "purpose": "Issue #180 (オーナー事前承認)。#177 を止めず、Phase E の比較研究として、3方式の設計・架空店舗の事実パックと Identity Lock・入出力契約と引き渡しの境界・評価方法と盲検の評価票・記録の形・実行回数と費用と承認の計画を作る。実 Codex・画像生成は行わない。",
+      "acceptance_criteria": [
+        "3方式を既存の Route A/B/C と別の名前で定義し、手順・入出力・引き渡しの境界を書く",
+        "新しい架空のパン屋1件の事実パック・出典・Identity Lock (研究用)。事実はすべて作り物で、名前を持つものには「架空」を付ける",
+        "揃える条件 (店・事実・ブリーフ・画面・技術の制約・Claude の条件・生成の予算・採否)",
+        "既存の検査 (DEV-131/139・DEV-134/140・DEV-138・Identity Lock) の再利用だけで評価し、新しい品質検査を作らない",
+        "オーナーの盲検の評価票と、手間の記録の形 (mock / live を分ける)",
+        "実行回数・時間・費用と、呼び出しごとの承認の手順。実行はしない",
+        "入力をハッシュで固定するテスト"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/research/three-methods.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/design/three-methods-study.md",
+        "design-library/research/three-methods/**",
+        "tests/unit/design-agent/research/three-methods.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-141.md"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の実行",
+        "prompt・承認・停止条件・runner・worker・WSL・本番の変更",
+        "Issue #177 の Phase B〜E の作業を止めること・置き換えること"
+      ],
+      "human_approval_triggers": [
+        "実 Codex・画像生成の実行 (呼び出しごとの承認)",
+        "VISUAL_FIRST のデザインの形 (V-B/V-A)・DIRECTION_FIRST の方向の形・回数の決定",
+        "標準方式の採用"
+      ],
+      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。"
     }
   ]
 }

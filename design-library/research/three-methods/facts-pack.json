@@ -1,0 +1,102 @@
+{
+  "schema": "shop_facts_pack_v1",
+  "shop_id": "fictional-bakery-komugi",
+  "facts": [
+    {
+      "id": "F1",
+      "key": "name",
+      "value": "架空パン工房 こむぎ灯",
+      "source_id": "S1"
+    },
+    {
+      "id": "F2",
+      "key": "category",
+      "value": "bakery",
+      "source_id": "S1"
+    },
+    {
+      "id": "F3",
+      "key": "ward",
+      "value": "昭和区",
+      "source_id": "S1"
+    },
+    {
+      "id": "F4",
+      "key": "address",
+      "value": "名古屋市昭和区架空町二丁目8-1",
+      "source_id": "S1"
+    },
+    {
+      "id": "F5",
+      "key": "hours",
+      "value": "7:30〜17:00（売り切れ次第終了）",
+      "source_id": "S1"
+    },
+    {
+      "id": "F6",
+      "key": "closed_days",
+      "value": "月曜・火曜",
+      "source_id": "S1"
+    },
+    {
+      "id": "F7",
+      "key": "access",
+      "value": "架空線架空駅 2番出口から徒歩3分",
+      "source_id": "S1"
+    },
+    {
+      "id": "F8",
+      "key": "phone",
+      "value": "052-000-0418",
+      "source_id": "S1"
+    },
+    {
+      "id": "F9",
+      "key": "description",
+      "value": "比較研究用の架空のパン屋です。実在の店舗ではありません。石窯で焼く田舎パンと、朝いちばんの塩バターパンを、小さな店で焼いています。",
+      "source_id": "S1"
+    },
+    {
+      "id": "F10",
+      "key": "statement_1",
+      "value": "毎朝5時から石窯に火を入れています",
+      "source_id": "S1"
+    },
+    {
+      "id": "F11",
+      "key": "statement_2",
+      "value": "粉は季節で配合を変えています",
+      "source_id": "S1"
+    },
+    {
+      "id": "F12",
+      "key": "menu_item_1",
+      "value": "架空カンパーニュ",
+      "source_id": "S1"
+    },
+    {
+      "id": "F13",
+      "key": "menu_item_2",
+      "value": "架空塩バターパン",
+      "source_id": "S1"
+    },
+    {
+      "id": "F14",
+      "key": "menu_item_3",
+      "value": "架空くるみレーズン",
+      "source_id": "S1"
+    },
+    {
+      "id": "F15",
+      "key": "menu_item_4",
+      "value": "架空あんバター",
+      "source_id": "S1"
+    },
+    {
+      "id": "F16",
+      "key": "menu_item_5",
+      "value": "架空季節のタルティーヌ",
+      "source_id": "S1"
+    }
+  ]
+}

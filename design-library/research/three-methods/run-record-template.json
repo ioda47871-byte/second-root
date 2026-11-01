@@ -1,0 +1,71 @@
+{
+  "schema": "three_method_run_v0",
+  "method": "VISUAL_FIRST | LAYOUT_FIRST | DIRECTION_FIRST",
+  "run_kind": "mock | live",
+  "run_label": "例: komugi-visual-first-pilot-1",
+  "shop": {
+    "shop_id": "fictional-bakery-komugi",
+    "facts_pack_sha256": "",
+    "identity_lock_sha256": "",
+    "brief_sha256": ""
+  },
+  "codex_calls": [
+    {
+      "purpose": "design | direction | asset",
+      "approval_id": null,
+      "plan_id": null,
+      "prompt_sha256": "",
+      "prompt_chars": 0,
+      "started_at": "",
+      "finished_at": "",
+      "outcome": "succeeded | failed | aborted | refused | mock",
+      "retry_of": null
+    }
+  ],
+  "images": {
+    "generated": 0,
+    "used": 0
+  },
+  "claude": {
+    "started_at": "",
+    "finished_at": "",
+    "repair_attempts": 0,
+    "fixes_by_cause": {},
+    "owner_requested_rework": 0
+  },
+  "artifacts": [
+    {
+      "path": "",
+      "sha256": "",
+      "what": "pc_1440_png | sp_390_png | html | css | asset | direction_text"
+    }
+  ],
+  "checks": {
+    "impl_compare": {
+      "report": null,
+      "status": "compared | partial | not_compared | not_applicable",
+      "differences": []
+    },
+    "mobile_quality": {
+      "findings": []
+    },
+    "structure_observation": {
+      "report": null,
+      "close_to_rejected": [],
+      "generic_skeleton": null
+    },
+    "identity": {
+      "status": ""
+    },
+    "unsourced_lines": 0,
+    "render_stops": []
+  },
+  "stops": [
+    {
+      "code": "",
+      "stage": "",
+      "reason": ""
+    }
+  ],
+  "notes": "MOCK の記録は方式の優劣の証拠にしない"
+}
