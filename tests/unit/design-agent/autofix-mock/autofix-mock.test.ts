@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { LIMITS } from "@/lib/design-agent/loop/controller";
 import { applyPatch, candidatePatch, CAUSE_OF_CODE, isSelector, PATCH_PROPERTIES, unifiedDiff, VARIANTS, type Cause } from "@/lib/design-agent/autofix-mock/patches";
-import { AUTOFIX_LIMITS, PC_CHANGE_MAX, runAutofixMock, type AutofixPorts, type Measurement } from "@/lib/design-agent/autofix-mock/run";
+import { AUTOFIX_LIMITS, INSTANCE_CAP, PC_CHANGE_MAX, runAutofixMock, type AutofixPorts, type Measurement } from "@/lib/design-agent/autofix-mock/run";
 
 // DEV-146 (Issue #177 D, MOCK ONLY): the limited autofix loop with fake ports (no browser), and its pure parts.
 
 const HTML = "<!doctype html><html><body><h1>架空珈琲 灯</h1></body></html>";
 const PNG = new Uint8Array([1, 2, 3]);
-const m = (sp: string[], targets: { code: string; selector: string }[] = [], o: Partial<Measurement> = {}): Measurement => ({ sp_findings: sp, sp_scroll_width: 390, targets, pc_png: PNG, blocked: 0, ...o });
+const Z = { text_nodes_with_problems: 0, tap_targets_below_recommended: 0, tap_targets_below_minimum: 0 };
+const m = (sp: string[], targets: { code: string; selector: string }[] = [], o: Partial<Measurement> = {}): Measurement => ({ sp_findings: sp, sp_scroll_width: 390, instances: [], counts: Z, targets, pc_png: PNG, blocked: 0, ...o });
 const T = (code: string, selector = "a.b") => ({ code, selector });
 
 /** A fake page: each in-scope cause is resolved by the patch variants listed in `fixedBy` (cause → variants that work). */
@@ -242,6 +243,75 @@ describe("stops (the original kept, nothing proposed)", () => {
     for (const [over, code] of cases) {
       const r = await runAutofixMock(input(), { ...fake([]).ports, ...over });
       expect([r.status, r.code, r.owner_check, r.proposed_css], code).toEqual(["stopped", code, true, null]);
+    }
+  });
+});
+
+describe("nothing gets worse, per instance (review round 1, H1)", () => {
+  // a code already on the page (a false positive, an out-of-scope finding) must not hide a new instance of it
+  const page = (after: (css: string) => Partial<Measurement>) => {
+    const ports: AutofixPorts = {
+      identity: async () => "PASS_IDENTITY_ONLY",
+      measure: async (_h, css) => {
+        const patched = css.includes("@media");
+        const base = m(patched ? ["SP_TEXT_CLIPPED"] : ["PAGE_HORIZONTAL_OVERFLOW", "SP_TEXT_CLIPPED"], patched ? [] : [T("PAGE_HORIZONTAL_OVERFLOW", "div.row")], {
+          sp_scroll_width: patched ? 390 : 900,
+          instances: [{ code: "SP_TEXT_CLIPPED", text: "架空の飾り文字" }],
+          counts: { ...Z, text_nodes_with_problems: 1 },
+        });
+        return patched ? { ...base, ...after(css) } : base;
+      },
+      pcChange: () => 0,
+    };
+    return runAutofixMock(input(), ports);
+  };
+
+  it("a newly clipped text under a code that was already there is reverted, never proposed", async () => {
+    const r = await page(() => ({
+      instances: [
+        { code: "SP_TEXT_CLIPPED", text: "架空の飾り文字" },
+        { code: "SP_TEXT_CLIPPED", text: "8:00〜19:00 定休 水" },
+      ],
+      counts: { ...Z, text_nodes_with_problems: 2 },
+    }));
+    expect(r.attempts[0]).toMatchObject({ kept: false, reverted_because: "NEW_FINDING" });
+    expect(r.attempts[0]!.new_findings).toEqual(["SP_TEXT_CLIPPED:8:00〜19:00 定休 水", "COUNT:text_nodes_with_problems"]);
+    expect(r.proposed_css).toBeNull();
+  });
+
+  it("a rise in the text nodes with problems is a regression even with the same examples", async () => {
+    const r = await page(() => ({ counts: { ...Z, text_nodes_with_problems: 2 } }));
+    expect(r.attempts[0]).toMatchObject({ kept: false, reverted_because: "NEW_FINDING", new_findings: ["COUNT:text_nodes_with_problems"] });
+  });
+
+  it("a hidden fact is a new instance (the check does not count it among the text nodes with problems)", async () => {
+    const r = await page(() => ({ sp_findings: ["SP_FACT_HIDDEN", "SP_TEXT_CLIPPED"], instances: [{ code: "SP_TEXT_CLIPPED", text: "架空の飾り文字" }, { code: "SP_FACT_HIDDEN", text: "架空の定休日" }] }));
+    expect(r.attempts[0]!.new_findings).toEqual(["SP_FACT_HIDDEN", "SP_FACT_HIDDEN:架空の定休日"]);
+    expect(r.attempts[0]!.kept).toBe(false);
+  });
+
+  it("smaller tap targets after a fix for another cause are a regression", async () => {
+    const r = await page(() => ({ counts: { ...Z, text_nodes_with_problems: 1, tap_targets_below_recommended: 1 } }));
+    expect(r.attempts[0]).toMatchObject({ kept: false, new_findings: ["COUNT:tap_targets_below_recommended"] });
+  });
+
+  it("the same instances and counts: the fix is kept for the owner", async () => {
+    const r = await page(() => ({}));
+    expect(r).toMatchObject({ status: "owner_review", applied: false });
+    expect(r.attempts[0]).toMatchObject({ kept: true, new_findings: [] });
+  });
+
+  it("a list of examples at the check's cap may be cut off: the run stops, nothing proposed", async () => {
+    const many = Array.from({ length: INSTANCE_CAP }, (_, i) => ({ code: "SP_TEXT_CLIPPED", text: `架空の文${i}` }));
+    const r = await page(() => ({ instances: many }));
+    expect(r).toMatchObject({ status: "stopped", code: "INSTANCES_TRUNCATED", proposed_css: null });
+    expect(INSTANCE_CAP).toBe(10);
+  });
+
+  it("instances and counts must be well formed", async () => {
+    for (const bad of [{ instances: undefined }, { instances: [{ code: "x", text: "a" }] }, { counts: { ...Z, text_nodes_with_problems: -1 } }, { counts: undefined }]) {
+      const ports: AutofixPorts = { identity: async () => "PASS_IDENTITY_ONLY", measure: async () => ({ ...m([]), ...bad }) as Measurement, pcChange: () => 0 };
+      expect((await runAutofixMock(input(), ports)).code).toBe("PORT_ANSWER_INVALID");
     }
   });
 });

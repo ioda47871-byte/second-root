@@ -36,7 +36,8 @@ function ports(html: string, identity: AutofixPorts["identity"] = async () => "P
         await page.route("**/*", (route) => route.abort());
         await page.setContent(h.replace(LINK, `<style>${css}</style>`));
         const targets = (await page.evaluate(LOCATE_SCRIPT)) as Target[];
-        return { sp_findings: r.mobile_390.mobileQuality!.findings, sp_scroll_width: r.mobile_390.scrollWidth, targets, pc_png: r.desktop_1440.png, blocked: r.desktop_1440.blocked + r.mobile_390.blocked };
+        const q = r.mobile_390.mobileQuality!;
+        return { sp_findings: q.findings, sp_scroll_width: r.mobile_390.scrollWidth, instances: q.examples ?? [], counts: q.counts, targets, pc_png: r.desktop_1440.png, blocked: r.desktop_1440.blocked + r.mobile_390.blocked };
       } finally {
         await ctx.close();
       }
@@ -150,6 +151,21 @@ describe("limited autofix (mock) on rendered fictional pages", () => {
       expect(r.findings_before).toEqual(["SP_TEXT_CLIPPED", "SP_TEXT_OFFSCREEN"]);
       expect(r.events).toContain("skip:TEXT_CLIPPED:not_located");
     }
+  }, 120_000);
+
+  it("a false positive already on the page does not hide a newly clipped fact (review round 1, H1)", async () => {
+    // deco_type_not_marked already carries SP_TEXT_CLIPPED; a row wider than the phone holds the hours. Capping the
+    // row's width (v1) clips the hours under the same code: per instance it is new, so v1 is reverted and v2 (wrap) kept.
+    const c = corpus("deco_type_not_marked");
+    const row = '<div class="row"><p>架空の朝の焼き菓子</p><p>架空の昼の焼き菓子</p><p>8:00〜19:00 定休 水</p></div>';
+    const r = await run(c.body + row, `${c.css}\n.row{display:flex;width:900px;overflow:hidden}.row p{flex:none;width:280px;margin:0}\n`);
+    expect(r.findings_before).toContain("PAGE_HORIZONTAL_OVERFLOW");
+    expect(r.findings_before).toContain("SP_TEXT_CLIPPED");
+    const v1 = r.attempts.find((a) => a.cause === "HORIZONTAL_OVERFLOW" && a.variant === 1)!;
+    expect(v1).toMatchObject({ kept: false, reverted_because: "NEW_FINDING" });
+    expect(v1.new_findings.some((f) => f.startsWith("SP_TEXT_CLIPPED:") || f === "COUNT:text_nodes_with_problems")).toBe(true);
+    // whatever is proposed never clips more text than before
+    for (const a of r.attempts.filter((x) => x.kept)) expect(a.new_findings).toEqual([]);
   }, 120_000);
 
   it("an identity mismatch stops the run at once: nothing rendered, nothing patched", async () => {

@@ -8,9 +8,13 @@
  *   facts are never changed: the ports always get the original HTML bytes.
  * - Identity is checked first and before every re-test: anything but PASS_IDENTITY_ONLY stops the run at once, with
  *   no patch. A blocked request, a check that could not run, a malformed answer or a port that throws stops it too.
- * - One cause per attempt, in a fixed order; a patch is kept only when the SP checks no longer name its cause, no new
- *   finding appears, nothing was blocked and the PC 1440 render did not change beyond PC_CHANGE_MAX. Otherwise it is
- *   reverted (the CSS before it is kept) and recorded.
+ * - One cause per attempt, in a fixed order; a patch is kept only when the SP checks no longer name its cause, nothing
+ *   got worse, nothing was blocked and the PC 1440 render did not change beyond PC_CHANGE_MAX. Otherwise it is
+ *   reverted (the CSS before it is kept) and recorded. "Nothing got worse" is checked per instance, not per code: no
+ *   (code, text) pair that was not there before, no rise in the text nodes with problems, and (for a cause other than
+ *   the tap targets) no rise in the small tap targets. A code already on the page (a known false positive, an
+ *   out-of-scope finding) therefore never hides a new instance of it. When the check's examples may be cut off (its
+ *   cap of 10), the instances cannot all be compared and the run stops for the owner.
  * - At most AUTOFIX_LIMITS.attempts patches tried and AUTOFIX_LIMITS.fixesPerCause per cause (the same limits as the
  *   mock run controller of DEV-129, pinned by the tests). Past either, or with no further variant, the run stops for
  *   the owner and keeps the original CSS.
@@ -21,16 +25,27 @@ import { applyPatch, candidatePatch, causeOf, OVERFLOW_CODE, SP_WIDTH, isSelecto
 
 /** 3 patches tried per run, at most 2 for one cause (as DEV-129's LIMITS: implementationAttempts 3, fixesPerCause 2). */
 export const AUTOFIX_LIMITS = { attempts: 3, fixesPerCause: 2 } as const;
-/** The largest share of differing PC 1440 pixels a kept patch may cause (its media query should make it 0). */
+/**
+ * MOCK PARAMETER, not an adopted threshold: the largest share of differing PC 1440 pixels a kept patch may cause (its
+ * media query should make it 0). Any real use needs the owner's decision (docs/design/limited-autofix.md §6).
+ */
 export const PC_CHANGE_MAX = 0.001;
+/** The SP check keeps at most this many examples (MobileFindings.examples); a list this long may be cut off. */
+export const INSTANCE_CAP = 10;
 
 export type IdentityVerdict = "PASS_IDENTITY_ONLY" | "HOLD" | "REJECT";
 export type Target = { code: string; selector: string };
+/** One finding on one text: the SP check's example (code, the first 40 characters of the text). */
+export type Instance = { code: string; text: string };
 export type Measurement = {
   /** The SP 390 checks' codes (DEV-134), as recorded. */
   sp_findings: readonly string[];
   /** The SP 390 document's scrollWidth. */
   sp_scroll_width: number;
+  /** The SP check's examples (MobileFindings.examples), one per finding and text. */
+  instances: readonly Instance[];
+  /** The SP check's counts (MobileFindings.counts). */
+  counts: { text_nodes_with_problems: number; tap_targets_below_recommended: number; tap_targets_below_minimum: number };
   /** Where the in-scope findings sit (LOCATE_SCRIPT). */
   targets: readonly Target[];
   /** The PC 1440 screenshot, for the regression check. */
@@ -57,6 +72,7 @@ export type AttemptRecord = {
   reverted_because: "NOT_RESOLVED" | "NEW_FINDING" | "PC_CHANGED" | null;
   findings_before: string[];
   findings_after: string[];
+  /** What got worse: new codes, new (code, text) instances as "CODE:text", and risen counts as "COUNT:name". */
   new_findings: string[];
   pc_change: number;
 };
@@ -92,13 +108,20 @@ class Stop extends Error {
 }
 
 /** The measurement, checked and copied once (codes sorted and distinct; the page-width code added from scrollWidth). */
-function read(m: unknown): { findings: string[]; targets: Target[]; png: Uint8Array } {
+type Read = { findings: string[]; instances: string[]; counts: { text: number; tapRec: number; tapMin: number }; targets: Target[]; png: Uint8Array };
+const count = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v >= 0;
+function read(m: unknown): Read {
   const o = (m !== null && typeof m === "object" ? m : {}) as Record<string, unknown>;
   const sp = o.sp_findings;
   const width = o.sp_scroll_width;
   const targets = o.targets;
   const png = o.pc_png;
   const blocked = o.blocked;
+  const inst = o.instances;
+  const c = (o.counts !== null && typeof o.counts === "object" ? o.counts : {}) as Record<string, unknown>;
+  if (!Array.isArray(inst) || !count(c.text_nodes_with_problems) || !count(c.tap_targets_below_recommended) || !count(c.tap_targets_below_minimum)) throw new Stop("PORT_ANSWER_INVALID", "measure:malformed");
+  const instances = [...(inst as unknown[])].map((i) => ({ code: (i as Instance)?.code, text: (i as Instance)?.text }));
+  if (!instances.every((i) => typeof i.code === "string" && CODE.test(i.code) && typeof i.text === "string" && i.text.length <= 200)) throw new Stop("PORT_ANSWER_INVALID", "measure:malformed");
   if (!Array.isArray(sp) || !Array.isArray(targets) || typeof width !== "number" || !Number.isFinite(width) || !(png instanceof Uint8Array) || typeof blocked !== "number" || !Number.isInteger(blocked) || blocked < 0)
     throw new Stop("PORT_ANSWER_INVALID", "measure:malformed");
   const codes = [...(sp as unknown[])];
@@ -107,8 +130,28 @@ function read(m: unknown): { findings: string[]; targets: Target[]; png: Uint8Ar
   if (!list.every((t) => typeof t.code === "string" && CODE.test(t.code) && isSelector(t.selector))) throw new Stop("PORT_ANSWER_INVALID", "measure:malformed");
   if (blocked > 0) throw new Stop("RENDER_BLOCKED_REQUEST", `measure:blocked:${blocked}`);
   if (codes.some((c) => CHECK_FAILED.has(c))) throw new Stop("SP_CHECK_UNAVAILABLE", "measure:check_failed");
+  // a list at the cap may be cut off: the instances could not all be compared
+  if (instances.length >= INSTANCE_CAP) throw new Stop("INSTANCES_TRUNCATED", "measure:instances_truncated");
   const findings = [...new Set([...codes, ...(width > SP_WIDTH ? [OVERFLOW_CODE] : [])])].sort();
-  return { findings, targets: list as Target[], png: Uint8Array.from(png) };
+  return {
+    findings,
+    instances: [...new Set(instances.map((i) => `${i.code}:${i.text}`))].sort(),
+    counts: { text: c.text_nodes_with_problems as number, tapRec: c.tap_targets_below_recommended as number, tapMin: c.tap_targets_below_minimum as number },
+    targets: list as Target[],
+    png: Uint8Array.from(png),
+  };
+}
+
+/** What got worse between the two measurements, by code, by instance and by count (see the header). */
+function worse(a: Read, b: Read, cause: Cause): string[] {
+  const codes = b.findings.filter((f) => !a.findings.includes(f) && causeOf(f) !== cause);
+  const instances = b.instances.filter((i) => !a.instances.includes(i));
+  const counts = [
+    ...(b.counts.text > a.counts.text ? ["COUNT:text_nodes_with_problems"] : []),
+    ...(cause !== "TAP_TARGET" && b.counts.tapRec > a.counts.tapRec ? ["COUNT:tap_targets_below_recommended"] : []),
+    ...(cause !== "TAP_TARGET" && b.counts.tapMin > a.counts.tapMin ? ["COUNT:tap_targets_below_minimum"] : []),
+  ];
+  return [...codes, ...instances, ...counts];
 }
 
 const causesIn = (findings: readonly string[]) => [...new Set(findings.map(causeOf).filter((c): c is Cause => c !== null))].sort();
@@ -130,7 +173,7 @@ export async function runAutofixMock(input: AutofixInput, ports: AutofixPorts): 
       findings_before: before,
       findings_after: status === "stopped" ? before : now,
       proposed_css: proposed,
-      proposed_diff: proposed === null ? "" : unifiedDiff(input.css_path, input.css, proposed),
+      proposed_diff: proposed === null || typeof original !== "string" || typeof path !== "string" ? "" : unifiedDiff(path, original, proposed),
       applied: false,
       mock: true,
       design_approved: false,
@@ -140,11 +183,12 @@ export async function runAutofixMock(input: AutofixInput, ports: AutofixPorts): 
   const source: unknown = input?.source;
   const html: unknown = input?.html;
   const original: unknown = input?.css;
+  const path: unknown = input?.css_path;
   if (source !== "implementation") {
     events.push("input:not_implementation");
     return end("stopped", "NOT_IMPLEMENTATION_CSS", null);
   }
-  if (typeof html !== "string" || typeof original !== "string" || typeof input.css_path !== "string" || !/^[A-Za-z0-9._/-]{1,120}$/.test(input.css_path)) {
+  if (typeof html !== "string" || typeof original !== "string" || typeof path !== "string" || !/^[A-Za-z0-9._/-]{1,120}$/.test(path)) {
     events.push("input:malformed");
     return end("stopped", "INPUT_INVALID", null);
   }
@@ -190,11 +234,11 @@ export async function runAutofixMock(input: AutofixInput, ports: AutofixPorts): 
       if (!patch) return end("stopped", "NO_FURTHER_PATCH", null);
       fixes.set(cause, n);
       const next = applyPatch(css, patch);
-      const diff = unifiedDiff(input.css_path, css, next);
+      const diff = unifiedDiff(path, css, next);
       events.push(`patch:${attempts.length + 1}:${cause}:v${n}`);
       await identity(next);
       const after = await measure(next);
-      const fresh = after.findings.filter((f) => !current.findings.includes(f) && causeOf(f) !== cause);
+      const fresh = worse(current, after, cause);
       const resolved = !after.findings.some((f) => causeOf(f) === cause);
       const pc = ports.pcChange(first.png, after.png);
       if (typeof pc !== "number" || !Number.isFinite(pc) || pc < 0 || pc > 1) throw new Stop("PORT_ANSWER_INVALID", "pc_change:malformed");

@@ -48,7 +48,8 @@ export const VARIANTS: Record<Cause, readonly (readonly string[])[]> = {
 /** Every property a patch may set (the tests pin that no variant leaves this list). */
 export const PATCH_PROPERTIES = ["max-width", "box-sizing", "flex-wrap", "overflow-wrap", "height", "max-height", "overflow", "min-width", "min-height", "display", "font-size"] as const;
 
-/** The media query every patch sits in: the PC 1440 page never sees it. */
+/** The media query every patch sits in: the PC 1440 page never sees it. A MOCK PARAMETER, not an adopted value: it also
+ * reaches widths 391–480 px, which are neither rendered nor checked (docs/design/limited-autofix.md §7). */
 export const SP_MEDIA = "(max-width: 480px)";
 
 /**
