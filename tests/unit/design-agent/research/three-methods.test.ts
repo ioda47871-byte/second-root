@@ -75,6 +75,14 @@ describe("the three-method study's shared inputs", () => {
     expect(read("review-sheet.md")).toContain("模擬 (`MOCK`) の画像では評価しない");
   });
 
+  it("records the owner's provisional pilot policy and keeps the image-based conditions apart (Issue #180, 2026-11-01)", () => {
+    for (const row of ["| VISUAL_FIRST | **Route C を優先**", "| 位置を測れない画像の要求 | **断る**", "| DIRECTION_FIRST の方向 | 最初は**文章** |", "| 回数 | **各方式1回** |", "| 評価の前の途中確認 | **しない**", "| 自動修正のきっかけ | **Claude の実装の横はみ出しだけ** |", "| 成功例の要約 | 最初のパイロットでは、Codex に**渡さない** (§4 の「参考資料」の行は、最初のパイロットではこの方針が優先する) |", "SHA-256 `efe91cf257e628894a222f4c39291d1f5d2a539bc5740995ee97f0547f164b4c`", "この方針は #184 のマージを承認するものではない", "| 後続の別条件 (§13) |", "パイロットの「最大8回」(§6) の**外**"]) expect(doc, row).toContain(row);
+    expect(doc).toContain("**Route C の HTML 試作と、Codex の画像生成ツールによる完成デザインは、別の条件である**");
+    for (const h of ["### VISUAL_FIRST_IMAGE (本来の VISUAL_FIRST、画像生成方式)", "### DIRECTION_FIRST_IMAGE (画像で方向を示す DIRECTION_FIRST)"]) expect(doc, h).toContain(h);
+    // a provisional policy is not an approval to run anything
+    expect(doc).toContain("実行の承認ではない。実 Codex・画像生成・有料 API・既存のランタイムの変更は、まだ行わない。");
+  });
+
   it("pins the shared inputs by hash in the design (a later change shows)", () => {
     for (const f of ["facts-pack.json", "identity-lock.json"]) {
       const sha = createHash("sha256").update(read(f)).digest("hex");

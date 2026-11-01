@@ -6487,7 +6487,7 @@
     {
       "id": "DEV-142",
       "title": "3制作方式の模擬の通し実行 (fixture、MOCK) — Issue #180",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-141"
@@ -6521,7 +6521,8 @@
       "human_approval_triggers": [
         "Issue #177 の条件を満たさない場合の develop へのマージ"
       ],
-      "note": "Issue #180 の事前承認の範囲 (offline)。3方式とも MOCK の fixture で通しで動いた (VISUAL_FIRST は実際の Phase 2f の runner → render_pair_complete → lane → impl-compare)。修正のきっかけは LAYOUT_FIRST の1回目の SP のはみ出しだけで、repair_attempts 1。Identity はすべて PASS、事実に無い文は 0。結果は docs/design/three-methods-study.md §12 (MOCK、方式の優劣の証拠にしない)。lib は変えていない。Review 待ち。"
+      "note": "Issue #180 の事前承認の範囲 (offline)。3方式とも MOCK の fixture で通しで動いた (VISUAL_FIRST は実際の Phase 2f の runner → render_pair_complete → lane → impl-compare)。修正のきっかけは LAYOUT_FIRST の1回目の SP のはみ出しだけで、repair_attempts 1。Identity はすべて PASS、事実に無い文は 0。結果は docs/design/three-methods-study.md §12 (MOCK、方式の優劣の証拠にしない)。lib は変えていない。Fresh Review PASS、#183 でマージ。",
+      "merged": "#183 → ee0a698 (squash, 2026-11-01)"
     },
     {
       "id": "DEV-143",
@@ -6552,6 +6553,47 @@
       ],
       "note": "DEV-141 の review round 1 (H1) で、今の入口では3方式を呼べないと分かった。",
       "blocked_reason": "オーナーの個別承認待ち: prompt・承認の流れ・ledger の種類・画像の入口を変える作業で、Issue #177 の条件付きマージの対象外 (Issue #180 も実行の権限を足していない)"
+    },
+    {
+      "id": "DEV-145",
+      "title": "3方式の最初のパイロットの暫定方針と、画像を使う別条件の計画を記録 (Issue #180)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-141",
+        "DEV-142"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-145-pilot-policy",
+      "purpose": "オーナーの暫定方針 (2026-11-01、Issue #180) を設計に記録し、Route C の HTML 試作と画像生成ツールの完成デザイン、文章の方向と画像の方向を別条件として比べる計画を残す。文書とテストだけ。",
+      "acceptance_criteria": [
+        "暫定方針の表を §10 に記録",
+        "実行の承認ではないと明記",
+        "VISUAL_FIRST_IMAGE・DIRECTION_FIRST_IMAGE を別条件として計画 (§13)",
+        "参考資料の差を限界に記録",
+        "テストで固定"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/research/three-methods.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/design/three-methods-study.md",
+        "tests/unit/design-agent/research/three-methods.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-145.md"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API",
+        "既存のランタイムの変更"
+      ],
+      "human_approval_triggers": [
+        "パイロットの実行",
+        "別条件の入口の作成・実行"
+      ],
+      "note": "文書だけ。共通ブリーフと runnableAssetRequests は PR #184 (DEV-143、未マージ・マージは別承認) にあり、パイロットで使うには #184 のマージ承認が先に要る (DEV-143 は blocked のため depends_on には入れず、ここに記す)。"
     }
   ]
 }
