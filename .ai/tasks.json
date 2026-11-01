@@ -6420,7 +6420,8 @@
         "tests/unit/design-agent/research/three-methods.test.ts",
         ".ai/tasks.json",
         ".ai/reviews/DEV-141.md",
-        "tests/unit/design-agent/identity/identity-lock.test.ts (研究のテスト1つの正確なパスの除外の追加のみ)"
+        "tests/unit/design-agent/identity/identity-lock.test.ts (研究のテスト1つの正確なパスの除外の追加のみ)",
+        "tests/unit/design-agent/research/three-methods.trigger-row.txt"
       ],
       "forbidden_scope": [
         "実 Codex・画像生成・有料 API の実行",
@@ -6432,7 +6433,7 @@
         "VISUAL_FIRST のデザインの形 (V-B/V-A)・DIRECTION_FIRST の方向の形・回数の決定",
         "標準方式の採用"
       ],
-      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。Review round 1 FAIL (H1: 今の入口では実行できない → DEV-143 は個別承認、M1〜M4) → 修正。"
+      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。Review: round 1 FAIL (H1・M1〜M4)、round 2 FAIL (M1: SP の所見をきっかけにしていた)、round 3 FAIL (M1: Identity を修正、M2: 事実に無い文を門と書いた)、round 4 FAIL (M1: はみ出しの修正の対象が曖昧) → それぞれ修正。"
     },
     {
       "id": "DEV-142",
@@ -6449,7 +6450,7 @@
       "acceptance_criteria": [
         "3方式とも fixture で最後まで動く",
         "共通の検査 (SP・構造・Identity・はみ出し) と VISUAL_FIRST の impl-compare を既存の道具で行う。事実に無い文は、研究のテストか fixture の中で数え、新しい品質検査として登録しない",
-        "修正のきっかけは横はみ出しだけ。Identity の REJECT/HOLD はその回を止める。ほかは記録だけ",
+        "修正のきっかけは Claude の実装の描画の横はみ出しだけ (上限は runLoop の LIMITS)。Codex のデザインのはみ出し・Identity の REJECT/HOLD はその回を止める。ほかは記録だけ",
         "記録はすべて run_kind: mock"
       ],
       "required_tests": [

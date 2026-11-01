@@ -57,13 +57,11 @@ describe("the three-method study's shared inputs", () => {
     expect(doc).toContain("`LIVE_LIMITS` (最初の呼び出し4回・やり直し2回)");
     expect(doc).toContain("15分で打ち切る (`LIVE_LIMITS.callTimeoutMs`)");
     expect(doc).toContain("1つの計画は2時間まで (`planBudgetMs`)");
-    // report-only findings never become a repair trigger in the study (DEV-140, Issue #177 condition 4)
-    // the repair triggers: overflow only; identity stops for the owner; the rest is recorded (Issue #177 condition 4)
+    // the repair trigger row, pinned whole (Issue #177 condition 4; runLoop's stops): only the overflow of Claude's own
+    // implementation is repaired; Codex's overflowing design and identity REJECT / HOLD stop for the owner; the rest is recorded
     const trig = doc.split("\n").filter((l) => l.startsWith("| 修正のきっかけ |"));
-    expect(trig).toHaveLength(1);
-    expect(trig[0]).toContain("**修正のきっかけは、横はみ出し (`PROTOTYPE_HORIZONTAL_OVERFLOW`、既存の描画の停止) だけ**");
-    expect(trig[0]).toContain("**店の取り違え (Identity Lock の REJECT / HOLD) は、修正せず、その回をオーナーへ止める**");
-    expect(trig[0]).toContain("**SP の所見 (`measureMobileQuality`)・事実に無い文・VISUAL_FIRST の比較の差は、記録するだけで、修正のきっかけにしない**");
+    expect(trig).toEqual([readFileSync(resolve(__dirname, "three-methods.trigger-row.txt"), "utf8").trimEnd()]);
+    expect(doc).toContain("6. **Claude の実装の横はみ出しのほかに、修正のきっかけを足すか。** 既定案は、足さない");
   });
 
   it("records runs in one shape, and the design keeps mock and live apart and names the three methods", () => {
