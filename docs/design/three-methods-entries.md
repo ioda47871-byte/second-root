@@ -86,14 +86,17 @@ Claude は、ページの HTML に素材の印を書く。
 `buildPageAssetRequests` が、印から要求を作る。
 
 - 画像の prompt は、既存の Route C の素材の prompt (`buildAssetPrompt`) と**バイト単位で同じ文**にした (テストで比べる)。どの方式でも、画像ツールが受け取る要求は同じ種類になる。
-- **この印の読み取りは、安全の検査ではない。** ブラウザではなく、引用符をたどる小さな文字の読み取りである。知っている逃げ道は断るが、ブラウザが何を読み込むかを証明はしない。将来の入口は、Claude のページを、まず既存の DOM で検める試作の安全検査 (`checkPrototype`、ネットワークを閉じ、JavaScript を切る) に通す。印と alt は、runner と同じく、その DOM の結果から取るのが望ましい。
-- 印がはっきりしないときは、推測せず断る。
-  - `assets/` 以外の画像 (`ASSET_SRC_INVALID`)・説明の無い絵 (`ASSET_DESCRIPTION_MISSING`)・同じ絵に違う説明 (`ASSET_DESCRIPTION_CONFLICT`)・上限 (1枚) を越える数 (`RUN_LIMIT_ASSET_CALLS`)。
-  - 同じ属性の重複・閉じていないコメントや引用符や要素・属性の値の中の印 (`ASSET_MARKER_AMBIGUOUS`)。
-  - 属性の値の中の `<!--`・`<style`・`<script` (`PAGE_MARKUP_AMBIGUOUS`)。
-  - `srcset`・`poster` などの属性、`<source>`・`<image>`・`<video>` などの要素、`image-set()`・`@import` (`ASSET_SOURCE_UNSUPPORTED`)。
-  - CSS の `url()` は、印のある `assets/<id>.png` だけ (`ASSET_SRC_INVALID` / `ASSET_URL_UNMARKED`)。
-  - `/` は、HTML と同じく属性の区切りとして読む (`<div/data-asset="A1" …>` を見落とさない)。
+- **この印の読み取りは、安全の検査ではない。** ブラウザではなく、小さな文字の読み取りである。ブラウザが何を読み込むかを証明はしない。将来の入口は、Claude のページ (と style.css) を、まず既存の DOM で検める試作の安全検査 (`checkPrototype`、ネットワークを閉じ、JavaScript を切る) に通す。印と alt は、runner と同じく、その DOM の結果から取るのが望ましい。
+- 読み取りは**許可の一覧 (allowlist)** で、分からないものはすべて断る。害の無いページを断ることもある (精度より、断る側に倒した)。
+  - コメント・CDATA・`<?`・文の中の裸の `<` は断る。`<!doctype html>` だけ許す。
+  - タグは次だけ: html head body title link meta main header footer nav section article aside div p h1〜h6 span strong em small br ul ol li dl dt dd a img figure figcaption address time blockquote。svg・math・noscript・template・base・frame・iframe・object・embed・source・picture・video・audio・input・form・script・style などは、生の文字のどこにあっても断る。`<title>` の中は文字だけ。
+  - `<link>` は `rel="stylesheet" href="style.css"` ちょうどだけ。`<meta>` は `charset="utf-8"` だけ。
+  - 属性も許可の一覧だけ (class・id・lang・data-asset・data-asset-alt・data-section・aria-*・role・title・dir・style と、a の href、link の rel/href、img の src/alt/width/height/loading/decoding、meta の charset、time の datetime)。
+  - a の href は `#…` か、`:`・`//`・`&`・`\` の無い相対パスだけ (`PAGE_LINK_UNSUPPORTED`)。img の src は `assets/<id>.png` ちょうど (文字参照も断る、`ASSET_SRC_INVALID`)。
+  - style 属性は、`\`・`&`・`url(`・`@import`・`image-set`・`expression`・`/*` を含めば断る (`PAGE_STYLE_UNSUPPORTED`)。**CSS の `url()` は、ページのどこでも断る。** CSS は style.css に置き、この読み取りは style.css を読まない (DOM の検査の仕事である)。CSS で置く絵の印 (`data-asset`) は読むが、その絵が style.css のどこで使われるかは検めない。
+  - 最後の受け止め: 生の文字の**全体**で `<img`・`data-asset=`・`<image`・`url(`・`<link`・`<meta` を数え、読み取った数と違えば断る (`ASSET_MARKER_AMBIGUOUS`)。
+  - そのほか: `assets/` 以外の画像・説明の無い絵 (`ASSET_DESCRIPTION_MISSING`)・同じ絵に違う説明 (`ASSET_DESCRIPTION_CONFLICT`)・上限 (1枚) を越える数 (`RUN_LIMIT_ASSET_CALLS`)・同じ属性の重複や閉じていない引用符。
+  - 引用符はたどる (値の中の `>` でタグが切れない)。`/` は、HTML と同じく属性の区切りとして読む。
 - 絵の位置は、呼び出し側が測って渡す (runner と同じく、仮の画像で描いて測る)。**測っていない絵は、すべて `essential` (失敗したらオーナーへ止める) とする。** 測った位置は runner の `AssetRequest` と同じ形で、`toAssetRequestShape` はその型に代入できる (テストで型を検める)。測った絵がどちらの幅でも見えなければ断る (`ASSET_NOT_SHOWN`)。位置を渡すときは、ページの hero の区画も渡す (無ければ `HERO_SECTIONS_REQUIRED`)。
 
 ### 既存の `image-call.ts` の `ImageRequest` との違い
@@ -268,7 +271,7 @@ V-B の結果を「Codex の画像ツールで作った完成デザイン」と�
 ## 13. 限界
 
 - ブリーフの「見た目の方向が無い」検査は語の検査で、すべての言い換えは捕まえない。
-- 素材の印の読み取りは、ブラウザではなく単純な読み取りで、**安全の検査ではない**。知っている逃げ道は断る側に倒したが、すべての逃げ道を捕まえる保証は無い。絵の位置は読まない (呼び出し側が描いて測る)。
+- 素材の印の読み取りは、ブラウザではなく許可の一覧による単純な読み取りで、**安全の検査ではない**。分からないものは断る側に倒したが、ブラウザと同じに読む保証は無い。style.css は読まない。絵の位置は読まない (呼び出し側が描いて測る)。
 - alt の文字の解き方は、6つの文字参照 (`&amp;`・`&lt;`・`&gt;`・`&quot;`・`&apos;`・`&#39;`) と数値の参照だけで、空白は1つにまとめる。そのため、DOM の alt と違うことがある。素材の prompt は、この alt から作る。将来の入口は、DOM の alt から作り直して比べる (§8)。
 - Claude が書いたページと絵の packaging は、範囲の外である (§6)。
 - pin は prompt の文字列のハッシュである。Codex が何を返すか、画像が作れるか、デザインが良いかは、何も示さない。

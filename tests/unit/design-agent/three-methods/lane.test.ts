@@ -177,11 +177,12 @@ describe("asset requests from a page Claude wrote (LAYOUT_FIRST / DIRECTION_FIRS
     expect(inHero.ok && inHero.requests[0]!.essential).toBe(true);
   });
 
-  it("markers: refused when unclear, never guessed", () => {
+  it("markers: read from the allowlisted page; refused when unclear, never guessed", () => {
     const m = (html: string, max?: number) => extractAssetMarkers(html, max);
     expect(m(`<div data-asset="A1" data-asset-alt="  絵の  説明 "></div>`)).toEqual({ ok: true, markers: [{ asset_id: "A1", alt: "絵の 説明" }] });
     expect(m(`<img src="assets/A1.png" alt="パン &amp; 窯">`)).toEqual({ ok: true, markers: [{ asset_id: "A1", alt: "パン & 窯" }] });
     expect(m(`<p>no picture</p>`)).toEqual({ ok: true, markers: [] });
+    expect(m(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>t</title><link rel="stylesheet" href="style.css"></head><body><nav><a href="#info">i</a><a href="menu.html">m</a></nav><p style="color: #333; margin: 0">x</p><time datetime="2026-11-01">d</time></body></html>`)).toEqual({ ok: true, markers: [] });
     // the same picture twice with one description is one request
     expect(m(`<img src="assets/A1.png" alt="a"><img src='assets/A1.png' alt='a'>`)).toEqual({ ok: true, markers: [{ asset_id: "A1", alt: "a" }] });
     expect(m(`<img src="assets/A1.png" alt="a"><img src="assets/A1.png" alt="b">`)).toEqual({ ok: false, code: "ASSET_DESCRIPTION_CONFLICT" });
@@ -190,46 +191,89 @@ describe("asset requests from a page Claude wrote (LAYOUT_FIRST / DIRECTION_FIRS
     expect(m(`<img src="assets/A1.png" alt="a" data-asset="A2">`)).toEqual({ ok: false, code: "ASSET_MARKER_MISMATCH" });
     expect(m(`<img src="https://example.invalid/x.png" alt="a">`)).toEqual({ ok: false, code: "ASSET_SRC_INVALID" });
     expect(m(`<img src="assets/../x.png" alt="a">`)).toEqual({ ok: false, code: "ASSET_SRC_INVALID" });
+    expect(m(`<img src="assets/A&#49;.png" alt="a">`)).toEqual({ ok: false, code: "ASSET_SRC_INVALID" });
     expect(m(`<img src="assets/A1.png">`)).toEqual({ ok: false, code: "ASSET_DESCRIPTION_MISSING" });
     expect(m(`<img src="assets/A1.png" alt="   ">`)).toEqual({ ok: false, code: "ASSET_DESCRIPTION_MISSING" });
     expect(m(`<div data-asset="hero"></div>`)).toEqual({ ok: false, code: "ASSET_ID_INVALID" });
     expect(m(`<img src="assets/A1.png" alt="a" alt="b">`)).toEqual({ ok: false, code: "ASSET_MARKER_AMBIGUOUS" });
-    // a `>` inside a quoted value: the reader follows quotes, so the marker after it is read (never skipped)
-    expect(m(`<div title="a>b" data-asset="A1" data-asset-alt="x"></div>`)).toEqual({ ok: true, markers: [{ asset_id: "A1", alt: "x" }] });
     expect(m(`<img src="assets/A1.png" alt="${"あ".repeat(401)}">`)).toEqual({ ok: false, code: "ASSET_DESCRIPTION_TOO_LONG" });
-    // comments and the contents of style / script are not read as markers
-    expect(m(`<!-- <img src="x.png"> --><p>ok</p>`)).toEqual({ ok: true, markers: [] });
-    expect(m(`<style>.a{background:url(assets/A1.png)} /* <img src=x> */</style><div class="a" data-asset="A1" data-asset-alt="絵"></div>`)).toEqual({ ok: true, markers: [{ asset_id: "A1", alt: "絵" }] });
-    // a `>` inside a quoted value no longer cuts the tag (the reader follows quotes)
+    // quotes are followed: a `>` inside a value does not cut the tag
+    expect(m(`<div title="a>b" data-asset="A1" data-asset-alt="x"></div>`)).toEqual({ ok: true, markers: [{ asset_id: "A1", alt: "x" }] });
     expect(m(`<img title="a>b" src="assets/A1.png" alt="x">`)).toEqual({ ok: true, markers: [{ asset_id: "A1", alt: "x" }] });
-  });
-
-  it("Fresh Review M3 probes: evasions of the reader are refused (it is still not a safety check)", () => {
-    const m = (html: string) => extractAssetMarkers(html);
-    // a comment or style / script opener inside an attribute value
-    expect(m(`<p title="<!--"></p><img src="https://evil.example/x.png" alt="x"><p title="-->">`)).toEqual({ ok: false, code: "PAGE_MARKUP_AMBIGUOUS" });
-    expect(m(`<p title="<style>"></p><img src="https://evil.example/x.png" alt="x"><p title="</style>">`)).toEqual({ ok: false, code: "PAGE_MARKUP_AMBIGUOUS" });
-    expect(m(`<p title='<script'></p>`)).toEqual({ ok: false, code: "PAGE_MARKUP_AMBIGUOUS" });
-    // sources the markers do not show
-    expect(m(`<img src="assets/A1.png" srcset="https://evil.example/x.png 2x" alt="x">`)).toEqual({ ok: false, code: "ASSET_SOURCE_UNSUPPORTED" });
-    expect(m(`<picture><source srcset="https://evil.example/x.png"><img src="assets/A1.png" alt="x"></picture>`)).toEqual({ ok: false, code: "ASSET_SOURCE_UNSUPPORTED" });
-    expect(m(`<svg><image href="https://evil.example/x.png"/></svg>`)).toEqual({ ok: false, code: "ASSET_SOURCE_UNSUPPORTED" });
-    expect(m(`<video poster="https://evil.example/x.png"></video>`)).toEqual({ ok: false, code: "ASSET_SOURCE_UNSUPPORTED" });
-    // CSS url(): only a marked asset
-    expect(m(`<div style="background:url(https://evil.example/x.png)"></div>`)).toEqual({ ok: false, code: "ASSET_SRC_INVALID" });
-    expect(m(`<style>.a{background:url('assets/A1.png')}</style><p>no marker</p>`)).toEqual({ ok: false, code: "ASSET_URL_UNMARKED" });
-    expect(m(`<style>.a{background:image-set("x.png" 1x)}</style>`)).toEqual({ ok: false, code: "ASSET_SOURCE_UNSUPPORTED" });
-    expect(m(`<style>@import "x.css";</style>`)).toEqual({ ok: false, code: "ASSET_SOURCE_UNSUPPORTED" });
     // `/` separates attributes as in HTML: the marker is read, not missed
     expect(m(`<div/data-asset="A1"/data-asset-alt="絵"></div>`)).toEqual({ ok: true, markers: [{ asset_id: "A1", alt: "絵" }] });
     expect(m(`<img/src="https://evil.example/x.png"/alt="x">`)).toEqual({ ok: false, code: "ASSET_SRC_INVALID" });
-    // left open: never read past
-    expect(m(`<!-- <img src="x.png">`)).toEqual({ ok: false, code: "ASSET_MARKER_AMBIGUOUS" });
-    expect(m(`<img src="assets/A1.png alt="x">`).ok).toBe(false);
-    expect(m(`<img src="assets/A1.png" alt="x>`)).toEqual({ ok: false, code: "ASSET_MARKER_AMBIGUOUS" });
-    expect(m(`<style>.a{}`)).toEqual({ ok: false, code: "ASSET_MARKER_AMBIGUOUS" });
-    // a marker inside a value is not a marker: refused
-    expect(m(`<p title=" data-asset=A1"></p>`)).toEqual({ ok: false, code: "ASSET_MARKER_AMBIGUOUS" });
+  });
+
+  const evil = `<img src="https://evil.example/x.png" alt="x">`;
+
+  it.each([
+    // round 1 (M3): comment / style / script openers in values, srcset, <source>, <svg><image>, CSS url(), unclosed things
+    [`<p title="<!--"></p>${evil}<p title="-->">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<p title="<style>"></p>${evil}<p title="</style>">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<p title='<script'></p>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<img src="assets/A1.png" srcset="https://evil.example/x.png 2x" alt="x">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<picture><source srcset="https://evil.example/x.png"><img src="assets/A1.png" alt="x"></picture>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<svg><image href="https://evil.example/x.png"/></svg>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<video poster="https://evil.example/x.png"></video>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<div style="background:url(https://evil.example/x.png)"></div>`, "PAGE_STYLE_UNSUPPORTED"],
+    [`<style>.a{background:url('assets/A1.png')}</style><p>no marker</p>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<style>.a{background:image-set("x.png" 1x)}</style>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<style>@import "x.css";</style>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<!-- <img src="x.png">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<!-- <img src="x.png"> --><p>ok</p>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<img src="assets/A1.png" alt="x>`, "ASSET_MARKER_AMBIGUOUS"],
+    [`<p title=" data-asset=A1"></p>`, "ASSET_MARKER_AMBIGUOUS"],
+    [`<p title="<img src=x>"></p>`, "ASSET_MARKER_AMBIGUOUS"],
+    // round 2 (M-A): comment ends a tag reader gets wrong, noscript (rendered with JS off), svg / math contexts
+    [`<!-->${evil}`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<!--->${evil}`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<!-- a --!>${evil}`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<noscript>${evil}</noscript>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<svg><title>${evil}</title></svg>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<math><style>${evil}</style></math>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<svg><textarea>${evil}</textarea></svg>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<title><img src="https://evil.example/x.png" alt="x"></title>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<![CDATA[${evil}]]>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<?xml x?>${evil}`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<p>1 < 2</p>`, "PAGE_MARKUP_UNSUPPORTED"],
+    // round 2 (M-B): CSS escapes, entities in style, <base>
+    [`<div style="background:u\\72l(https://evil.example/x.png)"></div>`, "PAGE_STYLE_UNSUPPORTED"],
+    [`<div style="background:\\75rl(https://evil.example/x.png)"></div>`, "PAGE_STYLE_UNSUPPORTED"],
+    [`<div style="@\\69mport 'x.css'"></div>`, "PAGE_STYLE_UNSUPPORTED"],
+    [`<div style="background:\\69mage-set('x.png' 1x)"></div>`, "PAGE_STYLE_UNSUPPORTED"],
+    [`<div style="background:u&#114;l(https://evil.example/x.png)"></div>`, "PAGE_STYLE_UNSUPPORTED"],
+    [`<div style="background:url&#40;https://evil.example/x.png)"></div>`, "PAGE_STYLE_UNSUPPORTED"],
+    [`<div style="width:expression(1)"></div>`, "PAGE_STYLE_UNSUPPORTED"],
+    [`<div style="color:red/* x */"></div>`, "PAGE_STYLE_UNSUPPORTED"],
+    [`<base href="https://evil.example/"><img src="assets/A1.png" alt="x">`, "PAGE_MARKUP_UNSUPPORTED"],
+    // round 2 (L-1): link / meta / frames / feImage
+    [`<link rel="stylesheet" href="https://evil.example/x.css">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<link rel="preload" href="https://evil.example/x.png">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<link rel="icon" href="https://evil.example/x.png">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<link rel="stylesheet" href="style.css" media="x">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<meta http-equiv="refresh" content="0;url=https://evil.example/">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<frameset><frame src="https://evil.example/"></frameset>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<svg><filter><feImage href="https://evil.example/x.png"/></filter></svg>`, "PAGE_MARKUP_UNSUPPORTED"],
+    // the allowlist: unknown tags, attributes and links
+    [`<canvas></canvas>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<div onclick="x"></div>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<div background="https://evil.example/x.png"></div>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<p href="#x"></p>`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<a href="https://evil.example/">x</a>`, "PAGE_LINK_UNSUPPORTED"],
+    [`<a href="//evil.example/">x</a>`, "PAGE_LINK_UNSUPPORTED"],
+    [`<a href="tel:0520000418">x</a>`, "PAGE_LINK_UNSUPPORTED"],
+    [`<a href="java&#115;cript:x">x</a>`, "PAGE_LINK_UNSUPPORTED"],
+    [`<img src="assets/A1.png" alt="x" width="100%">`, "PAGE_MARKUP_UNSUPPORTED"],
+    [`<p>x</canvas>`, "PAGE_MARKUP_UNSUPPORTED"],
+    // backstop over the whole raw text
+    [`<p>see url(x)</p>`, "ASSET_MARKER_AMBIGUOUS"],
+  ])("refuses %s", (html, code) => {
+    expect(extractAssetMarkers(html)).toEqual({ ok: false, code });
+  });
+
+  it("the MOCK fixture page passes the allowlist", () => {
+    expect(extractAssetMarkers(page)).toEqual({ ok: true, markers: [{ asset_id: "A1", alt: "石窯の口から取り出したばかりの田舎パンが、木の板に三つ並ぶ様子を描いた絵。" }] });
   });
 });
 
