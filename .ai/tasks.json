@@ -6825,7 +6825,7 @@
     {
       "id": "DEV-150",
       "title": "3方式の最初のパイロットの最小の配線 (承認 A、Issue #180)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-141",
@@ -6924,7 +6924,61 @@
         "ページを研究のディレクトリに入れる PR のマージ (D)",
         "範囲の拡大・安全の境界の変更"
       ],
-      "note": "オーナーの承認 A で、配線の設計・実装・オフラインのテスト・独立レビューの修正・PR の作成まで。マージは未承認。実 Codex・画像生成・WSL・jail・worker は一度も呼んでいない。計画と違うところは pilot-plan §12.2 (phase2f-image の --facts、handoff.test.ts の例外、auditIdentity の取り込みなど)。生成した絵の Identity は、文字の無い絵ではふつう HOLD になる点をオーナーへ (§12.3 の 4)。 承認 A′ (2026-11-01): 絵の検査を asset-image-audit に分け (auditIdentity の取り込みを取り消し)、三方式の入口に CLI の版の事前の検査を足した (pilot-plan §12.4)。route C (C1-c) は、設計の実行の call.json の prompt_version が tm0 のときだけ必須 (GENERATION_PIN_REQUIRED)。design step は prompt_version を記録する。"
+      "note": "オーナーの承認 A で、配線の設計・実装・オフラインのテスト・独立レビューの修正・PR の作成まで。マージは未承認。実 Codex・画像生成・WSL・jail・worker は一度も呼んでいない。計画と違うところは pilot-plan §12.2 (phase2f-image の --facts、handoff.test.ts の例外、auditIdentity の取り込みなど)。生成した絵の Identity は、文字の無い絵ではふつう HOLD になる点をオーナーへ (§12.3 の 4)。 承認 A′ (2026-11-01): 絵の検査を asset-image-audit に分け (auditIdentity の取り込みを取り消し)、三方式の入口に CLI の版の事前の検査を足した (pilot-plan §12.4)。route C (C1-c) は、設計の実行の call.json の prompt_version が tm0 のときだけ必須 (GENERATION_PIN_REQUIRED)。design step は prompt_version を記録する。 → #190 でマージ (91cf3a3)。実行の環境と手順 (承認 B) は DEV-151。",
+      "merged": "#190 → 91cf3a3 (squash, 2026-11-01、オーナーの承認)"
+    },
+    {
+      "id": "DEV-151",
+      "title": "3方式のパイロットの実行の環境と手順 (承認 B、Issue #180)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-141",
+        "DEV-142",
+        "DEV-143",
+        "DEV-145",
+        "DEV-147",
+        "DEV-149",
+        "DEV-150"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-151-pilot-ops-b",
+      "purpose": "配線 (DEV-150、#190) のマージのあと、計画 (docs/design/three-methods-pilot-plan.md §10 の B) の実行の環境と手順を、オーナーが承認してそのまま実行できる形に書く: 役割、事前準備 (resource preflight・worker と timer と画像の PoC と jail の Claude の停止・run.lock・commit の pin・CLI の版・サインイン・出力の根・台帳)、承認の単位ごとの手順、受け渡し、画像の目視の検査、盲検、停止と復旧。文書だけ。3方式の実画面を安全に最後まで比べられる状態へ届くこと。",
+      "acceptance_criteria": [
+        "docs/design/three-methods-pilot-ops-b.md に §1〜§10 (目的と範囲、役割、事前準備、実行の手順、受け渡し、目視の検査、盲検、停止と復旧、承認の単位、記録が無いことと決めてほしいこと) を書く",
+        "コマンドはリポジトリの文書とコードにあるものだけを使い、無いものは「手順書に無い」か「案」と書く。出典のパスを書く",
+        "sr-designgen で走る手順はすべてオーナーが走らせ、Claude は名指しした写しだけを受け取り、answer.json・quarantine/・台帳の中身を開かない (計画 §2.1・§3.0)",
+        "B の承認で行えることと行えないこと (実の呼び出し C1/C2/R と D のマージは別の承認) を分けて書き、呼び出し1回ずつの承認の型を書く",
+        "lib・scripts・tests のランタイムのコードを変えない。WSL・jail・worker・Codex・画像・ネットワーク・有料 API を使わない"
+      ],
+      "required_tests": [
+        "tests/unit/ai-tasks.test.ts",
+        "git diff --check",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/design/three-methods-pilot-ops-b.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-151.md"
+      ],
+      "forbidden_scope": [
+        "実 WSL・jail・sr-designgen・worker・timer・bridge の操作",
+        "実 Codex・画像生成・有料 API・ネットワークを使う実行",
+        "既存のランタイムの変更 (lib/・scripts/・app/・components/・tests/)",
+        "LIVE_LIMITS・pin・承認の流れ・台帳・検査の変更",
+        ".wslconfig・jail・passt・Production/Staging/DB の変更",
+        ".github/workflows/**・package.json の依存"
+      ],
+      "human_approval_triggers": [
+        "実行の環境と手順 (承認 B。この文書の §9.1)",
+        "各実の呼び出し (C1-a・C1-b・C1-c・C2-a・C2-b) と各やり直し (R)",
+        "ページを研究のディレクトリに入れる PR のマージ (D)",
+        "worker・cycle の timer・jail の Claude の停止と再開 (B に含めて承認する)",
+        "範囲の拡大・安全の境界の変更"
+      ],
+      "note": "文書だけ。WSL・jail・worker・Codex・画像には触れていない。リポジトリに手順が無かったもの (phase2f の CLI を sr-designgen で起動する形、run.lock、CLI の版の読み方、Claude からの戻す向きの受け渡しなど) は「案」と書き、§10 に並べた。"
     }
   ]
 }
