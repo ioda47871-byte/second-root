@@ -6,7 +6,7 @@ import { intakeArtifact } from "@/lib/design-agent/artifact/intake";
 import { DNA_PARTS, FactsPack } from "@/lib/design-agent/artifact/schema";
 import { auditPageText, type IdentityStatus } from "@/lib/design-agent/identity/identity-lock";
 import { compareImplementation, type ImplCompareReport } from "@/lib/design-agent/impl-lane/impl-compare";
-import { prepareImplementationLane, LaneStop } from "@/lib/design-agent/impl-lane/handoff";
+import { prepareImplementationLane } from "@/lib/design-agent/impl-lane/handoff";
 import { LIMITS } from "@/lib/design-agent/loop/controller";
 import { DesignBrief } from "@/lib/design-agent/phase2f/prompt";
 import { checkPrototype } from "@/lib/design-agent/phase2f/prototype-safety";
@@ -267,12 +267,14 @@ describe("MOCK end-to-end run of the three methods (pipeline verification only, 
         { ...write(`${slug}-sp390.png`, c.rendered.mobile_390.png), what: "sp_390_png" },
       ];
       const obs = (s: StructureObservation, k: "desktop_1440" | "mobile_390") => s.viewports?.[k];
+      // the SP checks really ran (a missing measurement is never read as "no findings")
+      expect(c.rendered.mobile_390.mobileQuality).toBeDefined();
       const record = {
         schema: "three_method_run_v0",
         method: m,
         run_kind: "mock",
         run_label: `komugi-${slug}-mock-1`,
-        shop: { shop_id: pack.shop_id, facts_pack_sha256: sha256(readFileSync(factsPath)), identity_lock_sha256: sha256(readRepo(`${STUDY}/identity-lock.json`)), brief_sha256: sha256(readRepo(`${MOCK}/runner-brief.json`)) },
+        shop: { shop_id: pack.shop_id, facts_pack_sha256: sha256(readFileSync(factsPath)), identity_lock_sha256: sha256(readRepo(`${STUDY}/identity-lock.json`)), brief_sha256: m === "VISUAL_FIRST" ? sha256(readRepo(`${MOCK}/runner-brief.json`)) : null, ...(m === "VISUAL_FIRST" ? { brief_note: "MOCK: the runner brief (with MOCK DNA) only VISUAL_FIRST used" } : { brief_note: "no shared DNA-free brief was used yet (DEV-143); MOCK" }) },
         codex_calls: run!.codexCalls,
         asset_requests: run!.assetRequests,
         images: { generated: 0, used: 0, mock_assets: run!.mockAssets },
@@ -295,7 +297,7 @@ describe("MOCK end-to-end run of the three methods (pipeline verification only, 
           impl_compare: run!.compare
             ? { report: "<mock-out>/visual-first/impl-compare.json", status: run!.compare.status, differences: run!.compare.differences }
             : { report: null, status: "not_applicable", differences: [], reason: "no design original at the page's width for this method (§3, §5)" },
-          mobile_quality: { findings: c.rendered.mobile_390.mobileQuality?.findings ?? null, counts: c.rendered.mobile_390.mobileQuality?.counts ?? null },
+          mobile_quality: { findings: c.rendered.mobile_390.mobileQuality!.findings, counts: c.rendered.mobile_390.mobileQuality?.counts ?? null },
           structure_observation: {
             report: null,
             status: c.structure.status,
@@ -380,6 +382,6 @@ describe("MOCK: the repair-trigger rule of §4 (what repairs, what stops for the
     const r = await runPrototypeRoute({ route: "B_html_prototype", browser, facts: { path: factsPath, pack }, shop: { shop_id: pack.shop_id, display_name: shopName }, brief, artifactId: "DA-20261101-mockov", outDir: packageDir, designPort });
     expect(r.status === "done" && r.record.verification_state).toBe("incomplete");
     expect(r.status === "done" && r.log.stops.map((s) => s.code)).toContain("PROTOTYPE_HORIZONTAL_OVERFLOW");
-    await expect(prepareImplementationLane({ packageDir, factsPath, laneDir: join(out.dir, "stops", "codex-overflow-lane") })).rejects.toThrow(LaneStop);
+    await expect(prepareImplementationLane({ packageDir, factsPath, laneDir: join(out.dir, "stops", "codex-overflow-lane") })).rejects.toMatchObject({ code: "LANE_NOT_ALLOWED", detail: "incomplete" });
   }, 120_000);
 });

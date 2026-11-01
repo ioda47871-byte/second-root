@@ -250,4 +250,6 @@ Claude は、prompt と pin の準備・報告・実行のあとの検査と記�
 | Codex の呼び出し (すべて `mock`) | design 1 | asset 1 | direction 1・asset 1 |
 
 - 構造の観察の「不採用例との近さ」は参考だけで、順位付けに使わない (§5)。impl-compare の差は、模擬の実装と模擬の試作の差であり、Claude の実装の忠実度を示さない。
-- 模擬で分かった、実行の前に要ること (どれも DEV-143 の範囲): runner の v1 prompt は DNA のあるブリーフを必須とする (模擬は `mock/runner-brief.json` で通した)。方向の呼び出しと、Claude が書いた素材の要求を受け付ける画像の入口は無い (記録では prompt の SHA を `null` にした)。intake は `approval_id` などの生成の事実を要るので、偽の port は形だけの値 (`mock-not-an-approval-dev142`) を返した。研究の記録の `approval_id` は `null` のまま。
+- 模擬で分かった、実行の前に要ること (どれも DEV-143 の範囲): runner の v1 prompt は DNA のあるブリーフを必須とする (模擬は `mock/runner-brief.json` で通した)。方向の呼び出しと、Claude が書いた素材の要求を受け付ける画像の入口は無い (記録では prompt の SHA を `null` にした)。intake は `approval_id` などの生成の事実を要るので、偽の port は形だけの値 (`mock-not-an-approval-dev142`) を返した。研究の記録の `approval_id` は `null` のまま。 生成された package の artifact.json は、intake の形のため `source_kind: "codex_generated"`・`status: "succeeded"` と書かれる。模擬であることを示すのは、その中の MOCK の値 (版・モデル・approval_id・run_id) だけである。
+- この模擬は、§10 の既定案 (V-B・文章の方向・各1回・途中確認なし・修正のきっかけを足さない) を仮に使っている。どれもオーナーの決定待ちである。**V-B (HTML 試作の描画) と、Codex の画像ツールの完成デザイン (V-A) は、同じ実験条件ではない。** V-B の忠実度の数値は V-A には当てはまらない。
+- 記録の `brief_sha256` は、VISUAL_FIRST だけが模擬のブリーフ (MOCK の DNA つき) の値を持つ。ほかの2方式は、DNA の無い共通ブリーフがまだ無い (DEV-143) ので `null` にした。

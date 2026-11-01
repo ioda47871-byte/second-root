@@ -57,7 +57,8 @@ export function mockPng(w: number, h: number, rgb: readonly [number, number, num
 /**
  * The generation facts the fake design port reports, so the runner's intake can derive its state. The values only
  * have the format intake checks; none is an approval, a real commit or a real model (intake never treats them as
- * approval either). The run record keeps approval_id null for the same reason.
+ * approval either). The run record keeps approval_id null for the same reason. The package's artifact.json still reads
+ * source_kind "codex_generated" and status "succeeded" (the shape intake requires); only these MOCK values mark it.
  */
 export const MOCK_GENERATION = {
   status: "succeeded" as const,
