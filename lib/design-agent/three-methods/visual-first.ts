@@ -1,6 +1,8 @@
 /**
- * DEV-143 (EXPERIMENTAL, opt-in, not wired): the VISUAL_FIRST design prompt (V-B: Codex's HTML prototype, rendered
- * at PC 1440 / SP 390, is the design original) built from the common brief WITHOUT DNA.
+ * DEV-143 (EXPERIMENTAL, opt-in): the VISUAL_FIRST design prompt (V-B: Codex's HTML prototype, rendered
+ * at PC 1440 / SP 390, is the design original) built from the common brief WITHOUT DNA. DEV-150 wired it into the
+ * existing design prompt as `--prompt-version tm0` (the Phase 2f prompt module imports this builder; the text is
+ * never copied there).
  *
  * The existing design prompt cannot carry this brief: its v1 / v1.1 take a brief whose 8 DNA parts are required, and
  * its v2 takes a pre-written open direction (concept, hero mode, page flow, success-case notes) plus a reference
@@ -9,7 +11,14 @@
  * deliverables and hard limits word for word (the lane's tests compare them line by line with the existing builder);
  * only the art-direction block differs: the brief, and a sentence that leaves the whole Design DNA to Codex.
  *
- * Pure: builds text. Never calls Codex; nothing outside this lane's offline pin CLI and its tests imports it.
+ * DEV-150 (owner's provisional pilot decision 1, Issue #180): on route C the asset rule line differs from the existing
+ * prompt too. The existing line allows "up to N" pictures, so an answer with none was possible, and the existing
+ * runner stops such a route C answer (CODEX_NO_ASSET_ON_ROUTE_C) after the design call was used. This lane's route C
+ * line asks for exactly one generated picture, A1, and keeps the rest of the line's meaning (the alt describes the
+ * picture, asset_refs, the essential rule). The pin changed with it: the old route C pin (b3d51744…, 4398 chars) is
+ * retired and must never be approved again. Route B is unchanged.
+ *
+ * Pure: builds text. Never calls Codex. Imported by the existing design prompt (tm0), the offline pin CLI and tests.
  */
 import { built, factsJson, type BuiltPrompt, type FactsPack, type ThreeMethodBrief } from "./brief";
 
@@ -31,12 +40,17 @@ const BRIEF_RULES = [
   "- The shop is fictional; keep the description's own words that say so.",
 ] as const;
 
+/**
+ * DEV-150 (decision 1): route C asks for exactly one generated picture, A1 (the existing line says "up to N").
+ * Pinned word for word by the lane's tests against the existing line it replaces.
+ */
+export const VISUAL_FIRST_C_ASSET_RULE =
+  '- Use exactly one generated image, A1: reference it as <img src="assets/A1.png" alt="...">. A design without it cannot be used. The alt text must describe the picture to be generated in one or two sentences: it becomes the image request. List A1 in the asset_refs of the section that shows it. If the picture is in the hero section, or covers at least half of itself or half of the first screen (1440 × 900 or 390 × 844), it is treated as essential: if it cannot be generated, the run stops for the owner. Otherwise it may be replaced by a neutral placeholder if it fails, so keep the page complete without it.';
+
 export function buildVisualFirstPrompt(o: { route: DesignRoute; facts: FactsPack; brief: ThreeMethodBrief; maxAssets?: number }): BuiltPrompt {
-  const maxAssets = o.maxAssets ?? VISUAL_FIRST_MAX_ASSETS;
-  const assetRule =
-    o.route === "C_hybrid"
-      ? `- You may use up to ${maxAssets} generated image(s). Reference each as <img src="assets/A1.png" alt="..."> (A1, A2 ...). The alt text must describe the picture to be generated in one or two sentences: it becomes the image request. List each id in the asset_refs of the section that shows it. A picture in the hero section, or covering at least half of itself or half of the first screen (1440 × 900 or 390 × 844), is treated as essential: if it cannot be generated, the run stops for the owner. Any other picture may be replaced by a neutral placeholder if it fails, so keep the page complete without it.`
-      : "- Use no images at all: build the visual idea with type, colour, layout, CSS shapes and inline SVG.";
+  // route C has exactly one picture: any other limit would contradict the prompt's own rule
+  if (o.route === "C_hybrid" && (o.maxAssets ?? VISUAL_FIRST_MAX_ASSETS) !== VISUAL_FIRST_MAX_ASSETS) throw new Error("VISUAL_FIRST_MAX_ASSETS");
+  const assetRule = o.route === "C_hybrid" ? VISUAL_FIRST_C_ASSET_RULE : "- Use no images at all: build the visual idea with type, colour, layout, CSS shapes and inline SVG.";
   const prompt = [
     "You are the art director and front-end designer of a small shop's website. Design ONE original page for the shop below.",
     "",

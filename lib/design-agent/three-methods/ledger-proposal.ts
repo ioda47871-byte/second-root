@@ -1,9 +1,10 @@
 /**
  * DEV-143 (EXPERIMENTAL, opt-in): a PROPOSAL for how the live approval ledger's receipt would name the two new calls
- * of the three-method study. The ledger itself is NOT changed and nothing here writes or reads one.
+ * of the three-method study. Nothing here writes or reads a ledger. DEV-150 added these kinds, routes and pairs to the
+ * live ledger itself (which checks the pair before using an approval); the lane's tests compare the two tables.
  *
- * Today the ledger's receipt has kind design | image | concept_image and route A_image | B_html_prototype | C_hybrid.
- * The study needs:
+ * Before DEV-150 the ledger's receipt had kind design | image | concept_image and route A_image | B_html_prototype |
+ * C_hybrid. The study needs:
  *   - kind "direction", route "direction_text": DIRECTION_FIRST's call (words, no page, no image);
  *   - kind "page_image", route "claude_page": a picture asked for by a page Claude wrote (LAYOUT_FIRST and
  *     DIRECTION_FIRST), bound to that page's SHA-256 instead of a Codex design run.

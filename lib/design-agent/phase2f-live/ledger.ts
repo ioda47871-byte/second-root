@@ -1,7 +1,8 @@
 /**
  * Phase 2f-2 (DEV-116): the one-use approval ledger and the plan's limits for real Codex calls.
  *
- * Every real call (a design call now; an image call in DEV-117) needs its own approval ID from the owner.
+ * Every real call (a design call now; an image call in DEV-117; DEV-150: a direction call and a page's picture) needs
+ * its own approval ID from the owner.
  * The ledger lives outside the repository, in the worker user's state directory:
  *
  *   <state>/approvals/<approval_id>/receipt.json   reserved by an atomic mkdir: an ID is used at most once, ever
@@ -38,8 +39,25 @@ export function defaultLedgerDir(env: Record<string, string | undefined>, home: 
 
 export const APPROVAL_ID = /^[a-z0-9][a-z0-9._-]{3,95}$/;
 export const PLAN_ID = /^[a-z0-9][a-z0-9._-]{3,63}$/;
-export type CallKind = "design" | "image" | "concept_image";
-export type Route = "A_image" | "B_html_prototype" | "C_hybrid";
+/**
+ * DEV-150 (Issue #180): `direction` (DIRECTION_FIRST's words-only call) and `page_image` (a picture asked for by a
+ * page Claude wrote) join the existing kinds, each with its own route. Every other rule is unchanged.
+ */
+export type CallKind = "design" | "image" | "concept_image" | "direction" | "page_image";
+export type Route = "A_image" | "B_html_prototype" | "C_hybrid" | "direction_text" | "claude_page";
+
+/** Which route each kind may be recorded with: the existing pairs, plus one route per new kind (the same as the three-method lane's KIND_ROUTES; a test compares them). */
+export const KIND_ROUTES: Readonly<Record<CallKind, readonly Route[]>> = {
+  design: ["B_html_prototype", "C_hybrid"],
+  image: ["C_hybrid"],
+  concept_image: ["A_image"],
+  direction: ["direction_text"],
+  page_image: ["claude_page"],
+};
+/** Refuses a kind and route that do not belong together (also a value that is neither). */
+function checkKindRoute(kind: CallKind, route: Route): void {
+  if (!Object.hasOwn(KIND_ROUTES, kind) || !KIND_ROUTES[kind].includes(route)) throw new LedgerStop("KIND_ROUTE_MISMATCH");
+}
 
 export type Receipt = {
   schema: "phase2f_live_receipt_v1";
@@ -131,6 +149,7 @@ export function openLedger(stateDir: string, now: () => number = Date.now) {
      * the retry it claims to be, a free slot and the time left. Returns the call's time limit.
      */
     async precheck(o: { approvalId: string; planId: string; route: Route; kind: CallKind; retryOf: string | null }): Promise<{ timeoutMs: number }> {
+      checkKindRoute(o.kind, o.route);
       if (!APPROVAL_ID.test(o.approvalId)) throw new LedgerStop("APPROVAL_ID_INVALID");
       if (!PLAN_ID.test(o.planId)) throw new LedgerStop("PLAN_ID_INVALID");
       if (await exists(join(approvals, o.approvalId))) throw new LedgerStop("APPROVAL_ALREADY_USED");
@@ -152,6 +171,8 @@ export function openLedger(stateDir: string, now: () => number = Date.now) {
 
     /** Uses the approval (atomic mkdir; never twice), then takes a slot. A refused slot still uses the approval. */
     async reserve(r: Omit<Receipt, "schema" | "slot" | "reserved_at">): Promise<Receipt> {
+      // checked first, before anything is created: a wrong pair never uses an approval
+      checkKindRoute(r.kind, r.route);
       // every ID becomes a path segment: checked here too, not only by precheck
       if (!APPROVAL_ID.test(r.approval_id) || (r.retry_of !== null && !APPROVAL_ID.test(r.retry_of))) throw new LedgerStop("APPROVAL_ID_INVALID");
       if (!PLAN_ID.test(r.plan_id)) throw new LedgerStop("PLAN_ID_INVALID");
