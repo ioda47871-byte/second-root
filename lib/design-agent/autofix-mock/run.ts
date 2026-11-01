@@ -13,7 +13,9 @@
  *   reverted (the CSS before it is kept) and recorded. "Nothing got worse" is checked per instance, not per code: no
  *   (code, text) pair that was not there before, no rise in the text nodes with problems, and (for a cause other than
  *   the tap targets) no rise in the small tap targets. A code already on the page (a known false positive, an
- *   out-of-scope finding) therefore never hides a new instance of it. When the check's examples may be cut off (its
+ *   out-of-scope finding) therefore never hides a new instance of it, and the pairs are counted, so a text that
+ *   appears twice cannot hide a new problem on one of them. Only a true swap stays unseen: one node resolves while
+ *   another with the same text prefix breaks under the same code. When the check's examples may be cut off (its
  *   cap of 10), the instances cannot all be compared and the run stops for the owner.
  * - At most AUTOFIX_LIMITS.attempts patches tried and AUTOFIX_LIMITS.fixesPerCause per cause (the same limits as the
  *   mock run controller of DEV-129, pinned by the tests). Past either, or with no further variant, the run stops for
@@ -135,7 +137,8 @@ function read(m: unknown): Read {
   const findings = [...new Set([...codes, ...(width > SP_WIDTH ? [OVERFLOW_CODE] : [])])].sort();
   return {
     findings,
-    instances: [...new Set(instances.map((i) => `${i.code}:${i.text}`))].sort(),
+    // a multiset: the check keeps one example per (node, code), so the same text on two nodes is two entries
+    instances: instances.map((i) => `${i.code}:${i.text}`).sort(),
     counts: { text: c.text_nodes_with_problems as number, tapRec: c.tap_targets_below_recommended as number, tapMin: c.tap_targets_below_minimum as number },
     targets: list as Target[],
     png: Uint8Array.from(png),
@@ -145,7 +148,10 @@ function read(m: unknown): Read {
 /** What got worse between the two measurements, by code, by instance and by count (see the header). */
 function worse(a: Read, b: Read, cause: Cause): string[] {
   const codes = b.findings.filter((f) => !a.findings.includes(f) && causeOf(f) !== cause);
-  const instances = b.instances.filter((i) => !a.instances.includes(i));
+  // per (code, text), any rise in how many there are (a repeated text cannot hide a new one)
+  const tally = (l: readonly string[]) => l.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map<string, number>());
+  const was = tally(a.instances);
+  const instances = [...tally(b.instances)].filter(([k, n]) => n > (was.get(k) ?? 0)).map(([k]) => k);
   const counts = [
     ...(b.counts.text > a.counts.text ? ["COUNT:text_nodes_with_problems"] : []),
     ...(cause !== "TAP_TARGET" && b.counts.tapRec > a.counts.tapRec ? ["COUNT:tap_targets_below_recommended"] : []),

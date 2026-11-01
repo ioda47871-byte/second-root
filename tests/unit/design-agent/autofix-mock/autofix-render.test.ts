@@ -168,6 +168,22 @@ describe("limited autofix (mock) on rendered fictional pages", () => {
     for (const a of r.attempts.filter((x) => x.kept)) expect(a.new_findings).toEqual([]);
   }, 120_000);
 
+  it("a repeated text does not hide a newly clipped copy of it (review round 2, M1)", async () => {
+    // deco_type_not_marked already carries SP_TEXT_CLIPPED on COFFEE; a small tag repeats COFFEE in 10px type. Raising
+    // it to 12px (TEXT_TOO_SMALL v1) clips it: the pair SP_TEXT_CLIPPED:COFFEE is now there twice, so v1 is reverted.
+    const c = corpus("deco_type_not_marked");
+    const tag = '<div class="tag"><span class="s">COFFEE</span></div>';
+    const r = await run(c.body + tag, `${c.css}\n.tag{position:relative;width:200px;height:11px;overflow:hidden}.s{position:absolute;top:0;left:0;font-size:10px;line-height:1}\n`);
+    expect(r.findings_before).toContain("SP_TEXT_TOO_SMALL");
+    const small = r.attempts.filter((x) => x.cause === "TEXT_TOO_SMALL");
+    expect(small.length).toBeGreaterThan(0);
+    for (const a of small) {
+      expect(a).toMatchObject({ kept: false, reverted_because: "NEW_FINDING" });
+      expect(a.new_findings).toContain("SP_TEXT_CLIPPED:COFFEE");
+    }
+    expect(r.proposed_css).toBeNull();
+  }, 120_000);
+
   it("an identity mismatch stops the run at once: nothing rendered, nothing patched", async () => {
     const c = corpus("small_buttons");
     const html = doc(c.body);

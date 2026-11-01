@@ -279,6 +279,18 @@ describe("nothing gets worse, per instance (review round 1, H1)", () => {
     expect(r.proposed_css).toBeNull();
   });
 
+  it("a repeated text: a second instance of the same (code, text) is new (review round 2, M1)", async () => {
+    // the patched node was already bad (another code), so the count of nodes with problems stays the same
+    const r = await page(() => ({
+      instances: [
+        { code: "SP_TEXT_CLIPPED", text: "架空の飾り文字" },
+        { code: "SP_TEXT_CLIPPED", text: "架空の飾り文字" },
+      ],
+    }));
+    expect(r.attempts[0]).toMatchObject({ kept: false, reverted_because: "NEW_FINDING", new_findings: ["SP_TEXT_CLIPPED:架空の飾り文字"] });
+    expect(r.proposed_css).toBeNull();
+  });
+
   it("a rise in the text nodes with problems is a regression even with the same examples", async () => {
     const r = await page(() => ({ counts: { ...Z, text_nodes_with_problems: 2 } }));
     expect(r.attempts[0]).toMatchObject({ kept: false, reverted_because: "NEW_FINDING", new_findings: ["COUNT:text_nodes_with_problems"] });
