@@ -176,7 +176,9 @@ describe("isolation", () => {
       // DEV-141 (Issue #180): the three-method study's test checks its fictional shop's lock (a test, never lib)
       ":!tests/unit/design-agent/research/three-methods.test.ts",
       // DEV-142 (Issue #180): the study's MOCK end-to-end run audits its fixture pages with the lock (a test, never lib)
-      ":!tests/unit/design-agent/research/three-methods-mock.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/research/three-methods-mock.test.ts",
+      // DEV-147 (Issue #177 E): the MOCK integration check of Phases A–D audits each case's implementation with the study's lock (a test, never lib)
+      ":!tests/unit/design-agent/integration-check/integration-check.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
   });
 });
