@@ -136,7 +136,9 @@ async function measure(page: Page, o: { facts: readonly string[]; shopName: stri
 
     const codes = new Set<string>();
     const nodes = m.nodes.filter((n) => n.kind === "fact" || n.kind === "label");
-    const over = overprinted({ ...m, nodes });
+    // DEV-140: a clipped text's cut-off part is not painted: it is left out of the overlap (it would otherwise "overlap"
+    // the text after its box), and the clipping is what it is named for (not also covered by what its hidden part meets)
+    const over = overprinted({ ...m, nodes: nodes.map((n) => (n.clipped ? { ...n, hidden: true } : n)) });
     const flagged = nodes.filter((n) => n.overflow && !n.hidden);
     const reallyOut = flagged.length ? ((await page.evaluate(`(${OUT_OF_BOX_SCRIPT})(${JSON.stringify(flagged.map((n) => ({ owner: n.owner, chars: n.chars })))})`)) as Record<string, boolean>) : {};
     const visibleText = clean(nodes.filter((n) => !n.hidden && !n.rects.every(outside)).map((n) => n.text).join(""));
@@ -159,7 +161,7 @@ async function measure(page: Page, o: { facts: readonly string[]; shopName: stri
       const checks: [boolean, string][] = [
         [n.clipped, TEXT_CODES.clipped],
         [n.offscreen, TEXT_CODES.offscreen],
-        [n.covered, TEXT_CODES.covered],
+        [n.covered && !n.clipped, TEXT_CODES.covered],
         [n.overflow && reallyOut[String(n.owner)] === true, TEXT_CODES.overflow],
         [n.fontSize < MIN_FONT_PX, TEXT_CODES.small],
         [n.opacity < MIN_OPACITY, TEXT_CODES.faded],
