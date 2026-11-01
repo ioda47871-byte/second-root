@@ -199,7 +199,7 @@ VISUAL_FIRST の prompt を、既存の design step・pre-render・packaging (ru
   1. 要求の schema が `three_method_asset_request_v0` で、prompt の SHA-256 と文字数が要求の中の値と一致する (今の Route C と同じ)。
   2. ページのファイルが、決まった根 (`page.root`。リポジトリの中の研究のディレクトリ) の下にあり、リンクではなく、追跡されている。その中身の SHA-256 が要求の `page.html_sha256` と一致する。今の commit の検査 (HEAD = origin/develop = 承認された commit、clean) と合わせて、ページのバイト列が承認された commit のものに固定される。
   3. そのページから要求を組み直し、`asset_id`・`alt`・prompt が要求と同じである (手で書き換えた要求を通さない)。印と alt は、0. の DOM の結果から取る (このレーンの読み取りの alt は、DOM の alt と違いうる。§13)。
-  4. `placement` が測られていること (測っていない要求は essential のまま扱う。呼び出しを断るかどうかは、オーナーが決める)。
+  4. `placement` が測られていること。要求は `runnableAssetRequests` を通す。測っていない要求は断る (`ASSET_PLACEMENT_UNMEASURED`。オーナーの暫定方針、§10)。
 - 記録 (`call.json` の `request`) は、`{ page_path, page_sha256, asset_id, essential }`。
 - Route C と Route A の分岐は変えない。
 
@@ -271,7 +271,7 @@ V-B の結果を「Codex の画像ツールで作った完成デザイン」と�
 2. **つなぐこと (§8)。** prompt.ts・ledger.ts・image-call.ts・phase2f-design.ts・phase2f-image.ts と、新しい方向の入口の変更。
 3. **ブリーフの文の確認。** `brief.json` の文がオーナーの意図どおりで、見た目の方向を含まないこと。
 4. **成功例の要約を prompt に入れるか** (§4)。入れるなら、その文の承認。
-5. **VISUAL_FIRST の Route (B か C か)** (§10)。
+5. **VISUAL_FIRST の Route (B か C か)** (§10)。暫定: C 優先 (§10)。
 6. **呼び出しごとの実行の承認** (研究 §7)。approval_id・plan_id・expected prompt SHA と文字数・expected commit の組で、呼び出しごとに承認する。
 
 ## 13. 限界
