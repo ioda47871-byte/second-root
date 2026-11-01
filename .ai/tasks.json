@@ -6438,7 +6438,7 @@
     {
       "id": "DEV-141",
       "title": "3制作方式の比較研究の設計 (VISUAL_FIRST / LAYOUT_FIRST / DIRECTION_FIRST、Issue #180、#177 Phase E への追加)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-139",
@@ -6481,12 +6481,13 @@
         "VISUAL_FIRST のデザインの形 (V-B/V-A)・DIRECTION_FIRST の方向の形・回数の決定",
         "標準方式の採用"
       ],
-      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。Review: round 1 FAIL (H1・M1〜M4)、round 2 FAIL (M1: SP の所見をきっかけにしていた)、round 3 FAIL (M1: Identity を修正、M2: 事実に無い文を門と書いた)、round 4 FAIL (M1: はみ出しの修正の対象が曖昧) → それぞれ修正。 round 5 PASS (C0/H0/M0/L2、対応済み)。"
+      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。Review: round 1 FAIL (H1・M1〜M4)、round 2 FAIL (M1: SP の所見をきっかけにしていた)、round 3 FAIL (M1: Identity を修正、M2: 事実に無い文を門と書いた)、round 4 FAIL (M1: はみ出しの修正の対象が曖昧) → それぞれ修正。 round 5 PASS (C0/H0/M0/L2、対応済み)。",
+      "merged": "#181 → bc7adc6 (squash, 2026-11-01, Issue #180 の事前承認 (offline))"
     },
     {
       "id": "DEV-142",
       "title": "3制作方式の模擬の通し実行 (fixture、MOCK) — Issue #180",
-      "status": "ready",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-141"
@@ -6509,7 +6510,9 @@
         "design-library/research/three-methods/**",
         "tests/unit/design-agent/research/**",
         "docs/design/three-methods-study.md",
-        ".ai/**"
+        ".ai/**",
+        "tests/unit/design-agent/identity/identity-lock.test.ts (隔離テストの除外に、この研究の模擬のテスト1つを正確なパスで足すだけ)",
+        "tests/unit/design-agent/structure/structure.test.ts (同上)"
       ],
       "forbidden_scope": [
         "実 Codex・画像生成",
@@ -6518,7 +6521,7 @@
       "human_approval_triggers": [
         "Issue #177 の条件を満たさない場合の develop へのマージ"
       ],
-      "note": "Issue #180 の事前承認の範囲 (offline)。"
+      "note": "Issue #180 の事前承認の範囲 (offline)。3方式とも MOCK の fixture で通しで動いた (VISUAL_FIRST は実際の Phase 2f の runner → render_pair_complete → lane → impl-compare)。修正のきっかけは LAYOUT_FIRST の1回目の SP のはみ出しだけで、repair_attempts 1。Identity はすべて PASS、事実に無い文は 0。結果は docs/design/three-methods-study.md §12 (MOCK、方式の優劣の証拠にしない)。lib は変えていない。Review 待ち。"
     },
     {
       "id": "DEV-143",

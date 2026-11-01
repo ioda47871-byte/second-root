@@ -1,0 +1,42 @@
+/* MOCK: a hand-written stand-in for Claude's implementation of the VISUAL_FIRST design (DEV-142).
+   Written from the lane's PC/SP originals, separately from the prototype (different markup and layout code). */
+html,body{margin:0;padding:0}
+body{background:#1f1712;color:#f3e6d3;font-family:serif;line-height:1.7}
+*,*::before,*::after{box-sizing:border-box}
+.mock-strip{display:block;padding:6px 16px;background:#f3c96b;color:#1f1712;font:600 12px/1.4 sans-serif;letter-spacing:.1em;text-align:right}
+.top{display:flex;align-items:baseline;justify-content:space-between;padding:28px 64px;border-bottom:1px solid #5a4636}
+.top__name{font-size:22px;letter-spacing:.3em}
+.top__kind{font:14px/1 sans-serif;letter-spacing:.2em;color:#c9a27a}
+.fire{display:flex;align-items:center;min-height:720px;padding:80px 64px}
+.fire__arch{display:block;flex:0 0 520px;height:520px;margin:0 calc((50% - 520px - 24px) / 2);border-radius:260px 260px 0 0;background:radial-gradient(circle at 50% 70%,#ffcf73 0,#e2762f 28%,#7a2e12 55%,#2a1a12 72%)}
+.fire__copy{flex:1;padding-left:24px}
+.fire__title{margin:0;font-size:54px;line-height:1.3;letter-spacing:.08em;font-weight:600}
+.fire__line{margin:24px 0 0;font-size:20px;color:#f3c96b}
+.breads{padding:96px 64px;background:#f3e6d3;color:#2a1a12}
+.breads__label{margin:0 0 40px;font-size:28px;letter-spacing:.3em}
+.breads__row{display:flex;gap:24px;margin:0;padding:0;list-style:none}
+.bread{flex:1;display:flex;align-items:flex-end;aspect-ratio:3/4;padding:20px;border-radius:120px 120px 8px 8px;background:#d9b98f;font-size:18px}
+.flour{display:flex;gap:64px;padding:96px 64px;background:#2a1a12}
+.flour__key{flex:1;margin:0;font-size:30px;color:#f3c96b}
+.flour__text{flex:2;margin:0;font-size:18px;max-width:40em}
+.visit{padding:80px 64px;background:#3a2a1e;font-size:18px}
+.visit__row{display:flex;gap:32px;margin-bottom:16px}
+.visit__k{flex:0 0 160px;color:#c9a27a;font-family:sans-serif;font-size:15px}
+.end{display:block;padding:40px 64px;border-top:1px solid #5a4636;font-size:14px;color:#c9a27a}
+@media (max-width:600px){
+  .top{padding:20px}
+  .fire{flex-direction:column;align-items:flex-start;min-height:0;padding:40px 20px;gap:32px}
+  .fire__arch{flex:0 0 280px;width:280px;height:280px;margin:0 auto;border-radius:140px 140px 0 0}
+  .fire__copy{padding-left:0}
+  .fire__title{font-size:34px}
+  .fire__line{font-size:17px}
+  .breads{padding:56px 20px}
+  .breads__row{flex-wrap:wrap;gap:14px}
+  .bread{flex:0 0 calc(50% - 7px);padding:14px;font-size:16px}
+  .flour{flex-direction:column;gap:24px;padding:56px 20px}
+  .flour__key{font-size:22px}
+  .visit{padding:48px 20px}
+  .visit__row{flex-direction:column;gap:4px;margin-bottom:12px}
+  .visit__k{flex:none}
+  .end{padding:28px 20px}
+}

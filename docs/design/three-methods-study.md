@@ -220,3 +220,36 @@ Claude は、prompt と pin の準備・報告・実行のあとの検査と記�
 - 参考資料は揃えるが、Claude のスキルと Codex の prompt では渡し方が違い、完全には揃わない。
 - LAYOUT_FIRST と DIRECTION_FIRST には、デザインの原本が無い。実装の忠実度は VISUAL_FIRST でしか比べられない。
 - 検査の閾値と構造の語彙は、どれも仮のものである (Issue #159)。
+
+## 12. 模擬の通し実行の結果 (DEV-142、MOCK)
+
+**MOCK。これは手順・引き渡し・検査・記録の通しの確かめだけで、方式の優劣の証拠にしない。** Codex・画像生成・ネットワーク・有料 API は呼んでいない。Codex の出力は、手で書いた fixture (`design-library/research/three-methods/mock/`) を偽の port が返したもの。素材 A1 は、テストのコードが作った単色の PNG。3方式の fixture は同じ1人が書いたので、見た目の差も方式の差ではない。
+
+- テスト: `tests/unit/design-agent/research/three-methods-mock.test.ts` (補助は同じ場所の `three-methods-mock.ts`)。PC1440/SP390 の画像と `three_method_run_v0` の記録 (`run_kind: "mock"`、Codex の呼び出しは `outcome: "mock"`・`approval_id: null`) を一時ディレクトリに書く。残すときは空のディレクトリを `THREE_METHODS_MOCK_OUT` に渡す。
+- 通った道筋:
+  - VISUAL_FIRST (V-B): 偽の DesignPort → 実際の Phase 2f の runner (Route B) → `render_pair_complete` → `intakeArtifact` → `prepareImplementationLane` (lane は `artifact.json` と PC/SP の原本だけ。試作の HTML/CSS は入らない) → 試作と別に書いた実装 → `compareImplementation`。
+  - LAYOUT_FIRST: Claude の構図 + MOCK の素材1枚 → `renderPrototype`。1回目は SP で横にはみ出す (fixture にわざと入れた)。修正のきっかけはこれだけで、2回目 (手で書いた修正) で通った。
+  - DIRECTION_FIRST: 方向の文書 (DNA の8観点、MOCK) → Claude の構図 + MOCK の素材1枚 → `renderPrototype`。
+- 共通の検査は既存の道具だけを使った: `checkPrototype`、`renderPrototype` の `mobileQuality` (`measureMobileQuality`)、`observeStructure` (実際の参照の集合 `structure-descriptors-v0.json`)、`auditPageText`、`renderPrototype` の `scrollWidth`。事実に無い文は、design-director の評価と同じ数え方で、テストの中で数えた (品質検査として登録していない)。
+- 修正のきっかけの約束 (§4) も、模擬で確かめた:
+  - はみ出し続ける実装は、`LIMITS` (3回・原因ごとに2回) で止まる。
+  - 別の店の名前が出た実装は、はみ出していても修正せずに止まる (Identity が PASS でない)。
+  - Codex のデザインのはみ出しは修正しない。runner が `PROTOTYPE_HORIZONTAL_OVERFLOW` を記録して incomplete になり、lane が引き渡しを断る。
+
+この container での1回の値 (MOCK。描画の環境で変わりうる):
+
+| | VISUAL_FIRST (V-B) | LAYOUT_FIRST | DIRECTION_FIRST |
+|---|---|---|---|
+| 修正の回数 (`repair_attempts`) | 0 | 1 (1回目の SP 390 の scrollWidth 1200 → 2回目 390) | 0 |
+| 最後の実装のはみ出し (scrollWidth PC / SP) | 1440 / 390 (なし) | 1440 / 390 (なし) | 1440 / 390 (なし) |
+| SP の所見 (`measureMobileQuality`) | なし | なし | なし |
+| Identity | PASS_IDENTITY_ONLY | PASS_IDENTITY_ONLY | PASS_IDENTITY_ONLY |
+| 事実に無い文 (行) | 0 | 0 | 0 |
+| 構造の観察 (汎用 LP の印 / 不採用例との近さ) | なし / なし | なし / PC で CP-025-v1 | なし / なし |
+| impl-compare | compared。差は PC_PAGE_LAYOUT・PC_SECTION_COLOUR_STORY・SP_PAGE_LAYOUT (page SSIM 0.78 / 0.759、仮の閾値 0.8)。記録だけ | 対象外 (原本が無い) | 対象外 (原本が無い) |
+| Codex の呼び出し (すべて `mock`) | design 1 | asset 1 | direction 1・asset 1 |
+
+- 構造の観察の「不採用例との近さ」は参考だけで、順位付けに使わない (§5)。impl-compare の差は、模擬の実装と模擬の試作の差であり、Claude の実装の忠実度を示さない。
+- 模擬で分かった、実行の前に要ること (どれも DEV-143 の範囲): runner の v1 prompt は DNA のあるブリーフを必須とする (模擬は `mock/runner-brief.json` で通した)。方向の呼び出しと、Claude が書いた素材の要求を受け付ける画像の入口は無い (記録では prompt の SHA を `null` にした)。intake は `approval_id` などの生成の事実を要るので、偽の port は形だけの値 (`mock-not-an-approval-dev142`) を返した。研究の記録の `approval_id` は `null` のまま。 生成された package の artifact.json は、intake の形のため `source_kind: "codex_generated"`・`status: "succeeded"` と書かれる。模擬であることを示すのは、その中の MOCK の値 (版・モデル・approval_id・run_id) だけである。
+- この模擬は、§10 の既定案 (V-B・文章の方向・各1回・途中確認なし・修正のきっかけを足さない) を仮に使っている。どれもオーナーの決定待ちである。**V-B (HTML 試作の描画) と、Codex の画像ツールの完成デザイン (V-A) は、同じ実験条件ではない。** V-B の忠実度の数値は V-A には当てはまらない。
+- 記録の `brief_sha256` は、VISUAL_FIRST だけが模擬のブリーフ (MOCK の DNA つき) の値を持つ。ほかの2方式は、DNA の無い共通ブリーフがまだ無い (DEV-143) ので `null` にした。

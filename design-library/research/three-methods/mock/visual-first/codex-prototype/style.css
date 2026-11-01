@@ -1,0 +1,41 @@
+/* MOCK: a hand-written stand-in for a Codex route B prototype (DEV-142). Not Codex output. */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#1f1712;color:#f3e6d3;font-family:serif;line-height:1.7}
+.mock{margin:0;padding:6px 16px;background:#f3c96b;color:#1f1712;font:600 12px/1.4 sans-serif;letter-spacing:.1em;text-align:right}
+header{display:flex;justify-content:space-between;align-items:baseline;padding:28px 64px;border-bottom:1px solid #5a4636}
+.mark{margin:0;font-size:22px;letter-spacing:.3em}
+.cat{margin:0;font:14px/1 sans-serif;letter-spacing:.2em;color:#c9a27a}
+[data-section=hero]{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:48px;min-height:720px;padding:80px 64px}
+.kiln{justify-self:center;width:520px;height:520px;border-radius:50% 50% 0 0;background:radial-gradient(circle at 50% 70%,#ffcf73 0,#e2762f 28%,#7a2e12 55%,#2a1a12 72%)}
+h1{margin:0;font-size:56px;line-height:1.3;letter-spacing:.08em;font-weight:600}
+.lead{margin:24px 0 0;font-size:20px;color:#f3c96b}
+[data-section=products]{padding:96px 64px;background:#f3e6d3;color:#2a1a12}
+h2{margin:0 0 40px;font-size:28px;letter-spacing:.3em}
+.loaves{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,1fr);gap:24px}
+.loaves li{aspect-ratio:3/4;display:flex;align-items:flex-end;padding:20px;border-radius:120px 120px 8px 8px;background:#d9b98f;font-size:18px}
+[data-section=story]{display:grid;grid-template-columns:1fr 2fr;gap:64px;padding:96px 64px;background:#2a1a12}
+.story-key{margin:0;font-size:30px;color:#f3c96b}
+.desc{margin:0;font-size:18px;max-width:40em}
+[data-section=info]{padding:80px 64px;background:#3a2a1e}
+.info{display:grid;grid-template-columns:160px 1fr;gap:16px 32px;margin:0;font-size:18px}
+.info dt{color:#c9a27a;font-family:sans-serif;font-size:15px}
+.info dd{margin:0}
+footer{padding:40px 64px;border-top:1px solid #5a4636;font-size:14px;color:#c9a27a}
+footer p{margin:0}
+@media (max-width:600px){
+  header{padding:20px}
+  [data-section=hero]{grid-template-columns:1fr;min-height:0;gap:32px;padding:40px 20px}
+  .kiln{width:280px;height:280px}
+  h1{font-size:34px}
+  .lead{font-size:17px}
+  [data-section=products]{padding:56px 20px}
+  .loaves{grid-template-columns:repeat(2,1fr);gap:14px}
+  .loaves li{padding:14px;font-size:16px}
+  [data-section=story]{grid-template-columns:1fr;gap:24px;padding:56px 20px}
+  .story-key{font-size:22px}
+  [data-section=info]{padding:48px 20px}
+  .info{grid-template-columns:1fr;gap:4px}
+  .info dd{margin-bottom:12px}
+  footer{padding:28px 20px}
+}
