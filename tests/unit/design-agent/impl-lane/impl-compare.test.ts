@@ -138,8 +138,7 @@ describe("the comparison (report only)", () => {
     expect(r.sections.find((s) => s.id === "skip")!.box).toMatchObject({ w: 0, h: 0 });
     for (const s of r.sections) for (const n of Object.values(s.box ?? {})) expect(Number.isInteger(n)).toBe(true);
   }, 120_000);
-
-    it("a section hidden in the implementation (visibility: hidden) is missing; twins refuse the viewport", async () => {
+  it("a section hidden in the implementation (visibility: hidden) is missing; twins refuse the viewport", async () => {
     const hidden = { ...DESIGN, css: `${DESIGN_CSS}\n[data-section=info]{visibility:hidden}` };
     const r = await compareImplementation(browser, lane, hidden);
     expect(r.differences).toEqual(expect.arrayContaining(["PC_SECTION_MISSING_INFO", "SP_SECTION_MISSING_INFO"]));
