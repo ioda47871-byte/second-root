@@ -12,10 +12,10 @@
  * arguments, --out inside an input even through links, unusable lane, unreadable or oversized implementation files,
  * existing --out). Never calls Codex, a model or the network. Advisory only: no gate, no approval, no repair.
  */
-import { lstat, readdir, readFile, realpath, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstat, readdir, realpath, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { chromium } from "playwright";
-import { compareImplementation, IMPL_COMPARE_LIMITS, LaneReadError } from "../../lib/design-agent/impl-lane/impl-compare";
+import { compareImplementation, IMPL_COMPARE_LIMITS, insideDir as inside, LaneReadError, readInside } from "../../lib/design-agent/impl-lane/impl-compare";
 
 const say = (o: object) => process.stdout.write(`${JSON.stringify(o, null, 2)}\n`);
 const refuse = (code: string) => (say({ status: "refused", code }), 2);
@@ -32,20 +32,7 @@ function parseArgs(argv: string[]): { lane: string; impl: string; out: string } 
   return { lane: resolve(o["--lane"]), impl: resolve(o["--impl"]), out: resolve(o["--out"]) };
 }
 
-/** Inside (or equal to) the directory; only ".." itself or "../…" leaves it ("..x" is inside). */
-const inside = (dir: string, path: string) => {
-  const r = relative(dir, path);
-  return r === "" || !(r === ".." || r.startsWith(`..${sep}`) || isAbsolute(r));
-};
-
 const isRealDir = async (path: string) => (await lstat(path).catch(() => null))?.isDirectory() === true;
-
-/** A regular file (never a link) no larger than `max`; else null. */
-async function readRegular(path: string, max: number): Promise<Buffer | null> {
-  const st = await lstat(path).catch(() => null);
-  if (!st || !st.isFile() || st.size > max) return null;
-  return readFile(path);
-}
 
 async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
@@ -65,8 +52,9 @@ async function main(argv: string[]): Promise<number> {
   if (inside(laneReal, outReal) || inside(implReal, outReal)) return refuse("OUT_INSIDE_INPUT");
   if (!(await isRealDir(laneReal)) || !(await isRealDir(implReal))) return refuse("INPUT_NOT_A_DIRECTORY");
 
-  const htmlBytes = await readRegular(join(implReal, "index.html"), IMPL_COMPARE_LIMITS.html);
-  const cssBytes = await readRegular(join(implReal, "style.css"), IMPL_COMPARE_LIMITS.css);
+  // read on an open handle (no link anywhere on the path, size checked on the handle): nothing swapped in after a check is followed
+  const htmlBytes = await readInside(implReal, "index.html", IMPL_COMPARE_LIMITS.html);
+  const cssBytes = await readInside(implReal, "style.css", IMPL_COMPARE_LIMITS.css);
   if (!htmlBytes || !cssBytes) return refuse("IMPL_FILES_MISSING");
   const assets = new Map<string, Buffer>();
   const assetDir = join(implReal, "assets");
@@ -74,7 +62,7 @@ async function main(argv: string[]): Promise<number> {
   if (assetStat && !assetStat.isDirectory()) return refuse("IMPL_ASSET_INVALID");
   for (const f of assetStat ? (await readdir(assetDir)).sort() : []) {
     if (!/^[a-z0-9][a-z0-9_-]{0,40}\.png$/i.test(f) || assets.size >= IMPL_COMPARE_LIMITS.assets) return refuse("IMPL_ASSET_INVALID");
-    const bytes = await readRegular(join(assetDir, f), IMPL_COMPARE_LIMITS.asset);
+    const bytes = await readInside(implReal, `assets/${f}`, IMPL_COMPARE_LIMITS.asset);
     if (!bytes) return refuse("IMPL_ASSET_INVALID");
     assets.set(`assets/${f}`, bytes);
   }

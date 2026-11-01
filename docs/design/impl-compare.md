@@ -10,7 +10,12 @@
   - deviceScaleFactor 1、JavaScript 無効。
   - 自分のファイル以外への通信は拒否し、その数を記録する。
   - ページ全体を幅で切り出す。SP 390 は Phase 2f と同じく、mobile 化しない素の 390 幅で描く。
-  - 同じページなら Phase 2f の描画と画像も区画の箱も一致することを、テストで確かめている。
+  - 区画の箱は、Phase 2f の runner がデザインの箱を測ったのと同じ規則で測る (phase2f は読み込まないので、規則を写した)。
+    - その id を持つ最初の要素を測る。
+    - `display:none` と `visibility:hidden` は 0×0 (非表示) とする。
+    - 大きさ 0 の根 (`display:contents`、中身がすべて絶対配置など) は、描かれた中身で測る。ただし、切り抜く根は非表示のままとする。
+    - 同じ id を持つ要素が2つ以上あれば、そのビューポートは `DUPLICATE_SECTION_ID` として比べない。
+  - 同じページなら Phase 2f の描画と画像も区画の箱も一致することを、テストで確かめている。visibility:hidden・display:contents・高さ 0 の根・切り抜く根・無い区画も含めて確かめた。
 - 比較は DEV-131 の `compareViewport` を使う。
   - ページ全体: SSIM、色ブロック、エッジ、高さ。
   - 区画ごと: 位置、順序、色、密度、大きさ。
@@ -27,7 +32,7 @@
 | `file_changed` | lane.json に記録されたハッシュと違う |
 | `file_unreadable` | 読めない・リンク・上限より大きい |
 
-- 片方だけ比べたときは `status: "partial"`、どちらも比べられないときは `not_compared` とする。
+- 片方だけ比べたときは `status: "partial"`、どちらも比べられないときは `not_compared` とする。比較が断ったビューポート (`DECODE_FAILED`・`WIDTH_MISMATCH`・`DUPLICATE_SECTION_ID`) は何も測っていないので、比べたとは数えない。その原因コードは `differences` に残る。
 - artifact.json が lane.json のハッシュと違う lane は、報告を書かずに断る (`ARTIFACT_CHANGED`)。
 - 区画の箱の出所を `box_source` に残す。
   - `measured_by_runner`: Phase 2f が描画で測った箱。
@@ -39,6 +44,7 @@
 npx tsx scripts/design-artifact/impl-compare.ts --lane <実装レーン> --impl <実装のディレクトリ> --out <report.json>
 ```
 
+- ファイルは開いたハンドルで読み、上限もそのハンドルで確かめる。読むパスのどこにもリンクがあってはならず、確かめたあとに差し替えられたものも辿らない。
 - 入力は読むだけで、書くのは `--out` の新しいファイル1つ (`wx`、0600) だけ。
 - 次の場合は断る (exit 2)。
   - `--out` が入力の中にある。名前 (`..x` を含む) でも、リンク越しの実パスでも断る。

@@ -20,8 +20,8 @@
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
-import { join } from "node:path";
+import { open, realpath } from "node:fs/promises";
+import { isAbsolute, join, relative, sep } from "node:path";
 import type { Browser } from "playwright";
 import { DesignArtifact } from "../artifact/schema";
 import { compareViewport, viewportDifferences, type Box, type RenderSide, type Viewport, type ViewportCompare } from "./compare";
@@ -47,7 +47,7 @@ export type ImplCompareReport = {
   scope: "offline_report_only";
   advisory: true;
   passing: false;
-  /** compared: both viewports; partial: one; not_compared: none (never a clean result). */
+  /** compared: both viewports measured; partial: one; not_compared: none (never a clean result). A refused comparison (its code) is not measured. */
   status: "compared" | "partial" | "not_compared";
   lane: { artifact_id: string; artifact_json_sha256: string; lane_json_sha256: string };
   implementation: { html_sha256: string; css_sha256: string; assets: { path: string; sha256: string }[] };
@@ -80,7 +80,7 @@ const firstLine = (e: unknown) =>
     .slice(0, 160) || "unknown";
 
 /** A regular file, never through a link, at most `max` bytes (checked on the open handle); else null. */
-async function readNoFollow(path: string, max: number): Promise<Buffer | null> {
+export async function readNoFollow(path: string, max: number): Promise<Buffer | null> {
   const fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => null);
   if (!fh) return null;
   try {
@@ -95,11 +95,25 @@ async function readNoFollow(path: string, max: number): Promise<Buffer | null> {
 }
 
 type LaneFile = { path: string; role: string; sha256: string };
+
+/** Inside (or equal to) the directory; only ".." itself or "../…" leaves it. */
+export const insideDir = (dir: string, path: string) => {
+  const r = relative(dir, path);
+  return r === "" || !(r === ".." || r.startsWith(`..${sep}`) || isAbsolute(r));
+};
+
+/** A file of `dir` read without following a link anywhere on its path (the real path must stay inside the real `dir`). */
+export async function readInside(dir: string, rel: string, max: number): Promise<Buffer | null> {
+  const root = await realpath(dir).catch(() => null);
+  const real = await realpath(join(dir, rel)).catch(() => null);
+  if (!root || !real || real !== join(root, rel) || !insideDir(root, real)) return null;
+  return readNoFollow(real, max);
+}
 type DesignSide = { state: DesignState; side: RenderSide | null; meta: ViewportReport["design"] };
 
 /** Reads the lane: lane.json, the artifact record it names (hash checked) and each viewport's original. */
 export async function readLane(laneDir: string): Promise<{ artifactId: string; artifactSha: string; laneSha: string; sectionIds: string[]; design: Record<Viewport, DesignSide> }> {
-  const laneBytes = await readNoFollow(join(laneDir, "lane.json"), IMPL_COMPARE_LIMITS.laneJson);
+  const laneBytes = await readInside(laneDir, "lane.json", IMPL_COMPARE_LIMITS.laneJson);
   if (!laneBytes) throw new LaneReadError("LANE_JSON_INVALID");
   let lane: { schema?: unknown; artifact_json_sha256?: unknown; files?: unknown };
   try {
@@ -109,7 +123,7 @@ export async function readLane(laneDir: string): Promise<{ artifactId: string; a
   }
   const files = Array.isArray(lane.files) ? (lane.files as LaneFile[]).filter((f) => f && typeof f.path === "string" && typeof f.role === "string" && typeof f.sha256 === "string") : [];
   if (lane.schema !== "implementation_lane_v1" || typeof lane.artifact_json_sha256 !== "string" || !Array.isArray(lane.files) || files.length !== lane.files.length) throw new LaneReadError("LANE_JSON_INVALID");
-  const artifactBytes = await readNoFollow(join(laneDir, "artifact.json"), IMPL_COMPARE_LIMITS.artifactJson);
+  const artifactBytes = await readInside(laneDir, "artifact.json", IMPL_COMPARE_LIMITS.artifactJson);
   if (!artifactBytes) throw new LaneReadError("ARTIFACT_UNREADABLE");
   const artifactSha = sha256(artifactBytes);
   // the record is the one the lane was built from
@@ -141,7 +155,7 @@ export async function readLane(laneDir: string): Promise<{ artifactId: string; a
       design[v] = none("missing", { path: o.path, rendered_from: o.rendered_from });
       continue;
     }
-    const png = await readNoFollow(join(laneDir, o.path), IMPL_COMPARE_LIMITS.original[v]);
+    const png = await readInside(laneDir, o.path, IMPL_COMPARE_LIMITS.original[v]);
     if (!png) {
       design[v] = none("file_unreadable", { path: o.path, rendered_from: o.rendered_from });
       continue;
@@ -163,19 +177,57 @@ export async function readLane(laneDir: string): Promise<{ artifactId: string; a
   return { artifactId: a.artifact_id, artifactSha, laneSha: sha256(laneBytes), sectionIds: spec.sections.map((s) => s.id), design };
 }
 
-const MEASURE = `(() => {
-  const sections = [...document.querySelectorAll("[data-section]")].map((el) => {
-    const r = el.getBoundingClientRect();
-    const shown = getComputedStyle(el).display !== "none" && r.width > 0 && r.height > 0;
-    return { id: el.getAttribute("data-section"), box: shown ? { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height } : null };
-  });
-  return { sections, scrollHeight: document.documentElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth };
+/**
+ * The design's section boxes, measured exactly as the Phase 2f runner measured the design's own (render-prototype.ts;
+ * copied, since the implementation lane does not import phase2f): the first element carrying the id; hidden
+ * (display: none / visibility: hidden) is 0×0; a 0-size root (display: contents, all content positioned) is measured
+ * by what it paints, unless it clips. Plus how many elements carry each id: two would hide one section behind its twin.
+ */
+const MEASURE = (ids: readonly string[]) => `(() => {
+  const ids = ${JSON.stringify(ids)};
+  const out = {};
+  const count = {};
+  for (const id of ids) {
+    count[id] = document.querySelectorAll('[data-section="' + CSS.escape(id) + '"]').length;
+    const el = document.querySelector('[data-section="' + CSS.escape(id) + '"]');
+    if (!el) { out[id] = null; continue; }
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") { out[id] = { x: 0, y: 0, w: 0, h: 0 }; continue; }
+    let r = el.getBoundingClientRect();
+    let box = { l: r.left, t: r.top, r: r.right, b: r.bottom };
+    const clips = cs.overflowX !== "visible" || cs.overflowY !== "visible" || /paint|strict|content/.test(cs.contain) || cs.clipPath !== "none";
+    if ((r.width === 0 || r.height === 0) && clips && cs.display !== "contents") { out[id] = { x: 0, y: 0, w: 0, h: 0 }; continue; }
+    if (r.width === 0 || r.height === 0) {
+      box = null;
+      const add = (dr) => {
+        if (dr.width === 0 || dr.height === 0) return;
+        box = box ? { l: Math.min(box.l, dr.left), t: Math.min(box.t, dr.top), r: Math.max(box.r, dr.right), b: Math.max(box.b, dr.bottom) } : { l: dr.left, t: dr.top, r: dr.right, b: dr.bottom };
+      };
+      for (const d of el.querySelectorAll("*")) {
+        const dcs = getComputedStyle(d);
+        if (dcs.display === "none" || dcs.visibility === "hidden") continue;
+        add(d.getBoundingClientRect());
+      }
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+        if (!t.textContent || !t.textContent.trim()) continue;
+        const pcs = t.parentElement ? getComputedStyle(t.parentElement) : null;
+        if (pcs && (pcs.display === "none" || pcs.visibility === "hidden")) continue;
+        const range = document.createRange();
+        range.selectNodeContents(t);
+        for (const cr of range.getClientRects()) add(cr);
+      }
+      if (!box) { out[id] = { x: 0, y: 0, w: 0, h: 0 }; continue; }
+    }
+    out[id] = { x: box.l + scrollX, y: box.t + scrollY, w: box.r - box.l, h: box.b - box.t };
+  }
+  return { sections: out, count, scrollHeight: document.documentElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth };
 })()`;
 
 export type ImplRender = RenderSide & { blocked: number; scrollHeight: number; scrollWidth: number };
 
 /** Draws the implementation at one width: its own files only (index.html, style.css, assets/*), JS off. */
-export async function renderImplementation(browser: Browser, impl: Implementation, v: Viewport): Promise<ImplRender> {
+export async function renderImplementation(browser: Browser, impl: Implementation, v: Viewport, sectionIds: readonly string[]): Promise<ImplRender> {
   const size = VIEWPORT_SIZES[v];
   const context = await browser.newContext({ viewport: size, deviceScaleFactor: 1, reducedMotion: "reduce", javaScriptEnabled: false, serviceWorkers: "block" });
   let blocked = 0;
@@ -204,11 +256,13 @@ export async function renderImplementation(browser: Browser, impl: Implementatio
     const res = await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
     if (res?.status() !== 200) throw new Error("the page did not load");
     await page.evaluate("document.fonts.ready.then(() => true)");
-    const m = (await page.evaluate(MEASURE)) as { sections: { id: string | null; box: Box | null }[]; scrollHeight: number; scrollWidth: number };
+    const m = (await page.evaluate(MEASURE(sectionIds))) as { sections: Record<string, Box | null>; count: Record<string, number>; scrollHeight: number; scrollWidth: number };
     const height = Math.max(m.scrollHeight, size.height);
     if (!(height > 0 && height <= MAX_PAGE_HEIGHT)) throw new Error(`page too tall (${height} px)`);
     const png = await page.screenshot({ fullPage: true, clip: { x: 0, y: 0, width: size.width, height }, animations: "disabled", caret: "hide" });
-    return { png, sections: m.sections.map((s) => ({ id: s.id ?? "", box: s.box })), blocked, scrollHeight: m.scrollHeight, scrollWidth: m.scrollWidth };
+    // a twin is listed again, so the comparison refuses the viewport (DUPLICATE_SECTION_ID) instead of measuring one of them
+    const sections = sectionIds.flatMap((id) => Array.from({ length: Math.max(1, m.count[id] ?? 0) }, () => ({ id, box: m.sections[id] ?? null })));
+    return { png, sections, blocked, scrollHeight: m.scrollHeight, scrollWidth: m.scrollWidth };
   } finally {
     await context.close();
   }
@@ -234,7 +288,7 @@ export async function compareImplementation(browser: Browser | null, laneDir: st
     }
     let r: ImplRender;
     try {
-      r = await renderImplementation(browser, impl, v);
+      r = await renderImplementation(browser, impl, v, lane.sectionIds);
     } catch (e) {
       viewports[v] = { design: d.meta, implementation: { ...notRendered, state: "render_failed", detail: firstLine(e) }, compare: null, differences: [] };
       continue;
@@ -247,7 +301,8 @@ export async function compareImplementation(browser: Browser | null, laneDir: st
       differences: viewportDifferences(compare),
     };
   }
-  const compared = (["desktop_1440", "mobile_390"] as const).filter((v) => viewports[v].compare !== null).length;
+  // a viewport the comparison refused (DECODE_FAILED, WIDTH_MISMATCH, DUPLICATE_SECTION_ID) measured nothing: not compared
+  const compared = (["desktop_1440", "mobile_390"] as const).filter((v) => viewports[v].compare !== null && viewports[v].compare!.code === null).length;
   return {
     schema: "impl_compare_report_v0",
     scope: "offline_report_only",

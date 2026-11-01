@@ -6,7 +6,8 @@ import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prepareImplementationLane } from "@/lib/design-agent/impl-lane/handoff";
-import { compareImplementation, LaneReadError, readLane, renderImplementation, type Implementation } from "@/lib/design-agent/impl-lane/impl-compare";
+import { PACKAGE_LIMITS, PNG_LIMITS, PROTOTYPE_LIMITS } from "@/lib/design-agent/artifact/schema";
+import { compareImplementation, IMPL_COMPARE_LIMITS, LaneReadError, readLane, renderImplementation, type Implementation } from "@/lib/design-agent/impl-lane/impl-compare";
 import { renderPrototype } from "@/lib/design-agent/phase2f/render-prototype";
 import { routeB, writePackage } from "../artifact/fixtures";
 
@@ -49,13 +50,14 @@ h1{margin:0;font-size:48px}
 footer{height:160px;background:#2a1a0a;color:#f6efe3}
 @media (max-width:600px){header{height:100px;padding:0 20px}[data-section=shelf_hero]{height:900px;padding:32px 20px}h1{font-size:28px}.shelf{flex-direction:column}.shelf i{width:100%;height:160px}[data-section=info]{height:700px;padding:24px}footer{height:200px}}`;
 const DESIGN = { html: doc(SECTIONS()), css: DESIGN_CSS, assets: new Map<string, Buffer>() } satisfies Implementation;
+const IDS = ["header", "shelf_hero", "info", "footer"];
 
 /** The design originals drawn from the fictional design page, packaged as route B and handed over through the real lane. */
 async function buildLane(): Promise<string> {
   const p = routeB();
   const spec = p.artifact.declared.structure_spec;
   for (const v of ["desktop_1440", "mobile_390"] as const) {
-    const r = await renderImplementation(browser, DESIGN, v);
+    const r = await renderImplementation(browser, DESIGN, v, IDS);
     const height = readPngHeight(r.png);
     p.files[`originals/${v}.png`] = r.png;
     p.artifact.observed.originals[v].height = height;
@@ -97,14 +99,52 @@ function laneVariant(edit: (artifact: Record<string, any>) => void): string {
 }
 
 describe("the comparison (report only)", () => {
-  it("draws the implementation exactly as Phase 2f draws a prototype (same picture, same boxes)", async () => {
-    const ours = { desktop_1440: await renderImplementation(browser, DESIGN, "desktop_1440"), mobile_390: await renderImplementation(browser, DESIGN, "mobile_390") };
-    const theirs = await renderPrototype(browser, DESIGN, new Map(), ["header", "shelf_hero", "info", "footer"]);
+  it("draws the implementation exactly as Phase 2f draws a prototype (same picture, same boxes), hard cases included", async () => {
+    // review round 1 (M1): hidden by visibility, display: contents, a 0-height root with positioned content, a 0-size
+    // root that clips, a section that is not there, as well as plain blocks
+    const hard = {
+      ...DESIGN,
+      html: doc(`${SECTIONS()}<section data-section="ghost" style="height:200px;visibility:hidden">x</section>
+<div data-section="contents" style="display:contents"><div style="height:300px;background:#123">c</div></div>
+<div data-section="flat" style="position:relative;height:0"><div style="position:absolute;top:0;left:20px;width:100px;height:100px;background:#321"></div></div>
+<div data-section="clipped" style="height:0;overflow:hidden"><div style="height:80px">y</div></div>`),
+    };
+    const ids = [...IDS, "ghost", "contents", "flat", "clipped", "absent"];
+    const ours = { desktop_1440: await renderImplementation(browser, hard, "desktop_1440", ids), mobile_390: await renderImplementation(browser, hard, "mobile_390", ids) };
+    const theirs = await renderPrototype(browser, hard, new Map(), ids);
     for (const v of ["desktop_1440", "mobile_390"] as const) {
       expect(ours[v].png.equals(theirs[v].png), v).toBe(true);
+      expect(ours[v].sections.map((s) => s.id)).toEqual(ids);
       for (const s of ours[v].sections) expect(s.box, `${v} ${s.id}`).toEqual(theirs[v].sections[s.id]);
+      // the cases really are different from a plain box
+      expect(ours[v].sections.find((s) => s.id === "ghost")!.box).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+      expect(ours[v].sections.find((s) => s.id === "contents")!.box!.h).toBe(300);
+      expect(ours[v].sections.find((s) => s.id === "flat")!.box).toMatchObject({ w: 100, h: 100 });
+      expect(ours[v].sections.find((s) => s.id === "clipped")!.box).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+      expect(ours[v].sections.find((s) => s.id === "absent")!.box).toBeNull();
     }
   }, 120_000);
+
+  it("a section hidden in the implementation (visibility: hidden) is missing; twins refuse the viewport", async () => {
+    const hidden = { ...DESIGN, css: `${DESIGN_CSS}\n[data-section=info]{visibility:hidden}` };
+    const r = await compareImplementation(browser, lane, hidden);
+    expect(r.differences).toEqual(expect.arrayContaining(["PC_SECTION_MISSING_INFO", "SP_SECTION_MISSING_INFO"]));
+    const twins = { ...DESIGN, html: doc(SECTIONS() + `<section data-section="info"><p>もう一つ</p></section>`) };
+    const t = await compareImplementation(browser, lane, twins);
+    expect(t.differences).toEqual(["PC_DUPLICATE_SECTION_ID", "SP_DUPLICATE_SECTION_ID"]);
+    // a refused comparison measured nothing: not compared (review round 1, L3)
+    expect(t.status).toBe("not_compared");
+  }, 120_000);
+
+  it("reads with the artifact schema's own limits (review round 1, L4)", () => {
+    expect(IMPL_COMPARE_LIMITS.html).toBe(PROTOTYPE_LIMITS.html);
+    expect(IMPL_COMPARE_LIMITS.css).toBe(PROTOTYPE_LIMITS.css);
+    expect(IMPL_COMPARE_LIMITS.asset).toBe(PNG_LIMITS.asset.maxBytes);
+    expect(IMPL_COMPARE_LIMITS.original.desktop_1440).toBe(PNG_LIMITS.viewport_render_desktop_1440.maxBytes);
+    expect(IMPL_COMPARE_LIMITS.original.mobile_390).toBe(PNG_LIMITS.viewport_render_mobile_390.maxBytes);
+    expect(IMPL_COMPARE_LIMITS.artifactJson).toBe(PACKAGE_LIMITS.artifactJsonBytes);
+    expect(IMPL_COMPARE_LIMITS.assets).toBe(PACKAGE_LIMITS.maxFiles);
+  });
 
   it("a faithful implementation has no differences; still never passing", async () => {
     const r = await compareImplementation(browser, lane, DESIGN);
@@ -193,6 +233,12 @@ describe("what is never treated as the original", () => {
     rmSync(join(linked, "artifact.json"));
     symlinkSync(join(lane, "artifact.json"), join(linked, "artifact.json"));
     expect(await code(readLane(linked))).toBe("ARTIFACT_UNREADABLE");
+    // a linked directory on the path to an original is not followed (review round 1, L5)
+    const dirLink = laneVariant(() => undefined);
+    rmSync(join(dirLink, "originals"), { recursive: true });
+    symlinkSync(join(lane, "originals"), join(dirLink, "originals"));
+    const r = await readLane(dirLink);
+    expect([r.design.desktop_1440.state, r.design.mobile_390.state]).toEqual(["file_unreadable", "file_unreadable"]);
   }, 120_000);
 
   it("a browser that did not start is a not_compared report, never a clean one", async () => {
