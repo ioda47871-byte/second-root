@@ -14,6 +14,9 @@ const CLI = "scripts/design-artifact/phase2f.ts";
 const DESIGN_STEP = "scripts/design-artifact/phase2f-design.ts";
 /** The Phase 2f-2 offline steps (DEV-117): pre-render, packaging from recorded steps, the comparison sheet. */
 const STEPS = "scripts/design-artifact/phase2f-steps.ts";
+/** DEV-150 (Issue #180, owner-approved exact paths): the image step's DOM safety check of a page, and the three-method offline steps. */
+const IMAGE_STEP = "scripts/design-artifact/phase2f-image.ts";
+const TM_STEPS = "scripts/design-artifact/three-methods-steps.ts";
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
 function specifiers(source: string): string[] {
@@ -30,7 +33,8 @@ const ALLOWED: Record<string, string[]> = {
   // DEV-134: the phone checks (report-only) reuse the shop-CSS render check's text measure, unchanged
   [`${LIB}/mobile-quality.ts`]: ["playwright", "../shop-css/render-check", "../shop-css/page-scripts"],
   [`${LIB}/decode-check.ts`]: ["../worker/png-paint"],
-  [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile", "./open-direction", "./research-section"],
+  // DEV-150: the three-method study's tm0 prompt is the lane's own text (imported, never copied): its brief and builder
+  [`${LIB}/prompt.ts`]: ["node:crypto", "zod", "../artifact/schema", "../profile", "../three-methods/brief", "../three-methods/visual-first", "./open-direction", "./research-section"],
   // DEV-124: the open direction and the success-case reference manifest (pure), and the reference sheet (Chromium)
   [`${LIB}/open-direction.ts`]: ["zod", "./research-section"],
   [`${LIB}/reference-sheet.ts`]: ["node:crypto", "playwright", "./open-direction"],
@@ -75,7 +79,7 @@ describe("isolation of the Phase 2f runner", () => {
 
   it("is imported only by its offline CLI, and by the Phase 2f-2 design step for its prompt only (DEV-116, owner-approved exact path)", () => {
     // the design step's own modules (phase2f-live) never import the runner
-    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS].sort());
+    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS, IMAGE_STEP, TM_STEPS].sort());
     const source = readFileSync(resolve(REPO, DESIGN_STEP), "utf8");
     const fromPhase2f = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
     // DEV-122: plus the prompt-version check (pure; no file access)
@@ -95,6 +99,23 @@ describe("isolation of the Phase 2f runner", () => {
       // DEV-122: plus the prompt-version check, so packaging rebuilds the same prompt the design step used
       ["../../lib/design-agent/phase2f/prompt", ["DesignBrief", "promptVariantOf"]],
       ["../../lib/design-agent/phase2f/runner", ["PortStop", "packageConceptRun", "prerenderRoute", "runPrototypeRoute", "type AssetPort", "type DesignPort", "type RunResult"]],
+    ]);
+  });
+});
+
+describe("DEV-150: the two new importers take only these names from phase2f (owner-approved exact paths)", () => {
+  const fromPhase2f = (file: string) => {
+    const source = readFileSync(resolve(REPO, file), "utf8");
+    return [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
+  };
+  it("the image step: the DOM safety check of a page only", () => {
+    expect(fromPhase2f(IMAGE_STEP)).toEqual([["../../lib/design-agent/phase2f/prototype-safety", ["PrototypeUnsafe", "checkPrototype"]]]);
+  });
+  it("the three-method offline steps: the DOM safety check, the render and the placeholder picture only (never the prompt or the runner's run)", () => {
+    expect(fromPhase2f(TM_STEPS)).toEqual([
+      ["../../lib/design-agent/phase2f/prototype-safety", ["PrototypeUnsafe", "checkPrototype"]],
+      ["../../lib/design-agent/phase2f/render-prototype", ["RenderError", "renderPrototype"]],
+      ["../../lib/design-agent/phase2f/runner", ["placeholderPng"]],
     ]);
   });
 });

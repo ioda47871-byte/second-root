@@ -1,6 +1,8 @@
 /**
- * DEV-143 (EXPERIMENTAL, opt-in, not wired): image requests from a page CLAUDE wrote (LAYOUT_FIRST and
- * DIRECTION_FIRST), in the shape of the existing runner's AssetRequest.
+ * DEV-143 (EXPERIMENTAL, opt-in): image requests from a page CLAUDE wrote (LAYOUT_FIRST and
+ * DIRECTION_FIRST), in the shape of the existing runner's AssetRequest. DEV-150 (Issue #180) wired it: the offline
+ * three-method steps make the request (after the DOM safety check and a measured render) and the image call rebuilds
+ * it from the tracked page before an approval is used (route claude_page, kind page_image).
  *
  * Claude marks each picture it needs in its own HTML, either as
  *   <img src="assets/A1.png" alt="one or two sentences describing the picture">   (data-asset="A1" optional; must match)

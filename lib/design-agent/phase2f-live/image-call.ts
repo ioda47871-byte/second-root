@@ -19,11 +19,22 @@
  *   call.json        how it ended: outcome, stop code, the request it answered, the ledger receipt, warnings
  * call.json is written last, the ledger's result after it.
  *
+ * DEV-150 (Issue #180): route "claude_page" (kind page_image) — a picture asked for by a page CLAUDE wrote for the
+ * three-method study (LAYOUT_FIRST / DIRECTION_FIRST). There is no design run to bind to: the request
+ * (three_method_asset_request_v0, made offline by scripts/design-artifact/three-methods-steps.ts --page-request) is
+ * bound to the page. Before the approval is used: the request's schema and its own prompt hash; its placement was
+ * measured (runnableAssetRequests, else ASSET_PLACEMENT_UNMEASURED); the page file and its style.css are regular files
+ * under the given root (no link, no "..") and tracked by git, and the page's SHA-256 is the request's; the request
+ * rebuilt from that page (the three-method lane's page-assets) has the same asset, alt and prompt; and the page passes
+ * the existing DOM prototype safety check, whose alt for the picture is the request's. The DOM check (Chromium) and
+ * the tracked check (git) are functions the image CLI passes in: this module still starts no process.
+ *
  * No process and no network here: the image CLI passes the sandboxed image call.
  */
 import { randomBytes } from "node:crypto";
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, mkdir, readFile, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, normalize } from "node:path";
+import { buildPageAssetRequests, runnableAssetRequests, type PageAssetRequest } from "../three-methods/page-assets";
 import { CodexAbortedError, CodexError } from "../codex";
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
 import { checkBeforeApproval, readStep, sha256, StepStop, writeOnce, type CommitState, type Generation } from "./steps";
@@ -55,9 +66,14 @@ export type ImageRequest = {
   essential: boolean;
 };
 
+/** The facts pack the page's request is rebuilt with (the image CLI parses it with the facts pack schema). */
+export type PageFacts = Parameters<typeof buildPageAssetRequests>[0]["facts"];
+
 export type ImageCallInput =
   | { route: "C_hybrid"; request: ImageRequest; common: Common }
-  | { route: "A_image"; prompt: string; common: Common };
+  | { route: "A_image"; prompt: string; common: Common }
+  /** DEV-150: a picture for a page Claude wrote; `page.root` is the directory the request's page path is relative to. */
+  | { route: "claude_page"; request: PageAssetRequest; page: { root: string }; facts: PageFacts; common: Common };
 type Common = {
   humanApprovalConfirmed: boolean;
   approvalId: string;
@@ -68,13 +84,66 @@ type Common = {
   signal?: AbortSignal;
 };
 
+/** DEV-150: the existing DOM prototype safety check on Claude's page (the CLI runs it in Chromium): the alts it read, or the stop. */
+export type PageDomCheck = (page: { html: string; css: string }, assetPaths: readonly string[]) => Promise<{ ok: true; alts: Record<string, string> } | { ok: false; code: string }>;
+
 export type ImageCallDeps = {
   ledger: Ledger;
   image: ImageTool;
   commit: () => Promise<CommitState>;
   preflight?: () => Promise<string | null>;
   now?: () => number;
+  /** DEV-150, route claude_page only (required there). */
+  pageDom?: PageDomCheck;
+  /** DEV-150, route claude_page only (required there): every given file is tracked by git in the repository. */
+  tracked?: (paths: readonly string[]) => Promise<boolean>;
 };
+
+/** A regular file (never a link) at exactly root/rel: no "..", no absolute part, no link anywhere on the way. */
+async function fileUnder(root: string, rel: string): Promise<string | null> {
+  if (!isAbsolute(root) || isAbsolute(rel) || normalize(rel) !== rel || rel.split("/").includes("..") || rel.startsWith(".")) return null;
+  const path = join(root, rel);
+  const st = await lstat(path).catch(() => null);
+  if (!st?.isFile() || st.isSymbolicLink()) return null;
+  const [r, f] = await Promise.all([realpath(root).catch(() => null), realpath(path).catch(() => null)]);
+  return r !== null && f === join(r, rel) ? path : null;
+}
+
+/**
+ * DEV-150: the checks 0-4 of a page's picture request (docs/design/three-methods-entries.md §8), before anything is
+ * used. Exported so the image CLI's --print-pin runs exactly the same checks offline.
+ */
+export async function checkPageImageRequest(i: Pick<Extract<ImageCallInput, { route: "claude_page" }>, "request" | "page" | "facts">, d: Pick<ImageCallDeps, "pageDom" | "tracked">): Promise<{ ok: true } | { ok: false; code: string }> {
+  const r = i.request;
+  const no = (code: string) => ({ ok: false as const, code });
+  // 1. the request is the one the owner saw: its schema and its own prompt hash
+  if (r?.schema !== "three_method_asset_request_v0" || (r.method !== "LAYOUT_FIRST" && r.method !== "DIRECTION_FIRST") || typeof r.prompt !== "string" || typeof r.asset_id !== "string" || typeof r.page?.path !== "string") return no("IMAGE_REQUEST_INVALID");
+  if (sha256(Buffer.from(r.prompt, "utf8")) !== r.prompt_sha256 || r.prompt.length !== r.prompt_chars) return no("IMAGE_REQUEST_INVALID");
+  // 4. measured where the picture sits (owner's provisional policy, Issue #180)
+  const runnable = runnableAssetRequests([r]);
+  if (!runnable.ok) return no(runnable.code);
+  if (!d.pageDom || !d.tracked) return no("PAGE_CHECKS_NOT_GIVEN");
+  // 2. the page and its stylesheet: regular files under the root, tracked, the page's bytes the request's
+  const htmlPath = await fileUnder(i.page.root, r.page.path);
+  const cssRel = join(dirname(r.page.path), "style.css");
+  const cssPath = htmlPath ? await fileUnder(i.page.root, cssRel) : null;
+  if (!htmlPath || !cssPath) return no("PAGE_FILE_INVALID");
+  const html = await readFile(htmlPath, "utf8");
+  const css = await readFile(cssPath, "utf8");
+  if (sha256(html) !== r.page.html_sha256) return no("PAGE_SHA_MISMATCH");
+  if (!(await d.tracked([htmlPath, cssPath]).catch(() => false))) return no("PAGE_NOT_TRACKED");
+  // 3. the request rebuilt from that page: the same picture, description and prompt (a hand-edited request is refused)
+  const rebuilt = buildPageAssetRequests({ method: r.method, page: { path: r.page.path, html }, facts: i.facts, placement: { [r.asset_id]: r.placement! }, heroSections: [] });
+  if (!rebuilt.ok) return no(rebuilt.code);
+  const q = rebuilt.requests.find((x) => x.asset_id === r.asset_id);
+  // without the hero sections the rebuilt "essential" is a lower bound: a request may only be more essential
+  if (!q || q.alt !== r.alt || q.prompt !== r.prompt || q.prompt_sha256 !== r.prompt_sha256 || q.prompt_chars !== r.prompt_chars || (q.essential && r.essential !== true)) return no("IMAGE_REQUEST_MISMATCH");
+  // 0. the existing DOM safety check (network shut, JavaScript off); the picture's alt as the DOM reads it
+  const dom = await d.pageDom({ html, css }, rebuilt.requests.map((x) => `assets/${x.asset_id}.png`)).catch(() => ({ ok: false as const, code: "PAGE_DOM_CHECK_FAILED" }));
+  if (!dom.ok) return no(dom.code);
+  if ((dom.alts[`assets/${r.asset_id}.png`] ?? "").replace(/\s+/g, " ").trim() !== r.alt) return no("ASSET_DOM_ALT_MISMATCH");
+  return { ok: true };
+}
 
 export type ImageCallResult =
   | { status: "succeeded"; outDir: string; generation: Generation; warnings: string[]; receipt: Receipt; width: number; height: number }
@@ -84,7 +153,7 @@ export async function runImageCall(i: ImageCallInput, d: ImageCallDeps): Promise
   const now = d.now ?? Date.now;
   const c = i.common;
   const refuse = (code: string): ImageCallResult => ({ status: "stopped", code, stage: "precheck", aborted: false });
-  const kind = i.route === "C_hybrid" ? "image" : "concept_image";
+  const kind = i.route === "C_hybrid" ? "image" : i.route === "claude_page" ? "page_image" : "concept_image";
   let prompt: string;
   let link: Record<string, unknown> = {};
   if (i.route === "C_hybrid") {
@@ -102,6 +171,11 @@ export async function runImageCall(i: ImageCallInput, d: ImageCallDeps): Promise
     }
     prompt = r.prompt;
     link = { design_run_id: r.design.run_id, design_approval_id: r.design.approval_id, asset_id: r.asset_id, essential: r.essential };
+  } else if (i.route === "claude_page") {
+    const checkedPage = await checkPageImageRequest(i, d);
+    if (!checkedPage.ok) return refuse(checkedPage.code);
+    prompt = i.request.prompt;
+    link = { page_path: i.request.page.path, page_sha256: i.request.page.html_sha256, asset_id: i.request.asset_id, essential: i.request.essential };
   } else {
     prompt = i.prompt;
   }

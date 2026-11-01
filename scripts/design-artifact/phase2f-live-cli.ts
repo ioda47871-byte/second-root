@@ -1,5 +1,5 @@
 /**
- * Phase 2f-2: what the two real-call CLIs share (design step, image step). Not an entry point.
+ * Phase 2f-2: what the real-call CLIs share (design step, image step; DEV-150: the direction step). Not an entry point.
  *
  * - argument parsing (exact flags only), the stop signals (SIGTERM / SIGINT / SIGHUP abort the call; a second
  *   signal or 20 s later every process is killed) and the watchdog;
@@ -138,6 +138,25 @@ export async function liveContext(out: string, stop: () => void): Promise<LiveCo
     },
     sandbox: () => sandbox,
   };
+}
+
+/**
+ * DEV-150: whether every given file is inside the repository and tracked by git there (a page's picture is bound to
+ * the page's bytes at the approved commit). The same bounded git as the commit pin (60 s); pathspecs are literal.
+ */
+export async function trackedInRepo(paths: readonly string[]): Promise<boolean> {
+  const repo = await real(REPO);
+  const rels: string[] = [];
+  for (const p of paths) {
+    const rel = relative(repo, await real(p));
+    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return false;
+    rels.push(rel);
+  }
+  if (rels.length === 0) return false;
+  const r = await runBounded("git", ["--literal-pathspecs", "ls-files", "--error-unmatch", "--", ...rels], { cwd: REPO, env: childEnvironment(process.env), timeoutMs: 60_000 }).catch(() => null);
+  if (r?.code !== 0) return false;
+  const listed = new Set(r.stdout.split("\n").filter(Boolean));
+  return rels.every((rel) => listed.has(rel));
 }
 
 /** Runs a CLI's main: its exit code, or 1 after killing every process when something unexpected happened. */
