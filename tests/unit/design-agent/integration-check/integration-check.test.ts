@@ -354,6 +354,12 @@ describe("the combined report refuses what it must never say (pure)", () => {
     expect(() => buildReport({ ...b, phases: { ...b.phases, d_autofix: autofix({ autofix_status: "stopped" }), d_proposal_recheck: recheck } })).toThrow(/owner_review/);
   });
 
+  it("the identity status is the worse of the two widths (review round 1, L1)", () => {
+    const b = base();
+    expect(() => buildReport({ ...b, identity: { status: "PASS_IDENTITY_ONLY", desktop_1440: "PASS_IDENTITY_ONLY", mobile_390: "REJECT" } })).toThrow(/not the worse/);
+    expect(() => buildReport({ ...b, identity: { status: "HOLD", desktop_1440: "REJECT", mobile_390: "HOLD" } })).toThrow(/not the worse/);
+  });
+
   it("an identity stop ends the chain: no phase after it, and the stop is recorded", () => {
     const b = { ...base(), identity: { status: "HOLD" as const, desktop_1440: "HOLD" as const, mobile_390: "PASS_IDENTITY_ONLY" as const } };
     expect(() => buildReport(b)).toThrow(/must be recorded/);

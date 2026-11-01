@@ -30,6 +30,8 @@ describe("isolation of the integration check (MOCK)", () => {
     // the code, without its comments and string literals (the report's notes name what it never uses, e.g. Codex);
     // the import specifiers are pinned above
     const code = source.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/"(?:[^"\\\n]|\\.)*"/g, '""');
+    // a name read through a string (globalThis["process"], x["readFile"]) would hide from the word check: none at all
+    expect(code).not.toMatch(/\[\s*""\s*\]|\[\s*'|\[\s*`/);
     expect(code).not.toMatch(/child_process|\bspawn\(|execFile|\bfetch\(|node:(fs|https?|net|os|path)|playwright|codex|anthropic|openai|worker\/|bridge|jail|process\.|writeFile|readFile|\beval\(|new Function/i);
   });
 

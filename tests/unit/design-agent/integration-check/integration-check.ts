@@ -157,6 +157,10 @@ export function buildReport(i: ReportInput) {
   const d = p.d_autofix;
   if (d.status === "ran" && (d.applied !== false || d.design_approved !== false || d.mock !== true)) throw new Error("Phase D must never apply or approve");
   if (p.d_proposal_recheck.status === "ran" && (d.status !== "ran" || d.autofix_status !== "owner_review")) throw new Error("a recheck exists only for an owner_review proposal");
+  // the status is the worse of the two widths: a REJECT at one width is never reported as a pass
+  const w = [i.identity.desktop_1440, i.identity.mobile_390];
+  const worse = w.includes("REJECT") ? "REJECT" : w.includes("HOLD") ? "HOLD" : "PASS_IDENTITY_ONLY";
+  if (i.identity.status !== worse) throw new Error(`identity status ${i.identity.status} is not the worse of the two widths (${worse})`);
   if (i.identity.status !== "PASS_IDENTITY_ONLY") {
     if (Object.values(p).some((x) => x.status !== "not_run")) throw new Error("an identity stop ends the chain: no phase may run after it");
     if (!i.stops.some((s) => s.code === `IDENTITY_${i.identity.status}` && s.stage === "implementation")) throw new Error("an identity stop must be recorded");
