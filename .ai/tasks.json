@@ -6521,7 +6521,7 @@
       "human_approval_triggers": [
         "Issue #177 の条件を満たさない場合の develop へのマージ"
       ],
-      "note": "Issue #180 の事前承認の範囲 (offline)。3方式とも MOCK の fixture で通しで動いた (VISUAL_FIRST は実際の Phase 2f の runner → render_pair_complete → lane → impl-compare)。修正のきっかけは LAYOUT_FIRST の1回目の SP のはみ出しだけで、repair_attempts 1。Identity はすべて PASS、事実に無い文は 0。結果は docs/design/three-methods-study.md §12 (MOCK、方式の優劣の証拠にしない)。lib は変えていない。Review 待ち。",
+      "note": "Issue #180 の事前承認の範囲 (offline)。3方式とも MOCK の fixture で通しで動いた (VISUAL_FIRST は実際の Phase 2f の runner → render_pair_complete → lane → impl-compare)。修正のきっかけは LAYOUT_FIRST の1回目の SP のはみ出しだけで、repair_attempts 1。Identity はすべて PASS、事実に無い文は 0。結果は docs/design/three-methods-study.md §12 (MOCK、方式の優劣の証拠にしない)。lib は変えていない。Fresh Review PASS、#183 でマージ。",
       "merged": "#183 → ee0a698 (squash, 2026-11-01)"
     },
     {
@@ -6593,7 +6593,7 @@
         "パイロットの実行",
         "別条件の入口の作成・実行"
       ],
-      "note": "文書だけ。"
+      "note": "文書だけ。共通ブリーフと runnableAssetRequests は PR #184 (DEV-143、未マージ・マージは別承認) にあり、パイロットで使うには #184 のマージ承認が先に要る (DEV-143 は blocked のため depends_on には入れず、ここに記す)。"
     }
   ]
 }
