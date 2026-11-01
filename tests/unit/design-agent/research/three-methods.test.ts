@@ -54,6 +54,11 @@ describe("the three-method study's shared inputs", () => {
     expect(readFileSync(resolve(REPO, "scripts/design-artifact/phase2f-design.ts"), "utf8")).toMatch(/^const MAX_ASSETS = 1;$/m);
     expect(doc).toContain("`implementationAttempts: 3`、`fixesPerCause: 2`");
     expect(doc).toContain("`MAX_ASSETS = 1`");
+    expect(doc).toContain("`LIVE_LIMITS` (最初の呼び出し4回・やり直し2回)");
+    expect(doc).toContain("15分で打ち切る (`LIVE_LIMITS.callTimeoutMs`)");
+    expect(doc).toContain("1つの計画は2時間まで (`planBudgetMs`)");
+    // report-only findings never become a repair trigger in the study (DEV-140, Issue #177 condition 4)
+    expect(doc).toContain("**SP の所見 (`measureMobileQuality`) は記録するだけで、修正のきっかけにしない**");
   });
 
   it("records runs in one shape, and the design keeps mock and live apart and names the three methods", () => {
