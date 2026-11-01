@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { CodexAbortedError, CodexError, runCodexJsonWithMeta, type CodexRunMeta } from "@/lib/design-agent/codex";
 import { runDesignCall, type CommitState, type DesignCallInput, type DesignCodex } from "@/lib/design-agent/phase2f-live/design-call";
@@ -71,6 +71,24 @@ describe("a normal call is not stopped by anything unnecessary", () => {
     let timeout = 0;
     await runDesignCall(input(), deps(counting(async (o) => ((timeout = o.timeoutMs), { answer: ANSWER, meta: META }))));
     expect(timeout).toBe(15 * 60_000);
+  });
+});
+
+describe("DEV-150 (owner approval A′): the prompt version is recorded in call.json only when given", () => {
+  it("prompt_version is written as given, and absent as before", async () => {
+    const a = input({ promptVersion: "tm0" } as Partial<DesignCallInput>);
+    await runDesignCall(a, deps(counting()));
+    expect(json(join(a.outDir, "call.json")).prompt_version).toBe("tm0");
+    const b = input();
+    await runDesignCall(b, deps(counting()));
+    expect(json(join(b.outDir, "call.json"))).not.toHaveProperty("prompt_version");
+    const c = input({ promptVersion: "tm0" } as Partial<DesignCallInput>);
+    await runDesignCall(c, deps(counting(async () => Promise.reject(new CodexError("CODEX_TIMEOUT", "x")))));
+    expect(json(join(c.outDir, "call.json"))).toMatchObject({ status: "failed", prompt_version: "tm0" });
+  });
+
+  it("the design CLI records the version it built", () => {
+    expect(readFileSync(resolve(__dirname, "../../../../scripts/design-artifact/phase2f-design.ts"), "utf8")).toMatch(/^\s*promptVersion: p\.variant\.version,$/m);
   });
 });
 

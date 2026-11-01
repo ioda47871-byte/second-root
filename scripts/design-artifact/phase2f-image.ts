@@ -23,8 +23,10 @@
  *   existing DOM prototype safety check (Chromium, JavaScript off, network shut) and the request is rebuilt from it.
  *   --print-pin --page-request <json> --page-root <dir> --facts <pack.json> runs the same checks offline and prints
  *   the pin. P cannot be combined with --request or --concept-v4. P requires --expect-cli-version <v>
- *   [--previous-steps <dir>,<dir>] (DEV-150, owner approval A′); C and A take them optionally (the three-method pilot's
- *   C1-c procedure gives them), and are unchanged without them. For P, the processes started before the approval
+ *   [--previous-steps <dir>,<dir>] (DEV-150, owner approval A′); C and A take them optionally and are unchanged without
+ *   them, except that route C REQUIRES both (GENERATION_PIN_REQUIRED, before the approval is used) when the named design
+ *   run is a three-method pilot design (its call.json records prompt_version "tm0"); --previous-steps must then name
+ *   that design run. For P, the processes started before the approval
  *   is used are only Chromium (the DOM check: JavaScript off, every outside request refused) and one bounded
  *   `git ls-files` (the tracked check, in phase2f-live-cli.ts); the image tool still runs only in the sandbox.
  *
@@ -124,6 +126,8 @@ async function main(): Promise<number> {
     expected: { promptSha256: args.get("--expected-prompt-sha256") ?? "", promptChars: chars, commit: args.get("--expected-commit") ?? "" },
     outDir: ctx.outDir,
     signal: controller.signal,
+    // DEV-150: what the preflight checked (route C requires it for a tm0 pilot design: image-call.ts)
+    generationPin: pin === null ? null : { previousSteps: pin.previousSteps },
   };
   const input: ImageCallInput = pageIn ? { route: "claude_page", ...pageIn, common } : request ? { route: "C_hybrid", request, common } : { route: "A_image", prompt: await conceptPrompt(), common };
   const result = await runImageCall(input, {

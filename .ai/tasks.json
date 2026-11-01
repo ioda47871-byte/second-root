@@ -6902,6 +6902,8 @@
         "lib/design-agent/three-methods/asset-image-audit.ts",
         "tests/unit/design-agent/three-methods/asset-image-audit.test.ts",
         "tests/unit/design-agent/phase2f-live/generation-pin.test.ts",
+        "lib/design-agent/phase2f-live/design-call.ts",
+        "tests/unit/design-agent/phase2f-live/design-call.test.ts",
         ".ai/tasks.json",
         ".ai/reviews/DEV-150.md"
       ],
@@ -6922,7 +6924,7 @@
         "ページを研究のディレクトリに入れる PR のマージ (D)",
         "範囲の拡大・安全の境界の変更"
       ],
-      "note": "オーナーの承認 A で、配線の設計・実装・オフラインのテスト・独立レビューの修正・PR の作成まで。マージは未承認。実 Codex・画像生成・WSL・jail・worker は一度も呼んでいない。計画と違うところは pilot-plan §12.2 (phase2f-image の --facts、handoff.test.ts の例外、auditIdentity の取り込みなど)。生成した絵の Identity は、文字の無い絵ではふつう HOLD になる点をオーナーへ (§12.3 の 4)。 承認 A′ (2026-11-01): 絵の検査を asset-image-audit に分け (auditIdentity の取り込みを取り消し)、三方式の入口に CLI の版の事前の検査を足した (pilot-plan §12.4)。route C (C1-c) では任意で、手順で必須。"
+      "note": "オーナーの承認 A で、配線の設計・実装・オフラインのテスト・独立レビューの修正・PR の作成まで。マージは未承認。実 Codex・画像生成・WSL・jail・worker は一度も呼んでいない。計画と違うところは pilot-plan §12.2 (phase2f-image の --facts、handoff.test.ts の例外、auditIdentity の取り込みなど)。生成した絵の Identity は、文字の無い絵ではふつう HOLD になる点をオーナーへ (§12.3 の 4)。 承認 A′ (2026-11-01): 絵の検査を asset-image-audit に分け (auditIdentity の取り込みを取り消し)、三方式の入口に CLI の版の事前の検査を足した (pilot-plan §12.4)。route C (C1-c) は、設計の実行の call.json の prompt_version が tm0 のときだけ必須 (GENERATION_PIN_REQUIRED)。design step は prompt_version を記録する。"
     }
   ]
 }

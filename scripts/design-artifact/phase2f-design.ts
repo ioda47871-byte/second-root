@@ -180,6 +180,8 @@ async function main(): Promise<number> {
       outDir: ctx.outDir,
       signal: controller.signal,
       images: refs.paths,
+      // DEV-150 (owner approval A′): recorded in call.json, so the pilot's route C image step requires its generation pin
+      promptVersion: p.variant.version,
     },
     {
       ledger: openLedger(ctx.ledgerDir),

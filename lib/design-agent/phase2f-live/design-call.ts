@@ -42,6 +42,12 @@ export type DesignCallInput = {
   signal?: AbortSignal;
   /** DEV-124: PNG sheets of the success-case references the prompt names (their SHA-256 is in the prompt). */
   images?: readonly string[];
+  /**
+   * DEV-150 (owner approval A′): the prompt version the CLI built (v1 / v1.1 / v2 / tm0), recorded in call.json as
+   * `prompt_version` so a later image step can tell a three-method pilot design (tm0) from any other. Absent: not
+   * recorded (as before). It is a record only: the prompt pin is still checked from the prompt text itself.
+   */
+  promptVersion?: string;
 };
 
 export type DesignCallDeps = {
@@ -72,6 +78,7 @@ export async function runDesignCall(i: DesignCallInput, d: DesignCallDeps): Prom
 
   // ---- the approval is used from here on ------------------------------------------------------
   const runId = `p2f-${randomBytes(8).toString("hex")}`;
+  const version = i.promptVersion === undefined ? {} : { prompt_version: i.promptVersion };
   let receipt: Receipt;
   try {
     receipt = await d.ledger.reserve({ approval_id: i.approvalId, plan_id: i.planId, route: i.route, kind: "design", retry_of: i.retryOf, prompt_sha256: i.expected.promptSha256, prompt_chars: i.expected.promptChars, commit: i.expected.commit, run_id: runId });
@@ -99,7 +106,7 @@ export async function runDesignCall(i: DesignCallInput, d: DesignCallDeps): Prom
     const code = aborted ? "CODEX_ABORTED" : error instanceof CodexError ? error.code : "CODEX_UNEXPECTED";
     // DEV-119: a failed `codex exec` leaves only its exit code and a fixed class (never the CLI's output)
     const diag = !aborted && error instanceof CodexError && error.diagnostic ? { diagnostic: { exit_code: error.diagnostic.exit_code, class: error.diagnostic.class } } : {};
-    await writeOnce(join(i.outDir, "call.json"), { schema: "phase2f_live_call_v1", status: aborted ? "aborted" : "failed", code, receipt, warnings: [], ...diag }).catch(() => undefined);
+    await writeOnce(join(i.outDir, "call.json"), { schema: "phase2f_live_call_v1", status: aborted ? "aborted" : "failed", code, receipt, warnings: [], ...diag, ...version }).catch(() => undefined);
     await end(aborted ? "aborted" : "failed", code).catch(() => undefined);
     return { status: "stopped", code, stage: "call", aborted, ...diag };
   }
@@ -126,7 +133,7 @@ export async function runDesignCall(i: DesignCallInput, d: DesignCallDeps): Prom
   try {
     await writeOnce(join(i.outDir, "answer.json"), answer);
     await writeOnce(join(i.outDir, "generation.json"), generation);
-    await writeOnce(join(i.outDir, "call.json"), { schema: "phase2f_live_call_v1", status: "succeeded", code: null, receipt, thread_id: meta.threadId, redactions: meta.redactions, warnings });
+    await writeOnce(join(i.outDir, "call.json"), { schema: "phase2f_live_call_v1", status: "succeeded", code: null, receipt, thread_id: meta.threadId, redactions: meta.redactions, warnings, ...version });
   } catch {
     await end("failed", "OUT_WRITE_FAILED").catch(() => undefined);
     return { status: "stopped", code: "OUT_WRITE_FAILED", stage: "call", aborted: false };

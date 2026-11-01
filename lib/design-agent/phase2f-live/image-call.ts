@@ -33,7 +33,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { lstat, mkdir, readFile, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, join, normalize } from "node:path";
+import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import { buildPageAssetRequests, runnableAssetRequests, type PageAssetRequest } from "../three-methods/page-assets";
 import { CodexAbortedError, CodexError } from "../codex";
 import { LedgerStop, type Ledger, type Receipt } from "./ledger";
@@ -82,6 +82,13 @@ type Common = {
   expected: { promptSha256: string; promptChars: number; commit: string };
   outDir: string;
   signal?: AbortSignal;
+  /**
+   * DEV-150 (owner approval A′): the generation pin the CLI checks in its preflight (--expect-cli-version and the
+   * resolved --previous-steps), or null when none was given. Route C requires it when the named design run is a
+   * three-method pilot design (its call.json says prompt_version "tm0"), and the previous steps must include that
+   * design run. Any other route C design (v1 / v1.1 / v2, or a record without the field) is unchanged.
+   */
+  generationPin?: { previousSteps: readonly string[] } | null;
 };
 
 /** DEV-150: the existing DOM prototype safety check on Claude's page (the CLI runs it in Chromium): the alts it read, or the stop. */
@@ -165,6 +172,8 @@ export async function runImageCall(i: ImageCallInput, d: ImageCallDeps): Promise
     try {
       const design = await readStep(r.design.dir, d.ledger, { kind: "design", route: "C_hybrid" });
       if (design.call.status !== "succeeded") return refuse("DESIGN_RUN_NOT_SUCCEEDED");
+      // DEV-150 (owner approval A′): a pilot design's picture needs the generation pin, naming that design run as a previous step
+      if (design.call.prompt_version === "tm0" && !c.generationPin?.previousSteps.some((d) => resolve(d) === resolve(r.design.dir))) return refuse("GENERATION_PIN_REQUIRED");
       if (design.receipt.approval_id !== r.design.approval_id || design.receipt.plan_id !== r.design.plan_id || design.receipt.run_id !== r.design.run_id || design.receipt.prompt_sha256 !== r.design.prompt_sha256 || design.receipt.commit !== r.design.commit) return refuse("RECORD_MISMATCH");
     } catch (error) {
       return refuse(error instanceof StepStop ? error.code : "RECORD_UNREADABLE");

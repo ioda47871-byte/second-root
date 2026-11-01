@@ -143,16 +143,28 @@ describe("VISUAL_FIRST (route_c_prototype): tm0 design → pre-render → one im
     expect([built.sha256, built.chars]).toEqual(["f6632d283bbb1ed59941cd2064dd286b31968799d0f91c3c7b179967dbc0e0ac", 4415]);
     const designDir = w.dir("design");
     const d = await runDesignCall(
-      { route: "C_hybrid", prompt: built.prompt, schema: {}, humanApprovalConfirmed: true, approvalId: "fictional-tm-vf-design-01", planId: "plan-fictional-tm-vf", retryOf: null, expected: { promptSha256: built.sha256, promptChars: built.chars, commit: COMMIT }, outDir: designDir },
+      { route: "C_hybrid", prompt: built.prompt, schema: {}, humanApprovalConfirmed: true, approvalId: "fictional-tm-vf-design-01", planId: "plan-fictional-tm-vf", retryOf: null, expected: { promptSha256: built.sha256, promptChars: built.chars, commit: COMMIT }, outDir: designDir, promptVersion: "tm0" },
       { ledger: w.ledger, commit: clean, codex: async () => ({ answer: routeCAnswer(), meta: META }) },
     );
     expect(d.status).toBe("succeeded");
+    // the design step records the prompt version it was made with (owner approval A′)
+    expect(json(join(designDir, "call.json")).prompt_version).toBe("tm0");
     const preDir = w.dir("pre");
     const pre = w.steps(["--prerender", "--route", "C", "--design", designDir, "--facts", factsPath, "--out", preDir]);
     expect(pre.status, JSON.stringify(pre.out)).toBe(0);
     const request = json(join(preDir, "image-request-A1.json")) as ImageRequest;
     const imageDir = w.dir("image");
-    const img = await runImageCall({ route: "C_hybrid", request, common: { humanApprovalConfirmed: true, approvalId: "fictional-tm-vf-image-01", planId: "plan-fictional-tm-vf", retryOf: null, expected: { promptSha256: request.prompt_sha256, promptChars: request.prompt_chars, commit: COMMIT }, outDir: imageDir } }, { ledger: w.ledger, commit: clean, image: saved() });
+    const tool = Object.assign((async (o) => ((tool.calls += 1), saved()(o))) as ImageTool, { calls: 0 });
+    const imageCall = (approvalId: string, generationPin: { previousSteps: string[] } | null | undefined, outDir = w.dir("image")) =>
+      runImageCall({ route: "C_hybrid", request, common: { humanApprovalConfirmed: true, approvalId, planId: "plan-fictional-tm-vf", retryOf: null, expected: { promptSha256: request.prompt_sha256, promptChars: request.prompt_chars, commit: COMMIT }, outDir, ...(generationPin === undefined ? {} : { generationPin }) } }, { ledger: w.ledger, commit: clean, image: tool });
+    // owner approval A′: a tm0 design's picture needs the generation pin, and its previous steps must name that design run
+    const approvals = () => readdirSync(join(w.state, "approvals")).sort();
+    const before = approvals();
+    for (const pin of [undefined, null, { previousSteps: [] }, { previousSteps: [w.runs] }]) {
+      expect(await imageCall("fictional-tm-vf-image-00", pin), JSON.stringify(pin)).toEqual({ status: "stopped", code: "GENERATION_PIN_REQUIRED", stage: "precheck", aborted: false });
+    }
+    expect([tool.calls, approvals()]).toEqual([0, before]);
+    const img = await imageCall("fictional-tm-vf-image-01", { previousSteps: [designDir] }, imageDir);
     expect(img.status).toBe("succeeded");
     const pkgDir = w.dir("pkg");
     const pkg = ["--package", "--route", "C", "--facts", factsPath, "--design", designDir, "--image", imageDir, "--artifact-id", "DA-20261101-tm0001", "--shop-id", facts.shop_id, "--shop-name", "架空パン工房 こむぎ灯", "--out", pkgDir, "--result", join(w.runs, "result.json")];
