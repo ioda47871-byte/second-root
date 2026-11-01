@@ -6582,7 +6582,7 @@
     {
       "id": "DEV-145",
       "title": "3方式の最初のパイロットの暫定方針と、画像を使う別条件の計画を記録 (Issue #180)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-141",
@@ -6618,12 +6618,13 @@
         "パイロットの実行",
         "別条件の入口の作成・実行"
       ],
-      "note": "文書だけ。共通ブリーフと runnableAssetRequests は PR #184 (DEV-143、未マージ・マージは別承認) にあり、パイロットで使うには #184 のマージ承認が先に要る (DEV-143 は blocked のため depends_on には入れず、ここに記す)。"
+      "note": "文書だけ。共通ブリーフと runnableAssetRequests は PR #184 (DEV-143、未マージ・マージは別承認) にあり、パイロットで使うには #184 のマージ承認が先に要る (DEV-143 は blocked のため depends_on には入れず、ここに記す)。",
+      "merged": "#185 → 522b11a (squash, 2026-11-01)"
     },
     {
       "id": "DEV-146",
       "title": "限定的自動修正の設計とオフライン試作 (MOCK、Issue #177 D)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-140"
@@ -6663,7 +6664,63 @@
         "限定的自動修正を実運用で使うこと (信頼性の証拠とオーナーの別の承認が要る)",
         "Issue #177 の条件を満たさない場合の develop へのマージ"
       ],
-      "note": "MOCK のみ。lib の既存ファイルと隔離テストの除外は変えていない (LIMITS は loop の隔離のため写し、テストで一致を固定)。架空ページ13件 (Chromium) と偽の port 21件: 押す所2件・切れた文字・はみ出しは v1 で直り owner_review、!important の押す所は NOT_RESOLVED×2、高さを外すと重なるページは NEW_FINDING×2 で SAME_CAUSE_FIX_LIMIT、意図した作り6件 (DEV-140 の誤検知2件を含む) は no_change、Identity REJECT は描画の前に停止。Review 待ち。"
+      "note": "MOCK のみ。lib の既存ファイルと隔離テストの除外は変えていない (LIMITS は loop の隔離のため写し、テストで一致を固定)。架空ページ13件 (Chromium) と偽の port 21件: 押す所2件・切れた文字・はみ出しは v1 で直り owner_review、!important の押す所は NOT_RESOLVED×2、高さを外すと重なるページは NEW_FINDING×2 で SAME_CAUSE_FIX_LIMIT、意図した作り6件 (DEV-140 の誤検知2件を含む) は no_change、Identity REJECT は描画の前に停止。Fresh Review PASS、#186 でマージ。",
+      "merged": "#186 → e0f519c (squash, 2026-11-01)"
+    },
+    {
+      "id": "DEV-147",
+      "title": "制作工程の統合検証 (MOCK、Issue #177 E)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-139",
+        "DEV-140",
+        "DEV-142",
+        "DEV-144",
+        "DEV-146"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-147-integration-check",
+      "purpose": "Issue #177 E (オーナー事前承認、条件付きの develop マージ)。A〜D の段 (DEV-139 impl-compare・DEV-140 SP 検査・DEV-144 構造の観察・DEV-146 限定的自動修正の模擬) を、架空の店舗だけで1本のオフラインの流れとしてつなぎ、模擬と実際を分けた1つの報告 (integration_check_report_v0) にまとめる。report-only・opt-in で、何も有効にしない。3方式の研究 (Issue #180) の MOCK の fixture を再利用し、その通し実行はやり直さない。",
+      "acceptance_criteria": [
+        "テストの中だけで、偽の DesignPort → 実際の Phase 2f の runner → render_pair_complete → intake → prepareImplementationLane → 別に書いた実装 → Identity → A (compareImplementation) → B (renderPrototype の mobileQuality) → C (observeStructure、実際の参照、undecided と too_thin を分ける) → D (runAutofixMock、本物の port) → 提案の CSS でメモリ上の A・B の再確認、とつなぐ",
+        "報告 integration_check_report_v0: run_kind mock、段ごとの状態・コード・数・ハッシュ、stops、passing / design_approved / applied はいつも false。live・合格・適用・Identity の停止のあとの段を断る",
+        "場面: きれいな実装 (no_change)、D が直せる SP の問題 (owner_review、A・B の前後)、Identity REJECT (どの段も走らず、D も単独で断る)、事実を切る修正を戻す、直せない修正で止まる、DEV-140 の既知の誤検知を直さない",
+        "実装の HTML/CSS・事実・lane のファイルはバイト単位で変わらない。lib のファイルの追加・変更なし。新しい閾値・検査・CLI なし",
+        "docs/design/integration-check.md: つなぐもの、各段が足すもの、報告の形、模擬と実際、示さないこと、限界、3方式の研究とのつなぎ方 (作らない)"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/integration-check/integration-check.test.ts",
+        "tests/unit/design-agent/integration-check/isolation.test.ts",
+        "tests/unit/design-agent/identity/identity-lock.test.ts",
+        "tests/unit/design-agent/structure/structure.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/integration-check/**",
+        "tests/unit/design-agent/identity/identity-lock.test.ts (隔離の例外に新しいテストの正確なパスを1つ足すだけ)",
+        "tests/unit/design-agent/structure/structure.test.ts (同上)",
+        "docs/design/integration-check.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-147.md"
+      ],
+      "forbidden_scope": [
+        "lib・app・components・scripts の変更と、そこからの統合検証の import",
+        "Phase 2f の runner・実装レーン・worker・修正ループへの配線",
+        "閾値・停止条件・SP 検査・intake・研究データの意味の変更",
+        "所見の gate 化・自動の合否・デザイン採用・修正の適用",
+        "生成 prompt・承認フロー・Identity Lock の変更",
+        "実 Codex・画像生成・有料 API・ネットワーク・隔離 WSL・worker/bridge/jail/timer・Production/Staging・.github/workflows/**"
+      ],
+      "human_approval_triggers": [
+        "run_kind live の統合検証 (実 Codex のデザインと実装で走らせること)",
+        "統合検証を runner・worker・修正ループで使うこと",
+        "3方式の研究の報告への接続 (method・condition を足すこと)",
+        "Issue #177 の条件を満たさない場合の develop へのマージ"
+      ],
+      "note": "MOCK のみ。lib は変えていない。架空店舗 (こむぎ灯) の6場面: (a) no_change、(b) 押す所 → TAP_TARGET v1 で owner_review、再確認で B の所見が消え A の SP_PAGE_LAYOUT も消える、(c) IDENTITY_REJECT でどの段も走らない、(d) HORIZONTAL_OVERFLOW v1 は営業時間・所在地・アクセスを切るので NEW_FINDING で戻し v2 を提案、(e) !important の押す所は NOT_RESOLVED×2 で SAME_CAUSE_FIX_LIMIT、(f) DEV-140 の誤検知 (印の無い飾りの文字) は not_located で no_change。DEV-145・DEV-146 はマージ済みなので done にし、DEV-146 を depends_on に入れた。Review 待ち。"
     }
   ]
 }

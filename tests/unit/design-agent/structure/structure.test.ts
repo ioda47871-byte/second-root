@@ -249,7 +249,9 @@ describe("isolation (provisional vocabulary: never used by a generator without a
       // DEV-138 (Issue #175, owner-approved): the one offline, report-only observation CLI, run on a finished package
       ":!scripts/design-artifact/phase2f-structure-observe.ts",
       // DEV-142 (Issue #180): the three-method study's MOCK run observes its fixture pages, report-only (a test, never lib)
-      ":!tests/unit/design-agent/research/three-methods-mock.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/research/three-methods-mock.test.ts",
+      // DEV-147 (Issue #177 E): the MOCK integration check of Phases A–D observes each case's implementation, report-only (a test, never lib)
+      ":!tests/unit/design-agent/integration-check/integration-check.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
     // DEV-136: the reference set and its comparison are covered too (review M1): nothing outside may import or read them
     for (const f of ["lib/design-agent/structure/descriptor.ts", "lib/design-agent/structure/measure.ts", "lib/design-agent/structure/references.ts", "lib/design-agent/structure/observe.ts"]) {
