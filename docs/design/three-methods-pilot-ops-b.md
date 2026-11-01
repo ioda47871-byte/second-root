@@ -243,7 +243,9 @@ rm -r "$H"    # 写しの絵を残さない。tar とその SHA-256 だけを残
 
 **戻す向き (Claude → `sr-designgen`)、案:** Claude は、戻すファイル (目視の記録・VISUAL_FIRST の実装) を同じ形の tar にし、SHA-256 を文で示す。オーナーは tar を受け取り、SHA-256 を照らして管理者のホームで展開し、`sha256sum -c` を通してから、1つずつ `sudo install -d -o sr-designgen -g sr-designgen -m 0700 <R>/<plan_id>/in-…` と `sudo install -m 0600 -o sr-designgen -g sr-designgen <ファイル> <R>/<plan_id>/in-…/` で置く。VISUAL_FIRST の実装の `in-impl/assets/` のような下のフォルダーも、先に `sudo install -d -o sr-designgen -g sr-designgen -m 0700` で作る。**Claude の session からファイルをオーナーの手元へ持ち出す手段は、リポジトリに記録が無い** (§10)。
 
-**もっと小さい案 (戻す向き):** 戻すものは文字だけにできる。目視の記録 (JSON) と VISUAL_FIRST の実装の `index.html`・`style.css` は、Claude が文として示し、SHA-256 を添える。オーナーはそれを貼ってファイルにし、`sha256sum` で照らしてから上の形で置く。実装の `assets/A1.png` は Claude から戻さず、オーナーが `sudo install -m 0600 -o sr-designgen -g sr-designgen <R>/<PLAN_VF>/c1c-image/image.png <R>/<PLAN_VF>/in-impl/assets/A1.png` で直に置く (絵は一度も `sr-designgen` へ戻らない。名前 `A1.png` はページの `<img src>` と同じにする)。
+**盲検の間の戻す向きは、tar だけにする。** 目視の記録 (JSON) や VISUAL_FIRST の実装の `index.html`・`style.css` を文として示し、オーナーが貼る形は、**評価のあとだけ**使える。記録の `observed` (`depicted`・`visible_text`・`category_cues`) は方式の絵を、HTML/CSS は方式の構図を表すので、評価の前にオーナーが読むと盲検が崩れる (§7.5 の D の差分を読むのと同じ種類)。評価の前にやむを得ず使ったときは、その方式について §7.5 のとおり記録する。
+
+**絵を戻さない案 (盲検の間も使える):** 実装の `assets/A1.png` は Claude から戻さず、オーナーが `sudo install -m 0600 -o sr-designgen -g sr-designgen <R>/<PLAN_VF>/c1c-image/image.png <R>/<PLAN_VF>/in-impl/assets/A1.png` で直に置く (絵は一度も `sr-designgen` へ戻らない。名前 `A1.png` はページの `<img src>` と同じにする)。
 
 ### 5.3 写すもの・写さないもの
 
@@ -336,7 +338,7 @@ rm -r "$H"    # 写しの絵を残さない。tar とその SHA-256 だけを残
 ### 8.2 パイロットのあと (または中止したとき) に戻す
 
 1. 動いている手順が無いこと: `systemctl list-units 'sr-jail-run-*' --no-pager` が空。
-2. P-2a で止めた timer があれば、その名前のものだけを戻す (`sudo systemctl enable --now <timer>`。`design-worker-cycle.md` §5 の enable の行)。止めていなければ何もしない。
+2. P-2a で止めた timer があれば、その名前のものだけを戻す。`stop` で止めたもの (system の `sr-design-worker.timer`) は `sudo systemctl start <timer>` (`design-worker-wsl.md` §6)、`disable` したもの (cycle) だけ `sudo systemctl enable --now <timer>` (`design-worker-cycle.md` §5 の enable の行)。止めていなければ何もしない。
 3. P-3 で jail の Claude が enabled だったなら `sudo bash …/admin.sh claude-start` (`CLAUDE_STARTED (jailed)`)。enabled でなかったなら起動しない (passt-update-plan §5.0 の V-2b と同じ考え)。
 4. 確かめる: `admin.sh status` の `jail:` の行が P-3 の記録と同じ。`systemctl list-timers --all 'sr-*' --no-pager` と `is-enabled` が P-2 の記録と同じ。W-0 をもう一度走らせて `W0_OK`。
 5. `sr-designgen` の checkout は、C1 か C2 に detach したまま残してよい。worker の `run.sh` は自分で develop に揃える (`design-worker-wsl.md` §3 の `SR_DESIGN_WORKER_REF`)。画像の PoC の1回の入口は、実行のときに承認の commit を名指しする (`design-image-one-command.md`)。
@@ -383,7 +385,7 @@ Claude が下の型を埋めて出し、オーナーが承認する。オーナ�
 | previous steps | その plan で成功した呼び出しの出力のフォルダーすべて (無ければ「無し」) |
 | C1-c だけ | 要求のファイル (`prerender/image-request-A1.json`) のパス、名指すデザインの実行の approval_id と run_id、主役かどうか (essential)。どれも `prerender.md` にある |
 | C2-a / C2-b だけ | ページのパス (`--page-root` からの位置)、ページの html の SHA-256、`--hero` の値 |
-| plan の残り | その plan の使った枠 (最初・やり直し) と使った時間 (`prerender.md` か `--page-request` の `prerender.md`。計画 §5) |
+| plan の残り | その plan の使った枠 (最初・やり直し) と使った時間。C1-c は `prerender.md` (計画 §5)。C2-a/C2-b の `--page-request` の `prerender.md` には書かれない (その手順は台帳を読まない) ので、オーナーが名前だけを並べて示す (`ls <state>/phase2f-live/plans/<plan_id>/slots`)。時間は記録が無ければ「無し」と書く |
 | `--versions` に渡すもの | パイロットで成功した呼び出しのすべて (方式をまたぐ) |
 | retry-of | R のときだけ、元の approval_id |
 | 出力のフォルダー | §3 の表の名前 (新しいもの) |
