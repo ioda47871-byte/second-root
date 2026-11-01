@@ -106,9 +106,9 @@ export const CORPUS: CorpusCase[] = [
   },
   {
     id: "clipped_with_overprint",
-    intent: "copy slightly cut by its card, and the hours printed over its visible part",
+    intent: "copy and the hours printed over it, both cut at the bottom by their 24 px card (by 5-8 px)",
     body: `<section>${name}<div class="card"><p class="copy">朝の一杯を、灯のそばで</p><p class="hours">8:00〜19:00</p></div><p>架空市本町3-4</p></section>`,
-    css: `${BASE} .card{position:relative;height:30px;overflow:hidden} .copy{margin:0;font-size:24px;line-height:32px} .hours{position:absolute;top:4px;left:30px;margin:0;font-size:20px}`,
+    css: `${BASE} .card{position:relative;height:24px;overflow:hidden} .copy{margin:0;font-size:24px;line-height:32px} .hours{position:absolute;top:4px;left:30px;margin:0;font-size:20px}`,
     expected: ["SP_TEXT_CLIPPED", "SP_TEXT_OVERLAP"],
   },
   {

@@ -103,7 +103,11 @@ const CLIP_BOX_SCRIPT = String.raw`(owners) => {
       const as = getComputedStyle(a);
       if (as.overflowX === "visible" && as.overflowY === "visible" && as.clipPath === "none") continue;
       const b = a.getBoundingClientRect();
-      const r = { left: b.left, top: b.top + scrollY, right: b.right, bottom: b.bottom + scrollY };
+      // only the clipped axes limit what can be painted (overflow-x: clip with overflow-y: visible clips sideways only)
+      const both = as.clipPath !== "none";
+      const xs = both || as.overflowX !== "visible";
+      const ys = both || as.overflowY !== "visible";
+      const r = { left: xs ? b.left : -Infinity, top: ys ? b.top + scrollY : -Infinity, right: xs ? b.right : Infinity, bottom: ys ? b.bottom + scrollY : Infinity };
       box = box ? { left: Math.max(box.left, r.left), top: Math.max(box.top, r.top), right: Math.min(box.right, r.right), bottom: Math.min(box.bottom, r.bottom) } : r;
     }
     out[owner] = box;
