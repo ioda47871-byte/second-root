@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FactsPack } from "@/lib/design-agent/artifact/schema";
 import { auditPageText } from "@/lib/design-agent/identity/identity-lock";
+import { LIMITS } from "@/lib/design-agent/loop/controller";
+import { LIVE_LIMITS } from "@/lib/design-agent/phase2f-live/ledger";
 
 // DEV-141 (Issue #180): the shared inputs of the three-method study (VISUAL_FIRST / LAYOUT_FIRST / DIRECTION_FIRST).
 // Fictional only; nothing here calls a model.
@@ -38,16 +41,27 @@ describe("the three-method study's shared inputs", () => {
     expect(auditPageText(lock, `${page}\n架空菓庵`).status).not.toBe("PASS_IDENTITY_ONLY");
   });
 
-  it("is a shop never handed to Codex before (not one of the earlier fixtures)", () => {
+  it("is a shop never handed to Codex before: its name and id appear nowhere else in the design library, the skills or the scripts", () => {
     for (const other of lock.other_shop_names as string[]) expect(pack.facts.map((f) => f.value).join("")).not.toContain(other);
     expect(lock.other_shop_names).toEqual(expect.arrayContaining(["架空菓庵", "月見湯", "紙縁堂", "ひびや継工房"]));
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "こむぎ灯|fictional-bakery-komugi", "--", "design-library", ".claude", "scripts", "lib", `:!${DIR}/**`], { cwd: REPO, encoding: "utf8" });
+    expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
+  });
+
+  it("quotes the code's own limits correctly (a change there shows here)", () => {
+    expect(LIVE_LIMITS).toMatchObject({ firstCalls: 4, retries: 2, callTimeoutMs: 15 * 60 * 1000, planBudgetMs: 2 * 60 * 60 * 1000 });
+    expect(LIMITS).toEqual({ implementationAttempts: 3, fixesPerCause: 2 });
+    expect(readFileSync(resolve(REPO, "scripts/design-artifact/phase2f-design.ts"), "utf8")).toMatch(/^const MAX_ASSETS = 1;$/m);
+    expect(doc).toContain("`implementationAttempts: 3`、`fixesPerCause: 2`");
+    expect(doc).toContain("`MAX_ASSETS = 1`");
   });
 
   it("records runs in one shape, and the design keeps mock and live apart and names the three methods", () => {
     const t = JSON.parse(read("run-record-template.json"));
     expect(t.schema).toBe("three_method_run_v0");
     expect(t.run_kind).toBe("mock | live");
-    for (const k of ["codex_calls", "images", "claude", "artifacts", "checks", "stops"]) expect(t, k).toHaveProperty(k);
+    for (const k of ["codex_calls", "images", "claude", "artifacts", "checks", "stops", "cost", "failure", "rework"]) expect(t, k).toHaveProperty(k);
+    for (const k of ["commit", "cli_version", "model_reported", "approval_id", "prompt_sha256"]) expect(t.codex_calls[0], k).toHaveProperty(k);
     for (const m of ["VISUAL_FIRST", "LAYOUT_FIRST", "DIRECTION_FIRST"]) expect(doc).toContain(m);
     expect(doc).toContain("模擬の画像や数値は、方式の優劣の証拠にしない");
     expect(read("review-sheet.md")).toContain("模擬 (`MOCK`) の画像では評価しない");

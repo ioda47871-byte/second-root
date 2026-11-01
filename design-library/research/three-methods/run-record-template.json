@@ -19,7 +19,10 @@
       "started_at": "",
       "finished_at": "",
       "outcome": "succeeded | failed | aborted | refused | mock",
-      "retry_of": null
+      "retry_of": null,
+      "commit": "",
+      "cli_version": "",
+      "model_reported": ""
     }
   ],
   "images": {
@@ -67,5 +70,21 @@
       "reason": ""
     }
   ],
-  "notes": "MOCK の記録は方式の優劣の証拠にしない"
+  "notes": "MOCK の記録は方式の優劣の証拠にしない",
+  "cost": {
+    "plan_usage_calls": 0,
+    "claude_minutes": 0,
+    "claude_tokens_estimate": null
+  },
+  "failure": {
+    "calls": 0,
+    "failed_or_aborted_or_refused": 0,
+    "rate": null
+  },
+  "rework": {
+    "request_id": "fixed change request, written before the pilot",
+    "minutes": null,
+    "files_changed": null,
+    "codex_calls_needed": null
+  }
 }
