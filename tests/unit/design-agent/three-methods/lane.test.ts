@@ -268,6 +268,9 @@ describe("asset requests from a page Claude wrote (LAYOUT_FIRST / DIRECTION_FIRS
     [`<p>x</canvas>`, "PAGE_MARKUP_UNSUPPORTED"],
     // backstop over the whole raw text
     [`<p>see url(x)</p>`, "ASSET_MARKER_AMBIGUOUS"],
+    // round 3 (L1): only HTML whitespace separates attributes; a non-ASCII unquoted value is never split like a browser would not
+    [`<img src=assets/A1.png\u00a0data-x=1 alt="x">`, "ASSET_MARKER_AMBIGUOUS"],
+    [`<div data-asset=A1\ufeff data-asset-alt="x"></div>`, "ASSET_MARKER_AMBIGUOUS"],
   ])("refuses %s", (html, code) => {
     expect(extractAssetMarkers(html)).toEqual({ ok: false, code });
   });

@@ -116,21 +116,22 @@ function readTags(html: string): { ok: true; tags: Tag[] } | Refusal {
     if (!TAGS.has(name)) return refuse("PAGE_MARKUP_UNSUPPORTED");
     const attrs = new Map<string, string>();
     for (;;) {
-      while (j < html.length && /[\s/]/.test(html[j]!)) j++;
+      // HTML whitespace only (JS \s also matches NBSP, U+FEFF, U+2028 ..., which a browser does not split on)
+      while (j < html.length && /[\t\n\f\r /]/.test(html[j]!)) j++;
       if (j >= html.length) return refuse("ASSET_MARKER_AMBIGUOUS");
       if (html[j] === ">") {
         j++;
         break;
       }
       let k = j;
-      while (k < html.length && !/[\s/>=]/.test(html[k]!)) k++;
+      while (k < html.length && !/[\t\n\f\r />=]/.test(html[k]!)) k++;
       const attr = html.slice(j, k).toLowerCase();
       j = k;
-      while (j < html.length && /\s/.test(html[j]!)) j++;
+      while (j < html.length && /[\t\n\f\r ]/.test(html[j]!)) j++;
       let value = "";
       if (html[j] === "=") {
         j++;
-        while (j < html.length && /\s/.test(html[j]!)) j++;
+        while (j < html.length && /[\t\n\f\r ]/.test(html[j]!)) j++;
         const q = html[j];
         if (q === '"' || q === "'") {
           const e = html.indexOf(q, j + 1);
@@ -139,8 +140,10 @@ function readTags(html: string): { ok: true; tags: Tag[] } | Refusal {
           j = e + 1;
         } else {
           let e = j;
-          while (e < html.length && !/[\s>]/.test(html[e]!)) e++;
+          while (e < html.length && !/[\t\n\f\r >]/.test(html[e]!)) e++;
           value = html.slice(j, e);
+          // an unquoted value is printable ASCII only (anything else may split where a browser would not)
+          if (!/^[\x21-\x7e]*$/.test(value)) return refuse("ASSET_MARKER_AMBIGUOUS");
           j = e;
         }
       }
