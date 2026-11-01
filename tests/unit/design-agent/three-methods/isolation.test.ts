@@ -32,7 +32,7 @@ const ALLOWED: Record<string, string[]> = {
   [CLI]: ["node:fs/promises", "node:path", "../../lib/design-agent/three-methods/brief", "../../lib/design-agent/three-methods/pins"],
 };
 /** Module paths and calls that would reach Codex, a process, the network, a browser, a model, the image tool, the sandbox, the ledger or a live entry. */
-const FORBIDDEN = /["'`][^"'`]*\/codex["'`]|runCodex\w*|prepareCodexSandbox|generateImageOnce|openLedger|child_process|\bfetch\(|node:(?:https?|net|dgram|worker_threads)|(?<!\.)\bspawn\w*\(|(?<!\.)\bexec(?:File|Sync)?\(|playwright|anthropic|openai|phase2f(?:-live)?\/|phase2f-(?:design|image|steps|live-cli)|design-image\/|\/sandbox["'`]|bounded-process|\/worker\/|systemctl/i;
+const FORBIDDEN = /["'`][^"'`]*\/codex["'`]|runCodex\w*|prepareCodexSandbox|generateImageOnce|openLedger|child_process|\bfetch\(|node:(?:https?|net|dgram|worker_threads)|(?<!\.)\bspawn\w*\(|(?<!\.)\bexec(?:File|Sync)?\(|playwright|anthropic|openai|phase2f(?:-live)?\/|phase2f-(?:design|image|steps|live-cli)|design-image\/|\/sandbox["'`]|bounded-process|\/worker\/|systemctl|\beval\s*\(|new\s+Function\b|globalThis\s*\[/i;
 
 describe("isolation of the three-method lane (experimental, opt-in)", () => {
   it("has exactly the expected files", () => {
@@ -64,12 +64,12 @@ describe("isolation of the three-method lane (experimental, opt-in)", () => {
     expect([...cli.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']node:fs\/promises["']/g)].map((m) => m[1]!.trim())).toEqual(["readFile"]);
   });
 
-  it("is imported by nothing in lib, app, components, scripts, proxy.ts or supabase except its own CLI (exact path)", () => {
-    // any importer, absolute or relative; git grep exits 1 when nothing matches (an error is 128, never a pass)
-    const g = git(["grep", "--untracked", "-lE", "design-agent/three-methods|[\"'`]\\.{1,2}/three-methods[\"'`/]|three-methods-pins", "--", "lib", "app", "components", "scripts", "proxy.ts", "supabase", `:!${LIB}/**`]);
+  it("is imported by nothing in the repository (outside tests/, docs/ and .ai/) except its own CLI (exact path)", () => {
+    // any importer, absolute or relative, anywhere in the repository; git grep exits 1 when nothing matches (an error is 128, never a pass)
+    const g = git(["grep", "--untracked", "-lE", "design-agent/three-methods|[\"'`]\\.{1,2}/three-methods[\"'`/]|three-methods-pins", "--", ".", `:!${LIB}/**`, ":!tests/**", ":!docs/**", ":!.ai/**"]);
     expect([g.status, g.stdout.trim()]).toEqual([0, CLI]);
-    // and no package script, workflow or unit file starts the CLI (it is run by hand only)
-    const h = git(["grep", "--untracked", "-lE", "three-methods-pins", "--", "package.json", ".github", "ops", "scripts", `:!${CLI}`]);
+    // and no package script, workflow, unit file or other script starts the CLI (it is run by hand only)
+    const h = git(["grep", "--untracked", "-lE", "three-methods-pins", "--", ".", `:!${CLI}`, `:!${LIB}/**`, ":!tests/**", ":!docs/**", ":!.ai/**"]);
     expect([h.status, h.stdout.trim()]).toEqual([1, ""]);
   });
 });
@@ -95,7 +95,7 @@ describe("the offline pin CLI", () => {
   }, 60_000);
 
   it("refuses anything but printing pins (no flag can make a call), with exit 2", () => {
-    for (const args of [[], ["--print-pin", "--print-pin"], ["--print-pin", "--approval-id", "x"], ["--print-pin", "--human-approval-confirmed"], ["--print-pin", "--out", "x"], ["--print-pin", "--layout-page"], ["--print-pin", "--layout-page", "a", "--layout-page", "b"], ["--route", "B"]]) {
+    for (const args of [[], ["--print-pin", "--print-pin"], ["--print-pin", "--approval-id", "x"], ["--print-pin", "--human-approval-confirmed"], ["--print-pin", "--out", "x"], ["--print-pin", "--layout-page"], ["--print-pin", "--layout-page", "a", "--layout-page", "b"], ["--route", "B"], ["--print-pin", "__proto__", "x"], ["--print-pin", "toString", "x"], ["--print-pin", "constructor", "x"]]) {
       const r = cli(args);
       expect(r.status, args.join(" ")).toBe(2);
       expect(JSON.parse(r.stdout), args.join(" ")).toEqual({ status: "refused", code: "USAGE" });

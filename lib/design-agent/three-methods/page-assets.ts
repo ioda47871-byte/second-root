@@ -15,7 +15,12 @@
  * of the page with placeholders, as the runner does) and passed in; without a measurement every picture counts as
  * essential, so a failure would stop for the owner.
  *
- * A `>` inside an attribute value cuts the tag short; the marker is then refused, never skipped (write &gt;).
+ * THIS READER IS NOT A SAFETY CHECK. It is a small text reader, not a browser: it refuses the evasions it knows of
+ * (comment / style / script openers inside attribute values, srcset, <source>, <image> and other media tags, a CSS
+ * url() that is not a marked asset, unbalanced quotes or comments), but it cannot prove what a browser would load.
+ * A future entry must first run Claude's page through the existing DOM-based prototype safety check (network shut,
+ * JavaScript off), and should take the markers and alt texts from that DOM result, as the runner does. Alt text here
+ * is decoded for a few entities only and its whitespace is collapsed, so it can differ from the DOM's alt.
  *
  * Pure: reads no file, renders nothing, calls nothing.
  */
@@ -52,54 +57,145 @@ const decode = (s: string) =>
     return ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" } as Record<string, string>)[name!.toLowerCase()] ?? all;
   });
 
-function attributes(raw: string): Map<string, string> | null {
-  const out = new Map<string, string>();
-  const re = /([^\s"'=<>/`]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-  for (let m = re.exec(raw); m; m = re.exec(raw)) {
-    const name = m[1]!.toLowerCase();
-    // a repeated attribute is ambiguous (browsers keep the first): refused rather than guessed
-    if (out.has(name)) return null;
-    out.set(name, decode(m[2] ?? m[3] ?? m[4] ?? ""));
+type Tag = { name: string; attrs: Map<string, string>; duplicate: boolean };
+/** Elements whose content is not read as markup (as a browser treats them, or never rendered with JavaScript off). */
+const RAW_TEXT = new Set(["style", "script", "template", "textarea", "title", "noscript", "xmp"]);
+
+/**
+ * A quote-aware tag reader: attribute values may hold `<` and `>`, `/` separates attributes as in HTML, comments and
+ * raw-text elements are skipped. Returns the tags and the page text outside comments and raw-text contents; null when
+ * a comment, quote, tag or raw-text element is left open.
+ */
+function readTags(html: string): { tags: Tag[]; residue: string } | null {
+  const tags: Tag[] = [];
+  let residue = "";
+  let i = 0;
+  while (i < html.length) {
+    const lt = html.indexOf("<", i);
+    if (lt < 0) {
+      residue += html.slice(i);
+      break;
+    }
+    residue += html.slice(i, lt);
+    if (html.startsWith("<!--", lt)) {
+      const end = html.indexOf("-->", lt + 4);
+      if (end < 0) return null;
+      i = end + 3;
+      continue;
+    }
+    if (/[a-zA-Z]/.test(html[lt + 1] ?? "")) {
+      let j = lt + 1;
+      while (j < html.length && /[a-zA-Z0-9-]/.test(html[j]!)) j++;
+      const name = html.slice(lt + 1, j).toLowerCase();
+      const attrs = new Map<string, string>();
+      let duplicate = false;
+      for (;;) {
+        while (j < html.length && /[\s/]/.test(html[j]!)) j++;
+        if (j >= html.length) return null;
+        if (html[j] === ">") {
+          j++;
+          break;
+        }
+        let k = j;
+        while (k < html.length && !/[\s/>=]/.test(html[k]!)) k++;
+        const attr = html.slice(j, k).toLowerCase();
+        j = k;
+        while (j < html.length && /\s/.test(html[j]!)) j++;
+        let value = "";
+        if (html[j] === "=") {
+          j++;
+          while (j < html.length && /\s/.test(html[j]!)) j++;
+          const q = html[j];
+          if (q === '"' || q === "'") {
+            const e = html.indexOf(q, j + 1);
+            if (e < 0) return null;
+            value = html.slice(j + 1, e);
+            j = e + 1;
+          } else {
+            let e = j;
+            while (e < html.length && !/[\s>]/.test(html[e]!)) e++;
+            value = html.slice(j, e);
+            j = e;
+          }
+        }
+        if (attrs.has(attr)) duplicate = true;
+        else attrs.set(attr, value);
+      }
+      residue += html.slice(lt, j);
+      tags.push({ name, attrs, duplicate });
+      if (RAW_TEXT.has(name)) {
+        const close = html.toLowerCase().indexOf(`</${name}`, j);
+        if (close < 0) return null;
+        i = close;
+      } else i = j;
+      continue;
+    }
+    if (html[lt + 1] === "/" || html[lt + 1] === "!" || html[lt + 1] === "?") {
+      const e = html.indexOf(">", lt);
+      if (e < 0) return null;
+      residue += html.slice(lt, e + 1);
+      i = e + 1;
+      continue;
+    }
+    residue += "<";
+    i = lt + 1;
   }
-  return out;
+  return { tags, residue };
 }
 
-/** The pictures Claude's page asks for, from its markers. Comments, <style>, <script> and <template> are not read. */
+/** Media this reader cannot follow: refused, so a picture never comes from somewhere the markers do not show. */
+const MEDIA_TAGS = new Set(["source", "image", "video", "audio", "object", "embed", "iframe", "input", "use", "track"]);
+const MEDIA_ATTRS = new Set(["srcset", "imagesrcset", "poster", "background", "lowsrc", "dynsrc"]);
+const OPENERS_IN_VALUE = /<!--|<\/?\s*(?:style|script)\b/i;
+
+/** The pictures Claude's page asks for, from its markers. Not a safety check (see the header). */
 export function extractAssetMarkers(html: string, maxAssets = PAGE_MAX_ASSETS): { ok: true; markers: PageAssetMarker[] } | { ok: false; code: string } {
-  const text = html.replace(/<!--[\s\S]*?-->/g, "").replace(/<(style|script|template)\b[\s\S]*?<\/\1\s*>/gi, "");
+  const read = readTags(html);
+  if (!read) return { ok: false, code: "ASSET_MARKER_AMBIGUOUS" };
   const found = new Map<string, string>();
   let seen = 0;
   let imgs = 0;
-  for (const m of text.matchAll(/<([a-zA-Z][a-zA-Z0-9-]*)(\s[^<>]*)?\/?>/g)) {
-    const tag = m[1]!.toLowerCase();
-    const attrs = attributes(m[2] ?? "");
-    if (!attrs) return { ok: false, code: "ASSET_MARKER_AMBIGUOUS" };
-    if (attrs.has("data-asset")) seen++;
+  for (const t of read.tags) {
+    if (t.duplicate) return { ok: false, code: "ASSET_MARKER_AMBIGUOUS" };
+    for (const [name, value] of t.attrs) {
+      // a comment or style / script opener inside a value is how a tag reader is fooled: refused, never read past
+      if (OPENERS_IN_VALUE.test(value)) return { ok: false, code: "PAGE_MARKUP_AMBIGUOUS" };
+      if (MEDIA_ATTRS.has(name)) return { ok: false, code: "ASSET_SOURCE_UNSUPPORTED" };
+    }
+    if (MEDIA_TAGS.has(t.name)) return { ok: false, code: "ASSET_SOURCE_UNSUPPORTED" };
+    if (t.attrs.has("data-asset")) seen++;
     let id: string | undefined;
     let alt: string | undefined;
-    if (tag === "img") {
+    if (t.name === "img") {
       imgs++;
-      const src = attrs.get("src") ?? "";
-      const s = /^assets\/(A\d{1,2})\.png$/.exec(src);
+      const s = /^assets\/(A\d{1,2})\.png$/.exec(decode(t.attrs.get("src") ?? ""));
       // every picture of the page is a requested asset: another source is not a request this lane can make
       if (!s) return { ok: false, code: "ASSET_SRC_INVALID" };
       id = s[1]!;
-      if (attrs.has("data-asset") && attrs.get("data-asset") !== id) return { ok: false, code: "ASSET_MARKER_MISMATCH" };
-      alt = attrs.get("alt");
-    } else if (attrs.has("data-asset")) {
-      id = attrs.get("data-asset")!;
-      alt = attrs.get("data-asset-alt");
+      if (t.attrs.has("data-asset") && decode(t.attrs.get("data-asset")!) !== id) return { ok: false, code: "ASSET_MARKER_MISMATCH" };
+      alt = t.attrs.get("alt");
+    } else if (t.attrs.has("data-asset")) {
+      id = decode(t.attrs.get("data-asset")!);
+      alt = t.attrs.get("data-asset-alt");
     } else continue;
     if (!ASSET_ID.test(id)) return { ok: false, code: "ASSET_ID_INVALID" };
-    const description = (alt ?? "").replace(/\s+/g, " ").trim();
+    const description = decode(alt ?? "").replace(/\s+/g, " ").trim();
     if (!description) return { ok: false, code: "ASSET_DESCRIPTION_MISSING" };
     if (description.length > 400) return { ok: false, code: "ASSET_DESCRIPTION_TOO_LONG" };
     // one picture may be shown more than once (e.g. once per width), but always with the same description
     if (found.has(id) && found.get(id) !== description) return { ok: false, code: "ASSET_DESCRIPTION_CONFLICT" };
     found.set(id, description);
   }
-  // a marker the tag reader did not see (e.g. after a `>` inside a quoted value) is refused, never skipped
-  if ((text.match(/\sdata-asset\s*=/gi) ?? []).length !== seen || (text.match(/<img\b/gi) ?? []).length !== imgs) return { ok: false, code: "ASSET_MARKER_AMBIGUOUS" };
+  // a marker or picture the tag reader did not see as one is refused, never skipped
+  if ((read.residue.match(/<img\b/gi) ?? []).length !== imgs || (read.residue.match(/[\s/"']data-asset\s*=/gi) ?? []).length !== seen) return { ok: false, code: "ASSET_MARKER_AMBIGUOUS" };
+  // CSS anywhere (style elements, style attributes, even comments): only url(assets/<id>.png) of a marked picture
+  const urls = [...html.matchAll(/url\(\s*(["']?)([^"')\s]*)\1\s*\)/gi)];
+  if (urls.length !== (html.match(/url\(/gi) ?? []).length || /@import|image-set\(|-webkit-image-set\(|\belement\(|\bsrc\(/i.test(html)) return { ok: false, code: "ASSET_SOURCE_UNSUPPORTED" };
+  for (const u of urls) {
+    const s = /^assets\/(A\d{1,2})\.png$/.exec(u[2]!);
+    if (!s) return { ok: false, code: "ASSET_SRC_INVALID" };
+    if (!found.has(s[1]!)) return { ok: false, code: "ASSET_URL_UNMARKED" };
+  }
   if (found.size > maxAssets) return { ok: false, code: "RUN_LIMIT_ASSET_CALLS" };
   return { ok: true, markers: [...found].sort(([a], [b]) => a.localeCompare(b)).map(([asset_id, alt]) => ({ asset_id, alt })) };
 }
@@ -130,8 +226,10 @@ export function buildPageAssetRequests(o: {
   maxAssets?: number;
   /** Measured by the caller in a render with placeholders; absent = not measured (every picture is essential). */
   placement?: Record<string, Placement>;
+  /** The page's hero sections; required with a placement (a measured picture in the hero is essential). */
   heroSections?: readonly string[];
 }): { ok: true; requests: PageAssetRequest[] } | { ok: false; code: string } {
+  if (o.placement !== undefined && o.heroSections === undefined) return { ok: false, code: "HERO_SECTIONS_REQUIRED" };
   const m = extractAssetMarkers(o.page.html, o.maxAssets ?? PAGE_MAX_ASSETS);
   if (!m.ok) return m;
   const html_sha256 = sha256(o.page.html);

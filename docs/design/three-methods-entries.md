@@ -74,7 +74,7 @@ DEV-143。Issue #180 のオーナーの最新のコメントで、設計・オ�
 - 答えは `three_method_direction_v0` (strict)。`concept`、DNA の8観点 (`choice` と、それが拠る事実の id `fact_refs` 1〜10件)、`avoid` (8件まで)。ほかの欄は断る。ファイル・承認・状態・検査の欄は無い。
 - `checkDirection` は、schema に加えて、`fact_refs` がこの店の事実の id であることを検める (`DIRECTION_FACT_UNKNOWN`)。
 - `directionJsonSchema()` は、同じ zod の schema から作る JSON Schema (既存の design の schema と同じく、`$schema` と `minLength` を除く。空の文は zod が断る)。
-- `runDirectionOffline` は、将来の入口が守る順序を示すだけのもの。**pin (SHA-256 と文字数) を先に検め、合わなければ port を呼ばない**。合えば port を1回だけ呼び、答えを厳しく検める。やり直さない。テストでは偽の port だけを渡す。実の port は無い。
+- `runDirectionOffline` は、将来の入口が守る順序を示すだけのもの。**pin (SHA-256 と文字数) を先に検め、合わなければ port を呼ばない**。SHA-256 と文字数は、既存の `checkBeforeApproval` と同じく、prompt の文字そのものから計算する (呼び出し側が持ってきた値は使わない、`checkPin`)。合えば port を1回だけ呼び、答えを厳しく検める。やり直さない。テストでは偽の port だけを渡す。実の port は無い。
 
 ## 6. Claude が書いたページからの素材の要求 (LAYOUT_FIRST・DIRECTION_FIRST)
 
@@ -86,8 +86,15 @@ Claude は、ページの HTML に素材の印を書く。
 `buildPageAssetRequests` が、印から要求を作る。
 
 - 画像の prompt は、既存の Route C の素材の prompt (`buildAssetPrompt`) と**バイト単位で同じ文**にした (テストで比べる)。どの方式でも、画像ツールが受け取る要求は同じ種類になる。
-- 印がはっきりしないときは、推測せず断る。`assets/` 以外の画像 (`ASSET_SRC_INVALID`)・説明の無い絵 (`ASSET_DESCRIPTION_MISSING`)・同じ絵に違う説明 (`ASSET_DESCRIPTION_CONFLICT`)・同じ属性の重複や、引用符の中の `>` で読み取れない印 (`ASSET_MARKER_AMBIGUOUS`)・上限 (1枚) を越える数 (`RUN_LIMIT_ASSET_CALLS`)。
-- 絵の位置は、呼び出し側が測って渡す (runner と同じく、仮の画像で描いて測る)。**測っていない絵は、すべて `essential` (失敗したらオーナーへ止める) とする。** 測った位置は runner の `AssetRequest` と同じ形で、`toAssetRequestShape` はその型に代入できる (テストで型を検める)。測った絵がどちらの幅でも見えなければ断る (`ASSET_NOT_SHOWN`)。
+- **この印の読み取りは、安全の検査ではない。** ブラウザではなく、引用符をたどる小さな文字の読み取りである。知っている逃げ道は断るが、ブラウザが何を読み込むかを証明はしない。将来の入口は、Claude のページを、まず既存の DOM で検める試作の安全検査 (`checkPrototype`、ネットワークを閉じ、JavaScript を切る) に通す。印と alt は、runner と同じく、その DOM の結果から取るのが望ましい。
+- 印がはっきりしないときは、推測せず断る。
+  - `assets/` 以外の画像 (`ASSET_SRC_INVALID`)・説明の無い絵 (`ASSET_DESCRIPTION_MISSING`)・同じ絵に違う説明 (`ASSET_DESCRIPTION_CONFLICT`)・上限 (1枚) を越える数 (`RUN_LIMIT_ASSET_CALLS`)。
+  - 同じ属性の重複・閉じていないコメントや引用符や要素・属性の値の中の印 (`ASSET_MARKER_AMBIGUOUS`)。
+  - 属性の値の中の `<!--`・`<style`・`<script` (`PAGE_MARKUP_AMBIGUOUS`)。
+  - `srcset`・`poster` などの属性、`<source>`・`<image>`・`<video>` などの要素、`image-set()`・`@import` (`ASSET_SOURCE_UNSUPPORTED`)。
+  - CSS の `url()` は、印のある `assets/<id>.png` だけ (`ASSET_SRC_INVALID` / `ASSET_URL_UNMARKED`)。
+  - `/` は、HTML と同じく属性の区切りとして読む (`<div/data-asset="A1" …>` を見落とさない)。
+- 絵の位置は、呼び出し側が測って渡す (runner と同じく、仮の画像で描いて測る)。**測っていない絵は、すべて `essential` (失敗したらオーナーへ止める) とする。** 測った位置は runner の `AssetRequest` と同じ形で、`toAssetRequestShape` はその型に代入できる (テストで型を検める)。測った絵がどちらの幅でも見えなければ断る (`ASSET_NOT_SHOWN`)。位置を渡すときは、ページの hero の区画も渡す (無ければ `HERO_SECTIONS_REQUIRED`)。
 
 ### 既存の `image-call.ts` の `ImageRequest` との違い
 
@@ -99,6 +106,8 @@ Claude は、ページの HTML に素材の印を書く。
 | route・kind | `C_hybrid`・`image` | 提案: `claude_page`・`page_image` (§7) |
 
 今の `runImageCall` は、`design` の欄が無い要求を受け付けない (`IMAGE_REQUEST_INVALID`)。**このレーンの要求は、今の画像の入口では呼べないし、呼べるようにもしていない。**
+
+Claude が書いたページと、その絵を1つの package にまとめること (今の `phase2f-steps.ts` の packaging は、Codex のデザインの実行を前提にしている) は、この DEV-143 の範囲の外である。
 
 ## 7. ledger の種類 (提案。ledger.ts は変えていない)
 
@@ -183,9 +192,10 @@ VISUAL_FIRST の prompt を、既存の design step・pre-render・packaging (ru
 
 - kind は `page_image`。
 - 承認を使う前に、次を検める。
+  0. ページを、既存の DOM の試作の安全検査 (`checkPrototype`、ネットワークを閉じ、JavaScript を切る) に通す。このレーンの印の読み取りは安全の検査ではないので、その代わりにしない。
   1. 要求の schema が `three_method_asset_request_v0` で、prompt の SHA-256 と文字数が要求の中の値と一致する (今の Route C と同じ)。
   2. ページのファイルが、決まった根 (`page.root`。リポジトリの中の研究のディレクトリ) の下にあり、リンクではなく、追跡されている。その中身の SHA-256 が要求の `page.html_sha256` と一致する。今の commit の検査 (HEAD = origin/develop = 承認された commit、clean) と合わせて、ページのバイト列が承認された commit のものに固定される。
-  3. そのページから `buildPageAssetRequests` で要求を組み直し、`asset_id`・`alt`・prompt が要求と同じである (手で書き換えた要求を通さない)。
+  3. そのページから要求を組み直し、`asset_id`・`alt`・prompt が要求と同じである (手で書き換えた要求を通さない)。印と alt は、0. の DOM の結果から取る (このレーンの読み取りの alt は、DOM の alt と違いうる。§13)。
   4. `placement` が測られていること (測っていない要求は essential のまま扱う。呼び出しを断るかどうかは、オーナーが決める)。
 - 記録 (`call.json` の `request`) は、`{ page_path, page_sha256, asset_id, essential }`。
 - Route C と Route A の分岐は変えない。
@@ -258,6 +268,8 @@ V-B の結果を「Codex の画像ツールで作った完成デザイン」と�
 ## 13. 限界
 
 - ブリーフの「見た目の方向が無い」検査は語の検査で、すべての言い換えは捕まえない。
-- 素材の印の読み取りは、ブラウザではなく単純な読み取りである。はっきりしないものは断る側に倒した。絵の位置は読まない (呼び出し側が描いて測る)。
+- 素材の印の読み取りは、ブラウザではなく単純な読み取りで、**安全の検査ではない**。知っている逃げ道は断る側に倒したが、すべての逃げ道を捕まえる保証は無い。絵の位置は読まない (呼び出し側が描いて測る)。
+- alt の文字の解き方は、6つの文字参照 (`&amp;`・`&lt;`・`&gt;`・`&quot;`・`&apos;`・`&#39;`) と数値の参照だけで、空白は1つにまとめる。そのため、DOM の alt と違うことがある。素材の prompt は、この alt から作る。将来の入口は、DOM の alt から作り直して比べる (§8)。
+- Claude が書いたページと絵の packaging は、範囲の外である (§6)。
 - pin は prompt の文字列のハッシュである。Codex が何を返すか、画像が作れるか、デザインが良いかは、何も示さない。
 - CLI は commit を出さない。承認の組の commit は、オーナーが承認する commit を別に記録する。

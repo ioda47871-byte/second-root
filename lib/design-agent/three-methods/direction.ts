@@ -94,7 +94,8 @@ export async function runDirectionOffline(o: { built: BuiltPrompt; expected: Exp
   if (!pin.ok) return { status: "refused", code: pin.code };
   let answer: unknown;
   try {
-    answer = await o.port({ prompt: o.built.prompt, promptSha256: o.built.sha256, schema: directionJsonSchema() });
+    // the hash passed on is the checked one, not the caller's field
+    answer = await o.port({ prompt: o.built.prompt, promptSha256: o.expected.promptSha256, schema: directionJsonSchema() });
   } catch {
     return { status: "failed", code: "PORT_FAILED" };
   }

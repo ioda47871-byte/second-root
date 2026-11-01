@@ -29,7 +29,7 @@ function parse(argv: string[]): { pages: [keyof typeof PAGE_FLAGS, string][] } |
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--print-pin") continue;
-    if (!(a in PAGE_FLAGS)) return null;
+    if (!Object.hasOwn(PAGE_FLAGS, a)) return null;
     const v = argv[++i];
     if (v === undefined || v.startsWith("--") || pages.some(([f]) => f === a)) return null;
     pages.push([a as keyof typeof PAGE_FLAGS, v]);

@@ -13,7 +13,7 @@
  * ledger can write today is still a valid receipt here (the proposal only adds values).
  */
 import { z } from "zod";
-import type { BuiltPrompt } from "./brief";
+import { sha256, type BuiltPrompt } from "./brief";
 
 export const EXISTING_CALL_KINDS = ["design", "image", "concept_image"] as const;
 export const EXISTING_ROUTES = ["A_image", "B_html_prototype", "C_hybrid"] as const;
@@ -62,9 +62,12 @@ export function checkProposedReceipt(r: unknown): { ok: true; receipt: ProposedR
 /** What the owner approved for one call (the live steps' `expected`, without the commit: no git here). */
 export type Expected = { promptSha256: string; promptChars: number };
 
-/** The prompt must be exactly the approved one; checked before anything is called. */
-export function checkPin(b: BuiltPrompt, e: Expected): { ok: true } | { ok: false; code: "PROMPT_SHA_MISMATCH" | "PROMPT_CHARS_MISMATCH" } {
-  if (b.sha256 !== e.promptSha256) return { ok: false, code: "PROMPT_SHA_MISMATCH" };
-  if (b.chars !== e.promptChars) return { ok: false, code: "PROMPT_CHARS_MISMATCH" };
+/**
+ * The prompt must be exactly the approved one; checked before anything is called. The SHA-256 and the length are
+ * computed here from the prompt text itself (as the live steps do): the `sha256` / `chars` a caller carries are ignored.
+ */
+export function checkPin(b: Pick<BuiltPrompt, "prompt">, e: Expected): { ok: true } | { ok: false; code: "PROMPT_SHA_MISMATCH" | "PROMPT_CHARS_MISMATCH" } {
+  if (sha256(Buffer.from(b.prompt, "utf8")) !== e.promptSha256) return { ok: false, code: "PROMPT_SHA_MISMATCH" };
+  if (b.prompt.length !== e.promptChars) return { ok: false, code: "PROMPT_CHARS_MISMATCH" };
   return { ok: true };
 }
