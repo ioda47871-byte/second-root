@@ -47,7 +47,7 @@ function world() {
     );
     return outDir;
   };
-  const check = (previousSteps: string[], now: string | null = "0.200.0", expectCliVersion = "0.200.0") => checkGeneration({ pin: { expectCliVersion, previousSteps }, ledger, probe: async () => now });
+  const check = (previousSteps: string[], now: string | null = "0.200.0", expectCliVersion = "0.200.0", planId?: string) => checkGeneration({ pin: { expectCliVersion, previousSteps, ...(planId === undefined ? {} : { planId }) }, ledger, probe: async () => now });
   return { base, step, check };
 }
 
@@ -62,6 +62,7 @@ describe("the generation pin's flags", () => {
     expect(generationPinOf(args({ "--expect-cli-version": "0.159.0" }), true)).toEqual({ expectCliVersion: "0.159.0", previousSteps: [] });
     expect(generationPinOf(args({ "--expect-cli-version": "0.159.0", "--previous-steps": "a,b" }), true)).toEqual({ expectCliVersion: "0.159.0", previousSteps: ["a", "b"] });
     expect(generationPinOf(args({ "--expect-cli-version": "0.159.0", "--previous-steps": "," }), true)).toBe("USAGE");
+    expect(generationPinOf(args({ "--expect-cli-version": "0.159.0", "--plan-id": "plan-x" }), true)).toEqual({ expectCliVersion: "0.159.0", previousSteps: [], planId: "plan-x" });
   });
 });
 
@@ -84,6 +85,18 @@ describe("checkGeneration (before the approval is used)", () => {
     ["an earlier step is not a call's output", async (w) => w.check([w.base]), "PREVIOUS_STEP_INVALID"],
   ])("%s", async (_n, run, code) => {
     expect(await run(world())).toMatchObject({ code });
+  });
+
+  it("round 4 L4: every call of the plan the ledger records as succeeded must be named (a failed one need not be)", async () => {
+    const w = world();
+    const a = await w.step();
+    const b = await w.step();
+    await w.step({}, { schema: "x" });
+    expect(await w.check([a], "0.200.0", "0.200.0", "plan-fictional-gen")).toEqual({ code: "PREVIOUS_STEPS_REQUIRED" });
+    expect(await w.check([], "0.200.0", "0.200.0", "plan-fictional-gen")).toEqual({ code: "PREVIOUS_STEPS_REQUIRED" });
+    expect(await w.check([a, b], "0.200.0", "0.200.0", "plan-fictional-gen")).toEqual({ code: null, model: "gpt-fictional-5" });
+    // another plan's calls are not this plan's
+    expect(await w.check([], "0.200.0", "0.200.0", "plan-fictional-other")).toEqual({ code: null, model: null });
   });
 
   it("the model warning after a call names a change, and nothing when there is no earlier model", () => {

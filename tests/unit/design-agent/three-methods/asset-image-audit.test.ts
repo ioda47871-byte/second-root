@@ -49,6 +49,16 @@ describe("the pilot picture's verdicts", () => {
     expect(r.errors).toContain(code);
   });
 
+  it("round 4 L2: a contradiction is REJECT even without its fact or with an unknown one (the missing ids are noted)", () => {
+    for (const ids of [[], ["F99"], ["F2", "F99"]]) {
+      const r = audit(record({ answers: { contradicts_facts: "yes", contradicted_fact_ids: ids } }));
+      expect(r.status, ids.join()).toBe("REJECT");
+      expect(r.errors).toContain("CONTRADICTS_FACTS");
+      expect(r.pending).toContain("CONTRADICTED_FACT_IDS_MISSING_OR_UNKNOWN");
+      expect(r.contradicted_fact_ids).toEqual(ids.filter((x) => x !== "F99"));
+    }
+  });
+
   it("REJECT records the contradicted fact", () => {
     expect(audit(record({ answers: { contradicts_facts: "yes", contradicted_fact_ids: ["F2", "F3"] } })).contradicted_fact_ids).toEqual(["F2", "F3"]);
   });
@@ -66,8 +76,6 @@ describe("the pilot picture's verdicts", () => {
     ["unknown: category", record({ answers: { category_mismatch: "unknown" } }), undefined, "CATEGORY_UNKNOWN"],
     ["unknown: facts", record({ answers: { contradicts_facts: "unknown" } }), undefined, "CONTRADICTS_FACTS_UNKNOWN"],
     ["unknown: unreadable", record({ answers: { unreadable_text: "unknown" } }), undefined, "UNREADABLE_TEXT_UNKNOWN"],
-    ["a contradiction without its fact", record({ answers: { contradicts_facts: "yes", contradicted_fact_ids: [] } }), undefined, "ASSET_INSPECTION_INCOMPLETE"],
-    ["a contradiction naming a fact the shop does not have", record({ answers: { contradicts_facts: "yes", contradicted_fact_ids: ["F99"] } }), undefined, "ASSET_INSPECTION_INCOMPLETE"],
     ["fact ids without a contradiction", record({ answers: { contradicted_fact_ids: ["F1"] } }), undefined, "ASSET_INSPECTION_INCOMPLETE"],
   ])("HOLD: %s", (_n, inspection, image, code) => {
     const r = audit(inspection, image);

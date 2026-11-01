@@ -32,7 +32,8 @@
  *       against a recorded visual inspection of exactly that picture (--visual-inspection naming its SHA-256; absent
  *       = HOLD), and the check's status includes it. Owner approval A′: a picture is checked with the three-method
  *       asset-image-audit (not the Lock's full-design image audit): its origin must be an approved image call, given
- *       by --image or --asset-origin <step dir>[,<step dir>] (readStep), and the inspection record is
+ *       by --image or --asset-origin <step dir>[,<step dir>] (readStep; a route C picture also needs its design run in
+ *       the list, a succeeded tm0 design with the pilot's route C pin for this facts pack), and the inspection record is
  *       three_method_asset_inspection_v0 (PASS_ASSET_ONLY at best, never a site identity). Only a neutral placeholder (used only where nothing exists at
  *       assets/<name>) has none; a link, a non-regular or oversized file, or an assets/ that is a link stops the check
  *       (ASSET_FILE_INVALID). An inspection record on a page with no real picture is refused (INSPECTION_UNUSED). Nothing is ever proven from
@@ -61,13 +62,15 @@ import { readStep, StepStop } from "../../lib/design-agent/phase2f-live/steps";
 import { failedObservation, observeStructure } from "../../lib/design-agent/structure/observe";
 import { ReferenceDescriptors } from "../../lib/design-agent/structure/references";
 import { auditAssetImage, type AssetImageResult } from "../../lib/design-agent/three-methods/asset-image-audit";
-import { FactsPack } from "../../lib/design-agent/three-methods/brief";
+import { checkBrief, FactsPack } from "../../lib/design-agent/three-methods/brief";
 import { checkDirection } from "../../lib/design-agent/three-methods/direction";
 import { buildPageAssetRequests, extractAssetMarkers, runnableAssetRequests, type PageMethod, type Placement } from "../../lib/design-agent/three-methods/page-assets";
+import { buildVisualFirstPrompt } from "../../lib/design-agent/three-methods/visual-first";
 
 process.umask(0o077);
 const REPO = resolve(__dirname, "../..");
 const LOCK = "design-library/research/three-methods/identity-lock.json";
+const BRIEF = "design-library/research/three-methods/brief.json";
 const REFERENCES = "design-library/intelligence/v02/structure-descriptors-v0.json";
 const MODES = ["--lane", "--direction", "--page-request", "--check", "--versions"] as const;
 const VALUES = new Set(["--package", "--facts", "--out", "--step", "--method", "--page", "--page-root", "--hero", "--no-image-reason", "--image", "--visual-inspection", "--asset-origin", "--steps"]);
@@ -322,8 +325,24 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     origins.set(sha256(png), { approval_id: step.receipt.approval_id, kind: step.receipt.kind, dir: step.dir });
     assets.set(`assets/${link.asset_id}.png`, png);
   }
-  for (const d of (args.get("--asset-origin") ?? "").split(",").filter(Boolean)) {
-    const dir = resolve(d);
+  // review round 4 M1: a route C picture is an origin only for the pilot's own VISUAL_FIRST design: its design run must
+  // be named in --asset-origin too, have succeeded, record prompt_version "tm0" AND carry the tm0 route C pin rebuilt
+  // here from this check's facts pack and the study's brief (so it is bound to this shop's facts and the pilot prompt)
+  const given = (args.get("--asset-origin") ?? "").split(",").filter(Boolean).map((d) => resolve(d));
+  const designs = new Map<string, string>();
+  const imageDirs: string[] = [];
+  const pilot = checkBrief(JSON.parse(await readFile(resolve(REPO, BRIEF), "utf8")), facts);
+  const tm0Pin = pilot.ok ? buildVisualFirstPrompt({ route: "C_hybrid", facts: pilot.facts, brief: pilot.brief }).sha256 : null;
+  for (const dir of given) {
+    const call = await readFile(join(dir, "call.json"), "utf8").then((t) => JSON.parse(t) as { receipt?: { kind?: CallKind; route?: Route } }, () => null);
+    if (call?.receipt?.kind === "design" && call.receipt.route === "C_hybrid") {
+      const step = await readStep(dir, ledger, { kind: "design", route: "C_hybrid" });
+      if (step.call.status !== "succeeded" || !step.generation || step.call.prompt_version !== "tm0" || tm0Pin === null || step.receipt.prompt_sha256 !== tm0Pin) return stopped("ASSET_ORIGIN_INVALID", { origin: dir });
+      designs.set(`${step.receipt.approval_id}\u0000${step.receipt.run_id}`, dir);
+    } else imageDirs.push(dir);
+  }
+  const usedDesigns = new Set<string>();
+  for (const dir of imageDirs) {
     const call = await readFile(join(dir, "call.json"), "utf8").then((t) => JSON.parse(t) as { receipt?: { kind?: CallKind; route?: Route } }, () => null);
     const need = call?.receipt?.kind === "image" ? ({ kind: "image", route: "C_hybrid" } as const) : call?.receipt?.kind === "page_image" ? ({ kind: "page_image", route: "claude_page" } as const) : null;
     if (!need) return stopped("ASSET_ORIGIN_INVALID", { origin: dir });
@@ -331,10 +350,18 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     if (step.call.status !== "succeeded" || !step.generation) return stopped("ASSET_ORIGIN_INVALID", { origin: dir });
     // a page's picture belongs to this very page
     if (need.kind === "page_image" && (step.call.request as { page_sha256?: string } | undefined)?.page_sha256 !== sha256(page.html)) return stopped("IMAGE_PAGE_MISMATCH", { origin: dir });
+    if (need.kind === "image") {
+      const link = (step.call.request ?? {}) as { design_approval_id?: string; design_run_id?: string };
+      const key = `${link.design_approval_id}\u0000${link.design_run_id}`;
+      if (!designs.has(key)) return stopped("ASSET_ORIGIN_INVALID", { origin: dir, reason: "design_run_not_a_pilot_design" });
+      usedDesigns.add(key);
+    }
     const png = await readRegular(join(step.dir, "image.png"), MAX_BYTES.asset);
     if (!png || sha256(png) !== step.call.png_sha256) return stopped("RECORD_MISMATCH", { origin: dir });
     origins.set(sha256(png), { approval_id: step.receipt.approval_id, kind: step.receipt.kind, dir: step.dir });
   }
+  // a design run named without a picture of it is not an origin of anything
+  for (const [key, dir] of designs) if (!usedDesigns.has(key)) return stopped("ASSET_ORIGIN_INVALID", { origin: dir });
   // a placeholder only where NOTHING exists (review round 2 M2): a link, a non-regular or oversized file, or an
   // assets/ that is a link or not a directory stops the check, so no real picture can slip past its identity audit
   const pageDir = dirname(htmlPath);
@@ -388,7 +415,7 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
   // owner decision 4 (all three methods): every real picture's identity rests on a recorded visual inspection of exactly
   // that picture; without one it is HOLD. An inspection that names none of the pictures is checked against each (REJECT);
   // one given for a page with no real picture was refused above (INSPECTION_UNUSED).
-  const named = (inspection as { inspected_image_sha256?: unknown } | undefined)?.inspected_image_sha256;
+  const named = (inspection as { image_sha256?: unknown } | undefined)?.image_sha256;
   const real = sources.filter((x) => x.source !== "placeholder");
   const matched = real.some((x) => x.sha256 === named);
   // owner approval A′: the picture's own check (asset-image-audit), never the Lock's full-design image audit

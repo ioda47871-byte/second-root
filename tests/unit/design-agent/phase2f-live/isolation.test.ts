@@ -68,6 +68,8 @@ const ALLOWED: Record<string, string[]> = {
     `${L}/three-methods/brief`,
     `${L}/three-methods/direction`,
     `${L}/three-methods/page-assets`,
+    // review round 4 M1: the pilot's route C pin, rebuilt to bind a route C picture's design run to the facts pack
+    `${L}/three-methods/visual-first`,
   ],
   [STEPS_CLI]: ["node:fs/promises", "node:os", "node:path", "playwright", `${L}/artifact/schema`, `${L}/phase2f/compare-sheet`, `${L}/phase2f/prompt`, `${L}/phase2f/runner`, `${L}/phase2f-live/image-call`, `${L}/phase2f-live/ledger`, `${L}/phase2f-live/steps`],
 };

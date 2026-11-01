@@ -195,7 +195,8 @@ describe("VISUAL_FIRST (route_c_prototype): tm0 design → pre-render → one im
     const held = w.dir("check");
     // the lane's picture is the C1-c image step's PNG, byte for byte: that step is its origin
     expect(sha256(picture)).toBe(sha256(readFileSync(join(imageDir, "image.png"))));
-    const origin = ["--asset-origin", imageDir];
+    // round 4 M1: a route C picture's origin is its image step AND its pilot (tm0) design run
+    const origin = ["--asset-origin", `${imageDir},${designDir}`];
     const h = w.tm(["--check", "--page", impl, "--facts", factsPath, "--out", held, ...origin]);
     expect(h.status).toBe(2);
     expect(h.out).toMatchObject({ status: "stopped", code: "IDENTITY_NOT_PASSED", identity: "HOLD" });
@@ -210,9 +211,47 @@ describe("VISUAL_FIRST (route_c_prototype): tm0 design → pre-render → one im
     // owner approval A′: without its origin (the approved image call) the same picture is REJECT
     const noOrigin = w.tm(["--check", "--page", impl, "--facts", factsPath, "--out", w.dir("check"), "--visual-inspection", record]);
     expect(noOrigin.out).toMatchObject({ code: "IDENTITY_NOT_PASSED", identity: "REJECT" });
-    // an origin that is not an image step (here: the design step) is refused
+    // a design run alone (no picture of it), or a route C picture without its design run, is not an origin
     expect(w.tm(["--check", "--page", impl, "--facts", factsPath, "--out", w.dir("check"), "--asset-origin", designDir]).out).toMatchObject({ status: "stopped", code: "ASSET_ORIGIN_INVALID" });
-  }, 180_000);
+    expect(w.tm(["--check", "--page", impl, "--facts", factsPath, "--out", w.dir("check"), "--asset-origin", imageDir]).out).toMatchObject({ status: "stopped", code: "ASSET_ORIGIN_INVALID" });
+    // the pilot design is bound to this facts pack: with another shop's facts, its tm0 pin cannot be rebuilt
+    const otherFacts = resolve(REPO, "design-library/phase2f/wagashi-facts-pack.json");
+    expect(w.tm(["--check", "--page", impl, "--facts", otherFacts, "--out", w.dir("check"), ...origin]).out).toMatchObject({ status: "stopped", code: "ASSET_ORIGIN_INVALID" });
+
+    // a route C design that is not a pilot design (prompt_version v1 here, in another plan) is never an origin
+    const v1Design = w.dir("design");
+    expect((await runDesignCall({ route: "C_hybrid", prompt: built.prompt, schema: {}, humanApprovalConfirmed: true, approvalId: "fictional-tm-vf2-design-01", planId: "plan-fictional-tm-vf2", retryOf: null, expected: { promptSha256: built.sha256, promptChars: built.chars, commit: COMMIT }, outDir: v1Design, promptVersion: "v1" }, { ledger: w.ledger, commit: clean, codex: async () => ({ answer: routeCAnswer(), meta: META }) })).status).toBe("succeeded");
+    const v1Pre = w.dir("pre");
+    expect(w.steps(["--prerender", "--route", "C", "--design", v1Design, "--facts", factsPath, "--out", v1Pre]).status).toBe(0);
+    const v1Request = json(join(v1Pre, "image-request-A1.json")) as ImageRequest;
+    const v1Image = w.dir("image");
+    const other = (async () => ({ png: colourPng(512, 512), width: 512, height: 512, outcome: "IMAGE_SAVED", stopCode: null, cliVersion: "0.200.0", model: "gpt-fictional-5", threadId: null })) as ImageTool;
+    expect((await runImageCall({ route: "C_hybrid", request: v1Request, common: { humanApprovalConfirmed: true, approvalId: "fictional-tm-vf2-image-01", planId: "plan-fictional-tm-vf2", retryOf: null, expected: { promptSha256: v1Request.prompt_sha256, promptChars: v1Request.prompt_chars, commit: COMMIT }, outDir: v1Image } }, { ledger: w.ledger, commit: clean, image: other })).status).toBe("succeeded");
+    const v1Impl = claudePage(join(w.base, "impl-v1"), { html: (h) => h.replace(/<figure class="morning__photo">.*?<\/figure>/, "").replace('data-section="info">', `data-section="info"><img src="assets/A1.png" alt="${ALT}">`) });
+    mkdirSync(join(v1Impl, "..", "assets"));
+    writeFileSync(join(v1Impl, "..", "assets", "A1.png"), readFileSync(join(v1Image, "image.png")));
+    expect(w.tm(["--check", "--page", v1Impl, "--facts", factsPath, "--out", w.dir("check"), "--asset-origin", `${v1Image},${v1Design}`]).out).toMatchObject({ status: "stopped", code: "ASSET_ORIGIN_INVALID" });
+
+    // round 4 L1: two pictures, one record naming the first: the first PASS_ASSET_ONLY, the second HOLD (not REJECT)
+    const design2 = w.dir("design");
+    expect((await runDesignCall({ route: "C_hybrid", prompt: built.prompt, schema: {}, humanApprovalConfirmed: true, approvalId: "fictional-tm-vf-design-02", planId: "plan-fictional-tm-vf", retryOf: null, expected: { promptSha256: built.sha256, promptChars: built.chars, commit: COMMIT }, outDir: design2, promptVersion: "tm0" }, { ledger: w.ledger, commit: clean, codex: async () => ({ answer: routeCAnswer(), meta: META }) })).status).toBe("succeeded");
+    const pre2 = w.dir("pre");
+    expect(w.steps(["--prerender", "--route", "C", "--design", design2, "--facts", factsPath, "--out", pre2]).status).toBe(0);
+    const request2 = json(join(pre2, "image-request-A1.json")) as ImageRequest;
+    const image2 = w.dir("image");
+    expect((await runImageCall({ route: "C_hybrid", request: request2, common: { humanApprovalConfirmed: true, approvalId: "fictional-tm-vf-image-02", planId: "plan-fictional-tm-vf", retryOf: null, expected: { promptSha256: request2.prompt_sha256, promptChars: request2.prompt_chars, commit: COMMIT }, outDir: image2, generationPin: { previousSteps: [design2] } } }, { ledger: w.ledger, commit: clean, image: other })).status).toBe("succeeded");
+    const two = claudePage(join(w.base, "impl-two"), { html: (h) => h.replace(/<figure class="morning__photo">.*?<\/figure>/, "").replace('data-section="info">', `data-section="info"><img src="assets/A1.png" alt="${ALT}">`).replace('data-section="products">', `data-section="products"><img src="assets/A2.png" alt="${ALT}">`) });
+    mkdirSync(join(two, "..", "assets"));
+    writeFileSync(join(two, "..", "assets", "A1.png"), picture);
+    writeFileSync(join(two, "..", "assets", "A2.png"), readFileSync(join(image2, "image.png")));
+    const twoOut = w.dir("check");
+    const t = w.tm(["--check", "--page", two, "--facts", factsPath, "--out", twoOut, "--visual-inspection", record, "--asset-origin", `${imageDir},${designDir},${image2},${design2}`]);
+    expect(t.out).toMatchObject({ status: "stopped", code: "IDENTITY_NOT_PASSED", identity: "HOLD" });
+    expect(json(join(twoOut, "check.json")).identity.images).toMatchObject([
+      { path: "assets/A1.png", identity: { status: "PASS_ASSET_ONLY" } },
+      { path: "assets/A2.png", identity: { status: "HOLD", pending: ["ASSET_INSPECTION_REQUIRED"] } },
+    ]);
+  }, 240_000);
 });
 
 describe("DIRECTION_FIRST (direction_text): direction call → hand-off", () => {

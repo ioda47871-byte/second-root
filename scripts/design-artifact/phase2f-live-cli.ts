@@ -10,7 +10,8 @@
  * - DEV-150 (owner approval A′): the generation pin, only when asked for (--expect-cli-version, --previous-steps;
  *   required by the three-method entries): the Codex CLI version, read with one sandboxed `codex --version` (the same
  *   probe every real call already makes; no model is called), must be the approved one, and the earlier calls named
- *   must all have succeeded with that version and one and the same model. Checked in the preflight, so a mismatch
+ *   must all have succeeded with that version and one and the same model, and must include every call of the same
+ *   plan that the ledger records as succeeded (PREVIOUS_STEPS_REQUIRED). Checked in the preflight, so a mismatch
  *   refuses the call before its approval is used. The model itself cannot be known before a call (the CLI picks it;
  *   it is read from the session log afterwards): a changed model is caught at the next call, by --previous-steps.
  */
@@ -95,7 +96,11 @@ export function stopSignals(o: { cleanup?: () => Promise<void> } = {}): { contro
 }
 
 /** DEV-150: what the owner approved about the Codex CLI and the earlier calls of the same pilot (see the header). */
-export type GenerationPin = { expectCliVersion: string; previousSteps: string[] };
+/**
+ * `planId` (from --plan-id, review round 4 L4): every call of that plan that the ledger already records as succeeded
+ * must be among the previous steps, so a changed model cannot be skipped by leaving its call out.
+ */
+export type GenerationPin = { expectCliVersion: string; previousSteps: string[]; planId?: string };
 const CLI_VERSION = /^[0-9A-Za-z.+-]{1,40}$/;
 
 /**
@@ -109,7 +114,8 @@ export function generationPinOf(args: Map<string, string>, required: boolean): G
   if (!CLI_VERSION.test(version) || !/\d/.test(version)) return "USAGE";
   const previousSteps = (previous ?? "").split(",").filter(Boolean);
   if (previous !== undefined && previousSteps.length === 0) return "USAGE";
-  return { expectCliVersion: version, previousSteps };
+  const planId = args.get("--plan-id");
+  return { expectCliVersion: version, previousSteps, ...(planId === undefined ? {} : { planId }) };
 }
 
 /**
@@ -118,6 +124,7 @@ export function generationPinOf(args: Map<string, string>, required: boolean): G
  */
 export async function checkGeneration(o: { pin: GenerationPin; ledger: Ledger; probe: () => Promise<string | null> }): Promise<{ code: string } | { code: null; model: string | null }> {
   const models = new Set<string>();
+  const named = new Set<string>();
   for (const d of o.pin.previousSteps) {
     const dir = resolve(d);
     const call = await readFile(join(dir, "call.json"), "utf8").then((t) => JSON.parse(t) as { receipt?: { kind?: CallKind; route?: Route } }, () => null);
@@ -132,6 +139,13 @@ export async function checkGeneration(o: { pin: GenerationPin; ledger: Ledger; p
     if (step.generation.tool_version === null || step.generation.model_reported === null) return { code: "PREVIOUS_GENERATION_UNKNOWN" };
     if (step.generation.tool_version !== o.pin.expectCliVersion) return { code: "CODEX_CLI_VERSION_CHANGED" };
     models.add(step.generation.model_reported);
+    named.add(step.receipt.approval_id);
+  }
+  // review round 4 L4: the plan's succeeded calls (the ledger, read before anything is reserved) must all be named
+  if (o.pin.planId !== undefined) {
+    const succeeded = (await o.ledger.calls(o.pin.planId).catch(() => null))?.filter((c) => c.result?.status === "succeeded").map((c) => c.receipt.approval_id);
+    if (!succeeded) return { code: "LEDGER_UNREADABLE" };
+    if (succeeded.some((id) => !named.has(id))) return { code: "PREVIOUS_STEPS_REQUIRED" };
   }
   if (models.size > 1) return { code: "CODEX_MODEL_CHANGED" };
   const now = await o.probe().catch(() => null);

@@ -13,7 +13,8 @@
  * only the `observed` and `answers` parts; `inferred` is kept for the record and never read. Nothing is read from pixels.
  *
  *   REJECT  the inspected SHA is not this picture's; unknown origin; another shop's name or mark seen; another
- *           category; a contradiction with the facts (which fact is recorded); a Lock that does not check
+ *           category; a contradiction with the facts (which fact is recorded; REJECT even when it is not named); a Lock
+ *           that does not check
  *   HOLD    no or an incomplete record; no SHA; unreadable text; any visible text or mark that is not the target's
  *           allowed names (even a generic word such as "BREAD": the owner decides); any "unknown" answer
  *   PASS_ASSET_ONLY  only "this picture shows nothing against the shop": never a site identity, never PASS_IDENTITY_ONLY,
@@ -127,12 +128,11 @@ export function auditAssetImage(o: { lock: unknown; facts: Pick<FactsPack, "fact
   const ids = new Set(o.facts.facts.map((f) => f.id));
   const named = r.answers.contradicted_fact_ids;
   if (r.answers.contradicts_facts === "yes") {
-    // which fact must be recorded (and be one of this shop's): otherwise the record is incomplete
-    if (named.length === 0 || named.some((id) => !ids.has(id))) pending.push("ASSET_INSPECTION_INCOMPLETE");
-    else {
-      errors.push("CONTRADICTS_FACTS");
-      contradicted.push(...named);
-    }
+    // a contradiction with the facts is strict (review round 4 L2): REJECT even when the fact is not named or unknown;
+    // the missing or unknown ids are noted
+    errors.push("CONTRADICTS_FACTS");
+    contradicted.push(...named.filter((id) => ids.has(id)));
+    if (named.length === 0 || named.some((id) => !ids.has(id))) pending.push("CONTRADICTED_FACT_IDS_MISSING_OR_UNKNOWN");
   } else {
     if (named.length > 0) pending.push("ASSET_INSPECTION_INCOMPLETE");
     if (r.answers.contradicts_facts === "unknown") pending.push("CONTRADICTS_FACTS_UNKNOWN");
