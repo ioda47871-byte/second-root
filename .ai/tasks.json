@@ -6619,6 +6619,51 @@
         "別条件の入口の作成・実行"
       ],
       "note": "文書だけ。共通ブリーフと runnableAssetRequests は PR #184 (DEV-143、未マージ・マージは別承認) にあり、パイロットで使うには #184 のマージ承認が先に要る (DEV-143 は blocked のため depends_on には入れず、ここに記す)。"
+    },
+    {
+      "id": "DEV-146",
+      "title": "限定的自動修正の設計とオフライン試作 (MOCK、Issue #177 D)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-140"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-146-limited-autofix-mock",
+      "purpose": "Issue #177 D (オーナー事前承認、条件付きの develop マージ)。測れる SP の問題 (横のはみ出し・固定の高さで切れた文字・押す所・小さい文字) に限った自動修正を設計し、どこにも配線しないオフラインの模擬で試す。実運用の修正ループ・worker・生成器の自動起動は有効にしない。",
+      "acceptance_criteria": [
+        "設計文書 docs/design/limited-autofix.md: 範囲 (測れるものだけ) と除外 (美的判断・意図しうる重なり・事実と文・構造・Identity)、実装の CSS への SP だけの上書き、diff、再描画・再検査・回帰と PC の確認、上限 (LIMITS と同じ 3/2)、失敗時の停止、実際に使う前の信頼性の門",
+        "lib/design-agent/autofix-mock/ は opt-in・未配線: 描画・検査・Identity は注入した port だけ。どのコードからも import されず、ブラウザ・プロセス・通信・ファイル・Codex・worker・Phase 2f を使わない (隔離テスト)",
+        "架空のページで: 押す所・切れた文字・はみ出しは直り、直らない修正と新しい所見を出す修正は戻して上限で止まり、意図した作りは直さず、Identity の食い違いはその場で止まる。HTML と事実はバイト単位で変わらない",
+        "提案は適用しない (applied: false)。合格扱い・デザインの承認にしない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/autofix-mock/autofix-render.test.ts",
+        "tests/unit/design-agent/autofix-mock/autofix-mock.test.ts",
+        "tests/unit/design-agent/autofix-mock/isolation.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/autofix-mock/**",
+        "tests/unit/design-agent/autofix-mock/**",
+        "docs/design/limited-autofix.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-146.md"
+      ],
+      "forbidden_scope": [
+        "Phase 2f の runner・実装レーン・worker・修正ループ (runLoop) への配線",
+        "SP 検査・閾値・停止条件・intake の変更",
+        "所見の gate 化・自動の合否・デザイン採用",
+        "生成 prompt・承認フロー・Identity Lock の変更",
+        "実 Codex・画像生成・隔離 WSL・worker/bridge/jail/timer・Production/Staging"
+      ],
+      "human_approval_triggers": [
+        "限定的自動修正を実運用で使うこと (信頼性の証拠とオーナーの別の承認が要る)",
+        "Issue #177 の条件を満たさない場合の develop へのマージ"
+      ],
+      "note": "MOCK のみ。lib の既存ファイルと隔離テストの除外は変えていない (LIMITS は loop の隔離のため写し、テストで一致を固定)。架空ページ13件 (Chromium) と偽の port 21件: 押す所2件・切れた文字・はみ出しは v1 で直り owner_review、!important の押す所は NOT_RESOLVED×2、高さを外すと重なるページは NEW_FINDING×2 で SAME_CAUSE_FIX_LIMIT、意図した作り6件 (DEV-140 の誤検知2件を含む) は no_change、Identity REJECT は描画の前に停止。Review 待ち。"
     }
   ]
 }
