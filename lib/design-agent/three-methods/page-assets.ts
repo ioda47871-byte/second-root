@@ -271,7 +271,8 @@ export function buildPageAssetRequests(o: {
  * must pass every request through this gate before it reserves an approval.
  */
 export function runnableAssetRequests(requests: readonly PageAssetRequest[]): { ok: true; requests: readonly PageAssetRequest[] } | { ok: false; code: "ASSET_PLACEMENT_UNMEASURED" } {
-  return requests.some((r) => r.placement === null) ? { ok: false, code: "ASSET_PLACEMENT_UNMEASURED" } : { ok: true, requests };
+  // == null: a request read back from JSON without a placement key (undefined) is unmeasured too
+  return requests.some((r) => r.placement == null) ? { ok: false, code: "ASSET_PLACEMENT_UNMEASURED" } : { ok: true, requests };
 }
 
 /** The runner's AssetRequest fields of a measured request (the tests assign it to that type); null while unmeasured. */

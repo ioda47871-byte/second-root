@@ -246,7 +246,7 @@ VISUAL_FIRST の prompt を、既存の design step・pre-render・packaging (ru
 | `DIRECTION_FIRST.direction` | DIRECTION_FIRST | direction | `direction`・`direction_text` (提案) | `three_method_direction_v0` | `641d01f91d85bfd0005effd08b2ec9c0767a384878fd6f2accaeed730dc6d3ad` | 3353 |
 
 - 方向の答えの JSON Schema の SHA-256: `e9050605def92bb9556a25e7a2bc88657c41a3fb21b2d70ed1521a97bfa555ef`
-- VISUAL_FIRST の Route B と C のどちらをパイロットで使うかは、オーナーが決める。両方を出したのは、ここで選ばないためである。
+- VISUAL_FIRST の Route B と C のどちらをパイロットで使うかは、オーナーが決める。両方を出したのは、ここで選ばないためである。 → 2026-11-01 のオーナーの暫定方針で、Route C を優先する (下記)。
 - 素材の pin は、Claude が書いたページがまだ無いので、出していない。ページができたら `--layout-page <html>` / `--direction-page <html>` で出す。素材の prompt は、絵の説明 (alt) と事実パックだけで決まる。
 - この表の値は、テスト (`lane.test.ts`) が CLI と同じ組み立てで計算し直して、この文書と比べる。prompt か入力が変われば、テストが落ちる。
 

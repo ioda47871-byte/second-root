@@ -170,7 +170,20 @@ describe("asset requests from a page Claude wrote (LAYOUT_FIRST / DIRECTION_FIRS
     expect(unmeasured.ok).toBe(true);
     expect(runnableAssetRequests(unmeasured.ok ? unmeasured.requests : [])).toEqual({ ok: false, code: "ASSET_PLACEMENT_UNMEASURED" });
     const measuredReq = buildPageAssetRequests({ method: "LAYOUT_FIRST", page: one, facts, placement: { A1: measured() }, heroSections: [] });
-    expect(measuredReq.ok && runnableAssetRequests(measuredReq.requests).ok).toBe(true);
+    expect(measuredReq.ok).toBe(true);
+    if (measuredReq.ok) expect(runnableAssetRequests(measuredReq.requests)).toEqual({ ok: true, requests: measuredReq.requests });
+    // one measured and one unmeasured picture: still refused (any, not all)
+    const two = { path: "p/index.html", html: `<img src="assets/A1.png" alt="窯のパン"><img src="assets/A2.png" alt="棚のパン">` };
+    const mixed = buildPageAssetRequests({ method: "LAYOUT_FIRST", page: two, facts, maxAssets: 2, placement: { A1: measured() }, heroSections: [] });
+    expect(mixed.ok).toBe(true);
+    if (mixed.ok) expect(runnableAssetRequests(mixed.requests)).toEqual({ ok: false, code: "ASSET_PLACEMENT_UNMEASURED" });
+    // a request read back from JSON without a placement key is unmeasured too
+    if (measuredReq.ok) {
+      const { placement: _drop, ...noKey } = measuredReq.requests[0]!;
+      void _drop;
+      expect(runnableAssetRequests([noKey as never])).toEqual({ ok: false, code: "ASSET_PLACEMENT_UNMEASURED" });
+    }
+    expect(runnableAssetRequests([])).toEqual({ ok: true, requests: [] });
   });
 
   it("essential as the runner decides it: hero section, first screen, outside every section, or unmeasured", () => {
