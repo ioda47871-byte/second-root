@@ -9,7 +9,7 @@ import { APPROVAL_ID, LIVE_LIMITS, openLedger, PLAN_ID, type CallKind, type Rece
 import { checkBrief, ThreeMethodBrief } from "@/lib/design-agent/three-methods/brief";
 import { buildDirectionPrompt, checkDirection, directionJsonSchema, runDirectionOffline, ThreeMethodDirection } from "@/lib/design-agent/three-methods/direction";
 import { checkPin, checkProposedReceipt, EXISTING_CALL_KINDS, EXISTING_ROUTES, KIND_ROUTES, PROPOSED_CALL_KINDS, type ProposedCallKind, type ProposedReceipt, type ProposedRoute } from "@/lib/design-agent/three-methods/ledger-proposal";
-import { buildPageAssetPrompt, buildPageAssetRequests, extractAssetMarkers, isEssential, toAssetRequestShape, type Placement } from "@/lib/design-agent/three-methods/page-assets";
+import { buildPageAssetPrompt, buildPageAssetRequests, extractAssetMarkers, isEssential, runnableAssetRequests, toAssetRequestShape, type Placement } from "@/lib/design-agent/three-methods/page-assets";
 import { pilotPins } from "@/lib/design-agent/three-methods/pins";
 import { buildVisualFirstPrompt, VISUAL_FIRST_MAX_ASSETS } from "@/lib/design-agent/three-methods/visual-first";
 import { BRIEF } from "../phase2f/fixtures";
@@ -162,6 +162,15 @@ describe("asset requests from a page Claude wrote (LAYOUT_FIRST / DIRECTION_FIRS
     const typed: AssetRequest | null = shape;
     expect(Object.keys(typed!).sort()).toEqual(["alt", "asset_id", "essential", "placement", "prompt", "prompt_chars", "prompt_sha256"]);
     expect(typed!.essential).toBe(false);
+  });
+
+  it("owner policy (Issue #180): an unmeasured image request is refused for a real call; a measured one passes", () => {
+    const one = { path: "p/index.html", html: `<img src="assets/A1.png" alt="窯のパン">` };
+    const unmeasured = buildPageAssetRequests({ method: "LAYOUT_FIRST", page: one, facts });
+    expect(unmeasured.ok).toBe(true);
+    expect(runnableAssetRequests(unmeasured.ok ? unmeasured.requests : [])).toEqual({ ok: false, code: "ASSET_PLACEMENT_UNMEASURED" });
+    const measuredReq = buildPageAssetRequests({ method: "LAYOUT_FIRST", page: one, facts, placement: { A1: measured() }, heroSections: [] });
+    expect(measuredReq.ok && runnableAssetRequests(measuredReq.requests).ok).toBe(true);
   });
 
   it("essential as the runner decides it: hero section, first screen, outside every section, or unmeasured", () => {

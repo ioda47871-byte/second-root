@@ -265,6 +265,15 @@ export function buildPageAssetRequests(o: {
   return { ok: true, requests };
 }
 
+/**
+ * Owner decision (Issue #180, 2026-11-01, provisional pilot policy): an image request whose placement was not measured
+ * is REFUSED for a real call. Unmeasured requests exist only to print pins before the page is rendered; a future entry
+ * must pass every request through this gate before it reserves an approval.
+ */
+export function runnableAssetRequests(requests: readonly PageAssetRequest[]): { ok: true; requests: readonly PageAssetRequest[] } | { ok: false; code: "ASSET_PLACEMENT_UNMEASURED" } {
+  return requests.some((r) => r.placement === null) ? { ok: false, code: "ASSET_PLACEMENT_UNMEASURED" } : { ok: true, requests };
+}
+
 /** The runner's AssetRequest fields of a measured request (the tests assign it to that type); null while unmeasured. */
 export function toAssetRequestShape(r: PageAssetRequest) {
   if (r.placement === null) return null;

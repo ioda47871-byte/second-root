@@ -250,6 +250,12 @@ VISUAL_FIRST の prompt を、既存の design step・pre-render・packaging (ru
 - 素材の pin は、Claude が書いたページがまだ無いので、出していない。ページができたら `--layout-page <html>` / `--direction-page <html>` で出す。素材の prompt は、絵の説明 (alt) と事実パックだけで決まる。
 - この表の値は、テスト (`lane.test.ts`) が CLI と同じ組み立てで計算し直して、この文書と比べる。prompt か入力が変われば、テストが落ちる。
 
+### オーナーの暫定方針 (Issue #180、2026-11-01)
+
+- VISUAL_FIRST は **Route C を優先**する。最初のパイロットのデザインの pin は `VISUAL_FIRST.design.C_hybrid` (`b3d51744…`、4398字) である。Route B の pin は比較のために残す。
+- **位置を測れない画像の要求は、実行では断る** (`runnableAssetRequests` → `ASSET_PLACEMENT_UNMEASURED`)。測っていない要求は、ページを描く前に pin を出すためだけにある。将来の入口は、承認を使う前に、すべての要求をこの門に通す。
+- 共通ブリーフは今の案 (`brief.json`) を使う。最初のパイロットでは、成功例の要約を Codex に渡さない。
+
 ## 11. V-B と「Codex の画像ツールの完成デザイン」は同じ実験条件ではない
 
 オーナーの指摘のとおり、次の2つは**別の条件**である。
