@@ -73,6 +73,9 @@ describe("structure observation (offline, report-only)", () => {
   it("a reference too sparse to compare is undecided, never 'not close'; with only such references nothing is decided", async () => {
     const o = await observeStructure(browser, { html: OWN, css: OWN_CSS }, set([SPARSE], []));
     expect(o.viewports!.desktop_1440).toMatchObject({ too_close_to_success: [], close_to_rejected: [], undecided: ["CP-991"] });
+    // DEV-144: its record (Hero only, ceiling 0.2) can never be decided: reported as too thin, not as a finding
+    expect(o.viewports!.desktop_1440.undecided_too_thin).toEqual(["CP-991"]);
+    expect(o.viewports!.mobile_390.undecided_too_thin).toEqual(["CP-991"]);
   }, 60_000);
 
   it("a page that cannot be measured is check_failed with its reason, never a clean result", async () => {

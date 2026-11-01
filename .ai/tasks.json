@@ -6385,6 +6385,53 @@
         "閾値の変更"
       ],
       "note": "ラベル付き23件: 意図11件のうち誤検知2件、壊れ12件の見逃し0件 (既知の限界3つは文書に)。切れた文字の、切り抜きの外の字だけを重なりから外す (切っている軸だけ)。実試作12枚の所見は不変 (手動の確認)。Review: round 1 FAIL (M2)・round 2 FAIL (M1) → 修正、round 3 PASS (C0/H0/M0/L3、対応済み)。"
+    },
+    {
+      "id": "DEV-144",
+      "title": "参照の決められる上限を報告し、記録の薄い参照を分ける (Issue #177 C)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-136",
+        "DEV-138"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-144-reference-coverage",
+      "purpose": "Issue #177 C (オーナー事前承認、条件付きの develop マージ)。成功例と不採用例の参照の精度を上げる最初の段として、参照ごとの決められる上限を報告する。候補側の不足 (undecided) と参照側の不足 (too_thin) を分ける。宣言・採否・事実パックは変えない。",
+      "acceptance_criteria": [
+        "coverageCeiling を返し、上限が MIN_COVERAGE 未満の参照を too_thin として分ける (undecided の一部、所見ではない)",
+        "構造の観察の報告に undecided_too_thin を足す",
+        "24件の一覧と上限をテストと文書で固定する",
+        "宣言・閾値・採否・事実パックを変えない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/structure/references.test.ts",
+        "tests/unit/design-agent/structure/observe.test.ts",
+        "tests/unit/design-agent/structure/structure.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/structure/references.ts",
+        "lib/design-agent/structure/observe.ts",
+        "tests/unit/design-agent/structure/references.test.ts",
+        "docs/design/reference-structure-descriptors.md",
+        "docs/design/phase2f-structure-observation.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-144.md"
+      ],
+      "forbidden_scope": [
+        "宣言の追加・変更 (研究データの意味の確定)",
+        "閾値の変更",
+        "owner-selected の採否・事実パックの変更",
+        "生成器・prompt への参照の投入"
+      ],
+      "human_approval_triggers": [
+        "記録からの宣言の追加 (研究データの意味の確定)",
+        "Issue #177 の条件を満たさない場合の develop へのマージ"
+      ],
+      "note": "38件のうち24件が上限 0.5 未満 (原本なし7件すべてを含む)。Review round 1 PASS (C0/H0/M0/L3、対応済み)。"
     }
   ]
 }

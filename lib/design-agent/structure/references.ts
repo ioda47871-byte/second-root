@@ -49,8 +49,22 @@ export type ReferenceComparison = {
   close_to_rejected: ReferenceMatch[];
   /** References the comparison could not decide (under MIN_COVERAGE of the weight known on both sides). */
   undecided: string[];
+  /**
+   * DEV-144: the undecided references whose own record is too thin to ever be decided (coverageCeiling under
+   * MIN_COVERAGE), whatever the candidate. The rest of `undecided` would be decided by a candidate that is known on
+   * more aspects. A subset of `undecided`; still not a "not close".
+   */
+  too_thin: string[];
   advisory: true;
 };
+
+/**
+ * DEV-144: the most of the weight a comparison with this reference can ever cover: the share of the weight its own
+ * record knows (a candidate known on every aspect, with at least two sections, reaches it). Under MIN_COVERAGE, the reference can never be decided.
+ */
+export function coverageCeiling(d: StructureDescriptor): number {
+  return similarityDetail(d, d).coverage;
+}
 
 /**
  * Compares one candidate descriptor (measured or declared) with every reference. Sorted by similarity, highest first.
@@ -74,6 +88,7 @@ export function compareWithReferences(candidate: StructureDescriptor, set: Refer
     too_close_to_success: close(set.success, THRESHOLDS.too_close_to_reference),
     close_to_rejected: close(set.rejected, CLOSE_TO_REJECTED),
     undecided: undecided.sort(),
+    too_thin: [...set.success, ...set.rejected].filter((e) => undecided.includes(e.id) && coverageCeiling(e.descriptor) < MIN_COVERAGE).map((e) => e.id).sort(),
     advisory: true,
   };
 }
