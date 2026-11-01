@@ -14,7 +14,6 @@ const KNOWN: Record<string, { fp?: string[]; fn?: string[]; why: string }> = {
     why: "a bleeding decorative word is text to the checks; marking it aria-hidden (as big_decorative_type does) is the way to say it is decoration",
   },
   drawer_translated: { fp: ["SP_TEXT_OFFSCREEN"], why: "a drawer pushed off the right edge cannot be told from a row pushed out by mistake (DEV-134 limit)" },
-  text_on_text: { fn: ["SP_TEXT_OVERLAP"], why: "glyph edges touch by a few px; the shop-CSS overlap test ignores the outer 20% of each glyph (CORE_INSET), unchanged here" },
 };
 
 let browser: Browser;

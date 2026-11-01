@@ -89,6 +89,28 @@ const OUT_OF_BOX_SCRIPT = String.raw`(owners) => {
   return out;
 }`;
 
+/**
+ * DEV-140: the part of the page a clipped text can still paint in: the intersection of the boxes of its ancestors that
+ * clip (overflow other than visible, or a clip-path), in page coordinates, per owner index; null when nothing clips.
+ */
+const CLIP_BOX_SCRIPT = String.raw`(owners) => {
+  const out = {};
+  for (const owner of owners) {
+    const el = document.querySelector('[data-sr-i="' + owner + '"]');
+    if (!el) { out[owner] = null; continue; }
+    let box = null;
+    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+      const as = getComputedStyle(a);
+      if (as.overflowX === "visible" && as.overflowY === "visible" && as.clipPath === "none") continue;
+      const b = a.getBoundingClientRect();
+      const r = { left: b.left, top: b.top + scrollY, right: b.right, bottom: b.bottom + scrollY };
+      box = box ? { left: Math.max(box.left, r.left), top: Math.max(box.top, r.top), right: Math.min(box.right, r.right), bottom: Math.min(box.bottom, r.bottom) } : r;
+    }
+    out[owner] = box;
+  }
+  return out;
+}`;
+
 const clean = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
 /**
  * A line box wholly off the left of the page or above it: the skip-link convention (a label hidden on purpose).
@@ -136,9 +158,21 @@ async function measure(page: Page, o: { facts: readonly string[]; shopName: stri
 
     const codes = new Set<string>();
     const nodes = m.nodes.filter((n) => n.kind === "fact" || n.kind === "label");
-    // DEV-140: a clipped text's cut-off part is not painted: it is left out of the overlap (it would otherwise "overlap"
-    // the text after its box), and the clipping is what it is named for (not also covered by what its hidden part meets)
-    const over = overprinted({ ...m, nodes: nodes.map((n) => (n.clipped ? { ...n, hidden: true } : n)) });
+    // DEV-140: a clipped text's cut-off characters are not painted. Only they are left out of the overlap (they would
+    // otherwise "overlap" the text after the box); its characters inside the clip still count, so text printed over the
+    // visible part is still named (review M1)
+    const clippedOwners = [...new Set(nodes.filter((n) => n.clipped && !n.hidden).map((n) => n.owner))];
+    const clips = clippedOwners.length ? ((await page.evaluate(`(${CLIP_BOX_SCRIPT})(${JSON.stringify(clippedOwners)})`)) as Record<string, { left: number; top: number; right: number; bottom: number } | null>) : {};
+    const visibleChars = (n: (typeof nodes)[number]) => {
+      const box = n.clipped ? clips[String(n.owner)] : null;
+      if (!box) return n.chars;
+      return n.chars.filter((c) => {
+        const x = c.left + c.width / 2;
+        const y = c.top + c.height / 2;
+        return x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+      });
+    };
+    const over = overprinted({ ...m, nodes: nodes.map((n) => (n.clipped ? { ...n, chars: visibleChars(n) } : n)) });
     const flagged = nodes.filter((n) => n.overflow && !n.hidden);
     const reallyOut = flagged.length ? ((await page.evaluate(`(${OUT_OF_BOX_SCRIPT})(${JSON.stringify(flagged.map((n) => ({ owner: n.owner, chars: n.chars })))})`)) as Record<string, boolean>) : {};
     const visibleText = clean(nodes.filter((n) => !n.hidden && !n.rects.every(outside)).map((n) => n.text).join(""));
@@ -161,6 +195,8 @@ async function measure(page: Page, o: { facts: readonly string[]; shopName: stri
       const checks: [boolean, string][] = [
         [n.clipped, TEXT_CODES.clipped],
         [n.offscreen, TEXT_CODES.offscreen],
+        // a clipped text is not also named covered: its hidden part meets what lies after the box (a known limit: a
+        // real cover of its visible part is then named only as clipped; docs/design/phase2f-mobile-quality.md)
         [n.covered && !n.clipped, TEXT_CODES.covered],
         [n.overflow && reallyOut[String(n.owner)] === true, TEXT_CODES.overflow],
         [n.fontSize < MIN_FONT_PX, TEXT_CODES.small],

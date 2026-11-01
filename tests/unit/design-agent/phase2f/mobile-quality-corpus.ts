@@ -99,10 +99,17 @@ export const CORPUS: CorpusCase[] = [
   },
   {
     id: "text_on_text",
-    intent: "two headings printed on top of each other by a negative margin",
-    body: `<section>${name}<h2>季節の豆</h2><h2 class="up">焙煎所のこと</h2>${facts}</section>`,
-    css: `${BASE} .up{margin-top:-40px}`,
+    intent: "a heading printed over another heading (positioned on top of it)",
+    body: `<section>${name}<div style="position:relative"><h2>季節の豆</h2><h2 class="up">焙煎所のこと</h2></div>${facts}</section>`,
+    css: `${BASE} .up{position:absolute;top:6px;left:12px;margin:0} h2{margin:0}`,
     expected: ["SP_TEXT_OVERLAP"],
+  },
+  {
+    id: "clipped_with_overprint",
+    intent: "copy slightly cut by its card, and the hours printed over its visible part",
+    body: `<section>${name}<div class="card"><p class="copy">朝の一杯を、灯のそばで</p><p class="hours">8:00〜19:00</p></div><p>架空市本町3-4</p></section>`,
+    css: `${BASE} .card{position:relative;height:30px;overflow:hidden} .copy{margin:0;font-size:24px;line-height:32px} .hours{position:absolute;top:4px;left:30px;margin:0;font-size:20px}`,
+    expected: ["SP_TEXT_CLIPPED", "SP_TEXT_OVERLAP"],
   },
   {
     id: "covered_by_shape",
