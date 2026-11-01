@@ -1,0 +1,16 @@
+{
+  "schema": "phase2f_design_brief_v1",
+  "dna": {
+    "hero": "MOCK: 研究の共通ブリーフは見た目の方向 (DNA) を持たない (§4)。今の runner の v1 prompt が DNA を必須とするので、模擬の通し実行のためだけに置いた値。実行では DEV-143 で扱う",
+    "typography": "MOCK: 研究の共通ブリーフは見た目の方向 (DNA) を持たない (§4)。今の runner の v1 prompt が DNA を必須とするので、模擬の通し実行のためだけに置いた値。実行では DEV-143 で扱う",
+    "palette": "MOCK: 研究の共通ブリーフは見た目の方向 (DNA) を持たない (§4)。今の runner の v1 prompt が DNA を必須とするので、模擬の通し実行のためだけに置いた値。実行では DEV-143 で扱う",
+    "product_visual": "MOCK: 研究の共通ブリーフは見た目の方向 (DNA) を持たない (§4)。今の runner の v1 prompt が DNA を必須とするので、模擬の通し実行のためだけに置いた値。実行では DEV-143 で扱う",
+    "section_rhythm": "MOCK: 研究の共通ブリーフは見た目の方向 (DNA) を持たない (§4)。今の runner の v1 prompt が DNA を必須とするので、模擬の通し実行のためだけに置いた値。実行では DEV-143 で扱う",
+    "navigation": "MOCK: 研究の共通ブリーフは見た目の方向 (DNA) を持たない (§4)。今の runner の v1 prompt が DNA を必須とするので、模擬の通し実行のためだけに置いた値。実行では DEV-143 で扱う",
+    "mobile": "MOCK: 研究の共通ブリーフは見た目の方向 (DNA) を持たない (§4)。今の runner の v1 prompt が DNA を必須とするので、模擬の通し実行のためだけに置いた値。実行では DEV-143 で扱う",
+    "implementation": "MOCK: 研究の共通ブリーフは見た目の方向 (DNA) を持たない (§4)。今の runner の v1 prompt が DNA を必須とするので、模擬の通し実行のためだけに置いた値。実行では DEV-143 で扱う"
+  },
+  "avoid": [
+    "MOCK: 汎用 LP の骨格 (中央の見出しとボタン、帯の繰り返し)"
+  ]
+}

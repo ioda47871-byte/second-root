@@ -174,7 +174,9 @@ describe("isolation", () => {
       // DEV-131: the one offline experiment test that wires the real modules together (a test, never lib)
       ":!tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
       // DEV-141 (Issue #180): the three-method study's test checks its fictional shop's lock (a test, never lib)
-      ":!tests/unit/design-agent/research/three-methods.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/research/three-methods.test.ts",
+      // DEV-142 (Issue #180): the study's MOCK end-to-end run audits its fixture pages with the lock (a test, never lib)
+      ":!tests/unit/design-agent/research/three-methods-mock.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
   });
 });
