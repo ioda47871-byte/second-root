@@ -6341,7 +6341,7 @@
     {
       "id": "DEV-140",
       "title": "SP 品質検査のラベル付き検証と誤検知の修正 (Issue #177 B)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-134"
@@ -6384,12 +6384,13 @@
         "所見を停止や自動修正に使うこと",
         "閾値の変更"
       ],
-      "note": "ラベル付き23件: 意図11件のうち誤検知2件、壊れ12件の見逃し0件 (既知の限界3つは文書に)。切れた文字の、切り抜きの外の字だけを重なりから外す (切っている軸だけ)。実試作12枚の所見は不変 (手動の確認)。Review: round 1 FAIL (M2)・round 2 FAIL (M1) → 修正、round 3 PASS (C0/H0/M0/L3、対応済み)。"
+      "note": "ラベル付き23件: 意図11件のうち誤検知2件、壊れ12件の見逃し0件 (既知の限界3つは文書に)。切れた文字の、切り抜きの外の字だけを重なりから外す (切っている軸だけ)。実試作12枚の所見は不変 (手動の確認)。Review: round 1 FAIL (M2)・round 2 FAIL (M1) → 修正、round 3 PASS (C0/H0/M0/L3、対応済み)。",
+      "merged": "#179 → 68b6255 (squash, 2026-11-01, Issue #177 の条件付き事前承認)"
     },
     {
       "id": "DEV-144",
       "title": "参照の決められる上限を報告し、記録の薄い参照を分ける (Issue #177 C)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-136",
@@ -6431,7 +6432,123 @@
         "記録からの宣言の追加 (研究データの意味の確定)",
         "Issue #177 の条件を満たさない場合の develop へのマージ"
       ],
-      "note": "38件のうち24件が上限 0.5 未満 (原本なし7件すべてを含む)。Review round 1 PASS (C0/H0/M0/L3、対応済み)。"
+      "note": "38件のうち24件が上限 0.5 未満 (原本なし7件すべてを含む)。Review round 1 PASS (C0/H0/M0/L3、対応済み)。",
+      "merged": "#182 → 08f14e9 (squash, 2026-11-01, Issue #177 の条件付き事前承認)"
+    },
+    {
+      "id": "DEV-141",
+      "title": "3制作方式の比較研究の設計 (VISUAL_FIRST / LAYOUT_FIRST / DIRECTION_FIRST、Issue #180、#177 Phase E への追加)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-139",
+        "DEV-140"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-141-three-methods-study",
+      "purpose": "Issue #180 (オーナー事前承認)。#177 を止めず、Phase E の比較研究として、3方式の設計・架空店舗の事実パックと Identity Lock・入出力契約と引き渡しの境界・評価方法と盲検の評価票・記録の形・実行回数と費用と承認の計画を作る。実 Codex・画像生成は行わない。",
+      "acceptance_criteria": [
+        "3方式を既存の Route A/B/C と別の名前で定義し、手順・入出力・引き渡しの境界を書く",
+        "新しい架空のパン屋1件の事実パック・出典・Identity Lock (研究用)。事実はすべて作り物で、名前を持つものには「架空」を付ける",
+        "揃える条件 (店・事実・ブリーフ・画面・技術の制約・Claude の条件・生成の予算・採否)",
+        "既存の検査 (DEV-131/139・DEV-134/140・DEV-138・Identity Lock) の再利用だけで評価し、新しい品質検査を作らない",
+        "オーナーの盲検の評価票と、手間の記録の形 (mock / live を分ける)",
+        "実行回数・時間・費用と、呼び出しごとの承認の手順。実行はしない",
+        "入力をハッシュで固定するテスト"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/research/three-methods.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/design/three-methods-study.md",
+        "design-library/research/three-methods/**",
+        "tests/unit/design-agent/research/three-methods.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-141.md",
+        "tests/unit/design-agent/identity/identity-lock.test.ts (研究のテスト1つの正確なパスの除外の追加のみ)",
+        "tests/unit/design-agent/research/three-methods.trigger-row.txt"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の実行",
+        "prompt・承認・停止条件・runner・worker・WSL・本番の変更",
+        "Issue #177 の Phase B〜E の作業を止めること・置き換えること"
+      ],
+      "human_approval_triggers": [
+        "実 Codex・画像生成の実行 (呼び出しごとの承認)",
+        "VISUAL_FIRST のデザインの形 (V-B/V-A)・DIRECTION_FIRST の方向の形・回数の決定",
+        "標準方式の採用"
+      ],
+      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。Review: round 1 FAIL (H1・M1〜M4)、round 2 FAIL (M1: SP の所見をきっかけにしていた)、round 3 FAIL (M1: Identity を修正、M2: 事実に無い文を門と書いた)、round 4 FAIL (M1: はみ出しの修正の対象が曖昧) → それぞれ修正。 round 5 PASS (C0/H0/M0/L2、対応済み)。"
+    },
+    {
+      "id": "DEV-142",
+      "title": "3制作方式の模擬の通し実行 (fixture、MOCK) — Issue #180",
+      "status": "ready",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-141"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-142-three-methods-mock",
+      "purpose": "3方式の手順・引き渡し・共通の検査・記録が、保存済みの架空 fixture で通しで動くことを確かめ、PC1440/SP390 の画像と MOCK の記録を作る。実 Codex・画像生成は呼ばない。結果は方式の優劣の証拠にしない。",
+      "acceptance_criteria": [
+        "3方式とも fixture で最後まで動く",
+        "共通の検査 (SP・構造・Identity・はみ出し) と VISUAL_FIRST の impl-compare を既存の道具で行う。事実に無い文は、研究のテストか fixture の中で数え、新しい品質検査として登録しない",
+        "修正のきっかけは Claude の実装の描画の横はみ出しだけ (上限は runLoop の LIMITS)。Codex のデザインのはみ出し・Identity の REJECT/HOLD はその回を止める。ほかは記録だけ",
+        "記録はすべて run_kind: mock"
+      ],
+      "required_tests": [
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "design-library/research/three-methods/**",
+        "tests/unit/design-agent/research/**",
+        "docs/design/three-methods-study.md",
+        ".ai/**"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成",
+        "prompt・ledger・画像の入口の変更 (DEV-143)"
+      ],
+      "human_approval_triggers": [
+        "Issue #177 の条件を満たさない場合の develop へのマージ"
+      ],
+      "note": "Issue #180 の事前承認の範囲 (offline)。"
+    },
+    {
+      "id": "DEV-143",
+      "title": "3方式の実行の入口 (DNA の無いブリーフの prompt・方向の呼び出し・Claude が書いた素材の要求の画像の入口) と pin — Issue #180",
+      "status": "blocked",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-141"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-143-three-methods-entries",
+      "purpose": "パイロットの実行に要る入口を作り、pin を出す。prompt・承認の流れ・ledger の種類を変えるので、Issue #177 の条件付きマージの対象外。オーナーの個別承認を受けてから始める。",
+      "acceptance_criteria": [
+        "オーナーの個別承認を受けてから始める"
+      ],
+      "required_tests": [
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [],
+      "forbidden_scope": [
+        "実 Codex・画像生成の実行"
+      ],
+      "human_approval_triggers": [
+        "作業の開始",
+        "develop へのマージ",
+        "実行 (呼び出しごと)"
+      ],
+      "note": "DEV-141 の review round 1 (H1) で、今の入口では3方式を呼べないと分かった。",
+      "blocked_reason": "オーナーの個別承認待ち: prompt・承認の流れ・ledger の種類・画像の入口を変える作業で、Issue #177 の条件付きマージの対象外 (Issue #180 も実行の権限を足していない)"
     }
   ]
 }

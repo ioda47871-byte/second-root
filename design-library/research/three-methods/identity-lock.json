@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "case_id": "CP-900",
+  "attempt_id": "three-methods-komugi",
+  "target": {
+    "official_name": "架空パン工房 こむぎ灯",
+    "allowed_aliases": [
+      "こむぎ灯"
+    ],
+    "category_code": "bakery",
+    "official_source_url": "https://example.invalid/fictional"
+  },
+  "prompt": {
+    "shop_name": "架空パン工房 こむぎ灯",
+    "category_code": "bakery",
+    "is_research_only": true
+  },
+  "other_shop_names": [
+    "架空菓庵",
+    "なごやビーンズ",
+    "月見湯",
+    "紙縁堂",
+    "ひびや継工房"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "phase2f_facts_sources_v1",
+  "pack": "facts-pack.json",
+  "sources": {
+    "S1": {
+      "path": "design-library/research/three-methods/facts-pack.json",
+      "what": "DEV-141 (Issue #180) fictional shop written for the three-method study; not a real shop, no real data",
+      "mapping": "every value is invented for the study and marked 架空 where it names a thing"
+    }
+  }
+}
