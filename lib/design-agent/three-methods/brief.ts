@@ -7,8 +7,10 @@
  * content rules. The schema has nowhere to put a DNA part, and its texts are refused when they name a visual choice
  * (a colour code, a DNA part, layout or type words). That word check is a guard against accidents, not a proof.
  *
- * This lane is not wired to anything: no real port, no Codex, no image tool, no ledger, no file access. Its only
- * importer outside its tests is the offline pin CLI (scripts/research/three-methods-pins.ts).
+ * This lane itself has no real port, no Codex, no image tool, no ledger and no file access. DEV-150 (Issue #180) wired
+ * it into the existing real-call entries, by exact path only (the lane's isolation test lists them): the design prompt
+ * (tm0), the image call (a page's picture), the direction call and its CLI, and the offline three-method steps CLI.
+ * The offline pin CLI (scripts/research/three-methods-pins.ts) still imports it too.
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";

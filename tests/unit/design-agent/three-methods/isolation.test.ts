@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { pilotPins } from "@/lib/design-agent/three-methods/pins";
 
 // DEV-143 (Issue #180): the three-method lane is EXPERIMENTAL and opt-in. It is pure (no file access except its CLI's
-// reads, no process, no network, no Codex, no image tool, no ledger, no real port) and nothing imports it except its
-// own offline pin CLI (exact path). Wiring it into a real entry is a separate owner approval.
+// reads, no process, no network, no Codex, no image tool, no ledger, no real port). DEV-150 (owner approval A, Issue
+// #180): the real entries that import it, by exact path and exact module only (WIRED below); nothing else does.
 
 const REPO = resolve(__dirname, "../../../..");
 const LIB = "lib/design-agent/three-methods";
@@ -29,8 +29,23 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/ledger-proposal.ts`]: ["zod", "./brief"],
   [`${LIB}/page-assets.ts`]: ["./brief"],
   [`${LIB}/pins.ts`]: ["./brief", "./direction", "./page-assets", "./visual-first"],
+  // owner approval A′ (DEV-150): the pilot picture's check; from the Identity Lock only its exported cleanName (pure)
+  [`${LIB}/asset-image-audit.ts`]: ["zod", "../identity/identity-lock", "./brief"],
   [CLI]: ["node:fs/promises", "node:path", "../../lib/design-agent/three-methods/brief", "../../lib/design-agent/three-methods/pins"],
 };
+const L = "lib/design-agent";
+/** DEV-150: the only files outside the lane that import it, and the lane modules each one takes (exact). */
+const WIRED: Record<string, string[]> = {
+  [CLI]: ["../../lib/design-agent/three-methods/brief", "../../lib/design-agent/three-methods/pins"],
+  [`${L}/phase2f/prompt.ts`]: ["../three-methods/brief", "../three-methods/visual-first"],
+  [`${L}/phase2f-live/image-call.ts`]: ["../three-methods/page-assets"],
+  [`${L}/phase2f-live/direction-call.ts`]: ["../three-methods/direction"],
+  "scripts/design-artifact/phase2f-direction.ts": ["../../lib/design-agent/three-methods/brief", "../../lib/design-agent/three-methods/direction"],
+  // the facts pack schema the lane re-exports (to rebuild a page's picture request); nothing else of the lane
+  "scripts/design-artifact/phase2f-image.ts": ["../../lib/design-agent/three-methods/brief"],
+  "scripts/design-artifact/three-methods-steps.ts": ["../../lib/design-agent/three-methods/asset-image-audit", "../../lib/design-agent/three-methods/brief", "../../lib/design-agent/three-methods/direction", "../../lib/design-agent/three-methods/page-assets", "../../lib/design-agent/three-methods/visual-first"],
+};
+
 /** Module paths and calls that would reach Codex, a process, the network, a browser, a model, the image tool, the sandbox, the ledger or a live entry. */
 const FORBIDDEN = /["'`][^"'`]*\/codex["'`]|runCodex\w*|prepareCodexSandbox|generateImageOnce|openLedger|child_process|\bfetch\(|node:(?:https?|net|dgram|worker_threads)|(?<!\.)\bspawn\w*\(|(?<!\.)\bexec(?:File|Sync)?\(|playwright|anthropic|openai|phase2f(?:-live)?\/|phase2f-(?:design|image|steps|live-cli)|design-image\/|\/sandbox["'`]|bounded-process|\/worker\/|systemctl|\beval\s*\(|new\s+Function\b|globalThis\s*\[/i;
 
@@ -64,10 +79,11 @@ describe("isolation of the three-method lane (experimental, opt-in)", () => {
     expect([...cli.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']node:fs\/promises["']/g)].map((m) => m[1]!.trim())).toEqual(["readFile"]);
   });
 
-  it("is imported by nothing in the repository (outside tests/, docs/ and .ai/) except its own CLI (exact path)", () => {
+  it("is imported by nothing in the repository (outside tests/, docs/ and .ai/) except its own CLI and the DEV-150 entries (exact paths, exact modules)", () => {
     // any importer, absolute or relative, anywhere in the repository; git grep exits 1 when nothing matches (an error is 128, never a pass)
     const g = git(["grep", "--untracked", "-lE", "design-agent/three-methods|[\"'`]\\.{1,2}/three-methods[\"'`/]|three-methods-pins", "--", ".", `:!${LIB}/**`, ":!tests/**", ":!docs/**", ":!.ai/**"]);
-    expect([g.status, g.stdout.trim()]).toEqual([0, CLI]);
+    expect([g.status, lines(g.stdout)]).toEqual([0, Object.keys(WIRED).sort()]);
+    for (const [file, modules] of Object.entries(WIRED)) expect(specifiers(readFileSync(resolve(REPO, file), "utf8")).filter((s) => s.includes("three-methods")).sort(), file).toEqual([...modules].sort());
     // and no package script, workflow, unit file or other script starts the CLI (it is run by hand only)
     const h = git(["grep", "--untracked", "-lE", "three-methods-pins", "--", ".", `:!${CLI}`, `:!${LIB}/**`, ":!tests/**", ":!docs/**", ":!.ai/**"]);
     expect([h.status, h.stdout.trim()]).toEqual([1, ""]);

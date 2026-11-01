@@ -165,7 +165,7 @@ describe("generated HTML pages (visible text)", () => {
 });
 
 describe("isolation", () => {
-  it("is pure (no I/O) and imported only by its tests until a separate approval wires it in", () => {
+  it("is pure (no I/O) and imported only by its tests, and by the one offline CLI the owner approved (DEV-150, exact path)", () => {
     const repo = resolve(__dirname, "../../../..");
     const src = readFileSync(resolve(repo, "lib/design-agent/identity/identity-lock.ts"), "utf8");
     expect(src).not.toMatch(/\bimport\b|require\(|\bfetch\(|process\./);
@@ -178,7 +178,25 @@ describe("isolation", () => {
       // DEV-142 (Issue #180): the study's MOCK end-to-end run audits its fixture pages with the lock (a test, never lib)
       ":!tests/unit/design-agent/research/three-methods-mock.test.ts",
       // DEV-147 (Issue #177 E): the MOCK integration check of Phases A–D audits each case's implementation with the study's lock (a test, never lib)
-      ":!tests/unit/design-agent/integration-check/integration-check.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/integration-check/integration-check.test.ts",
+      // DEV-150 (Issue #180, owner approval A): the three-method pilot's OFFLINE steps CLI, the first importer outside
+      // tests. It records the result; the one stop is the study's existing rule (REJECT / HOLD stops the method)
+      ":!scripts/design-artifact/three-methods-steps.ts",
+      // DEV-150: the real-call steps' isolation test pins that CLI's exact imports (a test, never lib)
+      ":!tests/unit/design-agent/phase2f-live/isolation.test.ts",
+      // DEV-150 (owner approval A′): the pilot picture's own check reuses only the exported cleanName (pinned below)
+      ":!lib/design-agent/three-methods/asset-image-audit.ts",
+      // DEV-150 (owner approval A′): its test compares its lock checks with the Lock's own (a test, never lib)
+      ":!tests/unit/design-agent/three-methods/asset-image-audit.test.ts",
+      // DEV-150: the lane's isolation test pins that file's exact imports (a test, never lib)
+      ":!tests/unit/design-agent/three-methods/isolation.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
+  });
+
+  it("DEV-150: the three-method steps CLI takes only the page-text audit; the pilot picture's check takes only cleanName", () => {
+    const names = (file: string) => [...readFileSync(resolve(__dirname, "../../../..", file), "utf8").matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']*identity-lock)["']/g)].map((m) => [m[2], m[1]!.split(",").map((s) => s.trim()).filter(Boolean).sort()]);
+    // owner approval A′: a picture is checked by the three-method asset-image-audit, never by the Lock's full-design image audit
+    expect(names("scripts/design-artifact/three-methods-steps.ts")).toEqual([["../../lib/design-agent/identity/identity-lock", ["auditPageText", "type IdentityResult"]]]);
+    expect(names("lib/design-agent/three-methods/asset-image-audit.ts")).toEqual([["../identity/identity-lock", ["cleanName"]]]);
   });
 });

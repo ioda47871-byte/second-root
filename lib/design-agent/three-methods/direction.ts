@@ -1,12 +1,13 @@
 /**
- * DEV-143 (EXPERIMENTAL, opt-in, not wired): the DIRECTION_FIRST call. Codex gives the visual direction in WORDS
+ * DEV-143 (EXPERIMENTAL, opt-in): the DIRECTION_FIRST call. Codex gives the visual direction in WORDS
  * (the 8 Design DNA parts, each resting on fact ids), not a page and not an image. Claude then composes and builds
  * the PC / SP page from it.
  *
- * No existing entry can make this call: the ledger has no "direction" kind and no prompt asks for a direction. This
- * file only builds the prompt (and its pin), the answer's strict schema and its check. `runDirectionOffline` shows
- * the order a future entry must keep (pin first, then one call through a port, then the strict check) with a port
- * the caller gives; the lane's tests give it a fake. Nothing here reaches Codex, a process or the network.
+ * This file only builds the prompt (and its pin), the answer's strict schema and its check. DEV-150 (Issue #180) wired
+ * them into a real entry: the live ledger's "direction" kind, the direction call (which checks every answer with
+ * checkDirection) and its CLI, and the offline three-method steps (the hand-off to Claude). `runDirectionOffline` shows
+ * the same order (pin first, then one call through a port, then the strict check) with a port the caller gives; the
+ * lane's tests give it a fake. Nothing here reaches Codex, a process or the network.
  */
 import { z } from "zod";
 import { built, DNA_PARTS, factsJson, Text, type BuiltPrompt, type FactsPack, type ThreeMethodBrief } from "./brief";

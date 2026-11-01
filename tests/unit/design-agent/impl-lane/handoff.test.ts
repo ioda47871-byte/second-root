@@ -117,7 +117,10 @@ describe("isolation", () => {
     expect(src).not.toMatch(/child_process|\bfetch\(|codex|anthropic|openai|quarantine\/["']\s*\+/);
     // DEV-139: the one exception is the offline comparison CLI (exact path; its imports are pinned in the next test)
     const g = spawnSync("git", ["grep", "--untracked", "-lE", "impl-lane/(handoff|compare|impl-compare)|from [\"'`]\\./(handoff|impl-compare)[\"'`]", "--", "lib", "app", "components", "scripts", "proxy.ts", "supabase", ":!lib/design-agent/impl-lane/**"], { cwd: repo, encoding: "utf8" });
-    expect([g.status, g.stdout.trim()]).toEqual([0, "scripts/design-artifact/impl-compare.ts"]);
+    // DEV-150 (Issue #180): the three-method pilot's offline steps CLI builds VISUAL_FIRST's lane (prepareImplementationLane only)
+    expect([g.status, g.stdout.trim().split("\n").sort()]).toEqual([0, ["scripts/design-artifact/impl-compare.ts", "scripts/design-artifact/three-methods-steps.ts"]]);
+    const steps = readFileSync(resolve(repo, "scripts/design-artifact/three-methods-steps.ts"), "utf8");
+    expect([...steps.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']*impl-lane[^"']*)["']/g)].map((m) => [m[2], m[1]!.trim()])).toEqual([["../../lib/design-agent/impl-lane/handoff", "LaneStop, prepareImplementationLane"]]);
   });
 
   it("DEV-139: the comparison reads files, draws with Chromium and decides nothing; its CLI writes one new report", () => {

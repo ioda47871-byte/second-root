@@ -2,8 +2,8 @@
  * DEV-143 (EXPERIMENTAL, opt-in): every prompt of the three-method pilot and its pin (SHA-256, length), from the
  * study's inputs. What the owner would compare with an approval. Pure: the caller reads the files.
  *
- * VISUAL_FIRST has two candidate design prompts (route B: no image; route C: up to one image). Which one the pilot
- * uses is the owner's decision; both are printed so neither is chosen here.
+ * VISUAL_FIRST has two candidate design prompts (route B: no image; route C: exactly one image since DEV-150). The
+ * owner's provisional pilot policy uses route C; both are printed so the comparison pin stays visible.
  */
 import { checkBrief, sha256 } from "./brief";
 import { buildDirectionPrompt, directionJsonSchema } from "./direction";

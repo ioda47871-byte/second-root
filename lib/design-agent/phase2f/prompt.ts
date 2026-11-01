@@ -15,6 +15,8 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { CodexDesign, DNA_PARTS, type FactsPack } from "../artifact/schema";
 import { withoutMeta } from "../profile";
+import { checkBrief, ThreeMethodBrief } from "../three-methods/brief";
+import { buildVisualFirstPrompt } from "../three-methods/visual-first";
 import { openDirectionBlock, resolveDirection, type OpenDirection, type Reference } from "./open-direction";
 import { ResearchSection, researchBlock } from "./research-section";
 
@@ -72,7 +74,12 @@ export type PromptVariant =
   | { version: "v1" }
   | { version: "v1.1"; research: ResearchSection | null }
   /** DEV-124: no brief; an open direction and the success-case images it names (open-direction.ts). Routes B and C. */
-  | { version: "v2"; direction: OpenDirection; references: Reference[] };
+  | { version: "v2"; direction: OpenDirection; references: Reference[] }
+  /**
+   * DEV-150 (Issue #180): the three-method study's VISUAL_FIRST prompt, from the common brief WITHOUT DNA. Routes B and C.
+   * The text is the lane's own (lib/design-agent/three-methods/visual-first.ts), imported, never copied here.
+   */
+  | { version: "tm0"; brief: ThreeMethodBrief };
 export const B_V11_RULES = [
   "- On this route every section's asset_refs is an empty list [] (there are no images).",
   "- Show the phone number, the address and the hours as plain text. Add no link other than the stylesheet link required above: no tel:, mailto:, sms: or other URL; in-page navigation may use only #anchors such as #info.",
@@ -92,9 +99,20 @@ export const V2_IMAGE_RULES = {
  * The variant the CLIs were asked for: `--prompt-version` (absent = v1) and an optional `--research` section file
  * (already read as JSON). The research section needs v1.1 and route B. Never reads a file itself.
  */
-export function promptVariantOf(o: { route: "B_html_prototype" | "C_hybrid"; version: string | undefined; research: unknown; direction?: unknown; references?: unknown }): { ok: true; variant: PromptVariant } | { ok: false; code: string } {
+export function promptVariantOf(o: { route: "B_html_prototype" | "C_hybrid"; version: string | undefined; research: unknown; direction?: unknown; references?: unknown; tmBrief?: unknown }): { ok: true; variant: PromptVariant } | { ok: false; code: string } {
   const version = o.version ?? "v1";
-  if (version !== "v1" && version !== "v1.1" && version !== "v2") return { ok: false, code: "PROMPT_VERSION_UNKNOWN" };
+  if (version !== "v1" && version !== "v1.1" && version !== "v2" && version !== "tm0") return { ok: false, code: "PROMPT_VERSION_UNKNOWN" };
+  // DEV-150: tm0 takes the three-method brief only (no research, no direction, no references, no DesignBrief); the
+  // others never take it. Its shop and fact ids are checked against the facts pack where the prompt is built.
+  if (version === "tm0") {
+    if (o.research !== undefined) return { ok: false, code: "RESEARCH_NEEDS_V1_1" };
+    if (o.direction !== undefined || o.references !== undefined) return { ok: false, code: "DIRECTION_NEEDS_V2" };
+    if (o.tmBrief === undefined) return { ok: false, code: "TM_BRIEF_REQUIRED" };
+    const b = ThreeMethodBrief.safeParse(o.tmBrief);
+    if (!b.success) return { ok: false, code: b.error.issues.some((i) => i.message === "visual_direction") ? "BRIEF_HAS_VISUAL_DIRECTION" : "TM_BRIEF_INVALID" };
+    return { ok: true, variant: { version: "tm0", brief: b.data } };
+  }
+  if (o.tmBrief !== undefined) return { ok: false, code: "TM_BRIEF_NEEDS_TM0" };
   // DEV-124: v2 takes a direction and the reference manifest, never a research section; the others never take them
   if (version === "v2") {
     if (o.research !== undefined) return { ok: false, code: "RESEARCH_NEEDS_V1_1" };
@@ -120,8 +138,14 @@ export class PromptVariantError extends Error {
 export function buildDesignPrompt(o: { route: "B_html_prototype" | "C_hybrid"; facts: FactsPack; brief?: DesignBrief; maxAssets: number; variant?: PromptVariant }): BuiltPrompt {
   const variant = o.variant ?? { version: "v1" };
   if (variant.version === "v1.1" && o.route !== "B_html_prototype") throw new PromptVariantError("PROMPT_VARIANT_ROUTE");
-  // v1 / v1.1 are built from a brief; v2 from its direction only
-  if ((variant.version === "v2") === (o.brief !== undefined)) throw new PromptVariantError("PROMPT_VARIANT_BRIEF");
+  // v1 / v1.1 are built from a brief; v2 from its direction only; tm0 (DEV-150) from the three-method brief only
+  if ((variant.version === "v2" || variant.version === "tm0") === (o.brief !== undefined)) throw new PromptVariantError("PROMPT_VARIANT_BRIEF");
+  if (variant.version === "tm0") {
+    // the same shop and only its facts (the brief has no facts pack of its own)
+    const c = checkBrief(variant.brief, o.facts);
+    if (!c.ok) throw new PromptVariantError("PROMPT_VARIANT_BRIEF");
+    return buildVisualFirstPrompt({ route: o.route, facts: c.facts, brief: c.brief, maxAssets: o.maxAssets });
+  }
   const assetRule =
     o.route === "C_hybrid"
       ? `- You may use up to ${o.maxAssets} generated image(s). Reference each as <img src="assets/A1.png" alt="..."> (A1, A2 ...). The alt text must describe the picture to be generated in one or two sentences: it becomes the image request. List each id in the asset_refs of the section that shows it. A picture in the hero section, or covering at least half of itself or half of the first screen (1440 × 900 or 390 × 844), is treated as essential: if it cannot be generated, the run stops for the owner. Any other picture may be replaced by a neutral placeholder if it fails, so keep the page complete without it.`

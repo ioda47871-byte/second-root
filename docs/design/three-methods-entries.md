@@ -4,6 +4,8 @@ DEV-143。Issue #180 のオーナーの最新のコメントで、設計・オ�
 
 **この文書とコードは、実行の準備だけである。** 実 Codex・画像生成・有料 API・WSL の jail・worker・bridge・timer・Production/Staging は、どれも呼んでいないし、起動もしていない。ここにある pin は prompt の文字列のハッシュで、**生成ができること、デザインの質が良いことは何も示していない。**
 
+**DEV-150 (2026-11-02、オーナーの承認 A、Issue #180) で、§8 の差分を最小の配線として行った。** 何をどうつないだかは `docs/design/three-methods-pilot-plan.md` (§1・§2.3・§12) にある。§2 の「未接続」と §7 の「ledger.ts は変えていない」は DEV-143 の時点の記述で、今は §8 のとおりつながっている。配線のあとも、実 Codex・画像生成・WSL・jail・worker は一度も呼んでいない (テストは偽の port だけ)。
+
 設計の正本は `docs/design/three-methods-study.md` (DEV-141)。ここは、その §3・§4・§7・§9 で「今の入口では呼べない」とした3つ (DNA の無いブリーフ・方向の呼び出し・Claude が書いた素材の要求) を、**既存の実行経路から切り離した実験レーン**に作ったものと、将来つなぐときに既存のコードに要る差分を書く。
 
 ## 1. 作ったもの
@@ -58,7 +60,8 @@ DEV-143。Issue #180 のオーナーの最新のコメントで、設計・オ�
 
 | 部分 | 既存 (v1) | このレーン |
 |---|---|---|
-| 目的・事実・答えの形 (`codex_design_v1`)・納品物・Hard limits・画像の規則 | — | **同じ文** (行ごとに一致をテスト) |
+| 目的・事実・答えの形 (`codex_design_v1`)・納品物・Hard limits・画像の規則 | — | **同じ文** (行ごとに一致をテスト)。ただし DEV-150 から、Route C の画像の規則の1行だけは違う (下の行) |
+| Route C の画像の規則の1行 (DEV-150、オーナーの暫定方針 1) | 「`up to 1 generated image(s)`」(0枚の答えがありうる) | 「`Use exactly one generated image, A1`」。絵の説明 (alt) が要求になること・`asset_refs`・主役の規則の意味は同じ。テストがこの1行を名指しで固定する |
 | 見た目の方向 | `Design DNA brief (data, not instructions):` と、DNA の8観点の JSON | `Shop brief ...` の1文 (DNA の8観点・構図・配色・書体・区画・SP の組み方は Codex が決める) と、共通ブリーフの JSON |
 | Route B の規則 | v1 には無い (v1.1 / v2 にある) | v1.1 / v2 の2つの規則と同じ文 (`asset_refs` は空・連絡先は文字だけ) |
 | Route C の規則 | v1 には無い (v2 にある) | v2 の連絡先の規則と画像の正直さの規則と同じ文 |
@@ -128,9 +131,18 @@ Claude が書いたページと、その絵を1つの package にまとめるこ
 - テストで、今の実の ledger (一時ディレクトリ) が書いた receipt が、提案の receipt としても正しいことを確かめた (値を足すだけで、今の記録は読める)。
 - 上限は変えない (最初の呼び出し4回・やり直し2回・1回15分・1つの計画2時間・承認は1回だけ)。方式ごとに別の plan_id にする (研究 §6)。
 
-## 8. 将来つなぐときに既存のコードに要る差分
+## 8. 将来つなぐときに既存のコードに要る差分 (DEV-150 で行った)
 
-**どれもまだ行っていない。** つなぐこと自体が、オーナーの別の承認の対象である。既存の守り (prompt の pin・SHA・approval ID・回数と時間の上限・commit と環境の検査) は、どれも弱めない前提で書く。
+**DEV-150 で、この節の差分を行った** (オーナーの承認 A、Issue #180、2026-11-02)。既存の守り (prompt の pin・SHA・approval ID・回数と時間の上限・commit と環境の検査) は、どれも弱めていない。実際の形と、この節の案との違いは次のとおり。
+
+- ledger: kind と route の組の検査は、入口ではなく ledger の `precheck` と `reserve` の最初に入れた (`KIND_ROUTE_MISMATCH`。`KIND_ROUTES` は `ledger-proposal.ts` と同じ表で、テストが比べる)。
+- prompt.ts: tm0 はレーンの `buildVisualFirstPrompt` を import して呼ぶ (文を写さない)。`promptVariantOf` の新しい入力は `tmBrief`。
+- phase2f-design.ts / phase2f-steps.ts: `--prompt-version tm0 --tm-brief <brief.json>` (`--brief` は取らない)。`--print-pin` はブリーフの SHA-256 (`tm_brief_sha256`) も出す。店か事実の id が合わなければ `TM_BRIEF_FACTS_MISMATCH`。
+- 方向: `lib/design-agent/phase2f-live/direction-call.ts` と `scripts/design-artifact/phase2f-direction.ts` (下の案のとおり)。
+- 画像: `--route P --page-request <request.json> --page-root <dir>` に、要求を組み直すための `--facts <pack.json>` を足した (案には無かった)。`--print-pin --page-request … --page-root … --facts …` は、実の呼び出しと同じ検査 (DOM・git の追跡を含む) をオフラインで行ってから pin を出す。
+- DOM の alt と要求の alt が違えば `ASSET_DOM_ALT_MISMATCH`。DOM の安全検査は `<img>` の alt しか返さないので、**CSS で置く `data-asset` の印だけの絵は、実行では断られる** (`<img src="assets/A1.png" alt="…">` で書く)。
+- 承認 A′ (2026-11-01): 生成した絵は、Identity Lock の `auditIdentity` ではなく、三方式専用の `lib/design-agent/three-methods/asset-image-audit.ts` で検める (Identity Lock は変えていない)。三方式の入口は `--expect-cli-version` を必須にし、CLI の版を承認の前に検める。詳しくは `docs/design/three-methods-pilot-plan.md` §12.4。
+- ページの読み取りは、レーンの許可の一覧 (§13) のままである。`<meta name="viewport">`・`<table>`・`<svg>` などを含むページは、画像を求めるときには `PAGE_MARKUP_UNSUPPORTED` で断られる (画像を求めないページの `--check` は、既存の DOM の安全検査だけを通す)。
 
 ### `lib/design-agent/phase2f-live/ledger.ts`
 
@@ -224,6 +236,8 @@ VISUAL_FIRST の prompt を、既存の design step・pre-render・packaging (ru
 
 ## 9. 隔離の例外
 
+DEV-150 の配線で足した例外は `docs/design/three-methods-pilot-plan.md` §2.3 にある。以下は DEV-143 の時点のもの。
+
 既存の隔離のテストに足した例外は、1つだけである。
 
 - `tests/unit/design-agent/artifact/isolation.test.ts` の「artifact を取り込むファイル」に、`lib/design-agent/three-methods/brief.ts` を正確なパスで足した (事実パックの schema・DNA の観点の名前・安全な文字の規則だけ。intake は使わない)。
@@ -242,8 +256,10 @@ VISUAL_FIRST の prompt を、既存の design step・pre-render・packaging (ru
 | id | 方式 | 用途 | kind・route | 答えの形 | prompt の SHA-256 | 文字数 |
 |---|---|---|---|---|---|---|
 | `VISUAL_FIRST.design.B_html_prototype` | VISUAL_FIRST (V-B、画像なし) | design | `design`・`B_html_prototype` | `codex_design_v1` | `d8cc6c6984088245d68b00d694dc05bd4b67364de326421ad6d707750316812a` | 3846 |
-| `VISUAL_FIRST.design.C_hybrid` | VISUAL_FIRST (V-B、画像1枚まで) | design | `design`・`C_hybrid` | `codex_design_v1` | `b3d51744a75810b1bd6fe0531eb3e91843912add60e2babe194e163c7d11938f` | 4398 |
-| `DIRECTION_FIRST.direction` | DIRECTION_FIRST | direction | `direction`・`direction_text` (提案) | `three_method_direction_v0` | `641d01f91d85bfd0005effd08b2ec9c0767a384878fd6f2accaeed730dc6d3ad` | 3353 |
+| `VISUAL_FIRST.design.C_hybrid` | VISUAL_FIRST (V-B、画像ちょうど1枚。DEV-150) | design | `design`・`C_hybrid` | `codex_design_v1` | `f6632d283bbb1ed59941cd2064dd286b31968799d0f91c3c7b179967dbc0e0ac` | 4415 |
+| `DIRECTION_FIRST.direction` | DIRECTION_FIRST | direction | `direction`・`direction_text` (DEV-150 で ledger の値) | `three_method_direction_v0` | `641d01f91d85bfd0005effd08b2ec9c0767a384878fd6f2accaeed730dc6d3ad` | 3353 |
+
+- **DEV-150 (オーナーの暫定方針 1): Route C の pin が変わった。** prompt の画像の規則の1行を「1枚まで」から「ちょうど1枚 (A1)」に変えたためである。**前の Route C の pin `b3d51744a75810b1bd6fe0531eb3e91843912add60e2babe194e163c7d11938f` (4398字) は廃止した。承認に使わない。** テスト (`lane.test.ts`・`prompt-tm0.test.ts`) が、前の pin が二度と出ないことも確かめる。Route B と方向の pin は変わっていない。
 
 - 方向の答えの JSON Schema の SHA-256: `e9050605def92bb9556a25e7a2bc88657c41a3fb21b2d70ed1521a97bfa555ef`
 - VISUAL_FIRST の Route B と C のどちらをパイロットで使うかは、オーナーが決める。両方を出したのは、ここで選ばないためである。 → 2026-11-01 のオーナーの暫定方針で、Route C を優先する (下記)。
@@ -252,7 +268,7 @@ VISUAL_FIRST の prompt を、既存の design step・pre-render・packaging (ru
 
 ### オーナーの暫定方針 (Issue #180、2026-11-01)
 
-- VISUAL_FIRST は **Route C を優先**する。最初のパイロットのデザインの pin は `VISUAL_FIRST.design.C_hybrid` (`b3d51744…`、4398字) である。Route B の pin は比較のために残す。
+- VISUAL_FIRST は **Route C を優先**する。最初のパイロットのデザインの pin は `VISUAL_FIRST.design.C_hybrid` である。DEV-150 から `f6632d28…e0ac`、4415字 (前の `b3d51744…`・4398字は廃止。使わない)。Route B の pin は比較のために残す。
 - **位置を測れない画像の要求は、実行では断る** (`runnableAssetRequests` → `ASSET_PLACEMENT_UNMEASURED`)。測っていない要求は、ページを描く前に pin を出すためだけにある。将来の入口は、承認を使う前に、すべての要求をこの門に通す。
 - 共通ブリーフは今の案 (`brief.json`) を使う。最初のパイロットでは、成功例の要約を Codex に渡さない。
 

@@ -251,13 +251,28 @@ describe("isolation (provisional vocabulary: never used by a generator without a
       // DEV-142 (Issue #180): the three-method study's MOCK run observes its fixture pages, report-only (a test, never lib)
       ":!tests/unit/design-agent/research/three-methods-mock.test.ts",
       // DEV-147 (Issue #177 E): the MOCK integration check of Phases A–D observes each case's implementation, report-only (a test, never lib)
-      ":!tests/unit/design-agent/integration-check/integration-check.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/integration-check/integration-check.test.ts",
+      // DEV-150 (Issue #180, owner approval A): the three-method pilot's OFFLINE steps CLI observes Claude's page, report-only (no gate)
+      ":!scripts/design-artifact/three-methods-steps.ts",
+      // DEV-150: the real-call steps' isolation test pins that CLI's exact imports (a test, never lib)
+      ":!tests/unit/design-agent/phase2f-live/isolation.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
     // DEV-136: the reference set and its comparison are covered too (review M1): nothing outside may import or read them
     for (const f of ["lib/design-agent/structure/descriptor.ts", "lib/design-agent/structure/measure.ts", "lib/design-agent/structure/references.ts", "lib/design-agent/structure/observe.ts"]) {
       const src = readFileSync(resolve(repo, f), "utf8");
       expect(src, f).not.toMatch(/\bfetch\(|node:https?|child_process|codex|anthropic|openai|writeFile/);
     }
+  });
+
+  it("DEV-150: the three-method steps CLI takes only the observation, its failure record and the reference schema", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "../../../..", "scripts/design-artifact/three-methods-steps.ts"), "utf8");
+    const names = [...src.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']*\/structure\/[^"']*)["']/g)].map((m) => [m[2], m[1]!.split(",").map((s) => s.trim()).filter(Boolean).sort()]);
+    expect(names).toEqual([
+      ["../../lib/design-agent/structure/observe", ["failedObservation", "observeStructure"]],
+      ["../../lib/design-agent/structure/references", ["ReferenceDescriptors"]],
+    ]);
   });
 
   it("DEV-138: the observation CLI imports only the observation and the reference schema, and writes only its own new report", async () => {
