@@ -1,6 +1,7 @@
 {
   "schema": "three_method_run_v0",
   "method": "VISUAL_FIRST | LAYOUT_FIRST | DIRECTION_FIRST",
+  "condition": "VISUAL_FIRST: route_b_prototype | route_c_prototype | image_tool_design; LAYOUT_FIRST: claude_layout; DIRECTION_FIRST: direction_text | direction_image",
   "run_kind": "mock | live",
   "run_label": "例: komugi-visual-first-pilot-1",
   "shop": {

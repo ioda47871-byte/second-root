@@ -254,6 +254,9 @@ describe("MOCK end-to-end run of the three methods (pipeline verification only, 
     };
   }, 180_000);
 
+  // the condition of each MOCK run (§8, §13): VISUAL_FIRST ran the Route B prototype (V-B), not Route C or the image tool
+  const CONDITION: Record<Method, string> = { VISUAL_FIRST: "route_b_prototype", LAYOUT_FIRST: "claude_layout", DIRECTION_FIRST: "direction_text" };
+
   it("writes one three_method_run_v0 record per method, every one run_kind mock, in the template's shape", () => {
     const methods: Method[] = ["VISUAL_FIRST", "LAYOUT_FIRST", "DIRECTION_FIRST"];
     const summary: Record<string, unknown>[] = [];
@@ -272,6 +275,7 @@ describe("MOCK end-to-end run of the three methods (pipeline verification only, 
       const record = {
         schema: "three_method_run_v0",
         method: m,
+        condition: CONDITION[m],
         run_kind: "mock",
         run_label: `komugi-${slug}-mock-1`,
         shop: { shop_id: pack.shop_id, facts_pack_sha256: sha256(readFileSync(factsPath)), identity_lock_sha256: sha256(readRepo(`${STUDY}/identity-lock.json`)), brief_sha256: m === "VISUAL_FIRST" ? sha256(readRepo(`${MOCK}/runner-brief.json`)) : null, ...(m === "VISUAL_FIRST" ? { brief_note: "MOCK: the runner brief (with MOCK DNA) only VISUAL_FIRST used" } : { brief_note: "no shared DNA-free brief was used yet (DEV-143); MOCK" }) },
@@ -319,6 +323,9 @@ describe("MOCK end-to-end run of the three methods (pipeline verification only, 
       };
       // the template's shape, every call MOCK and unapproved, and nothing claims a live run
       for (const k of templateKeys(template)) expect(record, `${m}: ${k}`).toHaveProperty(k);
+      // the condition is one the template allows for this method
+      const allowed = Object.fromEntries((template.condition as string).split(";").map((part) => part.split(":").map((x) => x.trim())).map(([k, v]) => [k, v!.split("|").map((x) => x.trim())]));
+      expect(allowed[m], m).toContain(record.condition);
       expect(record.run_kind).toBe("mock");
       for (const call of record.codex_calls as { outcome: string; approval_id: unknown }[]) expect(call).toMatchObject({ outcome: "mock", approval_id: null });
       expect(record.notes).toContain("MOCK");

@@ -68,6 +68,9 @@ describe("the three-method study's shared inputs", () => {
     const t = JSON.parse(read("run-record-template.json"));
     expect(t.schema).toBe("three_method_run_v0");
     expect(t.run_kind).toBe("mock | live");
+    // the condition keeps the separate conditions of one method apart (§8, §13, DEV-148)
+    expect(t.condition).toBe("VISUAL_FIRST: route_b_prototype | route_c_prototype | image_tool_design; LAYOUT_FIRST: claude_layout; DIRECTION_FIRST: direction_text | direction_image");
+    expect(doc).toContain("**条件が違う記録は、混ぜて比べない。**");
     for (const k of ["codex_calls", "images", "claude", "artifacts", "checks", "stops", "cost", "failure", "rework"]) expect(t, k).toHaveProperty(k);
     for (const k of ["commit", "cli_version", "model_reported", "approval_id", "prompt_sha256"]) expect(t.codex_calls[0], k).toHaveProperty(k);
     for (const m of ["VISUAL_FIRST", "LAYOUT_FIRST", "DIRECTION_FIRST"]) expect(doc).toContain(m);
