@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, truncateSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -311,6 +311,58 @@ describe("LAYOUT_FIRST / DIRECTION_FIRST page: measured request → page image �
     // markup the lane's reader does not understand is refused (here: the viewport meta)
     const viewport = claudePage(join(w.base, "p3"), { html: (h) => h.replace("<title>", '<meta name="viewport" content="width=device-width"><title>') });
     expect(w.tm(["--page-request", "--method", "LAYOUT_FIRST", "--page-root", join(w.base, "p3"), "--page", viewport, "--hero", "hero", "--facts", factsPath, "--out", w.dir("pr")]).out).toMatchObject({ status: "stopped", code: "PAGE_MARKUP_UNSUPPORTED" });
+  }, 120_000);
+});
+
+describe("review round 2: a real picture can never pass as a placeholder (decision 4)", () => {
+  it("a placeholder only where nothing exists; a linked file, a linked assets/, a non-regular or oversized file stops the check", () => {
+    const w = world();
+    const png = colourPng(64, 48);
+    const elsewhere = join(w.base, "elsewhere");
+    mkdirSync(elsewhere);
+    writeFileSync(join(elsewhere, "A1.png"), png);
+    const check = (page: string) => w.tm(["--check", "--page", page, "--facts", factsPath, "--out", w.dir("check")]);
+    // control: assets/ exists but holds no A1.png (ENOENT) → the neutral placeholder, recorded as such
+    const empty = claudePage(join(w.base, "empty"));
+    mkdirSync(join(empty, "..", "assets"));
+    const ok = check(empty);
+    expect(ok.status, JSON.stringify(ok.out)).toBe(0);
+    expect(ok.out).toMatchObject({ status: "recorded", identity: "PASS_IDENTITY_ONLY" });
+    // a link to a real picture
+    const linkedFile = claudePage(join(w.base, "linked-file"));
+    mkdirSync(join(linkedFile, "..", "assets"));
+    symlinkSync(join(elsewhere, "A1.png"), join(linkedFile, "..", "assets", "A1.png"));
+    expect([check(linkedFile).status, check(linkedFile).out]).toEqual([2, { status: "stopped", code: "ASSET_FILE_INVALID", path: "assets/A1.png" }]);
+    // assets/ itself a link
+    const linkedDir = claudePage(join(w.base, "linked-dir"));
+    symlinkSync(elsewhere, join(linkedDir, "..", "assets"));
+    expect(check(linkedDir).out).toEqual({ status: "stopped", code: "ASSET_FILE_INVALID", path: "assets" });
+    // assets/ not a directory
+    const fileDir = claudePage(join(w.base, "file-dir"));
+    writeFileSync(join(fileDir, "..", "assets"), "x");
+    expect(check(fileDir).out).toEqual({ status: "stopped", code: "ASSET_FILE_INVALID", path: "assets" });
+    // a non-regular entry (a directory named A1.png) and an oversized file (sparse, over 16 MB)
+    const notFile = claudePage(join(w.base, "not-file"));
+    mkdirSync(join(notFile, "..", "assets", "A1.png"), { recursive: true });
+    expect(check(notFile).out).toEqual({ status: "stopped", code: "ASSET_FILE_INVALID", path: "assets/A1.png" });
+    const big = claudePage(join(w.base, "big"));
+    mkdirSync(join(big, "..", "assets"));
+    writeFileSync(join(big, "..", "assets", "A1.png"), png);
+    truncateSync(join(big, "..", "assets", "A1.png"), 16 * 1024 * 1024 + 1);
+    expect(check(big).out).toEqual({ status: "stopped", code: "ASSET_FILE_INVALID", path: "assets/A1.png" });
+  }, 120_000);
+
+  it("an inspection record on a page with no real picture is refused (INSPECTION_UNUSED); with real pictures a record naming none is REJECT", () => {
+    const w = world();
+    const record = join(w.base, "inspection.json");
+    writeFileSync(record, JSON.stringify({ status: "completed", method: "assistant_visual", inspected_image_sha256: "0".repeat(64), reviewer_note: "MOCK", visible_site_identity_labels: ["こむぎ灯"], category_code: "bakery", unreadable_site_identity: false, image_looks_like_unrelated_shop: false }));
+    const placeholderOnly = claudePage(join(w.base, "p"));
+    const r = w.tm(["--check", "--page", placeholderOnly, "--facts", factsPath, "--out", w.dir("check"), "--visual-inspection", record]);
+    expect([r.status, r.out]).toEqual([2, { status: "refused", code: "INSPECTION_UNUSED" }]);
+    const withPicture = claudePage(join(w.base, "q"));
+    mkdirSync(join(withPicture, "..", "assets"));
+    writeFileSync(join(withPicture, "..", "assets", "A1.png"), colourPng(64, 48));
+    expect(w.tm(["--check", "--page", withPicture, "--facts", factsPath, "--out", w.dir("check"), "--visual-inspection", record]).out).toMatchObject({ status: "stopped", code: "IDENTITY_NOT_PASSED", identity: "REJECT" });
   }, 120_000);
 });
 

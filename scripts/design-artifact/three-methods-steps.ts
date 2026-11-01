@@ -30,7 +30,9 @@
  *       to this very page's SHA-256) is placed. EVERY real picture on the page (the image step's, or one in the page's
  *       own assets/, e.g. VISUAL_FIRST's generated picture from the lane) gets an image identity from auditIdentity
  *       against a recorded visual inspection of exactly that picture (--visual-inspection naming its SHA-256; absent
- *       = HOLD), and the check's status includes it. Only a neutral placeholder has none. Nothing is ever proven from
+ *       = HOLD), and the check's status includes it. Only a neutral placeholder (used only where nothing exists at
+ *       assets/<name>) has none; a link, a non-regular or oversized file, or an assets/ that is a link stops the check
+ *       (ASSET_FILE_INVALID). An inspection record on a page with no real picture is refused (INSPECTION_UNUSED). Nothing is ever proven from
  *       the picture automatically (owner decision 4, all three methods). Pictures the page names come from its own assets/ (VISUAL_FIRST:
  *       the lane's), else a neutral placeholder (recorded as such).
  *
@@ -42,7 +44,7 @@
  * Exit: 0 done, 2 stopped or refused (an Identity REJECT / HOLD after --check writes its record and exits 2).
  */
 import { createHash } from "node:crypto";
-import { lstat, mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -310,18 +312,32 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     image = { asset_id: link.asset_id, png_sha256: sha256(png), approval_id: step.receipt.approval_id, run_id: step.receipt.run_id };
     assets.set(`assets/${link.asset_id}.png`, png);
   }
+  // a placeholder only where NOTHING exists (review round 2 M2): a link, a non-regular or oversized file, or an
+  // assets/ that is a link or not a directory stops the check, so no real picture can slip past its identity audit
   const pageDir = dirname(htmlPath);
-  const own = (await lstat(join(pageDir, "assets")).catch(() => null))?.isDirectory() ? await readdir(join(pageDir, "assets")) : [];
+  const missing = (e: unknown) => (e as NodeJS.ErrnoException)?.code === "ENOENT";
+  const dirStat = await lstat(join(pageDir, "assets")).then((st) => st, (e: unknown) => (missing(e) ? null : "invalid" as const));
+  if (dirStat === "invalid" || (dirStat !== null && (!dirStat.isDirectory() || dirStat.isSymbolicLink()))) return stopped("ASSET_FILE_INVALID", { path: "assets" });
   for (const path of assetPathsOf(page)) {
     if (assets.has(path)) {
       sources.push({ path, sha256: sha256(assets.get(path)!), source: "image_step" });
       continue;
     }
-    const bytes = own.includes(path.slice("assets/".length)) ? await readRegular(join(pageDir, path), MAX_BYTES.asset) : null;
-    const data = bytes ?? placeholderPng();
-    assets.set(path, data);
-    sources.push({ path, sha256: sha256(data), source: bytes ? "page_assets" : "placeholder" });
+    const st = dirStat === null ? null : await lstat(join(pageDir, path)).then((x) => x, (e: unknown) => (missing(e) ? null : "invalid" as const));
+    if (st === null) {
+      const data = placeholderPng();
+      assets.set(path, data);
+      sources.push({ path, sha256: sha256(data), source: "placeholder" });
+      continue;
+    }
+    const bytes = st !== "invalid" && st.isFile() && !st.isSymbolicLink() ? await readRegular(join(pageDir, path), MAX_BYTES.asset) : null;
+    if (!bytes) return stopped("ASSET_FILE_INVALID", { path });
+    assets.set(path, bytes);
+    sources.push({ path, sha256: sha256(bytes), source: "page_assets" });
   }
+  // review round 2 L7: an inspection record must be about a real picture on this page. With real pictures, a record
+  // naming none of them is checked against each (REJECT, below); with no real picture at all it is refused here.
+  if (inspection !== undefined && !sources.some((x) => x.source !== "placeholder")) return refuse("INSPECTION_UNUSED");
 
   const sectionIds = sectionIdsOf(page.html);
   const shopName = facts.facts.find((f) => f.key === "name")?.value ?? null;
@@ -347,7 +363,8 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
   }
   const identity = { desktop_1440: auditPageText(lock, text.desktop_1440), mobile_390: auditPageText(lock, text.mobile_390) };
   // owner decision 4 (all three methods): every real picture's identity rests on a recorded visual inspection of exactly
-  // that picture; without one it is HOLD. An inspection that names none of the pictures is checked against each (REJECT).
+  // that picture; without one it is HOLD. An inspection that names none of the pictures is checked against each (REJECT);
+  // one given for a page with no real picture was refused above (INSPECTION_UNUSED).
   const named = (inspection as { inspected_image_sha256?: unknown } | undefined)?.inspected_image_sha256;
   const real = sources.filter((x) => x.source !== "placeholder");
   const matched = real.some((x) => x.sha256 === named);
