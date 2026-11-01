@@ -6772,7 +6772,7 @@
     {
       "id": "DEV-149",
       "title": "3方式の最初のパイロットの実行計画 (最小の配線、Issue #180)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-141",
@@ -6818,7 +6818,104 @@
         "LAYOUT_FIRST / DIRECTION_FIRST のページの画像の1回ずつ (C2-a / C2-b)",
         "各やり直し (方式ごとに1回まで、新しい承認)"
       ],
-      "note": "計画の文書だけ。配線・実行は、どれもまだ行っていない。"
+      "note": "計画の文書だけ。配線・実行は、どれもまだ行っていない。 → #189 でマージ (f7c26a3)。配線は DEV-150。",
+      "merged": "#189 → f7c26a3 (squash, 2026-11-01)"
+    },
+    {
+      "id": "DEV-150",
+      "title": "3方式の最初のパイロットの最小の配線 (承認 A、Issue #180)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-141",
+        "DEV-142",
+        "DEV-143",
+        "DEV-145",
+        "DEV-147",
+        "DEV-149"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-150-pilot-wiring",
+      "purpose": "DEV-149 の計画 (docs/design/three-methods-pilot-plan.md §1・§2.3・§8) どおりに、実験レーン (lib/design-agent/three-methods/) を既存の実の呼び出しの入口へ最小の差分でつなぐ。オーナーの承認 A (Issue #180 のコメント 6560978274、2026-11-02) と暫定決定 1〜6 に従う。3方式の実画面を比べられる状態へ届くこと。",
+      "acceptance_criteria": [
+        "ledger に direction・page_image と direction_text・claude_page を足し、kind と route の組を precheck と reserve の最初に検める (今の組は今のまま通る。LIVE_LIMITS・ID の規則は変えない)",
+        "prompt.ts の tm0 はレーンの buildVisualFirstPrompt を import して呼ぶ (文を写さない)。v1・v1.1・v2 の prompt は1バイトも変えない",
+        "暫定決定 1: tm0 の Route C は画像ちょうど1枚 (A1)。新しい pin を計算して固定し、前の b3d51744…/4398 を廃止 (二度と出ないことをテスト)",
+        "方向の1回 (direction-call.ts・phase2f-direction.ts) は design step と同じ守り。答えは checkDirection で検め、合わなければ失敗として記録し、やり直さない",
+        "ページの画像 (image-call.ts の claude_page、phase2f-image.ts --route P) は、承認を使う前に検査 0〜4 (DOM の安全検査・要求の schema と pin・ページのファイルと SHA と追跡・要求の組み直し・測った位置)",
+        "three-methods-steps.ts (オフライン): --lane・--direction・--page-request・--check (auditPageText・observeStructure・measureMobileQuality・横はみ出しを記録だけ。Identity の REJECT/HOLD で止まる)・--versions (暫定決定 5)",
+        "暫定決定 3 (絵0枚の理由と予算の差の記録)・4 (生成した絵の Identity は目視の記録だけ、無ければ HOLD)",
+        "隔離のテストは正確なパスと名前だけを足す。テストは偽の Codex port・偽の画像ツール・一時ディレクトリの台帳だけ",
+        "実 Codex・画像生成・有料 API・実のポートは0回"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f-live",
+        "tests/unit/design-agent/phase2f",
+        "tests/unit/design-agent/three-methods",
+        "tests/unit/design-agent/research",
+        "tests/unit/design-agent/identity",
+        "tests/unit/design-agent/structure",
+        "tests/unit/design-agent/artifact",
+        "tests/unit/design-agent/impl-lane",
+        "tests/unit/design-agent/integration-check",
+        "tests/unit/ai-tasks.test.ts",
+        "npx tsc --noEmit -p .",
+        "eslint (changed files)",
+        "git diff --check",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/design/three-methods-entries.md",
+        "docs/design/three-methods-pilot-plan.md",
+        "lib/design-agent/phase2f-live/direction-call.ts",
+        "lib/design-agent/phase2f-live/image-call.ts",
+        "lib/design-agent/phase2f-live/ledger.ts",
+        "lib/design-agent/phase2f/prompt.ts",
+        "lib/design-agent/three-methods/brief.ts",
+        "lib/design-agent/three-methods/direction.ts",
+        "lib/design-agent/three-methods/ledger-proposal.ts",
+        "lib/design-agent/three-methods/page-assets.ts",
+        "lib/design-agent/three-methods/pins.ts",
+        "lib/design-agent/three-methods/visual-first.ts",
+        "scripts/design-artifact/phase2f-design.ts",
+        "scripts/design-artifact/phase2f-direction.ts",
+        "scripts/design-artifact/phase2f-image.ts",
+        "scripts/design-artifact/phase2f-live-cli.ts",
+        "scripts/design-artifact/phase2f-steps.ts",
+        "scripts/design-artifact/three-methods-steps.ts",
+        "tests/unit/design-agent/identity/identity-lock.test.ts",
+        "tests/unit/design-agent/impl-lane/handoff.test.ts",
+        "tests/unit/design-agent/phase2f-live/direction-call.test.ts",
+        "tests/unit/design-agent/phase2f-live/isolation.test.ts",
+        "tests/unit/design-agent/phase2f-live/page-image-call.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts",
+        "tests/unit/design-agent/phase2f/prompt-tm0.test.ts",
+        "tests/unit/design-agent/research/three-methods-steps.test.ts",
+        "tests/unit/design-agent/structure/structure.test.ts",
+        "tests/unit/design-agent/three-methods/isolation.test.ts",
+        "tests/unit/design-agent/three-methods/lane.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-150.md"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API・実のポートを使う実行 (テストでも)",
+        "worker・bridge・timer・pipeline・本番の design 経路",
+        "WSL・jail・sr-designgen の操作",
+        "Production・Staging・deploy・実店舗・顧客データ",
+        "LIVE_LIMITS・承認 ID・plan ID・commit の検査・sandbox・1回限りの承認・出力先の規則・readStep を弱めること",
+        ".github/workflows/**・package.json の依存",
+        "develop へのマージ (承認されていない)"
+      ],
+      "human_approval_triggers": [
+        "この PR のマージ (承認 A のマージは別の承認)",
+        "実行の環境と手順 (計画の §10 B)",
+        "各実の呼び出し (C1-a・C1-b・C1-c・C2-a・C2-b) と各やり直し (R)",
+        "ページを研究のディレクトリに入れる PR のマージ (D)",
+        "範囲の拡大・安全の境界の変更"
+      ],
+      "note": "オーナーの承認 A で、配線の設計・実装・オフラインのテスト・独立レビューの修正・PR の作成まで。マージは未承認。実 Codex・画像生成・WSL・jail・worker は一度も呼んでいない。計画と違うところは pilot-plan §12.2 (phase2f-image の --facts、handoff.test.ts の例外、auditIdentity の取り込みなど)。生成した絵の Identity は、文字の無い絵ではふつう HOLD になる点をオーナーへ (§12.3 の 4)。"
     }
   ]
 }
