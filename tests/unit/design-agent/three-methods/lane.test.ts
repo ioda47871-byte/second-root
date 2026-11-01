@@ -271,6 +271,8 @@ describe("asset requests from a page Claude wrote (LAYOUT_FIRST / DIRECTION_FIRS
     // round 3 (L1): only HTML whitespace separates attributes; a non-ASCII unquoted value is never split like a browser would not
     [`<img src=assets/A1.png\u00a0data-x=1 alt="x">`, "ASSET_MARKER_AMBIGUOUS"],
     [`<div data-asset=A1\ufeff data-asset-alt="x"></div>`, "ASSET_MARKER_AMBIGUOUS"],
+    // round 4 (L1): an end tag closes only on HTML whitespace (a browser does not close title on `</title\u00a0>`)
+    [`<title>MOCK</title\u00a0><p>x</p><img src="assets/A1.png" alt="x">`, "PAGE_MARKUP_UNSUPPORTED"],
   ])("refuses %s", (html, code) => {
     expect(extractAssetMarkers(html)).toEqual({ ok: false, code });
   });

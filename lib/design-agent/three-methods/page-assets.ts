@@ -103,7 +103,7 @@ function readTags(html: string): { ok: true; tags: Tag[] } | Refusal {
       continue;
     }
     if (html[lt + 1] === "/") {
-      const m = /^<\/([a-z][a-z0-9]*)\s*>/i.exec(html.slice(lt, lt + 40));
+      const m = /^<\/([a-z][a-z0-9]*)[\t\n\f\r ]*>/i.exec(html.slice(lt, lt + 40));
       if (!m || !TAGS.has(m[1]!.toLowerCase())) return refuse("PAGE_MARKUP_UNSUPPORTED");
       i = lt + m[0].length;
       continue;
