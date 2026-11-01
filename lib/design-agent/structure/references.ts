@@ -59,17 +59,17 @@ export type ReferenceComparison = {
 };
 
 /**
- * Compares one candidate descriptor (measured or declared) with every reference. Sorted by similarity, highest first.
- * A reference too sparse to decide is listed as undecided, never as "not close".
- */
-/**
  * DEV-144: the most of the weight a comparison with this reference can ever cover: the share of the weight its own
- * record knows (a candidate known on every aspect reaches it). Under MIN_COVERAGE, the reference can never be decided.
+ * record knows (a candidate known on every aspect, with at least two sections, reaches it). Under MIN_COVERAGE, the reference can never be decided.
  */
 export function coverageCeiling(d: StructureDescriptor): number {
   return similarityDetail(d, d).coverage;
 }
 
+/**
+ * Compares one candidate descriptor (measured or declared) with every reference. Sorted by similarity, highest first.
+ * A reference too sparse to decide is listed as undecided, never as "not close".
+ */
 export function compareWithReferences(candidate: StructureDescriptor, set: ReferenceDescriptors): ReferenceComparison {
   const undecided: string[] = [];
   const score = (id: string, d: StructureDescriptor) => {
