@@ -6848,7 +6848,9 @@
         "three-methods-steps.ts (オフライン): --lane・--direction・--page-request・--check (auditPageText・observeStructure・measureMobileQuality・横はみ出しを記録だけ。Identity の REJECT/HOLD で止まる)・--versions (暫定決定 5)",
         "暫定決定 3 (絵0枚の理由と予算の差の記録)・4 (生成した絵の Identity は目視の記録だけ、無ければ HOLD)",
         "隔離のテストは正確なパスと名前だけを足す。テストは偽の Codex port・偽の画像ツール・一時ディレクトリの台帳だけ",
-        "実 Codex・画像生成・有料 API・実のポートは0回"
+        "実 Codex・画像生成・有料 API・実のポートは0回",
+        "承認 A′: 生成した絵は三方式専用の asset-image-audit (PASS_ASSET_ONLY、出所・目視の記録 three_method_asset_inspection_v0) で検め、identity-lock.ts は1バイトも変えない",
+        "承認 A′: tm0 のデザイン・方向・route P の画像は --expect-cli-version を必須にし、CLI の版 (と --previous-steps の版とモデル) を承認を使う前に検める。既存の route はフラグが無ければ前と同じ"
       ],
       "required_tests": [
         "tests/unit/design-agent/phase2f-live",
@@ -6897,6 +6899,9 @@
         "tests/unit/design-agent/structure/structure.test.ts",
         "tests/unit/design-agent/three-methods/isolation.test.ts",
         "tests/unit/design-agent/three-methods/lane.test.ts",
+        "lib/design-agent/three-methods/asset-image-audit.ts",
+        "tests/unit/design-agent/three-methods/asset-image-audit.test.ts",
+        "tests/unit/design-agent/phase2f-live/generation-pin.test.ts",
         ".ai/tasks.json",
         ".ai/reviews/DEV-150.md"
       ],
@@ -6907,7 +6912,8 @@
         "Production・Staging・deploy・実店舗・顧客データ",
         "LIVE_LIMITS・承認 ID・plan ID・commit の検査・sandbox・1回限りの承認・出力先の規則・readStep を弱めること",
         ".github/workflows/**・package.json の依存",
-        "develop へのマージ (承認されていない)"
+        "develop へのマージ (承認されていない)",
+        "lib/design-agent/identity/identity-lock.ts の変更 (承認 A′)"
       ],
       "human_approval_triggers": [
         "この PR のマージ (承認 A のマージは別の承認)",
@@ -6916,7 +6922,7 @@
         "ページを研究のディレクトリに入れる PR のマージ (D)",
         "範囲の拡大・安全の境界の変更"
       ],
-      "note": "オーナーの承認 A で、配線の設計・実装・オフラインのテスト・独立レビューの修正・PR の作成まで。マージは未承認。実 Codex・画像生成・WSL・jail・worker は一度も呼んでいない。計画と違うところは pilot-plan §12.2 (phase2f-image の --facts、handoff.test.ts の例外、auditIdentity の取り込みなど)。生成した絵の Identity は、文字の無い絵ではふつう HOLD になる点をオーナーへ (§12.3 の 4)。"
+      "note": "オーナーの承認 A で、配線の設計・実装・オフラインのテスト・独立レビューの修正・PR の作成まで。マージは未承認。実 Codex・画像生成・WSL・jail・worker は一度も呼んでいない。計画と違うところは pilot-plan §12.2 (phase2f-image の --facts、handoff.test.ts の例外、auditIdentity の取り込みなど)。生成した絵の Identity は、文字の無い絵ではふつう HOLD になる点をオーナーへ (§12.3 の 4)。 承認 A′ (2026-11-01): 絵の検査を asset-image-audit に分け (auditIdentity の取り込みを取り消し)、三方式の入口に CLI の版の事前の検査を足した (pilot-plan §12.4)。route C (C1-c) では任意で、手順で必須。"
     }
   ]
 }

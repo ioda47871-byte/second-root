@@ -102,13 +102,13 @@ DEV-149。Issue #180。オーナーは、#177/#180 のオフラインの作業�
 
 - **呼び出しの前:** 研究の Identity Lock (`identity-lock.json`、`is_research_only: true`) は、`auditPageText(lock, 事実の文)` で `PASS_IDENTITY_ONLY` になることを確かめる (`tests/unit/design-agent/research/three-methods.test.ts` が既に同じ形で固定している)。`auditIdentity` は使わない: これは生成した画像を、記録した目視 (`output.image_sha256` と `visual_inspection`) と照らす関数で、Lock だけを渡すと `HOLD` になる。ブリーフと事実パックの店が同じことは `checkBrief` (`BRIEF_SHOP_MISMATCH`) が検める。どちらも §9 のオフラインの準備で行う。
 - **Codex の試作 (VISUAL_FIRST):** 機械では検めない。今の runner は Identity を走らせない (`runner.ts` は package の `checks.identity` を `null` にする)。試作の HTML を Claude 側で読むと手順の分離 (§2.1) が崩れるので、`--check` は試作を見ない。試作の店名の取り違えが Claude の実装に写れば、次の行の検査で止まる。
-- **生成した画像 (C1-c・C2-a/b):** 暫定決定 4 で決まった (§12.3)。3方式のどれでも、Claude の実装に載る本物の絵 (VISUAL_FIRST は lane からページの `assets/` に置いた C1-c の絵、LAYOUT_FIRST・DIRECTION_FIRST は `--image` の絵) は、`--check` がその絵そのものの目視の記録 (`--visual-inspection`、絵の SHA-256 を名指し) に `auditIdentity` を当てる。記録が無ければ `HOLD` で、方式はオーナーへ止まる。絵から自動で証明しない。誰がいつ絵を見るかは盲検に関わるので、承認 B で決める。
+- **生成した画像 (C1-c・C2-a/b):** 暫定決定 4 と承認 A′ (§12.4)。3方式のどれでも、Claude の実装に載る本物の絵は、`--check` が**三方式専用の絵の検査** (`lib/design-agent/three-methods/asset-image-audit.ts`) で検める。Identity Lock の `auditIdentity` (完成デザインの絵の監査) は使わない。絵は承認された画像の呼び出しの記録 (`--image` か `--asset-origin <画像の出力>`) に結び付き、その絵そのものの目視の記録 (`three_method_asset_inspection_v0`、絵の SHA-256 を名指し) が要る。記録が無ければ `HOLD`。店名が絵に無いのは普通で、`HOLD` にしない。結果は最良でも `PASS_ASSET_ONLY` で、店舗の同一性 (`PASS_IDENTITY_ONLY`) とは別である。店舗の同一性は今までどおりページの文字 (`auditPageText`) だけで検める。
 - **Claude の実装 (3方式):** `--check` で、PC 1440 と SP 390 の見える文字に `auditPageText` を当てる。`PASS_IDENTITY_ONLY` でなければ、修正せずに止める (`runLoop` と同じ。研究 §4)。
 - `PASS_IDENTITY_ONLY` は「正しい店」というだけで、品質の合格ではない。
 
 ### 2.3 隔離のテストに足す正確なパス
 
-ゆるい規則にはしない。足すのは次の正確なパスと、取り込む名前の一覧だけである。DEV-150 で、この表のとおりに足した。表より多く足したもの (`handoff.test.ts`、`phase2f-image.ts` の `brief`、`phase2f-design.ts` の `node:crypto`、Identity Lock の `auditIdentity`) は §12.2 にある。
+ゆるい規則にはしない。足すのは次の正確なパスと、取り込む名前の一覧だけである。DEV-150 で、この表のとおりに足した。表より多く足したもの (`handoff.test.ts`、`phase2f-image.ts` の `brief`、`phase2f-design.ts` の `node:crypto`。承認 A′ で `auditIdentity` の取り込みは取り消し、三方式専用の絵の検査 `asset-image-audit.ts` を足した) は §12.2・§12.4 にある。
 
 | テスト | 足すもの |
 |---|---|
@@ -157,12 +157,12 @@ LAYOUT_FIRST のページは Codex の出力に拠らないので、段1 より�
    `npx tsx scripts/design-artifact/phase2f-design.ts --print-pin --route C --facts design-library/research/three-methods/facts-pack.json --prompt-version tm0 --tm-brief design-library/research/three-methods/brief.json`
    期待: `f6632d283bbb1ed59941cd2064dd286b31968799d0f91c3c7b179967dbc0e0ac` / 4415 (DEV-150。前の `b3d51744…`/4398 は廃止。承認に使わない)。
 2. **オーナーが承認する (C1-a):** plan_id・approval_id・SHA と文字数・commit C1 の組。
-3. **オーナーが起動する:** 同じ入力に `--out <新しいフォルダー> --plan-id … --approval-id … --expected-prompt-sha256 … --expected-prompt-chars 4415 --expected-commit <C1> --human-approval-confirmed`。
+3. **オーナーが起動する:** 同じ入力に `--out <新しいフォルダー> --plan-id … --approval-id … --expected-prompt-sha256 … --expected-prompt-chars 4415 --expected-commit <C1> --human-approval-confirmed`。 **承認 A′:** `--expect-cli-version <承認の版>` を付ける (三方式の入口では必須、route C では手順で必須)。2回目からは `--previous-steps <それまでの成功した呼び出しの出力>,…` も付ける (§7、§12.4)。
 4. **pre-render (オフライン、Codex なし、オーナーが走らせる):** `phase2f-steps.ts --prerender --route C --design <デザインの出力> --facts … --out <新しいフォルダー>`。`image-request-A1.json` と `prerender.md` (絵の説明の全文・SHA・位置・主役かどうか・この計画の回数と時間) ができる。
    - 試作に画像が1枚も無ければ、ここで `CODEX_NO_ASSET_ON_ROUTE_C` で止まる (既存の runner の規則。§7)。DEV-150 から、prompt は「ちょうど1枚 (A1)」を求める (暫定決定 1)。それでも0枚の答えが来たら、この規則で止まる。
    - **pre-render が止めるのは、安全検査と、仮の画像での描画の外部への要求だけである** (`runner.ts` の `preflightRoute`)。試作の横はみ出し (`PROTOTYPE_HORIZONTAL_OVERFLOW`) は、画像のあとの Artifact 化 (7.) で初めて分かる (`runner.ts` の package の描画)。はみ出す試作でも画像の1回を使いうることを、C1-c の承認のときにオーナーに伝える。
 5. **オーナーが画像を承認する (C1-c):** `prerender.md` を見て、approval_id を決める。同じ plan_id。
-6. **オーナーが起動する:** `phase2f-image.ts --route C --request <…/image-request-A1.json> --out … --plan-id <同じ> --approval-id … --expected-prompt-sha256 … --expected-prompt-chars … --expected-commit <C1> --human-approval-confirmed`。
+6. **オーナーが起動する:** `phase2f-image.ts --route C --request <…/image-request-A1.json> --out … --plan-id <同じ> --approval-id … --expected-prompt-sha256 … --expected-prompt-chars … --expected-commit <C1> --human-approval-confirmed`。 **承認 A′:** `--expect-cli-version <承認の版>` を付ける (三方式の入口では必須、route C では手順で必須)。2回目からは `--previous-steps <それまでの成功した呼び出しの出力>,…` も付ける (§7、§12.4)。
 7. **Artifact 化 (オフライン、オーナーが走らせる):** `phase2f-steps.ts --package --route C --facts … --prompt-version tm0 --tm-brief … --design … --image … --artifact-id … --shop-id fictional-bakery-komugi --shop-name 架空パン工房 こむぎ灯 --out … --result …`。prompt を組み直して記録の SHA と照らし (`RECORD_PROMPT_MISMATCH`)、intake まで行う。
    - 主役でない画像が失敗していれば、runner の規則で B へ切り替える (失敗を記録したまま)。主役の画像の失敗はオーナーへ止める。
 8. **受け渡し (オフライン、オーナーが走らせる):** `three-methods-steps.ts --lane --package … --facts … --out <lane>`。lane には `artifact.json` と PC/SP の原本と素材だけが入る。Codex の試作の HTML/CSS は入らない。`render_pair_complete` でなければ lane は作られない。Claude には lane の写しだけを渡す (§2.1)。
@@ -181,14 +181,14 @@ LAYOUT_FIRST のページは Codex の出力に拠らないので、段1 より�
    - 画像を求めるページは、レーンの読み取りの許可の一覧の中で書く (`<meta charset="utf-8">` だけ。`<meta name="viewport">`・`<table>`・`<svg>` などは `PAGE_MARKUP_UNSUPPORTED`。入口 §13)。絵は `<img src="assets/A1.png" alt="…">` で書く (CSS の `data-asset` の印だけの絵は、DOM の alt と照らせないので実行で断られる)。
    - `three-methods-steps.ts --page-request --method LAYOUT_FIRST --page-root design-library/research/three-methods/pilot-1 --page <…/layout-first/index.html> --hero <hero の区画> --facts … --out …` で、測った位置つきの要求 (`asset-request-A1.json`) と `prerender.md` を作る。測れていなければ断る。
    - pin は `phase2f-image.ts --print-pin --page-request … --page-root … --facts …` でも出す (実の呼び出しと同じ検査: 要求の組み直し・ページの SHA と追跡・DOM の安全検査)。
-   - **オーナーが承認する (C2-a)** → **起動する:** `phase2f-image.ts --route P --page-request … --page-root design-library/research/three-methods/pilot-1 --facts … --out … --plan-id … --approval-id … --expected-prompt-sha256 … --expected-prompt-chars … --expected-commit <C2> --human-approval-confirmed`。
-5. **組み込み (オフライン):** `--check --page … --facts … --out … --image <画像の出力> [--visual-inspection <目視の記録.json>]`。`readStep` で記録を検め、このページの SHA に結び付いた絵だけを入れて描く。生成した絵の Identity は、その絵そのものの目視の記録 (`auditIdentity`) だけで決まり、記録が無ければ `HOLD` で止まる (暫定決定 4、§12)。
+   - **オーナーが承認する (C2-a)** → **起動する:** `phase2f-image.ts --route P --page-request … --page-root design-library/research/three-methods/pilot-1 --facts … --out … --plan-id … --approval-id … --expected-prompt-sha256 … --expected-prompt-chars … --expected-commit <C2> --human-approval-confirmed`。 **承認 A′:** `--expect-cli-version <承認の版>` を付ける (三方式の入口では必須、route C では手順で必須)。2回目からは `--previous-steps <それまでの成功した呼び出しの出力>,…` も付ける (§7、§12.4)。
+5. **組み込み (オフライン):** `--check --page … --facts … --out … --image <画像の出力> [--visual-inspection <目視の記録.json>]`。`readStep` で記録を検め、このページの SHA に結び付いた絵だけを入れて描く。絵は三方式専用の絵の検査で検め、記録が無ければ `HOLD` で止まる (暫定決定 4・承認 A′、§12.4)。VISUAL_FIRST の実装の検査は `--asset-origin <C1-c の画像の出力>` を付ける (lane の絵の出所)。
 6. **記録:** `method: "LAYOUT_FIRST"`、`condition: "claude_layout"`。忠実度は「原本が無いので測らない」と記録する。
 
 ### 3.4 DIRECTION_FIRST (`direction_text`)
 
 1. **Claude (オフライン):** pin を出す。`npx tsx scripts/design-artifact/phase2f-direction.ts --print-pin --facts design-library/research/three-methods/facts-pack.json --tm-brief design-library/research/three-methods/brief.json`。期待: `641d01f91d85bfd0005effd08b2ec9c0767a384878fd6f2accaeed730dc6d3ad` / 3353。答えの JSON Schema の SHA-256 は `e9050605…a555ef`。
-2. **オーナーが承認する (C1-b)** → **起動する:** 同じ入力に実の呼び出しのフラグ一式。
+2. **オーナーが承認する (C1-b)** → **起動する:** 同じ入力に実の呼び出しのフラグ一式。 **承認 A′:** `--expect-cli-version <承認の版>` を付ける (三方式の入口では必須、route C では手順で必須)。2回目からは `--previous-steps <それまでの成功した呼び出しの出力>,…` も付ける (§7、§12.4)。
 3. **方向の受け渡し (オフライン):** `three-methods-steps.ts --direction --step <方向の出力> --facts … --out …`。`readStep` と `checkDirection` を通った方向 (concept・DNA の8観点・avoid) だけを `direction.json` で Claude に渡す。
 4. **Claude (オフライン):** 方向・事実パック・Identity Lock・ブリーフから、実装できる PC/SP の構図を設計して実装する。方向に無い事実を作らない。
 5. 以降は LAYOUT_FIRST の 2.〜5. と同じ (画像は C2-b)。
@@ -295,6 +295,8 @@ pin は DEV-150 の配線のあとの値 (`npx tsx scripts/research/three-method
 | 回数・時間を使い切った (`RUN_LIMIT_*`・`RUN_TIME_BUDGET`) | その plan | 記録 | 上限は上げない。オーナーへ止める |
 | 実機の `Killed` (OOM) | すべて | — | `docs/operations/wsl-resource-preflight.md` §2 で OOM を確かめ、resource の失敗として止まる。修正のループに入らない。`.wslconfig` は変えない |
 
+**承認 A′ (§12.4) で、版は呼び出しの前に自動で止まる:** 三方式の入口 (tm0 のデザイン・方向・route P の画像) は `--expect-cli-version <版>` を必須にし、承認を使う前に jail の中の `codex --version` が違えば `CODEX_CLI_VERSION_MISMATCH` で止まる。`--previous-steps <それまでの成功した呼び出しの出力>,…` を付ければ、それらの版とモデルが同じでなければ (`CODEX_CLI_VERSION_CHANGED`・`CODEX_MODEL_CHANGED`) 承認を使う前に止まる。モデルは呼び出しの前には分からない (CLI が決め、呼び出しのあとセッションログから読む) ので、モデルの変化は**次の**呼び出しで止まる。以下の `--versions` は、それに加えてオーナーが走らせられる手順として残す。
+
 **CLI の版・モデルが呼び出しのあいだで変わったとき (DEV-150、暫定決定 5):** 呼び出しそのものは止まらない (`generation.json` に記録される。方向の答えが検査に通らなかった失敗の呼び出しは、`call.json` に版とモデルを残す)。**次の実の呼び出しの前に、オーナーが** `three-methods-steps.ts --versions --steps <それまでの呼び出しの出力>,…` **を走らせる。** 版かモデルが違えば `GENERATION_CHANGED`、分からなければ `GENERATION_FACTS_UNKNOWN` で止まり (終了コード 2)、続けるかをオーナーが決める。版とモデルを記録しない失敗の呼び出し (失敗した画像とデザインの呼び出しはどれも記録しない) は、一覧に出すだけで比べない。**入口が自動で止まるのではなく、オーナーが `--versions` を走らせる手順で止まる。**
 
 **配線の PR を戻すとき:** develop へ revert の PR を出す (オーナーの承認)。既存の入口は配線の前と同じに戻る。台帳に残った新しい kind の記録は、方式ごとの plan_id にしか属さないので、ほかの plan の上限に数えられない。既存の v1/v1.1/v2 の記録と台帳には触れない。
@@ -358,7 +360,7 @@ pin は DEV-150 の配線のあとの値 (`npx tsx scripts/research/three-method
 - **ページを先にリポジトリに入れること (入口 §8 の 2)。** ページのバイト列を承認の commit に固定するための規則で、この計画はそのまま守る。そのため D のマージが要る。
 - **主役でない画像が失敗したときの Claude のページの扱い** (外して記録する案)。
 - **盲検で見せる VISUAL_FIRST の絵は、Claude の実装の描画にする** (Codex の試作の描画は評価のあとに開く) こと。
-- **生成した画像 (C1-c・C2-a/b) に `auditIdentity` を目視の記録つきで当てるか。** → 暫定決定 4: 当てる (実験の一部)。DEV-150 の `--check --image` の扱いと、残る点は §12。
+- **生成した画像 (C1-c・C2-a/b) の検め方。** → 暫定決定 4 と承認 A′: 三方式専用の絵の検査 (§12.4)。`auditIdentity` は使わない。
 - **CLI の版・モデルが呼び出しのあいだで変わったときに続けるか** → 暫定決定 5: 記録して、次の実の呼び出しの前に止まる (`--versions`、§7)。
 
 ## 11. 記録が無いこと・分からないこと
@@ -385,7 +387,7 @@ pin は DEV-150 の配線のあとの値 (`npx tsx scripts/research/three-method
 - **`phase2f-image.ts --route P` は `--facts <pack.json>` も取る。** 要求を組み直すには事実パックが要る (計画の引数には無かった)。事実パックの schema は、レーンの `brief.ts` が再び出す `FactsPack` から取る (artifact の隔離の例外を増やさない)。そのため、`phase2f-image.ts` もレーンの取り込み元の正確なパスに入った (名前は `FactsPack` だけ)。
 - **`phase2f-design.ts` は `node:crypto` を取り込む** (`--print-pin` の `tm_brief_sha256`)。
 - **隔離のテストの例外が、§2.3 の5つより多い。** `tests/unit/design-agent/impl-lane/handoff.test.ts` (`--lane` が `prepareImplementationLane` を使うので、`impl-lane` を取り込むファイルに `three-methods-steps.ts` を正確なパスで足した。名前は `LaneStop`・`prepareImplementationLane` だけ) と、Identity Lock・構造の観察の git grep の除外に、その CLI の import を固定するテスト `tests/unit/design-agent/phase2f-live/isolation.test.ts` を足した (テストで、lib ではない)。
-- **Identity Lock から `auditIdentity` も取り込む** (暫定決定 4。§12.3)。承認 A が名指しした `auditPageText` に加えて、生成した絵の目視の記録を検める関数である。どちらも記録で、門は Identity の REJECT/HOLD で方式が止まるという研究の今の約束だけ。
+- **(承認 A′ で取り消し)** round 1〜3 では Identity Lock から `auditIdentity` も取り込んでいた。承認 A′ で、絵は三方式専用の検査で検めることになり、`three-methods-steps.ts` が Identity Lock から取り込むのは `auditPageText` だけに戻った (§12.4)。
 - ページの絵は `<img>` で書く (DOM の alt と照らすため)。ページはレーンの読み取りの許可の一覧の中で書く (§3.3)。
 - `--check` は `--image` が無いときもページの `assets/` の絵を使い、無ければ仮の絵を置いて、どちらかを記録する (VISUAL_FIRST は lane の絵をページの `assets/` に置く)。
 
@@ -394,6 +396,25 @@ pin は DEV-150 の配線のあとの値 (`npx tsx scripts/research/three-method
 1. **VISUAL_FIRST は Route C `route_c_prototype`、絵はちょうど1枚。** → 実装した。tm0 の Route C の画像の規則の1行だけを「`Use exactly one generated image, A1`」にした (絵の説明が要求になる・`asset_refs`・主役の規則の意味は同じ)。v1・v1.1・v2 の prompt は1バイトも変えていない。新しい pin は `f6632d283bbb1ed59941cd2064dd286b31968799d0f91c3c7b179967dbc0e0ac`/4415。前の `b3d51744…`/4398 は廃止で、テストが二度と出ないことを確かめる。Route B (`d8cc6c69…`/3846) と方向 (`641d01f9…`/3353) は変わらない。
 2. **「成功したが使えない」は、方式のやり直し1回と数える。** → 文書で決めた (§7)。`RETRY_OF_SUCCEEDED` は迂回しない。新しい approval_id の新しい最初の呼び出しで、8回の上限と1回ずつの承認はそのまま。自動のやり直しは無い。
 3. **LAYOUT_FIRST・DIRECTION_FIRST の絵は既定で1枚、要らなければ0枚。** → `--page-request` に `--no-image-reason` を足した。絵の無いページは理由を要し、`no-image.json` に理由と予算の差 (条件の違い) を記録する。
-4. **生成した絵の Identity は実験の一部。** → `--check` は、仮の絵を除くすべての絵 (`--image` の絵も、ページの `assets/` の絵、つまり VISUAL_FIRST の lane の C1-c の絵も) に、`--visual-inspection <json>` (その絵の SHA-256 を名指しした目視の記録) で `auditIdentity` を当て、全体の状態に含める (独立レビュー round 1 の M1 で、VISUAL_FIRST の絵に当たっていなかったのを直した)。仮の絵は、`assets/<名前>` に何も無いときだけ置く。リンク・通常のファイルでないもの・16 MB を超えるもの・リンクかディレクトリでない `assets/` は、`ASSET_FILE_INVALID` で止まる (round 2 の M2)。本物の絵が1枚も無いページに目視の記録を渡すと `INSPECTION_UNUSED` で断る。本物の絵があって記録がどれも名指さなければ、各絵に当てて `REJECT` (round 2 の L7)。記録が無い・分からない・違えば `HOLD`/`REJECT` で、記録を書いてから終了コード 2 で止まる。絵から自動で証明したとは言わない。**残る点 (オーナーへ):** `auditIdentity` は、絵の中に店名が見えること (`visible_site_identity_labels`) を求める。素材の絵の prompt は「文字を入れない」なので、正しい絵でも、ふつうは `VISIBLE_SITE_IDENTITY_UNCONFIRMED` の `HOLD` になり、絵を使うたびにオーナーの判断で止まる。目視の記録をどう書くか (誰が見るか、オーナーの盲検をどう保つか) は、承認 B で決めてほしい。
+4. **生成した絵の Identity は実験の一部。** → `--check` は、仮の絵を除くすべての絵 (`--image` の絵も、ページの `assets/` の絵、つまり VISUAL_FIRST の lane の C1-c の絵も) に、`--visual-inspection <json>` (その絵の SHA-256 を名指しした目視の記録) で絵の検査を当て (承認 A′ から三方式専用の `asset-image-audit`、§12.4)、全体の状態に含める (独立レビュー round 1 の M1 で、VISUAL_FIRST の絵に当たっていなかったのを直した)。仮の絵は、`assets/<名前>` に何も無いときだけ置く。リンク・通常のファイルでないもの・16 MB を超えるもの・リンクかディレクトリでない `assets/` は、`ASSET_FILE_INVALID` で止まる (round 2 の M2)。本物の絵が1枚も無いページに目視の記録を渡すと `INSPECTION_UNUSED` で断る。本物の絵があって記録がどれも名指さなければ、各絵に当てて `REJECT` (round 2 の L7)。記録が無い・分からない・違えば `HOLD`/`REJECT` で、記録を書いてから終了コード 2 で止まる。絵から自動で証明したとは言わない。**承認 A′ で解いた点:** round 1〜3 の `auditIdentity` は絵の中に店名を求め、文字の無い正しい絵でも `HOLD` になった。承認 A′ で、絵は三方式専用の検査 (店名が無いのは普通) で検めるようにした (§12.4)。
 5. **CLI の版・モデルが変わったら、記録して次の実の呼び出しの前に止まる。** → `--versions` を足した (§7)。**これは手順の上の検査で、機械の門ではない:** 実の呼び出しの入口は版とモデルを比べない。次の呼び出しの前にオーナーが `--versions` を走らせて、初めて止まる。失敗した画像とデザインの呼び出しは版とモデルを記録しない (`generation.json` は成功のときだけ) ので、比べられない (一覧に出るだけ)。版とモデルを残す失敗は、答えが検査に通らなかった方向の呼び出しだけである。
 6. **最初のパイロットは各方式1回、最大8回、途中確認なし、修正のきっかけは Claude の実装の横はみ出しだけ。** → 変えていない。`--check` は横はみ出しを記録するだけで、門にしない。承認・費用・隔離・上限はそのまま。V-B/C の HTML の描画は、V-A (画像ツールの完成デザイン) と同じ条件ではない (入口 §11)。
+
+### 12.4 オーナーの承認 A′ (2026-11-01) で変えたこと
+
+**1. 絵の検査を、店舗の Identity Lock から分けた。**
+- `lib/design-agent/identity/identity-lock.ts` は1バイトも変えていない (新しい export も無い)。店舗の同一性は、今までどおりページの見える文字に `auditPageText` を当てるだけ。
+- 新しい `lib/design-agent/three-methods/asset-image-audit.ts` (純粋、I/O なし) を、`three-methods-steps.ts --check` だけが使う。Lock の事前の検査 (schema_version 1・`CP-\d{3}`・対象の名前と業種と出典・prompt の店名と業種・研究専用) は同じ規則で作り直し、`cleanName` だけを取り込む。テストが Lock の監査と同じ結果になることを確かめる。
+- 目視の記録は `three_method_asset_inspection_v0` (strict。知らない鍵は不完全): `image_sha256`・`method` (`assistant_visual`/`human_visual`)・`inspector`・`observed` (`visible_text`・`logos_or_marks`・`depicted`・`category_cues`)・`inferred` (判定に使わない)・`answers` (`other_shop_name_or_logo`・`category_mismatch`・`contradicts_facts` と `contradicted_fact_ids`・`unreadable_text`、どれも yes/no/unknown)・`note`。判定は `observed` と `answers` だけから決まる。
+- 判定: **REJECT** = 記録の SHA が描いた絵と違う / 出所が分からない (承認された画像の呼び出しの記録に結び付かない: `--image` か `--asset-origin <出力>`、readStep で検める。VISUAL_FIRST は C1-c の `image`×`C_hybrid`、LAYOUT/DIRECTION は `page_image`×`claude_page` でこのページに結び付いたもの) / ほかの店の名前・印・看板 (Lock の `other_shop_names`、または検査した人の答え) / 業種が違う / 事実に反する (どの事実かを記録)。**HOLD** = 記録が無い・不完全 / SHA が無い / 読めない文字 / 対象の店名でない文字や印 (「BREAD」のような一般の語も、オーナーが決める) / どれかの答えが unknown。**店名が絵に無いのは普通** (HOLD にしない)。最良は `PASS_ASSET_ONLY` で、`PASS_IDENTITY_ONLY` ではなく、店舗の同一性を示さない。
+- round 2・3 の規則はそのまま: 仮の絵は何も無いときだけ・`ASSET_FILE_INVALID`・`INSPECTION_UNUSED`・どの絵も名指さない記録は REJECT。
+- **盲検:** 絵を見て記録を書くのは Claude (または、方式の名前を知らない別の Claude の閲覧者) で、記録は文字だけである。オーナーは評価の前に絵を見ない。
+
+**2. Codex CLI の版を、呼び出しの前に自動で止める。**
+- 調べたこと: 実の呼び出しの CLI の版は、呼び出しの直前に同じ jail で `codex --version` を走らせて読んでいる (`codex.ts` の `runCodexJsonWithMeta`、`image-once.ts`)。モデルは CLI に渡していない (`-m` も設定も無い) ので、呼び出しの前には分からず、呼び出しのあとセッションログから読む。
+- 足したこと (`phase2f-live-cli.ts`): `--expect-cli-version <版>` と `--previous-steps <dir>,<dir>`。preflight (sandbox の準備のあと、台帳の前) で、jail の中の `codex --version` を1回読み (モデルは呼ばない)、版が違えば・読めなければ止める。名指しした前の呼び出しは readStep で読み、成功していて、版とモデルが分かっていて、版が承認の版と同じで、モデルが互いに同じでなければ止める。どれも承認を使う前 (終了コード 2)。呼び出しのあと、モデルが前と違えば出力に `generation_model_changed` の警告を出し、次の呼び出しは `--previous-steps` で止まる。
+- **必須にしたもの:** `phase2f-design.ts --prompt-version tm0`・`phase2f-direction.ts`・`phase2f-image.ts --route P` は `--expect-cli-version` が無ければ `USAGE`。
+- **必須にできなかったもの:** VISUAL_FIRST の画像 (C1-c) は既存の `--route C` を使う。画像の CLI は、その要求が三方式のパイロットのものかを、既存の route C の動きを変えずには見分けられない (要求は設計の実行を名指しするだけで、prompt の版を持たない)。そのため route C と A では任意 (付ければ同じ検査、付けなければ今と同じ)。パイロットの手順では、C1-c の起動に `--expect-cli-version` と `--previous-steps <C1-a の出力>` を必ず付ける。
+- **既存の承認の門の変更:** 無い。フラグを付けたときに検査が増えるだけで (厳しくなるだけ)、付けなければ既存の入口は前と同じ。
+
+**3. 安全への影響。** 緩めたものは無い。厳しくなったもの: 絵の出所の検査 (出所の分からない絵は REJECT)・三方式の入口の版の検査 (承認の前)。新しく承認の前に起動するプロセスは、版の検査の `codex --version` の1回だけ (jail の中、モデルは呼ばない。実の呼び出しが前からしているのと同じもの)。Identity Lock は変えていない。テストは偽の Codex CLI・偽の画像ツール・一時ディレクトリの台帳だけ。

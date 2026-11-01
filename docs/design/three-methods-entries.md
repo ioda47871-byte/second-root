@@ -141,6 +141,7 @@ Claude が書いたページと、その絵を1つの package にまとめるこ
 - 方向: `lib/design-agent/phase2f-live/direction-call.ts` と `scripts/design-artifact/phase2f-direction.ts` (下の案のとおり)。
 - 画像: `--route P --page-request <request.json> --page-root <dir>` に、要求を組み直すための `--facts <pack.json>` を足した (案には無かった)。`--print-pin --page-request … --page-root … --facts …` は、実の呼び出しと同じ検査 (DOM・git の追跡を含む) をオフラインで行ってから pin を出す。
 - DOM の alt と要求の alt が違えば `ASSET_DOM_ALT_MISMATCH`。DOM の安全検査は `<img>` の alt しか返さないので、**CSS で置く `data-asset` の印だけの絵は、実行では断られる** (`<img src="assets/A1.png" alt="…">` で書く)。
+- 承認 A′ (2026-11-01): 生成した絵は、Identity Lock の `auditIdentity` ではなく、三方式専用の `lib/design-agent/three-methods/asset-image-audit.ts` で検める (Identity Lock は変えていない)。三方式の入口は `--expect-cli-version` を必須にし、CLI の版を承認の前に検める。詳しくは `docs/design/three-methods-pilot-plan.md` §12.4。
 - ページの読み取りは、レーンの許可の一覧 (§13) のままである。`<meta name="viewport">`・`<table>`・`<svg>` などを含むページは、画像を求めるときには `PAGE_MARKUP_UNSUPPORTED` で断られる (画像を求めないページの `--check` は、既存の DOM の安全検査だけを通す)。
 
 ### `lib/design-agent/phase2f-live/ledger.ts`
