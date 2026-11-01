@@ -6419,7 +6419,8 @@
         "design-library/research/three-methods/**",
         "tests/unit/design-agent/research/three-methods.test.ts",
         ".ai/tasks.json",
-        ".ai/reviews/DEV-141.md"
+        ".ai/reviews/DEV-141.md",
+        "tests/unit/design-agent/identity/identity-lock.test.ts (研究のテスト1つの正確なパスの除外の追加のみ)"
       ],
       "forbidden_scope": [
         "実 Codex・画像生成・有料 API の実行",

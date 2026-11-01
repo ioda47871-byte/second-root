@@ -172,7 +172,9 @@ describe("isolation", () => {
     // any importer, absolute or relative (L2); git grep exits 1 when nothing matches (an error is 128, never a pass)
     const g = spawnSync("git", ["grep", "--untracked", "-lE", "identity/identity-lock|from [\"'`]\\./identity-lock", "--", ".", ":!lib/design-agent/identity/identity-lock.ts", ":!tests/unit/design-agent/identity/**", ":!.ai/**", ":!docs/**",
       // DEV-131: the one offline experiment test that wires the real modules together (a test, never lib)
-      ":!tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+      // DEV-141 (Issue #180): the three-method study's test checks its fictional shop's lock (a test, never lib)
+      ":!tests/unit/design-agent/research/three-methods.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
   });
 });
