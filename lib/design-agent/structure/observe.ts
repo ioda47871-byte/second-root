@@ -31,6 +31,8 @@ export type ViewportObservation = {
   close_to_rejected: ReferenceMatch[];
   /** References too sparse to compare with this candidate (not "not close"). */
   undecided: string[];
+  /** DEV-144: those of `undecided` whose own record can never be decided, whatever the candidate (a thin record). */
+  undecided_too_thin: string[];
   /** Requests the page tried outside its own files (refused; a packaged prototype should make none). */
   blocked_requests: number;
 };
@@ -53,6 +55,7 @@ const NOTES = [
   "The candidate is measured only; hero and flow are known only when geometry shows a generic sign.",
   "The references are declared from research records, not measured; most originals are not in the repository.",
   "An undecided reference is not a negative finding.",
+  "undecided_too_thin: references whose own record is too thin to be decided against any candidate (DEV-144).",
 ];
 
 export const firstLine = (e: unknown) =>
@@ -83,6 +86,7 @@ function observeOne(d: StructureDescriptor, set: ReferenceDescriptors, blocked: 
     too_close_to_success: r.too_close_to_success,
     close_to_rejected: r.close_to_rejected,
     undecided: r.undecided,
+    undecided_too_thin: r.too_thin,
     blocked_requests: blocked,
   };
 }

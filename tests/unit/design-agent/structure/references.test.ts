@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { StructureDescriptor } from "@/lib/design-agent/structure/descriptor";
-import { compareWithReferences, ReferenceDescriptors } from "@/lib/design-agent/structure/references";
+import { MIN_COVERAGE } from "@/lib/design-agent/structure/descriptor";
+import { compareWithReferences, coverageCeiling, ReferenceDescriptors } from "@/lib/design-agent/structure/references";
 
 // DEV-136: the declared structure descriptors of the success cases and the rejected versions, and the offline comparison.
 
@@ -89,3 +90,37 @@ describe("offline comparison with the references (advisory)", () => {
     expect(r.undecided.length).toBeGreaterThan(0);
   });
 });
+
+// DEV-144 (Issue #177 C): which references are too thin to ever be decided. Pinned, so a record that gains or loses
+// aspects shows here (and in docs/design/reference-structure-descriptors.md).
+const THIN = [
+  "CP-005", "CP-006", "CP-007", "CP-008", "CP-010", "CP-013", "CP-015", "CP-018", "CP-019", "CP-020", "CP-021", "CP-022", "CP-023", "CP-024",
+  "CP-026", "CP-027", "CP-028", "CP-029", "CP-030", "CP-031", "CP-032", "PT-02-draft-1", "CP-025-v2", "CP-027-v1",
+];
+
+describe("DEV-144: the coverage ceiling of each reference (report only)", () => {
+  const all = [...set.success, ...set.rejected];
+
+  it("names exactly the 24 references whose own record can never reach MIN_COVERAGE", () => {
+    expect(all.filter((e) => coverageCeiling(e.descriptor) < MIN_COVERAGE).map((e) => e.id).sort()).toEqual([...THIN].sort());
+    // every original-unavailable case is among them; the image cases are not
+    for (const e of set.success.filter((x) => x.evidence === "original_unavailable")) expect(THIN, e.id).toContain(e.id);
+    for (const e of set.success.filter((x) => x.evidence === "image")) expect(coverageCeiling(e.descriptor), e.id).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("a candidate known on every aspect leaves exactly the thin references undecided", () => {
+    const full = set.success.find((e) => e.id === "CP-001")!.descriptor;
+    const r = compareWithReferences(full, set);
+    expect(r.too_thin).toEqual([...THIN].sort());
+    expect(r.undecided).toEqual(r.too_thin);
+  });
+
+  it("too_thin is always a part of undecided, never a finding of its own", () => {
+    for (const cand of [d({ hero: "type_led" }), d({ hero: "split_copy_media", flow: "stacked_bands" }), set.success[0]!.descriptor]) {
+      const r = compareWithReferences(cand, set);
+      for (const id of r.too_thin) expect(r.undecided).toContain(id);
+      for (const m of [...r.too_close_to_success, ...r.close_to_rejected]) expect(r.too_thin).not.toContain(m.id);
+    }
+  });
+});
+
