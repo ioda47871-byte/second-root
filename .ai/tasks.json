@@ -6527,7 +6527,7 @@
     {
       "id": "DEV-143",
       "title": "3方式の実行の入口 (DNA の無いブリーフの prompt・方向の呼び出し・Claude が書いた素材の要求の画像の入口) と pin — Issue #180",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-141"
@@ -6577,7 +6577,8 @@
         "ブリーフの文・成功例の要約を入れるか・VISUAL_FIRST の Route (B/C) の決定",
         "実行 (呼び出しごと)"
       ],
-      "note": "merge needs separate owner approval (マージには別のオーナーの承認が要る)。DEV-141 の review round 1 (H1) で、今の入口では3方式を呼べないと分かった。Issue #180 の最新のオーナーのコメントで、opt-in の実験レーンとしての設計・オフラインの実装・模擬のテスト・レビュー・PR 作成を承認。つなぐこと・実行は、まだ承認されていない。"
+      "note": "merge needs separate owner approval (マージには別のオーナーの承認が要る)。DEV-141 の review round 1 (H1) で、今の入口では3方式を呼べないと分かった。Issue #180 の最新のオーナーのコメントで、opt-in の実験レーンとしての設計・オフラインの実装・模擬のテスト・レビュー・PR 作成を承認。つなぐこと・実行は、まだ承認されていない。",
+      "merged": "#184 → bc08a84 (squash, 2026-11-01、オーナーの承認)"
     },
     {
       "id": "DEV-145",
@@ -6670,7 +6671,7 @@
     {
       "id": "DEV-147",
       "title": "制作工程の統合検証 (MOCK、Issue #177 E)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-139",
@@ -6720,7 +6721,53 @@
         "3方式の研究の報告への接続 (method・condition を足すこと)",
         "Issue #177 の条件を満たさない場合の develop へのマージ"
       ],
-      "note": "MOCK のみ。lib は変えていない。架空店舗 (こむぎ灯) の6場面: (a) no_change、(b) 押す所 → TAP_TARGET v1 で owner_review、再確認で B の所見が消え A の SP_PAGE_LAYOUT も消える、(c) IDENTITY_REJECT でどの段も走らない、(d) HORIZONTAL_OVERFLOW v1 は営業時間・所在地・アクセスを切るので NEW_FINDING で戻し v2 を提案、(e) !important の押す所は NOT_RESOLVED×2 で SAME_CAUSE_FIX_LIMIT、(f) DEV-140 の誤検知 (印の無い飾りの文字) は not_located で no_change。DEV-145・DEV-146 はマージ済みなので done にし、DEV-146 を depends_on に入れた。Review 待ち。"
+      "note": "MOCK のみ。lib は変えていない。架空店舗 (こむぎ灯) の6場面: (a) no_change、(b) 押す所 → TAP_TARGET v1 で owner_review、再確認で B の所見が消え A の SP_PAGE_LAYOUT も消える、(c) IDENTITY_REJECT でどの段も走らない、(d) HORIZONTAL_OVERFLOW v1 は営業時間・所在地・アクセスを切るので NEW_FINDING で戻し v2 を提案、(e) !important の押す所は NOT_RESOLVED×2 で SAME_CAUSE_FIX_LIMIT、(f) DEV-140 の誤検知 (印の無い飾りの文字) は not_located で no_change。DEV-145・DEV-146 はマージ済みなので done にし、DEV-146 を depends_on に入れた。Fresh Review PASS、#187 でマージ。",
+      "merged": "#187 → accbe84 (squash, 2026-11-01)"
+    },
+    {
+      "id": "DEV-148",
+      "title": "3方式の記録の形に condition を足し、DEV-143 のマージを記録 (Issue #180)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-142",
+        "DEV-143",
+        "DEV-145"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-148-run-record-condition",
+      "purpose": "three-methods-study §13 の進め方の1番目 (最初のパイロットの前に、記録の形 three_method_run_v0 へ condition を足す) と、DEV-143 (#184) のマージによって古くなった文を直す。記録の形・文書・テストだけ。",
+      "acceptance_criteria": [
+        "run-record-template.json に condition (方式ごとの値) を足す",
+        "模擬の記録 (DEV-142) に condition を付け、形のテストで固定",
+        "§8・§9・§10・§13 の #184 の状態を更新",
+        "実 Codex・画像生成・既存のランタイムに触れない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/research/three-methods.test.ts",
+        "tests/unit/design-agent/research/three-methods-mock.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "design-library/research/three-methods/run-record-template.json",
+        "docs/design/three-methods-study.md",
+        "tests/unit/design-agent/research/three-methods.test.ts",
+        "tests/unit/design-agent/research/three-methods-mock.test.ts",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-148.md"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API",
+        "既存のランタイムの変更",
+        "lib/design-agent/three-methods/ の接続"
+      ],
+      "human_approval_triggers": [
+        "パイロットの実行",
+        "実ランタイムへの接続"
+      ],
+      "note": "文書・記録の形・テストだけ。DEV-143 (#184) と DEV-147 (#187) をマージ済みとして done にした。"
     }
   ]
 }

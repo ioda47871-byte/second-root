@@ -136,7 +136,8 @@ DEV-141。Issue #180 (オーナー事前承認、2026-11-01) により、Issue #
 
 `design-library/research/three-methods/run-record-template.json` の形 (`three_method_run_v0`) で残す。
 
-- 方式、店、実行の種類 (`mock` か `live`。§8)、入力のハッシュ (事実パック・Identity Lock・ブリーフ)
+- 方式、条件 (`condition`)、店、実行の種類 (`mock` か `live`。§8)、入力のハッシュ (事実パック・Identity Lock・ブリーフ)
+  - `condition` は、同じ方式の中の別の条件を分ける (§13)。VISUAL_FIRST は `route_b_prototype` (V-B、Route B の HTML 試作)・`route_c_prototype` (Route C の HTML 試作 + 画像)・`image_tool_design` (画像ツールの完成デザイン、§13)。LAYOUT_FIRST は `claude_layout`。DIRECTION_FIRST は `direction_text`・`direction_image` (§13)。**条件が違う記録は、混ぜて比べない。**
 - Codex の呼び出しごとに、用途 (design・direction・asset)、approval_id、plan_id、prompt の SHA-256 と文字数、commit・Codex CLI の版・報告されたモデル (`generation.json` から写す)、開始・終了の時刻、結果、やり直しかどうか
 - 生成した画像の枚数と、使った枚数
 - Claude の作業時間 (開始と終了の時刻)
@@ -200,20 +201,20 @@ Claude は、prompt と pin の準備・報告・実行のあとの検査と記�
 |---|---|---|
 | DEV-141 (この文書) | 設計・事実パック・Identity Lock・評価票・記録の形・実行計画 | Issue #180 (offline) |
 | DEV-142 | 3方式の模擬の通し実行 (fixture)、記録・検査・PC/SP の画像。テスト | Issue #180 (offline) |
-| DEV-143 | 実行に要る入口を作る: DNA の無い共通ブリーフの prompt、方向の呼び出し (prompt・ledger の種類)、Claude が書いた素材の要求を受け付ける画像の入口。pin の出力。Codex は呼ばない | **オーナーの個別承認が要る。** オフラインの作成は承認済み (Issue #180、PR #184)、**マージは別承認**。prompt・承認の流れ・ledger を変えるので、Issue #177 の条件付きマージの対象外 (#177 条件3と対象外の一覧) |
+| DEV-143 | 実行に要る入口を作る: DNA の無い共通ブリーフの prompt、方向の呼び出し (prompt・ledger の種類)、Claude が書いた素材の要求を受け付ける画像の入口。pin の出力。Codex は呼ばない | **オーナーの個別承認が要る。** オフラインの作成は承認済み (Issue #180)。マージもオーナーの承認を受けた (PR #184 → `bc08a84`)。実ランタイムへの接続は別承認。prompt・承認の流れ・ledger を変えるので、Issue #177 の条件付きマージの対象外 (#177 条件3と対象外の一覧) |
 | パイロット | 実 Codex・画像生成で、各方式1回 | **呼び出しごとの個別承認** (§7) |
 | 後続の別条件 (§13) | 画像生成方式の VISUAL_FIRST と、画像で方向を示す DIRECTION_FIRST の入口と実行 | **入口の作成もマージも実行も、それぞれ別承認** |
 | オーナーの評価 | 盲検の評価票で比べ、方式を推奨する。採用はオーナーが決める | オーナー |
 
 ## 10. オーナーに決めてほしいこと
 
-1〜4 と 6 は、下の「オーナーの暫定方針」で仮に決まった。5 は、DEV-143 のオフラインの作成までが承認され (Issue #180)、マージは別承認で、まだ決まっていない。
+1〜4 と 6 は、下の「オーナーの暫定方針」で仮に決まった。5 も、オーナーの承認を受けてマージした (`bc08a84`)。
 
 1. **VISUAL_FIRST のデザインの形。** 既定案は V-B (Codex の HTML 試作を描いたものを原本にし、忠実度を測れる)。代案は V-A (画像ツールの絵。忠実度は目で見るしかない)。
 2. **DIRECTION_FIRST の方向の形。** 既定案は、文章の方向 (DNA の8観点)。代案は、方向を示す画像1枚。代案にすると画像の枚数が1枚増え、予算が揃わなくなる。
 3. **回数。** パイロットを各方式1回にするか、最初から2回にするか。
 4. **途中の確認。** 既定案は、オーナーが評価の前に成果物を見ない (盲検を保つ)。デザインの途中確認を入れる場合は、3方式すべてに同じ確認を入れ、盲検が崩れたと記録する。
-5. **DEV-143 (実行の入口を作る、PR #184) をマージしてよいか。** オフラインの作成は承認済み (Issue #180)。prompt・ledger・画像の入口を変えるので、マージには個別の承認が要る。
+5. **DEV-143 (実行の入口を作る、PR #184) をマージしてよいか。** 決まった: オーナーの承認を受けてマージした (`bc08a84`)。既存の prompt・ledger・画像の入口への接続は、まだ別承認である。
 6. **Claude の実装の横はみ出しのほかに、修正のきっかけを足すか。** 既定案は、足さない (SP の所見・事実に無い文・比較の差は記録するだけ。今の report-only の約束どおり)。足す場合は、検査の信頼性 (SP は DEV-140 の誤検知2件・既知の限界3つ。事実に無い文は評価用の数え方で、既存の門ではない) を踏まえて決める。
 
 ### オーナーの暫定方針 (Issue #180、2026-11-01)
@@ -222,10 +223,10 @@ Claude は、prompt と pin の準備・報告・実行のあとの検査と記�
 
 | 項目 | 暫定方針 |
 |---|---|
-| 共通ブリーフ | 今の案を使う。PR #184 (DEV-143、**未マージ・マージは別承認**) の `design-library/research/three-methods/brief.json`、SHA-256 `efe91cf257e628894a222f4c39291d1f5d2a539bc5740995ee97f0547f164b4c` (#184 の head `faa9c03` で計算)。中身が変われば、この方針の対象ではなくなる |
+| 共通ブリーフ | 今の案を使う。PR #184 (DEV-143。この方針のときは未マージ、のちに `bc08a84` でマージ) の `design-library/research/three-methods/brief.json`、SHA-256 `efe91cf257e628894a222f4c39291d1f5d2a539bc5740995ee97f0547f164b4c` (#184 の head `faa9c03` で計算)。中身が変われば、この方針の対象ではなくなる |
 | 成功例の要約 | 最初のパイロットでは、Codex に**渡さない** (§4 の「参考資料」の行は、最初のパイロットではこの方針が優先する) |
 | VISUAL_FIRST | **Route C を優先** (Codex の HTML 試作 + 画像0〜1枚)。V-B の形 |
-| 位置を測れない画像の要求 | **断る** (PR #184 の `lib/design-agent/three-methods/page-assets.ts` の `runnableAssetRequests`。未マージ・マージは別承認) |
+| 位置を測れない画像の要求 | **断る** (PR #184 の `lib/design-agent/three-methods/page-assets.ts` の `runnableAssetRequests`。のちに `bc08a84` でマージ) |
 | DIRECTION_FIRST の方向 | 最初は**文章** |
 | 回数 | **各方式1回** |
 | 評価の前の途中確認 | **しない** (盲検を保つ) |
@@ -233,7 +234,7 @@ Claude は、prompt と pin の準備・報告・実行のあとの検査と記�
 
 - 成功例の要約を Codex に渡さない一方で、Claude は3方式とも、成功例を含むスキルを使う。参考資料は揃わない。この差を §11 に記録する。
 - **Route C の HTML 試作と、Codex の画像生成ツールによる完成デザインは、別の条件である** (§13)。
-- ブリーフと `runnableAssetRequests` は、PR #184 にしか無い (develop には無い)。この方針は #184 のマージを承認するものではない。パイロットで使うには、#184 のマージの承認が先に要る。
+- ブリーフと `runnableAssetRequests` は、この方針のときは PR #184 にしか無かった。この方針は #184 のマージを承認するものではない。#184 は、そのあとオーナーの別の承認でマージされた (`bc08a84`)。
 
 ## 11. 限界
 
@@ -292,7 +293,7 @@ Codex の画像生成ツールが、完成デザインの PC/SP の絵を作る�
   - 画像の prompt と pin、呼び出しの数 (PC と SP の絵で最大2枚。素材を足すかは別に決める)。
   - 今の Route A (`packageConceptRun`) は、画像の PoC の PNG 1枚を包むだけである。PC と SP の2枚の組は新しい形で、入口が要る。
 - **予算:** V-B (§6) はデザインの呼び出し1回と画像0〜1枚である。画像生成方式は、絵が最大2枚と、足すなら素材が加わる。**方式のあいだで予算が揃わない。** この差を記録する。呼び出しは、パイロットの「最大8回」(§6) の**外**であり、方式ごとに別の plan_id と、呼び出しごとの §7 の承認が要る。1つの計画は `LIVE_LIMITS` (最初の呼び出し4回・やり直し2回) に収める。
-- **記録:** `method: "VISUAL_FIRST"` に、条件を表す `condition: "image_tool_design"` を足して区別する。最初のパイロットは `condition: "route_c_prototype"` とする。`condition` は、今の記録の形 (`run-record-template.json`、`three_method_run_v0`) には無い。最初のパイロットの前に、記録の形へ足す (別の変更)。
+- **記録:** `method: "VISUAL_FIRST"` に、条件を表す `condition: "image_tool_design"` を足して区別する。最初のパイロットは `condition: "route_c_prototype"` とする。`condition` は記録の形 (`run-record-template.json`、`three_method_run_v0`) に足した (DEV-148)。
 
 ### DIRECTION_FIRST_IMAGE (画像で方向を示す DIRECTION_FIRST)
 
@@ -305,8 +306,8 @@ Codex が、方向を文章ではなく画像1枚で示す。Claude がそれを
 
 ### 進め方
 
-1. 最初のパイロットの前に、記録の形 (`three_method_run_v0`) へ `condition` を足す (別の変更・別ブランチ。3方式すべてに付け、LAYOUT_FIRST の値は案として `condition: "claude_layout"`)。
-2. PR #184 (DEV-143) のマージの承認のあと、最初のパイロット (暫定方針) を、呼び出しごとの承認を受けて行う。
+1. 最初のパイロットの前に、記録の形 (`three_method_run_v0`) へ `condition` を足す。**済み (DEV-148)**。3方式すべてに付け、LAYOUT_FIRST は `condition: "claude_layout"`。
+2. PR #184 (DEV-143) は、オーナーの承認を受けて develop にマージされた (`bc08a84`)。最初のパイロット (暫定方針) は、呼び出しごとの承認を受けて行う (実ランタイムへの接続も別承認。`docs/design/three-methods-entries.md` §8)。
 3. オーナーが成果物を盲検で評価する。
 4. 実行できることを確かめたら、上の2つの別条件の入口と pin を作る (DEV-143 と同じく、別ブランチ・マージは別承認)。
 5. 別条件の実行も、呼び出しごとの承認を受けて行う。結果は、最初のパイロットと同じ評価票で、条件を分けて記録する。
