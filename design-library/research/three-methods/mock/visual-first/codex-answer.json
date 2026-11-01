@@ -1,0 +1,280 @@
+{
+  "schema": "codex_design_v1",
+  "design_dna": {
+    "hero": {
+      "choice": "MOCK: 石窯の口のような半円の火を左に、店名を右に置く",
+      "fact_refs": [
+        "F1",
+        "F10"
+      ]
+    },
+    "typography": {
+      "choice": "MOCK: 明朝の店名、案内は小さなゴシック",
+      "fact_refs": [
+        "F1"
+      ]
+    },
+    "palette": {
+      "choice": "MOCK: 窯の焦げ茶、火の橙、粉の生成り",
+      "fact_refs": [
+        "F9"
+      ]
+    },
+    "product_visual": {
+      "choice": "MOCK: 写真を使わず、パンの形の札を5つ並べる",
+      "fact_refs": [
+        "F12",
+        "F13",
+        "F14",
+        "F15",
+        "F16"
+      ]
+    },
+    "section_rhythm": {
+      "choice": "MOCK: 暗い窯の帯と明るい粉の帯を交互に置く",
+      "fact_refs": [
+        "F10",
+        "F11"
+      ]
+    },
+    "navigation": {
+      "choice": "MOCK: ナビゲーションは置かない",
+      "fact_refs": [
+        "F1"
+      ]
+    },
+    "mobile": {
+      "choice": "MOCK: 火、店名、パン、案内の順に1列で積む",
+      "fact_refs": [
+        "F1",
+        "F5"
+      ]
+    },
+    "implementation": {
+      "choice": "MOCK: HTML と CSS だけ、画像なし",
+      "fact_refs": [
+        "F9"
+      ]
+    }
+  },
+  "structure_spec": {
+    "page_height": {
+      "desktop_1440": 2180,
+      "mobile_390": 2820
+    },
+    "sections": [
+      {
+        "id": "header",
+        "role": "header",
+        "boxes": {
+          "desktop_1440": {
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 90
+          },
+          "mobile_390": {
+            "x": 0,
+            "y": 0,
+            "w": 390,
+            "h": 70
+          }
+        },
+        "live_text": [
+          {
+            "fact_ref": "F1"
+          },
+          {
+            "fact_ref": "F2"
+          }
+        ],
+        "asset_refs": []
+      },
+      {
+        "id": "hero",
+        "role": "hero",
+        "boxes": {
+          "desktop_1440": {
+            "x": 0,
+            "y": 90,
+            "w": 1440,
+            "h": 720
+          },
+          "mobile_390": {
+            "x": 0,
+            "y": 70,
+            "w": 390,
+            "h": 720
+          }
+        },
+        "live_text": [
+          {
+            "fact_ref": "F1"
+          },
+          {
+            "fact_ref": "F10"
+          }
+        ],
+        "asset_refs": []
+      },
+      {
+        "id": "products",
+        "role": "products",
+        "boxes": {
+          "desktop_1440": {
+            "x": 0,
+            "y": 810,
+            "w": 1440,
+            "h": 520
+          },
+          "mobile_390": {
+            "x": 0,
+            "y": 790,
+            "w": 390,
+            "h": 900
+          }
+        },
+        "live_text": [
+          {
+            "fact_ref": "F12"
+          },
+          {
+            "fact_ref": "F13"
+          },
+          {
+            "fact_ref": "F14"
+          },
+          {
+            "fact_ref": "F15"
+          },
+          {
+            "fact_ref": "F16"
+          }
+        ],
+        "asset_refs": []
+      },
+      {
+        "id": "story",
+        "role": "story",
+        "boxes": {
+          "desktop_1440": {
+            "x": 0,
+            "y": 1330,
+            "w": 1440,
+            "h": 320
+          },
+          "mobile_390": {
+            "x": 0,
+            "y": 1690,
+            "w": 390,
+            "h": 480
+          }
+        },
+        "live_text": [
+          {
+            "fact_ref": "F9"
+          },
+          {
+            "fact_ref": "F11"
+          }
+        ],
+        "asset_refs": []
+      },
+      {
+        "id": "info",
+        "role": "info",
+        "boxes": {
+          "desktop_1440": {
+            "x": 0,
+            "y": 1650,
+            "w": 1440,
+            "h": 420
+          },
+          "mobile_390": {
+            "x": 0,
+            "y": 2170,
+            "w": 390,
+            "h": 560
+          }
+        },
+        "live_text": [
+          {
+            "fact_ref": "F3"
+          },
+          {
+            "fact_ref": "F4"
+          },
+          {
+            "fact_ref": "F5"
+          },
+          {
+            "fact_ref": "F6"
+          },
+          {
+            "fact_ref": "F7"
+          },
+          {
+            "fact_ref": "F8"
+          }
+        ],
+        "asset_refs": []
+      },
+      {
+        "id": "footer",
+        "role": "footer",
+        "boxes": {
+          "desktop_1440": {
+            "x": 0,
+            "y": 2070,
+            "w": 1440,
+            "h": 110
+          },
+          "mobile_390": {
+            "x": 0,
+            "y": 2730,
+            "w": 390,
+            "h": 90
+          }
+        },
+        "live_text": [
+          {
+            "fact_ref": "F1"
+          }
+        ],
+        "asset_refs": []
+      }
+    ],
+    "order": {
+      "desktop_1440": [
+        "header",
+        "hero",
+        "products",
+        "story",
+        "info",
+        "footer"
+      ],
+      "mobile_390": [
+        "header",
+        "hero",
+        "products",
+        "story",
+        "info",
+        "footer"
+      ]
+    },
+    "reading_path": {
+      "desktop_1440": [
+        "hero",
+        "products",
+        "info"
+      ],
+      "mobile_390": [
+        "hero",
+        "products",
+        "info"
+      ]
+    }
+  },
+  "interaction_spec": [],
+  "prototype": null
+}

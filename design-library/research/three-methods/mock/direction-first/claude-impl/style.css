@@ -1,0 +1,37 @@
+/* MOCK: a hand-written stand-in for Claude's DIRECTION_FIRST layout (DEV-142), drawn from ../direction.md
+   (stamp, paper-bag window, receipt rhythm). Not Codex output. */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#c9a878;color:#231c16;font-family:serif;line-height:1.7}
+.mock{margin:0;padding:6px 16px;background:#231c16;color:#f2e2b0;font:600 12px/1.4 sans-serif;letter-spacing:.1em;text-align:center}
+.paper{width:720px;margin:48px auto;padding:0 56px;background:#e7d3ac}
+.head{display:flex;justify-content:space-between;padding:20px 0;border-bottom:2px dotted #231c16;font:13px/1.4 sans-serif;letter-spacing:.3em}
+.stamp-area{padding:64px 0 48px;text-align:center;border-bottom:2px dotted #231c16}
+.stamp{display:flex;align-items:center;justify-content:center;width:400px;height:400px;margin:0 auto;border:6px double #231c16;border-radius:50%;background:#f2e2b0}
+.stamp__name{margin:0;font-size:40px;font-weight:600;line-height:1.5;letter-spacing:.12em}
+.stamp-area__line{margin:32px 0 0;font-size:19px}
+.window{padding:48px 0;border-bottom:2px dotted #231c16}
+.window__img{display:block;width:100%;height:300px;object-fit:cover;border-radius:32px;border:4px solid #231c16}
+.window__key{margin:28px 0 8px;font-size:24px;color:#7a4b12}
+.window__text{margin:0;font-size:16px}
+.small-head{margin:0 0 16px;font:13px/1.4 sans-serif;letter-spacing:.4em}
+.receipt{padding:40px 0;border-bottom:2px dotted #231c16}
+.receipt__items{margin:0;padding:0;list-style:none;font-size:20px}
+.receipt__items li{padding:10px 0;border-bottom:1px dashed #8a7556}
+.receipt__info{display:grid;grid-template-columns:140px 1fr;gap:10px 24px;margin:0;font-size:17px}
+.receipt__info dt{font:14px/1.9 sans-serif;color:#5a4630}
+.receipt__info dd{margin:0}
+.foot{display:block;padding:28px 0 40px;text-align:center;font-size:15px}
+@media (max-width:600px){
+  .paper{width:auto;margin:16px;padding:0 20px}
+  .stamp-area{padding:40px 0 32px}
+  .stamp{width:70vw;height:70vw}
+  .stamp__name{font-size:26px}
+  .stamp-area__line{font-size:17px}
+  .window{padding:32px 0}
+  .window__img{height:200px;border-radius:20px}
+  .window__key{font-size:20px}
+  .receipt__items{font-size:18px}
+  .receipt__info{grid-template-columns:1fr;gap:2px}
+  .receipt__info dd{margin-bottom:10px}
+}
