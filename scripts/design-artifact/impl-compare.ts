@@ -52,7 +52,7 @@ async function main(argv: string[]): Promise<number> {
   if (inside(laneReal, outReal) || inside(implReal, outReal)) return refuse("OUT_INSIDE_INPUT");
   if (!(await isRealDir(laneReal)) || !(await isRealDir(implReal))) return refuse("INPUT_NOT_A_DIRECTORY");
 
-  // read on an open handle (no link anywhere on the path, size checked on the handle): nothing swapped in after a check is followed
+  // read on an open handle (no link anywhere on the path when checked, the last step never followed, size checked on the handle)
   const htmlBytes = await readInside(implReal, "index.html", IMPL_COMPARE_LIMITS.html);
   const cssBytes = await readInside(implReal, "style.css", IMPL_COMPARE_LIMITS.css);
   if (!htmlBytes || !cssBytes) return refuse("IMPL_FILES_MISSING");

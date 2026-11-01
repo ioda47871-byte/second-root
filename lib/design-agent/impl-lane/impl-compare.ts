@@ -102,7 +102,11 @@ export const insideDir = (dir: string, path: string) => {
   return r === "" || !(r === ".." || r.startsWith(`..${sep}`) || isAbsolute(r));
 };
 
-/** A file of `dir` read without following a link anywhere on its path (the real path must stay inside the real `dir`). */
+/**
+ * A file of `dir` with no link anywhere on its path when checked (its real path must be the plain path inside the real
+ * `dir`), then opened without following a link at the last step. A directory swapped for a link between the check and
+ * the open is not caught (the inputs are local and only read; the originals are hash-checked).
+ */
 export async function readInside(dir: string, rel: string, max: number): Promise<Buffer | null> {
   const root = await realpath(dir).catch(() => null);
   const real = await realpath(join(dir, rel)).catch(() => null);
@@ -224,6 +228,20 @@ const MEASURE = (ids: readonly string[]) => `(() => {
   return { sections: out, count, scrollHeight: document.documentElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth };
 })()`;
 
+/**
+ * A measured box as the Phase 2f runner stores the design's (runner.ts, copied): rounded outward to whole pixels and cut
+ * to the page; a box with no part inside the page is 0×0 (not shown). An element that is not there stays null.
+ */
+export function clipToPage(box: Box | null, width: number, height: number): Box | null {
+  if (!box) return null;
+  const x1 = Math.max(0, Math.floor(box.x));
+  const y1 = Math.max(0, Math.floor(box.y));
+  const x2 = Math.min(width, Math.ceil(box.x + box.w));
+  const y2 = Math.min(height, Math.ceil(box.y + box.h));
+  const visible = box.w > 0 && box.h > 0 && x2 > x1 && y2 > y1;
+  return { x: Math.min(x1, width), y: Math.min(y1, height), w: visible ? x2 - x1 : 0, h: visible ? y2 - y1 : 0 };
+}
+
 export type ImplRender = RenderSide & { blocked: number; scrollHeight: number; scrollWidth: number };
 
 /** Draws the implementation at one width: its own files only (index.html, style.css, assets/*), JS off. */
@@ -261,7 +279,7 @@ export async function renderImplementation(browser: Browser, impl: Implementatio
     if (!(height > 0 && height <= MAX_PAGE_HEIGHT)) throw new Error(`page too tall (${height} px)`);
     const png = await page.screenshot({ fullPage: true, clip: { x: 0, y: 0, width: size.width, height }, animations: "disabled", caret: "hide" });
     // a twin is listed again, so the comparison refuses the viewport (DUPLICATE_SECTION_ID) instead of measuring one of them
-    const sections = sectionIds.flatMap((id) => Array.from({ length: Math.max(1, m.count[id] ?? 0) }, () => ({ id, box: m.sections[id] ?? null })));
+    const sections = sectionIds.flatMap((id) => Array.from({ length: Math.max(1, m.count[id] ?? 0) }, () => ({ id, box: clipToPage(m.sections[id] ?? null, size.width, height) })));
     return { png, sections, blocked, scrollHeight: m.scrollHeight, scrollWidth: m.scrollWidth };
   } finally {
     await context.close();

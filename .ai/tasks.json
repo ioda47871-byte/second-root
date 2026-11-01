@@ -6335,7 +6335,7 @@
         "Issue #177 の条件を満たさない場合の develop へのマージ",
         "比較を合否・修正の実行に使うこと"
       ],
-      "note": "Review round 1 FAIL (M1: 箱の測り方が Phase 2f と違った) → 修正。"
+      "note": "Review: round 1 FAIL (M1: 箱の測り方が Phase 2f と違った) → 修正、round 2 PASS (C0/H0/M0/L3、L1〜L3 対応)。"
     }
   ]
 }

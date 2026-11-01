@@ -7,7 +7,7 @@ import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prepareImplementationLane } from "@/lib/design-agent/impl-lane/handoff";
 import { PACKAGE_LIMITS, PNG_LIMITS, PROTOTYPE_LIMITS } from "@/lib/design-agent/artifact/schema";
-import { compareImplementation, IMPL_COMPARE_LIMITS, LaneReadError, readLane, renderImplementation, type Implementation } from "@/lib/design-agent/impl-lane/impl-compare";
+import { clipToPage, compareImplementation, IMPL_COMPARE_LIMITS, LaneReadError, readLane, renderImplementation, type Implementation } from "@/lib/design-agent/impl-lane/impl-compare";
 import { renderPrototype } from "@/lib/design-agent/phase2f/render-prototype";
 import { routeB, writePackage } from "../artifact/fixtures";
 
@@ -115,7 +115,9 @@ describe("the comparison (report only)", () => {
     for (const v of ["desktop_1440", "mobile_390"] as const) {
       expect(ours[v].png.equals(theirs[v].png), v).toBe(true);
       expect(ours[v].sections.map((s) => s.id)).toEqual(ids);
-      for (const s of ours[v].sections) expect(s.box, `${v} ${s.id}`).toEqual(theirs[v].sections[s.id]);
+      // the same box after the runner's rounding and cut to the page (review round 2, L1)
+      const height = readPngHeight(ours[v].png);
+      for (const s of ours[v].sections) expect(s.box, `${v} ${s.id}`).toEqual(clipToPage(theirs[v].sections[s.id] ?? null, v === "desktop_1440" ? 1440 : 390, height));
       // the cases really are different from a plain box
       expect(ours[v].sections.find((s) => s.id === "ghost")!.box).toEqual({ x: 0, y: 0, w: 0, h: 0 });
       expect(ours[v].sections.find((s) => s.id === "contents")!.box!.h).toBe(300);
@@ -125,18 +127,30 @@ describe("the comparison (report only)", () => {
     }
   }, 120_000);
 
-  it("a section hidden in the implementation (visibility: hidden) is missing; twins refuse the viewport", async () => {
+  it("boxes are stored as the runner stores the design's: whole pixels, cut to the page, off-page is not shown (review round 2, L1)", async () => {
+    expect(clipToPage({ x: -9999, y: 10, w: 100, h: 20 }, 1440, 900)).toEqual({ x: 0, y: 10, w: 0, h: 0 });
+    expect(clipToPage({ x: 10.4, y: 20.6, w: 100.2, h: 50.1 }, 1440, 900)).toEqual({ x: 10, y: 20, w: 101, h: 51 });
+    expect(clipToPage({ x: 1400, y: 880, w: 100, h: 100 }, 1440, 900)).toEqual({ x: 1400, y: 880, w: 40, h: 20 });
+    expect(clipToPage(null, 1440, 900)).toBeNull();
+    // a visually hidden section placed off the page is not shown, as in the design's record (never a false SECTION_EXTRA)
+    const offPage = { ...DESIGN, html: doc(`${SECTIONS()}<h2 data-section="skip" style="position:absolute;left:-9999px">見出し</h2>`) };
+    const r = await renderImplementation(browser, offPage, "desktop_1440", [...IDS, "skip"]);
+    expect(r.sections.find((s) => s.id === "skip")!.box).toMatchObject({ w: 0, h: 0 });
+    for (const s of r.sections) for (const n of Object.values(s.box ?? {})) expect(Number.isInteger(n)).toBe(true);
+  }, 120_000);
+
+    it("a section hidden in the implementation (visibility: hidden) is missing; twins refuse the viewport", async () => {
     const hidden = { ...DESIGN, css: `${DESIGN_CSS}\n[data-section=info]{visibility:hidden}` };
     const r = await compareImplementation(browser, lane, hidden);
     expect(r.differences).toEqual(expect.arrayContaining(["PC_SECTION_MISSING_INFO", "SP_SECTION_MISSING_INFO"]));
     const twins = { ...DESIGN, html: doc(SECTIONS() + `<section data-section="info"><p>もう一つ</p></section>`) };
     const t = await compareImplementation(browser, lane, twins);
     expect(t.differences).toEqual(["PC_DUPLICATE_SECTION_ID", "SP_DUPLICATE_SECTION_ID"]);
-    // a refused comparison measured nothing: not compared (review round 1, L3)
+    // a refused comparison measured nothing: not compared (review round 1, L2)
     expect(t.status).toBe("not_compared");
   }, 120_000);
 
-  it("reads with the artifact schema's own limits (review round 1, L4)", () => {
+  it("reads with the artifact schema's own limits (review round 1, L3)", () => {
     expect(IMPL_COMPARE_LIMITS.html).toBe(PROTOTYPE_LIMITS.html);
     expect(IMPL_COMPARE_LIMITS.css).toBe(PROTOTYPE_LIMITS.css);
     expect(IMPL_COMPARE_LIMITS.asset).toBe(PNG_LIMITS.asset.maxBytes);
@@ -233,7 +247,7 @@ describe("what is never treated as the original", () => {
     rmSync(join(linked, "artifact.json"));
     symlinkSync(join(lane, "artifact.json"), join(linked, "artifact.json"));
     expect(await code(readLane(linked))).toBe("ARTIFACT_UNREADABLE");
-    // a linked directory on the path to an original is not followed (review round 1, L5)
+    // a linked directory on the path to an original is not followed (review round 1, L4)
     const dirLink = laneVariant(() => undefined);
     rmSync(join(dirLink, "originals"), { recursive: true });
     symlinkSync(join(lane, "originals"), join(dirLink, "originals"));
