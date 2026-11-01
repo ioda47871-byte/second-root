@@ -6286,7 +6286,7 @@
     {
       "id": "DEV-139",
       "title": "デザイン画像と実装画面の一致検査 — offline・report-only で実装レーンに接続 (Issue #177 A)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-131",
@@ -6335,7 +6335,56 @@
         "Issue #177 の条件を満たさない場合の develop へのマージ",
         "比較を合否・修正の実行に使うこと"
       ],
-      "note": "Review: round 1 FAIL (M1: 箱の測り方が Phase 2f と違った) → 修正、round 2 PASS (C0/H0/M0/L3)、round 3 (差分) PASS (C0/H0/M0/L2)。Low はすべて対応または理由を記録。"
+      "note": "Review: round 1 FAIL (M1: 箱の測り方が Phase 2f と違った) → 修正、round 2 PASS (C0/H0/M0/L3)、round 3 (差分) PASS (C0/H0/M0/L2)。Low はすべて対応または理由を記録。",
+      "merged": "#178 → 9a8344f (squash, 2026-11-01, Issue #177 の条件付き事前承認)"
+    },
+    {
+      "id": "DEV-140",
+      "title": "SP 品質検査のラベル付き検証と誤検知の修正 (Issue #177 B)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-134"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-140-sp-quality-eval",
+      "purpose": "Issue #177 B (オーナー事前承認、条件付きの develop マージ)。DEV-134 のスマホ検査を、意図した作りと壊れたページのラベル付き架空 fixture で検証し、誤検知・見逃しを記録する。明らかな誤検知だけを直し、意図した重なりを機械的に禁止しない。",
+      "acceptance_criteria": [
+        "意図した作り (写真の上の文字・飾りの文字・縦組み・スキップリンク・引き出し・固定ヘッダーなど) と壊れたページ (小さい・切れ・はみ出し・重なり・覆われ・薄い・事実の非表示・押す所・店名) のラベル付き fixture",
+        "期待どおりの所見をテストで確かめ、食い違いは理由付きの一覧だけを許す (どちらの向きの変化もテストで分かる)",
+        "誤検知・見逃しを文書に記録する",
+        "明らかな誤検知だけを直す。閾値と shop-CSS の検査本体は変えない",
+        "DEV-133 の実際の試作12枚の所見が変わらないことを確かめる"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/phase2f/mobile-quality-corpus.test.ts",
+        "tests/unit/design-agent/phase2f/mobile-quality.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/phase2f/mobile-quality.ts (誤検知の修正のみ)",
+        "tests/unit/design-agent/phase2f/mobile-quality-corpus.ts",
+        "tests/unit/design-agent/phase2f/mobile-quality-corpus.test.ts",
+        "docs/design/phase2f-mobile-quality.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-140.md"
+      ],
+      "forbidden_scope": [
+        "停止条件・状態・intake の変更",
+        "閾値の変更",
+        "shop-CSS の検査本体の変更",
+        "所見の自動修正・gate 化",
+        "実 Codex・画像生成・隔離 WSL・本番"
+      ],
+      "human_approval_triggers": [
+        "Issue #177 の条件を満たさない場合の develop へのマージ",
+        "所見を停止や自動修正に使うこと",
+        "閾値の変更"
+      ],
+      "note": "ラベル付き23件: 意図11件のうち誤検知2件、壊れ12件の見逃し0件 (既知の限界3つは文書に)。切れた文字の、切り抜きの外の字だけを重なりから外す (切っている軸だけ)。実試作12枚の所見は不変 (手動の確認)。Review: round 1 FAIL (M2)・round 2 FAIL (M1) → 修正、round 3 PASS (C0/H0/M0/L3、対応済み)。"
     }
   ]
 }
