@@ -1,6 +1,7 @@
 /**
  * DEV-150 (Issue #180): the OFFLINE steps of the three-method pilot (docs/design/three-methods-pilot-plan.md §3).
- * Never calls Codex or the image tool, starts no process and opens no network: it reads what the real-call steps
+ * Never calls Codex or the image tool, starts no process other than Chromium (JavaScript off, every request outside
+ * the page's own files refused) and opens no network: it reads what the real-call steps
  * recorded (only through readStep: the output folder AND the ledger must both say "succeeded"), draws pages in
  * Chromium with JavaScript off and only the page's own files served, and writes new files under a new --out.
  * It adds no check of its own: every check is an existing function, and every finding is recorded, never a threshold
@@ -22,13 +23,15 @@
  *       relative to --page-root (the image CLI's --page-root). A page with no picture writes no-image.json instead,
  *       with the reason it needs none (--no-image-reason, required then) and the budget note (owner decision 3).
  *
- *   --check --page <dir/index.html> --facts <pack.json> --out <new dir> [--image <page image call dir> [--visual-inspection <json>]]
+ *   --check --page <dir/index.html> --facts <pack.json> --out <new dir> [--image <page image call dir>] [--visual-inspection <json>]
  *       Claude's implementation (any method), REPORT-ONLY: PC 1440 / SP 390 PNGs, scrollWidth and the horizontal
  *       overflow (the study's only repair trigger), measureMobileQuality, auditPageText of the study's Identity Lock
  *       on each width's visible text, observeStructure. With --image, the picture of a page_image call (readStep; bound
- *       to this very page's SHA-256) is placed and its identity is audited with auditIdentity against a recorded
- *       visual inspection of exactly that picture (--visual-inspection; absent = HOLD). Nothing is ever proven from the
- *       picture automatically (owner decision 4). Pictures the page names come from its own assets/ (VISUAL_FIRST:
+ *       to this very page's SHA-256) is placed. EVERY real picture on the page (the image step's, or one in the page's
+ *       own assets/, e.g. VISUAL_FIRST's generated picture from the lane) gets an image identity from auditIdentity
+ *       against a recorded visual inspection of exactly that picture (--visual-inspection naming its SHA-256; absent
+ *       = HOLD), and the check's status includes it. Only a neutral placeholder has none. Nothing is ever proven from
+ *       the picture automatically (owner decision 4, all three methods). Pictures the page names come from its own assets/ (VISUAL_FIRST:
  *       the lane's), else a neutral placeholder (recorded as such).
  *
  *   --versions --steps <call dir>,<call dir>,...
@@ -281,7 +284,6 @@ const worst = (a: IdentityResult["status"][]) => (a.includes("REJECT") ? "REJECT
 
 async function check(args: Map<string, string>, ledger: Ledger): Promise<number> {
   if (!only(args, ["--page", "--facts", "--out"], ["--image", "--visual-inspection"])) return refuse("USAGE");
-  if (args.has("--visual-inspection") && !args.has("--image")) return refuse("USAGE");
   const facts = await readFacts(args.get("--facts")!);
   if (!facts) return refuse("FACTS_INVALID");
   const htmlPath = resolve(args.get("--page")!);
@@ -294,7 +296,9 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
   // the pictures the page names: the page's own assets/ (VISUAL_FIRST: the lane's), the checked image step, or a placeholder
   const assets = new Map<string, Buffer>();
   const sources: { path: string; sha256: string; source: "page_assets" | "image_step" | "placeholder" }[] = [];
-  let image: { asset_id: string; png_sha256: string; approval_id: string; run_id: string; identity: IdentityResult } | null = null;
+  let image: { asset_id: string; png_sha256: string; approval_id: string; run_id: string } | null = null;
+  const inspection = args.has("--visual-inspection") ? await readFile(resolve(args.get("--visual-inspection")!), "utf8").then((t) => JSON.parse(t) as unknown, () => null) : undefined;
+  if (inspection === null) return refuse("VISUAL_INSPECTION_UNREADABLE");
   if (args.has("--image")) {
     const step = await readStep(resolve(args.get("--image")!), ledger, { kind: "page_image", route: "claude_page" });
     if (step.call.status !== "succeeded" || !step.generation) return stopped("IMAGE_RUN_NOT_SUCCEEDED", { call_code: step.call.code });
@@ -303,11 +307,7 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     if (link.page_sha256 !== sha256(page.html) || typeof link.asset_id !== "string" || !assetPathsOf(page).includes(`assets/${link.asset_id}.png`)) return stopped("IMAGE_PAGE_MISMATCH");
     const png = await readRegular(join(step.dir, "image.png"), MAX_BYTES.asset);
     if (!png || sha256(png) !== step.call.png_sha256) return stopped("RECORD_MISMATCH");
-    // owner decision 4: the picture's identity rests on a recorded visual inspection of exactly this picture; never automatic
-    const inspection = args.has("--visual-inspection") ? await readFile(resolve(args.get("--visual-inspection")!), "utf8").then((t) => JSON.parse(t) as unknown, () => null) : undefined;
-    if (inspection === null) return refuse("VISUAL_INSPECTION_UNREADABLE");
-    const identity = auditIdentity({ ...lock, output: { image_sha256: sha256(png) }, ...(inspection === undefined ? {} : { visual_inspection: inspection }) });
-    image = { asset_id: link.asset_id, png_sha256: sha256(png), approval_id: step.receipt.approval_id, run_id: step.receipt.run_id, identity };
+    image = { asset_id: link.asset_id, png_sha256: sha256(png), approval_id: step.receipt.approval_id, run_id: step.receipt.run_id };
     assets.set(`assets/${link.asset_id}.png`, png);
   }
   const pageDir = dirname(htmlPath);
@@ -346,6 +346,15 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     await browser.close();
   }
   const identity = { desktop_1440: auditPageText(lock, text.desktop_1440), mobile_390: auditPageText(lock, text.mobile_390) };
+  // owner decision 4 (all three methods): every real picture's identity rests on a recorded visual inspection of exactly
+  // that picture; without one it is HOLD. An inspection that names none of the pictures is checked against each (REJECT).
+  const named = (inspection as { inspected_image_sha256?: unknown } | undefined)?.inspected_image_sha256;
+  const real = sources.filter((x) => x.source !== "placeholder");
+  const matched = real.some((x) => x.sha256 === named);
+  const images: { path: string; sha256: string; source: string; identity: IdentityResult }[] = real.map((x) => ({
+    ...x,
+    identity: auditIdentity({ ...lock, output: { image_sha256: x.sha256 }, ...(inspection !== undefined && (!matched || x.sha256 === named) ? { visual_inspection: inspection } : {}) }),
+  }));
   const out = resolve(args.get("--out")!);
   await mkdir(out, { recursive: false, mode: 0o700 });
   await writeNew(join(out, "pc1440.png"), rendered.desktop_1440.png);
@@ -354,7 +363,7 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     await mkdir(join(out, "assets"), { mode: 0o700 });
     await writeNew(join(out, "assets", `${image.asset_id}.png`), assets.get(`assets/${image.asset_id}.png`)!);
   }
-  const status = worst([identity.desktop_1440.status, identity.mobile_390.status, ...(image ? [image.identity.status] : [])]);
+  const status = worst([identity.desktop_1440.status, identity.mobile_390.status, ...images.map((x) => x.identity.status)]);
   const record = {
     schema: "three_method_check_v0",
     scope: "offline_report_only",
@@ -366,7 +375,7 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     horizontal_overflow: { desktop_1440: rendered.desktop_1440.scrollWidth > 1440, mobile_390: rendered.mobile_390.scrollWidth > 390 },
     blocked_requests: rendered.desktop_1440.blocked + rendered.mobile_390.blocked,
     mobile_quality: rendered.mobile_390.mobileQuality ?? null,
-    identity: { status, page: identity, image: image ? image.identity : null },
+    identity: { status, page: identity, images },
     image: image ? { asset_id: image.asset_id, png_sha256: image.png_sha256, approval_id: image.approval_id, run_id: image.run_id } : null,
     structure_observation: structure,
     reference_set: { path: REFERENCES, sha256: sha256(refsText) },

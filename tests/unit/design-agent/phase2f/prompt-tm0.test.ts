@@ -1,13 +1,24 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, afterAll } from "vitest";
 import { FactsPack } from "@/lib/design-agent/artifact/schema";
 import { buildDesignPrompt, DesignBrief, promptVariantOf, PromptVariantError } from "@/lib/design-agent/phase2f/prompt";
 import { ThreeMethodBrief } from "@/lib/design-agent/three-methods/brief";
 import { buildVisualFirstPrompt } from "@/lib/design-agent/three-methods/visual-first";
 import { BRIEF, FACTS } from "./fixtures";
+
+// review L6: every temporary directory these tests make is removed afterwards
+const temps: string[] = [];
+const tmp = (prefix: string) => {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  temps.push(d);
+  return d;
+};
+afterAll(() => {
+  for (const d of temps) rmSync(d, { recursive: true, force: true });
+});
 
 // DEV-150 (Issue #180): the three-method study's VISUAL_FIRST prompt through the existing design prompt (tm0). The text
 // is the lane's own, imported: the same bytes, the same pins. Offline: nothing is called.
@@ -87,7 +98,16 @@ describe("the design step's CLI with tm0 (offline: --print-pin and refusals only
     expect(cli(["--print-pin", "--route", "C", "--prompt-version", "tm0", ...inputs, ...dnaBrief]).status).toBe(2);
     expect(JSON.parse(cli(["--print-pin", "--route", "B", "--facts", resolve(REPO, "design-library/phase2f/wagashi-facts-pack.json"), ...dnaBrief, "--tm-brief", resolve(REPO, DIR, "brief.json")]).stdout)).toEqual({ status: "refused", code: "TM_BRIEF_NEEDS_TM0" });
     expect(JSON.parse(cli(["--print-pin", "--route", "C", "--prompt-version", "tm0", "--facts", resolve(REPO, DIR, "facts-pack.json")]).stdout)).toEqual({ status: "refused", code: "TM_BRIEF_REQUIRED" });
-    const other = mkdtempSync(join(tmpdir(), "dev150-tm0-"));
+    const other = tmp("dev150-tm0-");
+    // review L4: an unreadable or non-JSON brief is refused by name with exit 2, before anything (pin or call)
+    writeFileSync(join(other, "bad.json"), "{bad");
+    const facts = ["--facts", resolve(REPO, DIR, "facts-pack.json")];
+    for (const brief of [join(other, "bad.json"), join(other, "missing.json")]) {
+      const bad = cli(["--print-pin", "--route", "C", "--prompt-version", "tm0", ...facts, "--tm-brief", brief]);
+      expect([bad.status, JSON.parse(bad.stdout)]).toEqual([2, { status: "refused", code: "INPUT_UNREADABLE" }]);
+      const run = cli(["--route", "C", "--prompt-version", "tm0", ...facts, "--tm-brief", brief, "--out", join(other, "run"), "--plan-id", "plan-fictional-1", "--approval-id", "fictional-tm0-bad", "--expected-prompt-sha256", "0".repeat(64), "--expected-prompt-chars", "10", "--expected-commit", "a".repeat(40), "--human-approval-confirmed"]);
+      expect([run.status, JSON.parse(run.stdout)]).toEqual([2, { status: "refused", code: "INPUT_UNREADABLE" }]);
+    }
     writeFileSync(join(other, "facts.json"), JSON.stringify(FACTS));
     expect(JSON.parse(cli(["--print-pin", "--route", "C", "--prompt-version", "tm0", "--facts", join(other, "facts.json"), "--tm-brief", resolve(REPO, DIR, "brief.json")]).stdout)).toEqual({ status: "refused", code: "TM_BRIEF_FACTS_MISMATCH" });
   }, 60_000);

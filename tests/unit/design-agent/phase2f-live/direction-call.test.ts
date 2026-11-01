@@ -1,9 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, afterAll } from "vitest";
 import { CodexAbortedError, CodexError, type CodexRunMeta } from "@/lib/design-agent/codex";
 import { runDirectionCall, type DirectionCallInput, type DirectionCodex } from "@/lib/design-agent/phase2f-live/direction-call";
 import { KIND_ROUTES, LedgerStop, openLedger, type CallKind, type Route } from "@/lib/design-agent/phase2f-live/ledger";
@@ -11,6 +10,17 @@ import { readStep } from "@/lib/design-agent/phase2f-live/steps";
 import { FactsPack } from "@/lib/design-agent/artifact/schema";
 import { ThreeMethodBrief } from "@/lib/design-agent/three-methods/brief";
 import { buildDirectionPrompt, directionJsonSchema } from "@/lib/design-agent/three-methods/direction";
+
+// review L6: every temporary directory these tests make is removed afterwards
+const temps: string[] = [];
+const tmp = (prefix: string) => {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  temps.push(d);
+  return d;
+};
+afterAll(() => {
+  for (const d of temps) rmSync(d, { recursive: true, force: true });
+});
 
 // DEV-150 (Issue #180): one real DIRECTION_FIRST call per owner approval, with the design step's guards. Fake Codex
 // only (an injected function); the study's fictional shop; the ledger in a temp directory. Nothing calls Codex.
@@ -31,8 +41,8 @@ const DIRECTION = {
 
 let base: string;
 let n = 0;
-beforeEach(async () => {
-  base = await mkdtemp(join(tmpdir(), "dev150-direction-"));
+beforeEach(() => {
+  base = tmp("dev150-direction-");
 });
 const input = (o: Partial<DirectionCallInput> = {}): DirectionCallInput => ({
   prompt: built.prompt,
@@ -163,8 +173,8 @@ describe("the direction CLI (offline paths only)", () => {
 
   it("refuses bad usage and a call without the owner's confirmation, before the ledger is touched", () => {
     for (const args of [[], ["--print-pin"], ["--print-pin", ...inputs, "--out", "x"], [...inputs, "--codex"], ["--print-pin", "--facts", resolve(REPO, DIR, "facts-pack.json")]]) expect(cli(args).status, args.join(" ")).toBe(2);
-    const state = mkdtempSync(join(tmpdir(), "dev150-cli-"));
-    const out = join(mkdtempSync(join(tmpdir(), "dev150-out-")), "run");
+    const state = tmp("dev150-cli-");
+    const out = join(tmp("dev150-out-"), "run");
     const r = cli([...inputs, "--out", out, "--plan-id", "plan-fictional-tm-df", "--approval-id", "fictional-tm-df-cli", "--expected-prompt-sha256", "0".repeat(64), "--expected-prompt-chars", "10", "--expected-commit", "a".repeat(40)], { SR_PHASE2F_STATE: state });
     expect(r.status).toBe(2);
     expect(JSON.parse(r.stdout)).toMatchObject({ status: "stopped", code: "HUMAN_APPROVAL_REQUIRED", approval_used: false });

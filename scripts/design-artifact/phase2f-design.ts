@@ -70,8 +70,18 @@ async function promptFor(args: Map<string, string>) {
   const facts = FactsPack.safeParse(await readJson(factsPath));
   const brief = briefPath === undefined ? null : DesignBrief.safeParse(await readJson(briefPath));
   if (!facts.success || (brief && !brief.success)) return null;
-  const tmBriefText = args.has("--tm-brief") ? await readFile(resolve(args.get("--tm-brief")!), "utf8") : undefined;
-  const v = promptVariantOf({ route, version: args.get("--prompt-version"), research: await readJson(args.get("--research")), direction: await readJson(args.get("--direction")), references: await readJson(args.get("--references")), ...(tmBriefText === undefined ? {} : { tmBrief: JSON.parse(tmBriefText) }) });
+  // DEV-150 review L4: an unreadable or non-JSON three-method brief is refused by name (nothing is used)
+  let tmBriefText: string | undefined;
+  let tmBrief: unknown;
+  if (args.has("--tm-brief")) {
+    try {
+      tmBriefText = await readFile(resolve(args.get("--tm-brief")!), "utf8");
+      tmBrief = JSON.parse(tmBriefText);
+    } catch {
+      return { route, refused: "INPUT_UNREADABLE" } as const;
+    }
+  }
+  const v = promptVariantOf({ route, version: args.get("--prompt-version"), research: await readJson(args.get("--research")), direction: await readJson(args.get("--direction")), references: await readJson(args.get("--references")), ...(tmBriefText === undefined ? {} : { tmBrief }) });
   if (!v.ok) return { route, refused: v.code } as const;
   let built;
   try {

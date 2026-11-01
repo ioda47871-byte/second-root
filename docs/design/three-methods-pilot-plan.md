@@ -102,7 +102,7 @@ DEV-149。Issue #180。オーナーは、#177/#180 のオフラインの作業�
 
 - **呼び出しの前:** 研究の Identity Lock (`identity-lock.json`、`is_research_only: true`) は、`auditPageText(lock, 事実の文)` で `PASS_IDENTITY_ONLY` になることを確かめる (`tests/unit/design-agent/research/three-methods.test.ts` が既に同じ形で固定している)。`auditIdentity` は使わない: これは生成した画像を、記録した目視 (`output.image_sha256` と `visual_inspection`) と照らす関数で、Lock だけを渡すと `HOLD` になる。ブリーフと事実パックの店が同じことは `checkBrief` (`BRIEF_SHOP_MISMATCH`) が検める。どちらも §9 のオフラインの準備で行う。
 - **Codex の試作 (VISUAL_FIRST):** 機械では検めない。今の runner は Identity を走らせない (`runner.ts` は package の `checks.identity` を `null` にする)。試作の HTML を Claude 側で読むと手順の分離 (§2.1) が崩れるので、`--check` は試作を見ない。試作の店名の取り違えが Claude の実装に写れば、次の行の検査で止まる。
-- **生成した画像 (C1-c・C2-a/b):** `auditIdentity` を目視の記録つきで当てるかは、決まっていない (§10)。当てるなら、誰がいつ絵を見るかが盲検に関わる。
+- **生成した画像 (C1-c・C2-a/b):** 暫定決定 4 で決まった (§12.3)。3方式のどれでも、Claude の実装に載る本物の絵 (VISUAL_FIRST は lane からページの `assets/` に置いた C1-c の絵、LAYOUT_FIRST・DIRECTION_FIRST は `--image` の絵) は、`--check` がその絵そのものの目視の記録 (`--visual-inspection`、絵の SHA-256 を名指し) に `auditIdentity` を当てる。記録が無ければ `HOLD` で、方式はオーナーへ止まる。絵から自動で証明しない。誰がいつ絵を見るかは盲検に関わるので、承認 B で決める。
 - **Claude の実装 (3方式):** `--check` で、PC 1440 と SP 390 の見える文字に `auditPageText` を当てる。`PASS_IDENTITY_ONLY` でなければ、修正せずに止める (`runLoop` と同じ。研究 §4)。
 - `PASS_IDENTITY_ONLY` は「正しい店」というだけで、品質の合格ではない。
 
@@ -295,7 +295,7 @@ pin は DEV-150 の配線のあとの値 (`npx tsx scripts/research/three-method
 | 回数・時間を使い切った (`RUN_LIMIT_*`・`RUN_TIME_BUDGET`) | その plan | 記録 | 上限は上げない。オーナーへ止める |
 | 実機の `Killed` (OOM) | すべて | — | `docs/operations/wsl-resource-preflight.md` §2 で OOM を確かめ、resource の失敗として止まる。修正のループに入らない。`.wslconfig` は変えない |
 
-**CLI の版・モデルが呼び出しのあいだで変わったとき (DEV-150、暫定決定 5):** 呼び出しそのものは止まらない (`generation.json` に記録される。方向の答えが検査に通らなかった失敗の呼び出しは、`call.json` に版とモデルを残す)。**次の実の呼び出しの前に、オーナーが** `three-methods-steps.ts --versions --steps <それまでの呼び出しの出力>,…` **を走らせる。** 版かモデルが違えば `GENERATION_CHANGED`、分からなければ `GENERATION_FACTS_UNKNOWN` で止まり (終了コード 2)、続けるかをオーナーが決める。版とモデルを記録しない失敗の呼び出しは、一覧に出すだけで比べない。
+**CLI の版・モデルが呼び出しのあいだで変わったとき (DEV-150、暫定決定 5):** 呼び出しそのものは止まらない (`generation.json` に記録される。方向の答えが検査に通らなかった失敗の呼び出しは、`call.json` に版とモデルを残す)。**次の実の呼び出しの前に、オーナーが** `three-methods-steps.ts --versions --steps <それまでの呼び出しの出力>,…` **を走らせる。** 版かモデルが違えば `GENERATION_CHANGED`、分からなければ `GENERATION_FACTS_UNKNOWN` で止まり (終了コード 2)、続けるかをオーナーが決める。版とモデルを記録しない失敗の呼び出し (失敗した画像とデザインの呼び出しはどれも記録しない) は、一覧に出すだけで比べない。**入口が自動で止まるのではなく、オーナーが `--versions` を走らせる手順で止まる。**
 
 **配線の PR を戻すとき:** develop へ revert の PR を出す (オーナーの承認)。既存の入口は配線の前と同じに戻る。台帳に残った新しい kind の記録は、方式ごとの plan_id にしか属さないので、ほかの plan の上限に数えられない。既存の v1/v1.1/v2 の記録と台帳には触れない。
 
@@ -394,6 +394,6 @@ pin は DEV-150 の配線のあとの値 (`npx tsx scripts/research/three-method
 1. **VISUAL_FIRST は Route C `route_c_prototype`、絵はちょうど1枚。** → 実装した。tm0 の Route C の画像の規則の1行だけを「`Use exactly one generated image, A1`」にした (絵の説明が要求になる・`asset_refs`・主役の規則の意味は同じ)。v1・v1.1・v2 の prompt は1バイトも変えていない。新しい pin は `f6632d283bbb1ed59941cd2064dd286b31968799d0f91c3c7b179967dbc0e0ac`/4415。前の `b3d51744…`/4398 は廃止で、テストが二度と出ないことを確かめる。Route B (`d8cc6c69…`/3846) と方向 (`641d01f9…`/3353) は変わらない。
 2. **「成功したが使えない」は、方式のやり直し1回と数える。** → 文書で決めた (§7)。`RETRY_OF_SUCCEEDED` は迂回しない。新しい approval_id の新しい最初の呼び出しで、8回の上限と1回ずつの承認はそのまま。自動のやり直しは無い。
 3. **LAYOUT_FIRST・DIRECTION_FIRST の絵は既定で1枚、要らなければ0枚。** → `--page-request` に `--no-image-reason` を足した。絵の無いページは理由を要し、`no-image.json` に理由と予算の差 (条件の違い) を記録する。
-4. **生成した絵の Identity は実験の一部。** → `--check --image` は `--visual-inspection <json>` (その絵の SHA-256 を名指しした目視の記録) を受け取り、`auditIdentity` で検める。記録が無い・分からない・違えば `HOLD`/`REJECT` で、記録を書いてから終了コード 2 で止まる。絵から自動で証明したとは言わない。**残る点 (オーナーへ):** `auditIdentity` は、絵の中に店名が見えること (`visible_site_identity_labels`) を求める。素材の絵の prompt は「文字を入れない」なので、正しい絵でも、ふつうは `VISIBLE_SITE_IDENTITY_UNCONFIRMED` の `HOLD` になり、絵を使うたびにオーナーの判断で止まる。目視の記録をどう書くか (誰が見るか、オーナーの盲検をどう保つか) は、承認 B で決めてほしい。
-5. **CLI の版・モデルが変わったら、記録して次の実の呼び出しの前に止まる。** → `--versions` を足した (§7)。
+4. **生成した絵の Identity は実験の一部。** → `--check` は、仮の絵を除くすべての絵 (`--image` の絵も、ページの `assets/` の絵、つまり VISUAL_FIRST の lane の C1-c の絵も) に、`--visual-inspection <json>` (その絵の SHA-256 を名指しした目視の記録) で `auditIdentity` を当て、全体の状態に含める (独立レビュー round 1 の M1 で、VISUAL_FIRST の絵に当たっていなかったのを直した)。記録が無い・分からない・違えば `HOLD`/`REJECT` で、記録を書いてから終了コード 2 で止まる。絵から自動で証明したとは言わない。**残る点 (オーナーへ):** `auditIdentity` は、絵の中に店名が見えること (`visible_site_identity_labels`) を求める。素材の絵の prompt は「文字を入れない」なので、正しい絵でも、ふつうは `VISIBLE_SITE_IDENTITY_UNCONFIRMED` の `HOLD` になり、絵を使うたびにオーナーの判断で止まる。目視の記録をどう書くか (誰が見るか、オーナーの盲検をどう保つか) は、承認 B で決めてほしい。
+5. **CLI の版・モデルが変わったら、記録して次の実の呼び出しの前に止まる。** → `--versions` を足した (§7)。**これは手順の上の検査で、機械の門ではない:** 実の呼び出しの入口は版とモデルを比べない。次の呼び出しの前にオーナーが `--versions` を走らせて、初めて止まる。失敗した画像とデザインの呼び出しは版とモデルを記録しない (`generation.json` は成功のときだけ) ので、比べられない (一覧に出るだけ)。版とモデルを残す失敗は、答えが検査に通らなかった方向の呼び出しだけである。
 6. **最初のパイロットは各方式1回、最大8回、途中確認なし、修正のきっかけは Claude の実装の横はみ出しだけ。** → 変えていない。`--check` は横はみ出しを記録するだけで、門にしない。承認・費用・隔離・上限はそのまま。V-B/C の HTML の描画は、V-A (画像ツールの完成デザイン) と同じ条件ではない (入口 §11)。

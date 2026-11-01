@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -16,6 +16,17 @@ import { ThreeMethodBrief } from "@/lib/design-agent/three-methods/brief";
 import { buildDirectionPrompt, directionJsonSchema } from "@/lib/design-agent/three-methods/direction";
 import type { PageAssetRequest } from "@/lib/design-agent/three-methods/page-assets";
 import { colourPng } from "../phase2f/fixtures";
+
+// review L6: every temporary directory these tests make is removed afterwards
+const temps: string[] = [];
+const tmp = (prefix: string) => {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  temps.push(d);
+  return d;
+};
+afterAll(() => {
+  for (const d of temps) rmSync(d, { recursive: true, force: true });
+});
 
 // DEV-150 (Issue #180): the three methods end to end with FAKE ports only (a fake Codex function, a fake image tool),
 // the study's fictional shop and a temporary ledger: VISUAL_FIRST design → pre-render → image → package → lane;
@@ -54,7 +65,7 @@ afterAll(async () => {
 
 let n = 0;
 function world() {
-  const base = mkdtempSync(join(tmpdir(), "dev150-tm-steps-"));
+  const base = tmp("dev150-tm-steps-");
   const state = join(base, "state");
   const runs = join(base, "runs");
   mkdirSync(runs);
@@ -148,6 +159,27 @@ describe("VISUAL_FIRST (route_c_prototype): tm0 design → pre-render → one im
     expect(files).not.toMatch(/quarantine|index\.html|style\.css/);
     // a second lane into the same place is refused
     expect(w.tm(["--lane", "--package", pkgDir, "--facts", factsPath, "--out", laneDir]).status).toBe(2);
+
+    // review M1 (owner decision 4): Claude's implementation uses the lane's generated picture from its own assets/.
+    // Without a recorded visual inspection of exactly that picture the check is HOLD (the method stops for the owner);
+    // with one, the audit decides. Never PASS on the page text alone.
+    const lanePicture = (lane.out.files as string[]).find((f) => /^assets\/A1\.png$/.test(f));
+    expect(lanePicture).toBeDefined();
+    const impl = claudePage(join(w.base, "impl"), { html: (h) => h.replace(/<figure class="morning__photo">.*?<\/figure>/, "").replace('data-section="info">', `data-section="info"><img src="assets/A1.png" alt="${ALT}">`) });
+    mkdirSync(join(impl, "..", "assets"));
+    const picture = readFileSync(join(laneDir, lanePicture!));
+    writeFileSync(join(impl, "..", "assets", "A1.png"), picture);
+    const held = w.dir("check");
+    const h = w.tm(["--check", "--page", impl, "--facts", factsPath, "--out", held]);
+    expect(h.status).toBe(2);
+    expect(h.out).toMatchObject({ status: "stopped", code: "IDENTITY_NOT_PASSED", identity: "HOLD" });
+    expect(json(join(held, "check.json")).identity).toMatchObject({ status: "HOLD", page: { desktop_1440: { status: "PASS_IDENTITY_ONLY" } }, images: [{ path: "assets/A1.png", source: "page_assets", sha256: sha256(picture), identity: { status: "HOLD", pending: expect.arrayContaining(["VISUAL_INSPECTION_REQUIRED"]) } }] });
+    const record = join(w.base, "vf-inspection.json");
+    writeFileSync(record, JSON.stringify({ status: "completed", method: "assistant_visual", inspected_image_sha256: sha256(picture), reviewer_note: "MOCK note", visible_site_identity_labels: ["こむぎ灯"], category_code: "bakery", unreadable_site_identity: false, image_looks_like_unrelated_shop: false }));
+    const passed = w.dir("check");
+    const p = w.tm(["--check", "--page", impl, "--facts", factsPath, "--out", passed, "--visual-inspection", record]);
+    expect(p.status, JSON.stringify(p.out)).toBe(0);
+    expect(json(join(passed, "check.json")).identity).toMatchObject({ status: "PASS_IDENTITY_ONLY", images: [{ source: "page_assets", identity: { status: "PASS_IDENTITY_ONLY" } }] });
   }, 180_000);
 });
 
@@ -204,7 +236,7 @@ describe("LAYOUT_FIRST / DIRECTION_FIRST page: measured request → page image �
     const plain = w.tm(["--check", "--page", page, "--facts", factsPath, "--out", c1]);
     expect(plain.status, JSON.stringify(plain.out)).toBe(0);
     const r1 = json(join(c1, "check.json"));
-    expect(r1).toMatchObject({ schema: "three_method_check_v0", scope: "offline_report_only", assets: [{ path: "assets/A1.png", source: "placeholder" }], horizontal_overflow: { desktop_1440: false, mobile_390: false }, identity: { status: "PASS_IDENTITY_ONLY", image: null }, image: null, structure_observation: { schema: "structure_observation_v0" } });
+    expect(r1).toMatchObject({ schema: "three_method_check_v0", scope: "offline_report_only", assets: [{ path: "assets/A1.png", source: "placeholder" }], horizontal_overflow: { desktop_1440: false, mobile_390: false }, identity: { status: "PASS_IDENTITY_ONLY", images: [] }, image: null, structure_observation: { schema: "structure_observation_v0" } });
     expect(r1.mobile_quality).toMatchObject({ viewport: "mobile_390", advisory: true });
     expect(readdirSync(c1).sort()).toEqual(["check.json", "pc1440.png", "sp390.png"]);
 
@@ -214,7 +246,7 @@ describe("LAYOUT_FIRST / DIRECTION_FIRST page: measured request → page image �
     expect(held.status).toBe(2);
     expect(held.out).toMatchObject({ status: "stopped", code: "IDENTITY_NOT_PASSED", identity: "HOLD" });
     const r2 = json(join(c2, "check.json"));
-    expect(r2.identity.image).toMatchObject({ status: "HOLD", pending: expect.arrayContaining(["VISUAL_INSPECTION_REQUIRED"]) });
+    expect(r2.identity.images).toMatchObject([{ source: "image_step", identity: { status: "HOLD", pending: expect.arrayContaining(["VISUAL_INSPECTION_REQUIRED"]) } }]);
     expect(r2.assets).toEqual([{ path: "assets/A1.png", sha256: sha256(readFileSync(join(imageDir, "image.png"))), source: "image_step" }]);
     expect(existsSync(join(c2, "assets", "A1.png"))).toBe(true);
 
@@ -228,14 +260,22 @@ describe("LAYOUT_FIRST / DIRECTION_FIRST page: measured request → page image �
     const c3 = w.dir("check");
     const passed = w.tm(["--check", "--page", page, "--facts", factsPath, "--out", c3, "--image", imageDir, "--visual-inspection", inspection(png)]);
     expect(passed.status, JSON.stringify(passed.out)).toBe(0);
-    expect(json(join(c3, "check.json")).identity).toMatchObject({ status: "PASS_IDENTITY_ONLY", image: { status: "PASS_IDENTITY_ONLY" } });
+    expect(json(join(c3, "check.json")).identity).toMatchObject({ status: "PASS_IDENTITY_ONLY", images: [{ source: "image_step", identity: { status: "PASS_IDENTITY_ONLY" } }] });
     const wrong = w.tm(["--check", "--page", page, "--facts", factsPath, "--out", w.dir("check"), "--image", imageDir, "--visual-inspection", inspection("0".repeat(64))]);
     expect(wrong.out).toMatchObject({ code: "IDENTITY_NOT_PASSED", identity: "REJECT" });
 
     // a picture made for another page (other bytes) is never placed
     const other = claudePage(join(w.base, "other"), { html: (h) => h.replace("パン</h2>", "パン </h2>") });
     expect(w.tm(["--check", "--page", other, "--facts", factsPath, "--out", w.dir("check"), "--image", imageDir]).out).toMatchObject({ status: "stopped", code: "IMAGE_PAGE_MISMATCH" });
-    expect(w.tm(["--check", "--page", page, "--facts", factsPath, "--out", w.dir("check"), "--visual-inspection", inspection(png)]).out).toMatchObject({ status: "refused", code: "USAGE" });
+    // review M1: the same picture placed in the page's own assets/ (not through --image) is held without an inspection too
+    const own = claudePage(join(w.base, "own"));
+    mkdirSync(join(own, "..", "assets"));
+    writeFileSync(join(own, "..", "assets", "A1.png"), readFileSync(join(imageDir, "image.png")));
+    const ownHeld = w.tm(["--check", "--page", own, "--facts", factsPath, "--out", w.dir("check")]);
+    expect(ownHeld.out).toMatchObject({ status: "stopped", code: "IDENTITY_NOT_PASSED", identity: "HOLD" });
+    const ownOk = w.dir("check");
+    expect(w.tm(["--check", "--page", own, "--facts", factsPath, "--out", ownOk, "--visual-inspection", inspection(png)]).status).toBe(0);
+    expect(json(join(ownOk, "check.json")).identity).toMatchObject({ status: "PASS_IDENTITY_ONLY", images: [{ source: "page_assets", identity: { status: "PASS_IDENTITY_ONLY" } }] });
   }, 180_000);
 
   it("another shop's name on the page is REJECT (stops the method); a horizontal overflow is recorded, never a stop", async () => {

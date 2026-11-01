@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, afterAll } from "vitest";
 import { FactsPack } from "@/lib/design-agent/artifact/schema";
 import { runImageCall, type ImageCallDeps, type ImageCallInput, type ImageTool, type PageDomCheck } from "@/lib/design-agent/phase2f-live/image-call";
 import { openLedger } from "@/lib/design-agent/phase2f-live/ledger";
@@ -10,6 +10,17 @@ import { readStep, sha256 } from "@/lib/design-agent/phase2f-live/steps";
 import { buildPageAssetRequests, type PageAssetRequest, type Placement } from "@/lib/design-agent/three-methods/page-assets";
 import { trackedInRepo } from "../../../../scripts/design-artifact/phase2f-live-cli";
 import { colourPng } from "../phase2f/fixtures";
+
+// review L6: every temporary directory these tests make is removed afterwards
+const temps: string[] = [];
+const tmp = (prefix: string) => {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  temps.push(d);
+  return d;
+};
+afterAll(() => {
+  for (const d of temps) rmSync(d, { recursive: true, force: true });
+});
 
 // DEV-150 (Issue #180): a picture for a page CLAUDE wrote (route claude_page, kind page_image). Fake image tool, fake
 // DOM check and tracked check (both injected, as the image CLI injects the real ones), the ledger in a temp directory.
@@ -26,7 +37,7 @@ const PLACEMENT: Placement = { desktop_1440: at, mobile_390: { ...at } };
 let n = 0;
 
 function world(o: { html?: string } = {}) {
-  const base = mkdtempSync(join(tmpdir(), "dev150-page-image-"));
+  const base = tmp("dev150-page-image-");
   const root = join(base, "pilot");
   mkdirSync(join(root, "layout-first"), { recursive: true });
   writeFileSync(join(root, "layout-first", "index.html"), o.html ?? HTML);
@@ -90,7 +101,7 @@ describe("a page's picture: one approval, bound to the page", () => {
 
   it("2. a page reached through a link is refused", async () => {
     const w = world();
-    const elsewhere = mkdtempSync(join(tmpdir(), "dev150-elsewhere-"));
+    const elsewhere = tmp("dev150-elsewhere-");
     writeFileSync(join(elsewhere, "index.html"), HTML);
     writeFileSync(join(elsewhere, "style.css"), CSS);
     symlinkSync(elsewhere, join(w.root, "linked"));
@@ -121,7 +132,7 @@ describe("the image CLI's route P (offline paths only)", () => {
     writeFileSync(req, JSON.stringify(w.request));
     const page = ["--page-request", req, "--page-root", w.root, "--facts", resolve(REPO, "design-library/research/three-methods/facts-pack.json")];
     const call = ["--out", join(w.base, "out"), "--plan-id", "plan-fictional-tm-lf", "--approval-id", "fictional-tm-lf-cli-1", "--expected-prompt-sha256", w.request.prompt_sha256, "--expected-prompt-chars", String(w.request.prompt_chars), "--expected-commit", COMMIT, "--human-approval-confirmed"];
-    const state = mkdtempSync(join(tmpdir(), "dev150-image-cli-"));
+    const state = tmp("dev150-image-cli-");
     for (const args of [
       ["--route", "P", ...page, "--request", req, ...call],
       ["--route", "P", ...page, "--concept-v4", ...call],
@@ -152,7 +163,7 @@ describe("the image CLI's route P (offline paths only)", () => {
 
   it("trackedInRepo: tracked files in the repository only (the same bounded git as the commit pin)", async () => {
     expect(await trackedInRepo([resolve(REPO, "package.json"), resolve(REPO, "design-library/research/three-methods/brief.json")])).toBe(true);
-    const outside = mkdtempSync(join(tmpdir(), "dev150-tracked-"));
+    const outside = tmp("dev150-tracked-");
     writeFileSync(join(outside, "index.html"), HTML);
     expect(await trackedInRepo([join(outside, "index.html")])).toBe(false);
     expect(await trackedInRepo([resolve(REPO, "package.json"), join(outside, "index.html")])).toBe(false);

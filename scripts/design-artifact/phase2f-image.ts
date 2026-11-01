@@ -22,7 +22,9 @@
  *   directory in the repository) and must be tracked there. Before the approval is used, the page goes through the
  *   existing DOM prototype safety check (Chromium, JavaScript off, network shut) and the request is rebuilt from it.
  *   --print-pin --page-request <json> --page-root <dir> --facts <pack.json> runs the same checks offline and prints
- *   the pin. P cannot be combined with --request or --concept-v4.
+ *   the pin. P cannot be combined with --request or --concept-v4. For P, the processes started before the approval
+ *   is used are only Chromium (the DOM check: JavaScript off, every outside request refused) and one bounded
+ *   `git ls-files` (the tracked check, in phase2f-live-cli.ts); the image tool still runs only in the sandbox.
  *
  * Exit: 0 a picture was saved, 2 refused before anything was used, 1 the call was made and saved no picture.
  */
