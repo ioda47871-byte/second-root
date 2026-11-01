@@ -62,6 +62,8 @@ describe("isolation of the Design Artifact intake", () => {
         "lib/design-agent/phase2f/baseline.ts",
         // DEV-128 (Issue #159, Phase 2e research): the implementation lane runs the intake and copies its hand-off only
         "lib/design-agent/impl-lane/handoff.ts",
+        // DEV-139 (Issue #177 A): the offline comparison parses the lane's artifact record with the schema only (no intake)
+        "lib/design-agent/impl-lane/impl-compare.ts",
         "lib/design-agent/phase2f/compare-sheet.ts",
         "lib/design-agent/phase2f/prompt.ts",
         "lib/design-agent/phase2f/runner.ts",

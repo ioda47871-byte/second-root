@@ -102,7 +102,8 @@ describe("isolation", () => {
     const repo = resolve(__dirname, "../../../..");
     // the whole directory: exactly this one file (L3), with exactly these imports
     // DEV-131 adds compare.ts (pure: the comp similarity primitives and the PNG decoder only)
-    expect(readdirSync(resolve(repo, "lib/design-agent/impl-lane")).sort()).toEqual(["compare.ts", "handoff.ts"]);
+    // DEV-139 adds impl-compare.ts (the offline, report-only comparison with the design originals; pinned below)
+    expect(readdirSync(resolve(repo, "lib/design-agent/impl-lane")).sort()).toEqual(["compare.ts", "handoff.ts", "impl-compare.ts"]);
     const cmp = readFileSync(resolve(repo, "lib/design-agent/impl-lane/compare.ts"), "utf8");
     expect([...cmp.matchAll(/from\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]).sort()).toEqual(["../comp-impl/similarity", "../worker/png-paint"]);
     expect(cmp.match(/\bimport\b/g)).toHaveLength(2);
@@ -114,7 +115,30 @@ describe("isolation", () => {
     expect(src.match(/\bimport\b/g)).toHaveLength(5);
     expect(src).not.toMatch(/\brequire\b|\bimport\s*\(/);
     expect(src).not.toMatch(/child_process|\bfetch\(|codex|anthropic|openai|quarantine\/["']\s*\+/);
-    const g = spawnSync("git", ["grep", "--untracked", "-lE", "impl-lane/(handoff|compare)|from [\"'`]\\./handoff[\"'`]", "--", "lib", "app", "components", "scripts", "proxy.ts", "supabase", ":!lib/design-agent/impl-lane/**"], { cwd: repo, encoding: "utf8" });
-    expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
+    // DEV-139: the one exception is the offline comparison CLI (exact path; its imports are pinned in the next test)
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "impl-lane/(handoff|compare|impl-compare)|from [\"'`]\\./(handoff|impl-compare)[\"'`]", "--", "lib", "app", "components", "scripts", "proxy.ts", "supabase", ":!lib/design-agent/impl-lane/**"], { cwd: repo, encoding: "utf8" });
+    expect([g.status, g.stdout.trim()]).toEqual([0, "scripts/design-artifact/impl-compare.ts"]);
+  });
+
+  it("DEV-139: the comparison reads files, draws with Chromium and decides nothing; its CLI writes one new report", () => {
+    const repo = resolve(__dirname, "../../../..");
+    const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const specs = (s: string) => [...s.matchAll(/from\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]).sort();
+    const lib = strip(readFileSync(resolve(repo, "lib/design-agent/impl-lane/impl-compare.ts"), "utf8"));
+    expect(specs(lib)).toEqual(["../artifact/schema", "./compare", "node:crypto", "node:fs", "node:fs/promises", "node:path", "playwright"]);
+    expect(lib.match(/\bimport\b/g)).toHaveLength(7);
+    // from the artifact module: the record's schema only (never the intake)
+    expect(lib).toMatch(/import \{ DesignArtifact \} from "\.\.\/artifact\/schema";/);
+    expect(lib).not.toMatch(/\brequire\b|\bimport\s*\(|child_process|\bfetch\(|node:https?|codex|anthropic|openai|phase2f|\/loop\//i);
+    // it only reads: no write, rename or delete of any file
+    expect(lib).not.toMatch(/\b(writeFile|appendFile|mkdir|rm|rmdir|unlink|rename|copyFile|truncate)\(/);
+    expect(lib).toMatch(/passing: false/);
+    const cli = strip(readFileSync(resolve(repo, "scripts/design-artifact/impl-compare.ts"), "utf8"));
+    expect(specs(cli)).toEqual(["../../lib/design-agent/impl-lane/impl-compare", "node:fs/promises", "node:path", "playwright"]);
+    expect(cli.match(/\bimport\b/g)).toHaveLength(4);
+    expect(cli).not.toMatch(/\brequire\b|\bimport\s*\(|child_process|\bfetch\(|node:https?|codex|anthropic|openai|phase2f|handoff/i);
+    const writes = cli.split("\n").filter((l) => /\b(writeFile|appendFile|mkdir|rm|rmdir|unlink|rename|copyFile|truncate)\(/.test(l));
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatch(/flag: "wx"/);
   });
 });

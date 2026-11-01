@@ -95,7 +95,8 @@ function changedCells(a: { rgb: Float64Array }, b: { rgb: Float64Array }): numbe
   return n ? changed / n : 0;
 }
 
-function compareViewport(viewport: Viewport, design: RenderSide, impl: RenderSide): ViewportCompare {
+/** Compares one viewport (DEV-139: exported so a viewport whose design original is missing is simply not compared). */
+export function compareViewport(viewport: Viewport, design: RenderSide, impl: RenderSide): ViewportCompare {
   let d: Pixels;
   let i: Pixels;
   try {
@@ -135,30 +136,29 @@ function compareViewport(viewport: Viewport, design: RenderSide, impl: RenderSid
   return { viewport, page, sections, order_changed: designOrder.join("\n") !== implOrder.join("\n"), code: null };
 }
 
+/** The cause codes of one viewport's comparison, in the fixed order (DEV-139: exported for a single viewport). */
+export function viewportDifferences(vc: ViewportCompare): string[] {
+  const differences: string[] = [];
+  const p = PREFIX[vc.viewport];
+  if (vc.code) return [`${p}_${vc.code}`];
+  const part = codeParts(vc.sections.map((s) => s.id));
+  // what is missing or not visible, the order, the page as a whole, then each section's place, colour, density and size
+  for (const s of vc.sections) if (s.code) differences.push(`${p}_${s.code}_${part.get(s.id)}`);
+  if (vc.order_changed) differences.push(`${p}_SECTION_ORDER`);
+  if (vc.page && Math.abs(vc.page.height_ratio - 1) > THRESHOLDS.pageHeightRatio) differences.push(`${p}_PAGE_HEIGHT`);
+  if (vc.page && vc.page.ssim < THRESHOLDS.pageSsim) differences.push(`${p}_PAGE_LAYOUT`);
+  for (const s of vc.sections) {
+    if (s.code || s.mean_delta_e === null) continue;
+    if (!vc.order_changed && Math.abs(s.top_share_delta ?? 0) > THRESHOLDS.sectionTopShare) differences.push(`${p}_SECTION_POSITION_${part.get(s.id)}`);
+    if ((s.changed_cells ?? 0) > THRESHOLDS.sectionChangedCells || (s.mean_delta_e ?? 0) > THRESHOLDS.sectionMeanDeltaE || (s.dominant_delta_e ?? 0) > THRESHOLDS.sectionDominantDeltaE) differences.push(`${p}_SECTION_COLOUR_${part.get(s.id)}`);
+    if (Math.abs(s.edges_delta ?? 0) > THRESHOLDS.sectionEdgesDelta) differences.push(`${p}_SECTION_DENSITY_${part.get(s.id)}`);
+    if (Math.abs(s.height_share_delta ?? 0) > THRESHOLDS.sectionHeightShare) differences.push(`${p}_SECTION_SIZE_${part.get(s.id)}`);
+  }
+  return [...new Set(differences)];
+}
+
 /** Compares the implementation with the design at both widths; `differences` feeds the repair loop. */
 export function compareRenders(pair: Record<Viewport, { design: RenderSide; impl: RenderSide }>): RenderComparison {
   const viewports = (["desktop_1440", "mobile_390"] as const).map((v) => compareViewport(v, pair[v].design, pair[v].impl));
-  const differences: string[] = [];
-  for (const vc of viewports) {
-    const p = PREFIX[vc.viewport];
-    if (vc.code) {
-      differences.push(`${p}_${vc.code}`);
-      continue;
-    }
-    const part = codeParts(vc.sections.map((s) => s.id));
-    // what is missing or not visible, the order, the page as a whole, then each section's place, colour, density and size
-    for (const s of vc.sections) if (s.code) differences.push(`${p}_${s.code}_${part.get(s.id)}`);
-    if (vc.order_changed) differences.push(`${p}_SECTION_ORDER`);
-    if (vc.page && Math.abs(vc.page.height_ratio - 1) > THRESHOLDS.pageHeightRatio) differences.push(`${p}_PAGE_HEIGHT`);
-    if (vc.page && vc.page.ssim < THRESHOLDS.pageSsim) differences.push(`${p}_PAGE_LAYOUT`);
-    for (const s of vc.sections) {
-      if (s.code || s.mean_delta_e === null) continue;
-      if (!vc.order_changed && Math.abs(s.top_share_delta ?? 0) > THRESHOLDS.sectionTopShare) differences.push(`${p}_SECTION_POSITION_${part.get(s.id)}`);
-      if ((s.changed_cells ?? 0) > THRESHOLDS.sectionChangedCells || (s.mean_delta_e ?? 0) > THRESHOLDS.sectionMeanDeltaE || (s.dominant_delta_e ?? 0) > THRESHOLDS.sectionDominantDeltaE) differences.push(`${p}_SECTION_COLOUR_${part.get(s.id)}`);
-      if (Math.abs(s.edges_delta ?? 0) > THRESHOLDS.sectionEdgesDelta) differences.push(`${p}_SECTION_DENSITY_${part.get(s.id)}`);
-      if (Math.abs(s.height_share_delta ?? 0) > THRESHOLDS.sectionHeightShare) differences.push(`${p}_SECTION_SIZE_${part.get(s.id)}`);
-    }
-  }
-  return { viewports, differences: [...new Set(differences)], passing: false };
+  return { viewports, differences: [...new Set(viewports.flatMap(viewportDifferences))], passing: false };
 }
-
