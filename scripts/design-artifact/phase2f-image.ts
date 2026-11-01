@@ -22,7 +22,9 @@
  *   directory in the repository) and must be tracked there. Before the approval is used, the page goes through the
  *   existing DOM prototype safety check (Chromium, JavaScript off, network shut) and the request is rebuilt from it.
  *   --print-pin --page-request <json> --page-root <dir> --facts <pack.json> runs the same checks offline and prints
- *   the pin. P cannot be combined with --request or --concept-v4. For P, the processes started before the approval
+ *   the pin. P cannot be combined with --request or --concept-v4. P requires --expect-cli-version <v>
+ *   [--previous-steps <dir>,<dir>] (DEV-150, owner approval A′); C and A take them optionally (the three-method pilot's
+ *   C1-c procedure gives them), and are unchanged without them. For P, the processes started before the approval
  *   is used are only Chromium (the DOM check: JavaScript off, every outside request refused) and one bounded
  *   `git ls-files` (the tracked check, in phase2f-live-cli.ts); the image tool still runs only in the sandbox.
  *
@@ -39,14 +41,14 @@ import { checkPageImageRequest, runImageCall, type ImageCallInput, type ImageReq
 import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
 import { sha256 } from "../../lib/design-agent/phase2f-live/steps";
 import { FactsPack } from "../../lib/design-agent/three-methods/brief";
-import { liveContext, parseArgs, REPO, runMain, say, stopSignals, trackedInRepo } from "./phase2f-live-cli";
+import { generationPinOf, liveContext, modelWarning, parseArgs, REPO, runMain, say, stopSignals, trackedInRepo } from "./phase2f-live-cli";
 
 process.umask(0o077);
 // first, so a signal that arrives during the checks is never lost
 const { controller, stop } = stopSignals({ cleanup: cleanupActiveImageCalls });
 
 const FLAGS = new Set(["--human-approval-confirmed", "--print-pin", "--concept-v4"]);
-const VALUES = new Set(["--route", "--request", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of", "--page-request", "--page-root", "--facts"]);
+const VALUES = new Set(["--route", "--request", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of", "--page-request", "--page-root", "--facts", "--expect-cli-version", "--previous-steps"]);
 const PAGE_FLAGS = ["--page-request", "--page-root", "--facts"] as const;
 
 /** DEV-150: the existing DOM prototype safety check on Claude's page, in a Chromium started only for route P. */
@@ -102,7 +104,9 @@ async function main(): Promise<number> {
     (route === "A" && requestPath === undefined && args.has("--concept-v4") && !page) ||
     // DEV-150: a page's picture takes its own three flags, never --request or --concept-v4
     (route === "P" && requestPath === undefined && !args.has("--concept-v4") && PAGE_FLAGS.every((f) => args.has(f)));
-  if (!routeOk || !out || !Number.isInteger(chars)) return (say({ status: "refused", code: "USAGE" }), 2);
+  // DEV-150 (owner approval A′): the generation pin is required for route P, optional (unchanged without it) for C and A
+  const pin = generationPinOf(args, route === "P");
+  if (!routeOk || !out || !Number.isInteger(chars) || pin === "USAGE") return (say({ status: "refused", code: "USAGE" }), 2);
   let request: ImageRequest | null = null;
   if (route === "C") {
     request = await readFile(resolve(requestPath!), "utf8").then((t) => JSON.parse(t) as ImageRequest, () => null);
@@ -110,7 +114,7 @@ async function main(): Promise<number> {
   }
   const pageIn = route === "P" ? await pageInput(args) : null;
   if (route === "P" && !pageIn) return (say({ status: "refused", code: "IMAGE_REQUEST_INVALID" }), 2);
-  const ctx = await liveContext(out, stop);
+  const ctx = await liveContext(out, stop, pin);
   if ("code" in ctx) return (say({ status: "refused", code: ctx.code }), 2);
   const common = {
     humanApprovalConfirmed: args.has("--human-approval-confirmed"),
@@ -135,7 +139,7 @@ async function main(): Promise<number> {
     },
   });
   if (result.status === "succeeded") {
-    say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, width: result.width, height: result.height, warnings: result.warnings });
+    say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, width: result.width, height: result.height, warnings: [...result.warnings, ...modelWarning(ctx.previousModel(), result.generation.model_reported)] });
     return 0;
   }
   say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call", ...(result.outcome ? { image_outcome: result.outcome } : {}) });

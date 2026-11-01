@@ -63,6 +63,8 @@ const ALLOWED: Record<string, string[]> = {
     `${L}/phase2f-live/steps`,
     `${L}/structure/observe`,
     `${L}/structure/references`,
+    // owner approval A′: the pilot picture's own check (pure), instead of the Lock's full-design image audit
+    `${L}/three-methods/asset-image-audit`,
     `${L}/three-methods/brief`,
     `${L}/three-methods/direction`,
     `${L}/three-methods/page-assets`,

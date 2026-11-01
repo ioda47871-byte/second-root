@@ -29,6 +29,8 @@ const ALLOWED: Record<string, string[]> = {
   [`${LIB}/ledger-proposal.ts`]: ["zod", "./brief"],
   [`${LIB}/page-assets.ts`]: ["./brief"],
   [`${LIB}/pins.ts`]: ["./brief", "./direction", "./page-assets", "./visual-first"],
+  // owner approval A′ (DEV-150): the pilot picture's check; from the Identity Lock only its exported cleanName (pure)
+  [`${LIB}/asset-image-audit.ts`]: ["zod", "../identity/identity-lock", "./brief"],
   [CLI]: ["node:fs/promises", "node:path", "../../lib/design-agent/three-methods/brief", "../../lib/design-agent/three-methods/pins"],
 };
 const L = "lib/design-agent";
@@ -41,7 +43,7 @@ const WIRED: Record<string, string[]> = {
   "scripts/design-artifact/phase2f-direction.ts": ["../../lib/design-agent/three-methods/brief", "../../lib/design-agent/three-methods/direction"],
   // the facts pack schema the lane re-exports (to rebuild a page's picture request); nothing else of the lane
   "scripts/design-artifact/phase2f-image.ts": ["../../lib/design-agent/three-methods/brief"],
-  "scripts/design-artifact/three-methods-steps.ts": ["../../lib/design-agent/three-methods/brief", "../../lib/design-agent/three-methods/direction", "../../lib/design-agent/three-methods/page-assets"],
+  "scripts/design-artifact/three-methods-steps.ts": ["../../lib/design-agent/three-methods/asset-image-audit", "../../lib/design-agent/three-methods/brief", "../../lib/design-agent/three-methods/direction", "../../lib/design-agent/three-methods/page-assets"],
 };
 
 /** Module paths and calls that would reach Codex, a process, the network, a browser, a model, the image tool, the sandbox, the ledger or a live entry. */

@@ -21,7 +21,10 @@
  *   DEV-150 (Issue #180): --prompt-version tm0 --tm-brief <three-method brief.json> (no --brief) builds the
  *   three-method study's VISUAL_FIRST prompt (the three-method lane's own builder, imported by prompt.ts).
  *   The brief must be the facts pack's shop and name only its facts. --print-pin also prints the brief's SHA-256.
- *   A real tm0 run goes through exactly the same checks as any other (approval, pins, commit, sandbox).
+ *   A real tm0 run goes through exactly the same checks as any other (approval, pins, commit, sandbox), and it also
+ *   requires --expect-cli-version <v> [--previous-steps <dir>,<dir>] (DEV-150, owner approval A′; optional for the
+ *   other versions, unchanged without them): the Codex CLI version and the earlier calls are checked before the
+ *   approval is used (phase2f-live-cli.ts).
  *
  *   DEV-124: --prompt-version v2 --direction <direction.json> --references <manifest.json> (no --brief) builds the
  *   open-direction prompt. A real v2 run also takes --reference-dir <dir> holding the registered WebP files the
@@ -43,7 +46,7 @@ import { buildDesignPrompt, codexDesignJsonSchema, DesignBrief, promptVariantOf,
 import { referenceSheet, ReferenceStop } from "../../lib/design-agent/phase2f/reference-sheet";
 import { runDesignCall } from "../../lib/design-agent/phase2f-live/design-call";
 import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
-import { liveContext, parseArgs, runMain, say, stopSignals } from "./phase2f-live-cli";
+import { generationPinOf, liveContext, modelWarning, parseArgs, runMain, say, stopSignals } from "./phase2f-live-cli";
 
 process.umask(0o077);
 // first, so a signal that arrives during the checks is never lost
@@ -53,7 +56,7 @@ const { controller, stop } = stopSignals();
 const MAX_ASSETS = 1;
 
 const FLAGS = new Set(["--human-approval-confirmed", "--print-pin"]);
-const VALUES = new Set(["--route", "--facts", "--brief", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of", "--prompt-version", "--research", "--direction", "--references", "--reference-dir", "--tm-brief"]);
+const VALUES = new Set(["--route", "--facts", "--brief", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of", "--prompt-version", "--research", "--direction", "--references", "--reference-dir", "--tm-brief", "--expect-cli-version", "--previous-steps"]);
 
 const routeOf = (r: string | undefined): "B_html_prototype" | "C_hybrid" | null => (r === "B" ? "B_html_prototype" : r === "C" ? "C_hybrid" : null);
 
@@ -154,13 +157,15 @@ async function main(): Promise<number> {
   if (research && research.owner_text_approval.status !== "approved") return (say({ status: "refused", code: "RESEARCH_TEXT_NOT_APPROVED" }), 2);
   const out = args.get("--out");
   const chars = Number(args.get("--expected-prompt-chars"));
-  if (!out || !Number.isInteger(chars)) return (say({ status: "refused", code: "USAGE" }), 2);
+  // DEV-150 (owner approval A′): the generation pin is required for the three-method prompt (tm0), optional otherwise
+  const pin = generationPinOf(args, p.variant.version === "tm0");
+  if (!out || !Number.isInteger(chars) || pin === "USAGE") return (say({ status: "refused", code: "USAGE" }), 2);
   // the reference images are checked (and their sheets made) first: a wrong file never reaches the approval
   const refs = await referenceImages(p.variant, args.get("--reference-dir"));
   if ("code" in refs) return (say({ status: "refused", code: refs.code }), 2);
   // the sheets are copies Codex was given; they are not kept (their SHA-256 is printed with the result)
   const cleanup = () => (refs.tmp ? rm(refs.tmp, { recursive: true, force: true }) : Promise.resolve());
-  const ctx = await liveContext(out, stop);
+  const ctx = await liveContext(out, stop, pin);
   if ("code" in ctx) return (await cleanup(), say({ status: "refused", code: ctx.code }), 2);
   const result = await runDesignCall(
     {
@@ -188,7 +193,7 @@ async function main(): Promise<number> {
     },
   ).finally(cleanup);
   if (result.status === "succeeded") {
-    say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, warnings: result.warnings, references: refs.record });
+    say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, warnings: [...result.warnings, ...modelWarning(ctx.previousModel(), result.generation.model_reported)], references: refs.record });
     return 0;
   }
   say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call", ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}), references: refs.record });

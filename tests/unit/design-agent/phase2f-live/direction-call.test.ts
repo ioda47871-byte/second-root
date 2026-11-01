@@ -175,12 +175,12 @@ describe("the direction CLI (offline paths only)", () => {
     for (const args of [[], ["--print-pin"], ["--print-pin", ...inputs, "--out", "x"], [...inputs, "--codex"], ["--print-pin", "--facts", resolve(REPO, DIR, "facts-pack.json")]]) expect(cli(args).status, args.join(" ")).toBe(2);
     const state = tmp("dev150-cli-");
     const out = join(tmp("dev150-out-"), "run");
-    const r = cli([...inputs, "--out", out, "--plan-id", "plan-fictional-tm-df", "--approval-id", "fictional-tm-df-cli", "--expected-prompt-sha256", "0".repeat(64), "--expected-prompt-chars", "10", "--expected-commit", "a".repeat(40)], { SR_PHASE2F_STATE: state });
+    const r = cli([...inputs, "--out", out, "--plan-id", "plan-fictional-tm-df", "--approval-id", "fictional-tm-df-cli", "--expected-prompt-sha256", "0".repeat(64), "--expected-prompt-chars", "10", "--expected-commit", "a".repeat(40), "--expect-cli-version", "0.200.0"], { SR_PHASE2F_STATE: state });
     expect(r.status).toBe(2);
     expect(JSON.parse(r.stdout)).toMatchObject({ status: "stopped", code: "HUMAN_APPROVAL_REQUIRED", approval_used: false });
     expect(readdirSync(state)).toEqual([]);
     // the output and ledger place rules of the design step hold here too
-    const inRepo = cli([...inputs, "--out", join(REPO, "tmp-dev150-run"), "--plan-id", "plan-fictional-tm-df", "--approval-id", "fictional-tm-df-cli2", "--expected-prompt-sha256", built.sha256, "--expected-prompt-chars", String(built.chars), "--expected-commit", "a".repeat(40), "--human-approval-confirmed"], { SR_PHASE2F_STATE: state });
+    const inRepo = cli([...inputs, "--out", join(REPO, "tmp-dev150-run"), "--plan-id", "plan-fictional-tm-df", "--approval-id", "fictional-tm-df-cli2", "--expected-prompt-sha256", built.sha256, "--expected-prompt-chars", String(built.chars), "--expected-commit", "a".repeat(40), "--human-approval-confirmed", "--expect-cli-version", "0.200.0"], { SR_PHASE2F_STATE: state });
     expect(JSON.parse(inRepo.stdout)).toMatchObject({ code: "OUT_DIR_INSIDE_REPO" });
     expect(readdirSync(state)).toEqual([]);
   }, 60_000);

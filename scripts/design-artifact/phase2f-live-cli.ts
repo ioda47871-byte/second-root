@@ -7,14 +7,20 @@
  *   the sandbox needs) and the ledger (outside the repository);
  * - the commit pin (git), and the preflight before an approval is used: the .env rule and the sandbox set-up
  *   (no Codex, no bubblewrap started; bubblewrap's own probe runs right before the call, as for every Codex call).
+ * - DEV-150 (owner approval A′): the generation pin, only when asked for (--expect-cli-version, --previous-steps;
+ *   required by the three-method entries): the Codex CLI version, read with one sandboxed `codex --version` (the same
+ *   probe every real call already makes; no model is called), must be the approved one, and the earlier calls named
+ *   must all have succeeded with that version and one and the same model. Checked in the preflight, so a mismatch
+ *   refuses the call before its approval is used. The model itself cannot be known before a call (the CLI picks it;
+ *   it is read from the session log afterwards): a changed model is caught at the next call, by --previous-steps.
  */
-import { realpath } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { killAllBoundedChildren, runBounded } from "../../lib/design-agent/bounded-process";
-import { codexDotenvPresent } from "../../lib/design-agent/codex";
-import { defaultLedgerDir, WATCHDOG_MS } from "../../lib/design-agent/phase2f-live/ledger";
-import type { CommitState } from "../../lib/design-agent/phase2f-live/steps";
+import { codexDotenvPresent, parseCliVersion } from "../../lib/design-agent/codex";
+import { defaultLedgerDir, openLedger, WATCHDOG_MS, type CallKind, type Ledger, type Route } from "../../lib/design-agent/phase2f-live/ledger";
+import { readStep, StepStop, type CommitState } from "../../lib/design-agent/phase2f-live/steps";
 import { workerProtectedPaths } from "../../lib/design-agent/protected-paths";
 import { prepareCodexSandbox, SandboxError, type CodexSandbox } from "../../lib/design-agent/sandbox";
 import { childEnvironment } from "../../lib/design-agent/worker/env";
@@ -88,6 +94,66 @@ export function stopSignals(o: { cleanup?: () => Promise<void> } = {}): { contro
   return { controller, stop };
 }
 
+/** DEV-150: what the owner approved about the Codex CLI and the earlier calls of the same pilot (see the header). */
+export type GenerationPin = { expectCliVersion: string; previousSteps: string[] };
+const CLI_VERSION = /^[0-9A-Za-z.+-]{1,40}$/;
+
+/**
+ * The generation pin from the flags: null when neither flag is given and it is not required; "USAGE" when required and
+ * missing, or malformed (--previous-steps without --expect-cli-version is malformed too).
+ */
+export function generationPinOf(args: Map<string, string>, required: boolean): GenerationPin | null | "USAGE" {
+  const version = args.get("--expect-cli-version");
+  const previous = args.get("--previous-steps");
+  if (version === undefined) return required || previous !== undefined ? "USAGE" : null;
+  if (!CLI_VERSION.test(version) || !/\d/.test(version)) return "USAGE";
+  const previousSteps = (previous ?? "").split(",").filter(Boolean);
+  if (previous !== undefined && previousSteps.length === 0) return "USAGE";
+  return { expectCliVersion: version, previousSteps };
+}
+
+/**
+ * DEV-150: the generation pin's check (a stop code, or null and the earlier calls' model). Each earlier step is read
+ * through readStep and must have succeeded with a known version and model; `probe` reads the CLI version now.
+ */
+export async function checkGeneration(o: { pin: GenerationPin; ledger: Ledger; probe: () => Promise<string | null> }): Promise<{ code: string } | { code: null; model: string | null }> {
+  const models = new Set<string>();
+  for (const d of o.pin.previousSteps) {
+    const dir = resolve(d);
+    const call = await readFile(join(dir, "call.json"), "utf8").then((t) => JSON.parse(t) as { receipt?: { kind?: CallKind; route?: Route } }, () => null);
+    if (!call?.receipt?.kind || !call.receipt.route) return { code: "PREVIOUS_STEP_INVALID" };
+    let step;
+    try {
+      step = await readStep(dir, o.ledger, { kind: call.receipt.kind, route: call.receipt.route });
+    } catch (error) {
+      return { code: error instanceof StepStop ? error.code : "PREVIOUS_STEP_INVALID" };
+    }
+    if (step.call.status !== "succeeded" || !step.generation) return { code: "PREVIOUS_STEP_NOT_SUCCEEDED" };
+    if (step.generation.tool_version === null || step.generation.model_reported === null) return { code: "PREVIOUS_GENERATION_UNKNOWN" };
+    if (step.generation.tool_version !== o.pin.expectCliVersion) return { code: "CODEX_CLI_VERSION_CHANGED" };
+    models.add(step.generation.model_reported);
+  }
+  if (models.size > 1) return { code: "CODEX_MODEL_CHANGED" };
+  const now = await o.probe().catch(() => null);
+  if (now === null) return { code: "CODEX_CLI_VERSION_UNKNOWN" };
+  if (now !== o.pin.expectCliVersion) return { code: "CODEX_CLI_VERSION_MISMATCH" };
+  return { code: null, model: [...models][0] ?? null };
+}
+
+/** DEV-150: one sandboxed `codex --version` (no model call), in a private temporary work dir removed afterwards. */
+export async function probeCliVersion(sandbox: CodexSandbox): Promise<string | null> {
+  const workDir = await mkdtemp(join(tmpdir(), "sr-design-codex-version-"));
+  try {
+    const r = await sandbox.run(["--version"], { workDir, timeoutMs: 30_000 }).catch(() => null);
+    return r && r.code === 0 && !r.timedOut ? parseCliVersion(r.stdout) : null;
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+
+/** DEV-150: the warning a CLI prints when a call's model differs from the earlier calls' (the next call is refused by --previous-steps). */
+export const modelWarning = (before: string | null, now: string | null) => (before !== null && now !== before ? ["generation_model_changed: stop before the next call (owner decision 5)"] : []);
+
 export type LiveContext = {
   outDir: string;
   ledgerDir: string;
@@ -96,10 +162,12 @@ export type LiveContext = {
   preflight: () => Promise<string | null>;
   /** The sandbox the preflight prepared (null before it ran or when it refused). */
   sandbox: () => CodexSandbox | null;
+  /** DEV-150: the earlier calls' model when a generation pin was checked (null otherwise). */
+  previousModel: () => string | null;
 };
 
 /** Checks the places and builds what a real call needs; a stop code when a place is refused (nothing used). */
-export async function liveContext(out: string, stop: () => void): Promise<LiveContext | { code: string }> {
+export async function liveContext(out: string, stop: () => void, pin: GenerationPin | null = null): Promise<LiveContext | { code: string }> {
   if (!isAbsolute(out)) return { code: "USAGE" };
   if (await insideRepo(out)) return { code: "OUT_DIR_INSIDE_REPO" };
   const parentProblem = await outParentProblem(out);
@@ -118,6 +186,7 @@ export async function liveContext(out: string, stop: () => void): Promise<LiveCo
   const protectedPaths = [...new Set([...workerProtectedPaths({ ...workerPaths, env: process.env }), ledgerDir, dirname(outDir)])];
   const codexHome = process.env.CODEX_HOME ? expand(process.env.CODEX_HOME) : join(homedir(), ".codex");
   let sandbox: CodexSandbox | null = null;
+  let previousModel: string | null = null;
   return {
     outDir,
     ledgerDir,
@@ -131,12 +200,22 @@ export async function liveContext(out: string, stop: () => void): Promise<LiveCo
       if (await codexDotenvPresent(codexHome)) return "CODEX_DOTENV_PRESENT";
       try {
         sandbox = await prepareCodexSandbox({ env, protectedPaths });
-        return null;
       } catch (error) {
         return error instanceof SandboxError ? error.code : "CODEX_SANDBOX_UNAVAILABLE";
       }
+      if (pin === null) return null;
+      // DEV-150: the generation pin, before the approval is used
+      const prepared = sandbox;
+      const g = await checkGeneration({ pin, ledger: openLedger(ledgerDir), probe: () => probeCliVersion(prepared) });
+      if (g.code !== null) {
+        sandbox = null;
+        return g.code;
+      }
+      previousModel = g.model;
+      return null;
     },
     sandbox: () => sandbox,
+    previousModel: () => previousModel,
   };
 }
 

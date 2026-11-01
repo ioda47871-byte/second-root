@@ -23,14 +23,17 @@
  *       relative to --page-root (the image CLI's --page-root). A page with no picture writes no-image.json instead,
  *       with the reason it needs none (--no-image-reason, required then) and the budget note (owner decision 3).
  *
- *   --check --page <dir/index.html> --facts <pack.json> --out <new dir> [--image <page image call dir>] [--visual-inspection <json>]
+ *   --check --page <dir/index.html> --facts <pack.json> --out <new dir> [--image <page image call dir>] [--asset-origin <dirs>] [--visual-inspection <json>]
  *       Claude's implementation (any method), REPORT-ONLY: PC 1440 / SP 390 PNGs, scrollWidth and the horizontal
  *       overflow (the study's only repair trigger), measureMobileQuality, auditPageText of the study's Identity Lock
  *       on each width's visible text, observeStructure. With --image, the picture of a page_image call (readStep; bound
  *       to this very page's SHA-256) is placed. EVERY real picture on the page (the image step's, or one in the page's
- *       own assets/, e.g. VISUAL_FIRST's generated picture from the lane) gets an image identity from auditIdentity
+ *       own assets/, e.g. VISUAL_FIRST's generated picture from the lane) gets its own picture check (asset-image-audit, below)
  *       against a recorded visual inspection of exactly that picture (--visual-inspection naming its SHA-256; absent
- *       = HOLD), and the check's status includes it. Only a neutral placeholder (used only where nothing exists at
+ *       = HOLD), and the check's status includes it. Owner approval A′: a picture is checked with the three-method
+ *       asset-image-audit (not the Lock's full-design image audit): its origin must be an approved image call, given
+ *       by --image or --asset-origin <step dir>[,<step dir>] (readStep), and the inspection record is
+ *       three_method_asset_inspection_v0 (PASS_ASSET_ONLY at best, never a site identity). Only a neutral placeholder (used only where nothing exists at
  *       assets/<name>) has none; a link, a non-regular or oversized file, or an assets/ that is a link stops the check
  *       (ASSET_FILE_INVALID). An inspection record on a page with no real picture is refused (INSPECTION_UNUSED). Nothing is ever proven from
  *       the picture automatically (owner decision 4, all three methods). Pictures the page names come from its own assets/ (VISUAL_FIRST:
@@ -48,7 +51,7 @@ import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
-import { auditIdentity, auditPageText, type IdentityResult } from "../../lib/design-agent/identity/identity-lock";
+import { auditPageText, type IdentityResult } from "../../lib/design-agent/identity/identity-lock";
 import { LaneStop, prepareImplementationLane } from "../../lib/design-agent/impl-lane/handoff";
 import { checkPrototype, PrototypeUnsafe } from "../../lib/design-agent/phase2f/prototype-safety";
 import { RenderError, renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
@@ -57,6 +60,7 @@ import { defaultLedgerDir, openLedger, type CallKind, type Ledger, type Route } 
 import { readStep, StepStop } from "../../lib/design-agent/phase2f-live/steps";
 import { failedObservation, observeStructure } from "../../lib/design-agent/structure/observe";
 import { ReferenceDescriptors } from "../../lib/design-agent/structure/references";
+import { auditAssetImage, type AssetImageResult } from "../../lib/design-agent/three-methods/asset-image-audit";
 import { FactsPack } from "../../lib/design-agent/three-methods/brief";
 import { checkDirection } from "../../lib/design-agent/three-methods/direction";
 import { buildPageAssetRequests, extractAssetMarkers, runnableAssetRequests, type PageMethod, type Placement } from "../../lib/design-agent/three-methods/page-assets";
@@ -66,7 +70,7 @@ const REPO = resolve(__dirname, "../..");
 const LOCK = "design-library/research/three-methods/identity-lock.json";
 const REFERENCES = "design-library/intelligence/v02/structure-descriptors-v0.json";
 const MODES = ["--lane", "--direction", "--page-request", "--check", "--versions"] as const;
-const VALUES = new Set(["--package", "--facts", "--out", "--step", "--method", "--page", "--page-root", "--hero", "--no-image-reason", "--image", "--visual-inspection", "--steps"]);
+const VALUES = new Set(["--package", "--facts", "--out", "--step", "--method", "--page", "--page-root", "--hero", "--no-image-reason", "--image", "--visual-inspection", "--asset-origin", "--steps"]);
 const MAX_BYTES = { html: 384 * 1024, css: 256 * 1024, asset: 16 * 1024 * 1024 } as const;
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
@@ -282,10 +286,11 @@ async function pageRequest(args: Map<string, string>): Promise<number> {
 
 // ---- --check --------------------------------------------------------------------------------------
 
-const worst = (a: IdentityResult["status"][]) => (a.includes("REJECT") ? "REJECT" : a.includes("HOLD") ? "HOLD" : "PASS_IDENTITY_ONLY");
+/** Whether the method goes on: the worst of the page text's identity and each picture's own check. "PASS" names no identity. */
+const worst = (a: (IdentityResult["status"] | AssetImageResult["status"])[]) => (a.includes("REJECT") ? "REJECT" : a.includes("HOLD") ? "HOLD" : "PASS");
 
 async function check(args: Map<string, string>, ledger: Ledger): Promise<number> {
-  if (!only(args, ["--page", "--facts", "--out"], ["--image", "--visual-inspection"])) return refuse("USAGE");
+  if (!only(args, ["--page", "--facts", "--out"], ["--image", "--visual-inspection", "--asset-origin"])) return refuse("USAGE");
   const facts = await readFacts(args.get("--facts")!);
   if (!facts) return refuse("FACTS_INVALID");
   const htmlPath = resolve(args.get("--page")!);
@@ -299,6 +304,10 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
   const assets = new Map<string, Buffer>();
   const sources: { path: string; sha256: string; source: "page_assets" | "image_step" | "placeholder" }[] = [];
   let image: { asset_id: string; png_sha256: string; approval_id: string; run_id: string } | null = null;
+  // owner approval A′: where each real picture came from. A picture is tied to an approved image call only through a
+  // recorded step (readStep: output folder and ledger agree, succeeded, its PNG's SHA-256): the --image step, and each
+  // --asset-origin step (VISUAL_FIRST: the C1-c image step, image × C_hybrid; a page's: page_image × claude_page)
+  const origins = new Map<string, { approval_id: string; kind: string; dir: string }>();
   const inspection = args.has("--visual-inspection") ? await readFile(resolve(args.get("--visual-inspection")!), "utf8").then((t) => JSON.parse(t) as unknown, () => null) : undefined;
   if (inspection === null) return refuse("VISUAL_INSPECTION_UNREADABLE");
   if (args.has("--image")) {
@@ -310,7 +319,21 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     const png = await readRegular(join(step.dir, "image.png"), MAX_BYTES.asset);
     if (!png || sha256(png) !== step.call.png_sha256) return stopped("RECORD_MISMATCH");
     image = { asset_id: link.asset_id, png_sha256: sha256(png), approval_id: step.receipt.approval_id, run_id: step.receipt.run_id };
+    origins.set(sha256(png), { approval_id: step.receipt.approval_id, kind: step.receipt.kind, dir: step.dir });
     assets.set(`assets/${link.asset_id}.png`, png);
+  }
+  for (const d of (args.get("--asset-origin") ?? "").split(",").filter(Boolean)) {
+    const dir = resolve(d);
+    const call = await readFile(join(dir, "call.json"), "utf8").then((t) => JSON.parse(t) as { receipt?: { kind?: CallKind; route?: Route } }, () => null);
+    const need = call?.receipt?.kind === "image" ? ({ kind: "image", route: "C_hybrid" } as const) : call?.receipt?.kind === "page_image" ? ({ kind: "page_image", route: "claude_page" } as const) : null;
+    if (!need) return stopped("ASSET_ORIGIN_INVALID", { origin: dir });
+    const step = await readStep(dir, ledger, need);
+    if (step.call.status !== "succeeded" || !step.generation) return stopped("ASSET_ORIGIN_INVALID", { origin: dir });
+    // a page's picture belongs to this very page
+    if (need.kind === "page_image" && (step.call.request as { page_sha256?: string } | undefined)?.page_sha256 !== sha256(page.html)) return stopped("IMAGE_PAGE_MISMATCH", { origin: dir });
+    const png = await readRegular(join(step.dir, "image.png"), MAX_BYTES.asset);
+    if (!png || sha256(png) !== step.call.png_sha256) return stopped("RECORD_MISMATCH", { origin: dir });
+    origins.set(sha256(png), { approval_id: step.receipt.approval_id, kind: step.receipt.kind, dir: step.dir });
   }
   // a placeholder only where NOTHING exists (review round 2 M2): a link, a non-regular or oversized file, or an
   // assets/ that is a link or not a directory stops the check, so no real picture can slip past its identity audit
@@ -368,10 +391,12 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
   const named = (inspection as { inspected_image_sha256?: unknown } | undefined)?.inspected_image_sha256;
   const real = sources.filter((x) => x.source !== "placeholder");
   const matched = real.some((x) => x.sha256 === named);
-  const images: { path: string; sha256: string; source: string; identity: IdentityResult }[] = real.map((x) => ({
-    ...x,
-    identity: auditIdentity({ ...lock, output: { image_sha256: x.sha256 }, ...(inspection !== undefined && (!matched || x.sha256 === named) ? { visual_inspection: inspection } : {}) }),
-  }));
+  // owner approval A′: the picture's own check (asset-image-audit), never the Lock's full-design image audit
+  const images: { path: string; sha256: string; source: string; origin: { approval_id: string; kind: string } | null; identity: AssetImageResult }[] = real.map((x) => {
+    const origin = origins.get(x.sha256);
+    const o = origin ? { approval_id: origin.approval_id, kind: origin.kind } : null;
+    return { ...x, origin: o, identity: auditAssetImage({ lock, facts, image: { sha256: x.sha256, origin: o }, inspection: inspection !== undefined && (!matched || x.sha256 === named) ? inspection : undefined }) };
+  });
   const out = resolve(args.get("--out")!);
   await mkdir(out, { recursive: false, mode: 0o700 });
   await writeNew(join(out, "pc1440.png"), rendered.desktop_1440.png);
@@ -392,6 +417,8 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     horizontal_overflow: { desktop_1440: rendered.desktop_1440.scrollWidth > 1440, mobile_390: rendered.mobile_390.scrollWidth > 390 },
     blocked_requests: rendered.desktop_1440.blocked + rendered.mobile_390.blocked,
     mobile_quality: rendered.mobile_390.mobileQuality ?? null,
+    // status: whether the method goes on (REJECT / HOLD stop it). The site's identity is page only (auditPageText);
+    // a picture's check (PASS_ASSET_ONLY at best) is never a site identity
     identity: { status, page: identity, images },
     image: image ? { asset_id: image.asset_id, png_sha256: image.png_sha256, approval_id: image.approval_id, run_id: image.run_id } : null,
     structure_observation: structure,
@@ -399,11 +426,11 @@ async function check(args: Map<string, string>, ledger: Ledger): Promise<number>
     notes: [
       "Report only: nothing here is a quality score, a threshold or an approval.",
       "PASS_IDENTITY_ONLY means only 'the right shop'. A REJECT or HOLD stops this method for the owner (study §4); it is never repaired here.",
-      "A generated picture's identity rests on a recorded visual inspection of exactly that picture; it is never proven from the picture automatically.",
+      "A generated picture is checked on its own (asset-image-audit: its origin and a recorded visual inspection of exactly that picture); PASS_ASSET_ONLY is never a site identity, and nothing is proven from the picture automatically.",
     ],
   };
   await writeNew(join(out, "check.json"), json(record));
-  if (status !== "PASS_IDENTITY_ONLY") return stopped("IDENTITY_NOT_PASSED", { identity: status, out: join(out, "check.json") });
+  if (status !== "PASS") return stopped("IDENTITY_NOT_PASSED", { identity: status, out: join(out, "check.json") });
   say({ status: "recorded", out: join(out, "check.json"), identity: status, horizontal_overflow: record.horizontal_overflow });
   return 0;
 }

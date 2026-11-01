@@ -8,7 +8,8 @@
  *
  *   --facts <pack.json> --tm-brief <brief.json> --out <dir> --plan-id <id> --approval-id <id>
  *   --expected-prompt-sha256 <sha> --expected-prompt-chars <n> --expected-commit <sha> --human-approval-confirmed
- *   [--retry-of <approval id>]
+ *   --expect-cli-version <v> [--previous-steps <dir>,<dir>] [--retry-of <approval id>]
+ *       (the generation pin is required: owner approval A′, phase2f-live-cli.ts)
  *       One real Codex call under one owner approval (lib/design-agent/phase2f-live/direction-call.ts), with exactly the
  *       design step's guards: the prompt and the commit must be the approved ones, the approval is used once (the same
  *       ledger, outside the repository), at most 15 minutes, the plan's limits are kept, Codex runs only inside the
@@ -26,14 +27,14 @@ import { checkBrief, sha256 } from "../../lib/design-agent/three-methods/brief";
 import { buildDirectionPrompt, directionJsonSchema } from "../../lib/design-agent/three-methods/direction";
 import { runDirectionCall } from "../../lib/design-agent/phase2f-live/direction-call";
 import { openLedger } from "../../lib/design-agent/phase2f-live/ledger";
-import { liveContext, parseArgs, runMain, say, stopSignals } from "./phase2f-live-cli";
+import { generationPinOf, liveContext, modelWarning, parseArgs, runMain, say, stopSignals } from "./phase2f-live-cli";
 
 process.umask(0o077);
 // first, so a signal that arrives during the checks is never lost
 const { controller, stop } = stopSignals();
 
 const FLAGS = new Set(["--human-approval-confirmed", "--print-pin"]);
-const VALUES = new Set(["--facts", "--tm-brief", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of"]);
+const VALUES = new Set(["--facts", "--tm-brief", "--out", "--plan-id", "--approval-id", "--expected-prompt-sha256", "--expected-prompt-chars", "--expected-commit", "--retry-of", "--expect-cli-version", "--previous-steps"]);
 
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2), FLAGS, VALUES);
@@ -60,8 +61,10 @@ async function main(): Promise<number> {
   }
   const out = args.get("--out");
   const chars = Number(args.get("--expected-prompt-chars"));
-  if (!out || !Number.isInteger(chars)) return (say({ status: "refused", code: "USAGE" }), 2);
-  const ctx = await liveContext(out, stop);
+  // DEV-150 (owner approval A′): the generation pin is required here
+  const pin = generationPinOf(args, true);
+  if (!out || !Number.isInteger(chars) || pin === "USAGE") return (say({ status: "refused", code: "USAGE" }), 2);
+  const ctx = await liveContext(out, stop, pin);
   if ("code" in ctx) return (say({ status: "refused", code: ctx.code }), 2);
   const result = await runDirectionCall(
     {
@@ -88,7 +91,7 @@ async function main(): Promise<number> {
     },
   );
   if (result.status === "succeeded") {
-    say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, warnings: result.warnings });
+    say({ status: "succeeded", out: result.outDir, approval_id: result.receipt.approval_id, run_id: result.generation.run_id, slot: result.receipt.slot, warnings: [...result.warnings, ...modelWarning(ctx.previousModel(), result.generation.model_reported)] });
     return 0;
   }
   say({ status: "stopped", code: result.code, stage: result.stage, approval_used: result.stage === "call", ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}) });

@@ -183,14 +183,20 @@ describe("isolation", () => {
       // tests. It records the result; the one stop is the study's existing rule (REJECT / HOLD stops the method)
       ":!scripts/design-artifact/three-methods-steps.ts",
       // DEV-150: the real-call steps' isolation test pins that CLI's exact imports (a test, never lib)
-      ":!tests/unit/design-agent/phase2f-live/isolation.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/phase2f-live/isolation.test.ts",
+      // DEV-150 (owner approval A′): the pilot picture's own check reuses only the exported cleanName (pinned below)
+      ":!lib/design-agent/three-methods/asset-image-audit.ts",
+      // DEV-150 (owner approval A′): its test compares its lock checks with the Lock's own (a test, never lib)
+      ":!tests/unit/design-agent/three-methods/asset-image-audit.test.ts",
+      // DEV-150: the lane's isolation test pins that file's exact imports (a test, never lib)
+      ":!tests/unit/design-agent/three-methods/isolation.test.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
   });
 
-  it("DEV-150: the three-method steps CLI takes only the page-text audit and the recorded-inspection image audit", () => {
-    const src = readFileSync(resolve(__dirname, "../../../..", "scripts/design-artifact/three-methods-steps.ts"), "utf8");
-    const names = [...src.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']*identity-lock)["']/g)].map((m) => [m[2], m[1]!.split(",").map((s) => s.trim()).filter(Boolean).sort()]);
-    // auditIdentity only with a recorded visual inspection of exactly the generated picture (owner decision 4); never automatic
-    expect(names).toEqual([["../../lib/design-agent/identity/identity-lock", ["auditIdentity", "auditPageText", "type IdentityResult"]]]);
+  it("DEV-150: the three-method steps CLI takes only the page-text audit; the pilot picture's check takes only cleanName", () => {
+    const names = (file: string) => [...readFileSync(resolve(__dirname, "../../../..", file), "utf8").matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']*identity-lock)["']/g)].map((m) => [m[2], m[1]!.split(",").map((s) => s.trim()).filter(Boolean).sort()]);
+    // owner approval A′: a picture is checked by the three-method asset-image-audit, never by the Lock's full-design image audit
+    expect(names("scripts/design-artifact/three-methods-steps.ts")).toEqual([["../../lib/design-agent/identity/identity-lock", ["auditPageText", "type IdentityResult"]]]);
+    expect(names("lib/design-agent/three-methods/asset-image-audit.ts")).toEqual([["../identity/identity-lock", ["cleanName"]]]);
   });
 });
