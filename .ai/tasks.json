@@ -6768,6 +6768,57 @@
         "実ランタイムへの接続"
       ],
       "note": "文書・記録の形・テストだけ。DEV-143 (#184) と DEV-147 (#187) をマージ済みとして done にした。"
+    },
+    {
+      "id": "DEV-149",
+      "title": "3方式の最初のパイロットの実行計画 (最小の配線、Issue #180)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-141",
+        "DEV-142",
+        "DEV-143",
+        "DEV-145",
+        "DEV-147"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-149-pilot-wiring-plan",
+      "purpose": "オーナーの優先 (3方式の実画面を早く比べられる状態にする) に沿い、実験レーン (lib/design-agent/three-methods/) を既存のランタイムにつなぐ最小の差分と、最初のパイロット (研究 §10 の暫定方針) の実行手順・回数・pin・承認・成果物・失敗時の扱いを、承認できる形の計画にまとめる。文書だけ。",
+      "acceptance_criteria": [
+        "docs/design/three-methods-pilot-plan.md に、オーナーの7項目 (変えるファイルと影響、承認ゲート・Identity Lock・隔離、3方式の手順、回数と利用枠、呼び出しごとの pin・承認 ID・環境、PC1440/SP390 の成果物と比べ方、停止と復旧) と、最小の配線 PR の範囲・オフラインの検証準備・承認の単位を書く",
+        "pin は今の CLI (three-methods-pins.ts --print-pin) の値と一致し、事実はリポジトリの文書とコードから取る。記録の無いことは無いと書く",
+        "lib・scripts のランタイムのコードを変えない。実 Codex・画像生成・ネットワーク・有料 API を使わない"
+      ],
+      "required_tests": [
+        "tests/unit/ai-tasks.test.ts",
+        "git diff --check",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "docs/design/three-methods-pilot-plan.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-149.md"
+      ],
+      "forbidden_scope": [
+        "既存のランタイムの変更 (lib/・scripts/・app/・components/)",
+        "lib/design-agent/three-methods/ の既存のランタイムへの接続",
+        "実 Codex・画像生成・有料 API・ネットワークを使う実行",
+        "WSL・jail・worker・bridge・timer・Production/Staging の変更",
+        "LIVE_LIMITS・prompt・承認の流れ・台帳の変更"
+      ],
+      "human_approval_triggers": [
+        "最小の配線 PR の作成とマージ (計画の §10 A)",
+        "実行の環境と手順 (計画の §10 B)",
+        "VISUAL_FIRST のデザインの1回 (C1-a)",
+        "DIRECTION_FIRST の方向の1回 (C1-b)",
+        "VISUAL_FIRST の画像の1回 (C1-c)",
+        "LAYOUT_FIRST / DIRECTION_FIRST のページを研究のディレクトリに入れる PR のマージ (D)",
+        "LAYOUT_FIRST / DIRECTION_FIRST のページの画像の1回ずつ (C2-a / C2-b)",
+        "各やり直し (方式ごとに1回まで、新しい承認)"
+      ],
+      "note": "計画の文書だけ。配線・実行は、どれもまだ行っていない。"
     }
   ]
 }
