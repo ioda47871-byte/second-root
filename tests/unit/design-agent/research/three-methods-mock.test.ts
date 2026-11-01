@@ -323,6 +323,9 @@ describe("MOCK end-to-end run of the three methods (pipeline verification only, 
       };
       // the template's shape, every call MOCK and unapproved, and nothing claims a live run
       for (const k of templateKeys(template)) expect(record, `${m}: ${k}`).toHaveProperty(k);
+      // the condition is one the template allows for this method
+      const allowed = Object.fromEntries((template.condition as string).split(";").map((part) => part.split(":").map((x) => x.trim())).map(([k, v]) => [k, v!.split("|").map((x) => x.trim())]));
+      expect(allowed[m], m).toContain(record.condition);
       expect(record.run_kind).toBe("mock");
       for (const call of record.codex_calls as { outcome: string; approval_id: unknown }[]) expect(call).toMatchObject({ outcome: "mock", approval_id: null });
       expect(record.notes).toContain("MOCK");

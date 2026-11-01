@@ -137,7 +137,7 @@ DEV-141。Issue #180 (オーナー事前承認、2026-11-01) により、Issue #
 `design-library/research/three-methods/run-record-template.json` の形 (`three_method_run_v0`) で残す。
 
 - 方式、条件 (`condition`)、店、実行の種類 (`mock` か `live`。§8)、入力のハッシュ (事実パック・Identity Lock・ブリーフ)
-  - `condition` は、同じ方式の中の別の条件を分ける (§13)。VISUAL_FIRST は `route_b_prototype` (V-B、Route B の HTML 試作)・`route_c_prototype` (Route C の HTML 試作 + 画像)・`image_tool_design` (画像ツールの完成デザイン、§13)。LAYOUT_FIRST は `claude_layout`。DIRECTION_FIRST は `direction_text`・`direction_image` (§13)。**条件が違う記録は、混ぜて比べない。**
+  - `condition` は、同じ方式の中の別の条件を分ける (§13)。VISUAL_FIRST は `route_b_prototype` (V-B の Route B、HTML 試作)・`route_c_prototype` (V-B の Route C、HTML 試作 + 画像)・`image_tool_design` (画像ツールの完成デザイン、§13)。LAYOUT_FIRST は `claude_layout`。DIRECTION_FIRST は `direction_text`・`direction_image` (§13)。**条件が違う記録は、混ぜて比べない。**
 - Codex の呼び出しごとに、用途 (design・direction・asset)、approval_id、plan_id、prompt の SHA-256 と文字数、commit・Codex CLI の版・報告されたモデル (`generation.json` から写す)、開始・終了の時刻、結果、やり直しかどうか
 - 生成した画像の枚数と、使った枚数
 - Claude の作業時間 (開始と終了の時刻)
