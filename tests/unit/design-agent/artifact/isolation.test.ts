@@ -64,6 +64,9 @@ describe("isolation of the Design Artifact intake", () => {
         "lib/design-agent/impl-lane/handoff.ts",
         // DEV-139 (Issue #177 A): the offline comparison parses the lane's artifact record with the schema only (no intake)
         "lib/design-agent/impl-lane/impl-compare.ts",
+        // DEV-143 (Issue #180, experimental opt-in lane, owner-approved offline): the three-method brief takes the facts
+        // pack schema, the DNA part names and the safe text rule only (pure; no intake, no file access)
+        "lib/design-agent/three-methods/brief.ts",
         "lib/design-agent/phase2f/compare-sheet.ts",
         "lib/design-agent/phase2f/prompt.ts",
         "lib/design-agent/phase2f/runner.ts",

@@ -6438,7 +6438,7 @@
     {
       "id": "DEV-141",
       "title": "3制作方式の比較研究の設計 (VISUAL_FIRST / LAYOUT_FIRST / DIRECTION_FIRST、Issue #180、#177 Phase E への追加)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-139",
@@ -6481,7 +6481,8 @@
         "VISUAL_FIRST のデザインの形 (V-B/V-A)・DIRECTION_FIRST の方向の形・回数の決定",
         "標準方式の採用"
       ],
-      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。Review: round 1 FAIL (H1・M1〜M4)、round 2 FAIL (M1: SP の所見をきっかけにしていた)、round 3 FAIL (M1: Identity を修正、M2: 事実に無い文を門と書いた)、round 4 FAIL (M1: はみ出しの修正の対象が曖昧) → それぞれ修正。 round 5 PASS (C0/H0/M0/L2、対応済み)。"
+      "note": "Issue #180 の範囲。Phase E に追加する研究で、#177 の C〜E と並行して進める。Review: round 1 FAIL (H1・M1〜M4)、round 2 FAIL (M1: SP の所見をきっかけにしていた)、round 3 FAIL (M1: Identity を修正、M2: 事実に無い文を門と書いた)、round 4 FAIL (M1: はみ出しの修正の対象が曖昧) → それぞれ修正。 round 5 PASS (C0/H0/M0/L2、対応済み)。",
+      "merged": "#181 → bc7adc6 (squash, 2026-11-01, Issue #180)"
     },
     {
       "id": "DEV-142",
@@ -6523,7 +6524,7 @@
     {
       "id": "DEV-143",
       "title": "3方式の実行の入口 (DNA の無いブリーフの prompt・方向の呼び出し・Claude が書いた素材の要求の画像の入口) と pin — Issue #180",
-      "status": "blocked",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-141"
@@ -6531,24 +6532,49 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-143-three-methods-entries",
-      "purpose": "パイロットの実行に要る入口を作り、pin を出す。prompt・承認の流れ・ledger の種類を変えるので、Issue #177 の条件付きマージの対象外。オーナーの個別承認を受けてから始める。",
+      "purpose": "Issue #180 のオーナーの最新のコメント (設計・オフラインの実装・模擬のテスト・独立レビュー・PR 作成を承認)。パイロットの実行に要る入口の準備を、既存の実行経路から切り離した opt-in の実験レーン (lib/design-agent/three-methods/) に作り、pin を出す。既存の prompt・ledger・画像の入口・worker・実の port は変えず、将来つなぐときの差分を文書にする。実 Codex・画像生成は呼ばない。",
       "acceptance_criteria": [
-        "オーナーの個別承認を受けてから始める"
+        "DNA の無い共通ブリーフ three_method_brief_v0 (DNA を書く場所が無く、見た目の方向の語を断る) と、それを使う VISUAL_FIRST (V-B、Route B/C) のデザインの prompt。既存の v1 の prompt と、ブリーフの区画以外の行が一致することをテストで固定",
+        "DIRECTION_FIRST の方向の prompt と、strict な答えの schema three_method_direction_v0 (DNA の8観点・fact_refs)。偽の port で、pin を先に検めてから1回だけ呼ぶ順序をテスト",
+        "Claude が書いたページの <img alt> / data-asset の印から AssetRequest の形の要求を作る。画像の prompt は既存の Route C の素材の prompt とバイト単位で同じ。はっきりしない印は断る。ImageRequest (design の欄が要る) との違いを文書に書く",
+        "ledger の kind direction / page_image と route direction_text / claude_page の提案の型。ledger.ts は変えず、今の receipt が提案の receipt として正しいことをテストで確かめ、要る差分を文書に書く",
+        "オフラインの pin の CLI (scripts/research/three-methods-pins.ts、--print-pin だけ)。呼び出し・書き込み・ネットワーク・child_process・Codex を持たない",
+        "レーンを取り込むのは CLI だけ (正確なパス) で、実の port・Codex・child_process・ネットワークを import しないことを隔離のテストで固定。既存の隔離のテストは緑のまま (例外は artifact の取り込み元に brief.ts を正確なパスで1つ)",
+        "docs/design/three-methods-entries.md に、作ったもの・opt-in で未接続であること・prompt.ts / ledger.ts / image-call.ts / phase2f-design.ts / phase2f-image.ts に要る差分・pin・残る承認・V-B と画像ツールの完成デザインが別の条件であることを書く",
+        "生成や見た目の質を、実行していないのに示されたものとして書かない"
       ],
       "required_tests": [
+        "tests/unit/design-agent/three-methods/lane.test.ts",
+        "tests/unit/design-agent/three-methods/isolation.test.ts",
+        "tests/unit/design-agent/artifact/isolation.test.ts",
+        "tests/unit/design-agent/research/three-methods.test.ts",
+        "latest-head required CI",
         "independent Fresh Review"
       ],
-      "allowed_scope": [],
+      "allowed_scope": [
+        "lib/design-agent/three-methods/**",
+        "scripts/research/three-methods-pins.ts",
+        "design-library/research/three-methods/brief.json",
+        "tests/unit/design-agent/three-methods/**",
+        "tests/unit/design-agent/artifact/isolation.test.ts (取り込み元に lib/design-agent/three-methods/brief.ts を正確なパスで1つ足すだけ)",
+        "docs/design/three-methods-entries.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-143.md"
+      ],
       "forbidden_scope": [
-        "実 Codex・画像生成の実行"
+        "実 Codex・画像生成・有料 API の実行",
+        "既存の prompt.ts・ledger.ts・image-call.ts・design-call.ts・runner・CLI (phase2f-design / phase2f-image / phase2f-steps)・worker・bridge・timer・WSL jail の変更",
+        "実の port・実行の入口へのレーンの接続",
+        "prompt の pin・SHA・approval ID・回数と時間の上限・環境の検査を外す・弱めること",
+        "Production / Staging"
       ],
       "human_approval_triggers": [
-        "作業の開始",
-        "develop へのマージ",
+        "develop へのマージ (別のオーナーの承認が要る)",
+        "既存の入口へつなぐこと (prompt.ts・ledger.ts・image-call.ts・phase2f-design.ts・phase2f-image.ts の変更)",
+        "ブリーフの文・成功例の要約を入れるか・VISUAL_FIRST の Route (B/C) の決定",
         "実行 (呼び出しごと)"
       ],
-      "note": "DEV-141 の review round 1 (H1) で、今の入口では3方式を呼べないと分かった。",
-      "blocked_reason": "オーナーの個別承認待ち: prompt・承認の流れ・ledger の種類・画像の入口を変える作業で、Issue #177 の条件付きマージの対象外 (Issue #180 も実行の権限を足していない)"
+      "note": "merge needs separate owner approval (マージには別のオーナーの承認が要る)。DEV-141 の review round 1 (H1) で、今の入口では3方式を呼べないと分かった。Issue #180 の最新のオーナーのコメントで、opt-in の実験レーンとしての設計・オフラインの実装・模擬のテスト・レビュー・PR 作成を承認。つなぐこと・実行は、まだ承認されていない。"
     }
   ]
 }
