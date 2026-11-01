@@ -385,7 +385,7 @@ Claude が下の型を埋めて出し、オーナーが承認する。オーナ�
 | previous steps | その plan で成功した呼び出しの出力のフォルダーすべて (無ければ「無し」) |
 | C1-c だけ | 要求のファイル (`prerender/image-request-A1.json`) のパス、名指すデザインの実行の approval_id と run_id、主役かどうか (essential)。どれも `prerender.md` にある |
 | C2-a / C2-b だけ | ページのパス (`--page-root` からの位置)、ページの html の SHA-256、`--hero` の値 |
-| plan の残り | その plan の使った枠 (最初・やり直し) と使った時間。C1-c は `prerender.md` (計画 §5)。C2-a/C2-b の `--page-request` の `prerender.md` には書かれない (その手順は台帳を読まない) ので、オーナーが名前だけを並べて示す (`ls <state>/phase2f-live/plans/<plan_id>/slots`)。時間は記録が無ければ「無し」と書く |
+| plan の残り | その plan の使った枠 (最初・やり直し) と使った時間。C1-c は `prerender.md` (計画 §5)。C2-a/C2-b の `--page-request` の `prerender.md` には書かれない (その手順は台帳を読まない) ので、オーナーが名前だけを並べて示す (`ls ~/.local/state/sr-design-worker/phase2f-live/plans/<plan_id>/slots`。P-9 と同じ台帳の場所)。時間は記録が無ければ「無し」と書く |
 | `--versions` に渡すもの | パイロットで成功した呼び出しのすべて (方式をまたぐ) |
 | retry-of | R のときだけ、元の approval_id |
 | 出力のフォルダー | §3 の表の名前 (新しいもの) |
