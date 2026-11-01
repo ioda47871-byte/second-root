@@ -6557,7 +6557,7 @@
     {
       "id": "DEV-145",
       "title": "3方式の最初のパイロットの暫定方針と、画像を使う別条件の計画を記録 (Issue #180)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-141",
@@ -6593,12 +6593,13 @@
         "パイロットの実行",
         "別条件の入口の作成・実行"
       ],
-      "note": "文書だけ。共通ブリーフと runnableAssetRequests は PR #184 (DEV-143、未マージ・マージは別承認) にあり、パイロットで使うには #184 のマージ承認が先に要る (DEV-143 は blocked のため depends_on には入れず、ここに記す)。"
+      "note": "文書だけ。共通ブリーフと runnableAssetRequests は PR #184 (DEV-143、未マージ・マージは別承認) にあり、パイロットで使うには #184 のマージ承認が先に要る (DEV-143 は blocked のため depends_on には入れず、ここに記す)。",
+      "merged": "#185 → 522b11a (squash, 2026-11-01)"
     },
     {
       "id": "DEV-146",
       "title": "限定的自動修正の設計とオフライン試作 (MOCK、Issue #177 D)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-140"
@@ -6638,7 +6639,8 @@
         "限定的自動修正を実運用で使うこと (信頼性の証拠とオーナーの別の承認が要る)",
         "Issue #177 の条件を満たさない場合の develop へのマージ"
       ],
-      "note": "MOCK のみ。lib の既存ファイルと隔離テストの除外は変えていない (LIMITS は loop の隔離のため写し、テストで一致を固定)。架空ページ13件 (Chromium) と偽の port 21件: 押す所2件・切れた文字・はみ出しは v1 で直り owner_review、!important の押す所は NOT_RESOLVED×2、高さを外すと重なるページは NEW_FINDING×2 で SAME_CAUSE_FIX_LIMIT、意図した作り6件 (DEV-140 の誤検知2件を含む) は no_change、Identity REJECT は描画の前に停止。Review 待ち。"
+      "note": "MOCK のみ。lib の既存ファイルと隔離テストの除外は変えていない (LIMITS は loop の隔離のため写し、テストで一致を固定)。架空ページ13件 (Chromium) と偽の port 21件: 押す所2件・切れた文字・はみ出しは v1 で直り owner_review、!important の押す所は NOT_RESOLVED×2、高さを外すと重なるページは NEW_FINDING×2 で SAME_CAUSE_FIX_LIMIT、意図した作り6件 (DEV-140 の誤検知2件を含む) は no_change、Identity REJECT は描画の前に停止。Review 待ち。",
+      "merged": "#186 → e0f519c (squash, 2026-11-01)"
     },
     {
       "id": "DEV-147",
@@ -6649,7 +6651,8 @@
         "DEV-139",
         "DEV-140",
         "DEV-142",
-        "DEV-144"
+        "DEV-144",
+        "DEV-146"
       ],
       "attempts": 0,
       "last_failure": null,
@@ -6692,7 +6695,7 @@
         "3方式の研究の報告への接続 (method・condition を足すこと)",
         "Issue #177 の条件を満たさない場合の develop へのマージ"
       ],
-      "note": "MOCK のみ。lib は変えていない。架空店舗 (こむぎ灯) の6場面: (a) no_change、(b) 押す所 → TAP_TARGET v1 で owner_review、再確認で B の所見が消え A の SP_PAGE_LAYOUT も消える、(c) IDENTITY_REJECT でどの段も走らない、(d) HORIZONTAL_OVERFLOW v1 は営業時間・所在地・アクセスを切るので NEW_FINDING で戻し v2 を提案、(e) !important の押す所は NOT_RESOLVED×2 で SAME_CAUSE_FIX_LIMIT、(f) DEV-140 の誤検知 (印の無い飾りの文字) は not_located で no_change。DEV-146 も統合しているが tasks.json では review のため depends_on に入れていない。Review 待ち。"
+      "note": "MOCK のみ。lib は変えていない。架空店舗 (こむぎ灯) の6場面: (a) no_change、(b) 押す所 → TAP_TARGET v1 で owner_review、再確認で B の所見が消え A の SP_PAGE_LAYOUT も消える、(c) IDENTITY_REJECT でどの段も走らない、(d) HORIZONTAL_OVERFLOW v1 は営業時間・所在地・アクセスを切るので NEW_FINDING で戻し v2 を提案、(e) !important の押す所は NOT_RESOLVED×2 で SAME_CAUSE_FIX_LIMIT、(f) DEV-140 の誤検知 (印の無い飾りの文字) は not_located で no_change。DEV-145・DEV-146 はマージ済みなので done にし、DEV-146 を depends_on に入れた。Review 待ち。"
     }
   ]
 }
