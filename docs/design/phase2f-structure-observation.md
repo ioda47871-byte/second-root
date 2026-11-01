@@ -35,6 +35,7 @@ npx tsx scripts/design-artifact/phase2f-structure-observe.ts --package <artifact
 | ・`too_close_to_success` | 成功例の骨格と 0.75 以上 (写し) |
 | ・`close_to_rejected` | 不採用の版の骨格と 0.6 以上 |
 | ・`undecided` | 両方に分かる観点が少なく、比べられない参照。**「近くない」とは数えない** |
+| ・`undecided_too_thin` | `undecided` のうち、参照の記録が薄く、どの候補とも決められないもの (DEV-144。`docs/design/reference-structure-descriptors.md`) |
 | ・`blocked_requests` | ページが外へ出ようとした回数 (拒否して数える) |
 | `package` | artifact_id・route・prototype の HTML/CSS の SHA-256 |
 | `reference_set` | 参照データのパス・SHA-256・status |
