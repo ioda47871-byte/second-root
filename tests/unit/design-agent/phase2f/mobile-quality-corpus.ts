@@ -112,6 +112,13 @@ export const CORPUS: CorpusCase[] = [
     expected: ["SP_TEXT_CLIPPED", "SP_TEXT_OVERLAP"],
   },
   {
+    id: "clip_x_only_overprint",
+    intent: "copy spilling below a box that clips sideways only (overflow-x: clip), and the hours printed over the spilled, painted part",
+    body: `<section>${name}<div class="card"><p class="copy">朝の一杯を、灯のそばで</p></div><p class="hours">8:00〜19:00</p><p>架空市本町3-4</p></section>`,
+    css: `${BASE} .card{height:24px;overflow-x:clip} .copy{margin:0;font-size:24px;line-height:56px} .hours{position:relative;margin:-10px 0 0 30px;font-size:20px}`,
+    expected: ["SP_TEXT_CLIPPED", "SP_TEXT_OVERLAP"],
+  },
+  {
     id: "covered_by_shape",
     intent: "a decorative block painted over the hours",
     body: `<section style="position:relative">${name}${facts}<div class="blob"></div></section>`,
