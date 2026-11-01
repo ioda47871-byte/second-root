@@ -243,14 +243,31 @@ describe("isolation (provisional vocabulary: never used by a generator without a
     const { resolve } = await import("node:path");
     const repo = resolve(__dirname, "../../../..");
     // any importer, absolute or relative (M2); git grep exits 1 when nothing matches (an error is 128, never a pass)
-    const g = spawnSync("git", ["grep", "--untracked", "-lE", "structure/(descriptor|measure|references)|from [\"'`]\\./(descriptor|measure|references)[\"'`]|structure-descriptors-v0", "--", ".", ":!lib/design-agent/structure/**", ":!tests/unit/design-agent/structure/**", ":!.ai/**", ":!docs/**",
+    const g = spawnSync("git", ["grep", "--untracked", "-lE", "structure/(descriptor|measure|references|observe)|from [\"'`]\\./(descriptor|measure|references|observe)[\"'`]|structure-descriptors-v0", "--", ".", ":!lib/design-agent/structure/**", ":!tests/unit/design-agent/structure/**", ":!.ai/**", ":!docs/**",
       // DEV-131: the one offline experiment test that wires the real modules together (a test, never lib)
-      ":!tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+      // DEV-138 (Issue #175, owner-approved): the one offline, report-only observation CLI, run on a finished package
+      ":!scripts/design-artifact/phase2f-structure-observe.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
     // DEV-136: the reference set and its comparison are covered too (review M1): nothing outside may import or read them
-    for (const f of ["lib/design-agent/structure/descriptor.ts", "lib/design-agent/structure/measure.ts", "lib/design-agent/structure/references.ts"]) {
+    for (const f of ["lib/design-agent/structure/descriptor.ts", "lib/design-agent/structure/measure.ts", "lib/design-agent/structure/references.ts", "lib/design-agent/structure/observe.ts"]) {
       const src = readFileSync(resolve(repo, f), "utf8");
       expect(src, f).not.toMatch(/\bfetch\(|node:https?|child_process|codex|anthropic|openai|writeFile/);
     }
+  });
+
+  it("DEV-138: the observation CLI imports only the observation and the reference schema, and writes only its own new report", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "../../../..", "scripts/design-artifact/phase2f-structure-observe.ts"), "utf8");
+    const specifiers = [...src.matchAll(/\bfrom\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]).sort();
+    expect(specifiers).toEqual(["../../lib/design-agent/structure/observe", "../../lib/design-agent/structure/references", "node:crypto", "node:fs/promises", "node:path", "playwright"]);
+    // no phase2f, prompt, runner, artifact intake, Codex or network: it reads a finished package and writes one report
+    expect(src).not.toMatch(/phase2f\/|codex|anthropic|openai|\bfetch\(|node:https?|child_process|import\s*\(|require\s*\(/);
+    // no bare side-effect import either (review L4)
+    expect(src).not.toMatch(/^\s*import\s*["'`]/m);
+    const writes = src.split("\n").filter((l) => /\b(writeFile|appendFile|mkdir|rm|rmdir|unlink|rename|copyFile)\(/.test(l));
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatch(/flag: "wx"/);
   });
 });

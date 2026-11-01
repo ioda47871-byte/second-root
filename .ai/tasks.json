@@ -6153,7 +6153,7 @@
     {
       "id": "DEV-136",
       "title": "成功例と不採用例の構造記述子 (宣言・仮) と、オフラインの比較",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -6190,12 +6190,13 @@
         "宣言の内容の確認",
         "runner への組み込み"
       ],
-      "note": "参照の多くは Hero と流れだけで、試作12枚では判定できる組が少ない (宣言を足しても 12/38)。"
+      "note": "参照の多くは Hero と流れだけで、試作12枚では判定できる組が少ない (宣言を足しても 12/38)。",
+      "merged": "#173 → 5722a9d (squash, 2026-10-31)"
     },
     {
       "id": "DEV-137",
       "title": "Phase 2f の描画失敗 (RENDER_FAILED) にブラウザの理由を残す — CI で断続的に落ちる原因を特定するため",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -6231,7 +6232,55 @@
       "human_approval_triggers": [
         "develop へのマージ"
       ],
-      "note": "原因が分かったら、別のタスクで直す (推測では直さない)。"
+      "note": "原因が分かったら、別のタスクで直す (推測では直さない)。",
+      "merged": "#174 → ff4a289 (squash, 2026-10-31)"
+    },
+    {
+      "id": "DEV-138",
+      "title": "Phase 2f の構造の観察 — 成功例・不採用例との構造比較を report-only・offline で接続 (Issue #175)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-136"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-138-structure-observation",
+      "purpose": "Issue #175 (オーナー承認、マージは別承認)。描画済みの Phase 2f の試作を、作り終えたあとの別の段で観察し、構造の仮の比較を助言として報告する。prompt・設計の入力・承認・停止・artifact の画像とハッシュ・予算は変えない。",
+      "acceptance_criteria": [
+        "参照を prompt と設計の port から離し、描画のあとの別の段でだけ比べる",
+        "候補は測ったものだけ。Hero と流れを推測しない。比べられない参照は undecided",
+        "check_failed を明示し、例外を合格にしない。gate・retry・新しい閾値なし",
+        "package のファイルとハッシュを変えない (テスト)",
+        "隔離テストは観察の CLI 1つだけを許す最小の変更",
+        "架空の fixture で、写し・不採用の骨格・薄いデータ・比較不能・失敗・PC/SP をテスト。誤検知を評価",
+        "範囲・報告の形・限界を文書に"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/structure/observe.test.ts",
+        "tests/unit/design-agent/structure/structure.test.ts",
+        "tests/unit/design-agent/phase2f/isolation.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/structure/observe.ts",
+        "scripts/design-artifact/phase2f-structure-observe.ts",
+        "tests/unit/design-agent/structure/observe.test.ts",
+        "tests/unit/design-agent/structure/structure.test.ts (CLI 1つの正確なパスの許可と固定)",
+        "docs/design/phase2f-structure-observation.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-138.md"
+      ],
+      "forbidden_scope": [
+        "runner・prompt・設計の port・intake への組み込み",
+        "gate・閾値の追加",
+        "実 Codex・画像生成・隔離 WSL・本番"
+      ],
+      "human_approval_triggers": [
+        "develop へのマージ"
+      ],
+      "note": "試作12枚で誤検知 0。ただし参照38件のうち多くが undecided で、検出力は低い (文書に記載)。"
     }
   ]
 }
