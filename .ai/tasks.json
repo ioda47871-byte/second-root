@@ -6238,7 +6238,7 @@
     {
       "id": "DEV-138",
       "title": "Phase 2f の構造の観察 — 成功例・不採用例との構造比較を report-only・offline で接続 (Issue #175)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-136"
@@ -6280,7 +6280,62 @@
       "human_approval_triggers": [
         "develop へのマージ"
       ],
-      "note": "試作12枚で誤検知 0。ただし参照38件のうち多くが undecided で、検出力は低い (文書に記載)。"
+      "note": "試作12枚で誤検知 0。ただし参照38件のうち多くが undecided で、検出力は低い (文書に記載)。",
+      "merged": "#176 → bd38e4c (squash, 2026-11-01)"
+    },
+    {
+      "id": "DEV-139",
+      "title": "デザイン画像と実装画面の一致検査 — offline・report-only で実装レーンに接続 (Issue #177 A)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-131",
+        "DEV-138"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-139-design-impl-compare",
+      "purpose": "Issue #177 A (オーナー事前承認、条件付きの develop マージ)。DEV-128 の実装レーン (artifact と PC/SP の原本) と Claude の実装を受け取り、実装を原本と同じ条件で描いて DEV-131 の比較で PC1440/SP390 の差を原因コードとして報告する。入力のハッシュと原本の有無を記録し、原本でないものは比べない。",
+      "acceptance_criteria": [
+        "DEV-131 の compareViewport / 原因コードを再利用し、閾値・判定を足さない。passing は常に false",
+        "実装を原本と同じ条件 (dsf 1・JS 無効・自分のファイル以外の通信を拒否・全体を幅で切る) で描く。Phase 2f の描画と同じ画像・箱になることをテストで確かめる",
+        "原本が無い・concept image・lane.json のハッシュと違うビューポートは比べない (partial / not_compared)。artifact の記録が変わった lane は断る",
+        "区画の箱の出所 (runner が測った / 宣言) を記録する",
+        "入力 (artifact・lane.json・HTML・CSS・画像・描いた PNG) のハッシュを記録する",
+        "CLI は入力の外に新しい報告1つだけを書く (wx)。中への出力・リンク越し・リンクしたファイルやディレクトリ・上書きを断る",
+        "ブラウザが起動しないときは not_compared の報告を書く"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/impl-lane/impl-compare.test.ts",
+        "tests/unit/design-agent/impl-lane/compare.test.ts",
+        "tests/unit/design-agent/impl-lane/handoff.test.ts",
+        "tests/unit/design-agent/artifact/isolation.test.ts",
+        "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/impl-lane/impl-compare.ts",
+        "lib/design-agent/impl-lane/compare.ts (1ビューポートの比較と原因コードを export するだけ。挙動は同じ)",
+        "scripts/design-artifact/impl-compare.ts",
+        "tests/unit/design-agent/impl-lane/impl-compare.test.ts",
+        "tests/unit/design-agent/impl-lane/handoff.test.ts (新しいファイルと CLI 1つの正確なパスの許可と固定)",
+        "tests/unit/design-agent/artifact/isolation.test.ts (impl-compare.ts の正確なパスの許可のみ)",
+        "docs/design/impl-compare.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-139.md"
+      ],
+      "forbidden_scope": [
+        "修正ループ・runner・生成器・worker への組み込み",
+        "閾値の確定・gate 化・自動合否",
+        "phase2f・comp-impl の隔離の例外の追加",
+        "実 Codex・画像生成・隔離 WSL・本番"
+      ],
+      "human_approval_triggers": [
+        "Issue #177 の条件を満たさない場合の develop へのマージ",
+        "比較を合否・修正の実行に使うこと"
+      ],
+      "note": ""
     }
   ]
 }
