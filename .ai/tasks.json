@@ -6997,7 +6997,25 @@
         "CSS 許可一覧 0、横はみ出し無し、Identity PASS",
         "独立 Fresh Review C/H/M=0、必須 CI green",
         "ファイルの SHA を Issue #180 に記録"
-      ]
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/research tests/unit/design-agent/three-methods"
+      ],
+      "allowed_scope": [
+        "design-library/research/three-methods/pilot-1/"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の呼び出し",
+        "main・Production・Staging・DB",
+        "CSS 許可一覧・Identity Lock・安全ゲートの緩和",
+        "成功例の原本画像の commit (リポジトリは public)"
+      ],
+      "human_approval_triggers": [
+        "実画像の生成・実 Codex の呼び出し",
+        "安全ゲート・許可一覧の変更",
+        "原本の公開"
+      ],
+      "note": "#192 で develop へ squash マージ (705b415)。"
     },
     {
       "id": "DEV-153",
@@ -7014,7 +7032,27 @@
       "acceptance_criteria": [
         "評価のあとで mapping を開示し、three_method_run_v0 を3方式分書く",
         "ページと記録の PR (研究データだけ)"
-      ]
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/research tests/unit/design-agent/three-methods"
+      ],
+      "allowed_scope": [
+        "design-library/research/three-methods/pilot-1/",
+        "docs/design/three-methods-*.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の呼び出し",
+        "main・Production・Staging・DB",
+        "CSS 許可一覧・Identity Lock・安全ゲートの緩和",
+        "成功例の原本画像の commit (リポジトリは public)"
+      ],
+      "human_approval_triggers": [
+        "実画像の生成・実 Codex の呼び出し",
+        "安全ゲート・許可一覧の変更",
+        "原本の公開"
+      ],
+      "note": "盲検の評価は Y > Z > X (Issue #193 §0)。対応の開示と記録はこのあと。"
     },
     {
       "id": "DEV-154",
@@ -7031,7 +7069,30 @@
         "design-library/research/quality-pipeline/originals-inventory.json がテストで最新に固定される",
         "Claude が見た画像 (CP-001〜003) だけを観察として引用する",
         "実 Codex・画像生成・原本の commit をしない"
-      ]
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/reference-originals tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "docs/design/quality-pipeline-audit.md",
+        "design-library/research/quality-pipeline/",
+        "lib/design-agent/reference-originals/",
+        "scripts/design-artifact/reference-inventory.ts",
+        "tests/unit/design-agent/reference-originals/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の呼び出し",
+        "main・Production・Staging・DB",
+        "CSS 許可一覧・Identity Lock・安全ゲートの緩和",
+        "成功例の原本画像の commit (リポジトリは public)"
+      ],
+      "human_approval_triggers": [
+        "実画像の生成・実 Codex の呼び出し",
+        "安全ゲート・許可一覧の変更",
+        "原本の公開"
+      ],
+      "note": "Issue #193 の条件付き一括事前承認 (オフライン研究専用 PR の develop マージ)。"
     }
   ]
 }
