@@ -7057,7 +7057,7 @@
     {
       "id": "DEV-154",
       "title": "品質優先パイプラインの現状監査と、成功例の原本の在庫 (Issue #193 の納品物 1)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -7092,7 +7092,49 @@
         "安全ゲート・許可一覧の変更",
         "原本の公開"
       ],
-      "note": "Issue #193 の条件付き一括事前承認 (オフライン研究専用 PR の develop マージ)。"
+      "note": "#194 → ab039ba (2026-11-02)。"
+    },
+    {
+      "id": "DEV-155",
+      "title": "成功例の画像参照レーン: 読み取り専用の取り込み・SHA の照合・画素の特徴・座標つきの観察 (Issue #193 納品物 2)",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-154"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-155-reference-lane",
+      "purpose": "成功例の分析を、説明文ではなく画像そのもの (manifest の SHA で照らしたもの) に結び付ける。画像は commit せず、記録と観察だけを残す。",
+      "acceptance_criteria": [
+        "--intake は manifest の SHA と照らし、成功の画像 (original / registered_preview) だけを受け付け、画像を書かない",
+        "--check-observation は記録と観察を画像の SHA・case・view・箱で照らす",
+        "CP-003 の PC/SP の記録と観察",
+        "独立 Fresh Review C/H/M=0、必須 CI green"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/reference-originals"
+      ],
+      "allowed_scope": [
+        "scripts/design-artifact/reference-original.ts",
+        "lib/design-agent/reference-originals/",
+        "design-library/research/quality-pipeline/references/",
+        "docs/design/reference-original-lane.md",
+        "tests/unit/design-agent/reference-originals/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の呼び出し",
+        "main・Production・Staging・DB",
+        "CSS 許可一覧・Identity Lock・安全ゲートの緩和",
+        "成功例の原本画像の commit (リポジトリは public)"
+      ],
+      "human_approval_triggers": [
+        "実画像の生成・実 Codex の呼び出し",
+        "安全ゲート・許可一覧の変更",
+        "原本の公開"
+      ],
+      "note": "CP-009・016 の原本はオーナーからの受け取り待ち (Issue #193)。"
     },
     {
       "id": "DEV-156",
