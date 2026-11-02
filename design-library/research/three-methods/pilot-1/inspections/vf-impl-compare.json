@@ -11,7 +11,7 @@
   },
   "implementation": {
     "html_sha256": "9b8bbe04f2394943781a55db22e26409b31bca894d0cdefc96ccc35cf9967ec1",
-    "css_sha256": "4e9e51927e757b44d2bd012e6ac73bc8ac4aa522feb68b9b5ca57914fa633946",
+    "css_sha256": "1a8d3d61916905180d3589acfdc37ab3eac6ed4dda11dbeedd49b1ad91b13ccf",
     "assets": [
       {
         "path": "assets/A1.png",
@@ -31,18 +31,18 @@
       "implementation": {
         "state": "rendered",
         "detail": null,
-        "png_sha256": "53b49bce119a96939a951744db8b48d403756a1ab755cb23b915fe6fd10a28be",
-        "height": 1599,
+        "png_sha256": "2716c5a452b0458b6c02fe111eda4d5f7214da10794b660de13dd1f18f79f3d3",
+        "height": 1540,
         "scroll_width": 1440,
         "blocked_requests": 0
       },
       "compare": {
         "viewport": "desktop_1440",
         "page": {
-          "ssim": 0.634,
-          "colour_blocks": 0.989,
-          "edges_iou": 0.512,
-          "height_ratio": 1.025
+          "ssim": 0.779,
+          "colour_blocks": 0.995,
+          "edges_iou": 0.589,
+          "height_ratio": 0.987
         },
         "sections": [
           {
@@ -53,47 +53,47 @@
             "mean_delta_e": 0,
             "dominant_delta_e": 0,
             "edges_delta": -0.003,
-            "height_share_delta": 0.001
+            "height_share_delta": 0.003
           },
           {
             "id": "morning",
             "code": null,
-            "top_share_delta": 0.001,
+            "top_share_delta": 0.003,
             "changed_cells": 0.069,
             "mean_delta_e": 0.2,
             "dominant_delta_e": 0,
-            "edges_delta": 0.006,
-            "height_share_delta": -0.021
+            "edges_delta": 0.005,
+            "height_share_delta": -0.01
           },
           {
             "id": "flour",
             "code": null,
-            "top_share_delta": -0.021,
+            "top_share_delta": -0.008,
             "changed_cells": 0.019,
             "mean_delta_e": 0.2,
             "dominant_delta_e": 0,
             "edges_delta": 0.023,
-            "height_share_delta": 0.005
+            "height_share_delta": 0.008
           },
           {
             "id": "bread",
             "code": null,
-            "top_share_delta": -0.016,
-            "changed_cells": 0.074,
-            "mean_delta_e": 0.2,
+            "top_share_delta": 0,
+            "changed_cells": 0.035,
+            "mean_delta_e": 0.1,
             "dominant_delta_e": 0,
-            "edges_delta": -0.019,
-            "height_share_delta": 0.023
+            "edges_delta": -0.008,
+            "height_share_delta": -0.002
           },
           {
             "id": "info",
             "code": null,
-            "top_share_delta": 0.006,
-            "changed_cells": 0.062,
-            "mean_delta_e": 0.1,
+            "top_share_delta": -0.003,
+            "changed_cells": 0.061,
+            "mean_delta_e": 0.2,
             "dominant_delta_e": 0,
-            "edges_delta": -0.013,
-            "height_share_delta": -0.006
+            "edges_delta": -0.011,
+            "height_share_delta": 0.003
           }
         ],
         "order_changed": false,
@@ -102,7 +102,6 @@
       "differences": [
         "PC_PAGE_LAYOUT",
         "PC_SECTION_COLOUR_MORNING",
-        "PC_SECTION_COLOUR_BREAD",
         "PC_SECTION_COLOUR_INFO"
       ]
     },
@@ -117,18 +116,18 @@
       "implementation": {
         "state": "rendered",
         "detail": null,
-        "png_sha256": "71cb20c4cfa3ea157575f1017e4142331a1e1c060571dac6f2a10445b9020de5",
-        "height": 1953,
+        "png_sha256": "5c32072299880622f1349730f40a387a6a6a95e4a9e075c5abd7b207cdd44645",
+        "height": 2022,
         "scroll_width": 390,
         "blocked_requests": 0
       },
       "compare": {
         "viewport": "mobile_390",
         "page": {
-          "ssim": 0.4,
-          "colour_blocks": 0.967,
-          "edges_iou": 0.213,
-          "height_ratio": 0.917
+          "ssim": 0.511,
+          "colour_blocks": 0.977,
+          "edges_iou": 0.328,
+          "height_ratio": 0.949
         },
         "sections": [
           {
@@ -139,47 +138,47 @@
             "mean_delta_e": 0.3,
             "dominant_delta_e": 0,
             "edges_delta": -0.022,
-            "height_share_delta": 0.006
+            "height_share_delta": 0.004
           },
           {
             "id": "morning",
             "code": null,
-            "top_share_delta": 0.005,
-            "changed_cells": 0.187,
-            "mean_delta_e": 0.5,
+            "top_share_delta": 0.004,
+            "changed_cells": 0.173,
+            "mean_delta_e": 0.1,
             "dominant_delta_e": 0,
-            "edges_delta": 0.03,
-            "height_share_delta": -0.025
+            "edges_delta": 0.003,
+            "height_share_delta": -0.001
           },
           {
             "id": "flour",
             "code": null,
-            "top_share_delta": -0.021,
+            "top_share_delta": 0.003,
             "changed_cells": 0.094,
             "mean_delta_e": 0.7,
             "dominant_delta_e": 0,
             "edges_delta": 0.042,
-            "height_share_delta": 0.002
+            "height_share_delta": 0
           },
           {
             "id": "bread",
             "code": null,
-            "top_share_delta": -0.02,
-            "changed_cells": 0.144,
-            "mean_delta_e": 0.4,
+            "top_share_delta": 0.002,
+            "changed_cells": 0.171,
+            "mean_delta_e": 0.1,
             "dominant_delta_e": 0,
-            "edges_delta": -0.015,
-            "height_share_delta": 0.026
+            "edges_delta": 0.034,
+            "height_share_delta": 0
           },
           {
             "id": "info",
             "code": null,
-            "top_share_delta": 0.006,
-            "changed_cells": 0.126,
-            "mean_delta_e": 0.2,
+            "top_share_delta": 0.002,
+            "changed_cells": 0.129,
+            "mean_delta_e": 0.1,
             "dominant_delta_e": 0,
-            "edges_delta": 0.011,
-            "height_share_delta": -0.006
+            "edges_delta": 0.007,
+            "height_share_delta": -0.002
           }
         ],
         "order_changed": false,
@@ -198,7 +197,6 @@
   "differences": [
     "PC_PAGE_LAYOUT",
     "PC_SECTION_COLOUR_MORNING",
-    "PC_SECTION_COLOUR_BREAD",
     "PC_SECTION_COLOUR_INFO",
     "SP_PAGE_LAYOUT",
     "SP_SECTION_COLOUR_CLASSIFICATION",

@@ -97,7 +97,7 @@ body {
   grid-template-columns: 1fr auto;
   margin-top: 8px;
   border-top: 5px solid #af431f;
-  border-bottom: 1px solid #30271f;
+  border-bottom: 1px solid #af431f;
 }
 
 .tag__key {
@@ -105,7 +105,7 @@ body {
   padding-top: 22px;
   font-size: 12px;
   letter-spacing: 0.1em;
-  color: #9a3a1a;
+  color: #af431f;
 }
 
 .tag__hours {
@@ -115,7 +115,7 @@ body {
   font-size: 27px;
   font-weight: 700;
   line-height: 1.6;
-  color: #9a3a1a;
+  color: #af431f;
   font-variant-numeric: tabular-nums;
   word-break: auto-phrase;
 }
@@ -128,7 +128,7 @@ body {
 .tag__closed {
   padding: 12px 0 12px 0;
   font-size: 18px;
-  color: #9a3a1a;
+  color: #af431f;
 }
 
 .morning__about {
@@ -179,7 +179,7 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 40px;
-  flex: 0 0 586px;
+  flex: 0 1 586px;
 }
 
 .bread__label {
@@ -194,15 +194,16 @@ body {
 .bread__list {
   list-style: none;
   flex: 1 1 auto;
-  border-top: 1px solid #b9ab98;
+  border-top: 1px solid #8f8273;
 }
 
 .bread__item {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 18px 0 18px 0;
-  border-bottom: 1px solid #b9ab98;
+  padding: 13px 0 13px 0;
+  line-height: 1.5;
+  border-bottom: 1px solid #8f8273;
   font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
   font-size: 22px;
   letter-spacing: 0.06em;
@@ -253,7 +254,7 @@ body {
 
 .info__grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 3fr 2fr;
   margin-top: 24px;
 }
 
@@ -304,7 +305,7 @@ body {
 
   .morning__top {
     flex-direction: column;
-    gap: 40px;
+    gap: 76px;
   }
 
   .name {
@@ -346,7 +347,7 @@ body {
   }
 
   .morning__about {
-    margin-top: 32px;
+    margin-top: 64px;
     font-size: 14px;
   }
 
@@ -377,7 +378,7 @@ body {
   }
 
   .bread__label {
-    flex: 0 0 auto;
+    flex: 0 0 22px;
     font-size: 22px;
   }
 
@@ -396,7 +397,7 @@ body {
   }
 
   .info {
-    padding: 36px 22px 56px 22px;
+    padding: 40px 22px 80px 22px;
   }
 
   .info__grid {
