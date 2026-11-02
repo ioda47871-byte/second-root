@@ -97,8 +97,9 @@ export function inventoryCase(r: ManifestRecord, files: readonly RepoFile[]): Ca
     if (!isPictureKey(key) || typeof value !== "string" || !SHA.test(value)) continue;
     const path = previewPaths[key] ?? null;
     const inRepo = path !== null && byPath.get(path) === value ? path : null;
-    // the in-repo previews name no view in their key; their paths do
-    const view = key === "mobile_webp_sha256" ? "mobile" : viewOf(key, form);
+    // the in-repo previews name no view in their key; their paths do. A Web PoC's `preview_webp` is its desktop preview
+    // (CP-007 / CP-009 `*_desktop_preview.webp`).
+    const view = key === "mobile_webp_sha256" ? "mobile" : key === "preview_webp_sha256" && form === "web_poc_capture" ? "desktop" : viewOf(key, form);
     originals.push({ key, sha256: value, kind: kindOf(key), view, in_repo_path: inRepo });
   }
   originals.sort((a, b) => a.key.localeCompare(b.key));

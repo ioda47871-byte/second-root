@@ -70,11 +70,33 @@ describe("success originals inventory (DEV-154, Issue #193)", () => {
     expect(inv.counts).toEqual({ cases: 2, preview_in_repo: 0, recorded_sha_only: 1, metadata_only: 1, with_desktop_and_mobile: 0, originals_in_repo: 0 });
   });
 
-  it("no tracked file is a recorded original (the repository is public; only registered previews may be here)", () => {
-    const inv = JSON.parse(currentInventoryText()) as { cases: Array<{ originals: Array<{ sha256: string; kind: string }> }> };
-    const notPreviews = new Set(inv.cases.flatMap((c) => c.originals).filter((o) => o.kind !== "registered_preview").map((o) => o.sha256));
-    const tracked = spawnSync("git", ["ls-files", "-z", "--", "*.png", "*.webp", "*.jpg", "*.jpeg", "*.gif", "*.zip"], { cwd: REPO, encoding: "utf8" }).stdout.split("\0").filter(Boolean);
-    const hits = tracked.filter((p) => notPreviews.has(createHash("sha256").update(readFileSync(resolve(REPO, p))).digest("hex")));
+  /**
+   * Every SHA-256 the manifest records (pictures, previews kept in the conversations, archives, HTML) except the files
+   * the manifest itself registers in the repository (its `preview` / `mobile_preview` paths).
+   */
+  function guarded(records: typeof manifest.records): { guarded: Set<string>; allowed: Set<string> } {
+    const allowed = new Set<string>();
+    for (const r of records)
+      for (const k of ["preview", "mobile_preview"]) {
+        const p = r[k];
+        if (typeof p === "string") allowed.add(createHash("sha256").update(readFileSync(resolve(REPO, "design-library/success-cases", p))).digest("hex"));
+      }
+    const all = records.flatMap((r) => Object.entries(r).filter(([k, v]) => k.toLowerCase().endsWith("sha256") && typeof v === "string" && /^[0-9a-f]{64}$/.test(v)).map(([, v]) => v as string));
+    return { guarded: new Set(all.filter((v) => !allowed.has(v))), allowed };
+  }
+
+  it("the guard covers previews kept outside GitHub and archives; only the registered in-repo previews are allowed", () => {
+    const { guarded: set, allowed } = guarded(manifest.records);
+    const cp009 = manifest.records.find((r) => r.id === "CP-009")!;
+    expect(set.has(cp009.preview_webp_sha256 as string)).toBe(true);
+    expect(set.has(cp009.source_archive_sha256 as string)).toBe(true);
+    expect(allowed.size).toBe(4);
+  });
+
+  it("no tracked file is a recorded original, preview kept outside GitHub, archive or HTML (the repository is public)", () => {
+    const { guarded: set } = guarded(manifest.records);
+    const tracked = spawnSync("git", ["ls-files", "-z", "--", "*.png", "*.webp", "*.jpg", "*.jpeg", "*.gif", "*.zip", "*.html"], { cwd: REPO, encoding: "utf8" }).stdout.split("\0").filter(Boolean);
+    const hits = tracked.filter((p) => set.has(createHash("sha256").update(readFileSync(resolve(REPO, p))).digest("hex")));
     expect(hits).toEqual([]);
   });
 });
