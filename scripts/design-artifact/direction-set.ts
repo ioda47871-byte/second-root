@@ -4,10 +4,11 @@
  *   npx tsx scripts/design-artifact/direction-set.ts --set <direction-set.json> --facts <facts-pack.json>
  *
  * Prints the check as JSON. Exits 0 for READY_FOR_COMPS, 1 for HOLD, 2 for a usage error or an input that cannot be read
- * (a missing file, bad JSON, a facts pack that is not `shop_facts_pack_v1`). Anything else is a bug and is thrown.
+ * (a missing file, bad JSON, a facts pack that is not `shop_facts_pack_v1`, a malformed principles file), 3 for a bug.
  * READY_FOR_COMPS is never a quality verdict (see lib/design-agent/quality-pipeline/direction-set.ts).
  */
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FactsPack } from "../../lib/design-agent/artifact/schema";
@@ -17,6 +18,12 @@ const REPO = resolve(__dirname, "../..");
 const PRINCIPLES = "design-library/research/quality-pipeline/principles-v1.json";
 
 export class InputError extends Error {}
+
+/** The parts of principles-v1.json the check reads. */
+const Principles = z.object({
+  cases: z.array(z.object({ id: z.string().regex(/^CP-\d{3}$/), principles: z.array(z.string().regex(/^P\d$/)) })).min(1),
+  principles: z.array(z.object({ id: z.string().regex(/^P\d$/) })).min(1),
+});
 
 function readJson(path: string): { raw: Buffer; json: unknown } {
   let raw: Buffer;
@@ -39,7 +46,9 @@ export function loadInputs(factsPath: string): CheckInputs {
   if (!pack.success) throw new InputError(`not a shop_facts_pack_v1: ${pack.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
   const ids = pack.data.facts.map((f) => f.id);
   if (new Set(ids).size !== ids.length) throw new InputError("facts pack has duplicated fact ids");
-  const principles = readJson(resolve(REPO, PRINCIPLES)).json as { cases: Array<{ id: string; principles: string[] }>; principles: Array<{ id: string }> };
+  const parsed = Principles.safeParse(readJson(resolve(REPO, PRINCIPLES)).json);
+  if (!parsed.success) throw new InputError(`${PRINCIPLES} is malformed: ${parsed.error.issues[0]?.message ?? ""}`);
+  const principles = parsed.data;
   return {
     shopId: pack.data.shop_id,
     factIds: ids,
@@ -69,9 +78,13 @@ if (require.main === module) {
   try {
     r = runDirectionSetCheck(resolve(set), resolve(facts));
   } catch (e) {
-    if (!(e instanceof InputError)) throw e;
-    process.stderr.write(`INPUT_ERROR: ${e.message}\n`);
-    process.exit(2);
+    if (e instanceof InputError) {
+      process.stderr.write(`INPUT_ERROR: ${e.message}\n`);
+      process.exit(2);
+    }
+    // a bug must not look like a HOLD (1)
+    process.stderr.write(`BUG: ${(e as Error).stack ?? String(e)}\n`);
+    process.exit(3);
   }
   process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
   process.exit(r.status === "READY_FOR_COMPS" ? 0 : 1);

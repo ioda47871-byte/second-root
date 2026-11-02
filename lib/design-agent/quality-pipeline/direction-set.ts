@@ -84,7 +84,42 @@ export type SetCheck = { status: "READY_FOR_COMPS" | "HOLD"; findings: Finding[]
 const NOTE = "READY_FOR_COMPS means only that the machine-checkable parts hold and no designer answer is 'no'. It is not a quality verdict: the owner decides on real PC/SP pictures.";
 
 /** Text compared for "the same": case, spaces, digits and punctuation do not make two lines different. */
-const norm = (s: string) => s.toLowerCase().replace(/[\s\d\p{P}\p{S}]/gu, "");
+const norm = (s: string) =>
+  s
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\d〇一二三四五六七八九十\p{P}\p{S}]/gu, "");
+
+/** Character-bigram Jaccard of two normalised lines (0..1). */
+function similar(a: string, b: string): number {
+  const grams = (s: string) => new Set(Array.from({ length: Math.max(s.length - 1, 1) }, (_, i) => s.slice(i, i + 2)));
+  const [x, y] = [grams(norm(a)), grams(norm(b))];
+  const inter = [...x].filter((g) => y.has(g)).length;
+  return inter / (x.size + y.size - inter || 1);
+}
+
+/** Share of one multiset found in the other, over the larger size. */
+function bagOverlap(a: readonly string[], b: readonly string[]): number {
+  const rest = [...b];
+  let n = 0;
+  for (const v of a) {
+    const i = rest.indexOf(v);
+    if (i >= 0) {
+      n++;
+      rest.splice(i, 1);
+    }
+  }
+  return n / Math.max(a.length, b.length, 1);
+}
+
+/**
+ * How many of a's sections (the closing section left out: every page ends at the visit) are copied in b: the same id
+ * and ground, or a facet that reads nearly the same (bigram similarity >= 0.7).
+ */
+function sharedSections(a: Direction, b: Direction): number {
+  const body = (d: Direction) => d.sections.slice(0, -1);
+  return body(a).filter((x) => body(b).some((y) => (x.id === y.id && norm(x.ground) === norm(y.ground)) || similar(x.motif_facet, y.motif_facet) >= 0.7)).length;
+}
 
 export type CheckInputs = {
   shopId: string;
@@ -121,11 +156,14 @@ export function checkDirectionSet(raw: unknown, o: CheckInputs): SetCheck {
       const [a, b] = [s.directions[i]!, s.directions[j]!];
       if (!directionsDiffer(asOpen(a), asOpen(b))) f.push({ check: "C2", code: "HERO_OR_FLOW_SHARED", direction: `${a.id}|${b.id}` });
       // the body: the same layouts in any order, or half the facets of the shorter one repeated in the other
-      const bag = (d: Direction) => d.sections.map((x) => x.layout).sort().join(",");
-      const fa = new Set(a.sections.map((x) => norm(x.motif_facet)));
-      const sharedFacets = b.sections.filter((x) => fa.has(norm(x.motif_facet))).length;
-      if (bag(a) === bag(b) || sharedFacets * 2 >= Math.min(a.sections.length, b.sections.length))
-        f.push({ check: "C2", code: "SECTIONS_SHARED", direction: `${a.id}|${b.id}`, detail: `facets:${sharedFacets}` });
+      // the body: copied or near-copied sections, and nearly the same layouts. A short page (3 body sections or fewer)
+      // needs both signals, so pages that only share the shop's facts are not held.
+      const n = Math.min(a.sections.length, b.sections.length) - 1;
+      const shared = Math.max(sharedSections(a, b), sharedSections(b, a));
+      const layouts = bagOverlap(a.sections.map((x) => x.layout), b.sections.map((x) => x.layout));
+      const bodyShared = shared >= 2 && shared * 2 >= n;
+      if ((bodyShared && (n >= 4 || layouts >= 0.8)) || (layouts === 1 && n >= 4))
+        f.push({ check: "C2", code: "SECTIONS_SHARED", direction: `${a.id}|${b.id}`, detail: `sections:${shared}/${n},layouts:${layouts.toFixed(2)}` });
       // the designer's evidence is per direction
       for (const c of CHECKS) if (norm(a.checklist[c].evidence) === norm(b.checklist[c].evidence)) f.push({ check: c, code: "EVIDENCE_COPIED", direction: `${a.id}|${b.id}` });
     }
@@ -168,7 +206,7 @@ export function checkDirectionSet(raw: unknown, o: CheckInputs): SetCheck {
   }
   for (const d of s.directions)
     for (const c of ["C1", "C2", "C3", "C4", "C5"] as const)
-      if (d.checklist[c].answer === "yes" && f.some((x) => x.check === c && x.code !== "DESIGNER_ANSWERED_NO" && (x.direction === undefined || x.direction.split("|").includes(d.id))))
+      if (d.checklist[c].answer === "yes" && f.some((x) => x.check === c && !["DESIGNER_ANSWERED_NO", "EVIDENCE_COPIED"].includes(x.code) && (x.direction === undefined || x.direction.split("|").includes(d.id))))
         f.push({ check: c, code: "ANSWER_CONTRADICTED_BY_CHECK", direction: d.id });
   return { status: f.length ? "HOLD" : "READY_FOR_COMPS", findings: f, note: NOTE };
 }

@@ -156,7 +156,7 @@ describe("art direction set (DEV-157, Issue #193)", () => {
     b.descriptor.text_direction.value = "mixed";
     const r = checkDirectionSet(s, opts);
     expect(r.status).toBe("HOLD");
-    expect(r.findings).toContainEqual({ check: "C2", code: "SECTIONS_SHARED", direction: "d1-seam-across|d2-lacquer-layers", detail: "facets:6" });
+    expect(r.findings).toContainEqual({ check: "C2", code: "SECTIONS_SHARED", direction: "d1-seam-across|d2-lacquer-layers", detail: "sections:5/5,layouts:1.00" });
     // the same layouts in another order are the same body
     const t = example();
     t.directions[2].sections = structuredClone(t.directions[0].sections).reverse();
@@ -238,6 +238,56 @@ describe("art direction set (DEV-157, Issue #193)", () => {
     expect(pack).toContain("架空");
     expect(pack).toContain("実在の工房ではありません");
     expect(pack).not.toMatch(/名古屋|千種|052-/);
+  });
+
+  it("C2: a near-copy holds too — one layout changed and every facet reworded (review round 2 M1)", () => {
+    for (const reword of [(s: string) => `${s}の層`, (s: string) => s.replaceAll("線", "糸")]) {
+      const s = example();
+      const [a, b] = [s.directions[0], s.directions[1]];
+      b.sections = structuredClone(a.sections);
+      b.sections[0].layout = "vertical_text";
+      for (const x of b.sections) x.motif_facet = reword(x.motif_facet);
+      b.descriptor.section_layouts.value = b.sections.map((x: { layout: string }) => x.layout);
+      expect(codes(s)).toContain("SECTIONS_SHARED");
+      // copied ids and grounds alone (facets rewritten from scratch) also count
+      const t = example();
+      t.directions[1].sections = structuredClone(t.directions[0].sections).map((x: { motif_facet: string }, i: number) => ({ ...x, motif_facet: ["あ", "い", "う", "え", "お", "か"][i] + "を見せる別の話" }));
+      t.directions[1].sections[0].layout = "vertical_text";
+      t.directions[1].descriptor.section_layouts.value = t.directions[1].sections.map((x: { layout: string }) => x.layout);
+      expect(codes(t)).toContain("SECTIONS_SHARED");
+    }
+  });
+
+  it("C2: short pages that only share the shop's facts, or the same few layouts in another order, are not held (round 2 L2)", () => {
+    const s = example();
+    const short = (d: { sections: Array<{ layout: string }>; descriptor: { section_layouts: { value: string[] }; transitions: { value: string[] } } }, keep: number[]) => {
+      d.sections = keep.map((i) => d.sections[i]!);
+      d.descriptor.section_layouts.value = d.sections.map((x) => x.layout);
+      d.descriptor.transitions.value = d.descriptor.transitions.value.slice(0, d.sections.length - 1);
+    };
+    short(s.directions[0], [0, 4, 5]); // diagram, overlap_collage, single_column_text
+    short(s.directions[2], [1, 4, 5]); // diagram, overlap_collage, single_column_text
+    expect(codes(s)).not.toContain("SECTIONS_SHARED");
+    // two pages sharing only the class and the visit
+    const t = example();
+    t.directions[2].sections[4].motif_facet = t.directions[0].sections[4].motif_facet;
+    t.directions[2].sections[5].motif_facet = t.directions[0].sections[5].motif_facet;
+    expect(codes(t)).not.toContain("SECTIONS_SHARED");
+  });
+
+  it("text is compared after NFKC and without digits (ASCII, full-width or kanji) (round 2 L1)", () => {
+    for (const nums of [["０", "１", "２", "３", "４", "５"], ["一", "二", "三", "四", "五", "六"]]) {
+      const s = example();
+      s.directions[0].sections.forEach((x: { motif_facet: string }, i: number) => (x.motif_facet = `金の線${nums[i]}`));
+      expect(codes(s)).toContain("MOTIF_FACETS_REPEATED");
+    }
+  });
+
+  it("copied evidence holds but is not reported as the machine contradicting the answer (round 2 L3)", () => {
+    const s = example();
+    s.directions[2].checklist.C1.evidence = s.directions[0].checklist.C1.evidence;
+    const f = checkDirectionSet(s, opts).findings;
+    expect(f.map((x) => x.code)).toEqual(["EVIDENCE_COPIED"]);
   });
 
   it("the CLI exits 0 for the example and 1 for a held set, printing the findings", () => {
