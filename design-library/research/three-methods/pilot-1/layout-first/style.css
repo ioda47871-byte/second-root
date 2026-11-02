@@ -1,0 +1,440 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: #1f1b18;
+}
+
+body {
+  background: #1f1b18;
+  color: #f4efe6;
+  font-family: "Zen Kaku Gothic New", "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 24px 64px;
+  border-bottom: 1px solid #3d342d;
+}
+
+.top__name {
+  font-family: "Shippori Mincho", "Zen Old Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
+  font-size: 20px;
+  letter-spacing: 0.2em;
+}
+
+.top__meta {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  color: #c9bba8;
+}
+
+.mouth {
+  padding: 72px 0 0 0;
+}
+
+.mouth__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 56px;
+  padding: 0 64px;
+}
+
+.mouth__name {
+  flex: 0 0 500px;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 40px;
+  font-family: "Shippori Mincho", "Zen Old Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
+  font-weight: 600;
+  color: #f4efe6;
+}
+
+.mouth__pre {
+  font-size: 30px;
+  letter-spacing: 0.3em;
+  line-height: 1.6;
+  color: #d9ccb9;
+}
+
+.mouth__main {
+  font-size: 112px;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+}
+
+.mouth__light {
+  color: #e2683a;
+}
+
+.mouth__arch {
+  flex: 1 1 auto;
+  max-width: 760px;
+  border: 16px solid #5b4a3e;
+  border-bottom: 0;
+  border-radius: 400px 400px 0 0;
+  background: #120f0d;
+}
+
+.mouth__img {
+  display: block;
+  width: 100%;
+  height: 600px;
+  object-fit: cover;
+  border-radius: 384px 384px 0 0;
+}
+
+.mouth__hearth {
+  padding: 26px 64px 30px 64px;
+  background: #5b4a3e;
+  border-top: 6px solid #e2683a;
+  font-family: "Shippori Mincho", "Zen Old Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
+  font-size: 30px;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  color: #fbf6ee;
+}
+
+.day {
+  padding-left: 132px;
+  background: #1f1b18;
+}
+
+.station {
+  border-left: 4px solid #e2683a;
+  padding: 88px 72px 88px 64px;
+}
+
+.station__label {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 40px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+}
+
+.ember {
+  display: inline-block;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: #e2683a;
+  border: 3px solid #1f1b18;
+}
+
+.station--bread {
+  background: #2b231e;
+}
+
+.station--bread .station__label {
+  color: #f0b48f;
+}
+
+.loaves {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 48px;
+  row-gap: 20px;
+  padding-bottom: 28px;
+  border-bottom: 2px solid #6e5646;
+  font-family: "Shippori Mincho", "Zen Old Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
+  color: #f4efe6;
+  line-height: 1.3;
+}
+
+.loaf--a {
+  font-size: 60px;
+}
+
+.loaf--b {
+  font-size: 52px;
+}
+
+.loaf--c {
+  font-size: 36px;
+}
+
+.loaf--d {
+  font-size: 32px;
+}
+
+.loaf--e {
+  font-size: 40px;
+}
+
+.station--about {
+  background: #4a3324;
+}
+
+.station--about .station__label {
+  color: #f6d2b8;
+}
+
+.about {
+  max-width: 760px;
+  font-size: 20px;
+  line-height: 2;
+  color: #fbf3ea;
+}
+
+.station--flour {
+  background: #e9dfcf;
+  color: #2a211b;
+}
+
+.station--flour .station__label {
+  color: #8a3f1c;
+}
+
+.flour {
+  font-family: "Shippori Mincho", "Zen Old Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
+  font-size: 48px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+}
+
+.station--open {
+  background: #f4efe6;
+  color: #2a211b;
+}
+
+.station--open .station__label {
+  color: #8a3f1c;
+}
+
+.open {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  column-gap: 32px;
+  row-gap: 18px;
+  align-items: baseline;
+}
+
+.open__key {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #6b4a33;
+}
+
+.open__val {
+  font-family: "Shippori Mincho", "Zen Old Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
+  font-size: 28px;
+  line-height: 1.5;
+}
+
+.open__val--hours {
+  font-size: 44px;
+  font-variant-numeric: lining-nums;
+}
+
+.station--way {
+  background: #f4efe6;
+  color: #2a211b;
+  border-top: 1px solid #d8ccba;
+}
+
+.station--way .station__label {
+  color: #8a3f1c;
+}
+
+.way {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  column-gap: 32px;
+  row-gap: 22px;
+  align-items: baseline;
+}
+
+.way__key {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #6b4a33;
+}
+
+.way__val {
+  font-size: 22px;
+  line-height: 1.6;
+}
+
+.way__val--tel {
+  font-size: 30px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.foot {
+  padding: 40px 64px 48px 64px;
+  border-top: 6px solid #e2683a;
+  background: #1f1b18;
+}
+
+.foot__name {
+  font-family: "Shippori Mincho", "Zen Old Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
+  font-size: 18px;
+  letter-spacing: 0.2em;
+  color: #d9ccb9;
+}
+
+@media (max-width: 760px) {
+  .top {
+    padding: 16px 20px;
+  }
+
+  .top__name {
+    font-size: 17px;
+  }
+
+  .top__meta {
+    gap: 14px;
+    font-size: 12px;
+  }
+
+  .mouth {
+    padding: 32px 0 0 0;
+  }
+
+  .mouth__row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 24px;
+    padding: 0 20px;
+  }
+
+  .mouth__name {
+    flex: 0 0 auto;
+    padding-bottom: 0;
+  }
+
+  .mouth__pre {
+    font-size: 18px;
+  }
+
+  .mouth__main {
+    font-size: 64px;
+  }
+
+  .mouth__arch {
+    max-width: none;
+    border: 10px solid #5b4a3e;
+    border-bottom: 0;
+    border-radius: 180px 180px 0 0;
+  }
+
+  .mouth__img {
+    height: 360px;
+    border-radius: 170px 170px 0 0;
+  }
+
+  .mouth__hearth {
+    padding: 18px 20px 22px 20px;
+    font-size: 20px;
+    border-top-width: 5px;
+  }
+
+  .day {
+    padding-left: 22px;
+  }
+
+  .station {
+    padding: 56px 20px 56px 24px;
+  }
+
+  .station__label {
+    margin-bottom: 28px;
+    font-size: 13px;
+    gap: 12px;
+  }
+
+  .loaves {
+    flex-direction: column;
+    row-gap: 14px;
+    padding-bottom: 20px;
+  }
+
+  .loaf--a {
+    font-size: 36px;
+  }
+
+  .loaf--b {
+    font-size: 32px;
+  }
+
+  .loaf--c {
+    font-size: 26px;
+  }
+
+  .loaf--d {
+    font-size: 24px;
+  }
+
+  .loaf--e {
+    font-size: 26px;
+  }
+
+  .about {
+    font-size: 17px;
+    line-height: 1.95;
+  }
+
+  .flour {
+    font-size: 30px;
+  }
+
+  .open {
+    grid-template-columns: 1fr;
+    row-gap: 4px;
+  }
+
+  .open__key {
+    margin-top: 14px;
+  }
+
+  .open__val {
+    font-size: 22px;
+  }
+
+  .open__val--hours {
+    font-size: 28px;
+  }
+
+  .way {
+    grid-template-columns: 1fr;
+    row-gap: 4px;
+  }
+
+  .way__key {
+    margin-top: 14px;
+  }
+
+  .way__val {
+    font-size: 18px;
+  }
+
+  .way__val--tel {
+    font-size: 26px;
+  }
+
+  .foot {
+    padding: 28px 20px 36px 20px;
+  }
+
+  .foot__name {
+    font-size: 15px;
+  }
+}
