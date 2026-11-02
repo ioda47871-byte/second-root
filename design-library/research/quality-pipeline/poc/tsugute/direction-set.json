@@ -1,7 +1,7 @@
 {
   "schema": "art_direction_set_v0",
   "shop_id": "fictional-kintsugi-tsugute",
-  "facts_sha256": "cd934979e13117105a7e9f3723744d1fa77d484465774cc74506a242772e17ee",
+  "facts_sha256": "343fce8b8285a4f71718cf335543e0e5639eb6cd8d29022826b2ee41da61360b",
   "motif": {
     "candidates": [
       {
@@ -44,11 +44,12 @@
       }
     ],
     "chosen": "M1",
-    "why": "工房の仕事そのもの (つなぐ) が目に見える形を持ち、M2 (時間)・M3 (相談)・M4 (種類) を線の上に乗せて展開できる。M4 だけでは種類の一覧になり、M2 だけでは修理の姿が見えない"
+    "why": "M1 は工房の仕事そのもの (つなぐ) が目に見える形を持つので、最初に試す中心にする。3方向は同じ1つに揃えず、比べるために M1 (線)・M2 (時間)・M3 (相談) をそれぞれの中心にする。M4 (壊れ方の種類) は単独では一覧になりやすいので、3方向とも区画の中で使う"
   },
   "directions": [
     {
       "id": "d1-seam-across",
+      "motif_focus": "M1",
       "concept": "1枚の器の面がページ全体になる。金の継ぎ目の線が上から下へページを横断し、区画は線が通る破片になる。線は区画の境をまたいでつなぎ、最後に来店の情報の所で終わる。",
       "composition": {
         "hero": "diagram_led",
@@ -196,36 +197,37 @@
       "checklist": {
         "C1": {
           "answer": "yes",
-          "evidence": "中心のモチーフ M1 (金の継ぎ目の線) は F9 から。入れ替えテスト: 修理をしない陶器店にすると、線が何もつながなくなる"
+          "evidence": "中心は M1 (金の継ぎ目の線、F9)。入れ替えテスト: 修理をしない陶器店にすると、ページを横断する線が何もつながなくなる"
         },
         "C2": {
           "answer": "yes",
-          "evidence": "3方向で hero と flow がすべて違う (検査で確かめる)"
+          "evidence": "Hero は図 (diagram_led)、流れは1枚の面 (one_continuous_surface)。d2・d3 と Hero・流れ・区画の配置がすべて違う"
         },
         "C3": {
           "answer": "yes",
-          "evidence": "区画ごとのモチーフの面を sections に書いた。終点: 線が終わる所に来店の情報"
+          "evidence": "区画は線が通る破片 (割れ・欠け・ひび → 漆の断面 → 一か月 → 手元 → 来店)。終点は線が終わる来店の情報"
         },
         "C4": {
           "answer": "yes",
-          "evidence": "sp_plan に1画面目・並べ替え・重なりを別に書いた"
+          "evidence": "SP は線を画面の中央でまっすぐ下ろし、破片の区画を線の上に縦一列に並べる"
         },
         "C5": {
           "answer": "yes",
-          "evidence": "汎用の LP の印 (split_copy_media の Hero・stacked_bands・grid_cards) を使っていない"
+          "evidence": "Hero は split でなく図、流れは帯の積み重ねでない。区画に grid_cards・split_copy_media を使わない"
         },
         "C6": {
           "answer": "yes",
-          "evidence": "線・注釈・断面図が文字と写真をつなぐ"
+          "evidence": "金の線そのものが区画をつなぐ図形で、注釈 (漆の断面の層) が線の近くに付く。写真は破片の接写として線の左右に置く"
         },
         "C7": {
           "answer": "unknown",
-          "evidence": "新しい方向で、改良ではない。守る核は protect に先に書いた"
+          "evidence": "新しい方向で改良ではない。守る核 (横断する1本の線) は protect に先に書いた"
         }
       }
     },
     {
       "id": "d2-lacquer-layers",
+      "motif_focus": "M2",
       "concept": "ページは漆が乾く一か月。上の生の漆の黒から、層ごとに地の色が赤茶・金へ変わる。巨大な文字で F10 の文を始まりに置き、各層が修理の工程になる。",
       "composition": {
         "hero": "type_led",
@@ -285,7 +287,12 @@
           "motif_facet": "塗ったばかりの生の漆の暗さ (一か月の始まり)",
           "ground": "漆の黒",
           "layout": "single_column_text",
-          "image_slots": []
+          "image_slots": [
+            {
+              "role": "塗ったばかりの漆の面の接写",
+              "size": "large"
+            }
+          ]
         },
         {
           "id": "first-coat",
@@ -332,18 +339,28 @@
           "motif_facet": "継ぎ目の線を一緒に決める (相談) と教室",
           "ground": "生成り",
           "layout": "single_column_text",
-          "image_slots": []
+          "image_slots": [
+            {
+              "role": "継ぎ目の線を相談する机",
+              "size": "medium"
+            }
+          ]
         },
         {
           "id": "return",
           "motif_facet": "受け取りの日: 所在地・時間・電話",
           "ground": "生成り",
           "layout": "single_column_text",
-          "image_slots": []
+          "image_slots": [
+            {
+              "role": "直って戻る器",
+              "size": "medium"
+            }
+          ]
         }
       ],
       "ending": "金の層の次に、生成りの受け取りの日 (来店) で終わる",
-      "pc_plan": "層ごとに地の色を全幅で変える。巨大な文字は層の境をまたいで次の層へ食い込む。写真は層ごとに1枚、大きさを変える",
+      "pc_plan": "層ごとに地の色を全幅で変える。巨大な文字は層の境をまたいで次の層へ食い込む。写真は層ごとに少なくとも1枚、層ごとに大きさを変える",
       "sp_plan": {
         "first_screen": "黒い地に F10 の文を縦書きで大きく置く",
         "reorder": "層の順は PC と同じだが、写真を層の地の上に重ねず、層の終わりに大きく置く",
@@ -360,9 +377,9 @@
           "use": "素材の時間変化を読み順にする方法"
         },
         {
-          "principle": "P4",
+          "principle": "P3",
           "case_id": "CP-012",
-          "use": "章ごとに視覚を大きく変える方法"
+          "use": "章ごとに同じモチーフの別の面を見せる方法 (層ごとに工程の別の面)"
         }
       ],
       "not_used": [
@@ -374,36 +391,37 @@
       "checklist": {
         "C1": {
           "answer": "yes",
-          "evidence": "中心のモチーフ M1 (金の継ぎ目の線) は F9 から。入れ替えテスト: 修理をしない陶器店にすると、線が何もつながなくなる"
+          "evidence": "中心は M2 (漆が乾く一か月、F10)。入れ替えテスト: 漆を使わない修理店にすると、黒から金への層の順が成り立たない"
         },
         "C2": {
           "answer": "yes",
-          "evidence": "3方向で hero と flow がすべて違う (検査で確かめる)"
+          "evidence": "Hero は文字 (type_led)、流れは1本の縦の軸 (single_axis_scroll)。区画の境は hard_cut で、d1 の連続面・d3 の駅と違う"
         },
         "C3": {
           "answer": "yes",
-          "evidence": "区画ごとのモチーフの面を sections に書いた。終点: 金の層のあとの受け取りの日"
+          "evidence": "層の順が工程の順 (生の漆 → 固める → 待つ → 金 → 相談 → 受け取り)。入れ替えると時間が逆になる。終点は受け取りの日"
         },
         "C4": {
           "answer": "yes",
-          "evidence": "sp_plan に1画面目・並べ替え・重なりを別に書いた"
+          "evidence": "SP は F10 の文を縦書きで1画面目に置き、写真を層の地に重ねず層の終わりに置く"
         },
         "C5": {
           "answer": "yes",
-          "evidence": "汎用の LP の印 (split_copy_media の Hero・stacked_bands・grid_cards) を使っていない"
+          "evidence": "Hero は巨大な文字で split でない。区画は全幅の写真・重ね・1段の文で、カードの並びを使わない"
         },
         "C6": {
-          "answer": "yes",
-          "evidence": "線・注釈・断面図が文字と写真をつなぐ"
+          "answer": "unknown",
+          "evidence": "層の地の色と巨大な文字が時間を表すが、写真と文字の重なり方はカンプで確かめる"
         },
         "C7": {
           "answer": "unknown",
-          "evidence": "新しい方向で、改良ではない。守る核は protect に先に書いた"
+          "evidence": "新しい方向。守る核 (黒から金への地の色の変化、層の境をまたぐ文字) は protect に書いた"
         }
       }
     },
     {
       "id": "d3-vessel-stations",
+      "motif_focus": "M3",
       "concept": "継ぎ目の入った器を1つ、ページの中心の物として大きく置く。器のまわりに、持ち込む・線を決める・待つ・受け取るの駅を配置し、読み手は器を中心に巡る。",
       "composition": {
         "hero": "object_led",
@@ -552,31 +570,31 @@
       "checklist": {
         "C1": {
           "answer": "yes",
-          "evidence": "中心のモチーフ M1 (金の継ぎ目の線) は F9 から。入れ替えテスト: 修理をしない陶器店にすると、線が何もつながなくなる"
+          "evidence": "中心は M3 (継ぎ目の線を一緒に決める、F11)。入れ替えテスト: 相談の無い量販の修理受付にすると、器を巡る駅が成り立たない"
         },
         "C2": {
           "answer": "yes",
-          "evidence": "3方向で hero と flow がすべて違う (検査で確かめる)"
+          "evidence": "Hero は物 (object_led)、流れは駅の地図 (map_of_stations)、読み順は放射 (radial)。d1・d2 と違う"
         },
         "C3": {
           "answer": "yes",
-          "evidence": "区画ごとのモチーフの面を sections に書いた。終点: 受け取る駅 = 来店"
+          "evidence": "駅は相談の手順 (器 → 駅の全体 → 線を決める → 待つ → 教室 → 受け取る)。終点の受け取る駅が来店の案内"
         },
         "C4": {
           "answer": "yes",
-          "evidence": "sp_plan に1画面目・並べ替え・重なりを別に書いた"
+          "evidence": "SP は円い配置を、器の写真を背にした縦の駅の列に組み直し、索引を横に流す"
         },
         "C5": {
           "answer": "yes",
-          "evidence": "汎用の LP の印 (split_copy_media の Hero・stacked_bands・grid_cards) を使っていない"
+          "evidence": "Hero は1つの器で split でない。区画に grid_cards を使わない。原理 P1・P3 を満たす"
         },
         "C6": {
-          "answer": "yes",
-          "evidence": "線・注釈・断面図が文字と写真をつなぐ"
+          "answer": "unknown",
+          "evidence": "駅の札が器の写真に重なる関係はカンプで確かめる。写真の役割は器・壊れ方・教室で分けた"
         },
         "C7": {
           "answer": "unknown",
-          "evidence": "新しい方向で、改良ではない。守る核は protect に先に書いた"
+          "evidence": "新しい方向。守る核 (中心の器1つ、駅を巡る読み順) は protect に書いた"
         }
       }
     }

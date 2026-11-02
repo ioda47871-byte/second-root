@@ -17,13 +17,13 @@
     {
       "id": "F3",
       "key": "ward",
-      "value": "千種区",
+      "value": "架空区",
       "source_id": "S1"
     },
     {
       "id": "F4",
       "key": "address",
-      "value": "名古屋市千種区架空町一丁目3-2",
+      "value": "架空市架空区架空町一丁目3-2",
       "source_id": "S1"
     },
     {
@@ -47,7 +47,7 @@
     {
       "id": "F8",
       "key": "phone",
-      "value": "052-000-0712",
+      "value": "000-0000-0712",
       "source_id": "S1"
     },
     {
