@@ -818,7 +818,7 @@
     {
       "id": "C5",
       "question": "成功例と比べて平凡化していないか",
-      "how": "汎用の LP の印が2つ以上なく、満たす原理 P1〜P5 を挙げられる (機械: structureFindings の GENERIC_SKELETON)",
+      "how": "汎用の LP の印 3つ (汎用の Hero、stacked_bands の流れ、区画の半分以上が split_copy_media・grid_cards) のうち2つ以上がそろわず、満たす原理 P1〜P5 を挙げられる (機械: structureFindings の GENERIC_SKELETON)",
       "failure_codes": [
         "MOTIF_NOT_TRANSLATED",
         "LOWER_SECTIONS_GENERIC",

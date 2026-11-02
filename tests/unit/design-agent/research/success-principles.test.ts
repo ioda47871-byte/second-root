@@ -137,9 +137,12 @@ describe("success principles v1 (DEV-156, Issue #193)", () => {
     for (const block of section2.split("\n### ").slice(1)) {
       const pid = block.slice(0, 2);
       for (const line of block.split("\n").slice(1)) {
-        if (/反例|参考|何が変わった|記録ではない|JSON で/.test(line)) continue;
-        for (const m of line.matchAll(/(?<![\d-])0(\d\d)(?!\d)/g)) {
+        // only the part before a counterexample or reference marker; lines that discuss a case's history are skipped
+        if (/何が変わった|記録ではない|JSON で/.test(line)) continue;
+        const cited = line.split(/反例|参考/)[0]!;
+        for (const m of cited.matchAll(/(?<!\d)0(\d\d)(?!\d)/g)) {
           const id = `CP-0${m[1]}`;
+          if (pid === "P1" && id === "CP-008") continue; // named as the one case without P1
           expect(doc.cases.find((c) => c.id === id)?.principles, `${pid} cites ${id}: ${line}`).toContain(pid);
         }
       }

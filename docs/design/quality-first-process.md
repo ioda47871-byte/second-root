@@ -122,7 +122,7 @@
 | C2 | 3方向が構造的に違うか | Hero の型と流れの型が、どの2方向でも両方違うこと (`directionsDiffer`)。兄弟の構造の近さ (`structuralSimilarity`、観点ごとの重みつき) が 0.6 未満であること (以上なら `SIBLINGS_SAME_SKELETON`)。配色・写真の違いだけでないこと | `SURFACE_ONLY_CHANGE`、`TOO_CLOSE_TO_REFERENCE` |
 | C3 | Hero 以降まで一貫した世界観があるか | 区画ごとに「モチーフのどの面か」を1行で言えること。最後の区画の終点があること。区画の順を入れ替えると話が壊れること | `HERO_ONLY_WORLD`、`NO_PAGE_STORY`、`LOWER_SECTIONS_GENERIC` |
 | C4 | PC/SP がそれぞれ成立しているか | SP の1画面目 (390×844) に何が入るか、PC から並び・大きさ・重なりの扱いをどう変えるかを書けること。SP が PC の縮小・単純な縦積みでないこと | `PC_SP_NOT_DIFFERENTIATED` |
-| C5 | 成功例と比べて平凡化していないか | 汎用の LP の印 (`split_copy_media` の Hero、`stacked_bands`、`grid_cards` など) が2つ以上ないこと (機械: `structureFindings` の `GENERIC_SKELETON`)。原理 P1〜P5 のうち、どれを満たすかを方向ごとに挙げられること | `MOTIF_NOT_TRANSLATED`、`LOWER_SECTIONS_GENERIC`、`SPLIT_HERO_DEFAULT`、`READABLE_BUT_FLAT`、`TOO_QUIET`、`MECHANISM_OVER_LOOK` |
+| C5 | 成功例と比べて平凡化していないか | 汎用の LP の印 3つ (汎用の Hero = `split_copy_media`・`centered_headline`、汎用の流れ = `stacked_bands`、区画の半分以上が `split_copy_media`・`grid_cards`) のうち、2つ以上がそろわないこと (機械: `structureFindings` の `GENERIC_SKELETON`)。原理 P1〜P5 のうち、どれを満たすかを方向ごとに挙げられること | `MOTIF_NOT_TRANSLATED`、`LOWER_SECTIONS_GENERIC`、`SPLIT_HERO_DEFAULT`、`READABLE_BUT_FLAT`、`TOO_QUIET`、`MECHANISM_OVER_LOOK` |
 | C6 | 写真・図形・文字が関係しているか | 文字・線・注釈がモチーフの言語になっている所を挙げられること。写真の役割が重ならないこと | `IMAGE_TYPE_RELATION_WEAK`、`PROP_OVER_PRODUCT` |
 | C7 | 改良なら、守る核を先に名指ししたか | 改良の前に、守る部分と直す部分を分けて書くこと | `CORE_LOST_IN_REFINEMENT`、`OVERCROWDED_INFO` |
 
