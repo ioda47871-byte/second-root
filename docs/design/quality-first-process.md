@@ -72,7 +72,7 @@
 - 評価票 (`design-library/research/three-methods/review-sheet.md` の5項目) で、オーナーが PC/SP を見て決める。
   - 5項目: 店舗らしさ・独創性・視覚的完成度・PC・SP。
   - 複数案は盲検で並べる (#180 の X/Y/Z の手順)。
-- 機械の所見 (構造記述子・SP の所見・Identity・横はみ出し) は補助で、**単独で合格にしない** (P4 の反例 CP-025 v1)。
+- 機械の所見 (構造記述子・SP の所見・Identity・横はみ出し) は補助で、**単独で合格にしない** (`READABLE_BUT_FLAT` の記録 CP-025 v1「技術的に壊れていないだけ」)。
 - 不採用なら、失敗の符号 (`principles-v1.json`) で理由を記録する。
 
 ### 段6 実装する
@@ -93,7 +93,9 @@
 ### 段8 直す
 
 - **直す前に、守る核を名指しする** (P7)。
-- 1巡に1つの原因、上限は `runLoop` の `LIMITS` を借りる (3回、原因ごとに2回)。
+- 1巡に1つの原因。上限は直す対象で違う。
+  - カンプの自己批評と再設計 (段3〜4): `second-root-design-director` の規則どおり**最大2巡**。2巡で良くならなければ、直すのをやめて報告する。
+  - 実装の修正 (段6〜8): `runLoop` の `LIMITS` (3回、原因ごとに2回)。
 - 色や反射だけの変更を改良と呼ばない (`SURFACE_ONLY_CHANGE`)。
 - 全体の作り直しで核を失わない (`CORE_LOST_IN_REFINEMENT`)。
 
@@ -116,11 +118,11 @@
 
 | ID | 問い | 判定のしかた | 関係する失敗の符号 |
 |---|---|---|---|
-| C1 | 店固有性: 中心のモチーフは、この店の事実 (物・素材・製法・時間・空間・行為) から来ているか | 事実パックの id を挙げられること。入れ替えテスト (同業の別の店にすると、どこが成立しなくなるか) に答えられること | `GENRE_CLICHE`、`ATMOSPHERE_MISMATCH`、`WRONG_SHOP` |
-| C2 | 3方向が構造的に違うか | Hero の型と流れの型が、どの2方向でも両方違うこと (`directionsDiffer`)。構造記述子の8観点の半分以上が同じでないこと。配色・写真の違いだけでないこと | `SURFACE_ONLY_CHANGE`、`TOO_CLOSE_TO_REFERENCE` |
+| C1 | 店固有性: 中心のモチーフは、この店の事実 (物・素材・製法・時間・空間・行為) から来ているか | 事実パックの id を挙げられること。入れ替えテスト (同業の別の店にすると、どこが成立しなくなるか) に答えられること | `MOTIF_NOT_TRANSLATED`、`GENRE_CLICHE`、`ATMOSPHERE_MISMATCH`、`WRONG_SHOP` |
+| C2 | 3方向が構造的に違うか | Hero の型と流れの型が、どの2方向でも両方違うこと (`directionsDiffer`)。構造記述子の8観点の半分以上が同じでないこと (機械: `structureFindings` の `SIBLINGS_SAME_SKELETON`、近さ 0.6 以上)。配色・写真の違いだけでないこと | `SURFACE_ONLY_CHANGE`、`TOO_CLOSE_TO_REFERENCE` |
 | C3 | Hero 以降まで一貫した世界観があるか | 区画ごとに「モチーフのどの面か」を1行で言えること。最後の区画の終点があること。区画の順を入れ替えると話が壊れること | `HERO_ONLY_WORLD`、`NO_PAGE_STORY`、`LOWER_SECTIONS_GENERIC` |
 | C4 | PC/SP がそれぞれ成立しているか | SP の1画面目 (390×844) に何が入るか、PC から並び・大きさ・重なりの扱いをどう変えるかを書けること。SP が PC の縮小・単純な縦積みでないこと | `PC_SP_NOT_DIFFERENTIATED` |
-| C5 | 成功例と比べて平凡化していないか | 汎用の LP の印 (`split_copy_media` の Hero、`stacked_bands`、`grid_cards`) が2つ以上ないこと。原理 P1〜P5 のうち、どれを満たすかを方向ごとに挙げられること | `SPLIT_HERO_DEFAULT`、`LOWER_SECTIONS_GENERIC`、`READABLE_BUT_FLAT` |
+| C5 | 成功例と比べて平凡化していないか | 汎用の LP の印 (`split_copy_media` の Hero、`stacked_bands`、`grid_cards` など) が2つ以上ないこと (機械: `structureFindings` の `GENERIC_SKELETON`)。原理 P1〜P5 のうち、どれを満たすかを方向ごとに挙げられること | `MOTIF_NOT_TRANSLATED`、`LOWER_SECTIONS_GENERIC`、`SPLIT_HERO_DEFAULT`、`READABLE_BUT_FLAT`、`TOO_QUIET`、`MECHANISM_OVER_LOOK` |
 | C6 | 写真・図形・文字が関係しているか | 文字・線・注釈がモチーフの言語になっている所を挙げられること。写真の役割が重ならないこと | `IMAGE_TYPE_RELATION_WEAK`、`PROP_OVER_PRODUCT` |
 | C7 | 改良なら、守る核を先に名指ししたか | 改良の前に、守る部分と直す部分を分けて書くこと | `CORE_LOST_IN_REFINEMENT`、`OVERCROWDED_INFO` |
 

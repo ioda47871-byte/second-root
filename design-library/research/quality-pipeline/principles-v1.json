@@ -11,7 +11,12 @@
     "chatgpt_viewed": "ChatGPT displayed and analysed the picture (Issue #193)",
     "claude_viewed_registered_preview": "Claude viewed the in-repo registered WebP (a derivative of the original PNG)",
     "owner_terminal_sha_match": "the owner's terminal matched the original PNG SHA-256 with the manifest (bytes not in this session)",
-    "case_note": "the research note written at adoption (text)"
+    "case_note": "the research note (text). For CP-001〜023 written at adoption; for CP-026〜032 a draft note awaiting independent review, whose adoption reasons are design_analysis, not owner statements"
+  },
+  "picture_identity_levels": {
+    "owner_terminal_sha_match": "the owner's terminal matched the original PNG SHA-256 with the manifest",
+    "not_sha_checked": "the picture viewed was not matched by bytes against the recorded original",
+    "candidate_sha_unverified": "the owner gave the PC/SP picture as a candidate only; the original is unavailable and its identity with the adopted version is unverified (manifest: original_unavailable)"
   },
   "not_viewed": [
     "CP-003",
@@ -46,7 +51,9 @@
         "P4",
         "P5"
       ],
-      "recorded_failures": []
+      "recorded_failures": [],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-002",
@@ -67,7 +74,9 @@
         "P4",
         "P5"
       ],
-      "recorded_failures": []
+      "recorded_failures": [],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-008",
@@ -89,7 +98,9 @@
       ],
       "recorded_failures": [
         "CORE_LOST_IN_REFINEMENT"
-      ]
+      ],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-009",
@@ -115,7 +126,9 @@
         "P6",
         "P7"
       ],
-      "recorded_failures": []
+      "recorded_failures": [],
+      "picture_identity": "owner_terminal_sha_match",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-012",
@@ -135,7 +148,9 @@
         "P3",
         "P5"
       ],
-      "recorded_failures": []
+      "recorded_failures": [],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-016",
@@ -157,8 +172,11 @@
         "P6"
       ],
       "recorded_failures": [
-        "MOTIF_NOT_TRANSLATED"
-      ]
+        "LOWER_SECTIONS_GENERIC",
+        "TOO_CLOSE_TO_REFERENCE"
+      ],
+      "picture_identity": "owner_terminal_sha_match",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-017",
@@ -180,7 +198,9 @@
       ],
       "recorded_failures": [
         "CORE_LOST_IN_REFINEMENT"
-      ]
+      ],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-018",
@@ -200,7 +220,9 @@
         "P2",
         "P5"
       ],
-      "recorded_failures": []
+      "recorded_failures": [],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-019",
@@ -219,7 +241,9 @@
         "P1",
         "P2"
       ],
-      "recorded_failures": []
+      "recorded_failures": [],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-020",
@@ -237,7 +261,9 @@
       "principles": [
         "P1"
       ],
-      "recorded_failures": []
+      "recorded_failures": [],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-021",
@@ -254,12 +280,13 @@
       "structure": "01 SHAPE / 02 COLOR / 03 COMPOSE",
       "pc_sp": "static_concept",
       "principles": [
-        "P1",
-        "P7"
+        "P1"
       ],
       "recorded_failures": [
         "SURFACE_ONLY_CHANGE"
-      ]
+      ],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-022",
@@ -280,7 +307,9 @@
       ],
       "recorded_failures": [
         "SPLIT_HERO_DEFAULT"
-      ]
+      ],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-023",
@@ -303,7 +332,9 @@
       "recorded_failures": [
         "OVERCROWDED_INFO",
         "LOWER_SECTIONS_GENERIC"
-      ]
+      ],
+      "picture_identity": "not_sha_checked",
+      "note_kind": "adoption_record"
     },
     {
       "id": "CP-026",
@@ -325,7 +356,10 @@
       ],
       "recorded_failures": [
         "ATMOSPHERE_MISMATCH"
-      ]
+      ],
+      "picture_identity": "candidate_sha_unverified",
+      "note_kind": "draft_needs_independent_review",
+      "owner_decision_evidence_level": "positive_then_continued_plus_group_adoption"
     },
     {
       "id": "CP-027",
@@ -346,7 +380,10 @@
       ],
       "recorded_failures": [
         "SPLIT_HERO_DEFAULT"
-      ]
+      ],
+      "picture_identity": "candidate_sha_unverified",
+      "note_kind": "draft_needs_independent_review",
+      "owner_decision_evidence_level": "verbatim_quote_retrieved_not_repo_archived"
     },
     {
       "id": "CP-028",
@@ -367,7 +404,10 @@
       ],
       "recorded_failures": [
         "WRONG_SHOP"
-      ]
+      ],
+      "picture_identity": "candidate_sha_unverified",
+      "note_kind": "draft_needs_independent_review",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote"
     },
     {
       "id": "CP-029",
@@ -391,7 +431,10 @@
         "TOO_CLOSE_TO_REFERENCE",
         "PROP_OVER_PRODUCT",
         "TOO_QUIET"
-      ]
+      ],
+      "picture_identity": "candidate_sha_unverified",
+      "note_kind": "draft_needs_independent_review",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote"
     },
     {
       "id": "CP-030",
@@ -414,7 +457,10 @@
       ],
       "recorded_failures": [
         "GENRE_CLICHE"
-      ]
+      ],
+      "picture_identity": "candidate_sha_unverified",
+      "note_kind": "draft_needs_independent_review",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote"
     },
     {
       "id": "CP-031",
@@ -433,7 +479,10 @@
         "P1",
         "P7"
       ],
-      "recorded_failures": []
+      "recorded_failures": [],
+      "picture_identity": "candidate_sha_unverified",
+      "note_kind": "draft_needs_independent_review",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote"
     },
     {
       "id": "CP-032",
@@ -452,7 +501,10 @@
         "P1",
         "P2"
       ],
-      "recorded_failures": []
+      "recorded_failures": [],
+      "picture_identity": "candidate_sha_unverified",
+      "note_kind": "draft_needs_independent_review",
+      "owner_decision_evidence_level": "group_adoption_reported_no_individual_quote"
     }
   ],
   "principles": [
@@ -464,7 +516,7 @@
     {
       "id": "P2",
       "title": "中心のモチーフ1つから全体が派生する",
-      "statement": "1つの中心のモチーフが Hero・区画の順序・区切り・説明線・SP まで貫く。"
+      "statement": "1つの中心のモチーフが Hero・区画の順序・区切り・注釈・SP まで貫く。"
     },
     {
       "id": "P3",
@@ -489,12 +541,12 @@
     {
       "id": "P7",
       "title": "磨くときは守る核を先に決める",
-      "statement": "採用版の多くは初稿の核を守った局所の調整で、全体の作り直しは核を失った。"
+      "statement": "採用版の多くは初稿の核を守った局所の調整で、核を名指しせずに全体を作り直したり情報を足したりした版は核を失った。"
     },
     {
       "id": "P8",
       "title": "実店舗の事実と空気から始める",
-      "statement": "実際の店内・陳列・接客に戻ったときに採用された。業種の一般論で埋めない。"
+      "statement": "記録の分析 (design_analysis) では、実際の店内・陳列・接客に戻った版が採用された。業種の一般論で埋めない。"
     }
   ],
   "failure_codes": [
@@ -502,13 +554,14 @@
       "code": "MOTIF_NOT_TRANSLATED",
       "pattern": "店固有のものが写真や色に留まり、構造にならない",
       "evidence": [
-        "CP-016 初稿"
+        "P1 の逆 (導出)。近い記録: CP-030 v1 は業種の記号に留まった"
       ],
       "detect": "主役の写真を外しても構図が成立する",
       "checks": [
         "C1",
         "C5"
-      ]
+      ],
+      "evidence_kind": "derived"
     },
     {
       "code": "GENRE_CLICHE",
@@ -520,7 +573,8 @@
       "detect": "入れ替えテストで同業の別の店でも成立する",
       "checks": [
         "C1"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "HERO_ONLY_WORLD",
@@ -532,20 +586,23 @@
       "detect": "区画ごとにモチーフのどの面かを言えない",
       "checks": [
         "C3"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "LOWER_SECTIONS_GENERIC",
       "pattern": "下層が帯・カード・左右交互の繰り返し",
       "evidence": [
         "CP-023 v5",
-        "PT-02 初稿"
+        "PT-02 初稿",
+        "CP-016 初稿 (既存の成功例に似た骨格)"
       ],
       "detect": "構造記述子の grid_cards / split_copy_media / stacked_bands",
       "checks": [
         "C3",
         "C5"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "SPLIT_HERO_DEFAULT",
@@ -554,10 +611,11 @@
         "CP-027 v1",
         "CP-022 の留保"
       ],
-      "detect": "Hero が split_copy_media で店の事実から来た理由が無い",
+      "detect": "Hero が split_copy_media で店の事実から来た理由が無い (structureFindings の GENERIC_SKELETON)",
       "checks": [
         "C5"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "PC_SP_NOT_DIFFERENTIATED",
@@ -568,7 +626,8 @@
       "detect": "SP の並び・大きさ・重なりの扱いが PC と同じ",
       "checks": [
         "C4"
-      ]
+      ],
+      "evidence_kind": "derived"
     },
     {
       "code": "IMAGE_TYPE_RELATION_WEAK",
@@ -579,7 +638,8 @@
       "detect": "文字と写真が境をまたがず、線や注釈が無い",
       "checks": [
         "C6"
-      ]
+      ],
+      "evidence_kind": "hypothesis"
     },
     {
       "code": "READABLE_BUT_FLAT",
@@ -590,7 +650,8 @@
       "detect": "機械の検査はすべて通るが記憶に残る所を1つ言えない",
       "checks": [
         "C5"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "NO_PAGE_STORY",
@@ -601,7 +662,8 @@
       "detect": "最後の区画に終点が無い、区画の順が入れ替え可能",
       "checks": [
         "C3"
-      ]
+      ],
+      "evidence_kind": "derived"
     },
     {
       "code": "CORE_LOST_IN_REFINEMENT",
@@ -614,7 +676,8 @@
       "detect": "守る核を先に名指ししていない",
       "checks": [
         "C7"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "SURFACE_ONLY_CHANGE",
@@ -625,18 +688,21 @@
       "detect": "改良の前後で構造記述子が同じ",
       "checks": [
         "C2"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "TOO_CLOSE_TO_REFERENCE",
       "pattern": "直前の案や参照に似すぎる",
       "evidence": [
-        "CP-029 v1"
+        "CP-029 v1",
+        "CP-016 初稿 (「同じような構成になってきた」)"
       ],
       "detect": "構造記述子の近さ、比喩の重なり",
       "checks": [
         "C2"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "ATMOSPHERE_MISMATCH",
@@ -647,7 +713,8 @@
       "detect": "事実と演出の照合",
       "checks": [
         "C1"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "PROP_OVER_PRODUCT",
@@ -658,7 +725,8 @@
       "detect": "主役の面積と位置",
       "checks": [
         "C6"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "OVERCROWDED_INFO",
@@ -669,7 +737,8 @@
       "detect": "追加した区画が主役の面積を減らしていないか",
       "checks": [
         "C7"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "TOO_QUIET",
@@ -680,7 +749,8 @@
       "detect": "業態に必要な強さを言えるか",
       "checks": [
         "C5"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "MECHANISM_OVER_LOOK",
@@ -691,7 +761,8 @@
       "detect": "仕掛けを外した静止画の見た目",
       "checks": [
         "C5"
-      ]
+      ],
+      "evidence_kind": "observed"
     },
     {
       "code": "WRONG_SHOP",
@@ -703,7 +774,8 @@
       "detect": "Identity Lock",
       "checks": [
         "C1"
-      ]
+      ],
+      "evidence_kind": "observed"
     }
   ],
   "checklist": [
@@ -721,7 +793,7 @@
     {
       "id": "C2",
       "question": "3方向が構造的に違うか",
-      "how": "Hero の型と流れの型がどの2方向でも両方違い、構造記述子の8観点の半分以上が同じでない",
+      "how": "Hero の型と流れの型がどの2方向でも両方違い、構造記述子の8観点の半分以上が同じでない (機械: directionsDiffer と structureFindings の SIBLINGS_SAME_SKELETON、近さ 0.6 以上)",
       "failure_codes": [
         "SURFACE_ONLY_CHANGE",
         "TOO_CLOSE_TO_REFERENCE"
@@ -748,7 +820,7 @@
     {
       "id": "C5",
       "question": "成功例と比べて平凡化していないか",
-      "how": "汎用の LP の印が2つ以上なく、満たす原理 P1〜P5 を挙げられる",
+      "how": "汎用の LP の印が2つ以上なく、満たす原理 P1〜P5 を挙げられる (機械: structureFindings の GENERIC_SKELETON)",
       "failure_codes": [
         "MOTIF_NOT_TRANSLATED",
         "LOWER_SECTIONS_GENERIC",
@@ -777,5 +849,5 @@
       ]
     }
   ],
-  "note": "Research synthesis. Meeting these principles is not success-level quality; only the owner's review of real PC/SP pictures decides that. The 10 not-viewed cases are not used as evidence for the principles."
+  "note": "Research synthesis. Meeting these principles is not success-level quality; only the owner's review of real PC/SP pictures decides that. The 10 not-viewed cases are not used as evidence for the principles. CP-026〜032: the pictures are owner-given candidates (SHA unverified) and the notes are drafts whose adoption reasons are design_analysis."
 }

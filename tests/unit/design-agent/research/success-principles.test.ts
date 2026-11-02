@@ -8,16 +8,21 @@ import { describe, expect, it } from "vitest";
 
 const REPO = resolve(__dirname, "../../../..");
 const read = (p: string) => readFileSync(resolve(REPO, p), "utf8");
-type Case = { id: string; evidence: string[]; sources: string[]; principles: string[]; recorded_failures: string[]; pc_sp: string };
+type Case = { id: string; evidence: string[]; sources: string[]; principles: string[]; recorded_failures: string[]; pc_sp: string; picture_identity: string; note_kind: string; owner_decision_evidence_level?: string };
 const doc = JSON.parse(read("design-library/research/quality-pipeline/principles-v1.json")) as {
   cases: Case[];
   not_viewed: string[];
   principles: Array<{ id: string }>;
-  failure_codes: Array<{ code: string; checks: string[] }>;
+  failure_codes: Array<{ code: string; checks: string[]; evidence: string[]; evidence_kind: string }>;
   checklist: Array<{ id: string; failure_codes: string[] }>;
   evidence_levels: Record<string, string>;
+  picture_identity_levels: Record<string, string>;
 };
-const manifest = JSON.parse(read("design-library/success-cases/manifest.json")) as { registered_case_count: number; records: Array<{ id: string }> };
+const manifest = JSON.parse(read("design-library/success-cases/manifest.json")) as {
+  registered_case_count: number;
+  records: Array<{ id: string; owner_decision_evidence_level?: string; binary_original_verification?: string }>;
+};
+const failurePatterns = read(".claude/skills/second-root-design-director/references/failure-patterns.md");
 const inventory = JSON.parse(read("design-library/research/quality-pipeline/originals-inventory.json")) as { cases: Array<{ id: string; state: string }> };
 const principlesDoc = read("docs/design/success-principles-v1.md");
 const processDoc = read("docs/design/quality-first-process.md");
@@ -84,5 +89,46 @@ describe("success principles v1 (DEV-156, Issue #193)", () => {
     const p6 = doc.cases.filter((c) => c.principles.includes("P6"));
     expect(p6.length).toBeGreaterThan(0);
     for (const c of p6) expect(c.pc_sp).toBe("web_poc_pc_sp");
+  });
+  it("CP-026〜032 are candidate pictures with draft notes; only CP-009 / CP-016 have a matched picture identity", () => {
+    for (const c of doc.cases) {
+      expect(Object.keys(doc.picture_identity_levels)).toContain(c.picture_identity);
+      const late = Number(c.id.slice(3)) >= 26;
+      expect(c.note_kind).toBe(late ? "draft_needs_independent_review" : "adoption_record");
+      if (late) {
+        const rec = manifest.records.find((r) => r.id === c.id)!;
+        expect(c.picture_identity).toBe("candidate_sha_unverified");
+        expect(rec.binary_original_verification).toBe("original_unavailable");
+        expect(c.owner_decision_evidence_level).toBe(rec.owner_decision_evidence_level);
+      }
+    }
+    expect(doc.cases.filter((c) => c.picture_identity === "owner_terminal_sha_match").map((c) => c.id)).toEqual(["CP-009", "CP-016"]);
+  });
+
+  it("every principle rests on at least 2 viewed cases; the document cites not-viewed cases only with a label", () => {
+    for (const p of doc.principles) expect(doc.cases.filter((c) => c.principles.includes(p.id)).length, p.id).toBeGreaterThanOrEqual(2);
+    const section2 = principlesDoc.slice(principlesDoc.indexOf("## 2. "), principlesDoc.indexOf("## 3. "));
+    for (const line of section2.split("\n"))
+      for (const id of doc.not_viewed) if (line.includes(id)) expect(line, line).toMatch(/参考|未見/);
+  });
+
+  it("the document's checklist columns name the same failure codes as the data", () => {
+    for (const ch of doc.checklist) {
+      const row = processDoc.split("\n").find((l) => l.startsWith(`| ${ch.id} |`))!;
+      const named = [...row.split("|").at(-2)!.matchAll(/`([A-Z_]+)`/g)].map((m) => m[1]);
+      expect(named.sort(), ch.id).toEqual([...ch.failure_codes].sort());
+    }
+  });
+
+  it("failure-code evidence is honest: derived and hypothesis codes are labelled, cited cases exist", () => {
+    const known = new Set([...manifest.records.map((r) => r.id)]);
+    for (const f of doc.failure_codes) {
+      expect(["observed", "derived", "hypothesis"]).toContain(f.evidence_kind);
+      const row = principlesDoc.split("\n").find((l) => l.startsWith(`| \`${f.code}\` |`))!;
+      if (f.evidence_kind === "derived") expect(row).toContain("(導出)");
+      if (f.evidence_kind === "hypothesis") expect(row).toContain("(仮説)");
+      for (const e of f.evidence)
+        for (const id of e.match(/CP-\d{3}|PT-\d{2}/g) ?? []) expect(known.has(id) || failurePatterns.includes(id), `${f.code}:${id}`).toBe(true);
+    }
   });
 });
