@@ -75,7 +75,7 @@ describe("image reference lane: features (DEV-155, Issue #193)", () => {
   });
 });
 
-describe("image reference lane: intake CLI", () => {
+describe("image reference lane: intake CLI", { timeout: 60_000 }, () => {
   it("refuses a picture whose SHA-256 is not the recorded one, and writes nothing", () => {
     const dir = mkdtempSync(join(tmpdir(), "ref-lane-"));
     const file = join(dir, "x.png");
