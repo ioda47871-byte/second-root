@@ -6,7 +6,7 @@
 - 検査: `checkDirectionSet` と CLI
 
 ```
-npx tsx scripts/design-artifact/direction-set.ts --set <direction-set.json> --facts <facts-pack.json>
+npx tsx scripts/design-artifact/direction-set.ts --set <direction-set.json> --facts <facts-pack.json> [--principles <principles-v1.json>]
 ```
 
 終了コード: 0 = `READY_FOR_COMPS`、1 = `HOLD`、2 = 使い方・入力の誤り (ファイルが無い、JSON でない、事実パックが `shop_facts_pack_v1` でない、事実の id が重なる、`principles-v1.json` が壊れている)、3 = 不具合 (`HOLD` と区別する)。
@@ -43,17 +43,18 @@ npx tsx scripts/design-artifact/direction-set.ts --set <direction-set.json> --fa
 | C2 | `HERO_OR_FLOW_SHARED` | どこかの2方向で、Hero か流れが同じ (`directionsDiffer`) |
 | C2 | `DESCRIPTOR_COMPOSITION_MISMATCH`・`DESCRIPTOR_SECTIONS_MISMATCH` | 構造記述子が、Hero・流れ・区画の配置と合わない。2つの宣言をそろえるだけで、方向が違うことの証明にはならない (どちらも作り手が書く) |
 | C2 | `DESCRIPTOR_NOT_DECLARED` | 方向の記録の構造記述子に `measured` がある (ここは宣言だけ) |
-| C2 | `SECTIONS_SHARED` | 2方向の中身がほぼ同じ。最後の区画 (来店の終点) を除いた区画のうち、写したもの (id と地が同じ) か、モチーフの面がほぼ同じ文 (2文字ずつの重なり 0.7 以上) のものを数える。それが2つ以上かつ半分以上で、区画が4つ以上あるか配置の組が 0.8 以上重なれば止める。区画が4つ以上で配置の組がまったく同じでも止める。Hero・流れと安い観点のラベルだけを変えた方向、1つの配置と言い回しだけを変えた写しを止める。短いページが店の事実 (教室・来店) を共有するだけでは止めない |
+| C2 | `SECTIONS_SHARED` | 2方向の中身がほぼ同じ。最後の区画 (来店の終点) を除いた「本体」の区画を、1対1で比べる。写した区画 = id・地・配置がすべて同じか、モチーフの面がほぼ同じ文 (2文字ずつの重なり 0.7 以上。方向の全区画に共通する前置き・後置きは外して比べる)。止めるのは: 本体がすべて写し (本体2つ以上) / 本体が4つ以上で半分以上が写し / 半分以上が写しで配置の組 (終点も含む) が 0.8 以上重なる / 同じ位置で地と配置の組が3つ以上かつ6割以上同じ / 本体が4つ以上で配置の組がまったく同じ。店の事実 (教室・来店) や地の色、id を共有するだけでは止めない。**言葉の比べ方なので、すべての行を書き直せば抜けられる。** 最後はオーナーがカンプで見る |
 | C2 | `SIBLINGS_SAME_SKELETON` | 構造記述子の近さが 0.6 以上 (`structureFindings`) |
 | C2 | `DESCRIPTOR_ASPECTS_UNKNOWN` | 構造記述子に不明の観点がある (近さの比べ方から外れてしまう) |
-| C3 | `MOTIF_FACETS_REPEATED`・`SECTION_IDS_DUPLICATED` | 区画ごとのモチーフの面で、違う文が「区画の数 − 1」未満 (NFKC にそろえ、空白・数字 (半角・全角・漢数字)・記号を除いて比べる。「金の線1」「金の線２」「金の線三」は同じ文)。区画の id が重なる |
+| C3 | `MOTIF_FACET_EMPTY` | 面の文が、数字と記号だけで中身が無い |
+| C3 | `MOTIF_FACETS_REPEATED`・`SECTION_IDS_DUPLICATED` | 区画ごとのモチーフの面で、違う文が「区画の数 − 1」未満 (NFKC にそろえ、空白・数字 (半角・全角・漢数字の〇零一〜十百千万)・記号を除いて比べる。ローマ数字などは除かない。「金の線1」「金の線２」「金の線三」は同じ文)。区画の id が重なる |
 | C4 | `SP_PLAN_NOT_SEPARATE` | SP の計画が PC の計画の写し。SP の3項目のどれかが同じ文 (空白・数字・記号を除いて比べる) |
 | C5 | `LOWER_SECTIONS_GENERIC` | 区画の半分以上が汎用の配置 (`split_copy_media`・`grid_cards`) |
 | C5 | `GENERIC_SKELETON` | `structureFindings` の汎用の骨格 (Hero・流れが語彙の内に限られるので、今は起きない。語彙が広がったときのために残す) |
 | 参照 | `REFERENCE_NOT_VIEWED` | 参照した件か、使わなかった件が、画像を見た20件 (`principles-v1.json` の `cases`) の外 |
 | 参照 | `PRINCIPLE_UNKNOWN`・`REFERENCE_PRINCIPLE_NOT_IN_CASE` | 原理の id が無い。引いた件に、その原理が付いていない |
 | 参照 | `REFERENCE_BOTH_USED_AND_NOT` | 同じ件を参照と「使わない」の両方に書いた |
-| 根拠 | `EVIDENCE_COPIED` | 2方向で、同じチェックの根拠が同じ文。記録の不備なので、`ANSWER_CONTRADICTED_BY_CHECK` には数えない |
+| 根拠 | `EVIDENCE_COPIED` | 2方向で、同じチェックの根拠がほぼ同じ文 (2文字ずつの重なり 0.9 以上)。記録の不備なので、`ANSWER_CONTRADICTED_BY_CHECK` には数えない |
 | 答え | `DESIGNER_ANSWERED_NO` | 作り手の答えが「いいえ」(1つでもあれば次の段へ進まない) |
 | 答え | `ANSWER_CONTRADICTED_BY_CHECK` | 作り手は C1〜C5 に「はい」と答えたが、機械の検査が同じチェックで止めた |
 

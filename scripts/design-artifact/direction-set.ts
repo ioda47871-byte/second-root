@@ -1,7 +1,7 @@
 /**
  * DEV-157 (Issue #193, T1): check an art-direction set (`art_direction_set_v0`) before any comp is drawn (offline).
  *
- *   npx tsx scripts/design-artifact/direction-set.ts --set <direction-set.json> --facts <facts-pack.json>
+ *   npx tsx scripts/design-artifact/direction-set.ts --set <direction-set.json> --facts <facts-pack.json> [--principles <principles-v1.json>]
  *
  * Prints the check as JSON. Exits 0 for READY_FOR_COMPS, 1 for HOLD, 2 for a usage error or an input that cannot be read
  * (a missing file, bad JSON, a facts pack that is not `shop_facts_pack_v1`, a malformed principles file), 3 for a bug.
@@ -40,14 +40,14 @@ function readJson(path: string): { raw: Buffer; json: unknown } {
 }
 
 /** The check's inputs from a facts pack and the committed principles data. */
-export function loadInputs(factsPath: string): CheckInputs {
+export function loadInputs(factsPath: string, principlesPath = resolve(REPO, PRINCIPLES)): CheckInputs {
   const { raw, json } = readJson(factsPath);
   const pack = FactsPack.safeParse(json);
   if (!pack.success) throw new InputError(`not a shop_facts_pack_v1: ${pack.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
   const ids = pack.data.facts.map((f) => f.id);
   if (new Set(ids).size !== ids.length) throw new InputError("facts pack has duplicated fact ids");
-  const parsed = Principles.safeParse(readJson(resolve(REPO, PRINCIPLES)).json);
-  if (!parsed.success) throw new InputError(`${PRINCIPLES} is malformed: ${parsed.error.issues[0]?.message ?? ""}`);
+  const parsed = Principles.safeParse(readJson(principlesPath).json);
+  if (!parsed.success) throw new InputError(`${principlesPath} is malformed: ${parsed.error.issues[0]?.message ?? ""}`);
   const principles = parsed.data;
   return {
     shopId: pack.data.shop_id,
@@ -59,8 +59,8 @@ export function loadInputs(factsPath: string): CheckInputs {
   };
 }
 
-export function runDirectionSetCheck(setPath: string, factsPath: string): SetCheck {
-  const inputs = loadInputs(factsPath);
+export function runDirectionSetCheck(setPath: string, factsPath: string, principlesPath?: string): SetCheck {
+  const inputs = loadInputs(factsPath, principlesPath);
   return checkDirectionSet(readJson(setPath).json, inputs);
 }
 
@@ -76,7 +76,8 @@ if (require.main === module) {
   }
   let r: SetCheck;
   try {
-    r = runDirectionSetCheck(resolve(set), resolve(facts));
+    const principles = arg("--principles");
+    r = runDirectionSetCheck(resolve(set), resolve(facts), principles ? resolve(principles) : undefined);
   } catch (e) {
     if (e instanceof InputError) {
       process.stderr.write(`INPUT_ERROR: ${e.message}\n`);

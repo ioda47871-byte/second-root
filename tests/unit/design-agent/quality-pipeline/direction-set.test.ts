@@ -156,7 +156,7 @@ describe("art direction set (DEV-157, Issue #193)", () => {
     b.descriptor.text_direction.value = "mixed";
     const r = checkDirectionSet(s, opts);
     expect(r.status).toBe("HOLD");
-    expect(r.findings).toContainEqual({ check: "C2", code: "SECTIONS_SHARED", direction: "d1-seam-across|d2-lacquer-layers", detail: "sections:5/5,layouts:1.00" });
+    expect(r.findings).toContainEqual({ check: "C2", code: "SECTIONS_SHARED", direction: "d1-seam-across|d2-lacquer-layers", detail: "copied:5/5,pairs:5,layouts:1.00" });
     // the same layouts in another order are the same body
     const t = example();
     t.directions[2].sections = structuredClone(t.directions[0].sections).reverse();
@@ -290,6 +290,55 @@ describe("art direction set (DEV-157, Issue #193)", () => {
     expect(f.map((x) => x.code)).toEqual(["EVIDENCE_COPIED"]);
   });
 
+  it("C2: padding every facet, renaming the ids, or copying a short page whole does not hide a copy (round 3 M2)", () => {
+    // (a) all of d1's body, ids renamed, one layout changed, a fixed phrase in front of every facet
+    const s = example();
+    const [a, b] = [s.directions[0], s.directions[1]];
+    b.sections = structuredClone(a.sections).map((x: { id: string; motif_facet: string }) => ({ ...x, id: `${x.id}-b`, motif_facet: `漆の層として見せる: ${x.motif_facet}` }));
+    b.sections[0].layout = "vertical_text";
+    b.descriptor.section_layouts.value = b.sections.map((x: { layout: string }) => x.layout);
+    expect(codes(s)).toContain("SECTIONS_SHARED");
+    // (b) a 4-section page copied whole with one layout changed
+    const t = example();
+    const keep = (d: { sections: Array<{ layout: string }>; descriptor: { section_layouts: { value: string[] } } }, from: Array<{ layout: string }>) => {
+      d.sections = structuredClone(from);
+      d.descriptor.section_layouts.value = d.sections.map((x) => x.layout);
+    };
+    keep(t.directions[0], t.directions[0].sections.slice(2));
+    keep(t.directions[1], t.directions[0].sections);
+    t.directions[1].sections[0].layout = "vertical_text";
+    t.directions[1].descriptor.section_layouts.value = t.directions[1].sections.map((x: { layout: string }) => x.layout);
+    expect(codes(t)).toContain("SECTIONS_SHARED");
+  });
+
+  it("C2: sharing ids and the shop's ground colour, with other layouts and facets, is not a copy (round 3 M1)", () => {
+    const s = example();
+    const [d1, d3] = [s.directions[0], s.directions[2]];
+    // two sections in each with the same ids on the same ground (生成り), different layouts and facets
+    d1.sections[3].id = "about";
+    d3.sections[1].id = "about";
+    d3.sections[1].ground = d1.sections[3].ground;
+    d1.sections[4].id = "class";
+    d1.sections[4].ground = "生成り";
+    d3.sections[4].id = "class";
+    d3.sections[4].ground = "生成り";
+    expect(d1.sections[3].layout).not.toBe(d3.sections[1].layout);
+    expect(codes(s)).not.toContain("SECTIONS_SHARED");
+  });
+
+  it("C3: a facet that is only digits or symbols holds; empty text is similar to nothing (round 3 L1)", () => {
+    const s = example();
+    s.directions[0].sections[1].motif_facet = "(2)";
+    s.directions[0].sections[2].motif_facet = "十";
+    expect(codes(s)).toContain("MOTIF_FACET_EMPTY");
+  });
+
+  it("evidence copied with a small addition still counts as copied (round 3 L4)", () => {
+    const s = example();
+    s.directions[2].checklist.C4.evidence = `${s.directions[1].checklist.C4.evidence} (d3)`;
+    expect(codes(s)).toContain("EVIDENCE_COPIED");
+  });
+
   it("the CLI exits 0 for the example and 1 for a held set, printing the findings", () => {
     const cli = resolve(REPO, "scripts/design-artifact/direction-set.ts");
     const run = (set: string, facts = FACTS) => {
@@ -313,5 +362,17 @@ describe("art direction set (DEV-157, Issue #193)", () => {
     const bad = join(p, "..", "bad-pack.json");
     writeFileSync(bad, JSON.stringify({ schema: "shop_facts_pack_v1", shop_id: "x", facts: [] }));
     expect(run(resolve(REPO, POC, "direction-set.json"), bad).code).toBe(2);
+    // a malformed principles file is an input error (2), not a hold (1)
+    const badPrinciples = join(p, "..", "principles.json");
+    writeFileSync(badPrinciples, JSON.stringify({ cases: [], principles: [] }));
+    const cli2 = (args: string[]) => {
+      try {
+        execFileSync("npx", ["tsx", cli, ...args], { encoding: "utf8", stdio: "pipe" });
+        return 0;
+      } catch (e) {
+        return (e as { status: number }).status;
+      }
+    };
+    expect(cli2(["--set", resolve(REPO, POC, "direction-set.json"), "--facts", FACTS, "--principles", badPrinciples])).toBe(2);
   }, 90_000);
 });

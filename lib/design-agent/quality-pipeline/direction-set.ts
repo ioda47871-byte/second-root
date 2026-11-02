@@ -83,22 +83,27 @@ export type SetCheck = { status: "READY_FOR_COMPS" | "HOLD"; findings: Finding[]
 
 const NOTE = "READY_FOR_COMPS means only that the machine-checkable parts hold and no designer answer is 'no'. It is not a quality verdict: the owner decides on real PC/SP pictures.";
 
-/** Text compared for "the same": case, spaces, digits and punctuation do not make two lines different. */
+/**
+ * Text compared for "the same": width (NFKC), case, spaces, digits (ASCII, full-width and the kanji numerals) and
+ * punctuation do not make two lines different. Roman numerals and other number words are not stripped (a known limit).
+ */
 const norm = (s: string) =>
   s
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[\s\d〇一二三四五六七八九十\p{P}\p{S}]/gu, "");
+    .replace(/[\s\d〇零一二三四五六七八九十百千万\p{P}\p{S}]/gu, "");
 
-/** Character-bigram Jaccard of two normalised lines (0..1). */
+/** Character-bigram Jaccard of two normalised lines (0..1); an empty line is similar to nothing. */
 function similar(a: string, b: string): number {
+  const [p, q] = [norm(a), norm(b)];
+  if (!p || !q) return 0;
   const grams = (s: string) => new Set(Array.from({ length: Math.max(s.length - 1, 1) }, (_, i) => s.slice(i, i + 2)));
-  const [x, y] = [grams(norm(a)), grams(norm(b))];
+  const [x, y] = [grams(p), grams(q)];
   const inter = [...x].filter((g) => y.has(g)).length;
-  return inter / (x.size + y.size - inter || 1);
+  return inter / (x.size + y.size - inter);
 }
 
-/** Share of one multiset found in the other, over the larger size. */
+/** Share of one multiset found in the other (matched one to one), over the larger size. */
 function bagOverlap(a: readonly string[], b: readonly string[]): number {
   const rest = [...b];
   let n = 0;
@@ -112,13 +117,39 @@ function bagOverlap(a: readonly string[], b: readonly string[]): number {
   return n / Math.max(a.length, b.length, 1);
 }
 
+/** A direction's facets with the prefix and suffix that all of them share removed (so padding every line does not hide a copy). */
+function coreFacets(d: Direction): string[] {
+  const f = d.sections.map((x) => norm(x.motif_facet));
+  if (f.length < 2) return f;
+  let pre = 0;
+  while (pre < Math.min(...f.map((x) => x.length)) && f.every((x) => x[pre] === f[0]![pre])) pre++;
+  let suf = 0;
+  while (suf < Math.min(...f.map((x) => x.length)) - pre && f.every((x) => x[x.length - 1 - suf] === f[0]![f[0]!.length - 1 - suf])) suf++;
+  return f.map((x) => x.slice(pre, x.length - suf));
+}
+
 /**
- * How many of a's sections (the closing section left out: every page ends at the visit) are copied in b: the same id
- * and ground, or a facet that reads nearly the same (bigram similarity >= 0.7).
+ * The body (every section but the last: every page ends at the visit) of a and b compared one to one.
+ *   copied   a section with the same id, ground and layout, or a facet that reads nearly the same (bigram similarity
+ *            >= 0.7, after the padding all facets of a direction share is removed)
+ *   pairs    the same (ground, layout) pair in the same place
+ * This is a lexical check; a thorough rewrite of every line gets past it. The owner's review of the comps decides.
  */
-function sharedSections(a: Direction, b: Direction): number {
-  const body = (d: Direction) => d.sections.slice(0, -1);
-  return body(a).filter((x) => body(b).some((y) => (x.id === y.id && norm(x.ground) === norm(y.ground)) || similar(x.motif_facet, y.motif_facet) >= 0.7)).length;
+function bodyOverlap(a: Direction, b: Direction): { copied: number; pairs: number; n: number } {
+  const n = Math.min(a.sections.length, b.sections.length) - 1;
+  const [fa, fb] = [coreFacets(a), coreFacets(b)];
+  const rest = b.sections.slice(0, -1).map((y, j) => ({ y, core: fb[j]! }));
+  let copied = 0;
+  a.sections.slice(0, -1).forEach((x, i) => {
+    const k = rest.findIndex(({ y, core }) => (x.id === y.id && norm(x.ground) === norm(y.ground) && x.layout === y.layout) || similar(fa[i]!, core) >= 0.7);
+    if (k >= 0) {
+      copied++;
+      rest.splice(k, 1);
+    }
+  });
+  let pairs = 0;
+  for (let i = 0; i < n; i++) if (norm(a.sections[i]!.ground) === norm(b.sections[i]!.ground) && a.sections[i]!.layout === b.sections[i]!.layout) pairs++;
+  return { copied, pairs, n };
 }
 
 export type CheckInputs = {
@@ -155,17 +186,17 @@ export function checkDirectionSet(raw: unknown, o: CheckInputs): SetCheck {
     for (let j = i + 1; j < s.directions.length; j++) {
       const [a, b] = [s.directions[i]!, s.directions[j]!];
       if (!directionsDiffer(asOpen(a), asOpen(b))) f.push({ check: "C2", code: "HERO_OR_FLOW_SHARED", direction: `${a.id}|${b.id}` });
-      // the body: the same layouts in any order, or half the facets of the shorter one repeated in the other
-      // the body: copied or near-copied sections, and nearly the same layouts. A short page (3 body sections or fewer)
-      // needs both signals, so pages that only share the shop's facts are not held.
-      const n = Math.min(a.sections.length, b.sections.length) - 1;
-      const shared = Math.max(sharedSections(a, b), sharedSections(b, a));
+      // the body (see bodyOverlap). Held when: every body section is copied; or half of 4+ body sections are; or half are
+      // and the layouts (all sections, the visit included) nearly match; or 3+ and 60% of the places repeat the same
+      // ground and layout; or 4+ body sections have exactly the same layouts. Pages that only share the shop's facts
+      // (a class, a visit) are not held.
+      const { copied, pairs, n } = bodyOverlap(a, b);
       const layouts = bagOverlap(a.sections.map((x) => x.layout), b.sections.map((x) => x.layout));
-      const bodyShared = shared >= 2 && shared * 2 >= n;
-      if ((bodyShared && (n >= 4 || layouts >= 0.8)) || (layouts === 1 && n >= 4))
-        f.push({ check: "C2", code: "SECTIONS_SHARED", direction: `${a.id}|${b.id}`, detail: `sections:${shared}/${n},layouts:${layouts.toFixed(2)}` });
-      // the designer's evidence is per direction
-      for (const c of CHECKS) if (norm(a.checklist[c].evidence) === norm(b.checklist[c].evidence)) f.push({ check: c, code: "EVIDENCE_COPIED", direction: `${a.id}|${b.id}` });
+      const half = copied >= 2 && copied * 2 >= n;
+      if ((n >= 2 && copied === n) || (half && (n >= 4 || layouts >= 0.8)) || (pairs >= 3 && pairs >= 0.6 * n) || (layouts === 1 && n >= 4))
+        f.push({ check: "C2", code: "SECTIONS_SHARED", direction: `${a.id}|${b.id}`, detail: `copied:${copied}/${n},pairs:${pairs},layouts:${layouts.toFixed(2)}` });
+      // the designer's evidence is per direction (nearly the same text counts as copied)
+      for (const c of CHECKS) if (similar(a.checklist[c].evidence, b.checklist[c].evidence) >= 0.9) f.push({ check: c, code: "EVIDENCE_COPIED", direction: `${a.id}|${b.id}` });
     }
   for (const d of s.directions) {
     // the declared composition and the descriptor must agree (else the hero/flow check could be gamed)
@@ -185,6 +216,7 @@ export function checkDirectionSet(raw: unknown, o: CheckInputs): SetCheck {
     if (generic * 2 >= d.sections.length) f.push({ check: "C5", code: "LOWER_SECTIONS_GENERIC", direction: d.id, detail: `${generic}/${d.sections.length}` });
     // C3: every section a facet, facets not all the same, an ending
     const facets = d.sections.map((x) => norm(x.motif_facet));
+    if (facets.some((x) => !x)) f.push({ check: "C3", code: "MOTIF_FACET_EMPTY", direction: d.id });
     if (new Set(facets).size < Math.max(2, d.sections.length - 1)) f.push({ check: "C3", code: "MOTIF_FACETS_REPEATED", direction: d.id });
     if (new Set(d.sections.map((x) => x.id)).size !== d.sections.length) f.push({ check: "C3", code: "SECTION_IDS_DUPLICATED", direction: d.id });
     // C4: the phone plan is its own
