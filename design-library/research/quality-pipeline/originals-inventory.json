@@ -1,12 +1,13 @@
 {
-  "schema": "success_originals_inventory_v0",
+  "schema": "success_originals_inventory_v1",
   "manifest_sha256": "5e391db87e02dc9dcaa656b1a4588fa908492fcd2aee0e9715b9773de115f119",
   "counts": {
     "cases": 30,
-    "in_repo": 3,
+    "preview_in_repo": 3,
     "recorded_sha_only": 20,
     "metadata_only": 7,
-    "with_desktop_and_mobile": 9
+    "with_desktop_and_mobile": 10,
+    "originals_in_repo": 0
   },
   "repo_files": [
     {
@@ -32,22 +33,22 @@
       "title": "Mond — The Living Archive",
       "status": "owner_selected_research_success_example",
       "form": "static_concept_image",
-      "state": "in_repo",
+      "state": "preview_in_repo",
       "has_desktop": false,
       "has_mobile": false,
       "originals": [
         {
           "key": "original_png_sha256",
           "sha256": "99316fb40d71a0081bd5e9b892acf69d386a472722fb7d0bb1638ad0a2557d95",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "webp_sha256",
           "sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82",
+          "kind": "registered_preview",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": "design-library/success-cases/assets/CP-001_Mond.webp"
         }
       ]
@@ -57,22 +58,22 @@
       "title": "Sissi — Flower is Art",
       "status": "owner_selected_research_success_example",
       "form": "static_concept_image",
-      "state": "in_repo",
+      "state": "preview_in_repo",
       "has_desktop": false,
       "has_mobile": false,
       "originals": [
         {
           "key": "original_png_sha256",
           "sha256": "9376f4eb7e24cb881627956d331d9d5f97c405ac197f051128352d0db1b4814d",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "webp_sha256",
           "sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef",
+          "kind": "registered_preview",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": "design-library/success-cases/assets/CP-002_Sissi.webp"
         }
       ]
@@ -82,36 +83,36 @@
       "title": "なごやビーンズ — Editorial Roast Atlas v4",
       "status": "owner_design_approved_v4",
       "form": "web_poc_capture",
-      "state": "in_repo",
+      "state": "preview_in_repo",
       "has_desktop": true,
       "has_mobile": true,
       "originals": [
         {
           "key": "mobile_webp_sha256",
           "sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0",
+          "kind": "registered_preview",
           "view": "mobile",
-          "rejected": false,
           "in_repo_path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp"
         },
         {
           "key": "original_mobile_png_sha256",
           "sha256": "f8050aaf2b629d805fa338cad0c46edc7d3df2c8a7111f918f645da451169a1b",
+          "kind": "original",
           "view": "mobile",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "original_png_sha256",
           "sha256": "c1e42ba20375f2b990f05c43086504fae23fdd9030359d9e9565dda87fa13d24",
+          "kind": "original",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "webp_sha256",
           "sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6",
+          "kind": "registered_preview",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp"
         }
       ]
@@ -128,15 +129,15 @@
         {
           "key": "desktop_original_png_sha256",
           "sha256": "eb41b8a59a217259ef9010cf604616f63f765a6c22fbbca180cab0e8c7246849",
+          "kind": "original",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "mobile_original_png_sha256",
           "sha256": "55701641e04f290086efb0d79eb246228b4de1424d529eabe09122ed510a9df5",
+          "kind": "original",
           "view": "mobile",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -153,22 +154,22 @@
         {
           "key": "desktop_original_png_sha256",
           "sha256": "e1a0ac1ff9ff3db820094ef5c1a4127e1a634e09f10bf451b9b1a0dc615d1fc0",
+          "kind": "original",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "mobile_original_png_sha256",
           "sha256": "6494351672ebaee545d53c85f5aae0a70ab3357656a30528d7e4929a9c31e9e2",
+          "kind": "original",
           "view": "mobile",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "original_design_png_sha256",
           "sha256": "54b4eddecdd053e1a4796779910798afba4d8f93218227000b3d41eab9a306aa",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -185,22 +186,22 @@
         {
           "key": "original_b_png_sha256",
           "sha256": "c35f5e361f80e34dfb97d934be3f474c991201b98f94f61cbceb60b610726355",
+          "kind": "superseded",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "preview_webp_sha256",
           "sha256": "523611be45708f09ec7dd216abd49346826d93c275494e82b965b69f3f73f0cc",
+          "kind": "registered_preview",
           "view": "other",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "selected_polished_png_sha256",
           "sha256": "996b4671da84b7a1a9fe69b5322f7652ff73aa69ec215c7958413805e6ca1921",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -217,29 +218,29 @@
         {
           "key": "desktop_original_png_sha256",
           "sha256": "2d3083780691b00fb73127ee74370d34b34faa7e8d46b997da36a276b4c69d93",
+          "kind": "original",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "hero_comparison_sha256",
           "sha256": "49667349420b83d19bbe9f29fd5bce86fb586a4fb90b8a67fdba920ae2db07c2",
+          "kind": "comparison",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "mobile_original_png_sha256",
           "sha256": "c61bdfb84f5c399927364bad2493768d8b48808a0a2481cf63f422f296ea5e72",
+          "kind": "original",
           "view": "mobile",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "preview_webp_sha256",
           "sha256": "1290db9a80a19a18d47fafa0707727f2c22942973958f9de8d1e80883540051b",
+          "kind": "registered_preview",
           "view": "other",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -256,29 +257,29 @@
         {
           "key": "first_approved_direction_png_sha256",
           "sha256": "0530a7bb4971fab84562dbc3160e88eb2b03d1ed389bd46e3d6cc3f027a54651",
+          "kind": "superseded",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "preview_webp_sha256",
           "sha256": "af7cadf314888551bc16dee3204904b29b3654b672b5c51029390bc0615d25d3",
+          "kind": "registered_preview",
           "view": "other",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "rejected_green_revision_png_sha256",
           "sha256": "016cdd7c05c224fc95e7370e46ff429800a28f61422f239587fa8c59b649dbb0",
+          "kind": "rejected",
           "view": "other",
-          "rejected": true,
           "in_repo_path": null
         },
         {
           "key": "selected_revised_png_sha256",
           "sha256": "bb861c745f45b7cac87b1c74b59e05adbbf069e7c70cdbbf149e3c3c8346d63f",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -295,36 +296,36 @@
         {
           "key": "desktop_original_png_sha256",
           "sha256": "aee4dcc2e41fd15fddf5bdf26d46835ced3208135342dfa866c6ec94aa9526f5",
+          "kind": "original",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "hero_comparison_png_sha256",
           "sha256": "13b30f83c07b44d199030a06e820104c3dff6156bebc0470c8e468109e51fb76",
+          "kind": "comparison",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "mobile_original_png_sha256",
           "sha256": "b4513ecd14e7f12cd52dcce6b3d9379475864736cc92316c4933a0c20303ec14",
+          "kind": "original",
           "view": "mobile",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "original_concept_png_sha256",
           "sha256": "6905de5dd511f20cd2a5d09283ae22c28e140d2bc0a02719edfd4dfab58fffe7",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "preview_webp_sha256",
           "sha256": "62d4c0b2cfdf883ecaa38bacc006038657fb94a9148ef525e3d67a40f64bd5d2",
+          "kind": "registered_preview",
           "view": "other",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -341,22 +342,22 @@
         {
           "key": "desktop_original_png_sha256",
           "sha256": "6341c869f931810e449a3406ff87c5c9abf9e05bf5b5d56e87cc93a3f41983ce",
+          "kind": "original",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "mobile_original_png_sha256",
           "sha256": "a9594cda129bf903fd3a5978eb063b2c7a597dc13b2edd884f089d6b2f714ed1",
+          "kind": "original",
           "view": "mobile",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "visual_reference_sha256",
           "sha256": "2d81c51b7d7a16a58949d26cc525ddba738f61da0db3795e518a96dee17644dc",
+          "kind": "comparison",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -373,36 +374,36 @@
         {
           "key": "desktop_full_png_sha256",
           "sha256": "870ccff24b45438a6be2fbfda95aed8906208bac479bdb43b65c48ef1bc1bc4e",
+          "kind": "original",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "mobile_full_png_sha256",
           "sha256": "dd4b1cf113c1b09ab45514b36f6bcd7fa11cf675f5464741f9640b3ac88038d5",
+          "kind": "original",
           "view": "mobile",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "original_reference_png_sha256",
           "sha256": "b11d1fe8474ae37fa92e0068ed7cc91a13877652776c3a0cb6a3bf8136af84c5",
+          "kind": "superseded",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "recovered_design_png_sha256",
           "sha256": "a4dfc667d4f43d807667ac488ee9bd11a31e6731e7812aab3ea15988467462c2",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "rejected_revision_png_sha256",
           "sha256": "e6a92c90b94b297305fbfc712f8a7d0f31b99351b55822625df11e56ddeeebf5",
+          "kind": "rejected",
           "view": "other",
-          "rejected": true,
           "in_repo_path": null
         }
       ]
@@ -419,8 +420,8 @@
         {
           "key": "concept_png_sha256",
           "sha256": "b9309e3d4d4226abd3b2400fb079c6ecdd592874679f592d1b5e91ecfe672176",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -437,15 +438,15 @@
         {
           "key": "approved_v2_png_sha256",
           "sha256": "6b52cdc05537d740cd61e4cbee042f86aa73c3b1cb8806059611979dfc6e031b",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "first_concept_png_sha256",
           "sha256": "2b2f2dade208a697ca23da75ba29aa12bbed8c206b3f08fb1ed77197c7bbfdf2",
+          "kind": "superseded",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -456,21 +457,28 @@
       "status": "owner_selected_research_success_example",
       "form": "web_poc_capture",
       "state": "recorded_sha_only",
-      "has_desktop": false,
-      "has_mobile": false,
+      "has_desktop": true,
+      "has_mobile": true,
       "originals": [
         {
           "key": "approved_hero_sha256",
           "sha256": "49f24706a8b114ca346f1c7ae3cf2c120a12c49e5adff55ee7e75b2b82c66b41",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
-          "key": "approved_offline_preview_sha256",
-          "sha256": "0eed134bc266f9e9aa3ca994e229b81aeb5fbcee9882c7c252428f83a1494fc1",
-          "view": "other",
-          "rejected": false,
+          "key": "desktop_note_png_sha256",
+          "sha256": "39615184f7b78e139f18f91761e2d630c1762661ec5b5f8bcb28aa1dfdb0bba2",
+          "kind": "original",
+          "view": "desktop",
+          "in_repo_path": null
+        },
+        {
+          "key": "mobile_note_png_sha256",
+          "sha256": "4e997de75939d51145a098711d57076b59580a5a1263b1e1329d879df1d27d2f",
+          "kind": "original",
+          "view": "mobile",
           "in_repo_path": null
         }
       ]
@@ -487,15 +495,15 @@
         {
           "key": "desktop_1440_png_sha256",
           "sha256": "9ea42fe1cc87056d2810069343aa937468048917650897fe69780f1e7e08107e",
+          "kind": "original",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "mobile_390_png_sha256",
           "sha256": "3b67d554b68e36aaf98fcebc8e45f960a267f3d2f80fcba51cd988b9e37c2e58",
+          "kind": "original",
           "view": "mobile",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -512,22 +520,22 @@
         {
           "key": "approved_v1_1_png_sha256",
           "sha256": "4e70e70425d71a2ffe38ac702121e399817255493fac29e40c166d2850b21b28",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "before_after_png_sha256",
           "sha256": "909ac0976b9a38b7abf4880c140eba6bac9ea6d1b97063a2f4a40bbf7c47375a",
+          "kind": "comparison",
           "view": "other",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "first_concept_png_sha256",
           "sha256": "1d3499f457499da4a5b92f774ea86efb3f6bdc703446f417ce732e81e854dc7f",
+          "kind": "superseded",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -544,8 +552,8 @@
         {
           "key": "concept_png_sha256",
           "sha256": "69a4275c1e5adaac43199f4f825c5d43366702c69ac4ca7fd9bf15df970aacfa",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -562,8 +570,8 @@
         {
           "key": "concept_png_sha256",
           "sha256": "2162587bc40a8c2e33620ad78b35837457f3c507f7edb94f874bed6afe444ef9",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -580,8 +588,8 @@
         {
           "key": "concept_png_sha256",
           "sha256": "1b19426edc9a135dc1f40bddf6f86417c16ed9d230c8dbc85150551e75877049",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -598,15 +606,15 @@
         {
           "key": "concept_png_sha256",
           "sha256": "c8675baaa39c9c04bab28a68ecc8ffe790b0d135187475340143b258daec94eb",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "rejected_v2_png_sha256",
           "sha256": "f87e11f024aa9d2793394b0d57dbe44ba62132ad18cb2c19d01150f0f679b6c3",
+          "kind": "rejected",
           "view": "other",
-          "rejected": true,
           "in_repo_path": null
         }
       ]
@@ -623,8 +631,8 @@
         {
           "key": "concept_png_sha256",
           "sha256": "c6816c02d7d102c554b292fe9142567e25deba0b03fac575c06cb30f6a696abc",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -641,22 +649,22 @@
         {
           "key": "concept_png_sha256",
           "sha256": "7f3ced52f3d22d09b6c6775a950619e28cbc5283b8102805bcd9362f364d194b",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "v1_rejected_sha256",
           "sha256": "f6c14027041929500d0ce449e6da94a6d4d83d6436e8134255c682fb0e1e367b",
+          "kind": "rejected",
           "view": "other",
-          "rejected": true,
           "in_repo_path": null
         },
         {
           "key": "v5_not_preferred_sha256",
           "sha256": "48484f1df9c74c36048a1032158c4bcdd59cbd92838f899fcf7724537c24e897",
+          "kind": "rejected",
           "view": "other",
-          "rejected": true,
           "in_repo_path": null
         }
       ]
@@ -673,29 +681,22 @@
         {
           "key": "approved_hero_sha256",
           "sha256": "8bd0bc176b1e2e5043536aba5e97c556c426b2651679c8f274d1d971ac5f13ce",
+          "kind": "original",
           "view": "concept",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "desktop_full_page_sha256",
           "sha256": "5c81a615ed3bfec4c1d27ee1729bf80d56112a5df62d92b69b4274de673d0de9",
+          "kind": "original",
           "view": "desktop",
-          "rejected": false,
           "in_repo_path": null
         },
         {
           "key": "mobile_full_page_sha256",
           "sha256": "4e3af11e5f04646e890d8a14dc1143ea3b937e78b5928d2d8b2fcfd2ed634c68",
+          "kind": "original",
           "view": "mobile",
-          "rejected": false,
-          "in_repo_path": null
-        },
-        {
-          "key": "offline_preview_sha256",
-          "sha256": "d9593eaef6241ca67b92321f948cc85846f59e286de59b739b539bade474708f",
-          "view": "other",
-          "rejected": false,
           "in_repo_path": null
         }
       ]
@@ -771,5 +772,5 @@
       "originals": []
     }
   ],
-  "note": "Derived from design-library/success-cases/manifest.json and the image files in this repository. A recorded SHA-256 is not the image: the bytes must be supplied and checked before any analysis cites them. The repository is public: originals are not committed."
+  "note": "Derived from design-library/success-cases/manifest.json and the image files in this repository. The in-repo files are registered WebP previews derived from the original PNGs, not the originals. A recorded SHA-256 is not the picture: the bytes must be supplied and checked before any analysis cites them. The repository is public: originals are not committed."
 }

@@ -1,29 +1,36 @@
 /**
- * DEV-154 (Issue #193): which success-case originals exist where. Pure: the caller reads the manifest and hashes the
+ * DEV-154 (Issue #193): which success-case pictures exist where. Pure: the caller reads the manifest and hashes the
  * files that are in the repository; this module only classifies.
  *
- * Three states per case, never guessed:
- *   in_repo            an image file is in this repository and its SHA-256 equals the one the manifest records
- *   recorded_sha_only  the manifest records the SHA-256 of an original, but the bytes are not here
- *                      (kept in the owner's ChatGPT archive; they can be checked against the SHA when supplied)
- *   metadata_only      no original's SHA-256 is recorded at all (CP-026..032: "original_binary_unverified")
+ * Each recorded picture has a kind, kept apart (Issue #193: original vs derivative vs text only):
+ *   original            the adopted picture itself (a full-page PNG, a concept PNG)
+ *   registered_preview  a WebP the registration made from an original (CP-001..003 are in the repository as these)
+ *   comparison          a side-by-side or before/after sheet made for review, not a design
+ *   superseded          an earlier version the adopted one replaced (first concept, the B draft before polishing ...)
+ *   rejected            a version the owner rejected or did not prefer (a counter-example)
  *
- * The repository is public, so this lane never asks for an original to be committed: an original supplied later is
- * checked against the recorded SHA and only derived records (SHA, size, measured features, a written analysis) are kept.
+ * Three states per case, never guessed:
+ *   preview_in_repo     a registered preview is in this repository and its SHA-256 equals the recorded one
+ *                       (the original PNG itself is not here; the preview is derived from it)
+ *   recorded_sha_only   SHA-256s of the case's pictures are recorded, but no bytes are here
+ *   metadata_only       no picture's SHA-256 is recorded at all (CP-026..032: "original_binary_unverified")
+ *
+ * The repository is public, so this lane never asks for an original to be committed (a test fails if one is).
  */
 
 export type ManifestRecord = Record<string, unknown> & { id: string };
 export type RepoFile = { path: string; sha256: string };
 
+export type PictureKind = "original" | "registered_preview" | "comparison" | "superseded" | "rejected";
+
 export type OriginalRef = {
   /** The manifest key that records this SHA-256 (e.g. desktop_original_png_sha256). */
   key: string;
   sha256: string;
-  /** What the key says the picture is; "other" when the key names neither a view nor a concept. */
+  kind: PictureKind;
+  /** What the key says the picture shows; "other" when the key names neither a view nor a concept. */
   view: "desktop" | "mobile" | "concept" | "other";
-  /** A rejected or superseded version, kept as a counter-example (never a success reference). */
-  rejected: boolean;
-  /** The repository path when the bytes are here and match. */
+  /** The repository path when the bytes are here and match (only registered previews are ever here). */
   in_repo_path: string | null;
 };
 
@@ -33,7 +40,8 @@ export type CaseInventory = {
   status: string;
   /** What kind of thing the success is, from the manifest (static concept image vs a Web PoC capture). */
   form: "static_concept_image" | "web_poc_capture" | "unknown";
-  state: "in_repo" | "recorded_sha_only" | "metadata_only";
+  state: "preview_in_repo" | "recorded_sha_only" | "metadata_only";
+  /** Whether a desktop / mobile picture of the adopted version (original or its preview) is recorded. */
   has_desktop: boolean;
   has_mobile: boolean;
   originals: OriginalRef[];
@@ -41,6 +49,32 @@ export type CaseInventory = {
 
 const SHA = /^[0-9a-f]{64}$/;
 const str = (v: unknown) => (typeof v === "string" ? v : "");
+
+function formOf(r: ManifestRecord): CaseInventory["form"] {
+  const v = `${str(r.view)} ${str(r.source_kind)}`.toLowerCase();
+  if (/poc|html/.test(v)) return "web_poc_capture";
+  if (/concept|image/.test(v)) return "static_concept_image";
+  return "unknown";
+}
+
+/**
+ * Keys that hold a picture's SHA-256. Archives, HTML (including the offline preview pages of CP-015 / CP-024,
+ * `*offline_preview*`), sources and git blobs are not pictures.
+ */
+export function isPictureKey(key: string): boolean {
+  const k = key.toLowerCase();
+  if (!k.endsWith("sha256")) return false;
+  return !/(archive|zip|html|blob|source|offline_preview)/.test(k);
+}
+
+export function kindOf(key: string): PictureKind {
+  const k = key.toLowerCase();
+  if (/(reject|not_preferred)/.test(k)) return "rejected";
+  if (k === "webp_sha256" || /(^|_)webp_sha256$/.test(k)) return "registered_preview";
+  if (/(comparison|before_after|visual_reference)/.test(k)) return "comparison";
+  if (/(^first_|original_b_|original_reference)/.test(k)) return "superseded";
+  return "original";
+}
 
 function viewOf(key: string, form: CaseInventory["form"]): OriginalRef["view"] {
   const k = key.toLowerCase();
@@ -50,20 +84,6 @@ function viewOf(key: string, form: CaseInventory["form"]): OriginalRef["view"] {
   if (/(^|_)(mobile|sp|390)(_|$)/.test(k)) return "mobile";
   if (/(concept|hero|design|direction|reference|approved_v|selected|first_|polished|original_b|visual)/.test(k)) return "concept";
   return "other";
-}
-
-function formOf(r: ManifestRecord): CaseInventory["form"] {
-  const v = `${str(r.view)} ${str(r.source_kind)}`.toLowerCase();
-  if (/poc|html/.test(v)) return "web_poc_capture";
-  if (/concept|image/.test(v)) return "static_concept_image";
-  return "unknown";
-}
-
-/** Keys that hold a picture's SHA-256 (archives, HTML sources and notes are not pictures). */
-function isPictureKey(key: string): boolean {
-  const k = key.toLowerCase();
-  if (!k.endsWith("sha256")) return false;
-  return !/(archive|zip|html|blob|source|note)/.test(k);
 }
 
 export function inventoryCase(r: ManifestRecord, files: readonly RepoFile[]): CaseInventory {
@@ -77,29 +97,29 @@ export function inventoryCase(r: ManifestRecord, files: readonly RepoFile[]): Ca
     if (!isPictureKey(key) || typeof value !== "string" || !SHA.test(value)) continue;
     const path = previewPaths[key] ?? null;
     const inRepo = path !== null && byPath.get(path) === value ? path : null;
-    // the in-repo previews are views of the page; their manifest keys do not name the view, the paths do
+    // the in-repo previews name no view in their key; their paths do
     const view = key === "mobile_webp_sha256" ? "mobile" : viewOf(key, form);
-    originals.push({ key, sha256: value, view, rejected: /(reject|not_preferred)/.test(key), in_repo_path: inRepo });
+    originals.push({ key, sha256: value, kind: kindOf(key), view, in_repo_path: inRepo });
   }
   originals.sort((a, b) => a.key.localeCompare(b.key));
-  const usable = originals.filter((o) => !o.rejected);
-  const state: CaseInventory["state"] = usable.some((o) => o.in_repo_path) ? "in_repo" : usable.length ? "recorded_sha_only" : "metadata_only";
+  const adopted = originals.filter((o) => o.kind === "original" || o.kind === "registered_preview");
+  const state: CaseInventory["state"] = adopted.some((o) => o.in_repo_path) ? "preview_in_repo" : originals.length ? "recorded_sha_only" : "metadata_only";
   return {
     id: r.id,
     title: str(r.title),
     status: str(r.status),
     form,
     state,
-    has_desktop: usable.some((o) => o.view === "desktop"),
-    has_mobile: usable.some((o) => o.view === "mobile"),
+    has_desktop: adopted.some((o) => o.view === "desktop"),
+    has_mobile: adopted.some((o) => o.view === "mobile"),
     originals,
   };
 }
 
 export type Inventory = {
-  schema: "success_originals_inventory_v0";
+  schema: "success_originals_inventory_v1";
   manifest_sha256: string;
-  counts: { cases: number; in_repo: number; recorded_sha_only: number; metadata_only: number; with_desktop_and_mobile: number };
+  counts: { cases: number; preview_in_repo: number; recorded_sha_only: number; metadata_only: number; with_desktop_and_mobile: number; originals_in_repo: number };
   repo_files: RepoFile[];
   cases: CaseInventory[];
   note: string;
@@ -109,17 +129,18 @@ export function buildInventory(o: { manifestSha256: string; records: readonly Ma
   const cases = o.records.map((r) => inventoryCase(r, o.files)).sort((a, b) => a.id.localeCompare(b.id));
   const n = (s: CaseInventory["state"]) => cases.filter((c) => c.state === s).length;
   return {
-    schema: "success_originals_inventory_v0",
+    schema: "success_originals_inventory_v1",
     manifest_sha256: o.manifestSha256,
     counts: {
       cases: cases.length,
-      in_repo: n("in_repo"),
+      preview_in_repo: n("preview_in_repo"),
       recorded_sha_only: n("recorded_sha_only"),
       metadata_only: n("metadata_only"),
       with_desktop_and_mobile: cases.filter((c) => c.has_desktop && c.has_mobile).length,
+      originals_in_repo: cases.flatMap((c) => c.originals).filter((x) => x.kind !== "registered_preview" && x.in_repo_path).length,
     },
     repo_files: [...o.files].sort((a, b) => a.path.localeCompare(b.path)),
     cases,
-    note: "Derived from design-library/success-cases/manifest.json and the image files in this repository. A recorded SHA-256 is not the image: the bytes must be supplied and checked before any analysis cites them. The repository is public: originals are not committed.",
+    note: "Derived from design-library/success-cases/manifest.json and the image files in this repository. The in-repo files are registered WebP previews derived from the original PNGs, not the originals. A recorded SHA-256 is not the picture: the bytes must be supplied and checked before any analysis cites them. The repository is public: originals are not committed.",
   };
 }

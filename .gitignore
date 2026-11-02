@@ -51,3 +51,6 @@ build.log
 # Python caches (e.g. the jail probe)
 __pycache__/
 *.py[cod]
+
+# DEV-154 (Issue #193): supplied success-case originals stay outside git (the repository is public)
+design-library/research/quality-pipeline/.intake/
