@@ -344,6 +344,7 @@ body {
   .mouth__hearth {
     padding: 18px 20px 22px 20px;
     font-size: 20px;
+    letter-spacing: 0.02em;
     border-top-width: 5px;
   }
 

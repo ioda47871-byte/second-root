@@ -21,10 +21,10 @@ VISUAL_FIRST の実装はこの PR に入れない (lane から作る。計画 �
 
 | file | SHA-256 |
 |---|---|
-| `layout-first/index.html` | `529785dff053d42b79be696fce4fd6c352b6cdfeebf7acf3aba1314ee5c091be` |
-| `layout-first/style.css` | `293abc8bee3bbd95d6fab81cbe03bd43f94a64698a51b35ee4226b1e7ad7ea79` |
-| `direction-first/index.html` | `17bee4e845eb30e4350f2921cde24562f30933168683b15a21f0a219bcfc8728` |
-| `direction-first/style.css` | `a4861681a1af6eacff98e08c847cf3b94ce3fbe3fa85106a6bbfa9bd4d769bcd` |
+| `layout-first/index.html` | `410dd8d56a47326d1e93c7f0bb29fb1a8e18878c1e76ad75a9e9ec087c4902cf` |
+| `layout-first/style.css` | `7380788d444a41fc78507fc201ab397d4c513424fce4b3fa21c66dbea43d8bd9` |
+| `direction-first/index.html` | `13d42c4737b163892e3a38e229cb825f23ef2c9a8c0e37f5d48de36661274063` |
+| `direction-first/style.css` | `bb4576f122f9d0a7309898ff4974a968bfca0bc04eaa71f3a640333af6ed1f56` |
 
 **マージのあとでページを1バイトでも変えると、C2-a の画像はページに結び付かなくなる** (`IMAGE_PAGE_MISMATCH`)。
 
@@ -37,18 +37,18 @@ VISUAL_FIRST の実装はこの PR に入れない (lane から作る。計画 �
 | `three-methods-steps.ts --check` 横はみ出し (1440 / 390) | 無し / 無し | 無し / 無し |
 | Identity (`auditPageText`) | PASS | PASS |
 | SP の所見 (`measureMobileQuality`、記録だけ) | 0 | 0 |
-| 構造の観測 (記録だけ) | generic_skeleton 無し。PC の hero は `split_copy_media` と測られる (汎用の印は1つ) | generic_skeleton 無し |
+| 構造の観測 (記録だけ) | generic_skeleton 無し | generic_skeleton 無し |
 | 修正 (横はみ出しのみが修正のきっかけ) | 0回 | 0回 |
 
-- 横はみ出し以外の見た目の調整 (名前の折り返しなど) は、どちらも書いている途中の1巡で行った。修正の上限 (`LIMITS`) は使っていない。
+- 横はみ出し以外の見た目の調整は、書いている途中と、独立レビューの Low の指摘への対応で行った。修正の上限 (`LIMITS`) は使っていない。測った構造の記述子と調整の中身は、評価のあとで run の記録 (`three_method_run_v0`) に入れる (盲検のため、ここには書かない)。
 - 描画は Claude の作業場所の Chromium で、和文の明朝の書体が無く、総称の書体で描かれた。実機の書体は違いうる。
 
 ## 画像の要求
 
-- **LAYOUT_FIRST (C2-a):** `--page-request` の結果は、A1 が essential、prompt `dd79e4343708ee6a27ed98bb3575ffc75fec1b06549eb53539fc464c4facb580` / 933 文字、ページ `layout-first/index.html` `529785df…91be`。マージのあと C2 の commit で、オーナーが同じ値を `--print-pin` で出して照らす。
+- **LAYOUT_FIRST (C2-a):** `--page-request` の結果は、A1 が essential、prompt `dd79e4343708ee6a27ed98bb3575ffc75fec1b06549eb53539fc464c4facb580` / 933 文字、ページ `layout-first/index.html` `410dd8d5…02cf`。マージのあと C2 の commit で、オーナーが同じ値を `--print-pin` で出して照らす。
 - **DIRECTION_FIRST:** 画像を求めない。方向 (C1-b) の `product_visual` が「生成画像も商品写真も使わない」と決めているため。`--no-image-reason` で `no-image.json` を作れることを確かめた。VISUAL_FIRST は必ず1枚なので、生成の予算はそろわない (条件の違いとして記録する。暫定決定 3)。**C2-b は行わない。**
 
 ## 方向からのずれ・制約 (DIRECTION_FIRST)
 
-- 方向は分類 (F2 `bakery`) を中立なラベル「パン工房」で示すとした。ページはそれに従い、`bakery` の文字列は出していない。
-- 方向は「キーボードの焦点を見えるようにする」としたが、実装レーンの CSS 許可一覧は状態の擬似クラス (`:focus`) を許さない。ブラウザの既定の焦点の表示のままにした。
+- **F2 (事実の扱い):** 方向は分類 (F2 `bakery`) を中立なラベル「パン工房」で示すとした。ページはそれに従い、`bakery` の文字列は出していない。ブリーフの must_show の F2 は、値そのままではなくラベルで満たしている。LAYOUT_FIRST は `bakery` をそのまま出し、VISUAL_FIRST の prompt は値そのままを求めるので、方式のあいだで F2 の出し方が違う (条件の違いとして記録する)。
+- ほかに、方向の値と実装の小さな違いが5件ある (CSS 許可一覧の制約によるものを含む。事実と安全の規則には触れない)。見た目の説明になるので、盲検の評価のあとで run の記録 (`three_method_run_v0`) に入れる。
