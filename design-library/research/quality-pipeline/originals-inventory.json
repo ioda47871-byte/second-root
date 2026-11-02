@@ -240,7 +240,7 @@
           "key": "preview_webp_sha256",
           "sha256": "1290db9a80a19a18d47fafa0707727f2c22942973958f9de8d1e80883540051b",
           "kind": "registered_preview",
-          "view": "other",
+          "view": "desktop",
           "in_repo_path": null
         }
       ]
@@ -325,7 +325,7 @@
           "key": "preview_webp_sha256",
           "sha256": "62d4c0b2cfdf883ecaa38bacc006038657fb94a9148ef525e3d67a40f64bd5d2",
           "kind": "registered_preview",
-          "view": "other",
+          "view": "desktop",
           "in_repo_path": null
         }
       ]

@@ -16,7 +16,7 @@
 2. **リポジトリは public である。**
    - 権利が確認できていない原本 (実在の店名、AI の写真) を commit すると、外へ公開することになる。Issue #193 §3 が禁じている。
    - この研究では原本をリポジトリに入れない。受け取った原本は manifest の SHA-256 と照らし、残すのは導いた記録だけ (SHA・測った特徴・座標つきの観察)。
-   - テストが、記録された原本の SHA と同じファイルが追跡されていないことを確かめる。受け取りの置き場 `design-library/research/quality-pipeline/.intake/` は `.gitignore` にした。
+   - テストが、manifest に記録されたどの SHA (原本・会話側の閲覧用 WebP・アーカイブ・HTML) と同じファイルも追跡されていないことを確かめる。例外は、manifest が自分でリポジトリに登録した4つの WebP だけである。受け取りの置き場 `design-library/research/quality-pipeline/.intake/` は `.gitignore` にした。
    - なお、CP-001〜003 の登録 WebP (AI の写真を含む) は、この PR より前から public である。
 3. **仮説:** #180 のパイロットと成功例の差は、主に3つの制約から来ている。
    - **これは仮説である。** 成功例の画像の観察と、パイロットの規則・CSS 許可一覧の文面から立てたもので、原因を実験で確かめてはいない。
@@ -42,7 +42,7 @@
 | `superseded` | 置き換えられた前の版 |
 | `rejected` | 不採用・好まれなかった版 |
 
-- `comparison`・`superseded`・`rejected` は反例として残し、成功の参照には数えない。
+- `comparison`・`superseded`・`rejected` は、成功の参照の正本には数えない。反例は `rejected` だけである (`superseded` は置き換えられた前の版、`comparison` は比較の資料)。
 - HTML・アーカイブ・オフラインのプレビューの頁 (CP-015・024 の `*offline_preview*`) は、画像に数えない。
 
 ### 状態
