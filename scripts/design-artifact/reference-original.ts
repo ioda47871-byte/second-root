@@ -145,6 +145,10 @@ function checkObs(a: Map<string, string>): number {
   const manifest = JSON.parse(readFileSync(resolve(REPO, MANIFEST), "utf8")) as { records: ManifestRecord[] };
   const entry = manifest.records.find((x) => x.id === record.data.case_id);
   if (!entry || entry[record.data.key] !== record.data.image_sha256) return refuse("RECORD_NOT_IN_MANIFEST");
+  // kind and view are derived from the manifest key again, never taken from the record as written
+  const ref = inventoryCase(entry, []).originals.find((o) => o.key === record.data.key);
+  if (!ref || (ref.kind !== "original" && ref.kind !== "registered_preview") || ref.kind !== record.data.kind || ref.view !== record.data.view)
+    return refuse("RECORD_NOT_A_SUCCESS_PICTURE", { kind: ref?.kind ?? null, view: ref?.view ?? null });
   const r = checkObservation(parsedObservation, record.data);
   if (!r.ok) return refuse("OBSERVATION_INVALID", { codes: r.codes });
   say({ status: "ok" });

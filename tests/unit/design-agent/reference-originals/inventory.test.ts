@@ -87,7 +87,7 @@ describe("success originals inventory (DEV-154, Issue #193)", () => {
       }
     const fromManifest = records.flatMap((r) => Object.entries(r).filter(([k, v]) => k.toLowerCase().endsWith("sha256") && typeof v === "string" && /^[0-9a-f]{64}$/.test(v)).map(([, v]) => v as string));
     const notes = spawnSync("git", ["ls-files", "-z", "--", "design-library/success-cases/*.md"], { cwd: REPO, encoding: "utf8" }).stdout.split("\0").filter(Boolean);
-    const fromNotes = notes.flatMap((p) => readFileSync(resolve(REPO, p), "utf8").match(/\b[0-9a-f]{64}\b/g) ?? []);
+    const fromNotes = notes.flatMap((p) => (readFileSync(resolve(REPO, p), "utf8").match(/\b[0-9a-f]{64}\b/gi) ?? []).map((v) => v.toLowerCase()));
     return { guarded: new Set([...fromManifest, ...fromNotes].filter((v) => !allowed.has(v))), allowed };
   }
 

@@ -130,7 +130,7 @@ describe("image reference lane: the committed CP-003 records and observations", 
     expect(checkObservation({ ...obs, extra: 1 }, record)).toEqual({ ok: false, codes: ["OBSERVATION_SCHEMA"] });
   });
 
-  it("a malformed record or one whose picture is not in the manifest is refused before the observation is read", () => {
+  it("a malformed record, one whose picture is not in the manifest, or one that is not a success picture is refused before the observation is checked", () => {
     const dir = mkdtempSync(join(tmpdir(), "ref-lane-"));
     const record = JSON.parse(readFileSync(resolve(REPO, `${REF}/CP-003/desktop.record.json`), "utf8"));
     const obs = resolve(REPO, `${REF}/CP-003/desktop.observation.json`);
@@ -144,6 +144,13 @@ describe("image reference lane: the committed CP-003 records and observations", 
     writeFileSync(forged, JSON.stringify({ ...record, image_sha256: "0".repeat(64) }));
     expect(run(["--check-observation", "--record", forged, "--observation", obs]).out.code).toBe("RECORD_NOT_IN_MANIFEST");
     expect(run(["--check-observation", "--record", noSize, "--bogus", "1"]).out.code).toBe("USAGE");
+    // a rejected version relabelled as a preview: kind and view are derived from the key, not taken from the record
+    const manifest = JSON.parse(readFileSync(resolve(REPO, "design-library/success-cases/manifest.json"), "utf8")) as { records: Array<Record<string, string>> };
+    const cp023 = manifest.records.find((r) => r.id === "CP-023")!;
+    const relabelled = join(dir, "relabelled.json");
+    writeFileSync(relabelled, JSON.stringify({ ...record, case_id: "CP-023", key: "v1_rejected_sha256", kind: "registered_preview", image_sha256: cp023.v1_rejected_sha256 }));
+    const r = run(["--check-observation", "--record", relabelled, "--observation", obs]);
+    expect([r.out.code, r.out.kind]).toEqual(["RECORD_NOT_A_SUCCESS_PICTURE", "rejected"]);
   });
 
   it("no picture is committed under the research references (the repository is public): every file there is JSON", () => {
