@@ -52,7 +52,7 @@ function rgbPng(width: number, height: number, colour: (x: number, y: number) =>
 }
 
 const run = (args: string[]) => {
-  const r = spawnSync("npx", ["tsx", CLI, ...args], { cwd: REPO, encoding: "utf8" });
+  const r = spawnSync("npx", ["tsx", CLI, ...args], { cwd: REPO, encoding: "utf8", timeout: 60_000 });
   return { code: r.status, out: JSON.parse(r.stdout || "{}") as Record<string, unknown> };
 };
 
@@ -101,7 +101,7 @@ describe("image reference lane: intake CLI", { timeout: 60_000 }, () => {
   });
 });
 
-describe("image reference lane: the committed CP-003 records and observations", () => {
+describe("image reference lane: the committed CP-003 records and observations", { timeout: 60_000 }, () => {
   const manifest = JSON.parse(readFileSync(resolve(REPO, "design-library/success-cases/manifest.json"), "utf8")) as { records: Array<Record<string, string>> };
   const cp003 = manifest.records.find((r) => r.id === "CP-003")!;
   for (const view of ["desktop", "mobile"] as const) {
@@ -130,8 +130,25 @@ describe("image reference lane: the committed CP-003 records and observations", 
     expect(checkObservation({ ...obs, extra: 1 }, record)).toEqual({ ok: false, codes: ["OBSERVATION_SCHEMA"] });
   });
 
-  it("no picture is committed under the research references (the repository is public)", () => {
+  it("a malformed record or one whose picture is not in the manifest is refused before the observation is read", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ref-lane-"));
+    const record = JSON.parse(readFileSync(resolve(REPO, `${REF}/CP-003/desktop.record.json`), "utf8"));
+    const obs = resolve(REPO, `${REF}/CP-003/desktop.observation.json`);
+    const noSize = join(dir, "no-size.json");
+    const rest = { ...record };
+    delete rest.width;
+    delete rest.height;
+    writeFileSync(noSize, JSON.stringify(rest));
+    expect(run(["--check-observation", "--record", noSize, "--observation", obs]).out.code).toBe("RECORD_INVALID");
+    const forged = join(dir, "forged.json");
+    writeFileSync(forged, JSON.stringify({ ...record, image_sha256: "0".repeat(64) }));
+    expect(run(["--check-observation", "--record", forged, "--observation", obs]).out.code).toBe("RECORD_NOT_IN_MANIFEST");
+    expect(run(["--check-observation", "--record", noSize, "--bogus", "1"]).out.code).toBe("USAGE");
+  });
+
+  it("no picture is committed under the research references (the repository is public): every file there is JSON", () => {
     const listed = spawnSync("git", ["ls-files", REF], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean);
-    expect(listed.every((p) => p.endsWith(".json"))).toBe(true);
+    expect(listed.length).toBeGreaterThan(0);
+    for (const p of listed) expect(() => JSON.parse(readFileSync(resolve(REPO, p), "utf8"))).not.toThrow();
   });
 });

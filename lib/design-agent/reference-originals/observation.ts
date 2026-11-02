@@ -45,6 +45,20 @@ export const ReferenceObservation = z.strictObject({
 });
 export type ReferenceObservation = z.infer<typeof ReferenceObservation>;
 
+/** The intake record (`reference_original_record_v0`), checked before an observation is compared with it. */
+export const ReferenceRecord = z.object({
+  schema: z.literal("reference_original_record_v0"),
+  case_id: z.string().regex(/^CP-\d{3}$/),
+  key: z.string().regex(/sha256$/),
+  kind: z.enum(["original", "registered_preview"]),
+  view: z.enum(["desktop", "mobile", "concept"]),
+  image_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  recorded_sha256_matches: z.literal(true),
+  width: z.number().int().min(1).max(20000),
+  height: z.number().int().min(1).max(40000),
+});
+export type ReferenceRecord = z.infer<typeof ReferenceRecord>;
+
 export type ObservationCheck = { ok: true } | { ok: false; codes: string[] };
 
 /** The observation against the intake record of the picture it claims to describe. */

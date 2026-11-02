@@ -27,38 +27,38 @@
         "bottom": 1228,
         "height_share": 0.273,
         "ground_hex": "#F8F8E8",
-        "photo_share": 0.26
+        "photo_share": 0.16
       },
       {
         "top": 1228,
         "bottom": 2102,
         "height_share": 0.194,
         "ground_hex": "#181818",
-        "photo_share": 0.42
+        "photo_share": 0.3
       },
       {
         "top": 2102,
         "bottom": 2278,
         "height_share": 0.039,
         "ground_hex": "#283828",
-        "photo_share": 0.24
+        "photo_share": 0.04
       },
       {
         "top": 2278,
         "bottom": 4308,
         "height_share": 0.451,
         "ground_hex": "#D8D8C8",
-        "photo_share": 0.29
+        "photo_share": 0.2
       },
       {
         "top": 4308,
         "bottom": 4502,
         "height_share": 0.043,
         "ground_hex": "#F8F8E8",
-        "photo_share": 0.16
+        "photo_share": 0
       }
     ],
-    "photo_share": 0.3,
+    "photo_share": 0.19,
     "colours": {
       "colours": [
         {
@@ -87,6 +87,6 @@
       "darkNeutralShare": 0.28
     },
     "advisory": true,
-    "note": "Measured from the pixels; advisory. Bands are runs of one ground colour at the row edges (a section with its own ground; photographs or type reaching both edges can split or shift a band); a page that keeps one ground under changing sections shows one band. photo_share counts many-coloured blocks (photographs, but also dense illustration). Not a quality score."
+    "note": "Measured from the pixels; advisory. Bands are runs of one ground colour at the row edges (a section with its own ground). Photographs or type reaching the edges can shift a band boundary; a gradient ground can split one section into two bands; sections whose grounds differ by one coarse level merge; a page that keeps one ground under changing sections shows one band. photo_share counts many-coloured blocks not dominated by two colours (photographs and dense illustration; smooth or very dark photo areas are missed). Not a quality score."
   }
 }

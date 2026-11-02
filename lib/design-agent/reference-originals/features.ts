@@ -9,7 +9,7 @@
  *   photo_share  part of the page (and of each band) made of photographic, many-coloured blocks
  *   colours      the existing reference-colours measure (website kind)
  */
-import { colourVariety, type Pixels } from "../worker/png-paint";
+import type { Pixels } from "../worker/png-paint";
 import { observeColours, type ObservedColours } from "../reference-colours";
 
 export type Band = {
@@ -38,9 +38,15 @@ export type OriginalFeatures = {
 const ROW_STEP = 2;
 const MIN_BAND_SHARE = 0.03;
 const MIN_BAND_PX = 120;
-/** Blocks of BLOCK px; a block with at least PHOTO_VARIETY distinct coarse colours counts as photographic. */
+/**
+ * Blocks of BLOCK px. A block counts as photographic when it has at least PHOTO_VARIETY distinct coarse colours over
+ * the whole block AND its two commonest colours cover at most TOP2_MAX of it: anti-aliased type on a flat ground has
+ * many edge colours but is dominated by ground and ink, so it does not count. Smooth or very dark photo areas have
+ * few coarse colours and are missed (documented limit).
+ */
 const BLOCK = 24;
 const PHOTO_VARIETY = 18;
+const TOP2_MAX = 0.6;
 
 const q = (v: number) => v >> 4; // 16 levels per channel
 const hex = (k: number) => `#${[(k >> 8) & 15, (k >> 4) & 15, k & 15].map((c) => (c * 16 + 8).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
@@ -75,7 +81,17 @@ function photoBlocks(px: Pixels, top: number, bottom: number): number {
   for (let y = top; y + BLOCK <= bottom; y += BLOCK)
     for (let x = 0; x + BLOCK <= px.width; x += BLOCK) {
       all += 1;
-      if (colourVariety(px, { top: y, bottom: y + BLOCK, left: x, right: x + BLOCK }, 1) >= PHOTO_VARIETY) photo += 1;
+      const counts = new Map<number, number>();
+      let n = 0;
+      for (let yy = y; yy < y + BLOCK; yy += 2)
+        for (let xx = x; xx < x + BLOCK; xx += 2) {
+          const i = (yy * px.width + xx) * px.channels;
+          const k = (q(px.data[i]!) << 8) | (q(px.data[i + 1]!) << 4) | q(px.data[i + 2]!);
+          counts.set(k, (counts.get(k) ?? 0) + 1);
+          n += 1;
+        }
+      const top = [...counts.values()].sort((a, b) => b - a);
+      if (counts.size >= PHOTO_VARIETY && (top[0]! + (top[1] ?? 0)) / n <= TOP2_MAX) photo += 1;
     }
   return all === 0 ? 0 : photo / all;
 }
@@ -95,7 +111,6 @@ export function measureOriginal(png: Buffer, px: Pixels): OriginalFeatures {
   for (const r of runs) {
     const last = bands[bands.length - 1];
     if (last && (r.bottom - r.top < minBand || sameGround(last.ground, r.ground))) last.bottom = r.bottom;
-    else if (!last && r.bottom - r.top < minBand) bands.push({ ...r });
     else bands.push({ ...r });
   }
   // a short first run takes the ground of what follows it
@@ -118,6 +133,6 @@ export function measureOriginal(png: Buffer, px: Pixels): OriginalFeatures {
     photo_share: Math.round(photoBlocks(px, 0, px.height) * 100) / 100,
     colours: observeColours([png], "website"),
     advisory: true,
-    note: "Measured from the pixels; advisory. Bands are runs of one ground colour at the row edges (a section with its own ground; photographs or type reaching both edges can split or shift a band); a page that keeps one ground under changing sections shows one band. photo_share counts many-coloured blocks (photographs, but also dense illustration). Not a quality score.",
+    note: "Measured from the pixels; advisory. Bands are runs of one ground colour at the row edges (a section with its own ground). Photographs or type reaching the edges can shift a band boundary; a gradient ground can split one section into two bands; sections whose grounds differ by one coarse level merge; a page that keeps one ground under changing sections shows one band. photo_share counts many-coloured blocks not dominated by two colours (photographs and dense illustration; smooth or very dark photo areas are missed). Not a quality score.",
   };
 }

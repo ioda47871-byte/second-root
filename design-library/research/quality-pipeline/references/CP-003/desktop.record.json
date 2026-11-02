@@ -27,24 +27,24 @@
         "bottom": 768,
         "height_share": 0.232,
         "ground_hex": "#F8F8E8",
-        "photo_share": 0.25
+        "photo_share": 0.15
       },
       {
         "top": 768,
         "bottom": 1560,
         "height_share": 0.239,
         "ground_hex": "#183828",
-        "photo_share": 0.3
+        "photo_share": 0.23
       },
       {
         "top": 1560,
         "bottom": 3308,
         "height_share": 0.528,
         "ground_hex": "#E8E8D8",
-        "photo_share": 0.23
+        "photo_share": 0.18
       }
     ],
-    "photo_share": 0.25,
+    "photo_share": 0.18,
     "colours": {
       "colours": [
         {
@@ -73,6 +73,6 @@
       "darkNeutralShare": 0.31
     },
     "advisory": true,
-    "note": "Measured from the pixels; advisory. Bands are runs of one ground colour at the row edges (a section with its own ground; photographs or type reaching both edges can split or shift a band); a page that keeps one ground under changing sections shows one band. photo_share counts many-coloured blocks (photographs, but also dense illustration). Not a quality score."
+    "note": "Measured from the pixels; advisory. Bands are runs of one ground colour at the row edges (a section with its own ground). Photographs or type reaching the edges can shift a band boundary; a gradient ground can split one section into two bands; sections whose grounds differ by one coarse level merge; a page that keeps one ground under changing sections shows one band. photo_share counts many-coloured blocks not dominated by two colours (photographs and dense illustration; smooth or very dark photo areas are missed). Not a quality score."
   }
 }

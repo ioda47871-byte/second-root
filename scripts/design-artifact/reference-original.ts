@@ -14,13 +14,13 @@
  * Exit: 0 done, 2 refused.
  */
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { chromium } from "playwright";
 import { decodePng } from "../../lib/design-agent/worker/png-paint";
 import { measureOriginal } from "../../lib/design-agent/reference-originals/features";
 import { inventoryCase, type ManifestRecord } from "../../lib/design-agent/reference-originals/inventory";
-import { checkObservation } from "../../lib/design-agent/reference-originals/observation";
+import { checkObservation, ReferenceRecord } from "../../lib/design-agent/reference-originals/observation";
 
 process.umask(0o077);
 const REPO = resolve(__dirname, "../..");
@@ -29,18 +29,32 @@ const say = (o: object) => process.stdout.write(`${JSON.stringify(o, null, 2)}\n
 const refuse = (code: string, extra: object = {}) => (say({ status: "refused", code, ...extra }), 2);
 const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
+const MODES = new Set(["--intake", "--check-observation"]);
+const VALUES = new Set(["--case", "--key", "--file", "--out", "--record", "--observation"]);
 function args(argv: string[]): Map<string, string> {
   const m = new Map<string, string>();
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (a === "--intake" || a === "--check-observation") m.set(a, "");
-    else if (a.startsWith("--") && i + 1 < argv.length) m.set(a, argv[++i]!);
+    if (MODES.has(a)) m.set(a, "");
+    else if (VALUES.has(a) && i + 1 < argv.length && !argv[i + 1]!.startsWith("--") && !m.has(a)) m.set(a, argv[++i]!);
     else return new Map([["--bad", a]]);
   }
   return m;
 }
+const readOr = (path: string): Buffer | null => {
+  try {
+    return readFileSync(path);
+  } catch {
+    return null;
+  }
+};
 
-/** Draws a WebP once at its own size in Chromium (JavaScript off, every request refused) and returns PNG bytes. */
+/**
+ * Draws a WebP once at its own size in Chromium and returns PNG bytes. Every request is refused. A first page (with
+ * JavaScript, about:blank, running only this file's own evaluate) reads the picture's size; the drawing page has
+ * JavaScript off. Playwright starts Chromium without its OS sandbox; only pictures whose SHA-256 the manifest records
+ * ever reach this function (the SHA is checked first).
+ */
 async function webpToPng(bytes: Buffer): Promise<Buffer> {
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
   try {
@@ -77,7 +91,9 @@ async function intake(a: Map<string, string>): Promise<number> {
   // versions are counter-examples
   const ref = inventoryCase(record, []).originals.find((o) => o.key === key);
   if (!ref || (ref.kind !== "original" && ref.kind !== "registered_preview")) return refuse("NOT_A_SUCCESS_PICTURE", { kind: ref?.kind ?? null });
-  const bytes = readFileSync(resolve(file));
+  if (existsSync(resolve(out))) return refuse("OUT_EXISTS");
+  const bytes = readOr(resolve(file));
+  if (!bytes) return refuse("FILE_UNREADABLE");
   const actual = sha(bytes);
   if (actual !== expected) return refuse("SHA_MISMATCH", { expected, actual });
   let png: Buffer;
@@ -112,8 +128,24 @@ function checkObs(a: Map<string, string>): number {
   const rec = a.get("--record");
   const obs = a.get("--observation");
   if (!rec || !obs) return refuse("USAGE");
-  const record = JSON.parse(readFileSync(resolve(rec), "utf8")) as { case_id: string; image_sha256: string; view: string; width: number; height: number };
-  const r = checkObservation(JSON.parse(readFileSync(resolve(obs), "utf8")), record);
+  const recText = readOr(resolve(rec));
+  const obsText = readOr(resolve(obs));
+  if (!recText || !obsText) return refuse("FILE_UNREADABLE");
+  let parsedRecord: unknown;
+  let parsedObservation: unknown;
+  try {
+    parsedRecord = JSON.parse(recText.toString("utf8"));
+    parsedObservation = JSON.parse(obsText.toString("utf8"));
+  } catch {
+    return refuse("JSON_INVALID");
+  }
+  const record = ReferenceRecord.safeParse(parsedRecord);
+  if (!record.success) return refuse("RECORD_INVALID");
+  // the record's picture must still be the one the manifest records under its key
+  const manifest = JSON.parse(readFileSync(resolve(REPO, MANIFEST), "utf8")) as { records: ManifestRecord[] };
+  const entry = manifest.records.find((x) => x.id === record.data.case_id);
+  if (!entry || entry[record.data.key] !== record.data.image_sha256) return refuse("RECORD_NOT_IN_MANIFEST");
+  const r = checkObservation(parsedObservation, record.data);
   if (!r.ok) return refuse("OBSERVATION_INVALID", { codes: r.codes });
   say({ status: "ok" });
   return 0;
