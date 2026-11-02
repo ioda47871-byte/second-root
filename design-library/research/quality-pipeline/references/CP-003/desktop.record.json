@@ -1,0 +1,78 @@
+{
+  "schema": "reference_original_record_v0",
+  "case_id": "CP-003",
+  "key": "webp_sha256",
+  "kind": "registered_preview",
+  "view": "desktop",
+  "image_sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6",
+  "recorded_sha256_matches": true,
+  "format": "webp",
+  "decoded_via": "chromium_draw_at_natural_size",
+  "width": 1080,
+  "height": 3308,
+  "provenance": {
+    "status": "owner_design_approved_v4",
+    "source_kind": "chat_generated_poc_screenshot",
+    "view": "html_css_js_poc",
+    "in_repo_path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp",
+    "picture_committed_by_this_lane": false
+  },
+  "features": {
+    "schema": "reference_original_features_v0",
+    "width": 1080,
+    "height": 3308,
+    "bands": [
+      {
+        "top": 0,
+        "bottom": 768,
+        "height_share": 0.232,
+        "ground_hex": "#F8F8E8",
+        "photo_share": 0.15
+      },
+      {
+        "top": 768,
+        "bottom": 1560,
+        "height_share": 0.239,
+        "ground_hex": "#183828",
+        "photo_share": 0.23
+      },
+      {
+        "top": 1560,
+        "bottom": 3308,
+        "height_share": 0.528,
+        "ground_hex": "#E8E8D8",
+        "photo_share": 0.18
+      }
+    ],
+    "photo_share": 0.18,
+    "colours": {
+      "colours": [
+        {
+          "hex": "#806450",
+          "share": 0.23
+        },
+        {
+          "hex": "#381809",
+          "share": 0.15
+        },
+        {
+          "hex": "#D9C1AB",
+          "share": 0.13
+        },
+        {
+          "hex": "#AB8F79",
+          "share": 0.13
+        },
+        {
+          "hex": "#744028",
+          "share": 0.13
+        }
+      ],
+      "colourfulShare": 0.14,
+      "lightNeutralShare": 0.55,
+      "darkNeutralShare": 0.31
+    },
+    "advisory": true,
+    "note": "Measured from the pixels; advisory. Bands are runs of one ground colour at the row edges (a section with its own ground). Photographs or type reaching the edges can shift a band boundary; a gradient ground can split one section into two bands; sections whose grounds differ by one coarse level merge; a page that keeps one ground under changing sections shows one band. photo_share counts many-coloured blocks not dominated by two colours (photographs and dense illustration; smooth or very dark photo areas are missed). Not a quality score."
+  }
+}
