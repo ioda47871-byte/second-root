@@ -71,18 +71,24 @@ describe("success originals inventory (DEV-154, Issue #193)", () => {
   });
 
   /**
-   * Every SHA-256 the manifest records (pictures, previews kept in the conversations, archives, HTML) except the files
-   * the manifest itself registers in the repository (its `preview` / `mobile_preview` paths).
+   * Every SHA-256 the manifest and the case notes record (pictures, previews kept in the conversations, archives,
+   * HTML), except the manifest's own `webp_sha256` / `mobile_webp_sha256` of the cases that register a preview path,
+   * and only where the file at that path still has that SHA-256 (a replaced file is not allowed by its path alone).
    */
   function guarded(records: typeof manifest.records): { guarded: Set<string>; allowed: Set<string> } {
     const allowed = new Set<string>();
     for (const r of records)
-      for (const k of ["preview", "mobile_preview"]) {
-        const p = r[k];
-        if (typeof p === "string") allowed.add(createHash("sha256").update(readFileSync(resolve(REPO, "design-library/success-cases", p))).digest("hex"));
+      for (const [pathKey, shaKey] of [["preview", "webp_sha256"], ["mobile_preview", "mobile_webp_sha256"]] as const) {
+        const p = r[pathKey];
+        const v = r[shaKey];
+        if (typeof p !== "string" || typeof v !== "string") continue;
+        const onDisk = createHash("sha256").update(readFileSync(resolve(REPO, "design-library/success-cases", p))).digest("hex");
+        if (onDisk === v) allowed.add(v);
       }
-    const all = records.flatMap((r) => Object.entries(r).filter(([k, v]) => k.toLowerCase().endsWith("sha256") && typeof v === "string" && /^[0-9a-f]{64}$/.test(v)).map(([, v]) => v as string));
-    return { guarded: new Set(all.filter((v) => !allowed.has(v))), allowed };
+    const fromManifest = records.flatMap((r) => Object.entries(r).filter(([k, v]) => k.toLowerCase().endsWith("sha256") && typeof v === "string" && /^[0-9a-f]{64}$/.test(v)).map(([, v]) => v as string));
+    const notes = spawnSync("git", ["ls-files", "-z", "--", "design-library/success-cases/*.md"], { cwd: REPO, encoding: "utf8" }).stdout.split("\0").filter(Boolean);
+    const fromNotes = notes.flatMap((p) => readFileSync(resolve(REPO, p), "utf8").match(/\b[0-9a-f]{64}\b/g) ?? []);
+    return { guarded: new Set([...fromManifest, ...fromNotes].filter((v) => !allowed.has(v))), allowed };
   }
 
   it("the guard covers previews kept outside GitHub and archives; only the registered in-repo previews are allowed", () => {
@@ -93,9 +99,10 @@ describe("success originals inventory (DEV-154, Issue #193)", () => {
     expect(allowed.size).toBe(4);
   });
 
-  it("no tracked file is a recorded original, preview kept outside GitHub, archive or HTML (the repository is public)", () => {
+  it("no tracked file is a recorded original, preview kept outside GitHub, archive or HTML (the repository is public)", { timeout: 60_000 }, () => {
     const { guarded: set } = guarded(manifest.records);
-    const tracked = spawnSync("git", ["ls-files", "-z", "--", "*.png", "*.webp", "*.jpg", "*.jpeg", "*.gif", "*.zip", "*.html"], { cwd: REPO, encoding: "utf8" }).stdout.split("\0").filter(Boolean);
+    // every tracked file, whatever its name or case (a picture renamed .bin is still the picture)
+    const tracked = spawnSync("git", ["ls-files", "-z"], { cwd: REPO, encoding: "utf8" }).stdout.split("\0").filter(Boolean);
     const hits = tracked.filter((p) => set.has(createHash("sha256").update(readFileSync(resolve(REPO, p))).digest("hex")));
     expect(hits).toEqual([]);
   });
