@@ -249,7 +249,7 @@ describe("art direction set (DEV-157, Issue #193)", () => {
       for (const x of b.sections) x.motif_facet = reword(x.motif_facet);
       b.descriptor.section_layouts.value = b.sections.map((x: { layout: string }) => x.layout);
       expect(codes(s)).toContain("SECTIONS_SHARED");
-      // copied ids and grounds alone (facets rewritten from scratch) also count
+      // facets rewritten from scratch: still held, because id, ground and layout are copied in 4 of 5 body sections
       const t = example();
       t.directions[1].sections = structuredClone(t.directions[0].sections).map((x: { motif_facet: string }, i: number) => ({ ...x, motif_facet: ["あ", "い", "う", "え", "お", "か"][i] + "を見せる別の話" }));
       t.directions[1].sections[0].layout = "vertical_text";
@@ -337,6 +337,26 @@ describe("art direction set (DEV-157, Issue #193)", () => {
     const s = example();
     s.directions[2].checklist.C4.evidence = `${s.directions[1].checklist.C4.evidence} (d3)`;
     expect(codes(s)).toContain("EVIDENCE_COPIED");
+  });
+
+  it("C2: the same ground and layout in the same places (3+, 60%+) holds on its own; the same stages seen through different lenses do not (round 4)", () => {
+    const s = example();
+    const [a, b] = [s.directions[0], s.directions[2]];
+    // b keeps its own ids and facets but takes a's ground and layout in body places 0, 2, 3
+    for (const i of [0, 2, 3]) {
+      b.sections[i].ground = a.sections[i].ground;
+      b.sections[i].layout = a.sections[i].layout;
+    }
+    b.descriptor.section_layouts.value = b.sections.map((x: { layout: string }) => x.layout);
+    const f = checkDirectionSet(s, opts).findings.find((x) => x.code === "SECTIONS_SHARED");
+    expect(f?.detail).toMatch(/pairs:3/);
+    expect(f?.detail).toMatch(/copied:[01]\//);
+    // lenses: "線で見る…" and "器で見る…" over the same stages are not a copy
+    const t = example();
+    const stages = ["割れ", "漆で固める", "乾くのを待つ", "金を蒔く", "教室", "来店"];
+    t.directions[0].sections.forEach((x: { motif_facet: string }, i: number) => (x.motif_facet = `線で見る${stages[i]}`));
+    t.directions[2].sections.forEach((x: { motif_facet: string }, i: number) => (x.motif_facet = `器のまわりで見る${stages[i]}`));
+    expect(codes(t)).not.toContain("SECTIONS_SHARED");
   });
 
   it("the CLI exits 0 for the example and 1 for a held set, printing the findings", () => {

@@ -131,7 +131,8 @@ function coreFacets(d: Direction): string[] {
 /**
  * The body (every section but the last: every page ends at the visit) of a and b compared one to one.
  *   copied   a section with the same id, ground and layout, or a facet that reads nearly the same (bigram similarity
- *            >= 0.7, after the padding all facets of a direction share is removed)
+ *            >= 0.7 after the padding all facets of a direction share is removed, and >= 0.6 as written, so that two
+            directions naming the same stages through different lenses are not a copy)
  *   pairs    the same (ground, layout) pair in the same place
  * This is a lexical check; a thorough rewrite of every line gets past it. The owner's review of the comps decides.
  */
@@ -141,7 +142,7 @@ function bodyOverlap(a: Direction, b: Direction): { copied: number; pairs: numbe
   const rest = b.sections.slice(0, -1).map((y, j) => ({ y, core: fb[j]! }));
   let copied = 0;
   a.sections.slice(0, -1).forEach((x, i) => {
-    const k = rest.findIndex(({ y, core }) => (x.id === y.id && norm(x.ground) === norm(y.ground) && x.layout === y.layout) || similar(fa[i]!, core) >= 0.7);
+    const k = rest.findIndex(({ y, core }) => (x.id === y.id && norm(x.ground) === norm(y.ground) && x.layout === y.layout) || (similar(fa[i]!, core) >= 0.7 && similar(x.motif_facet, y.motif_facet) >= 0.6));
     if (k >= 0) {
       copied++;
       rest.splice(k, 1);
