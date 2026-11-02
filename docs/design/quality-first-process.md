@@ -29,7 +29,7 @@
   - 事実パック (`shop_facts_pack_v1`)
   - 情報不足の一覧
   - 店の世界の語彙 (物・素材・製法・時間・空間・行為)。`second-root-design-director` の手順 2。
-- **原理:** P8 (実店舗の事実と空気から始める)。CP-026 v4・CP-025 v2 の失敗は、業種の雰囲気で埋めたことから起きた。
+- **原理:** P8 (実店舗の事実と空気から始める)。CP-025 v2 は業種の雰囲気で埋めて不採用になった。CP-026 v4 (暗い異国風) は、ドラフト審査待ちの記録の分析 (`design_analysis`) では、実店舗の明るい空気と合わなかった。
 - **止める:** 事実が少なく、店の世界の語彙が集まらないとき。業種の一般論で水増ししない。
 
 ### 段2 店固有のモチーフを取り出す
@@ -119,7 +119,7 @@
 | ID | 問い | 判定のしかた | 関係する失敗の符号 |
 |---|---|---|---|
 | C1 | 店固有性: 中心のモチーフは、この店の事実 (物・素材・製法・時間・空間・行為) から来ているか | 事実パックの id を挙げられること。入れ替えテスト (同業の別の店にすると、どこが成立しなくなるか) に答えられること | `MOTIF_NOT_TRANSLATED`、`GENRE_CLICHE`、`ATMOSPHERE_MISMATCH`、`WRONG_SHOP` |
-| C2 | 3方向が構造的に違うか | Hero の型と流れの型が、どの2方向でも両方違うこと (`directionsDiffer`)。構造記述子の8観点の半分以上が同じでないこと (機械: `structureFindings` の `SIBLINGS_SAME_SKELETON`、近さ 0.6 以上)。配色・写真の違いだけでないこと | `SURFACE_ONLY_CHANGE`、`TOO_CLOSE_TO_REFERENCE` |
+| C2 | 3方向が構造的に違うか | Hero の型と流れの型が、どの2方向でも両方違うこと (`directionsDiffer`)。兄弟の構造の近さ (`structuralSimilarity`、観点ごとの重みつき) が 0.6 未満であること (以上なら `SIBLINGS_SAME_SKELETON`)。配色・写真の違いだけでないこと | `SURFACE_ONLY_CHANGE`、`TOO_CLOSE_TO_REFERENCE` |
 | C3 | Hero 以降まで一貫した世界観があるか | 区画ごとに「モチーフのどの面か」を1行で言えること。最後の区画の終点があること。区画の順を入れ替えると話が壊れること | `HERO_ONLY_WORLD`、`NO_PAGE_STORY`、`LOWER_SECTIONS_GENERIC` |
 | C4 | PC/SP がそれぞれ成立しているか | SP の1画面目 (390×844) に何が入るか、PC から並び・大きさ・重なりの扱いをどう変えるかを書けること。SP が PC の縮小・単純な縦積みでないこと | `PC_SP_NOT_DIFFERENTIATED` |
 | C5 | 成功例と比べて平凡化していないか | 汎用の LP の印 (`split_copy_media` の Hero、`stacked_bands`、`grid_cards` など) が2つ以上ないこと (機械: `structureFindings` の `GENERIC_SKELETON`)。原理 P1〜P5 のうち、どれを満たすかを方向ごとに挙げられること | `MOTIF_NOT_TRANSLATED`、`LOWER_SECTIONS_GENERIC`、`SPLIT_HERO_DEFAULT`、`READABLE_BUT_FLAT`、`TOO_QUIET`、`MECHANISM_OVER_LOOK` |

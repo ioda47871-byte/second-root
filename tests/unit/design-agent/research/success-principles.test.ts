@@ -131,4 +131,25 @@ describe("success principles v1 (DEV-156, Issue #193)", () => {
         for (const id of e.match(/CP-\d{3}|PT-\d{2}/g) ?? []) expect(known.has(id) || failurePatterns.includes(id), `${f.code}:${id}`).toBe(true);
     }
   });
+  it("the principle text cites only cases the data tags with that principle (counterexamples and references aside)", () => {
+    expect(doc.cases.filter((c) => c.principles.includes("P6")).map((c) => c.id)).toEqual(["CP-009", "CP-016", "CP-028"]);
+    const section2 = principlesDoc.slice(principlesDoc.indexOf("## 2. "), principlesDoc.indexOf("## 3. "));
+    for (const block of section2.split("\n### ").slice(1)) {
+      const pid = block.slice(0, 2);
+      for (const line of block.split("\n").slice(1)) {
+        if (/反例|参考|何が変わった|記録ではない|JSON で/.test(line)) continue;
+        for (const m of line.matchAll(/(?<![\d-])0(\d\d)(?!\d)/g)) {
+          const id = `CP-0${m[1]}`;
+          expect(doc.cases.find((c) => c.id === id)?.principles, `${pid} cites ${id}: ${line}`).toContain(pid);
+        }
+      }
+    }
+  });
+
+  it("neither document claims success-level quality", () => {
+    for (const text of [principlesDoc, processDoc]) {
+      expect(text).toMatch(/「成功例レベル」とは言わない|「成功例レベル」に達したとは言わない/);
+      expect(text).not.toMatch(/成功例レベルに達した(?!とは言わない)|成功例レベルを達成/);
+    }
+  });
 });

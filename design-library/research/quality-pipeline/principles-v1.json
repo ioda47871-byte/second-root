@@ -305,9 +305,7 @@
         "P1",
         "P5"
       ],
-      "recorded_failures": [
-        "SPLIT_HERO_DEFAULT"
-      ],
+      "recorded_failures": [],
       "picture_identity": "not_sha_checked",
       "note_kind": "adoption_record"
     },
@@ -495,7 +493,7 @@
         "material"
       ],
       "hero": "光の角度を切り替える Hero",
-      "structure": "標本のスライダー、色相の円、マルシェへの導線",
+      "structure": "標本のスライダー、色相の円 (要約)、マルシェへの導線",
       "pc_sp": "web_poc_pc_sp",
       "principles": [
         "P1",
@@ -608,10 +606,9 @@
       "code": "SPLIT_HERO_DEFAULT",
       "pattern": "理由の無い左右分割の Hero",
       "evidence": [
-        "CP-027 v1",
-        "CP-022 の留保"
+        "CP-027 v1"
       ],
-      "detect": "Hero が split_copy_media で店の事実から来た理由が無い (structureFindings の GENERIC_SKELETON)",
+      "detect": "構造記述子の hero が split_copy_media で、店の事実から来た理由が無い。split の Hero だけでは GENERIC_SKELETON にならない (汎用の流れか汎用の区画と重なったときだけ)",
       "checks": [
         "C5"
       ],
@@ -696,7 +693,8 @@
       "pattern": "直前の案や参照に似すぎる",
       "evidence": [
         "CP-029 v1",
-        "CP-016 初稿 (「同じような構成になってきた」)"
+        "CP-016 初稿 (「同じような構成になってきた」)",
+        "CP-022 (留保: 採用版の左のコピー・中央の写真が過去作品の癖に近い)"
       ],
       "detect": "構造記述子の近さ、比喩の重なり",
       "checks": [
@@ -793,7 +791,7 @@
     {
       "id": "C2",
       "question": "3方向が構造的に違うか",
-      "how": "Hero の型と流れの型がどの2方向でも両方違い、構造記述子の8観点の半分以上が同じでない (機械: directionsDiffer と structureFindings の SIBLINGS_SAME_SKELETON、近さ 0.6 以上)",
+      "how": "Hero の型と流れの型がどの2方向でも両方違う (directionsDiffer)。兄弟の構造の近さ structuralSimilarity が 0.6 以上なら SIBLINGS_SAME_SKELETON。配色・写真の違いだけでない",
       "failure_codes": [
         "SURFACE_ONLY_CHANGE",
         "TOO_CLOSE_TO_REFERENCE"
