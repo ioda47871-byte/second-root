@@ -7176,6 +7176,47 @@
         "実画像の生成"
       ],
       "note": "Issue #193 のオーナーの事前承認 (2026-11-03、20件の視覚研究を先行入力に)。"
+    },
+    {
+      "id": "DEV-157",
+      "title": "方向の記録 (art_direction_set_v0) と、カンプを作る前の機械の検査 (Issue #193 改善タスク T1)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-157-direction-set",
+      "purpose": "制作工程の段2〜3 (モチーフと構造が違う3方向) を記録する形を決め、チェック C1〜C5 と参照の範囲を機械で検める。通っても「カンプを作ってよい」だけで、品質の判定ではない。",
+      "acceptance_criteria": [
+        "lib/design-agent/quality-pipeline/direction-set.ts (形と checkDirectionSet、既存の directionsDiffer と structureFindings を使う)",
+        "scripts/design-artifact/direction-set.ts (CLI、0 = READY_FOR_COMPS / 1 = HOLD / 2 = 使い方の誤り)",
+        "架空の店 1件 (つぐ手) の事実パックと3方向の例",
+        "未見の10件を参照すると止まる",
+        "「成功例レベル」とは言わない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline/direction-set.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/quality-pipeline/",
+        "scripts/design-artifact/direction-set.ts",
+        "design-library/research/quality-pipeline/poc/",
+        "docs/design/direction-set.md",
+        "docs/design/quality-first-process.md",
+        "tests/unit/design-agent/quality-pipeline/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の呼び出し",
+        "main・Production・Staging・DB",
+        "CSS 許可一覧・Identity Lock・安全ゲートの緩和",
+        "成功例の原本画像の commit (リポジトリは public)"
+      ],
+      "human_approval_triggers": [
+        "実画像の生成",
+        "許可一覧の緩和"
+      ],
+      "note": "Issue #193 のオーナーの事前承認 (20件の視覚研究を使った自律の次段)。DEV-156 の上に積む。(依存の規則のため depends_on は空。DEV-156 の merge のあとに merge する)"
     }
   ]
 }
