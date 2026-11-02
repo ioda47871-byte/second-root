@@ -1,0 +1,24 @@
+{
+  "schema": "three_method_asset_inspection_v0",
+  "method": "assistant_visual",
+  "inspector": "Claude (development session 013Q3gn36csATXp6xjxNVuZn), 2026-11-02",
+  "answers": {
+    "other_shop_name_or_logo": "no",
+    "category_mismatch": "no",
+    "contradicts_facts": "no",
+    "contradicted_fact_ids": [],
+    "unreadable_text": "no"
+  },
+  "image_sha256": "f04a6b1df37e07bab393c6fc6cd2597c63eb950d38e024c9d598e329cf012701",
+  "observed": {
+    "visible_text": [],
+    "logos_or_marks": [],
+    "depicted": "Two-colour (dark brown and orange) woodcut-like drawing on a cream background: a large round crusty loaf cut open to show an open crumb, and a crescent-shaped rolled bread to its right, with short hatch strokes as shadows. No setting, no people.",
+    "category_cues": [
+      "round crusty loaf with open crumb",
+      "crescent-shaped rolled bread"
+    ]
+  },
+  "inferred": "Reads as bakery imagery (a country loaf and a roll that may be read as a croissant or a salt-butter roll).",
+  "note": "No text, logos, people or faces seen."
+}

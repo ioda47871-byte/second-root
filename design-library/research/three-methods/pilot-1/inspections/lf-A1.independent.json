@@ -1,0 +1,25 @@
+{
+  "schema": "three_method_asset_inspection_v0",
+  "image_sha256": "4fd1c439898fdd46f27a848796d0538a26cad864b1f3883628815035576066c5",
+  "method": "assistant_visual",
+  "inspector": "independent Claude inspector (method-blind), 2026-11-02",
+  "observed": {
+    "visible_text": [],
+    "logos_or_marks": [],
+    "depicted": "Photorealistic close-up inside a domed masonry/stone oven. A large round, deeply browned loaf with scored, flour-dusted, cracked crust sits on the stone oven floor at center-right, its scored edges showing pale crumb. In the left background, burning logs with bright orange flames glow at the back of the oven. The arched oven interior is soot-darkened and warm orange from firelight. The foreground floor is shallow-focus and blurred. Warm, low-key lighting coming from the fire. No people, no text.",
+    "category_cues": [
+      "round crusty scored loaf",
+      "wood-fired stone/masonry oven",
+      "burning logs inside oven"
+    ]
+  },
+  "inferred": "This reads as an artisanal bakery image showing a country loaf baking in a wood-fired stone oven, consistent with the shop's stone-oven country bread and the statement about lighting the stone oven each morning. A viewer might also associate a wood-fired dome oven with a pizzeria, but the only food shown is a bread loaf, so the bakery reading is dominant.",
+  "answers": {
+    "other_shop_name_or_logo": "no",
+    "category_mismatch": "no",
+    "contradicts_facts": "no",
+    "contradicted_fact_ids": [],
+    "unreadable_text": "no"
+  },
+  "note": "No people, faces, hands, text, letters, numbers, logos or watermarks observed, including in zoomed bottom corners. The image is a generic photorealistic scene; nothing in it identifies a specific real oven or place. Fire is open flame next to bread inside the oven chamber (stylized rather than a strict depiction of baking practice)."
+}

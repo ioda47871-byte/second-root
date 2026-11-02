@@ -1,0 +1,25 @@
+{
+  "schema": "three_method_asset_inspection_v0",
+  "image_sha256": "f04a6b1df37e07bab393c6fc6cd2597c63eb950d38e024c9d598e329cf012701",
+  "method": "assistant_visual",
+  "inspector": "independent Claude inspector (method-blind), 2026-11-02",
+  "observed": {
+    "visible_text": [],
+    "logos_or_marks": [],
+    "depicted": "Hand-printed / woodcut-style illustration in two inks (dark brown and orange) on a plain cream paper-textured background. Left and center: a large round crusty loaf with scored, floury crust, cut open to show an airy crumb with many irregular holes. Lower right: a single crescent-shaped rolled pastry/roll with layered spiral ridges and a few light speckles on top. Short horizontal brown hatch strokes under both items suggest shadows. No setting, no people, no background objects. Flat, even light; no text or marks in the corners.",
+    "category_cues": [
+      "round crusty loaf with open crumb",
+      "crescent-shaped rolled bread/pastry",
+      "baked goods as sole subject"
+    ]
+  },
+  "inferred": "The illustration reads as bakery imagery: the loaf resembles a country-style/campagne loaf (consistent with the shop's stone-oven country bread), and the crescent roll could be a croissant or a Japanese-style salt butter roll (shio-pan); it cannot be told with certainty which. The printmaking style suggests a handmade, artisanal tone. Nothing suggests another business type or another shop.",
+  "answers": {
+    "other_shop_name_or_logo": "no",
+    "category_mismatch": "no",
+    "contradicts_facts": "no",
+    "contradicted_fact_ids": [],
+    "unreadable_text": "no"
+  },
+  "note": "No people, faces, hands, text, letters, numbers, logos or signatures observed, including in zoomed bottom corners. The crescent item may be read by viewers as a croissant rather than a salt butter roll; this is not a contradiction of any fact, only an ambiguity."
+}

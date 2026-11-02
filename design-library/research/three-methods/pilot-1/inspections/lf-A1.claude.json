@@ -1,0 +1,24 @@
+{
+  "schema": "three_method_asset_inspection_v0",
+  "method": "assistant_visual",
+  "inspector": "Claude (development session 013Q3gn36csATXp6xjxNVuZn), 2026-11-02",
+  "answers": {
+    "other_shop_name_or_logo": "no",
+    "category_mismatch": "no",
+    "contradicts_facts": "no",
+    "contradicted_fact_ids": [],
+    "unreadable_text": "no"
+  },
+  "image_sha256": "4fd1c439898fdd46f27a848796d0538a26cad864b1f3883628815035576066c5",
+  "observed": {
+    "visible_text": [],
+    "logos_or_marks": [],
+    "depicted": "Photographic scene inside an arched stone/masonry oven: a round scored, flour-dusted, deeply browned loaf on the oven floor at right; burning logs with flames at the back left; warm firelight; blurred foreground floor. No people.",
+    "category_cues": [
+      "round scored loaf",
+      "stone oven with fire"
+    ]
+  },
+  "inferred": "Reads as a country loaf in a wood-fired stone oven, consistent with the stone-oven bread in the facts.",
+  "note": "No text, logos, people or faces seen."
+}
