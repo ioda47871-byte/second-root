@@ -1,0 +1,124 @@
+{
+  "schema": "fidelity_spec_v0",
+  "shop": "tsugute",
+  "pages": [
+    {
+      "key": "comp",
+      "dir": "design-library/research/quality-pipeline/poc/tsugute/comps/d1-seam-across-v2",
+      "section_attribute": "data-section",
+      "motif": [
+        ".hero-art .seam-line",
+        ".seam path",
+        ".knot"
+      ],
+      "captions": [
+        ".tagline",
+        ".lead",
+        ".how",
+        ".damage-h",
+        ".cap",
+        ".svc",
+        ".ph-label",
+        ".photo span",
+        ".layer-h",
+        ".cut span",
+        ".cut p",
+        ".month-fact",
+        ".month-c",
+        ".together-h",
+        ".together-fact",
+        ".class-fact",
+        ".visit-h",
+        ".info dd",
+        ".info dt",
+        ".fictional"
+      ],
+      "words": [
+        ".ghost",
+        ".kanji",
+        ".hero-name"
+      ]
+    },
+    {
+      "key": "strict_b",
+      "dir": "design-library/research/quality-pipeline/poc/tsugute/impl/d1-v2-b",
+      "section_attribute": "data-comp-section",
+      "motif": [
+        ".seam",
+        ".end-line",
+        ".knot"
+      ],
+      "motif_narrow": [
+        ".row",
+        ".seam",
+        ".end-line",
+        ".knot"
+      ],
+      "captions": [
+        ".tagline",
+        ".lead",
+        ".how",
+        ".damage-h",
+        ".cap",
+        ".svc",
+        ".ph-label",
+        ".photo span",
+        ".layer-h",
+        ".cut span",
+        ".cut p",
+        ".month-fact",
+        ".month-c",
+        ".together-h",
+        ".together-fact",
+        ".class-fact",
+        ".visit-h",
+        ".info dd",
+        ".info dt",
+        ".fictional"
+      ],
+      "words": [
+        ".ghost",
+        ".kanji",
+        ".hero-name"
+      ]
+    },
+    {
+      "key": "fidelity_c",
+      "dir": "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v2",
+      "section_attribute": "data-comp-section",
+      "motif": [
+        ".hero-art .seam-line",
+        ".seam-pc path",
+        ".seam-sp",
+        ".knot"
+      ],
+      "captions": [
+        ".tagline",
+        ".lead",
+        ".how",
+        ".damage-h",
+        ".cap",
+        ".svc",
+        ".ph-label",
+        ".photo span",
+        ".layer-h",
+        ".cut span",
+        ".cut p",
+        ".month-fact",
+        ".month-c",
+        ".together-h",
+        ".together-fact",
+        ".class-fact",
+        ".visit-h",
+        ".info dd",
+        ".info dt",
+        ".fictional"
+      ],
+      "words": [
+        ".ghost",
+        ".kanji",
+        ".hero-name"
+      ]
+    }
+  ]
+}

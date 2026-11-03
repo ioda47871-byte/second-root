@@ -1,7 +1,7 @@
 /**
  * DEV-139 (Issue #177 A) CLI — OFFLINE, REPORT-ONLY: compares Claude's implementation with the design's originals.
  *
- *   npx tsx scripts/design-artifact/impl-compare.ts --lane <implementation lane> --impl <implementation dir> --out <report.json>
+ *   npx tsx scripts/design-artifact/impl-compare.ts --lane <implementation lane> --impl <implementation dir> --out <report.json> [--section-attr data-section|data-comp-section]
  *
  * --lane is a directory built by prepareImplementationLane (DEV-128: lane.json, artifact.json, originals/*.png).
  * --impl holds the implementation: index.html, style.css and, optionally, assets/<name>.png (the page links its CSS as
@@ -15,21 +15,24 @@
 import { lstat, readdir, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { chromium } from "playwright";
-import { compareImplementation, IMPL_COMPARE_LIMITS, insideDir as inside, LaneReadError, readInside } from "../../lib/design-agent/impl-lane/impl-compare";
+import { compareImplementation, IMPL_COMPARE_LIMITS, insideDir as inside, LaneReadError, readInside, SECTION_ATTRIBUTES, type SectionAttribute } from "../../lib/design-agent/impl-lane/impl-compare";
 
 const say = (o: object) => process.stdout.write(`${JSON.stringify(o, null, 2)}\n`);
 const refuse = (code: string) => (say({ status: "refused", code }), 2);
 
-function parseArgs(argv: string[]): { lane: string; impl: string; out: string } | null {
+function parseArgs(argv: string[]): { lane: string; impl: string; out: string; sectionAttribute: SectionAttribute } | null {
   const o: Record<string, string> = {};
   for (let i = 0; i < argv.length; i += 2) {
     const k = argv[i];
     const v = argv[i + 1];
-    if (!k || !v || !["--lane", "--impl", "--out"].includes(k) || k in o) return null;
+    if (!k || !v || !["--lane", "--impl", "--out", "--section-attr"].includes(k) || k in o) return null;
     o[k] = v;
   }
   if (!o["--lane"] || !o["--impl"] || !o["--out"]) return null;
-  return { lane: resolve(o["--lane"]), impl: resolve(o["--impl"]), out: resolve(o["--out"]) };
+  // DEV-160: the attribute the implementation's sections carry (a comp-impl page may only use data-comp-section)
+  const attr = o["--section-attr"] ?? "data-section";
+  if (!(SECTION_ATTRIBUTES as readonly string[]).includes(attr)) return null;
+  return { lane: resolve(o["--lane"]), impl: resolve(o["--impl"]), out: resolve(o["--out"]), sectionAttribute: attr as SectionAttribute };
 }
 
 const isRealDir = async (path: string) => (await lstat(path).catch(() => null))?.isDirectory() === true;
@@ -75,7 +78,7 @@ async function main(argv: string[]): Promise<number> {
   );
   let report;
   try {
-    report = await compareImplementation(launched.browser, laneReal, impl, launched.error);
+    report = await compareImplementation(launched.browser, laneReal, impl, launched.error, { sectionAttribute: args.sectionAttribute });
   } catch (e) {
     if (e instanceof LaneReadError) return refuse(e.code);
     throw e;

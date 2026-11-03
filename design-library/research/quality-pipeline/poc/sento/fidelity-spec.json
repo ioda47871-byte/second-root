@@ -1,0 +1,90 @@
+{
+  "schema": "fidelity_spec_v0",
+  "shop": "sento",
+  "pages": [
+    {
+      "key": "comp",
+      "dir": "design-library/research/quality-pipeline/poc/sento/comps/d1-heat-descent",
+      "section_attribute": "data-section",
+      "motif": [
+        ".gauge"
+      ],
+      "captions": [
+        ".name-full",
+        ".tagline",
+        ".lead",
+        ".ph",
+        ".warm-fact",
+        ".cold-fact",
+        ".fire-fact",
+        ".mark",
+        ".wall-h",
+        ".wall-fact",
+        ".night-h",
+        ".info dd",
+        ".info dt",
+        ".fictional"
+      ],
+      "words": [
+        ".giant",
+        ".name"
+      ]
+    },
+    {
+      "key": "strict_b",
+      "dir": "design-library/research/quality-pipeline/poc/sento/impl/d1-b",
+      "section_attribute": "data-comp-section",
+      "motif": [
+        ".in"
+      ],
+      "captions": [
+        ".name-full",
+        ".tagline",
+        ".lead",
+        ".ph",
+        ".warm-fact",
+        ".cold-fact",
+        ".fire-fact",
+        ".mark",
+        ".wall-h",
+        ".wall-fact",
+        ".night-h",
+        ".info dd",
+        ".info dt",
+        ".fictional"
+      ],
+      "words": [
+        ".giant",
+        ".name"
+      ]
+    },
+    {
+      "key": "fidelity_c",
+      "dir": "design-library/research/quality-pipeline/poc/sento/fidelity/d1",
+      "section_attribute": "data-comp-section",
+      "motif": [
+        ".gauge"
+      ],
+      "captions": [
+        ".name-full",
+        ".tagline",
+        ".lead",
+        ".ph",
+        ".warm-fact",
+        ".cold-fact",
+        ".fire-fact",
+        ".mark",
+        ".wall-h",
+        ".wall-fact",
+        ".night-h",
+        ".info dd",
+        ".info dt",
+        ".fictional"
+      ],
+      "words": [
+        ".giant",
+        ".name"
+      ]
+    }
+  ]
+}

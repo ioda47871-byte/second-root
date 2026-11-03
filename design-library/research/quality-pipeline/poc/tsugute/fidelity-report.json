@@ -1,0 +1,347 @@
+{
+  "schema": "fidelity_report_v0",
+  "shop": "tsugute",
+  "passing": false,
+  "pages": {
+    "comp": {
+      "desktop_1440": {
+        "score": {
+          "motif_coverage": 0.914,
+          "motif_largest_gap_px": 518,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 5,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 40,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      },
+      "mobile_390": {
+        "score": {
+          "motif_coverage": 0.88,
+          "motif_largest_gap_px": 692,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 5,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 40,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      },
+      "tablet_1024": {
+        "score": {
+          "motif_coverage": 0.866,
+          "motif_largest_gap_px": 518,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 4,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 1,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 40,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      },
+      "tablet_768": {
+        "score": {
+          "motif_coverage": 0.836,
+          "motif_largest_gap_px": 518,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 4,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 9,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 51,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      }
+    },
+    "strict_b": {
+      "desktop_1440": {
+        "score": {
+          "motif_coverage": 0.917,
+          "motif_largest_gap_px": 512,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 5,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 40,
+          "words_broken": [
+            "つぐ手"
+          ],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      },
+      "mobile_390": {
+        "score": {
+          "motif_coverage": 0.881,
+          "motif_largest_gap_px": 593,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 5,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 43,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      },
+      "tablet_1024": {
+        "score": {
+          "motif_coverage": 0.913,
+          "motif_largest_gap_px": 591,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 2,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 49,
+          "words_broken": [
+            "継ぐ",
+            "待つ",
+            "割れ",
+            "欠け",
+            "ひび",
+            "つぐ手"
+          ],
+          "horizontal_overflow": true
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      },
+      "tablet_768": {
+        "score": {
+          "motif_coverage": 0.911,
+          "motif_largest_gap_px": 671,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 1,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 73,
+          "words_broken": [
+            "継ぐ",
+            "待つ",
+            "割れ",
+            "欠け",
+            "ひび",
+            "つぐ手"
+          ],
+          "horizontal_overflow": true
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      }
+    },
+    "fidelity_c": {
+      "desktop_1440": {
+        "score": {
+          "motif_coverage": 0.911,
+          "motif_largest_gap_px": 527,
+          "boundaries_crossed": 2,
+          "boundaries_carried": 5,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 41,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      },
+      "mobile_390": {
+        "score": {
+          "motif_coverage": 0.873,
+          "motif_largest_gap_px": 745,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 5,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 43,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      },
+      "tablet_1024": {
+        "score": {
+          "motif_coverage": 0.898,
+          "motif_largest_gap_px": 739,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 5,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 40,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      },
+      "tablet_768": {
+        "score": {
+          "motif_coverage": 0.883,
+          "motif_largest_gap_px": 719,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 5,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 40,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "damage",
+          "layer",
+          "month",
+          "together",
+          "visit"
+        ]
+      }
+    }
+  },
+  "motif_preservation": {
+    "strict_b": {
+      "desktop_1440": {
+        "coverage": 1,
+        "boundaries_crossed": null,
+        "boundaries_carried": 1,
+        "sections_touched": 1
+      },
+      "mobile_390": {
+        "coverage": 1,
+        "boundaries_crossed": null,
+        "boundaries_carried": 1,
+        "sections_touched": 1
+      }
+    },
+    "fidelity_c": {
+      "desktop_1440": {
+        "coverage": 0.997,
+        "boundaries_crossed": null,
+        "boundaries_carried": 1,
+        "sections_touched": 1
+      },
+      "mobile_390": {
+        "coverage": 0.992,
+        "boundaries_crossed": null,
+        "boundaries_carried": 1,
+        "sections_touched": 1
+      }
+    }
+  }
+}
