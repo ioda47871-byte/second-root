@@ -28,6 +28,10 @@ describe("art direction set (DEV-157, Issue #193)", () => {
     expect(r.note).toMatch(/not a quality verdict/);
     // the principles it cites rest on text (ChatGPT's viewing summary), and the result says so
     expect(r.reference_mode).toBe("TEXT_ONLY_PROVISIONAL");
+    // with no reference pictures or text at all, the set holds
+    const held = checkDirectionSet(example(), { ...opts, referenceMode: "MISSING_OR_HOLD" });
+    expect(held.status).toBe("HOLD");
+    expect(held.findings).toContainEqual({ check: "refs", code: "REFERENCE_MODE_HOLD" });
   });
 
   it("the example cites only viewed cases and its facts SHA is the pack's", () => {
@@ -396,5 +400,11 @@ describe("art direction set (DEV-157, Issue #193)", () => {
       }
     };
     expect(cli2(["--set", resolve(REPO, POC, "direction-set.json"), "--facts", FACTS, "--principles", badPrinciples])).toBe(2);
+    // a principles file without (or with an unknown) visual_mode is malformed too
+    const real = JSON.parse(readFileSync(resolve(REPO, "design-library/research/quality-pipeline/principles-v1.json"), "utf8"));
+    for (const mode of [undefined, "SEEN_BY_SOMEONE"]) {
+      writeFileSync(badPrinciples, JSON.stringify({ ...real, visual_mode: mode }));
+      expect(cli2(["--set", resolve(REPO, POC, "direction-set.json"), "--facts", FACTS, "--principles", badPrinciples])).toBe(2);
+    }
   }, 90_000);
 });

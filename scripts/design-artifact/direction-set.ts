@@ -12,7 +12,7 @@ import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FactsPack } from "../../lib/design-agent/artifact/schema";
-import { checkDirectionSet, type CheckInputs, type SetCheck } from "../../lib/design-agent/quality-pipeline/direction-set";
+import { checkDirectionSet, REFERENCE_MODES, type CheckInputs, type SetCheck } from "../../lib/design-agent/quality-pipeline/direction-set";
 
 const REPO = resolve(__dirname, "../..");
 const PRINCIPLES = "design-library/research/quality-pipeline/principles-v1.json";
@@ -21,7 +21,7 @@ export class InputError extends Error {}
 
 /** The parts of principles-v1.json the check reads. */
 const Principles = z.object({
-  visual_mode: z.enum(["TEXT_ONLY_PROVISIONAL", "VISUAL_VERIFIED", "MISSING_OR_HOLD"]),
+  visual_mode: z.enum(REFERENCE_MODES),
   cases: z.array(z.object({ id: z.string().regex(/^CP-\d{3}$/), principles: z.array(z.string().regex(/^P\d$/)) })).min(1),
   principles: z.array(z.object({ id: z.string().regex(/^P\d$/) })).min(1),
 });

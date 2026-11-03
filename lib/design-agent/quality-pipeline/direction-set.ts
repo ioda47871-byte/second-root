@@ -15,7 +15,7 @@
  *   C5  no direction has the generic landing-page skeleton. The schema already refuses a generic hero or flow (only
  *       HERO_MODES / PAGE_FLOWS), so the check that can fire is on the sections: half or more of them generic
  *       (split_copy_media / grid_cards) is LOWER_SECTIONS_GENERIC. GENERIC_SKELETON stays mapped in case the modes widen.
- *   refs  a cited (or set-aside) case is one of the 20 viewed cases, the principle exists, and the case is tagged with that
+ *   refs  a cited (or set-aside) case is one of the 20 ChatGPT-viewed cases, the principle exists, and the case is tagged with that
  *         principle (principles-v1.json); a case is not both used and set aside
  * The designer's evidence for each check must be written per direction: the same text in two directions holds.
  * C6 and C7 are judgement: only the designer's answer is recorded. A designer's "no" (or a machine finding against a
@@ -79,7 +79,9 @@ export const DirectionSet = z.strictObject({
 export type DirectionSet = z.infer<typeof DirectionSet>;
 
 export type Finding = { check: (typeof CHECKS)[number] | "refs" | "schema"; code: string; direction?: string; detail?: string };
-export type SetCheck = { status: "READY_FOR_COMPS" | "HOLD"; findings: Finding[]; note: string; reference_mode: string };
+export const REFERENCE_MODES = ["TEXT_ONLY_PROVISIONAL", "VISUAL_VERIFIED", "MISSING_OR_HOLD"] as const;
+export type ReferenceMode = (typeof REFERENCE_MODES)[number];
+export type SetCheck = { status: "READY_FOR_COMPS" | "HOLD"; findings: Finding[]; note: string; reference_mode: ReferenceMode };
 
 const NOTE = "READY_FOR_COMPS means only that the machine-checkable parts hold and no designer answer is 'no'. It is not a quality verdict: the owner decides on real PC/SP pictures.";
 
@@ -162,15 +164,16 @@ export type CheckInputs = {
   /** case id -> the principles principles-v1.json tags it with */
   casePrinciples: Readonly<Record<string, readonly string[]>>;
   /** principles-v1.json `visual_mode` (TEXT_ONLY_PROVISIONAL until Claude's own reads back the principles). */
-  referenceMode: string;
+  referenceMode: ReferenceMode;
 };
 
-/** The set against its shop's facts (shop, ids and SHA) and the principles data (viewed cases, principles per case). */
+/** The set against its shop's facts (shop, ids and SHA) and the principles data (ChatGPT-viewed cases, principles per case). */
 export function checkDirectionSet(raw: unknown, o: CheckInputs): SetCheck {
   const parsed = DirectionSet.safeParse(raw);
   if (!parsed.success) return { status: "HOLD", findings: [{ check: "schema", code: "SET_SCHEMA", detail: parsed.error.issues.slice(0, 5).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") }], note: NOTE, reference_mode: o.referenceMode };
   const s = parsed.data;
   const f: Finding[] = [];
+  if (o.referenceMode === "MISSING_OR_HOLD") f.push({ check: "refs", code: "REFERENCE_MODE_HOLD" });
   if (s.facts_sha256 !== o.factsSha256) f.push({ check: "C1", code: "FACTS_SHA_MISMATCH" });
   if (s.shop_id !== o.shopId) f.push({ check: "C1", code: "SHOP_ID_MISMATCH", detail: `${s.shop_id}:${o.shopId}` });
   // C1
@@ -225,7 +228,7 @@ export function checkDirectionSet(raw: unknown, o: CheckInputs): SetCheck {
     // C4: the phone plan is its own
     const sp = [d.sp_plan.first_screen, d.sp_plan.reorder, d.sp_plan.overlaps].map(norm);
     if (sp.some((t) => t === norm(d.pc_plan)) || new Set(sp).size < 3) f.push({ check: "C4", code: "SP_PLAN_NOT_SEPARATE", direction: d.id });
-    // refs: only the viewed cases, only known principles
+    // refs: only the ChatGPT-viewed cases, only known principles
     for (const r of d.references) {
       if (!o.viewedCases.includes(r.case_id)) f.push({ check: "refs", code: "REFERENCE_NOT_VIEWED", direction: d.id, detail: r.case_id });
       if (!o.principleIds.includes(r.principle)) f.push({ check: "refs", code: "PRINCIPLE_UNKNOWN", direction: d.id, detail: r.principle });
