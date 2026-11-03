@@ -33,11 +33,12 @@ import {
   PrototypeUnsafe,
 } from "../../lib/design-agent/phase2f/prototype-safety";
 import { RenderError, renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
-import { FactsPack } from "../../lib/design-agent/artifact/schema";
+import { FactsPack } from "../../lib/design-agent/quality-pipeline/facts-pack";
 import { checkCompReview } from "../../lib/design-agent/quality-pipeline/comp-review";
 import {
   checkCopyRecord,
   CopyRecord,
+  joinedTextsLookingLikeFact,
   textsNotInRecord,
 } from "../../lib/design-agent/quality-pipeline/copy-record";
 import { checkAllReads } from "./visual-read";
@@ -94,6 +95,8 @@ export function checkReviewFile(
       renders,
       verifiedReads,
       failureCodes: principles.failure_codes.map((f) => f.code),
+      shopId: String((JSON.parse(readFileSync(join(dir, "copy.json"), "utf8")) as { shop_id?: unknown }).shop_id ?? ""),
+      directionId: basename(resolve(dir)),
       comp: {
         html_sha256: sha(readFileSync(join(dir, "index.html"))),
         css_sha256: sha(readFileSync(join(dir, "style.css"))),
@@ -101,6 +104,52 @@ export function checkReviewFile(
       },
     },
   );
+}
+
+export type TextUnit = { text: string; rects: Array<{ l: number; t: number; r: number; b: number }>; block: number; em: number; lh: number; vertical: boolean; lr?: boolean };
+
+/**
+ * The texts a reader sees together: each unit alone, and units drawn next to each other joined in reading order
+ * (pairs and runs of three). Two units are next to each other when a line of one ends where a line of the other
+ * starts: on the same line within one em (horizontal writing), or in the same column within one em (vertical), or where one
+ * line or column ends and the next one of the same block begins (within its leading), or the next block begins with
+ * almost no gap. A unit
+ * that is a fact text or a label of the record separates: it is never joined, so no join holds a fact or a part of it.
+ */
+export function adjacentTexts(units: readonly TextUnit[], record: CopyRecord): string[] {
+  const n = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
+  const facts = new Set(record.items.filter((i) => i.claim_type === "fact").flatMap((i) => [n(i.text), ...(i.label ? [n(i.label)] : [])]));
+  const us = units.filter((u) => u.text && u.rects.length && !facts.has(n(u.text)));
+  const next = (a: TextUnit, b: TextUnit) =>
+    a !== b &&
+    a.rects.some((x) =>
+      b.rects.some((y) => {
+        const em = Math.max(a.em, b.em);
+        // the next line of the same block: glyph boxes stand apart by the leading (line height less the glyph size); the
+        // next block: only with almost no gap (stacked with no margin). Never a block margin, a heading's or a caption's.
+        const lead = a.block === b.block ? Math.max(a.lh, b.lh) - Math.min(a.em, b.em) + 0.25 * em : 0.25 * em;
+        if (!a.vertical && !b.vertical) {
+          const overlap = Math.min(x.b, y.b) - Math.max(x.t, y.t);
+          if (overlap >= 0.5 * Math.min(x.b - x.t, y.b - y.t) && y.l >= x.r - 1 && y.l - x.r <= em) return true;
+          // reading runs on to the next line: b's line starts below a's line, back towards the left
+          return x === a.rects[a.rects.length - 1] && y === b.rects[0] && y.t >= x.b - 1 && y.t - x.b <= lead && y.l < x.r;
+        }
+        const overlap = Math.min(x.r, y.r) - Math.max(x.l, y.l);
+        if (overlap >= 0.5 * Math.min(x.r - x.l, y.r - y.l) && y.t >= x.b - 1 && y.t - x.b <= em) return true;
+        // vertical-rl: reading runs on to the next column, to the left, back towards the top
+        const last = x === a.rects[a.rects.length - 1] && y === b.rects[0] && y.t < x.b;
+        // vertical-rl runs on to the column on the left, vertical-lr to the column on the right
+        return last && (a.lr ? y.l >= x.r - 1 && y.l - x.r <= lead : y.r <= x.l + 1 && x.l - y.r <= lead);
+      }),
+    );
+  const out = us.map((u) => u.text);
+  for (const a of us)
+    for (const b of us)
+      if (next(a, b)) {
+        out.push(a.text + b.text);
+        for (const c of us) if (c !== a && next(b, c)) out.push(a.text + b.text + c.text);
+      }
+  return out;
 }
 
 async function main(): Promise<number> {
@@ -168,10 +217,6 @@ async function main(): Promise<number> {
     }
     // the page's texts and its styles, as Chromium parses them, with JavaScript off and every request refused. The
     // stylesheet is parsed on its own (not through the page's link), so no spelling of the link can hide it.
-    const ctx = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block" });
-    await ctx.route("**/*", (r) => r.abort());
-    const page = await ctx.newPage();
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
     // a plain string, so the TypeScript build cannot inject helpers into code that runs in the page
     const EXTRACT = `() => {
       const out = [];
@@ -241,15 +286,79 @@ async function main(): Promise<number> {
           if (v && v !== "none" && v !== "normal" && textual(v)) bad.push("computed " + pseudo + " content: " + v);
         }
       }
+      // bidi reordering can show words the record does not hold (a creative line reversed): refused in CSS, attributes and text
+      for (const [, st] of css) {
+        const ub = st.getPropertyValue("unicode-bidi").trim();
+        if (/override/i.test(ub)) bad.push("unicode-bidi: " + ub);
+        if (st.getPropertyValue("direction").trim().toLowerCase() === "rtl") bad.push("direction: rtl");
+      }
+      for (const el of document.querySelectorAll("*")) {
+        const cs = getComputedStyle(el);
+        if (/override/i.test(cs.unicodeBidi) || cs.direction === "rtl") bad.push("computed bidi on <" + el.localName + ">");
+        if (el.localName === "bdo" || el.hasAttribute("dir")) bad.push("dir / bdo on <" + el.localName + ">");
+      }
+      if (out.some((x) => /[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/.test(x))) bad.push("bidi control character in the page");
+      // the words a reader sees together, for the invented-fact check. Units are what the record holds: one text node,
+      // or an element's own text joined where it breaks a line with a direct <br> / <wbr>. Visible text only (no CSS
+      // inside an SVG <style>, no hidden text; inside an SVG only <text>). Each unit carries where it is drawn, so
+      // that only units drawn next to each other are joined (by the layout, whatever the document order).
+      const hidden = (el) => { for (let e = el; e && e.nodeType === 1; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === "none" || cs.visibility === "hidden") return true; } return false; };
+      const units = [];
+      const seen = new Set();
+      const blocksSeen = new Map();
+      const tw = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+      for (let t = tw.nextNode(); t; t = tw.nextNode()) {
+        const p = t.parentElement;
+        if (!p || !(t.textContent || "").trim() || seen.has(t)) continue;
+        if (p.closest("style, script, template")) continue;
+        if (p.closest("svg") && !p.closest("text")) continue;
+        if (hidden(p)) continue;
+        const nodes = [...p.children].some((c) => c.localName === "br" || c.localName === "wbr") ? [...p.childNodes].filter((c) => c.nodeType === 3) : [t];
+        for (const n of nodes) seen.add(n);
+        const rects = [];
+        for (const n of nodes) {
+          const range = document.createRange();
+          range.selectNodeContents(n);
+          for (const r of range.getClientRects()) if (r.width > 0 && r.height > 0) rects.push({ l: r.left, t: r.top + scrollY, r: r.right, b: r.bottom + scrollY });
+        }
+        const cs = getComputedStyle(p);
+        // the block the unit's lines belong to (its nearest ancestor that is not inline): a line runs on to the next
+        // line only inside one block; separate blocks (paragraphs, a heading and its text) join only with no gap
+        let blk = p;
+        while (blk && blk.parentElement && ["inline", "contents"].includes(getComputedStyle(blk).display)) blk = blk.parentElement;
+        if (!blocksSeen.has(blk)) blocksSeen.set(blk, blocksSeen.size);
+        const em = parseFloat(cs.fontSize) || 16;
+        const lh = parseFloat(cs.lineHeight);
+        units.push({ text: nodes.map((n) => n.textContent || "").join("").trim(), rects, block: blocksSeen.get(blk), em, lh: Number.isFinite(lh) ? lh : 1.2 * em, vertical: cs.writingMode.startsWith("vertical"), lr: cs.writingMode === "vertical-lr" });
+      }
       // a soft hyphen is invisible in the text but can show any hyphenation character
       if (out.some((x) => x.includes("\\u00ad"))) bad.push("soft hyphen (U+00AD) in the page");
-      return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad };
+      return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad, units };
     }`;
-    const { texts, sections, bad } = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[] };
-    await ctx.close();
+    // read at both rendered widths (PC 1440, SP 390): media queries can show other words, other CSS or other neighbours
+    const texts: string[] = [];
+    const bad: string[] = [];
+    const unitsByWidth: TextUnit[][] = [];
+    let sections: string[] = [];
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      const ctx = await browser.newContext({ viewport, javaScriptEnabled: false, serviceWorkers: "block" });
+      try {
+        await ctx.route("**/*", (r) => r.abort());
+        const page = await ctx.newPage();
+        await page.setContent(html, { waitUntil: "domcontentloaded" });
+        const got = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[]; units: TextUnit[] };
+        texts.push(...got.texts);
+        for (const b of got.bad) if (!bad.includes(b)) bad.push(b);
+        unitsByWidth.push(got.units);
+        if (!sections.length) sections = got.sections;
+      } finally {
+        await ctx.close();
+      }
+    }
     // CSS may not write words: content, quotes, list markers, counters and @counter-style are refused, as parsed
     for (const b of bad) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: b.slice(0, 60) });
     const parsed = CopyRecord.safeParse(copyRaw);
+    if (parsed.success) for (const b of joinedTextsLookingLikeFact([...new Set(unitsByWidth.flatMap((u) => adjacentTexts(u, parsed.data)))], parsed.data)) findings.push({ code: "COMP_JOINED_TEXT_LOOKS_LIKE_FACT", detail: b.slice(0, 60) });
     if (parsed.success)
       for (const t of textsNotInRecord(texts, parsed.data))
         findings.push({

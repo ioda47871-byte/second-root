@@ -58,6 +58,9 @@ export type ReviewInputs = {
   verifiedReads: Readonly<Record<string, readonly string[]>>;
   failureCodes: readonly string[];
   comp: { html_sha256: string; css_sha256: string; copy_sha256: string };
+  /** The comp's own shop (its copy record) and direction (its directory): a review of another shop's or direction's comp is refused. */
+  shopId: string;
+  directionId: string;
 };
 
 export function checkCompReview(raw: unknown, o: ReviewInputs): { ok: boolean; codes: string[] } {
@@ -65,6 +68,8 @@ export function checkCompReview(raw: unknown, o: ReviewInputs): { ok: boolean; c
   if (!p.success) return { ok: false, codes: ["REVIEW_SCHEMA"] };
   const r = p.data;
   const codes: string[] = [];
+  if (r.shop_id !== o.shopId) codes.push("REVIEW_OF_ANOTHER_SHOP");
+  if (r.direction_id !== o.directionId) codes.push("REVIEW_OF_ANOTHER_DIRECTION");
   if (r.comp.html_sha256 !== o.comp.html_sha256 || r.comp.css_sha256 !== o.comp.css_sha256 || r.comp.copy_sha256 !== o.comp.copy_sha256) codes.push("REVIEW_OF_ANOTHER_COMP");
   if (o.renders)
     for (const v of VIEWS) if (o.renders[v].sha256 !== r.renders[v].sha256 || o.renders[v].height !== r.renders[v].height) codes.push(`RENDER_MISMATCH_${v.toUpperCase()}`);

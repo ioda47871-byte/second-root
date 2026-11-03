@@ -95,6 +95,8 @@ export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: 
   const r = parsed.data;
   const f: CopyFinding[] = [];
   if (r.shop_id !== o.shopId) f.push({ code: "COPY_SHOP_MISMATCH" });
+  // the research lane is for fictional shops only (owner, Issue #193 comment 6591440695): the facts pack must say so
+  if (r.lane === "quality_research_fictional" && !isFictionalShop(o)) f.push({ code: "COPY_LANE_NOT_FICTIONAL" });
   if (r.facts_sha256 !== o.factsSha256) f.push({ code: "COPY_FACTS_SHA_MISMATCH" });
   const ids = r.items.map((i) => i.id);
   if (new Set(ids).size !== ids.length) f.push({ code: "COPY_IDS_DUPLICATED" });
@@ -102,6 +104,8 @@ export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: 
   for (const i of r.items) {
     // a soft hyphen is invisible but can show any hyphenation character (CSS hyphenate-character)
     if (/\u00ad/.test(i.text) || (i.label && /\u00ad/.test(i.label))) f.push({ code: "COPY_SOFT_HYPHEN", item: i.id });
+    // bidi controls reorder what is drawn: a creative line reversed could show a word the record does not hold
+    if (BIDI.test(i.text) || (i.label && BIDI.test(i.label))) f.push({ code: "COPY_BIDI_CONTROL", item: i.id });
     for (const s of i.source_fact_ids) if (!byId.has(s)) f.push({ code: "COPY_FACT_UNKNOWN", item: i.id, detail: s });
     if (i.claim_type === "fact") {
       if (!i.source_fact_ids.length) f.push({ code: "FACT_WITHOUT_SOURCE", item: i.id });
@@ -117,6 +121,28 @@ export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: 
     }
   }
   return { ok: f.length === 0, findings: f };
+}
+
+const BIDI = /[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/;
+
+/** A shop is fictional for the research lane when its id says so and its name fact starts with 架空 (as in every research pack). */
+export function isFictionalShop(o: { shopId: string; facts: ReadonlyArray<{ key?: string; value: string }> }): boolean {
+  return /^fictional-/.test(o.shopId) && o.facts.some((x) => x.key === "name" && x.value.trim().startsWith("架空"));
+}
+
+/**
+ * The texts a reader sees together (each innermost block, spans joined) that look like an invented fact once the
+ * record's facts and labels are taken out: two creative items side by side can spell what neither does alone.
+ */
+export function joinedTextsLookingLikeFact(blocks: readonly string[], r: CopyRecord): string[] {
+  const facts = r.items.filter((i) => i.claim_type === "fact").flatMap((i) => [norm(i.text), ...(i.label ? [norm(i.label)] : [])]).filter(Boolean).sort((a, b) => b.length - a.length);
+  const out: string[] = [];
+  for (const b of blocks) {
+    let t = norm(b);
+    for (const x of facts) t = t.split(x).join("\u0000");
+    if (INVENTED_FACT_SIGNS.some(([, re]) => t.split("\u0000").some((part) => re.test(part)))) out.push(b);
+  }
+  return [...new Set(out)];
 }
 
 /** Every visible text of a page, normalised; the page may show only the record's texts and labels. */

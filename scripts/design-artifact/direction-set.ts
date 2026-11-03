@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { FactsPack } from "../../lib/design-agent/artifact/schema";
+import { FactsPack } from "../../lib/design-agent/quality-pipeline/facts-pack";
 import { checkDirectionSet, REFERENCE_MODES, type CheckInputs, type SetCheck } from "../../lib/design-agent/quality-pipeline/direction-set";
 
 const REPO = resolve(__dirname, "../..");

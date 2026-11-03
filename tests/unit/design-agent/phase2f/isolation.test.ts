@@ -17,6 +17,10 @@ const STEPS = "scripts/design-artifact/phase2f-steps.ts";
 /** DEV-150 (Issue #180, owner-approved exact paths): the image step's DOM safety check of a page, and the three-method offline steps. */
 const IMAGE_STEP = "scripts/design-artifact/phase2f-image.ts";
 const TM_STEPS = "scripts/design-artifact/three-methods-steps.ts";
+/** DEV-157 (Issue #193 comment 6595445598, owner-approved exact path): the direction-set check, open-direction only. */
+const DIRECTION_SET = "lib/design-agent/quality-pipeline/direction-set.ts";
+// DEV-159 (Issue #193 comment 6595445598, owner-approved exact path): the comp lane CLI checks and renders a B-method comp
+const COMP_LANE = "scripts/design-artifact/comp-lane.ts";
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
 function specifiers(source: string): string[] {
@@ -79,7 +83,7 @@ describe("isolation of the Phase 2f runner", () => {
 
   it("is imported only by its offline CLI, and by the Phase 2f-2 design step for its prompt only (DEV-116, owner-approved exact path)", () => {
     // the design step's own modules (phase2f-live) never import the runner
-    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS, IMAGE_STEP, TM_STEPS].sort());
+    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS, IMAGE_STEP, TM_STEPS, DIRECTION_SET, COMP_LANE].sort());
     const source = readFileSync(resolve(REPO, DESIGN_STEP), "utf8");
     const fromPhase2f = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
     // DEV-122: plus the prompt-version check (pure; no file access)
@@ -117,6 +121,73 @@ describe("DEV-150: the two new importers take only these names from phase2f (own
       ["../../lib/design-agent/phase2f/render-prototype", ["RenderError", "renderPrototype"]],
       ["../../lib/design-agent/phase2f/runner", ["placeholderPng"]],
     ]);
+  });
+});
+
+describe("DEV-157: the direction-set check takes only these names from phase2f (Issue #193 comment 6595445598, owner-approved exact path)", () => {
+  it("open-direction only: directionsDiffer, HERO_MODES, PAGE_FLOWS and the OpenDirection type (never the runner, the prompt or Codex)", () => {
+    const source = readFileSync(resolve(REPO, DIRECTION_SET), "utf8");
+    const names = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
+    expect(names).toEqual([["../phase2f/open-direction", ["HERO_MODES", "PAGE_FLOWS", "directionsDiffer", "type OpenDirection"]]]);
+    expect(specifiers(source).filter((s) => s.includes("phase2f"))).toEqual(["../phase2f/open-direction"]);
+  });
+  it("the whole file: zod and the two approved modules only; no dynamic import, require, network, process or Codex", () => {
+    const source = readFileSync(resolve(REPO, DIRECTION_SET), "utf8");
+    // the structure names are built here so this test file does not itself match the structure module's isolation grep
+    const structureModule = ["..", "structure", "descriptor"].join("/");
+    const vocabularyFile = ["structure", "descriptors", "v0"].join("-");
+    expect(specifiers(source).sort()).toEqual(["../phase2f/open-direction", structureModule, "zod"]);
+    expect(source).not.toMatch(/import\s*\(|require\s*\(|\bfetch\(|node:|codex|child_process/i);
+    expect(source).not.toContain(vocabularyFile);
+  });
+  it("the facts pack copy it reads with: zod only", () => {
+    const source = readFileSync(resolve(REPO, "lib/design-agent/quality-pipeline/facts-pack.ts"), "utf8");
+    expect(specifiers(source)).toEqual(["zod"]);
+    expect(source).not.toMatch(/import\s*\(|require\s*\(|\bfetch\(|node:|codex|child_process/i);
+  });
+});
+
+describe("DEV-159: the comp lane takes only these names from phase2f (Issue #193 comment 6595445598, owner-approved exact path)", () => {
+  it("prototype-safety and render-prototype only: checkPrototype, PrototypeUnsafe, renderPrototype, RenderError (never the runner, the prompt or Codex)", () => {
+    const source = readFileSync(resolve(REPO, COMP_LANE), "utf8");
+    const names = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
+    expect(names).toEqual([
+      ["../../lib/design-agent/phase2f/prototype-safety", ["PrototypeUnsafe", "checkPrototype"]],
+      ["../../lib/design-agent/phase2f/render-prototype", ["RenderError", "renderPrototype"]],
+    ]);
+    expect(specifiers(source).filter((s) => s.includes("phase2f")).sort()).toEqual([
+      "../../lib/design-agent/phase2f/prototype-safety",
+      "../../lib/design-agent/phase2f/render-prototype",
+    ]);
+    expect(source).not.toMatch(/phase2f\/(runner|prompt)|codex|child_process|\bfetch\(/i);
+  });
+  it("the whole comp lane: exactly these modules, and no dynamic import, require, network, process, worker or model SDK", () => {
+    const files: Record<string, string[]> = {
+      [COMP_LANE]: [
+        "../../lib/design-agent/phase2f/prototype-safety",
+        "../../lib/design-agent/phase2f/render-prototype",
+        "../../lib/design-agent/quality-pipeline/comp-review",
+        "../../lib/design-agent/quality-pipeline/copy-record",
+        "../../lib/design-agent/quality-pipeline/facts-pack",
+        "./visual-read",
+        "node:crypto",
+        "node:fs",
+        "node:path",
+        "playwright",
+      ],
+      "lib/design-agent/quality-pipeline/comp-review.ts": ["../reference-originals/visual-read", "zod"],
+      "lib/design-agent/quality-pipeline/copy-record.ts": ["zod"],
+      // what the comp lane reaches through ./visual-read (DEV-158 files, PR #199 confirmation review L2)
+      "scripts/design-artifact/visual-read.ts": ["../../lib/design-agent/reference-originals/visual-read", "node:crypto", "node:fs", "node:path"],
+      "lib/design-agent/reference-originals/visual-read.ts": ["./observation", "zod"],
+      "lib/design-agent/reference-originals/observation.ts": ["zod"],
+    };
+    for (const [file, allowed] of Object.entries(files)) {
+      const source = readFileSync(resolve(REPO, file), "utf8");
+      expect(specifiers(source).sort(), file).toEqual(allowed);
+      // the CLI's own entry check (require.main === module) is the only `require` allowed
+      expect(source.replace(/require\.main === module/g, ""), file).not.toMatch(/\brequire\s*[([]|import\s*\(|node:(https?|net|tls|dgram|child_process|worker_threads|vm)|\/worker\/|anthropic|openai|\bspawn\(|execFile|execSync|process\.binding|\bfetch\(|codex/i);
+    }
   });
 });
 
