@@ -1,0 +1,198 @@
+{
+  "schema": "photo_slots_v0",
+  "shop": "sento",
+  "shop_id": "fictional-sento-yuge",
+  "page_dir": "design-library/research/quality-pipeline/poc/sento/fidelity/d1-v2",
+  "html_sha256": "ac91312932a68b47a087786973c1e7712706b221ffee71c63a33213fd57c3ee2",
+  "css_sha256": "e5fdcc45bd93b0413e14bd76668df3a6cce5b0ffd6537581ff8a0995aebd9ea6",
+  "copy_sha256": "091988945d753fd249fefa33ba1cbc1a1c763cb0446e3d51805dde3f77299633",
+  "derived_by": "scripts/design-artifact/photo-slots.ts",
+  "evaluation_label": "placeholder_limited",
+  "density": 2,
+  "slots": [
+    {
+      "slot_id": "ph-tub",
+      "role": "ぬるい湯の湯船",
+      "section": "warm",
+      "board_class": "board board-tub",
+      "board_selector": "[data-comp-section=\"warm\"] figure.board.board-tub",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 720,
+          "height_px": 520,
+          "ratio": 1.385,
+          "min_width_px": 1440,
+          "min_height_px": 1040
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 868,
+          "height_px": 627,
+          "ratio": 1.385,
+          "min_width_px": 1736,
+          "min_height_px": 1254
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 612,
+          "height_px": 442,
+          "ratio": 1.385,
+          "min_width_px": 1224,
+          "min_height_px": 884
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 342,
+          "height_px": 247,
+          "ratio": 1.385,
+          "min_width_px": 684,
+          "min_height_px": 494
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-surface",
+      "role": "湯の表面の接写",
+      "section": "warm",
+      "board_class": "board board-surface",
+      "board_selector": "[data-comp-section=\"warm\"] figure.board.board-surface",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 410,
+          "height_px": 324,
+          "ratio": 1.267,
+          "min_width_px": 820,
+          "min_height_px": 648
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 434,
+          "height_px": 343,
+          "ratio": 1.267,
+          "min_width_px": 868,
+          "min_height_px": 686
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 306,
+          "height_px": 242,
+          "ratio": 1.267,
+          "min_width_px": 612,
+          "min_height_px": 484
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 205,
+          "height_px": 162,
+          "ratio": 1.267,
+          "min_width_px": 411,
+          "min_height_px": 324
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-garden",
+      "role": "庭の水風呂",
+      "section": "cold",
+      "board_class": "garden",
+      "board_selector": "[data-comp-section=\"cold\"] figure.garden",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 1440,
+          "height_px": 600,
+          "ratio": 2.4,
+          "min_width_px": 2880,
+          "min_height_px": 1200
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 1024,
+          "height_px": 427,
+          "ratio": 2.4,
+          "min_width_px": 2048,
+          "min_height_px": 854
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 768,
+          "height_px": 320,
+          "ratio": 2.4,
+          "min_width_px": 1536,
+          "min_height_px": 640
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 390,
+          "height_px": 420,
+          "ratio": 0.929,
+          "min_width_px": 780,
+          "min_height_px": 840
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-mural",
+      "role": "タイルの山の絵",
+      "section": "wall",
+      "board_class": "mural",
+      "board_selector": "[data-comp-section=\"wall\"] figure.mural",
+      "placeholder": "css_board_with_svg",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 660,
+          "height_px": 600,
+          "ratio": 1.1,
+          "min_width_px": 1320,
+          "min_height_px": 1200
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 452,
+          "height_px": 411,
+          "ratio": 1.1,
+          "min_width_px": 904,
+          "min_height_px": 822
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 490,
+          "height_px": 445,
+          "ratio": 1.1,
+          "min_width_px": 980,
+          "min_height_px": 891
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 342,
+          "height_px": 300,
+          "ratio": 1.14,
+          "min_width_px": 684,
+          "min_height_px": 600
+        }
+      ]
+    }
+  ]
+}
