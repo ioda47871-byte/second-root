@@ -111,7 +111,8 @@ export type TextUnit = { text: string; rects: Array<{ l: number; t: number; r: n
 /**
  * The texts a reader sees together: each unit alone, and units drawn next to each other joined in reading order
  * (pairs and runs of three). Two units are next to each other when a line of one ends where a line of the other
- * starts: on the same line within one em (horizontal writing), or in the same column within one em (vertical). A unit
+ * starts: on the same line within one em (horizontal writing), or in the same column within one em (vertical), or where one
+ * line or column ends and the next one begins (within one em). A unit
  * that is a fact text or a label of the record separates: it is never joined, so no join holds a fact or a part of it.
  */
 export function adjacentTexts(units: readonly TextUnit[], record: CopyRecord): string[] {
@@ -125,10 +126,14 @@ export function adjacentTexts(units: readonly TextUnit[], record: CopyRecord): s
         const em = Math.max(a.em, b.em);
         if (!a.vertical && !b.vertical) {
           const overlap = Math.min(x.b, y.b) - Math.max(x.t, y.t);
-          return overlap >= 0.5 * Math.min(x.b - x.t, y.b - y.t) && y.l >= x.r - 1 && y.l - x.r <= em;
+          if (overlap >= 0.5 * Math.min(x.b - x.t, y.b - y.t) && y.l >= x.r - 1 && y.l - x.r <= em) return true;
+          // reading runs on to the next line: b's line starts below a's line, back towards the left
+          return x === a.rects[a.rects.length - 1] && y === b.rects[0] && y.t >= x.b - 1 && y.t - x.b <= em && y.l < x.r;
         }
         const overlap = Math.min(x.r, y.r) - Math.max(x.l, y.l);
-        return overlap >= 0.5 * Math.min(x.r - x.l, y.r - y.l) && y.t >= x.b - 1 && y.t - x.b <= em;
+        if (overlap >= 0.5 * Math.min(x.r - x.l, y.r - y.l) && y.t >= x.b - 1 && y.t - x.b <= em) return true;
+        // vertical-rl: reading runs on to the next column, to the left, back towards the top
+        return x === a.rects[a.rects.length - 1] && y === b.rects[0] && y.r <= x.l + 1 && x.l - y.r <= em && y.t < x.b;
       }),
     );
   const out = us.map((u) => u.text);
@@ -206,10 +211,6 @@ async function main(): Promise<number> {
     }
     // the page's texts and its styles, as Chromium parses them, with JavaScript off and every request refused. The
     // stylesheet is parsed on its own (not through the page's link), so no spelling of the link can hide it.
-    const ctx = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block" });
-    await ctx.route("**/*", (r) => r.abort());
-    const page = await ctx.newPage();
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
     // a plain string, so the TypeScript build cannot inject helpers into code that runs in the page
     const EXTRACT = `() => {
       const out = [];
@@ -320,12 +321,30 @@ async function main(): Promise<number> {
       if (out.some((x) => x.includes("\\u00ad"))) bad.push("soft hyphen (U+00AD) in the page");
       return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad, units };
     }`;
-    const { texts, sections, bad, units } = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[]; units: TextUnit[] };
-    await ctx.close();
+    // read at both rendered widths (PC 1440, SP 390): media queries can show other words, other CSS or other neighbours
+    const texts: string[] = [];
+    const bad: string[] = [];
+    const unitsByWidth: TextUnit[][] = [];
+    let sections: string[] = [];
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      const ctx = await browser.newContext({ viewport, javaScriptEnabled: false, serviceWorkers: "block" });
+      try {
+        await ctx.route("**/*", (r) => r.abort());
+        const page = await ctx.newPage();
+        await page.setContent(html, { waitUntil: "domcontentloaded" });
+        const got = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[]; units: TextUnit[] };
+        texts.push(...got.texts);
+        for (const b of got.bad) if (!bad.includes(b)) bad.push(b);
+        unitsByWidth.push(got.units);
+        if (!sections.length) sections = got.sections;
+      } finally {
+        await ctx.close();
+      }
+    }
     // CSS may not write words: content, quotes, list markers, counters and @counter-style are refused, as parsed
     for (const b of bad) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: b.slice(0, 60) });
     const parsed = CopyRecord.safeParse(copyRaw);
-    if (parsed.success) for (const b of joinedTextsLookingLikeFact(adjacentTexts(units, parsed.data), parsed.data)) findings.push({ code: "COMP_JOINED_TEXT_LOOKS_LIKE_FACT", detail: b.slice(0, 60) });
+    if (parsed.success) for (const b of joinedTextsLookingLikeFact([...new Set(unitsByWidth.flatMap((u) => adjacentTexts(u, parsed.data)))], parsed.data)) findings.push({ code: "COMP_JOINED_TEXT_LOOKS_LIKE_FACT", detail: b.slice(0, 60) });
     if (parsed.success)
       for (const t of textsNotInRecord(texts, parsed.data))
         findings.push({

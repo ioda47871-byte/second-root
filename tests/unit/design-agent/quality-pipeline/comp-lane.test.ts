@@ -338,12 +338,16 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     const layoutDir = mkdtempSync(join(tmpdir(), "comp-probe-"));
     cpSync(COMP, layoutDir, { recursive: true });
     const lc = JSON.parse(readFileSync(join(layoutDir, "copy.json"), "utf8"));
-    for (const [id, text] of [["q1", "限"], ["q2", "定"], ["q3", "器"]]) lc.items.push({ id, text, claim_type: "creative_expression", source_fact_ids: [], owner_review_needed: true });
+    for (const [id, text] of [["q1", "限"], ["q2", "定"], ["q3", "器"], ["q4", "継ぐ手限"], ["q5", "定の時を"]]) lc.items.push({ id, text, claim_type: "creative_expression", source_fact_ids: [], owner_review_needed: true });
     writeFileSync(join(layoutDir, "copy.json"), JSON.stringify(lc));
     const layouts = [
       '<div style="display:flex"><span>限</span><span>定</span></div>',
       '<div><span style="display:inline-block">限</span><span style="display:inline-block">定</span></div>',
       '<div style="display:grid;grid-template-columns:auto auto;justify-content:start"><p>限</p><p>定</p></div>',
+      // drawn side by side only on the phone (read at both rendered widths)
+      '<style>@media (max-width: 500px) { .zzm { display: flex; } }</style><div class="zzm"><p>限</p><p>定</p></div>',
+      // reading runs on to the next line: 限 ends one line, 定 begins the next
+      '<p style="width:4.2em;font-size:16px"><span>継ぐ手限</span><span>定の時を</span></p>',
       // grid placement against the document order (final confirmation: was a known gap, now joined by where it is drawn)
       '<div style="display:grid;grid-template-columns:auto auto;justify-content:start"><p style="grid-column:2">定</p><p style="grid-column:1;grid-row:1">限</p></div>',
       '<div style="display:flex;flex-direction:row-reverse"><span>定</span><span>限</span></div>',
