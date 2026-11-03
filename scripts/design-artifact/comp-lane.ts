@@ -224,15 +224,16 @@ async function main(): Promise<number> {
         const cs = getComputedStyle(el);
         for (const p of ["list-style-type", "text-emphasis-style", "-webkit-text-emphasis-style"]) { const v = cs.getPropertyValue(p); if (v && textual(v)) bad.push("computed " + p + ": " + v); }
         for (const pseudo of ["::before", "::after", "::marker"]) {
-          const v = getComputedStyle(el, pseudo).getPropertyValue("content");
+          // an empty string is a decorative pseudo element (a line, a rule): allowed, as in the written check
+          const v = getComputedStyle(el, pseudo).getPropertyValue("content").replace(/""|''/g, "").trim();
           if (v && v !== "none" && v !== "normal" && textual(v)) bad.push("computed " + pseudo + " content: " + v);
         }
       }
+      // a soft hyphen is invisible in the text but can show any hyphenation character
       if (out.some((x) => x.includes("\\u00ad"))) bad.push("soft hyphen (U+00AD) in the page");
       return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad };
     }`;
     const { texts, sections, bad } = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[] };
-    // a soft hyphen is invisible in the text but can show any hyphenation character: refused in the page
     await ctx.close();
     // CSS may not write words: content, quotes, list markers, counters and @counter-style are refused, as parsed
     for (const b of bad) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: b.slice(0, 60) });

@@ -282,6 +282,12 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     expect(viaVar.code).toBe(1);
     const d5 = viaVar.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|");
     for (const needle of ["list-style-type", "text-emphasis", "input type=date"]) expect(d5, needle).toContain(needle);
+    // ordinary decoration is not refused: empty pseudo elements, default markers and quotes (round 6 H1)
+    const plain = run(
+      (h) => h.replace("</main>", "<ul><li>割れの修理</li></ul><ol><li>欠けの修理</li></ol></main>"),
+      `.tagline::before { content: ""; display: block; width: 40px; height: 2px; background: #b8860b; }\n.lead::after { content: ''; }\nli::marker { color: #b8860b; }\n.how { text-emphasis: filled sesame; }`,
+    );
+    expect(plain.out.findings.filter((f: { code: string }) => f.code === "COMP_CSS_CONTENT_TEXT")).toEqual([]);
     // an SVG <style> is a style sheet, not page text (no false COMP_TEXT_NOT_IN_COPY)
     const svgStyle = run((h) => h.replace("</main>", "<svg><style>.q { fill: #000; }</style></svg></main>"));
     expect(svgStyle.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
