@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -156,6 +156,11 @@ describe("must fail: every refused thing, one probe each", () => {
     ["no root", `<g/>`, "SVG_ELEMENT_PLACE"],
     ["unclosed element", `<svg ${NS} width="1" height="1" viewBox="0 0 1 1"><g>`, "SVG_MALFORMED"],
     ["mismatched close", svg(`<g></rect>`), "SVG_MALFORMED"],
+    ["whitespace after </ (close-tag name not trimmed)", svg(`<g></ g>`), "SVG_MALFORMED"],
+    ["zero viewBox width", svg(ref, `width="1" height="1" viewBox="0 0 0 1"`), "SVG_VIEWBOX"],
+    ["zero viewBox height", svg(ref, `width="1" height="1" viewBox="0 0 1 0"`), "SVG_VIEWBOX"],
+    ["negative viewBox width", svg(ref, `width="1" height="1" viewBox="0 0 -1 1"`), "SVG_VIEWBOX"],
+    ["negative viewBox height", svg(ref, `width="1" height="1" viewBox="0,0,1,-5"`), "SVG_VIEWBOX"],
     ["unclosed tag", `<svg ${NS} width="1" height="1" viewBox="0 0 1 1"`, "SVG_MALFORMED"],
     ["no viewBox", svg(ref, `width="1" height="1"`), "SVG_NO_VIEWBOX"],
     ["no width", svg(ref, `height="1" viewBox="0 0 1 1"`), "SVG_SIZE"],
@@ -169,6 +174,25 @@ describe("must fail: every refused thing, one probe each", () => {
     const c = check(s);
     expect(c.ok).toBe(false);
     expect(c.findings.map((f) => f.code)).toContain(code);
+  });
+
+  it("`</g >` (whitespace before >) is still a close tag", () => expect(check(svg(`<g></g >`)).findings).toEqual([]));
+
+  it.each([
+    ["element constructor", svg(`<constructor/>`), "SVG_ELEMENT_NOT_ALLOWED"],
+    ["element toString in a group", svg(`<g><toString/></g>`), "SVG_ELEMENT_NOT_ALLOWED"],
+    ["element __proto__", svg(`<__proto__/>`), "SVG_ELEMENT_NOT_ALLOWED"],
+    ["element hasOwnProperty", svg(`<hasOwnProperty></hasOwnProperty>`), "SVG_ELEMENT_NOT_ALLOWED"],
+    ["attribute __proto__", svg(`<path d="M0 0" __proto__="x"/>`), "SVG_ATTRIBUTE_NOT_ALLOWED"],
+    ["attribute constructor", svg(`<path d="M0 0" constructor="x"/>`), "SVG_ATTRIBUTE_NOT_ALLOWED"],
+    ["attribute toString", svg(`<rect width="1" height="1" toString="x"/>`), "SVG_ATTRIBUTE_NOT_ALLOWED"],
+    ["attribute valueOf on the root", svg(`<g/>`, `width="1" height="1" viewBox="0 0 1 1" valueOf="1"`), "SVG_ATTRIBUTE_NOT_ALLOWED"],
+    ["__proto__ twice", svg(`<path d="M0 0" __proto__="x" __proto__="y"/>`), "SVG_ATTRIBUTE_DUPLICATE"],
+  ])("a prototype name is refused, not thrown on: %s", (_, s, code) => {
+    let c: ReturnType<typeof check> | undefined;
+    expect(() => (c = check(s))).not.toThrow();
+    expect(c!.ok).toBe(false);
+    expect(c!.findings.map((x) => x.code)).toContain(code);
   });
 
   it("an empty file", () => expect(checkDecorationSvg(new Uint8Array()).findings.map((f) => f.code)).toEqual(["SVG_EMPTY"]));
@@ -224,25 +248,142 @@ describe("the asset file: name, symlink, traversal, hash, size, dimensions", () 
   it("a recorded file that fails the checker", () => expect(checkDecorationAssetFile(dir, asset("assets/bad.svg", svg(`<script/>`)))).toContain("SVG_ELEMENT_NOT_ALLOWED"));
   it("a missing file", () => expect(checkDecorationAssetFile(dir, asset("assets/none.svg", SEAM))).toContain("ASSET_MISSING"));
   it("another kind or role", () => expect(checkDecorationAssetFile(dir, asset("assets/seam.svg", SEAM, { role: "content" as "decoration" }))).toContain("ASSET_KIND"));
+  it.each(["", "Seam", "seam_1", "-seam", "a".repeat(65), "__proto__", "seam/1", "seam.svg"])("a bad id %j", (id) =>
+    expect(checkDecorationAssetFile(dir, asset("assets/seam.svg", SEAM, { id }))).toContain("ASSET_ID"),
+  );
+  it("a hardlink (a second name for the same file) is refused", () => {
+    writeFileSync(join(dir, "assets/twin.svg"), SEAM);
+    linkSync(join(dir, "assets/twin.svg"), join(outside, "twin.svg"));
+    expect(checkDecorationAssetFile(dir, asset("assets/twin.svg", SEAM))).toContain("ASSET_HARDLINK");
+  });
+  it.each([
+    ["no fields", {}],
+    ["a numeric file", { file: 7 }],
+    ["an object file", { file: { toString: () => "assets/seam.svg" } }],
+    ["null id", { id: null, file: "assets/seam.svg" }],
+    ["a prototype-named id", { id: "constructor", file: "assets/seam.svg" }],
+  ])("hostile record fields are refused, never thrown on: %s", (_, rec) => {
+    let r: string[] = [];
+    expect(() => (r = checkDecorationAssetFile(dir, rec as unknown as DecorationAsset))).not.toThrow();
+    expect(r.length).toBeGreaterThan(0);
+  });
+  it("a hostile page directory is refused, never thrown on", () => {
+    let r: string[] = [];
+    expect(() => (r = checkDecorationAssetFile("\0bad", asset("assets/seam.svg", SEAM)))).not.toThrow();
+    expect(r.length).toBeGreaterThan(0);
+  });
+  it.each([
+    ["prototype element", svg(`<constructor/>`)],
+    ["prototype attribute", svg(`<path d="M0 0" __proto__="x"/>`)],
+  ])("a recorded file with hostile content returns codes: %s", (_, body) => {
+    writeFileSync(join(dir, "assets/hostile.svg"), body);
+    let r: string[] = [];
+    expect(() => (r = checkDecorationAssetFile(dir, { ...asset("assets/hostile.svg", body), id: "hostile" }))).not.toThrow();
+    expect(r.some((x) => x.startsWith("SVG_"))).toBe(true);
+  });
 });
 
 describe("the page side: only <img> of a recorded asset", () => {
-  const A: DecorationAsset[] = [{ id: "seam", file: "assets/seam.svg", sha256: "0".repeat(64), bytes: 1, width: 100, height: 100, kind: "decoration_svg", role: "decoration" }];
-  const ok = `<div data-comp-role="decoration"><img src="assets/seam.svg" alt="" aria-hidden="true"></div>`;
-  it("a decorative img passes", () => expect(decorationReferenceProblems(ok, "", A)).toEqual([]));
+  const rec = (id: string, file: string): DecorationAsset => ({ id, file, sha256: "0".repeat(64), bytes: 1, width: 100, height: 100, kind: "decoration_svg", role: "decoration" });
+  const A: DecorationAsset[] = [rec("seam", "assets/seam.svg")];
+  const IMG = `<img src="assets/seam.svg" alt="" aria-hidden="true" referrerpolicy="no-referrer">`;
+  const ok = `<div data-comp-role="decoration">${IMG}</div>`;
+  const problems = (html: string, css = "", assets = A) => decorationReferenceProblems(html, css, assets);
+
   it.each([
+    ["a decorative img", ok],
+    ["upper-case tag and attribute names, single quotes, unquoted", `<IMG SRC='assets/seam.svg' ALT="" Aria-Hidden=true REFERRERPOLICY=no-referrer>`],
+    ["`/` as the attribute separator", `<img/src="assets/seam.svg"/alt=""/aria-hidden="true"/referrerpolicy="no-referrer"/>`],
+    ["a quoted `>` inside another attribute does not end the tag", `<img title=">" src="assets/seam.svg" alt="" aria-hidden="true" referrerpolicy="no-referrer">`],
+    ["`<svg` text that is only an escaped entity in text", `${ok}<p>&lt;svg is not a tag</p>`],
+    ["a comment with no reference", `<!-- note -->${ok}`],
+    ["ordinary relative links and raster images", `${ok}<a href="menu.html#top">menu</a><img src="assets/photo.webp" alt="shop">`],
+  ])("passes: %s", (_, html) => expect(problems(html)).toEqual([]));
+
+  it.each([
+    // inline svg in any form
     ["inline svg", `${ok}<svg></svg>`, "", "INLINE_SVG"],
+    ["<svg/>", `${ok}<svg/>`, "", "INLINE_SVG"],
+    ['<svg/class="x">', `${ok}<svg/class="x"></svg>`, "", "INLINE_SVG"],
+    ["<SVG> upper case", `${ok}<SVG></SVG>`, "", "INLINE_SVG"],
+    ["<svg inside a comment", `${ok}<!-- <svg> -->`, "", "INLINE_SVG"],
+    // embedding
     ["object", `${ok}<object data="assets/seam.svg"></object>`, "", "SVG_EMBEDDED_NOT_IMG"],
     ["embed", `${ok}<embed src="assets/seam.svg">`, "", "SVG_EMBEDDED_NOT_IMG"],
     ["iframe", `${ok}<iframe src="assets/seam.svg"></iframe>`, "", "SVG_EMBEDDED_NOT_IMG"],
-    ["CSS reference", ok, `.x{background:url(assets/seam.svg)}`, "SVG_FROM_CSS"],
+    // img src forms
     ["unrecorded svg", `${ok}<img src="assets/other.svg" alt="" aria-hidden="true">`, "", "SVG_NOT_RECORDED"],
     ["external svg", `${ok}<img src="https://x/a.svg" alt="" aria-hidden="true">`, "", "SVG_NOT_RECORDED"],
-    ["srcset", `${ok}<img src="assets/seam.svg" srcset="assets/b.svg 2x" alt="" aria-hidden="true">`, "", "SVG_NOT_RECORDED"],
-    ["img with alt text", `<img src="assets/seam.svg" alt="seam" aria-hidden="true">`, "", "SVG_IMG_NOT_DECORATIVE"],
-    ["img without aria-hidden", `<img src="assets/seam.svg" alt="">`, "", "SVG_IMG_NOT_DECORATIVE"],
+    ["single-quoted external src", `${ok}<img src='https://evil.example/a.svg'>`, "", "SVG_NOT_RECORDED"],
+    ["single-quoted external src is absolute", `${ok}<img src='https://evil.example/a.svg'>`, "", "PAGE_ABSOLUTE_URL"],
+    ["unquoted src", `${ok}<img src=evil.svg>`, "", "SVG_NOT_RECORDED"],
+    ["protocol-relative src", `${ok}<img src="//evil.example/a">`, "", "PAGE_ABSOLUTE_URL"],
+    ["backslash protocol-relative src", `${ok}<img src="\\\\evil.example/a">`, "", "PAGE_ABSOLUTE_URL"],
+    ["data: svg in img src", `${ok}<img src="data:image/svg+xml;base64,PHN2Zz4=">`, "", "PAGE_DATA_URL"],
+    ["data: svg in img src is an svg reference", `${ok}<img src="data:image/svg+xml;base64,PHN2Zz4=">`, "", "SVG_NOT_RECORDED"],
+    ["extensionless recorded path in img src", `${ok}<img src="assets/seam" alt="" aria-hidden="true" referrerpolicy="no-referrer">`, "", "SVG_NOT_RECORDED"],
+    ["recorded path through a dot segment", `${ok}<img src="./assets/x/../seam.svg">`, "", "SVG_NOT_RECORDED"],
+    ["entity-hidden extension", `${ok}<img src="evil&#46;svg">`, "", "SVG_NOT_RECORDED"],
+    ["named-entity-hidden extension", `${ok}<img src="evil&period;svg">`, "", "SVG_NOT_RECORDED"],
+    ["percent-hidden extension", `${ok}<img src="evil%2esvg">`, "", "SVG_NOT_RECORDED"],
+    ["unknown named entity", `${ok}<img src="evil&foo;x">`, "", "PAGE_ENTITY"],
+    // the recorded asset, or any svg, used outside <img src>
+    ["srcset", `${ok}<img src="assets/seam.svg" srcset="assets/b.svg 2x" alt="" aria-hidden="true" referrerpolicy="no-referrer">`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["picture source srcset (single quotes)", `${ok}<picture><source srcset='evil.svg'><img src="assets/photo.webp" alt=""></picture>`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["a href to the recorded asset", `${ok}<a href="assets/seam.svg">x</a>`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["link preload of the recorded asset", `${ok}<link rel="preload" href="assets/seam.svg" as="image">`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["input type=image", `${ok}<input type="image" src="assets/seam.svg">`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["<image> (an img alias in HTML parsing)", `${ok}<image src="assets/seam.svg">`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["table background", `${ok}<table background="evil.svg"></table>`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["video poster", `${ok}<video poster="evil.svg"></video>`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["extensionless recorded path in a href", `${ok}<a href="assets/seam">x</a>`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["svg media type", `${ok}<link rel="icon" type="image/svg+xml" href="favicon">`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["svg named in a script", `${ok}<script>var u = "assets/seam" + ".svg";</script>`, "", "SVG_REFERENCE_NOT_IMG"],
+    ["data: anywhere", `${ok}<a href="data:text/html,x">x</a>`, "", "PAGE_DATA_URL"],
+    ["absolute link", `${ok}<a href="https://evil.example/">x</a>`, "", "PAGE_ABSOLUTE_URL"],
+    ["javascript: scheme", `${ok}<a href="javascript:void 0">x</a>`, "", "PAGE_ABSOLUTE_URL"],
+    // CSS
+    ["CSS reference", ok, `.x{background:url(assets/seam.svg)}`, "SVG_FROM_CSS"],
+    ["CSS url() of anything", ok, `.x{background:url(a.webp)}`, "CSS_URL"],
+    ["CSS escape hiding the extension", ok, String.raw`.x{background:url(evil.sv\67)}`, "SVG_FROM_CSS"],
+    ["CSS escape hiding url(", ok, String.raw`.x{background:\75rl(a.webp)}`, "CSS_URL"],
+    ["CSS comment splitting url(", ok, `.x{background:ur/**/l(a.webp)}`, "CSS_URL"],
+    ["CSS image-set", ok, `.x{background:image-set("a.webp" 1x)}`, "CSS_URL"],
+    ["CSS @import", ok, `@import "a.css";`, "CSS_URL"],
+    ["style attribute url()", `${ok}<div style="background:url(evil.svg)"></div>`, "", "CSS_URL"],
+    ["style attribute svg", `${ok}<div style="background:url(evil.svg)"></div>`, "", "SVG_FROM_CSS"],
+    ["style attribute with a CSS escape", `${ok}<div style='background:url(evil.sv\\67)'></div>`, "", "SVG_FROM_CSS"],
+    ["style attribute with an entity", `${ok}<div style="background:url&#40;a.webp)"></div>`, "", "CSS_URL"],
+    ["<style> element url()", `${ok}<style>.x{background:url(evil.svg)}</style>`, "", "CSS_URL"],
+    ["<style> element svg", `${ok}<style>.x{background:url(evil.svg)}</style>`, "", "SVG_FROM_CSS"],
+    ["<STYLE> upper case", `${ok}<STYLE>.x{background:url(a.webp)}</STYLE>`, "", "CSS_URL"],
+    // decorative markers read from parsed attributes
+    ["img with alt text", `<img src="assets/seam.svg" alt="seam" aria-hidden="true" referrerpolicy="no-referrer">`, "", "SVG_IMG_NOT_DECORATIVE"],
+    ["img without aria-hidden", `<img src="assets/seam.svg" alt="" referrerpolicy="no-referrer">`, "", "SVG_IMG_NOT_DECORATIVE"],
+    ["markers only inside another attribute's value", `<img title=' aria-hidden="true" alt=""' src="assets/seam.svg" referrerpolicy="no-referrer">`, "", "SVG_IMG_NOT_DECORATIVE"],
+    ["img without referrerpolicy", `<img src="assets/seam.svg" alt="" aria-hidden="true">`, "", "SVG_IMG_REFERRER"],
+    ["img with another referrerpolicy", `<img src="assets/seam.svg" alt="" aria-hidden="true" referrerpolicy="origin">`, "", "SVG_IMG_REFERRER"],
+    ["duplicate attribute (the first wins in a browser)", `<img src="assets/seam.svg" alt="" alt="x" aria-hidden="true" referrerpolicy="no-referrer">`, "", "PAGE_ATTRIBUTE_DUPLICATE"],
+    // structure and the record
     ["recorded but unused", `<p>x</p>`, "", "SVG_RECORDED_NOT_USED"],
-  ])("%s", (_, html, css, code) => expect(decorationReferenceProblems(html, css, A)).toContain(code));
+    ["a tag the input ends inside", `${ok}<img src="x`, "", "PAGE_MALFORMED"],
+    ["a comment the input ends inside", `${ok}<!-- x`, "", "PAGE_MALFORMED"],
+  ])("%s", (_, html, css, code) => expect(problems(html, css)).toContain(code));
+
+  it("`<img title=\">\" …>` parses as one tag with all its attributes", () =>
+    expect(problems(`<img title=">" src="assets/seam.svg" alt="" aria-hidden="true" referrerpolicy="no-referrer">`)).toEqual([]));
+
+  it.each([
+    ["a bad id", [rec("Seam", "assets/seam.svg")], "ASSET_ID"],
+    ["a prototype-named id", [rec("__proto__", "assets/seam.svg")], "ASSET_ID"],
+    ["the same id twice", [rec("seam", "assets/seam.svg"), rec("seam", "assets/seam-2.svg")], "ASSET_ID_DUPLICATE"],
+    ["the same file twice", [rec("seam", "assets/seam.svg"), rec("seam-b", "assets/seam.svg")], "ASSET_FILE_DUPLICATE"],
+    ["a bad file name", [rec("seam", "assets/../seam.svg")], "SVG_FILE_NAME"],
+  ])("the record: %s", (_, assets, code) => expect(problems(ok, "", assets)).toContain(code));
+
+  it("a hostile record never throws", () => {
+    expect(() => problems(ok, "", [{} as DecorationAsset, { id: 1, file: null } as unknown as DecorationAsset])).not.toThrow();
+  });
 });
 
 describe("browser probe: <img>-loaded SVG in Chromium, JS off, network blocked", () => {
@@ -255,11 +396,11 @@ describe("browser probe: <img>-loaded SVG in Chromium, JS off, network blocked",
   afterAll(async () => {
     await browser?.close();
     rmSync(dir, { recursive: true, force: true });
-  });
+  }, 60_000);
 
   async function render(name: string, body: string, w: number, h: number) {
     writeFileSync(join(dir, `${name}.svg`), body);
-    writeFileSync(join(dir, `${name}.html`), `<!doctype html><html><body style="margin:0;background:#fff"><img src="${name}.svg" alt="" aria-hidden="true" style="position:absolute;left:40px;top:40px;width:${w}px;height:${h}px;display:block"></body></html>`);
+    writeFileSync(join(dir, `${name}.html`), `<!doctype html><html><body style="margin:0;background:#fff"><img src="${name}.svg" alt="" aria-hidden="true" referrerpolicy="no-referrer" style="position:absolute;left:40px;top:40px;width:${w}px;height:${h}px;display:block"></body></html>`);
     const ctx = await browser.newContext({ viewport: { width: w + 80, height: h + 80 }, deviceScaleFactor: 1, javaScriptEnabled: false, serviceWorkers: "block" });
     const requests: string[] = [];
     const refused: string[] = [];
@@ -333,7 +474,13 @@ describe("isolation: research only, imported by nothing in a lane", () => {
   });
   it("nothing outside tests imports it (lib, app, components, scripts)", () => {
     const r = spawnSync("git", ["grep", "-l", "-E", "research/decoration-svg", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
-    expect(r.stdout.split("\n").filter(Boolean)).toEqual([]);
+    // the module's own header names its test, so git grep finds at least that file: status 0, never a vacuous empty
+    // stdout from a git that failed (status 1 = no match at all, 128 = error)
+    expect(r.error).toBeUndefined();
+    expect(r.status).toBe(0);
+    const hits = r.stdout.split("\n").filter(Boolean);
+    expect(hits).toContain(MODULE);
+    expect(hits.filter((h) => h !== MODULE)).toEqual([]);
   });
   it("the research directory holds only the checker", () => {
     const r = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "--", "lib/design-agent/research"], { cwd: REPO, encoding: "utf8" });
