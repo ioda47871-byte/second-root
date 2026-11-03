@@ -7375,7 +7375,7 @@
         "photo-rights.ts (photo_rights_v0、checkPhotoRights、measurePhotoBytes、resolvePrivatePhoto、toPublicPhotoRecord)",
         "photo-slots.ts (枠の一覧の schema、coverCrop・fitSlot・requestFor)",
         "3店の C ページの photo-slots.json (ページの板から測った値と、ページの SHA)",
-        "テスト: 権利の欠けをすべて拒む、.intake/photos の外とリンクを拒む、切り抜き、枠とページの一致、design-library に画像を足さない",
+        "テスト: 権利の欠けをすべて拒む、.intake/photos の外とリンクを拒む、切り抜き、枠とページの一致、リポジトリのどこにも画像を足さない",
         "写真の取得・生成・有料素材・外部 API は無し"
       ],
       "required_tests": [

@@ -281,6 +281,7 @@ function readDims(b: Buffer): Dims | { error: "PHOTO_EXIF_UNREADABLE" } | null {
   // JPEG: walk the segments to a start-of-frame, reading the EXIF orientation (APP1) on the way
   if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) {
     let orientation = 1;
+    let exifSeen = false;
     let i = 2;
     while (i + 4 <= b.length) {
       if (b[i] !== 0xff) return null;
@@ -296,6 +297,9 @@ function readDims(b: Buffer): Dims | { error: "PHOTO_EXIF_UNREADABLE" } | null {
       const len = b.readUInt16BE(i + 2);
       if (len < 2) return null;
       if (m === 0xe1 && i + 10 <= b.length && b.toString("latin1", i + 4, i + 10) === "Exif\0\0") {
+        // browsers read the first EXIF block; a second one could make the record disagree with what is shown, so refuse
+        if (exifSeen) return { error: "PHOTO_EXIF_UNREADABLE" };
+        exifSeen = true;
         const o = exifOrientation(b, i + 10, Math.min(b.length, i + 2 + len));
         if (o === null) return { error: "PHOTO_EXIF_UNREADABLE" };
         orientation = o;

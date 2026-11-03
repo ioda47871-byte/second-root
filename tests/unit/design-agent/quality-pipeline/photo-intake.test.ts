@@ -286,6 +286,15 @@ describe("photo_rights_v0: what a photo must carry before it is used", () => {
     // the well-formed block the cases were cut from is read
     expect(readPhotoHeader(bad(good))).toMatchObject({ ok: true, info: { width: 3024, height: 4032, orientation: 6 } });
   });
+
+  it("refuses a JPEG with two EXIF blocks (a browser reads the first, so the record could disagree)", () => {
+    const first = jpegExifHeader(400, 300, 6, "II");
+    const second = jpegExifHeader(400, 300, 1, "MM");
+    // SOI + APP1(6) from the first, then APP1(1) + SOF from the second
+    const sofAt = first.length - 10;
+    const twice = Buffer.concat([first.subarray(0, sofAt), second.subarray(2)]);
+    expect(readPhotoHeader(twice)).toEqual({ ok: false, code: "PHOTO_EXIF_UNREADABLE" });
+  });
 });
 
 describe("private hand-off: only a plain file directly under .intake/photos/", () => {
@@ -529,6 +538,7 @@ describe("no photo enters the public repository", () => {
    */
   const EXISTING = [
     "app/apple-icon.png",
+    "app/favicon.ico",
     "design-library/research/quality-pipeline/poc/bicycle/impl/d1-a/assets/board.png",
     "design-library/research/quality-pipeline/poc/bicycle/impl/d1-b/assets/board.png",
     "design-library/research/quality-pipeline/poc/sento/impl/d1-a/assets/board.png",
@@ -566,8 +576,11 @@ describe("no photo enters the public repository", () => {
 
   it("no image file is added anywhere in the repository (tracked or about to be), and the research boards stay 64×64", () => {
     const listed = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: REPO, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).stdout.trim().split("\n").filter(Boolean);
-    const images = listed.filter((p) => /\.(png|jpe?g|webp|gif|avif|heic|heif|bmp|tiff?)$/i.test(p));
-    expect(images.sort()).toEqual([...EXISTING].sort());
+    const images = listed.filter((p) => /\.(png|jpe?g|webp|gif|avif|heic|heif|bmp|tiff?|ico|jxl|jp2)$/i.test(p));
+    // a stray local file (a screenshot, an --out inside the repo) fails here but never in CI: remove it or keep it outside the repo
+    expect(images.sort(), "untracked image files fail this lock locally; move them out of the repository").toEqual([...EXISTING].sort());
+    // .svg is not in the list (app/icon.svg); an SVG may still not carry an embedded raster picture
+    for (const p of listed.filter((x) => /\.svg$/i.test(x))) expect(readFileSync(resolve(REPO, p), "latin1"), p).not.toMatch(/data:image\//i);
     for (const p of EXISTING.filter((x) => x.includes("/research/"))) {
       const info = measurePhotoBytes(readFileSync(resolve(REPO, p)));
       expect(info, p).not.toBeNull();
