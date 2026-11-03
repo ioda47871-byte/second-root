@@ -1,0 +1,510 @@
+{
+  "schema": "comp_impl_loss_analysis_v0",
+  "date": "2026-11-03",
+  "note": "Claude が描いた画像 (カンプ、実装 a・b) を PC 1440 と SP 390 で自分で見て、失われたものを出所ごとに分けた。品質の判定ではない。採るかはオーナーが決める。",
+  "sources": {
+    "comp_quality": "カンプそのものの見落とし。実装の前から在る",
+    "placeholder_photo": "写真が役割と大きさだけの単色の仮の板であること。実際の写真は別の承認が要る",
+    "impl_rule_limit": "実装レーンの規則 (comp-impl の CSS と HTML の許可一覧) で作れないこと。規則は変えていない",
+    "impl_mistake": "規則の中で作れたのに、Claude の実装が落としたこと"
+  },
+  "rule_probes": {
+    "IMPL_RULE_NO_FREE_SHAPE": {
+      "html": [
+        "<svg viewBox=\"0 0 10 10\"></svg>"
+      ],
+      "css": [
+        "clip-path: polygon(0 0, 100% 0, 50% 100%)"
+      ]
+    },
+    "IMPL_RULE_NO_OVERLAP": {
+      "css": [
+        "position: absolute",
+        "margin-top: -40px",
+        "z-index: 2"
+      ]
+    },
+    "IMPL_RULE_NO_TILT_SHADOW": {
+      "css": [
+        "transform: rotate(2deg)",
+        "box-shadow: 0 30px 50px rgba(0, 0, 0, 0.5)",
+        "filter: drop-shadow(0 10px 10px #000)"
+      ]
+    },
+    "IMPL_RULE_NO_OUTLINE_TYPE": {
+      "css": [
+        "-webkit-text-stroke: 1px #b88a35"
+      ]
+    },
+    "IMPL_RULE_NO_VERTICAL_TEXT": {
+      "css": [
+        "writing-mode: vertical-rl"
+      ]
+    },
+    "IMPL_RULE_TYPE_MAX_256": {
+      "css": [
+        "font-size: 400px"
+      ]
+    },
+    "IMPL_RULE_NO_GRADIENT_PATTERN": {
+      "css": [
+        "background: linear-gradient(#000, #fff)",
+        "background-image: repeating-linear-gradient(90deg, #000 0 1px, transparent 1px 20px)"
+      ]
+    },
+    "IMPL_RULE_NO_ORDER": {
+      "css": [
+        "order: 2"
+      ]
+    }
+  },
+  "shops": [
+    {
+      "shop": "tsugute",
+      "comp": "comps/d1-seam-across-v2",
+      "verdict": "show_owner",
+      "motif": "金の継ぎ目の線が、器の割れ目を通ってページを1本で下る",
+      "losses": [
+        {
+          "code": "COMP_DRAWN_FLAT",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "both",
+          "what": "器が線画で、素材の質感が無い"
+        },
+        {
+          "code": "COMP_EMPTY_AREA",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "pc",
+          "what": "来店の区画の右半分が空く"
+        },
+        {
+          "code": "PLACEHOLDER_PHOTO",
+          "source": "placeholder_photo",
+          "where": [
+            "comp",
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "写真がすべて仮の板"
+        },
+        {
+          "code": "IMPL_MISTAKE_MOTIF_BROKEN",
+          "source": "impl_mistake",
+          "where": [
+            "a"
+          ],
+          "view": "both",
+          "what": "金の線が区画ごとの短い縦線に切れた。SP では無くなった。b で1本に戻した"
+        },
+        {
+          "code": "IMPL_MISTAKE_ASPECT_RATIO",
+          "source": "impl_mistake",
+          "where": [
+            "a"
+          ],
+          "view": "both",
+          "what": "単色の 64×64 の仮の画像を幅いっぱいに置き、板がすべて正方形になった。b で直した"
+        },
+        {
+          "code": "IMPL_MISTAKE_UNIFORM_GRID",
+          "source": "impl_mistake",
+          "where": [
+            "a"
+          ],
+          "view": "pc",
+          "what": "破片の区画が、同じ大きさの板と文字の3回の繰り返しになった。b で千鳥にした"
+        },
+        {
+          "code": "IMPL_MISTAKE_SP_LINE_JOG",
+          "source": "impl_mistake",
+          "where": [
+            "b"
+          ],
+          "view": "sp",
+          "what": "線が器では中央、その下では左の余白に移り、つながらない"
+        },
+        {
+          "code": "IMPL_RULE_NO_FREE_SHAPE",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "線が器の割れ目をジグザグに通れず、まっすぐになった"
+        },
+        {
+          "code": "IMPL_RULE_NO_OVERLAP",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "巨大な文字と板が区画の境をまたがない"
+        },
+        {
+          "code": "IMPL_RULE_NO_TILT_SHADOW",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "板が傾かず、影も無い"
+        },
+        {
+          "code": "IMPL_RULE_NO_OUTLINE_TYPE",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "継ぐ・待つ が縁取りにならず、薄い塗りになった"
+        },
+        {
+          "code": "IMPL_RULE_NO_VERTICAL_TEXT",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "店名・見出し・一か月の事実の縦書きが無い"
+        },
+        {
+          "code": "IMPL_RULE_TYPE_MAX_256",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "pc",
+          "what": "待つ が 500px から 256px に縮んだ"
+        }
+      ]
+    },
+    {
+      "shop": "bicycle",
+      "comp": "comps/d1-wheel-hub",
+      "verdict": "revise",
+      "motif": "中心の車輪が区画をまたぎ、スポークの先に修理の駅が付く",
+      "losses": [
+        {
+          "code": "COMP_CORE_NOT_DRAWN",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "both",
+          "what": "スポークの先に修理の駅が付く核が図になっていない。4つの板は散らばって見える"
+        },
+        {
+          "code": "COMP_OUTLINE_LOST_ON_GROUND",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "pc",
+          "what": "黄の縁取りの まわる が黄の地の上で消え、切れて見える"
+        },
+        {
+          "code": "COMP_EMPTY_AREA",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "pc",
+          "what": "空気入れの区画の下半分が空く"
+        },
+        {
+          "code": "COMP_ELEMENT_COVERS",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "sp",
+          "what": "Hero の文の地の箱が車輪を四角く切る"
+        },
+        {
+          "code": "PLACEHOLDER_PHOTO",
+          "source": "placeholder_photo",
+          "where": [
+            "comp",
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "写真がすべて仮の板"
+        },
+        {
+          "code": "IMPL_MISTAKE_MOTIF_BROKEN",
+          "source": "impl_mistake",
+          "where": [
+            "a"
+          ],
+          "view": "both",
+          "what": "車輪がスポークの無い空の輪になった。b で縦横4本のスポークと内側の輪を描いた"
+        },
+        {
+          "code": "IMPL_MISTAKE_UNIFORM_GRID",
+          "source": "impl_mistake",
+          "where": [
+            "a"
+          ],
+          "view": "both",
+          "what": "4つの修理が 2×2 の同じ大きさの板の格子になった。b で駅ごとに大きさと高さを変えた"
+        },
+        {
+          "code": "IMPL_MISTAKE_MIDWORD_BREAK",
+          "source": "impl_mistake",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "sp",
+          "what": "まわる が まわ/る と語の途中で折れた。nowrap と keep-all は使えないが、大きさと <br> で避けられる"
+        },
+        {
+          "code": "IMPL_MISTAKE_CRAMPED",
+          "source": "impl_mistake",
+          "where": [
+            "b"
+          ],
+          "view": "pc",
+          "what": "駅の板が小さく、文字との間が窮屈"
+        },
+        {
+          "code": "IMPL_RULE_NO_FREE_SHAPE",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "放射状のスポーク、空気入れの目盛りと斜めの針が描けない"
+        },
+        {
+          "code": "IMPL_RULE_NO_OVERLAP",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "車輪が画面の外へはみ出さず、区画の境もまたがない"
+        },
+        {
+          "code": "IMPL_RULE_NO_TILT_SHADOW",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "板が傾かず、影も無い"
+        },
+        {
+          "code": "IMPL_RULE_NO_OUTLINE_TYPE",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "まわる・締める が縁取りにならない"
+        },
+        {
+          "code": "IMPL_RULE_NO_VERTICAL_TEXT",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "作業台の区画の縦書きが無い"
+        },
+        {
+          "code": "IMPL_RULE_NO_ORDER",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "sp",
+          "what": "SP で車輪より先に Hero の文が来る (カンプは車輪が先)"
+        }
+      ]
+    },
+    {
+      "shop": "sento",
+      "comp": "comps/d1-heat-descent",
+      "verdict": "revise",
+      "motif": "熱い湯から冷たい水へ、ページが温度を下る (左端の温度計の帯と地の色)",
+      "losses": [
+        {
+          "code": "COMP_LOWER_HALF_FLAT",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "both",
+          "what": "下半分 (炭・タイル・夜) は地の色の変化だけで、上半分より平板"
+        },
+        {
+          "code": "COMP_EMPTY_AREA",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "pc",
+          "what": "炭の区画と夜の区画の下半分に余白が多い"
+        },
+        {
+          "code": "COMP_DRAWN_FLAT",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "both",
+          "what": "山の絵が2つの三角の仮の図"
+        },
+        {
+          "code": "COMP_ELEMENT_COVERS",
+          "source": "comp_quality",
+          "where": [
+            "comp"
+          ],
+          "view": "sp",
+          "what": "湯船の板が朱の区画の下端を 60px 覆い、湯気が隠れる"
+        },
+        {
+          "code": "PLACEHOLDER_PHOTO",
+          "source": "placeholder_photo",
+          "where": [
+            "comp",
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "写真がすべて仮の板"
+        },
+        {
+          "code": "IMPL_MISTAKE_MOTIF_BROKEN",
+          "source": "impl_mistake",
+          "where": [
+            "a"
+          ],
+          "view": "both",
+          "what": "左端の温度計の帯が無くなった。b で区画ごとの色の罫として戻した"
+        },
+        {
+          "code": "IMPL_MISTAKE_ASPECT_RATIO",
+          "source": "impl_mistake",
+          "where": [
+            "a"
+          ],
+          "view": "both",
+          "what": "庭の板が 1440×1440 の正方形になり、ページの4分の1を占めた。b で直した"
+        },
+        {
+          "code": "IMPL_MISTAKE_HERO_SHORT",
+          "source": "impl_mistake",
+          "where": [
+            "b"
+          ],
+          "view": "pc",
+          "what": "Hero がカンプより低く (約 660px 対 980px)、熱い が小さな語になった"
+        },
+        {
+          "code": "IMPL_MISTAKE_MIDWORD_BREAK",
+          "source": "impl_mistake",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "sp",
+          "what": "あります が ありま/す と折れた"
+        },
+        {
+          "code": "IMPL_RULE_NO_OVERLAP",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "ぬるい が区画の境をまたがず、湯船の板も境をまたがない"
+        },
+        {
+          "code": "IMPL_RULE_NO_TILT_SHADOW",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "板が傾かず、影も重なりも無い"
+        },
+        {
+          "code": "IMPL_RULE_NO_OUTLINE_TYPE",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "ぬるい・冷たい が縁取りにならない"
+        },
+        {
+          "code": "IMPL_RULE_NO_VERTICAL_TEXT",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "店名と 冷たい の縦書きが無い"
+        },
+        {
+          "code": "IMPL_RULE_TYPE_MAX_256",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "pc",
+          "what": "熱い が 256px を超えない"
+        },
+        {
+          "code": "IMPL_RULE_NO_GRADIENT_PATTERN",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "湯気のにじみ、温度計と火の帯の滑らかな変化、タイルの目地が無い"
+        },
+        {
+          "code": "IMPL_RULE_NO_FREE_SHAPE",
+          "source": "impl_rule_limit",
+          "where": [
+            "a",
+            "b"
+          ],
+          "view": "both",
+          "what": "山の形が描けない"
+        }
+      ]
+    }
+  ]
+}
