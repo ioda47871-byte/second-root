@@ -106,13 +106,13 @@ export function checkReviewFile(
   );
 }
 
-export type TextUnit = { text: string; rects: Array<{ l: number; t: number; r: number; b: number }>; em: number; vertical: boolean };
+export type TextUnit = { text: string; rects: Array<{ l: number; t: number; r: number; b: number }>; em: number; lh: number; vertical: boolean; lr?: boolean };
 
 /**
  * The texts a reader sees together: each unit alone, and units drawn next to each other joined in reading order
  * (pairs and runs of three). Two units are next to each other when a line of one ends where a line of the other
  * starts: on the same line within one em (horizontal writing), or in the same column within one em (vertical), or where one
- * line or column ends and the next one begins (within one em). A unit
+ * line or column ends and the next one begins (within a line height). A unit
  * that is a fact text or a label of the record separates: it is never joined, so no join holds a fact or a part of it.
  */
 export function adjacentTexts(units: readonly TextUnit[], record: CopyRecord): string[] {
@@ -124,16 +124,20 @@ export function adjacentTexts(units: readonly TextUnit[], record: CopyRecord): s
     a.rects.some((x) =>
       b.rects.some((y) => {
         const em = Math.max(a.em, b.em);
+        // the gap between two lines (or columns) of glyph boxes is the leading: up to a line height, never less than an em
+        const lead = Math.max(em, a.lh, b.lh);
         if (!a.vertical && !b.vertical) {
           const overlap = Math.min(x.b, y.b) - Math.max(x.t, y.t);
           if (overlap >= 0.5 * Math.min(x.b - x.t, y.b - y.t) && y.l >= x.r - 1 && y.l - x.r <= em) return true;
           // reading runs on to the next line: b's line starts below a's line, back towards the left
-          return x === a.rects[a.rects.length - 1] && y === b.rects[0] && y.t >= x.b - 1 && y.t - x.b <= em && y.l < x.r;
+          return x === a.rects[a.rects.length - 1] && y === b.rects[0] && y.t >= x.b - 1 && y.t - x.b <= lead && y.l < x.r;
         }
         const overlap = Math.min(x.r, y.r) - Math.max(x.l, y.l);
         if (overlap >= 0.5 * Math.min(x.r - x.l, y.r - y.l) && y.t >= x.b - 1 && y.t - x.b <= em) return true;
         // vertical-rl: reading runs on to the next column, to the left, back towards the top
-        return x === a.rects[a.rects.length - 1] && y === b.rects[0] && y.r <= x.l + 1 && x.l - y.r <= em && y.t < x.b;
+        const last = x === a.rects[a.rects.length - 1] && y === b.rects[0] && y.t < x.b;
+        // vertical-rl runs on to the column on the left, vertical-lr to the column on the right
+        return last && (a.lr ? y.l >= x.r - 1 && y.l - x.r <= lead : y.r <= x.l + 1 && x.l - y.r <= lead);
       }),
     );
   const out = us.map((u) => u.text);
@@ -315,7 +319,9 @@ async function main(): Promise<number> {
           for (const r of range.getClientRects()) if (r.width > 0 && r.height > 0) rects.push({ l: r.left, t: r.top + scrollY, r: r.right, b: r.bottom + scrollY });
         }
         const cs = getComputedStyle(p);
-        units.push({ text: nodes.map((n) => n.textContent || "").join("").trim(), rects, em: parseFloat(cs.fontSize) || 16, vertical: cs.writingMode.startsWith("vertical") });
+        const em = parseFloat(cs.fontSize) || 16;
+        const lh = parseFloat(cs.lineHeight);
+        units.push({ text: nodes.map((n) => n.textContent || "").join("").trim(), rects, em, lh: Number.isFinite(lh) ? lh : 1.2 * em, vertical: cs.writingMode.startsWith("vertical"), lr: cs.writingMode === "vertical-lr" });
       }
       // a soft hyphen is invisible in the text but can show any hyphenation character
       if (out.some((x) => x.includes("\\u00ad"))) bad.push("soft hyphen (U+00AD) in the page");

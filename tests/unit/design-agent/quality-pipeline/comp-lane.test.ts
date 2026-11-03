@@ -337,57 +337,48 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     // content) are caught; CSS inside an inline SVG's own <style> is not page text (no false FAIL)
     const layoutDir = mkdtempSync(join(tmpdir(), "comp-probe-"));
     cpSync(COMP, layoutDir, { recursive: true });
+    // one render for all the layouts (CI load): each layout spells its own word, so each must be named
     const lc = JSON.parse(readFileSync(join(layoutDir, "copy.json"), "utf8"));
-    for (const [id, text] of [["q1", "限"], ["q2", "定"], ["q3", "器"], ["q4", "継ぐ手限"], ["q5", "定の時を"]]) lc.items.push({ id, text, claim_type: "creative_expression", source_fact_ids: [], owner_review_needed: true });
+    const singles = ["限", "定", "予", "約", "在", "庫", "注", "文", "老", "舗", "受", "賞", "人", "気", "器", "継ぐ手創", "業の時を", "器と人", "気配のある工房", "器を待つ"];
+    singles.forEach((text, k) => lc.items.push({ id: `q${k}`, text, claim_type: "creative_expression", source_fact_ids: [], owner_review_needed: true }));
     writeFileSync(join(layoutDir, "copy.json"), JSON.stringify(lc));
-    const layouts = [
-      '<div style="display:flex"><span>限</span><span>定</span></div>',
-      '<div><span style="display:inline-block">限</span><span style="display:inline-block">定</span></div>',
-      '<div style="display:grid;grid-template-columns:auto auto;justify-content:start"><p>限</p><p>定</p></div>',
+    const layouts: Array<[string, string]> = [
+      ["限定", '<div style="display:flex"><span>限</span><span>定</span></div>'],
+      ["予約", '<div><span style="display:inline-block">予</span><span style="display:inline-block">約</span></div>'],
+      ["在庫", '<div style="display:grid;grid-template-columns:auto auto;justify-content:start"><p>在</p><p>庫</p></div>'],
       // drawn side by side only on the phone (read at both rendered widths)
-      '<style>@media (max-width: 500px) { .zzm { display: flex; } }</style><div class="zzm"><p>限</p><p>定</p></div>',
-      // reading runs on to the next line: 限 ends one line, 定 begins the next
-      '<p style="width:4.2em;font-size:16px"><span>継ぐ手限</span><span>定の時を</span></p>',
+      ["注文", '<style>@media (max-width: 500px) { .zzm { display: flex; } }</style><div class="zzm"><p>注</p><p>文</p></div>'],
+      // reading runs on to the next line: 創 ends one line, 業 begins the next
+      ["創業", '<p style="width:4.2em;font-size:16px;line-height:2.4"><span>継ぐ手創</span><span>業の時を</span></p>'],
       // grid placement against the document order (final confirmation: was a known gap, now joined by where it is drawn)
-      '<div style="display:grid;grid-template-columns:auto auto;justify-content:start"><p style="grid-column:2">定</p><p style="grid-column:1;grid-row:1">限</p></div>',
-      '<div style="display:flex;flex-direction:row-reverse"><span>定</span><span>限</span></div>',
-      "<div><span>限</span><span>定</span><p>器</p></div>",
+      ["老舗", '<div style="display:grid;grid-template-columns:auto auto;justify-content:start"><p style="grid-column:2">舗</p><p style="grid-column:1;grid-row:1">老</p></div>'],
+      ["受賞", '<div style="display:flex;flex-direction:row-reverse;justify-content:flex-end"><span>賞</span><span>受</span></div>'],
+      ["人気", "<div><span>人</span><span>気</span><p>器</p></div>"],
     ];
-    for (const l of layouts) {
-      writeFileSync(join(layoutDir, "index.html"), readFileSync(join(COMP, "index.html"), "utf8").replace("</main>", `${l}</main>`));
-      let res: { findings: Array<{ code: string; detail?: string }> } | null = null;
-      try {
-        execFileSync("npx", ["tsx", cli, "--dir", layoutDir, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" });
-      } catch (e) {
-        res = JSON.parse((e as { stdout: string }).stdout);
-      }
-      expect(res?.findings.filter((f) => f.code === "COMP_JOINED_TEXT_LOOKS_LIKE_FACT").map((f) => f.detail ?? "").join("|"), l).toContain("限定");
-    }
-    writeFileSync(join(layoutDir, "index.html"), readFileSync(join(COMP, "index.html"), "utf8").replace("</main>", '<p>器<svg width="10" height="10"><style>.s{stroke-width:2;stroke:#333}</style><rect class="s" width="8" height="8"/></svg></p></main>'));
-    let svgIcon: { findings: Array<{ code: string; detail?: string }> } = { findings: [] };
-    try {
-      svgIcon = JSON.parse(execFileSync("npx", ["tsx", cli, "--dir", layoutDir, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" }));
-    } catch (e) {
-      svgIcon = JSON.parse((e as { stdout: string }).stdout);
-    }
-    // (the probe's copied review.json is of the unmodified comp in another directory: only REVIEW_ findings may appear)
-    expect(svgIcon.findings.filter((f) => !f.code.startsWith("REVIEW_"))).toEqual([]);
-    // final confirmation: a fact broken with <br> is still the fact (never joined); creative lines far apart are not one word
-    const cleanRun = (extra: string) => {
+    const layoutProbe = (extra: string) => {
       writeFileSync(join(layoutDir, "index.html"), readFileSync(join(COMP, "index.html"), "utf8").replace("</main>", `${extra}</main>`));
       try {
-        return JSON.parse(execFileSync("npx", ["tsx", cli, "--dir", layoutDir, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" })) as { findings: Array<{ code: string }> };
+        return JSON.parse(execFileSync("npx", ["tsx", cli, "--dir", layoutDir, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" })) as { findings: Array<{ code: string; detail?: string }> };
       } catch (e) {
-        return JSON.parse((e as { stdout: string }).stdout) as { findings: Array<{ code: string }> };
+        return JSON.parse((e as { stdout: string }).stdout) as { findings: Array<{ code: string; detail?: string }> };
       }
     };
-    const lc2 = JSON.parse(readFileSync(join(layoutDir, "copy.json"), "utf8"));
-    for (const [id, text] of [["r1", "器と人"], ["r2", "気配のある工房"], ["r3", "器を待つ"]]) lc2.items.push({ id, text, claim_type: "creative_expression", source_fact_ids: [], owner_review_needed: true });
-    writeFileSync(join(layoutDir, "copy.json"), JSON.stringify(lc2));
-    for (const extra of [
-      "<p>架空市架空区<br>架空町一丁目3-2</p><p>器を待つ</p>",
-      '<section><h2>器と人</h2></section><section style="margin-top:400px"><p>気配のある工房</p></section>',
-    ]) expect(cleanRun(extra).findings.filter((f) => !f.code.startsWith("REVIEW_")), extra).toEqual([]);
+    const caught = layoutProbe(layouts.map(([, l]) => `<div style="margin-top:300px">${l}</div>`).join(""));
+    const joinedWords = caught.findings.filter((f) => f.code === "COMP_JOINED_TEXT_LOOKS_LIKE_FACT").map((f) => f.detail ?? "").join("|");
+    for (const [word, l] of layouts) expect(joinedWords, l).toContain(word);
+    // and what must pass (one render): CSS inside an inline SVG's own <style> is not page text; a fact broken with
+    // <br> is still the fact (never joined); creative lines far apart are not one word
+    // (the probe's copied review.json is of the unmodified comp in another directory: only REVIEW_ findings may appear)
+    const clean = layoutProbe(
+      [
+        '<p>器<svg width="10" height="10"><style>.s{stroke-width:2;stroke:#333}</style><rect class="s" width="8" height="8"/></svg></p>',
+        "<p>架空市架空区<br>架空町一丁目3-2</p><p>器を待つ</p>",
+        '<section><h2>器と人</h2></section><section style="margin-top:400px"><p>気配のある工房</p></section>',
+      ]
+        .map((x) => `<div style="margin-top:300px">${x}</div>`)
+        .join(""),
+    );
+    expect(clean.findings.filter((f) => !f.code.startsWith("REVIEW_"))).toEqual([]);
     const broken = run((h) => h.replace('<p class="lead">捨てるはずだった器に、もう一度、使う理由を。</p>', '<p class="lead">捨てるはずだった器に、<br>もう一度、使う理由を。</p>'));
     expect(broken.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
     // an SVG <style> is a style sheet, not page text (no false COMP_TEXT_NOT_IN_COPY)
