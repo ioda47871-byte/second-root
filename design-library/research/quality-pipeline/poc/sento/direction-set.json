@@ -1,0 +1,588 @@
+{
+  "schema": "art_direction_set_v0",
+  "shop_id": "fictional-sento-yuge",
+  "facts_sha256": "3e8a821d3e73b282cf5b23bd0253d018c0e67549a09945f14becca65911de291",
+  "motif": {
+    "candidates": [
+      {
+        "id": "M1",
+        "what": "湯が沸くまでの一時間",
+        "source": "time",
+        "fact_refs": [
+          "F9",
+          "F12"
+        ],
+        "becomes_structure": "薪の火から開店までを、温度の目盛りの図にする"
+      },
+      {
+        "id": "M2",
+        "what": "熱い湯・ぬるい湯・水風呂の温度差",
+        "source": "physics",
+        "fact_refs": [
+          "F10",
+          "F11"
+        ],
+        "becomes_structure": "ページを温度の順に下る地の色の帯にする"
+      },
+      {
+        "id": "M3",
+        "what": "壁のタイルの山の絵",
+        "source": "object",
+        "fact_refs": [
+          "F13"
+        ],
+        "becomes_structure": "タイルの目地をページの格子にし、マスを場所の駅にする"
+      },
+      {
+        "id": "M4",
+        "what": "季節で色を変えるのれん",
+        "source": "time",
+        "fact_refs": [
+          "F14"
+        ],
+        "becomes_structure": "のれんの色ごとに見開きを変える"
+      }
+    ],
+    "chosen": "M2",
+    "why": "M2 は銭湯の体験そのもの (湯の温度) が、地の色の順という目に見える形を持つので、最初に試す中心にする。比べるために M3 (タイル)・M4 (のれん) をほかの2方向の中心にする。M1 (沸くまでの時間) は d1 の中の区画で使う"
+  },
+  "directions": [
+    {
+      "id": "d1-heat-descent",
+      "motif_focus": "M2",
+      "concept": "ページは湯の温度を下る。上は熱い湯の朱、次にぬるい湯の橙、外の庭の水風呂の青、最後に夜の紺で来店の情報に着く。巨大な文字 熱い・ぬるい・冷たい が区画の境をまたぎ、湯気の白が下の区画から上の区画へにじむ。",
+      "composition": {
+        "hero": "type_led",
+        "flow": "single_axis_scroll"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "none",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "vertical_axis",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "vertical_text",
+            "overlap_collage",
+            "full_bleed_media",
+            "diagram",
+            "single_column_text",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "overlap",
+            "overlap",
+            "hard_cut",
+            "overlap",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "sequence",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "hot",
+          "motif_facet": "熱い湯: 朱の地に巨大な 熱い と店名、湯気が立つ",
+          "ground": "朱",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "warm",
+          "motif_facet": "ぬるい湯: 橙の地で湯船の写真が重なり、二つの湯船の温度差を見せる",
+          "ground": "橙",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "ぬるい湯の湯船",
+              "size": "large"
+            },
+            {
+              "role": "湯の表面の接写",
+              "size": "small"
+            }
+          ]
+        },
+        {
+          "id": "cold",
+          "motif_facet": "外の庭の水風呂: 青の地に全幅の庭",
+          "ground": "水の青",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "庭の水風呂",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "fire",
+          "motif_facet": "湯が沸くまで: 薪の火から開店までの一時間を温度の目盛りで描く",
+          "ground": "炭の黒",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "wall",
+          "motif_facet": "壁のタイルの山の絵と、季節ごとののれん",
+          "ground": "白いタイル",
+          "layout": "single_column_text",
+          "image_slots": [
+            {
+              "role": "タイルの山の絵",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "night",
+          "motif_facet": "夜の紺: 湯から上がった後、所在地・時間・電話",
+          "ground": "夜の紺",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "温度を下りきった夜の紺で、湯上がりの帰り道として所在地・時間・電話を置く",
+      "pc_plan": "1440 の幅で、区画ごとに地の色を温度の順に全幅で変える。巨大な文字は区画の境に半分かかり、写真は傾けて境をまたがせる。温度の目盛りを左端に細く通す",
+      "sp_plan": {
+        "first_screen": "朱の地に、縦書きの巨大な 熱い と店名だけを置く",
+        "reorder": "湯船の写真は重ねず、区画の終わりに縦に積む。目盛りは各区画の見出しの横の短い帯にする",
+        "overlaps": "境をまたぐ巨大な文字は SP でも残すが、1区画に1語に減らす"
+      },
+      "protect": [
+        "地の色が熱い朱から夜の紺へ下る順",
+        "区画の境をまたぐ巨大な温度の文字"
+      ],
+      "references": [
+        {
+          "principle": "P4",
+          "case_id": "CP-001",
+          "use": "区画ごとに地の色とリズムを変える方法"
+        },
+        {
+          "principle": "P1",
+          "case_id": "CP-019",
+          "use": "素材の状態の変化を読み順にする方法 (温度を順に下る)"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-016",
+          "reason": "中央の支点の構図は、上から下への温度の順と別物"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M2 (熱い湯とぬるい湯と水風呂、F10・F11)。入れ替えテスト: 湯船が1つの家の風呂にすると、温度を下る順が成り立たない"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は文字 (type_led)、流れは縦の1本の軸 (single_axis_scroll)。d2 のタイルの地図、d3 ののれんの見開きと Hero・流れ・区画が違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は熱い → ぬるい → 冷たい → 火 → 壁 → 夜の順で、終点は湯上がりの夜の来店"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は 熱い の縦書きを1画面目にし、写真を重ねず区画の終わりに積む"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は split でなく文字。区画に grid_cards・split_copy_media を使わない"
+        },
+        "C6": {
+          "answer": "unknown",
+          "evidence": "地の色と巨大な文字で温度を見せるが、写真と文字の重なりはカンプで確かめる"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向で改良ではない。守る核 (朱から紺への地の色の順、境をまたぐ温度の文字) を先に決めた"
+        }
+      }
+    },
+    {
+      "id": "d2-tile-map",
+      "motif_focus": "M3",
+      "concept": "壁のタイルの山の絵をページの地にする。白いタイルの目地がページ全体の格子になり、格子のマスが銭湯の中の場所 (のれん・脱衣所・湯船・庭・番台) の駅になる。読み手は山の絵の上を駅から駅へ巡る。",
+      "composition": {
+        "hero": "object_led",
+        "flow": "map_of_stations"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "map_of_stations",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "side_index",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "radial",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "full_bleed_media",
+            "diagram",
+            "overlap_collage",
+            "vertical_text",
+            "overlap_collage",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "continuous",
+            "continuous",
+            "overlap",
+            "continuous",
+            "overlap"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "horizontal",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "drawn",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "mural",
+          "motif_facet": "タイルで描いた山の絵を1枚、ページいっぱいに置く",
+          "ground": "白いタイルと青い山",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "タイルの山の絵",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "map",
+          "motif_facet": "目地の格子の上に、のれん・脱衣所・湯船・庭の駅を置いた地図",
+          "ground": "白いタイル",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "baths",
+          "motif_facet": "湯船の駅: 熱い湯とぬるい湯の二つのマス",
+          "ground": "水色のタイル",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "熱い湯",
+              "size": "medium"
+            },
+            {
+              "role": "ぬるい湯",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "garden",
+          "motif_facet": "庭の駅: 外の水風呂を縦書きの一行で",
+          "ground": "緑のタイル",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "towel",
+          "motif_facet": "番台の駅: 手ぬぐいと石けんの貸し出し",
+          "ground": "白いタイル",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "手ぬぐいと石けん",
+              "size": "small"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "motif_facet": "出口の駅 = 来店: 所在地・時間・電話",
+          "ground": "藍のタイル",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "地図の出口の駅が、そのまま所在地・時間・電話になる",
+      "pc_plan": "1440 の幅にタイルの格子を全体に敷き、駅をマスの組で置く。山の絵は最初の画面で大きく、地図はその上に重ねる",
+      "sp_plan": {
+        "first_screen": "山の絵の一部を大きく切り取り、店名をタイル1枚の上に置く",
+        "reorder": "駅を地図の順に縦一列に並べ、各駅の左に小さな地図を置いて今の場所を示す",
+        "overlaps": "マスの重なりは、SP では駅の上端の1枚のタイルだけに減らす"
+      },
+      "protect": [
+        "ページ全体のタイルの目地の格子",
+        "駅を巡る読み順"
+      ],
+      "references": [
+        {
+          "principle": "P5",
+          "case_id": "CP-018",
+          "use": "注釈を地図の上に置く読み順"
+        },
+        {
+          "principle": "P3",
+          "case_id": "CP-012",
+          "use": "章ごとに同じモチーフの別の面を見せる方法"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-023",
+          "reason": "昼夜の二面の看板は、駅を巡る地図と別物"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M3 (タイルの山の絵、F13)。入れ替えテスト: 壁が無地の銭湯にすると、格子と地図の元が無くなる"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は物 (object_led)、流れは駅の地図 (map_of_stations)。d1 の温度の軸、d3 の見開きと違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "駅の順は入口から出口までで、終点は出口の駅 = 来店"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は駅を縦一列に並べ、小さな地図で今の場所を示す"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は split でなく物。区画にカードの並びを使わない"
+        },
+        "C6": {
+          "answer": "unknown",
+          "evidence": "目地の格子が駅をつなぐかはカンプで確かめる"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向で改良ではない。守る核 (タイルの目地の格子と、駅を巡る読み順) を先に決めた"
+        }
+      }
+    },
+    {
+      "id": "d3-noren-seasons",
+      "motif_focus": "M4",
+      "concept": "季節ごとに色を変えるのれんを、ページの見開きにする。見開きごとに、のれんの色が変わり、のれんをくぐるように左右の面が入れ替わる。最後ののれんの向こうが来店の情報。",
+      "composition": {
+        "hero": "scene_led",
+        "flow": "alternating_spreads"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "scene_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "alternating_spreads",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "top_bar",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "z_pattern",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "full_bleed_media",
+            "vertical_text",
+            "overlap_collage",
+            "full_bleed_media",
+            "diagram",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "hard_cut",
+            "overlap",
+            "hard_cut",
+            "overlap",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "vertical",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "single_lead",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "entrance",
+          "motif_facet": "入口ののれんを正面から: 店名がのれんに染まる",
+          "ground": "のれんの藍",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "入口ののれん",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "spring",
+          "motif_facet": "春ののれん: 縦書きの一行と、のれんの色の見本",
+          "ground": "淡い桜",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "summer",
+          "motif_facet": "夏ののれん: 湯上がりの庭の水風呂",
+          "ground": "浅葱",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "庭の水風呂",
+              "size": "large"
+            },
+            {
+              "role": "夏ののれん",
+              "size": "small"
+            }
+          ]
+        },
+        {
+          "id": "autumn",
+          "motif_facet": "秋ののれん: 薪で沸かす湯",
+          "ground": "柿",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "薪の火",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "winter",
+          "motif_facet": "冬ののれん: 熱い湯とぬるい湯の温度の図",
+          "ground": "墨",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "through",
+          "motif_facet": "のれんの向こう: 所在地・時間・電話",
+          "ground": "生成り",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "最後ののれんをくぐった向こうに、所在地・時間・電話を置く",
+      "pc_plan": "見開きごとに左右の面を入れ替え、のれんの布の縦の切れ目を区画の境にする",
+      "sp_plan": {
+        "first_screen": "のれんの写真を1画面に縦長に置き、店名を布の上に縦書きで",
+        "reorder": "見開きの左右を、のれん → 中身の順に縦に積む",
+        "overlaps": "のれんの切れ目は SP では区画の上端の縦の帯だけにする"
+      },
+      "protect": [
+        "季節ごとに変わるのれんの色",
+        "のれんをくぐる見開きの入れ替え"
+      ],
+      "references": [
+        {
+          "principle": "P2",
+          "case_id": "CP-023",
+          "use": "時間で表情が変わる看板を、ページの章にする方法"
+        },
+        {
+          "principle": "P6",
+          "case_id": "CP-028",
+          "use": "PC の見開きを SP で縦の順に組み直す方法"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-009",
+          "reason": "全ページを横断する1本の糸は、見開きの入れ替えと別物"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M4 (季節ののれん、F14)。入れ替えテスト: のれんの無い店にすると、見開きの元が無くなる"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は場面 (scene_led)、流れは見開き (alternating_spreads)。d1・d2 と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "見開きは入口 → 春 → 夏 → 秋 → 冬 → 向こう。終点はのれんの向こうの来店"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は見開きを縦に積み、のれんの切れ目を上端の帯にする"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は split でなく場面。区画にカードの並びを使わない"
+        },
+        "C6": {
+          "answer": "unknown",
+          "evidence": "のれんの色と写真の重なりはカンプで確かめる"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向で改良ではない。守る核 (季節ごとののれんの色と、くぐる見開き) を先に決めた"
+        }
+      }
+    }
+  ]
+}

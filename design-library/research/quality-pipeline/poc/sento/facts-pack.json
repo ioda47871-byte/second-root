@@ -1,0 +1,96 @@
+{
+  "schema": "shop_facts_pack_v1",
+  "shop_id": "fictional-sento-yuge",
+  "facts": [
+    {
+      "id": "F1",
+      "key": "name",
+      "value": "架空銭湯 ゆげ湯",
+      "source_id": "S1"
+    },
+    {
+      "id": "F2",
+      "key": "category",
+      "value": "public_bathhouse",
+      "source_id": "S1"
+    },
+    {
+      "id": "F3",
+      "key": "ward",
+      "value": "架空区",
+      "source_id": "S1"
+    },
+    {
+      "id": "F4",
+      "key": "address",
+      "value": "架空市架空区湯町二丁目5-8",
+      "source_id": "S1"
+    },
+    {
+      "id": "F5",
+      "key": "hours",
+      "value": "15:00〜24:00",
+      "source_id": "S1"
+    },
+    {
+      "id": "F6",
+      "key": "closed_days",
+      "value": "月曜",
+      "source_id": "S1"
+    },
+    {
+      "id": "F7",
+      "key": "access",
+      "value": "架空線架空駅 西口から徒歩4分",
+      "source_id": "S1"
+    },
+    {
+      "id": "F8",
+      "key": "phone",
+      "value": "000-0000-1126",
+      "source_id": "S1"
+    },
+    {
+      "id": "F9",
+      "key": "description",
+      "value": "比較研究用の架空の銭湯です。実在の銭湯ではありません。薪で沸かした湯を、毎日入れ替えています。",
+      "source_id": "S1"
+    },
+    {
+      "id": "F10",
+      "key": "bath_1",
+      "value": "熱い湯と、ぬるい湯の二つの湯船があります",
+      "source_id": "S1"
+    },
+    {
+      "id": "F11",
+      "key": "bath_2",
+      "value": "外の小さな庭に、水風呂があります",
+      "source_id": "S1"
+    },
+    {
+      "id": "F12",
+      "key": "statement_1",
+      "value": "湯が沸くのは、開店の一時間前です",
+      "source_id": "S1"
+    },
+    {
+      "id": "F13",
+      "key": "statement_2",
+      "value": "壁には、タイルで描いた山の絵があります",
+      "source_id": "S1"
+    },
+    {
+      "id": "F14",
+      "key": "statement_3",
+      "value": "のれんは、季節ごとに色を変えます",
+      "source_id": "S1"
+    },
+    {
+      "id": "F15",
+      "key": "service",
+      "value": "手ぬぐいと石けんを貸し出しています",
+      "source_id": "S1"
+    }
+  ]
+}
