@@ -5,9 +5,12 @@
  *
  * 1. the copy record (<dir>/copy.json): every word's claim type and source (checkCopyRecord)
  * 2. the B-route safety check (checkPrototype: no script, no outside URL, no web font)
- * 3. every visible text of the page is a text or label of the copy record (nothing unrecorded is shown)
+ * 3. every text the page can show is a text or label of the copy record: text nodes (SVG text included) and the
+ *    alt / title / placeholder / aria-label / value attributes; CSS may not put words on the page (`content: "..."`)
  * 4. render PC 1440 and SP 390 with JavaScript off and the network shut (renderPrototype); write desktop.png and
- *    mobile.png to --out (outside git) and print their SHA-256, size, section boxes and overflow
+ *    mobile.png to --out (outside the repository, refused otherwise) and print their SHA-256, size, section boxes,
+ *    overflow, and whether <dir>/review.json is of these renders (it is when rendered where the review was made;
+ *    fonts make the bytes machine-dependent, so a mismatch elsewhere is reported, not failed)
  *
  *   npx tsx scripts/design-artifact/comp-lane.ts --check-review <comp dir>
  *
@@ -19,8 +22,8 @@
  * look at; a passing run is not a quality verdict.
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { chromium } from "playwright";
 import {
   checkPrototype,
@@ -102,20 +105,22 @@ async function main(): Promise<number> {
     );
     return 2;
   }
+  if (!relative(REPO, resolve(out)).startsWith("..")) {
+    process.stderr.write("INPUT_ERROR: --out must be outside the repository (renders are not committed)\n");
+    return 2;
+  }
   let html: string, css: string, copyRaw: unknown, factsRaw: Buffer;
+  let facts: { shop_id: string; facts: Array<{ id: string; value: string }> };
   try {
     html = readFileSync(join(dir, "index.html"), "utf8");
     css = readFileSync(join(dir, "style.css"), "utf8");
     copyRaw = JSON.parse(readFileSync(join(dir, "copy.json"), "utf8"));
     factsRaw = readFileSync(factsPath);
+    facts = JSON.parse(factsRaw.toString("utf8")) as typeof facts;
   } catch (e) {
     process.stderr.write(`INPUT_ERROR: ${(e as Error).message}\n`);
     return 2;
   }
-  const facts = JSON.parse(factsRaw.toString("utf8")) as {
-    shop_id: string;
-    facts: Array<{ id: string; value: string }>;
-  };
   const findings: Array<{ code: string; detail?: string }> = [];
   const copy = checkCopyRecord(copyRaw, {
     shopId: facts.shop_id,
@@ -154,7 +159,10 @@ async function main(): Promise<number> {
       while (stack.length) {
         const n = stack.pop();
         if (n.nodeType === 3) out.push(n.textContent || "");
-        else if (n.nodeType === 1 && n.tagName !== "STYLE" && n.tagName !== "SCRIPT") for (const c of n.childNodes) stack.push(c);
+        else if (n.nodeType === 1 && n.tagName !== "STYLE" && n.tagName !== "SCRIPT") {
+          for (const a of ["alt", "title", "placeholder", "aria-label", "value"]) if (n.hasAttribute(a)) out.push(n.getAttribute(a) || "");
+          for (const c of n.childNodes) stack.push(c);
+        }
       }
       return { texts: out.map((t) => t.trim()).filter(Boolean), sections: [...d.querySelectorAll("[data-section]")].map((e) => e.getAttribute("data-section") || "") };
     }`;
@@ -162,6 +170,11 @@ async function main(): Promise<number> {
       `(${EXTRACT})(${JSON.stringify(html)})`,
     )) as { texts: string[]; sections: string[] };
     await ctx.close();
+    // CSS may not write words: any non-empty content string (in the stylesheet, a <style> or a style attribute)
+    for (const src of [css, html]) {
+      const noComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const m of noComments.matchAll(/content\s*:\s*[^;}"']*(["'])((?:\\.|(?!\1).)*)\1/g)) if (m[2]!.trim()) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: m[2]!.slice(0, 40) });
+    }
     const parsed = CopyRecord.safeParse(copyRaw);
     if (parsed.success)
       for (const t of textsNotInRecord(texts, parsed.data))
@@ -201,8 +214,17 @@ async function main(): Promise<number> {
         sections: v.sections,
       };
     }
+    // the review, if there is one, against these renders
+    let review: unknown = "none";
+    if (existsSync(join(dir, "review.json"))) {
+      const now = (k: "desktop_1440" | "mobile_390") => ({ sha256: sha(shots[k].png), width: shots[k].scrollWidth, height: shots[k].scrollHeight });
+      const withRenders = checkReviewFile(dir, { desktop: now("desktop_1440"), mobile: now("mobile_390") });
+      const structural = withRenders.codes.filter((c) => !c.startsWith("RENDER_MISMATCH_"));
+      for (const c of structural) findings.push({ code: `REVIEW_${c}` });
+      review = { structural_ok: structural.length === 0, renders_match_here: withRenders.codes.every((c) => !c.startsWith("RENDER_MISMATCH_")) };
+    }
     process.stdout.write(
-      `${JSON.stringify({ status: findings.length ? "FAIL" : "OK", findings, html_sha256: sha(html), css_sha256: sha(css), copy_sha256: sha(readFileSync(join(dir, "copy.json"))), renders }, null, 2)}\n`,
+      `${JSON.stringify({ status: findings.length ? "FAIL" : "OK", findings, html_sha256: sha(html), css_sha256: sha(css), copy_sha256: sha(readFileSync(join(dir, "copy.json"))), renders, review }, null, 2)}\n`,
     );
     return findings.length ? 1 : 0;
   } finally {

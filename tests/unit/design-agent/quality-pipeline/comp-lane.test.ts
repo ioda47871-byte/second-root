@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -61,6 +61,38 @@ describe("copy record (DEV-159, Issue #193 T5)", () => {
     u.facts_sha256 = "0".repeat(64);
     u.shop_id = "other";
     expect(copyCodes(u)).toEqual(expect.arrayContaining(["COPY_FACTS_SHA_MISMATCH", "COPY_SHOP_MISMATCH"]));
+  });
+
+  it("a fact is the whole value, whole sentences of it, or a whole part of the name: nothing added, nothing cut mid-sentence (review H1/M2)", () => {
+    for (const text of ["架空金継ぎ工房 つぐ手 創業百年、職人三代目", "評判の架空金継ぎ工房 つぐ手", "実在の工房", "金継", "修理には一か月ほど"]) {
+      const r = copy();
+      Object.assign(r.items.find((i: { id: string }) => i.id === "name-full"), { text, source_fact_ids: ["F1", "F9", "F10"] });
+      expect(copyCodes(r), text).toContain("FACT_TEXT_NOT_FROM_FACTS");
+    }
+    // whole sentences (one or consecutive) and the name alone are fine
+    for (const [text, id] of [["割れた器を漆でつなぎ、継ぎ目に金を蒔いて仕上げます。", "F9"], ["実在の工房ではありません。", "F9"], ["つぐ手", "F1"]] as const) {
+      const r = copy();
+      Object.assign(r.items.find((i: { id: string }) => i.id === "name-full"), { text, source_fact_ids: [id] });
+      expect(copyCodes(r), text).toEqual([]);
+    }
+    // a label is shown on the page, so it comes from a fixed list
+    const s = copy();
+    s.items.find((i: { id: string }) => i.id === "address").label = "創業1920年・受賞";
+    expect(copyCodes(s)).toContain("LABEL_NOT_ALLOWED");
+  });
+
+  it("creative lines are checked against every category the owner named (review M1), without tripping on ordinary words (L1)", () => {
+    const owner = ["歴史ある工房", "代々受け継がれた技", "職人の名前は田中です", "三代目の店主", "師匠から学んだ技", "本漆と純金だけで", "原材料にこだわる", "素材にこだわる", "季節のメニュー", "料金は応相談", "お客様に喜ばれる", "レビューで好評", "愛され続ける", "唯一無二", "最高の仕上がり", "表彰された技", "安心して使えます"];
+    for (const text of owner) {
+      const r = copy();
+      r.items.find((i: { id: string }) => i.id === "tagline").text = text;
+      expect(copyCodes(r), text).toContain("CREATIVE_LOOKS_LIKE_FACT");
+    }
+    for (const text of ["器と過ごす時間", "想いをお届けします", "割れた線は、器のいちばん新しい景色になる。"]) {
+      const r = copy();
+      r.items.find((i: { id: string }) => i.id === "tagline").text = text;
+      expect(copyCodes(r), text).toEqual([]);
+    }
   });
 
   it("a page may show only the record's texts and labels", () => {
@@ -127,6 +159,21 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     expect(codes(u)).toContain("FAILURE_CODE_UNKNOWN");
   });
 
+  it("renders are 1440 and 390 wide and at least one screen tall; show_owner may not carry a known failure (review H3/M3)", () => {
+    const r = review();
+    r.renders.desktop.height = 100;
+    r.viewed_crops.desktop = [{ x: 0, y: 0, w: 1440, h: 100 }];
+    expect(codes(r)).toEqual(["REVIEW_SCHEMA"]);
+    const s = review();
+    s.renders.mobile.width = 400;
+    expect(codes(s)).toEqual(["REVIEW_SCHEMA"]);
+    const t = review();
+    t.verdict = "show_owner";
+    expect(codes(t)).toContain("SHOW_WITH_KNOWN_FAILURE");
+    t.failure_codes = [];
+    expect(codes(t)).not.toContain("SHOW_WITH_KNOWN_FAILURE");
+  });
+
   it("the CLI checks and renders the comp offline (copy, safety, unrecorded text, PC/SP) and checks the review", () => {
     const cli = join(REPO, "scripts/design-artifact/comp-lane.ts");
     const out = mkdtempSync(join(tmpdir(), "comp-"));
@@ -135,8 +182,32 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
       renders: Record<string, { width: number }>;
     };
     expect(r.status).toBe("OK");
+    // the review is checked against these renders; its structure must hold, the bytes may differ by machine (fonts)
+    expect((r as unknown as { review: { structural_ok: boolean } }).review.structural_ok).toBe(true);
     expect(r.renders.desktop_1440!.width).toBe(1440);
     expect(r.renders.mobile_390!.width).toBe(390);
     expect(JSON.parse(execFileSync("npx", ["tsx", cli, "--check-review", COMP], { encoding: "utf8" }))).toEqual({ ok: true, codes: [] });
-  }, 120_000);
+    // words put on the page by CSS or attributes are caught (review H2); renders inside the repository are refused (L4)
+    const probe = mkdtempSync(join(tmpdir(), "comp-probe-"));
+    cpSync(COMP, probe, { recursive: true });
+    writeFileSync(join(probe, "index.html"), readFileSync(join(probe, "index.html"), "utf8").replace('<p class="lead">', '<p class="lead" title="受賞歴あり">'));
+    writeFileSync(join(probe, "style.css"), `${readFileSync(join(probe, "style.css"), "utf8")}\n.tagline::after { content: "創業百年・日本一"; }\n`);
+    let failed: { status: string; findings: Array<{ code: string; detail?: string }> } | null = null;
+    try {
+      execFileSync("npx", ["tsx", cli, "--dir", probe, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" });
+    } catch (e) {
+      failed = JSON.parse((e as { stdout: string }).stdout);
+    }
+    expect(failed?.status).toBe("FAIL");
+    expect(failed?.findings.map((f) => f.code)).toEqual(expect.arrayContaining(["COMP_CSS_CONTENT_TEXT", "COMP_TEXT_NOT_IN_COPY"]));
+    expect(failed?.findings.find((f) => f.code === "COMP_TEXT_NOT_IN_COPY")?.detail).toBe("受賞歴あり");
+    let code = 0;
+    try {
+      execFileSync("npx", ["tsx", cli, "--dir", COMP, "--facts", join(POC, "facts-pack.json"), "--out", join(REPO, "tmp-renders")], { encoding: "utf8", stdio: "pipe" });
+    } catch (e) {
+      code = (e as { status: number }).status;
+    }
+    expect(code).toBe(2);
+  }, 240_000);
+
 });

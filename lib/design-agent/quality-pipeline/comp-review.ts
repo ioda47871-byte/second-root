@@ -15,7 +15,7 @@ import { coverage, READ_THRESHOLDS } from "../reference-originals/visual-read";
 const Line = (max: number) => z.string().trim().min(1).max(max);
 const Box = z.strictObject({ x: z.number().int().min(0), y: z.number().int().min(0), w: z.number().int().min(1), h: z.number().int().min(1) });
 const Seen = z.strictObject({ what: Line(300), box: Box });
-const Render = z.strictObject({ sha256: z.string().regex(/^[0-9a-f]{64}$/), width: z.number().int().min(1), height: z.number().int().min(1) });
+const Render = (width: number, minHeight: number) => z.strictObject({ sha256: z.string().regex(/^[0-9a-f]{64}$/), width: z.literal(width), height: z.number().int().min(minHeight).max(16000) });
 const VIEWS = ["desktop", "mobile"] as const;
 
 export const CompReview = z.strictObject({
@@ -24,7 +24,7 @@ export const CompReview = z.strictObject({
   direction_id: z.string().min(1).max(60),
   comp: z.strictObject({ html_sha256: z.string().regex(/^[0-9a-f]{64}$/), css_sha256: z.string().regex(/^[0-9a-f]{64}$/), copy_sha256: z.string().regex(/^[0-9a-f]{64}$/) }),
   /** The renders the review is of (B-route, JS off, network shut). Fonts make the bytes machine-dependent. */
-  renders: z.strictObject({ desktop: Render, mobile: Render }),
+  renders: z.strictObject({ desktop: Render(1440, 900), mobile: Render(390, 844) }),
   reader: z.strictObject({ who: z.literal("claude"), session: z.string().url(), viewed_at: z.string().datetime({ offset: true }), how: Line(300) }),
   viewed_crops: z.strictObject({ desktop: z.array(Box).min(1).max(40), mobile: z.array(Box).min(1).max(40) }),
   observations: z.strictObject({ desktop: z.array(Seen).min(6).max(30), mobile: z.array(Seen).min(4).max(30) }),
@@ -86,7 +86,7 @@ export function checkCompReview(raw: unknown, o: ReviewInputs): { ok: boolean; c
   const ns = r.rounds.map((x) => x.n);
   if (new Set(ns).size !== ns.length || ns.some((n, i) => n !== i + 1)) codes.push("ROUNDS_OUT_OF_ORDER");
   for (const f of r.failure_codes) if (!o.failureCodes.includes(f)) codes.push("FAILURE_CODE_UNKNOWN");
-  // a comp that still carries a known failure is not shown as ready
-  if (r.verdict === "show_owner" && r.remaining.length === 0 && r.failure_codes.length === 0 && r.rounds.length === 0) codes.push("UNREVIEWED_SHOW");
+  // a comp that still carries a known failure is not shown to the owner as ready
+  if (r.verdict === "show_owner" && r.failure_codes.length > 0) codes.push("SHOW_WITH_KNOWN_FAILURE");
   return { ok: codes.length === 0, codes };
 }
