@@ -1,0 +1,244 @@
+{
+  "schema": "photo_slots_v0",
+  "shop": "bicycle",
+  "shop_id": "fictional-bicycle-repair-wa",
+  "page_dir": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v2",
+  "html_sha256": "8297602aa5d9d81f3934c83f8ac69616e5675f629464dd18dae66955ad36de31",
+  "css_sha256": "8602089f62a8fe6ccb909483cc6cfa5779f160aea73481f488608b99a25ce179",
+  "copy_sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780",
+  "derived_by": "scripts/design-artifact/photo-slots.ts",
+  "evaluation_label": "placeholder_limited",
+  "density": 2,
+  "slots": [
+    {
+      "slot_id": "ph-d",
+      "role": "振れ取り台の車輪",
+      "section": "spokes",
+      "board_class": "board",
+      "board_selector": "[data-comp-section=\"spokes\"] article.station.st-d > div.fig > div.board",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 260,
+          "height_px": 286,
+          "ratio": 0.909,
+          "min_width_px": 521,
+          "min_height_px": 573
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 185,
+          "height_px": 203,
+          "ratio": 0.909,
+          "min_width_px": 370,
+          "min_height_px": 407
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 159,
+          "height_px": 175,
+          "ratio": 0.909,
+          "min_width_px": 319,
+          "min_height_px": 351
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 278,
+          "height_px": 188,
+          "ratio": 1.476,
+          "min_width_px": 556,
+          "min_height_px": 377
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-a",
+      "role": "パンクを直す手元",
+      "section": "spokes",
+      "board_class": "board",
+      "board_selector": "[data-comp-section=\"spokes\"] article.station.st-a > div.fig > div.board",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 280,
+          "height_px": 202,
+          "ratio": 1.385,
+          "min_width_px": 560,
+          "min_height_px": 405
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 199,
+          "height_px": 144,
+          "ratio": 1.385,
+          "min_width_px": 399,
+          "min_height_px": 288
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 191,
+          "height_px": 138,
+          "ratio": 1.385,
+          "min_width_px": 383,
+          "min_height_px": 277
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 306,
+          "height_px": 184,
+          "ratio": 1.667,
+          "min_width_px": 612,
+          "min_height_px": 368
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-c",
+      "role": "外したチェーン",
+      "section": "spokes",
+      "board_class": "board",
+      "board_selector": "[data-comp-section=\"spokes\"] article.station.st-c > div.fig > div.board",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 300,
+          "height_px": 218,
+          "ratio": 1.375,
+          "min_width_px": 600,
+          "min_height_px": 437
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 213,
+          "height_px": 155,
+          "ratio": 1.375,
+          "min_width_px": 427,
+          "min_height_px": 311
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 164,
+          "height_px": 119,
+          "ratio": 1.375,
+          "min_width_px": 328,
+          "min_height_px": 239
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 306,
+          "height_px": 184,
+          "ratio": 1.667,
+          "min_width_px": 612,
+          "min_height_px": 368
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-b",
+      "role": "ブレーキの接写",
+      "section": "spokes",
+      "board_class": "board",
+      "board_selector": "[data-comp-section=\"spokes\"] article.station.st-b > div.fig > div.board",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 300,
+          "height_px": 220,
+          "ratio": 1.364,
+          "min_width_px": 600,
+          "min_height_px": 440
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 213,
+          "height_px": 156,
+          "ratio": 1.364,
+          "min_width_px": 427,
+          "min_height_px": 313
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 160,
+          "height_px": 118,
+          "ratio": 1.364,
+          "min_width_px": 321,
+          "min_height_px": 236
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 278,
+          "height_px": 188,
+          "ratio": 1.476,
+          "min_width_px": 556,
+          "min_height_px": 377
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-bench",
+      "role": "作業台と自転車",
+      "section": "check",
+      "board_class": "board board-bench",
+      "board_selector": "[data-comp-section=\"check\"] div.board.board-bench",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 760,
+          "height_px": 560,
+          "ratio": 1.357,
+          "min_width_px": 1521,
+          "min_height_px": 1121
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 541,
+          "height_px": 398,
+          "ratio": 1.357,
+          "min_width_px": 1082,
+          "min_height_px": 797
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 406,
+          "height_px": 299,
+          "ratio": 1.357,
+          "min_width_px": 811,
+          "min_height_px": 598
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 240,
+          "height_px": 440,
+          "ratio": 0.545,
+          "min_width_px": 480,
+          "min_height_px": 880
+        }
+      ]
+    }
+  ]
+}

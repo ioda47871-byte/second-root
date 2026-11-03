@@ -7361,7 +7361,7 @@
     {
       "id": "DEV-161",
       "title": "段 B の設計と互換性の基準のテスト (書体の固定・表示語の大きさ・色の書き方・文字の下でない地・半透明の装飾・フィルター・流れの中の飾り・表示語の折れ止め)。何も有効にしない (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-160"
@@ -7405,7 +7405,54 @@
         "web_font の書体の一覧、image_filters の値の範囲",
         "閾値の変更"
       ],
-      "note": "設計と検証の準備だけ。旗が下りたままの互換性は phase-b-baseline.test.ts が固定する。能力の名前 type_scale は spec の欄と重なるので display_scale にした。"
+      "note": "設計と検証の準備だけ。旗が下りたままの互換性は phase-b-baseline.test.ts が固定する。能力の名前 type_scale は spec の欄と重なるので display_scale にした。 PR #201 で develop へ merge した (3590de9)。"
+    },
+    {
+      "id": "DEV-163",
+      "title": "品質検証の実写真の受け取り・管理・差し替え・切り抜きの設計 (写真は取得も生成もしない、Issue #193)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-160"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-163-photo-intake-design",
+      "purpose": "Issue #193 コメント 6601921731 の判断3: 権利の確かな写真だけを品質検証に入れるため、受け取り→権利の記録→ハッシュと大きさ→非公開の置き場→枠への割り当て→切り抜きと焦点→C ページでの差し替え→PC/SP の描画→オーナーの確認の流れを設計し、門と枠の一覧を作る。写真が届くまで評価は placeholder_limited。",
+      "acceptance_criteria": [
+        "docs/design/photo-intake.md (流れ・役割・公開と非公開・placeholder_limited・差し替えの方法・枠の一覧・依頼の型)",
+        "photo-rights.ts (photo_rights_v0、checkPhotoRights、measurePhotoBytes、resolvePrivatePhoto、toPublicPhotoRecord)",
+        "photo-slots.ts (枠の一覧の schema、coverCrop・fitSlot・requestFor)",
+        "3店の C ページの photo-slots.json (ページの板から測った値と、ページの SHA)",
+        "テスト: 権利の欠けをすべて拒む、.intake/photos の外とリンクを拒む、切り抜き、枠とページの一致、リポジトリのどこにも画像を足さない",
+        "写真の取得・生成・有料素材・外部 API は無し"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline tests/unit/design-agent/reference-originals tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/quality-pipeline/photo-rights.ts",
+        "lib/design-agent/quality-pipeline/photo-slots.ts",
+        "scripts/design-artifact/photo-slots.ts",
+        "design-library/research/quality-pipeline/poc/*/photo-slots.json",
+        "tests/unit/design-agent/quality-pipeline/photo-intake.test.ts",
+        "docs/design/photo-intake.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "写真の取得・画像生成・有料素材・外部 API",
+        "写真や描いた画像の commit (.intake は git が無視する)",
+        "comp-impl の CSS・HTML 許可一覧の変更",
+        "main・Production・Staging・DB",
+        "実在の店・人・場所"
+      ],
+      "human_approval_triggers": [
+        "写真の依頼を送ること、受け取ること",
+        "差し替えて描く道具を作ること",
+        "実在の店の写真の公開利用 (依頼主の確認も要る)",
+        "本番の実装レーンで資産への url( を許すこと"
+      ],
+      "note": "設計と門だけで、写真は0枚。評価は placeholder_limited のまま。成功例の水準とは言わない。"
     }
   ]
 }
