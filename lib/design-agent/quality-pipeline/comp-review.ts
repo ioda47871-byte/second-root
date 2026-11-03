@@ -88,5 +88,7 @@ export function checkCompReview(raw: unknown, o: ReviewInputs): { ok: boolean; c
   for (const f of r.failure_codes) if (!o.failureCodes.includes(f)) codes.push("FAILURE_CODE_UNKNOWN");
   // a comp that still carries a known failure is not shown to the owner as ready
   if (r.verdict === "show_owner" && r.failure_codes.length > 0) codes.push("SHOW_WITH_KNOWN_FAILURE");
+  // nothing is shown to the owner that Claude has not critiqued and revised at least once
+  if (r.verdict === "show_owner" && r.rounds.length === 0) codes.push("SHOW_WITHOUT_A_ROUND");
   return { ok: codes.length === 0, codes };
 }

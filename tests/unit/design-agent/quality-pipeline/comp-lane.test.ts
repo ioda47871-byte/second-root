@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkCompReview, type ReviewInputs } from "../../../../lib/design-agent/quality-pipeline/comp-review";
 import { checkCopyRecord, CopyRecord, textsNotInRecord } from "../../../../lib/design-agent/quality-pipeline/copy-record";
-import { checkReviewFile } from "../../../../scripts/design-artifact/comp-lane";
+import { checkReviewFile, insideRepo } from "../../../../scripts/design-artifact/comp-lane";
 
 // DEV-159 (Issue #193): the comp lane. Every word a comp shows has a claim type and a source; Claude's review of the
 // renders is tied to its own VISUAL_VERIFIED reads. A pass is never a quality verdict.
@@ -15,7 +15,7 @@ const REPO = resolve(__dirname, "../../../..");
 const POC = join(REPO, "design-library/research/quality-pipeline/poc/tsugute");
 const COMP = join(POC, "comps/d1-seam-across");
 const factsRaw = readFileSync(join(POC, "facts-pack.json"));
-const facts = JSON.parse(factsRaw.toString("utf8")) as { shop_id: string; facts: Array<{ id: string; value: string }> };
+const facts = JSON.parse(factsRaw.toString("utf8")) as { shop_id: string; facts: Array<{ id: string; key: string; value: string }> };
 const factsOpts = { shopId: facts.shop_id, factsSha256: createHash("sha256").update(factsRaw).digest("hex"), facts: facts.facts };
 const copy = () => JSON.parse(readFileSync(join(COMP, "copy.json"), "utf8"));
 const copyCodes = (r: unknown) => checkCopyRecord(r, factsOpts).findings.map((f) => f.code);
@@ -75,6 +75,16 @@ describe("copy record (DEV-159, Issue #193 T5)", () => {
       Object.assign(r.items.find((i: { id: string }) => i.id === "name-full"), { text, source_fact_ids: [id] });
       expect(copyCodes(r), text).toEqual([]);
     }
+    // a full-width space does not make a sentence cuttable (round 2 M2)
+    const f9 = facts.facts.find((x) => x.id === "F9")!;
+    const spaced = { ...factsOpts, facts: factsOpts.facts.map((x) => (x.id === "F9" ? { ...f9, value: "実在の工房では\u3000ありません。" } : x)) };
+    const cut = copy();
+    Object.assign(cut.items.find((i: { id: string }) => i.id === "fictional"), { text: "実在の工房では", source_fact_ids: ["F9"] });
+    expect(checkCopyRecord(cut, spaced).findings.map((x) => x.code)).toContain("FACT_TEXT_NOT_FROM_FACTS");
+    // a label belongs to its fact: 電話 on the name is refused (round 2 L4)
+    const wrong = copy();
+    wrong.items.find((i: { id: string }) => i.id === "name-full").label = "電話";
+    expect(copyCodes(wrong)).toContain("LABEL_NOT_ALLOWED");
     // a label is shown on the page, so it comes from a fixed list
     const s = copy();
     s.items.find((i: { id: string }) => i.id === "address").label = "創業1920年・受賞";
@@ -82,13 +92,13 @@ describe("copy record (DEV-159, Issue #193 T5)", () => {
   });
 
   it("creative lines are checked against every category the owner named (review M1), without tripping on ordinary words (L1)", () => {
-    const owner = ["歴史ある工房", "代々受け継がれた技", "職人の名前は田中です", "三代目の店主", "師匠から学んだ技", "本漆と純金だけで", "原材料にこだわる", "素材にこだわる", "季節のメニュー", "料金は応相談", "お客様に喜ばれる", "レビューで好評", "愛され続ける", "唯一無二", "最高の仕上がり", "表彰された技", "安心して使えます"];
+    const owner = ["百年つづく継ぎの手", "三代続く", "半世紀の技", "昭和から続く", "江戸から続く", "伝統を守る", "匠の手で", "名工の手", "熟練の手仕事", "年中無休", "割れても保証します", "二度と割れない", "一生ものの器", "テレビで紹介された", "雑誌掲載", "歴史ある工房", "代々受け継がれた技", "職人の名前は田中です", "三代目の店主", "師匠から学んだ技", "本漆と純金だけで", "原材料にこだわる", "素材にこだわる", "季節のメニュー", "料金は応相談", "お客様に喜ばれる", "レビューで好評", "愛され続ける", "唯一無二", "最高の仕上がり", "表彰された技", "安心して使えます"];
     for (const text of owner) {
       const r = copy();
       r.items.find((i: { id: string }) => i.id === "tagline").text = text;
       expect(copyCodes(r), text).toContain("CREATIVE_LOOKS_LIKE_FACT");
     }
-    for (const text of ["器と過ごす時間", "想いをお届けします", "割れた線は、器のいちばん新しい景色になる。"]) {
+    for (const text of ["器と過ごす時間", "想いをお届けします", "割れた線は、器のいちばん新しい景色になる。", "たくさんの器", "みなさんの器", "代表作のような一枚", "素材感のある線", "一時の割れ"]) {
       const r = copy();
       r.items.find((i: { id: string }) => i.id === "tagline").text = text;
       expect(copyCodes(r), text).toEqual([]);
@@ -172,6 +182,9 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     expect(codes(t)).toContain("SHOW_WITH_KNOWN_FAILURE");
     t.failure_codes = [];
     expect(codes(t)).not.toContain("SHOW_WITH_KNOWN_FAILURE");
+    // never shown without at least one round of critique
+    t.rounds = [];
+    expect(codes(t)).toContain("SHOW_WITHOUT_A_ROUND");
   });
 
   it("the CLI checks and renders the comp offline (copy, safety, unrecorded text, PC/SP) and checks the review", () => {
@@ -191,7 +204,21 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     const probe = mkdtempSync(join(tmpdir(), "comp-probe-"));
     cpSync(COMP, probe, { recursive: true });
     writeFileSync(join(probe, "index.html"), readFileSync(join(probe, "index.html"), "utf8").replace('<p class="lead">', '<p class="lead" title="受賞歴あり">'));
-    writeFileSync(join(probe, "style.css"), `${readFileSync(join(probe, "style.css"), "utf8")}\n.tagline::after { content: "創業百年・日本一"; }\n`);
+    writeFileSync(
+      join(probe, "style.css"),
+      `${readFileSync(join(probe, "style.css"), "utf8")}
+.tagline::after { content: "創業百年・日本一"; }
+.lead::after { CONTENT: "upper"; }
+.how::after { cont\\65nt: "escaped"; }
+.how::before { content: attr(data-x); }
+.hero-copy { quotes: "創業百年" ""; }
+.info { list-style-type: "創業 "; }
+.class-fact::after { content: counter(y); }
+@media (min-width: 1px) { .month-c::after { content: "in media"; } }
+@counter-style probe { system: cyclic; symbols: "a"; }
+`,
+    );
+    writeFileSync(join(probe, "index.html"), readFileSync(join(probe, "index.html"), "utf8").replace("</main>", '<ol start="1926"></ol></main>'));
     let failed: { status: string; findings: Array<{ code: string; detail?: string }> } | null = null;
     try {
       execFileSync("npx", ["tsx", cli, "--dir", probe, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" });
@@ -200,14 +227,22 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     }
     expect(failed?.status).toBe("FAIL");
     expect(failed?.findings.map((f) => f.code)).toEqual(expect.arrayContaining(["COMP_CSS_CONTENT_TEXT", "COMP_TEXT_NOT_IN_COPY"]));
-    expect(failed?.findings.find((f) => f.code === "COMP_TEXT_NOT_IN_COPY")?.detail).toBe("受賞歴あり");
-    let code = 0;
-    try {
-      execFileSync("npx", ["tsx", cli, "--dir", COMP, "--facts", join(POC, "facts-pack.json"), "--out", join(REPO, "tmp-renders")], { encoding: "utf8", stdio: "pipe" });
-    } catch (e) {
-      code = (e as { status: number }).status;
+    const css = failed!.findings.filter((f) => f.code === "COMP_CSS_CONTENT_TEXT").map((f) => f.detail ?? "");
+    for (const needle of ["創業百年・日本一", "upper", "escaped", "attr(data-x)", "quotes", "list-style-type", "counter(y)", "in media", "@counter-style"])
+      expect(css.some((d) => d.includes(needle)), needle).toBe(true);
+    expect(failed!.findings.filter((f) => f.code === "COMP_TEXT_NOT_IN_COPY").map((f) => f.detail)).toEqual(expect.arrayContaining(["受賞歴あり", "1926"]));
+    // renders inside the repository are refused, however the path is spelled (L4, round 2 L1)
+    for (const out of [join(REPO, "tmp-renders"), join(REPO, "..renders"), "tmp-renders"]) {
+      let code = 0;
+      try {
+        execFileSync("npx", ["tsx", cli, "--dir", COMP, "--facts", join(POC, "facts-pack.json"), "--out", out], { encoding: "utf8", stdio: "pipe", cwd: REPO });
+      } catch (e) {
+        code = (e as { status: number }).status;
+      }
+      expect(code, out).toBe(2);
     }
-    expect(code).toBe(2);
+    expect(insideRepo(join(REPO, "..renders"))).toBe(true);
+    expect(insideRepo(join(tmpdir(), "x"))).toBe(false);
   }, 240_000);
 
 });

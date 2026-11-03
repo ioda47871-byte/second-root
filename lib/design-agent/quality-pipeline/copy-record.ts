@@ -4,8 +4,8 @@
  *
  *   fact                     the shop's fact, as the facts pack gives it: the whole value, one or more whole
  *                            consecutive sentences of it (split at 。), or one whole space-separated part (the
- *                            name alone). Nothing may be added or cut mid-sentence. A `label` from LABELS may
- *                            introduce it ("所在地").
+ *                            name alone). Nothing may be added or cut mid-sentence. A `label` from LABELS_BY_KEY
+ *                            for that fact's key may introduce it (所在地 for the address).
  *   creative_expression      original brand copy (tagline, metaphor, section heading). Allowed only in the
  *                            quality-first research lane, on fictional shops; always needs the owner's review.
  *   proposal_pending_review  copy proposed for a real shop; never shown as the shop's own words until reviewed.
@@ -28,7 +28,7 @@ export const CopyItem = z.strictObject({
   claim_type: z.enum(["fact", "creative_expression", "proposal_pending_review"]),
   source_fact_ids: z.array(z.string().regex(/^F\d{1,3}$/)).max(8),
   owner_review_needed: z.boolean(),
-  /** For facts only: a short label shown with the value, from LABELS. */
+  /** For facts only: a short label shown with the value, from LABELS_BY_KEY for the fact it introduces. */
   label: Line(20).optional(),
 });
 export type CopyItem = z.infer<typeof CopyItem>;
@@ -43,21 +43,28 @@ export const CopyRecord = z.strictObject({
 });
 export type CopyRecord = z.infer<typeof CopyRecord>;
 
-/** The labels a fact may carry (a label is shown on the page, so it is not free text). */
-export const LABELS = ["所在地", "住所", "時間", "営業時間", "定休", "定休日", "道順", "アクセス", "電話", "電話番号", "店名"] as const;
+/** The labels a fact may carry, by the fact's key (a label is shown on the page, so it is not free text). */
+export const LABELS_BY_KEY: Readonly<Record<string, readonly string[]>> = {
+  name: ["店名"],
+  address: ["所在地", "住所"],
+  hours: ["時間", "営業時間"],
+  closed_days: ["定休", "定休日"],
+  access: ["道順", "アクセス"],
+  phone: ["電話", "電話番号"],
+};
 
 /** The plain signs of an invented fact in a creative line, by the owner's categories (Issue #193). */
 export const INVENTED_FACT_SIGNS: ReadonlyArray<readonly [string, RegExp]> = [
-  ["number", /[0-9０-９]/],
+  ["number", /[0-9０-９]|[一二三四五六七八九十百千万]+(年|代|世紀|周年|人)|半世紀/],
   ["money_or_menu", /[¥￥円]|価格|値段|料金|税込|税別|無料|割引|半額|メニュー|コース|セット/],
-  ["hours_or_date", /営業時間|[0-9０-９一二三四五六七八九十]+時|曜日|[0-9０-９]+年|月[0-9０-９一二三四五六七八九十]|日[0-9０-９]/],
-  ["history", /創業|老舗|伝統の|歴史|由来|代々|受け継|代目|年の歴史|ゆかり/],
-  ["people", /職人|店主|師匠|親方|代表|オーナー|スタッフ|先生|さん[がはの]/],
-  ["ingredients", /原材料|素材|本漆|純金|金粉|産地|国産|天然|無添加|オーガニック/],
-  ["award_or_certification", /受賞|表彰|認定|認証|公認|資格|ミシュラン|グランプリ|金賞|特許/],
+  ["hours_or_date", /営業時間|[0-9０-９]+時|曜日|無休|[0-9０-９]+年|月[0-9０-９一二三四五六七八九十]|日[0-9０-９]/],
+  ["history", /創業|老舗|伝統|歴史|由来|代々|受け継|代目|ゆかり|明治|大正|昭和|平成|令和|江戸|から続く/],
+  ["people", /職人|店主|師匠|親方|代表者|オーナー|スタッフ|先生|匠|名工|熟練/],
+  ["ingredients", /原材料|素材(?!感)|本漆|純金|金粉|産地|国産|天然|無添加|オーガニック/],
+  ["award_or_certification", /受賞|表彰|認定|認証|公認|資格|ミシュラン|グランプリ|金賞|特許|掲載|紹介され|メディア|テレビ|雑誌/],
   ["superlative_or_reputation", /日本一|世界一|No\.?1|ナンバーワン|唯一|最高|一流|人気|評判|話題|満足度|口コミ|好評|愛され|行列/],
   ["customer_voice", /お客様|お客さま|レビュー|感想|声が/],
-  ["health_or_safety", /効果|効能|健康|治る|改善|安全|安心/],
+  ["health_or_safety_or_guarantee", /効果|効能|健康|治る|改善|安全|安心|保証|一生もの|二度と/],
   ["reservation_or_stock", /予約|在庫|限定|残りわずか|即日|配送|注文|発送/],
 ];
 
@@ -67,6 +74,8 @@ const norm = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
 
 /** What a fact item may show of a value: all of it, whole consecutive sentences (split at 。), or one whole space-separated part. */
 export function factParts(value: string): Set<string> {
+  // whole words only for a value without sentences (the name), split at ASCII spaces only, so a sentence cannot be
+  // cut at a full-width space into a fragment that reverses it
   const out = new Set<string>([norm(value)]);
   const sentences = value.split(/(?<=。)/).map((x) => x.trim()).filter(Boolean);
   for (let i = 0; i < sentences.length; i++)
@@ -75,12 +84,12 @@ export function factParts(value: string): Set<string> {
       out.add(norm(run));
       out.add(norm(run.replace(/。$/, "")));
     }
-  for (const part of value.split(/\s+/).filter(Boolean)) out.add(norm(part));
+  if (!value.includes("。")) for (const part of value.split(/ +/).filter(Boolean)) out.add(norm(part));
   return out;
 }
 
 /** The record against the shop's facts (ids, values, SHA and shop). */
-export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: string; facts: ReadonlyArray<{ id: string; value: string }> }): { ok: boolean; findings: CopyFinding[] } {
+export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: string; facts: ReadonlyArray<{ id: string; key?: string; value: string }> }): { ok: boolean; findings: CopyFinding[] } {
   const parsed = CopyRecord.safeParse(raw);
   if (!parsed.success) return { ok: false, findings: [{ code: "COPY_SCHEMA", detail: parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") }] };
   const r = parsed.data;
@@ -95,7 +104,9 @@ export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: 
     if (i.claim_type === "fact") {
       if (!i.source_fact_ids.length) f.push({ code: "FACT_WITHOUT_SOURCE", item: i.id });
       else if (!i.source_fact_ids.some((s) => byId.has(s) && factParts(byId.get(s)!).has(norm(i.text)))) f.push({ code: "FACT_TEXT_NOT_FROM_FACTS", item: i.id });
-      if (i.label && !(LABELS as readonly string[]).includes(i.label)) f.push({ code: "LABEL_NOT_ALLOWED", item: i.id, detail: i.label });
+      // a label belongs to the fact it introduces: 所在地 to the address, 電話 to the phone
+      const keys = o.facts.filter((x) => i.source_fact_ids.includes(x.id)).map((x) => x.key ?? "");
+      if (i.label && !keys.some((k) => (LABELS_BY_KEY[k] ?? []).includes(i.label!))) f.push({ code: "LABEL_NOT_ALLOWED", item: i.id, detail: i.label });
     } else {
       if (i.label) f.push({ code: "LABEL_ON_NON_FACT", item: i.id });
       if (!i.owner_review_needed) f.push({ code: "CREATIVE_WITHOUT_OWNER_REVIEW", item: i.id });

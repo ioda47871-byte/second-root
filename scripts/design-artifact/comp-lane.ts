@@ -22,14 +22,15 @@
  * look at; a passing run is not a quality verdict.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 import {
   checkPrototype,
   PrototypeUnsafe,
 } from "../../lib/design-agent/phase2f/prototype-safety";
 import { renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
+import { FactsPack } from "../../lib/design-agent/artifact/schema";
 import { checkCompReview } from "../../lib/design-agent/quality-pipeline/comp-review";
 import {
   checkCopyRecord,
@@ -46,6 +47,19 @@ const sha = (b: Buffer | string) =>
   createHash("sha256").update(b).digest("hex");
 
 const REPO = resolve(__dirname, "../..");
+
+/** Whether a path is in the repository, after following links of its nearest existing ancestor. */
+export function insideRepo(p: string): boolean {
+  let probe = resolve(p);
+  const rest: string[] = [];
+  while (!existsSync(probe) && dirname(probe) !== probe) {
+    rest.unshift(basename(probe));
+    probe = dirname(probe);
+  }
+  const real = join(realpathSync(probe), ...rest);
+  const rel = relative(realpathSync(REPO), real);
+  return !(rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel));
+}
 
 /** The review of a comp against its files, Claude's VISUAL_VERIFIED reads and the known failure codes. */
 export function checkReviewFile(
@@ -105,7 +119,7 @@ async function main(): Promise<number> {
     );
     return 2;
   }
-  if (!relative(REPO, resolve(out)).startsWith("..")) {
+  if (insideRepo(out)) {
     process.stderr.write("INPUT_ERROR: --out must be outside the repository (renders are not committed)\n");
     return 2;
   }
@@ -116,7 +130,7 @@ async function main(): Promise<number> {
     css = readFileSync(join(dir, "style.css"), "utf8");
     copyRaw = JSON.parse(readFileSync(join(dir, "copy.json"), "utf8"));
     factsRaw = readFileSync(factsPath);
-    facts = JSON.parse(factsRaw.toString("utf8")) as typeof facts;
+    facts = FactsPack.parse(JSON.parse(factsRaw.toString("utf8")));
   } catch (e) {
     process.stderr.write(`INPUT_ERROR: ${(e as Error).message}\n`);
     return 2;
@@ -147,34 +161,50 @@ async function main(): Promise<number> {
         findings.push({ code: "PROTOTYPE_UNSAFE", detail: e.message });
       else throw e;
     }
-    // the page's visible texts, parsed by Chromium on a blank page (no request leaves it)
+    // the page's texts and its styles, as Chromium parses them, on a page that can reach nothing (the stylesheet is
+    // inlined; checkPrototype has already refused scripts)
     const ctx = await browser.newContext({ javaScriptEnabled: true });
     await ctx.route("**/*", (r) => r.abort());
     const page = await ctx.newPage();
+    const inlined = html.replace(/<link[^>]*href=["']style\.css["'][^>]*>/i, () => `<style>${css.replace(/<\/style/gi, "<\\/style")}</style>`);
+    await page.setContent(inlined, { waitUntil: "domcontentloaded" });
     // a plain string, so the TypeScript build cannot inject helpers into code that runs in the page
-    const EXTRACT = `(src) => {
-      const d = new DOMParser().parseFromString(src, "text/html");
+    const EXTRACT = `() => {
       const out = [];
-      const stack = [d.documentElement];
+      const css = [];
+      const stack = [document.documentElement];
       while (stack.length) {
         const n = stack.pop();
         if (n.nodeType === 3) out.push(n.textContent || "");
         else if (n.nodeType === 1 && n.tagName !== "STYLE" && n.tagName !== "SCRIPT") {
-          for (const a of ["alt", "title", "placeholder", "aria-label", "value"]) if (n.hasAttribute(a)) out.push(n.getAttribute(a) || "");
+          for (const a of ["alt", "title", "placeholder", "aria-label", "value", "label", "start"]) if (n.hasAttribute(a)) out.push(n.getAttribute(a) || "");
+          if (n.style && n.style.length) css.push(["inline", n.style]);
           for (const c of n.childNodes) stack.push(c);
         }
       }
-      return { texts: out.map((t) => t.trim()).filter(Boolean), sections: [...d.querySelectorAll("[data-section]")].map((e) => e.getAttribute("data-section") || "") };
+      // every style rule, in every sheet and every nested group (@media, @supports, @layer, @container)
+      const rules = [];
+      const walk = (list) => { for (const r of list) { if (r.style) rules.push(r); if (r.cssRules) walk(r.cssRules); if (r.constructor && r.constructor.name === "CSSCounterStyleRule") rules.push({ counterStyle: true }); } };
+      for (const s of document.styleSheets) walk(s.cssRules);
+      const bad = [];
+      for (const r of rules) {
+        if (r.counterStyle) { bad.push("@counter-style"); continue; }
+        css.push(["rule", r.style]);
+      }
+      const words = /attr\\(|counters?\\(|["']/i;
+      for (const [, st] of css) {
+        const content = st.getPropertyValue("content").trim();
+        if (content && !["none", "normal", '""', "''"].includes(content)) bad.push("content: " + content);
+        const quotes = st.getPropertyValue("quotes").trim();
+        if (quotes && !["none", "auto"].includes(quotes)) bad.push("quotes: " + quotes);
+        for (const p of ["list-style-type", "list-style"]) { const v = st.getPropertyValue(p).trim(); if (v && words.test(v)) bad.push(p + ": " + v); }
+      }
+      return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad };
     }`;
-    const { texts, sections } = (await page.evaluate(
-      `(${EXTRACT})(${JSON.stringify(html)})`,
-    )) as { texts: string[]; sections: string[] };
+    const { texts, sections, bad } = (await page.evaluate(`(${EXTRACT})()`)) as { texts: string[]; sections: string[]; bad: string[] };
     await ctx.close();
-    // CSS may not write words: any non-empty content string (in the stylesheet, a <style> or a style attribute)
-    for (const src of [css, html]) {
-      const noComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
-      for (const m of noComments.matchAll(/content\s*:\s*[^;}"']*(["'])((?:\\.|(?!\1).)*)\1/g)) if (m[2]!.trim()) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: m[2]!.slice(0, 40) });
-    }
+    // CSS may not write words: content, quotes, list markers, counters and @counter-style are refused, as parsed
+    for (const b of bad) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: b.slice(0, 60) });
     const parsed = CopyRecord.safeParse(copyRaw);
     if (parsed.success)
       for (const t of textsNotInRecord(texts, parsed.data))
