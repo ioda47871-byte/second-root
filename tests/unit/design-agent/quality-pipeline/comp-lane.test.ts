@@ -343,7 +343,9 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     const layouts = [
       '<div style="display:flex"><span>限</span><span>定</span></div>',
       '<div><span style="display:inline-block">限</span><span style="display:inline-block">定</span></div>',
-      '<div style="display:grid;grid-template-columns:1fr 1fr"><p>限</p><p>定</p></div>',
+      '<div style="display:grid;grid-template-columns:auto auto;justify-content:start"><p>限</p><p>定</p></div>',
+      // grid placement against the document order (final confirmation: was a known gap, now joined by where it is drawn)
+      '<div style="display:grid;grid-template-columns:auto auto;justify-content:start"><p style="grid-column:2">定</p><p style="grid-column:1;grid-row:1">限</p></div>',
       '<div style="display:flex;flex-direction:row-reverse"><span>定</span><span>限</span></div>',
       "<div><span>限</span><span>定</span><p>器</p></div>",
     ];
@@ -366,6 +368,22 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     }
     // (the probe's copied review.json is of the unmodified comp in another directory: only REVIEW_ findings may appear)
     expect(svgIcon.findings.filter((f) => !f.code.startsWith("REVIEW_"))).toEqual([]);
+    // final confirmation: a fact broken with <br> is still the fact (never joined); creative lines far apart are not one word
+    const cleanRun = (extra: string) => {
+      writeFileSync(join(layoutDir, "index.html"), readFileSync(join(COMP, "index.html"), "utf8").replace("</main>", `${extra}</main>`));
+      try {
+        return JSON.parse(execFileSync("npx", ["tsx", cli, "--dir", layoutDir, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" })) as { findings: Array<{ code: string }> };
+      } catch (e) {
+        return JSON.parse((e as { stdout: string }).stdout) as { findings: Array<{ code: string }> };
+      }
+    };
+    const lc2 = JSON.parse(readFileSync(join(layoutDir, "copy.json"), "utf8"));
+    for (const [id, text] of [["r1", "器と人"], ["r2", "気配のある工房"], ["r3", "器を待つ"]]) lc2.items.push({ id, text, claim_type: "creative_expression", source_fact_ids: [], owner_review_needed: true });
+    writeFileSync(join(layoutDir, "copy.json"), JSON.stringify(lc2));
+    for (const extra of [
+      "<p>架空市架空区<br>架空町一丁目3-2</p><p>器を待つ</p>",
+      '<section><h2>器と人</h2></section><section style="margin-top:400px"><p>気配のある工房</p></section>',
+    ]) expect(cleanRun(extra).findings.filter((f) => !f.code.startsWith("REVIEW_")), extra).toEqual([]);
     const broken = run((h) => h.replace('<p class="lead">捨てるはずだった器に、もう一度、使う理由を。</p>', '<p class="lead">捨てるはずだった器に、<br>もう一度、使う理由を。</p>'));
     expect(broken.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
     // an SVG <style> is a style sheet, not page text (no false COMP_TEXT_NOT_IN_COPY)

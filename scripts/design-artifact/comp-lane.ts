@@ -106,6 +106,41 @@ export function checkReviewFile(
   );
 }
 
+export type TextUnit = { text: string; rects: Array<{ l: number; t: number; r: number; b: number }>; em: number; vertical: boolean };
+
+/**
+ * The texts a reader sees together: each unit alone, and units drawn next to each other joined in reading order
+ * (pairs and runs of three). Two units are next to each other when a line of one ends where a line of the other
+ * starts: on the same line within one em (horizontal writing), or in the same column within one em (vertical). A unit
+ * that is a fact text or a label of the record separates: it is never joined, so no join holds a fact or a part of it.
+ */
+export function adjacentTexts(units: readonly TextUnit[], record: CopyRecord): string[] {
+  const n = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
+  const facts = new Set(record.items.filter((i) => i.claim_type === "fact").flatMap((i) => [n(i.text), ...(i.label ? [n(i.label)] : [])]));
+  const us = units.filter((u) => u.text && u.rects.length && !facts.has(n(u.text)));
+  const next = (a: TextUnit, b: TextUnit) =>
+    a !== b &&
+    a.rects.some((x) =>
+      b.rects.some((y) => {
+        const em = Math.max(a.em, b.em);
+        if (!a.vertical && !b.vertical) {
+          const overlap = Math.min(x.b, y.b) - Math.max(x.t, y.t);
+          return overlap >= 0.5 * Math.min(x.b - x.t, y.b - y.t) && y.l >= x.r - 1 && y.l - x.r <= em;
+        }
+        const overlap = Math.min(x.r, y.r) - Math.max(x.l, y.l);
+        return overlap >= 0.5 * Math.min(x.r - x.l, y.r - y.l) && y.t >= x.b - 1 && y.t - x.b <= em;
+      }),
+    );
+  const out = us.map((u) => u.text);
+  for (const a of us)
+    for (const b of us)
+      if (next(a, b)) {
+        out.push(a.text + b.text);
+        for (const c of us) if (c !== a && next(b, c)) out.push(a.text + b.text + c.text);
+      }
+  return out;
+}
+
 async function main(): Promise<number> {
   const reviewDir = arg("--check-review");
   if (reviewDir) {
@@ -256,43 +291,41 @@ async function main(): Promise<number> {
         if (el.localName === "bdo" || el.hasAttribute("dir")) bad.push("dir / bdo on <" + el.localName + ">");
       }
       if (out.some((x) => /[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/.test(x))) bad.push("bidi control character in the page");
-      // the words a reader sees together, for the invented-fact check: visible text only (no CSS inside an SVG
-      // <style>, no hidden text), (1) each innermost block's text joined, (2) neighbouring texts in document order,
-      // both ways round (flex, grid, floats or a reversed row can put two neighbours side by side)
+      // the words a reader sees together, for the invented-fact check. Units are what the record holds: one text node,
+      // or an element's own text joined where it breaks a line with a direct <br> / <wbr>. Visible text only (no CSS
+      // inside an SVG <style>, no hidden text; inside an SVG only <text>). Each unit carries where it is drawn, so
+      // that only units drawn next to each other are joined (by the layout, whatever the document order).
       const hidden = (el) => { for (let e = el; e && e.nodeType === 1; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === "none" || cs.visibility === "hidden") return true; } return false; };
-      const runs = [];
+      const units = [];
+      const seen = new Set();
       const tw = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
       for (let t = tw.nextNode(); t; t = tw.nextNode()) {
         const p = t.parentElement;
-        if (!p || !(t.textContent || "").trim()) continue;
+        if (!p || !(t.textContent || "").trim() || seen.has(t)) continue;
         if (p.closest("style, script, template")) continue;
-        // inside an SVG only <text> (and its tspans) draws words
         if (p.closest("svg") && !p.closest("text")) continue;
         if (hidden(p)) continue;
-        runs.push({ node: t, text: (t.textContent || "").trim() });
-      }
-      const inline = (el) => { const d = getComputedStyle(el).display; return d === "inline" || d === "contents" || d === "none"; };
-      const blocks = [];
-      for (const el of document.body ? document.body.querySelectorAll("*") : []) {
-        if (el.closest("svg") || ["style", "script", "template"].includes(el.localName) || inline(el)) continue;
-        if ([...el.querySelectorAll("*")].some((d) => !d.closest("svg") && !["style", "script", "br", "wbr"].includes(d.localName) && !inline(d))) continue;
-        const t = runs.filter((r) => el.contains(r.node)).map((r) => r.text).join("");
-        if (t) blocks.push(t);
-      }
-      for (let i = 0; i + 1 < runs.length; i++) {
-        blocks.push(runs[i].text + runs[i + 1].text, runs[i + 1].text + runs[i].text);
-        if (i + 2 < runs.length) blocks.push(runs[i].text + runs[i + 1].text + runs[i + 2].text);
+        const nodes = [...p.children].some((c) => c.localName === "br" || c.localName === "wbr") ? [...p.childNodes].filter((c) => c.nodeType === 3) : [t];
+        for (const n of nodes) seen.add(n);
+        const rects = [];
+        for (const n of nodes) {
+          const range = document.createRange();
+          range.selectNodeContents(n);
+          for (const r of range.getClientRects()) if (r.width > 0 && r.height > 0) rects.push({ l: r.left, t: r.top + scrollY, r: r.right, b: r.bottom + scrollY });
+        }
+        const cs = getComputedStyle(p);
+        units.push({ text: nodes.map((n) => n.textContent || "").join("").trim(), rects, em: parseFloat(cs.fontSize) || 16, vertical: cs.writingMode.startsWith("vertical") });
       }
       // a soft hyphen is invisible in the text but can show any hyphenation character
       if (out.some((x) => x.includes("\\u00ad"))) bad.push("soft hyphen (U+00AD) in the page");
-      return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad, blocks };
+      return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad, units };
     }`;
-    const { texts, sections, bad, blocks } = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[]; blocks: string[] };
+    const { texts, sections, bad, units } = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[]; units: TextUnit[] };
     await ctx.close();
     // CSS may not write words: content, quotes, list markers, counters and @counter-style are refused, as parsed
     for (const b of bad) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: b.slice(0, 60) });
     const parsed = CopyRecord.safeParse(copyRaw);
-    if (parsed.success) for (const b of joinedTextsLookingLikeFact(blocks, parsed.data)) findings.push({ code: "COMP_JOINED_TEXT_LOOKS_LIKE_FACT", detail: b.slice(0, 60) });
+    if (parsed.success) for (const b of joinedTextsLookingLikeFact(adjacentTexts(units, parsed.data), parsed.data)) findings.push({ code: "COMP_JOINED_TEXT_LOOKS_LIKE_FACT", detail: b.slice(0, 60) });
     if (parsed.success)
       for (const t of textsNotInRecord(texts, parsed.data))
         findings.push({
