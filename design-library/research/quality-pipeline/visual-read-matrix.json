@@ -1,6 +1,6 @@
 {
   "schema": "visual_read_matrix_v1",
-  "note": "Only Claude's own passing viewing record of an adopted picture (registered preview or original) makes a view VISUAL_VERIFIED; the kind read is listed. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. A case with no recorded view is keyed 'unknown'; adopted pictures of view 'other' are listed as available but have no mode. Reads of originals in the git-ignored .intake/ folder must pass every check but the missing file; since CI cannot tie them to bytes, they are listed as original_reads_pending_owner and never make a view VISUAL_VERIFIED until the owner confirms them.",
+  "note": "Only Claude's own passing viewing record of an adopted picture in the repository (a registered preview) makes a view VISUAL_VERIFIED; the kind read is listed. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. A case with no recorded view is keyed 'unknown'; adopted pictures of view 'other' are listed as available but have no mode. Reads of originals in the git-ignored .intake/ folder must pass every check but the missing file; since CI cannot tie them to bytes, they are listed as original_reads_pending_owner and never make a view VISUAL_VERIFIED until the owner confirms them.",
   "counts": {
     "VISUAL_VERIFIED": 4,
     "TEXT_ONLY_PROVISIONAL": 41,
