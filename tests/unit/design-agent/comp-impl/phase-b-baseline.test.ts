@@ -31,6 +31,17 @@ const PHASE_B_PROBES: Array<{ capability: string; css: string; today: string[] }
   { capability: "display_nowrap", css: css("letter-spacing: -0.02em;"), today: ["CSS_VALUE"] },
 ];
 
+/** CSS that would fetch from outside the page: refused today, and phase B must keep it refused (design §2.4, §5). */
+const FETCH_PROBES: Array<{ css: string; today: string[] }> = [
+  { css: css("background: url(a.png);"), today: ["CSS_SYNTAX_URL"] },
+  { css: `@import "x.css";`, today: ["CSS_AT_RULE"] },
+  { css: `@font-face { font-family: "P"; src: url(f.woff2); }`, today: ["CSS_SYNTAX_URL"] },
+  // a string, not url(): only the value grammar stops these, not the tokenizer's url check
+  { css: css(`background: image-set("a.png" 1x);`), today: ["CSS_VALUE"] },
+  { css: css(`background-image: image-set("a.png" 1x);`), today: ["CSS_PROPERTY"] },
+  { css: css(`background: -webkit-image-set("a.png" 1x);`), today: ["CSS_VALUE"] },
+];
+
 /** Declarations the strict lane allows today; they must stay allowed. */
 const ALLOWED_TODAY = [
   css("color: #123456;"),
@@ -45,7 +56,10 @@ const ALLOWED_TODAY = [
 ];
 
 // `type_scale` is not searched: it is already a spec field name (the capability is named display_scale, design §2.2).
-const PHASE_B_NAMES = ["web_font", "colour_syntax", "gradient_ground", "translucent_decoration", "image_filters", "ornament", "display_nowrap", "display_scale"];
+const PHASE_B_SNAKE = ["web_font", "colour_syntax", "gradient_ground", "translucent_decoration", "image_filters", "ornament", "display_nowrap", "display_scale"];
+const camel = (n: string) => n.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+// both the capability names and the PageCssOptions keys they would become (design §3.3); `ornament` is one word in both
+const PHASE_B_NAMES = [...new Set([...PHASE_B_SNAKE, ...PHASE_B_SNAKE.map(camel)])];
 
 function filesUnder(path: string): string[] {
   if (statSync(path).isFile()) return [path];
@@ -56,6 +70,20 @@ describe("DEV-161: phase B compatibility baseline (today's behaviour, flag off)"
   it.each(PHASE_B_PROBES)("refuses $capability probe $css today", ({ css: probe, today }) => {
     expect(cssProblems(probe)).toEqual(today);
     expect(cssProblems(probe, { verticalName: true })).toEqual(today);
+  });
+
+  it.each(FETCH_PROBES)("refuses outside fetch $css today", ({ css: probe, today }) => {
+    expect(cssProblems(probe)).toEqual(today);
+    expect(cssProblems(probe, { verticalName: true })).toEqual(today);
+  });
+
+  it("records today's gap: root font-size times rem passes the static check (design §2.2)", () => {
+    // 256px × 16rem = 4096px text; phase B's computed-px cap must close this, and that PR changes this expectation
+    expect(cssProblems(`html { font-size: 256px; } .x { font-size: 16rem; }`)).toEqual([]);
+  });
+
+  it("searches camelCase option keys as well as capability names", () => {
+    expect(PHASE_B_NAMES).toEqual(expect.arrayContaining(["webFont", "displayScale", "displayNowrap", "imageFilters"]));
   });
 
   it.each(ALLOWED_TODAY)("still allows %s", (decl) => {
