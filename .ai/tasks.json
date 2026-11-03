@@ -7097,7 +7097,7 @@
     {
       "id": "DEV-155",
       "title": "成功例の画像参照レーン: 読み取り専用の取り込み・SHA の照合・画素の特徴・座標つきの観察 (Issue #193 納品物 2)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-154"
@@ -7135,6 +7135,47 @@
         "原本の公開"
       ],
       "note": "CP-009・016 の原本はオーナーからの受け取り待ち (Issue #193)。"
+    },
+    {
+      "id": "DEV-156",
+      "title": "成功例20件の設計原理・制作工程・失敗パターン・制作前チェックリスト (Issue #193)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-156-success-principles",
+      "purpose": "ChatGPT が画像を表示して見た成功例20件の視覚研究の要約 (Issue #193 のオーナーの記録) と研究記録の文章 (TEXT_ONLY_PROVISIONAL) から、店固有のモチーフを構造へ翻訳する設計原理を取り出し、Second Root の制作工程・失敗の符号・制作前のチェックリスト・次の試作の改善タスクにする。",
+      "acceptance_criteria": [
+        "docs/design/success-principles-v1.md (20件の分析・原理 P1〜P8・失敗パターン)",
+        "docs/design/quality-first-process.md (9段の工程・チェック C1〜C7・改善タスク T1〜T7)",
+        "design-library/research/quality-pipeline/principles-v1.json とテスト (証拠の区分を誇張しない)",
+        "画像を見ていない10件を原理の根拠に使わない",
+        "「成功例レベル」とは言わない",
+        "TEXT_ONLY_PROVISIONAL と明記し、VISUAL_VERIFIED (Claude 自身の閲覧) を主張しない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/research/success-principles.test.ts"
+      ],
+      "allowed_scope": [
+        "docs/design/success-principles-v1.md",
+        "docs/design/quality-first-process.md",
+        "design-library/research/quality-pipeline/principles-v1.json",
+        "tests/unit/design-agent/research/success-principles.test.ts",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の呼び出し",
+        "main・Production・Staging・DB",
+        "CSS 許可一覧・Identity Lock・安全ゲートの緩和",
+        "成功例の原本画像の commit (リポジトリは public)"
+      ],
+      "human_approval_triggers": [
+        "文の規則 (キャッチコピー) の変更",
+        "許可一覧の緩和",
+        "実画像の生成"
+      ],
+      "note": "Issue #193 のオーナーの事前承認 (2026-11-03、20件の視覚研究を先行入力に)。"
     }
   ]
 }
