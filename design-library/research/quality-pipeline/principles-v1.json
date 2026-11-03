@@ -1,6 +1,8 @@
 {
   "schema": "success_principles_v1",
   "as_of": "2026-11-03",
+  "visual_mode": "TEXT_ONLY_PROVISIONAL",
+  "visual_mode_note": "Issue #193 comments 6584276254 / 6591440695: these principles rest on ChatGPT's viewing summary and the case notes (text). They may guide research and offline tooling, but must not be shown as 'Claude designed from the pictures' or as a finished visual reference base. VISUAL_VERIFIED needs Claude's own viewing record (DEV-158).",
   "inputs": {
     "visual_review": "Issue #193 comment 6584049255 (ChatGPT, images displayed; not a byte/SHA check)",
     "owner_terminal_sha": "Issue #193 comment 6583734323 (CP-009, CP-016)",

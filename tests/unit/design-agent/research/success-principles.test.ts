@@ -155,4 +155,10 @@ describe("success principles v1 (DEV-156, Issue #193)", () => {
       expect(text).not.toMatch(/成功例レベルに達した(?!とは言わない)|成功例レベルを達成/);
     }
   });
+  it("is labelled TEXT_ONLY_PROVISIONAL (Claude's own viewing is not recorded here), in the data and both documents", () => {
+    expect((doc as unknown as { visual_mode: string }).visual_mode).toBe("TEXT_ONLY_PROVISIONAL");
+    expect(principlesDoc).toContain("`TEXT_ONLY_PROVISIONAL`");
+    expect(processDoc).toContain("`TEXT_ONLY_PROVISIONAL`");
+    expect(JSON.stringify(doc)).not.toContain("VISUAL_VERIFIED\"");
+  });
 });
