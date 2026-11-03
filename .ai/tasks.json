@@ -7264,6 +7264,49 @@
         "実画像の生成"
       ],
       "note": "DEV-156 の上に積む (principles-v1.json を読む)。DEV-156 の merge のあとに merge する。 DEV-156 は review 中のため depends_on に入れない (依存の規則)。"
+    },
+    {
+      "id": "DEV-159",
+      "title": "カンプの道: 文の記録 (claim_type)・B方式の描画と検査・Claude 自身の見比べの記録 (Issue #193)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-157"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-159-comp-lane",
+      "purpose": "Issue #193 コメント 6591440695: 画像の参照から PC/SP の完成カンプを作り、Claude が描いた画像を自分で見て、参照の原理とつないで直す工程を作る。架空の店の創作の文を、事実と分けて記録する (T5 の条件つき承認)。",
+      "acceptance_criteria": [
+        "lib/design-agent/quality-pipeline/copy-record.ts (claim_type・source_fact_ids・owner_review_needed、事実を作る文を止める)",
+        "lib/design-agent/quality-pipeline/comp-review.ts (Claude の見比べの記録、参照は VISUAL_VERIFIED の読みの learn だけ)",
+        "scripts/design-artifact/comp-lane.ts (文・安全・記録外の文・PC/SP 描画、--check-review)",
+        "つぐ手 d1 のカンプと見比べの記録 (最大2巡、判定は成功を書けない)",
+        "成功例レベルとは言わない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline/comp-lane.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/quality-pipeline/",
+        "scripts/design-artifact/comp-lane.ts",
+        "design-library/research/quality-pipeline/poc/",
+        "docs/design/comp-lane.md",
+        "tests/unit/design-agent/quality-pipeline/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の呼び出し",
+        "main・Production・Staging・DB",
+        "CSS 許可一覧・Identity Lock・安全ゲートの緩和",
+        "成功例の原本画像の commit",
+        "実店舗の文の自動公開"
+      ],
+      "human_approval_triggers": [
+        "実画像の生成",
+        "実店舗の文の公開"
+      ],
+      "note": "DEV-157・DEV-158 の上に積む。両方の merge のあとに merge する。"
     }
   ]
 }
