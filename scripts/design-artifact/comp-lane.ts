@@ -197,8 +197,8 @@ async function main(): Promise<number> {
           if (n.localName === "input" && ["submit", "reset", "button", "file", "image", "date", "datetime-local", "time", "month", "week"].includes((n.getAttribute("type") || "").toLowerCase())) bad.push("input type=" + n.getAttribute("type"));
           if (n.localName === "details" && !n.querySelector(":scope > summary")) bad.push("details without summary");
           if (n.style && n.style.length) css.push(["inline", n.style]);
-          // a line broken with <br> is one line of the record: read the element's own text joined
-          if ([...n.children].some((c) => c.localName === "br")) {
+          // a line broken with a direct <br> or <wbr> is one line of the record: read the element's own text joined
+          if ([...n.children].some((c) => c.localName === "br" || c.localName === "wbr")) {
             const own = [...n.childNodes].filter((c) => c.nodeType === 3);
             out.push(own.map((c) => c.textContent || "").join(""));
             for (const c of own) c.__joined = true;
@@ -232,7 +232,8 @@ async function main(): Promise<number> {
       for (const el of document.querySelectorAll("*")) {
         const cs = getComputedStyle(el);
         // a <style> (or <script>) made visible by CSS shows its source as text
-        if ((el.localName === "style" || el.localName === "script") && cs.display !== "none") bad.push("visible <" + el.localName + ">");
+        // (HTML elements only: an SVG <style> never draws its text, and HTML inside SVG is refused by checkPrototype)
+        if ((el.localName === "style" || el.localName === "script") && el.namespaceURI === "http://www.w3.org/1999/xhtml" && cs.display !== "none") bad.push("visible <" + el.localName + ">");
         for (const p of ["list-style-type", "text-emphasis-style", "-webkit-text-emphasis-style"]) { const v = cs.getPropertyValue(p); if (v && textual(v)) bad.push("computed " + p + ": " + v); }
         for (const pseudo of ["::before", "::after", "::marker"]) {
           // an empty string is a decorative pseudo element (a line, a rule): allowed, as in the written check

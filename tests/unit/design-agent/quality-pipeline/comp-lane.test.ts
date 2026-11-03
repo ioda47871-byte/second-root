@@ -296,7 +296,12 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     expect(broken.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
     // an SVG <style> is a style sheet, not page text (no false COMP_TEXT_NOT_IN_COPY)
     const svgStyle = run((h) => h.replace("</main>", "<svg><style>.q { fill: #000; }</style></svg></main>"));
-    expect(svgStyle.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
+    // (the probe's copied review.json is of the unmodified comp, so only its REVIEW_ finding may appear)
+    const notReview = (fs: Array<{ code: string }>) => fs.filter((f) => !f.code.startsWith("REVIEW_"));
+    expect(notReview(svgStyle.out.findings)).toEqual([]);
+    // <wbr> joins like <br> (round 8 L1)
+    const wbr = run((h) => h.replace('<p class="lead">捨てるはずだった器に、もう一度、使う理由を。</p>', '<p class="lead">捨てるはずだった器に、<wbr>もう一度、使う理由を。</p>'));
+    expect(notReview(wbr.out.findings)).toEqual([]);
     // renders inside the repository are refused, however the path is spelled (L4, round 2 L1)
     for (const out of [join(REPO, "tmp-renders"), join(REPO, "..renders"), "tmp-renders"]) {
       let code = 0;
