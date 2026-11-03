@@ -38,6 +38,7 @@ import { checkCompReview } from "../../lib/design-agent/quality-pipeline/comp-re
 import {
   checkCopyRecord,
   CopyRecord,
+  joinedTextsLookingLikeFact,
   textsNotInRecord,
 } from "../../lib/design-agent/quality-pipeline/copy-record";
 import { checkAllReads } from "./visual-read";
@@ -94,6 +95,8 @@ export function checkReviewFile(
       renders,
       verifiedReads,
       failureCodes: principles.failure_codes.map((f) => f.code),
+      shopId: String((JSON.parse(readFileSync(join(dir, "copy.json"), "utf8")) as { shop_id?: unknown }).shop_id ?? ""),
+      directionId: basename(resolve(dir)),
       comp: {
         html_sha256: sha(readFileSync(join(dir, "index.html"))),
         css_sha256: sha(readFileSync(join(dir, "style.css"))),
@@ -241,15 +244,37 @@ async function main(): Promise<number> {
           if (v && v !== "none" && v !== "normal" && textual(v)) bad.push("computed " + pseudo + " content: " + v);
         }
       }
+      // bidi reordering can show words the record does not hold (a creative line reversed): refused in CSS, attributes and text
+      for (const [, st] of css) {
+        const ub = st.getPropertyValue("unicode-bidi").trim();
+        if (/override/i.test(ub)) bad.push("unicode-bidi: " + ub);
+        if (st.getPropertyValue("direction").trim().toLowerCase() === "rtl") bad.push("direction: rtl");
+      }
+      for (const el of document.querySelectorAll("*")) {
+        const cs = getComputedStyle(el);
+        if (/override/i.test(cs.unicodeBidi) || cs.direction === "rtl") bad.push("computed bidi on <" + el.localName + ">");
+        if (el.localName === "bdo" || el.hasAttribute("dir")) bad.push("dir / bdo on <" + el.localName + ">");
+      }
+      if (out.some((x) => /[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/.test(x))) bad.push("bidi control character in the page");
+      // the words a reader sees together: the text of each innermost block (spans joined), for the invented-fact check
+      const blocks = [];
+      const inline = (el) => { const d = getComputedStyle(el).display; return d === "inline" || d === "contents" || d === "none"; };
+      for (const el of document.body ? document.body.querySelectorAll("*") : []) {
+        if (["style", "script", "svg"].includes(el.localName) || el.closest("svg") || inline(el)) continue;
+        if ([...el.querySelectorAll("*")].some((d) => !d.closest("svg") && !["style", "script", "br", "wbr"].includes(d.localName) && !inline(d))) continue;
+        const t = (el.textContent || "").trim();
+        if (t) blocks.push(t);
+      }
       // a soft hyphen is invisible in the text but can show any hyphenation character
       if (out.some((x) => x.includes("\\u00ad"))) bad.push("soft hyphen (U+00AD) in the page");
-      return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad };
+      return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad, blocks };
     }`;
-    const { texts, sections, bad } = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[] };
+    const { texts, sections, bad, blocks } = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[]; blocks: string[] };
     await ctx.close();
     // CSS may not write words: content, quotes, list markers, counters and @counter-style are refused, as parsed
     for (const b of bad) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: b.slice(0, 60) });
     const parsed = CopyRecord.safeParse(copyRaw);
+    if (parsed.success) for (const b of joinedTextsLookingLikeFact(blocks, parsed.data)) findings.push({ code: "COMP_JOINED_TEXT_LOOKS_LIKE_FACT", detail: b.slice(0, 60) });
     if (parsed.success)
       for (const t of textsNotInRecord(texts, parsed.data))
         findings.push({

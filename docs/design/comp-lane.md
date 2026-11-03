@@ -18,6 +18,9 @@
 
 - 次の印を含むと `CREATIVE_LOOKS_LIKE_FACT` で止める (オーナーの分類ごと): 数字、金額・メニュー・料金、営業時間・日付、歴史・代々・創業、職人・店主などの人、原材料・素材、受賞・表彰・認定、唯一・最高・人気・評判、お客様の声・レビュー、効果・安全・安心、予約・在庫・限定。
 - これは仕掛け線で、事実の検査ではない。最後はオーナーが文を見る。
+- 隣り合う創作の文で語を作られないように、ページの一番内側の塊ごとに文をつなぎ、事実とラベルを除いてから同じ印を検める (`COMP_JOINED_TEXT_LOOKS_LIKE_FACT`)。
+- 文に bidi の制御文字があれば止める (`COPY_BIDI_CONTROL`)。CSS の `unicode-bidi: *override`・`direction: rtl`、`dir` 属性と `<bdo>` も止める。
+- `quality_research_fictional` は、shop_id が `fictional-` で始まり、店名の事実が「架空」で始まる店だけに使える (`COPY_LANE_NOT_FICTIONAL`)。
 
 ## 2. 描画と検査 (`scripts/design-artifact/comp-lane.ts`)
 
@@ -45,6 +48,7 @@ Claude は描いた PC と SP の全体を、自分で開いて見る。記録�
 
 - 見た範囲 (`viewed_crops`)。描いた画像の 98% 以上を覆う。
 - 場所つきの観察 (上・中・下に散らす)。
+- 記録の店と方向は、カンプの文の記録の shop_id とカンプのディレクトリ名に一致する (`REVIEW_OF_ANOTHER_SHOP`・`REVIEW_OF_ANOTHER_DIRECTION`)。
 - 参照: Claude 自身の `VISUAL_VERIFIED` の閲覧の記録 (DEV-158) の `learn` を**そのまま引き**、カンプのどこで使ったかを箱で示す。ChatGPT の要約や `TEXT_ONLY_PROVISIONAL` の原理は、ここでは引けない。
 - 自己批評の巡: `second-root-design-director` の規則どおり**最大2巡、1巡に1つの原因**。守る核を先に書く。その巡が自分で起こした退行は、同じ巡の中で直して書く。
 - 残る問題、失敗の符号 (`principles-v1.json`)。

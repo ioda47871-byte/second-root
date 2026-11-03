@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkCompReview, type ReviewInputs } from "../../../../lib/design-agent/quality-pipeline/comp-review";
-import { checkCopyRecord, CopyRecord, textsNotInRecord } from "../../../../lib/design-agent/quality-pipeline/copy-record";
+import { checkCopyRecord, CopyRecord, joinedTextsLookingLikeFact, textsNotInRecord } from "../../../../lib/design-agent/quality-pipeline/copy-record";
 import { checkReviewFile, insideRepo } from "../../../../scripts/design-artifact/comp-lane";
 
 // DEV-159 (Issue #193): the comp lane. Every word a comp shows has a claim type and a source; Claude's review of the
@@ -85,6 +85,21 @@ describe("copy record (DEV-159, Issue #193 T5)", () => {
     const shy = copy();
     shy.items.find((i: { id: string }) => i.id === "tagline").text = "割れたところに、金の\u00ad線を引く。";
     expect(copyCodes(shy)).toContain("COPY_SOFT_HYPHEN");
+    // bidi controls in the copy are refused (PR #199 review L1)
+    const rlo = copy();
+    rlo.items.find((i: { id: string }) => i.id === "tagline").text = "割れたところに、\u202e金の線を引く。";
+    expect(copyCodes(rlo)).toContain("COPY_BIDI_CONTROL");
+    // the fictional research lane needs a fictional shop: id fictional-* and a name fact starting with 架空 (review M2)
+    const realShop = { ...factsOpts, shopId: "real-kintsugi-shop", facts: factsOpts.facts.map((x) => (x.key === "name" ? { ...x, value: "金継ぎ工房 つぐ手" } : x)) };
+    const asReal = { ...copy(), shop_id: "real-kintsugi-shop" };
+    expect(checkCopyRecord(asReal, realShop).findings.map((x) => x.code)).toContain("COPY_LANE_NOT_FICTIONAL");
+    const unnamed = { ...factsOpts, facts: factsOpts.facts.map((x) => (x.key === "name" ? { ...x, value: "金継ぎ工房 つぐ手" } : x)) };
+    expect(checkCopyRecord(copy(), unnamed).findings.map((x) => x.code)).toContain("COPY_LANE_NOT_FICTIONAL");
+    expect(copyCodes(copy())).not.toContain("COPY_LANE_NOT_FICTIONAL");
+    // two creative items side by side can spell what neither does alone (review L1); facts and labels are taken out first
+    const rec = CopyRecord.parse(copy());
+    expect(joinedTextsLookingLikeFact(["限定", "創業の老舗"], rec)).toEqual(["限定", "創業の老舗"]);
+    expect(joinedTextsLookingLikeFact(["時間10:00〜16:00", "割れたところに、金の線を引く。"], rec)).toEqual([]);
     // a label is taken from the fact the text matches, not from any extra source id (round 3 L1)
     const laundered = copy();
     Object.assign(laundered.items.find((i: { id: string }) => i.id === "name-full"), { text: "架空市架空区架空町一丁目3-2", source_fact_ids: ["F4", "F1"], label: "店名" });
@@ -131,6 +146,8 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
       verifiedReads: Object.fromEntries(["CP-001/concept", "CP-002/concept", "CP-003/desktop", "CP-003/mobile"].map((k) => [`${R}${k}.read.json`, learn(`${R}${k}.read.json`)])),
       failureCodes: ["IMAGE_TYPE_RELATION_WEAK", "READABLE_BUT_FLAT"],
       comp: { html_sha256: sha("index.html"), css_sha256: sha("style.css"), copy_sha256: sha("copy.json") },
+      shopId: "fictional-kintsugi-tsugute",
+      directionId: "d1-seam-across",
     };
   })();
   const codes = (r: unknown, o: ReviewInputs = base) => checkCompReview(r, o).codes;
@@ -152,6 +169,9 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
 
   it("the review must be of this comp, cover the renders, and place its observations over them", () => {
     expect(codes(review(), { ...base, comp: { ...base.comp, css_sha256: "0".repeat(64) } })).toContain("REVIEW_OF_ANOTHER_COMP");
+    // a review written for another shop's or another direction's comp is refused, even if the hashes were copied (review L3)
+    expect(codes(review(), { ...base, shopId: "fictional-bicycle-repair-wa" })).toContain("REVIEW_OF_ANOTHER_SHOP");
+    expect(codes(review(), { ...base, directionId: "d2-other" })).toContain("REVIEW_OF_ANOTHER_DIRECTION");
     const r = review();
     r.viewed_crops.mobile = [{ x: 0, y: 0, w: 390, h: 1308 }];
     expect(codes(r)).toContain("CROPS_DO_NOT_COVER_MOBILE");
@@ -296,6 +316,23 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     const mathStyle = run((h) => h.replace("</main>", "<math><style>秘密の文</style></math></main>"), "math style { display: block !important; }");
     expect(mathStyle.code).toBe(1);
     expect(mathStyle.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|")).toContain("visible <style>");
+    // review L1: words spelt by adjacent creative spans, and bidi reordering in CSS or markup, are refused
+    const joinedDir = mkdtempSync(join(tmpdir(), "comp-probe-"));
+    cpSync(COMP, joinedDir, { recursive: true });
+    const jc = JSON.parse(readFileSync(join(joinedDir, "copy.json"), "utf8"));
+    for (const [id, text] of [["p1", "限"], ["p2", "定"], ["p3", "舗老の業創"]]) jc.items.push({ id, text, claim_type: "creative_expression", source_fact_ids: [], owner_review_needed: true });
+    writeFileSync(join(joinedDir, "copy.json"), JSON.stringify(jc));
+    writeFileSync(join(joinedDir, "index.html"), readFileSync(join(joinedDir, "index.html"), "utf8").replace("</main>", '<p><span>限</span><span>定</span></p><p><span class="rev">舗老の業創</span></p><p dir="rtl"><span>限</span></p></main>'));
+    writeFileSync(join(joinedDir, "style.css"), `${readFileSync(join(joinedDir, "style.css"), "utf8")}\n.rev { unicode-bidi: bidi-override; direction: rtl; }\n`);
+    let joined: { findings: Array<{ code: string; detail?: string }> } | null = null;
+    try {
+      execFileSync("npx", ["tsx", cli, "--dir", joinedDir, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" });
+    } catch (e) {
+      joined = JSON.parse((e as { stdout: string }).stdout);
+    }
+    expect(joined?.findings.map((f) => f.code)).toEqual(expect.arrayContaining(["COMP_JOINED_TEXT_LOOKS_LIKE_FACT", "COMP_CSS_CONTENT_TEXT"]));
+    const jd = joined!.findings.map((f) => f.detail ?? "").join("|");
+    for (const needle of ["限定", "unicode-bidi", "direction: rtl", "dir / bdo"]) expect(jd, needle).toContain(needle);
     const broken = run((h) => h.replace('<p class="lead">捨てるはずだった器に、もう一度、使う理由を。</p>', '<p class="lead">捨てるはずだった器に、<br>もう一度、使う理由を。</p>'));
     expect(broken.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
     // an SVG <style> is a style sheet, not page text (no false COMP_TEXT_NOT_IN_COPY)

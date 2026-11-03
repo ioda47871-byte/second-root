@@ -161,6 +161,30 @@ describe("DEV-159: the comp lane takes only these names from phase2f (Issue #193
     ]);
     expect(source).not.toMatch(/phase2f\/(runner|prompt)|codex|child_process|\bfetch\(/i);
   });
+  it("the whole comp lane: exactly these modules, and no dynamic import, require, network, process, worker or model SDK", () => {
+    const files: Record<string, string[]> = {
+      [COMP_LANE]: [
+        "../../lib/design-agent/phase2f/prototype-safety",
+        "../../lib/design-agent/phase2f/render-prototype",
+        "../../lib/design-agent/quality-pipeline/comp-review",
+        "../../lib/design-agent/quality-pipeline/copy-record",
+        "../../lib/design-agent/quality-pipeline/facts-pack",
+        "./visual-read",
+        "node:crypto",
+        "node:fs",
+        "node:path",
+        "playwright",
+      ],
+      "lib/design-agent/quality-pipeline/comp-review.ts": ["../reference-originals/visual-read", "zod"],
+      "lib/design-agent/quality-pipeline/copy-record.ts": ["zod"],
+    };
+    for (const [file, allowed] of Object.entries(files)) {
+      const source = readFileSync(resolve(REPO, file), "utf8");
+      expect(specifiers(source).sort(), file).toEqual(allowed);
+      // the CLI's own entry check (require.main === module) is the only `require` allowed
+      expect(source.replace(/require\.main === module/g, ""), file).not.toMatch(/\brequire\b|import\s*\(|node:(https?|net|tls|dgram|child_process|worker_threads|vm)|\/worker\/|anthropic|openai|\bspawn\(|execFile|execSync|process\.binding|\bfetch\(|codex/i);
+    }
+  });
 });
 
 describe("offline CLI", () => {

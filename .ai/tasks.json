@@ -7180,7 +7180,7 @@
     {
       "id": "DEV-158",
       "title": "Claude 自身の閲覧の記録と視覚参照の門 (VISUAL_VERIFIED / TEXT_ONLY_PROVISIONAL / MISSING_OR_HOLD) (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-155"
@@ -7309,7 +7309,7 @@
         "実画像の生成",
         "実店舗の文の公開"
       ],
-      "note": "DEV-157・DEV-158 の上に積む。両方の merge のあとに merge する。 DEV-157 は review 中のため、依存の規則で depends_on は空にした。"
+      "note": "DEV-157 (#197) と DEV-158 (#198) の merge 後に develop へ載せた。隔離の例外は Issue #193 コメント 6595445598 のオーナー承認 (正確なパスと名前だけ)。"
     }
   ]
 }
