@@ -6,66 +6,75 @@
  *   npx tsx scripts/design-artifact/visual-read.ts --check    write nothing; exit 1 if a record fails or the matrix is stale
  *
  * A record names a repository file (a registered preview) or `intake:<path>` under the git-ignored .intake/ folder.
- * An intake file that is not present here counts as not available, so its record does not pass in CI: originals stay
- * out of the public repository, and their reads are verified only where the file is.
+ * An intake file that is not present here cannot be verified here: its record is reported as UNVERIFIABLE_HERE, does
+ * not fail --check, and does not make the view VISUAL_VERIFIED in this run. Originals stay out of the public
+ * repository; their reads are verified only where the file is.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { checkVisualRead, imageSize, visualMode, type AssetNow, type ReadCheck, type VisualMode } from "../../lib/design-agent/reference-originals/visual-read";
+import { checkVisualRead, imageSize, visualMode, type AssetNow, type InventoryPicture, type ReadCheck, type VisualMode } from "../../lib/design-agent/reference-originals/visual-read";
 
 const REPO = resolve(__dirname, "../..");
 const READS = "design-library/research/quality-pipeline/visual-reads";
 const INTAKE = "design-library/research/quality-pipeline/.intake";
 const OUT = "design-library/research/quality-pipeline/visual-read-matrix.json";
 
-type Inventory = { cases: Array<{ id: string; form: string; has_desktop: boolean; has_mobile: boolean; originals: Array<{ view: string; in_repo_path: string | null }> }> };
+type Inventory = { cases: Array<{ id: string; form: string; originals: InventoryPicture[] }> };
+const readInventory = () => JSON.parse(readFileSync(join(REPO, "design-library/research/quality-pipeline/originals-inventory.json"), "utf8")) as Inventory;
+/** Only the adopted pictures count: comparisons, superseded and rejected versions never do. */
+const ADOPTED = new Set(["original", "registered_preview"]);
 type Principles = { cases: Array<{ id: string; evidence: string[] }> };
 
 export function assetNow(path: string): AssetNow {
   const file = path.startsWith("intake:") ? join(REPO, INTAKE, path.slice("intake:".length)) : join(REPO, path);
-  if (path.includes("..") || !existsSync(file)) return null;
+  if (path.includes("..") || !existsSync(file) || !statSync(file).isFile()) return null;
   const b = readFileSync(file);
   const size = imageSize(b);
   return size ? { sha256: createHash("sha256").update(b).digest("hex"), ...size } : null;
 }
 
-export type ReadResult = { file: string; case_id: string; view: string; check: ReadCheck };
+export type ReadResult = { file: string; case_id: string; view: string; kind: string; sha256: string; verifiableHere: boolean; check: ReadCheck };
 
 export function checkAllReads(): ReadResult[] {
-  const manifest = JSON.parse(readFileSync(join(REPO, "design-library/success-cases/manifest.json"), "utf8")) as { records: Array<Record<string, unknown> & { id: string }> };
+  const inv = readInventory();
   const out: ReadResult[] = [];
   const dir = join(REPO, READS);
   if (!existsSync(dir)) return out;
   for (const c of readdirSync(dir).sort())
     for (const f of readdirSync(join(dir, c)).filter((x) => x.endsWith(".read.json")).sort()) {
-      const raw = JSON.parse(readFileSync(join(dir, c, f), "utf8")) as { case_id?: string; view?: string; asset?: { path?: string } };
-      const rec = manifest.records.find((r) => r.id === raw.case_id);
-      const shas = rec ? Object.values(rec).filter((v): v is string => typeof v === "string" && /^[0-9a-f]{64}$/.test(v)) : [];
-      const now = typeof raw.asset?.path === "string" ? assetNow(raw.asset.path) : null;
-      const check = c !== raw.case_id ? { ok: false as const, codes: ["READ_FOLDER_MISMATCH"] } : checkVisualRead(raw, now, { manifestSha256s: shas });
-      out.push({ file: `${READS}/${c}/${f}`, case_id: String(raw.case_id), view: String(raw.view), check });
+      const raw = JSON.parse(readFileSync(join(dir, c, f), "utf8")) as { case_id?: string; view?: string; asset?: { path?: string; kind?: string; sha256?: string } };
+      const pictures = (inv.cases.find((x) => x.id === raw.case_id)?.originals ?? []).filter((p) => ADOPTED.has(p.kind));
+      const path = typeof raw.asset?.path === "string" ? raw.asset.path : "";
+      const now = path ? assetNow(path) : null;
+      const verifiableHere = !(path.startsWith("intake:") && now === null);
+      const placed = c === raw.case_id && f === `${String(raw.view)}.read.json`;
+      const check: ReadCheck = !placed ? { ok: false, codes: ["READ_FILE_PLACEMENT"] } : checkVisualRead(raw, now, { pictures });
+      out.push({ file: `${READS}/${c}/${f}`, case_id: String(raw.case_id), view: String(raw.view), kind: String(raw.asset?.kind), sha256: String(raw.asset?.sha256), verifiableHere, check });
     }
   return out;
 }
 
 export function matrixText(reads: ReadResult[]): string {
-  const inv = JSON.parse(readFileSync(join(REPO, "design-library/research/quality-pipeline/originals-inventory.json"), "utf8")) as Inventory;
+  const inv = readInventory();
   const pr = JSON.parse(readFileSync(join(REPO, "design-library/research/quality-pipeline/principles-v1.json"), "utf8")) as Principles;
+  const notes = readdirSync(join(REPO, "design-library/success-cases"));
   const cases = inv.cases.map((c) => {
-    const views = c.form === "static_concept_image" ? ["concept"] : [...(c.has_desktop ? ["desktop"] : []), ...(c.has_mobile ? ["mobile"] : [])];
-    const repoFiles = c.originals.filter((o) => o.in_repo_path);
+    const adopted = c.originals.filter((p) => ADOPTED.has(p.kind) && ["concept", "desktop", "mobile"].includes(p.view));
+    const views = [...new Set(adopted.map((p) => p.view))].sort();
     const text = {
       chatgpt_viewed: pr.cases.some((p) => p.id === c.id && p.evidence.includes("chatgpt_viewed")),
-      case_note: readdirSync(join(REPO, "design-library/success-cases")).some((f) => f.startsWith(`${c.id}-`) && f.endsWith(".md")),
+      case_note: notes.some((f) => f.startsWith(`${c.id}-`) && f.endsWith(".md")),
     };
+    const passed = reads.filter((r) => r.case_id === c.id && r.check.ok);
     const modes: Record<string, VisualMode> = {};
-    for (const v of views.length ? views : ["concept"]) modes[v] = visualMode(reads.filter((r) => r.case_id === c.id && r.view === v && r.check.ok).length, text);
+    for (const v of views.length ? views : ["unknown"]) modes[v] = visualMode(passed.filter((r) => r.view === v).length, text);
     return {
       id: c.id,
       form: c.form,
-      available_for_Claude_visual_read: repoFiles.map((o) => `${o.view}:${o.in_repo_path}`),
-      read_by_Claude: reads.filter((r) => r.case_id === c.id && r.check.ok).map((r) => r.view),
+      available_for_Claude_visual_read: adopted.filter((p) => p.in_repo_path).map((p) => ({ view: p.view, kind: p.kind, path: p.in_repo_path, sha256: p.sha256 })),
+      read_by_Claude: passed.map((r) => ({ view: r.view, kind: r.kind, sha256: r.sha256 })),
+      unverifiable_here: reads.filter((r) => r.case_id === c.id && !r.verifiableHere).map((r) => r.view),
       text,
       modes,
     };
@@ -74,7 +83,7 @@ export function matrixText(reads: ReadResult[]): string {
   return `${JSON.stringify(
     {
       schema: "visual_read_matrix_v1",
-      note: "Only Claude's own passing viewing record makes a view VISUAL_VERIFIED. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. Originals kept in the git-ignored .intake/ folder are not available in CI, so their reads verify only where the file is.",
+      note: "Only Claude's own passing viewing record of an adopted picture (registered preview or original) makes a view VISUAL_VERIFIED; the kind read is listed. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. A case with no recorded view is keyed 'unknown'. Reads of originals in the git-ignored .intake/ folder are UNVERIFIABLE_HERE where the file is absent (as in CI) and do not count there.",
       counts: { VISUAL_VERIFIED: count("VISUAL_VERIFIED"), TEXT_ONLY_PROVISIONAL: count("TEXT_ONLY_PROVISIONAL"), MISSING_OR_HOLD: count("MISSING_OR_HOLD") },
       cases,
     },
@@ -83,9 +92,12 @@ export function matrixText(reads: ReadResult[]): string {
   )}\n`;
 }
 
+/** --check fails on a read that can be verified here and does not pass; a read of an original absent here is only reported. */
+export const checkFails = (reads: readonly ReadResult[]) => reads.some((r) => r.verifiableHere && !r.check.ok);
+
 if (require.main === module) {
   const reads = checkAllReads();
-  for (const r of reads) process.stdout.write(`${r.check.ok ? "READ_OK" : `READ_FAIL ${r.check.codes.join(",")}`} ${r.file}\n`);
+  for (const r of reads) process.stdout.write(`${r.check.ok ? "READ_OK" : r.verifiableHere ? `READ_FAIL ${r.check.codes.join(",")}` : "UNVERIFIABLE_HERE"} ${r.file}\n`);
   const text = matrixText(reads);
   if (process.argv.includes("--check")) {
     let committed = "";
@@ -96,7 +108,8 @@ if (require.main === module) {
     }
     const stale = committed !== text;
     if (stale) process.stdout.write(`MATRIX_STALE: run npx tsx scripts/design-artifact/visual-read.ts\n`);
-    process.exit(reads.some((r) => !r.check.ok) || stale ? 1 : 0);
+    // a read of an original absent here is reported, not failed; every other read must pass
+    process.exit(checkFails(reads) || stale ? 1 : 0);
   }
   writeFileSync(join(REPO, OUT), text);
   process.stdout.write(`${OUT}\n`);

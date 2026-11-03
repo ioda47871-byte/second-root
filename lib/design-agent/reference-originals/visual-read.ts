@@ -28,12 +28,12 @@ export const ClaudeVisualRead = z.strictObject({
   view: z.enum(["desktop", "mobile", "concept"]),
   asset: z.strictObject({
     /** A path in the repository (a registered preview), or a private reference to a git-ignored intake file. */
-    path: z.string().regex(/^(design-library\/success-cases\/assets\/[A-Za-z0-9._-]+\.(webp|png|jpe?g)|intake:[A-Za-z0-9._\/-]+)$/),
+    path: z.string().regex(/^(design-library\/success-cases\/assets\/[A-Za-z0-9._-]+\.(webp|png)|intake:[A-Za-z0-9._\/-]+\.(webp|png))$/),
     kind: z.enum(["original", "registered_preview"]),
     sha256: z.string().regex(/^[0-9a-f]{64}$/),
     width: z.number().int().min(1).max(20000),
     height: z.number().int().min(1).max(40000),
-    /** Whether this SHA is one the success-case manifest records for this case (the caller checks it again). */
+    /** Whether this SHA is one the inventory records for this case, view and kind (the gate checks it again). */
     recorded_in_manifest: z.boolean(),
   }),
   reader: z.strictObject({
@@ -56,22 +56,28 @@ export type AssetNow = { sha256: string; width: number; height: number } | null;
 
 export type ReadCheck = { ok: true } | { ok: false; codes: string[] };
 
-/** Share of the picture's rows (and columns) covered by the crops. */
-function coverage(crops: ReadonlyArray<{ x: number; y: number; w: number; h: number }>, width: number, height: number): { rows: number; cols: number } {
-  const rows = new Uint8Array(height);
-  const cols = new Uint8Array(width);
-  for (const c of crops) {
-    for (let y = c.y; y < Math.min(c.y + c.h, height); y++) rows[y] = 1;
-    for (let x = c.x; x < Math.min(c.x + c.w, width); x++) cols[x] = 1;
-  }
-  const sum = (a: Uint8Array) => a.reduce((s, v) => s + v, 0);
-  return { rows: sum(rows) / height, cols: sum(cols) / width };
+/** Share of the picture's area covered by the crops (measured on a 4-pixel grid). */
+function coverage(crops: ReadonlyArray<{ x: number; y: number; w: number; h: number }>, width: number, height: number): number {
+  const G = 4;
+  const [gw, gh] = [Math.ceil(width / G), Math.ceil(height / G)];
+  const cells = new Uint8Array(gw * gh);
+  for (const c of crops)
+    for (let gy = Math.floor(c.y / G); gy < Math.min(Math.ceil((c.y + c.h) / G), gh); gy++)
+      for (let gx = Math.floor(c.x / G); gx < Math.min(Math.ceil((c.x + c.w) / G), gw); gx++) cells[gy * gw + gx] = 1;
+  return cells.reduce((s, v) => s + v, 0) / cells.length;
 }
 
 export const READ_THRESHOLDS = { coverage: 0.98, min_items: 8, min_bands: 3 } as const;
 
-/** A viewing record against the file it names, as found now. */
-export function checkVisualRead(raw: unknown, now: AssetNow, o: { manifestSha256s: readonly string[] }): ReadCheck {
+/** One picture the inventory records for a case (originals-inventory.json `originals[]`). */
+export type InventoryPicture = { sha256: string; kind: string; view: string; in_repo_path: string | null };
+
+/**
+ * A viewing record against the file it names (as found now) and the pictures the inventory records for its case.
+ * The record must match exactly one recorded picture of the same view and kind: a registered preview at its
+ * registered path, an original only through the private `intake:` folder (never a repository path).
+ */
+export function checkVisualRead(raw: unknown, now: AssetNow, o: { pictures: readonly InventoryPicture[] }): ReadCheck {
   const parsed = ClaudeVisualRead.safeParse(raw);
   if (!parsed.success) return { ok: false, codes: ["READ_SCHEMA"] };
   const r = parsed.data;
@@ -81,10 +87,14 @@ export function checkVisualRead(raw: unknown, now: AssetNow, o: { manifestSha256
     if (now.sha256 !== r.asset.sha256) codes.push("ASSET_SHA_MISMATCH");
     if (now.width !== r.asset.width || now.height !== r.asset.height) codes.push("ASSET_SIZE_MISMATCH");
   }
-  if (r.asset.recorded_in_manifest !== o.manifestSha256s.includes(r.asset.sha256)) codes.push("MANIFEST_CLAIM_WRONG");
-  if (r.asset.kind === "original" && !o.manifestSha256s.includes(r.asset.sha256)) codes.push("ORIGINAL_NOT_IN_MANIFEST");
-  const cov = coverage(r.viewed_crops, r.asset.width, r.asset.height);
-  if (cov.rows < READ_THRESHOLDS.coverage || cov.cols < READ_THRESHOLDS.coverage) codes.push("CROPS_DO_NOT_COVER");
+  const intake = r.asset.path.startsWith("intake:");
+  if (r.asset.kind === "original" && !intake) codes.push("ORIGINAL_OUTSIDE_INTAKE");
+  if (r.asset.kind === "registered_preview" && intake) codes.push("PREVIEW_IN_INTAKE");
+  const match = o.pictures.filter((p) => p.sha256 === r.asset.sha256);
+  const exact = match.filter((p) => p.kind === r.asset.kind && p.view === r.view && (r.asset.kind === "original" || p.in_repo_path === r.asset.path));
+  if (exact.length !== 1) codes.push(match.length ? "PICTURE_KIND_VIEW_OR_PATH_MISMATCH" : "PICTURE_NOT_RECORDED_FOR_CASE");
+  if (r.asset.recorded_in_manifest !== match.length > 0) codes.push("MANIFEST_CLAIM_WRONG");
+  if (coverage(r.viewed_crops, r.asset.width, r.asset.height) < READ_THRESHOLDS.coverage) codes.push("CROPS_DO_NOT_COVER");
   if (r.viewed_crops.some((c) => c.x + c.w > r.asset.width || c.y + c.h > r.asset.height)) codes.push("CROP_OUTSIDE");
   const obs = checkObservation(r.observation, { case_id: r.case_id, image_sha256: r.asset.sha256, view: r.view, width: r.asset.width, height: r.asset.height });
   if (!obs.ok) codes.push(...obs.codes);

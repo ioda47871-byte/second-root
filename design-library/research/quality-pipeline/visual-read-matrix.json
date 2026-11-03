@@ -1,9 +1,9 @@
 {
   "schema": "visual_read_matrix_v1",
-  "note": "Only Claude's own passing viewing record makes a view VISUAL_VERIFIED. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. Originals kept in the git-ignored .intake/ folder are not available in CI, so their reads verify only where the file is.",
+  "note": "Only Claude's own passing viewing record of an adopted picture (registered preview or original) makes a view VISUAL_VERIFIED; the kind read is listed. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. A case with no recorded view is keyed 'unknown'. Reads of originals in the git-ignored .intake/ folder are UNVERIFIABLE_HERE where the file is absent (as in CI) and do not count there.",
   "counts": {
     "VISUAL_VERIFIED": 4,
-    "TEXT_ONLY_PROVISIONAL": 36,
+    "TEXT_ONLY_PROVISIONAL": 41,
     "MISSING_OR_HOLD": 0
   },
   "cases": [
@@ -11,11 +11,21 @@
       "id": "CP-001",
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [
-        "concept:design-library/success-cases/assets/CP-001_Mond.webp"
+        {
+          "view": "concept",
+          "kind": "registered_preview",
+          "path": "design-library/success-cases/assets/CP-001_Mond.webp",
+          "sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82"
+        }
       ],
       "read_by_Claude": [
-        "concept"
+        {
+          "view": "concept",
+          "kind": "registered_preview",
+          "sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82"
+        }
       ],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -28,11 +38,21 @@
       "id": "CP-002",
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [
-        "concept:design-library/success-cases/assets/CP-002_Sissi.webp"
+        {
+          "view": "concept",
+          "kind": "registered_preview",
+          "path": "design-library/success-cases/assets/CP-002_Sissi.webp",
+          "sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef"
+        }
       ],
       "read_by_Claude": [
-        "concept"
+        {
+          "view": "concept",
+          "kind": "registered_preview",
+          "sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef"
+        }
       ],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -45,13 +65,32 @@
       "id": "CP-003",
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [
-        "mobile:design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp",
-        "desktop:design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp"
+        {
+          "view": "mobile",
+          "kind": "registered_preview",
+          "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp",
+          "sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0"
+        },
+        {
+          "view": "desktop",
+          "kind": "registered_preview",
+          "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp",
+          "sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6"
+        }
       ],
       "read_by_Claude": [
-        "desktop",
-        "mobile"
+        {
+          "view": "desktop",
+          "kind": "registered_preview",
+          "sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6"
+        },
+        {
+          "view": "mobile",
+          "kind": "registered_preview",
+          "sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0"
+        }
       ],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
@@ -66,6 +105,7 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
@@ -80,11 +120,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
       },
       "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
         "desktop": "TEXT_ONLY_PROVISIONAL",
         "mobile": "TEXT_ONLY_PROVISIONAL"
       }
@@ -94,6 +136,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
@@ -107,6 +150,7 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
@@ -121,6 +165,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -134,11 +179,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
       },
       "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
         "desktop": "TEXT_ONLY_PROVISIONAL",
         "mobile": "TEXT_ONLY_PROVISIONAL"
       }
@@ -148,6 +195,7 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
@@ -162,11 +210,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
       },
       "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
         "desktop": "TEXT_ONLY_PROVISIONAL",
         "mobile": "TEXT_ONLY_PROVISIONAL"
       }
@@ -176,6 +226,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -189,6 +240,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
@@ -202,11 +254,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
       },
       "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
         "desktop": "TEXT_ONLY_PROVISIONAL",
         "mobile": "TEXT_ONLY_PROVISIONAL"
       }
@@ -216,6 +270,7 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -230,6 +285,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -243,6 +299,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -256,6 +313,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -269,6 +327,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -282,6 +341,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -295,6 +355,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -308,6 +369,7 @@
       "form": "static_concept_image",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
@@ -321,11 +383,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": false,
         "case_note": true
       },
       "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
         "desktop": "TEXT_ONLY_PROVISIONAL",
         "mobile": "TEXT_ONLY_PROVISIONAL"
       }
@@ -335,12 +399,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
       },
       "modes": {
-        "concept": "TEXT_ONLY_PROVISIONAL"
+        "unknown": "TEXT_ONLY_PROVISIONAL"
       }
     },
     {
@@ -348,12 +413,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
       },
       "modes": {
-        "concept": "TEXT_ONLY_PROVISIONAL"
+        "unknown": "TEXT_ONLY_PROVISIONAL"
       }
     },
     {
@@ -361,12 +427,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
       },
       "modes": {
-        "concept": "TEXT_ONLY_PROVISIONAL"
+        "unknown": "TEXT_ONLY_PROVISIONAL"
       }
     },
     {
@@ -374,12 +441,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
       },
       "modes": {
-        "concept": "TEXT_ONLY_PROVISIONAL"
+        "unknown": "TEXT_ONLY_PROVISIONAL"
       }
     },
     {
@@ -387,12 +455,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
       },
       "modes": {
-        "concept": "TEXT_ONLY_PROVISIONAL"
+        "unknown": "TEXT_ONLY_PROVISIONAL"
       }
     },
     {
@@ -400,12 +469,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
       },
       "modes": {
-        "concept": "TEXT_ONLY_PROVISIONAL"
+        "unknown": "TEXT_ONLY_PROVISIONAL"
       }
     },
     {
@@ -413,12 +483,13 @@
       "form": "web_poc_capture",
       "available_for_Claude_visual_read": [],
       "read_by_Claude": [],
+      "unverifiable_here": [],
       "text": {
         "chatgpt_viewed": true,
         "case_note": true
       },
       "modes": {
-        "concept": "TEXT_ONLY_PROVISIONAL"
+        "unknown": "TEXT_ONLY_PROVISIONAL"
       }
     }
   ]

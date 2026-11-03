@@ -7182,7 +7182,9 @@
       "title": "Claude 自身の閲覧の記録と視覚参照の門 (VISUAL_VERIFIED / TEXT_ONLY_PROVISIONAL / MISSING_OR_HOLD) (Issue #193)",
       "status": "review",
       "priority": "P1",
-      "depends_on": [],
+      "depends_on": [
+        "DEV-155"
+      ],
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-158-visual-read",
@@ -7217,7 +7219,7 @@
         "原本の受け渡し (オーナーの端末)",
         "実画像の生成"
       ],
-      "note": "DEV-156 の上に積む (principles-v1.json を読む)。DEV-156 の merge のあとに merge する。"
+      "note": "DEV-156 の上に積む (principles-v1.json を読む)。DEV-156 の merge のあとに merge する。 DEV-156 は review 中のため depends_on に入れない (依存の規則)。"
     }
   ]
 }
