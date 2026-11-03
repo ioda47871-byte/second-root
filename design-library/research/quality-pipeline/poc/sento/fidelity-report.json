@@ -243,7 +243,7 @@
           "boundaries_total": 5,
           "sections_touched": 6,
           "sections_total": 6,
-          "caption_lines_covered": 1,
+          "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
           "caption_lines_total": 34,
           "words_broken": [],

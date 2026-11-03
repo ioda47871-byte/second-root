@@ -57,6 +57,14 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 .board-surface { grid-column: 2; grid-row: 1 / span 2; align-self: start; margin: 330px 0 0 -30px; aspect-ratio: 380 / 300; transform: rotate(3deg); z-index: 6; background:
   repeating-radial-gradient(circle at 40% 45%, rgba(255, 255, 255, .0) 0 9px, rgba(255, 255, 255, .3) 10px 11px, rgba(255, 255, 255, 0) 12px 22px),
   linear-gradient(150deg, #a9d3dc, #5d9db0); }
+/* the tubs hold hot water: warm tones, so the page still descends from hot to cold (the boards below the cold line stay blue) */
+.warm .board-tub { background:
+  radial-gradient(60% 45% at 35% 30%, rgba(255, 246, 228, .6), transparent 70%),
+  repeating-radial-gradient(ellipse at 62% 58%, rgba(255, 255, 255, .0) 0 14px, rgba(255, 240, 220, .2) 15px 16px, rgba(255, 255, 255, 0) 17px 30px),
+  linear-gradient(165deg, #f0c48e, #d68a4c 55%, #b5643a); }
+.warm .board-surface { background:
+  repeating-radial-gradient(circle at 40% 45%, rgba(255, 255, 255, .0) 0 9px, rgba(255, 244, 228, .35) 10px 11px, rgba(255, 255, 255, 0) 12px 22px),
+  linear-gradient(150deg, #f6d9b0, #e2a46a); }
 .warm-fact { grid-column: 1; grid-row: 2; margin-top: 30px; max-width: 640px; font-family: var(--mincho); font-size: 38px; line-height: 1.55; color: var(--ink); position: relative; z-index: 4; }
 .giant-warm { left: 110px; bottom: -130px; font-size: 280px; color: transparent; -webkit-text-stroke: 2px #fff3e2; z-index: 4; }
 

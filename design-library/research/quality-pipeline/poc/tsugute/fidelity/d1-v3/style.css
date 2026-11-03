@@ -100,6 +100,19 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 .shard-ware { padding: 120px 0 90px; }
 .shard-ware .words { grid-column: 3 / 7; padding-right: 24px; }
 .shard-ware .board { grid-column: 7 / 12; }
+/* three breaks, three tones (ivory glaze, black-red lacquer, grey celadon), so the boards no longer blur into one brown */
+.shard-ware .photo { background:
+  radial-gradient(ellipse 60% 50% at 34% 30%, rgba(255, 252, 244, .7), transparent 70%),
+  repeating-radial-gradient(circle at 70% 80%, rgba(60, 44, 30, .04) 0 2px, transparent 2px 5px),
+  linear-gradient(160deg, #efe6d6 0%, #d4c3a6 55%, #a99172 100%); }
+.shard-kake .photo { background:
+  radial-gradient(ellipse 55% 45% at 30% 28%, rgba(255, 214, 190, .35), transparent 70%),
+  repeating-radial-gradient(circle at 70% 80%, rgba(255, 255, 255, .03) 0 2px, transparent 2px 5px),
+  linear-gradient(160deg, #6e2b20 0%, #3d1611 60%, #1f0c09 100%); }
+.shard-hibi .photo { background:
+  radial-gradient(ellipse 60% 50% at 40% 30%, rgba(240, 248, 242, .55), transparent 70%),
+  repeating-radial-gradient(circle at 70% 80%, rgba(30, 50, 40, .05) 0 2px, transparent 2px 5px),
+  linear-gradient(160deg, #b9c9bd 0%, #8fa596 55%, #5f7466 100%); }
 .shard-ware .photo { transform: rotate(-2.4deg); }
 .shard-ware .photo { aspect-ratio: 560 / 400; clip-path: polygon(0 6%, 62% 0, 100% 18%, 92% 100%, 8% 88%); }
 .shard-ware .ph-label { text-align: right; }

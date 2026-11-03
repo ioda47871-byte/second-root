@@ -201,7 +201,7 @@ section { position: relative; }
   .gauge-art { right: 20px; top: -80px; width: 300px; height: 300px; }
   .lesson-text { max-width: none; }
   .lesson-h { font-size: 40px; }
-  .lesson-fact { margin-top: 16px; font-size: 16px; }
+  .lesson-fact { margin-top: 16px; font-size: 16px; max-width: 72%; }
 
   .visit { padding: 200px 20px 40px; min-height: 0; }
   .wheel-end { right: -150px; top: -110px; width: 300px; height: 300px; z-index: 2; }
