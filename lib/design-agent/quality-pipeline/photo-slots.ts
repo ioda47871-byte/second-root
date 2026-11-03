@@ -107,12 +107,14 @@ export function coverCrop(photo: { width: number; height: number }, slot: Pick<S
   const ch = wide ? h : w / target;
   const x = clamp(focal.x * w - cw / 2, 0, w - cw);
   const y = clamp(focal.y * h - ch / 2, 0, h - ch);
-  const kept = r3((cw * ch) / (w * h));
+  // compared unrounded: 0.4996 must not round up to the 0.5 limit
+  const keptRaw = (cw * ch) / (w * h);
+  const kept = r3(keptRaw);
   const density = r3(cw / slot.width_px);
   const codes: CropCode[] = [];
   // a crop that would be upscaled on a 2× screen: blurry. 0.5px of slack for rounding of the fractional crop
   if (cw + 0.5 < slot.min_width_px || ch + 0.5 < slot.min_height_px) codes.push("PHOTO_TOO_SMALL");
-  if (kept < MIN_KEPT_AREA) codes.push("RATIO_MISMATCH_EXTREME");
+  if (keptRaw < MIN_KEPT_AREA) codes.push("RATIO_MISMATCH_EXTREME");
   if (codes.length) return { ok: false, codes, kept_area: kept, density };
   const px = w - cw > 0.5 ? x / (w - cw) : 0.5;
   const py = h - ch > 0.5 ? y / (h - ch) : 0.5;

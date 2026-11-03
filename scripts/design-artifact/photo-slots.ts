@@ -7,7 +7,7 @@
  * page's own directory refused, finds each placeholder board (the box next to a caption that starts with 写真｜), and
  * records its layout size at each width as a slot inventory (lib/design-agent/quality-pipeline/photo-slots.ts).
  * The caption's copy-record id becomes the slot id. The page's HTML, CSS and copy hashes are recorded so that a
- * changed page is measured again (tests/unit/design-agent/quality-pipeline/photo-slots.test.ts compares).
+ * changed page is measured again (tests/unit/design-agent/quality-pipeline/photo-intake.test.ts compares).
  *
  * Nothing is written but --out (a new file). Exit: 0 inventory, 2 refused. Never calls a model, a generator or the
  * network.

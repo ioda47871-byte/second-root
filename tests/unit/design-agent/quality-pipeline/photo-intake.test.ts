@@ -1,11 +1,22 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { checkPhotoRights, measurePhotoBytes, PRIVATE_PHOTO_PATH, resolvePrivatePhoto, toPublicPhotoRecord, type PhotoBytesInfo } from "@/lib/design-agent/quality-pipeline/photo-rights";
+import {
+  checkPhotoRights as checkWith,
+  isIsoDate,
+  loadForbiddenSha256,
+  measurePhotoBytes,
+  PRIVATE_PHOTO_PATH,
+  readPhotoHeader,
+  resolvePrivatePhoto,
+  toPublicPhotoRecord,
+  type PhotoBytesInfo,
+  type PhotoRightsOptions,
+} from "@/lib/design-agent/quality-pipeline/photo-rights";
 import { coverCrop, fitSlot, PhotoSlotInventory, requestFor, SLOT_VIEWPORTS, variantOf } from "@/lib/design-agent/quality-pipeline/photo-slots";
 import { deriveSlots } from "../../../../scripts/design-artifact/photo-slots";
 
@@ -27,6 +38,30 @@ function jpegHeader(w: number, h: number) {
   // SOI, an APP0 segment of 4 bytes, SOF0 (len 17, precision 8, height, width)
   return Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, h >> 8, h & 255, w >> 8, w & 255, 0x03]);
 }
+/**
+ * A JPEG header with an APP1 EXIF block whose IFD0 holds one entry (the orientation tag), then SOF0. In memory only;
+ * not a picture. `entry` overrides the 12-byte IFD entry, `tiff` the whole TIFF block (for malformed cases).
+ */
+function jpegExifHeader(w: number, h: number, orientation: number, order: "II" | "MM", o: { tiff?: Buffer } = {}) {
+  const le = order === "II";
+  const tiff = Buffer.alloc(8 + 2 + 12 + 4);
+  tiff.write(order, 0, "latin1");
+  const u16 = (v: number, at: number) => (le ? tiff.writeUInt16LE(v, at) : tiff.writeUInt16BE(v, at));
+  const u32 = (v: number, at: number) => (le ? tiff.writeUInt32LE(v, at) : tiff.writeUInt32BE(v, at));
+  u16(42, 2);
+  u32(8, 4);
+  u16(1, 8); // one entry
+  u16(0x0112, 10);
+  u16(3, 12); // SHORT
+  u32(1, 14);
+  u16(orientation, 18);
+  const body = Buffer.concat([Buffer.from("Exif\0\0", "latin1"), o.tiff ?? tiff]);
+  const app1 = Buffer.alloc(4);
+  app1.writeUInt16BE(0xffe1, 0);
+  app1.writeUInt16BE(body.length + 2, 2);
+  const sof = Buffer.from([0xff, 0xc0, 0x00, 0x11, 0x08, h >> 8, h & 255, w >> 8, w & 255, 0x03]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), app1, body, sof]);
+}
 function webpVp8xHeader(w: number, h: number) {
   const b = Buffer.alloc(30);
   b.write("RIFF", 0, "latin1");
@@ -41,6 +76,11 @@ function webpVp8xHeader(w: number, h: number) {
 
 const BYTES = pngHeader(4000, 3000);
 const INFO = measurePhotoBytes(BYTES)!;
+/** the forbidden hashes from the originals inventory, the one source of truth for the success-case pictures */
+const FORBIDDEN = loadForbiddenSha256(REPO);
+/** every check pins its date, so the tests do not depend on the day they run */
+const NOW = "2026-11-03";
+const checkPhotoRights = (record: unknown, info: PhotoBytesInfo | null, o: Partial<PhotoRightsOptions> = {}) => checkWith(record, info, { forbiddenSha256: FORBIDDEN, now: NOW, ...o });
 const record = () => ({
   schema: "photo_rights_v0",
   asset_id: "photo-tsugute-ware-01",
@@ -56,6 +96,7 @@ const record = () => ({
   allowed_uses: { edit: true, crop: true, commercial: true, public_web: false },
   consent_record_ref: "consent-2026-11-03-01",
   received_at: "2026-11-03",
+  expiry: null,
   private_path: ".intake/photos/tsugute-ware-01.png",
   depicts_identifiable_person: false,
   depicts_real_shop: false,
@@ -75,6 +116,7 @@ describe("photo_rights_v0: what a photo must carry before it is used", () => {
       ["allowed_uses", "RIGHTS_MISSING_ALLOWED_USES"],
       ["consent_record_ref", "RIGHTS_MISSING_CONSENT"],
       ["received_at", "RIGHTS_MISSING_RECEIVED_AT"],
+      ["expiry", "RIGHTS_MISSING_EXPIRY"],
       ["paid", "RIGHTS_MISSING_PAID"],
       ["depicts_identifiable_person", "RIGHTS_MISSING_SUBJECT"],
       ["depicts_real_shop", "RIGHTS_MISSING_SUBJECT"],
@@ -134,19 +176,52 @@ describe("photo_rights_v0: what a photo must carry before it is used", () => {
     }
   });
 
-  it("the success-case pictures in the repository are forbidden hashes", () => {
+  it("the forbidden hashes come from the originals inventory, cover every success-case picture in the repository, and are refused", () => {
     const assets = spawnSync("git", ["ls-files", "design-library/success-cases/assets"], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean);
     expect(assets.length).toBeGreaterThan(0);
-    const forbidden = new Set(assets.map((p) => createHash("sha256").update(readFileSync(resolve(REPO, p))).digest("hex")));
-    const first = readFileSync(resolve(REPO, assets[0]!));
-    const info = { ...INFO, sha256: createHash("sha256").update(first).digest("hex"), bytes: first.length };
-    const r = checkPhotoRights({ ...record(), sha256: info.sha256, bytes: info.bytes }, info, { forbiddenSha256: forbidden });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.codes).toContain("FORBIDDEN_SOURCE_HASH");
+    const inv = JSON.parse(readFileSync(resolve(REPO, "design-library/research/quality-pipeline/originals-inventory.json"), "utf8")) as { cases: Array<{ originals: Array<{ sha256: string }> }> };
+    for (const c of inv.cases) for (const o of c.originals) expect(FORBIDDEN.has(o.sha256)).toBe(true);
+    for (const p of assets) {
+      const bytes = readFileSync(resolve(REPO, p));
+      const sha = createHash("sha256").update(bytes).digest("hex");
+      expect(FORBIDDEN.has(sha), p).toBe(true);
+      const info = { ...INFO, sha256: sha, bytes: bytes.length };
+      const r = checkPhotoRights({ ...record(), sha256: sha, bytes: bytes.length }, info);
+      expect(r.ok, p).toBe(false);
+      if (!r.ok) expect(r.codes, p).toEqual(["FORBIDDEN_SOURCE_HASH"]);
+    }
+    // the list is required: the type has no default, and a call without it does not compile
+    // @ts-expect-error forbiddenSha256 is required
+    expect(() => checkWith(record(), INFO, {})).toThrow();
+  });
+
+  it("dates are real calendar dates; expiry is checked against today by default; received_at may not be in the future", () => {
+    for (const d of ["2026-02-31", "9999-99-99", "2026-13-01", "2026-00-10", "2026-11-03T24:00Z", "2026-11-3", "20261103"]) expect(isIsoDate(d), d).toBe(false);
+    for (const d of ["2026-02-28", "2028-02-29", "2099-12-31", "2026-11-03T09:30:00+09:00"]) expect(isIsoDate(d), d).toBe(true);
+    const impossible = checkPhotoRights({ ...record(), expiry: "2026-02-31" }, INFO);
+    expect(impossible.ok).toBe(false);
+    if (!impossible.ok) expect(impossible.codes).toEqual(["RIGHTS_DATE_INVALID"]);
+    const nines = checkPhotoRights({ ...record(), received_at: "9999-99-99" }, INFO);
+    expect(nines.ok).toBe(false);
+    if (!nines.ok) expect(nines.codes).toEqual(["RIGHTS_DATE_INVALID"]);
+    // "no end date" is null, said explicitly; a valid far-future date is a date
+    expect(checkPhotoRights({ ...record(), expiry: "2099-12-31" }, INFO).ok).toBe(true);
+    // the future
+    const future = checkPhotoRights({ ...record(), received_at: "2026-11-04" }, INFO);
+    expect(future.ok).toBe(false);
+    if (!future.ok) expect(future.codes).toEqual(["RIGHTS_RECEIVED_IN_FUTURE"]);
+    // without `now`, today is used: an expiry in the past is refused whoever calls
+    const past = checkWith({ ...record(), received_at: "2020-01-01", expiry: "2020-12-31" }, INFO, { forbiddenSha256: FORBIDDEN });
+    expect(past.ok).toBe(false);
+    if (!past.ok) expect(past.codes).toEqual(["RIGHTS_EXPIRED"]);
+    expect(checkWith({ ...record(), received_at: "2020-01-01" }, INFO, { forbiddenSha256: FORBIDDEN }).ok).toBe(true);
+    // the last day is still allowed
+    expect(checkPhotoRights({ ...record(), expiry: NOW }, INFO).ok).toBe(true);
+    expect(() => checkPhotoRights(record(), INFO, { now: "2026-02-31" })).toThrow();
   });
 
   it("the record must describe the bytes: hash, size, dimensions, format; and its extension must match its format", () => {
-    const other: PhotoBytesInfo = { sha256: "b".repeat(64), bytes: INFO.bytes + 1, width: 3999, height: 3000, format: "jpeg" };
+    const other: PhotoBytesInfo = { sha256: "b".repeat(64), bytes: INFO.bytes + 1, width: 3999, height: 3000, format: "jpeg", orientation: 1 };
     const r = checkPhotoRights(record(), other);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.codes.sort()).toEqual(["DIMENSION_MISMATCH", "FORMAT_MISMATCH", "HASH_MISMATCH", "SIZE_MISMATCH"]);
@@ -174,6 +249,42 @@ describe("photo_rights_v0: what a photo must carry before it is used", () => {
     expect(measurePhotoBytes(webpVp8xHeader(2048, 1536))).toMatchObject({ width: 2048, height: 1536, format: "webp" });
     expect(measurePhotoBytes(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"))).toBeNull();
     expect(measurePhotoBytes(Buffer.from("GIF89a\x01\x00\x01\x00"))).toBeNull();
+  });
+
+  it("a JPEG's EXIF orientation gives the shape it is shown in: 5–8 swap width and height (II and MM)", () => {
+    // a phone photo stored 4032×3024, held upright
+    expect(measurePhotoBytes(jpegExifHeader(4032, 3024, 1, "II"))).toMatchObject({ width: 4032, height: 3024, orientation: 1 });
+    expect(measurePhotoBytes(jpegExifHeader(4032, 3024, 6, "II"))).toMatchObject({ width: 3024, height: 4032, orientation: 6, format: "jpeg" });
+    expect(measurePhotoBytes(jpegExifHeader(4032, 3024, 6, "MM"))).toMatchObject({ width: 3024, height: 4032, orientation: 6 });
+    expect(measurePhotoBytes(jpegExifHeader(4032, 3024, 8, "MM"))).toMatchObject({ width: 3024, height: 4032, orientation: 8 });
+    expect(measurePhotoBytes(jpegExifHeader(4032, 3024, 3, "II"))).toMatchObject({ width: 4032, height: 3024, orientation: 3 });
+    expect(measurePhotoBytes(jpegHeader(4032, 3024))).toMatchObject({ orientation: 1 });
+    expect(measurePhotoBytes(pngHeader(10, 20))).toMatchObject({ orientation: 1 });
+  });
+
+  it("a JPEG whose EXIF block cannot be read is refused by name, without crashing", () => {
+    const bad = (tiff: Buffer) => jpegExifHeader(4032, 3024, 1, "II", { tiff });
+    const good = jpegExifHeader(4032, 3024, 6, "II").subarray(12, 12 + 26);
+    const withOrder = Buffer.from(good);
+    withOrder.write("XX", 0, "latin1");
+    const badMagic = Buffer.from(good);
+    badMagic.writeUInt16LE(43, 2);
+    const ifdOut = Buffer.from(good);
+    ifdOut.writeUInt32LE(0xffff, 4);
+    const manyEntries = Buffer.from(good);
+    manyEntries.writeUInt16LE(500, 8);
+    const longType = Buffer.from(good);
+    longType.writeUInt16LE(4, 12);
+    const zero = Buffer.from(good);
+    zero.writeUInt16LE(0, 18);
+    const nine = Buffer.from(good);
+    nine.writeUInt16LE(9, 18);
+    for (const [name, tiff] of Object.entries({ withOrder, badMagic, ifdOut, manyEntries, longType, zero, nine, short: good.subarray(0, 6), empty: Buffer.alloc(0) })) {
+      expect(readPhotoHeader(bad(tiff)), name).toEqual({ ok: false, code: "PHOTO_EXIF_UNREADABLE" });
+      expect(measurePhotoBytes(bad(tiff)), name).toBeNull();
+    }
+    // the well-formed block the cases were cut from is read
+    expect(readPhotoHeader(bad(good))).toMatchObject({ ok: true, info: { width: 3024, height: 4032, orientation: 6 } });
   });
 });
 
@@ -223,6 +334,24 @@ describe("private hand-off: only a plain file directly under .intake/photos/", (
       const root3 = mkdtempSync(join(tmpdir(), "photo-intake-"));
       symlinkSync(elsewhere, join(root3, ".intake"));
       expect(resolvePrivatePhoto(root3, ".intake/photos/c.png")).toEqual({ ok: false, code: "PATH_SYMLINK" });
+
+      // the pipeline root itself may not be a link
+      const rootLink = join(elsewhere, "root-link");
+      symlinkSync(root, rootLink);
+      expect(resolvePrivatePhoto(rootLink, ".intake/photos/a.png")).toEqual({ ok: false, code: "PATH_SYMLINK" });
+
+      // a hard link (a second name for a file that may live anywhere on the disk) is refused, both of its names
+      writeFileSync(join(elsewhere, "d.png"), BYTES);
+      linkSync(join(elsewhere, "d.png"), join(root, ".intake/photos/hard.png"));
+      expect(resolvePrivatePhoto(root, ".intake/photos/hard.png")).toEqual({ ok: false, code: "PHOTO_HARDLINK" });
+      linkSync(join(root, ".intake/photos/a.png"), join(elsewhere, "a-again.png"));
+      expect(resolvePrivatePhoto(root, ".intake/photos/a.png")).toEqual({ ok: false, code: "PHOTO_HARDLINK" });
+      rmSync(join(elsewhere, "a-again.png"));
+      expect(resolvePrivatePhoto(root, ".intake/photos/a.png").ok).toBe(true);
+
+      // a JPEG with an unreadable EXIF block is refused by name
+      writeFileSync(join(root, ".intake/photos/exif.jpg"), jpegExifHeader(4032, 3024, 1, "II", { tiff: Buffer.from("MM\0\x2a") }));
+      expect(resolvePrivatePhoto(root, ".intake/photos/exif.jpg")).toEqual({ ok: false, code: "PHOTO_EXIF_UNREADABLE" });
 
       expect(resolvePrivatePhoto(root, ".intake/photos/missing.png")).toEqual({ ok: false, code: "FILE_UNREADABLE" });
       expect(resolvePrivatePhoto(root, ".intake/photos/../a.png")).toEqual({ ok: false, code: "PATH_NOT_PRIVATE" });
@@ -285,6 +414,12 @@ describe("cover crop around a focal point", () => {
     expect(pano).toMatchObject({ ok: false, codes: ["RATIO_MISMATCH_EXTREME"] });
     expect(coverCrop({ width: 0, height: 10 }, slot)).toEqual({ ok: false, codes: ["BAD_INPUT"] });
     expect(coverCrop({ width: 4000, height: 3000 }, slot, { x: 1.2, y: 0 })).toEqual({ ok: false, codes: ["BAD_INPUT"] });
+  });
+
+  it("the half-kept limit is compared unrounded: 20016×10000 into 1:1 keeps 0.4996 and is refused, though it prints as 0.5", () => {
+    const c = coverCrop({ width: 20016, height: 10000 }, variantOf("mobile_390", 300, 300));
+    expect(c).toEqual({ ok: false, codes: ["RATIO_MISMATCH_EXTREME"], kept_area: 0.5, density: expect.any(Number) });
+    expect(coverCrop({ width: 20000, height: 10000 }, variantOf("mobile_390", 300, 300)).ok).toBe(true);
   });
 
   it("a photo fits a slot only if it fits every viewport (the slot's shape changes between PC and SP)", () => {
@@ -387,8 +522,13 @@ describe("slot inventories of the three C pages", () => {
 });
 
 describe("no photo enters the public repository", () => {
-  /** the image files that were already in design-library before DEV-163: success-case previews and 64px boards */
+  /**
+   * Every image file in the repository (tracked, or untracked and not ignored) before DEV-163, pinned: the app's icons,
+   * the brand and concept pictures under public/, the success-case previews and the 64px research boards. A new
+   * image anywhere in the tree fails this test.
+   */
   const EXISTING = [
+    "app/apple-icon.png",
     "design-library/research/quality-pipeline/poc/bicycle/impl/d1-a/assets/board.png",
     "design-library/research/quality-pipeline/poc/bicycle/impl/d1-b/assets/board.png",
     "design-library/research/quality-pipeline/poc/sento/impl/d1-a/assets/board.png",
@@ -401,10 +541,31 @@ describe("no photo enters the public repository", () => {
     "design-library/success-cases/assets/CP-002_Sissi.webp",
     "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp",
     "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp",
+    "public/brand-photos/desk-laptop-back-daylight.jpg",
+    "public/brand-photos/desk-night-crop.jpg",
+    "public/brand-photos/hero-shop-entrance.webp",
+    "public/brand-photos/notebook-wireframe-wide.jpg",
+    "public/brand-photos/office-room-wide.jpg",
+    "public/brand-photos/philosophy-still-life.webp",
+    "public/brand-photos/table-shadow-empty.jpg",
+    "public/brand-photos/wall-shadow-plant-a.jpg",
+    "public/concept-work/hoshi-no-cha.jpg",
+    "public/concept-work/midori-seitai.webp",
+    "public/concept-work/yasashii-beauty-salon.webp",
+    "public/icons/icon-192.png",
+    "public/icons/icon-512.png",
+    "public/og-image.jpg",
+    "public/screenshots-source/access-mobile-portrait.jpeg",
+    "public/screenshots-source/entrance-photo-crop.jpg",
+    "public/screenshots-source/exterior-photo-crop.jpg",
+    "public/screenshots-source/home-mobile.jpeg",
+    "public/screenshots-source/interior-photo-crop.jpeg",
+    "public/screenshots-source/interior-photo.jpeg",
+    "public/screenshots-source/menu-desktop.jpg",
   ];
 
-  it("no image file is added under design-library/** (tracked or about to be), and the research boards stay 64×64", () => {
-    const listed = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "design-library"], { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean);
+  it("no image file is added anywhere in the repository (tracked or about to be), and the research boards stay 64×64", () => {
+    const listed = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: REPO, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).stdout.trim().split("\n").filter(Boolean);
     const images = listed.filter((p) => /\.(png|jpe?g|webp|gif|avif|heic|heif|bmp|tiff?)$/i.test(p));
     expect(images.sort()).toEqual([...EXISTING].sort());
     for (const p of EXISTING.filter((x) => x.includes("/research/"))) {

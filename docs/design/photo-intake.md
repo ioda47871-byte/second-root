@@ -21,7 +21,9 @@
 **入れない:**
 
 - 他のサイトの写真。種類 (`source_kind`) に、その値が無い。
-- 成功例の写真。SHA-256 で拒む (`FORBIDDEN_SOURCE_HASH`)。リポジトリの成功例の資産の SHA を、禁止の一覧として渡す。
+- 成功例の写真。SHA-256 で拒む (`FORBIDDEN_SOURCE_HASH`)。
+  - 禁止の一覧は、原本の目録 (`design-library/research/quality-pipeline/originals-inventory.json`) から `loadForbiddenSha256` が読む。リポジトリにある成功例の4枚と、各成功例が記録する原本・プレビューの SHA すべてである。
+  - `checkPhotoRights` は、この一覧 (`forbiddenSha256`) を**必須**の引数として受け取る。渡し忘れて空の一覧で通ることは無い。目録が空か壊れていれば、読む時点で止まる。
 - AI で生成した画像。
 - 人の顔や体で、誰か分かるもの (`IDENTIFIABLE_PERSON`)。
 - 実在の店。3店は架空なので、実在の店の写真は使わない (`REAL_SHOP_DEPICTED`)。
@@ -33,9 +35,9 @@
 |---|---|---|---|
 | 1. 依頼 | 枠ごとに枚数・形・最小の画素・写すもの・権利を伝える (§8) | Claude が文を作り、オーナーが送る | — |
 | 2. 受け取り | 写真と権利の記録 (`photo_rights_v0`) を、リポジトリの外で渡してもらう | 提供者 → オーナー | — |
-| 3. 権利の記録を検める | 項目の欠け、許された使い方、有料、人・実在の店、期限 | 機械 (`checkPhotoRights`) | `RIGHTS_MISSING_*`・`NOT_ALLOWED_FOR_*`・`PAID_SOURCE_NOT_APPROVED`・`IDENTIFIABLE_PERSON`・`REAL_SHOP_DEPICTED`・`RIGHTS_EXPIRED` |
-| 4. ハッシュ・大きさ・形式 | ファイルの頭から幅・高さ・形式を読み、SHA-256 と大きさを記録と照らす | 機械 (`measurePhotoBytes`) | `HASH_MISMATCH`・`SIZE_MISMATCH`・`DIMENSION_MISMATCH`・`FORMAT_MISMATCH`・`FORBIDDEN_SOURCE_HASH` |
-| 5. 非公開の置き場 | `design-library/research/quality-pipeline/.intake/photos/` にだけ置く (git が無視する) | オーナーか Claude (手元) | `PATH_NOT_PRIVATE`・`PATH_SYMLINK` (`resolvePrivatePhoto`) |
+| 3. 権利の記録を検める | 項目の欠け、日付、許された使い方、有料、人・実在の店、期限 | 機械 (`checkPhotoRights`) | `RIGHTS_MISSING_*`・`RIGHTS_DATE_INVALID`・`RIGHTS_RECEIVED_IN_FUTURE`・`NOT_ALLOWED_FOR_*`・`PAID_SOURCE_NOT_APPROVED`・`IDENTIFIABLE_PERSON`・`REAL_SHOP_DEPICTED`・`RIGHTS_EXPIRED` |
+| 4. ハッシュ・大きさ・形式 | ファイルの頭から幅・高さ・形式・向き (JPEG の EXIF) を読み、SHA-256 と大きさを記録と照らす | 機械 (`measurePhotoBytes` / `readPhotoHeader`) | `HASH_MISMATCH`・`SIZE_MISMATCH`・`DIMENSION_MISMATCH`・`FORMAT_MISMATCH`・`FORBIDDEN_SOURCE_HASH`・`PHOTO_EXIF_UNREADABLE` |
+| 5. 非公開の置き場 | `design-library/research/quality-pipeline/.intake/photos/` にだけ置く (git が無視する) | オーナーか Claude (手元) | `PATH_NOT_PRIVATE`・`PATH_SYMLINK`・`PHOTO_HARDLINK` (`resolvePrivatePhoto`) |
 | 6. 枠に割り当てる | どの写真をどの枠 (`slot_id`) に入れるか決める | オーナー (Claude が案を出す) | — |
 | 7. 切り抜きと焦点 | 枠の形ごとに、焦点を中心にした切り抜きを計算する | 機械 (`coverCrop` / `fitSlot`) | `PHOTO_TOO_SMALL`・`RATIO_MISMATCH_EXTREME` |
 | 8. C ページで差し替える | 非公開の写しの中で、板を写真にする (§6) | Claude | — |
@@ -43,6 +45,11 @@
 | 10. オーナーが見る | 描いた画像を見て決める。**Claude は成功例の水準とは言わない** | オーナー | — |
 
 - 段3と段4の門は、理由を1つ目で止めず、すべて返す。
+- 期限は、`now` を渡さなければ**今日 (UTC の日付)** と比べる。だから、期限の切れた記録は、呼び方によらず必ず拒む。テストは `now` を固定する。
+- `resolvePrivatePhoto` が拒むもの:
+  - 品質パイプラインの根・`.intake`・`photos`・ファイルのどれかが、シンボリックリンクであるもの。根より上のフォルダは、先に realpath で解く。
+  - ファイルに名前が2つ以上あるもの (ハードリンク、`nlink > 1`)。別の場所のファイルと同じ中身を指せるからである。
+  - **既知の限界 (Low):** 検める (lstat) のと読むのは、別の2段である。その間にファイルを差し替えられると、気づけない。置き場はオーナー自身の手元の機械で、共有の機械ではないので、今は直さない。
 - 段8〜10の画像は、リポジトリの外に置く。リポジトリには SHA だけを残す。
 
 ## 3. 公開に残すもの、残さないもの
@@ -60,7 +67,8 @@
 - 公開の形は `toPublicPhotoRecord` が作る。これは `photo_public_record_v0` で、`bytes_committed: false` を持つ。
 - `.intake/` は `.gitignore` が無視する。テストは、次の3つを固定している。
   - `.intake/` の下が1つも追跡されていないこと。
-  - `design-library/**` の画像のファイルが、DEV-163 の前からある12個から増えないこと (成功例の4枚と、研究の 64×64 の仮の板8枚)。
+  - リポジトリ全体の画像のファイル (追跡されているものと、無視されていない未追跡のもの) が、DEV-163 の前からある34個から増えないこと。
+    - アプリのアイコン、`public/` のブランドと作例の画像、成功例の4枚、研究の 64×64 の仮の板8枚である。
   - 研究の板が 64×64 のままであること。
 - 写真を git に入れる道は無い。`git add -f` もしない。
 
@@ -78,6 +86,12 @@
   - 条件: JS 無効、自分のファイル以外への通信は拒否、deviceScaleFactor 1
   - 大きさは、ページが回転させる前の箱で測る。
 - 最小の画素は、描いた箱の2倍である (2倍の画面のため)。
+- 写真の幅と高さは、**表示される向き**で数える。
+  - 携帯電話で縦に構えて撮った JPEG は、多くが横長 (4032×3024) のまま保存され、EXIF の向き (orientation 6 か 8) で縦に表示される。
+  - `measurePhotoBytes` は、APP1 の EXIF (II と MM の両方) から向きの値 (タグ `0x0112`) を読む。5〜8 なら幅と高さを入れ替え、`orientation` も返す。
+  - EXIF があるのに読めない JPEG は、`PHOTO_EXIF_UNREADABLE` で拒む。向きが分からなければ、切り抜きの形も分からないからである。
+  - 権利の記録の `width`・`height` も、表示される向きで書く。
+- 半分を残せるかの判定 (`MIN_KEPT_AREA`) は、丸める前の値で比べる。記録の `kept_area` だけを小数3桁に丸める (0.4996 は 0.5 と書かれるが、拒まれる)。
 - 一覧は、測ったページの HTML・CSS・文の記録の SHA を持つ。ページが変わればテストが落ちるので、測り直す。
 - テストはブラウザで測り直し、2px 以内で一致することも確かめる。
 
@@ -109,7 +123,7 @@
   - 1つの形で半分を残せない枠は、`requestFor` が `NO_SINGLE_SHAPE` を返す。その時は、幅ごとに1枚ずつ頼む。今の15枠には無い。
 - 携帯電話で撮ったままの写真 (4032×3024 ほど) で `fitSlot` を計算した。
   - 横に撮った写真は、`ph-bench` を除く14枠に、大きさも形も収まる。
-  - `ph-bench` は、縦に撮った写真 (3024×4032) で収まる。
+  - `ph-bench` は、縦に撮った写真 (表示で 3024×4032。保存が 4032×3024 で EXIF の向きが 6 か 8 のものを含む) で収まる。
   - だから依頼の「頼む形」は撮り方の目安で、切り抜きは Claude が計算する。
 
 ## 6. C ページで板を写真に替える方法 (設計、まだ作らない)
@@ -203,7 +217,7 @@ C ページ (`experimental_fidelity`) は研究用で、B方式の隔離され�
 | 項目 | 意味 | 欠けた時 |
 |---|---|---|
 | `asset_id` | `photo-<店>-<枠>-<番号>` | `SCHEMA_INVALID` |
-| `sha256`・`bytes`・`width`・`height`・`format` | ファイルから測った値。`format` は `png`・`jpeg`・`webp` | `SCHEMA_INVALID`、測った値と違えば `*_MISMATCH` |
+| `sha256`・`bytes`・`width`・`height`・`format` | ファイルから測った値。`format` は `png`・`jpeg`・`webp`。幅と高さは表示される向き (EXIF の向きを当てた後) | `SCHEMA_INVALID`、測った値と違えば `*_MISMATCH` |
 | `source_kind` | `owner_provided`・`shop_provided`・`licensed_stock_with_terms` | `RIGHTS_MISSING_SOURCE` |
 | `owner` | 権利を持つ人 (非公開) | `RIGHTS_MISSING_OWNER` |
 | `license` | ライセンスの id か、許可・規約への参照 | `RIGHTS_MISSING_LICENSE` |
@@ -211,7 +225,8 @@ C ページ (`experimental_fidelity`) は研究用で、B方式の隔離され�
 | `paid` | 有料か | `RIGHTS_MISSING_PAID`。`true` なら `PAID_SOURCE_NOT_APPROVED` |
 | `allowed_uses` | `edit`・`crop`・`commercial`・`public_web` (真偽値) | `RIGHTS_MISSING_ALLOWED_USES`。`false` なら `NOT_ALLOWED_FOR_*` |
 | `consent_record_ref` | 同意の記録の場所 (非公開) | `RIGHTS_MISSING_CONSENT` |
-| `received_at`・`expiry` | 受け取った日と期限 (期限は任意) | `RIGHTS_MISSING_RECEIVED_AT`、期限切れは `RIGHTS_EXPIRED` |
+| `received_at` | 受け取った日。実在する日付 (`2026-02-31` や `9999-99-99` は拒む) で、今日より後ではないこと | `RIGHTS_MISSING_RECEIVED_AT`・`RIGHTS_DATE_INVALID`・`RIGHTS_RECEIVED_IN_FUTURE` |
+| `expiry` | 使ってよい最後の日。**期限が無いことは `null` で明示する** (項目を省くと欠け)。遠い先の実在する日付 (`2099-12-31`) は、その日までの期限として扱う | `RIGHTS_MISSING_EXPIRY`・`RIGHTS_DATE_INVALID`、期限切れ (今日より前) は `RIGHTS_EXPIRED` |
 | `private_path` | `.intake/photos/<名前>.<png|jpg|jpeg|webp>` だけ。拡張子は `format` と合わせる | `PATH_NOT_PRIVATE`・`FORMAT_EXTENSION_MISMATCH` |
 | `depicts_identifiable_person`・`depicts_real_shop` | 誰か分かる人・実在の店が写るか | `RIGHTS_MISSING_SUBJECT`。`true` なら拒む |
 | `client_confirmation_ref` | 依頼主の確認 (公開サイトの時は必須) | `CLIENT_CONFIRMATION_MISSING` |
