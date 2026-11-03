@@ -106,13 +106,14 @@ export function checkReviewFile(
   );
 }
 
-export type TextUnit = { text: string; rects: Array<{ l: number; t: number; r: number; b: number }>; em: number; lh: number; vertical: boolean; lr?: boolean };
+export type TextUnit = { text: string; rects: Array<{ l: number; t: number; r: number; b: number }>; block: number; em: number; lh: number; vertical: boolean; lr?: boolean };
 
 /**
  * The texts a reader sees together: each unit alone, and units drawn next to each other joined in reading order
  * (pairs and runs of three). Two units are next to each other when a line of one ends where a line of the other
  * starts: on the same line within one em (horizontal writing), or in the same column within one em (vertical), or where one
- * line or column ends and the next one begins (within a line height). A unit
+ * line or column ends and the next one of the same block begins (within its leading), or the next block begins with
+ * almost no gap. A unit
  * that is a fact text or a label of the record separates: it is never joined, so no join holds a fact or a part of it.
  */
 export function adjacentTexts(units: readonly TextUnit[], record: CopyRecord): string[] {
@@ -124,8 +125,9 @@ export function adjacentTexts(units: readonly TextUnit[], record: CopyRecord): s
     a.rects.some((x) =>
       b.rects.some((y) => {
         const em = Math.max(a.em, b.em);
-        // the gap between two lines (or columns) of glyph boxes is the leading: up to a line height, never less than an em
-        const lead = Math.max(em, a.lh, b.lh);
+        // the next line of the same block: glyph boxes stand apart by the leading (line height less the glyph size); the
+        // next block: only with almost no gap (stacked with no margin). Never a block margin, a heading's or a caption's.
+        const lead = a.block === b.block ? Math.max(a.lh, b.lh) - Math.min(a.em, b.em) + 0.25 * em : 0.25 * em;
         if (!a.vertical && !b.vertical) {
           const overlap = Math.min(x.b, y.b) - Math.max(x.t, y.t);
           if (overlap >= 0.5 * Math.min(x.b - x.t, y.b - y.t) && y.l >= x.r - 1 && y.l - x.r <= em) return true;
@@ -303,6 +305,7 @@ async function main(): Promise<number> {
       const hidden = (el) => { for (let e = el; e && e.nodeType === 1; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === "none" || cs.visibility === "hidden") return true; } return false; };
       const units = [];
       const seen = new Set();
+      const blocksSeen = new Map();
       const tw = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
       for (let t = tw.nextNode(); t; t = tw.nextNode()) {
         const p = t.parentElement;
@@ -319,9 +322,14 @@ async function main(): Promise<number> {
           for (const r of range.getClientRects()) if (r.width > 0 && r.height > 0) rects.push({ l: r.left, t: r.top + scrollY, r: r.right, b: r.bottom + scrollY });
         }
         const cs = getComputedStyle(p);
+        // the block the unit's lines belong to (its nearest ancestor that is not inline): a line runs on to the next
+        // line only inside one block; separate blocks (paragraphs, a heading and its text) join only with no gap
+        let blk = p;
+        while (blk && blk.parentElement && ["inline", "contents"].includes(getComputedStyle(blk).display)) blk = blk.parentElement;
+        if (!blocksSeen.has(blk)) blocksSeen.set(blk, blocksSeen.size);
         const em = parseFloat(cs.fontSize) || 16;
         const lh = parseFloat(cs.lineHeight);
-        units.push({ text: nodes.map((n) => n.textContent || "").join("").trim(), rects, em, lh: Number.isFinite(lh) ? lh : 1.2 * em, vertical: cs.writingMode.startsWith("vertical"), lr: cs.writingMode === "vertical-lr" });
+        units.push({ text: nodes.map((n) => n.textContent || "").join("").trim(), rects, block: blocksSeen.get(blk), em, lh: Number.isFinite(lh) ? lh : 1.2 * em, vertical: cs.writingMode.startsWith("vertical"), lr: cs.writingMode === "vertical-lr" });
       }
       // a soft hyphen is invisible in the text but can show any hyphenation character
       if (out.some((x) => x.includes("\\u00ad"))) bad.push("soft hyphen (U+00AD) in the page");

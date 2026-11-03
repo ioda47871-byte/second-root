@@ -347,7 +347,7 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
       ["予約", '<div><span style="display:inline-block">予</span><span style="display:inline-block">約</span></div>'],
       ["在庫", '<div style="display:grid;grid-template-columns:auto auto;justify-content:start"><p>在</p><p>庫</p></div>'],
       // drawn side by side only on the phone (read at both rendered widths)
-      ["注文", '<style>@media (max-width: 500px) { .zzm { display: flex; } }</style><div class="zzm"><p>注</p><p>文</p></div>'],
+      ["注文", '<style>@media (max-width: 500px) { .zzm { display: flex; } }</style><div class="zzm"><p style="margin:0 0 3em">注</p><p style="margin:0 0 3em">文</p></div>'],
       // reading runs on to the next line: 創 ends one line, 業 begins the next
       ["創業", '<p style="width:4.2em;font-size:16px;line-height:2.4"><span>継ぐ手創</span><span>業の時を</span></p>'],
       // grid placement against the document order (final confirmation: was a known gap, now joined by where it is drawn)
@@ -374,6 +374,10 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
         '<p>器<svg width="10" height="10"><style>.s{stroke-width:2;stroke:#333}</style><rect class="s" width="8" height="8"/></svg></p>',
         "<p>架空市架空区<br>架空町一丁目3-2</p><p>器を待つ</p>",
         '<section><h2>器と人</h2></section><section style="margin-top:400px"><p>気配のある工房</p></section>',
+        // ordinary stacked blocks are not one line of reading (confirmation of 44d8c5f, M1)
+        "<div><p>器と人</p><p>気配のある工房</p></div>",
+        "<div><h2>器と人</h2><p>気配のある工房</p></div>",
+        '<figure><div style="width:200px;height:200px;background:#ccc"></div><figcaption>器と人</figcaption></figure><p>気配のある工房</p>',
       ]
         .map((x) => `<div style="margin-top:300px">${x}</div>`)
         .join(""),
