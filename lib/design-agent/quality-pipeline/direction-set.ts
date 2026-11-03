@@ -79,7 +79,7 @@ export const DirectionSet = z.strictObject({
 export type DirectionSet = z.infer<typeof DirectionSet>;
 
 export type Finding = { check: (typeof CHECKS)[number] | "refs" | "schema"; code: string; direction?: string; detail?: string };
-export type SetCheck = { status: "READY_FOR_COMPS" | "HOLD"; findings: Finding[]; note: string };
+export type SetCheck = { status: "READY_FOR_COMPS" | "HOLD"; findings: Finding[]; note: string; reference_mode: string };
 
 const NOTE = "READY_FOR_COMPS means only that the machine-checkable parts hold and no designer answer is 'no'. It is not a quality verdict: the owner decides on real PC/SP pictures.";
 
@@ -161,12 +161,14 @@ export type CheckInputs = {
   principleIds: readonly string[];
   /** case id -> the principles principles-v1.json tags it with */
   casePrinciples: Readonly<Record<string, readonly string[]>>;
+  /** principles-v1.json `visual_mode` (TEXT_ONLY_PROVISIONAL until Claude's own reads back the principles). */
+  referenceMode: string;
 };
 
 /** The set against its shop's facts (shop, ids and SHA) and the principles data (viewed cases, principles per case). */
 export function checkDirectionSet(raw: unknown, o: CheckInputs): SetCheck {
   const parsed = DirectionSet.safeParse(raw);
-  if (!parsed.success) return { status: "HOLD", findings: [{ check: "schema", code: "SET_SCHEMA", detail: parsed.error.issues.slice(0, 5).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") }], note: NOTE };
+  if (!parsed.success) return { status: "HOLD", findings: [{ check: "schema", code: "SET_SCHEMA", detail: parsed.error.issues.slice(0, 5).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") }], note: NOTE, reference_mode: o.referenceMode };
   const s = parsed.data;
   const f: Finding[] = [];
   if (s.facts_sha256 !== o.factsSha256) f.push({ check: "C1", code: "FACTS_SHA_MISMATCH" });
@@ -241,5 +243,5 @@ export function checkDirectionSet(raw: unknown, o: CheckInputs): SetCheck {
     for (const c of ["C1", "C2", "C3", "C4", "C5"] as const)
       if (d.checklist[c].answer === "yes" && f.some((x) => x.check === c && !["DESIGNER_ANSWERED_NO", "EVIDENCE_COPIED"].includes(x.code) && (x.direction === undefined || x.direction.split("|").includes(d.id))))
         f.push({ check: c, code: "ANSWER_CONTRADICTED_BY_CHECK", direction: d.id });
-  return { status: f.length ? "HOLD" : "READY_FOR_COMPS", findings: f, note: NOTE };
+  return { status: f.length ? "HOLD" : "READY_FOR_COMPS", findings: f, note: NOTE, reference_mode: o.referenceMode };
 }

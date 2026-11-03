@@ -7139,7 +7139,7 @@
     {
       "id": "DEV-156",
       "title": "成功例20件の設計原理・制作工程・失敗パターン・制作前チェックリスト (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
@@ -7182,7 +7182,9 @@
       "title": "方向の記録 (art_direction_set_v0) と、カンプを作る前の機械の検査 (Issue #193 改善タスク T1)",
       "status": "review",
       "priority": "P1",
-      "depends_on": [],
+      "depends_on": [
+        "DEV-156"
+      ],
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-157-direction-set",
@@ -7192,7 +7194,8 @@
         "scripts/design-artifact/direction-set.ts (CLI、0 = READY_FOR_COMPS / 1 = HOLD / 2 = 使い方の誤り)",
         "架空の店 1件 (つぐ手) の事実パックと3方向の例",
         "未見の10件を参照すると止まる",
-        "「成功例レベル」とは言わない"
+        "「成功例レベル」とは言わない",
+        "参照の原理が TEXT_ONLY_PROVISIONAL であることを、検査の出力に出す"
       ],
       "required_tests": [
         "npx vitest run tests/unit/design-agent/quality-pipeline/direction-set.test.ts"
@@ -7216,7 +7219,7 @@
         "実画像の生成",
         "許可一覧の緩和"
       ],
-      "note": "Issue #193 のオーナーの事前承認 (20件の視覚研究を使った自律の次段)。DEV-156 の上に積む。(依存の規則のため depends_on は空。DEV-156 の merge のあとに merge する)"
+      "note": "Issue #193 のオーナーの事前承認 (20件の視覚研究を使った自律の次段)。DEV-156 の上に積む。"
     }
   ]
 }

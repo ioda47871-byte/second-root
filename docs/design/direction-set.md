@@ -11,7 +11,7 @@ npx tsx scripts/design-artifact/direction-set.ts --set <direction-set.json> --fa
 
 終了コード: 0 = `READY_FOR_COMPS`、1 = `HOLD`、2 = 使い方・入力の誤り (ファイルが無い、JSON でない、事実パックが `shop_facts_pack_v1` でない、事実の id が重なる、`principles-v1.json` が壊れている)、3 = 不具合 (`HOLD` と区別する)。
 
-**`READY_FOR_COMPS` は「カンプを作ってよい」という意味だけである。** 品質の判定ではない。「成功例レベル」かどうかは、オーナーが PC/SP の実画像を見て決める。
+**`READY_FOR_COMPS` は「カンプを作ってよい」という意味だけである。** 出力の `reference_mode` は、参照した原理 (`principles-v1.json`) の区分である。今は `TEXT_ONLY_PROVISIONAL` (ChatGPT の視覚研究の要約と研究記録) で、Claude 自身が画像を見た根拠ではない。 品質の判定ではない。「成功例レベル」かどうかは、オーナーが PC/SP の実画像を見て決める。
 
 ## 記録に書くもの
 

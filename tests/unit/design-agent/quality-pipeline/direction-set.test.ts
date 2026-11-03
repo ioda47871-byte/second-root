@@ -26,6 +26,8 @@ describe("art direction set (DEV-157, Issue #193)", () => {
     expect(r.findings).toEqual([]);
     expect(r.status).toBe("READY_FOR_COMPS");
     expect(r.note).toMatch(/not a quality verdict/);
+    // the principles it cites rest on text (ChatGPT's viewing summary), and the result says so
+    expect(r.reference_mode).toBe("TEXT_ONLY_PROVISIONAL");
   });
 
   it("the example cites only viewed cases and its facts SHA is the pack's", () => {
@@ -384,7 +386,7 @@ describe("art direction set (DEV-157, Issue #193)", () => {
     expect(run(resolve(REPO, POC, "direction-set.json"), bad).code).toBe(2);
     // a malformed principles file is an input error (2), not a hold (1)
     const badPrinciples = join(p, "..", "principles.json");
-    writeFileSync(badPrinciples, JSON.stringify({ cases: [], principles: [] }));
+    writeFileSync(badPrinciples, JSON.stringify({ visual_mode: "TEXT_ONLY_PROVISIONAL", cases: [], principles: [] }));
     const cli2 = (args: string[]) => {
       try {
         execFileSync("npx", ["tsx", cli, ...args], { encoding: "utf8", stdio: "pipe" });

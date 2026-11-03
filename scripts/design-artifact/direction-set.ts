@@ -21,6 +21,7 @@ export class InputError extends Error {}
 
 /** The parts of principles-v1.json the check reads. */
 const Principles = z.object({
+  visual_mode: z.enum(["TEXT_ONLY_PROVISIONAL", "VISUAL_VERIFIED", "MISSING_OR_HOLD"]),
   cases: z.array(z.object({ id: z.string().regex(/^CP-\d{3}$/), principles: z.array(z.string().regex(/^P\d$/)) })).min(1),
   principles: z.array(z.object({ id: z.string().regex(/^P\d$/) })).min(1),
 });
@@ -56,6 +57,7 @@ export function loadInputs(factsPath: string, principlesPath = resolve(REPO, PRI
     viewedCases: principles.cases.map((c) => c.id),
     principleIds: principles.principles.map((p) => p.id),
     casePrinciples: Object.fromEntries(principles.cases.map((c) => [c.id, c.principles])),
+    referenceMode: principles.visual_mode,
   };
 }
 
