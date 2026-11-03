@@ -7251,7 +7251,10 @@
         "docs/design/direction-set.md",
         "docs/design/quality-first-process.md",
         "tests/unit/design-agent/quality-pipeline/",
-        ".ai/"
+        ".ai/",
+        "tests/unit/design-agent/phase2f/isolation.test.ts",
+        "tests/unit/design-agent/structure/structure.test.ts",
+        "lib/design-agent/quality-pipeline/facts-pack.ts"
       ],
       "forbidden_scope": [
         "実 Codex・画像生成・有料 API の呼び出し",
@@ -7263,7 +7266,7 @@
         "実画像の生成",
         "許可一覧の緩和"
       ],
-      "note": "Issue #193 のオーナーの事前承認 (20件の視覚研究を使った自律の次段)。DEV-156 の上に積む。"
+      "note": "Issue #193 のオーナーの事前承認 (20件の視覚研究を使った自律の次段)。DEV-156 の上に積む。 隔離の例外は Issue #193 コメント 6595445598 のオーナー承認 (正確なパスと名前だけ)。事実パックは artifact を読まずに quality-pipeline/facts-pack.ts で読む。"
     }
   ]
 }
