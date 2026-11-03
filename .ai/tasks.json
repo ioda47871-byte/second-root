@@ -7383,6 +7383,7 @@
       ],
       "allowed_scope": [
         "lib/design-agent/research/decoration-svg.ts",
+        "lib/design-agent/research/decoration-page-browser.ts",
         "tests/unit/design-agent/research/",
         "docs/design/n1-decoration-svg.md",
         ".ai/"

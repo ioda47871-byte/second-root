@@ -21,7 +21,8 @@
  *   nothing for an SVG shown through `<img>` anyway — both lines hold);
  * - size: `width`, `height` and `viewBox` required, so the page box and the record agree.
  * checkDecorationSvg is pure; checkDecorationAssetFile reads one file (no symlink, no path out of the page directory).
- * No network, no child process.
+ * checkDecorationPage (the page that shows the files) is an element and attribute allowlist, pure; its second line, a
+ * Chromium render with request logging, is decoration-page-browser.ts. No network, no child process in this module.
  */
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
@@ -244,38 +245,33 @@ export const DECORATION_FILE = /^assets\/[a-z0-9][a-z0-9-]{0,60}\.svg$/;
 export const DECORATION_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 // ---------------------------------------------------------------------------------------------------------------
-// The page side. A small HTML tokenizer (tags and attributes as a browser splits them: double-quoted, single-quoted
-// and unquoted values, ASCII case-insensitive names, `/` as a separator, the first of duplicate attributes wins),
-// then one strict policy over every attribute value, every `style` attribute, every `<style>` and the page CSS.
-// The production htmlSourceProblems already refuses many of these inputs (`<svg`, `<object>`, `style`, `data:`,
-// `https:` …), but this checker does not lean on that: it refuses them itself.
+// The page side: an ALLOWLIST, not a list of known-bad inputs. A small HTML tokenizer splits tags and attributes as a
+// browser does (double-quoted, single-quoted and unquoted values, ASCII case-insensitive names, `/` as a separator),
+// then every element name and every attribute (per element, with a value grammar) must be on a short fixed list of
+// plain HTML content elements. Every element that changes how the rest of the input is parsed (foreign content: `svg`,
+// `math`; raw text: `script`, `style`, `textarea`, `xmp`, `noembed`, `noframes`, `iframe`, `plaintext`; `noscript`,
+// which is raw text with JS on and markup with JS off; `template`) and every element or attribute that loads or
+// redirects anything (`base`, `link`, `picture` / `source`, `srcset`, `object`, `embed`, `video`, `audio`, `image`,
+// `input`, `form` …) is off the list, so it is refused by name. The one raw-text element left is `title`, allowed only
+// inside `head`. Comments and declarations other than a leading `<!doctype html>` are refused, so the tokenizer never
+// has to agree with a browser on where a comment ends. The browser verification in decoration-page-browser.ts is the
+// second line.
 // ---------------------------------------------------------------------------------------------------------------
 
 const HTML_WS = /[\t\n\f\r ]/;
 const asciiLower = (v: string) => v.replace(/[A-Z]/g, (c) => c.toLowerCase());
-/** Elements whose content is not markup (the tokenizer skips to their end tag). `noscript` is markup: the page renders with JS off. */
-const RAW_TEXT = new Set(["script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "plaintext"]);
-const EMBEDDING = new Set(["object", "embed", "iframe", "frame", "frameset", "portal", "fencedframe", "applet"]);
-/** Attributes whose value is a URL (or a list of them): a scheme at the start of any candidate is an absolute URL. */
-const URL_ATTRS = new Set(["src", "href", "srcset", "imagesrcset", "data", "poster", "background", "action", "formaction", "cite", "longdesc", "lowsrc", "dynsrc", "codebase", "classid", "archive", "usemap", "manifest", "icon", "ping", "profile", "itemtype", "xlink:href", "content"]);
 const NAMED_REFS: ReadonlyMap<string, string> = new Map([
   ["amp", "&"], ["lt", "<"], ["gt", ">"], ["quot", '"'], ["apos", "'"], ["sol", "/"], ["bsol", "\\"], ["period", "."], ["colon", ":"], ["lpar", "("], ["rpar", ")"],
-  ["num", "#"], ["percnt", "%"], ["quest", "?"], ["equals", "="], ["comma", ","], ["semi", ";"], ["tab", "\t"], ["newline", "\n"], ["nbsp", "\u00a0"],
+  ["num", "#"], ["percnt", "%"], ["quest", "?"], ["equals", "="], ["comma", ","], ["semi", ";"], ["tab", "\t"], ["newline", "\n"], ["nbsp", " "],
 ]); // prettier-ignore
-const codePoint = (n: number) => (n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "\ufffd");
+const codePoint = (n: number) => (n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "�");
 
-/** HTML character references: numeric ones and a small named table; a `;`-terminated name outside the table is reported. */
-function decodeHtml(v: string): { text: string; unknown: boolean } {
-  let unknown = false;
-  const text = v.replace(/&(#[xX][0-9a-fA-F]+|#\d+|[A-Za-z][A-Za-z0-9]*);?/g, (m, ref: string) => {
+/** HTML character references (numeric and a small named table): used only for extra readings of the page CSS. */
+const decodeHtml = (v: string) =>
+  v.replace(/&(#[xX][0-9a-fA-F]+|#\d+|[A-Za-z][A-Za-z0-9]*);?/g, (m, ref: string) => {
     if (ref.startsWith("#")) return codePoint(ref[1] === "x" || ref[1] === "X" ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10));
-    const named = NAMED_REFS.get(ref.toLowerCase());
-    if (named !== undefined) return named;
-    if (m.endsWith(";")) unknown = true;
-    return m;
+    return NAMED_REFS.get(ref.toLowerCase()) ?? m;
   });
-  return { text, unknown };
-}
 
 /** CSS escapes: `\67` (1–6 hex digits and one optional white space) and `\x` for any other character. */
 const unescapeCss = (v: string) =>
@@ -287,42 +283,77 @@ const trimC0 = (v: string) => {
   while (k < v.length && v.charCodeAt(k) <= 0x20) k++;
   return v.slice(k);
 };
-/**
- * A URL as a browser would resolve it, for matching: tab / LF / CR / FF removed, leading C0 and spaces trimmed, one level
- * of %XX decoded, `\` as `/`, lower case.
- */
+/** Text as a browser would read it for matching: tab / LF / CR / FF removed, leading C0 trimmed, %XX decoded once, `\` as `/`, lower case. */
 const normaliseUrlText = (v: string) =>
   asciiLower(trimC0(v.replace(/[\t\n\r\f]/g, "").replace(/%([0-9a-fA-F]{2})/g, (_m, h: string) => String.fromCharCode(parseInt(h, 16))).replace(/\\/g, "/")));
+/** Every reading of the CSS the checker matches against: raw, entity-decoded, CSS-unescaped and both, each normalised. */
+const cssReadings = (v: string) => [...new Set([v, decodeHtml(v), unescapeCss(v), unescapeCss(decodeHtml(v))].map(normaliseUrlText))];
 
-/** Every reading of a value the checker matches against: raw, entity-decoded, CSS-unescaped and both, each normalised. */
-function readings(v: string): { all: string[]; unknownEntity: boolean } {
-  const d = decodeHtml(v);
-  const all = [...new Set([v, d.text, unescapeCss(v), unescapeCss(d.text)].map(normaliseUrlText))];
-  return { all, unknownEntity: d.unknown };
-}
-
-const DATA_URL = /(?:^|[^a-z0-9+.-])data:/;
-const ABSOLUTE_URL = /(?:^|[^a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/|^\/\//;
-const SCHEME = /^[a-z][a-z0-9+.-]*:/;
 const CSS_LOADS = /url\s*\(|image-set\s*\(|\bimage\s*\(|cross-fade\s*\(|element\s*\(|@import|\bsrc\s*\(/;
 
-type Matcher = (normalised: string) => boolean;
-/**
- * Anything containing `.svg` or an SVG media type, or a recorded file with or without its `.svg` (`assets/seam`), also
- * after dot segments are resolved (`./assets/x/../seam`).
- */
-function svgMatcher(files: readonly string[]): Matcher {
+/** Anything containing `.svg` or an SVG media type, or a recorded file with or without its `.svg`, also after dot segments. */
+function svgMatcher(files: readonly string[]): (v: string) => boolean {
   const stems = files.map((f) => new RegExp(`(?:^|[^a-z0-9-])${f.replace(/\.svg$/, "").replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&")}(?![a-z0-9-])`));
   const one = (v: string) => v.includes(".svg") || v.includes("svg+xml") || v.includes("image/svg") || stems.some((re) => re.test(v));
   return (v) => one(v) || one(posix.normalize(v));
 }
 
-function cssProblemsInto(css: string, refersToSvg: Matcher, p: Set<string>) {
-  for (const v of readings(css).all.flatMap((r) => [r, r.replace(/\/\*[\s\S]*?\*\//g, "")])) {
+/** The page CSS (the production lane's page-css allowlist also refuses `url(`; this checker does not lean on it). */
+function cssProblemsInto(css: string, refersToSvg: (v: string) => boolean, p: Set<string>) {
+  for (const v of cssReadings(css).flatMap((r) => [r, r.replace(/\/\*[\s\S]*?\*\//g, "")])) {
     if (CSS_LOADS.test(v)) p.add("CSS_URL");
     if (refersToSvg(v)) p.add("SVG_FROM_CSS");
   }
 }
+
+type AttrRule = (v: string) => boolean;
+const token = (max: number) => (v: string) => new RegExp(`^[A-Za-z0-9 _.-]{0,${max}}$`).test(v);
+const plainText = (v: string) => v.length <= 200 && !/[<>"'`=]/.test(v);
+/** Attributes any allowed element (but `meta`) may carry. None of them loads, redirects, styles or scripts anything. */
+const GLOBAL_PAGE_ATTRIBUTES: Record<string, AttrRule> = {
+  class: (v) => /^[A-Za-z0-9_\- \t\n]{0,400}$/.test(v),
+  id: (v) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(v),
+  lang: (v) => /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8}){0,3}$/.test(v),
+  "aria-label": plainText,
+  "aria-hidden": (v) => v === "true" || v === "false",
+  ...Object.fromEntries(
+    ["data-comp-role", "data-comp-section", "data-comp-type", "data-comp-slot", "data-comp-placeholder", "data-comp-nav", "data-comp-cta", "data-comp-disclosure", "data-comp-container"].map((a) => [a, token(64)]),
+  ),
+};
+const plain = { attrs: {}, globals: true } as const;
+/**
+ * Element → its own attributes (with value rules) and whether the global ones apply. Plain content and structure
+ * elements only, close to the production DOM allowlist (comp-impl/page-scripts.ts PAGE_ELEMENTS) minus `link` (a page
+ * here loads nothing but its recorded assets) plus a few inert inline and block elements. `img` must be a recorded
+ * decorative asset (checked below); `a` may only point inside the page (`#id`).
+ */
+const PAGE_ELEMENTS: Record<string, { attrs: Record<string, AttrRule>; globals: boolean }> = {
+  html: plain,
+  head: plain,
+  meta: { attrs: { charset: (v) => asciiLower(v) === "utf-8" }, globals: false },
+  title: plain,
+  body: plain,
+  ...Object.fromEntries(
+    ["header", "main", "footer", "nav", "section", "article", "aside", "div", "p", "span", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "dl", "dt", "dd", "figure", "figcaption", "br", "hr", "strong", "em", "small", "b", "i", "time", "address", "blockquote"].map((e) => [e, plain]),
+  ),
+  a: { attrs: { href: (v) => /^#[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(v) || v === "#" }, globals: true },
+  img: {
+    attrs: {
+      src: (v) => DECORATION_FILE.test(v),
+      alt: (v) => v === "",
+      referrerpolicy: (v) => v === "no-referrer",
+      width: (v) => /^[1-9]\d{0,3}$/.test(v),
+      height: (v) => /^[1-9]\d{0,3}$/.test(v),
+      loading: (v) => v === "eager" || v === "lazy",
+      decoding: (v) => v === "sync" || v === "async" || v === "auto",
+    },
+    globals: true,
+  },
+};
+export const DECORATION_PAGE_ELEMENTS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(Object.entries(PAGE_ELEMENTS).map(([e, s]) => [e, Object.keys(s.attrs)]));
+export const DECORATION_PAGE_GLOBAL_ATTRIBUTES: readonly string[] = Object.keys(GLOBAL_PAGE_ATTRIBUTES);
+/** The elements a browser may put in `head` without closing it, of those on the list. */
+const HEAD_CONTENT = new Set(["meta", "title"]);
 
 type Tag = { name: string; attrs: Map<string, string>; duplicate: boolean; end: number };
 /** One tag from just after `<` (or `</`); null when the input ends inside it. */
@@ -378,102 +409,138 @@ function assetListProblemsInto(assets: readonly DecorationAsset[], p: Set<string
   }
 }
 
+export type DecorationPageCheck = { problems: string[]; used: string[] };
+
 /**
- * The page side. The only SVG reference allowed anywhere is `<img src="<recorded file>">` with the value exactly the
- * recorded path, carrying `alt=""`, `aria-hidden="true"` and `referrerpolicy="no-referrer"` as parsed attributes.
- * Refused: `<svg` in any form; `<object>` / `<embed>` / `<iframe>` / frames; any other element or attribute whose
- * value (after HTML entities, CSS escapes and %XX) names a recorded file (with or without `.svg`), anything with
- * `.svg` or an SVG media type; any `data:` URL; any absolute or protocol-relative URL; any `url(` / `image-set(` /
- * `@import` in a `style` attribute, a `<style>` or the page CSS; an unknown `;`-terminated character reference; a
- * duplicate attribute; a tag or comment the input ends inside; and a recorded asset that is unused, badly named,
- * badly identified or recorded twice. A scan of the source text (the production lane would check the live DOM too).
+ * The page side, as an allowlist. A page passes only when:
+ * - its characters are free of NUL and C0 / C1 controls but tab, LF, FF and CR;
+ * - it holds no comment and no `<!…>` / `<?…>` / `</…` other than tags, but one leading `<!doctype html>`;
+ * - every start and end tag names an element on DECORATION_PAGE_ELEMENTS (`PAGE_ELEMENT_NOT_ALLOWED`; `svg` also gives
+ *   `INLINE_SVG`), end tags carry no attributes, and `title` stands only in `head` (`PAGE_ELEMENT_PLACE`) and holds no `<`;
+ * - every attribute is its element's own or (but on `meta`) a global one (`PAGE_ATTRIBUTE_NOT_ALLOWED`), its value has no
+ *   `&` (`PAGE_ENTITY`, so no character reference can hide anything) and fits the attribute's grammar
+ *   (`PAGE_ATTRIBUTE_VALUE`), and no attribute is given twice (`PAGE_ATTRIBUTE_DUPLICATE`);
+ * - every `img` has `src` equal to a recorded file (`SVG_NOT_RECORDED`) and is decorative: `alt=""`, `aria-hidden="true"`,
+ *   `referrerpolicy="no-referrer"` (`SVG_IMG_NOT_DECORATIVE`, `SVG_IMG_REFERRER`);
+ * - the page CSS loads nothing (`CSS_URL`, `SVG_FROM_CSS`);
+ * - the record is well formed and every recorded asset is used by a clean decorative `img` (`SVG_RECORDED_NOT_USED`).
+ * `used` lists the recorded files that a clean `img` (no refused attribute, nothing else wrong with the tag) loads.
  */
-export function decorationReferenceProblems(html: string, css: string, assets: readonly DecorationAsset[]): string[] {
+export function checkDecorationPage(html: string, css: string, assets: readonly DecorationAsset[]): DecorationPageCheck {
   const p = new Set<string>();
+  const used = new Set<string>();
+  try {
+    pageInto(String(html), String(css), assets, p, used);
+  } catch {
+    p.add("PAGE_CHECK_ERROR");
+  }
+  return { problems: [...p].sort(), used: [...used].sort() };
+}
+
+/** checkDecorationPage's problem codes only. */
+export function decorationReferenceProblems(html: string, css: string, assets: readonly DecorationAsset[]): string[] {
+  return checkDecorationPage(html, css, assets).problems;
+}
+
+function pageInto(html: string, css: string, assets: readonly DecorationAsset[], p: Set<string>, used: Set<string>) {
   assetListProblemsInto(assets, p);
   const files = new Set(assets.map((a) => (typeof a?.file === "string" ? a.file : "")).filter((f) => DECORATION_FILE.test(f)));
-  const refersToSvg = svgMatcher([...files]);
-  const used = new Set<string>();
-  if (/<\/?svg/i.test(html)) p.add("INLINE_SVG"); // anywhere, comments and raw text included
-  cssProblemsInto(css, refersToSvg, p);
+  cssProblemsInto(css, svgMatcher([...files]), p);
+  if (/[\u0000-\u0008\u000b\u000e-\u001f\u007f-\u009f]/.test(html)) p.add("PAGE_CONTROL_CHAR");
+  if (/<\/?svg/i.test(html)) p.add("INLINE_SVG"); // anywhere, text included
 
-  const onTag = (t: Tag) => {
-    if (t.duplicate) p.add("PAGE_ATTRIBUTE_DUPLICATE");
-    if (t.name === "svg") p.add("INLINE_SVG");
-    if (EMBEDDING.has(t.name)) p.add("SVG_EMBEDDED_NOT_IMG");
-    for (const [an, av] of t.attrs) {
-      const r = readings(av);
-      if (r.unknownEntity) p.add("PAGE_ENTITY");
-      if (an === "style") cssProblemsInto(decodeHtml(av).text, refersToSvg, p);
-      if (r.all.some((v) => DATA_URL.test(v))) p.add("PAGE_DATA_URL");
-      const candidates = (v: string) => (an === "srcset" || an === "imagesrcset" || an === "ping" || an === "archive" ? v.split(/[,\s]+/).map(trimC0) : [v]);
-      if (r.all.some((v) => ABSOLUTE_URL.test(v) || (URL_ATTRS.has(an) && candidates(v).some((c) => SCHEME.test(c))))) p.add("PAGE_ABSOLUTE_URL");
-      if (t.name === "img" && an === "src" && files.has(av)) {
-        used.add(av);
-        continue;
-      }
-      if (r.all.some(refersToSvg)) p.add(t.name === "img" && an === "src" ? "SVG_NOT_RECORDED" : "SVG_REFERENCE_NOT_IMG");
-    }
-    if (t.name === "img" && files.has(t.attrs.get("src") ?? "")) {
-      if (t.attrs.get("alt") !== "" || t.attrs.get("aria-hidden") !== "true") p.add("SVG_IMG_NOT_DECORATIVE");
-      if (t.attrs.get("referrerpolicy") !== "no-referrer") p.add("SVG_IMG_REFERRER");
-    }
-  };
-
+  // where `title` may stand: after `<head>`, before anything that closes it (a browser closes `head` implicitly); a
+  // `<head>` after body content is too late (a browser ignores it)
+  let head: "before" | "in" | "after" = "before";
   const n = html.length;
-  let i = 0;
+  const doctype = /^[\t\n\f\r ]*<!doctype[\t\n\f\r ]+html[\t\n\f\r ]*>/i.exec(html);
+  let i = doctype ? doctype[0].length : 0;
   while (i < n) {
     const lt = html.indexOf("<", i);
+    if (head !== "after" && html.slice(i, lt < 0 ? n : lt).trim()) head = "after";
     if (lt < 0) break;
     i = lt + 1;
-    if (html.startsWith("!--", i)) {
-      // `<!-->` and `<!--->` end at once; otherwise the first `-->` or `--!>`
-      if (html.startsWith(">", i + 3)) i += 4;
-      else if (html.startsWith("->", i + 3)) i += 5;
-      else {
-        const ends = [html.indexOf("-->", i + 3), html.indexOf("--!>", i + 3)].filter((x) => x >= 0);
-        if (!ends.length) {
-          p.add("PAGE_MALFORMED");
-          break;
-        }
-        const e = Math.min(...ends);
-        i = e + (html.startsWith("-->", e) ? 3 : 4);
-      }
-      continue;
-    }
     const c = html[i] ?? "";
     const closing = c === "/" && /[A-Za-z]/.test(html[i + 1] ?? "");
-    if (!/[A-Za-z]/.test(c) && !closing) {
-      if (c === "!" || c === "?" || c === "/") {
-        // a bogus comment runs to the next `>`
-        const e = html.indexOf(">", i);
-        if (e < 0) {
-          p.add("PAGE_MALFORMED");
-          break;
-        }
-        i = e + 1;
+    if (c === "!" || c === "?" || (c === "/" && !closing)) {
+      // a comment, a declaration, a processing instruction or a bogus end tag: none is allowed (no agreement on where it ends is needed)
+      p.add(html.startsWith("!--", i) ? "PAGE_COMMENT" : "PAGE_DECLARATION");
+      const e = html.indexOf(">", i);
+      if (e < 0) {
+        p.add("PAGE_MALFORMED");
+        break;
       }
+      i = e + 1;
       continue;
     }
+    if (!/[A-Za-z]/.test(c) && !closing) continue; // `<` as text
     const t = readTag(html, closing ? i + 1 : i);
     if (!t) {
       p.add("PAGE_MALFORMED");
       break;
     }
     i = t.end;
-    if (closing) continue;
-    onTag(t);
-    if (RAW_TEXT.has(t.name)) {
-      const close = t.name === "plaintext" ? null : new RegExp(`</${t.name}(?=[\\t\\n\\f\\r />])`, "i").exec(html.slice(i));
-      const content = close ? html.slice(i, i + close.index) : html.slice(i);
-      if (!close && t.name !== "plaintext") p.add("PAGE_MALFORMED");
-      if (t.name === "style") cssProblemsInto(content, refersToSvg, p);
-      else if (readings(content).all.some(refersToSvg)) p.add("SVG_REFERENCE_NOT_IMG");
-      i = close ? i + close.index : n;
+    const spec = Object.hasOwn(PAGE_ELEMENTS, t.name) ? PAGE_ELEMENTS[t.name] : undefined;
+    if (!spec) {
+      p.add("PAGE_ELEMENT_NOT_ALLOWED");
+      if (t.name === "svg") p.add("INLINE_SVG");
+    }
+    if (closing) {
+      if (t.attrs.size) p.add("PAGE_MALFORMED");
+      if (t.name === "head" && head === "in") head = "after";
+      continue;
+    }
+    if (t.name === "head") {
+      if (head === "before") head = "in";
+      else p.add("PAGE_ELEMENT_PLACE");
+    } else if (head !== "after" && t.name !== "html" && !HEAD_CONTENT.has(t.name)) head = "after";
+
+    let tagClean = !!spec && !t.duplicate;
+    if (t.duplicate) p.add("PAGE_ATTRIBUTE_DUPLICATE");
+    for (const [an, av] of t.attrs) {
+      const rule = spec ? (Object.hasOwn(spec.attrs, an) ? spec.attrs[an] : spec.globals && Object.hasOwn(GLOBAL_PAGE_ATTRIBUTES, an) ? GLOBAL_PAGE_ATTRIBUTES[an] : undefined) : undefined;
+      if (spec && !rule) {
+        p.add("PAGE_ATTRIBUTE_NOT_ALLOWED");
+        tagClean = false;
+      }
+      if (av.includes("&")) {
+        p.add("PAGE_ENTITY");
+        tagClean = false;
+      } else if (rule && !rule(av)) {
+        p.add(t.name === "img" && an === "src" ? "SVG_NOT_RECORDED" : "PAGE_ATTRIBUTE_VALUE");
+        tagClean = false;
+      }
+    }
+    if (t.name === "img") {
+      const src = t.attrs.get("src");
+      if (src === undefined || !files.has(src)) {
+        p.add("SVG_NOT_RECORDED");
+        tagClean = false;
+      }
+      if (t.attrs.get("alt") !== "" || t.attrs.get("aria-hidden") !== "true") {
+        p.add("SVG_IMG_NOT_DECORATIVE");
+        tagClean = false;
+      }
+      if (t.attrs.get("referrerpolicy") !== "no-referrer") {
+        p.add("SVG_IMG_REFERRER");
+        tagClean = false;
+      }
+      if (tagClean && src !== undefined) used.add(src);
+    }
+
+    if (t.name === "title") {
+      // the one raw-text (RCDATA) element on the list: allowed only in head, its text runs to `</title`
+      if (head !== "in") p.add("PAGE_ELEMENT_PLACE");
+      const close = /<\/title(?=[\t\n\f\r />])/i.exec(html.slice(i));
+      if (!close) {
+        p.add("PAGE_MALFORMED");
+        break;
+      }
+      if (html.slice(i, i + close.index).includes("<")) p.add("PAGE_TITLE_CONTENT");
+      i += close.index;
     }
   }
   for (const f of files) if (!used.has(f)) p.add("SVG_RECORDED_NOT_USED");
-  return [...p].sort();
 }
 
 /**
