@@ -1,0 +1,299 @@
+{
+  "schema": "claude_visual_read_v1",
+  "case_id": "CP-001",
+  "view": "concept",
+  "asset": {
+    "path": "design-library/success-cases/assets/CP-001_Mond.webp",
+    "kind": "registered_preview",
+    "sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82",
+    "width": 960,
+    "height": 1440,
+    "recorded_in_manifest": true
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-03T00:04:00Z",
+    "how": "Read tool on PNG copies of the registered WebP (full picture for concepts; vertical crops for the tall PC/SP pages), opened in this session"
+  },
+  "actually_viewed": true,
+  "viewed_crops": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 960,
+      "h": 1440
+    }
+  ],
+  "observation": {
+    "schema": "reference_observation_v0",
+    "case_id": "CP-001",
+    "image_sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82",
+    "view": "concept",
+    "inspector": "Claude (Development session, Issue #193); registered WebP preview opened directly",
+    "observed": {
+      "motif": [
+        {
+          "what": "青い花柄のヴィンテージカップとソーサー。木のテーブルに斜めの光が落ちる",
+          "box": {
+            "x": 370,
+            "y": 215,
+            "w": 320,
+            "h": 200
+          }
+        },
+        {
+          "what": "棚に並ぶ花柄カップ (青と茶)。カップが別の段で繰り返し出る",
+          "box": {
+            "x": 720,
+            "y": 560,
+            "w": 240,
+            "h": 290
+          }
+        }
+      ],
+      "motif_to_structure": [
+        {
+          "what": "カップが独立した章 01 VINTAGE CUPS になり、文の板と棚の写真が隣り合う",
+          "box": {
+            "x": 515,
+            "y": 530,
+            "w": 445,
+            "h": 330
+          }
+        },
+        {
+          "what": "巨大な店名 MOND が生成りの板から写真の上へまたがり、文字と写真の境をつなぐ",
+          "box": {
+            "x": 35,
+            "y": 75,
+            "w": 470,
+            "h": 145
+          }
+        }
+      ],
+      "hero_reading_order": [
+        {
+          "what": "MOND の巨大なセリフ体",
+          "box": {
+            "x": 35,
+            "y": 75,
+            "w": 470,
+            "h": 145
+          }
+        },
+        {
+          "what": "英字の副題 Hand-roasted coffee and butter toast",
+          "box": {
+            "x": 45,
+            "y": 232,
+            "w": 230,
+            "h": 50
+          }
+        },
+        {
+          "what": "和文の一文と短い紹介文",
+          "box": {
+            "x": 45,
+            "y": 298,
+            "w": 260,
+            "h": 180
+          }
+        },
+        {
+          "what": "中央のカップの写真",
+          "box": {
+            "x": 330,
+            "y": 0,
+            "w": 390,
+            "h": 540
+          }
+        },
+        {
+          "what": "右端の縦書きの和文",
+          "box": {
+            "x": 890,
+            "y": 115,
+            "w": 30,
+            "h": 215
+          }
+        }
+      ],
+      "section_rhythm": [
+        {
+          "what": "暗い板 02 COFFEE: ハンドドリップの写真の上に白い大見出し",
+          "box": {
+            "x": 0,
+            "y": 540,
+            "w": 515,
+            "h": 380
+          }
+        },
+        {
+          "what": "生成りの板 01 VINTAGE CUPS と棚の写真",
+          "box": {
+            "x": 515,
+            "y": 530,
+            "w": 445,
+            "h": 330
+          }
+        },
+        {
+          "what": "03 BUTTER TOAST: 左にトーストの写真、右に生成りの文の板",
+          "box": {
+            "x": 365,
+            "y": 860,
+            "w": 595,
+            "h": 260
+          }
+        },
+        {
+          "what": "下段: 店内の写真に手書きの英字、04 ABOUT の生成りの板、暗い緑の扉の写真",
+          "box": {
+            "x": 0,
+            "y": 920,
+            "w": 960,
+            "h": 520
+          }
+        }
+      ],
+      "typography": [
+        {
+          "what": "太いハイコントラストのセリフ体の大文字 COFFEE",
+          "box": {
+            "x": 45,
+            "y": 615,
+            "w": 220,
+            "h": 60
+          }
+        },
+        {
+          "what": "小さな番号 01〜04 と横線のラベル",
+          "box": {
+            "x": 545,
+            "y": 552,
+            "w": 45,
+            "h": 15
+          }
+        },
+        {
+          "what": "手書きの英字 A Kind Time at Mond を写真の上に重ねる",
+          "box": {
+            "x": 45,
+            "y": 975,
+            "w": 175,
+            "h": 95
+          }
+        },
+        {
+          "what": "縦書きの和文の短い詩",
+          "box": {
+            "x": 890,
+            "y": 115,
+            "w": 30,
+            "h": 215
+          }
+        }
+      ],
+      "colour": [
+        {
+          "what": "生成りの紙の地",
+          "box": {
+            "x": 0,
+            "y": 0,
+            "w": 330,
+            "h": 540
+          }
+        },
+        {
+          "what": "こげ茶から黒の暗い板",
+          "box": {
+            "x": 0,
+            "y": 540,
+            "w": 515,
+            "h": 380
+          }
+        },
+        {
+          "what": "琥珀色の暖かい光の写真",
+          "box": {
+            "x": 330,
+            "y": 0,
+            "w": 390,
+            "h": 540
+          }
+        }
+      ],
+      "image_roles": [
+        {
+          "what": "主役の物: カップ",
+          "box": {
+            "x": 370,
+            "y": 215,
+            "w": 320,
+            "h": 200
+          }
+        },
+        {
+          "what": "場所: 窓と店名の入った扉",
+          "box": {
+            "x": 720,
+            "y": 50,
+            "w": 155,
+            "h": 475
+          }
+        },
+        {
+          "what": "工程: ドリップ",
+          "box": {
+            "x": 285,
+            "y": 555,
+            "w": 230,
+            "h": 330
+          }
+        },
+        {
+          "what": "商品: バタートースト",
+          "box": {
+            "x": 365,
+            "y": 860,
+            "w": 320,
+            "h": 260
+          }
+        },
+        {
+          "what": "場所: 店内の席",
+          "box": {
+            "x": 0,
+            "y": 920,
+            "w": 400,
+            "h": 520
+          }
+        },
+        {
+          "what": "入口: 扉の Mond のロゴ",
+          "box": {
+            "x": 625,
+            "y": 1125,
+            "w": 335,
+            "h": 315
+          }
+        }
+      ],
+      "mobile_recomposition": [],
+      "defects": []
+    },
+    "inferred": "店の物 (ヴィンテージカップ) を中心に、写真と文の板の大きさを毎段変えるモザイクで全体を組む。帯を積まず、暗い板と生成りの板を交互に置き、番号の小さなラベルで章を示す。",
+    "learn": [
+      "店名を巨大な文字にして写真との境をまたがせ、文字と写真を一つの面にする",
+      "店の物を独立した章にし、写真の中で別の段に繰り返し出す",
+      "板の大きさと地の明暗を毎段変え、同じ帯を並べない",
+      "小さな番号と横線のラベルで、自由な配置にも読み順を与える"
+    ],
+    "do_not_copy": [
+      "Mond の店名・ロゴ・文・写真",
+      "青い花柄カップのモチーフそのもの",
+      "同じ板の割り付け (位置と比率)"
+    ]
+  }
+}

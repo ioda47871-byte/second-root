@@ -1,0 +1,339 @@
+{
+  "schema": "claude_visual_read_v1",
+  "case_id": "CP-003",
+  "view": "mobile",
+  "asset": {
+    "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp",
+    "kind": "registered_preview",
+    "sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0",
+    "width": 390,
+    "height": 4502,
+    "recorded_in_manifest": true
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-03T00:04:00Z",
+    "how": "Read tool on PNG copies of the registered WebP (full picture for concepts; vertical crops for the tall PC/SP pages), opened in this session"
+  },
+  "actually_viewed": true,
+  "viewed_crops": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 1500
+    },
+    {
+      "x": 0,
+      "y": 1500,
+      "w": 390,
+      "h": 1500
+    },
+    {
+      "x": 0,
+      "y": 3000,
+      "w": 390,
+      "h": 1500
+    }
+  ],
+  "observation": {
+    "schema": "reference_observation_v0",
+    "case_id": "CP-003",
+    "image_sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0",
+    "view": "mobile",
+    "inspector": "Claude (Development session, Issue #193); registered WebP preview opened directly",
+    "observed": {
+      "motif": [
+        {
+          "what": "焙煎の豆が横一列に並ぶ (03〜05 が見え、両端が切れる)",
+          "box": {
+            "x": 15,
+            "y": 655,
+            "w": 375,
+            "h": 200
+          }
+        },
+        {
+          "what": "湯気の立つカップ (アーチの写真)",
+          "box": {
+            "x": 65,
+            "y": 3655,
+            "w": 295,
+            "h": 300
+          }
+        }
+      ],
+      "motif_to_structure": [
+        {
+          "what": "PC の豆の弧が、横にスライドして選ぶ列になる (← 横にスライドして焙煎度を選ぶ →)",
+          "box": {
+            "x": 95,
+            "y": 598,
+            "w": 200,
+            "h": 22
+          }
+        },
+        {
+          "what": "04 MEDIUM HIGH の豆だけが丸い枠で選ばれている",
+          "box": {
+            "x": 160,
+            "y": 700,
+            "w": 105,
+            "h": 130
+          }
+        }
+      ],
+      "hero_reading_order": [
+        {
+          "what": "一杯を、好みから。の見出し",
+          "box": {
+            "x": 25,
+            "y": 255,
+            "w": 220,
+            "h": 130
+          }
+        },
+        {
+          "what": "焙煎で変わる、香りと味わい。",
+          "box": {
+            "x": 38,
+            "y": 405,
+            "w": 120,
+            "h": 45
+          }
+        },
+        {
+          "what": "09 ROAST LEVELS",
+          "box": {
+            "x": 25,
+            "y": 535,
+            "w": 340,
+            "h": 50
+          }
+        },
+        {
+          "what": "横に並ぶ豆",
+          "box": {
+            "x": 15,
+            "y": 655,
+            "w": 375,
+            "h": 200
+          }
+        }
+      ],
+      "section_rhythm": [
+        {
+          "what": "生成りの地の 01: 見出しと豆の列、THE MOMENT のカード",
+          "box": {
+            "x": 0,
+            "y": 65,
+            "w": 390,
+            "h": 1160
+          }
+        },
+        {
+          "what": "暗い緑の 02: DEPTH と傾いた2枚の写真を縦に重ねる",
+          "box": {
+            "x": 0,
+            "y": 1228,
+            "w": 390,
+            "h": 1052
+          }
+        },
+        {
+          "what": "生成りの 03: 焙煎には、物語がある。の下に焙煎機の写真",
+          "box": {
+            "x": 0,
+            "y": 2280,
+            "w": 390,
+            "h": 1110
+          }
+        },
+        {
+          "what": "灰緑の 04: YOUR CUP と文の板、錆色のボタン",
+          "box": {
+            "x": 0,
+            "y": 3390,
+            "w": 390,
+            "h": 915
+          }
+        }
+      ],
+      "typography": [
+        {
+          "what": "巨大な DEPTH (画面幅いっぱい)",
+          "box": {
+            "x": 0,
+            "y": 1325,
+            "w": 310,
+            "h": 80
+          }
+        },
+        {
+          "what": "透かしの ROAST",
+          "box": {
+            "x": 0,
+            "y": 2905,
+            "w": 290,
+            "h": 90
+          }
+        },
+        {
+          "what": "巨大な YOUR CUP. がカップの写真に重なる",
+          "box": {
+            "x": 0,
+            "y": 3555,
+            "w": 365,
+            "h": 230
+          }
+        }
+      ],
+      "colour": [
+        {
+          "what": "暗い緑の地",
+          "box": {
+            "x": 0,
+            "y": 1228,
+            "w": 390,
+            "h": 1052
+          }
+        },
+        {
+          "what": "錆色のボタン",
+          "box": {
+            "x": 50,
+            "y": 4185,
+            "w": 290,
+            "h": 80
+          }
+        },
+        {
+          "what": "灰緑の地",
+          "box": {
+            "x": 0,
+            "y": 3390,
+            "w": 390,
+            "h": 915
+          }
+        }
+      ],
+      "image_roles": [
+        {
+          "what": "主題: 豆の列",
+          "box": {
+            "x": 15,
+            "y": 655,
+            "w": 375,
+            "h": 200
+          }
+        },
+        {
+          "what": "工程: 傾いた焙煎機の写真",
+          "box": {
+            "x": 18,
+            "y": 970,
+            "w": 145,
+            "h": 150
+          }
+        },
+        {
+          "what": "質感: 豆の接写と HEAT の写真を重ねる",
+          "box": {
+            "x": 40,
+            "y": 1500,
+            "w": 345,
+            "h": 450
+          }
+        },
+        {
+          "what": "工程: 焙煎機の大きな写真",
+          "box": {
+            "x": 75,
+            "y": 2625,
+            "w": 300,
+            "h": 350
+          }
+        },
+        {
+          "what": "終点: カップ",
+          "box": {
+            "x": 65,
+            "y": 3655,
+            "w": 295,
+            "h": 300
+          }
+        }
+      ],
+      "mobile_recomposition": [
+        {
+          "what": "PC の弧の地図を、横にスライドする豆の列に組み直す",
+          "box": {
+            "x": 15,
+            "y": 598,
+            "w": 375,
+            "h": 260
+          }
+        },
+        {
+          "what": "PC で横に並んでいた THE MOMENT・NOW EXPLORING・公式サイトの3枚を、縦に詰めた1枚のカードにする",
+          "box": {
+            "x": 18,
+            "y": 970,
+            "w": 355,
+            "h": 230
+          }
+        },
+        {
+          "what": "PC で文の右にあった傾いた写真2枚を、文の上に縦に重ねる",
+          "box": {
+            "x": 40,
+            "y": 1500,
+            "w": 345,
+            "h": 450
+          }
+        },
+        {
+          "what": "YOUR CUP の文字と写真の重なりを、縦に積んで保つ",
+          "box": {
+            "x": 0,
+            "y": 3555,
+            "w": 365,
+            "h": 400
+          }
+        }
+      ],
+      "defects": [
+        {
+          "what": "THE MOMENT のカードで、豆を、選ぶ。と NOW EXPLORING の行が重なって読みにくい",
+          "box": {
+            "x": 172,
+            "y": 1060,
+            "w": 190,
+            "h": 30
+          }
+        },
+        {
+          "what": "最上部の左に白い長方形のはみ出しがある",
+          "box": {
+            "x": 0,
+            "y": 0,
+            "w": 115,
+            "h": 12
+          }
+        }
+      ]
+    },
+    "inferred": "SP では PC の構造 (焙煎の地図・地の色の変化・境をまたぐ巨大な文字) を保ったまま、地図を横スライドの列に、横並びの要素を縦の重なりに組み直している。採用版にも文字の重なりの欠陥がある。",
+    "learn": [
+      "SP では、PC の地図を指で横に送る列に組み直す (縮小しない)",
+      "横並びの要素は、縦に重ねて関係を保つ",
+      "巨大な文字と写真の重なりは、SP でも縦に積んで残す"
+    ],
+    "do_not_copy": [
+      "なごやビーンズの店名・文・写真",
+      "豆の横スライドの列の見た目そのもの",
+      "カードの重なり (欠陥も含む)"
+    ]
+  }
+}

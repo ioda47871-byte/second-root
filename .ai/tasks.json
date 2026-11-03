@@ -7176,6 +7176,48 @@
         "実画像の生成"
       ],
       "note": "Issue #193 のオーナーの事前承認 (2026-11-03、20件の視覚研究を先行入力に)。"
+    },
+    {
+      "id": "DEV-158",
+      "title": "Claude 自身の閲覧の記録と視覚参照の門 (VISUAL_VERIFIED / TEXT_ONLY_PROVISIONAL / MISSING_OR_HOLD) (Issue #193)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-158-visual-read",
+      "purpose": "Issue #193 コメント 6584276254・6591440695 の受け入れ条件: Claude が成功例の画像を実際に開いて見た記録を、文章だけの根拠と区別し、文章だけでは VISUAL_VERIFIED にならないことを機械で確かめる。CP-001〜003 の登録 WebP を実際に開いて記録する。",
+      "acceptance_criteria": [
+        "lib/design-agent/reference-originals/visual-read.ts (記録の形、門、区分、画像の大きさの読み取り)",
+        "scripts/design-artifact/visual-read.ts (記録の検査と30件の一覧、--check)",
+        "CP-001・002・003 (PC/SP) の閲覧の記録 (プレビューと明記)",
+        "文章だけの根拠が VISUAL_VERIFIED にならないテスト",
+        "画像を commit しない。モデル名を記録に書かない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/reference-originals/visual-read.test.ts",
+        "npx tsx scripts/design-artifact/visual-read.ts --check"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/reference-originals/visual-read.ts",
+        "scripts/design-artifact/visual-read.ts",
+        "design-library/research/quality-pipeline/visual-reads/",
+        "design-library/research/quality-pipeline/visual-read-matrix.json",
+        "docs/design/visual-reference-gate.md",
+        "tests/unit/design-agent/reference-originals/visual-read.test.ts",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の呼び出し",
+        "main・Production・Staging・DB",
+        "CSS 許可一覧・Identity Lock・安全ゲートの緩和",
+        "成功例の原本画像の commit (リポジトリは public)"
+      ],
+      "human_approval_triggers": [
+        "原本の受け渡し (オーナーの端末)",
+        "実画像の生成"
+      ],
+      "note": "DEV-156 の上に積む (principles-v1.json を読む)。DEV-156 の merge のあとに merge する。"
     }
   ]
 }

@@ -1,0 +1,330 @@
+{
+  "schema": "claude_visual_read_v1",
+  "case_id": "CP-003",
+  "view": "desktop",
+  "asset": {
+    "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp",
+    "kind": "registered_preview",
+    "sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6",
+    "width": 1080,
+    "height": 3308,
+    "recorded_in_manifest": true
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-03T00:04:00Z",
+    "how": "Read tool on PNG copies of the registered WebP (full picture for concepts; vertical crops for the tall PC/SP pages), opened in this session"
+  },
+  "actually_viewed": true,
+  "viewed_crops": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 1080,
+      "h": 1100
+    },
+    {
+      "x": 0,
+      "y": 1100,
+      "w": 1080,
+      "h": 1100
+    },
+    {
+      "x": 0,
+      "y": 2200,
+      "w": 1080,
+      "h": 1100
+    }
+  ],
+  "observation": {
+    "schema": "reference_observation_v0",
+    "case_id": "CP-003",
+    "image_sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6",
+    "view": "desktop",
+    "inspector": "Claude (Development session, Issue #193); registered WebP preview opened directly",
+    "observed": {
+      "motif": [
+        {
+          "what": "焙煎の度合い 01〜09 の豆が、左下から右上へ弧を描いて並ぶ (浅い色から黒へ)",
+          "box": {
+            "x": 310,
+            "y": 95,
+            "w": 770,
+            "h": 420
+          }
+        },
+        {
+          "what": "焙煎機から豆が落ちる大きな写真",
+          "box": {
+            "x": 490,
+            "y": 1640,
+            "w": 545,
+            "h": 560
+          }
+        }
+      ],
+      "motif_to_structure": [
+        {
+          "what": "豆の弧が LIGHT → DARK の横軸になり、9段階が選ぶ地図になる",
+          "box": {
+            "x": 460,
+            "y": 505,
+            "w": 590,
+            "h": 30
+          }
+        },
+        {
+          "what": "04/09 MEDIUM HIGH を選んだ状態のカード (NOW EXPLORING)",
+          "box": {
+            "x": 510,
+            "y": 560,
+            "w": 280,
+            "h": 160
+          }
+        },
+        {
+          "what": "区画の地の色が焙煎のように生成り → 暗い緑 → 生成り → 灰緑と変わる",
+          "box": {
+            "x": 0,
+            "y": 675,
+            "w": 1080,
+            "h": 880
+          }
+        }
+      ],
+      "hero_reading_order": [
+        {
+          "what": "一杯を、好みから。の大きな見出し",
+          "box": {
+            "x": 40,
+            "y": 200,
+            "w": 280,
+            "h": 170
+          }
+        },
+        {
+          "what": "焙煎で変わる、香りと味わい。",
+          "box": {
+            "x": 60,
+            "y": 390,
+            "w": 170,
+            "h": 50
+          }
+        },
+        {
+          "what": "09 ROAST LEVELS",
+          "box": {
+            "x": 370,
+            "y": 125,
+            "w": 140,
+            "h": 40
+          }
+        },
+        {
+          "what": "豆の弧 01〜09",
+          "box": {
+            "x": 310,
+            "y": 95,
+            "w": 770,
+            "h": 420
+          }
+        },
+        {
+          "what": "LIGHT → DARK の軸",
+          "box": {
+            "x": 460,
+            "y": 515,
+            "w": 590,
+            "h": 20
+          }
+        }
+      ],
+      "section_rhythm": [
+        {
+          "what": "01 の生成りの地: 豆の弧と傾いた写真 THE MOMENT BEFORE THE CUP",
+          "box": {
+            "x": 0,
+            "y": 50,
+            "w": 1080,
+            "h": 625
+          }
+        },
+        {
+          "what": "02 暗い緑の地: 巨大な DEPTH が地の境をまたぎ、豆の接写が下に重なる",
+          "box": {
+            "x": 0,
+            "y": 675,
+            "w": 1080,
+            "h": 880
+          }
+        },
+        {
+          "what": "03 生成りの地 THE MAKING: 焙煎には、物語がある。と傾いた大きな写真、ROAST. の透かし文字",
+          "box": {
+            "x": 0,
+            "y": 1555,
+            "w": 1080,
+            "h": 890
+          }
+        },
+        {
+          "what": "04 灰緑の地 YOUR CUP: 巨大な YOUR CUP. とアーチのカップの写真、錆色のボタン",
+          "box": {
+            "x": 0,
+            "y": 2445,
+            "w": 1080,
+            "h": 750
+          }
+        }
+      ],
+      "typography": [
+        {
+          "what": "巨大なセリフ体 DEPTH が区画の境をまたぐ",
+          "box": {
+            "x": 0,
+            "y": 750,
+            "w": 850,
+            "h": 230
+          }
+        },
+        {
+          "what": "透かしの巨大な ROAST.",
+          "box": {
+            "x": 0,
+            "y": 1975,
+            "w": 490,
+            "h": 130
+          }
+        },
+        {
+          "what": "巨大な濃緑の YOUR CUP. が写真に重なる",
+          "box": {
+            "x": 15,
+            "y": 2590,
+            "w": 600,
+            "h": 350
+          }
+        },
+        {
+          "what": "縦書きの和文のラベル (右端)",
+          "box": {
+            "x": 1050,
+            "y": 265,
+            "w": 20,
+            "h": 160
+          }
+        }
+      ],
+      "colour": [
+        {
+          "what": "暗い緑の地",
+          "box": {
+            "x": 0,
+            "y": 675,
+            "w": 1080,
+            "h": 880
+          }
+        },
+        {
+          "what": "錆色の差し色 (番号・ボタン)",
+          "box": {
+            "x": 80,
+            "y": 3063,
+            "w": 390,
+            "h": 60
+          }
+        },
+        {
+          "what": "灰緑の地",
+          "box": {
+            "x": 0,
+            "y": 2445,
+            "w": 1080,
+            "h": 750
+          }
+        }
+      ],
+      "image_roles": [
+        {
+          "what": "主題: 9段階の豆 (切り抜き)",
+          "box": {
+            "x": 310,
+            "y": 95,
+            "w": 770,
+            "h": 420
+          }
+        },
+        {
+          "what": "工程: 焙煎機 (傾いた写真)",
+          "box": {
+            "x": 48,
+            "y": 565,
+            "w": 235,
+            "h": 180
+          }
+        },
+        {
+          "what": "質感: 豆の接写",
+          "box": {
+            "x": 425,
+            "y": 900,
+            "w": 440,
+            "h": 200
+          }
+        },
+        {
+          "what": "工程: 焙煎機から落ちる豆 (大)",
+          "box": {
+            "x": 490,
+            "y": 1640,
+            "w": 545,
+            "h": 560
+          }
+        },
+        {
+          "what": "手: 生豆を持つ手",
+          "box": {
+            "x": 265,
+            "y": 2135,
+            "w": 330,
+            "h": 145
+          }
+        },
+        {
+          "what": "終点: 湯気の立つカップ (アーチ)",
+          "box": {
+            "x": 510,
+            "y": 2555,
+            "w": 520,
+            "h": 570
+          }
+        }
+      ],
+      "mobile_recomposition": [],
+      "defects": [
+        {
+          "what": "ヘッダーの下の巨大な 09 の透かしが、右端の 09 ITALIAN の豆と重なる",
+          "box": {
+            "x": 955,
+            "y": 95,
+            "w": 125,
+            "h": 120
+          }
+        }
+      ]
+    },
+    "inferred": "焙煎の段階という店の工程を、豆の弧 (地図) と区画の地の色の移り変わりの両方で見せる。巨大な文字が区画の境をまたぎ、傾いた写真が重なって、帯の積み重ねにしない。最後はカップ (一杯) と公式サイトへの案内で終わる。",
+    "learn": [
+      "店の工程の段階を、選べる地図 (軸と番号) にする",
+      "区画の地の色を工程の変化に合わせて変える",
+      "巨大な文字を区画の境にまたがせ、区画をつなぐ",
+      "最後の区画を一杯 (客の受け取るもの) にし、そこに行動の案内を置く"
+    ],
+    "do_not_copy": [
+      "なごやビーンズの店名・文・写真",
+      "豆の弧の構図と9段階の配置そのもの",
+      "DEPTH・ROAST・YOUR CUP の文字の使い方そのもの"
+    ]
+  }
+}

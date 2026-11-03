@@ -1,0 +1,317 @@
+{
+  "schema": "claude_visual_read_v1",
+  "case_id": "CP-002",
+  "view": "concept",
+  "asset": {
+    "path": "design-library/success-cases/assets/CP-002_Sissi.webp",
+    "kind": "registered_preview",
+    "sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef",
+    "width": 960,
+    "height": 1440,
+    "recorded_in_manifest": true
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-03T00:04:00Z",
+    "how": "Read tool on PNG copies of the registered WebP (full picture for concepts; vertical crops for the tall PC/SP pages), opened in this session"
+  },
+  "actually_viewed": true,
+  "viewed_crops": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 960,
+      "h": 1440
+    }
+  ],
+  "observation": {
+    "schema": "reference_observation_v0",
+    "case_id": "CP-002",
+    "image_sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef",
+    "view": "concept",
+    "inspector": "Claude (Development session, Issue #193); registered WebP preview opened directly",
+    "observed": {
+      "motif": [
+        {
+          "what": "灰色の器に挿した大きな花のアレンジ (ダリア・カラー・クレマチス・細い枝)",
+          "box": {
+            "x": 420,
+            "y": 40,
+            "w": 500,
+            "h": 580
+          }
+        },
+        {
+          "what": "細い枝の線が店名 Sissi の上を斜めに横切る",
+          "box": {
+            "x": 45,
+            "y": 95,
+            "w": 365,
+            "h": 180
+          }
+        }
+      ],
+      "motif_to_structure": [
+        {
+          "what": "写真の枠を曲線のアーチに切る (枝の弧に沿う)",
+          "box": {
+            "x": 45,
+            "y": 585,
+            "w": 330,
+            "h": 165
+          }
+        },
+        {
+          "what": "横長の写真を台形に切り、画面を斜めに区切る",
+          "box": {
+            "x": 275,
+            "y": 875,
+            "w": 595,
+            "h": 315
+          }
+        },
+        {
+          "what": "色見本の丸 (ピンク・緑・えんじ・薄紫) を要素として縦に並べる",
+          "box": {
+            "x": 910,
+            "y": 288,
+            "w": 18,
+            "h": 105
+          }
+        }
+      ],
+      "hero_reading_order": [
+        {
+          "what": "Sissi の細いセリフ体の大文字",
+          "box": {
+            "x": 45,
+            "y": 95,
+            "w": 365,
+            "h": 180
+          }
+        },
+        {
+          "what": "美しさには、理由がある。",
+          "box": {
+            "x": 65,
+            "y": 300,
+            "w": 230,
+            "h": 95
+          }
+        },
+        {
+          "what": "構成理論 × 色彩 × 対話",
+          "box": {
+            "x": 65,
+            "y": 408,
+            "w": 235,
+            "h": 25
+          }
+        },
+        {
+          "what": "右の花のアレンジ",
+          "box": {
+            "x": 420,
+            "y": 40,
+            "w": 500,
+            "h": 580
+          }
+        },
+        {
+          "what": "右端の縦書き",
+          "box": {
+            "x": 900,
+            "y": 80,
+            "w": 25,
+            "h": 200
+          }
+        }
+      ],
+      "section_rhythm": [
+        {
+          "what": "01 LINE & FORM: アーチの写真と小さな正方形の写真",
+          "box": {
+            "x": 45,
+            "y": 585,
+            "w": 330,
+            "h": 275
+          }
+        },
+        {
+          "what": "02 COLOUR: 花びらの接写を重ねた色のコラージュ",
+          "box": {
+            "x": 490,
+            "y": 600,
+            "w": 345,
+            "h": 255
+          }
+        },
+        {
+          "what": "03 FLOWERS FOR SOMEONE: 台形の横長写真と左の文",
+          "box": {
+            "x": 75,
+            "y": 875,
+            "w": 795,
+            "h": 315
+          }
+        },
+        {
+          "what": "下段: 灰緑の帯 FLOWER DESIGN と2つのボタン、左右に写真",
+          "box": {
+            "x": 0,
+            "y": 1195,
+            "w": 960,
+            "h": 205
+          }
+        }
+      ],
+      "typography": [
+        {
+          "what": "細いセリフ体の店名",
+          "box": {
+            "x": 45,
+            "y": 95,
+            "w": 365,
+            "h": 180
+          }
+        },
+        {
+          "what": "細い斜体の大きな番号 01",
+          "box": {
+            "x": 60,
+            "y": 770,
+            "w": 50,
+            "h": 50
+          }
+        },
+        {
+          "what": "細い斜体の大きな番号 02",
+          "box": {
+            "x": 415,
+            "y": 660,
+            "w": 70,
+            "h": 60
+          }
+        },
+        {
+          "what": "縦書きの和文",
+          "box": {
+            "x": 870,
+            "y": 885,
+            "w": 40,
+            "h": 145
+          }
+        }
+      ],
+      "colour": [
+        {
+          "what": "生成りの明るい地",
+          "box": {
+            "x": 0,
+            "y": 0,
+            "w": 420,
+            "h": 560
+          }
+        },
+        {
+          "what": "灰緑の帯",
+          "box": {
+            "x": 360,
+            "y": 1195,
+            "w": 375,
+            "h": 205
+          }
+        },
+        {
+          "what": "花の色をそのまま配色見本にする",
+          "box": {
+            "x": 910,
+            "y": 288,
+            "w": 18,
+            "h": 105
+          }
+        }
+      ],
+      "image_roles": [
+        {
+          "what": "主役: 花のアレンジ",
+          "box": {
+            "x": 420,
+            "y": 40,
+            "w": 500,
+            "h": 580
+          }
+        },
+        {
+          "what": "枝の接写",
+          "box": {
+            "x": 45,
+            "y": 585,
+            "w": 330,
+            "h": 165
+          }
+        },
+        {
+          "what": "花びらの接写",
+          "box": {
+            "x": 490,
+            "y": 635,
+            "w": 190,
+            "h": 215
+          }
+        },
+        {
+          "what": "薄紫の花の接写",
+          "box": {
+            "x": 665,
+            "y": 710,
+            "w": 145,
+            "h": 145
+          }
+        },
+        {
+          "what": "壁の前のアレンジ (台形)",
+          "box": {
+            "x": 275,
+            "y": 875,
+            "w": 595,
+            "h": 315
+          }
+        },
+        {
+          "what": "店の角の写真",
+          "box": {
+            "x": 735,
+            "y": 1150,
+            "w": 225,
+            "h": 250
+          }
+        }
+      ],
+      "mobile_recomposition": [],
+      "defects": [
+        {
+          "what": "03 の本文の最後の行が、台形の写真の左の縁に接している",
+          "box": {
+            "x": 80,
+            "y": 1132,
+            "w": 205,
+            "h": 20
+          }
+        }
+      ]
+    },
+    "inferred": "花の枝の線と色を、写真の切り方 (アーチ・台形)、区画の千鳥の配置、配色見本の丸に翻訳している。番号つきの3区画が、線・色・相手という花の作り方の順になっている。",
+    "learn": [
+      "店の素材の形 (枝の弧) を、写真の枠の形と画面の区切りに使う",
+      "素材の色を見本として画面の要素に出し、配色の根拠を見せる",
+      "番号つきの区画を千鳥に置き、作り方の順を読み順にする"
+    ],
+    "do_not_copy": [
+      "Sissi の店名・文・写真",
+      "花のアーチと台形の位置と比率",
+      "色見本の丸の配置そのもの"
+    ]
+  }
+}
