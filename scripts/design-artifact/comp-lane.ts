@@ -191,7 +191,7 @@ async function main(): Promise<number> {
           if (n.shadowRoot || n.tagName === "TEMPLATE") bad.push("shadow root or <template>: " + n.tagName.toLowerCase());
           for (const a of ["alt", "title", "placeholder", "aria-label", "value", "label", "start"]) if (n.hasAttribute(a)) out.push(n.getAttribute(a) || "");
           // words the browser writes by itself (button captions, file pickers, a details without summary)
-          if (n.localName === "input" && ["submit", "reset", "button", "file", "image"].includes((n.getAttribute("type") || "").toLowerCase())) bad.push("input type=" + n.getAttribute("type"));
+          if (n.localName === "input" && ["submit", "reset", "button", "file", "image", "date", "datetime-local", "time", "month", "week"].includes((n.getAttribute("type") || "").toLowerCase())) bad.push("input type=" + n.getAttribute("type"));
           if (n.localName === "details" && !n.querySelector(":scope > summary")) bad.push("details without summary");
           if (n.style && n.style.length) css.push(["inline", n.style]);
           for (const c of n.childNodes) stack.push(c);
@@ -206,7 +206,7 @@ async function main(): Promise<number> {
         if (r.counterStyle) { bad.push("@counter-style"); continue; }
         css.push(["rule", r.style]);
       }
-      const words = /attr\\(|counters?\\(|["']/i;
+      const words = /attr\\(|counters?\\(|var\\(|env\\(|["']/i;
       for (const [, st] of css) {
         const content = st.getPropertyValue("content").trim();
         if (content && !["none", "normal", '""', "''"].includes(content)) bad.push("content: " + content);
@@ -216,12 +216,24 @@ async function main(): Promise<number> {
         for (const p of ["hyphenate-character", "-webkit-hyphenate-character"]) { const v = st.getPropertyValue(p).trim(); if (v && v !== "auto") bad.push(p + ": " + v); }
         for (const p of ["counter-set", "counter-reset", "counter-increment"]) { const v = st.getPropertyValue(p).trim(); if (v && v !== "none") bad.push(p + ": " + v); }
       }
+      // and the values as computed (var() resolved), with style.css applied to the document: no element or pseudo
+      // element may get its words from CSS
+      document.adoptedStyleSheets = [own];
+      const textual = (v) => /["']|attr\\(|counters?\\(/.test(v);
+      for (const el of document.querySelectorAll("*")) {
+        const cs = getComputedStyle(el);
+        for (const p of ["list-style-type", "text-emphasis-style", "-webkit-text-emphasis-style"]) { const v = cs.getPropertyValue(p); if (v && textual(v)) bad.push("computed " + p + ": " + v); }
+        for (const pseudo of ["::before", "::after", "::marker"]) {
+          const v = getComputedStyle(el, pseudo).getPropertyValue("content");
+          if (v && v !== "none" && v !== "normal" && textual(v)) bad.push("computed " + pseudo + " content: " + v);
+        }
+      }
+      if (out.some((x) => x.includes("\\u00ad"))) bad.push("soft hyphen (U+00AD) in the page");
       return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad };
     }`;
     const { texts, sections, bad } = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[] };
     // a soft hyphen is invisible in the text but can show any hyphenation character: refused in the page
     await ctx.close();
-    if (/\u00ad|&shy;|&#0*173;|&#x0*ad;/i.test(html)) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: "soft hyphen (U+00AD) in the page" });
     // CSS may not write words: content, quotes, list markers, counters and @counter-style are refused, as parsed
     for (const b of bad) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: b.slice(0, 60) });
     const parsed = CopyRecord.safeParse(copyRaw);

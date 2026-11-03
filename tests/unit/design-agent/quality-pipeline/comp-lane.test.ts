@@ -274,6 +274,14 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     expect(css4.code).toBe(1);
     const d4 = css4.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|");
     for (const needle of ["hyphenate-character", "counter-set", "text-emphasis", "soft hyphen", "input type=submit", "details without summary"]) expect(d4, needle).toContain(needle);
+    // round 5: var() is resolved before the check (list markers, emphasis marks), and date inputs write their own text
+    const viaVar = run(
+      (h) => h.replace("</main>", '<ul class="zz"><li>割れの修理</li></ul><input type="date"></main>'),
+      `.zz { --m: "日本一の名工・創業百年 "; list-style-type: var(--m); }\n.tagline { --e: "百"; text-emphasis: var(--e) red; }`,
+    );
+    expect(viaVar.code).toBe(1);
+    const d5 = viaVar.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|");
+    for (const needle of ["list-style-type", "text-emphasis", "input type=date"]) expect(d5, needle).toContain(needle);
     // an SVG <style> is a style sheet, not page text (no false COMP_TEXT_NOT_IN_COPY)
     const svgStyle = run((h) => h.replace("</main>", "<svg><style>.q { fill: #000; }</style></svg></main>"));
     expect(svgStyle.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
