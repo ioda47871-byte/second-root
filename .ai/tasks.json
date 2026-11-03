@@ -7139,7 +7139,7 @@
     {
       "id": "DEV-156",
       "title": "成功例20件の設計原理・制作工程・失敗パターン・制作前チェックリスト (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "attempts": 0,
