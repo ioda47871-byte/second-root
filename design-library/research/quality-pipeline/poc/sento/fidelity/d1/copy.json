@@ -1,0 +1,247 @@
+{
+  "schema": "comp_copy_v1",
+  "shop_id": "fictional-sento-yuge",
+  "facts_sha256": "3e8a821d3e73b282cf5b23bd0253d018c0e67549a09945f14becca65911de291",
+  "lane": "quality_research_fictional",
+  "items": [
+    {
+      "id": "name-full",
+      "text": "架空銭湯 ゆげ湯",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F1"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "name",
+      "text": "ゆげ湯",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F1"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "tagline",
+      "text": "熱いほうから、ぬるいほうへ。",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "lead",
+      "text": "薪で沸かした湯を、毎日入れ替えています。",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F9"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "g-hot",
+      "text": "熱い",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "g-warm",
+      "text": "ぬるい",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "g-cold",
+      "text": "冷たい",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F11"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ph-tub",
+      "text": "写真｜ぬるい湯の湯船",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ph-surface",
+      "text": "写真｜湯の表面の接写",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ph-garden",
+      "text": "写真｜庭の水風呂",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ph-mural",
+      "text": "写真｜タイルの山の絵",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "warm",
+      "text": "熱い湯と、ぬるい湯の二つの湯船があります",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "cold",
+      "text": "外の小さな庭に、水風呂があります",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F11"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "fire",
+      "text": "湯が沸くのは、開店の一時間前です",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F12"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "m-fire",
+      "text": "火を入れる",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F12"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "m-boil",
+      "text": "沸く",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F12"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "h-wall",
+      "text": "壁の山、季節の布。",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F13",
+        "F14"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "wall",
+      "text": "壁には、タイルで描いた山の絵があります",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F13"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "noren",
+      "text": "のれんは、季節ごとに色を変えます",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F14"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "towel",
+      "text": "手ぬぐいと石けんを貸し出しています",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F15"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "h-night",
+      "text": "湯上がりの、帰り道。",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "phone",
+      "text": "000-0000-1126",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F8"
+      ],
+      "owner_review_needed": false,
+      "label": "電話"
+    },
+    {
+      "id": "address",
+      "text": "架空市架空区湯町二丁目5-8",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F4"
+      ],
+      "owner_review_needed": false,
+      "label": "所在地"
+    },
+    {
+      "id": "access",
+      "text": "架空線架空駅 西口から徒歩4分",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F7"
+      ],
+      "owner_review_needed": false,
+      "label": "道順"
+    },
+    {
+      "id": "hours",
+      "text": "15:00〜24:00",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F5"
+      ],
+      "owner_review_needed": false,
+      "label": "時間"
+    },
+    {
+      "id": "closed",
+      "text": "月曜",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F6"
+      ],
+      "owner_review_needed": false,
+      "label": "定休"
+    },
+    {
+      "id": "fictional",
+      "text": "比較研究用の架空の銭湯です。実在の銭湯ではありません。",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F9"
+      ],
+      "owner_review_needed": false
+    }
+  ]
+}
