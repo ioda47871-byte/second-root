@@ -1,0 +1,496 @@
+{
+  "schema": "visual_read_matrix_v1",
+  "note": "Only Claude's own passing viewing record of an adopted picture in the repository (a registered preview) makes a view VISUAL_VERIFIED; the kind read is listed. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. A case with no recorded view is keyed 'unknown'; adopted pictures of view 'other' are listed as available but have no mode. Reads of originals in the git-ignored .intake/ folder must pass every check but the missing file; since CI cannot tie them to bytes, they are listed as original_reads_pending_owner and never make a view VISUAL_VERIFIED until the owner confirms them.",
+  "counts": {
+    "VISUAL_VERIFIED": 4,
+    "TEXT_ONLY_PROVISIONAL": 41,
+    "MISSING_OR_HOLD": 0
+  },
+  "cases": [
+    {
+      "id": "CP-001",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [
+        {
+          "view": "concept",
+          "kind": "registered_preview",
+          "path": "design-library/success-cases/assets/CP-001_Mond.webp",
+          "sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82"
+        }
+      ],
+      "read_by_Claude": [
+        {
+          "view": "concept",
+          "kind": "registered_preview",
+          "sha256": "ac8307aaa974aa0b3aabf9b91e9b525533c8119b929bc4e806ff5f56865b6c82"
+        }
+      ],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "VISUAL_VERIFIED"
+      }
+    },
+    {
+      "id": "CP-002",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [
+        {
+          "view": "concept",
+          "kind": "registered_preview",
+          "path": "design-library/success-cases/assets/CP-002_Sissi.webp",
+          "sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef"
+        }
+      ],
+      "read_by_Claude": [
+        {
+          "view": "concept",
+          "kind": "registered_preview",
+          "sha256": "07024daaa642e2ea3e28b856119f119a89e352f580c0e14dfbad62e497ea40ef"
+        }
+      ],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "VISUAL_VERIFIED"
+      }
+    },
+    {
+      "id": "CP-003",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [
+        {
+          "view": "mobile",
+          "kind": "registered_preview",
+          "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_mobile.webp",
+          "sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0"
+        },
+        {
+          "view": "desktop",
+          "kind": "registered_preview",
+          "path": "design-library/success-cases/assets/CP-003_NagoyaBeans_v4_desktop.webp",
+          "sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6"
+        }
+      ],
+      "read_by_Claude": [
+        {
+          "view": "desktop",
+          "kind": "registered_preview",
+          "sha256": "be8f9aaeb06f02d192a08ceaab640eb1121befe14daa59eaee2e4d59e3ee52b6"
+        },
+        {
+          "view": "mobile",
+          "kind": "registered_preview",
+          "sha256": "45d54a7e3cf774c61c66ddb498e326b07a8bdc8f182e64c38a83a101e12aa7a0"
+        }
+      ],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "desktop": "VISUAL_VERIFIED",
+        "mobile": "VISUAL_VERIFIED"
+      }
+    },
+    {
+      "id": "CP-004",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "desktop": "TEXT_ONLY_PROVISIONAL",
+        "mobile": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-005",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
+        "desktop": "TEXT_ONLY_PROVISIONAL",
+        "mobile": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-006",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-007",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "desktop": "TEXT_ONLY_PROVISIONAL",
+        "mobile": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-008",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-009",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
+        "desktop": "TEXT_ONLY_PROVISIONAL",
+        "mobile": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-010",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "desktop": "TEXT_ONLY_PROVISIONAL",
+        "mobile": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-011",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
+        "desktop": "TEXT_ONLY_PROVISIONAL",
+        "mobile": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-012",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-013",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-015",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
+        "desktop": "TEXT_ONLY_PROVISIONAL",
+        "mobile": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-016",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "desktop": "TEXT_ONLY_PROVISIONAL",
+        "mobile": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-017",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-018",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-019",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-020",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-021",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-022",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-023",
+      "form": "static_concept_image",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-024",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": false,
+        "case_note": true
+      },
+      "modes": {
+        "concept": "TEXT_ONLY_PROVISIONAL",
+        "desktop": "TEXT_ONLY_PROVISIONAL",
+        "mobile": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-026",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "unknown": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-027",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "unknown": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-028",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "unknown": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-029",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "unknown": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-030",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "unknown": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-031",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "unknown": "TEXT_ONLY_PROVISIONAL"
+      }
+    },
+    {
+      "id": "CP-032",
+      "form": "web_poc_capture",
+      "available_for_Claude_visual_read": [],
+      "read_by_Claude": [],
+      "original_reads_pending_owner": [],
+      "text": {
+        "chatgpt_viewed": true,
+        "case_note": true
+      },
+      "modes": {
+        "unknown": "TEXT_ONLY_PROVISIONAL"
+      }
+    }
+  ]
+}
