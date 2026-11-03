@@ -172,6 +172,29 @@ describe("the comparison (report only)", () => {
     expect(r.implementation.html_sha256).toBe(createHash("sha256").update(DESIGN.html).digest("hex"));
   }, 120_000);
 
+  it("DEV-160: a page marked with data-comp-section is measured by it when asked, with the same result; the default is unchanged", async () => {
+    // the comp-impl lane's HTML allows data-comp-section only: the same page, marked that way
+    const comp = { ...DESIGN, html: DESIGN.html.replace(/data-section=/g, "data-comp-section="), css: DESIGN.css.replace(/\[data-section=/g, "[data-comp-section=") };
+    expect(comp.html + comp.css).not.toContain("data-section=");
+    const asked = await compareImplementation(browser, lane, comp, undefined, { sectionAttribute: "data-comp-section" });
+    const faithful = await compareImplementation(browser, lane, DESIGN);
+    expect(asked.differences).toEqual([]);
+    for (const v of ["desktop_1440", "mobile_390"] as const) expect(asked.viewports[v].compare).toEqual(faithful.viewports[v].compare);
+    expect(asked.notes.some((n) => n.includes("data-comp-section"))).toBe(true);
+    expect(faithful.notes.some((n) => n.includes("data-comp-section"))).toBe(false);
+    // without the option the sections are not found: the default measure (data-section) did not change
+    const plain = await compareImplementation(browser, lane, comp);
+    expect(plain.differences.some((d) => d.includes("SECTION_MISSING"))).toBe(true);
+    // the same boxes either way
+    for (const v of ["desktop_1440", "mobile_390"] as const) {
+      const a = await renderImplementation(browser, DESIGN, v, IDS);
+      const b = await renderImplementation(browser, comp, v, IDS, { sectionAttribute: "data-comp-section" });
+      expect(b.sections).toEqual(a.sections);
+    }
+    // only the two known attributes
+    await expect(renderImplementation(browser, comp, "desktop_1440", IDS, { sectionAttribute: "id" as never })).rejects.toThrow("unknown section attribute");
+  }, 180_000);
+
   it("a sloppy implementation names its causes: order, a missing section, colour", async () => {
     const sloppy = { ...DESIGN, html: doc(SECTIONS(["header", "info", "shelf_hero"])), css: DESIGN_CSS.replace("background:#c98b4a", "background:#4a7ac9") };
     const r = await compareImplementation(browser, lane, sloppy);
@@ -308,6 +331,8 @@ describe("the CLI (offline, writes one new report outside its inputs)", () => {
     symlinkSync(impl, join(links, "to-impl"));
     expect(run(["--lane", lane, "--impl", impl, "--out", join(links, "to-impl", "r.json")])).toMatchObject({ status: 2, out: { code: "OUT_INSIDE_INPUT" } });
     expect(run(["--lane", lane, "--impl", impl])).toMatchObject({ status: 2, out: { code: "ARGS_INVALID" } });
+    // DEV-160: --section-attr takes only the two known attributes
+    expect(run(["--lane", lane, "--impl", impl, "--out", join(tmp("dev139-out-"), "r.json"), "--section-attr", "id"])).toMatchObject({ status: 2, out: { code: "ARGS_INVALID" } });
     const empty = join(tmp("dev139-empty-"), "impl");
     mkdirSync(empty);
     expect(run(["--lane", lane, "--impl", empty, "--out", join(tmp("dev139-out-"), "r.json")])).toMatchObject({ status: 2, out: { code: "IMPL_FILES_MISSING" } });

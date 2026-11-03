@@ -1,0 +1,336 @@
+{
+  "schema": "fidelity_report_v0",
+  "shop": "bicycle",
+  "passing": false,
+  "pages": {
+    "comp": {
+      "desktop_1440": {
+        "score": {
+          "motif_coverage": 0.58,
+          "motif_largest_gap_px": 1210,
+          "boundaries_crossed": 2,
+          "boundaries_carried": 2,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 35,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      },
+      "mobile_390": {
+        "score": {
+          "motif_coverage": 0.337,
+          "motif_largest_gap_px": 1752,
+          "boundaries_crossed": 3,
+          "boundaries_carried": 3,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 37,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      },
+      "tablet_1024": {
+        "score": {
+          "motif_coverage": 0.58,
+          "motif_largest_gap_px": 1210,
+          "boundaries_crossed": 2,
+          "boundaries_carried": 2,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 2,
+          "caption_lines_crossed": 1,
+          "caption_lines_total": 37,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      },
+      "tablet_768": {
+        "score": {
+          "motif_coverage": 0.58,
+          "motif_largest_gap_px": 1210,
+          "boundaries_crossed": 2,
+          "boundaries_carried": 2,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 2,
+          "caption_lines_crossed": 2,
+          "caption_lines_total": 37,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      }
+    },
+    "strict_b": {
+      "desktop_1440": {
+        "score": {
+          "motif_coverage": 0.308,
+          "motif_largest_gap_px": 1800,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 0,
+          "boundaries_total": 5,
+          "sections_touched": 3,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 36,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      },
+      "mobile_390": {
+        "score": {
+          "motif_coverage": 0.185,
+          "motif_largest_gap_px": 2254,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 0,
+          "boundaries_total": 5,
+          "sections_touched": 3,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 37,
+          "words_broken": [
+            "まわる"
+          ],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      },
+      "tablet_1024": {
+        "score": {
+          "motif_coverage": 0.286,
+          "motif_largest_gap_px": 1761,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 0,
+          "boundaries_total": 5,
+          "sections_touched": 3,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 61,
+          "words_broken": [],
+          "horizontal_overflow": true
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      },
+      "tablet_768": {
+        "score": {
+          "motif_coverage": 0.258,
+          "motif_largest_gap_px": 2052,
+          "boundaries_crossed": 0,
+          "boundaries_carried": 0,
+          "boundaries_total": 5,
+          "sections_touched": 3,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 68,
+          "words_broken": [
+            "まわる",
+            "締める"
+          ],
+          "horizontal_overflow": true
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      }
+    },
+    "fidelity_c": {
+      "desktop_1440": {
+        "score": {
+          "motif_coverage": 0.616,
+          "motif_largest_gap_px": 982,
+          "boundaries_crossed": 2,
+          "boundaries_carried": 2,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 34,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      },
+      "mobile_390": {
+        "score": {
+          "motif_coverage": 0.365,
+          "motif_largest_gap_px": 1726,
+          "boundaries_crossed": 3,
+          "boundaries_carried": 3,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 37,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      },
+      "tablet_1024": {
+        "score": {
+          "motif_coverage": 0.616,
+          "motif_largest_gap_px": 698,
+          "boundaries_crossed": 2,
+          "boundaries_carried": 2,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 34,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      },
+      "tablet_768": {
+        "score": {
+          "motif_coverage": 0.516,
+          "motif_largest_gap_px": 888,
+          "boundaries_crossed": 2,
+          "boundaries_carried": 2,
+          "boundaries_total": 5,
+          "sections_touched": 6,
+          "sections_total": 6,
+          "caption_lines_covered": 0,
+          "caption_lines_crossed": 0,
+          "caption_lines_total": 38,
+          "words_broken": [],
+          "horizontal_overflow": false
+        },
+        "sections": [
+          "hero",
+          "spokes",
+          "truing",
+          "check",
+          "lesson",
+          "visit"
+        ]
+      }
+    }
+  },
+  "motif_preservation": {
+    "strict_b": {
+      "desktop_1440": {
+        "coverage": 0.531,
+        "boundaries_crossed": 0,
+        "boundaries_carried": 0,
+        "sections_touched": 0.5
+      },
+      "mobile_390": {
+        "coverage": 0.549,
+        "boundaries_crossed": 0,
+        "boundaries_carried": 0,
+        "sections_touched": 0.5
+      }
+    },
+    "fidelity_c": {
+      "desktop_1440": {
+        "coverage": 1,
+        "boundaries_crossed": 1,
+        "boundaries_carried": 1,
+        "sections_touched": 1
+      },
+      "mobile_390": {
+        "coverage": 1,
+        "boundaries_crossed": 1,
+        "boundaries_carried": 1,
+        "sections_touched": 1
+      }
+    }
+  }
+}

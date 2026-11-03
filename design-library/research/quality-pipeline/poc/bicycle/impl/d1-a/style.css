@@ -1,0 +1,99 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: #e7e5df; }
+body { color: #1b1c1e; font-family: "Noto Sans CJK JP", "IPAGothic", sans-serif; font-size: 15px; line-height: 1.8; letter-spacing: 0.04em; }
+img { display: block; width: 100%; height: auto; }
+.ph { font-size: 12px; letter-spacing: 0.08em; color: #5d6066; margin-top: 8px; }
+.ghost { font-weight: 900; line-height: 1; color: #3a3c40; }
+
+.hero { background: #e7e5df; padding: 56px 0 0 80px; }
+.name-full { font-size: 14px; letter-spacing: 0.3em; color: #5d6066; }
+.hero-grid { display: grid; grid-template-columns: 520px 1fr; gap: 40px; align-items: center; }
+.tagline { font-family: "IPAMincho", serif; font-size: 56px; line-height: 1.35; }
+.how { margin-top: 30px; width: 380px; font-size: 14px; border-top: 4px solid #f2c230; padding-top: 14px; }
+.wheel { display: flex; justify-content: center; }
+.rim { width: 760px; height: 760px; border-radius: 380px; border: 16px solid #1b1c1e; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 8px #9aa0a6; }
+.hub { width: 300px; height: 300px; border-radius: 150px; background: #f2c230; display: flex; align-items: center; justify-content: center; }
+.hub-name { font-family: "IPAMincho", serif; font-weight: 400; font-size: 220px; line-height: 1; }
+
+.spokes { background: #26272a; color: #e7e5df; padding: 96px 80px 80px; }
+.ghost-turn { font-size: 256px; color: #34363a; }
+.spokes-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 40px; margin-top: 24px; }
+.stations { display: grid; grid-template-columns: 1fr 1fr; gap: 64px 80px; margin-top: 64px; }
+.station .ph { color: #b7b9bd; }
+.station .svc { margin-top: 16px; font-weight: 900; font-size: 64px; line-height: 1; color: #f2c230; }
+.st-b, .st-d { margin-top: 120px; }
+.st-a img { aspect-ratio: 1.4; }
+.st-b img { aspect-ratio: 1.35; }
+.st-c img { aspect-ratio: 1.4; }
+.st-d img { aspect-ratio: 0.9; }
+
+.truing { background: #f2c230; padding: 120px 120px 40px; }
+.truing-grid { display: grid; grid-template-columns: 600px 1fr; gap: 100px; align-items: center; }
+.wheel-2 .rim { width: 560px; height: 560px; border-radius: 280px; box-shadow: inset 0 0 0 6px #fff6d6; }
+.wheel-2 .hub { width: 60px; height: 60px; border-radius: 30px; background: #1b1c1e; }
+.truing-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 96px; line-height: 1; }
+.truing-fact { margin-top: 40px; font-family: "IPAMincho", serif; font-size: 26px; line-height: 1.7; }
+.ghost-tight { font-size: 256px; color: #e5b324; text-align: right; margin-top: 24px; }
+
+.check { background: #e7e5df; padding: 120px; }
+.check-grid { display: grid; grid-template-columns: 760px 1fr; gap: 80px; align-items: start; }
+.bench img { aspect-ratio: 1.36; }
+.check-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 50px; line-height: 1.5; }
+.check-fact { margin-top: 32px; font-family: "IPAMincho", serif; font-size: 22px; }
+
+.lesson { background: #34363a; color: #e7e5df; padding: 100px 120px; }
+.lesson-grid { display: grid; grid-template-columns: 1fr 560px; gap: 40px; align-items: center; }
+.lesson-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 72px; }
+.lesson-fact { margin-top: 24px; font-size: 20px; }
+.gauge { width: 400px; height: 400px; border-radius: 200px; background: #e7e5df; border: 10px solid #1b1c1e; display: flex; align-items: center; justify-content: center; }
+.needle { width: 160px; height: 8px; background: #c4371b; margin-left: 160px; }
+
+.visit { background: #f2c230; padding: 90px 120px 40px; }
+.visit-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 64px; }
+.info { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 48px; width: 820px; margin-top: 40px; }
+.info div { border-top: 2px solid #1b1c1e; padding-top: 8px; }
+.info dt { font-size: 12px; letter-spacing: 0.3em; }
+.info dd { font-size: 20px; }
+.info .tel { grid-column: span 2; }
+.info .tel dd { font-weight: 900; font-size: 64px; line-height: 1.2; }
+.fictional { margin-top: 48px; font-size: 12px; }
+
+@media (max-width: 600px) {
+  body { font-size: 14px; }
+  .hero { padding: 20px 20px 40px; }
+  .name-full { font-size: 12px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 24px; }
+  .tagline { font-size: 34px; }
+  .how { width: auto; font-size: 13px; }
+  .rim { width: 350px; height: 350px; border-radius: 175px; border-width: 12px; }
+  .hub { width: 140px; height: 140px; border-radius: 70px; }
+  .hub-name { font-size: 110px; }
+  .spokes { padding: 40px 20px 60px; }
+  .ghost-turn { font-size: 120px; }
+  .spokes-h { font-size: 26px; }
+  .stations { grid-template-columns: 1fr; gap: 48px; margin-top: 40px; }
+  .st-b, .st-d { margin-top: 0; margin-left: 40px; }
+  .station .svc { font-size: 40px; }
+  .truing { padding: 60px 20px 20px; }
+  .truing-grid { grid-template-columns: 1fr; gap: 40px; }
+  .wheel-2 .rim { width: 350px; height: 350px; border-radius: 175px; }
+  .truing-h { font-size: 60px; }
+  .truing-fact { font-size: 20px; margin-top: 24px; }
+  .ghost-tight { font-size: 110px; }
+  .check { padding: 60px 20px; }
+  .check-grid { grid-template-columns: 1fr; gap: 32px; }
+  .check-h { font-size: 32px; }
+  .check-fact { font-size: 16px; }
+  .lesson { padding: 60px 20px; }
+  .lesson-grid { grid-template-columns: 1fr; gap: 32px; }
+  .lesson-h { font-size: 40px; }
+  .lesson-fact { font-size: 16px; }
+  .gauge { width: 300px; height: 300px; border-radius: 150px; }
+  .needle { width: 110px; margin-left: 110px; }
+  .visit { padding: 60px 20px 40px; }
+  .visit-h { font-size: 38px; }
+  .info { grid-template-columns: 1fr; width: auto; gap: 14px; margin-top: 28px; }
+  .info .tel { grid-column: span 1; }
+  .info .tel dd { font-size: 40px; }
+  .info dd { font-size: 17px; }
+}

@@ -1,0 +1,101 @@
+{
+  "schema": "fidelity_spec_v0",
+  "shop": "bicycle",
+  "pages": [
+    {
+      "key": "comp",
+      "dir": "design-library/research/quality-pipeline/poc/bicycle/comps/d1-wheel-hub",
+      "section_attribute": "data-section",
+      "motif": [
+        ".wheel-art",
+        ".true-art",
+        ".gauge-art"
+      ],
+      "captions": [
+        ".name-full",
+        ".tagline",
+        ".how",
+        ".spokes-h",
+        ".svc",
+        ".ph",
+        ".truing-h",
+        ".truing-fact",
+        ".check-h",
+        ".check-fact",
+        ".lesson-h",
+        ".lesson-fact",
+        ".visit-h",
+        ".info dd",
+        ".info dt",
+        ".fictional"
+      ],
+      "words": [
+        ".ghost",
+        ".hub-name"
+      ]
+    },
+    {
+      "key": "strict_b",
+      "dir": "design-library/research/quality-pipeline/poc/bicycle/impl/d1-b",
+      "section_attribute": "data-comp-section",
+      "motif": [
+        ".wheel",
+        ".gauge"
+      ],
+      "captions": [
+        ".name-full",
+        ".tagline",
+        ".how",
+        ".spokes-h",
+        ".svc",
+        ".ph",
+        ".truing-h",
+        ".truing-fact",
+        ".check-h",
+        ".check-fact",
+        ".lesson-h",
+        ".lesson-fact",
+        ".visit-h",
+        ".info dd",
+        ".info dt",
+        ".fictional"
+      ],
+      "words": [
+        ".ghost",
+        ".hub-name"
+      ]
+    },
+    {
+      "key": "fidelity_c",
+      "dir": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v2",
+      "section_attribute": "data-comp-section",
+      "motif": [
+        ".wheel-art",
+        ".true-art",
+        ".gauge-art"
+      ],
+      "captions": [
+        ".name-full",
+        ".tagline",
+        ".how",
+        ".spokes-h",
+        ".svc",
+        ".ph",
+        ".truing-h",
+        ".truing-fact",
+        ".check-h",
+        ".check-fact",
+        ".lesson-h",
+        ".lesson-fact",
+        ".visit-h",
+        ".info dd",
+        ".info dt",
+        ".fictional"
+      ],
+      "words": [
+        ".ghost",
+        ".hub-name"
+      ]
+    }
+  ]
+}

@@ -187,13 +187,23 @@ export async function readLane(laneDir: string): Promise<{ artifactId: string; a
  * (display: none / visibility: hidden) is 0×0; a 0-size root (display: contents, all content positioned) is measured
  * by what it paints, unless it clips. Plus how many elements carry each id: two would hide one section behind its twin.
  */
-const MEASURE = (ids: readonly string[]) => `(() => {
+/**
+ * DEV-160 (Issue #193 comment 6596798696, item 5): the attribute the implementation's sections carry. The design side
+ * is always measured by the runner (data-section); a page built for the comp-impl lane may only carry
+ * data-comp-section (its HTML allowlist), so the implementation side can be measured by that instead. A run condition
+ * of the comparison only: neither page is changed. Default: data-section (unchanged behaviour).
+ */
+export const SECTION_ATTRIBUTES = ["data-section", "data-comp-section"] as const;
+export type SectionAttribute = (typeof SECTION_ATTRIBUTES)[number];
+
+const MEASURE = (ids: readonly string[], attr: SectionAttribute = "data-section") => `(() => {
   const ids = ${JSON.stringify(ids)};
+  const attr = ${JSON.stringify(attr)};
   const out = {};
   const count = {};
   for (const id of ids) {
-    count[id] = document.querySelectorAll('[data-section="' + CSS.escape(id) + '"]').length;
-    const el = document.querySelector('[data-section="' + CSS.escape(id) + '"]');
+    count[id] = document.querySelectorAll('[' + attr + '="' + CSS.escape(id) + '"]').length;
+    const el = document.querySelector('[' + attr + '="' + CSS.escape(id) + '"]');
     if (!el) { out[id] = null; continue; }
     const cs = getComputedStyle(el);
     if (cs.display === "none" || cs.visibility === "hidden") { out[id] = { x: 0, y: 0, w: 0, h: 0 }; continue; }
@@ -245,7 +255,9 @@ export function clipToPage(box: Box | null, width: number, height: number): Box 
 export type ImplRender = RenderSide & { blocked: number; scrollHeight: number; scrollWidth: number };
 
 /** Draws the implementation at one width: its own files only (index.html, style.css, assets/*), JS off. */
-export async function renderImplementation(browser: Browser, impl: Implementation, v: Viewport, sectionIds: readonly string[]): Promise<ImplRender> {
+export async function renderImplementation(browser: Browser, impl: Implementation, v: Viewport, sectionIds: readonly string[], opts: { sectionAttribute?: SectionAttribute } = {}): Promise<ImplRender> {
+  const attr = opts.sectionAttribute ?? "data-section";
+  if (!(SECTION_ATTRIBUTES as readonly string[]).includes(attr)) throw new Error("unknown section attribute");
   const size = VIEWPORT_SIZES[v];
   const context = await browser.newContext({ viewport: size, deviceScaleFactor: 1, reducedMotion: "reduce", javaScriptEnabled: false, serviceWorkers: "block" });
   let blocked = 0;
@@ -274,7 +286,7 @@ export async function renderImplementation(browser: Browser, impl: Implementatio
     const res = await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
     if (res?.status() !== 200) throw new Error("the page did not load");
     await page.evaluate("document.fonts.ready.then(() => true)");
-    const m = (await page.evaluate(MEASURE(sectionIds))) as { sections: Record<string, Box | null>; count: Record<string, number>; scrollHeight: number; scrollWidth: number };
+    const m = (await page.evaluate(MEASURE(sectionIds, attr))) as { sections: Record<string, Box | null>; count: Record<string, number>; scrollHeight: number; scrollWidth: number };
     const height = Math.max(m.scrollHeight, size.height);
     if (!(height > 0 && height <= MAX_PAGE_HEIGHT)) throw new Error(`page too tall (${height} px)`);
     const png = await page.screenshot({ fullPage: true, clip: { x: 0, y: 0, width: size.width, height }, animations: "disabled", caret: "hide" });
@@ -290,7 +302,8 @@ export async function renderImplementation(browser: Browser, impl: Implementatio
  * Compares the implementation with the lane's design at both widths. `browser` is null when it could not be started:
  * the report then says so (render_failed), never a clean result. Throws LaneReadError for an unusable lane.
  */
-export async function compareImplementation(browser: Browser | null, laneDir: string, impl: Implementation, launchError?: unknown): Promise<ImplCompareReport> {
+export async function compareImplementation(browser: Browser | null, laneDir: string, impl: Implementation, launchError?: unknown, opts: { sectionAttribute?: SectionAttribute } = {}): Promise<ImplCompareReport> {
+  if (opts.sectionAttribute !== undefined && !(SECTION_ATTRIBUTES as readonly string[]).includes(opts.sectionAttribute)) throw new Error("unknown section attribute");
   const lane = await readLane(laneDir);
   const viewports = {} as Record<Viewport, ViewportReport>;
   for (const v of ["desktop_1440", "mobile_390"] as const) {
@@ -306,7 +319,7 @@ export async function compareImplementation(browser: Browser | null, laneDir: st
     }
     let r: ImplRender;
     try {
-      r = await renderImplementation(browser, impl, v, lane.sectionIds);
+      r = await renderImplementation(browser, impl, v, lane.sectionIds, opts);
     } catch (e) {
       viewports[v] = { design: d.meta, implementation: { ...notRendered, state: "render_failed", detail: firstLine(e) }, compare: null, differences: [] };
       continue;
@@ -331,6 +344,6 @@ export async function compareImplementation(browser: Browser | null, laneDir: st
     implementation: { html_sha256: sha256(impl.html), css_sha256: sha256(impl.css), assets: [...impl.assets].map(([path, b]) => ({ path, sha256: sha256(b) })).sort((x, y) => x.path.localeCompare(y.path)) },
     viewports,
     differences: [...viewports.desktop_1440.differences, ...viewports.mobile_390.differences],
-    notes: NOTES,
+    notes: (opts.sectionAttribute ?? "data-section") === "data-section" ? NOTES : [...NOTES, `the implementation's sections were measured by ${opts.sectionAttribute} (the design's by data-section, as the runner measured them)`],
   };
 }
