@@ -7271,7 +7271,7 @@
     {
       "id": "DEV-159",
       "title": "カンプの道: 文の記録 (claim_type)・B方式の描画と検査・Claude 自身の見比べの記録 (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-157"
@@ -7310,6 +7310,53 @@
         "実店舗の文の公開"
       ],
       "note": "DEV-157 (#197) と DEV-158 (#198) の merge 後に develop へ載せた。隔離の例外は Issue #193 コメント 6595445598 のオーナー承認 (正確なパスと名前だけ)。"
+    },
+    {
+      "id": "DEV-160",
+      "title": "カンプと実装の見比べ: 3業種 (つぐ手 v2・輪・ゆげ湯) の A/B/C、損失の分類、忠実さの測定、impl-compare の属性の切り替え、表現を広げる提案 (Issue #193)",
+      "status": "in_progress",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-159"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-160-comp-v2",
+      "purpose": "Issue #193 コメント 6596798696・6598906140: カンプ (A)・本番の規則の中の実装 (B)・研究用の忠実な実装 (C) を PC/SP で Claude が見比べ、失われる原因をカンプの質・仮の写真・規則の限界・実装の誤りに分け、C の残る問題を画像を見て直し、本番の許可一覧の変更は提案だけにする。",
+      "acceptance_criteria": [
+        "3店の A/B/C と見比べの記録 (README・review.json)",
+        "loss-analysis.json と規則のプローブのテスト",
+        "fidelity-measure (純粋な採点と CLI、テスト)",
+        "impl-compare --section-attr (既定は不変、回帰テスト)",
+        "expressive-allowlist-proposal.md (提案だけ、許可一覧は変えない)",
+        "成功例の水準とは言わない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline tests/unit/design-agent/impl-lane"
+      ],
+      "allowed_scope": [
+        "design-library/research/quality-pipeline/poc/",
+        "lib/design-agent/quality-pipeline/fidelity-measure.ts",
+        "scripts/design-artifact/fidelity-measure.ts",
+        "lib/design-agent/impl-lane/impl-compare.ts",
+        "scripts/design-artifact/impl-compare.ts",
+        "tests/unit/design-agent/quality-pipeline/",
+        "tests/unit/design-agent/impl-lane/impl-compare.test.ts",
+        "docs/design/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "comp-impl の CSS・HTML 許可一覧の変更",
+        "実 Codex・画像生成・有料 API",
+        "main・Production・Staging・DB",
+        "成功例の原本画像の commit",
+        "実在の店・人・場所"
+      ],
+      "human_approval_triggers": [
+        "許可一覧の変更 (提案の段 B〜D・N1)",
+        "実写真・生成画像"
+      ],
+      "note": "C は experimental_fidelity (本番用ではない)。数は縦の位置の指標で、形や品質の判定ではない。"
     }
   ]
 }
