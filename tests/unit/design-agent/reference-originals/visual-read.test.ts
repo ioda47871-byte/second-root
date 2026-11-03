@@ -1,7 +1,8 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkVisualRead, imageSize, visualMode } from "../../../../lib/design-agent/reference-originals/visual-read";
+import { checkVisualRead, coverage, imageSize, visualMode } from "../../../../lib/design-agent/reference-originals/visual-read";
 import { assetNow, checkAllReads, checkFails, matrixText } from "../../../../scripts/design-artifact/visual-read";
 
 // DEV-158 (Issue #193 comments 6584276254 / 6591440695): only Claude's own viewing of the exact picture makes a view
@@ -157,14 +158,53 @@ describe("Claude's visual reads (DEV-158)", () => {
     const bits = w | (h << 14);
     expect(imageSize(riff("VP8L", [0, 0, 0, 0, 0x2f, bits & 0xff, (bits >>> 8) & 0xff, (bits >>> 16) & 0xff, (bits >>> 24) & 0xff]))).toEqual({ width: 123, height: 4567 });
   });
-  it("a read of an original that is absent here is reported, not failed, and never counts (review M2)", () => {
-    const base = { file: "x", case_id: "CP-009", view: "desktop", kind: "original", sha256: "a".repeat(64) };
-    const absent = { ...base, verifiableHere: false, check: { ok: false as const, codes: ["ASSET_NOT_AVAILABLE"] } };
-    expect(checkFails([absent])).toBe(false);
-    expect(checkFails([{ ...absent, verifiableHere: true }])).toBe(true);
-    const m = JSON.parse(matrixText([absent])) as { cases: Array<{ id: string; modes: Record<string, string>; unverifiable_here: string[] }> };
+  it("a read of an original absent here: only the missing file is excused; anything else still fails (review round 2 H1/M1)", () => {
+    const cp009 = inventory.cases.find((c) => c.id === "CP-009")!.originals.find((p) => p.kind === "original" && p.view === "desktop")!;
+    const make = () => {
+      const r = one();
+      Object.assign(r, { case_id: "CP-009" });
+      r.observation.case_id = "CP-009";
+      r.asset = { ...r.asset, path: "intake:CP-009/desktop.png", kind: "original", sha256: cp009.sha256, recorded_in_manifest: true };
+      r.observation.image_sha256 = cp009.sha256;
+      return r;
+    };
+    const dir = mkdtempSync(join(tmpdir(), "reads-"));
+    mkdirSync(join(dir, "CP-009"));
+    writeFileSync(join(dir, "CP-009", "desktop.read.json"), JSON.stringify(make()));
+    let reads = checkAllReads(dir);
+    expect(reads.map((r) => [r.check, r.bytes])).toEqual([[{ ok: true }, "where_the_file_is"]]);
+    expect(checkFails(reads)).toBe(false);
+    // the matrix is the same wherever it is built: the read counts, marked as checked only where the file is
+    const m = JSON.parse(matrixText(reads)) as { cases: Array<{ id: string; modes: Record<string, string>; read_by_Claude: Array<{ bytes_checked: string }> }> };
     const c = m.cases.find((x) => x.id === "CP-009")!;
-    expect(c.unverifiable_here).toEqual(["desktop"]);
-    expect(c.modes.desktop).toBe("TEXT_ONLY_PROVISIONAL");
+    expect(c.modes.desktop).toBe("VISUAL_VERIFIED");
+    expect(c.read_by_Claude[0]!.bytes_checked).toBe("where_the_file_is");
+    // not viewed, misplaced, a path that climbs out, or a picture not recorded for the case: still fail in CI
+    const bad = make();
+    bad.actually_viewed = false;
+    writeFileSync(join(dir, "CP-009", "desktop.read.json"), JSON.stringify(bad));
+    reads = checkAllReads(dir);
+    expect(reads[0]!.check).toEqual({ ok: false, codes: ["READ_SCHEMA"] });
+    expect(checkFails(reads)).toBe(true);
+    const other = make();
+    other.asset.path = "intake:../../../../package.png";
+    expect(codes(other, null, pictures("CP-009"))).toEqual(["READ_SCHEMA"]);
+    const wrong = make();
+    wrong.asset.sha256 = "b".repeat(64);
+    wrong.observation.image_sha256 = "b".repeat(64);
+    wrong.asset.recorded_in_manifest = false;
+    writeFileSync(join(dir, "CP-009", "desktop.read.json"), JSON.stringify(wrong));
+    expect(checkAllReads(dir)[0]!.check).toEqual({ ok: false, codes: ["ASSET_NOT_AVAILABLE", "PICTURE_NOT_RECORDED_FOR_CASE"] });
+    mkdirSync(join(dir, "CP-004"));
+    writeFileSync(join(dir, "CP-004", "desktop.read.json"), JSON.stringify(make()));
+    expect(checkAllReads(dir).find((r) => r.case_id === "CP-004")!.check).toEqual({ ok: false, codes: ["READ_FILE_PLACEMENT"] });
+  });
+
+  it("coverage counts only cells a crop covers whole: crop edges and gaps are not rounded up (round 2 L2)", () => {
+    expect(coverage([{ x: 0, y: 0, w: 1081, h: 3309 }], 1081, 3309)).toBe(1);
+    // two crops with a 6 px gap between them leave the gap uncovered
+    expect(coverage([{ x: 0, y: 0, w: 100, h: 50 }, { x: 0, y: 56, w: 100, h: 44 }], 100, 100)).toBeLessThan(1);
+    // a 2 px crop straddling a cell boundary covers nothing
+    expect(coverage([{ x: 3, y: 0, w: 2, h: 100 }], 100, 100)).toBe(0);
   });
 });

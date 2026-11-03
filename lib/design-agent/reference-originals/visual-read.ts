@@ -28,7 +28,7 @@ export const ClaudeVisualRead = z.strictObject({
   view: z.enum(["desktop", "mobile", "concept"]),
   asset: z.strictObject({
     /** A path in the repository (a registered preview), or a private reference to a git-ignored intake file. */
-    path: z.string().regex(/^(design-library\/success-cases\/assets\/[A-Za-z0-9._-]+\.(webp|png)|intake:[A-Za-z0-9._\/-]+\.(webp|png))$/),
+    path: z.string().regex(/^(design-library\/success-cases\/assets\/[A-Za-z0-9._-]+\.(webp|png)|intake:(?![^]*\.\.)[A-Za-z0-9._\/-]+\.(webp|png))$/),
     kind: z.enum(["original", "registered_preview"]),
     sha256: z.string().regex(/^[0-9a-f]{64}$/),
     width: z.number().int().min(1).max(20000),
@@ -56,14 +56,21 @@ export type AssetNow = { sha256: string; width: number; height: number } | null;
 
 export type ReadCheck = { ok: true } | { ok: false; codes: string[] };
 
-/** Share of the picture's area covered by the crops (measured on a 4-pixel grid). */
-function coverage(crops: ReadonlyArray<{ x: number; y: number; w: number; h: number }>, width: number, height: number): number {
+/**
+ * Share of the picture's area covered by the crops, on a 4-pixel grid. A cell counts only when a crop covers it
+ * whole (the last partial cell at the picture's edge counts when a crop reaches the edge), so crop edges never
+ * round coverage up.
+ */
+export function coverage(crops: ReadonlyArray<{ x: number; y: number; w: number; h: number }>, width: number, height: number): number {
   const G = 4;
   const [gw, gh] = [Math.ceil(width / G), Math.ceil(height / G)];
   const cells = new Uint8Array(gw * gh);
-  for (const c of crops)
-    for (let gy = Math.floor(c.y / G); gy < Math.min(Math.ceil((c.y + c.h) / G), gh); gy++)
-      for (let gx = Math.floor(c.x / G); gx < Math.min(Math.ceil((c.x + c.w) / G), gw); gx++) cells[gy * gw + gx] = 1;
+  const span = (a: number, len: number, size: number, n: number) => [Math.ceil(a / G), a + len >= size ? n : Math.floor((a + len) / G)] as const;
+  for (const c of crops) {
+    const [y0, y1] = span(c.y, c.h, height, gh);
+    const [x0, x1] = span(c.x, c.w, width, gw);
+    for (let gy = y0; gy < Math.min(y1, gh); gy++) for (let gx = x0; gx < Math.min(x1, gw); gx++) cells[gy * gw + gx] = 1;
+  }
   return cells.reduce((s, v) => s + v, 0) / cells.length;
 }
 
