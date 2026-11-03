@@ -131,6 +131,20 @@ describe("DEV-157: the direction-set check takes only these names from phase2f (
     expect(names).toEqual([["../phase2f/open-direction", ["HERO_MODES", "PAGE_FLOWS", "directionsDiffer", "type OpenDirection"]]]);
     expect(specifiers(source).filter((s) => s.includes("phase2f"))).toEqual(["../phase2f/open-direction"]);
   });
+  it("the whole file: zod and the two approved modules only; no dynamic import, require, network, process or Codex", () => {
+    const source = readFileSync(resolve(REPO, DIRECTION_SET), "utf8");
+    // the structure names are built here so this test file does not itself match the structure module's isolation grep
+    const structureModule = ["..", "structure", "descriptor"].join("/");
+    const vocabularyFile = ["structure", "descriptors", "v0"].join("-");
+    expect(specifiers(source).sort()).toEqual(["../phase2f/open-direction", structureModule, "zod"]);
+    expect(source).not.toMatch(/import\s*\(|require\s*\(|\bfetch\(|node:|codex|child_process/i);
+    expect(source).not.toContain(vocabularyFile);
+  });
+  it("the facts pack copy it reads with: zod only", () => {
+    const source = readFileSync(resolve(REPO, "lib/design-agent/quality-pipeline/facts-pack.ts"), "utf8");
+    expect(specifiers(source)).toEqual(["zod"]);
+    expect(source).not.toMatch(/import\s*\(|require\s*\(|\bfetch\(|node:|codex|child_process/i);
+  });
 });
 
 describe("DEV-159: the comp lane takes only these names from phase2f (Issue #193 comment 6595445598, owner-approved exact path)", () => {
@@ -145,6 +159,7 @@ describe("DEV-159: the comp lane takes only these names from phase2f (Issue #193
       "../../lib/design-agent/phase2f/prototype-safety",
       "../../lib/design-agent/phase2f/render-prototype",
     ]);
+    expect(source).not.toMatch(/phase2f\/(runner|prompt)|codex|child_process|\bfetch\(/i);
   });
 });
 
