@@ -3007,6 +3007,44 @@
       "decision": "2026-10-20: 人の指示で Claude が追加。Fresh Review FAIL（High 1: surface のパネルの上の primary / secondary に contrast の保証が無い。Medium 2: desktop の grid で見出しが伸びる。Medium 3: 枠で Latin の語が折れる。Low 7）→ 対応: パネル内の文字は text の色、grid の見出しは align-self: start、phone の枠は hero の padding の中へ、ほか Low をすべて → 再レビュー FAIL（Medium A: editorial_luxury の phone で枠が重なり ruled_frame が名前を横切る。Medium B: tight × medium で名前が枠に接する。Low 2）→ 対応: editorial_luxury の phone の title は上下の罫だけ、tight の title は padding-block だけ、phone の内側の余白 8px、ruled_frame は title の枠と並ばない、japanese_modern の frame は帯の下から → 再レビュー PASS（Low 2・Nit 1）→ Low も対応（editorial_luxury の phone は ruled_frame の上辺と corner marks を描かない、語彙に「phone では一部だけ」）。develop（DEV-068）を merge"
     },
     {
+      "id": "DEV-068",
+      "title": "日本語の display 書体を face ごとに別にする（Zen Old Mincho・Zen Kaku Gothic New・M PLUS 1、mincho はサイトの Shippori Mincho）",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-066"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-068-ja-display-faces",
+      "purpose": "人の指示（2026-10-20）: 日本語店舗に適した表示用フォントの選択肢を増やす（ライセンス・読み込み負荷・可読性も確認）。日本語の店名は face が 4 つでも実質 2 通り（Shippori Mincho / Noto Sans JP）で、weight も 400/600 しか無かった",
+      "acceptance_criteria": [
+        "4 つの display face がそれぞれ別の日本語書体（すべて SIL OFL。mincho はサイトの Shippori Mincho を使い、新しい書体は 3 つ）",
+        "weight は軽い / 重いの 2 つ（M PLUS 1 は variable）、preload しない",
+        "実際の build で face ごとに見た目が違い、長い名前も overflow しない",
+        "静的 font の増分を記録"
+      ],
+      "required_tests": [
+        "unit: CSS の stack と fonts.ts（face ごとに別・preload なし・weight 2 つ）",
+        "既存の jp-name の test",
+        "実 build での計測（.ai/reviews/DEV-068.md: 実 font で overflow なし・住所の書体）",
+        "CI"
+      ],
+      "allowed_scope": [
+        "components/demo/profile/",
+        "tests/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "本文の書体の変更",
+        "品質の閾値・gate"
+      ],
+      "human_approval_triggers": [
+        "次の controlled run"
+      ],
+      "decision": "2026-10-20: 人の指示で Claude が追加。WSL: build は .next/cache（git clean は -x なしなので残る）が温まっていれば font を再取得しない（2026-10-20 に proxy なしの再 build で確認）。Fresh Review FAIL（Medium 1: 住所の weight 上限 600 が 400/900 の書体で Black になる）→ 対応: editorial_serif の住所はサイトの明朝（400/600）、Shippori Mincho B1 は 400 でサイトの Shippori Mincho とほぼ同じ字形のため外し mincho はサイトの書体に。静的 font は 19MB → 30MB（初回取得と build 出力の増分は約 11MB）、demo 系 3 route の font CSS は 3 書体で約 150KB gzip（unicode-range の宣言。字形ファイルは頁で使う範囲だけ）。後続: 静的書体では light=regular・bold=black に見え、Playfair は 400 未満が無いので editorial_serif の和文名の light↔regular は描かれない（DEV-066 の見える判定は見える扱い）。再レビュー PASS（Nit 2 → 対応: CSS の注記と語彙の和文の説明）"
+    },
+    {
       "id": "DEV-069",
       "title": "参考画像（privacy 処理済み）の色を測り、hex と割合だけを brief / review に渡す",
       "status": "done",
@@ -3044,44 +3082,6 @@
         "次の controlled run"
       ],
       "decision": "2026-10-20: 人の指示で Claude が追加; 2026-10-20: PR #81 merge（2a952fe）。Fresh Review FAIL（Medium 2: Instagram の UI 色の除外が website と投稿の色も消す・空の一覧の文言）→ 対応（kind 別の除外・colourfulShare による文言・明暗の中立色の割合・photo review にも）→ 再レビュー PASS。CI 39423213361 success"
-    },
-    {
-      "id": "DEV-068",
-      "title": "日本語の display 書体を face ごとに別にする（Zen Old Mincho・Zen Kaku Gothic New・M PLUS 1、mincho はサイトの Shippori Mincho）",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [
-        "DEV-066"
-      ],
-      "attempts": 0,
-      "last_failure": null,
-      "branch": "feature/dev-068-ja-display-faces",
-      "purpose": "人の指示（2026-10-20）: 日本語店舗に適した表示用フォントの選択肢を増やす（ライセンス・読み込み負荷・可読性も確認）。日本語の店名は face が 4 つでも実質 2 通り（Shippori Mincho / Noto Sans JP）で、weight も 400/600 しか無かった",
-      "acceptance_criteria": [
-        "4 つの display face がそれぞれ別の日本語書体（すべて SIL OFL。mincho はサイトの Shippori Mincho を使い、新しい書体は 3 つ）",
-        "weight は軽い / 重いの 2 つ（M PLUS 1 は variable）、preload しない",
-        "実際の build で face ごとに見た目が違い、長い名前も overflow しない",
-        "静的 font の増分を記録"
-      ],
-      "required_tests": [
-        "unit: CSS の stack と fonts.ts（face ごとに別・preload なし・weight 2 つ）",
-        "既存の jp-name の test",
-        "実 build での計測（.ai/reviews/DEV-068.md: 実 font で overflow なし・住所の書体）",
-        "CI"
-      ],
-      "allowed_scope": [
-        "components/demo/profile/",
-        "tests/",
-        ".ai/"
-      ],
-      "forbidden_scope": [
-        "本文の書体の変更",
-        "品質の閾値・gate"
-      ],
-      "human_approval_triggers": [
-        "次の controlled run"
-      ],
-      "decision": "2026-10-20: 人の指示で Claude が追加。WSL: build は .next/cache（git clean は -x なしなので残る）が温まっていれば font を再取得しない（2026-10-20 に proxy なしの再 build で確認）。Fresh Review FAIL（Medium 1: 住所の weight 上限 600 が 400/900 の書体で Black になる）→ 対応: editorial_serif の住所はサイトの明朝（400/600）、Shippori Mincho B1 は 400 でサイトの Shippori Mincho とほぼ同じ字形のため外し mincho はサイトの書体に。静的 font は 19MB → 30MB（初回取得と build 出力の増分は約 11MB）、demo 系 3 route の font CSS は 3 書体で約 150KB gzip（unicode-range の宣言。字形ファイルは頁で使う範囲だけ）。後続: 静的書体では light=regular・bold=black に見え、Playfair は 400 未満が無いので editorial_serif の和文名の light↔regular は描かれない（DEV-066 の見える判定は見える扱い）。再レビュー PASS（Nit 2 → 対応: CSS の注記と語彙の和文の説明）"
     },
     {
       "id": "DEV-070",
@@ -3702,50 +3702,6 @@
       ]
     },
     {
-      "id": "DEV-084",
-      "title": "Design image PoC: imagegen の最初の呼び出しが毎回約 156 秒で失敗する原因の調査（rust-v0.159.0 と reqwest の source を data として読む）と、呼び出しごとの時間の診断（Codex は流さない）",
-      "status": "done",
-      "priority": "P2",
-      "depends_on": [
-        "DEV-081"
-      ],
-      "attempts": 0,
-      "last_failure": null,
-      "branch": "feature/dev-084-imagegen-timeout",
-      "purpose": "HUMAN-022（2026-10-22、人が流した）: 4 回の PoC（HUMAN-018 / 019 / 020 / 21b、gpt-6.1-sol・CLI 0.159.0・paginated）の最初の imagegen はすべて 155.6〜157.8 秒で failed/none、HUMAN-018 だけモデルの 2 回目の呼び出しが 32.6 秒で成功。source から要求の経路（chatgpt.com/backend-api/codex/images/generations、stream なし）、timeout（Codex はなし、reqwest 0.12.28 の Linux の既定 TCP_USER_TIMEOUT 30 秒・keepalive 15 秒）、再試行（1 回の呼び出しで HTTP 最大 5 回、5xx と transport、backoff 約 3 秒）を確かめ、156 秒 ≒ 5 × 約 31 秒 + 3 秒を説明する。公開の issue（#45381・#24323 ほか）と比べる。呼び出しごとの時間（rollout の ItemCompleted の started_at_ms / completed_at_ms）と固定の時間帯を診断に足し、Codex を呼ばない次の確認（HUMAN-024）を用意する",
-      "acceptance_criteria": [
-        "docs/operations/imagegen-timeout-investigation.md: rust-v0.159.0 の file:line つきで、endpoint・timeout・再試行・エラー文と DEV-081 の分類、確定と推測の表、仮説の順位、#45381 の比較（生成と編集の違い）、HUMAN-018 の説明、数え方と制御の案（承認待ち）、安い順の次の確認",
-        "session に image_call_ms（呼び出しごとの ms、整数・0 より大きく 1 日以下・最大 16。0 は Codex の開始時刻の代用なので unknown）と image_fail_timings（失敗ごとに <5s / 5-60s / 60-140s / 140-170s / >170s / unknown）を足す。summary の末尾に img_call_ms= img_fail_timing=（既存の並びは変えない、schema /5）",
-        "時間は ItemCompleted の payload の started_at_ms / completed_at_ms からだけ。legacy の image_generation_end と不正な値は unknown。in_progress は数えない。文・id・時刻そのものは残さない",
-        "HUMAN-022 を解除済みに（結果つき）、HUMAN-024（24a 読むだけ・24b Codex なしの TCP probe・24c 必要なときだけ Codex 1 回）を追加",
-        "jail・sign-in・run.lock・env allowlist・cleanup・PNG の検査・model の呼び出し 1 回・prompt（byte 単位）・command line・-m / -c なしは変えない。再試行はどこにも足さない"
-      ],
-      "required_tests": [
-        "design-image-poc の unit（HUMAN-018 / 21b の形、legacy と不正な timestamp、上限、時間帯の境界、canary）",
-        "codex・guardrails・ai-tasks の unit、npm run typecheck、eslint（変更した file）、check:secrets"
-      ],
-      "allowed_scope": [
-        "lib/design-agent/design-image/**",
-        "tests/unit/design-agent/design-image-poc.test.ts",
-        "docs/operations/design-image-poc.md",
-        "docs/operations/imagegen-timeout-investigation.md",
-        ".ai/**（feature branch では progress.md を除く）"
-      ],
-      "forbidden_scope": [
-        "Codex の実呼び出し・画像生成・API の呼び出し・課金",
-        "WSL・Staging・Production・DB・worker / timer",
-        "lib/design-agent/comp-impl/**・docs/operations/comp-to-site.md・shop-css（PR #96 の作業）",
-        "jail・.env の検査・run.lock・cleanup を弱めること",
-        "prompt の変更・-m / -c / provider の上書き・CLI の更新・model の固定",
-        "log・エラーの文・秘密の保存や表示"
-      ],
-      "human_approval_triggers": [
-        "HUMAN-024（24a・24b は Codex なし、24c は Codex 1 回）",
-        "再試行 0 回の provider・1 回だけ呼ぶ prompt・最初の失敗で止める・proxy / WSL の network mode・upstream への報告の採用",
-        "feature → develop の merge は AI_WORKFLOW §4 の条件"
-      ]
-    },
-    {
       "id": "DEV-083",
       "title": "高品質なデザインを安全に再現する: comp 実装の表現（hero の文字の重ね・非対称の組み・縦書き・装飾の重なり・mobile の組み替え・地の画像とグラデーション）を、それぞれに対応する検査と組にして段階的に広げる（DEV-082 の後）",
       "status": "in_progress",
@@ -3792,6 +3748,50 @@
         "feature → develop の merge は AI_WORKFLOW §4 の条件に加え、緩和を含む段は人の承認"
       ],
       "decision": "2026-10-22: 人が DEV-083 の番号を予約し、内容（表現の幅を広げつつ厳格な検査を保つ。対応する検査なしに禁止を外さない。保護された文字・事実を隠す・変えることは引き続き禁止。anti-template の差は補助の指標で品質ではない）を統合指示で記述した。この PR（#98）は設計の文書だけ。#98 は #96（DEV-082）の後に merge する。2026-10-22: 人が phase A の着手を承認（条件: 検査を強めるだけ、CSS allowlist を緩めない、運用に繋がない、B 以降の緩和の実装は別の承認）。phase A は feature/dev-083-phase-a（draft PR）で進行中"
+    },
+    {
+      "id": "DEV-084",
+      "title": "Design image PoC: imagegen の最初の呼び出しが毎回約 156 秒で失敗する原因の調査（rust-v0.159.0 と reqwest の source を data として読む）と、呼び出しごとの時間の診断（Codex は流さない）",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-081"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-084-imagegen-timeout",
+      "purpose": "HUMAN-022（2026-10-22、人が流した）: 4 回の PoC（HUMAN-018 / 019 / 020 / 21b、gpt-6.1-sol・CLI 0.159.0・paginated）の最初の imagegen はすべて 155.6〜157.8 秒で failed/none、HUMAN-018 だけモデルの 2 回目の呼び出しが 32.6 秒で成功。source から要求の経路（chatgpt.com/backend-api/codex/images/generations、stream なし）、timeout（Codex はなし、reqwest 0.12.28 の Linux の既定 TCP_USER_TIMEOUT 30 秒・keepalive 15 秒）、再試行（1 回の呼び出しで HTTP 最大 5 回、5xx と transport、backoff 約 3 秒）を確かめ、156 秒 ≒ 5 × 約 31 秒 + 3 秒を説明する。公開の issue（#45381・#24323 ほか）と比べる。呼び出しごとの時間（rollout の ItemCompleted の started_at_ms / completed_at_ms）と固定の時間帯を診断に足し、Codex を呼ばない次の確認（HUMAN-024）を用意する",
+      "acceptance_criteria": [
+        "docs/operations/imagegen-timeout-investigation.md: rust-v0.159.0 の file:line つきで、endpoint・timeout・再試行・エラー文と DEV-081 の分類、確定と推測の表、仮説の順位、#45381 の比較（生成と編集の違い）、HUMAN-018 の説明、数え方と制御の案（承認待ち）、安い順の次の確認",
+        "session に image_call_ms（呼び出しごとの ms、整数・0 より大きく 1 日以下・最大 16。0 は Codex の開始時刻の代用なので unknown）と image_fail_timings（失敗ごとに <5s / 5-60s / 60-140s / 140-170s / >170s / unknown）を足す。summary の末尾に img_call_ms= img_fail_timing=（既存の並びは変えない、schema /5）",
+        "時間は ItemCompleted の payload の started_at_ms / completed_at_ms からだけ。legacy の image_generation_end と不正な値は unknown。in_progress は数えない。文・id・時刻そのものは残さない",
+        "HUMAN-022 を解除済みに（結果つき）、HUMAN-024（24a 読むだけ・24b Codex なしの TCP probe・24c 必要なときだけ Codex 1 回）を追加",
+        "jail・sign-in・run.lock・env allowlist・cleanup・PNG の検査・model の呼び出し 1 回・prompt（byte 単位）・command line・-m / -c なしは変えない。再試行はどこにも足さない"
+      ],
+      "required_tests": [
+        "design-image-poc の unit（HUMAN-018 / 21b の形、legacy と不正な timestamp、上限、時間帯の境界、canary）",
+        "codex・guardrails・ai-tasks の unit、npm run typecheck、eslint（変更した file）、check:secrets"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/design-image/**",
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "docs/operations/design-image-poc.md",
+        "docs/operations/imagegen-timeout-investigation.md",
+        ".ai/**（feature branch では progress.md を除く）"
+      ],
+      "forbidden_scope": [
+        "Codex の実呼び出し・画像生成・API の呼び出し・課金",
+        "WSL・Staging・Production・DB・worker / timer",
+        "lib/design-agent/comp-impl/**・docs/operations/comp-to-site.md・shop-css（PR #96 の作業）",
+        "jail・.env の検査・run.lock・cleanup を弱めること",
+        "prompt の変更・-m / -c / provider の上書き・CLI の更新・model の固定",
+        "log・エラーの文・秘密の保存や表示"
+      ],
+      "human_approval_triggers": [
+        "HUMAN-024（24a・24b は Codex なし、24c は Codex 1 回）",
+        "再試行 0 回の provider・1 回だけ呼ぶ prompt・最初の失敗で止める・proxy / WSL の network mode・upstream への報告の採用",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     },
     {
       "id": "DEV-085",
@@ -4136,42 +4136,52 @@
       ]
     },
     {
-      "id": "DEV-095",
-      "title": "Design image PoC 第2案: 組み立てた v2 prompt を sha256 と文字数で test に固定し、人が WSL で同じ sha を読むだけで確かめる手順を置く（test と docs だけ）",
+      "id": "DEV-093",
+      "title": "Design DNA: 店ごとの研究用ブリーフの契約（8 項目の判断を店の根拠へ結ぶ parseDesignDna、使い回しの検出 sharedDesignDnaParts / sameDesignDna、DEV-073 の架空 3 店の fixture）。worker・PoC には未接続（offline・研究用）",
       "status": "done",
       "priority": "P2",
       "depends_on": [
-        "DEV-077"
+        "DEV-073",
+        "DEV-074"
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": "feature/dev-095-v2-prompt-pin",
-      "purpose": "次の v2 の実 Codex 画像呼び出し 1 回を人が承認するとき、承認が厳密な prompt を指せるようにする。v1 の prompt は sha256 で固定済みだが、v2（buildMockupPrompt(loadPocInputs(REPO, \"v2\"))）は長さの上限と toContain だけで、後の編集で実行内容が黙って変わり得た。",
-      "decision": "v2 prompt = sha256 7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa・6801 chars（入力は prompt.ts・wagashi-art-direction-v2.json・wagashi.json だけで、時刻・env・path に依らない）。人の確認は design-image-poc.md 第2案「Pinned prompt」の読むだけの tsx --no-cache -e 1 行（案 a）。design-image-poc.ts に flag は足さない（isolation と承認 flag 先頭の順を変えない）。report.json の key は不変。",
+      "branch": "feature/design-dna-brief-foundation",
+      "purpose": "人の依頼（Issue #110、2026-10-23）: 店の検証済みの特徴 → 参考サイトの原則の分析 → 独創的な Web の構成判断 → Web デザイン画像 → Claude の忠実実装、という流れの最初の段を、業種の template ではなく店ごとの判断として offline で記録できるようにする。PR #109。v2 の実画像の評価・Codex の呼び出しは含まない",
       "acceptance_criteria": [
-        "design-image-poc.test.ts の v2 (DEV-077) test が v2 prompt の sha256 と文字数 6801 を固定し、既定の direction でも同じ prompt であることを確かめる",
-        "design-image-poc.md の第2案に sha と長さ、人の承認がこの sha を指すこと、WSL で違えば実行しないこと、読むだけの確認コマンドを書く",
-        "prompt の文・direction JSON・fixture・prompt.ts・run.ts・閾値・report の key は不変"
+        "parseDesignDna は 8 項目（hero・typography・palette・product_visual・section_rhythm・navigation・mobile・implementation）を 1 つずつ必須にし、各判断が 1 つ以上の店の evidence を引く。未知の field・未知の enum・HTTPS 以外・認証情報入りの URL・画像の payload を拒否する（fail closed）",
+        "参考は rights=analysis_only・scope は限定のラベル。参考先の事実・文言・画像を店の事実にしない。業種の preset id や自動の preset 選択を作らない",
+        "rationale は判断ごと（同じ文の貼り回しは拒否）",
+        "sharedDesignDnaParts / sameDesignDna は項目ごとの同一文の検出だけ（順序・大小・幅・空白・記号は無視）。言い換えは検出しないことと、独創性の点数ではないことを docs と test に書く",
+        "3 店の fixture は DEV-073 の架空の店（scripts/sales-design-worker/compare/shops/）の field だけを根拠にし、架空であることを brand の evidence に書く。どの項目も 3 店の間で同じ選択でない",
+        "参考 URL は実在の HTTPS で、brief の観察はその頁で読める内容に限る（読めなかったものは docs に未確認と書く）",
+        "worker・PoC・prompt・品質の閾値・gate を変えない。既存の 40 事例・9 技法カードを取り込まない"
       ],
       "required_tests": [
-        "tests/unit/design-agent/design-image-poc.test.ts",
-        "tests/unit/ai-tasks.test.ts、npm run typecheck、eslint（変更 file）、npm run check:secrets"
+        "tests/unit/design-agent/design-image-design-dna.test.ts（正例・負例ごとの拒否理由・provenance・使い回しの検出と限界）",
+        "tests/unit/ai-tasks.test.ts、npm run check:secrets",
+        "eslint（変更 file）・tsc・CI"
       ],
       "allowed_scope": [
-        "tests/unit/design-agent/design-image-poc.test.ts（test の追加だけ）",
-        "docs/operations/design-image-poc.md（第2案）",
+        "lib/design-agent/design-image/design-dna.ts",
+        "tests/unit/design-agent/design-image-design-dna.test.ts",
+        "design-library/poc/design-dna/",
+        "docs/operations/design-dna-foundation.md",
         ".ai/tasks.json"
       ],
       "forbidden_scope": [
-        "v1 / v2 の prompt の文・direction JSON・prompt.ts の動作・run.ts・閾値の変更",
-        "report.json への prompt_sha256 の追加（PocReport の key は固定）",
-        "design-dna.ts・design-library/poc/design-dna/**・bundle.ts・comp-impl-poc.ts",
-        "Codex・WSL・worker の実行、.github/**、.ai/progress.md"
+        "worker・bridge・queue・timer・DB・Staging・Production・実営業送信",
+        "WSL・jail・passt の変更、Codex / imagegen の実行、v2 の art direction・prompt の変更",
+        "品質の閾値・gate・review の prompt の変更、.github/**",
+        "店舗の事実・価格・口コミ・実績の創作、他者の写真・ロゴの転載、業種固定の template 規則",
+        "DEV-083 の範囲（comp 実装の表現と検査）"
       ],
       "human_approval_triggers": [
-        "次の v2 の実 Codex 画像呼び出し（この sha を指す個別承認）",
-        "feature → develop の merge は AI_WORKFLOW §4 の条件"
-      ]
+        "worker・PoC・画像の prompt への接続",
+        "v2 の Codex の 1 回の呼び出し（DEV-075 / HUMAN の承認）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件（Fresh Review PASS・最新 SHA の必須 CI）"
+      ],
+      "decision": "2026-10-23: PR #109（draft）の引き継ぎ。自己レビューで直したもの: wagashi の参考（xd.5star.co.jp/work/1649、SONICJAM の お茶のはまだ）の観察が頁に無い「余白と和文の組版」を書いていた → 頁が述べる「白を基調」だけに。A Bite Coffee の頁は 503 で再確認できず docs に未確認と記載。24 の rationale が同じ定型文だった → 判断ごとの理由に書き直し、貼り回しを拒否。sameDesignDna は 8 項目すべて一致のときだけ真で、7 項目を貼っても通った → 項目ごとの sharedDesignDnaParts を足し、fixture の test は共有 0 を要求。記号・順序の変更で逃げないことと、言い換えは検出しない限界を test に固定。負例は拒否理由まで照合。fixture の evidence が DEV-073 の field を指し、架空と書くことを test。40 事例・9 技法カードは repo に無く、DR-0xx は brief 内のラベルと docs に記載"
     },
     {
       "id": "DEV-094",
@@ -4219,52 +4229,42 @@
       ]
     },
     {
-      "id": "DEV-093",
-      "title": "Design DNA: 店ごとの研究用ブリーフの契約（8 項目の判断を店の根拠へ結ぶ parseDesignDna、使い回しの検出 sharedDesignDnaParts / sameDesignDna、DEV-073 の架空 3 店の fixture）。worker・PoC には未接続（offline・研究用）",
+      "id": "DEV-095",
+      "title": "Design image PoC 第2案: 組み立てた v2 prompt を sha256 と文字数で test に固定し、人が WSL で同じ sha を読むだけで確かめる手順を置く（test と docs だけ）",
       "status": "done",
       "priority": "P2",
       "depends_on": [
-        "DEV-073",
-        "DEV-074"
+        "DEV-077"
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": "feature/design-dna-brief-foundation",
-      "purpose": "人の依頼（Issue #110、2026-10-23）: 店の検証済みの特徴 → 参考サイトの原則の分析 → 独創的な Web の構成判断 → Web デザイン画像 → Claude の忠実実装、という流れの最初の段を、業種の template ではなく店ごとの判断として offline で記録できるようにする。PR #109。v2 の実画像の評価・Codex の呼び出しは含まない",
+      "branch": "feature/dev-095-v2-prompt-pin",
+      "purpose": "次の v2 の実 Codex 画像呼び出し 1 回を人が承認するとき、承認が厳密な prompt を指せるようにする。v1 の prompt は sha256 で固定済みだが、v2（buildMockupPrompt(loadPocInputs(REPO, \"v2\"))）は長さの上限と toContain だけで、後の編集で実行内容が黙って変わり得た。",
+      "decision": "v2 prompt = sha256 7334ea1906052f558cc43c8ce1582ddada1432e14899bd5d57d354914a5012aa・6801 chars（入力は prompt.ts・wagashi-art-direction-v2.json・wagashi.json だけで、時刻・env・path に依らない）。人の確認は design-image-poc.md 第2案「Pinned prompt」の読むだけの tsx --no-cache -e 1 行（案 a）。design-image-poc.ts に flag は足さない（isolation と承認 flag 先頭の順を変えない）。report.json の key は不変。",
       "acceptance_criteria": [
-        "parseDesignDna は 8 項目（hero・typography・palette・product_visual・section_rhythm・navigation・mobile・implementation）を 1 つずつ必須にし、各判断が 1 つ以上の店の evidence を引く。未知の field・未知の enum・HTTPS 以外・認証情報入りの URL・画像の payload を拒否する（fail closed）",
-        "参考は rights=analysis_only・scope は限定のラベル。参考先の事実・文言・画像を店の事実にしない。業種の preset id や自動の preset 選択を作らない",
-        "rationale は判断ごと（同じ文の貼り回しは拒否）",
-        "sharedDesignDnaParts / sameDesignDna は項目ごとの同一文の検出だけ（順序・大小・幅・空白・記号は無視）。言い換えは検出しないことと、独創性の点数ではないことを docs と test に書く",
-        "3 店の fixture は DEV-073 の架空の店（scripts/sales-design-worker/compare/shops/）の field だけを根拠にし、架空であることを brand の evidence に書く。どの項目も 3 店の間で同じ選択でない",
-        "参考 URL は実在の HTTPS で、brief の観察はその頁で読める内容に限る（読めなかったものは docs に未確認と書く）",
-        "worker・PoC・prompt・品質の閾値・gate を変えない。既存の 40 事例・9 技法カードを取り込まない"
+        "design-image-poc.test.ts の v2 (DEV-077) test が v2 prompt の sha256 と文字数 6801 を固定し、既定の direction でも同じ prompt であることを確かめる",
+        "design-image-poc.md の第2案に sha と長さ、人の承認がこの sha を指すこと、WSL で違えば実行しないこと、読むだけの確認コマンドを書く",
+        "prompt の文・direction JSON・fixture・prompt.ts・run.ts・閾値・report の key は不変"
       ],
       "required_tests": [
-        "tests/unit/design-agent/design-image-design-dna.test.ts（正例・負例ごとの拒否理由・provenance・使い回しの検出と限界）",
-        "tests/unit/ai-tasks.test.ts、npm run check:secrets",
-        "eslint（変更 file）・tsc・CI"
+        "tests/unit/design-agent/design-image-poc.test.ts",
+        "tests/unit/ai-tasks.test.ts、npm run typecheck、eslint（変更 file）、npm run check:secrets"
       ],
       "allowed_scope": [
-        "lib/design-agent/design-image/design-dna.ts",
-        "tests/unit/design-agent/design-image-design-dna.test.ts",
-        "design-library/poc/design-dna/",
-        "docs/operations/design-dna-foundation.md",
+        "tests/unit/design-agent/design-image-poc.test.ts（test の追加だけ）",
+        "docs/operations/design-image-poc.md（第2案）",
         ".ai/tasks.json"
       ],
       "forbidden_scope": [
-        "worker・bridge・queue・timer・DB・Staging・Production・実営業送信",
-        "WSL・jail・passt の変更、Codex / imagegen の実行、v2 の art direction・prompt の変更",
-        "品質の閾値・gate・review の prompt の変更、.github/**",
-        "店舗の事実・価格・口コミ・実績の創作、他者の写真・ロゴの転載、業種固定の template 規則",
-        "DEV-083 の範囲（comp 実装の表現と検査）"
+        "v1 / v2 の prompt の文・direction JSON・prompt.ts の動作・run.ts・閾値の変更",
+        "report.json への prompt_sha256 の追加（PocReport の key は固定）",
+        "design-dna.ts・design-library/poc/design-dna/**・bundle.ts・comp-impl-poc.ts",
+        "Codex・WSL・worker の実行、.github/**、.ai/progress.md"
       ],
       "human_approval_triggers": [
-        "worker・PoC・画像の prompt への接続",
-        "v2 の Codex の 1 回の呼び出し（DEV-075 / HUMAN の承認）",
-        "feature → develop の merge は AI_WORKFLOW §4 の条件（Fresh Review PASS・最新 SHA の必須 CI）"
-      ],
-      "decision": "2026-10-23: PR #109（draft）の引き継ぎ。自己レビューで直したもの: wagashi の参考（xd.5star.co.jp/work/1649、SONICJAM の お茶のはまだ）の観察が頁に無い「余白と和文の組版」を書いていた → 頁が述べる「白を基調」だけに。A Bite Coffee の頁は 503 で再確認できず docs に未確認と記載。24 の rationale が同じ定型文だった → 判断ごとの理由に書き直し、貼り回しを拒否。sameDesignDna は 8 項目すべて一致のときだけ真で、7 項目を貼っても通った → 項目ごとの sharedDesignDnaParts を足し、fixture の test は共有 0 を要求。記号・順序の変更で逃げないことと、言い換えは検出しない限界を test に固定。負例は拒否理由まで照合。fixture の evidence が DEV-073 の field を指し、架空と書くことを test。40 事例・9 技法カードは repo に無く、DR-0xx は brief 内のラベルと docs に記載"
+        "次の v2 の実 Codex 画像呼び出し（この sha を指す個別承認）",
+        "feature → develop の merge は AI_WORKFLOW §4 の条件"
+      ]
     },
     {
       "id": "DEV-096",
@@ -5992,39 +5992,6 @@
       "merged": "#167 → 439cf08 (squash, 2026-10-31)"
     },
     {
-      "id": "DEV-135",
-      "title": "オフライン実験テストの全頁撮影を安定させる (develop 1220d3e の CI で Chromium が撮影を拒んだ)",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [],
-      "attempts": 0,
-      "last_failure": "develop 1220d3e CI: page.screenshot Protocol error (Page.captureScreenshot): Unable to capture screenshot — phase2-offline-experiment.test.ts:69 (同じコードは 439cf08 と PR の CI で成功)",
-      "branch": "feature/dev-135-offline-experiment-screenshot",
-      "purpose": "develop の CI を緑に戻す。テストの撮影方法だけを変え、判定・閾値・本体は変えない。",
-      "acceptance_criteria": [
-        "全頁を継ぎ合わせる撮影をやめ、ページの高さの viewport で1回撮る",
-        "測る箱は元の viewport で測ったまま",
-        "比較の期待値は変えない"
-      ],
-      "required_tests": [
-        "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
-        "latest-head required CI"
-      ],
-      "allowed_scope": [
-        "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
-        ".ai/tasks.json"
-      ],
-      "forbidden_scope": [
-        "テストの期待値・閾値の変更",
-        "skip / retry で隠すこと"
-      ],
-      "human_approval_triggers": [
-        "develop へのマージ"
-      ],
-      "note": "develop の push CI は1回目に phase2f-live/steps.test.ts の RENDER_FAILED 2件で落ち、失敗ジョブの再実行で成功 (runner 上の Chromium の一時的な失敗。同じコードは直前の PR CI で通過)。",
-      "merged": "#172 → 7861e3e (squash, 2026-10-31)"
-    },
-    {
       "id": "DEV-132",
       "title": "Anthropic 公式 frontend-design スキル v1.1.1 をリポジトリ管理のプロジェクトスキルとして導入 (無改変・Apache-2.0)",
       "status": "done",
@@ -6149,6 +6116,39 @@
       ],
       "note": "実試作12枚で誤検知 9→0 (所見 14→5)。コントラストは未対応。 PR の CI は1回目に phase2f-live/steps.test.ts の packaging で落ち、失敗ジョブの再実行で成功 (develop 7861e3e と同じ形。原因の調査は別タスク)。",
       "merged": "#171 → d63850f (squash, 2026-10-31)"
+    },
+    {
+      "id": "DEV-135",
+      "title": "オフライン実験テストの全頁撮影を安定させる (develop 1220d3e の CI で Chromium が撮影を拒んだ)",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": "develop 1220d3e CI: page.screenshot Protocol error (Page.captureScreenshot): Unable to capture screenshot — phase2-offline-experiment.test.ts:69 (同じコードは 439cf08 と PR の CI で成功)",
+      "branch": "feature/dev-135-offline-experiment-screenshot",
+      "purpose": "develop の CI を緑に戻す。テストの撮影方法だけを変え、判定・閾値・本体は変えない。",
+      "acceptance_criteria": [
+        "全頁を継ぎ合わせる撮影をやめ、ページの高さの viewport で1回撮る",
+        "測る箱は元の viewport で測ったまま",
+        "比較の期待値は変えない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+        "latest-head required CI"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/offline-integration/phase2-offline-experiment.test.ts",
+        ".ai/tasks.json"
+      ],
+      "forbidden_scope": [
+        "テストの期待値・閾値の変更",
+        "skip / retry で隠すこと"
+      ],
+      "human_approval_triggers": [
+        "develop へのマージ"
+      ],
+      "note": "develop の push CI は1回目に phase2f-live/steps.test.ts の RENDER_FAILED 2件で落ち、失敗ジョブの再実行で成功 (runner 上の Chromium の一時的な失敗。同じコードは直前の PR CI で通過)。",
+      "merged": "#172 → 7861e3e (squash, 2026-10-31)"
     },
     {
       "id": "DEV-136",
@@ -6388,54 +6388,6 @@
       "merged": "#179 → 68b6255 (squash, 2026-11-01, Issue #177 の条件付き事前承認)"
     },
     {
-      "id": "DEV-144",
-      "title": "参照の決められる上限を報告し、記録の薄い参照を分ける (Issue #177 C)",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [
-        "DEV-136",
-        "DEV-138"
-      ],
-      "attempts": 0,
-      "last_failure": null,
-      "branch": "feature/dev-144-reference-coverage",
-      "purpose": "Issue #177 C (オーナー事前承認、条件付きの develop マージ)。成功例と不採用例の参照の精度を上げる最初の段として、参照ごとの決められる上限を報告する。候補側の不足 (undecided) と参照側の不足 (too_thin) を分ける。宣言・採否・事実パックは変えない。",
-      "acceptance_criteria": [
-        "coverageCeiling を返し、上限が MIN_COVERAGE 未満の参照を too_thin として分ける (undecided の一部、所見ではない)",
-        "構造の観察の報告に undecided_too_thin を足す",
-        "24件の一覧と上限をテストと文書で固定する",
-        "宣言・閾値・採否・事実パックを変えない"
-      ],
-      "required_tests": [
-        "tests/unit/design-agent/structure/references.test.ts",
-        "tests/unit/design-agent/structure/observe.test.ts",
-        "tests/unit/design-agent/structure/structure.test.ts",
-        "latest-head required CI",
-        "independent Fresh Review"
-      ],
-      "allowed_scope": [
-        "lib/design-agent/structure/references.ts",
-        "lib/design-agent/structure/observe.ts",
-        "tests/unit/design-agent/structure/references.test.ts",
-        "docs/design/reference-structure-descriptors.md",
-        "docs/design/phase2f-structure-observation.md",
-        ".ai/tasks.json",
-        ".ai/reviews/DEV-144.md"
-      ],
-      "forbidden_scope": [
-        "宣言の追加・変更 (研究データの意味の確定)",
-        "閾値の変更",
-        "owner-selected の採否・事実パックの変更",
-        "生成器・prompt への参照の投入"
-      ],
-      "human_approval_triggers": [
-        "記録からの宣言の追加 (研究データの意味の確定)",
-        "Issue #177 の条件を満たさない場合の develop へのマージ"
-      ],
-      "note": "38件のうち24件が上限 0.5 未満 (原本なし7件すべてを含む)。Review round 1 PASS (C0/H0/M0/L3、対応済み)。",
-      "merged": "#182 → 08f14e9 (squash, 2026-11-01, Issue #177 の条件付き事前承認)"
-    },
-    {
       "id": "DEV-141",
       "title": "3制作方式の比較研究の設計 (VISUAL_FIRST / LAYOUT_FIRST / DIRECTION_FIRST、Issue #180、#177 Phase E への追加)",
       "status": "done",
@@ -6579,6 +6531,54 @@
       ],
       "note": "merge needs separate owner approval (マージには別のオーナーの承認が要る)。DEV-141 の review round 1 (H1) で、今の入口では3方式を呼べないと分かった。Issue #180 の最新のオーナーのコメントで、opt-in の実験レーンとしての設計・オフラインの実装・模擬のテスト・レビュー・PR 作成を承認。つなぐこと・実行は、まだ承認されていない。 → オーナーの承認を受けて #184 でマージ (bc08a84)。実ランタイムへの接続・実行は未承認。",
       "merged": "#184 → bc08a84 (squash, 2026-11-01、オーナーの承認)"
+    },
+    {
+      "id": "DEV-144",
+      "title": "参照の決められる上限を報告し、記録の薄い参照を分ける (Issue #177 C)",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-136",
+        "DEV-138"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-144-reference-coverage",
+      "purpose": "Issue #177 C (オーナー事前承認、条件付きの develop マージ)。成功例と不採用例の参照の精度を上げる最初の段として、参照ごとの決められる上限を報告する。候補側の不足 (undecided) と参照側の不足 (too_thin) を分ける。宣言・採否・事実パックは変えない。",
+      "acceptance_criteria": [
+        "coverageCeiling を返し、上限が MIN_COVERAGE 未満の参照を too_thin として分ける (undecided の一部、所見ではない)",
+        "構造の観察の報告に undecided_too_thin を足す",
+        "24件の一覧と上限をテストと文書で固定する",
+        "宣言・閾値・採否・事実パックを変えない"
+      ],
+      "required_tests": [
+        "tests/unit/design-agent/structure/references.test.ts",
+        "tests/unit/design-agent/structure/observe.test.ts",
+        "tests/unit/design-agent/structure/structure.test.ts",
+        "latest-head required CI",
+        "independent Fresh Review"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/structure/references.ts",
+        "lib/design-agent/structure/observe.ts",
+        "tests/unit/design-agent/structure/references.test.ts",
+        "docs/design/reference-structure-descriptors.md",
+        "docs/design/phase2f-structure-observation.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-144.md"
+      ],
+      "forbidden_scope": [
+        "宣言の追加・変更 (研究データの意味の確定)",
+        "閾値の変更",
+        "owner-selected の採否・事実パックの変更",
+        "生成器・prompt への参照の投入"
+      ],
+      "human_approval_triggers": [
+        "記録からの宣言の追加 (研究データの意味の確定)",
+        "Issue #177 の条件を満たさない場合の develop へのマージ"
+      ],
+      "note": "38件のうち24件が上限 0.5 未満 (原本なし7件すべてを含む)。Review round 1 PASS (C0/H0/M0/L3、対応済み)。",
+      "merged": "#182 → 08f14e9 (squash, 2026-11-01, Issue #177 の条件付き事前承認)"
     },
     {
       "id": "DEV-145",
@@ -7176,6 +7176,50 @@
         "実画像の生成"
       ],
       "note": "Issue #193 のオーナーの事前承認 (2026-11-03、20件の視覚研究を先行入力に)。"
+    },
+    {
+      "id": "DEV-157",
+      "title": "方向の記録 (art_direction_set_v0) と、カンプを作る前の機械の検査 (Issue #193 改善タスク T1)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-156"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-157-direction-set",
+      "purpose": "制作工程の段2〜3 (モチーフと構造が違う3方向) を記録する形を決め、チェック C1〜C5 と参照の範囲を機械で検める。通っても「カンプを作ってよい」だけで、品質の判定ではない。",
+      "acceptance_criteria": [
+        "lib/design-agent/quality-pipeline/direction-set.ts (形と checkDirectionSet、既存の directionsDiffer と structureFindings を使う)",
+        "scripts/design-artifact/direction-set.ts (CLI、0 = READY_FOR_COMPS / 1 = HOLD / 2 = 使い方の誤り)",
+        "架空の店 1件 (つぐ手) の事実パックと3方向の例",
+        "未見の10件を参照すると止まる",
+        "「成功例レベル」とは言わない",
+        "参照の原理が TEXT_ONLY_PROVISIONAL であることを、検査の出力に出す"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline/direction-set.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/quality-pipeline/",
+        "scripts/design-artifact/direction-set.ts",
+        "design-library/research/quality-pipeline/poc/",
+        "docs/design/direction-set.md",
+        "docs/design/quality-first-process.md",
+        "tests/unit/design-agent/quality-pipeline/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "実 Codex・画像生成・有料 API の呼び出し",
+        "main・Production・Staging・DB",
+        "CSS 許可一覧・Identity Lock・安全ゲートの緩和",
+        "成功例の原本画像の commit (リポジトリは public)"
+      ],
+      "human_approval_triggers": [
+        "実画像の生成",
+        "許可一覧の緩和"
+      ],
+      "note": "Issue #193 のオーナーの事前承認 (20件の視覚研究を使った自律の次段)。DEV-156 の上に積む。"
     },
     {
       "id": "DEV-158",
