@@ -7387,7 +7387,8 @@
         "design-library/research/quality-pipeline/poc/sento/impl/README.md",
         ".ai/tasks.json",
         ".ai/reviews/DEV-161.md",
-        ".ai/progress.md"
+        ".ai/progress.md",
+        "tests/unit/design-agent/phase2f-live/design-call.test.ts"
       ],
       "forbidden_scope": [
         "comp-impl の CSS・HTML 許可一覧の変更 (page-css.ts・page.ts・shop-css/*)",
