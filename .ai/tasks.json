@@ -7356,7 +7356,56 @@
         "許可一覧の変更 (提案の段 B〜D・N1)",
         "実写真・生成画像"
       ],
-      "note": "C は experimental_fidelity (本番用ではない)。数は縦の位置の指標で、形や品質の判定ではない。"
+      "note": "C は experimental_fidelity (本番用ではない)。数は縦の位置の指標で、形や品質の判定ではない。PR #200 で develop へ merge した (ec0149f)。"
+    },
+    {
+      "id": "DEV-161",
+      "title": "段 B の設計と互換性の基準のテスト (書体の固定・表示語の大きさ・色の書き方・文字の下でない地・半透明の装飾・フィルター・流れの中の飾り・表示語の折れ止め)。何も有効にしない (Issue #193)",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-160"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-161-phase-b-design",
+      "purpose": "Issue #193 コメント 6601921731 の決定1: 段 B の設計・安全性の検証・テスト・互換性の確認を、許可一覧を緩めずに行う。実際の緩め、閾値の変更、能力の旗の有効化、worker の配線は、別の承認が要る。",
+      "acceptance_criteria": [
+        "docs/design/phase-b-design.md (能力ごとの文法・役割・V の検証・落ちるべき例・費用の測り方・進め方、能力の表の設計、段 B で許さないもの)",
+        "phase-b-baseline.test.ts が今の振る舞い (段 B の例はすべて拒まれる、今の許可は不変、PageCssOptions の鍵は verticalName だけ、能力の表は空、本番の道は段 B の名前を参照しない) を固定する",
+        "DEV-160 の残りの Low 2件 (views の鍵の固定、README の IMPL_MISTAKE_TABLET_OVERFLOW の行)",
+        "本番のコードは変えない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl tests/unit/design-agent/quality-pipeline tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "docs/design/phase-b-design.md",
+        "tests/unit/design-agent/comp-impl/phase-b-baseline.test.ts",
+        "tests/unit/design-agent/quality-pipeline/loss-analysis.test.ts",
+        "design-library/research/quality-pipeline/poc/bicycle/impl/README.md",
+        "design-library/research/quality-pipeline/poc/sento/impl/README.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-161.md",
+        ".ai/progress.md",
+        "tests/unit/design-agent/phase2f-live/design-call.test.ts"
+      ],
+      "forbidden_scope": [
+        "comp-impl の CSS・HTML 許可一覧の変更 (page-css.ts・page.ts・shop-css/*)",
+        "安全の門・閾値・worker の権限の変更",
+        "CAPABILITY_NAMES・APPROVED_CAPABILITIES・PageCssOptions の変更",
+        "worker の配線",
+        "実 Codex・画像生成・有料 API",
+        "main・Production・Staging・DB",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "段 B の能力のどれかを有効にすること (APPROVED_CAPABILITIES に足すこと)",
+        "許可一覧を緩める段 B の実装の PR の merge",
+        "web_font の書体の一覧、image_filters の値の範囲",
+        "閾値の変更"
+      ],
+      "note": "設計と検証の準備だけ。旗が下りたままの互換性は phase-b-baseline.test.ts が固定する。能力の名前 type_scale は spec の欄と重なるので display_scale にした。 PR #201 で develop へ merge した (3590de9)。"
     },
     {
       "id": "DEV-163",

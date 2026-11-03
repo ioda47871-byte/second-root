@@ -299,3 +299,5 @@
 - 2026-10-31: DEV-130 done（PR #166 → fb1a772、CI success on 6f82843、Fresh Review PASS、Low 3、記録 `.ai/reviews/DEV-130.md`）。CP-026〜032 の intake を superseded にし、検査は「登録済みであること」へ反転。
 
 - 2026-10-31 DEV-131 merged (#167 → 439cf08): 実装と元デザインの PC1440/SP390 比較（修正ループの原因コード、passing は常に false、閾値は仮）と架空店舗オフライン実験（2b/2c/2e/2g を実モジュールで連結）。独立レビュー 3 ラウンド目 PASS（C0/H0/M0/L3、Low は .ai/reviews/DEV-131.md）。Issue #159 の許可済みオフライン範囲はこれで一巡。以降は承認待ち（実Codex 実行、閾値・語彙の確定、interaction_spec、実ポート接続、jail 下の実装レーン）。
+
+- 2026-11-03 DEV-161 (PR #201): 段B の設計 (`docs/design/phase-b-design.md`) と、旗が下りた今の振る舞いを固定するテスト。許可一覧・閾値・worker・能力の表は不変。Fresh Review 1回目 M4/L4 を文書とテストで修正 (書体は信頼できる側が同じバイト列を差し込む、描く範囲、`STACKING_CONTEXT`/`PSEUDO_GEOMETRY_UNKNOWN` を狭めるのは承認事項、`rem` の掛け合わせで今の上限をすり抜けられる穴)。段B の実装 PR は merge 前にオーナーの承認が要る。
