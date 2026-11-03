@@ -7145,13 +7145,14 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-156-success-principles",
-      "purpose": "実際に画像を見て分析できた成功例20件 (Issue #193 のオーナーの記録) から、店固有のモチーフを構造へ翻訳する設計原理を取り出し、Second Root の制作工程・失敗の符号・制作前のチェックリスト・次の試作の改善タスクにする。",
+      "purpose": "ChatGPT が画像を表示して見た成功例20件の視覚研究の要約 (Issue #193 のオーナーの記録) と研究記録の文章 (TEXT_ONLY_PROVISIONAL) から、店固有のモチーフを構造へ翻訳する設計原理を取り出し、Second Root の制作工程・失敗の符号・制作前のチェックリスト・次の試作の改善タスクにする。",
       "acceptance_criteria": [
         "docs/design/success-principles-v1.md (20件の分析・原理 P1〜P8・失敗パターン)",
         "docs/design/quality-first-process.md (9段の工程・チェック C1〜C7・改善タスク T1〜T7)",
         "design-library/research/quality-pipeline/principles-v1.json とテスト (証拠の区分を誇張しない)",
         "画像を見ていない10件を原理の根拠に使わない",
-        "「成功例レベル」とは言わない"
+        "「成功例レベル」とは言わない",
+        "TEXT_ONLY_PROVISIONAL と明記し、VISUAL_VERIFIED (Claude 自身の閲覧) を主張しない"
       ],
       "required_tests": [
         "npx vitest run tests/unit/design-agent/research/success-principles.test.ts"

@@ -4,7 +4,7 @@
 
 - 実務で毎回使う手順として書いた。各段に、入力・出力・通過の条件・使う道具を置く。
 - **この工程を通しても、「成功例レベル」とは言わない。** 判定はオーナーが PC/SP の実画像で行う。
-- 参照する成功例の原理 (`principles-v1.json`) は今 `TEXT_ONLY_PROVISIONAL` である。画像のある案件の品質の実証は、Claude 自身が参照画像を見た記録 (`VISUAL_VERIFIED`、DEV-158) があるときだけ行う。
+- 参照する成功例の原理 (`principles-v1.json`) は今 `TEXT_ONLY_PROVISIONAL` である。画像のある案件の品質の実証は、Claude 自身が参照画像を見た記録 (`VISUAL_VERIFIED`、Issue #193 の後続のタスク) があるときだけ行う。
 - 実 Codex・画像生成・有料 API・本番の変更は、この工程の中でも別の承認が要る。
 
 ## 全体

@@ -159,6 +159,9 @@ describe("success principles v1 (DEV-156, Issue #193)", () => {
     expect((doc as unknown as { visual_mode: string }).visual_mode).toBe("TEXT_ONLY_PROVISIONAL");
     expect(principlesDoc).toContain("`TEXT_ONLY_PROVISIONAL`");
     expect(processDoc).toContain("`TEXT_ONLY_PROVISIONAL`");
-    expect(JSON.stringify(doc)).not.toContain("VISUAL_VERIFIED\"");
+    // no value anywhere in the data claims Claude's own viewing
+    const values: string[] = [];
+    JSON.parse(JSON.stringify(doc), (_k, v) => (typeof v === "string" && values.push(v), v));
+    expect(values.filter((v) => /^VISUAL_VERIFIED/.test(v))).toEqual([]);
   });
 });
