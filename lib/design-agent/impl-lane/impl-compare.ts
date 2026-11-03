@@ -303,6 +303,7 @@ export async function renderImplementation(browser: Browser, impl: Implementatio
  * the report then says so (render_failed), never a clean result. Throws LaneReadError for an unusable lane.
  */
 export async function compareImplementation(browser: Browser | null, laneDir: string, impl: Implementation, launchError?: unknown, opts: { sectionAttribute?: SectionAttribute } = {}): Promise<ImplCompareReport> {
+  if (opts.sectionAttribute !== undefined && !(SECTION_ATTRIBUTES as readonly string[]).includes(opts.sectionAttribute)) throw new Error("unknown section attribute");
   const lane = await readLane(laneDir);
   const viewports = {} as Record<Viewport, ViewportReport>;
   for (const v of ["desktop_1440", "mobile_390"] as const) {

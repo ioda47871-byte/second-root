@@ -14,7 +14,7 @@
  * A pointer-events rule is added for the measure only, so that elementFromPoint finds an element drawn on top even
  * if the page set pointer-events: none (as a decorative line does). Nothing is written but --out (a new file).
  * Exit: 0 report, 2 refused (arguments, spec, a page outside the research tree, an existing --out).
- * Never calls Codex, a model or the network. Decides nothing: the owner looks at the images.
+ * Never calls a model, a generator or the network. Decides nothing: the owner looks at the images.
  */
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -101,8 +101,20 @@ async function measurePage(browser: Browser, dir: string, p: PageSpec, v: (typeo
   try {
     const page = await ctx.newPage();
     const base = `file://${dir}${sep}`;
-    await page.route("**/*", (route) => (route.request().url().startsWith(base) ? route.continue() : route.abort()));
+    // only files that are really inside the page's directory: a link inside it pointing out is refused too
+    await page.route("**/*", (route) => {
+      const url = route.request().url();
+      if (!url.startsWith(base)) return route.abort();
+      let real: string;
+      try {
+        real = realpathSync(decodeURIComponent(new URL(url).pathname));
+      } catch {
+        return route.abort();
+      }
+      return (real + sep).startsWith(dir + sep) ? route.continue() : route.abort();
+    });
     await page.goto(`${base}index.html`, { waitUntil: "load" });
+    await page.evaluate("document.fonts.ready.then(() => true)");
     // added synchronously (addStyleTag waits for a load event that a JS-off page never fires)
     await page.evaluate(`(() => { const s = document.createElement("style"); s.textContent = "* { pointer-events: auto !important; } svg { pointer-events: none !important; } svg * { pointer-events: visiblePainted !important; }"; document.head.appendChild(s); })()`);
     return (await page.evaluate(`(${MEASURE})(${JSON.stringify({ attr: p.section_attribute, motif: v.width < 600 && p.motif_narrow ? p.motif_narrow : p.motif, captions: p.captions, words: p.words })})`)) as MeasuredPage;
@@ -143,7 +155,13 @@ async function main(argv: string[]): Promise<number> {
   const out = arg("--out");
   if (!specPath) return (process.stderr.write("usage: --spec <fidelity-spec.json> [--out <report.json>]\n"), 2);
   if (out && existsSync(out)) return (process.stderr.write("REFUSED: --out exists\n"), 2);
-  const parsed = FidelitySpec.safeParse(JSON.parse(readFileSync(specPath, "utf8")));
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(specPath, "utf8"));
+  } catch {
+    return (process.stderr.write("REFUSED: spec is not readable JSON\n"), 2);
+  }
+  const parsed = FidelitySpec.safeParse(raw);
   if (!parsed.success) return (process.stderr.write(`REFUSED: spec: ${parsed.error.issues[0]?.message ?? ""}\n`), 2);
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
   try {

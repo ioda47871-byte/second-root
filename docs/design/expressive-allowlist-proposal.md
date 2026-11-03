@@ -12,20 +12,23 @@
 
 **B で失われたものの多くは、本番の実装レーン (`lib/design-agent/comp-impl/page-css.ts` と HTML の許可一覧) の規則で作れないことが原因だった** (`loss-analysis.json` の `IMPL_RULE_*`)。
 
-C が実際に使った規則外の表現を、`fidelity/*/style.css` と `index.html` から数えた。
+C が実際に使った規則外の表現を数えた。
+
+- 対象は、直した後の版 (つぐ手 `fidelity/d1-v3`、輪・ゆげ湯 `fidelity/d1-v2`) の `style.css` と `index.html` である。
+- 数えたのは宣言の数で、1つの宣言の中のグラデーションは1と数える。
 
 | 表現 | つぐ手 | 輪 | ゆげ湯 | B で失われたもの |
 |---|---|---|---|---|
-| `position: absolute` / `relative` + オフセット + `z-index` | 22 / 46 / 18 | 14 / 30 / 7 | 15 / 34 / 13 | 区画の境をまたぐ巨大な文字と板、重なり (`IMPL_RULE_NO_OVERLAP`) |
-| `transform: rotate` | 9 | 5 | 2 | 傾いた写真の板 (`NO_TILT_SHADOW`) |
-| 外側の `box-shadow` | 4 | 0 | 3 | 板の影 |
+| `position: absolute` / `relative` + オフセット + `z-index` | 12+17 / 61 / 21 | 17+9 / 59 / 12 | 8+12 / 55 / 19 | 区画の境をまたぐ巨大な文字と板、重なり (`IMPL_RULE_NO_OVERLAP`) |
+| `transform: rotate` | 9 | 6 | 5 | 傾いた写真の板 (`NO_TILT_SHADOW`) |
+| 外側の `box-shadow` | 4 | 0 | 4 | 板の影 |
 | `writing-mode: vertical-rl` | 6 | 2 | 3 | 店名・見出し・事実の縦書き (`NO_VERTICAL_TEXT`) |
-| `-webkit-text-stroke` | 1 | 2 | 2 | 縁取りの巨大な文字 (`NO_OUTLINE_TYPE`) |
-| グラデーション | 3 | 1 | 8 | 温度計の帯、湯気、火の帯 (`NO_GRADIENT_PATTERN`) |
-| インラインの装飾 SVG (図形の要素の数) | 8 個 (20) | 5 個 (168) | 1 個 (3) | 割れ目を通る線、放射状のスポーク、山 (`NO_FREE_SHAPE`) |
-| `white-space: nowrap` / `word-break: keep-all` | 6 / 1 | 3 / 0 | 1 / 1 | 巨大な文字の語の途中の改行 (まわ/る、ありま/す) |
-| 256px を超える文字 | 0 | 0 | 4 | 熱い の大きさ (`TYPE_MAX_256`) |
-| `clip-path` | 3 | 0 | 0 | 破片の形の写真 |
+| `-webkit-text-stroke` | 1 | 3 | 4 | 縁取りの巨大な文字 (`NO_OUTLINE_TYPE`) |
+| グラデーションを持つ宣言 | 6 | 1 | 13 | 器の釉、温度計の帯、湯気、火の帯 (`NO_GRADIENT_PATTERN`) |
+| インラインの装飾 SVG (図形の要素の数) | 9 個 (35) | 6 個 (185) | 1 個 (2) | 割れ目を通る線、放射状のスポーク、山 (`NO_FREE_SHAPE`) |
+| `white-space: nowrap` / `word-break: keep-all` | 6 / 1 | 4 / 0 | 1 / 1 | 巨大な文字の語の途中の改行 (まわ/る、ありま/す) |
+| 256px を超える文字 | 0 | 0 | 5 | 熱い の大きさ (`TYPE_MAX_256`) |
+| `clip-path` | 3 | 2 | 0 | 破片の形の写真 |
 
 **写真は、どの規則を広げても戻らない** (仮の板である)。実際の写真は別の承認が要る。
 
@@ -84,8 +87,8 @@ C が実際に使った規則外の表現を、`fidelity/*/style.css` と `index
 
 **N3. 256px を超える表示語 (上限 640px)**
 
-- `decoration` の巨大な文字 (縁取りの 待つ・ぬるい など) にだけ許す。文字を持つ `decoration` は V1 で止まる。
-- だから、表示語は `content` 要素で、文字は固定のラベルか店名の飾りに限る (DEV-083 3.1(c) の「縦書き、装飾」と同じ扱い)。
+- 巨大な表示語 (縁取りの 待つ・ぬるい など) は文字を持つ。だから、DEV-083 V1 では `decoration` にできず、`content` 要素になる。
+- 256px を超える大きさは、`content` のうち表示語の役割の要素 (固定のラベルか店名の飾り。事実の値や免責ではない) にだけ許す。DEV-083 3.1(c) の「縦書き、装飾」と同じ扱いである。
 - 段 B の `type_scale` に含める。
 
 ## 3. 安全をどう保つか (オーナーの3つの問い)
@@ -101,7 +104,7 @@ C が実際に使った規則外の表現を、`fidelity/*/style.css` と `index
 
 次のものは変えない。
 
-- 字句の段で `url(` を、`assets.json` に載った資産の道 (ハッシュで照らす) にだけ許す (`CSS_URL_NOT_ASSET`)。
+- 今の字句の段は、**すべての `url(` を拒む** (`CSS_SYNTAX_URL`)。資産の道へだけ `url(` を許す (DEV-083 の `CSS_URL_NOT_ASSET`) のは**緩めの1つ**で、今は無い。この提案のどの段にも入れていない。入れるなら、別の承認が要る。
 - `@import`・`image-set()`・`-webkit-image-set()`・`src()` は拒否のまま。
 - HTML の `<script>`・イベント属性・`javascript:`・`data:`・外の URL・インラインの `<style>` の拒否 (`htmlSourceProblems`) は、そのまま残す。インラインの SVG も許さない (N1 は `<img>` の資産だけ)。
 - 描画は JS を無効にし、自分のファイル以外への通信を拒む。拒否した数は報告に残る。
@@ -117,7 +120,11 @@ C が実際に使った規則外の表現を、`fidelity/*/style.css` と `index
 
 - 変わらない。緩めはすべて、明示した能力の旗 (`PageCssOptions` に足す) があるときだけ効く。
   - 今の `verticalName` の旗と同じ作りである。
-  - 旗の既定は空で、今の生成の道 (`scripts/sales-design-worker/` と `comp-impl/run.ts`) は旗を渡さない。
+  - **注意: 今の `comp-impl/run.ts` は `verticalName` を spec から決める** (`verticalNameOf(bundle.spec, …)`、spec の `vertical_name` は `checkCompSpec` で承認されたときだけ)。DEV-083 も、能力を `layout-spec.json` から取る計画である。spec はカンプの作り手が書けるので、新しい旗を同じ作りにすると spec が旗を立てられてしまう。
+  - そこで新しい能力の旗は、spec の宣言だけでは立たないようにする。オーナーが承認した能力の一覧 (リポジトリの中の固定の表、変えるには人の承認が要る) と照らし、両方にあるときだけ立てる。
+  - 次をテストで固定する。
+    - 今の worker の道 (`scripts/sales-design-worker/`) は、新しい旗を1つも渡さない。
+    - spec が承認されていない能力を宣言すると、拒まれる。
 - テストで固定すること:
   - 旗無しの `cssProblems` の結果は、今の許可一覧の全プローブで不変である (既存のテストに足す)。
   - 既存の合成の器 (`synthetic-wagashi`) と、今通るすべてのページが、そのまま通る。

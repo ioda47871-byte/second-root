@@ -131,6 +131,24 @@
           "what": "線が器では中央、その下では左の余白に移り、つながらない"
         },
         {
+          "code": "IMPL_MISTAKE_MIDWORD_BREAK",
+          "source": "impl_mistake",
+          "where": [
+            "b"
+          ],
+          "view": "pc",
+          "what": "店名 つぐ手 が PC 1440 で つぐ/手 と2行に折れた (fidelity-measure で測った)。列の幅より大きい文字にした誤り"
+        },
+        {
+          "code": "IMPL_MISTAKE_TABLET_OVERFLOW",
+          "source": "impl_mistake",
+          "where": [
+            "b"
+          ],
+          "view": "tablet",
+          "what": "1024 と 768 で横にはみ出し、巨大な文字が語の途中で折れた (fidelity-measure)。PC と SP の2つの幅しか作らなかった誤り"
+        },
+        {
           "code": "IMPL_RULE_NO_FREE_SHAPE",
           "source": "impl_rule_limit",
           "where": [
@@ -281,6 +299,15 @@
           ],
           "view": "pc",
           "what": "駅の板が小さく、文字との間が窮屈"
+        },
+        {
+          "code": "IMPL_MISTAKE_TABLET_OVERFLOW",
+          "source": "impl_mistake",
+          "where": [
+            "b"
+          ],
+          "view": "tablet",
+          "what": "1024 と 768 で横にはみ出し、巨大な文字が語の途中で折れた (fidelity-measure)。PC と SP の2つの幅しか作らなかった誤り"
         },
         {
           "code": "IMPL_RULE_NO_FREE_SHAPE",
@@ -435,6 +462,15 @@
           "what": "あります が ありま/す と折れた"
         },
         {
+          "code": "IMPL_MISTAKE_TABLET_OVERFLOW",
+          "source": "impl_mistake",
+          "where": [
+            "b"
+          ],
+          "view": "tablet",
+          "what": "1024 と 768 で横にはみ出し、巨大な文字が語の途中で折れた (fidelity-measure)。PC と SP の2つの幅しか作らなかった誤り"
+        },
+        {
           "code": "IMPL_RULE_NO_OVERLAP",
           "source": "impl_rule_limit",
           "where": [
@@ -506,5 +542,11 @@
         }
       ]
     }
-  ]
+  ],
+  "views": {
+    "pc": "1440",
+    "sp": "390",
+    "tablet": "1024 と 768 (fidelity-measure で測った幅。カンプはこの幅を設計していない)",
+    "both": "PC と SP"
+  }
 }

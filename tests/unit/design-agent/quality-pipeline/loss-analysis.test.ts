@@ -33,7 +33,7 @@ describe("DEV-160: the comp-to-implementation loss analysis", () => {
         expect(l.code, `${s.shop} ${l.code}`).toMatch(PREFIX[l.source]!);
         expect(l.where.length).toBeGreaterThan(0);
         for (const w of l.where) expect(["comp", "a", "b"]).toContain(w);
-        expect(["pc", "sp", "both"]).toContain(l.view);
+        expect(Object.keys(record.views)).toContain(l.view);
         expect(l.what.trim().length).toBeGreaterThan(0);
         // a comp-quality loss is the comp's own; an implementation loss is never blamed on the comp
         if (l.source === "comp_quality") expect(l.where).toEqual(["comp"]);

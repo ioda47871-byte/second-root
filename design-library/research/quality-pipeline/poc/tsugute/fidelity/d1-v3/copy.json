@@ -358,7 +358,7 @@
     },
     {
       "id": "eb-month",
-      "text": "ひと月",
+      "text": "乾く時間",
       "claim_type": "creative_expression",
       "source_fact_ids": [],
       "owner_review_needed": true

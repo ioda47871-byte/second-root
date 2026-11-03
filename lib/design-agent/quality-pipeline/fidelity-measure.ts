@@ -7,6 +7,10 @@
  * (the seam, the wheel, the thermometer strip), its captions and its giant words; nothing here knows a shop.
  *
  * Measured, not judged: no threshold here decides quality. The owner looks at the images.
+ *
+ * Known limits (recorded, not hidden): a giant word split across two text nodes is never counted as broken; any box
+ * drawn over a caption counts as covering it, even a transparent one (pointer-events are forced on for the measure);
+ * the boxes are element boxes, so the shape of a motif (a zigzag, radial spokes) is not measured.
  */
 import { z } from "zod";
 
@@ -90,7 +94,7 @@ export function scoreFidelity(m: MeasuredPage): FidelityScore {
   const carried = boundaries.filter(
     (y) =>
       m.motif.some((b) => b.top < y - CROSS_MARGIN && b.bottom > y + CROSS_MARGIN) ||
-      m.motif.some((above) => above.bottom >= y - 4 && above.top < y && m.motif.some((below) => below.top <= y + 4 && below.bottom > y && near(above, below))),
+      m.motif.some((above) => above.bottom >= y - 4 && above.top < y && m.motif.some((below) => below !== above && below.top <= y + 4 && below.bottom > y && near(above, below))),
   ).length;
   const touched = sections.filter((s) => m.motif.some((b) => b.top < s.bottom && b.bottom > s.top)).length;
   return {
@@ -141,6 +145,7 @@ export const FidelitySpec = z.strictObject({
       }),
     )
     .min(2)
-    .max(3),
+    .max(3)
+    .refine((pages) => new Set(pages.map((p) => p.key)).size === pages.length, "page keys must be unique"),
 });
 export type FidelitySpec = z.infer<typeof FidelitySpec>;

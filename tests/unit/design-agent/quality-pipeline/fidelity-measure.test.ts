@@ -34,6 +34,8 @@ describe("fidelity scores (pure)", () => {
     expect(s).toMatchObject({ boundaries_crossed: 0, boundaries_carried: 1 });
     const apart = scoreFidelity(page({ motif: [box(0, 1000, 100, 104), box(1000, 2000, 900, 904)] }));
     expect(apart.boundaries_carried).toBe(0);
+    // one box that only grazes a boundary (by 1px) is not a line carried across it
+    expect(scoreFidelity(page({ motif: [box(0, 1001)] })).boundaries_carried).toBe(0);
   });
   it("gaps, captions drawn over, broken words and a page wider than its viewport are counted", () => {
     const s = scoreFidelity(
@@ -58,6 +60,17 @@ describe("fidelity scores (pure)", () => {
     const half = scoreFidelity(page({ motif: [box(0, 1500)] }));
     expect(motifPreservation(comp, half)).toEqual({ coverage: 0.5, boundaries_crossed: 0.5, boundaries_carried: 0.5, sections_touched: 0.667 });
     expect(motifPreservation(scoreFidelity(page({})), half).coverage).toBeNull();
+  });
+  it("the measure reaches nothing but zod, node and playwright (no model, worker, phase2f or comp-impl module)", () => {
+    const spec = (src: string) => [...src.matchAll(/(?:\bfrom\s*|(?<!@)\bimport\s*\(?\s*|\brequire\s*\(\s*)["'`]([^"'`]+)["'`]/g)].map((m) => m[1]).sort();
+    expect(spec(readFileSync(resolve(REPO, "lib/design-agent/quality-pipeline/fidelity-measure.ts"), "utf8"))).toEqual(["zod"]);
+    const cli = readFileSync(resolve(REPO, "scripts/design-artifact/fidelity-measure.ts"), "utf8");
+    expect(spec(cli)).toEqual(["../../lib/design-agent/quality-pipeline/fidelity-measure", "node:fs", "node:path", "playwright"]);
+    expect(cli.replace(/require\.main === module/g, "")).not.toMatch(/\brequire\s*[([]|import\s*\(|node:(https?|net|tls|child_process|worker_threads|vm)|\/worker\/|anthropic|openai|\bspawn\(|execFile|process\.binding|\bfetch\(|codex/i);
+  });
+  it("refuses duplicate page keys", () => {
+    const one = { key: "comp", dir: "design-library/research/quality-pipeline/poc/x", section_attribute: "data-section", motif: [".m"], captions: [], words: [] };
+    expect(FidelitySpec.safeParse({ schema: "fidelity_spec_v0", shop: "tsugute", pages: [one, one] }).success).toBe(false);
   });
   it("the spec names pages inside the research tree only, with the two known section attributes", () => {
     const ok = { schema: "fidelity_spec_v0", shop: "tsugute", pages: [0, 1].map((i) => ({ key: i ? "strict_b" : "comp", dir: "design-library/research/quality-pipeline/poc/x", section_attribute: "data-section", motif: [".m"], captions: [], words: [] })) };
