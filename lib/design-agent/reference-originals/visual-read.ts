@@ -51,8 +51,11 @@ export const ClaudeVisualRead = z.strictObject({
 });
 export type ClaudeVisualRead = z.infer<typeof ClaudeVisualRead>;
 
-/** The file as the caller finds it now (null: the file is not available to this session). */
-export type AssetNow = { sha256: string; width: number; height: number } | null;
+/**
+ * The file as the caller finds it now: its bytes' SHA and pixel size; `unreadable` when it is there but is not a
+ * picture whose size can be read (it still has a SHA when it is a file); null only when it is absent.
+ */
+export type AssetNow = { sha256: string; width: number; height: number } | { unreadable: true; sha256: string | null } | null;
 
 export type ReadCheck = { ok: true } | { ok: false; codes: string[] };
 
@@ -90,7 +93,10 @@ export function checkVisualRead(raw: unknown, now: AssetNow, o: { pictures: read
   const r = parsed.data;
   const codes: string[] = [];
   if (!now) codes.push("ASSET_NOT_AVAILABLE");
-  else {
+  else if ("unreadable" in now) {
+    codes.push("ASSET_UNREADABLE");
+    if (now.sha256 !== r.asset.sha256) codes.push("ASSET_SHA_MISMATCH");
+  } else {
     if (now.sha256 !== r.asset.sha256) codes.push("ASSET_SHA_MISMATCH");
     if (now.width !== r.asset.width || now.height !== r.asset.height) codes.push("ASSET_SIZE_MISMATCH");
   }

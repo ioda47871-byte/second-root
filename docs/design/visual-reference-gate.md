@@ -32,12 +32,13 @@
 | 符号 | 止める理由 |
 |---|---|
 | `READ_SCHEMA` | 形が違う。`actually_viewed` が true でない。範囲が無い。読んだのが Claude でない。観察が箱つきでない (要約の文だけ) |
-| `ASSET_NOT_AVAILABLE` | 記録のファイルが、今このセッションに無い。**`intake:` の原本の記録だけは、ファイルが無いこと「だけ」を免除する** (ほかの検査 = 形・置き場所・その件とビューと種類の在庫の画像・範囲・観察は、CI でもすべて行い、1つでも落ちれば `--check` が落ちる)。その記録は、ファイルのある場所でも無い場所でも同じに数え、一覧には `bytes_checked: where_the_file_is` と書く。リポジトリの登録 WebP の記録は免除しない |
+| `ASSET_NOT_AVAILABLE` | 記録のファイルが無い。**`intake:` の原本の記録だけは、無いこと「だけ」を免除する** (ほかの検査 = 形・置き場所・その件とビューと種類の在庫の画像・範囲・観察は、CI でもすべて行い、1つでも落ちれば `--check` が落ちる) |
+| `ASSET_UNREADABLE` | ファイルはあるが、画像として大きさを読めない (ディレクトリ、壊れた中身、知らない形式)。免除しない。中身の SHA が違えば `ASSET_SHA_MISMATCH` も出す |
 | `ASSET_SHA_MISMATCH`・`ASSET_SIZE_MISMATCH` | 今のファイルのバイトか大きさが、記録と違う |
 | `PICTURE_NOT_RECORDED_FOR_CASE`・`PICTURE_KIND_VIEW_OR_PATH_MISMATCH` | 記録の画像が、その件の採用版の画像 (在庫の `original`・`registered_preview`) の**ちょうど1つ**に、ビュー・種類・登録の path まで一致しない。別の件・別のビュー・比較用や不採用の版の画像を付け替えた記録を止める |
 | `ORIGINAL_OUTSIDE_INTAKE`・`PREVIEW_IN_INTAKE` | 原本をリポジトリの path で指した (原本は `.intake/` だけ)。プレビューを `intake:` で指した |
 | `MANIFEST_CLAIM_WRONG` | 在庫に記録があるという主張が違う |
-| `CROPS_DO_NOT_COVER`・`CROP_OUTSIDE` | 見た範囲が、画像の面積の 98% に届かない (4画素の格子で、範囲が丸ごと覆うマスだけを数える。縁の端数で切り上げない)。画像の外を指す |
+| `CROPS_DO_NOT_COVER`・`CROP_OUTSIDE` | 見た範囲が、画像の面積の 98% に届かない (4画素の格子で、範囲が丸ごと覆うマスだけを数える。縁の端数で切り上げない。切り分けの継ぎ目は4の倍数の位置に置く。そうでないと継ぎ目のマスが数えられず、少なめに出る)。画像の外を指す |
 | `OBSERVATION_*` | 観察が別の画像・別のビューを指す。箱が画像の外 (`checkObservation`) |
 | `TOO_FEW_LOCATED_OBSERVATIONS` | 場所つきの観察が8つ未満 |
 | `OBSERVATIONS_NOT_SPREAD` | 観察の箱が、画像の上・中・下の3つに散っていない (1画面目だけを見た記録を止める) |
@@ -57,11 +58,25 @@
 
 - ビュー: 在庫の採用版の画像のビュー (コンセプト・PC・SP)。記録が無い件は `unknown`。ビューが `other` の採用版の画像は、開けるファイルとしては載せるが、区分は付けない
 - `available_for_Claude_visual_read`: リポジトリで開けるファイル (ビュー・種類・path・SHA)
-- `read_by_Claude`: 通った記録 (ビュー・**種類 (原本かプレビューか)**・SHA・バイトを確かめた場所 `in_repo` / `where_the_file_is`)。一覧は、作る場所によって変わらない
+- `read_by_Claude`: 通った記録のうち、リポジトリにあるバイトに結びついたもの (ビュー・**種類 (原本かプレビューか)**・SHA)
+- `original_reads_pending_owner`: `intake:` の原本の記録で、ファイル以外の検査がすべて通ったもの。**`VISUAL_VERIFIED` には数えない** (下)
+
+一覧は、作る場所 (CI / 原本のある端末) によって変わらない。
 - `text`: ChatGPT の閲覧、研究記録
 - `modes`: 区分
 
 ChatGPT が見た20件は、Claude の記録が無いかぎり `TEXT_ONLY_PROVISIONAL` のまま (テストで固定)。30件と、ChatGPT が見た20件の数もテストで固定した。
+
+## 原本の記録は、オーナーの確認まで数えない
+
+原本の SHA は在庫 (public) に載っていて、原本の大きさは記録されていない。だから CI では、`intake:` の記録を実際のバイトに結びつけられない (公開の SHA から記録を作れてしまう)。
+
+- そのため、原本の記録は一覧で `original_reads_pending_owner` に載せる。区分は `TEXT_ONLY_PROVISIONAL` のままにする。
+- 原本のある端末では `--check` がバイトと大きさを照らし、違えば落ちる。
+- **原本の記録を `VISUAL_VERIFIED` に数える方法は、オーナーの判断を待つ** (Issue #193)。
+- 候補:
+  - オーナーが端末で `--check` の結果を確認して記録する。
+  - 在庫に原本の大きさを足す。
 
 ## 2026-11-03 の状態
 
