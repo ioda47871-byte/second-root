@@ -27,6 +27,7 @@ describe("DEV-160: the comp-to-implementation loss analysis", () => {
   });
 
   it("gives every loss one known source, a code of that source's family, where it was seen and a view", () => {
+    expect(Object.keys(record.views).sort()).toEqual(["both", "pc", "sp", "tablet"]);
     for (const s of shops)
       for (const l of s.losses) {
         expect(Object.keys(record.sources), `${s.shop} ${l.code}`).toContain(l.source);

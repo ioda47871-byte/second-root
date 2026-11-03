@@ -1,0 +1,290 @@
+{
+  "schema": "photo_slots_v0",
+  "shop": "tsugute",
+  "shop_id": "fictional-kintsugi-tsugute",
+  "page_dir": "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v3",
+  "html_sha256": "ee8568f81a27bd3b044829e7876bb00fefc6e65f97ea38a25d3eefcd56690591",
+  "css_sha256": "cb818caeea6c410a6f6125e5dad49ec5d81181ccd7fccf5a02bc456539ebac58",
+  "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92",
+  "derived_by": "scripts/design-artifact/photo-slots.ts",
+  "evaluation_label": "placeholder_limited",
+  "density": 2,
+  "slots": [
+    {
+      "slot_id": "ph-ware",
+      "role": "ふたつに割れた器の接写",
+      "section": "damage",
+      "board_class": "photo",
+      "board_selector": "[data-comp-section=\"damage\"] article.shard.shard-ware > figure.board > div.photo",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 600,
+          "height_px": 429,
+          "ratio": 1.4,
+          "min_width_px": 1200,
+          "min_height_px": 858
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 562,
+          "height_px": 401,
+          "ratio": 1.4,
+          "min_width_px": 1124,
+          "min_height_px": 803
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 414,
+          "height_px": 296,
+          "ratio": 1.4,
+          "min_width_px": 829,
+          "min_height_px": 592
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 350,
+          "height_px": 250,
+          "ratio": 1.4,
+          "min_width_px": 700,
+          "min_height_px": 500
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-kake",
+      "role": "縁の欠けた器",
+      "section": "damage",
+      "board_class": "photo",
+      "board_selector": "[data-comp-section=\"damage\"] article.shard.shard-kake > figure.board > div.photo",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 437,
+          "height_px": 343,
+          "ratio": 1.273,
+          "min_width_px": 874,
+          "min_height_px": 687
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 494,
+          "height_px": 388,
+          "ratio": 1.273,
+          "min_width_px": 989,
+          "min_height_px": 777
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 365,
+          "height_px": 286,
+          "ratio": 1.273,
+          "min_width_px": 730,
+          "min_height_px": 573
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 322,
+          "height_px": 253,
+          "ratio": 1.273,
+          "min_width_px": 644,
+          "min_height_px": 506
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-hibi",
+      "role": "ひびの入った器",
+      "section": "damage",
+      "board_class": "photo",
+      "board_selector": "[data-comp-section=\"damage\"] article.shard.shard-hibi > figure.board > div.photo",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 600,
+          "height_px": 330,
+          "ratio": 1.818,
+          "min_width_px": 1200,
+          "min_height_px": 660
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 562,
+          "height_px": 309,
+          "ratio": 1.818,
+          "min_width_px": 1124,
+          "min_height_px": 618
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 414,
+          "height_px": 228,
+          "ratio": 1.818,
+          "min_width_px": 829,
+          "min_height_px": 456
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 322,
+          "height_px": 177,
+          "ratio": 1.818,
+          "min_width_px": 644,
+          "min_height_px": 355
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-dry",
+      "role": "乾くのを待つ器",
+      "section": "month",
+      "board_class": "photo",
+      "board_selector": "[data-comp-section=\"month\"] div.photo",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 316,
+          "height_px": 465,
+          "ratio": 0.68,
+          "min_width_px": 632,
+          "min_height_px": 930
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 549,
+          "height_px": 412,
+          "ratio": 1.333,
+          "min_width_px": 1099,
+          "min_height_px": 825
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 406,
+          "height_px": 305,
+          "ratio": 1.333,
+          "min_width_px": 813,
+          "min_height_px": 610
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 286,
+          "height_px": 215,
+          "ratio": 1.333,
+          "min_width_px": 572,
+          "min_height_px": 429
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-hand",
+      "role": "筆で金を蒔く手元",
+      "section": "together",
+      "board_class": "photo",
+      "board_selector": "[data-comp-section=\"together\"] figure.hand > div.photo",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 615,
+          "height_px": 538,
+          "ratio": 1.143,
+          "min_width_px": 1231,
+          "min_height_px": 1077
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 607,
+          "height_px": 531,
+          "ratio": 1.143,
+          "min_width_px": 1215,
+          "min_height_px": 1063
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 444,
+          "height_px": 388,
+          "ratio": 1.143,
+          "min_width_px": 888,
+          "min_height_px": 777
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 326,
+          "height_px": 285,
+          "ratio": 1.143,
+          "min_width_px": 652,
+          "min_height_px": 571
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-desk",
+      "role": "線を相談する机と器",
+      "section": "together",
+      "board_class": "photo",
+      "board_selector": "[data-comp-section=\"together\"] figure.desk > div.photo",
+      "placeholder": "css_board",
+      "focal_default": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "variants": [
+        {
+          "viewport": "desktop_1440",
+          "width_px": 416,
+          "height_px": 303,
+          "ratio": 1.375,
+          "min_width_px": 832,
+          "min_height_px": 606
+        },
+        {
+          "viewport": "tablet_1024",
+          "width_px": 431,
+          "height_px": 313,
+          "ratio": 1.375,
+          "min_width_px": 862,
+          "min_height_px": 627
+        },
+        {
+          "viewport": "tablet_768",
+          "width_px": 313,
+          "height_px": 227,
+          "ratio": 1.375,
+          "min_width_px": 626,
+          "min_height_px": 455
+        },
+        {
+          "viewport": "mobile_390",
+          "width_px": 228,
+          "height_px": 166,
+          "ratio": 1.375,
+          "min_width_px": 456,
+          "min_height_px": 332
+        }
+      ]
+    }
+  ]
+}

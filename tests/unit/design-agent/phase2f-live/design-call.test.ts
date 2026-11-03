@@ -193,8 +193,15 @@ describe("one approval, one call: never reused, never retried by itself", () => 
     const c = new AbortController();
     const i = input({ signal: c.signal });
     const run = runDesignCall(i, deps((o) => runCodexJsonWithMeta({ sandbox: passthroughSandbox(join(process.cwd(), "tests/support/fake-codex.mjs"), env), ...o })));
+    // wait for the fake Codex's own record of the exec call: it writes its state file first and the record line after,
+    // so aborting as soon as the state file exists can kill it in between (seen under CI load: zero exec lines)
+    const execLines = () =>
+      existsSync(join(dir, "record.jsonl"))
+        ? readFileSync(join(dir, "record.jsonl"), "utf8").split("\n").filter(Boolean).filter((l) => (JSON.parse(l) as { args: string[] }).args[0] === "exec").length
+        : 0;
     const until = Date.now() + 10_000;
-    while (!existsSync(join(dir, "state")) && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
+    while (execLines() === 0 && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
+    expect(execLines()).toBe(1);
     c.abort();
     expect(await run).toMatchObject({ status: "stopped", code: "CODEX_ABORTED", stage: "call" });
     const execs = readFileSync(join(dir, "record.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { args: string[] }).filter((x) => x.args[0] === "exec");
