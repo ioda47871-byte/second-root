@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -211,9 +211,11 @@ describe("Claude's visual reads (DEV-158)", () => {
     expect(coverage([{ x: 3, y: 0, w: 2, h: 100 }], 100, 100)).toBe(0);
   });
   it("a file that is present but unreadable at an intake path fails; only absence is excused (round 3 M1)", () => {
-    const rel = `CP-009/dev158-test-${process.pid}.png`;
-    const file = join(REPO, "design-library/research/quality-pipeline/.intake", rel);
-    mkdirSync(join(file, ".."), { recursive: true });
+    const intake = join(REPO, "design-library/research/quality-pipeline/.intake");
+    mkdirSync(intake, { recursive: true });
+    const tmp = mkdtempSync(join(intake, "dev158-test-"));
+    const rel = `${tmp.slice(intake.length + 1)}/desktop.png`;
+    const file = join(tmp, "desktop.png");
     try {
       writeFileSync(file, "not a picture");
       const now = assetNow(`intake:${rel}`);
@@ -223,10 +225,15 @@ describe("Claude's visual reads (DEV-158)", () => {
       rmSync(file);
       mkdirSync(file);
       expect(assetNow(`intake:${rel}`)).toEqual({ unreadable: true, sha256: null });
+      // a dangling link is there but unreadable, not absent (round 4 L1)
+      rmSync(file, { recursive: true });
+      symlinkSync(join(tmp, "nowhere.png"), file);
+      expect(assetNow(`intake:${rel}`)).toEqual({ unreadable: true, sha256: null });
+      rmSync(file);
+      expect(assetNow(`intake:${rel}`)).toBeNull();
     } finally {
-      rmSync(file, { recursive: true, force: true });
+      rmSync(tmp, { recursive: true, force: true });
     }
-    expect(assetNow(`intake:${rel}`)).toBeNull();
   });
 
   it("malformed reads are reported, not crashed on or skipped (round 3 L3)", () => {

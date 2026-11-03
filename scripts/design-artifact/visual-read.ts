@@ -32,11 +32,16 @@ type Principles = { cases: Array<{ id: string; evidence: string[] }> };
 export function assetNow(path: string): AssetNow {
   if (path.includes("..")) return null;
   const file = path.startsWith("intake:") ? join(REPO, INTAKE, path.slice("intake:".length)) : join(REPO, path);
-  let isFile: boolean;
   try {
-    isFile = lstatSync(file).isFile() || statSync(file).isFile();
+    lstatSync(file);
   } catch {
     return null; // absent: the only state an original's read may be excused for
+  }
+  let isFile: boolean;
+  try {
+    isFile = statSync(file).isFile();
+  } catch {
+    return { unreadable: true, sha256: null }; // there, but a dangling or looping link
   }
   if (!isFile) return { unreadable: true, sha256: null };
   const b = readFileSync(file);
@@ -115,7 +120,7 @@ export function matrixText(reads: ReadResult[]): string {
   return `${JSON.stringify(
     {
       schema: "visual_read_matrix_v1",
-      note: "Only Claude's own passing viewing record of an adopted picture (registered preview or original) makes a view VISUAL_VERIFIED; the kind read is listed. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. A case with no recorded view is keyed 'unknown'; adopted pictures of view 'other' are listed as available but have no mode. Reads of originals in the git-ignored .intake/ folder must pass every check but the missing file; since CI cannot tie them to bytes, they are listed as original_reads_pending_owner and never make a view VISUAL_VERIFIED until the owner confirms them.",
+      note: "Only Claude's own passing viewing record of an adopted picture in the repository (a registered preview) makes a view VISUAL_VERIFIED; the kind read is listed. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. A case with no recorded view is keyed 'unknown'; adopted pictures of view 'other' are listed as available but have no mode. Reads of originals in the git-ignored .intake/ folder must pass every check but the missing file; since CI cannot tie them to bytes, they are listed as original_reads_pending_owner and never make a view VISUAL_VERIFIED until the owner confirms them.",
       counts: { VISUAL_VERIFIED: count("VISUAL_VERIFIED"), TEXT_ONLY_PROVISIONAL: count("TEXT_ONLY_PROVISIONAL"), MISSING_OR_HOLD: count("MISSING_OR_HOLD") },
       cases,
     },
