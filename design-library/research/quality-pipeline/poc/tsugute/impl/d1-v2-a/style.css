@@ -1,0 +1,112 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: #f1ebdf; }
+body { color: #2b2620; font-family: "Noto Sans CJK JP", "IPAGothic", sans-serif; font-size: 15px; line-height: 1.9; letter-spacing: 0.04em; }
+img { display: block; width: 100%; height: auto; }
+.ph-label { font-size: 12px; letter-spacing: 0.08em; color: #6b6255; margin-top: 8px; }
+
+.hero { padding: 56px 80px 0; background: #f1ebdf; }
+.hero-name-full { font-family: "IPAMincho", serif; font-size: 15px; letter-spacing: 0.3em; color: #6b6255; }
+.hero-row { display: grid; grid-template-columns: 300px 1fr; gap: 40px; align-items: end; }
+.hero-name { font-family: "IPAMincho", serif; font-weight: 400; font-size: 200px; line-height: 1; color: #1d1915; }
+.bowl { display: flex; flex-direction: column; align-items: center; }
+.seam-top { width: 3px; height: 120px; background: #b88a35; }
+.bowl-halves { display: flex; width: 760px; }
+.bowl-l, .bowl-r { flex: 1; height: 340px; background: #e6dac6; border: 2px solid #1d1915; }
+.bowl-l { border-bottom-left-radius: 340px; border-right-width: 0; }
+.bowl-r { border-bottom-right-radius: 340px; border-left-width: 0; }
+.bowl-gap { width: 6px; background: #b88a35; }
+.hero-copy { margin: 40px 0 0 340px; width: 520px; padding-bottom: 40px; }
+.tagline { font-family: "IPAMincho", serif; font-size: 42px; line-height: 1.45; color: #1d1915; letter-spacing: 0.06em; }
+.lead { margin-top: 18px; font-family: "IPAMincho", serif; font-size: 19px; }
+.how { margin-top: 26px; font-size: 13px; color: #6b6255; border-top: 1px solid #b88a35; padding-top: 12px; }
+.ghost { font-family: "IPAMincho", serif; line-height: 1; color: #e2d6bf; }
+.ghost-tsugu { font-size: 220px; text-align: right; }
+
+.damage { background: #e6dccb; padding: 80px 120px 120px; }
+.damage-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 34px; letter-spacing: 0.2em; color: #1d1915; margin-bottom: 64px; }
+.shard { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 96px; }
+.shard .words { border-left: 3px solid #b88a35; padding: 0 0 0 48px; }
+.shard .board { padding-right: 48px; }
+.kanji { font-family: "IPAMincho", serif; font-size: 150px; line-height: 1; color: #1d1915; }
+.cap { font-family: "IPAMincho", serif; font-size: 18px; margin-top: 18px; }
+.svc { margin-top: 18px; font-size: 13px; letter-spacing: 0.2em; color: #b88a35; border-left: 2px solid #b88a35; padding-left: 10px; }
+
+.layer { background: #1d1915; color: #f1ebdf; padding: 90px 120px 140px; }
+.layer-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 72px; letter-spacing: 0.2em; }
+.layer-grid { display: grid; grid-template-columns: 1fr 640px; gap: 40px; margin-top: 60px; }
+.section-cut { border-left: 5px solid #d8b35e; }
+.cut p { font-family: "IPAMincho", serif; font-size: 24px; letter-spacing: 0.2em; padding: 0 28px; }
+.cut-kin { background: #c79a45; color: #1d1915; padding: 12px 0; }
+.cut-urushi { background: #4a2219; color: #f0ddd0; padding: 36px 0; }
+.cut-utsuwa { background: #3a332b; color: #d8cdb9; padding: 80px 0; }
+
+.month { background: #f1ebdf; padding: 0 120px 120px; }
+.ghost-wait { font-size: 256px; color: #e6dccb; }
+.month-row { display: grid; grid-template-columns: 1fr 340px; gap: 80px; }
+.month-words { border-left: 3px solid #b88a35; padding-left: 48px; }
+.month-fact { font-family: "IPAMincho", serif; font-size: 38px; line-height: 1.6; color: #1d1915; }
+.month-c { margin-top: 24px; font-family: "IPAMincho", serif; font-size: 24px; letter-spacing: 0.3em; color: #6b6255; }
+
+.together { background: #4a2219; color: #f0ddd0; padding: 90px 90px 120px; }
+.together-grid { display: grid; grid-template-columns: 640px 1fr; gap: 0; }
+.together-copy { border-left: 3px solid #d8b35e; padding-left: 60px; }
+.together .ph-label { color: #d6b9a8; }
+.together-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 44px; line-height: 1.5; color: #f1ebdf; }
+.together-fact { margin-top: 28px; font-family: "IPAMincho", serif; font-size: 19px; }
+.class-fact { margin-top: 14px; font-size: 14px; color: #d6b9a8; }
+.desk { margin-top: 60px; width: 440px; }
+.hand { padding-right: 60px; }
+
+.visit { background: #f1ebdf; padding: 0 120px 48px; }
+.knot-line { width: 3px; height: 120px; background: #b88a35; margin: 0 auto; }
+.knot { width: 22px; height: 22px; border-radius: 11px; background: #d8b35e; margin: 0 auto; }
+.visit-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 42px; color: #1d1915; text-align: center; margin-top: 24px; }
+.info { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 48px; margin-top: 48px; width: 760px; }
+.info div { border-top: 1px solid #c9bfae; padding-top: 10px; }
+.info dt { font-size: 12px; letter-spacing: 0.3em; color: #b88a35; }
+.info dd { font-family: "IPAMincho", serif; font-size: 20px; }
+.info .tel dd { font-size: 40px; letter-spacing: 0.06em; color: #1d1915; }
+.fictional { margin-top: 48px; font-size: 12px; color: #6b6255; }
+
+@media (max-width: 600px) {
+  body { font-size: 14px; }
+  .hero { padding: 22px 20px 0; }
+  .hero-row { grid-template-columns: 1fr; gap: 12px; }
+  .hero-name { font-size: 96px; }
+  .bowl-halves { width: 350px; }
+  .bowl-l, .bowl-r { height: 170px; }
+  .seam-top { height: 40px; }
+  .hero-copy { margin: 24px 0 0; width: auto; }
+  .tagline { font-size: 27px; }
+  .lead { font-size: 15px; }
+  .ghost-tsugu { font-size: 110px; margin-top: 0; }
+  .damage { padding: 40px 20px 40px; }
+  .damage-h { font-size: 24px; letter-spacing: 0.1em; margin-bottom: 32px; }
+  .shard { grid-template-columns: 1fr; margin-bottom: 56px; }
+  .shard .board { padding-right: 0; }
+  .shard .words { padding-left: 20px; margin-top: 16px; }
+  .kanji { font-size: 72px; }
+  .cap { font-size: 15px; }
+  .layer { padding: 40px 20px 60px; }
+  .layer-h { font-size: 34px; }
+  .layer-grid { grid-template-columns: 1fr; margin-top: 40px; }
+  .cut p { font-size: 16px; }
+  .month { padding: 0 20px 60px; }
+  .ghost-wait { font-size: 160px; }
+  .month-row { grid-template-columns: 1fr; gap: 40px; }
+  .month-words { padding-left: 20px; }
+  .month-fact { font-size: 24px; }
+  .month-c { font-size: 16px; }
+  .together { padding: 40px 20px 60px; }
+  .together-grid { grid-template-columns: 1fr; }
+  .hand { padding-right: 0; margin-bottom: 32px; }
+  .together-copy { padding-left: 20px; }
+  .together-h { font-size: 25px; }
+  .together-fact { font-size: 16px; }
+  .desk { width: 72%; margin-top: 32px; }
+  .visit { padding: 0 20px 48px; }
+  .visit-h { font-size: 28px; }
+  .info { grid-template-columns: 1fr; width: auto; gap: 16px; }
+  .info dd { font-size: 17px; }
+  .info .tel dd { font-size: 30px; }
+}
