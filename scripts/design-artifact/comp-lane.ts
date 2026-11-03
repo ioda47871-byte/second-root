@@ -157,26 +157,35 @@ async function main(): Promise<number> {
     try {
       await checkPrototype(browser, { html, css }, []);
     } catch (e) {
-      if (e instanceof PrototypeUnsafe)
-        findings.push({ code: "PROTOTYPE_UNSAFE", detail: e.message });
-      else throw e;
+      if (!(e instanceof PrototypeUnsafe)) throw e;
+      // an unsafe comp is neither opened again nor rendered
+      findings.push({ code: "PROTOTYPE_UNSAFE", detail: e.message });
+      process.stdout.write(`${JSON.stringify({ status: "FAIL", findings }, null, 2)}\n`);
+      return 1;
     }
-    // the page's texts and its styles, as Chromium parses them, on a page that can reach nothing (the stylesheet is
-    // inlined; checkPrototype has already refused scripts)
-    const ctx = await browser.newContext({ javaScriptEnabled: true });
+    // the page's texts and its styles, as Chromium parses them, with JavaScript off and every request refused. The
+    // stylesheet is parsed on its own (not through the page's link), so no spelling of the link can hide it.
+    const ctx = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block" });
     await ctx.route("**/*", (r) => r.abort());
     const page = await ctx.newPage();
-    const inlined = html.replace(/<link[^>]*href=["']style\.css["'][^>]*>/i, () => `<style>${css.replace(/<\/style/gi, "<\\/style")}</style>`);
-    await page.setContent(inlined, { waitUntil: "domcontentloaded" });
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
     // a plain string, so the TypeScript build cannot inject helpers into code that runs in the page
     const EXTRACT = `() => {
       const out = [];
       const css = [];
+      const bad = [];
+      // the comp's style.css, parsed on its own
+      const own = new CSSStyleSheet();
+      own.replaceSync(STYLESHEET);
+      const links = [...document.querySelectorAll("link")];
+      if (links.length !== 1 || links[0].getAttribute("href") !== "style.css" || (links[0].getAttribute("rel") || "").toLowerCase() !== "stylesheet") bad.push("link: exactly one <link rel=\\"stylesheet\\" href=\\"style.css\\"> is allowed");
       const stack = [document.documentElement];
       while (stack.length) {
         const n = stack.pop();
         if (n.nodeType === 3) out.push(n.textContent || "");
         else if (n.nodeType === 1 && n.tagName !== "STYLE" && n.tagName !== "SCRIPT") {
+          // text in a shadow tree or a template is outside this walk: refused
+          if (n.shadowRoot || n.tagName === "TEMPLATE") bad.push("shadow root or <template>: " + n.tagName.toLowerCase());
           for (const a of ["alt", "title", "placeholder", "aria-label", "value", "label", "start"]) if (n.hasAttribute(a)) out.push(n.getAttribute(a) || "");
           if (n.style && n.style.length) css.push(["inline", n.style]);
           for (const c of n.childNodes) stack.push(c);
@@ -186,7 +195,7 @@ async function main(): Promise<number> {
       const rules = [];
       const walk = (list) => { for (const r of list) { if (r.style) rules.push(r); if (r.cssRules) walk(r.cssRules); if (r.constructor && r.constructor.name === "CSSCounterStyleRule") rules.push({ counterStyle: true }); } };
       for (const s of document.styleSheets) walk(s.cssRules);
-      const bad = [];
+      walk(own.cssRules);
       for (const r of rules) {
         if (r.counterStyle) { bad.push("@counter-style"); continue; }
         css.push(["rule", r.style]);
@@ -201,7 +210,7 @@ async function main(): Promise<number> {
       }
       return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad };
     }`;
-    const { texts, sections, bad } = (await page.evaluate(`(${EXTRACT})()`)) as { texts: string[]; sections: string[]; bad: string[] };
+    const { texts, sections, bad } = (await page.evaluate(`(${EXTRACT.replace("STYLESHEET", () => JSON.stringify(css))})()`)) as { texts: string[]; sections: string[]; bad: string[] };
     await ctx.close();
     // CSS may not write words: content, quotes, list markers, counters and @counter-style are refused, as parsed
     for (const b of bad) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: b.slice(0, 60) });

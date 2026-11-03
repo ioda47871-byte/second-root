@@ -27,7 +27,7 @@ npx tsx scripts/design-artifact/comp-lane.ts --dir <カンプ> --facts <事実�
 
 1. 文の記録の検査
 2. B方式の安全の検査 (`checkPrototype`: script・外の URL・Web フォントを使わない)
-3. ページが見せうる文 (文字の節、SVG の文字、`alt`・`title`・`placeholder`・`aria-label`・`value`) が、すべて文の記録の文かラベルであること (`COMP_TEXT_NOT_IN_COPY`)。CSS で文字を足すこと (`content: "…"`) はできない (`COMP_CSS_CONTENT_TEXT`)
+3. ページが見せうる文 (文字の節、SVG の文字、`alt`・`title`・`placeholder`・`aria-label`・`value`・`label`・`start`) が、すべて文の記録の文かラベルであること (`COMP_TEXT_NOT_IN_COPY`)。CSS で文字を足すことはできない (`COMP_CSS_CONTENT_TEXT`)。Chromium が解いた CSS (style.css は単独で解く。`<style>`・style 属性・入れ子の @media など) で、`content` (none・normal・空以外)・`attr()`・`counter()`・`quotes`・`list-style` の文字列・`@counter-style` を止める。影の DOM と `<template>`、`style.css` を1回だけ読む `<link>` 以外も止める。安全の検査 (2) に落ちたカンプは、ここから先を開かない。文の抜き出しは JS を切り、通信を止めて行う
 4. JS を切り、通信を止めて PC 1440 と SP 390 を描き、PNG・SHA・区画の箱を出す。画像の置き場はリポジトリの外だけ
 5. `review.json` があれば、描いた画像と照らす。形と参照が崩れていれば落とす。バイトの一致 (`renders_match_here`) は書体で機械ごとに変わるので、報告だけする
 

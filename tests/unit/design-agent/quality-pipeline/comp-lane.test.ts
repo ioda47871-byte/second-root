@@ -81,6 +81,10 @@ describe("copy record (DEV-159, Issue #193 T5)", () => {
     const cut = copy();
     Object.assign(cut.items.find((i: { id: string }) => i.id === "fictional"), { text: "実在の工房では", source_fact_ids: ["F9"] });
     expect(checkCopyRecord(cut, spaced).findings.map((x) => x.code)).toContain("FACT_TEXT_NOT_FROM_FACTS");
+    // a label is taken from the fact the text matches, not from any extra source id (round 3 L1)
+    const laundered = copy();
+    Object.assign(laundered.items.find((i: { id: string }) => i.id === "name-full"), { text: "架空市架空区架空町一丁目3-2", source_fact_ids: ["F4", "F1"], label: "店名" });
+    expect(copyCodes(laundered)).toContain("LABEL_NOT_ALLOWED");
     // a label belongs to its fact: 電話 on the name is refused (round 2 L4)
     const wrong = copy();
     wrong.items.find((i: { id: string }) => i.id === "name-full").label = "電話";
@@ -231,6 +235,28 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     for (const needle of ["創業百年・日本一", "upper", "escaped", "attr(data-x)", "quotes", "list-style-type", "counter(y)", "in media", "@counter-style"])
       expect(css.some((d) => d.includes(needle)), needle).toBe(true);
     expect(failed!.findings.filter((f) => f.code === "COMP_TEXT_NOT_IN_COPY").map((f) => f.detail)).toEqual(expect.arrayContaining(["受賞歴あり", "1926"]));
+    // round 3: a shadow tree, an unquoted link, and a script (which stops the run before anything is opened again)
+    const run = (mutate: (html: string) => string, css = "") => {
+      const dir = mkdtempSync(join(tmpdir(), "comp-probe-"));
+      cpSync(COMP, dir, { recursive: true });
+      writeFileSync(join(dir, "index.html"), mutate(readFileSync(join(dir, "index.html"), "utf8")));
+      if (css) writeFileSync(join(dir, "style.css"), `${readFileSync(join(dir, "style.css"), "utf8")}\n${css}\n`);
+      try {
+        return { code: 0, out: JSON.parse(execFileSync("npx", ["tsx", cli, "--dir", dir, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" })) };
+      } catch (e) {
+        return { code: (e as { status: number }).status, out: JSON.parse((e as { stdout: string }).stdout) };
+      }
+    };
+    const shadow = run((h) => h.replace("</main>", '<div><template shadowrootmode="open"><p>創業百年の老舗</p></template></div></main>'));
+    expect(shadow.code).toBe(1);
+    expect(shadow.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|")).toMatch(/shadow root or <template>/);
+    const unquoted = run((h) => h.replace('<link rel="stylesheet" href="style.css">', "<link rel=stylesheet href=style.css>"), '.hero::after { content: "創業百年"; }');
+    expect(unquoted.code).toBe(1);
+    expect(unquoted.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|")).toContain("創業百年");
+    const script = run((h) => h.replace("</main>", "<script>document.title = 'x'</script></main>"));
+    expect(script.code).toBe(1);
+    expect(script.out.findings.map((f: { code: string }) => f.code)).toEqual(["PROTOTYPE_UNSAFE"]);
+    expect(script.out.renders).toBeUndefined();
     // renders inside the repository are refused, however the path is spelled (L4, round 2 L1)
     for (const out of [join(REPO, "tmp-renders"), join(REPO, "..renders"), "tmp-renders"]) {
       let code = 0;

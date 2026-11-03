@@ -105,7 +105,7 @@ export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: 
       if (!i.source_fact_ids.length) f.push({ code: "FACT_WITHOUT_SOURCE", item: i.id });
       else if (!i.source_fact_ids.some((s) => byId.has(s) && factParts(byId.get(s)!).has(norm(i.text)))) f.push({ code: "FACT_TEXT_NOT_FROM_FACTS", item: i.id });
       // a label belongs to the fact it introduces: 所在地 to the address, 電話 to the phone
-      const keys = o.facts.filter((x) => i.source_fact_ids.includes(x.id)).map((x) => x.key ?? "");
+      const keys = o.facts.filter((x) => i.source_fact_ids.includes(x.id) && factParts(x.value).has(norm(i.text))).map((x) => x.key ?? "");
       if (i.label && !keys.some((k) => (LABELS_BY_KEY[k] ?? []).includes(i.label!))) f.push({ code: "LABEL_NOT_ALLOWED", item: i.id, detail: i.label });
     } else {
       if (i.label) f.push({ code: "LABEL_ON_NON_FACT", item: i.id });
