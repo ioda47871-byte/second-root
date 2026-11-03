@@ -1,0 +1,602 @@
+{
+  "schema": "art_direction_set_v0",
+  "shop_id": "fictional-kintsugi-tsugute",
+  "facts_sha256": "343fce8b8285a4f71718cf335543e0e5639eb6cd8d29022826b2ee41da61360b",
+  "motif": {
+    "candidates": [
+      {
+        "id": "M1",
+        "what": "金の継ぎ目の線",
+        "source": "process",
+        "fact_refs": [
+          "F9"
+        ],
+        "becomes_structure": "1本の継ぎ目の線が区画の境をつなぐ。区画は破片、線は修理そのもの"
+      },
+      {
+        "id": "M2",
+        "what": "漆が乾く一か月",
+        "source": "time",
+        "fact_refs": [
+          "F10"
+        ],
+        "becomes_structure": "乾くまでの時間を、上から下への層 (生の漆の黒 → 金) にする"
+      },
+      {
+        "id": "M3",
+        "what": "継ぎ目の線を一緒に決める",
+        "source": "action",
+        "fact_refs": [
+          "F11"
+        ],
+        "becomes_structure": "器を中心に、相談の手順を駅として配置する"
+      },
+      {
+        "id": "M4",
+        "what": "割れ・欠け・ひびの3つ",
+        "source": "material",
+        "fact_refs": [
+          "F12",
+          "F13",
+          "F14"
+        ],
+        "becomes_structure": "3つの壊れ方を、3つの違う区画の形にする"
+      }
+    ],
+    "chosen": "M1",
+    "why": "M1 は工房の仕事そのもの (つなぐ) が目に見える形を持つので、最初に試す中心にする。3方向は同じ1つに揃えず、比べるために M1 (線)・M2 (時間)・M3 (相談) をそれぞれの中心にする。M4 (壊れ方の種類) は単独では一覧になりやすいので、3方向とも区画の中で使う"
+  },
+  "directions": [
+    {
+      "id": "d1-seam-across",
+      "motif_focus": "M1",
+      "concept": "1枚の器の面がページ全体になる。金の継ぎ目の線が上から下へページを横断し、区画は線が通る破片になる。線は区画の境をまたいでつなぎ、最後に来店の情報の所で終わる。",
+      "composition": {
+        "hero": "diagram_led",
+        "flow": "one_continuous_surface"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "diagram_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "one_continuous_surface",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "inline",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "vertical_axis",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "diagram",
+            "overlap_collage",
+            "diagram",
+            "single_column_text",
+            "overlap_collage",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "continuous",
+            "continuous",
+            "continuous",
+            "continuous",
+            "continuous"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "horizontal",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "drawn",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "hero",
+          "motif_facet": "割れた器の図を、金の継ぎ目の線が1本で横切る (店名は線の上に乗る)",
+          "ground": "生成りの和紙の色",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "damage",
+          "motif_facet": "線が、割れ・欠け・ひびの3つの破片を順に通る",
+          "ground": "生成り",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "割れた器の接写",
+              "size": "medium"
+            },
+            {
+              "role": "欠けた縁の接写",
+              "size": "small"
+            },
+            {
+              "role": "ひびの接写",
+              "size": "small"
+            }
+          ]
+        },
+        {
+          "id": "lacquer",
+          "motif_facet": "線の断面: 漆で固め、金を蒔く層",
+          "ground": "漆の黒",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "month",
+          "motif_facet": "線が細く長く伸びる余白に、乾くまでの一か月",
+          "ground": "生成り",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "workshop",
+          "motif_facet": "線を引く手元 (月に二回の教室)",
+          "ground": "薄い灰",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "筆で金を蒔く手元",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "visit",
+          "motif_facet": "線が終わる所に、所在地・時間・電話",
+          "ground": "生成り",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "線が終わる所に所在地・時間・電話を置き、器が直った (つながった) ことと来店を重ねる",
+      "pc_plan": "1440 の幅に器の面を大きく描き、線が左上から右下へ蛇行して区画をまたぐ。破片の区画は線の左右に交互ではなく、線の曲がり角ごとに置く",
+      "sp_plan": {
+        "first_screen": "390×844 に店名と、器の図を縦に横切る線の始まりだけを置く",
+        "reorder": "破片の区画を線の上に縦一列に並べ、線は画面の中央をまっすぐ下る",
+        "overlaps": "PC の線が区画をまたぐ重なりは、SP では区画の上端と下端で線が切れずにつながる形で保つ"
+      },
+      "protect": [
+        "ページを横断する1本の金の線",
+        "線が区画の境をまたぐこと"
+      ],
+      "references": [
+        {
+          "principle": "P2",
+          "case_id": "CP-009",
+          "use": "縫い糸が全ページを横断して区画をつなぐ方法 (糸の形・色・配置は写さない)"
+        },
+        {
+          "principle": "P5",
+          "case_id": "CP-018",
+          "use": "工程の注釈を、線の近くに置く読み順"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-016",
+          "reason": "支点と釣り合いの中央構図は、1本の線の構図と別物で、ここでは使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M1 (金の継ぎ目の線、F9)。入れ替えテスト: 修理をしない陶器店にすると、ページを横断する線が何もつながなくなる"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は図 (diagram_led)、流れは1枚の面 (one_continuous_surface)。d2・d3 と Hero・流れ・区画の配置がすべて違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画は線が通る破片 (割れ・欠け・ひび → 漆の断面 → 一か月 → 手元 → 来店)。終点は線が終わる来店の情報"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は線を画面の中央でまっすぐ下ろし、破片の区画を線の上に縦一列に並べる"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は split でなく図、流れは帯の積み重ねでない。区画に grid_cards・split_copy_media を使わない"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "金の線そのものが区画をつなぐ図形で、注釈 (漆の断面の層) が線の近くに付く。写真は破片の接写として線の左右に置く"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向で改良ではない。守る核 (横断する1本の線) は protect に先に書いた"
+        }
+      }
+    },
+    {
+      "id": "d2-lacquer-layers",
+      "motif_focus": "M2",
+      "concept": "ページは漆が乾く一か月。上の生の漆の黒から、層ごとに地の色が赤茶・金へ変わる。巨大な文字で F10 の文を始まりに置き、各層が修理の工程になる。",
+      "composition": {
+        "hero": "type_led",
+        "flow": "single_axis_scroll"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "none",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "vertical_axis",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "single_column_text",
+            "full_bleed_media",
+            "overlap_collage",
+            "full_bleed_media",
+            "single_column_text",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "hard_cut",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "sequence",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "raw",
+          "motif_facet": "塗ったばかりの生の漆の暗さ (一か月の始まり)",
+          "ground": "漆の黒",
+          "layout": "single_column_text",
+          "image_slots": [
+            {
+              "role": "塗ったばかりの漆の面の接写",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "first-coat",
+          "motif_facet": "漆で割れを固める層",
+          "ground": "黒に近い茶",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "漆を塗る手元",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "waiting",
+          "motif_facet": "乾くのを待つ層 (割れ・欠け・ひびが並んで待つ)",
+          "ground": "濃い茶",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "棚で乾く器",
+              "size": "large"
+            },
+            {
+              "role": "欠けの器",
+              "size": "small"
+            }
+          ]
+        },
+        {
+          "id": "gold",
+          "motif_facet": "金を蒔く層",
+          "ground": "赤茶から金へ",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "金粉を蒔く筆",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "together",
+          "motif_facet": "継ぎ目の線を一緒に決める (相談) と教室",
+          "ground": "生成り",
+          "layout": "single_column_text",
+          "image_slots": [
+            {
+              "role": "継ぎ目の線を相談する机",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "return",
+          "motif_facet": "受け取りの日: 所在地・時間・電話",
+          "ground": "生成り",
+          "layout": "single_column_text",
+          "image_slots": [
+            {
+              "role": "直って戻る器",
+              "size": "medium"
+            }
+          ]
+        }
+      ],
+      "ending": "金の層の次に、生成りの受け取りの日 (来店) で終わる",
+      "pc_plan": "層ごとに地の色を全幅で変える。巨大な文字は層の境をまたいで次の層へ食い込む。写真は層ごとに少なくとも1枚、層ごとに大きさを変える",
+      "sp_plan": {
+        "first_screen": "黒い地に F10 の文を縦書きで大きく置く",
+        "reorder": "層の順は PC と同じだが、写真を層の地の上に重ねず、層の終わりに大きく置く",
+        "overlaps": "層の境の文字の食い込みは、SP では見出しの1行だけに減らす"
+      },
+      "protect": [
+        "層ごとの地の色の変化 (黒 → 金)",
+        "層の境をまたぐ巨大な文字"
+      ],
+      "references": [
+        {
+          "principle": "P1",
+          "case_id": "CP-019",
+          "use": "素材の時間変化を読み順にする方法"
+        },
+        {
+          "principle": "P3",
+          "case_id": "CP-012",
+          "use": "章ごとに同じモチーフの別の面を見せる方法 (層ごとに工程の別の面)"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-023",
+          "reason": "昼夜の二面の看板は、時間を2つに分けるが、ここは連続した一か月"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M2 (漆が乾く一か月、F10)。入れ替えテスト: 漆を使わない修理店にすると、黒から金への層の順が成り立たない"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は文字 (type_led)、流れは1本の縦の軸 (single_axis_scroll)。区画の境は hard_cut で、d1 の連続面・d3 の駅と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "層の順が工程の順 (生の漆 → 固める → 待つ → 金 → 相談 → 受け取り)。入れ替えると時間が逆になる。終点は受け取りの日"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は F10 の文を縦書きで1画面目に置き、写真を層の地に重ねず層の終わりに置く"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は巨大な文字で split でない。区画は全幅の写真・重ね・1段の文で、カードの並びを使わない"
+        },
+        "C6": {
+          "answer": "unknown",
+          "evidence": "層の地の色と巨大な文字が時間を表すが、写真と文字の重なり方はカンプで確かめる"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向。守る核 (黒から金への地の色の変化、層の境をまたぐ文字) は protect に書いた"
+        }
+      }
+    },
+    {
+      "id": "d3-vessel-stations",
+      "motif_focus": "M3",
+      "concept": "継ぎ目の入った器を1つ、ページの中心の物として大きく置く。器のまわりに、持ち込む・線を決める・待つ・受け取るの駅を配置し、読み手は器を中心に巡る。",
+      "composition": {
+        "hero": "object_led",
+        "flow": "map_of_stations"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "map_of_stations",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "side_index",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "radial",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "full_bleed_media",
+            "diagram",
+            "overlap_collage",
+            "single_column_text",
+            "overlap_collage",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "overlap",
+            "overlap",
+            "overlap",
+            "overlap",
+            "overlap"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "horizontal",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "single_lead",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "vessel",
+          "motif_facet": "中央に、継ぎ目の入った器を1つ大きく置く",
+          "ground": "生成り",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "金継ぎで直した器",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "stations",
+          "motif_facet": "器のまわりの駅: 持ち込む・線を決める・待つ・受け取る",
+          "ground": "生成り",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "choose",
+          "motif_facet": "線を一緒に決める駅: 割れ・欠け・ひびで線の引き方が違う",
+          "ground": "薄い灰",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "割れの器",
+              "size": "medium"
+            },
+            {
+              "role": "ひびの器",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "wait",
+          "motif_facet": "待つ駅: 漆が乾く一か月",
+          "ground": "漆の黒",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "class",
+          "motif_facet": "教室の駅: 月に二回",
+          "ground": "生成り",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "教室の机",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "arrive",
+          "motif_facet": "受け取る駅 = 来店: 所在地・時間・電話",
+          "ground": "生成り",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "受け取る駅が、そのまま来店の案内になる",
+      "pc_plan": "器を画面の中心に大きく置き、駅を器のまわりに円く配置する。左に駅の索引を縦に並べる",
+      "sp_plan": {
+        "first_screen": "器を画面幅いっぱいに置き、その下に駅の索引を横に流す",
+        "reorder": "円い配置を、器の写真を背に縦の駅の列に組み直す",
+        "overlaps": "駅の札が器の写真に重なる PC の構図は、SP では各駅の見出しだけを写真の端に重ねる"
+      },
+      "protect": [
+        "中心の器1つ",
+        "駅を巡る読み順"
+      ],
+      "references": [
+        {
+          "principle": "P1",
+          "case_id": "CP-021",
+          "use": "作る手順を配置の順にする方法"
+        },
+        {
+          "principle": "P3",
+          "case_id": "CP-030",
+          "use": "相談から来店までの導線を区画の順にする方法"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-009",
+          "reason": "線の横断は d1 で使うので、ここでは重ねない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M3 (継ぎ目の線を一緒に決める、F11)。入れ替えテスト: 相談の無い量販の修理受付にすると、器を巡る駅が成り立たない"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は物 (object_led)、流れは駅の地図 (map_of_stations)、読み順は放射 (radial)。d1・d2 と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "駅は相談の手順 (器 → 駅の全体 → 線を決める → 待つ → 教室 → 受け取る)。終点の受け取る駅が来店の案内"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は円い配置を、器の写真を背にした縦の駅の列に組み直し、索引を横に流す"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は1つの器で split でない。区画に grid_cards を使わない。原理 P1・P3 を満たす"
+        },
+        "C6": {
+          "answer": "unknown",
+          "evidence": "駅の札が器の写真に重なる関係はカンプで確かめる。写真の役割は器・壊れ方・教室で分けた"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向。守る核 (中心の器1つ、駅を巡る読み順) は protect に書いた"
+        }
+      }
+    }
+  ]
+}

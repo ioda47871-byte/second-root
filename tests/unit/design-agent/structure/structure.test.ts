@@ -255,13 +255,25 @@ describe("isolation (provisional vocabulary: never used by a generator without a
       // DEV-150 (Issue #180, owner approval A): the three-method pilot's OFFLINE steps CLI observes Claude's page, report-only (no gate)
       ":!scripts/design-artifact/three-methods-steps.ts",
       // DEV-150: the real-call steps' isolation test pins that CLI's exact imports (a test, never lib)
-      ":!tests/unit/design-agent/phase2f-live/isolation.test.ts"], { cwd: repo, encoding: "utf8" });
+      ":!tests/unit/design-agent/phase2f-live/isolation.test.ts",
+      // DEV-157 (Issue #193 comment 6595445598, owner-approved exact path): the pure direction-set check before comps,
+      // descriptor only, the five names pinned below (never a generator)
+      ":!lib/design-agent/quality-pipeline/direction-set.ts"], { cwd: repo, encoding: "utf8" });
     expect([g.status, g.stdout.trim()]).toEqual([1, ""]);
     // DEV-136: the reference set and its comparison are covered too (review M1): nothing outside may import or read them
     for (const f of ["lib/design-agent/structure/descriptor.ts", "lib/design-agent/structure/measure.ts", "lib/design-agent/structure/references.ts", "lib/design-agent/structure/observe.ts"]) {
       const src = readFileSync(resolve(repo, f), "utf8");
       expect(src, f).not.toMatch(/\bfetch\(|node:https?|child_process|codex|anthropic|openai|writeFile/);
     }
+  });
+
+  it("DEV-157: the direction-set check takes only these five names, from the descriptor only (owner-approved exact path)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "../../../..", "lib/design-agent/quality-pipeline/direction-set.ts"), "utf8");
+    const names = [...src.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/structure\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((s) => s.trim()).filter(Boolean).sort()]);
+    expect(names).toEqual([["../structure/descriptor", ["ASPECTS", "GENERIC", "StructureDescriptor", "VOCABULARY", "structureFindings"]]]);
+    expect([...src.matchAll(/from\s*["']([^"']*structure[^"']*)["']/g)].map((m) => m[1])).toEqual(["../structure/descriptor"]);
   });
 
   it("DEV-150: the three-method steps CLI takes only the observation, its failure record and the reference schema", async () => {
