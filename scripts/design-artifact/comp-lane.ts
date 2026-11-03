@@ -232,8 +232,8 @@ async function main(): Promise<number> {
       for (const el of document.querySelectorAll("*")) {
         const cs = getComputedStyle(el);
         // a <style> (or <script>) made visible by CSS shows its source as text
-        // (HTML elements only: an SVG <style> never draws its text, and HTML inside SVG is refused by checkPrototype)
-        if ((el.localName === "style" || el.localName === "script") && el.namespaceURI === "http://www.w3.org/1999/xhtml" && cs.display !== "none") bad.push("visible <" + el.localName + ">");
+        // (every namespace but SVG, whose <style> never draws its text: an HTML or MathML <style> shown by CSS does)
+        if ((el.localName === "style" || el.localName === "script") && el.namespaceURI !== "http://www.w3.org/2000/svg" && cs.display !== "none") bad.push("visible <" + el.localName + ">");
         for (const p of ["list-style-type", "text-emphasis-style", "-webkit-text-emphasis-style"]) { const v = cs.getPropertyValue(p); if (v && textual(v)) bad.push("computed " + p + ": " + v); }
         for (const pseudo of ["::before", "::after", "::marker"]) {
           // an empty string is a decorative pseudo element (a line, a rule): allowed, as in the written check

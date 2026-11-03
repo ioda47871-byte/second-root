@@ -292,6 +292,10 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     const visibleStyle = run((h) => h.replace("</main>", '<style class="v">/* 創業百年の老舗 */</style></main>'), "style.v { display: block; font-size: 40px; }");
     expect(visibleStyle.code).toBe(1);
     expect(visibleStyle.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|")).toContain("visible <style>");
+    // a MathML <style> shown by CSS draws its text too (round 9 M1)
+    const mathStyle = run((h) => h.replace("</main>", "<math><style>秘密の文</style></math></main>"), "math style { display: block !important; }");
+    expect(mathStyle.code).toBe(1);
+    expect(mathStyle.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|")).toContain("visible <style>");
     const broken = run((h) => h.replace('<p class="lead">捨てるはずだった器に、もう一度、使う理由を。</p>', '<p class="lead">捨てるはずだった器に、<br>もう一度、使う理由を。</p>'));
     expect(broken.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
     // an SVG <style> is a style sheet, not page text (no false COMP_TEXT_NOT_IN_COPY)
