@@ -333,6 +333,39 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     expect(joined?.findings.map((f) => f.code)).toEqual(expect.arrayContaining(["COMP_JOINED_TEXT_LOOKS_LIKE_FACT", "COMP_CSS_CONTENT_TEXT"]));
     const jd = joined!.findings.map((f) => f.detail ?? "").join("|");
     for (const needle of ["限定", "unicode-bidi", "direction: rtl", "dir / bdo"]) expect(jd, needle).toContain(needle);
+    // confirmation review: neighbours made adjacent by layout (flex, inline-block, grid, floats, a reversed row, mixed
+    // content) are caught; CSS inside an inline SVG's own <style> is not page text (no false FAIL)
+    const layoutDir = mkdtempSync(join(tmpdir(), "comp-probe-"));
+    cpSync(COMP, layoutDir, { recursive: true });
+    const lc = JSON.parse(readFileSync(join(layoutDir, "copy.json"), "utf8"));
+    for (const [id, text] of [["q1", "限"], ["q2", "定"], ["q3", "器"]]) lc.items.push({ id, text, claim_type: "creative_expression", source_fact_ids: [], owner_review_needed: true });
+    writeFileSync(join(layoutDir, "copy.json"), JSON.stringify(lc));
+    const layouts = [
+      '<div style="display:flex"><span>限</span><span>定</span></div>',
+      '<div><span style="display:inline-block">限</span><span style="display:inline-block">定</span></div>',
+      '<div style="display:grid;grid-template-columns:1fr 1fr"><p>限</p><p>定</p></div>',
+      '<div style="display:flex;flex-direction:row-reverse"><span>定</span><span>限</span></div>',
+      "<div><span>限</span><span>定</span><p>器</p></div>",
+    ];
+    for (const l of layouts) {
+      writeFileSync(join(layoutDir, "index.html"), readFileSync(join(COMP, "index.html"), "utf8").replace("</main>", `${l}</main>`));
+      let res: { findings: Array<{ code: string; detail?: string }> } | null = null;
+      try {
+        execFileSync("npx", ["tsx", cli, "--dir", layoutDir, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" });
+      } catch (e) {
+        res = JSON.parse((e as { stdout: string }).stdout);
+      }
+      expect(res?.findings.filter((f) => f.code === "COMP_JOINED_TEXT_LOOKS_LIKE_FACT").map((f) => f.detail ?? "").join("|"), l).toContain("限定");
+    }
+    writeFileSync(join(layoutDir, "index.html"), readFileSync(join(COMP, "index.html"), "utf8").replace("</main>", '<p>器<svg width="10" height="10"><style>.s{stroke-width:2;stroke:#333}</style><rect class="s" width="8" height="8"/></svg></p></main>'));
+    let svgIcon: { findings: Array<{ code: string; detail?: string }> } = { findings: [] };
+    try {
+      svgIcon = JSON.parse(execFileSync("npx", ["tsx", cli, "--dir", layoutDir, "--facts", join(POC, "facts-pack.json"), "--out", mkdtempSync(join(tmpdir(), "comp-"))], { encoding: "utf8" }));
+    } catch (e) {
+      svgIcon = JSON.parse((e as { stdout: string }).stdout);
+    }
+    // (the probe's copied review.json is of the unmodified comp in another directory: only REVIEW_ findings may appear)
+    expect(svgIcon.findings.filter((f) => !f.code.startsWith("REVIEW_"))).toEqual([]);
     const broken = run((h) => h.replace('<p class="lead">捨てるはずだった器に、もう一度、使う理由を。</p>', '<p class="lead">捨てるはずだった器に、<br>もう一度、使う理由を。</p>'));
     expect(broken.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
     // an SVG <style> is a style sheet, not page text (no false COMP_TEXT_NOT_IN_COPY)

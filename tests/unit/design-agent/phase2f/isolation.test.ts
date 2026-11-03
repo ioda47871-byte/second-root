@@ -177,12 +177,16 @@ describe("DEV-159: the comp lane takes only these names from phase2f (Issue #193
       ],
       "lib/design-agent/quality-pipeline/comp-review.ts": ["../reference-originals/visual-read", "zod"],
       "lib/design-agent/quality-pipeline/copy-record.ts": ["zod"],
+      // what the comp lane reaches through ./visual-read (DEV-158 files, PR #199 confirmation review L2)
+      "scripts/design-artifact/visual-read.ts": ["../../lib/design-agent/reference-originals/visual-read", "node:crypto", "node:fs", "node:path"],
+      "lib/design-agent/reference-originals/visual-read.ts": ["./observation", "zod"],
+      "lib/design-agent/reference-originals/observation.ts": ["zod"],
     };
     for (const [file, allowed] of Object.entries(files)) {
       const source = readFileSync(resolve(REPO, file), "utf8");
       expect(specifiers(source).sort(), file).toEqual(allowed);
       // the CLI's own entry check (require.main === module) is the only `require` allowed
-      expect(source.replace(/require\.main === module/g, ""), file).not.toMatch(/\brequire\b|import\s*\(|node:(https?|net|tls|dgram|child_process|worker_threads|vm)|\/worker\/|anthropic|openai|\bspawn\(|execFile|execSync|process\.binding|\bfetch\(|codex/i);
+      expect(source.replace(/require\.main === module/g, ""), file).not.toMatch(/\brequire\s*[([]|import\s*\(|node:(https?|net|tls|dgram|child_process|worker_threads|vm)|\/worker\/|anthropic|openai|\bspawn\(|execFile|execSync|process\.binding|\bfetch\(|codex/i);
     }
   });
 });

@@ -256,14 +256,32 @@ async function main(): Promise<number> {
         if (el.localName === "bdo" || el.hasAttribute("dir")) bad.push("dir / bdo on <" + el.localName + ">");
       }
       if (out.some((x) => /[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/.test(x))) bad.push("bidi control character in the page");
-      // the words a reader sees together: the text of each innermost block (spans joined), for the invented-fact check
-      const blocks = [];
+      // the words a reader sees together, for the invented-fact check: visible text only (no CSS inside an SVG
+      // <style>, no hidden text), (1) each innermost block's text joined, (2) neighbouring texts in document order,
+      // both ways round (flex, grid, floats or a reversed row can put two neighbours side by side)
+      const hidden = (el) => { for (let e = el; e && e.nodeType === 1; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === "none" || cs.visibility === "hidden") return true; } return false; };
+      const runs = [];
+      const tw = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+      for (let t = tw.nextNode(); t; t = tw.nextNode()) {
+        const p = t.parentElement;
+        if (!p || !(t.textContent || "").trim()) continue;
+        if (p.closest("style, script, template")) continue;
+        // inside an SVG only <text> (and its tspans) draws words
+        if (p.closest("svg") && !p.closest("text")) continue;
+        if (hidden(p)) continue;
+        runs.push({ node: t, text: (t.textContent || "").trim() });
+      }
       const inline = (el) => { const d = getComputedStyle(el).display; return d === "inline" || d === "contents" || d === "none"; };
+      const blocks = [];
       for (const el of document.body ? document.body.querySelectorAll("*") : []) {
-        if (["style", "script", "svg"].includes(el.localName) || el.closest("svg") || inline(el)) continue;
+        if (el.closest("svg") || ["style", "script", "template"].includes(el.localName) || inline(el)) continue;
         if ([...el.querySelectorAll("*")].some((d) => !d.closest("svg") && !["style", "script", "br", "wbr"].includes(d.localName) && !inline(d))) continue;
-        const t = (el.textContent || "").trim();
+        const t = runs.filter((r) => el.contains(r.node)).map((r) => r.text).join("");
         if (t) blocks.push(t);
+      }
+      for (let i = 0; i + 1 < runs.length; i++) {
+        blocks.push(runs[i].text + runs[i + 1].text, runs[i + 1].text + runs[i].text);
+        if (i + 2 < runs.length) blocks.push(runs[i].text + runs[i + 1].text + runs[i + 2].text);
       }
       // a soft hyphen is invisible in the text but can show any hyphenation character
       if (out.some((x) => x.includes("\\u00ad"))) bad.push("soft hyphen (U+00AD) in the page");
