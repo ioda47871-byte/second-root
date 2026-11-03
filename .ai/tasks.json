@@ -7357,6 +7357,49 @@
         "実写真・生成画像"
       ],
       "note": "C は experimental_fidelity (本番用ではない)。数は縦の位置の指標で、形や品質の判定ではない。"
+    },
+    {
+      "id": "DEV-162",
+      "title": "N1 装飾の SVG を <img> の資産として許す — 研究だけ (設計・厳しい検査器・プローブ・安全の調査。有効にしない) (Issue #193)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-159"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-162-n1-svg-research",
+      "purpose": "Issue #193 コメント 6601921731 の 2: N1 を前倒しにするが、設計・プローブ・安全の調査だけで、有効にしない。研究用の厳しい SVG の検査器と、落ちるべきプローブ・通るべき形・Chromium の <img> のプローブを作り、脅威のモデルと有効にする前の確認を文書にする。",
+      "acceptance_criteria": [
+        "lib/design-agent/research/decoration-svg.ts (新しい依存無しの字句解析と許可一覧、資産のファイルの検査、ページの側の検査)",
+        "どのレーンも import しないことをテストで固定する",
+        "落ちるべきプローブと、3店の C の図の形が通ること",
+        "Chromium (JS 無効・通信の拒否・<img>) で、外への要求 0 件と、箱の外のインク 0",
+        "docs/design/n1-decoration-svg.md (仕様・脅威・確かめたこと・C への依存・有効にする前の確認)",
+        "comp-impl の page.ts・page-css.ts・htmlSourceProblems・資産の schema は変えない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/research"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/research/decoration-svg.ts",
+        "tests/unit/design-agent/research/",
+        "docs/design/n1-decoration-svg.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "comp-impl の page.ts・page-css.ts・htmlSourceProblems・資産の schema の変更",
+        "N1 を有効にすること",
+        "CSS の url() の緩め",
+        "実 Codex・画像生成・有料 API",
+        "main・Production・Staging・DB",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "N1 を有効にすること (段 C の後、別 PR)",
+        "パスで描いた文字への対策の選択"
+      ],
+      "note": "研究だけ。N1 は段 C (DEV-083 V2/V4) が通る前に有効にしない。この Task は有効にする承認ではない。元は DEV-160 の提案の N1 (PR #200、develop ec0149f で merge 済み)。DEV-160 は tasks.json ではまだ in_progress なので、depends_on は DEV-159 にした。"
     }
   ]
 }
