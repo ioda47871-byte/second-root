@@ -204,7 +204,7 @@
 - 落ちるべきプローブ 90 件以上が、それぞれ決まった符号で落ちる (DTD・billion laughs・実体・CDATA の script・コメント・処理命令・`SCRIPT`・`text`・`title`・`foreignObject`・`image`・`use`・`a`・`filter`・`animate`・`set`・接頭辞・入れ子の `svg`・`on*`・`href`・`xlink:href`・xlink の別名・`xml:base`・子の `xmlns`・`style`・`class`・別のファイルや http への `url()`・グラデーションでない参照・`data:`・BOM・UTF-16・全角・NUL・深さ・要素の数・属性の数・大きすぎるファイル など)。
 - 資産のファイル: symlink (ファイルと `assets` ディレクトリ)・ハードリンク・パスの横断・id の形・ハッシュ・大きさ・寸法。敵対的な記録や中身で例外を投げないこと。
 - ページの側: 許可一覧そのもの (要素と属性の表をテストで固定)。round 1 と round 2 の Fresh Review が挙げた入力すべて (一重引用・引用無しの `src`、`<picture><source srcset>`、`<svg/>`・`<svg/class>`、記録した資産の `<a href>`・`<link rel=preload>`・`<input type=image>`、`style` と `<style>` の `url()`、`<table background>`、`<video poster>`、CSS のエスケープ `\67`、`data:image/svg+xml`、拡張子無しの `assets/seam`、別の属性の値に書いた装飾の印、`math` + `title`・`style`・`textarea`・`xmp`・`noembed`、`noscript` の2通り、`srcset` の2つ目の候補・`<picture><source>`・`\\` の `src`、`<base>` の絶対と相対、`<link rel="stylesheet">`)。
-- **ページの Chromium での確かめ** (2.10): きれいなページは JS 有効・無効の両方で、要求がページと資産の2つだけ。round 2 の H-1・H-2・H-3・H-4・M-1 は、静的に拒まれ、かつ Chromium が実際に別のファイルを求めることを確かめた。CSS の `url()`、`data:` の `img`、`<svg>` の要素も、ブラウザの側で捕まる。
+- **ページの Chromium での確かめ** (2.10): きれいなページは JS 有効・無効の両方で、要求がページと資産の2つだけ。round 2 の H-1・H-2・H-3・H-4・M-1 は、静的に拒まれ、かつ Chromium が実際に別のファイルを求めることを確かめた。`data:` の `img` と `<svg>` の要素も、ブラウザの側で捕まる。CSS の `url()` がブラウザの側で捕まるのは、記録に無い http の URL だけである。CSS から読む**記録した資産** (`content:url(assets/seam.svg)` など) と CSS の `data:` 画像は、ブラウザの側では見えない (要求が通るか、要求にならない)。この2つは静的な検査 (`CSS_URL`・`SVG_FROM_CSS`) だけが止めている。
 - **Chromium のプローブ** (JS 無効・Service Worker 無効・ページのディレクトリ以外への通信を拒否・`<img>` で読む):
   - 3つの図は、`<img>` の箱の中にだけ描かれ、箱の外のインクは 0 だった。山の多角形は viewBox の外 (x = -60 と 780) まで伸びているが、箱で切られた。
   - 読み込まれたのは、ページと SVG の2つだけだった。
