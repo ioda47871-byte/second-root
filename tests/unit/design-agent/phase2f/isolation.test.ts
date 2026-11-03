@@ -19,6 +19,8 @@ const IMAGE_STEP = "scripts/design-artifact/phase2f-image.ts";
 const TM_STEPS = "scripts/design-artifact/three-methods-steps.ts";
 /** DEV-157 (Issue #193 comment 6595445598, owner-approved exact path): the direction-set check, open-direction only. */
 const DIRECTION_SET = "lib/design-agent/quality-pipeline/direction-set.ts";
+// DEV-159 (Issue #193 comment 6595445598, owner-approved exact path): the comp lane CLI checks and renders a B-method comp
+const COMP_LANE = "scripts/design-artifact/comp-lane.ts";
 const git = (args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).sort();
 
 function specifiers(source: string): string[] {
@@ -81,7 +83,7 @@ describe("isolation of the Phase 2f runner", () => {
 
   it("is imported only by its offline CLI, and by the Phase 2f-2 design step for its prompt only (DEV-116, owner-approved exact path)", () => {
     // the design step's own modules (phase2f-live) never import the runner
-    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS, IMAGE_STEP, TM_STEPS, DIRECTION_SET].sort());
+    expect(git(["grep", "--untracked", "-lE", "design-agent/phase2f([\"'`/]|$)|[\"'`]\\.{1,2}/phase2f[\"'`/]", "--", "lib", "app", "components", "scripts", `:!${LIB}`])).toEqual([CLI, DESIGN_STEP, STEPS, IMAGE_STEP, TM_STEPS, DIRECTION_SET, COMP_LANE].sort());
     const source = readFileSync(resolve(REPO, DESIGN_STEP), "utf8");
     const fromPhase2f = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
     // DEV-122: plus the prompt-version check (pure; no file access)
@@ -128,6 +130,21 @@ describe("DEV-157: the direction-set check takes only these names from phase2f (
     const names = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
     expect(names).toEqual([["../phase2f/open-direction", ["HERO_MODES", "PAGE_FLOWS", "directionsDiffer", "type OpenDirection"]]]);
     expect(specifiers(source).filter((s) => s.includes("phase2f"))).toEqual(["../phase2f/open-direction"]);
+  });
+});
+
+describe("DEV-159: the comp lane takes only these names from phase2f (Issue #193 comment 6595445598, owner-approved exact path)", () => {
+  it("prototype-safety and render-prototype only: checkPrototype, PrototypeUnsafe, renderPrototype, RenderError (never the runner, the prompt or Codex)", () => {
+    const source = readFileSync(resolve(REPO, COMP_LANE), "utf8");
+    const names = [...source.matchAll(/import\s*(type\s*)?\{([^}]*)\}\s*from\s*["']([^"']*\/phase2f\/[^"']*)["']/g)].map((m) => [m[3], m[2]!.split(",").map((n) => n.trim()).filter(Boolean).sort()]);
+    expect(names).toEqual([
+      ["../../lib/design-agent/phase2f/prototype-safety", ["PrototypeUnsafe", "checkPrototype"]],
+      ["../../lib/design-agent/phase2f/render-prototype", ["RenderError", "renderPrototype"]],
+    ]);
+    expect(specifiers(source).filter((s) => s.includes("phase2f")).sort()).toEqual([
+      "../../lib/design-agent/phase2f/prototype-safety",
+      "../../lib/design-agent/phase2f/render-prototype",
+    ]);
   });
 });
 

@@ -33,7 +33,7 @@ import {
   PrototypeUnsafe,
 } from "../../lib/design-agent/phase2f/prototype-safety";
 import { RenderError, renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
-import { FactsPack } from "../../lib/design-agent/artifact/schema";
+import { FactsPack } from "../../lib/design-agent/quality-pipeline/facts-pack";
 import { checkCompReview } from "../../lib/design-agent/quality-pipeline/comp-review";
 import {
   checkCopyRecord,
