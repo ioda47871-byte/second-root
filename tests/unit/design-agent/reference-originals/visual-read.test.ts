@@ -1,8 +1,10 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkVisualRead, coverage, imageSize, visualMode } from "../../../../lib/design-agent/reference-originals/visual-read";
+import { checkVisualRead, coverage, imageSize, visualMode, type AssetNow } from "../../../../lib/design-agent/reference-originals/visual-read";
 import { assetNow, checkAllReads, checkFails, matrixText } from "../../../../scripts/design-artifact/visual-read";
 
 // DEV-158 (Issue #193 comments 6584276254 / 6591440695): only Claude's own viewing of the exact picture makes a view
@@ -16,7 +18,7 @@ type Pic = { sha256: string; kind: string; view: string; in_repo_path: string | 
 const inventory = JSON.parse(readFileSync(join(REPO, "design-library/research/quality-pipeline/originals-inventory.json"), "utf8")) as { cases: Array<{ id: string; originals: Pic[] }> };
 const pictures = (id: string) => inventory.cases.find((c) => c.id === id)!.originals.filter((p) => p.kind === "original" || p.kind === "registered_preview");
 const PICS = pictures("CP-003");
-const codes = (r: unknown, now = NOW as typeof NOW | null, pics: Pic[] = PICS) => {
+const codes = (r: unknown, now: AssetNow = NOW, pics: Pic[] = PICS) => {
   const c = checkVisualRead(r, now, { pictures: pics });
   return c.ok ? [] : c.codes;
 };
@@ -172,13 +174,14 @@ describe("Claude's visual reads (DEV-158)", () => {
     mkdirSync(join(dir, "CP-009"));
     writeFileSync(join(dir, "CP-009", "desktop.read.json"), JSON.stringify(make()));
     let reads = checkAllReads(dir);
-    expect(reads.map((r) => [r.check, r.bytes])).toEqual([[{ ok: true }, "where_the_file_is"]]);
+    expect(reads.map((r) => [r.check, r.bytes])).toEqual([[{ ok: true }, "not_in_ci"]]);
     expect(checkFails(reads)).toBe(false);
-    // the matrix is the same wherever it is built: the read counts, marked as checked only where the file is
-    const m = JSON.parse(matrixText(reads)) as { cases: Array<{ id: string; modes: Record<string, string>; read_by_Claude: Array<{ bytes_checked: string }> }> };
+    // nothing in CI ties it to bytes (the original's SHA is public): it waits for the owner and never counts
+    const m = JSON.parse(matrixText(reads)) as { cases: Array<{ id: string; modes: Record<string, string>; read_by_Claude: unknown[]; original_reads_pending_owner: Array<{ view: string }> }> };
     const c = m.cases.find((x) => x.id === "CP-009")!;
-    expect(c.modes.desktop).toBe("VISUAL_VERIFIED");
-    expect(c.read_by_Claude[0]!.bytes_checked).toBe("where_the_file_is");
+    expect(c.modes.desktop).toBe("TEXT_ONLY_PROVISIONAL");
+    expect(c.read_by_Claude).toEqual([]);
+    expect(c.original_reads_pending_owner.map((x) => x.view)).toEqual(["desktop"]);
     // not viewed, misplaced, a path that climbs out, or a picture not recorded for the case: still fail in CI
     const bad = make();
     bad.actually_viewed = false;
@@ -206,5 +209,45 @@ describe("Claude's visual reads (DEV-158)", () => {
     expect(coverage([{ x: 0, y: 0, w: 100, h: 50 }, { x: 0, y: 56, w: 100, h: 44 }], 100, 100)).toBeLessThan(1);
     // a 2 px crop straddling a cell boundary covers nothing
     expect(coverage([{ x: 3, y: 0, w: 2, h: 100 }], 100, 100)).toBe(0);
+  });
+  it("a file that is present but unreadable at an intake path fails; only absence is excused (round 3 M1)", () => {
+    const rel = `CP-009/dev158-test-${process.pid}.png`;
+    const file = join(REPO, "design-library/research/quality-pipeline/.intake", rel);
+    mkdirSync(join(file, ".."), { recursive: true });
+    try {
+      writeFileSync(file, "not a picture");
+      const now = assetNow(`intake:${rel}`);
+      expect(now).toEqual({ unreadable: true, sha256: createHash("sha256").update("not a picture").digest("hex") });
+      const r = one();
+      expect(codes(r, now)).toEqual(expect.arrayContaining(["ASSET_UNREADABLE", "ASSET_SHA_MISMATCH"]));
+      rmSync(file);
+      mkdirSync(file);
+      expect(assetNow(`intake:${rel}`)).toEqual({ unreadable: true, sha256: null });
+    } finally {
+      rmSync(file, { recursive: true, force: true });
+    }
+    expect(assetNow(`intake:${rel}`)).toBeNull();
+  });
+
+  it("malformed reads are reported, not crashed on or skipped (round 3 L3)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "reads-"));
+    writeFileSync(join(dir, "loose.json"), "{}");
+    mkdirSync(join(dir, "CP-001"));
+    writeFileSync(join(dir, "CP-001", "concept.read.json"), "null");
+    writeFileSync(join(dir, "CP-001", "concept.read.JSON"), "{}");
+    const reads = checkAllReads(dir);
+    expect(Object.fromEntries(reads.map((r) => [r.file.split("/").slice(-2).join("/"), r.check.ok ? [] : r.check.codes]))).toEqual({
+      "CP-001/concept.read.json": ["READ_SCHEMA"],
+      "CP-001/concept.read.JSON": ["READ_FILE_PLACEMENT"],
+      "visual-reads/loose.json": ["READ_FILE_PLACEMENT"],
+    });
+    expect(checkFails(reads)).toBe(true);
+  });
+
+  it("originals stay out of git: nothing is tracked under .intake/ and no tracked picture is an original (round 3 L2)", () => {
+    const tracked = execFileSync("git", ["ls-files"], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
+    expect(tracked.filter((p) => p.includes("quality-pipeline/.intake"))).toEqual([]);
+    const originals = new Set(inventory.cases.flatMap((c) => c.originals.filter((p) => p.kind === "original").map((p) => p.sha256)));
+    for (const p of tracked.filter((x) => /\.(png|webp|jpe?g)$/i.test(x))) expect(originals.has(createHash("sha256").update(readFileSync(join(REPO, p))).digest("hex")), p).toBe(false);
   });
 });

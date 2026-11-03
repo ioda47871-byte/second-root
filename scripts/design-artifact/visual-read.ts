@@ -8,12 +8,13 @@
  * A record names a repository file (a registered preview) or `intake:<path>` under the git-ignored .intake/ folder.
  * A read of an original names `intake:<path>` (the git-ignored .intake/ folder). Where that file is absent (CI), the
  * missing file is the only thing excused: every other check (schema, placement, the picture recorded for that case,
- * view and kind, crops, observations) still runs and still fails --check. Such a read counts the same way everywhere,
- * so the committed matrix does not depend on where it is built; the matrix marks its bytes as checked only where
- * the file is. Originals stay out of the public repository.
+ * view and kind, crops, observations) still runs and still fails --check; a file that is present but unreadable
+ * fails. Because the original's SHA is public and its size is not recorded, nothing in CI ties such a read to real
+ * bytes: it never makes a view VISUAL_VERIFIED in the matrix. It is listed as `original_reads_pending_owner`, the
+ * same wherever the matrix is built, until the owner confirms it on the machine that has the file (Issue #193).
  */
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { checkVisualRead, imageSize, visualMode, type AssetNow, type InventoryPicture, type ReadCheck, type VisualMode } from "../../lib/design-agent/reference-originals/visual-read";
 
@@ -29,22 +30,46 @@ const ADOPTED = new Set(["original", "registered_preview"]);
 type Principles = { cases: Array<{ id: string; evidence: string[] }> };
 
 export function assetNow(path: string): AssetNow {
+  if (path.includes("..")) return null;
   const file = path.startsWith("intake:") ? join(REPO, INTAKE, path.slice("intake:".length)) : join(REPO, path);
-  if (path.includes("..") || !existsSync(file) || !statSync(file).isFile()) return null;
+  let isFile: boolean;
+  try {
+    isFile = lstatSync(file).isFile() || statSync(file).isFile();
+  } catch {
+    return null; // absent: the only state an original's read may be excused for
+  }
+  if (!isFile) return { unreadable: true, sha256: null };
   const b = readFileSync(file);
+  const sha256 = createHash("sha256").update(b).digest("hex");
   const size = imageSize(b);
-  return size ? { sha256: createHash("sha256").update(b).digest("hex"), ...size } : null;
+  return size ? { sha256, ...size } : { unreadable: true, sha256 };
 }
 
-export type ReadResult = { file: string; case_id: string; view: string; kind: string; sha256: string; bytes: "in_repo" | "where_the_file_is"; check: ReadCheck };
+export type ReadResult = { file: string; case_id: string; view: string; kind: string; sha256: string; bytes: "in_repo" | "not_in_ci"; check: ReadCheck };
 
 export function checkAllReads(dir = join(REPO, READS)): ReadResult[] {
   const inv = readInventory();
   const out: ReadResult[] = [];
   if (!existsSync(dir)) return out;
-  for (const c of readdirSync(dir).sort())
-    for (const f of readdirSync(join(dir, c)).filter((x) => x.endsWith(".read.json")).sort()) {
-      const raw = JSON.parse(readFileSync(join(dir, c, f), "utf8")) as { case_id?: string; view?: string; asset?: { path?: string; kind?: string; sha256?: string } };
+  for (const c of readdirSync(dir).sort()) {
+    if (!statSync(join(dir, c)).isDirectory()) {
+      out.push({ file: `${READS}/${c}`, case_id: c, view: "", kind: "", sha256: "", bytes: "in_repo", check: { ok: false, codes: ["READ_FILE_PLACEMENT"] } });
+      continue;
+    }
+    for (const f of readdirSync(join(dir, c)).sort()) {
+      let raw: { case_id?: string; view?: string; asset?: { path?: string; kind?: string; sha256?: string } } = {};
+      let parsedOk = f.endsWith(".read.json");
+      try {
+        const v: unknown = JSON.parse(readFileSync(join(dir, c, f), "utf8"));
+        if (v && typeof v === "object" && !Array.isArray(v)) raw = v as typeof raw;
+        else parsedOk = false;
+      } catch {
+        parsedOk = false;
+      }
+      if (!parsedOk) {
+        out.push({ file: `${READS}/${c}/${f}`, case_id: c, view: "", kind: "", sha256: "", bytes: "in_repo", check: { ok: false, codes: [f.endsWith(".read.json") ? "READ_SCHEMA" : "READ_FILE_PLACEMENT"] } });
+        continue;
+      }
       const pictures = (inv.cases.find((x) => x.id === raw.case_id)?.originals ?? []).filter((p) => ADOPTED.has(p.kind));
       const path = typeof raw.asset?.path === "string" ? raw.asset.path : "";
       const now = path ? assetNow(path) : null;
@@ -53,8 +78,9 @@ export function checkAllReads(dir = join(REPO, READS)): ReadResult[] {
       const intake = path.startsWith("intake:");
       // only the missing file of an original is excused; any other code still fails
       if (intake && !check.ok && check.codes.length === 1 && check.codes[0] === "ASSET_NOT_AVAILABLE") check = { ok: true };
-      out.push({ file: `${READS}/${c}/${f}`, case_id: c, view: String(raw.view), kind: String(raw.asset?.kind), sha256: String(raw.asset?.sha256), bytes: intake ? "where_the_file_is" : "in_repo", check });
+      out.push({ file: `${READS}/${c}/${f}`, case_id: c, view: String(raw.view), kind: String(raw.asset?.kind), sha256: String(raw.asset?.sha256), bytes: intake ? "not_in_ci" : "in_repo", check });
     }
+  }
   return out;
 }
 
@@ -70,14 +96,17 @@ export function matrixText(reads: ReadResult[]): string {
       chatgpt_viewed: pr.cases.some((p) => p.id === c.id && p.evidence.includes("chatgpt_viewed")),
       case_note: notes.some((f) => f.startsWith(`${c.id}-`) && f.endsWith(".md")),
     };
-    const passed = reads.filter((r) => r.case_id === c.id && r.check.ok);
+    // only reads tied to bytes the repository holds count; reads of originals wait for the owner (see the header)
+    const passed = reads.filter((r) => r.case_id === c.id && r.check.ok && r.bytes === "in_repo");
+    const pending = reads.filter((r) => r.case_id === c.id && r.check.ok && r.bytes === "not_in_ci");
     const modes: Record<string, VisualMode> = {};
     for (const v of views.length ? views : ["unknown"]) modes[v] = visualMode(passed.filter((r) => r.view === v).length, text);
     return {
       id: c.id,
       form: c.form,
       available_for_Claude_visual_read: adoptedAll.filter((p) => p.in_repo_path).map((p) => ({ view: p.view, kind: p.kind, path: p.in_repo_path, sha256: p.sha256 })),
-      read_by_Claude: passed.map((r) => ({ view: r.view, kind: r.kind, sha256: r.sha256, bytes_checked: r.bytes })),
+      read_by_Claude: passed.map((r) => ({ view: r.view, kind: r.kind, sha256: r.sha256 })),
+      original_reads_pending_owner: pending.map((r) => ({ view: r.view, kind: r.kind, sha256: r.sha256 })),
       text,
       modes,
     };
@@ -86,7 +115,7 @@ export function matrixText(reads: ReadResult[]): string {
   return `${JSON.stringify(
     {
       schema: "visual_read_matrix_v1",
-      note: "Only Claude's own passing viewing record of an adopted picture (registered preview or original) makes a view VISUAL_VERIFIED; the kind read is listed. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. A case with no recorded view is keyed 'unknown'; adopted pictures of view 'other' are listed as available but have no mode. Reads of originals in the git-ignored .intake/ folder count by the same rule everywhere (every check but the missing file must pass) and are marked bytes_checked 'where_the_file_is'.",
+      note: "Only Claude's own passing viewing record of an adopted picture (registered preview or original) makes a view VISUAL_VERIFIED; the kind read is listed. Another AI's viewing summary or a case note is TEXT_ONLY_PROVISIONAL. A case with no recorded view is keyed 'unknown'; adopted pictures of view 'other' are listed as available but have no mode. Reads of originals in the git-ignored .intake/ folder must pass every check but the missing file; since CI cannot tie them to bytes, they are listed as original_reads_pending_owner and never make a view VISUAL_VERIFIED until the owner confirms them.",
       counts: { VISUAL_VERIFIED: count("VISUAL_VERIFIED"), TEXT_ONLY_PROVISIONAL: count("TEXT_ONLY_PROVISIONAL"), MISSING_OR_HOLD: count("MISSING_OR_HOLD") },
       cases,
     },
@@ -100,7 +129,7 @@ export const checkFails = (reads: readonly ReadResult[]) => reads.some((r) => !r
 
 if (require.main === module) {
   const reads = checkAllReads();
-  for (const r of reads) process.stdout.write(`${r.check.ok ? (r.bytes === "in_repo" ? "READ_OK" : "READ_OK_BYTES_CHECKED_WHERE_THE_FILE_IS") : `READ_FAIL ${r.check.codes.join(",")}`} ${r.file}\n`);
+  for (const r of reads) process.stdout.write(`${r.check.ok ? (r.bytes === "in_repo" ? "READ_OK" : "READ_OK_PENDING_OWNER") : `READ_FAIL ${r.check.codes.join(",")}`} ${r.file}\n`);
   const text = matrixText(reads);
   if (process.argv.includes("--check")) {
     let committed = "";
