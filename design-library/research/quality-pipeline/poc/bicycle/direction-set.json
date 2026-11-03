@@ -1,0 +1,603 @@
+{
+  "schema": "art_direction_set_v0",
+  "shop_id": "fictional-bicycle-repair-wa",
+  "facts_sha256": "b4c720a4a51fb9d142e581db587bdfa46b8914fcf0c89a9a4e59e6a5f9f9c3fc",
+  "motif": {
+    "candidates": [
+      {
+        "id": "M1",
+        "what": "車輪とスポーク",
+        "source": "object",
+        "fact_refs": [
+          "F10",
+          "F15"
+        ],
+        "becomes_structure": "ハブを中心にスポークの先へ修理の駅を配置する"
+      },
+      {
+        "id": "M2",
+        "what": "チェーンのコマ",
+        "source": "material",
+        "fact_refs": [
+          "F14"
+        ],
+        "becomes_structure": "コマの連なりを左右交互の見開きにする"
+      },
+      {
+        "id": "M3",
+        "what": "振れ取り",
+        "source": "process",
+        "fact_refs": [
+          "F10"
+        ],
+        "becomes_structure": "振れ幅が小さくなる過程を縦の読み順にする"
+      },
+      {
+        "id": "M4",
+        "what": "店先の作業台",
+        "source": "space",
+        "fact_refs": [
+          "F9",
+          "F11"
+        ],
+        "becomes_structure": "作業台を最後の区画の置き場にする"
+      }
+    ],
+    "chosen": "M1",
+    "why": "M1 は修理の4つを1つの物の上に並べられ、店の仕事全体が一目で分かるので最初に試す。比べるために M2 (コマ)・M3 (振れ取り) をそれぞれの中心にする。M4 は3方向とも終点で使う"
+  },
+  "directions": [
+    {
+      "id": "d1-wheel-hub",
+      "motif_focus": "M1",
+      "concept": "大きな車輪1つがページの中心の物になる。ハブから伸びるスポークの先に、パンク・ブレーキ・チェーン・振れ取りの4つの修理が駅として付き、読み手はハブのまわりを一周して最後に店先の作業台へ着く。",
+      "composition": {
+        "hero": "object_led",
+        "flow": "map_of_stations"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "object_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "map_of_stations",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "side_index",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "radial",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "diagram",
+            "overlap_collage",
+            "diagram",
+            "vertical_text",
+            "overlap_collage",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "overlap",
+            "overlap",
+            "hard_cut",
+            "overlap",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "mixed",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "drawn",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "hero",
+          "motif_facet": "ハブに店名を置いた巨大な車輪の図",
+          "ground": "明るい灰",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "spokes",
+          "motif_facet": "スポークの先の4つの修理 (パンク・ブレーキ・チェーン・振れ取り)",
+          "ground": "アスファルトの濃い灰",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "パンクを直す手元",
+              "size": "medium"
+            },
+            {
+              "role": "ブレーキの接写",
+              "size": "small"
+            },
+            {
+              "role": "チェーンの接写",
+              "size": "small"
+            }
+          ]
+        },
+        {
+          "id": "truing",
+          "motif_facet": "スポークを一本ずつ締める振れ取りの手つき",
+          "ground": "黄色",
+          "layout": "diagram",
+          "image_slots": [
+            {
+              "role": "振れ取り台の車輪",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "check",
+          "motif_facet": "作業台で、どこを直すかを一緒に確かめる",
+          "ground": "明るい灰",
+          "layout": "vertical_text",
+          "image_slots": [
+            {
+              "role": "作業台と自転車",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "lesson",
+          "motif_facet": "月に一回の空気の入れ方の講座 (空気入れの目盛り)",
+          "ground": "濃い灰",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "空気入れの目盛り",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "visit",
+          "motif_facet": "車輪が一周して戻る店先の作業台: 所在地・時間・電話",
+          "ground": "黄色",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "車輪が一周して、店先の作業台 (所在地・時間・電話) で止まる",
+      "pc_plan": "1440 の幅に巨大な車輪を左右にはみ出させて置き、スポークの先の駅を時計回りに配置する。修理の名前は巨大な文字で区画の境をまたぐ",
+      "sp_plan": {
+        "first_screen": "390×844 では車輪の右半分だけを見せ、ハブの店名と最初のスポークを画面に収める",
+        "reorder": "4つの駅をスポークの順に縦一列に積み、各駅の頭に小さな車輪の位置図を付ける",
+        "overlaps": "巨大な修理の名前は、駅の上端にかかる一行だけ残す"
+      },
+      "protect": [
+        "ページの中心の車輪",
+        "スポークの先の駅として修理を巡る読み順"
+      ],
+      "references": [
+        {
+          "principle": "P1",
+          "case_id": "CP-016",
+          "use": "中央の物と余白で全体を釣り合わせる構図 (モビールの形は写さない)"
+        },
+        {
+          "principle": "P5",
+          "case_id": "CP-018",
+          "use": "巨大な文字を区画の境に重ねる方法"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-030",
+          "reason": "修理の手と来店の流れは近いが、壁一面の陳列はこの店の車輪の構図と別物"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M1 (車輪とスポーク、F10・F15)。入れ替えテスト: 修理をしない自転車店にすると、スポークの先の修理の駅が意味を失う"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は物 (object_led)、流れは駅の地図 (map_of_stations)。d2 の文字と見開き、d3 の図と縦の軸と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画はスポークの先の駅 (修理 → 振れ取り → 相談 → 講座)。終点は一周して戻る店先の作業台"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は車輪の右半分を1画面目に置き、駅を縦に積み、駅ごとに位置図を付ける"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "Hero は split でなく物、流れは帯の積み重ねでない。区画に grid_cards を使わない"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "スポークの線が修理の名前と写真を結ぶ図になり、写真は駅の上に重ねる"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向で改良ではない。守る核 (中心の車輪と駅の読み順) を先に書いた"
+        }
+      }
+    },
+    {
+      "id": "d2-chain-links",
+      "motif_focus": "M2",
+      "concept": "チェーンのコマが1つずつページを進む。左右に交互に開く見開きがコマで、コマの穴に修理の名前が巨大な文字で入る。最後のコマが店先につながる。",
+      "composition": {
+        "hero": "type_led",
+        "flow": "alternating_spreads"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "type_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "alternating_spreads",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "none",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "z_pattern",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "full_bleed_media",
+            "split_copy_media",
+            "overlap_collage",
+            "full_bleed_media",
+            "overlap_collage",
+            "single_column_text",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "hard_cut",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "horizontal",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "sequence",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "first-link",
+          "motif_facet": "油で黒いチェーンのコマに、巨大な店名",
+          "ground": "黒",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "油の付いたチェーンの接写",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "puncture",
+          "motif_facet": "左のコマ: パンクの穴をふさぐ",
+          "ground": "銀",
+          "layout": "split_copy_media",
+          "image_slots": [
+            {
+              "role": "チューブを水に沈めた様子",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "brake",
+          "motif_facet": "右のコマ: ブレーキの当たりを合わせる",
+          "ground": "黒",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "ブレーキの調整",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "chain",
+          "motif_facet": "左のコマ: 伸びたチェーンを替える",
+          "ground": "銀",
+          "layout": "full_bleed_media",
+          "image_slots": [
+            {
+              "role": "外したチェーン",
+              "size": "full"
+            }
+          ]
+        },
+        {
+          "id": "true",
+          "motif_facet": "右のコマ: 車輪の振れを取る",
+          "ground": "黒",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "振れ取り台",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "lesson-link",
+          "motif_facet": "講座と、修理の前に一緒に確かめること",
+          "ground": "銀",
+          "layout": "single_column_text",
+          "image_slots": []
+        },
+        {
+          "id": "shopfront",
+          "motif_facet": "最後のコマが店先へつながる: 所在地・時間・電話",
+          "ground": "黄色",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "最後のコマが黄色い店先の地につながって来店で終わる",
+      "pc_plan": "1440 を左右2つのコマに割り、見開きごとに左右を入れ替える。コマの穴の形を写真の枠にする",
+      "sp_plan": {
+        "first_screen": "黒い地に店名の巨大な文字を縦に2行で置き、1つ目のコマの穴をその下に見せる",
+        "reorder": "左右の見開きを縦の連なりにし、コマの穴を上下に重ねてつなぐ",
+        "overlaps": "コマの重なりは SP では穴の半分の重なりにとどめる"
+      },
+      "protect": [
+        "左右交互のコマの連なり",
+        "コマの穴に入る巨大な修理の名前"
+      ],
+      "references": [
+        {
+          "principle": "P3",
+          "case_id": "CP-012",
+          "use": "章ごとに同じモチーフの別の面を見せる方法 (コマごとに修理の別の面)"
+        },
+        {
+          "principle": "P2",
+          "case_id": "CP-032",
+          "use": "1つのモチーフを全区画の区切りにする方法"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-021",
+          "reason": "左から右への工程の連結は近いが、トレーの並びはチェーンの交互のコマと別物"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M2 (チェーンのコマ、F14)。入れ替えテスト: 車輪だけを扱う店にすると、コマの連なりが根拠を失う"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は文字 (type_led)、流れは左右交互の見開き (alternating_spreads)。d1 の物と駅、d3 の図と縦の軸と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "コマの順が修理の順 (パンク → ブレーキ → チェーン → 振れ取り → 講座)。終点は店先につながる最後のコマ"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は見開きを縦の連なりにし、コマの穴を上下に重ねる"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "split_copy_media は7区画のうち1つだけで、半分に届かない"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "コマの穴の形が写真の枠と修理の名前の置き場になる"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向で改良ではない。守る核 (交互のコマ) を先に書いた"
+        }
+      }
+    },
+    {
+      "id": "d3-true-axis",
+      "motif_focus": "M3",
+      "concept": "ページの上から下へ、振れた車輪がまっすぐになっていく。スポークを一本締めるたびに区画が進み、図の振れ幅が小さくなる。",
+      "composition": {
+        "hero": "diagram_led",
+        "flow": "single_axis_scroll"
+      },
+      "descriptor": {
+        "schema": "structure_descriptor_v0",
+        "hero": {
+          "value": "diagram_led",
+          "source": "declared"
+        },
+        "flow": {
+          "value": "single_axis_scroll",
+          "source": "declared"
+        },
+        "navigation": {
+          "value": "inline",
+          "source": "declared"
+        },
+        "reading_path": {
+          "value": "vertical_axis",
+          "source": "declared"
+        },
+        "section_layouts": {
+          "value": [
+            "diagram",
+            "vertical_text",
+            "overlap_collage",
+            "diagram",
+            "vertical_text",
+            "single_column_text"
+          ],
+          "source": "declared"
+        },
+        "transitions": {
+          "value": [
+            "continuous",
+            "continuous",
+            "continuous",
+            "continuous",
+            "hard_cut"
+          ],
+          "source": "declared"
+        },
+        "text_direction": {
+          "value": "vertical",
+          "source": "declared"
+        },
+        "imagery": {
+          "value": "drawn",
+          "source": "declared"
+        }
+      },
+      "sections": [
+        {
+          "id": "wobble",
+          "motif_facet": "大きく振れた車輪の図と店名",
+          "ground": "白",
+          "layout": "diagram",
+          "image_slots": []
+        },
+        {
+          "id": "first-turn",
+          "motif_facet": "一本目のスポークを締める",
+          "ground": "薄い黄",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "half-true",
+          "motif_facet": "振れが半分になる (パンク・ブレーキ・チェーンの修理も同じ台で)",
+          "ground": "白",
+          "layout": "overlap_collage",
+          "image_slots": [
+            {
+              "role": "作業台の工具",
+              "size": "medium"
+            }
+          ]
+        },
+        {
+          "id": "true",
+          "motif_facet": "まっすぐになった車輪",
+          "ground": "薄い黄",
+          "layout": "diagram",
+          "image_slots": [
+            {
+              "role": "まっすぐな車輪の横顔",
+              "size": "large"
+            }
+          ]
+        },
+        {
+          "id": "together",
+          "motif_facet": "どこを直すか一緒に確かめる、講座",
+          "ground": "白",
+          "layout": "vertical_text",
+          "image_slots": []
+        },
+        {
+          "id": "ride",
+          "motif_facet": "走り出す道: 所在地・時間・電話",
+          "ground": "黄色",
+          "layout": "single_column_text",
+          "image_slots": []
+        }
+      ],
+      "ending": "まっすぐになった車輪で走り出す道に、来店の情報を置く",
+      "pc_plan": "1440 の中央に縦の軸を引き、車輪の振れ幅を区画ごとに描き分ける。注釈は軸の左右に縦書きで置く",
+      "sp_plan": {
+        "first_screen": "390×844 に大きく振れた車輪の図と店名を置き、振れ幅を矢印で示す",
+        "reorder": "図を各区画の頭に置き、縦書きの注釈を図の下の横書きに直す",
+        "overlaps": "振れ幅の図の重なりは SP では1区画に1つだけ"
+      },
+      "protect": [
+        "振れ幅が小さくなっていく縦の読み順",
+        "中央の軸"
+      ],
+      "references": [
+        {
+          "principle": "P1",
+          "case_id": "CP-019",
+          "use": "素材の時間変化を読み順にする方法 (振れが取れていく過程)"
+        },
+        {
+          "principle": "P5",
+          "case_id": "CP-022",
+          "use": "注釈を図の割れ目に置く方法"
+        }
+      ],
+      "not_used": [
+        {
+          "case_id": "CP-017",
+          "reason": "巨大なリングの中央構図は d1 の車輪と重なるので、ここでは使わない"
+        }
+      ],
+      "checklist": {
+        "C1": {
+          "answer": "yes",
+          "evidence": "中心は M3 (振れ取り、F10)。入れ替えテスト: 振れ取りをしない店にすると、図の変化が成り立たない"
+        },
+        "C2": {
+          "answer": "yes",
+          "evidence": "Hero は図 (diagram_led)、流れは縦の軸 (single_axis_scroll)。d1・d2 と違う"
+        },
+        "C3": {
+          "answer": "yes",
+          "evidence": "区画の順が振れの取れていく順。入れ替えると変化が逆になる。終点は走り出す道"
+        },
+        "C4": {
+          "answer": "yes",
+          "evidence": "SP は図を区画の頭に置き、縦書きの注釈を横書きに直す"
+        },
+        "C5": {
+          "answer": "yes",
+          "evidence": "区画に grid_cards・split_copy_media を使わない"
+        },
+        "C6": {
+          "answer": "yes",
+          "evidence": "振れ幅の図そのものが読み順を作り、注釈が図の近くに付く"
+        },
+        "C7": {
+          "answer": "unknown",
+          "evidence": "新しい方向で改良ではない。守る核 (振れ幅の変化) を先に書いた"
+        }
+      }
+    }
+  ]
+}

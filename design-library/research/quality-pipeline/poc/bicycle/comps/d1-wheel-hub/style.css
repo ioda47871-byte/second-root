@@ -1,0 +1,152 @@
+/* 輪 d1「ハブを中心に巡る車輪」— B方式のカンプ (DEV-160)。写真は役割と大きさだけの仮の板。 */
+:root {
+  --concrete: #e7e5df;
+  --asphalt: #26272a;
+  --asphalt-2: #34363a;
+  --yellow: #f2c230;
+  --steel: #9aa0a6;
+  --ink: #1b1c1e;
+  --ink-soft: #5d6066;
+  --mincho: "IPAMincho", serif;
+  --gothic: "Noto Sans CJK JP", "IPAGothic", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--concrete); }
+body { color: var(--ink); font-family: var(--gothic); font-size: 15px; line-height: 1.8; letter-spacing: .04em; }
+.page { position: relative; overflow: hidden; }
+section { position: relative; }
+
+.photo {
+  width: 100%; height: 100%;
+  background: repeating-linear-gradient(135deg, rgba(27, 28, 30, .08) 0 1px, transparent 1px 14px), linear-gradient(160deg, #c9c6bd, #a9a69e);
+}
+.board { position: absolute; filter: drop-shadow(0 24px 22px rgba(0, 0, 0, .35)); }
+.ph { position: absolute; font-size: 12px; letter-spacing: .08em; color: var(--ink-soft); white-space: nowrap; }
+
+/* wheel drawing */
+.wheel-art .tire { fill: none; stroke: var(--ink); stroke-width: 26; }
+.wheel-art .rim { fill: none; stroke: var(--steel); stroke-width: 6; }
+.wheel-art .spk line { stroke: var(--ink); stroke-width: 1.6; }
+.wheel-art .hub { fill: var(--yellow); stroke: var(--ink); stroke-width: 4; }
+.ghost { position: absolute; z-index: 1; font-family: var(--gothic); font-weight: 900; line-height: 1; white-space: nowrap; color: transparent; -webkit-text-stroke: 2px var(--yellow); pointer-events: none; }
+
+/* hero: the wheel is the page's object; the shop name sits on the hub */
+.hero { height: 960px; }
+.wheel-pc { position: absolute; left: 0; top: 0; width: 1440px; height: 1400px; z-index: 2; pointer-events: none; }
+.wheel-sp { display: none; }
+.name-full { position: absolute; top: 56px; left: 80px; font-size: 14px; letter-spacing: .3em; color: var(--ink-soft); z-index: 3; }
+.hub-name { position: absolute; top: 490px; left: 970px; z-index: 3; font-family: var(--mincho); font-weight: 400; font-size: 220px; line-height: 1; color: var(--ink); background: var(--yellow); width: 300px; height: 300px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.hero-copy { position: absolute; top: 200px; left: 80px; width: 520px; z-index: 3; }
+.tagline { font-family: var(--mincho); font-size: 56px; line-height: 1.35; letter-spacing: .04em; }
+.how { margin-top: 30px; width: 380px; font-size: 14px; border-top: 4px solid var(--yellow); padding-top: 14px; }
+
+/* spokes: four stations on the dark ground; the wheel from the hero runs into it */
+.spokes { height: 1500px; background: var(--asphalt); color: var(--concrete); }
+.spokes-h { position: absolute; top: 520px; left: 80px; width: 420px; font-family: var(--mincho); font-weight: 400; font-size: 40px; line-height: 1.5; z-index: 3; }
+.ghost-turn { top: 1230px; left: -30px; font-size: 300px; letter-spacing: -.02em; }
+.station { position: absolute; z-index: 3; }
+.station .board { inset: 0; }
+.station .ph { left: 0; top: calc(100% + 10px); color: #b7b9bd; }
+.station .svc { position: absolute; font-weight: 900; font-size: 64px; line-height: 1; color: var(--yellow); white-space: nowrap; }
+.st-a { top: 500px; left: 600px; width: 360px; height: 260px; }
+.st-a .board { transform: rotate(-4deg); }
+.st-a .svc { left: 380px; top: 90px; }
+.st-b { top: 820px; left: 980px; width: 300px; height: 220px; }
+.st-b .board { transform: rotate(5deg); }
+.st-b .svc { left: -420px; top: 80px; }
+.st-c { top: 1080px; left: 600px; width: 330px; height: 240px; }
+.st-c .board { transform: rotate(-2deg); }
+.st-c .svc { left: 360px; top: 90px; }
+.st-d { top: 760px; left: 120px; width: 300px; height: 330px; }
+.st-d .board { transform: rotate(3deg); }
+.st-d .svc { left: 0; top: calc(100% + 40px); }
+
+/* truing: yellow ground, one spoke drawn tight */
+.truing { height: 900px; background: var(--yellow); }
+.true-art { position: absolute; left: 120px; top: 150px; width: 600px; height: 600px; }
+.true-art .w2 .tire { fill: none; stroke: var(--ink); stroke-width: 22; }
+.true-art .w2 .rim { fill: none; stroke: #fff6d6; stroke-width: 5; }
+.true-art .w2 .spk line { stroke: rgba(27, 28, 30, .45); stroke-width: 1.4; }
+.true-art .w2 .hub { fill: var(--ink); }
+.true-art .pick { stroke: var(--ink); stroke-width: 6; }
+.ghost-tight { top: 700px; right: -20px; font-size: 260px; -webkit-text-stroke: 2px var(--ink); }
+.truing-h { position: absolute; top: 260px; left: 820px; font-family: var(--mincho); font-weight: 400; font-size: 96px; line-height: 1; }
+.truing-fact { position: absolute; top: 420px; left: 820px; width: 480px; font-family: var(--mincho); font-size: 26px; line-height: 1.7; }
+
+/* check: the workbench, words written down the side */
+.check { height: 960px; background: var(--concrete); }
+.board-bench { left: 120px; top: 120px; width: 760px; height: 560px; transform: rotate(-1.5deg); }
+.ph-bench { left: 130px; top: 700px; }
+.check-h { position: absolute; top: 110px; left: 1180px; height: 780px; writing-mode: vertical-rl; font-family: var(--mincho); font-weight: 400; font-size: 50px; letter-spacing: .12em; }
+.check-fact { position: absolute; top: 140px; left: 1060px; height: 620px; writing-mode: vertical-rl; font-family: var(--mincho); font-size: 22px; letter-spacing: .1em; }
+
+/* lesson: the pump gauge */
+.lesson { height: 540px; background: var(--asphalt-2); color: var(--concrete); }
+.gauge-art { position: absolute; right: 120px; top: -120px; width: 560px; height: 560px; z-index: 2; }
+.gauge circle { fill: var(--concrete); stroke: var(--ink); stroke-width: 10; }
+.gauge line { stroke: var(--ink); stroke-width: 3; }
+.gauge .needle { stroke: #c4371b; stroke-width: 8; stroke-linecap: round; }
+.lesson-h { position: absolute; top: 200px; left: 120px; font-family: var(--mincho); font-weight: 400; font-size: 72px; }
+.lesson-fact { position: absolute; top: 330px; left: 120px; font-size: 20px; }
+
+/* visit: the wheel comes round to the shop front */
+.visit { height: 760px; background: var(--yellow); }
+.wheel-end { position: absolute; right: -230px; top: 30px; width: 700px; height: 700px; opacity: .9; }
+.wheel-end .w3 .tire { fill: none; stroke: var(--ink); stroke-width: 20; }
+.wheel-end .w3 .rim { fill: none; stroke: #fff6d6; stroke-width: 5; }
+.wheel-end .w3 .spk line { stroke: var(--ink); stroke-width: 1.4; }
+.wheel-end .w3 .hub { fill: var(--ink); }
+.visit-h { position: absolute; top: 90px; left: 120px; font-family: var(--mincho); font-weight: 400; font-size: 64px; }
+.info { position: absolute; top: 230px; left: 120px; width: 820px; display: grid; grid-template-columns: 1fr 1fr; gap: 22px 48px; }
+.info div { border-top: 2px solid var(--ink); padding-top: 8px; }
+.info dt { font-size: 12px; letter-spacing: .3em; }
+.info dd { font-size: 20px; }
+.info .tel { grid-column: 1 / 3; }
+.info .tel dd { font-weight: 900; font-size: 64px; letter-spacing: .04em; line-height: 1.2; }
+.fictional { position: absolute; left: 120px; bottom: 40px; font-size: 12px; }
+
+@media (max-width: 600px) {
+  body { font-size: 14px; }
+  .hero { height: 844px; }
+  .wheel-pc { display: none; }
+  .wheel-sp { display: block; position: absolute; left: 0; top: 0; width: 390px; height: 1000px; z-index: 2; }
+  .name-full { top: 20px; left: 20px; font-size: 12px; }
+  .hub-name { top: 360px; left: 262px; width: 136px; height: 140px; font-size: 110px; }
+  .hero-copy { top: 560px; left: 20px; width: 330px; background: var(--concrete); padding: 10px 10px 10px 0; }
+  .tagline { font-size: 34px; }
+  .how { width: auto; font-size: 13px; }
+
+  .spokes { height: auto; padding: 200px 20px 60px; }
+  .spokes-h { position: relative; top: auto; left: auto; width: auto; font-size: 26px; margin-bottom: 40px; }
+  .ghost-turn { top: 40px; left: -10px; font-size: 120px; }
+  .station { position: relative; top: auto; left: auto; width: auto; height: 210px; margin: 0 0 150px; }
+  .st-b, .st-d { margin-left: 40px; }
+  .station .svc { left: 0; top: calc(100% + 40px); font-size: 40px; }
+  .st-d .ph { top: calc(100% + 10px); }
+
+  .truing { height: 900px; }
+  .true-art { left: 20px; top: 90px; width: 350px; height: 350px; }
+  .ghost-tight { top: 800px; right: -10px; font-size: 110px; }
+  .truing-h { top: 480px; left: 20px; font-size: 60px; }
+  .truing-fact { top: 580px; left: 20px; width: 350px; font-size: 20px; }
+
+  .check { height: 820px; }
+  .board-bench { left: 20px; top: 60px; width: 240px; height: 440px; }
+  .ph-bench { left: 20px; top: 512px; }
+  .check-h { top: 60px; left: 316px; height: 720px; font-size: 32px; }
+  .check-fact { top: 70px; left: 272px; height: 640px; font-size: 16px; }
+
+  .lesson { height: 620px; }
+  .gauge-art { right: 20px; top: -80px; width: 300px; height: 300px; }
+  .lesson-h { top: 260px; left: 20px; font-size: 40px; }
+  .lesson-fact { top: 340px; left: 20px; width: 340px; font-size: 16px; }
+
+  .visit { height: auto; padding: 200px 20px 40px; }
+  .wheel-end { right: -150px; top: -110px; width: 300px; height: 300px; z-index: 2; }
+  .visit-h { position: relative; top: auto; left: auto; font-size: 38px; }
+  .info { position: relative; top: auto; left: auto; width: auto; grid-template-columns: 1fr; gap: 14px; margin-top: 28px; }
+  .info .tel { grid-column: auto; }
+  .info .tel dd { font-size: 40px; }
+  .info dd { font-size: 17px; }
+  .fictional { position: relative; left: auto; bottom: auto; margin-top: 28px; }
+}
