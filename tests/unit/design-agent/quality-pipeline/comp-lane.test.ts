@@ -81,6 +81,10 @@ describe("copy record (DEV-159, Issue #193 T5)", () => {
     const cut = copy();
     Object.assign(cut.items.find((i: { id: string }) => i.id === "fictional"), { text: "実在の工房では", source_fact_ids: ["F9"] });
     expect(checkCopyRecord(cut, spaced).findings.map((x) => x.code)).toContain("FACT_TEXT_NOT_FROM_FACTS");
+    // a soft hyphen in the copy is refused (round 4 M1)
+    const shy = copy();
+    shy.items.find((i: { id: string }) => i.id === "tagline").text = "割れたところに、金の\u00ad線を引く。";
+    expect(copyCodes(shy)).toContain("COPY_SOFT_HYPHEN");
     // a label is taken from the fact the text matches, not from any extra source id (round 3 L1)
     const laundered = copy();
     Object.assign(laundered.items.find((i: { id: string }) => i.id === "name-full"), { text: "架空市架空区架空町一丁目3-2", source_fact_ids: ["F4", "F1"], label: "店名" });
@@ -257,6 +261,22 @@ describe("Claude's review of the comp renders (DEV-159)", () => {
     expect(script.code).toBe(1);
     expect(script.out.findings.map((f: { code: string }) => f.code)).toEqual(["PROTOTYPE_UNSAFE"]);
     expect(script.out.renders).toBeUndefined();
+    // round 4: closed and upper-case shadow roots, hyphenation characters, counters, emphasis marks, browser captions
+    for (const tpl of ['<template shadowrootmode="closed"><p>日本一の名工</p></template>', '<template SHADOWROOTMODE="CLOSED"><p>x</p></template>']) {
+      const r = run((h) => h.replace("</main>", `<div>${tpl}</div></main>`));
+      expect(r.code, tpl).toBe(1);
+      expect(r.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|"), tpl).toMatch(/template/);
+    }
+    const css4 = run(
+      (h) => h.replace("</main>", '<input type="submit"><details><p>x</p></details></main>').replace("線の終わりは、ここ。", "線\u00adの終わりは、ここ。"),
+      `.visit-h { hyphenate-character: "日本一の名工"; }\n.info { counter-set: list-item 100; }\n.tagline { text-emphasis-style: "百"; }`,
+    );
+    expect(css4.code).toBe(1);
+    const d4 = css4.out.findings.map((f: { detail?: string }) => f.detail ?? "").join("|");
+    for (const needle of ["hyphenate-character", "counter-set", "text-emphasis", "soft hyphen", "input type=submit", "details without summary"]) expect(d4, needle).toContain(needle);
+    // an SVG <style> is a style sheet, not page text (no false COMP_TEXT_NOT_IN_COPY)
+    const svgStyle = run((h) => h.replace("</main>", "<svg><style>.q { fill: #000; }</style></svg></main>"));
+    expect(svgStyle.out.findings.filter((f: { code: string }) => f.code === "COMP_TEXT_NOT_IN_COPY")).toEqual([]);
     // renders inside the repository are refused, however the path is spelled (L4, round 2 L1)
     for (const out of [join(REPO, "tmp-renders"), join(REPO, "..renders"), "tmp-renders"]) {
       let code = 0;

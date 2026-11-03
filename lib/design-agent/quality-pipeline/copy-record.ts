@@ -100,6 +100,8 @@ export function checkCopyRecord(raw: unknown, o: { shopId: string; factsSha256: 
   if (new Set(ids).size !== ids.length) f.push({ code: "COPY_IDS_DUPLICATED" });
   const byId = new Map(o.facts.map((x) => [x.id, x.value]));
   for (const i of r.items) {
+    // a soft hyphen is invisible but can show any hyphenation character (CSS hyphenate-character)
+    if (/\u00ad/.test(i.text) || (i.label && /\u00ad/.test(i.label))) f.push({ code: "COPY_SOFT_HYPHEN", item: i.id });
     for (const s of i.source_fact_ids) if (!byId.has(s)) f.push({ code: "COPY_FACT_UNKNOWN", item: i.id, detail: s });
     if (i.claim_type === "fact") {
       if (!i.source_fact_ids.length) f.push({ code: "FACT_WITHOUT_SOURCE", item: i.id });

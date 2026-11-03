@@ -29,7 +29,7 @@ import {
   checkPrototype,
   PrototypeUnsafe,
 } from "../../lib/design-agent/phase2f/prototype-safety";
-import { renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
+import { RenderError, renderPrototype } from "../../lib/design-agent/phase2f/render-prototype";
 import { FactsPack } from "../../lib/design-agent/artifact/schema";
 import { checkCompReview } from "../../lib/design-agent/quality-pipeline/comp-review";
 import {
@@ -176,17 +176,23 @@ async function main(): Promise<number> {
       const bad = [];
       // the comp's style.css, parsed on its own
       const own = new CSSStyleSheet();
-      own.replaceSync(STYLESHEET);
+      own.replaceSync(__COMP_CSS__);
       const links = [...document.querySelectorAll("link")];
       if (links.length !== 1 || links[0].getAttribute("href") !== "style.css" || (links[0].getAttribute("rel") || "").toLowerCase() !== "stylesheet") bad.push("link: exactly one <link rel=\\"stylesheet\\" href=\\"style.css\\"> is allowed");
+      // templates are refused wherever they are, open or closed, before the parser can attach them as shadow roots
+      const raw = new DOMParser().parseFromString(__COMP_HTML__, "text/html");
+      if (raw.querySelector("template")) bad.push("shadow root or <template>: template");
       const stack = [document.documentElement];
       while (stack.length) {
         const n = stack.pop();
         if (n.nodeType === 3) out.push(n.textContent || "");
-        else if (n.nodeType === 1 && n.tagName !== "STYLE" && n.tagName !== "SCRIPT") {
+        else if (n.nodeType === 1 && n.localName !== "style" && n.localName !== "script") {
           // text in a shadow tree or a template is outside this walk: refused
           if (n.shadowRoot || n.tagName === "TEMPLATE") bad.push("shadow root or <template>: " + n.tagName.toLowerCase());
           for (const a of ["alt", "title", "placeholder", "aria-label", "value", "label", "start"]) if (n.hasAttribute(a)) out.push(n.getAttribute(a) || "");
+          // words the browser writes by itself (button captions, file pickers, a details without summary)
+          if (n.localName === "input" && ["submit", "reset", "button", "file", "image"].includes((n.getAttribute("type") || "").toLowerCase())) bad.push("input type=" + n.getAttribute("type"));
+          if (n.localName === "details" && !n.querySelector(":scope > summary")) bad.push("details without summary");
           if (n.style && n.style.length) css.push(["inline", n.style]);
           for (const c of n.childNodes) stack.push(c);
         }
@@ -206,12 +212,16 @@ async function main(): Promise<number> {
         if (content && !["none", "normal", '""', "''"].includes(content)) bad.push("content: " + content);
         const quotes = st.getPropertyValue("quotes").trim();
         if (quotes && !["none", "auto"].includes(quotes)) bad.push("quotes: " + quotes);
-        for (const p of ["list-style-type", "list-style"]) { const v = st.getPropertyValue(p).trim(); if (v && words.test(v)) bad.push(p + ": " + v); }
+        for (const p of ["list-style-type", "list-style", "text-emphasis", "text-emphasis-style", "-webkit-text-emphasis", "-webkit-text-emphasis-style"]) { const v = st.getPropertyValue(p).trim(); if (v && words.test(v)) bad.push(p + ": " + v); }
+        for (const p of ["hyphenate-character", "-webkit-hyphenate-character"]) { const v = st.getPropertyValue(p).trim(); if (v && v !== "auto") bad.push(p + ": " + v); }
+        for (const p of ["counter-set", "counter-reset", "counter-increment"]) { const v = st.getPropertyValue(p).trim(); if (v && v !== "none") bad.push(p + ": " + v); }
       }
       return { texts: out.map((x) => x.trim()).filter(Boolean), sections: [...document.querySelectorAll("[data-section]")].map((x) => x.getAttribute("data-section") || ""), bad };
     }`;
-    const { texts, sections, bad } = (await page.evaluate(`(${EXTRACT.replace("STYLESHEET", () => JSON.stringify(css))})()`)) as { texts: string[]; sections: string[]; bad: string[] };
+    const { texts, sections, bad } = (await page.evaluate(`(${EXTRACT.replace(/__COMP_(CSS|HTML)__/g, (_m, k: string) => JSON.stringify(k === "CSS" ? css : html))})()`)) as { texts: string[]; sections: string[]; bad: string[] };
+    // a soft hyphen is invisible in the text but can show any hyphenation character: refused in the page
     await ctx.close();
+    if (/\u00ad|&shy;|&#0*173;|&#x0*ad;/i.test(html)) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: "soft hyphen (U+00AD) in the page" });
     // CSS may not write words: content, quotes, list markers, counters and @counter-style are refused, as parsed
     for (const b of bad) findings.push({ code: "COMP_CSS_CONTENT_TEXT", detail: b.slice(0, 60) });
     const parsed = CopyRecord.safeParse(copyRaw);
@@ -221,12 +231,20 @@ async function main(): Promise<number> {
           code: "COMP_TEXT_NOT_IN_COPY",
           detail: t.slice(0, 60),
         });
-    const shots = await renderPrototype(
+    let shots: Awaited<ReturnType<typeof renderPrototype>>;
+    try {
+      shots = await renderPrototype(
       browser,
       { html, css },
       new Map(),
       sections,
     );
+    } catch (e) {
+      if (!(e instanceof RenderError)) throw e;
+      findings.push({ code: "COMP_RENDER_FAILED", detail: `${e.message}` });
+      process.stdout.write(`${JSON.stringify({ status: "FAIL", findings }, null, 2)}\n`);
+      return 1;
+    }
     mkdirSync(out, { recursive: true });
     const renders: Record<string, unknown> = {};
     for (const [key, v] of Object.entries(shots)) {
