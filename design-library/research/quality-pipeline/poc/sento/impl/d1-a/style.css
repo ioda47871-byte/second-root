@@ -1,0 +1,52 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: #b8432c; }
+body { color: #241f1b; font-family: "Noto Sans CJK JP", "IPAGothic", sans-serif; font-size: 15px; line-height: 1.9; }
+img { display: block; width: 100%; height: auto; }
+section { padding: 80px 150px; }
+.ph { font-size: 12px; margin-top: 8px; }
+.giant { font-family: "IPAMincho", serif; font-size: 256px; line-height: 1; }
+.fact, .wall-h, .night-h { font-family: "IPAMincho", serif; font-weight: 400; font-size: 38px; line-height: 1.5; }
+.hot { background: #b8432c; color: #f6f1e7; }
+.name-full { font-size: 16px; letter-spacing: 0.3em; }
+.name { font-family: "IPAMincho", serif; font-weight: 400; font-size: 150px; line-height: 1.1; }
+.hot .giant { color: #d4593b; text-align: right; }
+.tagline { font-family: "IPAMincho", serif; font-size: 52px; line-height: 1.4; }
+.lead { margin-top: 20px; font-size: 19px; }
+.warm { background: #dd8a3e; }
+.warm .board { width: 720px; }
+.warm .small { width: 380px; margin-top: 32px; }
+.warm .fact { margin-top: 40px; }
+.warm .giant { color: #e9a462; }
+.cold { background: #2d6a86; color: #f6f1e7; padding: 0 0 80px; }
+.cold .giant { color: #3f7d99; text-align: right; padding-right: 80px; }
+.cold .fact { padding-left: 150px; }
+.cold .ph { padding-left: 150px; }
+.fire { background: #1f1c1a; color: #f6f1e7; }
+.bar { margin-top: 80px; height: 26px; border-radius: 13px; background: #e07a3a; }
+.marks { list-style: none; display: flex; justify-content: space-between; margin-top: 24px; font-size: 22px; }
+.wall { background: #eef0ec; }
+.wall .board { width: 660px; }
+.wall-h { margin-top: 48px; }
+.wall-fact { margin-top: 18px; font-size: 19px; }
+.towel { margin-top: 24px; font-size: 14px; }
+.night { background: #18213a; color: #f6f1e7; }
+.info { margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 28px 48px; }
+.info dt { font-size: 12px; color: #f2a34f; }
+.info dd { font-size: 20px; }
+.info .tel dd { font-size: 44px; color: #ffe2b0; }
+.fictional { margin-top: 48px; font-size: 12px; }
+@media (max-width: 600px) {
+  section { padding: 40px 20px; }
+  .giant { font-size: 120px; }
+  .name { font-size: 84px; }
+  .tagline { font-size: 30px; }
+  .lead { font-size: 15px; }
+  .fact, .wall-h, .night-h { font-size: 24px; }
+  .warm .board, .warm .small, .wall .board { width: auto; }
+  .cold { padding: 0 0 40px; }
+  .cold .fact, .cold .ph { padding-left: 20px; }
+  .cold .giant { padding-right: 20px; }
+  .marks { display: block; font-size: 18px; }
+  .info { grid-template-columns: 1fr; }
+  .info .tel dd { font-size: 32px; }
+}
