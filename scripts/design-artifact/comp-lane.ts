@@ -5,8 +5,11 @@
  *
  * 1. the copy record (<dir>/copy.json): every word's claim type and source (checkCopyRecord)
  * 2. the B-route safety check (checkPrototype: no script, no outside URL, no web font)
- * 3. every text the page can show is a text or label of the copy record: text nodes (SVG text included) and the
- *    alt / title / placeholder / aria-label / value attributes; CSS may not put words on the page (`content: "..."`)
+ * 3. every text the page can show is a text or label of the copy record: text nodes (SVG text included; a line
+ *    broken with <br> is read as one line) and the alt / title / placeholder / aria-label / value / label / start
+ *    attributes. CSS may not put words on the page: written and computed content, quotes, list markers, emphasis
+ *    marks, hyphenation characters and counters are refused, as are templates and shadow roots, a visible <style>,
+ *    and controls the browser captions by itself (see docs/design/comp-lane.md; a denylist, not a proof)
  * 4. render PC 1440 and SP 390 with JavaScript off and the network shut (renderPrototype); write desktop.png and
  *    mobile.png to --out (outside the repository, refused otherwise) and print their SHA-256, size, section boxes,
  *    overflow, and whether <dir>/review.json is of these renders (it is when rendered where the review was made;
@@ -185,7 +188,7 @@ async function main(): Promise<number> {
       const stack = [document.documentElement];
       while (stack.length) {
         const n = stack.pop();
-        if (n.nodeType === 3) out.push(n.textContent || "");
+        if (n.nodeType === 3) { if (!n.__joined) out.push(n.textContent || ""); }
         else if (n.nodeType === 1 && n.localName !== "style" && n.localName !== "script") {
           // text in a shadow tree or a template is outside this walk: refused
           if (n.shadowRoot || n.tagName === "TEMPLATE") bad.push("shadow root or <template>: " + n.tagName.toLowerCase());
@@ -194,6 +197,12 @@ async function main(): Promise<number> {
           if (n.localName === "input" && ["submit", "reset", "button", "file", "image", "date", "datetime-local", "time", "month", "week"].includes((n.getAttribute("type") || "").toLowerCase())) bad.push("input type=" + n.getAttribute("type"));
           if (n.localName === "details" && !n.querySelector(":scope > summary")) bad.push("details without summary");
           if (n.style && n.style.length) css.push(["inline", n.style]);
+          // a line broken with <br> is one line of the record: read the element's own text joined
+          if ([...n.children].some((c) => c.localName === "br")) {
+            const own = [...n.childNodes].filter((c) => c.nodeType === 3);
+            out.push(own.map((c) => c.textContent || "").join(""));
+            for (const c of own) c.__joined = true;
+          }
           for (const c of n.childNodes) stack.push(c);
         }
       }
@@ -222,6 +231,8 @@ async function main(): Promise<number> {
       const textual = (v) => /["']|attr\\(|counters?\\(/.test(v);
       for (const el of document.querySelectorAll("*")) {
         const cs = getComputedStyle(el);
+        // a <style> (or <script>) made visible by CSS shows its source as text
+        if ((el.localName === "style" || el.localName === "script") && cs.display !== "none") bad.push("visible <" + el.localName + ">");
         for (const p of ["list-style-type", "text-emphasis-style", "-webkit-text-emphasis-style"]) { const v = cs.getPropertyValue(p); if (v && textual(v)) bad.push("computed " + p + ": " + v); }
         for (const pseudo of ["::before", "::after", "::marker"]) {
           // an empty string is a decorative pseudo element (a line, a rule): allowed, as in the written check
