@@ -7,7 +7,7 @@ import type { Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { drawCase, parseProbeArgs, runProbe } from "../../../../scripts/design-artifact/n1-browser-probe";
 import { HOSTILE_SVGS, MOUNTAIN, SEAM, SHOP_SHAPES, WHEEL } from "../../../../lib/design-agent/research/decoration-fixtures";
-import { scanDecorationLayers } from "../../../../lib/design-agent/research/decoration-layers";
+import { scanDecorationLayers } from "../../../support/decoration-layers";
 import { launchDecorationBrowser } from "../../../../lib/design-agent/research/decoration-page-browser";
 import { checkDecorationAssetFile, checkDecorationSvg, ownerReviewProblems, type DecorationAsset, type OwnerVisualReview } from "../../../../lib/design-agent/research/decoration-svg";
 
@@ -23,6 +23,11 @@ const NOW = new Date("2026-11-04T12:00:00Z");
  */
 const fixtureReview = (assetSha: string, over: Partial<Record<keyof OwnerVisualReview, unknown>> = {}) =>
   ({ reviewed_by: "owner", reviewed_at: "2026-11-01", asset_sha256: assetSha, decision: "approved", note: "TEST FIXTURE - not an owner review", ...over }) as OwnerVisualReview;
+
+/** A record claiming the owner: either quote, the key quoted or not (L4). */
+const OWNER_RECORD = /reviewed_by["']?\s*:\s*["']owner["']/;
+const OWNER_RECORD_GREP = `owner_visual_review|reviewed_by["']?[[:space:]]*:[[:space:]]*["']owner["']`;
+const FIXTURE_MARK = "TEST FIXTURE - not an owner review";
 
 const without = (r: OwnerVisualReview, key: keyof OwnerVisualReview) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== key));
 
@@ -125,21 +130,28 @@ describe("owner_visual_review: required, approved, bound to the file's bytes", (
   });
 
   it("the repository holds no owner review record: only the code, its tests (fixtures), the design doc and the task notes name the field", () => {
-    const r = spawnSync("git", ["grep", "-l", "-E", "owner_visual_review|reviewed_by\"?\\s*:\\s*\"owner\""], { cwd: REPO, encoding: "utf8" });
+    const r = spawnSync("git", ["grep", "-l", "-E", OWNER_RECORD_GREP], { cwd: REPO, encoding: "utf8" });
     expect(r.error).toBeUndefined();
     expect(r.status).toBe(0); // the checker names the field itself: never a vacuous empty result
     const hits = r.stdout.split("\n").filter(Boolean).sort();
     expect(hits).toContain("lib/design-agent/research/decoration-svg.ts");
     const allowed = (h: string) => ["lib/design-agent/research/decoration-svg.ts", "docs/design/n1-decoration-svg.md", ".ai/tasks.json", ".ai/reviews/DEV-165.md"].includes(h) || /^tests\/unit\/design-agent\/research\/[a-z0-9-]+\.test\.ts$/.test(h);
     expect(hits.filter((h) => !allowed(h))).toEqual([]);
-    // in the tests, every such review is the marked fixture
+    // in the tests, EVERY such review (each matched record, not once per file) carries the fixture marker within 2 lines
+    let records = 0;
     for (const h of hits.filter((x) => x.startsWith("tests/"))) {
-      const text = readFileSync(join(REPO, h), "utf8");
-      if (/reviewed_by"?\s*:\s*"owner"/.test(text)) expect(text).toContain("TEST FIXTURE - not an owner review");
+      const lines = readFileSync(join(REPO, h), "utf8").split("\n");
+      lines.forEach((line, i) => {
+        if (!OWNER_RECORD.test(line)) return;
+        records += 1;
+        expect(lines.slice(Math.max(0, i - 2), i + 3).join("\n"), `${h}:${i + 1}`).toContain(FIXTURE_MARK);
+      });
     }
-    // no data file (JSON) anywhere records a decorative SVG asset or a review
+    expect(records).toBeGreaterThanOrEqual(2); // this file's fixtureReview and decoration-svg.test.ts's: never vacuous
+    // no data file (JSON) anywhere records a decorative SVG asset or a review (.ai/tasks.json names the field: status 0)
     const data = spawnSync("git", ["grep", "-l", "-E", "decoration_svg|owner_visual_review|asset_sha256", "--", "*.json"], { cwd: REPO, encoding: "utf8" });
     expect(data.error).toBeUndefined();
+    expect(data.status).toBe(0);
     expect(data.stdout.split("\n").filter(Boolean).filter((h) => h !== ".ai/tasks.json")).toEqual([]);
   });
 });
@@ -148,6 +160,7 @@ describe("transforms: skewX / skewY refused by default, and so is a shear withou
   const NS = `xmlns="http://www.w3.org/2000/svg"`;
   const svg = (inner: string, root = "") => `<svg ${NS} width="100" height="100" viewBox="0 0 100 100"${root}>${inner}</svg>`;
   const codes = (s: string) => checkDecorationSvg(Buffer.from(s, "latin1")).findings.map((f) => f.code);
+  const stretched = (inner: string) => `<svg ${NS} width="200" height="100" viewBox="0 0 100 100" preserveAspectRatio="none">${inner}</svg>`;
 
   it.each([
     ["skewX", svg(`<g transform="skewX(20)"/>`), "SVG_TRANSFORM_SKEW"],
@@ -161,6 +174,17 @@ describe("transforms: skewX / skewY refused by default, and so is a shear withou
     ["a shear from scale then rotate in one list", svg(`<rect width="1" height="1" transform="scale(2 1) rotate(30)"/>`), "SVG_TRANSFORM_SHEAR"],
     ["a shear from nested groups", svg(`<g transform="scale(2 1)"><g transform="rotate(30)"><rect width="1" height="1"/></g></g>`), "SVG_TRANSFORM_SHEAR"],
     ["a shearing gradientTransform", svg(`<defs><linearGradient id="g" gradientTransform="matrix(1 0.3 0 1 0 0)"/></defs>`), "SVG_TRANSFORM_SHEAR"],
+    // L1: preserveAspectRatio="none" with a width/height aspect other than the viewBox's stretches per axis inside the file
+    ["a rotate under the root's non-uniform viewBox scale (none, 200×100 over a 100×100 viewBox)", stretched(`<rect width="10" height="10" transform="rotate(30)"/>`), "SVG_TRANSFORM_SHEAR"],
+    ["a rotated group under the root's non-uniform viewBox scale", stretched(`<g transform="rotate(-4)"><rect width="10" height="10"/></g>`), "SVG_TRANSFORM_SHEAR"],
+    ["a rotate under the stretch, one level down", stretched(`<g transform="translate(5 5)"><g transform="rotate(45)"><rect width="1" height="1"/></g></g>`), "SVG_TRANSFORM_SHEAR"],
+    // L2: values that overflow are refused, never judged on Infinity or NaN
+    ["scale(1e200 1) rotate(30) (a real shear whose dot product overflows)", svg(`<g transform="scale(1e200 1) rotate(30)"/>`), "SVG_TRANSFORM_SHEAR"],
+    ["a shear at a tiny scale (no longer under an absolute threshold)", svg(`<g transform="scale(1e-6) matrix(1 0 0.5 1 0 0)"/>`), "SVG_TRANSFORM_SHEAR"],
+    ["a list whose product overflows to Infinity", svg(`<g transform="scale(1e200) scale(1e200)"/>`), "SVG_TRANSFORM_RANGE"],
+    ["a list that overflows and comes back (NaN on the way)", svg(`<g transform="scale(1e200) scale(1e200) scale(0)"/>`), "SVG_TRANSFORM_RANGE"],
+    ["nested groups whose product overflows", svg(`<g transform="scale(1e200)"><g transform="scale(1e200)"><rect width="1" height="1"/></g></g>`), "SVG_TRANSFORM_RANGE"],
+    ["a gradientTransform that overflows", svg(`<defs><linearGradient id="g" gradientTransform="scale(1e300) scale(1e300)"/></defs>`), "SVG_TRANSFORM_RANGE"],
     ["matrix with 4 numbers", svg(`<g transform="matrix(1 0 0 1)"/>`), "SVG_ATTRIBUTE_VALUE"],
     ["rotate with 2 numbers", svg(`<g transform="rotate(10 5)"/>`), "SVG_ATTRIBUTE_VALUE"],
     ["translate with 3 numbers", svg(`<g transform="translate(1 2 3)"/>`), "SVG_ATTRIBUTE_VALUE"],
@@ -177,10 +201,22 @@ describe("transforms: skewX / skewY refused by default, and so is a shear withou
     ["a mirror", `<g transform="scale(-1 1)"/>`],
     ["a rotation matrix", `<g transform="matrix(0 1 -1 0 10 0)"/>`],
     ["translate, rotate in nested groups", `<g transform="translate(10, 10)"><g transform="rotate(45)"><rect width="1" height="1"/></g></g>`],
+    ["a tiny uniform scale with a rotate (columns compared as unit vectors)", `<g transform="scale(1e-200) rotate(30)"/>`],
+    ["a huge uniform scale with a rotate", `<g transform="scale(1e150) rotate(30)"/>`],
   ])("passes: %s", (_, inner) => expect(codes(svg(inner))).toEqual([]));
 
-  it("the three shops' shapes still pass (none uses a transform)", () => {
+  it.each([
+    ["none with the viewBox's own aspect (uniform)", `<svg ${NS} width="200" height="200" viewBox="0 0 100 100" preserveAspectRatio="none"><rect width="10" height="10" transform="rotate(30)"/></svg>`],
+    ["a stretched aspect without none (meet: uniform)", `<svg ${NS} width="200" height="100" viewBox="0 0 100 100"><rect width="10" height="10" transform="rotate(30)"/></svg>`],
+    ["a stretched aspect with slice (uniform)", `<svg ${NS} width="200" height="100" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice"><rect width="10" height="10" transform="rotate(30)"/></svg>`],
+    ["none and stretched, but rotate(90) keeps the axes (no shear)", `<svg ${NS} width="200" height="100" viewBox="0 0 100 100" preserveAspectRatio="none"><rect width="10" height="10" transform="rotate(90)"/></svg>`],
+    ["none and stretched, no rotate (the stretch alone is per-axis scale)", `<svg ${NS} width="200" height="100" viewBox="0 0 100 100" preserveAspectRatio="none"><rect width="10" height="10" transform="translate(5 5) scale(2 1)"/></svg>`],
+  ])("passes (L1): %s", (_, s) => expect(codes(s)).toEqual([]));
+
+  it("the three shops' shapes still pass (none uses a transform; seam and mountain use none with the viewBox's own aspect)", () => {
     for (const s of [SEAM, WHEEL, MOUNTAIN]) expect(codes(s)).toEqual([]);
+    expect(SEAM).toContain(`width="100" height="100" viewBox="0 0 100 100" preserveAspectRatio="none"`);
+    expect(MOUNTAIN).toContain(`width="660" height="600" viewBox="0 0 660 600" preserveAspectRatio="none"`);
     for (const s of SHOP_SHAPES) expect(s.svg).not.toMatch(/transform/i);
   });
 });
@@ -243,6 +279,16 @@ describe("the cross-browser probe (scripts/design-artifact/n1-browser-probe.ts)"
       }
     }, 180_000);
 
+    it("a browser that dies mid-run: every run is a RUN_ERROR finding (exit 1 in the CLI), never a pass", async () => {
+      const dead = await launchDecorationBrowser();
+      await dead.close();
+      const s = await runProbe(dead, "chromium");
+      expect(s.result).toBe("fail");
+      expect(s.findings.length).toBeGreaterThan(0);
+      expect(s.findings.filter((f) => f.endsWith(": RUN_ERROR"))).toHaveLength(2 * (SHOP_SHAPES.length + HOSTILE_SVGS.length));
+      for (const c of s.cases) for (const r of c.runs) expect(r.error).not.toBeNull();
+    }, 120_000);
+
     it("positive controls: a host-page request and host-page ink outside the box are caught (the measures are not vacuous)", async () => {
       const box = { width: 100, height: 100 };
       const req = await drawCase(browser, "control", SEAM, box, false, `<img src="http://n1-probe-hostile.invalid/control.png" alt="" style="position:absolute;left:0;top:0;width:1px;height:1px">`);
@@ -286,18 +332,24 @@ describe("phase C conditions: what today's phase A layer scan and geometry say a
 
   it("the decoration covering the disclosure: the same, with the DISCLOSURE codes", async () => {
     const r = await scan(`<main><p data-comp-disclosure="">これは架空の店です</p>${IMG}</main>`, OVER);
+    expect(r.page_css).toEqual(expect.arrayContaining(["CSS_PROPERTY"]));
     expect(r.geometry).toEqual(["DISCLOSURE_COVERED", "DISCLOSURE_IMAGE_OVERLAP"]);
     expect(r.layer_codes).toEqual(["DISCLOSURE_NONCONTENT_OVERLAP", "PAINT_ORDER_COVER"]);
+    expect(r.layer_blocking).toEqual([]);
   }, 60_000);
 
   it("the decoration over plain (not protected) text: only the advisory PAINT_ORDER_COVER — no gate protects ordinary text from it", async () => {
     const r = await scan(`<main><p>ただの文</p>${IMG}</main>`, OVER);
+    expect(r.page_css).toEqual(expect.arrayContaining(["CSS_PROPERTY"])); // positioned: refused before render today
     expect(r.geometry).toEqual([]);
     expect(r.layer_codes).toEqual(["PAINT_ORDER_COVER"]);
+    expect(r.layer_blocking).toEqual([]);
+    expect(r.covers).toBe(1);
   }, 60_000);
 
   it("under a fact with z-index -1 (painted below): STACKING_CONTEXT is the blocking code; V4 and the geometry still fire whatever the paint order", async () => {
     const r = await scan(`<main><p>${FACT}</p>${IMG}</main>`, `${OVER} img{z-index:-1}`);
+    expect(r.page_css).toEqual(expect.arrayContaining(["CSS_PROPERTY"]));
     expect(r.layer_codes).toEqual(["FACT_NONCONTENT_OVERLAP", "STACKING_CONTEXT"]);
     expect(r.layer_blocking).toEqual(["STACKING_CONTEXT"]);
     expect(r.covers).toBe(0);
@@ -308,6 +360,7 @@ describe("phase C conditions: what today's phase A layer scan and geometry say a
     const r = await scan(`<main>${IMG}<p class="lift">${FACT}</p></main>`, `img{display:block;width:300px;height:120px}.lift{position:relative;top:-100px}`);
     expect(r.page_css).toEqual(expect.arrayContaining(["CSS_PROPERTY"]));
     expect(r.layer_codes).toEqual(["FACT_NONCONTENT_OVERLAP"]);
+    expect(r.layer_blocking).toEqual([]);
     expect(r.covers).toBe(0);
     expect(r.stacking).toBe(0);
     expect(r.geometry).toEqual(["FACT_IMAGE_OVERLAP"]);
@@ -317,6 +370,7 @@ describe("phase C conditions: what today's phase A layer scan and geometry say a
     const r = await scan(`<main>${IMG}<p class="lift">${FACT}</p></main>`, `img{display:block;width:300px;height:120px}.lift{margin-top:-100px}`);
     expect(r.page_css).toEqual(["CSS_VALUE"]);
     expect(r.layer_codes).toEqual(["FACT_NONCONTENT_OVERLAP"]);
+    expect(r.layer_blocking).toEqual([]);
     expect(r.geometry).toEqual(["FACT_IMAGE_OVERLAP"]);
   }, 60_000);
 
@@ -328,6 +382,7 @@ describe("phase C conditions: what today's phase A layer scan and geometry say a
   it("fully clear of text but positioned: the layer scan and geometry pass; only the stylesheet allowlist refuses position", async () => {
     const r = await scan(`<main><p>${FACT}</p>${IMG}</main>`, `img{position:absolute;left:400px;top:300px;width:300px;height:120px}`);
     expect(r.layer_codes).toEqual([]);
+    expect(r.layer_blocking).toEqual([]);
     expect(r.geometry).toEqual([]);
     expect(r.page_css).toEqual(expect.arrayContaining(["CSS_PROPERTY"]));
   }, 60_000);
@@ -346,7 +401,34 @@ describe("phase C conditions: what today's phase A layer scan and geometry say a
   it("the checks are box-based: the seam's box is mostly transparent, yet a fact under any part of it fires", async () => {
     // the seam's ink is the line near x = 70 % of the box; the fact sits at the box's left, far from the line
     const r = await scan(`<main><p>${FACT}</p>${IMG}</main>`, `img{position:absolute;left:0;top:0;width:600px;height:40px}`);
+    expect(r.page_css).toEqual(expect.arrayContaining(["CSS_PROPERTY"]));
     expect(r.geometry).toContain("FACT_IMAGE_OVERLAP");
     expect(r.layer_codes).toContain("FACT_NONCONTENT_OVERLAP");
+    expect(r.layer_blocking).toEqual([]);
+  }, 60_000);
+
+  // Fresh Review M1: an overlap needs neither position nor a negative value. A grid item wider than its track, aligned to
+  // the track's end, overflows back over the first column. The production stylesheet allowlist passes this CSS.
+  const GRID = `main{display:grid;grid-template-columns:200px 200px}img{display:block;justify-self:end;width:400px;height:120px}`;
+  const IMG400 = IMG.replace('width="300"', 'width="400"');
+
+  it("M1: in flow, no position, no negative value — over plain text: every gate passes; only the advisory PAINT_ORDER_COVER fires", async () => {
+    const r = await scan(`<main><p>ただの文ただの文ただの文</p>${IMG400}</main>`, GRID);
+    expect(r.page_static).toEqual([]);
+    expect(r.page_css).toEqual([]); // the production allowlist does NOT refuse this placement
+    expect(r.geometry).toEqual([]);
+    expect(r.layer_codes).toEqual(["PAINT_ORDER_COVER"]);
+    expect(r.layer_blocking).toEqual([]); // advisory only today: phase C must make it blocking or decide (C-3)
+    expect(r.covers).toBe(1);
+    expect(r.stacking).toBe(0);
+    expect(r.unexpected_requests).toEqual([]);
+  }, 60_000);
+
+  it("M1: the same in-flow overlap over a fact — the geometry gate still blocks (FACT_COVERED, FACT_IMAGE_OVERLAP)", async () => {
+    const r = await scan(`<main><p>${FACT}</p>${IMG400}</main>`, GRID);
+    expect(r.page_css).toEqual([]);
+    expect(r.geometry).toEqual(["FACT_COVERED", "FACT_IMAGE_OVERLAP"]);
+    expect(r.layer_codes).toEqual(["FACT_NONCONTENT_OVERLAP", "PAINT_ORDER_COVER"]);
+    expect(r.layer_blocking).toEqual([]);
   }, 60_000);
 });

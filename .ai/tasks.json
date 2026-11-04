@@ -7515,7 +7515,7 @@
         "承認の記録がリポジトリに無いことをテストで固定する (テストの fixture は印付きでメモリの中だけ)",
         "transform の skewX・skewY を SVG_TRANSFORM_SKEW で拒む。名前を使わない傾きは SVG_TRANSFORM_SHEAR。3店の形は通る",
         "scripts/design-artifact/n1-browser-probe.ts (chromium・firefox・webkit、JS 有効と無効、ページのディレクトリの外の要求と箱の外のインク、終了 0/1/2、--out は無いディレクトリだけ)。Chromium で pass、Firefox・WebKit は BLOCKED と文書に書く",
-        "lib/design-agent/research/decoration-layers.ts で、今の段 A の層の検査と幾何が装飾の <img> の上・下・離れた置き方に何を出すかを示し、段 C が示すべきことを文書にする。comp-impl は変えない",
+        "tests/support/decoration-layers.ts (テストの支え。comp-impl を import するので lib/ に置かない) で、今の段 A の層の検査と幾何が装飾の <img> の上・下・離れた置き方に何を出すかを示し、段 C が示すべきことを文書にする。comp-impl は変えない",
         "docs/design/n1-decoration-svg.md (2.4・2.11・4.1・5・6・7)"
       ],
       "required_tests": [
@@ -7526,6 +7526,7 @@
       "allowed_scope": [
         "lib/design-agent/research/",
         "scripts/design-artifact/n1-browser-probe.ts",
+        "tests/support/decoration-layers.ts",
         "tests/unit/design-agent/research/",
         "docs/design/n1-decoration-svg.md",
         ".ai/"
@@ -7545,7 +7546,7 @@
         "オーナーの WSL に Firefox・WebKit を入れること (npx playwright install、install-deps に sudo が要るならそこで止める)",
         "名前を使わない傾き (SVG_TRANSFORM_SHEAR) を拒むことの確認"
       ],
-      "note": "研究だけ。N1 は有効にしていない。承認の記録は0件。Firefox・WebKit はこの container では BLOCKED (オーナーの WSL での手順は文書の 4.1)。段 C は未着手で、今の重なりは CSS の許可一覧と幾何の IMAGE_OVERLAP が止めている。"
+      "note": "研究だけ。N1 は有効にしていない。承認の記録は0件。Firefox・WebKit はこの container では BLOCKED (オーナーの WSL での手順は文書の 4.1)。段 C は未着手。守る文字 (事実・表示) への重なりは幾何の IMAGE_OVERLAP・COVERED が止める。守っていない普通の文への流れの中の重なり (grid のはみ出し) は、今どこでも止まらない (助言の PAINT_ORDER_COVER だけ。文書 7 の C-3)。Fresh Review 1回目 (C0/H0/M1/L7) を反映した。"
     }
   ]
 }

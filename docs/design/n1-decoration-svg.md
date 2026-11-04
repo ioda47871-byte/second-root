@@ -80,7 +80,9 @@
 - `transform` (`matrix`・`translate`・`scale`・`rotate` と数だけ。引数の数は SVG どおり: `matrix` 6、`translate`・`scale` 1〜2、`rotate` 1 か 3)
   - **`skewX`・`skewY` は拒む** (DEV-165、オーナーの判断)。名前があれば大文字小文字を問わず `SVG_TRANSFORM_SKEW`。`gradientTransform` も同じ。
   - 名前を使わない傾きも拒む: `matrix()`、1つの値の中の組み合わせ (`scale(2 1) rotate(30)`)、入れ子の `g` の `transform` の積の線形の部分が直交でなければ `SVG_TRANSFORM_SHEAR`。回転・鏡映・軸ごとの拡大だけなら通る (`rotate(30) scale(2 1)` は回して伸ばした形で、傾きではない)。
-  - 残る穴: ページの側で `<img>` の箱の縦横比を変えると (`preserveAspectRatio="none"` の図)、回した形が外から傾いて見えることがある。ファイルの中の検査では見えない。2.11 のオーナーの確認は、記録した寸法で描いた絵を見る。
+  - **ファイルの中の伸び縮みも積に入れる** (Fresh Review L1)。ルートが `preserveAspectRatio="none"` で、`width`・`height` の縦横比が `viewBox` の縦横比と違うと、ファイルは軸ごとに伸びる。その中の `rotate()` は傾きになる。だからこの伸び縮み (`scale(width/viewBox幅, height/viewBox高さ)`) を、子のすべての `transform` の前に掛けてから傾きを調べる。`none` でも縦横比が同じなら、`meet`・`slice` なら、一様なので何もしない。3店の形 (つぐ手の線・ゆげ湯の山は `none` だが縦横比が同じ、輪は `none` でない) は通る。
+  - **有限でない値は拒む** (Fresh Review L2)。1つの値の中の途中、または入れ子の積が有限の数を外れたら (`scale(1e200) scale(1e200)` など) `SVG_TRANSFORM_RANGE`。Infinity・NaN で判断しない。傾きは列を単位ベクトルにして比べる (なす角の cos の絶対値 > 1e-9) ので、`scale(1e200 1) rotate(30)` のような大きい値や小さい値でも、傾きを隠せず、作れもしない (これは `SVG_TRANSFORM_SHEAR`)。
+  - 残る穴: **ページの側で** `<img>` の箱の縦横比を変えると (`preserveAspectRatio="none"` の図)、回した形が外から傾いて見えることがある。これはファイルの中の検査では見えない。2.11 のオーナーの確認は、記録した寸法で描いた絵を見る。
 - `id` (英字で始まる 41 字まで)
 - ルートだけ: `xmlns` (SVG の名前空間だけ)、`width`・`height`・`viewBox`・`preserveAspectRatio`
 - グラデーション: 座標、`gradientUnits`・`gradientTransform`・`spreadMethod`。`stop` は `offset`・`stop-color`・`stop-opacity`
@@ -277,7 +279,10 @@ npx tsx scripts/design-artifact/n1-browser-probe.ts --browser chromium|firefox|w
 - ページは `http://n1-probe.invalid/probe/<名前>.html` としてメモリから出す。SVG はその隣。**ほかの要求はすべて中断する** (外へは何も出ない)。ブラウザ自身の `/favicon.ico` は別に記録し、数えない。
 - 各図を `<img>` で、JS 有効と JS 無効の2回描く。記録すること: 要求のすべてと、ページのディレクトリの外への要求、`<img>` の箱の内と外のインク (白の上で、どれかの色 < 250)、ページの title が変わったか。
 - 見つけたもの: ページのディレクトリの外への要求、箱の外のインク、3店の形の箱の中にインクが無い、title が変わった、検査器が3店の形を拒む・敵対的な形を通す。
-- 終了の符号: 0 見つけたもの無し、1 見つけたもの有り、2 拒んだ (使い方の誤り、`--out` がある、ブラウザが入っていない・起動できない)。
+- 終了の符号 (Fresh Review L6 で正確にした):
+  - 0: すべての図を描き、見つけたもの無し。
+  - 1: すべての図を描き、見つけたもの有り。**途中で落ちた描画** (ページが読めない、写真が撮れない、文脈が開けない、ブラウザが途中で死ぬ) は、その描画の `RUN_ERROR` という見つけたものになる。だから**途中で落ちれば終了 1** で、0 にはならない。残りの図も描く (ブラウザが死んだ後は、それぞれ `RUN_ERROR`)。テストで固定した。
+  - 2: 拒んだ・走らなかった (使い方の誤り、`--out` がある・親が無い、ブラウザが入っていない・起動できない (`BLOCKED`)、図の外の誤り (`summary.json` が書けない など))。
 - テストは、プローブの測りが空振りでないことも確かめる (ページの側に外への `<img>` と箱の外の黒い四角を足すと、それぞれ捕まる)。
 
 ### 結果 (2026-11-04、この container)
@@ -334,7 +339,16 @@ Chromium の内訳 (JS 有効 / JS 無効):
    npx tsx scripts/design-artifact/n1-browser-probe.ts --browser webkit  --out /tmp/n1-probe-webkit;  echo "exit=$?"
    ```
 
-4. 終了 0 なら、`summary.json` の `browser_version` と `result: "pass"` を、この表に足す (別の PR)。終了 1 なら `findings` を見て、N1 を有効にしない。終了 2 なら、使い方・ブラウザの入り方を確かめる。突然 `Killed` されたら、preflight の §2 で OOM を確かめる。
+4. 終了 0 なら、`summary.json` の `browser_version` と `result: "pass"` を、この表に足す (別の PR)。終了 1 なら `findings` を見て (`RUN_ERROR` は途中で落ちた描画)、N1 を有効にしない。終了 2 なら、使い方・ブラウザの入り方を確かめる。突然 `Killed` されたら、preflight の §2 で OOM を確かめる。
+
+## 4.2 既知の Low (DEV-165 の Fresh Review 1回目。直さず記録するもの)
+
+- **L3・L5 (記録だけ)。** 有効にする前の段 C か、承認の道を決めるときに見直す。
+  - ごく小さな傾き (列のなす角の cos の絶対値が 1e-9 以下、例: `matrix(1 0 0.0000000001 1 0 0)`) は通る。目に見えない。
+  - `gradientTransform` の傾きは、それだけで調べる。参照する図形の `transform`・ルートの伸び縮み・`objectBoundingBox` の箱の縦横比とは合わせない。正方形でない図形に `objectBoundingBox` の `rotate(45)` のグラデーションを塗ると、色の帯は傾いて見える。色の濃淡で、形ではない。
+  - `reviewed_at` の「未来」には1日の余裕がある (時差のため)。翌日の日付も通る。承認の日付は主張にすぎない (2.11) ので、ここを厳しくしても守りは増えない。
+  - 承認のオブジェクトの「キーがちょうど5つ」は、自分のキーだけを見る。継承したキーは見ない (JSON から作る記録は継承を持たない)。
+- **L7 (直した)。** 7 の表の各行で、テストが CSS の許可一覧・層の検査の止める符号・幾何を確かめていない行があった。足した。
 
 ## 5. 有効にする前の確認 (すべて必要、オーナーの承認が要る)
 
@@ -364,11 +378,11 @@ Chromium の内訳 (JS 有効 / JS 無効):
   1. 承認を「オーナーが書いた」ことを、どう機械で確かめるか (オーナー自身の commit か、PR の承認と結びつけるか、別の置き場か)。
   2. 名前を使わない傾き (`SVG_TRANSFORM_SHEAR`) も拒んでよいか。`skewX`・`skewY` を拒む理由と同じだと考えて拒んだ。
   3. 装飾の `<img>` の役割を `decoration` にするか `media` にするか (7 の C-1)。
-  4. 守っていない普通の文字 (事実でも表示でもない文) に装飾が重なることを、段 C で拒むか (7 の C-3)。
+  4. 守っていない普通の文字 (事実でも表示でもない文) に装飾が重なることを、段 C で拒むか (7 の C-3)。流れの中の重なり (grid のはみ出し) は、今どこでも止まらない。
 
 ## 7. 段 C の守りの条件 — 今の段 A の検査は、装飾の `<img>` に何を言うか (DEV-165)
 
-`lib/design-agent/research/decoration-layers.ts` は、研究の CSS で装飾の SVG の `<img>` を文字の上・下・離れた所に置いたページを Chromium で描き、**今ある**検査をそのまま走らせる。comp-impl は1行も変えていない。
+`tests/support/decoration-layers.ts` (テストの支え。comp-impl を import するので `lib/`・`scripts/` には置かない。`tests/unit/design-agent/comp-impl/isolation.test.ts` の許可を広げない) は、研究の CSS で装飾の SVG の `<img>` を文字の上・下・離れた所に置いたページを Chromium で描き、**今ある**検査をそのまま走らせる。comp-impl は1行も変えていない。
 
 - 段 A の層の検査 (`layers.ts` の `LAYER_SCRIPT`、`render.ts` の `layerScan`、符号は `verify.ts` の `layerCodes`。止めるかどうかは `BLOCKING_LAYER_CODES`)。
 - 1 px の幾何の検査 (`page-scripts.ts` の `GEOMETRY_SCRIPT`。`FACT_IMAGE_OVERLAP`・`FACT_COVERED` などは、今の run で止める)。
@@ -382,6 +396,8 @@ Chromium の内訳 (JS 有効 / JS 無効):
 | 事実の上 (`position:absolute`、文字の後に描く) | `CSS_PROPERTY` ほか | — | `PAINT_ORDER_COVER`・`FACT_NONCONTENT_OVERLAP` | `FACT_COVERED`・`FACT_IMAGE_OVERLAP` |
 | 表示の上 (同じ) | 同じ | — | `PAINT_ORDER_COVER`・`DISCLOSURE_NONCONTENT_OVERLAP` | `DISCLOSURE_COVERED`・`DISCLOSURE_IMAGE_OVERLAP` |
 | 守っていない文の上 (同じ) | 同じ | — | `PAINT_ORDER_COVER` | なし |
+| **守っていない文の上、流れの中** (`display:grid` の列より広い `<img>` を `justify-self:end` で前の列へはみ出させる。位置指定も負の値も無い) | **なし** (今の許可一覧は通す) | — | `PAINT_ORDER_COVER` | **なし** — **今、どこでも止まらない** |
+| 事実の上、流れの中 (同じ grid) | なし | — | `PAINT_ORDER_COVER`・`FACT_NONCONTENT_OVERLAP` | `FACT_COVERED`・`FACT_IMAGE_OVERLAP` |
 | 事実の下 (`z-index:-1`) | 同じ | `STACKING_CONTEXT` | `FACT_NONCONTENT_OVERLAP` | `FACT_IMAGE_OVERLAP` |
 | 事実の下 (流れの中の `<img>` の上へ、文を `position:relative` で動かす。重ね合わせの文脈は無い) | `CSS_PROPERTY` ほか | — | `FACT_NONCONTENT_OVERLAP` | `FACT_IMAGE_OVERLAP` |
 | 事実の下 (負の `margin` だけ。位置指定なし) | `CSS_VALUE` | — | `FACT_NONCONTENT_OVERLAP` | `FACT_IMAGE_OVERLAP` |
@@ -392,18 +408,20 @@ Chromium の内訳 (JS 有効 / JS 無効):
 
 分かったこと:
 
-- **今、重ねる置き方はすべて止まる。** ただし止めているのは、ほとんど**描く前の CSS の許可一覧** (位置指定・負の値) と、**幾何の `IMAGE_OVERLAP`** (どんな `<img>` も守る文字に触れてはならない。描く順を問わない) である。層の検査の `PAINT_ORDER_COVER`・`*_NONCONTENT_OVERLAP` は助言で、止めない。`STACKING_CONTEXT` は `z-index` のときだけ止める。段 C が無いので、こうなっている。
-- 離れた所に置いた装飾は、層の検査と幾何を通る。流れの中なら、今の CSS の許可一覧も通る。**N1 で最初に許せるのは、文字に重ならない流れの中の装飾だけ**である。
+- **守る文字 (事実・表示) に重なる置き方は、今すべて止まる。** 止めているのは**幾何の `*_IMAGE_OVERLAP`・`*_COVERED`** (どんな `<img>` も守る文字に触れてはならない。描く順を問わない) で、位置指定・負の値を使えば**描く前の CSS の許可一覧**も拒む。流れの中の重なり (grid の列からのはみ出し) でも、幾何は事実への重なりを止める。
+- **守っていない普通の文への重なりは、流れの中なら、今どこでも止まらない** (Fresh Review M1 で訂正。前の版の「重ねる置き方はすべて止まる」「流れの中の装飾は文字に重ならない」は誤りだった)。`position` も負の値も無い CSS (`display:grid` の列より広い `<img>` を `justify-self:end` で置く) は今の許可一覧を通り、幾何は守っていない文を見ないので、出るのは層の検査の助言の `PAINT_ORDER_COVER` だけである。位置指定で重ねたときも、止めているのは許可一覧の `position` で、重なりそのものではない。
+- 層の検査の `PAINT_ORDER_COVER`・`*_NONCONTENT_OVERLAP` は助言で、止めない。`STACKING_CONTEXT` は `z-index` のときだけ止める。段 C が無いので、こうなっている。
+- 離れた所に置いた装飾は、層の検査と幾何を通る。流れの中なら、今の CSS の許可一覧も通る。**N1 で最初に許せるのは、文字に重ならない流れの中の装飾だけ**であり、「重ならない」は今の検査では普通の文について保証されない (C-3 が要る)。
 - N1 のページの許可一覧 (`checkDecorationPage`) は、どの置き方でも `[]` である。重なりは見ない。それは段 C の仕事である。
 - 装飾の SVG の `<img>` は、層の検査では `media` と数えられる (`img` は宣言が無ければ `media`)。`decoration` と宣言すると `ROLE_MISMATCH` で止まる。
 - 層の検査と幾何は、**箱で**判断する。SVG の透明な部分も、重なりに数える。保守的で、安全側である。
-- 守っていない普通の文の上の装飾は、助言の `PAINT_ORDER_COVER` しか出ない。
+- 守っていない普通の文の上の装飾は、位置指定でも流れの中でも、助言の `PAINT_ORDER_COVER` しか出ない。流れの中なら、それ以外に何も拒まない。
 
 **段 C が N1 の前に示すこと** (どれも、まだ無い):
 
 - C-1 **役割。** 装飾の SVG の `<img>` を、層の検査でどの役割にするか決める。`media` のままなら、段 C で予定している V4 の `hero_overlay` の例外 (`media` は、下に描くことを示せば事実の下に置ける) が装飾にも及んでしまう。`decoration` にするなら、`ROLE_MISMATCH` の規則と、DEV-083 V4 の「`decoration` は描く順を問わず守る文字に触れない」を `<img>` に掛ける形が要る。**N1 の装飾には、後者 (描く順を問わず、守る文字に触れない) を掛けるべきだと考える。**
 - C-2 **守る文字。** 事実と表示の行の箱に、装飾の `<img>` の箱が 0.5 px を超えて触れない。これを、すべての幅 (V6 の 1 px の通し) で示す。今の `FACT_IMAGE_OVERLAP`・`DISCLOSURE_IMAGE_OVERLAP` がこれに当たり、止める側にある。**段 C でこれを緩めない。**
-- C-3 **描く順。** 装飾の `<img>` が守っていない文に重なるなら、文より前に描くこと (`PAINT_ORDER_COVER` が 0) を、助言ではなく止める側で示す。または、重なりそのものを拒む。どちらにするかはオーナーの判断。
+- C-3 **描く順と、守っていない文への重なり。** 装飾の `<img>` が守っていない文に重なるなら、文より前に描くこと (`PAINT_ORDER_COVER` が 0) を、助言ではなく止める側で示す。または、重なりそのものを拒む。どちらにするかはオーナーの判断。**流れの中の重なり (`display:grid` の列より広い `<img>` を `justify-self:end` で前の列へはみ出させる。位置指定も負の値も無く、今の CSS の許可一覧を通る) を必ず含める。**今これは助言の `PAINT_ORDER_COVER` しか出さず、どこでも止まらない (表の行と、`decoration-n1-verification.test.ts` の M1 のテスト)。段 C は、これを止める側にするか、許すと決めるかのどちらかを示すまで、N1 を有効にしない。
 - C-4 **位置指定と重ね合わせの文脈。** 位置指定 (`position`・`z-index`・負の `margin`) を装飾に許すなら、V2 の描く順の模型が Chromium と一致すること (段 A の照合のテスト) を、装飾の `<img>` を含む対で示す。`STACKING_CONTEXT` を止める側から外す前に、それが要る。
 - C-5 **箱と絵。** 箱で判断するのを続けるか、インクで判断するか。インクで判断するなら、V3 の層の証明 (装飾を隠した絵と比べる) を `<img>` に広げる。それまでは箱で判断する。
 - C-6 **他のブラウザ。** 4.1 のプローブが Firefox・WebKit で pass。

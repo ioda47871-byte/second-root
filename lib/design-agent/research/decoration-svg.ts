@@ -55,6 +55,13 @@ const pathData = (v: string) => /^[MmLlHhVvCcSsQqTtAaZz0-9.,eE+\-\s]*$/.test(v) 
  * `matrix()`, or a transform list or chain of nested `transform`s whose composed linear part shears (its columns are
  * not orthogonal), is SVG_TRANSFORM_SHEAR: the same slant without the name. Argument counts follow SVG: matrix 6,
  * translate and scale 1–2, rotate 1 or 3.
+ *
+ * The root's own viewBox mapping is part of that product when it is non-uniform: with `preserveAspectRatio="none"` and
+ * a `width`/`height` aspect other than the viewBox's, the file stretches its content per axis, and a `rotate()` inside
+ * becomes a slant. That scale is composed before every child transform (Fresh Review L1). A product (or any step of a
+ * list) that leaves the finite numbers, e.g. `scale(1e200 1) rotate(30)` overflowing, is SVG_TRANSFORM_RANGE: refused,
+ * never judged on Infinity or NaN (Fresh Review L2). The shear test compares unit columns, so a huge or tiny scale
+ * neither hides nor fakes a shear.
  */
 const TRANSFORM_FN = new RegExp(`(matrix|translate|scale|rotate)\\(\\s*(${NUM}(?:\\s*,?\\s*${NUM}){0,5})\\s*\\)`, "g");
 const TRANSFORM_ARGS: Record<string, readonly number[]> = { matrix: [6], translate: [1, 2], scale: [1, 2], rotate: [1, 3] };
@@ -64,6 +71,9 @@ const transform = (v: string) => v.trim().length > 0 && v.replace(TRANSFORM_FN, 
 type Linear = readonly [number, number, number, number];
 const IDENTITY: Linear = [1, 0, 0, 1];
 const times = (m: Linear, n: Linear): Linear => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3]];
+const NON_FINITE: Linear = [NaN, NaN, NaN, NaN];
+const finiteLinear = (m: Linear) => m.every((x) => Number.isFinite(x));
+/** The product, or NON_FINITE as soon as any step leaves the finite numbers (NaN then stays through `times`). */
 function transformList(v: string): Linear | null {
   let m = IDENTITY;
   for (const t of v.matchAll(TRANSFORM_FN)) {
@@ -78,11 +88,39 @@ function transformList(v: string): Linear | null {
       n = [Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r)];
     }
     m = times(m, n);
+    if (!finiteLinear(m)) m = NON_FINITE;
   }
   return m;
 }
-/** A linear map shears when its columns are not orthogonal (rotation, mirroring and per-axis scale alone keep them so). */
-const shears = (m: Linear) => Math.abs(m[0] * m[2] + m[1] * m[3]) > 1e-9 * Math.max(1, Math.hypot(m[0], m[1]) * Math.hypot(m[2], m[3]));
+/**
+ * What a composed linear part says: SVG_TRANSFORM_RANGE when it (or a column length) is not finite, SVG_TRANSFORM_SHEAR
+ * when its columns are not orthogonal (rotation, mirroring and per-axis scale alone keep them so), else null. The columns
+ * are compared as unit vectors (|cos| of the angle between them > 1e-9). A zero column (scale(0)) does not shear.
+ */
+function transformProblem(m: Linear): "SVG_TRANSFORM_RANGE" | "SVG_TRANSFORM_SHEAR" | null {
+  if (!finiteLinear(m)) return "SVG_TRANSFORM_RANGE";
+  const p = Math.hypot(m[0], m[1]);
+  const q = Math.hypot(m[2], m[3]);
+  if (!Number.isFinite(p) || !Number.isFinite(q)) return "SVG_TRANSFORM_RANGE";
+  if (p === 0 || q === 0) return null;
+  return Math.abs((m[0] / p) * (m[2] / q) + (m[1] / p) * (m[3] / q)) > 1e-9 ? "SVG_TRANSFORM_SHEAR" : null;
+}
+/**
+ * The root's viewBox mapping when it is non-uniform (`preserveAspectRatio="none"`, width/height aspect ≠ viewBox aspect):
+ * scale(width / vbWidth, height / vbHeight). Identity otherwise, or when a value does not parse (other findings refuse it).
+ */
+function rootViewBoxScale(attrs: ReadonlyMap<string, string>): Linear {
+  if (attrs.get("preserveAspectRatio") !== "none") return IDENTITY;
+  const vb = VIEWBOX.exec(attrs.get("viewBox") ?? "");
+  const w = pxValue(attrs.get("width"));
+  const h = pxValue(attrs.get("height"));
+  if (!vb || w === null || h === null) return IDENTITY;
+  const vw = Number(vb[3]);
+  const vh = Number(vb[4]);
+  if (!(w > 0 && h > 0 && vw > 0 && vh > 0)) return IDENTITY;
+  return [w / vw, 0, 0, h / vh];
+}
+const pxValue = (v: string | undefined) => (v !== undefined && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px)?$/.test(v) ? Number(v.replace(/px$/, "")) : null);
 const oneOf =
   (...w: string[]) =>
   (v: string) =>
@@ -247,20 +285,25 @@ function checkSvg(bytes: Uint8Array): SvgCheck {
       }
     }
     // a shear without the skew name: the element's own transform composed with every enclosing one (gradientTransform alone)
+    // (the root's non-uniform viewBox scale is already in the parent's product: see rootViewBoxScale below)
     const ownTransform = attrs.get("transform");
     const here = ownTransform !== undefined ? times(linear[linear.length - 1] ?? IDENTITY, transformList(ownTransform) ?? IDENTITY) : (linear[linear.length - 1] ?? IDENTITY);
-    if (ownTransform !== undefined && shears(here)) f.push({ code: "SVG_TRANSFORM_SHEAR", detail: `${name}@transform` });
+    const ownProblem = ownTransform !== undefined ? transformProblem(here) : null;
+    if (ownProblem) f.push({ code: ownProblem, detail: `${name}@transform` });
     const gradientOwn = attrs.get("gradientTransform");
-    if (gradientOwn !== undefined && shears(transformList(gradientOwn) ?? IDENTITY)) f.push({ code: "SVG_TRANSFORM_SHEAR", detail: `${name}@gradientTransform` });
+    const gradientProblem = gradientOwn !== undefined ? transformProblem(transformList(gradientOwn) ?? IDENTITY) : null;
+    if (gradientProblem) f.push({ code: gradientProblem, detail: `${name}@gradientTransform` });
+    const isRoot = name === "svg" && stack.length === 0 && root === null;
     const idValue = attrs.get("id");
     if (idValue) {
       if (ids.has(idValue)) f.push({ code: "SVG_ID_DUPLICATE", detail: idValue });
       ids.set(idValue, name);
     }
-    if (name === "svg" && stack.length === 0 && root === null) root = attrs;
+    if (isRoot) root = attrs;
     if (!selfClosing) {
       stack.push(name);
-      linear.push(here);
+      // the root's children live in its viewBox space: a non-uniform viewBox scale comes before their transforms (L1)
+      linear.push(isRoot ? times(here, rootViewBoxScale(attrs)) : here);
       if (stack.length > DECORATION_SVG_LIMITS.depth) return out("SVG_TOO_DEEP");
     } else if (stack.length === 0) closedRoot = true;
   }
@@ -268,9 +311,8 @@ function checkSvg(bytes: Uint8Array): SvgCheck {
   if (!root) return out("SVG_NO_ROOT");
   if (root.get("xmlns") !== SVG_NS) f.push({ code: "SVG_NAMESPACE" });
   for (const r of refs) if (!/Gradient$/.test(ids.get(r) ?? "")) f.push({ code: "SVG_REF_NOT_A_GRADIENT", detail: r });
-  const px = (v: string | undefined) => (v !== undefined && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px)?$/.test(v) ? Number(v.replace(/px$/, "")) : null);
-  const width = px(root.get("width"));
-  const height = px(root.get("height"));
+  const width = pxValue(root.get("width"));
+  const height = pxValue(root.get("height"));
   const viewBox = root.get("viewBox");
   if (!viewBox) f.push({ code: "SVG_NO_VIEWBOX" });
   else {

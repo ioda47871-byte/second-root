@@ -9,15 +9,17 @@
  * every other request is aborted and counted. JavaScript is off (the harness's evaluate still runs). The research CSS is
  * added as a style element after load, like decoration-page-browser.ts. The same CSS is also given to the production
  * stylesheet allowlist (page-css.ts `pageCssProblems`) so the report shows what refuses it before any render today.
- * Nothing in a lane imports this module (pinned by tests/unit/design-agent/research/decoration-svg.test.ts).
+ * It is TEST SUPPORT, not a lib/ module: comp-impl may be imported only by its listed users in lib/ and scripts/
+ * (tests/unit/design-agent/comp-impl/isolation.test.ts), so this harness lives under tests/ and only the research test
+ * (tests/unit/design-agent/research/decoration-n1-verification.test.ts) imports it (pinned by decoration-svg.test.ts).
  */
 import type { Browser } from "playwright";
-import { pageCssProblems } from "../comp-impl/page-css";
-import { GEOMETRY_SCRIPT, GeometrySchema } from "../comp-impl/page-scripts";
-import { layerScan } from "../comp-impl/render";
-import { BLOCKING_LAYER_CODES, layerCodes } from "../comp-impl/verify";
-import type { LayerScan } from "../comp-impl/layers";
-import { checkDecorationPage, type DecorationAssetRef } from "./decoration-svg";
+import { pageCssProblems } from "../../lib/design-agent/comp-impl/page-css";
+import { GEOMETRY_SCRIPT, GeometrySchema } from "../../lib/design-agent/comp-impl/page-scripts";
+import { layerScan } from "../../lib/design-agent/comp-impl/render";
+import { BLOCKING_LAYER_CODES, layerCodes } from "../../lib/design-agent/comp-impl/verify";
+import type { LayerScan } from "../../lib/design-agent/comp-impl/layers";
+import { checkDecorationPage, type DecorationAssetRef } from "../../lib/design-agent/research/decoration-svg";
 
 export const DECORATION_LAYERS_ORIGIN = "http://decoration-layers.invalid";
 const PAGE_URL = `${DECORATION_LAYERS_ORIGIN}/page/index.html`;

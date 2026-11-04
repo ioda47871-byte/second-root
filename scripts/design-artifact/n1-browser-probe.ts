@@ -14,15 +14,22 @@
  * title, a shop shape the checker refuses or a hostile one it passes.
  *
  * Read-only: it reads nothing but its own fixtures and writes only `<out>/summary.json`; `--out` must not exist (its
- * parent must). The summary also goes to stdout. Exit: 0 no finding, 1 a finding, 2 refused (usage, `--out` exists, the
- * browser is not installed or failed). Never calls a model, a generator or the network; installs nothing.
+ * parent must). The summary also goes to stdout. Exit codes, exactly:
+ *   0  every case ran and there is no finding (summary written);
+ *   1  every case ran and there is at least one finding (summary written). A case that fails mid-run — a page that does
+ *      not load, a screenshot that fails, a context that cannot be opened, the browser dying part way — is caught for
+ *      that run and recorded as the finding `RUN_ERROR` (the run's `error` holds the first line), so a crash mid-run is
+ *      exit 1, never 0; the remaining cases still run (after a dead browser, each of them is a RUN_ERROR too);
+ *   2  refused or not run: usage, `--out` exists or its parent does not, the browser cannot be launched (`BLOCKED`), or
+ *      an error outside any case (e.g. `summary.json` cannot be written). No summary is promised on exit 2.
+ * Never calls a model, a generator or the network; installs nothing.
  *
  * Only Chromium is installed in the cloud container. Firefox and WebKit are run on the owner's machine (the WSL command
  * is in the design doc, after the WSL resource preflight).
  */
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { chromium, firefox, webkit, type Browser, type BrowserType } from "playwright";
+import { chromium, firefox, webkit, type Browser, type BrowserContext, type BrowserType } from "playwright";
 import sharp from "sharp";
 import { HOSTILE_SVGS, SHOP_SHAPES } from "../../lib/design-agent/research/decoration-fixtures";
 import { checkDecorationSvg } from "../../lib/design-agent/research/decoration-svg";
@@ -51,8 +58,10 @@ export async function drawCase(browser: Browser, name: string, svg: string, box:
   const favicon = `${PROBE_ORIGIN}/favicon.ico`;
   const requests: string[] = [];
   const run: ProbeRun = { javascript, requests, outside_requests: [], browser_own: [], ink_inside: 0, ink_outside: 0, title_changed: false, error: null };
-  const ctx = await browser.newContext({ viewport: { width: box.width + 2 * MARGIN, height: box.height + 2 * MARGIN }, deviceScaleFactor: 1, javaScriptEnabled: javascript, serviceWorkers: "block" });
+  let ctx: BrowserContext | undefined;
   try {
+    // opened inside the try: a browser that died part way is this run's RUN_ERROR (exit 1), not an exit 2
+    ctx = await browser.newContext({ viewport: { width: box.width + 2 * MARGIN, height: box.height + 2 * MARGIN }, deviceScaleFactor: 1, javaScriptEnabled: javascript, serviceWorkers: "block" });
     const page = await ctx.newPage();
     page.on("request", (r) => {
       requests.push(r.url());
@@ -78,7 +87,7 @@ export async function drawCase(browser: Browser, name: string, svg: string, box:
   } catch (e) {
     run.error = (e as Error).message.split("\n")[0]!.slice(0, 200);
   } finally {
-    await ctx.close();
+    await ctx?.close().catch(() => undefined);
   }
   const seen = [...new Set(requests)];
   run.requests = seen;
