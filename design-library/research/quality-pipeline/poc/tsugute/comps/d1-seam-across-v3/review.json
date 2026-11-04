@@ -3,18 +3,18 @@
   "shop_id": "fictional-kintsugi-tsugute",
   "direction_id": "d1-seam-across-v3",
   "comp": {
-    "html_sha256": "b6933fc93fcddb7ad78c6732247f9f8199832c31b1a6970b501ce6dc7c74f505",
-    "css_sha256": "90d9ab199db3872960adc2cbf8010e8ac3bc288e5bd395654c4f0615c0213e0c",
+    "html_sha256": "e1de8e5123aa99606ecfad848251d63f4fca521773a85a07d06f378cbbfa0ea0",
+    "css_sha256": "b8229ff51bfc3a2e087dba7b28ee38debc5f85082667644b389dd387e16285fe",
     "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
   },
   "renders": {
     "desktop": {
-      "sha256": "c2a45bcd6005abc1f4898c6f86363d95a65a8db001e529fe3242a8b8cd3b39a8",
+      "sha256": "7144915cd6d5a5823cb363d19cb31df895fdeb8ffe6e590b8b63f73ea5889313",
       "width": 1440,
       "height": 6086
     },
     "mobile": {
-      "sha256": "dc6606b5569d0c7bf052d33e8de64826db70eeffbc5bdf006383ef892a123a56",
+      "sha256": "ae5304fb5db96d0ebc1f0946d0d5af42b2a09d435abc2130e9385f4af39942b6",
       "width": 390,
       "height": 6329
     }
@@ -22,8 +22,8 @@
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-04T09:00:00Z",
-    "how": "Read tool: PC render at half size in 2 pieces (0-3043, 3043-6086); SP render at 0.85 as 1 sheet of 4 columns of 1583px; before that crops of each changed section at 0.6-1.0 while iterating"
+    "viewed_at": "2026-11-04T14:00:00Z",
+    "how": "Read tool: PC render at 0.3 as 1 sheet of 2 columns of 3100px; SP render at 0.6 as 1 sheet of columns of 1600px; before that, after the Fresh Review fixes, the C renders at 1440, 1199, 1024, 900, 768, 601, 600 and 390 as sheets at 0.42 and crops at 0.6-1.0"
   },
   "viewed_crops": {
     "desktop": [
@@ -139,6 +139,15 @@
           "y": 4300,
           "w": 1440,
           "h": 1786
+        }
+      },
+      {
+        "what": "Fresh Review の後: 写真の名札を #3d362d にした。板の影の上でも 6:1 以上 (前は割れの名札が 4.2:1)",
+        "box": {
+          "x": 900,
+          "y": 1500,
+          "w": 540,
+          "h": 100
         }
       }
     ],
@@ -300,6 +309,7 @@
     "器と破片はまだ描いた絵で、焼き物の質感は写真に及ばない",
     "待 を断面の区画へ上げたので、乾く時間の区画の左下が少し空いた",
     "PC の線の入口と出口は 1440 の板の位置に合わせた。1200〜1439 では数 px ずれる",
+    "Fresh Review round 1 (H1): 前の記録は 1024・768 を見て線と文字は確かめたと書いたが、601〜1199 で線が 割れ・欠け・ひび と説明・修理名を横切っていた。直したあと、1440・1199・1024・900・768・601・600・390 の8つの幅でだけ、線が文字の上に描いた画素を数えて 0 とし、描画を見て確かめた。ほかに画素だけで数えた幅のうち、360 では線が 線の断面 の 面 の上を通る (直していない)",
     "区画のラベル・待つ などの創作の文はオーナーの確認が要る",
     "カンプと C は同じソースで描く。C との差は測れない (C はカンプの実装の再現として置く)"
   ],

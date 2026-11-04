@@ -3,18 +3,18 @@
   "shop_id": "fictional-sento-yuge",
   "direction_id": "d1-heat-descent-v2",
   "comp": {
-    "html_sha256": "b00054956df5ed849728f783fad94f3f1c236e66d3da3e4b82b1e4ac500b098b",
-    "css_sha256": "ca4ee30e12441b0a673527175477705351c543a479f65c4efc67e81eb6fe2720",
+    "html_sha256": "be0910012e6f6b46d02ac04afea6fe8b9f5d337065282e136a5d8e6b80ef8122",
+    "css_sha256": "734f7221acad11c80183c3be9ee243764424f7f63bbde37b873622304a71c9ef",
     "copy_sha256": "50432f7b2cb60b0a8b7bb1c2e0b032dd1492fe4ac7257d11a0636eae083d359c"
   },
   "renders": {
     "desktop": {
-      "sha256": "8006db5ef2501b0589aa5bafb50edaae202d79fc2aa295767e524dbb201c3b35",
+      "sha256": "a3ad2951d2a2e8938507e11be9333d524d33f688bf9af9aae2b958bdd1acebe7",
       "width": 1440,
       "height": 4889
     },
     "mobile": {
-      "sha256": "c4a1fd5a905c58f8e5d03b6926d975e78f675054207291970b682231a6971cd0",
+      "sha256": "8432208a1fbfb6cb9022fb8298c0304be4b07637f0547c8762cb5ae37de18978",
       "width": 390,
       "height": 4324
     }
@@ -22,8 +22,8 @@
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-04T09:00:00Z",
-    "how": "Read tool: PC render at half size in 2 pieces (0-2445, 2445-4889); SP render at 0.9 as 1 sheet of 3 columns of 1442px; before that crops of the wall and night sections at 0.5-0.8 while iterating"
+    "viewed_at": "2026-11-04T14:00:00Z",
+    "how": "Read tool: PC render at 0.3 as 1 sheet of 2 columns of 3100px; SP render at 0.6 as 1 sheet of columns of 1600px; before that, after the Fresh Review fixes, the C renders at 1440, 1199, 1024, 900, 768, 601, 600 and 390 as sheets at 0.42 and crops at 0.6-1.0"
   },
   "viewed_crops": {
     "desktop": [
@@ -64,7 +64,7 @@
   "observations": {
     "desktop": [
       {
-        "what": "熱い・ぬるい・冷たい・沸く の区画は前の版のまま。温度計の帯が左を下る",
+        "what": "熱い・ぬるい・冷たい・沸く の区画の構図は前の版のまま。温度計の帯が左を下る。巨大な語は幅に合わせて縮むようにした (1440 の大きさは同じ)",
         "box": {
           "x": 0,
           "y": 0,
@@ -129,7 +129,7 @@
         }
       },
       {
-        "what": "ぬるい・冷たい・沸く の区画は前の版のまま",
+        "what": "ぬるい・冷たい・沸く の区画。ぬるい を 112px にし、い が右の端で切れなくなった",
         "box": {
           "x": 0,
           "y": 844,
@@ -254,7 +254,7 @@
   ],
   "remaining": [
     "写真は役割と大きさだけの仮の板のまま。山の絵も描いた仮の板である",
-    "上半分 (熱い〜沸く) は今回変えていない",
+    "Fresh Review round 1 (L5): 上半分は前の版のままで、390 で ぬるい の い が右の端で切れ、768 で 冷たい と 沸く が重なっていた (1101〜1300 でも重なり、1199 ではのれんが 帰り道 に掛かっていた)。巨大な語とのれんを幅で縮めて直し、1440・1199・1024・900・768・601・600・390 (重なりはほかに 1300・1150・1101・1100・861・860・700・480・360) で、語どうしの箱の重なり・端のはみ出し・文字の上の画素を確かめた",
     "1024 では のれんの竿が壁の最後の行の 20px 下にあり、窮屈",
     "のれんの ゆ と、のれんの色は創作で、オーナーの確認が要る (事実は、のれんの色が季節で変わることだけ)",
     "カンプと C は同じソースで描く。C との差は測れない"

@@ -227,7 +227,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 42,
+          "caption_lines_total": 51,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -251,7 +251,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 43,
+          "caption_lines_total": 51,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -266,7 +266,7 @@
       },
       "tablet_1024": {
         "score": {
-          "motif_coverage": 0.85,
+          "motif_coverage": 0.853,
           "motif_largest_gap_px": 1043,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
@@ -275,7 +275,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 40,
+          "caption_lines_total": 49,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -290,7 +290,7 @@
       },
       "tablet_768": {
         "score": {
-          "motif_coverage": 0.83,
+          "motif_coverage": 0.832,
           "motif_largest_gap_px": 1023,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
@@ -299,7 +299,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 40,
+          "caption_lines_total": 51,
           "words_broken": [],
           "horizontal_overflow": false
         },

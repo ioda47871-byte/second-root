@@ -1,10 +1,7 @@
 /* DEV-167 — 輪 の C d1-v3: カンプ comps/d1-wheel-hub-v2 の実装 (experimental_fidelity、研究専用、本番用ではない)。
-   カンプと同じ描画を狙い、カンプのソースをそのまま使う (README.md)。前の版は ../d1-v2 で、そのまま残す。 */
-/* 輪 d1 v2 — experimental_fidelity (DEV-160, research only, not production). v2: the repair stations hang at the
-   ends of the wheel's spokes (PC) and on one spoke run down the page (SP); see README.md.
-   From v1:
-   An implementation of comps/d1-wheel-hub in the B-method lane: content sections flow on grids; the wheel, the
-   outlined words, the gauge and the tilted boards are decorative layers placed over the flow. */
+   カンプと同じ描画を狙い、カンプのソースをそのまま使う (README.md)。前の版は ../d1-v2 で、そのまま残す。
+   PC 1000 以上は車輪のスポーク4本が黄で伸びて4つの修理の板を吊る。601〜999 は板が格子に並ぶ。600 以下は1本のスポークが
+   ページを下り、板は短い腕で吊られる。車輪・巨大な語・空気入れの計器・傾いた板は流れの上に置く飾りの層。 */
 :root {
   --concrete: #e7e5df;
   --asphalt: #26272a;
@@ -22,6 +19,8 @@ html { background: var(--concrete); }
 body { color: var(--ink); font-family: var(--gothic); font-size: 15px; line-height: 1.8; letter-spacing: .04em; }
 .page { position: relative; overflow: hidden; }
 section { position: relative; }
+/* Japanese breaks only between phrases: the HTML marks each phrase end with <wbr>; a phrase too long for its box still breaks */
+h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 
 /* photo placeholders: role and proportion only */
 .photo {
@@ -100,6 +99,8 @@ section { position: relative; }
 .check { background: var(--concrete); padding: 7.6vw var(--pad) 8vw calc(var(--pad) + 2.8vw); }
 .check-grid { display: grid; grid-template-columns: 52.8vw 1fr auto auto; column-gap: 3vw; align-items: start; }
 .bench .board { aspect-ratio: 760 / 560; transform: rotate(-1.5deg); }
+/* the board's drop shadow paints over its caption (a filter paints above in-flow text): the caption sits on its own ground, above the shadow, in ink */
+.ph-bench { position: relative; z-index: 1; width: fit-content; margin-top: 14px; padding: 2px 8px 2px 0; background: var(--concrete); color: var(--ink); }
 .check-fact { grid-column: 3; margin-top: 2vw; writing-mode: vertical-rl; font-family: var(--mincho); font-size: clamp(16px, 1.53vw, 22px); letter-spacing: .1em; max-height: 620px; }
 .check-h { grid-column: 4; writing-mode: vertical-rl; font-family: var(--mincho); font-weight: 400; font-size: clamp(30px, 3.47vw, 50px); letter-spacing: .12em; max-height: 780px; }
 
@@ -150,7 +151,7 @@ section { position: relative; }
   .st-d .ph { top: .9vw; bottom: auto; }
   .st-d .fig { --ratio: 260 / 200; }
   .st-d .board { transform: rotate(3deg); }
-  .st-d { left: 20.31vw; top: 3.53vw; --w: 18.06vw; --ratio: 260 / 200; --rot: 8deg; --lx: -6vw; --ly: 17vw; --tone: #c4c0b4; }
+  .st-d { left: 20.31vw; top: 3.53vw; --w: 18.06vw; --ratio: 260 / 200; --rot: 8deg; --lx: -7vw; --ly: 17vw; --tone: #c4c0b4; }
   .st-a { left: 20.22vw; top: 29.07vw; --w: 19.44vw; --ratio: 280 / 210; --rot: 12.9deg; --lx: -3.01vw; --ly: 17.50vw; --tone: #cbc6ba; }
   .st-c { left: 43.92vw; top: 30.43vw; --w: 20.83vw; --ratio: 300 / 220; --rot: 7.2deg; --lx: -1.83vw; --ly: 17.57vw; --tone: #c2c4c4; }
   .st-b { left: 62.13vw; top: 52.60vw; --w: 20.83vw; --ratio: 300 / 220; --rot: 1.2deg; --lx: -0.32vw; --ly: 16.60vw; --tone: #c8c3b8; }

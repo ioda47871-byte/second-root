@@ -1,9 +1,8 @@
 /* DEV-167 — つぐ手 の C d1-v4: カンプ comps/d1-seam-across-v3 の実装 (experimental_fidelity、研究専用、本番用ではない)。
-   カンプと同じ描画を狙い、カンプのソースをそのまま使う (README.md)。前の版は ../d1-v3 で、そのまま残す。 */
-/* つぐ手 d1 v2 — experimental_fidelity (研究専用、本番用ではない)。
-   カンプ comps/d1-seam-across-v2 を、B方式の隔離された描画レーンの中で「実装として」再現する。
-   区画の高さは中身で決まる (min-height だけ)。PC 1200 以上はカンプの構図、601〜1199 と 600 以下は縦積み。
-   金の線は、PC では区画ごとの SVG が前の区画の終わりの位置から始まり、縦積みでは区画ごとの縦の帯が同じ x を通る。 */
+   カンプと同じ描画を狙い、カンプのソースをそのまま使う (README.md)。前の版は ../d1-v3 で、そのまま残す。
+   区画の高さは中身で決まる (min-height だけ)。PC 1200 以上はカンプの構図。601〜1199 は線が x 70% を縦に通り、壊れ方の板と言葉は
+   線の両側の列に分かれる (線は列の間の 56px の溝を通る)。600 以下は線が中央を通り、文字は地の帯に乗って線の上に出る。
+   PC の線は区画ごとの SVG が前の区画の終わりの位置から始まり、板の入口と出口を通る。 */
 :root {
   --washi: #f1ebdf;
   --washi-deep: #e6dccb;
@@ -58,7 +57,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 .layer-head .eyebrow { margin-bottom: 18px; color: var(--gold-hi); }
 .together-copy .eyebrow { margin-bottom: 18px; color: var(--gold-hi); }
 .visit-head .eyebrow { margin-bottom: 14px; }
-.ph-label { font-size: 13px; letter-spacing: .08em; color: var(--caption); margin-top: 10px; }
+/* the board's drop shadow falls on its own caption, so the caption is darker than --caption: 4.5:1 or more on the shadowed ground */
+.ph-label { font-size: 13px; letter-spacing: .08em; color: #3d362d; margin-top: 10px; }
 
 /* ghosts: giant outlined words crossing into the section before */
 .ghost { position: absolute; z-index: 1; font-family: var(--mincho); line-height: 1; color: transparent; -webkit-text-stroke: 1.5px var(--gold); white-space: nowrap; pointer-events: none; }
@@ -282,10 +282,12 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 
 /* ================= tablet 601–1199: the shards' words sit right of the line, so the right 30% is used ================= */
 @media (min-width: 601px) and (max-width: 1199px) {
-  .shard, .shard-ware, .shard-kake, .shard-hibi { display: grid; grid-template-columns: calc(var(--spine-x) - 6% - 28px) 56px 1fr; align-items: center; padding: 0 4% 64px 6%; }
-  .shard .board { order: 0; grid-column: 1; grid-row: 1; width: 100%; margin: 0; }
+  /* the side margins are columns, not padding, so every % here is of the section's full width, the same box the line's
+     --spine-x is measured in: the 56px gutter is centred on the line at every width (padding made the % shrink with it) */
+  .shard, .shard-ware, .shard-kake, .shard-hibi { display: grid; grid-template-columns: 6% calc(var(--spine-x) - 6% - 28px) 56px 1fr 4%; align-items: center; padding: 0 0 64px; }
+  .shard .board { order: 0; grid-column: 2; grid-row: 1; width: 100%; margin: 0; }
   .shard-kake .board { width: 88%; margin-left: 12%; }
-  .shard .words { grid-column: 3; grid-row: 1; margin: 0; }
+  .shard .words { grid-column: 4; grid-row: 1; margin: 0; }
   .kanji { font-size: clamp(64px, 8.5vw, 96px); }
   .cap { font-size: 15px; }
   .damage-h { margin-right: 4%; }

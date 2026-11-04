@@ -3,27 +3,27 @@
   "shop_id": "fictional-bicycle-repair-wa",
   "direction_id": "d1-wheel-hub-v2",
   "comp": {
-    "html_sha256": "c5f0edd6a45859a76c4de00933dfad9c5e8f1532d628826ca7359cca62049862",
-    "css_sha256": "9d95938f3a182f02c8972d1e9fc85328c0d6f7f7fe8cd61a0db6596479a5dca4",
+    "html_sha256": "80395856a72f0260f90e8ddf70ab7adbe5fbe7cf2e3d45fabc367c00834f1bc9",
+    "css_sha256": "701dff824b6aacfc3b3145d21e7ab3373a0582b4f12706704a65a03c41db974a",
     "copy_sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780"
   },
   "renders": {
     "desktop": {
-      "sha256": "b787c114e77fb52b24a4a2acf2edc56c9a77daded1d4b4614b91e96cfe00c875",
+      "sha256": "fb7098123fa2b55c24adcaa3e80de595ea4f527c5127385cb85ba659858eaf64",
       "width": 1440,
       "height": 5292
     },
     "mobile": {
-      "sha256": "4abb96e08daa4b74bfb0b59d40cda725a2cf4fc21e5e6d10374bb9995fc556da",
+      "sha256": "5e6896241977f6d61be6757f783d17402eb45a7fc0871af2826312120167ca1a",
       "width": 390,
-      "height": 5338
+      "height": 5346
     }
   },
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-04T09:00:00Z",
-    "how": "Read tool: PC render at half size in 2 pieces (0-2646, 2646-5292); SP render at 0.85 as 1 sheet of 4 columns of 1335px; before that crops of the spokes section and SP hero at 0.5-1.0 while iterating"
+    "viewed_at": "2026-11-04T14:00:00Z",
+    "how": "Read tool: PC render at 0.3 as 1 sheet of 2 columns of 3100px; SP render at 0.6 as 1 sheet of columns of 1600px; before that, after the Fresh Review fixes, the C renders at 1440, 1199, 1024, 900, 768, 601, 600 and 390 as sheets at 0.42 and crops at 0.6-1.0"
   },
   "viewed_crops": {
     "desktop": [
@@ -45,25 +45,25 @@
         "x": 0,
         "y": 0,
         "w": 390,
-        "h": 1335
+        "h": 1337
       },
       {
         "x": 0,
-        "y": 1335,
+        "y": 1337,
         "w": 390,
-        "h": 1335
+        "h": 1337
       },
       {
         "x": 0,
-        "y": 2670,
+        "y": 2674,
         "w": 390,
-        "h": 1335
+        "h": 1337
       },
       {
         "x": 0,
-        "y": 4005,
+        "y": 4011,
         "w": 390,
-        "h": 1333
+        "h": 1335
       }
     ]
   },
@@ -130,6 +130,15 @@
           "y": 3990,
           "w": 1440,
           "h": 1302
+        }
+      },
+      {
+        "what": "Fresh Review の後: 作業台の写真の名札は、板の影の上に出る地の帯に乗り、墨の文字 (13:1)。行は句の境で折れる (締めて・直します が割れない)",
+        "box": {
+          "x": 560,
+          "y": 2830,
+          "w": 880,
+          "h": 1000
         }
       }
     ],
@@ -264,7 +273,8 @@
   "remaining": [
     "写真は役割と大きさだけの仮の板のまま",
     "768 (601〜999px) では駅は格子のままで、スポークにつながらない",
-    "締める の る は右の端で少し切れる (前の版から)",
+    "締める の る は、どの幅でも右の端から少し出て切れる (1440 で 20px。前の版から。まわる が左の端から出るのと同じ、端を越える語として残した)",
+    "語の途中の改行は、文に句の境の <wbr> を入れ、文字の要素に keep-all を掛けて減らした。確かめたのは 1440・1199・1024・900・768・601・600・390 の8つの幅の行の切れ目で、ほかの幅は確かめていない",
     "SP の背骨は Hero の SVG と駅の区画の帯の2つでつなぐ。幅が変わると数 px ずれうる",
     "カンプと C は同じソースで描く。C との差は測れない"
   ],

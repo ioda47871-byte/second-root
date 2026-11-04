@@ -45,7 +45,7 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 .hot-name { align-self: start; }
 .name-full { font-family: var(--mincho); font-size: 16px; letter-spacing: .3em; }
 .name { margin-top: 40px; font-family: var(--mincho); font-weight: 400; font-size: 150px; line-height: 1.05; writing-mode: vertical-rl; letter-spacing: .06em; }
-.giant-hot { right: 60px; top: 60px; font-size: 470px; writing-mode: vertical-rl; color: #d4593b; z-index: 2; }
+.giant-hot { right: 60px; top: 60px; font-size: min(470px, 32.65vw); writing-mode: vertical-rl; color: #d4593b; z-index: 2; }
 .tagline { font-family: var(--mincho); font-size: 52px; line-height: 1.4; letter-spacing: .06em; }
 .lead { margin-top: 22px; font-family: var(--mincho); font-size: 19px; border-top: 1px solid rgba(246, 241, 231, .6); padding-top: 14px; max-width: 440px; }
 
@@ -65,7 +65,7 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   repeating-radial-gradient(circle at 40% 45%, rgba(255, 255, 255, .0) 0 9px, rgba(255, 244, 228, .35) 10px 11px, rgba(255, 255, 255, 0) 12px 22px),
   linear-gradient(150deg, #f6d9b0, #e2a46a); }
 .warm-fact { grid-column: 1; grid-row: 2; margin-top: 30px; max-width: 640px; font-family: var(--mincho); font-size: 38px; line-height: 1.55; color: var(--ink); position: relative; z-index: 4; }
-.giant-warm { left: 110px; bottom: -130px; font-size: 280px; color: transparent; -webkit-text-stroke: 2px #fff3e2; z-index: 4; }
+.giant-warm { left: 110px; bottom: -130px; font-size: min(280px, 19.45vw); color: transparent; -webkit-text-stroke: 2px #fff3e2; z-index: 4; }
 
 /* cold */
 .cold { background: var(--mizu); color: var(--yuge); }
@@ -76,20 +76,22 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 .garden .ph { left: 96px; bottom: 20px; }
 .cold-in { padding: 50px var(--gutter) 130px; position: relative; z-index: 3; }
 .cold-fact { font-family: var(--mincho); font-size: 38px; line-height: 1.5; }
-.giant-cold { right: 70px; top: 90px; font-size: 200px; writing-mode: vertical-rl; color: transparent; -webkit-text-stroke: 2px rgba(238, 246, 250, .85); z-index: 3; }
+.giant-cold { right: 70px; top: 90px; font-size: min(200px, 13.9vw); writing-mode: vertical-rl; color: transparent; -webkit-text-stroke: 2px rgba(238, 246, 250, .85); z-index: 3; }
 
 /* fire: the hour before opening, from ember to open */
 .fire { background: var(--sumi); color: var(--yuge); padding: 150px 120px 150px var(--gutter); }
 .fire-in { position: relative; z-index: 3; max-width: 1100px; }
 .ember { position: absolute; left: 0; right: 0; bottom: 0; height: 70%; z-index: 0; pointer-events: none;
   background: radial-gradient(55% 70% at 78% 100%, rgba(228, 106, 47, .55), rgba(196, 81, 42, .18) 45%, transparent 75%); }
-.giant-boil { right: 70px; top: -150px; font-size: 330px; color: transparent; -webkit-text-stroke: 2px #f2a34f; z-index: 4; }
+.giant-boil { right: 70px; top: -150px; font-size: min(330px, 22.92vw); color: transparent; -webkit-text-stroke: 2px #f2a34f; z-index: 4; }
 .fire-fact { font-family: var(--mincho); font-weight: 400; font-size: 46px; line-height: 1.5; letter-spacing: .06em; }
 .scale { margin-top: 90px; }
 .bar { height: 34px; border-radius: 17px; background: linear-gradient(90deg, #5b2a17, #c4512a 40%, #f2a34f 75%, #ffe2b0); box-shadow: 0 0 40px rgba(242, 163, 79, .35); }
 .marks { display: grid; grid-template-columns: 52% 1fr auto; margin-top: 24px; }
 .mark { font-family: var(--mincho); font-size: 22px; padding-top: 18px; border-top: 2px solid rgba(246, 241, 231, .6); }
 .mark-open { font-family: var(--gothic); font-size: 30px; color: #ffe2b0; text-align: right; padding-left: 24px; }
+/* the marks are single words and a time: never broken inside */
+.mark { white-space: nowrap; }
 
 /* wall: white tiles and the mountain */
 .wall { position: relative; background:
@@ -112,7 +114,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 
 /* the noren: the night's hero. Four cloth panels hang from a rod across the wall's edge; the slits cut the big ゆ
    (the classic bathhouse mark) into four. Decoration: the page's words never sit on it. */
-.noren { position: absolute; right: 120px; top: -110px; width: 540px; height: 500px; z-index: 6; overflow: visible; filter: drop-shadow(0 26px 22px rgba(0, 0, 0, .45)); }
+/* v3: the noren and the heading shrink together between 1101 and 1439, so the cloth never hangs over 帰り道 */
+.noren { position: absolute; right: 120px; top: -110px; width: min(540px, 37.5vw); height: min(500px, 34.73vw); z-index: 6; overflow: visible; filter: drop-shadow(0 26px 22px rgba(0, 0, 0, .45)); }
 .noren .cloth { fill: url(#cloth); }
 .noren .cloth-v { fill: url(#clothV); }
 .noren .fold { fill: none; stroke: rgba(60, 12, 4, .28); stroke-width: 3; stroke-linecap: round; }
@@ -126,17 +129,17 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 .night { background: var(--kon); color: var(--yuge); }
 .night-in { position: relative; z-index: 2; padding: 290px 120px 56px var(--gutter); }
 .steam-b { left: 0; right: 0; top: -60px; height: 260px; background: radial-gradient(35% 60% at 60% 30%, rgba(246, 241, 231, .16), transparent 70%); }
-.night-h { font-family: var(--mincho); font-weight: 400; font-size: 56px; line-height: 1.4; letter-spacing: .08em; }
+.night-h { font-family: var(--mincho); font-weight: 400; font-size: clamp(44px, 3.9vw, 56px); line-height: 1.4; letter-spacing: .08em; }
 .sp-br { display: none; }
 .night-h br:not(.sp-br) { display: none; }
 .info { margin-top: 70px; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 28px 48px; }
 .info div { border-top: 1px solid rgba(246, 241, 231, .3); padding-top: 12px; }
 .info .tel { grid-row: span 2; }
 .info dt { font-size: 12px; letter-spacing: .3em; color: #f2a34f; }
-.info dd { font-family: var(--mincho); font-size: 20px; }
+.info dd { font-family: var(--mincho); font-size: clamp(18px, 1.4vw, 20px); }
 .info .tel { background: var(--shu); border-top: 0; padding: 22px 26px 26px; box-shadow: 0 24px 40px -20px rgba(0, 0, 0, .6); }
 .info .tel dt { color: #ffe2b0; }
-.info .tel dd { font-size: 46px; letter-spacing: .04em; color: var(--yuge); }
+.info .tel dd { font-size: clamp(34px, 3.2vw, 46px); letter-spacing: .04em; color: var(--yuge); white-space: nowrap; }
 .fictional { margin-top: 110px; font-size: 12px; color: rgba(246, 241, 231, .7); }
 
 /* 768–1100: the same composition, scaled; the giant words shrink before they collide */
@@ -145,7 +148,7 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .hot { padding: 52px 40px 140px 80px; }
   .hot-in { grid-template-columns: 170px minmax(0, 1fr); min-height: 700px; }
   .name { font-size: 110px; }
-  .giant-hot { font-size: 330px; right: 30px; }
+  .giant-hot { font-size: min(330px, 30vw); right: 30px; }
   .tagline { font-size: 42px; }
   .warm { padding: 0 60px 200px var(--gutter); }
   /* the surface board leaves the fact's row: beside it, it would cover the words */
@@ -153,9 +156,10 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .board-surface { grid-column: 1; grid-row: 3; width: 50%; justify-self: end; margin: 24px 0 0; }
   .warm-fact { max-width: none; }
   .warm-fact { font-size: 30px; }
-  .giant-warm { font-size: 200px; left: 80px; bottom: -95px; }
+  /* v3: ぬるい and 冷たい shrink with the width, so ぬるい stays inside the page and 冷たい ends above the point where 沸く rises into the cold */
+  .giant-warm { font-size: min(200px, 25vw); left: 80px; bottom: -95px; }
   .cold-fact { font-size: 30px; }
-  .giant-cold { font-size: 150px; right: 30px; }
+  .giant-cold { font-size: min(150px, 13vw); right: 30px; }
   /* the mural still rises into the fire, but only into its empty foot: never over the hours or the marks */
   .fire { padding: 110px 60px 240px var(--gutter); }
   .mural { margin-top: -170px; }
@@ -177,6 +181,9 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
     .night-in { padding-top: 280px; }
   .wall-copy { margin-top: 36px; }
   .giant-hot { font-size: 260px; }
+  .giant-cold { top: 120px; }
+  .fire { padding-top: 140px; }
+  .tagline { font-size: 36px; }
 }
 
 /* SP 390: one column; the strip moves to the edge; boards keep their ratio */
@@ -200,7 +207,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .board-surface { grid-column: 1; grid-row: 2; width: 60%; justify-self: end; margin: -40px 0 0; }
   .board-tub .ph { top: 12px; bottom: auto; }
   .warm-fact { grid-column: 1; grid-row: 3; margin-top: 36px; font-size: 21px; }
-  .giant-warm { left: 18px; bottom: -70px; font-size: 140px; }
+  /* v3: 112px, so the whole of ぬるい stays inside the 390 width (140px cut the い at the right edge) */
+  .giant-warm { left: 18px; bottom: -56px; font-size: 112px; }
 
   .garden { aspect-ratio: 390 / 420; }
   .garden .ph { left: 28px; }
