@@ -7699,6 +7699,42 @@
         "段 B の能力を有効にすること (APPROVED_CAPABILITIES に足す別の PR)"
       ],
       "note": "HOLD: merge はオーナーの明示の承認が要る (DEV-083 §8。本番の許可一覧のコードの道を変えるため)。有効にするのは、APPROVED_CAPABILITIES に名前を足す別の PR。計算後の 256px の上限は旗が無くても掛かる (今ある rem の穴を塞ぐ。既存の通るページ 9 枚は全部の幅で影響なし)。"
+    },
+    {
+      "id": "DEV-169",
+      "title": "段 B の 1px 掃引から unmeasuredWidths を呼ぶ行をテストで固定する (PR #207 の L1)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-169-sweep-wiring-test",
+      "purpose": "PR #207 の残りの Low (L1): render.ts の displaySweepPass から unmeasuredWidths への呼び出しを消しても全テストが通る。その配線を振る舞いで固定する。",
+      "acceptance_criteria": [
+        "displaySweepPass を旗を立てて (テストから直接) 測られない幅を含む range で呼び、PHASE_B_UNMEASURED を確かめるテストがある",
+        "その呼び出しの行を消すとテストが落ちることを確かめた",
+        "本番のコード・options・run.ts / worker の道は変えない。APPROVED_CAPABILITIES は空のまま"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl/phase-b.test.ts",
+        "npx vitest run tests/unit/design-agent/comp-impl/phase-b-baseline.test.ts",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/comp-impl/phase-b.test.ts",
+        "docs/design/phase-b-design.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-169.md"
+      ],
+      "forbidden_scope": [
+        "本番のコード (lib/**) の変更",
+        "APPROVED_CAPABILITIES に名前を足すこと",
+        "page-css.ts・spec.ts の許可一覧の論理",
+        "テストの skip・削除",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [],
+      "note": "テストだけ。1920 を越える range で段の区切りが届かない幅を作るので、本番に口を足さずに振る舞いで確かめられる。DEV-164 (PR #207、develop 64ae4f2 に merge 済み) の後の作業だが、tasks.json の DEV-164 は review のままなので depends_on には書かない。"
     }
   ]
 }
