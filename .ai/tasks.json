@@ -7726,7 +7726,8 @@
         "tests/unit/design-agent/comp-impl/phase-b.test.ts",
         "docs/design/phase-b-design.md",
         ".ai/tasks.json",
-        ".ai/reviews/DEV-169.md"
+        ".ai/reviews/DEV-169.md",
+        ".ai/"
       ],
       "forbidden_scope": [
         "本番のコード (lib/**) の変更",
@@ -7736,7 +7737,315 @@
         ".github/workflows"
       ],
       "human_approval_triggers": [],
-      "note": "テストだけ。1920 を越える range で段の区切りが届かない幅を作るので、本番に口を足さずに振る舞いで確かめられる。DEV-164 (PR #207、develop 64ae4f2 に merge 済み) の後の作業だが、tasks.json の DEV-164 は review のままなので depends_on には書かない。"
+      "note": "テストだけ。1920 を越える range で段の区切りが届かない幅を作るので、本番に口を足さずに振る舞いで確かめられる。DEV-164 (PR #207、develop 64ae4f2 に merge 済み) の後の作業だが、tasks.json の DEV-164 は review のままなので depends_on には書かない。 この PR で、オーナーの後続計画 (Issue #193 コメント 6628165899) の DEV-170〜176 を backlog として登録した。"
+    },
+    {
+      "id": "DEV-170",
+      "title": "display_nowrap の安全検証 (店名・固定の表示語だけ。能力は OFF のまま)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-164"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null,
+      "purpose": "display_nowrap を有効にする前の証拠を揃える (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
+      "acceptance_criteria": [
+        "対象を店名・固定の表示語に限ることをテストで固定する",
+        "PC・SP・tablet の各幅と 1px の掃引で、改行・はみ出し・文字被りを検査する (長い文字、日英混植を含む)",
+        "旧 strict と研究 C′ の画像の比較",
+        "判断シート (オーナーが ON を決めるための証拠と未検証点)",
+        "新規テスト・CI・独立 Fresh Review"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/comp-impl/",
+        "lib/design-agent/comp-impl/ (検査の追加だけ。緩めない)",
+        "docs/design/",
+        "design-library/research/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更",
+        "本番 CSS ゲートの実質的な緩和",
+        "Production・main・Staging・DB・worker の操作",
+        "実 Codex・有料 API・新規の画像生成",
+        "無断の実写真の取得・外部営業",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "能力を実際に ON にすること (APPROVED_CAPABILITIES に足す別 PR)",
+        "安全ゲートの実質的な緩和",
+        "本番への反映"
+      ],
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+    },
+    {
+      "id": "DEV-171",
+      "title": "display_scale の安全検証 (表示語の最大 640px。能力は OFF のまま)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-170"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null,
+      "purpose": "display_scale を有効にする前の証拠を揃える (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
+      "acceptance_criteria": [
+        "既定の 256px の安全上限を保つことを確かめる",
+        "事実・免責に掛からないことを検証する",
+        "nowrap 単体と併用の効果",
+        "スマホでの縮小とブラウザ差の扱い (未検証は明記する)",
+        "比較画像と判断シート"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/comp-impl/",
+        "lib/design-agent/comp-impl/ (検査の追加だけ)",
+        "docs/design/",
+        "design-library/research/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更",
+        "本番 CSS ゲートの実質的な緩和",
+        "Production・main・Staging・DB・worker の操作",
+        "実 Codex・有料 API・新規の画像生成",
+        "無断の実写真の取得・外部営業",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "能力を実際に ON にすること (APPROVED_CAPABILITIES に足す別 PR)",
+        "安全ゲートの実質的な緩和",
+        "本番への反映"
+      ],
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+    },
+    {
+      "id": "DEV-172",
+      "title": "gradient_ground の安全検証 (ゆげ湯の温度帯など。能力は OFF のまま)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-171"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null,
+      "purpose": "gradient_ground を有効にする前の証拠を揃える (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
+      "acceptance_criteria": [
+        "不透明な stop、急勾配、硬い境界、文字との接触、外部 url・通信の拒否を証明する",
+        "既存の閾値は緩めない",
+        "ゆげ湯の温度帯の比較画像と判断シート"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/comp-impl/",
+        "lib/design-agent/comp-impl/ (検査の追加だけ)",
+        "docs/design/",
+        "design-library/research/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更",
+        "本番 CSS ゲートの実質的な緩和",
+        "Production・main・Staging・DB・worker の操作",
+        "実 Codex・有料 API・新規の画像生成",
+        "無断の実写真の取得・外部営業",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "能力を実際に ON にすること (APPROVED_CAPABILITIES に足す別 PR)",
+        "安全ゲートの実質的な緩和",
+        "本番への反映"
+      ],
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+    },
+    {
+      "id": "DEV-173",
+      "title": "段C: 安全な重なり・描画順・レイヤー (position・z-index・負の margin など)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-172"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null,
+      "purpose": "重ねる表現を、守る文字と普通の本文を覆わずに使えるかを検証する (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
+      "acceptance_criteria": [
+        "守る文字と普通の本文を覆わないことを、PC・SP・幅の掃引で検証する",
+        "描画順 (V2) と守る文字 (V4) を止める規則として設計する",
+        "独立レビュー",
+        "本番の CSS ゲートの変更は、明示の承認まで HOLD"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/comp-impl/",
+        "lib/design-agent/comp-impl/ (旗の後ろ、既定 OFF)",
+        "docs/design/",
+        "design-library/research/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更",
+        "本番 CSS ゲートの実質的な緩和",
+        "Production・main・Staging・DB・worker の操作",
+        "実 Codex・有料 API・新規の画像生成",
+        "無断の実写真の取得・外部営業",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "能力を実際に ON にすること (APPROVED_CAPABILITIES に足す別 PR)",
+        "安全ゲートの実質的な緩和",
+        "本番への反映",
+        "本番の CSS ゲートの変更を含む PR の merge"
+      ],
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+    },
+    {
+      "id": "DEV-174",
+      "title": "N1: 装飾 SVG の実装準備 (段C の文字保護と結合。img に限る)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-173"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null,
+      "purpose": "DEV-162/165 の SHA・厳しい構文検査・資産ごとのオーナーの目視の記録と、段C の文字保護をつなぐ (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
+      "acceptance_criteria": [
+        "img に限る。文字・スクリプト・外への通信は不可",
+        "資産ごとの実際のオーナーの目視の記録が要る",
+        "WebKit・Firefox は未検証なら BLOCKED と明記",
+        "段C が通らない限り ON 禁止"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl",
+        "npx vitest run tests/unit/ai-tasks.test.ts",
+        "npx vitest run tests/unit/design-agent/research"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/research/",
+        "tests/",
+        "docs/design/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更",
+        "本番 CSS ゲートの実質的な緩和",
+        "Production・main・Staging・DB・worker の操作",
+        "実 Codex・有料 API・新規の画像生成",
+        "無断の実写真の取得・外部営業",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "能力を実際に ON にすること (APPROVED_CAPABILITIES に足す別 PR)",
+        "安全ゲートの実質的な緩和",
+        "本番への反映",
+        "オーナーの目視の記録の承認",
+        "N1 を ON にすること"
+      ],
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+    },
+    {
+      "id": "DEV-175",
+      "title": "段D: 縦書き・小さな回転・縁取りの文字 (機能ごとに独立して試作と安全検証)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-174"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null,
+      "purpose": "段D の表現を、読む順と可読性を保ったまま使えるかを検証する (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
+      "acceptance_criteria": [
+        "機能ごとに独立して試作し、安全を検証する",
+        "情報の読む順、スマホ、書体の差を確かめる",
+        "本番の有効化は機能ごとに別の承認"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "tests/unit/design-agent/comp-impl/",
+        "lib/design-agent/comp-impl/ (旗の後ろ、既定 OFF)",
+        "docs/design/",
+        "design-library/research/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更",
+        "本番 CSS ゲートの実質的な緩和",
+        "Production・main・Staging・DB・worker の操作",
+        "実 Codex・有料 API・新規の画像生成",
+        "無断の実写真の取得・外部営業",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "能力を実際に ON にすること (APPROVED_CAPABILITIES に足す別 PR)",
+        "安全ゲートの実質的な緩和",
+        "本番への反映"
+      ],
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+    },
+    {
+      "id": "DEV-176",
+      "title": "3店舗の制作工程の統合検証とデザイン品質の評価",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-175"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": null,
+      "purpose": "つぐ手・輪・ゆげ湯の A カンプ / B 現行実装 / C・C′ 研究実装を、PC・SP・tablet で見比べて評価する (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
+      "acceptance_criteria": [
+        "独創性・モチーフの忠実性・可読性・CTA・素材の品質を評価する",
+        "オーナーが実画像を確かめるまで、成功例とは認定しない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/",
+        "docs/design/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更",
+        "本番 CSS ゲートの実質的な緩和",
+        "Production・main・Staging・DB・worker の操作",
+        "実 Codex・有料 API・新規の画像生成",
+        "無断の実写真の取得・外部営業",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "能力を実際に ON にすること (APPROVED_CAPABILITIES に足す別 PR)",
+        "安全ゲートの実質的な緩和",
+        "本番への反映",
+        "成功例の水準と認定すること (オーナーだけが決める)"
+      ],
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
     }
   ]
 }
