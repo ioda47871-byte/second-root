@@ -7966,7 +7966,7 @@
         "本番への反映",
         "本番の CSS ゲートの変更を含む PR の merge"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 設計は docs/design/phase-c-design.md (能力 layered_decoration、旗 layeredDecoration、既定 OFF。lib の変更の概要は §8 で HOLD)。テストは phase-c-overlap.test.ts、道具は overlap-harness.ts (描画の検査と文法の試作はテストの中だけ)。本番のコードの差 0。今は旗なし・段 B の旗すべてで重ねの形を1つも通さない。試作は落ちるべき 32 例をすべて落とし、通るべき 9 例を通す (Fresh Review M1〜M3・L1〜L3 と CI の書体の誤検知を直した後。字形の箱は墨の箱)。3店の strict B に層を足した版は 320〜1920 の全幅で strict と同じコード、C′ は確かめる幅のすべてで落ちる。得は小さい (曲線・形・影・巨大な語は N1・段 D が要る)。DEV-172 (PR #212) が develop に merge された (7cbc956) ので review に上げた。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 設計は docs/design/phase-c-design.md (能力 layered_decoration、旗 layeredDecoration、既定 OFF。lib の変更の概要は §8 で HOLD)。テストは phase-c-overlap.test.ts、道具は overlap-harness.ts (描画の検査と文法の試作はテストの中だけ)。本番のコードの差 0。今は旗なし・段 B の旗すべてで重ねの形を1つも通さない。試作は落ちるべき 37 例をすべて落とし、通るべき 9 例を通す (Fresh Review・CI の書体の2件・再レビューを直した後。字形の箱は墨の箱、測れない字形は fail closed)。3店の strict B に層を足した版は 320〜1920 の全幅で strict と同じコード、C′ は確かめる幅のすべてで落ちる。得は小さい (曲線・形・影・巨大な語は N1・段 D が要る)。DEV-172 (PR #212) が develop に merge された (7cbc956) ので review に上げた。"
     },
     {
       "id": "DEV-174",
