@@ -629,7 +629,7 @@ describe("DEV-172 the three shops", () => {
       const b = await widthCodes(browser, gradPage("sento", "strict"), w, { css: ON, displayWords: words, facts: factList("sento") });
       expect(allCodes(a), String(w)).toEqual(allCodes(b));
     }
-  });
+  }, 1_800_000); // 2 sweeps + 2 oracle sweeps + 24 checked-width opens: ~60s alone, >600s under load (DEV-172 re-review L2)
 
   it("tsugute grad (the bowls): the sweep fails exactly where the oracle says, and only ever GROUND_UNDER_TEXT; grad_wide's gold band breaks the stop rule at every width (45% → 52% is under 10%)", async () => {
     const { words } = shopFacts("tsugute");
@@ -644,7 +644,8 @@ describe("DEV-172 the three shops", () => {
   });
 
   it("tsugute grad under wider font metrics (a 1.45em content area, like Noto Sans CJK): text line boxes reach the bowls and the sweep fails exactly where the oracle says (which texts and from which width depends on the fonts installed; in this container: the big name's 2nd line and the ghost 継ぐ, from 601px)", async () => {
-    // reproduces CI (ubuntu, Playwright's fonts): the same glyphs, a taller Range rect above and below each line
+    // approximates CI's metrics in this container (no effect where IPA fonts are absent: its @font-face uses
+    // src: local("IPAMincho") / local("IPAGothic"), which CI does not have): the same glyphs, a taller Range rect above and below each line
     const { words } = shopFacts("tsugute");
     const page = withWideMetrics(gradPage("tsugute", "grad"));
     const swept = await sweep(page, ON, words);
