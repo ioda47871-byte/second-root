@@ -282,7 +282,9 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
   .ticks { min-height: 640px; }
   .month-c { margin: 220px 20px 0 0; font-size: clamp(16px, 2.4vw, 26px); }
   .month-fact { font-size: clamp(22px, 3vw, 32px); }
-  .dry { grid-column: 1 / -1; width: 56%; margin: 48px 0 0 6%; transform: rotate(1.2deg); }
+  /* v5: the drying print moves up into the left column beside the phrase (below the whole grid it left the left half empty above it) */
+  .dry { grid-column: 1; grid-row: 1; justify-self: start; align-self: start; width: min(calc(100% - 110px - 6vw), 440px); margin: 220px 0 0 6vw; transform: rotate(1.2deg); }
+  .month-c { grid-column: 1; grid-row: 1; } .ticks { grid-column: 2; grid-row: 1; } .month-fact { grid-column: 3; grid-row: 1; }
   .dry .photo { aspect-ratio: 4 / 3; }
 
   .together { padding: 50px 0 60px; }
@@ -366,7 +368,7 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
   .month-c { margin: 200px 16px 0 0; font-size: 15px; letter-spacing: .3em; }
   .month-fact { margin-left: 16px; }
   .month-fact { font-size: 24px; }
-  .dry { width: auto; margin: 40px 40px 0; }
+  .dry { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; align-self: start; width: auto; margin: 40px 40px 0; }
 
   .together { padding: 40px 0 60px; }
   .together-grid { padding: 0 20px; }

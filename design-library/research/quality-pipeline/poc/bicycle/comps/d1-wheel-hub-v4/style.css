@@ -187,6 +187,9 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .st-b { left: 61.2vw; top: 114.58vw; --rot: -1.5deg; --tone: #c8c3b8; }
   .spokes-h { position: absolute; left: var(--pad); top: 106.8vw; width: 36vw; font-size: max(24px, 3.39vw); z-index: 3; }
   .ghost-turn { left: -2.1vw; bottom: -2.1vw; font-size: 18vw; }
+  /* v4: 16px more above and below 締める, so its glyph box keeps 12px or more from まっすぐに and どこを under taller fonts (4.4px before) */
+  .truing { padding-bottom: calc(10.4vw + 16px); }
+  .check { padding-top: calc(7.6vw + 16px); }
 }
 
 /* SP: the wheel comes first, then the copy; every section flows in one column */
