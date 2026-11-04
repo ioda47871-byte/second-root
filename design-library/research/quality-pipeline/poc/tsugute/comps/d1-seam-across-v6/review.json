@@ -1,0 +1,262 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-kintsugi-tsugute",
+  "direction_id": "d1-seam-across-v6",
+  "comp": {
+    "html_sha256": "06e2f62807fa531046840c6cd51bb6c484c1adf4de4d4a4b42a9791f69bb12e6",
+    "css_sha256": "ba6f74c1bb668054f6b5aa7df688e5ac38d0e39139bda64bd67c8d374a1042f8",
+    "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "1cfac3efe1aae7fac20047920548dcbe8751c6955e212498ce95a076f6fb2528",
+      "width": 1440,
+      "height": 6110
+    },
+    "mobile": {
+      "sha256": "5ff2503d388fa21cc11d6574e0beeae70d6bb8c71fd064cbb23a38576946080e",
+      "width": 390,
+      "height": 6494
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-06T09:00:00Z",
+    "how": "Read tool: C before|after at 1440 (0.33), 768 (0.7 and 0.75 crop of the visit section) and 390 (0.37) full pages, 4x crops of the joint of the line and the bowl at 601, 768 and 1199"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 3055
+      },
+      {
+        "x": 0,
+        "y": 3055,
+        "w": 1440,
+        "h": 3055
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1624
+      },
+      {
+        "x": 0,
+        "y": 1624,
+        "w": 390,
+        "h": 1624
+      },
+      {
+        "x": 0,
+        "y": 3248,
+        "w": 390,
+        "h": 1624
+      },
+      {
+        "x": 0,
+        "y": 4872,
+        "w": 390,
+        "h": 1622
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "PC 1440 の描画は前の版と同じバイト。Hero の器と線、高台の下の細い影",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 1000
+        }
+      },
+      {
+        "what": "割れ・欠けの板と線の入口・出口は前のまま",
+        "box": {
+          "x": 0,
+          "y": 1000,
+          "w": 1440,
+          "h": 900
+        }
+      },
+      {
+        "what": "ひびの板と 線の断面 は前のまま",
+        "box": {
+          "x": 0,
+          "y": 1900,
+          "w": 1440,
+          "h": 1460
+        }
+      },
+      {
+        "what": "乾く時間は前のまま (つ の下の乾く器、縦の文)",
+        "box": {
+          "x": 0,
+          "y": 3360,
+          "w": 1440,
+          "h": 1080
+        }
+      },
+      {
+        "what": "相談: 乾く器と手元の板が左に2つ続くのは前のまま",
+        "box": {
+          "x": 0,
+          "y": 4440,
+          "w": 1440,
+          "h": 900
+        }
+      },
+      {
+        "what": "来店: PC は線が結び目を通って器の割れ目へ入る (前から)",
+        "box": {
+          "x": 0,
+          "y": 5300,
+          "w": 1440,
+          "h": 810
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "SP Hero は前の版と同じバイト (つぐ手 は器の上の紙の地に横)",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 844
+        }
+      },
+      {
+        "what": "割れ・欠け・ひび の言葉の地の帯は前のまま",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1800
+        }
+      },
+      {
+        "what": "線の断面・乾く時間・相談は前のまま",
+        "box": {
+          "x": 0,
+          "y": 2700,
+          "w": 390,
+          "h": 1800
+        }
+      },
+      {
+        "what": "SP の来店: 線は結び目で終わり、器は下に離れて立つ (前のまま。601〜1199 だけ直した)",
+        "box": {
+          "x": 0,
+          "y": 5648,
+          "w": 390,
+          "h": 846
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 40,
+          "y": 1000,
+          "w": 1400,
+          "h": 2700
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 2500,
+          "w": 1440,
+          "h": 2800
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "最後の区画を一杯 (客の受け取るもの) にし、そこに行動の案内を置く",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 5300,
+          "w": 1440,
+          "h": 786
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "巨大な文字と写真の重なりは、SP でも縦に積んで残す",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 2900,
+          "w": 390,
+          "h": 600
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "横並びの要素は、縦に重ねて関係を保つ",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1700
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "601〜1199 で金の線が結び目で止まり、下の直った器 (割れ目の金) が 600px 以上離れて、つながっていなかった",
+      "protect": [
+        "線が x 70% を縦に通る 601〜1199 の構図",
+        "結び目と 線の終わりは、ここ。",
+        "PC と SP の描画"
+      ],
+      "changed": [
+        "結び目の中心から器の割れ目の上の端まで、線 (3px の金) を続けた",
+        "器を 2px 左へ (割れ目の上の端を線の x に)",
+        "免責の文の右に、線から 24px の余白 (601 で線を横切らないよう、2行に)"
+      ],
+      "regressions_fixed": []
+    }
+  ],
+  "remaining": [
+    "写真は役割と大きさだけの仮の板のまま。板の上の壊れ方は描いた飾りで、実写真ではない",
+    "器と破片は描いた絵で、焼き物の質感は写真に及ばない",
+    "乾く器の板と次の区画の手元の板がどちらも左に来て、左の写真が2つ続く",
+    "SP 600 以下では線は結び目で止まり、器とつながらない (線が中央の情報の下を通ることになるので、今回は直さない)",
+    "線の入口と出口を揃えたのは 1200〜1440 の PC だけ",
+    "区画のラベル・待つ などの創作の文はオーナーの確認が要る",
+    "カンプと C は同じソースで描く。C との差は測れない",
+    "SP の Hero は名前が縦から横に変わった (カンプの構図と違う。オーナーの確認が要る)"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}

@@ -1,0 +1,250 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-bicycle-repair-wa",
+  "direction_id": "d1-wheel-hub-v5",
+  "comp": {
+    "html_sha256": "62baf031e08f106a3d1ebc33fca75978e4155ec610799eb04117806a14d14c3f",
+    "css_sha256": "48b4f740b021837302939064b966d29c4ba9b13b6f738d434ba46f42d556df51",
+    "copy_sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "a8a40e55f304f675c85342230fce83cad9383f121eae96184d1dbfae043ffaa9",
+      "width": 1440,
+      "height": 5292
+    },
+    "mobile": {
+      "sha256": "bc5bcf5b5711b980a5220f3da5309c460e33540f0d524830176c7d6411b518ae",
+      "width": 390,
+      "height": 5349
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-06T09:00:00Z",
+    "how": "Read tool: C before|after at 1440 (0.33), 768 (0.5) and 390 (0.49) full pages, 2x crops of the hub at 1440 and 3x at 390, the stations at 1440 (0.55), the bench at 320 (1.6x)"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 2646
+      },
+      {
+        "x": 0,
+        "y": 2646,
+        "w": 1440,
+        "h": 2646
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1338
+      },
+      {
+        "x": 0,
+        "y": 1338,
+        "w": 390,
+        "h": 1338
+      },
+      {
+        "x": 0,
+        "y": 2676,
+        "w": 390,
+        "h": 1338
+      },
+      {
+        "x": 0,
+        "y": 4014,
+        "w": 390,
+        "h": 1335
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "Hero: 4本の黄のスポークの内の端がハブ (輪 の黄の円) の縁から出る (前の版は縁の手前 8px で切れていた)",
+        "box": {
+          "x": 900,
+          "y": 500,
+          "w": 500,
+          "h": 500
+        }
+      },
+      {
+        "what": "Hero の左の tagline と説明は前の版のまま、車輪に掛からない",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 700,
+          "h": 400
+        }
+      },
+      {
+        "what": "駅の板の影が短くなり、ブレーキ調整 は 16px 下がって影から離れた",
+        "box": {
+          "x": 700,
+          "y": 1700,
+          "w": 700,
+          "h": 450
+        }
+      },
+      {
+        "what": "車輪の振れ取り は 1.4vw 左へ、その写真の札は板の下へ移り、ピンから離れた",
+        "box": {
+          "x": 150,
+          "y": 1000,
+          "w": 500,
+          "h": 500
+        }
+      },
+      {
+        "what": "まわる・一本ずつ。・締める は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 1960,
+          "w": 1440,
+          "h": 1100
+        }
+      },
+      {
+        "what": "作業台・空気の区画・来店は前の版のまま。電話を大きく、情報は2列",
+        "box": {
+          "x": 0,
+          "y": 3040,
+          "w": 1440,
+          "h": 2252
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "SP Hero: 背骨へ下りる黄の腕がハブの縁から出る (前は 5.6 単位手前)",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 900
+        }
+      },
+      {
+        "what": "駅の写真の札が暗い地の帯に乗り、短くなった板の影の上に出る",
+        "box": {
+          "x": 0,
+          "y": 900,
+          "w": 390,
+          "h": 1900
+        }
+      },
+      {
+        "what": "作業台の板の影が短くなり、縦の事実 修理の前に、… が板から 8px 離れた",
+        "box": {
+          "x": 0,
+          "y": 2800,
+          "w": 390,
+          "h": 1100
+        }
+      },
+      {
+        "what": "空気・来店は前の版のまま。電話は折れない",
+        "box": {
+          "x": 0,
+          "y": 3900,
+          "w": 390,
+          "h": 1449
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 960,
+          "w": 1440,
+          "h": 1400
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 960,
+          "w": 1440,
+          "h": 4332
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "最後の区画を一杯 (客の受け取るもの) にし、そこに行動の案内を置く",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 4400,
+          "w": 1440,
+          "h": 892
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "横並びの要素は、縦に重ねて関係を保つ",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1900
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "PC 1000〜1920 と SP 320〜600 で、黄のスポークの内の端がハブの縁の手前で切れていた (PC 5.6〜10.8px、SP 4.6〜8.6px)。板の影が駅の名前・写真の札・縦の事実の下に届いていた",
+      "protect": [
+        "Hero の大きな車輪と 輪 のハブ",
+        "4つの駅の板と名札とピン",
+        "タブレット 601〜999 の版"
+      ],
+      "changed": [
+        "PC と SP のスポークの内の端をハブの円の縁 (半径 + 0.5 単位) に移し、端を四角にした (タブレットと同じ作り)",
+        "PC の駅の板の影を 10px 下・8px のぼかしに、ブレーキ調整 を 16px 下げた",
+        "SP の駅の板の影を 8px 下・6px のぼかしに、写真の札を地の帯に乗せた",
+        "SP の作業台の板の影を短くし、縦の事実の列を 8px 離した",
+        "PC の 車輪の振れ取り を 1.4vw 左へ、その札を板の下へ (別の書体で2本目のスポークとピンに 1〜3px 届いた)"
+      ],
+      "regressions_fixed": [
+        "最初の版は PC の影だけ短くした。別の書体の掃引で、車輪の振れ取り と2本目のスポーク、札とピンの 1〜3px の当たり (前の版から) を見つけて直した"
+      ]
+    }
+  ],
+  "remaining": [
+    "写真は役割と大きさだけの仮の板のまま",
+    "601〜999 の右下は暗い地が広く空く (スポークの段の構図)",
+    "1000 で板の大きさが跳ぶ",
+    "輪 の字の箱 (1.3em の四角) の角はハブの円の外に出て、車輪の細いスポークに掛かる。字の墨には掛からない (オーナーの判断)",
+    "カンプと C は同じソースで描く。C との差は測れない"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}
