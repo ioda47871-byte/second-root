@@ -24,6 +24,8 @@ import {
   pixelPass,
   shopPlan,
   sweepRanges,
+  instanceCodes,
+  withPinnedFonts,
   type OverlapPlan,
   type OverlapSweep,
   type Opener,
@@ -290,6 +292,13 @@ const PROBES: Probe[] = [
   { name: "an ancestor's gradient ground under the fact", body: `<div class="wrap"><div class="box">${F}</div></div>`, css: ".box { background: linear-gradient(90deg, #fff, #c79a45); }", expect: "OVERLAP_PROTECTED_ON_DECORATION", pixel: null },
   // DEV-173 Fresh Review L3: ordinary text clipped by an overflow box
   { name: "ordinary text clipped by an overflow box", body: `<div class="wrap"><div class="c">${O}</div></div>`, css: ".c { overflow: hidden; width: 80px; } .o { white-space: nowrap; }", expect: "OVERLAP_TEXT_CLIPPED", pixel: null },
+  // DEV-173 CI / re-review: an ancestor's drop-shadow (one child's shadow falls under another child's text)
+  { name: "an ancestor's drop-shadow under the fact (a photo's shadow on its own caption)", body: `<div class="wrap"><div class="board"><div class="photo"></div>${F}</div></div>`, css: ".board { filter: drop-shadow(0 26px 6px rgba(0, 0, 0, .4)); } .photo { height: 30px; background: #ccc; }", expect: "OVERLAP_PROTECTED_ORDER_UNPROVEN", pixel: null },
+  // DEV-173 re-review M1 / L2: glyphs canvas measureText does not draw as the page does — fail closed
+  { name: "tabular figures (font-variant-numeric) drawn wider than measured", body: `<div class="wrap">${F}${D}</div>`, css: ".f { font-family: Inter, sans-serif; font-size: 40px; font-variant-numeric: tabular-nums; } .d { position: absolute; z-index: 2; left: 60px; top: 60px; width: 3px; height: 3px; background: #c79a45; }", expect: "OVERLAP_PROTECTED_GLYPHS_UNMEASURED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "a combining mark (NFD) above its base", body: `<div class="wrap"><p class="f">Cafe\u0301 ${FACT}</p>${D}</div>`, css: '.f { font-family: "DejaVu Sans", sans-serif; } .d { position: absolute; z-index: 2; left: 80px; top: 40px; width: 3px; height: 3px; background: #c79a45; }', expect: "OVERLAP_PROTECTED_GLYPHS_UNMEASURED", pixel: null },
+  { name: "an underline (text-decoration) drawn outside the glyphs", body: `<div class="wrap">${F}${D}</div>`, css: ".f { text-decoration: underline; } .d { position: absolute; z-index: 2; left: 60px; top: 66px; width: 40px; height: 3px; background: #c79a45; }", expect: "OVERLAP_PROTECTED_GLYPHS_UNMEASURED", pixel: null },
+  { name: "a list marker (text the walker does not see)", body: `<div class="wrap"><ul class="l"><li>${FACT}</li></ul></div>`, css: ".l { padding-left: 40px; }", expect: "OVERLAP_MARKER_UNMEASURED", pixel: null },
   { name: "ordinary text covered", body: `<div class="wrap">${O}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 60px; top: 46px; width: 40px; height: 16px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_TEXT", pixel: "PIXEL_COVER_TEXT" },
   { name: "ordinary text over a decoration with no plate", body: `<div class="wrap">${O}${D}</div>`, css: ".wrap { isolation: isolate; } .d { position: absolute; z-index: -1; left: 40px; top: 55px; width: 300px; height: 3px; background: #c79a45; }", expect: "OVERLAP_TEXT_ON_DECORATION", pixel: null },
 ];
@@ -453,6 +462,7 @@ describe("DEV-173 the three shops", () => {
   const fontVariants = [
     ["installed", (p: CompPage) => p],
     ["wide", withWideMetrics],
+    ["pinned", withPinnedFonts],
   ] as const;
 
   it("strict and layer at the checked widths (PC, tablet, SP; SP with phone emulation), installed fonts and wide metrics: the layer pages add no code; C′ is recorded", async () => {
@@ -465,12 +475,16 @@ describe("DEV-173 the three shops", () => {
           for (const v of fonts === "installed" ? (["strict", "layer", "cprime"] as const) : (["strict", "layer"] as const)) {
             const o = await openCompPage(browser, f(overlapPage(shop, v)), { width: w, height: 900, scale: 1, mobile: w <= 390 });
             try {
-              codes[v] = overlapCodes(await overlapScan(o.page, shopPlan(shop, { grammar: v === "layer" })));
+              const sc = await overlapScan(o.page, shopPlan(shop, { grammar: v === "layer" }));
+              codes[v] = v === "cprime" ? overlapCodes(sc) : instanceCodes(sc);
             } finally {
               await o.context.close();
             }
           }
+          // text by text (DEV-173 re-review L1): a layer may not add an instance even of a code strict already has
           expect(codes.layer, `${fonts} ${shop} ${w}`).toEqual(codes.strict);
+          // with the faces pinned to IPAGothic (the same on CI), strict holds only the known tablet overflow
+          if (fonts === "pinned") expect(codes.strict!.filter((c) => !c.endsWith(" :: OVERLAP_PROTECTED_OFFSCREEN")), `pinned ${shop} ${w} strict`).toEqual([]);
           strictCodes.push(`${w}:${codes.strict!.join(",") || "-"}`);
           if (fonts === "installed") cprime[shop]![w] = codes.cprime!;
         }
@@ -523,7 +537,7 @@ describe("DEV-173 the three shops", () => {
     // the outline clear of the fact.)
     for (const [from, to, code] of [[1230, 1310, "OVERLAP_PAINT_ABOVE_PROTECTED"]] as const) {
       const s = await overlapSweep(browser, sento, shopPlan("sento"), from, to, open, "real");
-      const band = s.failing.filter((f) => f.codes.includes(code)).map((f) => f.w);
+      const band = s.failing.filter((f) => f.codes.some((c) => c.endsWith(` :: ${code}`))).map((f) => f.w);
       console.log(`DEV-173 sento C′ ${code} in ${from}–${to}: ${widthRanges(band) || "none"}`);
       expect(band.length, `${code} ${from}–${to}`).toBeGreaterThan(0);
       expect(band.length, "narrow").toBeLessThanOrEqual(40);
@@ -534,6 +548,29 @@ describe("DEV-173 the three shops", () => {
       try {
         const c = overlapCodes(await overlapScan(o.page, shopPlan("sento")));
         expect(c.includes("OVERLAP_PAINT_ABOVE_PROTECTED"), String(w)).toBe(false);
+      } finally {
+        await o.context.close();
+      }
+    }
+  });
+
+  it("glyph boxes that miss the ink fail closed: tsugute C′'s vertical words drawn from a Latin face with a CJK fallback (as on CI, where IPAMincho is absent) — the geometry names them unmeasured, the pixels find ink outside every box", async () => {
+    const p = overlapPage("tsugute", "cprime");
+    const remapped = { ...p, css: `${["IPAMincho", "IPA明朝", "IPAPMincho"].map((f) => `@font-face { font-family: "${f}"; src: local("Liberation Serif"); }`).join("\n")}\n${p.css}` };
+    for (const w of [1440, 390]) {
+      let o = await openCompPage(browser, remapped, { width: w, height: 900, scale: 1, mobile: w <= 390 });
+      try {
+        const s = await overlapScan(o.page, shopPlan("tsugute"), { glyphs: true });
+        const unmeasured = (s.glyphs ?? []).filter((g) => g.codes.some((c) => c.endsWith("GLYPHS_UNMEASURED"))).map((g) => g.text);
+        expect(unmeasured, String(w)).toContain("つぐ手");
+      } finally {
+        await o.context.close();
+      }
+      o = await openCompPage(browser, remapped, { width: w, height: 900, scale: 1, mobile: w <= 390 });
+      try {
+        const px = await pixelPass(o.page, shopPlan("tsugute"));
+        expect(Object.keys(px.codes), String(w)).toContain("PIXEL_INK_OUTSIDE_GLYPHS");
+        expect(px.disagreements).toEqual([]);
       } finally {
         await o.context.close();
       }
@@ -558,6 +595,8 @@ describe("DEV-173 the three shops", () => {
         console.log(`DEV-173 pixel ${shop} ${w}: ${JSON.stringify(res)}`);
         expect(res.strict!.filter((c) => c.startsWith("PIXEL_COVER")), `${shop} ${w}`).toEqual([]);
         expect(res.layer!.filter((c) => c.startsWith("PIXEL_COVER")), `${shop} ${w}`).toEqual([]);
+        // the glyph boxes hold every pixel of text ink the page draws (strict and layer have horizontal text only)
+        expect(res.strict!.concat(res.layer!).filter((c) => c === "PIXEL_INK_OUTSIDE_GLYPHS"), `${shop} ${w} ink outside`).toEqual([]);
       }
   }, 2_400_000);
 });
