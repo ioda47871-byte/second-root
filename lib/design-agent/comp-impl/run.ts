@@ -42,8 +42,9 @@ import {
 } from "./checks";
 import { cssProblems, htmlSourceProblems, loadCompPage, type CompPage } from "./page";
 import { FingerprintSchema } from "./page-scripts";
-import { factValues, infoPairs, verticalNameOf } from "./spec";
-import { compMeasure, DESKTOP, domAudit, fingerprintOf, fullPageShot, inBatches, legibilityPass, legibilitySweep, protectedGeometryPass, MOBILE, openCompPage, overflowSweep, pageWidths, type Viewport } from "./render";
+import { factValues, infoPairs, pageCssOptionsOf, verticalNameOf } from "./spec";
+import { displayWordsOf, phaseBCheck } from "./phase-b";
+import { compMeasure, DESKTOP, displaySweepPass, domAudit, fingerprintOf, fullPageShot, inBatches, legibilityPass, legibilitySweep, protectedGeometryPass, MOBILE, openCompPage, overflowSweep, pageWidths, type Viewport } from "./render";
 import { compSimilarity, emptySectionReport, sectionComparison, type SectionReport, type Similarity } from "./similarity";
 import { capabilitiesCheck, layersCheck, layersSweepCheck, visibilityMatrixCheck } from "./verify";
 
@@ -126,10 +127,11 @@ export function failedChecks(checks: Record<string, CheckResult>, anti: Pick<Ant
 export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const bundle: CompBundle = await loadCompBundle(o.bundleDir, { repoDir: o.repoDir, factsSourcePath: o.factsSourcePath, ...(o.pngLimits ? { pngLimits: o.pngLimits } : {}) });
   const page = await loadCompPage(o.pageDir);
-  // DEV-102: the spec may declare vertical_name only when it is approved (checkCompSpec); then, and only then, the
-  // allowlist admits vertical writing and the render lets the shop name alone be vertical
+  // DEV-102 / DEV-164: the spec may declare a capability only when it is approved (checkCompSpec); then, and only then,
+  // its allowlist option is on (pageCssOptionsOf: declared AND in APPROVED_CAPABILITIES) and the render applies its checks
   const verticalName = verticalNameOf(bundle.spec, bundle.demo.name);
-  const source = [...htmlSourceProblems(page.html), ...cssProblems(page.css, { verticalName: verticalName !== null })];
+  const cssOptions = pageCssOptionsOf(bundle.spec);
+  const source = [...htmlSourceProblems(page.html), ...cssProblems(page.css, cssOptions)];
   // a page whose source is refused is never rendered
   if (source.length > 0) throw Object.assign(new CompImplError("PAGE_SOURCE_REFUSED"), { problems: source });
   const references = o.references ?? (await loadReferences(o.repoDir));
@@ -145,11 +147,12 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const fingerprint = await fingerprintOf(o.browser, page.html);
   const disclosure = requiredDisclosure(page.assets, desktop.measure);
   const factsInput = { spec, demo: bundle.demo, disclosure };
-  const plan = { pairs: infoPairs(bundle.demo), facts, verticalName };
+  const plan = { pairs: infoPairs(bundle.demo), facts, verticalName, css: cssOptions, displayWords: displayWordsOf(bundle.demo.name) };
   const passes = await inBatches(widths, (width) => legibilityPass(o.browser, page, width, facts, required, plan));
   const sweepRun = await legibilitySweep(o.browser, page, facts, required, plan);
   const geometry = await protectedGeometryPass(o.browser, page, required);
-  const blocked = desktop.blocked + mobile.blocked + sweep.reduce((s, w) => s + w.blocked, 0) + passes.reduce((s, p) => s + p.blocked, 0) + sweepRun.blocked;
+  const display = await displaySweepPass(o.browser, page, plan);
+  const blocked = desktop.blocked + mobile.blocked + sweep.reduce((s, w) => s + w.blocked, 0) + passes.reduce((s, p) => s + p.blocked, 0) + sweepRun.blocked + (display?.blocked ?? 0);
 
   const layerResults = passes.map((p) => ({ width: p.width, ...layersCheck(p.layers, p.ground, p.groundExpected) }));
   const sweepLayers = layersSweepCheck(sweepRun.widths);
@@ -186,6 +189,9 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
     layers_sweep: sweepLayers.check,
     visibility_matrix: visibilityMatrixCheck(passes),
     capabilities: capabilitiesCheck(spec.capabilities ?? []),
+    // DEV-164 phase B: the computed type cap at every measured width (256px; display words higher only with their approved
+    // capability) and, only with a phase-B capability on, its render checks (all off today: none is approved)
+    phase_b: phaseBCheck([...passes, ...sweepRun.widths], display),
   };
   const advisory: Record<string, CheckResult> = {
     ...Object.fromEntries(layerResults.map((l) => [`layers_${l.width}`, l.advisory])),

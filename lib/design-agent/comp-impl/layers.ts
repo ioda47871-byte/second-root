@@ -124,12 +124,12 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
   const flexItem = (el, s) => { const ps = parentStyle(el); return Boolean(ps && FLEXGRID.test(ps.display) && s.position !== "absolute" && s.position !== "fixed"); };
   const zOf = (el, s) => (s.zIndex !== "auto" && (positioned(s) || flexItem(el, s)) ? parseInt(s.zIndex, 10) || 0 : 0);
   const STACKING_WILL_CHANGE = /(^|,\s*)(opacity|transform|translate|rotate|scale|filter|backdrop-filter|perspective|clip-path|mask|mask-image|isolation|mix-blend-mode|contain|position|z-index)(\s*,|$)/;
-  const realContext = (el, s) => {
+  const realContext = (el, s, ignoreOpacity) => {
     if (el === document.documentElement) return true;
     const zSet = s.zIndex !== "auto" && (positioned(s) || flexItem(el, s));
     const contain = s.contain || "none";
     const mask = s.maskImage || s.webkitMaskImage || "none";
-    return zSet || s.position === "fixed" || s.position === "sticky" || Number(s.opacity) < 1 || (s.transform && s.transform !== "none") || (s.translate && s.translate !== "none") || (s.rotate && s.rotate !== "none") || (s.scale && s.scale !== "none") || (s.perspective && s.perspective !== "none") || (s.filter && s.filter !== "none") || (s.backdropFilter && s.backdropFilter !== "none") || s.isolation === "isolate" || (s.mixBlendMode && s.mixBlendMode !== "normal") || (s.clipPath && s.clipPath !== "none") || mask !== "none" || (s.webkitMaskBoxImageSource && s.webkitMaskBoxImageSource !== "none") || /paint|layout|strict|content/.test(contain) || (s.containerType && /size/.test(s.containerType)) || STACKING_WILL_CHANGE.test(s.willChange || "auto")
+    return zSet || s.position === "fixed" || s.position === "sticky" || (!ignoreOpacity && Number(s.opacity) < 1) || (s.transform && s.transform !== "none") || (s.translate && s.translate !== "none") || (s.rotate && s.rotate !== "none") || (s.scale && s.scale !== "none") || (s.perspective && s.perspective !== "none") || (s.filter && s.filter !== "none") || (s.backdropFilter && s.backdropFilter !== "none") || s.isolation === "isolate" || (s.mixBlendMode && s.mixBlendMode !== "normal") || (s.clipPath && s.clipPath !== "none") || mask !== "none" || (s.webkitMaskBoxImageSource && s.webkitMaskBoxImageSource !== "none") || /paint|layout|strict|content/.test(contain) || (s.containerType && /size/.test(s.containerType)) || STACKING_WILL_CHANGE.test(s.willChange || "auto")
       // fail closed: any non-initial value of a property that can create a context, listed or not above
       || (s.willChange && s.willChange !== "auto") || contain !== "none" || (s.contentVisibility && s.contentVisibility !== "visible") || (s.webkitBoxReflect && s.webkitBoxReflect !== "none") || (s.viewTransitionName && s.viewTransitionName !== "none") || (s.offsetPath && s.offsetPath !== "none") || (s.maskBorderSource && s.maskBorderSource !== "none") || (s.containerType && s.containerType !== "normal");
   };
@@ -145,6 +145,23 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
   const number = (el) => { treeOrder.set(el, treeOrder.size); for (const c of kids(el)) number(c); };
   number(document.documentElement);
   let stacking = 0;
+  // DEV-164 translucent_decoration (only with the approved, declared capability: arg.translucent): a context made by
+  // opacity < 1 alone, on an element (not html / body) that holds no text and whose box and descendants' boxes meet no
+  // text line box, is not counted as STACKING_CONTEXT. Any other trigger, text inside, or any overlap still counts.
+  let lines = null;
+  const textLines = () => {
+    if (!lines) {
+      lines = [];
+      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) if (flat(n.data)) lines.push(...textRects(n));
+    }
+    return lines;
+  };
+  const benignTranslucent = (el, s) => {
+    if (!arg.translucent || el === document.documentElement || el === document.body || !(Number(s.opacity) < 1) || realContext(el, s, true) || textInside(el)) return false;
+    const extent = [el].concat(Array.from(el.querySelectorAll("*"))).map((d) => rectOf(d.getBoundingClientRect()));
+    return !extent.some((x) => textLines().some((r) => meets(r, x)));
+  };
   const build = (el, real, outer) => {
     const u = { el, real, neg: [], zero: [], pos: [], blocks: [], floats: [], content: [], outlines: [] };
     const C = real ? u : outer;
@@ -172,7 +189,7 @@ export const LAYER_SCRIPT = String.raw`(arg) => {
     if (s.display === "none") return;
     if (s.display === "contents") { nodes(el, u, C); return; }
     const real = realContext(el, s);
-    if (real) stacking += 1;
+    if (real && !benignTranslucent(el, s)) stacking += 1;
     if (real || positioned(s)) {
       const sub = build(el, real, C);
       const z = real ? zOf(el, s) : 0;

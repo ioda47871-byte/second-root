@@ -44,7 +44,7 @@
  *               url()).
  */
 import { componentValues, CssSyntaxError, tokenize, type CV } from "../shop-css/tokenize";
-import { ELEMENT_PROPS, terms, valueMatches, type Term } from "../shop-css/values";
+import { commaGroups, ELEMENT_PROPS, isColor, terms, valueMatches, type Term } from "../shop-css/values";
 import { PAGE_ELEMENTS } from "./page-scripts";
 
 type Spec = NonNullable<(typeof ELEMENT_PROPS)[string]>;
@@ -263,13 +263,129 @@ function selectorProblems(css: string, prelude: CV[]): string[] {
   return [...p];
 }
 
-/** What an approved, declared capability adds to the allowlist (DEV-102). Default: nothing. */
-export type PageCssOptions = { verticalName?: boolean };
+/**
+ * What an approved, declared capability adds to the allowlist (DEV-102; phase B: DEV-164, docs/design/phase-b-design.md).
+ * Default: nothing. One key per capability; run.ts sets a key only through spec.ts pageCssOptionsOf (declared AND in
+ * APPROVED_CAPABILITIES — today never for a phase-B one).
+ */
+export type PageCssOptions = { verticalName?: boolean; displayScale?: boolean; displayNowrap?: boolean; colourSyntax?: boolean; gradientGround?: boolean; translucentDecoration?: boolean };
 /**
  * vertical_name (DEV-102): writing-mode may also be vertical-rl. Only the shop name may then be vertical; that, the
  * glyph order and overlap, and horizontal facts are checked in the render (layers.ts V9 and the vertical scan).
  */
 const VERTICAL_WRITING_MODE: Spec = one(kw("horizontal-tb", "vertical-rl"));
+
+// ---------------------------------------------------------------- phase B (DEV-164): behind PageCssOptions, all off
+
+/** Phase B limits (docs/design/phase-b-design.md §2). The render-side caps are in phase-b.ts (same numbers). */
+export const PHASE_B_CSS_LIMITS = { displayFontPx: 640, displayFontRem: 40, gradientStops: 8, opacityMin: 0.1 } as const;
+
+/** CSS named colours (CSS Color 4) beyond the guard's own (transparent, currentcolor, white, black). */
+export const NAMED_COLOURS = new Set(
+  ("aliceblue antiquewhite aqua aquamarine azure beige bisque blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral " +
+    "cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange " +
+    "darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey " +
+    "dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred " +
+    "indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey " +
+    "lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon " +
+    "mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue " +
+    "mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred " +
+    "papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna " +
+    "silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat whitesmoke yellow yellowgreen").split(" "),
+);
+
+const numIn = (t: Term | undefined, min: number, max: number) => t?.t === "num" && t.v >= min && t.v <= max;
+const pctIn = (t: Term | undefined, min: number, max: number) => t?.t === "pct" && t.v >= min && t.v <= max;
+const hue = (t: Term | undefined) => numIn(t, -360, 360) || (t?.t === "dim" && ((t.unit === "deg" && Math.abs(t.v) <= 360) || (t.unit === "turn" && Math.abs(t.v) <= 1)));
+const alphaValue = (t: Term | undefined) => numIn(t, 0, 1) || pctIn(t, 0, 100);
+
+/**
+ * The channels of a colour function: space separated with an optional `/ alpha`, or (hsl / hsla only) the legacy comma
+ * form. Every channel a plain number, percentage or angle: no calc(), no `none`, no relative colour (`from`), no var().
+ */
+function colourChannels(fn: Extract<Term, { t: "fn" }>, legacyCommas: boolean): Term[] | null {
+  const list = terms(fn.args);
+  const commas = list.filter((x) => x.t === ",").length;
+  if (commas > 0) {
+    if (!legacyCommas || list.some((x) => x.t === "delim")) return null;
+    if (list.some((x, i) => (i % 2 === 1) !== (x.t === ","))) return null;
+    const parts = list.filter((x) => x.t !== ",");
+    return parts.length === 3 || parts.length === 4 ? parts : null;
+  }
+  const slash = list.findIndex((x) => x.t === "delim" && x.v === "/");
+  if (slash < 0) return list.length === 3 && list.every((x) => x.t !== "delim") ? list : null;
+  if (slash !== 3 || list.length !== 5 || list.filter((x) => x.t === "delim").length !== 1) return null;
+  return [list[0]!, list[1]!, list[2]!, list[4]!];
+}
+
+/** colour_syntax (design §2.3): hsl() / hsla(), oklch(), oklab() and the CSS named colours. Never color-mix(), light-dark(), relative colours. */
+export function isPhaseBColour(t: Term): boolean {
+  if (t.t === "ident") return NAMED_COLOURS.has(t.v.toLowerCase());
+  if (t.t !== "fn") return false;
+  const c = colourChannels(t, t.name === "hsl" || t.name === "hsla");
+  if (!c) return false;
+  const alpha = c.length === 3 || alphaValue(c[3]);
+  if (t.name === "hsl" || t.name === "hsla") return alpha && hue(c[0]) && pctIn(c[1], 0, 100) && pctIn(c[2], 0, 100);
+  if (t.name === "oklch") return alpha && (numIn(c[0], 0, 1) || pctIn(c[0], 0, 100)) && (numIn(c[1], 0, 0.5) || pctIn(c[1], 0, 100)) && hue(c[2]);
+  if (t.name === "oklab") return alpha && (numIn(c[0], 0, 1) || pctIn(c[0], 0, 100)) && [c[1], c[2]].every((x) => numIn(x, -0.5, 0.5) || pctIn(x, -100, 100));
+  return false;
+}
+/** The term a phase-B colour is checked as: any hex colour (only colour items take a hash term). */
+const HEX_STAND_IN: Term = { t: "hash", v: "000000", s: 0, e: 0 };
+
+/** display_scale (design §2.2): plain px up to 640, rem up to 40 (640px at the 16px root). No calc(), clamp() or max() past 256px. */
+const DISPLAY_FONT_SIZE: Spec = one(
+  (t) => valueMatches(PAGE_PROPS["font-size"]!, [t]),
+  (t) => t.t === "dim" && ((t.unit === "px" && t.v >= 12 && t.v <= PHASE_B_CSS_LIMITS.displayFontPx) || (t.unit === "rem" && t.v >= 0.75 && t.v <= PHASE_B_CSS_LIMITS.displayFontRem)),
+);
+/** display_nowrap (design §2.8): nowrap and keep-all (the render allows them on display words only). */
+const DISPLAY_WHITE_SPACE: Spec = one(kw("normal", "nowrap"));
+const DISPLAY_WORD_BREAK: Spec = one((t) => valueMatches(PAGE_PROPS["word-break"]!, [t]), kw("keep-all"));
+/** translucent_decoration (design §2.5): opacity 0.1 … 1 (the render allows < 1 on text-free boxes that meet no text only). */
+const TRANSLUCENT_OPACITY: Spec = one((t) => t.t === "num" && t.v >= PHASE_B_CSS_LIMITS.opacityMin && t.v <= 1);
+
+/**
+ * gradient_ground (design §2.4): one linear-gradient() or radial-gradient(), 2 … 8 stops, each a colour (no var()) with at
+ * most one percentage position. A linear direction is `to <side> [<side>]` or an angle; a radial shape `circle` or
+ * `ellipse` only (no size, no `at`). Nothing else is a function here: repeating-*, conic-gradient(), image-set(),
+ * -webkit-image-set(), cross-fade(), element(), paint() … are refused, and url() never gets past the tokenizer.
+ */
+function gradientItem(colourSyntax: boolean) {
+  const colour = (t: Term) => (isColor(t) && !(t.t === "fn" && t.name === "var")) || (colourSyntax && isPhaseBColour(t));
+  return (t: Term): boolean => {
+    if (t.t !== "fn" || (t.name !== "linear-gradient" && t.name !== "radial-gradient")) return false;
+    const groups = commaGroups(terms(t.args));
+    if (groups.some((g) => g.length === 0)) return false;
+    let stops = groups;
+    const first = groups[0]!;
+    if (!colour(first[0]!)) {
+      const sides = ["top", "bottom", "left", "right"];
+      const ok =
+        t.name === "linear-gradient"
+          ? (first.length === 1 && first[0]!.t === "dim" && ((first[0]!.unit === "deg" && Math.abs(first[0]!.v) <= 360) || (first[0]!.unit === "turn" && Math.abs(first[0]!.v) <= 1))) ||
+            (first.length >= 2 && first.length <= 3 && kw("to")(first[0]!) && first.slice(1).every((x) => kw(...sides)(x)) && (first.length === 2 || !(kw("top", "bottom")(first[1]!) && kw("top", "bottom")(first[2]!)) && !(kw("left", "right")(first[1]!) && kw("left", "right")(first[2]!))))
+          : first.length === 1 && kw("circle", "ellipse")(first[0]!);
+      if (!ok) return false;
+      stops = groups.slice(1);
+    }
+    if (stops.length < 2 || stops.length > PHASE_B_CSS_LIMITS.gradientStops) return false;
+    return stops.every((g) => colour(g[0]!) && (g.length === 1 || (g.length === 2 && pctIn(g[1], 0, 100))));
+  };
+}
+
+/** The value grammar of a property under the given options (the base table when no option applies). */
+function propertySpecFor(prop: string, opts: PageCssOptions): Spec | undefined {
+  if (prop === "writing-mode" && opts.verticalName === true) return VERTICAL_WRITING_MODE;
+  if (prop === "font-size" && opts.displayScale === true) return DISPLAY_FONT_SIZE;
+  if (prop === "white-space" && opts.displayNowrap === true) return DISPLAY_WHITE_SPACE;
+  if (prop === "word-break" && opts.displayNowrap === true) return DISPLAY_WORD_BREAK;
+  if (prop === "opacity" && opts.translucentDecoration === true) return TRANSLUCENT_OPACITY;
+  if ((prop === "background" || prop === "background-image") && opts.gradientGround === true) {
+    const gradient = gradientItem(opts.colourSyntax === true);
+    return prop === "background" ? one((t) => valueMatches(PAGE_PROPS.background!, [t]), gradient) : one(kw("none"), gradient);
+  }
+  return PAGE_PROPS[prop];
+}
 
 /** The declarations of one style rule's block; problem codes. */
 function declarationProblems(items: CV[], opts: PageCssOptions): string[] {
@@ -298,13 +414,15 @@ function declarationProblems(items: CV[], opts: PageCssOptions): string[] {
       p.add("CSS_IMPORTANT");
       value = value.slice(0, bang);
     }
-    const spec = prop === "writing-mode" && opts.verticalName === true ? VERTICAL_WRITING_MODE : PAGE_PROPS[prop];
+    const spec = propertySpecFor(prop, opts);
     if (!spec) {
       p.add("CSS_PROPERTY");
       continue;
     }
     if (usesViewportUnit(value)) p.add("CSS_VIEWPORT_UNIT");
-    if (value.length === 0 || !valueMatches(spec, value)) p.add("CSS_VALUE");
+    // colour_syntax: an hsl() / oklch() / oklab() / named colour stands in for a hex colour where the grammar takes one
+    const matches = valueMatches(spec, value) || (opts.colourSyntax === true && value.some(isPhaseBColour) && valueMatches(spec, value.map((t) => (isPhaseBColour(t) ? HEX_STAND_IN : t))));
+    if (value.length === 0 || !matches) p.add("CSS_VALUE");
     if (prop === "flex-direction" || prop === "flex-flow") if (value.some((t) => kw("column")(t))) column = true;
     if (prop === "flex-wrap" || prop === "flex-flow") if (value.some((t) => kw("wrap")(t))) wrap = true;
   }

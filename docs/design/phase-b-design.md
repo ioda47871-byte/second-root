@@ -210,9 +210,10 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
 ## 6. 進め方
 
 1. **この PR (DEV-161):** 設計と、今の振る舞いを固定するテストだけ。
-2. **段 B の実装の PR (未着手):**
+2. **段 B の実装の PR (DEV-164、`feature/dev-164-phase-b-impl`、HOLD):**
    - 能力の名前、旗、検査、落ちるべき例、費用の実測を入れる。`APPROVED_CAPABILITIES` は空のまま。
    - CI と独立 Fresh Review を通し、merge の前にオーナーの承認を得る。許可一覧の変更を含むので、事前承認の外である。
+   - **状態 (2026-11-04):** 5つの能力を旗の後ろに実装した (§8)。`APPROVED_CAPABILITIES` は空のまま。PR は merge しない。merge にはオーナーの明示の承認が要る (本番の許可一覧のコードの道を変えるため。DEV-083 §8)。
 3. **有効にする PR:** `APPROVED_CAPABILITIES` に名前を足す1行と、その能力を使う研究用のページの比較画像。オーナーの承認が要る。
 4. 段 C、N1、段 D は、それぞれ別の設計と PR とする。
 
@@ -222,3 +223,80 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
 - `STACKING_CONTEXT` と `PSEUDO_GEOMETRY_UNKNOWN` の止め方を狭めること (§2.5・§2.6・§2.7)。
 - `image_filters` の値の範囲。
 - 段 B の能力のうち、最初に有効にするもの。
+
+## 8. 実装メモ (DEV-164)
+
+2026-11-04。Issue #193 コメント `6623100651` と同日のチャットの1。**旗はすべて既定で下りている。能力は1つも承認していない。**
+
+### 8.1 実装したもの、しなかったもの
+
+| 能力 | 状態 | 理由 |
+|---|---|---|
+| `display_scale` | 実装 (旗 `displayScale`) | |
+| `display_nowrap` | 実装 (旗 `displayNowrap`) | |
+| `colour_syntax` | 実装 (旗 `colourSyntax`) | |
+| `gradient_ground` | 実装 (旗 `gradientGround`) | |
+| `translucent_decoration` | 実装 (旗 `translucentDecoration`) | `STACKING_CONTEXT` の狭めを含む。旗の後ろだけ。§7 のオーナーの判断が要る |
+| `web_font` | 設計だけ | 書体の一覧と許諾、配信の枠、差し込む側の道具が要る (§7) |
+| `image_filters` | 設計だけ | 値の範囲が未決 (§7)。`blur` のにじみの描く範囲の証明が要る |
+| `ornament` | 設計だけ | 疑似要素の描く範囲を測る新しい検査が要る (`PSEUDO_GEOMETRY_UNKNOWN` の狭め) |
+
+### 8.2 誰が旗を立てるか
+
+- `CAPABILITY_NAMES` に5つを足した。`APPROVED_CAPABILITIES = []` のまま。
+- spec が5つのどれかを宣言すると `SPEC_CAPABILITY_NOT_APPROVED` で拒まれる (前は `SPEC_SHAPE`。どちらも拒否)。
+- `spec.ts` の `pageCssOptionsOf(spec)` が、**宣言され かつ 承認された**能力の鍵だけを立てる。今はどの spec でも `{}`。
+- `run.ts` は `pageCssOptionsOf(bundle.spec)` の結果だけを使う。能力の名前も鍵の名前も書かない (基準のテストのとおり)。
+- worker (`scripts/sales-design-worker/comp-impl-poc.ts`) は `runCompImpl` を呼ぶだけで、旗を渡す口が無い。`RunOptions` にも旗の欄は無い。
+- spec の `type_scale.display_px` は、`display_scale` が宣言され承認されたときだけ 640 まで。ほかは今のまま 16〜160 (超えれば `SPEC_SHAPE`)。
+
+### 8.3 静的な文法 (`page-css.ts`)
+
+- `displayScale`: `font-size` を px 12〜640、rem 0.75〜40 まで。`calc()`・`clamp()`・`max()` は今の 256px のまま。`em`・`%`・`vw` は今どおり不可。
+- `displayNowrap`: `white-space: normal | nowrap`、`word-break` に `keep-all`。`pre`・`pre-wrap`・負の字間は不可。
+- `colourSyntax`: `hsl()`・`hsla()`・`oklch()`・`oklab()`・CSS の名前の色。値は数・%・角度だけ。`calc()`・`none`・相対色 (`from`)・`var()`・`light-dark()`・`lab()`・`color()` は不可。`color-mix()` の中の新しい色も不可。
+  - 色が入る場所でだけ通す (hex の色に置き換えて、今の文法で確かめる)。
+- `gradientGround`: `background` と `background-image` に `linear-gradient()`・`radial-gradient()` を1つだけ。
+  - 止めは 2〜8。止めの色に `var()` は不可。位置は % を1つまで (px・`calc()`・2つの位置は不可)。
+  - 向きは `to <辺> [<辺>]` か角度。円形は `circle`・`ellipse` だけ (`at`・大きさは不可)。
+  - `repeating-*`・`conic-gradient()`・`image-set()`・`-webkit-image-set()`・重ね (カンマ) は不可。`url()` は字句の段で止まる。
+- `translucentDecoration`: `opacity` 0.1〜1。
+
+### 8.4 描画の側 (`phase-b.ts`、`layers.ts`、`render.ts`)
+
+- 調べる幅: 確かめる幅 (PC と SP の擬装) と 32px の掃引の全部。測れなかった幅は `PHASE_B_UNMEASURED`。
+- 結果は `run.ts` の `checks.phase_b` (止める側)。
+- **`TYPE_ABOVE_ROLE_CAP` (旗が無くても掛かる):**
+  - すべての文字の、計算後の `font-size` (px) を見る。上限は 256px。
+  - `displayScale` のときだけ、表示語は 640px まで。
+  - 表示語 = 店名か固定のラベル (`COMP_UI_LABELS`) と文字が完全に一致し、子の要素を持たず、`dt`・`dd`・免責の中でない要素。**一覧はコードが決める。spec では広げられない** (設計の「spec が宣言する」より狭い)。
+  - これで `html { font-size }` × `rem` の穴 (§2.2) が描画で塞がる。静的な検査は今も通す (基準のテストは `[]` のまま)。
+- `NOWRAP_NOT_DISPLAY`: 表示語でない文字に、計算後の nowrap・pre・keep-all が掛かっている (継いだ値も)。
+- `DISPLAY_WORD_BROKEN`: 表示語の語 (空白の間) が2行にまたがる。`displayScale` か `displayNowrap` のときだけ見る。
+- 1px の表示語の掃引 (`displaySweepPass`、`displayScale` か `displayNowrap` のときだけ): 320〜1920 の全幅で、表示語の行が箱と画面の中にあること、語が折れないこと (`DISPLAY_OUT_OF_BOX`・`DISPLAY_OFFSCREEN`・`DISPLAY_WORD_BROKEN`)。段の分け方は `protectedGeometryPass` と同じ。
+- `GROUND_HAS_TEXT`・`GROUND_UNDER_TEXT`: `background-image` のある要素は文字を持たず、枠の箱が文字の行の箱に重ならないこと。
+- `GRADIENT_HARD_STOP`・`GRADIENT_TOO_STEEP`・`GRADIENT_UNMEASURED`: 描いたグラデーションに V3b の止めの規則を掛ける。
+  - 色はキャンバスで sRGB に直す (`oklch` も)。
+  - 線の長さは下の限り (角は min(w, h)、円形は min(w, h)/2) で、短く見るほど厳しくなる。
+  - 読めない形は落とす。
+- `TRANSLUCENT_HAS_TEXT`・`TRANSLUCENT_UNDER_TEXT`: `opacity` < 1 の要素は文字を持たず、自分と子孫の箱が文字の行の箱に重ならないこと。
+- **`STACKING_CONTEXT` の狭め (`translucentDecoration` のときだけ):** `opacity` だけで重ねの文脈を作り、文字を持たず、自分と子孫の箱が文字に重ならない要素 (`html`・`body` 以外) は数えない。ほかの引き金・文字・重なりがあれば今どおり数える。**描画の門を狭める変更なので、§7 のオーナーの承認が要る。**
+- 描く範囲 (§2.9) は箱そのもの。段 B の実装した能力は外側に描くものを足さない (`blur` は未実装)。
+
+### 8.5 旗が下りているときに変わること
+
+- 変わるのは `TYPE_ABOVE_ROLE_CAP` の 256px だけ。今 256px を超える文字を描くページは落ちる (今ある穴を塞ぐ。緩めではない)。
+- 既存の通るページ 9 枚 (合成の和菓子、pilot-1 の2枚、3店の C の6枚) は、確かめる幅の全部でコードが出ない (テストで固定)。
+- ほかのコードは、旗無しでは許可一覧が元の宣言を拒むので出ない。
+- 報告の `checks` に `phase_b` が1つ増える。
+
+### 8.6 費用 (手元の容器、Chromium 1194、合成のページ、3回の最良)
+
+COST_TABLE
+
+### 8.7 設計で見つけたこと
+
+- §5 は「本番の道は段 B の名前を参照しない」と言い、§3 の 3 は「旗は `run.ts` が立てる」と言う。両方を満たすため、名前と鍵の対応は `spec.ts` に置き、`run.ts` は `pageCssOptionsOf` だけを呼ぶ。
+- §2.2 の「spec が表示語と宣言する」は、spec に欄が無い。欄を足すと作者が表示語を広げられるので、一覧をコードに固定した。
+- §2.4 の止めの規則は、文字の下でない地に掛けても強い (黒から白へは 128px 以上要る)。オーナーが有効にする前に、帯の幅と合わせて見る値である。
+- 不安全なところは見つからなかった。`translucent_decoration` の `STACKING_CONTEXT` の狭めだけは、設計どおり描画の門を狭めるので、承認の対象として明記した。

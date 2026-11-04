@@ -16,6 +16,7 @@ import { z } from "zod";
 import type { DemoView } from "@/lib/sales/demo-content";
 import { factStrings } from "../compare/shops";
 import { POC_DISCLOSURE, POC_DISCLOSURE_V2 } from "../design-image/prompt";
+import type { PageCssOptions } from "./page-css";
 
 export const COMP_SPEC_VERSION = 1;
 
@@ -51,8 +52,17 @@ export const FACT_KEYS = ["name", "address", "hours", "closed_days", "access", "
  * layout-spec.json is refused as before (SPEC_SHAPE). The field and SPEC_CAPABILITY_NOT_APPROVED come with the first
  * approved capability; rollback of a later approval is removing it from this list.
  */
-export const CAPABILITY_NAMES = ["vertical_name"] as const;
+export const CAPABILITY_NAMES = ["vertical_name", "display_scale", "display_nowrap", "colour_syntax", "gradient_ground", "translucent_decoration"] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
+/**
+ * Phase B (DEV-164, docs/design/phase-b-design.md): display_scale (display words up to 640px), display_nowrap (nowrap /
+ * keep-all on display words), colour_syntax (hsl / oklch / oklab / named colours), gradient_ground (a gradient on a
+ * text-free box that meets no text), translucent_decoration (opacity < 1 on a text-free box that meets no text). Each
+ * widens the page CSS by its own PageCssOptions key and brings its render checks (phase-b.ts). NONE is approved:
+ * declaring one is refused (SPEC_CAPABILITY_NOT_APPROVED). Enabling one is a separate, owner-approved PR that adds its
+ * name to APPROVED_CAPABILITIES (DEV-083 §8). web_font, image_filters and ornament stay design-only (§7 of the design).
+ */
+export const PHASE_B_CAPABILITIES = ["display_scale", "display_nowrap", "colour_syntax", "gradient_ground", "translucent_decoration"] as const satisfies readonly CapabilityName[];
 /**
  * vertical_name (DEV-102): the shop name alone may be set vertically (writing-mode: vertical-rl). Its checks — only the
  * name is vertical, its glyphs do not overlap, run in reading order and stay in their box, facts / pairs / the disclosure
@@ -79,7 +89,8 @@ export const CompSpecSchema = z.strictObject({
   sections: z.array(z.strictObject({ id: Id, role: z.enum(SECTION_ROLES), box: Box })).min(2).max(12),
   palette: z.array(z.strictObject({ name: z.string().min(1).max(40), hex: Hex, role: z.enum(PALETTE_ROLES) })).min(2).max(8),
   /** Desktop CSS px, read off the comp at page_width_px. */
-  type_scale: z.strictObject({ display_px: Px(16, 160), heading_px: Px(14, 96), caption_px: Px(12, 48), body_px: Px(12, 32), label_px: Px(12, 32) }),
+  // display_px above SPEC_DISPLAY_PX_MAX only with display_scale declared and approved (checkCompSpec; design §2.2)
+  type_scale: z.strictObject({ display_px: Px(16, 640), heading_px: Px(14, 96), caption_px: Px(12, 48), body_px: Px(12, 32), label_px: Px(12, 32) }),
   spacing: z.strictObject({ unit_px: Px(2, 32), section_padding_px: Px(0, 400), content_max_width_px: Px(320, 1920) }),
   nav: z.strictObject({ items: z.array(z.strictObject({ label: z.string().min(1).max(20), target: Id })).max(6) }),
   cta: z.strictObject({ label: z.string().min(1).max(20), target: Id }).nullable(),
@@ -95,6 +106,26 @@ export const CompSpecSchema = z.strictObject({
 });
 export type CompSpec = z.infer<typeof CompSpecSchema>;
 
+/** The PageCssOptions key of each capability (one key per capability; the keys are phase B's flags). */
+export const CAPABILITY_OPTION_KEYS = {
+  vertical_name: "verticalName",
+  display_scale: "displayScale",
+  display_nowrap: "displayNowrap",
+  colour_syntax: "colourSyntax",
+  gradient_ground: "gradientGround",
+  translucent_decoration: "translucentDecoration",
+} as const satisfies Record<CapabilityName, keyof PageCssOptions>;
+
+/**
+ * The page CSS options a spec turns on: a key only for a capability the spec declares AND that is in `approved`
+ * (APPROVED_CAPABILITIES; checkCompSpec has already refused a spec declaring any other). Today: {} for every spec.
+ */
+export function pageCssOptionsOf(spec: Pick<CompSpec, "capabilities">, approved: readonly CapabilityName[] = APPROVED_CAPABILITIES): PageCssOptions {
+  const out: PageCssOptions = {};
+  for (const c of spec.capabilities ?? []) if (approved.includes(c)) out[CAPABILITY_OPTION_KEYS[c]] = true;
+  return out;
+}
+
 /** The shop name that may be vertical: only when the spec declares vertical_name (which checkCompSpec admits only if approved). */
 export function verticalNameOf(spec: CompSpec, shopName: string): string | null {
   return (spec.capabilities ?? []).includes("vertical_name") ? shopName : null;
@@ -103,6 +134,8 @@ export function verticalNameOf(spec: CompSpec, shopName: string): string | null 
 export type SpecCheck = { ok: true; spec: CompSpec } | { ok: false; problems: string[] };
 
 const EPS = 0.005;
+/** The spec's display size limit without display_scale (with it: 640, the schema's limit). */
+export const SPEC_DISPLAY_PX_MAX = 160;
 /** Sections may touch or overlap by this much of the artboard's height (anti-aliased edges in a comp). */
 export const SECTION_OVERLAP_TOLERANCE = 0.02;
 
@@ -111,6 +144,9 @@ export function checkCompSpec(raw: unknown, approved: readonly CapabilityName[] 
   const parsed = CompSpecSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, problems: ["SPEC_SHAPE"] };
   const spec = parsed.data;
+  // the shape is today's unless display_scale is declared and approved: then display_px may be up to 640
+  const displayScale = (spec.capabilities ?? []).includes("display_scale") && approved.includes("display_scale");
+  if (spec.type_scale.display_px > SPEC_DISPLAY_PX_MAX && !displayScale) return { ok: false, problems: ["SPEC_SHAPE"] };
   const p = new Set<string>();
   const ids = spec.sections.map((s) => s.id);
   if (new Set(ids).size !== ids.length) p.add("SPEC_SECTION_ID_REPEAT");

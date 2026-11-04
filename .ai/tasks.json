@@ -7455,9 +7455,62 @@
       "note": "設計と門だけで、写真は0枚。評価は placeholder_limited のまま。成功例の水準とは言わない。 PR #203 で develop へ merge した (73f0932)。"
     },
     {
+      "id": "DEV-164",
+      "title": "段 B の実装案と安全性テスト (表示語の大きさ・表示語の折れ止め・色の書き方・文字の下でない地・半透明の装飾)。旗は既定で下ろし、能力は承認しない (Issue #193)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-161"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-164-phase-b-impl",
+      "purpose": "Issue #193 コメント 6623100651 と 2026-11-04 のチャットの1: 段 B の実装案と安全性テストを具体化する。本番用の CSS 制限の変更・有効化・merge には別途の承認が要る。",
+      "acceptance_criteria": [
+        "CAPABILITY_NAMES に段 B の5つ (display_scale・display_nowrap・colour_syntax・gradient_ground・translucent_decoration) を足し、APPROVED_CAPABILITIES は空のまま",
+        "PageCssOptions に能力ごとの鍵を1つずつ。既定は下りている。run.ts は pageCssOptionsOf (宣言 かつ 承認) だけで旗を立てる",
+        "静的な文法 (値の表、calc の抜け道・image-set・url・repeating・conic・止め 9 以上などの拒否)",
+        "描画の側: 計算後の px の文字の大きさの上限 (TYPE_ABOVE_ROLE_CAP、旗が無くても 256px)、表示語以外の nowrap、表示語の折れ、地と半透明の描く範囲が文字に重ならないこと、V3b の止めの規則、1px の表示語の掃引",
+        "phase-b-baseline.test.ts は旗を下ろしたまま緑 (能力の名前と PageCssOptions の行だけを意図して直す)",
+        "設計の落ちるべき例を旗を立てて全部落とす。旗を下ろしたときは今と同じ。worker の道は旗を渡さない",
+        "費用の実測を docs に記録する"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl tests/unit/design-agent/shop-css tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/comp-impl/page-css.ts",
+        "lib/design-agent/comp-impl/spec.ts",
+        "lib/design-agent/comp-impl/phase-b.ts",
+        "lib/design-agent/comp-impl/layers.ts",
+        "lib/design-agent/comp-impl/render.ts",
+        "lib/design-agent/comp-impl/run.ts",
+        "tests/unit/design-agent/comp-impl/phase-b.test.ts",
+        "tests/unit/design-agent/comp-impl/phase-b-baseline.test.ts",
+        "docs/design/phase-b-design.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-164.md"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES に名前を足すこと (有効にすること)",
+        "web_font・image_filters・ornament の実装 (オーナーの判断と新しい描画の証明が要る)",
+        "既存の閾値・テストを弱めること、テストの skip",
+        "worker から旗を渡すこと",
+        "実 Codex・画像生成・ネットワーク API・package.json の依存",
+        "main・Production・Staging・DB",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "この PR の merge (本番の許可一覧のコードの道を変える。DEV-083 §8)",
+        "translucent_decoration のための STACKING_CONTEXT の狭め (旗の後ろだけ。設計 §2.5 と §7)",
+        "段 B の能力を有効にすること (APPROVED_CAPABILITIES に足す別の PR)"
+      ],
+      "note": "HOLD: merge はオーナーの明示の承認が要る (DEV-083 §8。本番の許可一覧のコードの道を変えるため)。有効にするのは、APPROVED_CAPABILITIES に名前を足す別の PR。計算後の 256px の上限は旗が無くても掛かる (今ある rem の穴を塞ぐ。既存の通るページ 9 枚は全部の幅で影響なし)。"
+    },
+    {
       "id": "DEV-162",
       "title": "N1 装飾の SVG を <img> の資産として許す — 研究だけ (設計・厳しい検査器・プローブ・安全の調査。有効にしない) (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-159"
@@ -7496,7 +7549,7 @@
         "N1 を有効にすること (段 C の後、別 PR)",
         "パスで描いた文字への対策の選択"
       ],
-      "note": "研究だけ。N1 は段 C (DEV-083 V2/V4) が通る前に有効にしない。この Task は有効にする承認ではない。元は DEV-160 の提案の N1 (PR #200、develop ec0149f で merge 済み)。DEV-160 は tasks.json ではまだ in_progress なので、depends_on は DEV-159 にした。"
+      "note": "研究だけ。N1 は段 C (DEV-083 V2/V4) が通る前に有効にしない。この Task は有効にする承認ではない。元は DEV-160 の提案の N1 (PR #200、develop ec0149f で merge 済み)。DEV-160 は tasks.json ではまだ in_progress なので、depends_on は DEV-159 にした。 PR #202 で develop へ merge した (88c8b26)。tasks.json の status が review のまま残っていたのを DEV-164 で直した。"
     }
   ]
 }
