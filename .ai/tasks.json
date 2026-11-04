@@ -7971,7 +7971,7 @@
     {
       "id": "DEV-174",
       "title": "N1: 装飾 SVG の実装準備 (段C の文字保護と結合。img に限る)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-173"
@@ -8012,19 +8012,19 @@
         "オーナーの目視の記録の承認",
         "N1 を ON にすること"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 準備の枝 feature/dev-174-n1-svg-prep (DEV-173 の枝 cd6af99 から): docs/design/n1-implementation-prep.md、研究の decoration-review.ts (資産ごとのオーナーの記録 schema 2: 資産と描いた絵の sha256・描画系・pending のみ Claude が書く・承認は証明の検証器が要り、今は無いので何も通らない)、テスト n1-owner-review・n1-phase-c-join (img の装飾を段 C の試作に通す: 落ちるべき 10 例すべて落ち、通るべき 4 例と掃引の版はコード 0。透明な部分は箱で落とす、幅で伸びる img は 899px で終わる1つの帯 (この container の書体で 849–899px) だけ掃引が見つける)。comp-impl の差 0、APPROVED_CAPABILITIES は空、記録は 0。WebKit・Firefox は BLOCKED。comp-impl の変更は HOLD (文書 §7)。DEV-173 (PR #213) が develop に merge された (7f5e2ac) ので、develop を merge して review に上げた。N1 の ON は段 C の通過とオーナーの承認まで禁止。 Fresh Review (PR #214、C0/H0/M1/L6): M1 checkN1Asset が呼ぶ側の絵を検めずに使っていた穴を、読んだバイト列から自分で描く形に直した (偽の絵の sha256 を拒むテスト)。L1 書体に依る下の端 849 を固定しない。L2〜L6 は .ai/reviews/DEV-174.md。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 準備の枝 feature/dev-174-n1-svg-prep (DEV-173 の枝 cd6af99 から): docs/design/n1-implementation-prep.md、研究の decoration-review.ts (資産ごとのオーナーの記録 schema 2: 資産と描いた絵の sha256・描画系・pending のみ Claude が書く・承認は証明の検証器が要り、今は無いので何も通らない)、テスト n1-owner-review・n1-phase-c-join (img の装飾を段 C の試作に通す: 落ちるべき 10 例すべて落ち、通るべき 4 例と掃引の版はコード 0。透明な部分は箱で落とす、幅で伸びる img は 899px で終わる1つの帯 (この container の書体で 849–899px) だけ掃引が見つける)。comp-impl の差 0、APPROVED_CAPABILITIES は空、記録は 0。WebKit・Firefox は BLOCKED。comp-impl の変更は HOLD (文書 §7)。DEV-173 (PR #213) が develop に merge された (7f5e2ac) ので、develop を merge して review に上げた。N1 の ON は段 C の通過とオーナーの承認まで禁止。 Fresh Review (PR #214、C0/H0/M1/L6): M1 checkN1Asset が呼ぶ側の絵を検めずに使っていた穴を、読んだバイト列から自分で描く形に直した (偽の絵の sha256 を拒むテスト)。L1 書体に依る下の端 849 を固定しない。L2〜L6 は .ai/reviews/DEV-174.md。 PR #214 で develop へ merge した (3abf03f)。"
     },
     {
       "id": "DEV-175",
       "title": "段D: 縦書き・小さな回転・縁取りの文字 (機能ごとに独立して試作と安全検証)",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-174"
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null,
+      "branch": "feature/dev-175-phase-d",
       "purpose": "段D の表現を、読む順と可読性を保ったまま使えるかを検証する (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
       "acceptance_criteria": [
         "機能ごとに独立して試作し、安全を検証する",
@@ -8055,7 +8055,7 @@
         "安全ゲートの実質的な緩和",
         "本番への反映"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 設計は docs/design/phase-d-design.md (能力 vertical_text・small_rotation・outlined_type、旗 verticalText・smallRotation・outlinedType、どれも既定 OFF、機能ごとに別の承認。lib の変更の概要は §8 で HOLD)。テストは phase-d.test.ts、道具は phase-d-harness.ts (文法と描画の検査の試作はテストの中だけ)。本番のコードの差 0、APPROVED_CAPABILITIES は空。今は旗なし・vertical_name・段 B の旗すべてで段 D の形を通さない (vertical_name は vertical-rl だけを通し、役割は VERTICAL_NOT_NAME が止める)。試作は落ちるべき 43 例をすべて落とし、通るべき 13 例を通す (11 例は 320〜1920 の 1px の全幅と確かめる幅 12 の画素で)。守る文字 (事実・免責・dt/dd) は縦・回転・縁取りのどれも不可。回した語・縁取りの語の墨とコントラストは画素で測る (書体に依らない)。3店の strict B に機能を1つずつ足した9版は、確かめる幅 12 と 1px の全幅で strict と同じコード (段 C も同じ)。作る途中で検査が8回止めた (1px の掃引だけが見つけた狭い帯 2 つ、CI に近い書体で縦の字が積み重なる描き崩れを含む)。C′ は段 D の旗すべてで落ちる。変異 40 はすべて落ちる。DEV-174 (PR #214) が develop に merge された (3abf03f) ので、develop を merge して review に上げた。"
     },
     {
       "id": "DEV-176",
