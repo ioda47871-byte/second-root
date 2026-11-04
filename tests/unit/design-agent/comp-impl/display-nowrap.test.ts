@@ -333,7 +333,7 @@ describe("DEV-170 the three shops' strict B pages with nowrap", () => {
       // the same codes but DISPLAY_WORD_BROKEN, which nowrap removes; never NOWRAP_NOT_DISPLAY
       expect(allCodes(b), `${shop} ${width}`).toEqual(allCodes(a).filter((c) => c !== "DISPLAY_WORD_BROKEN"));
       expect(b.phaseB, `${shop} ${width}`).toEqual([]);
-      expect(b.overflowPx, `${shop} ${width}`).toBeGreaterThanOrEqual(a.overflowPx);
+      expect(b.overflowPx, `${shop} ${width}`).toBe(a.overflowPx);
       table.push(`${width}: strict [${allCodes(a).join(" ")}] ${a.overflowPx}px / nowrap [${allCodes(b).join(" ")}] ${b.overflowPx}px`);
     }
     const sweepStrict = (await displaySweepPass(browser, strict, { css: ON, displayWords: words }))!;
