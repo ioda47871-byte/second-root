@@ -7978,7 +7978,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null,
+      "branch": "feature/dev-174-n1-svg-prep",
       "purpose": "DEV-162/165 の SHA・厳しい構文検査・資産ごとのオーナーの目視の記録と、段C の文字保護をつなぐ (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
       "acceptance_criteria": [
         "img に限る。文字・スクリプト・外への通信は不可",
@@ -8012,7 +8012,7 @@
         "オーナーの目視の記録の承認",
         "N1 を ON にすること"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 準備の枝 feature/dev-174-n1-svg-prep (DEV-173 の枝 cd6af99 から): docs/design/n1-implementation-prep.md、研究の decoration-review.ts (資産ごとのオーナーの記録 schema 2: 資産と描いた絵の sha256・描画系・pending のみ Claude が書く・承認は証明の検証器が要り、今は無いので何も通らない)、テスト n1-owner-review・n1-phase-c-join (img の装飾を段 C の試作に通す: 落ちるべき 10 例すべて落ち、通るべき 4 例と掃引の版はコード 0。透明な部分は箱で落とす、幅で伸びる img は 849–899px だけ掃引が見つける)。comp-impl の差 0、APPROVED_CAPABILITIES は空、記録は 0。WebKit・Firefox は BLOCKED。comp-impl の変更は HOLD (文書 §7)。DEV-173 が review (PR #213) のため status は backlog のまま。N1 の ON は段 C の通過とオーナーの承認まで禁止。"
     },
     {
       "id": "DEV-175",
