@@ -83,6 +83,7 @@
   - 640px を超える値
   - `calc()` で上限をすり抜ける値
   - `html` の `font-size` と `rem` の掛け合わせ、`em` の入れ子、`vw` で上限をすり抜ける値 (計算値の検査で落とす)
+- **検証 (DEV-171):** 256px の上限・対象の制限・640px の正確さ・幅ごとの検査・3店の比較画像は `docs/design/display-scale-decision.md`。能力は OFF のまま。
 
 ### 2.3 `colour_syntax`
 

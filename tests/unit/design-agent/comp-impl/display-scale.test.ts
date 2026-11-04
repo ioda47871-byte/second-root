@@ -310,6 +310,12 @@ describe("DEV-171 widths: a large display word fails exactly where it does not f
     expect(Math.abs(both.need - alone.need)).toBeLessThan(2);
     expect(both.sweep.failing.some((f) => f.codes.includes("DISPLAY_WORD_BROKEN"))).toBe(false);
     for (const width of [1024, 768, 390]) expect(both.rows.find((x) => x.startsWith(`${width}:`)), `${width}`).toContain("TEXT_BOX_OVERFLOW");
+    // past the right gutter the word leaves the page (DISPLAY_OFFSCREEN), inside it only its box
+    const off = both.sweep.failing.filter((f) => f.codes.includes("DISPLAY_OFFSCREEN")).map((f) => f.w);
+    expect(off).toContain(320);
+    expect(off).toContain(1024);
+    expect(Math.max(...off)).toBeGreaterThanOrEqual(Math.floor(both.need) - GUTTER - 2);
+    expect(Math.max(...off)).toBeLessThanOrEqual(Math.ceil(both.need) - GUTTER + 1);
   });
 
   it("the cap itself: a two-glyph label (電話) at 640px needs about 1312px; one glyph alone does not fit below about 672px (DISPLAY_OUT_OF_BOX)", async () => {
@@ -344,6 +350,16 @@ describe("DEV-171 widths: a large display word fails exactly where it does not f
     expect(sweep.failing.find((f) => f.w === 1024)!.codes).toContain("DISPLAY_OUT_OF_BOX");
     const wide = await widthCodes(browser, page, 1920, { css: ON, displayWords: wordsB, facts: shopFactList("bicycle") });
     expect(allCodes(wide)).toEqual([]);
+  });
+
+  it("the sweep's targets are the display words only: never the name in a dd, a dt label or the disclosure", async () => {
+    const { name, words } = shopFacts("sento");
+    const css = `${BASE}\n.w { font-size: 300px; }`;
+    const none = await sweepOf(rawDoc(`<dl><dt class="w">住所</dt><dd class="w">${name}</dd></dl><p data-comp-disclosure class="w">${name}</p>`, css), words);
+    expect(none.targets).toBe(0);
+    expect(none.failing).toEqual([]);
+    const one = await sweepOf(rawDoc(`<h1 class="w">${name}</h1><dl><dd class="w">${name}</dd></dl>`, css), words);
+    expect(one.targets).toBe(1);
   });
 
   it("a two-run name larger than one line breaks inside a run at some widths (Japanese breaks between any glyphs); keep-all (display_nowrap) keeps it to its space", async () => {
