@@ -1,0 +1,236 @@
+# gradient_ground の判断シート (DEV-172、Issue #193 コメント `6628165899`)
+
+2026-11-04。**検証の記録で、何も有効にしていない。**
+
+- `APPROVED_CAPABILITIES` は空のまま (`lib/design-agent/comp-impl/spec.ts`)。
+- 本番のコード (`lib/**`) の差は 0 行。テストと文書だけである。
+- 旗 `gradientGround` (と比べるための `colourSyntax`) は、テストの中の呼び出しにだけ渡した。run.ts・worker の道は旗を立てない。
+- **能力を ON にするかは、オーナーが決める。** このシートは承認ではない。成功例でもない。
+
+土台: `docs/design/phase-b-design.md` §2.4・§8、`docs/design/display-nowrap-decision.md` (DEV-170)、`docs/design/display-scale-decision.md` (DEV-171)。どちらも同じ形の検証である。
+
+## 1. 先に結論
+
+- **旗が下りていると、グラデーションは1つも通らない。** `background`・`background-image` の `linear-gradient`・`radial-gradient` は `CSS_VALUE` / `CSS_PROPERTY`。ほかの形 (`repeating-*`・`conic`・`image-set`・`cross-fade`・`element()`・`paint()`・`-webkit-*`)、ほかの性質 (`border-image`・`mask`・`list-style-image`・`content`・`shape-outside`・`-webkit-box-reflect`・`cursor`)、カスタムプロパティと `var()`、`url()` (字句の段で `CSS_SYNTAX_URL`) は、旗の有無に依らず落ちる。HTML の `style` 属性・`style` 要素・`svg` も落ちる。
+- **旗を立てても、通るのは「1つの linear / radial、止め 2〜8、止めの色はすべて不透明」だけ。** `transparent`・`currentcolor`・アルファが 1 未満の色・`from` の相対色・`color-mix()`・`color()`・`light-dark()`・システム色・`var()` は落ちる。大きさ・位置・繰り返し・固定・切り抜き (`background-size`・`-position`・`-repeat`・`-attachment`・`-origin`・`-clip`) はどれも文法に無い。だからグラデーションの形は、要素の枠の箱だけで決まる。
+- **文字はグラデーションの上に決して載らない。コントラストで決めていない。** 文字を持つ要素のグラデーション (`GROUND_HAS_TEXT`)、文字の行に 0.5px を超えて重なるグラデーション (`GROUND_UNDER_TEXT`) は、事実でも 12px の文字でも 200px の店名でも、320〜1920 のすべての幅で落ちる。片端がコントラストに足りない帯 (C′ の 金を蒔いて の金の帯、暗い端 #8c6524 で 3.33:1 (WCAG の式。C′ の注は 3.7:1)) も、両端とも十分な帯 (#ffffff→#f6f1e7) も、同じく全幅で落ちる。**「文字の下の最悪の点でコントラストを測る」仕組みは無く、要らない。** 文字が載ること自体を落とすので、どの点に載るかを問わない。
+- **止めの規則は端まで正確で、読めない形は落ちる。** 黒から白は 128px で通り 127px で落ちる (1px あたり 2 段)。隣の止めは 24px かつ線の 10% 以上。描いたグラデーションは数に依らず全部見る (60 本の 60 本目の硬い止めで落ちる)。読めない形 (`conic`・繰り返し・位置や大きさのある radial・補間の色空間・px の止め・色のヒント・透けた止め・アルファだけの変化) は `GRADIENT_UNMEASURED`。
+- **幅で変わる形は 1px の掃引で見つかる。** % の止めは箱と一緒に伸び縮みする。10% で黒から白の帯 (左右 16px の余白) は、320〜1306px で `GRADIENT_TOO_STEEP`、1307px から通る (計算どおり、端も一致)。
+- **3店で ON にして得られるもの (見た):**
+  - ゆげ湯: 温度計 (区画ごとの 6px の管に C′ の液の色) と、火の目盛りの帯 (C′ の4つの止め)。strict の4段の帯と段の温度計が、滑らかな帯と、区画をまたいで途切れない管になる。**ただし C′ の色のままでは、火の区画の管が止めの規則で落ちる** (冷たい青から残り火の橙への変化が 18% しか無い。区画の高さが 520px 未満の幅、つまり 320〜600・626〜1920 のほぼ全部)。2つ目の止めを 40% にずらす (grad_eased) と、全幅で通る。
+  - つぐ手: 器の2つの絵の地 (C′ の白い釉の調子)。全幅で通る。
+  - 輪: **何も変わらない。** C′ がグラデーションを使うのは写真の仮の板 (透けた模様の重ね) だけで、どれも文字 (写真の札) を持つか、許可の外の形である。
+- **C′ のグラデーションの宣言 30 のうち、文法を通るのは1つだけ** (ゆげ湯の火の帯)。ゆげ湯の温度計の液 6 つは、カスタムプロパティだから落ちる (同じ値を `background` に書けば通る)。残り 23 は、透けた止め・繰り返し・位置のある radial・`background-size`・`var()` のどれかを使う。C′ の見た目の多くは、段 B の外 (半透明・模様・文字の下・位置の指定) にある。
+
+## 2. 何を検証したか
+
+テスト: `tests/unit/design-agent/comp-impl/gradient-ground.test.ts` (55 件、手元で約 53 秒)。
+道具: `tests/unit/design-agent/comp-impl/gradient-harness.ts` (テストだけの研究の道具。DEV-170 の `nowrap-harness.ts` の店の表・幅の検査と、DEV-171 の `scale-harness.ts` の C′ のページを使う。本番の options ではない)。
+
+- 旗はテストから `cssProblems`・`phaseBScan`・`displaySweepPass` に直接渡す (`phase-b.test.ts`・`display-nowrap.test.ts`・`display-scale.test.ts` と同じ)。
+- 判定は本番の検査そのもの (`page-css.ts` の文法、`phase-b.ts` の `PHASE_B_SCRIPT`・`PAINT_SCANNER`・`GRADIENT_CODES_JS`・`DISPLAY_SWEEP_SCRIPT`・`phaseBCodes`・`gradientProblems`、`render.ts`、`checks.ts` の `paletteCheck`・`textCheck`・`pairsCheck`・`overflowCheck`)。作り直した判定は使っていない。重なりの1件だけ、確かめるための独立の数え方 (テストの中の自前のコード) と照らした。
+- 確かめる幅: PC 1440・1280、タブレット 1024・768・601、SP 600・480・390・375・360・340・320。390 以下は run と同じく電話の擬装で開く。1px の掃引は 320〜1920 の整数の幅の全部。
+- 描画: Chromium 1194、手元の容器の書体 (IPA 明朝・ゴシック)、JS 無効、通信遮断、deviceScaleFactor 1。
+
+## 3. 証明したこと
+
+### 3.1 静的な文法 (旗なし・旗あり)
+
+| 例 | 旗なし | gradient_ground | + colour_syntax |
+|---|---|---|---|
+| `linear-gradient(#000, #fff)`・`to right`・`to top left`・`45deg`・`0.25turn`・`radial-gradient(circle / ellipse, …)`、止め 8 つ | 落ちる | 通る | 通る |
+| 不透明の書き方: `#000f`・`#000000ff`・`white`・`black`・`rgb()`・`rgba(…, 1)`・`rgba(…, 100%)`・`rgb(0 0 0 / 1)` | 落ちる | 通る | 通る |
+| `red`・`hsl()`・`oklch()`・`oklab()` (アルファ 1) | 落ちる | 落ちる | 通る |
+| 透ける・決まらない色: `transparent`・`currentcolor`・`#0000`・`#000e`・`#00000080`・`#000000fe`・`rgba(…, .99)`・`rgb(… / .5)`・`rgb(… / 99%)`・`hsl(… / .5)`・`oklch(… / .5)`・`rgb(from …)`・`color-mix()`・`color(srgb …)`・`light-dark()`・`Canvas`・`var()`・`calc()` の成分 | 落ちる | 落ちる | 落ちる |
+| 形: `repeating-*`・`conic`・`-webkit-*`・radial の `at`・大きさ・`closest-side`・補間の色空間 (`in oklab`・`in hsl longer hue`)・`rad`・`grad`・`calc()` の角度・px の止め・2つの位置・色のヒント・`calc()` の位置・0〜100% の外・止め 1 つ・止め 9 つ・2層・色との併記・`/ 10px 10px` | 落ちる | 落ちる | 落ちる |
+| 間接と画像の関数: `var(--g)`・`image-set()` (グラデーションも `"a.png"` も)・`-webkit-image-set()`・`cross-fade()`・`element()`・`paint()`・`src()`・`attr()` | 落ちる | 落ちる | 落ちる |
+| ほかの性質: `border-image(-source)`・`mask(-image)`・`-webkit-mask-*`・`list-style(-image)`・`content`・`shape-outside`・`-webkit-box-reflect`・`cursor`・`--g:` | 落ちる | 落ちる | 落ちる |
+| 形を変える性質: `background-size`・`-repeat`・`-position`・`-attachment`・`-origin`・`-clip`・`-webkit-background-clip: text`・`background-blend-mode`・`mix-blend-mode`・`-webkit-text-fill-color` | 落ちる | 落ちる | 落ちる |
+| 通信: `url()`・`url(https://…)`・グラデーションと `url()` の2層・`u\72l()`・`@import` | 落ちる | 落ちる | 落ちる |
+
+- 表の「落ちる」は 89 の宣言を3つの旗の組で確かめた (テストの `NEVER`)。
+- **文法は役割を知らない。** 旗を立てると、`.address-fact`・`dd`・`p`・`h1`・`body`・`html`・`*` のグラデーションも文法を通る。文字から離すのは描画の `GROUND_*` だけである (§7)。疑似要素 (`::before`) は今どおり `CSS_PSEUDO_ELEMENT`。
+- 生の HTML で `url()` の地を置いても、`openCompPage` は外への要求をすべて止め (blocked > 0)、地は `GRADIENT_UNMEASURED` で落ちる。
+
+### 3.2 文字とグラデーション (旗あり)
+
+| 例 | 結果 |
+|---|---|
+| 事実の段落・`dd`・免責・12px の文字・200px の店名 (表示語。display_scale と display_nowrap も立てて)・文字を持つ区画・`body`・`aria-label` を持つ空の箱・`alt` を持つ画像・`alt` を持つ画像を含む箱 にグラデーション | すべて `GROUND_HAS_TEXT` (colour_syntax を足しても) |
+| 文字を持たない箱 (空の `div`・`hr`・`aria-hidden` の箱・`alt=""` の画像) | 通る |
+| 文字の行の下端 (20px) に対し、地の上端を 1px・0.6px 重ねる / 0.4px 重ねる・接する | `GROUND_UNDER_TEXT` / 通る (判定は 0.5px を超える重なり) |
+| 文字を持たない空の `span` の、上下の余白 (30px) が隣の行に届く | `GROUND_UNDER_TEXT` (枠の箱の全部を見る) |
+| C′ の金の帯 (`90deg, #c99a45 … #8c6524`) の上に 金を蒔いて (#1d1915、暗い端 #8c6524 で 3.33:1、明るい端 #f1d68f で 12.3:1)、許可の文法の中 | 320〜1920 の全幅で `GROUND_HAS_TEXT` |
+| 同じ文字を、両端とも十分な帯 (#ffffff→#f6f1e7) の上に | 同じく全幅で `GROUND_HAS_TEXT` |
+| 高さを決めた箱の文字が3行になるとあふれ、下の帯 (#8c6524→#f1d68f、許可の文法の中) に載る。左寄せ (暗い端に載る) と右寄せ (明るい端に載る) | どちらも 320〜378 で `GROUND_UNDER_TEXT`。独立の数え方 (根の幅を 1px ずつ動かし、行と帯の重なりを自前で調べる) の 59 幅と完全に一致。左寄せは帯の左半分、右寄せは右半分にだけ載ることも確かめた |
+
+- **コントラストは判定に使っていない。** 載れば落ちる。だから「載る点がコントラストに足りるか」を測る道は無く、「足りない端に載る幅で必ず落ちる」は「載る幅で必ず落ちる」の一部として証明される (上の最後の行)。
+- **run の色の検査はグラデーションの色を読まない。** `paletteCheck` は地の画像を数だけ数え (`background_images: 1`)、止めの色を palette と比べない。緑から紫のグラデーションでも `PALETTE_OUTSIDE` は出ない。文字が載らないので安全の穴ではないが、カンプの色に合っているかは機械では見ない (§7)。
+
+### 3.3 止めの規則
+
+| 例 (箱の大きさ) | 結果 |
+|---|---|
+| 黒→白 `to bottom` 300×128 / 300×127 | 通る / `GRADIENT_TOO_STEEP` |
+| 黒→白 `to right` 128×40 / 127×40、`90deg` 127×40、`0.25turn` 128×40 | 通る / 落ちる / 落ちる / 通る |
+| 黒→白 `45deg` 91×91 (線 128.7px) / 90×90 (127.3px) | 通る / 落ちる (角度の線の長さは正確) |
+| 黒→白 `to bottom right` 600×130 / 600×120 | 通る / 落ちる (線を min(w, h) と短く見る。描く線は約 254px で、実物より厳しい) |
+| 黒→白 `radial-gradient(circle)` 600×256 / 600×254 | 通る / 落ちる (半径を min(w, h)/2 と短く見る) |
+| 300px: 止めの間 10% (30px) / 9.9% | 通る / `GRADIENT_HARD_STOP` |
+| 200px: 止めの間 12% (24px) / 11.9% | 通る / `GRADIENT_HARD_STOP` |
+| `#000 50%, #fff 50%` | `GRADIENT_HARD_STOP`・`GRADIENT_TOO_STEEP`。色が変わらない段 (`#000 50%, #000 50%, #fff`) は通る |
+| 60 本の帯 (許可の文法の中)、60 本目だけ硬い止め | 数 60、`GRADIENT_HARD_STOP`・`GRADIENT_TOO_STEEP` |
+| 生の HTML の止め 10・11 / 12 (1200px、等間隔) | 通る / `GRADIENT_HARD_STOP` (止めの数の上限 8 は文法だけ。描画の側は 10% の決まりで、等間隔なら 11 まで) |
+| 生の HTML: `conic`・繰り返し・位置のある radial・大きさのある radial・補間の色空間・px の止め・色のヒント・`transparent`・アルファだけの変化・透けた文字色の `currentcolor`・透けた色の `var()`・良い層と読めない層の2層 | すべて `GRADIENT_UNMEASURED` |
+| 生の HTML: 不透明な `currentcolor`・`var()`・2つの位置の止め | 計算値で解かれ、描くとおりに測られる (`#000 0% 50%, #fff 50% 100%` は硬い止め) |
+
+- ページの中の規則と TS の `gradientProblems` が、3店のグラデーション (火の帯・液 6 つ・金の帯) を3つの大きさで同じ答えにする。
+- **colour_syntax と併せたときの穴 (安全でない方の規則):** `oklch()`・`oklab()` の止めのグラデーションを、Chromium は oklab で補間する。sRGB の成分は止めの間で上がって下がることがあり、規則 (止めの sRGB の端どうしの差を距離で割る) はそれを見ない。`to right, oklch(0.7 0.2 30), oklch(0.7 0.2 210)` を 300px に描くと、規則は通し、描いた絵は 10px の幅で 1px あたり 5.1 段変わる (規則の上限は 2)。`hsl()` の同じ形は 0.7 段で、規則と合う。**文字が載らないので文字の安全には関わらない**が、「1px あたり 2 段まで」の滑らかさは保たれない。gradient_ground と colour_syntax を一緒に ON にする前に直すか、oklch・oklab を止めに使わせない判断が要る (§10)。
+
+### 3.4 幅
+
+| 例 | 1px の掃引 | 確かめる幅 |
+|---|---|---|
+| 全幅の帯 (左右 16px の余白) `to right, #000, #fff 10%, #fff` | 320〜1306 で `GRADIENT_TOO_STEEP` (箱 1275px で 255/127.5 = 2.0)。1307 から通る | 1280 で落ち、1440 で通る |
+| 1101〜1109px だけ急な止めになる `@media` | 1101〜1109 だけ `GRADIENT_TOO_STEEP` | この形では確かめる幅にも 1101・1102・1108・1109 が入る (`@media` の端の前後) |
+| 上の重なり (文字があふれて帯に載る) | 320〜378 だけ `GROUND_UNDER_TEXT` | 320・340・360 で落ちる |
+
+- `background-size`・`background-attachment: fixed` などは文法に無いので、グラデーションの形を変えるのは箱の幅と高さだけである。箱が幅で変われば、規則の答えも幅で変わる。それを 1px の掃引が全幅で見る (旗を立てたときだけ動く。1回 約 2〜2.5 秒、3店のページ)。
+
+### 3.5 3店
+
+- ページ: つぐ手 `impl/d1-v2-b`、輪 `impl/d1-b`、ゆげ湯 `impl/d1-b` (strict B)。viewport の meta と、ゆげ湯の3枚の PNG の配りは、DEV-171 の道具と同じ。
+- 版 (`gradient-harness.ts`):
+  - `grad` (対象の中、文字を持たない箱): ゆげ湯は各区画の前に `aria-hidden` の空の `div` (管) を置き、区画を横の flex にして、C′ の液の色 6 つを管に、C′ の火の帯の色を `.bar` に。つぐ手は器の2つの絵 (`.bowl-l`・`.bowl-r`) に C′ の白い釉の調子。輪は何もしない (§1)。
+  - `grad_eased`: `grad` のうち、ゆげ湯の火の管の2つ目の止めだけを 18% から 40% に。
+  - `grad_wide` (対象の外、C′ が文字の上に置くもの): ゆげ湯の写真の板 (札を持つ) と火の区画の地、つぐ手の金の帯 (金を蒔いて)、輪の写真の箱 (札を持つ)。
+- strict: 12 の幅のどこでもグラデーションが無く、旗の有無でコードが同じ。
+- `grad`・`grad_eased`・`grad_wide` は、HTML の許可一覧を通り、CSS は旗なしで `CSS_VALUE`、旗ありで問題 0 (輪の grad は strict と同じ CSS)。
+
+| 店 | grad (1px の掃引) | grad_eased | grad_wide |
+|---|---|---|---|
+| ゆげ湯 | `GRADIENT_TOO_STEEP` 320〜600・626〜1920 (火の管だけ。区画の高さが 520px 未満の幅) | 何も出ない (全 1601 幅)。12 の確かめる幅のコードが strict と同じ | 全幅 `GROUND_HAS_TEXT` |
+| つぐ手 | 何も出ない | 同じ | 全幅 `GROUND_HAS_TEXT`・`GRADIENT_HARD_STOP` (金の帯の 45%→52% は 10% 未満)。一部の幅で `GRADIENT_TOO_STEEP` も |
+| 輪 | (strict と同じ) | 同じ | 全幅 `GROUND_HAS_TEXT` |
+
+- 火の管の計算: #9fd6ea から #e46a2f は青の成分で 187 段。18% の間に 2 段/px 以下に収めるには、管が 520px 以上要る (519px は落ち 520px は通る。テストで固定)。ゆげ湯の strict の火の区画は 1440 で 500px、390 で 419px。
+- strict の4段の火の帯は、文法の中の単色の4つの箱で、今も通る。帯のグラデーションは `.bar` の 1180×26px (1440)・338×18px (390) の横の線で測られ、全幅で通る。**同じ帯を縦 (`to bottom`) にすると、高さ 26px では 10% の決まりと 24px の決まりで必ず落ちる** (細い帯の向き)。
+
+## 4. 比較画像 (Claude が見た)
+
+リポジトリの外に置いた。**セッションの一時の場所なので、後から開けない。** SHA だけを残す。
+
+- 場所: `/tmp/claude-0/-home-user/0fe1c26c-c40d-5220-911a-3f28258de597/scratchpad/dev172/shots/` (一覧は `index.tsv`)
+- 並べた画像: `cmp-<店>-<1440|768|390>-full.png` (左から strict・grad・grad_wide・C′)、`cmp-sento-<幅>-fire.png` (火の区画: strict・grad・grad_eased・grad_wide・C′)、`cmp-sento-1440-gauge.png` (温度計の列だけ)、`cmp-sento-<1440|390>-top.png`、`cmp-tsugute-<幅>-hero.png` (器)・`cmp-tsugute-<幅>-cut.png` (金の帯)
+- C′ はつぐ手 `fidelity/d1-v5`、輪 `fidelity/d1-v4`、ゆげ湯 `fidelity/d1-v4` (DEV-168 の後の最新、DEV-171 と同じ)。
+
+ページ全体の画像の SHA-256 の先頭 8 桁 (PC 1440 / タブレット 768 / SP 390、JS 無効、deviceScaleFactor 1、外への要求 0):
+
+| 店 | strict B | B + grad (対象の中) | B + grad_eased | B + grad_wide (対象の外) | C′ |
+|---|---|---|---|---|---|
+| つぐ手 | `5b4b8a6c` / `c8c02bcd` / `cfb9a2ce` | `83515152` / `dcdc0003` / `30c73484` | grad と同じ | `54479b92` / `1fda8c98` / `67dacbc2` | `df00b8c4` / `56eccf30` / `1aeb994d` |
+| 輪 | `917d1561` / `a9fa55d3` / `da0e08a9` | strict と同じ | strict と同じ | `b4cf3d39` / `3321ff51` / `1aefc092` | `077843c1` / `fe330aae` / `950852a9` |
+| ゆげ湯 | `4f14e5ba` / `edf64a65` / `9b14b356` | `9e65f9ee` / `f8ba64ad` / `4e06a93c` | `6c0a098d` / `163cdd2a` / `93416509` | `52c90c4b` / `8d4ae117` / `5e23dad8` | `53308a0f` / `e92830da` / `8d33403a` |
+
+strict B の SHA は DEV-171 の記録 (と `impl/README.md` の 1440・390) と同じだった。ページの高さは、どの版も strict と同じ (グラデーションは配置を変えない)。
+
+### 見て分かったこと
+
+- **ゆげ湯の温度計は、見て分かるほど良くなる。** strict は区画ごとに色の段が付いた 6px の罫で、壁の区画では罫が地 (#eef0ec) にほとんど溶けて見えない。grad では、朱の区画の淡い白から始まり、橙・水色・残り火・灰・紺へと区画をまたいで途切れずに下る1本の管になり、壁の区画でも見える。カンプの「温度を下る」の筋が、strict より読める。
+- **火の目盛りの帯は、C′ とほぼ同じになる。** 4段の色の箱が、炭から薄い黄への滑らかな帯になる。PC・タブレット・SP のどれでも同じ。このシートで見た中で、gradient_ground の得がいちばんはっきりしているのはここである。
+- **grad_eased (火の管を 40% に) は、目ではほとんど区別できない。** 冷たい青から橙への変わり目が少し長くなるだけ。C′ の色のまま落ちる管を、見た目をほぼ変えずに通せる。
+- **それでも C′ の温度計にはならない。** C′ の管は 22px のガラスの管 (半透明の光沢と縁)、目盛りの刻み (繰り返しの模様、疑似要素)、ページの上に重ねた位置の指定でできている。どれも段 B の外 (半透明・模様・疑似要素・位置) である。grad は「色の流れ」だけを戻す。
+- **つぐ手の器は、平たい板から少し立体の器になる。** 白い釉の調子が下へ暗くなり、器の丸みが出る。C′ の器 (割れ目の金の線・内側の漆の色・影・縁取りの文字) との差は大きく、グラデーションで縮まるのは一部である。
+- **輪は変わらない。** grad_wide では写真の札の帯の後ろにだけ灰のグラデーションが見える (画像がその上を覆う)。C′ の写真の板の質感 (透けた光と斜めの模様) は、文字を持つ箱と許可の外の形なので、ON でも戻らない。
+- **対象の外 (grad_wide) は、見た目の得があっても落ちる。** つぐ手の金の帯は、C′ と同じ金の光沢が strict の平たい金に勝って見える。しかし 金を蒔いて が載っていて、暗い端はコントラストが足りない (3.33:1)。C′ は文字の側を明るい端に寄せて逃げているが、それは幅や書体で崩れる。gradient_ground はこれを全幅で落とす。これは正しい振る舞いである。
+- **768 と 390 でも、得と落ちる所は PC と同じ。** 390 では管が 4px で、温度計の効果は PC より弱い。火の帯は SP でも滑らかになる。strict の 768 の横のはみ出し (DEV-160 のタブレットの誤り) は、どの版でも変わらない (グラデーションのせいではない)。
+
+## 5. 証明していないこと
+
+- **1920px より広い幅、320px より狭い幅、整数でない幅、900 以外の窓の高さ。** 掃引は 320〜1920 の整数の幅だけ。
+- **ブラウザの拡大率・文字の大きさの設定・最小の文字の大きさ・端末の画素比。** 文字が大きくなると、文字の行が地に届く幅が変わる。100% の拡大でしか測っていない。
+- **Chromium 1194 以外の描画系** (WebKit・Firefox)。補間 (特に oklab)・ディザ・`radial` の大きさの扱いは描画系で違いうる。
+- **ほかの書体。** 文字の行の箱の高さは書体で変わる (重なりの判定の 0.5px の端もそれに依る)。
+- **字形の墨が行の箱をはみ出す分。** 重なりは文字の行の箱 (Range の箱) で見る。斜体や大きな字の飛び出しが行の箱の外で地に触れることは見ていない。
+- **グラデーションの色がカンプの色に合っているか。** `paletteCheck` は止めの色を見ない (§3.2)。目で見る事柄のまま。
+- **oklch・oklab の止めの滑らかさ** (§3.3 の穴)。colour_syntax と併せたときだけの事柄で、直していない。
+- **3店以外のページ。**
+- **役割 (`data-comp-role`) との照合。** 設計 (§2.4) は「役割は ground・decoration」と言うが、実装は役割を読まず、「文字を持たず、文字に重ならない」ことだけで決める。より狭い・広いの議論はしていない (文字の側の安全は、役割と無関係に成り立つ)。
+
+## 6. 危険
+
+- **静的な文法は役割を知らない:** 旗を立てると、`html`・`body`・`*`・事実の選択子のグラデーションも文法を通る。文字から離す守りは、描画の `GROUND_HAS_TEXT`・`GROUND_UNDER_TEXT` の1枚である。run.ts は確かめる幅・32px の掃引・(旗のとき) 1px の掃引の全部で `PAINT_SCANNER` を走らせるので、守りが走らない道は無いが、1枚である。
+- **重なりの端:** 0.5px までの重なりは通る (判定の余地)。地と文字が 0.4px 重なっても落ちない。
+- **C′ をそのまま写すと落ちる:** C′ の液と金の帯の色は、止めの規則に合わない (§3.5)。ON にしても、C′ の値を持ってくるだけでは通らない。値を変える判断 (40% にずらすなど) は、見た目の判断である。
+- **細い帯の向き:** 24px より短い線に色の変化を置くと必ず `GRADIENT_HARD_STOP` (高さ 26px の帯を縦に塗る、細い罫を横に塗る)。意図した帯でも、向きで落ちる。
+- **oklab の補間:** colour_syntax と一緒に ON にすると、規則が見ない急な変化が描ける (§3.3)。文字の安全ではなく、滑らかさの約束の穴である。
+- **文字の色の検査に地の色が入らない:** 地の色と文字の色の関係は、文字が載らないことで守っている。将来「文字の下のグラデーション」(段 C) に広げるなら、ここは新しく作る必要がある (今は何も測っていない)。
+
+## 7. ON にしたら変わること
+
+- spec が `gradient_ground` を宣言でき、そのページだけ、`background`・`background-image` に1つの linear / radial (止め 2〜8、不透明) が文法を通る。`background-image: none` も通る。
+- そのページだけ、1px の掃引 (320〜1920) が地・グラデーション・(translucent_decoration と同じ) 半透明の箱に掛かる (1ページ 約 1〜2.5 秒増える。`phase-b-design.md` §8.6、このシートの 3店のページで 2.0〜2.5 秒)。
+- 宣言しないページは何も変わらない。今の3店の strict の描画も変わらない (§4 の SHA。strict はグラデーションを持たない)。
+- 3店で戻るもの: ゆげ湯の温度計と火の帯 (火の管は C′ の色のままでは落ちる)、つぐ手の器の調子。輪は何も戻らない。C′ の半透明・模様・文字の下のグラデーションは、ON でも戻らない。
+
+## 8. 有効にする PR の手順 (将来、承認の後)
+
+1. `lib/design-agent/comp-impl/spec.ts` の `APPROVED_CAPABILITIES` に `"gradient_ground"` だけを足す。ほかの名前 (特に `colour_syntax`) は足さない。
+2. `colour_syntax` も ON にするなら、その前に §3.3 の oklab の穴を扱う (止めに oklch・oklab を許さないか、規則を補間の色空間で測るように直す。どちらも別の判断)。
+3. `phase-b.test.ts` の「承認は空」のテスト、`gradient-ground.test.ts` の `stays OFF` のテスト (と、一覧を固定しているほかのテスト) を、**その PR の中で**承認された一覧に合わせて書き換える。書き換えたことを PR の本文に書く (テストを消さない、skip しない)。
+4. 次が緑であること。
+   - `npx vitest run tests/unit/design-agent/comp-impl/gradient-ground.test.ts`
+   - `npx vitest run tests/unit/design-agent/comp-impl/phase-b.test.ts`
+   - `npx vitest run tests/unit/design-agent/comp-impl/phase-b-baseline.test.ts`
+   - `npx vitest run tests/unit/design-agent/comp-impl/display-scale.test.ts`
+   - `npx vitest run tests/unit/design-agent/comp-impl/display-nowrap.test.ts`
+   - `npx vitest run tests/unit/design-agent/comp-impl/isolation.test.ts`
+   - `npx vitest run tests/unit/design-agent/comp-impl` (全体)
+   - `npx vitest run tests/unit/ai-tasks.test.ts`
+   - 必須の CI の全部
+5. 旗を下ろしたページの静的な一致: develop の `page-css.ts` と、旗無しで大きな組み合わせを比べて差 0 (`phase-b-design.md` §8.9 と同じやり方)。
+6. 独立の Fresh Review で C/H/M = 0。
+7. **merge はオーナーの明示の承認の後** (DEV-083 §8)。
+
+## 9. 壊して確かめたこと (変異の検査)
+
+本番の守りを1つずつ外して `gradient-ground.test.ts` を走らせ、元に戻した (本番のコードの差は 0)。数は「落ちたテスト / 55」。
+
+| 外した守り | 落ちたテスト |
+|---|---|
+| 文法: 止めの色の不透明を問わない | 3 / 55 |
+| 文法: `repeating-linear-gradient` を通す | 2 / 55 |
+| 文法: 止めの数の上限 8 を 100 に | 3 / 55 |
+| 文法: px の止めを通す | 2 / 55 |
+| 文法: radial の `at` を通す | 2 / 55 |
+| 描画: `GROUND_HAS_TEXT` を数えない | 14 / 55 |
+| 描画: `GROUND_UNDER_TEXT` を数えない | 3 / 55 |
+| 描画: `aria-label`・`alt` を文字と数えない | 3 / 55 |
+| 描画: 重なりの余地を 0.5px から 2px に | 1 / 55 |
+| 描画: 止めのアルファを捨てて測る | 4 / 55 |
+| 描画: 読めない形を linear として測る | 4 / 55 |
+| 規則: 1px あたり 2 段を 3 段に | 4 / 55 |
+| 規則: 24px を 0 に | 1 / 55 |
+| 規則: 10% を 5% に | 3 / 55 |
+| 規則: 角の線を min(w, h) でなく w + h に | 1 / 55 |
+| ページの中: 41 本目からのグラデーションを見ない (Fresh Review M2 の戻し) | 1 / 55 |
+| 掃引: 旗 `gradientGround` で地の検査を走らせない | 9 / 55 |
+| 掃引: 測れなかった幅を落とさない (`unmeasuredWidths` の行を消す) | 0 / 55 |
+
+- 18 のうち 17 はこのテストで落ちる。最後の1つ (測れなかった幅) は、このテストの例では測れない幅が出ないので落ちない。その行は `phase-b.test.ts` の DEV-169 のテスト (`[1916, 1923]` の範囲) が守っている。同じ変異で `phase-b.test.ts` を走らせ、そのテストだけが落ちる (1 / 187) ことを確かめた。
+
+- 走らせ方: `scratchpad/dev172/scripts/mutate.py` (リポジトリの外)。1つごとにファイルを元に戻し、終わりに `git status --short lib` が空であることを確かめた。
+
+## 10. オーナーの判断が要ること
+
+> **オーナーの判断が要る (未承認)**
+>
+> 1. `gradient_ground` を今の形 (文字を持たず文字に重ならない箱に、1つの linear / radial、不透明な止め 2〜8) で ON にするか。
+>    - 得: ゆげ湯の温度計と火の目盛りの帯、つぐ手の器の調子 (§4)。輪は変わらない。
+>    - 文字の安全は、文字が載ること自体を全幅で落とすことで守っている (§3.2)。コントラストは測らない。
+> 2. C′ の色が止めの規則で落ちる所 (ゆげ湯の火の管、つぐ手の金の帯) を、値を変えて通すか (例: 火の管の止めを 40% に)。規則 (1px 2 段、24px、10%) は緩めない前提で、見た目の判断になる。
+> 3. `colour_syntax` を一緒に ON にするか。するなら、oklch・oklab の止めの補間 (§3.3) を先に扱うか。
+> 4. グラデーションの色をカンプの palette と照らす検査 (今は無い) を、ON の前に要るとするか。
+> 5. §5 の証明していないこと (1920 より広い幅、拡大率、ほかの描画系、ほかの書体、字形の墨のはみ出し) を ON の前に要るとするか。
+>
+> このシートは承認ではない。能力の ON・`APPROVED_CAPABILITIES` の変更・安全の門の緩和は、別の承認まで HOLD のまま。

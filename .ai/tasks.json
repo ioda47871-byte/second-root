@@ -7890,7 +7890,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null,
+      "branch": "feature/dev-172-gradient-ground-verification",
       "purpose": "gradient_ground を有効にする前の証拠を揃える (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
       "acceptance_criteria": [
         "不透明な stop、急勾配、硬い境界、文字との接触、外部 url・通信の拒否を証明する",
@@ -7921,7 +7921,7 @@
         "安全ゲートの実質的な緩和",
         "本番への反映"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 判断シートは docs/design/gradient-ground-decision.md。テストは gradient-ground.test.ts (55 件)、道具は gradient-harness.ts。本番のコードの差 0。旗なしでグラデーションは1つも通らない。旗ありでも文字を持つ箱・文字に重なる箱は全幅で GROUND_HAS_TEXT / GROUND_UNDER_TEXT (コントラストでなく重なりで落とす)。ゆげ湯の温度計と火の帯、つぐ手の器は戻る (C′ の火の管の色は止めの規則で落ちる。40% にずらすと全幅で通る)。輪は変わらない。C′ のグラデーションの宣言 30 のうち文法を通るのは1つ。colour_syntax と併せると oklab の補間を止めの規則が見ない (安全でない方の規則の穴、直していない)。検証は完了。DEV-171 がまだ review なので status は backlog のまま (ai-tasks のテストが依存の未完了で review を許さない)。DEV-171 の merge の後に review へ上げる。"
     },
     {
       "id": "DEV-173",
