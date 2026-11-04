@@ -47,13 +47,19 @@ export type N1OwnerReview = {
 export type N1Asset = Omit<DecorationAsset, "owner_visual_review">;
 
 /**
- * Proof that an approved record came from the owner. OPEN OWNER DECISION: there is none. A verifier gets the record and
- * answers; it must not trust anything inside the record (every field is a claim).
+ * Proof that an approved record came from the owner. OPEN OWNER DECISION: there is none. A verifier gets a frozen plain
+ * copy of the record's nine validated fields (never the caller's live object: no getter, prototype or extra key reaches
+ * it) and answers; it must not trust anything inside the record (every field is a claim). Whether the verifier stays a
+ * parameter or is fixed in this module is also an owner decision (docs/design/n1-implementation-prep.md §4 1).
  */
 export type N1Attestation = (record: Readonly<N1OwnerReview>) => boolean;
 export const NO_ATTESTATION: N1Attestation = () => false;
 
-/** What the record is checked against: the asset as recorded, the bytes as read, the preview as rendered now. */
+/**
+ * What the record is checked against: the asset as recorded, the bytes as read, the preview as rendered now. The binding
+ * is only as good as its source: it must come from reading the file and rendering those bytes, never from the record.
+ * checkN1Asset builds it that way; n1ReviewProblems alone trusts whatever binding its caller hands it.
+ */
 export type N1ReviewBinding = {
   assetId: string;
   assetFile: string;
@@ -69,6 +75,7 @@ const sameKeys = (o: Record<string, unknown>, keys: readonly string[]) => {
   return k.length === keys.length && k.every((x, i) => x === keys[i]);
 };
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const snapshot = (o: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.keys(o).map((k) => [k, o[k]]));
 
 /**
  * The record an agent may write for an asset: `pending`, no date, empty note, bound to the asset's bytes and to the
@@ -87,17 +94,19 @@ export function pendingN1Review(asset: Pick<N1Asset, "id" | "file">, assetSha256
  * N1_REVIEW_REJECTED, N1_REVIEW_DECISION (none of the three), N1_REVIEW_DATE (pending with a date, or a decision without a
  * real, past date), N1_REVIEW_NOTE (not a string of at most 500), N1_REVIEW_UNATTESTED (approved, and no verifier proves
  * it came from the owner — the default). Never throws. An empty list means the record passes.
+ * LOW LEVEL: the binding is the caller's. A run uses checkN1Asset, which reads the bytes and renders the preview itself.
  */
 export function n1ReviewProblems(record: unknown, bound: N1ReviewBinding, o: { now?: Date; attest?: N1Attestation } = {}): string[] {
   try {
     if (!isObject(record)) return ["N1_REVIEW_MISSING"];
-    const r = record;
+    // one read of every own field: the checks below and the verifier's copy see the same values (a getter is read once)
+    const r = snapshot(record);
     const p: string[] = [];
     if (!sameKeys(r, N1_REVIEW_KEYS)) p.push("N1_REVIEW_SHAPE");
     if (r.schema !== N1_REVIEW_SCHEMA) p.push("N1_REVIEW_SCHEMA");
     if (r.asset_id !== bound.assetId || r.asset_file !== bound.assetFile || !DECORATION_ID.test(String(r.asset_id)) || !DECORATION_FILE.test(String(r.asset_file))) p.push("N1_REVIEW_ASSET");
     if (typeof r.asset_sha256 !== "string" || !HEX64.test(r.asset_sha256) || bound.assetSha256 === null || r.asset_sha256 !== bound.assetSha256) p.push("N1_REVIEW_ASSET_SHA256");
-    const pv = r.preview;
+    const pv = isObject(r.preview) ? snapshot(r.preview) : r.preview;
     if (!isObject(pv) || !sameKeys(pv, N1_PREVIEW_KEYS) || pv.scale !== N1_PREVIEW_SCALE || pv.background !== N1_PREVIEW_BACKGROUND) p.push("N1_REVIEW_PREVIEW_SHAPE");
     const pvo = isObject(pv) ? pv : {};
     if (typeof pvo.sha256 !== "string" || !HEX64.test(pvo.sha256) || bound.preview === null || pvo.sha256 !== bound.preview.sha256) p.push("N1_REVIEW_PREVIEW_SHA256");
@@ -117,7 +126,7 @@ export function n1ReviewProblems(record: unknown, bound: N1ReviewBinding, o: { n
     if (decision === "approved" && p.length === 0) {
       let ok = false;
       try {
-        ok = (o.attest ?? NO_ATTESTATION)(r as N1OwnerReview) === true;
+        ok = (o.attest ?? NO_ATTESTATION)(frozenCopy(r, pvo)) === true;
       } catch {
         ok = false;
       }
@@ -129,27 +138,69 @@ export function n1ReviewProblems(record: unknown, bound: N1ReviewBinding, o: { n
   }
 }
 
+/** The verifier's view: the nine validated fields, copied as plain values and frozen (the preview too). */
+function frozenCopy(r: Record<string, unknown>, pv: Record<string, unknown>): Readonly<N1OwnerReview> {
+  const preview: N1Preview = Object.freeze({
+    sha256: String(pv.sha256),
+    renderer: String(pv.renderer),
+    width: Number(pv.width),
+    height: Number(pv.height),
+    scale: N1_PREVIEW_SCALE,
+    background: N1_PREVIEW_BACKGROUND,
+  });
+  return Object.freeze({
+    schema: N1_REVIEW_SCHEMA,
+    asset_id: String(r.asset_id),
+    asset_file: String(r.asset_file),
+    asset_sha256: String(r.asset_sha256),
+    preview,
+    reviewer: "owner",
+    decision: r.decision as N1Decision, // asked only of an approved record
+    reviewed_at: String(r.reviewed_at),
+    note: String(r.note),
+  });
+}
+
 /**
  * One N1 asset as a whole: the file side of DEV-162 / DEV-165 (name, no symlink or hardlink, inside `dir`, bytes, sha256,
- * size, dimensions, the strict SVG check) and its owner record bound to the bytes read and to `preview` (the preview
- * rendered now from the same bytes; null when it was not rendered). The asset passes only when both are clean. Never throws.
+ * size, dimensions, the strict SVG check) and its owner record, bound to the bytes read and to the preview THIS FUNCTION
+ * renders from those same bytes (renderN1Preview, at the asset's recorded width × height). The caller supplies no
+ * preview and no hash: a record carrying a forged or stale picture sha256, another renderer or another size is refused.
+ * When the bytes cannot be read or drawn (or the file's size is not the asset's), there is no preview and the record
+ * cannot be bound. The asset passes only when both sides are clean. Never throws.
  */
-export function checkN1Asset(dir: string, asset: N1Asset, record: unknown, o: { preview: N1ReviewBinding["preview"]; now?: Date; attest?: N1Attestation }): string[] {
-  let file: { problems: string[]; sha256: string | null };
+export async function checkN1Asset(browser: Browser, dir: string, asset: N1Asset, record: unknown, o: { now?: Date; attest?: N1Attestation } = {}): Promise<string[]> {
+  let file: { problems: string[]; sha256: string | null; bytes: Buffer | null };
   try {
     file = decorationAssetFileProblems(dir, asset);
   } catch {
-    file = { problems: ["ASSET_CHECK_ERROR"], sha256: null };
+    file = { problems: ["ASSET_CHECK_ERROR"], sha256: null, bytes: null };
   }
   let id = "";
   let name = "";
+  let width = NaN;
+  let height = NaN;
   try {
     id = typeof asset?.id === "string" ? asset.id : "";
     name = typeof asset?.file === "string" ? asset.file : "";
+    width = typeof asset?.width === "number" ? asset.width : NaN;
+    height = typeof asset?.height === "number" ? asset.height : NaN;
   } catch {
     // a hostile asset record: the binding stays empty and the record cannot match it
   }
-  return [...new Set([...file.problems, ...n1ReviewProblems(record, { assetId: id, assetFile: name, assetSha256: file.sha256, preview: o.preview }, o)])];
+  let preview: N1ReviewBinding["preview"] = null;
+  const drawn: string[] = [];
+  if (file.bytes !== null) {
+    try {
+      // renderN1Preview refuses (N1_PREVIEW_SIZE) unless the file's own size is the asset's recorded size
+      const r = await renderN1Preview(browser, file.bytes, width, height);
+      if (r.preview && r.problems.length === 0 && r.preview.width === width && r.preview.height === height) preview = { sha256: r.preview.sha256, renderer: r.preview.renderer, width, height };
+      else drawn.push(...(r.problems.length ? r.problems : ["N1_PREVIEW_SIZE"]));
+    } catch {
+      drawn.push("N1_PREVIEW_ERROR");
+    }
+  }
+  return [...new Set([...file.problems, ...drawn, ...n1ReviewProblems(record, { assetId: id, assetFile: name, assetSha256: file.sha256, preview }, o)])];
 }
 
 export const N1_PREVIEW_ORIGIN = "http://n1-preview.invalid";

@@ -719,17 +719,20 @@ export function checkDecorationAssetFile(dir: string, asset: DecorationAsset, no
  * when the file was not read). decoration-review.ts binds its per-asset owner record (schema 2) to that sha256. Never
  * throws: anything unexpected is ASSET_CHECK_ERROR.
  */
-export function decorationAssetFileProblems(dir: string, asset: Omit<DecorationAsset, "owner_visual_review">): { problems: string[]; sha256: string | null } {
+export function decorationAssetFileProblems(dir: string, asset: Omit<DecorationAsset, "owner_visual_review">): { problems: string[]; sha256: string | null; bytes: Buffer | null } {
   const p: string[] = [];
-  const read: { sha256: string | null } = { sha256: null };
+  const read: AssetRead = { sha256: null, bytes: null };
   try {
-    return { problems: checkAssetFile(dir, asset, p, read), sha256: read.sha256 };
+    return { problems: checkAssetFile(dir, asset, p, read), sha256: read.sha256, bytes: read.bytes ?? null };
   } catch {
-    return { problems: [...new Set([...p, "ASSET_CHECK_ERROR"])], sha256: read.sha256 };
+    return { problems: [...new Set([...p, "ASSET_CHECK_ERROR"])], sha256: read.sha256, bytes: read.bytes ?? null };
   }
 }
 
-function checkAssetFile(dir: string, asset: Omit<DecorationAsset, "owner_visual_review">, p: string[], read: { sha256: string | null }): string[] {
+/** What checkAssetFile read: the sha256 and (for callers that render them) the very bytes it hashed. */
+type AssetRead = { sha256: string | null; bytes?: Buffer | null };
+
+function checkAssetFile(dir: string, asset: Omit<DecorationAsset, "owner_visual_review">, p: string[], read: AssetRead): string[] {
   if (asset?.kind !== "decoration_svg" || asset?.role !== "decoration") p.push("ASSET_KIND");
   if (typeof asset?.id !== "string" || !DECORATION_ID.test(asset.id)) p.push("ASSET_ID");
   if (typeof asset?.file !== "string" || !DECORATION_FILE.test(asset.file) || asset.file.split("/").includes("..")) return [...p, "ASSET_FILE_NAME"];
@@ -762,6 +765,7 @@ function checkAssetFile(dir: string, asset: Omit<DecorationAsset, "owner_visual_
   const bytes = readFileSync(full);
   if (bytes.length !== asset.bytes) p.push("ASSET_BYTES");
   read.sha256 = createHash("sha256").update(bytes).digest("hex");
+  read.bytes = bytes;
   if (read.sha256 !== asset.sha256) p.push("ASSET_SHA256");
   const c = checkDecorationSvg(bytes);
   if (!c.ok) p.push(...c.findings.map((x) => x.code));

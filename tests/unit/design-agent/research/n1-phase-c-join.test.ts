@@ -101,20 +101,26 @@ afterAll(async () => {
 const FACT_P = `<p class="fact">電話 ${FACT}</p>`;
 const ORDINARY_P = `<p class="body">湯上がりの、帰り道。</p>`;
 
-/** Must fail: each is clean in every static part of the join; only the phase C render check refuses it. */
-const MUST_FAIL: Array<[string, Case, string]> = [
-  ["img over a fact (absolute, z-index 1)", { body: `${FACT_P}${IMG("deco")}`, css: ".deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: 1; }" }, "OVERLAP_PAINT_ABOVE_PROTECTED"],
-  ["img over a fact, in flow, pulled up by a negative margin", { body: `${FACT_P}${IMG("deco")}`, css: ".deco { display: block; width: 300px; height: 40px; margin-top: -30px; }" }, "OVERLAP_PAINT_ABOVE_PROTECTED"],
-  ["img under a fact, no plate (the text lifted above it)", { body: `${FACT_P}${IMG("deco")}`, css: ".fact { position: relative; z-index: 2; } .deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: 1; }" }, "OVERLAP_PROTECTED_ON_DECORATION"],
-  ["img under a fact, no plate (z-index -1 in an isolated group)", { body: `${FACT_P}${IMG("deco")}`, css: ".wrap { isolation: isolate; } .deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: -1; }" }, "OVERLAP_PROTECTED_ON_DECORATION"],
+/**
+ * Must fail: each is clean in every static part of the join; the phase C render check refuses it with the code named,
+ * and today's run geometry gives exactly the codes listed (it does not look at ordinary text, so those two give none).
+ */
+const FACT_OVER = ["FACT_COVERED", "FACT_IMAGE_OVERLAP"];
+const FACT_UNDER = ["FACT_IMAGE_OVERLAP"];
+const MUST_FAIL: Array<[string, Case, string, string[]]> = [
+  ["img over a fact (absolute, z-index 1)", { body: `${FACT_P}${IMG("deco")}`, css: ".deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: 1; }" }, "OVERLAP_PAINT_ABOVE_PROTECTED", FACT_OVER],
+  ["img over a fact, in flow, pulled up by a negative margin", { body: `${FACT_P}${IMG("deco")}`, css: ".deco { display: block; width: 300px; height: 40px; margin-top: -30px; }" }, "OVERLAP_PAINT_ABOVE_PROTECTED", FACT_OVER],
+  ["img under a fact, no plate (the text lifted above it)", { body: `${FACT_P}${IMG("deco")}`, css: ".fact { position: relative; z-index: 2; } .deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: 1; }" }, "OVERLAP_PROTECTED_ON_DECORATION", FACT_UNDER],
+  ["img under a fact, no plate (z-index -1 in an isolated group)", { body: `${FACT_P}${IMG("deco")}`, css: ".wrap { isolation: isolate; } .deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: -1; }" }, "OVERLAP_PROTECTED_ON_DECORATION", FACT_UNDER],
   [
     "img under a fact on a 90% white plate (not opaque)",
     { body: `<p class="fact"><span class="plate">電話 ${FACT}</span></p>${IMG("deco")}`, css: ".plate { display: inline-block; position: relative; z-index: 2; padding: 4px 6px; background: rgba(255, 255, 255, 0.9); } .deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: 1; }" },
     "OVERLAP_PROTECTED_ON_DECORATION",
+    FACT_UNDER,
   ],
-  ["img over ordinary text", { body: `${ORDINARY_P}${IMG("deco")}`, css: ".deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: 1; }" }, "OVERLAP_PAINT_ABOVE_TEXT"],
-  ["img under ordinary text, no plate (plate is the proposed default)", { body: `${ORDINARY_P}${IMG("deco")}`, css: ".body { position: relative; z-index: 2; } .deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: 1; }" }, "OVERLAP_TEXT_ON_DECORATION"],
-  ["img pushes a fact off screen (negative margin on the text's block)", { body: `${IMG("deco")}${FACT_P}`, css: ".deco { display: block; width: 100px; height: 40px; } .fact { margin-left: -120px; }" }, "OVERLAP_PROTECTED_OFFSCREEN"],
+  ["img over ordinary text", { body: `${ORDINARY_P}${IMG("deco")}`, css: ".deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: 1; }" }, "OVERLAP_PAINT_ABOVE_TEXT", []],
+  ["img under ordinary text, no plate (plate is the proposed default)", { body: `${ORDINARY_P}${IMG("deco")}`, css: ".body { position: relative; z-index: 2; } .deco { position: absolute; left: 40px; top: 36px; width: 300px; height: 40px; z-index: 1; }" }, "OVERLAP_TEXT_ON_DECORATION", []],
+  ["img pushes a fact off screen (negative margin on the text's block)", { body: `${IMG("deco")}${FACT_P}`, css: ".deco { display: block; width: 100px; height: 40px; } .fact { margin-left: -120px; }" }, "OVERLAP_PROTECTED_OFFSCREEN", ["FACT_OFFSCREEN"]],
 ];
 
 /**
@@ -147,9 +153,13 @@ const MUST_PASS: Array<[string, Case]> = [
 
 /**
  * The scaled case. The img's width is a share of the page (40%). Below 800px the fact sits under it; from 800px beside it
- * after a fixed gutter; from 900px the gutter becomes a share of the page too. Between, at 849–899px, 40% of the
- * width passes the fixed gutter and the img's box reaches the fact. No checked width (1024, 768 …) is in that range:
- * only the 1px sweep sees it. The safe variant widens the fixed gutter.
+ * after a fixed gutter; from 900px the gutter becomes a share of the page too. Between (one band ending at 899px; on this
+ * container's fonts 849–899px), 40% of the width passes the fixed gutter and the img's box reaches the fact. No checked
+ * width (1024, 768 …) is in that band: only the 1px sweep sees it. The safe variant widens the fixed gutter.
+ * Font-independent: the upper edge (899, the last width before the 900px media query) and 852, the first width where
+ * today's run geometry sees the img's box reach the fact's line box (0.4 × 852 > the line's left edge at 340px: layout,
+ * not glyphs). The lower edge of phase C's band depends on the glyphs' ink (side bearings), so it is not pinned: it is
+ * read from the sweep, checked against fresh opens at every width around it (an oracle), and must contain 852.
  */
 const SCALED = (gutter: string): Case => ({
   body: `${IMG("deco")}${FACT_P}`,
@@ -161,11 +171,12 @@ describe("DEV-174 the join stays OFF", () => {
 });
 
 describe("DEV-174 must fail: an N1 img that reaches text (static parts clean, the phase C check refuses)", () => {
-  it.each(MUST_FAIL)("%s", async (name, c, code) => {
+  it.each(MUST_FAIL)("%s", async (name, c, code, geometry) => {
     const j = await joinAt(c);
     console.log(`DEV-174 must-fail ${name}: geometry=${JSON.stringify(j.geometry)} overlap=${JSON.stringify(j.overlap)}`);
     expect([j.page, j.svg, j.grammar]).toEqual([[], [], []]);
     expect(j.overlap).toContain(code);
+    expect(j.geometry).toEqual(geometry);
     expect(unexpected).toEqual([]);
   });
 
@@ -173,6 +184,8 @@ describe("DEV-174 must fail: an N1 img that reaches text (static parts clean, th
     const j = await joinAt(TRANSPARENT);
     expect([j.page, j.svg, j.grammar]).toEqual([[], [], []]);
     expect(j.overlap).toEqual(["OVERLAP_PAINT_ABOVE_PROTECTED"]);
+    // today's run geometry also judges the box: the img's box over the fact's line
+    expect(j.geometry).toEqual(FACT_OVER);
     const px = await pixelPass(tab, PLAN);
     // the stroke misses every glyph and the rest is transparent: the ink reaches the screen untouched
     expect(Object.keys(px.codes)).not.toContain("PIXEL_COVER_PROTECTED");
@@ -186,13 +199,23 @@ describe("DEV-174 must fail: an N1 img that reaches text (static parts clean, th
     const s = await overlapSweep(browser, { html: html(c.body), css: c.css } as CompPage, PLAN, 320, 1920, sweepOpener(c));
     expect(s.measured).toBe(1601);
     console.log(`DEV-174 scaled sweep: ${JSON.stringify(sweepRanges(s))} ${s.ms}ms`);
-    expect(sweepRanges(s)).toEqual({ OVERLAP_PAINT_ABOVE_PROTECTED: "849–899" });
-    // the same widths opened afresh (real resizes) agree at the edges; today's run geometry (line boxes, no growth) sees a
-    // narrower band: phase C grows protected glyph boxes by 1 px (V4), so it also catches the widths where the box grazes
+    const ranges = sweepRanges(s);
+    expect(Object.keys(ranges)).toEqual(["OVERLAP_PAINT_ABOVE_PROTECTED"]);
+    // one contiguous band (no comma), ending at the 900px media query, starting after the 800px one
+    const band = /^(\d+)–(\d+)$/.exec(ranges.OVERLAP_PAINT_ABOVE_PROTECTED!);
+    expect(band, ranges.OVERLAP_PAINT_ABOVE_PROTECTED).not.toBeNull();
+    const [lo, hi] = [Number(band![1]), Number(band![2])];
+    expect(hi).toBe(899);
+    expect(lo).toBeGreaterThanOrEqual(800);
+    expect(lo).toBeLessThanOrEqual(852); // it contains the line box's first contact (below)
+    // the same widths opened afresh (real resizes) agree with the sweep, edge included, around the lower edge and across
+    // the upper; today's run geometry (line boxes, no growth) sees a band inside it: phase C grows protected glyph boxes by
+    // 1 px (V4), so it also catches the widths where the box grazes
     const geo: number[] = [];
-    for (let w = 845; w <= 905; w++) {
+    const from = Math.min(845, lo - 4);
+    for (let w = from; w <= 905; w++) {
       const j = await joinAt(c, w);
-      expect(j.overlap.includes("OVERLAP_PAINT_ABOVE_PROTECTED"), `overlap ${w}`).toBe(w >= 849 && w <= 899);
+      expect(j.overlap.includes("OVERLAP_PAINT_ABOVE_PROTECTED"), `overlap ${w}`).toBe(w >= lo && w <= hi);
       if (j.geometry.includes("FACT_IMAGE_OVERLAP")) geo.push(w);
     }
     console.log(`DEV-174 scaled geometry (today's run) widths: ${geo[0]}–${geo[geo.length - 1]} (${geo.length})`);
@@ -200,6 +223,7 @@ describe("DEV-174 must fail: an N1 img that reaches text (static parts clean, th
     expect(geo.every((w, i) => i === 0 || w === geo[i - 1]! + 1)).toBe(true);
     expect(geo[0]).toBe(852);
     expect(geo[geo.length - 1]).toBe(899);
+    expect(geo[0]).toBeGreaterThanOrEqual(lo);
     for (const w of CHECKED) expect((await joinAt(c, w)).overlap, `${w}`).toEqual([]);
   });
 
@@ -254,9 +278,9 @@ describe("DEV-174 a clean placement is still not ON: the owner record is pending
     const r = await renderN1Preview(browser, Buffer.from(SEAM), 100, 100);
     expect(r.problems).toEqual([]);
     const asset: N1Asset = { id: "seam", file: "assets/seam.svg", sha256: createHash("sha256").update(SEAM).digest("hex"), bytes: Buffer.byteLength(SEAM), width: 100, height: 100, kind: "decoration_svg", role: "decoration" };
-    const pv = { sha256: r.preview!.sha256, renderer: r.preview!.renderer, width: 100, height: 100 };
-    expect(checkN1Asset(dir, asset, undefined, { preview: pv })).toEqual(["N1_REVIEW_MISSING"]);
-    expect(checkN1Asset(dir, asset, pendingN1Review(asset, asset.sha256, r.preview!), { preview: pv })).toEqual(["N1_REVIEW_PENDING"]);
+    // checkN1Asset reads the bytes and renders the preview itself; the pending record carries that same picture
+    expect(await checkN1Asset(browser, dir, asset, undefined)).toEqual(["N1_REVIEW_MISSING"]);
+    expect(await checkN1Asset(browser, dir, asset, pendingN1Review(asset, asset.sha256, r.preview!))).toEqual(["N1_REVIEW_PENDING"]);
   });
 });
 

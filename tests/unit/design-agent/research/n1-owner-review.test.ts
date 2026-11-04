@@ -43,6 +43,8 @@ const FIXTURE_ATTEST = () => true;
 const fixtureDecided = (over: Partial<Record<keyof N1OwnerReview, unknown>> = {}) =>
   ({ ...pendingN1Review(ASSET, sha(SEAM), preview()), decision: "approved", reviewed_at: "2026-11-02", note: FIXTURE_MARK, ...over }) as N1OwnerReview;
 const without = (r: object, key: string) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== key));
+/** Tracked and untracked (not ignored) files under a top-level directory of the repository. */
+const tracked = (top: string) => spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "--", top], { cwd: REPO, encoding: "utf8" }).stdout.split("\n").filter(Boolean);
 
 describe("the record: what an agent may write is pending, and pending is refused", () => {
   it("pendingN1Review has exactly the nine keys, decision pending, no date, and is refused only for being pending", () => {
@@ -108,6 +110,50 @@ describe("the record: what an agent may write is pending, and pending is refused
     expect(p).not.toContain("N1_REVIEW_UNATTESTED"); // the verifier is asked only of an otherwise clean approved record
   });
 
+  it("the verifier gets a frozen plain copy of the nine validated fields, never the live record", () => {
+    const seen: unknown[] = [];
+    const rec = fixtureDecided();
+    expect(n1ReviewProblems(rec, bound(), { now: NOW, attest: (x) => (seen.push(x), true) })).toEqual([]);
+    const got = seen[0] as N1OwnerReview;
+    expect(got).not.toBe(rec);
+    expect(got.preview).not.toBe(rec.preview);
+    expect(Object.isFrozen(got)).toBe(true);
+    expect(Object.isFrozen(got.preview)).toBe(true);
+    expect(Object.getPrototypeOf(got)).toBe(Object.prototype);
+    expect(Object.keys(got).sort()).toEqual([...N1_REVIEW_KEYS]);
+    expect(got).toEqual(rec);
+    // a verifier that tries to change what it was given changes nothing in the caller's record
+    n1ReviewProblems(rec, bound(), {
+      now: NOW,
+      attest: (x) => {
+        try {
+          (x as { decision: string }).decision = "rejected";
+        } catch {
+          // frozen: strict mode throws
+        }
+        return true;
+      },
+    });
+    expect(rec.decision).toBe("approved");
+  });
+
+  it("a record whose getters answer differently on each read is read once: the checks and the verifier see the same values", () => {
+    let reads = 0;
+    const base = fixtureDecided();
+    const shifty = { ...base };
+    Object.defineProperty(shifty, "asset_sha256", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1 ? sha(SEAM) : sha(WHEEL);
+      },
+    });
+    const seen: N1OwnerReview[] = [];
+    expect(n1ReviewProblems(shifty, bound(), { now: NOW, attest: (x) => (seen.push(x as N1OwnerReview), true) })).toEqual([]);
+    expect(reads).toBe(1);
+    expect(seen[0]!.asset_sha256).toBe(sha(SEAM));
+  });
+
   it("nothing read or nothing rendered: the record cannot be bound", () => {
     expect(n1ReviewProblems(fixtureDecided(), bound({ assetSha256: null }), { now: NOW, attest: FIXTURE_ATTEST })).toEqual(["N1_REVIEW_ASSET_SHA256"]);
     expect(n1ReviewProblems(fixtureDecided(), bound({ preview: null }), { now: NOW, attest: FIXTURE_ATTEST })).toEqual(["N1_REVIEW_PREVIEW_SHA256", "N1_REVIEW_PREVIEW_RENDERER", "N1_REVIEW_PREVIEW_SIZE"]);
@@ -125,52 +171,80 @@ describe("the record: what an agent may write is pending, and pending is refused
   });
 });
 
-describe("checkN1Asset: the file side and the record together", () => {
+describe("checkN1Asset: the file side and the record together, bound to a preview it renders itself (Chromium)", () => {
   let dir: string;
-  const asset = (body: string): N1Asset => ({ id: "seam", file: "assets/seam.svg", sha256: sha(body), bytes: Buffer.byteLength(body), width: 100, height: 100, kind: "decoration_svg", role: "decoration" });
-  const pv = { sha256: PREVIEW_SHA, renderer: RENDERER, width: 100, height: 100 };
-  beforeAll(() => {
+  let browser: Browser;
+  /** The preview checkN1Asset will render from SEAM: a record for these bytes must carry exactly this picture. */
+  let real: N1Preview;
+  const asset = (body: string, over: Partial<N1Asset> = {}): N1Asset => ({ id: "seam", file: "assets/seam.svg", sha256: sha(body), bytes: Buffer.byteLength(body), width: 100, height: 100, kind: "decoration_svg", role: "decoration", ...over });
+  /** TEST FIXTURE - not an owner review: approved, bound to the real picture of SEAM (fixtureDecided carries FIXTURE_MARK). */
+  const decided = (over: Partial<Record<keyof N1OwnerReview, unknown>> = {}) => fixtureDecided({ preview: { ...real }, ...over });
+  beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), "dev174-review-"));
     mkdirSync(join(dir, "assets"));
     writeFileSync(join(dir, "assets/seam.svg"), SEAM);
-  });
-  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+    browser = await launchDecorationBrowser();
+    const r = await renderN1Preview(browser, Buffer.from(SEAM), 100, 100);
+    expect(r.problems).toEqual([]);
+    real = r.preview!;
+  }, 60_000);
+  afterAll(async () => {
+    rmSync(dir, { recursive: true, force: true });
+    await browser?.close();
+  }, 60_000);
 
-  it("a clean file with no record, a pending record, or an unattested approval is refused", () => {
-    expect(checkN1Asset(dir, asset(SEAM), undefined, { preview: pv, now: NOW })).toEqual(["N1_REVIEW_MISSING"]);
-    expect(checkN1Asset(dir, asset(SEAM), pendingN1Review(ASSET, sha(SEAM), preview()), { preview: pv, now: NOW })).toEqual(["N1_REVIEW_PENDING"]);
-    expect(checkN1Asset(dir, asset(SEAM), fixtureDecided(), { preview: pv, now: NOW })).toEqual(["N1_REVIEW_UNATTESTED"]);
-    expect(checkN1Asset(dir, asset(SEAM), fixtureDecided(), { preview: pv, now: NOW, attest: FIXTURE_ATTEST })).toEqual([]);
-  });
+  it("a clean file with no record, a pending record, or an unattested approval is refused; only the real picture, attested, passes", async () => {
+    expect(await checkN1Asset(browser, dir, asset(SEAM), undefined, { now: NOW })).toEqual(["N1_REVIEW_MISSING"]);
+    expect(await checkN1Asset(browser, dir, asset(SEAM), pendingN1Review(ASSET, sha(SEAM), real), { now: NOW })).toEqual(["N1_REVIEW_PENDING"]);
+    expect(await checkN1Asset(browser, dir, asset(SEAM), decided(), { now: NOW })).toEqual(["N1_REVIEW_UNATTESTED"]);
+    expect(await checkN1Asset(browser, dir, asset(SEAM), decided(), { now: NOW, attest: FIXTURE_ATTEST })).toEqual([]);
+  }, 60_000);
 
-  it("any byte change voids the record, even when the asset record follows the new bytes", () => {
+  it("the preview is not the caller's to give: a forged picture sha256, another renderer or another size is refused, even attested", async () => {
+    // the record carries whatever picture it likes; checkN1Asset renders the bytes itself and compares
+    expect(await checkN1Asset(browser, dir, asset(SEAM), decided({ preview: preview() }), { now: NOW, attest: FIXTURE_ATTEST })).toEqual(["N1_REVIEW_PREVIEW_SHA256", "N1_REVIEW_PREVIEW_RENDERER"]);
+    expect(await checkN1Asset(browser, dir, asset(SEAM), decided({ preview: { ...real, sha256: PREVIEW_SHA } }), { now: NOW, attest: FIXTURE_ATTEST })).toEqual(["N1_REVIEW_PREVIEW_SHA256"]);
+    expect(await checkN1Asset(browser, dir, asset(SEAM), decided({ preview: { ...real, renderer: "chromium/999.0.0.0" } }), { now: NOW, attest: FIXTURE_ATTEST })).toEqual(["N1_REVIEW_PREVIEW_RENDERER"]);
+    expect(await checkN1Asset(browser, dir, asset(SEAM), decided({ preview: { ...real, width: 200 } }), { now: NOW, attest: FIXTURE_ATTEST })).toEqual(["N1_REVIEW_PREVIEW_SIZE"]);
+  }, 60_000);
+
+  it("an asset record whose size is not the file's is not drawn, so no record can be bound to it", async () => {
+    for (const over of [{ width: 200 }, { height: 50 }, { width: 0 }, { width: Number.NaN }]) {
+      const r = await checkN1Asset(browser, dir, asset(SEAM, over), decided({ preview: { ...real, ...over } }), { now: NOW, attest: FIXTURE_ATTEST });
+      expect(r, JSON.stringify(over)).toEqual(expect.arrayContaining(["ASSET_DIMENSIONS", "N1_PREVIEW_SIZE", "N1_REVIEW_PREVIEW_SHA256"]));
+    }
+  }, 60_000);
+
+  it("any byte change voids the record, even when the asset record follows the new bytes", async () => {
     const changed = SEAM.replace("#b8923a", "#b8923b");
     writeFileSync(join(dir, "assets/seam.svg"), changed);
     try {
-      expect(checkN1Asset(dir, asset(changed), fixtureDecided(), { preview: pv, now: NOW, attest: FIXTURE_ATTEST })).toEqual(["N1_REVIEW_ASSET_SHA256"]);
+      // the bytes and the picture both changed: both bindings refuse the old record
+      expect(await checkN1Asset(browser, dir, asset(changed), decided(), { now: NOW, attest: FIXTURE_ATTEST })).toEqual(["N1_REVIEW_ASSET_SHA256", "N1_REVIEW_PREVIEW_SHA256"]);
     } finally {
       writeFileSync(join(dir, "assets/seam.svg"), SEAM);
     }
-  });
+  }, 60_000);
 
-  it("a file refused by the file side carries its own code and cannot be bound", () => {
-    const r = checkN1Asset(dir, { ...asset(SEAM), file: "assets/none.svg" }, fixtureDecided({ asset_file: "assets/none.svg" }), { preview: pv, now: NOW, attest: FIXTURE_ATTEST });
-    expect(r).toEqual(expect.arrayContaining(["ASSET_MISSING", "N1_REVIEW_ASSET_SHA256"]));
+  it("a file refused by the file side carries its own code and cannot be bound", async () => {
+    const r = await checkN1Asset(browser, dir, { ...asset(SEAM), file: "assets/none.svg" }, decided({ asset_file: "assets/none.svg" }), { now: NOW, attest: FIXTURE_ATTEST });
+    expect(r).toEqual(expect.arrayContaining(["ASSET_MISSING", "N1_REVIEW_ASSET_SHA256", "N1_REVIEW_PREVIEW_SHA256"]));
     const bad = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><text>半額</text></svg>`;
     writeFileSync(join(dir, "assets/text.svg"), bad);
-    const t = checkN1Asset(dir, { ...asset(bad), id: "text", file: "assets/text.svg" }, fixtureDecided({ asset_id: "text", asset_file: "assets/text.svg", asset_sha256: sha(bad) }), { preview: pv, now: NOW, attest: FIXTURE_ATTEST });
+    const t = await checkN1Asset(browser, dir, { ...asset(bad), id: "text", file: "assets/text.svg" }, decided({ asset_id: "text", asset_file: "assets/text.svg", asset_sha256: sha(bad) }), { now: NOW, attest: FIXTURE_ATTEST });
     expect(t.some((c) => c.startsWith("SVG_"))).toBe(true);
-  });
+    expect(t).toContain("N1_REVIEW_PREVIEW_SHA256"); // never drawn, so never bound
+  }, 60_000);
 
-  it("a hostile asset record never throws", () => {
+  it("a hostile asset record never throws", async () => {
     const evil = Object.defineProperty({}, "file", {
       get() {
         throw new Error("x");
       },
     }) as N1Asset;
-    expect(() => checkN1Asset(dir, evil, fixtureDecided(), { preview: pv, now: NOW, attest: FIXTURE_ATTEST })).not.toThrow();
-    expect(checkN1Asset(dir, evil, fixtureDecided(), { preview: pv, now: NOW, attest: FIXTURE_ATTEST }).length).toBeGreaterThan(0);
-  });
+    await expect(checkN1Asset(browser, dir, evil, decided(), { now: NOW, attest: FIXTURE_ATTEST })).resolves.toEqual(expect.any(Array));
+    expect((await checkN1Asset(browser, dir, evil, decided(), { now: NOW, attest: FIXTURE_ATTEST })).length).toBeGreaterThan(0);
+  }, 60_000);
 });
 
 describe("the preview the owner looks at (Chromium; WebKit / Firefox: BLOCKED here, not installed)", () => {
@@ -229,11 +303,16 @@ describe("nothing is approved, and nothing can be (repository guards)", () => {
     expect(CAPABILITY_NAMES.some((c) => /decoration_svg|n1|svg/i.test(c))).toBe(false);
   });
 
-  it("the module writes only pending records and defines no verifier but the one that refuses", () => {
+  it("the module writes only pending records and defines no verifier but the one that refuses; no other lib file names the verifier type", () => {
     const src = readFileSync(resolve(REPO, MODULE), "utf8");
-    expect(src).not.toMatch(/decision\s*:\s*["'](approved|rejected)["']/);
+    expect(src).not.toMatch(/["']?decision["']?\s*:\s*["'](approved|rejected)["']/);
     expect(src.match(/:\s*N1Attestation\s*=/g)).toEqual([": N1Attestation ="]);
     expect(src).toMatch(/export const NO_ATTESTATION: N1Attestation = \(\) => false;/);
+    // no other way to mint a verifier in the module: a cast, satisfies, an angle-bracket assertion
+    expect(src).not.toMatch(/\bas\s+N1Attestation\b|\bsatisfies\s+N1Attestation\b|<N1Attestation>/);
+    const lib = tracked("lib").filter((f) => f.endsWith(".ts") && f !== MODULE);
+    expect(lib.length).toBeGreaterThan(10);
+    expect(lib.filter((f) => /\bN1Attestation\b|\bNO_ATTESTATION\b/.test(readFileSync(resolve(REPO, f), "utf8")))).toEqual([]);
   });
 
   it("no tracked record exists: the schema marker is named only by the module, its research tests and the docs; no JSON holds one", () => {
@@ -250,19 +329,41 @@ describe("nothing is approved, and nothing can be (repository guards)", () => {
     expect(data.status).toBe(1); // 1 = no match anywhere
   });
 
-  it("in the tests, every decided record (approved / rejected) is a marked in-memory fixture", () => {
-    const files = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "--", "tests/unit/design-agent/research"], { cwd: REPO, encoding: "utf8" }).stdout.split("\n").filter(Boolean);
-    let decided = 0;
-    for (const f of files.filter((x) => x.endsWith(".ts"))) {
+  it("in every lib, test and script file that touches the N1 record, each decided record (approved / rejected) is a marked in-memory fixture", () => {
+    const N1 = /decoration-review|N1OwnerReview|n1ReviewProblems|checkN1Asset|pendingN1Review|N1Attestation|N1_REVIEW_SCHEMA|n1-owner-visual-review/;
+    // a value, not a type: `decision: "approved" | "rejected"` (DEV-165's OwnerVisualReview type) is not a record
+    const DECIDED = /["']?decision["']?\s*:\s*["'](approved|rejected)["'](?!\s*\|)/;
+    // fixtureDecided (this file) and fixtureReview (decoration-n1-verification.test.ts, DEV-165) build their records with the mark
+    const MARK = /TEST FIXTURE - not an owner review|FIXTURE_MARK|fixtureDecided\(|fixtureReview\(/;
+    const files = [...tracked("lib"), ...tracked("tests"), ...tracked("scripts")].filter((f) => /\.(ts|tsx|mts|js|mjs)$/.test(f));
+    expect(files.length).toBeGreaterThan(100);
+    let approved = 0;
+    let rejected = 0;
+    let touching = 0;
+    for (const f of files) {
       const src = readFileSync(resolve(REPO, f), "utf8");
-      if (!src.includes("decoration-review")) continue;
+      if (!N1.test(src)) continue;
+      touching += 1;
       const lines = src.split("\n");
       lines.forEach((line, i) => {
-        if (!/decision\s*:\s*["']approved["']/.test(line)) return;
-        decided += 1;
-        expect(lines.slice(Math.max(0, i - 2), i + 3).join("\n"), `${f}:${i + 1}`).toMatch(/TEST FIXTURE - not an owner review|FIXTURE_MARK/);
+        const m = DECIDED.exec(line);
+        if (!m) return;
+        if (m[1] === "approved") approved += 1;
+        else rejected += 1;
+        expect(f, `${f}:${i + 1}`).toMatch(/^tests\//);
+        expect(lines.slice(Math.max(0, i - 2), i + 3).join("\n"), `${f}:${i + 1}`).toMatch(MARK);
       });
     }
-    expect(decided).toBeGreaterThanOrEqual(2); // never vacuous: this file's fixtureDecided and the preview test
+    expect(touching).toBeGreaterThanOrEqual(3); // the module and the two DEV-174 tests at least
+    // the helpers named in MARK do carry the mark where they are defined
+    for (const [f, helper] of [["tests/unit/design-agent/research/n1-owner-review.test.ts", "fixtureDecided"], ["tests/unit/design-agent/research/decoration-n1-verification.test.ts", "fixtureReview"]] as const) {
+      const lines = readFileSync(resolve(REPO, f), "utf8").split("\n");
+      const at = lines.findIndex((l) => new RegExp(`const ${helper} =`).test(l));
+      expect(at, `${f} ${helper}`).toBeGreaterThanOrEqual(0);
+      expect(lines.slice(at, at + 3).join("\n"), `${f} ${helper}`).toMatch(/TEST FIXTURE - not an owner review|FIXTURE_MARK/);
+    }
+    // never vacuous: this file's fixtureDecided, the preview test, and the rejected fixtures
+    expect(approved).toBeGreaterThanOrEqual(2);
+    expect(rejected).toBeGreaterThanOrEqual(1);
   });
 });
