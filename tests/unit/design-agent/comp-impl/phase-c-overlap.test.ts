@@ -3,10 +3,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { cssProblems, htmlSourceProblems } from "@/lib/design-agent/comp-impl/page";
 import type { PageCssOptions } from "@/lib/design-agent/comp-impl/page-css";
 import { GEOMETRY_SCRIPT, GeometrySchema } from "@/lib/design-agent/comp-impl/page-scripts";
-import { layerScan, openCompPage } from "@/lib/design-agent/comp-impl/render";
+import { layerScan, openCompPage, textMeasure } from "@/lib/design-agent/comp-impl/render";
 import { APPROVED_CAPABILITIES, CAPABILITY_NAMES } from "@/lib/design-agent/comp-impl/spec";
 import { layerCodes } from "@/lib/design-agent/comp-impl/verify";
 import { launch } from "./support";
+import type { CompPage } from "@/lib/design-agent/comp-impl/page";
+import { textCheck, widthRanges } from "@/lib/design-agent/comp-impl/checks";
+import { withWideMetrics } from "./gradient-harness";
 import { SHOPS, type ShopKey } from "./nowrap-harness";
 import {
   inventory,
@@ -22,6 +25,7 @@ import {
   shopPlan,
   sweepRanges,
   type OverlapPlan,
+  type OverlapSweep,
   type Opener,
 } from "./overlap-harness";
 
@@ -278,6 +282,14 @@ const PROBES: Probe[] = [
   { name: "atomic painting: a later flex item over an earlier item's overflowing text", body: `<div class="wrap"><div class="row"><div class="a">${F}</div><div class="b"></div></div></div>`, css: ".row { display: flex; } .a { flex: none; width: 60px; white-space: nowrap; } .b { flex: none; width: 100px; height: 32px; margin-left: 10px; background: #ddd; }", expect: "OVERLAP_PROTECTED_ORDER_UNPROVEN", pixel: "PIXEL_COVER_PROTECTED" },
   { name: "atomic painting: a later flex item pulled back over an earlier item's text", body: `<div class="wrap"><div class="row"><div class="a">${F}</div><div class="b"></div></div></div>`, css: ".row { display: flex; } .a { flex: none; white-space: nowrap; } .b { flex: none; width: 100px; height: 12px; align-self: center; margin-left: -120px; background: #ddd; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
   { name: "grid stacking: a later item on the same cell", body: `<div class="wrap"><div class="g">${F}<div class="b"></div></div></div>`, css: ".g { display: grid; } .g > * { grid-area: 1 / 1; } .b { background: #ddd; height: 10px; align-self: center; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  // DEV-173 Fresh Review M1: a later run of the same paragraph, pulled back by an inline-block with a negative margin
+  { name: "text over text inside one element: a later run pulled back over the fact", body: `<div class="wrap"><p class="f">${FACT}<span class="k" aria-hidden="true"></span>1111</p></div>`, css: ".k { display: inline-block; margin-left: -120px; }", expect: "OVERLAP_PROTECTED_TEXT_ON_TEXT", pixel: null },
+  // DEV-173 Fresh Review M2: the fact pulled over its container's border (the border runs under the digits)
+  { name: "an ancestor's top border under the fact (negative margin)", body: `<div class="wrap"><div class="box">${F}</div></div>`, css: ".box { border-top: 3px solid #c79a45; } .f { margin-top: -14px; }", expect: "OVERLAP_PROTECTED_ON_DECORATION", pixel: null },
+  { name: "an ancestor's left border under the fact (negative margin)", body: `<div class="wrap"><div class="box">${F}</div></div>`, css: ".box { border-left: 3px solid #c79a45; } .f { margin-left: -14px; }", expect: "OVERLAP_PROTECTED_ON_DECORATION", pixel: null },
+  { name: "an ancestor's gradient ground under the fact", body: `<div class="wrap"><div class="box">${F}</div></div>`, css: ".box { background: linear-gradient(90deg, #fff, #c79a45); }", expect: "OVERLAP_PROTECTED_ON_DECORATION", pixel: null },
+  // DEV-173 Fresh Review L3: ordinary text clipped by an overflow box
+  { name: "ordinary text clipped by an overflow box", body: `<div class="wrap"><div class="c">${O}</div></div>`, css: ".c { overflow: hidden; width: 80px; } .o { white-space: nowrap; }", expect: "OVERLAP_TEXT_CLIPPED", pixel: null },
   { name: "ordinary text covered", body: `<div class="wrap">${O}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 60px; top: 46px; width: 40px; height: 16px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_TEXT", pixel: "PIXEL_COVER_TEXT" },
   { name: "ordinary text over a decoration with no plate", body: `<div class="wrap">${O}${D}</div>`, css: ".wrap { isolation: isolate; } .d { position: absolute; z-index: -1; left: 40px; top: 55px; width: 300px; height: 3px; background: #c79a45; }", expect: "OVERLAP_TEXT_ON_DECORATION", pixel: null },
 ];
@@ -287,7 +299,7 @@ const LEGIT: Array<{ name: string; body: string; css: string; plan?: OverlapPlan
   { name: "an under-layer seam in the gutter between two columns", body: `<div class="wrap cols"><div>${F}</div><div>${O}</div>${D}</div>`, css: ".cols { display: grid; grid-template-columns: 1fr 1fr; column-gap: 60px; isolation: isolate; } .d { position: absolute; z-index: -1; top: 0; bottom: 0; left: calc(50% - 2px); width: 4px; background: #c79a45; }" },
   { name: "a decoration above, clear of every glyph", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 400px; top: 40px; width: 60px; height: 60px; background: #c79a45; }" },
   { name: "a line under the fact, hidden by the fact's own opaque plate", body: `<div class="wrap">${F}${D}</div>`, css: ".f { display: inline-block; position: relative; z-index: 2; background: #fff; padding: 0 2px; } .d { position: absolute; z-index: 1; left: 0; right: 0; top: 55px; height: 3px; background: #c79a45; }" },
-  { name: "a line under ordinary text, hidden by a plate on its block", body: `<div class="wrap">${O}${D}</div>`, css: ".o { display: inline-block; position: relative; z-index: 2; background: #fff; } .d { position: absolute; z-index: 1; left: 0; right: 0; top: 55px; height: 3px; background: #c79a45; }" },
+  { name: "a line under ordinary text, hidden by a plate on its block", body: `<div class="wrap">${O}${D}</div>`, css: ".o { display: inline-block; position: relative; z-index: 2; background: #fff; padding: 0 2px; } .d { position: absolute; z-index: 1; left: 0; right: 0; top: 55px; height: 3px; background: #c79a45; }" },
   { name: "decoration drawn over an image only", body: `<div class="wrap">${F}<div class="board"><img alt="" width="200" height="100" src="data:,"><div class="crack" aria-hidden="true"></div></div></div>`, css: ".board { position: relative; width: 200px; height: 100px; background: #ccc; } .crack { position: absolute; left: 90px; top: 10px; width: 4px; height: 80px; background: #c79a45; transform: rotate(16deg); }" },
   { name: "a turned bar whose box meets the fact but whose paint does not", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 220px; top: 20px; width: 4px; height: 90px; background: #c79a45; transform: rotate(40deg); transform-origin: top center; }" },
   { name: "an SVG curve whose box covers the fact but whose stroke passes clear", body: `<div class="wrap">${F}<svg class="s" viewBox="0 0 300 120" aria-hidden="true"><path d="M0 4 L300 4 L300 116" fill="none" stroke="#c79a45" stroke-width="2"/></svg></div>`, css: ".s { position: absolute; z-index: 1; left: 30px; top: 0; width: 300px; height: 120px; }" },
@@ -304,7 +316,9 @@ describe("DEV-173 the render check (prototype) on synthetic probes", () => {
     const g = overlapCodes(await overlapScan(tab, PLAN));
     expect(g, p.name).toContain(p.expect);
     await load(p.body, p.css);
-    const px = Object.keys((await pixelPass(tab, PLAN)).codes).sort();
+    const pr = await pixelPass(tab, PLAN);
+    expect(pr.disagreements, `${p.name} pixels vs geometry, text by text`).toEqual([]);
+    const px = Object.keys(pr.codes).sort();
     if (p.pixel) expect(px, `${p.name} pixel`).toContain(p.pixel);
     else expect(px.filter((c) => c.startsWith("PIXEL_COVER")), `${p.name} pixel blind spot`).toEqual([]);
     // what today's run-side scripts would say on the same raw HTML (informative: the allowlist refuses all of it first)
@@ -335,6 +349,8 @@ describe("DEV-173 the render check (prototype) on synthetic probes", () => {
     // an opaque ground on a box that is not atomic is no plate: a later in-flow block pulled up paints its ground after
     // the fact's ground and before the fact's text, so the line shows under the digits
     expect(await geo(`<div class="wrap"><p class="f">${FACT}</p><div class="d2" aria-hidden="true"></div></div>`, ".f { background: #fff; padding: 0 2px; } .d2 { height: 3px; margin-top: -18px; background: #c79a45; }")).toContain("OVERLAP_PROTECTED_ON_DECORATION");
+    // an ancestor's border under the fact passes only on a plate inside that ancestor (painted after it in tree order)
+    expect(await geo(`<div class="wrap"><div class="box">${F}</div></div>`, ".box { border-top: 3px solid #c79a45; } .f { margin-top: -14px; background: #fff; padding: 2px; }")).toEqual([]);
     // the fact's own ground with no lift: the line (positioned, z-index 1) paints above the fact itself
     expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { background: #fff; } ${base}`)).toContain("OVERLAP_PAINT_ABOVE_PROTECTED");
   });
@@ -344,6 +360,19 @@ describe("DEV-173 the render check (prototype) on synthetic probes", () => {
     expect(overlapCodes(await overlapScan(tab, PLAN))).toContain("OVERLAP_PSEUDO_UNPROVEN");
     // a filter whose spread the check cannot bound covers everything after it
     expect(await geo(`<div class="wrap">${F}<div class="b"></div></div>`, ".b { height: 10px; width: 10px; background: #ccc; filter: url(#x); }")).toContain("OVERLAP_PROTECTED_ORDER_UNPROVEN");
+  });
+
+  it("a pre-existing gap of the production checker, pinned as it is today (DEV-173 Fresh Review L2): height: 0 lets the next paragraph print over ordinary text; the layer scan and the 15-point hit-test say nothing, only the text check's overprint does", async () => {
+    const body = `<div class="wrap"><div class="box">${O}</div><p>次の段落の文字です</p></div>`;
+    const css = ".box { height: 0; }";
+    expect(cssProblems(css)).toEqual([]);
+    await load(body, css);
+    expect(layerCodes(await layerScan(tab, [FACT]))).toEqual([]);
+    const hit = GeometrySchema.parse(await tab.evaluate(`(${GEOMETRY_SCRIPT})(${JSON.stringify({ facts: [FACT], from: 800, to: 800, step: false })})`));
+    expect(hit.failing).toEqual([]);
+    expect(textCheck(await textMeasure(tab, [FACT])).codes).toEqual(["TEXT_OVERLAP"]);
+    // the prototype names it too
+    expect(await geo(body, css)).toEqual(["OVERLAP_TEXT_ON_TEXT"]);
   });
 
   it("materialized pseudo-elements are where Chromium draws them (absolute and in-flow)", async () => {
@@ -402,45 +431,51 @@ describe("DEV-173 the three shops", () => {
     }
   });
 
-  it("strict and layer at the checked widths (PC, tablet, SP; SP with phone emulation): the layer pages add no code; C′ is recorded", async () => {
-    for (const shop of SHOP_KEYS) {
-      cprime[shop] = {};
-      for (const w of CHECKED) {
-        const codes: Record<string, string[]> = {};
-        for (const v of ["strict", "layer", "cprime"] as const) {
-          const o = await openCompPage(browser, overlapPage(shop, v), { width: w, height: 900, scale: 1, mobile: w <= 390 });
-          try {
-            codes[v] = overlapCodes(await overlapScan(o.page, shopPlan(shop, { grammar: v === "layer" })));
-          } finally {
-            await o.context.close();
+  // The shop pages' text geometry depends on the fonts installed (CI: Playwright's fonts on ubuntu, no IPA; this container:
+  // IPA). Nothing below pins a width range measured here: strict is computed in the test and the layer pages must equal it
+  // width by width. The same comparison also runs under withWideMetrics (gradient-harness.ts), which approximates taller
+  // CJK metrics in this container (it has no effect where the IPA fonts are absent).
+  const fontVariants = [
+    ["installed", (p: CompPage) => p],
+    ["wide", withWideMetrics],
+  ] as const;
+
+  it("strict and layer at the checked widths (PC, tablet, SP; SP with phone emulation), installed fonts and wide metrics: the layer pages add no code; C′ is recorded", async () => {
+    for (const [fonts, f] of fontVariants)
+      for (const shop of SHOP_KEYS) {
+        if (fonts === "installed") cprime[shop] = {};
+        const strictCodes: string[] = [];
+        for (const w of CHECKED) {
+          const codes: Record<string, string[]> = {};
+          for (const v of fonts === "installed" ? (["strict", "layer", "cprime"] as const) : (["strict", "layer"] as const)) {
+            const o = await openCompPage(browser, f(overlapPage(shop, v)), { width: w, height: 900, scale: 1, mobile: w <= 390 });
+            try {
+              codes[v] = overlapCodes(await overlapScan(o.page, shopPlan(shop, { grammar: v === "layer" })));
+            } finally {
+              await o.context.close();
+            }
           }
+          expect(codes.layer, `${fonts} ${shop} ${w}`).toEqual(codes.strict);
+          strictCodes.push(`${w}:${codes.strict!.join(",") || "-"}`);
+          if (fonts === "installed") cprime[shop]![w] = codes.cprime!;
         }
-        expect(codes.layer, `${shop} ${w}`).toEqual(codes.strict);
-        expect(codes.strict!.filter((c) => c !== "OVERLAP_PROTECTED_OFFSCREEN"), `${shop} ${w} strict`).toEqual([]);
-        cprime[shop]![w] = codes.cprime!;
+        console.log(`DEV-173 strict ${fonts} ${shop}: ${strictCodes.join(" ")}`);
+        // C′ fails at every checked width (its own layering reaches text somewhere at each)
+        if (fonts === "installed") expect(Object.values(cprime[shop]!).every((c) => c.length > 0), shop).toBe(true);
       }
-      // C′ fails at every checked width (its own layering reaches text somewhere at each)
-      expect(Object.values(cprime[shop]!).every((c) => c.length > 0), shop).toBe(true);
-    }
   });
 
-  /**
-   * The strict B pages' codes over the 1px sweep 320–1920 (measured with this harness, real resizes, Chromium 1194): only
-   * OVERLAP_PROTECTED_OFFSCREEN, the known tablet overflow of the strict pages (DEV-160) and bicycle's 320–369.
-   * Pinned here rather than swept again: the strict pages hold no layer, and one sweep costs about a minute.
-   */
-  const STRICT_SWEEP: Record<ShopKey, Record<string, string>> = {
-    tsugute: { OVERLAP_PROTECTED_OFFSCREEN: "601–995" },
-    bicycle: { OVERLAP_PROTECTED_OFFSCREEN: "320–369, 601–1129" },
-    sento: { OVERLAP_PROTECTED_OFFSCREEN: "601–969" },
-  };
+  const strictSweeps: Partial<Record<ShopKey, OverlapSweep>> = {};
 
-  it("the 1px sweep 320–1920: the layer pages give exactly the strict pages' codes at every width (stepped root; real resizes agree at the breakpoints and ends)", async () => {
+  it("the 1px sweep 320–1920: the layer pages give exactly the strict pages' codes at every width, both computed here (stepped root; real resizes agree at the breakpoints and ends)", async () => {
     for (const shop of SHOP_KEYS) {
+      const strict = await overlapSweep(browser, overlapPage(shop, "strict"), shopPlan(shop), 320, 1920, open, "stepped");
       const layer = await overlapSweep(browser, overlapPage(shop, "layer"), shopPlan(shop, { grammar: true }), 320, 1920, open, "stepped");
-      console.log(`DEV-173 sweep ${shop} layer: ${JSON.stringify(sweepRanges(layer))} ${layer.ms}ms`);
+      strictSweeps[shop] = strict;
+      console.log(`DEV-173 sweep ${shop}: strict ${JSON.stringify(sweepRanges(strict))} ${strict.ms}ms, layer ${JSON.stringify(sweepRanges(layer))} ${layer.ms}ms`);
+      expect(strict.measured).toBe(1601);
       expect(layer.measured).toBe(1601);
-      expect(sweepRanges(layer), shop).toEqual(STRICT_SWEEP[shop]);
+      expect(layer.failing, shop).toEqual(strict.failing);
       for (const [a, b] of [[320, 330], [595, 606], [1195, 1205], [1355, 1365], [1910, 1920]] as const) {
         const real = await overlapSweep(browser, overlapPage(shop, "layer"), shopPlan(shop, { grammar: true }), a, b, open, "real");
         expect(real.failing, `${shop} ${a}–${b}`).toEqual(layer.failing.filter((f) => f.w >= a && f.w <= b));
@@ -448,27 +483,35 @@ describe("DEV-173 the three shops", () => {
     }
   });
 
-  it("the strict pinned ranges hold where they start and end (a real-resize check of each edge)", async () => {
+  it("the strict sweep's ranges hold at their edges with real resizes (the stepped root and the real viewport agree where the codes change)", async () => {
     for (const shop of SHOP_KEYS) {
-      const edges = STRICT_SWEEP[shop].OVERLAP_PROTECTED_OFFSCREEN!.split(", ").flatMap((r) => r.split("–").map(Number));
-      for (const e of edges) {
-        // the pinned ranges are of 320–1920: their outer ends are the sweep's own ends
-        const lo = Math.max(320, e - 1);
-        const hi = Math.min(1920, e + 1);
-        const s = await overlapSweep(browser, overlapPage(shop, "strict"), shopPlan(shop), lo, hi, open, "real");
-        const got = s.failing.map((f) => f.w);
-        const inside = (w: number) => STRICT_SWEEP[shop].OVERLAP_PROTECTED_OFFSCREEN!.split(", ").some((r) => { const [a, b] = r.split("–").map(Number); return w >= a! && w <= (b ?? a)!; });
-        expect(got, `${shop} ${e}`).toEqual([e - 1, e, e + 1].filter((w) => w >= lo && w <= hi && inside(w)));
+      const strict = strictSweeps[shop];
+      expect(strict, "the sweep test ran first").toBeDefined();
+      const failing = new Map(strict!.failing.map((f) => [f.w, f.codes.join(",")]));
+      // every width whose codes differ from the width before (the range edges), checked with its neighbour
+      const edges: number[] = [];
+      for (let w = 321; w <= 1920; w++) if ((failing.get(w) ?? "") !== (failing.get(w - 1) ?? "")) edges.push(w);
+      for (const e of edges.slice(0, 16)) {
+        const lo = e - 1;
+        const hi = e;
+        const real = await overlapSweep(browser, overlapPage(shop, "strict"), shopPlan(shop), lo, hi, open, "real");
+        expect(real.failing, `${shop} ${e}`).toEqual(strict!.failing.filter((f) => f.w >= lo && f.w <= hi));
       }
     }
   });
 
-  it("C′ between the checked widths: sento's surface board covers the protected bath fact at 1260–1263px only, and the ghost 沸く sits on the fire fact at 861–885px — the 1px sweep finds both, the checked widths do not", async () => {
+  it("C′ between the checked widths: on sento's C′ page the 1px sweep finds a protected cover in a narrow band (the surface board over the bath fact; the ghost 沸く over the fire fact) that no checked width hits", async () => {
     const sento = overlapPage("sento", "cprime");
-    const board = await overlapSweep(browser, sento, shopPlan("sento"), 1250, 1275, open, "real");
-    expect(sweepRanges(board).OVERLAP_PAINT_ABOVE_PROTECTED).toBe("1260–1263");
-    const boil = await overlapSweep(browser, sento, shopPlan("sento"), 850, 895, open, "real");
-    expect(sweepRanges(boil).OVERLAP_PROTECTED_TEXT_ON_TEXT).toBe("861–885");
+    // windows around the bands measured here (board 1260–1263, 沸く 861–885) and on CI (board 1271–1275); the band is
+    // computed, not pinned: it moves with the fonts installed
+    for (const [from, to, code] of [[1230, 1310, "OVERLAP_PAINT_ABOVE_PROTECTED"], [830, 920, "OVERLAP_PROTECTED_TEXT_ON_TEXT"]] as const) {
+      const s = await overlapSweep(browser, sento, shopPlan("sento"), from, to, open, "real");
+      const band = s.failing.filter((f) => f.codes.includes(code)).map((f) => f.w);
+      console.log(`DEV-173 sento C′ ${code} in ${from}–${to}: ${widthRanges(band) || "none"}`);
+      expect(band.length, `${code} ${from}–${to}`).toBeGreaterThan(0);
+      expect(band.length, "narrow").toBeLessThanOrEqual(40);
+      expect(band.some((w) => (CHECKED as readonly number[]).includes(w)), "no checked width in the band").toBe(false);
+    }
     for (const w of CHECKED) {
       const o = await openCompPage(browser, sento, { width: w, height: 900, scale: 1, mobile: w <= 390 });
       try {
@@ -480,15 +523,17 @@ describe("DEV-173 the three shops", () => {
     }
   });
 
-  it("the pixel pass at 1440 / 768 / 390: strict and layer show no cover; where the prototype says C′ paints above text, Chromium's pixels agree", async () => {
+  it("the pixel pass at 1440 / 768 / 390: strict and layer show no cover; text by text, every text the pixels see covered on C′ is named by a geometric code that means a cover", async () => {
     for (const shop of SHOP_KEYS)
       for (const w of [1440, 768, 390]) {
         const res: Record<string, string[]> = {};
         for (const v of ["strict", "layer", "cprime"] as const) {
           const o = await openCompPage(browser, overlapPage(shop, v), { width: w, height: 900, scale: 1, mobile: w <= 390 });
           try {
-            res[v] = Object.keys((await pixelPass(o.page, shopPlan(shop))).codes).sort();
-            if (v === "cprime") res.cprimeGeo = overlapCodes(await overlapScan(o.page, shopPlan(shop)));
+            const px = await pixelPass(o.page, shopPlan(shop));
+            res[v] = Object.keys(px.codes).sort();
+            res[`${v}Covered`] = px.coveredTexts;
+            expect(px.disagreements, `${shop} ${v} ${w}`).toEqual([]);
           } finally {
             await o.context.close();
           }
@@ -496,7 +541,6 @@ describe("DEV-173 the three shops", () => {
         console.log(`DEV-173 pixel ${shop} ${w}: ${JSON.stringify(res)}`);
         expect(res.strict!.filter((c) => c.startsWith("PIXEL_COVER")), `${shop} ${w}`).toEqual([]);
         expect(res.layer!.filter((c) => c.startsWith("PIXEL_COVER")), `${shop} ${w}`).toEqual([]);
-        if (res.cprime!.includes("PIXEL_COVER_TEXT") || res.cprime!.includes("PIXEL_COVER_PROTECTED")) expect(res.cprimeGeo!.some((c) => /PAINT_ABOVE|ORDER_UNPROVEN|TEXT_ON_TEXT/.test(c)), `${shop} ${w}`).toBe(true);
       }
   });
 });
