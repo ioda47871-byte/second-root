@@ -299,6 +299,13 @@ const PROBES: Probe[] = [
   { name: "a combining mark (NFD) above its base", body: `<div class="wrap"><p class="f">Cafe\u0301 ${FACT}</p>${D}</div>`, css: '.f { font-family: "DejaVu Sans", sans-serif; } .d { position: absolute; z-index: 2; left: 80px; top: 40px; width: 3px; height: 3px; background: #c79a45; }', expect: "OVERLAP_PROTECTED_GLYPHS_UNMEASURED", pixel: null },
   { name: "an underline (text-decoration) drawn outside the glyphs", body: `<div class="wrap">${F}${D}</div>`, css: ".f { text-decoration: underline; } .d { position: absolute; z-index: 2; left: 60px; top: 66px; width: 40px; height: 3px; background: #c79a45; }", expect: "OVERLAP_PROTECTED_GLYPHS_UNMEASURED", pixel: null },
   { name: "a list marker (text the walker does not see)", body: `<div class="wrap"><ul class="l"><li>${FACT}</li></ul></div>`, css: ".l { padding-left: 40px; }", expect: "OVERLAP_MARKER_UNMEASURED", pixel: null },
+  // re-review 3 M1: the filter is on the text's own element (one child's shadow under the element's own text)
+  { name: "the text's own element's drop-shadow (a child's shadow under the element's own text)", body: `<div class="wrap"><div class="board"><div class="photo"></div>${FACT}</div></div>`, css: ".board { filter: drop-shadow(0 26px 6px rgba(0, 0, 0, .6)); } .photo { height: 30px; background: #ccc; }", expect: "OVERLAP_PROTECTED_ORDER_UNPROVEN", pixel: null },
+  // re-review 3 L1: a filter that changes the text's own pixels on an ancestor (the pixel reference keeps filters)
+  { name: "an ancestor's filter: opacity(0.15) fades the fact", body: `<div class="wrap"><div class="box">${F}</div></div>`, css: ".box { filter: opacity(0.15); }", expect: "OVERLAP_PROTECTED_TEXT_FILTERED", pixel: null },
+  { name: "an ancestor's filter: brightness(0) blackens the fact", body: `<div class="wrap"><div class="box">${F}</div></div>`, css: ".box { filter: brightness(0); }", expect: "OVERLAP_PROTECTED_TEXT_FILTERED", pixel: null },
+  // re-review 3 L6
+  { name: "small caps (font-variant-caps) drawn otherwise than measured", body: `<div class="wrap"><p class="f">Tel ${FACT}</p></div>`, css: ".f { font-variant-caps: all-small-caps; }", expect: "OVERLAP_PROTECTED_GLYPHS_UNMEASURED", pixel: null },
   { name: "ordinary text covered", body: `<div class="wrap">${O}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 60px; top: 46px; width: 40px; height: 16px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_TEXT", pixel: "PIXEL_COVER_TEXT" },
   { name: "ordinary text over a decoration with no plate", body: `<div class="wrap">${O}${D}</div>`, css: ".wrap { isolation: isolate; } .d { position: absolute; z-index: -1; left: 40px; top: 55px; width: 300px; height: 3px; background: #c79a45; }", expect: "OVERLAP_TEXT_ON_DECORATION", pixel: null },
 ];
@@ -459,6 +466,27 @@ describe("DEV-173 the three shops", () => {
   // IPA). Nothing below pins a width range measured here: strict is computed in the test and the layer pages must equal it
   // width by width. The same comparison also runs under withWideMetrics (gradient-harness.ts), which approximates taller
   // CJK metrics in this container (it has no effect where the IPA fonts are absent).
+  /** The strict pages' only findings with pinned fonts: protected texts off screen in the known tablet / narrow overflow. */
+  const PINNED_STRICT: Record<ShopKey, Record<string, number[]>> = {
+    tsugute: {
+      "架空線架空駅1番出口から徒歩6分": [768, 601],
+      "漆が乾くまで、修理には一か月ほどかかります": [768, 601],
+      "器を持ち込むと、継ぎ目の線を一緒に決めます": [601],
+      "水曜・木曜": [601],
+    },
+    bicycle: {
+      "修理の前に、どこを直すかを一緒に確かめます": [1024, 768, 601],
+      "輪": [1024, 768, 601],
+      "振れ取りでは、スポークを一本ずつ締めて車輪をまっ": [768, 601, 360, 340, 320],
+      "架空線架空駅南口から徒歩3分": [768, 601],
+      "パンク修理から車輪の振れ取りまで、店先の作業台で": [340, 320],
+    },
+    sento: {
+      "のれんは、季節ごとに色を変えます": [768, 601],
+      "壁には、タイルで描いた山の絵があります": [768, 601],
+      "手ぬぐいと石けんを貸し出しています": [768, 601],
+    },
+  };
   const fontVariants = [
     ["installed", (p: CompPage) => p],
     ["wide", withWideMetrics],
@@ -483,8 +511,9 @@ describe("DEV-173 the three shops", () => {
           }
           // text by text (DEV-173 re-review L1): a layer may not add an instance even of a code strict already has
           expect(codes.layer, `${fonts} ${shop} ${w}`).toEqual(codes.strict);
-          // with the faces pinned to IPAGothic (the same on CI), strict holds only the known tablet overflow
-          if (fonts === "pinned") expect(codes.strict!.filter((c) => !c.endsWith(" :: OVERLAP_PROTECTED_OFFSCREEN")), `pinned ${shop} ${w} strict`).toEqual([]);
+          // with the faces pinned to IPAGothic (the same on CI), strict holds exactly the known overflow: these texts, these
+          // widths (re-review 3 L3; measured here and with CI's font set through FONTCONFIG_FILE — identical)
+          if (fonts === "pinned") expect(codes.strict, `pinned ${shop} ${w} strict`).toEqual(Object.entries(PINNED_STRICT[shop]).filter(([, ws]) => ws.includes(w)).map(([text]) => `${text} :: OVERLAP_PROTECTED_OFFSCREEN`).sort());
           strictCodes.push(`${w}:${codes.strict!.join(",") || "-"}`);
           if (fonts === "installed") cprime[shop]![w] = codes.cprime!;
         }

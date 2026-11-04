@@ -83,6 +83,9 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
   const codes = {};
   const add = (c, n) => { codes[c] = (codes[c] || 0) + (n || 1); };
   const found = [];
+  // page-level findings as instances ("what :: code"), so that two pages compare instance by instance (re-review 3 L4)
+  const pageInst = [];
+  const desc = (el) => el.tagName.toLowerCase() + (el.getAttribute("class") ? "." + el.getAttribute("class").split(/\s+/).join(".") : "") + ":" + flat(el.textContent).slice(0, 12);
   // per text (index in the returned glyph list): the codes that name it, for comparing with the pixel pass text by text
   const byText = new Map();
   const mark = (t, c) => { if (!byText.has(t)) byText.set(t, new Set()); byText.get(t).add(c); };
@@ -112,11 +115,11 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
     // alternates, East Asian forms) and combining marks are drawn otherwise in the page (DEV-173 re-review M1), and a
     // line decoration (underline …) or a list marker is ink outside every glyph (L2). The boxes are then not the ink:
     // GLYPHS_UNMEASURED (fail closed)
-    const featured = [s.fontVariantNumeric, s.fontFeatureSettings, s.fontVariantEastAsian, s.fontVariantAlternates, s.fontVariantLigatures === "normal" ? "normal" : s.fontVariantLigatures].some((v) => v && v !== "normal");
+    const featured = [s.fontVariantNumeric, s.fontFeatureSettings, s.fontVariantEastAsian, s.fontVariantAlternates, s.fontVariantLigatures, s.fontVariantCaps, s.fontVariantPosition, s.fontVariationSettings].some((v) => v && v !== "normal");
     let deco = false;
     for (let a = el; a && a !== document.documentElement; a = a.parentElement) { const as = cs(a); if (as.textDecorationLine && as.textDecorationLine !== "none") { deco = true; break; } }
     if (featured || deco || /\p{M}/u.test(n.data)) t.unmeasured = true;
-    if (!lines.length) { if (prot) { add("OVERLAP_PROTECTED_HIDDEN"); note("OVERLAP_PROTECTED_HIDDEN", t, null); } continue; }
+    if (!lines.length) { if (prot) { add("OVERLAP_PROTECTED_HIDDEN"); note("OVERLAP_PROTECTED_HIDDEN", t, null); pageInst.push(flat(n.data).slice(0, 24) + " :: OVERLAP_PROTECTED_HIDDEN"); } continue; }
     // text drawn wider than its glyphs: stroke and shadow
     const stroke = parseFloat(s.webkitTextStrokeWidth) || 0;
     let shadow = 0;
@@ -158,7 +161,9 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
           // a vertical character box shorter than half an em along the column does not hold its glyph (seen: a vertical
           // name in a Latin primary face with a CJK fallback, its last character's Range rect 5 px tall while its ink is
           // drawn a full em below): the text's glyphs are unmeasured, failed closed after the loop
-          if (r.bottom - r.top < 0.5 * t.fs && !/[\u3000-\u303f\uff00-\uffef、。・]/.test(ch)) t.unmeasured = true;
+          // legitimately short along the column: ASCII set sideways (its advance is its width) and the small CJK
+          // punctuation; not full-width Latin or digits, half-width kana, 〇 or 々 (re-review 3 L5)
+          if (r.bottom - r.top < 0.5 * t.fs && !/^[\x21-\x7e]$|^[、。，．・：；！？]$/.test(ch)) t.unmeasured = true;
           const c = (r.left + r.right) / 2;
           t.g.push({ left: Math.max(r.left, c - half), right: Math.min(r.right, c + half), top: r.top, bottom: r.bottom });
           continue;
@@ -394,8 +399,17 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
     // DEV-173 Fresh Review M2: an ancestor's border, background image or inset shadow is not "the text's own flat ground":
     // a text pulled over its container's border (a negative margin) has the border run under its glyphs
     const ancestorUnder = (p) => p.kind === "border" || p.kind === "filter" || (p.kind === "bg" && ((cs(p.el).backgroundImage || "none") !== "none" || /\binset\b/.test(cs(p.el).boxShadow || "")));
+    // a filter on the text's own element or an ancestor that is not only drop-shadow changes the text's own pixels (blur,
+    // opacity(), brightness() …): the text is not drawn as measured (re-review 3 L1)
+    for (const a of [t.el].concat(Array.from(ancestors))) {
+      if (a === document.documentElement || a === document.body || isSvg(a)) continue;
+      const f = cs(a).filter;
+      if (f && f !== "none" && (f.match(/[a-z-]+\(/g) || []).some((fn) => fn !== "drop-shadow(")) { const c = t.prot ? "OVERLAP_PROTECTED_TEXT_FILTERED" : "OVERLAP_TEXT_FILTERED"; add(c); note(c, t, null); mark(t, c); break; }
+    }
     for (const p of painters) {
-      if (p.el === t.el) continue;
+      // the text's own element: its ground and borders are below its text by definition; but a filter on it draws one
+      // painting child's shadow under the text (re-review 3 M1) — fail closed when the element has painting children
+      if (p.el === t.el && !(p.kind === "filter" && painters.some((q) => q.el !== t.el && q.kind !== "filter" && q.kind !== "text" && t.el.contains(q.el)))) continue;
       const anc = ancestors.has(p.el);
       if (anc && p.kind !== "outline" && !(ancestorUnder(p) && (t.prot || arg.ordinary === "plate"))) continue;
       if (!p.rects.some((x) => meets(x, span))) continue;
@@ -449,7 +463,7 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
   // list markers are drawn text the walker does not see (DEV-173 re-review L2): any visible marker fails closed
   for (const el of Array.from(document.body.querySelectorAll("*"))) {
     const s = cs(el);
-    if (s.display === "list-item" && s.visibility !== "hidden" && (s.listStyleType !== "none" || (s.listStyleImage && s.listStyleImage !== "none"))) { add("OVERLAP_MARKER_UNMEASURED"); break; }
+    if (s.display === "list-item" && s.visibility !== "hidden" && (s.listStyleType !== "none" || (s.listStyleImage && s.listStyleImage !== "none"))) { add("OVERLAP_MARKER_UNMEASURED"); pageInst.push(desc(el) + " :: OVERLAP_MARKER_UNMEASURED"); }
   }
 
   // ------------------------------------------------------------ the grammar's roles
@@ -461,20 +475,20 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
       // a negative margin moves a block in the flow (and its text with it): allowed on content; V2 / V4 judge what it reaches
       const layer = ["absolute", "fixed", "sticky"].includes(s.position) || (s.transform && s.transform !== "none") || (s.zIndex !== "auto" && parseInt(s.zIndex, 10) < 0);
       const moved = s.position === "relative" && ["top", "right", "bottom", "left"].some((k) => s[k] !== "auto" && parseFloat(s[k]) !== 0);
-      if ((layer || moved) && textInside(el)) { add("OVERLAP_LAYER_HAS_TEXT"); if (arg.detail && found.length < 40) found.push({ code: "OVERLAP_LAYER_HAS_TEXT", text: flat(el.textContent).slice(0, 16), painter: el.tagName.toLowerCase() + "." + (el.getAttribute("class") || "") }); }
+      if ((layer || moved) && textInside(el)) { add("OVERLAP_LAYER_HAS_TEXT"); pageInst.push(desc(el) + " :: OVERLAP_LAYER_HAS_TEXT"); if (arg.detail && found.length < 40) found.push({ code: "OVERLAP_LAYER_HAS_TEXT", text: flat(el.textContent).slice(0, 16), painter: el.tagName.toLowerCase() + "." + (el.getAttribute("class") || "") }); }
     }
     for (const a of Array.from(document.querySelectorAll("a[href]"))) {
       const r = a.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) continue;
       const stack = stackAt(r.left + scrollX + r.width / 2, r.top + scrollY + r.height / 2);
-      if (stack && stack[0] !== a && !a.contains(stack[0])) add("OVERLAP_LINK_COVERED");
+      if (stack && stack[0] !== a && !a.contains(stack[0])) { add("OVERLAP_LINK_COVERED"); pageInst.push(desc(a) + " :: OVERLAP_LINK_COVERED"); }
     }
   }
   scrollTo(0, 0);
   // every finding per text instance (text and code), for comparing two pages text by text (DEV-173 re-review L1)
   const perText = [];
   texts.forEach((t) => { for (const c of byText.get(t) || []) perText.push(flat(t.node.data).slice(0, 24) + " :: " + c); });
-  const out = { perText: perText.sort(), codes, texts: texts.length, protectedTexts: texts.filter((t) => t.prot).length, painters: painters.length, pairs, hitTests, presenceTests };
+  const out = { perText: perText.sort(), pageInst: pageInst.sort(), codes, texts: texts.length, protectedTexts: texts.filter((t) => t.prot).length, painters: painters.length, pairs, hitTests, presenceTests };
   if (arg.detail) out.found = found;
   if (arg.glyphs) texts.forEach((t, i) => t.el.setAttribute("data-ov-t", ((t.el.getAttribute("data-ov-t") || "") + " " + i).trim()));
   if (arg.glyphs) out.glyphs = texts.map((t) => ({ prot: t.prot, text: flat(t.node.data).slice(0, 16), rects: glyphsOf(t), codes: Array.from(byText.get(t) || []).sort() }));
@@ -538,6 +552,7 @@ export type OverlapPlan = {
 };
 export type OverlapScan = {
   perText: string[];
+  pageInst: string[];
   codes: Record<string, number>;
   texts: number;
   protectedTexts: number;
@@ -564,9 +579,10 @@ export async function overlapScan(page: Page, plan: OverlapPlan, o: { detail?: b
  * The findings of a scan as instances: every "text :: code" pair, plus the page-level codes that name no text
  * (markers, pseudo-elements, links, layer roles). Two pages are compared with this, not with code names only.
  */
-export const instanceCodes = (s: Pick<OverlapScan, "codes" | "perText">): string[] => {
-  const named = new Set(s.perText.map((x) => x.split(" :: ")[1]));
-  return [...s.perText, ...Object.keys(s.codes).filter((c) => !named.has(c)).map((c) => `(page) :: ${c}`)].sort();
+export const instanceCodes = (s: Pick<OverlapScan, "codes" | "perText" | "pageInst">): string[] => {
+  const named = new Set([...s.perText, ...s.pageInst].map((x) => x.split(" :: ")[1]));
+  // a code that no instance names (OVERLAP_PSEUDO_UNPROVEN, counted in TS) is kept with its count
+  return [...s.perText, ...s.pageInst, ...Object.keys(s.codes).filter((c) => !named.has(c)).map((c) => `(page ×${s.codes[c]}) :: ${c}`)].sort();
 };
 
 /** The codes of a scan, sorted. */
@@ -640,6 +656,8 @@ export async function pixelPass(page: Page, plan: OverlapPlan): Promise<PixelRes
   if (!same) return { codes: { PIXEL_UNMEASURED: 1 }, glyphs: 0, inkPixels: 0, coveredPixels: 0, worstTransmittance: 0, worstGroundDev: 0, ms: Date.now() - t0, coveredTexts: [], unconfirmed: [], disagreements: [], lowest: [], inkOutside: 0, inkOutsideSpots: [] };
   const coveredTexts: string[] = [];
   const unconfirmed: string[] = [];
+  const unconfirmedIdx: number[] = [];
+  const confirmedIdx: number[] = [];
   const lowest: Array<{ text: string; min: number; bad: number }> = [];
   const disagreements: string[] = [];
   const W = a1.width;
@@ -709,12 +727,24 @@ export async function pixelPass(page: Page, plan: OverlapPlan): Promise<PixelRes
           const dPage = p2[i]! - p1[i]! + p2[i + 1]! - p1[i + 1]! + p2[i + 2]! - p1[i + 2]!;
           if (dPage / dRef < PIXEL_TRANSMITTANCE_MIN) bad += 1;
         }
-    if (bad < 2) { unconfirmed.push(t.text); continue; }
+    if (bad < 2) { unconfirmedIdx.push(ti); unconfirmed.push(t.text); continue; }
+    confirmedIdx.push(ti);
     codes[t.prot ? "PIXEL_COVER_PROTECTED" : "PIXEL_COVER_TEXT"] = (codes[t.prot ? "PIXEL_COVER_PROTECTED" : "PIXEL_COVER_TEXT"] ?? 0) + 1;
     coveredTexts.push(t.text);
     if (!t.codes.some((c) => /PAINT_ABOVE|ORDER_UNPROVEN|TEXT_ON_TEXT|GLYPHS_UNMEASURED/.test(c))) disagreements.push(`${t.text} [${t.codes.join(",")}]`);
   }
   await page.evaluate(`document.getElementById("ov-shot")?.remove()`);
+
+  // A candidate the isolated measurement does not confirm saw a cover on ink that is not its own: another text's ink
+  // inside its boxes. That is explained only if a confirmed text's boxes meet its boxes (the cover is reported there);
+  // otherwise the covered ink belongs to a text whose boxes do not hold it, and nothing names the cover:
+  // PIXEL_COVER_UNATTRIBUTED (fail closed, re-review 3 L2)
+  const meet = (a: { left: number; top: number; right: number; bottom: number }, b: typeof a) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0;
+  for (const ti of unconfirmedIdx) {
+    const t = scan.glyphs![ti]!;
+    const explained = confirmedIdx.some((ci) => scan.glyphs![ci]!.rects.some((r) => t.rects.some((g) => meet(r, g))));
+    if (!explained) { codes.PIXEL_COVER_UNATTRIBUTED = (codes.PIXEL_COVER_UNATTRIBUTED ?? 0) + 1; disagreements.push(`${t.text} [unattributed cover]`); }
+  }
 
   // The glyph boxes must hold the ink the page actually draws (DEV-173 CI: if they do not, every check above looks in
   // the wrong place). Every pixel the reference shows as text ink (≥ half coverage) must lie inside some glyph box
