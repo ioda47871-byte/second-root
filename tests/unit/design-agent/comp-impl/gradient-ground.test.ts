@@ -308,7 +308,7 @@ describe("DEV-172 gradient_ground ON: text is never on a gradient", () => {
 
   it("contrast is not what decides: C′'s gold band under 金を蒔いて (its dark end fails 4.5:1) and the same text on two light stops both fail at every width of 320–1920", async () => {
     const ink = "#1d1915";
-    expect(contrast(ink, "#8c6524")).toBeLessThan(4.5); // C′'s dark end: the comment in C′ says 3.7:1
+    expect(contrast(ink, "#8c6524")).toBeLessThan(4.5); // C′'s dark end: 3.33:1 (C′'s own note says 3.7:1)
     expect(contrast(ink, "#f1d68f")).toBeGreaterThan(4.5);
     expect(contrast(ink, "#f6f1e7")).toBeGreaterThan(4.5);
     for (const g of [TSUGUTE_GOLD, G]) {
