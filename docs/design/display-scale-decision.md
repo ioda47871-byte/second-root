@@ -145,7 +145,7 @@ strict B の 1440 と 390 の SHA は、`impl/README.md` に記録した b の�
 
 ## 5. DEV-170 の記録との違い (参考)
 
-- DEV-170 の道具 (`nowrap-harness.ts` の `strictPage`) は `assets/board.png` だけを配る。ゆげ湯の strict B は `garden.png`・`mural.png` も使うので、DEV-170 のゆげ湯の画像はその2枚が欠けていた (SHA `68c8da1e`)。`display-nowrap-decision.md` §5 の「strict B の SHA は README と同じ」は、ゆげ湯については当たらない (README は `4f14e5ba`)。検査のコード (`allCodes`) は画像の中身に依らず、この差で結論は変わらない。DEV-171 の道具は全部の PNG を配る。直すかは DEV-170 の側で決める (この PR は DEV-170 の文書を変えていない)。
+- DEV-170 の道具 (`nowrap-harness.ts` の `strictPage`) は `assets/board.png` だけを配る。ゆげ湯の strict B は `garden.png`・`mural.png` も使うので、DEV-170 のゆげ湯の画像はその2枚が欠けていた (SHA `68c8da1e`)。`display-nowrap-decision.md` §5 の「strict B の SHA は README と同じ」は、ゆげ湯については当たらない (README は `4f14e5ba`)。`img` は `width`・`height` を持つので配置は変わらず、検査のコード (`allCodes`) の結論も変わらない (画素の SHA だけが違う)。DEV-171 の道具は全部の PNG を配る。直すかは DEV-170 の側で決める (この PR は DEV-170 の文書を変えていない)。
 
 ## 6. 証明していないこと
 
