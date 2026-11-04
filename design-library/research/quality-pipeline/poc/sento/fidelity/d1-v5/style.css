@@ -217,7 +217,8 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
 }
 /* 601–999: the copy runs almost to the right edge, so the steam rises over 熱い above the tagline, not from the tub */
 @media (min-width: 601px) and (max-width: 999px) {
-  .wisps { right: 30px; bottom: 430px; width: min(220px, 26vw); height: min(380px, 42vw); }
+  /* v4: 40px higher, so the blurred foot of the steam stays off the tagline's first line (430px touched its top row at 601–677) */
+  .wisps { right: 30px; bottom: 470px; width: min(220px, 26vw); height: min(380px, 42vw); }
 }
 /* v4, 861–999: the lead is one line (it ends near x 645), so the steam can rise from the tub's top edge right of it and up into 熱い */
 @media (min-width: 861px) and (max-width: 999px) {
