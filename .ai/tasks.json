@@ -7753,7 +7753,7 @@
     {
       "id": "DEV-169",
       "title": "段 B の 1px 掃引から unmeasuredWidths を呼ぶ行をテストで固定する (PR #207 の L1)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-164"
@@ -7787,12 +7787,12 @@
         ".github/workflows"
       ],
       "human_approval_triggers": [],
-      "note": "テストだけ。1920 を越える range で段の区切りが届かない幅を作るので、本番に口を足さずに振る舞いで確かめられる。 この PR で、オーナーの後続計画 (Issue #193 コメント 6628165899) の DEV-170〜176 を backlog として登録した。"
+      "note": "テストだけ。1920 を越える range で段の区切りが届かない幅を作るので、本番に口を足さずに振る舞いで確かめられる。 この PR で、オーナーの後続計画 (Issue #193 コメント 6628165899) の DEV-170〜176 を backlog として登録した。 PR #208 で develop に merge 済み (3ad0126)。"
     },
     {
       "id": "DEV-170",
       "title": "display_nowrap の安全検証 (店名・固定の表示語だけ。能力は OFF のまま)",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-164",
@@ -7800,7 +7800,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null,
+      "branch": "feature/dev-170-display-nowrap-verification",
       "purpose": "display_nowrap を有効にする前の証拠を揃える (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
       "acceptance_criteria": [
         "対象を店名・固定の表示語に限ることをテストで固定する",
@@ -7833,7 +7833,7 @@
         "安全ゲートの実質的な緩和",
         "本番への反映"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 オーナーの指示により、DEV-168 (デザインの残りの課題、別の枝) と DEV-169 の完了の後に始める。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 オーナーの指示により、DEV-168 (デザインの残りの課題、別の枝) と DEV-169 の完了の後に始める。 判断シートは docs/design/display-nowrap-decision.md。テストは display-nowrap.test.ts (47 件)。本番のコードの差 0。3店の目に見える折れは対象の外 (略称・飾りの語・事実の文) と分かった。"
     },
     {
       "id": "DEV-171",
