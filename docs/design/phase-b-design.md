@@ -210,9 +210,10 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
 ## 6. 進め方
 
 1. **この PR (DEV-161):** 設計と、今の振る舞いを固定するテストだけ。
-2. **段 B の実装の PR (未着手):**
+2. **段 B の実装の PR (DEV-164、`feature/dev-164-phase-b-impl`、HOLD):**
    - 能力の名前、旗、検査、落ちるべき例、費用の実測を入れる。`APPROVED_CAPABILITIES` は空のまま。
    - CI と独立 Fresh Review を通し、merge の前にオーナーの承認を得る。許可一覧の変更を含むので、事前承認の外である。
+   - **状態 (2026-11-04):** 5つの能力を旗の後ろに実装した (§8)。`APPROVED_CAPABILITIES` は空のまま。PR は merge しない。merge にはオーナーの明示の承認が要る (本番の許可一覧のコードの道を変えるため。DEV-083 §8)。
 3. **有効にする PR:** `APPROVED_CAPABILITIES` に名前を足す1行と、その能力を使う研究用のページの比較画像。オーナーの承認が要る。
 4. 段 C、N1、段 D は、それぞれ別の設計と PR とする。
 
@@ -222,3 +223,133 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
 - `STACKING_CONTEXT` と `PSEUDO_GEOMETRY_UNKNOWN` の止め方を狭めること (§2.5・§2.6・§2.7)。
 - `image_filters` の値の範囲。
 - 段 B の能力のうち、最初に有効にするもの。
+- **描画の検査が証明する範囲 (Fresh Review 1回目の M1 の後):** 段 B の旗を立てたとき、地 (`background-image`)・グラデーションの止めの規則・半透明の箱 (と `STACKING_CONTEXT` の狭め)・表示語は、**320〜1920 の整数の CSS px の幅の全部**で確かめる (1px の掃引、§8.4)。**証明しないもの:** 1920 より広い幅、320 より狭い幅、整数でない幅 (小数の CSS px)、ブラウザの拡大率 (zoom) と端末の画素比の違い、**900 以外の窓の高さ** (掃引も確かめる幅も高さは 900 に固定。高さで重なりが変わるのは生の HTML の負の余白などの形で、許可一覧は負の余白を拒むので、許可一覧を通るページでは起きにくいと見るが、証明はしていない)、Chromium 1194 以外の描画系、文字の書体が手元の容器と違う環境。これらを要るとするかは、有効にする前にオーナーが決める。
+
+## 8. 実装メモ (DEV-164)
+
+2026-11-04。Issue #193 コメント `6623100651` と同日のチャットの1。**旗はすべて既定で下りている。能力は1つも承認していない。**
+
+### 8.1 実装したもの、しなかったもの
+
+| 能力 | 状態 | 理由 |
+|---|---|---|
+| `display_scale` | 実装 (旗 `displayScale`) | |
+| `display_nowrap` | 実装 (旗 `displayNowrap`) | |
+| `colour_syntax` | 実装 (旗 `colourSyntax`) | |
+| `gradient_ground` | 実装 (旗 `gradientGround`) | |
+| `translucent_decoration` | 実装 (旗 `translucentDecoration`) | `STACKING_CONTEXT` の狭めを含む。旗の後ろだけ。§7 のオーナーの判断が要る |
+| `web_font` | 設計だけ | 書体の一覧と許諾、配信の枠、差し込む側の道具が要る (§7) |
+| `image_filters` | 設計だけ | 値の範囲が未決 (§7)。`blur` のにじみの描く範囲の証明が要る |
+| `ornament` | 設計だけ | 疑似要素の描く範囲を測る新しい検査が要る (`PSEUDO_GEOMETRY_UNKNOWN` の狭め) |
+
+### 8.2 誰が旗を立てるか
+
+- `CAPABILITY_NAMES` に5つを足した。`APPROVED_CAPABILITIES = []` のまま。
+- spec が5つのどれかを宣言すると `SPEC_CAPABILITY_NOT_APPROVED` で拒まれる (前は `SPEC_SHAPE`。どちらも拒否)。
+- `spec.ts` の `pageCssOptionsOf(spec)` が、**宣言され かつ 承認された**能力の鍵だけを立てる。今はどの spec でも `{}`。
+- `run.ts` は `pageCssOptionsOf(bundle.spec)` の結果だけを使う。能力の名前も鍵の名前も書かない (基準のテストのとおり)。
+- worker (`scripts/sales-design-worker/comp-impl-poc.ts`) は `runCompImpl` を呼ぶだけで、旗を渡す口が無い。`RunOptions` にも旗の欄は無い。
+- spec の `type_scale.display_px` は、`display_scale` が宣言され承認されたときだけ 640 まで。ほかは今のまま 16〜160 (超えれば `SPEC_SHAPE`)。
+
+### 8.3 静的な文法 (`page-css.ts`)
+
+- `displayScale`: `font-size` を px 12〜640、rem 0.75〜40 まで。`calc()`・`clamp()`・`max()` は今の 256px のまま。`em`・`%`・`vw` は今どおり不可。
+- `displayNowrap`: `white-space: normal | nowrap`、`word-break` に `keep-all`。`pre`・`pre-wrap`・負の字間は不可。
+- `colourSyntax`: `hsl()`・`hsla()`・`oklch()`・`oklab()`・CSS の名前の色。値は数・%・角度だけ。`calc()`・`none`・相対色 (`from`)・`var()`・`light-dark()`・`lab()`・`color()` は不可。`color-mix()` の中の新しい色も不可。
+  - 色が入る場所でだけ通す (hex の色に置き換えて、今の文法で確かめる)。
+- `gradientGround`: `background` と `background-image` に `linear-gradient()`・`radial-gradient()` を1つだけ。
+  - 止めは 2〜8。止めの色に `var()` は不可。位置は % を1つまで (px・`calc()`・2つの位置は不可)。
+  - **止めの色は不透明だけ** (Fresh Review 2回目の M1): 3桁・6桁の hex、末尾が `f`・`ff` の 4桁・8桁の hex、`white`・`black`、アルファ無しか 1・100% の `rgb()`・`rgba()`、`colourSyntax` のときは名前の色とアルファ無しか 1・100% の `hsl()`・`hsla()`・`oklch()`・`oklab()`。`transparent`・`currentcolor`・`color-mix()`・アルファが 1 未満のものは `CSS_VALUE`。グラデーションの止めの外 (`color` など) の色の文法は変えていない。
+  - 向きは `to <辺> [<辺>]` か角度。円形は `circle`・`ellipse` だけ (`at`・大きさは不可)。
+  - `repeating-*`・`conic-gradient()`・`image-set()`・`-webkit-image-set()`・重ね (カンマ) は不可。`url()` は字句の段で止まる。
+- `translucentDecoration`: `opacity` 0.1〜1。
+
+### 8.4 描画の側 (`phase-b.ts`、`layers.ts`、`render.ts`)
+
+- 調べる幅: 確かめる幅 (PC と SP の擬装) と 32px の掃引の全部。測れなかった幅は `PHASE_B_UNMEASURED`。
+- 旗を立てたときは、それに加えて 1px の掃引 (下) で 320〜1920 の整数の幅の全部。
+- 結果は `run.ts` の `checks.phase_b` (止める側)。
+- **`TYPE_ABOVE_ROLE_CAP` (旗が無くても掛かる):**
+  - すべての文字の、計算後の `font-size` (px) を見る。上限は 256px。
+  - `displayScale` のときだけ、表示語は 640px まで。
+  - 表示語 = 店名か固定のラベル (`COMP_UI_LABELS`) と文字が完全に一致し、子の要素を持たず、`dt`・`dd`・免責の中でない要素。**一覧はコードが決める。spec では広げられない** (設計の「spec が宣言する」より狭い)。
+  - これで `html { font-size }` × `rem` の穴 (§2.2) が描画で塞がる。静的な検査は今も通す (基準のテストは `[]` のまま)。
+- `NOWRAP_NOT_DISPLAY`: 表示語でない文字に、計算後の nowrap・pre・keep-all が掛かっている (継いだ値も)。
+- `DISPLAY_WORD_BROKEN`: 表示語の語 (空白の間) が2行にまたがる。`displayScale` か `displayNowrap` のときだけ見る。
+- 1px の掃引 (`displaySweepPass`。`displayScale`・`displayNowrap`・`gradientGround`・`translucentDecoration` のどれかのときだけ。旗が無ければ動かない): 320〜1920 の整数の幅の全部。段の分け方は `protectedGeometryPass` と同じ (段の両端で根に自分の箱が無ければ根の幅を動かし、そうでなければ実際に画面の幅を変える)。
+  - `displayScale` か `displayNowrap`: 表示語の行が箱と画面の中にあること、語が折れないこと (`DISPLAY_OUT_OF_BOX`・`DISPLAY_OFFSCREEN`・`DISPLAY_WORD_BROKEN`)。
+  - `gradientGround` か `translucentDecoration` (Fresh Review の M1): 下の地・グラデーション・半透明の箱の検査 (`PAINT_SCANNER`。確かめる幅と同じコード) を毎幅に掛ける。確かめる幅の間の 15px の帯で地が文字に重なる例 (レビューの再現) がこれで落ちる。`STACKING_CONTEXT` の狭めは「文字に重ならない」が条件なので、これで全幅で裏付けられる (重なる幅があれば `TRANSLUCENT_UNDER_TEXT`)。
+  - **測れなかった幅は落とす:** 掃引は測った幅の数を返し、範囲の整数の幅で測っていないものを `PHASE_B_UNMEASURED` にする。
+- `GROUND_HAS_TEXT`・`GROUND_UNDER_TEXT`: `background-image` のある要素は文字を持たず、枠の箱が文字の行の箱に重ならないこと。
+  - 「文字を持つ」は、文字の節・`aria-label`・`alt` (自分の `alt` も) のどれか (Fresh Review の L1。段 A の `layers.ts` の `altInside` と同じく `alt` を数える。段 A は媒体の `img` の自分の `alt` を数えないが、段 B では数える: 厳しい側)。半透明の箱も同じ。
+- `GRADIENT_HARD_STOP`・`GRADIENT_TOO_STEEP`・`GRADIENT_UNMEASURED`: 描いたグラデーションに V3b の止めの規則を掛ける。
+  - 色はキャンバスで sRGB に直す (`oklch` も)。
+  - 線の長さは下の限り (角は min(w, h)、円形は min(w, h)/2) で、短く見るほど厳しくなる。
+  - 読めない形は落とす。
+  - **描いたグラデーションの全部に掛ける** (Fresh Review の M2。前は返す一覧が 40 までで、41 個目からは見ていなかった)。規則はページの中で走らせ (`GRADIENT_CODES_JS`)、返すのはコード (3種) と数だけ。TS の `gradientProblems` と同じ答えを出すことを、テストで多くの形について照らし合わせる。
+  - 1px の掃引でも毎幅に掛ける (箱の幅で線の長さが変わるため)。
+  - **止めの色のアルファ (L3 の訂正。Fresh Review 2回目の M1):** 1回目の後にここへ「厳しい側で、落ちるべきものが通ることは無い」と書いたのは**誤りだった**。規則は RGB だけを比べるので、アルファだけが変わる止め (`#000` から `transparent`、`#0000`、`rgba(0,0,0,.05)`、300px の `#000 50%, transparent 50%` の硬い境目) は `change === 0` として飛ばされ、通っていた。直し:
+    - 静的: `gradientGround` の止めの色を不透明に限る (上の §8.3)。これが主の守り。
+    - 描画 (二重の守り): ページの中で、アルファが 255 でない止めは測れない (`GRADIENT_UNMEASURED`) として落とす。
+    - 段 A の `verify.ts` の `gradientStopProblems` (RGB だけを比べる) は変えていない。段 A ではグラデーションは許可一覧が拒むので、そこへ届くのは生の HTML のテストだけである。段 B の描画の側はアルファの無い止めしか渡さない。
+- `TRANSLUCENT_HAS_TEXT`・`TRANSLUCENT_UNDER_TEXT`: `opacity` < 1 の要素は文字を持たず、自分と子孫の箱が文字の行の箱に重ならないこと。
+- **`STACKING_CONTEXT` の狭め (`translucentDecoration` のときだけ):** `opacity` だけで重ねの文脈を作り、文字を持たず、自分と子孫の箱が文字に重ならない要素 (`html`・`body` 以外) は数えない。ほかの引き金・文字・重なりがあれば今どおり数える。**描画の門を狭める変更なので、§7 のオーナーの承認が要る。**
+- 描く範囲 (§2.9) は箱そのもの。段 B の実装した能力は外側に描くものを足さない (`blur` は未実装)。
+
+### 8.5 旗が下りているときに変わること
+
+- 変わるのは `TYPE_ABOVE_ROLE_CAP` の 256px だけ。今 256px を超える文字を描くページは落ちる (今ある穴を塞ぐ。緩めではない)。
+- 既存の通るページ 9 枚 (合成の和菓子、pilot-1 の2枚、3店の C の6枚) は、確かめる幅の全部 (PC と SP の擬装) と 32px の掃引の 51 幅の全部 (`legibilitySweep` と同じく PC の擬装の1つの頁で幅を変える) で、コードが出ない (テストで固定。Fresh Review の L2 で掃引の幅を足した)。1px の掃引は旗が無ければ動かないので、旗を下ろしたときの検査の幅はこの2つだけである。
+- ほかのコードは、旗無しでは許可一覧が元の宣言を拒むので出ない。
+- 報告の `checks` に `phase_b` が1つ増える。
+
+### 8.6 費用 (手元の容器、Chromium 1194、合成のページ、3回の最良)
+
+`phase-b.test.ts` の最後のテストが測って、ログに出す (`DEV-164 cost`)。
+
+| 測ったもの | 値 |
+|---|---|
+| `PHASE_B_SCRIPT` 1回 (1幅、旗をすべて立てて) | 3〜8 ms |
+| 旗無しでも足される仕事 (確かめる幅 10 + 32px の掃引 51 = 61 回) | 約 0.2〜0.5 s / ページ |
+| 32px の掃引 (`legibilitySweep`) 旗無し / 旗すべて | 3,416 / 3,394 ms、3,901 / 3,973 ms (差は誤差の内) |
+| 1幅の `legibilityPass` (1440) 旗無し / 旗すべて | 1,207 / 1,123 ms、1,239 / 1,521 ms (同上) |
+| 1px の表示語の掃引 (`displaySweepPass`、旗を立てたときだけ、320〜1920 の 1,601 幅) | 923 ms、1,017 ms |
+| (Fresh Review 1回目の後) 1px の掃引: 表示語の旗だけ / 地と半透明の旗だけ / 旗すべて | 1,034 / 975 / 1,577 ms |
+| (同) 32px の掃引 旗無し / 旗すべて、1幅の `legibilityPass` (1440) 旗無し / 旗すべて | 3,867 / 3,806 ms、1,298 / 1,249 ms |
+
+- 2回の実行の値を並べた (各値は3回の最良)。
+- 旗を下ろしたときの増え: 1ページ約 0.2〜0.5 s (計算後の大きさの上限の分)。
+- 旗を立てたときの増え: それに約 1 s (1px の掃引)。合成のページの1回の実行 (数十秒) に比べて小さい。
+- M1 の直しの増え (地と半透明を 1px の掃引に足した分): `gradientGround` か `translucentDecoration` だけなら掃引1回 約 1.0 s、表示語の旗と合わせると約 1.6 s (表示語だけの約 1.0 s から約 +0.6 s)。旗を下ろしたときは掃引が動かないので増えない (32px の掃引と確かめる幅の値は誤差の内)。
+- CI の unit の組の増え: `phase-b.test.ts` 1本 (Fresh Review の後 164 件、手元で約 139 秒。うち `runCompImpl` 2回、既存の 9 枚を 32px の掃引の幅でも見る分 約 30 秒)。
+
+### 8.7 設計で見つけたこと
+
+- §5 は「本番の道は段 B の名前を参照しない」と言い、§3 の 3 は「旗は `run.ts` が立てる」と言う。両方を満たすため、名前と鍵の対応は `spec.ts` に置き、`run.ts` は `pageCssOptionsOf` だけを呼ぶ。
+- §2.2 の「spec が表示語と宣言する」は、spec に欄が無い。欄を足すと作者が表示語を広げられるので、一覧をコードに固定した。
+- §2.4 の止めの規則は、文字の下でない地に掛けても強い (黒から白へは 128px 以上要る)。オーナーが有効にする前に、帯の幅と合わせて見る値である。
+- 不安全なところは見つからなかった。`translucent_decoration` の `STACKING_CONTEXT` の狭めだけは、設計どおり描画の門を狭めるので、承認の対象として明記した。
+
+### 8.8 Fresh Review 1回目 (C0 / H0 / M2 / L3) の直し
+
+| 指摘 | 直したこと | テスト |
+|---|---|---|
+| M1 地・半透明と文字の重なりを確かめる幅でしか見ない (間の 15px の帯が抜ける) | `gradientGround` か `translucentDecoration` のとき、1px の掃引 (`displaySweepPass`、320〜1920 の整数の幅の全部) で地・グラデーションの止めの規則・半透明の箱の検査を毎幅に掛ける。測っていない幅は `PHASE_B_UNMEASURED` | レビューの再現 (`GROUND_UNDER_TEXT` が 462〜476 だけで出る。確かめる幅と 32px の幅では出ない)、止めの規則に掛からない 30px の帯 (標本の幅では全部通り、掃引だけで落ちる)、同じ形の半透明 (`TRANSLUCENT_UNDER_TEXT`)、根の幅を動かす測り方と実際の幅の変更の一致、旗無しで掃引が動かないこと |
+| M2 41 個目からのグラデーションに止めの規則が掛からない | 規則をページの中で全部のグラデーションに掛け、コードと数だけ返す (`GRADIENT_CODES_JS`。返す形は `{ count, codes }`) | 40 個の滑らかなもの + 硬い止め1つ、200 個 + 1つ。ページの中の規則と TS の `gradientProblems` が 539 の形 (向き・大きさ・止めの組み合わせ) で同じ答え |
+| L1 段 B の「文字を持つ」が `alt` を数えない | `alt` (自分のものも) と `aria-label` を数える | `img alt` を持つ地、`alt` を持つ `img` 自身、`aria-label`、空の `alt` は数えない |
+| L2 既存の 9 枚のテストが確かめる幅だけ | 32px の掃引の 51 幅も見る (`legibilitySweep` と同じ開き方) | 9 枚すべて緑 |
+| L3 止めの色のアルファを捨てる | 1回目は既知の振る舞いとして書いただけだった。2回目の M1 で、その記述が誤りと分かり直した (§8.9) | — |
+
+**証明する範囲と、しない範囲**は §7 の最後の項に書いた (旗を立てたとき 320〜1920 の整数の CSS px の全部。1920 より広い幅と拡大率は証明しない)。
+
+### 8.9 Fresh Review 2回目 (C0 / H0 / M1 / L3) の直し
+
+| 指摘 | 直したこと | テスト |
+|---|---|---|
+| M1 アルファだけが変わる止めが止めの規則を素通りする | `gradientGround` の静的な文法で止めの色を不透明に限る (§8.3)。描画の側でもアルファが 255 でない止めを `GRADIENT_UNMEASURED` に。§8.4 の誤った記述を直した | `#000`→`transparent` (30px)、`#000 50%, transparent 50%` (300px)、`#0000`、`#00000000`、`#000e`、`rgba(0,0,0,.05)`、`rgb(0 0 0 / 0.5)`、`currentcolor`、`color-mix()`、`hsl`/`hsla`/`oklch`/`oklab` のアルファが静的に `CSS_VALUE`。生の HTML では描画が `GRADIENT_UNMEASURED`。`#000f`・`#ffffffff`・`rgb(0 0 0 / 1)` などの不透明は通る |
+| L2 窓の高さが 900 に固定 | §7 の証明しないものに足した | — |
+| L1 1920 より広い幅・小数の幅 | §7 の書き方を確かめた (そのまま) | — |
+| L3 `PHASE_B_UNMEASURED` の道にテストが無い | 数え方を純粋な関数 `unmeasuredWidths` (`render.ts`) に出し、`displaySweepPass` がそれを使う。本番の options に口は足していない | 短い数・0・負の数・長すぎる数・どの実行も頼まなかった幅・空、それが `phaseBCheck` を落とすこと |
+
+旗を下ろしたときの静的な一致: develop の `page-css.ts` と、旗無しと `{ verticalName: true }` で 1,200,034 回比べて差 0 (リポジトリの CSS 36 本の全体と規則ごと、宣言 2,864、性質 305 × 値 1,946 の組み合わせ。値には新しいアルファの形も入れた)。
+

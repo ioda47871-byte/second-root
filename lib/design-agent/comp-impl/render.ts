@@ -12,7 +12,8 @@ import { CLEAN_CSS, HIDE_TEXT_CSS, MEASURE_SCRIPT, MeasureSchema, REFERENCE_SCRI
 import { decodePng } from "../worker/png-paint";
 import { SHOT_VIEWPORTS } from "../shot-viewports";
 import type { CompPage } from "./page";
-import { pageBreakpointsPx } from "./page-css";
+import { pageBreakpointsPx, type PageCssOptions } from "./page-css";
+import { DISPLAY_SWEEP_SCRIPT, DisplaySweepSchema, PHASE_B_SCRIPT, PhaseBSchema, type DisplaySweep, type PhaseBScan } from "./phase-b";
 import { SEPARATORS } from "./checks";
 import { LAYER_SCRIPT, LayerSchema, LAYOUT_HASH_SCRIPT, LayoutHashSchema, PERTURB_SCRIPT, WIDEST_FACE_SCRIPT, type LayerScan } from "./layers";
 import { PAGE_FONT_FAMILIES } from "./page-css";
@@ -186,6 +187,8 @@ export type Legibility = {
   pairs: Pairs;
   /** DEV-083 phase A: roles, paint order, non-content extents and writing mode at this width (layers.ts). */
   layers: LayerScan;
+  /** DEV-164 phase B at this width (phase-b.ts): computed type caps, nowrap, display words, grounds, translucent boxes. */
+  phaseB?: PhaseBScan;
   /** DEV-083 phase A (V3b): per measured node of a protected element, the ground structure under its glyphs. */
   ground: Map<number, GroundStructure>;
   /** How many measured nodes belong to protected elements (V3b measured all of them only when ground.size equals this). */
@@ -199,13 +202,26 @@ export type PairPlan = {
   facts: readonly string[];
   /** DEV-102 vertical_name: the shop name that may be vertical (only with the approved, declared capability); else absent. */
   verticalName?: string | null;
+  /** DEV-164: the page CSS options the spec turned on (spec.ts pageCssOptionsOf: declared AND approved; today {}). */
+  css?: PageCssOptions;
+  /** DEV-164: the display words (phase-b.ts displayWordsOf); absent: none (every text is capped at 256px). */
+  displayWords?: readonly string[];
 };
 
 /** The phase A layer scan at the current viewport (layers.ts LAYER_SCRIPT). */
-export async function layerScan(page: Page, required: readonly string[], o: { pairs?: boolean; mark?: boolean; declared?: boolean; verticalName?: string | null } = {}): Promise<LayerScan> {
+export async function layerScan(page: Page, required: readonly string[], o: { pairs?: boolean; mark?: boolean; declared?: boolean; verticalName?: string | null; translucent?: boolean } = {}): Promise<LayerScan> {
   // `declared` (reading data-comp-role) is the test path only: the run never sets it, and the DOM allowlist refuses the attribute
-  return LayerSchema.parse(await page.evaluate(`(${LAYER_SCRIPT})(${JSON.stringify({ facts: required, pairs: o.pairs === true, mark: o.mark === true, declared: o.declared === true, verticalName: o.verticalName ?? null })})`));
+  return LayerSchema.parse(await page.evaluate(`(${LAYER_SCRIPT})(${JSON.stringify({ facts: required, pairs: o.pairs === true, mark: o.mark === true, declared: o.declared === true, verticalName: o.verticalName ?? null, translucent: o.translucent === true })})`));
 }
+
+/** DEV-164 phase B at the current viewport (phase-b.ts PHASE_B_SCRIPT), with the plan's capability options. */
+export async function phaseBScan(page: Page, plan: Pick<PairPlan, "css" | "displayWords">): Promise<PhaseBScan> {
+  const css = plan.css ?? {};
+  const arg = { display: plan.displayWords ?? [], displayCap: css.displayScale === true, words: css.displayScale === true || css.displayNowrap === true };
+  return PhaseBSchema.parse(await page.evaluate(`(${PHASE_B_SCRIPT})(${JSON.stringify(arg)})`));
+}
+
+const layerOptions = (plan: PairPlan) => ({ verticalName: plan.verticalName ?? null, translucent: plan.css?.translucentDecoration === true });
 
 async function pairsOf(page: Page, plan: PairPlan): Promise<Pairs> {
   return PairsSchema.parse(await page.evaluate(`(${PAIRS_SCRIPT})(${JSON.stringify({ pairs: plan.pairs, facts: plan.facts, separators: SEPARATORS.source })})`));
@@ -242,7 +258,8 @@ export async function legibilityPass(browser: Browser, compPage: CompPage, width
     const measure = await textMeasure(page, facts);
     const pairs = await pairsOf(page, plan);
     const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
-    const layers = await layerScan(page, required, { verticalName: plan.verticalName ?? null });
+    const layers = await layerScan(page, required, layerOptions(plan));
+    const phaseB = await phaseBScan(page, plan);
     const ground = new Map<number, GroundStructure>();
     const owners = new Set(scan.owners.map((x) => x.owner));
     const nodes = measure.nodes.map((n, i) => ({ n, i })).filter(({ n }) => (n.kind === "fact" || n.kind === "label") && owners.has(n.owner));
@@ -270,7 +287,7 @@ export async function legibilityPass(browser: Browser, compPage: CompPage, width
         ground.set(i, groundStructure(without, n.chars));
       }
     }
-    return { width, measure, scan, lowContrast, ink, inkExcess, pairs, layers, ground, groundExpected: nodes.length + (scan.owners.length > 0 && nodes.length === 0 ? 1 : 0), blocked: o.blocked() };
+    return { width, measure, scan, lowContrast, ink, inkExcess, pairs, layers, phaseB, ground, groundExpected: nodes.length + (scan.owners.length > 0 && nodes.length === 0 ? 1 : 0), blocked: o.blocked() };
   } finally {
     await o.context.close();
   }
@@ -280,7 +297,7 @@ export async function legibilityPass(browser: Browser, compPage: CompPage, width
 export const SWEEP_STEP = 32;
 export const sweepWidths = (): number[] => Array.from({ length: Math.floor((1920 - 320) / SWEEP_STEP) + 1 }, (_, i) => 320 + i * SWEEP_STEP);
 
-export type SweepWidth = { width: number; measure: Measure; scan: ProtectedScan; pairs: Pairs; layers: LayerScan };
+export type SweepWidth = { width: number; measure: Measure; scan: ProtectedScan; pairs: Pairs; layers: LayerScan; phaseB?: PhaseBScan };
 
 /**
  * The coarse sweep of protected text (third review of PR #96: text wrapped
@@ -301,7 +318,7 @@ export async function legibilitySweep(browser: Browser, compPage: CompPage, fact
       await page.setViewportSize({ width, height: 900 });
       const measure = MeasureSchema.parse(await page.evaluate(`(${MEASURE_SCRIPT})(${JSON.stringify({ facts })})`));
       const scan = ProtectedSchema.parse(await page.evaluate(`(${PROTECTED_SCRIPT})(${JSON.stringify({ facts: required })})`));
-      out.push({ width, measure, scan, pairs: await pairsOf(page, plan), layers: await layerScan(page, required, { verticalName: plan.verticalName ?? null }) });
+      out.push({ width, measure, scan, pairs: await pairsOf(page, plan), layers: await layerScan(page, required, layerOptions(plan)), phaseB: await phaseBScan(page, plan) });
     }
     return { widths: out, blocked: o.blocked() };
   } finally {
@@ -403,6 +420,68 @@ async function segmentModes(page: Page, compPage: CompPage, range: [number, numb
     out.push({ from, to, stepped: !forceReal && (await plainRoot(from)) && (await plainRoot(to)) });
   }
   return out;
+}
+
+/** One call of the sweep script: the widths it was asked for and how many it says it measured. */
+export type SweepRun = { from: number; to: number; measured: number };
+
+/**
+ * The 1 px sweep's coverage (fail closed): every integer width of [lo, hi] that no run measured is PHASE_B_UNMEASURED.
+ * A run walks from..to in order, so a short count leaves its tail unmeasured; a width no run asked for is unmeasured.
+ */
+export function unmeasuredWidths(runs: readonly SweepRun[], lo: number, hi: number): Array<{ w: number; codes: string[] }> {
+  const measured = new Set<number>();
+  for (const r of runs) for (let w = r.from; w < r.from + Math.min(Math.max(r.measured, 0), r.to - r.from + 1); w++) measured.add(w);
+  const out: Array<{ w: number; codes: string[] }> = [];
+  for (let w = lo; w <= hi; w++) if (!measured.has(w)) out.push({ w, codes: ["PHASE_B_UNMEASURED"] });
+  return out;
+}
+
+/**
+ * DEV-164: the 1 px sweep (phase-b.ts DISPLAY_SWEEP_SCRIPT) over every integer CSS px width of 320–1920, only when
+ * display_scale, display_nowrap, gradient_ground or translucent_decoration is on (else null: nothing runs). The display
+ * words are checked with a display capability; grounds, gradients and translucent boxes with gradient_ground or
+ * translucent_decoration (Fresh Review M1: their overlap with text is otherwise only seen at the checked widths). The same
+ * segments and modes as protectedGeometryPass: the root's width stepped where the root has no box of its own at both real
+ * ends of a media segment, a real resize at every width otherwise. Fail closed: a width of the range that no run measured
+ * is PHASE_B_UNMEASURED.
+ */
+export async function displaySweepPass(browser: Browser, compPage: CompPage, plan: Pick<PairPlan, "css" | "displayWords">, o: { range?: [number, number]; forceReal?: boolean } = {}): Promise<DisplaySweep | null> {
+  const words = plan.css?.displayScale === true || plan.css?.displayNowrap === true;
+  const overlap = plan.css?.gradientGround === true || plan.css?.translucentDecoration === true;
+  if (!words && !overlap) return null;
+  const started = Date.now();
+  const [lo, hi] = o.range ?? [320, 1920];
+  const ctx = await openCompPage(browser, compPage, { width: lo, height: 900, scale: 1, mobile: false });
+  try {
+    const runs: SweepRun[] = [];
+    const run = async (from: number, to: number, step: boolean) => {
+      const r = DisplaySweepSchema.parse(await ctx.page.evaluate(`(${DISPLAY_SWEEP_SCRIPT})(${JSON.stringify({ display: plan.displayWords ?? [], from, to, step, words, overlap })})`));
+      runs.push({ from, to, measured: r.measured });
+      return r;
+    };
+    const failing: DisplaySweep["failing"] = [];
+    let targets = 0;
+    for (const seg of await segmentModes(ctx.page, compPage, o.range, o.forceReal === true)) {
+      if (seg.stepped) {
+        await ctx.page.setViewportSize({ width: seg.to, height: 900 });
+        const r = await run(seg.from, seg.to, true);
+        targets = Math.max(targets, r.targets);
+        failing.push(...r.failing);
+      } else {
+        for (let w = seg.from; w <= seg.to; w++) {
+          await ctx.page.setViewportSize({ width: w, height: 900 });
+          const r = await run(w, w, false);
+          targets = Math.max(targets, r.targets);
+          failing.push(...r.failing);
+        }
+      }
+    }
+    failing.push(...unmeasuredWidths(runs, lo, hi));
+    return { failing, targets, ms: Date.now() - started, blocked: ctx.blocked() };
+  } finally {
+    await ctx.context.close();
+  }
 }
 
 export type LayoutHashes = { hashes: Map<number, string>; targets: number; ms: number; segments: number; changes: number };

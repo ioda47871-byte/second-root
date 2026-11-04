@@ -7601,7 +7601,7 @@
     {
       "id": "DEV-167",
       "title": "3店のカンプそのもののデザイン品質を上げる (新しいカンプと、その忠実な C) — 研究の道、架空の店 (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-159",
@@ -7645,7 +7645,60 @@
         "カンプをオーナーに見せて採るかの判断",
         "創作の文 (区画のラベル、待つ、のれんの ゆ) の確認"
       ],
-      "note": "新しいカンプは前の C の描き方を取り込んだので、新しい C はカンプと同じ HTML・文の記録を使い、描画は同じバイトになる。fidelity-spec の comp と strict_b は古いカンプのまま。成功の判定ではない。PR #205。Fresh Review round 1 (C0/H1/M0/L6) を新しい版の中で直した: H1 つぐ手 601〜1199 で線が文字を横切っていた (格子の % が詰め物の内側で解かれていた)。L1・L2 名札のコントラスト、L3 語の途中の改行 (<wbr> と keep-all)、L4 C の CSS の先頭の注記、L5 ゆげ湯の巨大な語の重なりとはみ出し、L6 記録の言い過ぎ。Fresh Review round 2 (C0/H1/M0/L4) も直した: H1 輪の 360 以下で文字が右の端で切れていた。L1〜L3 コントラスト、L4 輪の 600 の板の角。確かめを 320〜1440 の19の幅に広げた。確かめた幅は .ai/reviews/DEV-167.md。"
+      "note": "新しいカンプは前の C の描き方を取り込んだので、新しい C はカンプと同じ HTML・文の記録を使い、描画は同じバイトになる。fidelity-spec の comp と strict_b は古いカンプのまま。成功の判定ではない。PR #205。Fresh Review round 1 (C0/H1/M0/L6) を新しい版の中で直した: H1 つぐ手 601〜1199 で線が文字を横切っていた (格子の % が詰め物の内側で解かれていた)。L1・L2 名札のコントラスト、L3 語の途中の改行 (<wbr> と keep-all)、L4 C の CSS の先頭の注記、L5 ゆげ湯の巨大な語の重なりとはみ出し、L6 記録の言い過ぎ。Fresh Review round 2 (C0/H1/M0/L4) も直した: H1 輪の 360 以下で文字が右の端で切れていた。L1〜L3 コントラスト、L4 輪の 600 の板の角。確かめを 320〜1440 の19の幅に広げた。確かめた幅は .ai/reviews/DEV-167.md。 PR #205 で develop へ merge した (5e7bf02)。"
+    },
+    {
+      "id": "DEV-164",
+      "title": "段 B の実装案と安全性テスト (表示語の大きさ・表示語の折れ止め・色の書き方・文字の下でない地・半透明の装飾)。旗は既定で下ろし、能力は承認しない (Issue #193)",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-161"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-164-phase-b-impl",
+      "purpose": "Issue #193 コメント 6623100651 と 2026-11-04 のチャットの1: 段 B の実装案と安全性テストを具体化する。本番用の CSS 制限の変更・有効化・merge には別途の承認が要る。",
+      "acceptance_criteria": [
+        "CAPABILITY_NAMES に段 B の5つ (display_scale・display_nowrap・colour_syntax・gradient_ground・translucent_decoration) を足し、APPROVED_CAPABILITIES は空のまま",
+        "PageCssOptions に能力ごとの鍵を1つずつ。既定は下りている。run.ts は pageCssOptionsOf (宣言 かつ 承認) だけで旗を立てる",
+        "静的な文法 (値の表、calc の抜け道・image-set・url・repeating・conic・止め 9 以上などの拒否)",
+        "描画の側: 計算後の px の文字の大きさの上限 (TYPE_ABOVE_ROLE_CAP、旗が無くても 256px)、表示語以外の nowrap、表示語の折れ、地と半透明の描く範囲が文字に重ならないこと、V3b の止めの規則、1px の表示語の掃引",
+        "phase-b-baseline.test.ts は旗を下ろしたまま緑 (能力の名前と PageCssOptions の行だけを意図して直す)",
+        "設計の落ちるべき例を旗を立てて全部落とす。旗を下ろしたときは今と同じ。worker の道は旗を渡さない",
+        "費用の実測を docs に記録する"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl tests/unit/design-agent/shop-css tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/comp-impl/page-css.ts",
+        "lib/design-agent/comp-impl/spec.ts",
+        "lib/design-agent/comp-impl/phase-b.ts",
+        "lib/design-agent/comp-impl/layers.ts",
+        "lib/design-agent/comp-impl/render.ts",
+        "lib/design-agent/comp-impl/run.ts",
+        "tests/unit/design-agent/comp-impl/phase-b.test.ts",
+        "tests/unit/design-agent/comp-impl/phase-b-baseline.test.ts",
+        "docs/design/phase-b-design.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-164.md"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES に名前を足すこと (有効にすること)",
+        "web_font・image_filters・ornament の実装 (オーナーの判断と新しい描画の証明が要る)",
+        "既存の閾値・テストを弱めること、テストの skip",
+        "worker から旗を渡すこと",
+        "実 Codex・画像生成・ネットワーク API・package.json の依存",
+        "main・Production・Staging・DB",
+        ".github/workflows"
+      ],
+      "human_approval_triggers": [
+        "この PR の merge (本番の許可一覧のコードの道を変える。DEV-083 §8)",
+        "translucent_decoration のための STACKING_CONTEXT の狭め (旗の後ろだけ。設計 §2.5 と §7)",
+        "段 B の能力を有効にすること (APPROVED_CAPABILITIES に足す別の PR)"
+      ],
+      "note": "HOLD: merge はオーナーの明示の承認が要る (DEV-083 §8。本番の許可一覧のコードの道を変えるため)。有効にするのは、APPROVED_CAPABILITIES に名前を足す別の PR。計算後の 256px の上限は旗が無くても掛かる (今ある rem の穴を塞ぐ。既存の通るページ 9 枚は全部の幅で影響なし)。"
     }
   ]
 }

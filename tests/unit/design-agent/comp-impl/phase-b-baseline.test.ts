@@ -78,7 +78,8 @@ describe("DEV-161: phase B compatibility baseline (today's behaviour, flag off)"
   });
 
   it("records today's gap: root font-size times rem passes the static check (design §2.2)", () => {
-    // 256px × 16rem = 4096px text; phase B's computed-px cap must close this, and that PR changes this expectation
+    // 256px × 16rem = 4096px text. DEV-164 closes it in the RENDER (phase-b.ts TYPE_ABOVE_ROLE_CAP, a computed-px cap at
+    // every measured width, flag or no flag: phase-b.test.ts). The static check still cannot see it, so this stays [].
     expect(cssProblems(`html { font-size: 256px; } .x { font-size: 16rem; }`)).toEqual([]);
   });
 
@@ -96,15 +97,17 @@ describe("DEV-161: phase B compatibility baseline (today's behaviour, flag off)"
     expect(cssProblems(css("writing-mode: vertical-rl;"), { verticalName: true })).toEqual([]);
   });
 
-  it("has no capability but vertical_name, and none approved", () => {
-    expect([...CAPABILITY_NAMES]).toEqual(["vertical_name"]);
+  // DEV-164 changed these two on purpose (design §5: "旗は能力ごとに増える。増えたら、このテストを意図して直す"): the
+  // phase-B implementation PR adds five capability names and one option key each. APPROVED_CAPABILITIES stays empty.
+  it("has vertical_name and the five phase-B capabilities, and none approved", () => {
+    expect([...CAPABILITY_NAMES]).toEqual(["vertical_name", "display_scale", "display_nowrap", "colour_syntax", "gradient_ground", "translucent_decoration"]);
     expect([...APPROVED_CAPABILITIES]).toEqual([]);
   });
 
-  it("has no CSS option key but verticalName", () => {
+  it("has one CSS option key per capability", () => {
     const src = readFileSync(resolve(REPO, "lib/design-agent/comp-impl/page-css.ts"), "utf8");
     const types = src.match(/export type PageCssOptions = [^\n]*/g);
-    expect(types).toEqual(["export type PageCssOptions = { verticalName?: boolean };"]);
+    expect(types).toEqual(["export type PageCssOptions = { verticalName?: boolean; displayScale?: boolean; displayNowrap?: boolean; colourSyntax?: boolean; gradientGround?: boolean; translucentDecoration?: boolean };"]);
   });
 
   it("names no phase-B capability in the production worker path", () => {
