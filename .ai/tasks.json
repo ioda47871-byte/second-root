@@ -7703,7 +7703,7 @@
     {
       "id": "DEV-169",
       "title": "段 B の 1px 掃引から unmeasuredWidths を呼ぶ行をテストで固定する (PR #207 の L1)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-164"
@@ -7737,12 +7737,12 @@
         ".github/workflows"
       ],
       "human_approval_triggers": [],
-      "note": "テストだけ。1920 を越える range で段の区切りが届かない幅を作るので、本番に口を足さずに振る舞いで確かめられる。 この PR で、オーナーの後続計画 (Issue #193 コメント 6628165899) の DEV-170〜176 を backlog として登録した。"
+      "note": "テストだけ。1920 を越える range で段の区切りが届かない幅を作るので、本番に口を足さずに振る舞いで確かめられる。 この PR で、オーナーの後続計画 (Issue #193 コメント 6628165899) の DEV-170〜176 を backlog として登録した。 PR #208 で develop に merge 済み (3ad0126)。"
     },
     {
       "id": "DEV-170",
       "title": "display_nowrap の安全検証 (店名・固定の表示語だけ。能力は OFF のまま)",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
         "DEV-164",
@@ -7750,7 +7750,7 @@
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null,
+      "branch": "feature/dev-170-display-nowrap-verification",
       "purpose": "display_nowrap を有効にする前の証拠を揃える (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
       "acceptance_criteria": [
         "対象を店名・固定の表示語に限ることをテストで固定する",
