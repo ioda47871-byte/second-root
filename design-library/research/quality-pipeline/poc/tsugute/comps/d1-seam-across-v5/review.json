@@ -4,7 +4,7 @@
   "direction_id": "d1-seam-across-v5",
   "comp": {
     "html_sha256": "5446fabe95367540b030cfbf87c987ad2206dd8a801e2daffd77028d3659f0b1",
-    "css_sha256": "8b6ec7e3b130f97a3e1ca69f1fc71780bdee9052e1934aaf893cff6df5f377c3",
+    "css_sha256": "44781185bcf6ae29bcbbc0d579c46a19b70498dda516bbdceaa3dfc503a5c97d",
     "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
   },
   "renders": {
@@ -266,7 +266,8 @@
         "SP の 継ぐ を 22vw・-26vw に、PC の 待つ を 40px 下げた",
         "SP の言葉を板より前に重ね (z-index 3)、名札・漢字の地の帯を字の箱より広く",
         "601〜1199 で 相談 の上を 76px、Hero のコピーの幅を 38% に (lead の終わりが Hero の線に届いた)",
-        "SP の地の帯を最後の字より 6px 右まで (線の断面 の右端に線が並んだ)"
+        "SP の地の帯を最後の字より 6px 右まで (線の断面 の右端に線が並んだ)",
+        "601〜1199 で乾く器の板を句の左の列へ上げた (格子の下に置くと左半分が空いた)"
       ],
       "regressions_fixed": []
     }
