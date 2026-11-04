@@ -218,16 +218,16 @@
     "fidelity_c": {
       "desktop_1440": {
         "score": {
-          "motif_coverage": 0.901,
-          "motif_largest_gap_px": 602,
-          "boundaries_crossed": 2,
+          "motif_coverage": 0.899,
+          "motif_largest_gap_px": 613,
+          "boundaries_crossed": 0,
           "boundaries_carried": 5,
           "boundaries_total": 5,
           "sections_touched": 6,
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 42,
+          "caption_lines_total": 59,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -242,8 +242,8 @@
       },
       "mobile_390": {
         "score": {
-          "motif_coverage": 0.839,
-          "motif_largest_gap_px": 1014,
+          "motif_coverage": 0.837,
+          "motif_largest_gap_px": 1029,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
           "boundaries_total": 5,
@@ -251,7 +251,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 43,
+          "caption_lines_total": 59,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -266,8 +266,8 @@
       },
       "tablet_1024": {
         "score": {
-          "motif_coverage": 0.852,
-          "motif_largest_gap_px": 1027,
+          "motif_coverage": 0.853,
+          "motif_largest_gap_px": 1043,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
           "boundaries_total": 5,
@@ -275,7 +275,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 40,
+          "caption_lines_total": 57,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -290,8 +290,8 @@
       },
       "tablet_768": {
         "score": {
-          "motif_coverage": 0.831,
-          "motif_largest_gap_px": 1008,
+          "motif_coverage": 0.832,
+          "motif_largest_gap_px": 1023,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
           "boundaries_total": 5,
@@ -299,7 +299,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 40,
+          "caption_lines_total": 59,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -331,13 +331,13 @@
     },
     "fidelity_c": {
       "desktop_1440": {
-        "coverage": 0.986,
+        "coverage": 0.984,
         "boundaries_crossed": null,
         "boundaries_carried": 1,
         "sections_touched": 1
       },
       "mobile_390": {
-        "coverage": 0.953,
+        "coverage": 0.951,
         "boundaries_crossed": null,
         "boundaries_carried": 1,
         "sections_touched": 1

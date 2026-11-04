@@ -7551,7 +7551,7 @@
     {
       "id": "DEV-165",
       "title": "N1 装飾の SVG の続き — オーナーの目視の承認・skew の拒否・他のブラウザのプローブ・段 C の条件の調査 (研究だけ。有効にしない) (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-162"
@@ -7596,7 +7596,56 @@
         "オーナーの WSL に Firefox・WebKit を入れること (npx playwright install、install-deps に sudo が要るならそこで止める)",
         "名前を使わない傾き (SVG_TRANSFORM_SHEAR) を拒むことの確認"
       ],
-      "note": "研究だけ。N1 は有効にしていない。承認の記録は0件。Firefox・WebKit はこの container では BLOCKED (オーナーの WSL での手順は文書の 4.1)。段 C は未着手。守る文字 (事実・表示) への重なりは幾何の IMAGE_OVERLAP・COVERED が止める。守っていない普通の文への流れの中の重なり (grid のはみ出し) は、今どこでも止まらない (助言の PAINT_ORDER_COVER だけ。文書 7 の C-3)。Fresh Review 1回目 (C0/H0/M1/L7) を反映した。"
+      "note": "研究だけ。N1 は有効にしていない。承認の記録は0件。Firefox・WebKit はこの container では BLOCKED (オーナーの WSL での手順は文書の 4.1)。段 C は未着手。守る文字 (事実・表示) への重なりは幾何の IMAGE_OVERLAP・COVERED が止める。守っていない普通の文への流れの中の重なり (grid のはみ出し) は、今どこでも止まらない (助言の PAINT_ORDER_COVER だけ。文書 7 の C-3)。Fresh Review 1回目 (C0/H0/M1/L7) を反映した。 PR #204 で develop へ merge した (17e9d95)。"
+    },
+    {
+      "id": "DEV-167",
+      "title": "3店のカンプそのもののデザイン品質を上げる (新しいカンプと、その忠実な C) — 研究の道、架空の店 (Issue #193)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-159",
+        "DEV-160"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-167-comp-quality",
+      "purpose": "オーナー (2026-11-04)「つぐ手・輪・ゆげ湯のカンプそのもののデザイン品質も引き続き改善する」と Issue #193 コメント 6623100651 の見比べのあと、リードが C を見て挙げた直し (つぐ手 T1〜T3、輪 B1〜B4、ゆげ湯 S1〜S2) を、新しい版のカンプと C に入れる。古い版は残す。",
+      "acceptance_criteria": [
+        "新しいカンプ: tsugute comps/d1-seam-across-v3、bicycle comps/d1-wheel-hub-v2、sento comps/d1-heat-descent-v2 (index.html・style.css・copy.json・review.json)",
+        "新しい C: tsugute fidelity/d1-v4、bicycle fidelity/d1-v3、sento fidelity/d1-v3 (README.md に変えたこと・仮のままのもの・描画の SHA)",
+        "comp-lane の所見 0 件、--check-review が ok",
+        "fidelity-spec.json の fidelity_c を新しい C に指し替え、fidelity-report.json を作り直す。4つの幅で覆い・横切り・語の折れ・横のはみ出しが 0",
+        "古い版のカンプ・C と photo-slots.json (tsugute d1-v3 に固定) は変えない",
+        "写真・新しいラスター画像・Web フォント・通信を足さない。描画はリポジトリの外、SHA だけを残す",
+        "docs/design/comp-impl-loss-analysis.md に v-next の節"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/quality-pipeline/poc/*/comps/",
+        "design-library/research/quality-pipeline/poc/*/fidelity/",
+        "design-library/research/quality-pipeline/poc/*/fidelity-spec.json",
+        "design-library/research/quality-pipeline/poc/*/fidelity-report.json",
+        "docs/design/comp-impl-loss-analysis.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "photo-slots.json の変更",
+        "古い版のカンプ・C の変更",
+        "comp-impl の許可一覧の変更",
+        "実写真・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB",
+        ".github/workflows",
+        "依存の追加"
+      ],
+      "human_approval_triggers": [
+        "カンプをオーナーに見せて採るかの判断",
+        "創作の文 (区画のラベル、待つ、のれんの ゆ) の確認"
+      ],
+      "note": "新しいカンプは前の C の描き方を取り込んだので、新しい C はカンプと同じ HTML・文の記録を使い、描画は同じバイトになる。fidelity-spec の comp と strict_b は古いカンプのまま。成功の判定ではない。PR #205。Fresh Review round 1 (C0/H1/M0/L6) を新しい版の中で直した: H1 つぐ手 601〜1199 で線が文字を横切っていた (格子の % が詰め物の内側で解かれていた)。L1・L2 名札のコントラスト、L3 語の途中の改行 (<wbr> と keep-all)、L4 C の CSS の先頭の注記、L5 ゆげ湯の巨大な語の重なりとはみ出し、L6 記録の言い過ぎ。Fresh Review round 2 (C0/H1/M0/L4) も直した: H1 輪の 360 以下で文字が右の端で切れていた。L1〜L3 コントラスト、L4 輪の 600 の板の角。確かめを 320〜1440 の19の幅に広げた。確かめた幅は .ai/reviews/DEV-167.md。"
     }
   ]
 }
