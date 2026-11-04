@@ -7921,7 +7921,7 @@
         "安全ゲートの実質的な緩和",
         "本番への反映"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 判断シートは docs/design/gradient-ground-decision.md。テストは gradient-ground.test.ts (55 件)、道具は gradient-harness.ts。本番のコードの差 0。旗なしでグラデーションは1つも通らない。旗ありでも文字を持つ箱・文字に重なる箱は全幅で GROUND_HAS_TEXT / GROUND_UNDER_TEXT (コントラストでなく重なりで落とす)。ゆげ湯の温度計と火の帯、つぐ手の器は戻る (C′ の火の管の色は止めの規則で落ちる。40% にずらすと全幅で通る)。輪は変わらない。C′ のグラデーションの宣言 30 のうち文法を通るのは1つ。colour_syntax と併せると oklab の補間を止めの規則が見ない (安全でない方の規則の穴、直していない)。検証は完了。DEV-171 (PR #211) の merge の後に review へ上げた。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 判断シートは docs/design/gradient-ground-decision.md。テストは gradient-ground.test.ts (58 件)、道具は gradient-harness.ts。本番のコードの差 0。旗なしでグラデーションは1つも通らない。旗ありでも文字を持つ箱・文字に重なる箱は全幅で GROUND_HAS_TEXT / GROUND_UNDER_TEXT (コントラストでなく重なりで落とす)。ゆげ湯の温度計と火の帯、つぐ手の器は戻る (器は書体しだい: CI の書体では大きな文字の箱が 601px から器に届き GROUND_UNDER_TEXT。3店の幅はテストで独立の数え方と照らす) (C′ の火の管の色は止めの規則で落ちる。40% にずらすと全幅で通る)。輪は変わらない。C′ のグラデーションの宣言 30 のうち文法を通るのは1つ。colour_syntax と併せると oklab の補間を止めの規則が見ない (安全でない方の規則の穴、直していない)。検証は完了。DEV-171 (PR #211) の merge の後に review へ上げた。 Fresh Review (PR #212、C0/H0/M1/L1): M1 止めの規則が枠の箱で測り、Chromium は内側の箱で描いて枠の下で繰り返す・インラインは行ごとに描く穴をテストで固定し、ON の前の HOLD として判断シートに記した (lib は変えていない)。L1 oklab の文言を直した。"
     },
     {
       "id": "DEV-173",
