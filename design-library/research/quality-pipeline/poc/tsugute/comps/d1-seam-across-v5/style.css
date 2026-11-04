@@ -245,7 +245,8 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
   .eyebrow-month { position: relative; top: auto; left: auto; margin: 0 0 20px calc(var(--spine-x) + 24px); }
   .hero-name { font-size: 15vw; }
   .tagline { font-size: clamp(22px, 2.92vw, 42px); }
-  .hero-copy { width: 44%; top: 74%; }
+  /* v5: 38% (44% let the lead's last line end on the hero's line at 731–744) */
+  .hero-copy { width: 38%; top: 74%; }
   .how { display: none; }
 
   .ghost-tsugu { top: -20vw; left: auto; right: 2%; font-size: 16vw; }
@@ -325,8 +326,9 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
   .hero-art-pc { display: none; }
   .hero-art-sp { display: block; }
   .hero-name-full { top: 2.6%; left: 5.1%; font-size: 12px; letter-spacing: .2em; }
-  /* v5: the bowl is drawn smaller and left of the line's top (the SVG), so the name stands clear of it in its own column (30.8vw crossed the bowl's dark inside) */
-  .hero-name { top: 7.6%; left: auto; right: 4.6%; font-size: 26vw; }
+  /* v5: the name lies across the top on the paper, above the bowl's rim (standing on the right, ぐ and 手 crossed the bowl's dark
+     inside). The line drops straight under its ground into the crack; the ground is as tall as the glyph boxes */
+  .hero-name { top: 7.6%; left: 5.1%; right: auto; font-size: 22vw; line-height: 1.3; letter-spacing: .04em; writing-mode: horizontal-tb; width: fit-content; padding: .12em 0; background: var(--washi); }
   .hero-copy { left: 5.1%; right: 5.1%; width: auto; top: 61.6%; }
   .tagline { font-size: 6.9vw; }
   .lead { font-size: 15px; margin-top: 10px; }
@@ -342,10 +344,10 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
   .shard-hibi { padding-right: 48px; }
   .shard-kake .board, .shard-hibi .board { width: 100%; margin-left: 0; }
   .kanji { font-size: 72px; }
-  /* v5: the board's shadow (its caption's too) falls about 48px down: the words start below it (20px put it on 割れ・欠け・ひび) */
-  .shard .words { margin-top: 56px; }
+  /* v5: the words' ground lies over the board's shadow (the words paint after the board), so the caption stays close above them */
+  .shard .words { margin-top: 24px; z-index: 3; }
   /* v5: the ground under the words reaches past their glyphs, so the line (x 50%) passes under the ground, never beside a glyph at 320–360 */
-  .shard .kanji { line-height: 1.3; }
+  .shard .kanji { line-height: 1.3; padding-top: .12em; padding-bottom: .12em; }
   .shard .ph-label, .shard .kanji, .shard .cap, .shard .svc { padding-right: 6px; }
   .cap { font-size: 15px; }
 

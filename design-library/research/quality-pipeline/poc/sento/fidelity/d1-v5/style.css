@@ -68,13 +68,14 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
   background: radial-gradient(40% 50% at 30% 60%, rgba(246, 241, 231, .5), transparent 70%), radial-gradient(30% 45% at 70% 40%, rgba(246, 241, 231, .4), transparent 70%); }
 
 /* hot: the name stands vertically, the giant 熱い fills the right */
-.hot { min-height: 980px; background: var(--shu); color: var(--yuge); padding: 52px 60px 150px 96px; }
+/* v4: the copy starts 14px further right, so the vertical name's glyph box (1.3em wide under tall fonts) stays 20px clear of the thermometer's ticks */
+.hot { min-height: 980px; background: var(--shu); color: var(--yuge); padding: 52px 60px 150px 110px; }
 .hot-in { position: relative; z-index: 4; display: grid; grid-template-columns: 234px minmax(0, 560px); align-items: end; min-height: 778px; }
 .hot-name { align-self: start; }
 .name-full { font-family: var(--mincho); font-size: 16px; letter-spacing: .3em; }
 .name { margin-top: 40px; font-family: var(--mincho); font-weight: 400; font-size: 150px; line-height: 1.05; writing-mode: vertical-rl; letter-spacing: .06em; }
 /* v4: below 1440 熱い keeps 30px right of the tagline's end (x 716) even with a 1.3em-wide glyph box (1101–1140 crossed it) */
-.giant-hot { right: 60px; top: 60px; font-size: min(470px, 32.65vw, calc((100vw - 806px) / 1.15)); writing-mode: vertical-rl; color: #d4593b; z-index: 2; }
+.giant-hot { right: 60px; top: 60px; font-size: min(470px, 32.65vw, calc((100vw - 820px) / 1.15)); writing-mode: vertical-rl; color: #d4593b; z-index: 2; }
 .tagline { font-family: var(--mincho); font-size: 52px; line-height: 1.4; letter-spacing: .06em; }
 .lead { margin-top: 22px; font-family: var(--mincho); font-size: 19px; border-top: 1px solid rgba(246, 241, 231, .6); padding-top: 14px; max-width: 440px; }
 
@@ -181,11 +182,11 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
 /* 768–1100: the same composition, scaled; the giant words shrink before they collide */
 @media (max-width: 1100px) {
   :root { --gutter: 96px; }
-  .hot { padding: 52px 40px 140px 80px; }
+  .hot { padding: 52px 40px 140px 100px; }
   .hot-in { grid-template-columns: 170px minmax(0, 1fr); min-height: 700px; }
   .name { font-size: 110px; }
   /* v4: 熱い is 200px until it can stand 50px right of the lead's end (x 645) with a 1.3em-wide glyph box, so it never comes down to the tagline */
-  .giant-hot { font-size: min(330px, max(200px, calc((100vw - 730px) / 1.15))); right: 30px; }
+  .giant-hot { font-size: min(330px, max(200px, calc((100vw - 750px) / 1.15))); right: 30px; }
   /* the tub spans the width here: the steam rises from above its top edge, never over the board */
   .wisps { right: 40px; bottom: 130px; width: min(300px, 30vw); height: min(600px, 60vw); }
   .tagline { font-size: 42px; }
@@ -244,13 +245,13 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
   section::before { left: calc(var(--gauge-x) - 3px); width: 6px; border-radius: 3px; }
   .wall::before { box-shadow: 0 0 0 3px rgba(246, 241, 231, .9), 0 0 0 4.5px rgba(36, 31, 27, .45); }
   .wall::after { left: calc(var(--gauge-x) + 9px); width: 8px; background-size: auto, 5px 100%; }
-  .hot { min-height: 844px; padding: 24px 20px 120px 28px; }
+  .hot { min-height: 844px; padding: 24px 20px 120px 50px; }
   .hot-in { grid-template-columns: 1fr; min-height: 700px; }
   .name-full { font-size: 12px; }
   .name { margin-top: 26px; font-size: 84px; }
   /* below 356 熱い narrows, so it never reaches the name ゆげ湯 at the left */
   /* v4: 熱い keeps 20px right of the name ゆげ湯 even with 1.3em-wide glyph boxes (calc(100vw - 126px) came within 6px of it at 320–360) */
-  .giant-hot { right: 6px; top: 60px; font-size: min(230px, calc((100vw - 156px) / 1.15)); }
+  .giant-hot { right: 6px; top: 60px; font-size: min(230px, calc((100vw - 178px) / 1.15)); }
   .tagline { font-size: 32px; }
   .lead { font-size: 15px; }
   /* SP: the steam sinks below the lead and passes under the tub board (its caption stays clear) */
