@@ -218,7 +218,7 @@
     "fidelity_c": {
       "desktop_1440": {
         "score": {
-          "motif_coverage": 0.899,
+          "motif_coverage": 0.9,
           "motif_largest_gap_px": 613,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
@@ -331,7 +331,7 @@
     },
     "fidelity_c": {
       "desktop_1440": {
-        "coverage": 0.984,
+        "coverage": 0.985,
         "boundaries_crossed": null,
         "boundaries_carried": 1,
         "sections_touched": 1
