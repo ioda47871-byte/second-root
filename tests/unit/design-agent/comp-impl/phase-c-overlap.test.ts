@@ -449,10 +449,30 @@ describe("DEV-173 the three shops", () => {
     for (const shop of SHOP_KEYS) {
       const edges = STRICT_SWEEP[shop].OVERLAP_PROTECTED_OFFSCREEN!.split(", ").flatMap((r) => r.split("–").map(Number));
       for (const e of edges) {
-        const s = await overlapSweep(browser, overlapPage(shop, "strict"), shopPlan(shop), e - 1, e + 1, open, "real");
+        // the pinned ranges are of 320–1920: their outer ends are the sweep's own ends
+        const lo = Math.max(320, e - 1);
+        const hi = Math.min(1920, e + 1);
+        const s = await overlapSweep(browser, overlapPage(shop, "strict"), shopPlan(shop), lo, hi, open, "real");
         const got = s.failing.map((f) => f.w);
         const inside = (w: number) => STRICT_SWEEP[shop].OVERLAP_PROTECTED_OFFSCREEN!.split(", ").some((r) => { const [a, b] = r.split("–").map(Number); return w >= a! && w <= (b ?? a)!; });
-        expect(got, `${shop} ${e}`).toEqual([e - 1, e, e + 1].filter(inside));
+        expect(got, `${shop} ${e}`).toEqual([e - 1, e, e + 1].filter((w) => w >= lo && w <= hi && inside(w)));
+      }
+    }
+  });
+
+  it("C′ between the checked widths: sento's surface board covers the protected bath fact at 1260–1263px only, and the ghost 沸く sits on the fire fact at 861–885px — the 1px sweep finds both, the checked widths do not", async () => {
+    const sento = overlapPage("sento", "cprime");
+    const board = await overlapSweep(browser, sento, shopPlan("sento"), 1250, 1275, open, "real");
+    expect(sweepRanges(board).OVERLAP_PAINT_ABOVE_PROTECTED).toBe("1260–1263");
+    const boil = await overlapSweep(browser, sento, shopPlan("sento"), 850, 895, open, "real");
+    expect(sweepRanges(boil).OVERLAP_PROTECTED_TEXT_ON_TEXT).toBe("861–885");
+    for (const w of CHECKED) {
+      const o = await openCompPage(browser, sento, { width: w, height: 900, scale: 1, mobile: w <= 390 });
+      try {
+        const c = overlapCodes(await overlapScan(o.page, shopPlan("sento")));
+        expect(c.includes("OVERLAP_PAINT_ABOVE_PROTECTED") || c.includes("OVERLAP_PROTECTED_TEXT_ON_TEXT"), String(w)).toBe(false);
+      } finally {
+        await o.context.close();
       }
     }
   });
