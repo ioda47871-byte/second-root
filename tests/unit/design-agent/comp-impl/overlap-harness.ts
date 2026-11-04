@@ -361,8 +361,10 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
       // lets a later run of the same paragraph print over an earlier one)
       if (u.t === t || u.t.node === t.node) continue;
       if (!meets(u.near, span)) continue;
-      const ug = glyphsOf(u.t).map((g) => grow(g, u.t.ink));
-      const hit = glyphsOf(t).some((g) => ug.some((x) => meets(x, g)));
+      // ink against ink, without the 1 px antialias growth on either side: two runs of one line set next to each other
+      // (a <wbr> splits a text node) touch at their advance edges and must not count
+      const ug = glyphsOf(u.t).map((g) => grow(g, u.t.ink - 1));
+      const hit = glyphsOf(t).some((g0) => { const g = grow(g0, -1); return ug.some((x) => meets(x, g)); });
       if (!hit) continue;
       const key = "t:" + texts.indexOf(u.t);
       if (done.has(key)) continue;

@@ -500,11 +500,13 @@ describe("DEV-173 the three shops", () => {
     }
   });
 
-  it("C′ between the checked widths: on sento's C′ page the 1px sweep finds a protected cover in a narrow band (the surface board over the bath fact; the ghost 沸く over the fire fact) that no checked width hits", async () => {
+  it("C′ between the checked widths: on sento's C′ page the 1px sweep finds the surface board over the bath fact in a narrow band that no checked width hits", async () => {
     const sento = overlapPage("sento", "cprime");
-    // windows around the bands measured here (board 1260–1263, 沸く 861–885) and on CI (board 1271–1275); the band is
-    // computed, not pinned: it moves with the fonts installed
-    for (const [from, to, code] of [[1230, 1310, "OVERLAP_PAINT_ABOVE_PROTECTED"], [830, 920, "OVERLAP_PROTECTED_TEXT_ON_TEXT"]] as const) {
+    // a window around the band measured here (1260–1262) and on CI (1271–1275, with the first glyph boxes); the band is
+    // computed, not pinned: it moves with the fonts installed. (The first version also reported the ghost 沸く on the
+    // fire fact at 861–885: that came from glyph boxes larger than the ink, and is gone with ink boxes; the picture shows
+    // the outline clear of the fact.)
+    for (const [from, to, code] of [[1230, 1310, "OVERLAP_PAINT_ABOVE_PROTECTED"]] as const) {
       const s = await overlapSweep(browser, sento, shopPlan("sento"), from, to, open, "real");
       const band = s.failing.filter((f) => f.codes.includes(code)).map((f) => f.w);
       console.log(`DEV-173 sento C′ ${code} in ${from}–${to}: ${widthRanges(band) || "none"}`);
@@ -516,7 +518,7 @@ describe("DEV-173 the three shops", () => {
       const o = await openCompPage(browser, sento, { width: w, height: 900, scale: 1, mobile: w <= 390 });
       try {
         const c = overlapCodes(await overlapScan(o.page, shopPlan("sento")));
-        expect(c.includes("OVERLAP_PAINT_ABOVE_PROTECTED") || c.includes("OVERLAP_PROTECTED_TEXT_ON_TEXT"), String(w)).toBe(false);
+        expect(c.includes("OVERLAP_PAINT_ABOVE_PROTECTED"), String(w)).toBe(false);
       } finally {
         await o.context.close();
       }
