@@ -242,7 +242,7 @@
       },
       "mobile_390": {
         "score": {
-          "motif_coverage": 0.837,
+          "motif_coverage": 0.842,
           "motif_largest_gap_px": 1029,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
@@ -266,7 +266,7 @@
       },
       "tablet_1024": {
         "score": {
-          "motif_coverage": 0.853,
+          "motif_coverage": 0.843,
           "motif_largest_gap_px": 1043,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
@@ -290,7 +290,7 @@
       },
       "tablet_768": {
         "score": {
-          "motif_coverage": 0.832,
+          "motif_coverage": 0.823,
           "motif_largest_gap_px": 1023,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
@@ -337,7 +337,7 @@
         "sections_touched": 1
       },
       "mobile_390": {
-        "coverage": 0.951,
+        "coverage": 0.957,
         "boundaries_crossed": null,
         "boundaries_carried": 1,
         "sections_touched": 1
