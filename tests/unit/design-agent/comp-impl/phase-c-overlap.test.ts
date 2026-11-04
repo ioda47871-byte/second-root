@@ -355,6 +355,21 @@ describe("DEV-173 the render check (prototype) on synthetic probes", () => {
     expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { background: #fff; } ${base}`)).toContain("OVERLAP_PAINT_ABOVE_PROTECTED");
   });
 
+  it("glyph boxes are the ink (+1 px antialias), and protected ones 1 px more: a line 1.3 px under a fact's ink fails, the same line under ordinary text passes; lines set solid under tall font metrics do not meet", async () => {
+    for (const [body, code] of [[F, "OVERLAP_PAINT_ABOVE_PROTECTED"], [`<p class="f">線の引き方を相談します</p>`, null]] as const) {
+      await load(`<div class="wrap">${body}</div>`, "");
+      const g = (await overlapScan(tab, PLAN, { glyphs: true })).glyphs!.find((t) => t.rects.length > 0)!;
+      // the raw ink's bottom is the box's bottom less the 1 px antialias growth
+      const raw = Math.max(...g.rects.map((r) => r.bottom)) - 1;
+      const got = await geo(`<div class="wrap">${body}${D}</div>`, `.d { position: absolute; z-index: 2; left: 0; right: 0; top: ${raw + 1.3}px; height: 1px; background: #c79a45; }`);
+      if (code) expect(got, "protected").toContain(code);
+      else expect(got, "ordinary").toEqual([]);
+    }
+    // two paragraphs set solid (line-height 1) in a face whose content area is 1.45 em: the Range rects overlap, the ink does not
+    const tall = '@font-face { font-family: "TallGothic"; src: local("IPAGothic"); ascent-override: 116%; descent-override: 29%; } .t { font-family: "TallGothic", sans-serif; font-size: 40px; line-height: 1; }';
+    expect(await geo(`<div class="wrap"><p class="t">線の引き方</p><p class="t">相談します</p></div>`, tall)).toEqual([]);
+  });
+
   it("fails closed: a pseudo-element whose content is not a string, and paint the order cannot be proven for", async () => {
     await load(`<div class="wrap">${F}</div>`, ".wrap::after { content: counter(x); position: absolute; left: 40px; top: 40px; }");
     expect(overlapCodes(await overlapScan(tab, PLAN))).toContain("OVERLAP_PSEUDO_UNPROVEN");
