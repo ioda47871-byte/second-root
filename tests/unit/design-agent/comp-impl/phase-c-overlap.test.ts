@@ -332,6 +332,9 @@ describe("DEV-173 the render check (prototype) on synthetic probes", () => {
     expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { display: inline-block; position: relative; z-index: 2; background: linear-gradient(#fff, #fff); padding: 0 2px; } ${base}`)).toContain("OVERLAP_PROTECTED_ON_DECORATION");
     // a plate on an ancestor that holds the glyphs, lifted as a unit
     expect(await geo(`<div class="wrap"><div class="card">${F}</div>${D}</div>`, `.card { position: relative; z-index: 2; background: #fff; padding: 4px; } ${base}`)).toEqual([]);
+    // an opaque ground on a box that is not atomic is no plate: a later in-flow block pulled up paints its ground after
+    // the fact's ground and before the fact's text, so the line shows under the digits
+    expect(await geo(`<div class="wrap"><p class="f">${FACT}</p><div class="d2" aria-hidden="true"></div></div>`, ".f { background: #fff; padding: 0 2px; } .d2 { height: 3px; margin-top: -18px; background: #c79a45; }")).toContain("OVERLAP_PROTECTED_ON_DECORATION");
     // the fact's own ground with no lift: the line (positioned, z-index 1) paints above the fact itself
     expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { background: #fff; } ${base}`)).toContain("OVERLAP_PAINT_ABOVE_PROTECTED");
   });
