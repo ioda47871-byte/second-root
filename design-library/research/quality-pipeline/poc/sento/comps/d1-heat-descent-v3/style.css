@@ -1,0 +1,283 @@
+/* ゆげ湯 カンプ d1-heat-descent-v3 (DEV-168、品質研究の道、架空の店)。前の版 (d1-heat-descent-v2 = C d1-v3) に次を足した: 温度計を目盛りつきのガラスの管にし、中の色を区画ごとに描く・湯の面から立ちのぼる湯気の筋 (コピーの右、熱い の上だけ)・768〜1100 で壁の文の下を空け、のれんの竿に余白を。
+   写真は役割と比だけの仮の板。板の上の SVG は飾り (aria-hidden) で、写真の代わりではない。 */
+:root {
+  --shu: #b8432c;
+  --dai: #dd8a3e;
+  --mizu: #2d6a86;
+  --sumi: #1f1c1a;
+  --tile: #eef0ec;
+  --kon: #18213a;
+  --yuge: #f6f1e7;
+  --ink: #241f1b;
+  --mincho: "IPAMincho", "IPAPMincho", serif;
+  --gothic: "Noto Sans CJK JP", "IPAGothic", sans-serif;
+  --gutter: 150px;
+  --gauge-x: 40px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--shu); }
+body { color: var(--ink); font-family: var(--gothic); font-size: 15px; line-height: 1.9; letter-spacing: .04em; }
+.page { position: relative; overflow: hidden; }
+section { position: relative; }
+figure { margin: 0; }
+/* words are never cut inside: keep-all plus explicit breaks at phrase ends */
+h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* the thermometer (v3, DEV-168): a glass tube with a scale of ticks down the whole page. The liquid in it is drawn by each
+   section, so its colour changes exactly at the section's edge: hot, warm, cold, then the fire's ember and the night.
+   No numbers: the facts give no temperatures. */
+.gauge { position: absolute; left: calc(var(--gauge-x) - 11px); top: 0; bottom: 0; width: 22px; z-index: 8; border-radius: 11px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, .04) 40%, rgba(255, 255, 255, .16));
+  box-shadow: inset 0 0 0 2px rgba(246, 241, 231, .55), 0 0 0 1px rgba(31, 28, 26, .18); }
+.gauge::after { content: ""; position: absolute; left: 28px; top: 0; bottom: 0; width: 14px;
+  background:
+    repeating-linear-gradient(rgba(246, 241, 231, .7) 0 2px, transparent 2px 120px),
+    repeating-linear-gradient(rgba(246, 241, 231, .5) 0 1px, transparent 1px 24px) 0 0 / 7px 100% no-repeat; }
+section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5px); top: 0; bottom: 0; width: 10px; border-radius: 5px; z-index: 7; pointer-events: none; background: var(--liquid); }
+.hot { --liquid: linear-gradient(#fff1dc, #ff9c6e 18%, #ff8357); }
+.warm { --liquid: linear-gradient(#ff8357, #ffc27f 30%, #ffd59c); }
+.cold { --liquid: linear-gradient(#ffd59c, #bfe7f4 12%, #9fd6ea); }
+.fire { --liquid: linear-gradient(#9fd6ea, #e46a2f 18%, #ffb35c 70%, #ffe2b0); }
+.wall { --liquid: linear-gradient(#ffe2b0, #c9ccd2 30%, #9aa4b8); }
+.night { --liquid: linear-gradient(#9aa4b8, #5a6a96 40%, #2a3352); }
+
+/* steam: wisps rise off the water and thin out as they climb; they stay right of the copy, over 熱い only */
+.wisps { position: absolute; z-index: 3; pointer-events: none; overflow: visible; right: 4.2vw; bottom: -310px; width: min(500px, 34.7vw); height: min(1010px, 70.1vw); }
+.wisps path { fill: none; stroke-linecap: round; }
+.wisp-soft path { stroke: url(#rise); stroke-width: 46; filter: blur(10px); opacity: .55; }
+.wisp-line path { stroke: url(#rise); stroke-width: 7; }
+.ph { position: absolute; left: 14px; bottom: 12px; font-size: 12px; letter-spacing: .08em; color: #3b332c; background: rgba(246, 241, 231, .86); padding: 3px 8px; word-break: normal; }
+.board { position: relative; background:
+  radial-gradient(60% 45% at 35% 30%, rgba(255, 250, 240, .55), transparent 70%),
+  repeating-radial-gradient(ellipse at 62% 58%, rgba(255, 255, 255, .0) 0 14px, rgba(255, 255, 255, .16) 15px 16px, rgba(255, 255, 255, 0) 17px 30px),
+  linear-gradient(165deg, #7fb6c4, #3f7f96 55%, #2f6479);
+  outline: 10px solid #f6f1e7; outline-offset: -1px;
+  box-shadow: 0 34px 50px -26px rgba(60, 20, 8, .55); }
+.giant { position: absolute; font-family: var(--mincho); line-height: 1; white-space: nowrap; pointer-events: none; }
+.steam { position: absolute; pointer-events: none; }
+.steam-a { left: 0; right: 0; bottom: -180px; height: 420px; z-index: 3;
+  background: radial-gradient(40% 50% at 30% 60%, rgba(246, 241, 231, .5), transparent 70%), radial-gradient(30% 45% at 70% 40%, rgba(246, 241, 231, .4), transparent 70%); }
+
+/* hot: the name stands vertically, the giant 熱い fills the right */
+.hot { min-height: 980px; background: var(--shu); color: var(--yuge); padding: 52px 60px 150px 96px; }
+.hot-in { position: relative; z-index: 4; display: grid; grid-template-columns: 234px minmax(0, 560px); align-items: end; min-height: 778px; }
+.hot-name { align-self: start; }
+.name-full { font-family: var(--mincho); font-size: 16px; letter-spacing: .3em; }
+.name { margin-top: 40px; font-family: var(--mincho); font-weight: 400; font-size: 150px; line-height: 1.05; writing-mode: vertical-rl; letter-spacing: .06em; }
+.giant-hot { right: 60px; top: 60px; font-size: min(470px, 32.65vw); writing-mode: vertical-rl; color: #d4593b; z-index: 2; }
+.tagline { font-family: var(--mincho); font-size: 52px; line-height: 1.4; letter-spacing: .06em; }
+.lead { margin-top: 22px; font-family: var(--mincho); font-size: 19px; border-top: 1px solid rgba(246, 241, 231, .6); padding-top: 14px; max-width: 440px; }
+
+/* warm: the tilted tub board rises over the hot section's edge; ぬるい crosses into the cold */
+.warm { background: var(--dai); padding: 0 var(--gutter) 230px; z-index: 2; }
+.warm-in { display: grid; grid-template-columns: minmax(0, 720px) minmax(0, 380px); column-gap: 0; position: relative; }
+.board-tub { grid-column: 1; grid-row: 1; aspect-ratio: 720 / 520; margin-top: -110px; transform: rotate(-2.2deg); z-index: 5; }
+.board-surface { grid-column: 2; grid-row: 1 / span 2; align-self: start; margin: 330px 0 0 -30px; aspect-ratio: 380 / 300; transform: rotate(3deg); z-index: 6; background:
+  repeating-radial-gradient(circle at 40% 45%, rgba(255, 255, 255, .0) 0 9px, rgba(255, 255, 255, .3) 10px 11px, rgba(255, 255, 255, 0) 12px 22px),
+  linear-gradient(150deg, #a9d3dc, #5d9db0); }
+/* the tubs hold hot water: warm tones, so the page still descends from hot to cold (the boards below the cold line stay blue) */
+.warm .board-tub { background:
+  radial-gradient(60% 45% at 35% 30%, rgba(255, 246, 228, .6), transparent 70%),
+  repeating-radial-gradient(ellipse at 62% 58%, rgba(255, 255, 255, .0) 0 14px, rgba(255, 240, 220, .2) 15px 16px, rgba(255, 255, 255, 0) 17px 30px),
+  linear-gradient(165deg, #f0c48e, #d68a4c 55%, #b5643a); }
+.warm .board-surface { background:
+  repeating-radial-gradient(circle at 40% 45%, rgba(255, 255, 255, .0) 0 9px, rgba(255, 244, 228, .35) 10px 11px, rgba(255, 255, 255, 0) 12px 22px),
+  linear-gradient(150deg, #f6d9b0, #e2a46a); }
+.warm-fact { grid-column: 1; grid-row: 2; margin-top: 30px; max-width: 640px; font-family: var(--mincho); font-size: 38px; line-height: 1.55; color: var(--ink); position: relative; z-index: 4; }
+.giant-warm { left: 110px; bottom: -130px; font-size: min(280px, 19.45vw); color: transparent; -webkit-text-stroke: 2px #fff3e2; z-index: 4; }
+
+/* cold */
+.cold { background: var(--mizu); color: var(--yuge); }
+.garden { position: relative; aspect-ratio: 1440 / 600; background:
+  radial-gradient(40% 60% at 72% 40%, rgba(230, 246, 250, .28), transparent 70%),
+  repeating-radial-gradient(ellipse 120% 60% at 70% 45%, rgba(255, 255, 255, 0) 0 22px, rgba(255, 255, 255, .1) 23px 25px, rgba(255, 255, 255, 0) 26px 46px),
+  linear-gradient(170deg, #4f8aa3, #275a72); }
+.garden .ph { left: 96px; bottom: 20px; }
+.cold-in { padding: 50px var(--gutter) 130px; position: relative; z-index: 3; }
+.cold-fact { font-family: var(--mincho); font-size: 38px; line-height: 1.5; }
+.giant-cold { right: 70px; top: 90px; font-size: min(200px, 13.9vw); writing-mode: vertical-rl; color: transparent; -webkit-text-stroke: 2px rgba(238, 246, 250, .85); z-index: 3; }
+
+/* fire: the hour before opening, from ember to open */
+.fire { background: var(--sumi); color: var(--yuge); padding: 150px 120px 150px var(--gutter); }
+.fire-in { position: relative; z-index: 3; max-width: 1100px; }
+.ember { position: absolute; left: 0; right: 0; bottom: 0; height: 70%; z-index: 0; pointer-events: none;
+  background: radial-gradient(55% 70% at 78% 100%, rgba(228, 106, 47, .55), rgba(196, 81, 42, .18) 45%, transparent 75%); }
+.giant-boil { right: 70px; top: -150px; font-size: min(330px, 22.92vw); color: transparent; -webkit-text-stroke: 2px #f2a34f; z-index: 4; }
+.fire-fact { font-family: var(--mincho); font-weight: 400; font-size: 46px; line-height: 1.5; letter-spacing: .06em; }
+.scale { margin-top: 90px; }
+.bar { height: 34px; border-radius: 17px; background: linear-gradient(90deg, #5b2a17, #c4512a 40%, #f2a34f 75%, #ffe2b0); box-shadow: 0 0 40px rgba(242, 163, 79, .35); }
+.marks { display: grid; grid-template-columns: 52% 1fr auto; margin-top: 24px; }
+.mark { font-family: var(--mincho); font-size: 22px; padding-top: 18px; border-top: 2px solid rgba(246, 241, 231, .6); }
+.mark-open { font-family: var(--gothic); font-size: 30px; color: #ffe2b0; text-align: right; padding-left: 24px; }
+/* the marks are single words and a time: never broken inside */
+.mark { white-space: nowrap; }
+
+/* wall: white tiles and the mountain */
+.wall { position: relative; background:
+  linear-gradient(90deg, rgba(160, 170, 165, .55) 1px, transparent 1px) 0 0 / 60px 60px,
+  linear-gradient(rgba(160, 170, 165, .55) 1px, transparent 1px) 0 0 / 60px 60px, var(--tile); padding: 120px 120px 140px var(--gutter); }
+.wall-in { display: grid; grid-template-columns: minmax(0, 660px) minmax(0, 420px); column-gap: 70px; align-items: start; }
+.mural { position: relative; aspect-ratio: 660 / 600; background: #d8e6ee; overflow: hidden; box-shadow: 0 40px 60px -28px rgba(20, 30, 40, .55);
+  margin-top: -230px; transform: rotate(-1.6deg); z-index: 5; outline: 10px solid #f6f1e7; outline-offset: -1px; }
+.mural::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .45) 1px, transparent 1px) 0 0 / 30px 30px, linear-gradient(rgba(255, 255, 255, .45) 1px, transparent 1px) 0 0 / 30px 30px; }
+.mountains { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mural .cloud { fill: rgba(255, 255, 255, .55); }
+.mural .horizon { stroke: rgba(255, 255, 255, .7); stroke-width: 2; }
+.mural .ripple { fill: none; stroke: rgba(255, 255, 255, .35); stroke-width: 2; stroke-linecap: round; }
+.mural .ph { z-index: 2; }
+.wall-copy { margin-top: 80px; background: var(--tile); padding: 12px 0; }
+.wall-h { font-family: var(--mincho); font-weight: 400; font-size: 46px; line-height: 1.4; color: var(--ink); }
+.wall-fact { margin-top: 22px; font-family: var(--mincho); font-size: 19px; }
+.towel { margin-top: 30px; font-size: 14px; color: #4b5560; border-left: 3px solid var(--shu); padding-left: 12px; }
+
+/* the noren: the night's hero. Four cloth panels hang from a rod across the wall's edge; the slits cut the big ゆ
+   (the classic bathhouse mark) into four. Decoration: the page's words never sit on it. */
+/* v3: the noren and the heading shrink together between 1101 and 1439, so the cloth never hangs over 帰り道 */
+.noren { position: absolute; right: 120px; top: -110px; width: min(540px, 37.5vw); height: min(500px, 34.73vw); z-index: 6; overflow: visible; filter: drop-shadow(0 26px 22px rgba(0, 0, 0, .45)); }
+.noren .cloth { fill: url(#cloth); }
+.noren .cloth-v { fill: url(#clothV); }
+.noren .fold { fill: none; stroke: rgba(60, 12, 4, .28); stroke-width: 3; stroke-linecap: round; }
+.noren .sleeve { fill: rgba(70, 16, 6, .28); }
+.noren .stitch { stroke: rgba(246, 241, 231, .45); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.noren-mark { font-family: var(--gothic); font-weight: 900; font-size: 360px; fill: var(--yuge); }
+.noren .rod { fill: url(#rod); }
+.noren .rod-end { fill: #2e2117; }
+
+/* night: the way home, the telephone large */
+.night { background: var(--kon); color: var(--yuge); }
+.night-in { position: relative; z-index: 2; padding: 290px 120px 56px var(--gutter); }
+.steam-b { left: 0; right: 0; top: -60px; height: 260px; background: radial-gradient(35% 60% at 60% 30%, rgba(246, 241, 231, .16), transparent 70%); }
+.night-h { font-family: var(--mincho); font-weight: 400; font-size: clamp(44px, 3.9vw, 56px); line-height: 1.4; letter-spacing: .08em; }
+.sp-br { display: none; }
+.night-h br:not(.sp-br) { display: none; }
+.info { margin-top: 70px; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 28px 48px; }
+.info div { border-top: 1px solid rgba(246, 241, 231, .3); padding-top: 12px; }
+.info .tel { grid-row: span 2; }
+.info dt { font-size: 12px; letter-spacing: .3em; color: #f2a34f; }
+.info dd { font-family: var(--mincho); font-size: clamp(18px, 1.4vw, 20px); }
+.info .tel { background: var(--shu); border-top: 0; padding: 22px 26px 26px; box-shadow: 0 24px 40px -20px rgba(0, 0, 0, .6); }
+.info .tel dt { color: #fff3df; } /* 4.9:1 on the red box (#ffe2b0 was 4.3:1) */
+.info .tel dd { font-size: clamp(34px, 3.2vw, 46px); letter-spacing: .04em; color: var(--yuge); white-space: nowrap; }
+.fictional { margin-top: 110px; font-size: 12px; color: rgba(246, 241, 231, .7); }
+
+/* below 1440 the hot section is shorter, so the steam sinks lower: its glow stays under the lead's 4.5:1 line */
+@media (max-width: 1439px) { .steam-a { bottom: -240px; } }
+/* 1101–1439: the surface board no longer reaches 30px back over the fact's column (at 1280–1300 it covered the last す) */
+@media (min-width: 1101px) and (max-width: 1439px) { .board-surface { margin-left: 0; } }
+
+/* 768–1100: the same composition, scaled; the giant words shrink before they collide */
+@media (max-width: 1100px) {
+  :root { --gutter: 96px; }
+  .hot { padding: 52px 40px 140px 80px; }
+  .hot-in { grid-template-columns: 170px minmax(0, 1fr); min-height: 700px; }
+  .name { font-size: 110px; }
+  .giant-hot { font-size: min(330px, 30vw); right: 30px; }
+  /* the tub spans the width here: the steam rises from above its top edge, never over the board */
+  .wisps { right: 40px; bottom: 130px; width: min(300px, 30vw); height: min(600px, 60vw); }
+  .tagline { font-size: 42px; }
+  .warm { padding: 0 60px 200px var(--gutter); }
+  /* the surface board leaves the fact's row: beside it, it would cover the words */
+  .warm-in { grid-template-columns: 1fr; }
+  .board-surface { grid-column: 1; grid-row: 3; width: 50%; justify-self: end; margin: 24px 0 0; }
+  .warm-fact { max-width: none; }
+  .warm-fact { font-size: 30px; }
+  /* v3: ぬるい and 冷たい shrink with the width, so ぬるい stays inside the page and 冷たい ends above the point where 沸く rises into the cold */
+  .giant-warm { font-size: min(200px, 25vw); left: 80px; bottom: -95px; }
+  .cold-fact { font-size: 30px; }
+  .giant-cold { font-size: min(150px, 13vw); right: 30px; }
+  /* the mural still rises into the fire, but only into its empty foot: never over the hours or the marks */
+  .fire { padding: 110px 60px 240px var(--gutter); }
+  .mural { margin-top: -170px; }
+  .fire-fact { font-size: 36px; }
+  .giant-boil { font-size: 240px; right: 40px; top: -110px; }
+    .noren { right: 60px; top: -120px; width: 360px; height: 333px; }
+  /* v3: more room under the wall's last line, so the noren's rod no longer sits 20px under it */
+  .wall { padding: 90px 60px 170px var(--gutter); }
+  .wall-in { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); column-gap: 40px; }
+  .wall-copy { margin-top: 20px; }
+  .wall-h { font-size: 36px; }
+  .night-in { padding: 250px 60px 48px var(--gutter); }
+  .info { grid-template-columns: 1fr 1fr; }
+  .info .tel { grid-column: span 2; grid-row: auto; }
+}
+/* 601–999: the copy runs almost to the right edge, so the steam rises over 熱い above the tagline, not from the tub */
+@media (min-width: 601px) and (max-width: 999px) {
+  .wisps { right: 30px; bottom: 430px; width: min(220px, 26vw); height: min(380px, 42vw); }
+}
+@media (max-width: 860px) {
+  .wall-in { grid-template-columns: 1fr; }
+  .mural { width: 80%; }
+  .noren { top: -80px; width: 320px; height: 296px; }
+    .night-in { padding-top: 280px; }
+  .wall-copy { margin-top: 36px; }
+  .giant-hot { font-size: 260px; }
+  .giant-cold { top: 120px; }
+  .fire { padding-top: 140px; }
+  .tagline { font-size: 36px; }
+}
+
+/* SP 390: one column; the strip moves to the edge; boards keep their ratio */
+@media (max-width: 600px) {
+  :root { --gutter: 28px; --gauge-x: 10px; }
+  body { font-size: 14px; }
+  .gauge { left: calc(var(--gauge-x) - 6px); width: 12px; border-radius: 6px; }
+  .gauge::after { left: 15px; width: 8px; background-size: auto, 5px 100%; }
+  section::before { left: calc(var(--gauge-x) - 3px); width: 6px; border-radius: 3px; }
+  .hot { min-height: 844px; padding: 24px 20px 120px 28px; }
+  .hot-in { grid-template-columns: 1fr; min-height: 700px; }
+  .name-full { font-size: 12px; }
+  .name { margin-top: 26px; font-size: 84px; }
+  /* below 356 熱い narrows, so it never reaches the name ゆげ湯 at the left */
+  .giant-hot { right: 6px; top: 60px; font-size: min(230px, calc(100vw - 126px)); }
+  .tagline { font-size: 32px; }
+  .lead { font-size: 15px; }
+  /* SP: the steam sinks below the lead and passes under the tub board (its caption stays clear) */
+  .steam-a { height: 220px; bottom: -110px; z-index: 1; }
+  /* SP: short wisps in the gap between the lead and the tub board, right of the copy */
+  .wisps { right: 24px; bottom: -28px; width: 120px; height: 140px; }
+  .wisp-soft path { stroke-width: 30; filter: blur(6px); }
+  .wisp-line path { stroke-width: 9; }
+
+  /* the tub board starts below the steam (the comp's SP covered the hot section's edge) */
+  .warm { padding: 36px 20px 180px var(--gutter); }
+  .warm-in { grid-template-columns: 1fr; }
+  .board-tub { grid-column: 1; grid-row: 1; margin-top: 0; }
+  .board-surface { grid-column: 1; grid-row: 2; width: 60%; justify-self: end; margin: -40px 0 0; }
+  .board-tub .ph { top: 12px; bottom: auto; }
+  .warm-fact { grid-column: 1; grid-row: 3; margin-top: 36px; font-size: 21px; }
+  /* v3: 112px, so the whole of ぬるい stays inside the 390 width (140px cut the い at the right edge) */
+  .giant-warm { left: 18px; bottom: -56px; font-size: min(112px, calc(33vw - 10px)); }
+
+  .garden { aspect-ratio: 390 / 420; }
+  .garden .ph { left: 28px; }
+  .cold-in { padding: 40px 20px 90px var(--gutter); }
+  .cold-fact { font-size: 22px; }
+  .giant-cold { right: 14px; top: 170px; font-size: min(104px, calc(32vw - 20px)); writing-mode: horizontal-tb; }
+
+  .fire { padding: 120px 20px 90px var(--gutter); }
+  .giant-boil { font-size: 140px; right: 10px; top: -70px; }
+  .fire-fact { font-size: 26px; }
+  .scale { margin-top: 70px; }
+  .bar { height: 18px; }
+  .marks { grid-template-columns: 1fr; gap: 18px; }
+  .mark { font-size: 18px; }
+  .mark-open { font-size: 24px; text-align: left; padding-left: 0; }
+
+  .wall { padding: 60px 20px 60px var(--gutter); background-size: 40px 40px, 40px 40px, auto; }
+  .mural { aspect-ratio: 342 / 300; width: auto; margin-top: -120px; }
+  .noren { right: 20px; width: 300px; height: 278px; top: -50px; }
+  .wall-copy { padding: 12px 8px; }
+  .wall-h { font-size: 30px; }
+  .wall-fact { font-size: 16px; }
+
+  .night-in { padding: 270px 20px 48px var(--gutter); }
+    .info .tel { padding: 16px 18px 20px; }
+  .night-h { font-size: 32px; }
+  .sp-br { display: inline; }
+  .info { grid-template-columns: 1fr; gap: 16px; margin-top: 36px; }
+  .info .tel { grid-column: auto; }
+  .info .tel dd { font-size: 34px; }
+  .info dd { font-size: 17px; }
+  .fictional { margin-top: 36px; }
+}

@@ -7699,6 +7699,56 @@
         "段 B の能力を有効にすること (APPROVED_CAPABILITIES に足す別の PR)"
       ],
       "note": "HOLD: merge はオーナーの明示の承認が要る (DEV-083 §8。本番の許可一覧のコードの道を変えるため)。有効にするのは、APPROVED_CAPABILITIES に名前を足す別の PR。計算後の 256px の上限は旗が無くても掛かる (今ある rem の穴を塞ぐ。既存の通るページ 9 枚は全部の幅で影響なし)。"
+    },
+    {
+      "id": "DEV-168",
+      "title": "3店のカンプの残る弱さを直す (輪のタブレットの駅とスポーク、つぐ手の乾く時間と線の入口・出口、ゆげ湯の温度計・湯気・のれんの竿、締める) — 研究の道、架空の店 (Issue #193)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-167"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-168-comp-quality-2",
+      "purpose": "DEV-167 の後に残ったデザインの弱さ (輪 601〜999 の駅が格子でスポークにつながらない、つぐ手の乾く時間の左下の空き、1200〜1439 の線の入口・出口のずれ、ゆげ湯 1024 の竿の窮屈さと上半分の温度の旅の弱さ、締める の右の切れ) を、新しい版のカンプと C に入れる。古い版は残す。",
+      "acceptance_criteria": [
+        "新しいカンプ: tsugute comps/d1-seam-across-v4、bicycle comps/d1-wheel-hub-v3、sento comps/d1-heat-descent-v3 (index.html・style.css・copy.json・review.json)",
+        "新しい C: tsugute fidelity/d1-v5、bicycle fidelity/d1-v4、sento fidelity/d1-v4 (README.md に変えたこと・残る弱さ・描画の SHA・確かめた幅)",
+        "comp-lane の所見 0 件、--check-review が ok",
+        "fidelity-spec.json の fidelity_c を新しい C に指し替え、fidelity-report.json を作り直す",
+        "320〜1440 の17の幅 (と 1200) で、飾りがふつうの文字に掛からない・文字が画面の端を出ない・事実の句の途中で折れない・小さな文字が 4.5:1 以上を画素で確かめる",
+        "古い版のカンプ・C、photo-slots.json・photo-slot-edges.json は変えない。事実・写真・ラスター画像・Web フォント・通信を足さない",
+        "docs/design/comp-impl-loss-analysis.md に v-next2 の節"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline (1ファイルずつ)",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/quality-pipeline/poc/*/comps/",
+        "design-library/research/quality-pipeline/poc/*/fidelity/",
+        "design-library/research/quality-pipeline/poc/*/fidelity-spec.json",
+        "design-library/research/quality-pipeline/poc/*/fidelity-report.json",
+        "docs/design/comp-impl-loss-analysis.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-168.md"
+      ],
+      "forbidden_scope": [
+        "photo-slots.json・photo-slot-edges.json の変更",
+        "古い版のカンプ・C の変更",
+        "comp-impl の許可一覧の変更",
+        "事実の追加 (温度の数など)",
+        "実写真・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB",
+        ".github/workflows",
+        "依存の追加"
+      ],
+      "human_approval_triggers": [
+        "カンプをオーナーに見せて採るかの判断",
+        "創作の文 (区画のラベル、待つ、のれんの ゆ) の確認"
+      ],
+      "note": "新しい C は新しいカンプと同じ HTML・文の記録を使い、描画は同じバイト。fidelity-spec の comp と strict_b は古いカンプのまま。輪の fidelity の motif の選び方 (.wheel-art・.true-art・.gauge-art) は前と同じにしたので、新しいタブレットのスポーク (.reach-tab) は数えない (768 の motif_coverage 0.516 → 0.496)。成功の判定ではない。写真は仮の板のまま。"
     }
   ]
 }

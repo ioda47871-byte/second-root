@@ -1,0 +1,259 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-bicycle-repair-wa",
+  "direction_id": "d1-wheel-hub-v3",
+  "comp": {
+    "html_sha256": "0850adb00de7699ba2ae8816105c4f6239e37de882847d6a8fc8d4bd07c6fcee",
+    "css_sha256": "18d6cae9af68750a5dff2ecb5be89a06651cf4e0b287b377790740c52c1216f3",
+    "copy_sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "077843c123858a1e8e4568bedbb076eb1fec27d7944e040e5fdc3863e73f4177",
+      "width": 1440,
+      "height": 5292
+    },
+    "mobile": {
+      "sha256": "950852a966c34af01702ec5653a8d1ceb1e5f125d0f3328edd02ce1bd00fffbf",
+      "width": 390,
+      "height": 5335
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-04T23:00:00Z",
+    "how": "Read tool: PC at 0.28 (2 columns), SP at 0.5 (4 columns); C renders at 601, 768, 999 (bicycle), 1440, 1200 (tsugute), 1440, 1200, 1024, 768, 390 (sento) at 0.33-0.5; 1x crops of the tsugute seam exits, the sento gauge and the noren at 1024"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 2646
+      },
+      {
+        "x": 0,
+        "y": 2646,
+        "w": 1440,
+        "h": 2646
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1334
+      },
+      {
+        "x": 0,
+        "y": 1334,
+        "w": 390,
+        "h": 1334
+      },
+      {
+        "x": 0,
+        "y": 2668,
+        "w": 390,
+        "h": 1334
+      },
+      {
+        "x": 0,
+        "y": 4002,
+        "w": 390,
+        "h": 1333
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "Hero・4本の黄のスポークと4つの駅は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 2140
+        }
+      },
+      {
+        "what": "まわる は前と同じく左の端を越える (1文字目の半分が出る、意図した端越え)",
+        "box": {
+          "x": 0,
+          "y": 1960,
+          "w": 840,
+          "h": 300
+        }
+      },
+      {
+        "what": "締める は右の端から 20px 内に入り、る が切れずに全部見える",
+        "box": {
+          "x": 660,
+          "y": 2830,
+          "w": 780,
+          "h": 280
+        }
+      },
+      {
+        "what": "作業台の板と縦の2行は前の版のまま。締める は板にも縦の文にも掛からない",
+        "box": {
+          "x": 0,
+          "y": 3110,
+          "w": 1440,
+          "h": 900
+        }
+      },
+      {
+        "what": "空気の区画: 計器が区画の境に掛かり、見出しと事実は左",
+        "box": {
+          "x": 0,
+          "y": 4000,
+          "w": 1440,
+          "h": 600
+        }
+      },
+      {
+        "what": "来店: 電話を大きく、情報は2列、右に車輪の端",
+        "box": {
+          "x": 0,
+          "y": 4500,
+          "w": 1440,
+          "h": 792
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "SP Hero と背骨・駅は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 2700
+        }
+      },
+      {
+        "what": "締める は右の端から 10px 内に入り、る が切れない",
+        "box": {
+          "x": 0,
+          "y": 2600,
+          "w": 390,
+          "h": 300
+        }
+      },
+      {
+        "what": "作業台の板と縦の2行",
+        "box": {
+          "x": 0,
+          "y": 2900,
+          "w": 390,
+          "h": 1000
+        }
+      },
+      {
+        "what": "空気・来店は前の版のまま。電話は折れない",
+        "box": {
+          "x": 0,
+          "y": 3900,
+          "w": 390,
+          "h": 1435
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 960,
+          "w": 1440,
+          "h": 1400
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 960,
+          "w": 1440,
+          "h": 4332
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "最後の区画を一杯 (客の受け取るもの) にし、そこに行動の案内を置く",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 4400,
+          "w": 1440,
+          "h": 892
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "横並びの要素は、縦に重ねて関係を保つ",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1900
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "601〜999px で修理の駅が格子に並び、PC と SP の主題 (車輪のスポークの先に修理が吊られる) が切れていた",
+      "protect": [
+        "Hero の大きな車輪と 輪 のハブ (601〜999 も PC と同じ位置)",
+        "4つの駅の板と名札",
+        "PC 1000 以上と SP の版"
+      ],
+      "changed": [
+        "601〜999 で、ハブの縁から4本のスポークを墨の縁つきの太い黄で引き出し、各板の右上のピンへ届かせた",
+        "板は左上から右下へ段に下り (振れ取り・パンク・チェーン・ブレーキ)、ピンで少し傾く。後のスポークほど急で、先の板と名前の右を通るので、スポークが板にも名前にも掛からない",
+        "見出しは左下の空いた所、まわる は下の左に置いた"
+      ],
+      "regressions_fixed": []
+    },
+    {
+      "n": 2,
+      "cause": "締める の る が、どの幅でも右の端で 10〜20px 切れ、意図した端越えではなく切れに見えた",
+      "protect": [
+        "まわる の左の端越え (1文字目の半分が出る、意図して大きく出す)",
+        "締める の大きさと区画をまたぐ位置"
+      ],
+      "changed": [
+        "締める を右の端から 1.4vw (SP 10px) 内に入れ、SP の大きさを幅で縮めた。320〜1440 で字の箱が端を出ない"
+      ],
+      "regressions_fixed": []
+    }
+  ],
+  "remaining": [
+    "写真は役割と大きさだけの仮の板のまま",
+    "601〜999 の駅は板の上に名札を貼る (1000 以上と同じ作り)。板の大きさは 1000 で PC の小さな板へ切り替わる",
+    "601〜999 の右下は暗い地が広く空く (スポークの段の構図)",
+    "SP の背骨は Hero の SVG と駅の区画の帯の2つでつなぐ",
+    "スポークが ハブ の円の縁で 輪 の字の箱に入る (字には掛からない)",
+    "カンプと C は同じソースで描く。C との差は測れない"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}
