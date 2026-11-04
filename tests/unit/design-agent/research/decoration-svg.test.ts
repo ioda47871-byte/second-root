@@ -17,32 +17,26 @@ import {
   DECORATION_SVG_LIMITS,
   decorationReferenceProblems,
   type DecorationAsset,
+  type DecorationAssetRef,
 } from "../../../../lib/design-agent/research/decoration-svg";
+import { MOUNTAIN, SEAM, WHEEL } from "../../../../lib/design-agent/research/decoration-fixtures";
 
 // DEV-162 (Issue #193 comment 6601921731, decision 2): N1 research only. The checker is not wired into any lane.
 
 const REPO = resolve(__dirname, "../../../..");
 const MODULE = "lib/design-agent/research/decoration-svg.ts";
 const BROWSER_MODULE = "lib/design-agent/research/decoration-page-browser.ts";
+const FIXTURES_MODULE = "lib/design-agent/research/decoration-fixtures.ts";
+/** DEV-165: the phase C layer harness imports comp-impl, so it is test support, not a lib/ module (comp-impl isolation). */
+const LAYERS_MODULE = "tests/support/decoration-layers.ts";
+const PROBE_SCRIPT = "scripts/design-artifact/n1-browser-probe.ts";
 const NS = `xmlns="http://www.w3.org/2000/svg"`;
 const svg = (inner: string, attrs = `width="100" height="100" viewBox="0 0 100 100"`) => `<svg ${NS} ${attrs}>${inner}</svg>`;
 const check = (s: string) => checkDecorationSvg(Buffer.from(s, "latin1"));
 const codes = (s: string) => check(s).findings.map((f) => f.code);
 
-/** Shapes of the three fidelity pages' inline SVGs (tsugute d1-v3, bicycle d1-v2, sento d1-v2), as standalone files. */
-const SEAM = svg(`<path d="M70 0 L 70 70 C 70 84, 60 90, 60 100" fill="none" stroke="#b8923a" stroke-width="2" vector-effect="non-scaling-stroke"/>`, `width="100" height="100" viewBox="0 0 100 100" preserveAspectRatio="none"`);
-const spokes = Array.from({ length: 12 }, (_, k) => {
-  const a = (k * Math.PI) / 6;
-  return `<line x1="1010" y1="640" x2="${(1010 + 560 * Math.cos(a)).toFixed(1)}" y2="${(640 + 560 * Math.sin(a)).toFixed(1)}"/>`;
-}).join("");
-const WHEEL = svg(
-  `<g fill="none" stroke="#1d1d1b"><circle cx="1010" cy="640" r="620" stroke-width="28"/><circle cx="1010" cy="640" r="570" stroke-width="6"/><g stroke-width="3">${spokes}</g><circle cx="1010" cy="640" r="40" fill="#1d1d1b"/></g>`,
-  `width="1440" height="1400" viewBox="-110 0 1440 1400"`,
-);
-const MOUNTAIN = svg(
-  `<defs><linearGradient id="mt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f5d7c"/><stop offset="1" stop-color="#2f5d7c" stop-opacity="0.4"/></linearGradient></defs><polygon points="-60,600 273,180 580,600" fill="url(#mt)"/><polygon points="260,600 510,300 780,600" fill="#24475f" opacity="0.8"/>`,
-  `width="660" height="600" viewBox="0 0 660 600" preserveAspectRatio="none"`,
-);
+// Shapes of the three fidelity pages' inline SVGs (tsugute d1-v3, bicycle d1-v2, sento d1-v2), as standalone files:
+// SEAM, WHEEL, MOUNTAIN from decoration-fixtures.ts (DEV-165 moved them there for the cross-browser probe).
 
 describe("must pass: the fidelity pages' decorative shapes", () => {
   it.each([
@@ -210,6 +204,7 @@ describe("must fail: every refused thing, one probe each", () => {
 describe("the asset file: name, symlink, traversal, hash, size, dimensions", () => {
   let dir: string;
   let outside: string;
+  /** TEST FIXTURE - not an owner review (DEV-165): the file checks below need an approved review bound to the bytes. */
   const asset = (file: string, body: string, over: Partial<DecorationAsset> = {}): DecorationAsset => ({
     id: "seam",
     file,
@@ -219,6 +214,7 @@ describe("the asset file: name, symlink, traversal, hash, size, dimensions", () 
     height: 100,
     kind: "decoration_svg",
     role: "decoration",
+    owner_visual_review: { reviewed_by: "owner", reviewed_at: "2026-11-01", asset_sha256: createHash("sha256").update(body).digest("hex"), decision: "approved", note: "TEST FIXTURE - not an owner review" },
     ...over,
   });
   beforeAll(() => {
@@ -289,8 +285,8 @@ describe("the asset file: name, symlink, traversal, hash, size, dimensions", () 
 });
 
 describe("the page side: an element and attribute allowlist, img only for a recorded asset", () => {
-  const rec = (id: string, file: string): DecorationAsset => ({ id, file, sha256: "0".repeat(64), bytes: 1, width: 100, height: 100, kind: "decoration_svg", role: "decoration" });
-  const A: DecorationAsset[] = [rec("seam", "assets/seam.svg")];
+  const rec = (id: string, file: string): DecorationAssetRef => ({ id, file });
+  const A: DecorationAssetRef[] = [rec("seam", "assets/seam.svg")];
   const IMG = `<img src="assets/seam.svg" alt="" aria-hidden="true" referrerpolicy="no-referrer">`;
   const ok = `<div data-comp-role="decoration">${IMG}</div>`;
   const problems = (html: string, css = "", assets = A) => decorationReferenceProblems(html, css, assets);
@@ -449,7 +445,7 @@ describe("the page side: an element and attribute allowlist, img only for a reco
   ])("the record: %s", (_, assets, code) => expect(problems(ok, "", assets)).toContain(code));
 
   it("a hostile record or input never throws", () => {
-    expect(() => problems(ok, "", [{} as DecorationAsset, { id: 1, file: null } as unknown as DecorationAsset])).not.toThrow();
+    expect(() => problems(ok, "", [{} as DecorationAssetRef, { id: 1, file: null } as unknown as DecorationAssetRef])).not.toThrow();
     expect(() => problems(null as unknown as string, undefined as unknown as string)).not.toThrow();
   });
 
@@ -602,24 +598,48 @@ describe("isolation: research only, imported by nothing in a lane", () => {
   it("the browser verification imports only node:fs, node:path, playwright and the checker", () => {
     expect(specifiers(readFileSync(resolve(REPO, BROWSER_MODULE), "utf8")).sort()).toEqual(["./decoration-svg", "node:fs", "node:path", "playwright"]);
   });
-  it.each([MODULE, BROWSER_MODULE])("no network, process or model code in %s", (file) => {
+  it("the fixtures import nothing; the layer harness imports only playwright types, comp-impl and the checker; the probe only node, playwright, sharp and research", () => {
+    expect(specifiers(readFileSync(resolve(REPO, FIXTURES_MODULE), "utf8"))).toEqual([]);
+    expect(specifiers(readFileSync(resolve(REPO, LAYERS_MODULE), "utf8")).sort()).toEqual(["../../lib/design-agent/comp-impl/layers", "../../lib/design-agent/comp-impl/page-css", "../../lib/design-agent/comp-impl/page-scripts", "../../lib/design-agent/comp-impl/render", "../../lib/design-agent/comp-impl/verify", "../../lib/design-agent/research/decoration-svg", "playwright"]);
+    expect(specifiers(readFileSync(resolve(REPO, PROBE_SCRIPT), "utf8")).sort()).toEqual(["../../lib/design-agent/research/decoration-fixtures", "../../lib/design-agent/research/decoration-svg", "node:fs", "node:path", "playwright", "sharp"]);
+  });
+  // the fixtures hold hostile SVG text by design (a `fetch(` inside an SVG string); they import and run nothing
+  it.each([MODULE, BROWSER_MODULE, LAYERS_MODULE, PROBE_SCRIPT])("no network, process or model code in %s", (file) => {
     expect(readFileSync(resolve(REPO, file), "utf8")).not.toMatch(/\brequire\s*[([]|import\s*\(|node:(https?|net|tls|child_process|worker_threads|vm)|\/worker\/|anthropic|openai|\bspawn\(|execFile|process\.binding|\bfetch\(|codex|\beval\(|new Function/i);
   });
-  it("nothing outside tests imports them (lib, app, components, scripts)", () => {
-    const r = spawnSync("git", ["grep", "-l", "-E", "research/decoration-(svg|page-browser)", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
+  it("nothing outside tests imports them (lib, app, components, scripts) but the research probe script, which nothing imports", () => {
+    const RESEARCH = [MODULE, BROWSER_MODULE, FIXTURES_MODULE];
+    const r = spawnSync("git", ["grep", "-l", "-E", "research/decoration-(svg|page-browser|fixtures|layers)", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
     // the modules' own headers name their test, so git grep finds at least those files: status 0, never a vacuous empty
     // stdout from a git that failed (status 1 = no match at all, 128 = error)
     expect(r.error).toBeUndefined();
     expect(r.status).toBe(0);
     const hits = r.stdout.split("\n").filter(Boolean);
     expect(hits).toContain(MODULE);
-    expect(hits.filter((h) => h !== MODULE && h !== BROWSER_MODULE)).toEqual([]);
-    const other = spawnSync("git", ["grep", "-l", "-E", "decoration-page-browser", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
+    expect(hits).toContain(PROBE_SCRIPT);
+    expect(hits.filter((h) => !RESEARCH.includes(h) && h !== PROBE_SCRIPT)).toEqual([]);
+    const other = spawnSync("git", ["grep", "-l", "-E", "decoration-(page-browser|fixtures|layers)", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
     expect(other.status).toBe(0);
-    expect(other.stdout.split("\n").filter(Boolean).filter((h) => h !== MODULE && h !== BROWSER_MODULE)).toEqual([]);
+    expect(other.stdout.split("\n").filter(Boolean).filter((h) => !RESEARCH.includes(h) && h !== PROBE_SCRIPT)).toEqual([]);
+    // the probe is a research CLI: no lane, script or page imports it (its own header names it, and so does the fixtures'
+    // header; the research modules' imports are pinned exactly above)
+    const probe = spawnSync("git", ["grep", "-l", "-E", "n1-browser-probe", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
+    expect(probe.error).toBeUndefined();
+    expect(probe.status).toBe(0);
+    const probeHits = probe.stdout.split("\n").filter(Boolean);
+    expect(probeHits).toContain(PROBE_SCRIPT);
+    expect(probeHits.filter((h) => !RESEARCH.includes(h) && h !== PROBE_SCRIPT)).toEqual([]);
   });
-  it("the research directory holds only the checker and its browser verification", () => {
+  it("the research directory holds only the checker, its browser verification and the fixtures (the layer harness is test support)", () => {
     const r = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "--", "lib/design-agent/research"], { cwd: REPO, encoding: "utf8" });
-    expect(r.stdout.split("\n").filter(Boolean).sort()).toEqual([BROWSER_MODULE, MODULE]);
+    expect(r.stdout.split("\n").filter(Boolean).sort()).toEqual([BROWSER_MODULE, FIXTURES_MODULE, MODULE].sort());
+  });
+  it("the layer harness (it imports comp-impl) stays in tests/: no lib, app, components or scripts file names it, and only the N1 research test imports it", () => {
+    const outside = spawnSync("git", ["grep", "-l", "-E", "decoration-layers", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
+    expect(outside.error).toBeUndefined();
+    expect(outside.status).toBe(1); // 1 = no match (0 would be a hit, 128 an error)
+    const users = spawnSync("git", ["grep", "-l", "-E", "support/decoration-layers\"", "--", "tests"], { cwd: REPO, encoding: "utf8" });
+    expect(users.status).toBe(0);
+    expect(users.stdout.split("\n").filter(Boolean)).toEqual(["tests/unit/design-agent/research/decoration-n1-verification.test.ts"]);
   });
 });

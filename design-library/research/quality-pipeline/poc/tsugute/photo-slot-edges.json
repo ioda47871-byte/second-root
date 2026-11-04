@@ -1,0 +1,186 @@
+{
+  "schema": "photo_slot_edges_v0",
+  "shop": "tsugute",
+  "page_dir": "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v3",
+  "html_sha256": "ee8568f81a27bd3b044829e7876bb00fefc6e65f97ea38a25d3eefcd56690591",
+  "css_sha256": "cb818caeea6c410a6f6125e5dad49ec5d81181ccd7fccf5a02bc456539ebac58",
+  "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92",
+  "derived_by": "scripts/design-artifact/photo-slots.ts --edges",
+  "desktop_cap_px": 1920,
+  "slots": [
+    {
+      "slot_id": "ph-ware",
+      "edges": [
+        {
+          "viewport": "mobile_600",
+          "width_px": 560,
+          "height_px": 400,
+          "ratio": 1.4,
+          "min_width_px": 1120,
+          "min_height_px": 800
+        },
+        {
+          "viewport": "tablet_1199",
+          "width_px": 663,
+          "height_px": 473,
+          "ratio": 1.4,
+          "min_width_px": 1326,
+          "min_height_px": 947
+        },
+        {
+          "viewport": "desktop_1920",
+          "width_px": 800,
+          "height_px": 571,
+          "ratio": 1.4,
+          "min_width_px": 1600,
+          "min_height_px": 1143
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-kake",
+      "edges": [
+        {
+          "viewport": "mobile_600",
+          "width_px": 532,
+          "height_px": 418,
+          "ratio": 1.273,
+          "min_width_px": 1064,
+          "min_height_px": 836
+        },
+        {
+          "viewport": "tablet_1199",
+          "width_px": 583,
+          "height_px": 458,
+          "ratio": 1.273,
+          "min_width_px": 1167,
+          "min_height_px": 917
+        },
+        {
+          "viewport": "desktop_1920",
+          "width_px": 582,
+          "height_px": 458,
+          "ratio": 1.273,
+          "min_width_px": 1165,
+          "min_height_px": 916
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-hibi",
+      "edges": [
+        {
+          "viewport": "mobile_600",
+          "width_px": 532,
+          "height_px": 293,
+          "ratio": 1.818,
+          "min_width_px": 1064,
+          "min_height_px": 586
+        },
+        {
+          "viewport": "tablet_1199",
+          "width_px": 663,
+          "height_px": 364,
+          "ratio": 1.818,
+          "min_width_px": 1326,
+          "min_height_px": 729
+        },
+        {
+          "viewport": "desktop_1920",
+          "width_px": 800,
+          "height_px": 440,
+          "ratio": 1.818,
+          "min_width_px": 1600,
+          "min_height_px": 880
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-dry",
+      "edges": [
+        {
+          "viewport": "mobile_600",
+          "width_px": 496,
+          "height_px": 372,
+          "ratio": 1.333,
+          "min_width_px": 992,
+          "min_height_px": 744
+        },
+        {
+          "viewport": "tablet_1199",
+          "width_px": 647,
+          "height_px": 486,
+          "ratio": 1.333,
+          "min_width_px": 1295,
+          "min_height_px": 972
+        },
+        {
+          "viewport": "desktop_1920",
+          "width_px": 316,
+          "height_px": 465,
+          "ratio": 0.68,
+          "min_width_px": 632,
+          "min_height_px": 930
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-hand",
+      "edges": [
+        {
+          "viewport": "mobile_600",
+          "width_px": 536,
+          "height_px": 469,
+          "ratio": 1.143,
+          "min_width_px": 1072,
+          "min_height_px": 938
+        },
+        {
+          "viewport": "tablet_1199",
+          "width_px": 719,
+          "height_px": 629,
+          "ratio": 1.143,
+          "min_width_px": 1439,
+          "min_height_px": 1259
+        },
+        {
+          "viewport": "desktop_1920",
+          "width_px": 828,
+          "height_px": 725,
+          "ratio": 1.143,
+          "min_width_px": 1657,
+          "min_height_px": 1450
+        }
+      ]
+    },
+    {
+      "slot_id": "ph-desk",
+      "edges": [
+        {
+          "viewport": "mobile_600",
+          "width_px": 379,
+          "height_px": 276,
+          "ratio": 1.375,
+          "min_width_px": 759,
+          "min_height_px": 552
+        },
+        {
+          "viewport": "tablet_1199",
+          "width_px": 511,
+          "height_px": 372,
+          "ratio": 1.375,
+          "min_width_px": 1023,
+          "min_height_px": 744
+        },
+        {
+          "viewport": "desktop_1920",
+          "width_px": 416,
+          "height_px": 303,
+          "ratio": 1.375,
+          "min_width_px": 832,
+          "min_height_px": 606
+        }
+      ]
+    }
+  ]
+}
