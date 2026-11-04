@@ -206,7 +206,7 @@ canvas の `measureText` は、1字を既定の字形で、ひとりで測る。
 
 テスト: `tests/unit/design-agent/comp-impl/phase-c-overlap.test.ts`。道具: `overlap-harness.ts`。描画は Chromium 1194、JS 無効、通信遮断、deviceScaleFactor 1。
 
-**落ちるべき例 (43。最初の 27 に、Fresh Review で 5、CI と2回目の再レビューで 5、3回目の再レビューで 4、4回目の再レビューで 2 を足した。画素の列はこの容器の書体での結果で、`tabular-nums` の例は書体に依る: Inter と数字の機能の無い CI では画素は覆いを見ない。テストはその例の画素を問わず、幾何の fail closed だけを求める)。** 「試作」は幾何と順の検査、「画素」は §4 の C、「今の V2」は `LAYER_SCRIPT` の覆いの数 / 守る文字への非 content の重なりの数、「今の当たり判定」は `GEOMETRY_SCRIPT` (どれも生の HTML に掛けたもの。本番では許可一覧が先に拒む)。
+**落ちるべき例 (43。最初の 27 に、Fresh Review で 5、CI と2回目の再レビューで 5、3回目の再レビューで 4、4回目の再レビューで 2 を足した。画素の列はこの容器の書体での結果で、`tabular-nums` の例は書体に依る: Inter と数字の機能の無い CI では画素は覆いを見ない。テストは、書体が本当に数字を広げるとき (`tabular-nums` の有無で "1111" の幅を測って広くなるとき) は `PIXEL_COVER_PROTECTED` も求め、そうでなければ幾何の fail closed だけを求める)。** 「試作」は幾何と順の検査、「画素」は §4 の C、「今の V2」は `LAYER_SCRIPT` の覆いの数 / 守る文字への非 content の重なりの数、「今の当たり判定」は `GEOMETRY_SCRIPT` (どれも生の HTML に掛けたもの。本番では許可一覧が先に拒む)。
 
 | 例 | 試作 | 画素 (この容器の書体) | 今の V2 (覆い / 非 content) | 今の当たり判定 |
 |---|---|---|---|---|
