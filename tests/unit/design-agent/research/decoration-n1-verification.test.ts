@@ -135,7 +135,7 @@ describe("owner_visual_review: required, approved, bound to the file's bytes", (
     expect(r.status).toBe(0); // the checker names the field itself: never a vacuous empty result
     const hits = r.stdout.split("\n").filter(Boolean).sort();
     expect(hits).toContain("lib/design-agent/research/decoration-svg.ts");
-    const allowed = (h: string) => ["lib/design-agent/research/decoration-svg.ts", "docs/design/n1-decoration-svg.md", ".ai/tasks.json", ".ai/reviews/DEV-165.md"].includes(h) || /^tests\/unit\/design-agent\/research\/[a-z0-9-]+\.test\.ts$/.test(h);
+    const allowed = (h: string) => ["lib/design-agent/research/decoration-svg.ts", "docs/design/n1-decoration-svg.md", ".ai/tasks.json", ".ai/reviews/DEV-165.md", "lib/design-agent/research/decoration-review.ts", "docs/design/n1-implementation-prep.md", ".ai/reviews/DEV-174.md"].includes(h) || /^tests\/unit\/design-agent\/research\/[a-z0-9-]+\.test\.ts$/.test(h);
     expect(hits.filter((h) => !allowed(h))).toEqual([]);
     // in the tests, EVERY such review (each matched record, not once per file) carries the fixture marker within 2 lines
     let records = 0;

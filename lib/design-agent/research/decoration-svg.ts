@@ -645,8 +645,8 @@ function pageInto(html: string, css: string, assets: readonly DecorationAssetRef
 }
 
 const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-](\d{2}):(\d{2})))?$/;
-/** A real calendar date (and time), not after `now` (one day of slack for time zones). */
-function reviewDateOk(v: unknown, now: Date): boolean {
+/** A real calendar date (and time), not after `now` (one day of slack for time zones). Also used by decoration-review.ts. */
+export function reviewDateOk(v: unknown, now: Date): boolean {
   if (typeof v !== "string") return false;
   const m = ISO_DAY.exec(v);
   if (!m) return false;
@@ -714,7 +714,22 @@ export function checkDecorationAssetFile(dir: string, asset: DecorationAsset, no
   return [...new Set([...file, ...ownerReviewProblems(review, read.sha256, now)])];
 }
 
-function checkAssetFile(dir: string, asset: DecorationAsset, p: string[], read: { sha256: string | null }): string[] {
+/**
+ * DEV-174: the file side of checkDecorationAssetFile alone (no owner review), with the sha256 of the bytes read (null
+ * when the file was not read). decoration-review.ts binds its per-asset owner record (schema 2) to that sha256. Never
+ * throws: anything unexpected is ASSET_CHECK_ERROR.
+ */
+export function decorationAssetFileProblems(dir: string, asset: Omit<DecorationAsset, "owner_visual_review">): { problems: string[]; sha256: string | null } {
+  const p: string[] = [];
+  const read: { sha256: string | null } = { sha256: null };
+  try {
+    return { problems: checkAssetFile(dir, asset, p, read), sha256: read.sha256 };
+  } catch {
+    return { problems: [...new Set([...p, "ASSET_CHECK_ERROR"])], sha256: read.sha256 };
+  }
+}
+
+function checkAssetFile(dir: string, asset: Omit<DecorationAsset, "owner_visual_review">, p: string[], read: { sha256: string | null }): string[] {
   if (asset?.kind !== "decoration_svg" || asset?.role !== "decoration") p.push("ASSET_KIND");
   if (typeof asset?.id !== "string" || !DECORATION_ID.test(asset.id)) p.push("ASSET_ID");
   if (typeof asset?.file !== "string" || !DECORATION_FILE.test(asset.file) || asset.file.split("/").includes("..")) return [...p, "ASSET_FILE_NAME"];
