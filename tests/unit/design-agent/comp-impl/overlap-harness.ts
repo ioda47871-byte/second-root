@@ -60,6 +60,19 @@ const POC = join(REPO, "design-library/research/quality-pipeline/poc");
  */
 export const OVERLAP_SCRIPT = String.raw`(arg) => {
   const flat = (s) => (s || "").replace(/\s+/g, "");
+  // the names of the top-level functions of a computed value: "drop-shadow(rgba(0, 0, 0, 0.6) 0px 26px 6px) blur(2px)"
+  // gives ["drop-shadow", "blur"]; anything that is not a function at depth 0 (url(), a bare word) gives "?"
+  const topLevelFns = (v) => {
+    const out = [];
+    let depth = 0, word = "";
+    for (const ch of v) {
+      if (ch === "(") { if (depth === 0) out.push(word.trim().toLowerCase() || "?"); depth += 1; word = ""; }
+      else if (ch === ")") { depth -= 1; word = ""; }
+      else if (depth === 0) { if (/\s/.test(ch)) { if (word.trim()) { out.push("?"); } word = ""; } else word += ch; }
+    }
+    if (word.trim()) out.push("?");
+    return out;
+  };
   const canvas = document.createElement("canvas");
   canvas.width = 1; canvas.height = 1;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -401,10 +414,11 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
     const ancestorUnder = (p) => p.kind === "border" || p.kind === "filter" || (p.kind === "bg" && ((cs(p.el).backgroundImage || "none") !== "none" || /\binset\b/.test(cs(p.el).boxShadow || "")));
     // a filter on the text's own element or an ancestor that is not only drop-shadow changes the text's own pixels (blur,
     // opacity(), brightness() …): the text is not drawn as measured (re-review 3 L1)
+    // body, html and SVG ancestors too (re-review 4 L1-b); only the top-level function names count, so the rgba() inside
+    // a computed drop-shadow(rgba(…) …) is not read as a filter of its own (L1-a)
     for (const a of [t.el].concat(Array.from(ancestors))) {
-      if (a === document.documentElement || a === document.body || isSvg(a)) continue;
       const f = cs(a).filter;
-      if (f && f !== "none" && (f.match(/[a-z-]+\(/g) || []).some((fn) => fn !== "drop-shadow(")) { const c = t.prot ? "OVERLAP_PROTECTED_TEXT_FILTERED" : "OVERLAP_TEXT_FILTERED"; add(c); note(c, t, null); mark(t, c); break; }
+      if (f && f !== "none" && topLevelFns(f).some((fn) => fn !== "drop-shadow")) { const c = t.prot ? "OVERLAP_PROTECTED_TEXT_FILTERED" : "OVERLAP_TEXT_FILTERED"; add(c); note(c, t, null); mark(t, c); break; }
     }
     for (const p of painters) {
       // the text's own element: its ground and borders are below its text by definition; but a filter on it draws one

@@ -13,7 +13,7 @@
 - **今は何も通らない (証明した)。** 位置・オフセット・`z-index`・負の margin・`transform`・`isolation`・`pointer-events`・`overflow`・`mix-blend-mode`・`clip-path`・`filter`・`outline`・外側の影・`text-shadow`・`-webkit-text-stroke`・`will-change`・`contain`・グリッドの線の番号・疑似要素 (32 の宣言と3つの選択子) は、旗なし・`vertical_name`・段 B の旗すべて の3つの組で文法が拒む。C′ の3ページは HTML (インライン SVG: `HTML_ELEMENT`) と CSS で拒まれ、描画の側でも run の層の検査が `STACKING_CONTEXT` (と疑似要素のある2店で `PSEUDO_GEOMETRY_UNKNOWN`) で止める。
 - **提案: 能力 `layered_decoration` (旗 `layeredDecoration`、既定 OFF)。** 文字を持たない箱 (装飾) だけを位置で置き、回し、重ねる。文字を持つ箱は「`position: relative` + `z-index`」で持ち上げる (動かさない) ことだけ。負の margin はどの箱にも許し、届いた先は描画の検査が裁く。疑似要素・SVG・ビューポートの単位・ブレンド・切り抜き・フィルター・外側の影・輪郭線・`pointer-events` は入れない (§5)。
 - **描画の検査 (V2 と V4) は、文字の字形の箱に何が届くかを、描画の順で裁く (§3)。** 装飾が字形の上に描かれれば、色や透明度に依らず落ちる。守る文字 (事実・免責・dt/dd・店名) の下には、文字自身か祖先の**不透明で平らな板** (plate) が間に入らない限り、装飾は入れない。順序を証明できない描き方 (外側の影・輪郭線・フィルターのにじみ・測れない疑似要素・文字の外にあふれた文字) は落とす (fail closed)。
-- **試作はこれを示した (§6):** 41 の落ちるべき例がすべて落ち、9 の通るべき例がすべて通る (Fresh Review・CI・再レビュー3回の後。最初の版は 27)。今の run の当たり判定 (`GEOMETRY_SCRIPT` の 15 点) は、そのうち 1px の線・疑似要素・SVG・`pointer-events: none`・輪郭線・影・下に敷いた文字 を見逃す。今の V2 のモデル (`LAYER_SCRIPT`) は疑似要素・SVG・文字の上の文字を見ない。どちらも、今は許可一覧が先に拒むので穴ではないが、**段 C ではそのまま使えない**。
+- **試作はこれを示した (§6):** 43 の落ちるべき例がすべて落ち、9 の通るべき例がすべて通る (Fresh Review・CI・再レビュー4回の後。最初の版は 27)。今の run の当たり判定 (`GEOMETRY_SCRIPT` の 15 点) は、そのうち 1px の線・疑似要素・SVG・`pointer-events: none`・輪郭線・影・下に敷いた文字 を見逃す。今の V2 のモデル (`LAYER_SCRIPT`) は疑似要素・SVG・文字の上の文字を見ない。どちらも、今は許可一覧が先に拒むので穴ではないが、**段 C ではそのまま使えない**。
 - **3店 (§7):** 提案の文法で strict B に層を足したページ (つぐ手: 板の上の金の割れ目と線の断面を貫く継ぎ目、輪: ハブからのスポークと境界にかかる空気入れの計器、ゆげ湯: 全ページの温度計の管・壁と夜の境にかかるのれん・熱い湯の区画に食い込む湯船の板) は、**320〜1920 の 1px の全幅で strict B と同じコードしか出ない** (strict にもともとあるタブレットのはみ出しだけ)。C′ は確かめる幅のすべてで落ちる。
 - **得は小さい。正直に言う。** C′ の見た目の大半 (曲がった継ぎ目、破片の形の板、輪郭の巨大な語、湯気、のれんの「ゆ」、板の影) は、インライン SVG・`clip-path`・フィルター・`aria-hidden` の文字・`-webkit-text-stroke`・vw の位置 に頼っていて、`layered_decoration` だけでは戻らない。戻るのは「区画の境をまたぐ」「板が隣の区画に食い込む」「装飾が画像の上や文字の間を通る」という**構図**である。曲線と形は N1 (装飾の SVG) と段 D が要る。
 
@@ -114,7 +114,7 @@ canvas の `measureText` は、1字を既定の字形で、ひとりで測る。
 - **祖先の罫・地の画像・内側の影も下の装飾として数える** (Fresh Review M2: 負の margin で事実を自分の箱の罫の上へ引くと、罫が数字の下を通る。最初の版は祖先を一律に除き、advisory の画素の平らさしか出さなかった)。祖先は定義で下に描かれるので、通るのは、その祖先の**内側の**要素の不透明で平らな板 (木の順で祖先の後に描かれる) が字形の箱を含むときだけ。普通の本文も `plate` の決まりなら同じ。
 - **祖先のフィルター (`drop-shadow`・`blur`) も数える** (CI と再レビュー): 祖先の中の1つの子の影は、別の子の文字の下に落ちる (つぐ手 C′ の板の `drop-shadow` が、写真の影を自分の札の下へ落とす)。フィルターの描く範囲は「箱 + にじみ」の全体 (最初の版は箱の外の輪だけ)。当たり判定に出ないので `ORDER_UNPROVEN` (fail closed)。提案の文法は `filter` を入れないので、C′ にだけ関わる。
 - **文字自身の要素のフィルターも同じ** (3回目の再レビュー M1): `<div class="board"><div class="photo"></div>000-0000-0712</div>` で板に `drop-shadow` があると、写真の影は板自身の文字の下に落ちる。文字自身の要素は地も罫も定義で下なので飛ばしていたが、描く子を持つ要素のフィルターだけは `ORDER_UNPROVEN` にする。
-- **文字そのものの画素を変えるフィルター** (`drop-shadow` 以外: `blur`・`opacity()`・`brightness()`・`contrast()` …) が文字自身の要素か祖先にあれば、`OVERLAP_PROTECTED_TEXT_FILTERED` / `OVERLAP_TEXT_FILTERED` (3回目の再レビュー L1。画素の参照はフィルターを外さないので、画素の側からは見えない)。
+- **文字そのものの画素を変えるフィルター** (`drop-shadow` 以外: `blur`・`opacity()`・`brightness()`・`contrast()` …) が文字自身の要素か祖先 (`body`・`html`・SVG の祖先も含む) にあれば、`OVERLAP_PROTECTED_TEXT_FILTERED` / `OVERLAP_TEXT_FILTERED` (3回目の再レビュー L1。画素の参照はフィルターを外さないので、画素の側からは見えない)。計算値の一番外の関数の名前だけを読む (`drop-shadow(rgba(…) …)` の中の `rgba(` は数えない)。4回目の再レビューの前は、その `rgba(` を関数と読んで `drop-shadow` だけでも `TEXT_FILTERED` を出し、`body`・`html`・SVG の祖先を飛ばしていた (`body { filter: opacity(0.1) }` が通った)。
 - **切れ・ずれ:** 守る字形が画面の左・右・上の外 (`OVERLAP_PROTECTED_OFFSCREEN`)、`overflow` が見える以外の祖先の padding box の外、または `clip-path`・`mask` の祖先の下 (`OVERLAP_PROTECTED_CLIPPED`)、字形の箱が無い (`OVERLAP_PROTECTED_HIDDEN`)。**普通の本文の切れも落とす** (`OVERLAP_TEXT_CLIPPED`。Fresh Review L3: 提案の文法はどの要素にも `overflow: hidden | clip` を許すので、普通の本文が黙って切れうる)。
 
 ### 3.3 普通の本文
@@ -156,7 +156,7 @@ canvas の `measureText` は、1字を既定の字形で、ひとりで測る。
 |---|---|---|---|
 | **A. 字形の箱 × 描く範囲 (幾何)** — 墨の箱 (§2) と、要素の描く範囲の交わり | 届くかどうか | 1幅 10〜15 ms (層のページ、温まった後)、C′ 300〜400 ms | 順を知らない (上か下かが分からない)。単独では「届けば落とす」しかできず、板も下の層も通せない |
 | **B. 当たり判定 (`elementsFromPoint`)** — A の交わりの中で順を読む | 描く順 | 組ごとに1回 (P がある最初の点)。層のページで1幅 0〜5 回、C′ で 30〜1,100 回 | 外側の影・輪郭線・フィルターのにじみ・文字の影は当たり判定に出ない (→ fail closed)。`pointer-events` は強制で外す。自分の箱の外へあふれた文字は束に出ない (→ fail closed) |
-| **C. 画素 (飾りを消した差)** — 文字を黒と白で2回描き、ページと「文字だけ」の参照の差の比 (透過率) を見る。合成は線形なので、地に依らず「文字の上に描かれたもの」だけが比を下げる | 墨の上に描かれたものの濃さ | 全ページの画面写し 5 枚 (層のページで 1幅 約 1〜2 s) | 3% 未満の覆い (丸めの余地 0.97)、墨の無い画素 (字の中の空き) の上の覆い、文字の上の文字 (両方が同じ色で変わる)。守る文字の空きは「文字を消した絵の平らさ」(V3b、`groundStructure`) で補う。**字形の箱の中しか読まない** (箱が墨より小さいと見えない → 全画面の `PIXEL_INK_OUTSIDE_GLYPHS` で補う、§2.3)。全部の文字を一度に色を変えるので、ある文字の箱に別の文字の墨が入ると、その覆いがこの文字のものに見える → 覆いの候補はその文字だけ色を変えた4枚 (箱の周りの切り抜き) で確かめ直す。参照の絵でもフィルターは外さない (外すとフィルターの層の中の文字の描かれ方が変わり、覆いに見える)。そのぶん文字の画素を変えるフィルターは画素からは見えず、幾何の `TEXT_FILTERED` が受け持つ。単独で確かめて自分の覆いでなかった候補は、確かめられた別の文字の箱と重ならなければ `PIXEL_COVER_UNATTRIBUTED` (誰のものでもない覆い、fail closed) |
+| **C. 画素 (飾りを消した差)** — 文字を黒と白で2回描き、ページと「文字だけ」の参照の差の比 (透過率) を見る。合成は線形なので、地に依らず「文字の上に描かれたもの」だけが比を下げる | 墨の上に描かれたものの濃さ | 全ページの画面写し 5 枚 (層のページで 1幅 約 1〜2 s) | 3% 未満の覆い (丸めの余地 0.97)、墨の無い画素 (字の中の空き) の上の覆い、文字の上の文字 (両方が同じ色で変わる)。守る文字の空きは「文字を消した絵の平らさ」(V3b、`groundStructure`) で補う。**字形の箱の中しか読まない** (箱が墨より小さいと見えない → 全画面の `PIXEL_INK_OUTSIDE_GLYPHS` で補う、§2.3)。全部の文字を一度に色を変えるので、ある文字の箱に別の文字の墨が入ると、その覆いがこの文字のものに見える → 覆いの候補はその文字だけ色を変えた4枚 (箱の周りの切り抜き) で確かめ直す。参照の絵でもフィルターは外さない (外すとフィルターの層の中の文字の描かれ方が変わり、覆いに見える)。そのぶん文字の画素を変えるフィルターは画素からは見えず、幾何の `TEXT_FILTERED` (文字自身から `html` までのすべての祖先) が受け持つ。単独で確かめて自分の覆いでなかった候補は、確かめられた別の文字の箱と重ならなければ `PIXEL_COVER_UNATTRIBUTED` (誰のものでもない覆い、fail closed) |
 
 **提案: A で候補を絞り、B で順を決める (幾何の検査、1px の全幅)。C は確かめる幅だけの二重の守り。**
 
@@ -206,7 +206,7 @@ canvas の `measureText` は、1字を既定の字形で、ひとりで測る。
 
 テスト: `tests/unit/design-agent/comp-impl/phase-c-overlap.test.ts`。道具: `overlap-harness.ts`。描画は Chromium 1194、JS 無効、通信遮断、deviceScaleFactor 1。
 
-**落ちるべき例 (41。最初の 27 に、Fresh Review で 5、CI と2回目の再レビューで 5、3回目の再レビューで 4 を足した。画素の列はこの容器の書体での結果で、`tabular-nums` の例は書体に依る: Inter と数字の機能の無い CI では画素は覆いを見ない。テストはその例の画素を問わず、幾何の fail closed だけを求める)。** 「試作」は幾何と順の検査、「画素」は §4 の C、「今の V2」は `LAYER_SCRIPT` の覆いの数 / 守る文字への非 content の重なりの数、「今の当たり判定」は `GEOMETRY_SCRIPT` (どれも生の HTML に掛けたもの。本番では許可一覧が先に拒む)。
+**落ちるべき例 (43。最初の 27 に、Fresh Review で 5、CI と2回目の再レビューで 5、3回目の再レビューで 4、4回目の再レビューで 2 を足した。画素の列はこの容器の書体での結果で、`tabular-nums` の例は書体に依る: Inter と数字の機能の無い CI では画素は覆いを見ない。テストはその例の画素を問わず、幾何の fail closed だけを求める)。** 「試作」は幾何と順の検査、「画素」は §4 の C、「今の V2」は `LAYER_SCRIPT` の覆いの数 / 守る文字への非 content の重なりの数、「今の当たり判定」は `GEOMETRY_SCRIPT` (どれも生の HTML に掛けたもの。本番では許可一覧が先に拒む)。
 
 | 例 | 試作 | 画素 (この容器の書体) | 今の V2 (覆い / 非 content) | 今の当たり判定 |
 |---|---|---|---|---|
@@ -240,14 +240,16 @@ canvas の `measureText` は、1字を既定の字形で、ひとりで測る。
 | an ancestor's left border under the fact (negative margin) | `PROTECTED_ON_DECORATION` | `GROUND_NOT_FLAT` | 0/0 | — |
 | an ancestor's gradient ground under the fact | `PROTECTED_ON_DECORATION` | — | 0/0 | — |
 | ordinary text clipped by an overflow box | `TEXT_CLIPPED` | — | 0/0 | — |
-| an ancestor's drop-shadow under the fact (a photo's shadow on its own caption) | `PROTECTED_ORDER_UNPROVEN`, `PROTECTED_TEXT_FILTERED` | `GROUND_NOT_FLAT` | 0/0 | — |
+| an ancestor's drop-shadow under the fact (a photo's shadow on its own caption) | `PROTECTED_ORDER_UNPROVEN` | `GROUND_NOT_FLAT` | 0/0 | — |
 | tabular figures (font-variant-numeric) drawn wider than measured | `PAINT_ABOVE_PROTECTED`, `PROTECTED_GLYPHS_UNMEASURED` | `PIXEL_COVER_PROTECTED`, `PIXEL_INK_OUTSIDE_GLYPHS`, `GROUND_NOT_FLAT` | 1/1 | — |
 | a combining mark (NFD) above its base | `PROTECTED_GLYPHS_UNMEASURED` | — | 0/0 | — |
 | an underline (text-decoration) drawn outside the glyphs | `PROTECTED_GLYPHS_UNMEASURED` | `PIXEL_INK_OUTSIDE_GLYPHS` | 0/0 | — |
 | a list marker (text the walker does not see) | `MARKER_UNMEASURED` | `PIXEL_INK_OUTSIDE_GLYPHS` | 0/0 | — |
-| the text's own element's drop-shadow (a child's shadow under the element's own text) | `PROTECTED_ORDER_UNPROVEN`, `PROTECTED_TEXT_FILTERED` | `GROUND_NOT_FLAT` | 0/0 | — |
+| the text's own element's drop-shadow (a child's shadow under the element's own text) | `PROTECTED_ORDER_UNPROVEN` | `GROUND_NOT_FLAT` | 0/0 | — |
 | an ancestor's filter: opacity(0.15) fades the fact | `PROTECTED_TEXT_FILTERED` | — | 0/0 | — |
 | an ancestor's filter: brightness(0) blackens the fact | `PROTECTED_TEXT_FILTERED` | — | 0/0 | — |
+| body's filter: opacity(0.1) fades the fact | `PROTECTED_TEXT_FILTERED` | — | 0/0 | — |
+| html's filter: brightness(0) blackens the fact | `PROTECTED_TEXT_FILTERED` | — | 0/0 | — |
 | small caps (font-variant-caps) drawn otherwise than measured | `PROTECTED_GLYPHS_UNMEASURED` | — | 0/0 | — |
 | ordinary text covered | `PAINT_ABOVE_TEXT` | `PIXEL_COVER_TEXT` | 1/0 | — |
 | ordinary text over a decoration with no plate | `TEXT_ON_DECORATION` | — | 0/0 | — |

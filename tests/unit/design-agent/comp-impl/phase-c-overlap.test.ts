@@ -305,6 +305,9 @@ const PROBES: Probe[] = [
   // re-review 3 L1: a filter that changes the text's own pixels on an ancestor (the pixel reference keeps filters)
   { name: "an ancestor's filter: opacity(0.15) fades the fact", body: `<div class="wrap"><div class="box">${F}</div></div>`, css: ".box { filter: opacity(0.15); }", expect: "OVERLAP_PROTECTED_TEXT_FILTERED", pixel: null },
   { name: "an ancestor's filter: brightness(0) blackens the fact", body: `<div class="wrap"><div class="box">${F}</div></div>`, css: ".box { filter: brightness(0); }", expect: "OVERLAP_PROTECTED_TEXT_FILTERED", pixel: null },
+  // re-review 4 L1-b: a filter on body or html fades or blackens every text (they were skipped)
+  { name: "body's filter: opacity(0.1) fades the fact", body: `<div class="wrap">${F}</div>`, css: "body { filter: opacity(0.1); }", expect: "OVERLAP_PROTECTED_TEXT_FILTERED", pixel: null },
+  { name: "html's filter: brightness(0) blackens the fact", body: `<div class="wrap">${F}</div>`, css: "html { filter: brightness(0); }", expect: "OVERLAP_PROTECTED_TEXT_FILTERED", pixel: null },
   // re-review 3 L6
   { name: "small caps (font-variant-caps) drawn otherwise than measured", body: `<div class="wrap"><p class="f">Tel ${FACT}</p></div>`, css: ".f { font-variant-caps: all-small-caps; }", expect: "OVERLAP_PROTECTED_GLYPHS_UNMEASURED", pixel: null },
   { name: "ordinary text covered", body: `<div class="wrap">${O}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 60px; top: 46px; width: 40px; height: 16px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_TEXT", pixel: "PIXEL_COVER_TEXT" },
@@ -328,6 +331,10 @@ describe("DEV-173 the render check (prototype) on synthetic probes", () => {
   const matrix: string[] = [];
   afterAll(() => console.log(`DEV-173 probe matrix (probe | prototype | pixel | lib V2 covers / non-content | lib hit-test)\n${matrix.join("\n")}`));
 
+  it("exactly one probe leaves its pixel outcome to the face installed (the tabular-figures probe)", () => {
+    expect(PROBES.filter((p) => p.pixel === "font").map((p) => p.name)).toEqual(["tabular figures (font-variant-numeric) drawn wider than measured"]);
+  });
+
   it.each(PROBES)("fails: $name", async (p) => {
     await load(p.body, p.css);
     const g = overlapCodes(await overlapScan(tab, PLAN));
@@ -337,9 +344,13 @@ describe("DEV-173 the render check (prototype) on synthetic probes", () => {
     expect(pr.disagreements, `${p.name} pixels vs geometry, text by text`).toEqual([]);
     const px = Object.keys(pr.codes).sort();
     // "font": whether the dot lands on ink depends on the face (Inter and its tabular figures are not on CI); the geometric
-    // fail-closed code above is the guarantee
+    // fail-closed code above is the guarantee. Where the face really widens the figures (measured: tabular "1111" wider than
+    // proportional — document.fonts.check("40px Inter") is no test, it is true for any system face, installed or not),
+    // the pixel cover is asserted as well
     if (p.pixel === "font") {
-      /* no pixel expectation */
+      await load(`<span id="a" style="font: 40px Inter, sans-serif">1111</span><span id="b" style="font: 40px Inter, sans-serif; font-variant-numeric: tabular-nums">1111</span>`, "");
+      const [wa, wb] = (await tab.evaluate(`["a", "b"].map((i) => document.getElementById(i).getBoundingClientRect().width)`)) as number[];
+      if (wb! > wa! + 1) expect(px, `${p.name} pixel (the face widens the figures)`).toContain("PIXEL_COVER_PROTECTED");
     } else if (p.pixel) expect(px, `${p.name} pixel`).toContain(p.pixel);
     else expect(px.filter((c) => c.startsWith("PIXEL_COVER")), `${p.name} pixel blind spot`).toEqual([]);
     // what today's run-side scripts would say on the same raw HTML (informative: the allowlist refuses all of it first)
@@ -389,6 +400,17 @@ describe("DEV-173 the render check (prototype) on synthetic probes", () => {
     // two paragraphs set solid (line-height 1) in a face whose content area is 1.45 em: the Range rects overlap, the ink does not
     const tall = '@font-face { font-family: "TallGothic"; src: local("IPAGothic"); ascent-override: 116%; descent-override: 29%; } .t { font-family: "TallGothic", sans-serif; font-size: 40px; line-height: 1; }';
     expect(await geo(`<div class="wrap"><p class="t">線の引き方</p><p class="t">相談します</p></div>`, tall)).toEqual([]);
+  });
+
+  it("drop-shadow alone does not change the text's own pixels: the two drop-shadow probes fail on order only, not TEXT_FILTERED (re-review 4 L1-a: the rgba() inside the computed value is not a filter function)", async () => {
+    for (const name of ["an ancestor's drop-shadow under the fact (a photo's shadow on its own caption)", "the text's own element's drop-shadow (a child's shadow under the element's own text)"]) {
+      const p = PROBES.find((x) => x.name === name)!;
+      const got = await geo(p.body, p.css);
+      expect(got, name).toContain("OVERLAP_PROTECTED_ORDER_UNPROVEN");
+      expect(got.filter((c) => c.endsWith("TEXT_FILTERED")), name).toEqual([]);
+    }
+    // and with another function next to it, the filter changes the text: TEXT_FILTERED
+    expect(await geo(`<div class="wrap"><div class="box">${F}</div></div>`, ".box { filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .5)) blur(1px); }")).toContain("OVERLAP_PROTECTED_TEXT_FILTERED");
   });
 
   it("fails closed: a pseudo-element whose content is not a string, and paint the order cannot be proven for", async () => {
