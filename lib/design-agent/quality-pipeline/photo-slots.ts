@@ -101,14 +101,7 @@ export function coverCrop(photo: { width: number; height: number }, slot: Pick<S
   const { width: w, height: h } = photo;
   const ok = (n: number) => Number.isFinite(n) && n > 0;
   if (![w, h, slot.width_px, slot.height_px, slot.min_width_px, slot.min_height_px].every(ok) || !Focal.safeParse(focal).success) return { ok: false, codes: ["BAD_INPUT"] };
-  const target = slot.width_px / slot.height_px;
-  const wide = w / h > target;
-  const cw = wide ? h * target : w;
-  const ch = wide ? h : w / target;
-  const x = clamp(focal.x * w - cw / 2, 0, w - cw);
-  const y = clamp(focal.y * h - ch / 2, 0, h - ch);
-  // compared unrounded: 0.4996 must not round up to the 0.5 limit
-  const keptRaw = (cw * ch) / (w * h);
+  const { x, y, cw, ch, keptRaw } = coverRect(photo, slot, focal);
   const kept = r3(keptRaw);
   const density = r3(cw / slot.width_px);
   const codes: CropCode[] = [];
@@ -126,6 +119,22 @@ export function coverCrop(photo: { width: number; height: number }, slot: Pick<S
     kept_area: kept,
     density,
   };
+}
+
+/**
+ * The unrounded cover rectangle (photo pixels) of a photo in a board of the slot's shape, centred on the focal point
+ * as far as the photo allows. keptRaw is the share of the photo's area it keeps: compared unrounded, so 0.4996 never
+ * rounds up to the 0.5 limit.
+ */
+export function coverRect(photo: { width: number; height: number }, slot: Pick<SlotVariant, "width_px" | "height_px">, focal: Focal) {
+  const { width: w, height: h } = photo;
+  const target = slot.width_px / slot.height_px;
+  const wide = w / h > target;
+  const cw = wide ? h * target : w;
+  const ch = wide ? h : w / target;
+  const x = clamp(focal.x * w - cw / 2, 0, w - cw);
+  const y = clamp(focal.y * h - ch / 2, 0, h - ch);
+  return { x, y, cw, ch, keptRaw: (cw * ch) / (w * h) };
 }
 
 /** One photo against every viewport of a slot: it fits the slot only if it fits each of them. */
@@ -180,4 +189,125 @@ export function requestFor(slot: PhotoSlot): PhotoRequest {
   }
   const W = Math.ceil(width / 10) * 10;
   return { ok: true, aspect: `${best.a}:${best.b}`, min_width_px: W, min_height_px: Math.ceil(W / best.r), worst_kept_area: r3(best.worst) };
+}
+
+/*
+ * DEV-166 (Issue #193 comment 6623100651; owner, 2026-11-04 item 3): the scale rule and the separate SP photo.
+ *
+ * Scale: a photo must cover its board at 2× (MIN_SCALE_DEFAULT) at every viewport. Between 1.5× and 2× it is accepted
+ * only with an exception record the owner decided ({ scale, reason, decided_by: "owner" }), and only down to the
+ * scale that record names. Below 1.5× (MIN_SCALE_FLOOR) it is always refused, exception or not.
+ *
+ * Separate SP photo: the subject of a photo is its focal box (a rectangle in photo coordinates, 0–1). When the cover
+ * crop of the PC photo for an SP board (mobile_390, and any viewport the page draws in the SP shape) loses the
+ * subject — the focal box does not fit inside the crop, or the crop keeps less than half of the photo
+ * (kept_area < MIN_KEPT_AREA) — the slot needs its own SP photo, used at those viewports.
+ */
+export const MIN_SCALE_DEFAULT = SLOT_DENSITY;
+export const MIN_SCALE_FLOOR = 1.5;
+/**
+ * The viewports a separate SP photo replaces the PC photo at, by default the phone only. A page whose CSS gives its
+ * boards the SP shape at wider widths too (つぐ手: every board takes its SP shape at ≤1199px) passes those viewports.
+ */
+export const SP_VIEWPORTS_DEFAULT: readonly SlotViewport[] = ["mobile_390"];
+
+export const ScaleException = z.strictObject({
+  /** the least scale the owner accepts for this slot: 1.5 ≤ scale < 2 */
+  scale: z.number().min(MIN_SCALE_FLOOR).lt(MIN_SCALE_DEFAULT),
+  /** why the photo's real quality and crop are enough (the owner looked at it) */
+  reason: z.string().trim().min(1).max(300),
+  decided_by: z.literal("owner"),
+});
+export type ScaleException = z.infer<typeof ScaleException>;
+
+/** The subject's box in the photo, as shares of its width and height (as the photo is shown). */
+export const FocalBox = z
+  .strictObject({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().positive().max(1), h: z.number().positive().max(1) })
+  .refine((b) => b.x + b.w <= 1 + 1e-9 && b.y + b.h <= 1 + 1e-9, "the focal box must lie inside the photo");
+export type FocalBox = z.infer<typeof FocalBox>;
+export const focalOf = (b: FocalBox): Focal => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+
+export type ScaleCode = CropCode | "SCALE_EXCEPTION_REQUIRED" | "PHOTO_BELOW_MIN_SCALE" | "SCALE_EXCEPTION_INVALID";
+export type ScaledCrop =
+  | (Extract<Crop, { ok: true }> & { scale_basis: number; exception_applied: boolean })
+  | { ok: false; codes: ScaleCode[]; kept_area?: number; density?: number };
+
+const atScale = (v: SlotVariant, s: number): SlotVariant =>
+  s === MIN_SCALE_DEFAULT ? v : { ...v, min_width_px: Math.ceil(v.width_px * s), min_height_px: Math.ceil(v.height_px * s) };
+
+/**
+ * coverCrop under the scale rule: 2× passes; 1.5–2× passes only with a valid owner exception whose scale the crop
+ * meets; below 1.5× never passes. An exception record that is not valid is refused even when the photo is 2×.
+ */
+export function scaledCrop(photo: { width: number; height: number }, v: SlotVariant, focal: Focal, exception?: unknown): ScaledCrop {
+  let exc: ScaleException | undefined;
+  if (exception !== undefined) {
+    const p = ScaleException.safeParse(exception);
+    if (!p.success) return { ok: false, codes: ["SCALE_EXCEPTION_INVALID"] };
+    exc = p.data;
+  }
+  const at2 = coverCrop(photo, v, focal);
+  if (at2.ok) return { ...at2, scale_basis: MIN_SCALE_DEFAULT, exception_applied: false };
+  if (at2.codes.some((c) => c !== "PHOTO_TOO_SMALL")) return at2;
+  const floor = coverCrop(photo, atScale(v, MIN_SCALE_FLOOR), focal);
+  if (!floor.ok) return { ok: false, codes: ["PHOTO_BELOW_MIN_SCALE"], kept_area: floor.kept_area, density: floor.density };
+  if (!exc) return { ok: false, codes: ["SCALE_EXCEPTION_REQUIRED"], kept_area: floor.kept_area, density: floor.density };
+  const agreed = coverCrop(photo, atScale(v, exc.scale), focal);
+  if (!agreed.ok) return { ok: false, codes: ["PHOTO_TOO_SMALL"], kept_area: agreed.kept_area, density: agreed.density };
+  return { ...agreed, scale_basis: exc.scale, exception_applied: true };
+}
+
+/** Whether the focal box (0–1) lies inside a crop rectangle (photo px), with half a pixel of slack for rounding. */
+export function subjectInside(photo: { width: number; height: number }, box: FocalBox, rect: { x: number; y: number; cw: number; ch: number }): boolean {
+  const [bx, by, bw, bh] = [box.x * photo.width, box.y * photo.height, box.w * photo.width, box.h * photo.height];
+  return bx + 0.5 >= rect.x && by + 0.5 >= rect.y && bx + bw <= rect.x + rect.cw + 0.5 && by + bh <= rect.y + rect.ch + 0.5;
+}
+
+export type SlotPhoto = { width: number; height: number; focal_box: FocalBox };
+export type SlotPlanCode = ScaleCode | "SP_PHOTO_REQUIRED" | "FOCAL_SUBJECT_CROPPED";
+export type SlotPlan = {
+  ok: boolean;
+  codes: SlotPlanCode[];
+  /** the PC photo loses its subject in the SP crop: an SP photo is required (true even when one was given) */
+  needs_sp_photo: boolean;
+  byViewport: Record<SlotViewport, { source: "pc" | "sp"; crop: ScaledCrop; subject_kept: boolean; kept_area: number }>;
+};
+
+/**
+ * Plans one slot: the PC photo for every viewport, or, at SP, the separate SP photo when one is given. Refuses a
+ * crop that cuts the subject (FOCAL_SUBJECT_CROPPED), and asks for an SP photo when the PC photo's SP crop loses it.
+ */
+export function planSlot(slot: PhotoSlot, photos: { pc: SlotPhoto; sp?: SlotPhoto; scale_exception?: unknown }, opts: { spViewports?: readonly SlotViewport[] } = {}): SlotPlan {
+  const spViewports = opts.spViewports ?? SP_VIEWPORTS_DEFAULT;
+  const codes = new Set<SlotPlanCode>();
+  let needsSp = false;
+  const byViewport = {} as SlotPlan["byViewport"];
+  const valid = (p: SlotPhoto) => [p.width, p.height].every((n) => Number.isFinite(n) && n > 0) && FocalBox.safeParse(p.focal_box).success;
+  if (!valid(photos.pc) || (photos.sp && !valid(photos.sp))) {
+    for (const v of slot.variants) byViewport[v.viewport] = { source: "pc", crop: { ok: false, codes: ["BAD_INPUT"] }, subject_kept: false, kept_area: 0 };
+    return { ok: false, codes: ["BAD_INPUT"], needs_sp_photo: false, byViewport };
+  }
+  for (const v of slot.variants) {
+    const isSp = spViewports.includes(v.viewport);
+    const source = isSp && photos.sp ? "sp" : "pc";
+    const photo = source === "sp" ? photos.sp! : photos.pc;
+    const focal = focalOf(photo.focal_box);
+    const rect = coverRect(photo, v, focal);
+    const kept = subjectInside(photo, photo.focal_box, rect) && rect.keptRaw >= MIN_KEPT_AREA;
+    const crop = scaledCrop(photo, v, focal, photos.scale_exception);
+    byViewport[v.viewport] = { source, crop, subject_kept: kept, kept_area: r3(rect.keptRaw) };
+    if (isSp) {
+      // decided on the PC photo, whether or not an SP photo was given
+      const pcRect = coverRect(photos.pc, v, focalOf(photos.pc.focal_box));
+      const lost = !(subjectInside(photos.pc, photos.pc.focal_box, pcRect) && pcRect.keptRaw >= MIN_KEPT_AREA);
+      needsSp ||= lost;
+      if (lost && source === "pc") {
+        codes.add("SP_PHOTO_REQUIRED");
+        continue;
+      }
+    }
+    if (!crop.ok) crop.codes.forEach((c) => codes.add(c));
+    if (!kept) codes.add("FOCAL_SUBJECT_CROPPED");
+  }
+  return { ok: codes.size === 0, codes: [...codes], needs_sp_photo: needsSp, byViewport };
 }
