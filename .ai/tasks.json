@@ -7497,6 +7497,55 @@
         "パスで描いた文字への対策の選択"
       ],
       "note": "研究だけ。N1 は段 C (DEV-083 V2/V4) が通る前に有効にしない。この Task は有効にする承認ではない。元は DEV-160 の提案の N1 (PR #200、develop ec0149f で merge 済み)。DEV-160 は tasks.json ではまだ in_progress なので、depends_on は DEV-159 にした。"
+    },
+    {
+      "id": "DEV-167",
+      "title": "3店のカンプそのもののデザイン品質を上げる (新しいカンプと、その忠実な C) — 研究の道、架空の店 (Issue #193)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-159",
+        "DEV-160"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-167-comp-quality",
+      "purpose": "オーナー (2026-11-04)「つぐ手・輪・ゆげ湯のカンプそのもののデザイン品質も引き続き改善する」と Issue #193 コメント 6623100651 の見比べのあと、リードが C を見て挙げた直し (つぐ手 T1〜T3、輪 B1〜B4、ゆげ湯 S1〜S2) を、新しい版のカンプと C に入れる。古い版は残す。",
+      "acceptance_criteria": [
+        "新しいカンプ: tsugute comps/d1-seam-across-v3、bicycle comps/d1-wheel-hub-v2、sento comps/d1-heat-descent-v2 (index.html・style.css・copy.json・review.json)",
+        "新しい C: tsugute fidelity/d1-v4、bicycle fidelity/d1-v3、sento fidelity/d1-v3 (README.md に変えたこと・仮のままのもの・描画の SHA)",
+        "comp-lane の所見 0 件、--check-review が ok",
+        "fidelity-spec.json の fidelity_c を新しい C に指し替え、fidelity-report.json を作り直す。4つの幅で覆い・横切り・語の折れ・横のはみ出しが 0",
+        "古い版のカンプ・C と photo-slots.json (tsugute d1-v3 に固定) は変えない",
+        "写真・新しいラスター画像・Web フォント・通信を足さない。描画はリポジトリの外、SHA だけを残す",
+        "docs/design/comp-impl-loss-analysis.md に v-next の節"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/quality-pipeline/poc/*/comps/",
+        "design-library/research/quality-pipeline/poc/*/fidelity/",
+        "design-library/research/quality-pipeline/poc/*/fidelity-spec.json",
+        "design-library/research/quality-pipeline/poc/*/fidelity-report.json",
+        "docs/design/comp-impl-loss-analysis.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "photo-slots.json の変更",
+        "古い版のカンプ・C の変更",
+        "comp-impl の許可一覧の変更",
+        "実写真・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB",
+        ".github/workflows",
+        "依存の追加"
+      ],
+      "human_approval_triggers": [
+        "カンプをオーナーに見せて採るかの判断",
+        "創作の文 (区画のラベル、待つ、のれんの ゆ) の確認"
+      ],
+      "note": "新しいカンプは前の C の描き方を取り込んだので、新しい C はカンプと同じ HTML・文の記録を使い、描画は同じバイトになる。fidelity-spec の comp と strict_b は古いカンプのまま。成功の判定ではない。"
     }
   ]
 }
