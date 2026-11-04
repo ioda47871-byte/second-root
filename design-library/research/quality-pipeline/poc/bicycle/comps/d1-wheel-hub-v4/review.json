@@ -1,0 +1,249 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-bicycle-repair-wa",
+  "direction_id": "d1-wheel-hub-v4",
+  "comp": {
+    "html_sha256": "3a0f0b5fb7eefa7900398c62c400ab00bc9aa2fe6437e5a34a366a558775ba05",
+    "css_sha256": "94c13cb639e307e055ae5c569e92649b4b600c89b469af400bf0b195a127985c",
+    "copy_sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "077843c123858a1e8e4568bedbb076eb1fec27d7944e040e5fdc3863e73f4177",
+      "width": 1440,
+      "height": 5292
+    },
+    "mobile": {
+      "sha256": "950852a966c34af01702ec5653a8d1ceb1e5f125d0f3328edd02ce1bd00fffbf",
+      "width": 390,
+      "height": 5335
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-05T21:30:00Z",
+    "how": "Read tool: PC at 0.28 (2 columns), SP at 0.5 (4 columns) of the comp-lane renders; C at 601, 700, 768, 860, 999 before and after (0.42), and 1x crops of the hub at 601, 768, 999"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 2646
+      },
+      {
+        "x": 0,
+        "y": 2646,
+        "w": 1440,
+        "h": 2646
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1334
+      },
+      {
+        "x": 0,
+        "y": 1334,
+        "w": 390,
+        "h": 1334
+      },
+      {
+        "x": 0,
+        "y": 2668,
+        "w": 390,
+        "h": 1334
+      },
+      {
+        "x": 0,
+        "y": 4002,
+        "w": 390,
+        "h": 1333
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "Hero・4本の黄のスポークと4つの駅は前の版のまま (PC)。601〜999 では4本のスポークがハブの縁から出る (C の幅で確かめた)",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 2140
+        }
+      },
+      {
+        "what": "まわる は前と同じく左の端を越える (1文字目の半分が出る、意図した端越え)",
+        "box": {
+          "x": 0,
+          "y": 1960,
+          "w": 840,
+          "h": 300
+        }
+      },
+      {
+        "what": "締める は右の端から 20px 内に入り、る が切れずに全部見える",
+        "box": {
+          "x": 660,
+          "y": 2830,
+          "w": 780,
+          "h": 280
+        }
+      },
+      {
+        "what": "作業台の板と縦の2行は前の版のまま。締める は板にも縦の文にも掛からない",
+        "box": {
+          "x": 0,
+          "y": 3110,
+          "w": 1440,
+          "h": 900
+        }
+      },
+      {
+        "what": "空気の区画: 計器が区画の境に掛かり、見出しと事実は左",
+        "box": {
+          "x": 0,
+          "y": 4000,
+          "w": 1440,
+          "h": 600
+        }
+      },
+      {
+        "what": "来店: 電話を大きく、情報は2列、右に車輪の端",
+        "box": {
+          "x": 0,
+          "y": 4500,
+          "w": 1440,
+          "h": 792
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "SP Hero と背骨・駅は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 2700
+        }
+      },
+      {
+        "what": "締める は右の端から 10px 内に入り、る が切れない",
+        "box": {
+          "x": 0,
+          "y": 2600,
+          "w": 390,
+          "h": 300
+        }
+      },
+      {
+        "what": "作業台の板と縦の2行",
+        "box": {
+          "x": 0,
+          "y": 2900,
+          "w": 390,
+          "h": 1000
+        }
+      },
+      {
+        "what": "空気・来店は前の版のまま。電話は折れない",
+        "box": {
+          "x": 0,
+          "y": 3900,
+          "w": 390,
+          "h": 1435
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 960,
+          "w": 1440,
+          "h": 1400
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 960,
+          "w": 1440,
+          "h": 4332
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "最後の区画を一杯 (客の受け取るもの) にし、そこに行動の案内を置く",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 4400,
+          "w": 1440,
+          "h": 892
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "横並びの要素は、縦に重ねて関係を保つ",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1900
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "601〜999px で、黄のスポークの内の端がハブの円の縁の手前 8〜11px で切れ、ハブとつながって見えなかった",
+      "protect": [
+        "Hero の大きな車輪と 輪 のハブ",
+        "4つの駅の板と名札とピン",
+        "PC 1000 以上と SP の版"
+      ],
+      "changed": [
+        "タブレットのスポークの内の端をハブの円の縁 (768 幅の 80.5 単位) に移し、端を四角にした (丸い端だとハブの中へ入る)",
+        "タブレットの板の影を短く (24px + 22px のぼかしが 26px 下の駅の名前に届いていた)",
+        "タブレットで 締める の上下に 16px (字の高い書体で まっすぐに・どこを まで 4.4px だった)"
+      ],
+      "regressions_fixed": [
+        "ハブを z-index で上に重ねる案は、Hero が重なりの文脈を作るので効かなかった。スポークが 輪 の上に描かれたのを見て、縁で止める作りに変えた"
+      ]
+    }
+  ],
+  "remaining": [
+    "写真は役割と大きさだけの仮の板のまま",
+    "601〜999 の右下は暗い地が広く空く (スポークの段の構図)",
+    "1000 で板の大きさが跳ぶ",
+    "輪 の字の箱 (1.3em の四角) の角はハブの円の外に出て、車輪の細いスポークに掛かる。字の墨には掛からない (墨の画素で数えて 0)",
+    "PC と SP の板の影は前の版のまま (駅の名前の近くに届く幅がある。測っていない)",
+    "カンプと C は同じソースで描く。C との差は測れない"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}

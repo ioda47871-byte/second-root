@@ -7971,7 +7971,7 @@
     {
       "id": "DEV-174",
       "title": "N1: 装飾 SVG の実装準備 (段C の文字保護と結合。img に限る)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-173"
@@ -8012,7 +8012,7 @@
         "オーナーの目視の記録の承認",
         "N1 を ON にすること"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 準備の枝 feature/dev-174-n1-svg-prep (DEV-173 の枝 cd6af99 から): docs/design/n1-implementation-prep.md、研究の decoration-review.ts (資産ごとのオーナーの記録 schema 2: 資産と描いた絵の sha256・描画系・pending のみ Claude が書く・承認は証明の検証器が要り、今は無いので何も通らない)、テスト n1-owner-review・n1-phase-c-join (img の装飾を段 C の試作に通す: 落ちるべき 10 例すべて落ち、通るべき 4 例と掃引の版はコード 0。透明な部分は箱で落とす、幅で伸びる img は 899px で終わる1つの帯 (この container の書体で 849–899px) だけ掃引が見つける)。comp-impl の差 0、APPROVED_CAPABILITIES は空、記録は 0。WebKit・Firefox は BLOCKED。comp-impl の変更は HOLD (文書 §7)。DEV-173 (PR #213) が develop に merge された (7f5e2ac) ので、develop を merge して review に上げた。N1 の ON は段 C の通過とオーナーの承認まで禁止。 Fresh Review (PR #214、C0/H0/M1/L6): M1 checkN1Asset が呼ぶ側の絵を検めずに使っていた穴を、読んだバイト列から自分で描く形に直した (偽の絵の sha256 を拒むテスト)。L1 書体に依る下の端 849 を固定しない。L2〜L6 は .ai/reviews/DEV-174.md。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 準備の枝 feature/dev-174-n1-svg-prep (DEV-173 の枝 cd6af99 から): docs/design/n1-implementation-prep.md、研究の decoration-review.ts (資産ごとのオーナーの記録 schema 2: 資産と描いた絵の sha256・描画系・pending のみ Claude が書く・承認は証明の検証器が要り、今は無いので何も通らない)、テスト n1-owner-review・n1-phase-c-join (img の装飾を段 C の試作に通す: 落ちるべき 10 例すべて落ち、通るべき 4 例と掃引の版はコード 0。透明な部分は箱で落とす、幅で伸びる img は 899px で終わる1つの帯 (この container の書体で 849–899px) だけ掃引が見つける)。comp-impl の差 0、APPROVED_CAPABILITIES は空、記録は 0。WebKit・Firefox は BLOCKED。comp-impl の変更は HOLD (文書 §7)。DEV-173 (PR #213) が develop に merge された (7f5e2ac) ので、develop を merge して review に上げた。N1 の ON は段 C の通過とオーナーの承認まで禁止。 Fresh Review (PR #214、C0/H0/M1/L6): M1 checkN1Asset が呼ぶ側の絵を検めずに使っていた穴を、読んだバイト列から自分で描く形に直した (偽の絵の sha256 を拒むテスト)。L1 書体に依る下の端 849 を固定しない。L2〜L6 は .ai/reviews/DEV-174.md。 PR #214 で develop へ merge した (3abf03f)。"
     },
     {
       "id": "DEV-175",
@@ -8097,6 +8097,59 @@
         "成功例の水準と認定すること (オーナーだけが決める)"
       ],
       "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+    },
+    {
+      "id": "DEV-177",
+      "title": "3店のカンプの品質 3 (ゆげ湯の湯の表面の板と事実の文・沸く の余白、つぐ手の Hero の器の影と乾く時間、輪のスポークとハブ) — 研究の道、架空の店 (Issue #193)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-168"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-177-comp-quality-3",
+      "purpose": "DEV-173 の 1px の掃引が見つけたゆげ湯の C′ の当たり (1260〜1263px で湯の表面の板が事実の文を覆う、861〜885px で 沸く が事実の行に近づく) と、DEV-168 のレビューの L1 (つぐ手の Hero の器の下の影が 601〜1199 で tagline の後ろに入る) 、オーナーの確認 (2026-11-05) のつぐ手の線と乾く時間・輪の 601〜999 のスポークのつながりを、新しい版のカンプと C で、書体の字の高さが違っても届かない余白で直す。古い版は残す。",
+      "acceptance_criteria": [
+        "新しいカンプ: sento comps/d1-heat-descent-v4、tsugute comps/d1-seam-across-v5、bicycle comps/d1-wheel-hub-v4 (index.html・style.css・copy.json・review.json)",
+        "新しい C: sento fidelity/d1-v5、tsugute fidelity/d1-v6、bicycle fidelity/d1-v5 (README.md に変えたこと・残る弱さ・描画の SHA・確かめた幅)",
+        "comp-lane の所見 0 件、--check-review が ok",
+        "fidelity-spec.json の fidelity_c を新しい C に指し替え、fidelity-report.json を作り直す",
+        "1px ごとの全部の幅 (ゆげ湯 320〜1920、つぐ手 320〜1920、輪 601〜999) で、この容器の書体・別の CJK 書体・広い字の高さ (ascent 116% descent 29%) の3つで、飾り・板・影がふつうの文字と事実に届かない・文字が端を出ない・切れない・小さな文字が 4.5:1 以上 (大きな字は 3:1) を画素と字の箱で確かめ、解けないものは HOLD として記録する (PASS に数えない)",
+        "古い版のカンプ・C、photo-slots.json・photo-slot-edges.json は変えない。事実・写真・ラスター画像・Web フォント・通信を足さない",
+        "docs/design/comp-impl-loss-analysis.md に v-next3 の節"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline (1ファイルずつ)",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/quality-pipeline/poc/*/comps/",
+        "design-library/research/quality-pipeline/poc/*/fidelity/",
+        "design-library/research/quality-pipeline/poc/*/fidelity-spec.json",
+        "design-library/research/quality-pipeline/poc/*/fidelity-report.json",
+        "docs/design/comp-impl-loss-analysis.md",
+        ".ai/tasks.json",
+        ".ai/reviews/DEV-177.md"
+      ],
+      "forbidden_scope": [
+        "photo-slots.json・photo-slot-edges.json の変更",
+        "古い版のカンプ・C の変更",
+        "comp-impl の許可一覧の変更",
+        "事実の追加 (温度の数など)",
+        "実写真・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB",
+        ".github/workflows",
+        "依存の追加",
+        "copy.json の文の変更",
+        "lib/**・app/**・package.json の変更"
+      ],
+      "human_approval_triggers": [
+        "カンプをオーナーに見せて採るかの判断",
+        "創作の文 (区画のラベル、待つ、のれんの ゆ) の確認",
+        "つぐ手の SP の Hero の器を小さくした構図の確認"
+      ],
+      "note": "新しい C は新しいカンプと同じ HTML・文の記録を使い、描画は同じバイト。確かめた道具はリポジトリの外の使い捨て (字の箱は Range の箱を 1.3em に切ったもので、墨の箱より大きく、数は多めに出る)。HOLD: 輪 の字の箱の角 (墨では 0)、つぐ手 SP の名前の向き。成功の判定ではない。写真は仮の板のまま。"
     }
   ]
 }

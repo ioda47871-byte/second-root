@@ -1,0 +1,286 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-kintsugi-tsugute",
+  "direction_id": "d1-seam-across-v5",
+  "comp": {
+    "html_sha256": "5446fabe95367540b030cfbf87c987ad2206dd8a801e2daffd77028d3659f0b1",
+    "css_sha256": "44781185bcf6ae29bcbbc0d579c46a19b70498dda516bbdceaa3dfc503a5c97d",
+    "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "1cfac3efe1aae7fac20047920548dcbe8751c6955e212498ce95a076f6fb2528",
+      "width": 1440,
+      "height": 6110
+    },
+    "mobile": {
+      "sha256": "5ff2503d388fa21cc11d6574e0beeae70d6bb8c71fd064cbb23a38576946080e",
+      "width": 390,
+      "height": 6494
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-05T21:30:00Z",
+    "how": "Read tool: PC at 0.28 (2 columns), SP at 0.5 (4 columns) of the comp-lane renders; C before/after side by side at 1440 (0.3), 768 (0.5), 390 (0.6), and sweep crops at 1262, 1120, 900, 320"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 3055
+      },
+      {
+        "x": 0,
+        "y": 3055,
+        "w": 1440,
+        "h": 3055
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1624
+      },
+      {
+        "x": 0,
+        "y": 1624,
+        "w": 390,
+        "h": 1624
+      },
+      {
+        "x": 0,
+        "y": 3248,
+        "w": 390,
+        "h": 1624
+      },
+      {
+        "x": 0,
+        "y": 4872,
+        "w": 390,
+        "h": 1622
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "Hero: 器の下の影が高台の下だけの細い楕円になり、tagline の後ろに入らない (601〜1199 で こ ろ に 、 の後ろに入っていた)",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 1000
+        }
+      },
+      {
+        "what": "割れ・欠けの板と線の入口・出口は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 1000,
+          "w": 1440,
+          "h": 900
+        }
+      },
+      {
+        "what": "ひびの板は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 1900,
+          "w": 1440,
+          "h": 740
+        }
+      },
+      {
+        "what": "縁取りの 待 は 40px 下がり、線の断面 の下に余白が残る",
+        "box": {
+          "x": 0,
+          "y": 2630,
+          "w": 1440,
+          "h": 830
+        }
+      },
+      {
+        "what": "乾く時間は前の版のまま (つ の下の乾く器、縦の文)",
+        "box": {
+          "x": 0,
+          "y": 3360,
+          "w": 1440,
+          "h": 1080
+        }
+      },
+      {
+        "what": "相談・来店は前の版のまま。乾く器と手元の板が左に2つ続くのも前のまま",
+        "box": {
+          "x": 0,
+          "y": 4440,
+          "w": 1440,
+          "h": 1670
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "Hero: 器は前の版の大きさのまま、線はまっすぐ割れ目へ下りる。つぐ手 は器の上の紙の地に横に置き、線はその地の下を通る (前は ぐ・手 が器の暗い内側に掛かった)",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 844
+        }
+      },
+      {
+        "what": "継ぐ は小さく下がり、壊れ方をなぞる。 と Hero の最後の行から離れる",
+        "box": {
+          "x": 0,
+          "y": 700,
+          "w": 390,
+          "h": 400
+        }
+      },
+      {
+        "what": "割れ・欠け・ひび の言葉は名札のすぐ下から始まり (24px)、地の帯が字の箱より広く、板の影の上に乗る",
+        "box": {
+          "x": 0,
+          "y": 900,
+          "w": 390,
+          "h": 1800
+        }
+      },
+      {
+        "what": "線の断面・乾く時間は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 2700,
+          "w": 390,
+          "h": 1700
+        }
+      },
+      {
+        "what": "相談・来店は前の版のまま (線の結び目と継いだ器で終わる)",
+        "box": {
+          "x": 0,
+          "y": 4400,
+          "w": 390,
+          "h": 2094
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 40,
+          "y": 1000,
+          "w": 1400,
+          "h": 2700
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 2500,
+          "w": 1440,
+          "h": 2800
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "最後の区画を一杯 (客の受け取るもの) にし、そこに行動の案内を置く",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 5300,
+          "w": 1440,
+          "h": 786
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "巨大な文字と写真の重なりは、SP でも縦に積んで残す",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 2900,
+          "w": 390,
+          "h": 600
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "横並びの要素は、縦に重ねて関係を保つ",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1700
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "Hero の器の下の影 (床の楕円) が 601〜1199 で tagline の こ ろ に 、 の後ろに入った",
+      "protect": [
+        "Hero の器と線",
+        "tagline の位置と大きさ"
+      ],
+      "changed": [
+        "PC の床の楕円を rx 300 → 104、ry 26 → 14 (高台の下だけ)"
+      ],
+      "regressions_fixed": []
+    },
+    {
+      "n": 2,
+      "cause": "320〜1920 の掃引で、SP の つぐ手 が器の暗い内側に掛かり (地とのコントラスト 1.0 の画素)、板の影が 割れ・欠け・ひび と 相談 に届き、継ぐ・待つ が文字の 5〜13px まで近づく幅があった",
+      "protect": [
+        "ページを横断する1本の金の線",
+        "板の上に描いた壊れ方",
+        "PC 1200〜1440 の線の入口と出口",
+        "事実の文は事実パックのまま"
+      ],
+      "changed": [
+        "SP の つぐ手 を器の上の紙の地に横に置き (22vw、字の箱と同じ高さの地)、器は前の版の大きさ、線はまっすぐのまま",
+        "SP の 継ぐ を 22vw・-26vw に、PC の 待つ を 40px 下げた",
+        "SP の言葉を板より前に重ね (z-index 3)、名札・漢字の地の帯を字の箱より広く",
+        "601〜1199 で 相談 の上を 76px、Hero のコピーの幅を 38% に (lead の終わりが Hero の線に届いた)",
+        "SP の地の帯を最後の字より 6px 右まで (線の断面 の右端に線が並んだ)",
+        "601〜1199 で乾く器の板を句の左の列へ上げた (格子の下に置くと左半分が空いた)"
+      ],
+      "regressions_fixed": []
+    }
+  ],
+  "remaining": [
+    "写真は役割と大きさだけの仮の板のまま。板の上の壊れ方は描いた飾りで、実写真ではない",
+    "器と破片は描いた絵で、焼き物の質感は写真に及ばない",
+    "乾く器の板と次の区画の手元の板がどちらも左に来て、左の写真が2つ続く",
+    "線の入口と出口を揃えたのは 1200〜1440 の PC だけ",
+    "区画のラベル・待つ などの創作の文はオーナーの確認が要る",
+    "カンプと C は同じソースで描く。C との差は測れない",
+    "SP の Hero は名前が縦から横に変わった (カンプの構図と違う。オーナーの確認が要る)"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}
