@@ -128,7 +128,7 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
   const bundle: CompBundle = await loadCompBundle(o.bundleDir, { repoDir: o.repoDir, factsSourcePath: o.factsSourcePath, ...(o.pngLimits ? { pngLimits: o.pngLimits } : {}) });
   const page = await loadCompPage(o.pageDir);
   // DEV-102 / DEV-164: the spec may declare a capability only when it is approved (checkCompSpec); then, and only then,
-  // its allowlist option is on (pageCssOptionsOf: declared AND in APPROVED_CAPABILITIES) and the render applies its checks
+  // its allowlist option is on (pageCssOptionsOf: declared AND in the approved table of spec.ts) and the render applies its checks
   const verticalName = verticalNameOf(bundle.spec, bundle.demo.name);
   const cssOptions = pageCssOptionsOf(bundle.spec);
   const source = [...htmlSourceProblems(page.html), ...cssProblems(page.css, cssOptions)];

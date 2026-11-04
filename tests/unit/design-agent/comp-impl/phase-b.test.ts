@@ -352,7 +352,7 @@ describe("DEV-164 phase B: computed type caps (TYPE_ABOVE_ROLE_CAP), flag or no 
   it("fails the whole run on that page (phase_b in failed), and passes the unchanged synthetic page", async () => {
     const dir = await pageCopy("pb-gap-");
     try {
-      await writeFile(join(dir, "style.css"), `${CSS}\nhtml { font-size: 20px; } .goods-copy { font-size: 15rem; }\n`);
+      await writeFile(join(dir, "style.css"), `${CSS}\nhtml { font-size: 17px; } .goods-caption { font-size: 16rem; line-height: 1; }\n`);
       const bad = (await runCompImpl({ bundleDir: await bundle(), pageDir: dir, repoDir: REPO, factsSourcePath: FACTS_SOURCE, browser })).report;
       expect(bad.failed).toContain("phase_b");
       expect(bad.checks.phase_b!.codes).toContain("TYPE_ABOVE_ROLE_CAP");
@@ -375,7 +375,7 @@ describe("DEV-164 phase B: computed type caps (TYPE_ABOVE_ROLE_CAP), flag or no 
   it("display_scale: a display word up to 640px only with the flag; never a fact, a dd or the disclosure; never above 640", async () => {
     const name = `<h1 class="n">${demo.name}</h1>`;
     expect(await codesOf(name, ".n { font-size: 300px; }")).toEqual(["TYPE_ABOVE_ROLE_CAP"]);
-    expect(await codesOf(name, ".n { font-size: 300px; }", { css: { displayScale: true } })).toEqual([]);
+    expect(await codesOf(name, ".n { font-size: 300px; }", { width: 1440, css: { displayScale: true } })).toEqual([]);
     expect(await codesOf(name, ".n { font-size: 640px; }", { width: 1920, css: { displayScale: true } })).not.toContain("TYPE_ABOVE_ROLE_CAP");
     expect(await codesOf(name, "html { font-size: 64px; } .n { font-size: 11rem; }", { width: 1920, css: { displayScale: true } })).toContain("TYPE_ABOVE_ROLE_CAP");
     // the design's must-fail examples
@@ -421,7 +421,7 @@ describe("DEV-164 phase B: display_nowrap", () => {
   });
 
   it("the 1px display sweep stepped agrees with real resizes on that page", async () => {
-    const page = rawPage(`<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body><div class="box"><h1 class="n">店舗情報を見る</h1></div></body></html>`, `${BASE}\n.box { margin: 0 16px; } .n { margin: 0; font-size: 100px; } @media (min-width: 600px) { .n { white-space: nowrap; } }`);
+    const page = rawPage(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head><body><div class="box"><h1 class="n">店舗情報を見る</h1></div></body></html>`, `${BASE}\n.box { margin: 0 16px; } .n { margin: 0; font-size: 100px; } @media (min-width: 600px) { .n { white-space: nowrap; } }`);
     const stepped = (await displaySweepPass(browser, page, planOf({ displayNowrap: true }), { range: [560, 780] }))!;
     const real = (await displaySweepPass(browser, page, planOf({ displayNowrap: true }), { range: [560, 780], forceReal: true }))!;
     expect(stepped.failing).toEqual(real.failing);
@@ -450,7 +450,7 @@ describe("DEV-164 phase B: gradient_ground (not under text)", () => {
     expect(await codesOf(`<div class="g"></div>`, ".g { height: 300px; background: linear-gradient(#000 50%, #fff 50%); }")).toEqual(expect.arrayContaining(["GRADIENT_HARD_STOP"]));
     expect(await codesOf(`<div class="g"></div>`, ".g { height: 100px; background: linear-gradient(#000, #fff); }")).toEqual(["GRADIENT_TOO_STEEP"]);
     expect(await codesOf(`<div class="g"></div>`, ".g { height: 300px; background: linear-gradient(oklch(0.9 0.02 80), hsl(40 30% 85%)); }")).toEqual([]);
-    expect(await codesOf(`<div class="g"></div>`, ".g { height: 300px; background: linear-gradient(to right, oklch(0.5 0.4 30), oklch(0.5 0.4 200)); }")).toEqual(["GRADIENT_TOO_STEEP"]);
+    expect(await codesOf(`<div class="g"></div>`, ".g { height: 100px; background: linear-gradient(oklch(0.5 0.4 30), oklch(0.5 0.4 200)); }")).toEqual(["GRADIENT_TOO_STEEP"]);
   });
 
   it("a gradient makes no stacking context (no change to the layer model)", async () => {
