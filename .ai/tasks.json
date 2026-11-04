@@ -7515,6 +7515,7 @@
         "scripts/design-artifact/photo-swap.ts: 6枠すべての権利が通らなければ拒む、--out はリポジトリの外の新しいディレクトリだけ、画素で切る (sharp、依存は足さない)、写真｜ を alt にする、非公開の権利の記録を出力の横に書く、PC 1440・SP 390 を JS 無効・通信拒否で描く",
         "テストの画像はすべてテスト時に os.tmpdir() に作る合成の単色 PNG。画像を commit しない (35個の固定はそのまま)",
         "docs/design/tsugute-photo-request.md: 枠ごとの依頼文 (写すもの・写さないもの・向き・2倍と1.5倍の画素・SP 用の写真・権利・非公開の渡し方)",
+        "Fresh Review 1回目: 倍率は測った4つの幅と区切りの端 (600・1199・1920px、photo-slot-edges.json) で確かめる。1920px より広い画面は保証しない。検めたあとの失敗でも --out を作らない (一時の兄弟ディレクトリから名前の変更)",
         "写真の取得・生成・有料素材・外部 API は無し"
       ],
       "required_tests": [
@@ -7523,6 +7524,8 @@
       "allowed_scope": [
         "lib/design-agent/quality-pipeline/photo-slots.ts",
         "scripts/design-artifact/photo-swap.ts",
+        "scripts/design-artifact/photo-slots.ts",
+        "design-library/research/quality-pipeline/poc/tsugute/photo-slot-edges.json",
         "tests/unit/design-agent/quality-pipeline/photo-swap.test.ts",
         "docs/design/tsugute-photo-request.md",
         "docs/design/photo-intake.md",

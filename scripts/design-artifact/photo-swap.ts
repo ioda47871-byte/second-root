@@ -7,14 +7,21 @@
  * then draws it at PC 1440 and SP 390 (JavaScript off, every request outside the copy refused). The repository page
  * is not changed. Nothing is written inside the repository.
  *
- * Refuses (exit 2, nothing written) unless:
+ * Refuses (exit 2, --out not created) unless:
  *  - the page is the one the slot inventory was measured on (HTML, CSS and copy hashes);
  *  - --out is a new directory outside the repository whose parent exists;
  *  - the manifest is outside the repository or under the private .intake/;
  *  - every one of the 6 slots has a photo, and each photo opens from .intake/photos/ (no link) and passes
  *    checkPhotoRights (quality_verification) against its measured bytes;
- *  - each slot passes planSlot: 2× at every viewport (1.5–2× only with an owner exception record), the subject kept,
- *    and a separate SP photo where the PC photo's SP-shaped crops (≤1199px on this page) lose the subject.
+ *  - each slot passes planSlot: 2× (1.5–2× only with an owner exception record) at the 4 measured viewports AND at the
+ *    widest edge of each breakpoint range (mobile ≤600 at 600, tablet 601–1199 at 1199, desktop at 1920 — wider desktop
+ *    screens are not guaranteed; photo-slot-edges.json), the subject kept, and a separate SP photo where the PC
+ *    photo's SP-shaped crops (≤1199px on this page) lose the subject.
+ *
+ * All or nothing: every crop is decoded and cut and the HTML transformed in memory first; the copy is then built in a
+ * new temporary sibling of --out (same parent, outside the repository), drawn and checked (6 images loaded, every
+ * board an <img alt>, no 写真｜ left), and only then renamed to --out. Any failure removes the temporary directory and
+ * leaves --out absent.
  *
  * Crop: real pixel crops with sharp (already in node_modules through next; no dependency is added). Each photo is
  * auto-oriented (EXIF), cut to the planned rectangle, and written without its metadata (no EXIF, no GPS) as one file
@@ -32,12 +39,12 @@
  * Never calls a model, a generator or the network.
  */
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { chromium, type Browser } from "playwright";
 import { z } from "zod";
 import { checkPhotoRights, loadForbiddenSha256, resolvePrivatePhoto, toPublicPhotoRecord, type PhotoBytesInfo, type PhotoRights } from "../../lib/design-agent/quality-pipeline/photo-rights";
-import { FocalBox, planSlot, PhotoSlotInventory, type PhotoSlot, type SlotPlan, type SlotViewport } from "../../lib/design-agent/quality-pipeline/photo-slots";
+import { edgesFor, FocalBox, planSlot, PhotoSlotEdges, PhotoSlotInventory, type EdgeVariant, type PhotoSlot, type PlanViewport, type SlotPlan } from "../../lib/design-agent/quality-pipeline/photo-slots";
 
 const REPO = resolve(__dirname, "../..");
 export const PIPELINE_ROOT = join(REPO, "design-library/research/quality-pipeline");
@@ -47,19 +54,20 @@ export const CAPTION_PREFIX = "写真｜";
 
 /**
  * The breakpoints of the pinned つぐ手 CSS (style.css, hash in photo-slots.json): one crop per range. The viewport
- * whose box the crop is cut for comes first; the others in the range use the same file (object-fit: cover).
+ * whose box the crop is cut for comes first; the others in the range use the same file (object-fit: cover). The last
+ * of each is the range's widest edge (the board is largest there; a board's shape does not change inside a range).
  */
 export const RANGES = [
-  { key: "desktop", media: null, viewports: ["desktop_1440"] },
-  { key: "tablet", media: "(max-width: 1199px)", viewports: ["tablet_1024", "tablet_768"] },
-  { key: "mobile", media: "(max-width: 600px)", viewports: ["mobile_390"] },
-] as const satisfies ReadonlyArray<{ key: string; media: string | null; viewports: readonly SlotViewport[] }>;
+  { key: "desktop", media: null, viewports: ["desktop_1440", "desktop_1920"] },
+  { key: "tablet", media: "(max-width: 1199px)", viewports: ["tablet_1024", "tablet_768", "tablet_1199"] },
+  { key: "mobile", media: "(max-width: 600px)", viewports: ["mobile_390", "mobile_600"] },
+] as const satisfies ReadonlyArray<{ key: string; media: string | null; viewports: readonly PlanViewport[] }>;
 
 /**
  * Where a separate SP photo is used: every board of the pinned つぐ手 CSS takes its SP shape at ≤1199px (e.g. ph-dry
- * is 340/500 above it and 4/3 at and below it), so the SP photo serves the tablet and mobile ranges.
+ * is 340/500 above it and 4/3 at and below it), so the SP photo serves the tablet and mobile ranges, edges included.
  */
-export const TSUGUTE_SP_VIEWPORTS: readonly SlotViewport[] = ["tablet_1024", "tablet_768", "mobile_390"];
+export const TSUGUTE_SP_VIEWPORTS: readonly PlanViewport[] = ["tablet_1024", "tablet_768", "tablet_1199", "mobile_390", "mobile_600"];
 
 const RENDERS = [
   { viewport: "desktop_1440", width: 1440, height: 900 },
@@ -85,7 +93,11 @@ export const SwapManifest = z.strictObject({
         pc: PhotoRef,
         /** a separate photo for SP (≤600), when the PC photo's SP crop loses the subject */
         sp: PhotoRef.optional(),
-        /** { scale, reason, decided_by: "owner" }: lets this slot go down to that scale (≥1.5) */
+        /**
+         * { scale, reason, decided_by: "owner" }: lets this slot go down to that scale (≥1.5). One record per slot: it
+         * applies to the PC and the SP photo and to every viewport. decided_by is a statement, not a proof: the tool
+         * cannot tell who wrote it (the process keeps it the owner's).
+         */
         scale_exception: z.unknown().optional(),
       }),
     )
@@ -110,6 +122,8 @@ export type SwapOptions = {
   forbiddenSha256?: ReadonlySet<string>;
   /** draws PC 1440 and SP 390 into <out>/renders with this browser; omitted: no render */
   browser?: Browser;
+  /** tests only: a stand-in for transformHtml, to prove a late failure leaves no --out */
+  transform?: typeof transformHtml;
 };
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
@@ -141,14 +155,24 @@ function isLink(p: string) {
 
 /** The manifest names owners and consent records: it may live outside the repository or under the private .intake/. */
 export function checkManifestPath(file: string): string | null {
-  const real = realpathSync(file);
+  let real: string;
+  try {
+    real = realpathSync(file);
+  } catch {
+    return "MANIFEST_NOT_FOUND";
+  }
   if (!inside(real, realpathSync(REPO))) return null;
   return inside(real, join(realpathSync(PIPELINE_ROOT), ".intake")) ? null : "MANIFEST_IN_REPO";
 }
 
-/** The pinned slot inventory of a shop, and a refusal unless the page is exactly the page it was measured on. */
-export function loadInventory(shop: string, pageDir: string): { ok: true; inv: PhotoSlotInventory; dir: string } | { ok: false; code: string } {
+/**
+ * The pinned slot inventory of a shop and its range edges, and a refusal unless the page is exactly the page both
+ * were measured on.
+ */
+export function loadInventory(shop: string, pageDir: string): { ok: true; inv: PhotoSlotInventory; edges: Map<string, EdgeVariant[]>; dir: string } | { ok: false; code: string } {
   const inv = PhotoSlotInventory.parse(JSON.parse(readFileSync(join(REPO, `design-library/research/quality-pipeline/poc/${shop}/photo-slots.json`), "utf8")));
+  const edges = edgesFor(inv, PhotoSlotEdges.parse(JSON.parse(readFileSync(join(REPO, `design-library/research/quality-pipeline/poc/${shop}/photo-slot-edges.json`), "utf8"))));
+  if (!edges) return { ok: false, code: "EDGES_STALE" };
   let dir: string;
   try {
     dir = realpathSync(resolve(REPO, pageDir));
@@ -158,7 +182,7 @@ export function loadInventory(shop: string, pageDir: string): { ok: true; inv: P
   if (dir !== realpathSync(join(REPO, inv.page_dir))) return { ok: false, code: "PAGE_NOT_INVENTORIED" };
   const hash = (f: string) => sha(readFileSync(join(dir, f)));
   if (hash("index.html") !== inv.html_sha256 || hash("style.css") !== inv.css_sha256 || hash("copy.json") !== inv.copy_sha256) return { ok: false, code: "PAGE_CHANGED" };
-  return { ok: true, inv, dir };
+  return { ok: true, inv, edges, dir };
 }
 
 /**
@@ -186,7 +210,8 @@ export function transformHtml(html: string, slots: ReadonlyArray<{ slot: PhotoSl
       .map((r) => `<source media="${r.media}" srcset="${escapeHtml(files[r.key])}">`)
       .join("");
     const picture = `<div class="photo"><picture data-slot="${slot.slot_id}">${sources}<img src="${escapeHtml(files.desktop)}" alt="${escapeHtml(alt)}" width="${size.width}" height="${size.height}"></picture></div>`;
-    out = out.slice(0, figStart) + seg.replace(board, picture) + out.slice(figEnd);
+    // a replacer function: a replacement string would expand $&, $`, $' and $$ found in the alt text
+    out = out.slice(0, figStart) + seg.replace(board, () => picture) + out.slice(figEnd);
   }
   if (out.includes(CAPTION_PREFIX)) throw new Error("CAPTION_LEFT: 写真｜ text remains in the page");
   return out;
@@ -211,7 +236,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
   if (outCode) refusals.push({ codes: [outCode] });
   const page = loadInventory(manifest.shop, opts.pageDir);
   if (!page.ok) return { ok: false, refusals: [...refusals, { codes: [page.code] }] };
-  const { inv, dir } = page;
+  const { inv, edges, dir } = page;
 
   // all six, each once
   const ids = manifest.slots.map((s) => s.slot_id);
@@ -245,86 +270,142 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
     if (!pc || (entry.sp && !photos.some((p) => p.which === "sp"))) continue;
     const sp = photos.find((p) => p.which === "sp");
     const asInput = (p: Loaded) => ({ width: p.info.width, height: p.info.height, focal_box: p.focal_box });
-    const plan = planSlot(slot, { pc: asInput(pc), ...(sp ? { sp: asInput(sp) } : {}), ...(entry.scale_exception !== undefined ? { scale_exception: entry.scale_exception } : {}) }, { spViewports: TSUGUTE_SP_VIEWPORTS });
+    const plan = planSlot(slot, { pc: asInput(pc), ...(sp ? { sp: asInput(sp) } : {}), ...(entry.scale_exception !== undefined ? { scale_exception: entry.scale_exception } : {}) }, { spViewports: TSUGUTE_SP_VIEWPORTS, edges: edges.get(slot.slot_id) ?? [] });
     if (!plan.ok) refusals.push({ slot_id: entry.slot_id, codes: plan.codes });
     plans.push({ slot, entry, plan, photos });
   }
   if (refusals.length) return { ok: false, refusals };
 
-  // write: the private copy, the pixel crops, the sidecars
-  const sharp = (await import("sharp")).default;
+  // build: every crop and the HTML in memory first, then the copy in a temporary sibling of --out, renamed at the end
   const out = resolve(opts.out);
-  mkdirSync(out);
-  const pageOut = join(out, "page");
-  mkdirSync(join(pageOut, "photos"), { recursive: true });
-  const fileShas: Record<string, string> = {};
+  const built = await buildCopy(inv, plans, dir, opts.transform ?? transformHtml);
+  if (!built.ok) return built;
+  const { files, crops, html, css } = built;
+  let tmp: string;
+  try {
+    tmp = mkdtempSync(join(dirname(out), `.${basename(out)}.partial-`));
+  } catch {
+    return { ok: false, refusals: [{ codes: ["OUT_TEMP_FAILED"] }] };
+  }
+  try {
+    const pageOut = join(tmp, "page");
+    mkdirSync(join(pageOut, "photos"), { recursive: true });
+    for (const [name, buf] of Object.entries(files)) writeFileSync(join(pageOut, name), buf, { flag: "wx" });
+    writeFileSync(join(pageOut, "index.html"), html, { flag: "wx" });
+    writeFileSync(join(pageOut, "style.css"), css, { flag: "wx" });
+    copyFileSync(join(dir, "copy.json"), join(pageOut, "copy.json"));
+
+    const renders: RenderCheck[] = [];
+    if (opts.browser) {
+      mkdirSync(join(tmp, "renders"));
+      for (const r of RENDERS) {
+        let check: RenderCheck;
+        try {
+          check = await renderCopy(opts.browser, realpathSync(pageOut), r, inv.slots, join(tmp, "renders", `${r.viewport}.png`));
+        } catch {
+          return abort(tmp, [{ codes: ["RENDER_FAILED", `viewport:${r.viewport}`] }]);
+        }
+        const n = inv.slots.length;
+        if (!(check.images === n && check.images_loaded === n && check.boards_matched === n && !check.caption_text_left)) return abort(tmp, [{ codes: ["RENDER_CHECK_FAILED", `viewport:${r.viewport}`] }]);
+        renders.push({ ...check, file: join(out, "renders", `${r.viewport}.png`) });
+      }
+    }
+
+    const fileShas = Object.fromEntries(Object.entries(files).map(([name, buf]) => [name, sha(buf)]));
+    const summary: SwapSummary = {
+      schema: "photo_swap_summary_v0",
+      shop: manifest.shop,
+      page_dir: inv.page_dir,
+      source_hashes: { html: inv.html_sha256, css: inv.css_sha256, copy: inv.copy_sha256 },
+      copy_hashes: { html: sha(html), css: sha(css) },
+      crop_method: "pixel crop (sharp: auto-orient, extract, metadata stripped), one file per CSS breakpoint range",
+      scale_checked_at: "the 4 measured viewports and each range's widest edge (600, 1199, 1920); wider than 1920 is not guaranteed",
+      slots: plans.map(({ slot, entry, plan, photos }) => ({
+        slot_id: slot.slot_id,
+        alt: entry.alt ?? slot.role,
+        needs_sp_photo: plan.needs_sp_photo,
+        photos: photos.map((p) => ({ which: p.which, ...toPublicPhotoRecord(p.record) })),
+        scale_exception: entry.scale_exception === undefined ? null : { scale: (entry.scale_exception as { scale: number }).scale, decided_by: "owner" },
+      })),
+      crops,
+      files: fileShas,
+      renders: renders.map((r) => ({ viewport: r.viewport, sha256: r.sha256, images_loaded: r.images_loaded, caption_text_left: r.caption_text_left })),
+      owner_review_required: true,
+      note: "Not a success-case judgement. The owner looks at the renders and decides.",
+    };
+    writeFileSync(join(tmp, "swap-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, { flag: "wx" });
+    const privateSidecar = {
+      schema: "photo_swap_rights_private_v0",
+      warning: "PRIVATE: owners, consent records and paths. Never commit, never paste into an Issue or PR.",
+      slots: plans.map(({ entry, photos }) => ({ slot_id: entry.slot_id, scale_exception: entry.scale_exception ?? null, photos: photos.map((p) => ({ which: p.which, focal_box: p.focal_box, rights: p.record })) })),
+    };
+    writeFileSync(join(tmp, "rights.private.json"), `${JSON.stringify(privateSidecar, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+
+    // the last step: --out appears whole or not at all (checked again: it may have been made while this ran)
+    if (existsSync(out) || isLink(out)) return abort(tmp, [{ codes: ["OUT_EXISTS"] }]);
+    renameSync(tmp, out);
+    return { ok: true, out, summary, renders };
+  } catch {
+    return abort(tmp, [{ codes: ["WRITE_FAILED"] }]);
+  }
+}
+
+function abort(tmp: string, refusals: SwapRefusal[]): SwapResult {
+  rmSync(tmp, { recursive: true, force: true });
+  return { ok: false, refusals };
+}
+
+type Plan = { slot: PhotoSlot; entry: SwapManifest["slots"][number]; plan: SlotPlan; photos: Loaded[] };
+type Built = { ok: true; files: Record<string, Buffer>; crops: Record<string, unknown>; html: string; css: string } | { ok: false; refusals: SwapRefusal[] };
+
+/** Every crop (decoded, cut, re-encoded) and the transformed HTML, in memory. Nothing is written. */
+async function buildCopy(inv: PhotoSlotInventory, plans: Plan[], dir: string, transform: typeof transformHtml): Promise<Built> {
+  const sharp = (await import("sharp")).default;
+  const files: Record<string, Buffer> = {};
   const slotsOut: Parameters<typeof transformHtml>[1][number][] = [];
   const crops: Record<string, unknown> = {};
   for (const { slot, entry, plan, photos } of plans) {
-    const files = {} as Record<"desktop" | "tablet" | "mobile", string>;
+    const names = {} as Record<"desktop" | "tablet" | "mobile", string>;
     let size = { width: 0, height: 0 };
     for (const r of RANGES) {
       const lead = plan.byViewport[r.viewports[0]];
-      if (!lead.crop.ok) throw new Error(`unreachable: ${slot.slot_id} ${r.key} not planned`);
+      if (!lead.crop.ok) return { ok: false, refusals: [{ slot_id: slot.slot_id, codes: ["NOT_PLANNED", `range:${r.key}`] }] };
       const src = photos.find((p) => p.which === lead.source)!;
-      const oriented = await sharp(readFileSync(src.file)).rotate().toBuffer({ resolveWithObject: true });
-      if (oriented.info.width !== src.info.width || oriented.info.height !== src.info.height) throw new Error(`ORIENTATION_MISMATCH: ${slot.slot_id}`);
       const c = lead.crop.crop;
-      const left = Math.min(c.x, oriented.info.width - 1);
-      const top = Math.min(c.y, oriented.info.height - 1);
-      const rect = { left, top, width: Math.min(c.width, oriented.info.width - left), height: Math.min(c.height, oriented.info.height - top) };
+      let buf: Buffer;
+      let rect: { left: number; top: number; width: number; height: number };
       const ext = src.info.format === "png" ? "png" : "jpg";
-      const img = sharp(oriented.data).extract(rect);
-      const buf = ext === "png" ? await img.png().toBuffer() : await img.jpeg({ quality: 90 }).toBuffer();
+      try {
+        // sharp's default failOn ("warning") stops a cut-off file that passed the header and rights checks
+        const oriented = await sharp(readFileSync(src.file)).rotate().toBuffer({ resolveWithObject: true });
+        if (oriented.info.width !== src.info.width || oriented.info.height !== src.info.height) return { ok: false, refusals: [{ slot_id: slot.slot_id, photo: src.which, codes: ["ORIENTATION_MISMATCH"] }] };
+        const left = Math.min(c.x, oriented.info.width - 1);
+        const top = Math.min(c.y, oriented.info.height - 1);
+        rect = { left, top, width: Math.min(c.width, oriented.info.width - left), height: Math.min(c.height, oriented.info.height - top) };
+        const img = sharp(oriented.data).extract(rect);
+        buf = ext === "png" ? await img.png().toBuffer() : await img.jpeg({ quality: 90 }).toBuffer();
+      } catch {
+        // the decoder's message is not passed on: codes only
+        return { ok: false, refusals: [{ slot_id: slot.slot_id, photo: src.which, codes: ["PHOTO_DECODE_FAILED"] }] };
+      }
       const name = `photos/${slot.slot_id}-${r.key}.${ext}`;
-      writeFileSync(join(pageOut, name), buf, { flag: "wx" });
-      files[r.key] = name;
-      fileShas[name] = sha(buf);
+      files[name] = buf;
+      names[r.key] = name;
       if (r.key === "desktop") size = { width: rect.width, height: rect.height };
-      crops[`${slot.slot_id}/${r.key}`] = { source: lead.source, asset_id: src.record.asset_id, rect, density: lead.crop.density, scale_basis: lead.crop.scale_basis, exception_applied: lead.crop.exception_applied, kept_area: lead.kept_area };
+      const checked = Object.fromEntries(r.viewports.map((v) => [v, plan.byViewport[v]?.crop.ok ? (plan.byViewport[v]!.crop as { density: number }).density : null]));
+      crops[`${slot.slot_id}/${r.key}`] = { source: lead.source, asset_id: src.record.asset_id, rect, density: lead.crop.density, density_by_viewport: checked, scale_basis: lead.crop.scale_basis, exception_applied: lead.crop.exception_applied, kept_area: lead.kept_area };
     }
-    slotsOut.push({ slot, alt: entry.alt ?? slot.role, files, size });
+    slotsOut.push({ slot, alt: entry.alt ?? slot.role, files: names, size });
   }
-  const html = transformHtml(readFileSync(join(dir, "index.html"), "utf8"), slotsOut);
-  const css = readFileSync(join(dir, "style.css"), "utf8") + SWAP_CSS;
-  writeFileSync(join(pageOut, "index.html"), html, { flag: "wx" });
-  writeFileSync(join(pageOut, "style.css"), css, { flag: "wx" });
-  copyFileSync(join(dir, "copy.json"), join(pageOut, "copy.json"));
-
-  const renders: RenderCheck[] = [];
-  if (opts.browser) {
-    mkdirSync(join(out, "renders"));
-    for (const r of RENDERS) renders.push(await renderCopy(opts.browser, realpathSync(pageOut), r, inv.slots, join(out, "renders", `${r.viewport}.png`)));
+  let html: string;
+  try {
+    html = transform(readFileSync(join(dir, "index.html"), "utf8"), slotsOut);
+  } catch (e) {
+    const code = /^([A-Z_]+):/.exec((e as Error).message)?.[1] ?? "TRANSFORM_FAILED";
+    return { ok: false, refusals: [{ codes: [code] }] };
   }
-
-  const summary: SwapSummary = {
-    schema: "photo_swap_summary_v0",
-    shop: manifest.shop,
-    page_dir: inv.page_dir,
-    source_hashes: { html: inv.html_sha256, css: inv.css_sha256, copy: inv.copy_sha256 },
-    copy_hashes: { html: sha(html), css: sha(css) },
-    crop_method: "pixel crop (sharp: auto-orient, extract, metadata stripped), one file per CSS breakpoint range",
-    slots: plans.map(({ slot, entry, plan, photos }) => ({
-      slot_id: slot.slot_id,
-      alt: entry.alt ?? slot.role,
-      needs_sp_photo: plan.needs_sp_photo,
-      photos: photos.map((p) => ({ which: p.which, ...toPublicPhotoRecord(p.record) })),
-      scale_exception: entry.scale_exception === undefined ? null : { scale: (entry.scale_exception as { scale: number }).scale, decided_by: "owner" },
-    })),
-    crops,
-    files: fileShas,
-    renders: renders.map((r) => ({ viewport: r.viewport, sha256: r.sha256, images_loaded: r.images_loaded, caption_text_left: r.caption_text_left })),
-    owner_review_required: true,
-    note: "Not a success-case judgement. The owner looks at the renders and decides.",
-  };
-  writeFileSync(join(out, "swap-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, { flag: "wx" });
-  const privateSidecar = {
-    schema: "photo_swap_rights_private_v0",
-    warning: "PRIVATE: owners, consent records and paths. Never commit, never paste into an Issue or PR.",
-    slots: plans.map(({ entry, photos }) => ({ slot_id: entry.slot_id, scale_exception: entry.scale_exception ?? null, photos: photos.map((p) => ({ which: p.which, focal_box: p.focal_box, rights: p.record })) })),
-  };
-  writeFileSync(join(out, "rights.private.json"), `${JSON.stringify(privateSidecar, null, 2)}\n`, { flag: "wx", mode: 0o600 });
-  return { ok: true, out, summary, renders };
+  if (inv.slots.some((s) => !html.includes(`<picture data-slot="${s.slot_id}">`))) return { ok: false, refusals: [{ codes: ["BOARD_NOT_FOUND"] }] };
+  return { ok: true, files, crops, html, css: readFileSync(join(dir, "style.css"), "utf8") + SWAP_CSS };
 }
 
 /** Draws the private copy like fidelity-measure (JS off, nothing outside the copy) and checks the swap took. */
@@ -387,7 +468,7 @@ async function main(argv: string[]): Promise<number> {
       return 2;
     }
     process.stdout.write(`${JSON.stringify({ out: res.out, renders: res.renders.map((r) => ({ viewport: r.viewport, sha256: r.sha256, images_loaded: r.images_loaded, caption_text_left: r.caption_text_left })) }, null, 2)}\n`);
-    return res.renders.every((r) => r.images === 6 && r.images_loaded === 6 && r.boards_matched === 6 && !r.caption_text_left) ? 0 : 2;
+    return 0;
   } catch (e) {
     process.stderr.write(`${(e as Error).message.split("\n")[0]}\n`);
     return 2;

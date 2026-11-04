@@ -1,25 +1,30 @@
 /**
  * DEV-166: the scale rule (2×, 1.5× only with an owner exception), the separate SP photo, and the つぐ手 swap tool.
  *
- * Every picture here is SYNTHETIC: solid-colour PNGs made by code at test time under os.tmpdir(), never written to the
+ * Every picture here is SYNTHETIC: solid-colour PNGs and JPEGs made by code at test time under os.tmpdir(), never written to the
  * repository (the 35-image lock in photo-intake.test.ts stays green). The pipeline root with .intake/photos/ is a
  * temporary folder too.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadForbiddenSha256 } from "@/lib/design-agent/quality-pipeline/photo-rights";
-import { MIN_SCALE_FLOOR, planSlot, PhotoSlotInventory, requestFor, scaledCrop, variantOf, type FocalBox, type PhotoSlot } from "@/lib/design-agent/quality-pipeline/photo-slots";
-import { checkOut, swapPage, transformHtml, TSUGUTE_SP_VIEWPORTS } from "../../../../scripts/design-artifact/photo-swap";
+import { DESKTOP_CAP_PX, edgesFor, EDGE_VIEWPORTS, MIN_SCALE_FLOOR, planSlot, PhotoSlotEdges, PhotoSlotInventory, requestFor, scaledCrop, variantOf, type FocalBox, type PhotoSlot } from "@/lib/design-agent/quality-pipeline/photo-slots";
+import { checkManifestPath, checkOut, RANGES, swapPage, transformHtml, TSUGUTE_SP_VIEWPORTS } from "../../../../scripts/design-artifact/photo-swap";
+import { deriveEdges } from "../../../../scripts/design-artifact/photo-slots";
 
 const REPO = resolve(__dirname, "../../../..");
 const PAGE = "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v3";
 const INV = PhotoSlotInventory.parse(JSON.parse(readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/tsugute/photo-slots.json"), "utf8")));
+const EDGES_FILE = "design-library/research/quality-pipeline/poc/tsugute/photo-slot-edges.json";
+const EDGES = PhotoSlotEdges.parse(JSON.parse(readFileSync(join(REPO, EDGES_FILE), "utf8")));
+const EDGE_MAP = edgesFor(INV, EDGES)!;
 const slot = (id: string) => INV.slots.find((s) => s.slot_id === id)!;
+const edges = (id: string) => EDGE_MAP.get(id)!;
 const FORBIDDEN = loadForbiddenSha256(REPO);
 const NOW = "2026-11-04";
 const CENTRE: FocalBox = { x: 0.4, y: 0.4, w: 0.2, h: 0.2 };
@@ -110,33 +115,73 @@ describe("separate SP photo: when the PC photo's SP crop loses the subject", () 
   });
 });
 
+describe("range edges: the scale holds through each breakpoint range, not only at the 4 measured widths", () => {
+  it("the edges were measured on the inventoried page, in slot order", () => {
+    expect(EDGE_MAP).not.toBeNull();
+    expect(EDGES.desktop_cap_px).toBe(1920);
+    expect(DESKTOP_CAP_PX).toBe(1920);
+    expect(EDGES.slots.map((s) => s.slot_id)).toEqual(INV.slots.map((s) => s.slot_id));
+    expect(edgesFor(INV, { ...EDGES, css_sha256: "0".repeat(64) })).toBeNull();
+  });
+  it.each([
+    // measured (Fresh Review M3): boards grow inside a range
+    ["ph-ware", "mobile_390", 350, "mobile_600", 560],
+    ["ph-ware", "tablet_1024", 562, "tablet_1199", 663],
+    ["ph-ware", "desktop_1440", 600, "desktop_1920", 800],
+    ["ph-hand", "tablet_1024", 607, "tablet_1199", 719],
+    ["ph-hand", "desktop_1440", 615, "desktop_1920", 828],
+  ])("%s: %s is %ipx wide, %s %ipx", (id, at, w, edge, ew) => {
+    expect(slot(id).variants.find((v) => v.viewport === at)!.width_px).toBe(w);
+    expect(edges(id).find((v) => v.viewport === edge)!.width_px).toBe(ew);
+  });
+  it("each crop range is checked at its widest edge, and the SP photo serves the tablet and mobile edges", () => {
+    for (const r of RANGES) expect(r.viewports.some((v) => (EDGE_VIEWPORTS as readonly string[]).includes(v)), r.key).toBe(true);
+    expect(TSUGUTE_SP_VIEWPORTS).toEqual(expect.arrayContaining(["tablet_1199", "mobile_600"]));
+    expect(TSUGUTE_SP_VIEWPORTS).not.toContain("desktop_1920");
+  });
+  it("a photo 2× at the 4 measured widths but not at a range edge is refused", () => {
+    const old = requestFor(slot("ph-ware")); // the 4 points only: 1200×900
+    if (!old.ok) throw new Error("ph-ware");
+    const pc = { width: old.min_width_px, height: old.min_height_px, focal_box: CENTRE };
+    expect(planSlot(slot("ph-ware"), { pc }, { spViewports: TSUGUTE_SP_VIEWPORTS }).ok).toBe(true);
+    const p = planSlot(slot("ph-ware"), { pc }, { spViewports: TSUGUTE_SP_VIEWPORTS, edges: edges("ph-ware") });
+    expect(p.ok).toBe(false);
+    expect(p.byViewport.tablet_1024.crop.ok).toBe(true);
+    expect(p.byViewport.tablet_1199?.crop).toMatchObject({ ok: false, codes: ["SCALE_EXCEPTION_REQUIRED"] });
+    expect(p.byViewport.desktop_1440.crop.ok).toBe(true);
+    expect(p.byViewport.desktop_1920?.crop).toMatchObject({ ok: false, codes: ["SCALE_EXCEPTION_REQUIRED"] });
+  });
+});
+
 describe("the request text's numbers (docs/design/tsugute-photo-request.md §3)", () => {
   const OWNER = { ...EXCEPTION, decided_by: "owner" };
-  const plan = (id: string, w: number, h: number, exc?: unknown, box: FocalBox = CENTRE) => planSlot(slot(id), { pc: { width: w, height: h, focal_box: box }, ...(exc ? { scale_exception: exc } : {}) }, { spViewports: TSUGUTE_SP_VIEWPORTS });
+  const plan = (id: string, w: number, h: number, exc?: unknown, box: FocalBox = CENTRE) => planSlot(slot(id), { pc: { width: w, height: h, focal_box: box }, ...(exc ? { scale_exception: exc } : {}) }, { spViewports: TSUGUTE_SP_VIEWPORTS, edges: edges(id) });
   it.each([
-    ["ph-ware", 1200, 900, 900, 675],
-    ["ph-kake", 1040, 780, 780, 585],
-    ["ph-hibi", 1200, 675, 900, 507],
-    ["ph-dry", 1100, 1100, 830, 830],
-    ["ph-hand", 1240, 1240, 930, 930],
-    ["ph-desk", 870, 653, 660, 496],
-  ])("%s: the target passes at 2×, the floor only with the owner's exception, below the floor never", (id, w, h, fw, fh) => {
-    const r = requestFor(slot(id));
-    expect(r).toMatchObject({ ok: true, min_width_px: w, min_height_px: h });
+    ["ph-ware", 1610, 1208, 1210, 908],
+    ["ph-kake", 1230, 923, 920, 690],
+    ["ph-hibi", 1600, 900, 1200, 675],
+    ["ph-dry", 1300, 1300, 980, 980],
+    ["ph-hand", 1660, 1660, 1250, 1250],
+    ["ph-desk", 1030, 773, 770, 578],
+  ])("%s: the target passes at 2× (range edges included), the floor only with the owner's exception, below the floor never", (id, w, h, fw, fh) => {
+    expect(requestFor(slot(id), { edges: edges(id) })).toMatchObject({ ok: true, min_width_px: w, min_height_px: h });
+    expect(requestFor(slot(id), { edges: edges(id), scale: MIN_SCALE_FLOOR })).toMatchObject({ ok: true, min_width_px: fw, min_height_px: fh });
     expect(plan(id, w, h).ok).toBe(true);
     expect(plan(id, fw, fh).codes).toContain("SCALE_EXCEPTION_REQUIRED");
     expect(plan(id, fw, fh, OWNER).ok).toBe(true);
     expect(plan(id, Math.round(fw * 0.95), Math.round(fh * 0.95), OWNER).codes).toContain("PHOTO_BELOW_MIN_SCALE");
   });
   it("ph-dry in one square photo: a subject within 60% of the width and 70% of the height fits PC and SP", () => {
-    expect(plan("ph-dry", 1100, 1100, undefined, { x: 0.2, y: 0.15, w: 0.6, h: 0.7 })).toMatchObject({ ok: true, needs_sp_photo: false });
-    expect(plan("ph-dry", 1100, 1100, undefined, { x: 0.2, y: 0.1, w: 0.6, h: 0.8 }).codes).toEqual(["SP_PHOTO_REQUIRED"]);
+    expect(plan("ph-dry", 1300, 1300, undefined, { x: 0.2, y: 0.15, w: 0.6, h: 0.7 })).toMatchObject({ ok: true, needs_sp_photo: false });
+    expect(plan("ph-dry", 1300, 1300, undefined, { x: 0.2, y: 0.1, w: 0.6, h: 0.8 }).codes).toEqual(["SP_PHOTO_REQUIRED"]);
   });
   it("ph-dry in two photos: PC 2:3 and SP 4:3 at the target, and at the floor with the exception", () => {
-    const two = (pw: number, ph: number, sw: number, sh: number, exc?: unknown) => planSlot(slot("ph-dry"), { pc: { width: pw, height: ph, focal_box: CENTRE }, sp: { width: sw, height: sh, focal_box: CENTRE }, ...(exc ? { scale_exception: exc } : {}) }, { spViewports: TSUGUTE_SP_VIEWPORTS });
-    expect(two(640, 960, 1100, 825).ok).toBe(true);
-    expect(two(480, 720, 830, 623).codes).toEqual(["SCALE_EXCEPTION_REQUIRED"]);
-    expect(two(480, 720, 830, 623, OWNER).ok).toBe(true);
+    const two = (pw: number, ph: number, sw: number, sh: number, exc?: unknown) =>
+      planSlot(slot("ph-dry"), { pc: { width: pw, height: ph, focal_box: CENTRE }, sp: { width: sw, height: sh, focal_box: CENTRE }, ...(exc ? { scale_exception: exc } : {}) }, { spViewports: TSUGUTE_SP_VIEWPORTS, edges: edges("ph-dry") });
+    expect(two(640, 960, 1300, 975).ok).toBe(true);
+    expect(two(480, 720, 980, 735).codes).toEqual(["SCALE_EXCEPTION_REQUIRED"]);
+    expect(two(480, 720, 980, 735, OWNER).ok).toBe(true);
+    expect(two(640, 960, 1100, 825).codes).toEqual(["SCALE_EXCEPTION_REQUIRED"]); // the old 4-point target is short at 1199
   });
 });
 
@@ -156,6 +201,12 @@ describe("caption → alt text", () => {
   it("escapes the alt text", () => {
     const out = transformHtml(html, slotsIn.map((s, i) => (i === 0 ? { ...s, alt: 'a "b" <c> & d' } : s)));
     expect(out).toContain('alt="a &quot;b&quot; &lt;c&gt; &amp; d"');
+  });
+  it("puts $-patterns of the alt text in literally (no replacement-string expansion)", () => {
+    const alt = "a $` b $' c $& d $$ e $1";
+    const out = transformHtml(html, slotsIn.map((s, i) => (i === 0 ? { ...s, alt } : s)));
+    expect(out).toContain('alt="a $` b $\' c $&amp; d $$ e $1"');
+    expect(out.length).toBeLessThan(html.length + 6 * 400);
   });
   it("refuses a page whose caption is not where the pinned page has it", () => {
     expect(() => transformHtml(html.replace("写真｜縁の欠けた器", "縁の欠けた器"), slotsIn)).toThrow(/CAPTION_NOT_FOUND: ph-kake/);
@@ -180,15 +231,19 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
   /** A solid-colour PNG under the temporary .intake/photos/ and its rights record. */
   async function photo(name: string, width: number, height: number, colour: number, over: Record<string, unknown> = {}) {
     const buf = await sharp({ create: { width, height, channels: 3, background: { r: colour % 256, g: (colour * 7) % 256, b: (colour * 13) % 256 } } }).png().toBuffer();
-    writeFileSync(join(pipeline, ".intake", "photos", `${name}.png`), buf);
+    return place(`${name}.png`, buf, width, height, "png", over);
+  }
+  /** Writes synthetic bytes under the temporary .intake/photos/ and returns their rights record (shown width × height). */
+  function place(file: string, buf: Buffer, width: number, height: number, format: "png" | "jpeg", over: Record<string, unknown> = {}) {
+    writeFileSync(join(pipeline, ".intake", "photos", file), buf);
     return {
       schema: "photo_rights_v0",
-      asset_id: `photo-${name}`,
+      asset_id: `photo-${file.replace(/\.[a-z]+$/, "")}`,
       sha256: createHash("sha256").update(buf).digest("hex"),
       bytes: buf.length,
       width,
       height,
-      format: "png",
+      format,
       source_kind: "owner_provided",
       owner: "synthetic test owner",
       license: "synthetic test only",
@@ -197,17 +252,17 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
       consent_record_ref: "synthetic-consent",
       received_at: "2026-11-01",
       expiry: null,
-      private_path: `.intake/photos/${name}.png`,
+      private_path: `.intake/photos/${file}`,
       depicts_identifiable_person: false,
       depicts_real_shop: false,
       ...over,
     };
   }
-  /** The six slots, each a synthetic photo of the size requestFor asks for (2× at every viewport). */
+  /** The six slots, each a synthetic photo of the size requestFor asks for (2× at the measured viewports and range edges). */
   async function sixSlots(tag: string) {
     const out = [];
     for (const [i, s] of INV.slots.entries()) {
-      const r = requestFor(s);
+      const r = requestFor(s, { edges: edges(s.slot_id) });
       if (!r.ok) throw new Error(s.slot_id);
       out.push({ slot_id: s.slot_id, pc: { rights: await photo(`t-${tag}-${s.slot_id}`, r.min_width_px, r.min_height_px, 40 * i + 30), focal_box: CENTRE } } as Record<string, unknown>);
     }
@@ -216,6 +271,11 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
   const manifest = (slots: unknown[]) => ({ schema: "photo_swap_manifest_v0", shop: "tsugute", slots });
   const run = (slots: unknown[], out = outDir(), browser?: Browser) => swapPage({ pageDir: PAGE, manifest: manifest(slots), out, pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN, browser });
   const codesOf = (r: Awaited<ReturnType<typeof run>>) => (r.ok ? [] : r.refusals.flatMap((x) => x.codes));
+  /** --out is absent and no temporary sibling of it is left behind */
+  const nothingLeft = (out: string) => {
+    expect(existsSync(out)).toBe(false);
+    expect(readdirSync(root).filter((f) => f.includes(".partial-"))).toEqual([]);
+  };
 
   it("refuses unless all 6 slots have a photo, and writes nothing", async () => {
     const slots = await sixSlots("five");
@@ -248,7 +308,7 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
   it("refuses a photo between 1.5× and 2× without the owner's exception, and takes it with one", async () => {
     const slots = await sixSlots("scale");
     const desk = INV.slots.findIndex((s) => s.slot_id === "ph-desk");
-    const r = requestFor(slot("ph-desk"));
+    const r = requestFor(slot("ph-desk"), { edges: edges("ph-desk") });
     if (!r.ok) throw new Error("ph-desk");
     const small = await photo("t-scale-desk-small", Math.round(r.min_width_px * 0.85), Math.round(r.min_height_px * 0.85), 7);
     slots[desk] = { slot_id: "ph-desk", pc: { rights: small, focal_box: CENTRE } };
@@ -269,7 +329,7 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
     const tall = await photo("t-sp-dry-pc", 1200, 1200, 9);
     slots[dry] = { slot_id: "ph-dry", pc: { rights: tall, focal_box: { x: 0.4, y: 0.1, w: 0.2, h: 0.8 } } };
     expect(codesOf(await run(slots))).toEqual(["SP_PHOTO_REQUIRED"]);
-    slots[dry] = { ...slots[dry]!, sp: { rights: await photo("t-sp-dry-sp", 1200, 900, 10), focal_box: CENTRE } };
+    slots[dry] = { ...slots[dry]!, sp: { rights: await photo("t-sp-dry-sp", 1300, 975, 10), focal_box: CENTRE } };
     expect((await run(slots)).ok).toBe(true);
   });
 
@@ -290,6 +350,99 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
     expect(codesOf(await swapPage({ pageDir: PAGE, manifest: { ...manifest(slots), shop: "sento" }, out: outDir(), pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN }))).toEqual(["MANIFEST_INVALID"]);
   });
 
+  it("refuses a missing manifest path with a code, not a stack trace", () => {
+    expect(checkManifestPath(join(root, "no-such-manifest.json"))).toBe("MANIFEST_NOT_FOUND");
+  });
+
+  describe("all or nothing: a failure after validation leaves no --out", () => {
+    it("a truncated JPEG that passes the header and rights checks stops at decoding", async () => {
+      const slots = await sixSlots("trunc");
+      const desk = INV.slots.findIndex((s) => s.slot_id === "ph-desk");
+      const r = requestFor(slot("ph-desk"), { edges: edges("ph-desk") });
+      if (!r.ok) throw new Error("ph-desk");
+      // noise, so the scan data is long; then cut it off in the middle of the scan
+      const noise = Buffer.alloc(r.min_width_px * r.min_height_px * 3);
+      for (let i = 0; i < noise.length; i++) noise[i] = (i * 2654435761) >>> 24;
+      const full = await sharp(noise, { raw: { width: r.min_width_px, height: r.min_height_px, channels: 3 } }).jpeg({ quality: 90 }).toBuffer();
+      const cut = full.subarray(0, Math.floor(full.length * 0.6));
+      slots[desk] = { slot_id: "ph-desk", pc: { rights: place("t-trunc-desk.jpg", cut, r.min_width_px, r.min_height_px, "jpeg"), focal_box: CENTRE } };
+      const out = outDir();
+      const res = await run(slots, out);
+      expect(res.ok ? [] : res.refusals).toEqual([{ slot_id: "ph-desk", photo: "pc", codes: ["PHOTO_DECODE_FAILED"] }]);
+      nothingLeft(out);
+    });
+    it("a transformHtml failure (forced)", async () => {
+      const slots = await sixSlots("transform");
+      const out = outDir();
+      const res = await swapPage({ pageDir: PAGE, manifest: manifest(slots), out, pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN, transform: () => { throw new Error("CAPTION_NOT_FOUND: ph-kake"); } });
+      expect(codesOf(res)).toEqual(["CAPTION_NOT_FOUND"]);
+      nothingLeft(out);
+    });
+    it("a render-check failure (forced: one image does not load) and a render that throws", async () => {
+      const slots = await sixSlots("rcheck");
+      const fake = (check: Record<string, unknown> | "throw") =>
+        ({
+          newContext: async () => {
+            if (check === "throw") throw new Error("browser gone");
+            return {
+              newPage: async () => ({ route: async () => {}, goto: async () => null, evaluate: async (e: string) => (e.startsWith("document.fonts") ? true : check), screenshot: async () => Buffer.from("png") }),
+              close: async () => {},
+            };
+          },
+        }) as unknown as Browser;
+      const out = outDir();
+      const res = await run(slots, out, fake({ images: 6, images_loaded: 5, boards_matched: 6, caption_text_left: false }));
+      expect(codesOf(res)).toEqual(["RENDER_CHECK_FAILED", "viewport:desktop_1440"]);
+      nothingLeft(out);
+      const left = await run(slots, out, fake({ images: 6, images_loaded: 6, boards_matched: 6, caption_text_left: true }));
+      expect(codesOf(left)).toEqual(["RENDER_CHECK_FAILED", "viewport:desktop_1440"]);
+      nothingLeft(out);
+      expect(codesOf(await run(slots, out, fake("throw")))).toEqual(["RENDER_FAILED", "viewport:desktop_1440"]);
+      nothingLeft(out);
+    });
+  });
+
+  it("a JPEG with EXIF orientation 6, XMP, ICC and GPS: cut as shown, written with none of them", async () => {
+    const slots = await sixSlots("exif");
+    const desk = INV.slots.findIndex((s) => s.slot_id === "ph-desk");
+    const r = requestFor(slot("ph-desk"), { edges: edges("ph-desk") });
+    if (!r.ok) throw new Error("ph-desk");
+    // stored portrait (height × width), left half red and right half blue; orientation 6 shows it turned 90° clockwise
+    const [sw, sh] = [r.min_height_px, r.min_width_px];
+    const raw = Buffer.alloc(sw * sh * 3);
+    for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) raw.set(x < sw / 2 ? [220, 20, 20] : [20, 20, 220], (y * sw + x) * 3);
+    const jpg = await sharp(raw, { raw: { width: sw, height: sh, channels: 3 } })
+      .jpeg({ quality: 92 })
+      .withIccProfile("p3")
+      .withXmp('<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:creator>synthetic</dc:creator></rdf:Description></rdf:RDF></x:xmpmeta>')
+      .withExif({ IFD0: { Artist: "synthetic" }, IFD3: { GPSLatitudeRef: "N", GPSLatitude: "35/1 0/1 0/1" } })
+      .withMetadata({ orientation: 6 })
+      .toBuffer();
+    const inMeta = await sharp(jpg).metadata();
+    expect(inMeta).toMatchObject({ orientation: 6, width: sw, height: sh });
+    expect(inMeta.exif && inMeta.xmp && inMeta.icc).toBeTruthy();
+    // the GPS IFD pointer (tag 0x8825) is in the input's EXIF
+    expect(inMeta.exif!.includes(Buffer.from([0x88, 0x25])) || inMeta.exif!.includes(Buffer.from([0x25, 0x88]))).toBe(true);
+    slots[desk] = { slot_id: "ph-desk", pc: { rights: place("t-exif-desk.jpg", jpg, r.min_width_px, r.min_height_px, "jpeg"), focal_box: CENTRE } };
+    const out = outDir();
+    const res = await run(slots, out);
+    if (!res.ok) throw new Error(JSON.stringify(res.refusals));
+    for (const range of ["desktop", "tablet", "mobile"]) {
+      const file = join(out, "page", "photos", `ph-desk-${range}.jpg`);
+      const m = await sharp(file).metadata();
+      expect(m.width! > m.height!, range).toBe(true); // landscape: the rotation was applied
+      expect([m.exif, m.xmp, m.icc, m.orientation], range).toEqual([undefined, undefined, undefined, undefined]);
+      const bytes = readFileSync(file);
+      for (const marker of ["Exif\0\0", "adobe:ns:meta", "ICC_PROFILE", "synthetic"]) expect(bytes.includes(marker), `${range} ${marker}`).toBe(false);
+      // the stored left half (red) is the shown top
+      const { data, info } = await sharp(file).raw().toBuffer({ resolveWithObject: true });
+      const px = (x: number, y: number) => [...data.subarray((y * info.width + x) * info.channels, (y * info.width + x) * info.channels + 3)];
+      expect(px(Math.floor(info.width / 2), 2)[0]!, range).toBeGreaterThan(150);
+      expect(px(Math.floor(info.width / 2), info.height - 3)[2]!, range).toBeGreaterThan(150);
+    }
+    expect(statSync(join(out, "rights.private.json")).mode & 0o077).toBe(0);
+  });
+
   describe("render smoke", () => {
     let browser: Browser;
     beforeAll(async () => {
@@ -298,10 +451,20 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
     afterAll(async () => {
       await browser?.close();
     });
+    it("the committed range edges are what the page measures now (within 2px)", async () => {
+      const now = await deriveEdges(browser, INV);
+      for (const [i, s] of now.slots.entries())
+        for (const [j, v] of s.edges.entries()) {
+          const w = EDGES.slots[i]!.edges[j]!;
+          expect([s.slot_id, v.viewport]).toEqual([EDGES.slots[i]!.slot_id, w.viewport]);
+          expect(Math.abs(v.width_px - w.width_px), `${s.slot_id} ${v.viewport}`).toBeLessThanOrEqual(2);
+          expect(Math.abs(v.height_px - w.height_px), `${s.slot_id} ${v.viewport}`).toBeLessThanOrEqual(2);
+        }
+    }, 120_000);
     it("writes the private copy outside the repository, draws PC 1440 and SP 390 with every board a photo and no 写真｜ left", async () => {
       const slots = await sixSlots("render");
       const dry = INV.slots.findIndex((s) => s.slot_id === "ph-dry");
-      slots[dry] = { slot_id: "ph-dry", alt: "金の線が乾くのを待つ器", pc: { rights: await photo("t-render-dry-pc", 1200, 1200, 11), focal_box: { x: 0.4, y: 0.1, w: 0.2, h: 0.8 } }, sp: { rights: await photo("t-render-dry-sp", 1200, 900, 12), focal_box: CENTRE } };
+      slots[dry] = { slot_id: "ph-dry", alt: "金の線が乾くのを待つ器", pc: { rights: await photo("t-render-dry-pc", 1200, 1200, 11), focal_box: { x: 0.4, y: 0.1, w: 0.2, h: 0.8 } }, sp: { rights: await photo("t-render-dry-sp", 1300, 975, 12), focal_box: CENTRE } };
       const out = outDir();
       const res = await run(slots, out, browser);
       if (!res.ok) throw new Error(JSON.stringify(res.refusals));
@@ -329,6 +492,8 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
       expect(summary).not.toContain(".intake/photos");
       // the repository page is unchanged
       expect(createHash("sha256").update(readFileSync(join(REPO, PAGE, "index.html"))).digest("hex")).toBe(INV.html_sha256);
+      // nothing temporary is left beside --out
+      expect(readdirSync(root).filter((f) => f.includes(".partial-"))).toEqual([]);
     }, 120_000);
   });
 });

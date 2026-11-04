@@ -145,7 +145,7 @@ export function fitSlot(photo: { width: number; height: number }, slot: PhotoSlo
 }
 
 /** The variant a measured board gives: ratio and the 2× minimum. */
-export function variantOf(viewport: SlotViewport, width: number, height: number): SlotVariant {
+export function variantOf<V extends PlanViewport>(viewport: V, width: number, height: number): Omit<SlotVariant, "viewport"> & { viewport: V } {
   const wpx = Math.round(width);
   const hpx = Math.round(height);
   return { viewport, width_px: wpx, height_px: hpx, ratio: r3(width / height), min_width_px: Math.ceil(width * SLOT_DENSITY), min_height_px: Math.ceil(height * SLOT_DENSITY) };
@@ -162,6 +162,9 @@ export const REQUEST_ASPECTS: ReadonlyArray<readonly [number, number]> = [
   [2, 3],
 ];
 
+/** Options of requestFor: the range-edge boxes to hold too, and the scale to size for (2×, or the 1.5× floor). */
+export type RequestOptions = { edges?: readonly EdgeVariant[]; scale?: number };
+
 export type PhotoRequest =
   | { ok: true; aspect: string; min_width_px: number; min_height_px: number; worst_kept_area: number }
   | { ok: false; code: "NO_SINGLE_SHAPE"; note: string };
@@ -171,18 +174,19 @@ export type PhotoRequest =
  * MIN_KEPT_AREA), the one that keeps the most in its worst viewport, and the least size for which no viewport
  * falls below its 2× minimum. A slot whose PC and SP shapes are too far apart for one photo says so.
  */
-export function requestFor(slot: PhotoSlot): PhotoRequest {
+export function requestFor(slot: PhotoSlot, opts: RequestOptions = {}): PhotoRequest {
+  const variants: AnyVariant[] = [...slot.variants, ...(opts.edges ?? [])].map((v) => atScale(v, opts.scale ?? SLOT_DENSITY));
   const keep = (r: number, t: number) => Math.min(r, t) / Math.max(r, t);
   const desktop = slot.variants.find((v) => v.viewport === "desktop_1440") ?? slot.variants[0]!;
-  const target = (v: SlotVariant) => v.width_px / v.height_px;
-  const scored = REQUEST_ASPECTS.map(([a, b]) => ({ a, b, r: a / b, worst: Math.min(...slot.variants.map((v) => keep(a / b, target(v)))) }))
+  const target = (v: Pick<SlotVariant, "width_px" | "height_px">) => v.width_px / v.height_px;
+  const scored = REQUEST_ASPECTS.map(([a, b]) => ({ a, b, r: a / b, worst: Math.min(...variants.map((v) => keep(a / b, target(v)))) }))
     .filter((c) => c.worst >= MIN_KEPT_AREA)
     .sort((x, y) => y.worst - x.worst || Math.abs(Math.log(x.r / target(desktop))) - Math.abs(Math.log(y.r / target(desktop))));
   const best = scored[0];
   if (!best) return { ok: false, code: "NO_SINGLE_SHAPE", note: "no common shape keeps half of the photo at every viewport: ask for one photo per viewport" };
-  // the least width W (height W / r) whose cover crop meets each viewport's 2× minimum
+  // the least width W (height W / r) whose cover crop meets each viewport's minimum at that scale
   let width = 0;
-  for (const v of slot.variants) {
+  for (const v of variants) {
     const t = target(v);
     const w = best.r > t ? Math.max(v.min_height_px, v.min_width_px / t) * best.r : Math.max(v.min_width_px, v.min_height_px * t);
     width = Math.max(width, w);
@@ -194,7 +198,9 @@ export function requestFor(slot: PhotoSlot): PhotoRequest {
 /*
  * DEV-166 (Issue #193 comment 6623100651; owner, 2026-11-04 item 3): the scale rule and the separate SP photo.
  *
- * Scale: a photo must cover its board at 2× (MIN_SCALE_DEFAULT) at every viewport. Between 1.5× and 2× it is accepted
+ * Scale: a photo must cover its board at 2× (MIN_SCALE_DEFAULT) at each viewport it is checked at — the 4 measured
+ * viewports, and, when the range edges are given (planSlot's `edges`), the widest edge of each breakpoint range, which
+ * holds the scale through the whole range up to DESKTOP_CAP_PX (not wider). Between 1.5× and 2× it is accepted
  * only with an exception record the owner decided ({ scale, reason, decided_by: "owner" }), and only down to the
  * scale that record names. Below 1.5× (MIN_SCALE_FLOOR) it is always refused, exception or not.
  *
@@ -204,6 +210,57 @@ export function requestFor(slot: PhotoSlot): PhotoRequest {
  * (kept_area < MIN_KEPT_AREA) — the slot needs its own SP photo, used at those viewports.
  */
 export const MIN_SCALE_DEFAULT = SLOT_DENSITY;
+
+/*
+ * Range edges (DEV-166 Fresh Review M3). The 4 measured viewports are points; a board grows inside each CSS breakpoint
+ * range (つぐ手: ph-ware is 350px wide at 390 and 560px at 600). A rule "2× at 390" therefore does not hold at 600.
+ * The edge variants are the boards measured at the widest edge of each range — mobile ≤600 at 600, tablet 601–1199
+ * at 1199, desktop at a stated cap (1920) — kept per shop in poc/<shop>/photo-slot-edges.json next to the pinned
+ * inventory (scripts/design-artifact/photo-slots.ts --edges). Checking them as well holds the scale through each
+ * whole range, on a page whose boards only grow with the window inside a range (measured for つぐ手). Wider than the
+ * desktop cap is not guaranteed: the desktop boards keep growing.
+ */
+export const EDGE_VIEWPORTS = ["mobile_600", "tablet_1199", "desktop_1920"] as const;
+export type EdgeViewport = (typeof EDGE_VIEWPORTS)[number];
+export type PlanViewport = SlotViewport | EdgeViewport;
+/** The window each edge is measured at (the height does not change a board's box on the pages measured). */
+export const EDGE_WINDOWS: Record<EdgeViewport, { width: number; height: number }> = {
+  mobile_600: { width: 600, height: 900 },
+  tablet_1199: { width: 1199, height: 900 },
+  desktop_1920: { width: 1920, height: 1080 },
+};
+/** The widest window the desktop scale is checked at: wider screens are not guaranteed. */
+export const DESKTOP_CAP_PX = EDGE_WINDOWS.desktop_1920.width;
+export const EdgeVariant = SlotVariant.extend({ viewport: z.enum(EDGE_VIEWPORTS) });
+export type EdgeVariant = z.infer<typeof EdgeVariant>;
+type AnyVariant = SlotVariant | EdgeVariant;
+
+export const PhotoSlotEdges = z
+  .strictObject({
+    schema: z.literal("photo_slot_edges_v0"),
+    shop: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/),
+    page_dir: z.string().regex(/^design-library\/research\/quality-pipeline\/poc\/[a-z0-9/_.-]+$/).refine((p) => !p.split("/").includes(".."), "no .."),
+    /** the same page as photo-slots.json: equal hashes, or the edges are stale */
+    html_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    css_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    copy_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    derived_by: z.literal("scripts/design-artifact/photo-slots.ts --edges"),
+    desktop_cap_px: z.literal(DESKTOP_CAP_PX),
+    slots: z
+      .array(z.strictObject({ slot_id: z.string().regex(/^ph-[a-z0-9-]{1,40}$/), edges: z.array(EdgeVariant).length(EDGE_VIEWPORTS.length) }))
+      .min(1)
+      .max(40),
+  })
+  .refine((e) => e.slots.every((s) => EDGE_VIEWPORTS.every((v, i) => s.edges[i]?.viewport === v)), "edges in EDGE_VIEWPORTS order");
+export type PhotoSlotEdges = z.infer<typeof PhotoSlotEdges>;
+
+/** The edge variants of each slot, or null when the edges were not measured on the inventory's page. */
+export function edgesFor(inv: PhotoSlotInventory, edges: PhotoSlotEdges): Map<string, EdgeVariant[]> | null {
+  if (edges.shop !== inv.shop || edges.page_dir !== inv.page_dir || edges.html_sha256 !== inv.html_sha256 || edges.css_sha256 !== inv.css_sha256 || edges.copy_sha256 !== inv.copy_sha256) return null;
+  const ids = inv.slots.map((s) => s.slot_id);
+  if (edges.slots.length !== ids.length || edges.slots.some((s, i) => s.slot_id !== ids[i])) return null;
+  return new Map(edges.slots.map((s) => [s.slot_id, s.edges]));
+}
 export const MIN_SCALE_FLOOR = 1.5;
 /**
  * The viewports a separate SP photo replaces the PC photo at, by default the phone only. A page whose CSS gives its
@@ -232,14 +289,14 @@ export type ScaledCrop =
   | (Extract<Crop, { ok: true }> & { scale_basis: number; exception_applied: boolean })
   | { ok: false; codes: ScaleCode[]; kept_area?: number; density?: number };
 
-const atScale = (v: SlotVariant, s: number): SlotVariant =>
-  s === MIN_SCALE_DEFAULT ? v : { ...v, min_width_px: Math.ceil(v.width_px * s), min_height_px: Math.ceil(v.height_px * s) };
+const atScale = <T extends AnyVariant>(v: T, s: number): T =>
+  s === SLOT_DENSITY ? v : { ...v, min_width_px: Math.ceil(v.width_px * s), min_height_px: Math.ceil(v.height_px * s) };
 
 /**
  * coverCrop under the scale rule: 2× passes; 1.5–2× passes only with a valid owner exception whose scale the crop
  * meets; below 1.5× never passes. An exception record that is not valid is refused even when the photo is 2×.
  */
-export function scaledCrop(photo: { width: number; height: number }, v: SlotVariant, focal: Focal, exception?: unknown): ScaledCrop {
+export function scaledCrop(photo: { width: number; height: number }, v: AnyVariant, focal: Focal, exception?: unknown): ScaledCrop {
   let exc: ScaleException | undefined;
   if (exception !== undefined) {
     const p = ScaleException.safeParse(exception);
@@ -270,24 +327,27 @@ export type SlotPlan = {
   codes: SlotPlanCode[];
   /** the PC photo loses its subject in the SP crop: an SP photo is required (true even when one was given) */
   needs_sp_photo: boolean;
-  byViewport: Record<SlotViewport, { source: "pc" | "sp"; crop: ScaledCrop; subject_kept: boolean; kept_area: number }>;
+  /** the 4 measured viewports always; the range edges when they were given */
+  byViewport: Record<SlotViewport, SlotViewportPlan> & Partial<Record<EdgeViewport, SlotViewportPlan>>;
 };
+export type SlotViewportPlan = { source: "pc" | "sp"; crop: ScaledCrop; subject_kept: boolean; kept_area: number };
 
 /**
  * Plans one slot: the PC photo for every viewport, or, at SP, the separate SP photo when one is given. Refuses a
  * crop that cuts the subject (FOCAL_SUBJECT_CROPPED), and asks for an SP photo when the PC photo's SP crop loses it.
  */
-export function planSlot(slot: PhotoSlot, photos: { pc: SlotPhoto; sp?: SlotPhoto; scale_exception?: unknown }, opts: { spViewports?: readonly SlotViewport[] } = {}): SlotPlan {
-  const spViewports = opts.spViewports ?? SP_VIEWPORTS_DEFAULT;
+export function planSlot(slot: PhotoSlot, photos: { pc: SlotPhoto; sp?: SlotPhoto; scale_exception?: unknown }, opts: { spViewports?: readonly PlanViewport[]; edges?: readonly EdgeVariant[] } = {}): SlotPlan {
+  const spViewports: readonly PlanViewport[] = opts.spViewports ?? SP_VIEWPORTS_DEFAULT;
+  const variants: AnyVariant[] = [...slot.variants, ...(opts.edges ?? [])];
   const codes = new Set<SlotPlanCode>();
   let needsSp = false;
   const byViewport = {} as SlotPlan["byViewport"];
   const valid = (p: SlotPhoto) => [p.width, p.height].every((n) => Number.isFinite(n) && n > 0) && FocalBox.safeParse(p.focal_box).success;
   if (!valid(photos.pc) || (photos.sp && !valid(photos.sp))) {
-    for (const v of slot.variants) byViewport[v.viewport] = { source: "pc", crop: { ok: false, codes: ["BAD_INPUT"] }, subject_kept: false, kept_area: 0 };
+    for (const v of variants) byViewport[v.viewport] = { source: "pc", crop: { ok: false, codes: ["BAD_INPUT"] }, subject_kept: false, kept_area: 0 };
     return { ok: false, codes: ["BAD_INPUT"], needs_sp_photo: false, byViewport };
   }
-  for (const v of slot.variants) {
+  for (const v of variants) {
     const isSp = spViewports.includes(v.viewport);
     const source = isSp && photos.sp ? "sp" : "pc";
     const photo = source === "sp" ? photos.sp! : photos.pc;
