@@ -170,7 +170,8 @@ export function stopCodesOf(value: string, w: number, h: number): string[] {
 }
 
 /**
- * The same page with wider font metrics (test-only, reproduces a CI-like font): the faces the shop pages name are
+ * The same page with wider font metrics (test-only; approximates CI's metrics in this container, no effect where IPA
+ * fonts are absent, since the faces come from src: local("IPAMincho") / local("IPAGothic")): the faces the shop pages name are
  * re-declared from the same local files with a content area of 1.45em (ascent 116 %, descent 29 %, like Noto Sans CJK)
  * instead of the container's IPA fonts' 1.0em. Glyphs and advances do not change; only the Range rects of text grow
  * above and below the line. Raw CSS (an @font-face the allowlist refuses): for measuring only, never a page the run checks.
