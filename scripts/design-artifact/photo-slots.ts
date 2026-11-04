@@ -2,12 +2,17 @@
  * DEV-163 (Issue #193 comment 6601921731, decision 3) — OFFLINE research measure. Uses no photo.
  *
  *   npx tsx scripts/design-artifact/photo-slots.ts --shop <shop> --page <dir> [--out <photo-slots.json>]
+ *   npx tsx scripts/design-artifact/photo-slots.ts --edges --shop <shop> --page <dir> [--out <photo-slot-edges.json>]
  *
  * Draws a research fidelity page (C) at 1440, 1024, 768 and 390 with JavaScript off and every request outside the
  * page's own directory refused, finds each placeholder board (the box next to a caption that starts with 写真｜), and
  * records its layout size at each width as a slot inventory (lib/design-agent/quality-pipeline/photo-slots.ts).
  * The caption's copy-record id becomes the slot id. The page's HTML, CSS and copy hashes are recorded so that a
  * changed page is measured again (tests/unit/design-agent/quality-pipeline/photo-intake.test.ts compares).
+ *
+ * --edges (DEV-166): the same boards at the widest edge of each CSS breakpoint range (600, 1199, and the desktop cap
+ * 1920; EDGE_WINDOWS), kept beside the inventory as photo-slot-edges.json with the same page hashes. A board grows
+ * inside its range, so the scale rule is checked there too (photo-swap.test.ts compares).
  *
  * Nothing is written but --out (a new file). Exit: 0 inventory, 2 refused. Never calls a model, a generator or the
  * network.
@@ -16,7 +21,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { chromium, type Browser } from "playwright";
-import { PhotoSlotInventory, SLOT_DENSITY, SLOT_VIEWPORTS, variantOf, type PhotoSlot, type SlotViewport } from "../../lib/design-agent/quality-pipeline/photo-slots";
+import { DESKTOP_CAP_PX, EDGE_VIEWPORTS, EDGE_WINDOWS, PhotoSlotEdges, PhotoSlotInventory, SLOT_DENSITY, SLOT_VIEWPORTS, variantOf, type PhotoSlot, type SlotViewport } from "../../lib/design-agent/quality-pipeline/photo-slots";
 
 const REPO = resolve(__dirname, "../..");
 const RESEARCH = join(REPO, "design-library/research/quality-pipeline/poc");
@@ -28,7 +33,7 @@ const SIZES: Record<SlotViewport, { width: number; height: number }> = {
 };
 const LABEL = "写真｜";
 
-type Found = { label: string; section: string; board_class: string; board_selector: string; svg: boolean; width: number; height: number };
+export type Found = { label: string; section: string; board_class: string; board_selector: string; svg: boolean; width: number; height: number };
 
 /** Runs in the page (the harness's evaluate; the page's own JS is off). */
 const FIND = String.raw`(label) => {
@@ -76,7 +81,12 @@ const FIND = String.raw`(label) => {
 }`;
 
 async function findBoards(browser: Browser, dir: string, v: SlotViewport): Promise<Found[]> {
-  const ctx = await browser.newContext({ viewport: SIZES[v], deviceScaleFactor: 1, javaScriptEnabled: false, serviceWorkers: "block" });
+  return measureBoards(browser, dir, SIZES[v]);
+}
+
+/** The placeholder boards of the page in `dir` (a real path) drawn at one window size, in page order. */
+export async function measureBoards(browser: Browser, dir: string, size: { width: number; height: number }): Promise<Found[]> {
+  const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: 1, javaScriptEnabled: false, serviceWorkers: "block" });
   try {
     const page = await ctx.newPage();
     const base = `file://${dir}${sep}`;
@@ -144,6 +154,34 @@ export async function deriveSlots(browser: Browser, shop: string, pageDir: strin
   });
 }
 
+/** The boards of an inventoried page at the range edges, in the inventory's slot order (same board, same selector). */
+export async function deriveEdges(browser: Browser, inv: PhotoSlotInventory): Promise<PhotoSlotEdges> {
+  const dir = realpathSync(join(REPO, inv.page_dir));
+  if (!(dir + sep).startsWith(realpathSync(RESEARCH) + sep)) throw new Error("REFUSED: the page is outside the research tree");
+  if (sha(join(dir, "index.html")) !== inv.html_sha256 || sha(join(dir, "style.css")) !== inv.css_sha256 || sha(join(dir, "copy.json")) !== inv.copy_sha256) throw new Error("REFUSED: the page is not the inventoried page");
+  const at = {} as Record<(typeof EDGE_VIEWPORTS)[number], Found[]>;
+  for (const v of EDGE_VIEWPORTS) at[v] = await measureBoards(browser, dir, EDGE_WINDOWS[v]);
+  return PhotoSlotEdges.parse({
+    schema: "photo_slot_edges_v0",
+    shop: inv.shop,
+    page_dir: inv.page_dir,
+    html_sha256: inv.html_sha256,
+    css_sha256: inv.css_sha256,
+    copy_sha256: inv.copy_sha256,
+    derived_by: "scripts/design-artifact/photo-slots.ts --edges",
+    desktop_cap_px: DESKTOP_CAP_PX,
+    slots: inv.slots.map((s, i) => ({
+      slot_id: s.slot_id,
+      edges: EDGE_VIEWPORTS.map((v) => {
+        const b = at[v][i];
+        if (!b || b.label !== `${LABEL}${s.role}` || b.board_selector !== s.board_selector) throw new Error(`REFUSED: ${s.slot_id} is not the same board at ${v}`);
+        if (b.width <= 0 || b.height <= 0) throw new Error(`REFUSED: ${s.slot_id} has no size at ${v}`);
+        return variantOf(v, b.width, b.height);
+      }),
+    })),
+  });
+}
+
 async function main(argv: string[]): Promise<number> {
   const arg = (k: string) => {
     const i = argv.indexOf(k);
@@ -156,7 +194,8 @@ async function main(argv: string[]): Promise<number> {
   if (out && existsSync(out)) return (process.stderr.write("REFUSED: --out exists\n"), 2);
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
   try {
-    const text = `${JSON.stringify(await deriveSlots(browser, shop, pageDir), null, 2)}\n`;
+    const data = argv.includes("--edges") ? await deriveEdges(browser, await deriveSlots(browser, shop, pageDir)) : await deriveSlots(browser, shop, pageDir);
+    const text = `${JSON.stringify(data, null, 2)}\n`;
     if (out) writeFileSync(out, text, { flag: "wx" });
     else process.stdout.write(text);
     return 0;
