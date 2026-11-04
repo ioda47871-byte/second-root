@@ -472,6 +472,20 @@ describe("DEV-164 phase B: display_nowrap", () => {
     expect(stepped.failing).toEqual(real.failing);
     expect(stepped.failing.length).toBeGreaterThan(0);
   });
+
+  it("the 1px display sweep reports a width of its range that no run measured as PHASE_B_UNMEASURED (DEV-169: the wiring, not only unmeasuredWidths)", async () => {
+    // mediaSegments stops at 1920, so a range reaching past it leaves 1921–1923 to no run: only the call from
+    // displaySweepPass to unmeasuredWidths can report them (the page itself passes at every width it measures)
+    const page = rawPage(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head><body><h1 class="n">店舗情報を見る</h1></body></html>`, `${BASE}\n.n { margin: 0; white-space: nowrap; font-size: 32px; }`);
+    for (const forceReal of [false, true]) {
+      const r = (await displaySweepPass(browser, page, planOf({ displayNowrap: true }), { range: [1916, 1923], forceReal }))!;
+      expect(r.targets).toBe(1);
+      expect(r.failing).toEqual([1921, 1922, 1923].map((w) => ({ w, codes: ["PHASE_B_UNMEASURED"] })));
+      expect(phaseBCheck([], r)).toMatchObject({ ok: false, codes: ["PHASE_B_UNMEASURED"] });
+    }
+    // the same page over a range the segments cover: nothing unmeasured, nothing failing
+    expect((await displaySweepPass(browser, page, planOf({ displayNowrap: true }), { range: [1916, 1920] }))!.failing).toEqual([]);
+  });
 });
 
 describe("DEV-164 phase B: gradient_ground (not under text)", () => {
