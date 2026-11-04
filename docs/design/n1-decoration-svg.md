@@ -13,6 +13,8 @@
 - 有効にする前に、他のブラウザでの安全を確かめる (4.1)。この container では Chromium しか確かめられない。
 - 有効にする前に、段 C の守りの条件 (守る文字・事実に重ならない、描く順) を確かめる (7)。
 
+**DEV-174 (2026-11-04) の追加。** 実装の準備 (段 C の文字の守りとの結合の試作、資産ごとのオーナーの記録の schema 2、`decoration-review.ts`) は `docs/design/n1-implementation-prep.md` にある。これも研究だけで、N1 は有効にしていない。
+
 ## 1. 何を許したいか
 
 3店の忠実な実装 C の核は、文字を持たない大きな装飾の図だった (`expressive-allowlist-proposal.md` の N1)。
