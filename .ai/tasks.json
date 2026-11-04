@@ -7926,7 +7926,7 @@
     {
       "id": "DEV-173",
       "title": "段C: 安全な重なり・描画順・レイヤー (position・z-index・負の margin など)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-172"
@@ -7966,19 +7966,19 @@
         "本番への反映",
         "本番の CSS ゲートの変更を含む PR の merge"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 設計は docs/design/phase-c-design.md (能力 layered_decoration、旗 layeredDecoration、既定 OFF。lib の変更の概要は §8 で HOLD)。テストは phase-c-overlap.test.ts、道具は overlap-harness.ts (描画の検査と文法の試作はテストの中だけ)。本番のコードの差 0。今は旗なし・段 B の旗すべてで重ねの形を1つも通さない。試作は落ちるべき 43 例をすべて落とし、通るべき 9 例を通す (Fresh Review・CI の書体・再レビュー4回を直した後。字形の箱は墨の箱、測れない字形・フィルターは fail closed)。3店の strict B に層を足した版は 320〜1920 の全幅で strict と同じコード、C′ は確かめる幅のすべてで落ちる。得は小さい (曲線・形・影・巨大な語は N1・段 D が要る)。DEV-172 (PR #212) が develop に merge された (7cbc956) ので review に上げた。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 設計は docs/design/phase-c-design.md (能力 layered_decoration、旗 layeredDecoration、既定 OFF。lib の変更の概要は §8 で HOLD)。テストは phase-c-overlap.test.ts、道具は overlap-harness.ts (描画の検査と文法の試作はテストの中だけ)。本番のコードの差 0。今は旗なし・段 B の旗すべてで重ねの形を1つも通さない。試作は落ちるべき 43 例をすべて落とし、通るべき 9 例を通す (Fresh Review・CI の書体・再レビュー4回を直した後。字形の箱は墨の箱、測れない字形・フィルターは fail closed)。3店の strict B に層を足した版は 320〜1920 の全幅で strict と同じコード、C′ は確かめる幅のすべてで落ちる。得は小さい (曲線・形・影・巨大な語は N1・段 D が要る)。DEV-172 (PR #212) が develop に merge された (7cbc956) ので review に上げた。 PR #213 で develop へ merge した (7f5e2ac)。"
     },
     {
       "id": "DEV-174",
       "title": "N1: 装飾 SVG の実装準備 (段C の文字保護と結合。img に限る)",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-173"
       ],
       "attempts": 0,
       "last_failure": null,
-      "branch": null,
+      "branch": "feature/dev-174-n1-svg-prep",
       "purpose": "DEV-162/165 の SHA・厳しい構文検査・資産ごとのオーナーの目視の記録と、段C の文字保護をつなぐ (Issue #193 コメント 6628165899 (2026-11-04、オーナーの後続計画))",
       "acceptance_criteria": [
         "img に限る。文字・スクリプト・外への通信は不可",
@@ -8012,7 +8012,7 @@
         "オーナーの目視の記録の承認",
         "N1 を ON にすること"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 準備の枝 feature/dev-174-n1-svg-prep (DEV-173 の枝 cd6af99 から): docs/design/n1-implementation-prep.md、研究の decoration-review.ts (資産ごとのオーナーの記録 schema 2: 資産と描いた絵の sha256・描画系・pending のみ Claude が書く・承認は証明の検証器が要り、今は無いので何も通らない)、テスト n1-owner-review・n1-phase-c-join (img の装飾を段 C の試作に通す: 落ちるべき 10 例すべて落ち、通るべき 4 例と掃引の版はコード 0。透明な部分は箱で落とす、幅で伸びる img は 899px で終わる1つの帯 (この container の書体で 849–899px) だけ掃引が見つける)。comp-impl の差 0、APPROVED_CAPABILITIES は空、記録は 0。WebKit・Firefox は BLOCKED。comp-impl の変更は HOLD (文書 §7)。DEV-173 (PR #213) が develop に merge された (7f5e2ac) ので、develop を merge して review に上げた。N1 の ON は段 C の通過とオーナーの承認まで禁止。 Fresh Review (PR #214、C0/H0/M1/L6): M1 checkN1Asset が呼ぶ側の絵を検めずに使っていた穴を、読んだバイト列から自分で描く形に直した (偽の絵の sha256 を拒むテスト)。L1 書体に依る下の端 849 を固定しない。L2〜L6 は .ai/reviews/DEV-174.md。"
     },
     {
       "id": "DEV-175",

@@ -27,6 +27,8 @@ const REPO = resolve(__dirname, "../../../..");
 const MODULE = "lib/design-agent/research/decoration-svg.ts";
 const BROWSER_MODULE = "lib/design-agent/research/decoration-page-browser.ts";
 const FIXTURES_MODULE = "lib/design-agent/research/decoration-fixtures.ts";
+/** DEV-174: the per-asset owner record (schema 2) and its preview renderer. */
+const REVIEW_MODULE = "lib/design-agent/research/decoration-review.ts";
 /** DEV-165: the phase C layer harness imports comp-impl, so it is test support, not a lib/ module (comp-impl isolation). */
 const LAYERS_MODULE = "tests/support/decoration-layers.ts";
 const PROBE_SCRIPT = "scripts/design-artifact/n1-browser-probe.ts";
@@ -598,18 +600,22 @@ describe("isolation: research only, imported by nothing in a lane", () => {
   it("the browser verification imports only node:fs, node:path, playwright and the checker", () => {
     expect(specifiers(readFileSync(resolve(REPO, BROWSER_MODULE), "utf8")).sort()).toEqual(["./decoration-svg", "node:fs", "node:path", "playwright"]);
   });
+  it("DEV-174: the owner record module imports only node:crypto, playwright (a type) and the checker", () => {
+    expect(specifiers(readFileSync(resolve(REPO, REVIEW_MODULE), "utf8")).sort()).toEqual(["./decoration-svg", "node:crypto", "playwright"]);
+    expect(readFileSync(resolve(REPO, REVIEW_MODULE), "utf8")).toMatch(/^import type \{ Browser \} from "playwright";$/m);
+  });
   it("the fixtures import nothing; the layer harness imports only playwright types, comp-impl and the checker; the probe only node, playwright, sharp and research", () => {
     expect(specifiers(readFileSync(resolve(REPO, FIXTURES_MODULE), "utf8"))).toEqual([]);
     expect(specifiers(readFileSync(resolve(REPO, LAYERS_MODULE), "utf8")).sort()).toEqual(["../../lib/design-agent/comp-impl/layers", "../../lib/design-agent/comp-impl/page-css", "../../lib/design-agent/comp-impl/page-scripts", "../../lib/design-agent/comp-impl/render", "../../lib/design-agent/comp-impl/verify", "../../lib/design-agent/research/decoration-svg", "playwright"]);
     expect(specifiers(readFileSync(resolve(REPO, PROBE_SCRIPT), "utf8")).sort()).toEqual(["../../lib/design-agent/research/decoration-fixtures", "../../lib/design-agent/research/decoration-svg", "node:fs", "node:path", "playwright", "sharp"]);
   });
   // the fixtures hold hostile SVG text by design (a `fetch(` inside an SVG string); they import and run nothing
-  it.each([MODULE, BROWSER_MODULE, LAYERS_MODULE, PROBE_SCRIPT])("no network, process or model code in %s", (file) => {
+  it.each([MODULE, BROWSER_MODULE, REVIEW_MODULE, LAYERS_MODULE, PROBE_SCRIPT])("no network, process or model code in %s", (file) => {
     expect(readFileSync(resolve(REPO, file), "utf8")).not.toMatch(/\brequire\s*[([]|import\s*\(|node:(https?|net|tls|child_process|worker_threads|vm)|\/worker\/|anthropic|openai|\bspawn\(|execFile|process\.binding|\bfetch\(|codex|\beval\(|new Function/i);
   });
   it("nothing outside tests imports them (lib, app, components, scripts) but the research probe script, which nothing imports", () => {
-    const RESEARCH = [MODULE, BROWSER_MODULE, FIXTURES_MODULE];
-    const r = spawnSync("git", ["grep", "-l", "-E", "research/decoration-(svg|page-browser|fixtures|layers)", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
+    const RESEARCH = [MODULE, BROWSER_MODULE, FIXTURES_MODULE, REVIEW_MODULE];
+    const r = spawnSync("git", ["grep", "-l", "-E", "research/decoration-(svg|page-browser|fixtures|layers|review)", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
     // the modules' own headers name their test, so git grep finds at least those files: status 0, never a vacuous empty
     // stdout from a git that failed (status 1 = no match at all, 128 = error)
     expect(r.error).toBeUndefined();
@@ -618,7 +624,7 @@ describe("isolation: research only, imported by nothing in a lane", () => {
     expect(hits).toContain(MODULE);
     expect(hits).toContain(PROBE_SCRIPT);
     expect(hits.filter((h) => !RESEARCH.includes(h) && h !== PROBE_SCRIPT)).toEqual([]);
-    const other = spawnSync("git", ["grep", "-l", "-E", "decoration-(page-browser|fixtures|layers)", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
+    const other = spawnSync("git", ["grep", "-l", "-E", "decoration-(page-browser|fixtures|layers|review)", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
     expect(other.status).toBe(0);
     expect(other.stdout.split("\n").filter(Boolean).filter((h) => !RESEARCH.includes(h) && h !== PROBE_SCRIPT)).toEqual([]);
     // the probe is a research CLI: no lane, script or page imports it (its own header names it, and so does the fixtures'
@@ -630,9 +636,9 @@ describe("isolation: research only, imported by nothing in a lane", () => {
     expect(probeHits).toContain(PROBE_SCRIPT);
     expect(probeHits.filter((h) => !RESEARCH.includes(h) && h !== PROBE_SCRIPT)).toEqual([]);
   });
-  it("the research directory holds only the checker, its browser verification and the fixtures (the layer harness is test support)", () => {
+  it("the research directory holds only the checker, its browser verification, the fixtures and the owner record module (the layer harness is test support)", () => {
     const r = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "--", "lib/design-agent/research"], { cwd: REPO, encoding: "utf8" });
-    expect(r.stdout.split("\n").filter(Boolean).sort()).toEqual([BROWSER_MODULE, FIXTURES_MODULE, MODULE].sort());
+    expect(r.stdout.split("\n").filter(Boolean).sort()).toEqual([BROWSER_MODULE, FIXTURES_MODULE, MODULE, REVIEW_MODULE].sort());
   });
   it("the layer harness (it imports comp-impl) stays in tests/: no lib, app, components or scripts file names it, and only the N1 research test imports it", () => {
     const outside = spawnSync("git", ["grep", "-l", "-E", "decoration-layers", "--", "lib", "app", "components", "scripts"], { cwd: REPO, encoding: "utf8" });
