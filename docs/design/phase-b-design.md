@@ -110,6 +110,7 @@
   - `url()` を混ぜる
   - `image-set("a.png" 1x)`・`-webkit-image-set(...)`。**文字列の形で外へ読みに行けるので、字句の段の `url` の拒否 (`CSS_SYNTAX_URL`) では止まらない** (今は値の文法で `CSS_VALUE`/`CSS_PROPERTY` として落ちている)。`background-image` を許すときに、関数の許可一覧を2つのグラデーションだけにして落とす
   - `repeating-linear-gradient`
+- **検証 (DEV-172):** 文法の拒否・不透明な止め・文字に載らないこと (コントラストでなく重なりで落とす)・止めの規則の端・幅の掃引・3店の比較画像は `docs/design/gradient-ground-decision.md`。能力は OFF のまま。
 
 ### 2.5 `translucent_decoration`
 
