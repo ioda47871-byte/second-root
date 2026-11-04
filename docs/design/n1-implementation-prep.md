@@ -5,9 +5,9 @@
 - `lib/design-agent/comp-impl/**` (本番の実装レーンと CSS ゲート) の差は 0 行。`APPROVED_CAPABILITIES` は `[]` のまま。`CAPABILITY_NAMES` に N1 の名前を足していない。
 - 足したのは研究のモジュール `lib/design-agent/research/decoration-review.ts` (どのレーンからも import されない。テストで固定) と、テスト2本 (`tests/unit/design-agent/research/n1-owner-review.test.ts`・`n1-phase-c-join.test.ts`) である。`decoration-svg.ts` は関数を2つ export しただけで、挙動は変えていない。
 - **オーナーの目視の記録は、リポジトリに1つも無い。** 承認 (`approved`) の記録は、テストのメモリの中の印付きの fixture だけである。Claude はどの資産も承認済みにしていないし、できない (§3)。
-- **DEV-174 は DEV-173 (段 C、PR #213、review) に依る。** 段 C が通り、オーナーが承認するまで、N1 を ON にしてはならない。
+- **DEV-174 は DEV-173 (段 C の研究、PR #213、develop に merge 済み `7f5e2ac`) に依る。** merge されたのは研究 (テストの中の試作と設計) であり、段 C の lib の変更 (`phase-c-design.md` §8) は HOLD のまま。段 C が本番の道で通り、オーナーが承認するまで、N1 を ON にしてはならない。
 
-土台: `docs/design/n1-decoration-svg.md` (DEV-162・DEV-165: 構文の検査・ページの許可一覧・sha256・`owner_visual_review`・他のブラウザのプローブ・§7 の C-1〜C-8)、`docs/design/phase-c-design.md` (DEV-173: V2 描く順・V4 守る文字・板・1px の掃引)、`tests/unit/design-agent/comp-impl/overlap-harness.ts` (段 C の試作)。
+土台: `docs/design/n1-decoration-svg.md` (DEV-162・DEV-165: 構文の検査・ページの許可一覧・sha256・`owner_visual_review`・他のブラウザのプローブ・§7 の C-1〜C-8)、`docs/design/phase-c-design.md` (DEV-173: V2 描く順・V4 守る文字・板・1px の掃引)、`tests/unit/design-agent/comp-impl/overlap-harness.ts` (段 C の試作。develop `7f5e2ac` の最終版: 字形の箱は墨の箱、測れない字形・フィルターは fail closed、落ちるべき 43 例・通るべき 9 例)。
 
 ## 0. 先に結論
 
@@ -65,7 +65,7 @@
 
 **通るべき例 (結合のすべてでコード 0、画素でもコード 0):** 流れの中で文字から離れた `<img>` / 溝の上、上に描くが字形に届かない / 普通の本文が自分の不透明な持ち上げた板に乗り、その下の `<img>` / 2つの資産 (継ぎ目と車輪)。ほかに、幅で伸びる例の溝を 360px にした版は、段 C の 1px の掃引 (320〜1920) でコード 0 (掃引したのは段 C の検査だけ)。
 
-**変異 (壊して確かめた。戻した):** 段 C の試作で `<img>` を「描くもの」から外すと、`<img>` に依る落ちるべき例 9 件がすべて落ちる (画面の外の例は `<img>` に依らないので残る)。`overlap-harness.ts` は変えていない (確かめた後に元へ戻し、`git status` で差 0)。
+**変異 (壊して確かめた。戻した):** 段 C の試作で `<img>` を「描くもの」から外すと、`<img>` に依る落ちるべき例 9 件がすべて落ちる (画面の外の例は `<img>` に依らないので残る)。`overlap-harness.ts` は変えていない (確かめた後に元へ戻し、`git status` で差 0)。develop `7f5e2ac` の最終版の試作でも同じ変異をやり直し、同じ 9 件が落ちた。
 
 ### 1.3 資産ごとのオーナーの目視の記録 (schema 2、`decoration-review.ts`)
 
@@ -178,7 +178,7 @@ DEV-165 の `owner_visual_review` (5つのキー、ファイルの sha256 に結
 
 ## 7. 後で有効にする手順 (どれも、前の段とオーナーの承認が要る)
 
-1. DEV-173 (段 C) の review を終え、`phase-c-design.md` §8 の lib の変更 (HOLD) をオーナーが承認し、別の PR で実装し、最新の head の CI と独立の Fresh Review の後に merge する。
+1. DEV-173 (段 C の研究) は PR #213 で develop に merge 済み (`7f5e2ac`)。残りは、`phase-c-design.md` §8 の lib の変更 (HOLD) をオーナーが承認し、別の PR で実装し、最新の head の CI と独立の Fresh Review の後に merge する。
 2. §4 の 1〜8 をオーナーが決める。
 3. comp-impl の変更の PR (この PR では HOLD。`lib/design-agent/comp-impl/**` を変えるので、別の承認が要る):
    1. `spec.ts`: `CAPABILITY_NAMES` に `decoration_svg` (仮)。`APPROVED_CAPABILITIES` は空のまま。旗は宣言と承認の両方で立つ (`pageCssOptionsOf` と同じ形)。
