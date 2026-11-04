@@ -1,0 +1,479 @@
+import type { Browser, BrowserContext, Page } from "playwright";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { cssProblems, htmlSourceProblems } from "@/lib/design-agent/comp-impl/page";
+import type { PageCssOptions } from "@/lib/design-agent/comp-impl/page-css";
+import { GEOMETRY_SCRIPT, GeometrySchema } from "@/lib/design-agent/comp-impl/page-scripts";
+import { layerScan, openCompPage } from "@/lib/design-agent/comp-impl/render";
+import { APPROVED_CAPABILITIES, CAPABILITY_NAMES } from "@/lib/design-agent/comp-impl/spec";
+import { layerCodes } from "@/lib/design-agent/comp-impl/verify";
+import { launch } from "./support";
+import { SHOPS, type ShopKey } from "./nowrap-harness";
+import {
+  inventory,
+  INVENTORY_CATEGORIES,
+  LAYER_CSS,
+  layeredCssProblems,
+  layeredDecl,
+  overlapCodes,
+  overlapPage,
+  overlapScan,
+  overlapSweep,
+  pixelPass,
+  shopPlan,
+  sweepRanges,
+  type OverlapPlan,
+  type Opener,
+} from "./overlap-harness";
+
+// DEV-173 (Issue #193 comment 6628165899): phase C — safe overlap, paint order and layers (docs/design/phase-c-design.md).
+// DESIGN AND OFFLINE VERIFICATION ONLY. Nothing in lib/ changes and nothing is enabled: APPROVED_CAPABILITIES stays empty,
+// no capability or PageCssOptions key is added, and the run never sees the prototype. These tests hold:
+// 1. today, with every flag off and with every phase B flag on, the production grammar refuses every overlap construct,
+//    and the run's layer scan stops the C′ pages (STACKING_CONTEXT, PSEUDO_GEOMETRY_UNKNOWN);
+// 2. the proposed grammar (test-only wrapper around pageCssProblems) admits exactly its list behind its flag and
+//    changes nothing without it;
+// 3. the proposed render check (test-only prototype, overlap-harness.ts) catches decoration or other text over or under
+//    protected text and covers over ordinary text — z-index, negative margins, transforms, absolute siblings,
+//    pseudo-elements, outlines, shadows, filters, text on text, blend modes, pointer-events: none, isolation tricks,
+//    atomic painting, grid stacking — passes layered decoration that touches no glyph, fails closed where it cannot
+//    prove the order, and agrees with Chromium's own pixels where both can see;
+// 4. the three shops: the strict B pages, the B pages with layers in the proposed grammar, and the C′ pages, at the
+//    checked widths, in the pixel pass and over the 1px sweep 320–1920.
+
+vi.setConfig({ testTimeout: 900_000, hookTimeout: 300_000 });
+
+const SHOP_KEYS = Object.keys(SHOPS) as ShopKey[];
+const ALL_B: PageCssOptions = { verticalName: true, displayScale: true, displayNowrap: true, colourSyntax: true, gradientGround: true, translucentDecoration: true };
+const FACT = "000-0000-0712";
+const PLAN: OverlapPlan = { protect: [FACT], ordinary: "plate" };
+const CHECKED = [1440, 1280, 1024, 768, 601, 600, 480, 390, 375, 360, 340, 320] as const;
+
+let browser: Browser;
+let raw: BrowserContext;
+let tab: Page;
+beforeAll(async () => {
+  browser = await launch();
+  raw = await browser.newContext({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1, javaScriptEnabled: false });
+  await raw.route("**/*", (route) => route.abort());
+  tab = await raw.newPage();
+});
+afterAll(async () => {
+  await raw?.close();
+  await browser?.close();
+});
+
+const BASE = '* { margin: 0; padding: 0; } body { font-family: "IPAGothic", sans-serif; font-size: 20px; line-height: 1.6; color: #1F1D1B; background: #fff; } .wrap { position: relative; padding: 40px; }';
+async function load(body: string, css: string, width = 800) {
+  await tab.setViewportSize({ width, height: 600 });
+  await tab.setContent(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${BASE}\n${css}</style></head><body>${body}</body></html>`);
+}
+async function geo(body: string, css: string, plan: OverlapPlan = PLAN, width = 800) {
+  await load(body, css, width);
+  return overlapCodes(await overlapScan(tab, plan));
+}
+const open: Opener = async (b, p, w) => {
+  const o = await openCompPage(b, p, { width: w, height: 900, scale: 1, mobile: false });
+  return { page: o.page, close: () => o.context.close() };
+};
+
+// ---------------------------------------------------------------- 1. today: everything is refused
+
+/** Declarations of every overlap / layering construct (the inventory's categories), each refused today. */
+const CONSTRUCTS = [
+  "position: absolute",
+  "position: relative",
+  "position: fixed",
+  "position: sticky",
+  "top: 0",
+  "left: 10px",
+  "inset: 0",
+  "z-index: 1",
+  "z-index: -1",
+  "margin-top: -20px",
+  "margin: 0 -10px",
+  "transform: rotate(3deg)",
+  "transform: translate(10px, 0)",
+  "translate: 10px",
+  "rotate: 3deg",
+  "isolation: isolate",
+  "pointer-events: none",
+  "overflow: hidden",
+  "overflow-x: clip",
+  "mix-blend-mode: multiply",
+  "clip-path: inset(0)",
+  "mask-image: none",
+  "filter: drop-shadow(0 4px 4px #000)",
+  "backdrop-filter: blur(2px)",
+  "outline: 1px solid #000",
+  "box-shadow: 0 4px 8px #000",
+  "text-shadow: 0 0 2px #000",
+  "-webkit-text-stroke: 1px #000",
+  "will-change: transform",
+  "contain: paint",
+  "grid-column: 1 / 3",
+  "grid-area: 1 / 1",
+];
+
+describe("DEV-173 phase C stays OFF (the production checker today)", () => {
+  it("approves nothing and names no phase C capability", () => {
+    expect(APPROVED_CAPABILITIES).toEqual([]);
+    expect(CAPABILITY_NAMES as readonly string[]).not.toContain("layered_decoration");
+    expect(CAPABILITY_NAMES.some((c) => /layer|overlap|magazine|hero_overlay/.test(c))).toBe(false);
+  });
+
+  it("refuses every overlap construct with every flag off, with vertical_name, and with every phase B flag on", () => {
+    for (const d of CONSTRUCTS)
+      for (const opts of [{}, { verticalName: true }, ALL_B] as PageCssOptions[]) {
+        const p = cssProblems(`.x { ${d}; }`, opts);
+        expect(p.length, `${d} ${JSON.stringify(opts)}`).toBeGreaterThan(0);
+      }
+    // pseudo-elements: the selector itself is refused
+    for (const sel of [".x::before", ".x::after", ".x:before"]) expect(cssProblems(`${sel} { color: #000; }`, ALL_B)).toContain("CSS_PSEUDO_ELEMENT");
+    // opacity < 1 is the one layering property a phase B flag admits (translucent_decoration), and only that
+    expect(cssProblems(".x { opacity: .5; }")).toContain("CSS_VALUE");
+    expect(cssProblems(".x { opacity: .5; }", { translucentDecoration: true })).toEqual([]);
+  });
+
+  it("refuses the three C′ pages (stylesheet with every flag, inline SVG in the HTML) and the three layer pages without the proposed flag", () => {
+    for (const shop of SHOP_KEYS) {
+      const c = overlapPage(shop, "cprime");
+      for (const opts of [{}, ALL_B] as PageCssOptions[]) {
+        // as written it stops at the lexical stage (tsugute: Japanese in comments and font names, CSS_SYNTAX_NON_ASCII;
+        // bicycle: a ">" in a comment, CSS_SYNTAX_ANGLE_BRACKET; sento: url(#…) SVG paint, CSS_SYNTAX_URL); with comments,
+        // non-ASCII and url() taken out, the property check is reached and refuses it too
+        expect(cssProblems(c.css, opts)).toEqual([{ tsugute: "CSS_SYNTAX_NON_ASCII", bicycle: "CSS_SYNTAX_ANGLE_BRACKET", sento: "CSS_SYNTAX_URL" }[shop]]);
+        const p = cssProblems(c.css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/[^\x00-\x7f]/g, "x").replace(/url\([^)]*\)/g, "none"), opts);
+        expect(p, `${shop} ${JSON.stringify(opts)}`).toContain("CSS_PROPERTY");
+        expect(p).toContain("CSS_PSEUDO_ELEMENT");
+        expect(p).toContain("CSS_VIEWPORT_UNIT");
+      }
+      expect(htmlSourceProblems(c.html)).toContain("HTML_ELEMENT");
+      const l = overlapPage(shop, "layer");
+      expect(htmlSourceProblems(l.html)).toEqual([]);
+      for (const opts of [{}, ALL_B] as PageCssOptions[]) expect(cssProblems(l.css, opts).length, shop).toBeGreaterThan(0);
+    }
+  });
+
+  it("the run's layer scan stops every C′ page and every layer page today (STACKING_CONTEXT; PSEUDO_GEOMETRY_UNKNOWN where C′ draws pseudo-elements)", async () => {
+    for (const shop of SHOP_KEYS)
+      for (const v of ["layer", "cprime"] as const) {
+        const o = await openCompPage(browser, overlapPage(shop, v), { width: 1440, height: 900, scale: 1, mobile: false });
+        try {
+          const codes = layerCodes(await layerScan(o.page, []));
+          expect(codes, `${shop} ${v}`).toContain("STACKING_CONTEXT");
+          if (v === "cprime" && shop !== "bicycle") expect(codes).toContain("PSEUDO_GEOMETRY_UNKNOWN");
+        } finally {
+          await o.context.close();
+        }
+      }
+  });
+});
+
+// ---------------------------------------------------------------- 2. the proposed grammar
+
+describe("DEV-173 the proposed grammar (test-only prototype of layered_decoration)", () => {
+  const ADMITTED = [
+    "position: absolute",
+    "position: relative",
+    "top: -40px",
+    "left: 46%",
+    "right: 2rem",
+    "inset: 0",
+    "inset: 0 auto auto 10px",
+    "z-index: -1",
+    "z-index: 9",
+    "isolation: isolate",
+    "transform: rotate(-38deg)",
+    "transform: translate(10px, -4%)",
+    "transform: translateY(-20px) rotate(4deg)",
+    "transform-origin: top center",
+    "margin-top: -150px",
+    "margin: 0 -10px",
+    "overflow-x: clip",
+    "overflow: hidden",
+  ];
+  const REFUSED = [
+    "position: fixed",
+    "position: sticky",
+    "top: 10vw",
+    "top: calc(10% - 4px)",
+    "left: 3000px",
+    "z-index: 10",
+    "z-index: -2",
+    "transform: rotate(60deg)",
+    "transform: scale(2)",
+    "transform: skewX(4deg)",
+    "transform: matrix(1, 0, 0, 1, 0, 0)",
+    "transform: rotate(4deg) rotate(4deg) rotate(4deg) rotate(4deg)",
+    "transform: perspective(100px)",
+    "translate: 10px",
+    "margin-top: -500px",
+    "overflow: scroll",
+    "pointer-events: none",
+    "mix-blend-mode: multiply",
+    "clip-path: inset(0)",
+    "filter: blur(2px)",
+    "outline: 1px solid #000",
+    "box-shadow: 0 4px 8px #000",
+    "text-shadow: 0 0 2px #000",
+    "-webkit-text-stroke: 1px #000",
+    "will-change: transform",
+    "contain: paint",
+    "grid-area: 1 / 1",
+  ];
+
+  it("without the flag it is exactly the production grammar", () => {
+    for (const d of [...ADMITTED, ...REFUSED, ...CONSTRUCTS]) expect(layeredCssProblems(`.x { ${d}; }`), d).toEqual(cssProblems(`.x { ${d}; }`));
+    for (const shop of SHOP_KEYS) for (const v of ["strict", "layer", "cprime"] as const) expect(layeredCssProblems(overlapPage(shop, v).css)).toEqual(cssProblems(overlapPage(shop, v).css));
+  });
+
+  it("with the flag it admits its list and nothing else (pseudo-elements, viewport units, blend, clip, filters, outlines, outer shadows, pointer-events stay refused)", () => {
+    for (const d of ADMITTED) {
+      expect(layeredDecl(d.split(":")[0]!, d.slice(d.indexOf(":") + 1)), d).toBe(true);
+      expect(layeredCssProblems(`.x { ${d}; }`, { layeredDecoration: true }), d).toEqual([]);
+    }
+    for (const d of REFUSED) expect(layeredCssProblems(`.x { ${d}; }`, { layeredDecoration: true }).length, d).toBeGreaterThan(0);
+    expect(layeredCssProblems(".x::before { position: absolute; }", { layeredDecoration: true })).toContain("CSS_PSEUDO_ELEMENT");
+  });
+
+  it("the three layer pages pass with the flag (HTML through the allowlist unchanged); their extra CSS uses nothing outside the list", () => {
+    for (const shop of SHOP_KEYS) {
+      expect(layeredCssProblems(overlapPage(shop, "layer").css, { layeredDecoration: true }), shop).toEqual([]);
+      expect(cssProblems(LAYER_CSS[shop]).length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ---------------------------------------------------------------- 3. the render check on synthetic probes
+
+const F = `<p class="f">${FACT}</p>`;
+const O = `<p class="o">線の引き方を相談します</p>`;
+const D = `<div class="d" aria-hidden="true"></div>`;
+type Probe = { name: string; body: string; css: string; expect: string; pixel: string | null };
+/** Each must fail with `expect` (the prototype); `pixel` is what the pixel pass sees (null: nothing — its blind spot). */
+const PROBES: Probe[] = [
+  { name: "z-index: a 5% cover", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 60px; top: 44px; width: 40px; height: 20px; background: rgba(200, 0, 0, .05); }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "z-index: a 2% cover (under the pixel bound)", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 60px; top: 44px; width: 40px; height: 20px; background: rgba(0, 0, 0, .02); }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: null },
+  { name: "negative margin: a positioned card pulled up over the fact", body: `<div class="wrap">${F}<div class="card"><p>次の区画</p></div></div>`, css: ".card { position: relative; margin-top: -24px; padding-top: 40px; background: #f4efe6; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "transform: a translated empty block (a stacking context over in-flow text)", body: `<div class="wrap">${F}${D}</div>`, css: ".d { height: 12px; width: 120px; background: #ddd; transform: translate(10px, -24px); }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "absolute sibling, z-index auto", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; left: 50px; top: 46px; width: 60px; height: 14px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "pseudo-element: a 3% veil (::after, inset 0)", body: `<div class="wrap">${F}</div>`, css: ".wrap::after { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, .03); }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "pseudo-element: a solid bar (::before)", body: `<div class="wrap">${F}</div>`, css: ".wrap::before { content: ''; position: absolute; left: 40px; top: 50px; width: 200px; height: 4px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "outline spreading from a far box", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; left: 400px; top: 40px; width: 10px; height: 10px; outline: 300px solid rgba(0, 0, 0, .04); }", expect: "OVERLAP_PROTECTED_ORDER_UNPROVEN", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "box-shadow spreading from a far box", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 400px; top: 40px; width: 10px; height: 10px; box-shadow: 0 0 0 300px rgba(0, 0, 0, .04); }", expect: "OVERLAP_PROTECTED_ORDER_UNPROVEN", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "drop-shadow filter reaching the fact", body: `<div class="wrap">${F}<div class="board"></div></div>`, css: ".board { height: 40px; width: 200px; background: #ccc; filter: drop-shadow(0 -30px 6px rgba(0, 0, 0, .3)); }", expect: "OVERLAP_PROTECTED_ORDER_UNPROVEN", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "text over text: ordinary text lifted over the fact", body: `<div class="wrap">${F}<p class="o2">上に重ねた文字</p></div>`, css: ".o2 { position: absolute; z-index: 1; left: 50px; top: 40px; }", expect: "OVERLAP_PROTECTED_TEXT_ON_TEXT", pixel: null },
+  { name: "text under text: an aria-hidden ghost word below the fact", body: `<div class="wrap">${F}<p class="g" aria-hidden="true">継ぐ</p></div>`, css: ".wrap { isolation: isolate; } .g { position: absolute; z-index: -1; left: 40px; top: 10px; font-size: 90px; color: #eee; }", expect: "OVERLAP_PROTECTED_TEXT_ON_TEXT", pixel: "PIXEL_PROTECTED_GROUND_NOT_FLAT" },
+  { name: "a 1px line across the digits, above", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 1; left: 40px; top: 55px; width: 300px; height: 1px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "a 1px line across the digits, below (z-index -1, isolated)", body: `<div class="wrap">${F}${D}</div>`, css: ".wrap { isolation: isolate; } .d { position: absolute; z-index: -1; left: 40px; top: 55px; width: 300px; height: 1px; background: #c79a45; }", expect: "OVERLAP_PROTECTED_ON_DECORATION", pixel: "PIXEL_PROTECTED_GROUND_NOT_FLAT" },
+  { name: "an SVG stroke across the fact", body: `<div class="wrap">${F}<svg class="s" viewBox="0 0 300 40" aria-hidden="true"><path d="M0 20 C100 0 200 40 300 20" fill="none" stroke="#c79a45" stroke-width="2"/></svg></div>`, css: ".s { position: absolute; z-index: 1; left: 40px; top: 36px; width: 300px; height: 40px; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "clipped: an overflow box cuts the fact", body: `<div class="wrap"><div class="c">${F}</div></div>`, css: ".c { overflow: hidden; width: 80px; } .f { white-space: nowrap; }", expect: "OVERLAP_PROTECTED_CLIPPED", pixel: null },
+  { name: "clipped: clip-path on an ancestor", body: `<div class="wrap"><div class="c">${F}</div></div>`, css: ".c { clip-path: inset(0 50% 0 0); }", expect: "OVERLAP_PROTECTED_CLIPPED", pixel: null },
+  { name: "off screen: pulled left by a negative margin", body: `<div class="wrap">${F}</div>`, css: ".f { margin-left: -200px; }", expect: "OVERLAP_PROTECTED_OFFSCREEN", pixel: null },
+  { name: "mix-blend-mode: difference over the fact", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 1; left: 40px; top: 40px; width: 80px; height: 32px; background: #fff; mix-blend-mode: difference; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "pointer-events: none on the cover (hit-testing would skip it)", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 40px; top: 40px; width: 80px; height: 32px; background: #000; pointer-events: none; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "isolation trap: z-index -1 inside an isolated group that is itself above", body: `<div class="wrap">${F}<div class="grp">${D}</div></div>`, css: ".grp { position: absolute; inset: 0; z-index: 1; isolation: isolate; } .d { position: absolute; z-index: -1; left: 40px; top: 40px; width: 80px; height: 32px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "opacity: an earlier translucent sibling pulled under the text paints above it", body: `<div class="wrap">${D}${F}</div>`, css: ".d { opacity: .9; height: 20px; margin-bottom: -20px; background: #ddd; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  // the fact overflows its own box sideways; hit-testing does not list it outside that box, so the order is unproven (closed)
+  { name: "atomic painting: a later flex item over an earlier item's overflowing text", body: `<div class="wrap"><div class="row"><div class="a">${F}</div><div class="b"></div></div></div>`, css: ".row { display: flex; } .a { flex: none; width: 60px; white-space: nowrap; } .b { flex: none; width: 100px; height: 32px; margin-left: 10px; background: #ddd; }", expect: "OVERLAP_PROTECTED_ORDER_UNPROVEN", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "atomic painting: a later flex item pulled back over an earlier item's text", body: `<div class="wrap"><div class="row"><div class="a">${F}</div><div class="b"></div></div></div>`, css: ".row { display: flex; } .a { flex: none; white-space: nowrap; } .b { flex: none; width: 100px; height: 12px; align-self: center; margin-left: -120px; background: #ddd; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "grid stacking: a later item on the same cell", body: `<div class="wrap"><div class="g">${F}<div class="b"></div></div></div>`, css: ".g { display: grid; } .g > * { grid-area: 1 / 1; } .b { background: #ddd; height: 10px; align-self: center; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "ordinary text covered", body: `<div class="wrap">${O}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 60px; top: 46px; width: 40px; height: 16px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_TEXT", pixel: "PIXEL_COVER_TEXT" },
+  { name: "ordinary text over a decoration with no plate", body: `<div class="wrap">${O}${D}</div>`, css: ".wrap { isolation: isolate; } .d { position: absolute; z-index: -1; left: 40px; top: 55px; width: 300px; height: 3px; background: #c79a45; }", expect: "OVERLAP_TEXT_ON_DECORATION", pixel: null },
+];
+
+/** Each must pass: layered decoration that touches no glyph, or sits under a plate. */
+const LEGIT: Array<{ name: string; body: string; css: string; plan?: OverlapPlan }> = [
+  { name: "an under-layer seam in the gutter between two columns", body: `<div class="wrap cols"><div>${F}</div><div>${O}</div>${D}</div>`, css: ".cols { display: grid; grid-template-columns: 1fr 1fr; column-gap: 60px; isolation: isolate; } .d { position: absolute; z-index: -1; top: 0; bottom: 0; left: calc(50% - 2px); width: 4px; background: #c79a45; }" },
+  { name: "a decoration above, clear of every glyph", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 400px; top: 40px; width: 60px; height: 60px; background: #c79a45; }" },
+  { name: "a line under the fact, hidden by the fact's own opaque plate", body: `<div class="wrap">${F}${D}</div>`, css: ".f { display: inline-block; position: relative; z-index: 2; background: #fff; padding: 0 2px; } .d { position: absolute; z-index: 1; left: 0; right: 0; top: 55px; height: 3px; background: #c79a45; }" },
+  { name: "a line under ordinary text, hidden by a plate on its block", body: `<div class="wrap">${O}${D}</div>`, css: ".o { display: inline-block; position: relative; z-index: 2; background: #fff; } .d { position: absolute; z-index: 1; left: 0; right: 0; top: 55px; height: 3px; background: #c79a45; }" },
+  { name: "decoration drawn over an image only", body: `<div class="wrap">${F}<div class="board"><img alt="" width="200" height="100" src="data:,"><div class="crack" aria-hidden="true"></div></div></div>`, css: ".board { position: relative; width: 200px; height: 100px; background: #ccc; } .crack { position: absolute; left: 90px; top: 10px; width: 4px; height: 80px; background: #c79a45; transform: rotate(16deg); }" },
+  { name: "a turned bar whose box meets the fact but whose paint does not", body: `<div class="wrap">${F}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 220px; top: 20px; width: 4px; height: 90px; background: #c79a45; transform: rotate(40deg); transform-origin: top center; }" },
+  { name: "an SVG curve whose box covers the fact but whose stroke passes clear", body: `<div class="wrap">${F}<svg class="s" viewBox="0 0 300 120" aria-hidden="true"><path d="M0 4 L300 4 L300 116" fill="none" stroke="#c79a45" stroke-width="2"/></svg></div>`, css: ".s { position: absolute; z-index: 1; left: 30px; top: 0; width: 300px; height: 120px; }" },
+  { name: "a content card with a negative margin over empty space only", body: `<div class="wrap">${F}<div class="pad"></div><div class="card"><p>次の区画</p></div></div>`, css: ".pad { height: 80px; } .card { position: relative; z-index: 1; margin-top: -60px; background: #f4efe6; }" },
+  { name: "ordinary text over a decoration, with ordinary: allow", body: `<div class="wrap">${O}${D}</div>`, css: ".wrap { isolation: isolate; } .d { position: absolute; z-index: -1; left: 40px; top: 55px; width: 300px; height: 3px; background: #c79a45; }", plan: { protect: [FACT], ordinary: "allow" } },
+];
+
+describe("DEV-173 the render check (prototype) on synthetic probes", () => {
+  const matrix: string[] = [];
+  afterAll(() => console.log(`DEV-173 probe matrix (probe | prototype | pixel | lib V2 covers / non-content | lib hit-test)\n${matrix.join("\n")}`));
+
+  it.each(PROBES)("fails: $name", async (p) => {
+    await load(p.body, p.css);
+    const g = overlapCodes(await overlapScan(tab, PLAN));
+    expect(g, p.name).toContain(p.expect);
+    await load(p.body, p.css);
+    const px = Object.keys((await pixelPass(tab, PLAN)).codes).sort();
+    if (p.pixel) expect(px, `${p.name} pixel`).toContain(p.pixel);
+    else expect(px.filter((c) => c.startsWith("PIXEL_COVER")), `${p.name} pixel blind spot`).toEqual([]);
+    // what today's run-side scripts would say on the same raw HTML (informative: the allowlist refuses all of it first)
+    await load(p.body, p.css);
+    const scan = await layerScan(tab, [FACT]);
+    const hit = GeometrySchema.parse(await tab.evaluate(`(${GEOMETRY_SCRIPT})(${JSON.stringify({ facts: [FACT], from: 800, to: 800, step: false })})`));
+    matrix.push(`${p.name} | ${g.join(",")} | ${px.join(",") || "-"} | ${scan.covers.count}/${scan.nonContentOverlap.fact} | ${[...new Set(hit.failing.flatMap((f) => f.codes))].join(",") || "-"}`);
+  });
+
+  it.each(LEGIT)("passes: $name", async (l) => {
+    await load(l.body, l.css);
+    expect(overlapCodes(await overlapScan(tab, l.plan ?? PLAN)), l.name).toEqual([]);
+    await load(l.body, l.css);
+    const px = await pixelPass(tab, l.plan ?? PLAN);
+    expect(Object.keys(px.codes), `${l.name} pixel`).toEqual([]);
+  });
+
+  it("the plate is exact: translucent, too small, below the decoration, or a ground with an image is not a plate", async () => {
+    const base = ".d { position: absolute; z-index: 1; left: 0; right: 0; top: 55px; height: 3px; background: #c79a45; }";
+    expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { display: inline-block; position: relative; z-index: 2; background: #fff; padding: 0 2px; } ${base}`)).toEqual([]);
+    // the plate must hold the protected glyph boxes grown by 1 px (V4): a plate flush with the first and last glyph is short
+    expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { display: inline-block; position: relative; z-index: 2; background: #fff; } ${base}`)).toContain("OVERLAP_PROTECTED_ON_DECORATION");
+    expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { display: inline-block; position: relative; z-index: 2; background: rgba(255, 255, 255, .9); padding: 0 2px; } ${base}`)).toContain("OVERLAP_PROTECTED_ON_DECORATION");
+    expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { display: inline-block; position: relative; z-index: 0; background: #fff; padding: 0 2px; } ${base}`)).toContain("OVERLAP_PAINT_ABOVE_PROTECTED");
+    expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { display: inline-block; position: relative; z-index: 2; background: linear-gradient(#fff, #fff); padding: 0 2px; } ${base}`)).toContain("OVERLAP_PROTECTED_ON_DECORATION");
+    // a plate on an ancestor that holds the glyphs, lifted as a unit
+    expect(await geo(`<div class="wrap"><div class="card">${F}</div>${D}</div>`, `.card { position: relative; z-index: 2; background: #fff; padding: 4px; } ${base}`)).toEqual([]);
+    // the fact's own ground with no lift: the line (positioned, z-index 1) paints above the fact itself
+    expect(await geo(`<div class="wrap">${F}${D}</div>`, `.f { background: #fff; } ${base}`)).toContain("OVERLAP_PAINT_ABOVE_PROTECTED");
+  });
+
+  it("fails closed: a pseudo-element whose content is not a string, and paint the order cannot be proven for", async () => {
+    await load(`<div class="wrap">${F}</div>`, ".wrap::after { content: counter(x); position: absolute; left: 40px; top: 40px; }");
+    expect(overlapCodes(await overlapScan(tab, PLAN))).toContain("OVERLAP_PSEUDO_UNPROVEN");
+    // a filter whose spread the check cannot bound covers everything after it
+    expect(await geo(`<div class="wrap">${F}<div class="b"></div></div>`, ".b { height: 10px; width: 10px; background: #ccc; filter: url(#x); }")).toContain("OVERLAP_PROTECTED_ORDER_UNPROVEN");
+  });
+
+  it("materialized pseudo-elements are where Chromium draws them (absolute and in-flow)", async () => {
+    for (const css of [".wrap::after { content: ''; position: absolute; left: 33px; top: 17px; width: 71px; height: 9px; background: #000; }", ".wrap::before { content: ''; display: block; width: 50px; height: 7px; margin: 3px 0 5px 12px; background: #000; }"]) {
+      await load(`<div class="wrap">${F}</div>`, css);
+      const drawn = await tab.screenshot();
+      await tab.evaluate(`document.head.appendChild(Object.assign(document.createElement("style"), { textContent: "*::before, *::after { visibility: hidden !important; }" }))`);
+      const without = await tab.screenshot();
+      const sharp = (await import("sharp")).default;
+      const a = await sharp(drawn).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      const b = await sharp(without).removeAlpha().raw().toBuffer();
+      let box = { left: 1e9, top: 1e9, right: -1, bottom: -1 };
+      for (let y = 0; y < a.info.height; y++)
+        for (let x = 0; x < a.info.width; x++) {
+          const i = (y * a.info.width + x) * 3;
+          if (a.data[i] !== b[i] || a.data[i + 1] !== b[i + 1] || a.data[i + 2] !== b[i + 2]) box = { left: Math.min(box.left, x), top: Math.min(box.top, y), right: Math.max(box.right, x + 1), bottom: Math.max(box.bottom, y + 1) };
+        }
+      await load(`<div class="wrap">${F}</div>`, css);
+      await overlapScan(tab, PLAN);
+      const r = (await tab.evaluate(`(() => { const r = document.querySelector("[data-ov-pseudo]").getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; })()`)) as typeof box;
+      for (const k of ["left", "top", "right", "bottom"] as const) expect(Math.abs(r[k] - box[k]), `${css} ${k}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("a cover that exists only at 1100–1108px is found by the 1px sweep and missed by the checked widths", async () => {
+    const page = { dir: "", html: `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style.css"></head><body><div class="wrap">${F}${D}</div></body></html>`, css: `${BASE}\n.d { position: absolute; z-index: 2; left: 600px; top: 40px; width: 40px; height: 32px; background: #c79a45; }\n@media (min-width: 1100px) and (max-width: 1108px) { .d { left: 60px; } }`, assets: [], files: new Map(), htmlSha256: "", cssSha256: "" };
+    for (const mode of ["real", "stepped"] as const) {
+      const s = await overlapSweep(browser, page, PLAN, 1090, 1120, open, mode);
+      expect(s.measured).toBe(31);
+      expect(sweepRanges(s), mode).toEqual({ OVERLAP_PAINT_ABOVE_PROTECTED: "1100–1108" });
+    }
+    for (const w of [1024, 1280, 1440]) {
+      const o = await openCompPage(browser, page, { width: w, height: 900, scale: 1, mobile: false });
+      try {
+        expect(overlapCodes(await overlapScan(o.page, PLAN))).toEqual([]);
+      } finally {
+        await o.context.close();
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------- 4. the three shops
+
+describe("DEV-173 the three shops", () => {
+  const cprime: Record<string, Record<number, string[]>> = {};
+  afterAll(() => console.log(`DEV-173 C′ codes at the checked widths\n${JSON.stringify(cprime, null, 1)}`));
+
+  it("inventory of the C′ pages: what they use for overlap and layering (pinned)", () => {
+    const got = Object.fromEntries(SHOP_KEYS.map((s) => [s, inventory(s)]));
+    console.log(`DEV-173 inventory\n${INVENTORY_CATEGORIES.map((c) => `${c}\t${SHOP_KEYS.map((s) => got[s]![c]).join("\t")}`).join("\n")}`);
+    for (const s of SHOP_KEYS) {
+      expect(got[s]!.position_absolute, s).toBeGreaterThan(5);
+      expect(got[s]!.inline_svg, s).toBeGreaterThan(0);
+      expect(got[s]!.aria_hidden_text, s).toBeGreaterThan(0);
+    }
+  });
+
+  it("strict and layer at the checked widths (PC, tablet, SP; SP with phone emulation): the layer pages add no code; C′ is recorded", async () => {
+    for (const shop of SHOP_KEYS) {
+      cprime[shop] = {};
+      for (const w of CHECKED) {
+        const codes: Record<string, string[]> = {};
+        for (const v of ["strict", "layer", "cprime"] as const) {
+          const o = await openCompPage(browser, overlapPage(shop, v), { width: w, height: 900, scale: 1, mobile: w <= 390 });
+          try {
+            codes[v] = overlapCodes(await overlapScan(o.page, shopPlan(shop, { grammar: v === "layer" })));
+          } finally {
+            await o.context.close();
+          }
+        }
+        expect(codes.layer, `${shop} ${w}`).toEqual(codes.strict);
+        expect(codes.strict!.filter((c) => c !== "OVERLAP_PROTECTED_OFFSCREEN"), `${shop} ${w} strict`).toEqual([]);
+        cprime[shop]![w] = codes.cprime!;
+      }
+      // C′ fails at every checked width (its own layering reaches text somewhere at each)
+      expect(Object.values(cprime[shop]!).every((c) => c.length > 0), shop).toBe(true);
+    }
+  });
+
+  /**
+   * The strict B pages' codes over the 1px sweep 320–1920 (measured with this harness, real resizes, Chromium 1194): only
+   * OVERLAP_PROTECTED_OFFSCREEN, the known tablet overflow of the strict pages (DEV-160) and bicycle's 320–369.
+   * Pinned here rather than swept again: the strict pages hold no layer, and one sweep costs about a minute.
+   */
+  const STRICT_SWEEP: Record<ShopKey, Record<string, string>> = {
+    tsugute: { OVERLAP_PROTECTED_OFFSCREEN: "601–995" },
+    bicycle: { OVERLAP_PROTECTED_OFFSCREEN: "320–369, 601–1129" },
+    sento: { OVERLAP_PROTECTED_OFFSCREEN: "601–969" },
+  };
+
+  it("the 1px sweep 320–1920: the layer pages give exactly the strict pages' codes at every width (stepped root; real resizes agree at the breakpoints and ends)", async () => {
+    for (const shop of SHOP_KEYS) {
+      const layer = await overlapSweep(browser, overlapPage(shop, "layer"), shopPlan(shop, { grammar: true }), 320, 1920, open, "stepped");
+      console.log(`DEV-173 sweep ${shop} layer: ${JSON.stringify(sweepRanges(layer))} ${layer.ms}ms`);
+      expect(layer.measured).toBe(1601);
+      expect(sweepRanges(layer), shop).toEqual(STRICT_SWEEP[shop]);
+      for (const [a, b] of [[320, 330], [595, 606], [1195, 1205], [1355, 1365], [1910, 1920]] as const) {
+        const real = await overlapSweep(browser, overlapPage(shop, "layer"), shopPlan(shop, { grammar: true }), a, b, open, "real");
+        expect(real.failing, `${shop} ${a}–${b}`).toEqual(layer.failing.filter((f) => f.w >= a && f.w <= b));
+      }
+    }
+  });
+
+  it("the strict pinned ranges hold where they start and end (a real-resize check of each edge)", async () => {
+    for (const shop of SHOP_KEYS) {
+      const edges = STRICT_SWEEP[shop].OVERLAP_PROTECTED_OFFSCREEN!.split(", ").flatMap((r) => r.split("–").map(Number));
+      for (const e of edges) {
+        const s = await overlapSweep(browser, overlapPage(shop, "strict"), shopPlan(shop), e - 1, e + 1, open, "real");
+        const got = s.failing.map((f) => f.w);
+        const inside = (w: number) => STRICT_SWEEP[shop].OVERLAP_PROTECTED_OFFSCREEN!.split(", ").some((r) => { const [a, b] = r.split("–").map(Number); return w >= a! && w <= (b ?? a)!; });
+        expect(got, `${shop} ${e}`).toEqual([e - 1, e, e + 1].filter(inside));
+      }
+    }
+  });
+
+  it("the pixel pass at 1440 / 768 / 390: strict and layer show no cover; where the prototype says C′ paints above text, Chromium's pixels agree", async () => {
+    for (const shop of SHOP_KEYS)
+      for (const w of [1440, 768, 390]) {
+        const res: Record<string, string[]> = {};
+        for (const v of ["strict", "layer", "cprime"] as const) {
+          const o = await openCompPage(browser, overlapPage(shop, v), { width: w, height: 900, scale: 1, mobile: w <= 390 });
+          try {
+            res[v] = Object.keys((await pixelPass(o.page, shopPlan(shop))).codes).sort();
+            if (v === "cprime") res.cprimeGeo = overlapCodes(await overlapScan(o.page, shopPlan(shop)));
+          } finally {
+            await o.context.close();
+          }
+        }
+        console.log(`DEV-173 pixel ${shop} ${w}: ${JSON.stringify(res)}`);
+        expect(res.strict!.filter((c) => c.startsWith("PIXEL_COVER")), `${shop} ${w}`).toEqual([]);
+        expect(res.layer!.filter((c) => c.startsWith("PIXEL_COVER")), `${shop} ${w}`).toEqual([]);
+        if (res.cprime!.includes("PIXEL_COVER_TEXT") || res.cprime!.includes("PIXEL_COVER_PROTECTED")) expect(res.cprimeGeo!.some((c) => /PAINT_ABOVE|ORDER_UNPROVEN|TEXT_ON_TEXT/.test(c)), `${shop} ${w}`).toBe(true);
+      }
+  });
+});
