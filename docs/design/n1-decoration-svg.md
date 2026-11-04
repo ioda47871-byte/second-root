@@ -6,6 +6,13 @@
 - 検査器 `lib/design-agent/research/decoration-svg.ts` と、ページのブラウザでの確かめ `lib/design-agent/research/decoration-page-browser.ts` は、どのレーンからも import されていない。テストがそれを固定している (`tests/unit/design-agent/research/decoration-svg.test.ts` の isolation)。
 - **N1 は、段 C (DEV-083 の V2 描く順・V4 守る文字に触れない) が通る前に有効にしてはならない。**
 
+**DEV-165 (2026-11-04) の追加。** オーナーの判断 (Issue #193 コメント `6623100651` と 2026-11-04 のチャットの 2) に合わせた。これも研究だけで、N1 は有効にしていない。
+
+- 装飾の SVG は、最初は1枚ずつ**オーナーが目で見る承認**が要る (2.11)。自動の検査では、パスが文字の形を描いていないことを保証できない。
+- `transform` の `skewX`・`skewY` は既定で拒む (2.4)。3店で使っていない。
+- 有効にする前に、他のブラウザでの安全を確かめる (4.1)。この container では Chromium しか確かめられない。
+- 有効にする前に、段 C の守りの条件 (守る文字・事実に重ならない、描く順) を確かめる (7)。
+
 ## 1. 何を許したいか
 
 3店の忠実な実装 C の核は、文字を持たない大きな装飾の図だった (`expressive-allowlist-proposal.md` の N1)。
@@ -18,7 +25,7 @@
 
 - 1つの SVG を1つのファイルにする。ページは `<img src="assets/<name>.svg" alt="" aria-hidden="true" referrerpolicy="no-referrer">` でだけ置く。
 - 役割は `decoration` だけ。文字を持たない。
-- `assets.json` に記録する (ハッシュ・大きさ・寸法・資産 id・種類・役割)。
+- `assets.json` に記録する (ハッシュ・大きさ・寸法・資産 id・種類・役割・オーナーの目視の承認 (2.11))。
 - **インラインの `<svg>`、外の URL、CSS の `url()` の緩め、JS、通信は、どれも許さない。**
 
 ## 2. 仕様 (検査器が実際に検めること)
@@ -70,7 +77,10 @@
 
 - 形: `d` (パスの命令の文字と数だけ)、`points`、`x`・`y`・`cx`・`r` など (数か `px`・`%`)
 - 塗り: `fill`・`stroke` (色、または下の `url(#id)`)、`stroke-*`、`opacity`・`fill-opacity`・`stroke-opacity`、`fill-rule`、`vector-effect`、`shape-rendering`
-- `transform` (`matrix`・`translate`・`scale`・`rotate`・`skewX`・`skewY` と数だけ)
+- `transform` (`matrix`・`translate`・`scale`・`rotate` と数だけ。引数の数は SVG どおり: `matrix` 6、`translate`・`scale` 1〜2、`rotate` 1 か 3)
+  - **`skewX`・`skewY` は拒む** (DEV-165、オーナーの判断)。名前があれば大文字小文字を問わず `SVG_TRANSFORM_SKEW`。`gradientTransform` も同じ。
+  - 名前を使わない傾きも拒む: `matrix()`、1つの値の中の組み合わせ (`scale(2 1) rotate(30)`)、入れ子の `g` の `transform` の積の線形の部分が直交でなければ `SVG_TRANSFORM_SHEAR`。回転・鏡映・軸ごとの拡大だけなら通る (`rotate(30) scale(2 1)` は回して伸ばした形で、傾きではない)。
+  - 残る穴: ページの側で `<img>` の箱の縦横比を変えると (`preserveAspectRatio="none"` の図)、回した形が外から傾いて見えることがある。ファイルの中の検査では見えない。2.11 のオーナーの確認は、記録した寸法で描いた絵を見る。
 - `id` (英字で始まる 41 字まで)
 - ルートだけ: `xmlns` (SVG の名前空間だけ)、`width`・`height`・`viewBox`・`preserveAspectRatio`
 - グラデーション: 座標、`gradientUnits`・`gradientTransform`・`spreadMethod`。`stop` は `offset`・`stop-color`・`stop-opacity`
@@ -124,6 +134,7 @@
 - **ハードリンクを拒む** (`nlink > 1` で `ASSET_HARDLINK`)。同じ中身にページの外から別の名前が付いていると、外から書き換えられる。
 - バイト数・sha256・寸法が記録と一致し、検査器を通ること。
 - 種類は `decoration_svg`、役割は `decoration` だけ。
+- **オーナーの目視の承認 (`owner_visual_review`) が要る** (2.11、DEV-165)。読んだバイト列に結びつく。
 - **例外を投げない。** 記録の値の型が違う、ファイルの中身が敵対的、などはすべて符号で返す (想定外は `ASSET_CHECK_ERROR`)。検査器 `checkDecorationSvg` も同じ (`SVG_CHECK_ERROR`)。
 - 既知の Low: lstat の検査と読み込みの間にファイルを差し替えられる (TOCTOU)。読んだバイト列の sha256 を記録と照らすので、差し替えは検査を落とすだけで、別の中身を通すことはできない。
 
@@ -178,6 +189,40 @@
 - 本番の `htmlSourceProblems` は、このうち多くをすでに拒んでいる。**この研究の検査器は、それに頼らず自分で拒む。**
 - 本番に組み込むなら、今の `htmlSourceProblems` と DOM の検査 (render.ts) に合わせる必要がある (5 を見よ)。
 
+### 2.11 オーナーの目視の承認 (`owner_visual_review`、DEV-165)
+
+**資産の記録ごとに必須である。** 無ければ、または承認でなければ、`checkDecorationAssetFile` が拒む。
+
+```json
+"owner_visual_review": {
+  "reviewed_by": "owner",
+  "reviewed_at": "2026-11-05",
+  "asset_sha256": "<そのファイルの sha256>",
+  "decision": "approved",
+  "note": "見た。文字に見える形は無い"
+}
+```
+
+| 規則 | 拒む符号 |
+|---|---|
+| オブジェクトが無い (`null`・文字列・配列も) | `OWNER_REVIEW_MISSING` |
+| キーがちょうどこの5つでない (足りない・多い) | `OWNER_REVIEW_SHAPE` |
+| `reviewed_by` が `"owner"` でない (`"claude"`・`"Owner"` も) | `OWNER_REVIEW_REVIEWER` |
+| `reviewed_at` が ISO の日付 (`YYYY-MM-DD`、または時刻と時差付き) でない、実在しない日、2026 年より前、未来 (1日の余裕) | `OWNER_REVIEW_DATE` |
+| `asset_sha256` が小文字の 64 桁の16進でない、または**読んだファイルのバイト列の sha256** と違う | `OWNER_REVIEW_SHA256` |
+| `decision` が `"rejected"` | `OWNER_REVIEW_REJECTED` |
+| `decision` が `"approved"`・`"rejected"` のどちらでもない | `OWNER_REVIEW_DECISION` |
+| `note` が文字列でない、500 字を超える | `OWNER_REVIEW_NOTE` |
+
+- **承認はバイト列に結びつく。** 記録の `sha256` ではなく、読んだバイト列の sha256 と照らす。1バイトでも変われば、記録の `sha256`・`bytes` を合わせても承認は無効になる (テストで固定)。
+- ファイルが読めない (無い・symlink・大きすぎる など) ときは、承認を結びつけられないので `OWNER_REVIEW_SHA256` も付く。
+- **この欄はオーナーだけが書く。** Claude・worker・スクリプトは、書かない・埋めない・写さない・更新しない。チャットでのオーナーの言葉を写すことも含めて、しない。
+- 検査器は、誰が書いたかを見分けられない。`reviewed_by: "owner"` は主張にすぎない。だから「書かない」は規則であり、テストで次を固定している。
+  - リポジトリの追跡しているファイルで、この欄を書くのは、検査器・そのテスト・この文書・`.ai` の記録だけ。
+  - テストの中の承認は、すべて `TEST FIXTURE - not an owner review` と印を付けた、メモリの中だけの fixture である。
+  - JSON のファイルのどれにも、`decoration_svg`・`owner_visual_review`・`asset_sha256` が無い (`.ai/tasks.json` を除く)。**今、承認の記録は1つも無い。**
+- 本番に組み込むなら、誰が書いたかを機械で確かめる道 (オーナーが自分で commit する、PR の承認と結びつける など) が要る。聞きたいこと (6) に挙げた。
+
 ## 3. 脅威のモデル
 
 | 脅威 | 守り |
@@ -187,7 +232,7 @@
 | 解析器の食い違い (大文字、接頭辞、実体、CDATA、BOM、UTF-16、コメント) | ASCII だけ、`&`・CDATA・コメント・DTD の拒否、大文字小文字の区別 |
 | 実体の膨張 (billion laughs) | DTD と `&` を拒む |
 | `xml:base`・xlink の名前空間の別名 | `:` を含む属性と `xmlns:*` を拒む |
-| 文字を図に描いて、事実の検査を逃れる (`text`・`title`) | 文字の要素と文字の内容を拒む。**パスで文字の形を描くことは止められない** (5 を見よ) |
+| 文字を図に描いて、事実の検査を逃れる (`text`・`title`) | 文字の要素と文字の内容を拒む。**パスで文字の形を描くことは構文では止められない**ので、資産ごとにオーナーが見る承認を必須にした (2.11) |
 | 図が箱の外に描かれ、文字に重なる | `<img>` の箱で切り取られる (プローブで確かめた)。箱そのものの重なりは段 C の V2/V4 で検める |
 | symlink・ハードリンク・パスの横断で、ページの外のファイルを資産にする | 名前の形、symlink とハードリンク (`nlink > 1`) の拒否、実パスの確認 |
 | 検査器を例外で止める (`constructor`・`__proto__` のような名前、型の違う記録) | 自分の属性だけを引く表と `Map`。例外は捕まえて符号にする |
@@ -212,13 +257,84 @@
 
 **確かめていないこと:**
 
-- **パスで描いた文字の形。** `path` で「本日半額」の形を描けば、検査器は通す。文字の要素は拒むが、形が文字に見えるかは構文では分からない。本番で有効にするなら、資産を人が見る承認か、描画した資産の OCR の検査が要る。
-- 他のブラウザ (WebKit・Firefox) の画像モードの振る舞い。プローブは Chromium だけである。
+- **パスで描いた文字の形。** `path` で「本日半額」の形を描けば、検査器は通す。文字の要素は拒むが、形が文字に見えるかは構文では分からない。→ DEV-165 で、オーナーが1枚ずつ見る承認を必須にした (2.11)。OCR は入れていない。
+- 他のブラウザ (WebKit・Firefox) の画像モードの振る舞い。プローブは Chromium だけである。DEV-165 でプローブを独立の script にした (4.1)。Firefox・WebKit は、この container では **BLOCKED** (入っていない。入れることは許されていない)。
 - ページの中での重なりと描く順。`<img>` の箱が守る文字に重なるかは、段 C の V2/V4 の仕事で、ここでは検めていない。
 - 本番の HTML の検査への組み込み。`checkDecorationPage` は研究の形で、本番の `htmlSourceProblems`・render.ts の DOM の検査とは別にある。字句解析器は HTML の仕様の全部ではない。その代わりに、字句の状態を変える要素・コメント・宣言・属性の値の `&` をすべて拒むので、通るページでは仕様の残りの部分に頼らない (2.9)。
 - **写真の `img`。** このページの検査は、記録した装飾の SVG 以外の `img` をすべて拒む。本番のページには写真がある。本番に組み込むときは、写真の資産を同じ記録の形 (種類を別にして) で許す必要がある。
 - ブラウザでの確かめは Chromium だけで、`/favicon.ico` は Chromium の自分の要求として報告しない。
 - 生成の道 (worker や Codex を経た道) で SVG が作られる流れ。どこにも繋いでいない。
+
+## 4.1 他のブラウザでのプローブ (`scripts/design-artifact/n1-browser-probe.ts`、DEV-165)
+
+研究のプローブで、門ではない。読むだけで、`--out` (無いディレクトリ) に `summary.json` を1つ書くだけ。
+
+```
+npx tsx scripts/design-artifact/n1-browser-probe.ts --browser chromium|firefox|webkit --out <無いディレクトリ> [--executable <path>]
+```
+
+- 図は `lib/design-agent/research/decoration-fixtures.ts` から取る。3店の形と、敵対的な SVG 13 件 (`onload`・`<script>fetch`・`<style>@import`・`<style>` の `url()`・`<image href>`・`xlink:href`・外の `<use>`・`foreignObject` の `<img>`・`fill` の外の `url()`・`feImage`・`xml-stylesheet`・`overflow="visible"` で箱の外へ描く形・DEV-162 のまとめた1件)。
+- ページは `http://n1-probe.invalid/probe/<名前>.html` としてメモリから出す。SVG はその隣。**ほかの要求はすべて中断する** (外へは何も出ない)。ブラウザ自身の `/favicon.ico` は別に記録し、数えない。
+- 各図を `<img>` で、JS 有効と JS 無効の2回描く。記録すること: 要求のすべてと、ページのディレクトリの外への要求、`<img>` の箱の内と外のインク (白の上で、どれかの色 < 250)、ページの title が変わったか。
+- 見つけたもの: ページのディレクトリの外への要求、箱の外のインク、3店の形の箱の中にインクが無い、title が変わった、検査器が3店の形を拒む・敵対的な形を通す。
+- 終了の符号: 0 見つけたもの無し、1 見つけたもの有り、2 拒んだ (使い方の誤り、`--out` がある、ブラウザが入っていない・起動できない)。
+- テストは、プローブの測りが空振りでないことも確かめる (ページの側に外への `<img>` と箱の外の黒い四角を足すと、それぞれ捕まる)。
+
+### 結果 (2026-11-04、この container)
+
+| ブラウザ | 結果 |
+|---|---|
+| Chromium 141.0.7390.37 (`/opt/pw-browsers/chromium-1194`) | **pass** (終了 0、見つけたもの 0) |
+| Firefox | **BLOCKED** (終了 2: 入っていない。この container に入れることは許されていない) |
+| WebKit | **BLOCKED** (終了 2: 同じ) |
+
+Chromium の内訳 (JS 有効 / JS 無効):
+
+| 図 | 種類 | 検査器 | 外への要求 | 箱の外のインク | 箱の中のインク (px) |
+|---|---|---|---|---|---|
+| seam | 3店 | 通る | 0 / 0 | 0 / 0 | 686 |
+| wheel | 3店 | 通る | 0 / 0 | 0 / 0 | 9610 |
+| mountain | 3店 | 通る | 0 / 0 | 0 / 0 | 42621 |
+| onload | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| script-fetch | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| style-import-rule | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| style-url-fill | 敵対 | 拒む | 0 / 0 | 0 / 0 | 0 (外の塗りは読まれず、四角は描かれない) |
+| image-href | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| image-xlink-href | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| use-external | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| foreign-object-img | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| fill-url-external | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| feimage-filter | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| xml-stylesheet | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 |
+| overflow-visible | 敵対 | 拒む | 0 / 0 | 0 / 0 | 10000 (箱の外の赤は切られた) |
+| all-in-one | 敵対 | 拒む | 0 / 0 | 0 / 0 | 222 |
+
+どの run でも、要求はページと SVG の2つだけ。title は変わらなかった。生成した `summary.json` は commit していない。
+
+### オーナーの WSL で Firefox・WebKit を確かめる手順
+
+**この手順は、オーナーが自分の機械で行う。** Claude はこの container に Firefox・WebKit を入れない。ブラウザを WSL に入れること (下の 2) は、ダウンロードを伴うので、オーナーの判断である。OS のライブラリが足りず `sudo` (`npx playwright install-deps`) が要るなら、そこで止めて判断する。
+
+1. 先に、実機の resource preflight を行う (CLAUDE.md、`docs/operations/wsl-resource-preflight.md`)。`STOP` (exit 20) なら始めない。
+
+   ```bash
+   scripts/ops/wsl-resource-preflight.sh
+   ```
+
+2. まだ無ければ、リポジトリが使う Playwright の版のブラウザを入れる (オーナーの判断):
+
+   ```bash
+   npx playwright install firefox webkit
+   ```
+
+3. 1つずつ走らせる (同時に走らせない)。`--out` は無いディレクトリにする。
+
+   ```bash
+   npx tsx scripts/design-artifact/n1-browser-probe.ts --browser firefox --out /tmp/n1-probe-firefox; echo "exit=$?"
+   npx tsx scripts/design-artifact/n1-browser-probe.ts --browser webkit  --out /tmp/n1-probe-webkit;  echo "exit=$?"
+   ```
+
+4. 終了 0 なら、`summary.json` の `browser_version` と `result: "pass"` を、この表に足す (別の PR)。終了 1 なら `findings` を見て、N1 を有効にしない。終了 2 なら、使い方・ブラウザの入り方を確かめる。突然 `Killed` されたら、preflight の §2 で OOM を確かめる。
 
 ## 5. 有効にする前の確認 (すべて必要、オーナーの承認が要る)
 
@@ -228,13 +344,68 @@
 4. [ ] `htmlSourceProblems` は、インラインの `<svg>` を拒むままにする。ページの側は許可一覧 (2.9) とブラウザでの確かめ (2.10) の両方を通す。`<img>` の `src` は、記録した `decoration_svg` の資産だけに広げる。DOM でも検める (`<img>` の役割が `decoration` であること、`alt=""`・`aria-hidden="true"`・`referrerpolicy="no-referrer"`)。
 5. [ ] CSS の `url()` の拒否 (`CSS_SYNTAX_URL`) は変えない。
 6. [ ] 描画は JS 無効・通信の拒否のまま。拒否した数を報告に残す。
-7. [ ] パスで描いた文字への対策を決める (資産を人が見る承認か、OCR)。
+7. [x] パスで描いた文字への対策を決める → **オーナーが1枚ずつ見る承認** (2.11、DEV-165)。
+7a. [ ] **承認をオーナーが書いたことを、機械で確かめる道**を決める (今は主張と規則だけ)。
+7b. [ ] 有効にする各資産に、オーナーの `owner_visual_review` (`approved`、そのバイト列の sha256) がある。**今は1つも無い。**
+7c. [ ] Firefox・WebKit のプローブ (4.1) が pass。今は Chromium だけ。
+7d. [ ] 段 C が、7 に書いた条件をすべて満たす。
 8. [ ] 独立の Fresh Review と、最新の head の CI。
 9. [ ] **merge の前に、オーナーの承認。** この文書と DEV-162 は、有効にする承認ではない。
 
 ## 6. 決めたこと・聞きたいこと
 
 - 決めたこと: `url(` は同じファイルのグラデーションへの `fill`・`stroke` だけ。コメントは拒む。`title`・`desc` は拒む。`class` は拒む。
+- オーナーが決めたこと (DEV-165、Issue #193 コメント `6623100651` と 2026-11-04 のチャットの 2):
+  1. パスで描いた文字の形 → 最初は1枚ずつオーナーが見る承認 (2.11)。
+  2. `skewX`・`skewY` → 既定で拒む (2.4)。名前を使わない傾き (`matrix`・組み合わせ・入れ子) も拒む。
+  3. 有効にする前に、他のブラウザでの安全を確かめる (4.1)。
+  4. 有効にする前に、段 C の守りの条件を確かめる (7)。
 - オーナーに聞きたいこと:
-  1. パスで描いた文字の形を、どう止めるか (人が見る承認か、OCR か)。
-  2. `transform` の `skewX`・`skewY` は要るか (今は許しているが、3店では使っていない)。
+  1. 承認を「オーナーが書いた」ことを、どう機械で確かめるか (オーナー自身の commit か、PR の承認と結びつけるか、別の置き場か)。
+  2. 名前を使わない傾き (`SVG_TRANSFORM_SHEAR`) も拒んでよいか。`skewX`・`skewY` を拒む理由と同じだと考えて拒んだ。
+  3. 装飾の `<img>` の役割を `decoration` にするか `media` にするか (7 の C-1)。
+  4. 守っていない普通の文字 (事実でも表示でもない文) に装飾が重なることを、段 C で拒むか (7 の C-3)。
+
+## 7. 段 C の守りの条件 — 今の段 A の検査は、装飾の `<img>` に何を言うか (DEV-165)
+
+`lib/design-agent/research/decoration-layers.ts` は、研究の CSS で装飾の SVG の `<img>` を文字の上・下・離れた所に置いたページを Chromium で描き、**今ある**検査をそのまま走らせる。comp-impl は1行も変えていない。
+
+- 段 A の層の検査 (`layers.ts` の `LAYER_SCRIPT`、`render.ts` の `layerScan`、符号は `verify.ts` の `layerCodes`。止めるかどうかは `BLOCKING_LAYER_CODES`)。
+- 1 px の幾何の検査 (`page-scripts.ts` の `GEOMETRY_SCRIPT`。`FACT_IMAGE_OVERLAP`・`FACT_COVERED` などは、今の run で止める)。
+- 本番の CSS の許可一覧 (`page-css.ts` の `pageCssProblems`)。描く前に何が拒むか。
+- N1 のページの許可一覧 (`checkDecorationPage`)。
+
+事実は `営業時間 10:00〜18:00`、表示は `data-comp-disclosure`。800×600、JS 無効。結果 (`tests/unit/design-agent/research/decoration-n1-verification.test.ts` が固定):
+
+| 置き方 | CSS の許可一覧 | 層の検査 (止める) | 層の検査 (助言) | 幾何 (止める) |
+|---|---|---|---|---|
+| 事実の上 (`position:absolute`、文字の後に描く) | `CSS_PROPERTY` ほか | — | `PAINT_ORDER_COVER`・`FACT_NONCONTENT_OVERLAP` | `FACT_COVERED`・`FACT_IMAGE_OVERLAP` |
+| 表示の上 (同じ) | 同じ | — | `PAINT_ORDER_COVER`・`DISCLOSURE_NONCONTENT_OVERLAP` | `DISCLOSURE_COVERED`・`DISCLOSURE_IMAGE_OVERLAP` |
+| 守っていない文の上 (同じ) | 同じ | — | `PAINT_ORDER_COVER` | なし |
+| 事実の下 (`z-index:-1`) | 同じ | `STACKING_CONTEXT` | `FACT_NONCONTENT_OVERLAP` | `FACT_IMAGE_OVERLAP` |
+| 事実の下 (流れの中の `<img>` の上へ、文を `position:relative` で動かす。重ね合わせの文脈は無い) | `CSS_PROPERTY` ほか | — | `FACT_NONCONTENT_OVERLAP` | `FACT_IMAGE_OVERLAP` |
+| 事実の下 (負の `margin` だけ。位置指定なし) | `CSS_VALUE` | — | `FACT_NONCONTENT_OVERLAP` | `FACT_IMAGE_OVERLAP` |
+| 離れた所 (流れの中) | なし | なし | なし | なし |
+| 離れた所 (`position:absolute`) | `CSS_PROPERTY` ほか | なし | なし | なし |
+| 箱の大部分が透明で、線から遠い所に事実 | 同じ | — | `FACT_NONCONTENT_OVERLAP` ほか | `FACT_IMAGE_OVERLAP` |
+| `data-comp-role="decoration"` を宣言 (テストの道) | なし | `ROLE_MISMATCH` | — | なし |
+
+分かったこと:
+
+- **今、重ねる置き方はすべて止まる。** ただし止めているのは、ほとんど**描く前の CSS の許可一覧** (位置指定・負の値) と、**幾何の `IMAGE_OVERLAP`** (どんな `<img>` も守る文字に触れてはならない。描く順を問わない) である。層の検査の `PAINT_ORDER_COVER`・`*_NONCONTENT_OVERLAP` は助言で、止めない。`STACKING_CONTEXT` は `z-index` のときだけ止める。段 C が無いので、こうなっている。
+- 離れた所に置いた装飾は、層の検査と幾何を通る。流れの中なら、今の CSS の許可一覧も通る。**N1 で最初に許せるのは、文字に重ならない流れの中の装飾だけ**である。
+- N1 のページの許可一覧 (`checkDecorationPage`) は、どの置き方でも `[]` である。重なりは見ない。それは段 C の仕事である。
+- 装飾の SVG の `<img>` は、層の検査では `media` と数えられる (`img` は宣言が無ければ `media`)。`decoration` と宣言すると `ROLE_MISMATCH` で止まる。
+- 層の検査と幾何は、**箱で**判断する。SVG の透明な部分も、重なりに数える。保守的で、安全側である。
+- 守っていない普通の文の上の装飾は、助言の `PAINT_ORDER_COVER` しか出ない。
+
+**段 C が N1 の前に示すこと** (どれも、まだ無い):
+
+- C-1 **役割。** 装飾の SVG の `<img>` を、層の検査でどの役割にするか決める。`media` のままなら、段 C で予定している V4 の `hero_overlay` の例外 (`media` は、下に描くことを示せば事実の下に置ける) が装飾にも及んでしまう。`decoration` にするなら、`ROLE_MISMATCH` の規則と、DEV-083 V4 の「`decoration` は描く順を問わず守る文字に触れない」を `<img>` に掛ける形が要る。**N1 の装飾には、後者 (描く順を問わず、守る文字に触れない) を掛けるべきだと考える。**
+- C-2 **守る文字。** 事実と表示の行の箱に、装飾の `<img>` の箱が 0.5 px を超えて触れない。これを、すべての幅 (V6 の 1 px の通し) で示す。今の `FACT_IMAGE_OVERLAP`・`DISCLOSURE_IMAGE_OVERLAP` がこれに当たり、止める側にある。**段 C でこれを緩めない。**
+- C-3 **描く順。** 装飾の `<img>` が守っていない文に重なるなら、文より前に描くこと (`PAINT_ORDER_COVER` が 0) を、助言ではなく止める側で示す。または、重なりそのものを拒む。どちらにするかはオーナーの判断。
+- C-4 **位置指定と重ね合わせの文脈。** 位置指定 (`position`・`z-index`・負の `margin`) を装飾に許すなら、V2 の描く順の模型が Chromium と一致すること (段 A の照合のテスト) を、装飾の `<img>` を含む対で示す。`STACKING_CONTEXT` を止める側から外す前に、それが要る。
+- C-5 **箱と絵。** 箱で判断するのを続けるか、インクで判断するか。インクで判断するなら、V3 の層の証明 (装飾を隠した絵と比べる) を `<img>` に広げる。それまでは箱で判断する。
+- C-6 **他のブラウザ。** 4.1 のプローブが Firefox・WebKit で pass。
+- C-7 **承認。** 各資産に、オーナーの承認 (2.11)。
+- C-8 段 C の PR は、オーナーの承認を受けてから merge する (DEV-083 §7)。
