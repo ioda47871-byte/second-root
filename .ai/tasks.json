@@ -7792,7 +7792,7 @@
     {
       "id": "DEV-170",
       "title": "display_nowrap の安全検証 (店名・固定の表示語だけ。能力は OFF のまま)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-164",
@@ -7838,7 +7838,7 @@
     {
       "id": "DEV-171",
       "title": "display_scale の安全検証 (表示語の最大 640px。能力は OFF のまま)",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-170"
@@ -7878,7 +7878,7 @@
         "安全ゲートの実質的な緩和",
         "本番への反映"
       ],
-      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 判断シートは docs/design/display-scale-decision.md。テストは display-scale.test.ts (53 件)。本番のコードの差 0。今の対象 (店名の全体と固定のラベル) では3店の見た目は変わらない: C′ の 256px 超えの語は全部飾りの語で対象の外、店名の全体は 1440 で 256px に届かない。 検証は完了。depends_on の DEV-170 (PR #210) がまだ review なので、tasks の契約 (依存が done でなければ review にしない) に従い backlog のまま置く。DEV-170 の merge の後に review へ上げる。"
+      "note": "能力の本番 ON は承認されていない。研究の PR は、最新 head の必須 CI と独立 Fresh Review C/H/M=0 で develop に merge してよい。 判断シートは docs/design/display-scale-decision.md。テストは display-scale.test.ts (53 件)。本番のコードの差 0。今の対象 (店名の全体と固定のラベル) では3店の見た目は変わらない: C′ の 256px 超えの語は全部飾りの語で対象の外、店名の全体は 1440 で 256px に届かない。 検証は完了。DEV-170 (PR #210) の merge の後に review へ上げた。"
     },
     {
       "id": "DEV-172",

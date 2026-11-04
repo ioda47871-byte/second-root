@@ -198,11 +198,13 @@ async function fitsExactly(word: string, css: string, extra: string[] = []) {
   const need = (await naturalWidth(word, css)) + 2 * GUTTER;
   const sweep = await sweepOf(page, words);
   const failing = sweep.failing.map((f) => f.w);
-  // the sweep fails exactly below the width the word needs (±1px for sub-pixel rounding)
+  // the sweep fails exactly below the width the word needs (-2/+1px for sub-pixel rounding)
   for (const f of sweep.failing) expect(f.codes.every((c) => ["DISPLAY_OUT_OF_BOX", "DISPLAY_OFFSCREEN"].includes(c)), `${f.w}`).toBe(true);
   if (need > 321) expect(Math.max(...failing)).toBeGreaterThanOrEqual(Math.floor(need) - 2);
   expect(failing.every((w) => w <= Math.ceil(need) + 1)).toBe(true);
   expect(failing.length).toBeGreaterThanOrEqual(Math.max(0, Math.floor(need) - 2 - 320));
+  // no gaps: the failing widths are exactly 320..max, one per px
+  if (failing.length > 0) expect(failing).toEqual(Array.from({ length: failing.length }, (_, i) => 320 + i));
   expect(phaseBCheck([], sweep).ok).toBe(failing.length === 0);
   // the checked widths: below, the run's own checks fail too (box, page); above, nothing
   const rows: Array<{ width: number; codes: string[] }> = [];

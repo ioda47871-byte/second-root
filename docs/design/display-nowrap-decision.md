@@ -11,7 +11,7 @@
 
 ## 1. 先に結論
 
-- **対象の制限は効いている。** nowrap と keep-all が通るのは、店名の全体と固定のラベル (`COMP_UI_LABELS`) だけ。事実・免責・`dt`/`dd`・本文・子の要素・継いだ値・aria-label の細工・混ぜた文は、すべて `NOWRAP_NOT_DISPLAY` で落ちる。
+- **対象の制限は効いている。** nowrap と keep-all が通るのは、店名の全体と固定のラベル (`COMP_UI_LABELS`) だけ。事実・免責・`dt`/`dd`・本文・子の要素・継いだ値・aria-label の細工・混ぜた文は、すべて `NOWRAP_NOT_DISPLAY` で落ちる (`white-space`・`text-wrap-mode`・`nobr`・`pre` の道。旗が無くても通る `max-content` の幅の道は別で、§6)。
 - **はみ出しは落ちる。** 入りきらない nowrap の表示語は、入りきらない幅だけで落ちる。入る幅では何も出ない。1px の掃引・箱の検査・横のはみ出し・文字の重なりの4つで確かめた。
 - **ただし、3店の目に見える損失はほとんど戻らない。** つぐ/手・まわ/る・ありま/す は、どれも対象の外である。
   - つぐ手・輪・ゆげ湯 の大きな文字は**店名の一部** (略称) で、店名の全体ではない。
@@ -74,7 +74,7 @@
 | 店舗情報を見る (64px、最も長いラベル) | 480px | 320–478 | 390 以下 | 480 以上 |
 | 架空金継ぎ工房 つぐ手 (32px、約 370px に合わせた) | 368px | 320–366 | 360・340・320 | 375・390 以上 |
 
-- どの例も、掃引の落ちる幅は「必要な幅より狭い幅」とちょうど一致した (端は ±1px)。テストは測った幅に対して確かめるので、書体が変わっても意味は変わらない。
+- どの例も、掃引の落ちる幅は「必要な幅より狭い幅」とちょうど一致した (端は「必要な幅 −2px 以下で落ち、+1px より上では落ちない」。サブピクセルの丸めの分。落ちる幅は 320 から切れ目なく続くこともテストで固定)。テストは測った幅に対して確かめるので、書体が変わっても意味は変わらない。
 - 語が右の余白 (16px) の中に収まるあいだは、ページは横に動かない (`OVERFLOW_HORIZONTAL` は出ない)。その幅は `TEXT_BOX_OVERFLOW` と掃引の `DISPLAY_OUT_OF_BOX` が落とす。
 - nowrap の語は折れないので、`DISPLAY_WORD_BROKEN` は出ない。対象の中なので `NOWRAP_NOT_DISPLAY` も出ない。
 - そのほかに固定したこと:
@@ -104,7 +104,7 @@
 
 リポジトリの外に置いた (35 枚の画像の固定に足さない)。
 
-- 場所: `/tmp/claude-0/-home-user/0fe1c26c-c40d-5220-911a-3f28258de597/scratchpad/dev170/shots/` (一覧は `index.tsv`)
+- 場所: 作業したセッションの一時の場所 (`scratchpad/dev170/shots/`、一覧は `index.tsv`)。**リポジトリには無く、後からは開けない。**同じ絵は、strict の描画の SHA (`impl/README.md` に記録) を手がかりに、同じ組のページを描けば作り直せる
 - 並べた画像: `cmp-<店>-<390|768>-hero.png` (左から strict・nowrap・nowrap_wide・auto_phrase・C′)
 - C′ はつぐ手 `fidelity/d1-v4`、輪・ゆげ湯 `fidelity/d1-v3`。
 
@@ -116,7 +116,7 @@
 | 輪 | `917d1561` / `da0e08a9` | `917d1561` / `da0e08a9` (同じ) | `917d1561` / `87aa7130` | `3a497ef2` / `8232b35b` | `fb709812` / `7aa0a6d1` |
 | ゆげ湯 | `68c8da1e` / `1303cc95` | `68c8da1e` / `1303cc95` (同じ) | `68c8da1e` / `1303cc95` | `68c8da1e` / `29523aa3` | `338b8e1c` / `a7e92c7f` |
 
-strict B の SHA は、`impl/README.md` に記録した b の描画と同じだった (同じページを描いている)。
+strict B の SHA は、つぐ手と輪では `impl/README.md` に記録した b の描画と同じだった (同じページを描いている)。**ゆげ湯は違った:** この検証の道具 (`strictPage`) が `assets/board.png` だけを配っていたため、ゆげ湯の `garden.png`・`mural.png` が欠けた絵になっていた (`68c8da1e`、README は `4f14e5ba`)。`img` は `width`・`height` を持つので配置と検査のコードは変わらず、この資料の結論も変わらない。道具は DEV-171 で全部の PNG を配るように直した。
 
 ### 見て分かったこと
 
@@ -133,7 +133,7 @@ strict B の SHA は、`impl/README.md` に記録した b の描画と同じだ�
 - **auto-phrase (比べるため):** `word-break: auto-phrase` は、旗が無くても今の許可一覧で通る。
   - つぐ手の 1440 は nowrap_wide と同じ画素になった (つぐ手が1行。線のずれも同じ)。
   - 輪の まわ/る は直らない (語が箱より広いと、語の中で折れる)。
-  - strict に無かったコードが新しく出る幅がある: つぐ手の 1280 (`OVERFLOW_HORIZONTAL`・`TEXT_BOX_OVERFLOW`)、ゆげ湯の 340・320 (`TEXT_BOX_OVERFLOW` ほか)。記録は `scratchpad/dev170/table.txt` (テストでは固定していない)。
+  - strict に無かったコードが新しく出る幅がある: つぐ手の 1280 (`OVERFLOW_HORIZONTAL`・`TEXT_BOX_OVERFLOW`)、ゆげ湯の 340・320 (`TEXT_BOX_OVERFLOW` ほか)。記録はセッションの一時の場所 (`scratchpad/dev170/table.txt`) だけで、リポジトリには無い (テストでも固定していない)。
   - auto-phrase も「無害な直し」ではない。今の検査がそれを落とす。
 
 ## 6. 証明していないこと
@@ -145,6 +145,8 @@ strict B の SHA は、`impl/README.md` に記録した b の描画と同じだ�
 - **900 以外の窓の高さ** (段 B の全体と同じ)。
 - **3店以外のページ。** 実際の店で、店名の全体を大きく組むページは、まだ無い。
 - **文字の色や地との関係** (nowrap は色を変えないので、段 A の検査のまま)。
+- **すでに落ちている幅での「同じコードの2件目」。** 3店の strict のページがすでに落ちている幅 (つぐ手 1024・768・601、輪とゆげ湯 1280〜601、輪 375〜320) では、テストはコードの組と横のはみ出しの量を比べる。nowrap が同じコードの問題をもう1件増やしても (例: 2つ目の `TEXT_BOX_OVERFLOW`)、組は変わらないので見えない。
+- **nowrap に似た別の道。** `width: max-content`・`min-width: max-content`・`inline-size: max-content`・`grid-template-columns: max-content` は、旗が全部 OFF でも今の文法を通る。事実の段落を折れなくでき、`NOWRAP_NOT_DISPLAY` は出ない。これは DEV-170 で増えたものではなく、max-content の幅は画面の幅によらないので、320 の幅の検査 (はみ出し) で落ちる。ただ「対象の外の nowrap はすべて `NOWRAP_NOT_DISPLAY` で落ちる」は `white-space`・`text-wrap-mode`・`nobr`・`pre` の道についての話で、この道は含まない。
 
 ## 7. 危険
 
