@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Browser, type Request } from "playwright";
-import { checkDecorationPage, DECORATION_FILE, DECORATION_PAGE_ELEMENTS, type DecorationAsset } from "./decoration-svg";
+import { checkDecorationPage, DECORATION_FILE, DECORATION_PAGE_ELEMENTS, type DecorationAssetRef } from "./decoration-svg";
 
 export const DECORATION_PAGE_ORIGIN = "http://decoration-page.invalid";
 const PAGE_URL = `${DECORATION_PAGE_ORIGIN}/page/index.html`;
@@ -48,7 +48,7 @@ type Dom = { elements: string[]; imgs: { src: string; alt: string | null; hidden
  * Renders `html` (with `css` added as a style tag) as the page in `dir` and returns every problem the browser shows, per
  * run and together. Never throws for a hostile page: a failed run is PAGE_BROWSER_ERROR.
  */
-export async function verifyDecorationPageInBrowser(browser: Browser, dir: string, html: string, css: string, assets: readonly DecorationAsset[]): Promise<DecorationBrowserCheck> {
+export async function verifyDecorationPageInBrowser(browser: Browser, dir: string, html: string, css: string, assets: readonly DecorationAssetRef[]): Promise<DecorationBrowserCheck> {
   const { used } = checkDecorationPage(html, css, assets);
   const files = new Map<string, string>();
   for (const a of assets) if (typeof a?.file === "string" && DECORATION_FILE.test(a.file)) files.set(`${DECORATION_PAGE_ORIGIN}/page/${a.file}`, a.file);

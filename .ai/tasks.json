@@ -7457,7 +7457,7 @@
     {
       "id": "DEV-162",
       "title": "N1 装飾の SVG を <img> の資産として許す — 研究だけ (設計・厳しい検査器・プローブ・安全の調査。有効にしない) (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-159"
@@ -7496,12 +7496,12 @@
         "N1 を有効にすること (段 C の後、別 PR)",
         "パスで描いた文字への対策の選択"
       ],
-      "note": "研究だけ。N1 は段 C (DEV-083 V2/V4) が通る前に有効にしない。この Task は有効にする承認ではない。元は DEV-160 の提案の N1 (PR #200、develop ec0149f で merge 済み)。DEV-160 は tasks.json ではまだ in_progress なので、depends_on は DEV-159 にした。"
+      "note": "研究だけ。N1 は段 C (DEV-083 V2/V4) が通る前に有効にしない。この Task は有効にする承認ではない。元は DEV-160 の提案の N1 (PR #200、develop ec0149f で merge 済み)。DEV-160 は tasks.json ではまだ in_progress なので、depends_on は DEV-159 にした。 PR #202 で develop へ merge した (88c8b26)。"
     },
     {
       "id": "DEV-166",
       "title": "つぐ手の6枠の写真の受け取りと切り抜きの準備: 倍率の規則・SP 用の写真・差し替えの道具・依頼文 (写真は0枚、Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-163"
@@ -7546,7 +7546,57 @@
         "1.5〜2倍の例外 (scale_exception) を決めること (オーナーだけ)",
         "差し替えた画像や写真の公開の利用すべて"
       ],
-      "note": "準備だけで、写真は0枚。評価は placeholder_limited のまま。成功例の水準とは言わない。sharp は next 経由で node_modules にあるものを使い、package.json は変えていない。"
+      "note": "準備だけで、写真は0枚。評価は placeholder_limited のまま。成功例の水準とは言わない。sharp は next 経由で node_modules にあるものを使い、package.json は変えていない。 PR #206 で develop へ merge した (43e793f)。"
+    },
+    {
+      "id": "DEV-165",
+      "title": "N1 装飾の SVG の続き — オーナーの目視の承認・skew の拒否・他のブラウザのプローブ・段 C の条件の調査 (研究だけ。有効にしない) (Issue #193)",
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-162"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-165-n1-verification",
+      "purpose": "Issue #193 コメント 6623100651 と 2026-11-04 のチャットの 2 のオーナーの判断: 装飾の SVG は1枚ずつオーナーが見る承認を要る、skewX・skewY は既定で拒む、有効にする前に他のブラウザと段 C の守りの条件を確かめる。研究の道だけで、N1 は有効にしない。",
+      "acceptance_criteria": [
+        "資産の記録に owner_visual_review (reviewed_by owner・reviewed_at・asset_sha256・decision・note) を必須にし、欠け・承認でない・バイト列の sha256 と違う・日付の誤りを拒む",
+        "承認の記録がリポジトリに無いことをテストで固定する (テストの fixture は印付きでメモリの中だけ)",
+        "transform の skewX・skewY を SVG_TRANSFORM_SKEW で拒む。名前を使わない傾きは SVG_TRANSFORM_SHEAR。3店の形は通る",
+        "scripts/design-artifact/n1-browser-probe.ts (chromium・firefox・webkit、JS 有効と無効、ページのディレクトリの外の要求と箱の外のインク、終了 0/1/2、--out は無いディレクトリだけ)。Chromium で pass、Firefox・WebKit は BLOCKED と文書に書く",
+        "tests/support/decoration-layers.ts (テストの支え。comp-impl を import するので lib/ に置かない) で、今の段 A の層の検査と幾何が装飾の <img> の上・下・離れた置き方に何を出すかを示し、段 C が示すべきことを文書にする。comp-impl は変えない",
+        "docs/design/n1-decoration-svg.md (2.4・2.11・4.1・5・6・7)"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/research/decoration-svg.test.ts",
+        "npx vitest run tests/unit/design-agent/research/decoration-n1-verification.test.ts",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "lib/design-agent/research/",
+        "scripts/design-artifact/n1-browser-probe.ts",
+        "tests/support/decoration-layers.ts",
+        "tests/unit/design-agent/research/",
+        "docs/design/n1-decoration-svg.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "N1 を有効にすること",
+        "comp-impl の変更 (page.ts・page-css.ts・layers.ts・verify.ts・render.ts・htmlSourceProblems・資産の schema)",
+        "owner_visual_review を Claude が書くこと・埋めること",
+        "この container にブラウザを入れること",
+        "実 Codex・画像生成・外部 API・依存の追加・.github/workflows",
+        "main・Production・Staging・DB"
+      ],
+      "human_approval_triggers": [
+        "N1 を有効にすること (段 C の後、別 PR)",
+        "どの資産であれ owner_visual_review の approved (オーナーだけが書く)",
+        "段 C (DEV-083 の重なりと構図) の門の変更",
+        "オーナーの WSL に Firefox・WebKit を入れること (npx playwright install、install-deps に sudo が要るならそこで止める)",
+        "名前を使わない傾き (SVG_TRANSFORM_SHEAR) を拒むことの確認"
+      ],
+      "note": "研究だけ。N1 は有効にしていない。承認の記録は0件。Firefox・WebKit はこの container では BLOCKED (オーナーの WSL での手順は文書の 4.1)。段 C は未着手。守る文字 (事実・表示) への重なりは幾何の IMAGE_OVERLAP・COVERED が止める。守っていない普通の文への流れの中の重なり (grid のはみ出し) は、今どこでも止まらない (助言の PAINT_ORDER_COVER だけ。文書 7 の C-3)。Fresh Review 1回目 (C0/H0/M1/L7) を反映した。"
     }
   ]
 }

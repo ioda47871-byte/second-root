@@ -49,8 +49,78 @@ const paint = (v: string) => colour(v) || PAINT_REF.test(v);
 const opacity = (v: string) => num.test(v) && Number(v) >= 0 && Number(v) <= 1;
 const list = (v: string) => new RegExp(`^\\s*${NUM}(?:\\s*,?\\s*${NUM})*\\s*$`).test(v);
 const pathData = (v: string) => /^[MmLlHhVvCcSsQqTtAaZz0-9.,eE+\-\s]*$/.test(v) && /^\s*[Mm]/.test(v);
-const TRANSFORM_FN = new RegExp(`(?:matrix|translate|scale|rotate|skewX|skewY)\\(\\s*${NUM}(?:\\s*,?\\s*${NUM}){0,5}\\s*\\)`, "g");
-const transform = (v: string) => v.trim().length > 0 && v.replace(TRANSFORM_FN, "").replace(/[\s,]/g, "") === "";
+/**
+ * DEV-165 (owner, 2026-11-04): `skewX` / `skewY` are refused by default — none of the three shops needs them. They are
+ * no longer in the value grammar, and a transform that names one is reported as SVG_TRANSFORM_SKEW (any case). A
+ * `matrix()`, or a transform list or chain of nested `transform`s whose composed linear part shears (its columns are
+ * not orthogonal), is SVG_TRANSFORM_SHEAR: the same slant without the name. Argument counts follow SVG: matrix 6,
+ * translate and scale 1–2, rotate 1 or 3.
+ *
+ * The root's own viewBox mapping is part of that product when it is non-uniform: with `preserveAspectRatio="none"` and
+ * a `width`/`height` aspect other than the viewBox's, the file stretches its content per axis, and a `rotate()` inside
+ * becomes a slant. That scale is composed before every child transform (Fresh Review L1). A product (or any step of a
+ * list) that leaves the finite numbers, e.g. `scale(1e200 1) rotate(30)` overflowing, is SVG_TRANSFORM_RANGE: refused,
+ * never judged on Infinity or NaN (Fresh Review L2). The shear test compares unit columns, so a huge or tiny scale
+ * neither hides nor fakes a shear.
+ */
+const TRANSFORM_FN = new RegExp(`(matrix|translate|scale|rotate)\\(\\s*(${NUM}(?:\\s*,?\\s*${NUM}){0,5})\\s*\\)`, "g");
+const TRANSFORM_ARGS: Record<string, readonly number[]> = { matrix: [6], translate: [1, 2], scale: [1, 2], rotate: [1, 3] };
+const SKEW = /skew[xy]?\s*\(/i;
+const transform = (v: string) => v.trim().length > 0 && v.replace(TRANSFORM_FN, "").replace(/[\s,]/g, "") === "" && transformList(v) !== null;
+/** The 2×2 linear part [a, b, c, d] (columns (a, b) and (c, d)) of a transform list, or null when an argument count is wrong. */
+type Linear = readonly [number, number, number, number];
+const IDENTITY: Linear = [1, 0, 0, 1];
+const times = (m: Linear, n: Linear): Linear => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3]];
+const NON_FINITE: Linear = [NaN, NaN, NaN, NaN];
+const finiteLinear = (m: Linear) => m.every((x) => Number.isFinite(x));
+/** The product, or NON_FINITE as soon as any step leaves the finite numbers (NaN then stays through `times`). */
+function transformList(v: string): Linear | null {
+  let m = IDENTITY;
+  for (const t of v.matchAll(TRANSFORM_FN)) {
+    const fn = t[1]!;
+    const a = t[2]!.split(/\s*,\s*|\s+/).filter(Boolean).map(Number);
+    if (!TRANSFORM_ARGS[fn]!.includes(a.length) || a.some((x) => !Number.isFinite(x))) return null;
+    let n: Linear = IDENTITY;
+    if (fn === "matrix") n = [a[0]!, a[1]!, a[2]!, a[3]!];
+    else if (fn === "scale") n = [a[0]!, 0, 0, a[1] ?? a[0]!];
+    else if (fn === "rotate") {
+      const r = (a[0]! * Math.PI) / 180;
+      n = [Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r)];
+    }
+    m = times(m, n);
+    if (!finiteLinear(m)) m = NON_FINITE;
+  }
+  return m;
+}
+/**
+ * What a composed linear part says: SVG_TRANSFORM_RANGE when it (or a column length) is not finite, SVG_TRANSFORM_SHEAR
+ * when its columns are not orthogonal (rotation, mirroring and per-axis scale alone keep them so), else null. The columns
+ * are compared as unit vectors (|cos| of the angle between them > 1e-9). A zero column (scale(0)) does not shear.
+ */
+function transformProblem(m: Linear): "SVG_TRANSFORM_RANGE" | "SVG_TRANSFORM_SHEAR" | null {
+  if (!finiteLinear(m)) return "SVG_TRANSFORM_RANGE";
+  const p = Math.hypot(m[0], m[1]);
+  const q = Math.hypot(m[2], m[3]);
+  if (!Number.isFinite(p) || !Number.isFinite(q)) return "SVG_TRANSFORM_RANGE";
+  if (p === 0 || q === 0) return null;
+  return Math.abs((m[0] / p) * (m[2] / q) + (m[1] / p) * (m[3] / q)) > 1e-9 ? "SVG_TRANSFORM_SHEAR" : null;
+}
+/**
+ * The root's viewBox mapping when it is non-uniform (`preserveAspectRatio="none"`, width/height aspect ≠ viewBox aspect):
+ * scale(width / vbWidth, height / vbHeight). Identity otherwise, or when a value does not parse (other findings refuse it).
+ */
+function rootViewBoxScale(attrs: ReadonlyMap<string, string>): Linear {
+  if (attrs.get("preserveAspectRatio") !== "none") return IDENTITY;
+  const vb = VIEWBOX.exec(attrs.get("viewBox") ?? "");
+  const w = pxValue(attrs.get("width"));
+  const h = pxValue(attrs.get("height"));
+  if (!vb || w === null || h === null) return IDENTITY;
+  const vw = Number(vb[3]);
+  const vh = Number(vb[4]);
+  if (!(w > 0 && h > 0 && vw > 0 && vh > 0)) return IDENTITY;
+  return [w / vw, 0, 0, h / vh];
+}
+const pxValue = (v: string | undefined) => (v !== undefined && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px)?$/.test(v) ? Number(v.replace(/px$/, "")) : null);
 const oneOf =
   (...w: string[]) =>
   (v: string) =>
@@ -134,6 +204,8 @@ function checkSvg(bytes: Uint8Array): SvgCheck {
   if (s.includes("&")) return out("SVG_ENTITY");
 
   const stack: string[] = [];
+  /** The composed linear part of every open element's `transform` chain, parallel to `stack`. */
+  const linear: Linear[] = [];
   const ids = new Map<string, string>();
   const refs: string[] = [];
   let elements = 0;
@@ -157,6 +229,7 @@ function checkSvg(bytes: Uint8Array): SvgCheck {
       // `</g>` or `</g >`; whitespace right after `</` is not XML
       const close = /^\/([^\s/>]+)\s*$/.exec(tag);
       const name = close?.[1] ?? tag.slice(1);
+      linear.pop();
       if (!close || stack.pop() !== name) return out("SVG_MALFORMED", `close ${name.slice(0, 20)}`);
       if (stack.length === 0) closedRoot = true;
       continue;
@@ -204,20 +277,33 @@ function checkSvg(bytes: Uint8Array): SvgCheck {
         if (!rule) f.push({ code: "SVG_ATTRIBUTE_NOT_ALLOWED", detail: `${name}@${an}`.slice(0, 40) });
         else if (!rule(av)) f.push({ code: "SVG_ATTRIBUTE_VALUE", detail: `${name}@${an}`.slice(0, 40) });
       }
+      if ((an === "transform" || an === "gradientTransform") && SKEW.test(av)) f.push({ code: "SVG_TRANSFORM_SKEW", detail: `${name}@${an}`.slice(0, 40) });
       if (/url\(/i.test(av)) {
         const ref = PAINT_REF.exec(av);
         if (!ref || !(an === "fill" || an === "stroke")) f.push({ code: "SVG_URL", detail: `${name}@${an}`.slice(0, 40) });
         else refs.push(ref[1]!);
       }
     }
+    // a shear without the skew name: the element's own transform composed with every enclosing one (gradientTransform alone)
+    // (the root's non-uniform viewBox scale is already in the parent's product: see rootViewBoxScale below)
+    const ownTransform = attrs.get("transform");
+    const here = ownTransform !== undefined ? times(linear[linear.length - 1] ?? IDENTITY, transformList(ownTransform) ?? IDENTITY) : (linear[linear.length - 1] ?? IDENTITY);
+    const ownProblem = ownTransform !== undefined ? transformProblem(here) : null;
+    if (ownProblem) f.push({ code: ownProblem, detail: `${name}@transform` });
+    const gradientOwn = attrs.get("gradientTransform");
+    const gradientProblem = gradientOwn !== undefined ? transformProblem(transformList(gradientOwn) ?? IDENTITY) : null;
+    if (gradientProblem) f.push({ code: gradientProblem, detail: `${name}@gradientTransform` });
+    const isRoot = name === "svg" && stack.length === 0 && root === null;
     const idValue = attrs.get("id");
     if (idValue) {
       if (ids.has(idValue)) f.push({ code: "SVG_ID_DUPLICATE", detail: idValue });
       ids.set(idValue, name);
     }
-    if (name === "svg" && stack.length === 0 && root === null) root = attrs;
+    if (isRoot) root = attrs;
     if (!selfClosing) {
       stack.push(name);
+      // the root's children live in its viewBox space: a non-uniform viewBox scale comes before their transforms (L1)
+      linear.push(isRoot ? times(here, rootViewBoxScale(attrs)) : here);
       if (stack.length > DECORATION_SVG_LIMITS.depth) return out("SVG_TOO_DEEP");
     } else if (stack.length === 0) closedRoot = true;
   }
@@ -225,9 +311,8 @@ function checkSvg(bytes: Uint8Array): SvgCheck {
   if (!root) return out("SVG_NO_ROOT");
   if (root.get("xmlns") !== SVG_NS) f.push({ code: "SVG_NAMESPACE" });
   for (const r of refs) if (!/Gradient$/.test(ids.get(r) ?? "")) f.push({ code: "SVG_REF_NOT_A_GRADIENT", detail: r });
-  const px = (v: string | undefined) => (v !== undefined && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px)?$/.test(v) ? Number(v.replace(/px$/, "")) : null);
-  const width = px(root.get("width"));
-  const height = px(root.get("height"));
+  const width = pxValue(root.get("width"));
+  const height = pxValue(root.get("height"));
   const viewBox = root.get("viewBox");
   if (!viewBox) f.push({ code: "SVG_NO_VIEWBOX" });
   else {
@@ -239,8 +324,24 @@ function checkSvg(bytes: Uint8Array): SvgCheck {
   return { ok: f.length === 0, findings: f, width, height, elements };
 }
 
+/**
+ * DEV-165 (owner decision, Issue #193 comment 6623100651): every decorative SVG needs the OWNER's visual review of that
+ * exact file, because no automated check can tell that a path does not draw letters. The review is bound to the bytes:
+ * `asset_sha256` must equal the sha256 of the file as read, so any byte change voids it.
+ *
+ * This record is written by the owner only. Claude (or any agent, worker or script) never writes, fills, copies or
+ * "renews" it — not even with the owner's words from a chat. The checker cannot tell who wrote it; `reviewed_by: "owner"`
+ * is a claim, and keeping agents from making that claim is a rule (docs/design/n1-decoration-svg.md §2.11), pinned by a
+ * test that no tracked file outside the tests holds such a record. Approving an asset is an owner action.
+ */
+export type OwnerVisualReview = { reviewed_by: "owner"; reviewed_at: string; asset_sha256: string; decision: "approved" | "rejected"; note: string };
+export const OWNER_REVIEW_KEYS = ["asset_sha256", "decision", "note", "reviewed_at", "reviewed_by"] as const;
+export const OWNER_REVIEW_NOTE_MAX = 500;
+
 /** What a page would record for each decorative SVG (the research shape of an `assets.json` entry; not the comp-impl schema). */
-export type DecorationAsset = { id: string; file: string; sha256: string; bytes: number; width: number; height: number; kind: "decoration_svg"; role: "decoration" };
+export type DecorationAsset = { id: string; file: string; sha256: string; bytes: number; width: number; height: number; kind: "decoration_svg"; role: "decoration"; owner_visual_review: OwnerVisualReview };
+/** What the page side reads of a record: the id and the file. */
+export type DecorationAssetRef = Pick<DecorationAsset, "id" | "file">;
 export const DECORATION_FILE = /^assets\/[a-z0-9][a-z0-9-]{0,60}\.svg$/;
 export const DECORATION_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
@@ -394,7 +495,7 @@ function readTag(html: string, start: number): Tag | null {
 }
 
 /** The recorded list itself: file names, ids, and no id or file recorded twice. */
-function assetListProblemsInto(assets: readonly DecorationAsset[], p: Set<string>) {
+function assetListProblemsInto(assets: readonly DecorationAssetRef[], p: Set<string>) {
   const ids = new Set<string>();
   const files = new Set<string>();
   for (const a of assets) {
@@ -426,7 +527,7 @@ export type DecorationPageCheck = { problems: string[]; used: string[] };
  * - the record is well formed and every recorded asset is used by a clean decorative `img` (`SVG_RECORDED_NOT_USED`).
  * `used` lists the recorded files that a clean `img` (no refused attribute, nothing else wrong with the tag) loads.
  */
-export function checkDecorationPage(html: string, css: string, assets: readonly DecorationAsset[]): DecorationPageCheck {
+export function checkDecorationPage(html: string, css: string, assets: readonly DecorationAssetRef[]): DecorationPageCheck {
   const p = new Set<string>();
   const used = new Set<string>();
   try {
@@ -438,11 +539,11 @@ export function checkDecorationPage(html: string, css: string, assets: readonly 
 }
 
 /** checkDecorationPage's problem codes only. */
-export function decorationReferenceProblems(html: string, css: string, assets: readonly DecorationAsset[]): string[] {
+export function decorationReferenceProblems(html: string, css: string, assets: readonly DecorationAssetRef[]): string[] {
   return checkDecorationPage(html, css, assets).problems;
 }
 
-function pageInto(html: string, css: string, assets: readonly DecorationAsset[], p: Set<string>, used: Set<string>) {
+function pageInto(html: string, css: string, assets: readonly DecorationAssetRef[], p: Set<string>, used: Set<string>) {
   assetListProblemsInto(assets, p);
   const files = new Set(assets.map((a) => (typeof a?.file === "string" ? a.file : "")).filter((f) => DECORATION_FILE.test(f)));
   cssProblemsInto(css, svgMatcher([...files]), p);
@@ -543,23 +644,77 @@ function pageInto(html: string, css: string, assets: readonly DecorationAsset[],
   for (const f of files) if (!used.has(f)) p.add("SVG_RECORDED_NOT_USED");
 }
 
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-](\d{2}):(\d{2})))?$/;
+/** A real calendar date (and time), not after `now` (one day of slack for time zones). */
+function reviewDateOk(v: unknown, now: Date): boolean {
+  if (typeof v !== "string") return false;
+  const m = ISO_DAY.exec(v);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  if (day.getUTCFullYear() !== y || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d || y < 2026) return false;
+  if (m[4] !== undefined && (Number(m[4]) > 23 || Number(m[5]) > 59 || Number(m[6]) > 59 || Number(m[7] ?? 0) > 23 || Number(m[8] ?? 0) > 59)) return false;
+  const at = Date.parse(m[4] === undefined ? `${v}T00:00:00Z` : v);
+  return Number.isFinite(at) && at <= now.getTime() + 24 * 3600 * 1000;
+}
+
+/**
+ * The owner's visual review of one asset (DEV-165). `actualSha256` is the sha256 of the bytes as read (null when the file
+ * could not be read: the review then cannot be bound and is OWNER_REVIEW_SHA256). Codes:
+ * OWNER_REVIEW_MISSING (no review object), OWNER_REVIEW_SHAPE (keys other than exactly the five), OWNER_REVIEW_REVIEWER
+ * (reviewed_by is not "owner"), OWNER_REVIEW_DATE (not an ISO date, not a real day, before 2026 or in the future),
+ * OWNER_REVIEW_SHA256 (not 64 lower-case hex, or not the file's own sha256), OWNER_REVIEW_DECISION (neither approved nor
+ * rejected), OWNER_REVIEW_REJECTED (the owner refused it), OWNER_REVIEW_NOTE (not a string, or over 500 characters).
+ * Never throws.
+ */
+export function ownerReviewProblems(review: unknown, actualSha256: string | null, now: Date = new Date()): string[] {
+  try {
+    if (typeof review !== "object" || review === null || Array.isArray(review)) return ["OWNER_REVIEW_MISSING"];
+    const r = review as Record<string, unknown>;
+    const p: string[] = [];
+    const keys = Object.keys(r).sort();
+    if (keys.length !== OWNER_REVIEW_KEYS.length || keys.some((k, i) => k !== OWNER_REVIEW_KEYS[i])) p.push("OWNER_REVIEW_SHAPE");
+    if (r.reviewed_by !== "owner") p.push("OWNER_REVIEW_REVIEWER");
+    if (!reviewDateOk(r.reviewed_at, now)) p.push("OWNER_REVIEW_DATE");
+    if (typeof r.asset_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(r.asset_sha256) || actualSha256 === null || r.asset_sha256 !== actualSha256) p.push("OWNER_REVIEW_SHA256");
+    if (r.decision === "rejected") p.push("OWNER_REVIEW_REJECTED");
+    else if (r.decision !== "approved") p.push("OWNER_REVIEW_DECISION");
+    if (typeof r.note !== "string" || r.note.length > OWNER_REVIEW_NOTE_MAX) p.push("OWNER_REVIEW_NOTE");
+    return p;
+  } catch {
+    return ["OWNER_REVIEW_MISSING"];
+  }
+}
+
 /**
  * The file side of one recorded asset, inside the page directory `dir`: the id and name have their forms, the file and
  * every directory on the way are real (no symlink), the file has one link only (no hardlink), it stays inside `dir`,
  * and its bytes, sha256, size and dimensions are the ones recorded and pass checkDecorationSvg. Never throws: anything
  * unexpected is the code ASSET_CHECK_ERROR. (Between the lstat checks and the read a file could be swapped; the sha256
  * of the bytes actually read pins the content, so a swap can only make the check fail.)
+ * DEV-165: the owner's visual review must be present, approved and bound to the sha256 of the bytes read
+ * (ownerReviewProblems); when the file is not read the review cannot be bound, so a refused file also carries
+ * OWNER_REVIEW_SHA256. A file passes only with an approved review of exactly its bytes.
  */
-export function checkDecorationAssetFile(dir: string, asset: DecorationAsset): string[] {
+export function checkDecorationAssetFile(dir: string, asset: DecorationAsset, now: Date = new Date()): string[] {
   const p: string[] = [];
+  const read: { sha256: string | null } = { sha256: null };
+  let file: string[];
   try {
-    return checkAssetFile(dir, asset, p);
+    file = checkAssetFile(dir, asset, p, read);
   } catch {
-    return [...new Set([...p, "ASSET_CHECK_ERROR"])];
+    file = [...p, "ASSET_CHECK_ERROR"];
   }
+  let review: unknown;
+  try {
+    review = asset?.owner_visual_review;
+  } catch {
+    review = undefined;
+  }
+  return [...new Set([...file, ...ownerReviewProblems(review, read.sha256, now)])];
 }
 
-function checkAssetFile(dir: string, asset: DecorationAsset, p: string[]): string[] {
+function checkAssetFile(dir: string, asset: DecorationAsset, p: string[], read: { sha256: string | null }): string[] {
   if (asset?.kind !== "decoration_svg" || asset?.role !== "decoration") p.push("ASSET_KIND");
   if (typeof asset?.id !== "string" || !DECORATION_ID.test(asset.id)) p.push("ASSET_ID");
   if (typeof asset?.file !== "string" || !DECORATION_FILE.test(asset.file) || asset.file.split("/").includes("..")) return [...p, "ASSET_FILE_NAME"];
@@ -591,7 +746,8 @@ function checkAssetFile(dir: string, asset: DecorationAsset, p: string[]): strin
   if (st.size > DECORATION_SVG_LIMITS.bytes) return [...p, "ASSET_TOO_LARGE"];
   const bytes = readFileSync(full);
   if (bytes.length !== asset.bytes) p.push("ASSET_BYTES");
-  if (createHash("sha256").update(bytes).digest("hex") !== asset.sha256) p.push("ASSET_SHA256");
+  read.sha256 = createHash("sha256").update(bytes).digest("hex");
+  if (read.sha256 !== asset.sha256) p.push("ASSET_SHA256");
   const c = checkDecorationSvg(bytes);
   if (!c.ok) p.push(...c.findings.map((x) => x.code));
   else if (c.width !== asset.width || c.height !== asset.height) p.push("ASSET_DIMENSIONS");
