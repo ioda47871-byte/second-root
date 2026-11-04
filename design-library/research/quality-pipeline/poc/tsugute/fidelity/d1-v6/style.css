@@ -383,7 +383,9 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
 
   /* the line runs down the middle: words sit on the ground, the line passes under them */
   .tagline, .lead, .how, .damage-h, .shard .cap, .shard .ph-label, .shard .kanji, .shard .svc, .month-c, .together-copy > *, .visit-h, .info dd, .info dt, .fictional, .layer-h {
-    position: relative; z-index: 2; width: fit-content; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+    position: relative; z-index: 2; width: fit-content; box-decoration-break: clone; -webkit-box-decoration-break: clone;
+    /* v5: the ground runs 6px past the last glyph, so the line never passes just beside a glyph (線の断面 at 364–369) */
+    padding-right: 6px; }
   .tagline, .lead, .how, .visit-h, .info dd, .info dt, .fictional { background: var(--washi); }
   .damage-h, .shard .cap, .shard .ph-label, .shard .kanji, .shard .svc { background: var(--washi-deep); }
   .together-copy > * { background: var(--urushi-red); }
