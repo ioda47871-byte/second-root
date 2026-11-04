@@ -478,7 +478,7 @@ describe("DEV-173 the three shops", () => {
         // C′ fails at every checked width (its own layering reaches text somewhere at each)
         if (fonts === "installed") expect(Object.values(cprime[shop]!).every((c) => c.length > 0), shop).toBe(true);
       }
-  });
+  }, 2_400_000);
 
   const strictSweeps: Partial<Record<ShopKey, OverlapSweep>> = {};
 
@@ -496,7 +496,7 @@ describe("DEV-173 the three shops", () => {
         expect(real.failing, `${shop} ${a}–${b}`).toEqual(layer.failing.filter((f) => f.w >= a && f.w <= b));
       }
     }
-  });
+  }, 2_400_000);
 
   it("the strict sweep's ranges hold at their edges with real resizes (the stepped root and the real viewport agree where the codes change)", async () => {
     for (const shop of SHOP_KEYS) {
@@ -559,5 +559,5 @@ describe("DEV-173 the three shops", () => {
         expect(res.strict!.filter((c) => c.startsWith("PIXEL_COVER")), `${shop} ${w}`).toEqual([]);
         expect(res.layer!.filter((c) => c.startsWith("PIXEL_COVER")), `${shop} ${w}`).toEqual([]);
       }
-  });
+  }, 2_400_000);
 });

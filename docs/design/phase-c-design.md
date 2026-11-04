@@ -13,7 +13,7 @@
 - **今は何も通らない (証明した)。** 位置・オフセット・`z-index`・負の margin・`transform`・`isolation`・`pointer-events`・`overflow`・`mix-blend-mode`・`clip-path`・`filter`・`outline`・外側の影・`text-shadow`・`-webkit-text-stroke`・`will-change`・`contain`・グリッドの線の番号・疑似要素 (32 の宣言と3つの選択子) は、旗なし・`vertical_name`・段 B の旗すべて の3つの組で文法が拒む。C′ の3ページは HTML (インライン SVG: `HTML_ELEMENT`) と CSS で拒まれ、描画の側でも run の層の検査が `STACKING_CONTEXT` (と疑似要素のある2店で `PSEUDO_GEOMETRY_UNKNOWN`) で止める。
 - **提案: 能力 `layered_decoration` (旗 `layeredDecoration`、既定 OFF)。** 文字を持たない箱 (装飾) だけを位置で置き、回し、重ねる。文字を持つ箱は「`position: relative` + `z-index`」で持ち上げる (動かさない) ことだけ。負の margin はどの箱にも許し、届いた先は描画の検査が裁く。疑似要素・SVG・ビューポートの単位・ブレンド・切り抜き・フィルター・外側の影・輪郭線・`pointer-events` は入れない (§5)。
 - **描画の検査 (V2 と V4) は、文字の字形の箱に何が届くかを、描画の順で裁く (§3)。** 装飾が字形の上に描かれれば、色や透明度に依らず落ちる。守る文字 (事実・免責・dt/dd・店名) の下には、文字自身か祖先の**不透明で平らな板** (plate) が間に入らない限り、装飾は入れない。順序を証明できない描き方 (外側の影・輪郭線・フィルターのにじみ・測れない疑似要素・文字の外にあふれた文字) は落とす (fail closed)。
-- **試作はこれを示した (§6):** 27 の落ちるべき例がすべて落ち、9 の通るべき例がすべて通る。今の run の当たり判定 (`GEOMETRY_SCRIPT` の 15 点) は、そのうち 1px の線・疑似要素・SVG・`pointer-events: none`・輪郭線・影・下に敷いた文字 を見逃す。今の V2 のモデル (`LAYER_SCRIPT`) は疑似要素・SVG・文字の上の文字を見ない。どちらも、今は許可一覧が先に拒むので穴ではないが、**段 C ではそのまま使えない**。
+- **試作はこれを示した (§6):** 32 の落ちるべき例がすべて落ち、9 の通るべき例がすべて通る (Fresh Review の後。最初の版は 27)。今の run の当たり判定 (`GEOMETRY_SCRIPT` の 15 点) は、そのうち 1px の線・疑似要素・SVG・`pointer-events: none`・輪郭線・影・下に敷いた文字 を見逃す。今の V2 のモデル (`LAYER_SCRIPT`) は疑似要素・SVG・文字の上の文字を見ない。どちらも、今は許可一覧が先に拒むので穴ではないが、**段 C ではそのまま使えない**。
 - **3店 (§7):** 提案の文法で strict B に層を足したページ (つぐ手: 板の上の金の割れ目と線の断面を貫く継ぎ目、輪: ハブからのスポークと境界にかかる空気入れの計器、ゆげ湯: 全ページの温度計の管・壁と夜の境にかかるのれん・熱い湯の区画に食い込む湯船の板) は、**320〜1920 の 1px の全幅で strict B と同じコードしか出ない** (strict にもともとあるタブレットのはみ出しだけ)。C′ は確かめる幅のすべてで落ちる。
 - **得は小さい。正直に言う。** C′ の見た目の大半 (曲がった継ぎ目、破片の形の板、輪郭の巨大な語、湯気、のれんの「ゆ」、板の影) は、インライン SVG・`clip-path`・フィルター・`aria-hidden` の文字・`-webkit-text-stroke`・vw の位置 に頼っていて、`layered_decoration` だけでは戻らない。戻るのは「区画の境をまたぐ」「板が隣の区画に食い込む」「装飾が画像の上や文字の間を通る」という**構図**である。曲線と形は N1 (装飾の SVG) と段 D が要る。
 
@@ -66,7 +66,20 @@
 
 - **守る文字 (protected):** 免責 (`[data-comp-disclosure]`、研究のページでは `.fictional`)、`dt`・`dd`、`h1` (店名)、文字の全体が事実の値 (facts pack) を含むか、6 字以上で事実の値の一部である要素。run の `protectedOwner` (layers.ts) より広い (店名の短い形・事実の文の折り返しを含む)。
 - **普通の本文 (ordinary):** それ以外のすべての文字の節。`aria-hidden` の文字も描かれるので数える (run は `TEXT_ARIA_HIDDEN` でそもそも拒む)。
-- **字形の箱 (glyph box):** 文字ごとの Range の箱を、縦に字の大きさの 1.3 倍に切ったもの。Range の箱は書体の content area (Noto Sans CJK で 1.45em) で、行送り 1 の行どうしは墨が無いのに重なる。CJK の墨は 1em の中、ラテン文字の下がりは約 0.2em。守る文字は V4 でさらに 1px 広げる (V3b と同じ決まり)。
+- **字形の箱 (glyph box) = 墨の箱:** 文字ごとに、要素の書体で canvas の `measureText` が返す墨の範囲 (`actualBoundingBox*`) を、Range の箱の上端 + 書体の ascent で求めた基線に置き、にじみの 1px 広げたもの。行送りにも書体の content area にも依らない。守る文字は V4 でさらに 1px 広げる (V3b と同じ決まり)。縦書きは Range の箱を字の大きさの 1.3 倍に切ったもの (縦の墨の測り方は作っていない)。
+- **なぜ墨の箱か (CI で分かったこと、§2.1)。** 最初の版は「Range の箱を縦に 1.3em に切ったもの」だった。Range の箱は書体の content area で、CI の書体 (IPA の無い ubuntu、Playwright の書体) のように content area が高い書体では、行送り 1 の大きな字 (つぐ手の店名 200px) の箱が自分の要素の箱の外へ出る。そこへ隣の要素 (器の絵) が届くと、当たり判定の束に文字が出ない点になり、**fail closed で `OVERLAP_ORDER_UNPROVEN` を出した**。strict B (重ねの無い、今のページ) が落ちたので、規則でなく測り方の誤りである (誤検知)。
+
+### 2.1 書体への依存 (CI で落ちた4件の原因)
+
+- **何が起きたか:** PR #213 の CI (unit 2/2) で、つぐ手の strict B が 1440 で `OVERLAP_ORDER_UNPROVEN`、層の版の掃引が 320–1920 で `OVERLAP_ORDER_UNPROVEN` と `OFFSCREEN` 601–1007、端の確かめが 600、ゆげ湯の C′ の板の覆いが 1271–1275 になった (この容器では順に 無し・`OFFSCREEN` 601–995 だけ・601・1260–1263)。
+- **原因:** 字の高さが書体で変わることに、2つの別のものが重なっていた。(1) **誤検知 (測り方):** 上の 1.3em の箱が書体の content area に引きずられ、要素の箱の外へ出た所を「順を証明できない」とした。(2) **本物の書体差:** はみ出しの範囲・C′ の覆う幅は、書体で実際に変わる (テストに数字を書いたのが誤り)。
+- **再現:** `gradient-harness.ts` の `withWideMetrics` (IPA の書体を ascent 116%・descent 29% で宣言し直し、content area を 1.45em にする。この容器で CI の字の高さに**近づける**だけで、IPA の無い所では何も変わらない) で、旧い箱では strict B のつぐ手が 1440・768 で `OVERLAP_ORDER_UNPROVEN` (店名 つぐ手 ← 器の地)・`OVERLAP_PROTECTED_TEXT_ON_TEXT` (店名の全体 ← 大きな店名) など、輪・ゆげ湯も `TEXT_ON_TEXT` を出した。**墨の箱に変えると、3店の strict と層の版は、この容器の書体で 0、広い字の高さでもつぐ手の SP の `aria-hidden` の巨大な語 継ぐ 1つだけ**になった (§2.2)。
+- **テストの直し:** 数字を書かない。strict を毎回テストの中で測り、層の版が全幅で strict と同じであることを確かめる (この容器の書体と広い字の高さの両方で、確かめる幅)。C′ の覆いは「確かめる幅のどれにも当たらない狭い帯に、守る文字の覆いがある」という性質を確かめる。この容器の範囲は §7 に記録として残す。
+
+### 2.2 残る誤検知の形 (fail closed)
+
+- 広い字の高さで、つぐ手の SP の 継ぐ (120px、行送り 1) の墨は、自分の要素と区画の下へ実際にはみ出し、次の区画の地の上に描かれる。墨のある点は文字の要素の箱の外で、当たり判定の束に文字が出ないので `OVERLAP_ORDER_UNPROVEN`。**描かれ方は本物 (文字が隣の区画の地に載る)** なので、誤検知とまでは言えないが、文字が自分の箱の外に描かれることを「順を証明できない」として落とす決まりである。run の `TEXT_OUT_OF_BOX` (事実と札) と同じ方向の厳しさ。普通の本文 (`aria-hidden` の飾りの語を含む) にまで掛けるかはオーナーの判断 (§12)。
+- 書体が変われば、strict のページでも段 C のコードが出うる。**層を足していない strict のページで出るコードは、能力を ON にしたときに今のページを落とす**ので、ON の前にオーナーの書体 (`web_font`、段 B) と合わせて決める。
 
 ## 3. 規則
 
@@ -74,16 +87,17 @@
 
 **字形の箱 G (文字 T) に 0.5px を超えて届く、T の祖先でない「描くもの」P は、T より先に (下に) 描かれなければならない。**
 
-- 描くもの: 地 (色・画像・内側の影)、見える罫の各辺、`img`、SVG の図形 (線幅を含む)、疑似要素 (§3.4)、ほかの文字。祖先の地と罫は定義で下 (CSS 2.1 付録 E の段 1) なので除く。**祖先の `outline` は除かない** (内容より後に描かれる)。
+- 描くもの: 地 (色・画像・内側の影)、見える罫の各辺、`img`、SVG の図形 (線幅を含む)、疑似要素 (§3.4)、ほかの文字。祖先の平らな地 (色) は定義で下 (CSS 2.1 付録 E の段 1) で、文字の地そのものなので除く。**祖先の罫・地の画像・内側の影は除かない** (V4、§3.2)。**祖先の `outline` も除かない** (内容より後に描かれる)。
 - 上に描かれれば、色・アルファに依らず `OVERLAP_PAINT_ABOVE_PROTECTED` / `OVERLAP_PAINT_ABOVE_TEXT`。
-- **ほかの文字が届けば、順に依らず `OVERLAP_PROTECTED_TEXT_ON_TEXT` / `OVERLAP_TEXT_ON_TEXT`。** 下に敷いた巨大な語も落ちる (字形が混ざって読みが変わる)。
+- **ほかの文字が届けば、順に依らず `OVERLAP_PROTECTED_TEXT_ON_TEXT` / `OVERLAP_TEXT_ON_TEXT`。** 下に敷いた巨大な語も落ちる (字形が混ざって読みが変わる)。**同じ要素の中の別の文字の節も比べる** (Fresh Review M1: `<p>000-0000-0712<span class="k"></span>1111</p>` で `.k { display: inline-block; margin-left: -120px }` とすると、1111 が事実の 0-00 の上に描かれる。最初の版は同じ要素の節を比べず、幾何も画素も何も出さなかった)。
 - **順を証明できないものは落とす:** 当たり判定に出ない描き方 (外側の `box-shadow`、`outline`、`filter` のにじみ (`blur` は 3r、`drop-shadow` はずれ + 3r、ほかの移す関数は無限)、`-webkit-box-reflect`) が字形に届く、または当たり判定の束に T が出ない (文字が自分の箱の外にあふれている) と `OVERLAP_PROTECTED_ORDER_UNPROVEN` / `OVERLAP_ORDER_UNPROVEN`。
 
 ### 3.2 V4: 守る文字
 
 - **下にも入れない。** 守る字形の箱 (+1px) に届く装飾は、下に描かれていても `OVERLAP_PROTECTED_ON_DECORATION`。金の線が「1」の下を通れば「7」や「4」に読める (V3b と同じ理由)。
 - **例外は板 (plate) だけ:** T か T の祖先 Q が不透明で平らな地 (色のアルファ 255、`background-image` なし) を持ち、Q の padding box が届いた字形の箱 (+1px) をすべて含み、Q を含む原子的な箱 A (Q かその祖先で、位置を持つ・重ねの文脈・flex/grid の項目・inline-block のどれか。P を含まない) が P より上に描かれること。このとき P は Q の地に隠れ、字形の下は平らになる (C′ の SP の「文字は地の帯に乗り、線はその下を通る」の型)。
-- **切れ・ずれ:** 守る字形が画面の左・右・上の外 (`OVERLAP_PROTECTED_OFFSCREEN`)、`overflow` が見える以外の祖先の padding box の外、または `clip-path`・`mask` の祖先の下 (`OVERLAP_PROTECTED_CLIPPED`)、字形の箱が無い (`OVERLAP_PROTECTED_HIDDEN`)。
+- **祖先の罫・地の画像・内側の影も下の装飾として数える** (Fresh Review M2: 負の margin で事実を自分の箱の罫の上へ引くと、罫が数字の下を通る。最初の版は祖先を一律に除き、advisory の画素の平らさしか出さなかった)。祖先は定義で下に描かれるので、通るのは、その祖先の**内側の**要素の不透明で平らな板 (木の順で祖先の後に描かれる) が字形の箱を含むときだけ。普通の本文も `plate` の決まりなら同じ。
+- **切れ・ずれ:** 守る字形が画面の左・右・上の外 (`OVERLAP_PROTECTED_OFFSCREEN`)、`overflow` が見える以外の祖先の padding box の外、または `clip-path`・`mask` の祖先の下 (`OVERLAP_PROTECTED_CLIPPED`)、字形の箱が無い (`OVERLAP_PROTECTED_HIDDEN`)。**普通の本文の切れも落とす** (`OVERLAP_TEXT_CLIPPED`。Fresh Review L3: 提案の文法はどの要素にも `overflow: hidden | clip` を許すので、普通の本文が黙って切れうる)。
 
 ### 3.3 普通の本文
 
@@ -122,7 +136,7 @@
 
 | 方法 | 見るもの | 費用 (手元、Chromium 1194) | 見逃し |
 |---|---|---|---|
-| **A. 字形の箱 × 描く範囲 (幾何)** — Range の箱と、要素の描く範囲の交わり | 届くかどうか | 1幅 10〜15 ms (層のページ、温まった後)、C′ 300〜400 ms | 順を知らない (上か下かが分からない)。単独では「届けば落とす」しかできず、板も下の層も通せない |
+| **A. 字形の箱 × 描く範囲 (幾何)** — 墨の箱 (§2) と、要素の描く範囲の交わり | 届くかどうか | 1幅 10〜15 ms (層のページ、温まった後)、C′ 300〜400 ms | 順を知らない (上か下かが分からない)。単独では「届けば落とす」しかできず、板も下の層も通せない |
 | **B. 当たり判定 (`elementsFromPoint`)** — A の交わりの中で順を読む | 描く順 | 組ごとに1回 (P がある最初の点)。層のページで1幅 0〜5 回、C′ で 30〜1,100 回 | 外側の影・輪郭線・フィルターのにじみ・文字の影は当たり判定に出ない (→ fail closed)。`pointer-events` は強制で外す。自分の箱の外へあふれた文字は束に出ない (→ fail closed) |
 | **C. 画素 (飾りを消した差)** — 文字を黒と白で2回描き、ページと「文字だけ」の参照の差の比 (透過率) を見る。合成は線形なので、地に依らず「文字の上に描かれたもの」だけが比を下げる | 墨の上に描かれたものの濃さ | 全ページの画面写し 5 枚 (層のページで 1幅 約 1〜2 s) | 3% 未満の覆い (丸めの余地 0.97)、墨の無い画素 (字の中の空き) の上の覆い、文字の上の文字 (両方が同じ色で変わる)。守る文字の空きは「文字を消した絵の平らさ」(V3b、`groundStructure`) で補う |
 
@@ -159,6 +173,7 @@
 | `OVERLAP_PROTECTED_ON_DECORATION` / `OVERLAP_TEXT_ON_DECORATION` | 字形の下に装飾があり、板が無い |
 | `OVERLAP_PROTECTED_ORDER_UNPROVEN` / `OVERLAP_ORDER_UNPROVEN` | 順を証明できない (fail closed) |
 | `OVERLAP_PROTECTED_CLIPPED`・`_OFFSCREEN`・`_HIDDEN` | 守る文字が切れる・画面の外・描かれない |
+| `OVERLAP_TEXT_CLIPPED` | 普通の本文が `overflow`・`clip-path` の祖先で切れる |
 | `OVERLAP_PSEUDO_UNPROVEN` | 測れない疑似要素 |
 | `OVERLAP_LAYER_HAS_TEXT` | 層の要素が文字を持つ、文字の箱が動く |
 | `OVERLAP_LINK_COVERED` | リンクの真ん中が覆われる |
@@ -169,7 +184,7 @@
 
 テスト: `tests/unit/design-agent/comp-impl/phase-c-overlap.test.ts`。道具: `overlap-harness.ts`。描画は Chromium 1194、JS 無効、通信遮断、deviceScaleFactor 1。
 
-**落ちるべき例 (27)。** 「試作」は幾何と順の検査、「画素」は §4 の C、「今の V2」は `LAYER_SCRIPT` の覆いの数 / 守る文字への非 content の重なりの数、「今の当たり判定」は `GEOMETRY_SCRIPT` (どれも生の HTML に掛けたもの。本番では許可一覧が先に拒む)。
+**落ちるべき例 (32。Fresh Review の後に M1・M2 の3例・L3 の1例を足した)。** 「試作」は幾何と順の検査、「画素」は §4 の C、「今の V2」は `LAYER_SCRIPT` の覆いの数 / 守る文字への非 content の重なりの数、「今の当たり判定」は `GEOMETRY_SCRIPT` (どれも生の HTML に掛けたもの。本番では許可一覧が先に拒む)。
 
 | 例 | 試作 | 画素 | 今の V2 (覆い / 非 content) | 今の当たり判定 |
 |---|---|---|---|---|
@@ -198,11 +213,17 @@
 | atomic painting: a later flex item over an earlier item's overflowing text | `PROTECTED_ORDER_UNPROVEN` | `PIXEL_COVER_PROTECTED`, `GROUND_NOT_FLAT` | 1/1 | FACT_COVERED,FACT_OUT_OF_BOX |
 | atomic painting: a later flex item pulled back over an earlier item's text | `PAINT_ABOVE_PROTECTED` | `PIXEL_COVER_PROTECTED`, `GROUND_NOT_FLAT` | 1/1 | FACT_COVERED |
 | grid stacking: a later item on the same cell | `PAINT_ABOVE_PROTECTED` | `PIXEL_COVER_PROTECTED`, `GROUND_NOT_FLAT` | 1/1 | FACT_COVERED |
+| text over text inside one element: a later run pulled back over the fact | `PROTECTED_TEXT_ON_TEXT` | — | 0/0 | — |
+| an ancestor's top border under the fact (negative margin) | `PROTECTED_ON_DECORATION` | `GROUND_NOT_FLAT` | 0/0 | — |
+| an ancestor's left border under the fact (negative margin) | `PROTECTED_ON_DECORATION` | `GROUND_NOT_FLAT` | 0/0 | — |
+| an ancestor's gradient ground under the fact | `PROTECTED_ON_DECORATION` | — | 0/0 | — |
+| ordinary text clipped by an overflow box | `TEXT_CLIPPED` | — | 0/0 | — |
 | ordinary text covered | `PAINT_ABOVE_TEXT` | `PIXEL_COVER_TEXT` | 1/0 | — |
 | ordinary text over a decoration with no plate | `TEXT_ON_DECORATION` | — | 0/0 | — |
 
 - **今の当たり判定が見逃すもの:** 1px の線、疑似要素、SVG の線、`pointer-events: none` の覆い、輪郭線・影・`drop-shadow`、下に敷いた文字、下を通る線。**今の V2 のモデルが見ないもの:** 疑似要素 (別に `PSEUDO_GEOMETRY_UNKNOWN` で止める)、SVG の図形 (箱の地が無いので覆いに数えない)、文字の上の文字 (`overprinted` の担当)。段 C ではこの2つを、そのままの形では使えない。
-- **画素の見逃し:** 2% の覆い、文字の上の文字、切れ・画面の外 (別の検査の担当)、板の無い普通の本文の下の線。下を通る線と下の文字は「文字を消した絵の平らさ」で見える。画素が覆いを見たすべての例で、試作の幾何も落とした (矛盾 0)。3店でも、C′ の画素の覆い (`PIXEL_COVER_*`、1440・768・390) が出たすべての幅で、幾何が上に描く・順を証明できない・文字の上の文字のどれかを出した。
+- **画素の見逃し:** 2% の覆い、文字の上の文字、切れ・画面の外 (別の検査の担当)、板の無い普通の本文の下の線。下を通る線と下の文字は「文字を消した絵の平らさ」で見える。**照らし合わせは文字ごと:** 画素が覆いを見た文字のそれぞれについて、幾何がその**同じ文字**に覆いを意味するコード (上に描く・順を証明できない・文字の上の文字) を出したことを確かめる (`pixelPass` の `disagreements` が空)。合成の例 32 と、3店の strict・層の版・C′ (1440・768・390) のすべてで食い違い 0。
+- **(訂正) 最初の版の「3店で矛盾 0」は空の証明だった** (Fresh Review M3): C′ のどこかに `ORDER_UNPROVEN` があれば通る作りで、C′ はどの幅にもそれがあった (例: 輪の 768 は画素が `PIXEL_COVER_PROTECTED` で、幾何は `*_ORDER_UNPROVEN` と `TEXT_ON_DECORATION` だけ)。オーナーの判断 3 (§12) の証拠としては、文字ごとの照らし合わせ (上) だけを使う。
 - **平らさの画素 (`PIXEL_PROTECTED_GROUND_NOT_FLAT`) は止める側に使えない:** 輪の strict B 自体が 1440・768・390 で出す (丸いハブの上の店名 輪、太い罫に近い文字)。run の V3b (`GROUND_NOT_FLAT`) が advisory のままである理由と同じ。段 C でも advisory とし、止めるのは幾何の V4 (`OVERLAP_PROTECTED_ON_DECORATION`) とする。
 
 **通るべき例 (9):** 二つの段の間の溝を通る下の層の継ぎ目 / 文字から離れた上の装飾 / 守る文字の下の線を文字自身の不透明な板が隠す / 普通の本文の下の線を板が隠す / 画像の上だけの割れ目 / 箱は事実に届くが描く棒は届かない回した棒 / 箱は事実を覆うが線は避ける SVG の曲線 / 空いた所にだけ重なる負の margin の札 / `allow` のときの普通の本文の下の線。すべて幾何でも画素でもコード 0。
@@ -223,19 +244,23 @@
 
 ### 7.2 結果
 
-| 店 | layer: 文法 (提案の旗) | layer: 1px の掃引 320〜1920 | strict: 1px の掃引 | C′: 確かめる幅 12 | C′: 1px の掃引 (道具の外、本物の大きさの変更) |
-|---|---|---|---|---|---|
-| つぐ手 | 問題 0 (旗なしは `CSS_PROPERTY`・`CSS_VALUE`) | `OVERLAP_PROTECTED_OFFSCREEN` 601–995 だけ | 同じ | すべての幅で落ちる | `PAINT_ABOVE_TEXT` 320–363・559・562–600・1200–1920、`PROTECTED_ON_DECORATION` 320–600、`ORDER_UNPROVEN`・`PROTECTED_ORDER_UNPROVEN`・`TEXT_ON_DECORATION` 全幅 (約 12 分) |
-| 輪 | 問題 0 | `OVERLAP_PROTECTED_OFFSCREEN` 320–369・601–1129 だけ | 同じ | すべての幅で落ちる | `PAINT_ABOVE_TEXT` 594–600・1111–1118・1124–1147・1217–1292、`TEXT_ON_TEXT` 1000–1920、`ORDER_UNPROVEN`・`PROTECTED_ORDER_UNPROVEN`・`TEXT_ON_DECORATION` 全幅 (約 13 分) |
-| ゆげ湯 | 問題 0 | `OVERLAP_PROTECTED_OFFSCREEN` 601–969 だけ | 同じ | すべての幅で落ちる | **`PAINT_ABOVE_PROTECTED` 1260–1263**、**`PROTECTED_TEXT_ON_TEXT` 861–885・1136–1159**、`TEXT_ON_TEXT` 601–681・1101–1150、`PAINT_ABOVE_TEXT`・`PROTECTED_ON_DECORATION`・`ORDER_UNPROVEN`・`TEXT_ON_DECORATION` 全幅 (約 5 分) |
+この容器の書体 (IPA) での値。**書体で変わるので、テストはこれらの数字を書かない** (§2.1)。layer と strict の列は墨の箱の版、C′ の 1px の列は最初の版 (1.3em の箱) で測った記録である (C′ の全幅の掃引は1ページ 5〜13 分で、直した後に全部は測り直していない。直した後にゆげ湯の 600–1000・1100–1300 を測り直した結果は下の注)。
 
+| 店 | layer: 文法 (提案の旗) | layer: 1px の掃引 320〜1920 | strict: 1px の掃引 | C′: 確かめる幅 12 | C′: 1px の掃引 (最初の箱、道具の外、本物の大きさの変更) |
+|---|---|---|---|---|---|
+| つぐ手 | 問題 0 (旗なしは `CSS_PROPERTY`・`CSS_VALUE`) | `OVERLAP_PROTECTED_OFFSCREEN` 601–992 だけ (最初の箱では 601–995) | 同じ | すべての幅で落ちる | `PAINT_ABOVE_TEXT` 320–363・559・562–600・1200–1920、`PROTECTED_ON_DECORATION` 320–600、`ORDER_UNPROVEN`・`PROTECTED_ORDER_UNPROVEN`・`TEXT_ON_DECORATION` 全幅 (約 12 分) |
+| 輪 | 問題 0 | `OVERLAP_PROTECTED_OFFSCREEN` 320–369・601–1125 だけ (最初の箱では 601–1129) | 同じ | すべての幅で落ちる | `PAINT_ABOVE_TEXT` 594–600・1111–1118・1124–1147・1217–1292、`TEXT_ON_TEXT` 1000–1920、`ORDER_UNPROVEN`・`PROTECTED_ORDER_UNPROVEN`・`TEXT_ON_DECORATION` 全幅 (約 13 分) |
+| ゆげ湯 | 問題 0 | `OVERLAP_PROTECTED_OFFSCREEN` 601–969 だけ | 同じ | すべての幅で落ちる | **`PAINT_ABOVE_PROTECTED` 1260–1263**、~~`PROTECTED_TEXT_ON_TEXT` 861–885・1136–1159~~ (箱の誤り、下)、`TEXT_ON_TEXT` 601–681・1101–1150、`PAINT_ABOVE_TEXT`・`PROTECTED_ON_DECORATION`・`ORDER_UNPROVEN`・`TEXT_ON_DECORATION` 全幅 (約 5 分) |
+
+- **墨の箱で測り直したゆげ湯の C′:** `PAINT_ABOVE_PROTECTED` は 1260–1262 (最初の箱で 1260–1263。CI では最初の箱で 1271–1275)。`PROTECTED_TEXT_ON_TEXT` は 600–1000・1100–1300 のどこにも出ない。`TEXT_ON_TEXT` 601–681 は残る。
 - **strict にもともとある `OFFSCREEN`** は、strict B のタブレットの横のはみ出し (DEV-160 で知られた誤り) と輪の 320–369 である。層を足しても1幅も増えも減りもしない (テストで、層の版の 1,601 幅の全部が strict の範囲と一致することを固定。端は本物の大きさの変更で確かめた)。
 - **層の版は、確かめる幅 12 のすべてで strict と同じコード**で、画素の二重の守り (1440・768・390) でも覆いは 0。
 - 層の版の調整で検査が実際に止めたもの (作る途中で見つかった): 輪のスポークが巨大な語 まわる の下を通る (1200–1302、`OVERLAP_TEXT_ON_DECORATION`。長いスポークを 1360px 以上に)、ゆげ湯ののれんが 1024 で 手ぬぐいと石けんを貸し出しています (事実) の上に来る、390 で 湯上がりの、帰り道。の上に来る (`OVERLAP_PAINT_ABOVE_*`。のれんを短く)、つぐ手の割れ目が狭い幅で板の札に届く (`OVERLAP_PAINT_ABOVE_TEXT`。割れ目を短く)、線の断面の継ぎ目が 768 で帯の文字の下を通る (`OVERLAP_TEXT_ON_DECORATION`。文字に板を敷いた)。**層を足す作り手は、検査の答えを見て形を直すことになる**。
 
 ### 7.3 C′ で見つかったこと
 
-- **確かめる幅の間にだけある守る文字の覆い (本物):** ゆげ湯の C′ は、湯の表面の板 (`board-surface`) が 1260–1263px でだけ 熱い湯と、ぬるい湯の二つの湯船があります (事実) の上に描かれる。C′ の CSS の注 (「1280–1300 で最後の す を覆っていた」) の直しが、覆う幅を 1260–1263 にずらしただけだった。確かめる幅 (1280・1024) では見えない。同じく巨大な語 沸く が 861–885px で 湯が沸くのは、開店の一時間前です (事実) に、熱い が 1136–1159px で説明文に重なる。テストで、1px の掃引がこの範囲を正確に見つけ、確かめる幅 12 のどれもが見逃すことを固定した。
+- **確かめる幅の間にだけある守る文字の覆い (本物):** ゆげ湯の C′ は、湯の表面の板 (`board-surface`) が 1260–1263px でだけ 熱い湯と、ぬるい湯の二つの湯船があります (事実) の上に描かれる。C′ の CSS の注 (「1280–1300 で最後の す を覆っていた」) の直しが、覆う幅をずらしただけだった。幅は書体で動く (この容器 1260–1262、CI 1271–1275)。1261px の画面で、板の白い縁が す を切っているのを Claude が見た。確かめる幅 (1280・1024) では見えない。テストは数字を書かず、「1230〜1310 の窓の 1px の掃引で、40 幅以下の狭い帯に守る文字の覆いがあり、帯に確かめる幅が無く、確かめる幅 12 のどれもそれを出さない」ことを確かめる。
+- **(訂正) 沸く・熱い の重なりは誤りだった。** 最初の報告の「沸く が 861–885px で 湯が沸くのは、開店の一時間前です に、熱い が 1136–1159px で説明文に重なる」は、墨より大きな最初の箱 (1.3em) のせいだった。墨の箱では出ず、870px の画面で 沸く の輪郭が事実の字から離れていることを Claude が見た。
 - 全幅で出るものの大半は、(a) 板の `drop-shadow`・`box-shadow` が札や本文に届く (順を証明できない)、(b) 写真の仮の板の上の札・巨大な語・区画をまたぐ文字が、自分の祖先でない地 (別の区画・写真の板・残り火・湯気) の上にある、(c) SVG の線・湯気が巨大な語 (普通の本文として数える) の上に描かれる、である。(b) の「写真の上の札」は段 C の別の能力 `hero_overlay` (DEV-083 §3.1(a)、画像の解析のコントラスト) の範囲で、`layered_decoration` は扱わない。
 
 ### 7.4 比較画像 (Claude が見た)
@@ -276,29 +301,35 @@ strict B と C′ の SHA は DEV-171・DEV-172 の記録と同じだった。
 
 ## 9. 壊して確かめたこと (試作の変異)
 
-試作の守りを1つずつ外して、`phase-c-overlap.test.ts` の合成の例・文法・今の門の組を走らせ、元に戻した (`overlap-harness.ts` の外は触らない)。数は「落ちたテスト / 走ったテスト」。
+試作の守りを1つずつ外して、`phase-c-overlap.test.ts` の合成の例・文法・今の門の組 (Fresh Review の直しの後で 53 件、M4・M20 のテストを足して 54 件) を走らせ、元に戻した (`overlap-harness.ts` の外は触らない)。数は「落ちたテスト / 走ったテスト」。Fresh Review の直し (墨の箱、M1・M2・L3) の**後に全部を走らせ直した**。
 
 | 外した守り | 落ちたテスト |
 |---|---|
-| M1 上に描くものを下と数える | 18 / 47 |
-| M2 `pointer-events` を auto にしない | 1 / 47 |
-| M3 板を問わない (下の装飾をすべて通す) | 3 / 47 |
-| M4 守る字形の箱を 1px 広げない | 1 / 47 |
-| M5 当たり判定に出ない描き方も当たり判定で裁く (fail closed をやめる) | 4 / 47 |
-| M6 疑似要素を置き換えない | 3 / 47 |
-| M7 文字の上の文字を見ない | 2 / 47 |
-| M8 SVG の図形を「無い」と答える | 1 / 47 |
-| M9 切れの検査を外す | 2 / 47 |
-| M10 画面の外の検査を外す | 1 / 47 |
-| M11 束に文字が無いとき「下」と数える | 1 / 47 |
-| M12 重なりの余地 0.5px を 3px に | 4 / 47 |
-| M13 どの祖先も原子的な箱と数える (板の持ち上げを問わない) | 1 / 47 |
-| M14 画素の透過率の下限 0.97 を 0.9 に | 4 / 47 |
-| M15 外側の影を数えない | 1 / 47 |
-| M16 測れない疑似要素の `content` を落とさない | 1 / 47 |
+| M1 上に描くものを下と数える | 18 / 53 |
+| M2 `pointer-events` を auto にしない | 1 / 53 |
+| M3 板を問わない (下の装飾をすべて通す) | 3 / 53 |
+| M4 守る字形の箱を 1px 広げない | 1 / 54 (最初は 0 / 53。下) |
+| M5 当たり判定に出ない描き方も当たり判定で裁く (fail closed をやめる) | 4 / 53 |
+| M6 疑似要素を置き換えない | 3 / 53 |
+| M7 文字の上の文字を見ない | 4 / 53 |
+| M8 SVG の図形を「無い」と答える | 1 / 53 |
+| M9 切れの検査を外す | 3 / 53 |
+| M10 画面の外の検査を外す | 1 / 53 |
+| M11 束に文字が無いとき「下」と数える | 1 / 53 |
+| M12 重なりの余地 0.5px を 3px に | 6 / 53 |
+| M13 どの祖先も原子的な箱と数える (板の持ち上げを問わない) | 1 / 53 |
+| M14 画素の透過率の下限 0.97 を 0.9 に | 4 / 53 |
+| M15 外側の影を数えない | 1 / 53 |
+| M16 測れない疑似要素の `content` を落とさない | 1 / 53 |
+| M17 同じ要素の文字の節どうしを比べない (Fresh Review M1 の戻し) | 1 / 53 |
+| M18 祖先を下の描くものに数えない (M2 の戻し) | 3 / 53 |
+| M19 普通の本文の切れを出さない (L3 の戻し) | 1 / 53 |
+| M20 墨の箱を Range の箱に戻す | 1 / 54 (最初は 0 / 53。下) |
+| M21 祖先の下の描くものに、祖先の内側の板を求めない | 3 / 53 |
 
-- 16 のうち 16 が 1 件以上落ちる。M13 は最初 0 件で生き残った (板の祖先が原子的でない例が無かった)。「原子的でない箱の不透明な地は板にならない」例 (後の流れのブロックを負の margin で引き上げ、事実の地と文字の間に描く) を足し、落ちるようにした。
-- 走らせ方: `scratchpad/dev173/scripts/mutate.py` (リポジトリの外)。`overlap-harness.ts` の1か所を書き換え、`phase-c-overlap.test.ts` の合成の例・文法・今の門の組 (47 件) を走らせ、元に戻す。終わりに `git status` で道具に差が無いことを確かめた。3店の組 (掃引) は時間のため変異では走らせていない。
+- 21 のうち 21 が 1 件以上落ちる。
+- 墨の箱に変えた後、M4 (守る文字の 1px) と M20 (墨の箱を Range の箱に戻す) が 0 件で生き残った。前者は「事実の墨の 1.3px 下の線は落ち、同じ線が普通の本文の下なら通る」、後者は「content area が 1.45em の書体で行送り 1 の2段落は重ならない」のテストを足して落ちるようにした。M13 は最初の版で生き残り、「原子的でない箱の地は板にならない」例を足した (前の報告)。
+- 走らせ方: `scratchpad/dev173/scripts/mutate.py` (リポジトリの外)。1つごとに道具を元に戻し、終わりに `git status` で道具に差が無いことを確かめた。3店の組 (掃引) は時間のため変異では走らせていない。
 
 ## 10. 証明していないこと
 
@@ -308,7 +339,9 @@ strict B と C′ の SHA は DEV-171・DEV-172 の記録と同じだった。
 - **字形の箱の外の墨。** 1.3em に切った箱の外に出る墨 (大きな字の飛び出し、斜体) は見ない。
 - **板の上の色。** 板は平らで不透明であることだけを見る。板と文字のコントラストは今の検査 (守る文字は `lowContrastShare`) に任せる。
 - **普通の本文の下の装飾 (`allow`)。** 合成のコントラストと賑やかさの門が無い。
-- **3店以外のページ、ほかの書体。**
+- **3店以外のページ、ほかの書体。** 書体で strict のページにもコードが出うる (§2.1・§2.2)。CI の書体では、この容器とはみ出しの範囲・C′ の覆う幅が違う (C′ のゆげ湯の板: この容器 1260–1263、CI 1271–1275)。
+- **縦書きの墨。** 縦書きは Range の箱を 1.3em に切った箱のまま (書体の content area に引きずられる)。
+- **今の本番の穴 (この PR の外、Fresh Review L2):** 今の許可一覧は `height`・`max-height` を `overflow: visible` のまま許す。`.box { height: 0 }` の中の普通の本文に、次の段落が重なって描かれる。run の層の検査 (`layerScan`) と 15 点の当たり判定 (`GEOMETRY_SCRIPT`) は何も出さない。この容器では文字の検査 (`textCheck` の重なり、`TEXT_OVERLAP`) が拾う (確かめる幅と 32px の掃引で。1px の掃引には無い)。事実なら `FACT_COVERED` も出る。テストで今の振る舞いを固定した (`a pre-existing gap …`)。普通の本文の重なりを 1px の全幅で見るかはオーナーの判断 (§12)。lib は変えていない。
 - **C′ の 1px の掃引は道具の外の実行。** テストは確かめる幅と、ゆげ湯の 2 つの狭い範囲 (1250–1275・850–895) だけを固定する (全幅は1ページ 5〜13 分)。
 
 ## 11. 危険
@@ -331,5 +364,7 @@ strict B と C′ の SHA は DEV-171・DEV-172 の記録と同じだった。
 > 6. 板の決まり (不透明・平ら・字形 +1px)。
 > 7. §10 の証明していないもの (広い幅・高さ・拡大率・ほかの描画系) を ON の前に要るとするか。
 > 8. 得が小さいこと (§0・§7): `layered_decoration` 単独でなく、N1 (装飾の SVG) と一緒に評価するか。
+> 9. 字形の箱を墨の箱 (canvas の `measureText`) で測ること (§2)、文字が自分の要素の箱の外に描かれる所を `ORDER_UNPROVEN` で落とすこと (§2.2)。書体 (`web_font`) を固定しないまま ON にすると、strict のページでも書体次第でコードが出うる。
+> 10. 今の本番の穴 (§10、`height: 0` の箱の普通の本文の重ねが 1px の全幅で見られていない) を、段 C と別に塞ぐか。
 >
 > このシートは承認ではない。能力の ON・`APPROVED_CAPABILITIES` の変更・安全の門の変更は、別の承認まで HOLD のまま。
