@@ -67,7 +67,7 @@
     },
     {
       "key": "fidelity_c",
-      "dir": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v3",
+      "dir": "design-library/research/quality-pipeline/poc/bicycle/fidelity/d1-v4",
       "section_attribute": "data-comp-section",
       "motif": [
         ".wheel-art",

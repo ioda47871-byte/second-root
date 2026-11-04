@@ -1,0 +1,258 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-sento-yuge",
+  "direction_id": "d1-heat-descent-v3",
+  "comp": {
+    "html_sha256": "02798677423c3340ddff5c804184dfedd9e0f1154845be3348554d89e1daae52",
+    "css_sha256": "eb90aabcf266c8623e5704cbb8fb4fee698260bd4ca96d8d63b6fa8221190462",
+    "copy_sha256": "50432f7b2cb60b0a8b7bb1c2e0b032dd1492fe4ac7257d11a0636eae083d359c"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "53308a0f64330ebfa252a475c4b70024d5ba8a5447918683f9cf84aa69773a61",
+      "width": 1440,
+      "height": 4889
+    },
+    "mobile": {
+      "sha256": "8d33403a78f39a896ae8405b4e67ce73f3c5c30bb7e72a81d1046137b0a7923d",
+      "width": 390,
+      "height": 4324
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-04T23:00:00Z",
+    "how": "Read tool: PC at 0.28 (2 columns), SP at 0.5 (4 columns); C renders at 601, 768, 999 (bicycle), 1440, 1200 (tsugute), 1440, 1200, 1024, 768, 390 (sento) at 0.33-0.5; 1x crops of the tsugute seam exits, the sento gauge and the noren at 1024"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 2444
+      },
+      {
+        "x": 0,
+        "y": 2444,
+        "w": 1440,
+        "h": 2445
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1081
+      },
+      {
+        "x": 0,
+        "y": 1081,
+        "w": 390,
+        "h": 1081
+      },
+      {
+        "x": 0,
+        "y": 2162,
+        "w": 390,
+        "h": 1081
+      },
+      {
+        "x": 0,
+        "y": 3243,
+        "w": 390,
+        "h": 1081
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "左の温度計が目盛りつきのガラスの管になり、中の色が 熱い (朱)・ぬるい (橙)・冷たい (水色)・沸く (燠) の区画の境で変わる。数は書かない",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 120,
+          "h": 4889
+        }
+      },
+      {
+        "what": "湯の表面の板の上から湯気の筋が3本立ちのぼり、熱い の い を通って薄れる。コピーには掛からない",
+        "box": {
+          "x": 860,
+          "y": 280,
+          "w": 560,
+          "h": 1060
+        }
+      },
+      {
+        "what": "湯船の2枚の板と事実の文、ぬるい は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 980,
+          "w": 1440,
+          "h": 880
+        }
+      },
+      {
+        "what": "水風呂の板と 冷たい、沸く の区画の火の帯は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 1860,
+          "w": 1440,
+          "h": 1100
+        }
+      },
+      {
+        "what": "壁の山の絵と文は前の版のまま。管は白いタイルの上でほとんど見えない",
+        "box": {
+          "x": 0,
+          "y": 2960,
+          "w": 1440,
+          "h": 700
+        }
+      },
+      {
+        "what": "のれんと夜の区画は前の版のまま (1024 の竿の余白は C の幅で確かめた)",
+        "box": {
+          "x": 0,
+          "y": 3600,
+          "w": 1440,
+          "h": 1289
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "SP の温度計は細い管と短い目盛り、区画ごとの色",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 4324
+        }
+      },
+      {
+        "what": "lead の下と湯船の板の間に、短い湯気の筋が右に立つ",
+        "box": {
+          "x": 200,
+          "y": 700,
+          "w": 190,
+          "h": 260
+        }
+      },
+      {
+        "what": "ぬるい・冷たい・沸く は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 1000,
+          "w": 390,
+          "h": 1400
+        }
+      },
+      {
+        "what": "のれん・情報は前の版のまま",
+        "box": {
+          "x": 0,
+          "y": 2900,
+          "w": 390,
+          "h": 1424
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 4889
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 2700
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "巨大な文字と写真の重なりは、SP でも縦に積んで残す",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 2200
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-002/concept.read.json",
+      "learn": "店の素材の形 (枝の弧) を、写真の枠の形と画面の区切りに使う",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 700,
+          "y": 3500,
+          "w": 700,
+          "h": 700
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "上半分の 熱い→ぬるい の旅が、細い1本の帯とぼんやりした光だけで、銭湯の温度計にも湯気にも見えなかった",
+      "protect": [
+        "熱い・ぬるい・冷たい・沸く の巨大な語と地の色",
+        "コピーの位置と 4.5:1",
+        "のれん"
+      ],
+      "changed": [
+        "温度計をガラスの管と目盛り (24px ごと、120px ごとに長い印) にし、中の色を区画ごとに描いて、区画の境で色が変わるようにした (ページの % の色は区画とずれていた)",
+        "湯気の筋 (ぼかした太い筋と細い筋、上へ薄れる) を SVG で描き、PC は湯の表面の板の上から 熱い へ、1000〜1100 は湯船の板の上の縁から、601〜999 は 熱い の上だけ、SP は lead と湯船の間に置いた"
+      ],
+      "regressions_fixed": [
+        "601〜900 で湯気の筋が tagline と lead に掛かり、lead が 1.4:1 まで下がった。601〜999 では 熱い の上だけに置いた"
+      ]
+    },
+    {
+      "n": 2,
+      "cause": "1024 でのれんの竿が壁の最後の行の 20px 下にあり窮屈だった",
+      "protect": [
+        "のれんの大きさと位置 (夜の見出しに掛からない)"
+      ],
+      "changed": [
+        "601〜1100 で壁の区画の下の余白を 110px から 170px にし、竿と壁の文の間を約 80px にした"
+      ],
+      "regressions_fixed": []
+    }
+  ],
+  "remaining": [
+    "写真はすべて仮の板。山の絵も描いた仮の板",
+    "温度計に数は無い (事実に温度が無いので描かない)。白いタイルの区画では管がほとんど見えない",
+    "湯気の筋は PC では湯の面から立つが、601〜999 では 熱い の上に浮くだけで湯とつながらない",
+    "のれんの ゆ と色は創作で、オーナーの確認が要る",
+    "カンプと C は同じソースで描く。C との差は測れない"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}
