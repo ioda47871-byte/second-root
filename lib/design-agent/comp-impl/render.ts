@@ -422,6 +422,21 @@ async function segmentModes(page: Page, compPage: CompPage, range: [number, numb
   return out;
 }
 
+/** One call of the sweep script: the widths it was asked for and how many it says it measured. */
+export type SweepRun = { from: number; to: number; measured: number };
+
+/**
+ * The 1 px sweep's coverage (fail closed): every integer width of [lo, hi] that no run measured is PHASE_B_UNMEASURED.
+ * A run walks from..to in order, so a short count leaves its tail unmeasured; a width no run asked for is unmeasured.
+ */
+export function unmeasuredWidths(runs: readonly SweepRun[], lo: number, hi: number): Array<{ w: number; codes: string[] }> {
+  const measured = new Set<number>();
+  for (const r of runs) for (let w = r.from; w < r.from + Math.min(Math.max(r.measured, 0), r.to - r.from + 1); w++) measured.add(w);
+  const out: Array<{ w: number; codes: string[] }> = [];
+  for (let w = lo; w <= hi; w++) if (!measured.has(w)) out.push({ w, codes: ["PHASE_B_UNMEASURED"] });
+  return out;
+}
+
 /**
  * DEV-164: the 1 px sweep (phase-b.ts DISPLAY_SWEEP_SCRIPT) over every integer CSS px width of 320–1920, only when
  * display_scale, display_nowrap, gradient_ground or translucent_decoration is on (else null: nothing runs). The display
@@ -439,11 +454,10 @@ export async function displaySweepPass(browser: Browser, compPage: CompPage, pla
   const [lo, hi] = o.range ?? [320, 1920];
   const ctx = await openCompPage(browser, compPage, { width: lo, height: 900, scale: 1, mobile: false });
   try {
-    const measured = new Set<number>();
+    const runs: SweepRun[] = [];
     const run = async (from: number, to: number, step: boolean) => {
       const r = DisplaySweepSchema.parse(await ctx.page.evaluate(`(${DISPLAY_SWEEP_SCRIPT})(${JSON.stringify({ display: plan.displayWords ?? [], from, to, step, words, overlap })})`));
-      // the script walks from..to in order; a short count leaves the tail unmeasured
-      for (let w = from; w < from + Math.min(r.measured, to - from + 1); w++) measured.add(w);
+      runs.push({ from, to, measured: r.measured });
       return r;
     };
     const failing: DisplaySweep["failing"] = [];
@@ -463,7 +477,7 @@ export async function displaySweepPass(browser: Browser, compPage: CompPage, pla
         }
       }
     }
-    for (let w = lo; w <= hi; w++) if (!measured.has(w)) failing.push({ w, codes: ["PHASE_B_UNMEASURED"] });
+    failing.push(...unmeasuredWidths(runs, lo, hi));
     return { failing, targets, ms: Date.now() - started, blocked: ctx.blocked() };
   } finally {
     await ctx.context.close();

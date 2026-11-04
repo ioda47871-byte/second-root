@@ -344,14 +344,39 @@ const DISPLAY_WORD_BREAK: Spec = one((t) => valueMatches(PAGE_PROPS["word-break"
 /** translucent_decoration (design §2.5): opacity 0.1 … 1 (the render allows < 1 on text-free boxes that meet no text only). */
 const TRANSLUCENT_OPACITY: Spec = one((t) => t.t === "num" && t.v >= PHASE_B_CSS_LIMITS.opacityMin && t.v <= 1);
 
+const isOne = (t: Term | undefined) => (t?.t === "num" && t.v === 1) || (t?.t === "pct" && t.v === 100);
 /**
- * gradient_ground (design §2.4): one linear-gradient() or radial-gradient(), 2 … 8 stops, each a colour (no var()) with at
+ * A gradient stop's colour must be opaque (Fresh Review round 2, M1: the stop rule compares RGB only, so a change of alpha
+ * alone, e.g. #000 to transparent, was never judged). Fail closed: a hex colour of 3 / 6 digits, or 4 / 8 digits whose
+ * alpha is f / ff; white and black (never transparent or currentcolor, which takes the element's colour); rgb() / rgba()
+ * with no alpha or an alpha of 1 / 100%; with colour_syntax, a named colour, and hsl() / hsla() / oklch() / oklab() with
+ * no alpha or an alpha of 1 / 100%. No color-mix() (its percentages can leave alpha below 1) and no var().
+ */
+function opaqueStopColour(t: Term, colourSyntax: boolean): boolean {
+  if (t.t === "hash") return /^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(t.v) || /^([0-9a-f]{3}f|[0-9a-f]{6}ff)$/i.test(t.v);
+  if (t.t === "ident" && ["white", "black"].includes(t.v.toLowerCase())) return true;
+  if (t.t === "fn" && (t.name === "rgb" || t.name === "rgba")) {
+    if (!isColor(t)) return false;
+    const parts = terms(t.args).filter((x) => x.t !== "," && !(x.t === "delim" && x.v === "/"));
+    return parts.length === 3 || isOne(parts[3]);
+  }
+  if (!colourSyntax || !isPhaseBColour(t)) return false;
+  if (t.t === "ident") return true; // NAMED_COLOURS holds no transparent colour
+  if (t.t !== "fn") return false;
+  const c = colourChannels(t, t.name === "hsl" || t.name === "hsla");
+  return c !== null && (c.length === 3 || isOne(c[3]));
+}
+
+/**
+ * gradient_ground (design §2.4): one linear-gradient() or radial-gradient(), 2 … 8 stops, each an OPAQUE colour
+ * (opaqueStopColour: no alpha below 1, no var(), no color-mix()) with at
  * most one percentage position. A linear direction is `to <side> [<side>]` or an angle; a radial shape `circle` or
  * `ellipse` only (no size, no `at`). Nothing else is a function here: repeating-*, conic-gradient(), image-set(),
  * -webkit-image-set(), cross-fade(), element(), paint() … are refused, and url() never gets past the tokenizer.
  */
 function gradientItem(colourSyntax: boolean) {
   const colour = (t: Term) => (isColor(t) && !(t.t === "fn" && t.name === "var")) || (colourSyntax && isPhaseBColour(t));
+  const stopColour = (t: Term) => colour(t) && opaqueStopColour(t, colourSyntax);
   return (t: Term): boolean => {
     if (t.t !== "fn" || (t.name !== "linear-gradient" && t.name !== "radial-gradient")) return false;
     const groups = commaGroups(terms(t.args));
@@ -369,7 +394,7 @@ function gradientItem(colourSyntax: boolean) {
       stops = groups.slice(1);
     }
     if (stops.length < 2 || stops.length > PHASE_B_CSS_LIMITS.gradientStops) return false;
-    return stops.every((g) => colour(g[0]!) && (g.length === 1 || (g.length === 2 && pctIn(g[1], 0, 100))));
+    return stops.every((g) => stopColour(g[0]!) && (g.length === 1 || (g.length === 2 && pctIn(g[1], 0, 100))));
   };
 }
 

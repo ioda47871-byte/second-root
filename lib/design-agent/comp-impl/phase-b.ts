@@ -88,7 +88,8 @@ export const GRADIENT_CODES_JS = String.raw`(g) => {
  *
  * - grounds: every element with a background-image; it must hold no text (a text node, an aria-label or an alt, its own
  *   included: Fresh Review L1, as layers.ts counts alt) and its border box (its paint extent: phase B adds no outset paint,
- *   §2.9) must meet no text line box. Every gradient is judged by GRADIENT_CODES_JS (codes only, all of them).
+ *   §2.9) must meet no text line box. Every gradient is judged by GRADIENT_CODES_JS (codes only, all of them); a stop
+ *   whose colour is not opaque is unmeasured (GRADIENT_UNMEASURED).
  * - translucent: every element with opacity < 1; it must hold no text, and its paint extent (its box and every
  *   descendant's) must meet no text line box.
  */
@@ -143,7 +144,9 @@ export const PAINT_SCANNER = String.raw`() => {
     const stops = groups.map((g) => {
       const pm = /^(.*\S)\s+(-?[\d.]+)%$/.exec(g);
       const c = colour(pm ? pm[1] : g);
-      return { rgb: c ? [c[0], c[1], c[2]] : null, pct: pm ? Number(pm[2]) : null };
+      // a stop that is not opaque is not measured (GRADIENT_UNMEASURED): the stop rule compares RGB only (Fresh Review
+      // round 2, M1; the allowlist already refuses such a stop under gradient_ground: defence in depth)
+      return { rgb: c && c[3] === 255 ? [c[0], c[1], c[2]] : null, pct: pm ? Number(pm[2]) : null };
     });
     return { kind: m[1], config, w: box.width, h: box.height, stops };
   };

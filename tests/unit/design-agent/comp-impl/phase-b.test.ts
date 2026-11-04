@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { cssProblems, type CompPage } from "@/lib/design-agent/comp-impl/page";
 import type { PageCssOptions } from "@/lib/design-agent/comp-impl/page-css";
 import { displayWordsOf, GRADIENT_CODES_JS, gradientLineLength, gradientProblems, phaseBCheck, phaseBCodes, stopPositions, TYPE_ROLE_CAPS, type Gradient, type PhaseBScan } from "@/lib/design-agent/comp-impl/phase-b";
-import { displaySweepPass, layerScan, legibilityPass, legibilitySweep, openCompPage, pageWidths, phaseBScan, sweepWidths, MOBILE } from "@/lib/design-agent/comp-impl/render";
+import { displaySweepPass, layerScan, legibilityPass, legibilitySweep, openCompPage, pageWidths, phaseBScan, sweepWidths, unmeasuredWidths, MOBILE } from "@/lib/design-agent/comp-impl/render";
 import { layerCodes } from "@/lib/design-agent/comp-impl/verify";
 import { runCompImpl } from "@/lib/design-agent/comp-impl/run";
 import { buildSyntheticBundle } from "@/lib/design-agent/comp-impl/synthetic";
@@ -83,6 +83,9 @@ const STATIC: Record<string, { option: keyof PageCssOptions; allowed: string[]; 
       "background-image: none;",
       "background: #f1ebdf;",
       "background: linear-gradient(#000,#111,#222,#333,#444,#555,#666,#777);",
+      "background: linear-gradient(#000f, #ffffffff);", // a hex alpha of f / ff is opaque
+      "background: linear-gradient(rgb(0 0 0 / 1), rgba(255, 255, 255, 100%));",
+      "background: linear-gradient(white, black);",
     ],
     refused: [
       ["background: linear-gradient(url(a.png), #fff);", ["CSS_SYNTAX_URL"]],
@@ -106,6 +109,20 @@ const STATIC: Record<string, { option: keyof PageCssOptions; allowed: string[]; 
       ["background-image: radial-gradient(10px, #000, #fff);", ["CSS_VALUE"]],
       ["background: #fff linear-gradient(#000, #fff);", ["CSS_VALUE"]],
       ["background: linear-gradient(#000, #fff), linear-gradient(#000, #fff);", ["CSS_VALUE"]],
+      // Fresh Review round 2, M1: a stop below full alpha (the stop rule compares RGB only)
+      ["background: linear-gradient(#000, transparent);", ["CSS_VALUE"]],
+      ["background: linear-gradient(#000 50%, transparent 50%);", ["CSS_VALUE"]],
+      ["background: linear-gradient(#000, #0000);", ["CSS_VALUE"]],
+      ["background: linear-gradient(#000, #00000000);", ["CSS_VALUE"]],
+      ["background: linear-gradient(#000, #000e);", ["CSS_VALUE"]],
+      ["background: linear-gradient(#000, rgba(0,0,0,.05));", ["CSS_VALUE"]],
+      ["background: linear-gradient(#000, rgb(0 0 0 / 0.5));", ["CSS_VALUE"]],
+      ["background: linear-gradient(#000, rgba(0, 0, 0, 99%));", ["CSS_VALUE"]],
+      ["background-image: linear-gradient(transparent, #fff);", ["CSS_VALUE"]],
+      ["background: linear-gradient(currentcolor, #fff);", ["CSS_VALUE"]],
+      ["background: linear-gradient(color-mix(in srgb, #000 20%, #fff 20%), #fff);", ["CSS_VALUE"]],
+      ["background: linear-gradient(color-mix(in srgb, #000, #fff), #fff);", ["CSS_VALUE"]],
+      ["background: radial-gradient(circle, #000, transparent);", ["CSS_VALUE"]],
       ["background-size: 10px 10px;", ["CSS_PROPERTY"]],
       ["background-clip: text;", ["CSS_PROPERTY"]],
       ["cross-fade: none;", ["CSS_PROPERTY"]],
@@ -148,6 +165,17 @@ describe("DEV-164 phase B: the static grammar behind the flags", () => {
       });
     });
   }
+
+  it("gradient_ground with colour_syntax: opaque phase-B stop colours pass, any alpha below 1 is refused (Fresh Review round 2, M1)", () => {
+    const on = { gradientGround: true, colourSyntax: true };
+    for (const ok of ["hsl(30 50% 40%)", "hsl(30 50% 40% / 1)", "hsla(30, 50%, 40%, 1)", "oklch(0.6 0.1 40)", "oklch(60% 0.1 40 / 100%)", "oklab(0.6 0.1 -0.1)", "rebeccapurple"])
+      expect(cssProblems(decl(`background: linear-gradient(${ok}, #fff);`), on), ok).toEqual([]);
+    for (const bad of ["hsl(30 50% 40% / 0.5)", "hsla(30, 50%, 40%, 0.5)", "hsla(30, 50%, 40%, 0%)", "oklch(0.6 0.1 40 / 0.99)", "oklab(0.6 0.1 -0.1 / 50%)", "transparent"])
+      expect(cssProblems(decl(`background: linear-gradient(${bad}, #fff);`), on), bad).toEqual(["CSS_VALUE"]);
+    // the colour itself stays allowed where a colour goes (colour_syntax does not refuse alpha; only gradient stops do)
+    expect(cssProblems(decl("color: hsl(30 50% 40% / 0.5);"), on)).toEqual([]);
+    expect(cssProblems(decl("background: rgba(0, 0, 0, 0.05);"), on)).toEqual([]);
+  });
 
   it("keeps the generic refusals with every flag on (url, @import, @font-face, pseudo-elements, positioning)", () => {
     expect(cssProblems(`@import "x.css";`, ALL_ON)).toEqual(["CSS_AT_RULE"]);
@@ -267,6 +295,22 @@ describe("DEV-164 phase B: pure checks", () => {
     expect(phaseBCheck([{ width: 390 }]).codes).toEqual(["PHASE_B_UNMEASURED"]);
     expect(phaseBCheck([{ width: 390, phaseB: scanOf() }]).ok).toBe(true);
     expect(phaseBCheck([{ width: 390, phaseB: scanOf() }], { failing: [{ w: 400, codes: ["DISPLAY_OFFSCREEN"] }], targets: 1, ms: 1, blocked: 0 }).codes).toEqual(["DISPLAY_OFFSCREEN"]);
+  });
+
+  it("the 1px sweep fails closed on widths it did not measure (PHASE_B_UNMEASURED; Fresh Review round 2, L3)", () => {
+    expect(unmeasuredWidths([{ from: 320, to: 1920, measured: 1601 }], 320, 1920)).toEqual([]);
+    expect(unmeasuredWidths([{ from: 320, to: 600, measured: 281 }, { from: 601, to: 1920, measured: 1320 }], 320, 1920)).toEqual([]);
+    // a short count leaves the tail of its run unmeasured
+    expect(unmeasuredWidths([{ from: 320, to: 400, measured: 79 }], 320, 400)).toEqual([{ w: 399, codes: ["PHASE_B_UNMEASURED"] }, { w: 400, codes: ["PHASE_B_UNMEASURED"] }]);
+    expect(unmeasuredWidths([{ from: 320, to: 330, measured: 0 }], 320, 330)).toHaveLength(11);
+    expect(unmeasuredWidths([{ from: 320, to: 330, measured: -5 }], 320, 330)).toHaveLength(11);
+    // a count above the run's length measures nothing beyond it; a width no run asked for is unmeasured
+    expect(unmeasuredWidths([{ from: 320, to: 324, measured: 99 }], 320, 326).map((f) => f.w)).toEqual([325, 326]);
+    expect(unmeasuredWidths([{ from: 320, to: 400, measured: 81 }, { from: 402, to: 500, measured: 99 }], 320, 500).map((f) => f.w)).toEqual([401]);
+    expect(unmeasuredWidths([], 320, 322).map((f) => f.w)).toEqual([320, 321, 322]);
+    // and it fails the check
+    const sweep = { failing: unmeasuredWidths([{ from: 320, to: 400, measured: 80 }], 320, 400), targets: 0, ms: 1, blocked: 0 };
+    expect(phaseBCheck([{ width: 390, phaseB: scanOf() }], sweep)).toMatchObject({ ok: false, codes: ["PHASE_B_UNMEASURED"] });
   });
 
   it("display words are the shop name and the fixed labels only", () => {
@@ -452,6 +496,14 @@ describe("DEV-164 phase B: gradient_ground (not under text)", () => {
     expect(await codesOf(`<div class="g"></div>`, ".g { height: 100px; background: linear-gradient(#000, #fff); }")).toEqual(["GRADIENT_TOO_STEEP"]);
     expect(await codesOf(`<div class="g"></div>`, ".g { height: 300px; background: linear-gradient(oklch(0.9 0.02 80), hsl(40 30% 85%)); }")).toEqual([]);
     expect(await codesOf(`<div class="g"></div>`, ".g { height: 100px; background: linear-gradient(oklch(0.5 0.4 30), oklch(0.5 0.4 200)); }")).toEqual(["GRADIENT_TOO_STEEP"]);
+  });
+
+  it("a stop that is not opaque is unmeasured in the page (Fresh Review round 2, M1; raw: the allowlist refuses it first)", async () => {
+    for (const [css, height] of [["linear-gradient(#000, transparent)", 30], ["linear-gradient(#000 50%, transparent 50%)", 300], ["linear-gradient(#000, #0000)", 300], ["linear-gradient(#000, rgba(0,0,0,.05))", 300], ["linear-gradient(transparent, rgba(0, 0, 0, 0.5))", 300]] as const) {
+      expect(await codesOf('<div class="g"></div>', `.g { height: ${height}px; background: ${css}; }`), css).toContain("GRADIENT_UNMEASURED");
+      expect(cssProblems(decl(`background: ${css};`), ALL_ON), css).toEqual(["CSS_VALUE"]);
+    }
+    expect(await codesOf('<div class="g"></div>', ".g { height: 300px; background: linear-gradient(#000f, rgb(0 0 0 / 1)); }")).toEqual([]);
   });
 
   it("judges EVERY drawn gradient (Fresh Review M2): 40 smooth ones and a hard stop after them still fail", async () => {
