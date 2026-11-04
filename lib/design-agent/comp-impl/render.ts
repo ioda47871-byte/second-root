@@ -423,16 +423,29 @@ async function segmentModes(page: Page, compPage: CompPage, range: [number, numb
 }
 
 /**
- * DEV-164: the 1 px display sweep (phase-b.ts DISPLAY_SWEEP_SCRIPT), only when display_scale or display_nowrap is on
- * (else null: nothing runs). The same segments and modes as protectedGeometryPass: the root's width stepped where the
- * root has no box of its own at both real ends of a media segment, a real resize at every width otherwise.
+ * DEV-164: the 1 px sweep (phase-b.ts DISPLAY_SWEEP_SCRIPT) over every integer CSS px width of 320–1920, only when
+ * display_scale, display_nowrap, gradient_ground or translucent_decoration is on (else null: nothing runs). The display
+ * words are checked with a display capability; grounds, gradients and translucent boxes with gradient_ground or
+ * translucent_decoration (Fresh Review M1: their overlap with text is otherwise only seen at the checked widths). The same
+ * segments and modes as protectedGeometryPass: the root's width stepped where the root has no box of its own at both real
+ * ends of a media segment, a real resize at every width otherwise. Fail closed: a width of the range that no run measured
+ * is PHASE_B_UNMEASURED.
  */
 export async function displaySweepPass(browser: Browser, compPage: CompPage, plan: Pick<PairPlan, "css" | "displayWords">, o: { range?: [number, number]; forceReal?: boolean } = {}): Promise<DisplaySweep | null> {
-  if (plan.css?.displayScale !== true && plan.css?.displayNowrap !== true) return null;
+  const words = plan.css?.displayScale === true || plan.css?.displayNowrap === true;
+  const overlap = plan.css?.gradientGround === true || plan.css?.translucentDecoration === true;
+  if (!words && !overlap) return null;
   const started = Date.now();
-  const ctx = await openCompPage(browser, compPage, { width: (o.range ?? [320, 1920])[0], height: 900, scale: 1, mobile: false });
+  const [lo, hi] = o.range ?? [320, 1920];
+  const ctx = await openCompPage(browser, compPage, { width: lo, height: 900, scale: 1, mobile: false });
   try {
-    const run = async (from: number, to: number, step: boolean) => DisplaySweepSchema.parse(await ctx.page.evaluate(`(${DISPLAY_SWEEP_SCRIPT})(${JSON.stringify({ display: plan.displayWords ?? [], from, to, step })})`));
+    const measured = new Set<number>();
+    const run = async (from: number, to: number, step: boolean) => {
+      const r = DisplaySweepSchema.parse(await ctx.page.evaluate(`(${DISPLAY_SWEEP_SCRIPT})(${JSON.stringify({ display: plan.displayWords ?? [], from, to, step, words, overlap })})`));
+      // the script walks from..to in order; a short count leaves the tail unmeasured
+      for (let w = from; w < from + Math.min(r.measured, to - from + 1); w++) measured.add(w);
+      return r;
+    };
     const failing: DisplaySweep["failing"] = [];
     let targets = 0;
     for (const seg of await segmentModes(ctx.page, compPage, o.range, o.forceReal === true)) {
@@ -450,6 +463,7 @@ export async function displaySweepPass(browser: Browser, compPage: CompPage, pla
         }
       }
     }
+    for (let w = lo; w <= hi; w++) if (!measured.has(w)) failing.push({ w, codes: ["PHASE_B_UNMEASURED"] });
     return { failing, targets, ms: Date.now() - started, blocked: ctx.blocked() };
   } finally {
     await ctx.context.close();

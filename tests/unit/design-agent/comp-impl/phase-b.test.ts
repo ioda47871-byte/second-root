@@ -5,8 +5,8 @@ import type { Browser, BrowserContext, Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { cssProblems, type CompPage } from "@/lib/design-agent/comp-impl/page";
 import type { PageCssOptions } from "@/lib/design-agent/comp-impl/page-css";
-import { displayWordsOf, gradientLineLength, gradientProblems, phaseBCheck, phaseBCodes, stopPositions, TYPE_ROLE_CAPS, type PhaseBScan } from "@/lib/design-agent/comp-impl/phase-b";
-import { displaySweepPass, layerScan, legibilityPass, legibilitySweep, openCompPage, pageWidths, phaseBScan, MOBILE } from "@/lib/design-agent/comp-impl/render";
+import { displayWordsOf, GRADIENT_CODES_JS, gradientLineLength, gradientProblems, phaseBCheck, phaseBCodes, stopPositions, TYPE_ROLE_CAPS, type Gradient, type PhaseBScan } from "@/lib/design-agent/comp-impl/phase-b";
+import { displaySweepPass, layerScan, legibilityPass, legibilitySweep, openCompPage, pageWidths, phaseBScan, sweepWidths, MOBILE } from "@/lib/design-agent/comp-impl/render";
 import { layerCodes } from "@/lib/design-agent/comp-impl/verify";
 import { runCompImpl } from "@/lib/design-agent/comp-impl/run";
 import { buildSyntheticBundle } from "@/lib/design-agent/comp-impl/synthetic";
@@ -222,7 +222,7 @@ const scanOf = (o: Partial<PhaseBScan> = {}): PhaseBScan => ({
   nowrap: { notDisplay: 0, list: [] },
   broken: [],
   grounds: { hasText: 0, underText: 0, list: [] },
-  gradients: [],
+  gradients: { count: 0, codes: [] },
   translucent: { hasText: 0, underText: 0, count: 0 },
   ...o,
 });
@@ -260,6 +260,7 @@ describe("DEV-164 phase B: pure checks", () => {
     expect(phaseBCodes(scanOf({ type: { max: 300, above: 1, list: [] } }))).toEqual(["TYPE_ABOVE_ROLE_CAP"]);
     expect(phaseBCodes(scanOf({ nowrap: { notDisplay: 1, list: [] }, broken: ["x"] }))).toEqual(["DISPLAY_WORD_BROKEN", "NOWRAP_NOT_DISPLAY"]);
     expect(phaseBCodes(scanOf({ grounds: { hasText: 1, underText: 1, list: [] }, translucent: { hasText: 1, underText: 1, count: 2 } }))).toEqual(["GROUND_HAS_TEXT", "GROUND_UNDER_TEXT", "TRANSLUCENT_HAS_TEXT", "TRANSLUCENT_UNDER_TEXT"]);
+    expect(phaseBCodes(scanOf({ gradients: { count: 41, codes: ["GRADIENT_HARD_STOP"] } }))).toEqual(["GRADIENT_HARD_STOP"]);
   });
 
   it("a width without a scan fails (PHASE_B_UNMEASURED); a display sweep failure fails", () => {
@@ -453,6 +454,45 @@ describe("DEV-164 phase B: gradient_ground (not under text)", () => {
     expect(await codesOf(`<div class="g"></div>`, ".g { height: 100px; background: linear-gradient(oklch(0.5 0.4 30), oklch(0.5 0.4 200)); }")).toEqual(["GRADIENT_TOO_STEEP"]);
   });
 
+  it("judges EVERY drawn gradient (Fresh Review M2): 40 smooth ones and a hard stop after them still fail", async () => {
+    const smooth = Array.from({ length: 40 }, () => '<div class="s"></div>').join("");
+    const css = ".s { height: 300px; background: linear-gradient(#EAE1D2, #D9CFBE); } .h { height: 300px; background: linear-gradient(#000 50%, #fff 50%); }";
+    expect(await codesOf(smooth, css)).toEqual([]);
+    expect(await codesOf(`${smooth}<div class="h"></div>`, css)).toEqual(expect.arrayContaining(["GRADIENT_HARD_STOP"]));
+    expect((await phaseBScan(tab, { css: { gradientGround: true }, displayWords: WORDS })).gradients.count).toBe(41);
+    const many = Array.from({ length: 200 }, () => '<div class="s"></div>').join("");
+    expect(await codesOf(`${many}<div class="h"></div>`, css)).toEqual(expect.arrayContaining(["GRADIENT_HARD_STOP"]));
+  });
+
+  it("the stop rule in the page gives the same codes as gradientProblems", async () => {
+    const rgb = (v: number): [number, number, number] => [v, v, v];
+    const cases: Gradient[] = [];
+    const configs = [null, "to right", "to top left", "to left bottom", "90deg", "45deg", "-30deg", "0.25turn", "1rad", "50grad", "sideways"];
+    for (const config of configs)
+      for (const [w, h] of [[400, 300], [400, 100], [60, 30], [1, 1], [0, 200]] as const)
+        for (const stops of [
+          [[rgb(234), null], [rgb(217), null]],
+          [[rgb(0), null], [rgb(255), null]],
+          [[rgb(0), 50], [rgb(255), 50]],
+          [[rgb(0), 10], [rgb(128), null], [rgb(10), 90]],
+          [[rgb(0), 60], [rgb(40), 20], [rgb(255), null]],
+          [[rgb(0), null]],
+          [[null, null], [rgb(0), null]],
+        ] as Array<Array<[[number, number, number] | null, number | null]>>)
+          cases.push({ kind: "linear", config, w, h, stops: stops.map(([c, pct]) => ({ rgb: c, pct })) });
+    for (const g of cases.slice(0, 77)) cases.push({ ...g, kind: g.config === null ? "radial" : "unknown" }, { ...g, kind: "radial", config: "circle" });
+    const inPage = (await tab.evaluate(`(${JSON.stringify(cases)}).map(${GRADIENT_CODES_JS})`)) as string[][];
+    expect(inPage).toEqual(cases.map((g) => gradientProblems(g)));
+    expect(new Set(inPage.flat())).toEqual(new Set(["GRADIENT_HARD_STOP", "GRADIENT_TOO_STEEP", "GRADIENT_UNMEASURED"]));
+  });
+
+  it("counts an alt as text, as layers.ts does (Fresh Review L1)", async () => {
+    expect(await codesOf('<div class="g"><img alt="店の外観" width="10" height="10"></div>', `.g { height: 60px; ${GRAD} }`)).toEqual(["GROUND_HAS_TEXT"]);
+    expect(await codesOf('<img class="g" alt="店の外観" width="10" height="10">', `.g { ${GRAD} }`)).toEqual(["GROUND_HAS_TEXT"]);
+    expect(await codesOf('<div class="g" aria-label="店の外観"></div>', `.g { height: 60px; ${GRAD} }`)).toEqual(["GROUND_HAS_TEXT"]);
+    expect(await codesOf('<div class="g"><img alt="" width="10" height="10"></div>', `.g { height: 60px; ${GRAD} }`)).toEqual([]);
+  });
+
   it("a gradient makes no stacking context (no change to the layer model)", async () => {
     await tab.setContent(`<!doctype html><html><head><style>${BASE} .g { height: 60px; ${GRAD} }</style></head><body><div class="g"></div><p>${demo.hours}</p></body></html>`);
     expect(layerCodes(await layerScan(tab, [demo.hours!.replace(/\s+/g, "")]))).toEqual([]);
@@ -489,6 +529,77 @@ describe("DEV-164 phase B: translucent_decoration (not under text)", () => {
   });
 });
 
+describe("DEV-164 phase B: grounds and translucent boxes at every 1px width (Fresh Review M1)", () => {
+  // the reviewer's repro: an 8px ground pulled under a centred line; the line's first glyph covers x = 0..8 only while the
+  // centred text starts left of 8px, i.e. at about 462–476px, between two checked widths
+  const REPRO_CSS = "body{margin:0;font-family:sans-serif} .g{height:20px;width:8px;background-image:linear-gradient(#eee,#ddd);margin-bottom:-20px} p{margin:0;text-align:center;font-size:34px;line-height:1}";
+  const REPRO_HTML = '<div class="g"></div><p>AAAAAAAAAA BBBBBBBBBB</p>';
+  const doc = (body: string) => `<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="style.css"></head><body>${body}</body></html>`;
+  const sampled = async (page: CompPage, css: PageCssOptions) => {
+    const widths = [...pageWidths(page.css), ...sweepWidths()];
+    const o = await openCompPage(browser, page, { width: 320, height: 900, scale: 1, mobile: false });
+    try {
+      const out: Array<{ width: number; phaseB: PhaseBScan }> = [];
+      for (const width of widths) {
+        await o.page.setViewportSize({ width, height: 900 });
+        out.push({ width, phaseB: await phaseBScan(o.page, { css, displayWords: WORDS }) });
+      }
+      return out;
+    } finally {
+      await o.context.close();
+    }
+  };
+
+  it("gradient_ground: the reviewer's repro fails GROUND_UNDER_TEXT at exactly 462–476, which no checked or 32px width sees", async () => {
+    const page = rawPage(doc(REPRO_HTML), REPRO_CSS);
+    const on = { gradientGround: true };
+    const sampledCodes = (await sampled(page, on)).flatMap((w) => phaseBCodes(w.phaseB));
+    expect(sampledCodes).not.toContain("GROUND_UNDER_TEXT"); // (its 20px line also breaks the stop rule: GRADIENT_HARD_STOP)
+    const sweep = (await displaySweepPass(browser, page, planOf(on)))!;
+    expect(sweep.failing.filter((f) => f.codes.includes("GROUND_UNDER_TEXT")).map((f) => f.w)).toEqual(Array.from({ length: 15 }, (_, i) => 462 + i));
+    expect(sweep.failing.some((f) => f.codes.includes("PHASE_B_UNMEASURED"))).toBe(false);
+    expect(phaseBCheck([], sweep).codes).toContain("GROUND_UNDER_TEXT");
+  });
+
+  it("gradient_ground: a smooth band under the same text passes every sampled width and fails only by the 1px sweep", async () => {
+    const page = rawPage(doc(REPRO_HTML), REPRO_CSS.replace("height:20px", "height:30px").replace("margin-bottom:-20px", "margin-bottom:-30px"));
+    const on = { gradientGround: true };
+    const widths = await sampled(page, on);
+    expect(phaseBCheck(widths).ok).toBe(true);
+    const sweep = (await displaySweepPass(browser, page, planOf(on)))!;
+    const failing = sweep.failing.map((f) => f.w);
+    expect(failing).toContain(470);
+    expect(Math.min(...failing)).toBeGreaterThan(440);
+    expect(Math.max(...failing)).toBeLessThan(500);
+    const check = phaseBCheck(widths, sweep);
+    expect(check.ok).toBe(false);
+    expect(check.codes).toEqual(["GROUND_UNDER_TEXT"]);
+    // the stepped sweep agrees with real resizes on that band
+    const stepped = (await displaySweepPass(browser, page, planOf(on), { range: [440, 500] }))!;
+    const real = (await displaySweepPass(browser, page, planOf(on), { range: [440, 500], forceReal: true }))!;
+    expect(stepped.failing).toEqual(real.failing);
+    expect(stepped.failing.map((f) => f.w)).toEqual(failing);
+  });
+
+  it("translucent_decoration: the same band fails with the flag (TRANSLUCENT_UNDER_TEXT)", async () => {
+    const page = rawPage(doc(REPRO_HTML), REPRO_CSS.replace("background-image:linear-gradient(#eee,#ddd)", "background:#ddd;opacity:0.5"));
+    const on = { translucentDecoration: true };
+    expect(phaseBCheck(await sampled(page, on)).ok).toBe(true);
+    const sweep = (await displaySweepPass(browser, page, planOf(on)))!;
+    expect(sweep.failing.length).toBeGreaterThan(0);
+    expect(new Set(sweep.failing.flatMap((f) => f.codes))).toEqual(new Set(["TRANSLUCENT_UNDER_TEXT"]));
+    expect(phaseBCheck([], sweep).codes).toEqual(["TRANSLUCENT_UNDER_TEXT"]);
+  });
+
+  it("runs only with a phase-B paint or display flag, and passes the synthetic page with every flag on", async () => {
+    const page = rawPage(doc(REPRO_HTML), REPRO_CSS);
+    expect(await displaySweepPass(browser, page, planOf({}))).toBeNull();
+    expect(await displaySweepPass(browser, page, planOf({ colourSyntax: true }))).toBeNull();
+    const all = (await displaySweepPass(browser, synthetic(), planOf(ALL_ON)))!;
+    expect(all.failing).toEqual([]);
+  });
+});
+
 describe("DEV-164 phase B: colour_syntax is checked on the computed sRGB colour", () => {
   const legibility = async (css: string) => (await legibilityPass(browser, synthetic(css), 1440, facts, required, planOf({ colourSyntax: true }))).scan.owners;
   it("a translucent or transparent fact colour is still COLOUR_ALPHA, whatever its syntax", async () => {
@@ -520,12 +631,22 @@ describe("DEV-164 phase B: flags off change nothing on accepted pages", () => {
     "design-library/research/quality-pipeline/poc/sento/impl/d1-a",
     "design-library/research/quality-pipeline/poc/sento/impl/d1-b",
   ];
-  it.each(ACCEPTED)("%s: inside the allowlist and no phase-B code at any checked width (the 256px computed cap included)", async (dir) => {
+  it.each(ACCEPTED)("%s: inside the allowlist and no phase-B code at any checked width or 32px sweep width (the 256px computed cap included)", async (dir) => {
     const html = readFileSync(resolve(REPO, dir, "index.html"), "utf8");
     const css = readFileSync(resolve(REPO, dir, "style.css"), "utf8");
     expect(cssProblems(css)).toEqual([]);
     const page = rawPage(html, css);
     for (const w of pageWidths(css)) expect(await pageCodes(page, w), `${dir} at ${w}`).toEqual([]);
+    // Fresh Review L2: the 32px sweep's widths too, opened as legibilitySweep opens them (one desktop context, resized)
+    const o = await openCompPage(browser, page, { width: 320, height: 900, scale: 1, mobile: false });
+    try {
+      for (const w of sweepWidths()) {
+        await o.page.setViewportSize({ width: w, height: 900 });
+        expect(phaseBCodes(await phaseBScan(o.page, { css: {}, displayWords: WORDS })), `${dir} at sweep ${w}`).toEqual([]);
+      }
+    } finally {
+      await o.context.close();
+    }
   });
 });
 
@@ -552,9 +673,11 @@ describe("DEV-164 phase B: cost (Chromium 1194, best of 3; recorded in docs/desi
     const sweepOn = await best(() => legibilitySweep(browser, page, facts, required, planOf(ALL_ON)));
     const passOff = await best(() => legibilityPass(browser, page, 1440, facts, required, planOf({})));
     const passOn = await best(() => legibilityPass(browser, page, 1440, facts, required, planOf(ALL_ON)));
-    const display = await best(() => displaySweepPass(browser, page, planOf(ALL_ON)));
+    const display = await best(() => displaySweepPass(browser, page, planOf({ displayScale: true, displayNowrap: true })));
+    const paint = await best(() => displaySweepPass(browser, page, planOf({ gradientGround: true, translucentDecoration: true })));
+    const all = await best(() => displaySweepPass(browser, page, planOf(ALL_ON)));
     const widths = pageWidths(page.css).length;
-    const cost = { scan_ms_one_width: scanMs, checked_widths: widths, sweep_widths: 51, sweep_off_ms: sweepOff, sweep_on_ms: sweepOn, pass_1440_off_ms: passOff, pass_1440_on_ms: passOn, display_sweep_1px_ms: display };
+    const cost = { scan_ms_one_width: scanMs, checked_widths: widths, sweep_widths: 51, sweep_off_ms: sweepOff, sweep_on_ms: sweepOn, pass_1440_off_ms: passOff, pass_1440_on_ms: passOn, sweep_1px_display_ms: display, sweep_1px_paint_ms: paint, sweep_1px_all_ms: all };
     console.log(`DEV-164 cost ${JSON.stringify(cost)}`);
     for (const v of Object.values(cost)) expect(Number.isFinite(v)).toBe(true);
   });

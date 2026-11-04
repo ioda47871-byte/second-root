@@ -223,6 +223,7 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
 - `STACKING_CONTEXT` と `PSEUDO_GEOMETRY_UNKNOWN` の止め方を狭めること (§2.5・§2.6・§2.7)。
 - `image_filters` の値の範囲。
 - 段 B の能力のうち、最初に有効にするもの。
+- **描画の検査が証明する範囲 (Fresh Review 1回目の M1 の後):** 段 B の旗を立てたとき、地 (`background-image`)・グラデーションの止めの規則・半透明の箱 (と `STACKING_CONTEXT` の狭め)・表示語は、**320〜1920 の整数の CSS px の幅の全部**で確かめる (1px の掃引、§8.4)。**証明しないもの:** 1920 より広い幅、320 より狭い幅、整数でない幅 (小数の CSS px)、ブラウザの拡大率 (zoom) と端末の画素比の違い、Chromium 1194 以外の描画系、文字の書体が手元の容器と違う環境。これらを要るとするかは、有効にする前にオーナーが決める。
 
 ## 8. 実装メモ (DEV-164)
 
@@ -265,6 +266,7 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
 ### 8.4 描画の側 (`phase-b.ts`、`layers.ts`、`render.ts`)
 
 - 調べる幅: 確かめる幅 (PC と SP の擬装) と 32px の掃引の全部。測れなかった幅は `PHASE_B_UNMEASURED`。
+- 旗を立てたときは、それに加えて 1px の掃引 (下) で 320〜1920 の整数の幅の全部。
 - 結果は `run.ts` の `checks.phase_b` (止める側)。
 - **`TYPE_ABOVE_ROLE_CAP` (旗が無くても掛かる):**
   - すべての文字の、計算後の `font-size` (px) を見る。上限は 256px。
@@ -273,12 +275,19 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
   - これで `html { font-size }` × `rem` の穴 (§2.2) が描画で塞がる。静的な検査は今も通す (基準のテストは `[]` のまま)。
 - `NOWRAP_NOT_DISPLAY`: 表示語でない文字に、計算後の nowrap・pre・keep-all が掛かっている (継いだ値も)。
 - `DISPLAY_WORD_BROKEN`: 表示語の語 (空白の間) が2行にまたがる。`displayScale` か `displayNowrap` のときだけ見る。
-- 1px の表示語の掃引 (`displaySweepPass`、`displayScale` か `displayNowrap` のときだけ): 320〜1920 の全幅で、表示語の行が箱と画面の中にあること、語が折れないこと (`DISPLAY_OUT_OF_BOX`・`DISPLAY_OFFSCREEN`・`DISPLAY_WORD_BROKEN`)。段の分け方は `protectedGeometryPass` と同じ。
+- 1px の掃引 (`displaySweepPass`。`displayScale`・`displayNowrap`・`gradientGround`・`translucentDecoration` のどれかのときだけ。旗が無ければ動かない): 320〜1920 の整数の幅の全部。段の分け方は `protectedGeometryPass` と同じ (段の両端で根に自分の箱が無ければ根の幅を動かし、そうでなければ実際に画面の幅を変える)。
+  - `displayScale` か `displayNowrap`: 表示語の行が箱と画面の中にあること、語が折れないこと (`DISPLAY_OUT_OF_BOX`・`DISPLAY_OFFSCREEN`・`DISPLAY_WORD_BROKEN`)。
+  - `gradientGround` か `translucentDecoration` (Fresh Review の M1): 下の地・グラデーション・半透明の箱の検査 (`PAINT_SCANNER`。確かめる幅と同じコード) を毎幅に掛ける。確かめる幅の間の 15px の帯で地が文字に重なる例 (レビューの再現) がこれで落ちる。`STACKING_CONTEXT` の狭めは「文字に重ならない」が条件なので、これで全幅で裏付けられる (重なる幅があれば `TRANSLUCENT_UNDER_TEXT`)。
+  - **測れなかった幅は落とす:** 掃引は測った幅の数を返し、範囲の整数の幅で測っていないものを `PHASE_B_UNMEASURED` にする。
 - `GROUND_HAS_TEXT`・`GROUND_UNDER_TEXT`: `background-image` のある要素は文字を持たず、枠の箱が文字の行の箱に重ならないこと。
+  - 「文字を持つ」は、文字の節・`aria-label`・`alt` (自分の `alt` も) のどれか (Fresh Review の L1。段 A の `layers.ts` の `altInside` と同じく `alt` を数える。段 A は媒体の `img` の自分の `alt` を数えないが、段 B では数える: 厳しい側)。半透明の箱も同じ。
 - `GRADIENT_HARD_STOP`・`GRADIENT_TOO_STEEP`・`GRADIENT_UNMEASURED`: 描いたグラデーションに V3b の止めの規則を掛ける。
   - 色はキャンバスで sRGB に直す (`oklch` も)。
   - 線の長さは下の限り (角は min(w, h)、円形は min(w, h)/2) で、短く見るほど厳しくなる。
   - 読めない形は落とす。
+  - **描いたグラデーションの全部に掛ける** (Fresh Review の M2。前は返す一覧が 40 までで、41 個目からは見ていなかった)。規則はページの中で走らせ (`GRADIENT_CODES_JS`)、返すのはコード (3種) と数だけ。TS の `gradientProblems` と同じ答えを出すことを、テストで多くの形について照らし合わせる。
+  - 1px の掃引でも毎幅に掛ける (箱の幅で線の長さが変わるため)。
+  - **既知の振る舞い (L3、厳しい側):** 止めの色はアルファを捨てて RGB だけで比べる。`transparent` は `rgba(0, 0, 0, 0)` なので黒として扱われ、白への変化は急に見える。半透明の止めを使うグラデーションは、実際より厳しく判定される (通るべきものが落ちることはあっても、落ちるべきものが通ることは無い)。
 - `TRANSLUCENT_HAS_TEXT`・`TRANSLUCENT_UNDER_TEXT`: `opacity` < 1 の要素は文字を持たず、自分と子孫の箱が文字の行の箱に重ならないこと。
 - **`STACKING_CONTEXT` の狭め (`translucentDecoration` のときだけ):** `opacity` だけで重ねの文脈を作り、文字を持たず、自分と子孫の箱が文字に重ならない要素 (`html`・`body` 以外) は数えない。ほかの引き金・文字・重なりがあれば今どおり数える。**描画の門を狭める変更なので、§7 のオーナーの承認が要る。**
 - 描く範囲 (§2.9) は箱そのもの。段 B の実装した能力は外側に描くものを足さない (`blur` は未実装)。
@@ -286,7 +295,7 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
 ### 8.5 旗が下りているときに変わること
 
 - 変わるのは `TYPE_ABOVE_ROLE_CAP` の 256px だけ。今 256px を超える文字を描くページは落ちる (今ある穴を塞ぐ。緩めではない)。
-- 既存の通るページ 9 枚 (合成の和菓子、pilot-1 の2枚、3店の C の6枚) は、確かめる幅の全部でコードが出ない (テストで固定)。
+- 既存の通るページ 9 枚 (合成の和菓子、pilot-1 の2枚、3店の C の6枚) は、確かめる幅の全部 (PC と SP の擬装) と 32px の掃引の 51 幅の全部 (`legibilitySweep` と同じく PC の擬装の1つの頁で幅を変える) で、コードが出ない (テストで固定。Fresh Review の L2 で掃引の幅を足した)。1px の掃引は旗が無ければ動かないので、旗を下ろしたときの検査の幅はこの2つだけである。
 - ほかのコードは、旗無しでは許可一覧が元の宣言を拒むので出ない。
 - 報告の `checks` に `phase_b` が1つ増える。
 
@@ -301,11 +310,14 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
 | 32px の掃引 (`legibilitySweep`) 旗無し / 旗すべて | 3,416 / 3,394 ms、3,901 / 3,973 ms (差は誤差の内) |
 | 1幅の `legibilityPass` (1440) 旗無し / 旗すべて | 1,207 / 1,123 ms、1,239 / 1,521 ms (同上) |
 | 1px の表示語の掃引 (`displaySweepPass`、旗を立てたときだけ、320〜1920 の 1,601 幅) | 923 ms、1,017 ms |
+| (Fresh Review 1回目の後) 1px の掃引: 表示語の旗だけ / 地と半透明の旗だけ / 旗すべて | 1,034 / 975 / 1,577 ms |
+| (同) 32px の掃引 旗無し / 旗すべて、1幅の `legibilityPass` (1440) 旗無し / 旗すべて | 3,867 / 3,806 ms、1,298 / 1,249 ms |
 
 - 2回の実行の値を並べた (各値は3回の最良)。
 - 旗を下ろしたときの増え: 1ページ約 0.2〜0.5 s (計算後の大きさの上限の分)。
 - 旗を立てたときの増え: それに約 1 s (1px の掃引)。合成のページの1回の実行 (数十秒) に比べて小さい。
-- CI の unit の組の増え: `phase-b.test.ts` 1本 (157 件、手元で 67〜127 秒。うち `runCompImpl` 2回)。
+- M1 の直しの増え (地と半透明を 1px の掃引に足した分): `gradientGround` か `translucentDecoration` だけなら掃引1回 約 1.0 s、表示語の旗と合わせると約 1.6 s (表示語だけの約 1.0 s から約 +0.6 s)。旗を下ろしたときは掃引が動かないので増えない (32px の掃引と確かめる幅の値は誤差の内)。
+- CI の unit の組の増え: `phase-b.test.ts` 1本 (Fresh Review の後 164 件、手元で約 139 秒。うち `runCompImpl` 2回、既存の 9 枚を 32px の掃引の幅でも見る分 約 30 秒)。
 
 ### 8.7 設計で見つけたこと
 
@@ -313,3 +325,16 @@ CI の時間の予算 (unit の shard の増え) は、段 B の実装の PR で
 - §2.2 の「spec が表示語と宣言する」は、spec に欄が無い。欄を足すと作者が表示語を広げられるので、一覧をコードに固定した。
 - §2.4 の止めの規則は、文字の下でない地に掛けても強い (黒から白へは 128px 以上要る)。オーナーが有効にする前に、帯の幅と合わせて見る値である。
 - 不安全なところは見つからなかった。`translucent_decoration` の `STACKING_CONTEXT` の狭めだけは、設計どおり描画の門を狭めるので、承認の対象として明記した。
+
+### 8.8 Fresh Review 1回目 (C0 / H0 / M2 / L3) の直し
+
+| 指摘 | 直したこと | テスト |
+|---|---|---|
+| M1 地・半透明と文字の重なりを確かめる幅でしか見ない (間の 15px の帯が抜ける) | `gradientGround` か `translucentDecoration` のとき、1px の掃引 (`displaySweepPass`、320〜1920 の整数の幅の全部) で地・グラデーションの止めの規則・半透明の箱の検査を毎幅に掛ける。測っていない幅は `PHASE_B_UNMEASURED` | レビューの再現 (`GROUND_UNDER_TEXT` が 462〜476 だけで出る。確かめる幅と 32px の幅では出ない)、止めの規則に掛からない 30px の帯 (標本の幅では全部通り、掃引だけで落ちる)、同じ形の半透明 (`TRANSLUCENT_UNDER_TEXT`)、根の幅を動かす測り方と実際の幅の変更の一致、旗無しで掃引が動かないこと |
+| M2 41 個目からのグラデーションに止めの規則が掛からない | 規則をページの中で全部のグラデーションに掛け、コードと数だけ返す (`GRADIENT_CODES_JS`。返す形は `{ count, codes }`) | 40 個の滑らかなもの + 硬い止め1つ、200 個 + 1つ。ページの中の規則と TS の `gradientProblems` が 539 の形 (向き・大きさ・止めの組み合わせ) で同じ答え |
+| L1 段 B の「文字を持つ」が `alt` を数えない | `alt` (自分のものも) と `aria-label` を数える | `img alt` を持つ地、`alt` を持つ `img` 自身、`aria-label`、空の `alt` は数えない |
+| L2 既存の 9 枚のテストが確かめる幅だけ | 32px の掃引の 51 幅も見る (`legibilitySweep` と同じ開き方) | 9 枚すべて緑 |
+| L3 止めの色のアルファを捨てる | 直さない。厳しい側の既知の振る舞いとして §8.4 に書いた | — |
+
+**証明する範囲と、しない範囲**は §7 の最後の項に書いた (旗を立てたとき 320〜1920 の整数の CSS px の全部。1920 より広い幅と拡大率は証明しない)。
+
