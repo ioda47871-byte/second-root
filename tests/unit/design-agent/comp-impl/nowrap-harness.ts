@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser } from "playwright";
 import type { CompPage } from "@/lib/design-agent/comp-impl/page";
@@ -66,7 +66,7 @@ export function strictPage(shop: ShopKey, v: Variant): CompPage {
   const dir = join(POC, SHOPS[shop].strict);
   const html = readFileSync(join(dir, "index.html"), "utf8").replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">');
   const css = `${readFileSync(join(dir, "style.css"), "utf8")}\n${variantCss(shop, v)}\n`;
-  return { dir, html, css, assets: [], files: new Map([["assets/board.png", readFileSync(join(dir, "assets/board.png"))]]), htmlSha256: "", cssSha256: "" };
+  return { dir, html, css, assets: [], files: new Map(readdirSync(join(dir, "assets")).filter((f) => f.endsWith(".png")).map((f) => [`assets/${f}`, readFileSync(join(dir, "assets", f))])), htmlSha256: "", cssSha256: "" };
 }
 
 /** A raw page (no allowlist applied) from a body and CSS, with the viewport meta. */
