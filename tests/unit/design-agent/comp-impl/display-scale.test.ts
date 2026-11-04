@@ -81,7 +81,7 @@ describe("DEV-171 display_scale stays OFF", () => {
       for (const d of ["zoom: 3", "transform: scale(3)", "scale: 3", "font: 600px serif", "font-size-adjust: 2"]) expect(cssProblems(`.x { ${d}; }`, o), d).toContain("CSS_PROPERTY");
       expect(cssProblems(".x::first-letter { font-size: 200px; }", o).length).toBeGreaterThan(0);
     }
-    expect(htmlSourceProblems('<p style="zoom:3">x</p>').length + htmlSourceProblems("<svg><text>x</text></svg>").length + htmlSourceProblems("<math><mi>x</mi></math>").length).toBeGreaterThanOrEqual(3);
+    for (const h of ['<p style="zoom:3">x</p>', "<svg><text>x</text></svg>", "<math><mi>x</mi></math>"]) expect(htmlSourceProblems(h).length, h).toBeGreaterThan(0);
   });
 });
 
@@ -447,7 +447,7 @@ describe("DEV-171 widths: a large display word fails exactly where it does not f
 // ---------------------------------------------------------------- 5. the three shops
 
 describe("DEV-171 the three shops", () => {
-  it.each(SHOP_KEYS)("%s: the strict page draws nothing above 256px; the flag changes no code of it at any checked width but adds the sweep", async (shop) => {
+  it.each(SHOP_KEYS)("%s: the strict page draws nothing above 256px; the flag changes none of its computed type sizes at any checked width (display-word breaks are reported separately, decision sheet §8)", async (shop) => {
     const { words } = shopFacts(shop);
     const page = scalePage(shop, "strict");
     expect(cssProblems(page.css)).toEqual([]);
