@@ -23,7 +23,7 @@ html { background: var(--washi); }
 body { color: var(--ink); font-family: var(--gothic); font-size: 15px; line-height: 1.9; letter-spacing: .04em; }
 .page { position: relative; overflow: hidden; }
 section { position: relative; }
-h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
+h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
 
 /* the seam */
 .seam-pc { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; overflow: visible; }
@@ -162,7 +162,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 .section-cut { --cut-x: 67.1%; }
 .cut { position: relative; }
 .cut p { position: relative; z-index: 2; }
-.cut-kin { height: 64px; background: linear-gradient(90deg, #8c6524, var(--gold-hi) 45%, #f1d68f 52%, var(--gold) 70%, #8c6524); color: var(--urushi); box-shadow: inset 0 -1px 0 rgba(255, 240, 200, .5); }
+/* the gold band starts light where its label sits (the dark #8c6524 end gave 金を蒔いて only 3.7:1) */
+.cut-kin { height: 64px; background: linear-gradient(90deg, #c99a45, var(--gold-hi) 45%, #f1d68f 52%, var(--gold) 70%, #8c6524); color: var(--urushi); box-shadow: inset 0 -1px 0 rgba(255, 240, 200, .5); }
 .cut-urushi { height: 110px; color: #f0ddd0;
   background: linear-gradient(180deg, rgba(255, 220, 200, .14), transparent 22%, transparent 80%, rgba(0, 0, 0, .25)), var(--urushi-red); }
 .cut-utsuwa { height: 200px; color: #e4dac8;
@@ -357,4 +358,12 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .together-copy > * { background: var(--urushi-red); }
   .layer-h { background: var(--urushi); }
   .visit-h { margin: 0 auto; }
+}
+
+/* 380 and below: the full name tightens, so the hero line (x 50%) passes right of its last character 手; on the lacquer,
+   線の断面 reaches the line below 350, so the heading block rises above it and the line runs under its ground */
+@media (max-width: 380px) {
+  .hero-name-full { font-size: 11px; letter-spacing: .08em; }
+  .info .tel dd { white-space: nowrap; font-size: min(40px, calc(12vw - 4px)); }
+  .layer .layer-head { z-index: 4; }
 }

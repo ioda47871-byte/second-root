@@ -3,18 +3,18 @@
   "shop_id": "fictional-kintsugi-tsugute",
   "direction_id": "d1-seam-across-v3",
   "comp": {
-    "html_sha256": "e1de8e5123aa99606ecfad848251d63f4fca521773a85a07d06f378cbbfa0ea0",
-    "css_sha256": "b8229ff51bfc3a2e087dba7b28ee38debc5f85082667644b389dd387e16285fe",
+    "html_sha256": "cbc95a22cfba7692c68425b5a1df22cac94abc333492df764dfaf9b07d526258",
+    "css_sha256": "5da93e5e7d99dce9ff361f796dd6b6e5d3f53b7c086405cc73d3f807fd887068",
     "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
   },
   "renders": {
     "desktop": {
-      "sha256": "7144915cd6d5a5823cb363d19cb31df895fdeb8ffe6e590b8b63f73ea5889313",
+      "sha256": "9894f151a832414539a47e9eda0ee24d3cc8a9e6983f21a216173665a57cf795",
       "width": 1440,
       "height": 6086
     },
     "mobile": {
-      "sha256": "ae5304fb5db96d0ebc1f0946d0d5af42b2a09d435abc2130e9385f4af39942b6",
+      "sha256": "1aeb994d6c553fe652d7924e3bc61da397eb0b177c60773af19414b494ec9e42",
       "width": 390,
       "height": 6329
     }
@@ -22,8 +22,8 @@
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-04T14:00:00Z",
-    "how": "Read tool: PC render at 0.3 as 1 sheet of 2 columns of 3100px; SP render at 0.6 as 1 sheet of columns of 1600px; before that, after the Fresh Review fixes, the C renders at 1440, 1199, 1024, 900, 768, 601, 600 and 390 as sheets at 0.42 and crops at 0.6-1.0"
+    "viewed_at": "2026-11-04T18:00:00Z",
+    "how": "Read tool: PC at 0.3 (2 columns of 3100px), SP at 0.6 (columns of 1600px); C renders at 1440, 1199, 1024, 900, 768, 601, 600, 390 at 0.42 (round 1) and 320, 360 at 0.6 plus crops at 600, 1199, 1024 (round 2)"
   },
   "viewed_crops": {
     "desktop": [
@@ -309,7 +309,9 @@
     "器と破片はまだ描いた絵で、焼き物の質感は写真に及ばない",
     "待 を断面の区画へ上げたので、乾く時間の区画の左下が少し空いた",
     "PC の線の入口と出口は 1440 の板の位置に合わせた。1200〜1439 では数 px ずれる",
-    "Fresh Review round 1 (H1): 前の記録は 1024・768 を見て線と文字は確かめたと書いたが、601〜1199 で線が 割れ・欠け・ひび と説明・修理名を横切っていた。直したあと、1440・1199・1024・900・768・601・600・390 の8つの幅でだけ、線が文字の上に描いた画素を数えて 0 とし、描画を見て確かめた。ほかに画素だけで数えた幅のうち、360 では線が 線の断面 の 面 の上を通る (直していない)",
+    "Fresh Review round 1 (H1): 前の記録は 1024・768 を見て線と文字は確かめたと書いたが、601〜1199 で線が 割れ・欠け・ひび と説明・修理名を横切っていた。直したあと、8つの幅 (1440〜390) で線が文字の上に描いた画素を数えて 0 とし、描画を見た。Fresh Review round 2 の後は 320〜1440 の19の幅で、字の箱から字送りの空きを除いて数え、0。round 1 で 360 の 面 と書いたのは字送りの空きを通る線で、字そのものに掛かっていたのは 320・340 だった (直した)",
+    "金を蒔いて は金の帯の暗い左端で 3.7〜4.2:1 だった。帯の左端を明るくし 6.9:1 以上 (Fresh Review round 2)",
+    "SP Hero の つぐ手 は器に重なる大きな字で、器の暗い内側に掛かる画素がある (飾りの構図として残す)",
     "区画のラベル・待つ などの創作の文はオーナーの確認が要る",
     "カンプと C は同じソースで描く。C との差は測れない (C はカンプの実装の再現として置く)"
   ],

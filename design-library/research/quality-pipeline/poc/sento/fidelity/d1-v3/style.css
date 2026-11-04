@@ -140,9 +140,14 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 .info dt { font-size: 12px; letter-spacing: .3em; color: #f2a34f; }
 .info dd { font-family: var(--mincho); font-size: clamp(18px, 1.4vw, 20px); }
 .info .tel { background: var(--shu); border-top: 0; padding: 22px 26px 26px; box-shadow: 0 24px 40px -20px rgba(0, 0, 0, .6); }
-.info .tel dt { color: #ffe2b0; }
+.info .tel dt { color: #fff3df; } /* 4.9:1 on the red box (#ffe2b0 was 4.3:1) */
 .info .tel dd { font-size: clamp(34px, 3.2vw, 46px); letter-spacing: .04em; color: var(--yuge); white-space: nowrap; }
 .fictional { margin-top: 110px; font-size: 12px; color: rgba(246, 241, 231, .7); }
+
+/* below 1440 the hot section is shorter, so the steam sinks lower: its glow stays under the lead's 4.5:1 line */
+@media (max-width: 1439px) { .steam-a { bottom: -240px; } }
+/* 1101–1439: the surface board no longer reaches 30px back over the fact's column (at 1280–1300 it covered the last す) */
+@media (min-width: 1101px) and (max-width: 1439px) { .board-surface { margin-left: 0; } }
 
 /* 768–1100: the same composition, scaled; the giant words shrink before they collide */
 @media (max-width: 1100px) {
@@ -197,10 +202,12 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .hot-in { grid-template-columns: 1fr; min-height: 700px; }
   .name-full { font-size: 12px; }
   .name { margin-top: 26px; font-size: 84px; }
-  .giant-hot { right: 6px; top: 60px; font-size: 230px; }
+  /* below 356 熱い narrows, so it never reaches the name ゆげ湯 at the left */
+  .giant-hot { right: 6px; top: 60px; font-size: min(230px, calc(100vw - 126px)); }
   .tagline { font-size: 32px; }
   .lead { font-size: 15px; }
-  .steam-a { height: 220px; bottom: -24px; }
+  /* SP: the steam sinks below the lead and passes under the tub board (its caption stays clear) */
+  .steam-a { height: 220px; bottom: -110px; z-index: 1; }
 
   /* the tub board starts below the steam (the comp's SP covered the hot section's edge) */
   .warm { padding: 36px 20px 180px var(--gutter); }
@@ -210,13 +217,13 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .board-tub .ph { top: 12px; bottom: auto; }
   .warm-fact { grid-column: 1; grid-row: 3; margin-top: 36px; font-size: 21px; }
   /* v3: 112px, so the whole of ぬるい stays inside the 390 width (140px cut the い at the right edge) */
-  .giant-warm { left: 18px; bottom: -56px; font-size: 112px; }
+  .giant-warm { left: 18px; bottom: -56px; font-size: min(112px, calc(33vw - 10px)); }
 
   .garden { aspect-ratio: 390 / 420; }
   .garden .ph { left: 28px; }
   .cold-in { padding: 40px 20px 90px var(--gutter); }
   .cold-fact { font-size: 22px; }
-  .giant-cold { right: 14px; top: 170px; font-size: 104px; writing-mode: horizontal-tb; }
+  .giant-cold { right: 14px; top: 170px; font-size: min(104px, calc(32vw - 20px)); writing-mode: horizontal-tb; }
 
   .fire { padding: 120px 20px 90px var(--gutter); }
   .giant-boil { font-size: 140px; right: 10px; top: -70px; }

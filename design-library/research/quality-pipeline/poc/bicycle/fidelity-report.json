@@ -231,7 +231,7 @@
       },
       "mobile_390": {
         "score": {
-          "motif_coverage": 0.365,
+          "motif_coverage": 0.366,
           "motif_largest_gap_px": 1726,
           "boundaries_crossed": 3,
           "boundaries_carried": 3,

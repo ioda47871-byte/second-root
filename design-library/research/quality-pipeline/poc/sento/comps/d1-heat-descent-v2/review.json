@@ -3,18 +3,18 @@
   "shop_id": "fictional-sento-yuge",
   "direction_id": "d1-heat-descent-v2",
   "comp": {
-    "html_sha256": "be0910012e6f6b46d02ac04afea6fe8b9f5d337065282e136a5d8e6b80ef8122",
-    "css_sha256": "734f7221acad11c80183c3be9ee243764424f7f63bbde37b873622304a71c9ef",
+    "html_sha256": "3868a1559dcf985541819fc722957033b91cd88a4c75599a84f0857c24c70df3",
+    "css_sha256": "6cdda43a808a727f7d92f0067b68348372af8004d15ce2d64570fd0a8b11a9ee",
     "copy_sha256": "50432f7b2cb60b0a8b7bb1c2e0b032dd1492fe4ac7257d11a0636eae083d359c"
   },
   "renders": {
     "desktop": {
-      "sha256": "a3ad2951d2a2e8938507e11be9333d524d33f688bf9af9aae2b958bdd1acebe7",
+      "sha256": "338b8e1ca537c211dcc6eaa284e311888680963d62a9e6b35e67b63e374e5b38",
       "width": 1440,
       "height": 4889
     },
     "mobile": {
-      "sha256": "8432208a1fbfb6cb9022fb8298c0304be4b07637f0547c8762cb5ae37de18978",
+      "sha256": "a7e92c7fac275f66a44b1b95f0a8da92d62a0be5f25d8441b8bd2703e2b1a6a9",
       "width": 390,
       "height": 4324
     }
@@ -22,8 +22,8 @@
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-04T14:00:00Z",
-    "how": "Read tool: PC render at 0.3 as 1 sheet of 2 columns of 3100px; SP render at 0.6 as 1 sheet of columns of 1600px; before that, after the Fresh Review fixes, the C renders at 1440, 1199, 1024, 900, 768, 601, 600 and 390 as sheets at 0.42 and crops at 0.6-1.0"
+    "viewed_at": "2026-11-04T18:00:00Z",
+    "how": "Read tool: PC at 0.3 (2 columns of 3100px), SP at 0.6 (columns of 1600px); C renders at 1440, 1199, 1024, 900, 768, 601, 600, 390 at 0.42 (round 1) and 320, 360 at 0.6 plus crops at 600, 1199, 1024 (round 2)"
   },
   "viewed_crops": {
     "desktop": [
@@ -255,6 +255,7 @@
   "remaining": [
     "写真は役割と大きさだけの仮の板のまま。山の絵も描いた仮の板である",
     "Fresh Review round 1 (L5): 上半分は前の版のままで、390 で ぬるい の い が右の端で切れ、768 で 冷たい と 沸く が重なっていた (1101〜1300 でも重なり、1199 ではのれんが 帰り道 に掛かっていた)。巨大な語とのれんを幅で縮めて直し、1440・1199・1024・900・768・601・600・390 (重なりはほかに 1300・1150・1101・1100・861・860・700・480・360) で、語どうしの箱の重なり・端のはみ出し・文字の上の画素を確かめた",
+    "Fresh Review round 2: 360〜480 で lead が湯気の光の上で 3.0:1、電話の札が 4.3:1 だった。1439 以下で湯気を下げ (4.8:1)、札を明るくした (4.9:1)。320〜340 で 熱い が名前に、ぬるい・冷たい が端に掛かり、1280〜1300 で湯の表面の板が す に掛かっていたのも直した",
     "1024 では のれんの竿が壁の最後の行の 20px 下にあり、窮屈",
     "のれんの ゆ と、のれんの色は創作で、オーナーの確認が要る (事実は、のれんの色が季節で変わることだけ)",
     "カンプと C は同じソースで描く。C との差は測れない"

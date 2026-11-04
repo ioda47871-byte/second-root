@@ -192,19 +192,23 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .st-b::before, .st-d::before { left: -58px; width: 58px; }
   .st-b::after, .st-d::after { left: -65px; }
   .st-b .fig, .st-d .fig { --ratio: 310 / 210; }
-  .station .svc { display: block; margin-top: 22px; padding: 0; font-size: 40px; }
-  .ghost-turn { left: 56px; top: 40px; bottom: auto; font-size: 100px; }
+  /* the puncture board is turned -4deg, so its lower left corner drops further as the board widens: the caption steps down with it (390 keeps 10px) */
+  .st-a .ph { margin-top: max(10px, calc(4.2vw - 6.5px)); }
+  /* the station names and 一本ずつ。 shrink below 390, so 車輪の振れ取り and the full stop stay inside 320–389 */
+  .station .svc { display: block; margin-top: 22px; padding: 0; font-size: min(40px, calc(13.7vw - 12.5px)); }
+  .ghost-turn { left: 56px; top: 40px; bottom: auto; font-size: min(100px, calc(34vw - 20px)); }
 
   .truing { padding: 90px 20px 160px; }
   .truing-grid { grid-template-columns: 1fr; gap: 0; }
   .true-art { width: 350px; max-width: 100%; }
   .truing-text { padding-top: 40px; }
-  .truing-h { font-size: 60px; }
+  .truing-h { font-size: min(60px, calc(18vw - 2px)); }
   .truing-fact { margin-top: 24px; font-size: 20px; }
   .ghost-tight { right: -10px; bottom: -10px; font-size: 110px; }
 
   .check { padding: 60px 20px 140px; }
-  .check-grid { grid-template-columns: 240px 1fr auto auto; column-gap: 10px; }
+  /* the bench board gives way first, so the two vertical lines keep their full width at 320–389 */
+  .check-grid { grid-template-columns: minmax(0, 240px) 1fr auto auto; column-gap: 10px; }
   .bench .board { aspect-ratio: 240 / 440; }
   .check-fact { font-size: 16px; margin-top: 10px; max-height: 640px; }
   .check-h { font-size: 32px; max-height: 720px; }
@@ -221,7 +225,7 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .visit-h { font-size: 38px; }
   .info { grid-template-columns: 1fr; gap: 14px; margin-top: 28px; }
   .info .tel { grid-column: auto; }
-  .info .tel dd { font-size: 40px; }
+  .info .tel dd { font-size: min(40px, calc(12vw - 4px)); white-space: nowrap; }
   .info dd { font-size: 17px; }
   .fictional { margin-top: 28px; }
 }

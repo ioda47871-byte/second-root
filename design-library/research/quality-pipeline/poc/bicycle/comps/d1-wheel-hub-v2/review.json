@@ -4,7 +4,7 @@
   "direction_id": "d1-wheel-hub-v2",
   "comp": {
     "html_sha256": "80395856a72f0260f90e8ddf70ab7adbe5fbe7cf2e3d45fabc367c00834f1bc9",
-    "css_sha256": "701dff824b6aacfc3b3145d21e7ab3373a0582b4f12706704a65a03c41db974a",
+    "css_sha256": "b57fc81041761de03a254930c9d3ec04af653c0393a72e97fece8e3a2d9299a3",
     "copy_sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780"
   },
   "renders": {
@@ -14,16 +14,16 @@
       "height": 5292
     },
     "mobile": {
-      "sha256": "5e6896241977f6d61be6757f783d17402eb45a7fc0871af2826312120167ca1a",
+      "sha256": "7aa0a6d1ed21e0d8438d5340ea8e3ccbd37269b312ac43e45f5ff5f549d17f8c",
       "width": 390,
-      "height": 5346
+      "height": 5335
     }
   },
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-04T14:00:00Z",
-    "how": "Read tool: PC render at 0.3 as 1 sheet of 2 columns of 3100px; SP render at 0.6 as 1 sheet of columns of 1600px; before that, after the Fresh Review fixes, the C renders at 1440, 1199, 1024, 900, 768, 601, 600 and 390 as sheets at 0.42 and crops at 0.6-1.0"
+    "viewed_at": "2026-11-04T18:00:00Z",
+    "how": "Read tool: PC at 0.3 (2 columns of 3100px), SP at 0.6 (columns of 1600px); C renders at 1440, 1199, 1024, 900, 768, 601, 600, 390 at 0.42 (round 1) and 320, 360 at 0.6 plus crops at 600, 1199, 1024 (round 2)"
   },
   "viewed_crops": {
     "desktop": [
@@ -45,25 +45,25 @@
         "x": 0,
         "y": 0,
         "w": 390,
-        "h": 1337
+        "h": 1334
       },
       {
         "x": 0,
-        "y": 1337,
+        "y": 1334,
         "w": 390,
-        "h": 1337
+        "h": 1334
       },
       {
         "x": 0,
-        "y": 2674,
+        "y": 2668,
         "w": 390,
-        "h": 1337
+        "h": 1334
       },
       {
         "x": 0,
-        "y": 4011,
+        "y": 4002,
         "w": 390,
-        "h": 1335
+        "h": 1333
       }
     ]
   },
@@ -176,7 +176,7 @@
           "x": 0,
           "y": 2600,
           "w": 390,
-          "h": 2738
+          "h": 2735
         }
       }
     ]
@@ -274,7 +274,8 @@
     "写真は役割と大きさだけの仮の板のまま",
     "768 (601〜999px) では駅は格子のままで、スポークにつながらない",
     "締める の る は、どの幅でも右の端から少し出て切れる (1440 で 20px。前の版から。まわる が左の端から出るのと同じ、端を越える語として残した)",
-    "語の途中の改行は、文に句の境の <wbr> を入れ、文字の要素に keep-all を掛けて減らした。確かめたのは 1440・1199・1024・900・768・601・600・390 の8つの幅の行の切れ目で、ほかの幅は確かめていない",
+    "語の途中の改行は、文に句の境の <wbr> を入れ、文字の要素に keep-all を掛けて減らした。行の切れ目は 1440・1199・1024・900・768・601・600・390 と 320・340・360・375・380 で読んだ",
+    "Fresh Review round 2: 360 以下で 車輪の振れ取り の り と縦の見出しが右の端で切れ、600 でパンクの板の角が名札に重なっていた。名札・一本ずつ。・まわる・電話を幅で縮め、作業台の板を先に縮め、パンクの名札を板の角に合わせて下げた。320〜1440 の19の幅で、端を出る字は 締める (飾り) だけ",
     "SP の背骨は Hero の SVG と駅の区画の帯の2つでつなぐ。幅が変わると数 px ずれうる",
     "カンプと C は同じソースで描く。C との差は測れない"
   ],
