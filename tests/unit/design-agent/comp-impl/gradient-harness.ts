@@ -1,6 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Browser } from "playwright";
 import type { CompPage } from "@/lib/design-agent/comp-impl/page";
+import { gradientProblems } from "@/lib/design-agent/comp-impl/phase-b";
+import { openCompPage } from "@/lib/design-agent/comp-impl/render";
 import { REPO, SHOPS, type ShopKey } from "./nowrap-harness";
 import { C_PRIME } from "./scale-harness";
 
@@ -104,4 +107,76 @@ export function gradientDeclarations(css: string): Array<{ prop: string; value: 
   const out: Array<{ prop: string; value: string }> = [];
   for (const m of flat.matchAll(/([-a-z]+)\s*:\s*([^;{}]*gradient\([^;{}]*)/g)) out.push({ prop: m[1]!, value: m[2]!.replace(/\s+/g, " ").trim() });
   return out;
+}
+
+/**
+ * An independent oracle of the ground codes (test-only, NOT the checker's code): at every integer width of [from, to] the
+ * page is really resized (desktop, like the 1px sweep's real mode; the sweep itself mostly steps the root's width), then
+ * every element with a background-image is found; it "holds text" when it has non-blank text, an aria-label or an alt in
+ * it; it is "under text" when its border box meets a text line's Range rect by more than 0.5px both ways; each gradient
+ * is parsed from the computed value and judged by the TS twin of the stop rule (phase-b.ts gradientProblems), so the
+ * expected stop codes follow from measured geometry alone. Result: the codes per width (only widths with codes) and the
+ * texts that met a ground (class and first characters).
+ */
+export async function groundOracle(browser: Browser, page: CompPage, from = 320, to = 1920): Promise<{ failing: Array<{ w: number; codes: string[] }>; hits: string[] }> {
+  const o = await openCompPage(browser, page, { width: from, height: 900, scale: 1, mobile: false });
+  const failing: Array<{ w: number; codes: string[] }> = [];
+  const hits = new Set<string>();
+  try {
+    for (let w = from; w <= to; w++) {
+      await o.page.setViewportSize({ width: w, height: 900 });
+      const r = (await o.page.evaluate(`(() => {
+        const grounds = Array.from(document.querySelectorAll("*")).filter((e) => { const s = getComputedStyle(e); return s.display !== "none" && s.backgroundImage && s.backgroundImage !== "none"; });
+        const lines = [];
+        const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+          if (!n.parentElement || !n.data.replace(/\\s+/g, "")) continue;
+          const rg = document.createRange();
+          rg.selectNodeContents(n);
+          for (const x of rg.getClientRects()) if (x.width > 0.5 && x.height > 0.5) lines.push({ x, who: (n.parentElement.className || n.parentElement.tagName) + ":" + n.data.trim().slice(0, 6) });
+        }
+        const out = { hasText: false, under: [], gradients: [] };
+        for (const g of grounds) {
+          const text = g.textContent.replace(/\\s+/g, "") !== "" || [g, ...g.querySelectorAll("*")].some((d) => (d.getAttribute("aria-label") || "").trim() || (d.getAttribute("alt") || "").trim());
+          if (text) out.hasText = true;
+          const b = g.getBoundingClientRect();
+          if (!text) for (const l of lines) if (Math.min(l.x.right, b.right) - Math.max(l.x.left, b.left) > 0.5 && Math.min(l.x.bottom, b.bottom) - Math.max(l.x.top, b.top) > 0.5) out.under.push(l.who);
+          out.gradients.push({ value: getComputedStyle(g).backgroundImage, w: b.width, h: b.height });
+        }
+        return out;
+      })()`)) as { hasText: boolean; under: string[]; gradients: Array<{ value: string; w: number; h: number }> };
+      const codes = new Set<string>();
+      if (r.hasText) codes.add("GROUND_HAS_TEXT");
+      if (r.under.length) codes.add("GROUND_UNDER_TEXT");
+      for (const u of r.under) hits.add(u);
+      for (const g of r.gradients) for (const c of stopCodesOf(g.value, g.w, g.h)) codes.add(c);
+      if (codes.size) failing.push({ w, codes: [...codes].sort() });
+    }
+  } finally {
+    await o.context.close();
+  }
+  return { failing, hits: [...hits].sort() };
+}
+
+/** The TS stop rule on one computed linear-gradient value with rgb() stops (anything else: GRADIENT_UNMEASURED). */
+export function stopCodesOf(value: string, w: number, h: number): string[] {
+  const m = /^linear-gradient\((.*)\)$/.exec(value.trim());
+  if (!m) return ["GRADIENT_UNMEASURED"];
+  const parts = m[1]!.split(/,(?![^(]*\))/).map((s) => s.trim());
+  const config = /^rgb/.test(parts[0]!) ? null : parts.shift()!;
+  const stops = parts.map((p) => /^rgb\((\d+), (\d+), (\d+)\)(?:\s+([\d.]+)%)?$/.exec(p));
+  if (stops.some((s) => !s)) return ["GRADIENT_UNMEASURED"];
+  return gradientProblems({ kind: "linear", config, w, h, stops: stops.map((s) => ({ rgb: [Number(s![1]), Number(s![2]), Number(s![3])] as [number, number, number], pct: s![4] ? Number(s![4]) : null })) });
+}
+
+/**
+ * The same page with wider font metrics (test-only, reproduces a CI-like font): the faces the shop pages name are
+ * re-declared from the same local files with a content area of 1.45em (ascent 116 %, descent 29 %, like Noto Sans CJK)
+ * instead of the container's IPA fonts' 1.0em. Glyphs and advances do not change; only the Range rects of text grow
+ * above and below the line. Raw CSS (an @font-face the allowlist refuses): for measuring only, never a page the run checks.
+ */
+export function withWideMetrics(page: CompPage): CompPage {
+  const face = (family: string, local: string) => `@font-face { font-family: "${family}"; src: local("${local}"); ascent-override: 116%; descent-override: 29%; }`;
+  const css = [face("IPAMincho", "IPAMincho"), face("IPAGothic", "IPAGothic"), face("Noto Sans CJK JP", "IPAGothic")].join("\n");
+  return { ...page, css: `${css}\n${page.css}` };
 }

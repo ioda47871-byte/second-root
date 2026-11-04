@@ -11,7 +11,7 @@ import { contrastRatio, luminance } from "@/lib/design-agent/comp-impl/verify";
 import { POC_DISCLOSURE } from "@/lib/design-agent/design-image/prompt";
 import { launch } from "./support";
 import { allCodes, NOWRAP_WIDTHS, rawDoc, SHOPS, shopFacts, widthCodes, type ShopKey } from "./nowrap-harness";
-import { cPrimeCss, gradientDeclarations, gradPage, SENTO_BAR, SENTO_LIQUID, TSUGUTE_GOLD } from "./gradient-harness";
+import { cPrimeCss, gradientDeclarations, gradPage, groundOracle, SENTO_BAR, SENTO_LIQUID, TSUGUTE_GOLD, withWideMetrics } from "./gradient-harness";
 
 // DEV-172 (Issue #193 comment 6628165899): the safety verification of gradient_ground
 // (docs/design/gradient-ground-decision.md). The capability stays OFF: APPROVED_CAPABILITIES is empty and these tests turn
@@ -353,7 +353,7 @@ describe("DEV-172 gradient_ground ON: text is never on a gradient", () => {
       }
       const { by } = await sweep(page);
       const failing = by("GROUND_UNDER_TEXT");
-      expect(failing.length).toBeGreaterThan(50);
+      expect(failing.length).toBeGreaterThan(0); // how many widths depends on the font; which ones is the oracle's
       expect(failing).toEqual(oracle.map((x) => x.w));
       const side = align === "left" ? oracle.every((x) => x.xs.every((f) => f < 0.5)) : oracle.every((x) => x.xs.every((f) => f > 0.5));
       expect(side, `${align}: the overflowing line sits on the ${align} half of the band`).toBe(true);
@@ -457,6 +457,70 @@ describe("DEV-172 gradient_ground ON: the stop rule", () => {
     }
   });
 
+  it("known gap before ON (Fresh Review M1): the rule measures the border box, Chromium draws the gradient in the padding box and repeats it under borders, and per line fragment on a wrapped inline box", async () => {
+    // Every page here passes the grammar with the flag and every scan is [] (or a code only without the trick), while the
+    // drawing jumps far more than 2 levels per px. No text is involved (the overlap check uses the border box, which is
+    // the paint extent): this is the smoothness rule, not text safety. Pinned as current behaviour; lib is not changed.
+    const drawn = async (css: string, body: string) => {
+      const page = `body { margin: 0; background: #fff; } ${css}`;
+      expect(cssProblems(page, ON), css).toEqual([]);
+      await scan(`${body}<p style="margin-top: 400px">文字</p>`, page);
+      const got = phaseBCodes(await phaseBScan(tab, { css: ON, displayWords: [] }));
+      const r = (await tab.evaluate(`(() => { const e = document.querySelector(".g"); const b = e.getBoundingClientRect(); return { top: b.top, h: b.height, x: e.getClientRects()[0].left + 5, frags: e.getClientRects().length }; })()`)) as { top: number; h: number; x: number; frags: number };
+      const shot = await tab.screenshot({ clip: { x: Math.round(r.x), y: 0, width: 1, height: Math.ceil(r.top + r.h) + 2 } });
+      const { data, info } = await sharp(shot).raw().toBuffer({ resolveWithObject: true });
+      let jump = 0;
+      for (let y = Math.floor(r.top) + 1; y < Math.ceil(r.top + r.h); y++) for (let c = 0; c < 3; c++) jump = Math.max(jump, Math.abs(data[y * info.channels + c]! - data[(y - 1) * info.channels + c]!));
+      return { got, jump, h: r.h, frags: r.frags };
+    };
+    const BORDERS = "border-top: 16px solid transparent; border-bottom: 16px solid transparent;";
+    // 1. transparent borders: the rule sees 62px, the 30px gradient repeats under the borders
+    const a = await drawn(`.g { width: 40px; height: 30px; ${BORDERS} background: linear-gradient(#202020, #848484); }`, '<div class="g"></div>');
+    expect(a.got).toEqual([]);
+    expect(a.h).toBe(62);
+    expect(a.jump).toBeGreaterThan(2 * 20); // reviewer: 97 levels in one px
+    expect((await drawn(".g { width: 40px; height: 30px; background: linear-gradient(#202020, #848484); }", '<div class="g"></div>')).got).toEqual(["GRADIENT_TOO_STEEP"]);
+    // 2. black to white on 100px + borders: measured 132px (passes), drawn with a hard edge where the tile repeats
+    const b = await drawn(`.g { width: 40px; height: 100px; ${BORDERS} background: linear-gradient(#000, #fff); }`, '<div class="g"></div>');
+    expect(b.got).toEqual([]);
+    expect(b.jump).toBeGreaterThan(200);
+    // 3. em borders: 1em of a 256px font is a 256px border (the grammar reads 1em as 16px); a 30px tile repeats about 17×,
+    //    in effect a repeating-linear-gradient, which the grammar refuses by name
+    const c = await drawn(".g { width: 40px; font-size: 256px; height: 30px; border-top: 1em solid transparent; border-bottom: 1em solid transparent; background: linear-gradient(#000, #fff); }", '<div class="g"></div>');
+    expect(c.got).toEqual([]);
+    expect(c.h).toBe(542);
+    expect(c.jump).toBeGreaterThan(200);
+    // 4. an empty inline span wrapping over three lines: measured as the whole area, drawn once per one-line fragment
+    const imgs = '<img alt="">'.repeat(6);
+    const d = await drawn("p { width: 150px; margin: 0; line-height: 1; font-size: 16px; } img { width: 60px; height: 30px; } .g { background: linear-gradient(#303030, #a0a0a0); }", `<p><span class="g">${imgs}</span></p>`);
+    expect(d.frags).toBe(3);
+    expect(d.got).toEqual([]);
+    expect(d.jump).toBeGreaterThan(2);
+    expect((await drawn("p { width: 600px; margin: 0; line-height: 1; font-size: 16px; } img { width: 60px; height: 30px; } .g { background: linear-gradient(#303030, #a0a0a0); }", `<p><span class="g">${imgs}</span></p>`)).got).toEqual(["GRADIENT_HARD_STOP", "GRADIENT_TOO_STEEP"]);
+    console.log(`DEV-172 M1 box gap: borders ${a.jump} levels/px (rule []), black-white + borders ${b.jump}, 1em borders ${c.jump}, wrapped inline (${d.frags} fragments) ${d.jump}`);
+  });
+
+  it("colour_syntax + gradient_ground: a single oklch / oklab stop switches the whole gradient to oklab, hex segments included: black to white at the 2-levels edge goes over", async () => {
+    // Fresh Review L1: the interpolation space is the gradient's, not the segment's
+    const edge = async (g: string) => {
+      await scan('<div class="g"></div><p>文字</p>', `body { margin: 0; } .g { width: 130px; height: 8px; background: ${g}; }`, { css: ONC });
+      const got = phaseBCodes(await phaseBScan(tab, { css: ONC, displayWords: [] }));
+      const shot = await tab.screenshot({ clip: { x: 0, y: 2, width: 130, height: 1 } });
+      const { data, info } = await sharp(shot).raw().toBuffer({ resolveWithObject: true });
+      let max = 0; // the steepest 10px window, in levels per px
+      for (let x = 10; x < 130; x++) max = Math.max(max, Math.abs(data[x * info.channels]! - data[(x - 10) * info.channels]!) / 10);
+      return { got, max };
+    };
+    // #000 → #fff over 128.7px (99% of 130): 1.98 levels per px, just inside the rule; the 3rd stop changes nothing but the space
+    const srgb = await edge("linear-gradient(to right, #000, #fff 99%, #fff)");
+    const ok = await edge("linear-gradient(to right, #000, #fff 99%, oklch(1 0 0))");
+    expect(srgb.got).toEqual([]);
+    expect(ok.got).toEqual([]);
+    expect(srgb.max).toBeLessThanOrEqual(2.1);
+    expect(ok.max).toBeGreaterThan(2.1);
+    console.log(`DEV-172 oklab switch: #000→#fff alone max step ${srgb.max}; with an oklch stop ${ok.max} (rule ${ok.got.join(",") || "[]"})`);
+  });
+
   it("colour_syntax + gradient_ground: oklch / oklab stops are drawn through oklab, which the rule (sRGB end points) does not see — a documented gap of a non-safety rule", async () => {
     // the rule compares the stops' sRGB end points and assumes the colour changes linearly between them; Chromium
     // interpolates gradients with oklch / oklab stops in oklab, where an sRGB channel can rise and fall between two stops.
@@ -537,31 +601,60 @@ describe("DEV-172 the three shops", () => {
     expect(by("GROUND_HAS_TEXT")).toEqual(range(320, 1920));
   });
 
-  it("sento grad: the thermometer and the heat bar are drawn; C′'s fire tube (cold blue to ember in 18%) is too steep wherever the fire section is under 520px tall; eased to 40%, every width passes", async () => {
+  // The shop pages' text geometry depends on the fonts installed (CI has other CJK fonts than this container), so the
+  // expected widths come from an independent oracle on the same machine (gradient-harness.ts groundOracle: real resizes,
+  // own overlap test, the TS twin of the stop rule on measured boxes), never from widths recorded here.
+  const FIRE = [{ rgb: [0x9f, 0xd6, 0xea], pct: null }, { rgb: [0xe4, 0x6a, 0x2f], pct: 18 }, { rgb: [0xff, 0xb3, 0x5c], pct: 70 }, { rgb: [0xff, 0xe2, 0xb0], pct: null }] as Array<{ rgb: [number, number, number]; pct: number | null }>;
+
+  it("sento grad: the sweep fails exactly where the oracle says; C′'s fire tube (cold blue to ember in 18%) is too steep wherever the fire section is under 520px tall; eased to 40%, no stop code at any width", async () => {
     const { words } = shopFacts("sento");
-    const grad = await sweep(gradPage("sento", "grad"), ON, words);
-    const steep = grad.by("GRADIENT_TOO_STEEP");
-    expect(grad.s.failing.flatMap((f) => f.codes).every((c) => c === "GRADIENT_TOO_STEEP")).toBe(true);
-    expect(steep).toEqual(expect.arrayContaining([320, 390, 600, 768, 1024, 1440, 1920]));
     // the rule on the fire tube alone: 187 levels (#9fd6ea → #e46a2f, blue channel) over 18% of the tube ≤ 2/px → 520px
-    expect(gradientProblems({ kind: "linear", config: null, w: 6, h: 519, stops: [{ rgb: [0x9f, 0xd6, 0xea], pct: null }, { rgb: [0xe4, 0x6a, 0x2f], pct: 18 }, { rgb: [0xff, 0xb3, 0x5c], pct: 70 }, { rgb: [0xff, 0xe2, 0xb0], pct: null }] })).toEqual(["GRADIENT_TOO_STEEP"]);
-    expect(gradientProblems({ kind: "linear", config: null, w: 6, h: 520, stops: [{ rgb: [0x9f, 0xd6, 0xea], pct: null }, { rgb: [0xe4, 0x6a, 0x2f], pct: 18 }, { rgb: [0xff, 0xb3, 0x5c], pct: 70 }, { rgb: [0xff, 0xe2, 0xb0], pct: null }] })).toEqual([]);
-    const eased = await sweep(gradPage("sento", "grad_eased"), ON, words);
-    expect(eased.s.failing).toEqual([]);
-    // the checked widths: grad_eased adds no code to strict's (strict's own tablet failures stay)
+    expect(gradientProblems({ kind: "linear", config: null, w: 6, h: 519, stops: FIRE })).toEqual(["GRADIENT_TOO_STEEP"]);
+    expect(gradientProblems({ kind: "linear", config: null, w: 6, h: 520, stops: FIRE })).toEqual([]);
+    for (const v of ["grad", "grad_eased"] as const) {
+      const page = gradPage("sento", v);
+      const swept = await sweep(page, ON, words);
+      const oracle = await groundOracle(browser, page);
+      expect(swept.s.failing, v).toEqual(oracle.failing);
+      const steep = swept.by("GRADIENT_TOO_STEEP");
+      if (v === "grad") {
+        // C′'s colours: the fire section is under 520px tall at the widths measured here and on CI alike (its copy is short)
+        expect(steep.length, "grad: some width is too steep").toBeGreaterThan(0);
+      } else expect(swept.s.failing.flatMap((f) => f.codes).filter((c) => c.startsWith("GRADIENT")), v).toEqual([]);
+      console.log(`DEV-172 sento ${v}: sweep = oracle; GRADIENT_TOO_STEEP ${widthRanges(steep) || "none"}; other codes ${widthRanges(swept.s.failing.filter((f) => f.codes.some((c) => c !== "GRADIENT_TOO_STEEP")).map((f) => f.w)) || "none"} (texts on a ground: ${oracle.hits.join(" ") || "none"})`);
+    }
+    // the checked widths: grad_eased adds no code to strict's (strict's own tablet failures stay; same fonts on both sides)
     for (const w of NOWRAP_WIDTHS) {
       const a = await widthCodes(browser, gradPage("sento", "grad_eased"), w, { css: ON, displayWords: words, facts: factList("sento") });
       const b = await widthCodes(browser, gradPage("sento", "strict"), w, { css: ON, displayWords: words, facts: factList("sento") });
       expect(allCodes(a), String(w)).toEqual(allCodes(b));
     }
-    console.log(`DEV-172 sento grad: GRADIENT_TOO_STEEP ${widthRanges(steep)}; grad_eased: none (${eased.s.ms} ms)`);
   });
 
-  it("tsugute grad (the bowls) passes every width; tsugute grad_wide's gold band also breaks the stop rule (45% → 52% is under 10%)", async () => {
+  it("tsugute grad (the bowls): the sweep fails exactly where the oracle says, and only ever GROUND_UNDER_TEXT; grad_wide's gold band breaks the stop rule at every width (45% → 52% is under 10%)", async () => {
     const { words } = shopFacts("tsugute");
-    expect((await sweep(gradPage("tsugute", "grad"), ON, words)).s.failing).toEqual([]);
+    const page = gradPage("tsugute", "grad");
+    const swept = await sweep(page, ON, words);
+    const oracle = await groundOracle(browser, page);
+    expect(swept.s.failing).toEqual(oracle.failing);
+    expect([...new Set(swept.s.failing.flatMap((f) => f.codes))].filter((c) => c !== "GROUND_UNDER_TEXT")).toEqual([]);
+    console.log(`DEV-172 tsugute grad (installed fonts): GROUND_UNDER_TEXT ${widthRanges(swept.by("GROUND_UNDER_TEXT")) || "none"} (texts on a bowl: ${oracle.hits.join(" ") || "none"})`);
     const wide = await sweep(gradPage("tsugute", "grad_wide"), ON, words);
     expect(wide.by("GRADIENT_HARD_STOP")).toEqual(range(320, 1920));
+  });
+
+  it("tsugute grad under wider font metrics (a 1.45em content area, like Noto Sans CJK): text line boxes reach the bowls and the sweep fails exactly where the oracle says (which texts and from which width depends on the fonts installed; in this container: the big name's 2nd line and the ghost 継ぐ, from 601px)", async () => {
+    // reproduces CI (ubuntu, Playwright's fonts): the same glyphs, a taller Range rect above and below each line
+    const { words } = shopFacts("tsugute");
+    const page = withWideMetrics(gradPage("tsugute", "grad"));
+    const swept = await sweep(page, ON, words);
+    const oracle = await groundOracle(browser, page);
+    expect(swept.s.failing).toEqual(oracle.failing);
+    const under = swept.by("GROUND_UNDER_TEXT");
+    expect(under.length).toBeGreaterThan(0);
+    expect([...new Set(swept.s.failing.flatMap((f) => f.codes))]).toEqual(["GROUND_UNDER_TEXT"]);
+    expect(oracle.hits.length).toBeGreaterThan(0);
+    console.log(`DEV-172 tsugute grad (wide metrics): GROUND_UNDER_TEXT ${widthRanges(under)} (texts on a bowl: ${oracle.hits.join(" ")})`);
   });
 
   it("C′'s gradient declarations (the latest fidelity pages): only sento's heat bar passes the grammar; its six thermometer liquids would pass written as background (they are custom properties)", () => {
