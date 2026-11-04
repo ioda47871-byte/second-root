@@ -7650,7 +7650,7 @@
     {
       "id": "DEV-164",
       "title": "段 B の実装案と安全性テスト (表示語の大きさ・表示語の折れ止め・色の書き方・文字の下でない地・半透明の装飾)。旗は既定で下ろし、能力は承認しない (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-161"
@@ -7698,14 +7698,16 @@
         "translucent_decoration のための STACKING_CONTEXT の狭め (旗の後ろだけ。設計 §2.5 と §7)",
         "段 B の能力を有効にすること (APPROVED_CAPABILITIES に足す別の PR)"
       ],
-      "note": "HOLD: merge はオーナーの明示の承認が要る (DEV-083 §8。本番の許可一覧のコードの道を変えるため)。有効にするのは、APPROVED_CAPABILITIES に名前を足す別の PR。計算後の 256px の上限は旗が無くても掛かる (今ある rem の穴を塞ぐ。既存の通るページ 9 枚は全部の幅で影響なし)。"
+      "note": "HOLD: merge はオーナーの明示の承認が要る (DEV-083 §8。本番の許可一覧のコードの道を変えるため)。有効にするのは、APPROVED_CAPABILITIES に名前を足す別の PR。計算後の 256px の上限は旗が無くても掛かる (今ある rem の穴を塞ぐ。既存の通るページ 9 枚は全部の幅で影響なし)。 PR #207 でオーナーの明示承認 (Issue #193 コメント 6627987036) のもと develop へ merge した (64ae4f2)。能力はすべて OFF、APPROVED_CAPABILITIES = [] のまま。"
     },
     {
       "id": "DEV-169",
       "title": "段 B の 1px 掃引から unmeasuredWidths を呼ぶ行をテストで固定する (PR #207 の L1)",
       "status": "review",
       "priority": "P2",
-      "depends_on": [],
+      "depends_on": [
+        "DEV-164"
+      ],
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-169-sweep-wiring-test",
