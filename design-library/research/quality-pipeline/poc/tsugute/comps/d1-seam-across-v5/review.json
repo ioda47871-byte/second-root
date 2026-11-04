@@ -4,7 +4,7 @@
   "direction_id": "d1-seam-across-v5",
   "comp": {
     "html_sha256": "5446fabe95367540b030cfbf87c987ad2206dd8a801e2daffd77028d3659f0b1",
-    "css_sha256": "4d47837d3647fa180a1e11b8cd3b57d9f58ba3fc4e3c2ba8abc03f177fd33f09",
+    "css_sha256": "8b6ec7e3b130f97a3e1ca69f1fc71780bdee9052e1934aaf893cff6df5f377c3",
     "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
   },
   "renders": {
@@ -14,7 +14,7 @@
       "height": 6110
     },
     "mobile": {
-      "sha256": "dbb47319edeca411cdeff6f7bfe6920e40a0463f54fdfb63b552172e3fe1c385",
+      "sha256": "5ff2503d388fa21cc11d6574e0beeae70d6bb8c71fd064cbb23a38576946080e",
       "width": 390,
       "height": 6494
     }
@@ -22,7 +22,7 @@
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-05T05:00:00Z",
+    "viewed_at": "2026-11-05T21:30:00Z",
     "how": "Read tool: PC at 0.28 (2 columns), SP at 0.5 (4 columns) of the comp-lane renders; C before/after side by side at 1440 (0.3), 768 (0.5), 390 (0.6), and sweep crops at 1262, 1120, 900, 320"
   },
   "viewed_crops": {
@@ -265,7 +265,8 @@
         "SP の つぐ手 を器の上の紙の地に横に置き (22vw、字の箱と同じ高さの地)、器は前の版の大きさ、線はまっすぐのまま",
         "SP の 継ぐ を 22vw・-26vw に、PC の 待つ を 40px 下げた",
         "SP の言葉を板より前に重ね (z-index 3)、名札・漢字の地の帯を字の箱より広く",
-        "601〜1199 で 相談 の上を 76px、Hero のコピーの幅を 38% に (lead の終わりが Hero の線に届いた)"
+        "601〜1199 で 相談 の上を 76px、Hero のコピーの幅を 38% に (lead の終わりが Hero の線に届いた)",
+        "SP の地の帯を最後の字より 6px 右まで (線の断面 の右端に線が並んだ)"
       ],
       "regressions_fixed": []
     }

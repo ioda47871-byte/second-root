@@ -1,10 +1,10 @@
 {
   "schema": "comp_review_v1",
   "shop_id": "fictional-bicycle-repair-wa",
-  "direction_id": "d1-wheel-hub-v3",
+  "direction_id": "d1-wheel-hub-v4",
   "comp": {
-    "html_sha256": "0850adb00de7699ba2ae8816105c4f6239e37de882847d6a8fc8d4bd07c6fcee",
-    "css_sha256": "18d6cae9af68750a5dff2ecb5be89a06651cf4e0b287b377790740c52c1216f3",
+    "html_sha256": "3a0f0b5fb7eefa7900398c62c400ab00bc9aa2fe6437e5a34a366a558775ba05",
+    "css_sha256": "e4159b26e8ddc98d54e80ccf5028259eacb6a0aafdb38a85e1cae859edeefd58",
     "copy_sha256": "0dad2a649de3e60936deb004c8135ad69610464b80902a4cbc9fefd45c658780"
   },
   "renders": {
@@ -22,8 +22,8 @@
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-04T23:00:00Z",
-    "how": "Read tool: PC at 0.28 (2 columns), SP at 0.5 (4 columns); C renders at 601, 768, 999 (bicycle), 1440, 1200 (tsugute), 1440, 1200, 1024, 768, 390 (sento) at 0.33-0.5; 1x crops of the tsugute seam exits, the sento gauge and the noren at 1024"
+    "viewed_at": "2026-11-05T21:30:00Z",
+    "how": "Read tool: PC at 0.28 (2 columns), SP at 0.5 (4 columns) of the comp-lane renders; C at 601, 700, 768, 860, 999 before and after (0.42), and 1x crops of the hub at 601, 768, 999"
   },
   "viewed_crops": {
     "desktop": [
@@ -70,7 +70,7 @@
   "observations": {
     "desktop": [
       {
-        "what": "Hero・4本の黄のスポークと4つの駅は前の版のまま",
+        "what": "Hero・4本の黄のスポークと4つの駅は前の版のまま (PC)。601〜999 では4本のスポークがハブの縁から出る (C の幅で確かめた)",
         "box": {
           "x": 0,
           "y": 0,
@@ -220,38 +220,27 @@
   "rounds": [
     {
       "n": 1,
-      "cause": "601〜999px で修理の駅が格子に並び、PC と SP の主題 (車輪のスポークの先に修理が吊られる) が切れていた",
+      "cause": "601〜999px で、黄のスポークの内の端がハブの円の縁の手前 8〜11px で切れ、ハブとつながって見えなかった",
       "protect": [
-        "Hero の大きな車輪と 輪 のハブ (601〜999 も PC と同じ位置)",
-        "4つの駅の板と名札",
+        "Hero の大きな車輪と 輪 のハブ",
+        "4つの駅の板と名札とピン",
         "PC 1000 以上と SP の版"
       ],
       "changed": [
-        "601〜999 で、ハブの縁から4本のスポークを墨の縁つきの太い黄で引き出し、各板の右上のピンへ届かせた",
-        "板は左上から右下へ段に下り (振れ取り・パンク・チェーン・ブレーキ)、ピンで少し傾く。後のスポークほど急で、先の板と名前の右を通るので、スポークが板にも名前にも掛からない",
-        "見出しは左下の空いた所、まわる は下の左に置いた"
+        "タブレットのスポークの内の端をハブの円の縁 (768 幅の 80.5 単位) に移し、端を四角にした (丸い端だとハブの中へ入る)",
+        "タブレットの板の影を短く (24px + 22px のぼかしが 26px 下の駅の名前に届いていた)"
       ],
-      "regressions_fixed": []
-    },
-    {
-      "n": 2,
-      "cause": "締める の る が、どの幅でも右の端で 10〜20px 切れ、意図した端越えではなく切れに見えた",
-      "protect": [
-        "まわる の左の端越え (1文字目の半分が出る、意図して大きく出す)",
-        "締める の大きさと区画をまたぐ位置"
-      ],
-      "changed": [
-        "締める を右の端から 1.4vw (SP 10px) 内に入れ、SP の大きさを幅で縮めた。320〜1440 で字の箱が端を出ない"
-      ],
-      "regressions_fixed": []
+      "regressions_fixed": [
+        "ハブを z-index で上に重ねる案は、Hero が重なりの文脈を作るので効かなかった。スポークが 輪 の上に描かれたのを見て、縁で止める作りに変えた"
+      ]
     }
   ],
   "remaining": [
     "写真は役割と大きさだけの仮の板のまま",
-    "601〜999 の駅は板の上に名札を貼る (1000 以上と同じ作り)。板の大きさは 1000 で PC の小さな板へ切り替わる",
     "601〜999 の右下は暗い地が広く空く (スポークの段の構図)",
-    "SP の背骨は Hero の SVG と駅の区画の帯の2つでつなぐ",
-    "スポークが ハブ の円の縁で 輪 の字の箱に入る (字には掛からない)",
+    "1000 で板の大きさが跳ぶ",
+    "輪 の字の箱 (1.3em の四角) の角はハブの円の外に出て、車輪の細いスポークに掛かる。字の墨には掛からない (墨の画素で数えて 0)",
+    "PC と SP の板の影は前の版のまま (駅の名前の近くに届く幅がある。測っていない)",
     "カンプと C は同じソースで描く。C との差は測れない"
   ],
   "failure_codes": [],
