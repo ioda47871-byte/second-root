@@ -84,7 +84,7 @@
     },
     {
       "key": "fidelity_c",
-      "dir": "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v5",
+      "dir": "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v6",
       "section_attribute": "data-comp-section",
       "motif": [
         ".hero-art .seam-line",
