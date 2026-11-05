@@ -8207,7 +8207,7 @@
     {
       "id": "DEV-179",
       "title": "つぐ手 320〜1199px の左に写真が2つ続く問題と、CI に近い書体での縦の文字の重なり (縦の事実の文を横書きで成立させる案を含む) — 研究の道、架空の店",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-178"
@@ -8252,7 +8252,7 @@
         "SP の店名の向き",
         "CTA の導線の案"
       ],
-      "note": "縦の事実の文は段 D の規則を緩めない。"
+      "note": "縦の事実の文は段 D の規則を緩めない。 新しい版: つぐ手 comps/d1-seam-across-v8 (推す案、写真が左右交互)・fidelity/d1-v9。比べる別案: comps/d1-seam-across-v8-core (線を中央に、板が線をまたがない)・d1-seam-across-v8-sp-name-vertical (SP の名前を縦に、オーナーの判断)・d1-seam-across-v8-info-route (時間・電話・所在地の導線、オーナーの判断)。文はどの幅も横書き (事実の文と句は横、巨大な語と名前は1行1字の柱)。CI に近い書体での字の重なりは 0。copy.json は同じバイト。成功の判定ではない (placeholder_limited)。記録は .ai/reviews/DEV-179.md。"
     },
     {
       "id": "DEV-180",
