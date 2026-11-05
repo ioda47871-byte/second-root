@@ -8306,7 +8306,7 @@
     {
       "id": "DEV-181",
       "title": "N1 の装飾 SVG と段 D (縦書き・回転・縁取り) を本番へ取り込む条件の整理 (機能ごと)",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P2",
       "depends_on": [
         "DEV-178"
@@ -8340,7 +8340,7 @@
       "human_approval_triggers": [
         "機能ごとの ON"
       ],
-      "note": ""
+      "note": "docs/design/production-conditions-n1-phase-d.md。判定: 実装の PR は vertical_text・outlined_type が、共有の守る文字の判定 (FACT_NODES_JS) と段 C の重なりの検査を lib へ移した後に Ready-for-approval。N1・small_rotation は段 C の lib 待ちで Blocked。ON は4つとも Blocked で、ON の前にオーナーの PC/SP の目視と実機を勧める。オーナーの目視の記録は作っていない。縦の事実の文は保護が優先 (規則を緩める案なし)。WebKit・Firefox は BLOCKED (プローブ 終了 2)。"
     },
     {
       "id": "DEV-182",
