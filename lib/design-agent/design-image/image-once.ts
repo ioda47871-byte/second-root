@@ -92,15 +92,31 @@ export function imageStopCode(outcome: ImageOutcome): string {
   return "CODEX_NO_IMAGE";
 }
 
-export async function generateImageOnce(o: { sandbox: CodexSandbox; prompt: string; timeoutMs: number; tmpBase: string; signal?: AbortSignal; now?: () => number }): Promise<ImageOnceResult> {
+/** What one image-tool run observed (fixed facts only), handed to the mode that reads its pictures. */
+type RunSeen = {
+  run: Awaited<ReturnType<CodexSandbox["run"]>>;
+  facts: Awaited<ReturnType<typeof readSessionFacts>>;
+  threadId: string | null;
+  codexHome: string;
+  base: { threadId: string | null; cliVersion: string | null; model: string | null; codexMs: number };
+};
+type RunOptions = { sandbox: CodexSandbox; prompt: string; timeoutMs: number; tmpBase: string; signal?: AbortSignal; now?: () => number };
+
+/**
+ * The one `codex exec` of an image call, shared by generateImageOnce (one picture) and generateImagesInOneRun (DEV-185,
+ * a bounded batch in ONE run): the .env check, the stale-state cleanup, the sign-in check, the version, the PoC's
+ * command line in the same jail, the session facts, and the cleanup of the thread's image dir, logs and work dir
+ * (also on a hard stop). `early` builds the mode's result for a stop before or around the call; `seen` reads the
+ * pictures while they are still on disk.
+ */
+async function imageRun<R>(o: RunOptions, maxLogBytes: number | undefined, early: (stopCode: string, cliVersion: string | null) => R, seen: (s: RunSeen) => Promise<R>): Promise<R> {
   const now = o.now ?? Date.now;
   const { sandbox, signal } = o;
   const withSignal = signal === undefined ? {} : { signal };
   if (signal?.aborted) throw new CodexAbortedError();
   const codexHome = sandbox.env.CODEX_HOME ?? join(sandbox.env.HOME ?? "/nonexistent", ".codex");
-  const result = (r: Partial<ImageOnceResult> & Pick<ImageOnceResult, "outcome" | "stopCode">): ImageOnceResult => ({ png: null, width: null, height: null, threadId: null, cliVersion: null, model: null, codexMs: 0, ...r });
   // before any Codex process: Codex would load $CODEX_HOME/.env past the cleared environment (DEV-078)
-  if (await codexDotenvPresent(codexHome)) return result({ outcome: "not_applicable", stopCode: "CODEX_DOTENV_PRESENT" });
+  if (await codexDotenvPresent(codexHome)) return early("CODEX_DOTENV_PRESENT", null);
   await removeStaleDesignAgentState(sandbox.env, codexHome);
   await assertChatGptSignIn({ sandbox, ...withSignal });
   let cwd: string | undefined;
@@ -140,37 +156,140 @@ export async function generateImageOnce(o: { sandbox: CodexSandbox; prompt: stri
       });
     } catch (error) {
       // a .env found after Codex ran (DEV-079): Codex DID run and its result is thrown away; never "not called"
-      if (error instanceof SandboxError && error.started) return result({ outcome: "not_applicable", stopCode: "CODEX_RESULT_DISCARDED_DOTENV", cliVersion });
-      return result({ outcome: "not_applicable", stopCode: error instanceof SandboxError ? error.code : "CODEX_SANDBOX_UNAVAILABLE", cliVersion });
+      if (error instanceof SandboxError && error.started) return early("CODEX_RESULT_DISCARDED_DOTENV", cliVersion);
+      return early(error instanceof SandboxError ? error.code : "CODEX_SANDBOX_UNAVAILABLE", cliVersion);
     }
     const codexMs = now() - started;
     const events = readCodexEvents(run.stdout);
     if (events.threadId !== undefined && THREAD_ID.test(events.threadId)) threadId = events.threadId;
     // the CLI's own record of the image tool (fixed facts only), read before the log is removed
-    const facts = await readSessionFacts(codexHome, threadId ? { threadId } : { cwds: new Set([cwd, await realpath(cwd).catch(() => cwd!)]) });
+    const facts = await readSessionFacts(codexHome, threadId ? { threadId } : { cwds: new Set([cwd, await realpath(cwd).catch(() => cwd!)]) }, maxLogBytes === undefined ? {} : { maxLogBytes });
     const model = facts.model !== null && facts.model !== "other" && MODEL.test(facts.model) ? facts.model : null;
-    const base = { threadId, cliVersion: cliVersion ?? facts.cli_version, model, codexMs };
     if (run.aborted || signal?.aborted) throw new CodexAbortedError();
-    if (run.timedOut) return result({ ...base, outcome: deriveImageOutcome(facts, false), stopCode: "CODEX_TIMEOUT" });
-    if (run.code !== 0 && codexLooksSignedOut(run.stdout, run.stderr)) return result({ ...base, outcome: "not_applicable", stopCode: "CODEX_NOT_SIGNED_IN" });
-    if (run.code !== 0 && codexLooksRateLimited(run.stdout, run.stderr)) return result({ ...base, outcome: deriveImageOutcome(facts, false), stopCode: "CODEX_QUOTA" });
-    if (run.code !== 0) return result({ ...base, outcome: deriveImageOutcome(facts, false), stopCode: "CODEX_EXEC_FAILED" });
-    if (!threadId) return result({ ...base, outcome: deriveImageOutcome(facts, false), stopCode: "CODEX_NO_THREAD" });
-    const image = await takeImage(join(codexHome, "generated_images", threadId));
-    if ("code" in image) {
-      const outcome = deriveImageOutcome(facts, false);
-      // as the PoC: no picture and the CLI's own rate-limit words is a usage limit
-      if (image.code === "CODEX_NO_IMAGE" && codexLooksRateLimited(run.stdout, run.stderr)) return result({ ...base, outcome, stopCode: "CODEX_QUOTA" });
-      // the image tool's own failure decides the code; otherwise the file problem as found
-      return result({ ...base, outcome, stopCode: image.code === "CODEX_NO_IMAGE" ? imageStopCode(outcome) : image.code });
-    }
-    return result({ ...base, png: image.bytes, width: image.width, height: image.height, outcome: "IMAGE_SAVED", stopCode: null });
+    return await seen({ run, facts, threadId, codexHome, base: { threadId, cliVersion: cliVersion ?? facts.cli_version, model, codexMs } });
   } catch (error) {
     if (error instanceof CodexAbortedError || error instanceof CodexError) throw error;
-    if (error instanceof SandboxError) return result({ outcome: "not_applicable", stopCode: error.started ? "CODEX_RESULT_DISCARDED_DOTENV" : error.code });
+    if (error instanceof SandboxError) return early(error.started ? "CODEX_RESULT_DISCARDED_DOTENV" : error.code, null);
     throw error;
   } finally {
     await cleanup();
     activeCleanups.delete(cleanup);
   }
+}
+
+export async function generateImageOnce(o: RunOptions): Promise<ImageOnceResult> {
+  const result = (r: Partial<ImageOnceResult> & Pick<ImageOnceResult, "outcome" | "stopCode">): ImageOnceResult => ({ png: null, width: null, height: null, threadId: null, cliVersion: null, model: null, codexMs: 0, ...r });
+  return imageRun(
+    o,
+    undefined,
+    (stopCode, cliVersion) => result({ outcome: "not_applicable", stopCode, ...(cliVersion === null ? {} : { cliVersion }) }),
+    async ({ run, facts, threadId, codexHome, base }) => {
+      if (run.timedOut) return result({ ...base, outcome: deriveImageOutcome(facts, false), stopCode: "CODEX_TIMEOUT" });
+      if (run.code !== 0 && codexLooksSignedOut(run.stdout, run.stderr)) return result({ ...base, outcome: "not_applicable", stopCode: "CODEX_NOT_SIGNED_IN" });
+      if (run.code !== 0 && codexLooksRateLimited(run.stdout, run.stderr)) return result({ ...base, outcome: deriveImageOutcome(facts, false), stopCode: "CODEX_QUOTA" });
+      if (run.code !== 0) return result({ ...base, outcome: deriveImageOutcome(facts, false), stopCode: "CODEX_EXEC_FAILED" });
+      if (!threadId) return result({ ...base, outcome: deriveImageOutcome(facts, false), stopCode: "CODEX_NO_THREAD" });
+      const image = await takeImage(join(codexHome, "generated_images", threadId));
+      if ("code" in image) {
+        const outcome = deriveImageOutcome(facts, false);
+        // as the PoC: no picture and the CLI's own rate-limit words is a usage limit
+        if (image.code === "CODEX_NO_IMAGE" && codexLooksRateLimited(run.stdout, run.stderr)) return result({ ...base, outcome, stopCode: "CODEX_QUOTA" });
+        // the image tool's own failure decides the code; otherwise the file problem as found
+        return result({ ...base, outcome, stopCode: image.code === "CODEX_NO_IMAGE" ? imageStopCode(outcome) : image.code });
+      }
+      return result({ ...base, png: image.bytes, width: image.width, height: image.height, outcome: "IMAGE_SAVED", stopCode: null });
+    },
+  );
+}
+
+/**
+ * DEV-185: the largest batch one run may make, and the session-log cap for it (each saved picture adds its base64 to
+ * the log a few times; 64 MiB per picture of room).
+ */
+export const MAX_BATCH_IMAGES = 6;
+export const BATCH_SESSION_LOG_BYTES = MAX_BATCH_IMAGES * 64 * 1024 * 1024;
+
+export type ImageBatchResult = {
+  /** the saved pictures, in the order they were saved (file time, then name); empty when the batch was refused */
+  images: Array<{ png: Buffer; width: number; height: number }>;
+  outcome: ImageOutcome | "not_applicable";
+  /** null only when every call the log records completed, none failed, and each left exactly one PNG */
+  stopCode: string | null;
+  imageCalls: number;
+  imageFailed: number;
+  threadId: string | null;
+  cliVersion: string | null;
+  model: string | null;
+  codexMs: number;
+};
+
+/** Every PNG of the thread's image dir, fully checked, oldest first; or the fixed reason the dir cannot be used. */
+async function takeImages(dir: string): Promise<Array<{ bytes: Buffer; width: number; height: number }> | { code: string }> {
+  const info = await lstat(dir).catch(() => null);
+  if (!info) return [];
+  if (info.isSymbolicLink() || !info.isDirectory()) return { code: "CODEX_IMAGE_INVALID" };
+  const pngs: { path: string; name: string; mtime: number }[] = [];
+  for (const name of await readdir(dir)) {
+    const entry = await lstat(join(dir, name)).catch(() => null);
+    if (name.toLowerCase().endsWith(".png")) {
+      if (!PNG_NAME.test(name) || !entry || entry.isSymbolicLink() || !entry.isFile()) return { code: "CODEX_IMAGE_INVALID" };
+      pngs.push({ path: join(dir, name), name, mtime: entry.mtimeMs });
+    } else if (/\.(jpe?g|webp|gif)$/i.test(name) && entry?.isFile() && !entry.isSymbolicLink()) return { code: "CODEX_IMAGE_UNSUPPORTED_FORMAT" };
+  }
+  // more files than the batch may hold: never read them
+  if (pngs.length > MAX_BATCH_IMAGES) return { code: "CODEX_IMAGE_CALLS_EXCEEDED" };
+  const out: Array<{ bytes: Buffer; width: number; height: number }> = [];
+  for (const p of pngs.sort((a, b) => a.mtime - b.mtime || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    try {
+      const png = await readPngNoFollow(p.path);
+      out.push({ bytes: png.bytes, width: png.width, height: png.height });
+    } catch (error) {
+      if (error instanceof PngError) return { code: "CODEX_IMAGE_INVALID" };
+      throw error;
+    }
+  }
+  return out;
+}
+
+/**
+ * DEV-185 (owner approval, Option A): ONE `codex exec` whose prompt asks the image tool for up to `maxImages` pictures
+ * (at most MAX_BATCH_IMAGES), in the same jail and command line as generateImageOnce. Nothing is retried, here or by
+ * the caller. What the run did is read from the CLI's own session log and the thread's image dir:
+ *  - more calls in the log, or more PNGs, than maxImages: CODEX_IMAGE_CALLS_EXCEEDED, and no picture is returned;
+ *  - a log that could not be read whole (too large, unreadable, missing): CODEX_SESSION_LOG_UNVERIFIED (the call
+ *    count is not proven), the pictures are returned for the record but the batch is not complete;
+ *  - any failed call: the image tool's stop code (the pictures saved before it are returned, the batch stops there);
+ *  - a timeout, exec failure, quota, lost sign-in: as generateImageOnce, with what was saved.
+ * The model may not follow the prompt; these checks run after the run ends (a running call is not cut at the 7th).
+ */
+export async function generateImagesInOneRun(o: RunOptions & { maxImages: number }): Promise<ImageBatchResult> {
+  if (!Number.isInteger(o.maxImages) || o.maxImages < 1 || o.maxImages > MAX_BATCH_IMAGES) throw new Error("generateImagesInOneRun: maxImages must be 1..6");
+  const result = (r: Partial<ImageBatchResult> & Pick<ImageBatchResult, "outcome" | "stopCode">): ImageBatchResult => ({ images: [], imageCalls: 0, imageFailed: 0, threadId: null, cliVersion: null, model: null, codexMs: 0, ...r });
+  return imageRun(
+    o,
+    BATCH_SESSION_LOG_BYTES,
+    (stopCode, cliVersion) => result({ outcome: "not_applicable", stopCode, ...(cliVersion === null ? {} : { cliVersion }) }),
+    async ({ run, facts, threadId, codexHome, base }) => {
+      const counts = { imageCalls: facts.image_tool_calls, imageFailed: facts.image_tool_failed };
+      const taken = threadId ? await takeImages(join(codexHome, "generated_images", threadId)) : [];
+      const outcomeOf = (saved: boolean) => deriveImageOutcome(facts, saved);
+      if (!Array.isArray(taken)) return result({ ...base, ...counts, outcome: outcomeOf(false), stopCode: taken.code });
+      // over the limit: refused whole, no picture handed on
+      if (facts.image_tool_calls > o.maxImages || taken.length > o.maxImages) return result({ ...base, ...counts, outcome: outcomeOf(false), stopCode: "CODEX_IMAGE_CALLS_EXCEEDED" });
+      const images = taken.map((t) => ({ png: t.bytes, width: t.width, height: t.height }));
+      const r = (stopCode: string | null, outcome: ImageOutcome | "not_applicable" = outcomeOf(images.length > 0)) => result({ ...base, ...counts, images, outcome, stopCode });
+      if (run.timedOut) return r("CODEX_TIMEOUT");
+      if (run.code !== 0 && codexLooksSignedOut(run.stdout, run.stderr)) return r("CODEX_NOT_SIGNED_IN", "not_applicable");
+      if (run.code !== 0 && codexLooksRateLimited(run.stdout, run.stderr)) return r("CODEX_QUOTA");
+      if (run.code !== 0) return r("CODEX_EXEC_FAILED");
+      if (!threadId) return r("CODEX_NO_THREAD");
+      if (!facts.log_found || facts.truncated || facts.unreadable) return r("CODEX_SESSION_LOG_UNVERIFIED");
+      // the first failed call ends the batch (the prompt says stop; any later picture is still only recorded)
+      if (facts.image_tool_failed > 0) return r(imageStopCode(outcomeOf(false)), outcomeOf(false));
+      if (images.length === 0) return r(codexLooksRateLimited(run.stdout, run.stderr) ? "CODEX_QUOTA" : imageStopCode(outcomeOf(false)));
+      // one PNG per completed call: anything else is not a batch whose pictures can be told apart
+      if (images.length !== facts.image_tool_calls) return r("CODEX_IMAGE_COUNT_MISMATCH");
+      return r(null, "IMAGE_SAVED");
+    },
+  );
 }

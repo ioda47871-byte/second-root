@@ -52,6 +52,11 @@ const REPO = resolve(__dirname, "../..");
 export const PIPELINE_ROOT = join(REPO, "design-library/research/quality-pipeline");
 /** The owner started with つぐ手's 6 slots only (not all 15). */
 export const SWAP_SHOPS = ["tsugute"] as const;
+/**
+ * DEV-185 (owner approval): the fictional shops whose swap may take `ai_generated_demo` pictures (with their full
+ * provenance; every other rights check unchanged). Only つぐ手.
+ */
+export const AI_DEMO_SHOPS: ReadonlySet<string> = new Set(["tsugute"]);
 export const CAPTION_PREFIX = "写真｜";
 
 /**
@@ -345,7 +350,7 @@ export async function swapPage(opts: SwapOptions): Promise<SwapResult> {
       if (!ref) continue;
       const path = (ref.rights as { private_path?: unknown } | null)?.private_path;
       const opened = typeof path === "string" ? resolvePrivatePhoto(pipelineRoot, path) : ({ ok: false, code: "PATH_NOT_PRIVATE" } as const);
-      const rights = checkPhotoRights(ref.rights, opened.ok ? opened.info : null, { purpose: "quality_verification", now: opts.now, forbiddenSha256: forbidden });
+      const rights = checkPhotoRights(ref.rights, opened.ok ? opened.info : null, { purpose: "quality_verification", now: opts.now, forbiddenSha256: forbidden, aiDemoAllowed: AI_DEMO_SHOPS.has(manifest.shop) });
       const codes = [...(opened.ok ? [] : [opened.code]), ...(rights.ok ? [] : rights.codes)];
       if (codes.length || !opened.ok || !rights.ok) {
         refusals.push({ slot_id: entry.slot_id, photo: which, codes: [...new Set(codes)] });

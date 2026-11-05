@@ -651,7 +651,10 @@ async function sessionLogs(codexHome: string, select: SessionSelector, f: Sessio
  * (deriveImageOutcome) is IMAGE_SAVED whenever a PNG was taken, else any failed call makes it TOOL_FAILED_*
  * with USAGE_LIMIT before POLICY before OTHER, even if another call completed.
  */
-export async function readSessionFacts(codexHome: string, select: SessionSelector | string | undefined): Promise<SessionFacts> {
+export async function readSessionFacts(codexHome: string, select: SessionSelector | string | undefined, opts: { maxLogBytes?: number } = {}): Promise<SessionFacts> {
+  // DEV-185: a one-run batch of up to 6 pictures may pass a larger cap (each picture adds its base64 to the log);
+  // every other caller keeps MAX_SESSION_LOG_BYTES
+  const maxLogBytes = opts.maxLogBytes ?? MAX_SESSION_LOG_BYTES;
   const f = emptySessionFacts();
   const selector: SessionSelector = typeof select === "string" ? { threadId: select } : (select ?? {});
   if (selector.threadId !== undefined && !THREAD_ID.test(selector.threadId)) return f;
@@ -687,7 +690,7 @@ export async function readSessionFacts(codexHome: string, select: SessionSelecto
    */
   const cellFailures: Array<{ src: "cell_error" | "cell_print"; t: ImageFailureText }> = [];
   for (const path of paths) {
-    const read = await readCapped(path, MAX_SESSION_LOG_BYTES);
+    const read = await readCapped(path, maxLogBytes);
     if (!read.ok) {
       if (read.why === "too_large") f.truncated = true;
       else f.unreadable = true;

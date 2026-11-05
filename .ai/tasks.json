@@ -8475,6 +8475,67 @@
         "完成の候補の見た目"
       ],
       "note": "comps/d1-seam-across-v9 = fidelity/d1-v10 (同じバイト)。320 の事実の文 14.2px → 19px、句の を の前の折り返しを直し、導線の事実を 14px → 15〜16px に。墨の帰属は 14 の組 (7 幅 × 2 書体) すべて所見なし。差し替えの道具は店ごとに測ったページの一覧を複数持ち (photo-slots-d1-v10.json)、継ぎ目の絵を写真の上に残して d1-v10 を差し替える。合成の PNG で 6枠すべて埋まった (1440・768・390)。AI の画像は今の権利の記録 (source_kind) に種類が無く、道具を通せない (HOLD)。写真は1枚も無い (placeholder_limited)。記録は .ai/reviews/DEV-184.md。"
+    },
+    {
+      "id": "DEV-185",
+      "title": "つぐ手の AI デモ写真6枚: 1回の real Codex で最大6枚を作るワンショット入口 (オフライン実装、生成0回) と、権利の記録の ai_generated_demo",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-110",
+        "DEV-163",
+        "DEV-166"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-185-tsugute-ai-photos",
+      "purpose": "オーナー承認 (Option A): 既存の WSL の隔離・画像モデル・時間制限のまま、つぐ手専用のワンショットで1回の real Codex から最大6枚を作る。失敗で止まり再試行しない。権利の記録に「AI 生成・デモ専用」を足す。この容器では real Codex も画像生成もしない",
+      "acceptance_criteria": [
+        "run-tsugute-photos-once.sh → tsugute-photos-gate.sh → tsugute-photos.ts: prompt SHA256 と文字数・承認 ID・--expected-commit を固定、承認マーカーは Codex の前に atomic mkdir で消費、worker run.lock、user/HOME/cgroup の確認、既存の 15 分 / 55 分の制限",
+        "1回の codex exec で画像の呼び出しは最大6回。7回目以上・PNG 7枚以上は全体を拒む。失敗した呼び出しで止まり、再試行しない",
+        "出力はリポジトリの外の 0700 ディレクトリ、<slot>.png (0600) と manifest.json (slot→file・SHA256・画素・プロンプトの SHA)",
+        "photo-rights.ts の source_kind に ai_generated_demo (来歴必須、つぐ手の差し替えだけ許可、public_site は拒む、公開の記録はデモの画像と明記)。ほかの権利の検査は保つ",
+        "取り込み (tsugute-ai-intake.ts) → photo-swap.ts の合成 PNG での dry run",
+        "和菓子 v4 の入口とそのテストは変わらない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/tsugute-ai-photos.test.ts",
+        "npx vitest run tests/unit/design-agent/design-image-approved-one-shot.test.ts",
+        "npx vitest run tests/unit/design-agent/design-image-poc.test.ts",
+        "npx vitest run tests/unit/design-agent/phase2f-live/image-once.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-intake.test.ts",
+        "npx vitest run tests/unit/design-agent/quality-pipeline/photo-swap.test.ts",
+        "bash -n scripts/sales-design-worker/run-tsugute-photos-once.sh scripts/sales-design-worker/tsugute-photos-gate.sh"
+      ],
+      "allowed_scope": [
+        "scripts/sales-design-worker/run-tsugute-photos-once.sh",
+        "scripts/sales-design-worker/tsugute-photos-gate.sh",
+        "scripts/sales-design-worker/tsugute-photos.ts",
+        "lib/design-agent/design-image/image-once.ts",
+        "lib/design-agent/design-image/capability.ts (readSessionFacts の任意の上限だけ)",
+        "lib/design-agent/design-image/tsugute-photos.ts",
+        "lib/design-agent/quality-pipeline/tsugute-ai-photos.ts",
+        "lib/design-agent/quality-pipeline/photo-rights.ts",
+        "scripts/design-artifact/photo-swap.ts",
+        "scripts/design-artifact/tsugute-ai-intake.ts",
+        "tests/unit/design-agent/",
+        "docs/operations/design-image-one-command.md",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "real Codex・画像生成・有料 API の実行",
+        "隔離 (bubblewrap・env allowlist・cgroup・run.lock) の緩和、時間制限の変更",
+        "和菓子 v4 の入口・承認・pin の変更",
+        ".github/workflows・package.json・lockfile",
+        "main・Production・Staging・DB・worker・timer",
+        "写真・原本の commit"
+      ],
+      "human_approval_triggers": [
+        "マージ後の実行 (オーナーが WSL で1回)",
+        "画像ツールの出力が 2倍に届かない枠の scale exception (ph-ware・ph-hibi は 1536×1024 なら 1.5〜2倍、ph-hand は 1024×1024 なら 1.5倍未満)",
+        "public_site での AI デモ画像の利用"
+      ],
+      "note": "実行は1回だけ (承認 ID tsugute-photos-20261106-01)。プロンプトは指示書 §1・§2 の本文をそのまま使い、SHA256 dab7f260…3ed0、4133 文字。6回の画像呼び出しは過去の実測 (1回 33〜55 秒、Codex 全体 98 秒) から 15 分に収まる見込み。記録は .ai/reviews/DEV-185.md。"
     }
   ]
 }
