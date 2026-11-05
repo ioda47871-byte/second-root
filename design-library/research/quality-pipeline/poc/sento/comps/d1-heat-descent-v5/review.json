@@ -1,0 +1,245 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-sento-yuge",
+  "direction_id": "d1-heat-descent-v5",
+  "comp": {
+    "html_sha256": "02798677423c3340ddff5c804184dfedd9e0f1154845be3348554d89e1daae52",
+    "css_sha256": "72b54e60222d6a66f091e94a0f2640d1c26f3275d7d6f3e67a430db38099bb74",
+    "copy_sha256": "50432f7b2cb60b0a8b7bb1c2e0b032dd1492fe4ac7257d11a0636eae083d359c"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "a21a1b3384d9e8fe045f3cc27b861b105f7942163f237a536447ef40cb1fcdb4",
+      "width": 1440,
+      "height": 4944
+    },
+    "mobile": {
+      "sha256": "7127b0796644d3c2878f2ed937acc295f961dadde6c06a18e362e60a7bd075ca",
+      "width": 390,
+      "height": 4418
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-05T21:00:00Z",
+    "how": "Read tool: C before|after at 1440 (0.33), 768 (0.5) and 390 (0.59) full pages, 3x crop of the fire section's marks at 390 and 1.5x of the information"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 2472
+      },
+      {
+        "x": 0,
+        "y": 2472,
+        "w": 1440,
+        "h": 2472
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1105
+      },
+      {
+        "x": 0,
+        "y": 1105,
+        "w": 390,
+        "h": 1105
+      },
+      {
+        "x": 0,
+        "y": 2210,
+        "w": 390,
+        "h": 1105
+      },
+      {
+        "x": 0,
+        "y": 3315,
+        "w": 390,
+        "h": 1103
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "PC は前の版と同じバイト: 温度計の管と区画ごとの液の色",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 120,
+          "h": 4944
+        }
+      },
+      {
+        "what": "Hero: ゆげ湯 の縦書き、熱い と湯気は前のまま",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 980
+        }
+      },
+      {
+        "what": "湯の表面の板と事実の列の間は前のまま",
+        "box": {
+          "x": 0,
+          "y": 980,
+          "w": 1440,
+          "h": 880
+        }
+      },
+      {
+        "what": "ぬるい・冷たい と水風呂の板は前のまま",
+        "box": {
+          "x": 0,
+          "y": 1800,
+          "w": 1440,
+          "h": 700
+        }
+      },
+      {
+        "what": "沸く と火の目盛り、15:00〜24:00 は前のまま (PC の文は目盛りから 100px 以上右)",
+        "box": {
+          "x": 0,
+          "y": 2400,
+          "w": 1440,
+          "h": 900
+        }
+      },
+      {
+        "what": "壁の山の絵、のれん、夜の情報は前のまま",
+        "box": {
+          "x": 0,
+          "y": 3300,
+          "w": 1440,
+          "h": 1644
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "SP の温度計の目盛りが管に寄り (x 17〜23)、文の左の余白が 36px になった",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 60,
+          "h": 4418
+        }
+      },
+      {
+        "what": "Hero・湯船・ぬるい・冷たい は前と同じ並び。文は 8px 右へ",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 1900
+        }
+      },
+      {
+        "what": "15:00〜24:00 の左に目盛りが並ばない (前は刻みが 4px 左にあり、負の記号に読めた)",
+        "box": {
+          "x": 0,
+          "y": 1900,
+          "w": 390,
+          "h": 1100
+        }
+      },
+      {
+        "what": "のれん・情報は前の版のまま (情報の時間も目盛りから離れた)",
+        "box": {
+          "x": 0,
+          "y": 3000,
+          "w": 390,
+          "h": 1418
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 4889
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 2700
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "巨大な文字と写真の重なりは、SP でも縦に積んで残す",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 2200
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-002/concept.read.json",
+      "learn": "店の素材の形 (枝の弧) を、写真の枠の形と画面の区切りに使う",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 700,
+          "y": 3500,
+          "w": 700,
+          "h": 700
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "SP 390 で温度計の目盛りの刻みが 15:00〜24:00 の左 1〜4px に並び、負の記号に読めた (320〜600 のどの幅でも、目盛りと文の頭の間は 1px まで近づいた)",
+      "protect": [
+        "温度計の管と区画ごとの液の色",
+        "PC とタブレットの描画",
+        "SP の並び (Hero・湯船・ぬるい・冷たい・沸く・のれん)"
+      ],
+      "changed": [
+        "SP の目盛りを管の右の縁に寄せ (x 19〜27 → 17〜23、短い刻みは 17〜21)",
+        "SP の文の左の余白を 28px から 36px に"
+      ],
+      "regressions_fixed": []
+    }
+  ],
+  "remaining": [
+    "写真はすべて仮の板。山の絵も描いた仮の板",
+    "温度計に数は無い (事実に温度が無いので描かない)",
+    "601〜860 の湯気は 熱い の上に浮くだけで湯とつながらない",
+    "のれんの ゆ と色は創作で、オーナーの確認が要る",
+    "カンプと C は同じソースで描く。C との差は測れない"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}
