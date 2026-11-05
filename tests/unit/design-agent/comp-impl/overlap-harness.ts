@@ -22,32 +22,41 @@ const POC = join(REPO, "design-library/research/quality-pipeline/poc");
 
 /**
  * The text nodes that hold part of a protected string (plain JavaScript; call with the whitespace-free strings). A fact
- * can be split over elements — `<p>電話 000-0000-<span>0712</span></p>` — and a part's own element text ("0712") neither
- * holds the fact nor is 6+ characters of it (DEV-175 re-review 4 H1). So: text nodes are grouped by their nearest
- * ancestor that is not inline (inline-blocks are parts of a line too), each group's whitespace-free text is joined with
- * the offsets of every node, every occurrence of each protected string is found in it, and every node whose span
- * overlaps an occurrence is returned. Only adds protection (shared by phase-d-harness.ts).
+ * can be split over elements — inline (`<p>電話 000-0000-<span>0712</span></p>`, DEV-175 re-review 4 H1), over flex /
+ * grid items, or over blocks (`<p>000-0000-</p><p>0712</p>`, re-review 5 H1) — and a part's own element text neither
+ * holds the fact nor is 6+ characters of it. So: ONE pass over the body's text nodes in DOM order joins their text, each
+ * original character normalised on its own (NFKD; combining marks, format characters (Cf: zero-width space, soft
+ * hyphen …) and whitespace dropped: re-review 5 L1) with the node that owns every output character; each protected string
+ * is normalised the same way and every occurrence in the joined text marks its owners. Matching across blocks and
+ * dropping marks (が and か both read か) only add protection: the fail-closed direction. Shared by phase-d-harness.ts.
  */
 export const FACT_NODES_JS = String.raw`(protect) => {
-  const flat = (s) => (s || "").replace(/\s+/g, "");
-  const inline = (el) => { const d = getComputedStyle(el).display; return d.startsWith("inline") || d === "contents"; };
-  const blockOf = (n) => { let e = n.parentElement; while (e && e !== document.body && inline(e)) e = e.parentElement; return e || document.body; };
+  const norm = (ch) => ch.normalize("NFKD").replace(/[\p{M}\p{Cf}\s]/gu, "");
+  const normAll = (s) => Array.from(s || "").map(norm).join("");
+  // the group a text node is joined in: the whole body (one string in DOM order)
+  const groupOf = (n) => document.body;
   const groups = new Map();
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n = w.nextNode(); n; n = w.nextNode()) {
-    if (!flat(n.data) || !n.parentElement) continue;
-    const b = blockOf(n);
-    if (!groups.has(b)) groups.set(b, []);
-    groups.get(b).push(n);
+    if (!n.parentElement || n.parentElement.closest("style, script, title")) continue;
+    const g = groupOf(n);
+    if (!groups.has(g)) groups.set(g, { text: "", owner: [] });
+    const G = groups.get(g);
+    for (const ch of Array.from(n.data)) {
+      const x = norm(ch);
+      for (const c of Array.from(x)) { G.text += c; G.owner.push(n); }
+    }
   }
+  const facts = protect.map(normAll).filter(Boolean);
   const touched = new Set();
-  for (const nodes of groups.values()) {
-    let text = "";
-    const spans = [];
-    for (const n of nodes) { const f = flat(n.data); spans.push([n, text.length, text.length + f.length]); text += f; }
-    for (const f of protect) {
-      if (!f) continue;
-      for (let i = text.indexOf(f); i >= 0; i = text.indexOf(f, i + 1)) for (const [n, a, b] of spans) if (a < i + f.length && b > i) touched.add(n);
+  for (const G of groups.values()) {
+    // occurrences are found by code unit, owners are kept by code point: a code-unit → code-point index
+    const cp = [];
+    let k = 0;
+    for (const c of Array.from(G.text)) { for (let u = 0; u < c.length; u++) cp.push(k); k += 1; }
+    for (const f of facts) {
+      const fl = Array.from(f).length;
+      for (let i = G.text.indexOf(f); i >= 0; i = G.text.indexOf(f, i + 1)) for (let q = cp[i]; q < cp[i] + fl; q++) touched.add(G.owner[q]);
     }
   }
   return touched;
