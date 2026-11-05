@@ -1,7 +1,7 @@
 /* DEV-176 — ゆげ湯 の C d1-v6: カンプ comps/d1-heat-descent-v5 の実装 (experimental_fidelity、研究専用、本番用ではない)。
    カンプと同じ描画を狙い、カンプのソースをそのまま使う (README.md)。前の版は ../d1-v5 で、そのまま残す。
    温度を下る: 目盛りつきの管の中の色が 熱い・ぬるい・冷たい・沸く の区画ごとに変わり、湯気が湯の面から 熱い へ立つ。夜の区画ではのれんが主役。
-   SP の目盛りは管に寄り、文は目盛りから 13px 以上離れる。温度の数は事実に無いので描かない。 */
+   SP の目盛りは管に寄り、文は目盛りから 13px 以上 (字の高い書体の縦の名前で 11.2px 以上) 離れる。温度の数は事実に無いので描かない。 */
 :root {
   --shu: #b8432c;
   --dai: #dd8a3e;
@@ -242,7 +242,7 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
   :root { --gutter: 36px; --gauge-x: 10px; }
   body { font-size: 14px; }
   .gauge { left: calc(var(--gauge-x) - 6px); width: 12px; border-radius: 6px; }
-  /* v5: the ticks hug the tube (x 17–23, short ticks 17–21), so 13px or more stays clear before every line of copy */
+  /* v5: the ticks hug the tube (x 17–23, short ticks 17–21). Measured over 320–600 (1px steps): the copy starts 13px or more after the ticks in this container's font and another CJK font, and 11.2px or more with tall metrics (ascent 116%, descent 29%: the vertical name ゆげ湯) */
   .gauge::after { left: 13px; width: 6px; background-size: auto, 4px 100%; }
   section::before { left: calc(var(--gauge-x) - 3px); width: 6px; border-radius: 3px; }
   .wall::before { box-shadow: 0 0 0 3px rgba(246, 241, 231, .9), 0 0 0 4.5px rgba(36, 31, 27, .45); }

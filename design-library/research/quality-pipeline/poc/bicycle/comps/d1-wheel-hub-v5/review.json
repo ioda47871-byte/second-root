@@ -22,7 +22,7 @@
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-06T09:00:00Z",
+    "viewed_at": "2026-11-05T21:00:00Z",
     "how": "Read tool: C before|after at 1440 (0.33), 768 (0.5) and 390 (0.49) full pages, 2x crops of the hub at 1440 and 3x at 390, the stations at 1440 (0.55), the bench at 320 (1.6x)"
   },
   "viewed_crops": {

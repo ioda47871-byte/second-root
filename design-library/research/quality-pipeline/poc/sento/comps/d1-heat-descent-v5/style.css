@@ -241,7 +241,7 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
   :root { --gutter: 36px; --gauge-x: 10px; }
   body { font-size: 14px; }
   .gauge { left: calc(var(--gauge-x) - 6px); width: 12px; border-radius: 6px; }
-  /* v5: the ticks hug the tube (x 17–23, short ticks 17–21), so 13px or more stays clear before every line of copy */
+  /* v5: the ticks hug the tube (x 17–23, short ticks 17–21). Measured over 320–600 (1px steps): the copy starts 13px or more after the ticks in this container's font and another CJK font, and 11.2px or more with tall metrics (ascent 116%, descent 29%: the vertical name ゆげ湯) */
   .gauge::after { left: 13px; width: 6px; background-size: auto, 4px 100%; }
   section::before { left: calc(var(--gauge-x) - 3px); width: 6px; border-radius: 3px; }
   .wall::before { box-shadow: 0 0 0 3px rgba(246, 241, 231, .9), 0 0 0 4.5px rgba(36, 31, 27, .45); }

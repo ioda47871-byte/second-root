@@ -4,7 +4,7 @@
   "direction_id": "d1-heat-descent-v5",
   "comp": {
     "html_sha256": "02798677423c3340ddff5c804184dfedd9e0f1154845be3348554d89e1daae52",
-    "css_sha256": "14044e26a1eb73afdd59b00872be501cfa2e2ec685aebbcdd4beadf2c22b4b14",
+    "css_sha256": "72b54e60222d6a66f091e94a0f2640d1c26f3275d7d6f3e67a430db38099bb74",
     "copy_sha256": "50432f7b2cb60b0a8b7bb1c2e0b032dd1492fe4ac7257d11a0636eae083d359c"
   },
   "renders": {
@@ -22,7 +22,7 @@
   "reader": {
     "who": "claude",
     "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
-    "viewed_at": "2026-11-06T09:00:00Z",
+    "viewed_at": "2026-11-05T21:00:00Z",
     "how": "Read tool: C before|after at 1440 (0.33), 768 (0.5) and 390 (0.59) full pages, 3x crop of the fire section's marks at 390 and 1.5x of the information"
   },
   "viewed_crops": {
