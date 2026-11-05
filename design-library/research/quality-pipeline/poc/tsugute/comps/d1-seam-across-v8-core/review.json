@@ -4,12 +4,12 @@
   "direction_id": "d1-seam-across-v8-core",
   "comp": {
     "html_sha256": "3265d7a3d3c4ad49a17d1d86b002a6c5865c53b3ea740e5e22e674c17a0c2060",
-    "css_sha256": "09df772e0aa8eef05ea82f3d810e3d868f942204932947978a8d3e5827c21a48",
+    "css_sha256": "f717353dbd949f8fbd470e874748efbacd73fb5828d28d33e7318fac9a5db5e4",
     "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
   },
   "renders": {
     "desktop": {
-      "sha256": "2a979d71fae6834be3b1414a1845e8f68e7b79106763b1978d4b2fbf9c9de2c2",
+      "sha256": "2e57d288730e5caec549af109f7edb123aec5788cfd5a70cbb6a339a505ab024",
       "width": 1440,
       "height": 6056
     },
@@ -254,7 +254,9 @@
         "来店の行の字をタブレットで小さく (所在地が折れないように)"
       ],
       "regressions_fixed": [
-        "手元の板が grid の行で縦に伸びた。align-self: start に"
+        "手元の板が grid の行で縦に伸びた。align-self: start に",
+        "PC 1700 以上で句 急がない。… が つ の行の箱に入った (CI に近い書体の墨の帰属の検査が 1920 で見つけた)。PC の目盛りの grid の高さを max(800px, 77.6vw − 425px) に",
+        "1行1字の柱にした 待 が、字の高い書体 (ascent 116%) で 線の断面 の字の箱に 30〜55px 入った (1440〜1920)。PC の柱を 3vw + 24px 下げた"
       ]
     }
   ],

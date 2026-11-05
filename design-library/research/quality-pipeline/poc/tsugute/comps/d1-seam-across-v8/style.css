@@ -455,6 +455,17 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
 .month-c { grid-column: 1; grid-row: 2; justify-self: end; align-self: end; writing-mode: horizontal-tb; text-align: right; white-space: nowrap;
   margin: 0 36px 24px 0; font-size: clamp(22px, 2.08vw, 30px); line-height: 1.9; letter-spacing: .24em; }
 .dry { grid-column: 3; grid-row: 2; align-self: start; justify-self: start; margin: 72px 0 0 calc(48px + 6vw); transform: rotate(2.4deg); }
+/* PC: the phrase stands at the foot of the grid (its top 125px above the grid's foot), so the grid grows with つ: つ's line box
+   ends 69.4vw − 620px into the grid (line-height 1, whatever the font) and the sweeps' glyph box (1.3em about the line's centre)
+   0.15em (5.2vw) lower; the phrase starts 30px or more under that. Below about 1680px the ticks' 800px are taller and nothing
+   moves (the ink attribution at 1920 found the phrase inside つ's line box, and the glyph boxes met from about 1800) */
+/* the column of 待 and つ is laid by horizontal metrics now: under tall metrics (ascent 116%) 待's glyph box came 30–55px into
+   線の断面 at 1440–1920 (the vertical column cleared it by 20px). The column moves 3vw + 24px lower on the PC, and the grid
+   grows by the same */
+@media (min-width: 1200px) {
+  .ghost-wait { top: calc(3vw - 496px); }
+  .month-grid { min-height: max(800px, calc(77.6vw - 425px)); }
+}
 
 /* v8 (DEV-179), 601–1199: the prints alternate sides. The drying print leaves the left column for the right, astride the line
    (the line runs on behind it), the hand print stays on the left, and the desk print moves to the right in turn: right, left,

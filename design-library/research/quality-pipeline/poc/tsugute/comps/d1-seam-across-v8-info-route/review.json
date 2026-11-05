@@ -4,12 +4,12 @@
   "direction_id": "d1-seam-across-v8-info-route",
   "comp": {
     "html_sha256": "0ad22e348270ec595435a751d285ccdf7f7441368eddb3de7285c83b117a9bae",
-    "css_sha256": "4ad22da2acb54a29842f5eaf232198aae79ad426eba01490601b7fe3ea4d8ee6",
+    "css_sha256": "0ffeff03bc9a4ea2128be8304f9d71a6699cc98cd10f487e72e02a26f2a4236d",
     "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
   },
   "renders": {
     "desktop": {
-      "sha256": "df772777b6ff8fee0acb71fbe7b558ebf6bfe28785c552ae5a1bf04b68887325",
+      "sha256": "41a893e7546eb039e8258527a1c9f7d91c8e80a2dc435ae040ef6bab9683f002",
       "width": 1440,
       "height": 6056
     },
@@ -256,7 +256,9 @@
       ],
       "regressions_fixed": [
         "最初の版は PC で Hero の線が 10:00〜16:00 を横切った。2列にして線の右へ",
-        "最初の版は SP で 壊れ方 のラベルに重なり、320 で所在地が 3- / 2 と折れた。余白と字の大きさを直した"
+        "最初の版は SP で 壊れ方 のラベルに重なり、320 で所在地が 3- / 2 と折れた。余白と字の大きさを直した",
+        "PC 1700 以上で句 急がない。… が つ の行の箱に入った (CI に近い書体の墨の帰属の検査が 1920 で見つけた)。PC の目盛りの grid の高さを max(800px, 77.6vw − 425px) に",
+        "1行1字の柱にした 待 が、字の高い書体 (ascent 116%) で 線の断面 の字の箱に 30〜55px 入った (1440〜1920)。PC の柱を 3vw + 24px 下げた"
       ]
     }
   ],
