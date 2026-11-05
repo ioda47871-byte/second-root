@@ -218,7 +218,7 @@
     "fidelity_c": {
       "desktop_1440": {
         "score": {
-          "motif_coverage": 0.903,
+          "motif_coverage": 0.899,
           "motif_largest_gap_px": 613,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
@@ -227,7 +227,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 59,
+          "caption_lines_total": 63,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -242,7 +242,7 @@
       },
       "mobile_390": {
         "score": {
-          "motif_coverage": 0.852,
+          "motif_coverage": 0.844,
           "motif_largest_gap_px": 951,
           "boundaries_crossed": 0,
           "boundaries_carried": 5,
@@ -251,7 +251,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 59,
+          "caption_lines_total": 64,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -275,7 +275,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 57,
+          "caption_lines_total": 61,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -299,7 +299,7 @@
           "sections_total": 6,
           "caption_lines_covered": 0,
           "caption_lines_crossed": 0,
-          "caption_lines_total": 59,
+          "caption_lines_total": 63,
           "words_broken": [],
           "horizontal_overflow": false
         },
@@ -331,13 +331,13 @@
     },
     "fidelity_c": {
       "desktop_1440": {
-        "coverage": 0.988,
+        "coverage": 0.984,
         "boundaries_crossed": null,
         "boundaries_carried": 1,
         "sections_touched": 1
       },
       "mobile_390": {
-        "coverage": 0.968,
+        "coverage": 0.959,
         "boundaries_crossed": null,
         "boundaries_carried": 1,
         "sections_touched": 1

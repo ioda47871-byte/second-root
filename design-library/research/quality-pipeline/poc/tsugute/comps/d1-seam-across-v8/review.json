@@ -1,0 +1,274 @@
+{
+  "schema": "comp_review_v1",
+  "shop_id": "fictional-kintsugi-tsugute",
+  "direction_id": "d1-seam-across-v8",
+  "comp": {
+    "html_sha256": "3265d7a3d3c4ad49a17d1d86b002a6c5865c53b3ea740e5e22e674c17a0c2060",
+    "css_sha256": "c861ecaabebe9b5c28413071da08e7b6a57ca965002f1a374d9c34b311b9eaf6",
+    "copy_sha256": "bbc4a0b2712d4de31bf7abb3489498226293b950627011e7ef8459868897de92"
+  },
+  "renders": {
+    "desktop": {
+      "sha256": "2e57d288730e5caec549af109f7edb123aec5788cfd5a70cbb6a339a505ab024",
+      "width": 1440,
+      "height": 6056
+    },
+    "mobile": {
+      "sha256": "3f87efe46bca307c6dc48066aa98cf46e0927686c8c60281c48445f7d9feea45",
+      "width": 390,
+      "height": 6076
+    }
+  },
+  "reader": {
+    "who": "claude",
+    "session": "https://claude.ai/code/session_013Q3gn36csATXp6xjxNVuZn",
+    "viewed_at": "2026-11-05T11:40:00Z",
+    "how": "Read tool: comp-lane renders PC at 0.4 and SP at 0.5–0.6 in strips; before|after pairs at 1440, 1199, 768, 601, 390, 320 (container fonts) and 1440, 1199, 768, 601, 390 (fonts-ci.conf); month section crops before|after under fonts-ci.conf at 1440 and 390"
+  },
+  "viewed_crops": {
+    "desktop": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 3028
+      },
+      {
+        "x": 0,
+        "y": 3028,
+        "w": 1440,
+        "h": 3028
+      }
+    ],
+    "mobile": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 1519
+      },
+      {
+        "x": 0,
+        "y": 1519,
+        "w": 390,
+        "h": 1519
+      },
+      {
+        "x": 0,
+        "y": 3038,
+        "w": 390,
+        "h": 1519
+      },
+      {
+        "x": 0,
+        "y": 4557,
+        "w": 390,
+        "h": 1519
+      }
+    ]
+  },
+  "observations": {
+    "desktop": [
+      {
+        "what": "Hero: 名前 つぐ手 は1行1字の柱 (前の縦書きと同じ並び)。CI に近い書体でも 手 が 壊れ方 に落ちない",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 1000
+        }
+      },
+      {
+        "what": "壊れ方: 見出し 線は、壊れ方をなぞる。を横書き2行に。割れ・欠け・ひびの板と線は前のまま",
+        "box": {
+          "x": 0,
+          "y": 1000,
+          "w": 1440,
+          "h": 1538
+        }
+      },
+      {
+        "what": "線の断面と 待 (柱の1字目) は前のまま",
+        "box": {
+          "x": 0,
+          "y": 2538,
+          "w": 1440,
+          "h": 814
+        }
+      },
+      {
+        "what": "乾く時間: 事実 漆が乾くまで、修理には一か月ほどかかります を線の右に横書き2行、その下に乾く器の板 (右)。句は左下に横書き2行で右寄せ、つ の下",
+        "box": {
+          "x": 0,
+          "y": 3352,
+          "w": 1440,
+          "h": 1020
+        }
+      },
+      {
+        "what": "相談: 手元の板 (左) と机の板、文は右 (前のまま)。写真の順は 乾く器 (右) → 手元 (左) → 机",
+        "box": {
+          "x": 0,
+          "y": 4372,
+          "w": 1440,
+          "h": 900
+        }
+      },
+      {
+        "what": "来店: 前のまま",
+        "box": {
+          "x": 0,
+          "y": 5272,
+          "w": 1440,
+          "h": 784
+        }
+      }
+    ],
+    "mobile": [
+      {
+        "what": "SP Hero: 名前は横のまま (前のまま)",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 844
+        }
+      },
+      {
+        "what": "壊れ方・線の断面は前のまま",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 2473
+        }
+      },
+      {
+        "what": "乾く時間: 乾く器の板が区画の頭の右に (幅 62%)。その下で事実は線の左に横書き4行、句は線の右に横書き。線は事実の下を通らない",
+        "box": {
+          "x": 0,
+          "y": 3317,
+          "w": 390,
+          "h": 742
+        }
+      },
+      {
+        "what": "相談: 見出し、手元の板 (左寄せ 86%)、事実の文、机の板 (右寄せ 64%)。板と板の間にいつも文が入る",
+        "box": {
+          "x": 0,
+          "y": 4059,
+          "w": 390,
+          "h": 951
+        }
+      },
+      {
+        "what": "来店: 前のまま",
+        "box": {
+          "x": 0,
+          "y": 5010,
+          "w": 390,
+          "h": 1066
+        }
+      }
+    ]
+  },
+  "references": [
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "傾いた写真やカードを区画の境にまたがせ、巨大な文字を地の上に大きく置いて、区画をつなぐ",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 40,
+          "y": 1000,
+          "w": 1400,
+          "h": 2700
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "区画の地の色を工程の変化に合わせて変える",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 2500,
+          "w": 1440,
+          "h": 2800
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/desktop.read.json",
+      "learn": "最後の区画を一杯 (客の受け取るもの) にし、そこに行動の案内を置く",
+      "applied_at": {
+        "view": "desktop",
+        "box": {
+          "x": 0,
+          "y": 5300,
+          "w": 1440,
+          "h": 756
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "巨大な文字と写真の重なりは、SP でも縦に積んで残す",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 2900,
+          "w": 390,
+          "h": 600
+        }
+      }
+    },
+    {
+      "read": "design-library/research/quality-pipeline/visual-reads/CP-003/mobile.read.json",
+      "learn": "横並びの要素は、縦に重ねて関係を保つ",
+      "applied_at": {
+        "view": "mobile",
+        "box": {
+          "x": 0,
+          "y": 844,
+          "w": 390,
+          "h": 1700
+        }
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "cause": "320〜1199 で写真の板が左に続いた (乾く器 → 手元 → 机、DEV-178 で緩和・HOLD)。CI に近い書体 (明朝が無い) で縦の行の字が重なった (事実 漆が乾くまで…・句・待つ・継ぐ・名前・壊れ方の見出し)",
+      "protect": [
+        "線が器の割れ目から破片を縫って結び目へ降り、直った器に入る物語",
+        "線を事実・説明・営業時間の下に通さないこと",
+        "PC 1440 の構図 (板の左右の交互)",
+        "copy.json と文 (同じバイト)"
+      ],
+      "changed": [
+        "文はどの幅も横書き: 事実と句を横に、巨大な語と名前は 1行1字の柱 (<br>、行の高さ = 前の字の送り)",
+        "601〜1199: 乾く器の板を右へ (線をまたぐ、幅 min(46%, 420px))、机の板も右へ。事実と句は左の広い列",
+        "600 以下: 乾く器の板を区画の頭の右へ、事実は線の左、句は線の右、手元は左寄せ、机は右寄せ"
+      ],
+      "regressions_fixed": [
+        "PC 1700 以上で句 急がない。… が つ の行の箱に入った (CI に近い書体の墨の帰属の検査が 1920 で見つけた)。PC の目盛りの grid の高さを max(800px, 77.6vw − 425px) に",
+        "1行1字の柱にした 待 が、字の高い書体 (ascent 116%) で 線の断面 の字の箱に 30〜55px 入った (1440〜1920)。PC の柱を 3vw + 24px 下げた",
+        "タブレットで 待つ の字の箱が、字の高い書体で 乾く時間 のラベルに 18px 入った (725〜1199)。区画の上の余白を max(70px, 30vw − 110px) に (core は max(70px, 24.2vw − 84px))"
+      ]
+    }
+  ],
+  "remaining": [
+    "写真は役割と大きさだけの仮の板のまま (placeholder_limited)。板の上の壊れ方は描いた飾りで、実写真ではない",
+    "区画のラベル・待つ などの創作の文はオーナーの確認が要る",
+    "カンプと C は同じソースで描く。C との差は測れない",
+    "SP の Hero の名前は横 (カンプの構図と違う。縦を戻す案 d1-seam-across-v8-sp-name-vertical と並べてオーナーが選ぶ)",
+    "巨大な語と名前は1行1字の柱で、縦書き (writing-mode) ではない。字の形は同じだが、句読点の縦の形は使わない (柱の語には句読点が無い)",
+    "601〜1199 の乾く器と机の板は線をまたぐ (線は板の後ろを通る)。線を板に通さない別案は d1-seam-across-v8-core"
+  ],
+  "failure_codes": [],
+  "verdict": "show_owner"
+}

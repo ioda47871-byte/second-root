@@ -1,0 +1,498 @@
+/* つぐ手 カンプ d1-seam-across-v8 (DEV-179、品質研究の道、架空の店)。前の版 (d1-seam-across-v7 = C d1-v8) から。
+   (1) 320〜1199 で写真の板が左に続いた (乾く器、手元、机)。601〜1199 は板が右・左・右と交互になる (乾く器と机は線をまたいで右へ)。
+       600 以下は乾く器の板が区画の頭の右に、手元は左、机は右に寄り、板と板の間にいつも文が入る。
+   (2) CI に近い書体 (明朝が無く、縦の字の送りを持たない書体に落ちる) で縦の行の字が重なった。事実 漆が乾くまで… と句を横書きに、
+       巨大な語 (継ぐ・待つ) と名前は1行1字の柱 (横書きの送り) にした。縦書き (writing-mode) は使っていない。
+   写真は役割と比だけの仮の板。板の上の SVG は飾り (aria-hidden) で、写真の代わりではない。 */
+:root {
+  --washi: #f1ebdf;
+  --washi-deep: #e6dccb;
+  --urushi: #1d1915;
+  --urushi-red: #4a2219;
+  --gold: #b88a35;
+  --gold-hi: #d8b35e;
+  --gold-ink: #765417; /* gold for small type on light grounds: 5.1:1 on washi-deep */
+  --caption: #5c5447;
+  --ink: #2b2620;
+  --ink-soft: #6b6255;
+  --mincho: "IPAMincho", "IPA明朝", "IPAPMincho", serif;
+  --gothic: "Noto Sans CJK JP", "IPAGothic", sans-serif;
+  --spine-x: 50%;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--washi); }
+body { color: var(--ink); font-family: var(--gothic); font-size: 15px; line-height: 1.9; letter-spacing: .04em; }
+.page { position: relative; overflow: hidden; }
+section { position: relative; }
+h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* the seam */
+.seam-pc { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; overflow: visible; }
+.seam-pc path { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.layer .seam-pc path, .together .seam-pc path { stroke: var(--gold-hi); }
+.layer .seam-pc path { stroke-width: 5; }
+.layer .seam-pc { z-index: 3; }
+.seam-sp { display: none; position: absolute; top: 0; bottom: 0; left: calc(var(--spine-x) - 1.5px); width: 3px; background: var(--gold); z-index: 1; }
+.seam-all { display: block; }
+.layer .seam-sp, .together .seam-sp { background: var(--gold-hi); }
+
+/* photo boards: placeholders that keep the comp's ratio */
+.photo {
+  position: relative; width: 100%;
+  /* a placeholder that reads as a dim close-up of a ceramic surface: tone and grain only, never a picture of anything */
+  background:
+    radial-gradient(ellipse 60% 50% at 34% 30%, rgba(255, 246, 228, .55), transparent 70%),
+    repeating-radial-gradient(circle at 70% 80%, rgba(60, 44, 30, .05) 0 2px, transparent 2px 5px),
+    linear-gradient(160deg, #c9b69a 0%, #9d8466 55%, #5e4a37 100%);
+  display: flex; align-items: flex-end; padding: 14px 16px;
+}
+.photo span { font-size: 13px; letter-spacing: .08em; color: #3d362d; background: rgba(241, 235, 223, .9); padding: 3px 8px; }
+/* rectangular boards are prints: a white margin round the picture */
+.hand, .desk, .dry { background: #fbf8f2; padding: 12px 12px 14px; }
+
+/* small editorial labels above each section's heading */
+.eyebrow { position: relative; z-index: 2; font-family: var(--gothic); font-size: 14px; font-weight: 700; letter-spacing: .36em; color: var(--gold-ink); display: flex; align-items: center; gap: 12px; }
+.eyebrow::before { content: ""; width: 36px; height: 1px; background: currentColor; }
+.eyebrow-damage { position: absolute; top: 48px; left: 8.3%; }
+.eyebrow-month { position: absolute; top: 56px; left: calc(var(--spine-x) + 90px); }
+.layer-head .eyebrow { margin-bottom: 18px; color: var(--gold-hi); }
+.together-copy .eyebrow { margin-bottom: 18px; color: var(--gold-hi); }
+.visit-head .eyebrow { margin-bottom: 14px; }
+/* the board's drop shadow falls on its own caption, so the caption is darker than --caption: 4.5:1 or more on the shadowed ground */
+.ph-label { font-size: 13px; letter-spacing: .08em; color: #3d362d; margin-top: 10px; }
+
+/* ghosts: giant outlined words crossing into the section before */
+.ghost { position: absolute; z-index: 1; font-family: var(--mincho); line-height: 1; color: transparent; -webkit-text-stroke: 1.5px var(--gold); white-space: nowrap; pointer-events: none; }
+
+/* ---------- hero ---------- */
+.hero { aspect-ratio: 1440 / 1000; }
+.hero-art { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.hero-art-sp { display: none; }
+.hero-art .bowl { fill: url(#glaze); stroke: var(--urushi); stroke-width: 1.6; stroke-linejoin: round; }
+.hero-art-sp .bowl { fill: url(#sp-glaze); }
+.hero-art .bowl-sheen { fill: url(#glazeSide); }
+.hero-art-sp .bowl-sheen { fill: url(#sp-glazeSide); }
+.hero-art .cavity { fill: url(#cavity); }
+.hero-art-sp .cavity { fill: url(#sp-cavity); }
+.hero-art .glint { fill: none; stroke: #fff; stroke-width: 7; stroke-linecap: round; opacity: .32; }
+.hero-art .bowl-floor { fill: rgba(29, 25, 21, .16); }
+.hero-art .foot { fill: #6f5a44; }
+.hero-art .rim-light { fill: none; stroke: url(#rimLight); stroke-width: 2; }
+.hero-art .rim { fill: none; stroke: var(--urushi); stroke-width: 1.2; opacity: .6; }
+.hero-art .seam-glow { fill: none; stroke: var(--gold-hi); stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; opacity: .28; }
+.hero-art .seam-line { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.hero-name-full { position: absolute; top: 5.6%; left: 5.6%; font-family: var(--mincho); font-size: clamp(13px, 1.04vw, 15px); letter-spacing: .3em; color: var(--caption); }
+.hero-name {
+  position: absolute; top: 12%; left: 5%; z-index: 2;
+  font-family: var(--mincho); font-weight: 400; font-size: 17.4vw; line-height: 1.02; letter-spacing: 0;
+  color: var(--urushi);
+}
+.hero-copy { position: absolute; left: 22.9%; top: 76%; width: 36%; z-index: 2; }
+.tagline { font-family: var(--mincho); font-size: 2.92vw; line-height: 1.45; color: var(--urushi); letter-spacing: .06em; }
+.lead { margin-top: .9vw; font-family: var(--mincho); font-size: clamp(14px, 1.32vw, 19px); color: var(--ink); }
+.how { margin-top: 1.4vw; font-size: 13px; color: var(--caption); border-top: 1px solid var(--gold); padding-top: 10px; max-width: 420px; }
+
+/* ---------- damage: three shards on the line's bends ---------- */
+.damage { background: var(--washi-deep); }
+.ghost-tsugu { top: -22.9vw; left: 79.9%; font-size: 18.75vw; line-height: 1.04; opacity: .75; }
+.damage-h { position: absolute; top: 80px; left: 8.3%; z-index: 2; font-family: var(--mincho); font-weight: 400; font-size: 34px; line-height: 1.5; writing-mode: vertical-rl; letter-spacing: .2em; color: var(--urushi); }
+.damage-h br { display: none; }
+.shard { position: relative; display: grid; grid-template-columns: repeat(12, 1fr); align-items: center; }
+.shard .words, .shard .board { position: relative; z-index: 2; }
+.board { filter: drop-shadow(0 26px 22px rgba(29, 25, 21, .30)); }
+.kanji { font-family: var(--mincho); font-size: 150px; line-height: 1; color: var(--urushi); white-space: nowrap; }
+.cap { margin-top: 18px; font-family: var(--mincho); font-size: 18px; line-height: 1.8; }
+.svc { margin-top: 18px; display: inline-block; font-size: 15px; font-weight: 700; letter-spacing: .2em; color: var(--gold-ink); border-left: 3px solid var(--gold); padding-left: 10px; white-space: nowrap; }
+.shard-ware { padding: 120px 0 90px; }
+.shard-ware .words { grid-column: 3 / 7; padding-right: 24px; }
+.shard-ware .board { grid-column: 7 / 12; }
+/* three breaks, three tones (ivory glaze, black-red lacquer, grey celadon), so the boards no longer blur into one brown */
+.shard-ware .photo { background:
+  radial-gradient(ellipse 60% 50% at 34% 30%, rgba(255, 252, 244, .7), transparent 70%),
+  repeating-radial-gradient(circle at 70% 80%, rgba(60, 44, 30, .04) 0 2px, transparent 2px 5px),
+  linear-gradient(160deg, #efe6d6 0%, #d4c3a6 55%, #a99172 100%); }
+.shard-kake .photo { background:
+  radial-gradient(ellipse 55% 45% at 30% 28%, rgba(255, 214, 190, .35), transparent 70%),
+  repeating-radial-gradient(circle at 70% 80%, rgba(255, 255, 255, .03) 0 2px, transparent 2px 5px),
+  linear-gradient(160deg, #6e2b20 0%, #3d1611 60%, #1f0c09 100%); }
+.shard-hibi .photo { background:
+  radial-gradient(ellipse 60% 50% at 40% 30%, rgba(240, 248, 242, .55), transparent 70%),
+  repeating-radial-gradient(circle at 70% 80%, rgba(30, 50, 40, .05) 0 2px, transparent 2px 5px),
+  linear-gradient(160deg, #b9c9bd 0%, #8fa596 55%, #5f7466 100%); }
+.shard-ware .photo { transform: rotate(-2.4deg); }
+.shard-ware .photo { aspect-ratio: 560 / 400; clip-path: polygon(0 6%, 62% 0, 100% 18%, 92% 100%, 8% 88%); }
+.shard-ware .ph-label { text-align: right; }
+.shard-kake { padding: 40px 0 90px; }
+.shard-kake .board { grid-column: 2 / 6; margin-right: 3vw; }
+.shard-kake .photo { transform: rotate(2.6deg); }
+.shard-kake .photo { aspect-ratio: 420 / 330; clip-path: polygon(10% 0, 100% 8%, 88% 82%, 40% 100%, 0 70%); }
+.shard-kake .words { grid-column: 7 / 11; padding-left: 2vw; }
+.shard-hibi { padding: 60px 0 0; margin-bottom: -90px; z-index: 3; }
+.shard-hibi .words { grid-column: 2 / 6; padding-bottom: 140px; }
+.shard-hibi .board { grid-column: 7 / 12; }
+.shard-hibi .photo { transform: rotate(-1.6deg); }
+.shard-hibi .photo { aspect-ratio: 600 / 330; clip-path: polygon(0 12%, 100% 0, 96% 70%, 54% 100%, 4% 92%); }
+.shard-hibi .ph-label { text-align: right; margin: 0 0 8px; }
+.shard-hibi .seam-pc { bottom: 90px; height: calc(100% - 90px); }
+/* v4 (DEV-168), PC only: the seam paths are drawn in % of each shard's box, and the boards scale with the width, so the
+   shards scale with the width too (heights and paddings are the 1440 px in vw, the boards sit at the top of their row).
+   The line then enters and leaves each board at the same points of the drawn break at every width from 1200 to 1440
+   (it drifted up to 22px at 1200 while the paddings and the words column stayed in px). */
+@media (min-width: 1200px) {
+  .shard { align-items: start; }
+  .shard .words { align-self: center; }
+  .shard-ware { height: 46.74vw; padding: 8.333vw 0 0; }
+  .shard-kake { height: 35.28vw; padding: 2.778vw 0 0; }
+  .shard-hibi { height: 31.04vw; padding: 4.167vw 0 0; margin-bottom: -6.25vw; }
+  /* the caption sits above this board: the photo's top is 7.3vw down the shard, as at 1440 */
+  .shard-hibi .board { margin-top: calc(3.13vw - 33px); }
+  .shard-hibi .words { align-self: start; padding-bottom: 0; }
+  .shard-hibi .seam-pc { bottom: 6.25vw; height: calc(100% - 6.25vw); }
+}
+
+/* ---------- the damage, drawn on each board (decoration over a photo slot; the slot stays a placeholder) ---------- */
+.dmg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.dmg-sp { display: none; }
+.dmg path { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.dmg .dmg-half { fill: rgba(40, 28, 18, .10); }
+.dmg .dmg-shadow { stroke: rgba(40, 28, 18, .45); stroke-width: 3; }
+.dmg .dmg-glow { stroke: var(--gold-hi); stroke-width: 12; opacity: .32; }
+.dmg .dmg-gold { stroke: var(--gold); stroke-width: 4.5; }
+.dmg .dmg-hi { stroke: #f6e3a8; stroke-width: 1.2; opacity: .9; }
+.dmg .dmg-fill { stroke: none; }
+.dmg-pc .dmg-fill { fill: url(#gold-fill-pc); }
+.dmg-sp .dmg-fill { fill: url(#gold-fill-sp); }
+.dmg .dmg-chip { stroke: var(--gold); stroke-width: 1.4; }
+.dmg .dmg-hair-glow { stroke: var(--gold-hi); stroke-width: 5; opacity: .22; }
+.dmg .dmg-hair { stroke: #c9963a; stroke-width: 1.3; }
+.dmg .dmg-hair-main { stroke: var(--gold); stroke-width: 2.4; }
+.shard-kake .dmg .dmg-gold { stroke: #e2bd68; }
+
+/* ---------- layer: the line in section, on lacquer ---------- */
+.layer { background: var(--urushi); color: var(--washi); padding: 90px 8.3% 210px; display: grid; grid-template-columns: 1fr 1.3fr; column-gap: 6%; align-items: start; }
+.layer-head { position: relative; z-index: 2; }
+.layer-h { position: relative; z-index: 2; font-family: var(--mincho); font-weight: 400; font-size: clamp(44px, 5vw, 72px); letter-spacing: .2em; color: var(--washi); white-space: nowrap; }
+.section-cut { position: relative; z-index: 2; margin-top: 140px; display: flex; flex-direction: column; }
+.cut { display: flex; align-items: center; padding-left: 28px; }
+.cut p { font-family: var(--mincho); font-size: 24px; letter-spacing: .2em; }
+.section-cut { --cut-x: 67.1%; }
+.cut { position: relative; }
+.cut p { position: relative; z-index: 2; }
+/* the gold band starts light where its label sits (the dark #8c6524 end gave 金を蒔いて only 3.7:1) */
+.cut-kin { height: 64px; background: linear-gradient(90deg, #c99a45, var(--gold-hi) 45%, #f1d68f 52%, var(--gold) 70%, #8c6524); color: var(--urushi); box-shadow: inset 0 -1px 0 rgba(255, 240, 200, .5); }
+.cut-urushi { height: 110px; color: #f0ddd0;
+  background: linear-gradient(180deg, rgba(255, 220, 200, .14), transparent 22%, transparent 80%, rgba(0, 0, 0, .25)), var(--urushi-red); }
+.cut-utsuwa { height: 200px; color: #e4dac8;
+  background:
+    repeating-radial-gradient(circle at 30% 40%, rgba(255, 240, 220, .05) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #5a4f43 0%, #463d33 40%, #2f2923 100%); }
+/* the seam in section: a mound of gold on top, lacquer filling the gap, the break opening down through the ware */
+.fill-kin { position: absolute; z-index: 1; left: calc(var(--cut-x) - 26px); top: -12px; width: 52px; height: 16px; border-radius: 50% 50% 0 0 / 100% 100% 0 0; background: linear-gradient(180deg, #f6e3a8, var(--gold)); }
+.fill-urushi { position: absolute; z-index: 1; left: calc(var(--cut-x) - 16px); top: 0; bottom: 0; width: 32px; background: linear-gradient(90deg, transparent, #2a0f0a 30%, #2a0f0a 70%, transparent); }
+.crack { position: absolute; z-index: 1; top: 0; left: calc(var(--cut-x) - 40px); width: 80px; height: 100%; }
+.crack-gap { fill: #2a0f0a; }
+.crack-edge { fill: none; stroke: rgba(255, 240, 220, .35); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+
+/* ---------- month: the line runs on; nothing happens but drying ---------- */
+.month { background: var(--washi); padding: 100px 0 120px; }
+/* v5: 40px lower, so 待 starts at least 40px under 線の断面 whatever the font's height (-560px left 5px under taller fonts) */
+.ghost-wait { top: -520px; left: 2.8%; font-size: 34.7vw; }
+.month-grid { position: relative; z-index: 2; display: grid; grid-template-columns: calc(var(--spine-x) - 40px) 80px auto 1fr; align-items: start; }
+.month-c { justify-self: end; margin: 160px 30px 0 0; writing-mode: vertical-rl; font-family: var(--mincho); font-size: 30px; letter-spacing: .3em; color: var(--ink-soft); white-space: nowrap; }
+.ticks { align-self: stretch; min-height: 800px; background: repeating-linear-gradient(transparent 0 29px, rgba(184, 138, 53, .55) 29px 30px); }
+.month-fact { justify-self: start; width: max-content; margin-left: 50px; writing-mode: vertical-rl; font-family: var(--mincho); font-size: 38px; line-height: 1.6; letter-spacing: .04em; color: var(--urushi); }
+.dry { width: 340px; margin: 130px 0 0 7vw; transform: rotate(1.8deg); box-shadow: 0 30px 50px -30px rgba(29, 25, 21, .5); }
+.dry .photo { aspect-ratio: 340 / 500; }
+/* v4 (DEV-168), PC only: the left of the line was empty below つ. The print of the drying bowl moves under つ, and the phrase
+   moves right of the fact, so the vertical lines read right to left as phrase, fact, the month of ticks, the bowl */
+@media (min-width: 1200px) {
+  .month-c { grid-column: 4; grid-row: 1; justify-self: start; margin: 230px 0 0 9.7vw; }
+  .dry { grid-column: 1; grid-row: 1; align-self: end; justify-self: start; margin: 0 0 -40px 13.2%; transform: rotate(-2.4deg); }
+}
+/* v7 (DEV-178), PC: the bowl print under つ was the first of two prints in a row on the left (the hand print of 相談 follows on
+   the left). The print moves to the right column, beyond the fact, and leans the other way; the phrase moves to the left of
+   the ticks, so the lines read right to left as print, fact, the month of ticks, phrase, and つ stands alone above the void.
+   The phrase stands 8px left of the ticks and starts below つ's glyph box (1.3em wide under tall fonts) where the two would
+   meet: つ's box ends near 0.428 × width across and 0.694 × width − 519px down, so below 1582px the phrase starts under it,
+   and from 1582px on it passes right of it (the 1px sweep with tall metrics found つ 46px into the phrase at 1324–1738) */
+@media (min-width: 1200px) {
+  .month-c { grid-column: 1; grid-row: 1; justify-self: end; margin: clamp(300px, calc(69.4vw - 588px), 510px) 8px 0 0; }
+  .dry { grid-column: 4; grid-row: 1; align-self: end; justify-self: start; margin: 0 0 -40px 8.3vw; transform: rotate(2.4deg); }
+}
+
+/* ---------- together: the hand and the desk either side of the line ---------- */
+.together { background: var(--urushi-red); color: #f0ddd0; padding: 90px 0 80px; }
+.together-grid { position: relative; z-index: 2; display: grid; grid-template-columns: 6.25% 44.4% 7.8% 32% 1fr; grid-template-rows: auto auto; }
+.hand { grid-column: 2; grid-row: 1 / 3; align-self: start; transform: rotate(-2.2deg); box-shadow: 0 40px 60px -24px rgba(0, 0, 0, .6); }
+.hand .photo { aspect-ratio: 640 / 560; }
+.together-copy { grid-column: 4; grid-row: 1; padding-top: 70px; }
+.together-h { font-family: var(--mincho); font-weight: 400; font-size: clamp(30px, 3.05vw, 44px); line-height: 1.5; color: var(--washi); }
+.together-fact { margin-top: 28px; font-family: var(--mincho); font-size: 19px; }
+.class-fact { margin-top: 14px; font-size: 14px; color: #d6b9a8; }
+.desk { grid-column: 2 / 4; grid-row: 2; justify-self: end; width: 440px; margin: 50px -10.5vw 0 0; z-index: 3; transform: rotate(1.6deg); box-shadow: 0 40px 60px -24px rgba(0, 0, 0, .6); }
+.desk .photo { aspect-ratio: 440 / 320; }
+
+/* ---------- visit: the line ends in a knot ---------- */
+.visit { background: var(--washi); padding: 0 8.3% 48px; }
+.seam-end { height: 160px; bottom: auto; }
+.visit-head { position: relative; z-index: 2; width: 52%; padding-top: 130px; }
+.visit-h { text-align: left; font-family: var(--mincho); font-weight: 400; font-size: 42px; color: var(--urushi); white-space: nowrap; }
+.knot { position: absolute; z-index: 2; top: 149px; left: calc(74% - 11px); width: 22px; height: 22px; border-radius: 50%; background: var(--gold-hi); box-shadow: 0 0 0 6px rgba(216, 179, 94, .25); }
+.mended { position: absolute; z-index: 1; top: 160px; pointer-events: none; left: calc(74% - 214px * 1.05); width: calc(420px * 1.05); height: auto; }
+.mended-seam { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.visit { min-height: 560px; }
+.info { position: relative; z-index: 2; margin-top: 40px; width: min(680px, 100%); display: grid; grid-template-columns: 1fr 1fr; gap: 26px 48px; }
+.info div { border-top: 1px solid rgba(43, 38, 32, .25); padding-top: 10px; }
+.info dt { font-size: 13px; font-weight: 700; letter-spacing: .3em; color: var(--gold-ink); }
+.info dd { font-family: var(--mincho); font-size: 20px; }
+.info .tel dd { font-size: 40px; letter-spacing: .06em; color: var(--urushi); }
+.fictional { margin-top: 72px; font-size: 13px; color: var(--caption); }
+
+/* ================= stacked: 1199 and below. One straight run of the line at --spine-x ================= */
+@media (max-width: 1199px) {
+  :root { --spine-x: 70%; }
+  .seam-pc { display: none; }
+  .seam-sp { display: block; }
+  .seam-sp-end { bottom: auto; height: 132px; }
+  .eyebrow-damage { position: relative; top: auto; left: auto; margin: 0 0 14px 6%; }
+  .eyebrow-month { position: relative; top: auto; left: auto; margin: 0 0 20px calc(var(--spine-x) + 24px); }
+  .hero-name { font-size: 15vw; }
+  .tagline { font-size: clamp(22px, 2.92vw, 42px); }
+  /* v5: 38% (44% let the lead's last line end on the hero's line at 731–744) */
+  .hero-copy { width: 38%; top: 74%; }
+  .how { display: none; }
+
+  .ghost-tsugu { top: -20vw; left: auto; right: 2%; font-size: 16vw; }
+  .damage { padding: 60px 0 40px; }
+  .damage-h { position: relative; top: auto; left: auto; writing-mode: horizontal-tb; font-size: clamp(24px, 3.4vw, 34px); letter-spacing: .1em; margin: 0 calc(100% - var(--spine-x) + 24px) 32px 6%; }
+  .damage-h br { display: inline; }
+  .shard, .shard-ware, .shard-kake, .shard-hibi { display: flex; flex-direction: column; align-items: stretch; padding: 0 calc(100% - var(--spine-x) + 24px) 56px 6%; margin: 0; }
+  .shard .board, .shard .words { padding: 0; margin: 0; }
+  .shard .board { width: 100%; }
+  .shard-kake .board { width: 86%; margin-left: 14%; }
+  .shard-hibi .board { width: 92%; }
+  .shard .board { order: -1; }
+  .shard .words { margin-top: 20px; }
+  .shard-hibi .words { padding-bottom: 0; }
+  .shard-hibi .ph-label { text-align: left; margin: 10px 0 0; }
+  .shard-hibi .board { display: flex; flex-direction: column-reverse; align-self: flex-start; }
+  .kanji { font-size: clamp(64px, 10vw, 120px); }
+
+  .layer { display: block; padding: 50px calc(100% - var(--spine-x) + 24px) 170px 6%; }
+  .dmg-pc { display: none; }
+  .dmg-sp { display: block; }
+  .layer-h { white-space: normal; }
+  .section-cut { margin-top: 32px; }
+  .cut p { font-size: clamp(15px, 2.2vw, 22px); }
+  .cut-kin { height: 52px; }
+  .cut-urushi { height: 90px; }
+  .cut-utsuwa { height: 150px; }
+
+  .month { padding: 60px 0 60px; }
+  .ghost-wait { top: -150px; left: 4%; font-size: 26vw; }
+  .ghost-wait br { display: none; }
+  .month-grid { grid-template-columns: calc(var(--spine-x) - 30px) 60px 1fr; }
+  .month-fact { margin-left: 20px; }
+  .ticks { min-height: 640px; }
+  .month-c { margin: 220px 20px 0 0; font-size: clamp(16px, 2.4vw, 26px); }
+  .month-fact { font-size: clamp(22px, 3vw, 32px); }
+  /* v5: the drying print moves up into the left column beside the phrase (below the whole grid it left the left half empty above it) */
+  .dry { grid-column: 1; grid-row: 1; justify-self: start; align-self: start; width: min(calc(100% - 110px - 6vw), 440px); margin: 220px 0 0 6vw; transform: rotate(1.2deg); }
+  .month-c { grid-column: 1; grid-row: 1; } .ticks { grid-column: 2; grid-row: 1; } .month-fact { grid-column: 3; grid-row: 1; }
+  .dry .photo { aspect-ratio: 4 / 3; }
+
+  .together { padding: 50px 0 60px; }
+  .together-grid { display: block; padding: 0 calc(100% - var(--spine-x) + 24px) 0 6%; }
+  .hand { transform: rotate(-1.2deg); }
+  /* v5 (DEV-177): the hand print's shadow falls about 50px below it: the copy starts under it (40px put 相談 in it) */
+  .together-copy { padding: 76px 0 0; }
+  .desk { width: 72%; margin: 40px 0 0 auto; transform: rotate(1.2deg); }
+  /* v7 (DEV-178): 相談 and its heading come before the hand print, so the drying print and the hand print are no longer two
+     prints in a row; the facts follow the hand, then the desk print */
+  .together-grid { display: flex; flex-direction: column; align-items: stretch; }
+  .together-copy { display: contents; }
+  .together-copy .eyebrow { order: 1; margin-top: 10px; }
+  .together-h { order: 2; }
+  .hand { order: 3; align-self: stretch; margin-top: 40px; }
+  .together-fact { order: 4; margin-top: 76px; }
+  .class-fact { order: 5; }
+  .desk { order: 6; }
+
+  .visit { padding: 0 6% 48px; }
+  .visit-head { display: block; width: auto; padding: 160px calc(100% - var(--spine-x) + 24px) 0 0; }
+  .visit-h { text-align: left; white-space: normal; font-size: clamp(26px, 4vw, 42px); }
+  .knot { top: 121px; left: calc(var(--spine-x) - 11px); }
+  .info { grid-template-columns: 1fr; width: auto; gap: 16px; margin-right: calc(100% - var(--spine-x)); }
+  /* the mended bowl closes the page below the information, on the line's x */
+  .visit { padding-bottom: 300px; }
+  .mended { top: auto; bottom: 92px; left: calc(var(--spine-x) - 105px); width: 210px; }
+}
+
+/* v6 (DEV-176): 601–1199, the line runs on from the knot down to the mended bowl's crack (v5 stopped at the knot, and the bowl
+   stood 600px or more below it, unconnected). The bowl is 210 x 150 at 92px from the bottom; its crack starts at x 107 of 210,
+   so the bowl moves 2px left and the tail ends 12px into the crack's top stub, above the rim. The disclaimer keeps 24px before the line. */
+@media (min-width: 601px) and (max-width: 1199px) {
+  .seam-sp-tail { top: 132px; bottom: 230px; }
+  .mended { left: calc(var(--spine-x) - 107px); }
+  .fictional { margin-right: calc(100% - var(--spine-x) + 24px); }
+}
+
+
+/* ================= tablet 601–1199: the shards' words sit right of the line, so the right 30% is used ================= */
+@media (min-width: 601px) and (max-width: 1199px) {
+  /* the side margins are columns, not padding, so every % here is of the section's full width, the same box the line's
+     --spine-x is measured in: the 56px gutter is centred on the line at every width (padding made the % shrink with it) */
+  .shard, .shard-ware, .shard-kake, .shard-hibi { display: grid; grid-template-columns: 6% calc(var(--spine-x) - 6% - 28px) 56px 1fr 4%; align-items: center; padding: 0 0 64px; }
+  .shard .board { order: 0; grid-column: 2; grid-row: 1; width: 100%; margin: 0; }
+  .shard-kake .board { width: 88%; margin-left: 12%; }
+  .shard .words { grid-column: 4; grid-row: 1; margin: 0; }
+  .kanji { font-size: clamp(64px, 8.5vw, 96px); }
+  .cap { font-size: 15px; }
+  .damage-h { margin-right: 4%; }
+  /* the line runs beside the stack here, not through it: no seam in section */
+  .crack, .fill-kin, .fill-urushi { display: none; }
+}
+
+/* ================= SP 600 and below: the comp's phone layout, line down the middle ================= */
+@media (max-width: 600px) {
+  :root { --spine-x: 50%; }
+  body { font-size: 14px; }
+  .hero { aspect-ratio: 390 / 844; }
+  .hero-art-pc { display: none; }
+  .hero-art-sp { display: block; }
+  .hero-name-full { top: 2.6%; left: 5.1%; font-size: 12px; letter-spacing: .2em; }
+  /* v5: the name lies across the top on the paper, above the bowl's rim (standing on the right, ぐ and 手 crossed the bowl's dark
+     inside). The line drops straight under its ground into the crack; the ground is as tall as the glyph boxes */
+  .hero-name { top: 7.6%; left: 5.1%; right: auto; font-size: 22vw; line-height: 1.3; letter-spacing: .04em; writing-mode: horizontal-tb; width: fit-content; padding: .12em 0; background: var(--washi); }
+  .hero-name br { display: none; }
+  .hero-copy { left: 5.1%; right: 5.1%; width: auto; top: 61.6%; }
+  .tagline { font-size: 6.9vw; }
+  .lead { font-size: 15px; margin-top: 10px; }
+  .how { display: block; width: auto; font-size: 12px; max-width: none; }
+
+  /* v5: 継ぐ is smaller and lower, so it ends above 壊れ方をなぞる。 and starts below the hero's last line (30.8vw came within 8px of both) */
+  .ghost-tsugu { top: -26vw; right: 1.5%; font-size: 22vw; }
+  .damage { padding: 40px 0 20px; }
+  .damage-h { margin: 0 20px 24px; font-size: 24px; }
+  .eyebrow-damage { margin-left: 20px; }
+  .shard, .shard-ware, .shard-kake, .shard-hibi { padding: 0 20px 56px; }
+  .shard-kake { padding-left: 48px; }
+  .shard-hibi { padding-right: 48px; }
+  .shard-kake .board, .shard-hibi .board { width: 100%; margin-left: 0; }
+  .kanji { font-size: 72px; }
+  /* v5: the words' ground lies over the board's shadow (the words paint after the board), so the caption stays close above them */
+  .shard .words { margin-top: 24px; z-index: 3; }
+  /* v5: the ground under the words reaches past their glyphs, so the line (x 50%) passes under the ground, never beside a glyph at 320–360 */
+  .shard .kanji { line-height: 1.3; padding-top: .12em; padding-bottom: .12em; }
+  .shard .ph-label, .shard .kanji, .shard .cap, .shard .svc { padding-right: 6px; }
+  .cap { font-size: 15px; }
+
+  .layer { padding: 40px 20px 150px; }
+  .section-cut { --cut-x: 50%; }
+  .layer .seam-sp { z-index: 3; }
+  .eyebrow { font-size: 13px; }
+  .svc { font-size: 14px; }
+  .layer-h { font-size: 34px; }
+  .cut p { font-size: 16px; }
+
+  .month { padding: 40px 0 40px; }
+  /* v4: the line runs down the middle, so 待つ stands on the left in a column and the line no longer cuts it */
+  .ghost-wait { top: -130px; left: 14px; font-size: 30.8vw; }
+  .ghost-wait br { display: inline; }
+  .month-grid { grid-template-columns: calc(var(--spine-x) - 24px) 48px 1fr; }
+  .month-c { margin: 200px 16px 0 0; font-size: 15px; letter-spacing: .3em; }
+  .month-fact { margin-left: 16px; }
+  .month-fact { font-size: 24px; }
+  .dry { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; align-self: start; width: auto; margin: 40px 40px 0; }
+
+  .together { padding: 40px 0 60px; }
+  .together-grid { padding: 0 20px; }
+
+  /* v7 (DEV-178): the mended bowl rises to the knot (v6 kept it at the foot of the page, and the line stopped at the knot: running on
+     would have taken it 300px or more under the centred fact rows). The bowl's crack starts at x 214 of 420 (101.9 of 200 here),
+     at the knot's centre; the line enters the crack above the rim, and the heading, the facts and the disclaimer follow below it */
+  .visit { padding: 0 20px 56px; }
+  .mended { top: 104px; bottom: auto; left: calc(50% - 101.9px); width: 200px; }
+  .visit-head .eyebrow { justify-content: center; }
+  .seam-sp-end { height: 104px; }
+  .seam-sp-tail { display: none; }
+  .visit-head { padding: 286px 0 0; text-align: center; }
+  .visit-h { text-align: center; font-size: 28px; }
+  .knot { top: 93px; left: calc(50% - 11px); }
+  .info { margin-right: 0; }
+
+  /* the line runs down the middle: words sit on the ground, the line passes under them */
+  .tagline, .lead, .how, .damage-h, .shard .cap, .shard .ph-label, .shard .kanji, .shard .svc, .month-c, .together-copy > *, .visit-h, .info dd, .info dt, .fictional, .layer-h {
+    position: relative; z-index: 2; width: fit-content; box-decoration-break: clone; -webkit-box-decoration-break: clone;
+    /* v5: the ground runs 6px past the last glyph, so the line never passes just beside a glyph (線の断面 at 364–369) */
+    padding-right: 6px; }
+  .tagline, .lead, .how, .visit-h, .info dd, .info dt, .fictional { background: var(--washi); }
+  .damage-h, .shard .cap, .shard .ph-label, .shard .kanji, .shard .svc { background: var(--washi-deep); }
+  .together-copy > * { background: var(--urushi-red); }
+  .layer-h { background: var(--urushi); }
+  .visit-h { margin: 0 auto; }
+}
+
+/* 380 and below: the full name tightens, so the hero line (x 50%) passes right of its last character 手; on the lacquer,
+   線の断面 reaches the line below 350, so the heading block rises above it and the line runs under its ground */
+@media (max-width: 380px) {
+  .hero-name-full { font-size: 11px; letter-spacing: .08em; }
+  .info .tel dd { white-space: nowrap; font-size: min(40px, calc(12vw - 4px)); }
+  .layer .layer-head { z-index: 4; }
+}
+
+/* ================= v8 (DEV-179): every line of text is set horizontally ================= */
+/* Under fonts without vertical metrics (the CI fonts fall back to a Chinese gothic for the Mincho) the glyphs of vertical
+   lines were drawn on top of each other. The fact 漆が乾くまで… and the phrase are set horizontally at every width (the
+   owner: make the fact work in horizontal writing first). The giant words and the name stand in a column of one glyph per
+   line (<br>, horizontal writing, line-height = the old advance), so their glyphs are laid by horizontal metrics too. */
+.damage-h { writing-mode: horizontal-tb; letter-spacing: .12em; line-height: 1.6; }
+.damage-h br { display: inline; }
+.month-grid { grid-template-columns: calc(var(--spine-x) - 40px) 80px 1fr; grid-template-rows: auto 1fr; }
+.ticks { grid-column: 2; grid-row: 1 / 3; }
+.month-fact { grid-column: 3; grid-row: 1; justify-self: start; writing-mode: horizontal-tb; width: auto; max-width: 15em; margin: 70px 0 0 48px;
+  font-size: clamp(28px, 2.64vw, 40px); line-height: 1.6; letter-spacing: .04em; }
+.month-c { grid-column: 1; grid-row: 2; justify-self: end; align-self: end; writing-mode: horizontal-tb; text-align: right; white-space: nowrap;
+  margin: 0 36px 24px 0; font-size: clamp(22px, 2.08vw, 30px); line-height: 1.9; letter-spacing: .24em; }
+.dry { grid-column: 3; grid-row: 2; align-self: start; justify-self: start; margin: 72px 0 0 calc(48px + 6vw); transform: rotate(2.4deg); }
+/* PC: the phrase stands at the foot of the grid (its top 125px above the grid's foot), so the grid grows with つ: つ's line box
+   ends 69.4vw − 620px into the grid (line-height 1, whatever the font) and the sweeps' glyph box (1.3em about the line's centre)
+   0.15em (5.2vw) lower; the phrase starts 30px or more under that. Below about 1680px the ticks' 800px are taller and nothing
+   moves (the ink attribution at 1920 found the phrase inside つ's line box, and the glyph boxes met from about 1800) */
+/* the column of 待 and つ is laid by horizontal metrics now: under tall metrics (ascent 116%) 待's glyph box came 30–55px into
+   線の断面 at 1440–1920 (the vertical column cleared it by 20px). The column moves 3vw + 24px lower on the PC, and the grid
+   grows by the same */
+@media (min-width: 1200px) {
+  .ghost-wait { top: calc(3vw - 496px); }
+  .month-grid { min-height: max(800px, calc(77.6vw - 425px)); }
+}
+
+/* v8 (DEV-179), 601–1199: the prints alternate sides. The drying print leaves the left column for the right, astride the line
+   (the line runs on behind it), the hand print stays on the left, and the desk print moves to the right in turn: right, left,
+   right, where v7 had three prints in a row on the left. The fact and the phrase stand in the wide left column above it. */
+@media (min-width: 601px) and (max-width: 1199px) {
+  /* 待つ lies across the top of the section (26vw tall from 150px above it): the label and the fact start under its glyph box
+     (1.3em about the line's centre, so 0.15em below the line box) with 30px or more to spare under tall metrics (the wide-metrics
+     sweep found 待 18px into 乾く時間 at 725–1199 with 26vw − 126px) */
+  .month { padding-top: max(70px, calc(30vw - 110px)); }
+  .eyebrow-month { margin: 0 0 20px 6vw; }
+  .month-grid { grid-template-columns: calc(var(--spine-x) - 30px) 60px 1fr; grid-template-rows: auto auto auto; }
+  .ticks { grid-column: 2; grid-row: 1 / 4; min-height: 0; }
+  .month-fact { grid-column: 1; grid-row: 1; justify-self: start; margin: 16px 24px 0 6vw; max-width: 15em; font-size: clamp(24px, 3.4vw, 36px); }
+  .month-c { grid-column: 1; grid-row: 2; justify-self: start; align-self: start; text-align: left; white-space: normal; margin: 28px 24px 0 6vw; font-size: clamp(16px, 2.1vw, 24px); letter-spacing: .2em; }
+  .dry { grid-column: 1 / -1; grid-row: 3; justify-self: end; align-self: start; width: min(46%, 420px); margin: 56px 5% 0 0; transform: rotate(2deg); }
+  .desk { width: min(56%, 480px); margin: 48px calc(-30vw - 24px + 5vw) 0 auto; }
+}
+
+/* v8 (DEV-179), 600 and below: the drying print opens the section on the right (under 待つ's column), the fact and the
+   phrase follow either side of the line, then 相談: the hand print on the left, the desk print on the right. Text now runs
+   between every two prints, and they no longer all fill the width. */
+@media (max-width: 600px) {
+  .month-grid { grid-template-columns: calc(var(--spine-x) - 24px) 48px 1fr; grid-template-rows: auto auto; }
+  .dry { grid-column: 1 / -1; grid-row: 1; justify-self: end; width: 62%; margin: 8px 20px 0 0; transform: rotate(1.8deg); }
+  .ticks { grid-column: 2; grid-row: 2; min-height: 380px; margin-top: 40px; }
+  .month-fact { grid-column: 1; grid-row: 2; justify-self: start; margin: 72px 12px 0 20px; max-width: none; font-size: min(20px, calc((50vw - 56px) / 7.3)); line-height: 1.7; letter-spacing: .03em; }
+  .month-c { grid-column: 3; grid-row: 2; justify-self: start; align-self: start; text-align: left; white-space: normal; margin: 150px 16px 0 12px; font-size: 14px; line-height: 1.9; letter-spacing: .12em; background: none; }
+  .hand { align-self: flex-start; width: 86%; }
+  .desk { width: 64%; margin: 40px 0 0 auto; }
+}
