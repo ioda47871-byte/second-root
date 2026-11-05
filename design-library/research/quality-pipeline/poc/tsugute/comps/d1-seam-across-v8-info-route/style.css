@@ -496,16 +496,19 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
 
 /* ================= v8-info-route (DEV-179, owner option): the fact pack's hours, phone and address in the first view =================
    The same three facts as 来店 (same words, same labels; nothing new: no booking, payment or stock), repeated where they are
-   found at once. PC and tablet: a small block at the top right of the hero, above the bowl's right rim. SP: a block on the
-   left of the line just under the hero, before 壊れ方 (the line runs at x 50% and never passes under it). */
+   found at once. PC: a small block at the top right of the hero, above the bowl's right rim. 1199 and below: a block on the
+   left of the line just under the hero, before 壊れ方 (the line never passes under it). */
 .info-route { position: absolute; z-index: 3; top: 4.6%; right: 5.6%; display: grid; grid-template-columns: auto auto; gap: 10px 28px; }
 .info-route div:last-child { grid-column: 1 / -1; }
 .info-route div { border-top: 1px solid var(--gold); padding-top: 6px; }
 .info-route dt { font-size: 12px; font-weight: 700; letter-spacing: .3em; color: var(--gold-ink); }
 .info-route dd { font-family: var(--mincho); font-size: clamp(14px, 1.18vw, 17px); color: var(--urushi); white-space: nowrap; }
 .info-route .tel dd { letter-spacing: .04em; }
+/* 601–1199: the hero is too low for a block above the bowl (at 601–678 the block lay on the bowl and the hero line crossed it:
+   the sweep found the address at 1:1 contrast). It moves under the hero, left of the line (x 70%), before 壊れ方 */
 @media (max-width: 1199px) {
-  .info-route { top: 3.6%; right: 4%; gap: 8px 24px; }
+  .info-route { top: calc(100% + 24px); left: 6%; right: auto; width: calc(var(--spine-x) - 6% - 24px); gap: 10px 24px; }
+  .damage { padding-top: 190px; }
 }
 @media (max-width: 600px) {
   .info-route { top: calc(100% + 28px); left: 20px; right: auto; width: calc(50% - 36px); grid-template-columns: 1fr; gap: 10px; }
