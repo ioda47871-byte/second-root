@@ -8154,7 +8154,7 @@
     {
       "id": "DEV-178",
       "title": "3店のカンプの品質 4 (HOLD 4 の残り: つぐ手の左の写真2つと SP の金の線、輪のタブレットの右下、ゆげ湯 601〜860 の湯気) と研究の道具の強化 — 研究の道、架空の店 (Issue #193)",
-      "status": "review",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-176"
@@ -8202,7 +8202,223 @@
         "創作の文 (区画のラベル、待つ、のれんの ゆ) の確認",
         "つぐ手の SP の Hero の器を小さくした構図の確認"
       ],
-      "note": "能力は OFF のまま (APPROVED_CAPABILITIES は空)。HOLD 1 (輪 の字の箱の角)・HOLD 3 (つぐ手 SP の名前)・縦の事実の文・創作の文・CTA の位置はオーナーの判断として変えない。成功の判定ではない。写真は仮の板のまま。 新しい版: つぐ手 comps/d1-seam-across-v7・fidelity/d1-v8、輪 comps/d1-wheel-hub-v6・fidelity/d1-v7、ゆげ湯 comps/d1-heat-descent-v6・fidelity/d1-v7。掃引 (3つの書体、変えた幅、1px ごと) は 輪 の字の箱の角のほか当たり 0。FACT_NODES_JS に紛らわしい字の写像、変異 M58・M59・M60 は phase-d と phase-c-overlap の両方で落ちる。記録は .ai/reviews/DEV-178.md。"
+      "note": "能力は OFF のまま (APPROVED_CAPABILITIES は空)。HOLD 1 (輪 の字の箱の角)・HOLD 3 (つぐ手 SP の名前)・縦の事実の文・創作の文・CTA の位置はオーナーの判断として変えない。成功の判定ではない。写真は仮の板のまま。 新しい版: つぐ手 comps/d1-seam-across-v7・fidelity/d1-v8、輪 comps/d1-wheel-hub-v6・fidelity/d1-v7、ゆげ湯 comps/d1-heat-descent-v6・fidelity/d1-v7。掃引 (3つの書体、変えた幅、1px ごと) は 輪 の字の箱の角のほか当たり 0。FACT_NODES_JS に紛らわしい字の写像、変異 M58・M59・M60 は phase-d と phase-c-overlap の両方で落ちる。記録は .ai/reviews/DEV-178.md。 PR #218 で develop へ merge した (63e1891)。"
+    },
+    {
+      "id": "DEV-179",
+      "title": "つぐ手 320〜1199px の左に写真が2つ続く問題と、CI に近い書体での縦の文字の重なり (縦の事実の文を横書きで成立させる案を含む) — 研究の道、架空の店",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-178"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-179-tsugute-layout",
+      "purpose": "DEV-178 で緩和・HOLD に残ったつぐ手 320〜1199 の写真の並びを直し、CI に近い書体 (IPAMincho なし) で縦の事実の文と句の字が重なる問題を、安全規則を緩めずに解く。縦の事実の文はまず横書きで成立するデザインを作る (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "acceptance_criteria": [
+        "写真が左右交互になる案と、線の核を保つ別案を、PC1440・tablet768・SP390 の前後の画像で比べる",
+        "金の線が事実・説明・営業時間に重ならない。横のはみ出し 0。CI に近い書体での字の重なり 0",
+        "変えた幅を 1px ごとに3つの書体の設定 (CI に近い書体を含む) で掃引する。直せなければ HOLD のまま (PASS に数えない)",
+        "SP の店名は今の横書きを基準とし、縦置きを戻す案を別の画像で比べる (オーナーが選ぶまで確定しない)",
+        "事実パックにある電話・営業時間・所在地への情報の導線をファーストビューか中間に置く別案 (予約・決済・在庫を作らない)",
+        "新しい版は前の版の次の番号。古い版は変えない"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline (1ファイルずつ)",
+        "npx vitest run tests/unit/design-agent/comp-impl/phase-d.test.ts",
+        "npx vitest run tests/unit/design-agent/comp-impl/phase-c-overlap.test.ts",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/",
+        "docs/design/",
+        "tests/unit/design-agent/comp-impl/ (研究の道具とテストだけ)",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更・能力の ON",
+        "本番の CSS ゲート・許可一覧・描画ゲートの緩和",
+        "実写真の無断取得・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB・worker",
+        ".github/workflows",
+        "依存の追加",
+        "事実の追加・copy.json の事実の変更",
+        "古い版のカンプ・C の変更",
+        "lib/**・app/**・package.json の変更"
+      ],
+      "human_approval_triggers": [
+        "案のどれを採るか",
+        "SP の店名の向き",
+        "CTA の導線の案"
+      ],
+      "note": "縦の事実の文は段 D の規則を緩めない。"
+    },
+    {
+      "id": "DEV-180",
+      "title": "gradient_ground と layered_decoration の安全上の未解決点の修正と、能力ごとの承認資料 (最初に ON を求める単一能力の選定)",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-178"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-180-capability-readiness",
+      "purpose": "研究を実用化へ近づける。DEV-172 が記録したグラデーションの境界・測定領域の穴と、段 C の見逃し (1px の線・擬似要素・SVG、守る文字以外の普通の本文への重なり) を、ON の前に塞ぐ (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "acceptance_criteria": [
+        "能力ごとに『安全の未解決点 → 修正案 → 必要な本番の差分 → 画像で得る改善 → CI・レビュー → 未検証の環境』の判断資料",
+        "研究の道具とテストで塞げる穴は塞ぎ、守りを足すだけにする",
+        "本番の差分 (lib/**) は別の draft PR として用意し、merge しない (オーナーの承認まで)",
+        "実際の店の画面で改善を示す前後の画像",
+        "最初に ON を求める単一能力と、その理由・残る BLOCKED"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/comp-impl",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/",
+        "docs/design/",
+        "tests/unit/design-agent/comp-impl/ (研究の道具とテストだけ)",
+        ".ai/",
+        "lib/design-agent/comp-impl/ (別の draft PR だけ。merge しない)"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更・能力の ON",
+        "本番の CSS ゲート・許可一覧・描画ゲートの緩和",
+        "実写真の無断取得・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB・worker",
+        ".github/workflows",
+        "依存の追加",
+        "事実の追加・copy.json の事実の変更"
+      ],
+      "human_approval_triggers": [
+        "能力の ON",
+        "本番の CSS ゲートの変更"
+      ],
+      "note": "display_nowrap・display_scale は優先しない (Issue #193 コメント 6654178698 B.6)。"
+    },
+    {
+      "id": "DEV-181",
+      "title": "N1 の装飾 SVG と段 D (縦書き・回転・縁取り) を本番へ取り込む条件の整理 (機能ごと)",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-178"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-181-production-conditions",
+      "purpose": "N1 と段 D の各機能について、安全条件・オーナーの目視の記録・WebKit/Firefox など未検証の環境を列挙し、ON に要るものを機能ごとに整理する (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "acceptance_criteria": [
+        "機能ごとの ON の条件・残る BLOCKED・未検証の環境の表",
+        "オーナーの目視の記録を作らない (要るものとして挙げるだけ)",
+        "縦の事実の文は保護が優先 (規則を緩める案を出さない)"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "docs/design/",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更・能力の ON",
+        "本番の CSS ゲート・許可一覧・描画ゲートの緩和",
+        "実写真の無断取得・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB・worker",
+        ".github/workflows",
+        "依存の追加",
+        "事実の追加・copy.json の事実の変更",
+        "lib/**・app/**・tests/** の変更"
+      ],
+      "human_approval_triggers": [
+        "機能ごとの ON"
+      ],
+      "note": ""
+    },
+    {
+      "id": "DEV-182",
+      "title": "つぐ手の実写真 6 枠の受け取りと差し替えの準備 (非公開の受け取り・権利の記録・SHA と画素・PC/SP の切り抜き)",
+      "status": "backlog",
+      "priority": "P2",
+      "depends_on": [
+        "DEV-178"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-182-tsugute-photo-intake",
+      "purpose": "実写真が届いたらすぐ差し替えられるよう、受け取りの手順と道具の準備を続ける (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "acceptance_criteria": [
+        "写真をリポジトリに置かない (公開リポジトリ)",
+        "未提供の写真をスクレイピング・生成・購入しない",
+        "権利の記録・SHA・画素・CSS の区切りごとの切り抜きの手順を確かめる"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline (1ファイルずつ)",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "docs/design/",
+        "tests/unit/design-agent/ (道具のテストだけ)",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更・能力の ON",
+        "本番の CSS ゲート・許可一覧・描画ゲートの緩和",
+        "実写真の無断取得・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB・worker",
+        ".github/workflows",
+        "依存の追加",
+        "事実の追加・copy.json の事実の変更",
+        "写真・原本の commit"
+      ],
+      "human_approval_triggers": [
+        "写真の提供と権利の確認"
+      ],
+      "note": ""
+    },
+    {
+      "id": "DEV-183",
+      "title": "3店の最新版の PC・tablet・SP の比較画像と、オーナーがまとめて選べるデザイン判断のシート",
+      "status": "backlog",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-179"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-183-owner-sheet",
+      "purpose": "オーナーが3店のデザインを評価し、採否・コピー・写真の優先順位・判断事項をまとめて選べるようにする (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "acceptance_criteria": [
+        "問題の幅 (つぐ手 320〜1199、輪 tablet、ゆげ湯 601〜860) を含む比較画像",
+        "判断事項ごとに複数の選択肢と実画像 (輪 の字の箱の角、つぐ手 SP の店名、CTA の導線、縦の事実の文の横書き案)",
+        "モチーフの位置の数を品質の採点にしない。仮写真なら placeholder_limited・成功の判定なし"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/",
+        "docs/design/",
+        "tests/unit/design-agent/comp-impl/ (研究の道具とテストだけ)",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更・能力の ON",
+        "本番の CSS ゲート・許可一覧・描画ゲートの緩和",
+        "実写真の無断取得・画像生成・有料 API・実 Codex",
+        "main・Production・Staging・DB・worker",
+        ".github/workflows",
+        "依存の追加",
+        "事実の追加・copy.json の事実の変更",
+        "lib/**・app/**・package.json の変更"
+      ],
+      "human_approval_triggers": [
+        "デザインの採否と判断事項"
+      ],
+      "note": ""
     }
   ]
 }
