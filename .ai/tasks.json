@@ -8202,7 +8202,7 @@
         "創作の文 (区画のラベル、待つ、のれんの ゆ) の確認",
         "つぐ手の SP の Hero の器を小さくした構図の確認"
       ],
-      "note": "能力は OFF のまま (APPROVED_CAPABILITIES は空)。HOLD 1 (輪 の字の箱の角)・HOLD 3 (つぐ手 SP の名前)・縦の事実の文・創作の文・CTA の位置はオーナーの判断として変えない。成功の判定ではない。写真は仮の板のまま。"
+      "note": "能力は OFF のまま (APPROVED_CAPABILITIES は空)。HOLD 1 (輪 の字の箱の角)・HOLD 3 (つぐ手 SP の名前)・縦の事実の文・創作の文・CTA の位置はオーナーの判断として変えない。成功の判定ではない。写真は仮の板のまま。 新しい版: つぐ手 comps/d1-seam-across-v7・fidelity/d1-v8、輪 comps/d1-wheel-hub-v6・fidelity/d1-v7、ゆげ湯 comps/d1-heat-descent-v6・fidelity/d1-v7。掃引 (3つの書体、変えた幅、1px ごと) は 輪 の字の箱の角のほか当たり 0。FACT_NODES_JS に紛らわしい字の写像、変異 M58・M59・M60 は phase-d と phase-c-overlap の両方で落ちる。記録は .ai/reviews/DEV-178.md。"
     }
   ]
 }
