@@ -9,15 +9,19 @@ import { APPROVED_CAPABILITIES } from "@/lib/design-agent/comp-impl/spec";
 import { launch } from "./support";
 import { gradPage } from "./gradient-harness";
 import { NOWRAP_WIDTHS, rawDoc } from "./nowrap-harness";
-import { CANDIDATE_PHASE_B_SCRIPT, CANDIDATE_SWEEP_SCRIPT, candidateScan, candidateSweep, PAINT_BOX_FROM, PAINT_BOX_TO, withPaintBox } from "./gradient-box-harness";
+import { CANDIDATE_PAINT_SCANNER, CANDIDATE_PHASE_B_SCRIPT, CANDIDATE_SWEEP_SCRIPT, candidateScan, candidateSweep, PAINT_BOX_FROM, PAINT_BOX_TO, preFix, preFixScan, PRE_FIX_PAINT_SCANNER_SHA256, PRODUCTION_PATCHED, sha256, withPaintBox } from "./gradient-box-harness";
 
 // DEV-180 (Issue #193 comment 6654178698 B.5): closing the gradient measuring-box gap (DEV-172 Fresh Review M1) before
 // gradient_ground can be asked for. TEST-ONLY: the candidate is the production paint scanner with one patch
 // (gradient-box-harness.ts); lib/ is unchanged on this branch and APPROVED_CAPABILITIES stays empty. These tests hold:
 // 1. the patch only adds: the candidate's codes are the production codes plus GRADIENT_PAINT_BOX, and a stop code where
 //    the padding box is shorter than the border box;
-// 2. every reproduction of M1 (DEV-172's four and new ones) passes the grammar, scans [] in production, draws far more
-//    than 2 levels per px — and fails the candidate;
+// 2. every reproduction of M1 (DEV-172's four and new ones) passes the grammar, scans [] with the pre-fix scanner, is
+//    drawn otherwise than the rule assumes — measured here inside the padding box at 1px: a step above 3 levels per px
+//    (5 of 10: 4, 4, 9, 134 and 4 levels; DEV-172's 96–252 for M1-1..3 cross the repeat's seam in the border band, which
+//    this measure leaves out), the tile repeated in a border band that should be one colour (8 of 10), or more than one
+//    fragment (1 of 10). 5 of the 10 step only 3 levels per px in the padding box and show the gap by the band alone;
+//    M1-1 and M1-2 step 4 — and every one fails the candidate;
 // 3. what the candidate passes is drawn as the rule says: on 48 seeded boxes (borders of every style, widths, directions,
 //    inline and block), wherever the candidate passes, the drawn padding box steps at most 3 levels per px and every
 //    border band is its own flat colour (no repeat shows);
@@ -92,11 +96,22 @@ describe("DEV-180 the candidate is the production scanner plus protection only",
     expect(APPROVED_CAPABILITIES).toEqual([]);
   });
 
-  it("the patch replaces one block, once, in each script that inlines the scanner; nothing else differs", () => {
-    for (const src of [PAINT_SCANNER, PHASE_B_SCRIPT, DISPLAY_SWEEP_SCRIPT]) expect(src.split(PAINT_BOX_FROM).length - 1).toBe(1);
-    expect(CANDIDATE_PHASE_B_SCRIPT.replace(PAINT_BOX_TO, PAINT_BOX_FROM)).toBe(PHASE_B_SCRIPT);
-    expect(CANDIDATE_SWEEP_SCRIPT.replace(PAINT_BOX_TO, PAINT_BOX_FROM)).toBe(DISPLAY_SWEEP_SCRIPT);
+  it("the patch replaces one block, once, of the pinned pre-fix scanner (SHA-256); nothing else differs", () => {
+    // the pre-fix scanner is develop's, pinned by its hash: on the research branch it is the source itself, on the
+    // production branch the source with the patch taken out (DEV-180 review #224 L1: not the source compared with itself)
+    expect(sha256(preFix(PAINT_SCANNER))).toBe(PRE_FIX_PAINT_SCANNER_SHA256);
+    for (const src of [PAINT_SCANNER, PHASE_B_SCRIPT, DISPLAY_SWEEP_SCRIPT]) expect(preFix(src).split(PAINT_BOX_FROM).length - 1).toBe(1);
+    expect(CANDIDATE_PAINT_SCANNER.replace(PAINT_BOX_TO, PAINT_BOX_FROM)).toBe(preFix(PAINT_SCANNER));
+    expect(CANDIDATE_PHASE_B_SCRIPT.replace(PAINT_BOX_TO, PAINT_BOX_FROM)).toBe(preFix(PHASE_B_SCRIPT));
+    expect(CANDIDATE_SWEEP_SCRIPT.replace(PAINT_BOX_TO, PAINT_BOX_FROM)).toBe(preFix(DISPLAY_SWEEP_SCRIPT));
+    // production is either the pinned pre-fix scanner (develop, research) or exactly the candidate (the production draft)
+    if (PRODUCTION_PATCHED) {
+      expect(PAINT_SCANNER).toBe(CANDIDATE_PAINT_SCANNER);
+      expect(PHASE_B_SCRIPT).toBe(CANDIDATE_PHASE_B_SCRIPT);
+      expect(DISPLAY_SWEEP_SCRIPT).toBe(CANDIDATE_SWEEP_SCRIPT);
+    } else expect(sha256(PAINT_SCANNER)).toBe(PRE_FIX_PAINT_SCANNER_SHA256);
     expect(() => withPaintBox("nothing")).toThrow();
+    expect(() => preFix(`${PAINT_BOX_FROM}${PAINT_BOX_TO}`)).toThrow();
     // the replacement keeps every line of the original (only adds lines and narrows the measured box)
     const kept = PAINT_BOX_FROM.split("\n").filter((l) => !l.includes("parseGradient(g, box)"));
     for (const l of kept) expect(PAINT_BOX_TO).toContain(l);
@@ -104,8 +119,9 @@ describe("DEV-180 the candidate is the production scanner plus protection only",
   });
 });
 
-/** Reproductions of the measuring-box gap: each passes the grammar, scans [] (or less) in production, is drawn with steps
- * far above 2 levels per px, and must fail the candidate. */
+/** Reproductions of the measuring-box gap: each passes the grammar, scans [] with the pre-fix scanner, is drawn otherwise
+ * than the rule assumes (a step above 3 levels per px in the padding box, a repeat in a border band, or fragments: see
+ * the header), and must fail the candidate. */
 const GAPS: Array<{ name: string; body: string; css: string; expect: string[] }> = [
   // DEV-172's four (gradient-ground.test.ts "known gap before ON (Fresh Review M1)")
   { name: "M1-1 transparent borders 16px (the rule saw 62px)", body: '<div class="g"></div>', css: ".g { width: 40px; height: 30px; border-top: 16px solid transparent; border-bottom: 16px solid transparent; background: linear-gradient(#202020, #848484); }", expect: ["GRADIENT_PAINT_BOX", "GRADIENT_TOO_STEEP"] },
@@ -126,13 +142,17 @@ describe("DEV-180 the measuring-box gap (M1) is closed by the candidate", () => 
     const css = `${g.css}`;
     expect(cssProblems(css, ON), "allowlisted with gradient_ground").toEqual([]);
     await load(g.body, css);
-    const before = await prod();
+    const before = await preFixScan(tab);
+    const now = await prod();
     const d = await drawn();
     const after = await candidateScan(tab);
-    console.log(`DEV-180 M1 | ${g.name} | production ${before.join(",") || "[]"} | candidate ${after.join(",")} | drawn step ${d.jump}/px, bands flat ${d.bandsFlat}, fragments ${d.frags}`);
-    // production passes the gradient's own smoothness (it may fail only for an unrelated reason: none here)
-    expect(before.filter((c) => c.startsWith("GRADIENT_")), "production scan").toEqual([]);
-    // what is drawn breaks the rule's promise: a step above 2 levels per px inside the padding box, or a repeat in a band
+    console.log(`DEV-180 M1 | ${g.name} | pre-fix ${before.join(",") || "[]"} | production ${now.join(",") || "[]"} | candidate ${after.join(",")} | drawn step ${d.jump}/px, bands flat ${d.bandsFlat}, fragments ${d.frags}`);
+    // the pre-fix scanner passes the gradient's own smoothness (the M1 gap)
+    expect(before.filter((c) => c.startsWith("GRADIENT_")), "pre-fix scan").toEqual([]);
+    // production is the pre-fix scanner (research) or the candidate (the production draft)
+    expect(now, "production scan").toEqual(PRODUCTION_PATCHED ? after : before);
+    // what is drawn is not what the rule assumed: a step above 3 levels per px inside the padding box (at 1px), the tile
+    // repeated in a border band, or more than one fragment
     expect(d.jump > 3 || !d.bandsFlat || d.frags > 1, "drawn").toBe(true);
     for (const c of g.expect) expect(after, g.name).toContain(c);
   });
@@ -158,10 +178,25 @@ describe("DEV-180 the measuring-box gap (M1) is closed by the candidate", () => 
     expect(want.length).toBeGreaterThan(0);
     expect(want.length).toBeLessThan(381);
     expect(got).toEqual(want);
-    // production: no gradient code at any width (it measures the union of the fragments, which is wide enough)
+    // production: before the fix no gradient code at any width (it measures the union of the fragments, which is wide
+    // enough); on the production draft the same widths as the candidate
     const s = (await displaySweepPass(browser, page, { css: ON, displayWords: [] }, { range: [320, 700] }))!;
-    expect(s.failing.flatMap((f) => f.codes).filter((c) => c.startsWith("GRADIENT_"))).toEqual([]);
-    console.log(`DEV-180 fragmenting inline: candidate fails ${want[0]}–${want[want.length - 1]} (${want.length} widths), production none`);
+    if (PRODUCTION_PATCHED) expect(s.failing.filter((f) => f.codes.includes("GRADIENT_PAINT_BOX")).map((f) => f.w)).toEqual(want);
+    else expect(s.failing.flatMap((f) => f.codes).filter((c) => c.startsWith("GRADIENT_"))).toEqual([]);
+    console.log(`DEV-180 fragmenting inline: candidate fails ${want[0]}–${want[want.length - 1]} (${want.length} widths), production ${PRODUCTION_PATCHED ? "the same" : "none"}`);
+  });
+
+  it("the one way the patch passes what the pre-fix scanner failed (DEV-180 review L1): a ground with no padding box along the gradient, where nothing of it is drawn", async () => {
+    // height: 0 with 16px opaque solid borders: pre-fix measured 32px of black to white (GRADIENT_TOO_STEEP); patched the
+    // line is 0 long and the stop rule returns []. The padding box is empty and the borders are opaque: no gradient pixel
+    await load('<div class="g"></div>', ".g { width: 60px; height: 0; border-top: 16px solid #000; border-bottom: 16px solid #000; background: linear-gradient(#000, #fff); }");
+    expect(await preFixScan(tab)).toEqual(["GRADIENT_TOO_STEEP"]);
+    expect(await candidateScan(tab)).toEqual([]);
+    const shot = await tab.screenshot({ clip: { x: 0, y: 0, width: 60, height: 32 } });
+    const { data, info } = await sharp(shot).raw().toBuffer({ resolveWithObject: true });
+    let lit = 0;
+    for (let i = 0; i < info.width * info.height; i++) if ([0, 1, 2].some((c) => data[i * info.channels + c]! > 8)) lit += 1;
+    expect(lit, "every pixel of the box is the black border").toBe(0);
   });
 
   it("a ground whose display is not one box fails closed (raw HTML: a table cell, display: contents)", async () => {

@@ -80,6 +80,9 @@ const FORMS: Form[] = [
   // DEV-180: closed in the prototype (it missed these)
   { name: "an SVG miter join whose tip passes the box grown by half the stroke", kind: "paint", make: svgAt('<polyline points="0,23 30,33 0,43" fill="none" stroke="#c79a45" stroke-width="10" stroke-linejoin="miter" stroke-miterlimit="10"/>') },
   { name: "an SVG marker past the path's end", kind: "unproven", make: svgAt('<defs><marker id="m" viewBox="0 0 14 14" refX="0" refY="7" markerWidth="14" markerHeight="14" orient="auto" markerUnits="userSpaceOnUse"><rect width="14" height="14" fill="#c79a45"/></marker></defs><path d="M0 33 L30 33" stroke="#c79a45" stroke-width="1" fill="none" marker-end="url(#m)"/>') },
+  // DEV-180 review M1: the marker check ran after the skips for a shape that paints nothing and for a zero-size box
+  { name: "an SVG marker on a path with no stroke and no fill", kind: "unproven", make: svgAt('<defs><marker id="m" viewBox="0 0 14 14" refX="0" refY="7" markerWidth="14" markerHeight="14" orient="auto" markerUnits="userSpaceOnUse"><rect width="14" height="14" fill="#c79a45"/></marker></defs><path d="M0 33 L30 33" stroke="none" fill="none" marker-end="url(#m)"/>') },
+  { name: "an SVG marker on a one-point path", kind: "unproven", make: svgAt('<defs><marker id="m" viewBox="0 0 14 14" refX="0" refY="7" markerWidth="14" markerHeight="14" orient="auto" markerUnits="userSpaceOnUse"><rect width="14" height="14" fill="#c79a45"/></marker></defs><path d="M44 33 L44 33" stroke="#c79a45" stroke-width="1" fill="none" marker-start="url(#m)"/>') },
   { name: "an SVG filter offsetting a shape", kind: "unproven", make: svgAt('<defs><filter id="f" x="-1" y="-1" width="3" height="3"><feOffset dx="12" dy="0"/></filter></defs><rect x="24" y="26" width="8" height="12" fill="#c79a45" filter="url(#f)"/>') },
   // SVG text and an image
   { name: "SVG text", kind: "text", make: svgAcross('<text x="20" y="28" font-size="20" fill="#c79a45">装飾</text>') },

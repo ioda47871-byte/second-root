@@ -22,7 +22,7 @@
 
 ### 2.1 格子: 細い・生成された・SVG の描き方 × 守る事実と普通の本文 × 上と下
 
-`tests/unit/design-agent/comp-impl/phase-c-reach.test.ts` (100 件 緑)。24 の描き方を、守る事実 (`000-0000-0712`) と普通の段落 (`線の引き方を相談します`) のそれぞれに、上 (`z-index: 1`) と下 (`isolation` の中の `z-index: -1`) から当てた 96 の例が、すべて期待のコードで落ちる。どの例も、画素の検査が覆いを見た文字は幾何も同じ文字を名指す (`pixelPass` の食い違い 0)。
+`tests/unit/design-agent/comp-impl/phase-c-reach.test.ts` (108 件 緑)。26 の描き方を、守る事実 (`000-0000-0712`) と普通の段落 (`線の引き方を相談します`) のそれぞれに、上 (`z-index: 1`) と下 (`isolation` の中の `z-index: -1`) から当てた 104 の例が、すべて期待のコードで落ちる。どの例も、画素の検査が覆いを見た文字は幾何も同じ文字を名指す (`pixelPass` の食い違い 0)。
 
 | 描き方 | 上 (事実 / 普通の本文) | 下 (事実 / 普通の本文) |
 |---|---|---|
@@ -31,7 +31,7 @@
 | `::before` の生成された字 (`※`) | `PROTECTED_TEXT_ON_TEXT` / `TEXT_ON_TEXT` | 同じ (順を問わない) |
 | SVG: 1px の線、0.5px の髪の毛の線、破線の 1px の線、塗った `rect`、`pattern` の塗り、`use`、viewBox の外の線 (`overflow: visible`)、四角い線端、viewBox で 4 倍に拡大した線 | `PAINT_ABOVE_*` | `*_ON_DECORATION` |
 | **SVG の留め (miter) の角が、線幅の半分だけ広げた箱の外へ出る** (DEV-180 で塞いだ) | `PAINT_ABOVE_*` | `*_ON_DECORATION` |
-| **SVG のマーカー (`marker-end`) が線の端の先に描かれる** (DEV-180 で fail closed) | `*_ORDER_UNPROVEN` | `*_ORDER_UNPROVEN` |
+| **SVG のマーカー (`marker-end`) が線の端の先に描かれる**、**線も塗りも無い道のマーカー**、**1点だけの道 (大きさ 0) の `marker-start`** (DEV-180 で fail closed。後の2つはレビュー M1) | `*_ORDER_UNPROVEN` | `*_ORDER_UNPROVEN` |
 | SVG のフィルター (`feOffset`) で図形をずらす | `*_ORDER_UNPROVEN` | `*_ORDER_UNPROVEN` |
 | SVG の `text`、`foreignObject` の中の文字 | `*_TEXT_ON_TEXT` | `*_TEXT_ON_TEXT` |
 | 画像 (`img`) | `PAINT_ABOVE_*` | `*_ON_DECORATION` |
@@ -45,7 +45,7 @@
 | 見逃し | 何が起きたか | 直し |
 |---|---|---|
 | SVG の留めの角 | 描く範囲を「図形の箱 + 線幅の半分 + 1px」とした。鋭い角では留めの先が `miterlimit × 半分` まで伸びる。6px の線の角が 9.5px 伸びて事実の最初の 0 に触れ、画素は覆いを見て幾何は何も出さなかった (食い違い 1) | 箱を `半分 × max(miterlimit, √2) + 1` 広げる (丸・面取りの角は √2)。届くかは今どおり `isPointInStroke` が確かめるので、届かない線は通る (§2.1 の最後の例) |
-| SVG のマーカー | マーカーは図形の箱の外に描かれ、`isPointInStroke`・`isPointInFill` にも出ない。14px のマーカーが事実を覆っても幾何は何も出さなかった | `marker-start`・`-mid`・`-end` のどれかがある図形は fail closed (描く範囲を測れない: `ORDER_UNPROVEN`) |
+| SVG のマーカー | マーカーは図形の箱の外に描かれ、`isPointInStroke`・`isPointInFill` にも出ない。14px のマーカーが事実を覆っても幾何は何も出さなかった | `marker-start`・`-mid`・`-end` のどれかが計算値にある SVG の要素は fail closed (描く範囲を測れない: `ORDER_UNPROVEN`)。**最初の直しは、この確かめを「線も塗りも無い図形」と「大きさ 0 の箱」を飛ばす2つの `continue` の後に置いていたので、`stroke="none" fill="none"` の道のマーカーと、1点の道 (`M44 33 L44 33`) の `marker-start` が事実を覆っても幾何は `[]` だった (画素は `PIXEL_COVER_PROTECTED`。独立のレビューの M1)。** 確かめをそれらの前に移し、2つの形を格子に足した |
 | `::first-letter`・`::first-line` | 墨の箱は要素の書体で `measureText` するので、80px の頭文字が次の行に重なっても幾何は何も出さなかった (確かめる幅の画素だけが `PIXEL_INK_OUTSIDE_GLYPHS` を出す。1px の掃引には画素が無い) | `::before`・`::after` (置き換えて測る) と `::marker` (`MARKER_UNMEASURED`) のほかの疑似要素を名指す規則が、どのシートのどの深さ (`@media`・入れ子) にあっても `OVERLAP_PSEUDO_UNPROVEN` |
 
 どれも、提案の文法は SVG・疑似要素を入れない (`CSS_PSEUDO_ELEMENT`・`HTML_ELEMENT`) ので、本番に移したときは二重の守りである。それでも、描画の検査が単独で正しいことを ON の前提にしているので塞いだ。
@@ -101,7 +101,7 @@ gradient_ground の差分 (§ `capability-approval-gradient-ground.md` §3、数
 |---|---|
 | 研究の branch の CI | **未実行** (push 済み、PR は親が開く) |
 | Fresh Review | **未実施** |
-| 手元のテスト | `phase-c-reach.test.ts` 100 件 緑、`phase-c-overlap.test.ts` (道具の変更の後) は `.ai/reviews/DEV-180.md` |
+| 手元のテスト | `phase-c-reach.test.ts` 108 件 緑、`phase-c-overlap.test.ts` (道具の変更の後) は `.ai/reviews/DEV-180.md` |
 | 本番の差分 | **無い** (§3) |
 
 ## 6. 未検証の環境

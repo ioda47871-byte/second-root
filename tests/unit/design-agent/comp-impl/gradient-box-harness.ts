@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Browser, Page } from "playwright";
 import type { CompPage } from "@/lib/design-agent/comp-impl/page";
 import { DISPLAY_SWEEP_SCRIPT, PHASE_B_SCRIPT, PAINT_SCANNER } from "@/lib/design-agent/comp-impl/phase-b";
@@ -7,8 +8,12 @@ import { openCompPage } from "@/lib/design-agent/comp-impl/render";
 // M1, docs/design/gradient-ground-decision.md §3.3). TEST-ONLY. lib/ is not changed on this branch: the candidate is the
 // production paint scanner (phase-b.ts PAINT_SCANNER, as inlined in PHASE_B_SCRIPT and DISPLAY_SWEEP_SCRIPT) with one
 // textual patch applied here, so that the production diff (docs/design/capability-approval-gradient-ground.md §3) is
-// exactly this patch. It only ADDS a failure (GRADIENT_PAINT_BOX) and measures a box that is never longer than before
-// (the padding box instead of the border box): it can make a page fail that passed, never the other way.
+// exactly this patch. It ADDS a failure (GRADIENT_PAINT_BOX) and measures a box that is never longer than before (the
+// padding box instead of the border box), so it makes pages fail that passed — with ONE exception the other way (DEV-180
+// review L1): a ground whose padding box has no length along the gradient (e.g. height: 0 with opaque solid borders)
+// was measured on the border box and could fail the stop rule (GRADIENT_TOO_STEEP); patched, the line is 0 long and the
+// stop rule returns []. Nothing of the gradient is drawn there (the padding box is empty, the borders are opaque), so
+// this passes no drawn gradient; gradient-paint-box.test.ts pins the case.
 //
 // What it closes (each reproduced in gradient-ground.test.ts "known gap before ON (Fresh Review M1)"):
 // - transparent / non-solid borders: Chromium sizes the gradient to the padding box and repeats it under the border
@@ -53,13 +58,36 @@ export const PAINT_BOX_TO = `        const box = el.getBoundingClientRect();
           for (const c of gradientCodes(parseGradient(g, inner))) gradientSet.add(c);
         }`;
 
-/** Applies the patch to a script that inlines PAINT_SCANNER; throws unless the source occurs exactly once. */
-export function withPaintBox(src: string): string {
-  const n = src.split(PAINT_BOX_FROM).length - 1;
-  if (n !== 1) throw new Error(`PAINT_BOX_FROM occurs ${n} times (the production scanner changed: re-derive the patch)`);
-  return src.replace(PAINT_BOX_FROM, PAINT_BOX_TO);
+/**
+ * The SHA-256 of the pre-fix production PAINT_SCANNER (develop at DEV-180, before the production draft). The proof that
+ * "only the patch differs" is made against this pinned scanner, not against whatever the current source is (DEV-180
+ * review #224 L1: on the production branch the source already holds the patch, and comparing it with itself proved
+ * nothing). If develop changes the scanner, this hash and the patch must be re-derived.
+ */
+export const PRE_FIX_PAINT_SCANNER_SHA256 = "19c4870bac89b5e980ae84b0021e72ce223e8b81e4d632233eab1ff45cf34484";
+export const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+
+/**
+ * The pre-fix form of a script that inlines PAINT_SCANNER: the source itself while it holds PAINT_BOX_FROM (develop, the
+ * research branch), or the source with the patch taken back out (the production branch). Throws unless exactly one of
+ * the two blocks occurs exactly once.
+ */
+export function preFix(src: string): string {
+  const from = src.split(PAINT_BOX_FROM).length - 1;
+  const to = src.split(PAINT_BOX_TO).length - 1;
+  if (from === 1 && to === 0) return src;
+  if (from === 0 && to === 1) return src.replace(PAINT_BOX_TO, PAINT_BOX_FROM);
+  throw new Error(`PAINT_BOX_FROM ×${from}, PAINT_BOX_TO ×${to} (the production scanner changed: re-derive the patch)`);
 }
 
+/** Applies the patch to the pre-fix form of a script that inlines PAINT_SCANNER. */
+export function withPaintBox(src: string): string {
+  return preFix(src).replace(PAINT_BOX_FROM, PAINT_BOX_TO);
+}
+
+/** Whether the production scanner holds the patch (the production branch) or not (develop, the research branch). */
+export const PRODUCTION_PATCHED = preFix(PAINT_SCANNER) !== PAINT_SCANNER;
+export const PRE_FIX_PHASE_B_SCRIPT = preFix(PHASE_B_SCRIPT);
 export const CANDIDATE_PAINT_SCANNER = withPaintBox(PAINT_SCANNER);
 export const CANDIDATE_PHASE_B_SCRIPT = withPaintBox(PHASE_B_SCRIPT);
 export const CANDIDATE_SWEEP_SCRIPT = withPaintBox(DISPLAY_SWEEP_SCRIPT);
@@ -82,6 +110,11 @@ export function candidateCodes(scan: Scan): string[] {
 /** The candidate scan at the page's current viewport (gradient_ground on; no display words). */
 export async function candidateScan(page: Page): Promise<string[]> {
   return candidateCodes((await page.evaluate(`(${CANDIDATE_PHASE_B_SCRIPT})(${JSON.stringify({ display: [], displayCap: false, words: false })})`)) as Scan);
+}
+
+/** The pre-fix scanner's scan (develop's PAINT_SCANNER, pinned by hash), on either branch. */
+export async function preFixScan(page: Page): Promise<string[]> {
+  return candidateCodes((await page.evaluate(`(${PRE_FIX_PHASE_B_SCRIPT})(${JSON.stringify({ display: [], displayCap: false, words: false })})`)) as Scan);
 }
 
 /**
