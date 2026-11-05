@@ -92,10 +92,14 @@ describe("DEV-180 the candidate is the production scanner plus protection only",
     expect(APPROVED_CAPABILITIES).toEqual([]);
   });
 
-  it("the patch replaces one block, once, in each script that inlines the scanner; nothing else differs", () => {
-    for (const src of [PAINT_SCANNER, PHASE_B_SCRIPT, DISPLAY_SWEEP_SCRIPT]) expect(src.split(PAINT_BOX_FROM).length - 1).toBe(1);
-    expect(CANDIDATE_PHASE_B_SCRIPT.replace(PAINT_BOX_TO, PAINT_BOX_FROM)).toBe(PHASE_B_SCRIPT);
-    expect(CANDIDATE_SWEEP_SCRIPT.replace(PAINT_BOX_TO, PAINT_BOX_FROM)).toBe(DISPLAY_SWEEP_SCRIPT);
+  it("the production scanner now holds the patch exactly once, in each script that inlines it; the candidate is production", () => {
+    // DEV-180 production branch: before, each script held PAINT_BOX_FROM once and the candidate was the patched copy
+    for (const src of [PAINT_SCANNER, PHASE_B_SCRIPT, DISPLAY_SWEEP_SCRIPT]) {
+      expect(src.split(PAINT_BOX_TO).length - 1).toBe(1);
+      expect(src.includes(PAINT_BOX_FROM)).toBe(false);
+    }
+    expect(CANDIDATE_PHASE_B_SCRIPT).toBe(PHASE_B_SCRIPT);
+    expect(CANDIDATE_SWEEP_SCRIPT).toBe(DISPLAY_SWEEP_SCRIPT);
     expect(() => withPaintBox("nothing")).toThrow();
     // the replacement keeps every line of the original (only adds lines and narrows the measured box)
     const kept = PAINT_BOX_FROM.split("\n").filter((l) => !l.includes("parseGradient(g, box)"));
@@ -130,8 +134,8 @@ describe("DEV-180 the measuring-box gap (M1) is closed by the candidate", () => 
     const d = await drawn();
     const after = await candidateScan(tab);
     console.log(`DEV-180 M1 | ${g.name} | production ${before.join(",") || "[]"} | candidate ${after.join(",")} | drawn step ${d.jump}/px, bands flat ${d.bandsFlat}, fragments ${d.frags}`);
-    // production passes the gradient's own smoothness (it may fail only for an unrelated reason: none here)
-    expect(before.filter((c) => c.startsWith("GRADIENT_")), "production scan").toEqual([]);
+    // DEV-180 production branch: production is the candidate (before the fix it scanned [] here: the M1 gap)
+    expect(before, "production scan").toEqual(after);
     // what is drawn breaks the rule's promise: a step above 2 levels per px inside the padding box, or a repeat in a band
     expect(d.jump > 3 || !d.bandsFlat || d.frags > 1, "drawn").toBe(true);
     for (const c of g.expect) expect(after, g.name).toContain(c);
@@ -158,10 +162,10 @@ describe("DEV-180 the measuring-box gap (M1) is closed by the candidate", () => 
     expect(want.length).toBeGreaterThan(0);
     expect(want.length).toBeLessThan(381);
     expect(got).toEqual(want);
-    // production: no gradient code at any width (it measures the union of the fragments, which is wide enough)
+    // DEV-180 production branch: the production sweep fails the same widths (before the fix: none)
     const s = (await displaySweepPass(browser, page, { css: ON, displayWords: [] }, { range: [320, 700] }))!;
-    expect(s.failing.flatMap((f) => f.codes).filter((c) => c.startsWith("GRADIENT_"))).toEqual([]);
-    console.log(`DEV-180 fragmenting inline: candidate fails ${want[0]}–${want[want.length - 1]} (${want.length} widths), production none`);
+    expect(s.failing.filter((f) => f.codes.includes("GRADIENT_PAINT_BOX")).map((f) => f.w)).toEqual(want);
+    console.log(`DEV-180 fragmenting inline: candidate and production fail ${want[0]}–${want[want.length - 1]} (${want.length} widths)`);
   });
 
   it("a ground whose display is not one box fails closed (raw HTML: a table cell, display: contents)", async () => {

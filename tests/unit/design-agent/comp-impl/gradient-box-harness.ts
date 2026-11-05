@@ -55,6 +55,8 @@ export const PAINT_BOX_TO = `        const box = el.getBoundingClientRect();
 
 /** Applies the patch to a script that inlines PAINT_SCANNER; throws unless the source occurs exactly once. */
 export function withPaintBox(src: string): string {
+  // DEV-180 production branch: the scanner already holds the patch (phase-b.ts), so the candidate is production itself
+  if (src.split(PAINT_BOX_TO).length - 1 === 1 && !src.includes(PAINT_BOX_FROM)) return src;
   const n = src.split(PAINT_BOX_FROM).length - 1;
   if (n !== 1) throw new Error(`PAINT_BOX_FROM occurs ${n} times (the production scanner changed: re-derive the patch)`);
   return src.replace(PAINT_BOX_FROM, PAINT_BOX_TO);

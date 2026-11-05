@@ -27,7 +27,9 @@ export function displayWordsOf(shopName: string): string[] {
 }
 
 /** The gradient codes of the stop rule (verify.ts GRADIENT_RULES); the page script reports only these, bounded. */
-export const GRADIENT_CODES = ["GRADIENT_HARD_STOP", "GRADIENT_TOO_STEEP", "GRADIENT_UNMEASURED"] as const;
+/** DEV-180: GRADIENT_PAINT_BOX — a ground Chromium draws otherwise than the rule measures (a border that is not solid and
+ * opaque on a side with a width, or not one box of a known display type); fail closed. */
+export const GRADIENT_CODES = ["GRADIENT_HARD_STOP", "GRADIENT_TOO_STEEP", "GRADIENT_UNMEASURED", "GRADIENT_PAINT_BOX"] as const;
 
 /**
  * The stop rule inside the page (plain JavaScript source text): `(g) => codes` for one parsed gradient { kind, config, w,
@@ -90,6 +92,9 @@ export const GRADIENT_CODES_JS = String.raw`(g) => {
  *   included: Fresh Review L1, as layers.ts counts alt) and its border box (its paint extent: phase B adds no outset paint,
  *   §2.9) must meet no text line box. Every gradient is judged by GRADIENT_CODES_JS (codes only, all of them); a stop
  *   whose colour is not opaque is unmeasured (GRADIENT_UNMEASURED).
+ *   DEV-180 (DEV-172 Fresh Review M1): the stop rule measures the padding box (the box Chromium sizes the gradient to);
+ *   a border on a ground must be solid and opaque on every side with a width (the repeat under it is then painted over),
+ *   and the ground must be one box of a display type that paints one background (GRADIENT_PAINT_BOX otherwise).
  * - translucent: every element with opacity < 1; it must hold no text, and its paint extent (its box and every
  *   descendant's) must meet no text line box.
  */
@@ -164,9 +169,20 @@ export const PAINT_SCANNER = String.raw`() => {
         if (textInside(el)) grounds.hasText += 1;
         else if (allLines.some((r) => meets(r, rectOf(box)))) grounds.underText += 1;
         if (grounds.list.length < 8) grounds.list.push(el.tagName.toLowerCase());
+        // DEV-180 (DEV-172 Fresh Review M1): Chromium sizes a gradient to the padding box, repeats it under the border and
+        // draws it once per fragment. The rule measures the padding box; a border must be solid and opaque on every side
+        // that has a width (the repeat is painted over), and the box must be one box of a known display type
+        // (GRADIENT_PAINT_BOX otherwise, fail closed)
+        const sides = ["Top", "Right", "Bottom", "Left"];
+        const bw = sides.map((k) => parseFloat(s["border" + k + "Width"]) || 0);
+        const coveredSide = (k, i) => bw[i] === 0 || (s["border" + k + "Style"] === "solid" && (colour(s["border" + k + "Color"]) || [0, 0, 0, 0])[3] === 255);
+        const oneBox = ["block","flow-root","inline-block","flex","inline-flex","grid","inline-grid","list-item","inline"].includes(s.display) && el.getClientRects().length === 1;
+        const paintBox = !oneBox || !sides.every(coveredSide);
+        const inner = { width: Math.max(0, box.width - bw[1] - bw[3]), height: Math.max(0, box.height - bw[0] - bw[2]) };
         for (const g of split(s.backgroundImage)) {
           gradients.count += 1;
-          for (const c of gradientCodes(parseGradient(g, box))) gradientSet.add(c);
+          if (paintBox) gradientSet.add("GRADIENT_PAINT_BOX");
+          for (const c of gradientCodes(parseGradient(g, inner))) gradientSet.add(c);
         }
       }
       if (Number(s.opacity) < 1) {
