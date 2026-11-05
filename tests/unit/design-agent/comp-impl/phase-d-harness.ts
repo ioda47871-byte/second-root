@@ -167,6 +167,8 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
     if (found.length < 80) found.push({ code, text: (flat(el.textContent).slice(0, 24) || el.tagName.toLowerCase()), note: note === undefined ? null : note });
   };
   const all = [document.documentElement, document.body].concat(Array.from(document.body.querySelectorAll("*")));
+  // marks of an earlier scan of the same page (a sweep scans one page many times) never carry over
+  for (const el of all) for (const a of ["data-pd-id", "data-pd-oid", "data-pd-stroked", "data-pd-text"]) el.removeAttribute(a);
   const ownNodes = (el) => Array.from(el.childNodes).filter((n) => n.nodeType === 3 && flat(n.data) !== "");
   const charRects = (n) => {
     const out = [];
@@ -312,9 +314,9 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
     const ts = textsIn(el);
     if (ts.some(isProt)) add("PHASE_D_PROTECTED_ROTATED", el);
     else if (ts.length && !isWord(el)) add("PHASE_D_ROTATED_TEXT", el);
-    // the extent: the border box and every glyph box of the text inside (text can overflow its box: Fresh Review M2),
-    // with the rotation and with it taken off
-    const extent = () => union([el.getBoundingClientRect()].concat(ts.flatMap(ownRects)));
+    // the extent: the border box, every descendant's box and every glyph box of the text inside (text and boxes can
+    // overflow it: Fresh Review M2, re-review L1), with the rotation and with it taken off
+    const extent = () => union([el.getBoundingClientRect()].concat(Array.from(el.querySelectorAll("*")).map((d) => d.getBoundingClientRect()).filter((b) => b.width > 0 || b.height > 0), ts.flatMap(ownRects)));
     const r = extent();
     const keep = el.style.getPropertyValue("transform"), prio = el.style.getPropertyPriority("transform");
     el.style.setProperty("transform", "none", "important");
@@ -342,8 +344,16 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
   const rgba = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c || ""); if (!m) return null; const p = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
   const lum = (c) => { const f = (v) => { const x = v / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
   const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-  // the ground: the nearest opaque background colour up the tree (the canvas is white)
-  const groundOf = (el) => { for (let p = el; p; p = p.parentElement) { const c = rgba(st(p).backgroundColor); if (c && c.a === 1) return c; } return { r: 255, g: 255, b: 255, a: 1 }; };
+  // the ground: the nearest opaque background colour up the tree (the canvas is white); null (unknown) when a
+  // background-image (a gradient) lies on the way: its colours are not read here (re-review L2: fail closed)
+  const groundOf = (el) => {
+    for (let p = el; p; p = p.parentElement) {
+      if (st(p).backgroundImage && st(p).backgroundImage !== "none") return null;
+      const c = rgba(st(p).backgroundColor);
+      if (c && c.a === 1) return c;
+    }
+    return { r: 255, g: 255, b: 255, a: 1 };
+  };
   const stroked = [];
   for (const el of textEls) {
     const s = st(el);
@@ -356,27 +366,35 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
     if (sw > L.strokeEmMax * fs(el) + 1e-6) add("PHASE_D_STROKE_TOO_THICK", el, sw);
     const sc = rgba(s.webkitTextStrokeColor), fc = rgba(s.webkitTextFillColor || s.color);
     if (!sc || !fc || sc.a < 1 || (fc.a > 0 && fc.a < 1)) add("PHASE_D_OUTLINE_TRANSLUCENT", el);
-    // hollow: a transparent fill, or a fill the ground's colour (contrast < 1.5: Fresh Review L2)
-    else if ((fc.a === 0 || contrast(fc, groundOf(el)) < 1.5) && sw < L.hollowStrokeMinPx) add("PHASE_D_OUTLINE_HOLLOW_THIN", el, sw);
+    // hollow: a transparent fill, or a fill the ground's colour (contrast < 1.5: Fresh Review L2). On a ground with an
+    // image (a gradient) the fill cannot be compared: a thin stroke there fails closed
+    else if (sw < L.hollowStrokeMinPx) {
+      const ground = fc.a === 0 ? null : groundOf(el);
+      if (fc.a === 0 || (ground && contrast(fc, ground) < 1.5)) add("PHASE_D_OUTLINE_HOLLOW_THIN", el, sw);
+      else if (!ground) add("PHASE_D_OUTLINE_GROUND_UNMEASURED", el, sw);
+    }
+    el.setAttribute("data-pd-stroked", "");
     stroked.push({ el, sw });
   }
 
   // ------------------------------------------------------------ ink targets (pixels decide; fail closed without)
   let id = 0;
-  const pushTarget = (el, kind, sw, strokedIn) => {
+  const pushTarget = (el, kind, sw) => {
     const ext = union(textsIn(el).flatMap(ownRects).concat(kind === "rotated" ? Array.from(el.getClientRects()) : []));
     if (!ext) return;
     const g = grow(ext, sw / 2 + 1);
     const near = textEls.some((t) => !(el === t || el.contains(t)) && ownRects(t).some((r) => meets(r, g, 0.5)));
-    el.setAttribute("data-pd-id", String(id));
-    targets.push({ id: id++, kind, stroked: strokedIn, text: flat(el.textContent).slice(0, 24), near, rect: { left: g.left + scrollX, top: g.top + scrollY, right: g.right + scrollX, bottom: g.bottom + scrollY } });
+    el.setAttribute(kind === "rotated" ? "data-pd-id" : "data-pd-oid", String(id));
+    targets.push({ id: id++, kind, text: flat(el.textContent).slice(0, 24), near, rect: { left: g.left + scrollX, top: g.top + scrollY, right: g.right + scrollX, bottom: g.bottom + scrollY } });
   };
-  // a rotated word that holds stroked text is one target with the outline checks too (Fresh Review H1)
+  // a rotated word is a target for its ink (INK_ON_TEXT); EVERY stroked element is its own outline target, inside a
+  // rotated word or not, and its outline pixels see only stroked text (Fresh Review H1, re-review M1: a stroked part of
+  // a rotated word was measured together with the unstroked rest, or not at all)
   for (const el of rotatedRoots) {
     const inside = stroked.filter((s) => el === s.el || el.contains(s.el));
-    pushTarget(el, "rotated", Math.max(0, ...inside.map((s) => s.sw)), inside.length > 0);
+    pushTarget(el, "rotated", Math.max(0, ...inside.map((s) => s.sw)));
   }
-  for (const s of stroked) if (!s.el.hasAttribute("data-pd-id") && !rotatedRoots.some((r) => r.contains(s.el))) pushTarget(s.el, "outline", s.sw, true);
+  for (const s of stroked) pushTarget(s.el, "outline", s.sw);
   for (const t of textEls) { t.setAttribute("data-pd-text", ""); delete t.dataset.pdRo; }
 
   const sw = document.documentElement.scrollWidth - document.documentElement.clientWidth;
@@ -386,7 +404,7 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
 
 export type PhaseDFeatures = { vertical?: boolean; rotation?: boolean; outline?: boolean };
 export type PhaseDPlan = { protect: readonly string[]; names: readonly string[]; protectSel?: string; features: PhaseDFeatures };
-export type InkTarget = { id: number; kind: "rotated" | "outline"; stroked: boolean; text: string; near: boolean; rect: { left: number; top: number; right: number; bottom: number } };
+export type InkTarget = { id: number; kind: "rotated" | "outline"; text: string; near: boolean; rect: { left: number; top: number; right: number; bottom: number } };
 export type PhaseDScan = { codes: Record<string, number>; found: Array<{ code: string; text: string; note: unknown }>; targets: InkTarget[]; vertical: number; texts: number };
 
 /** The phase D geometric scan at the current viewport. */
@@ -432,7 +450,7 @@ export type InkResult = { id: number; kind: InkTarget["kind"]; text: string; ink
  * clipped screenshots of its extent (+12px): X — only the target's text drawn; G — no text drawn; O — every text but the
  * target drawn. Grounds, images and boxes stay as they are. The target's ink is where X differs from G (max channel ≥
  * INK_DIFF_MIN), the other texts' ink where O differs from G. Font-independent: it measures what this machine draws.
- *  - every target holding stroked text (an outlined word, rotated or not): the contrast reached by the best quarter of the ink pixels, X against G (the stroke and fill over
+ *  - outline targets (every stroked element, inside a rotated word or not; X shows its stroked text only): the contrast reached by the best quarter of the ink pixels, X against G (the stroke and fill over
  *    the very ground under them, gradients included) < contrastMin → PHASE_D_OUTLINE_LOW_CONTRAST; fewer than 20 ink
  *    pixels → PHASE_D_OUTLINE_INVISIBLE.
  *  - every target: 3+ pixels where the target's ink (grown 1px) meets another text's ink → PHASE_D_INK_ON_TEXT.
@@ -451,15 +469,20 @@ export async function phaseDPixels(page: Page, scan: PhaseDScan): Promise<InkRes
     }
     const clip = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
     const shot = async (mode: "X" | "G" | "O"): Promise<Raw> => {
-      const sel = `[data-pd-id="${t.id}"], [data-pd-id="${t.id}"] *`;
+      // a rotated target: its whole subtree; an outline target: the stroked element and its stroked descendants only
+      const sel = t.kind === "rotated" ? `[data-pd-id="${t.id}"], [data-pd-id="${t.id}"] *` : `[data-pd-oid="${t.id}"], [data-pd-oid="${t.id}"] [data-pd-stroked]`;
       // the kept text's colours are pinned inline (an inline !important beats the hiding rule and its inheritance)
       await page.evaluate(`((sel, mode, hide) => {
         const keep = new Set(Array.from(document.querySelectorAll(sel)));
+        // record every text's own colours BEFORE any is pinned: the fill and stroke colours inherit, so a child read
+        // after its parent was pinned would record the parent's pinned colour (re-review M1)
         for (const el of document.querySelectorAll("[data-pd-text]")) {
           if (!el.hasAttribute("data-pd-orig")) {
             const s = getComputedStyle(el);
             el.setAttribute("data-pd-orig", JSON.stringify([el.getAttribute("style"), s.color, s.webkitTextFillColor, s.webkitTextStrokeColor]));
           }
+        }
+        for (const el of document.querySelectorAll("[data-pd-text]")) {
           const [style, c, f, k] = JSON.parse(el.getAttribute("data-pd-orig"));
           if (style === null) el.removeAttribute("style"); else el.setAttribute("style", style);
           const show = mode === "X" ? keep.has(el) : mode === "O" ? !keep.has(el) : false;
@@ -507,7 +530,7 @@ export async function phaseDPixels(page: Page, scan: PhaseDScan): Promise<InkRes
     cs.sort((a, b) => b - a);
     const contrast = cs.length ? cs[Math.floor(cs.length / 4)]! : 0;
     const codes: string[] = [];
-    if (t.stroked) {
+    if (t.kind === "outline") {
       if (cs.length < 20) codes.push("PHASE_D_OUTLINE_INVISIBLE");
       else if (contrast < PHASE_D_LIMITS.contrastMin) codes.push("PHASE_D_OUTLINE_LOW_CONTRAST");
     }
@@ -590,18 +613,21 @@ export function launchLight(): Promise<Browser> {
  * process) per width. Each `at` resizes and reloads the page, so no scan's marks or materialized spans carry over.
  */
 export class PagePool {
-  private open = new Map<string, { context: BrowserContext; page: Page }>();
+  private open = new Map<string, { context: BrowserContext; page: Page; html: string; css: string }>();
   constructor(private readonly opener: (page: CompPage, w: number, mobile: boolean) => Promise<{ context: BrowserContext; page: Page }>) {}
   async at(key: string, page: CompPage, w: number, mobile: boolean): Promise<Page> {
     const k = `${key}|${mobile}`;
     const o = this.open.get(k);
     if (!o) {
       const fresh = await this.opener(page, w, mobile);
-      this.open.set(k, fresh);
+      this.open.set(k, { ...fresh, html: page.html, css: page.css });
       return fresh.page;
     }
+    // the key names one page: the same HTML and CSS every time (a reused context serves what it was opened with)
+    if (o.html !== page.html || o.css !== page.css) throw new Error(`PagePool: ${key} was opened with another page`);
     await o.page.setViewportSize({ width: w, height: 900 });
-    await o.page.reload({ waitUntil: "load" });
+    const res = await o.page.reload({ waitUntil: "load" });
+    if (res?.status() !== 200) throw new Error(`PagePool: ${key} reload ${res?.status()}`);
     await o.page.evaluate("document.fonts.ready.then(() => true)");
     return o.page;
   }

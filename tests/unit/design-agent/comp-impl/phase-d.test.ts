@@ -6,7 +6,7 @@ import type { PageCssOptions } from "@/lib/design-agent/comp-impl/page-css";
 import { layerScan, openCompPage } from "@/lib/design-agent/comp-impl/render";
 import { layerCodes } from "@/lib/design-agent/comp-impl/verify";
 import { APPROVED_CAPABILITIES, CAPABILITY_NAMES, pageCssOptionsOf } from "@/lib/design-agent/comp-impl/spec";
-import { SHOPS, shopFacts, type ShopKey } from "./nowrap-harness";
+import { rawDoc, SHOPS, shopFacts, type ShopKey } from "./nowrap-harness";
 import { instanceCodes, overlapCodes, overlapScan, pixelPass, shopPlan } from "./overlap-harness";
 import {
   codeNames,
@@ -244,7 +244,7 @@ describe("DEV-175 the proposed grammar (test-only prototype, one flag per featur
 
 // ---------------------------------------------------------------- 3. the render checks on synthetic probes
 
-type Probe = { name: string; body: string; css: string; features: PhaseDFeatures; width?: number; code: string; pixels?: boolean; protect?: readonly string[] };
+type Probe = { name: string; body: string; css: string; features: PhaseDFeatures; width?: number; code: string; pixels?: boolean; protect?: readonly string[]; grammar?: PhaseDOptions };
 
 const F_V: PhaseDFeatures = { vertical: true };
 const F_R: PhaseDFeatures = { rotation: true };
@@ -312,6 +312,20 @@ const MUST_FAIL: Probe[] = [
     features: F_R,
     code: "PHASE_D_ROTATED_OFFSCREEN",
   },
+  {
+    name: "a 0-height rotated box whose text-free child (800px tall) swings far (the extent holds descendant boxes)",
+    body: '<div class="wrap"><div class="r"><div class="k"></div></div></div>',
+    css: ".wrap { padding: 0 0 0 4px; } .r { width: 64px; height: 0; transform: rotate(8deg); transform-origin: left top; } .k { width: 40px; height: 800px; background: #c79a45; }",
+    features: F_R,
+    code: "PHASE_D_ROTATION_REACH",
+  },
+  {
+    name: "the same child swings past the left edge",
+    body: '<div class="wrap"><div class="r"><div class="k"></div></div></div>',
+    css: ".wrap { padding: 0 0 0 4px; } .r { width: 64px; height: 0; transform: rotate(8deg); transform-origin: left top; } .k { width: 40px; height: 800px; background: #c79a45; }",
+    features: F_R,
+    code: "PHASE_D_ROTATED_OFFSCREEN",
+  },
   { name: "a rotated box past the right edge", body: '<div class="wrap"><div class="r"></div></div>', css: ".r { width: 400px; height: 400px; margin-left: 360px; background: #c79a45; transform: rotate(8deg); }", features: F_R, code: "PHASE_D_ROTATED_OFFSCREEN" },
   { name: "a rotated word cut by a clipping box", body: '<div class="wrap"><div class="c"><p class="r">継ぐ</p></div></div>', css: ".c { height: 64px; overflow: hidden; } .r { width: max-content; font-size: 64px; line-height: 1; transform: rotate(8deg); }", features: F_R, code: "PHASE_D_ROTATED_CLIPPED" },
   {
@@ -345,6 +359,30 @@ const MUST_FAIL: Probe[] = [
   { name: "a hollow word stroked white on white (pixels)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 128px; color: transparent; -webkit-text-stroke: 2px #ffffff; }", features: F_O, code: "PHASE_D_OUTLINE_INVISIBLE", pixels: true },
   { name: "a rotated hollow word whose stroke is close to the ground (pixels: the outline checks run on rotated targets)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { width: max-content; font-size: 128px; color: transparent; -webkit-text-stroke: 2px #e9e2d6; transform: rotate(1deg); }", features: { rotation: true, outline: true }, code: "PHASE_D_OUTLINE_LOW_CONTRAST", pixels: true },
   { name: "a rotated hollow word stroked white on white (pixels)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { width: max-content; font-size: 128px; color: transparent; -webkit-text-stroke: 2px #ffffff; transform: rotate(1deg); }", features: { rotation: true, outline: true }, code: "PHASE_D_OUTLINE_INVISIBLE", pixels: true },
+  {
+    name: "a hollow white part of a rotated word (re-review M1: the stroked part is its own outline target)",
+    body: '<div class="wrap"><p class="r"><span class="o">継</span>ぐ手</p></div>',
+    css: ".r { width: max-content; font-size: 128px; transform: rotate(1deg); } .o { color: transparent; -webkit-text-stroke: 2px #ffffff; }",
+    features: { rotation: true, outline: true },
+    code: "PHASE_D_OUTLINE_INVISIBLE",
+    pixels: true,
+  },
+  {
+    name: "a hollow white word with a dark unstroked child (the outline pixels see the stroked text only)",
+    body: '<div class="wrap"><p class="o">継<span class="n">ぐ</span></p></div>',
+    css: ".o { font-size: 128px; color: transparent; -webkit-text-stroke: 2px #ffffff; } .n { color: #1f1d1b; -webkit-text-stroke-width: 0; }",
+    features: F_O,
+    code: "PHASE_D_OUTLINE_INVISIBLE",
+    pixels: true,
+  },
+  {
+    name: "a dark word on a dark gradient ground with a thin stroke (the fill cannot be compared with an image ground: fail closed)",
+    body: '<div class="wrap"><div class="g"><p class="o">継ぐ</p></div></div>',
+    css: ".g { padding: 24px; background: linear-gradient(#000000, #111111); } .o { font-size: 96px; color: #000000; -webkit-text-stroke: 1px #ffffff; }",
+    features: F_O,
+    code: "PHASE_D_OUTLINE_GROUND_UNMEASURED",
+    grammar: { outlinedType: true, gradientGround: true },
+  },
   { name: "an outlined word far off the page to the left (nothing to photograph: fail closed)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { margin-left: -3000px; font-size: 64px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_INK_UNMEASURED", pixels: true },
   { name: "outline with the flag off", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 64px; -webkit-text-stroke: 1px #c79a45; }", features: { vertical: true, rotation: true }, code: "PHASE_D_OUTLINE_NOT_ENABLED" },
   // the page
@@ -400,6 +438,8 @@ describe("DEV-175 the render checks (prototype) on synthetic probes", () => {
     for (const p of MUST_FAIL) {
       const got = p.pixels ? await full(p.body, p.css, p.features, p.width, p.protect) : await geometry(p.body, p.css, p.features, p.width, p.protect);
       table.push(`FAIL | ${p.name} | ${codeNames(got).join(", ")}`);
+      // a probe marked with a grammar is written in it: the render check is what stops it
+      if (p.grammar) expect(phaseDCssProblems(`${BASE}\n${p.css}`, p.grammar), p.name).toEqual([]);
       expect(codeNames(got), p.name).toContain(p.code);
     }
   });
@@ -411,6 +451,18 @@ describe("DEV-175 the render checks (prototype) on synthetic probes", () => {
       const got = await full(p.body, p.css, p.features);
       table.push(`PASS | ${p.name} | ${got.join(", ") || "-"}`);
       expect(got, p.name).toEqual([]);
+    }
+  });
+
+  it("PagePool serves one page per key: another page under the same key is refused", async () => {
+    const pool = new PagePool((p, w, mobile) => openCompPage(browser, p, { width: w, height: 900, scale: 1, mobile }));
+    try {
+      const a = rawDoc('<p>一</p>', "p { color: #000000; }");
+      await pool.at("k", a, 800, false);
+      await pool.at("k", rawDoc('<p>一</p>', "p { color: #000000; }"), 600, false);
+      await expect(pool.at("k", rawDoc('<p>二</p>', "p { color: #000000; }"), 600, false)).rejects.toThrow(/another page/);
+    } finally {
+      await pool.close();
     }
   });
 
