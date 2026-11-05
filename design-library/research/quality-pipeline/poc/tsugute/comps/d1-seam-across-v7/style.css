@@ -211,9 +211,12 @@ h1, h2, p, dd, .photo span { word-break: keep-all; overflow-wrap: anywhere; }
 }
 /* v7 (DEV-178), PC: the bowl print under つ was the first of two prints in a row on the left (the hand print of 相談 follows on
    the left). The print moves to the right column, beyond the fact, and leans the other way; the phrase moves to the left of
-   the ticks, so the lines read right to left as print, fact, the month of ticks, phrase, and つ stands alone above the void */
+   the ticks, so the lines read right to left as print, fact, the month of ticks, phrase, and つ stands alone above the void.
+   The phrase stands 8px left of the ticks and starts below つ's glyph box (1.3em wide under tall fonts) where the two would
+   meet: つ's box ends near 0.428 × width across and 0.694 × width − 519px down, so below 1582px the phrase starts under it,
+   and from 1582px on it passes right of it (the 1px sweep with tall metrics found つ 46px into the phrase at 1324–1738) */
 @media (min-width: 1200px) {
-  .month-c { grid-column: 1; grid-row: 1; justify-self: end; margin: 300px 60px 0 0; }
+  .month-c { grid-column: 1; grid-row: 1; justify-self: end; margin: clamp(300px, calc(69.4vw - 588px), 510px) 8px 0 0; }
   .dry { grid-column: 4; grid-row: 1; align-self: end; justify-self: start; margin: 0 0 -40px 8.3vw; transform: rotate(2.4deg); }
 }
 
