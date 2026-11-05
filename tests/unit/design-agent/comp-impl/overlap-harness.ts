@@ -276,6 +276,11 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
     const s = cs(el);
     if (s.display === "none") continue;
     const r = doc(el.getBoundingClientRect());
+    // DEV-180: markers are drawn outside the shape's box and outside isPointInStroke / isPointInFill (a 14px marker at a
+    // path's end drew over a fact with no geometric code). Their extent and order are not measured: fail closed. Checked
+    // before every other skip (DEV-180 review M1): a shape with no stroke and no fill, or of zero size (a one-point path),
+    // still draws its markers. The marker properties inherit, so a group or the svg itself counts too.
+    if (isSvg(el) && [s.markerStart, s.markerMid, s.markerEnd].some((m) => m && m !== "none")) painters.push({ el, kind: "filter", rects: [grow(r, 1e5)], hit: false });
     if (r.right - r.left <= 0 && r.bottom - r.top <= 0) continue;
     const visible = s.visibility !== "hidden";
     const add2 = (kind, rects, hit) => { if (rects.length) painters.push({ el, kind, rects, hit }); };
@@ -295,9 +300,6 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
       const mitred = !["round", "bevel"].includes(s.strokeLinejoin);
       const sw = half * (mitred ? Math.max(parseFloat(s.strokeMiterlimit) || 4, Math.SQRT2) : Math.SQRT2) + 1;
       add2("svg", [grow(r, sw)], true);
-      // DEV-180: markers are drawn outside the shape's box and outside isPointInStroke / isPointInFill (a 14px marker at a
-      // path's end drew over a fact with no geometric code). Their extent and order are not measured: fail closed.
-      if ([s.markerStart, s.markerMid, s.markerEnd].some((m) => m && m !== "none")) add2("filter", [grow(r, 1e5)], false);
       if (spread > 0) add2("filter", [grow(r, sw + spread)], false);
       continue;
     }
