@@ -8424,7 +8424,7 @@
       "human_approval_triggers": [
         "デザインの採否と判断事項"
       ],
-      "note": "2026-11-05: 輪 と ゆげ湯 の部分をこの branch で作った (判断ごとの別案の版 8 つ、docs/design/owner-decision-sheet.md の下書き、.ai/reviews/DEV-183.md)。つぐ手 の節は DEV-179 の後に足す。この PR は輪とゆげ湯の部分 (1 つ目)。つぐ手の節を足す PR で review にする。。"
+      "note": "2026-11-05: 輪 と ゆげ湯 の部分をこの branch で作った (判断ごとの別案の版 8 つ、docs/design/owner-decision-sheet.md の下書き、.ai/reviews/DEV-183.md)。つぐ手 の節は DEV-179 の後に足す。この PR は輪とゆげ湯の部分 (1 つ目)。つぐ手の節を足す PR で review にする。"
     }
   ]
 }

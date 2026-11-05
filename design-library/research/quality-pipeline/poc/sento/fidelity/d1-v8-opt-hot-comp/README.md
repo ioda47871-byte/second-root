@@ -13,5 +13,6 @@ DEV-178 (d1-v7) は 601〜860 で文を名前 ゆげ湯 の下の左の列へ移
 - カンプは作っていない (C の版だけ)。`fidelity-spec.json` は今の版 d1-v7 を指したまま。
 - `copy.json` は d1-v7 と同じバイト。事実は足していない・変えていない。予約・決済・在庫・事実に無い時間は無い。
 - B方式の隔離された描画レーンを通る (comp-lane の所見 0)。本番の許可一覧・描画ゲートは変えていない。能力はどれも OFF。
+- **CI に近い書体 (IPAMincho が無い) のために、明朝の並びの generic serif の前に IPAGothic を足した** (末尾の規則、PR #222 のレビュー H1)。WenQuanYi Zen Hei は縦書きの寸法を持たず、縦の字がその箱の下に描かれて重なった (今の版 d1-v7 はそのまま)。IPAMincho がある所では描画は変わらない (comp-lane の 1440・390 の SHA で確かめた)。書体の並びそのものを差し替える組 (掃引の `alt`。この容器の Chromium では Noto Sans CJK JP が読めず WenQuanYi になる) では、この足しは効かず、縦の字は今の版と同じく重なる。
 - 写真は役割と比だけの仮の板。`placeholder_limited`。**成功例の水準とは言わない。**
 - 掃引の数と画像は `docs/design/owner-decision-sheet.md` の「確かめたこと」と `.ai/reviews/DEV-183.md` にある。画像はリポジトリに入れていない (`scratchpad/dev183/options/`)。

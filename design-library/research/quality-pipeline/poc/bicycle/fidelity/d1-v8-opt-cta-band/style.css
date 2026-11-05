@@ -281,15 +281,22 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 }
 
 /* DEV-183 別案 (b): an information band at the head of the workbench section (about the middle of the page), between two
-   ink rules. 締める from the yellow section above reaches into this section's top padding only, as it did before. */
+   ink rules. 締める from the yellow section above reaches into this section's top padding only, as it did before. Labels and the
+   short values never break inside (review M2: 所在/地 at 601–689 and 320–336); only the address may wrap, at its phrase ends. */
 .band-info { display: grid; grid-template-columns: auto auto auto 1fr; align-items: baseline; gap: 10px 48px; margin: 0 0 5vw; padding: 16px 0 14px; border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink); }
 .band-info div { display: flex; align-items: baseline; gap: 12px; }
-.band-info dt { font-size: 12px; letter-spacing: .3em; color: var(--ink); }
+.band-info dt { white-space: nowrap; font-size: 12px; letter-spacing: .3em; color: var(--ink); }
 .band-info dd { font-size: clamp(16px, 1.39vw, 20px); color: var(--ink); }
+.band-info div:not(.b-addr) dd { white-space: nowrap; }
 .band-info .b-tel dd { font-weight: 900; font-size: clamp(24px, 2.5vw, 36px); letter-spacing: .04em; line-height: 1.3; white-space: nowrap; }
-@media (max-width: 999px) { .band-info { grid-template-columns: auto auto 1fr; } .band-info .b-tel { grid-column: 1 / -1; } }
+@media (max-width: 999px) { .band-info { grid-template-columns: auto auto 1fr; } .band-info .b-tel, .band-info .b-addr { grid-column: 1 / -1; } }
 @media (max-width: 600px) {
   .band-info { grid-template-columns: 1fr; gap: 6px; margin-bottom: 40px; }
   .band-info .b-tel dd { font-size: min(32px, calc(10vw - 4px)); }
   .band-info dd { font-size: 17px; }
 }
+
+/* DEV-183 (review H1): where IPAMincho is missing (the CI-like font set), the generic serif fell back to WenQuanYi Zen Hei, which
+   has no vertical metrics: vertical words were painted far below their boxes, over themselves and over other words. IPAGothic
+   (vertical metrics, in the CI-like set) now comes before the generic family. Where IPAMincho exists nothing changes. */
+:root { --mincho: "IPAMincho", "IPAGothic", serif; }

@@ -298,3 +298,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .check-fact { grid-column: 1 / -1; margin: 32px 0 0; font-size: 18px; max-width: none; }
   .check-h { grid-column: 3; grid-row: 1; }
 }
+
+/* DEV-183 (review H1): where IPAMincho is missing (the CI-like font set), the generic serif fell back to WenQuanYi Zen Hei, which
+   has no vertical metrics: vertical words were painted far below their boxes, over themselves and over other words. IPAGothic
+   (vertical metrics, in the CI-like set) now comes before the generic family. Where IPAMincho exists nothing changes. */
+:root { --mincho: "IPAMincho", "IPAGothic", serif; }

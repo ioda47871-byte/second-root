@@ -330,3 +330,8 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
      column starts at 240px), so neither the strokes nor their blur reach the heading (a fixed calc(100vw - 490px) did at 684–860) */
   .wisps { right: 34px; bottom: 104px; width: min(300px, calc(100vw - 322px - 7.42 * clamp(24px, 4.2vw, 34px))); height: 560px; }
 }
+
+/* DEV-183 (review H1): where IPAMincho is missing (the CI-like font set), the generic serif fell back to WenQuanYi Zen Hei, which
+   has no vertical metrics: the vertical name ゆげ湯 was painted far below its box, over 熱いほうから, and 熱い painted い over 熱.
+   IPAGothic (vertical metrics, in the CI-like set) now comes before the generic family. Where IPAMincho exists nothing changes. */
+:root { --mincho: "IPAMincho", "IPAPMincho", "IPAGothic", serif; }

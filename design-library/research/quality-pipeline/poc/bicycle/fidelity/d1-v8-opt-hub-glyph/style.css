@@ -285,3 +285,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
    0.82 × 15.6vw = 12.79vw against 13.95vw (3.7px at 320, 4.5px at 390). The disc, the wheel and the spokes are unchanged. */
 @media (min-width: 601px) { .hub-name { font-size: 12vw; } }
 @media (max-width: 600px) { .hub-name { font-size: 15.6vw; } }
+
+/* DEV-183 (review H1): where IPAMincho is missing (the CI-like font set), the generic serif fell back to WenQuanYi Zen Hei, which
+   has no vertical metrics: vertical words were painted far below their boxes, over themselves and over other words. IPAGothic
+   (vertical metrics, in the CI-like set) now comes before the generic family. Where IPAMincho exists nothing changes. */
+:root { --mincho: "IPAMincho", "IPAGothic", serif; }

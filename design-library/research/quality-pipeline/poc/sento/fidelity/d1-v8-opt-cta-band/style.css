@@ -316,12 +316,15 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
 }
 
 /* DEV-183 別案 (b): an information band under the cold water's fact (about the middle of the page), between two light rules
-   on the blue. It keeps to the left of 冷たい and of 沸く, which rises from the fire below into this section's bottom padding. */
-.band-info { display: grid; grid-template-columns: auto auto auto; align-items: baseline; gap: 12px 44px; max-width: 560px; margin-top: 44px; padding: 16px 0 14px; border-top: 1px solid rgba(246, 241, 231, .7); border-bottom: 1px solid rgba(246, 241, 231, .7); }
+   on the blue. It keeps to the left of 冷たい and of 沸く, which rises from the fire below into this section's bottom padding
+   (520px wide on PC: its lower right corner is about 58px from 沸く at 1440). Labels and the short values never break inside
+   (review M1: 時/間 and 15:00〜/24:00 at 601–605, 所在/地 at 320–335); only the address may wrap, at its phrase ends. */
+.band-info { display: grid; grid-template-columns: auto auto auto; align-items: baseline; gap: 12px 44px; max-width: 520px; margin-top: 44px; padding: 16px 0 14px; border-top: 1px solid rgba(246, 241, 231, .7); border-bottom: 1px solid rgba(246, 241, 231, .7); }
 .band-info div { display: flex; align-items: baseline; gap: 12px; }
 .band-info .b-tel, .band-info .b-addr { grid-column: 1 / -1; }
-.band-info dt { font-size: 12px; letter-spacing: .3em; color: #fff3df; }
+.band-info dt { white-space: nowrap; font-size: 12px; letter-spacing: .3em; color: #fff3df; }
 .band-info dd { font-family: var(--mincho); font-size: clamp(17px, 1.39vw, 20px); }
+.band-info div:not(.b-addr) dd { white-space: nowrap; }
 .band-info .b-tel dd { font-family: var(--gothic); font-weight: 700; font-size: clamp(26px, 2.5vw, 36px); letter-spacing: .04em; line-height: 1.3; white-space: nowrap; }
 @media (max-width: 1100px) { .band-info { max-width: min(560px, calc(100% - 14vw)); } }
 @media (max-width: 600px) {
@@ -329,3 +332,8 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
   .band-info .b-tel dd { font-size: min(30px, calc(9.4vw - 4px)); }
   .band-info dd { font-size: 17px; }
 }
+
+/* DEV-183 (review H1): where IPAMincho is missing (the CI-like font set), the generic serif fell back to WenQuanYi Zen Hei, which
+   has no vertical metrics: the vertical name ゆげ湯 was painted far below its box, over 熱いほうから, and 熱い painted い over 熱.
+   IPAGothic (vertical metrics, in the CI-like set) now comes before the generic family. Where IPAMincho exists nothing changes. */
+:root { --mincho: "IPAMincho", "IPAPMincho", "IPAGothic", serif; }

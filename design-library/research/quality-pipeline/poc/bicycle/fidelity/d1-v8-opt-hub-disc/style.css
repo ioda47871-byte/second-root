@@ -286,3 +286,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
    The picked-out spokes start on the new edge (their inner ends moved along each spoke in the HTML). */
 @media (min-width: 601px) { .hub-name { top: 31.345vw; left: calc(67.36% - 2.685vw); width: 26.2vw; height: 26.2vw; } }
 @media (max-width: 600px) { .hub-name { top: 65.05vw; left: calc(64.1% - 19.5vw); width: 39vw; height: 39vw; } }
+
+/* DEV-183 (review H1): where IPAMincho is missing (the CI-like font set), the generic serif fell back to WenQuanYi Zen Hei, which
+   has no vertical metrics: vertical words were painted far below their boxes, over themselves and over other words. IPAGothic
+   (vertical metrics, in the CI-like set) now comes before the generic family. Where IPAMincho exists nothing changes. */
+:root { --mincho: "IPAMincho", "IPAGothic", serif; }

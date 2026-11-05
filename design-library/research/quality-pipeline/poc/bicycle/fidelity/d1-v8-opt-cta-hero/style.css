@@ -286,7 +286,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
 .quick { position: relative; z-index: 3; background: var(--concrete); border-bottom: 4px solid var(--yellow); padding: 12px var(--pad) 10px; }
 .quick-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 44px; }
 .quick-info div { display: flex; align-items: baseline; gap: 12px; }
-.quick-info dt { font-size: 12px; letter-spacing: .3em; color: var(--ink); }
+.quick-info dt { white-space: nowrap; font-size: 12px; letter-spacing: .3em; color: var(--ink); }
+.quick-info div:not(.q-addr) dd { white-space: nowrap; }
 .quick-info dd { font-size: 16px; color: var(--ink); }
 .quick-info .q-tel dd { font-weight: 900; font-size: 24px; letter-spacing: .04em; line-height: 1.4; }
 @media (max-width: 600px) {
@@ -297,3 +298,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   .quick-info .q-tel dd { font-size: 22px; white-space: nowrap; }
   .quick-info dd { font-size: 15px; }
 }
+
+/* DEV-183 (review H1): where IPAMincho is missing (the CI-like font set), the generic serif fell back to WenQuanYi Zen Hei, which
+   has no vertical metrics: vertical words were painted far below their boxes, over themselves and over other words. IPAGothic
+   (vertical metrics, in the CI-like set) now comes before the generic family. Where IPAMincho exists nothing changes. */
+:root { --mincho: "IPAMincho", "IPAGothic", serif; }

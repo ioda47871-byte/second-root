@@ -322,7 +322,8 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
 .quick::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5px); top: 0; bottom: 0; width: 10px; border-radius: 5px; z-index: 7; pointer-events: none; background: #fff1dc; }
 .quick-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 44px; }
 .quick-info div { display: flex; align-items: baseline; gap: 12px; }
-.quick-info dt { font-size: 12px; letter-spacing: .3em; color: #fff3df; }
+.quick-info dt { white-space: nowrap; font-size: 12px; letter-spacing: .3em; color: #fff3df; }
+.quick-info div:not(.q-addr) dd { white-space: nowrap; }
 .quick-info dd { font-family: var(--mincho); font-size: 17px; }
 .quick-info .q-tel dd { font-family: var(--gothic); font-weight: 700; font-size: 24px; letter-spacing: .04em; line-height: 1.4; }
 @media (max-width: 1100px) { .quick { padding-left: 100px; } }
@@ -335,3 +336,8 @@ section::before { content: ""; position: absolute; left: calc(var(--gauge-x) - 5
   .quick-info .q-tel dd { font-size: 22px; white-space: nowrap; }
   .quick-info dd { font-size: 15px; }
 }
+
+/* DEV-183 (review H1): where IPAMincho is missing (the CI-like font set), the generic serif fell back to WenQuanYi Zen Hei, which
+   has no vertical metrics: the vertical name ゆげ湯 was painted far below its box, over 熱いほうから, and 熱い painted い over 熱.
+   IPAGothic (vertical metrics, in the CI-like set) now comes before the generic family. Where IPAMincho exists nothing changes. */
+:root { --mincho: "IPAMincho", "IPAPMincho", "IPAGothic", serif; }
