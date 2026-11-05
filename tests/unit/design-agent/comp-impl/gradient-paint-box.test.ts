@@ -88,8 +88,8 @@ async function drawn(): Promise<{ jump: number; bandsFlat: boolean; frags: numbe
 }
 
 describe("DEV-180 the candidate is the production scanner plus protection only", () => {
-  it("capabilities stay off on this branch: APPROVED_CAPABILITIES is empty", () => {
-    expect(APPROVED_CAPABILITIES).toEqual([]);
+  it("DEV-180 production draft: gradient_ground alone is approved", () => {
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]);
   });
 
   it("the production scanner now holds the patch exactly once, in each script that inlines it; the candidate is production", () => {

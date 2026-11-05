@@ -48,7 +48,8 @@ async function scopeCodes(body: string, css: string, words: readonly string[], o
 
 describe("DEV-170 display_nowrap stays OFF", () => {
   it("approves nothing and turns the flag on for no spec", () => {
-    expect(APPROVED_CAPABILITIES).toEqual([]);
+    expect(APPROVED_CAPABILITIES).not.toContain("display_nowrap"); // DEV-180: gradient_ground alone is approved
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]);
     expect(pageCssOptionsOf({ capabilities: ["display_nowrap"] })).toEqual({});
   });
 

@@ -58,8 +58,8 @@ export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
  * Phase B (DEV-164, docs/design/phase-b-design.md): display_scale (display words up to 640px), display_nowrap (nowrap /
  * keep-all on display words), colour_syntax (hsl / oklch / oklab / named colours), gradient_ground (a gradient on a
  * text-free box that meets no text), translucent_decoration (opacity < 1 on a text-free box that meets no text). Each
- * widens the page CSS by its own PageCssOptions key and brings its render checks (phase-b.ts). NONE is approved:
- * declaring one is refused (SPEC_CAPABILITY_NOT_APPROVED). Enabling one is a separate, owner-approved PR that adds its
+ * widens the page CSS by its own PageCssOptions key and brings its render checks (phase-b.ts). Only gradient_ground is
+ * approved (DEV-180); declaring any other is refused (SPEC_CAPABILITY_NOT_APPROVED). Enabling one is a separate, owner-approved PR that adds its
  * name to APPROVED_CAPABILITIES (DEV-083 §8). web_font, image_filters and ornament stay design-only (§7 of the design).
  */
 export const PHASE_B_CAPABILITIES = ["display_scale", "display_nowrap", "colour_syntax", "gradient_ground", "translucent_decoration"] as const satisfies readonly CapabilityName[];
@@ -69,7 +69,10 @@ export const PHASE_B_CAPABILITIES = ["display_scale", "display_nowrap", "colour_
  * stay horizontal — are in layers.ts. NOT approved: declaring it is refused (SPEC_CAPABILITY_NOT_APPROVED) until a
  * person adds it to this list.
  */
-export const APPROVED_CAPABILITIES: readonly CapabilityName[] = [];
+// DEV-180 (production draft; merged only with the owner's explicit approval): gradient_ground alone, after its
+// measuring-box gap (DEV-172 Fresh Review M1) was closed in phase-b.ts (GRADIENT_PAINT_BOX). colour_syntax stays out
+// (its oklch / oklab stops are interpolated in oklab, which the stop rule does not see). Rollback: remove the name.
+export const APPROVED_CAPABILITIES: readonly CapabilityName[] = ["gradient_ground"];
 
 const Id = z.string().regex(/^[a-z][a-z0-9-]{1,31}$/);
 const Frac = z.number().min(0).max(1);

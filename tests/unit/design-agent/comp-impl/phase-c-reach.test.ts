@@ -102,7 +102,7 @@ describe("DEV-180 phase C reach: thin, generated and SVG paint over and under th
   afterAll(() => console.log(`DEV-180 reach grid (form | text | order | prototype | pixel)\n${rows.join("\n")}`));
 
   it("capabilities stay off: APPROVED_CAPABILITIES is empty and no phase C name exists", () => {
-    expect(APPROVED_CAPABILITIES).toEqual([]);
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]); // DEV-180 production draft: no phase C capability
     expect(CAPABILITY_NAMES as readonly string[]).not.toContain("layered_decoration");
   });
 

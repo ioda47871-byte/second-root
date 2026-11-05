@@ -190,11 +190,12 @@ const ALLOWED_ON = [
 /** Pass only with colour_syntax as well (named, hsl, oklch, oklab without alpha below 1). */
 const ALLOWED_ONC = ["background: linear-gradient(red, #fff)", "background: linear-gradient(hsl(0 0% 0%), hsla(0, 0%, 0%, 1))", "background: linear-gradient(oklch(0.5 0.1 30), oklab(0.5 0.1 0.1))", "background: linear-gradient(rebeccapurple, oklch(0.5 0.1 30 / 1))"];
 
-describe("DEV-172 gradient_ground stays OFF", () => {
-  it("approves nothing and turns the flag on for no spec", () => {
-    expect(APPROVED_CAPABILITIES).toEqual([]);
-    expect(pageCssOptionsOf({ capabilities: ["gradient_ground"] })).toEqual({});
-    expect(pageCssOptionsOf({ capabilities: ["gradient_ground", "colour_syntax", "translucent_decoration"] })).toEqual({});
+describe("DEV-172 gradient_ground: approved alone (DEV-180 production draft)", () => {
+  it("approves gradient_ground alone: its flag only for a spec declaring it, never colour_syntax or translucent_decoration", () => {
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]);
+    expect(pageCssOptionsOf({ capabilities: ["gradient_ground"] })).toEqual({ gradientGround: true });
+    expect(pageCssOptionsOf({})).toEqual({});
+    expect(pageCssOptionsOf({ capabilities: ["gradient_ground", "colour_syntax", "translucent_decoration"] })).toEqual({ gradientGround: true });
   });
 
   it("with the flag off, the 1px sweep does not run and every gradient the flag would allow is refused (CSS_VALUE / CSS_PROPERTY)", async () => {

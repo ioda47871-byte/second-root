@@ -56,7 +56,8 @@ const CAP = ["TYPE_ABOVE_ROLE_CAP"];
 
 describe("DEV-171 display_scale stays OFF", () => {
   it("approves nothing and turns the flag on for no spec", () => {
-    expect(APPROVED_CAPABILITIES).toEqual([]);
+    expect(APPROVED_CAPABILITIES).not.toContain("display_scale"); // DEV-180: gradient_ground alone is approved
+    expect(APPROVED_CAPABILITIES).toEqual(["gradient_ground"]);
     expect(pageCssOptionsOf({ capabilities: ["display_scale"] })).toEqual({});
     expect(TYPE_ROLE_CAPS).toEqual({ text: 256, display: 640 });
   });

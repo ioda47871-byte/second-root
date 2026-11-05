@@ -193,19 +193,24 @@ describe("DEV-164 phase B: the static grammar behind the flags", () => {
 const SPEC = JSON.parse(readFileSync(join(FIXTURE, "layout-spec.json"), "utf8")) as Record<string, unknown>;
 
 describe("DEV-164 phase B: who can turn a flag on", () => {
-  it("approves nothing: APPROVED_CAPABILITIES is empty", () => {
-    expect([...APPROVED_CAPABILITIES]).toEqual([]);
+  it("approves gradient_ground alone (DEV-180 production draft; before: nothing)", () => {
+    expect([...APPROVED_CAPABILITIES]).toEqual(["gradient_ground"]);
     expect(CAPABILITY_NAMES).toEqual(expect.arrayContaining([...PHASE_B_CAPABILITIES]));
   });
 
-  it.each([...PHASE_B_CAPABILITIES])("refuses a spec declaring %s (not approved)", (name) => {
+  it.each(PHASE_B_CAPABILITIES.filter((c) => c !== "gradient_ground"))("refuses a spec declaring %s (not approved)", (name) => {
     const r = checkCompSpec({ ...SPEC, capabilities: [name] });
     expect(r.ok).toBe(false);
     expect(r.ok ? [] : r.problems).toEqual(["SPEC_CAPABILITY_NOT_APPROVED"]);
   });
 
-  it("turns no option on for any declared capability while none is approved", () => {
-    for (const name of CAPABILITY_NAMES) expect(pageCssOptionsOf({ capabilities: [name] })).toEqual({});
+  it("accepts a spec declaring gradient_ground (DEV-180), and with it alone turns gradientGround on", () => {
+    expect(checkCompSpec({ ...SPEC, capabilities: ["gradient_ground"] }).ok).toBe(true);
+    expect(checkCompSpec({ ...SPEC, capabilities: ["gradient_ground", "colour_syntax"] })).toEqual({ ok: false, problems: ["SPEC_CAPABILITY_NOT_APPROVED"] });
+  });
+
+  it("turns no option on for any declared capability but the approved gradient_ground", () => {
+    for (const name of CAPABILITY_NAMES) expect(pageCssOptionsOf({ capabilities: [name] })).toEqual(name === "gradient_ground" ? { gradientGround: true } : {});
     expect(pageCssOptionsOf({})).toEqual({});
   });
 
