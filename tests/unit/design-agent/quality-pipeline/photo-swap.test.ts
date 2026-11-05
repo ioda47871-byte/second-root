@@ -171,6 +171,25 @@ describe("the request text's numbers (docs/design/tsugute-photo-request.md §3)"
     expect(plan(id, fw, fh, OWNER).ok).toBe(true);
     expect(plan(id, Math.round(fw * 0.95), Math.round(fh * 0.95), OWNER).codes).toContain("PHOTO_BELOW_MIN_SCALE");
   });
+  // DEV-182: the owner checklist (docs/design/tsugute-photo-owner-checklist.md) asks for the larger of the inventoried
+  // page's request and the newest C page's (d1-v8, measured outside the repository). It must never ask for less than the
+  // inventoried page needs: each target passes at 2× here, each floor only with the owner's exception.
+  it.each([
+    ["ph-ware", 1610, 1208, 1210, 908],
+    ["ph-kake", 1370, 1028, 1030, 773],
+    ["ph-hibi", 1600, 900, 1200, 675],
+    ["ph-dry", 1300, 1300, 980, 980],
+    ["ph-hand", 1660, 1660, 1250, 1250],
+    ["ph-desk", 1030, 773, 770, 578],
+  ])("owner checklist %s: %i×%i passes at 2× on the inventoried page, the floor only with the exception", (id, w, h, fw, fh) => {
+    const r = requestFor(slot(id), { edges: edges(id) });
+    if (!r.ok) throw new Error(id);
+    expect(w).toBeGreaterThanOrEqual(r.min_width_px);
+    expect(h).toBeGreaterThanOrEqual(r.min_height_px);
+    expect(plan(id, w, h).ok).toBe(true);
+    expect(plan(id, fw, fh, OWNER).ok).toBe(true);
+    if (fw < r.min_width_px) expect(plan(id, fw, fh).codes).toContain("SCALE_EXCEPTION_REQUIRED");
+  });
   it("ph-dry in one square photo: a subject within 60% of the width and 70% of the height fits PC and SP", () => {
     expect(plan("ph-dry", 1300, 1300, undefined, { x: 0.2, y: 0.15, w: 0.6, h: 0.7 })).toMatchObject({ ok: true, needs_sp_photo: false });
     expect(plan("ph-dry", 1300, 1300, undefined, { x: 0.2, y: 0.1, w: 0.6, h: 0.8 }).codes).toEqual(["SP_PHOTO_REQUIRED"]);
@@ -211,6 +230,35 @@ describe("caption → alt text", () => {
   it("refuses a page whose caption is not where the pinned page has it", () => {
     expect(() => transformHtml(html.replace("写真｜縁の欠けた器", "縁の欠けた器"), slotsIn)).toThrow(/CAPTION_NOT_FOUND: ph-kake/);
     expect(() => transformHtml(html, slotsIn.slice(1))).toThrow(/CAPTION_LEFT/);
+  });
+  // DEV-182: the newer C pages (d1-v4 and later) keep drawn seams (<svg class="dmg">) inside the board and break the
+  // captions with <wbr>. Until a page is inventoried and the transform is extended (owner-approved), the transform must
+  // fail closed on them: never a half-swapped page with a placeholder board or a 写真｜ caption left behind.
+  it("fails closed on every other つぐ手 C page: each one transforms whole or throws, and never leaves 写真｜", () => {
+    const dir = join(REPO, "design-library/research/quality-pipeline/poc/tsugute/fidelity");
+    const others = readdirSync(dir).filter((v) => join("design-library/research/quality-pipeline/poc/tsugute/fidelity", v) !== INV.page_dir);
+    expect(others.length).toBeGreaterThanOrEqual(6); // d1-v2, d1-v4 … d1-v8: never a vacuous loop
+    let refused = 0;
+    for (const v of others) {
+      const page = readFileSync(join(dir, v, "index.html"), "utf8");
+      let out: string | null = null;
+      try {
+        out = transformHtml(page, slotsIn);
+      } catch (e) {
+        expect((e as Error).message, v).toMatch(/^(CAPTION_NOT_FOUND|BOARD_NOT_FOUND|CAPTION_LEFT):/);
+        refused += 1;
+      }
+      if (out !== null) {
+        expect(out, v).not.toContain("写真｜");
+        for (const s of INV.slots) expect(out, `${v} ${s.slot_id}`).toContain(`<picture data-slot="${s.slot_id}">`);
+      }
+    }
+    expect(refused).toBeGreaterThanOrEqual(1);
+  });
+  it("the newest つぐ手 C page (d1-v8, DEV-178) is refused by the transform: its boards hold drawn seams", () => {
+    const page = readFileSync(join(REPO, "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v8/index.html"), "utf8");
+    expect(page.match(/写真｜/g)).toHaveLength(6);
+    expect(() => transformHtml(page, slotsIn)).toThrow(/^BOARD_NOT_FOUND: ph-ware$/);
   });
 });
 
@@ -347,6 +395,16 @@ describe("photo-swap: the つぐ手 C page with synthetic photos", () => {
     expect(existsSync(join(REPO, "tmp-dev166-out"))).toBe(false);
     const other = await swapPage({ pageDir: "design-library/research/quality-pipeline/poc/tsugute/fidelity/d1-v2", manifest: manifest(slots), out: outDir(), pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN });
     expect(codesOf(other)).toContain("PAGE_NOT_INVENTORIED");
+    // DEV-182: every other つぐ手 C page — the newest (d1-v8) included — is refused before anything is read or written
+    const fidelity = "design-library/research/quality-pipeline/poc/tsugute/fidelity";
+    const versions = readdirSync(join(REPO, fidelity)).filter((v) => join(fidelity, v) !== INV.page_dir);
+    expect(versions).toContain("d1-v8");
+    for (const v of versions) {
+      const out = outDir();
+      const res = await swapPage({ pageDir: join(fidelity, v), manifest: manifest(slots), out, pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN });
+      expect(codesOf(res), v).toEqual(["PAGE_NOT_INVENTORIED"]);
+      nothingLeft(out);
+    }
     expect(codesOf(await swapPage({ pageDir: PAGE, manifest: { ...manifest(slots), shop: "sento" }, out: outDir(), pipelineRoot: pipeline, now: NOW, forbiddenSha256: FORBIDDEN }))).toEqual(["MANIFEST_INVALID"]);
   });
 
