@@ -244,7 +244,7 @@ describe("DEV-175 the proposed grammar (test-only prototype, one flag per featur
 
 // ---------------------------------------------------------------- 3. the render checks on synthetic probes
 
-type Probe = { name: string; body: string; css: string; features: PhaseDFeatures; width?: number; code: string; pixels?: boolean; protect?: readonly string[]; grammar?: PhaseDOptions };
+type Probe = { name: string; body: string; css: string; features: PhaseDFeatures; width?: number; code: string; pixels?: boolean; protect?: readonly string[]; grammar?: PhaseDOptions; instances?: readonly string[] };
 
 const F_V: PhaseDFeatures = { vertical: true };
 const F_R: PhaseDFeatures = { rotation: true };
@@ -376,6 +376,46 @@ const MUST_FAIL: Probe[] = [
     pixels: true,
   },
   {
+    name: "a hollow white word whose child inherits the stroke with a dark fill (re-review 3 M1: the parent's own text is measured alone)",
+    body: '<div class="wrap"><p class="o">継<span class="d">ぐ手</span></p></div>',
+    css: ".o { font-size: 128px; color: transparent; -webkit-text-stroke: 2px #ffffff; } .d { color: #1f1d1b; }",
+    features: F_O,
+    code: "PHASE_D_OUTLINE_INVISIBLE",
+    pixels: true,
+    grammar: { outlinedType: true },
+    instances: ["継 :: PHASE_D_OUTLINE_INVISIBLE"],
+  },
+  {
+    name: "a hollow white word with a dark stroked glyph between its own glyphs (the child lies inside the parent's own extent)",
+    body: '<div class="wrap"><p class="o">継<span class="d">ぐ</span>手</p></div>',
+    css: ".o { font-size: 128px; color: transparent; -webkit-text-stroke: 2px #ffffff; } .d { color: #1f1d1b; }",
+    features: F_O,
+    code: "PHASE_D_OUTLINE_INVISIBLE",
+    pixels: true,
+    grammar: { outlinedType: true },
+    instances: ["継手 :: PHASE_D_OUTLINE_INVISIBLE"],
+  },
+  {
+    name: "the same, rotated 1°",
+    body: '<div class="wrap"><p class="o">継<span class="d">ぐ手</span></p></div>',
+    css: ".o { width: max-content; font-size: 128px; color: transparent; -webkit-text-stroke: 2px #ffffff; transform: rotate(1deg); } .d { color: #1f1d1b; }",
+    features: { rotation: true, outline: true },
+    code: "PHASE_D_OUTLINE_INVISIBLE",
+    pixels: true,
+    grammar: { outlinedType: true, smallRotation: true },
+    instances: ["継 :: PHASE_D_OUTLINE_INVISIBLE"],
+  },
+  {
+    name: "three levels: an invisible grandparent, a visible parent, an invisible child (each measured on its own text)",
+    body: '<div class="wrap"><p class="o">継<span class="v">ぐ<span class="i">手</span></span></p></div>',
+    css: ".o { font-size: 128px; color: transparent; -webkit-text-stroke: 2px #ffffff; } .v { color: #1f1d1b; } .i { color: transparent; }",
+    features: F_O,
+    code: "PHASE_D_OUTLINE_INVISIBLE",
+    pixels: true,
+    grammar: { outlinedType: true },
+    instances: ["継 :: PHASE_D_OUTLINE_INVISIBLE", "手 :: PHASE_D_OUTLINE_INVISIBLE"],
+  },
+  {
     name: "a dark word on a dark gradient ground with a thin stroke (the fill cannot be compared with an image ground: fail closed)",
     body: '<div class="wrap"><div class="g"><p class="o">継ぐ</p></div></div>',
     css: ".g { padding: 24px; background: linear-gradient(#000000, #111111); } .o { font-size: 96px; color: #000000; -webkit-text-stroke: 1px #ffffff; }",
@@ -422,6 +462,13 @@ const MUST_PASS: Array<Omit<Probe, "code"> & { sweep: boolean }> = [
     sweep: true,
   },
   {
+    name: "a rotated word with one glyph stroked (its own word's glyphs are not other text: no INK_UNPROVEN at any width)",
+    body: '<div class="wrap"><p class="r">継<span class="o">ぐ</span>手</p><p class="n">本文。</p></div>',
+    css: ".r { width: max-content; max-width: 100%; font-size: 72px; line-height: 1; transform: rotate(2deg); } .o { -webkit-text-stroke: 2px #c79a45; paint-order: stroke fill; } .n { margin-top: 32px; }",
+    features: { rotation: true, outline: true },
+    sweep: true,
+  },
+  {
     name: "a rotated word whose box meets the next line but whose ink does not (pixels clear what geometry cannot)",
     body: '<div class="wrap"><p class="r">一</p><p class="n">すぐ下の行</p></div>',
     css: ".r { width: max-content; font-size: 64px; line-height: 1; transform: rotate(8deg); } .n { font-size: 24px; line-height: 1; }",
@@ -440,6 +487,8 @@ describe("DEV-175 the render checks (prototype) on synthetic probes", () => {
       table.push(`FAIL | ${p.name} | ${codeNames(got).join(", ")}`);
       // a probe marked with a grammar is written in it: the render check is what stops it
       if (p.grammar) expect(phaseDCssProblems(`${BASE}\n${p.css}`, p.grammar), p.name).toEqual([]);
+      // a probe that names its instances: exactly these texts carry the code (no more, no fewer)
+      if (p.instances) expect(got.filter((x) => x.endsWith(` :: ${p.code}`)).sort(), p.name).toEqual([...p.instances].sort());
       expect(codeNames(got), p.name).toContain(p.code);
     }
   });
@@ -451,7 +500,17 @@ describe("DEV-175 the render checks (prototype) on synthetic probes", () => {
       const got = await full(p.body, p.css, p.features);
       table.push(`PASS | ${p.name} | ${got.join(", ") || "-"}`);
       expect(got, p.name).toEqual([]);
+      // a probe swept at every width also passes on geometry alone (no fail-closed ink target) here
+      if (p.sweep) expect(await geometry(p.body, p.css, p.features), `${p.name} (geometry)`).toEqual([]);
     }
+  });
+
+  it("the rest of a stroked part's own word is not other text; the next paragraph is (set solid, outside the grammar on purpose: line-height < 1)", async () => {
+    const css = ".wrap { padding: 80px 40px; } .w { font-size: 96px; line-height: 0.1; } .o { -webkit-text-stroke: 3px #c79a45; paint-order: stroke fill; }";
+    // one word on two lines: the stroked second line's ink meets the first line's — the same word
+    expect(await full('<div class="wrap"><p class="w">一<br><span class="o">一</span></p></div>', css, F_O)).toEqual([]);
+    // the same lines as two paragraphs: the first is other text
+    expect(codeNames(await full('<div class="wrap"><p class="w">一</p><p class="w"><span class="o">一</span></p></div>', css, F_O))).toContain("PHASE_D_INK_ON_TEXT");
   });
 
   it("PagePool serves one page per key: another page under the same key is refused", async () => {

@@ -168,7 +168,7 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
   };
   const all = [document.documentElement, document.body].concat(Array.from(document.body.querySelectorAll("*")));
   // marks of an earlier scan of the same page (a sweep scans one page many times) never carry over
-  for (const el of all) for (const a of ["data-pd-id", "data-pd-oid", "data-pd-stroked", "data-pd-text"]) el.removeAttribute(a);
+  for (const el of all) for (const a of ["data-pd-id", "data-pd-oid", "data-pd-w", "data-pd-text"]) el.removeAttribute(a);
   const ownNodes = (el) => Array.from(el.childNodes).filter((n) => n.nodeType === 3 && flat(n.data) !== "");
   const charRects = (n) => {
     const out = [];
@@ -373,23 +373,37 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
       if (fc.a === 0 || (ground && contrast(fc, ground) < 1.5)) add("PHASE_D_OUTLINE_HOLLOW_THIN", el, sw);
       else if (!ground) add("PHASE_D_OUTLINE_GROUND_UNMEASURED", el, sw);
     }
-    el.setAttribute("data-pd-stroked", "");
     stroked.push({ el, sw });
   }
 
   // ------------------------------------------------------------ ink targets (pixels decide; fail closed without)
   let id = 0;
+  // The word an element belongs to: the outermost element around it (or itself), reached through inline parts, that is
+  // still one word. Its own other
+  // glyphs are not "other text" for the ink checks of a part of it (re-review 3 L1: a stroked glyph inside a word
+  // failed closed against its neighbours at every width); text outside the word still is.
+  const scopes = new Map();
+  // climbs only out of inline elements (a part of a word is inline; a block is a word or a line of its own)
+  const wordOf = (el) => {
+    let w = el;
+    for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement && st(w).display.startsWith("inline") && isWord(p); p = p.parentElement) w = p;
+    if (!scopes.has(w)) { scopes.set(w, scopes.size); w.setAttribute("data-pd-w", String(scopes.get(w))); }
+    return w;
+  };
   const pushTarget = (el, kind, sw) => {
-    const ext = union(textsIn(el).flatMap(ownRects).concat(kind === "rotated" ? Array.from(el.getClientRects()) : []));
+    // an outline target's extent is its OWN glyphs (its direct text nodes); a rotated target's, its whole subtree
+    const ext = union((kind === "outline" ? ownRects(el) : textsIn(el).flatMap(ownRects)).concat(kind === "rotated" ? Array.from(el.getClientRects()) : []));
     if (!ext) return;
     const g = grow(ext, sw / 2 + 1);
-    const near = textEls.some((t) => !(el === t || el.contains(t)) && ownRects(t).some((r) => meets(r, g, 0.5)));
+    const word = kind === "outline" ? wordOf(el) : el;
+    const near = textEls.some((t) => !(word === t || word.contains(t)) && ownRects(t).some((r) => meets(r, g, 0.5)));
     el.setAttribute(kind === "rotated" ? "data-pd-id" : "data-pd-oid", String(id));
-    targets.push({ id: id++, kind, text: flat(el.textContent).slice(0, 24), near, rect: { left: g.left + scrollX, top: g.top + scrollY, right: g.right + scrollX, bottom: g.bottom + scrollY } });
+    // an outline target is named by its own text (a parent and its stroked child are two targets)
+    targets.push({ id: id++, kind, text: flat(kind === "outline" ? ownNodes(el).map((n) => n.data).join("") : el.textContent).slice(0, 24), near, scope: kind === "outline" ? scopes.get(word) : null, rect: { left: g.left + scrollX, top: g.top + scrollY, right: g.right + scrollX, bottom: g.bottom + scrollY } });
   };
   // a rotated word is a target for its ink (INK_ON_TEXT); EVERY stroked element is its own outline target, inside a
-  // rotated word or not, and its outline pixels see only stroked text (Fresh Review H1, re-review M1: a stroked part of
-  // a rotated word was measured together with the unstroked rest, or not at all)
+  // rotated word or not, and its outline pixels see exactly its own text nodes — no descendant's text, stroked or not
+  // (Fresh Review H1, re-reviews M1: three rounds of mixed measurements; each stroked descendant has its own target)
   for (const el of rotatedRoots) {
     const inside = stroked.filter((s) => el === s.el || el.contains(s.el));
     pushTarget(el, "rotated", Math.max(0, ...inside.map((s) => s.sw)));
@@ -404,7 +418,7 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
 
 export type PhaseDFeatures = { vertical?: boolean; rotation?: boolean; outline?: boolean };
 export type PhaseDPlan = { protect: readonly string[]; names: readonly string[]; protectSel?: string; features: PhaseDFeatures };
-export type InkTarget = { id: number; kind: "rotated" | "outline"; text: string; near: boolean; rect: { left: number; top: number; right: number; bottom: number } };
+export type InkTarget = { id: number; kind: "rotated" | "outline"; text: string; near: boolean; scope: number | null; rect: { left: number; top: number; right: number; bottom: number } };
 export type PhaseDScan = { codes: Record<string, number>; found: Array<{ code: string; text: string; note: unknown }>; targets: InkTarget[]; vertical: number; texts: number };
 
 /** The phase D geometric scan at the current viewport. */
@@ -469,11 +483,15 @@ export async function phaseDPixels(page: Page, scan: PhaseDScan): Promise<InkRes
     }
     const clip = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
     const shot = async (mode: "X" | "G" | "O"): Promise<Raw> => {
-      // a rotated target: its whole subtree; an outline target: the stroked element and its stroked descendants only
-      const sel = t.kind === "rotated" ? `[data-pd-id="${t.id}"], [data-pd-id="${t.id}"] *` : `[data-pd-oid="${t.id}"], [data-pd-oid="${t.id}"] [data-pd-stroked]`;
+      // X: a rotated target draws its whole subtree; an outline target EXACTLY its own text nodes (the element alone: every
+      // descendant with text is hidden like any other text). O: every text but the target — and, for an outline target,
+      // but the rest of its own word (scope)
+      const sel = t.kind === "rotated" ? `[data-pd-id="${t.id}"], [data-pd-id="${t.id}"] *` : `[data-pd-oid="${t.id}"]`;
+      const word = t.scope === null ? sel : `[data-pd-w="${t.scope}"], [data-pd-w="${t.scope}"] *`;
       // the kept text's colours are pinned inline (an inline !important beats the hiding rule and its inheritance)
-      await page.evaluate(`((sel, mode, hide) => {
+      await page.evaluate(`((sel, word, mode, hide) => {
         const keep = new Set(Array.from(document.querySelectorAll(sel)));
+        const own = new Set(Array.from(document.querySelectorAll(word)));
         // record every text's own colours BEFORE any is pinned: the fill and stroke colours inherit, so a child read
         // after its parent was pinned would record the parent's pinned colour (re-review M1)
         for (const el of document.querySelectorAll("[data-pd-text]")) {
@@ -485,11 +503,11 @@ export async function phaseDPixels(page: Page, scan: PhaseDScan): Promise<InkRes
         for (const el of document.querySelectorAll("[data-pd-text]")) {
           const [style, c, f, k] = JSON.parse(el.getAttribute("data-pd-orig"));
           if (style === null) el.removeAttribute("style"); else el.setAttribute("style", style);
-          const show = mode === "X" ? keep.has(el) : mode === "O" ? !keep.has(el) : false;
+          const show = mode === "X" ? keep.has(el) : mode === "O" ? !keep.has(el) && !own.has(el) : false;
           if (show) { el.style.setProperty("color", c, "important"); el.style.setProperty("-webkit-text-fill-color", f, "important"); el.style.setProperty("-webkit-text-stroke-color", k, "important"); }
           else for (const d of hide.split(";").map((x) => x.trim()).filter(Boolean)) { const [p, v] = d.split(":"); el.style.setProperty(p.trim(), v.replace("!important", "").trim(), "important"); }
         }
-      })(${JSON.stringify(sel)}, ${JSON.stringify(mode)}, ${JSON.stringify(HIDE)})`);
+      })(${JSON.stringify(sel)}, ${JSON.stringify(word)}, ${JSON.stringify(mode)}, ${JSON.stringify(HIDE)})`);
       const png = await page.screenshot({ clip, fullPage: true, animations: "disabled" });
       const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
       return { data, width: info.width, height: info.height };
