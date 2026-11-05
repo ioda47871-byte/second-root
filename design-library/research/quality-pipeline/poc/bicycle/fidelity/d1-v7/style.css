@@ -193,7 +193,8 @@ h1, h2, p, dd { word-break: keep-all; overflow-wrap: anywhere; }
   /* v6 (DEV-178): v5 stepped the four stations down one diagonal (70, 190, 330, 470 across), and the right half under the wheel
      stayed empty dark ground from the rim down to the last board. Now they hang as on PC: two on the left (振れ取り, パンク) and
      two on the right (チェーン, ブレーキ), so the spokes fan out both ways from the hub. Pins (768 units): 260,40 / 284,330 /
-     600,360 / 720,660. Each spoke keeps 50 units or more from every board and name it passes. The section is 1000 units tall. */
+     600,360 / 720,660. Each spoke passes right of every board and name above it (44 units or more in 768 units, measured
+     at 601–999). The section is 1000 units tall. */
   .st-d { left: 5.21vw; top: 5.21vw; --rot: 3deg; --tone: #c4c0b4; }
   .st-a { left: 8.33vw; top: 42.97vw; --rot: -2deg; --tone: #cbc6ba; }
   .st-c { left: 49.48vw; top: 46.88vw; --rot: 2.5deg; --tone: #c2c4c4; }
