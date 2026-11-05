@@ -1,0 +1,263 @@
+{
+  "schema": "comp_copy_v1",
+  "shop_id": "fictional-bicycle-repair-wa",
+  "facts_sha256": "b4c720a4a51fb9d142e581db587bdfa46b8914fcf0c89a9a4e59e6a5f9f9c3fc",
+  "lane": "quality_research_fictional",
+  "items": [
+    {
+      "id": "name-full",
+      "text": "架空自転車修理 輪",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F1"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "name",
+      "text": "輪",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F1"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "tagline",
+      "text": "まがった車輪も、まっすぐに。",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "how",
+      "text": "パンク修理から車輪の振れ取りまで、店先の作業台で直します。",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F9"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "fictional",
+      "text": "比較研究用の架空の自転車修理店です。実在の店ではありません。",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F9"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "h-spokes",
+      "text": "スポークの先に、修理がある。",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F12",
+        "F13",
+        "F14",
+        "F15"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ghost-turn",
+      "text": "まわる",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "s1",
+      "text": "パンク修理",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F12"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "s2",
+      "text": "ブレーキ調整",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F13"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "s3",
+      "text": "チェーン交換",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F14"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "s4",
+      "text": "車輪の振れ取り",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F15"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "ph-a",
+      "text": "写真｜パンクを直す手元",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ph-b",
+      "text": "写真｜ブレーキの接写",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ph-c",
+      "text": "写真｜外したチェーン",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ph-d",
+      "text": "写真｜振れ取り台の車輪",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "ghost-tight",
+      "text": "締める",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "h-truing",
+      "text": "一本ずつ。",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "truing",
+      "text": "振れ取りでは、スポークを一本ずつ締めて車輪をまっすぐにします",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F10"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "ph-bench",
+      "text": "写真｜作業台と自転車",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "h-check",
+      "text": "どこを直すか、先に決める。",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F11"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "check",
+      "text": "修理の前に、どこを直すかを一緒に確かめます",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F11"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "h-lesson",
+      "text": "空気を入れる日。",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [
+        "F16"
+      ],
+      "owner_review_needed": true
+    },
+    {
+      "id": "lesson",
+      "text": "月に一回、空気の入れ方の講座を開いています",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F16"
+      ],
+      "owner_review_needed": false
+    },
+    {
+      "id": "h-visit",
+      "text": "一周して、店先へ。",
+      "claim_type": "creative_expression",
+      "source_fact_ids": [],
+      "owner_review_needed": true
+    },
+    {
+      "id": "phone",
+      "text": "000-0000-0236",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F8"
+      ],
+      "owner_review_needed": false,
+      "label": "電話"
+    },
+    {
+      "id": "address",
+      "text": "架空市架空区架空町四丁目8-1",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F4"
+      ],
+      "owner_review_needed": false,
+      "label": "所在地"
+    },
+    {
+      "id": "access",
+      "text": "架空線架空駅 南口から徒歩3分",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F7"
+      ],
+      "owner_review_needed": false,
+      "label": "道順"
+    },
+    {
+      "id": "hours",
+      "text": "9:00〜18:00",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F5"
+      ],
+      "owner_review_needed": false,
+      "label": "時間"
+    },
+    {
+      "id": "closed",
+      "text": "火曜",
+      "claim_type": "fact",
+      "source_fact_ids": [
+        "F6"
+      ],
+      "owner_review_needed": false,
+      "label": "定休"
+    }
+  ]
+}

@@ -8257,7 +8257,7 @@
     {
       "id": "DEV-180",
       "title": "gradient_ground と layered_decoration の安全上の未解決点の修正と、能力ごとの承認資料 (最初に ON を求める単一能力の選定)",
-      "status": "backlog",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-178"
@@ -8265,7 +8265,7 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-180-capability-readiness",
-      "purpose": "研究を実用化へ近づける。DEV-172 が記録したグラデーションの境界・測定領域の穴と、段 C の見逃し (1px の線・擬似要素・SVG、守る文字以外の普通の本文への重なり) を、ON の前に塞ぐ (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "purpose": "研究を実用化へ近づける。DEV-172 が記録したグラデーションの境界・測定領域の穴と、段 C の見逃し (1px の線・擬似要素・SVG、守る文字以外の普通の本文への重なり) を、ON の前に塞ぐ (Issue #193 コメント 6654178698 (2026-11-05)。A・B 節はオーナーの方針、C 節は推奨でオーナーの承認ではない)",
       "acceptance_criteria": [
         "能力ごとに『安全の未解決点 → 修正案 → 必要な本番の差分 → 画像で得る改善 → CI・レビュー → 未検証の環境』の判断資料",
         "研究の道具とテストで塞げる穴は塞ぎ、守りを足すだけにする",
@@ -8291,18 +8291,21 @@
         "main・Production・Staging・DB・worker",
         ".github/workflows",
         "依存の追加",
-        "事実の追加・copy.json の事実の変更"
+        "事実の追加・copy.json の事実の変更",
+        "研究の branch での lib/** の変更 (本番の差分は別 branch の draft PR だけ)",
+        "承認なしに APPROVED_CAPABILITIES を変える差分を merge すること"
       ],
       "human_approval_triggers": [
         "能力の ON",
-        "本番の CSS ゲートの変更"
+        "本番の CSS ゲートの変更",
+        "本番の差分の draft PR を ready にすること・merge すること (オーナーの明示の承認まで draft のまま)"
       ],
-      "note": "display_nowrap・display_scale は優先しない (Issue #193 コメント 6654178698 B.6)。"
+      "note": "display_nowrap・display_scale は優先しない (Issue #193 コメント 6654178698 B.6)。 結果 (DEV-180): gradient_ground の測る箱の穴 (DEV-172 M1) は、本番の PAINT_SCANNER への1か所の置き換え (内側の箱で測る、不透明な実線でない枠と1つの箱でない地は GRADIENT_PAINT_BOX) を候補としてテストの道具で示し、M1 の再現 4 と新しい再現 6 が落ち、3店は全幅で変わらない。段 C の試作は 1px の線・疑似要素・SVG を守る事実と普通の本文の両方に上下から当てた 96 例で確かめ、見逃し3つ (SVG の留めの角、SVG のマーカー、::first-letter・::first-line) を塞いだ (守りを足すだけ)。承認資料は docs/design/capability-approval-gradient-ground.md・capability-approval-layered-decoration.md。最初に ON を求める能力は gradient_ground (推奨、承認ではない)。本番の差分は別 branch feature/dev-180-prod-gradient-ground (push のみ、PR は親が draft で開く、merge しない)。研究の branch の lib の差は 0、APPROVED_CAPABILITIES は空のまま。記録は .ai/reviews/DEV-180.md。"
     },
     {
       "id": "DEV-181",
       "title": "N1 の装飾 SVG と段 D (縦書き・回転・縁取り) を本番へ取り込む条件の整理 (機能ごと)",
-      "status": "backlog",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-178"
@@ -8310,7 +8313,7 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-181-production-conditions",
-      "purpose": "N1 と段 D の各機能について、安全条件・オーナーの目視の記録・WebKit/Firefox など未検証の環境を列挙し、ON に要るものを機能ごとに整理する (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "purpose": "N1 と段 D の各機能について、安全条件・オーナーの目視の記録・WebKit/Firefox など未検証の環境を列挙し、ON に要るものを機能ごとに整理する (Issue #193 コメント 6654178698 (2026-11-05)。A・B 節はオーナーの方針、C 節は推奨でオーナーの承認ではない)",
       "acceptance_criteria": [
         "機能ごとの ON の条件・残る BLOCKED・未検証の環境の表",
         "オーナーの目視の記録を作らない (要るものとして挙げるだけ)",
@@ -8336,12 +8339,12 @@
       "human_approval_triggers": [
         "機能ごとの ON"
       ],
-      "note": ""
+      "note": "docs/design/production-conditions-n1-phase-d.md。判定: 実装の PR は vertical_text・outlined_type が、共有の守る文字の判定 (FACT_NODES_JS) と段 C の重なりの検査を lib へ移した後に Ready-for-approval。N1・small_rotation は段 C の lib 待ちで Blocked。ON は4つとも Blocked で、ON の前にオーナーの PC/SP の目視と実機を勧める。オーナーの目視の記録は作っていない。縦の事実の文は保護が優先 (規則を緩める案なし)。WebKit・Firefox は BLOCKED (プローブ 終了 2)。 PR #220 で develop へ merge した (7d908c3)。"
     },
     {
       "id": "DEV-182",
       "title": "つぐ手の実写真 6 枠の受け取りと差し替えの準備 (非公開の受け取り・権利の記録・SHA と画素・PC/SP の切り抜き)",
-      "status": "backlog",
+      "status": "done",
       "priority": "P2",
       "depends_on": [
         "DEV-178"
@@ -8349,11 +8352,12 @@
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-182-tsugute-photo-intake",
-      "purpose": "実写真が届いたらすぐ差し替えられるよう、受け取りの手順と道具の準備を続ける (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "purpose": "実写真が届いたらすぐ差し替えられるよう、受け取りの手順と道具の準備を続ける (Issue #193 コメント 6654178698 (2026-11-05)。A・B 節はオーナーの方針、C 節は推奨でオーナーの承認ではない)",
       "acceptance_criteria": [
         "写真をリポジトリに置かない (公開リポジトリ)",
         "未提供の写真をスクレイピング・生成・購入しない",
-        "権利の記録・SHA・画素・CSS の区切りごとの切り抜きの手順を確かめる"
+        "権利の記録・SHA・画素・CSS の区切りごとの切り抜きの手順を確かめる",
+        "素材が無ければ枠の研究だけを進め、切り抜きの微調整を成功の判定に結びつけない"
       ],
       "required_tests": [
         "npx vitest run tests/unit/design-agent/quality-pipeline (1ファイルずつ)",
@@ -8377,24 +8381,25 @@
       "human_approval_triggers": [
         "写真の提供と権利の確認"
       ],
-      "note": ""
+      "note": "合成の PNG (コードで作った雑音、commit なし) で CLI の通し試験: d1-v3 は 6枠・3区切りの切り抜き・PC/SP の描画まで通り、成功 4 件、拒む 8 件はどれも --out を残さない。最新の C (d1-v8) は一覧が無く PAGE_NOT_INVENTORIED、変換も BOARD_NOT_FOUND (継ぎ目の絵と <wbr>) で止まる: テストで固定し、直しは scripts/・design-library/ を変えるので HOLD。d1-v8 では ph-kake の目標が 1370×1028 に上がるので、オーナー向けチェックリストはその大きさ。写真は1枚も無い。 PR #221 で develop へ merge した (165d09f)。"
     },
     {
       "id": "DEV-183",
       "title": "3店の最新版の PC・tablet・SP の比較画像と、オーナーがまとめて選べるデザイン判断のシート",
-      "status": "backlog",
+      "status": "in_progress",
       "priority": "P1",
       "depends_on": [
-        "DEV-179"
+        "DEV-178"
       ],
       "attempts": 0,
       "last_failure": null,
       "branch": "feature/dev-183-owner-sheet",
-      "purpose": "オーナーが3店のデザインを評価し、採否・コピー・写真の優先順位・判断事項をまとめて選べるようにする (Issue #193 コメント 6654178698 (2026-11-05、オーナーの方針))",
+      "purpose": "オーナーが3店のデザインを評価し、採否・コピー・写真の優先順位・判断事項をまとめて選べるようにする (Issue #193 コメント 6654178698 (2026-11-05)。A・B 節はオーナーの方針、C 節は推奨でオーナーの承認ではない)",
       "acceptance_criteria": [
         "問題の幅 (つぐ手 320〜1199、輪 tablet、ゆげ湯 601〜860) を含む比較画像",
         "判断事項ごとに複数の選択肢と実画像 (輪 の字の箱の角、つぐ手 SP の店名、CTA の導線、縦の事実の文の横書き案)",
-        "モチーフの位置の数を品質の採点にしない。仮写真なら placeholder_limited・成功の判定なし"
+        "モチーフの位置の数を品質の採点にしない。仮写真なら placeholder_limited・成功の判定なし",
+        "創作の文の候補 (待つ・区画のラベル・のれんの ゆ) は候補としてだけ載せ、採用済みとしない"
       ],
       "required_tests": [
         "npx vitest run tests/unit/ai-tasks.test.ts"
@@ -8418,7 +8423,7 @@
       "human_approval_triggers": [
         "デザインの採否と判断事項"
       ],
-      "note": ""
+      "note": "2026-11-05: 輪 と ゆげ湯 の部分をこの branch で作った (判断ごとの別案の版 8 つ、docs/design/owner-decision-sheet.md の下書き、.ai/reviews/DEV-183.md)。つぐ手 の節は DEV-179 の後に足す。この PR は輪とゆげ湯の部分 (1 つ目)。つぐ手の節を足す PR で review にする。"
     }
   ]
 }
