@@ -78,7 +78,7 @@ const FORMS: Form[] = [
   { name: "an SVG square cap reaching in", kind: "paint", make: svgAt('<path d="M0 33 L34 33" stroke="#c79a45" stroke-width="12" stroke-linecap="square" fill="none"/>') },
   { name: "an SVG stroke scaled 4× by its viewBox", kind: "paint", make: svgAt('<path d="M0 8.25 L9.6 8.25" stroke="#c79a45" stroke-width="1" stroke-linecap="square"/>', "", "0 0 10 15") },
   // DEV-180: closed in the prototype (it missed these)
-  { name: "an SVG miter join whose tip passes the box grown by half the stroke", kind: "paint", make: svgAt('<polyline points="3,23 33,33 3,43" fill="none" stroke="#c79a45" stroke-width="6" stroke-linejoin="miter" stroke-miterlimit="10"/>') },
+  { name: "an SVG miter join whose tip passes the box grown by half the stroke", kind: "paint", make: svgAt('<polyline points="0,23 30,33 0,43" fill="none" stroke="#c79a45" stroke-width="10" stroke-linejoin="miter" stroke-miterlimit="10"/>') },
   { name: "an SVG marker past the path's end", kind: "unproven", make: svgAt('<defs><marker id="m" viewBox="0 0 14 14" refX="0" refY="7" markerWidth="14" markerHeight="14" orient="auto" markerUnits="userSpaceOnUse"><rect width="14" height="14" fill="#c79a45"/></marker></defs><path d="M0 33 L30 33" stroke="#c79a45" stroke-width="1" fill="none" marker-end="url(#m)"/>') },
   { name: "an SVG filter offsetting a shape", kind: "unproven", make: svgAt('<defs><filter id="f" x="-1" y="-1" width="3" height="3"><feOffset dx="12" dy="0"/></filter></defs><rect x="24" y="26" width="8" height="12" fill="#c79a45" filter="url(#f)"/>') },
   // SVG text and an image
