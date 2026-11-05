@@ -6,7 +6,6 @@ import type { PageCssOptions } from "@/lib/design-agent/comp-impl/page-css";
 import { layerScan, openCompPage } from "@/lib/design-agent/comp-impl/render";
 import { layerCodes } from "@/lib/design-agent/comp-impl/verify";
 import { APPROVED_CAPABILITIES, CAPABILITY_NAMES, pageCssOptionsOf } from "@/lib/design-agent/comp-impl/spec";
-import { launch } from "./support";
 import { SHOPS, shopFacts, type ShopKey } from "./nowrap-harness";
 import { instanceCodes, overlapCodes, overlapScan, pixelPass, shopPlan } from "./overlap-harness";
 import {
@@ -25,6 +24,8 @@ import {
   phaseDRanges,
   phaseDScan,
   phaseDSweep,
+  launchLight,
+  PagePool,
   shopPlanD,
   type PhaseDFeature,
   type PhaseDFeatures,
@@ -53,14 +54,14 @@ const ALL_B: PageCssOptions = { verticalName: true, displayScale: true, displayN
 const FACT = "000-0000-0712";
 const NAME = "架空の店";
 const ALL: PhaseDFeatures = { vertical: true, rotation: true, outline: true };
-const plan = (features: PhaseDFeatures): PhaseDPlan => ({ protect: [FACT, NAME], names: [NAME], features });
+const plan = (features: PhaseDFeatures, protect: readonly string[] = [FACT, NAME]): PhaseDPlan => ({ protect, names: [NAME], features });
 const CHECKED = [1440, 1280, 1024, 768, 601, 600, 480, 390, 375, 360, 340, 320] as const;
 
 let browser: Browser;
 let raw: BrowserContext;
 let tab: Page;
 beforeAll(async () => {
-  browser = await launch();
+  browser = await launchLight();
   raw = await browser.newContext({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1, javaScriptEnabled: false });
   await raw.route("**/*", (route) => route.abort());
   tab = await raw.newPage();
@@ -76,13 +77,13 @@ async function load(body: string, css: string, width = 800) {
   await tab.setViewportSize({ width, height: 600 });
   await tab.setContent(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${BASE}\n${css}</style></head><body>${body}</body></html>`);
 }
-async function geometry(body: string, css: string, features: PhaseDFeatures, width = 800) {
+async function geometry(body: string, css: string, features: PhaseDFeatures, width = 800, protect?: readonly string[]) {
   await load(body, css, width);
-  return geometryInstances(await phaseDScan(tab, plan(features)));
+  return geometryInstances(await phaseDScan(tab, plan(features, protect)));
 }
-async function full(body: string, css: string, features: PhaseDFeatures, width = 800) {
+async function full(body: string, css: string, features: PhaseDFeatures, width = 800, protect?: readonly string[]) {
   await load(body, css, width);
-  const s = await phaseDScan(tab, plan(features));
+  const s = await phaseDScan(tab, plan(features, protect));
   return fullInstances(s, await phaseDPixels(tab, s));
 }
 
@@ -243,7 +244,7 @@ describe("DEV-175 the proposed grammar (test-only prototype, one flag per featur
 
 // ---------------------------------------------------------------- 3. the render checks on synthetic probes
 
-type Probe = { name: string; body: string; css: string; features: PhaseDFeatures; width?: number; code: string; pixels?: boolean };
+type Probe = { name: string; body: string; css: string; features: PhaseDFeatures; width?: number; code: string; pixels?: boolean; protect?: readonly string[] };
 
 const F_V: PhaseDFeatures = { vertical: true };
 const F_R: PhaseDFeatures = { rotation: true };
@@ -253,6 +254,10 @@ const F_O: PhaseDFeatures = { outline: true };
 const MUST_FAIL: Probe[] = [
   // vertical_text
   { name: "a fact set vertically", body: `<div class="wrap"><p class="v">${FACT}</p></div>`, css: ".v { writing-mode: vertical-rl; font-size: 24px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL" },
+  { name: "an h1 that is not the name, holding a fact, set vertically (an h1 alone is not the name role)", body: '<div class="wrap"><h1 class="v">水曜定休</h1></div>', css: ".v { writing-mode: vertical-rl; font-size: 40px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL", protect: [FACT, NAME, "水曜定休"] },
+  { name: "the name and a fact in one vertical h1 (the fact wins)", body: `<div class="wrap"><h1 class="v">${NAME}水曜定休</h1></div>`, css: ".v { writing-mode: vertical-rl; font-size: 40px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL", protect: [FACT, NAME, "水曜定休"] },
+  { name: "an h1 that is neither the name nor a fact set vertically (protected as an h1; not the name role)", body: '<div class="wrap"><h1 class="v">見出しの語</h1></div>', css: ".v { writing-mode: vertical-rl; font-size: 40px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL" },
+  { name: "the name as a dd set vertically (dt/dd stay horizontal: the fact role wins over the name role)", body: `<div class="wrap"><dl><dt>店名</dt><dd class="v">${NAME}</dd></dl></div>`, css: ".v { writing-mode: vertical-rl; font-size: 40px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL" },
   { name: "a dd set vertically", body: '<div class="wrap"><dl><dt>定休日</dt><dd class="v">水曜</dd></dl></div>', css: ".v { writing-mode: vertical-rl; font-size: 24px; }", features: F_V, code: "PHASE_D_PROTECTED_VERTICAL" },
   { name: "a vertical container (blocks become right-to-left columns)", body: '<div class="wrap"><div class="v"><h2>見出し</h2><p>本文の段落</p></div></div>', css: ".v { writing-mode: vertical-rl; font-size: 24px; }", features: F_V, code: "PHASE_D_VERTICAL_CONTAINER" },
   { name: "a vertical body", body: '<div class="wrap"><p>見出し</p></div>', css: "body { writing-mode: vertical-rl; }", features: F_V, code: "PHASE_D_VERTICAL_CONTAINER" },
@@ -264,6 +269,7 @@ const MUST_FAIL: Probe[] = [
   { name: "small vertical text", body: '<div class="wrap"><p class="v">小さな縦書き</p></div>', css: ".v { writing-mode: vertical-rl; font-size: 14px; }", features: F_V, code: "PHASE_D_VERTICAL_SMALL" },
   { name: "vertical-lr (columns left to right)", body: '<div class="wrap"><p class="v">左から右へ読む</p></div>', css: ".v { writing-mode: vertical-lr; font-size: 24px; }", features: F_V, code: "PHASE_D_VERTICAL_MODE" },
   { name: "Latin letters drawn sideways (text-orientation: mixed)", body: '<div class="wrap"><p class="v">OPEN 継ぐ</p></div>', css: ".v { writing-mode: vertical-rl; font-size: 32px; }", features: F_V, code: "PHASE_D_VERTICAL_SIDEWAYS" },
+  { name: "CJK set sideways (text-orientation: sideways)", body: '<div class="wrap"><p class="v">継ぐ手</p></div>', css: ".v { writing-mode: vertical-rl; text-orientation: sideways; font-size: 32px; }", features: F_V, code: "PHASE_D_VERTICAL_SIDEWAYS" },
   { name: "two digits not combined", body: '<div class="wrap"><p class="v">毎月12日</p></div>', css: ".v { writing-mode: vertical-rl; font-size: 32px; }", features: F_V, code: "PHASE_D_VERTICAL_DIGITS" },
   { name: "a combine span of five characters (15:00)", body: '<div class="wrap"><p class="v">開店<span class="t">15:00</span></p></div>', css: ".v { writing-mode: vertical-rl; font-size: 32px; } .t { text-combine-upright: all; }", features: F_V, code: "PHASE_D_COMBINE_TEXT" },
   { name: "a vertical word in a box shorter than one glyph", body: '<div class="wrap"><p class="v">継ぐ手</p></div>', css: ".v { writing-mode: vertical-rl; font-size: 40px; height: 24px; }", features: F_V, code: "PHASE_D_VERTICAL_OVERFLOW" },
@@ -271,6 +277,13 @@ const MUST_FAIL: Probe[] = [
     name: "reading order: a heading after its paragraph in the DOM; set vertically, it rises above the paragraph on its right",
     body: '<div class="wrap"><div class="g"><p class="p">あとから読む文。</p><h2 class="v">見出しの語</h2></div></div>',
     css: ".g { display: flex; align-items: flex-end; gap: 24px; } .v { writing-mode: vertical-rl; font-size: 20px; font-weight: 400; }",
+    features: F_V,
+    code: "PHASE_D_READING_ORDER",
+  },
+  {
+    name: "reading order across a label: the heading rises above a paragraph two elements before it (a small label between them)",
+    body: '<div class="wrap"><div class="g"><p class="p">あとから読む文。</p><p class="s">印</p><h2 class="v">見出しの語</h2></div></div>',
+    css: ".g { display: flex; align-items: flex-end; gap: 24px; } .s { align-self: flex-start; line-height: 1; } .v { writing-mode: vertical-rl; font-size: 20px; font-weight: 400; }",
     features: F_V,
     code: "PHASE_D_READING_ORDER",
   },
@@ -285,6 +298,20 @@ const MUST_FAIL: Probe[] = [
   { name: "a skew (not a rotation)", body: '<div class="wrap"><div class="r"></div></div>', css: ".r { width: 80px; height: 80px; background: #c79a45; transform: skewX(4deg); }", features: F_R, code: "PHASE_D_ROTATION_UNMEASURED" },
   { name: "the rotate property", body: '<div class="wrap"><div class="r"></div></div>', css: ".r { width: 80px; height: 80px; background: #c79a45; rotate: 3deg; }", features: F_R, code: "PHASE_D_ROTATION_UNMEASURED" },
   { name: "a wide band rotated 4° swings far past its box", body: '<div class="wrap"><div class="r"></div></div>', css: ".r { width: 700px; height: 20px; background: #c79a45; transform: rotate(4deg); }", features: F_R, code: "PHASE_D_ROTATION_REACH" },
+  {
+    name: "a word overflowing a 0-height box swings far when rotated (the extent is box ∪ glyphs)",
+    body: '<div class="wrap"><p class="r">継ぐ手継ぐ手継ぐ手継ぐ手</p></div>',
+    css: ".wrap { padding: 0 0 0 4px; } .r { width: 64px; height: 0; font-size: 64px; line-height: 1; transform: rotate(8deg); transform-origin: left top; }",
+    features: F_R,
+    code: "PHASE_D_ROTATION_REACH",
+  },
+  {
+    name: "the same word's glyphs leave the viewport on the left",
+    body: '<div class="wrap"><p class="r">継ぐ手継ぐ手継ぐ手継ぐ手</p></div>',
+    css: ".wrap { padding: 0 0 0 4px; } .r { width: 64px; height: 0; font-size: 64px; line-height: 1; transform: rotate(8deg); transform-origin: left top; }",
+    features: F_R,
+    code: "PHASE_D_ROTATED_OFFSCREEN",
+  },
   { name: "a rotated box past the right edge", body: '<div class="wrap"><div class="r"></div></div>', css: ".r { width: 400px; height: 400px; margin-left: 360px; background: #c79a45; transform: rotate(8deg); }", features: F_R, code: "PHASE_D_ROTATED_OFFSCREEN" },
   { name: "a rotated word cut by a clipping box", body: '<div class="wrap"><div class="c"><p class="r">継ぐ</p></div></div>', css: ".c { height: 64px; overflow: hidden; } .r { width: max-content; font-size: 64px; line-height: 1; transform: rotate(8deg); }", features: F_R, code: "PHASE_D_ROTATED_CLIPPED" },
   {
@@ -310,10 +337,15 @@ const MUST_FAIL: Probe[] = [
   { name: "small text stroked", body: '<div class="wrap"><p class="o">小さな語</p></div>', css: ".o { font-size: 16px; -webkit-text-stroke: 0.5px #c79a45; }", features: F_O, code: "PHASE_D_STROKE_ON_TEXT" },
   { name: "a stroke thick for its size (3px at 30px)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 30px; -webkit-text-stroke: 3px #c79a45; }", features: F_O, code: "PHASE_D_STROKE_TOO_THICK" },
   { name: "a hollow word with a 1px stroke", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 96px; color: transparent; -webkit-text-stroke: 1px #1f1d1b; }", features: F_O, code: "PHASE_D_OUTLINE_HOLLOW_THIN" },
+  { name: "a 1px stroke on a word filled with the ground's colour (hollow in effect)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 96px; color: #ffffff; -webkit-text-stroke: 1px #1f1d1b; }", features: F_O, code: "PHASE_D_OUTLINE_HOLLOW_THIN" },
   { name: "a translucent stroke", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 96px; -webkit-text-stroke: 2px rgba(0, 0, 0, 0.4); }", features: F_O, code: "PHASE_D_OUTLINE_TRANSLUCENT" },
   { name: "a text-shadow outline (four shadows)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 64px; color: #ffffff; text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }", features: F_O, code: "PHASE_D_TEXT_SHADOW" },
   { name: "a hollow word whose stroke is close to the ground (pixels)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 128px; color: transparent; -webkit-text-stroke: 2px #e9e2d6; }", features: F_O, code: "PHASE_D_OUTLINE_LOW_CONTRAST", pixels: true },
   { name: "a pale word with a pale stroke on a dark-free ground (pixels)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 128px; color: #f2eee8; -webkit-text-stroke: 2px #d9d2c6; paint-order: stroke fill; }", features: F_O, code: "PHASE_D_OUTLINE_LOW_CONTRAST", pixels: true },
+  { name: "a hollow word stroked white on white (pixels)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 128px; color: transparent; -webkit-text-stroke: 2px #ffffff; }", features: F_O, code: "PHASE_D_OUTLINE_INVISIBLE", pixels: true },
+  { name: "a rotated hollow word whose stroke is close to the ground (pixels: the outline checks run on rotated targets)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { width: max-content; font-size: 128px; color: transparent; -webkit-text-stroke: 2px #e9e2d6; transform: rotate(1deg); }", features: { rotation: true, outline: true }, code: "PHASE_D_OUTLINE_LOW_CONTRAST", pixels: true },
+  { name: "a rotated hollow word stroked white on white (pixels)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { width: max-content; font-size: 128px; color: transparent; -webkit-text-stroke: 2px #ffffff; transform: rotate(1deg); }", features: { rotation: true, outline: true }, code: "PHASE_D_OUTLINE_INVISIBLE", pixels: true },
+  { name: "an outlined word far off the page to the left (nothing to photograph: fail closed)", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { margin-left: -3000px; font-size: 64px; -webkit-text-stroke: 1px #c79a45; }", features: F_O, code: "PHASE_D_INK_UNMEASURED", pixels: true },
   { name: "outline with the flag off", body: '<div class="wrap"><p class="o">継ぐ</p></div>', css: ".o { font-size: 64px; -webkit-text-stroke: 1px #c79a45; }", features: { vertical: true, rotation: true }, code: "PHASE_D_OUTLINE_NOT_ENABLED" },
   // the page
   { name: "a rotated word that makes the page scroll sideways", body: '<div class="wrap"><p class="r">継ぐ</p></div>', css: ".r { width: max-content; margin-left: 740px; font-size: 64px; transform: rotate(4deg); }", features: F_R, code: "PHASE_D_HORIZONTAL_SCROLL" },
@@ -366,7 +398,7 @@ describe("DEV-175 the render checks (prototype) on synthetic probes", () => {
 
   it("every must-fail probe fails with its code", async () => {
     for (const p of MUST_FAIL) {
-      const got = p.pixels ? await full(p.body, p.css, p.features, p.width) : await geometry(p.body, p.css, p.features, p.width);
+      const got = p.pixels ? await full(p.body, p.css, p.features, p.width, p.protect) : await geometry(p.body, p.css, p.features, p.width, p.protect);
       table.push(`FAIL | ${p.name} | ${codeNames(got).join(", ")}`);
       expect(codeNames(got), p.name).toContain(p.code);
     }
@@ -460,44 +492,40 @@ describe("DEV-175 the render checks (prototype) on synthetic probes", () => {
 
 // ---------------------------------------------------------------- 4. the three shops
 
-const openAt = (shop: ShopKey, f: PhaseDFeature | "strict", w: number) => openCompPage(browser, phaseDPage(shop, f), { width: w, height: 900, scale: 1, mobile: w <= 390 });
+/** One page per shop variant and emulation mode, reloaded at each width (PagePool): no new renderer process per width. */
+const newPool = () => new PagePool((p, w, mobile) => openCompPage(browser, p, { width: w, height: 900, scale: 1, mobile }));
 
 describe("DEV-175 the three shops (strict B + one feature at a time)", () => {
   it("at the checked widths (SP with phone emulation): each feature adds no phase D code (geometry and pixels) and no phase C instance; the strict page is the oracle", async () => {
     const log: string[] = [];
-    for (const shop of SHOP_KEYS)
-      for (const w of CHECKED) {
-        const strict = await openAt(shop, "strict", w);
-        let base: string[];
-        let baseC: string[];
-        try {
-          const s = await phaseDScan(strict.page, shopPlanD(shop, ALL));
-          base = fullInstances(s, await phaseDPixels(strict.page, s));
-          baseC = instanceCodes(await overlapScan(strict.page, shopPlan(shop)));
-        } finally {
-          await strict.context.close();
-        }
-        // strict uses none of the three features: only the page-level scroll can appear
-        expect(codeNames(base).filter((c) => c !== "PHASE_D_HORIZONTAL_SCROLL"), `${shop} ${w} strict`).toEqual([]);
-        for (const f of PHASE_D_FEATURES) {
-          const o = await openAt(shop, f, w);
-          try {
-            const s = await phaseDScan(o.page, shopPlanD(shop, { [f]: true }));
-            const px = await phaseDPixels(o.page, s);
+    const pool = newPool();
+    try {
+      for (const shop of SHOP_KEYS)
+        for (const w of CHECKED) {
+          const strict = await pool.at(`${shop}/strict`, phaseDPage(shop, "strict"), w, w <= 390);
+          const s0 = await phaseDScan(strict, shopPlanD(shop, ALL));
+          const base = fullInstances(s0, await phaseDPixels(strict, s0));
+          const baseC = instanceCodes(await overlapScan(strict, shopPlan(shop)));
+          // strict uses none of the three features: only the page-level scroll can appear
+          expect(codeNames(base).filter((c) => c !== "PHASE_D_HORIZONTAL_SCROLL"), `${shop} ${w} strict`).toEqual([]);
+          for (const f of PHASE_D_FEATURES) {
+            const page = await pool.at(`${shop}/${f}`, phaseDPage(shop, f), w, w <= 390);
+            const s = await phaseDScan(page, shopPlanD(shop, { [f]: true }));
+            const px = await phaseDPixels(page, s);
             const got = fullInstances(s, px);
-            const c = instanceCodes(await overlapScan(o.page, shopPlan(shop)));
+            const c = instanceCodes(await overlapScan(page, shopPlan(shop)));
             log.push(`${shop} ${w} ${f}: targets ${px.map((r) => `${r.text}(${r.kind} ink ${r.inkPixels} contrast ${r.contrast})`).join(" ") || "-"}; phase C ${c.length === baseC.length ? "=" : c.join(",")}`);
             expect(got, `${shop} ${w} ${f}`).toEqual(base);
             expect(c, `${shop} ${w} ${f} phase C`).toEqual(baseC);
             // the feature is really there (not a no-op)
             if (f === "vertical") expect(s.vertical, `${shop} ${w}`).toBeGreaterThan(0);
             if (f === "outline") expect(px.length, `${shop} ${w} ${f}`).toBeGreaterThan(0);
-            if (f === "rotation") expect(await o.page.evaluate(`Array.from(document.querySelectorAll("body *")).filter((e) => getComputedStyle(e).transform !== "none").length`), `${shop} ${w}`).toBeGreaterThan(0);
-          } finally {
-            await o.context.close();
+            if (f === "rotation") expect(await page.evaluate(`Array.from(document.querySelectorAll("body *")).filter((e) => getComputedStyle(e).transform !== "none").length`), `${shop} ${w}`).toBeGreaterThan(0);
           }
         }
-      }
+    } finally {
+      await pool.close();
+    }
     console.log(`DEV-175 shops at the checked widths\n${log.join("\n")}`);
   }, 1_800_000);
 
@@ -542,7 +570,8 @@ describe("DEV-175 the three shops (strict B + one feature at a time)", () => {
           await o.context.close();
         }
       }
-      // the font-independent reasons: tsugute and bicycle set a fact vertically (月に二回… / 振れ取りでは…); sento rotates
+      // the font-independent reasons: tsugute and bicycle set a fact vertically (漆が乾くまで… .month-fact / 修理の前に…
+      // .check-fact); sento rotates
       // boards that hold captions (readable text)
       expect([...seen], shop).toContain({ tsugute: "PHASE_D_PROTECTED_VERTICAL", bicycle: "PHASE_D_PROTECTED_VERTICAL", sento: "PHASE_D_ROTATED_TEXT" }[shop]);
     }

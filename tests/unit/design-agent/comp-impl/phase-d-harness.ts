@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import sharp from "sharp";
 import type { CompPage } from "@/lib/design-agent/comp-impl/page";
 import { pageCssProblems, type PageCssOptions } from "@/lib/design-agent/comp-impl/page-css";
@@ -113,8 +113,8 @@ export function phaseDCssProblems(css: string, opts: PhaseDOptions = {}): string
 
 /**
  * The phase D check at the current viewport (plain JavaScript; the caller appends its JSON argument). Argument:
- * { protect (whitespace-free strings: facts and the name), protectSel, names (whitespace-free shop names; with h1, the
- * name role), features { vertical, rotation, outline }, limits (PHASE_D_LIMITS) }.
+ * { protect (whitespace-free strings: facts and the name), protectSel, names (whitespace-free shop names: an element whose
+ * whole text is one of them has the name role — an h1 alone does not), features { vertical, rotation, outline }, limits (PHASE_D_LIMITS) }.
  *
  * Text elements: elements with a non-empty text node of their own, drawn (a client rect). Protected: as phase C
  * (inside protectSel, or the whole text holds a protected string, or 6+ characters of one). A "word": not protected,
@@ -124,14 +124,15 @@ export function phaseDCssProblems(css: string, opts: PhaseDOptions = {}): string
  *   not enabled → PHASE_D_VERTICAL_NOT_ENABLED. The root is html / body, is inline, or holds any element but a
  *   text-combine-upright: all leaf span (a vertical container lays blocks out as right-to-left columns) →
  *   PHASE_D_VERTICAL_CONTAINER; a non-root vertical element that is not such a span → the same. vertical-lr / sideways-*
- *   → PHASE_D_VERTICAL_MODE. Protected text but the name → PHASE_D_PROTECTED_VERTICAL. More than verticalChars →
+ *   → PHASE_D_VERTICAL_MODE. Protected text → PHASE_D_PROTECTED_VERTICAL, unless the root has the name role and holds no
+ *   fact (the facts win). More than verticalChars →
  *   PHASE_D_VERTICAL_LONG_TEXT; under verticalMinPx → PHASE_D_VERTICAL_SMALL. Latin letters drawn sideways (mixed) →
- *   PHASE_D_VERTICAL_SIDEWAYS; two or more digits in a row not combined → PHASE_D_VERTICAL_DIGITS; a combine span of
+ *   PHASE_D_VERTICAL_SIDEWAYS (and text-orientation: sideways on any vertical root, CJK too); two or more digits in a row not combined → PHASE_D_VERTICAL_DIGITS; a combine span of
  *   more than combineChars or of anything but ASCII letters / digits → PHASE_D_COMBINE_TEXT. Glyphs (a combine span is
  *   one glyph): a character with no box, or not down the column then the next column to the left →
  *   PHASE_D_VERTICAL_ORDER; two glyph boxes meeting by > 1px, or an advance < 0.4 em → PHASE_D_VERTICAL_GLYPH_OVERLAP;
  *   a glyph outside the root's box or the root's scroll size past its client size → PHASE_D_VERTICAL_OVERFLOW.
- *   Reading order: for two text elements next to each other in DOM order, one of them a vertical root, the later one
+ *   Reading order: for a vertical root and EVERY text element before or after it in DOM order, the later one
  *   must not lie both higher and wholly to the right of the earlier one (it would be read first in horizontal AND in
  *   vertical-rl reading) → PHASE_D_READING_ORDER — only when the vertical writing creates it: the pair is measured again
  *   with the roots set horizontal, and an inversion already there (a zigzag layout; V9, not phase D) is not counted.
@@ -140,13 +141,14 @@ export function phaseDCssProblems(css: string, opts: PhaseDOptions = {}): string
  *   PHASE_D_ROTATION_UNMEASURED (fail closed). |angle| or the sum along the ancestors > rotateDeg →
  *   PHASE_D_ROTATION_ANGLE. Any protected text inside (the name too) → PHASE_D_PROTECTED_ROTATED; other text that is not a
  *   word → PHASE_D_ROTATED_TEXT. The rotated box reaches past its unrotated box (measured with the transform taken off)
- *   by > rotateReachPx → PHASE_D_ROTATION_REACH. Past the viewport's left / right where the unrotated box was inside →
+ *   by > rotateReachPx → PHASE_D_ROTATION_REACH (the extent: the border box and the glyph boxes of the text inside). Past the viewport's left / right where the unrotated box was inside →
  *   PHASE_D_ROTATED_OFFSCREEN (a box the layout already puts past the edge is the layout's overflow); rotated
  *   text past a clipping ancestor's padding box → PHASE_D_ROTATED_CLIPPED.
  * outlined_type — every text element with a computed -webkit-text-stroke-width > 0 (it inherits).
  *   not enabled → PHASE_D_OUTLINE_NOT_ENABLED. Protected → PHASE_D_PROTECTED_STROKED; not a word →
  *   PHASE_D_STROKE_ON_TEXT; width > strokeEmMax em → PHASE_D_STROKE_TOO_THICK; stroke colour or fill not opaque and not
- *   fully transparent → PHASE_D_OUTLINE_TRANSLUCENT; hollow (fill alpha 0) with a stroke under hollowStrokeMinPx →
+ *   fully transparent → PHASE_D_OUTLINE_TRANSLUCENT; hollow (fill alpha 0, or a fill within 1.5:1 of the ground) with a
+ *   stroke under hollowStrokeMinPx →
  *   PHASE_D_OUTLINE_HOLLOW_THIN. Any text-shadow → PHASE_D_TEXT_SHADOW.
  * Whole page: scroll width past the client width → PHASE_D_HORIZONTAL_SCROLL.
  *
@@ -183,7 +185,15 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
     const w = flat(el.textContent);
     return w.length > 0 && arg.protect.some((f) => w.includes(f) || (w.length >= 6 && f.includes(w)));
   };
-  const isName = (el) => el.matches("h1") || arg.names.includes(flat(el.textContent));
+  // the name role: the element's whole text is the shop's name (full or short) — an h1 alone is not enough (Fresh Review M1)
+  const isName = (el) => arg.names.includes(flat(el.textContent));
+  // protected as a fact (not as the name): the protect selector but h1, or a protected string that is not a name
+  const facts = arg.protect.filter((f) => !arg.names.includes(f));
+  const isFactProt = (el) => {
+    if (el.closest(arg.protectSel.split(",").map((x) => x.trim()).filter((x) => x !== "h1").join(", "))) return true;
+    const w = flat(el.textContent);
+    return w.length > 0 && facts.some((f) => w.includes(f) || (w.length >= 6 && f.includes(w)));
+  };
   const fs = (el) => parseFloat(st(el).fontSize) || 16;
   const textsIn = (root) => textEls.filter((t) => root === t || root.contains(t));
   const isWord = (root) => {
@@ -213,7 +223,7 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
       continue;
     }
     if (!F.vertical) { add("PHASE_D_VERTICAL_NOT_ENABLED", el); continue; }
-    if (textsIn(el).some(isProt) && !isName(el)) add("PHASE_D_PROTECTED_VERTICAL", el);
+    if (textsIn(el).some(isProt) && !(isName(el) && !textsIn(el).some(isFactProt))) add("PHASE_D_PROTECTED_VERTICAL", el);
     if (el === document.documentElement || el === document.body || st(el).display.startsWith("inline") && st(el).display !== "inline-block") { add("PHASE_D_VERTICAL_CONTAINER", el, "root / inline"); continue; }
     if (Array.from(el.children).some((c) => !combine(c))) { add("PHASE_D_VERTICAL_CONTAINER", el, "holds elements"); continue; }
     vRoots.push(el);
@@ -222,7 +232,7 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
     if (text.length > L.verticalChars) add("PHASE_D_VERTICAL_LONG_TEXT", el, text.length);
     if (fs(el) < L.verticalMinPx) add("PHASE_D_VERTICAL_SMALL", el, fs(el));
     const own = ownNodes(el).map((n) => n.data).join("");
-    if (/[A-Za-z]/.test(own) && st(el).textOrientation !== "upright") add("PHASE_D_VERTICAL_SIDEWAYS", el);
+    if (st(el).textOrientation === "sideways" || (/[A-Za-z]/.test(own) && st(el).textOrientation !== "upright")) add("PHASE_D_VERTICAL_SIDEWAYS", el);
     if (/[0-9０-９]{2,}/.test(own)) add("PHASE_D_VERTICAL_DIGITS", el);
     for (const c of el.children) if (flat(c.textContent).length > L.combineChars || !/^[0-9A-Za-z]+$/.test(flat(c.textContent))) add("PHASE_D_COMBINE_TEXT", c);
     // glyphs in DOM order; a combine span is one glyph
@@ -251,23 +261,29 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
   // a combine span by its box). Only an inversion the vertical writing creates is phase D's: the same pair is measured
   // again with the roots set horizontal, and an inversion that the horizontal layout already has (a zigzag layout,
   // V9's matter) is not counted here.
+  // Every vertical root is compared with EVERY text element before it and after it in DOM order (Fresh Review M3: with
+  // adjacent pairs only, a small label between the two hid the inversion).
   const inverted = () => {
     const readers = textEls.filter((t) => !vRoots.some((v) => v !== t && v.contains(t))).map((t) => ({ el: t, r: union(ownRects(t).concat(Array.from(t.children).flatMap((c) => Array.from(c.getClientRects())))) })).filter((x) => x.r);
     const out = new Map();
-    for (let i = 1; i < readers.length; i++) {
-      const A = readers[i - 1], B = readers[i];
-      if (!vRoots.includes(A.el) && !vRoots.includes(B.el)) continue;
-      if (B.r.top < A.r.top - 4 && B.r.left >= A.r.right - 4) out.set(A.el, B.el);
+    for (let j = 0; j < readers.length; j++) {
+      if (!vRoots.includes(readers[j].el)) continue;
+      for (let i = 0; i < readers.length; i++) {
+        if (i === j) continue;
+        const A = readers[Math.min(i, j)], B = readers[Math.max(i, j)];
+        if (B.r.top < A.r.top - 4 && B.r.left >= A.r.right - 4) out.set(A.el.dataset.pdRo + ">" + B.el.dataset.pdRo, [A.el, B.el]);
+      }
     }
     return out;
   };
+  textEls.forEach((t, i) => { t.dataset.pdRo = String(i); });
   const vInv = inverted();
   if (vInv.size) {
     const keepWm = vRoots.map((el) => [el, el.style.getPropertyValue("writing-mode"), el.style.getPropertyPriority("writing-mode")]);
     for (const el of vRoots) el.style.setProperty("writing-mode", "horizontal-tb", "important");
     const hInv = inverted();
     for (const [el, v, p] of keepWm) { if (v) el.style.setProperty("writing-mode", v, p); else el.style.removeProperty("writing-mode"); }
-    for (const [A, B] of vInv) if (hInv.get(A) !== B) add("PHASE_D_READING_ORDER", vRoots.includes(A) ? A : B, flat(A.textContent).slice(0, 12) + " -> " + flat(B.textContent).slice(0, 12));
+    for (const [k, [A, B]] of vInv) if (!hInv.has(k)) add("PHASE_D_READING_ORDER", vRoots.includes(A) ? A : B, flat(A.textContent).slice(0, 12) + " -> " + flat(B.textContent).slice(0, 12));
   }
   for (const [el, v, p] of undo) { if (v) el.style.setProperty("transform", v, p); else el.style.removeProperty("transform"); }
 
@@ -296,10 +312,13 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
     const ts = textsIn(el);
     if (ts.some(isProt)) add("PHASE_D_PROTECTED_ROTATED", el);
     else if (ts.length && !isWord(el)) add("PHASE_D_ROTATED_TEXT", el);
-    const r = el.getBoundingClientRect();
+    // the extent: the border box and every glyph box of the text inside (text can overflow its box: Fresh Review M2),
+    // with the rotation and with it taken off
+    const extent = () => union([el.getBoundingClientRect()].concat(ts.flatMap(ownRects)));
+    const r = extent();
     const keep = el.style.getPropertyValue("transform"), prio = el.style.getPropertyPriority("transform");
     el.style.setProperty("transform", "none", "important");
-    const r0 = el.getBoundingClientRect();
+    const r0 = extent();
     el.style.setProperty("transform", keep, prio);
     if (!keep) el.style.removeProperty("transform");
     const reach = Math.max(r0.left - r.left, r.right - r0.right, r0.top - r.top, r.bottom - r0.bottom);
@@ -320,7 +339,11 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
   }
 
   // ------------------------------------------------------------ outlined_type
-  const rgba = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c || ""); if (!m) return null; const p = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number); return { a: p.length > 3 ? p[3] : 1 }; };
+  const rgba = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c || ""); if (!m) return null; const p = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+  const lum = (c) => { const f = (v) => { const x = v / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+  const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  // the ground: the nearest opaque background colour up the tree (the canvas is white)
+  const groundOf = (el) => { for (let p = el; p; p = p.parentElement) { const c = rgba(st(p).backgroundColor); if (c && c.a === 1) return c; } return { r: 255, g: 255, b: 255, a: 1 }; };
   const stroked = [];
   for (const el of textEls) {
     const s = st(el);
@@ -333,23 +356,28 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
     if (sw > L.strokeEmMax * fs(el) + 1e-6) add("PHASE_D_STROKE_TOO_THICK", el, sw);
     const sc = rgba(s.webkitTextStrokeColor), fc = rgba(s.webkitTextFillColor || s.color);
     if (!sc || !fc || sc.a < 1 || (fc.a > 0 && fc.a < 1)) add("PHASE_D_OUTLINE_TRANSLUCENT", el);
-    else if (fc.a === 0 && sw < L.hollowStrokeMinPx) add("PHASE_D_OUTLINE_HOLLOW_THIN", el, sw);
+    // hollow: a transparent fill, or a fill the ground's colour (contrast < 1.5: Fresh Review L2)
+    else if ((fc.a === 0 || contrast(fc, groundOf(el)) < 1.5) && sw < L.hollowStrokeMinPx) add("PHASE_D_OUTLINE_HOLLOW_THIN", el, sw);
     stroked.push({ el, sw });
   }
 
   // ------------------------------------------------------------ ink targets (pixels decide; fail closed without)
   let id = 0;
-  const pushTarget = (el, kind, sw) => {
+  const pushTarget = (el, kind, sw, strokedIn) => {
     const ext = union(textsIn(el).flatMap(ownRects).concat(kind === "rotated" ? Array.from(el.getClientRects()) : []));
     if (!ext) return;
     const g = grow(ext, sw / 2 + 1);
     const near = textEls.some((t) => !(el === t || el.contains(t)) && ownRects(t).some((r) => meets(r, g, 0.5)));
     el.setAttribute("data-pd-id", String(id));
-    targets.push({ id: id++, kind, text: flat(el.textContent).slice(0, 24), near, rect: { left: g.left + scrollX, top: g.top + scrollY, right: g.right + scrollX, bottom: g.bottom + scrollY } });
+    targets.push({ id: id++, kind, stroked: strokedIn, text: flat(el.textContent).slice(0, 24), near, rect: { left: g.left + scrollX, top: g.top + scrollY, right: g.right + scrollX, bottom: g.bottom + scrollY } });
   };
-  for (const el of rotatedRoots) pushTarget(el, "rotated", parseFloat(st(el).webkitTextStrokeWidth) || 0);
-  for (const s of stroked) if (!s.el.hasAttribute("data-pd-id") && !rotatedRoots.some((r) => r.contains(s.el))) pushTarget(s.el, "outline", s.sw);
-  for (const t of textEls) t.setAttribute("data-pd-text", "");
+  // a rotated word that holds stroked text is one target with the outline checks too (Fresh Review H1)
+  for (const el of rotatedRoots) {
+    const inside = stroked.filter((s) => el === s.el || el.contains(s.el));
+    pushTarget(el, "rotated", Math.max(0, ...inside.map((s) => s.sw)), inside.length > 0);
+  }
+  for (const s of stroked) if (!s.el.hasAttribute("data-pd-id") && !rotatedRoots.some((r) => r.contains(s.el))) pushTarget(s.el, "outline", s.sw, true);
+  for (const t of textEls) { t.setAttribute("data-pd-text", ""); delete t.dataset.pdRo; }
 
   const sw = document.documentElement.scrollWidth - document.documentElement.clientWidth;
   if (sw > 0) add("PHASE_D_HORIZONTAL_SCROLL", document.body, sw);
@@ -358,7 +386,7 @@ export const PHASE_D_SCRIPT = String.raw`(arg) => {
 
 export type PhaseDFeatures = { vertical?: boolean; rotation?: boolean; outline?: boolean };
 export type PhaseDPlan = { protect: readonly string[]; names: readonly string[]; protectSel?: string; features: PhaseDFeatures };
-export type InkTarget = { id: number; kind: "rotated" | "outline"; text: string; near: boolean; rect: { left: number; top: number; right: number; bottom: number } };
+export type InkTarget = { id: number; kind: "rotated" | "outline"; stroked: boolean; text: string; near: boolean; rect: { left: number; top: number; right: number; bottom: number } };
 export type PhaseDScan = { codes: Record<string, number>; found: Array<{ code: string; text: string; note: unknown }>; targets: InkTarget[]; vertical: number; texts: number };
 
 /** The phase D geometric scan at the current viewport. */
@@ -404,7 +432,7 @@ export type InkResult = { id: number; kind: InkTarget["kind"]; text: string; ink
  * clipped screenshots of its extent (+12px): X — only the target's text drawn; G — no text drawn; O — every text but the
  * target drawn. Grounds, images and boxes stay as they are. The target's ink is where X differs from G (max channel ≥
  * INK_DIFF_MIN), the other texts' ink where O differs from G. Font-independent: it measures what this machine draws.
- *  - outline targets: the contrast reached by the best quarter of the ink pixels, X against G (the stroke and fill over
+ *  - every target holding stroked text (an outlined word, rotated or not): the contrast reached by the best quarter of the ink pixels, X against G (the stroke and fill over
  *    the very ground under them, gradients included) < contrastMin → PHASE_D_OUTLINE_LOW_CONTRAST; fewer than 20 ink
  *    pixels → PHASE_D_OUTLINE_INVISIBLE.
  *  - every target: 3+ pixels where the target's ink (grown 1px) meets another text's ink → PHASE_D_INK_ON_TEXT.
@@ -479,7 +507,7 @@ export async function phaseDPixels(page: Page, scan: PhaseDScan): Promise<InkRes
     cs.sort((a, b) => b - a);
     const contrast = cs.length ? cs[Math.floor(cs.length / 4)]! : 0;
     const codes: string[] = [];
-    if (t.kind === "outline") {
+    if (t.stroked) {
       if (cs.length < 20) codes.push("PHASE_D_OUTLINE_INVISIBLE");
       else if (contrast < PHASE_D_LIMITS.contrastMin) codes.push("PHASE_D_OUTLINE_LOW_CONTRAST");
     }
@@ -541,16 +569,62 @@ export function phaseDRanges(s: PhaseDSweep): Record<string, string> {
   return out;
 }
 
+// ---------------------------------------------------------------- CPU (DEV-175 CI: shared with timing-sensitive files)
+
+/**
+ * Chromium for this file, launched to use few CPU threads at once (the run's own browser is unchanged; this is the
+ * research harness's): one renderer process, one raster thread, no GPU process. CI runs this file in parallel with
+ * timing-sensitive tests (a 1px sweep is ~10^4 layouts), so it keeps its share of the CPU small. The answers do not
+ * change: the tests compare against oracles measured in the same browser.
+ */
+export function launchLight(): Promise<Browser> {
+  return chromium.launch({
+    headless: true,
+    args: ["--renderer-process-limit=1", "--num-raster-threads=1", "--disable-gpu", "--disable-gpu-compositing"],
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}),
+  });
+}
+
+/**
+ * Pages reused across widths: one context per page variant and emulation mode, instead of a new context (a new renderer
+ * process) per width. Each `at` resizes and reloads the page, so no scan's marks or materialized spans carry over.
+ */
+export class PagePool {
+  private open = new Map<string, { context: BrowserContext; page: Page }>();
+  constructor(private readonly opener: (page: CompPage, w: number, mobile: boolean) => Promise<{ context: BrowserContext; page: Page }>) {}
+  async at(key: string, page: CompPage, w: number, mobile: boolean): Promise<Page> {
+    const k = `${key}|${mobile}`;
+    const o = this.open.get(k);
+    if (!o) {
+      const fresh = await this.opener(page, w, mobile);
+      this.open.set(k, fresh);
+      return fresh.page;
+    }
+    await o.page.setViewportSize({ width: w, height: 900 });
+    await o.page.reload({ waitUntil: "load" });
+    await o.page.evaluate("document.fonts.ready.then(() => true)");
+    return o.page;
+  }
+  async close(): Promise<void> {
+    for (const o of this.open.values()) await o.context.close();
+    this.open.clear();
+  }
+}
+
 // ---------------------------------------------------------------- the three shops
 
 export const PHASE_D_FEATURES = ["vertical", "rotation", "outline"] as const;
 export type PhaseDFeature = (typeof PHASE_D_FEATURES)[number];
 export const FEATURE_FLAG: Record<PhaseDFeature, keyof PhaseDOptions> = { vertical: "verticalText", rotation: "smallRotation", outline: "outlinedType" };
 
-/** The plan for a shop: its facts and its name protected, the names (full and the h1's), one feature or all. */
+/**
+ * The plan for a shop: its facts and its name protected, one feature or all. The names (the name role): the full name and
+ * its short form, the last word (架空銭湯 ゆげ湯 → ゆげ湯, the h1 of the strict pages). An element is the name only when
+ * its whole text is one of them.
+ */
 export function shopPlanD(shop: ShopKey, features: PhaseDFeatures): PhaseDPlan {
   const { name, facts } = shopFacts(shop);
-  return { protect: [name, ...Object.values(facts).filter((v) => v.length >= 2 && !/^[a-z_]+$/.test(v))], names: [name], features };
+  return { protect: [name, ...Object.values(facts).filter((v) => v.length >= 2 && !/^[a-z_]+$/.test(v))], names: [name, name.split(/\s+/).pop()!], features };
 }
 
 /**
