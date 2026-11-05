@@ -12,7 +12,7 @@
    - テスト: 承認の一覧を `[]` に固定していた 12 か所を `["gradient_ground"]` に (消した・skip したテストは無い)。`phase-b.test.ts` はほかの段 B の 4 つを今どおり拒み、gradient_ground だけの spec を通すこと、gradient_ground + colour_syntax の spec は `SPEC_CAPABILITY_NOT_APPROVED` であることを足した。`gradient-ground.test.ts` は、旗が gradient_ground を宣言した spec にだけ立ち、colour_syntax・translucent_decoration の旗は立たないことを固定する。
 3. `18f1a76` 研究の branch の merge (記録と、留めの角の例を確かにした直し)。
 4. 研究の branch の merge (独立のレビューの直し: マーカーの fail closed の位置、置き換えの前の scanner を SHA-256 で固定した証明、develop)。衝突した `gradient-box-harness.ts`・`gradient-paint-box.test.ts` は研究の branch の版 (どちらの branch でも同じに動く) を取り、承認の一覧のテストだけこの branch の形 (`["gradient_ground"]`) に戻した。
-5. `run.ts` の注 (「all off today: none is approved」) を「gradient_ground だけが承認され、それを宣言した spec にだけ」に直した (#224 L3、注だけ)。
+5. `run.ts` の注 (「all off today: none is approved」) を「spec が宣言し、かつ spec.ts が承認した能力だけ。run は名前を書かない」に直した (#224 L3、注だけ)。最初の直しは注に能力の名前を書き、`phase-b-baseline.test.ts` の「本番の worker の道は段 B の能力の名前を書かない」で落ちた (1 / 37)。名前を書かない注にした。
 
 ## lib の差 (develop から)
 
@@ -58,3 +58,7 @@
 - CI (必須の全部) と独立の Fresh Review (C/H/M = 0)。
 - WebKit・Firefox・実機 (承認資料 §6)。
 - オーナーの明示の承認 (能力の ON、本番の描画の門の変更)。
+
+## 独立のレビューの直しの後のテスト (この branch、1ファイルずつ、終了の値)
+
+`gradient-paint-box.test.ts` 0 (19)、`phase-c-reach.test.ts` 0 (108)、`gradient-ground.test.ts` 0 (58)、`phase-b.test.ts` 0 (187、注を直した後にもう一度 0)、`phase-b-baseline.test.ts` 1 → 注を直して 0 (37)、`isolation.test.ts` 0 (4)、`tests/unit/ai-tasks.test.ts` 0 (193)、`phase-c-overlap.test.ts` 0 (79)。`git merge-tree --write-tree origin/develop HEAD` は衝突なし (終了の値 0)。

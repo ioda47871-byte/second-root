@@ -190,8 +190,8 @@ export async function runCompImpl(o: RunOptions): Promise<RunResult> {
     visibility_matrix: visibilityMatrixCheck(passes),
     capabilities: capabilitiesCheck(spec.capabilities ?? []),
     // DEV-164 phase B: the computed type cap at every measured width (256px; display words higher only with their approved
-    // capability) and, only with a phase-B capability on, its render checks (DEV-180 production draft: only gradient_ground
-    // is approved, and only for a spec that declares it)
+    // capability) and, only with a phase-B capability on, its render checks (on only for a capability the spec declares
+    // AND spec.ts approves; the run itself names none)
     phase_b: phaseBCheck([...passes, ...sweepRun.widths], display),
   };
   const advisory: Record<string, CheckResult> = {
