@@ -21,6 +21,48 @@ const POC = join(REPO, "design-library/research/quality-pipeline/poc");
 // ---------------------------------------------------------------- the render check (in the page)
 
 /**
+ * The text nodes that hold part of a protected string (plain JavaScript; call with the whitespace-free strings). A fact
+ * can be split over elements — inline (`<p>電話 000-0000-<span>0712</span></p>`, DEV-175 re-review 4 H1), over flex /
+ * grid items, or over blocks (`<p>000-0000-</p><p>0712</p>`, re-review 5 H1) — and a part's own element text neither
+ * holds the fact nor is 6+ characters of it. So: ONE pass over the body's text nodes in DOM order joins their text, each
+ * original character normalised on its own (NFKD; combining marks, format characters (Cf: zero-width space, soft
+ * hyphen …) and whitespace dropped: re-review 5 L1) with the node that owns every output character; each protected string
+ * is normalised the same way and every occurrence in the joined text marks its owners. Matching across blocks and
+ * dropping marks (が and か both read か) only add protection: the fail-closed direction. Shared by phase-d-harness.ts.
+ */
+export const FACT_NODES_JS = String.raw`(protect) => {
+  const norm = (ch) => ch.normalize("NFKD").replace(/[\p{M}\p{Cf}\s]/gu, "");
+  const normAll = (s) => Array.from(s || "").map(norm).join("");
+  // the group a text node is joined in: the whole body (one string in DOM order)
+  const groupOf = (n) => document.body;
+  const groups = new Map();
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    if (!n.parentElement || n.parentElement.closest("style, script, title")) continue;
+    const g = groupOf(n);
+    if (!groups.has(g)) groups.set(g, { text: "", owner: [] });
+    const G = groups.get(g);
+    for (const ch of Array.from(n.data)) {
+      const x = norm(ch);
+      for (const c of Array.from(x)) { G.text += c; G.owner.push(n); }
+    }
+  }
+  const facts = protect.map(normAll).filter(Boolean);
+  const touched = new Set();
+  for (const G of groups.values()) {
+    // occurrences are found by code unit, owners are kept by code point: a code-unit → code-point index
+    const cp = [];
+    let k = 0;
+    for (const c of Array.from(G.text)) { for (let u = 0; u < c.length; u++) cp.push(k); k += 1; }
+    for (const f of facts) {
+      const fl = Array.from(f).length;
+      for (let i = G.text.indexOf(f); i >= 0; i = G.text.indexOf(f, i + 1)) for (let q = cp[i]; q < cp[i] + fl; q++) touched.add(G.owner[q]);
+    }
+  }
+  return touched;
+}`;
+
+/**
  * The phase C check at the current viewport (plain JavaScript, like lib/design-agent/comp-impl/layers.ts; the caller
  * appends its JSON argument). Argument: { protect (whitespace-free strings: required facts and the name), protectSel
  * (elements whose text is protected whatever it says: dt, dd, h1, the disclosure), ordinary ("plate" | "allow": whether
@@ -105,6 +147,8 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
   const note = (code, t, p) => { if (arg.detail && found.length < 40) found.push({ code, text: flat(t.el.textContent).slice(0, 16), painter: p ? (p.el.tagName.toLowerCase() + (p.el.getAttribute("class") ? "." + p.el.getAttribute("class").split(/\s+/).join(".") : "") + ":" + p.kind) : "" }); };
 
   // ------------------------------------------------------------ text and glyph boxes
+  // a text node in a protected occurrence split over elements (DEV-175 re-review 4 H1)
+  const factNodes = (${FACT_NODES_JS})(arg.protect);
   const protectedEl = (el) => {
     if (el.closest(arg.protectSel)) return true;
     const whole = flat(el.textContent);
@@ -122,7 +166,7 @@ export const OVERLAP_SCRIPT = String.raw`(arg) => {
     const range = document.createRange();
     range.selectNodeContents(n);
     const lines = Array.from(range.getClientRects()).filter((r) => r.width > 0.5 && r.height > 0.5).map(doc);
-    const prot = protectedEl(el);
+    const prot = protectedEl(el) || factNodes.has(n);
     const t = { el, node: n, prot, lines, g: null, fs: parseFloat(s.fontSize) || 16, vertical: s.writingMode !== "horizontal-tb", font: [s.fontStyle, s.fontWeight, s.fontSize, s.fontFamily].join(" ") };
     // canvas measureText draws the default glyph of each character alone: OpenType features (tabular figures,
     // alternates, East Asian forms) and combining marks are drawn otherwise in the page (DEV-173 re-review M1), and a
@@ -646,13 +690,14 @@ export async function pixelPass(page: Page, plan: OverlapPlan): Promise<PixelRes
   await page.evaluate(UNMATERIALIZE);
   await page.evaluate(`((sel, protect) => {
     const flat = (s) => (s || "").replace(/\\s+/g, "");
+    const factNodes = (${FACT_NODES_JS})(protect);
     const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = w.nextNode(); n; n = w.nextNode()) {
       if (!flat(n.data) || !n.parentElement) continue;
       const el = n.parentElement;
       el.setAttribute("data-ov-text", "");
       const whole = flat(el.textContent);
-      if (el.closest(sel) || protect.some((f) => whole.includes(f) || (whole.length >= 6 && f.includes(whole)))) el.setAttribute("data-ov-prot", "");
+      if (el.closest(sel) || factNodes.has(n) || protect.some((f) => whole.includes(f) || (whole.length >= 6 && f.includes(whole)))) el.setAttribute("data-ov-prot", "");
     }
   })(${JSON.stringify(plan.protectSel ?? PROTECT_SEL)}, ${JSON.stringify(plan.protect.map((s) => s.replace(/\s+/g, "")))})`);
   const a1 = await shot(page, TEXT_INK("#000"));

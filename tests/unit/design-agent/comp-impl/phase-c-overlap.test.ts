@@ -310,6 +310,11 @@ const PROBES: Probe[] = [
   { name: "html's filter: brightness(0) blackens the fact", body: `<div class="wrap">${F}</div>`, css: "html { filter: brightness(0); }", expect: "OVERLAP_PROTECTED_TEXT_FILTERED", pixel: null },
   // re-review 3 L6
   { name: "small caps (font-variant-caps) drawn otherwise than measured", body: `<div class="wrap"><p class="f">Tel ${FACT}</p></div>`, css: ".f { font-variant-caps: all-small-caps; }", expect: "OVERLAP_PROTECTED_GLYPHS_UNMEASURED", pixel: null },
+  // DEV-175 re-review 4 H1: a fact split over elements — its last digits in a span of their own — is protected text
+  { name: "a fact split over elements: its last digits (a span) covered", body: `<div class="wrap"><p class="f">000-0000-<span class="s">0712</span></p>${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 136px; top: 44px; width: 30px; height: 20px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  // DEV-175 re-review 5 H1: the same fact split over flex items, and over two blocks
+  { name: "a fact split over flex items: its last digits covered", body: `<div class="wrap"><p class="f t"><span>000-0000-</span><span class="s">0712</span></p>${D}</div>`, css: ".t { display: flex; } .d { position: absolute; z-index: 2; left: 136px; top: 44px; width: 30px; height: 20px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
+  { name: "a fact split over two blocks: the second block covered", body: `<div class="wrap"><p class="f">000-0000-</p><p class="s">0712</p>${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 46px; top: 76px; width: 30px; height: 20px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_PROTECTED", pixel: "PIXEL_COVER_PROTECTED" },
   { name: "ordinary text covered", body: `<div class="wrap">${O}${D}</div>`, css: ".d { position: absolute; z-index: 2; left: 60px; top: 46px; width: 40px; height: 16px; background: #c79a45; }", expect: "OVERLAP_PAINT_ABOVE_TEXT", pixel: "PIXEL_COVER_TEXT" },
   { name: "ordinary text over a decoration with no plate", body: `<div class="wrap">${O}${D}</div>`, css: ".wrap { isolation: isolate; } .d { position: absolute; z-index: -1; left: 40px; top: 55px; width: 300px; height: 3px; background: #c79a45; }", expect: "OVERLAP_TEXT_ON_DECORATION", pixel: null },
 ];
