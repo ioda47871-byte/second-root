@@ -8207,7 +8207,7 @@
     {
       "id": "DEV-179",
       "title": "つぐ手 320〜1199px の左に写真が2つ続く問題と、CI に近い書体での縦の文字の重なり (縦の事実の文を横書きで成立させる案を含む) — 研究の道、架空の店",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-178"
@@ -8253,7 +8253,7 @@
         "SP の店名の向き",
         "CTA の導線の案"
       ],
-      "note": "縦の事実の文は段 D の規則を緩めない。 縦の事実の文の横書き・SP の店名・CTA の導線は推奨 (C 節) に沿った案で、オーナーが選ぶまで確定しない。 新しい版: つぐ手 comps/d1-seam-across-v8 (推す案、写真が左右交互)・fidelity/d1-v9。比べる別案: comps/d1-seam-across-v8-core (線を中央に、板が線をまたがない)・d1-seam-across-v8-sp-name-vertical (SP の名前を縦に、オーナーの判断)・d1-seam-across-v8-info-route (時間・電話・所在地の導線、オーナーの判断)。文はどの幅も横書き (事実の文と句は横、巨大な語と名前は1行1字の柱)。CI に近い書体での字の重なりは 0。copy.json は同じバイト。成功の判定ではない (placeholder_limited)。記録は .ai/reviews/DEV-179.md。"
+      "note": "縦の事実の文は段 D の規則を緩めない。 縦の事実の文の横書き・SP の店名・CTA の導線は推奨 (C 節) に沿った案で、オーナーが選ぶまで確定しない。 新しい版: つぐ手 comps/d1-seam-across-v8 (推す案、写真が左右交互)・fidelity/d1-v9。比べる別案: comps/d1-seam-across-v8-core (線を中央に、板が線をまたがない)・d1-seam-across-v8-sp-name-vertical (SP の名前を縦に、オーナーの判断)・d1-seam-across-v8-info-route (時間・電話・所在地の導線、オーナーの判断)。文はどの幅も横書き (事実の文と句は横、巨大な語と名前は1行1字の柱)。CI に近い書体での字の重なりは 0。copy.json は同じバイト。成功の判定ではない (placeholder_limited)。記録は .ai/reviews/DEV-179.md。 PR #225 で develop へ merge した (c6c64d0)。"
     },
     {
       "id": "DEV-180",
@@ -8387,7 +8387,7 @@
     {
       "id": "DEV-183",
       "title": "3店の最新版の PC・tablet・SP の比較画像と、オーナーがまとめて選べるデザイン判断のシート",
-      "status": "review",
+      "status": "done",
       "priority": "P1",
       "depends_on": [
         "DEV-178"
@@ -8424,7 +8424,57 @@
       "human_approval_triggers": [
         "デザインの採否と判断事項"
       ],
-      "note": "2026-11-05: 輪 と ゆげ湯 の部分をこの branch で作った (判断ごとの別案の版 8 つ、docs/design/owner-decision-sheet.md の下書き、.ai/reviews/DEV-183.md)。つぐ手 の節は DEV-179 の後に足す。この PR は輪とゆげ湯の部分 (1 つ目)。つぐ手の節を足す PR で review にする。 つぐ手 の節 (判断 T1〜T3) は DEV-179 が docs/design/owner-decision-sheet.md に足した (別の part 2 の PR は作らない)。"
+      "note": "2026-11-05: 輪 と ゆげ湯 の部分をこの branch で作った (判断ごとの別案の版 8 つ、docs/design/owner-decision-sheet.md の下書き、.ai/reviews/DEV-183.md)。つぐ手 の節は DEV-179 の後に足す。この PR は輪とゆげ湯の部分 (1 つ目)。つぐ手の節を足す PR で review にする。 つぐ手 の節 (判断 T1〜T3) は DEV-179 が docs/design/owner-decision-sheet.md に足した (別の part 2 の PR は作らない)。 PR #225 で develop へ merge した (c6c64d0)。"
+    },
+    {
+      "id": "DEV-184",
+      "title": "つぐ手の最終の候補 (T1=A・T2 横・T3 導線) を1つにし、写真の差し替えを最新の C で動かし、AI 写真6枚の一括の指示書を作る — 研究の道、架空の店",
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [
+        "DEV-179",
+        "DEV-182",
+        "DEV-183"
+      ],
+      "attempts": 0,
+      "last_failure": null,
+      "branch": "feature/dev-184-tsugute-final",
+      "purpose": "オーナーの判断 (Issue #193 コメント 6662793266: T1=A、T2=SP の店名は横、T3=事実パックの電話・時間・所在地を冒頭近くにも。AI 生成の写真を架空のデモ店に使ってよい) に沿って、つぐ手を1つの完成の候補にする。画像の生成・real Codex はこの容器では行わない",
+      "acceptance_criteria": [
+        "comps/d1-seam-across-v9 と fidelity/d1-v10 (同じバイト) = v8 (A) + 導線。直すのは小さすぎる字と見づらい折り返しだけ。copy.json は同じバイト",
+        "代表の幅 (320・390・601・768・1199・1200・1440) を容器の書体と fonts-ci.conf で墨の帰属の検査",
+        "差し替えの道具が d1-v10 を対象にできる (枠の測り直し・変換の拡張、継ぎ目の絵は写真の上)。権利の記録・SHA・画素・リポジトリに写真を置かない・失敗で何も残さない、を保つ",
+        "合成の PNG で 6枠が 1440・768・390 で埋まることを確かめる (commit しない)",
+        "AI 写真6枚の一括の指示書 (共通の光・色・器・レンズ、枠ごとのプロンプト・比・大きさ、来歴の項目、生成の手段の承認が要ること)"
+      ],
+      "required_tests": [
+        "npx vitest run tests/unit/design-agent/quality-pipeline (1ファイルずつ)",
+        "npx tsx scripts/design-artifact/comp-lane.ts --check-review <comp>",
+        "npx vitest run tests/unit/ai-tasks.test.ts"
+      ],
+      "allowed_scope": [
+        "design-library/research/",
+        "docs/design/",
+        "scripts/design-artifact/photo-swap.ts (写真の道具だけ)",
+        "tests/unit/design-agent/quality-pipeline/photo-swap.test.ts",
+        ".ai/"
+      ],
+      "forbidden_scope": [
+        "APPROVED_CAPABILITIES の変更・能力の ON",
+        "lib/ の comp-impl の門・本番の CSS ゲート・許可一覧・描画ゲートの緩和",
+        "画像生成・有料 API・real Codex の実行",
+        "app/**・.github/workflows・package.json・lockfile",
+        "main・Production・Staging・DB・worker",
+        "事実の追加・copy.json の変更",
+        "古い版のカンプ・C の変更",
+        "写真・原本の commit"
+      ],
+      "human_approval_triggers": [
+        "AI 写真の生成の手段 (例: WSL 実機で real Codex を1回)",
+        "権利の記録に AI 生成の種類を足すか",
+        "完成の候補の見た目"
+      ],
+      "note": "comps/d1-seam-across-v9 = fidelity/d1-v10 (同じバイト)。320 の事実の文 14.2px → 19px、句の を の前の折り返しを直し、導線の事実を 14px → 15〜16px に。墨の帰属は 14 の組 (7 幅 × 2 書体) すべて所見なし。差し替えの道具は店ごとに測ったページの一覧を複数持ち (photo-slots-d1-v10.json)、継ぎ目の絵を写真の上に残して d1-v10 を差し替える。合成の PNG で 6枠すべて埋まった (1440・768・390)。AI の画像は今の権利の記録 (source_kind) に種類が無く、道具を通せない (HOLD)。写真は1枚も無い (placeholder_limited)。記録は .ai/reviews/DEV-184.md。"
     }
   ]
 }

@@ -299,3 +299,12 @@ Issue #193 コメント `6654178698` の A.4。**写真は今も1枚も無い。
 
 - **権利の記録の誤りは「すべて返す」が、形の誤りがあるとそこで止まる。** 形 (欄の欠け・型) が通らなければ形の誤りだけを返し、SHA・大きさ・期限は照らさない (`checkPhotoRights`)。拒むことに変わりはないが、提供者とのやりとりが2回になりうる。`photo-intake.md` §2 とチェックリストに書いた。
 - `photo-intake.md` §5 の表と §8 の例の「最小の画素」は、端 (DEV-166) を入れる前の数である。依頼に使わない旨を書いた。
+
+## 8. DEV-184 (2026-11-05): 最終の候補 d1-v10 で差し替えられるようにした
+
+- §7.2 の HOLD を、オーナーの承認 (Issue #193 コメント `6662793266`、デモを仕上げる) で解いた。**d1-v8 は今も `PAGE_NOT_INVENTORIED`** (一覧を置いたのは d1-v3 と d1-v10 だけ)。
+- **一覧はページごと:** `poc/tsugute/photo-slots-d1-v10.json` と `photo-slot-edges-d1-v10.json` を、d1-v3 の `photo-slots.json`・`photo-slot-edges.json` の隣に置いた。`loadInventory` は、`--page` を `page_dir` に持つ一覧を1つだけ選ぶ (無ければ `PAGE_NOT_INVENTORIED`、2つなら `INVENTORY_AMBIGUOUS`)。SHA の照合は前と同じ。
+- **変換:** 名札の `<wbr>` を読む。板は枠の `placeholder` のとおりでなければ拒む: `css_board` は空の板、`css_board_with_svg` は飾りの継ぎ目の絵 (`<svg class="dmg …" aria-hidden="true">`) と空白だけの板。絵の中は**許可一覧** (`seamBoardInner`: 要素は svg・path・g・defs・linearGradient・radialGradient・stop、属性も一覧のものだけ、大文字小文字を問わない) で、ほかの要素・属性・文字・コメントがあれば拒む。写真を先に入れ、継ぎ目の絵はその後ろに残す (**金の継ぎ目は写真の上に描かれる**)。ほかの物が入った板は `BOARD_NOT_FOUND`。
+- **d1-v10 の依頼の大きさ:** ph-kake 1370×1028 (下限 1030×773)、ほかは d1-v3 以下 (ph-dry 930×930、ph-desk 840×630)。チェックリスト (§1) の大きさは d1-v10 でも2倍を通る (テストで固定)。
+- 合成の PNG (コードで描いた色の地と主役の四角、commit しない) の通し試験: d1-v10 で終了 0、18 の切り抜き、PC 1440・タブレット 768・SP 390 で 6枠すべてが埋まり、ph-ware・ph-kake・ph-hibi の継ぎ目は写真の上。d1-v9 は `PAGE_NOT_INVENTORIED`、`commercial: false` の記録は `NOT_ALLOWED_FOR_COMMERCIAL` で止まった。
+- **残ること:** 描いた継ぎ目は写真の主役に重なりうる (デザインの意図。主役との重なりを測る検査は無い)。AI の画像は、権利の記録の `source_kind` に種類が無く、今は通せない (`tsugute-ai-photo-brief.md` §3)。
