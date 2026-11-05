@@ -8258,7 +8258,7 @@
     {
       "id": "DEV-180",
       "title": "gradient_ground と layered_decoration の安全上の未解決点の修正と、能力ごとの承認資料 (最初に ON を求める単一能力の選定)",
-      "status": "in_progress",
+      "status": "review",
       "priority": "P1",
       "depends_on": [
         "DEV-178"
@@ -8301,7 +8301,7 @@
         "本番の CSS ゲートの変更",
         "本番の差分の draft PR を ready にすること・merge すること (オーナーの明示の承認まで draft のまま)"
       ],
-      "note": "display_nowrap・display_scale は優先しない (Issue #193 コメント 6654178698 B.6)。"
+      "note": "display_nowrap・display_scale は優先しない (Issue #193 コメント 6654178698 B.6)。 結果 (DEV-180): gradient_ground の測る箱の穴 (DEV-172 M1) は、本番の PAINT_SCANNER への1か所の置き換え (内側の箱で測る、不透明な実線でない枠と1つの箱でない地は GRADIENT_PAINT_BOX) を候補としてテストの道具で示し、M1 の再現 4 と新しい再現 6 が落ち、3店は全幅で変わらない。段 C の試作は 1px の線・疑似要素・SVG を守る事実と普通の本文の両方に上下から当てた 96 例で確かめ、見逃し3つ (SVG の留めの角、SVG のマーカー、::first-letter・::first-line) を塞いだ (守りを足すだけ)。承認資料は docs/design/capability-approval-gradient-ground.md・capability-approval-layered-decoration.md。最初に ON を求める能力は gradient_ground (推奨、承認ではない)。本番の差分は別 branch feature/dev-180-prod-gradient-ground (push のみ、PR は親が draft で開く、merge しない)。研究の branch の lib の差は 0、APPROVED_CAPABILITIES は空のまま。記録は .ai/reviews/DEV-180.md。"
     },
     {
       "id": "DEV-181",
