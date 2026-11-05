@@ -6,11 +6,13 @@
 
 ## commit
 
-1. `f0f0425` **門の強化 (能力は OFF のまま)。** `lib/design-agent/comp-impl/phase-b.ts`: `PAINT_SCANNER` に研究の候補と同じ置き換え (止めの規則を内側の箱で測る、幅のある枠の辺が不透明な実線でない地・1つの箱でない地は `GRADIENT_PAINT_BOX`)。`GRADIENT_CODES` に `GRADIENT_PAINT_BOX`。守りを足すだけで、通るページは増えない。
+1. `f0f0425` **門の強化 (能力は OFF のまま)。** `lib/design-agent/comp-impl/phase-b.ts`: `PAINT_SCANNER` に研究の候補と同じ置き換え (止めの規則を内側の箱で測る、幅のある枠の辺が不透明な実線でない地・1つの箱でない地は `GRADIENT_PAINT_BOX`)。`GRADIENT_CODES` に `GRADIENT_PAINT_BOX`。守りを足す。落ちていたページを通すのは1つの形だけ (独立のレビューの #223 L1・#224 L4 で訂正): グラデーションの向きに内側の箱の長さが無い地 (例: `height: 0` に不透明な実線の枠) は、前は枠の箱で測って `GRADIENT_TOO_STEEP` になりえたが、今は線の長さ 0 で `[]`。グラデーションの画素は描かれない (`gradient-paint-box.test.ts` で固定)。commit `f0f0425` の本文の「Protection only: no page passes that failed」もこの例外の分だけ正しくない (push 済みの履歴は書き換えない)。
    - テスト: `gradient-ground.test.ts` の M1 の「known gap」のテストを、4つの再現が `GRADIENT_PAINT_BOX` (と止めのコード) で落ちることを求める形に強めた。`gradient-paint-box.test.ts` は「本番 = 候補」を求める形に (本番の script が置き換えをちょうど1つ持ち、元の文字列を持たないこと。M1 の再現で本番の答え = 候補の答え。幅で折れるインラインで本番の掃引も同じ幅だけ落ちる)。`gradient-box-harness.ts` は、本番がすでに置き換えを持つとき候補 = 本番とする。
 2. `c2fda8e` **能力の ON (承認が要る)。** `spec.ts` の `APPROVED_CAPABILITIES = ["gradient_ground"]`。`colour_syntax` ほかは足さない。
    - テスト: 承認の一覧を `[]` に固定していた 12 か所を `["gradient_ground"]` に (消した・skip したテストは無い)。`phase-b.test.ts` はほかの段 B の 4 つを今どおり拒み、gradient_ground だけの spec を通すこと、gradient_ground + colour_syntax の spec は `SPEC_CAPABILITY_NOT_APPROVED` であることを足した。`gradient-ground.test.ts` は、旗が gradient_ground を宣言した spec にだけ立ち、colour_syntax・translucent_decoration の旗は立たないことを固定する。
 3. `18f1a76` 研究の branch の merge (記録と、留めの角の例を確かにした直し)。
+4. 研究の branch の merge (独立のレビューの直し: マーカーの fail closed の位置、置き換えの前の scanner を SHA-256 で固定した証明、develop)。衝突した `gradient-box-harness.ts`・`gradient-paint-box.test.ts` は研究の branch の版 (どちらの branch でも同じに動く) を取り、承認の一覧のテストだけこの branch の形 (`["gradient_ground"]`) に戻した。
+5. `run.ts` の注 (「all off today: none is approved」) を「gradient_ground だけが承認され、それを宣言した spec にだけ」に直した (#224 L3、注だけ)。
 
 ## lib の差 (develop から)
 
